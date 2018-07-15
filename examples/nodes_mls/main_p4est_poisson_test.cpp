@@ -29,7 +29,6 @@
 #include <src/my_p8est_log_wrappers.h>
 #include <src/my_p8est_node_neighbors.h>
 #include <src/my_p8est_level_set.h>
-//#include <src/my_p8est_poisson_nodes_mls.h>
 #include <src/my_p8est_poisson_nodes_mls_sc.h>
 #include <src/my_p8est_interpolation_nodes.h>
 #include <src/my_p8est_integration_mls.h>
@@ -48,7 +47,6 @@
 #include <src/my_p4est_log_wrappers.h>
 #include <src/my_p4est_node_neighbors.h>
 #include <src/my_p4est_level_set.h>
-//#include <src/my_p4est_poisson_nodes_mls.h>
 #include <src/my_p4est_poisson_nodes_mls_sc.h>
 #include <src/my_p4est_interpolation_nodes.h>
 #include <src/my_p4est_integration_mls.h>
@@ -58,13 +56,9 @@
 #include <src/my_p4est_tools_mls.h>
 #endif
 
-#include <slepceps.h>
-#include <slepcsvd.h>
-
 #include <engine.h>
 
 #include <src/point3.h>
-#include <tools/plotting.h>
 
 #include <src/petsc_compatibility.h>
 #include <src/Parser.h>
@@ -95,32 +89,35 @@ int lmin = 7;
 int lmax = 7;
 int nb_splits = 1;
 int nb_splits_per_split = 1;
-int nx_shifts = 1;
-int ny_shifts = 1;
-int nz_shifts = 1;
-int num_shifts = nx_shifts*ny_shifts*nz_shifts;
+int num_shifts_x_dir = 1;
+int num_shifts_y_dir = 1;
+int num_shifts_z_dir = 1;
+int num_shifts_total = num_shifts_x_dir*
+                       num_shifts_y_dir*
+                       num_shifts_z_dir;
 #else
 int lmin = 4;
 int lmax = 4;
 int nb_splits = 6;
 int nb_splits_per_split = 1;
-int nx_shifts = 1;
-int ny_shifts = 1;
-int num_shifts = nx_shifts*ny_shifts;
+int num_shifts_x_dir = 1;
+int num_shifts_y_dir = 1;
+int num_shifts_total = num_shifts_x_dir*
+                       num_shifts_y_dir;
 #endif
 
-int iteration_start = 0;
-
 int num_resolutions = (nb_splits-1)*nb_splits_per_split + 1;
-int num_iter_tot = num_resolutions*num_shifts;
+int num_iter_total  = num_resolutions*num_shifts_total;
 
-//const int periodic[3] = {1, 1, 1};
+int num_splits = 10;
+
+int iter_start = 0; // is used to skip iterations and get to a problem case
+
+//
 const int periodic[3] = {0, 0, 0};
 const int n_xyz[3] = {1, 1, 1};
-const double p_xyz_min[3] = {-1., -1., -1.};
-const double p_xyz_max[3] = { 1.,  1.,  1.};
-//const double p_xyz_min[3] = {-2, -2, -2};
-//const double p_xyz_max[3] = {2, 2, 2};
+const double grid_xyz_min[3] = {-1., -1., -1.};
+const double grid_xyz_max[3] = { 1.,  1.,  1.};
 
 /* Examples for Poisson paper
  * 0000
@@ -132,12 +129,11 @@ const double p_xyz_max[3] = { 1.,  1.,  1.};
  */
 
 int n_geometry = 11;
-int n_test = 11;
-int n_mu = 0;
+int n_test     = 11;
+int n_mu       = 0;
 int n_diag_add = 0;
 
-bool reinitialize_lsfs = 0;
-bool plot_convergence = 1;
+bool reinit_level_set = 0;
 bool save_domain_reconstruction = save_vtk;
 bool do_extension = 0;
 
@@ -147,14 +143,17 @@ int integration_order = 2;
 double mask_thresh = 0;
 bool try_remove_hanging_cells = 0;
 
-bool perturb_domain = 0;
-int  n_perturb = 1; // 0 - smooth, 1 - random
-double perturb_magnitude = 1.0;
-double perturb_order = 1.0;
+int    domain_perturbation = 0; // 0 - no, 1 - smooth, 2 - noisy
+double domain_perturbation_mag = 1.0;
+double domain_perturbation_pow = 1.0;
 
-bool compute_eigenvalues = 0;
-int compute_cond_num_slepc = 0;
-int compute_cond_num_matlab = 1;
+bool   exclude_points = 0;
+double exclude_points_R = p11::R0;
+double exclude_points_x = p11::x0;
+double exclude_points_y = p11::y0;
+double exclude_points_z = 0;
+
+int compute_cond_num = nb_splits;
 
 bool save_matrix_ascii = 0;
 bool save_matrix_binary = 0;
@@ -167,9 +166,10 @@ class perturb_cf_t: public CF_3
 public:
   double operator()(double x, double y, double z) const
   {
-    switch (n_perturb) {
-      case 0: return sin(2.*x-z)*cos(2.*y+z);
-      case 1: return 2.*((double) rand() / (double) RAND_MAX - 0.5);
+    switch (domain_perturbation) {
+      case 0: return 0;
+      case 1: return sin(2.*x-z)*cos(2.*y+z);
+      case 2: return 2.*((double) rand() / (double) RAND_MAX - 0.5);
     }
   }
 } perturb_cf;
@@ -179,9 +179,10 @@ class perturb_cf_t: public CF_2
 public:
   double operator()(double x, double y) const
   {
-    switch (n_perturb) {
-      case 0: return sin(10.*x)*cos(10.*y);
-      case 1: return 2.*((double) rand() / (double) RAND_MAX - 0.5);
+    switch (domain_perturbation) {
+      case 0: return 0;
+      case 1: return sin(10.*x)*cos(10.*y);
+      case 2: return 2.*((double) rand() / (double) RAND_MAX - 0.5);
     }
   }
 } perturb_cf;
@@ -613,8 +614,6 @@ public:
 
     double l = p11::k/p11::alpha;
     return (*problem_case_11.bc_coeffs_cf[0])(x,y)*pow(R < 0 ? -1: 1, (int)p11::k)*pow(fabs(R),l);
-//    return (*problem_case_11.bc_coeffs_cf[0])(x,y)*pow(fabs(R),l);
-//    return (*problem_case_11.bc_coeffs_cf[0])(x,y)*u_cf(x,y);
   }
 } bc_val_0;
 #endif
@@ -641,32 +640,17 @@ public:
 
     double l = p11::k/p11::alpha;
     return pow(-1, (int)k)*(*problem_case_11.bc_coeffs_cf[1])(x,y)*pow(R < 0 ? -1: 1, (int)p11::k)*pow(fabs(R),l);
-//    return -(*problem_case_11.bc_coeffs_cf[1])(x,y)*pow(fabs(R),l);
-//    return (*problem_case_11.bc_coeffs_cf[1])(x,y)*u_cf(x,y);
   }
 } bc_val_1;
 #endif
 
 }
 
-vector<double> level, h;
-
-vector<double> error_sl_arr, error_sl_l1_arr;
-vector<double> error_ex_arr, error_ex_l1_arr;
-vector<double> error_dd_arr, error_dd_l1_arr;
-vector<double> error_tr_arr, error_tr_l1_arr;
-vector<double> error_gr_arr, error_gr_l1_arr;
-vector<double> error_ge_arr, error_ge_l1_arr;
-
-vector<double> cond_num_arr;
-
-
+// additional output functions
 void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4est_brick_t *brick,
               Vec phi, Vec sol, Vec err_nodes, Vec err_trunc, Vec err_grad,
               int compt);
-
 double compute_convergence_order(std::vector<double> &x, std::vector<double> &y);
-//void save_vector(const char *filename, const std::vector<double> &data, ios_base::openmode mode = ios_base::out, char delim = ',');
 void print_convergence_table(MPI_Comm mpi_comm,
                              std::vector<double> &level, std::vector<double> &h,
                              std::vector<double> &L_one, std::vector<double> &L_avg, std::vector<double> &L_dev, std::vector<double> &L_max,
@@ -674,20 +658,27 @@ void print_convergence_table(MPI_Comm mpi_comm,
 
 int main (int argc, char* argv[])
 {
+  // error variables
   PetscErrorCode ierr;
   int mpiret;
+
   mpi_environment_t mpi;
   mpi.init(argc, argv);
 
-//  PetscMatlabEngine matlab_engine;
-//  ierr = PetscMatlabEngineCreate(mpi.comm(), NULL, &matlab_engine); CHKERRXX(ierr);
-//  ierr = PetscMatlabEngineEvaluate(matlab_engine, "setenv('PETSC_DIR', '/home/dbochkov/Software/PETSc/petsc-3.9.2/');"      );
-//  ierr = PetscMatlabEngineEvaluate(matlab_engine, "setenv('PETSC_ARCH', 'build-release-matlab');"                                  );
-//  ierr = PetscMatlabEngineEvaluate(matlab_engine, "addpath('/home/dbochkov/Software/PETSc/petsc-3.9.2/share/petsc/matlab');");
+
+  vector<double> level, h;
+
+  vector<double> error_sl_arr, error_sl_l1_arr;
+  vector<double> error_ex_arr, error_ex_l1_arr;
+  vector<double> error_dd_arr, error_dd_l1_arr;
+  vector<double> error_tr_arr, error_tr_l1_arr;
+  vector<double> error_gr_arr, error_gr_l1_arr;
+  vector<double> error_ge_arr, error_ge_l1_arr;
+
+  vector<double> cond_num_arr;
 
   Engine *mengine;
-
-  if (mpi.rank() == 0)
+  if (mpi.rank() == 0 && compute_cond_num)
   {
     mengine = engOpen("matlab -nodisplay -nojvm");
     if (mengine == NULL) throw;
@@ -698,20 +689,20 @@ int main (int argc, char* argv[])
   cmd.add_option("lmax", "max level of the tree");
   cmd.add_option("nb_splits", "number of recursive splits");
   cmd.add_option("nb_splits_per_split", "nb_splits_per_split");
-  cmd.add_option("nx_shifts", "");
-  cmd.add_option("ny_shifts", "");
+  cmd.add_option("num_shifts_x_dir", "number of shifts in x-dir");
+  cmd.add_option("num_shifts_y_dir", "number of shifts in y-dir");
 #ifdef P4_TO_P8
-  cmd.add_option("nz_shifts", "");
+  cmd.add_option("num_shifts_z_dir", "number of shifts in z-dir");
 #endif
 
-//  cmd.add_option("bc_wtype", "type of boundary condition to use on the wall");
-//  cmd.add_option("bc_itype", "type of boundary condition to use on the interface");
   cmd.add_option("save_vtk", "save the p4est in vtk format");
   cmd.add_option("reinit", "reinitialize level-set function");
-  cmd.add_option("n_test", "test function");
+
+  cmd.add_option("n_test",     "test function");
   cmd.add_option("n_geometry", "geometry");
-  cmd.add_option("n_mu", "diffusion coefficient");
+  cmd.add_option("n_mu",       "diffusion coefficient");
   cmd.add_option("n_diag_add", "additional diagonal term");
+
   cmd.add_option("plot_convergence", "show convergence plots");
   cmd.add_option("save_domain_reconstruction", "save reconstruction of domain (works only in serial!)");
   cmd.add_option("do_extension", "extend solution after solving");
@@ -737,18 +728,19 @@ int main (int argc, char* argv[])
   nb_splits = cmd.get("nb_splits", nb_splits);
   nb_splits_per_split = cmd.get("nb_splits_per_split", nb_splits_per_split);
 
-  nx_shifts = cmd.get("nx_shifts", nx_shifts);
-  ny_shifts = cmd.get("ny_shifts", ny_shifts);
+  num_shifts_x_dir = cmd.get("num_shifts_x_dir", num_shifts_x_dir);
+  num_shifts_y_dir = cmd.get("num_shifts_y_dir", num_shifts_y_dir);
 #ifdef P4_TO_P8
-  nz_shifts = cmd.get("nz_shifts", nz_shifts);
+  num_shifts_z_dir = cmd.get("num_shifts_z_dir", num_shifts_z_dir);
 #endif
 
-  reinitialize_lsfs = cmd.get("reinit", reinitialize_lsfs);
-  n_test = cmd.get("n_test", n_test);
+  reinit_level_set = cmd.get("reinit", reinit_level_set);
+
+  n_test     = cmd.get("n_test",     n_test);
   n_geometry = cmd.get("n_geometry", n_geometry);
-  n_mu = cmd.get("n_mu", n_mu);
+  n_mu       = cmd.get("n_mu",       n_mu);
   n_diag_add = cmd.get("n_diag_add", n_diag_add);
-  plot_convergence = cmd.get("plot_convergence", plot_convergence);
+
   save_domain_reconstruction = cmd.get("save_domain_reconstruction", save_domain_reconstruction);
   do_extension = cmd.get("do_extension", do_extension);
   sc_scheme = cmd.get("sc_scheme", sc_scheme);
@@ -757,22 +749,22 @@ int main (int argc, char* argv[])
   try_remove_hanging_cells = cmd.get("try_remove_hanging_cells", try_remove_hanging_cells);
   save_domain_reconstruction = cmd.get("save_domain_reconstruction", save_domain_reconstruction);
 
-  compute_cond_num_matlab = cmd.get("compute_cond_num", compute_cond_num_matlab);
-  perturb_domain = cmd.get("perturb_domain", perturb_domain);
-  n_perturb = cmd.get("n_perturb", n_perturb);
-  perturb_magnitude = cmd.get("perturb_magnitude", perturb_magnitude);
-  perturb_order = cmd.get("perturb_order", perturb_order);
+  compute_cond_num = cmd.get("compute_cond_num", compute_cond_num);
+
+  domain_perturbation     = cmd.get("domain_perturbation",     domain_perturbation);
+  domain_perturbation_mag = cmd.get("domain_perturbation_mag", domain_perturbation_mag);
+  domain_perturbation_pow = cmd.get("domain_perturbation_pow", domain_perturbation_pow);
   use_phi_cf = cmd.get("use_phi_cf", use_phi_cf);
   p11::k = cmd.get("singular_k", p11::k);
 
 #ifdef P4_TO_P8
-  num_shifts = nx_shifts*ny_shifts*nz_shifts;
+  num_shifts_total = num_shifts_x_dir*num_shifts_y_dir*num_shifts_z_dir;
 #else
-  num_shifts = nx_shifts*ny_shifts;
+  num_shifts_total = num_shifts_x_dir*num_shifts_y_dir;
 #endif
 
   num_resolutions = (nb_splits-1)*nb_splits_per_split + 1;
-  num_iter_tot = num_resolutions*num_shifts;
+  num_iter_total = num_resolutions*num_shifts_total;
 
 //  bc_wtype = cmd.get("bc_wtype", bc_wtype);
 //  bc_itype = cmd.get("bc_itype", bc_itype);
@@ -807,7 +799,7 @@ int main (int argc, char* argv[])
   level_set_tot_t level_set_tot_cf(&phi_cf, &action, &color);
 
   int iteration = -1;
-  int fileidx   = -1;
+  int file_idx   = -1;
 
   for(int iter=0; iter<nb_splits; ++iter)
   {
@@ -818,21 +810,21 @@ int main (int argc, char* argv[])
     for (int sub_iter = 0; sub_iter < num_sub_iter; ++sub_iter)
     {
 
-      double p_xyz_min_alt[3];
-      double p_xyz_max_alt[3];
+      double grid_xyz_min_alt[3];
+      double grid_xyz_max_alt[3];
 
       double scale = (double) (num_sub_iter-1-sub_iter) / (double) num_sub_iter;
-      p_xyz_min_alt[0] = p_xyz_min[0] - .5*(pow(2.,scale)-1)*(p_xyz_max[0]-p_xyz_min[0]); p_xyz_max_alt[0] = p_xyz_max[0] + .5*(pow(2.,scale)-1)*(p_xyz_max[0]-p_xyz_min[0]);
-      p_xyz_min_alt[1] = p_xyz_min[1] - .5*(pow(2.,scale)-1)*(p_xyz_max[1]-p_xyz_min[1]); p_xyz_max_alt[1] = p_xyz_max[1] + .5*(pow(2.,scale)-1)*(p_xyz_max[1]-p_xyz_min[1]);
-      p_xyz_min_alt[2] = p_xyz_min[2] - .5*(pow(2.,scale)-1)*(p_xyz_max[2]-p_xyz_min[2]); p_xyz_max_alt[2] = p_xyz_max[2] + .5*(pow(2.,scale)-1)*(p_xyz_max[2]-p_xyz_min[2]);
+      grid_xyz_min_alt[0] = grid_xyz_min[0] - .5*(pow(2.,scale)-1)*(grid_xyz_max[0]-grid_xyz_min[0]); grid_xyz_max_alt[0] = grid_xyz_max[0] + .5*(pow(2.,scale)-1)*(grid_xyz_max[0]-grid_xyz_min[0]);
+      grid_xyz_min_alt[1] = grid_xyz_min[1] - .5*(pow(2.,scale)-1)*(grid_xyz_max[1]-grid_xyz_min[1]); grid_xyz_max_alt[1] = grid_xyz_max[1] + .5*(pow(2.,scale)-1)*(grid_xyz_max[1]-grid_xyz_min[1]);
+      grid_xyz_min_alt[2] = grid_xyz_min[2] - .5*(pow(2.,scale)-1)*(grid_xyz_max[2]-grid_xyz_min[2]); grid_xyz_max_alt[2] = grid_xyz_max[2] + .5*(pow(2.,scale)-1)*(grid_xyz_max[2]-grid_xyz_min[2]);
 
 
-      double dxyz[3] = { (p_xyz_max_alt[0]-p_xyz_min_alt[0])/pow(2., (double) lmax+iter),
-                         (p_xyz_max_alt[1]-p_xyz_min_alt[1])/pow(2., (double) lmax+iter),
-                         (p_xyz_max_alt[2]-p_xyz_min_alt[2])/pow(2., (double) lmax+iter) };
+      double dxyz[3] = { (grid_xyz_max_alt[0]-grid_xyz_min_alt[0])/pow(2., (double) lmax+iter),
+                         (grid_xyz_max_alt[1]-grid_xyz_min_alt[1])/pow(2., (double) lmax+iter),
+                         (grid_xyz_max_alt[2]-grid_xyz_min_alt[2])/pow(2., (double) lmax+iter) };
 
-      double p_xyz_min_shift[3];
-      double p_xyz_max_shift[3];
+      double grid_xyz_min_shift[3];
+      double grid_xyz_max_shift[3];
 
 #ifdef P4_TO_P8
       double dxyz_m = MIN(dxyz[0],dxyz[1],dxyz[2]);
@@ -846,28 +838,28 @@ int main (int argc, char* argv[])
       ierr = PetscPrintf(mpi.comm(), "Level %2d / %2d. Sub split %2d (lvl %5.2f / %5.2f).\n", lmin+iter, lmax+iter, sub_iter, lmin+iter-scale, lmax+iter-scale); CHKERRXX(ierr);
 
 #ifdef P4_TO_P8
-      for (int k_shift = 0; k_shift < nz_shifts; ++k_shift)
+      for (int k_shift = 0; k_shift < num_shifts_z_dir; ++k_shift)
       {
-        p_xyz_min_shift[2] = p_xyz_min_alt[2] + (double) (k_shift) / (double) (nz_shifts) * dxyz[2];
-        p_xyz_max_shift[2] = p_xyz_max_alt[2] + (double) (k_shift) / (double) (nz_shifts) * dxyz[2];
+        grid_xyz_min_shift[2] = grid_xyz_min_alt[2] + (double) (k_shift) / (double) (num_shifts_z_dir) * dxyz[2];
+        grid_xyz_max_shift[2] = grid_xyz_max_alt[2] + (double) (k_shift) / (double) (num_shifts_z_dir) * dxyz[2];
 #endif
-        for (int j_shift = 0; j_shift < ny_shifts; ++j_shift)
+        for (int j_shift = 0; j_shift < num_shifts_y_dir; ++j_shift)
         {
-          p_xyz_min_shift[1] = p_xyz_min_alt[1] + (double) (j_shift) / (double) (ny_shifts) * dxyz[1];
-          p_xyz_max_shift[1] = p_xyz_max_alt[1] + (double) (j_shift) / (double) (ny_shifts) * dxyz[1];
+          grid_xyz_min_shift[1] = grid_xyz_min_alt[1] + (double) (j_shift) / (double) (num_shifts_y_dir) * dxyz[1];
+          grid_xyz_max_shift[1] = grid_xyz_max_alt[1] + (double) (j_shift) / (double) (num_shifts_y_dir) * dxyz[1];
 
-          for (int i_shift = 0; i_shift < nx_shifts; ++i_shift)
+          for (int i_shift = 0; i_shift < num_shifts_x_dir; ++i_shift)
           {
-            p_xyz_min_shift[0] = p_xyz_min_alt[0] + (double) (i_shift) / (double) (nx_shifts) * dxyz[0];
-            p_xyz_max_shift[0] = p_xyz_max_alt[0] + (double) (i_shift) / (double) (nx_shifts) * dxyz[0];
+            grid_xyz_min_shift[0] = grid_xyz_min_alt[0] + (double) (i_shift) / (double) (num_shifts_x_dir) * dxyz[0];
+            grid_xyz_max_shift[0] = grid_xyz_max_alt[0] + (double) (i_shift) / (double) (num_shifts_x_dir) * dxyz[0];
 
             iteration++;
 
-            if (iteration < iteration_start) continue;
+            if (iteration < iter_start) continue;
 
-            fileidx++;
+            file_idx++;
 
-            connectivity = my_p4est_brick_new(n_xyz, p_xyz_min_shift, p_xyz_max_shift, &brick, periodic);
+            connectivity = my_p4est_brick_new(n_xyz, grid_xyz_min_shift, grid_xyz_max_shift, &brick, periodic);
 
             p4est = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
 
@@ -922,7 +914,7 @@ int main (int argc, char* argv[])
               ierr = VecCreateGhostNodes(p4est, nodes, &phi.back()); CHKERRXX(ierr);
               sample_cf_on_nodes(p4est, nodes, *phi_cf[i], phi.back());
 
-              if (perturb_domain)
+              if (domain_perturbation)
               {
                 double *phi_ptr;
                 ierr = VecGetArray(phi.back(), &phi_ptr); CHKERRXX(ierr);
@@ -931,7 +923,7 @@ int main (int argc, char* argv[])
                 {
                   double xyz[P4EST_DIM];
                   node_xyz_fr_n(n, p4est, nodes, xyz);
-                  phi_ptr[n] += perturb_magnitude*perturb_cf.value(xyz)*pow(dxyz_m, perturb_order);
+                  phi_ptr[n] += domain_perturbation_mag*perturb_cf.value(xyz)*pow(dxyz_m, domain_perturbation_pow);
                 }
 
                 ierr = VecRestoreArray(phi.back(), &phi_ptr); CHKERRXX(ierr);
@@ -940,7 +932,7 @@ int main (int argc, char* argv[])
                 ierr = VecGhostUpdateEnd  (phi.back(), INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
               }
 
-              if (reinitialize_lsfs)
+              if (reinit_level_set)
                 ls.reinitialize_1st_order_time_2nd_order_space(phi.back(),20);
             }
 
@@ -1003,9 +995,6 @@ int main (int argc, char* argv[])
             ierr = VecCreateGhostNodes(p4est, nodes, &diag_add); CHKERRXX(ierr);
             sample_cf_on_nodes(p4est, nodes, diag_add_cf, diag_add);
 
-
-            //    ierr = VecDestroy(rhs); CHKERRXX(ierr);
-            //    ierr = VecDestroy(u_exact_vec); CHKERRXX(ierr);
             ierr = PetscPrintf(p4est->mpicomm, "Starting a solver\n"); CHKERRXX(ierr);
 
             Vec sol; double *sol_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &sol); CHKERRXX(ierr);
@@ -1028,7 +1017,6 @@ int main (int argc, char* argv[])
             solver.set_geometry(num_surfaces, &action, &color, &phi);
             solver.set_mu(mu);
             solver.set_rhs(rhs);
-//            solver.set_rhs(rhs_cf);
 
             solver.set_bc_wall_value(u_cf);
             solver.set_bc_wall_type(bc_wall_type);
@@ -1039,11 +1027,9 @@ int main (int argc, char* argv[])
             solver.set_diag_add(diag_add);
 
             solver.set_use_taylor_correction(1);
-            solver.set_keep_scalling(true);
+            solver.set_keep_scalling(1);
             solver.set_kink_treatment(1);
             solver.set_try_remove_hanging_cells(try_remove_hanging_cells);
-
-//            solver.set_exact(u_exact_vec);
 
             solver.solve(sol);
 
@@ -1054,91 +1040,6 @@ int main (int argc, char* argv[])
             A         = solver.get_matrix();
             scalling  = solver.get_scalling();
             volumes   = solver.get_volumes();
-
-            if (compute_eigenvalues)
-            {
-              EPS            eps;        /* eigenproblem solver context */
-              PetscReal      tol=1000*PETSC_MACHINE_EPSILON;
-              PetscErrorCode ierr;
-              EPSType        type;
-              PetscReal      error,re,im;
-              PetscScalar    kr,ki;
-              Vec            xr,xi;
-              PetscInt       i,nev,maxit,its,nconv;
-
-              SlepcInitialize(&argc,&argv,(char*)0,(char*)0);
-
-              ierr = EPSCreate(PETSC_COMM_WORLD,&eps);CHKERRQ(ierr);
-              ierr = EPSSetOperators(eps,A,NULL);CHKERRQ(ierr);
-              ierr = EPSSetProblemType(eps,EPS_NHEP);CHKERRQ(ierr);
-              ierr = EPSSetTolerances(eps,tol,10000);CHKERRQ(ierr);
-              ierr = EPSSetDimensions(eps,pow(pow(2,lmax+iter)+1,P4EST_DIM),2.*pow(pow(2,lmax+iter)+1,P4EST_DIM),2.*pow(pow(2,lmax+iter)+1,P4EST_DIM)); CHKERRQ(ierr);
-//              EPSSetWhichEigenpairs(eps,EPS_LARGEST_MAGNITUDE);
-//              EPSSetWhichEigenpairs(eps,EPS_SMALLEST_REAL);
-              ierr = EPSSetFromOptions(eps);CHKERRQ(ierr);
-
-              ierr = EPSSolve(eps);CHKERRQ(ierr);
-
-              ierr = EPSGetIterationNumber(eps,&its);CHKERRQ(ierr);
-              ierr = PetscPrintf(PETSC_COMM_WORLD," Number of iterations of the method: %D\n",its);CHKERRQ(ierr);
-              ierr = EPSGetType(eps,&type);CHKERRQ(ierr);
-              ierr = PetscPrintf(PETSC_COMM_WORLD," Solution method: %s\n\n",type);CHKERRQ(ierr);
-              ierr = EPSGetDimensions(eps,&nev,NULL,NULL);CHKERRQ(ierr);
-              ierr = PetscPrintf(PETSC_COMM_WORLD," Number of requested eigenvalues: %D\n",nev);CHKERRQ(ierr);
-              ierr = EPSGetTolerances(eps,&tol,&maxit);CHKERRQ(ierr);
-              ierr = PetscPrintf(PETSC_COMM_WORLD," Stopping condition: tol=%.4g, maxit=%D\n",(double)tol,maxit);CHKERRQ(ierr);
-
-
-              ierr = EPSGetConverged(eps,&nconv);CHKERRQ(ierr);
-              ierr = PetscPrintf(PETSC_COMM_WORLD," Number of converged eigenpairs: %D\n\n",nconv);CHKERRQ(ierr);
-
-              ierr = MatCreateVecs(A,NULL,&xr);CHKERRQ(ierr);
-              ierr = MatCreateVecs(A,NULL,&xi);CHKERRQ(ierr);
-
-              if (nconv>0) {
-                /*
-                   Display eigenvalues and relative errors
-                */
-                ierr = PetscPrintf(PETSC_COMM_WORLD,
-                     "           k          ||Ax-kx||/||kx||\n"
-                     "   ----------------- ------------------\n");CHKERRQ(ierr);
-
-                for (i=0;i<nconv;i++) {
-                  /*
-                    Get converged eigenpairs: i-th eigenvalue is stored in kr (real part) and
-                    ki (imaginary part)
-                  */
-                  ierr = EPSGetEigenpair(eps,i,&kr,&ki,xr,xi);CHKERRQ(ierr);
-                  /*
-                     Compute the relative error associated to each eigenpair
-                  */
-//                  ierr = EPSComputeError(eps,i,EPS_ERROR_RELATIVE,&error);CHKERRQ(ierr);
-                  ierr = EPSComputeError(eps,i,EPS_ERROR_BACKWARD,&error);CHKERRQ(ierr);
-
-            #if defined(PETSC_USE_COMPLEX)
-                  re = PetscRealPart(kr);
-                  im = PetscImaginaryPart(kr);
-            #else
-                  re = kr;
-                  im = ki;
-            #endif
-                  if (im!=0.0) {
-                    ierr = PetscPrintf(PETSC_COMM_WORLD," %9f%+9f j %12g\n",(double)re,(double)im,(double)error);CHKERRQ(ierr);
-                  } else {
-                    ierr = PetscPrintf(PETSC_COMM_WORLD,"   %12f       %12g\n",(double)re,(double)error);CHKERRQ(ierr);
-                  }
-                }
-                ierr = PetscPrintf(PETSC_COMM_WORLD,"\n");CHKERRQ(ierr);
-              }
-
-              /*
-                 Free work space
-              */
-              ierr = VecDestroy(xr);CHKERRQ(ierr);
-              ierr = VecDestroy(xi);CHKERRQ(ierr);
-              ierr = EPSDestroy(&eps);CHKERRQ(ierr);
-              ierr = SlepcFinalize();
-            }
 
             if (save_matrix_ascii)
             {
@@ -1158,7 +1059,7 @@ int main (int argc, char* argv[])
               ierr = PetscViewerDestroy(viewer); CHKERRXX(ierr);
             }
 
-            if (iter < compute_cond_num_matlab)
+            if (iter < compute_cond_num)
             {
               // Get the local AIJ representation of the matrix
               std::vector<double> aij;
@@ -1230,92 +1131,6 @@ int main (int argc, char* argv[])
               } else {
                 cond_num_arr.push_back(NAN);
               }
-            } else
-            if (iter < compute_cond_num_slepc)
-            {
-              SVD            svd;             /* singular value solver context */
-              PetscInt       nconv1,nconv2;
-              PetscReal      sigma_1,sigma_n;
-              PetscErrorCode ierr;
-
-              ierr = SlepcInitialize(&argc,&argv,(char*)0,(char*)0); CHKERRQ(ierr);
-
-              /*
-                 Create singular value context
-              */
-              ierr = SVDCreate(PETSC_COMM_WORLD,&svd);CHKERRQ(ierr);
-
-              /*
-                 Set operator
-              */
-              ierr = SVDSetOperator(svd,A);CHKERRQ(ierr);
-
-              /*
-                 Set solver parameters at runtime
-              */
-              SVDSetTolerances(svd, 1.e-10, INT_MAX);
-              SVDSetType(svd,SVDPRIMME);
-              ierr = SVDSetFromOptions(svd);CHKERRQ(ierr);
-              ierr = SVDSetDimensions(svd,1,PETSC_DEFAULT,PETSC_DEFAULT);CHKERRQ(ierr);
-
-              /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-                                  Solve the singular value problem
-                 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-
-
-              /*
-                 Request a singular value from the other end of the spectrum
-              */
-              ierr = SVDSetWhichSingularTriplets(svd,SVD_SMALLEST);CHKERRQ(ierr);
-              ierr = SVDSolve(svd);CHKERRQ(ierr);
-              /*
-                 Get number of converged singular triplets
-              */
-              ierr = SVDGetConverged(svd,&nconv2);CHKERRQ(ierr);
-              /*
-                 Get converged singular values: smallest singular value is stored in sigma_n.
-                 As before, we are not interested in the singular vectors
-              */
-              if (nconv2 > 0) {
-                ierr = SVDGetSingularTriplet(svd,0,&sigma_n,NULL,NULL);CHKERRQ(ierr);
-              } else {
-                ierr = PetscPrintf(PETSC_COMM_WORLD," Unable to compute small singular value!\n\n");CHKERRQ(ierr);
-              }
-              /*
-                 First request a singular value from one end of the spectrum
-              */
-              ierr = SVDSetWhichSingularTriplets(svd,SVD_LARGEST);CHKERRQ(ierr);
-              ierr = SVDSolve(svd);CHKERRQ(ierr);
-              /*
-                 Get number of converged singular values
-              */
-              ierr = SVDGetConverged(svd,&nconv1);CHKERRQ(ierr);
-              /*
-                 Get converged singular values: largest singular value is stored in sigma_1.
-                 In this example, we are not interested in the singular vectors
-              */
-              if (nconv1 > 0) {
-                ierr = SVDGetSingularTriplet(svd,0,&sigma_1,NULL,NULL);CHKERRQ(ierr);
-              } else {
-                ierr = PetscPrintf(PETSC_COMM_WORLD," Unable to compute large singular value!\n\n");CHKERRQ(ierr);
-              }
-
-              /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-                                Display solution and clean up
-                 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-              if (nconv1 > 0 && nconv2 > 0) {
-                ierr = PetscPrintf(PETSC_COMM_WORLD," Computed singular values: sigma_1=%e, sigma_n=%e\n",(double)sigma_1,(double)sigma_n);CHKERRQ(ierr);
-                ierr = PetscPrintf(PETSC_COMM_WORLD," Estimated condition number: sigma_1/sigma_n=%e\n\n",(double)(sigma_1/sigma_n));CHKERRQ(ierr);
-                cond_num_arr.push_back((double)(sigma_1/sigma_n));
-              } else {
-                cond_num_arr.push_back(1);
-              }
-
-              /*
-                 Free work space
-              */
-              ierr = SVDDestroy(&svd);CHKERRQ(ierr);
-              ierr = SlepcFinalize();
             } else {
               cond_num_arr.push_back(NAN);
             }
@@ -1365,9 +1180,9 @@ int main (int argc, char* argv[])
                         simplices.push_back(&cubes[k].cubes_l_[kk]->simplex[l]);
 
 #ifdef P4_TO_P8
-                simplex3_mls_l_vtk::write_simplex_geometry(simplices, oss.str(), to_string(fileidx));
+                simplex3_mls_l_vtk::write_simplex_geometry(simplices, oss.str(), to_string(file_idx));
 #else
-                simplex2_mls_l_vtk::write_simplex_geometry(simplices, oss.str(), to_string(fileidx));
+                simplex2_mls_l_vtk::write_simplex_geometry(simplices, oss.str(), to_string(file_idx));
 #endif
               } else if (integration_order == 2) {
 
@@ -1383,9 +1198,9 @@ int main (int argc, char* argv[])
                         simplices.push_back(&cubes[k].cubes_q_[kk]->simplex[l]);
 
 #ifdef P4_TO_P8
-                simplex3_mls_q_vtk::write_simplex_geometry(simplices, oss.str(), to_string(fileidx));
+                simplex3_mls_q_vtk::write_simplex_geometry(simplices, oss.str(), to_string(file_idx));
 #else
-                simplex2_mls_q_vtk::write_simplex_geometry(simplices, oss.str(), to_string(fileidx));
+                simplex2_mls_q_vtk::write_simplex_geometry(simplices, oss.str(), to_string(file_idx));
 #endif
               }
 
@@ -1399,6 +1214,8 @@ int main (int argc, char* argv[])
             Vec vec_error_dd; double *vec_error_dd_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &vec_error_dd); CHKERRXX(ierr);
             Vec vec_error_ge; double *vec_error_ge_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &vec_error_ge); CHKERRXX(ierr);
 
+            // exclude points to study convergence in a reduced domain (for singular solutions)
+            if (exclude_points)
             {
               double *mask_ptr;
               ierr = VecGetArray(mask, &mask_ptr); CHKERRXX(ierr);
@@ -1410,9 +1227,12 @@ int main (int argc, char* argv[])
                 {
                   node_xyz_fr_n(n, p4est, nodes, xyz);
 #ifdef P4_TO_P8
-                  if (sqrt(SQR(xyz[0] - p11::x0) + SQR(xyz[1] - p11::y0) + SQR(xyz[2] - p11::y0)) < 2.*dxyz_m)
+                  if (sqrt(SQR(xyz[0] - exclude_points_x) +
+                           SQR(xyz[1] - exclude_points_y) +
+                           SQR(xyz[2] - exclude_points_z)) < exclude_points_R)
 #else
-                  if (sqrt(SQR(xyz[0] - p11::x0) + SQR(xyz[1] - p11::y0)) < .1)
+                  if (sqrt(SQR(xyz[0] - exclude_points_x) +
+                           SQR(xyz[1] - exclude_points_y)) < exclude_points_R)
 #endif
                     mask_ptr[n] = MAX(1., mask_ptr[n]);
                 }
@@ -1420,6 +1240,7 @@ int main (int argc, char* argv[])
 
               ierr = VecRestoreArray(mask, &mask_ptr); CHKERRXX(ierr);
             }
+
             //----------------------------------------------------------------------------------------------
             // calculate error of solution
             //----------------------------------------------------------------------------------------------
@@ -1916,8 +1737,7 @@ int main (int argc, char* argv[])
             double err_ge_max = 0.; VecMax(vec_error_ge, NULL, &err_ge_max); mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_ge_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
 
             // compute L1 errors
-            //    double measure_of_dom = integrator.measure_of_domain();
-            double measure_of_dom = 1;
+            double measure_of_dom = integrator.measure_of_domain();
             error_sl_l1_arr.push_back(integrator.integrate_everywhere(vec_error_sl)/measure_of_dom);
             error_tr_l1_arr.push_back(integrator.integrate_everywhere(vec_error_tr)/measure_of_dom);
             error_gr_l1_arr.push_back(integrator.integrate_everywhere(vec_error_gr)/measure_of_dom);
@@ -1926,15 +1746,6 @@ int main (int argc, char* argv[])
             error_ge_l1_arr.push_back(integrator.integrate_everywhere(vec_error_ge)/measure_of_dom);
 
             // Store error values
-//            level.push_back(lmin+iter);
-//            h.push_back(dxyz_max*pow(2.,(double) data.max_lvl - data.min_lvl));
-
-            //#ifdef P4_TO_P8
-            //        h.push_back(iter*nb_splits_per_split*nb_splits_per_split*nb_splits_per_split + k*nb_splits_per_split*nb_splits_per_split + j*nb_splits_per_split+i);
-            //#else
-            //        h.push_back(iter*nb_splits_per_split*nb_splits_per_split + j*nb_splits_per_split+i);
-            //#endif
-
             error_sl_arr.push_back(err_sl_max);
             error_tr_arr.push_back(err_tr_max);
             error_gr_arr.push_back(err_gr_max);
@@ -1943,20 +1754,9 @@ int main (int argc, char* argv[])
             error_ge_arr.push_back(err_ge_max);
 
             // Print current errors
-//            if (iter > -1)
-//            {
-//              int step = iter*nb_splits_per_split + sub_iter;
-//              ierr = PetscPrintf(p4est->mpicomm, "Error (sl): %g, order = %g\n", err_sl_max, log(error_sl_arr[step-1]/error_sl_arr[step])/log(h[step-1]/h[step])); CHKERRXX(ierr);
-//              ierr = PetscPrintf(p4est->mpicomm, "Error (tr): %g, order = %g\n", err_tr_max, log(error_tr_arr[step-1]/error_tr_arr[step])/log(h[step-1]/h[step])); CHKERRXX(ierr);
-//              ierr = PetscPrintf(p4est->mpicomm, "Error (gr): %g, order = %g\n", err_gr_max, log(error_gr_arr[step-1]/error_gr_arr[step])/log(h[step-1]/h[step])); CHKERRXX(ierr);
-//              ierr = PetscPrintf(p4est->mpicomm, "Error (ex): %g, order = %g\n", err_ex_max, log(error_ex_arr[step-1]/error_ex_arr[step])/log(h[step-1]/h[step])); CHKERRXX(ierr);
-//              ierr = PetscPrintf(p4est->mpicomm, "Error (dd): %g, order = %g\n", err_dd_max, log(error_dd_arr[step-1]/error_dd_arr[step])/log(h[step-1]/h[step])); CHKERRXX(ierr);
-//              ierr = PetscPrintf(p4est->mpicomm, "Error (ge): %g, order = %g\n", err_ge_max, log(error_ge_arr[step-1]/error_ge_arr[step])/log(h[step-1]/h[step])); CHKERRXX(ierr);
-//            }
-
             if (iter > -1)
             {
-              ierr = PetscPrintf(mpi.comm(), "Level %2d / %2d. Sub split %2d (lvl %5.2f / %5.2f). Iteration %6d / %6d \n", lmin+iter, lmax+iter, sub_iter, lmin+iter-scale, lmax+iter-scale, iteration, num_iter_tot); CHKERRXX(ierr);
+              ierr = PetscPrintf(mpi.comm(), "Level %2d / %2d. Sub split %2d (lvl %5.2f / %5.2f). Iteration %6d / %6d \n", lmin+iter, lmax+iter, sub_iter, lmin+iter-scale, lmax+iter-scale, iteration, num_iter_total); CHKERRXX(ierr);
               ierr = PetscPrintf(p4est->mpicomm, "Error (sl): %g\n", err_sl_max); CHKERRXX(ierr);
               ierr = PetscPrintf(p4est->mpicomm, "Error (tr): %g\n", err_tr_max); CHKERRXX(ierr);
               ierr = PetscPrintf(p4est->mpicomm, "Error (gr): %g\n", err_gr_max); CHKERRXX(ierr);
@@ -1965,16 +1765,8 @@ int main (int argc, char* argv[])
               ierr = PetscPrintf(p4est->mpicomm, "Error (ge): %g\n", err_ge_max); CHKERRXX(ierr);
             }
 
-            if(save_vtk)
+            if (save_vtk)
             {
-              //#ifdef STAMPEDE
-              //      char *out_dir;
-              //      out_dir = getenv("OUT_DIR");
-              //#else
-              //      char out_dir[10000];
-              //      sprintf(out_dir, OUTPUT_DIR);
-              //#endif
-
               const char* out_dir = getenv("OUT_DIR");
               if (!out_dir)
               {
@@ -1997,8 +1789,7 @@ int main (int argc, char* argv[])
        #ifdef P4_TO_P8
                      "x" << brick.nxyztrees[2] <<
        #endif
-                     "." << fileidx;
-//              "." << iteration;
+                     "." << file_idx;
 
               /* save the size of the leaves */
               Vec leaf_level;
@@ -2087,9 +1878,8 @@ int main (int argc, char* argv[])
 
             for (int i = 0; i < phi.size(); i++)
             {
-              ierr = VecDestroy(phi[i]);        CHKERRXX(ierr);
+              ierr = VecDestroy(phi[i]); CHKERRXX(ierr);
             }
-
 
             for (int i = 0; i < num_surfaces; i++)
             {
@@ -2118,9 +1908,11 @@ int main (int argc, char* argv[])
     }
   }
 
+  if (mpi.rank() == 0 && compute_cond_num)
+  {
+    engClose(mengine);
+  }
 
-  engClose(mengine);
-//  ierr = PetscMatlabEngineDestroy(&matlab_engine); CHKERRXX(ierr);
 
   MPI_Barrier(p4est->mpicomm);
 
@@ -2136,41 +1928,41 @@ int main (int argc, char* argv[])
   for (int p = 0; p < num_resolutions; ++p)
   {
     // one
-    error_sl_one[p] = error_sl_arr[p*num_shifts];
-    error_gr_one[p] = error_gr_arr[p*num_shifts];
-    error_dd_one[p] = error_dd_arr[p*num_shifts];
-    error_tr_one[p] = error_tr_arr[p*num_shifts];
-    error_ex_one[p] = error_ex_arr[p*num_shifts];
-    cond_num_one[p] = cond_num_arr[p*num_shifts];
+    error_sl_one[p] = error_sl_arr[p*num_shifts_total];
+    error_gr_one[p] = error_gr_arr[p*num_shifts_total];
+    error_dd_one[p] = error_dd_arr[p*num_shifts_total];
+    error_tr_one[p] = error_tr_arr[p*num_shifts_total];
+    error_ex_one[p] = error_ex_arr[p*num_shifts_total];
+    cond_num_one[p] = cond_num_arr[p*num_shifts_total];
 
     // max
-    for (int s = 0; s < num_shifts; ++s)
+    for (int s = 0; s < num_shifts_total; ++s)
     {
-      error_sl_max[p] = MAX(error_sl_max[p], error_sl_arr[p*num_shifts + s]);
-      error_gr_max[p] = MAX(error_gr_max[p], error_gr_arr[p*num_shifts + s]);
-      error_dd_max[p] = MAX(error_dd_max[p], error_dd_arr[p*num_shifts + s]);
-      error_tr_max[p] = MAX(error_tr_max[p], error_tr_arr[p*num_shifts + s]);
-      error_ex_max[p] = MAX(error_ex_max[p], error_ex_arr[p*num_shifts + s]);
-      cond_num_max[p] = MAX(cond_num_max[p], cond_num_arr[p*num_shifts + s]);
+      error_sl_max[p] = MAX(error_sl_max[p], error_sl_arr[p*num_shifts_total + s]);
+      error_gr_max[p] = MAX(error_gr_max[p], error_gr_arr[p*num_shifts_total + s]);
+      error_dd_max[p] = MAX(error_dd_max[p], error_dd_arr[p*num_shifts_total + s]);
+      error_tr_max[p] = MAX(error_tr_max[p], error_tr_arr[p*num_shifts_total + s]);
+      error_ex_max[p] = MAX(error_ex_max[p], error_ex_arr[p*num_shifts_total + s]);
+      cond_num_max[p] = MAX(cond_num_max[p], cond_num_arr[p*num_shifts_total + s]);
     }
 
     // avg
-    for (int s = 0; s < num_shifts; ++s)
+    for (int s = 0; s < num_shifts_total; ++s)
     {
-      error_sl_avg[p] += error_sl_arr[p*num_shifts + s];
-      error_gr_avg[p] += error_gr_arr[p*num_shifts + s];
-      error_dd_avg[p] += error_dd_arr[p*num_shifts + s];
-      error_tr_avg[p] += error_tr_arr[p*num_shifts + s];
-      error_ex_avg[p] += error_ex_arr[p*num_shifts + s];
-      cond_num_avg[p] += cond_num_arr[p*num_shifts + s];
+      error_sl_avg[p] += error_sl_arr[p*num_shifts_total + s];
+      error_gr_avg[p] += error_gr_arr[p*num_shifts_total + s];
+      error_dd_avg[p] += error_dd_arr[p*num_shifts_total + s];
+      error_tr_avg[p] += error_tr_arr[p*num_shifts_total + s];
+      error_ex_avg[p] += error_ex_arr[p*num_shifts_total + s];
+      cond_num_avg[p] += cond_num_arr[p*num_shifts_total + s];
     }
 
-    error_sl_avg[p] /= num_shifts;
-    error_gr_avg[p] /= num_shifts;
-    error_dd_avg[p] /= num_shifts;
-    error_tr_avg[p] /= num_shifts;
-    error_ex_avg[p] /= num_shifts;
-    cond_num_avg[p] /= num_shifts;
+    error_sl_avg[p] /= num_shifts_total;
+    error_gr_avg[p] /= num_shifts_total;
+    error_dd_avg[p] /= num_shifts_total;
+    error_tr_avg[p] /= num_shifts_total;
+    error_ex_avg[p] /= num_shifts_total;
+    cond_num_avg[p] /= num_shifts_total;
   }
 
   if (mpi.rank() == 0)
@@ -2225,35 +2017,6 @@ int main (int argc, char* argv[])
   }
 
   w.stop(); w.read_duration();
-
-  if (mpi.rank() == -10 && plot_convergence)
-  {
-    Gnuplot graph;
-
-    print_Table("Convergence", 0.0, level, h, "err sl max", error_sl_max, 1, &graph);
-    print_Table("Convergence", 0.0, level, h, "err gr max", error_gr_max, 2, &graph);
-    print_Table("Convergence", 0.0, level, h, "err sl avg", error_sl_avg, 1, &graph);
-    print_Table("Convergence", 0.0, level, h, "err gr avg", error_gr_avg, 2, &graph);
-//    print_Table("Convergence", 0.0, level, h, "err tr", error_tr_max, 3, &graph);
-//    print_Table("Convergence", 0.0, level, h, "err dd", error_dd_max, 4, &graph);
-
-//    print_Table("Convergence", 0.0, level, h, "err ex (max)", error_ex_arr,     4, &graph);
-
-//    cin.get();
-  }
-
-
-//  if (mpi.rank() == 0)
-//  {
-//    // print all errors in compact form for plotting in matlab
-//    cout << "h";    for (int i = 0; i < h.size(); i++) { cout << ", " << h[i]; }   cout <<  ";" << endl;
-
-//    cout << "sl";   for (int i = 0; i < h.size(); i++) { cout << ", " << fabs(error_sl_arr[i]); }   cout <<  ";" << endl;
-//    cout << "ex";   for (int i = 0; i < h.size(); i++) { cout << ", " << fabs(error_ex_arr[i]); }   cout <<  ";" << endl;
-//    cout << "gr";   for (int i = 0; i < h.size(); i++) { cout << ", " << fabs(error_gr_arr[i]); }   cout <<  ";" << endl;
-//    cout << "dd";   for (int i = 0; i < h.size(); i++) { cout << ", " << fabs(error_dd_arr[i]); }   cout <<  ";" << endl;
-//    cout << "tr";   for (int i = 0; i < h.size(); i++) { cout << ", " << fabs(error_tr_arr[i]); }   cout <<  ";" << endl;
-//  }
 
   return 0;
 }
@@ -2343,36 +2106,21 @@ double compute_convergence_order(std::vector<double> &x, std::vector<double> &y)
 
   int n = x.size();
 
-  double sum_x  = 0;
-  double sum_y  = 0;
-  double sum_xy = 0;
-  double sum_xx = 0;
+  double sumX  = 0;
+  double sumY  = 0;
+  double sumXY = 0;
+  double sumXX = 0;
 
   for (int i = 0; i < n; ++i)
   {
-    double log_x = log(x[i]);
-    double log_y = log(y[i]);
+    double logX = log(x[i]);
+    double logY = log(y[i]);
 
-    sum_x  += log_x;
-    sum_y  += log_y;
-    sum_xy += log_x*log_y;
-    sum_xx += log_x*log_x;
+    sumX  += logX;
+    sumY  += logY;
+    sumXY += logX*logY;
+    sumXX += logX*logX;
   }
 
-  return (sum_xy - sum_x*sum_y/n)/(sum_xx - sum_x*sum_x/n);
+  return (sumXY - sumX*sumY/n)/(sumXX - sumX*sumX/n);
 }
-
-//void save_vector(const char *filename, const std::vector<double> &data, ios_base::openmode mode, char delim)
-//{
-//  ofstream ofs;
-//  ofs.open(filename, mode);
-
-//  for (int i = 0; i < data.size(); ++i)
-//  {
-//    if (i != 0) ofs << delim;
-//    ofs << data[i];
-//  }
-
-//  ofs << "\n";
-//}
-
