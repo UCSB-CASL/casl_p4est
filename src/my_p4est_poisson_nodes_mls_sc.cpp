@@ -596,7 +596,7 @@ void my_p4est_poisson_nodes_mls_sc_t::solve(Vec solution, bool use_nonzero_initi
      * Suggested values (By Hypre manual): 0.25 for 2D, 0.5 for 3D
     */
 //    ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_strong_threshold", "0."); CHKERRXX(ierr);
-    ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_strong_threshold", "0.92"); CHKERRXX(ierr);
+    ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_strong_threshold", "0.93"); CHKERRXX(ierr);
 
     /* 2- Coarsening type
      * Available Options:
@@ -3590,6 +3590,12 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
 #ifdef P4_TO_P8
               double z_term     = S[phi_idx]*bc_coeffs[phi_idx]*(z0[phi_idx] - xyz_C[2]);
 #endif
+//              double const_term = S[phi_idx]*(*bc_interface_coeff_->at(phi_idx))(x0[phi_idx], y0[phi_idx]);
+//              double x_term     = S[phi_idx]*(*bc_interface_coeff_->at(phi_idx))(x0[phi_idx], y0[phi_idx])*(x0[phi_idx] - xyz_C[0]);
+//              double y_term     = S[phi_idx]*(*bc_interface_coeff_->at(phi_idx))(x0[phi_idx], y0[phi_idx])*(y0[phi_idx] - xyz_C[1]);
+//#ifdef P4_TO_P8
+//              double z_term     = S[phi_idx]*(*bc_interface_coeff_->at(phi_idx))(x0[phi_idx], y0[phi_idx])*(z0[phi_idx] - xyz_C[2]);
+//#endif
 
               // matrix coefficients
               for (char nei = 0; nei < num_neighbors_max_; ++nei)

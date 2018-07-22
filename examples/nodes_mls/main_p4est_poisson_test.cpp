@@ -76,89 +76,117 @@
 #include "problem_case_10.h" // angle 3d
 #include "problem_case_11.h" // circular sector
 
-
 #undef MIN
 #undef MAX
 
 using namespace std;
 
-bool save_vtk = 1;
-
-#ifdef P4_TO_P8
-int lmin = 7;
-int lmax = 7;
-int nb_splits = 1;
-int nb_splits_per_split = 1;
-int num_shifts_x_dir = 1;
-int num_shifts_y_dir = 1;
-int num_shifts_z_dir = 1;
-int num_shifts_total = num_shifts_x_dir*
-                       num_shifts_y_dir*
-                       num_shifts_z_dir;
-#else
-int lmin = 4;
-int lmax = 4;
-int nb_splits = 6;
-int nb_splits_per_split = 1;
-int num_shifts_x_dir = 1;
-int num_shifts_y_dir = 1;
-int num_shifts_total = num_shifts_x_dir*
-                       num_shifts_y_dir;
-#endif
-
-int num_resolutions = (nb_splits-1)*nb_splits_per_split + 1;
-int num_iter_total  = num_resolutions*num_shifts_total;
-
-int num_splits = 10;
-
-int iter_start = 0; // is used to skip iterations and get to a problem case
-
-//
-const int periodic[3] = {0, 0, 0};
-const int n_xyz[3] = {1, 1, 1};
+//-------------------------------------
+// computational domain parameters
+//-------------------------------------
+const int periodicity[3] = {0, 0, 0};
+const int num_trees[3]   = {1, 1, 1};
 const double grid_xyz_min[3] = {-1., -1., -1.};
 const double grid_xyz_max[3] = { 1.,  1.,  1.};
 
-/* Examples for Poisson paper
- * 0000
- * 1100
- * 2211
- * 3310
- * 4412
- * 7412
- */
+//-------------------------------------
+// refinement parameters
+//-------------------------------------
+#ifdef P4_TO_P8
+int lmin = 4;
+int lmax = 4;
+int num_splits = 3;
+int num_splits_per_split = 1;
+int num_shifts_x_dir = 5;
+int num_shifts_y_dir = 5;
+int num_shifts_z_dir = 5;
+#else
+int lmin = 9;
+int lmax = 9;
+int num_splits = 1;
+int num_splits_per_split = 5;
+int num_shifts_x_dir = 10;
+int num_shifts_y_dir = 10;
+int num_shifts_z_dir = 1;
+#endif
 
-int n_geometry = 11;
-int n_test     = 11;
+int num_shifts_total = num_shifts_x_dir*
+                       num_shifts_y_dir*
+                       num_shifts_z_dir;
+
+int num_resolutions = (num_splits-1)*num_splits_per_split + 1;
+int num_iter_total  = num_resolutions*num_shifts_total;
+
+int iter_start = 148; // is used to skip iterations and get to a problematic case
+
+//-------------------------------------
+// test solutions
+//-------------------------------------
+int n_geometry = 0;
+int n_test     = 0;
 int n_mu       = 0;
 int n_diag_add = 0;
 
+/* Examples for Poisson paper
+ *  0  0 0 0
+ *  1  1 0 0
+ *  2  2 1 1
+ *  7  4 1 2
+ * 11 11 0 0
+ */
+
+BoundaryConditionType bc_wtype = DIRICHLET;
+BoundaryConditionType bc_itype = ROBIN;
+
+//-------------------------------------
+// solver parameters
+//-------------------------------------
+int  integration_order = 2;
+bool sc_scheme         = 1;
+
+// for symmetric scheme:
+bool taylor_correction      = 1;
+bool kink_special_treatment = 1;
+
+// for superconvergent scheme:
+bool try_remove_hanging_cells = 1;
+
+//-------------------------------------
+// level-set representation parameters
+//-------------------------------------
+bool use_phi_cf       = 1;
 bool reinit_level_set = 0;
-bool save_domain_reconstruction = save_vtk;
-bool do_extension = 0;
 
-bool sc_scheme = 1;
-int integration_order = 2;
+// artificial perturbation of level-set values
+int    domain_perturbation     = 1; // 0 - no, 1 - smooth, 2 - noisy
+double domain_perturbation_mag = 0.1;
+double domain_perturbation_pow = 2.;
 
-double mask_thresh = 0;
-bool try_remove_hanging_cells = 0;
+//-------------------------------------
+// convergence study parameters
+//-------------------------------------
+int    compute_cond_num = 0*num_splits;
+bool   do_extension     = 0;
+double mask_thresh      = 0;
 
-int    domain_perturbation = 0; // 0 - no, 1 - smooth, 2 - noisy
-double domain_perturbation_mag = 1.0;
-double domain_perturbation_pow = 1.0;
-
-bool   exclude_points = 0;
-double exclude_points_R = p11::R0;
+// exclusion of points to study convergence in a reduced region (for singular solutions)
+bool   exclude_points   = 0;
+double exclude_points_R = 0.1;
 double exclude_points_x = p11::x0;
 double exclude_points_y = p11::y0;
 double exclude_points_z = 0;
 
-int compute_cond_num = nb_splits;
-
-bool save_matrix_ascii = 0;
+//-------------------------------------
+// output
+//-------------------------------------
+bool save_vtk           = 1;
+bool save_domain        = save_vtk;
+bool save_matrix_ascii  = 0;
 bool save_matrix_binary = 0;
+bool save_convergence   = 1;
 
-bool use_phi_cf = 1;
+// EXACT SOLUTION
+#include "exact_solutions.h"
 
 #ifdef P4_TO_P8
 class perturb_cf_t: public CF_3
@@ -187,9 +215,6 @@ public:
   }
 } perturb_cf;
 #endif
-
-// EXACT SOLUTION
-#include "exact_solutions.h"
 
 // Diffusion coefficient
 #ifdef P4_TO_P8
@@ -556,7 +581,7 @@ class bc_wall_type_t : public WallBC3D
 public:
   BoundaryConditionType operator()(double, double, double) const
   {
-    return DIRICHLET;
+    return bc_wtype;
   }
 } bc_wall_type;
 #else
@@ -565,7 +590,7 @@ class bc_wall_type_t : public WallBC2D
 public:
   BoundaryConditionType operator()(double, double) const
   {
-    return DIRICHLET;
+    return bc_wtype;
   }
 } bc_wall_type;
 #endif
@@ -647,9 +672,6 @@ public:
 }
 
 // additional output functions
-void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4est_brick_t *brick,
-              Vec phi, Vec sol, Vec err_nodes, Vec err_trunc, Vec err_grad,
-              int compt);
 double compute_convergence_order(std::vector<double> &x, std::vector<double> &y);
 void print_convergence_table(MPI_Comm mpi_comm,
                              std::vector<double> &level, std::vector<double> &h,
@@ -662,11 +684,217 @@ int main (int argc, char* argv[])
   PetscErrorCode ierr;
   int mpiret;
 
+  // mpi
   mpi_environment_t mpi;
   mpi.init(argc, argv);
 
+  cmdParser cmd;
 
-  vector<double> level, h;
+  //-------------------------------------
+  // refinement parameters
+  //-------------------------------------
+  cmd.add_option("lmin", "min level of the tree");
+  cmd.add_option("lmax", "max level of the tree");
+
+  cmd.add_option("num_splits",           "number of recursive splits");
+  cmd.add_option("num_splits_per_split", "number of additional resolutions");
+
+  cmd.add_option("num_shifts_x_dir", "number of shifts in x-dir");
+  cmd.add_option("num_shifts_y_dir", "number of shifts in y-dir");
+  cmd.add_option("num_shifts_z_dir", "number of shifts in z-dir");
+
+  //-------------------------------------
+  // output
+  //-------------------------------------
+  cmd.add_option("save_vtk",           "Save the p4est in vtk format");
+  cmd.add_option("save_domain",        "Save the reconstruction of an irregular domain (works only in serial!)");
+  cmd.add_option("save_convergence",   "Save convergence results");
+  cmd.add_option("save_matrix_ascii",  "Save the matrix in ASCII MATLAB format");
+  cmd.add_option("save_matrix_binary", "Save the matrix in BINARY MATLAB format");
+
+  //-------------------------------------
+  // test solution
+  //-------------------------------------
+  cmd.add_option("n_test",     "Test function");
+  cmd.add_option("n_geometry", "Irregular domain (0 - triangle/tetrahedron, 1 - union, 2 - difference, 7 - three flowers, 11 - circular sector)");
+  cmd.add_option("n_mu",       "Diffusion coefficient (0 - constant, 1 - variable");
+  cmd.add_option("n_diag_add", "Additional diagonal term (0 - zero, 1 - constant, 2 - variable)");
+  cmd.add_option("singular_k", "Degree of singularity.");
+
+  cmd.add_option("bc_wtype", "Type of boundary conditions on the walls");
+  cmd.add_option("bc_itype", "Type of boundary conditions on the interface");
+
+  //-------------------------------------
+  // solver parameters
+  //-------------------------------------
+  cmd.add_option("sc_scheme",         "Use super-convergent scheme");
+  cmd.add_option("integration_order", "Select integration order (1 - linear, 2 - quadratic)");
+
+  // for symmetric scheme:
+  cmd.add_option("taylor_correction",      "Use Taylor correction to approximate Robin term (symmetric scheme)");
+  cmd.add_option("kink_special_treatment", "Use the special treatment for kinks (symmetric scheme)");
+
+  // for superconvergent scheme:
+  cmd.add_option("try_remove_hanging_cells", "Ask solver to eliminate hanging cells");
+
+  //-------------------------------------
+  // convergence study options
+  //-------------------------------------
+  cmd.add_option("compute_cond_num", "Estimate L1-norm condition number");
+  cmd.add_option("mask_thresh",      "Mask threshold for excluding points in convergence study");
+  cmd.add_option("do_extension",     "Extend solution after solving");
+
+  // exclusion of points to study convergence in a reduced region (for singular solutions)
+  cmd.add_option("exclude_points",   "Exclude points within a sphere");
+  cmd.add_option("exclude_points_x", "x-coordinate of exclusion sphere");
+  cmd.add_option("exclude_points_y", "y-coordinate of exclusion sphere");
+  cmd.add_option("exclude_points_z", "z-coordinate of exclusion sphere");
+  cmd.add_option("exclude_points_R", "Radius of exclusion circle");
+
+  //-------------------------------------
+  // level-set representation parameters
+  //-------------------------------------
+  cmd.add_option("use_phi_cf", "Use analytical level-set functions");
+  cmd.add_option("reinit",     "Reinitialize level-set function");
+
+  // artificial perturbation of level-set values
+  cmd.add_option("domain_perturbation",     "Artificially pertub level-set functions (0 - no perturbation, 1 - smooth, 2 - noisy)");
+  cmd.add_option("domain_perturbation_mag", "Magnitude of level-set perturbations");
+  cmd.add_option("domain_perturbation_pow", "Order of level-set perturbation (e.g. 2 for h^2 perturbations)");
+
+  cmd.parse(argc, argv);
+
+  //-------------------------------------
+  // refinement parameters
+  //-------------------------------------
+  lmin = cmd.get("lmin", lmin);
+  lmax = cmd.get("lmax", lmax);
+
+  num_splits           = cmd.get("num_splits",           num_splits);
+  num_splits_per_split = cmd.get("num_splits_per_split", num_splits_per_split);
+
+  num_shifts_x_dir = cmd.get("num_shifts_x_dir", num_shifts_x_dir);
+  num_shifts_y_dir = cmd.get("num_shifts_y_dir", num_shifts_y_dir);
+  num_shifts_z_dir = cmd.get("num_shifts_z_dir", num_shifts_z_dir);
+
+  //-------------------------------------
+  // test solutions
+  //-------------------------------------
+  n_test     = cmd.get("n_test",     n_test);
+  n_geometry = cmd.get("n_geometry", n_geometry);
+  n_mu       = cmd.get("n_mu",       n_mu);
+  n_diag_add = cmd.get("n_diag_add", n_diag_add);
+  p11::k     = cmd.get("singular_k", p11::k);
+
+  bc_wtype = cmd.get("bc_wtype", bc_wtype);
+  bc_itype = cmd.get("bc_itype", bc_itype);
+
+  //-------------------------------------
+  // solver parameters
+  //-------------------------------------
+  integration_order = cmd.get("integration_order", integration_order);
+  sc_scheme         = cmd.get("sc_scheme",         sc_scheme);
+
+  // for symmetric scheme:
+  taylor_correction      = cmd.get("taylor_correction",      taylor_correction);
+  kink_special_treatment = cmd.get("kink_special_treatment", kink_special_treatment);
+
+  // for superconvergent scheme:
+  try_remove_hanging_cells = cmd.get("try_remove_hanging_cells", try_remove_hanging_cells);
+
+  //-------------------------------------
+  // convergence study parameters
+  //-------------------------------------
+  compute_cond_num = cmd.get("compute_cond_num", compute_cond_num);
+  do_extension     = cmd.get("do_extension",     do_extension);
+  mask_thresh      = cmd.get("mask_thresh",      mask_thresh);
+
+  // exclusion of points to study convergence in a reduced region (for singular solutions)
+  exclude_points   = cmd.get("exclude_points",   exclude_points);
+  exclude_points_R = cmd.get("exclude_points_R", exclude_points_R);
+  exclude_points_x = cmd.get("exclude_points_x", exclude_points_x);
+  exclude_points_y = cmd.get("exclude_points_y", exclude_points_y);
+  exclude_points_z = cmd.get("exclude_points_z", exclude_points_z);
+
+  //-------------------------------------
+  // output
+  //-------------------------------------
+  save_vtk           = cmd.get("save_vtk",           save_vtk);
+  save_domain        = cmd.get("save_domain",        save_domain);
+  save_matrix_ascii  = cmd.get("save_matrix_ascii",  save_matrix_ascii);
+  save_matrix_binary = cmd.get("save_matrix_binary", save_matrix_binary);
+  save_convergence   = cmd.get("save_convergence",   save_convergence);
+
+  //-------------------------------------
+  // level-set representation parameters
+  //-------------------------------------
+  use_phi_cf       = cmd.get("use_phi_cf", use_phi_cf);
+  reinit_level_set = cmd.get("reinit",     reinit_level_set);
+
+  domain_perturbation     = cmd.get("domain_perturbation",     domain_perturbation);
+  domain_perturbation_mag = cmd.get("domain_perturbation_mag", domain_perturbation_mag);
+  domain_perturbation_pow = cmd.get("domain_perturbation_pow", domain_perturbation_pow);
+
+  // recalculate depending parameters
+  num_shifts_total = num_shifts_x_dir*num_shifts_y_dir*num_shifts_z_dir;
+
+  num_resolutions = (num_splits-1)*num_splits_per_split + 1;
+  num_iter_total = num_resolutions*num_shifts_total;
+
+  set_parameters();
+
+  // prepare output directories
+  const char* out_dir = getenv("OUT_DIR");
+
+  if (!out_dir &&
+      (save_vtk ||
+       save_domain ||
+       save_convergence ||
+       save_matrix_ascii ||
+       save_matrix_binary))
+  {
+    ierr = PetscPrintf(mpi.comm(), "You need to set the environment variable OUT_DIR to save results\n");
+    return -1;
+  }
+
+  if (save_vtk)
+  {
+    std::ostringstream command;
+    command << "mkdir -p " << out_dir << "/vtu";
+    int ret_sys = system(command.str().c_str());
+    if (ret_sys<0)
+      throw std::invalid_argument("could not create OUT_DIR/vtu directory");
+  }
+
+  if (save_domain)
+  {
+    std::ostringstream command;
+    command << "mkdir -p " << out_dir << "/geometry";
+    int ret_sys = system(command.str().c_str());
+    if (ret_sys<0)
+      throw std::invalid_argument("could not create OUT_DIR/geometry directory");
+  }
+
+  if (save_convergence)
+  {
+    std::ostringstream command;
+    command << "mkdir -p " << out_dir << "/convergence";
+    int ret_sys = system(command.str().c_str());
+    if (ret_sys<0)
+      throw std::invalid_argument("could not create OUT_DIR/convergence directory");
+  }
+
+  if (save_matrix_ascii || save_matrix_binary)
+  {
+    std::ostringstream command;
+    command << "mkdir -p " << out_dir << "/matrix";
+    int ret_sys = system(command.str().c_str());
+    if (ret_sys<0)
+      throw std::invalid_argument("could not create OUT_DIR/matrix directory");
+  }
+
+  // vectors to store convergence results
+  vector<double> lvl_arr, h_arr;
 
   vector<double> error_sl_arr, error_sl_l1_arr;
   vector<double> error_ex_arr, error_ex_l1_arr;
@@ -677,135 +905,35 @@ int main (int argc, char* argv[])
 
   vector<double> cond_num_arr;
 
+  // Start up a MATLAB Engine to calculate condidition number
   Engine *mengine;
   if (mpi.rank() == 0 && compute_cond_num)
   {
     mengine = engOpen("matlab -nodisplay -nojvm");
-    if (mengine == NULL) throw;
+    if (mengine == NULL) throw std::runtime_error("Cannot start a MATLAB Engine session.\n");
   }
-
-  cmdParser cmd;
-  cmd.add_option("lmin", "min level of the tree");
-  cmd.add_option("lmax", "max level of the tree");
-  cmd.add_option("nb_splits", "number of recursive splits");
-  cmd.add_option("nb_splits_per_split", "nb_splits_per_split");
-  cmd.add_option("num_shifts_x_dir", "number of shifts in x-dir");
-  cmd.add_option("num_shifts_y_dir", "number of shifts in y-dir");
-#ifdef P4_TO_P8
-  cmd.add_option("num_shifts_z_dir", "number of shifts in z-dir");
-#endif
-
-  cmd.add_option("save_vtk", "save the p4est in vtk format");
-  cmd.add_option("reinit", "reinitialize level-set function");
-
-  cmd.add_option("n_test",     "test function");
-  cmd.add_option("n_geometry", "geometry");
-  cmd.add_option("n_mu",       "diffusion coefficient");
-  cmd.add_option("n_diag_add", "additional diagonal term");
-
-  cmd.add_option("plot_convergence", "show convergence plots");
-  cmd.add_option("save_domain_reconstruction", "save reconstruction of domain (works only in serial!)");
-  cmd.add_option("do_extension", "extend solution after solving");
-  cmd.add_option("sc_scheme", "use super convergent scheme");
-  cmd.add_option("integration_order", "integration_order");
-  cmd.add_option("mask_thresh", "mask_thresh");
-  cmd.add_option("try_remove_hanging_cells", "try_remove_hanging_cells");
-  cmd.add_option("save_domain_reconstruction", "save_domain_reconstruction");
-  cmd.add_option("compute_cond_num", "compute_cond_num");
-  cmd.add_option("perturb_domain", "perturb_domain");
-  cmd.add_option("n_perturb", "n_perturb");
-  cmd.add_option("perturb_magnitude", "perturb_magnitude");
-  cmd.add_option("perturb_order", "perturb_order");
-  cmd.add_option("use_phi_cf", "use_phi_cf");
-  cmd.add_option("singular_k", "singular_k");
-
-  cmd.parse(argc, argv);
-
-  cmd.print();
-
-  lmin = cmd.get("lmin", lmin);
-  lmax = cmd.get("lmax", lmax);
-  nb_splits = cmd.get("nb_splits", nb_splits);
-  nb_splits_per_split = cmd.get("nb_splits_per_split", nb_splits_per_split);
-
-  num_shifts_x_dir = cmd.get("num_shifts_x_dir", num_shifts_x_dir);
-  num_shifts_y_dir = cmd.get("num_shifts_y_dir", num_shifts_y_dir);
-#ifdef P4_TO_P8
-  num_shifts_z_dir = cmd.get("num_shifts_z_dir", num_shifts_z_dir);
-#endif
-
-  reinit_level_set = cmd.get("reinit", reinit_level_set);
-
-  n_test     = cmd.get("n_test",     n_test);
-  n_geometry = cmd.get("n_geometry", n_geometry);
-  n_mu       = cmd.get("n_mu",       n_mu);
-  n_diag_add = cmd.get("n_diag_add", n_diag_add);
-
-  save_domain_reconstruction = cmd.get("save_domain_reconstruction", save_domain_reconstruction);
-  do_extension = cmd.get("do_extension", do_extension);
-  sc_scheme = cmd.get("sc_scheme", sc_scheme);
-  integration_order = cmd.get("integration_order", integration_order);
-  mask_thresh = cmd.get("mask_thresh", mask_thresh);
-  try_remove_hanging_cells = cmd.get("try_remove_hanging_cells", try_remove_hanging_cells);
-  save_domain_reconstruction = cmd.get("save_domain_reconstruction", save_domain_reconstruction);
-
-  compute_cond_num = cmd.get("compute_cond_num", compute_cond_num);
-
-  domain_perturbation     = cmd.get("domain_perturbation",     domain_perturbation);
-  domain_perturbation_mag = cmd.get("domain_perturbation_mag", domain_perturbation_mag);
-  domain_perturbation_pow = cmd.get("domain_perturbation_pow", domain_perturbation_pow);
-  use_phi_cf = cmd.get("use_phi_cf", use_phi_cf);
-  p11::k = cmd.get("singular_k", p11::k);
-
-#ifdef P4_TO_P8
-  num_shifts_total = num_shifts_x_dir*num_shifts_y_dir*num_shifts_z_dir;
-#else
-  num_shifts_total = num_shifts_x_dir*num_shifts_y_dir;
-#endif
-
-  num_resolutions = (nb_splits-1)*nb_splits_per_split + 1;
-  num_iter_total = num_resolutions*num_shifts_total;
-
-//  bc_wtype = cmd.get("bc_wtype", bc_wtype);
-//  bc_itype = cmd.get("bc_itype", bc_itype);
-
-  save_vtk = cmd.get("save_vtk", save_vtk);
-
-  set_parameters();
 
   parStopWatch w;
   w.start("total time");
 
-  if(0)
-  {
-    int i = 0;
-    char hostname[256];
-    gethostname(hostname, sizeof(hostname));
-    printf("PID %d on %s ready for attach\n", getpid(), hostname);
-    fflush(stdout);
-    while (0 == i)
-      sleep(5);
-  }
-
   p4est_connectivity_t *connectivity;
   my_p4est_brick_t brick;
-
 
   p4est_t       *p4est;
   p4est_nodes_t *nodes;
   p4est_ghost_t *ghost;
 
-  // an effective LSF
+  // the effective LSF
   level_set_tot_t level_set_tot_cf(&phi_cf, &action, &color);
 
   int iteration = -1;
-  int file_idx   = -1;
+  int file_idx  = -1;
 
-  for(int iter=0; iter<nb_splits; ++iter)
+  for(int iter=0; iter<num_splits; ++iter)
   {
     ierr = PetscPrintf(mpi.comm(), "Level %2d / %2d.\n", lmin+iter, lmax+iter); CHKERRXX(ierr);
 
-    int num_sub_iter = (iter == 0 ? 1 : nb_splits_per_split);
+    int num_sub_iter = (iter == 0 ? 1 : num_splits_per_split);
 
     for (int sub_iter = 0; sub_iter < num_sub_iter; ++sub_iter)
     {
@@ -832,8 +960,8 @@ int main (int argc, char* argv[])
       double dxyz_m = MIN(dxyz[0],dxyz[1]);
 #endif
 
-      h.push_back(dxyz_m);
-      level.push_back(lmax+iter-scale);
+      h_arr.push_back(dxyz_m);
+      lvl_arr.push_back(lmax+iter-scale);
 
       ierr = PetscPrintf(mpi.comm(), "Level %2d / %2d. Sub split %2d (lvl %5.2f / %5.2f).\n", lmin+iter, lmax+iter, sub_iter, lmin+iter-scale, lmax+iter-scale); CHKERRXX(ierr);
 
@@ -859,7 +987,7 @@ int main (int argc, char* argv[])
 
             file_idx++;
 
-            connectivity = my_p4est_brick_new(n_xyz, grid_xyz_min_shift, grid_xyz_max_shift, &brick, periodic);
+            connectivity = my_p4est_brick_new(num_trees, grid_xyz_min_shift, grid_xyz_max_shift, &brick, periodicity);
 
             p4est = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
 
@@ -936,9 +1064,7 @@ int main (int argc, char* argv[])
                 ls.reinitialize_1st_order_time_2nd_order_space(phi.back(),20);
             }
 
-            std::vector<BoundaryConditionType> bc_interface_type(num_surfaces, ROBIN);
-            //        std::vector<BoundaryConditionType> bc_interface_type(num_surfaces, DIRICHLET);
-            //    std::vector<BoundaryConditionType> bc_interface_type(num_surfaces, NEUMANN);
+            std::vector<BoundaryConditionType> bc_interface_type(num_surfaces, bc_itype);
 
             // sample boundary conditions
 #ifdef P4_TO_P8
@@ -953,12 +1079,10 @@ int main (int argc, char* argv[])
               if (n_test == 11 && n_geometry == 11 && i == 0)
               {
                 bc_interface_value[i] = &p11::bc_val_0;
-//                bc_interface_value[i] = &zero_cf;
               }
               else if (n_test == 11 && n_geometry == 11 && i == 1)
               {
                 bc_interface_value[i] = &p11::bc_val_1;
-//                bc_interface_value[i] = &zero_cf;
               }
               else
               {
@@ -995,12 +1119,12 @@ int main (int argc, char* argv[])
             ierr = VecCreateGhostNodes(p4est, nodes, &diag_add); CHKERRXX(ierr);
             sample_cf_on_nodes(p4est, nodes, diag_add_cf, diag_add);
 
-            ierr = PetscPrintf(p4est->mpicomm, "Starting a solver\n"); CHKERRXX(ierr);
+//            ierr = PetscPrintf(mpi.comm(), "Starting a solver\n"); CHKERRXX(ierr);
 
             Vec sol; double *sol_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &sol); CHKERRXX(ierr);
             std::vector<Vec> *phi_dd[P4EST_DIM];
 
-            Vec phi_eff ;
+            Vec phi_eff;
             Vec mask;
 
             Mat A;
@@ -1026,9 +1150,9 @@ int main (int argc, char* argv[])
 
             solver.set_diag_add(diag_add);
 
-            solver.set_use_taylor_correction(1);
+            solver.set_use_taylor_correction(taylor_correction);
             solver.set_keep_scalling(1);
-            solver.set_kink_treatment(1);
+            solver.set_kink_treatment(kink_special_treatment);
             solver.set_try_remove_hanging_cells(try_remove_hanging_cells);
 
             solver.solve(sol);
@@ -1043,17 +1167,52 @@ int main (int argc, char* argv[])
 
             if (save_matrix_ascii)
             {
+              std::ostringstream oss; oss << out_dir << "/matrix/mat_" << file_idx << ".m";
+
               PetscViewer viewer;
-              ierr = PetscViewerASCIIOpen(mpi.comm(), "mat.output", &viewer); CHKERRXX(ierr);
+              ierr = PetscViewerASCIIOpen(mpi.comm(), oss.str().c_str(), &viewer); CHKERRXX(ierr);
               ierr = PetscViewerPushFormat(viewer, 	PETSC_VIEWER_ASCII_MATLAB); CHKERRXX(ierr);
+
+              ierr = PetscObjectSetName((PetscObject)A, "mat");
               ierr = MatView(A, viewer); CHKERRXX(ierr);
+
+              Vec lex_order;
+              ierr = VecCreateGhostNodes(p4est, nodes, &lex_order); CHKERRXX(ierr);
+
+              double *vec_ptr; ierr = VecGetArray(lex_order, &vec_ptr); CHKERRXX(ierr);
+
+              int nx = round((grid_xyz_max_shift[0]-grid_xyz_min_shift[0])/dxyz[0] + 1);
+              int ny = round((grid_xyz_max_shift[1]-grid_xyz_min_shift[1])/dxyz[1] + 1);
+#ifdef P4_TO_P8
+              int nz = round((grid_xyz_max_shift[2]-grid_xyz_min_shift[2])/dxyz[2] + 1);
+#endif
+              for (p4est_locidx_t n = 0; n < nodes->num_owned_indeps; ++n)
+              {
+                double xyz[P4EST_DIM];
+                node_xyz_fr_n(n, p4est, nodes, xyz);
+
+                int ix = round((xyz[0]-grid_xyz_min_shift[0])/dxyz[0]);
+                int iy = round((xyz[1]-grid_xyz_min_shift[1])/dxyz[1]);
+  #ifdef P4_TO_P8
+                int iz = round((xyz[2]-grid_xyz_min_shift[2])/dxyz[2]);
+  #endif
+                vec_ptr[n] = iy*(nx) + ix + 1;
+              }
+
+              ierr = VecRestoreArray(lex_order, &vec_ptr); CHKERRXX(ierr);
+
+              ierr = PetscObjectSetName((PetscObject)lex_order, "vec");
+              ierr = VecView(lex_order, viewer); CHKERRXX(ierr);
+
               ierr = PetscViewerDestroy(viewer); CHKERRXX(ierr);
             }
 
             if (save_matrix_binary)
             {
+              std::ostringstream oss; oss << out_dir << "/matrix/mat_" << file_idx << ".dat";
+
               PetscViewer viewer;
-              ierr = PetscViewerBinaryOpen(mpi.comm(), "mat.output", FILE_MODE_WRITE, &viewer); CHKERRXX(ierr);
+              ierr = PetscViewerBinaryOpen(mpi.comm(), oss.str().c_str(), FILE_MODE_WRITE, &viewer); CHKERRXX(ierr);
               ierr = PetscViewerPushFormat(viewer, 	PETSC_VIEWER_BINARY_MATLAB); CHKERRXX(ierr);
               ierr = MatView(A, viewer); CHKERRXX(ierr);
               ierr = PetscViewerDestroy(viewer); CHKERRXX(ierr);
@@ -1125,8 +1284,7 @@ int main (int argc, char* argv[])
                 double cn = *mxGetDoubles(value);
                 mxDestroyArray(value);
 
-                // print and store
-                ierr = PetscPrintf(mpi.comm(), "Cond num = %e\n", cn);
+                // store
                 cond_num_arr.push_back(cn);
               } else {
                 cond_num_arr.push_back(NAN);
@@ -1142,20 +1300,9 @@ int main (int argc, char* argv[])
             integrator.set_phi(phi, action, color);
 #endif
 
-            if (save_vtk && save_domain_reconstruction)
+            if (save_domain)
             {
-              char *out_dir;
-              out_dir = getenv("OUT_DIR");
-              std::ostringstream oss;
-
-              oss << out_dir
-                  << "/geometry";
-
-              std::ostringstream command;
-              command << "mkdir -p " << out_dir << "/geometry";
-              int ret_sys = system(command.str().c_str());
-              if (ret_sys<0)
-                throw std::invalid_argument("could not create directory");
+              std::ostringstream oss; oss << out_dir << "/geometry";
 
 #ifdef P4_TO_P8
               vector<cube3_mls_t> cubes;
@@ -1234,7 +1381,9 @@ int main (int argc, char* argv[])
                   if (sqrt(SQR(xyz[0] - exclude_points_x) +
                            SQR(xyz[1] - exclude_points_y)) < exclude_points_R)
 #endif
+                  {
                     mask_ptr[n] = MAX(1., mask_ptr[n]);
+                  }
                 }
               }
 
@@ -1729,12 +1878,12 @@ int main (int argc, char* argv[])
             //    }
 
             // compute L-inf norm of errors
-            double err_sl_max = 0.; VecMax(vec_error_sl, NULL, &err_sl_max); mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_sl_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-            double err_tr_max = 0.; VecMax(vec_error_tr, NULL, &err_tr_max); mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_tr_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-            double err_gr_max = 0.; VecMax(vec_error_gr, NULL, &err_gr_max); mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_gr_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-            double err_ex_max = 0.; VecMax(vec_error_ex, NULL, &err_ex_max); mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_ex_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-            double err_dd_max = 0.; VecMax(vec_error_dd, NULL, &err_dd_max); mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_dd_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-            double err_ge_max = 0.; VecMax(vec_error_ge, NULL, &err_ge_max); mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_ge_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+            double err_sl_max = 0.; VecMax(vec_error_sl, NULL, &err_sl_max); mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_sl_max, 1, MPI_DOUBLE, MPI_MAX, mpi.comm()); SC_CHECK_MPI(mpiret);
+            double err_tr_max = 0.; VecMax(vec_error_tr, NULL, &err_tr_max); mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_tr_max, 1, MPI_DOUBLE, MPI_MAX, mpi.comm()); SC_CHECK_MPI(mpiret);
+            double err_gr_max = 0.; VecMax(vec_error_gr, NULL, &err_gr_max); mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_gr_max, 1, MPI_DOUBLE, MPI_MAX, mpi.comm()); SC_CHECK_MPI(mpiret);
+            double err_ex_max = 0.; VecMax(vec_error_ex, NULL, &err_ex_max); mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_ex_max, 1, MPI_DOUBLE, MPI_MAX, mpi.comm()); SC_CHECK_MPI(mpiret);
+            double err_dd_max = 0.; VecMax(vec_error_dd, NULL, &err_dd_max); mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_dd_max, 1, MPI_DOUBLE, MPI_MAX, mpi.comm()); SC_CHECK_MPI(mpiret);
+            double err_ge_max = 0.; VecMax(vec_error_ge, NULL, &err_ge_max); mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_ge_max, 1, MPI_DOUBLE, MPI_MAX, mpi.comm()); SC_CHECK_MPI(mpiret);
 
             // compute L1 errors
             double measure_of_dom = integrator.measure_of_domain();
@@ -1757,33 +1906,22 @@ int main (int argc, char* argv[])
             if (iter > -1)
             {
               ierr = PetscPrintf(mpi.comm(), "Level %2d / %2d. Sub split %2d (lvl %5.2f / %5.2f). Iteration %6d / %6d \n", lmin+iter, lmax+iter, sub_iter, lmin+iter-scale, lmax+iter-scale, iteration, num_iter_total); CHKERRXX(ierr);
-              ierr = PetscPrintf(p4est->mpicomm, "Error (sl): %g\n", err_sl_max); CHKERRXX(ierr);
-              ierr = PetscPrintf(p4est->mpicomm, "Error (tr): %g\n", err_tr_max); CHKERRXX(ierr);
-              ierr = PetscPrintf(p4est->mpicomm, "Error (gr): %g\n", err_gr_max); CHKERRXX(ierr);
-              ierr = PetscPrintf(p4est->mpicomm, "Error (ex): %g\n", err_ex_max); CHKERRXX(ierr);
-              ierr = PetscPrintf(p4est->mpicomm, "Error (dd): %g\n", err_dd_max); CHKERRXX(ierr);
-              ierr = PetscPrintf(p4est->mpicomm, "Error (ge): %g\n", err_ge_max); CHKERRXX(ierr);
+              ierr = PetscPrintf(mpi.comm(), "Error (sl): %g\n", err_sl_max); CHKERRXX(ierr);
+              ierr = PetscPrintf(mpi.comm(), "Error (gr): %g\n", err_gr_max); CHKERRXX(ierr);
+              ierr = PetscPrintf(mpi.comm(), "Error (dd): %g\n", err_dd_max); CHKERRXX(ierr);
+              ierr = PetscPrintf(mpi.comm(), "Error (tr): %g\n", err_tr_max); CHKERRXX(ierr);
+              ierr = PetscPrintf(mpi.comm(), "Error (ex): %g\n", err_ex_max); CHKERRXX(ierr);
+              ierr = PetscPrintf(mpi.comm(), "Cond num:   %g\n", cond_num_arr.back()); CHKERRXX(ierr);
+//              ierr = PetscPrintf(mpi.comm(), "Error (ge): %g\n", err_ge_max); CHKERRXX(ierr);
             }
 
             if (save_vtk)
             {
-              const char* out_dir = getenv("OUT_DIR");
-              if (!out_dir)
-              {
-                ierr = PetscPrintf(p4est->mpicomm, "You need to set the environment variable OUT_DIR to save visuals\n");
-                return -1;
-              }
-              std::ostringstream command;
-              command << "mkdir -p " << out_dir << "/vtu";
-              int ret_sys = system(command.str().c_str());
-              if (ret_sys<0)
-                throw std::invalid_argument("could not create directory");
-
               std::ostringstream oss;
 
               oss << out_dir
                   << "/vtu/nodes_"
-                  << p4est->mpisize << "_"
+                  << mpi.size() << "_"
                   << brick.nxyztrees[0] << "x"
                   << brick.nxyztrees[1] <<
        #ifdef P4_TO_P8
@@ -1862,7 +2000,7 @@ int main (int argc, char* argv[])
               ierr = VecRestoreArray(leaf_level, &l_p); CHKERRXX(ierr);
               ierr = VecDestroy(leaf_level); CHKERRXX(ierr);
 
-              PetscPrintf(p4est->mpicomm, "VTK saved in %s\n", oss.str().c_str());
+              PetscPrintf(mpi.comm(), "VTK saved in %s\n", oss.str().c_str());
             }
 
             // destroy Vec's with errors
@@ -1914,7 +2052,7 @@ int main (int argc, char* argv[])
   }
 
 
-  MPI_Barrier(p4est->mpicomm);
+  MPI_Barrier(mpi.comm());
 
   std::vector<double> error_sl_one(num_resolutions, 0), error_sl_avg(num_resolutions, 0), error_sl_max(num_resolutions, 0);
   std::vector<double> error_gr_one(num_resolutions, 0), error_gr_avg(num_resolutions, 0), error_gr_max(num_resolutions, 0);
@@ -1967,12 +2105,6 @@ int main (int argc, char* argv[])
 
   if (mpi.rank() == 0)
   {
-    const char* out_dir = getenv("OUT_DIR");
-    if (!out_dir)
-    {
-      ierr = PetscPrintf(p4est->mpicomm, "You need to set the environment variable OUT_DIR to save convergence results\n");
-      return -1;
-    }
     std::ostringstream command;
     command << "mkdir -p " << out_dir << "/convergence";
     int ret_sys = system(command.str().c_str());
@@ -1981,10 +2113,9 @@ int main (int argc, char* argv[])
 
     std::string filename;
 
-
     // save level and resolution
-    filename = out_dir; filename += "/convergence/lvl.txt";      save_vector(filename.c_str(), level);
-    filename = out_dir; filename += "/convergence/h.txt";        save_vector(filename.c_str(), h);
+    filename = out_dir; filename += "/convergence/lvl.txt";   save_vector(filename.c_str(), lvl_arr);
+    filename = out_dir; filename += "/convergence/h_arr.txt"; save_vector(filename.c_str(), h_arr);
 
     filename = out_dir; filename += "/convergence/error_sl_all.txt"; save_vector(filename.c_str(), error_sl_arr);
     filename = out_dir; filename += "/convergence/error_gr_all.txt"; save_vector(filename.c_str(), error_gr_arr);

@@ -65,6 +65,7 @@ public:
       {
 //                return 0.;
           return 1.;
+          return sin(x+y)*cos(x-y);
       }
   } bc_coeff_0;
 
@@ -92,6 +93,7 @@ public:
     domain1.set_params(r1, xc1, yc1, zc1);
 #else
     double r0 = 0.77, xc0 = 0.13, yc0 = 0.21;
+//    double r0 = 0.65, xc0 = 0.13, yc0 = 0.21;
 //    double r0 = 0.37, xc0 = 0.43, yc0 = 0.41;
     double r1 = 0.49, xc1 =-0.33, yc1 =-0.37;
 
