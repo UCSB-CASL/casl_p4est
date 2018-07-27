@@ -50,6 +50,7 @@ public:
 
         return pow(R,l)*cos(l*T);
       }
+      default: throw std::invalid_argument("Invalid test number\n");
     }
   }
 } u_cf;
@@ -152,6 +153,7 @@ public:
         return cos(T+p11::phase)*l*pow(R,l-1.)*( cos(l*T))
             -  sin(T+p11::phase)*l*pow(R,l-1.)*(-sin(l*T));
       }
+      default: throw std::invalid_argument("Invalid test number\n");
     }
   }
 } ux_cf;
@@ -187,6 +189,7 @@ public:
         return sin(T+p11::phase)*l*pow(R,l-1.)*( cos(l*T))
             +  cos(T+p11::phase)*l*pow(R,l-1.)*(-sin(l*T));
       }
+      default: throw std::invalid_argument("Invalid test number\n");
     }
   }
 } uy_cf;
@@ -213,6 +216,7 @@ public:
       case 12: return 0;
       case 13: return 0;
       case 14: return 0;
+      default: throw std::invalid_argument("Invalid test number\n");
     }
   }
 } lap_u_cf;

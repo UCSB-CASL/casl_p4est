@@ -84,10 +84,10 @@ void simplex3_mls_l_t::construct_domain(std::vector<double> &phi, std::vector<ac
   if (phi.size() != num_phi_*nodes_per_tet_) std::invalid_argument("[CASL_ERROR]: (simplex3_mls_l_t) Numbers of actions and colors are not equal.");
 
   // loop over LSFs
-  for (short phi_idx = 0; phi_idx < acn.size(); ++phi_idx)
+  for (unsigned short phi_idx = 0; phi_idx < acn.size(); ++phi_idx)
   {
     phi_max_ = 0;
-    for (int i = 0; i < nodes_per_tet_; ++i)
+    for (unsigned int i = 0; i < nodes_per_tet_; ++i)
     {
       vtxs_[i].value = phi[phi_idx*nodes_per_tet_ + i];
       phi_max_ = phi_max_ > fabs(vtxs_[i].value) ? phi_max_ : fabs(vtxs_[i].value);
@@ -95,22 +95,22 @@ void simplex3_mls_l_t::construct_domain(std::vector<double> &phi, std::vector<ac
 
     phi_eps_ = eps_rel_*phi_max_;
 
-    for (int i = 0; i < nodes_per_tet_; ++i)
+    for (unsigned int i = 0; i < nodes_per_tet_; ++i)
       perturb(vtxs_[i].value, phi_eps_);
 
     // interpolate to all vertices
-    for (int i = nodes_per_tet_; i < vtxs_.size(); ++i)
+    for (unsigned int i = nodes_per_tet_; i < vtxs_.size(); ++i)
     {
       interpolate_from_parent(i);
       perturb(vtxs_[i].value, phi_eps_);
     }
 
     // split all elements
-    int n;
-    n = vtxs_.size(); for (int i = 0; i < n; i++) do_action_vtx(i, clr[phi_idx], acn[phi_idx]);
-    n = edgs_.size(); for (int i = 0; i < n; i++) do_action_edg(i, clr[phi_idx], acn[phi_idx]);
-    n = tris_.size(); for (int i = 0; i < n; i++) do_action_tri(i, clr[phi_idx], acn[phi_idx]);
-    n = tets_.size(); for (int i = 0; i < n; i++) do_action_tet(i, clr[phi_idx], acn[phi_idx]);
+    unsigned int n;
+    n = vtxs_.size(); for (unsigned int i = 0; i < n; i++) do_action_vtx(i, clr[phi_idx], acn[phi_idx]);
+    n = edgs_.size(); for (unsigned int i = 0; i < n; i++) do_action_edg(i, clr[phi_idx], acn[phi_idx]);
+    n = tris_.size(); for (unsigned int i = 0; i < n; i++) do_action_tri(i, clr[phi_idx], acn[phi_idx]);
+    n = tets_.size(); for (unsigned int i = 0; i < n; i++) do_action_tet(i, clr[phi_idx], acn[phi_idx]);
   }
 }
 
@@ -1182,8 +1182,8 @@ double simplex3_mls_l_t::find_intersection_linear(int v0, int v1)
   double f1 = vtxs_[v1].value;
 
 #ifdef SIMPLEX3_MLS_L_T_DEBUG
-  if (f0 <= 0 && f1 <= 0 ||
-      f0 >= 0 && f1 >= 0)
+  if ((f0 <= 0 && f1 <= 0) ||
+      (f0 >= 0 && f1 >= 0))
     throw std::invalid_argument("[CASL_ERROR]: (simplex3_mls_l_t) Cannot find an intersection with an edge, values of a level-set function are of the same sign at end points.");
 #endif
 

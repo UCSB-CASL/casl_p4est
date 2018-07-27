@@ -50,8 +50,8 @@ public:
 
 private:
   // some geometric info
-  const static int nodes_per_tri_ = 3;
-  const static int nodes_per_tet_ = 4;
+  const static unsigned int nodes_per_tri_ = 3;
+  const static unsigned int nodes_per_tet_ = 4;
 
   // simplex volume (for interpolation)
   double vol_;
@@ -65,7 +65,7 @@ private:
   double phi_eps_;
 
   // number of interfaces
-  int num_phi_;
+  unsigned int num_phi_;
 
   bool use_linear_;
 

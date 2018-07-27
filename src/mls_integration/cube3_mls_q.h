@@ -26,7 +26,7 @@
  *
  */
 
-const int num_faces = 12;
+const unsigned int num_faces = 12;
 const double fp[num_faces][6] = { { 0,  2,  8,  1,  5,  4  },
                                   { 0,  6,  8,  3,  7,  4  },
                                   { 18, 20, 26, 19, 23, 22 },
@@ -39,7 +39,7 @@ const double fp[num_faces][6] = { { 0,  2,  8,  1,  5,  4  },
                                   { 0,  18, 20, 9,  19, 10 },
                                   { 6,  8,  26, 7,  17, 16 },
                                   { 6,  24, 26, 15, 25, 16 } };
-const int num_edges = 12;
+const unsigned int num_edges = 12;
 const double ep[num_edges][3] = { { 0,  1,  2  },
                                   { 6,  7,  8  },
                                   { 18, 19, 20 },
@@ -52,7 +52,7 @@ const double ep[num_edges][3] = { { 0,  1,  2  },
                                   { 2,  11, 20 },
                                   { 6,  15, 24 },
                                   { 8,  17, 26 } };
-const int num_tetrs_q = 6;
+const unsigned int num_tetrs_q = 6;
 const double tp_q[num_tetrs_q][10] = { { 0, 2,  8,  26, 1,  5,  4,  13, 14, 17},
                                        { 0, 8,  6,  26, 4,  7,  3,  13, 17, 16},
                                        { 0, 20, 2,  26, 10, 11, 1,  13, 23, 14},
@@ -87,16 +87,16 @@ const double tp_q[num_tetrs_q][10] = { { 0, 2,  8,  26, 1,  5,  4,  13, 14, 17},
  *     2-----------5-----------8
  *
  */
-#define q_t0p0 0
-#define q_t0p1 2
-#define q_t0p2 8
-#define q_t0p3 26
-#define q_t0p4 1
-#define q_t0p5 5
-#define q_t0p6 4
-#define q_t0p7 13
-#define q_t0p8 14
-#define q_t0p9 17
+#define q3_t0p0 0
+#define q3_t0p1 2
+#define q3_t0p2 8
+#define q3_t0p3 26
+#define q3_t0p4 1
+#define q3_t0p5 5
+#define q3_t0p6 4
+#define q3_t0p7 13
+#define q3_t0p8 14
+#define q3_t0p9 17
 // Tetrahedron #1
 /*
  *             *-----------*-----------*
@@ -122,16 +122,16 @@ const double tp_q[num_tetrs_q][10] = { { 0, 2,  8,  26, 1,  5,  4,  13, 14, 17},
  *     *-----------*-----------8
  *
  */
-#define q_t1p0 0
-#define q_t1p1 8
-#define q_t1p2 6
-#define q_t1p3 26
-#define q_t1p4 4
-#define q_t1p5 7
-#define q_t1p6 3
-#define q_t1p7 13
-#define q_t1p8 17
-#define q_t1p9 16
+#define q3_t1p0 0
+#define q3_t1p1 8
+#define q3_t1p2 6
+#define q3_t1p3 26
+#define q3_t1p4 4
+#define q3_t1p5 7
+#define q3_t1p6 3
+#define q3_t1p7 13
+#define q3_t1p8 17
+#define q3_t1p9 16
 // Tetrahedron #2
 
 /*
@@ -158,16 +158,16 @@ const double tp_q[num_tetrs_q][10] = { { 0, 2,  8,  26, 1,  5,  4,  13, 14, 17},
  *     2-----------*-----------*
  *
  */
-#define q_t2p0 0
-#define q_t2p1 20
-#define q_t2p2 2
-#define q_t2p3 26
-#define q_t2p4 10
-#define q_t2p5 11
-#define q_t2p6 1
-#define q_t2p7 13
-#define q_t2p8 23
-#define q_t2p9 14
+#define q3_t2p0 0
+#define q3_t2p1 20
+#define q3_t2p2 2
+#define q3_t2p3 26
+#define q3_t2p4 10
+#define q3_t2p5 11
+#define q3_t2p6 1
+#define q3_t2p7 13
+#define q3_t2p8 23
+#define q3_t2p9 14
 // Tetrahedron #3
 /*
  *             *-----------*----------24
@@ -193,16 +193,16 @@ const double tp_q[num_tetrs_q][10] = { { 0, 2,  8,  26, 1,  5,  4,  13, 14, 17},
  *     *-----------*-----------*
  *
  */
-#define q_t3p0 0
-#define q_t3p1 6
-#define q_t3p2 24
-#define q_t3p3 26
-#define q_t3p4 3
-#define q_t3p5 15
-#define q_t3p6 12
-#define q_t3p7 13
-#define q_t3p8 16
-#define q_t3p9 25
+#define q3_t3p0 0
+#define q3_t3p1 6
+#define q3_t3p2 24
+#define q3_t3p3 26
+#define q3_t3p4 3
+#define q3_t3p5 15
+#define q3_t3p6 12
+#define q3_t3p7 13
+#define q3_t3p8 16
+#define q3_t3p9 25
 // Tetrahedron #4
 /*
  *            18-----------*-----------*
@@ -228,16 +228,16 @@ const double tp_q[num_tetrs_q][10] = { { 0, 2,  8,  26, 1,  5,  4,  13, 14, 17},
  *     *-----------*-----------*
  *
  */
-#define q_t4p0 0
-#define q_t4p1 18
-#define q_t4p2 20
-#define q_t4p3 26
-#define q_t4p4 9
-#define q_t4p5 19
-#define q_t4p6 10
-#define q_t4p7 13
-#define q_t4p8 22
-#define q_t4p9 23
+#define q3_t4p0 0
+#define q3_t4p1 18
+#define q3_t4p2 20
+#define q3_t4p3 26
+#define q3_t4p4 9
+#define q3_t4p5 19
+#define q3_t4p6 10
+#define q3_t4p7 13
+#define q3_t4p8 22
+#define q3_t4p9 23
 // Tetrahedron #5
 /*
  *            18----------21----------24
@@ -263,16 +263,16 @@ const double tp_q[num_tetrs_q][10] = { { 0, 2,  8,  26, 1,  5,  4,  13, 14, 17},
  *     *-----------*-----------*
  *
  */
-#define q_t5p0 0
-#define q_t5p1 24
-#define q_t5p2 18
-#define q_t5p3 26
-#define q_t5p4 12
-#define q_t5p5 21
-#define q_t5p6 9
-#define q_t5p7 13
-#define q_t5p8 25
-#define q_t5p9 22
+#define q3_t5p0 0
+#define q3_t5p1 24
+#define q3_t5p2 18
+#define q3_t5p3 26
+#define q3_t5p4 12
+#define q3_t5p5 21
+#define q3_t5p6 9
+#define q3_t5p7 13
+#define q3_t5p8 25
+#define q3_t5p9 22
 
 #include <vector>
 #include "simplex3_mls_q.h"
@@ -280,18 +280,16 @@ const double tp_q[num_tetrs_q][10] = { { 0, 2,  8,  26, 1,  5,  4,  13, 14, 17},
 class cube3_mls_q_t
 {
 public:
-  const static int n_nodes = 27;
-  const static int n_nodes_simplex = 10;
-  const static int n_nodes_dir = 3;
-
-  double lip;
-
-  bool check_for_curvature_;
+  const static unsigned int n_nodes = 27;
+  const static unsigned int n_nodes_simplex = 10;
+  const static unsigned int n_nodes_dir = 3;
 
   double  x0, x1, y0, y1, z0, z1, diag;
   loc_t   loc;
-  int     num_of_lsfs;
-//  bool    use_linear;
+  unsigned int num_of_lsfs;
+
+  bool check_for_curvature_;
+  double lip;
 
   std::vector<simplex3_mls_q_t> simplex;
 

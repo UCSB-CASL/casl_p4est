@@ -9,10 +9,6 @@ void cube3_mls_q_t::construct_domain(std::vector<double> &phi_all, std::vector<a
   double yc = .5*(y0+y1);
   double zc = .5*(z0+z1);
 
-  double x[] = { x0, xc, x1 };
-  double y[] = { y0, yc, y1 };
-  double z[] = { z0, zc, z1 };
-
 #ifdef CASL_THROWS
   if (num_of_lsfs != acn.size() || num_of_lsfs != clr.size())
           throw std::domain_error("[CASL_ERROR]: (cube3_mls_q_t::construct_domain) sizes of phi, acn and clr do not coincide.");
@@ -22,10 +18,8 @@ void cube3_mls_q_t::construct_domain(std::vector<double> &phi_all, std::vector<a
 
   loc = INS;
 
-  double value;
   double p0, p1, p2, p3, p4, p5;
   double c0, c1, c2;
-  int I, J, K;
 
   std::vector<action_t> nt_acn;
   std::vector<int>      nt_clr;
@@ -110,7 +104,7 @@ void cube3_mls_q_t::construct_domain(std::vector<double> &phi_all, std::vector<a
 //      if(0)
       if (all_negative || all_positive)
       {
-        for (int idx_edge = 0; idx_edge < num_edges; ++idx_edge)
+        for (unsigned int idx_edge = 0; idx_edge < num_edges; ++idx_edge)
         {
           p0 = phi_all[n_nodes*p + ep[idx_edge][0]];
           p1 = phi_all[n_nodes*p + ep[idx_edge][1]];
@@ -144,7 +138,7 @@ void cube3_mls_q_t::construct_domain(std::vector<double> &phi_all, std::vector<a
 //      if(0)
       if (all_negative || all_positive)
       {
-        for (int idx_face = 0; idx_face < num_faces; ++idx_face)
+        for (unsigned int idx_face = 0; idx_face < num_faces; ++idx_face)
         {
           p0 = phi_all[n_nodes*p + fp[idx_face][0]];
           p1 = phi_all[n_nodes*p + fp[idx_face][1]];
@@ -246,66 +240,66 @@ void cube3_mls_q_t::construct_domain(std::vector<double> &phi_all, std::vector<a
     /* Split a cube into 6 simplices */
     simplex.clear();
     simplex.reserve(NUM_TETS);
-    simplex.push_back(simplex3_mls_q_t(x[q_t0p0],y[q_t0p0],z[q_t0p0],
-                                       x[q_t0p1],y[q_t0p1],z[q_t0p1],
-                                       x[q_t0p2],y[q_t0p2],z[q_t0p2],
-                                       x[q_t0p3],y[q_t0p3],z[q_t0p3],
-                                       x[q_t0p4],y[q_t0p4],z[q_t0p4],
-                                       x[q_t0p5],y[q_t0p5],z[q_t0p5],
-                                       x[q_t0p6],y[q_t0p6],z[q_t0p6],
-                                       x[q_t0p7],y[q_t0p7],z[q_t0p7],
-                                       x[q_t0p8],y[q_t0p8],z[q_t0p8],
-                                       x[q_t0p9],y[q_t0p9],z[q_t0p9]));
-    simplex.push_back(simplex3_mls_q_t(x[q_t1p0],y[q_t1p0],z[q_t1p0],
-                                       x[q_t1p1],y[q_t1p1],z[q_t1p1],
-                                       x[q_t1p2],y[q_t1p2],z[q_t1p2],
-                                       x[q_t1p3],y[q_t1p3],z[q_t1p3],
-                                       x[q_t1p4],y[q_t1p4],z[q_t1p4],
-                                       x[q_t1p5],y[q_t1p5],z[q_t1p5],
-                                       x[q_t1p6],y[q_t1p6],z[q_t1p6],
-                                       x[q_t1p7],y[q_t1p7],z[q_t1p7],
-                                       x[q_t1p8],y[q_t1p8],z[q_t1p8],
-                                       x[q_t1p9],y[q_t1p9],z[q_t1p9]));
-    simplex.push_back(simplex3_mls_q_t(x[q_t2p0],y[q_t2p0],z[q_t2p0],
-                                       x[q_t2p1],y[q_t2p1],z[q_t2p1],
-                                       x[q_t2p2],y[q_t2p2],z[q_t2p2],
-                                       x[q_t2p3],y[q_t2p3],z[q_t2p3],
-                                       x[q_t2p4],y[q_t2p4],z[q_t2p4],
-                                       x[q_t2p5],y[q_t2p5],z[q_t2p5],
-                                       x[q_t2p6],y[q_t2p6],z[q_t2p6],
-                                       x[q_t2p7],y[q_t2p7],z[q_t2p7],
-                                       x[q_t2p8],y[q_t2p8],z[q_t2p8],
-                                       x[q_t2p9],y[q_t2p9],z[q_t2p9]));
-    simplex.push_back(simplex3_mls_q_t(x[q_t3p0],y[q_t3p0],z[q_t3p0],
-                                       x[q_t3p1],y[q_t3p1],z[q_t3p1],
-                                       x[q_t3p2],y[q_t3p2],z[q_t3p2],
-                                       x[q_t3p3],y[q_t3p3],z[q_t3p3],
-                                       x[q_t3p4],y[q_t3p4],z[q_t3p4],
-                                       x[q_t3p5],y[q_t3p5],z[q_t3p5],
-                                       x[q_t3p6],y[q_t3p6],z[q_t3p6],
-                                       x[q_t3p7],y[q_t3p7],z[q_t3p7],
-                                       x[q_t3p8],y[q_t3p8],z[q_t3p8],
-                                       x[q_t3p9],y[q_t3p9],z[q_t3p9]));
-    simplex.push_back(simplex3_mls_q_t(x[q_t4p0],y[q_t4p0],z[q_t4p0],
-                                       x[q_t4p1],y[q_t4p1],z[q_t4p1],
-                                       x[q_t4p2],y[q_t4p2],z[q_t4p2],
-                                       x[q_t4p3],y[q_t4p3],z[q_t4p3],
-                                       x[q_t4p4],y[q_t4p4],z[q_t4p4],
-                                       x[q_t4p5],y[q_t4p5],z[q_t4p5],
-                                       x[q_t4p6],y[q_t4p6],z[q_t4p6],
-                                       x[q_t4p7],y[q_t4p7],z[q_t4p7],
-                                       x[q_t4p8],y[q_t4p8],z[q_t4p8],
-                                       x[q_t4p9],y[q_t4p9],z[q_t4p9]));
-    simplex.push_back(simplex3_mls_q_t(x[q_t5p0],y[q_t5p0],z[q_t5p0],
-                                       x[q_t5p1],y[q_t5p1],z[q_t5p1],
-                                       x[q_t5p2],y[q_t5p2],z[q_t5p2],
-                                       x[q_t5p3],y[q_t5p3],z[q_t5p3],
-                                       x[q_t5p4],y[q_t5p4],z[q_t5p4],
-                                       x[q_t5p5],y[q_t5p5],z[q_t5p5],
-                                       x[q_t5p6],y[q_t5p6],z[q_t5p6],
-                                       x[q_t5p7],y[q_t5p7],z[q_t5p7],
-                                       x[q_t5p8],y[q_t5p8],z[q_t5p8],
-                                       x[q_t5p9],y[q_t5p9],z[q_t5p9]));
+    simplex.push_back(simplex3_mls_q_t(x[q3_t0p0],y[q3_t0p0],z[q3_t0p0],
+                                       x[q3_t0p1],y[q3_t0p1],z[q3_t0p1],
+                                       x[q3_t0p2],y[q3_t0p2],z[q3_t0p2],
+                                       x[q3_t0p3],y[q3_t0p3],z[q3_t0p3],
+                                       x[q3_t0p4],y[q3_t0p4],z[q3_t0p4],
+                                       x[q3_t0p5],y[q3_t0p5],z[q3_t0p5],
+                                       x[q3_t0p6],y[q3_t0p6],z[q3_t0p6],
+                                       x[q3_t0p7],y[q3_t0p7],z[q3_t0p7],
+                                       x[q3_t0p8],y[q3_t0p8],z[q3_t0p8],
+                                       x[q3_t0p9],y[q3_t0p9],z[q3_t0p9]));
+    simplex.push_back(simplex3_mls_q_t(x[q3_t1p0],y[q3_t1p0],z[q3_t1p0],
+                                       x[q3_t1p1],y[q3_t1p1],z[q3_t1p1],
+                                       x[q3_t1p2],y[q3_t1p2],z[q3_t1p2],
+                                       x[q3_t1p3],y[q3_t1p3],z[q3_t1p3],
+                                       x[q3_t1p4],y[q3_t1p4],z[q3_t1p4],
+                                       x[q3_t1p5],y[q3_t1p5],z[q3_t1p5],
+                                       x[q3_t1p6],y[q3_t1p6],z[q3_t1p6],
+                                       x[q3_t1p7],y[q3_t1p7],z[q3_t1p7],
+                                       x[q3_t1p8],y[q3_t1p8],z[q3_t1p8],
+                                       x[q3_t1p9],y[q3_t1p9],z[q3_t1p9]));
+    simplex.push_back(simplex3_mls_q_t(x[q3_t2p0],y[q3_t2p0],z[q3_t2p0],
+                                       x[q3_t2p1],y[q3_t2p1],z[q3_t2p1],
+                                       x[q3_t2p2],y[q3_t2p2],z[q3_t2p2],
+                                       x[q3_t2p3],y[q3_t2p3],z[q3_t2p3],
+                                       x[q3_t2p4],y[q3_t2p4],z[q3_t2p4],
+                                       x[q3_t2p5],y[q3_t2p5],z[q3_t2p5],
+                                       x[q3_t2p6],y[q3_t2p6],z[q3_t2p6],
+                                       x[q3_t2p7],y[q3_t2p7],z[q3_t2p7],
+                                       x[q3_t2p8],y[q3_t2p8],z[q3_t2p8],
+                                       x[q3_t2p9],y[q3_t2p9],z[q3_t2p9]));
+    simplex.push_back(simplex3_mls_q_t(x[q3_t3p0],y[q3_t3p0],z[q3_t3p0],
+                                       x[q3_t3p1],y[q3_t3p1],z[q3_t3p1],
+                                       x[q3_t3p2],y[q3_t3p2],z[q3_t3p2],
+                                       x[q3_t3p3],y[q3_t3p3],z[q3_t3p3],
+                                       x[q3_t3p4],y[q3_t3p4],z[q3_t3p4],
+                                       x[q3_t3p5],y[q3_t3p5],z[q3_t3p5],
+                                       x[q3_t3p6],y[q3_t3p6],z[q3_t3p6],
+                                       x[q3_t3p7],y[q3_t3p7],z[q3_t3p7],
+                                       x[q3_t3p8],y[q3_t3p8],z[q3_t3p8],
+                                       x[q3_t3p9],y[q3_t3p9],z[q3_t3p9]));
+    simplex.push_back(simplex3_mls_q_t(x[q3_t4p0],y[q3_t4p0],z[q3_t4p0],
+                                       x[q3_t4p1],y[q3_t4p1],z[q3_t4p1],
+                                       x[q3_t4p2],y[q3_t4p2],z[q3_t4p2],
+                                       x[q3_t4p3],y[q3_t4p3],z[q3_t4p3],
+                                       x[q3_t4p4],y[q3_t4p4],z[q3_t4p4],
+                                       x[q3_t4p5],y[q3_t4p5],z[q3_t4p5],
+                                       x[q3_t4p6],y[q3_t4p6],z[q3_t4p6],
+                                       x[q3_t4p7],y[q3_t4p7],z[q3_t4p7],
+                                       x[q3_t4p8],y[q3_t4p8],z[q3_t4p8],
+                                       x[q3_t4p9],y[q3_t4p9],z[q3_t4p9]));
+    simplex.push_back(simplex3_mls_q_t(x[q3_t5p0],y[q3_t5p0],z[q3_t5p0],
+                                       x[q3_t5p1],y[q3_t5p1],z[q3_t5p1],
+                                       x[q3_t5p2],y[q3_t5p2],z[q3_t5p2],
+                                       x[q3_t5p3],y[q3_t5p3],z[q3_t5p3],
+                                       x[q3_t5p4],y[q3_t5p4],z[q3_t5p4],
+                                       x[q3_t5p5],y[q3_t5p5],z[q3_t5p5],
+                                       x[q3_t5p6],y[q3_t5p6],z[q3_t5p6],
+                                       x[q3_t5p7],y[q3_t5p7],z[q3_t5p7],
+                                       x[q3_t5p8],y[q3_t5p8],z[q3_t5p8],
+                                       x[q3_t5p9],y[q3_t5p9],z[q3_t5p9]));
 
 //    // mark appropriate edges for integrate_in_dir
 //    simplex[0].tris_[0].dir = 1; simplex[0].tris_[3].dir = 4;
@@ -319,12 +313,12 @@ void cube3_mls_q_t::construct_domain(std::vector<double> &phi_all, std::vector<a
 
     std::vector<double> phi_s(n_nodes_simplex*num_of_lsfs, -1);
 
-    for (int s = 0; s < NUM_TETS; ++s)
+    for (unsigned int s = 0; s < NUM_TETS; ++s)
     {
-      for (int i = 0; i < num_of_lsfs; ++i)
+      for (unsigned int i = 0; i < num_of_lsfs; ++i)
       {
         int phi_idx = nt_idx[i];
-        for (int n = 0; n < n_nodes_simplex; ++n)
+        for (unsigned int n = 0; n < n_nodes_simplex; ++n)
           phi_s[n_nodes_simplex*i + n] = phi_all[n_nodes*phi_idx + tp_q[s][n]];
       }
       simplex[s].set_check_for_curvature(check_for_curvature_);

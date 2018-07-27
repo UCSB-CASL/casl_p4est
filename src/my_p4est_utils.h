@@ -1483,9 +1483,9 @@ class quadrant_interp_t : public CF_2
   p4est_t *p4est_;
   p4est_topidx_t tree_idx_;
   const p4est_quadrant_t *quad_;
+  interpolation_method method_;
   std::vector<double> *F_;
   std::vector<double> *Fdd_;
-  interpolation_method method_;
 
 public:
   quadrant_interp_t(p4est_t *p4est, p4est_topidx_t tree_idx, const p4est_quadrant_t *quad, interpolation_method method, std::vector<double> *F, std::vector<double> *Fdd = NULL)

@@ -75,7 +75,8 @@ public:
   public:
       double operator()(double x, double y) const
       {
-//          return 1.0;
+        (void) x; (void) y;
+        return 1.0;
       }
   } bc_coeff_0;
 

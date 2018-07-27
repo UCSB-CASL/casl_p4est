@@ -21,19 +21,13 @@
 #define DO_NOT_PREALLOCATE
 
 #ifdef P4_TO_P8
-const int num_neighbors_max_ = 27;
+const unsigned short num_neighbors_max_ = 27;
 #else
-const int num_neighbors_max_ = 9;
+const unsigned short num_neighbors_max_ = 9;
 #endif
 
 class my_p4est_poisson_nodes_mls_sc_t
 {
-  int cube_refinement_;
-
-  double phi_perturbation_;
-
-  interpolation_method interp_method_;
-
   typedef struct
   {
     double val;
@@ -65,89 +59,108 @@ class my_p4est_poisson_nodes_mls_sc_t
   #endif
   };
 
+  // p4est objects
   const my_p4est_node_neighbors_t *node_neighbors_;
 
-  Vec exact_;
-
-  // p4est objects
   p4est_t           *p4est_;
   p4est_nodes_t     *nodes_;
   p4est_ghost_t     *ghost_;
   my_p4est_brick_t  *myb_;
 
+  // grid variables
+  double lip_;
+  double diag_min_;
+  double d_min_;
+  double dx_min_;
+  double dy_min_;
+#ifdef P4_TO_P8
+  double dz_min_;
+#endif
+  double dxyz_m_[P4EST_DIM];
+
   // PETSc objects
   Mat A_;
-  p4est_gloidx_t fixed_value_idx_g_;
-  p4est_gloidx_t fixed_value_idx_l_;
   KSP ksp_;
   PetscErrorCode ierr;
+  p4est_gloidx_t fixed_value_idx_g_;
+  p4est_gloidx_t fixed_value_idx_l_;
   std::vector<PetscInt> global_node_offset_;
   std::vector<PetscInt> petsc_gloidx_;
 
   // Geometry
+  unsigned int num_interfaces_;
+
+  std::vector<Vec>     *phi_;
 #ifdef P4_TO_P8
   std::vector< CF_3 *> *phi_cf_;
 #else
   std::vector< CF_2 *> *phi_cf_;
 #endif
 
-  std::vector<Vec> *phi_, *phi_xx_, *phi_yy_, *phi_zz_;
-  std::vector<int>        *color_;
-  std::vector<action_t>   *action_;
+  std::vector<Vec> *phi_xx_;
+  std::vector<Vec> *phi_yy_;
+#ifdef P4_TO_P8
+  std::vector<Vec> *phi_zz_;
+#endif
+
   Vec phi_eff_;
-  int num_interfaces_;
-  bool is_phi_eff_owned_, is_phi_dd_owned_;
 
-  int integration_order_;
-
-  double lip_;
-  void set_lip(double lip) { lip_ = lip; }
+  std::vector<action_t> *action_;
+  std::vector<int>      *color_;
 
   std::vector<Vec> *phi_x_;
   std::vector<Vec> *phi_y_;
-  std::vector<Vec> *phi_z_;
-  bool is_phi_d_owned_;
-
-  double dxyz_m_[P4EST_DIM];
-  double dx_min_, dy_min_, d_min_, diag_min_;
 #ifdef P4_TO_P8
-  double dz_min_;
+  std::vector<Vec> *phi_z_;
 #endif
 
-  // Equation
-  double mu_, diag_add_scalar_;
-  Vec diag_add_;
-  Vec rhs_;
-  Vec mue_;
-  Vec mue_xx_, mue_yy_, mue_zz_;
+  bool is_phi_d_owned_;
+  bool is_phi_dd_owned_;
+  bool is_phi_eff_owned_;
 
+  // Equation
+  Vec   rhs_;
 #ifdef P4_TO_P8
   CF_3 *rhs_cf_;
 #else
   CF_2 *rhs_cf_;
 #endif
 
+  Vec    diag_add_;
+  double diag_add_scalar_;
+
+  double mu_;
+
   bool variable_mu_;
   bool is_mue_dd_owned_;
+  Vec  mue_;
+  Vec  mue_xx_;
+  Vec  mue_yy_;
+#ifdef P4_TO_P8
+  Vec  mue_zz_;
+#endif
 
-  bool volumes_computed_;
-  bool volumes_owned_;
-
-  // Some flags
-  bool is_matrix_computed_;
-  int matrix_has_nullspace_;
+  // solver options
+  int integration_order_;
+  int cube_refinement_;
+  bool use_sc_scheme_;
   bool use_pointwise_dirichlet_;
-  bool new_pc_;
-  bool update_ghost_after_solving_;
   bool use_taylor_correction_;
   bool kink_special_treatment_;
+  bool update_ghost_after_solving_;
+  bool try_remove_hanging_cells_;
+  bool neumann_wall_first_order_;
+  double phi_perturbation_;
+  double domain_rel_thresh_;
+  double interface_rel_thresh_;
+  interpolation_method interp_method_;
 
-  bool use_sc_scheme_;
-  int fallback_;
+  // Some flags
+  bool new_pc_;
+  bool is_matrix_computed_;
+  int matrix_has_nullspace_;
 
   // Bondary conditions
-  bool neumann_wall_first_order_;
-
 #ifdef P4_TO_P8
   const WallBC3D *bc_wall_type_;
   const CF_3     *bc_wall_value_;
@@ -164,20 +177,19 @@ class my_p4est_poisson_nodes_mls_sc_t
   std::vector< CF_2 *> *bc_interface_coeff_;
 #endif
 
+  // auxiliary variables
   Vec mask_;
-  std::vector<double> scalling_;
-  bool keep_scalling_;
-
-  Vec volumes_;
   Vec areas_;
+  Vec volumes_;
   Vec node_type_;
 
-  bool try_remove_hanging_cells_;
+  std::vector<double> scalling_;
 
-  double eps_ifc_, eps_dom_;
+  bool keep_scalling_;
+  bool volumes_computed_;
+  bool volumes_owned_;
 
-  double domain_rel_thresh_;
-  double interface_rel_thresh_;
+  Vec exact_;
 
   enum discretization_scheme_t { FDM, FVM } discretization_scheme_;
 
@@ -212,7 +224,6 @@ public:
   ~my_p4est_poisson_nodes_mls_sc_t();
 
   inline PetscInt get_global_idx(p4est_locidx_t n) { return petsc_gloidx_[n]; }
-  inline void set_fallback(int value) { fallback_ = value; }
   inline void set_try_remove_hanging_cells(bool value) { try_remove_hanging_cells_ = value; }
 
 #ifdef P4_TO_P8
@@ -222,6 +233,8 @@ public:
 #endif
 
   inline void set_exact(Vec exact) { exact_ = exact; }
+
+  void set_lip(double lip) { lip_ = lip; }
 
   // set geometry
   inline void set_geometry(int num_interfaces,

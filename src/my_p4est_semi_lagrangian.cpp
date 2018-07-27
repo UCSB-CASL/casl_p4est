@@ -1202,7 +1202,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, std::vector<Vec
     for (size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
     {
       double phi_total = -1.0e6; // this is quite ugly
-      for (int i = 0; i < phi.size(); i++)
+      for (unsigned int i = 0; i < phi.size(); i++)
       {
         double phi_current = phi_np1_ptr[i][n];
 

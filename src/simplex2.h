@@ -28,7 +28,7 @@ private:
   inline double interpol_f(double f1, double phi1, double f2, double phi2) const
   {
 #ifdef CASL_THROWS
-      if(fabs(phi2-phi1)<_CASL_EPS_) throw std::domain_error("[CASL_ERROR]: division by zero.");
+      if(fabs(phi2-phi1)<EPS) throw std::domain_error("[CASL_ERROR]: division by zero.");
 #endif
       return (f1*phi2 - f2*phi1)/(phi2-phi1);
   }
@@ -36,7 +36,7 @@ private:
   inline Point2 interpol_p(double x1, double y1, double phi1, double x2, double y2, double phi2) const
   {
 #ifdef CASL_THROWS
-      if(fabs(phi2-phi1)<_CASL_EPS_) throw std::domain_error("[CASL_ERROR]: division by zero.");
+      if(fabs(phi2-phi1)<EPS) throw std::domain_error("[CASL_ERROR]: division by zero.");
 #endif
       Point2 p;
       p.x = (x1*phi2 - x2*phi1)/(phi2-phi1);

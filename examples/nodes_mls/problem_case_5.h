@@ -96,7 +96,6 @@ public:
     domain1.set_params(r1, xc1, yc1, zc1);
 #else
     double r0 = 0.62, xc0 = 0.03, yc0 = 0.02;
-    double r1 = 0.63, xc1 =-0.42, yc1 =-0.57;
 
     domain0.set_params(r0, xc0, yc0, 0.2);
 #endif

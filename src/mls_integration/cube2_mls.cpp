@@ -8,8 +8,8 @@ cube2_mls_t::cube2_mls_t(double xyz_min[], double xyz_max[], int mnk[], int orde
 
 void cube2_mls_t::initialize(double xyz_min[], double xyz_max[], int mnk[], int order)
 {
-  for (int idx = 0; idx < cubes_l_.size(); ++idx) delete cubes_l_[idx];
-  for (int idx = 0; idx < cubes_q_.size(); ++idx) delete cubes_q_[idx];
+  for (unsigned int idx = 0; idx < cubes_l_.size(); ++idx) delete cubes_l_[idx];
+  for (unsigned int idx = 0; idx < cubes_q_.size(); ++idx) delete cubes_q_[idx];
 
   order_ = order;
   points_per_cube_ = (order_+1)*(order_+1);
@@ -29,14 +29,14 @@ void cube2_mls_t::initialize(double xyz_min[], double xyz_max[], int mnk[], int 
   double dx = (xyz_max[0]-xyz_min[0]) / (double) (points_in_x_ - 1);
   double dy = (xyz_max[1]-xyz_min[1]) / (double) (points_in_y_ - 1);
 
-  for (int i = 0; i < points_in_x_; ++i) x_[i] = xyz_min[0] + (double) i * dx;
-  for (int i = 0; i < points_in_y_; ++i) y_[i] = xyz_min[1] + (double) i * dy;
+  for (unsigned int i = 0; i < points_in_x_; ++i) x_[i] = xyz_min[0] + (double) i * dx;
+  for (unsigned int i = 0; i < points_in_y_; ++i) y_[i] = xyz_min[1] + (double) i * dy;
 
   x_grid_.resize(points_total_, 0);
   y_grid_.resize(points_total_, 0);
 
-  for (int i = 0; i < points_in_x_; ++i)
-    for (int j = 0; j < points_in_y_; ++j)
+  for (unsigned int i = 0; i < points_in_x_; ++i)
+    for (unsigned int j = 0; j < points_in_y_; ++j)
     {
       int idx = j * points_in_x_ + i;
       x_grid_[idx] = x_[i];
@@ -46,14 +46,14 @@ void cube2_mls_t::initialize(double xyz_min[], double xyz_max[], int mnk[], int 
 
 cube2_mls_t::~cube2_mls_t()
 {
-  for (int idx = 0; idx < cubes_l_.size(); ++idx) delete cubes_l_[idx];
-  for (int idx = 0; idx < cubes_q_.size(); ++idx) delete cubes_q_[idx];
+  for (unsigned int idx = 0; idx < cubes_l_.size(); ++idx) delete cubes_l_[idx];
+  for (unsigned int idx = 0; idx < cubes_q_.size(); ++idx) delete cubes_q_[idx];
 }
 
 
 void cube2_mls_t::reconstruct(std::vector<double> &phi, std::vector<action_t> &acn, std::vector<int> &clr)
 {
-  int num_phi = acn.size();
+  unsigned int num_phi = acn.size();
 
   if (clr.size() != num_phi) throw;
   if (phi.size() != num_phi*points_total_) throw;
@@ -64,8 +64,8 @@ void cube2_mls_t::reconstruct(std::vector<double> &phi, std::vector<action_t> &a
   else if (order_ == 2) cubes_q_.resize(cubes_total_, NULL);
   else throw;
 
-  for (int i = 0; i < cubes_in_x_; ++i)
-    for (int j = 0; j < cubes_in_y_; ++j)
+  for (unsigned int i = 0; i < cubes_in_x_; ++i)
+    for (unsigned int j = 0; j < cubes_in_y_; ++j)
     {
       int idx = j*cubes_in_x_ + i;
 
@@ -75,9 +75,9 @@ void cube2_mls_t::reconstruct(std::vector<double> &phi, std::vector<action_t> &a
       else throw;
 
       // get values of level-set functions for a cube
-      for (int phi_idx = 0; phi_idx < num_phi; ++phi_idx)
-        for (int ii = 0; ii < order_+1; ++ii)
-          for (int jj = 0; jj < order_+1; ++jj)
+      for (unsigned int phi_idx = 0; phi_idx < num_phi; ++phi_idx)
+        for (unsigned int ii = 0; ii < order_+1; ++ii)
+          for (unsigned int jj = 0; jj < order_+1; ++jj)
           {
             phi_cube[phi_idx*points_per_cube_ + jj*(order_+1) + ii] = phi[phi_idx*points_total_ + (j*order_+jj)*points_in_x_ + i*order_+ii];
           }
@@ -95,8 +95,8 @@ void cube2_mls_t::quadrature_over_domain(std::vector<double> &W, std::vector<dou
   X.clear();
   Y.clear();
 
-  if      (order_ == 1) { for (int idx = 0; idx < cubes_total_; ++idx) cubes_l_[idx]->quadrature_over_domain(W, X, Y); }
-  else if (order_ == 2) { for (int idx = 0; idx < cubes_total_; ++idx) cubes_q_[idx]->quadrature_over_domain(W, X, Y); }
+  if      (order_ == 1) { for (unsigned int idx = 0; idx < cubes_total_; ++idx) cubes_l_[idx]->quadrature_over_domain(W, X, Y); }
+  else if (order_ == 2) { for (unsigned int idx = 0; idx < cubes_total_; ++idx) cubes_q_[idx]->quadrature_over_domain(W, X, Y); }
   else throw;
 }
 
@@ -106,8 +106,8 @@ void cube2_mls_t::quadrature_over_interface(int num0, std::vector<double> &W, st
   X.clear();
   Y.clear();
 
-  if      (order_ == 1) { for (int idx = 0; idx < cubes_total_; ++idx) cubes_l_[idx]->quadrature_over_interface(num0, W, X, Y); }
-  else if (order_ == 2) { for (int idx = 0; idx < cubes_total_; ++idx) cubes_q_[idx]->quadrature_over_interface(num0, W, X, Y); }
+  if      (order_ == 1) { for (unsigned int idx = 0; idx < cubes_total_; ++idx) cubes_l_[idx]->quadrature_over_interface(num0, W, X, Y); }
+  else if (order_ == 2) { for (unsigned int idx = 0; idx < cubes_total_; ++idx) cubes_q_[idx]->quadrature_over_interface(num0, W, X, Y); }
   else throw;
 }
 
@@ -117,8 +117,8 @@ void cube2_mls_t::quadrature_over_intersection(int num0, int num1, std::vector<d
   X.clear();
   Y.clear();
 
-  if      (order_ == 1) { for (int idx = 0; idx < cubes_total_; ++idx) cubes_l_[idx]->quadrature_over_intersection(num0, num1, W, X, Y); }
-  else if (order_ == 2) { for (int idx = 0; idx < cubes_total_; ++idx) cubes_q_[idx]->quadrature_over_intersection(num0, num1, W, X, Y); }
+  if      (order_ == 1) { for (unsigned int idx = 0; idx < cubes_total_; ++idx) cubes_l_[idx]->quadrature_over_intersection(num0, num1, W, X, Y); }
+  else if (order_ == 2) { for (unsigned int idx = 0; idx < cubes_total_; ++idx) cubes_q_[idx]->quadrature_over_intersection(num0, num1, W, X, Y); }
   else throw;
 }
 
@@ -129,8 +129,8 @@ void cube2_mls_t::quadrature_in_dir(int dir, std::vector<double> &W, std::vector
   X.clear();
   Y.clear();
 
-  int i_start = 0, i_total = cubes_in_x_;
-  int j_start = 0, j_total = cubes_in_y_;
+  unsigned int i_start = 0, i_total = cubes_in_x_;
+  unsigned int j_start = 0, j_total = cubes_in_y_;
 
   switch (dir)
   {
@@ -154,10 +154,10 @@ void cube2_mls_t::quadrature_in_dir(int dir, std::vector<double> &W, std::vector
       throw;
   }
 
-  for (int i = i_start; i < i_start + i_total; ++i)
-    for (int j = j_start; j < j_start + j_total; ++j)
+  for (unsigned int i = i_start; i < i_start + i_total; ++i)
+    for (unsigned int j = j_start; j < j_start + j_total; ++j)
     {
-      int idx = j*cubes_in_x_ + i;
+      unsigned int idx = j*cubes_in_x_ + i;
 
       if      (order_ == 1) { cubes_l_[idx]->quadrature_in_dir(dir, W, X, Y); }
       else if (order_ == 2) { cubes_q_[idx]->quadrature_in_dir(dir, W, X, Y); }

@@ -39,7 +39,7 @@ bool matrix_t::is_symmetric() const
 #endif
   for( int i=1; i<m; i++ )
     for( int j=0; j<i; j++ )
-      if(fabs(values[i*n+j] - values[j*n+i]) > _CASL_EPS_)
+      if(fabs(values[i*n+j] - values[j*n+i]) > EPS)
         return false;
   return true;
 }
@@ -109,7 +109,7 @@ void matrix_t::scale_by_maxabs(vector<double>& x)
 #ifdef CASL_THROWS
   if( m != (int) x.size() ) throw std::invalid_argument("[CASL_ERROR]: matrix_t->scale_by_maxabs: the matrix and the right hand side don't have the same size");
 #endif
-  double abs_max = _CASL_EPS_;
+  double abs_max = EPS;
   for( unsigned int i=0; i< x.size(); i++ )
     for( int j=0; j<n; j++ )
       abs_max = MAX(abs_max, fabs(values[i*n + j]));

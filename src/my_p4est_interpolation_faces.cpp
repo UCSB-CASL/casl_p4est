@@ -82,13 +82,13 @@ double my_p4est_interpolation_faces_t::interpolate(const p4est_quadrant_t &quad,
   double zmin = v2c[3*t2v[0 + 0] + 2];
   double zmax = v2c[3*t2v[P4EST_CHILDREN*(p4est->trees->elem_count-1) + P4EST_CHILDREN-1] + 2];
   if(bc!=NULL && bc->wallType(xyz[0],xyz[1],xyz[2])==DIRICHLET &&
-     (fabs(xyz[0]-xmin)<_CASL_EPS_ || fabs(xyz[0]-xmax)<_CASL_EPS_ ||
-      fabs(xyz[1]-ymin)<_CASL_EPS_ || fabs(xyz[1]-ymax)<_CASL_EPS_ ||
-      fabs(xyz[2]-zmin)<_CASL_EPS_ || fabs(xyz[2]-zmax)<_CASL_EPS_))
+     (fabs(xyz[0]-xmin)<EPS || fabs(xyz[0]-xmax)<EPS ||
+      fabs(xyz[1]-ymin)<EPS || fabs(xyz[1]-ymax)<EPS ||
+      fabs(xyz[2]-zmin)<EPS || fabs(xyz[2]-zmax)<EPS))
     return bc->wallValue(xyz[0], xyz[1], xyz[2]);
 #else
   if(bc!=NULL && bc->wallType(xyz[0],xyz[1])==DIRICHLET &&
-     (fabs(xyz[0]-xmin)<_CASL_EPS_ || fabs(xyz[0]-xmax)<_CASL_EPS_ || fabs(xyz[1]-ymin)<_CASL_EPS_ || fabs(xyz[1]-ymax)<_CASL_EPS_))
+     (fabs(xyz[0]-xmin)<EPS || fabs(xyz[0]-xmax)<EPS || fabs(xyz[1]-ymin)<EPS || fabs(xyz[1]-ymax)<EPS))
     return bc->wallValue(xyz[0], xyz[1]);
 #endif
 
@@ -154,10 +154,10 @@ double my_p4est_interpolation_faces_t::interpolate(const p4est_quadrant_t &quad,
       {
 #ifdef P4_TO_P8
         if((face_is_well_defined==NULL || face_is_well_defined_p[f_tmp]) &&
-           fabs(xyz[0]-faces->x_fr_f(f_tmp,dir))<_CASL_EPS_ && fabs(xyz[1]-faces->y_fr_f(f_tmp,dir))<_CASL_EPS_ && fabs(xyz[2]-faces->z_fr_f(f_tmp,dir))<_CASL_EPS_)
+           fabs(xyz[0]-faces->x_fr_f(f_tmp,dir))<EPS && fabs(xyz[1]-faces->y_fr_f(f_tmp,dir))<EPS && fabs(xyz[2]-faces->z_fr_f(f_tmp,dir))<EPS)
 #else
         if((face_is_well_defined==NULL || face_is_well_defined_p[f_tmp]) &&
-           fabs(xyz[0]-faces->x_fr_f(f_tmp,dir))<_CASL_EPS_ && fabs(xyz[1]-faces->y_fr_f(f_tmp,dir))<_CASL_EPS_)
+           fabs(xyz[0]-faces->x_fr_f(f_tmp,dir))<EPS && fabs(xyz[1]-faces->y_fr_f(f_tmp,dir))<EPS)
 #endif
         {
           double Fi_tmp = Fi_p[f_tmp];

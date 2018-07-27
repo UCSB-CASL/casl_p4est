@@ -60,18 +60,20 @@ public:
 #else
   class bc_coeff_0_t : public CF_2 {
   public:
-      double operator()(double x, double y) const
-      {
-          return -1.0;
-      }
+    double operator()(double x, double y) const
+    {
+      (void) x; (void) y;
+      return -1.0;
+    }
   } bc_coeff_0;
 
   class bc_coeff_1_t : public CF_2 {
   public:
-      double operator()(double x, double y) const
-      {
-          return -1.0;
-      }
+    double operator()(double x, double y) const
+    {
+      (void) x; (void) y;
+      return -1.0;
+    }
   } bc_coeff_1;
 #endif
 

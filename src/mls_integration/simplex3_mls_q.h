@@ -56,8 +56,8 @@ public:
 private:
 
   // some geometric info
-  const static int nodes_per_tri_  = 6;
-  const static int nodes_per_tet_  = 10;
+  const static unsigned int nodes_per_tri_  = 6;
+  const static unsigned int nodes_per_tet_  = 10;
 
   // resolution limit (eps_ = eps_rel*lmin)
   double eps_rel_;
@@ -71,7 +71,7 @@ private:
   double map_parent_to_ref_[9];
 
   // number of interfaces
-  int num_phi_;
+  unsigned int num_phi_;
 
   // curvature
   double kappa_;
@@ -80,7 +80,7 @@ private:
   bool invalid_reconstruction_;
 
   // some parameters of reconstructions
-  int max_refinement_;
+  unsigned int max_refinement_;
   double snap_limit_;
   double kappa_scale_;
   double kappa_eps_;
@@ -104,9 +104,9 @@ private:
     double  value;      // stored value
     loc_t   loc;        // location
 
+    bool    is_recycled;
     int     n_vtx0, n_vtx1; // neighbors
     double  ratio;    // placement between nv0 and nv1
-    bool    is_recycled;
 
 #ifdef SIMPLEX3_MLS_Q_DEBUG
     int p_edg; // parent edge
@@ -182,15 +182,13 @@ private:
     bool  is_split;         // has the triangle been split
     int   dir;              // to keep track of faces of a cube
     int   p_lsf;            // parent level-set function
-    bool to_refine;
+    bool  to_refine;
 
     double a, b;
 
     /* some stuff for better reconstruction */
     double g_vtx01[3], g_vtx12[3], g_vtx02[3]; // midpoints in normal direction
     double ab01[2], ab12[2], ab02[2];
-    bool is_curved;
-
 
     /* Child objects */
     int c_vtx01, c_vtx02, c_vtx12;  // vertices
@@ -207,7 +205,7 @@ private:
       : vtx0(v0), vtx1(v1), vtx2(v2),
         edg0(e0), edg1(e1), edg2(e2),
         c(-1), loc(INS), is_split(false), dir(-1), p_lsf(-1),
-        is_curved(false), to_refine(false), a(0), b(0)
+        to_refine(false), a(0), b(0)
 #ifdef SIMPLEX3_MLS_Q_DEBUG
       , c_vtx01(-21), c_vtx02(-22), c_vtx12(-23),
         c_edg0(-24), c_edg1(-25), c_edg2(-26),
@@ -362,7 +360,7 @@ private:
 
   inline bool same_sign(double &x, double &y)
   {
-    return x < 0 && y < 0 || x > 0 && y > 0;
+    return (x < 0 && y < 0) || (x > 0 && y > 0);
   }
 
   inline bool not_finite(double x)

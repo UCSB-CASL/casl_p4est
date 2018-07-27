@@ -54,7 +54,7 @@ void my_p4est_level_set_t::reinitialize_One_Iteration_First_Order( std::vector<p
   {
     p4est_locidx_t n = map[n_map];
 
-    if(fabs(p0[n]) <= _CASL_EPS_)
+    if(fabs(p0[n]) <= EPS)
       pnp1[n] = 0;
     else if(fabs(p0[n]) <= limit)
     {
@@ -99,13 +99,13 @@ void my_p4est_level_set_t::reinitialize_One_Iteration_First_Order( std::vector<p
         if(p0_000*p0_00p<0) { s_00p =  interface_Location( s_00p, 0, p0_00p, p0_000); p_00p = 0; }
 #endif
 
-        s_m00 = MAX(s_m00,_CASL_EPS_);
-        s_p00 = MAX(s_p00,_CASL_EPS_);
-        s_0m0 = MAX(s_0m0,_CASL_EPS_);
-        s_0p0 = MAX(s_0p0,_CASL_EPS_);
+        s_m00 = MAX(s_m00,EPS);
+        s_p00 = MAX(s_p00,EPS);
+        s_0m0 = MAX(s_0m0,EPS);
+        s_0p0 = MAX(s_0p0,EPS);
 #ifdef P4_TO_P8
-        s_00p = MAX(s_00p,_CASL_EPS_);
-        s_00m = MAX(s_00m,_CASL_EPS_);
+        s_00p = MAX(s_00p,EPS);
+        s_00m = MAX(s_00m,EPS);
 #endif
       }
 
@@ -239,7 +239,7 @@ void my_p4est_level_set_t::reinitialize_One_Iteration_Second_Order( std::vector<
   {
     p4est_locidx_t n = map[n_map];
 
-    if(fabs(p0[n]) < _CASL_EPS_) {
+    if(fabs(p0[n]) < EPS) {
       pnp1[n] = 0;
     } else if(fabs(p0[n]) <= limit) {
       ngbd->get_neighbors(n, qnnn);
@@ -314,13 +314,13 @@ void my_p4est_level_set_t::reinitialize_One_Iteration_Second_Order( std::vector<
         if(p0_000*p0_00p<0) { s_00p = interface_Location_With_Second_Order_Derivative(    0,s_00p,p0_000,p0_00p,p0zz_000,p0zz_00p); p_00p=0; }
 #endif
 
-        s_m00 = MAX(s_m00,_CASL_EPS_);
-        s_p00 = MAX(s_p00,_CASL_EPS_);
-        s_0m0 = MAX(s_0m0,_CASL_EPS_);
-        s_0p0 = MAX(s_0p0,_CASL_EPS_);
+        s_m00 = MAX(s_m00,EPS);
+        s_p00 = MAX(s_p00,EPS);
+        s_0m0 = MAX(s_0m0,EPS);
+        s_0p0 = MAX(s_0p0,EPS);
 #ifdef P4_TO_P8
-        s_00m = MAX(s_00m,_CASL_EPS_);
-        s_00p = MAX(s_00p,_CASL_EPS_);
+        s_00m = MAX(s_00m,EPS);
+        s_00p = MAX(s_00p,EPS);
 #endif
       }
 
@@ -1445,7 +1445,7 @@ void my_p4est_level_set_t::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Bo
     Point2 grad_phi(-phi_x[n], -phi_y[n]);
 #endif
 
-    if(phi[n]>0 && phi[n]<band_to_extend*diag && grad_phi.norm_L2()>_CASL_EPS_)
+    if(phi[n]>0 && phi[n]<band_to_extend*diag && grad_phi.norm_L2()>EPS)
     {
       grad_phi /= grad_phi.norm_L2();
 
@@ -1505,7 +1505,7 @@ void my_p4est_level_set_t::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Bo
     Point2 grad_phi(phi_x[n], phi_y[n]);
 #endif
 
-    if(phi[n]>0 && phi[n]<band_to_extend*diag && grad_phi.norm_L2()>_CASL_EPS_)
+    if(phi[n]>0 && phi[n]<band_to_extend*diag && grad_phi.norm_L2()>EPS)
     {
       grad_phi /= grad_phi.norm_L2();
 
@@ -1671,7 +1671,7 @@ void my_p4est_level_set_t::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Bo
     Point2 grad_phi(-phi_x[n], -phi_y[n]);
 #endif
 
-    if(phi[n]>0 && phi[n]<band_to_extend*diag && grad_phi.norm_L2()>_CASL_EPS_)
+    if(phi[n]>0 && phi[n]<band_to_extend*diag && grad_phi.norm_L2()>EPS)
     {
       grad_phi /= grad_phi.norm_L2();
 
@@ -1739,7 +1739,7 @@ void my_p4est_level_set_t::extend_Over_Interface( Vec phi_petsc, Vec q_petsc, Bo
     Point2 grad_phi(phi_x[n], phi_y[n]);
 #endif
 
-    if(phi[n]>0 && phi[n]<band_to_extend*diag && grad_phi.norm_L2()>_CASL_EPS_)
+    if(phi[n]>0 && phi[n]<band_to_extend*diag && grad_phi.norm_L2()>EPS)
     {
       if(order==0)
       {
@@ -1871,7 +1871,7 @@ void my_p4est_level_set_t::extend_Over_Interface(Vec phi_petsc, Vec q_petsc, int
     Point2 grad_phi(-phi_x[n], -phi_y[n]);
 #endif
 
-    if(phi[n]>0 && phi[n]<band_to_extend*diag && grad_phi.norm_L2()>_CASL_EPS_)
+    if(phi[n]>0 && phi[n]<band_to_extend*diag && grad_phi.norm_L2()>EPS)
     {
       grad_phi /= grad_phi.norm_L2();
 
@@ -1939,7 +1939,7 @@ void my_p4est_level_set_t::extend_Over_Interface(Vec phi_petsc, Vec q_petsc, int
     Point2 grad_phi(phi_x[n], phi_y[n]);
 #endif
 
-    if(phi[n]>0 && phi[n]<band_to_extend*diag && grad_phi.norm_L2()>_CASL_EPS_)
+    if(phi[n]>0 && phi[n]<band_to_extend*diag && grad_phi.norm_L2()>EPS)
     {
       if(order==0)
       {
@@ -2026,7 +2026,7 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain( Vec phi_petsc,
     grad_phi.z = qnnn.dz_central(phi);
 #endif
 
-    if(fabs(phi[n])<band_to_extend*diag && grad_phi.norm_L2()>_CASL_EPS_)
+    if(fabs(phi[n])<band_to_extend*diag && grad_phi.norm_L2()>EPS)
     {
       grad_phi /= grad_phi.norm_L2();
 
@@ -2124,7 +2124,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
       double norm = sqrt(nx[n]*nx[n] + ny[n]*ny[n]);
 #endif
 
-      if(norm>_CASL_EPS_)
+      if(norm>EPS)
       {
         nx[n] /= norm;
         ny[n] /= norm;
@@ -2167,46 +2167,46 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
     {
       p4est_locidx_t n = layer_nodes[n_map];
       ngbd->get_neighbors(n, qnnn);
-      if(  phi_p[qnnn.node_000]<-_CASL_EPS_ &&
+      if(  phi_p[qnnn.node_000]<-EPS &&
      #ifdef P4_TO_P8
-           ( phi_p[qnnn.node_m00_mm]<-_CASL_EPS_ || fabs(qnnn.d_m00_p0)<_CASL_EPS_ || fabs(qnnn.d_m00_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_m00_mp]<-_CASL_EPS_ || fabs(qnnn.d_m00_p0)<_CASL_EPS_ || fabs(qnnn.d_m00_0m)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_m00_pm]<-_CASL_EPS_ || fabs(qnnn.d_m00_m0)<_CASL_EPS_ || fabs(qnnn.d_m00_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_m00_pp]<-_CASL_EPS_ || fabs(qnnn.d_m00_m0)<_CASL_EPS_ || fabs(qnnn.d_m00_0m)<_CASL_EPS_) &&
+           ( phi_p[qnnn.node_m00_mm]<-EPS || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
+           ( phi_p[qnnn.node_m00_mp]<-EPS || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
+           ( phi_p[qnnn.node_m00_pm]<-EPS || fabs(qnnn.d_m00_m0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
+           ( phi_p[qnnn.node_m00_pp]<-EPS || fabs(qnnn.d_m00_m0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
 
-           ( phi_p[qnnn.node_p00_mm]<-_CASL_EPS_ || fabs(qnnn.d_p00_p0)<_CASL_EPS_ || fabs(qnnn.d_p00_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_p00_mp]<-_CASL_EPS_ || fabs(qnnn.d_p00_p0)<_CASL_EPS_ || fabs(qnnn.d_p00_0m)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_p00_pm]<-_CASL_EPS_ || fabs(qnnn.d_p00_m0)<_CASL_EPS_ || fabs(qnnn.d_p00_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_p00_pp]<-_CASL_EPS_ || fabs(qnnn.d_p00_m0)<_CASL_EPS_ || fabs(qnnn.d_p00_0m)<_CASL_EPS_) &&
+           ( phi_p[qnnn.node_p00_mm]<-EPS || fabs(qnnn.d_p00_p0)<EPS || fabs(qnnn.d_p00_0p)<EPS) &&
+           ( phi_p[qnnn.node_p00_mp]<-EPS || fabs(qnnn.d_p00_p0)<EPS || fabs(qnnn.d_p00_0m)<EPS) &&
+           ( phi_p[qnnn.node_p00_pm]<-EPS || fabs(qnnn.d_p00_m0)<EPS || fabs(qnnn.d_p00_0p)<EPS) &&
+           ( phi_p[qnnn.node_p00_pp]<-EPS || fabs(qnnn.d_p00_m0)<EPS || fabs(qnnn.d_p00_0m)<EPS) &&
 
-           ( phi_p[qnnn.node_0m0_mm]<-_CASL_EPS_ || fabs(qnnn.d_0m0_p0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_0m0_mp]<-_CASL_EPS_ || fabs(qnnn.d_0m0_p0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0m)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_0m0_pm]<-_CASL_EPS_ || fabs(qnnn.d_0m0_m0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_0m0_pp]<-_CASL_EPS_ || fabs(qnnn.d_0m0_m0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0m)<_CASL_EPS_) &&
+           ( phi_p[qnnn.node_0m0_mm]<-EPS || fabs(qnnn.d_0m0_p0)<EPS || fabs(qnnn.d_0m0_0p)<EPS) &&
+           ( phi_p[qnnn.node_0m0_mp]<-EPS || fabs(qnnn.d_0m0_p0)<EPS || fabs(qnnn.d_0m0_0m)<EPS) &&
+           ( phi_p[qnnn.node_0m0_pm]<-EPS || fabs(qnnn.d_0m0_m0)<EPS || fabs(qnnn.d_0m0_0p)<EPS) &&
+           ( phi_p[qnnn.node_0m0_pp]<-EPS || fabs(qnnn.d_0m0_m0)<EPS || fabs(qnnn.d_0m0_0m)<EPS) &&
 
-           ( phi_p[qnnn.node_0p0_mm]<-_CASL_EPS_ || fabs(qnnn.d_0p0_p0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_0p0_mp]<-_CASL_EPS_ || fabs(qnnn.d_0p0_p0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0m)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_0p0_pm]<-_CASL_EPS_ || fabs(qnnn.d_0p0_m0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_0p0_pp]<-_CASL_EPS_ || fabs(qnnn.d_0p0_m0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0m)<_CASL_EPS_) &&
+           ( phi_p[qnnn.node_0p0_mm]<-EPS || fabs(qnnn.d_0p0_p0)<EPS || fabs(qnnn.d_0p0_0p)<EPS) &&
+           ( phi_p[qnnn.node_0p0_mp]<-EPS || fabs(qnnn.d_0p0_p0)<EPS || fabs(qnnn.d_0p0_0m)<EPS) &&
+           ( phi_p[qnnn.node_0p0_pm]<-EPS || fabs(qnnn.d_0p0_m0)<EPS || fabs(qnnn.d_0p0_0p)<EPS) &&
+           ( phi_p[qnnn.node_0p0_pp]<-EPS || fabs(qnnn.d_0p0_m0)<EPS || fabs(qnnn.d_0p0_0m)<EPS) &&
 
-           ( phi_p[qnnn.node_00m_mm]<-_CASL_EPS_ || fabs(qnnn.d_00m_p0)<_CASL_EPS_ || fabs(qnnn.d_00m_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_00m_mp]<-_CASL_EPS_ || fabs(qnnn.d_00m_p0)<_CASL_EPS_ || fabs(qnnn.d_00m_0m)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_00m_pm]<-_CASL_EPS_ || fabs(qnnn.d_00m_m0)<_CASL_EPS_ || fabs(qnnn.d_00m_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_00m_pp]<-_CASL_EPS_ || fabs(qnnn.d_00m_m0)<_CASL_EPS_ || fabs(qnnn.d_00m_0m)<_CASL_EPS_) &&
+           ( phi_p[qnnn.node_00m_mm]<-EPS || fabs(qnnn.d_00m_p0)<EPS || fabs(qnnn.d_00m_0p)<EPS) &&
+           ( phi_p[qnnn.node_00m_mp]<-EPS || fabs(qnnn.d_00m_p0)<EPS || fabs(qnnn.d_00m_0m)<EPS) &&
+           ( phi_p[qnnn.node_00m_pm]<-EPS || fabs(qnnn.d_00m_m0)<EPS || fabs(qnnn.d_00m_0p)<EPS) &&
+           ( phi_p[qnnn.node_00m_pp]<-EPS || fabs(qnnn.d_00m_m0)<EPS || fabs(qnnn.d_00m_0m)<EPS) &&
 
-           ( phi_p[qnnn.node_00p_mm]<-_CASL_EPS_ || fabs(qnnn.d_00p_p0)<_CASL_EPS_ || fabs(qnnn.d_00p_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_00p_mp]<-_CASL_EPS_ || fabs(qnnn.d_00p_p0)<_CASL_EPS_ || fabs(qnnn.d_00p_0m)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_00p_pm]<-_CASL_EPS_ || fabs(qnnn.d_00p_m0)<_CASL_EPS_ || fabs(qnnn.d_00p_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_00p_pp]<-_CASL_EPS_ || fabs(qnnn.d_00p_m0)<_CASL_EPS_ || fabs(qnnn.d_00p_0m)<_CASL_EPS_)
+           ( phi_p[qnnn.node_00p_mm]<-EPS || fabs(qnnn.d_00p_p0)<EPS || fabs(qnnn.d_00p_0p)<EPS) &&
+           ( phi_p[qnnn.node_00p_mp]<-EPS || fabs(qnnn.d_00p_p0)<EPS || fabs(qnnn.d_00p_0m)<EPS) &&
+           ( phi_p[qnnn.node_00p_pm]<-EPS || fabs(qnnn.d_00p_m0)<EPS || fabs(qnnn.d_00p_0p)<EPS) &&
+           ( phi_p[qnnn.node_00p_pp]<-EPS || fabs(qnnn.d_00p_m0)<EPS || fabs(qnnn.d_00p_0m)<EPS)
      #else
-           ( phi_p[qnnn.node_m00_mm]<-_CASL_EPS_ || fabs(qnnn.d_m00_p0)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_m00_pm]<-_CASL_EPS_ || fabs(qnnn.d_m00_m0)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_p00_mm]<-_CASL_EPS_ || fabs(qnnn.d_p00_p0)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_p00_pm]<-_CASL_EPS_ || fabs(qnnn.d_p00_m0)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_0m0_mm]<-_CASL_EPS_ || fabs(qnnn.d_0m0_p0)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_0m0_pm]<-_CASL_EPS_ || fabs(qnnn.d_0m0_m0)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_0p0_mm]<-_CASL_EPS_ || fabs(qnnn.d_0p0_p0)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_0p0_pm]<-_CASL_EPS_ || fabs(qnnn.d_0p0_m0)<_CASL_EPS_)
+           ( phi_p[qnnn.node_m00_mm]<-EPS || fabs(qnnn.d_m00_p0)<EPS) &&
+           ( phi_p[qnnn.node_m00_pm]<-EPS || fabs(qnnn.d_m00_m0)<EPS) &&
+           ( phi_p[qnnn.node_p00_mm]<-EPS || fabs(qnnn.d_p00_p0)<EPS) &&
+           ( phi_p[qnnn.node_p00_pm]<-EPS || fabs(qnnn.d_p00_m0)<EPS) &&
+           ( phi_p[qnnn.node_0m0_mm]<-EPS || fabs(qnnn.d_0m0_p0)<EPS) &&
+           ( phi_p[qnnn.node_0m0_pm]<-EPS || fabs(qnnn.d_0m0_m0)<EPS) &&
+           ( phi_p[qnnn.node_0p0_mm]<-EPS || fabs(qnnn.d_0p0_p0)<EPS) &&
+           ( phi_p[qnnn.node_0p0_pm]<-EPS || fabs(qnnn.d_0p0_m0)<EPS)
      #endif
            )
       {
@@ -2218,7 +2218,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
             #endif
                     );
       }
-      else if (phi_p[qnnn.node_000]<-_CASL_EPS_ && use_one_sided_derivatives)
+      else if (phi_p[qnnn.node_000]<-EPS && use_one_sided_derivatives)
       {
         // requires two layers of ghost and assumes uniform grid near the interface
         bool all_directions_good = true;
@@ -2257,7 +2257,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
         quad_neighbor_nodes_of_node_t qnnn_nei;
 
         if (node_m00 != -1)
-          if (phi_p[node_m00] < -_CASL_EPS_)
+          if (phi_p[node_m00] < -EPS)
           {
             is_ok_m00 = true;
 
@@ -2265,12 +2265,12 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
             node_M00 = qnnn_nei.neighbor_m00();
 
             if (node_M00 != -1)
-              if (phi_p[node_M00] < -_CASL_EPS_)
+              if (phi_p[node_M00] < -EPS)
                 is_ok_M00 = true;
           }
 
         if (node_p00 != -1)
-          if (phi_p[node_p00] < -_CASL_EPS_)
+          if (phi_p[node_p00] < -EPS)
           {
             is_ok_p00 = true;
 
@@ -2278,12 +2278,12 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
             node_P00 = qnnn_nei.neighbor_p00();
 
             if (node_P00 != -1)
-              if (phi_p[node_P00] < -_CASL_EPS_)
+              if (phi_p[node_P00] < -EPS)
                 is_ok_P00 = true;
           }
 
         if (node_0m0 != -1)
-          if (phi_p[node_0m0] < -_CASL_EPS_)
+          if (phi_p[node_0m0] < -EPS)
           {
             is_ok_0m0 = true;
 
@@ -2291,12 +2291,12 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
             node_0M0 = qnnn_nei.neighbor_0m0();
 
             if (node_0M0 != -1)
-              if (phi_p[node_0M0] < -_CASL_EPS_)
+              if (phi_p[node_0M0] < -EPS)
                 is_ok_0M0 = true;
           }
 
         if (node_0p0 != -1)
-          if (phi_p[node_0p0] < -_CASL_EPS_)
+          if (phi_p[node_0p0] < -EPS)
           {
             is_ok_0p0 = true;
 
@@ -2304,13 +2304,13 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
             node_0P0 = qnnn_nei.neighbor_0p0();
 
             if (node_0P0 != -1)
-              if (phi_p[node_0P0] < -_CASL_EPS_)
+              if (phi_p[node_0P0] < -EPS)
                 is_ok_0P0 = true;
           }
 
 #ifdef P4_TO_P8
         if (node_00m != -1)
-          if (phi_p[node_00m] < -_CASL_EPS_)
+          if (phi_p[node_00m] < -EPS)
           {
             is_ok_00m = true;
 
@@ -2318,12 +2318,12 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
             node_00M = qnnn_nei.neighbor_00m();
 
             if (node_00M != -1)
-              if (phi_p[node_00M] < -_CASL_EPS_)
+              if (phi_p[node_00M] < -EPS)
                 is_ok_00M = true;
           }
 
         if (node_00p != -1)
-          if (phi_p[node_00p] < -_CASL_EPS_)
+          if (phi_p[node_00p] < -EPS)
           {
             is_ok_00p = true;
 
@@ -2331,7 +2331,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
             node_00P = qnnn_nei.neighbor_00p();
 
             if (node_00P != -1)
-              if (phi_p[node_00P] < -_CASL_EPS_)
+              if (phi_p[node_00P] < -EPS)
                 is_ok_00P = true;
           }
 #endif
@@ -2386,46 +2386,46 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
     {
       p4est_locidx_t n = local_nodes[n_map];
       ngbd->get_neighbors(n, qnnn);
-      if(  phi_p[qnnn.node_000]<-_CASL_EPS_ &&
+      if(  phi_p[qnnn.node_000]<-EPS &&
      #ifdef P4_TO_P8
-           ( phi_p[qnnn.node_m00_mm]<-_CASL_EPS_ || fabs(qnnn.d_m00_p0)<_CASL_EPS_ || fabs(qnnn.d_m00_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_m00_mp]<-_CASL_EPS_ || fabs(qnnn.d_m00_p0)<_CASL_EPS_ || fabs(qnnn.d_m00_0m)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_m00_pm]<-_CASL_EPS_ || fabs(qnnn.d_m00_m0)<_CASL_EPS_ || fabs(qnnn.d_m00_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_m00_pp]<-_CASL_EPS_ || fabs(qnnn.d_m00_m0)<_CASL_EPS_ || fabs(qnnn.d_m00_0m)<_CASL_EPS_) &&
+           ( phi_p[qnnn.node_m00_mm]<-EPS || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
+           ( phi_p[qnnn.node_m00_mp]<-EPS || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
+           ( phi_p[qnnn.node_m00_pm]<-EPS || fabs(qnnn.d_m00_m0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
+           ( phi_p[qnnn.node_m00_pp]<-EPS || fabs(qnnn.d_m00_m0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
 
-           ( phi_p[qnnn.node_p00_mm]<-_CASL_EPS_ || fabs(qnnn.d_p00_p0)<_CASL_EPS_ || fabs(qnnn.d_p00_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_p00_mp]<-_CASL_EPS_ || fabs(qnnn.d_p00_p0)<_CASL_EPS_ || fabs(qnnn.d_p00_0m)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_p00_pm]<-_CASL_EPS_ || fabs(qnnn.d_p00_m0)<_CASL_EPS_ || fabs(qnnn.d_p00_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_p00_pp]<-_CASL_EPS_ || fabs(qnnn.d_p00_m0)<_CASL_EPS_ || fabs(qnnn.d_p00_0m)<_CASL_EPS_) &&
+           ( phi_p[qnnn.node_p00_mm]<-EPS || fabs(qnnn.d_p00_p0)<EPS || fabs(qnnn.d_p00_0p)<EPS) &&
+           ( phi_p[qnnn.node_p00_mp]<-EPS || fabs(qnnn.d_p00_p0)<EPS || fabs(qnnn.d_p00_0m)<EPS) &&
+           ( phi_p[qnnn.node_p00_pm]<-EPS || fabs(qnnn.d_p00_m0)<EPS || fabs(qnnn.d_p00_0p)<EPS) &&
+           ( phi_p[qnnn.node_p00_pp]<-EPS || fabs(qnnn.d_p00_m0)<EPS || fabs(qnnn.d_p00_0m)<EPS) &&
 
-           ( phi_p[qnnn.node_0m0_mm]<-_CASL_EPS_ || fabs(qnnn.d_0m0_p0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_0m0_mp]<-_CASL_EPS_ || fabs(qnnn.d_0m0_p0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0m)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_0m0_pm]<-_CASL_EPS_ || fabs(qnnn.d_0m0_m0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_0m0_pp]<-_CASL_EPS_ || fabs(qnnn.d_0m0_m0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0m)<_CASL_EPS_) &&
+           ( phi_p[qnnn.node_0m0_mm]<-EPS || fabs(qnnn.d_0m0_p0)<EPS || fabs(qnnn.d_0m0_0p)<EPS) &&
+           ( phi_p[qnnn.node_0m0_mp]<-EPS || fabs(qnnn.d_0m0_p0)<EPS || fabs(qnnn.d_0m0_0m)<EPS) &&
+           ( phi_p[qnnn.node_0m0_pm]<-EPS || fabs(qnnn.d_0m0_m0)<EPS || fabs(qnnn.d_0m0_0p)<EPS) &&
+           ( phi_p[qnnn.node_0m0_pp]<-EPS || fabs(qnnn.d_0m0_m0)<EPS || fabs(qnnn.d_0m0_0m)<EPS) &&
 
-           ( phi_p[qnnn.node_0p0_mm]<-_CASL_EPS_ || fabs(qnnn.d_0p0_p0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_0p0_mp]<-_CASL_EPS_ || fabs(qnnn.d_0p0_p0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0m)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_0p0_pm]<-_CASL_EPS_ || fabs(qnnn.d_0p0_m0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_0p0_pp]<-_CASL_EPS_ || fabs(qnnn.d_0p0_m0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0m)<_CASL_EPS_) &&
+           ( phi_p[qnnn.node_0p0_mm]<-EPS || fabs(qnnn.d_0p0_p0)<EPS || fabs(qnnn.d_0p0_0p)<EPS) &&
+           ( phi_p[qnnn.node_0p0_mp]<-EPS || fabs(qnnn.d_0p0_p0)<EPS || fabs(qnnn.d_0p0_0m)<EPS) &&
+           ( phi_p[qnnn.node_0p0_pm]<-EPS || fabs(qnnn.d_0p0_m0)<EPS || fabs(qnnn.d_0p0_0p)<EPS) &&
+           ( phi_p[qnnn.node_0p0_pp]<-EPS || fabs(qnnn.d_0p0_m0)<EPS || fabs(qnnn.d_0p0_0m)<EPS) &&
 
-           ( phi_p[qnnn.node_00m_mm]<-_CASL_EPS_ || fabs(qnnn.d_00m_p0)<_CASL_EPS_ || fabs(qnnn.d_00m_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_00m_mp]<-_CASL_EPS_ || fabs(qnnn.d_00m_p0)<_CASL_EPS_ || fabs(qnnn.d_00m_0m)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_00m_pm]<-_CASL_EPS_ || fabs(qnnn.d_00m_m0)<_CASL_EPS_ || fabs(qnnn.d_00m_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_00m_pp]<-_CASL_EPS_ || fabs(qnnn.d_00m_m0)<_CASL_EPS_ || fabs(qnnn.d_00m_0m)<_CASL_EPS_) &&
+           ( phi_p[qnnn.node_00m_mm]<-EPS || fabs(qnnn.d_00m_p0)<EPS || fabs(qnnn.d_00m_0p)<EPS) &&
+           ( phi_p[qnnn.node_00m_mp]<-EPS || fabs(qnnn.d_00m_p0)<EPS || fabs(qnnn.d_00m_0m)<EPS) &&
+           ( phi_p[qnnn.node_00m_pm]<-EPS || fabs(qnnn.d_00m_m0)<EPS || fabs(qnnn.d_00m_0p)<EPS) &&
+           ( phi_p[qnnn.node_00m_pp]<-EPS || fabs(qnnn.d_00m_m0)<EPS || fabs(qnnn.d_00m_0m)<EPS) &&
 
-           ( phi_p[qnnn.node_00p_mm]<-_CASL_EPS_ || fabs(qnnn.d_00p_p0)<_CASL_EPS_ || fabs(qnnn.d_00p_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_00p_mp]<-_CASL_EPS_ || fabs(qnnn.d_00p_p0)<_CASL_EPS_ || fabs(qnnn.d_00p_0m)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_00p_pm]<-_CASL_EPS_ || fabs(qnnn.d_00p_m0)<_CASL_EPS_ || fabs(qnnn.d_00p_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_00p_pp]<-_CASL_EPS_ || fabs(qnnn.d_00p_m0)<_CASL_EPS_ || fabs(qnnn.d_00p_0m)<_CASL_EPS_)
+           ( phi_p[qnnn.node_00p_mm]<-EPS || fabs(qnnn.d_00p_p0)<EPS || fabs(qnnn.d_00p_0p)<EPS) &&
+           ( phi_p[qnnn.node_00p_mp]<-EPS || fabs(qnnn.d_00p_p0)<EPS || fabs(qnnn.d_00p_0m)<EPS) &&
+           ( phi_p[qnnn.node_00p_pm]<-EPS || fabs(qnnn.d_00p_m0)<EPS || fabs(qnnn.d_00p_0p)<EPS) &&
+           ( phi_p[qnnn.node_00p_pp]<-EPS || fabs(qnnn.d_00p_m0)<EPS || fabs(qnnn.d_00p_0m)<EPS)
      #else
-           ( phi_p[qnnn.node_m00_mm]<-_CASL_EPS_ || fabs(qnnn.d_m00_p0)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_m00_pm]<-_CASL_EPS_ || fabs(qnnn.d_m00_m0)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_p00_mm]<-_CASL_EPS_ || fabs(qnnn.d_p00_p0)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_p00_pm]<-_CASL_EPS_ || fabs(qnnn.d_p00_m0)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_0m0_mm]<-_CASL_EPS_ || fabs(qnnn.d_0m0_p0)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_0m0_pm]<-_CASL_EPS_ || fabs(qnnn.d_0m0_m0)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_0p0_mm]<-_CASL_EPS_ || fabs(qnnn.d_0p0_p0)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_0p0_pm]<-_CASL_EPS_ || fabs(qnnn.d_0p0_m0)<_CASL_EPS_)
+           ( phi_p[qnnn.node_m00_mm]<-EPS || fabs(qnnn.d_m00_p0)<EPS) &&
+           ( phi_p[qnnn.node_m00_pm]<-EPS || fabs(qnnn.d_m00_m0)<EPS) &&
+           ( phi_p[qnnn.node_p00_mm]<-EPS || fabs(qnnn.d_p00_p0)<EPS) &&
+           ( phi_p[qnnn.node_p00_pm]<-EPS || fabs(qnnn.d_p00_m0)<EPS) &&
+           ( phi_p[qnnn.node_0m0_mm]<-EPS || fabs(qnnn.d_0m0_p0)<EPS) &&
+           ( phi_p[qnnn.node_0m0_pm]<-EPS || fabs(qnnn.d_0m0_m0)<EPS) &&
+           ( phi_p[qnnn.node_0p0_mm]<-EPS || fabs(qnnn.d_0p0_p0)<EPS) &&
+           ( phi_p[qnnn.node_0p0_pm]<-EPS || fabs(qnnn.d_0p0_m0)<EPS)
      #endif
            )
       {
@@ -2437,7 +2437,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
             #endif
                     );
       }
-      else if (phi_p[qnnn.node_000]<-_CASL_EPS_ && use_one_sided_derivatives)
+      else if (phi_p[qnnn.node_000]<-EPS && use_one_sided_derivatives)
       {
         // requires two layers of ghost and assumes uniform grid near the interface
         bool all_directions_good = true;
@@ -2476,7 +2476,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
         quad_neighbor_nodes_of_node_t qnnn_nei;
 
         if (node_m00 != -1)
-          if (phi_p[node_m00] < -_CASL_EPS_)
+          if (phi_p[node_m00] < -EPS)
           {
             is_ok_m00 = true;
 
@@ -2484,12 +2484,12 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
             node_M00 = qnnn_nei.neighbor_m00();
 
             if (node_M00 != -1)
-              if (phi_p[node_M00] < -_CASL_EPS_)
+              if (phi_p[node_M00] < -EPS)
                 is_ok_M00 = true;
           }
 
         if (node_p00 != -1)
-          if (phi_p[node_p00] < -_CASL_EPS_)
+          if (phi_p[node_p00] < -EPS)
           {
             is_ok_p00 = true;
 
@@ -2497,12 +2497,12 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
             node_P00 = qnnn_nei.neighbor_p00();
 
             if (node_P00 != -1)
-              if (phi_p[node_P00] < -_CASL_EPS_)
+              if (phi_p[node_P00] < -EPS)
                 is_ok_P00 = true;
           }
 
         if (node_0m0 != -1)
-          if (phi_p[node_0m0] < -_CASL_EPS_)
+          if (phi_p[node_0m0] < -EPS)
           {
             is_ok_0m0 = true;
 
@@ -2510,12 +2510,12 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
             node_0M0 = qnnn_nei.neighbor_0m0();
 
             if (node_0M0 != -1)
-              if (phi_p[node_0M0] < -_CASL_EPS_)
+              if (phi_p[node_0M0] < -EPS)
                 is_ok_0M0 = true;
           }
 
         if (node_0p0 != -1)
-          if (phi_p[node_0p0] < -_CASL_EPS_)
+          if (phi_p[node_0p0] < -EPS)
           {
             is_ok_0p0 = true;
 
@@ -2523,13 +2523,13 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
             node_0P0 = qnnn_nei.neighbor_0p0();
 
             if (node_0P0 != -1)
-              if (phi_p[node_0P0] < -_CASL_EPS_)
+              if (phi_p[node_0P0] < -EPS)
                 is_ok_0P0 = true;
           }
 
 #ifdef P4_TO_P8
         if (node_00m != -1)
-          if (phi_p[node_00m] < -_CASL_EPS_)
+          if (phi_p[node_00m] < -EPS)
           {
             is_ok_00m = true;
 
@@ -2537,12 +2537,12 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
             node_00M = qnnn_nei.neighbor_00m();
 
             if (node_00M != -1)
-              if (phi_p[node_00M] < -_CASL_EPS_)
+              if (phi_p[node_00M] < -EPS)
                 is_ok_00M = true;
           }
 
         if (node_00p != -1)
-          if (phi_p[node_00p] < -_CASL_EPS_)
+          if (phi_p[node_00p] < -EPS)
           {
             is_ok_00p = true;
 
@@ -2550,7 +2550,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
             node_00P = qnnn_nei.neighbor_00p();
 
             if (node_00P != -1)
-              if (phi_p[node_00P] < -_CASL_EPS_)
+              if (phi_p[node_00P] < -EPS)
                 is_ok_00P = true;
           }
 #endif
@@ -2625,44 +2625,44 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
       ngbd->get_neighbors(n, qnnn);
       if(  b_qn_well_defined_p[qnnn.node_000]==true &&
      #ifdef P4_TO_P8
-           ( b_qn_well_defined_p[qnnn.node_m00_mm]==true || fabs(qnnn.d_m00_p0)<_CASL_EPS_ || fabs(qnnn.d_m00_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_m00_mp]==true || fabs(qnnn.d_m00_p0)<_CASL_EPS_ || fabs(qnnn.d_m00_0m)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_m00_pm]==true || fabs(qnnn.d_m00_m0)<_CASL_EPS_ || fabs(qnnn.d_m00_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_m00_pp]==true || fabs(qnnn.d_m00_m0)<_CASL_EPS_ || fabs(qnnn.d_m00_0m)<_CASL_EPS_) &&
+           ( b_qn_well_defined_p[qnnn.node_m00_mm]==true || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_m00_mp]==true || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_m00_pm]==true || fabs(qnnn.d_m00_m0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_m00_pp]==true || fabs(qnnn.d_m00_m0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
 
-           ( b_qn_well_defined_p[qnnn.node_p00_mm]==true || fabs(qnnn.d_p00_p0)<_CASL_EPS_ || fabs(qnnn.d_p00_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_p00_mp]==true || fabs(qnnn.d_p00_p0)<_CASL_EPS_ || fabs(qnnn.d_p00_0m)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_p00_pm]==true || fabs(qnnn.d_p00_m0)<_CASL_EPS_ || fabs(qnnn.d_p00_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_p00_pp]==true || fabs(qnnn.d_p00_m0)<_CASL_EPS_ || fabs(qnnn.d_p00_0m)<_CASL_EPS_) &&
+           ( b_qn_well_defined_p[qnnn.node_p00_mm]==true || fabs(qnnn.d_p00_p0)<EPS || fabs(qnnn.d_p00_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_p00_mp]==true || fabs(qnnn.d_p00_p0)<EPS || fabs(qnnn.d_p00_0m)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_p00_pm]==true || fabs(qnnn.d_p00_m0)<EPS || fabs(qnnn.d_p00_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_p00_pp]==true || fabs(qnnn.d_p00_m0)<EPS || fabs(qnnn.d_p00_0m)<EPS) &&
 
-           ( b_qn_well_defined_p[qnnn.node_0m0_mm]==true || fabs(qnnn.d_0m0_p0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0m0_mp]==true || fabs(qnnn.d_0m0_p0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0m)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0m0_pm]==true || fabs(qnnn.d_0m0_m0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0m0_pp]==true || fabs(qnnn.d_0m0_m0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0m)<_CASL_EPS_) &&
+           ( b_qn_well_defined_p[qnnn.node_0m0_mm]==true || fabs(qnnn.d_0m0_p0)<EPS || fabs(qnnn.d_0m0_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0m0_mp]==true || fabs(qnnn.d_0m0_p0)<EPS || fabs(qnnn.d_0m0_0m)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0m0_pm]==true || fabs(qnnn.d_0m0_m0)<EPS || fabs(qnnn.d_0m0_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0m0_pp]==true || fabs(qnnn.d_0m0_m0)<EPS || fabs(qnnn.d_0m0_0m)<EPS) &&
 
-           ( b_qn_well_defined_p[qnnn.node_0p0_mm]==true || fabs(qnnn.d_0p0_p0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0p0_mp]==true || fabs(qnnn.d_0p0_p0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0m)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0p0_pm]==true || fabs(qnnn.d_0p0_m0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0p0_pp]==true || fabs(qnnn.d_0p0_m0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0m)<_CASL_EPS_) &&
+           ( b_qn_well_defined_p[qnnn.node_0p0_mm]==true || fabs(qnnn.d_0p0_p0)<EPS || fabs(qnnn.d_0p0_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0p0_mp]==true || fabs(qnnn.d_0p0_p0)<EPS || fabs(qnnn.d_0p0_0m)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0p0_pm]==true || fabs(qnnn.d_0p0_m0)<EPS || fabs(qnnn.d_0p0_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0p0_pp]==true || fabs(qnnn.d_0p0_m0)<EPS || fabs(qnnn.d_0p0_0m)<EPS) &&
 
-           ( b_qn_well_defined_p[qnnn.node_00m_mm]==true || fabs(qnnn.d_00m_p0)<_CASL_EPS_ || fabs(qnnn.d_00m_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_00m_mp]==true || fabs(qnnn.d_00m_p0)<_CASL_EPS_ || fabs(qnnn.d_00m_0m)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_00m_pm]==true || fabs(qnnn.d_00m_m0)<_CASL_EPS_ || fabs(qnnn.d_00m_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_00m_pp]==true || fabs(qnnn.d_00m_m0)<_CASL_EPS_ || fabs(qnnn.d_00m_0m)<_CASL_EPS_) &&
+           ( b_qn_well_defined_p[qnnn.node_00m_mm]==true || fabs(qnnn.d_00m_p0)<EPS || fabs(qnnn.d_00m_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_00m_mp]==true || fabs(qnnn.d_00m_p0)<EPS || fabs(qnnn.d_00m_0m)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_00m_pm]==true || fabs(qnnn.d_00m_m0)<EPS || fabs(qnnn.d_00m_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_00m_pp]==true || fabs(qnnn.d_00m_m0)<EPS || fabs(qnnn.d_00m_0m)<EPS) &&
 
-           ( b_qn_well_defined_p[qnnn.node_00p_mm]==true || fabs(qnnn.d_00p_p0)<_CASL_EPS_ || fabs(qnnn.d_00p_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_00p_mp]==true || fabs(qnnn.d_00p_p0)<_CASL_EPS_ || fabs(qnnn.d_00p_0m)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_00p_pm]==true || fabs(qnnn.d_00p_m0)<_CASL_EPS_ || fabs(qnnn.d_00p_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_00p_pp]==true || fabs(qnnn.d_00p_m0)<_CASL_EPS_ || fabs(qnnn.d_00p_0m)<_CASL_EPS_)
+           ( b_qn_well_defined_p[qnnn.node_00p_mm]==true || fabs(qnnn.d_00p_p0)<EPS || fabs(qnnn.d_00p_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_00p_mp]==true || fabs(qnnn.d_00p_p0)<EPS || fabs(qnnn.d_00p_0m)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_00p_pm]==true || fabs(qnnn.d_00p_m0)<EPS || fabs(qnnn.d_00p_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_00p_pp]==true || fabs(qnnn.d_00p_m0)<EPS || fabs(qnnn.d_00p_0m)<EPS)
      #else
-           ( b_qn_well_defined_p[qnnn.node_m00_mm]==true || fabs(qnnn.d_m00_p0)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_m00_pm]==true || fabs(qnnn.d_m00_m0)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_p00_mm]==true || fabs(qnnn.d_p00_p0)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_p00_pm]==true || fabs(qnnn.d_p00_m0)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0m0_mm]==true || fabs(qnnn.d_0m0_p0)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0m0_pm]==true || fabs(qnnn.d_0m0_m0)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0p0_mm]==true || fabs(qnnn.d_0p0_p0)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0p0_pm]==true || fabs(qnnn.d_0p0_m0)<_CASL_EPS_)
+           ( b_qn_well_defined_p[qnnn.node_m00_mm]==true || fabs(qnnn.d_m00_p0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_m00_pm]==true || fabs(qnnn.d_m00_m0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_p00_mm]==true || fabs(qnnn.d_p00_p0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_p00_pm]==true || fabs(qnnn.d_p00_m0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0m0_mm]==true || fabs(qnnn.d_0m0_p0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0m0_pm]==true || fabs(qnnn.d_0m0_m0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0p0_mm]==true || fabs(qnnn.d_0p0_p0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0p0_pm]==true || fabs(qnnn.d_0p0_m0)<EPS)
      #endif
            )
 
@@ -2846,44 +2846,44 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
       ngbd->get_neighbors(n, qnnn);
       if(  b_qn_well_defined_p[qnnn.node_000]==true &&
      #ifdef P4_TO_P8
-           ( b_qn_well_defined_p[qnnn.node_m00_mm]==true || fabs(qnnn.d_m00_p0)<_CASL_EPS_ || fabs(qnnn.d_m00_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_m00_mp]==true || fabs(qnnn.d_m00_p0)<_CASL_EPS_ || fabs(qnnn.d_m00_0m)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_m00_pm]==true || fabs(qnnn.d_m00_m0)<_CASL_EPS_ || fabs(qnnn.d_m00_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_m00_pp]==true || fabs(qnnn.d_m00_m0)<_CASL_EPS_ || fabs(qnnn.d_m00_0m)<_CASL_EPS_) &&
+           ( b_qn_well_defined_p[qnnn.node_m00_mm]==true || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_m00_mp]==true || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_m00_pm]==true || fabs(qnnn.d_m00_m0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_m00_pp]==true || fabs(qnnn.d_m00_m0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
 
-           ( b_qn_well_defined_p[qnnn.node_p00_mm]==true || fabs(qnnn.d_p00_p0)<_CASL_EPS_ || fabs(qnnn.d_p00_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_p00_mp]==true || fabs(qnnn.d_p00_p0)<_CASL_EPS_ || fabs(qnnn.d_p00_0m)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_p00_pm]==true || fabs(qnnn.d_p00_m0)<_CASL_EPS_ || fabs(qnnn.d_p00_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_p00_pp]==true || fabs(qnnn.d_p00_m0)<_CASL_EPS_ || fabs(qnnn.d_p00_0m)<_CASL_EPS_) &&
+           ( b_qn_well_defined_p[qnnn.node_p00_mm]==true || fabs(qnnn.d_p00_p0)<EPS || fabs(qnnn.d_p00_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_p00_mp]==true || fabs(qnnn.d_p00_p0)<EPS || fabs(qnnn.d_p00_0m)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_p00_pm]==true || fabs(qnnn.d_p00_m0)<EPS || fabs(qnnn.d_p00_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_p00_pp]==true || fabs(qnnn.d_p00_m0)<EPS || fabs(qnnn.d_p00_0m)<EPS) &&
 
-           ( b_qn_well_defined_p[qnnn.node_0m0_mm]==true || fabs(qnnn.d_0m0_p0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0m0_mp]==true || fabs(qnnn.d_0m0_p0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0m)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0m0_pm]==true || fabs(qnnn.d_0m0_m0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0m0_pp]==true || fabs(qnnn.d_0m0_m0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0m)<_CASL_EPS_) &&
+           ( b_qn_well_defined_p[qnnn.node_0m0_mm]==true || fabs(qnnn.d_0m0_p0)<EPS || fabs(qnnn.d_0m0_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0m0_mp]==true || fabs(qnnn.d_0m0_p0)<EPS || fabs(qnnn.d_0m0_0m)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0m0_pm]==true || fabs(qnnn.d_0m0_m0)<EPS || fabs(qnnn.d_0m0_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0m0_pp]==true || fabs(qnnn.d_0m0_m0)<EPS || fabs(qnnn.d_0m0_0m)<EPS) &&
 
-           ( b_qn_well_defined_p[qnnn.node_0p0_mm]==true || fabs(qnnn.d_0p0_p0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0p0_mp]==true || fabs(qnnn.d_0p0_p0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0m)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0p0_pm]==true || fabs(qnnn.d_0p0_m0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0p0_pp]==true || fabs(qnnn.d_0p0_m0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0m)<_CASL_EPS_) &&
+           ( b_qn_well_defined_p[qnnn.node_0p0_mm]==true || fabs(qnnn.d_0p0_p0)<EPS || fabs(qnnn.d_0p0_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0p0_mp]==true || fabs(qnnn.d_0p0_p0)<EPS || fabs(qnnn.d_0p0_0m)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0p0_pm]==true || fabs(qnnn.d_0p0_m0)<EPS || fabs(qnnn.d_0p0_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0p0_pp]==true || fabs(qnnn.d_0p0_m0)<EPS || fabs(qnnn.d_0p0_0m)<EPS) &&
 
-           ( b_qn_well_defined_p[qnnn.node_00m_mm]==true || fabs(qnnn.d_00m_p0)<_CASL_EPS_ || fabs(qnnn.d_00m_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_00m_mp]==true || fabs(qnnn.d_00m_p0)<_CASL_EPS_ || fabs(qnnn.d_00m_0m)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_00m_pm]==true || fabs(qnnn.d_00m_m0)<_CASL_EPS_ || fabs(qnnn.d_00m_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_00m_pp]==true || fabs(qnnn.d_00m_m0)<_CASL_EPS_ || fabs(qnnn.d_00m_0m)<_CASL_EPS_) &&
+           ( b_qn_well_defined_p[qnnn.node_00m_mm]==true || fabs(qnnn.d_00m_p0)<EPS || fabs(qnnn.d_00m_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_00m_mp]==true || fabs(qnnn.d_00m_p0)<EPS || fabs(qnnn.d_00m_0m)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_00m_pm]==true || fabs(qnnn.d_00m_m0)<EPS || fabs(qnnn.d_00m_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_00m_pp]==true || fabs(qnnn.d_00m_m0)<EPS || fabs(qnnn.d_00m_0m)<EPS) &&
 
-           ( b_qn_well_defined_p[qnnn.node_00p_mm]==true || fabs(qnnn.d_00p_p0)<_CASL_EPS_ || fabs(qnnn.d_00p_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_00p_mp]==true || fabs(qnnn.d_00p_p0)<_CASL_EPS_ || fabs(qnnn.d_00p_0m)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_00p_pm]==true || fabs(qnnn.d_00p_m0)<_CASL_EPS_ || fabs(qnnn.d_00p_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_00p_pp]==true || fabs(qnnn.d_00p_m0)<_CASL_EPS_ || fabs(qnnn.d_00p_0m)<_CASL_EPS_)
+           ( b_qn_well_defined_p[qnnn.node_00p_mm]==true || fabs(qnnn.d_00p_p0)<EPS || fabs(qnnn.d_00p_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_00p_mp]==true || fabs(qnnn.d_00p_p0)<EPS || fabs(qnnn.d_00p_0m)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_00p_pm]==true || fabs(qnnn.d_00p_m0)<EPS || fabs(qnnn.d_00p_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_00p_pp]==true || fabs(qnnn.d_00p_m0)<EPS || fabs(qnnn.d_00p_0m)<EPS)
      #else
-           ( b_qn_well_defined_p[qnnn.node_m00_mm]==true || fabs(qnnn.d_m00_p0)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_m00_pm]==true || fabs(qnnn.d_m00_m0)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_p00_mm]==true || fabs(qnnn.d_p00_p0)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_p00_pm]==true || fabs(qnnn.d_p00_m0)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0m0_mm]==true || fabs(qnnn.d_0m0_p0)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0m0_pm]==true || fabs(qnnn.d_0m0_m0)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0p0_mm]==true || fabs(qnnn.d_0p0_p0)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0p0_pm]==true || fabs(qnnn.d_0p0_m0)<_CASL_EPS_)
+           ( b_qn_well_defined_p[qnnn.node_m00_mm]==true || fabs(qnnn.d_m00_p0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_m00_pm]==true || fabs(qnnn.d_m00_m0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_p00_mm]==true || fabs(qnnn.d_p00_p0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_p00_pm]==true || fabs(qnnn.d_p00_m0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0m0_mm]==true || fabs(qnnn.d_0m0_p0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0m0_pm]==true || fabs(qnnn.d_0m0_m0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0p0_mm]==true || fabs(qnnn.d_0p0_p0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0p0_pm]==true || fabs(qnnn.d_0p0_m0)<EPS)
      #endif
            )
 
@@ -3309,7 +3309,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
     {
       p4est_locidx_t n = layer_nodes[n_map];
       ngbd->get_neighbors(n, qnnn);
-      if(phi_p[n] > -_CASL_EPS_)
+      if(phi_p[n] > -EPS)
       {
         const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
         double dt = MIN(fabs(qnnn.d_m00) , fabs(qnnn.d_p00) );
@@ -3361,12 +3361,12 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
 #endif
 
 //#ifdef P4_TO_P8
-//        if(fabs(nx[n])<_CASL_EPS_ && fabs(ny[n])<_CASL_EPS_ && fabs(nz[n])<_CASL_EPS_)
+//        if(fabs(nx[n])<EPS && fabs(ny[n])<EPS && fabs(nz[n])<EPS)
 //          tmp_p[n] = (qnnn.f_m00_linear(q_p) + qnnn.f_p00_linear(q_p) +
 //                      qnnn.f_0m0_linear(q_p) + qnnn.f_0p0_linear(q_p) +
 //                      qnnn.f_00m_linear(q_p) + qnnn.f_00p_linear(q_p))/6.;
 //#else
-//        if(fabs(nx[n])<_CASL_EPS_ && fabs(ny[n])<_CASL_EPS_)
+//        if(fabs(nx[n])<EPS && fabs(ny[n])<EPS)
 //          tmp_p[n] = (qnnn.f_m00_linear(q_p) + qnnn.f_p00_linear(q_p) +
 //                      qnnn.f_0m0_linear(q_p) + qnnn.f_0p0_linear(q_p))/4.;
 //#endif
@@ -3389,7 +3389,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
     {
       p4est_locidx_t n = local_nodes[n_map];
       ngbd->get_neighbors(n, qnnn);
-      if(phi_p[n] > -_CASL_EPS_)
+      if(phi_p[n] > -EPS)
       {
         double dt = MIN(fabs(qnnn.d_m00) , fabs(qnnn.d_p00) );
         dt  =  MIN( dt, fabs(qnnn.d_0m0) , fabs(qnnn.d_0p0) );
@@ -3440,12 +3440,12 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
 #endif
 
 //#ifdef P4_TO_P8
-//        if(fabs(nx[n])<_CASL_EPS_ && fabs(ny[n])<_CASL_EPS_ && fabs(nz[n])<_CASL_EPS_)
+//        if(fabs(nx[n])<EPS && fabs(ny[n])<EPS && fabs(nz[n])<EPS)
 //          tmp_p[n] = (qnnn.f_m00_linear(q_p) + qnnn.f_p00_linear(q_p) +
 //                      qnnn.f_0m0_linear(q_p) + qnnn.f_0p0_linear(q_p) +
 //                      qnnn.f_00m_linear(q_p) + qnnn.f_00p_linear(q_p))/6.;
 //#else
-//        if(fabs(nx[n])<_CASL_EPS_ && fabs(ny[n])<_CASL_EPS_)
+//        if(fabs(nx[n])<EPS && fabs(ny[n])<EPS)
 //          tmp_p[n] = (qnnn.f_m00_linear(q_p) + qnnn.f_p00_linear(q_p) +
 //                      qnnn.f_0m0_linear(q_p) + qnnn.f_0p0_linear(q_p))/4.;
 //#endif
@@ -3533,7 +3533,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_not_parallel(Vec phi, Vec q
     double norm = sqrt(nx[n]*nx[n] + ny[n]*ny[n]);
 #endif
 
-    if(norm>_CASL_EPS_)
+    if(norm>EPS)
     {
       nx[n] /= norm;
       ny[n] /= norm;
@@ -3565,46 +3565,46 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_not_parallel(Vec phi, Vec q
     for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
     {
       ngbd->get_neighbors(n, qnnn);
-      if(  phi_p[qnnn.node_000]<-_CASL_EPS_ &&
+      if(  phi_p[qnnn.node_000]<-EPS &&
      #ifdef P4_TO_P8
-           ( phi_p[qnnn.node_m00_mm]<-_CASL_EPS_ || fabs(qnnn.d_m00_p0)<_CASL_EPS_ || fabs(qnnn.d_m00_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_m00_mp]<-_CASL_EPS_ || fabs(qnnn.d_m00_p0)<_CASL_EPS_ || fabs(qnnn.d_m00_0m)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_m00_pm]<-_CASL_EPS_ || fabs(qnnn.d_m00_m0)<_CASL_EPS_ || fabs(qnnn.d_m00_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_m00_pp]<-_CASL_EPS_ || fabs(qnnn.d_m00_m0)<_CASL_EPS_ || fabs(qnnn.d_m00_0m)<_CASL_EPS_) &&
+           ( phi_p[qnnn.node_m00_mm]<-EPS || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
+           ( phi_p[qnnn.node_m00_mp]<-EPS || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
+           ( phi_p[qnnn.node_m00_pm]<-EPS || fabs(qnnn.d_m00_m0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
+           ( phi_p[qnnn.node_m00_pp]<-EPS || fabs(qnnn.d_m00_m0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
 
-           ( phi_p[qnnn.node_p00_mm]<-_CASL_EPS_ || fabs(qnnn.d_p00_p0)<_CASL_EPS_ || fabs(qnnn.d_p00_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_p00_mp]<-_CASL_EPS_ || fabs(qnnn.d_p00_p0)<_CASL_EPS_ || fabs(qnnn.d_p00_0m)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_p00_pm]<-_CASL_EPS_ || fabs(qnnn.d_p00_m0)<_CASL_EPS_ || fabs(qnnn.d_p00_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_p00_pp]<-_CASL_EPS_ || fabs(qnnn.d_p00_m0)<_CASL_EPS_ || fabs(qnnn.d_p00_0m)<_CASL_EPS_) &&
+           ( phi_p[qnnn.node_p00_mm]<-EPS || fabs(qnnn.d_p00_p0)<EPS || fabs(qnnn.d_p00_0p)<EPS) &&
+           ( phi_p[qnnn.node_p00_mp]<-EPS || fabs(qnnn.d_p00_p0)<EPS || fabs(qnnn.d_p00_0m)<EPS) &&
+           ( phi_p[qnnn.node_p00_pm]<-EPS || fabs(qnnn.d_p00_m0)<EPS || fabs(qnnn.d_p00_0p)<EPS) &&
+           ( phi_p[qnnn.node_p00_pp]<-EPS || fabs(qnnn.d_p00_m0)<EPS || fabs(qnnn.d_p00_0m)<EPS) &&
 
-           ( phi_p[qnnn.node_0m0_mm]<-_CASL_EPS_ || fabs(qnnn.d_0m0_p0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_0m0_mp]<-_CASL_EPS_ || fabs(qnnn.d_0m0_p0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0m)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_0m0_pm]<-_CASL_EPS_ || fabs(qnnn.d_0m0_m0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_0m0_pp]<-_CASL_EPS_ || fabs(qnnn.d_0m0_m0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0m)<_CASL_EPS_) &&
+           ( phi_p[qnnn.node_0m0_mm]<-EPS || fabs(qnnn.d_0m0_p0)<EPS || fabs(qnnn.d_0m0_0p)<EPS) &&
+           ( phi_p[qnnn.node_0m0_mp]<-EPS || fabs(qnnn.d_0m0_p0)<EPS || fabs(qnnn.d_0m0_0m)<EPS) &&
+           ( phi_p[qnnn.node_0m0_pm]<-EPS || fabs(qnnn.d_0m0_m0)<EPS || fabs(qnnn.d_0m0_0p)<EPS) &&
+           ( phi_p[qnnn.node_0m0_pp]<-EPS || fabs(qnnn.d_0m0_m0)<EPS || fabs(qnnn.d_0m0_0m)<EPS) &&
 
-           ( phi_p[qnnn.node_0p0_mm]<-_CASL_EPS_ || fabs(qnnn.d_0p0_p0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_0p0_mp]<-_CASL_EPS_ || fabs(qnnn.d_0p0_p0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0m)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_0p0_pm]<-_CASL_EPS_ || fabs(qnnn.d_0p0_m0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_0p0_pp]<-_CASL_EPS_ || fabs(qnnn.d_0p0_m0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0m)<_CASL_EPS_) &&
+           ( phi_p[qnnn.node_0p0_mm]<-EPS || fabs(qnnn.d_0p0_p0)<EPS || fabs(qnnn.d_0p0_0p)<EPS) &&
+           ( phi_p[qnnn.node_0p0_mp]<-EPS || fabs(qnnn.d_0p0_p0)<EPS || fabs(qnnn.d_0p0_0m)<EPS) &&
+           ( phi_p[qnnn.node_0p0_pm]<-EPS || fabs(qnnn.d_0p0_m0)<EPS || fabs(qnnn.d_0p0_0p)<EPS) &&
+           ( phi_p[qnnn.node_0p0_pp]<-EPS || fabs(qnnn.d_0p0_m0)<EPS || fabs(qnnn.d_0p0_0m)<EPS) &&
 
-           ( phi_p[qnnn.node_00m_mm]<-_CASL_EPS_ || fabs(qnnn.d_00m_p0)<_CASL_EPS_ || fabs(qnnn.d_00m_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_00m_mp]<-_CASL_EPS_ || fabs(qnnn.d_00m_p0)<_CASL_EPS_ || fabs(qnnn.d_00m_0m)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_00m_pm]<-_CASL_EPS_ || fabs(qnnn.d_00m_m0)<_CASL_EPS_ || fabs(qnnn.d_00m_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_00m_pp]<-_CASL_EPS_ || fabs(qnnn.d_00m_m0)<_CASL_EPS_ || fabs(qnnn.d_00m_0m)<_CASL_EPS_) &&
+           ( phi_p[qnnn.node_00m_mm]<-EPS || fabs(qnnn.d_00m_p0)<EPS || fabs(qnnn.d_00m_0p)<EPS) &&
+           ( phi_p[qnnn.node_00m_mp]<-EPS || fabs(qnnn.d_00m_p0)<EPS || fabs(qnnn.d_00m_0m)<EPS) &&
+           ( phi_p[qnnn.node_00m_pm]<-EPS || fabs(qnnn.d_00m_m0)<EPS || fabs(qnnn.d_00m_0p)<EPS) &&
+           ( phi_p[qnnn.node_00m_pp]<-EPS || fabs(qnnn.d_00m_m0)<EPS || fabs(qnnn.d_00m_0m)<EPS) &&
 
-           ( phi_p[qnnn.node_00p_mm]<-_CASL_EPS_ || fabs(qnnn.d_00p_p0)<_CASL_EPS_ || fabs(qnnn.d_00p_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_00p_mp]<-_CASL_EPS_ || fabs(qnnn.d_00p_p0)<_CASL_EPS_ || fabs(qnnn.d_00p_0m)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_00p_pm]<-_CASL_EPS_ || fabs(qnnn.d_00p_m0)<_CASL_EPS_ || fabs(qnnn.d_00p_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_00p_pp]<-_CASL_EPS_ || fabs(qnnn.d_00p_m0)<_CASL_EPS_ || fabs(qnnn.d_00p_0m)<_CASL_EPS_)
+           ( phi_p[qnnn.node_00p_mm]<-EPS || fabs(qnnn.d_00p_p0)<EPS || fabs(qnnn.d_00p_0p)<EPS) &&
+           ( phi_p[qnnn.node_00p_mp]<-EPS || fabs(qnnn.d_00p_p0)<EPS || fabs(qnnn.d_00p_0m)<EPS) &&
+           ( phi_p[qnnn.node_00p_pm]<-EPS || fabs(qnnn.d_00p_m0)<EPS || fabs(qnnn.d_00p_0p)<EPS) &&
+           ( phi_p[qnnn.node_00p_pp]<-EPS || fabs(qnnn.d_00p_m0)<EPS || fabs(qnnn.d_00p_0m)<EPS)
      #else
-           ( phi_p[qnnn.node_m00_mm]<-_CASL_EPS_ || fabs(qnnn.d_m00_p0)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_m00_pm]<-_CASL_EPS_ || fabs(qnnn.d_m00_m0)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_p00_mm]<-_CASL_EPS_ || fabs(qnnn.d_p00_p0)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_p00_pm]<-_CASL_EPS_ || fabs(qnnn.d_p00_m0)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_0m0_mm]<-_CASL_EPS_ || fabs(qnnn.d_0m0_p0)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_0m0_pm]<-_CASL_EPS_ || fabs(qnnn.d_0m0_m0)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_0p0_mm]<-_CASL_EPS_ || fabs(qnnn.d_0p0_p0)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_0p0_pm]<-_CASL_EPS_ || fabs(qnnn.d_0p0_m0)<_CASL_EPS_)
+           ( phi_p[qnnn.node_m00_mm]<-EPS || fabs(qnnn.d_m00_p0)<EPS) &&
+           ( phi_p[qnnn.node_m00_pm]<-EPS || fabs(qnnn.d_m00_m0)<EPS) &&
+           ( phi_p[qnnn.node_p00_mm]<-EPS || fabs(qnnn.d_p00_p0)<EPS) &&
+           ( phi_p[qnnn.node_p00_pm]<-EPS || fabs(qnnn.d_p00_m0)<EPS) &&
+           ( phi_p[qnnn.node_0m0_mm]<-EPS || fabs(qnnn.d_0m0_p0)<EPS) &&
+           ( phi_p[qnnn.node_0m0_pm]<-EPS || fabs(qnnn.d_0m0_m0)<EPS) &&
+           ( phi_p[qnnn.node_0p0_mm]<-EPS || fabs(qnnn.d_0p0_p0)<EPS) &&
+           ( phi_p[qnnn.node_0p0_pm]<-EPS || fabs(qnnn.d_0p0_m0)<EPS)
      #endif
            )
       {
@@ -3651,44 +3651,44 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_not_parallel(Vec phi, Vec q
       ngbd->get_neighbors(n, qnnn);
       if(  b_qn_well_defined_p[qnnn.node_000]==true &&
      #ifdef P4_TO_P8
-           ( b_qn_well_defined_p[qnnn.node_m00_mm]==true || fabs(qnnn.d_m00_p0)<_CASL_EPS_ || fabs(qnnn.d_m00_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_m00_mp]==true || fabs(qnnn.d_m00_p0)<_CASL_EPS_ || fabs(qnnn.d_m00_0m)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_m00_pm]==true || fabs(qnnn.d_m00_m0)<_CASL_EPS_ || fabs(qnnn.d_m00_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_m00_pp]==true || fabs(qnnn.d_m00_m0)<_CASL_EPS_ || fabs(qnnn.d_m00_0m)<_CASL_EPS_) &&
+           ( b_qn_well_defined_p[qnnn.node_m00_mm]==true || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_m00_mp]==true || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_m00_pm]==true || fabs(qnnn.d_m00_m0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_m00_pp]==true || fabs(qnnn.d_m00_m0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
 
-           ( b_qn_well_defined_p[qnnn.node_p00_mm]==true || fabs(qnnn.d_p00_p0)<_CASL_EPS_ || fabs(qnnn.d_p00_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_p00_mp]==true || fabs(qnnn.d_p00_p0)<_CASL_EPS_ || fabs(qnnn.d_p00_0m)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_p00_pm]==true || fabs(qnnn.d_p00_m0)<_CASL_EPS_ || fabs(qnnn.d_p00_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_p00_pp]==true || fabs(qnnn.d_p00_m0)<_CASL_EPS_ || fabs(qnnn.d_p00_0m)<_CASL_EPS_) &&
+           ( b_qn_well_defined_p[qnnn.node_p00_mm]==true || fabs(qnnn.d_p00_p0)<EPS || fabs(qnnn.d_p00_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_p00_mp]==true || fabs(qnnn.d_p00_p0)<EPS || fabs(qnnn.d_p00_0m)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_p00_pm]==true || fabs(qnnn.d_p00_m0)<EPS || fabs(qnnn.d_p00_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_p00_pp]==true || fabs(qnnn.d_p00_m0)<EPS || fabs(qnnn.d_p00_0m)<EPS) &&
 
-           ( b_qn_well_defined_p[qnnn.node_0m0_mm]==true || fabs(qnnn.d_0m0_p0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0m0_mp]==true || fabs(qnnn.d_0m0_p0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0m)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0m0_pm]==true || fabs(qnnn.d_0m0_m0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0m0_pp]==true || fabs(qnnn.d_0m0_m0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0m)<_CASL_EPS_) &&
+           ( b_qn_well_defined_p[qnnn.node_0m0_mm]==true || fabs(qnnn.d_0m0_p0)<EPS || fabs(qnnn.d_0m0_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0m0_mp]==true || fabs(qnnn.d_0m0_p0)<EPS || fabs(qnnn.d_0m0_0m)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0m0_pm]==true || fabs(qnnn.d_0m0_m0)<EPS || fabs(qnnn.d_0m0_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0m0_pp]==true || fabs(qnnn.d_0m0_m0)<EPS || fabs(qnnn.d_0m0_0m)<EPS) &&
 
-           ( b_qn_well_defined_p[qnnn.node_0p0_mm]==true || fabs(qnnn.d_0p0_p0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0p0_mp]==true || fabs(qnnn.d_0p0_p0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0m)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0p0_pm]==true || fabs(qnnn.d_0p0_m0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0p0_pp]==true || fabs(qnnn.d_0p0_m0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0m)<_CASL_EPS_) &&
+           ( b_qn_well_defined_p[qnnn.node_0p0_mm]==true || fabs(qnnn.d_0p0_p0)<EPS || fabs(qnnn.d_0p0_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0p0_mp]==true || fabs(qnnn.d_0p0_p0)<EPS || fabs(qnnn.d_0p0_0m)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0p0_pm]==true || fabs(qnnn.d_0p0_m0)<EPS || fabs(qnnn.d_0p0_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0p0_pp]==true || fabs(qnnn.d_0p0_m0)<EPS || fabs(qnnn.d_0p0_0m)<EPS) &&
 
-           ( b_qn_well_defined_p[qnnn.node_00m_mm]==true || fabs(qnnn.d_00m_p0)<_CASL_EPS_ || fabs(qnnn.d_00m_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_00m_mp]==true || fabs(qnnn.d_00m_p0)<_CASL_EPS_ || fabs(qnnn.d_00m_0m)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_00m_pm]==true || fabs(qnnn.d_00m_m0)<_CASL_EPS_ || fabs(qnnn.d_00m_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_00m_pp]==true || fabs(qnnn.d_00m_m0)<_CASL_EPS_ || fabs(qnnn.d_00m_0m)<_CASL_EPS_) &&
+           ( b_qn_well_defined_p[qnnn.node_00m_mm]==true || fabs(qnnn.d_00m_p0)<EPS || fabs(qnnn.d_00m_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_00m_mp]==true || fabs(qnnn.d_00m_p0)<EPS || fabs(qnnn.d_00m_0m)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_00m_pm]==true || fabs(qnnn.d_00m_m0)<EPS || fabs(qnnn.d_00m_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_00m_pp]==true || fabs(qnnn.d_00m_m0)<EPS || fabs(qnnn.d_00m_0m)<EPS) &&
 
-           ( b_qn_well_defined_p[qnnn.node_00p_mm]==true || fabs(qnnn.d_00p_p0)<_CASL_EPS_ || fabs(qnnn.d_00p_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_00p_mp]==true || fabs(qnnn.d_00p_p0)<_CASL_EPS_ || fabs(qnnn.d_00p_0m)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_00p_pm]==true || fabs(qnnn.d_00p_m0)<_CASL_EPS_ || fabs(qnnn.d_00p_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_00p_pp]==true || fabs(qnnn.d_00p_m0)<_CASL_EPS_ || fabs(qnnn.d_00p_0m)<_CASL_EPS_)
+           ( b_qn_well_defined_p[qnnn.node_00p_mm]==true || fabs(qnnn.d_00p_p0)<EPS || fabs(qnnn.d_00p_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_00p_mp]==true || fabs(qnnn.d_00p_p0)<EPS || fabs(qnnn.d_00p_0m)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_00p_pm]==true || fabs(qnnn.d_00p_m0)<EPS || fabs(qnnn.d_00p_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_00p_pp]==true || fabs(qnnn.d_00p_m0)<EPS || fabs(qnnn.d_00p_0m)<EPS)
      #else
-           ( b_qn_well_defined_p[qnnn.node_m00_mm]==true || fabs(qnnn.d_m00_p0)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_m00_pm]==true || fabs(qnnn.d_m00_m0)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_p00_mm]==true || fabs(qnnn.d_p00_p0)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_p00_pm]==true || fabs(qnnn.d_p00_m0)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0m0_mm]==true || fabs(qnnn.d_0m0_p0)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0m0_pm]==true || fabs(qnnn.d_0m0_m0)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0p0_mm]==true || fabs(qnnn.d_0p0_p0)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0p0_pm]==true || fabs(qnnn.d_0p0_m0)<_CASL_EPS_)
+           ( b_qn_well_defined_p[qnnn.node_m00_mm]==true || fabs(qnnn.d_m00_p0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_m00_pm]==true || fabs(qnnn.d_m00_m0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_p00_mm]==true || fabs(qnnn.d_p00_p0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_p00_pm]==true || fabs(qnnn.d_p00_m0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0m0_mm]==true || fabs(qnnn.d_0m0_p0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0m0_pm]==true || fabs(qnnn.d_0m0_m0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0p0_mm]==true || fabs(qnnn.d_0p0_p0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0p0_pm]==true || fabs(qnnn.d_0p0_m0)<EPS)
      #endif
            )
 
@@ -3857,7 +3857,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_not_parallel(Vec phi, Vec q
 
     for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
     {
-      if(phi_p[n] > -_CASL_EPS_)
+      if(phi_p[n] > -EPS)
       {
         ngbd->get_neighbors(n, qnnn);
         double dt = MIN(fabs(qnnn.d_m00) , fabs(qnnn.d_p00) );
@@ -4164,7 +4164,7 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD( Vec phi, V
     double norm = sqrt(nx[n]*nx[n] + ny[n]*ny[n]);
 #endif
 
-    if(norm>_CASL_EPS_)
+    if(norm>EPS)
     {
       nx[n] /= norm;
       ny[n] /= norm;
@@ -4287,7 +4287,7 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD( Vec phi, V
     if(p_000*p_m00<0){
 //      s_m00[n] = interface_Location(0, s_m00_, p_000, p_m00);
       s_m00[n] =-interface_Location_With_Second_Order_Derivative(-s_m00_,   0,p_m00,p_000,pxx_m00,pxx_000);
-      s_m00[n] = MAX(s_m00[n],_CASL_EPS_);
+      s_m00[n] = MAX(s_m00[n],EPS);
       double xyz[] = { x-s_m00[n], y
                  #ifdef P4_TO_P8
                        , z
@@ -4302,7 +4302,7 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD( Vec phi, V
     if(p_000*p_p00<0) {
 //      s_p00[n] = interface_Location(0, s_p00_, p_000, p_p00);
       s_p00[n] = interface_Location_With_Second_Order_Derivative(    0,s_p00_,p_000,p_p00,pxx_000,pxx_p00);
-      s_p00[n] = MAX(s_p00[n],_CASL_EPS_);
+      s_p00[n] = MAX(s_p00[n],EPS);
       double xyz[] = { x+s_p00[n], y
                  #ifdef P4_TO_P8
                        , z
@@ -4317,7 +4317,7 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD( Vec phi, V
     if(p_000*p_0m0<0) {
 //      s_0m0[n] = interface_Location(0, s_0m0_, p_000, p_0m0);
       s_0m0[n] =-interface_Location_With_Second_Order_Derivative(-s_0m0_,   0,p_0m0,p_000,pyy_0m0,pyy_000);
-      s_0m0[n] = MAX(s_0m0[n],_CASL_EPS_);
+      s_0m0[n] = MAX(s_0m0[n],EPS);
       double xyz[] = { x, y-s_0m0[n]
                  #ifdef P4_TO_P8
                        , z
@@ -4332,7 +4332,7 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD( Vec phi, V
     if(p_000*p_0p0<0){
 //      s_0p0[n] = interface_Location(0, s_0p0_, p_000, p_0p0);
       s_0p0[n] = interface_Location_With_Second_Order_Derivative(    0,s_0p0_,p_000,p_0p0,pyy_000,pyy_0p0);
-      s_0p0[n] = MAX(s_0p0[n],_CASL_EPS_);
+      s_0p0[n] = MAX(s_0p0[n],EPS);
       double xyz[] = { x, y+s_0p0[n]
                  #ifdef P4_TO_P8
                        , z
@@ -4348,7 +4348,7 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD( Vec phi, V
     if(p_000*p_00m<0) {
 //      s_00m[n] = interface_Location(0, s_00m_, p_000, p_00m);
       s_00m[n] =-interface_Location_With_Second_Order_Derivative(-s_00m_,   0,p_00m,p_000,pzz_00m,pzz_000);
-      s_00m[n] = MAX(s_00m[n],_CASL_EPS_);
+      s_00m[n] = MAX(s_00m[n],EPS);
       double xyz[] = { x, y, z-s_00m[n]};
       interp_00m.add_point(n, xyz);
     }
@@ -4359,7 +4359,7 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD( Vec phi, V
     if(p_000*p_00p<0) {
 //      s_00p[n] = interface_Location(0, s_00p_, p_000, p_00p);
       s_00p[n] = interface_Location_With_Second_Order_Derivative(    0,s_00p_,p_000,p_00p,pzz_000,pzz_00p);
-      s_00p[n] = MAX(s_00p[n],_CASL_EPS_);
+      s_00p[n] = MAX(s_00p[n],EPS);
       double xyz[] = { x, y, z+s_00p[n] };
       interp_00p.add_point(n, xyz);
     }
@@ -4620,7 +4620,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec mask, Vec q, 
     double norm = sqrt(nx[n]*nx[n] + ny[n]*ny[n]);
 #endif
 
-		if(norm>_CASL_EPS_)
+		if(norm>EPS)
 		{
 			nx[n] /= norm;
 			ny[n] /= norm;
@@ -4657,46 +4657,46 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec mask, Vec q, 
     {
       p4est_locidx_t n = layer_nodes[n_map];
       ngbd->get_neighbors(n, qnnn);
-      if(  mask_p[qnnn.node_000]<-_CASL_EPS_ &&
+      if(  mask_p[qnnn.node_000]<-EPS &&
      #ifdef P4_TO_P8
-           ( mask_p[qnnn.node_m00_mm]<-_CASL_EPS_ || fabs(qnnn.d_m00_p0)<_CASL_EPS_ || fabs(qnnn.d_m00_0p)<_CASL_EPS_) &&
-           ( mask_p[qnnn.node_m00_mp]<-_CASL_EPS_ || fabs(qnnn.d_m00_p0)<_CASL_EPS_ || fabs(qnnn.d_m00_0m)<_CASL_EPS_) &&
-           ( mask_p[qnnn.node_m00_pm]<-_CASL_EPS_ || fabs(qnnn.d_m00_m0)<_CASL_EPS_ || fabs(qnnn.d_m00_0p)<_CASL_EPS_) &&
-           ( mask_p[qnnn.node_m00_pp]<-_CASL_EPS_ || fabs(qnnn.d_m00_m0)<_CASL_EPS_ || fabs(qnnn.d_m00_0m)<_CASL_EPS_) &&
+           ( mask_p[qnnn.node_m00_mm]<-EPS || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
+           ( mask_p[qnnn.node_m00_mp]<-EPS || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
+           ( mask_p[qnnn.node_m00_pm]<-EPS || fabs(qnnn.d_m00_m0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
+           ( mask_p[qnnn.node_m00_pp]<-EPS || fabs(qnnn.d_m00_m0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
 
-           ( mask_p[qnnn.node_p00_mm]<-_CASL_EPS_ || fabs(qnnn.d_p00_p0)<_CASL_EPS_ || fabs(qnnn.d_p00_0p)<_CASL_EPS_) &&
-           ( mask_p[qnnn.node_p00_mp]<-_CASL_EPS_ || fabs(qnnn.d_p00_p0)<_CASL_EPS_ || fabs(qnnn.d_p00_0m)<_CASL_EPS_) &&
-           ( mask_p[qnnn.node_p00_pm]<-_CASL_EPS_ || fabs(qnnn.d_p00_m0)<_CASL_EPS_ || fabs(qnnn.d_p00_0p)<_CASL_EPS_) &&
-           ( mask_p[qnnn.node_p00_pp]<-_CASL_EPS_ || fabs(qnnn.d_p00_m0)<_CASL_EPS_ || fabs(qnnn.d_p00_0m)<_CASL_EPS_) &&
+           ( mask_p[qnnn.node_p00_mm]<-EPS || fabs(qnnn.d_p00_p0)<EPS || fabs(qnnn.d_p00_0p)<EPS) &&
+           ( mask_p[qnnn.node_p00_mp]<-EPS || fabs(qnnn.d_p00_p0)<EPS || fabs(qnnn.d_p00_0m)<EPS) &&
+           ( mask_p[qnnn.node_p00_pm]<-EPS || fabs(qnnn.d_p00_m0)<EPS || fabs(qnnn.d_p00_0p)<EPS) &&
+           ( mask_p[qnnn.node_p00_pp]<-EPS || fabs(qnnn.d_p00_m0)<EPS || fabs(qnnn.d_p00_0m)<EPS) &&
 
-           ( mask_p[qnnn.node_0m0_mm]<-_CASL_EPS_ || fabs(qnnn.d_0m0_p0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0p)<_CASL_EPS_) &&
-           ( mask_p[qnnn.node_0m0_mp]<-_CASL_EPS_ || fabs(qnnn.d_0m0_p0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0m)<_CASL_EPS_) &&
-           ( mask_p[qnnn.node_0m0_pm]<-_CASL_EPS_ || fabs(qnnn.d_0m0_m0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0p)<_CASL_EPS_) &&
-           ( mask_p[qnnn.node_0m0_pp]<-_CASL_EPS_ || fabs(qnnn.d_0m0_m0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0m)<_CASL_EPS_) &&
+           ( mask_p[qnnn.node_0m0_mm]<-EPS || fabs(qnnn.d_0m0_p0)<EPS || fabs(qnnn.d_0m0_0p)<EPS) &&
+           ( mask_p[qnnn.node_0m0_mp]<-EPS || fabs(qnnn.d_0m0_p0)<EPS || fabs(qnnn.d_0m0_0m)<EPS) &&
+           ( mask_p[qnnn.node_0m0_pm]<-EPS || fabs(qnnn.d_0m0_m0)<EPS || fabs(qnnn.d_0m0_0p)<EPS) &&
+           ( mask_p[qnnn.node_0m0_pp]<-EPS || fabs(qnnn.d_0m0_m0)<EPS || fabs(qnnn.d_0m0_0m)<EPS) &&
 
-           ( mask_p[qnnn.node_0p0_mm]<-_CASL_EPS_ || fabs(qnnn.d_0p0_p0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0p)<_CASL_EPS_) &&
-           ( mask_p[qnnn.node_0p0_mp]<-_CASL_EPS_ || fabs(qnnn.d_0p0_p0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0m)<_CASL_EPS_) &&
-           ( mask_p[qnnn.node_0p0_pm]<-_CASL_EPS_ || fabs(qnnn.d_0p0_m0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0p)<_CASL_EPS_) &&
-           ( mask_p[qnnn.node_0p0_pp]<-_CASL_EPS_ || fabs(qnnn.d_0p0_m0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0m)<_CASL_EPS_) &&
+           ( mask_p[qnnn.node_0p0_mm]<-EPS || fabs(qnnn.d_0p0_p0)<EPS || fabs(qnnn.d_0p0_0p)<EPS) &&
+           ( mask_p[qnnn.node_0p0_mp]<-EPS || fabs(qnnn.d_0p0_p0)<EPS || fabs(qnnn.d_0p0_0m)<EPS) &&
+           ( mask_p[qnnn.node_0p0_pm]<-EPS || fabs(qnnn.d_0p0_m0)<EPS || fabs(qnnn.d_0p0_0p)<EPS) &&
+           ( mask_p[qnnn.node_0p0_pp]<-EPS || fabs(qnnn.d_0p0_m0)<EPS || fabs(qnnn.d_0p0_0m)<EPS) &&
 
-           ( mask_p[qnnn.node_00m_mm]<-_CASL_EPS_ || fabs(qnnn.d_00m_p0)<_CASL_EPS_ || fabs(qnnn.d_00m_0p)<_CASL_EPS_) &&
-           ( mask_p[qnnn.node_00m_mp]<-_CASL_EPS_ || fabs(qnnn.d_00m_p0)<_CASL_EPS_ || fabs(qnnn.d_00m_0m)<_CASL_EPS_) &&
-           ( mask_p[qnnn.node_00m_pm]<-_CASL_EPS_ || fabs(qnnn.d_00m_m0)<_CASL_EPS_ || fabs(qnnn.d_00m_0p)<_CASL_EPS_) &&
-           ( mask_p[qnnn.node_00m_pp]<-_CASL_EPS_ || fabs(qnnn.d_00m_m0)<_CASL_EPS_ || fabs(qnnn.d_00m_0m)<_CASL_EPS_) &&
+           ( mask_p[qnnn.node_00m_mm]<-EPS || fabs(qnnn.d_00m_p0)<EPS || fabs(qnnn.d_00m_0p)<EPS) &&
+           ( mask_p[qnnn.node_00m_mp]<-EPS || fabs(qnnn.d_00m_p0)<EPS || fabs(qnnn.d_00m_0m)<EPS) &&
+           ( mask_p[qnnn.node_00m_pm]<-EPS || fabs(qnnn.d_00m_m0)<EPS || fabs(qnnn.d_00m_0p)<EPS) &&
+           ( mask_p[qnnn.node_00m_pp]<-EPS || fabs(qnnn.d_00m_m0)<EPS || fabs(qnnn.d_00m_0m)<EPS) &&
 
-           ( mask_p[qnnn.node_00p_mm]<-_CASL_EPS_ || fabs(qnnn.d_00p_p0)<_CASL_EPS_ || fabs(qnnn.d_00p_0p)<_CASL_EPS_) &&
-           ( mask_p[qnnn.node_00p_mp]<-_CASL_EPS_ || fabs(qnnn.d_00p_p0)<_CASL_EPS_ || fabs(qnnn.d_00p_0m)<_CASL_EPS_) &&
-           ( mask_p[qnnn.node_00p_pm]<-_CASL_EPS_ || fabs(qnnn.d_00p_m0)<_CASL_EPS_ || fabs(qnnn.d_00p_0p)<_CASL_EPS_) &&
-           ( mask_p[qnnn.node_00p_pp]<-_CASL_EPS_ || fabs(qnnn.d_00p_m0)<_CASL_EPS_ || fabs(qnnn.d_00p_0m)<_CASL_EPS_)
+           ( mask_p[qnnn.node_00p_mm]<-EPS || fabs(qnnn.d_00p_p0)<EPS || fabs(qnnn.d_00p_0p)<EPS) &&
+           ( mask_p[qnnn.node_00p_mp]<-EPS || fabs(qnnn.d_00p_p0)<EPS || fabs(qnnn.d_00p_0m)<EPS) &&
+           ( mask_p[qnnn.node_00p_pm]<-EPS || fabs(qnnn.d_00p_m0)<EPS || fabs(qnnn.d_00p_0p)<EPS) &&
+           ( mask_p[qnnn.node_00p_pp]<-EPS || fabs(qnnn.d_00p_m0)<EPS || fabs(qnnn.d_00p_0m)<EPS)
      #else
-           ( mask_p[qnnn.node_m00_mm]<-_CASL_EPS_ || fabs(qnnn.d_m00_p0)<_CASL_EPS_) &&
-           ( mask_p[qnnn.node_m00_pm]<-_CASL_EPS_ || fabs(qnnn.d_m00_m0)<_CASL_EPS_) &&
-           ( mask_p[qnnn.node_p00_mm]<-_CASL_EPS_ || fabs(qnnn.d_p00_p0)<_CASL_EPS_) &&
-           ( mask_p[qnnn.node_p00_pm]<-_CASL_EPS_ || fabs(qnnn.d_p00_m0)<_CASL_EPS_) &&
-           ( mask_p[qnnn.node_0m0_mm]<-_CASL_EPS_ || fabs(qnnn.d_0m0_p0)<_CASL_EPS_) &&
-           ( mask_p[qnnn.node_0m0_pm]<-_CASL_EPS_ || fabs(qnnn.d_0m0_m0)<_CASL_EPS_) &&
-           ( mask_p[qnnn.node_0p0_mm]<-_CASL_EPS_ || fabs(qnnn.d_0p0_p0)<_CASL_EPS_) &&
-           ( mask_p[qnnn.node_0p0_pm]<-_CASL_EPS_ || fabs(qnnn.d_0p0_m0)<_CASL_EPS_)
+           ( mask_p[qnnn.node_m00_mm]<-EPS || fabs(qnnn.d_m00_p0)<EPS) &&
+           ( mask_p[qnnn.node_m00_pm]<-EPS || fabs(qnnn.d_m00_m0)<EPS) &&
+           ( mask_p[qnnn.node_p00_mm]<-EPS || fabs(qnnn.d_p00_p0)<EPS) &&
+           ( mask_p[qnnn.node_p00_pm]<-EPS || fabs(qnnn.d_p00_m0)<EPS) &&
+           ( mask_p[qnnn.node_0m0_mm]<-EPS || fabs(qnnn.d_0m0_p0)<EPS) &&
+           ( mask_p[qnnn.node_0m0_pm]<-EPS || fabs(qnnn.d_0m0_m0)<EPS) &&
+           ( mask_p[qnnn.node_0p0_mm]<-EPS || fabs(qnnn.d_0p0_p0)<EPS) &&
+           ( mask_p[qnnn.node_0p0_pm]<-EPS || fabs(qnnn.d_0p0_m0)<EPS)
      #endif
            )
       {
@@ -4708,7 +4708,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec mask, Vec q, 
             #endif
                     );
       }
-      else if (mask_p[qnnn.node_000]<-_CASL_EPS_ && use_one_sided_derivatives)
+      else if (mask_p[qnnn.node_000]<-EPS && use_one_sided_derivatives)
       {
         bool all_directions_good = true;
 
@@ -4746,7 +4746,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec mask, Vec q, 
         quad_neighbor_nodes_of_node_t qnnn_nei;
 
         if (node_m00 != -1)
-          if (mask_p[node_m00] < -_CASL_EPS_)
+          if (mask_p[node_m00] < -EPS)
           {
             is_ok_m00 = true;
 
@@ -4754,12 +4754,12 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec mask, Vec q, 
             node_M00 = qnnn_nei.neighbor_m00();
 
             if (node_M00 != -1)
-              if (mask_p[node_M00] < -_CASL_EPS_)
+              if (mask_p[node_M00] < -EPS)
                 is_ok_M00 = true;
           }
 
         if (node_p00 != -1)
-          if (mask_p[node_p00] < -_CASL_EPS_)
+          if (mask_p[node_p00] < -EPS)
           {
             is_ok_p00 = true;
 
@@ -4767,12 +4767,12 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec mask, Vec q, 
             node_P00 = qnnn_nei.neighbor_p00();
 
             if (node_P00 != -1)
-              if (mask_p[node_P00] < -_CASL_EPS_)
+              if (mask_p[node_P00] < -EPS)
                 is_ok_P00 = true;
           }
 
         if (node_0m0 != -1)
-          if (mask_p[node_0m0] < -_CASL_EPS_)
+          if (mask_p[node_0m0] < -EPS)
           {
             is_ok_0m0 = true;
 
@@ -4780,12 +4780,12 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec mask, Vec q, 
             node_0M0 = qnnn_nei.neighbor_0m0();
 
             if (node_0M0 != -1)
-              if (mask_p[node_0M0] < -_CASL_EPS_)
+              if (mask_p[node_0M0] < -EPS)
                 is_ok_0M0 = true;
           }
 
         if (node_0p0 != -1)
-          if (mask_p[node_0p0] < -_CASL_EPS_)
+          if (mask_p[node_0p0] < -EPS)
           {
             is_ok_0p0 = true;
 
@@ -4793,13 +4793,13 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec mask, Vec q, 
             node_0P0 = qnnn_nei.neighbor_0p0();
 
             if (node_0P0 != -1)
-              if (mask_p[node_0P0] < -_CASL_EPS_)
+              if (mask_p[node_0P0] < -EPS)
                 is_ok_0P0 = true;
           }
 
 #ifdef P4_TO_P8
         if (node_00m != -1)
-          if (mask_p[node_00m] < -_CASL_EPS_)
+          if (mask_p[node_00m] < -EPS)
           {
             is_ok_00m = true;
 
@@ -4807,12 +4807,12 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec mask, Vec q, 
             node_00M = qnnn_nei.neighbor_00m();
 
             if (node_00M != -1)
-              if (mask_p[node_00M] < -_CASL_EPS_)
+              if (mask_p[node_00M] < -EPS)
                 is_ok_00M = true;
           }
 
         if (node_00p != -1)
-          if (mask_p[node_00p] < -_CASL_EPS_)
+          if (mask_p[node_00p] < -EPS)
           {
             is_ok_00p = true;
 
@@ -4820,7 +4820,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec mask, Vec q, 
             node_00P = qnnn_nei.neighbor_00p();
 
             if (node_00P != -1)
-              if (mask_p[node_00P] < -_CASL_EPS_)
+              if (mask_p[node_00P] < -EPS)
                 is_ok_00P = true;
           }
 #endif
@@ -4875,46 +4875,46 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec mask, Vec q, 
     {
       p4est_locidx_t n = local_nodes[n_map];
       ngbd->get_neighbors(n, qnnn);
-      if(  mask_p[qnnn.node_000]<-_CASL_EPS_ &&
+      if(  mask_p[qnnn.node_000]<-EPS &&
      #ifdef P4_TO_P8
-           ( mask_p[qnnn.node_m00_mm]<-_CASL_EPS_ || fabs(qnnn.d_m00_p0)<_CASL_EPS_ || fabs(qnnn.d_m00_0p)<_CASL_EPS_) &&
-           ( mask_p[qnnn.node_m00_mp]<-_CASL_EPS_ || fabs(qnnn.d_m00_p0)<_CASL_EPS_ || fabs(qnnn.d_m00_0m)<_CASL_EPS_) &&
-           ( mask_p[qnnn.node_m00_pm]<-_CASL_EPS_ || fabs(qnnn.d_m00_m0)<_CASL_EPS_ || fabs(qnnn.d_m00_0p)<_CASL_EPS_) &&
-           ( mask_p[qnnn.node_m00_pp]<-_CASL_EPS_ || fabs(qnnn.d_m00_m0)<_CASL_EPS_ || fabs(qnnn.d_m00_0m)<_CASL_EPS_) &&
+           ( mask_p[qnnn.node_m00_mm]<-EPS || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
+           ( mask_p[qnnn.node_m00_mp]<-EPS || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
+           ( mask_p[qnnn.node_m00_pm]<-EPS || fabs(qnnn.d_m00_m0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
+           ( mask_p[qnnn.node_m00_pp]<-EPS || fabs(qnnn.d_m00_m0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
 
-           ( mask_p[qnnn.node_p00_mm]<-_CASL_EPS_ || fabs(qnnn.d_p00_p0)<_CASL_EPS_ || fabs(qnnn.d_p00_0p)<_CASL_EPS_) &&
-           ( mask_p[qnnn.node_p00_mp]<-_CASL_EPS_ || fabs(qnnn.d_p00_p0)<_CASL_EPS_ || fabs(qnnn.d_p00_0m)<_CASL_EPS_) &&
-           ( mask_p[qnnn.node_p00_pm]<-_CASL_EPS_ || fabs(qnnn.d_p00_m0)<_CASL_EPS_ || fabs(qnnn.d_p00_0p)<_CASL_EPS_) &&
-           ( mask_p[qnnn.node_p00_pp]<-_CASL_EPS_ || fabs(qnnn.d_p00_m0)<_CASL_EPS_ || fabs(qnnn.d_p00_0m)<_CASL_EPS_) &&
+           ( mask_p[qnnn.node_p00_mm]<-EPS || fabs(qnnn.d_p00_p0)<EPS || fabs(qnnn.d_p00_0p)<EPS) &&
+           ( mask_p[qnnn.node_p00_mp]<-EPS || fabs(qnnn.d_p00_p0)<EPS || fabs(qnnn.d_p00_0m)<EPS) &&
+           ( mask_p[qnnn.node_p00_pm]<-EPS || fabs(qnnn.d_p00_m0)<EPS || fabs(qnnn.d_p00_0p)<EPS) &&
+           ( mask_p[qnnn.node_p00_pp]<-EPS || fabs(qnnn.d_p00_m0)<EPS || fabs(qnnn.d_p00_0m)<EPS) &&
 
-           ( mask_p[qnnn.node_0m0_mm]<-_CASL_EPS_ || fabs(qnnn.d_0m0_p0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0p)<_CASL_EPS_) &&
-           ( mask_p[qnnn.node_0m0_mp]<-_CASL_EPS_ || fabs(qnnn.d_0m0_p0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0m)<_CASL_EPS_) &&
-           ( mask_p[qnnn.node_0m0_pm]<-_CASL_EPS_ || fabs(qnnn.d_0m0_m0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0p)<_CASL_EPS_) &&
-           ( mask_p[qnnn.node_0m0_pp]<-_CASL_EPS_ || fabs(qnnn.d_0m0_m0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0m)<_CASL_EPS_) &&
+           ( mask_p[qnnn.node_0m0_mm]<-EPS || fabs(qnnn.d_0m0_p0)<EPS || fabs(qnnn.d_0m0_0p)<EPS) &&
+           ( mask_p[qnnn.node_0m0_mp]<-EPS || fabs(qnnn.d_0m0_p0)<EPS || fabs(qnnn.d_0m0_0m)<EPS) &&
+           ( mask_p[qnnn.node_0m0_pm]<-EPS || fabs(qnnn.d_0m0_m0)<EPS || fabs(qnnn.d_0m0_0p)<EPS) &&
+           ( mask_p[qnnn.node_0m0_pp]<-EPS || fabs(qnnn.d_0m0_m0)<EPS || fabs(qnnn.d_0m0_0m)<EPS) &&
 
-           ( mask_p[qnnn.node_0p0_mm]<-_CASL_EPS_ || fabs(qnnn.d_0p0_p0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0p)<_CASL_EPS_) &&
-           ( mask_p[qnnn.node_0p0_mp]<-_CASL_EPS_ || fabs(qnnn.d_0p0_p0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0m)<_CASL_EPS_) &&
-           ( mask_p[qnnn.node_0p0_pm]<-_CASL_EPS_ || fabs(qnnn.d_0p0_m0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0p)<_CASL_EPS_) &&
-           ( mask_p[qnnn.node_0p0_pp]<-_CASL_EPS_ || fabs(qnnn.d_0p0_m0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0m)<_CASL_EPS_) &&
+           ( mask_p[qnnn.node_0p0_mm]<-EPS || fabs(qnnn.d_0p0_p0)<EPS || fabs(qnnn.d_0p0_0p)<EPS) &&
+           ( mask_p[qnnn.node_0p0_mp]<-EPS || fabs(qnnn.d_0p0_p0)<EPS || fabs(qnnn.d_0p0_0m)<EPS) &&
+           ( mask_p[qnnn.node_0p0_pm]<-EPS || fabs(qnnn.d_0p0_m0)<EPS || fabs(qnnn.d_0p0_0p)<EPS) &&
+           ( mask_p[qnnn.node_0p0_pp]<-EPS || fabs(qnnn.d_0p0_m0)<EPS || fabs(qnnn.d_0p0_0m)<EPS) &&
 
-           ( mask_p[qnnn.node_00m_mm]<-_CASL_EPS_ || fabs(qnnn.d_00m_p0)<_CASL_EPS_ || fabs(qnnn.d_00m_0p)<_CASL_EPS_) &&
-           ( mask_p[qnnn.node_00m_mp]<-_CASL_EPS_ || fabs(qnnn.d_00m_p0)<_CASL_EPS_ || fabs(qnnn.d_00m_0m)<_CASL_EPS_) &&
-           ( mask_p[qnnn.node_00m_pm]<-_CASL_EPS_ || fabs(qnnn.d_00m_m0)<_CASL_EPS_ || fabs(qnnn.d_00m_0p)<_CASL_EPS_) &&
-           ( mask_p[qnnn.node_00m_pp]<-_CASL_EPS_ || fabs(qnnn.d_00m_m0)<_CASL_EPS_ || fabs(qnnn.d_00m_0m)<_CASL_EPS_) &&
+           ( mask_p[qnnn.node_00m_mm]<-EPS || fabs(qnnn.d_00m_p0)<EPS || fabs(qnnn.d_00m_0p)<EPS) &&
+           ( mask_p[qnnn.node_00m_mp]<-EPS || fabs(qnnn.d_00m_p0)<EPS || fabs(qnnn.d_00m_0m)<EPS) &&
+           ( mask_p[qnnn.node_00m_pm]<-EPS || fabs(qnnn.d_00m_m0)<EPS || fabs(qnnn.d_00m_0p)<EPS) &&
+           ( mask_p[qnnn.node_00m_pp]<-EPS || fabs(qnnn.d_00m_m0)<EPS || fabs(qnnn.d_00m_0m)<EPS) &&
 
-           ( mask_p[qnnn.node_00p_mm]<-_CASL_EPS_ || fabs(qnnn.d_00p_p0)<_CASL_EPS_ || fabs(qnnn.d_00p_0p)<_CASL_EPS_) &&
-           ( mask_p[qnnn.node_00p_mp]<-_CASL_EPS_ || fabs(qnnn.d_00p_p0)<_CASL_EPS_ || fabs(qnnn.d_00p_0m)<_CASL_EPS_) &&
-           ( mask_p[qnnn.node_00p_pm]<-_CASL_EPS_ || fabs(qnnn.d_00p_m0)<_CASL_EPS_ || fabs(qnnn.d_00p_0p)<_CASL_EPS_) &&
-           ( mask_p[qnnn.node_00p_pp]<-_CASL_EPS_ || fabs(qnnn.d_00p_m0)<_CASL_EPS_ || fabs(qnnn.d_00p_0m)<_CASL_EPS_)
+           ( mask_p[qnnn.node_00p_mm]<-EPS || fabs(qnnn.d_00p_p0)<EPS || fabs(qnnn.d_00p_0p)<EPS) &&
+           ( mask_p[qnnn.node_00p_mp]<-EPS || fabs(qnnn.d_00p_p0)<EPS || fabs(qnnn.d_00p_0m)<EPS) &&
+           ( mask_p[qnnn.node_00p_pm]<-EPS || fabs(qnnn.d_00p_m0)<EPS || fabs(qnnn.d_00p_0p)<EPS) &&
+           ( mask_p[qnnn.node_00p_pp]<-EPS || fabs(qnnn.d_00p_m0)<EPS || fabs(qnnn.d_00p_0m)<EPS)
      #else
-           ( mask_p[qnnn.node_m00_mm]<-_CASL_EPS_ || fabs(qnnn.d_m00_p0)<_CASL_EPS_) &&
-           ( mask_p[qnnn.node_m00_pm]<-_CASL_EPS_ || fabs(qnnn.d_m00_m0)<_CASL_EPS_) &&
-           ( mask_p[qnnn.node_p00_mm]<-_CASL_EPS_ || fabs(qnnn.d_p00_p0)<_CASL_EPS_) &&
-           ( mask_p[qnnn.node_p00_pm]<-_CASL_EPS_ || fabs(qnnn.d_p00_m0)<_CASL_EPS_) &&
-           ( mask_p[qnnn.node_0m0_mm]<-_CASL_EPS_ || fabs(qnnn.d_0m0_p0)<_CASL_EPS_) &&
-           ( mask_p[qnnn.node_0m0_pm]<-_CASL_EPS_ || fabs(qnnn.d_0m0_m0)<_CASL_EPS_) &&
-           ( mask_p[qnnn.node_0p0_mm]<-_CASL_EPS_ || fabs(qnnn.d_0p0_p0)<_CASL_EPS_) &&
-           ( mask_p[qnnn.node_0p0_pm]<-_CASL_EPS_ || fabs(qnnn.d_0p0_m0)<_CASL_EPS_)
+           ( mask_p[qnnn.node_m00_mm]<-EPS || fabs(qnnn.d_m00_p0)<EPS) &&
+           ( mask_p[qnnn.node_m00_pm]<-EPS || fabs(qnnn.d_m00_m0)<EPS) &&
+           ( mask_p[qnnn.node_p00_mm]<-EPS || fabs(qnnn.d_p00_p0)<EPS) &&
+           ( mask_p[qnnn.node_p00_pm]<-EPS || fabs(qnnn.d_p00_m0)<EPS) &&
+           ( mask_p[qnnn.node_0m0_mm]<-EPS || fabs(qnnn.d_0m0_p0)<EPS) &&
+           ( mask_p[qnnn.node_0m0_pm]<-EPS || fabs(qnnn.d_0m0_m0)<EPS) &&
+           ( mask_p[qnnn.node_0p0_mm]<-EPS || fabs(qnnn.d_0p0_p0)<EPS) &&
+           ( mask_p[qnnn.node_0p0_pm]<-EPS || fabs(qnnn.d_0p0_m0)<EPS)
      #endif
            )
       {
@@ -4926,7 +4926,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec mask, Vec q, 
             #endif
                     );
       }
-      else if (mask_p[qnnn.node_000]<-_CASL_EPS_ && use_one_sided_derivatives)
+      else if (mask_p[qnnn.node_000]<-EPS && use_one_sided_derivatives)
       {
         bool all_directions_good = true;
 
@@ -4964,7 +4964,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec mask, Vec q, 
         quad_neighbor_nodes_of_node_t qnnn_nei;
 
         if (node_m00 != -1)
-          if (mask_p[node_m00] < -_CASL_EPS_)
+          if (mask_p[node_m00] < -EPS)
           {
             is_ok_m00 = true;
 
@@ -4972,12 +4972,12 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec mask, Vec q, 
             node_M00 = qnnn_nei.neighbor_m00();
 
             if (node_M00 != -1)
-              if (mask_p[node_M00] < -_CASL_EPS_)
+              if (mask_p[node_M00] < -EPS)
                 is_ok_M00 = true;
           }
 
         if (node_p00 != -1)
-          if (mask_p[node_p00] < -_CASL_EPS_)
+          if (mask_p[node_p00] < -EPS)
           {
             is_ok_p00 = true;
 
@@ -4985,12 +4985,12 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec mask, Vec q, 
             node_P00 = qnnn_nei.neighbor_p00();
 
             if (node_P00 != -1)
-              if (mask_p[node_P00] < -_CASL_EPS_)
+              if (mask_p[node_P00] < -EPS)
                 is_ok_P00 = true;
           }
 
         if (node_0m0 != -1)
-          if (mask_p[node_0m0] < -_CASL_EPS_)
+          if (mask_p[node_0m0] < -EPS)
           {
             is_ok_0m0 = true;
 
@@ -4998,12 +4998,12 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec mask, Vec q, 
             node_0M0 = qnnn_nei.neighbor_0m0();
 
             if (node_0M0 != -1)
-              if (mask_p[node_0M0] < -_CASL_EPS_)
+              if (mask_p[node_0M0] < -EPS)
                 is_ok_0M0 = true;
           }
 
         if (node_0p0 != -1)
-          if (mask_p[node_0p0] < -_CASL_EPS_)
+          if (mask_p[node_0p0] < -EPS)
           {
             is_ok_0p0 = true;
 
@@ -5011,13 +5011,13 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec mask, Vec q, 
             node_0P0 = qnnn_nei.neighbor_0p0();
 
             if (node_0P0 != -1)
-              if (mask_p[node_0P0] < -_CASL_EPS_)
+              if (mask_p[node_0P0] < -EPS)
                 is_ok_0P0 = true;
           }
 
 #ifdef P4_TO_P8
         if (node_00m != -1)
-          if (mask_p[node_00m] < -_CASL_EPS_)
+          if (mask_p[node_00m] < -EPS)
           {
             is_ok_00m = true;
 
@@ -5025,12 +5025,12 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec mask, Vec q, 
             node_00M = qnnn_nei.neighbor_00m();
 
             if (node_00M != -1)
-              if (mask_p[node_00M] < -_CASL_EPS_)
+              if (mask_p[node_00M] < -EPS)
                 is_ok_00M = true;
           }
 
         if (node_00p != -1)
-          if (mask_p[node_00p] < -_CASL_EPS_)
+          if (mask_p[node_00p] < -EPS)
           {
             is_ok_00p = true;
 
@@ -5038,7 +5038,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec mask, Vec q, 
             node_00P = qnnn_nei.neighbor_00p();
 
             if (node_00P != -1)
-              if (mask_p[node_00P] < -_CASL_EPS_)
+              if (mask_p[node_00P] < -EPS)
                 is_ok_00P = true;
           }
 #endif
@@ -5113,44 +5113,44 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec mask, Vec q, 
       ngbd->get_neighbors(n, qnnn);
       if(  b_qn_well_defined_p[qnnn.node_000]==true &&
      #ifdef P4_TO_P8
-           ( b_qn_well_defined_p[qnnn.node_m00_mm]==true || fabs(qnnn.d_m00_p0)<_CASL_EPS_ || fabs(qnnn.d_m00_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_m00_mp]==true || fabs(qnnn.d_m00_p0)<_CASL_EPS_ || fabs(qnnn.d_m00_0m)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_m00_pm]==true || fabs(qnnn.d_m00_m0)<_CASL_EPS_ || fabs(qnnn.d_m00_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_m00_pp]==true || fabs(qnnn.d_m00_m0)<_CASL_EPS_ || fabs(qnnn.d_m00_0m)<_CASL_EPS_) &&
+           ( b_qn_well_defined_p[qnnn.node_m00_mm]==true || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_m00_mp]==true || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_m00_pm]==true || fabs(qnnn.d_m00_m0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_m00_pp]==true || fabs(qnnn.d_m00_m0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
 
-           ( b_qn_well_defined_p[qnnn.node_p00_mm]==true || fabs(qnnn.d_p00_p0)<_CASL_EPS_ || fabs(qnnn.d_p00_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_p00_mp]==true || fabs(qnnn.d_p00_p0)<_CASL_EPS_ || fabs(qnnn.d_p00_0m)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_p00_pm]==true || fabs(qnnn.d_p00_m0)<_CASL_EPS_ || fabs(qnnn.d_p00_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_p00_pp]==true || fabs(qnnn.d_p00_m0)<_CASL_EPS_ || fabs(qnnn.d_p00_0m)<_CASL_EPS_) &&
+           ( b_qn_well_defined_p[qnnn.node_p00_mm]==true || fabs(qnnn.d_p00_p0)<EPS || fabs(qnnn.d_p00_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_p00_mp]==true || fabs(qnnn.d_p00_p0)<EPS || fabs(qnnn.d_p00_0m)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_p00_pm]==true || fabs(qnnn.d_p00_m0)<EPS || fabs(qnnn.d_p00_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_p00_pp]==true || fabs(qnnn.d_p00_m0)<EPS || fabs(qnnn.d_p00_0m)<EPS) &&
 
-           ( b_qn_well_defined_p[qnnn.node_0m0_mm]==true || fabs(qnnn.d_0m0_p0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0m0_mp]==true || fabs(qnnn.d_0m0_p0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0m)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0m0_pm]==true || fabs(qnnn.d_0m0_m0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0m0_pp]==true || fabs(qnnn.d_0m0_m0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0m)<_CASL_EPS_) &&
+           ( b_qn_well_defined_p[qnnn.node_0m0_mm]==true || fabs(qnnn.d_0m0_p0)<EPS || fabs(qnnn.d_0m0_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0m0_mp]==true || fabs(qnnn.d_0m0_p0)<EPS || fabs(qnnn.d_0m0_0m)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0m0_pm]==true || fabs(qnnn.d_0m0_m0)<EPS || fabs(qnnn.d_0m0_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0m0_pp]==true || fabs(qnnn.d_0m0_m0)<EPS || fabs(qnnn.d_0m0_0m)<EPS) &&
 
-           ( b_qn_well_defined_p[qnnn.node_0p0_mm]==true || fabs(qnnn.d_0p0_p0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0p0_mp]==true || fabs(qnnn.d_0p0_p0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0m)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0p0_pm]==true || fabs(qnnn.d_0p0_m0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0p0_pp]==true || fabs(qnnn.d_0p0_m0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0m)<_CASL_EPS_) &&
+           ( b_qn_well_defined_p[qnnn.node_0p0_mm]==true || fabs(qnnn.d_0p0_p0)<EPS || fabs(qnnn.d_0p0_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0p0_mp]==true || fabs(qnnn.d_0p0_p0)<EPS || fabs(qnnn.d_0p0_0m)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0p0_pm]==true || fabs(qnnn.d_0p0_m0)<EPS || fabs(qnnn.d_0p0_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0p0_pp]==true || fabs(qnnn.d_0p0_m0)<EPS || fabs(qnnn.d_0p0_0m)<EPS) &&
 
-           ( b_qn_well_defined_p[qnnn.node_00m_mm]==true || fabs(qnnn.d_00m_p0)<_CASL_EPS_ || fabs(qnnn.d_00m_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_00m_mp]==true || fabs(qnnn.d_00m_p0)<_CASL_EPS_ || fabs(qnnn.d_00m_0m)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_00m_pm]==true || fabs(qnnn.d_00m_m0)<_CASL_EPS_ || fabs(qnnn.d_00m_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_00m_pp]==true || fabs(qnnn.d_00m_m0)<_CASL_EPS_ || fabs(qnnn.d_00m_0m)<_CASL_EPS_) &&
+           ( b_qn_well_defined_p[qnnn.node_00m_mm]==true || fabs(qnnn.d_00m_p0)<EPS || fabs(qnnn.d_00m_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_00m_mp]==true || fabs(qnnn.d_00m_p0)<EPS || fabs(qnnn.d_00m_0m)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_00m_pm]==true || fabs(qnnn.d_00m_m0)<EPS || fabs(qnnn.d_00m_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_00m_pp]==true || fabs(qnnn.d_00m_m0)<EPS || fabs(qnnn.d_00m_0m)<EPS) &&
 
-           ( b_qn_well_defined_p[qnnn.node_00p_mm]==true || fabs(qnnn.d_00p_p0)<_CASL_EPS_ || fabs(qnnn.d_00p_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_00p_mp]==true || fabs(qnnn.d_00p_p0)<_CASL_EPS_ || fabs(qnnn.d_00p_0m)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_00p_pm]==true || fabs(qnnn.d_00p_m0)<_CASL_EPS_ || fabs(qnnn.d_00p_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_00p_pp]==true || fabs(qnnn.d_00p_m0)<_CASL_EPS_ || fabs(qnnn.d_00p_0m)<_CASL_EPS_)
+           ( b_qn_well_defined_p[qnnn.node_00p_mm]==true || fabs(qnnn.d_00p_p0)<EPS || fabs(qnnn.d_00p_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_00p_mp]==true || fabs(qnnn.d_00p_p0)<EPS || fabs(qnnn.d_00p_0m)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_00p_pm]==true || fabs(qnnn.d_00p_m0)<EPS || fabs(qnnn.d_00p_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_00p_pp]==true || fabs(qnnn.d_00p_m0)<EPS || fabs(qnnn.d_00p_0m)<EPS)
      #else
-           ( b_qn_well_defined_p[qnnn.node_m00_mm]==true || fabs(qnnn.d_m00_p0)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_m00_pm]==true || fabs(qnnn.d_m00_m0)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_p00_mm]==true || fabs(qnnn.d_p00_p0)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_p00_pm]==true || fabs(qnnn.d_p00_m0)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0m0_mm]==true || fabs(qnnn.d_0m0_p0)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0m0_pm]==true || fabs(qnnn.d_0m0_m0)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0p0_mm]==true || fabs(qnnn.d_0p0_p0)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0p0_pm]==true || fabs(qnnn.d_0p0_m0)<_CASL_EPS_)
+           ( b_qn_well_defined_p[qnnn.node_m00_mm]==true || fabs(qnnn.d_m00_p0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_m00_pm]==true || fabs(qnnn.d_m00_m0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_p00_mm]==true || fabs(qnnn.d_p00_p0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_p00_pm]==true || fabs(qnnn.d_p00_m0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0m0_mm]==true || fabs(qnnn.d_0m0_p0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0m0_pm]==true || fabs(qnnn.d_0m0_m0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0p0_mm]==true || fabs(qnnn.d_0p0_p0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0p0_pm]==true || fabs(qnnn.d_0p0_m0)<EPS)
      #endif
            )
 
@@ -5333,44 +5333,44 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec mask, Vec q, 
       ngbd->get_neighbors(n, qnnn);
       if(  b_qn_well_defined_p[qnnn.node_000]==true &&
      #ifdef P4_TO_P8
-           ( b_qn_well_defined_p[qnnn.node_m00_mm]==true || fabs(qnnn.d_m00_p0)<_CASL_EPS_ || fabs(qnnn.d_m00_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_m00_mp]==true || fabs(qnnn.d_m00_p0)<_CASL_EPS_ || fabs(qnnn.d_m00_0m)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_m00_pm]==true || fabs(qnnn.d_m00_m0)<_CASL_EPS_ || fabs(qnnn.d_m00_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_m00_pp]==true || fabs(qnnn.d_m00_m0)<_CASL_EPS_ || fabs(qnnn.d_m00_0m)<_CASL_EPS_) &&
+           ( b_qn_well_defined_p[qnnn.node_m00_mm]==true || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_m00_mp]==true || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_m00_pm]==true || fabs(qnnn.d_m00_m0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_m00_pp]==true || fabs(qnnn.d_m00_m0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
 
-           ( b_qn_well_defined_p[qnnn.node_p00_mm]==true || fabs(qnnn.d_p00_p0)<_CASL_EPS_ || fabs(qnnn.d_p00_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_p00_mp]==true || fabs(qnnn.d_p00_p0)<_CASL_EPS_ || fabs(qnnn.d_p00_0m)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_p00_pm]==true || fabs(qnnn.d_p00_m0)<_CASL_EPS_ || fabs(qnnn.d_p00_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_p00_pp]==true || fabs(qnnn.d_p00_m0)<_CASL_EPS_ || fabs(qnnn.d_p00_0m)<_CASL_EPS_) &&
+           ( b_qn_well_defined_p[qnnn.node_p00_mm]==true || fabs(qnnn.d_p00_p0)<EPS || fabs(qnnn.d_p00_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_p00_mp]==true || fabs(qnnn.d_p00_p0)<EPS || fabs(qnnn.d_p00_0m)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_p00_pm]==true || fabs(qnnn.d_p00_m0)<EPS || fabs(qnnn.d_p00_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_p00_pp]==true || fabs(qnnn.d_p00_m0)<EPS || fabs(qnnn.d_p00_0m)<EPS) &&
 
-           ( b_qn_well_defined_p[qnnn.node_0m0_mm]==true || fabs(qnnn.d_0m0_p0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0m0_mp]==true || fabs(qnnn.d_0m0_p0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0m)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0m0_pm]==true || fabs(qnnn.d_0m0_m0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0m0_pp]==true || fabs(qnnn.d_0m0_m0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0m)<_CASL_EPS_) &&
+           ( b_qn_well_defined_p[qnnn.node_0m0_mm]==true || fabs(qnnn.d_0m0_p0)<EPS || fabs(qnnn.d_0m0_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0m0_mp]==true || fabs(qnnn.d_0m0_p0)<EPS || fabs(qnnn.d_0m0_0m)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0m0_pm]==true || fabs(qnnn.d_0m0_m0)<EPS || fabs(qnnn.d_0m0_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0m0_pp]==true || fabs(qnnn.d_0m0_m0)<EPS || fabs(qnnn.d_0m0_0m)<EPS) &&
 
-           ( b_qn_well_defined_p[qnnn.node_0p0_mm]==true || fabs(qnnn.d_0p0_p0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0p0_mp]==true || fabs(qnnn.d_0p0_p0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0m)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0p0_pm]==true || fabs(qnnn.d_0p0_m0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0p0_pp]==true || fabs(qnnn.d_0p0_m0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0m)<_CASL_EPS_) &&
+           ( b_qn_well_defined_p[qnnn.node_0p0_mm]==true || fabs(qnnn.d_0p0_p0)<EPS || fabs(qnnn.d_0p0_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0p0_mp]==true || fabs(qnnn.d_0p0_p0)<EPS || fabs(qnnn.d_0p0_0m)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0p0_pm]==true || fabs(qnnn.d_0p0_m0)<EPS || fabs(qnnn.d_0p0_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0p0_pp]==true || fabs(qnnn.d_0p0_m0)<EPS || fabs(qnnn.d_0p0_0m)<EPS) &&
 
-           ( b_qn_well_defined_p[qnnn.node_00m_mm]==true || fabs(qnnn.d_00m_p0)<_CASL_EPS_ || fabs(qnnn.d_00m_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_00m_mp]==true || fabs(qnnn.d_00m_p0)<_CASL_EPS_ || fabs(qnnn.d_00m_0m)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_00m_pm]==true || fabs(qnnn.d_00m_m0)<_CASL_EPS_ || fabs(qnnn.d_00m_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_00m_pp]==true || fabs(qnnn.d_00m_m0)<_CASL_EPS_ || fabs(qnnn.d_00m_0m)<_CASL_EPS_) &&
+           ( b_qn_well_defined_p[qnnn.node_00m_mm]==true || fabs(qnnn.d_00m_p0)<EPS || fabs(qnnn.d_00m_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_00m_mp]==true || fabs(qnnn.d_00m_p0)<EPS || fabs(qnnn.d_00m_0m)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_00m_pm]==true || fabs(qnnn.d_00m_m0)<EPS || fabs(qnnn.d_00m_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_00m_pp]==true || fabs(qnnn.d_00m_m0)<EPS || fabs(qnnn.d_00m_0m)<EPS) &&
 
-           ( b_qn_well_defined_p[qnnn.node_00p_mm]==true || fabs(qnnn.d_00p_p0)<_CASL_EPS_ || fabs(qnnn.d_00p_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_00p_mp]==true || fabs(qnnn.d_00p_p0)<_CASL_EPS_ || fabs(qnnn.d_00p_0m)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_00p_pm]==true || fabs(qnnn.d_00p_m0)<_CASL_EPS_ || fabs(qnnn.d_00p_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_00p_pp]==true || fabs(qnnn.d_00p_m0)<_CASL_EPS_ || fabs(qnnn.d_00p_0m)<_CASL_EPS_)
+           ( b_qn_well_defined_p[qnnn.node_00p_mm]==true || fabs(qnnn.d_00p_p0)<EPS || fabs(qnnn.d_00p_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_00p_mp]==true || fabs(qnnn.d_00p_p0)<EPS || fabs(qnnn.d_00p_0m)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_00p_pm]==true || fabs(qnnn.d_00p_m0)<EPS || fabs(qnnn.d_00p_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_00p_pp]==true || fabs(qnnn.d_00p_m0)<EPS || fabs(qnnn.d_00p_0m)<EPS)
      #else
-           ( b_qn_well_defined_p[qnnn.node_m00_mm]==true || fabs(qnnn.d_m00_p0)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_m00_pm]==true || fabs(qnnn.d_m00_m0)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_p00_mm]==true || fabs(qnnn.d_p00_p0)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_p00_pm]==true || fabs(qnnn.d_p00_m0)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0m0_mm]==true || fabs(qnnn.d_0m0_p0)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0m0_pm]==true || fabs(qnnn.d_0m0_m0)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0p0_mm]==true || fabs(qnnn.d_0p0_p0)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0p0_pm]==true || fabs(qnnn.d_0p0_m0)<_CASL_EPS_)
+           ( b_qn_well_defined_p[qnnn.node_m00_mm]==true || fabs(qnnn.d_m00_p0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_m00_pm]==true || fabs(qnnn.d_m00_m0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_p00_mm]==true || fabs(qnnn.d_p00_p0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_p00_pm]==true || fabs(qnnn.d_p00_m0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0m0_mm]==true || fabs(qnnn.d_0m0_p0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0m0_pm]==true || fabs(qnnn.d_0m0_m0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0p0_mm]==true || fabs(qnnn.d_0p0_p0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0p0_pm]==true || fabs(qnnn.d_0p0_m0)<EPS)
      #endif
            )
 
@@ -5795,7 +5795,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec mask, Vec q, 
     {
       p4est_locidx_t n = layer_nodes[n_map];
       ngbd->get_neighbors(n, qnnn);
-      if(mask_p[n] > -_CASL_EPS_)
+      if(mask_p[n] > -EPS)
       {
         const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
         double dt = MIN(fabs(qnnn.d_m00) , fabs(qnnn.d_p00) );
@@ -5847,12 +5847,12 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec mask, Vec q, 
 #endif
 
 //#ifdef P4_TO_P8
-//        if(fabs(nx[n])<_CASL_EPS_ && fabs(ny[n])<_CASL_EPS_ && fabs(nz[n])<_CASL_EPS_)
+//        if(fabs(nx[n])<EPS && fabs(ny[n])<EPS && fabs(nz[n])<EPS)
 //          tmp_p[n] = (qnnn.f_m00_linear(q_p) + qnnn.f_p00_linear(q_p) +
 //                      qnnn.f_0m0_linear(q_p) + qnnn.f_0p0_linear(q_p) +
 //                      qnnn.f_00m_linear(q_p) + qnnn.f_00p_linear(q_p))/6.;
 //#else
-//        if(fabs(nx[n])<_CASL_EPS_ && fabs(ny[n])<_CASL_EPS_)
+//        if(fabs(nx[n])<EPS && fabs(ny[n])<EPS)
 //          tmp_p[n] = (qnnn.f_m00_linear(q_p) + qnnn.f_p00_linear(q_p) +
 //                      qnnn.f_0m0_linear(q_p) + qnnn.f_0p0_linear(q_p))/4.;
 //#endif
@@ -5875,7 +5875,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec mask, Vec q, 
     {
       p4est_locidx_t n = local_nodes[n_map];
       ngbd->get_neighbors(n, qnnn);
-      if(mask_p[n] > -_CASL_EPS_)
+      if(mask_p[n] > -EPS)
       {
         double dt = MIN(fabs(qnnn.d_m00) , fabs(qnnn.d_p00) );
         dt  =  MIN( dt, fabs(qnnn.d_0m0) , fabs(qnnn.d_0p0) );
@@ -5926,12 +5926,12 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD( Vec phi, Vec mask, Vec q, 
 #endif
 
 //#ifdef P4_TO_P8
-//        if(fabs(nx[n])<_CASL_EPS_ && fabs(ny[n])<_CASL_EPS_ && fabs(nz[n])<_CASL_EPS_)
+//        if(fabs(nx[n])<EPS && fabs(ny[n])<EPS && fabs(nz[n])<EPS)
 //          tmp_p[n] = (qnnn.f_m00_linear(q_p) + qnnn.f_p00_linear(q_p) +
 //                      qnnn.f_0m0_linear(q_p) + qnnn.f_0p0_linear(q_p) +
 //                      qnnn.f_00m_linear(q_p) + qnnn.f_00p_linear(q_p))/6.;
 //#else
-//        if(fabs(nx[n])<_CASL_EPS_ && fabs(ny[n])<_CASL_EPS_)
+//        if(fabs(nx[n])<EPS && fabs(ny[n])<EPS)
 //          tmp_p[n] = (qnnn.f_m00_linear(q_p) + qnnn.f_p00_linear(q_p) +
 //                      qnnn.f_0m0_linear(q_p) + qnnn.f_0p0_linear(q_p))/4.;
 //#endif
@@ -6064,7 +6064,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_po
       double norm = sqrt(nx[n]*nx[n] + ny[n]*ny[n]);
 #endif
 
-      if(norm>_CASL_EPS_)
+      if(norm>EPS)
       {
         nx[n] /= norm;
         ny[n] /= norm;
@@ -6107,46 +6107,46 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_po
     {
       p4est_locidx_t n = layer_nodes[n_map];
       ngbd->get_neighbors(n, qnnn);
-      if(  phi_p[qnnn.node_000]<-_CASL_EPS_ &&
+      if(  phi_p[qnnn.node_000]<-EPS &&
      #ifdef P4_TO_P8
-           ( phi_p[qnnn.node_m00_mm]<-_CASL_EPS_ || fabs(qnnn.d_m00_p0)<_CASL_EPS_ || fabs(qnnn.d_m00_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_m00_mp]<-_CASL_EPS_ || fabs(qnnn.d_m00_p0)<_CASL_EPS_ || fabs(qnnn.d_m00_0m)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_m00_pm]<-_CASL_EPS_ || fabs(qnnn.d_m00_m0)<_CASL_EPS_ || fabs(qnnn.d_m00_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_m00_pp]<-_CASL_EPS_ || fabs(qnnn.d_m00_m0)<_CASL_EPS_ || fabs(qnnn.d_m00_0m)<_CASL_EPS_) &&
+           ( phi_p[qnnn.node_m00_mm]<-EPS || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
+           ( phi_p[qnnn.node_m00_mp]<-EPS || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
+           ( phi_p[qnnn.node_m00_pm]<-EPS || fabs(qnnn.d_m00_m0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
+           ( phi_p[qnnn.node_m00_pp]<-EPS || fabs(qnnn.d_m00_m0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
 
-           ( phi_p[qnnn.node_p00_mm]<-_CASL_EPS_ || fabs(qnnn.d_p00_p0)<_CASL_EPS_ || fabs(qnnn.d_p00_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_p00_mp]<-_CASL_EPS_ || fabs(qnnn.d_p00_p0)<_CASL_EPS_ || fabs(qnnn.d_p00_0m)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_p00_pm]<-_CASL_EPS_ || fabs(qnnn.d_p00_m0)<_CASL_EPS_ || fabs(qnnn.d_p00_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_p00_pp]<-_CASL_EPS_ || fabs(qnnn.d_p00_m0)<_CASL_EPS_ || fabs(qnnn.d_p00_0m)<_CASL_EPS_) &&
+           ( phi_p[qnnn.node_p00_mm]<-EPS || fabs(qnnn.d_p00_p0)<EPS || fabs(qnnn.d_p00_0p)<EPS) &&
+           ( phi_p[qnnn.node_p00_mp]<-EPS || fabs(qnnn.d_p00_p0)<EPS || fabs(qnnn.d_p00_0m)<EPS) &&
+           ( phi_p[qnnn.node_p00_pm]<-EPS || fabs(qnnn.d_p00_m0)<EPS || fabs(qnnn.d_p00_0p)<EPS) &&
+           ( phi_p[qnnn.node_p00_pp]<-EPS || fabs(qnnn.d_p00_m0)<EPS || fabs(qnnn.d_p00_0m)<EPS) &&
 
-           ( phi_p[qnnn.node_0m0_mm]<-_CASL_EPS_ || fabs(qnnn.d_0m0_p0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_0m0_mp]<-_CASL_EPS_ || fabs(qnnn.d_0m0_p0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0m)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_0m0_pm]<-_CASL_EPS_ || fabs(qnnn.d_0m0_m0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_0m0_pp]<-_CASL_EPS_ || fabs(qnnn.d_0m0_m0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0m)<_CASL_EPS_) &&
+           ( phi_p[qnnn.node_0m0_mm]<-EPS || fabs(qnnn.d_0m0_p0)<EPS || fabs(qnnn.d_0m0_0p)<EPS) &&
+           ( phi_p[qnnn.node_0m0_mp]<-EPS || fabs(qnnn.d_0m0_p0)<EPS || fabs(qnnn.d_0m0_0m)<EPS) &&
+           ( phi_p[qnnn.node_0m0_pm]<-EPS || fabs(qnnn.d_0m0_m0)<EPS || fabs(qnnn.d_0m0_0p)<EPS) &&
+           ( phi_p[qnnn.node_0m0_pp]<-EPS || fabs(qnnn.d_0m0_m0)<EPS || fabs(qnnn.d_0m0_0m)<EPS) &&
 
-           ( phi_p[qnnn.node_0p0_mm]<-_CASL_EPS_ || fabs(qnnn.d_0p0_p0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_0p0_mp]<-_CASL_EPS_ || fabs(qnnn.d_0p0_p0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0m)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_0p0_pm]<-_CASL_EPS_ || fabs(qnnn.d_0p0_m0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_0p0_pp]<-_CASL_EPS_ || fabs(qnnn.d_0p0_m0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0m)<_CASL_EPS_) &&
+           ( phi_p[qnnn.node_0p0_mm]<-EPS || fabs(qnnn.d_0p0_p0)<EPS || fabs(qnnn.d_0p0_0p)<EPS) &&
+           ( phi_p[qnnn.node_0p0_mp]<-EPS || fabs(qnnn.d_0p0_p0)<EPS || fabs(qnnn.d_0p0_0m)<EPS) &&
+           ( phi_p[qnnn.node_0p0_pm]<-EPS || fabs(qnnn.d_0p0_m0)<EPS || fabs(qnnn.d_0p0_0p)<EPS) &&
+           ( phi_p[qnnn.node_0p0_pp]<-EPS || fabs(qnnn.d_0p0_m0)<EPS || fabs(qnnn.d_0p0_0m)<EPS) &&
 
-           ( phi_p[qnnn.node_00m_mm]<-_CASL_EPS_ || fabs(qnnn.d_00m_p0)<_CASL_EPS_ || fabs(qnnn.d_00m_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_00m_mp]<-_CASL_EPS_ || fabs(qnnn.d_00m_p0)<_CASL_EPS_ || fabs(qnnn.d_00m_0m)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_00m_pm]<-_CASL_EPS_ || fabs(qnnn.d_00m_m0)<_CASL_EPS_ || fabs(qnnn.d_00m_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_00m_pp]<-_CASL_EPS_ || fabs(qnnn.d_00m_m0)<_CASL_EPS_ || fabs(qnnn.d_00m_0m)<_CASL_EPS_) &&
+           ( phi_p[qnnn.node_00m_mm]<-EPS || fabs(qnnn.d_00m_p0)<EPS || fabs(qnnn.d_00m_0p)<EPS) &&
+           ( phi_p[qnnn.node_00m_mp]<-EPS || fabs(qnnn.d_00m_p0)<EPS || fabs(qnnn.d_00m_0m)<EPS) &&
+           ( phi_p[qnnn.node_00m_pm]<-EPS || fabs(qnnn.d_00m_m0)<EPS || fabs(qnnn.d_00m_0p)<EPS) &&
+           ( phi_p[qnnn.node_00m_pp]<-EPS || fabs(qnnn.d_00m_m0)<EPS || fabs(qnnn.d_00m_0m)<EPS) &&
 
-           ( phi_p[qnnn.node_00p_mm]<-_CASL_EPS_ || fabs(qnnn.d_00p_p0)<_CASL_EPS_ || fabs(qnnn.d_00p_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_00p_mp]<-_CASL_EPS_ || fabs(qnnn.d_00p_p0)<_CASL_EPS_ || fabs(qnnn.d_00p_0m)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_00p_pm]<-_CASL_EPS_ || fabs(qnnn.d_00p_m0)<_CASL_EPS_ || fabs(qnnn.d_00p_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_00p_pp]<-_CASL_EPS_ || fabs(qnnn.d_00p_m0)<_CASL_EPS_ || fabs(qnnn.d_00p_0m)<_CASL_EPS_)
+           ( phi_p[qnnn.node_00p_mm]<-EPS || fabs(qnnn.d_00p_p0)<EPS || fabs(qnnn.d_00p_0p)<EPS) &&
+           ( phi_p[qnnn.node_00p_mp]<-EPS || fabs(qnnn.d_00p_p0)<EPS || fabs(qnnn.d_00p_0m)<EPS) &&
+           ( phi_p[qnnn.node_00p_pm]<-EPS || fabs(qnnn.d_00p_m0)<EPS || fabs(qnnn.d_00p_0p)<EPS) &&
+           ( phi_p[qnnn.node_00p_pp]<-EPS || fabs(qnnn.d_00p_m0)<EPS || fabs(qnnn.d_00p_0m)<EPS)
      #else
-           ( phi_p[qnnn.node_m00_mm]<-_CASL_EPS_ || fabs(qnnn.d_m00_p0)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_m00_pm]<-_CASL_EPS_ || fabs(qnnn.d_m00_m0)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_p00_mm]<-_CASL_EPS_ || fabs(qnnn.d_p00_p0)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_p00_pm]<-_CASL_EPS_ || fabs(qnnn.d_p00_m0)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_0m0_mm]<-_CASL_EPS_ || fabs(qnnn.d_0m0_p0)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_0m0_pm]<-_CASL_EPS_ || fabs(qnnn.d_0m0_m0)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_0p0_mm]<-_CASL_EPS_ || fabs(qnnn.d_0p0_p0)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_0p0_pm]<-_CASL_EPS_ || fabs(qnnn.d_0p0_m0)<_CASL_EPS_)
+           ( phi_p[qnnn.node_m00_mm]<-EPS || fabs(qnnn.d_m00_p0)<EPS) &&
+           ( phi_p[qnnn.node_m00_pm]<-EPS || fabs(qnnn.d_m00_m0)<EPS) &&
+           ( phi_p[qnnn.node_p00_mm]<-EPS || fabs(qnnn.d_p00_p0)<EPS) &&
+           ( phi_p[qnnn.node_p00_pm]<-EPS || fabs(qnnn.d_p00_m0)<EPS) &&
+           ( phi_p[qnnn.node_0m0_mm]<-EPS || fabs(qnnn.d_0m0_p0)<EPS) &&
+           ( phi_p[qnnn.node_0m0_pm]<-EPS || fabs(qnnn.d_0m0_m0)<EPS) &&
+           ( phi_p[qnnn.node_0p0_mm]<-EPS || fabs(qnnn.d_0p0_p0)<EPS) &&
+           ( phi_p[qnnn.node_0p0_pm]<-EPS || fabs(qnnn.d_0p0_m0)<EPS)
      #endif
            )
       {
@@ -6158,7 +6158,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_po
             #endif
                     );
       }
-      else if (phi_p[qnnn.node_000]<-_CASL_EPS_ && solver->get_use_quadratic_continuous_stencil() && solver->pointwise_bc[n].size() < 3)
+      else if (phi_p[qnnn.node_000]<-EPS && solver->get_use_quadratic_continuous_stencil() && solver->pointwise_bc[n].size() < 3)
       {
         bool is_interface_m00 = false;
         bool is_interface_p00 = false;
@@ -6184,7 +6184,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_po
         double q_000 = q_p[n];
 
         double d_min = diag;
-        for (int i = 0; i < solver->pointwise_bc[n].size(); ++i)
+        for (unsigned int i = 0; i < solver->pointwise_bc[n].size(); ++i)
         {
           switch (solver->pointwise_bc[n][i].dir)
           {
@@ -6229,7 +6229,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_po
 
             node_P00 = (qnnn_nei.d_p00_m0 == 0 ? qnnn_nei.node_p00_mm : qnnn_nei.node_p00_pm);
 
-            enough_neighbors = phi_p[node_P00] < -_CASL_EPS_;
+            enough_neighbors = phi_p[node_P00] < -EPS;
           }
 
           if (enough_neighbors)
@@ -6260,7 +6260,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_po
 
             node_M00 = (qnnn_nei.d_m00_m0 == 0 ? qnnn_nei.node_m00_mm : qnnn_nei.node_m00_pm);
 
-            enough_neighbors = phi_p[node_M00] < -_CASL_EPS_;
+            enough_neighbors = phi_p[node_M00] < -EPS;
           }
 
           if (enough_neighbors)
@@ -6293,7 +6293,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_po
 
             node_0P0 = (qnnn_nei.d_0p0_m0 == 0 ? qnnn_nei.node_0p0_mm : qnnn_nei.node_0p0_pm);
 
-            enough_neighbors = phi_p[node_0P0] < -_CASL_EPS_;
+            enough_neighbors = phi_p[node_0P0] < -EPS;
           }
 
           if (enough_neighbors)
@@ -6324,7 +6324,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_po
 
             node_0M0 = (qnnn_nei.d_0m0_m0 == 0 ? qnnn_nei.node_0m0_mm : qnnn_nei.node_0m0_pm);
 
-            enough_neighbors = phi_p[node_0M0] < -_CASL_EPS_;
+            enough_neighbors = phi_p[node_0M0] < -EPS;
           }
 
           if (enough_neighbors)
@@ -6365,7 +6365,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_po
           qn_p[n] = 0;
         }
       }
-      else if (phi_p[qnnn.node_000]<-_CASL_EPS_ && solver->pointwise_bc[n].size() < 3)
+      else if (phi_p[qnnn.node_000]<-EPS && solver->pointwise_bc[n].size() < 3)
       {
 //        if (solver->pointwise_bc[n].size() >= 3) std::cout << solver->pointwise_bc[n].size() << "now!\n";
         double d_m00 = qnnn.d_m00, d_p00 = qnnn.d_p00;
@@ -6383,7 +6383,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_po
         double q_000 = q_p[n];
 
         double d_min = diag;
-        for (int i = 0; i < solver->pointwise_bc[n].size(); ++i)
+        for (unsigned int i = 0; i < solver->pointwise_bc[n].size(); ++i)
         {
           switch (solver->pointwise_bc[n][i].dir)
           {
@@ -6431,46 +6431,46 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_po
     {
       p4est_locidx_t n = local_nodes[n_map];
       ngbd->get_neighbors(n, qnnn);
-      if(  phi_p[qnnn.node_000]<-_CASL_EPS_ &&
+      if(  phi_p[qnnn.node_000]<-EPS &&
      #ifdef P4_TO_P8
-           ( phi_p[qnnn.node_m00_mm]<-_CASL_EPS_ || fabs(qnnn.d_m00_p0)<_CASL_EPS_ || fabs(qnnn.d_m00_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_m00_mp]<-_CASL_EPS_ || fabs(qnnn.d_m00_p0)<_CASL_EPS_ || fabs(qnnn.d_m00_0m)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_m00_pm]<-_CASL_EPS_ || fabs(qnnn.d_m00_m0)<_CASL_EPS_ || fabs(qnnn.d_m00_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_m00_pp]<-_CASL_EPS_ || fabs(qnnn.d_m00_m0)<_CASL_EPS_ || fabs(qnnn.d_m00_0m)<_CASL_EPS_) &&
+           ( phi_p[qnnn.node_m00_mm]<-EPS || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
+           ( phi_p[qnnn.node_m00_mp]<-EPS || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
+           ( phi_p[qnnn.node_m00_pm]<-EPS || fabs(qnnn.d_m00_m0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
+           ( phi_p[qnnn.node_m00_pp]<-EPS || fabs(qnnn.d_m00_m0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
 
-           ( phi_p[qnnn.node_p00_mm]<-_CASL_EPS_ || fabs(qnnn.d_p00_p0)<_CASL_EPS_ || fabs(qnnn.d_p00_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_p00_mp]<-_CASL_EPS_ || fabs(qnnn.d_p00_p0)<_CASL_EPS_ || fabs(qnnn.d_p00_0m)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_p00_pm]<-_CASL_EPS_ || fabs(qnnn.d_p00_m0)<_CASL_EPS_ || fabs(qnnn.d_p00_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_p00_pp]<-_CASL_EPS_ || fabs(qnnn.d_p00_m0)<_CASL_EPS_ || fabs(qnnn.d_p00_0m)<_CASL_EPS_) &&
+           ( phi_p[qnnn.node_p00_mm]<-EPS || fabs(qnnn.d_p00_p0)<EPS || fabs(qnnn.d_p00_0p)<EPS) &&
+           ( phi_p[qnnn.node_p00_mp]<-EPS || fabs(qnnn.d_p00_p0)<EPS || fabs(qnnn.d_p00_0m)<EPS) &&
+           ( phi_p[qnnn.node_p00_pm]<-EPS || fabs(qnnn.d_p00_m0)<EPS || fabs(qnnn.d_p00_0p)<EPS) &&
+           ( phi_p[qnnn.node_p00_pp]<-EPS || fabs(qnnn.d_p00_m0)<EPS || fabs(qnnn.d_p00_0m)<EPS) &&
 
-           ( phi_p[qnnn.node_0m0_mm]<-_CASL_EPS_ || fabs(qnnn.d_0m0_p0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_0m0_mp]<-_CASL_EPS_ || fabs(qnnn.d_0m0_p0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0m)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_0m0_pm]<-_CASL_EPS_ || fabs(qnnn.d_0m0_m0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_0m0_pp]<-_CASL_EPS_ || fabs(qnnn.d_0m0_m0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0m)<_CASL_EPS_) &&
+           ( phi_p[qnnn.node_0m0_mm]<-EPS || fabs(qnnn.d_0m0_p0)<EPS || fabs(qnnn.d_0m0_0p)<EPS) &&
+           ( phi_p[qnnn.node_0m0_mp]<-EPS || fabs(qnnn.d_0m0_p0)<EPS || fabs(qnnn.d_0m0_0m)<EPS) &&
+           ( phi_p[qnnn.node_0m0_pm]<-EPS || fabs(qnnn.d_0m0_m0)<EPS || fabs(qnnn.d_0m0_0p)<EPS) &&
+           ( phi_p[qnnn.node_0m0_pp]<-EPS || fabs(qnnn.d_0m0_m0)<EPS || fabs(qnnn.d_0m0_0m)<EPS) &&
 
-           ( phi_p[qnnn.node_0p0_mm]<-_CASL_EPS_ || fabs(qnnn.d_0p0_p0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_0p0_mp]<-_CASL_EPS_ || fabs(qnnn.d_0p0_p0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0m)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_0p0_pm]<-_CASL_EPS_ || fabs(qnnn.d_0p0_m0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_0p0_pp]<-_CASL_EPS_ || fabs(qnnn.d_0p0_m0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0m)<_CASL_EPS_) &&
+           ( phi_p[qnnn.node_0p0_mm]<-EPS || fabs(qnnn.d_0p0_p0)<EPS || fabs(qnnn.d_0p0_0p)<EPS) &&
+           ( phi_p[qnnn.node_0p0_mp]<-EPS || fabs(qnnn.d_0p0_p0)<EPS || fabs(qnnn.d_0p0_0m)<EPS) &&
+           ( phi_p[qnnn.node_0p0_pm]<-EPS || fabs(qnnn.d_0p0_m0)<EPS || fabs(qnnn.d_0p0_0p)<EPS) &&
+           ( phi_p[qnnn.node_0p0_pp]<-EPS || fabs(qnnn.d_0p0_m0)<EPS || fabs(qnnn.d_0p0_0m)<EPS) &&
 
-           ( phi_p[qnnn.node_00m_mm]<-_CASL_EPS_ || fabs(qnnn.d_00m_p0)<_CASL_EPS_ || fabs(qnnn.d_00m_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_00m_mp]<-_CASL_EPS_ || fabs(qnnn.d_00m_p0)<_CASL_EPS_ || fabs(qnnn.d_00m_0m)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_00m_pm]<-_CASL_EPS_ || fabs(qnnn.d_00m_m0)<_CASL_EPS_ || fabs(qnnn.d_00m_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_00m_pp]<-_CASL_EPS_ || fabs(qnnn.d_00m_m0)<_CASL_EPS_ || fabs(qnnn.d_00m_0m)<_CASL_EPS_) &&
+           ( phi_p[qnnn.node_00m_mm]<-EPS || fabs(qnnn.d_00m_p0)<EPS || fabs(qnnn.d_00m_0p)<EPS) &&
+           ( phi_p[qnnn.node_00m_mp]<-EPS || fabs(qnnn.d_00m_p0)<EPS || fabs(qnnn.d_00m_0m)<EPS) &&
+           ( phi_p[qnnn.node_00m_pm]<-EPS || fabs(qnnn.d_00m_m0)<EPS || fabs(qnnn.d_00m_0p)<EPS) &&
+           ( phi_p[qnnn.node_00m_pp]<-EPS || fabs(qnnn.d_00m_m0)<EPS || fabs(qnnn.d_00m_0m)<EPS) &&
 
-           ( phi_p[qnnn.node_00p_mm]<-_CASL_EPS_ || fabs(qnnn.d_00p_p0)<_CASL_EPS_ || fabs(qnnn.d_00p_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_00p_mp]<-_CASL_EPS_ || fabs(qnnn.d_00p_p0)<_CASL_EPS_ || fabs(qnnn.d_00p_0m)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_00p_pm]<-_CASL_EPS_ || fabs(qnnn.d_00p_m0)<_CASL_EPS_ || fabs(qnnn.d_00p_0p)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_00p_pp]<-_CASL_EPS_ || fabs(qnnn.d_00p_m0)<_CASL_EPS_ || fabs(qnnn.d_00p_0m)<_CASL_EPS_)
+           ( phi_p[qnnn.node_00p_mm]<-EPS || fabs(qnnn.d_00p_p0)<EPS || fabs(qnnn.d_00p_0p)<EPS) &&
+           ( phi_p[qnnn.node_00p_mp]<-EPS || fabs(qnnn.d_00p_p0)<EPS || fabs(qnnn.d_00p_0m)<EPS) &&
+           ( phi_p[qnnn.node_00p_pm]<-EPS || fabs(qnnn.d_00p_m0)<EPS || fabs(qnnn.d_00p_0p)<EPS) &&
+           ( phi_p[qnnn.node_00p_pp]<-EPS || fabs(qnnn.d_00p_m0)<EPS || fabs(qnnn.d_00p_0m)<EPS)
      #else
-           ( phi_p[qnnn.node_m00_mm]<-_CASL_EPS_ || fabs(qnnn.d_m00_p0)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_m00_pm]<-_CASL_EPS_ || fabs(qnnn.d_m00_m0)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_p00_mm]<-_CASL_EPS_ || fabs(qnnn.d_p00_p0)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_p00_pm]<-_CASL_EPS_ || fabs(qnnn.d_p00_m0)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_0m0_mm]<-_CASL_EPS_ || fabs(qnnn.d_0m0_p0)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_0m0_pm]<-_CASL_EPS_ || fabs(qnnn.d_0m0_m0)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_0p0_mm]<-_CASL_EPS_ || fabs(qnnn.d_0p0_p0)<_CASL_EPS_) &&
-           ( phi_p[qnnn.node_0p0_pm]<-_CASL_EPS_ || fabs(qnnn.d_0p0_m0)<_CASL_EPS_)
+           ( phi_p[qnnn.node_m00_mm]<-EPS || fabs(qnnn.d_m00_p0)<EPS) &&
+           ( phi_p[qnnn.node_m00_pm]<-EPS || fabs(qnnn.d_m00_m0)<EPS) &&
+           ( phi_p[qnnn.node_p00_mm]<-EPS || fabs(qnnn.d_p00_p0)<EPS) &&
+           ( phi_p[qnnn.node_p00_pm]<-EPS || fabs(qnnn.d_p00_m0)<EPS) &&
+           ( phi_p[qnnn.node_0m0_mm]<-EPS || fabs(qnnn.d_0m0_p0)<EPS) &&
+           ( phi_p[qnnn.node_0m0_pm]<-EPS || fabs(qnnn.d_0m0_m0)<EPS) &&
+           ( phi_p[qnnn.node_0p0_mm]<-EPS || fabs(qnnn.d_0p0_p0)<EPS) &&
+           ( phi_p[qnnn.node_0p0_pm]<-EPS || fabs(qnnn.d_0p0_m0)<EPS)
      #endif
            )
       {
@@ -6482,7 +6482,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_po
             #endif
                     );
       }
-      else if (phi_p[qnnn.node_000]<-_CASL_EPS_ && solver->get_use_quadratic_continuous_stencil() && solver->pointwise_bc[n].size() < 3)
+      else if (phi_p[qnnn.node_000]<-EPS && solver->get_use_quadratic_continuous_stencil() && solver->pointwise_bc[n].size() < 3)
       {
         bool is_interface_m00 = false;
         bool is_interface_p00 = false;
@@ -6508,7 +6508,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_po
         double q_000 = q_p[n];
 
         double d_min = diag;
-        for (int i = 0; i < solver->pointwise_bc[n].size(); ++i)
+        for (unsigned int i = 0; i < solver->pointwise_bc[n].size(); ++i)
         {
           switch (solver->pointwise_bc[n][i].dir)
           {
@@ -6553,7 +6553,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_po
 
             node_P00 = (qnnn_nei.d_p00_m0 == 0 ? qnnn_nei.node_p00_mm : qnnn_nei.node_p00_pm);
 
-            enough_neighbors = phi_p[node_P00] < -_CASL_EPS_;
+            enough_neighbors = phi_p[node_P00] < -EPS;
           }
 
           if (enough_neighbors)
@@ -6584,7 +6584,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_po
 
             node_M00 = (qnnn_nei.d_m00_m0 == 0 ? qnnn_nei.node_m00_mm : qnnn_nei.node_m00_pm);
 
-            enough_neighbors = phi_p[node_M00] < -_CASL_EPS_;
+            enough_neighbors = phi_p[node_M00] < -EPS;
           }
 
           if (enough_neighbors)
@@ -6617,7 +6617,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_po
 
             node_0P0 = (qnnn_nei.d_0p0_m0 == 0 ? qnnn_nei.node_0p0_mm : qnnn_nei.node_0p0_pm);
 
-            enough_neighbors = phi_p[node_0P0] < -_CASL_EPS_;
+            enough_neighbors = phi_p[node_0P0] < -EPS;
           }
 
           if (enough_neighbors)
@@ -6648,7 +6648,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_po
 
             node_0M0 = (qnnn_nei.d_0m0_m0 == 0 ? qnnn_nei.node_0m0_mm : qnnn_nei.node_0m0_pm);
 
-            enough_neighbors = phi_p[node_0M0] < -_CASL_EPS_;
+            enough_neighbors = phi_p[node_0M0] < -EPS;
           }
 
           if (enough_neighbors)
@@ -6689,7 +6689,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_po
           qn_p[n] = 0;
         }
       }
-      else if (phi_p[qnnn.node_000]<-_CASL_EPS_ && solver->pointwise_bc[n].size() < 3)
+      else if (phi_p[qnnn.node_000]<-EPS && solver->pointwise_bc[n].size() < 3)
       {
 //        if (solver->pointwise_bc[n].size() >= 3) std::cout << solver->pointwise_bc[n].size() << "now!\n";
         double d_m00 = qnnn.d_m00, d_p00 = qnnn.d_p00;
@@ -6707,7 +6707,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_po
         double q_000 = q_p[n];
 
         double d_min = diag;
-        for (int i = 0; i < solver->pointwise_bc[n].size(); ++i)
+        for (unsigned int i = 0; i < solver->pointwise_bc[n].size(); ++i)
         {
           switch (solver->pointwise_bc[n][i].dir)
           {
@@ -6774,44 +6774,44 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_po
       ngbd->get_neighbors(n, qnnn);
       if(  b_qn_well_defined_p[qnnn.node_000]==true &&
      #ifdef P4_TO_P8
-           ( b_qn_well_defined_p[qnnn.node_m00_mm]==true || fabs(qnnn.d_m00_p0)<_CASL_EPS_ || fabs(qnnn.d_m00_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_m00_mp]==true || fabs(qnnn.d_m00_p0)<_CASL_EPS_ || fabs(qnnn.d_m00_0m)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_m00_pm]==true || fabs(qnnn.d_m00_m0)<_CASL_EPS_ || fabs(qnnn.d_m00_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_m00_pp]==true || fabs(qnnn.d_m00_m0)<_CASL_EPS_ || fabs(qnnn.d_m00_0m)<_CASL_EPS_) &&
+           ( b_qn_well_defined_p[qnnn.node_m00_mm]==true || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_m00_mp]==true || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_m00_pm]==true || fabs(qnnn.d_m00_m0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_m00_pp]==true || fabs(qnnn.d_m00_m0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
 
-           ( b_qn_well_defined_p[qnnn.node_p00_mm]==true || fabs(qnnn.d_p00_p0)<_CASL_EPS_ || fabs(qnnn.d_p00_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_p00_mp]==true || fabs(qnnn.d_p00_p0)<_CASL_EPS_ || fabs(qnnn.d_p00_0m)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_p00_pm]==true || fabs(qnnn.d_p00_m0)<_CASL_EPS_ || fabs(qnnn.d_p00_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_p00_pp]==true || fabs(qnnn.d_p00_m0)<_CASL_EPS_ || fabs(qnnn.d_p00_0m)<_CASL_EPS_) &&
+           ( b_qn_well_defined_p[qnnn.node_p00_mm]==true || fabs(qnnn.d_p00_p0)<EPS || fabs(qnnn.d_p00_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_p00_mp]==true || fabs(qnnn.d_p00_p0)<EPS || fabs(qnnn.d_p00_0m)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_p00_pm]==true || fabs(qnnn.d_p00_m0)<EPS || fabs(qnnn.d_p00_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_p00_pp]==true || fabs(qnnn.d_p00_m0)<EPS || fabs(qnnn.d_p00_0m)<EPS) &&
 
-           ( b_qn_well_defined_p[qnnn.node_0m0_mm]==true || fabs(qnnn.d_0m0_p0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0m0_mp]==true || fabs(qnnn.d_0m0_p0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0m)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0m0_pm]==true || fabs(qnnn.d_0m0_m0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0m0_pp]==true || fabs(qnnn.d_0m0_m0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0m)<_CASL_EPS_) &&
+           ( b_qn_well_defined_p[qnnn.node_0m0_mm]==true || fabs(qnnn.d_0m0_p0)<EPS || fabs(qnnn.d_0m0_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0m0_mp]==true || fabs(qnnn.d_0m0_p0)<EPS || fabs(qnnn.d_0m0_0m)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0m0_pm]==true || fabs(qnnn.d_0m0_m0)<EPS || fabs(qnnn.d_0m0_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0m0_pp]==true || fabs(qnnn.d_0m0_m0)<EPS || fabs(qnnn.d_0m0_0m)<EPS) &&
 
-           ( b_qn_well_defined_p[qnnn.node_0p0_mm]==true || fabs(qnnn.d_0p0_p0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0p0_mp]==true || fabs(qnnn.d_0p0_p0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0m)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0p0_pm]==true || fabs(qnnn.d_0p0_m0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0p0_pp]==true || fabs(qnnn.d_0p0_m0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0m)<_CASL_EPS_) &&
+           ( b_qn_well_defined_p[qnnn.node_0p0_mm]==true || fabs(qnnn.d_0p0_p0)<EPS || fabs(qnnn.d_0p0_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0p0_mp]==true || fabs(qnnn.d_0p0_p0)<EPS || fabs(qnnn.d_0p0_0m)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0p0_pm]==true || fabs(qnnn.d_0p0_m0)<EPS || fabs(qnnn.d_0p0_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0p0_pp]==true || fabs(qnnn.d_0p0_m0)<EPS || fabs(qnnn.d_0p0_0m)<EPS) &&
 
-           ( b_qn_well_defined_p[qnnn.node_00m_mm]==true || fabs(qnnn.d_00m_p0)<_CASL_EPS_ || fabs(qnnn.d_00m_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_00m_mp]==true || fabs(qnnn.d_00m_p0)<_CASL_EPS_ || fabs(qnnn.d_00m_0m)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_00m_pm]==true || fabs(qnnn.d_00m_m0)<_CASL_EPS_ || fabs(qnnn.d_00m_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_00m_pp]==true || fabs(qnnn.d_00m_m0)<_CASL_EPS_ || fabs(qnnn.d_00m_0m)<_CASL_EPS_) &&
+           ( b_qn_well_defined_p[qnnn.node_00m_mm]==true || fabs(qnnn.d_00m_p0)<EPS || fabs(qnnn.d_00m_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_00m_mp]==true || fabs(qnnn.d_00m_p0)<EPS || fabs(qnnn.d_00m_0m)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_00m_pm]==true || fabs(qnnn.d_00m_m0)<EPS || fabs(qnnn.d_00m_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_00m_pp]==true || fabs(qnnn.d_00m_m0)<EPS || fabs(qnnn.d_00m_0m)<EPS) &&
 
-           ( b_qn_well_defined_p[qnnn.node_00p_mm]==true || fabs(qnnn.d_00p_p0)<_CASL_EPS_ || fabs(qnnn.d_00p_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_00p_mp]==true || fabs(qnnn.d_00p_p0)<_CASL_EPS_ || fabs(qnnn.d_00p_0m)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_00p_pm]==true || fabs(qnnn.d_00p_m0)<_CASL_EPS_ || fabs(qnnn.d_00p_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_00p_pp]==true || fabs(qnnn.d_00p_m0)<_CASL_EPS_ || fabs(qnnn.d_00p_0m)<_CASL_EPS_)
+           ( b_qn_well_defined_p[qnnn.node_00p_mm]==true || fabs(qnnn.d_00p_p0)<EPS || fabs(qnnn.d_00p_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_00p_mp]==true || fabs(qnnn.d_00p_p0)<EPS || fabs(qnnn.d_00p_0m)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_00p_pm]==true || fabs(qnnn.d_00p_m0)<EPS || fabs(qnnn.d_00p_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_00p_pp]==true || fabs(qnnn.d_00p_m0)<EPS || fabs(qnnn.d_00p_0m)<EPS)
      #else
-           ( b_qn_well_defined_p[qnnn.node_m00_mm]==true || fabs(qnnn.d_m00_p0)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_m00_pm]==true || fabs(qnnn.d_m00_m0)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_p00_mm]==true || fabs(qnnn.d_p00_p0)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_p00_pm]==true || fabs(qnnn.d_p00_m0)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0m0_mm]==true || fabs(qnnn.d_0m0_p0)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0m0_pm]==true || fabs(qnnn.d_0m0_m0)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0p0_mm]==true || fabs(qnnn.d_0p0_p0)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0p0_pm]==true || fabs(qnnn.d_0p0_m0)<_CASL_EPS_)
+           ( b_qn_well_defined_p[qnnn.node_m00_mm]==true || fabs(qnnn.d_m00_p0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_m00_pm]==true || fabs(qnnn.d_m00_m0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_p00_mm]==true || fabs(qnnn.d_p00_p0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_p00_pm]==true || fabs(qnnn.d_p00_m0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0m0_mm]==true || fabs(qnnn.d_0m0_p0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0m0_pm]==true || fabs(qnnn.d_0m0_m0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0p0_mm]==true || fabs(qnnn.d_0p0_p0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0p0_pm]==true || fabs(qnnn.d_0p0_m0)<EPS)
      #endif
            )
 
@@ -6843,44 +6843,44 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_po
       ngbd->get_neighbors(n, qnnn);
       if(  b_qn_well_defined_p[qnnn.node_000]==true &&
      #ifdef P4_TO_P8
-           ( b_qn_well_defined_p[qnnn.node_m00_mm]==true || fabs(qnnn.d_m00_p0)<_CASL_EPS_ || fabs(qnnn.d_m00_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_m00_mp]==true || fabs(qnnn.d_m00_p0)<_CASL_EPS_ || fabs(qnnn.d_m00_0m)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_m00_pm]==true || fabs(qnnn.d_m00_m0)<_CASL_EPS_ || fabs(qnnn.d_m00_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_m00_pp]==true || fabs(qnnn.d_m00_m0)<_CASL_EPS_ || fabs(qnnn.d_m00_0m)<_CASL_EPS_) &&
+           ( b_qn_well_defined_p[qnnn.node_m00_mm]==true || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_m00_mp]==true || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_m00_pm]==true || fabs(qnnn.d_m00_m0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_m00_pp]==true || fabs(qnnn.d_m00_m0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
 
-           ( b_qn_well_defined_p[qnnn.node_p00_mm]==true || fabs(qnnn.d_p00_p0)<_CASL_EPS_ || fabs(qnnn.d_p00_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_p00_mp]==true || fabs(qnnn.d_p00_p0)<_CASL_EPS_ || fabs(qnnn.d_p00_0m)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_p00_pm]==true || fabs(qnnn.d_p00_m0)<_CASL_EPS_ || fabs(qnnn.d_p00_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_p00_pp]==true || fabs(qnnn.d_p00_m0)<_CASL_EPS_ || fabs(qnnn.d_p00_0m)<_CASL_EPS_) &&
+           ( b_qn_well_defined_p[qnnn.node_p00_mm]==true || fabs(qnnn.d_p00_p0)<EPS || fabs(qnnn.d_p00_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_p00_mp]==true || fabs(qnnn.d_p00_p0)<EPS || fabs(qnnn.d_p00_0m)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_p00_pm]==true || fabs(qnnn.d_p00_m0)<EPS || fabs(qnnn.d_p00_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_p00_pp]==true || fabs(qnnn.d_p00_m0)<EPS || fabs(qnnn.d_p00_0m)<EPS) &&
 
-           ( b_qn_well_defined_p[qnnn.node_0m0_mm]==true || fabs(qnnn.d_0m0_p0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0m0_mp]==true || fabs(qnnn.d_0m0_p0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0m)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0m0_pm]==true || fabs(qnnn.d_0m0_m0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0m0_pp]==true || fabs(qnnn.d_0m0_m0)<_CASL_EPS_ || fabs(qnnn.d_0m0_0m)<_CASL_EPS_) &&
+           ( b_qn_well_defined_p[qnnn.node_0m0_mm]==true || fabs(qnnn.d_0m0_p0)<EPS || fabs(qnnn.d_0m0_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0m0_mp]==true || fabs(qnnn.d_0m0_p0)<EPS || fabs(qnnn.d_0m0_0m)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0m0_pm]==true || fabs(qnnn.d_0m0_m0)<EPS || fabs(qnnn.d_0m0_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0m0_pp]==true || fabs(qnnn.d_0m0_m0)<EPS || fabs(qnnn.d_0m0_0m)<EPS) &&
 
-           ( b_qn_well_defined_p[qnnn.node_0p0_mm]==true || fabs(qnnn.d_0p0_p0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0p0_mp]==true || fabs(qnnn.d_0p0_p0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0m)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0p0_pm]==true || fabs(qnnn.d_0p0_m0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0p0_pp]==true || fabs(qnnn.d_0p0_m0)<_CASL_EPS_ || fabs(qnnn.d_0p0_0m)<_CASL_EPS_) &&
+           ( b_qn_well_defined_p[qnnn.node_0p0_mm]==true || fabs(qnnn.d_0p0_p0)<EPS || fabs(qnnn.d_0p0_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0p0_mp]==true || fabs(qnnn.d_0p0_p0)<EPS || fabs(qnnn.d_0p0_0m)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0p0_pm]==true || fabs(qnnn.d_0p0_m0)<EPS || fabs(qnnn.d_0p0_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0p0_pp]==true || fabs(qnnn.d_0p0_m0)<EPS || fabs(qnnn.d_0p0_0m)<EPS) &&
 
-           ( b_qn_well_defined_p[qnnn.node_00m_mm]==true || fabs(qnnn.d_00m_p0)<_CASL_EPS_ || fabs(qnnn.d_00m_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_00m_mp]==true || fabs(qnnn.d_00m_p0)<_CASL_EPS_ || fabs(qnnn.d_00m_0m)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_00m_pm]==true || fabs(qnnn.d_00m_m0)<_CASL_EPS_ || fabs(qnnn.d_00m_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_00m_pp]==true || fabs(qnnn.d_00m_m0)<_CASL_EPS_ || fabs(qnnn.d_00m_0m)<_CASL_EPS_) &&
+           ( b_qn_well_defined_p[qnnn.node_00m_mm]==true || fabs(qnnn.d_00m_p0)<EPS || fabs(qnnn.d_00m_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_00m_mp]==true || fabs(qnnn.d_00m_p0)<EPS || fabs(qnnn.d_00m_0m)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_00m_pm]==true || fabs(qnnn.d_00m_m0)<EPS || fabs(qnnn.d_00m_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_00m_pp]==true || fabs(qnnn.d_00m_m0)<EPS || fabs(qnnn.d_00m_0m)<EPS) &&
 
-           ( b_qn_well_defined_p[qnnn.node_00p_mm]==true || fabs(qnnn.d_00p_p0)<_CASL_EPS_ || fabs(qnnn.d_00p_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_00p_mp]==true || fabs(qnnn.d_00p_p0)<_CASL_EPS_ || fabs(qnnn.d_00p_0m)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_00p_pm]==true || fabs(qnnn.d_00p_m0)<_CASL_EPS_ || fabs(qnnn.d_00p_0p)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_00p_pp]==true || fabs(qnnn.d_00p_m0)<_CASL_EPS_ || fabs(qnnn.d_00p_0m)<_CASL_EPS_)
+           ( b_qn_well_defined_p[qnnn.node_00p_mm]==true || fabs(qnnn.d_00p_p0)<EPS || fabs(qnnn.d_00p_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_00p_mp]==true || fabs(qnnn.d_00p_p0)<EPS || fabs(qnnn.d_00p_0m)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_00p_pm]==true || fabs(qnnn.d_00p_m0)<EPS || fabs(qnnn.d_00p_0p)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_00p_pp]==true || fabs(qnnn.d_00p_m0)<EPS || fabs(qnnn.d_00p_0m)<EPS)
      #else
-           ( b_qn_well_defined_p[qnnn.node_m00_mm]==true || fabs(qnnn.d_m00_p0)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_m00_pm]==true || fabs(qnnn.d_m00_m0)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_p00_mm]==true || fabs(qnnn.d_p00_p0)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_p00_pm]==true || fabs(qnnn.d_p00_m0)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0m0_mm]==true || fabs(qnnn.d_0m0_p0)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0m0_pm]==true || fabs(qnnn.d_0m0_m0)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0p0_mm]==true || fabs(qnnn.d_0p0_p0)<_CASL_EPS_) &&
-           ( b_qn_well_defined_p[qnnn.node_0p0_pm]==true || fabs(qnnn.d_0p0_m0)<_CASL_EPS_)
+           ( b_qn_well_defined_p[qnnn.node_m00_mm]==true || fabs(qnnn.d_m00_p0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_m00_pm]==true || fabs(qnnn.d_m00_m0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_p00_mm]==true || fabs(qnnn.d_p00_p0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_p00_pm]==true || fabs(qnnn.d_p00_m0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0m0_mm]==true || fabs(qnnn.d_0m0_p0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0m0_pm]==true || fabs(qnnn.d_0m0_m0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0p0_mm]==true || fabs(qnnn.d_0p0_p0)<EPS) &&
+           ( b_qn_well_defined_p[qnnn.node_0p0_pm]==true || fabs(qnnn.d_0p0_m0)<EPS)
      #endif
            )
 
@@ -7154,7 +7154,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_po
     {
       p4est_locidx_t n = layer_nodes[n_map];
       ngbd->get_neighbors(n, qnnn);
-      if(phi_p[n] > -_CASL_EPS_)
+      if(phi_p[n] > -EPS)
       {
         const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[n];
         double dt = MIN(fabs(qnnn.d_m00) , fabs(qnnn.d_p00) );
@@ -7206,12 +7206,12 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_po
 #endif
 
 //#ifdef P4_TO_P8
-//        if(fabs(nx[n])<_CASL_EPS_ && fabs(ny[n])<_CASL_EPS_ && fabs(nz[n])<_CASL_EPS_)
+//        if(fabs(nx[n])<EPS && fabs(ny[n])<EPS && fabs(nz[n])<EPS)
 //          tmp_p[n] = (qnnn.f_m00_linear(q_p) + qnnn.f_p00_linear(q_p) +
 //                      qnnn.f_0m0_linear(q_p) + qnnn.f_0p0_linear(q_p) +
 //                      qnnn.f_00m_linear(q_p) + qnnn.f_00p_linear(q_p))/6.;
 //#else
-//        if(fabs(nx[n])<_CASL_EPS_ && fabs(ny[n])<_CASL_EPS_)
+//        if(fabs(nx[n])<EPS && fabs(ny[n])<EPS)
 //          tmp_p[n] = (qnnn.f_m00_linear(q_p) + qnnn.f_p00_linear(q_p) +
 //                      qnnn.f_0m0_linear(q_p) + qnnn.f_0p0_linear(q_p))/4.;
 //#endif
@@ -7234,7 +7234,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_po
     {
       p4est_locidx_t n = local_nodes[n_map];
       ngbd->get_neighbors(n, qnnn);
-      if(phi_p[n] > -_CASL_EPS_)
+      if(phi_p[n] > -EPS)
       {
         double dt = MIN(fabs(qnnn.d_m00) , fabs(qnnn.d_p00) );
         dt  =  MIN( dt, fabs(qnnn.d_0m0) , fabs(qnnn.d_0p0) );
@@ -7285,12 +7285,12 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_po
 #endif
 
 //#ifdef P4_TO_P8
-//        if(fabs(nx[n])<_CASL_EPS_ && fabs(ny[n])<_CASL_EPS_ && fabs(nz[n])<_CASL_EPS_)
+//        if(fabs(nx[n])<EPS && fabs(ny[n])<EPS && fabs(nz[n])<EPS)
 //          tmp_p[n] = (qnnn.f_m00_linear(q_p) + qnnn.f_p00_linear(q_p) +
 //                      qnnn.f_0m0_linear(q_p) + qnnn.f_0p0_linear(q_p) +
 //                      qnnn.f_00m_linear(q_p) + qnnn.f_00p_linear(q_p))/6.;
 //#else
-//        if(fabs(nx[n])<_CASL_EPS_ && fabs(ny[n])<_CASL_EPS_)
+//        if(fabs(nx[n])<EPS && fabs(ny[n])<EPS)
 //          tmp_p[n] = (qnnn.f_m00_linear(q_p) + qnnn.f_p00_linear(q_p) +
 //                      qnnn.f_0m0_linear(q_p) + qnnn.f_0p0_linear(q_p))/4.;
 //#endif

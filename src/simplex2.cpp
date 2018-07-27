@@ -57,9 +57,9 @@ double Simplex2::area() const
 double Simplex2::integral( double f0, double f1, double f2,
                            double p0, double p1, double p2)
 {
-  if(fabs(p0)<_CASL_EPS_) p0=1e-13;
-  if(fabs(p1)<_CASL_EPS_) p1=1e-13;
-  if(fabs(p2)<_CASL_EPS_) p2=1e-13;
+  if(fabs(p0)<EPS) p0=1e-13;
+  if(fabs(p1)<EPS) p1=1e-13;
+  if(fabs(p2)<EPS) p2=1e-13;
 
   //---------------------------------------------------------------------
   // perturbation

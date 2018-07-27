@@ -90,8 +90,8 @@ void simplex2_mls_q_t::construct_domain(std::vector<double> &phi, std::vector<ac
   double c0, c1, c2;
   double a_ext, phi_ext;
 
-  int initial_refinement = 0;
-  int n;
+  unsigned int initial_refinement = 0;
+  unsigned int n;
 
   std::vector<double> phi_current(nodes_per_tri_, -1);
 
@@ -101,20 +101,20 @@ void simplex2_mls_q_t::construct_domain(std::vector<double> &phi, std::vector<ac
 
   while(1)
   {
-    for (int i = 0; i < initial_refinement; ++i)
+    for (unsigned int i = 0; i < initial_refinement; ++i)
     {
-      n = edgs_.size(); for (int i = 0; i < n; i++) refine_edg(i);
-      n = tris_.size(); for (int i = 0; i < n; i++) refine_tri(i);
+      n = edgs_.size(); for (unsigned int i = 0; i < n; i++) refine_edg(i);
+      n = tris_.size(); for (unsigned int i = 0; i < n; i++) refine_tri(i);
     }
 
     // loop over LSFs
-    int refine_level = 0;
+    unsigned int refine_level = 0;
 
-    for (short phi_idx = 0; phi_idx < num_phi_; ++phi_idx)
+    for (unsigned short phi_idx = 0; phi_idx < num_phi_; ++phi_idx)
     {
       phi_max_ = 0;
 
-      for (int i = 0; i < nodes_per_tri_; ++i)
+      for (unsigned int i = 0; i < nodes_per_tri_; ++i)
       {
         vtxs_[i].value = phi[nodes_per_tri_*phi_idx + i];
         phi_current[i] = phi[nodes_per_tri_*phi_idx + i];
@@ -123,10 +123,10 @@ void simplex2_mls_q_t::construct_domain(std::vector<double> &phi, std::vector<ac
 
       phi_eps_ = phi_max_*eps_rel_;
 
-      for (int i = 0; i < nodes_per_tri_; ++i)
+      for (unsigned int i = 0; i < nodes_per_tri_; ++i)
         perturb(vtxs_[i].value, phi_eps_);
 
-      int last_vtxs_size = nodes_per_tri_;
+      unsigned int last_vtxs_size = nodes_per_tri_;
 
       invalid_reconstruction_ = true;
 
@@ -137,7 +137,7 @@ void simplex2_mls_q_t::construct_domain(std::vector<double> &phi, std::vector<ac
         while (needs_refinement)
         {
           // interpolate to all vertices
-          for (int i = last_vtxs_size; i < vtxs_.size(); ++i)
+          for (unsigned int i = last_vtxs_size; i < vtxs_.size(); ++i)
             if (!vtxs_[i].is_recycled)
             {
               vtxs_[i].value = interpolate_from_parent (phi_current, vtxs_[i].x, vtxs_[i].y );
@@ -196,8 +196,8 @@ void simplex2_mls_q_t::construct_domain(std::vector<double> &phi, std::vector<ac
           // refine if necessary
           if (needs_refinement && refine_level < max_refinement_ - initial_refinement)
           {
-//            for (int i = 0; i < edgs_.size(); i++) smart_refine_edg(i);
-            for (int i = 0; i < tris_.size(); i++) smart_refine_tri(i);
+//            for (unsigned int i = 0; i < edgs_.size(); i++) smart_refine_edg(i);
+            for (unsigned int i = 0; i < tris_.size(); i++) smart_refine_tri(i);
             refine_level++;
           } else if (needs_refinement) {
             std::cout << "Cannot resolve invalid geometry (bad)\n";
@@ -224,8 +224,8 @@ void simplex2_mls_q_t::construct_domain(std::vector<double> &phi, std::vector<ac
           edgs_ = edgs_tmp_;
           tris_ = tris_tmp_;
 
-          for (int i = 0; i < edgs_.size(); i++) smart_refine_edg(i);
-          for (int i = 0; i < tris_.size(); i++) smart_refine_tri(i);
+          for (unsigned int i = 0; i < edgs_.size(); i++) smart_refine_edg(i);
+          for (unsigned int i = 0; i < tris_.size(); i++) smart_refine_tri(i);
           refine_level++;
         } else {
 //          if (invalid_reconstruction_) std::cout << "Cannot resolve invalid geometry\n";
@@ -235,13 +235,13 @@ void simplex2_mls_q_t::construct_domain(std::vector<double> &phi, std::vector<ac
     }
 
     // sort everything before integration
-    for (int i = 0; i < edgs_.size(); i++)
+    for (unsigned int i = 0; i < edgs_.size(); i++)
     {
       edg2_t *edg = &edgs_[i];
       if (need_swap(edg->vtx0, edg->vtx2)) { swap(edg->vtx0, edg->vtx2); }
     }
 
-    for (int i = 0; i < tris_.size(); i++)
+    for (unsigned int i = 0; i < tris_.size(); i++)
     {
       tri2_t *tri = &tris_[i];
       if (need_swap(tri->vtx0, tri->vtx1)) { swap(tri->vtx0, tri->vtx1); swap(tri->edg0, tri->edg1); }
@@ -256,7 +256,7 @@ void simplex2_mls_q_t::construct_domain(std::vector<double> &phi, std::vector<ac
       double s_after  = 0;
 
       // compute volume after using linear representation
-      for (int i = 0; i < tris_.size(); ++i)
+      for (unsigned int i = 0; i < tris_.size(); ++i)
         if (!tris_[i].is_split)
           s_after += area(tris_[i].vtx0, tris_[i].vtx1, tris_[i].vtx2);
 
@@ -596,7 +596,7 @@ void simplex2_mls_q_t::do_action_tri(int n_tri, int cn, action_t action)
             for (int i = 0; i < 3; ++i)
             {
               double p0, p1;
-              int edg_idx;
+              unsigned int edg_idx;
 
               switch(i)
               {
@@ -799,7 +799,7 @@ void simplex2_mls_q_t::do_action_tri(int n_tri, int cn, action_t action)
             for (int i = 0; i < 3; ++i)
             {
               double p0, p1;
-              int edg_idx;
+              unsigned int edg_idx;
 
               switch(i)
               {
@@ -807,7 +807,7 @@ void simplex2_mls_q_t::do_action_tri(int n_tri, int cn, action_t action)
                 case 1: p0 = phi_line_0; p1 = phi_line_2; edg_idx = tri->edg1; break;
                 case 2: p0 = phi_line_0; p1 = phi_line_1; edg_idx = tri->edg2; break;
                 default:
-                  throw;
+                  throw std::runtime_error("Something went wrong during integration :(\n");
               }
 
               if (p0*p1 < 0)
@@ -817,7 +817,7 @@ void simplex2_mls_q_t::do_action_tri(int n_tri, int cn, action_t action)
                 if (root > snap_limit_ && root < 1.-snap_limit_)
                 {
                   if (edg_idx > edgs_tmp_.size())
-                    throw;
+                    throw std::runtime_error("Something went wrong during integration :( \n");
                   edgs_tmp_[edg_idx].to_refine = true;
                   edgs_tmp_[edg_idx].a = root;
                   at_least_one = true;
@@ -1065,7 +1065,7 @@ bool simplex2_mls_q_t::find_middle_node(double *xyz_out, double *xyz0, double *x
 
   double F = 0, Fn = 0, Fnn = 0;
   double f;
-  for (short i = 0; i < nodes_per_tri_; ++i)
+  for (unsigned short i = 0; i < nodes_per_tri_; ++i)
   {
     f = vtxs_[nv[i]].value;
     F   += f*N[i];
@@ -1457,6 +1457,8 @@ void simplex2_mls_q_t::smart_refine_tri(int n_tri)
       v1 = tri->vtx0; e1 = tri->edg0;
       v2 = tri->vtx1; e2 = tri->edg1;
       split_case = 2;
+    } else {
+      throw std::runtime_error("Something went wrong during integration :(\n");
     }
 
 //    std::cout << v0 << " " << v1 << " " << v2 << "\n";
@@ -1695,7 +1697,7 @@ double simplex2_mls_q_t::interpolate_from_parent(std::vector<double> &f, double 
 
   double result = 0;
 
-  for (short i = 0; i < nodes_per_tri_; ++i)
+  for (unsigned short i = 0; i < nodes_per_tri_; ++i)
   {
     result += N[i]*f[i];
   }
@@ -1728,7 +1730,7 @@ double simplex2_mls_q_t::interpolate_from_parent(double x, double y)
 
   double result = 0;
 
-  for (short i = 0; i < nodes_per_tri_; ++i)
+  for (unsigned short i = 0; i < nodes_per_tri_; ++i)
   {
     result += N[i]*vtxs_[i].value;
   }

@@ -63,8 +63,8 @@ class my_p4est_poisson_nodes_t
   bool keep_scalling;
 
   bool variable_mu;
-  bool use_refined_cube;
 
+  bool use_refined_cube;
   bool use_pointwise_dirichlet;
   bool use_continuous_stencil;
 

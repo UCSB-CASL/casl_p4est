@@ -11,16 +11,16 @@ class cube2_mls_t
   std::vector<double> y_;
 
 
-  int order_;
-  int points_per_cube_;
+  unsigned int order_;
+  unsigned int points_per_cube_;
 
-  int cubes_in_x_;
-  int cubes_in_y_;
-  int cubes_total_;
+  unsigned int cubes_in_x_;
+  unsigned int cubes_in_y_;
+  unsigned int cubes_total_;
 
-  int points_in_x_;
-  int points_in_y_;
-  int points_total_;
+  unsigned int points_in_x_;
+  unsigned int points_in_y_;
+  unsigned int points_total_;
 
 public:
 

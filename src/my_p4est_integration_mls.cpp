@@ -182,10 +182,11 @@ void my_p4est_integration_mls_t::initialize()
 
 double my_p4est_integration_mls_t::perform(int_type_t int_type, int n0, int n1, int n2, Vec f, Vec *fdd, double *xyz_cell)
 {
+  (void) xyz_cell;
   PetscErrorCode ierr;
   double sum = 0.;
 
-  int n_phis = action->size();
+  unsigned int n_phis = action->size();
 
   std::vector< std::vector<double> > P_interpolation(n_phis, std::vector<double> (P4EST_CHILDREN, -10.));
   std::vector< std::vector<double> > Pdd_interpolation(n_phis, std::vector<double> (P4EST_CHILDREN*P4EST_DIM, 0.));
@@ -217,17 +218,17 @@ double my_p4est_integration_mls_t::perform(int_type_t int_type, int n0, int n1, 
     {
       p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
 
-      p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[tree_idx*P4EST_CHILDREN + 0];
-      p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[tree_idx*P4EST_CHILDREN + P4EST_CHILDREN-1];
+//      p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[tree_idx*P4EST_CHILDREN + 0];
+//      p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[tree_idx*P4EST_CHILDREN + P4EST_CHILDREN-1];
 
-      double tree_xmin = p4est->connectivity->vertices[3*v_m + 0];
-      double tree_xmax = p4est->connectivity->vertices[3*v_p + 0];
-      double tree_ymin = p4est->connectivity->vertices[3*v_m + 1];
-      double tree_ymax = p4est->connectivity->vertices[3*v_p + 1];
-#ifdef P4_TO_P8
-      double tree_zmin = p4est->connectivity->vertices[3*v_m + 2];
-      double tree_zmax = p4est->connectivity->vertices[3*v_p + 2];
-#endif
+//      double tree_xmin = p4est->connectivity->vertices[3*v_m + 0];
+//      double tree_xmax = p4est->connectivity->vertices[3*v_p + 0];
+//      double tree_ymin = p4est->connectivity->vertices[3*v_m + 1];
+//      double tree_ymax = p4est->connectivity->vertices[3*v_p + 1];
+//#ifdef P4_TO_P8
+//      double tree_zmin = p4est->connectivity->vertices[3*v_m + 2];
+//      double tree_zmax = p4est->connectivity->vertices[3*v_p + 2];
+//#endif
 
       for(size_t quad_idx = 0; quad_idx < tree->quadrants.elem_count; ++quad_idx)
       {
@@ -236,12 +237,12 @@ double my_p4est_integration_mls_t::perform(int_type_t int_type, int n0, int n1, 
         p4est_locidx_t quad_idx_forest = quad_idx + tree->quadrants_offset;
 
         /* get location and size of a quadrant */
-        double dmin = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
-        double dx = (tree_xmax-tree_xmin)*dmin; double x0 = (tree_xmax-tree_xmin)*(double)quad->x/(double)P4EST_ROOT_LEN + tree_xmin;  double x1 = x0 + dx;
-        double dy = (tree_ymax-tree_ymin)*dmin; double y0 = (tree_ymax-tree_ymin)*(double)quad->y/(double)P4EST_ROOT_LEN + tree_ymin;  double y1 = y0 + dy;
-#ifdef P4_TO_P8
-        double dz = (tree_zmax-tree_zmin)*dmin; double z0 = (tree_zmax-tree_zmin)*(double)quad->z/(double)P4EST_ROOT_LEN + tree_zmin;  double z1 = z0 + dz;
-#endif
+//        double dmin = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+//        double dx = (tree_xmax-tree_xmin)*dmin; double x0 = (tree_xmax-tree_xmin)*(double)quad->x/(double)P4EST_ROOT_LEN + tree_xmin;  double x1 = x0 + dx;
+//        double dy = (tree_ymax-tree_ymin)*dmin; double y0 = (tree_ymax-tree_ymin)*(double)quad->y/(double)P4EST_ROOT_LEN + tree_ymin;  double y1 = y0 + dy;
+//#ifdef P4_TO_P8
+//        double dz = (tree_zmax-tree_zmin)*dmin; double z0 = (tree_zmax-tree_zmin)*(double)quad->z/(double)P4EST_ROOT_LEN + tree_zmin;  double z1 = z0 + dz;
+//#endif
 
         // integrate function
         int s = quad_idx_forest*P4EST_CHILDREN;
@@ -275,6 +276,7 @@ double my_p4est_integration_mls_t::perform(int_type_t int_type, int n0, int n1, 
           case FC1: cubes[quad_idx].quadrature_over_interface   (n0,      W,X,Y,Z);  break;
           case FC2: cubes[quad_idx].quadrature_over_intersection(n0,n1,   W,X,Y,Z);  break;
           case FC3: cubes[quad_idx].quadrature_over_intersection(n0,n1,n2,W,X,Y,Z);  break;
+          default: throw std::invalid_argument("Invalid type of integration\n");
         }
 #else
         switch (int_type)
@@ -282,10 +284,11 @@ double my_p4est_integration_mls_t::perform(int_type_t int_type, int n0, int n1, 
           case DOM: cubes[quad_idx].quadrature_over_domain      (         W,X,Y);  break;
           case FC1: cubes[quad_idx].quadrature_over_interface   (n0,      W,X,Y);  break;
           case FC2: cubes[quad_idx].quadrature_over_intersection(n0,n1,   W,X,Y);  break;
+          default: throw std::invalid_argument("Invalid type of integration\n");
         }
 #endif
 
-        for (int i = 0; i < W.size(); i++)
+        for (unsigned int i = 0; i < W.size(); i++)
 #ifdef P4_TO_P8
           sum += W[i]*f_interp(X[i],Y[i],Z[i]);
 #else
@@ -306,13 +309,13 @@ double my_p4est_integration_mls_t::perform(int_type_t int_type, int n0, int n1, 
 
     if (phi_cf == NULL)
     {
-      for (int i = 0; i < n_phis; i++) {ierr = VecGetArray(phi->at(i), &P[i]); CHKERRXX(ierr);}
+      for (unsigned int i = 0; i < n_phis; i++) {ierr = VecGetArray(phi->at(i), &P[i]); CHKERRXX(ierr);}
       if (!linear_integration)
       {
-        for (int i = 0; i < n_phis; i++) {ierr = VecGetArray(phi_xx->at(i), &Pxx[i]); CHKERRXX(ierr);}
-        for (int i = 0; i < n_phis; i++) {ierr = VecGetArray(phi_yy->at(i), &Pyy[i]); CHKERRXX(ierr);}
+        for (unsigned int i = 0; i < n_phis; i++) {ierr = VecGetArray(phi_xx->at(i), &Pxx[i]); CHKERRXX(ierr);}
+        for (unsigned int i = 0; i < n_phis; i++) {ierr = VecGetArray(phi_yy->at(i), &Pyy[i]); CHKERRXX(ierr);}
 #ifdef P4_TO_P8
-        for (int i = 0; i < n_phis; i++) {ierr = VecGetArray(phi_zz->at(i), &Pzz[i]); CHKERRXX(ierr);}
+        for (unsigned int i = 0; i < n_phis; i++) {ierr = VecGetArray(phi_zz->at(i), &Pzz[i]); CHKERRXX(ierr);}
 #endif
       }
     }
@@ -338,8 +341,6 @@ double my_p4est_integration_mls_t::perform(int_type_t int_type, int n0, int n1, 
         const p4est_quadrant_t *quad = (const p4est_quadrant_t*)sc_array_index(&tree->quadrants, quad_idx);
 
         p4est_locidx_t quad_idx_forest = quad_idx + tree->quadrants_offset;
-
-        int test = quad->level;
 
         /* get location and size of a quadrant */
         double dmin = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
@@ -401,15 +402,15 @@ double my_p4est_integration_mls_t::perform(int_type_t int_type, int n0, int n1, 
         // get values of LSFs
         int s = quad_idx_forest*P4EST_CHILDREN;
 
-        int points_total = x.size();
+        unsigned int points_total = x.size();
 
         std::vector<double> phi_cube(n_phis*points_total, -1);
 
         if (phi_cf != NULL)
         {
-          for (short p = 0; p < n_phis; ++p)
+          for (unsigned short p = 0; p < n_phis; ++p)
           {
-            for (int pnt_idx = 0; pnt_idx < points_total; ++pnt_idx)
+            for (unsigned int pnt_idx = 0; pnt_idx < points_total; ++pnt_idx)
 #ifdef P4_TO_P8
               phi_cube[p*points_total + pnt_idx] = (*phi_cf->at(p))(x[pnt_idx], y[pnt_idx], z[pnt_idx]);
 #else
@@ -417,7 +418,7 @@ double my_p4est_integration_mls_t::perform(int_type_t int_type, int n0, int n1, 
 #endif
           }
         } else {
-          for (short p = 0; p < n_phis; ++p)
+          for (unsigned short p = 0; p < n_phis; ++p)
           {
             for (short j = 0; j < P4EST_CHILDREN; ++j)
             {
@@ -434,7 +435,7 @@ double my_p4est_integration_mls_t::perform(int_type_t int_type, int n0, int n1, 
             }
             quadrant_interp_t phi_interpolation(p4est, tree_idx, quad, linear_integration ? linear : quadratic, &P_interpolation[p], linear_integration ? NULL : &Pdd_interpolation[p]);
 
-            for (int pnt_idx = 0; pnt_idx < points_total; ++pnt_idx)
+            for (unsigned int pnt_idx = 0; pnt_idx < points_total; ++pnt_idx)
 #ifdef P4_TO_P8
               phi_cube[p*points_total + pnt_idx] = phi_interpolation(x[pnt_idx], y[pnt_idx], z[pnt_idx]);
 #else
@@ -458,6 +459,7 @@ double my_p4est_integration_mls_t::perform(int_type_t int_type, int n0, int n1, 
           case FC1: cube.quadrature_over_interface   (n0,      W,X,Y,Z);  break;
           case FC2: cube.quadrature_over_intersection(n0,n1,   W,X,Y,Z);  break;
           case FC3: cube.quadrature_over_intersection(n0,n1,n2,W,X,Y,Z);  break;
+          default: throw std::invalid_argument("Wrong type of integration\n");
         }
 #else
         switch (int_type)
@@ -465,6 +467,7 @@ double my_p4est_integration_mls_t::perform(int_type_t int_type, int n0, int n1, 
           case DOM: cube.quadrature_over_domain      (         W,X,Y);  break;
           case FC1: cube.quadrature_over_interface   (n0,      W,X,Y);  break;
           case FC2: cube.quadrature_over_intersection(n0,n1,   W,X,Y);  break;
+          default: throw std::invalid_argument("Wrong type of integration\n");
         }
 #endif
 
@@ -490,7 +493,7 @@ double my_p4est_integration_mls_t::perform(int_type_t int_type, int n0, int n1, 
 
         quadrant_interp_t f_interp(p4est, tree_idx, quad, quadratic, &F_interpolation, &Fdd_interpolation);
 
-        for (int i = 0; i < W.size(); i++)
+        for (unsigned int i = 0; i < W.size(); i++)
 #ifdef P4_TO_P8
           sum += W[i]*f_interp(X[i],Y[i],Z[i]);
 #else
@@ -502,13 +505,13 @@ double my_p4est_integration_mls_t::perform(int_type_t int_type, int n0, int n1, 
 
     if (phi_cf == NULL)
     {
-      for (int i = 0; i < n_phis; i++) {ierr = VecRestoreArray(phi->at(i), &P[i]); CHKERRXX(ierr);}
+      for (unsigned int i = 0; i < n_phis; i++) {ierr = VecRestoreArray(phi->at(i), &P[i]); CHKERRXX(ierr);}
       if (!linear_integration)
       {
-        for (int i = 0; i < n_phis; i++) {ierr = VecRestoreArray(phi_xx->at(i), &Pxx[i]); CHKERRXX(ierr);}
-        for (int i = 0; i < n_phis; i++) {ierr = VecRestoreArray(phi_yy->at(i), &Pyy[i]); CHKERRXX(ierr);}
+        for (unsigned int i = 0; i < n_phis; i++) {ierr = VecRestoreArray(phi_xx->at(i), &Pxx[i]); CHKERRXX(ierr);}
+        for (unsigned int i = 0; i < n_phis; i++) {ierr = VecRestoreArray(phi_yy->at(i), &Pyy[i]); CHKERRXX(ierr);}
 #ifdef P4_TO_P8
-        for (int i = 0; i < n_phis; i++) {ierr = VecRestoreArray(phi_zz->at(i), &Pzz[i]); CHKERRXX(ierr);}
+        for (unsigned int i = 0; i < n_phis; i++) {ierr = VecRestoreArray(phi_zz->at(i), &Pzz[i]); CHKERRXX(ierr);}
 #endif
       }
     }
@@ -564,10 +567,10 @@ double my_p4est_integration_mls_t::integrate_everywhere(Vec f)
 
         /* get location and size of a quadrant */
         double dmin = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
-        double dx = (tree_xmax-tree_xmin)*dmin; double x0 = (tree_xmax-tree_xmin)*(double)quad->x/(double)P4EST_ROOT_LEN + tree_xmin;  double x1 = x0 + dx;
-        double dy = (tree_ymax-tree_ymin)*dmin; double y0 = (tree_ymax-tree_ymin)*(double)quad->y/(double)P4EST_ROOT_LEN + tree_ymin;  double y1 = y0 + dy;
+        double dx = (tree_xmax-tree_xmin)*dmin; //double x0 = (tree_xmax-tree_xmin)*(double)quad->x/(double)P4EST_ROOT_LEN + tree_xmin;  double x1 = x0 + dx;
+        double dy = (tree_ymax-tree_ymin)*dmin; //double y0 = (tree_ymax-tree_ymin)*(double)quad->y/(double)P4EST_ROOT_LEN + tree_ymin;  double y1 = y0 + dy;
 #ifdef P4_TO_P8
-        double dz = (tree_zmax-tree_zmin)*dmin; double z0 = (tree_zmax-tree_zmin)*(double)quad->z/(double)P4EST_ROOT_LEN + tree_zmin;  double z1 = z0 + dz;
+        double dz = (tree_zmax-tree_zmin)*dmin; //double z0 = (tree_zmax-tree_zmin)*(double)quad->z/(double)P4EST_ROOT_LEN + tree_zmin;  double z1 = z0 + dz;
 #endif
 
         double tmp = 0;

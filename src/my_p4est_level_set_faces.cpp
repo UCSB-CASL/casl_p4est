@@ -172,7 +172,7 @@ void my_p4est_level_set_faces_t::extend_Over_Interface( Vec phi, Vec q, Boundary
       Point2 grad_phi(interp_phi_x(x,y), interp_phi_y(x,y));
 #endif
 
-      if(phi_f<band_to_extend*diag && grad_phi.norm_L2()>_CASL_EPS_)
+      if(phi_f<band_to_extend*diag && grad_phi.norm_L2()>EPS)
       {
         grad_phi /= grad_phi.norm_L2();
 
@@ -259,7 +259,7 @@ void my_p4est_level_set_faces_t::extend_Over_Interface( Vec phi, Vec q, Boundary
       Point2 grad_phi(interp_phi_x(x,y), interp_phi_y(x,y));
 #endif
 
-      if(phi_f<band_to_extend*diag && grad_phi.norm_L2()>_CASL_EPS_)
+      if(phi_f<band_to_extend*diag && grad_phi.norm_L2()>EPS)
       {
         grad_phi /= grad_phi.norm_L2();
 

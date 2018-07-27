@@ -11,30 +11,30 @@
 #ifdef cube3_mls_l_MIDDLECUT // Middle-cut triangulation
 #define NTETS 5
 // Tetrahedron #0
-#define l_t0p0 0
-#define l_t0p1 1
-#define l_t0p2 2
-#define l_t0p3 4
+#define l3_t0p0 0
+#define l3_t0p1 1
+#define l3_t0p2 2
+#define l3_t0p3 4
 // Tetrahedron #1
-#define l_t1p0 1
-#define l_t1p1 2
-#define l_t1p2 3
-#define l_t1p3 7
+#define l3_t1p0 1
+#define l3_t1p1 2
+#define l3_t1p2 3
+#define l3_t1p3 7
 // Tetrahedron #2
-#define l_t2p0 1
-#define l_t2p1 2
-#define l_t2p2 4
-#define l_t2p3 7
+#define l3_t2p0 1
+#define l3_t2p1 2
+#define l3_t2p2 4
+#define l3_t2p3 7
 // Tetrahedron #3
-#define l_t3p0 1
-#define l_t3p1 4
-#define l_t3p2 5
-#define l_t3p3 7
+#define l3_t3p0 1
+#define l3_t3p1 4
+#define l3_t3p2 5
+#define l3_t3p3 7
 // Tetrahedron #4
-#define l_t4p0 2
-#define l_t4p1 4
-#define l_t4p2 6
-#define l_t4p3 7
+#define l3_t4p0 2
+#define l3_t4p1 4
+#define l3_t4p2 6
+#define l3_t4p3 7
 #endif
 
 #ifdef cube3_mls_l_KUHN // Kuhn triangulation
@@ -49,35 +49,35 @@ const double tp_l[num_tetrs_l][4] = { { 0, 1, 3, 7},
 
 #define NTETS 6
 // Tetrahedron #0
-#define l_t0p0 0
-#define l_t0p1 1
-#define l_t0p2 3
-#define l_t0p3 7
+#define l3_t0p0 0
+#define l3_t0p1 1
+#define l3_t0p2 3
+#define l3_t0p3 7
 // Tetrahedron #1
-#define l_t1p0 0
-#define l_t1p1 2
-#define l_t1p2 3
-#define l_t1p3 7
+#define l3_t1p0 0
+#define l3_t1p1 2
+#define l3_t1p2 3
+#define l3_t1p3 7
 // Tetrahedron #2
-#define l_t2p0 0
-#define l_t2p1 1
-#define l_t2p2 5
-#define l_t2p3 7
+#define l3_t2p0 0
+#define l3_t2p1 1
+#define l3_t2p2 5
+#define l3_t2p3 7
 // Tetrahedron #3
-#define l_t3p0 0
-#define l_t3p1 2
-#define l_t3p2 6
-#define l_t3p3 7
+#define l3_t3p0 0
+#define l3_t3p1 2
+#define l3_t3p2 6
+#define l3_t3p3 7
 // Tetrahedron #4
-#define l_t4p0 0
-#define l_t4p1 4
-#define l_t4p2 5
-#define l_t4p3 7
+#define l3_t4p0 0
+#define l3_t4p1 4
+#define l3_t4p2 5
+#define l3_t4p3 7
 // Tetrahedron #5
-#define l_t5p0 0
-#define l_t5p1 4
-#define l_t5p2 6
-#define l_t5p3 7
+#define l3_t5p0 0
+#define l3_t5p1 4
+#define l3_t5p2 6
+#define l3_t5p3 7
 #endif
 
 #include <vector>
@@ -86,15 +86,15 @@ const double tp_l[num_tetrs_l][4] = { { 0, 1, 3, 7},
 class cube3_mls_l_t
 {
 public:
-  const static int n_nodes = 8;
-  const static int n_nodes_simplex = 4;
-  const static int n_nodes_dir = 2;
-
-  double lip;
+  const static unsigned int n_nodes = 8;
+  const static unsigned int n_nodes_simplex = 4;
+  const static unsigned int n_nodes_dir = 2;
 
   double  x0, x1, y0, y1, z0, z1, diag;
   loc_t   loc;
-  int     num_of_lsfs;
+  unsigned int num_of_lsfs;
+
+  double lip;
 
   std::vector<simplex3_mls_l_t> simplex;
 

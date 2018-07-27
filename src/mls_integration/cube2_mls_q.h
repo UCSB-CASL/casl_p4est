@@ -19,12 +19,12 @@
  * 0-1-2
  *
  */
-#define q_t0p0 0
-#define q_t0p1 2
-#define q_t0p2 8
-#define q_t0p3 1
-#define q_t0p4 5
-#define q_t0p5 4
+#define q2_t0p0 0
+#define q2_t0p1 2
+#define q2_t0p2 8
+#define q2_t0p3 1
+#define q2_t0p4 5
+#define q2_t0p5 4
 
 /* Simplex 1
  *
@@ -41,12 +41,12 @@
 //#define t1p3 4
 //#define t1p4 7
 //#define t1p5 3
-#define q_t1p0 0
-#define q_t1p1 6
-#define q_t1p2 8
-#define q_t1p3 3
-#define q_t1p4 7
-#define q_t1p5 4
+#define q2_t1p0 0
+#define q2_t1p1 6
+#define q2_t1p2 8
+#define q2_t1p3 3
+#define q2_t1p4 7
+#define q2_t1p5 4
 
 #include "vector"
 #include "simplex2_mls_q.h"
@@ -54,15 +54,15 @@
 class cube2_mls_q_t
 {
 public:
-  const static int n_nodes = 9;
-  const static int n_nodes_simplex = 6;
-  const static int n_nodes_dir = 3;
+  const static unsigned int n_nodes = 9;
+  const static unsigned int n_nodes_simplex = 6;
+  const static unsigned int n_nodes_dir = 3;
+
+  double       x0, x1, y0, y1;
+  loc_t        loc;
+  unsigned int num_of_lsfs;
 
   double eps_rel_;
-
-  double  x0, x1, y0, y1;
-  loc_t   loc;
-  int     num_of_lsfs;
 
   std::vector<simplex2_mls_q_t> simplex;
 

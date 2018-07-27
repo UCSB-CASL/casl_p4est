@@ -4,16 +4,16 @@ using namespace std;
 
 void simplex2_mls_q_vtk::write_simplex_geometry(std::vector<simplex2_mls_q_t *> &simplices, string dir, string suffix)
 {
-  vector<int> n_vtxs, n_vtxs_shift;
-  vector<int> n_edgs, n_tris;
+  vector<unsigned int> n_vtxs, n_vtxs_shift;
+  vector<unsigned int> n_edgs, n_tris;
   simplex2_mls_q_t *s;
-  int n_vtxs_tot = 0;
-  int n_edgs_tot = 0;
-  int n_tris_tot = 0;
+  unsigned int n_vtxs_tot = 0;
+  unsigned int n_edgs_tot = 0;
+  unsigned int n_tris_tot = 0;
 
-  int n_s = simplices.size();
+  unsigned int n_s = simplices.size();
 
-  for (int i = 0; i < n_s; i++)
+  for (unsigned int i = 0; i < n_s; i++)
   {
     s = simplices[i];
 
@@ -21,8 +21,8 @@ void simplex2_mls_q_vtk::write_simplex_geometry(std::vector<simplex2_mls_q_t *> 
     n_vtxs_shift.push_back(n_vtxs_tot);
     n_vtxs_tot += n_vtxs.back();
 
-    n_edgs.push_back(0); for (int j = 0; j < s->edgs_.size(); j++) {if (!s->edgs_[j].is_split) n_edgs.back()++;} n_edgs_tot += n_edgs.back();
-    n_tris.push_back(0); for (int j = 0; j < s->tris_.size(); j++) {if (!s->tris_[j].is_split) n_tris.back()++;} n_tris_tot += n_tris.back();
+    n_edgs.push_back(0); for (unsigned int j = 0; j < s->edgs_.size(); j++) {if (!s->edgs_[j].is_split) n_edgs.back()++;} n_edgs_tot += n_edgs.back();
+    n_tris.push_back(0); for (unsigned int j = 0; j < s->tris_.size(); j++) {if (!s->tris_[j].is_split) n_tris.back()++;} n_tris_tot += n_tris.back();
   }
 
   ofstream ofs;
@@ -43,10 +43,10 @@ void simplex2_mls_q_vtk::write_simplex_geometry(std::vector<simplex2_mls_q_t *> 
       << "<PointData Scalars=\"scalars\">" << endl
       << "<DataArray type=\"Float32\" Name=\"location\" format=\"ascii\">" << endl;
 
-  for (int i = 0; i < n_s; i++)
+  for (unsigned int i = 0; i < n_s; i++)
   {
     s = simplices[i];
-    for (int j = 0; j < n_vtxs[i]; j++)
+    for (unsigned int j = 0; j < n_vtxs[i]; j++)
     {
       ofs << (int) s->vtxs_[j].loc << " ";
     }
@@ -56,10 +56,10 @@ void simplex2_mls_q_vtk::write_simplex_geometry(std::vector<simplex2_mls_q_t *> 
   ofs << "</DataArray>" << endl
       << "<DataArray type=\"Float32\" Name=\"recycled\" format=\"ascii\">" << endl;
 
-  for (int i = 0; i < n_s; i++)
+  for (unsigned int i = 0; i < n_s; i++)
   {
     s = simplices[i];
-    for (int j = 0; j < n_vtxs[i]; j++)
+    for (unsigned int j = 0; j < n_vtxs[i]; j++)
     {
       ofs << (int) s->vtxs_[j].is_recycled << " ";
     }
@@ -71,10 +71,10 @@ void simplex2_mls_q_vtk::write_simplex_geometry(std::vector<simplex2_mls_q_t *> 
       << "<CellData Scalars=\"scalars\">" << endl
       << "<DataArray type=\"Float32\" Name=\"location\" format=\"ascii\">" << endl;
 
-  for (int i = 0; i < n_s; i++)
+  for (unsigned int i = 0; i < n_s; i++)
   {
     s = simplices[i];
-    for (int j = 0; j < n_vtxs[i]; j++)
+    for (unsigned int j = 0; j < n_vtxs[i]; j++)
     {
       ofs << (int) s->vtxs_[j].loc << " ";
     }
@@ -86,10 +86,10 @@ void simplex2_mls_q_vtk::write_simplex_geometry(std::vector<simplex2_mls_q_t *> 
       << "<Points>" << endl
       << "<DataArray type=\"Float32\" NumberOfComponents=\"3\" format=\"ascii\">" << endl;
 
-  for (int i = 0; i < n_s; i++)
+  for (unsigned int i = 0; i < n_s; i++)
   {
     s = simplices[i];
-    for (int j = 0; j < n_vtxs[i]; j++)
+    for (unsigned int j = 0; j < n_vtxs[i]; j++)
     {
       ofs << s->vtxs_[j].x << " "
           << s->vtxs_[j].y << " "
@@ -103,7 +103,7 @@ void simplex2_mls_q_vtk::write_simplex_geometry(std::vector<simplex2_mls_q_t *> 
       << "<Cells>" << endl
       << "<DataArray type=\"Int32\" Name=\"connectivity\" format=\"ascii\">" << endl;
 
-  for (int i = 0; i < n_vtxs_tot; i++)
+  for (unsigned int i = 0; i < n_vtxs_tot; i++)
   {
     ofs << i << endl;
   }
@@ -111,7 +111,7 @@ void simplex2_mls_q_vtk::write_simplex_geometry(std::vector<simplex2_mls_q_t *> 
   ofs << "</DataArray>" << endl
       << "<DataArray type=\"Int32\" Name=\"offsets\" format=\"ascii\">" << endl;
 
-  for (int i = 0; i < n_vtxs_tot; i++)
+  for (unsigned int i = 0; i < n_vtxs_tot; i++)
   {
     ofs << (i+1) << " ";
   }
@@ -120,7 +120,7 @@ void simplex2_mls_q_vtk::write_simplex_geometry(std::vector<simplex2_mls_q_t *> 
   ofs << "</DataArray>" << endl
       << "<DataArray type=\"UInt8\" Name=\"types\" format=\"ascii\">" << endl;
 
-  for (int i = 0; i < n_vtxs_tot; i++)
+  for (unsigned int i = 0; i < n_vtxs_tot; i++)
   {
     ofs << 1 << " ";
   }
@@ -149,10 +149,10 @@ void simplex2_mls_q_vtk::write_simplex_geometry(std::vector<simplex2_mls_q_t *> 
       << "<PointData Scalars=\"scalars\">" << endl
       << "<DataArray type=\"Float32\" Name=\"location\" format=\"ascii\">" << endl;
 
-  for (int i = 0; i < n_s; i++)
+  for (unsigned int i = 0; i < n_s; i++)
   {
     s = simplices[i];
-    for (int j = 0; j < n_vtxs[i]; j++)
+    for (unsigned int j = 0; j < n_vtxs[i]; j++)
     {
       ofs << (int) s->vtxs_[j].loc << " ";
     }
@@ -164,10 +164,10 @@ void simplex2_mls_q_vtk::write_simplex_geometry(std::vector<simplex2_mls_q_t *> 
       << "<CellData Scalars=\"scalars\">" << endl
       << "<DataArray type=\"Float32\" Name=\"location\" format=\"ascii\">" << endl;
 
-  for (int i = 0; i < n_s; i++)
+  for (unsigned int i = 0; i < n_s; i++)
   {
     s = simplices[i];
-    for (int j = 0; j < s->edgs_.size(); j++)
+    for (unsigned int j = 0; j < s->edgs_.size(); j++)
     {
       if (!s->edgs_[j].is_split)
       {
@@ -180,10 +180,10 @@ void simplex2_mls_q_vtk::write_simplex_geometry(std::vector<simplex2_mls_q_t *> 
   ofs << "</DataArray>" << endl;
   ofs << "<DataArray type=\"Float32\" Name=\"c0\" format=\"ascii\">" << endl;
 
-  for (int i = 0; i < n_s; i++)
+  for (unsigned int i = 0; i < n_s; i++)
   {
     s = simplices[i];
-    for (int j = 0; j < s->edgs_.size(); j++)
+    for (unsigned int j = 0; j < s->edgs_.size(); j++)
     {
       if (!s->edgs_[j].is_split)
       {
@@ -214,10 +214,10 @@ void simplex2_mls_q_vtk::write_simplex_geometry(std::vector<simplex2_mls_q_t *> 
       << "<Points>" << endl
       << "<DataArray type=\"Float32\" NumberOfComponents=\"3\" format=\"ascii\">" << endl;
 
-  for (int i = 0; i < n_s; i++)
+  for (unsigned int i = 0; i < n_s; i++)
   {
     s = simplices[i];
-    for (int j = 0; j < n_vtxs[i]; j++)
+    for (unsigned int j = 0; j < n_vtxs[i]; j++)
     {
       ofs << s->vtxs_[j].x << " "
           << s->vtxs_[j].y << " "
@@ -231,10 +231,10 @@ void simplex2_mls_q_vtk::write_simplex_geometry(std::vector<simplex2_mls_q_t *> 
       << "<Cells>" << endl
       << "<DataArray type=\"Int32\" Name=\"connectivity\" format=\"ascii\">" << endl;
 
-  for (int i = 0; i < n_s; i++)
+  for (unsigned int i = 0; i < n_s; i++)
   {
     s = simplices[i];
-    for (int j = 0; j < s->edgs_.size(); j++)
+    for (unsigned int j = 0; j < s->edgs_.size(); j++)
     {
       if (!s->edgs_[j].is_split)
       {
@@ -249,7 +249,7 @@ void simplex2_mls_q_vtk::write_simplex_geometry(std::vector<simplex2_mls_q_t *> 
   ofs << "</DataArray>" << endl
       << "<DataArray type=\"Int32\" Name=\"offsets\" format=\"ascii\">" << endl;
 
-  for (int i = 0; i < n_edgs_tot; i++)
+  for (unsigned int i = 0; i < n_edgs_tot; i++)
   {
     ofs << 3*(i+1) << " ";
   }
@@ -258,7 +258,7 @@ void simplex2_mls_q_vtk::write_simplex_geometry(std::vector<simplex2_mls_q_t *> 
   ofs << "</DataArray>" << endl
       << "<DataArray type=\"UInt8\" Name=\"types\" format=\"ascii\">" << endl;
 
-  for (int i = 0; i < n_edgs_tot; i++)
+  for (unsigned int i = 0; i < n_edgs_tot; i++)
   {
     ofs << 21 << " ";
   }
@@ -287,10 +287,10 @@ void simplex2_mls_q_vtk::write_simplex_geometry(std::vector<simplex2_mls_q_t *> 
       << "<PointData Scalars=\"scalars\">" << endl
       << "<DataArray type=\"Float32\" Name=\"scalars\" format=\"ascii\">" << endl;
 
-  for (int i = 0; i < n_s; i++)
+  for (unsigned int i = 0; i < n_s; i++)
   {
     s = simplices[i];
-    for (int j = 0; j < n_vtxs[i]; j++)
+    for (unsigned int j = 0; j < n_vtxs[i]; j++)
     {
       ofs << (int) s->vtxs_[j].loc << " ";
     }
@@ -319,10 +319,10 @@ void simplex2_mls_q_vtk::write_simplex_geometry(std::vector<simplex2_mls_q_t *> 
   ofs << "<DataArray type=\"Float32\" Name=\"idx\" format=\"ascii\">" << endl;
 
   int tri_idx = 0;
-  for (int i = 0; i < n_s; i++)
+  for (unsigned int i = 0; i < n_s; i++)
   {
     s = simplices[i];
-    for (int j = 0; j < s->tris_.size(); j++)
+    for (unsigned int j = 0; j < s->tris_.size(); j++)
     {
       if (!s->tris_[j].is_split)
       {
@@ -338,10 +338,10 @@ void simplex2_mls_q_vtk::write_simplex_geometry(std::vector<simplex2_mls_q_t *> 
       << "<Points>" << endl
       << "<DataArray type=\"Float32\" NumberOfComponents=\"3\" format=\"ascii\">" << endl;
 
-  for (int i = 0; i < n_s; i++)
+  for (unsigned int i = 0; i < n_s; i++)
   {
     s = simplices[i];
-    for (int j = 0; j < n_vtxs[i]; j++)
+    for (unsigned int j = 0; j < n_vtxs[i]; j++)
     {
       ofs << s->vtxs_[j].x << " "
           << s->vtxs_[j].y << " "
@@ -355,10 +355,10 @@ void simplex2_mls_q_vtk::write_simplex_geometry(std::vector<simplex2_mls_q_t *> 
       << "<Cells>" << endl
       << "<DataArray type=\"Int32\" Name=\"connectivity\" format=\"ascii\">" << endl;
 
-  for (int i = 0; i < n_s; i++)
+  for (unsigned int i = 0; i < n_s; i++)
   {
     s = simplices[i];
-    for (int j = 0; j < s->tris_.size(); j++)
+    for (unsigned int j = 0; j < s->tris_.size(); j++)
     {
       if (!s->tris_[j].is_split)
       {
@@ -377,7 +377,7 @@ void simplex2_mls_q_vtk::write_simplex_geometry(std::vector<simplex2_mls_q_t *> 
   ofs << "</DataArray>" << endl
       << "<DataArray type=\"Int32\" Name=\"offsets\" format=\"ascii\">" << endl;
 
-  for (int i = 0; i < n_tris_tot; i++)
+  for (unsigned int i = 0; i < n_tris_tot; i++)
   {
     ofs << 6*(i+1) << " ";
   }
@@ -386,7 +386,7 @@ void simplex2_mls_q_vtk::write_simplex_geometry(std::vector<simplex2_mls_q_t *> 
   ofs << "</DataArray>" << endl
       << "<DataArray type=\"UInt8\" Name=\"types\" format=\"ascii\">" << endl;
 
-  for (int i = 0; i < n_tris_tot; i++)
+  for (unsigned int i = 0; i < n_tris_tot; i++)
   {
     ofs << 22 << " ";
   }

@@ -19,7 +19,7 @@
  */
 
 // Some Macros
-#define _CASL_EPS_ 1e-13
+#define EPS 1e-13
 
 template <typename T>
 inline T ABS(const T& val)

@@ -35,7 +35,7 @@ public:
   {
     double phi_total = -10;
     double phi_current = -10;
-    for (short i = 0; i < color->size(); ++i)
+    for (unsigned short i = 0; i < color->size(); ++i)
     {
       if (action->at(i) == INTERSECTION)
       {
@@ -90,7 +90,7 @@ public:
   {
     double phi_total = -10;
     double phi_current = -10;
-    for (short i = 0; i < color->size(); ++i)
+    for (unsigned short i = 0; i < color->size(); ++i)
     {
       if (action->at(i) == INTERSECTION)
       {

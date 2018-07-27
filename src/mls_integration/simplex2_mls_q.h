@@ -50,7 +50,7 @@ public:
 private:
 
   // some geometric info
-  const static int nodes_per_tri_ = 6;
+  const static unsigned int nodes_per_tri_ = 6;
 
   // resolution limit (eps_ = eps_rel*lmin)
   double eps_rel_;
@@ -64,13 +64,13 @@ private:
   double map_parent_to_ref_[4];
 
   // number of interfaces
-  int num_phi_;
+  unsigned int num_phi_;
 
   // flag to discard intermediate reconstruction
   bool invalid_reconstruction_;
 
   // parameters
-  int max_refinement_;
+  unsigned int max_refinement_;
   double snap_limit_;
   bool check_for_curvature_         ;
   bool check_for_edge_intersections_;
@@ -92,9 +92,9 @@ private:
     double  value;  // stored value
     loc_t   loc;    // location
 
+    bool    is_recycled;    // for quadratic elements nodes might become unused
     int     n_vtx0, n_vtx1; // neighbors
     double  ratio;          // placement between nv0 and nv1
-    bool    is_recycled;    // for quadratic elements nodes might become unused
 
 #ifdef SIMPLEX2_MLS_Q_DEBUG
     int p_edg; // parent edge
@@ -254,7 +254,7 @@ private:
 
   inline bool same_sign(double &x, double &y)
   {
-    return x < 0 && y < 0 || x > 0 && y > 0;
+    return (x < 0 && y < 0) || (x > 0 && y > 0);
   }
 
   inline bool not_finite(double &x)

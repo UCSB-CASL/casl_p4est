@@ -22,11 +22,12 @@ class my_p4est_interpolation_nodes_local_t : public CF_2
 //private:
 public:
   // p4est info
+  const my_p4est_node_neighbors_t *node_neighbors;
+
   p4est_nodes_t *nodes;
   p4est_t       *p4est;
   p4est_ghost_t *ghost;
 
-  const my_p4est_node_neighbors_t *node_neighbors;
 
   // dimensions of computational box
   double xyz_min[P4EST_DIM];
@@ -38,27 +39,13 @@ public:
   const double *Fi_p;
   Vec Fi;
 
-  const double *Fxx_p, *Fyy_p;
   Vec Fxx, Fyy;
+  const double *Fxx_p, *Fyy_p;
 
 #ifdef P4_TO_P8
-  const double *Fzz_p;
   Vec Fzz;
+  const double *Fzz_p;
 #endif
-
-  // local values of input
-//  double f  [P4EST_CHILDREN];
-//  double fxx[P4EST_CHILDREN];
-//  double fyy[P4EST_CHILDREN];
-//#ifdef P4_TO_P8
-//  double fzz[P4EST_CHILDREN];
-//#endif
-
-//#ifdef P4_TO_P8
-//  grid_interpolation3_t interp;
-//#else
-//  grid_interpolation2_t interp;
-//#endif
 
   // neighboring quadrants
   p4est_locidx_t quad_idx[P4EST_CHILDREN];
@@ -79,7 +66,7 @@ public:
   double eps;
 
   my_p4est_interpolation_nodes_local_t(const my_p4est_node_neighbors_t* ngbd_n)
-    : nodes(ngbd_n->nodes), node_neighbors(ngbd_n), p4est(ngbd_n->p4est), ghost(ngbd_n->ghost),
+    : node_neighbors(ngbd_n), nodes(ngbd_n->nodes), p4est(ngbd_n->p4est), ghost(ngbd_n->ghost),
       Fxx(NULL),
       Fyy(NULL),
       Fxx_p(NULL),

@@ -35,7 +35,7 @@ private:
   double phi_eps_;
 
   // number of interfaces
-  int num_phi_;
+  unsigned int num_phi_;
 
   bool use_linear_;
 

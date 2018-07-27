@@ -68,8 +68,8 @@ double interface_Location_With_Second_Order_Derivative(double    a, double    b,
                                                        double   fa, double   fb,
                                                        double fxxa, double fxxb )
 {
-  if(fabs(fa)<_CASL_EPS_) return a+_CASL_EPS_;
-  if(fabs(fb)<_CASL_EPS_) return b-_CASL_EPS_;
+  if(fabs(fa)<EPS) return a+EPS;
+  if(fabs(fb)<EPS) return b-EPS;
 
 #ifdef CASL_THROWS
   if(fa*fb >= 0) throw std::invalid_argument("[CASL_ERROR]: Wrong arguments.");
@@ -86,7 +86,7 @@ double interface_Location_With_Second_Order_Derivative(double    a, double    b,
 
   double x;
 
-  if(fabs(c2)<_CASL_EPS_) x = -c0/c1;
+  if(fabs(c2)<EPS) x = -c0/c1;
   else
   {
     if(fb<0) x = (-2*c0)/(c1 - sqrt(c1*c1-4*c2*c0));
@@ -237,7 +237,7 @@ int solve_Cubic(double c[ 4 ], double s[ 3 ])
 
 int is_Zero(double x)
 {
-  return x > - _CASL_EPS_ && x < _CASL_EPS_;
+  return x > - EPS && x < EPS;
 }
 
 //---------------------------------------------------------------------------------
@@ -246,8 +246,8 @@ int is_Zero(double x)
 double fraction_Interval_Covered_By_Irregular_Domain( double phi0, double phi1, double dx, double dy )
 {
   // perturbation
-  if(ABS(phi0)<_CASL_EPS_) phi0 = 0;
-  if(ABS(phi1)<_CASL_EPS_) phi1 = 0;
+  if(ABS(phi0)<EPS) phi0 = 0;
+  if(ABS(phi1)<EPS) phi1 = 0;
 
   // there are 9 cases.
   double l;
@@ -267,15 +267,15 @@ double fraction_Interval_Covered_By_Irregular_Domain( double phi0, double phi1, 
   if(l<0 || l>1) throw std::logic_error("[CASL_ERROR]: invalid length fraction.");
 #endif
 
-  double eps = MIN(MIN(_CASL_EPS_,dx/100.),dy/100.);
+  double eps = MIN(MIN(EPS,dx/100.),dy/100.);
   if(l*l<eps) return 0;
   else        return l;
 }
 
 double fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives( double phi0, double phi1, double phi0xx, double phi1xx, double dx){
   // perturbation
-  if(ABS(phi0)<_CASL_EPS_) phi0 = 0;
-  if(ABS(phi1)<_CASL_EPS_) phi1 = 0;
+  if(ABS(phi0)<EPS) phi0 = 0;
+  if(ABS(phi1)<EPS) phi1 = 0;
 
   // there are 9 cases.
   double l;
@@ -294,7 +294,7 @@ double fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives
 #ifdef CASL_THROWS
   if(l<0 || l>1) throw std::logic_error("[CASL_ERROR]: invalid length fraction.");
 #endif
-  double eps = MIN(_CASL_EPS_,dx/100.);
+  double eps = MIN(EPS,dx/100.);
   if(l*l<eps) return 0;
   else        return l;
 

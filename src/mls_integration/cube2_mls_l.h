@@ -8,13 +8,13 @@
  */
 
 // Simplex #0
-#define l_t0p0 0
-#define l_t0p1 1
-#define l_t0p2 3
+#define l2_t0p0 0
+#define l2_t0p1 1
+#define l2_t0p2 3
 // Simplex #1
-#define l_t1p0 0
-#define l_t1p1 2
-#define l_t1p2 3
+#define l2_t1p0 0
+#define l2_t1p1 2
+#define l2_t1p2 3
 
 #include "vector"
 #include "simplex2_mls_l.h"
@@ -22,14 +22,14 @@
 class cube2_mls_l_t
 {
 public:
-  const static int n_nodes = 4;
-  const static int n_nodes_simplex = 3;
-  const static int n_nodes_dir = 2;
+  const static unsigned int n_nodes = 4;
+  const static unsigned int n_nodes_simplex = 3;
+  const static unsigned int n_nodes_dir = 2;
 
-  double  x0, x1, y0, y1;
-  loc_t   loc;
-  int     num_of_lsfs;
-  bool    use_linear;
+  double       x0, x1, y0, y1;
+  loc_t        loc;
+  unsigned int num_of_lsfs;
+  bool         use_linear;
 
   std::vector<simplex2_mls_l_t> simplex;
 

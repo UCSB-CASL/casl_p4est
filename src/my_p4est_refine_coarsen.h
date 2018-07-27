@@ -132,7 +132,7 @@ public:
   bool refine_and_coarsen(p4est_t* p4est, const p4est_nodes_t* nodes, const double* phi);
   bool refine(p4est_t* p4est, const p4est_nodes_t* nodes, const double* phi);
 
-  void set_refine_only_inside(bool val) { refine_only_inside = true; }
+  void set_refine_only_inside(bool val) { refine_only_inside = val; }
 };
 
 /*!

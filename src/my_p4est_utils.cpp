@@ -1120,11 +1120,11 @@ double compute_mean_curvature(const quad_neighbor_nodes_of_node_t &qnnn, double 
 #endif
 
 #ifdef P4_TO_P8
-  double abs   = MAX(_CASL_EPS_, sqrt(SQR(dx)+SQR(dy)+SQR(dz)));
+  double abs   = MAX(EPS, sqrt(SQR(dx)+SQR(dy)+SQR(dz)));
   double kappa = ((dyy+dzz)*SQR(dx) + (dxx+dzz)*SQR(dy) + (dxx+dyy)*SQR(dz) - 2*
                    (dx*dy*dxy + dx*dz*dxz + dy*dz*dyz)) / abs/abs/abs;
 #else
-  double abs   = MAX(_CASL_EPS_, sqrt(SQR(dx)+SQR(dy)));
+  double abs   = MAX(EPS, sqrt(SQR(dx)+SQR(dy)));
   double kappa = (dxx*SQR(dy) - 2*dy*dx*dxy + dyy*SQR(dx)) / abs/abs/abs;
 #endif
   return kappa;
@@ -1239,7 +1239,7 @@ void compute_normals(const quad_neighbor_nodes_of_node_t &qnnn, double *phi, dou
 #else
   double abs = sqrt(SQR(normals[0]) + SQR(normals[1]));
 #endif
-  if (abs < _CASL_EPS_)
+  if (abs < EPS)
     foreach_dimension(dim) normals[dim] = 0;
   else
     foreach_dimension(dim) normals[dim] /= abs;
@@ -1263,7 +1263,7 @@ void compute_normals(const my_p4est_node_neighbors_t &neighbors, Vec phi, Vec no
     double abs = sqrt(SQR(normals_p[0][n]) + SQR(normals_p[1][n]));
 #endif
 
-    if (abs < _CASL_EPS_) {
+    if (abs < EPS) {
       foreach_dimension(dim) normals_p[dim][n] = 0;
     } else {
       foreach_dimension(dim) normals_p[dim][n] /= abs;
@@ -2011,6 +2011,7 @@ double quadrant_interp_t::operator()(double x, double y) const
     case linear:                    return linear_interpolation                   (p4est_, tree_idx_, *quad_, F_->data(),               xyz_node); break;
     case quadratic:                 return quadratic_interpolation                (p4est_, tree_idx_, *quad_, F_->data(), Fdd_->data(), xyz_node); break;
     case quadratic_non_oscillatory: return quadratic_non_oscillatory_interpolation(p4est_, tree_idx_, *quad_, F_->data(), Fdd_->data(), xyz_node); break;
+    default: throw std::domain_error("Wrong type of interpolation\n");
   }
 }
 
@@ -2041,20 +2042,7 @@ void invert_phi(p4est_nodes_t *nodes, Vec phi)
 void compute_normals_and_mean_curvature(const my_p4est_node_neighbors_t &neighbors, const Vec phi, Vec normals[], Vec kappa)
 {
   PetscErrorCode ierr;
-
-  const p4est_t       *p4est = neighbors.get_p4est();
   const p4est_nodes_t *nodes = neighbors.get_nodes();
-
-//  /* reset normals[] */
-//  foreach_dimension(dim)
-//  {
-//    if (normals[dim] != NULL) { ierr = VecDestroy(normals[dim]); CHKERRXX(ierr); }
-//    ierr = VecCreateGhostNodes(p4est, nodes, &normals[dim]); CHKERRXX(ierr);
-//  }
-
-//  /* reset kappa */
-//  if (kappa != NULL) { ierr = VecDestroy(kappa); CHKERRXX(ierr); }
-//  ierr = VecCreateGhostNodes(p4est, nodes, &kappa); CHKERRXX(ierr);
 
   /* compute first derivatives */
   neighbors.first_derivatives_central(phi, normals);
@@ -2074,10 +2062,10 @@ void compute_normals_and_mean_curvature(const my_p4est_node_neighbors_t &neighbo
     double norm = sqrt(SQR(normal_p[0][n]) + SQR(normal_p[1][n]));
 #endif
 
-    normal_p[0][n] = norm < _CASL_EPS_ ? 0 : normal_p[0][n]/norm;
-    normal_p[1][n] = norm < _CASL_EPS_ ? 0 : normal_p[1][n]/norm;
+    normal_p[0][n] = norm < EPS ? 0 : normal_p[0][n]/norm;
+    normal_p[1][n] = norm < EPS ? 0 : normal_p[1][n]/norm;
 #ifdef P4_TO_P8
-    normal_p[2][n] = norm < _CASL_EPS_ ? 0 : normal_p[2][n]/norm;
+    normal_p[2][n] = norm < EPS ? 0 : normal_p[2][n]/norm;
 #endif
   }
 
@@ -2089,7 +2077,7 @@ void save_vector(const char *filename, const std::vector<double> &data, std::ios
   std::ofstream ofs;
   ofs.open(filename, mode);
 
-  for (int i = 0; i < data.size(); ++i)
+  for (unsigned int i = 0; i < data.size(); ++i)
   {
     if (i != 0) ofs << delim;
     ofs << data[i];

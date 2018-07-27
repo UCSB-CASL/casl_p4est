@@ -193,6 +193,7 @@ public:
 
     double operator()(double x, double y) const
     {
+      (void) x; (void) y;
       return nx/sqrt(nx*nx+ny*ny);
     }
   } phi_x;
@@ -215,6 +216,7 @@ public:
 
     double operator()(double x, double y) const
     {
+      (void) x; (void) y;
       return ny/sqrt(nx*nx+ny*ny);
     }
   } phi_y;

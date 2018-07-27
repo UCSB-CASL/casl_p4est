@@ -18,11 +18,8 @@ void cube2_mls_l_t::construct_domain(std::vector<double> &phi_all, std::vector<a
     all_negative = true;
     all_positive = true;
 
-    double x[2] = { x0, x1 };
-    double y[2] = { y0, y1 };
-
-    for (short j = 0; j < n_nodes_dir; ++j)
-      for (short i = 0; i < n_nodes_dir; ++i)
+    for (unsigned short j = 0; j < n_nodes_dir; ++j)
+      for (unsigned short i = 0; i < n_nodes_dir; ++i)
       {
         double value = phi_all[n_nodes*p + n_nodes_dir*j + i];
         all_negative = (all_negative && (value < 0.));
@@ -55,8 +52,8 @@ void cube2_mls_l_t::construct_domain(std::vector<double> &phi_all, std::vector<a
 
     simplex.clear();
     simplex.reserve(2);
-    simplex.push_back(simplex2_mls_l_t(x[l_t0p0], y[l_t0p0], x[l_t0p1], y[l_t0p1], x[l_t0p2], y[l_t0p2])); // simplex.back().set_use_linear(use_linear);
-    simplex.push_back(simplex2_mls_l_t(x[l_t1p0], y[l_t1p0], x[l_t1p1], y[l_t1p1], x[l_t1p2], y[l_t1p2])); // simplex.back().set_use_linear(use_linear);
+    simplex.push_back(simplex2_mls_l_t(x[l2_t0p0], y[l2_t0p0], x[l2_t0p1], y[l2_t0p1], x[l2_t0p2], y[l2_t0p2])); // simplex.back().set_use_linear(use_linear);
+    simplex.push_back(simplex2_mls_l_t(x[l2_t1p0], y[l2_t1p0], x[l2_t1p1], y[l2_t1p1], x[l2_t1p2], y[l2_t1p2])); // simplex.back().set_use_linear(use_linear);
 
     // TODO: mark appropriate edges for integrate_in_dir
 //    simplex[0].edgs_[0].dir = 1; simplex[0].edgs_[2].dir = 2;
@@ -66,13 +63,13 @@ void cube2_mls_l_t::construct_domain(std::vector<double> &phi_all, std::vector<a
     std::vector<double> phi_s0(n_nodes_simplex*num_of_lsfs, -1);
     std::vector<double> phi_s1(n_nodes_simplex*num_of_lsfs, -1);
 
-    for (int i = 0; i < num_of_lsfs; ++i)
+    for (unsigned int i = 0; i < num_of_lsfs; ++i)
     {
 //      int phi_idx = nt_idx[i];
       int phi_idx = i;
-      phi_s0[n_nodes_simplex*i+0] = phi_all[n_nodes*phi_idx+l_t0p0]; phi_s1[n_nodes_simplex*i+0] = phi_all[n_nodes*phi_idx+l_t1p0];
-      phi_s0[n_nodes_simplex*i+1] = phi_all[n_nodes*phi_idx+l_t0p1]; phi_s1[n_nodes_simplex*i+1] = phi_all[n_nodes*phi_idx+l_t1p1];
-      phi_s0[n_nodes_simplex*i+2] = phi_all[n_nodes*phi_idx+l_t0p2]; phi_s1[n_nodes_simplex*i+2] = phi_all[n_nodes*phi_idx+l_t1p2];
+      phi_s0[n_nodes_simplex*i+0] = phi_all[n_nodes*phi_idx+l2_t0p0]; phi_s1[n_nodes_simplex*i+0] = phi_all[n_nodes*phi_idx+l2_t1p0];
+      phi_s0[n_nodes_simplex*i+1] = phi_all[n_nodes*phi_idx+l2_t0p1]; phi_s1[n_nodes_simplex*i+1] = phi_all[n_nodes*phi_idx+l2_t1p1];
+      phi_s0[n_nodes_simplex*i+2] = phi_all[n_nodes*phi_idx+l2_t0p2]; phi_s1[n_nodes_simplex*i+2] = phi_all[n_nodes*phi_idx+l2_t1p2];
     }
 
     simplex[0].construct_domain(phi_s0, acn, clr);

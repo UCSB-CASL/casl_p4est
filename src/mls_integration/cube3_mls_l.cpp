@@ -4,11 +4,6 @@ void cube3_mls_l_t::construct_domain(std::vector<double> &phi_all, std::vector<a
 {
    num_of_lsfs = acn.size();
 
-   // 2-by-2-by-2 grid
-   double x[2] = { x0, x1 };
-   double y[2] = { y0, y1 };
-   double z[2] = { z0, z1 };
-
  #ifdef CASL_THROWS
    if (num_of_lsfs != acn.size() || num_of_lsfs != clr.size())
            throw std::domain_error("[CASL_ERROR]: (cube3_mls_l_quadratic_t::construct_domain) sizes of phi, acn and clr do not coincide.");
@@ -45,9 +40,9 @@ void cube3_mls_l_t::construct_domain(std::vector<double> &phi_all, std::vector<a
      else
      {
        // sample level-set function and check for intersections
-       for (short k = 0; k < n_nodes_dir; ++k)
-         for (short j = 0; j < n_nodes_dir; ++j)
-           for (short i = 0; i < n_nodes_dir; ++i)
+       for (unsigned short k = 0; k < n_nodes_dir; ++k)
+         for (unsigned short j = 0; j < n_nodes_dir; ++j)
+           for (unsigned short i = 0; i < n_nodes_dir; ++i)
            {
              double value = phi_all[n_nodes*p + n_nodes_dir*n_nodes_dir*k + n_nodes_dir*j + i];
              all_negative = (all_negative && (value < 0.));
@@ -100,13 +95,13 @@ void cube3_mls_l_t::construct_domain(std::vector<double> &phi_all, std::vector<a
      /* Split a cube into 6 simplices */
      simplex.clear();
      simplex.reserve(NTETS);
-     simplex.push_back(simplex3_mls_l_t(x[l_t0p0],y[l_t0p0],z[l_t0p0], x[l_t0p1],y[l_t0p1],z[l_t0p1], x[l_t0p2],y[l_t0p2],z[l_t0p2], x[l_t0p3],y[l_t0p3],z[l_t0p3])); //simplex.back().set_use_linear(use_linear);
-     simplex.push_back(simplex3_mls_l_t(x[l_t1p0],y[l_t1p0],z[l_t1p0], x[l_t1p1],y[l_t1p1],z[l_t1p1], x[l_t1p2],y[l_t1p2],z[l_t1p2], x[l_t1p3],y[l_t1p3],z[l_t1p3])); //simplex.back().set_use_linear(use_linear);
-     simplex.push_back(simplex3_mls_l_t(x[l_t2p0],y[l_t2p0],z[l_t2p0], x[l_t2p1],y[l_t2p1],z[l_t2p1], x[l_t2p2],y[l_t2p2],z[l_t2p2], x[l_t2p3],y[l_t2p3],z[l_t2p3])); //simplex.back().set_use_linear(use_linear);
-     simplex.push_back(simplex3_mls_l_t(x[l_t3p0],y[l_t3p0],z[l_t3p0], x[l_t3p1],y[l_t3p1],z[l_t3p1], x[l_t3p2],y[l_t3p2],z[l_t3p2], x[l_t3p3],y[l_t3p3],z[l_t3p3])); //simplex.back().set_use_linear(use_linear);
-     simplex.push_back(simplex3_mls_l_t(x[l_t4p0],y[l_t4p0],z[l_t4p0], x[l_t4p1],y[l_t4p1],z[l_t4p1], x[l_t4p2],y[l_t4p2],z[l_t4p2], x[l_t4p3],y[l_t4p3],z[l_t4p3])); //simplex.back().set_use_linear(use_linear);
+     simplex.push_back(simplex3_mls_l_t(x[l3_t0p0],y[l3_t0p0],z[l3_t0p0], x[l3_t0p1],y[l3_t0p1],z[l3_t0p1], x[l3_t0p2],y[l3_t0p2],z[l3_t0p2], x[l3_t0p3],y[l3_t0p3],z[l3_t0p3])); //simplex.back().set_use_linear(use_linear);
+     simplex.push_back(simplex3_mls_l_t(x[l3_t1p0],y[l3_t1p0],z[l3_t1p0], x[l3_t1p1],y[l3_t1p1],z[l3_t1p1], x[l3_t1p2],y[l3_t1p2],z[l3_t1p2], x[l3_t1p3],y[l3_t1p3],z[l3_t1p3])); //simplex.back().set_use_linear(use_linear);
+     simplex.push_back(simplex3_mls_l_t(x[l3_t2p0],y[l3_t2p0],z[l3_t2p0], x[l3_t2p1],y[l3_t2p1],z[l3_t2p1], x[l3_t2p2],y[l3_t2p2],z[l3_t2p2], x[l3_t2p3],y[l3_t2p3],z[l3_t2p3])); //simplex.back().set_use_linear(use_linear);
+     simplex.push_back(simplex3_mls_l_t(x[l3_t3p0],y[l3_t3p0],z[l3_t3p0], x[l3_t3p1],y[l3_t3p1],z[l3_t3p1], x[l3_t3p2],y[l3_t3p2],z[l3_t3p2], x[l3_t3p3],y[l3_t3p3],z[l3_t3p3])); //simplex.back().set_use_linear(use_linear);
+     simplex.push_back(simplex3_mls_l_t(x[l3_t4p0],y[l3_t4p0],z[l3_t4p0], x[l3_t4p1],y[l3_t4p1],z[l3_t4p1], x[l3_t4p2],y[l3_t4p2],z[l3_t4p2], x[l3_t4p3],y[l3_t4p3],z[l3_t4p3])); //simplex.back().set_use_linear(use_linear);
 #ifdef cube3_mls_l_KUHN
-     simplex.push_back(simplex3_mls_l_t(x[l_t5p0],y[l_t5p0],z[l_t5p0], x[l_t5p1],y[l_t5p1],z[l_t5p1], x[l_t5p2],y[l_t5p2],z[l_t5p2], x[l_t5p3],y[l_t5p3],z[l_t5p3])); //simplex.back().set_use_linear(use_linear);
+     simplex.push_back(simplex3_mls_l_t(x[l3_t5p0],y[l3_t5p0],z[l3_t5p0], x[l3_t5p1],y[l3_t5p1],z[l3_t5p1], x[l3_t5p2],y[l3_t5p2],z[l3_t5p2], x[l3_t5p3],y[l3_t5p3],z[l3_t5p3])); //simplex.back().set_use_linear(use_linear);
 #endif
 
      // TODO: mark appropriate edges for integrate_in_dir
@@ -133,12 +128,12 @@ void cube3_mls_l_t::construct_domain(std::vector<double> &phi_all, std::vector<a
 
      std::vector<double> phi_s(n_nodes_simplex*num_of_lsfs, -1);
 
-     for (int s = 0; s < NTETS; ++s)
+     for (unsigned int s = 0; s < NTETS; ++s)
      {
-       for (int i = 0; i < num_of_lsfs; ++i)
+       for (unsigned int i = 0; i < num_of_lsfs; ++i)
        {
-         int phi_idx = nt_idx[i];
-         for (int n = 0; n < n_nodes_simplex; ++n)
+         unsigned int phi_idx = nt_idx[i];
+         for (unsigned int n = 0; n < n_nodes_simplex; ++n)
            phi_s[n_nodes_simplex*i + n] = phi_all[n_nodes*phi_idx + tp_l[s][n]];
        }
        simplex[s].construct_domain(phi_s, nt_acn, nt_clr);
