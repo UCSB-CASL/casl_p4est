@@ -64,7 +64,7 @@ using namespace std;
 
 
 
-int test = 2; //dynamic linear case=2, dynamic nonlinear case=4, static linear case=1, random cube box side enforced = 8, random spheroid=9
+int test = 4; //dynamic linear case=2, dynamic nonlinear case=4, static linear case=1, random cube box side enforced = 8, random spheroid=9
 
 
 double cellDensity = 0.001;   // only if test = 8 || 9
@@ -1773,11 +1773,13 @@ void solve_diffusion( p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost
             // if the electric field penetrates into the cell, there is a jump in gradient but no different in concentrations.
             for(unsigned int n=0; n<nodes->indep_nodes.elem_count;n++)
             {
-                if(Pm_p[n]>0)
-                    M_jump_p[n] = d_c*dM_m_p[n]/Pm_p[n];//Mp_p[n] - Mm_p[n];
+                if(Pm_p[n]>1e-7 && ABS(phi_p[n])<diag)
+                    M_jump_p[n] = dt_n*d_c*dM_m_p[n]/Pm_p[n];//Mp_p[n] - Mm_p[n]; >> for us M is scaled by (1/dt_n), so every eqn is scaled up by (dt_n*)
 
-                grad_M_jump_p[n] = mu_e*M_star_p[n]*du_p_p[n]/10000;
+                grad_M_jump_p[n] = dt_n*mu_e*M_star_p[n]*du_p_p[n];
             }
+
+
 
             ierr = VecRestoreArray(M_minus, &Mm_p); CHKERRXX(ierr);
             ierr = VecRestoreArray(M_plus, &Mp_p); CHKERRXX(ierr);
@@ -1790,11 +1792,17 @@ void solve_diffusion( p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost
             ierr = VecRestoreArray(Pm, &Pm_p); CHKERRXX(ierr);
 
             ls.extend_from_interface_to_whole_domain_TVD(phi, grad_M_jump, grad_M_jump);
-            ls.extend_from_interface_to_whole_domain_TVD(phi, M_jump, M_jump);
+            //ls.extend_from_interface_to_whole_domain_TVD(phi, M_jump, M_jump);
 
             solver.set_u_jump(M_jump);
             solver.set_mu_grad_u_jump(grad_M_jump);
             solver.solve(M_list[ion]);
+
+            double max_jump, max_grad, max_E;
+            VecMax(M_jump, NULL, &max_jump);
+            VecMax(grad_M_jump, NULL, &max_grad);
+            VecMax(grad_up, NULL, &max_E);
+            PetscPrintf(p4est->mpicomm, "Maximum jump is %g and maximum concentration gradient is %g, maximum E field is %g. \n", max_jump, max_grad, max_E);
 //                        ierr = VecGetArray(M_star,&M_star_p); CHKERRXX(ierr);
 //                        ierr = VecGetArray(M_list[0], &M_p[0]); CHKERRXX(ierr);
 //                        ierr = VecGetArray(M_list[1], &M_p[1]); CHKERRXX(ierr);
