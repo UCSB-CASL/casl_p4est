@@ -67,7 +67,7 @@ using namespace std;
 int test = 2; //dynamic linear case=2, dynamic nonlinear case=4, static linear case=1, random cube box side enforced = 8, random spheroid=9
 
 
-double cellDensity = 0.0005;   // only if test = 8 || 9
+double cellDensity = 0.001;   // only if test = 8 || 9
 double density = 0;         // this is for measuring the density finally. don't change its declaration value.
 double boxSide = 0.5e-3;      // only if test = 8
 double alpha = 1;        // this is the scaling factor 1e-3, don't use! set to 1.
@@ -116,8 +116,8 @@ double zmaxx = test<4 ?  2*z_cells*r0 :  (test == 7 ?  4*pow(nb_cells, 1./3.)*r0
 
 int axial_nb = 2*zmaxx/r0/2;
 int lmax_thr = (int)log2(axial_nb)+2;   // the mesh should be fine enough to have enough nodes on each cell for solver not to crash.
-int lmin = 2;
-int lmax = 8;//MAX(lmax_thr, 8);
+int lmin = 4;
+int lmax = MAX(lmax_thr, 7);
 int nb_splits = 1;
 
 double dt_scale = 10 ;//200;
@@ -151,15 +151,16 @@ double P0 = 0;     // initial permeability of membrane to nonpermeable molecule 
 double P1 = 1e-6;
 double P2 = 1e-7;
 
-double M_0 = 1.0e-6;     // uniform initial condition for concentration
-double M_boundary= 1.0e-6; // concentration on the boundary of the box
 
+double Faraday = 96485.3328; //Faraday's constant
 double d_c = 1e-9;  // molecule diffusion in intracellular 1e-9
 double d_e = 1e-8;  // molecule diffusion in extracellular
 double mu_e = 1e-6; // Molecule motility in outer medium = 1e-7
 double mu_c = 1e-7;    // Molecule motility in inner medium = 0
 const int number_ions = 2; // Number of ions in the simulations
-double Faraday = 96485.3328; //Faraday's constant
+
+double M_0 = 1.0e-6;     // uniform initial condition for concentration
+double M_boundary= 1.0e-6; // concentration on the boundary of the box
 /* end of diffusion modeling */
 
 double R1 = .25*MIN(xmax-xmin, ymax-ymin, zmaxx-zminn);
@@ -739,10 +740,10 @@ class Initial_M : public CF_3
 public:
     double operator()(double x, double y, double z) const
     {
-        if(level_set(x,y,z)>0)
-            return M_boundary+4*M_boundary*(zmaxx*zmaxx-z*z)/(zmaxx-zminn)/(zmaxx-zminn);//(zmaxx-z)*M_boundary/(zmaxx-zminn);
+        if(level_set(x,y,z)>=0)
+            return M_0;//M_boundary+4*M_boundary*(zmaxx*zmaxx-z*z)/(zmaxx-zminn)/(zmaxx-zminn);//(zmaxx-z)*M_boundary/(zmaxx-zminn);
         else
-            return M_boundary;//(M_0/R1)*(R1-ABS(level_set(x,y,z)));
+            return 0;// M_boundary;//(M_0/R1)*(R1-ABS(level_set(x,y,z)));
     }
 }initial_M;
 
@@ -1328,19 +1329,18 @@ double upwind_step(my_p4est_node_neighbors_t *ngbd_n, p4est_locidx_t n, double *
 
 }
 
-void advect_upwind(double dt, my_p4est_node_neighbors_t *ngbd_n, Vec field, Vec field_xx[3], Vec vel[3], Vec flux_DIR, Vec phi, double diag, Vec M_star)
+void advect_upwind(double dt, my_p4est_node_neighbors_t *ngbd_n, Vec field, Vec field_xx[3], Vec vel[3], Vec flux_DIR, double *phi_p, double diag, double *M_interface_p)
 {
 
     PetscErrorCode ierr;
     Vec field_np1;
-    VecDuplicate(field, &field_np1);
+    VecDuplicate(flux_DIR, &field_np1);
 
-    double *field_xx_p, *field_yy_p, *field_zz_p, *field_np1_p, *vel_p[3], *field_p, *flux_d_p, *phi_p, *M_star_p;
+    double *field_xx_p, *field_yy_p, *field_zz_p, *field_np1_p, *vel_p[3], *field_p, *flux_d_p;
     for(unsigned int i=0;i<3;i++)
         VecGetArray(vel[i], &vel_p[i]);
 
-    VecGetArray(phi, &phi_p);
-    VecGetArray(M_star, &M_star_p);
+
     VecGetArray(flux_DIR, &flux_d_p);
     VecGetArray(field, &field_p);
     VecGetArray(field_np1, &field_np1_p);
@@ -1351,12 +1351,12 @@ void advect_upwind(double dt, my_p4est_node_neighbors_t *ngbd_n, Vec field, Vec 
     // 1) first half-step
     for (size_t i = 0; i<ngbd_n->get_layer_size(); i++) {
         p4est_locidx_t n = ngbd_n->get_layer_node(i);
-        field_np1_p[n] = upwind_step(ngbd_n, n, field_p, field_xx_p, field_yy_p, field_zz_p, vel_p[0][n], vel_p[1][n], vel_p[2][n], dt, flux_d_p, phi_p, diag, M_star_p);
+        field_np1_p[n] = upwind_step(ngbd_n, n, field_p, field_xx_p, field_yy_p, field_zz_p, vel_p[0][n], vel_p[1][n], vel_p[2][n], dt, flux_d_p, phi_p, diag, M_interface_p);
     }
     VecGhostUpdateBegin(field_np1, INSERT_VALUES, SCATTER_FORWARD);
     for (size_t i = 0; i<ngbd_n->get_local_size(); i++) {
         p4est_locidx_t n = ngbd_n->get_local_node(i);
-        field_np1_p[n] = upwind_step(ngbd_n, n, field_p, field_xx_p, field_yy_p, field_zz_p, vel_p[0][n], vel_p[1][n], vel_p[2][n], dt, flux_d_p, phi_p, diag, M_star_p);
+        field_np1_p[n] = upwind_step(ngbd_n, n, field_p, field_xx_p, field_yy_p, field_zz_p, vel_p[0][n], vel_p[1][n], vel_p[2][n], dt, flux_d_p, phi_p, diag, M_interface_p);
     }
     VecGhostUpdateEnd(field_np1, INSERT_VALUES, SCATTER_FORWARD);
     VecRestoreArray(field_np1, &field_np1_p);
@@ -1406,13 +1406,13 @@ void advect_upwind(double dt, my_p4est_node_neighbors_t *ngbd_n, Vec field, Vec 
     VecGetArray(field_xx[2], &field_zz_p);
     for (size_t i = 0; i<ngbd_n->get_layer_size(); i++) {
         p4est_locidx_t n = ngbd_n->get_layer_node(i);
-        double field_np2 = upwind_step(ngbd_n, n, field_np1_p, field_xx_p, field_yy_p, field_zz_p, vel_p[0][n], vel_p[1][n], vel_p[2][n], dt, flux_d_p, phi_p, diag, M_star_p);
+        double field_np2 = upwind_step(ngbd_n, n, field_np1_p, field_xx_p, field_yy_p, field_zz_p, vel_p[0][n], vel_p[1][n], vel_p[2][n], dt, flux_d_p, phi_p, diag, M_interface_p);
         field_p[n] = 0.5*(field_p[n] + field_np2);
     }
     VecGhostUpdateBegin(field, INSERT_VALUES, SCATTER_FORWARD);
     for (size_t i = 0; i<ngbd_n->get_local_size(); i++) {
         p4est_locidx_t n = ngbd_n->get_local_node(i);
-        double field_np2 = upwind_step(ngbd_n, n, field_np1_p, field_xx_p, field_yy_p, field_zz_p, vel_p[0][n], vel_p[1][n], vel_p[2][n], dt, flux_d_p, phi_p, diag, M_star_p);
+        double field_np2 = upwind_step(ngbd_n, n, field_np1_p, field_xx_p, field_yy_p, field_zz_p, vel_p[0][n], vel_p[1][n], vel_p[2][n], dt, flux_d_p, phi_p, diag, M_interface_p);
         field_p[n] = 0.5*(field_p[n] + field_np2);
     }
     VecGhostUpdateEnd(field, INSERT_VALUES, SCATTER_FORWARD);
@@ -1421,8 +1421,6 @@ void advect_upwind(double dt, my_p4est_node_neighbors_t *ngbd_n, Vec field, Vec 
     VecRestoreArray(field_xx[0], &field_xx_p);
     VecRestoreArray(field_xx[1], &field_yy_p);
     VecRestoreArray(field_xx[2], &field_zz_p);
-    VecRestoreArray(phi, &phi_p);
-    VecRestoreArray(M_star, &M_star_p);
     VecRestoreArray(flux_DIR, &flux_d_p);
     for(unsigned int i=0;i<3;i++)
     {
@@ -1450,15 +1448,15 @@ void solve_diffusion( p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost
     VecDuplicate(phi, &mu_p_);
 
 
-    Vec Laplacian_u, ElectroPhoresis;
+    Vec Laplacian_u, ElectroPhoresis, flux_DIR;
+    ierr = VecCreateGhostNodes(p4est, nodes, &flux_DIR); CHKERRXX(ierr);
     ierr = VecCreateGhostNodes(p4est, nodes, &Laplacian_u); CHKERRXX(ierr);
     ierr = VecCreateGhostNodes(p4est, nodes, &ElectroPhoresis); CHKERRXX(ierr);
-    Vec M_xx[3], Electric_xx[3], Electric[3];
+    Vec M_xx[3], Electric[3];
     for(int dir=0; dir<3; ++dir)
     {
         ierr = VecCreateGhostNodes(p4est, nodes, &Electric[dir]); CHKERRXX(ierr);
         ierr = VecCreateGhostNodes(p4est, nodes, &M_xx[dir]); CHKERRXX(ierr);
-        ierr = VecCreateGhostNodes(p4est, nodes, &Electric_xx[dir]); CHKERRXX(ierr);
     }
 
 
@@ -1472,7 +1470,7 @@ void solve_diffusion( p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost
     my_p4est_poisson_jump_nodes_voronoi_t solver(ngbd_n, ngbd_c);
     solver.set_bc(bc);
     solver.set_phi(phi);
-    solver.set_diagonal(1.0/dt_n);
+    //solver.set_diagonal(1.0);
 
 
     double *phi_p;
@@ -1481,12 +1479,12 @@ void solve_diffusion( p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost
     for(int j=0;j<P4EST_DIM;++j)
         VecGetArray(grad_phi[j], &grad_phi_p[j]);
 
-    Vec M_plus, M_minus, dM_plus_cte, dM_minus_cte, flux_DIR;
+    Vec M_plus, M_minus, dM_plus_cte, dM_minus_cte;
     ierr = VecDuplicate(phi, &dM_minus_cte); CHKERRXX(ierr);
     ierr = VecDuplicate(phi, &dM_plus_cte); CHKERRXX(ierr);
     ierr = VecDuplicate(phi, &M_plus); CHKERRXX(ierr);
     ierr = VecDuplicate(phi, &M_minus); CHKERRXX(ierr);
-    ierr = VecDuplicate(phi, &flux_DIR); CHKERRXX(ierr);
+
 
     double *M_p[number_ions], *c_rate_p;
     ierr = VecGetArray(charge_rate, &c_rate_p); CHKERRXX(ierr);
@@ -1510,7 +1508,6 @@ void solve_diffusion( p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost
 
     for(unsigned int ion=0; ion<number_ions-1; ++ion) //PAM: remove the -1 in front of the number_ions
     {
-
 
         ierr = VecGetArray(M_list[ion], &M_p[ion]); CHKERRXX(ierr);
         double *u_p, *EPX_p, *EPY_p, *EPZ_p, *Laplacian_u_p, *ElectroPhoresis_p, *flux_d_p;
@@ -1560,6 +1557,7 @@ void solve_diffusion( p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost
             Laplacian_u_p[n] = qnnn.dxx_central(u_p)+qnnn.dyy_central(u_p)+qnnn.dzz_central(u_p);
             ElectroPhoresis_p[n] = (dux*qnnn.dx_central(M_p[ion]) + duy*qnnn.dy_central(M_p[ion]) + duz*qnnn.dz_central(M_p[ion]));
             flux_d_p[n] = (EPX_p[n]*grad_phi_p[0][n] + EPY_p[n]*grad_phi_p[1][n] + EPZ_p[n]*grad_phi_p[2][n]);
+           //PetscPrintf(p4est->mpicomm, "Advection CFL number is = %g\n", EPZ_p[n]*dt_n/diag);
         }
         ierr = VecGhostUpdateEnd(flux_DIR, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
         ierr = VecGhostUpdateEnd(Electric[0], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -1576,76 +1574,6 @@ void solve_diffusion( p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost
         ierr = VecRestoreArray(sol, &u_p); CHKERRXX(ierr);
 
 
-        // Advection by electric field using the semi-lagrangian method
-
-        double *M_xx_p[3], *Electric_xx_p[3];
-        ierr = VecGetArray(M_xx[0], &M_xx_p[0]); CHKERRXX(ierr);
-        ierr = VecGetArray(M_xx[1], &M_xx_p[1]); CHKERRXX(ierr);
-        ierr = VecGetArray(M_xx[2], &M_xx_p[2]); CHKERRXX(ierr);
-        ierr = VecGetArray(Electric_xx[0], &Electric_xx_p[0]); CHKERRXX(ierr);
-        ierr = VecGetArray(Electric_xx[1], &Electric_xx_p[1]); CHKERRXX(ierr);
-        ierr = VecGetArray(Electric_xx[2], &Electric_xx_p[2]); CHKERRXX(ierr);
-        ierr = VecGetArray(sol, &u_p); CHKERRXX(ierr);
-        for(size_t i=0; i<ngbd_n->get_layer_size(); ++i)
-        {
-            p4est_locidx_t n = ngbd_n->get_layer_node(i);
-            const quad_neighbor_nodes_of_node_t qnnn = ngbd_n->get_neighbors(n);
-            M_xx_p[0][n] = qnnn.dxx_central(M_p[ion]);
-            M_xx_p[1][n] = qnnn.dyy_central(M_p[ion]);
-            M_xx_p[2][n] = qnnn.dzz_central(M_p[ion]);
-
-            Electric_xx_p[0][n] = qnnn.dxx_central(u_p);
-            Electric_xx_p[1][n] = qnnn.dyy_central(u_p);
-            Electric_xx_p[2][n] = qnnn.dzz_central(u_p);
-        }
-        ierr = VecGhostUpdateBegin(M_xx[0], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-        ierr = VecGhostUpdateBegin(M_xx[1], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-        ierr = VecGhostUpdateBegin(M_xx[2], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-        ierr = VecGhostUpdateBegin(Electric_xx[0], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-        ierr = VecGhostUpdateBegin(Electric_xx[1], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-        ierr = VecGhostUpdateBegin(Electric_xx[2], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-        for(size_t i=0; i<ngbd_n->get_local_size(); ++i)
-        {
-            p4est_locidx_t n = ngbd_n->get_local_node(i);
-            const quad_neighbor_nodes_of_node_t qnnn = ngbd_n->get_neighbors(n);
-            M_xx_p[0][n] = qnnn.dxx_central(M_p[ion]);
-            M_xx_p[1][n] = qnnn.dyy_central(M_p[ion]);
-            M_xx_p[2][n] = qnnn.dzz_central(M_p[ion]);
-
-            Electric_xx_p[0][n] = qnnn.dxx_central(u_p);
-            Electric_xx_p[1][n] = qnnn.dyy_central(u_p);
-            Electric_xx_p[2][n] = qnnn.dzz_central(u_p);
-        }
-        ierr = VecGhostUpdateEnd(M_xx[0], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-        ierr = VecGhostUpdateEnd(M_xx[1], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-        ierr = VecGhostUpdateEnd(M_xx[2], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-        ierr = VecGhostUpdateEnd(Electric_xx[0], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-        ierr = VecGhostUpdateEnd(Electric_xx[1], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-        ierr = VecGhostUpdateEnd(Electric_xx[2], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-        ierr = VecRestoreArray(M_xx[0], &M_xx_p[0]); CHKERRXX(ierr);
-        ierr = VecRestoreArray(M_xx[1], &M_xx_p[1]); CHKERRXX(ierr);
-        ierr = VecRestoreArray(M_xx[2], &M_xx_p[2]); CHKERRXX(ierr);
-        ierr = VecRestoreArray(Electric_xx[0], &Electric_xx_p[0]); CHKERRXX(ierr);
-        ierr = VecRestoreArray(Electric_xx[1], &Electric_xx_p[1]); CHKERRXX(ierr);
-        ierr = VecRestoreArray(Electric_xx[2], &Electric_xx_p[2]); CHKERRXX(ierr);
-        ierr = VecRestoreArray(sol, &u_p); CHKERRXX(ierr);
-
-
-        double *M_star_p;
-        ierr = VecGetArray(M_star,&M_star_p); CHKERRXX(ierr);
-        for(size_t n=0; n<nodes->indep_nodes.elem_count;n++)
-            M_star_p[n] = M_p[ion][n];
-        ierr = VecRestoreArray(M_star,&M_star_p); CHKERRXX(ierr);
-        for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
-            phi_p[i] = -phi_p[i];
-        ls.extend_Over_Interface_TVD(phi, M_star,100); // extends from negative domain to positive domain
-        for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
-            phi_p[i] = -phi_p[i];
-        // solve the advection part
-        advect_upwind(dt_n, ngbd_n, M_list[ion], M_xx, Electric, flux_DIR, phi, diag, M_star);
-
-
-
         double *Pm_p, *X0_p, *X1_p, *mu_m_p, *mu_p_p, *Mp_p, *Mm_p;
 
         ierr = VecGetArray(Laplacian_u, &Laplacian_u_p); CHKERRXX(ierr);
@@ -1660,13 +1588,13 @@ void solve_diffusion( p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost
         ierr = VecGetArray(rhs_p, &rhs_p_p); CHKERRXX(ierr);
         for(size_t n=0; n<nodes->indep_nodes.elem_count;n++)
         {
-            mu_m_p[n] = d_c;
-            mu_p_p[n] = d_e;
+            mu_m_p[n] = dt_n*d_c;
+            mu_p_p[n] = dt_n*d_e;
 
             Pm_p[n] = P0 + P1*X0_p[n] + P2*X1_p[n];
 
-            rhs_p_p[n] = M_p[ion][n]/dt_n + (mu_e*Laplacian_u_p[n]*M_p[ion][n]);
-            rhs_m_p[n] = M_p[ion][n]/dt_n + (mu_c*Laplacian_u_p[n]*M_p[ion][n]);
+            rhs_p_p[n] = 0;//M_p[ion][n];// + dt_n*(mu_e*Laplacian_u_p[n]*M_p[ion][n]);
+            rhs_m_p[n] = 0;//M_p[ion][n];// + dt_n*(mu_c*Laplacian_u_p[n]*M_p[ion][n]);
         }
 
 
@@ -1684,10 +1612,91 @@ void solve_diffusion( p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost
         solver.set_rhs(rhs_m,rhs_p);
         solver.set_mu(mu_m_, mu_p_);
 
+        // Advection by electric field using the upwind scheme TVD-RK2
+
+        double *M_xx_p[3];
+        ierr = VecGetArray(M_xx[0], &M_xx_p[0]); CHKERRXX(ierr);
+        ierr = VecGetArray(M_xx[1], &M_xx_p[1]); CHKERRXX(ierr);
+        ierr = VecGetArray(M_xx[2], &M_xx_p[2]); CHKERRXX(ierr);
+        ierr = VecGetArray(M_list[ion], &M_p[ion]); CHKERRXX(ierr);
+        for(size_t i=0; i<ngbd_n->get_layer_size(); ++i)
+        {
+            p4est_locidx_t n = ngbd_n->get_layer_node(i);
+            const quad_neighbor_nodes_of_node_t qnnn = ngbd_n->get_neighbors(n);
+            M_xx_p[0][n] = qnnn.dxx_central(M_p[ion]);
+            M_xx_p[1][n] = qnnn.dyy_central(M_p[ion]);
+            M_xx_p[2][n] = qnnn.dzz_central(M_p[ion]);
+        }
+        ierr = VecGhostUpdateBegin(M_xx[0], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+        ierr = VecGhostUpdateBegin(M_xx[1], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+        ierr = VecGhostUpdateBegin(M_xx[2], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+        for(size_t i=0; i<ngbd_n->get_local_size(); ++i)
+        {
+            p4est_locidx_t n = ngbd_n->get_local_node(i);
+            const quad_neighbor_nodes_of_node_t qnnn = ngbd_n->get_neighbors(n);
+            M_xx_p[0][n] = qnnn.dxx_central(M_p[ion]);
+            M_xx_p[1][n] = qnnn.dyy_central(M_p[ion]);
+            M_xx_p[2][n] = qnnn.dzz_central(M_p[ion]);
+        }
+        ierr = VecGhostUpdateEnd(M_xx[0], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+        ierr = VecGhostUpdateEnd(M_xx[1], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+        ierr = VecGhostUpdateEnd(M_xx[2], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+        ierr = VecRestoreArray(M_xx[0], &M_xx_p[0]); CHKERRXX(ierr);
+        ierr = VecRestoreArray(M_xx[1], &M_xx_p[1]); CHKERRXX(ierr);
+        ierr = VecRestoreArray(M_xx[2], &M_xx_p[2]); CHKERRXX(ierr);
+        ierr = VecRestoreArray(M_list[ion], &M_p[ion]); CHKERRXX(ierr);
+
+
+
+
+        Vec M_l, M_plus_l, M_minus_l;
+        VecGhostGetLocalForm(M_list[ion], &M_l);
+        VecGhostGetLocalForm(M_plus, &M_plus_l);
+        VecGhostGetLocalForm(M_minus, &M_minus_l);
+        ierr = VecCopy(M_l, M_plus_l); CHKERRXX(ierr);
+        ierr = VecCopy(M_l, M_minus_l); CHKERRXX(ierr);
+        VecGhostRestoreLocalForm(M_list[ion], &M_l);
+        VecGhostRestoreLocalForm(M_plus, &M_plus_l);
+        VecGhostRestoreLocalForm(M_minus, &M_minus_l);
+
+        ls.extend_Over_Interface_TVD(phi, M_minus,100); // extends from negative domain to positive domain
+        for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
+            phi_p[i] = -phi_p[i];
+        ls.extend_Over_Interface_TVD(phi, M_plus,100);
+        for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
+            phi_p[i] = -phi_p[i];
+
+        double *M_star_p, *M_plus_p, *M_minus_p;
+        ierr = VecGetArray(M_star,&M_star_p); CHKERRXX(ierr);
+        ierr = VecGetArray(M_plus,&M_plus_p); CHKERRXX(ierr);
+        ierr = VecGetArray(M_minus,&M_minus_p); CHKERRXX(ierr);
+        ierr = VecGetArray(M_list[ion], &M_p[ion]); CHKERRXX(ierr);
+        for(size_t n=0; n<nodes->indep_nodes.elem_count;n++)
+        {
+            M_star_p[n] = M_p[ion][n];
+            M_minus_p[n] = (M_minus_p[n] + M_plus_p[n])/2.0; // save some space by storing this in M_minus
+        }
+        ierr = VecRestoreArray(M_plus,&M_plus_p); CHKERRXX(ierr);
+        ierr = VecRestoreArray(M_star,&M_star_p); CHKERRXX(ierr);
+        ierr = VecRestoreArray(M_list[ion], &M_p[ion]); CHKERRXX(ierr);
+
+        advect_upwind(dt_n, ngbd_n, M_star, M_xx, Electric, flux_DIR, phi_p, diag, M_minus_p);
+
+        ierr = VecRestoreArray(M_minus,&M_minus_p); CHKERRXX(ierr);
+
+
+        for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
+            phi_p[i] = -phi_p[i];
+        ls.extend_Over_Interface_TVD(phi, M_star,100);
+        for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
+            phi_p[i] = -phi_p[i];
+
+        PetscPrintf(p4est->mpicomm, "Advection complete! Let's do diffusion... \n");
         int counter = 0;
         do{
             // measure jump in concentration on the interface
-            Vec M_l, M_plus_l, M_minus_l;
+
             VecGhostGetLocalForm(M_list[ion], &M_l);
             VecGhostGetLocalForm(M_plus, &M_plus_l);
             VecGhostGetLocalForm(M_minus, &M_minus_l);
@@ -1746,9 +1755,10 @@ void solve_diffusion( p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost
             ls.extend_from_interface_to_whole_domain_TVD(phi, grad_Mm, dM_minus_cte);
 
             // Second step: solve diffusion!
-            double *du_p_p, *dM_p_p;
+            double *du_p_p, *dM_p_p, *dM_m_p;
             ierr = VecGetArray(grad_up, &du_p_p); CHKERRXX(ierr);
             ierr = VecGetArray(dM_plus_cte, &dM_p_p); CHKERRXX(ierr);//ierr = VecGetArray(grad_Mm, &dM_m_p); CHKERRXX(ierr);
+            ierr = VecGetArray(dM_minus_cte, &dM_m_p); CHKERRXX(ierr);
             ierr = VecGetArray(M_star,&M_star_p); CHKERRXX(ierr);
             ierr = VecGetArray(Pm, &Pm_p); CHKERRXX(ierr);
 
@@ -1757,19 +1767,25 @@ void solve_diffusion( p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost
             ierr = VecGetArray(grad_M_jump, &grad_M_jump_p); CHKERRXX(ierr);
             ierr = VecGetArray(M_plus, &Mp_p); CHKERRXX(ierr);
             ierr = VecGetArray(M_minus, &Mm_p); CHKERRXX(ierr);
+
+
             // if electric field exits the cell, there is no jump in gradients due to electrophoresis, but there is the jump.
             // if the electric field penetrates into the cell, there is a jump in gradient but no different in concentrations.
             for(unsigned int n=0; n<nodes->indep_nodes.elem_count;n++)
             {
-                M_jump_p[n] = Mp_p[n] - Mm_p[n];//d_e*dM_p_p[n]/Pm_p[n]; //
-                grad_M_jump_p[n] = -mu_e*M_star_p[n]*ABS(du_p_p[n]);
+                if(Pm_p[n]>0)
+                    M_jump_p[n] = d_c*dM_m_p[n]/Pm_p[n];//Mp_p[n] - Mm_p[n];
+
+                grad_M_jump_p[n] = mu_e*M_star_p[n]*du_p_p[n]/10000;
             }
+
             ierr = VecRestoreArray(M_minus, &Mm_p); CHKERRXX(ierr);
             ierr = VecRestoreArray(M_plus, &Mp_p); CHKERRXX(ierr);
             ierr = VecRestoreArray(grad_M_jump, &grad_M_jump_p); CHKERRXX(ierr);
             ierr = VecRestoreArray(M_jump, &M_jump_p); CHKERRXX(ierr);
             ierr = VecRestoreArray(grad_up, &du_p_p); CHKERRXX(ierr);
             ierr = VecRestoreArray(dM_plus_cte, &dM_p_p); CHKERRXX(ierr);
+            ierr = VecRestoreArray(dM_minus_cte, &dM_m_p); CHKERRXX(ierr);
             ierr = VecRestoreArray(M_star,&M_star_p); CHKERRXX(ierr);
             ierr = VecRestoreArray(Pm, &Pm_p); CHKERRXX(ierr);
 
@@ -1779,23 +1795,23 @@ void solve_diffusion( p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost
             solver.set_u_jump(M_jump);
             solver.set_mu_grad_u_jump(grad_M_jump);
             solver.solve(M_list[ion]);
-            //            ierr = VecGetArray(M_star,&M_star_p); CHKERRXX(ierr);
-            //            ierr = VecGetArray(M_list[0], &M_p[0]); CHKERRXX(ierr);
-            //            ierr = VecGetArray(M_list[1], &M_p[1]); CHKERRXX(ierr);
-            //            ierr = VecGetArray(grad_M_jump, &grad_M_jump_p); CHKERRXX(ierr);
-            //            ierr = VecGetArray(M_jump, &M_jump_p); CHKERRXX(ierr);
-            //            ierr = VecGetArray(ElectroPhoresis, &ElectroPhoresis_p); CHKERRXX(ierr);
-            //            for(unsigned int n=0; n<nodes->indep_nodes.elem_count;n++)
-            //            {
-            //                M_p[0][n]= M_jump_p[n];
-            //                M_p[1][n]= grad_M_jump_p[n]; //mu_e*ElectroPhoresis_p[n];//M_star_p[n];
-            //            }
-            //            ierr = VecRestoreArray(M_list[0], &M_p[0]); CHKERRXX(ierr);
-            //            ierr = VecRestoreArray(M_list[1], &M_p[1]); CHKERRXX(ierr);
-            //            ierr = VecRestoreArray(grad_M_jump, &grad_M_jump_p); CHKERRXX(ierr);
-            //            ierr = VecRestoreArray(M_jump, &M_jump_p); CHKERRXX(ierr);
-            //            ierr = VecRestoreArray(M_star,&M_star_p); CHKERRXX(ierr);
-            //            ierr = VecRestoreArray(ElectroPhoresis, &ElectroPhoresis_p); CHKERRXX(ierr);
+//                        ierr = VecGetArray(M_star,&M_star_p); CHKERRXX(ierr);
+//                        ierr = VecGetArray(M_list[0], &M_p[0]); CHKERRXX(ierr);
+//                        ierr = VecGetArray(M_list[1], &M_p[1]); CHKERRXX(ierr);
+//                        ierr = VecGetArray(grad_M_jump, &grad_M_jump_p); CHKERRXX(ierr);
+//                        ierr = VecGetArray(M_jump, &M_jump_p); CHKERRXX(ierr);
+//                        ierr = VecGetArray(ElectroPhoresis, &ElectroPhoresis_p); CHKERRXX(ierr);
+//                        for(unsigned int n=0; n<nodes->indep_nodes.elem_count;n++)
+//                        {
+//                            M_p[0][n]= M_jump_p[n];
+//                            M_p[1][n]= grad_M_jump_p[n]; //mu_e*ElectroPhoresis_p[n];//M_star_p[n];
+//                        }
+//                        ierr = VecRestoreArray(M_list[0], &M_p[0]); CHKERRXX(ierr);
+//                        ierr = VecRestoreArray(M_list[1], &M_p[1]); CHKERRXX(ierr);
+//                        ierr = VecRestoreArray(grad_M_jump, &grad_M_jump_p); CHKERRXX(ierr);
+//                        ierr = VecRestoreArray(M_jump, &M_jump_p); CHKERRXX(ierr);
+//                        ierr = VecRestoreArray(M_star,&M_star_p); CHKERRXX(ierr);
+//                        ierr = VecRestoreArray(ElectroPhoresis, &ElectroPhoresis_p); CHKERRXX(ierr);
             counter++;
             PetscPrintf(p4est->mpicomm, "Diffusion of ion # %d: iteration # %d just ended!\n", ion, counter);
         }while(counter<1);
@@ -1836,7 +1852,6 @@ void solve_diffusion( p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost
     for(int dir=0; dir<3; ++dir)
     {
         VecDestroy(M_xx[dir]);
-        VecDestroy(Electric_xx[dir]);
         VecDestroy(Electric[dir]);
     }
 }
