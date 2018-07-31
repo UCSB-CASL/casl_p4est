@@ -1311,125 +1311,136 @@ void solve_electric_potential( p4est_t *p4est, p4est_nodes_t *nodes,
 //    interp.interpolate(phi_np1);
 //}
 
-double upwind_step(my_p4est_node_neighbors_t *ngbd_n, p4est_locidx_t n, double *f, double* fxx, double* fyy, double* fzz, double ux, double uy, double uz, double dt, double *flux_d_p, double *phi_p, double diag, double *M_star_p)
+double upwind_step(my_p4est_node_neighbors_t *ngbd_n, p4est_locidx_t n, double *f, double* fxx, double* fyy, double* fzz, double ux, double uy, double uz, double dt, double *phi_p, double diag)
 {
+    if(fabs(phi_p[n]) < EPS) {
+        return f[n];
+    } else if(fabs(phi_p[n]) <= diag) {
 
-    if(flux_d_p[n]>=0 && phi_p[n]>=0 && ABS(phi_p[n])<diag){ // at exit, no advection! Homogenous Neumann.
         quad_neighbor_nodes_of_node_t qnnn;
         ngbd_n->get_neighbors(n, qnnn);
+        // normal direction at this point
+        double nx = qnnn.dx_central(phi_p);
+        double ny = qnnn.dy_central(phi_p);
+        double nz = qnnn.dz_central(phi_p);
+        double norm = sqrt(nx*nx + ny*ny + nz*nz);
+        fabs(norm) > EPS ? nx /= norm : nx = 0;
+        fabs(norm) > EPS ? ny /= norm : ny = 0;
+        fabs(norm) > EPS ? nz /= norm : nz = 0;
+
+        // level-set values in the neighborhood
         double phi_000, phi_m00, phi_p00, phi_0m0, phi_0p0, phi_00m, phi_00p;
         phi_000 = phi_p[n];
-        phi_p00 = ABS(qnnn.f_p00_linear(phi_p));
-        phi_m00 = ABS(qnnn.f_m00_linear(phi_p));
+        phi_p00 = qnnn.f_p00_linear(phi_p);
+        phi_m00 = qnnn.f_m00_linear(phi_p);
+        phi_0m0 = qnnn.f_0m0_linear(phi_p);
+        phi_0p0 = qnnn.f_0p0_linear(phi_p);
+        phi_00m = qnnn.f_00m_linear(phi_p);
+        phi_00p = qnnn.f_00p_linear(phi_p);
 
-        phi_0m0 = ABS(qnnn.f_0m0_linear(phi_p));
-        phi_0p0 = ABS(qnnn.f_0p0_linear(phi_p));
+        // field values in the neighborhood
+        double p_000 , p_m00 , p_p00 , p_0m0 , p_0p0, p_00m, p_00p;
+        qnnn.ngbd_with_quadratic_interpolation(f, p_000 , p_m00 , p_p00 , p_0m0 , p_0p0, p_00m, p_00p);
 
-        phi_00m = ABS(qnnn.f_00m_linear(phi_p));
-        phi_00p = ABS(qnnn.f_00p_linear(phi_p));
+        double s_p00 = qnnn.d_p00; double s_m00 = qnnn.d_m00;
+        double s_0p0 = qnnn.d_0p0; double s_0m0 = qnnn.d_0m0;
+        double s_00p = qnnn.d_00p; double s_00m = qnnn.d_00m;
+        //---------------------------------------------------------------------
+        // Second Order derivatives
+        //---------------------------------------------------------------------
+        double pxx_000 = fxx[n];
+        double pyy_000 = fyy[n];
+        double pzz_000 = fzz[n];
 
-        double fx = ux > 0 ? qnnn.dx_forward_linear(f)*phi_000/phi_p00 : qnnn.dx_backward_linear(f)*phi_000/phi_m00;
-        double fy = uy > 0 ? qnnn.dy_forward_linear(f)*phi_000/phi_0p0 : qnnn.dy_backward_linear(f)*phi_000/phi_0m0;
-        double fz = uz > 0 ? qnnn.dz_forward_linear(f)*phi_000/phi_00p : qnnn.dz_backward_linear(f)*phi_000/phi_00m;
-        return f[n] - dt*(ux*fx+uy*fy+uz*fz);
+        double pxx_m00 = qnnn.f_m00_linear(fxx);
+        double pxx_p00 = qnnn.f_p00_linear(fxx);
+        double pyy_0m0 = qnnn.f_0m0_linear(fyy);
+        double pyy_0p0 = qnnn.f_0p0_linear(fyy);
+        double pzz_00m = qnnn.f_00m_linear(fzz);
+        double pzz_00p = qnnn.f_00p_linear(fzz);
 
-    }else if(flux_d_p[n]<0 && phi_p[n]<0 && ABS(phi_p[n])<diag) // at entrance, gradient is preserved! no resistance exists. Elsewhere, normal thing!
-    {
-        quad_neighbor_nodes_of_node_t qnnn;
-        ngbd_n->get_neighbors(n, qnnn);
-        double phi_000, phi_m00, phi_p00, phi_0m0, phi_0p0, phi_00m, phi_00p;
-        phi_000 = phi_p[n];
-        phi_p00 = ABS(qnnn.f_p00_linear(phi_p));
-        phi_m00 = ABS(qnnn.f_m00_linear(phi_p));
+        // velocity normal to the interface
+        double normal_velocity = ux*nx + uy*ny + uz*nz;
+        //---------------------------------------------------------------------
+        // Neumann boundary condition on the interface && normal_velocity>=0
+        //---------------------------------------------------------------------
+        if (    ((phi_000*phi_m00<0) || (phi_000*phi_p00<0)
+                 || (phi_000*phi_0m0<0) || (phi_000*phi_0p0<0)
+                 || (phi_000*phi_00m<0) || (phi_000*phi_00p<0)))
+        {
+            /* interface in the x direction */
+            if(phi_m00<=0)
+                s_m00 = s_p00; p_m00=p_p00; pxx_000 = pxx_m00 = pxx_p00 = 0;
+            if(phi_p00<=0)
+                s_p00 = s_m00; p_p00=p_m00; pxx_000 = pxx_m00 = pxx_p00 = 0;
 
-        phi_0m0 = ABS(qnnn.f_0m0_linear(phi_p));
-        phi_0p0 = ABS(qnnn.f_0p0_linear(phi_p));
+            /* interface in the y direction */
+            if(phi_0m0<=0)
+                s_0m0 = s_0p0; p_0m0=p_0p0; pyy_000 = pyy_0m0 = pyy_0p0 = 0;
+            if(phi_0p0<=0)
+                s_0p0 = s_0m0; p_0p0=p_0m0; pyy_000 = pyy_0m0 = pyy_0p0 = 0;
 
-        phi_00m = ABS(qnnn.f_00m_linear(phi_p));
-        phi_00p = ABS(qnnn.f_00p_linear(phi_p));
+            /* interface in the z direction */
+            if(phi_00m<=0)
+                s_00m = s_00p; p_00m=p_00p; pzz_000 = pzz_00m = pzz_00p = 0;
+            if(phi_00p<=0)
+                s_00p = s_00m; p_00p=p_00m; pzz_000 = pzz_00m = pzz_00p = 0;
 
-        double fx, fy, fz;
-        if(ux > 0){
-            double fx_m00_mm = 0, fx_m00_pm = 0, fx_m00_mp = 0, fx_m00_pp = 0;
-            double w_m00_mm = qnnn.d_m00_p0*qnnn.d_m00_0p;
-            double w_m00_mp = qnnn.d_m00_p0*qnnn.d_m00_0m;
-            double w_m00_pm = qnnn.d_m00_m0*qnnn.d_m00_0p;
-            double w_m00_pp = qnnn.d_m00_m0*qnnn.d_m00_0m;
-            if (w_m00_mm != 0) { fx_m00_mm = ngbd_n->get_neighbors(qnnn.node_m00_mm).dx_backward_linear(f); }
-            if (w_m00_mp != 0) { fx_m00_mp = ngbd_n->get_neighbors(qnnn.node_m00_mp).dx_backward_linear(f); }
-            if (w_m00_pm != 0) { fx_m00_pm = ngbd_n->get_neighbors(qnnn.node_m00_pm).dx_backward_linear(f); }
-            if (w_m00_pp != 0) { fx_m00_pp = ngbd_n->get_neighbors(qnnn.node_m00_pp).dx_backward_linear(f); }
-            double fx_m00 = (fx_m00_mm*w_m00_mm + fx_m00_mp*w_m00_mp + fx_m00_pm*w_m00_pm + fx_m00_pp*w_m00_pp )/(qnnn.d_m00_m0+qnnn.d_m00_p0)/(qnnn.d_m00_0m+qnnn.d_m00_0p);
-            fx = qnnn.dx_backward_linear(f)*(phi_000 + phi_m00)/phi_000 - fx_m00*phi_m00/phi_000;
-        } else {
-            double fx_p00_mm = 0, fx_p00_pm = 0, fx_p00_mp = 0, fx_p00_pp = 0;
-            double w_p00_mm = qnnn.d_p00_p0*qnnn.d_p00_0p;
-            double w_p00_mp = qnnn.d_p00_p0*qnnn.d_p00_0m;
-            double w_p00_pm = qnnn.d_p00_m0*qnnn.d_p00_0p;
-            double w_p00_pp = qnnn.d_p00_m0*qnnn.d_p00_0m;
-            if (w_p00_mm != 0) { fx_p00_mm = ngbd_n->get_neighbors(qnnn.node_p00_mm).dx_forward_linear(f); }
-            if (w_p00_mp != 0) { fx_p00_mp = ngbd_n->get_neighbors(qnnn.node_p00_mp).dx_forward_linear(f); }
-            if (w_p00_pm != 0) { fx_p00_pm = ngbd_n->get_neighbors(qnnn.node_p00_pm).dx_forward_linear(f); }
-            if (w_p00_pp != 0) { fx_p00_pp = ngbd_n->get_neighbors(qnnn.node_p00_pp).dx_forward_linear(f); }
-            double fx_p00 = (fx_p00_mm*w_p00_mm + fx_p00_mp*w_p00_mp + fx_p00_pm*w_p00_pm + fx_p00_pp*w_p00_pp )/(qnnn.d_p00_m0+qnnn.d_p00_p0)/(qnnn.d_p00_0m+qnnn.d_p00_0p);
-            fx = qnnn.dx_forward_linear(f)*(phi_000 + phi_p00)/phi_000 - fx_p00*phi_p00/phi_000;
+            if(p_000*p_m00<0) { s_m00 =-interface_Location_With_Second_Order_Derivative(-s_m00,   0,p_m00,p_000,pxx_m00,pxx_000); p_m00=0; }
+            if(p_000*p_p00<0) { s_p00 = interface_Location_With_Second_Order_Derivative(    0,s_p00,p_000,p_p00,pxx_000,pxx_p00); p_p00=0; }
+            if(p_000*p_0m0<0) { s_0m0 =-interface_Location_With_Second_Order_Derivative(-s_0m0,   0,p_0m0,p_000,pyy_0m0,pyy_000); p_0m0=0; }
+            if(p_000*p_0p0<0) { s_0p0 = interface_Location_With_Second_Order_Derivative(    0,s_0p0,p_000,p_0p0,pyy_000,pyy_0p0); p_0p0=0; }
+            if(p_000*p_00m<0) { s_00m =-interface_Location_With_Second_Order_Derivative(-s_00m,   0,p_00m,p_000,pzz_00m,pzz_000); p_00m=0; }
+            if(p_000*p_00p<0) { s_00p = interface_Location_With_Second_Order_Derivative(    0,s_00p,p_000,p_00p,pzz_000,pzz_00p); p_00p=0; }
+
+
+            s_m00 = MAX(s_m00,EPS);
+            s_p00 = MAX(s_p00,EPS);
+            s_0m0 = MAX(s_0m0,EPS);
+            s_0p0 = MAX(s_0p0,EPS);
+            s_00m = MAX(s_00m,EPS);
+            s_00p = MAX(s_00p,EPS);
+            // }
+            //---------------------------------------------------------------------
+            // First Order One-Sided Differecing
+            //---------------------------------------------------------------------
+            double px_p00 = (p_p00-p_000)/s_p00; double px_m00 = (p_000-p_m00)/s_m00;
+            double py_0p0 = (p_0p0-p_000)/s_0p0; double py_0m0 = (p_000-p_0m0)/s_0m0;
+            double pz_00p = (p_00p-p_000)/s_00p; double pz_00m = (p_000-p_00m)/s_00m;
+
+            //---------------------------------------------------------------------
+            // Second Order One-Sided Differencing
+            //---------------------------------------------------------------------
+            pxx_m00 = MINMOD(pxx_m00,pxx_000);   px_m00 += 0.5*s_m00*(pxx_m00);
+            pxx_p00 = MINMOD(pxx_p00,pxx_000);   px_p00 -= 0.5*s_p00*(pxx_p00);
+            pyy_0m0 = MINMOD(pyy_0m0,pyy_000);   py_0m0 += 0.5*s_0m0*(pyy_0m0);
+            pyy_0p0 = MINMOD(pyy_0p0,pyy_000);   py_0p0 -= 0.5*s_0p0*(pyy_0p0);
+            pzz_00m = MINMOD(pzz_00m,pzz_000);   pz_00m += 0.5*s_00m*(pzz_00m);
+            pzz_00p = MINMOD(pzz_00p,pzz_000);   pz_00p -= 0.5*s_00p*(pzz_00p);
+
+
+            if(normal_velocity>0) {
+                if(px_p00>0) px_p00 = 0;
+                if(px_m00<0) px_m00 = 0;
+                if(py_0p0>0) py_0p0 = 0;
+                if(py_0m0<0) py_0m0 = 0;
+                if(pz_00p>0) pz_00p = 0;
+                if(pz_00m<0) pz_00m = 0;
+            } else {
+                if(px_p00<0) px_p00 = 0;
+                if(px_m00>0) px_m00 = 0;
+                if(py_0p0<0) py_0p0 = 0;
+                if(py_0m0>0) py_0m0 = 0;
+                if(pz_00p<0) pz_00p = 0;
+                if(pz_00m>0) pz_00m = 0;
+            }
+
+
+            return p_000 - dt*normal_velocity*(sqrt(px_p00*px_p00 + px_m00*px_m00 +
+                                                    py_0p0*py_0p0 + py_0m0*py_0m0 +
+                                                    pz_00p*pz_00p + pz_00m*pz_00m));
         }
-
-        if(uy > 0){
-            double fy_0m0_mm = 0, fy_0m0_pm = 0, fy_0m0_mp = 0, fy_0m0_pp = 0;
-            double w_0m0_mm = qnnn.d_0m0_p0*qnnn.d_0m0_0p;
-            double w_0m0_mp = qnnn.d_0m0_p0*qnnn.d_0m0_0m;
-            double w_0m0_pm = qnnn.d_0m0_m0*qnnn.d_0m0_0p;
-            double w_0m0_pp = qnnn.d_0m0_m0*qnnn.d_0m0_0m;
-            if (w_0m0_mm != 0) { fy_0m0_mm = ngbd_n->get_neighbors(qnnn.node_0m0_mm).dy_backward_linear(f); }
-            if (w_0m0_mp != 0) { fy_0m0_mp = ngbd_n->get_neighbors(qnnn.node_0m0_mp).dy_backward_linear(f); }
-            if (w_0m0_pm != 0) { fy_0m0_pm = ngbd_n->get_neighbors(qnnn.node_0m0_pm).dy_backward_linear(f); }
-            if (w_0m0_pp != 0) { fy_0m0_pp = ngbd_n->get_neighbors(qnnn.node_0m0_pp).dy_backward_linear(f); }
-            double fy_0m0 = (fy_0m0_mm*w_0m0_mm + fy_0m0_mp*w_0m0_mp + fy_0m0_pm*w_0m0_pm + fy_0m0_pp*w_0m0_pp )/(qnnn.d_0m0_m0+qnnn.d_0m0_p0)/(qnnn.d_0m0_0m+qnnn.d_0m0_0p);
-            fy = qnnn.dy_backward_linear(f)*(phi_000 + phi_0m0)/phi_000 - fy_0m0*phi_0m0/phi_000;
-        } else {
-            double fy_0p0_mm = 0, fy_0p0_pm = 0, fy_0p0_mp = 0, fy_0p0_pp = 0;
-            double w_0p0_mm = qnnn.d_0p0_p0*qnnn.d_0p0_0p;
-            double w_0p0_mp = qnnn.d_0p0_p0*qnnn.d_0p0_0m;
-            double w_0p0_pm = qnnn.d_0p0_m0*qnnn.d_0p0_0p;
-            double w_0p0_pp = qnnn.d_0p0_m0*qnnn.d_0p0_0m;
-            if (w_0p0_mm != 0) { fy_0p0_mm = ngbd_n->get_neighbors(qnnn.node_0p0_mm).dy_forward_linear(f); }
-            if (w_0p0_mp != 0) { fy_0p0_mp = ngbd_n->get_neighbors(qnnn.node_0p0_mp).dy_forward_linear(f); }
-            if (w_0p0_pm != 0) { fy_0p0_pm = ngbd_n->get_neighbors(qnnn.node_0p0_pm).dy_forward_linear(f); }
-            if (w_0p0_pp != 0) { fy_0p0_pp = ngbd_n->get_neighbors(qnnn.node_0p0_pp).dy_forward_linear(f); }
-            double fy_0p0 = (fy_0p0_mm*w_0p0_mm + fy_0p0_mp*w_0p0_mp + fy_0p0_pm*w_0p0_pm + fy_0p0_pp*w_0p0_pp )/(qnnn.d_0p0_m0+qnnn.d_0p0_p0)/(qnnn.d_0p0_0m+qnnn.d_0p0_0p);
-            fy = qnnn.dy_forward_linear(f)*(phi_000 + phi_0p0)/phi_000 - fy_0p0*phi_0p0/phi_000;
-        }
-
-        if(uz > 0){
-            double fz_00m_mm = 0, fz_00m_pm = 0, fz_00m_mp = 0, fz_00m_pp = 0;
-            double w_00m_mm = qnnn.d_00m_p0*qnnn.d_00m_0p;
-            double w_00m_mp = qnnn.d_00m_p0*qnnn.d_00m_0m;
-            double w_00m_pm = qnnn.d_00m_m0*qnnn.d_00m_0p;
-            double w_00m_pp = qnnn.d_00m_m0*qnnn.d_00m_0m;
-            if (w_00m_mm != 0) { fz_00m_mm = ngbd_n->get_neighbors(qnnn.node_00m_mm).dz_backward_linear(f); }
-            if (w_00m_mp != 0) { fz_00m_mp = ngbd_n->get_neighbors(qnnn.node_00m_mp).dz_backward_linear(f); }
-            if (w_00m_pm != 0) { fz_00m_pm = ngbd_n->get_neighbors(qnnn.node_00m_pm).dz_backward_linear(f); }
-            if (w_00m_pp != 0) { fz_00m_pp = ngbd_n->get_neighbors(qnnn.node_00m_pp).dz_backward_linear(f); }
-            double fz_00m = (fz_00m_mm*w_00m_mm + fz_00m_mp*w_00m_mp + fz_00m_pm*w_00m_pm + fz_00m_pp*w_00m_pp )/(qnnn.d_00m_m0+qnnn.d_00m_p0)/(qnnn.d_00m_0m+qnnn.d_00m_0p);
-            fz = qnnn.dz_backward_linear(f)*(phi_000 + phi_00m)/phi_000 - fz_00m*phi_00m/phi_000;
-        } else {
-            double fz_00p_mm = 0, fz_00p_pm = 0, fz_00p_mp = 0, fz_00p_pp = 0;
-            double w_00p_mm = qnnn.d_00p_p0*qnnn.d_00p_0p;
-            double w_00p_mp = qnnn.d_00p_p0*qnnn.d_00p_0m;
-            double w_00p_pm = qnnn.d_00p_m0*qnnn.d_00p_0p;
-            double w_00p_pp = qnnn.d_00p_m0*qnnn.d_00p_0m;
-            if (w_00p_mm != 0) { fz_00p_mm = ngbd_n->get_neighbors(qnnn.node_00p_mm).dz_forward_linear(f); }
-            if (w_00p_mp != 0) { fz_00p_mp = ngbd_n->get_neighbors(qnnn.node_00p_mp).dz_forward_linear(f); }
-            if (w_00p_pm != 0) { fz_00p_pm = ngbd_n->get_neighbors(qnnn.node_00p_pm).dz_forward_linear(f); }
-            if (w_00p_pp != 0) { fz_00p_pp = ngbd_n->get_neighbors(qnnn.node_00p_pp).dz_forward_linear(f); }
-            double fz_00p = (fz_00p_mm*w_00p_mm + fz_00p_mp*w_00p_mp + fz_00p_pm*w_00p_pm + fz_00p_pp*w_00p_pp )/(qnnn.d_00p_m0+qnnn.d_00p_p0)/(qnnn.d_00p_0m+qnnn.d_00p_0p);
-            fz = qnnn.dz_forward_linear(f)*(phi_000 + phi_00p)/phi_000 - fz_00p*phi_00p/phi_000;
-        }
-
-        return f[n] - dt*(ux*fx+uy*fy+uz*fz);
-    }
-    else // in the bulk
+    } else  // far from the interface
     {
         quad_neighbor_nodes_of_node_t qnnn;
         ngbd_n->get_neighbors(n, qnnn);
@@ -1438,12 +1449,142 @@ double upwind_step(my_p4est_node_neighbors_t *ngbd_n, p4est_locidx_t n, double *
         double fz = uz > 0 ? qnnn.dz_backward_quadratic(f, fzz) : qnnn.dz_forward_quadratic(f, fzz);
         return f[n] - dt*(ux*fx+uy*fy+uz*fz);
     }
-
-
-
 }
 
-void advect_upwind(double dt, my_p4est_node_neighbors_t *ngbd_n, Vec field, Vec field_xx[3], Vec vel[3], Vec flux_DIR, double *phi_p, double diag, double *M_interface_p)
+
+
+
+
+//    double fx = ux > 0 ? qnnn.dx_forward_quadratic(f, fxx)*phi_000/phi_p00 : qnnn.dx_backward_quadratic(f, fxx)*phi_000/phi_m00;
+//    double fy = uy > 0 ? qnnn.dy_forward_quadratic(f, fyy)*phi_000/phi_0p0 : qnnn.dy_backward_quadratic(f, fyy)*phi_000/phi_0m0;
+//    double fz = uz > 0 ? qnnn.dz_forward_quadratic(f, fzz)*phi_000/phi_00p : qnnn.dz_backward_quadratic(f, fzz)*phi_000/phi_00m;
+//    return f[n] - dt*(ux*fx+uy*fy+uz*fz);
+
+//    if(flux_d_p[n]<0 && phi_p[n]<0 && ABS(phi_p[n])<diag) // at entrance, gradient is preserved! no resistance exists. Elsewhere, normal thing!
+//    {
+//        quad_neighbor_nodes_of_node_t qnnn;
+//        ngbd_n->get_neighbors(n, qnnn);
+//        double phi_000, phi_m00, phi_p00, phi_0m0, phi_0p0, phi_00m, phi_00p;
+//        phi_000 = phi_p[n];
+//        phi_p00 = ABS(qnnn.f_p00_linear(phi_p));
+//        phi_m00 = ABS(qnnn.f_m00_linear(phi_p));
+
+//        phi_0m0 = ABS(qnnn.f_0m0_linear(phi_p));
+//        phi_0p0 = ABS(qnnn.f_0p0_linear(phi_p));
+
+//        phi_00m = ABS(qnnn.f_00m_linear(phi_p));
+//        phi_00p = ABS(qnnn.f_00p_linear(phi_p));
+
+//        double nx = qnnn.dx_central(phi_p);
+//        double ny = qnnn.dy_central(phi_p);
+//        double nz = qnnn.dz_central(phi_p);
+//        double norm = sqrt(nx*nx + ny*ny + nz*nz);
+//        nx /= norm;
+//        ny /= norm;
+//        nz /= norm;
+
+//        //        double xyz_n[P4EST_DIM], xyz_pair[P4EST_DIM];
+//        //        node_xyz_fr_n(n, p4est, nodes, xyz_n);
+//        //        xyz_pair[0] = xyz_n[0] - 2*nx*phi_000;
+//        //        xyz_pair[1] = xyz_n[1] - 2*ny*phi_000;
+//        //        xyz_pair[2] = xyz_n[2] - 2*nz*phi_000;
+
+//        double fx, fy, fz;
+//        if(ux > 0){
+//            double fx_m00_mm = 0, fx_m00_pm = 0, fx_m00_mp = 0, fx_m00_pp = 0;
+//            double w_m00_mm = qnnn.d_m00_p0*qnnn.d_m00_0p;
+//            double w_m00_mp = qnnn.d_m00_p0*qnnn.d_m00_0m;
+//            double w_m00_pm = qnnn.d_m00_m0*qnnn.d_m00_0p;
+//            double w_m00_pp = qnnn.d_m00_m0*qnnn.d_m00_0m;
+//            if (w_m00_mm != 0) { fx_m00_mm = ngbd_n->get_neighbors(qnnn.node_m00_mm).dx_backward_linear(f); }
+//            if (w_m00_mp != 0) { fx_m00_mp = ngbd_n->get_neighbors(qnnn.node_m00_mp).dx_backward_linear(f); }
+//            if (w_m00_pm != 0) { fx_m00_pm = ngbd_n->get_neighbors(qnnn.node_m00_pm).dx_backward_linear(f); }
+//            if (w_m00_pp != 0) { fx_m00_pp = ngbd_n->get_neighbors(qnnn.node_m00_pp).dx_backward_linear(f); }
+//            double fx_m00 = (fx_m00_mm*w_m00_mm + fx_m00_mp*w_m00_mp + fx_m00_pm*w_m00_pm + fx_m00_pp*w_m00_pp )/(qnnn.d_m00_m0+qnnn.d_m00_p0)/(qnnn.d_m00_0m+qnnn.d_m00_0p);
+//            fx = qnnn.dx_backward_linear(f)*(phi_000 + phi_m00)/phi_000 - fx_m00*phi_m00/phi_000;
+//        } else {
+//            double fx_p00_mm = 0, fx_p00_pm = 0, fx_p00_mp = 0, fx_p00_pp = 0;
+//            double w_p00_mm = qnnn.d_p00_p0*qnnn.d_p00_0p;
+//            double w_p00_mp = qnnn.d_p00_p0*qnnn.d_p00_0m;
+//            double w_p00_pm = qnnn.d_p00_m0*qnnn.d_p00_0p;
+//            double w_p00_pp = qnnn.d_p00_m0*qnnn.d_p00_0m;
+//            if (w_p00_mm != 0) { fx_p00_mm = ngbd_n->get_neighbors(qnnn.node_p00_mm).dx_forward_linear(f); }
+//            if (w_p00_mp != 0) { fx_p00_mp = ngbd_n->get_neighbors(qnnn.node_p00_mp).dx_forward_linear(f); }
+//            if (w_p00_pm != 0) { fx_p00_pm = ngbd_n->get_neighbors(qnnn.node_p00_pm).dx_forward_linear(f); }
+//            if (w_p00_pp != 0) { fx_p00_pp = ngbd_n->get_neighbors(qnnn.node_p00_pp).dx_forward_linear(f); }
+//            double fx_p00 = (fx_p00_mm*w_p00_mm + fx_p00_mp*w_p00_mp + fx_p00_pm*w_p00_pm + fx_p00_pp*w_p00_pp )/(qnnn.d_p00_m0+qnnn.d_p00_p0)/(qnnn.d_p00_0m+qnnn.d_p00_0p);
+//            fx = qnnn.dx_forward_linear(f)*(phi_000 + phi_p00)/phi_000 - fx_p00*phi_p00/phi_000;
+//        }
+
+//        if(uy > 0){
+//            double fy_0m0_mm = 0, fy_0m0_pm = 0, fy_0m0_mp = 0, fy_0m0_pp = 0;
+//            double w_0m0_mm = qnnn.d_0m0_p0*qnnn.d_0m0_0p;
+//            double w_0m0_mp = qnnn.d_0m0_p0*qnnn.d_0m0_0m;
+//            double w_0m0_pm = qnnn.d_0m0_m0*qnnn.d_0m0_0p;
+//            double w_0m0_pp = qnnn.d_0m0_m0*qnnn.d_0m0_0m;
+//            if (w_0m0_mm != 0) { fy_0m0_mm = ngbd_n->get_neighbors(qnnn.node_0m0_mm).dy_backward_linear(f); }
+//            if (w_0m0_mp != 0) { fy_0m0_mp = ngbd_n->get_neighbors(qnnn.node_0m0_mp).dy_backward_linear(f); }
+//            if (w_0m0_pm != 0) { fy_0m0_pm = ngbd_n->get_neighbors(qnnn.node_0m0_pm).dy_backward_linear(f); }
+//            if (w_0m0_pp != 0) { fy_0m0_pp = ngbd_n->get_neighbors(qnnn.node_0m0_pp).dy_backward_linear(f); }
+//            double fy_0m0 = (fy_0m0_mm*w_0m0_mm + fy_0m0_mp*w_0m0_mp + fy_0m0_pm*w_0m0_pm + fy_0m0_pp*w_0m0_pp )/(qnnn.d_0m0_m0+qnnn.d_0m0_p0)/(qnnn.d_0m0_0m+qnnn.d_0m0_0p);
+//            fy = qnnn.dy_backward_linear(f)*(phi_000 + phi_0m0)/phi_000 - fy_0m0*phi_0m0/phi_000;
+//        } else {
+//            double fy_0p0_mm = 0, fy_0p0_pm = 0, fy_0p0_mp = 0, fy_0p0_pp = 0;
+//            double w_0p0_mm = qnnn.d_0p0_p0*qnnn.d_0p0_0p;
+//            double w_0p0_mp = qnnn.d_0p0_p0*qnnn.d_0p0_0m;
+//            double w_0p0_pm = qnnn.d_0p0_m0*qnnn.d_0p0_0p;
+//            double w_0p0_pp = qnnn.d_0p0_m0*qnnn.d_0p0_0m;
+//            if (w_0p0_mm != 0) { fy_0p0_mm = ngbd_n->get_neighbors(qnnn.node_0p0_mm).dy_forward_linear(f); }
+//            if (w_0p0_mp != 0) { fy_0p0_mp = ngbd_n->get_neighbors(qnnn.node_0p0_mp).dy_forward_linear(f); }
+//            if (w_0p0_pm != 0) { fy_0p0_pm = ngbd_n->get_neighbors(qnnn.node_0p0_pm).dy_forward_linear(f); }
+//            if (w_0p0_pp != 0) { fy_0p0_pp = ngbd_n->get_neighbors(qnnn.node_0p0_pp).dy_forward_linear(f); }
+//            double fy_0p0 = (fy_0p0_mm*w_0p0_mm + fy_0p0_mp*w_0p0_mp + fy_0p0_pm*w_0p0_pm + fy_0p0_pp*w_0p0_pp )/(qnnn.d_0p0_m0+qnnn.d_0p0_p0)/(qnnn.d_0p0_0m+qnnn.d_0p0_0p);
+//            fy = qnnn.dy_forward_linear(f)*(phi_000 + phi_0p0)/phi_000 - fy_0p0*phi_0p0/phi_000;
+//        }
+
+//        if(uz > 0){
+//            double fz_00m_mm = 0, fz_00m_pm = 0, fz_00m_mp = 0, fz_00m_pp = 0;
+//            double w_00m_mm = qnnn.d_00m_p0*qnnn.d_00m_0p;
+//            double w_00m_mp = qnnn.d_00m_p0*qnnn.d_00m_0m;
+//            double w_00m_pm = qnnn.d_00m_m0*qnnn.d_00m_0p;
+//            double w_00m_pp = qnnn.d_00m_m0*qnnn.d_00m_0m;
+//            if (w_00m_mm != 0) { fz_00m_mm = ngbd_n->get_neighbors(qnnn.node_00m_mm).dz_backward_linear(f); }
+//            if (w_00m_mp != 0) { fz_00m_mp = ngbd_n->get_neighbors(qnnn.node_00m_mp).dz_backward_linear(f); }
+//            if (w_00m_pm != 0) { fz_00m_pm = ngbd_n->get_neighbors(qnnn.node_00m_pm).dz_backward_linear(f); }
+//            if (w_00m_pp != 0) { fz_00m_pp = ngbd_n->get_neighbors(qnnn.node_00m_pp).dz_backward_linear(f); }
+//            double fz_00m = (fz_00m_mm*w_00m_mm + fz_00m_mp*w_00m_mp + fz_00m_pm*w_00m_pm + fz_00m_pp*w_00m_pp )/(qnnn.d_00m_m0+qnnn.d_00m_p0)/(qnnn.d_00m_0m+qnnn.d_00m_0p);
+//            fz = qnnn.dz_backward_linear(f)*(phi_000 + phi_00m)/phi_000 - fz_00m*phi_00m/phi_000;
+//        } else {
+//            double fz_00p_mm = 0, fz_00p_pm = 0, fz_00p_mp = 0, fz_00p_pp = 0;
+//            double w_00p_mm = qnnn.d_00p_p0*qnnn.d_00p_0p;
+//            double w_00p_mp = qnnn.d_00p_p0*qnnn.d_00p_0m;
+//            double w_00p_pm = qnnn.d_00p_m0*qnnn.d_00p_0p;
+//            double w_00p_pp = qnnn.d_00p_m0*qnnn.d_00p_0m;
+//            if (w_00p_mm != 0) { fz_00p_mm = ngbd_n->get_neighbors(qnnn.node_00p_mm).dz_forward_linear(f); }
+//            if (w_00p_mp != 0) { fz_00p_mp = ngbd_n->get_neighbors(qnnn.node_00p_mp).dz_forward_linear(f); }
+//            if (w_00p_pm != 0) { fz_00p_pm = ngbd_n->get_neighbors(qnnn.node_00p_pm).dz_forward_linear(f); }
+//            if (w_00p_pp != 0) { fz_00p_pp = ngbd_n->get_neighbors(qnnn.node_00p_pp).dz_forward_linear(f); }
+//            double fz_00p = (fz_00p_mm*w_00p_mm + fz_00p_mp*w_00p_mp + fz_00p_pm*w_00p_pm + fz_00p_pp*w_00p_pp )/(qnnn.d_00p_m0+qnnn.d_00p_p0)/(qnnn.d_00p_0m+qnnn.d_00p_0p);
+//            fz = qnnn.dz_forward_linear(f)*(phi_000 + phi_00p)/phi_000 - fz_00p*phi_00p/phi_000;
+//        }
+
+//        return f[n] - dt*(ux*fx+uy*fy+uz*fz);
+//    }
+//    else // in the bulk
+//    {
+//        quad_neighbor_nodes_of_node_t qnnn;
+//        ngbd_n->get_neighbors(n, qnnn);
+//        double fx = ux > 0 ? qnnn.dx_backward_quadratic(f, fxx) : qnnn.dx_forward_quadratic(f, fxx);
+//        double fy = uy > 0 ? qnnn.dy_backward_quadratic(f, fyy) : qnnn.dy_forward_quadratic(f, fyy);
+//        double fz = uz > 0 ? qnnn.dz_backward_quadratic(f, fzz) : qnnn.dz_forward_quadratic(f, fzz);
+//        return f[n] - dt*(ux*fx+uy*fy+uz*fz);
+//    }
+
+
+
+//}
+
+void advect_upwind(double dt, my_p4est_node_neighbors_t *ngbd_n, Vec field, Vec field_xx[3], Vec vel[3], Vec flux_DIR, double *phi_p, double diag)
 {
 
     PetscErrorCode ierr;
@@ -1465,12 +1606,12 @@ void advect_upwind(double dt, my_p4est_node_neighbors_t *ngbd_n, Vec field, Vec 
     // 1) first half-step
     for (size_t i = 0; i<ngbd_n->get_layer_size(); i++) {
         p4est_locidx_t n = ngbd_n->get_layer_node(i);
-        field_np1_p[n] = upwind_step(ngbd_n, n, field_p, field_xx_p, field_yy_p, field_zz_p, vel_p[0][n], vel_p[1][n], vel_p[2][n], dt, flux_d_p, phi_p, diag, M_interface_p);
+        field_np1_p[n] = upwind_step(ngbd_n, n, field_p, field_xx_p, field_yy_p, field_zz_p, vel_p[0][n], vel_p[1][n], vel_p[2][n], dt, phi_p, diag);
     }
     VecGhostUpdateBegin(field_np1, INSERT_VALUES, SCATTER_FORWARD);
     for (size_t i = 0; i<ngbd_n->get_local_size(); i++) {
         p4est_locidx_t n = ngbd_n->get_local_node(i);
-        field_np1_p[n] = upwind_step(ngbd_n, n, field_p, field_xx_p, field_yy_p, field_zz_p, vel_p[0][n], vel_p[1][n], vel_p[2][n], dt, flux_d_p, phi_p, diag, M_interface_p);
+        field_np1_p[n] = upwind_step(ngbd_n, n, field_p, field_xx_p, field_yy_p, field_zz_p, vel_p[0][n], vel_p[1][n], vel_p[2][n], dt, phi_p, diag);
     }
     VecGhostUpdateEnd(field_np1, INSERT_VALUES, SCATTER_FORWARD);
     VecRestoreArray(field_np1, &field_np1_p);
@@ -1520,13 +1661,13 @@ void advect_upwind(double dt, my_p4est_node_neighbors_t *ngbd_n, Vec field, Vec 
     VecGetArray(field_xx[2], &field_zz_p);
     for (size_t i = 0; i<ngbd_n->get_layer_size(); i++) {
         p4est_locidx_t n = ngbd_n->get_layer_node(i);
-        double field_np2 = upwind_step(ngbd_n, n, field_np1_p, field_xx_p, field_yy_p, field_zz_p, vel_p[0][n], vel_p[1][n], vel_p[2][n], dt, flux_d_p, phi_p, diag, M_interface_p);
+        double field_np2 = upwind_step(ngbd_n, n, field_np1_p, field_xx_p, field_yy_p, field_zz_p, vel_p[0][n], vel_p[1][n], vel_p[2][n], dt, phi_p, diag);
         field_p[n] = 0.5*(field_p[n] + field_np2);
     }
     VecGhostUpdateBegin(field, INSERT_VALUES, SCATTER_FORWARD);
     for (size_t i = 0; i<ngbd_n->get_local_size(); i++) {
         p4est_locidx_t n = ngbd_n->get_local_node(i);
-        double field_np2 = upwind_step(ngbd_n, n, field_np1_p, field_xx_p, field_yy_p, field_zz_p, vel_p[0][n], vel_p[1][n], vel_p[2][n], dt, flux_d_p, phi_p, diag, M_interface_p);
+        double field_np2 = upwind_step(ngbd_n, n, field_np1_p, field_xx_p, field_yy_p, field_zz_p, vel_p[0][n], vel_p[1][n], vel_p[2][n], dt, phi_p, diag);
         field_p[n] = 0.5*(field_p[n] + field_np2);
     }
     VecGhostUpdateEnd(field, INSERT_VALUES, SCATTER_FORWARD);
@@ -1801,14 +1942,14 @@ void solve_diffusion( p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost
         //       ierr = VecRestoreArray(M_minus,&M_minus_p); CHKERRXX(ierr);
         //       ierr = VecRestoreArray(M_plus,&M_plus_p); CHKERRXX(ierr);
 
-        for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
-            phi_p[i] = -phi_p[i];
-        ls.extend_Over_Interface_TVD(phi, M_plus,100);
-        for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
-            phi_p[i] = -phi_p[i];
-        ierr = VecGetArray(M_plus,&M_plus_p); CHKERRXX(ierr);
-        advect_upwind(dt_n, ngbd_n, M_star, M_xx, Electric, flux_DIR, phi_p, diag, M_plus_p);
-        ierr = VecRestoreArray(M_plus,&M_plus_p); CHKERRXX(ierr);
+        //        for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
+        //            phi_p[i] = -phi_p[i];
+        //        ls.extend_Over_Interface_TVD(phi, M_plus,100);
+        //        for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
+        //            phi_p[i] = -phi_p[i];
+        //        ierr = VecGetArray(M_plus,&M_plus_p); CHKERRXX(ierr);
+        advect_upwind(dt_n, ngbd_n, M_star, M_xx, Electric, flux_DIR, phi_p, diag);
+        //        ierr = VecRestoreArray(M_plus,&M_plus_p); CHKERRXX(ierr);
 
 
 
@@ -1930,23 +2071,28 @@ void solve_diffusion( p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost
             VecMax(grad_M_jump, NULL, &max_grad);
             VecMax(grad_up, NULL, &max_E);
             PetscPrintf(p4est->mpicomm, "Maximum jump is %g and maximum concentration gradient is %g, maximum E field is %g. \n", max_jump, max_grad, max_E);
+
+
             ierr = VecGetArray(M_star,&M_star_p); CHKERRXX(ierr);
             ierr = VecGetArray(M_list[0], &M_p[0]); CHKERRXX(ierr);
             ierr = VecGetArray(M_list[1], &M_p[1]); CHKERRXX(ierr);
             ierr = VecGetArray(grad_M_jump, &grad_M_jump_p); CHKERRXX(ierr);
             ierr = VecGetArray(M_jump, &M_jump_p); CHKERRXX(ierr);
-            ierr = VecGetArray(ElectroPhoresis, &ElectroPhoresis_p); CHKERRXX(ierr);
+            ierr = VecGetArray(Electric[2], &ElectroPhoresis_p); CHKERRXX(ierr);
             for(unsigned int n=0; n<nodes->indep_nodes.elem_count;n++)
             {
                 M_p[0][n]= M_star_p[n];
-                // M_p[1][n]= grad_M_jump_p[n]; //mu_e*ElectroPhoresis_p[n];//M_star_p[n];
+                M_p[1][n]= ElectroPhoresis_p[n]; //mu_e*ElectroPhoresis_p[n];//M_star_p[n];
             }
             ierr = VecRestoreArray(M_list[0], &M_p[0]); CHKERRXX(ierr);
             ierr = VecRestoreArray(M_list[1], &M_p[1]); CHKERRXX(ierr);
             ierr = VecRestoreArray(grad_M_jump, &grad_M_jump_p); CHKERRXX(ierr);
             ierr = VecRestoreArray(M_jump, &M_jump_p); CHKERRXX(ierr);
             ierr = VecRestoreArray(M_star,&M_star_p); CHKERRXX(ierr);
-            ierr = VecRestoreArray(ElectroPhoresis, &ElectroPhoresis_p); CHKERRXX(ierr);
+            ierr = VecRestoreArray(Electric[2], &ElectroPhoresis_p); CHKERRXX(ierr);
+
+
+
             counter++;
             PetscPrintf(p4est->mpicomm, "Diffusion of ion # %d: iteration # %d just ended!\n", ion, counter);
         }while(counter<1);
