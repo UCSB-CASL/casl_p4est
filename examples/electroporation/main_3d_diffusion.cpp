@@ -116,11 +116,11 @@ double zmaxx = test<4 ?  2*z_cells*r0 :  (test == 7 ?  4*pow(nb_cells, 1./3.)*r0
 
 int axial_nb = 2*zmaxx/r0/2;
 int lmax_thr = (int)log2(axial_nb)+2;   // the mesh should be fine enough to have enough nodes on each cell for solver not to crash.
-int lmin = 4;
+int lmin = 2;
 int lmax = MAX(lmax_thr, 7);
 int nb_splits = 1;
 
-double dt_scale = 10 ;//200;
+double dt_scale = 100;//200;
 double tn;
 double tf = 100*PI/omega;
 double dt;
@@ -152,12 +152,14 @@ double P1 = 1e-6;
 double P2 = 1e-7;
 
 
-double Faraday = 96485.3328; //Faraday's constant
-double d_c = 1e-9;  // molecule diffusion in intracellular 1e-9
-double d_e = 1e-8;  // molecule diffusion in extracellular
-double mu_e = 1e-6; // Molecule motility in outer medium = 1e-7
-double mu_c = 1e-7;    // Molecule motility in inner medium = 0
-const int number_ions = 2; // Number of ions in the simulations
+double Faraday = 96485.3328; //Faraday's constant C/mol
+double R_gas = 8.314;// J/C/mol
+double T_env = 310; // Kelvin
+double d_c = 1.78e-4;// Na+ diffusion in intracellular m*m/s
+double d_e = 1.78e-3;// Na+ diffusion in extracellular
+double mu_e = 0.0666;// motility = d_e*Faraday/R/T (Molecule motility in outer medium = 1e-6)
+double mu_c = 0.00666; // Molecule motility in inner medium = 1e-7
+const int number_ions = 2;     // Number of ions in the simulations
 
 double M_0 = 1.0e-6;     // uniform initial condition for concentration
 double M_boundary= 1.0e-6; // concentration on the boundary of the box
@@ -191,7 +193,7 @@ public:
 
     LevelSet()
     {
-        lip=1.1;
+        lip=1.05;
         if(test==7 || test==8 || test==9)
         {
             centers.resize(nb_cells);
@@ -741,7 +743,7 @@ public:
     double operator()(double x, double y, double z) const
     {
         if(level_set(x,y,z)>=0)
-            return M_0;//M_boundary+4*M_boundary*(zmaxx*zmaxx-z*z)/(zmaxx-zminn)/(zmaxx-zminn);//(zmaxx-z)*M_boundary/(zmaxx-zminn);
+            return (zmaxx-z)*M_boundary/(zmaxx-zminn);//M_boundary+4*M_boundary*(zmaxx*zmaxx-z*z)/(zmaxx-zminn)/(zmaxx-zminn);//M_0
         else
             return 0;// M_boundary;//(M_0/R1)*(R1-ABS(level_set(x,y,z)));
     }
@@ -1312,12 +1314,122 @@ void solve_electric_potential( p4est_t *p4est, p4est_nodes_t *nodes,
 double upwind_step(my_p4est_node_neighbors_t *ngbd_n, p4est_locidx_t n, double *f, double* fxx, double* fyy, double* fzz, double ux, double uy, double uz, double dt, double *flux_d_p, double *phi_p, double diag, double *M_star_p)
 {
 
-    if(flux_d_p[n]>0 && ABS(phi_p[n])<diag)
+    if(flux_d_p[n]>=0 && phi_p[n]>=0 && ABS(phi_p[n])<diag){ // at exit, no advection! Homogenous Neumann.
+        quad_neighbor_nodes_of_node_t qnnn;
+        ngbd_n->get_neighbors(n, qnnn);
+        double phi_000, phi_m00, phi_p00, phi_0m0, phi_0p0, phi_00m, phi_00p;
+        phi_000 = phi_p[n];
+        phi_p00 = ABS(qnnn.f_p00_linear(phi_p));
+        phi_m00 = ABS(qnnn.f_m00_linear(phi_p));
+
+        phi_0m0 = ABS(qnnn.f_0m0_linear(phi_p));
+        phi_0p0 = ABS(qnnn.f_0p0_linear(phi_p));
+
+        phi_00m = ABS(qnnn.f_00m_linear(phi_p));
+        phi_00p = ABS(qnnn.f_00p_linear(phi_p));
+
+        double fx = ux > 0 ? qnnn.dx_forward_linear(f)*phi_000/phi_p00 : qnnn.dx_backward_linear(f)*phi_000/phi_m00;
+        double fy = uy > 0 ? qnnn.dy_forward_linear(f)*phi_000/phi_0p0 : qnnn.dy_backward_linear(f)*phi_000/phi_0m0;
+        double fz = uz > 0 ? qnnn.dz_forward_linear(f)*phi_000/phi_00p : qnnn.dz_backward_linear(f)*phi_000/phi_00m;
+        return f[n] - dt*(ux*fx+uy*fy+uz*fz);
+
+    }else if(flux_d_p[n]<0 && phi_p[n]<0 && ABS(phi_p[n])<diag) // at entrance, gradient is preserved! no resistance exists. Elsewhere, normal thing!
     {
-        return f[n];
-    }else if(flux_d_p[n]<=0 && ABS(phi_p[n])<diag)
-        return M_star_p[n]; // this must be the average values of f's at both sides of the interface! FIXME!
-    else
+        quad_neighbor_nodes_of_node_t qnnn;
+        ngbd_n->get_neighbors(n, qnnn);
+        double phi_000, phi_m00, phi_p00, phi_0m0, phi_0p0, phi_00m, phi_00p;
+        phi_000 = phi_p[n];
+        phi_p00 = ABS(qnnn.f_p00_linear(phi_p));
+        phi_m00 = ABS(qnnn.f_m00_linear(phi_p));
+
+        phi_0m0 = ABS(qnnn.f_0m0_linear(phi_p));
+        phi_0p0 = ABS(qnnn.f_0p0_linear(phi_p));
+
+        phi_00m = ABS(qnnn.f_00m_linear(phi_p));
+        phi_00p = ABS(qnnn.f_00p_linear(phi_p));
+
+        double fx, fy, fz;
+        if(ux > 0){
+            double fx_m00_mm = 0, fx_m00_pm = 0, fx_m00_mp = 0, fx_m00_pp = 0;
+            double w_m00_mm = qnnn.d_m00_p0*qnnn.d_m00_0p;
+            double w_m00_mp = qnnn.d_m00_p0*qnnn.d_m00_0m;
+            double w_m00_pm = qnnn.d_m00_m0*qnnn.d_m00_0p;
+            double w_m00_pp = qnnn.d_m00_m0*qnnn.d_m00_0m;
+            if (w_m00_mm != 0) { fx_m00_mm = ngbd_n->get_neighbors(qnnn.node_m00_mm).dx_backward_linear(f); }
+            if (w_m00_mp != 0) { fx_m00_mp = ngbd_n->get_neighbors(qnnn.node_m00_mp).dx_backward_linear(f); }
+            if (w_m00_pm != 0) { fx_m00_pm = ngbd_n->get_neighbors(qnnn.node_m00_pm).dx_backward_linear(f); }
+            if (w_m00_pp != 0) { fx_m00_pp = ngbd_n->get_neighbors(qnnn.node_m00_pp).dx_backward_linear(f); }
+            double fx_m00 = (fx_m00_mm*w_m00_mm + fx_m00_mp*w_m00_mp + fx_m00_pm*w_m00_pm + fx_m00_pp*w_m00_pp )/(qnnn.d_m00_m0+qnnn.d_m00_p0)/(qnnn.d_m00_0m+qnnn.d_m00_0p);
+            fx = qnnn.dx_backward_linear(f)*(phi_000 + phi_m00)/phi_000 - fx_m00*phi_m00/phi_000;
+        } else {
+            double fx_p00_mm = 0, fx_p00_pm = 0, fx_p00_mp = 0, fx_p00_pp = 0;
+            double w_p00_mm = qnnn.d_p00_p0*qnnn.d_p00_0p;
+            double w_p00_mp = qnnn.d_p00_p0*qnnn.d_p00_0m;
+            double w_p00_pm = qnnn.d_p00_m0*qnnn.d_p00_0p;
+            double w_p00_pp = qnnn.d_p00_m0*qnnn.d_p00_0m;
+            if (w_p00_mm != 0) { fx_p00_mm = ngbd_n->get_neighbors(qnnn.node_p00_mm).dx_forward_linear(f); }
+            if (w_p00_mp != 0) { fx_p00_mp = ngbd_n->get_neighbors(qnnn.node_p00_mp).dx_forward_linear(f); }
+            if (w_p00_pm != 0) { fx_p00_pm = ngbd_n->get_neighbors(qnnn.node_p00_pm).dx_forward_linear(f); }
+            if (w_p00_pp != 0) { fx_p00_pp = ngbd_n->get_neighbors(qnnn.node_p00_pp).dx_forward_linear(f); }
+            double fx_p00 = (fx_p00_mm*w_p00_mm + fx_p00_mp*w_p00_mp + fx_p00_pm*w_p00_pm + fx_p00_pp*w_p00_pp )/(qnnn.d_p00_m0+qnnn.d_p00_p0)/(qnnn.d_p00_0m+qnnn.d_p00_0p);
+            fx = qnnn.dx_forward_linear(f)*(phi_000 + phi_p00)/phi_000 - fx_p00*phi_p00/phi_000;
+        }
+
+        if(uy > 0){
+            double fy_0m0_mm = 0, fy_0m0_pm = 0, fy_0m0_mp = 0, fy_0m0_pp = 0;
+            double w_0m0_mm = qnnn.d_0m0_p0*qnnn.d_0m0_0p;
+            double w_0m0_mp = qnnn.d_0m0_p0*qnnn.d_0m0_0m;
+            double w_0m0_pm = qnnn.d_0m0_m0*qnnn.d_0m0_0p;
+            double w_0m0_pp = qnnn.d_0m0_m0*qnnn.d_0m0_0m;
+            if (w_0m0_mm != 0) { fy_0m0_mm = ngbd_n->get_neighbors(qnnn.node_0m0_mm).dy_backward_linear(f); }
+            if (w_0m0_mp != 0) { fy_0m0_mp = ngbd_n->get_neighbors(qnnn.node_0m0_mp).dy_backward_linear(f); }
+            if (w_0m0_pm != 0) { fy_0m0_pm = ngbd_n->get_neighbors(qnnn.node_0m0_pm).dy_backward_linear(f); }
+            if (w_0m0_pp != 0) { fy_0m0_pp = ngbd_n->get_neighbors(qnnn.node_0m0_pp).dy_backward_linear(f); }
+            double fy_0m0 = (fy_0m0_mm*w_0m0_mm + fy_0m0_mp*w_0m0_mp + fy_0m0_pm*w_0m0_pm + fy_0m0_pp*w_0m0_pp )/(qnnn.d_0m0_m0+qnnn.d_0m0_p0)/(qnnn.d_0m0_0m+qnnn.d_0m0_0p);
+            fy = qnnn.dy_backward_linear(f)*(phi_000 + phi_0m0)/phi_000 - fy_0m0*phi_0m0/phi_000;
+        } else {
+            double fy_0p0_mm = 0, fy_0p0_pm = 0, fy_0p0_mp = 0, fy_0p0_pp = 0;
+            double w_0p0_mm = qnnn.d_0p0_p0*qnnn.d_0p0_0p;
+            double w_0p0_mp = qnnn.d_0p0_p0*qnnn.d_0p0_0m;
+            double w_0p0_pm = qnnn.d_0p0_m0*qnnn.d_0p0_0p;
+            double w_0p0_pp = qnnn.d_0p0_m0*qnnn.d_0p0_0m;
+            if (w_0p0_mm != 0) { fy_0p0_mm = ngbd_n->get_neighbors(qnnn.node_0p0_mm).dy_forward_linear(f); }
+            if (w_0p0_mp != 0) { fy_0p0_mp = ngbd_n->get_neighbors(qnnn.node_0p0_mp).dy_forward_linear(f); }
+            if (w_0p0_pm != 0) { fy_0p0_pm = ngbd_n->get_neighbors(qnnn.node_0p0_pm).dy_forward_linear(f); }
+            if (w_0p0_pp != 0) { fy_0p0_pp = ngbd_n->get_neighbors(qnnn.node_0p0_pp).dy_forward_linear(f); }
+            double fy_0p0 = (fy_0p0_mm*w_0p0_mm + fy_0p0_mp*w_0p0_mp + fy_0p0_pm*w_0p0_pm + fy_0p0_pp*w_0p0_pp )/(qnnn.d_0p0_m0+qnnn.d_0p0_p0)/(qnnn.d_0p0_0m+qnnn.d_0p0_0p);
+            fy = qnnn.dy_forward_linear(f)*(phi_000 + phi_0p0)/phi_000 - fy_0p0*phi_0p0/phi_000;
+        }
+
+        if(uz > 0){
+            double fz_00m_mm = 0, fz_00m_pm = 0, fz_00m_mp = 0, fz_00m_pp = 0;
+            double w_00m_mm = qnnn.d_00m_p0*qnnn.d_00m_0p;
+            double w_00m_mp = qnnn.d_00m_p0*qnnn.d_00m_0m;
+            double w_00m_pm = qnnn.d_00m_m0*qnnn.d_00m_0p;
+            double w_00m_pp = qnnn.d_00m_m0*qnnn.d_00m_0m;
+            if (w_00m_mm != 0) { fz_00m_mm = ngbd_n->get_neighbors(qnnn.node_00m_mm).dz_backward_linear(f); }
+            if (w_00m_mp != 0) { fz_00m_mp = ngbd_n->get_neighbors(qnnn.node_00m_mp).dz_backward_linear(f); }
+            if (w_00m_pm != 0) { fz_00m_pm = ngbd_n->get_neighbors(qnnn.node_00m_pm).dz_backward_linear(f); }
+            if (w_00m_pp != 0) { fz_00m_pp = ngbd_n->get_neighbors(qnnn.node_00m_pp).dz_backward_linear(f); }
+            double fz_00m = (fz_00m_mm*w_00m_mm + fz_00m_mp*w_00m_mp + fz_00m_pm*w_00m_pm + fz_00m_pp*w_00m_pp )/(qnnn.d_00m_m0+qnnn.d_00m_p0)/(qnnn.d_00m_0m+qnnn.d_00m_0p);
+            fz = qnnn.dz_backward_linear(f)*(phi_000 + phi_00m)/phi_000 - fz_00m*phi_00m/phi_000;
+        } else {
+            double fz_00p_mm = 0, fz_00p_pm = 0, fz_00p_mp = 0, fz_00p_pp = 0;
+            double w_00p_mm = qnnn.d_00p_p0*qnnn.d_00p_0p;
+            double w_00p_mp = qnnn.d_00p_p0*qnnn.d_00p_0m;
+            double w_00p_pm = qnnn.d_00p_m0*qnnn.d_00p_0p;
+            double w_00p_pp = qnnn.d_00p_m0*qnnn.d_00p_0m;
+            if (w_00p_mm != 0) { fz_00p_mm = ngbd_n->get_neighbors(qnnn.node_00p_mm).dz_forward_linear(f); }
+            if (w_00p_mp != 0) { fz_00p_mp = ngbd_n->get_neighbors(qnnn.node_00p_mp).dz_forward_linear(f); }
+            if (w_00p_pm != 0) { fz_00p_pm = ngbd_n->get_neighbors(qnnn.node_00p_pm).dz_forward_linear(f); }
+            if (w_00p_pp != 0) { fz_00p_pp = ngbd_n->get_neighbors(qnnn.node_00p_pp).dz_forward_linear(f); }
+            double fz_00p = (fz_00p_mm*w_00p_mm + fz_00p_mp*w_00p_mp + fz_00p_pm*w_00p_pm + fz_00p_pp*w_00p_pp )/(qnnn.d_00p_m0+qnnn.d_00p_p0)/(qnnn.d_00p_0m+qnnn.d_00p_0p);
+            fz = qnnn.dz_forward_linear(f)*(phi_000 + phi_00p)/phi_000 - fz_00p*phi_00p/phi_000;
+        }
+
+        return f[n] - dt*(ux*fx+uy*fy+uz*fz);
+    }
+    else // in the bulk
     {
         quad_neighbor_nodes_of_node_t qnnn;
         ngbd_n->get_neighbors(n, qnnn);
@@ -1326,6 +1438,8 @@ double upwind_step(my_p4est_node_neighbors_t *ngbd_n, p4est_locidx_t n, double *
         double fz = uz > 0 ? qnnn.dz_backward_quadratic(f, fzz) : qnnn.dz_forward_quadratic(f, fzz);
         return f[n] - dt*(ux*fx+uy*fy+uz*fz);
     }
+
+
 
 }
 
@@ -1557,7 +1671,6 @@ void solve_diffusion( p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost
             Laplacian_u_p[n] = qnnn.dxx_central(u_p)+qnnn.dyy_central(u_p)+qnnn.dzz_central(u_p);
             ElectroPhoresis_p[n] = (dux*qnnn.dx_central(M_p[ion]) + duy*qnnn.dy_central(M_p[ion]) + duz*qnnn.dz_central(M_p[ion]));
             flux_d_p[n] = (EPX_p[n]*grad_phi_p[0][n] + EPY_p[n]*grad_phi_p[1][n] + EPZ_p[n]*grad_phi_p[2][n]);
-           //PetscPrintf(p4est->mpicomm, "Advection CFL number is = %g\n", EPZ_p[n]*dt_n/diag);
         }
         ierr = VecGhostUpdateEnd(flux_DIR, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
         ierr = VecGhostUpdateEnd(Electric[0], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -1592,9 +1705,15 @@ void solve_diffusion( p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost
             mu_p_p[n] = dt_n*d_e;
 
             Pm_p[n] = P0 + P1*X0_p[n] + P2*X1_p[n];
-
-            rhs_p_p[n] = 0;//M_p[ion][n];// + dt_n*(mu_e*Laplacian_u_p[n]*M_p[ion][n]);
-            rhs_m_p[n] = 0;//M_p[ion][n];// + dt_n*(mu_c*Laplacian_u_p[n]*M_p[ion][n]);
+            //PAM: should we include laplacian on the interface??
+            // in the domain it is fine, at the interface it is discontinuous!
+            if(ABS(phi_p[n])>diag){
+                rhs_p_p[n] = M_p[ion][n] + dt_n*(mu_e*Laplacian_u_p[n]*M_p[ion][n]);
+                rhs_m_p[n] = M_p[ion][n] + dt_n*(mu_c*Laplacian_u_p[n]*M_p[ion][n]);
+            } else {
+                rhs_p_p[n] = M_p[ion][n];
+                rhs_m_p[n] = M_p[ion][n];
+            }
         }
 
 
@@ -1669,28 +1788,36 @@ void solve_diffusion( p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost
 
         double *M_star_p, *M_plus_p, *M_minus_p;
         ierr = VecGetArray(M_star,&M_star_p); CHKERRXX(ierr);
-        ierr = VecGetArray(M_plus,&M_plus_p); CHKERRXX(ierr);
-        ierr = VecGetArray(M_minus,&M_minus_p); CHKERRXX(ierr);
+        //       ierr = VecGetArray(M_plus,&M_plus_p); CHKERRXX(ierr);
+        //       ierr = VecGetArray(M_minus,&M_minus_p); CHKERRXX(ierr);
         ierr = VecGetArray(M_list[ion], &M_p[ion]); CHKERRXX(ierr);
         for(size_t n=0; n<nodes->indep_nodes.elem_count;n++)
         {
             M_star_p[n] = M_p[ion][n];
-            M_minus_p[n] = (M_minus_p[n] + M_plus_p[n])/2.0; // save some space by storing this in M_minus
+            //           M_minus_p[n] = (M_minus_p[n] + M_plus_p[n])/2.0; // this is used as DIRICHLET in advection
         }
-        ierr = VecRestoreArray(M_plus,&M_plus_p); CHKERRXX(ierr);
         ierr = VecRestoreArray(M_star,&M_star_p); CHKERRXX(ierr);
         ierr = VecRestoreArray(M_list[ion], &M_p[ion]); CHKERRXX(ierr);
-
-        advect_upwind(dt_n, ngbd_n, M_star, M_xx, Electric, flux_DIR, phi_p, diag, M_minus_p);
-
-        ierr = VecRestoreArray(M_minus,&M_minus_p); CHKERRXX(ierr);
-
+        //       ierr = VecRestoreArray(M_minus,&M_minus_p); CHKERRXX(ierr);
+        //       ierr = VecRestoreArray(M_plus,&M_plus_p); CHKERRXX(ierr);
 
         for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
             phi_p[i] = -phi_p[i];
-        ls.extend_Over_Interface_TVD(phi, M_star,100);
+        ls.extend_Over_Interface_TVD(phi, M_plus,100);
         for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
             phi_p[i] = -phi_p[i];
+        ierr = VecGetArray(M_plus,&M_plus_p); CHKERRXX(ierr);
+        advect_upwind(dt_n, ngbd_n, M_star, M_xx, Electric, flux_DIR, phi_p, diag, M_plus_p);
+        ierr = VecRestoreArray(M_plus,&M_plus_p); CHKERRXX(ierr);
+
+
+
+
+        //        for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
+        //            phi_p[i] = -phi_p[i];
+        //        ls.extend_Over_Interface_TVD(phi, M_star,100);
+        //        for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
+        //            phi_p[i] = -phi_p[i];
 
         PetscPrintf(p4est->mpicomm, "Advection complete! Let's do diffusion... \n");
         int counter = 0;
@@ -1796,30 +1923,30 @@ void solve_diffusion( p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost
 
             solver.set_u_jump(M_jump);
             solver.set_mu_grad_u_jump(grad_M_jump);
-            solver.solve(M_list[ion]);
+            // solver.solve(M_list[ion]);
 
             double max_jump, max_grad, max_E;
             VecMax(M_jump, NULL, &max_jump);
             VecMax(grad_M_jump, NULL, &max_grad);
             VecMax(grad_up, NULL, &max_E);
             PetscPrintf(p4est->mpicomm, "Maximum jump is %g and maximum concentration gradient is %g, maximum E field is %g. \n", max_jump, max_grad, max_E);
-//                        ierr = VecGetArray(M_star,&M_star_p); CHKERRXX(ierr);
-//                        ierr = VecGetArray(M_list[0], &M_p[0]); CHKERRXX(ierr);
-//                        ierr = VecGetArray(M_list[1], &M_p[1]); CHKERRXX(ierr);
-//                        ierr = VecGetArray(grad_M_jump, &grad_M_jump_p); CHKERRXX(ierr);
-//                        ierr = VecGetArray(M_jump, &M_jump_p); CHKERRXX(ierr);
-//                        ierr = VecGetArray(ElectroPhoresis, &ElectroPhoresis_p); CHKERRXX(ierr);
-//                        for(unsigned int n=0; n<nodes->indep_nodes.elem_count;n++)
-//                        {
-//                            M_p[0][n]= M_jump_p[n];
-//                            M_p[1][n]= grad_M_jump_p[n]; //mu_e*ElectroPhoresis_p[n];//M_star_p[n];
-//                        }
-//                        ierr = VecRestoreArray(M_list[0], &M_p[0]); CHKERRXX(ierr);
-//                        ierr = VecRestoreArray(M_list[1], &M_p[1]); CHKERRXX(ierr);
-//                        ierr = VecRestoreArray(grad_M_jump, &grad_M_jump_p); CHKERRXX(ierr);
-//                        ierr = VecRestoreArray(M_jump, &M_jump_p); CHKERRXX(ierr);
-//                        ierr = VecRestoreArray(M_star,&M_star_p); CHKERRXX(ierr);
-//                        ierr = VecRestoreArray(ElectroPhoresis, &ElectroPhoresis_p); CHKERRXX(ierr);
+            ierr = VecGetArray(M_star,&M_star_p); CHKERRXX(ierr);
+            ierr = VecGetArray(M_list[0], &M_p[0]); CHKERRXX(ierr);
+            ierr = VecGetArray(M_list[1], &M_p[1]); CHKERRXX(ierr);
+            ierr = VecGetArray(grad_M_jump, &grad_M_jump_p); CHKERRXX(ierr);
+            ierr = VecGetArray(M_jump, &M_jump_p); CHKERRXX(ierr);
+            ierr = VecGetArray(ElectroPhoresis, &ElectroPhoresis_p); CHKERRXX(ierr);
+            for(unsigned int n=0; n<nodes->indep_nodes.elem_count;n++)
+            {
+                M_p[0][n]= M_star_p[n];
+                // M_p[1][n]= grad_M_jump_p[n]; //mu_e*ElectroPhoresis_p[n];//M_star_p[n];
+            }
+            ierr = VecRestoreArray(M_list[0], &M_p[0]); CHKERRXX(ierr);
+            ierr = VecRestoreArray(M_list[1], &M_p[1]); CHKERRXX(ierr);
+            ierr = VecRestoreArray(grad_M_jump, &grad_M_jump_p); CHKERRXX(ierr);
+            ierr = VecRestoreArray(M_jump, &M_jump_p); CHKERRXX(ierr);
+            ierr = VecRestoreArray(M_star,&M_star_p); CHKERRXX(ierr);
+            ierr = VecRestoreArray(ElectroPhoresis, &ElectroPhoresis_p); CHKERRXX(ierr);
             counter++;
             PetscPrintf(p4est->mpicomm, "Diffusion of ion # %d: iteration # %d just ended!\n", ion, counter);
         }while(counter<1);
