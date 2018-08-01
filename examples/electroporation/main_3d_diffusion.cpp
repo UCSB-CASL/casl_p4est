@@ -120,7 +120,7 @@ int lmin = 5;
 int lmax = MAX(lmax_thr, 7);
 int nb_splits = 1;
 
-double dt_scale = 100;//200;
+double dt_scale = 1000;//200;
 double tn;
 double tf = 100*PI/omega;
 double dt;
@@ -742,7 +742,7 @@ class Initial_M : public CF_3
 public:
     double operator()(double x, double y, double z) const
     {
-        if(level_set(x,y,z)>0)
+        if(level_set(x,y,z)>=0)
             return (zmaxx-z)*M_boundary/(zmaxx-zminn);//M_boundary+4*M_boundary*(zmaxx*zmaxx-z*z)/(zmaxx-zminn)/(zmaxx-zminn);//M_0
         else
             return 0;// M_boundary;//(M_0/R1)*(R1-ABS(level_set(x,y,z)));
@@ -1311,7 +1311,7 @@ void solve_electric_potential( p4est_t *p4est, p4est_nodes_t *nodes,
 //    interp.interpolate(phi_np1);
 //}
 
-double upwind_step(my_p4est_node_neighbors_t *ngbd_n, p4est_locidx_t n, double *f, double* fxx, double* fyy, double* fzz, double ux, double uy, double uz, double dt, double *phi_p, double diag)
+double upwind_step(my_p4est_node_neighbors_t *ngbd_n, p4est_locidx_t n, double *f, double* fxx, double* fyy, double* fzz, double ux, double uy, double uz, double dt, double *phi_p, double *dxx, double *dyy, double *dzz)
 {
     if(fabs(phi_p[n]) < EPS)
         return f[n];
@@ -1350,7 +1350,6 @@ double upwind_step(my_p4est_node_neighbors_t *ngbd_n, p4est_locidx_t n, double *
     double pxx_000 = fxx[n];
     double pyy_000 = fyy[n];
     double pzz_000 = fzz[n];
-
     double pxx_m00 = qnnn.f_m00_linear(fxx);
     double pxx_p00 = qnnn.f_p00_linear(fxx);
     double pyy_0m0 = qnnn.f_0m0_linear(fyy);
@@ -1358,54 +1357,91 @@ double upwind_step(my_p4est_node_neighbors_t *ngbd_n, p4est_locidx_t n, double *
     double pzz_00m = qnnn.f_00m_linear(fzz);
     double pzz_00p = qnnn.f_00p_linear(fzz);
 
+    double phixx_000 = dxx[n];
+    double phiyy_000 = dyy[n];
+    double phizz_000 = dzz[n];
+    double phixx_m00 = qnnn.f_m00_linear(dxx);
+    double phixx_p00 = qnnn.f_p00_linear(dxx);
+    double phiyy_0m0 = qnnn.f_0m0_linear(dyy);
+    double phiyy_0p0 = qnnn.f_0p0_linear(dyy);
+    double phizz_00m = qnnn.f_00m_linear(dzz);
+    double phizz_00p = qnnn.f_00p_linear(dzz);
+
+
     // velocity normal to the interface
     double normal_velocity = ux*nx + uy*ny + uz*nz;
     //---------------------------------------------------------------------
     // Neumann boundary condition on the interface
     //---------------------------------------------------------------------
-    if (normal_velocity>=0 &&  ((phi_000*phi_m00<0) || (phi_000*phi_p00<0)
+    if (normal_velocity>0 &&  ((phi_000*phi_m00<0) || (phi_000*phi_p00<0)
                                 || (phi_000*phi_0m0<0) || (phi_000*phi_0p0<0)
                                 || (phi_000*phi_00m<0) || (phi_000*phi_00p<0)))
     {
-        /* interface in the x direction */
-        if(phi_m00<=0)
-            s_m00 = s_p00; p_m00=p_p00; pxx_000 = pxx_m00 = pxx_p00 = 0;
-        if(phi_p00<=0)
-            s_p00 = s_m00; p_p00=p_m00; pxx_000 = pxx_m00 = pxx_p00 = 0;
+        // interface in the x direction
+        if(phi_000*phi_m00<=0)
+        {
+            s_m00 =-interface_Location_With_Second_Order_Derivative(-s_m00,   0, phi_m00, phi_000, phixx_m00, phixx_000);
+            p_m00=p_p00; pxx_000 = pxx_m00 = pxx_p00 = 0;
+            //s_m00 = s_p00; p_m00=p_p00; pxx_000 = pxx_m00 = pxx_p00 = 0;
+        }
+        if(phi_000*phi_p00<=0)
+        {
+            s_p00 = interface_Location_With_Second_Order_Derivative(    0, s_p00, phi_000, phi_p00, phixx_000, phixx_p00);
+            p_p00=p_m00; pxx_000 = pxx_m00 = pxx_p00 = 0;
+            //s_p00 = s_m00; p_p00=p_m00; pxx_000 = pxx_m00 = pxx_p00 = 0;
+        }
 
-        /* interface in the y direction */
-        if(phi_0m0<=0)
-            s_0m0 = s_0p0; p_0m0=p_0p0; pyy_000 = pyy_0m0 = pyy_0p0 = 0;
-        if(phi_0p0<=0)
-            s_0p0 = s_0m0; p_0p0=p_0m0; pyy_000 = pyy_0m0 = pyy_0p0 = 0;
+        // interface in the y direction
+        if(phi_000*phi_0m0<=0)
+        {
+            s_0m0 =-interface_Location_With_Second_Order_Derivative(-s_0m0,   0, phi_0m0, phi_000, phiyy_0m0, phiyy_000);
+            p_0m0=p_0p0; pyy_000 = pyy_0m0 = pyy_0p0 = 0;
+            //s_0m0 = s_0p0; p_0m0=p_0p0; pyy_000 = pyy_0m0 = pyy_0p0 = 0;
+        }
+        if(phi_000*phi_0p0<=0)
+        {
+            s_0p0 = interface_Location_With_Second_Order_Derivative(    0, s_0p0, phi_000, p_0p0, phiyy_000, phiyy_0p0);
+            p_0p0=p_0m0; pyy_000 = pyy_0m0 = pyy_0p0 = 0;
+            //s_0p0 = s_0m0; p_0p0=p_0m0; pyy_000 = pyy_0m0 = pyy_0p0 = 0;
+        }
 
-        /* interface in the z direction */
-        if(phi_00m<=0)
-            s_00m = s_00p; p_00m=p_00p; pzz_000 = pzz_00m = pzz_00p = 0;
-        if(phi_00p<=0)
-            s_00p = s_00m; p_00p=p_00m; pzz_000 = pzz_00m = pzz_00p = 0;
+        // interface in the z direction
+        if(phi_000*phi_00m<=0)
+        {
+            s_00m =-interface_Location_With_Second_Order_Derivative(-s_00m,   0, phi_00m, phi_000, phizz_00m, phizz_000);
+            p_00m=p_00p; pzz_000 = pzz_00m = pzz_00p = 0;
+            //s_00m = s_00p; p_00m=p_00p; pzz_000 = pzz_00m = pzz_00p = 0;
+        }
+        if(phi_000*phi_00p<=0)
+        {
+            s_00p = interface_Location_With_Second_Order_Derivative(    0, s_00p, phi_000, phi_00p, phizz_000, phizz_00p);
+            p_00p=p_00m; pzz_000 = pzz_00m = pzz_00p = 0;
+            // s_00p = s_00m; p_00p=p_00m; pzz_000 = pzz_00m = pzz_00p = 0;
+        }
 
-        if(p_000*p_m00<0) { s_m00 =-interface_Location_With_Second_Order_Derivative(-s_m00,   0,p_m00,p_000,pxx_m00,pxx_000); p_m00=0; }
-        if(p_000*p_p00<0) { s_p00 = interface_Location_With_Second_Order_Derivative(    0,s_p00,p_000,p_p00,pxx_000,pxx_p00); p_p00=0; }
-        if(p_000*p_0m0<0) { s_0m0 =-interface_Location_With_Second_Order_Derivative(-s_0m0,   0,p_0m0,p_000,pyy_0m0,pyy_000); p_0m0=0; }
-        if(p_000*p_0p0<0) { s_0p0 = interface_Location_With_Second_Order_Derivative(    0,s_0p0,p_000,p_0p0,pyy_000,pyy_0p0); p_0p0=0; }
-        if(p_000*p_00m<0) { s_00m =-interface_Location_With_Second_Order_Derivative(-s_00m,   0,p_00m,p_000,pzz_00m,pzz_000); p_00m=0; }
-        if(p_000*p_00p<0) { s_00p = interface_Location_With_Second_Order_Derivative(    0,s_00p,p_000,p_00p,pzz_000,pzz_00p); p_00p=0; }
-
-
-        s_m00 = MAX(s_m00,EPS);
-        s_p00 = MAX(s_p00,EPS);
-        s_0m0 = MAX(s_0m0,EPS);
-        s_0p0 = MAX(s_0p0,EPS);
-        s_00m = MAX(s_00m,EPS);
-        s_00p = MAX(s_00p,EPS);
+        //        if(phi_000*phi_m00<0) { s_m00 =-interface_Location_With_Second_Order_Derivative(-s_m00,   0, phi_m00, phi_000, phixx_m00, phixx_000); p_m00=p_000; }
+        //        if(phi_000*phi_p00<0) { s_p00 = interface_Location_With_Second_Order_Derivative(    0, s_p00, phi_000, phi_p00, phixx_000, phixx_p00); p_p00=p_000; }
+        //        if(phi_000*phi_0m0<0) { s_0m0 =-interface_Location_With_Second_Order_Derivative(-s_0m0,   0, phi_0m0, phi_000, phiyy_0m0, phiyy_000); p_0m0=p_000;}
+        //        if(phi_000*phi_0p0<0) { s_0p0 = interface_Location_With_Second_Order_Derivative(    0, s_0p0, phi_000, p_0p0, phiyy_000, phiyy_0p0); p_0p0=p_000;}
+        //        if(phi_000*phi_00m<0) { s_00m =-interface_Location_With_Second_Order_Derivative(-s_00m,   0, phi_00m, phi_000, phizz_00m, phizz_000); p_00m=p_000;}
+        //        if(phi_000*phi_00p<0) { s_00p = interface_Location_With_Second_Order_Derivative(    0, s_00p, phi_000, phi_00p, phizz_000, phizz_00p); p_00p=p_000;}
+        //        s_m00 = MAX(s_m00,EPS);
+        //        s_p00 = MAX(s_p00,EPS);
+        //        s_0m0 = MAX(s_0m0,EPS);
+        //        s_0p0 = MAX(s_0p0,EPS);
+        //        s_00m = MAX(s_00m,EPS);
+        //        s_00p = MAX(s_00p,EPS);
 
         //---------------------------------------------------------------------
-        // First Order One-Sided Differecing
+        // First Order One-Sided Differencing
         //---------------------------------------------------------------------
         double px_p00 = (p_p00-p_000)/s_p00; double px_m00 = (p_000-p_m00)/s_m00;
         double py_0p0 = (p_0p0-p_000)/s_0p0; double py_0m0 = (p_000-p_0m0)/s_0m0;
         double pz_00p = (p_00p-p_000)/s_00p; double pz_00m = (p_000-p_00m)/s_00m;
+
+        if(s_p00<EPS) px_p00 = 0; if(s_m00<EPS) px_m00 = 0;
+        if(s_0p0<EPS) py_0p0 = 0; if(s_0m0<EPS) py_0m0 = 0;
+        if(s_00p<EPS) pz_00p = 0; if(s_00m<EPS) pz_00m = 0;
 
         //---------------------------------------------------------------------
         // Second Order One-Sided Differencing
@@ -1418,30 +1454,80 @@ double upwind_step(my_p4est_node_neighbors_t *ngbd_n, p4est_locidx_t n, double *
         pzz_00p = MINMOD(pzz_00p,pzz_000);   pz_00p -= 0.5*s_00p*(pzz_00p);
 
 
-        if(normal_velocity>0) {
-            if(px_p00>0) px_p00 = 0;
-            if(px_m00<0) px_m00 = 0;
-            if(py_0p0>0) py_0p0 = 0;
-            if(py_0m0<0) py_0m0 = 0;
-            if(pz_00p>0) pz_00p = 0;
-            if(pz_00m<0) pz_00m = 0;
-        } else {
-            if(px_p00<0) px_p00 = 0;
-            if(px_m00>0) px_m00 = 0;
-            if(py_0p0<0) py_0p0 = 0;
-            if(py_0m0>0) py_0m0 = 0;
-            if(pz_00p<0) pz_00p = 0;
-            if(pz_00m>0) pz_00m = 0;
-        }
+        if(px_p00>0) px_p00 = 0;
+        if(px_m00<0) px_m00 = 0;
+        if(py_0p0>0) py_0p0 = 0;
+        if(py_0m0<0) py_0m0 = 0;
+        if(pz_00p>0) pz_00p = 0;
+        if(pz_00m<0) pz_00m = 0;
 
+
+
+        //        double dt = MIN(s_m00,s_p00);
+        //        dt = MIN(dt,s_0m0);
+        //        dt = MIN(dt,s_0p0);
+        //        dt = MIN(dt,s_00m);
+        //        dt = MIN(dt,s_00p);
+        //        dt /= 3.0;
 
         return p_000 - dt*normal_velocity*(sqrt(px_p00*px_p00 + px_m00*px_m00 +
                                                 py_0p0*py_0p0 + py_0m0*py_0m0 +
                                                 pz_00p*pz_00p + pz_00m*pz_00m));
 
-    } else  // far from the interface
+    } else if (normal_velocity<0 &&  ((phi_000*phi_m00<0) || (phi_000*phi_p00<0)
+                                      || (phi_000*phi_0m0<0) || (phi_000*phi_0p0<0)
+                                      || (phi_000*phi_00m<0) || (phi_000*phi_00p<0)))
     {
 
+        // boundary condition with no jump
+        if(phi_000*phi_m00<0) { s_m00 =-interface_Location_With_Second_Order_Derivative(-s_m00,   0, phi_m00, phi_000, phixx_m00, phixx_000); p_m00=p_p00; }
+        if(phi_000*phi_p00<0) { s_p00 = interface_Location_With_Second_Order_Derivative(    0, s_p00, phi_000, phi_p00, phixx_000, phixx_p00); p_p00=p_m00; }
+        if(phi_000*phi_0m0<0) { s_0m0 =-interface_Location_With_Second_Order_Derivative(-s_0m0,   0, phi_0m0, phi_000, phiyy_0m0, phiyy_000); p_0m0=p_0p0;}
+        if(phi_000*phi_0p0<0) { s_0p0 = interface_Location_With_Second_Order_Derivative(    0, s_0p0, phi_000, p_0p0, phiyy_000, phiyy_0p0); p_0p0=p_0m0;}
+        if(phi_000*phi_00m<0) { s_00m =-interface_Location_With_Second_Order_Derivative(-s_00m,   0, phi_00m, phi_000, phizz_00m, phizz_000); p_00m=p_00p;}
+        if(phi_000*phi_00p<0) { s_00p = interface_Location_With_Second_Order_Derivative(    0, s_00p, phi_000, phi_00p, phizz_000, phizz_00p); p_00p=p_00m;}
+        s_m00 = MAX(s_m00,EPS);
+        s_p00 = MAX(s_p00,EPS);
+        s_0m0 = MAX(s_0m0,EPS);
+        s_0p0 = MAX(s_0p0,EPS);
+        s_00m = MAX(s_00m,EPS);
+        s_00p = MAX(s_00p,EPS);
+
+        //---------------------------------------------------------------------
+        // First Order One-Sided Differencing
+        //---------------------------------------------------------------------
+        double px_p00 = (p_p00-p_000)/s_p00; double px_m00 = (p_000-p_m00)/s_m00;
+        double py_0p0 = (p_0p0-p_000)/s_0p0; double py_0m0 = (p_000-p_0m0)/s_0m0;
+        double pz_00p = (p_00p-p_000)/s_00p; double pz_00m = (p_000-p_00m)/s_00m;
+
+        if(s_p00<EPS) px_p00 = 0; if(s_m00<EPS) px_m00 = 0;
+        if(s_0p0<EPS) py_0p0 = 0; if(s_0m0<EPS) py_0m0 = 0;
+        if(s_00p<EPS) pz_00p = 0; if(s_00m<EPS) pz_00m = 0;
+
+        //---------------------------------------------------------------------
+        // Second Order One-Sided Differencing
+        //---------------------------------------------------------------------
+        pxx_m00 = MINMOD(pxx_m00,pxx_000);   px_m00 += 0.5*s_m00*(pxx_m00);
+        pxx_p00 = MINMOD(pxx_p00,pxx_000);   px_p00 -= 0.5*s_p00*(pxx_p00);
+        pyy_0m0 = MINMOD(pyy_0m0,pyy_000);   py_0m0 += 0.5*s_0m0*(pyy_0m0);
+        pyy_0p0 = MINMOD(pyy_0p0,pyy_000);   py_0p0 -= 0.5*s_0p0*(pyy_0p0);
+        pzz_00m = MINMOD(pzz_00m,pzz_000);   pz_00m += 0.5*s_00m*(pzz_00m);
+        pzz_00p = MINMOD(pzz_00p,pzz_000);   pz_00p -= 0.5*s_00p*(pzz_00p);
+
+        if(px_p00<0) px_p00 = 0;
+        if(px_m00>0) px_m00 = 0;
+        if(py_0p0<0) py_0p0 = 0;
+        if(py_0m0>0) py_0m0 = 0;
+        if(pz_00p<0) pz_00p = 0;
+        if(pz_00m>0) pz_00m = 0;
+
+
+        return p_000 - dt*normal_velocity*(sqrt(px_p00*px_p00 + px_m00*px_m00 +
+                                                py_0p0*py_0p0 + py_0m0*py_0m0 +
+                                                pz_00p*pz_00p + pz_00m*pz_00m));
+    } else
+    {
+        // far from the interface
         double fx = ux > 0 ? qnnn.dx_backward_quadratic(f, fxx) : qnnn.dx_forward_quadratic(f, fxx);
         double fy = uy > 0 ? qnnn.dy_backward_quadratic(f, fyy) : qnnn.dy_forward_quadratic(f, fyy);
         double fz = uz > 0 ? qnnn.dz_backward_quadratic(f, fzz) : qnnn.dz_forward_quadratic(f, fzz);
@@ -1582,7 +1668,7 @@ double upwind_step(my_p4est_node_neighbors_t *ngbd_n, p4est_locidx_t n, double *
 
 //}
 
-void advect_upwind(double dt, my_p4est_node_neighbors_t *ngbd_n, Vec field, Vec field_xx[3], Vec vel[3], double *phi_p, double diag)
+void advect_upwind(double dt, my_p4est_node_neighbors_t *ngbd_n, Vec field, Vec field_xx[3], Vec vel[3], double *phi_p, double *dxx, double *dyy, double *dzz)
 {
 
     PetscErrorCode ierr;
@@ -1603,12 +1689,12 @@ void advect_upwind(double dt, my_p4est_node_neighbors_t *ngbd_n, Vec field, Vec 
     // 1) first half-step
     for (size_t i = 0; i<ngbd_n->get_layer_size(); i++) {
         p4est_locidx_t n = ngbd_n->get_layer_node(i);
-        field_np1_p[n] = upwind_step(ngbd_n, n, field_p, field_xx_p, field_yy_p, field_zz_p, vel_p[0][n], vel_p[1][n], vel_p[2][n], dt, phi_p, diag);
+        field_np1_p[n] = upwind_step(ngbd_n, n, field_p, field_xx_p, field_yy_p, field_zz_p, vel_p[0][n], vel_p[1][n], vel_p[2][n], dt, phi_p, dxx, dyy, dzz);
     }
     VecGhostUpdateBegin(field_np1, INSERT_VALUES, SCATTER_FORWARD);
     for (size_t i = 0; i<ngbd_n->get_local_size(); i++) {
         p4est_locidx_t n = ngbd_n->get_local_node(i);
-        field_np1_p[n] = upwind_step(ngbd_n, n, field_p, field_xx_p, field_yy_p, field_zz_p, vel_p[0][n], vel_p[1][n], vel_p[2][n], dt, phi_p, diag);
+        field_np1_p[n] = upwind_step(ngbd_n, n, field_p, field_xx_p, field_yy_p, field_zz_p, vel_p[0][n], vel_p[1][n], vel_p[2][n], dt, phi_p, dxx, dyy, dzz);
     }
     VecGhostUpdateEnd(field_np1, INSERT_VALUES, SCATTER_FORWARD);
     VecRestoreArray(field_np1, &field_np1_p);
@@ -1658,13 +1744,13 @@ void advect_upwind(double dt, my_p4est_node_neighbors_t *ngbd_n, Vec field, Vec 
     VecGetArray(field_xx[2], &field_zz_p);
     for (size_t i = 0; i<ngbd_n->get_layer_size(); i++) {
         p4est_locidx_t n = ngbd_n->get_layer_node(i);
-        double field_np2 = upwind_step(ngbd_n, n, field_np1_p, field_xx_p, field_yy_p, field_zz_p, vel_p[0][n], vel_p[1][n], vel_p[2][n], dt, phi_p, diag);
+        double field_np2 = upwind_step(ngbd_n, n, field_np1_p, field_xx_p, field_yy_p, field_zz_p, vel_p[0][n], vel_p[1][n], vel_p[2][n], dt, phi_p, dxx, dyy, dzz);
         field_p[n] = 0.5*(field_p[n] + field_np2);
     }
     VecGhostUpdateBegin(field, INSERT_VALUES, SCATTER_FORWARD);
     for (size_t i = 0; i<ngbd_n->get_local_size(); i++) {
         p4est_locidx_t n = ngbd_n->get_local_node(i);
-        double field_np2 = upwind_step(ngbd_n, n, field_np1_p, field_xx_p, field_yy_p, field_zz_p, vel_p[0][n], vel_p[1][n], vel_p[2][n], dt, phi_p, diag);
+        double field_np2 = upwind_step(ngbd_n, n, field_np1_p, field_xx_p, field_yy_p, field_zz_p, vel_p[0][n], vel_p[1][n], vel_p[2][n], dt, phi_p, dxx, dyy, dzz);
         field_p[n] = 0.5*(field_p[n] + field_np2);
     }
     VecGhostUpdateEnd(field, INSERT_VALUES, SCATTER_FORWARD);
@@ -1699,7 +1785,7 @@ void solve_diffusion( p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost
     VecDuplicate(phi, &mu_p_);
 
 
-    Vec Laplacian_u, ElectroPhoresis, flux_DIR;
+    Vec Laplacian_u, ElectroPhoresis, flux_DIR, phi_xx, phi_yy, phi_zz;
     ierr = VecCreateGhostNodes(p4est, nodes, &flux_DIR); CHKERRXX(ierr);
     ierr = VecCreateGhostNodes(p4est, nodes, &Laplacian_u); CHKERRXX(ierr);
     ierr = VecCreateGhostNodes(p4est, nodes, &ElectroPhoresis); CHKERRXX(ierr);
@@ -1709,6 +1795,9 @@ void solve_diffusion( p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost
         ierr = VecCreateGhostNodes(p4est, nodes, &Electric[dir]); CHKERRXX(ierr);
         ierr = VecCreateGhostNodes(p4est, nodes, &M_xx[dir]); CHKERRXX(ierr);
     }
+    ierr = VecCreateGhostNodes(p4est, nodes, &phi_xx); CHKERRXX(ierr);
+    ierr = VecCreateGhostNodes(p4est, nodes, &phi_yy); CHKERRXX(ierr);
+    ierr = VecCreateGhostNodes(p4est, nodes, &phi_zz); CHKERRXX(ierr);
 
 
     Vec M_star;
@@ -1870,11 +1959,16 @@ void solve_diffusion( p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost
 
         // Advection by electric field using the upwind scheme TVD-RK2
 
-        double *M_xx_p[3];
+        double *M_xx_p[3], *dxx, *dyy, *dzz;
+
         ierr = VecGetArray(M_xx[0], &M_xx_p[0]); CHKERRXX(ierr);
         ierr = VecGetArray(M_xx[1], &M_xx_p[1]); CHKERRXX(ierr);
         ierr = VecGetArray(M_xx[2], &M_xx_p[2]); CHKERRXX(ierr);
         ierr = VecGetArray(M_list[ion], &M_p[ion]); CHKERRXX(ierr);
+
+        VecGetArray(phi_xx, &dxx);
+        VecGetArray(phi_yy, &dyy);
+        VecGetArray(phi_zz, &dzz);
         for(size_t i=0; i<ngbd_n->get_layer_size(); ++i)
         {
             p4est_locidx_t n = ngbd_n->get_layer_node(i);
@@ -1882,10 +1976,17 @@ void solve_diffusion( p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost
             M_xx_p[0][n] = qnnn.dxx_central(M_p[ion]);
             M_xx_p[1][n] = qnnn.dyy_central(M_p[ion]);
             M_xx_p[2][n] = qnnn.dzz_central(M_p[ion]);
+
+            dxx[n] = qnnn.dxx_central(phi_p);
+            dyy[n] = qnnn.dyy_central(phi_p);
+            dzz[n] = qnnn.dzz_central(phi_p);
         }
         ierr = VecGhostUpdateBegin(M_xx[0], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
         ierr = VecGhostUpdateBegin(M_xx[1], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
         ierr = VecGhostUpdateBegin(M_xx[2], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+        ierr = VecGhostUpdateBegin(phi_xx, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+        ierr = VecGhostUpdateBegin(phi_yy, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+        ierr = VecGhostUpdateBegin(phi_zz, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
         for(size_t i=0; i<ngbd_n->get_local_size(); ++i)
         {
             p4est_locidx_t n = ngbd_n->get_local_node(i);
@@ -1893,15 +1994,25 @@ void solve_diffusion( p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost
             M_xx_p[0][n] = qnnn.dxx_central(M_p[ion]);
             M_xx_p[1][n] = qnnn.dyy_central(M_p[ion]);
             M_xx_p[2][n] = qnnn.dzz_central(M_p[ion]);
+
+            dxx[n] = qnnn.dxx_central(phi_p);
+            dyy[n] = qnnn.dyy_central(phi_p);
+            dzz[n] = qnnn.dzz_central(phi_p);
         }
         ierr = VecGhostUpdateEnd(M_xx[0], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
         ierr = VecGhostUpdateEnd(M_xx[1], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
         ierr = VecGhostUpdateEnd(M_xx[2], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+        ierr = VecGhostUpdateEnd(phi_xx, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+        ierr = VecGhostUpdateEnd(phi_yy, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+        ierr = VecGhostUpdateEnd(phi_zz, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
         ierr = VecRestoreArray(M_xx[0], &M_xx_p[0]); CHKERRXX(ierr);
         ierr = VecRestoreArray(M_xx[1], &M_xx_p[1]); CHKERRXX(ierr);
         ierr = VecRestoreArray(M_xx[2], &M_xx_p[2]); CHKERRXX(ierr);
         ierr = VecRestoreArray(M_list[ion], &M_p[ion]); CHKERRXX(ierr);
+        VecRestoreArray(phi_xx, &dxx);
+        VecRestoreArray(phi_yy, &dyy);
+        VecRestoreArray(phi_zz, &dzz);
 
 
 
@@ -1944,7 +2055,14 @@ void solve_diffusion( p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost
         //        for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
         //            phi_p[i] = -phi_p[i];
 
-        advect_upwind(dt_n, ngbd_n, M_star, M_xx, Electric, phi_p, diag);
+        ls.perturb_level_set_function(phi, EPS);
+        VecGetArray(phi_xx, &dxx);
+        VecGetArray(phi_yy, &dyy);
+        VecGetArray(phi_zz, &dzz);
+        advect_upwind(dt_n, ngbd_n, M_star, M_xx, Electric, phi_p, dxx, dyy, dzz);
+        VecRestoreArray(phi_xx, &dxx);
+        VecRestoreArray(phi_yy, &dyy);
+        VecRestoreArray(phi_zz, &dzz);
         PetscPrintf(p4est->mpicomm, "Advection complete! Let's do diffusion... \n");
 
         int counter = 0;
@@ -2121,6 +2239,9 @@ void solve_diffusion( p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost
         VecDestroy(M_xx[dir]);
         VecDestroy(Electric[dir]);
     }
+    VecDestroy(phi_xx);
+    VecDestroy(phi_yy);
+    VecDestroy(phi_zz);
 }
 
 
