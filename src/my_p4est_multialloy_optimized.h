@@ -90,6 +90,13 @@ private:
   my_p4est_hierarchy_t        *hierarchy_;
   my_p4est_node_neighbors_t   *ngbd_;
 
+  /* grid that does not coarsen to keep track of quantities inside the solid */
+  p4est_t                     *history_p4est_;
+  p4est_ghost_t               *history_ghost_;
+  p4est_nodes_t               *history_nodes_;
+  my_p4est_hierarchy_t        *history_hierarchy_;
+  my_p4est_node_neighbors_t   *history_ngbd_;
+
   double dxyz_[P4EST_DIM];
   double dxyz_max_, dxyz_min_;
   double dxyz_close_interface_;
@@ -124,13 +131,16 @@ private:
   Vec normal_[P4EST_DIM];
   Vec kappa_;
 
+  Vec history_phi_;
+  Vec history_phi_nm1_;
+
   Vec phi_smooth_;
 
-#ifdef P4_TO_P8
-  Vec theta_xz_, theta_yz_;
-#else
-  Vec theta_;
-#endif
+//#ifdef P4_TO_P8
+//  Vec theta_xz_, theta_yz_;
+//#else
+//  Vec theta_;
+//#endif
 
   Vec bc_error_;
   double bc_error_max_;
@@ -169,6 +179,8 @@ private:
   bool use_points_on_interface_;
   bool update_c0_robin_;
   bool zero_negative_velocity_;
+
+  bool save_history_;
 
 #ifdef P4_TO_P8
   CF_3 *rhs_tl_;
@@ -251,8 +263,24 @@ public:
   inline void set_phi(Vec phi)
   {
     this->phi_ = phi;
-//    compute_smoothed_phi();
-//    copy_ghosted_vec(phi_smooth_, phi_);
+
+    ierr = VecCreateGhostNodes(history_p4est_, history_nodes_, &history_phi_); CHKERRXX(ierr);
+    ierr = VecCreateGhostNodes(history_p4est_, history_nodes_, &history_phi_nm1_); CHKERRXX(ierr);
+
+    my_p4est_interpolation_nodes_t interp(ngbd_);
+
+    double xyz[P4EST_DIM];
+    for(size_t n = 0; n < history_nodes_->indep_nodes.elem_count; ++n)
+    {
+      node_xyz_fr_n(n, history_p4est_, history_nodes_, xyz);
+      interp.add_point(n, xyz);
+    }
+
+    interp.set_input(phi_, interpolation_between_grids_);
+    interp.interpolate(history_phi_);
+
+    copy_ghosted_vec(history_phi_, history_phi_nm1_);
+
     compute_geometric_properties();
   }
 
@@ -298,9 +326,19 @@ public:
     copy_ghosted_vec(tl_n_, tl_np1_);
     copy_ghosted_vec(ts_n_, ts_np1_);
 
-    ierr = VecDuplicate(ts_n_, &tf_); CHKERRXX(ierr);
+    ierr = VecCreateGhostNodes(history_p4est_, history_nodes_, &tf_); CHKERRXX(ierr);
 
-    copy_ghosted_vec(ts_n_, tf_);
+    my_p4est_interpolation_nodes_t interp(ngbd_);
+
+    double xyz[P4EST_DIM];
+    for(size_t n = 0; n < history_nodes_->indep_nodes.elem_count; ++n)
+    {
+      node_xyz_fr_n(n, history_p4est_, history_nodes_, xyz);
+      interp.add_point(n, xyz);
+    }
+
+    interp.set_input(ts_n_, interpolation_between_grids_);
+    interp.interpolate(tf_);
   }
 
   inline void set_concentration(Vec c0, Vec c1, Vec c0s, Vec c1s)
@@ -365,6 +403,7 @@ public:
   void update_grid_eno();
   int  one_step();
   void save_VTK(int iter);
+  void save_VTK_solid(int iter);
 
   void compute_smoothed_phi();
 

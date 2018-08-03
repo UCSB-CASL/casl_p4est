@@ -44,9 +44,9 @@ my_p4est_poisson_nodes_multialloy_t::my_p4est_poisson_nodes_multialloy_t(my_p4es
   : node_neighbors_(node_neighbors),
     p4est_(node_neighbors->p4est), nodes_(node_neighbors->nodes), ghost_(node_neighbors->ghost), myb_(node_neighbors->myb),
     interp_(node_neighbors),
+    is_phi_dd_owned_(false), is_normal_owned_(false),
     bc_tolerance_(1.e-12),
-    max_iterations_(10),
-    is_phi_dd_owned_(false), is_normal_owned_(false)
+    max_iterations_(10)
 {
   jump_psi_tn_.set_ptr(this);
   psi_c1_interface_value_.set_ptr(this);
@@ -255,7 +255,7 @@ int my_p4est_poisson_nodes_multialloy_t::solve(Vec tm, Vec tp, Vec c0, Vec c1, V
   if (num_pdes != NULL) num_pdes->clear();
   if (error != NULL) error->clear();
   bool need_one = true;
-  while(bc_error_max_ > bc_tolerance_ && iteration < max_iterations_ || need_one)
+  while((bc_error_max_ > bc_tolerance_ && iteration < max_iterations_) || need_one)
   {
     ++iteration;
 
@@ -441,7 +441,7 @@ void my_p4est_poisson_nodes_multialloy_t::initialize_solvers()
 
   foreach_local_node(n, nodes_)
   {
-    for (short i = 0; i < solver_c0->pointwise_bc[n].size(); ++i)
+    for (unsigned short i = 0; i < solver_c0->pointwise_bc[n].size(); ++i)
     {
       double xyz[P4EST_DIM];
       solver_c0->get_xyz_interface_point(n, i, xyz);
@@ -619,7 +619,7 @@ void my_p4est_poisson_nodes_multialloy_t::solve_psi_c0()
 
   foreach_local_node(n, nodes_)
   {
-    for (short i = 0; i < solver_psi_c0->pointwise_bc[n].size(); ++i)
+    for (unsigned short i = 0; i < solver_psi_c0->pointwise_bc[n].size(); ++i)
     {
       double xyz[P4EST_DIM];
       solver_psi_c0->get_xyz_interface_point(n, i, xyz);
@@ -1178,7 +1178,7 @@ void my_p4est_poisson_nodes_multialloy_t::adjust_c0_gamma(int iteration)
     bc_error_.ptr[n] = 0;
     if (solver_c0->pointwise_bc[n].size())
     {
-      for (short i = 0; i < solver_c0->pointwise_bc[n].size(); ++i)
+      for (unsigned short i = 0; i < solver_c0->pointwise_bc[n].size(); ++i)
       {
         solver_c0->get_xyz_interface_point(n, i, xyz);
 

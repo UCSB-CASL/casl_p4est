@@ -209,6 +209,7 @@ public:
       case 2: neigh = qnnn.d_0m0_m0==0 ? qnnn.node_0m0_mm : qnnn.node_0m0_pm; h = dy_min; break;
       case 3: neigh = qnnn.d_0p0_m0==0 ? qnnn.node_0p0_mm : qnnn.node_0p0_pm; h = dy_min; break;
 #endif
+      default: throw std::runtime_error("Something is wrong\n");
     }
 
     return (ptr[n]*(h-dist) + ptr[neigh]*dist)/h;

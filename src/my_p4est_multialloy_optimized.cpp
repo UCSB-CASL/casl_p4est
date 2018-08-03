@@ -39,19 +39,21 @@ my_p4est_multialloy_t::my_p4est_multialloy_t(my_p4est_node_neighbors_t *ngbd)
   : brick_(ngbd->myb), connectivity_(ngbd->p4est->connectivity), p4est_(ngbd->p4est), ghost_(ngbd->ghost), nodes_(ngbd->nodes), hierarchy_(ngbd->hierarchy), ngbd_(ngbd),
     tl_n_(NULL), tl_np1_(NULL),
     ts_n_(NULL), ts_np1_(NULL),
-    c0_n_(NULL), c0_np1_(NULL), c0s_(NULL),
-    c1_n_(NULL), c1_np1_(NULL), c1s_(NULL),
+    c0_n_(NULL), c0_np1_(NULL),
+    c1_n_(NULL), c1_np1_(NULL),
+    c0s_(NULL),
+    c1s_(NULL),
     normal_velocity_n_(NULL),
     normal_velocity_np1_(NULL),
     phi_(NULL),
-    phi_smooth_(NULL),
     kappa_(NULL),
-    bc_error_(NULL),
-  #ifdef P4_TO_P8
-    theta_xz_(NULL), theta_yz_(NULL)
-  #else
-    theta_(NULL)
-  #endif
+    phi_smooth_(NULL),
+    bc_error_(NULL)
+//  #ifdef P4_TO_P8
+//    theta_xz_(NULL), theta_yz_(NULL)
+//  #else
+//    theta_(NULL)
+//  #endif
 {
   /* these default values are for a NiCu alloy, as presented in
    * A Sharp Computational Method for the Simulation of the Solidification of Binary Alloys
@@ -122,6 +124,15 @@ my_p4est_multialloy_t::my_p4est_multialloy_t(my_p4est_node_neighbors_t *ngbd)
   zero_negative_velocity_    = false;
 
   interpolation_between_grids_ = quadratic_non_oscillatory_continuous_v1;
+
+  history_p4est_ = p4est_copy(p4est_, P4EST_FALSE);
+  history_ghost_ = my_p4est_ghost_new(history_p4est_, P4EST_CONNECT_FULL);
+  history_nodes_ = my_p4est_nodes_new(history_p4est_, history_ghost_);
+
+  history_hierarchy_ = new my_p4est_hierarchy_t(history_p4est_, history_ghost_, brick_);
+  history_ngbd_      = new my_p4est_node_neighbors_t(history_hierarchy_, history_nodes_);
+  history_ngbd_->init_neighbors();
+//  history_ngbd_->update(history_p4est_, history_ghost_, history_nodes_);
 }
 
 
@@ -158,12 +169,15 @@ my_p4est_multialloy_t::~my_p4est_multialloy_t()
 
   if(phi_  !=NULL) { ierr = VecDestroy(phi_);   CHKERRXX(ierr); }
   if(kappa_!=NULL) { ierr = VecDestroy(kappa_); CHKERRXX(ierr); }
-#ifdef P4_TO_P8
-  if(theta_xz_!=NULL) { ierr = VecDestroy(theta_xz_); CHKERRXX(ierr); }
-  if(theta_yz_!=NULL) { ierr = VecDestroy(theta_yz_); CHKERRXX(ierr); }
-#else
-  if(theta_!=NULL) { ierr = VecDestroy(theta_); CHKERRXX(ierr); }
-#endif
+
+  if(history_phi_     !=NULL) { ierr = VecDestroy(history_phi_);     CHKERRXX(ierr); }
+  if(history_phi_nm1_ !=NULL) { ierr = VecDestroy(history_phi_nm1_); CHKERRXX(ierr); }
+//#ifdef P4_TO_P8
+//  if(theta_xz_!=NULL) { ierr = VecDestroy(theta_xz_); CHKERRXX(ierr); }
+//  if(theta_yz_!=NULL) { ierr = VecDestroy(theta_yz_); CHKERRXX(ierr); }
+//#else
+//  if(theta_!=NULL) { ierr = VecDestroy(theta_); CHKERRXX(ierr); }
+//#endif
 
   if(bc_error_ !=NULL) { ierr = VecDestroy(bc_error_);   CHKERRXX(ierr); }
 
@@ -175,6 +189,13 @@ my_p4est_multialloy_t::~my_p4est_multialloy_t()
   p4est_nodes_destroy (nodes_);
   p4est_ghost_destroy(ghost_);
   p4est_destroy (p4est_);
+
+  delete history_ngbd_;
+  delete history_hierarchy_;
+  p4est_nodes_destroy (history_nodes_);
+  p4est_ghost_destroy(history_ghost_);
+  p4est_destroy (history_p4est_);
+
   my_p4est_brick_destroy(connectivity_, brick_);
 }
 
@@ -520,10 +541,10 @@ void my_p4est_multialloy_t::update_grid()
   PetscPrintf(p4est_->mpicomm, "Updating grid... ");
 
   // keep level-set function from previous time step
-  Vec phi_nm1;
-  ierr = VecCreateGhostNodes(p4est_, nodes_, &phi_nm1); CHKERRXX(ierr);
+//  Vec phi_nm1;
+//  ierr = VecCreateGhostNodes(p4est_, nodes_, &phi_nm1); CHKERRXX(ierr);
 
-  copy_ghosted_vec(phi_, phi_nm1); CHKERRXX(ierr);
+//  copy_ghosted_vec(phi_, phi_nm1); CHKERRXX(ierr);
 
 //  Vec tm_old; ierr = VecDuplicate(phi_, &tm_old); CHKERRXX(ierr);
 //  Vec tp_old; ierr = VecDuplicate(phi_, &tp_old); CHKERRXX(ierr);
@@ -613,12 +634,11 @@ void my_p4est_multialloy_t::update_grid()
     interp.add_point(n, xyz);
   }
 
+//  Vec phi_tmp;
+//  ierr = VecDuplicate(phi_, &phi_tmp); CHKERRXX(ierr);
 
-  Vec phi_tmp;
-  ierr = VecDuplicate(phi_, &phi_tmp); CHKERRXX(ierr);
-
-  interp.set_input(phi_nm1, interpolation_between_grids_);
-  interp.interpolate(phi_tmp);
+//  interp.set_input(phi_nm1, interpolation_between_grids_);
+//  interp.interpolate(phi_tmp);
 
   /* temperature */
   Vec tl_n_tmp;
@@ -649,13 +669,6 @@ void my_p4est_multialloy_t::update_grid()
   ierr = VecDestroy(ts_np1_); CHKERRXX(ierr);
   ts_np1_ = ts_np1_tmp;
 
-  Vec tf_tmp;
-  ierr = VecDuplicate(phi_, &tf_tmp); CHKERRXX(ierr);
-  interp.set_input(tf_, interpolation_between_grids_);
-  interp.interpolate(tf_tmp);
-  ierr = VecDestroy(tf_); CHKERRXX(ierr);
-  tf_ = tf_tmp;
-
   /* concentrartions */
   Vec c0_n_tmp;
   ierr = VecDuplicate(phi_, &c0_n_tmp); CHKERRXX(ierr);
@@ -685,70 +698,8 @@ void my_p4est_multialloy_t::update_grid()
   ierr = VecDestroy(c1_np1_); CHKERRXX(ierr);
   c1_np1_ = c1_np1_tmp;
 
-  Vec c0s_tmp;
-  ierr = VecDuplicate(phi_, &c0s_tmp); CHKERRXX(ierr);
-  interp.set_input(c0s_, interpolation_between_grids_);
-  interp.interpolate(c0s_tmp);
-  ierr = VecDestroy(c0s_); CHKERRXX(ierr);
-  c0s_ = c0s_tmp;
-
-  Vec c1s_tmp;
-  ierr = VecDuplicate(phi_, &c1s_tmp); CHKERRXX(ierr);
-  interp.set_input(c1s_, interpolation_between_grids_);
-  interp.interpolate(c1s_tmp);
-  ierr = VecDestroy(c1s_); CHKERRXX(ierr);
-  c1s_ = c1s_tmp;
-
-  // get new values for nodes that just solidified
-  double *phi_nm1_p; ierr = VecGetArray(phi_tmp, &phi_nm1_p); CHKERRXX(ierr);
-  double *phi_p;     ierr = VecGetArray(phi_,    &phi_p);     CHKERRXX(ierr);
-
-  double *c0s_p; ierr = VecGetArray(c0s_, &c0s_p); CHKERRXX(ierr);
-  double *c1s_p; ierr = VecGetArray(c1s_, &c1s_p); CHKERRXX(ierr);
-
-  double *c0_n_p; ierr = VecGetArray(c0_n_, &c0_n_p); CHKERRXX(ierr);
-  double *c1_n_p; ierr = VecGetArray(c1_n_, &c1_n_p); CHKERRXX(ierr);
-
-  double *c0_np1_p; ierr = VecGetArray(c0_np1_, &c0_np1_p); CHKERRXX(ierr);
-  double *c1_np1_p; ierr = VecGetArray(c1_np1_, &c1_np1_p); CHKERRXX(ierr);
-
-  double *tf_p;     ierr = VecGetArray(tf_, &tf_p); CHKERRXX(ierr);
-  double *tl_n_p;   ierr = VecGetArray(tl_n_, &tl_n_p); CHKERRXX(ierr);
-  double *tl_np1_p; ierr = VecGetArray(tl_np1_, &tl_np1_p); CHKERRXX(ierr);
-
-  foreach_node(n, nodes_np1)
-  {
-    if (phi_p[n] > 0 && phi_nm1_p[n] < 0)
-    {
-      // find the time when the interface crossed a node
-      double tau = fabs(phi_nm1_p[n])+EPS/(fabs(phi_nm1_p[n]) + fabs(phi_p[n]) + EPS);
-
-      c0s_p[n] = kp0_*(c0_n_p[n]*(1.-tau) + c0_np1_p[n]*tau);
-      c1s_p[n] = kp1_*(c1_n_p[n]*(1.-tau) + c1_np1_p[n]*tau);
-      tf_p [n] = tl_n_p[n]*(1.-tau) + tl_np1_p[n]*tau;
-    }
-  }
-
-  ierr = VecRestoreArray(phi_tmp, &phi_nm1_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(phi_,    &phi_p);     CHKERRXX(ierr);
-  ierr = VecRestoreArray(c0s_, &c0s_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(c1s_, &c1s_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(c0_n_, &c0_n_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(c1_n_, &c1_n_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(c0_np1_, &c0_np1_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(c1_np1_, &c1_np1_p); CHKERRXX(ierr);
-
-  ierr = VecRestoreArray(tf_, &tf_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(tl_n_, &tl_n_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(tl_np1_, &tl_np1_p); CHKERRXX(ierr);
-
-  ierr = VecDestroy(phi_tmp); CHKERRXX(ierr);
-  ierr = VecDestroy(phi_nm1); CHKERRXX(ierr);
-
-  copy_ghosted_vec(c0_np1_, c0_n_);
-  copy_ghosted_vec(c1_np1_, c1_n_);
-  copy_ghosted_vec(tl_np1_, tl_n_);
-  copy_ghosted_vec(ts_np1_, ts_n_);
+//  ierr = VecDestroy(phi_tmp); CHKERRXX(ierr);
+//  ierr = VecDestroy(phi_nm1); CHKERRXX(ierr);
 
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
@@ -769,49 +720,235 @@ void my_p4est_multialloy_t::update_grid()
   ierr = VecDuplicate(phi_, &normal_velocity_np1_); CHKERRXX(ierr);
   copy_ghosted_vec(normal_velocity_n_, normal_velocity_np1_);
 
-//  Vec kappa_n;
-//  ierr = VecDuplicate(phi_, &kappa_n); CHKERRXX(ierr);
-//  interp.set_input(kappa_, quadratic_non_oscillatory_continuous_v1);
-//  interp.interpolate(kappa_n);
-//  ierr = VecDestroy(kappa_); CHKERRXX(ierr);
-//  kappa_ = kappa_n;
-
   p4est_destroy(p4est_);       p4est_ = p4est_np1;
   p4est_ghost_destroy(ghost_); ghost_ = ghost_np1;
   p4est_nodes_destroy(nodes_); nodes_ = nodes_np1;
   hierarchy_->update(p4est_, ghost_);
   ngbd_->update(hierarchy_, nodes_);
 
-//  /* help interface to not get stuck at grid nodes */
-//  double kappa_thresh = 0.1/dxyz_min_;
-//  double *phi_p, *normal_velocity_np1_p, *kappa_p;
+//  Vec test;
+//  Vec test_xx;
+//  Vec test_yy;
 
-//  ierr = VecGetArray(phi_, &phi_p); CHKERRXX(ierr);
-//  ierr = VecGetArray(kappa_, &kappa_p); CHKERRXX(ierr);
+//  VecCreateGhostNodes(p4est_, nodes_, &test);
+////  VecDuplicate(phi_, &test);
+//  VecDuplicate(phi_dd_[0], &test_xx);
+//  VecDuplicate(phi_dd_[1], &test_yy);
 
-//  for(size_t n=0; n<nodes_->indep_nodes.elem_count; ++n)
-//  {
-//    if (fabs(phi_p[n]) < phi_thresh_ && fabs(kappa_p[n]) > kappa_thresh)
-//    {
-//      phi_p[n] *= -1.;
-//    }
-//  }
-
-//  ierr = VecRestoreArray(phi_, &phi_p); CHKERRXX(ierr);
-//  ierr = VecRestoreArray(kappa_, &kappa_p); CHKERRXX(ierr);
+////  copy_ghosted_vec(phi_, test);
+////  ngbd_->second_derivatives_central(phi_, test_xx, test_yy);
+//  VecDestroy(test);
+//  VecDestroy(test_xx);
+//  VecDestroy(test_yy);
 
   /* reinitialize phi */
   my_p4est_level_set_t ls_new(ngbd_);
   ls_new.reinitialize_1st_order_time_2nd_order_space(phi_);
 
-  invert_phi(nodes_, phi_);
-  ls_new.extend_Over_Interface_TVD(phi_, c0s_, 20, 1);
-  ls_new.extend_Over_Interface_TVD(phi_, c1s_, 20, 1);
-  ls_new.extend_Over_Interface_TVD(phi_, tf_,  20, 1);
-  invert_phi(nodes_, phi_);
+//  invert_phi(nodes_, phi_);
+//  ls_new.extend_Over_Interface_TVD(phi_, c0s_, 20, 1);
+//  ls_new.extend_Over_Interface_TVD(phi_, c1s_, 20, 1);
+//  ls_new.extend_Over_Interface_TVD(phi_, tf_,  20, 1);
+//  invert_phi(nodes_, phi_);
 
   /* second derivatives, normals, curvature, angles */
   compute_geometric_properties();
+
+  /* refine history_p4est_ */
+  if (1) {
+    p4est_t       *history_p4est_np1 = p4est_copy(history_p4est_, P4EST_FALSE);
+    p4est_ghost_t *history_ghost_np1 = my_p4est_ghost_new(history_p4est_np1, P4EST_CONNECT_FULL);
+    p4est_nodes_t *history_nodes_np1 = my_p4est_nodes_new(history_p4est_np1, history_ghost_np1);
+
+    splitting_criteria_t* sp_old = (splitting_criteria_t*)history_ngbd_->p4est->user_pointer;
+
+    Vec phi_np1;
+    ierr = VecCreateGhostNodes(history_p4est_np1, history_nodes_np1, &phi_np1); CHKERRXX(ierr);
+
+    bool is_grid_changing = true;
+
+    int counter = 0;
+
+    while (is_grid_changing)
+    {
+      // interpolate from a coarse grid to a fine one
+      double* phi_np1_p;
+      ierr = VecGetArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
+
+      my_p4est_interpolation_nodes_t interp(ngbd_);
+
+      double xyz[P4EST_DIM];
+      for(size_t n = 0; n < history_nodes_np1->indep_nodes.elem_count; ++n)
+      {
+        node_xyz_fr_n(n, history_p4est_np1, history_nodes_np1, xyz);
+        interp.add_point(n, xyz);
+      }
+
+      interp.set_input(phi_, interpolation_between_grids_);
+      interp.interpolate(phi_np1);
+
+      splitting_criteria_tag_t sp(sp_old->min_lvl, sp_old->max_lvl, sp_old->lip);
+      is_grid_changing = sp.refine(history_p4est_np1, history_nodes_np1, phi_np1_p);
+
+      ierr = VecRestoreArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
+
+      if (is_grid_changing)
+      {
+        my_p4est_partition(history_p4est_np1, P4EST_TRUE, NULL);
+
+        // reset nodes, ghost, and phi
+        p4est_ghost_destroy(history_ghost_np1); history_ghost_np1 = my_p4est_ghost_new(history_p4est_np1, P4EST_CONNECT_FULL);
+        p4est_nodes_destroy(history_nodes_np1); history_nodes_np1 = my_p4est_nodes_new(history_p4est_np1, history_ghost_np1);
+
+        ierr = VecDestroy(phi_np1); CHKERRXX(ierr);
+        ierr = VecCreateGhostNodes(history_p4est_np1, history_nodes_np1, &phi_np1); CHKERRXX(ierr);
+      }
+
+      counter++;
+    }
+
+    history_p4est_np1->user_pointer = (void*) sp_old;
+
+    ierr = VecDestroy(history_phi_); CHKERRXX(ierr);
+    history_phi_ = phi_np1;
+
+    // transfer variables to the new grid
+    my_p4est_interpolation_nodes_t history_interp(history_ngbd_);
+
+    double xyz[P4EST_DIM];
+    for(size_t n = 0; n < history_nodes_np1->indep_nodes.elem_count; ++n)
+    {
+      node_xyz_fr_n(n, history_p4est_np1, history_nodes_np1, xyz);
+      history_interp.add_point(n, xyz);
+    }
+
+    Vec tf_tmp;
+    ierr = VecDuplicate(history_phi_, &tf_tmp); CHKERRXX(ierr);
+    history_interp.set_input(tf_, interpolation_between_grids_);
+    history_interp.interpolate(tf_tmp);
+    ierr = VecDestroy(tf_); CHKERRXX(ierr);
+    tf_ = tf_tmp;
+
+    Vec c0s_tmp;
+    ierr = VecDuplicate(history_phi_, &c0s_tmp); CHKERRXX(ierr);
+    history_interp.set_input(c0s_, interpolation_between_grids_);
+    history_interp.interpolate(c0s_tmp);
+    ierr = VecDestroy(c0s_); CHKERRXX(ierr);
+    c0s_ = c0s_tmp;
+
+    Vec c1s_tmp;
+    ierr = VecDuplicate(history_phi_, &c1s_tmp); CHKERRXX(ierr);
+    history_interp.set_input(c1s_, interpolation_between_grids_);
+    history_interp.interpolate(c1s_tmp);
+    ierr = VecDestroy(c1s_); CHKERRXX(ierr);
+    c1s_ = c1s_tmp;
+
+    Vec phi_nm1_tmp;
+    ierr = VecDuplicate(history_phi_, &phi_nm1_tmp); CHKERRXX(ierr);
+    history_interp.set_input(history_phi_nm1_, interpolation_between_grids_);
+    history_interp.interpolate(phi_nm1_tmp);
+    ierr = VecDestroy(history_phi_nm1_); CHKERRXX(ierr);
+    history_phi_nm1_ = phi_nm1_tmp;
+
+    p4est_destroy(history_p4est_);       history_p4est_ = history_p4est_np1;
+    p4est_ghost_destroy(history_ghost_); history_ghost_ = history_ghost_np1;
+    p4est_nodes_destroy(history_nodes_); history_nodes_ = history_nodes_np1;
+    history_hierarchy_->update(history_p4est_, history_ghost_);
+    history_ngbd_->update(history_hierarchy_, history_nodes_);
+
+    // get new values for nodes that just solidified
+    double *phi_nm1_p; ierr = VecGetArray(history_phi_nm1_, &phi_nm1_p); CHKERRXX(ierr);
+    double *phi_p;     ierr = VecGetArray(history_phi_,     &phi_p);     CHKERRXX(ierr);
+
+    double *c0s_p; ierr = VecGetArray(c0s_, &c0s_p); CHKERRXX(ierr);
+    double *c1s_p; ierr = VecGetArray(c1s_, &c1s_p); CHKERRXX(ierr);
+    double *tf_p;  ierr = VecGetArray(tf_, &tf_p);   CHKERRXX(ierr);
+
+    my_p4est_interpolation_nodes_t interp(ngbd_);
+
+    std::vector<p4est_locidx_t> freezing_nodes;
+
+    // first, figure out which nodes just became solid
+    foreach_node(n, history_nodes_)
+    {
+      if (phi_p[n] > 0 && phi_nm1_p[n] < 0)
+      {
+        node_xyz_fr_n(n, history_p4est_, history_nodes_, xyz);
+        interp.add_point(n, xyz);
+        freezing_nodes.push_back(n);
+      }
+    }
+
+    // get values concentrations and temperature at those nodes
+    Vec c0_new; ierr = VecDuplicate(history_phi_, &c0_new); CHKERRXX(ierr);
+    Vec c0_old; ierr = VecDuplicate(history_phi_, &c0_old); CHKERRXX(ierr);
+    Vec c1_new; ierr = VecDuplicate(history_phi_, &c1_new); CHKERRXX(ierr);
+    Vec c1_old; ierr = VecDuplicate(history_phi_, &c1_old); CHKERRXX(ierr);
+    Vec tl_new; ierr = VecDuplicate(history_phi_, &tl_new); CHKERRXX(ierr);
+    Vec tl_old; ierr = VecDuplicate(history_phi_, &tl_old); CHKERRXX(ierr);
+
+    interp.set_input(c0_n_,   interpolation_between_grids_); interp.interpolate(c0_old);
+    interp.set_input(c0_np1_, interpolation_between_grids_); interp.interpolate(c0_new);
+    interp.set_input(c1_n_,   interpolation_between_grids_); interp.interpolate(c1_old);
+    interp.set_input(c1_np1_, interpolation_between_grids_); interp.interpolate(c1_new);
+    interp.set_input(tl_n_,   interpolation_between_grids_); interp.interpolate(tl_old);
+    interp.set_input(tl_np1_, interpolation_between_grids_); interp.interpolate(tl_new);
+
+    double *c0_old_p; ierr = VecGetArray(c0_old, &c0_old_p); CHKERRXX(ierr);
+    double *c0_new_p; ierr = VecGetArray(c0_new, &c0_new_p); CHKERRXX(ierr);
+    double *c1_old_p; ierr = VecGetArray(c1_old, &c1_old_p); CHKERRXX(ierr);
+    double *c1_new_p; ierr = VecGetArray(c1_new, &c1_new_p); CHKERRXX(ierr);
+    double *tl_old_p; ierr = VecGetArray(tl_old, &tl_old_p); CHKERRXX(ierr);
+    double *tl_new_p; ierr = VecGetArray(tl_new, &tl_new_p); CHKERRXX(ierr);
+
+    for (unsigned int i = 0; i < freezing_nodes.size(); ++i)
+    {
+      p4est_locidx_t n = freezing_nodes[i];
+
+      // estimate the time when the interface crossed a node
+      double tau = fabs(phi_nm1_p[n])+EPS/(fabs(phi_nm1_p[n]) + fabs(phi_p[n]) + EPS);
+
+      c0s_p[n] = kp0_*(c0_old_p[n]*(1.-tau) + c0_new_p[n]*tau);
+      c1s_p[n] = kp1_*(c1_old_p[n]*(1.-tau) + c1_new_p[n]*tau);
+      tf_p [n] = tl_old_p[n]*(1.-tau) + tl_new_p[n]*tau;
+    }
+
+    ierr = VecRestoreArray(history_phi_nm1_, &phi_nm1_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(history_phi_,     &phi_p);     CHKERRXX(ierr);
+
+    ierr = VecRestoreArray(c0s_, &c0s_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(c1s_, &c1s_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(tf_, &tf_p);   CHKERRXX(ierr);
+
+    ierr = VecRestoreArray(c0_old, &c0_old_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(c0_new, &c0_new_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(c1_old, &c1_old_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(c1_new, &c1_new_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(tl_old, &tl_old_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(tl_new, &tl_new_p); CHKERRXX(ierr);
+
+    ierr = VecDestroy(c0_new); CHKERRXX(ierr);
+    ierr = VecDestroy(c0_old); CHKERRXX(ierr);
+    ierr = VecDestroy(c1_new); CHKERRXX(ierr);
+    ierr = VecDestroy(c1_old); CHKERRXX(ierr);
+    ierr = VecDestroy(tl_new); CHKERRXX(ierr);
+    ierr = VecDestroy(tl_old); CHKERRXX(ierr);
+
+    copy_ghosted_vec(history_phi_, history_phi_nm1_);
+
+    my_p4est_level_set_t ls(history_ngbd_);
+
+    invert_phi(history_nodes_, history_phi_);
+    ls.extend_Over_Interface_TVD(history_phi_,c0s_, 20, 1);
+    ls.extend_Over_Interface_TVD(history_phi_,c1s_, 20, 1);
+    ls.extend_Over_Interface_TVD(history_phi_,tf_,  20, 1);
+    invert_phi(history_nodes_, history_phi_);
+  }
+
+  copy_ghosted_vec(c0_np1_, c0_n_);
+  copy_ghosted_vec(c1_np1_, c1_n_);
+  copy_ghosted_vec(tl_np1_, tl_n_);
+  copy_ghosted_vec(ts_np1_, ts_n_);
 
   PetscPrintf(p4est_->mpicomm, "Done \n");
 
@@ -932,9 +1069,9 @@ void my_p4est_multialloy_t::save_VTK(int iter)
   char name[1000];
 
 #ifdef P4_TO_P8
-  sprintf(name, "%s/vtu/bialloy_lvl_%d_%d_%d_%dx%dx%d.%05d", out_dir, data->min_lvl, data->max_lvl, p4est_->mpisize, brick_->nxyztrees[0], brick_->nxyztrees[1], brick_->nxyztrees[2], iter);
+  sprintf(name, "%s/vtu/multialloy_lvl_%d_%d_%d_%dx%dx%d.%05d", out_dir, data->min_lvl, data->max_lvl, p4est_->mpisize, brick_->nxyztrees[0], brick_->nxyztrees[1], brick_->nxyztrees[2], iter);
 #else
-  sprintf(name, "%s/vtu/bialloy_lvl_%d_%d_%d_%dx%d.%05d", out_dir, data->min_lvl, data->max_lvl, p4est_->mpisize, brick_->nxyztrees[0], brick_->nxyztrees[1], iter);
+  sprintf(name, "%s/vtu/multialloy_lvl_%d_%d_%d_%dx%d.%05d", out_dir, data->min_lvl, data->max_lvl, p4est_->mpisize, brick_->nxyztrees[0], brick_->nxyztrees[1], iter);
 #endif
 
   const double *phi_p; ierr = VecGetArrayRead(phi_, &phi_p); CHKERRXX(ierr);
@@ -944,10 +1081,10 @@ void my_p4est_multialloy_t::save_VTK(int iter)
   const double *c1_p; ierr = VecGetArrayRead(c1_np1_, &c1_p); CHKERRXX(ierr);
   double *normal_velocity_np1_p; ierr = VecGetArray(normal_velocity_np1_, &normal_velocity_np1_p); CHKERRXX(ierr);
 
-  const double *c0s_p; ierr = VecGetArrayRead(c0s_, &c0s_p); CHKERRXX(ierr);
-  const double *c1s_p; ierr = VecGetArrayRead(c1s_, &c1s_p); CHKERRXX(ierr);
+//  const double *c0s_p; ierr = VecGetArrayRead(c0s_, &c0s_p); CHKERRXX(ierr);
+//  const double *c1s_p; ierr = VecGetArrayRead(c1s_, &c1s_p); CHKERRXX(ierr);
 
-  const double *tf_p; ierr = VecGetArrayRead(tf_, &tf_p); CHKERRXX(ierr);
+//  const double *tf_p; ierr = VecGetArrayRead(tf_, &tf_p); CHKERRXX(ierr);
 
   const double *kappa_p;
   ierr = VecGetArrayRead(kappa_, &kappa_p); CHKERRXX(ierr);
@@ -984,19 +1121,19 @@ void my_p4est_multialloy_t::save_VTK(int iter)
   my_p4est_vtk_write_all(  p4est_, nodes_, ghost_,
                            P4EST_TRUE, P4EST_TRUE,
                          #ifdef P4_TO_P8
-                           11, 1, name,
+                           8, 1, name,
                          #else
-                           11, 1, name,
+                           8, 1, name,
                          #endif
                            VTK_POINT_DATA, "phi", phi_p,
 //                           VTK_POINT_DATA, "phi_smooth", phi_smooth_p,
                            VTK_POINT_DATA, "tl", tl_p,
                            VTK_POINT_DATA, "ts", ts_p,
-                           VTK_POINT_DATA, "tf", tf_p,
+//                           VTK_POINT_DATA, "tf", tf_p,
                            VTK_POINT_DATA, "c0", c0_p,
                            VTK_POINT_DATA, "c1", c1_p,
-                           VTK_POINT_DATA, "c0s", c0s_p,
-                           VTK_POINT_DATA, "c1s", c1s_p,
+//                           VTK_POINT_DATA, "c0s", c0s_p,
+//                           VTK_POINT_DATA, "c1s", c1s_p,
                            VTK_POINT_DATA, "un", normal_velocity_np1_p,
                            VTK_POINT_DATA, "kappa", kappa_p,
                            VTK_POINT_DATA, "bc_error", bc_error_p,
@@ -1019,12 +1156,90 @@ void my_p4est_multialloy_t::save_VTK(int iter)
   ierr = VecRestoreArrayRead(kappa_, &kappa_p); CHKERRXX(ierr);
   ierr = VecRestoreArray(normal_velocity_np1_, &normal_velocity_np1_p); CHKERRXX(ierr);
 
+//  ierr = VecRestoreArrayRead(c0s_, &c0s_p); CHKERRXX(ierr);
+//  ierr = VecRestoreArrayRead(c1s_, &c1s_p); CHKERRXX(ierr);
+
+//  ierr = VecRestoreArrayRead(tf_, &tf_p); CHKERRXX(ierr);
+
+  PetscPrintf(p4est_->mpicomm, "VTK saved in %s\n", name);
+  ierr = PetscLogEventEnd(log_my_p4est_multialloy_save_vtk, 0, 0, 0, 0); CHKERRXX(ierr);
+}
+
+void my_p4est_multialloy_t::save_VTK_solid(int iter)
+{
+  ierr = PetscLogEventBegin(log_my_p4est_multialloy_save_vtk, 0, 0, 0, 0); CHKERRXX(ierr);
+
+  const char* out_dir = getenv("OUT_DIR");
+  if (!out_dir)
+  {
+    ierr = PetscPrintf(history_p4est_->mpicomm, "You need to set the environment variable OUT_DIR to save visuals\n");
+    return;
+  }
+
+  splitting_criteria_t *data = (splitting_criteria_t*)history_p4est_->user_pointer;
+
+  char name[1000];
+
+#ifdef P4_TO_P8
+  sprintf(name, "%s/vtu/multialloy_solid_lvl_%d_%d_%d_%dx%dx%d.%05d", out_dir, data->min_lvl, data->max_lvl, p4est_->mpisize, brick_->nxyztrees[0], brick_->nxyztrees[1], brick_->nxyztrees[2], iter);
+#else
+  sprintf(name, "%s/vtu/multialloy_solid_lvl_%d_%d_%d_%dx%d.%05d", out_dir, data->min_lvl, data->max_lvl, p4est_->mpisize, brick_->nxyztrees[0], brick_->nxyztrees[1], iter);
+#endif
+
+  const double *phi_p; ierr = VecGetArrayRead(history_phi_, &phi_p); CHKERRXX(ierr);
+  const double *c0s_p; ierr = VecGetArrayRead(c0s_, &c0s_p); CHKERRXX(ierr);
+  const double *c1s_p; ierr = VecGetArrayRead(c1s_, &c1s_p); CHKERRXX(ierr);
+
+  const double *tf_p; ierr = VecGetArrayRead(tf_, &tf_p); CHKERRXX(ierr);
+
+  /* save the size of the leaves */
+  Vec leaf_level;
+  ierr = VecCreateGhostCells(history_p4est_, history_ghost_, &leaf_level); CHKERRXX(ierr);
+  double *l_p;
+  ierr = VecGetArray(leaf_level, &l_p); CHKERRXX(ierr);
+
+  for(p4est_topidx_t tree_idx = history_p4est_->first_local_tree; tree_idx <= history_p4est_->last_local_tree; ++tree_idx)
+  {
+    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(history_p4est_->trees, tree_idx);
+    for( size_t q=0; q<tree->quadrants.elem_count; ++q)
+    {
+      const p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, q);
+      l_p[tree->quadrants_offset+q] = quad->level;
+    }
+  }
+
+  for(size_t q=0; q<history_ghost_->ghosts.elem_count; ++q)
+  {
+    const p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&history_ghost_->ghosts, q);
+    l_p[history_p4est_->local_num_quadrants+q] = quad->level;
+  }
+
+
+  my_p4est_vtk_write_all(  history_p4est_, history_nodes_, history_ghost_,
+                           P4EST_TRUE, P4EST_TRUE,
+                         #ifdef P4_TO_P8
+                           4, 1, name,
+                         #else
+                           4, 1, name,
+                         #endif
+                           VTK_POINT_DATA, "phi", phi_p,
+                           VTK_POINT_DATA, "tf", tf_p,
+                           VTK_POINT_DATA, "c0s", c0s_p,
+                           VTK_POINT_DATA, "c1s", c1s_p,
+                           VTK_CELL_DATA , "leaf_level", l_p);
+
+
+  ierr = VecRestoreArray(leaf_level, &l_p); CHKERRXX(ierr);
+  ierr = VecDestroy(leaf_level); CHKERRXX(ierr);
+
+  ierr = VecRestoreArrayRead(history_phi_, &phi_p); CHKERRXX(ierr);
+
   ierr = VecRestoreArrayRead(c0s_, &c0s_p); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(c1s_, &c1s_p); CHKERRXX(ierr);
 
   ierr = VecRestoreArrayRead(tf_, &tf_p); CHKERRXX(ierr);
 
-  PetscPrintf(p4est_->mpicomm, "VTK saved in %s\n", name);
+  PetscPrintf(history_p4est_->mpicomm, "VTK saved in %s\n", name);
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_save_vtk, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 

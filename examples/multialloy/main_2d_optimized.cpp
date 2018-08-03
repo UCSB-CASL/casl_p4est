@@ -886,11 +886,11 @@ int main (int argc, char* argv[])
 
   bas.set_rhs(zero_cf, zero_cf, zero_cf, zero_cf);
 
-  bas.set_bc_tolerance(bc_tolerance);
-  bas.set_max_iterations(max_iterations);
+  bas.set_bc_tolerance     (bc_tolerance);
+  bas.set_max_iterations   (max_iterations);
   bas.set_pin_every_n_steps(pin_every_n_steps);
-  bas.set_cfl(cfl_number);
-  bas.set_phi_thresh(phi_thresh);
+  bas.set_cfl              (cfl_number);
+  bas.set_phi_thresh       (phi_thresh);
 
   bas.set_use_continuous_stencil   (use_continuous_stencil   );
   bas.set_use_one_sided_derivatives(use_one_sided_derivatives);
@@ -982,6 +982,7 @@ int main (int argc, char* argv[])
     if(save_vtk && iteration%save_every_n_iteration == 0)
     {
       bas.save_VTK(iteration/save_every_n_iteration);
+      bas.save_VTK_solid(iteration/save_every_n_iteration);
     }
     ierr = PetscPrintf(mpi.comm(), "Iteration %d, time %e\n", iteration, tn); CHKERRXX(ierr);
 
@@ -1031,6 +1032,10 @@ int main (int argc, char* argv[])
     bas.compute_dt();
 
     iteration++;
+
+    p4est = bas.get_p4est();
+    nodes = bas.get_nodes();
+    phi = bas.get_phi();
   }
 
   w1.stop(); w1.read_duration();

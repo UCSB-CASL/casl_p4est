@@ -142,7 +142,7 @@ BoundaryConditionType bc_itype = ROBIN;
 // solver parameters
 //-------------------------------------
 int  integration_order = 2;
-bool sc_scheme         = 1;
+bool sc_scheme         = 0;
 
 // for symmetric scheme:
 bool taylor_correction      = 1;

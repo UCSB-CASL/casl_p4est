@@ -29,8 +29,6 @@ class my_p4est_poisson_nodes_multialloy_t
 {
   PetscErrorCode ierr;
 
-  my_p4est_interpolation_nodes_t interp_;
-
   my_p4est_node_neighbors_t *node_neighbors_;
 
   // p4est objects
@@ -38,6 +36,8 @@ class my_p4est_poisson_nodes_multialloy_t
   p4est_nodes_t     *nodes_;
   p4est_ghost_t     *ghost_;
   my_p4est_brick_t  *myb_;
+
+  my_p4est_interpolation_nodes_t interp_;
 
   // level-set function
   vec_and_ptr_t phi_;
