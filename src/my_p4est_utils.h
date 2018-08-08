@@ -1614,4 +1614,14 @@ void compute_normals_and_mean_curvature(const my_p4est_node_neighbors_t &neighbo
 
 void save_vector(const char *filename, const std::vector<double> &data, std::ios_base::openmode mode = std::ios_base::out, char delim = ',');
 
+template<typename T>
+bool contains(const std::vector<T> &vec, const T& elem)
+{
+  return find(vec.begin(), vec.end(), elem)!=vec.end();
+}
+
+void fill_island(const my_p4est_node_neighbors_t &ngbd, const double *phi_p, double *island_number_p, int number, p4est_locidx_t n);
+void find_connected_ghost_islands(const my_p4est_node_neighbors_t &ngbd, const double *phi_p, double *island_number_p, p4est_locidx_t n, std::vector<double> &connected, std::vector<bool> &visited);
+void compute_islands_numbers(const my_p4est_node_neighbors_t &ngbd, const Vec phi, int &nb_islands_total, Vec island_number);
+
 #endif // UTILS_H

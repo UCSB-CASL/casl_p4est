@@ -133,6 +133,16 @@ my_p4est_multialloy_t::my_p4est_multialloy_t(my_p4est_node_neighbors_t *ngbd)
   history_ngbd_      = new my_p4est_node_neighbors_t(history_hierarchy_, history_nodes_);
   history_ngbd_->init_neighbors();
 //  history_ngbd_->update(history_p4est_, history_ghost_, history_nodes_);
+
+  history_kappa_ = NULL;
+  history_velo_  = NULL;
+
+  dendrite_number_ = NULL;
+  dendrite_tip_    = NULL;
+  dendrite_cut_off_fraction_ = .25;
+  dendrite_min_length_ = .05;
+
+  coarsen_for_poisson = 0;
 }
 
 
@@ -153,8 +163,11 @@ my_p4est_multialloy_t::~my_p4est_multialloy_t()
   if(c1_n_   !=NULL) { ierr = VecDestroy(c1_n_);   CHKERRXX(ierr); }
   if(c1_np1_ !=NULL) { ierr = VecDestroy(c1_np1_); CHKERRXX(ierr); }
 
-  if(c0s_   !=NULL) { ierr = VecDestroy(c0s_);   CHKERRXX(ierr); }
-  if(c1s_   !=NULL) { ierr = VecDestroy(c1s_);   CHKERRXX(ierr); }
+  if(c0s_ !=NULL) { ierr = VecDestroy(c0s_); CHKERRXX(ierr); }
+  if(c1s_ !=NULL) { ierr = VecDestroy(c1s_); CHKERRXX(ierr); }
+
+  if(history_kappa_ !=NULL) { ierr = VecDestroy(history_kappa_); CHKERRXX(ierr); }
+  if(history_velo_  !=NULL) { ierr = VecDestroy(history_velo_);  CHKERRXX(ierr); }
 
   if(normal_velocity_n_   !=NULL) { ierr = VecDestroy(normal_velocity_n_);   CHKERRXX(ierr); }
   if(normal_velocity_np1_ !=NULL) { ierr = VecDestroy(normal_velocity_np1_); CHKERRXX(ierr); }
@@ -181,7 +194,10 @@ my_p4est_multialloy_t::~my_p4est_multialloy_t()
 
   if(bc_error_ !=NULL) { ierr = VecDestroy(bc_error_);   CHKERRXX(ierr); }
 
-  if (phi_smooth_ != NULL) { ierr = VecDestroy(phi_smooth_); CHKERRXX(ierr); }
+  if(phi_smooth_ != NULL) { ierr = VecDestroy(phi_smooth_); CHKERRXX(ierr); }
+
+  if(dendrite_number_ != NULL) { ierr = VecDestroy(dendrite_number_); CHKERRXX(ierr); }
+  if(dendrite_tip_    != NULL) { ierr = VecDestroy(dendrite_tip_);    CHKERRXX(ierr); }
 
   /* destroy the p4est and its connectivity structure */
   delete ngbd_;
@@ -216,6 +232,21 @@ void my_p4est_multialloy_t::set_normal_velocity(Vec v)
     ierr = VecSet(src, 0); CHKERRXX(ierr);
     ierr = VecGhostRestoreLocalForm(v_interface_n_[dir], &src); CHKERRXX(ierr);
   }
+
+
+  ierr = VecCreateGhostNodes(history_p4est_, history_nodes_, &history_velo_); CHKERRXX(ierr);
+
+  my_p4est_interpolation_nodes_t interp(ngbd_);
+
+  double xyz[P4EST_DIM];
+  for(size_t n = 0; n < history_nodes_->indep_nodes.elem_count; ++n)
+  {
+    node_xyz_fr_n(n, history_p4est_, history_nodes_, xyz);
+    interp.add_point(n, xyz);
+  }
+
+  interp.set_input(normal_velocity_np1_, interpolation_between_grids_);
+  interp.interpolate(history_velo_);
 }
 
 
@@ -843,6 +874,20 @@ void my_p4est_multialloy_t::update_grid()
     ierr = VecDestroy(c1s_); CHKERRXX(ierr);
     c1s_ = c1s_tmp;
 
+    Vec history_kappa_tmp;
+    ierr = VecDuplicate(history_phi_, &history_kappa_tmp); CHKERRXX(ierr);
+    history_interp.set_input(history_kappa_, interpolation_between_grids_);
+    history_interp.interpolate(history_kappa_tmp);
+    ierr = VecDestroy(history_kappa_); CHKERRXX(ierr);
+    history_kappa_ = history_kappa_tmp;
+
+    Vec history_velo_tmp;
+    ierr = VecDuplicate(history_phi_, &history_velo_tmp); CHKERRXX(ierr);
+    history_interp.set_input(history_velo_, interpolation_between_grids_);
+    history_interp.interpolate(history_velo_tmp);
+    ierr = VecDestroy(history_velo_); CHKERRXX(ierr);
+    history_velo_ = history_velo_tmp;
+
     Vec phi_nm1_tmp;
     ierr = VecDuplicate(history_phi_, &phi_nm1_tmp); CHKERRXX(ierr);
     history_interp.set_input(history_phi_nm1_, interpolation_between_grids_);
@@ -894,6 +939,10 @@ void my_p4est_multialloy_t::update_grid()
     interp.set_input(tl_n_,   interpolation_between_grids_); interp.interpolate(tl_old);
     interp.set_input(tl_np1_, interpolation_between_grids_); interp.interpolate(tl_new);
 
+    interp.set_input(kappa_,  interpolation_between_grids_); interp.interpolate(history_kappa_);
+
+    interp.set_input(normal_velocity_np1_,  interpolation_between_grids_); interp.interpolate(history_velo_);
+
     double *c0_old_p; ierr = VecGetArray(c0_old, &c0_old_p); CHKERRXX(ierr);
     double *c0_new_p; ierr = VecGetArray(c0_new, &c0_new_p); CHKERRXX(ierr);
     double *c1_old_p; ierr = VecGetArray(c1_old, &c1_old_p); CHKERRXX(ierr);
@@ -939,9 +988,11 @@ void my_p4est_multialloy_t::update_grid()
     my_p4est_level_set_t ls(history_ngbd_);
 
     invert_phi(history_nodes_, history_phi_);
-    ls.extend_Over_Interface_TVD(history_phi_,c0s_, 20, 1);
-    ls.extend_Over_Interface_TVD(history_phi_,c1s_, 20, 1);
-    ls.extend_Over_Interface_TVD(history_phi_,tf_,  20, 1);
+    ls.extend_Over_Interface_TVD(history_phi_,c0s_, 5, 1);
+    ls.extend_Over_Interface_TVD(history_phi_,c1s_, 5, 1);
+    ls.extend_Over_Interface_TVD(history_phi_,tf_,  5, 1);
+    ls.extend_Over_Interface_TVD(history_phi_,history_kappa_,  5, 1);
+    ls.extend_Over_Interface_TVD(history_phi_,history_velo_,  5, 1);
     invert_phi(history_nodes_, history_phi_);
   }
 
@@ -949,6 +1000,8 @@ void my_p4est_multialloy_t::update_grid()
   copy_ghosted_vec(c1_np1_, c1_n_);
   copy_ghosted_vec(tl_np1_, tl_n_);
   copy_ghosted_vec(ts_np1_, ts_n_);
+
+//  count_dendrites();
 
   PetscPrintf(p4est_->mpicomm, "Done \n");
 
@@ -1005,7 +1058,6 @@ int my_p4est_multialloy_t::one_step()
   solver_all_in_one.set_bc(bc_t_, bc_c0_, bc_c1_);
   solver_all_in_one.set_pin_every_n_steps(pin_every_n_steps_);
   solver_all_in_one.set_tolerance(bc_tolerance_, max_iterations_);
-//  solver_all_in_one.set_rhs(t_n_, t_n_, c0_n_, c1_n_);
   solver_all_in_one.set_rhs(rhs_tl, rhs_ts, rhs_c0, rhs_c1);
 
   solver_all_in_one.set_use_continuous_stencil   (use_continuous_stencil_   );
@@ -1081,6 +1133,9 @@ void my_p4est_multialloy_t::save_VTK(int iter)
   const double *c1_p; ierr = VecGetArrayRead(c1_np1_, &c1_p); CHKERRXX(ierr);
   double *normal_velocity_np1_p; ierr = VecGetArray(normal_velocity_np1_, &normal_velocity_np1_p); CHKERRXX(ierr);
 
+  const double *dendrite_number_p; ierr = VecGetArrayRead(dendrite_number_, &dendrite_number_p); CHKERRXX(ierr);
+  const double *dendrite_tip_p;    ierr = VecGetArrayRead(dendrite_tip_,    &dendrite_tip_p);    CHKERRXX(ierr);
+
 //  const double *c0s_p; ierr = VecGetArrayRead(c0s_, &c0s_p); CHKERRXX(ierr);
 //  const double *c1s_p; ierr = VecGetArrayRead(c1s_, &c1s_p); CHKERRXX(ierr);
 
@@ -1121,9 +1176,9 @@ void my_p4est_multialloy_t::save_VTK(int iter)
   my_p4est_vtk_write_all(  p4est_, nodes_, ghost_,
                            P4EST_TRUE, P4EST_TRUE,
                          #ifdef P4_TO_P8
-                           8, 1, name,
+                           10, 1, name,
                          #else
-                           8, 1, name,
+                           10, 1, name,
                          #endif
                            VTK_POINT_DATA, "phi", phi_p,
 //                           VTK_POINT_DATA, "phi_smooth", phi_smooth_p,
@@ -1137,6 +1192,8 @@ void my_p4est_multialloy_t::save_VTK(int iter)
                            VTK_POINT_DATA, "un", normal_velocity_np1_p,
                            VTK_POINT_DATA, "kappa", kappa_p,
                            VTK_POINT_DATA, "bc_error", bc_error_p,
+                           VTK_POINT_DATA, "dendrite_number", dendrite_number_p,
+                           VTK_POINT_DATA, "dendrite_tip", dendrite_tip_p,
                            VTK_CELL_DATA , "leaf_level", l_p);
 
 
@@ -1155,6 +1212,9 @@ void my_p4est_multialloy_t::save_VTK(int iter)
   ierr = VecRestoreArrayRead(c1_np1_, &c1_p); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(kappa_, &kappa_p); CHKERRXX(ierr);
   ierr = VecRestoreArray(normal_velocity_np1_, &normal_velocity_np1_p); CHKERRXX(ierr);
+
+  ierr = VecRestoreArrayRead(dendrite_number_, &dendrite_number_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(dendrite_tip_,    &dendrite_tip_p);    CHKERRXX(ierr);
 
 //  ierr = VecRestoreArrayRead(c0s_, &c0s_p); CHKERRXX(ierr);
 //  ierr = VecRestoreArrayRead(c1s_, &c1s_p); CHKERRXX(ierr);
@@ -1192,6 +1252,9 @@ void my_p4est_multialloy_t::save_VTK_solid(int iter)
 
   const double *tf_p; ierr = VecGetArrayRead(tf_, &tf_p); CHKERRXX(ierr);
 
+  const double *kappa_p; ierr = VecGetArrayRead(history_kappa_, &kappa_p); CHKERRXX(ierr);
+  const double *velo_p;  ierr = VecGetArrayRead(history_velo_,  &velo_p);  CHKERRXX(ierr);
+
   /* save the size of the leaves */
   Vec leaf_level;
   ierr = VecCreateGhostCells(history_p4est_, history_ghost_, &leaf_level); CHKERRXX(ierr);
@@ -1218,14 +1281,16 @@ void my_p4est_multialloy_t::save_VTK_solid(int iter)
   my_p4est_vtk_write_all(  history_p4est_, history_nodes_, history_ghost_,
                            P4EST_TRUE, P4EST_TRUE,
                          #ifdef P4_TO_P8
-                           4, 1, name,
+                           6, 1, name,
                          #else
-                           4, 1, name,
+                           6, 1, name,
                          #endif
                            VTK_POINT_DATA, "phi", phi_p,
                            VTK_POINT_DATA, "tf", tf_p,
                            VTK_POINT_DATA, "c0s", c0s_p,
                            VTK_POINT_DATA, "c1s", c1s_p,
+                           VTK_POINT_DATA, "kappa", kappa_p,
+                           VTK_POINT_DATA, "vn", velo_p,
                            VTK_CELL_DATA , "leaf_level", l_p);
 
 
@@ -1238,6 +1303,9 @@ void my_p4est_multialloy_t::save_VTK_solid(int iter)
   ierr = VecRestoreArrayRead(c1s_, &c1s_p); CHKERRXX(ierr);
 
   ierr = VecRestoreArrayRead(tf_, &tf_p); CHKERRXX(ierr);
+
+  ierr = VecRestoreArrayRead(history_kappa_, &kappa_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(history_velo_,  &velo_p);  CHKERRXX(ierr);
 
   PetscPrintf(history_p4est_->mpicomm, "VTK saved in %s\n", name);
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_save_vtk, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -1284,4 +1352,269 @@ void my_p4est_multialloy_t::compute_smoothed_phi()
 
   my_p4est_level_set_t ls_new(ngbd_);
   ls_new.reinitialize_1st_order_time_2nd_order_space(phi_smooth_);
+}
+
+void my_p4est_multialloy_t::count_dendrites(int iter)
+{
+  // this code assumes dendrites grow in the positive y-direction and domain is [0; 1]^2
+
+  // find boundaries of the "mushy zone"
+  double mushy_zone_min = 1;
+  double mushy_zone_max = 0;
+
+  const double *phi_p;
+  ierr = VecGetArrayRead(phi_, &phi_p); CHKERRXX(ierr);
+  foreach_local_node(n, nodes_)
+  {
+    double y_coord = node_y_fr_n(n, p4est_, nodes_);
+
+    if (phi_p[n] > 0 && y_coord > mushy_zone_max) mushy_zone_max = y_coord;
+    if (phi_p[n] < 0 && y_coord < mushy_zone_min) mushy_zone_min = y_coord;
+  }
+  ierr = VecRestoreArrayRead(phi_, &phi_p); CHKERRXX(ierr);
+
+  int mpiret;
+  mpiret = MPI_Allreduce(MPI_IN_PLACE, &mushy_zone_min, 1, MPI_DOUBLE, MPI_MIN, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
+  mpiret = MPI_Allreduce(MPI_IN_PLACE, &mushy_zone_max, 1, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
+
+  if(dendrite_number_ != NULL) { ierr = VecDestroy(dendrite_number_); CHKERRXX(ierr); }
+  if(dendrite_tip_    != NULL) { ierr = VecDestroy(dendrite_tip_);    CHKERRXX(ierr); }
+
+  ierr = VecDuplicate(phi_, &dendrite_number_); CHKERRXX(ierr);
+  ierr = VecDuplicate(phi_, &dendrite_tip_);    CHKERRXX(ierr);
+
+  double *dendrite_number_p; ierr = VecGetArray(dendrite_number_, &dendrite_number_p); CHKERRXX(ierr);
+  double *dendrite_tip_p;    ierr = VecGetArray(dendrite_tip_,    &dendrite_tip_p);    CHKERRXX(ierr);
+
+  foreach_node(n, nodes_)
+  {
+    dendrite_number_p[n] = -1;
+    dendrite_tip_p[n] = -1;
+  }
+
+  ierr = VecRestoreArray(dendrite_number_, &dendrite_number_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(dendrite_tip_,    &dendrite_tip_p);    CHKERRXX(ierr);
+
+//  if (mushy_zone_max-mushy_zone_min < dendrite_min_length_)
+//  {
+//    ierr = PetscPrintf(p4est_->mpicomm, "No prominent primary dendrites found (%g-%g < %g).\n", mushy_zone_max, mushy_zone_min, dendrite_min_length_); CHKERRXX(ierr);
+//    return;
+//  }
+
+  // cut off denrites' base
+//  double cut_off_length = mushy_zone_min + dendrite_cut_off_fraction_*(mushy_zone_max-mushy_zone_min);
+  double cut_off_length = mushy_zone_max - dendrite_cut_off_fraction_*MAX(dendrite_min_length_, mushy_zone_max-mushy_zone_min);
+//  ierr = PetscPrintf(p4est_->mpicomm, "Cut off length %g.\n", cut_off_length); CHKERRXX(ierr);
+
+
+  Vec phi_cut;
+  ierr = VecDuplicate(phi_, &phi_cut); CHKERRXX(ierr);
+  copy_ghosted_vec(phi_, phi_cut);
+
+  double *phi_cut_p;
+  ierr = VecGetArray(phi_cut, &phi_cut_p); CHKERRXX(ierr);
+  foreach_node(n, nodes_)
+  {
+    if (node_y_fr_n(n, p4est_, nodes_) < cut_off_length) phi_cut_p[n] = -1;
+  }
+  ierr = VecRestoreArray(phi_cut, &phi_cut_p); CHKERRXX(ierr);
+
+  // enumerate dendrite by using Arthur's parallel region-growing code
+//  if (dendrite_number_ != NULL) { ierr = VecDestroy(dendrite_number_); CHKERRXX(ierr); }
+//  ierr = VecDuplicate(phi_, &dendrite_number_); CHKERRXX(ierr);
+  num_dendrites_ = 0;
+  compute_islands_numbers(*ngbd_, phi_cut, num_dendrites_, dendrite_number_);
+  ierr = VecDestroy(phi_cut); CHKERRXX(ierr);
+
+  ierr = PetscPrintf(p4est_->mpicomm, "%d prominent dendrites found.\n", num_dendrites_); CHKERRXX(ierr);
+
+  // find the tip of every dendrite
+  std::vector<double> x_tip(num_dendrites_, 0);
+  std::vector<double> y_tip(num_dendrites_, 0);
+
+//  double *dendrite_number_p;
+  ierr = VecGetArray(dendrite_number_, &dendrite_number_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(phi_, &phi_p); CHKERRXX(ierr);
+  foreach_local_node(n, nodes_)
+  {
+    int i = (int) dendrite_number_p[n];
+    if (i >= 0)
+    {
+      const quad_neighbor_nodes_of_node_t qnnn = ngbd_->get_neighbors(n);
+      int j = (int) qnnn.f_0p0_linear(dendrite_number_p);
+      if (j < 0)
+      {
+        double phi_n   = phi_p[n];
+        double phi_nei = qnnn.f_0p0_linear(phi_p);
+
+        double y_coord = node_y_fr_n(n, p4est_, nodes_) + fabs(phi_n)/(fabs(phi_n)+fabs(phi_nei)) * dxyz_[1];
+
+        if (y_coord > y_tip[i])
+        {
+          y_tip[i] = y_coord;
+          x_tip[i] = node_x_fr_n(n, p4est_, nodes_);
+        }
+      }
+    }
+  }
+  ierr = VecRestoreArray(dendrite_number_, &dendrite_number_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(phi_, &phi_p); CHKERRXX(ierr);
+
+  std::vector<double> y_tip_g(num_dendrites_, 0);
+  std::vector<double> x_tip_g(num_dendrites_, 0);
+
+  mpiret = MPI_Allreduce(y_tip.data(), y_tip_g.data(), num_dendrites_, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
+
+  for (unsigned int i = 0; i < num_dendrites_; ++i)
+  {
+    if (y_tip[i] != y_tip_g[i]) x_tip[i] = -10;
+  }
+
+//  std::cout << "Here " << p4est_->mpirank << "\n";
+  mpiret = MPI_Allreduce(x_tip.data(), x_tip_g.data(), num_dendrites_, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
+
+  // auxiliary field that shows found tip locations
+//  if(dendrite_tip_ != NULL) { ierr = VecDestroy(dendrite_tip_); CHKERRXX(ierr); }
+//  ierr = VecDuplicate(phi_, &dendrite_tip_); CHKERRXX(ierr);
+
+//  double *dendrite_tip_p;
+  ierr = VecGetArray(dendrite_tip_, &dendrite_tip_p); CHKERRXX(ierr);
+  foreach_node(n, nodes_)
+  {
+    dendrite_tip_p[n] = -1;
+    double x_coord = node_x_fr_n(n, p4est_, nodes_);
+    for (unsigned short i = 0; i < num_dendrites_; ++i)
+    {
+      if (fabs(x_tip_g[i] - x_coord) < EPS) dendrite_tip_p[n] = i;
+    }
+  }
+  ierr = VecRestoreArray(dendrite_tip_, &dendrite_tip_p); CHKERRXX(ierr);
+
+  // sample quantities along the tip of every dendrite
+  // specifically: phi, c0, c1, t, vn, c0s, c1s, tf, kappa, velo
+
+  splitting_criteria_t *data = (splitting_criteria_t*)p4est_->user_pointer;
+  int nb_sample_points = pow(2, data->max_lvl)+1;
+
+  std::vector<double> line_phi;
+  std::vector<double> line_c0;
+  std::vector<double> line_c1;
+  std::vector<double> line_t;
+  std::vector<double> line_vn;
+  std::vector<double> line_c0s;
+  std::vector<double> line_c1s;
+  std::vector<double> line_tf;
+  std::vector<double> line_kappa;
+  std::vector<double> line_velo;
+
+  for (unsigned short dendrite_idx = 0; dendrite_idx < num_dendrites_; ++dendrite_idx)
+  {
+    double xyz0[P4EST_DIM] = { x_tip_g[dendrite_idx], 0 };
+    double xyz1[P4EST_DIM] = { x_tip_g[dendrite_idx], 1 };
+
+    double xyz[P4EST_DIM];
+    double dxyz[P4EST_DIM];
+
+    foreach_dimension(dim) dxyz[dim] = (xyz1[dim]-xyz0[dim])/((double) nb_sample_points - 1.);
+
+    line_phi  .clear(); line_phi  .resize(nb_sample_points, -DBL_MAX);
+    line_c0   .clear(); line_c0   .resize(nb_sample_points, -DBL_MAX);
+    line_c1   .clear(); line_c1   .resize(nb_sample_points, -DBL_MAX);
+    line_t    .clear(); line_t    .resize(nb_sample_points, -DBL_MAX);
+    line_vn   .clear(); line_vn   .resize(nb_sample_points, -DBL_MAX);
+    line_c0s  .clear(); line_c0s  .resize(nb_sample_points, -DBL_MAX);
+    line_c1s  .clear(); line_c1s  .resize(nb_sample_points, -DBL_MAX);
+    line_tf   .clear(); line_tf   .resize(nb_sample_points, -DBL_MAX);
+    line_kappa.clear(); line_kappa.resize(nb_sample_points, -DBL_MAX);
+    line_velo .clear(); line_velo .resize(nb_sample_points, -DBL_MAX);
+
+    my_p4est_interpolation_nodes_t interp(ngbd_);
+    my_p4est_interpolation_nodes_t h_interp(history_ngbd_);
+
+    for (unsigned int i = 0; i < nb_sample_points; ++i)
+    {
+      foreach_dimension(dim) xyz[dim] = xyz0[dim] + ((double) i) * dxyz[dim];
+      interp.add_point_local(i, xyz);
+      h_interp.add_point_local(i, xyz);
+    }
+
+    interp.set_input(phi_,    linear); interp.interpolate_local(line_phi.data());
+    interp.set_input(c0_np1_, linear); interp.interpolate_local(line_c0.data());
+    interp.set_input(c1_np1_, linear); interp.interpolate_local(line_c1.data());
+    interp.set_input(tl_np1_, linear); interp.interpolate_local(line_t.data());
+    interp.set_input(normal_velocity_np1_, linear); interp.interpolate_local(line_vn.data());
+
+    h_interp.set_input(c0s_, linear); h_interp.interpolate_local(line_c0s.data());
+    h_interp.set_input(c1s_, linear); h_interp.interpolate_local(line_c1s.data());
+    h_interp.set_input(tf_ , linear); h_interp.interpolate_local(line_tf .data());
+    h_interp.set_input(history_kappa_, linear); h_interp.interpolate_local(line_kappa.data());
+    h_interp.set_input(history_velo_ , linear); h_interp.interpolate_local(line_velo .data());
+
+    int mpiret;
+
+    mpiret = MPI_Allreduce(MPI_IN_PLACE, line_phi.data(), nb_sample_points, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
+    mpiret = MPI_Allreduce(MPI_IN_PLACE, line_c0 .data(), nb_sample_points, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
+    mpiret = MPI_Allreduce(MPI_IN_PLACE, line_c1 .data(), nb_sample_points, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
+    mpiret = MPI_Allreduce(MPI_IN_PLACE, line_t  .data(), nb_sample_points, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
+    mpiret = MPI_Allreduce(MPI_IN_PLACE, line_vn .data(), nb_sample_points, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
+
+    mpiret = MPI_Allreduce(MPI_IN_PLACE, line_c0s  .data(), nb_sample_points, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
+    mpiret = MPI_Allreduce(MPI_IN_PLACE, line_c1s  .data(), nb_sample_points, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
+    mpiret = MPI_Allreduce(MPI_IN_PLACE, line_tf   .data(), nb_sample_points, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
+    mpiret = MPI_Allreduce(MPI_IN_PLACE, line_kappa.data(), nb_sample_points, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
+    mpiret = MPI_Allreduce(MPI_IN_PLACE, line_velo .data(), nb_sample_points, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
+
+    const char* out_dir = getenv("OUT_DIR");
+//    std::string filename;
+
+    char dirname[1024];
+    sprintf(dirname, "%s/dendrites/%d", out_dir, iter);
+
+    std::ostringstream command;
+    command << "mkdir -p " << dirname;
+    int ret_sys = system(command.str().c_str());
+    if (ret_sys<0)
+      throw std::invalid_argument("could not create directory");
+
+    char filename[1024];
+    // save level and resolution
+    if (p4est_->mpirank == 0)
+    {
+      sprintf(filename, "%s/%s.txt", dirname, "phi"); save_vector(filename, line_phi, (dendrite_idx == 0 ? std::ios_base::out : std::ios_base::app));
+      sprintf(filename, "%s/%s.txt", dirname, "c0");  save_vector(filename, line_c0 , (dendrite_idx == 0 ? std::ios_base::out : std::ios_base::app));
+      sprintf(filename, "%s/%s.txt", dirname, "c1");  save_vector(filename, line_c1 , (dendrite_idx == 0 ? std::ios_base::out : std::ios_base::app));
+      sprintf(filename, "%s/%s.txt", dirname, "t");   save_vector(filename, line_t  , (dendrite_idx == 0 ? std::ios_base::out : std::ios_base::app));
+      sprintf(filename, "%s/%s.txt", dirname, "vn");  save_vector(filename, line_vn , (dendrite_idx == 0 ? std::ios_base::out : std::ios_base::app));
+
+      sprintf(filename, "%s/%s.txt", dirname, "c0s");   save_vector(filename, line_c0s  , (dendrite_idx == 0 ? std::ios_base::out : std::ios_base::app));
+      sprintf(filename, "%s/%s.txt", dirname, "c1s");   save_vector(filename, line_c1s  , (dendrite_idx == 0 ? std::ios_base::out : std::ios_base::app));
+      sprintf(filename, "%s/%s.txt", dirname, "tf");    save_vector(filename, line_tf   , (dendrite_idx == 0 ? std::ios_base::out : std::ios_base::app));
+      sprintf(filename, "%s/%s.txt", dirname, "kappa"); save_vector(filename, line_kappa, (dendrite_idx == 0 ? std::ios_base::out : std::ios_base::app));
+      sprintf(filename, "%s/%s.txt", dirname, "velo");  save_vector(filename, line_velo , (dendrite_idx == 0 ? std::ios_base::out : std::ios_base::app));
+    }
+  }
+}
+
+void my_p4est_multialloy_t::sample_along_line(const double xyz0[], const double xyz1[], const unsigned int nb_points, Vec data, std::vector<double> out)
+{
+  out.clear();
+  out.resize(nb_points, -DBL_MAX);
+
+  my_p4est_interpolation_nodes_t interp(ngbd_);
+
+  double xyz[P4EST_DIM];
+  double dxyz[P4EST_DIM];
+
+  foreach_dimension(dim) dxyz[dim] = (xyz1[dim]-xyz0[dim])/((double) nb_points - 1.);
+
+  for (unsigned int i = 0; i < nb_points; ++i)
+  {
+    foreach_dimension(dim) xyz[dim] = xyz0[dim] + ((double) i) * dxyz[dim];
+    interp.add_point(i, xyz);
+  }
+
+  interp.set_input(data, linear);
+  interp.interpolate(out.data());
+
+  int mpiret = MPI_Allreduce(MPI_IN_PLACE, out.data(), nb_points, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
 }

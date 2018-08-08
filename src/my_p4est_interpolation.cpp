@@ -327,3 +327,66 @@ void my_p4est_interpolation_t::process_incoming_reply(MPI_Status& status, double
   }
 }
 
+void my_p4est_interpolation_t::add_point_local(p4est_locidx_t locidx, const double *xyz)
+{
+  // first clip the coordinates
+  double xyz_clip [] =
+  {
+    xyz[0], xyz[1]
+  #ifdef P4_TO_P8
+    , xyz[2]
+  #endif
+  };
+
+  // clip to bounding box
+  for (short i=0; i<P4EST_DIM; i++){
+    if (xyz_clip[i] > xyz_max[i]) xyz_clip[i] = is_periodic(p4est,i) ? xyz_clip[i]-(xyz_max[i]-xyz_min[i]) : xyz_max[i];
+    if (xyz_clip[i] < xyz_min[i]) xyz_clip[i] = is_periodic(p4est,i) ? xyz_clip[i]+(xyz_max[i]-xyz_min[i]) : xyz_min[i];
+  }
+
+  p4est_quadrant_t best_match;
+
+  // find the quadrant -- Note point may become slightly purturbed after this call
+  std::vector<p4est_quadrant_t> remote_matches;
+  int rank_found = ngbd_n->hierarchy->find_smallest_quadrant_containing_point(xyz_clip, best_match, remote_matches);
+
+  /* check who is going to own the quadrant.
+   * we add the point to the local buffer if it is locally owned
+   */
+  if (rank_found == p4est->mpirank) { // local quadrant
+    input_buffer[p4est->mpirank].push_back(locidx, xyz);
+    local_buffer.push_back(best_match);
+  }
+}
+
+
+void my_p4est_interpolation_t::interpolate_local(double *Fo_p) {
+  ierr = PetscLogEventBegin(log_my_p4est_interpolation_interpolate, 0, 0, 0, 0); CHKERRXX(ierr);
+
+  InterpolatingFunctionLogEntry log_entry = {0, 0, 0, 0, 0};
+  log_entry.num_local_points = local_buffer.size();
+
+  // Begin main loop
+  bool done = false;
+
+  size_t it = 0, end = local_buffer.size();
+  const input_buffer_t* input = &input_buffer[p4est->mpirank];
+
+  while (!done) {
+    // interpolate local points
+    if (it < end)
+    {
+      const double* xyz  = &(input->p_xyz[P4EST_DIM*it]);
+      const p4est_quadrant_t &quad = local_buffer[it];
+
+      p4est_locidx_t node_idx = input->node_idx[it];
+      Fo_p[node_idx] = interpolate(quad, xyz);
+      it++;
+    }
+
+    done = it == end;
+  }
+
+  ierr = PetscLogEventEnd(log_my_p4est_interpolation_interpolate, 0, 0, 0, 0); CHKERRXX(ierr);
+}
+

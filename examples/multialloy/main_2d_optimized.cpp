@@ -49,41 +49,16 @@
 #undef MIN
 #undef MAX
 
-int lmin = 6;
+#define ADD_OPTION(i, var, description) \
+  i == 0 ? cmd.add_option(#var, description) : (void) (var = cmd.get(#var, var));
+
+#define ADD_OPTION2(i, var, name, description) \
+  i == 0 ? cmd.add_option(name, description) : (void) (var = cmd.get(name, var));
+
+// grid parameters
+int lmin = 5;
 int lmax = 9;
-int save_every_n_iteration = 1;
-
-double bc_tolerance = 1.e-5;
-
-double cfl_number = 0.1;
-double phi_thresh = 1e-3;
-double zero_negative_velocity = 0;
-int max_iterations = 50;
-int pin_every_n_steps = 1000;
-
-int max_total_iterations = INT_MAX;
-
-double time_limit = DBL_MAX;
-
-double init_perturb = 0.01;
-
-bool use_continuous_stencil    = 1;
-bool use_one_sided_derivatives = 0;
-bool use_points_on_interface   = 0;
-bool update_c0_robin           = 1;
-
-bool concentration_neumann = true;
-
-// not implemented yet
-bool use_superconvergent_robin = 1;
-bool use_superconvergent_jump  = false;
-
 double lip = 2;
-
-using namespace std;
-
-bool save_velocity = true;
-bool save_vtk = true;
 
 #ifdef P4_TO_P8
 char direction = 'z';
@@ -91,28 +66,54 @@ char direction = 'z';
 char direction = 'y';
 #endif
 
-double termination_length = 0.9;
+double xmin = 0, xmax = 1; int nx = 1; bool px = 0;
+double ymin = 0, ymax = 1; int ny = 1; bool py = 1;
+#ifdef P4_TO_P8
+double zmin = 0, zmax = 1; int ny = 1; bool pz = 0;
+#endif
 
-/* 0 - NiCu
- * 1 - AlCu
- */
+// solver options
+double cfl_number              = 0.1;
+double bc_tolerance            = 1.e-5;
+double phi_thresh              = 1e-3;
+
+int max_iterations             = 50;
+int pin_every_n_steps          = 1000;
+
+bool use_continuous_stencil    = 0;
+bool use_one_sided_derivatives = 0;
+bool use_points_on_interface   = 1;
+bool update_c0_robin           = 1;
+bool use_superconvergent_robin = 1;
+bool zero_negative_velocity    = 0;
+
+// not implemented yet
+bool use_superconvergent_jump  = false;
+
+// output parameters
+int save_every_n_iteration = 1;
+bool save_velocity         = 1;
+bool save_vtk              = 1;
+bool save_history          = 1;
+bool save_dendrites        = 1;
+
+double dendrite_cut_off_fraction = 0.25;
+double dendrite_min_length       = 0.05;
+
+using namespace std;
+
+// problem parameters
+bool concentration_neumann = 1;
+int max_total_iterations   = INT_MAX;
+double time_limit          = DBL_MAX;
+double termination_length  = 0.9;
+double init_perturb        = 0.001;
+
 int alloy_type = 2;
 
 //double box_size = 4e-2;     //equivalent width (in x) of the box in cm - for plane convergence, 5e-3
-double box_size = 2e-1;     //equivalent width (in x) of the box in cm - for plane convergence, 5e-3
+double box_size = 1e-1;     //equivalent width (in x) of the box in cm - for plane convergence, 5e-3
 double scaling = 1/box_size;
-
-double xmin = 0;
-double ymin = 0;
-double xmax = 1;
-double ymax = 1;
-#ifdef P4_TO_P8
-double zmin = 0;
-double zmax = 1;
-int n_xyz[] = {1, 1, 1};
-#else
-int n_xyz[] = {1, 1};
-#endif
 
 double rho;                  /* density                                    - kg.cm-3      */
 double heat_capacity;        /* c, heat capacity                           - J.kg-1.K-1   */
@@ -207,11 +208,11 @@ void set_alloy_parameters()
       latent_heat    = 2588.7;      /* J.cm-3      */
       thermal_conductivity =  1.3;/* W.cm-1.K-1  */
       lambda               = thermal_conductivity/(rho*heat_capacity); /* cm2.s-1  thermal diffusivity */
-      eps_c          = 2.7207e-5;
-      eps_v          = 2.27e-2;
+      eps_c          = 0*2.7207e-5;
+      eps_v          = 0*2.27e-2;
       eps_anisotropy = 0.025;
 
-      Dl0 = 1e-5;      /* cm2.s-1 - concentration diffusion coefficient       */
+      Dl0 = 5e-5;      /* cm2.s-1 - concentration diffusion coefficient       */
       ml0 =-874;       /* K / wt frac. - liquidous slope */
       c00 = 0.107;     /* at frac.    */
       kp0 = 0.848;     /* partition coefficient */
@@ -256,7 +257,6 @@ void set_alloy_parameters()
 
 
 #ifdef P4_TO_P8
-
 struct plan_t : CF_3{
   double operator()(double x, double y, double z) const {
     if     (direction=='x') return -(x - 0.1);
@@ -264,7 +264,6 @@ struct plan_t : CF_3{
     else                    return -(z - 0.1);
   }
 } LS;
-
 
 class WallBCTypeTemperature : public WallBC3D
 {
@@ -399,7 +398,7 @@ public:
 struct plan_t : CF_2{
   double operator()(double x, double y) const {
     if(direction=='x') return -(x - 0.1);
-    else               return -(y - 0.1);
+    else               return -(y - 0.1) + 0.0*sin(10*PI*x);
   }
 } LS;
 
@@ -564,7 +563,7 @@ public:
   double operator()(double nx, double ny) const
   {
     double theta = atan2(ny, nx);
-    return eps_c*(1.-15.*eps_anisotropy*cos(4.*theta));
+    return eps_c*(1.-15.*eps_anisotropy*cos(4.*(theta)));
   }
 } eps_c_cf;
 
@@ -574,7 +573,7 @@ public:
   double operator()(double nx, double ny) const
   {
     double theta = atan2(ny, nx);
-    return eps_v*(1.-15.*eps_anisotropy*cos(4.*theta));
+    return eps_v*(1.-15.*eps_anisotropy*cos(4.*(theta)));
   }
 } eps_v_cf;
 #endif
@@ -607,81 +606,81 @@ int main (int argc, char* argv[])
 
   cmdParser cmd;
 
-  cmd.add_option("xmin", "xmin");
-  cmd.add_option("xmax", "xmax");
-  cmd.add_option("ymin", "ymin");
-  cmd.add_option("ymax", "ymax");
+  for (short i = 0; i < 2; ++i)
+  {
+    // grid parameters
+    ADD_OPTION(i, lmin, "min level of the tree");
+    ADD_OPTION(i, lmax, "max level of the tree");
+    ADD_OPTION(i, lip,  "Lipschitz constant");
+
+    ADD_OPTION(i, direction, "direction of the crystal growth x/y");
+
+    ADD_OPTION(i, nx, "number of blox in x-dimension");
+    ADD_OPTION(i, ny, "number of blox in y-dimension");
 #ifdef P4_TO_P8
-  cmd.add_option("zmin", "zmin");
-  cmd.add_option("zmax", "zmax");
+    ADD_OPTION(i, nz, "number of blox in z-dimension");
 #endif
 
-  cmd.add_option("lmin", "min level of the tree");
-  cmd.add_option("lmax", "max level of the tree");
-
-  cmd.add_option("nx", "number of blox in x-dimension");
-  cmd.add_option("ny", "number of blox in y-dimension");
+    ADD_OPTION(i, px, "periodicity in x-dimension 0/1");
+    ADD_OPTION(i, py, "periodicity in y-dimension 0/1");
 #ifdef P4_TO_P8
-  cmd.add_option("nz", "number of blox in z-dimension");
+    ADD_OPTION(i, pz, "periodicity in z-dimension 0/1");
 #endif
 
-  cmd.add_option("px", "periodicity in x-dimension 0/1");
-  cmd.add_option("py", "periodicity in y-dimension 0/1");
+    ADD_OPTION(i, xmin, "xmin"); ADD_OPTION(i, xmax, "xmax");
+    ADD_OPTION(i, ymin, "ymin"); ADD_OPTION(i, ymax, "ymax");
 #ifdef P4_TO_P8
-  cmd.add_option("pz", "periodicity in z-dimension 0/1");
+    ADD_OPTION(i, zmin, "zmin"); ADD_OPTION(i, zmax, "zmax");
 #endif
-  cmd.add_option("save_vtk", "1 to save vtu files, 0 otherwise");
-  cmd.add_option("save_velo", "1 to save velocity of the interface, 0 otherwise");
-  cmd.add_option("save_every_n", "save vtk every n iteration");
-  cmd.add_option("write_stats", "write the statistics about the p4est");
-  cmd.add_option("tf", "final time");
-  cmd.add_option("L", "set latent heat");
-  cmd.add_option("G", "set heat gradient");
-  cmd.add_option("V", "set velocity");
-  cmd.add_option("box_size", "set box_size");
-  cmd.add_option("alloy", "choose the type of alloy. Default is 0.\n  0 - NiCuCu\n  1 - NiAlTa");
-  cmd.add_option("direction", "direction of the crystal growth x/y");
-  cmd.add_option("Dl0", "set the concentration diffusion coefficient in the liquid phase");
-  cmd.add_option("Dl1", "set the concentration diffusion coefficient in the liquid phase");
-  cmd.add_option("eps_c", "set the curvature undercooling coefficient");
-  cmd.add_option("eps_v", "set the kinetic undercooling coefficient");
 
-  cmd.add_option("bc_tolerance", "error tolerance for internal iterations");
-  cmd.add_option("termination_length", "defines when a run will be stopped (fraction of box length, from 0 to 1)");
-  cmd.add_option("lip", "set the lipschitz constant");
-  cmd.add_option("cfl_number", "cfl_number");
-  cmd.add_option("phi_thresh", "phi_thresh");
-  cmd.add_option("zero_negative_velocity", "zero_negative_velocity");
-  cmd.add_option("max_iterations", "max_iterations");
-  cmd.add_option("pin_every_n_steps", "pin_every_n_steps");
+    // solver parameters
+    ADD_OPTION(i, cfl_number,   "cfl_number");
+    ADD_OPTION(i, bc_tolerance, "error tolerance for internal iterations");
+    ADD_OPTION(i, phi_thresh,   "phi_thresh");
 
-  cmd.add_option("use_continuous_stencil"   , "use_continuous_stencil"   );
-  cmd.add_option("use_one_sided_derivatives", "use_one_sided_derivatives");
-  cmd.add_option("use_points_on_interface"  , "use_points_on_interface"  );
-  cmd.add_option("update_c0_robin"          , "update_c0_robin"          );
-  cmd.add_option("use_superconvergent_robin", "use_superconvergent_robin");
-  cmd.add_option("use_superconvergent_jump" , "use_superconvergent_jump" );
+    ADD_OPTION(i, max_iterations,    "max_iterations");
+    ADD_OPTION(i, pin_every_n_steps, "pin_every_n_steps");
 
-  cmd.add_option("init_perturb", "init_perturb");
+    ADD_OPTION(i, use_continuous_stencil,    "use_continuous_stencil");
+    ADD_OPTION(i, use_one_sided_derivatives, "use_one_sided_derivatives");
+    ADD_OPTION(i, use_points_on_interface,   "use_points_on_interface");
+    ADD_OPTION(i, update_c0_robin,           "update_c0_robin");
+    ADD_OPTION(i, use_superconvergent_robin, "use_superconvergent_robin");
+    ADD_OPTION(i, use_superconvergent_jump,  "use_superconvergent_jump");
+    ADD_OPTION(i, zero_negative_velocity,    "zero_negative_velocity");
 
-  cmd.add_option("concentration_neumann", "concentration_neumann");
+    // output parameters
+    ADD_OPTION(i, save_every_n_iteration, "save vtk every n iteration");
+    ADD_OPTION(i, save_velocity,          "1 to save velocity of the interface, 0 otherwise");
+    ADD_OPTION(i, save_vtk,               "1 to save vtu files, 0 otherwise");
+    ADD_OPTION(i, save_history,           "save_history");
+    ADD_OPTION(i, save_dendrites,         "save_dendrites");
 
-  cmd.parse(argc, argv);
+    ADD_OPTION(i, dendrite_cut_off_fraction, "dendrite_cut_off_fraction");
+    ADD_OPTION(i, dendrite_min_length,       "dendrite_min_length");
 
-  alloy_type = cmd.get("alloy", alloy_type);
+    // problem parameters
+    ADD_OPTION(i, concentration_neumann, "concentration_neumann");
+    ADD_OPTION(i, max_total_iterations,  "max_total_iterations");
+    ADD_OPTION(i, time_limit,            "final time");
+    ADD_OPTION(i, termination_length,    "defines when a run will be stopped (fraction of box length, from 0 to 1)");
+    ADD_OPTION(i, init_perturb,          "init_perturb");
+
+    ADD_OPTION(i, box_size,    "set box_size");
+    ADD_OPTION(i, alloy_type,  "choose the type of alloy. Default is 0.\n  0 - NiCuCu\n  1 - NiAlTa");
+    ADD_OPTION(i, latent_heat, "latent heat");
+    ADD_OPTION(i, G,           "heat gradient");
+    ADD_OPTION(i, V,           "cooling velocity");
+    ADD_OPTION(i, Dl0,         "solute no. 1 diffusivity in liquid");
+    ADD_OPTION(i, Dl1,         "solute no. 2 diffusivity in liquid");
+
+    ADD_OPTION(i, eps_c, "curvature undercooling coefficient");
+    ADD_OPTION(i, eps_v, "kinetic undercooling coefficient");
+
+    if (i == 0) cmd.parse(argc, argv);
+  }
+
   set_alloy_parameters();
-
-  xmin = cmd.get("xmin", xmin);
-  xmax = cmd.get("xmax", xmax);
-  ymin = cmd.get("ymin", ymin);
-  ymax = cmd.get("ymax", ymax);
-#ifdef P4_TO_P8
-  zmin = cmd.get("zmin", zmin);
-  zmax = cmd.get("zmax", zmax);
-#endif
-
-  save_vtk = cmd.get("save_vtk", save_vtk);
-  save_velocity = cmd.get("save_velo", save_velocity);
 
   int periodic[P4EST_DIM];
   periodic[0] = cmd.get("px", (direction=='y' || direction=='z') ? 1 : 0);
@@ -690,16 +689,11 @@ int main (int argc, char* argv[])
   periodic[2] = cmd.get("pz", (direction=='x' || direction=='y') ? 1 : 0);
 #endif
 
-  n_xyz[0] = cmd.get("nx", n_xyz[0]);
-  n_xyz[1] = cmd.get("ny", n_xyz[1]);
+  int n_xyz[P4EST_DIM];
+  n_xyz[0] = nx;
+  n_xyz[1] = ny;
 #ifdef P4_TO_P8
-  n_xyz[2] = cmd.get("nz", n_xyz[2]);
-#endif
-
-#ifdef P4_TO_P8
-  direction = cmd.get("direction", 'z');
-#else
-  direction = cmd.get("direction", 'y');
+  n_xyz[2] = nz;
 #endif
 
   if(0)
@@ -714,34 +708,6 @@ int main (int argc, char* argv[])
   }
 
   PetscErrorCode ierr;
-
-  save_every_n_iteration = cmd.get("save_every_n", save_every_n_iteration);
-  latent_heat = cmd.get("L", latent_heat);
-  G = cmd.get("G", G);
-  V = cmd.get("V", V);
-  box_size = cmd.get("box_size", box_size);
-  Dl0 = cmd.get("Dl0", Dl0);
-  Dl1 = cmd.get("Dl1", Dl1);
-  eps_c = cmd.get("eps_c", eps_c);
-  eps_v = cmd.get("eps_v", eps_v);
-
-  termination_length        = cmd.get("termination_length", termination_length    );
-  cfl_number                = cmd.get("cfl_number", cfl_number            );
-  phi_thresh                = cmd.get("phi_thresh", phi_thresh            );
-  zero_negative_velocity    = cmd.get("zero_negative_velocity", zero_negative_velocity);
-  max_iterations            = cmd.get("max_iterations", max_iterations        );
-  pin_every_n_steps         = cmd.get("pin_every_n_steps", pin_every_n_steps     );
-  bc_tolerance              = cmd.get("bc_tolerance", bc_tolerance          );
-
-  use_continuous_stencil    = cmd.get("use_continuous_stencil", use_continuous_stencil   );
-  use_one_sided_derivatives = cmd.get("use_one_sided_derivatives", use_one_sided_derivatives);
-  use_points_on_interface   = cmd.get("use_points_on_interface", use_points_on_interface  );
-  update_c0_robin           = cmd.get("update_c0_robin", update_c0_robin          );
-  use_superconvergent_robin = cmd.get("use_superconvergent_robin", use_superconvergent_robin);
-  use_superconvergent_jump  = cmd.get("use_superconvergent_jump", use_superconvergent_jump );
-
-  concentration_neumann     = cmd.get("concentration_neumann", concentration_neumann);
-  init_perturb              = cmd.get("init_perturb", init_perturb);
 
   double latent_heat_orig = latent_heat;
   double G_orig = G;
@@ -774,10 +740,6 @@ int main (int argc, char* argv[])
 #endif
   p4est_connectivity_t *connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick, periodic);
   p4est_t *p4est = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
-
-  lmin = cmd.get("lmin", lmin);
-  lmax = cmd.get("lmax", lmax);
-  lip = cmd.get("lip", lip);
 
   splitting_criteria_cf_t data(lmin, lmax, &LS, lip);
 
@@ -981,6 +943,7 @@ int main (int argc, char* argv[])
     // save field data
     if(save_vtk && iteration%save_every_n_iteration == 0)
     {
+      bas.count_dendrites(iteration/save_every_n_iteration);
       bas.save_VTK(iteration/save_every_n_iteration);
       bas.save_VTK_solid(iteration/save_every_n_iteration);
     }

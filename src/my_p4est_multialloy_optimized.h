@@ -14,6 +14,7 @@
 #include <src/my_p8est_node_neighbors.h>
 #include <src/my_p8est_poisson_nodes_multialloy.h>
 #include <src/my_p8est_interpolation_nodes.h>
+#include <src/my_p8est_macros.h>
 #else
 #include <src/my_p4est_tools.h>
 #include <p4est.h>
@@ -22,6 +23,7 @@
 #include <src/my_p4est_node_neighbors.h>
 #include <src/my_p4est_poisson_nodes_multialloy.h>
 #include <src/my_p4est_interpolation_nodes.h>
+#include <src/my_p4est_macros.h>
 #endif
 
 
@@ -134,6 +136,9 @@ private:
   Vec history_phi_;
   Vec history_phi_nm1_;
 
+  Vec history_kappa_;
+  Vec history_velo_;
+
   Vec phi_smooth_;
 
 //#ifdef P4_TO_P8
@@ -218,6 +223,15 @@ private:
 
   interpolation_method interpolation_between_grids_;
 
+  int num_dendrites_;
+  double dendrite_cut_off_fraction_;
+  double dendrite_min_length_;
+
+  Vec dendrite_number_;
+  Vec dendrite_tip_;
+
+  unsigned short coarsen_for_poisson;
+
 public:
 
   my_p4est_multialloy_t(my_p4est_node_neighbors_t *ngbd);
@@ -263,6 +277,7 @@ public:
   inline void set_phi(Vec phi)
   {
     this->phi_ = phi;
+    compute_geometric_properties();
 
     ierr = VecCreateGhostNodes(history_p4est_, history_nodes_, &history_phi_); CHKERRXX(ierr);
     ierr = VecCreateGhostNodes(history_p4est_, history_nodes_, &history_phi_nm1_); CHKERRXX(ierr);
@@ -281,7 +296,28 @@ public:
 
     copy_ghosted_vec(history_phi_, history_phi_nm1_);
 
-    compute_geometric_properties();
+    ierr = VecDuplicate(history_phi_, &history_kappa_); CHKERRXX(ierr);
+
+    interp.set_input(kappa_, interpolation_between_grids_);
+    interp.interpolate(history_kappa_);
+
+    if(dendrite_number_ != NULL) { ierr = VecDestroy(dendrite_number_); CHKERRXX(ierr); }
+    if(dendrite_tip_    != NULL) { ierr = VecDestroy(dendrite_tip_);    CHKERRXX(ierr); }
+
+    ierr = VecDuplicate(phi_, &dendrite_number_); CHKERRXX(ierr);
+    ierr = VecDuplicate(phi_, &dendrite_tip_);    CHKERRXX(ierr);
+
+    double *dendrite_number_p; ierr = VecGetArray(dendrite_number_, &dendrite_number_p); CHKERRXX(ierr);
+    double *dendrite_tip_p;    ierr = VecGetArray(dendrite_tip_,    &dendrite_tip_p);    CHKERRXX(ierr);
+
+    foreach_node(n, nodes_)
+    {
+      dendrite_number_p[n] = -1;
+      dendrite_tip_p[n]    = -1;
+    }
+
+    ierr = VecRestoreArray(dendrite_number_, &dendrite_number_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(dendrite_tip_,    &dendrite_tip_p);    CHKERRXX(ierr);
   }
 
 #ifdef P4_TO_P8
@@ -453,6 +489,10 @@ public:
   inline Vec get_ts() { return ts_n_; }
   inline Vec get_c0() { return c0_np1_; }
   inline Vec get_c1() { return c1_np1_; }
+
+  void count_dendrites(int iter);
+
+  void sample_along_line(const double xyz0[], const double xyz1[], const unsigned int nb_points, Vec data, std::vector<double> out);
 };
 
 

@@ -816,3 +816,15 @@ coarsen_inside_levelset_cf (p4est_t *p4est, p4est_topidx_t which_tree, p4est_qua
   }
 }
 
+p4est_bool_t
+coarsen_down_to_lmax (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad)
+{
+  (void) which_tree;
+
+  splitting_criteria_t *data = (splitting_criteria_t*)p4est->user_pointer;
+
+  if (quad->level > data->max_lvl)
+    return P4EST_TRUE;
+  else
+    return P4EST_FALSE;
+}

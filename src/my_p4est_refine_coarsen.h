@@ -255,4 +255,7 @@ refine_inside_levelset_cf (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quad
 p4est_bool_t
 coarsen_inside_levelset_cf (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **quad);
 
+p4est_bool_t
+coarsen_down_to_lmax (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad);
+
 #endif // REFINE_COARSEN_H
