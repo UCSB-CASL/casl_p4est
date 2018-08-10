@@ -15,6 +15,7 @@
 #include <src/my_p8est_poisson_nodes_multialloy.h>
 #include <src/my_p8est_interpolation_nodes.h>
 #include <src/my_p8est_macros.h>
+#include <src/my_p8est_level_set.h>
 #else
 #include <src/my_p4est_tools.h>
 #include <p4est.h>
@@ -24,6 +25,7 @@
 #include <src/my_p4est_poisson_nodes_multialloy.h>
 #include <src/my_p4est_interpolation_nodes.h>
 #include <src/my_p4est_macros.h>
+#include <src/my_p4est_level_set.h>
 #endif
 
 
@@ -98,6 +100,13 @@ private:
   p4est_nodes_t               *history_nodes_;
   my_p4est_hierarchy_t        *history_hierarchy_;
   my_p4est_node_neighbors_t   *history_ngbd_;
+
+  /* a finer grid for interface tracking*/
+  p4est_t                     *fine_p4est_;
+  p4est_ghost_t               *fine_ghost_;
+  p4est_nodes_t               *fine_nodes_;
+  my_p4est_hierarchy_t        *fine_hierarchy_;
+  my_p4est_node_neighbors_t   *fine_ngbd_;
 
   double dxyz_[P4EST_DIM];
   double dxyz_max_, dxyz_min_;
@@ -232,6 +241,19 @@ private:
 
   unsigned short coarsen_for_poisson;
 
+  unsigned short mesh_refinement_;
+
+  Vec fine_phi_, fine_phi_dd_[P4EST_DIM];
+  Vec fine_normal_[P4EST_DIM];
+  Vec fine_kappa_;
+
+  Vec fine_v_interface_n_  [P4EST_DIM];
+  Vec fine_v_interface_np1_[P4EST_DIM];
+  Vec fine_normal_velocity_n_;
+  Vec fine_normal_velocity_np1_;
+
+  splitting_criteria_t fine_sp_;
+
 public:
 
   my_p4est_multialloy_t(my_p4est_node_neighbors_t *ngbd);
@@ -277,8 +299,74 @@ public:
   inline void set_phi(Vec phi)
   {
     this->phi_ = phi;
+
+    // initialize fine grid
+    if (mesh_refinement_ > 0)
+    {
+      fine_p4est_ = p4est_copy(p4est_, P4EST_FALSE);
+      fine_ghost_ = my_p4est_ghost_new(fine_p4est_, P4EST_CONNECT_FULL);
+      fine_nodes_ = my_p4est_nodes_new(fine_p4est_, fine_ghost_);
+
+      splitting_criteria_t* sp_old = (splitting_criteria_t*)p4est_->user_pointer;
+
+      fine_sp_.min_lvl = sp_old->min_lvl;
+//      fine_sp_.min_lvl = 0;
+      fine_sp_.max_lvl = sp_old->max_lvl + mesh_refinement_;
+      fine_sp_.lip     = sp_old->lip;
+//      fine_sp_.lip     = 1.2;
+
+      ierr = VecCreateGhostNodes(fine_p4est_, fine_nodes_, &fine_phi_); CHKERRXX(ierr);
+
+      bool is_grid_changing = true;
+
+      while (is_grid_changing)
+      {
+        double* phi_p;
+        ierr = VecGetArray(fine_phi_, &phi_p); CHKERRXX(ierr);
+
+        my_p4est_interpolation_nodes_t interp(ngbd_);
+
+        double xyz[P4EST_DIM];
+        foreach_node(n, fine_nodes_)
+        {
+          node_xyz_fr_n(n, fine_p4est_, fine_nodes_, xyz);
+          interp.add_point(n, xyz);
+        }
+
+        interp.set_input(phi_, interpolation_between_grids_);
+        interp.interpolate(fine_phi_);
+
+        splitting_criteria_tag_t sp(fine_sp_.min_lvl, fine_sp_.max_lvl, fine_sp_.lip);
+        is_grid_changing = sp.refine_and_coarsen(fine_p4est_, fine_nodes_, phi_p);
+
+        ierr = VecRestoreArray(fine_phi_, &phi_p); CHKERRXX(ierr);
+
+        if (is_grid_changing)
+        {
+//          my_p4est_partition(fine_p4est_, P4EST_TRUE, NULL);
+
+          // reset nodes, ghost, and phi
+          p4est_ghost_destroy(fine_ghost_); fine_ghost_ = my_p4est_ghost_new(fine_p4est_, P4EST_CONNECT_FULL);
+          p4est_nodes_destroy(fine_nodes_); fine_nodes_ = my_p4est_nodes_new(fine_p4est_, fine_ghost_);
+
+          ierr = VecDestroy(fine_phi_); CHKERRXX(ierr);
+          ierr = VecCreateGhostNodes(fine_p4est_, fine_nodes_, &fine_phi_); CHKERRXX(ierr);
+        }
+      }
+
+      fine_p4est_->user_pointer = (void*) &fine_sp_;
+
+      fine_hierarchy_ = new my_p4est_hierarchy_t(fine_p4est_, fine_ghost_, brick_);
+      fine_ngbd_      = new my_p4est_node_neighbors_t(fine_hierarchy_, fine_nodes_);
+      fine_ngbd_->init_neighbors();
+
+      my_p4est_level_set_t ls(fine_ngbd_);
+      ls.reinitialize_1st_order_time_2nd_order_space(fine_phi_);
+    }
+
     compute_geometric_properties();
 
+    // initialize phi on solid mesh
     ierr = VecCreateGhostNodes(history_p4est_, history_nodes_, &history_phi_); CHKERRXX(ierr);
     ierr = VecCreateGhostNodes(history_p4est_, history_nodes_, &history_phi_nm1_); CHKERRXX(ierr);
 
@@ -301,6 +389,7 @@ public:
     interp.set_input(kappa_, interpolation_between_grids_);
     interp.interpolate(history_kappa_);
 
+    // initialize vecs to track dendrites
     if(dendrite_number_ != NULL) { ierr = VecDestroy(dendrite_number_); CHKERRXX(ierr); }
     if(dendrite_tip_    != NULL) { ierr = VecDestroy(dendrite_tip_);    CHKERRXX(ierr); }
 
@@ -440,6 +529,7 @@ public:
   int  one_step();
   void save_VTK(int iter);
   void save_VTK_solid(int iter);
+  void save_VTK_fine(int iter);
 
   void compute_smoothed_phi();
 

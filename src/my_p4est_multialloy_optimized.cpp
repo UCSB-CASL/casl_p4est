@@ -143,6 +143,27 @@ my_p4est_multialloy_t::my_p4est_multialloy_t(my_p4est_node_neighbors_t *ngbd)
   dendrite_min_length_ = .05;
 
   coarsen_for_poisson = 0;
+
+  fine_p4est_     = NULL;
+  fine_ghost_     = NULL;
+  fine_nodes_     = NULL;
+  fine_hierarchy_ = NULL;
+  fine_ngbd_      = NULL;
+
+  fine_phi_ = NULL;
+  fine_kappa_ = NULL;
+  fine_normal_velocity_n_   = NULL;
+  fine_normal_velocity_np1_ = NULL;
+
+  foreach_dimension(dim)
+  {
+    fine_v_interface_n_  [dim] = NULL;
+    fine_v_interface_np1_[dim] = NULL;
+    fine_phi_dd_         [dim] = NULL;
+    fine_normal_         [dim] = NULL;
+  }
+
+  mesh_refinement_ = 2;
 }
 
 
@@ -166,11 +187,11 @@ my_p4est_multialloy_t::~my_p4est_multialloy_t()
   if(c0s_ !=NULL) { ierr = VecDestroy(c0s_); CHKERRXX(ierr); }
   if(c1s_ !=NULL) { ierr = VecDestroy(c1s_); CHKERRXX(ierr); }
 
-  if(history_kappa_ !=NULL) { ierr = VecDestroy(history_kappa_); CHKERRXX(ierr); }
-  if(history_velo_  !=NULL) { ierr = VecDestroy(history_velo_);  CHKERRXX(ierr); }
-
   if(normal_velocity_n_   !=NULL) { ierr = VecDestroy(normal_velocity_n_);   CHKERRXX(ierr); }
   if(normal_velocity_np1_ !=NULL) { ierr = VecDestroy(normal_velocity_np1_); CHKERRXX(ierr); }
+
+  if(fine_normal_velocity_n_   !=NULL) { ierr = VecDestroy(fine_normal_velocity_n_);   CHKERRXX(ierr); }
+  if(fine_normal_velocity_np1_ !=NULL) { ierr = VecDestroy(fine_normal_velocity_np1_); CHKERRXX(ierr); }
 
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
@@ -178,13 +199,24 @@ my_p4est_multialloy_t::~my_p4est_multialloy_t()
     if(v_interface_np1_[dir] != NULL) { ierr = VecDestroy(v_interface_np1_[dir]); CHKERRXX(ierr); }
     if(normal_         [dir] != NULL) { ierr = VecDestroy(normal_         [dir]); CHKERRXX(ierr); }
     if(phi_dd_         [dir] != NULL) { ierr = VecDestroy(phi_dd_         [dir]); CHKERRXX(ierr); }
+
+    if(fine_v_interface_n_  [dir] != NULL) { ierr = VecDestroy(fine_v_interface_n_  [dir]); CHKERRXX(ierr); }
+    if(fine_v_interface_np1_[dir] != NULL) { ierr = VecDestroy(fine_v_interface_np1_[dir]); CHKERRXX(ierr); }
+    if(fine_normal_         [dir] != NULL) { ierr = VecDestroy(fine_normal_         [dir]); CHKERRXX(ierr); }
+    if(fine_phi_dd_         [dir] != NULL) { ierr = VecDestroy(fine_phi_dd_         [dir]); CHKERRXX(ierr); }
   }
 
   if(phi_  !=NULL) { ierr = VecDestroy(phi_);   CHKERRXX(ierr); }
   if(kappa_!=NULL) { ierr = VecDestroy(kappa_); CHKERRXX(ierr); }
 
+  if(fine_phi_  !=NULL) { ierr = VecDestroy(fine_phi_);   CHKERRXX(ierr); }
+  if(fine_kappa_!=NULL) { ierr = VecDestroy(fine_kappa_); CHKERRXX(ierr); }
+
   if(history_phi_     !=NULL) { ierr = VecDestroy(history_phi_);     CHKERRXX(ierr); }
   if(history_phi_nm1_ !=NULL) { ierr = VecDestroy(history_phi_nm1_); CHKERRXX(ierr); }
+
+  if(history_kappa_ !=NULL) { ierr = VecDestroy(history_kappa_); CHKERRXX(ierr); }
+  if(history_velo_  !=NULL) { ierr = VecDestroy(history_velo_);  CHKERRXX(ierr); }
 //#ifdef P4_TO_P8
 //  if(theta_xz_!=NULL) { ierr = VecDestroy(theta_xz_); CHKERRXX(ierr); }
 //  if(theta_yz_!=NULL) { ierr = VecDestroy(theta_yz_); CHKERRXX(ierr); }
@@ -202,15 +234,21 @@ my_p4est_multialloy_t::~my_p4est_multialloy_t()
   /* destroy the p4est and its connectivity structure */
   delete ngbd_;
   delete hierarchy_;
-  p4est_nodes_destroy (nodes_);
+  p4est_nodes_destroy(nodes_);
   p4est_ghost_destroy(ghost_);
-  p4est_destroy (p4est_);
+  p4est_destroy      (p4est_);
 
   delete history_ngbd_;
   delete history_hierarchy_;
-  p4est_nodes_destroy (history_nodes_);
+  p4est_nodes_destroy(history_nodes_);
   p4est_ghost_destroy(history_ghost_);
-  p4est_destroy (history_p4est_);
+  p4est_destroy      (history_p4est_);
+
+  delete fine_ngbd_;
+  delete fine_hierarchy_;
+  p4est_nodes_destroy(fine_nodes_);
+  p4est_ghost_destroy(fine_ghost_);
+  p4est_destroy      (fine_p4est_);
 
   my_p4est_brick_destroy(connectivity_, brick_);
 }
@@ -361,6 +399,55 @@ void my_p4est_multialloy_t::compute_geometric_properties()
 //  theta_ = theta_tmp;
 //#endif
 
+  if (mesh_refinement_ > 0)
+  {
+    /* second order derivatives */
+    foreach_dimension(dim)
+    {
+      if (fine_phi_dd_[dim] != NULL) { ierr = VecDestroy(fine_phi_dd_[dim]); CHKERRXX(ierr); }
+      ierr = VecCreateGhostNodes(fine_p4est_, fine_nodes_, &fine_phi_dd_[dim]); CHKERRXX(ierr);
+    }
+    fine_ngbd_->second_derivatives_central(fine_phi_, fine_phi_dd_);
+
+    /* normal and curvature */
+    foreach_dimension(dim)
+    {
+      if (fine_normal_[dim] != NULL) { ierr = VecDestroy(fine_normal_[dim]); CHKERRXX(ierr); }
+      ierr = VecCreateGhostNodes(fine_p4est_, fine_nodes_, &fine_normal_[dim]); CHKERRXX(ierr);
+    }
+
+    if (fine_kappa_ != NULL) { ierr = VecDestroy(fine_kappa_); CHKERRXX(ierr); }
+    ierr = VecCreateGhostNodes(fine_p4est_, fine_nodes_, &fine_kappa_); CHKERRXX(ierr);
+
+    compute_normals_and_mean_curvature(*fine_ngbd_, fine_phi_, fine_normal_, fine_kappa_);
+
+    vec_and_ptr_t kappa_tmp;
+
+    ierr = VecDuplicate(fine_kappa_, &kappa_tmp.vec); CHKERRXX(ierr);
+
+    my_p4est_level_set_t ls(fine_ngbd_);
+    ls.set_use_one_sided_derivaties(use_one_sided_derivatives_);
+    ls.set_interpolation_on_interface(quadratic_non_oscillatory_continuous_v2);
+
+    ls.extend_from_interface_to_whole_domain_TVD(fine_phi_, fine_kappa_, kappa_tmp.vec);
+
+  //  kappa_tmp.get_array();
+
+  //  double kappa_max = 1./dxyz_min_;
+
+  //  foreach_node(n, nodes_)
+  //  {
+  //    if      (kappa_tmp.ptr[n] > kappa_max) kappa_tmp.ptr[n] = kappa_max;
+  //    else if (kappa_tmp.ptr[n] <-kappa_max) kappa_tmp.ptr[n] =-kappa_max;
+  //  }
+
+  //  kappa_tmp.restore_array();
+
+    ierr = VecDestroy(fine_kappa_); CHKERRXX(ierr);
+
+    fine_kappa_ = kappa_tmp.vec;
+  }
+
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_compute_geometric_properties, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
@@ -484,6 +571,161 @@ void my_p4est_multialloy_t::compute_velocity()
 //  ls.extend_from_interface_to_whole_domain_TVD(phi_, phi_smooth_, vn, normal_velocity_np1_);
   ierr = VecDestroy(vn); CHKERRXX(ierr);
 
+  if (mesh_refinement_ > 0)
+  {
+    my_p4est_interpolation_nodes_t interp(ngbd_);
+
+    double xyz[P4EST_DIM];
+    foreach_node(n, fine_nodes_)
+    {
+      node_xyz_fr_n(n, fine_p4est_, fine_nodes_, xyz);
+      interp.add_point(n, xyz);
+    }
+
+    if (fine_normal_velocity_np1_ != NULL) { ierr = VecDestroy(fine_normal_velocity_np1_); CHKERRXX(ierr); }
+    ierr = VecDuplicate(fine_phi_, &fine_normal_velocity_np1_); CHKERRXX(ierr);
+    interp.set_input(normal_velocity_np1_, interpolation_between_grids_);
+    interp.interpolate(fine_normal_velocity_np1_);
+
+    foreach_dimension(dim)
+    {
+      if (fine_v_interface_np1_[dim] != NULL) { ierr = VecDestroy(fine_v_interface_np1_[dim]); CHKERRXX(ierr); }
+      ierr = VecDuplicate(fine_phi_dd_[dim], &fine_v_interface_np1_[dim]); CHKERRXX(ierr);
+      interp.set_input(v_interface_np1_[dim], interpolation_between_grids_);
+      interp.interpolate(fine_v_interface_np1_[dim]);
+    }
+  }
+
+//    if (mesh_refinement_ > 0)
+  if (0)
+  {
+    Vec fine_c0_np1;
+    ierr = VecDuplicate(fine_phi_, &fine_c0_np1); CHKERRXX(ierr);
+
+    my_p4est_interpolation_nodes_t interp(ngbd_);
+
+    double xyz[P4EST_DIM];
+    foreach_node(n, fine_nodes_)
+    {
+      node_xyz_fr_n(n, fine_p4est_, fine_nodes_, xyz);
+      interp.add_point(n, xyz);
+    }
+
+    interp.set_input(c0_np1_, interpolation_between_grids_);
+    interp.interpolate(fine_c0_np1);
+
+    Vec c_interface; ierr = VecDuplicate(fine_phi_, &c_interface); CHKERRXX(ierr);
+    my_p4est_level_set_t ls(fine_ngbd_);
+    ls.set_use_one_sided_derivaties(use_one_sided_derivatives_);
+    ls.set_interpolation_on_interface(quadratic_non_oscillatory_continuous_v2);
+
+    ls.extend_from_interface_to_whole_domain_TVD(fine_phi_, fine_c0_np1, c_interface);
+
+    Vec v_gamma[P4EST_DIM];
+    double *v_gamma_p[P4EST_DIM];
+    for(int dir=0; dir<P4EST_DIM; ++dir)
+    {
+      ierr = VecDuplicate(fine_normal_[dir], &v_gamma[dir]); CHKERRXX(ierr);
+      ierr = VecGetArray(v_gamma[dir], &v_gamma_p[dir]); CHKERRXX(ierr);
+    }
+
+    Vec vn;
+    ierr = VecDuplicate(fine_phi_, &vn); CHKERRXX(ierr);
+
+    double *c0_np1_p, *c_interface_p;
+    ierr = VecGetArray(fine_c0_np1, &c0_np1_p); CHKERRXX(ierr);
+    ierr = VecGetArray(c_interface, &c_interface_p); CHKERRXX(ierr);
+
+    double *normal_p[P4EST_DIM];
+    for (short dim = 0; dim < P4EST_DIM; ++dim)
+    {
+      ierr = VecGetArray(fine_normal_[dim], &normal_p[dim]); CHKERRXX(ierr);
+    }
+
+    double *vn_p;
+    ierr = VecGetArray(vn, &vn_p); CHKERRXX(ierr);
+
+    quad_neighbor_nodes_of_node_t qnnn;
+    for(size_t i=0; i<fine_ngbd_->get_layer_size(); ++i)
+    {
+      p4est_locidx_t n = fine_ngbd_->get_layer_node(i);
+      qnnn = fine_ngbd_->get_neighbors(n);
+
+      node_xyz_fr_n(n, fine_p4est_, fine_nodes_, xyz);
+      double c0_flux_val = c0_flux_->value(xyz);
+
+      v_gamma_p[0][n] = (c0_flux_val*normal_p[0][n]-qnnn.dx_central(c0_np1_p))*Dl0_ / (1.-kp0_) / MAX(c_interface_p[n], 1e-7);
+      v_gamma_p[1][n] = (c0_flux_val*normal_p[1][n]-qnnn.dy_central(c0_np1_p))*Dl0_ / (1.-kp0_) / MAX(c_interface_p[n], 1e-7);
+  #ifdef P4_TO_P8
+      v_gamma_p[2][n] = (c0_flux_val*normal_p[2][n]-qnnn.dz_central(c0_np1_p))*Dl0_ / (1.-kp0_) / MAX(c_interface_p[n], 1e-7);
+      vn_p[n] = (v_gamma_p[0][n]*normal_p[0][n] + v_gamma_p[1][n]*normal_p[1][n] + v_gamma_p[2][n]*normal_p[2][n]);
+  #else
+      vn_p[n] = (v_gamma_p[0][n]*normal_p[0][n] + v_gamma_p[1][n]*normal_p[1][n]);
+  #endif
+    }
+
+    ierr = VecGhostUpdateBegin(vn, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    for(int dir=0; dir<P4EST_DIM; ++dir)
+    {
+      ierr = VecGhostUpdateBegin(v_gamma[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    }
+
+    for(size_t i=0; i<fine_ngbd_->get_local_size(); ++i)
+    {
+      p4est_locidx_t n = fine_ngbd_->get_local_node(i);
+      qnnn = fine_ngbd_->get_neighbors(n);
+
+      node_xyz_fr_n(n, fine_p4est_, fine_nodes_, xyz);
+      double c0_flux_val = c0_flux_->value(xyz);
+
+      v_gamma_p[0][n] = (c0_flux_val*normal_p[0][n]-qnnn.dx_central(c0_np1_p))*Dl0_ / (1.-kp0_) / MAX(c_interface_p[n], 1e-7);
+      v_gamma_p[1][n] = (c0_flux_val*normal_p[1][n]-qnnn.dy_central(c0_np1_p))*Dl0_ / (1.-kp0_) / MAX(c_interface_p[n], 1e-7);
+  #ifdef P4_TO_P8
+      v_gamma_p[2][n] = (c0_flux_val*normal_p[2][n]-qnnn.dz_central(c0_np1_p))*Dl0_ / (1.-kp0_) / MAX(c_interface_p[n], 1e-7);
+      vn_p[n] = (v_gamma_p[0][n]*normal_p[0][n] + v_gamma_p[1][n]*normal_p[1][n] + v_gamma_p[2][n]*normal_p[2][n]);
+  #else
+      vn_p[n] = (v_gamma_p[0][n]*normal_p[0][n] + v_gamma_p[1][n]*normal_p[1][n]);
+  #endif
+    }
+
+    ierr = VecGhostUpdateEnd(vn, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    for(int dir=0; dir<P4EST_DIM; ++dir)
+    {
+      ierr = VecGhostUpdateEnd(v_gamma[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    }
+
+    ierr = VecRestoreArray(vn, &vn_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(fine_c0_np1, &c0_np1_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(c_interface, &c_interface_p); CHKERRXX(ierr);
+
+    ierr = VecDestroy(c_interface); CHKERRXX(ierr);
+
+    for (short dim = 0; dim < P4EST_DIM; ++dim)
+    {
+      ierr = VecRestoreArray(fine_normal_[dim], &normal_p[dim]); CHKERRXX(ierr);
+    }
+
+    for(int dir=0; dir<P4EST_DIM; ++dir)
+    {
+      ierr = VecRestoreArray(v_gamma[dir], &v_gamma_p[dir]); CHKERRXX(ierr);
+
+      if (fine_v_interface_np1_[dir] != NULL) { ierr = VecDestroy(fine_v_interface_np1_[dir]); CHKERRXX(ierr); }
+      ierr = VecDuplicate(fine_phi_dd_[dir], &fine_v_interface_np1_[dir]); CHKERRXX(ierr);
+
+      ls.extend_from_interface_to_whole_domain_TVD(fine_phi_, v_gamma[dir], fine_v_interface_np1_[dir]);
+  //    ls.extend_from_interface_to_whole_domain_TVD(phi_, phi_smooth_, v_gamma[dir], v_interface_np1_[dir]);
+      ierr = VecDestroy(v_gamma[dir]); CHKERRXX(ierr);
+    }
+
+    if (fine_normal_velocity_np1_ != NULL) { ierr = VecDestroy(fine_normal_velocity_np1_); CHKERRXX(ierr); }
+    ierr = VecDuplicate(fine_phi_, &fine_normal_velocity_np1_); CHKERRXX(ierr);
+
+    ls.extend_from_interface_to_whole_domain_TVD(fine_phi_, vn, fine_normal_velocity_np1_);
+  //  ls.extend_from_interface_to_whole_domain_TVD(phi_, phi_smooth_, vn, normal_velocity_np1_);
+    ierr = VecDestroy(vn); CHKERRXX(ierr);
+    ierr = VecDestroy(fine_c0_np1); CHKERRXX(ierr);
+  }
+
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_compute_velocity, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
@@ -570,6 +812,29 @@ void my_p4est_multialloy_t::update_grid()
   ierr = PetscLogEventBegin(log_my_p4est_multialloy_update_grid, 0, 0, 0, 0); CHKERRXX(ierr);
 
   PetscPrintf(p4est_->mpicomm, "Updating grid... ");
+
+  if (mesh_refinement_ > 0)
+  {
+    p4est_t       *fine_p4est_np1 = p4est_copy(fine_p4est_, P4EST_FALSE);
+    p4est_ghost_t *fine_ghost_np1 = my_p4est_ghost_new(fine_p4est_np1, P4EST_CONNECT_FULL);
+    p4est_nodes_t *fine_nodes_np1 = my_p4est_nodes_new(fine_p4est_np1, fine_ghost_np1);
+
+    my_p4est_semi_lagrangian_t sl(&fine_p4est_np1, &fine_nodes_np1, &fine_ghost_np1, fine_ngbd_, fine_ngbd_);
+
+    sl.set_phi_interpolation(quadratic_non_oscillatory_continuous_v2);
+    sl.set_velo_interpolation(quadratic_non_oscillatory_continuous_v2);
+
+    sl.update_p4est(fine_v_interface_np1_, dt_n_, fine_phi_);
+
+    p4est_destroy(fine_p4est_);       fine_p4est_ = fine_p4est_np1;
+    p4est_ghost_destroy(fine_ghost_); fine_ghost_ = fine_ghost_np1;
+    p4est_nodes_destroy(fine_nodes_); fine_nodes_ = fine_nodes_np1;
+    fine_hierarchy_->update(fine_p4est_, fine_ghost_);
+    fine_ngbd_->update(fine_hierarchy_, fine_nodes_);
+
+    my_p4est_level_set_t ls(fine_ngbd_);
+    ls.reinitialize_1st_order_time_2nd_order_space(fine_phi_);
+  }
 
   // keep level-set function from previous time step
 //  Vec phi_nm1;
@@ -782,8 +1047,57 @@ void my_p4est_multialloy_t::update_grid()
 //  ls_new.extend_Over_Interface_TVD(phi_, tf_,  20, 1);
 //  invert_phi(nodes_, phi_);
 
+  my_p4est_interpolation_nodes_t interp_fine_to_coarse(fine_ngbd_);
+
+  foreach_node(n, nodes_)
+  {
+    node_xyz_fr_n(n, p4est_, nodes_, xyz);
+    interp_fine_to_coarse.add_point(n, xyz);
+  }
+
+  interp_fine_to_coarse.set_input(fine_phi_, interpolation_between_grids_);
+  interp_fine_to_coarse.interpolate(phi_);
+
+  my_p4est_interpolation_nodes_t interp_coarse_to_fine(ngbd_);
+
+  foreach_node(n, fine_nodes_)
+  {
+    node_xyz_fr_n(n, fine_p4est_, fine_nodes_, xyz);
+    interp_coarse_to_fine.add_point(n, xyz);
+  }
+
+  interp_coarse_to_fine.set_input(phi_, interpolation_between_grids_);
+  interp_coarse_to_fine.interpolate(fine_phi_);
+
+
+  my_p4est_level_set_t fine_ls(fine_ngbd_);
+  fine_ls.reinitialize_1st_order_time_2nd_order_space(fine_phi_);
+
   /* second derivatives, normals, curvature, angles */
   compute_geometric_properties();
+
+//  my_p4est_interpolation_nodes_t interp_fine_to_coarse(fine_ngbd_);
+
+//  foreach_node(n, nodes_)
+//  {
+//    node_xyz_fr_n(n, p4est_, nodes_, xyz);
+//    interp_fine_to_coarse.add_point(n, xyz);
+//  }
+
+//  interp_fine_to_coarse.set_input(fine_phi_, interpolation_between_grids_);
+//  interp_fine_to_coarse.interpolate(phi_);
+
+//  interp_fine_to_coarse.set_input(fine_kappa_, interpolation_between_grids_);
+//  interp_fine_to_coarse.interpolate(kappa_);
+
+//  foreach_dimension(dim)
+//  {
+//    interp_fine_to_coarse.set_input(fine_phi_dd_[dim], interpolation_between_grids_);
+//    interp_fine_to_coarse.interpolate(phi_dd_[dim]);
+
+//    interp_fine_to_coarse.set_input(fine_normal_[dim], interpolation_between_grids_);
+//    interp_fine_to_coarse.interpolate(normal_[dim]);
+//  }
 
   /* refine history_p4est_ */
   if (1) {
@@ -1311,6 +1625,126 @@ void my_p4est_multialloy_t::save_VTK_solid(int iter)
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_save_vtk, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
+void my_p4est_multialloy_t::save_VTK_fine(int iter)
+{
+  ierr = PetscLogEventBegin(log_my_p4est_multialloy_save_vtk, 0, 0, 0, 0); CHKERRXX(ierr);
+
+  const char* out_dir = getenv("OUT_DIR");
+  if (!out_dir)
+  {
+    ierr = PetscPrintf(fine_p4est_->mpicomm, "You need to set the environment variable OUT_DIR to save visuals\n");
+    return;
+  }
+
+  splitting_criteria_t *data = (splitting_criteria_t*)p4est_->user_pointer;
+
+  char name[1000];
+
+#ifdef P4_TO_P8
+  sprintf(name, "%s/vtu/multialloy_fine_lvl_%d_%d_%d_%dx%dx%d.%05d", out_dir, data->min_lvl, data->max_lvl, p4est_->mpisize, brick_->nxyztrees[0], brick_->nxyztrees[1], brick_->nxyztrees[2], iter);
+#else
+  sprintf(name, "%s/vtu/multialloy_fine_lvl_%d_%d_%d_%dx%d.%05d", out_dir, data->min_lvl, data->max_lvl, p4est_->mpisize, brick_->nxyztrees[0], brick_->nxyztrees[1], iter);
+#endif
+
+  const double *phi_p; ierr = VecGetArrayRead(fine_phi_, &phi_p); CHKERRXX(ierr);
+//  const double *tl_p; ierr = VecGetArrayRead(tl_np1_, &tl_p); CHKERRXX(ierr);
+//  const double *ts_p; ierr = VecGetArrayRead(ts_np1_, &ts_p); CHKERRXX(ierr);
+//  const double *c0_p; ierr = VecGetArrayRead(c0_np1_, &c0_p); CHKERRXX(ierr);
+//  const double *c1_p; ierr = VecGetArrayRead(c1_np1_, &c1_p); CHKERRXX(ierr);
+  double *normal_velocity_np1_p; ierr = VecGetArray(fine_normal_velocity_np1_, &normal_velocity_np1_p); CHKERRXX(ierr);
+
+//  const double *dendrite_number_p; ierr = VecGetArrayRead(dendrite_number_, &dendrite_number_p); CHKERRXX(ierr);
+//  const double *dendrite_tip_p;    ierr = VecGetArrayRead(dendrite_tip_,    &dendrite_tip_p);    CHKERRXX(ierr);
+
+//  const double *c0s_p; ierr = VecGetArrayRead(c0s_, &c0s_p); CHKERRXX(ierr);
+//  const double *c1s_p; ierr = VecGetArrayRead(c1s_, &c1s_p); CHKERRXX(ierr);
+
+//  const double *tf_p; ierr = VecGetArrayRead(tf_, &tf_p); CHKERRXX(ierr);
+
+  const double *kappa_p;
+  ierr = VecGetArrayRead(fine_kappa_, &kappa_p); CHKERRXX(ierr);
+
+//  const double *bc_error_p;
+//  ierr = VecGetArrayRead(bc_error_, &bc_error_p); CHKERRXX(ierr);
+
+  foreach_node(n, fine_nodes_)
+    normal_velocity_np1_p[n] /= scaling_;
+
+  /* save the size of the leaves */
+  Vec leaf_level;
+  ierr = VecCreateGhostCells(fine_p4est_, fine_ghost_, &leaf_level); CHKERRXX(ierr);
+  double *l_p;
+  ierr = VecGetArray(leaf_level, &l_p); CHKERRXX(ierr);
+
+  for(p4est_topidx_t tree_idx = fine_p4est_->first_local_tree; tree_idx <= fine_p4est_->last_local_tree; ++tree_idx)
+  {
+    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(fine_p4est_->trees, tree_idx);
+    for( size_t q=0; q<tree->quadrants.elem_count; ++q)
+    {
+      const p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, q);
+      l_p[tree->quadrants_offset+q] = quad->level;
+    }
+  }
+
+  for(size_t q=0; q<fine_ghost_->ghosts.elem_count; ++q)
+  {
+    const p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&fine_ghost_->ghosts, q);
+    l_p[fine_p4est_->local_num_quadrants+q] = quad->level;
+  }
+
+
+  my_p4est_vtk_write_all(  fine_p4est_, fine_nodes_, fine_ghost_,
+                           P4EST_TRUE, P4EST_TRUE,
+                         #ifdef P4_TO_P8
+                           3, 1, name,
+                         #else
+                           3, 1, name,
+                         #endif
+                           VTK_POINT_DATA, "phi", phi_p,
+//                           VTK_POINT_DATA, "phi_smooth", phi_smooth_p,
+//                           VTK_POINT_DATA, "tl", tl_p,
+//                           VTK_POINT_DATA, "ts", ts_p,
+//                           VTK_POINT_DATA, "tf", tf_p,
+//                           VTK_POINT_DATA, "c0", c0_p,
+//                           VTK_POINT_DATA, "c1", c1_p,
+//                           VTK_POINT_DATA, "c0s", c0s_p,
+//                           VTK_POINT_DATA, "c1s", c1s_p,
+                           VTK_POINT_DATA, "un", normal_velocity_np1_p,
+                           VTK_POINT_DATA, "kappa", kappa_p,
+//                           VTK_POINT_DATA, "bc_error", bc_error_p,
+//                           VTK_POINT_DATA, "dendrite_number", dendrite_number_p,
+//                           VTK_POINT_DATA, "dendrite_tip", dendrite_tip_p,
+                           VTK_CELL_DATA , "leaf_level", l_p);
+
+
+//  for(size_t n = 0; n < nodes_->indep_nodes.elem_count; ++n)
+//    normal_velocity_np1_p[n] *= scaling_;
+
+  ierr = VecRestoreArray(leaf_level, &l_p); CHKERRXX(ierr);
+  ierr = VecDestroy(leaf_level); CHKERRXX(ierr);
+
+  ierr = VecRestoreArrayRead(phi_, &phi_p); CHKERRXX(ierr);
+//  ierr = VecRestoreArrayRead(bc_error_, &bc_error_p); CHKERRXX(ierr);
+//  ierr = VecRestoreArrayRead(phi_smooth_, &phi_smooth_p); CHKERRXX(ierr);
+//  ierr = VecRestoreArrayRead(tl_np1_, &tl_p); CHKERRXX(ierr);
+//  ierr = VecRestoreArrayRead(ts_np1_, &ts_p); CHKERRXX(ierr);
+//  ierr = VecRestoreArrayRead(c0_np1_, &c0_p); CHKERRXX(ierr);
+//  ierr = VecRestoreArrayRead(c1_np1_, &c1_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(fine_kappa_, &kappa_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(fine_normal_velocity_np1_, &normal_velocity_np1_p); CHKERRXX(ierr);
+
+//  ierr = VecRestoreArrayRead(dendrite_number_, &dendrite_number_p); CHKERRXX(ierr);
+//  ierr = VecRestoreArrayRead(dendrite_tip_,    &dendrite_tip_p);    CHKERRXX(ierr);
+
+//  ierr = VecRestoreArrayRead(c0s_, &c0s_p); CHKERRXX(ierr);
+//  ierr = VecRestoreArrayRead(c1s_, &c1s_p); CHKERRXX(ierr);
+
+//  ierr = VecRestoreArrayRead(tf_, &tf_p); CHKERRXX(ierr);
+
+  PetscPrintf(fine_p4est_->mpicomm, "VTK saved in %s\n", name);
+  ierr = PetscLogEventEnd(log_my_p4est_multialloy_save_vtk, 0, 0, 0, 0); CHKERRXX(ierr);
+}
+
 void my_p4est_multialloy_t::compute_smoothed_phi()
 {
   my_p4est_poisson_nodes_t solver(ngbd_);
@@ -1565,7 +1999,6 @@ void my_p4est_multialloy_t::count_dendrites(int iter)
     mpiret = MPI_Allreduce(MPI_IN_PLACE, line_velo .data(), nb_sample_points, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
 
     const char* out_dir = getenv("OUT_DIR");
-//    std::string filename;
 
     char dirname[1024];
     sprintf(dirname, "%s/dendrites/%d", out_dir, iter);
@@ -1577,7 +2010,7 @@ void my_p4est_multialloy_t::count_dendrites(int iter)
       throw std::invalid_argument("could not create directory");
 
     char filename[1024];
-    // save level and resolution
+
     if (p4est_->mpirank == 0)
     {
       sprintf(filename, "%s/%s.txt", dirname, "phi"); save_vector(filename, line_phi, (dendrite_idx == 0 ? std::ios_base::out : std::ios_base::app));
