@@ -99,6 +99,17 @@ private:
   my_p4est_hierarchy_t        *history_hierarchy_;
   my_p4est_node_neighbors_t   *history_ngbd_;
 
+  /* grid shifted by dx/2 */
+  my_p4est_brick_t            shift_brick_;
+  p4est_connectivity_t        *shift_connectivity_;
+  p4est_t                     *shift_p4est_;
+  p4est_ghost_t               *shift_ghost_;
+  p4est_nodes_t               *shift_nodes_;
+  my_p4est_hierarchy_t        *shift_hierarchy_;
+  my_p4est_node_neighbors_t   *shift_ngbd_;
+
+//  splitting_criteria_cf_t shift_sp;
+
   double dxyz_[P4EST_DIM];
   double dxyz_max_, dxyz_min_;
   double dxyz_close_interface_;
@@ -140,6 +151,10 @@ private:
   Vec history_velo_;
 
   Vec phi_smooth_;
+
+  Vec shift_phi_, shift_phi_dd_[P4EST_DIM];
+  Vec shift_normal_[P4EST_DIM];
+  Vec shift_kappa_;
 
 //#ifdef P4_TO_P8
 //  Vec theta_xz_, theta_yz_;
@@ -277,14 +292,28 @@ public:
   inline void set_phi(Vec phi)
   {
     this->phi_ = phi;
+
+    my_p4est_interpolation_nodes_t interp(ngbd_);
+
+    double xyz[P4EST_DIM];
+    for(size_t n = 0; n < shift_nodes_->indep_nodes.elem_count; ++n)
+    {
+      node_xyz_fr_n(n, shift_p4est_, shift_nodes_, xyz);
+      interp.add_point(n, xyz);
+    }
+
+    ierr = VecCreateGhostNodes(shift_p4est_, shift_nodes_, &shift_phi_); CHKERRXX(ierr);
+
+    interp.set_input(phi_, interpolation_between_grids_);
+    interp.interpolate(shift_phi_);
+
     compute_geometric_properties();
 
     ierr = VecCreateGhostNodes(history_p4est_, history_nodes_, &history_phi_); CHKERRXX(ierr);
     ierr = VecCreateGhostNodes(history_p4est_, history_nodes_, &history_phi_nm1_); CHKERRXX(ierr);
 
-    my_p4est_interpolation_nodes_t interp(ngbd_);
+    interp.clear();
 
-    double xyz[P4EST_DIM];
     for(size_t n = 0; n < history_nodes_->indep_nodes.elem_count; ++n)
     {
       node_xyz_fr_n(n, history_p4est_, history_nodes_, xyz);
@@ -440,6 +469,7 @@ public:
   int  one_step();
   void save_VTK(int iter);
   void save_VTK_solid(int iter);
+  void save_VTK_shift(int iter);
 
   void compute_smoothed_phi();
 

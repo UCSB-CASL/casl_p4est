@@ -91,7 +91,7 @@ bool zero_negative_velocity    = 0;
 bool use_superconvergent_jump  = false;
 
 // output parameters
-int save_every_n_iteration = 1;
+int save_every_n_iteration = 10;
 bool save_velocity         = 1;
 bool save_vtk              = 1;
 bool save_history          = 1;
@@ -203,7 +203,7 @@ void set_alloy_parameters()
       rho            = 9.2392e-3;   /* kg.cm-3    */
       heat_capacity  = 356;         /* J.kg-1.K-1 */
       Tm             = 1996;        /* K           */
-      G              = 100;         /* K.cm-1      */
+      G              = 5000;         /* K.cm-1      */
       V              = 0.005;        /* cm.s-1      */
       latent_heat    = 2588.7;      /* J.cm-3      */
       thermal_conductivity =  1.3;/* W.cm-1.K-1  */
@@ -212,12 +212,12 @@ void set_alloy_parameters()
       eps_v          = 0*2.27e-2;
       eps_anisotropy = 0.025;
 
-      Dl0 = 5e-5;      /* cm2.s-1 - concentration diffusion coefficient       */
+      Dl0 = 1e-5;      /* cm2.s-1 - concentration diffusion coefficient       */
       ml0 =-874;       /* K / wt frac. - liquidous slope */
       c00 = 0.107;     /* at frac.    */
       kp0 = 0.848;     /* partition coefficient */
 
-      Dl1 = 10e-5;
+      Dl1 = 1e-5;
       ml1 =-1378;
       c01 = 0.094;
       kp1 = 0.848;
@@ -946,6 +946,7 @@ int main (int argc, char* argv[])
       bas.count_dendrites(iteration/save_every_n_iteration);
       bas.save_VTK(iteration/save_every_n_iteration);
       bas.save_VTK_solid(iteration/save_every_n_iteration);
+      bas.save_VTK_shift(iteration/save_every_n_iteration);
     }
     ierr = PetscPrintf(mpi.comm(), "Iteration %d, time %e\n", iteration, tn); CHKERRXX(ierr);
 
