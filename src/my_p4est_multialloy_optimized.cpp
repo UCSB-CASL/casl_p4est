@@ -150,8 +150,8 @@ my_p4est_multialloy_t::my_p4est_multialloy_t(my_p4est_node_neighbors_t *ngbd)
   int n_xyz [] = {brick_->nxyztrees[0], brick_->nxyztrees[1], brick_->nxyztrees[1]};
   bool periodic [] = {is_periodic(p4est_, 0), is_periodic(p4est_, 1), is_periodic(p4est_, 2)};
 #else
-  double xyz_min [] = {brick_->xyz_min[0] + .5*dxyz_[0], brick_->xyz_min[1]};
-  double xyz_max [] = {brick_->xyz_max[0] + .5*dxyz_[0], brick_->xyz_max[1]};
+  double xyz_min [] = {brick_->xyz_min[0] + .5*dxyz_[0], brick_->xyz_min[1] + .5*dxyz_[1]};
+  double xyz_max [] = {brick_->xyz_max[0] + .5*dxyz_[0], brick_->xyz_max[1] + .5*dxyz_[1]};
   int n_xyz [] = {brick_->nxyztrees[0], brick_->nxyztrees[1]};
   int periodic [] = {is_periodic(p4est_, 0), is_periodic(p4est_, 1)};
 #endif
@@ -187,6 +187,9 @@ my_p4est_multialloy_t::my_p4est_multialloy_t(my_p4est_node_neighbors_t *ngbd)
     shift_normal_[dir] = NULL;
     shift_phi_dd_[dir] = NULL;
   }
+
+  y_max_overlap_ = MIN(brick_->xyz_max[1], shift_brick_.xyz_max[1]);
+  y_min_overlap_ = MAX(brick_->xyz_min[1], shift_brick_.xyz_min[1]);
 }
 
 
@@ -721,6 +724,8 @@ void my_p4est_multialloy_t::update_grid()
   if (1) sl.update_p4est(v_interface_np1_, dt_n_, phi_);
   else   sl.update_p4est(v_interface_n_, v_interface_np1_, dt_nm1_, dt_n_, phi_);
 
+
+
   // expand ghost layer if needed
   if (use_continuous_stencil_ || use_one_sided_derivatives_)
   {
@@ -853,20 +858,87 @@ void my_p4est_multialloy_t::update_grid()
   hierarchy_->update(p4est_, ghost_);
   ngbd_->update(hierarchy_, nodes_);
 
-//  Vec test;
-//  Vec test_xx;
-//  Vec test_yy;
+  // correct by a shifted grid
+  if (1)
+  {
+    Vec shift_v_interface_np1_[P4EST_DIM];
+    foreach_dimension(dim) { ierr = VecDuplicate(shift_phi_dd_[dim], &shift_v_interface_np1_[dim]); CHKERRXX(ierr); }
 
-//  VecCreateGhostNodes(p4est_, nodes_, &test);
-////  VecDuplicate(phi_, &test);
-//  VecDuplicate(phi_dd_[0], &test_xx);
-//  VecDuplicate(phi_dd_[1], &test_yy);
+    my_p4est_interpolation_nodes_t interp_fwd(ngbd_);
 
-////  copy_ghosted_vec(phi_, test);
-////  ngbd_->second_derivatives_central(phi_, test_xx, test_yy);
-//  VecDestroy(test);
-//  VecDestroy(test_xx);
-//  VecDestroy(test_yy);
+    double xyz[P4EST_DIM];
+
+    foreach_node(n, shift_nodes_)
+    {
+      node_xyz_fr_n(n, shift_p4est_, shift_nodes_, xyz);
+
+      if (xyz[1] >= y_min_overlap_ && xyz[1] <= y_max_overlap_)
+        interp_fwd.add_point(n, xyz);
+    }
+
+    foreach_dimension(dim)
+    {
+      interp_fwd.set_input(v_interface_n_[dim], interpolation_between_grids_);
+      interp_fwd.interpolate(shift_v_interface_np1_[dim]);
+    }
+
+    p4est_t       *p4est_tmp = p4est_copy(shift_p4est_, P4EST_FALSE);
+    p4est_ghost_t *ghost_tmp = my_p4est_ghost_new(p4est_tmp, P4EST_CONNECT_FULL);
+    p4est_nodes_t *nodes_tmp = my_p4est_nodes_new(p4est_tmp, ghost_tmp);
+
+    my_p4est_semi_lagrangian_t shift_sl(&p4est_tmp, &nodes_tmp, &ghost_tmp, shift_ngbd_, shift_ngbd_);
+
+    shift_sl.set_phi_interpolation(quadratic_non_oscillatory_continuous_v2);
+    shift_sl.set_velo_interpolation(quadratic_non_oscillatory_continuous_v2);
+
+    shift_sl.update_p4est(shift_v_interface_np1_, dt_n_, shift_phi_);
+
+//    my_p4est_semi_lagrangian_t shift_sl(&p4est_tmp, &nodes_tmp, &ghost_tmp, ngbd_, ngbd_);
+
+//    shift_sl.set_phi_interpolation(quadratic_non_oscillatory_continuous_v2);
+//    shift_sl.set_velo_interpolation(quadratic_non_oscillatory_continuous_v2);
+
+//    shift_sl.update_p4est(v_interface_n_, dt_n_, shift_phi_);
+
+    p4est_destroy(shift_p4est_);       shift_p4est_ = p4est_tmp;
+    p4est_ghost_destroy(shift_ghost_); shift_ghost_ = ghost_tmp;
+    p4est_nodes_destroy(shift_nodes_); shift_nodes_ = nodes_tmp;
+    shift_hierarchy_->update(shift_p4est_, shift_ghost_);
+    shift_ngbd_->update(shift_hierarchy_, shift_nodes_);
+
+    foreach_dimension(dim) { ierr = VecDestroy(shift_v_interface_np1_[dim]); CHKERRXX(ierr); }
+
+    my_p4est_interpolation_nodes_t interp_bwd(shift_ngbd_);
+
+    foreach_node(n, nodes_)
+    {
+      node_xyz_fr_n(n, p4est_, nodes_, xyz);
+
+      if (xyz[1] >= y_min_overlap_ && xyz[1] <= y_max_overlap_)
+        interp_bwd.add_point(n, xyz);
+    }
+
+    // interpolate back
+    Vec phi_tmp; ierr = VecDuplicate(phi_, &phi_tmp); CHKERRXX(ierr);
+
+    interp_bwd.set_input(shift_phi_, interpolation_between_grids_); interp_bwd.interpolate(phi_tmp);
+
+    // take average
+    double *phi_tmp_p; ierr = VecGetArray(phi_tmp, &phi_tmp_p); CHKERRXX(ierr);
+    double *phi_p;     ierr = VecGetArray(phi_, &phi_p);        CHKERRXX(ierr);
+
+    foreach_node(n, nodes_)
+    {
+      node_xyz_fr_n(n, p4est_, nodes_, xyz);
+      if (xyz[1] >= y_min_overlap_ && xyz[1] <= y_max_overlap_)
+        phi_p[n] = .5*(phi_p[n] + phi_tmp_p[n]);
+    }
+
+    ierr = VecRestoreArray(phi_tmp, &phi_tmp_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(phi_, &phi_p);        CHKERRXX(ierr);
+
+    ierr = VecDestroy(phi_tmp); CHKERRXX(ierr);
+  }
 
   /* reinitialize phi */
   my_p4est_level_set_t ls_new(ngbd_);
@@ -904,7 +976,9 @@ void my_p4est_multialloy_t::update_grid()
       for(size_t n = 0; n < shift_nodes_np1->indep_nodes.elem_count; ++n)
       {
         node_xyz_fr_n(n, shift_p4est_np1, shift_nodes_np1, xyz);
-        interp.add_point(n, xyz);
+
+        if (xyz[1] >= y_min_overlap_ && xyz[1] <= y_max_overlap_)
+          interp.add_point(n, xyz);
       }
 
       interp.set_input(phi_, interpolation_between_grids_);
@@ -1256,7 +1330,7 @@ int my_p4est_multialloy_t::one_step()
   int one_step_iterations = solver_all_in_one.solve(tl_np1_, ts_np1_, c0_np1_, c1_np1_, bc_error_, bc_error_max_, dt_n_, 1.e6);
 
   // correct by a shifted grid
-  if (1)
+  if (0)
   {
     Vec shift_tl_n_; ierr = VecDuplicate(shift_phi_, &shift_tl_n_); CHKERRXX(ierr);
     Vec shift_ts_n_; ierr = VecDuplicate(shift_phi_, &shift_ts_n_); CHKERRXX(ierr);

@@ -156,6 +156,9 @@ private:
   Vec shift_normal_[P4EST_DIM];
   Vec shift_kappa_;
 
+  double y_max_overlap_;
+  double y_min_overlap_;
+
 //#ifdef P4_TO_P8
 //  Vec theta_xz_, theta_yz_;
 //#else
@@ -299,7 +302,9 @@ public:
     for(size_t n = 0; n < shift_nodes_->indep_nodes.elem_count; ++n)
     {
       node_xyz_fr_n(n, shift_p4est_, shift_nodes_, xyz);
-      interp.add_point(n, xyz);
+
+      if (xyz[1] >= y_min_overlap_ && xyz[1] <= y_max_overlap_)
+        interp.add_point(n, xyz);
     }
 
     ierr = VecCreateGhostNodes(shift_p4est_, shift_nodes_, &shift_phi_); CHKERRXX(ierr);
