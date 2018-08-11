@@ -711,6 +711,26 @@ void my_p4est_multialloy_t::update_grid()
 //  ls.extend_from_interface_to_whole_domain_TVD(phi_, c0_np1_, c0_interface);
 //  ls.extend_from_interface_to_whole_domain_TVD(phi_, c0n_n_, c0n_interface);
 
+  // correct by a shifted grid
+  if (1)
+  {
+    Vec phi_tmp; ierr = VecDuplicate(phi_, &phi_tmp); CHKERRXX(ierr);
+    copy_ghosted_vec(phi_, phi_tmp);
+
+    my_p4est_semi_lagrangian_t shift_sl(&shift_p4est_, &shift_nodes_, &shift_ghost_, ngbd_, ngbd_);
+
+    shift_sl.set_phi_interpolation(quadratic_non_oscillatory_continuous_v2);
+    shift_sl.set_velo_interpolation(quadratic_non_oscillatory_continuous_v2);
+
+    shift_sl.update_p4est(v_interface_np1_, dt_n_, phi_tmp);
+
+    shift_hierarchy_->update(shift_p4est_, shift_ghost_);
+    shift_ngbd_->update(shift_hierarchy_, shift_nodes_);
+
+    ierr = VecDestroy(shift_phi_); CHKERRXX(ierr);
+    shift_phi_ = phi_tmp;
+  }
+
   // advect interface and update p4est
   p4est_t *p4est_np1 = p4est_copy(p4est_, P4EST_FALSE);
   p4est_ghost_t *ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
@@ -858,64 +878,15 @@ void my_p4est_multialloy_t::update_grid()
   hierarchy_->update(p4est_, ghost_);
   ngbd_->update(hierarchy_, nodes_);
 
-  // correct by a shifted grid
   if (1)
   {
-    Vec shift_v_interface_np1_[P4EST_DIM];
-    foreach_dimension(dim) { ierr = VecDuplicate(shift_phi_dd_[dim], &shift_v_interface_np1_[dim]); CHKERRXX(ierr); }
-
-    my_p4est_interpolation_nodes_t interp_fwd(ngbd_);
-
-    double xyz[P4EST_DIM];
-
-    foreach_node(n, shift_nodes_)
-    {
-      node_xyz_fr_n(n, shift_p4est_, shift_nodes_, xyz);
-
-      if (xyz[1] >= y_min_overlap_ && xyz[1] <= y_max_overlap_)
-        interp_fwd.add_point(n, xyz);
-    }
-
-    foreach_dimension(dim)
-    {
-      interp_fwd.set_input(v_interface_n_[dim], interpolation_between_grids_);
-      interp_fwd.interpolate(shift_v_interface_np1_[dim]);
-    }
-
-    p4est_t       *p4est_tmp = p4est_copy(shift_p4est_, P4EST_FALSE);
-    p4est_ghost_t *ghost_tmp = my_p4est_ghost_new(p4est_tmp, P4EST_CONNECT_FULL);
-    p4est_nodes_t *nodes_tmp = my_p4est_nodes_new(p4est_tmp, ghost_tmp);
-
-    my_p4est_semi_lagrangian_t shift_sl(&p4est_tmp, &nodes_tmp, &ghost_tmp, shift_ngbd_, shift_ngbd_);
-
-    shift_sl.set_phi_interpolation(quadratic_non_oscillatory_continuous_v2);
-    shift_sl.set_velo_interpolation(quadratic_non_oscillatory_continuous_v2);
-
-    shift_sl.update_p4est(shift_v_interface_np1_, dt_n_, shift_phi_);
-
-//    my_p4est_semi_lagrangian_t shift_sl(&p4est_tmp, &nodes_tmp, &ghost_tmp, ngbd_, ngbd_);
-
-//    shift_sl.set_phi_interpolation(quadratic_non_oscillatory_continuous_v2);
-//    shift_sl.set_velo_interpolation(quadratic_non_oscillatory_continuous_v2);
-
-//    shift_sl.update_p4est(v_interface_n_, dt_n_, shift_phi_);
-
-    p4est_destroy(shift_p4est_);       shift_p4est_ = p4est_tmp;
-    p4est_ghost_destroy(shift_ghost_); shift_ghost_ = ghost_tmp;
-    p4est_nodes_destroy(shift_nodes_); shift_nodes_ = nodes_tmp;
-    shift_hierarchy_->update(shift_p4est_, shift_ghost_);
-    shift_ngbd_->update(shift_hierarchy_, shift_nodes_);
-
-    foreach_dimension(dim) { ierr = VecDestroy(shift_v_interface_np1_[dim]); CHKERRXX(ierr); }
-
     my_p4est_interpolation_nodes_t interp_bwd(shift_ngbd_);
 
+    double xyz[P4EST_DIM];
     foreach_node(n, nodes_)
     {
       node_xyz_fr_n(n, p4est_, nodes_, xyz);
-
-      if (xyz[1] >= y_min_overlap_ && xyz[1] <= y_max_overlap_)
-        interp_bwd.add_point(n, xyz);
+      interp_bwd.add_point(n, xyz);
     }
 
     // interpolate back
@@ -925,17 +896,16 @@ void my_p4est_multialloy_t::update_grid()
 
     // take average
     double *phi_tmp_p; ierr = VecGetArray(phi_tmp, &phi_tmp_p); CHKERRXX(ierr);
-    double *phi_p;     ierr = VecGetArray(phi_, &phi_p);        CHKERRXX(ierr);
+    double *phi_p;     ierr = VecGetArray(phi_,    &phi_p);     CHKERRXX(ierr);
 
     foreach_node(n, nodes_)
     {
       node_xyz_fr_n(n, p4est_, nodes_, xyz);
-      if (xyz[1] >= y_min_overlap_ && xyz[1] <= y_max_overlap_)
-        phi_p[n] = .5*(phi_p[n] + phi_tmp_p[n]);
+      phi_p[n] = .5*(phi_p[n] + phi_tmp_p[n]);
     }
 
     ierr = VecRestoreArray(phi_tmp, &phi_tmp_p); CHKERRXX(ierr);
-    ierr = VecRestoreArray(phi_, &phi_p);        CHKERRXX(ierr);
+    ierr = VecRestoreArray(phi_,    &phi_p);     CHKERRXX(ierr);
 
     ierr = VecDestroy(phi_tmp); CHKERRXX(ierr);
   }
@@ -950,7 +920,7 @@ void my_p4est_multialloy_t::update_grid()
 //  ls_new.extend_Over_Interface_TVD(phi_, tf_,  20, 1);
 //  invert_phi(nodes_, phi_);
 
-  if (1) {
+  if (0) {
     p4est_t       *shift_p4est_np1 = p4est_copy(shift_p4est_, P4EST_FALSE);
     p4est_ghost_t *shift_ghost_np1 = my_p4est_ghost_new(shift_p4est_np1, P4EST_CONNECT_FULL);
     p4est_nodes_t *shift_nodes_np1 = my_p4est_nodes_new(shift_p4est_np1, shift_ghost_np1);
@@ -1238,10 +1208,6 @@ void my_p4est_multialloy_t::update_grid()
   copy_ghosted_vec(c1_np1_, c1_n_);
   copy_ghosted_vec(tl_np1_, tl_n_);
   copy_ghosted_vec(ts_np1_, ts_n_);
-
-
-
-//  count_dendrites();
 
   PetscPrintf(p4est_->mpicomm, "Done \n");
 
