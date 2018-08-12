@@ -80,7 +80,7 @@ double phi_thresh              = 1e-3;
 int max_iterations             = 50;
 int pin_every_n_steps          = 1000;
 
-bool use_continuous_stencil    = 0;
+bool use_continuous_stencil    = 1;
 bool use_one_sided_derivatives = 0;
 bool use_points_on_interface   = 1;
 bool update_c0_robin           = 1;
@@ -666,8 +666,10 @@ int main (int argc, char* argv[])
     ADD_OPTION(i, termination_length,    "defines when a run will be stopped (fraction of box length, from 0 to 1)");
     ADD_OPTION(i, init_perturb,          "init_perturb");
 
-    ADD_OPTION(i, box_size,    "set box_size");
     ADD_OPTION(i, alloy_type,  "choose the type of alloy. Default is 0.\n  0 - NiCuCu\n  1 - NiAlTa");
+    if (i == 1) set_alloy_parameters();
+
+    ADD_OPTION(i, box_size,    "set box_size");
     ADD_OPTION(i, latent_heat, "latent heat");
     ADD_OPTION(i, G,           "heat gradient");
     ADD_OPTION(i, V,           "cooling velocity");
@@ -679,8 +681,6 @@ int main (int argc, char* argv[])
 
     if (i == 0) cmd.parse(argc, argv);
   }
-
-  set_alloy_parameters();
 
   int periodic[P4EST_DIM];
   periodic[0] = cmd.get("px", (direction=='y' || direction=='z') ? 1 : 0);

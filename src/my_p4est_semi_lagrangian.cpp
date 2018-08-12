@@ -598,7 +598,8 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *
   }
 
   /* save the old splitting criteria information */
-  splitting_criteria_t* sp_old = (splitting_criteria_t*)ngbd_n->p4est->user_pointer;
+//  splitting_criteria_t* sp_old = (splitting_criteria_t*)ngbd_n->p4est->user_pointer;
+  splitting_criteria_t* sp_old = (splitting_criteria_t*)p4est->user_pointer;
 
   Vec phi_np1;
   ierr = VecCreateGhostNodes(p4est, nodes, &phi_np1); CHKERRXX(ierr);

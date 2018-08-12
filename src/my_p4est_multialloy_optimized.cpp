@@ -161,12 +161,13 @@ my_p4est_multialloy_t::my_p4est_multialloy_t(my_p4est_node_neighbors_t *ngbd)
 
   splitting_criteria_cf_t *data = (splitting_criteria_cf_t*)p4est_->user_pointer;
 
-//  shift_sp.min_lvl = data->min_lvl;
-//  shift_sp.max_lvl = data->max_lvl;
-//  shift_sp.lip     = data->lip;
-//  shift_sp.phi     = data->phi;
+  shift_sp_.min_lvl = data->min_lvl;
+  shift_sp_.max_lvl = data->max_lvl;
+  shift_sp_.lip     = 3;
 
-  shift_p4est_->user_pointer = (void*)(data);
+  splitting_criteria_cf_t sp_tmp(shift_sp_.min_lvl, shift_sp_.max_lvl, data->phi, shift_sp_.lip);
+
+  shift_p4est_->user_pointer = (void*)(&sp_tmp);
   my_p4est_refine(shift_p4est_, P4EST_TRUE, refine_levelset_cf, NULL);
   my_p4est_partition(shift_p4est_, P4EST_FALSE, NULL);
 
@@ -178,6 +179,8 @@ my_p4est_multialloy_t::my_p4est_multialloy_t(my_p4est_node_neighbors_t *ngbd)
   shift_hierarchy_ = new my_p4est_hierarchy_t(shift_p4est_, shift_ghost_, &shift_brick_);
   shift_ngbd_      = new my_p4est_node_neighbors_t(shift_hierarchy_, shift_nodes_);
   shift_ngbd_->init_neighbors();
+
+  shift_p4est_->user_pointer = (void*)(&shift_sp_);
 
   shift_phi_ = NULL;
   shift_kappa_ = NULL;
@@ -714,6 +717,55 @@ void my_p4est_multialloy_t::update_grid()
   // correct by a shifted grid
   if (1)
   {
+    Vec shift_v_interface_np1_[P4EST_DIM];
+
+    foreach_dimension(dim)
+    {
+      ierr = VecDuplicate(shift_phi_dd_[dim], &shift_v_interface_np1_[dim]); CHKERRXX(ierr);
+    }
+    my_p4est_interpolation_nodes_t interp_fwd(ngbd_);
+
+    double xyz[P4EST_DIM];
+    foreach_node(n, shift_nodes_)
+    {
+      node_xyz_fr_n(n, shift_p4est_, shift_nodes_, xyz);
+      interp_fwd.add_point(n, xyz);
+    }
+
+    foreach_dimension(dim)
+    {
+      interp_fwd.set_input(v_interface_np1_[dim], interpolation_between_grids_);
+      interp_fwd.interpolate(shift_v_interface_np1_[dim]);
+    }
+
+    p4est_t *p4est_np1 = p4est_copy(shift_p4est_, P4EST_FALSE);
+    p4est_ghost_t *ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
+    p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
+
+    my_p4est_semi_lagrangian_t shift_sl(&p4est_np1, &nodes_np1, &ghost_np1, shift_ngbd_, shift_ngbd_);
+
+    shift_sl.set_phi_interpolation(quadratic_non_oscillatory_continuous_v2);
+    shift_sl.set_velo_interpolation(quadratic_non_oscillatory_continuous_v2);
+
+    shift_sl.update_p4est(shift_v_interface_np1_, dt_n_, shift_phi_);
+
+    p4est_destroy(shift_p4est_);       shift_p4est_ = p4est_np1;
+    p4est_ghost_destroy(shift_ghost_); shift_ghost_ = ghost_np1;
+    p4est_nodes_destroy(shift_nodes_); shift_nodes_ = nodes_np1;
+    shift_hierarchy_->update(shift_p4est_, shift_ghost_);
+    shift_ngbd_->update(shift_hierarchy_, shift_nodes_);
+
+    foreach_dimension(dim)
+    {
+      ierr = VecDestroy(shift_v_interface_np1_[dim]); CHKERRXX(ierr);
+    }
+
+    my_p4est_level_set_t shift_ls(shift_ngbd_);
+
+    shift_ls.reinitialize_1st_order_time_2nd_order_space(shift_phi_);
+  }
+  if (0)
+  {
     Vec phi_tmp; ierr = VecDuplicate(phi_, &phi_tmp); CHKERRXX(ierr);
     copy_ghosted_vec(phi_, phi_tmp);
 
@@ -729,6 +781,10 @@ void my_p4est_multialloy_t::update_grid()
 
     ierr = VecDestroy(shift_phi_); CHKERRXX(ierr);
     shift_phi_ = phi_tmp;
+
+    my_p4est_level_set_t shift_ls(shift_ngbd_);
+
+    shift_ls.reinitialize_1st_order_time_2nd_order_space(shift_phi_);
   }
 
   // advect interface and update p4est
@@ -901,7 +957,8 @@ void my_p4est_multialloy_t::update_grid()
     foreach_node(n, nodes_)
     {
       node_xyz_fr_n(n, p4est_, nodes_, xyz);
-      phi_p[n] = .5*(phi_p[n] + phi_tmp_p[n]);
+//      phi_p[n] = .5*(phi_p[n] + phi_tmp_p[n]);
+      phi_p[n] = phi_tmp_p[n];
     }
 
     ierr = VecRestoreArray(phi_tmp, &phi_tmp_p); CHKERRXX(ierr);
@@ -1681,7 +1738,7 @@ void my_p4est_multialloy_t::save_VTK_shift(int iter)
     return;
   }
 
-  splitting_criteria_t *data = (splitting_criteria_t*)shift_p4est_->user_pointer;
+  splitting_criteria_t *data = (splitting_criteria_t*)p4est_->user_pointer;
 
   char name[1000];
 

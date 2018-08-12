@@ -108,7 +108,7 @@ private:
   my_p4est_hierarchy_t        *shift_hierarchy_;
   my_p4est_node_neighbors_t   *shift_ngbd_;
 
-//  splitting_criteria_cf_t shift_sp;
+  splitting_criteria_t shift_sp_;
 
   double dxyz_[P4EST_DIM];
   double dxyz_max_, dxyz_min_;
@@ -303,7 +303,7 @@ public:
     {
       node_xyz_fr_n(n, shift_p4est_, shift_nodes_, xyz);
 
-      if (xyz[1] >= y_min_overlap_ && xyz[1] <= y_max_overlap_)
+//      if (xyz[1] >= y_min_overlap_ && xyz[1] <= y_max_overlap_)
         interp.add_point(n, xyz);
     }
 
