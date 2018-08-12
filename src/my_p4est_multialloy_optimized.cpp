@@ -162,8 +162,8 @@ my_p4est_multialloy_t::my_p4est_multialloy_t(my_p4est_node_neighbors_t *ngbd)
   splitting_criteria_cf_t *data = (splitting_criteria_cf_t*)p4est_->user_pointer;
 
   shift_sp_.min_lvl = data->min_lvl;
-  shift_sp_.max_lvl = data->max_lvl;
-  shift_sp_.lip     = 3;
+  shift_sp_.max_lvl = data->max_lvl-1;
+  shift_sp_.lip     = 2;
 
   splitting_criteria_cf_t sp_tmp(shift_sp_.min_lvl, shift_sp_.max_lvl, data->phi, shift_sp_.lip);
 

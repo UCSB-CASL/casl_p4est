@@ -57,7 +57,7 @@
 
 // grid parameters
 int lmin = 5;
-int lmax = 9;
+int lmax = 10;
 double lip = 2;
 
 #ifdef P4_TO_P8
@@ -73,14 +73,14 @@ double zmin = 0, zmax = 1; int ny = 1; bool pz = 0;
 #endif
 
 // solver options
-double cfl_number              = 0.1;
+double cfl_number              = 0.2;
 double bc_tolerance            = 1.e-5;
 double phi_thresh              = 1e-3;
 
 int max_iterations             = 50;
 int pin_every_n_steps          = 1000;
 
-bool use_continuous_stencil    = 1;
+bool use_continuous_stencil    = 0;
 bool use_one_sided_derivatives = 0;
 bool use_points_on_interface   = 1;
 bool update_c0_robin           = 1;
