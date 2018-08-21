@@ -57,7 +57,7 @@
 
 // grid parameters
 int lmin = 5;
-int lmax = 10;
+int lmax = 9;
 double lip = 2;
 
 #ifdef P4_TO_P8
@@ -67,13 +67,13 @@ char direction = 'y';
 #endif
 
 double xmin = 0, xmax = 1; int nx = 1; bool px = 0;
-double ymin = 0, ymax = 1; int ny = 1; bool py = 1;
+double ymin = 0, ymax = 2; int ny = 2; bool py = 1;
 #ifdef P4_TO_P8
 double zmin = 0, zmax = 1; int ny = 1; bool pz = 0;
 #endif
 
 // solver options
-double cfl_number              = 0.2;
+double cfl_number              = 0.1;
 double bc_tolerance            = 1.e-5;
 double phi_thresh              = 1e-3;
 
@@ -87,6 +87,9 @@ bool update_c0_robin           = 1;
 bool use_superconvergent_robin = 1;
 bool zero_negative_velocity    = 0;
 
+bool shift_grids = 1;
+int  phi_grid_refinement = 0;
+
 // not implemented yet
 bool use_superconvergent_jump  = false;
 
@@ -97,7 +100,12 @@ bool save_vtk              = 1;
 bool save_history          = 1;
 bool save_dendrites        = 1;
 
-double dendrite_cut_off_fraction = 0.25;
+double save_every_dl = 0.01;
+double save_every_dt = 0.1;
+
+int save_type = 1; // 0 - every n iterations, 1 - every dl of growth, 2 - every dt of time
+
+double dendrite_cut_off_fraction = 0.75;
 double dendrite_min_length       = 0.05;
 
 using namespace std;
@@ -106,7 +114,7 @@ using namespace std;
 bool concentration_neumann = 1;
 int max_total_iterations   = INT_MAX;
 double time_limit          = DBL_MAX;
-double termination_length  = 0.9;
+double termination_length  = 1.8;
 double init_perturb        = 0.001;
 
 int alloy_type = 2;
@@ -203,7 +211,7 @@ void set_alloy_parameters()
       rho            = 9.2392e-3;   /* kg.cm-3    */
       heat_capacity  = 356;         /* J.kg-1.K-1 */
       Tm             = 1996;        /* K           */
-      G              = 5000;         /* K.cm-1      */
+      G              = 500;         /* K.cm-1      */
       V              = 0.005;        /* cm.s-1      */
       latent_heat    = 2588.7;      /* J.cm-3      */
       thermal_conductivity =  1.3;/* W.cm-1.K-1  */
@@ -222,7 +230,7 @@ void set_alloy_parameters()
       c01 = 0.094;
       kp1 = 0.848;
 
-      box_size = 1.0e-1;
+      box_size = .5e-1;
 
       break;
 
@@ -528,8 +536,8 @@ class InitialTemperature : public CF_2
 public:
   double operator()(double x, double y) const
   {
-    if(LS(x,y)>0) return -LS(x,y)*(G+latent_heat*V/thermal_conductivity) + initial_concentration_0(x,y)*ml0 + initial_concentration_1(x,y)*ml1 + Tm;
-    else
+//    if(LS(x,y)>0) return -LS(x,y)*(G+latent_heat*V/thermal_conductivity) + initial_concentration_0(x,y)*ml0 + initial_concentration_1(x,y)*ml1 + Tm;
+//    else
       return -LS(x,y)*G + initial_concentration_0(x,y)*ml0 + initial_concentration_1(x,y)*ml1 + Tm;
   }
 } initial_temperature;
@@ -649,12 +657,18 @@ int main (int argc, char* argv[])
     ADD_OPTION(i, use_superconvergent_jump,  "use_superconvergent_jump");
     ADD_OPTION(i, zero_negative_velocity,    "zero_negative_velocity");
 
+    ADD_OPTION(i, shift_grids,         "shift_grids");
+    ADD_OPTION(i, phi_grid_refinement, "phi_grid_refinement");
+
     // output parameters
     ADD_OPTION(i, save_every_n_iteration, "save vtk every n iteration");
     ADD_OPTION(i, save_velocity,          "1 to save velocity of the interface, 0 otherwise");
     ADD_OPTION(i, save_vtk,               "1 to save vtu files, 0 otherwise");
     ADD_OPTION(i, save_history,           "save_history");
     ADD_OPTION(i, save_dendrites,         "save_dendrites");
+    ADD_OPTION(i, save_every_dl,          "save vtk every dl of growth");
+    ADD_OPTION(i, save_every_dt,          "save vtk every dt of time");
+    ADD_OPTION(i, save_type,              "save criterion: 0 - every n iterations, 1 - every dl of growth, 2 - every dt of time");
 
     ADD_OPTION(i, dendrite_cut_off_fraction, "dendrite_cut_off_fraction");
     ADD_OPTION(i, dendrite_min_length,       "dendrite_min_length");
@@ -825,6 +839,9 @@ int main (int argc, char* argv[])
   /* initialize the solver */
   my_p4est_multialloy_t bas(ngbd);
 
+  bas.set_shift_grids        (shift_grids);
+  bas.set_phi_grid_refinement(phi_grid_refinement);
+
   bas.set_parameters(latent_heat, thermal_conductivity, lambda,
                      V, Tm, scaling,
                      Dl0, kp0, c00, ml0,
@@ -862,6 +879,9 @@ int main (int argc, char* argv[])
   bas.set_update_c0_robin          (update_c0_robin          );
   bas.set_zero_negative_velocity   (zero_negative_velocity   );
 
+  bas.set_dendrite_cut_off_fraction(dendrite_cut_off_fraction);
+  bas.set_dendrite_min_length(dendrite_min_length);
+
 
 //  bas.set_zero_negative_velocity(zero_negative_velocity);
 //  bas.set_num_of_iterations_per_step(num_of_iters_per_step);
@@ -894,6 +914,11 @@ int main (int argc, char* argv[])
   bool keep_going = true;
   int sub_iterations = 0;
 
+  int vtk_idx = 0;
+
+  double total_growth = 0;
+  double base = 0.1;
+
   while(keep_going)
 //  while (iteration < 20)
   {
@@ -903,8 +928,55 @@ int main (int argc, char* argv[])
 
     sub_iterations += bas.one_step();
 
+    {
+      total_growth = base;
+
+      p4est = bas.get_p4est();
+      nodes = bas.get_nodes();
+      phi = bas.get_phi();
+
+      const double *phi_p;
+      ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr);
+      for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+      {
+        if (phi_p[n] > 0)
+        {
+          double xyz[P4EST_DIM];
+          node_xyz_fr_n(n, p4est, nodes, xyz);
+
+          if (direction=='x')
+          {
+            total_growth = MAX(total_growth, xyz[0]);
+          }
+          else if (direction=='y')
+          {
+            total_growth = MAX(total_growth, xyz[1]);
+          }
+#ifdef P4_TO_P8
+          else if (direction=='z')
+          {
+            total_growth = MAX(total_growth, xyz[2]);
+          }
+#endif
+        }
+      }
+      ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
+
+      int mpiret = MPI_Allreduce(MPI_IN_PLACE, &total_growth, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+
+      total_growth -= base;
+    }
+
+    ierr = PetscPrintf(mpi.comm(), "Iteration %d, growth %e, time %e\n", iteration, total_growth, tn); CHKERRXX(ierr);
+
+    // determine to save or not
+    bool save_now =
+        (save_type == 0 && iteration    >= vtk_idx*save_every_n_iteration) ||
+        (save_type == 1 && total_growth >= vtk_idx*save_every_dl) ||
+        (save_type == 2 && tn           >= vtk_idx*save_every_dt);
+
     // save velocity, lenght of interface and area of solid phase in time
-    if(save_velocity && iteration%save_every_n_iteration == 0)
+    if(save_velocity && save_now)
     {
       p4est = bas.get_p4est();
       nodes = bas.get_nodes();
@@ -941,61 +1013,23 @@ int main (int argc, char* argv[])
     }
 
     // save field data
-    if(save_vtk && iteration%save_every_n_iteration == 0)
+    if(save_vtk && save_now)
     {
-      bas.count_dendrites(iteration/save_every_n_iteration);
-      bas.save_VTK(iteration/save_every_n_iteration);
-      bas.save_VTK_solid(iteration/save_every_n_iteration);
-      bas.save_VTK_shift(iteration/save_every_n_iteration);
-    }
-    ierr = PetscPrintf(mpi.comm(), "Iteration %d, time %e\n", iteration, tn); CHKERRXX(ierr);
-
-
-    // check if the solid phase has reached the termination length
-    if(save_velocity && iteration%save_every_n_iteration == 0)
-    {
-      int end_of_run = 0;
-      const double *phi_p;
-      ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr);
-      for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
-      {
-        if (phi_p[n] > 0)
-        {
-          double xyz[P4EST_DIM];
-          node_xyz_fr_n(n, p4est, nodes, xyz);
-
-          if (direction=='x')
-          {
-            if ((xyz[0] - xmin)/(xmax-xmin) > termination_length)
-              end_of_run = 1;
-          }
-          else if (direction=='y')
-          {
-            if ((xyz[1] - ymin)/(ymax-ymin) > termination_length)
-              end_of_run = 1;
-          }
-#ifdef P4_TO_P8
-          else if (direction=='z')
-          {
-            if ((xyz[2] - zmin)/(zmax-zmin) > termination_length)
-              end_of_run = 1;
-          }
-#endif
-        }
-      }
-      ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
-
-      int mpiret = MPI_Allreduce(MPI_IN_PLACE, &end_of_run, 1, MPI_INT, MPI_SUM, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-      keep_going = keep_going && (end_of_run == 0);
+      bas.count_dendrites(vtk_idx);
+      bas.save_VTK(vtk_idx);
+      bas.save_VTK_solid(vtk_idx);
+      bas.save_VTK_shift(vtk_idx);
     }
 
-    keep_going = keep_going && (iteration < max_total_iterations);
+    keep_going = keep_going && (iteration < max_total_iterations) && (total_growth < termination_length);
 
     bas.update_grid();
 //    bas.update_grid_eno();
     bas.compute_dt();
 
     iteration++;
+
+    if (save_now) vtk_idx++;
 
     p4est = bas.get_p4est();
     nodes = bas.get_nodes();

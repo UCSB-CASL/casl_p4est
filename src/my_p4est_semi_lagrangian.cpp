@@ -64,6 +64,8 @@ my_p4est_semi_lagrangian_t::my_p4est_semi_lagrangian_t(p4est_t **p4est_np1, p4es
 
   velo_interpolation = quadratic;
   phi_interpolation  = quadratic_non_oscillatory;
+
+  ngbd_v = ngbd_n;
 }
 
 #ifdef P4_TO_P8
@@ -249,6 +251,7 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt, Vec *v, Vec **v
   ierr = PetscLogEventBegin(log_my_p4est_semi_lagrangian_advect_from_n_to_np1_1st_order, 0, 0, 0, 0); CHKERRXX(ierr);
 
   my_p4est_interpolation_nodes_t interp(ngbd_n);
+  my_p4est_interpolation_nodes_t interp_v(ngbd_v);
 
   /* find vnp1 */
   std::vector<double> v_tmp[P4EST_DIM];
@@ -256,20 +259,21 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt, Vec *v, Vec **v
   {
     double xyz[P4EST_DIM];
     node_xyz_fr_n(n, p4est, nodes, xyz);
-    interp.add_point(n, xyz);
+//    interp.add_point(n, xyz);
+    interp_v.add_point(n, xyz);
   }
 
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
     v_tmp[dir].resize(nodes->indep_nodes.elem_count);
 #ifdef P4_TO_P8
-    interp.set_input(v[dir], vxx[dir][0], vxx[dir][1], vxx[dir][2], velo_interpolation);
+    interp_v.set_input(v[dir], vxx[dir][0], vxx[dir][1], vxx[dir][2], velo_interpolation);
 #else
-    interp.set_input(v[dir], vxx[dir][0], vxx[dir][1], velo_interpolation);
+    interp_v.set_input(v[dir], vxx[dir][0], vxx[dir][1], velo_interpolation);
 #endif
-    interp.interpolate(v_tmp[dir].data());
+    interp_v.interpolate(v_tmp[dir].data());
   }
-  interp.clear();
+  interp_v.clear();
 
   /* now find v_star */
   for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
@@ -291,19 +295,19 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt, Vec *v, Vec **v
       else                                                           xyz_star[dir] = MAX(xyz_min[dir], MIN(xyz_max[dir], xyz_star[dir]));
     }
 
-    interp.add_point(n, xyz_star);
+    interp_v.add_point(n, xyz_star);
   }
 
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
 #ifdef P4_TO_P8
-    interp.set_input(v[dir], vxx[dir][0], vxx[dir][1], vxx[dir][2], velo_interpolation);
+    interp_v.set_input(v[dir], vxx[dir][0], vxx[dir][1], vxx[dir][2], velo_interpolation);
 #else
-    interp.set_input(v[dir], vxx[dir][0], vxx[dir][1], velo_interpolation);
+    interp_v.set_input(v[dir], vxx[dir][0], vxx[dir][1], velo_interpolation);
 #endif
-    interp.interpolate(v_tmp[dir].data());
+    interp_v.interpolate(v_tmp[dir].data());
   }
-  interp.clear();
+  interp_v.clear();
 
   /* finally, find the backtracing value */
   for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
@@ -562,7 +566,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *
     {
       for(int dd=0; dd<P4EST_DIM; ++dd)
       {
-        ierr = VecCreateGhostNodes(ngbd_n->p4est, ngbd_n->nodes, &vxx[dir][dd]); CHKERRXX(ierr);
+        ierr = VecCreateGhostNodes(ngbd_v->p4est, ngbd_v->nodes, &vxx[dir][dd]); CHKERRXX(ierr);
       }
     }
     else
@@ -573,9 +577,9 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *
       }
     }
 #ifdef P4_TO_P8
-    ngbd_n->second_derivatives_central(v[dir], vxx[dir][0], vxx[dir][1], vxx[dir][2]);
+    ngbd_v->second_derivatives_central(v[dir], vxx[dir][0], vxx[dir][1], vxx[dir][2]);
 #else
-    ngbd_n->second_derivatives_central(v[dir], vxx[dir][0], vxx[dir][1]);
+    ngbd_v->second_derivatives_central(v[dir], vxx[dir][0], vxx[dir][1]);
 #endif
   }
 
@@ -586,7 +590,13 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *
     phi_xx = new Vec[P4EST_DIM];
     for(int dir=0; dir<P4EST_DIM; ++dir)
     {
-      ierr = VecDuplicate(vxx[0][dir], &phi_xx[dir]); CHKERRXX(ierr);
+//      ierr = VecDuplicate(vxx[0][dir], &phi_xx[dir]); CHKERRXX(ierr);
+//      if (dir == 0)
+//      {
+        ierr = VecCreateGhostNodes(ngbd_n->p4est, ngbd_n->nodes, &phi_xx[dir]); CHKERRXX(ierr);
+//      } else {
+//        ierr = VecDuplicate(phi_xx[0], &phi_xx[dir]); CHKERRXX(ierr);
+//      }
     }
 
 #ifdef P4_TO_P8

@@ -3,6 +3,29 @@ clear;
 x_start = 0.1;
 
 dir = '/home/dbochkov/Output/multialloy/dendrites';
+% dir = '/home/dbochkov/dendrites1/d1_0.00001_g_00500/67/';
+% dir = '/home/dbochkov/dendrites1/d1_0.00005_g_00500/67/';
+% dir = '/home/dbochkov/dendrites1/d1_0.00010_g_00500/67/';
+% dir = '/home/dbochkov/dendrites1/d1_0.00050_g_00500/67/';
+
+% dir = '/home/dbochkov/dendrites1/d1_0.00005_g_00500/82/';
+% dir = '/home/dbochkov/dendrites1/d1_0.00010_g_00500/82/';
+% dir = '/home/dbochkov/dendrites1/d1_0.00050_g_00500/79/';
+
+% dir = '/home/dbochkov/Dendrites/2/d1_0.00001_g_00500/72/';
+dir = '/home/dbochkov/Dendrites/2/d1_0.00002_g_00500/72/';
+% dir = '/home/dbochkov/Dendrites/2/d1_0.00004_g_00500/72/';
+% dir = '/home/dbochkov/Dendrites/2/d1_0.00008_g_00500/72/';
+% dir = '/home/dbochkov/Dendrites/2/d1_0.00016_g_00500/72/';
+% dir = '/home/dbochkov/Dendrites/2/d1_0.00032_g_00500/72/';
+
+Tm = 1996;
+m0 =-874;
+m1 =-1378;
+k0 = 0.848;
+k1 = 0.848;
+
+liq_rez = 100;
 
 phi   = importdata(strcat(dir,'/phi.txt'));
 c0    = importdata(strcat(dir,'/c0.txt'));
@@ -17,8 +40,8 @@ velo  = importdata(strcat(dir,'/velo.txt'));
 
 nx = length(phi(1,:));
 
-n = 6;
-% n = length(phi(:,1));
+n = 5;
+n = min(n,length(phi(:,1)));
 
 x = linspace(0, 1, nx);
 
@@ -35,36 +58,46 @@ c1s = c1s./solid;
 
 tf  = tf./solid;
 
-plot(x, c0(sorting(1,2),:));
-hold on
-plot(x, c1(sorting(1,2),:));
-plot(x, c0s(sorting(1,2),:));
-plot(x, c1s(sorting(1,2),:));
-for i = 2:n
-    plot(x, c0(sorting(i,2),:));
-    plot(x, c1(sorting(i,2),:));
-    plot(x, c0s(sorting(i,2),:));
-    plot(x, c1s(sorting(i,2),:));
-end
-hold off
+
+colors = lines(16);
+markers = {'+','o','*','.','x','s','d','^','v','>','<','p','h'};
 
 figure;
-plot(x, tf(sorting(1,2),:));
 hold on
-for i = 2:n
-    plot(x, tf(sorting(i,2),:));
+for i = 1:n
+    PropName  = {'Marker', 'LineWidth', 'MarkerSize', 'MarkerFaceColor', 'Color', 'LineStyle'};
+    PropValue = {markers{i}, 1, 3, 'auto', colors(i,:), 'none'};
+    L = plot(x, c0(sorting(i,2),:), 'DisplayName', ['Dendrite ', num2str(i)]); set(L, PropName, PropValue);
+%     if i == 1
+%         hold on
+%     end
+    L = plot(x, c1(sorting(i,2),:),'HandleVisibility','off'); set(L, PropName, PropValue);
+    L = plot(x, c0s(sorting(i,2),:)./k0,'HandleVisibility','off'); set(L, PropName, PropValue);
+    L = plot(x, c1s(sorting(i,2),:)./k0,'HandleVisibility','off'); set(L, PropName, PropValue);
 end
 hold off
+legend
+xlabel('Distance');
+ylabel('Concentration');
+grid on
+
+figure;
+for i = 1:n
+    PropName  = {'Marker', 'LineWidth', 'MarkerSize', 'MarkerFaceColor', 'Color', 'LineStyle'};
+    PropValue = {markers{i}, 1, 4, 'auto', colors(i,:), '-'};
+    L = plot(x, tf(sorting(i,2),:), 'DisplayName', ['Dendrite ', num2str(i)]); set(L, PropName, PropValue);
+    if i == 1
+        hold on
+    end
+end
+hold off
+xlabel('Distance');
+ylabel('Temperature');
+legend
+grid on
 
 % plot crystallization paths on phase diagram
 
-Tm = 1996;
-m0 =-874;
-m1 =-1378;
-k0 = 0.848;
-k1 = 0.848;
-
-liq_rez = 100;
 
 liq_c0 = linspace(min(min(c0s.*solid))/k0, max(max(c0s.*solid))/k0, liq_rez);
 liq_c1 = linspace(min(min(c1s.*solid))/k1, max(max(c1s.*solid))/k1, liq_rez+1);
@@ -77,7 +110,7 @@ for i = 1:liq_rez
 end
 
 figure
-surf(liq_c0, liq_c1, liq_tf, 'EdgeColor', 'none', 'FaceAlpha', 0.5);
+surf(liq_c0, liq_c1, liq_tf, 'EdgeColor', 'none', 'FaceAlpha', 0.5, 'DisplayName', 'Liquidus');
 
 hold on
 
@@ -89,11 +122,11 @@ for i = 1:n
     path_c1 = [];
     path_tf = [];
     
-    for i = 1:nx
-        if x(i) > x_start && solid(d,i)
-            path_c0 = [path_c0, c0s(d,i)];
-            path_c1 = [path_c1, c1s(d,i)];
-            path_tf = [path_tf, tf(d,i)];
+    for j = 1:nx
+        if x(j) > x_start && solid(d,j)
+            path_c0 = [path_c0, c0s(d,j)];
+            path_c1 = [path_c1, c1s(d,j)];
+            path_tf = [path_tf, tf(d,j)];
         end
     end
     
@@ -101,12 +134,16 @@ for i = 1:n
     path_c1 = path_c1/k1;
     
 %     plot3(path_c0, path_c1, path_tf, '-', 'MarkerSize', 2, 'LineWidth', 1)
-    plot3(c0s(d,:)/k0, c1s(d,:)/k1, tf(d,:), '-', 'MarkerSize', 2, 'LineWidth', 1)
+    plot3(c0s(d,:)/k0, c1s(d,:)/k1, tf(d,:), '-', 'MarkerSize', 3, 'LineWidth', 1, 'Marker', markers{i}, 'DisplayName', ['Dendrite ', num2str(i)])
     
 end
 
 hold off
 grid on
+legend
+xlabel('C_0');
+ylabel('C_1');
+zlabel('Temperature');
 
 
 figure
@@ -116,8 +153,13 @@ hold on
 for i = 1:n
     
     d = sorting(i,2);
-    plot(c0s(d,:)/k0, c1s(d,:)/k1, '-', 'MarkerSize', 2, 'LineWidth', 1)
+    plot(c0s(d,:)/k0, c1s(d,:)/k1, '-', 'MarkerSize', 2, 'LineWidth', 1, 'Marker', markers{i}, 'DisplayName', ['Dendrite ', num2str(i)])
     
 end
 
 hold off
+
+grid on
+legend
+xlabel('C_0');
+ylabel('C_1');

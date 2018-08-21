@@ -32,6 +32,8 @@ class my_p4est_semi_lagrangian_t
   my_p4est_node_neighbors_t *ngbd_nm1;
   my_p4est_hierarchy_t *hierarchy;
 
+  my_p4est_node_neighbors_t *ngbd_v;
+
   double xyz_min[P4EST_DIM], xyz_max[P4EST_DIM];
 
   void advect_from_n_to_np1(double dt,
@@ -143,6 +145,9 @@ public:
    * \note you need to update ngbd_n and hierarchy yourself !
    */
   void update_p4est(Vec *v, double dt, std::vector<Vec> &phi, std::vector<action_t> &action, int phi_idx, Vec *phi_xx=NULL);
+
+  void set_ngbd_v(my_p4est_node_neighbors_t *ngbd_v) { this->ngbd_v = ngbd_v; }
+
 };
 
 #endif // MY_P4EST_SEMI_LAGRANGIAN_H
