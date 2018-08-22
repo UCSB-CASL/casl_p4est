@@ -13,11 +13,16 @@ dir = '/home/dbochkov/Output/multialloy/dendrites';
 % dir = '/home/dbochkov/dendrites1/d1_0.00050_g_00500/79/';
 
 % dir = '/home/dbochkov/Dendrites/2/d1_0.00001_g_00500/72/';
-dir = '/home/dbochkov/Dendrites/2/d1_0.00002_g_00500/72/';
+% dir = '/home/dbochkov/Dendrites/2/d1_0.00002_g_00500/72/';
 % dir = '/home/dbochkov/Dendrites/2/d1_0.00004_g_00500/72/';
 % dir = '/home/dbochkov/Dendrites/2/d1_0.00008_g_00500/72/';
 % dir = '/home/dbochkov/Dendrites/2/d1_0.00016_g_00500/72/';
 % dir = '/home/dbochkov/Dendrites/2/d1_0.00032_g_00500/72/';
+
+% dir = '/home/dbochkov/Outputs/multialloy_optimized_shifted/dendrites/00083/';
+
+dir = '/home/dbochkov/Dendrites/3/data_last/D1_0.00001_G_00500.1964881/dendrites/00053/';
+dir = '/home/dbochkov/Dendrites/3/data_last/D1_0.00002_G_00500.1964882/dendrites/00060/';
 
 Tm = 1996;
 m0 =-874;
@@ -40,10 +45,10 @@ velo  = importdata(strcat(dir,'/velo.txt'));
 
 nx = length(phi(1,:));
 
-n = 5;
+n = 4;
 n = min(n,length(phi(:,1)));
 
-x = linspace(0, 1, nx);
+x = linspace(0, 2, nx);
 
 solid  = phi > 0;
 liquid = phi < 0;

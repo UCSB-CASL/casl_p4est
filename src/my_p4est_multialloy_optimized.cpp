@@ -550,12 +550,12 @@ void my_p4est_multialloy_t::update_grid()
     p4est_ghost_t *ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
     p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
 
-    my_p4est_semi_lagrangian_t shift_sl(&p4est_np1, &nodes_np1, &ghost_np1, shift_ngbd_, shift_ngbd_);
+    my_p4est_semi_lagrangian_t shift_sl(&p4est_np1, &nodes_np1, &ghost_np1, ngbd_, ngbd_);
 
     shift_sl.set_phi_interpolation(quadratic_non_oscillatory_continuous_v2);
     shift_sl.set_velo_interpolation(quadratic_non_oscillatory_continuous_v2);
 
-    shift_sl.set_ngbd_v(ngbd_);
+    shift_sl.set_ngbd_phi(shift_ngbd_);
 
     shift_sl.update_p4est(v_interface_np1_, dt_n_, shift_phi_);
 

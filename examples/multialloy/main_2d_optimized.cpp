@@ -57,7 +57,7 @@
 
 // grid parameters
 int lmin = 5;
-int lmax = 9;
+int lmax = 10;
 double lip = 2;
 
 #ifdef P4_TO_P8
@@ -73,7 +73,7 @@ double zmin = 0, zmax = 1; int ny = 1; bool pz = 0;
 #endif
 
 // solver options
-double cfl_number              = 0.1;
+double cfl_number              = 0.2;
 double bc_tolerance            = 1.e-5;
 double phi_thresh              = 1e-3;
 
@@ -88,7 +88,7 @@ bool use_superconvergent_robin = 1;
 bool zero_negative_velocity    = 0;
 
 bool shift_grids = 1;
-int  phi_grid_refinement = 0;
+int  phi_grid_refinement = -1;
 
 // not implemented yet
 bool use_superconvergent_jump  = false;
