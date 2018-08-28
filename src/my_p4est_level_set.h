@@ -165,6 +165,8 @@ public:
                                                                 ) const;
   void extend_from_interface_to_whole_domain_TVD( Vec phi, Vec q_interface, Vec q, int iterations=20) const;
 
+  void extend_Over_Interface_Iterative(Vec phi_petsc, Vec phi_smooth_petsc, Vec mask_petsc, Vec q_petsc, int iterations = 20, int order = 2, int band_to_extend = INT_MAX) const;
+
 };
 
 #endif // MY_P4EST_LEVELSET_H

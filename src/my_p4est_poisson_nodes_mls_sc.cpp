@@ -2551,11 +2551,11 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
           for (unsigned int i = 0; i < cube_ifc_w[phi_idx].size(); ++i)
           {
             interface_area[phi_idx] += cube_ifc_w[phi_idx][i];
-            #ifdef P4_TO_P8
-                        integral_bc    += cube_ifc_w[phi_idx][i] * (*bc_interface_value_->at(phi_idx))(cube_ifc_x[phi_idx][i], cube_ifc_y[phi_idx][i], cube_ifc_z[phi_idx][i]);
-            #else
-                        integral_bc    += cube_ifc_w[phi_idx][i] * (*bc_interface_value_->at(phi_idx))(cube_ifc_x[phi_idx][i], cube_ifc_y[phi_idx][i]);
-            #endif
+#ifdef P4_TO_P8
+            integral_bc    += cube_ifc_w[phi_idx][i] * (*bc_interface_value_->at(phi_idx))(cube_ifc_x[phi_idx][i], cube_ifc_y[phi_idx][i], cube_ifc_z[phi_idx][i]);
+#else
+            integral_bc    += cube_ifc_w[phi_idx][i] * (*bc_interface_value_->at(phi_idx))(cube_ifc_x[phi_idx][i], cube_ifc_y[phi_idx][i]);
+#endif
             interface_centroid_x[phi_idx] += cube_ifc_w[phi_idx][i]*cube_ifc_x[phi_idx][i];
             interface_centroid_y[phi_idx] += cube_ifc_w[phi_idx][i]*cube_ifc_y[phi_idx][i];
 #ifdef P4_TO_P8

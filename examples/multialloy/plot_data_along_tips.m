@@ -24,6 +24,10 @@ dir = '/home/dbochkov/Output/multialloy/dendrites';
 dir = '/home/dbochkov/Dendrites/3/data_last/D1_0.00001_G_00500.1964881/dendrites/00053/';
 dir = '/home/dbochkov/Dendrites/3/data_last/D1_0.00002_G_00500.1964882/dendrites/00060/';
 
+
+dir = '/home/dbochkov/Outputs/multialloy_optimized/dendrites/00118';
+dir = '/home/dbochkov/Outputs/multialloy_optimized/dendrites/00139';
+
 Tm = 1996;
 m0 =-874;
 m1 =-1378;
@@ -45,7 +49,7 @@ velo  = importdata(strcat(dir,'/velo.txt'));
 
 nx = length(phi(1,:));
 
-n = 4;
+n = 2;
 n = min(n,length(phi(:,1)));
 
 x = linspace(0, 2, nx);

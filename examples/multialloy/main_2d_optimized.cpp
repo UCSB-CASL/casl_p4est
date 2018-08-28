@@ -57,7 +57,7 @@
 
 // grid parameters
 int lmin = 5;
-int lmax = 10;
+int lmax = 9;
 double lip = 2;
 
 #ifdef P4_TO_P8
@@ -66,14 +66,14 @@ char direction = 'z';
 char direction = 'y';
 #endif
 
-double xmin = 0, xmax = 1; int nx = 1; bool px = 0;
-double ymin = 0, ymax = 2; int ny = 2; bool py = 1;
+double xmin = 0, xmax = 0.5; int nx = 1; bool px = 0;
+double ymin = 0, ymax = 2; int ny = 4; bool py = 1;
 #ifdef P4_TO_P8
 double zmin = 0, zmax = 1; int ny = 1; bool pz = 0;
 #endif
 
 // solver options
-double cfl_number              = 0.2;
+double cfl_number              = 0.1;
 double bc_tolerance            = 1.e-5;
 double phi_thresh              = 1e-3;
 
@@ -88,7 +88,7 @@ bool use_superconvergent_robin = 1;
 bool zero_negative_velocity    = 0;
 
 bool shift_grids = 1;
-int  phi_grid_refinement = -1;
+int  phi_grid_refinement = 0;
 
 // not implemented yet
 bool use_superconvergent_jump  = false;
@@ -211,7 +211,7 @@ void set_alloy_parameters()
       rho            = 9.2392e-3;   /* kg.cm-3    */
       heat_capacity  = 356;         /* J.kg-1.K-1 */
       Tm             = 1996;        /* K           */
-      G              = 500;         /* K.cm-1      */
+      G              = 100;         /* K.cm-1      */
       V              = 0.005;        /* cm.s-1      */
       latent_heat    = 2588.7;      /* J.cm-3      */
       thermal_conductivity =  1.3;/* W.cm-1.K-1  */
@@ -225,12 +225,12 @@ void set_alloy_parameters()
       c00 = 0.107;     /* at frac.    */
       kp0 = 0.848;     /* partition coefficient */
 
-      Dl1 = 1e-5;
+      Dl1 = 2e-5;
       ml1 =-1378;
       c01 = 0.094;
       kp1 = 0.848;
 
-      box_size = .5e-1;
+      box_size = .25e-1;
 
       break;
 
