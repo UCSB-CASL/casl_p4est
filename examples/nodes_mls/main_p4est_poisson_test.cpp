@@ -1478,7 +1478,8 @@ int main (int argc, char* argv[])
 
             // extend
             if (do_extension)
-              ls.extend_Over_Interface_Iterative(phi_eff, phi_smooth, mask, sol, 10, 2, 10); CHKERRXX(ierr);
+//              ls.extend_Over_Interface_Iterative(phi_eff, phi_smooth, mask, sol, 10, 2, 10); CHKERRXX(ierr);
+              ls.extend_Over_Interface_TVD_full(phi_smooth, mask, sol, 100, 2); CHKERRXX(ierr);
 //              ls.extend_Over_Interface_Iterative(phi_eff, phi_smooth, mask, sol_ex, 10, 2, 5); CHKERRXX(ierr);
 
             ierr = VecGetArray(mask, &mask_ptr); CHKERRXX(ierr);
@@ -1657,42 +1658,6 @@ int main (int argc, char* argv[])
 
             ngbd_n.first_derivatives_central(sol, grad);
 
-//            double my_nan = sqrt(-1.);
-
-//            Vec sol_trim;
-
-//            ierr = VecDuplicate(sol, &sol_trim); CHKERRXX(ierr);
-
-//            copy_ghosted_vec(sol, sol_trim);
-
-//            foreach_node(n, nodes)
-//            {
-//              if (mask_ptr[n] > -0.3) sol_trim_ptr[n] = my_nan;
-//            }
-
-
-//            Vec mask_gr[P4EST_DIM];
-
-//            foreach_dimension(dim)
-//            {
-//              ierr = VecDuplicate(grad[dim], &mask_gr[dim]); CHKERRXX(ierr);
-//            }
-
-//            foreach_dimension(dim)
-//            {
-//              foreach_node(n, nodes)
-//              {
-//                if (grad_ptr[dim][n] != grad_ptr[dim][n])
-//                {
-//                  grad_ptr[dim][n] = 0;
-//                  mask_gr_ptr[dim][n] = 1;
-//                } else {
-//                  mask_gr_ptr[dim][n] = -1;
-//                }
-
-//              }
-//            }
-
             double mask_gr_thresh = -0.3;
 
             ierr = VecGetArray(mask_gr, &mask_gr_ptr); CHKERRXX(ierr);
@@ -1757,7 +1722,8 @@ int main (int argc, char* argv[])
             {
               foreach_dimension(dim)
               {
-                ls.extend_Over_Interface_Iterative(phi_eff, phi_smooth, mask_gr, grad[dim], 10, 2, 10);
+//                ls.extend_Over_Interface_Iterative(phi_eff, phi_smooth, mask_gr, grad[dim], 10, 2, 10);
+                ls.extend_Over_Interface_TVD_full(phi_eff, mask_gr, grad[dim], 100, 2); CHKERRXX(ierr);
               }
             }
 

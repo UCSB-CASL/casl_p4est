@@ -1,6 +1,8 @@
 clear;
 
 x_start = 0.1;
+x_max = 4;
+x_plot = 2;
 
 dir = '/home/dbochkov/Output/multialloy/dendrites';
 % dir = '/home/dbochkov/dendrites1/d1_0.00001_g_00500/67/';
@@ -21,14 +23,29 @@ dir = '/home/dbochkov/Output/multialloy/dendrites';
 
 % dir = '/home/dbochkov/Outputs/multialloy_optimized_shifted/dendrites/00083/';
 
-dir = '/home/dbochkov/Dendrites/3/data_last/D1_0.00001_G_00500.1964881/dendrites/00053/';
-dir = '/home/dbochkov/Dendrites/3/data_last/D1_0.00002_G_00500.1964882/dendrites/00060/';
+% dir = '/home/dbochkov/Dendrites/3/data_last/D1_0.00001_G_00500.1964881/dendrites/00053/';
+% dir = '/home/dbochkov/Dendrites/3/data_last/D1_0.00002_G_00500.1964882/dendrites/00060/';
+% 
+% 
+% dir = '/home/dbochkov/Outputs/multialloy_optimized/dendrites/00118';
+% dir = '/home/dbochkov/Outputs/multialloy_optimized/dendrites/00139';
 
+dir = '/home/dbochkov/Dendrites/4/data_last/D1_0.00001_G_00500.1972666/dendrites/00115/';
+% dir = '/home/dbochkov/Dendrites/4/data_last/D1_0.00002_G_00500.1972671/dendrites/00129/';
+% dir = '/home/dbochkov/Dendrites/4/data_last/D1_0.00004_G_00500.1972676/dendrites/00141/';
+% dir = '/home/dbochkov/Dendrites/4/data_last/D1_0.00008_G_00500.1972679/dendrites/00149/';
+% dir = '/home/dbochkov/Dendrites/4/data_last/D1_0.00016_G_00500.1972680/dendrites/00149/';
+% dir = '/home/dbochkov/Dendrites/4/data_last/D1_0.00032_G_00500.1972681/dendrites/00146/';
 
-dir = '/home/dbochkov/Outputs/multialloy_optimized/dendrites/00118';
-dir = '/home/dbochkov/Outputs/multialloy_optimized/dendrites/00139';
+% dir = '/home/dbochkov/Dendrites/4/data_115/D1_0.00001_G_00500.1972666/dendrites/00115/';
+% dir = '/home/dbochkov/Dendrites/4/data_115/D1_0.00002_G_00500.1972671/dendrites/00115/';
+% dir = '/home/dbochkov/Dendrites/4/data_115/D1_0.00004_G_00500.1972676/dendrites/00115/';
+% dir = '/home/dbochkov/Dendrites/4/data_115/D1_0.00008_G_00500.1972679/dendrites/00115/';
+% dir = '/home/dbochkov/Dendrites/4/data_115/D1_0.00016_G_00500.1972680/dendrites/00115/';
+% dir = '/home/dbochkov/Dendrites/4/data_115/D1_0.00032_G_00500.1972681/dendrites/00115/';
 
 Tm = 1996;
+
 m0 =-874;
 m1 =-1378;
 k0 = 0.848;
@@ -49,10 +66,10 @@ velo  = importdata(strcat(dir,'/velo.txt'));
 
 nx = length(phi(1,:));
 
-n = 2;
+n = 3;
 n = min(n,length(phi(:,1)));
 
-x = linspace(0, 2, nx);
+x = linspace(0, x_max, nx);
 
 solid  = phi > 0;
 liquid = phi < 0;
@@ -88,6 +105,7 @@ hold off
 legend
 xlabel('Distance');
 ylabel('Concentration');
+xlim([0, x_plot]);
 grid on
 
 figure;
@@ -102,14 +120,19 @@ end
 hold off
 xlabel('Distance');
 ylabel('Temperature');
+xlim([0, x_plot]);
 legend
 grid on
 
 % plot crystallization paths on phase diagram
 
+D = [];
+for i = 1:n
+    D = [D, sorting(i,2)];
+end
 
-liq_c0 = linspace(min(min(c0s.*solid))/k0, max(max(c0s.*solid))/k0, liq_rez);
-liq_c1 = linspace(min(min(c1s.*solid))/k1, max(max(c1s.*solid))/k1, liq_rez+1);
+liq_c0 = linspace(min(min(c0s(D,:).*solid(D,:)))/k0, max(max(c0s(D,:).*solid(D,:)))/k0, liq_rez);
+liq_c1 = linspace(min(min(c1s(D,:).*solid(D,:)))/k1, max(max(c1s(D,:).*solid(D,:)))/k1, liq_rez+1);
 
 
 for i = 1:liq_rez

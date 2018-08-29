@@ -98,9 +98,9 @@ int num_shifts_x_dir = 5;
 int num_shifts_y_dir = 5;
 int num_shifts_z_dir = 5;
 #else
-int lmin = 0;
-int lmax = 5;
-int num_splits = 8;
+int lmin = 6;
+int lmax = 12;
+int num_splits = 1;
 int num_splits_per_split = 1;
 int num_shifts_x_dir = 1;
 int num_shifts_y_dir = 1;
@@ -672,8 +672,13 @@ int main (int argc, char* argv[])
             // extend
             //    ls.extend_Over_Interface_TVD(phi_smooth, sol_ex, 100); CHKERRXX(ierr);
             //    ls.extend_Over_Interface_TVD(phi_eff, sol_ex, 100); CHKERRXX(ierr);
+//            ls.extend_Over_Interface_Iterative(phi_eff, phi_smooth, phi_eff, sol_ex, 10, 2, 5);
+            for (int i = 0; i < 1; ++i)
+            {
 //              ls.extend_Over_Interface_TVD(phi_smooth, phi_eff, sol_ex, 100, 2); CHKERRXX(ierr);
-            ls.extend_Over_Interface_Iterative(phi_eff, phi_smooth, phi_eff, sol_ex, 10, 2, 5);
+//              ls.extend_Over_Interface_Iterative(phi_eff, phi_smooth, phi_eff, sol_ex, 10, 2, 5);
+              ls.extend_Over_Interface_TVD_full(phi_eff, phi_eff, sol_ex, 100, 2);
+            }
 //            for (int i = 0; i < 11; ++i)
 //              ls.extend_Over_Interface(phi_smooth, sol_ex, 2, 10);
 //                ls.extend_Over_Interface_TVD(phi_eff, phi_eff, sol_ex, 100); CHKERRXX(ierr);

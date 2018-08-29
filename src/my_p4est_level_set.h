@@ -167,6 +167,8 @@ public:
 
   void extend_Over_Interface_Iterative(Vec phi_petsc, Vec phi_smooth_petsc, Vec mask_petsc, Vec q_petsc, int iterations = 20, int order = 2, int band_to_extend = INT_MAX) const;
 
+  void extend_Over_Interface_TVD_full(Vec phi, Vec mask, Vec q, int iterations = 20, int order = 2, Vec qd[] = NULL, Vec qdd[] = NULL) const;
+
 };
 
 #endif // MY_P4EST_LEVELSET_H
