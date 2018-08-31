@@ -153,6 +153,12 @@ my_p4est_multialloy_t::my_p4est_multialloy_t(my_p4est_node_neighbors_t *ngbd)
     shift_normal_[dir] = NULL;
     shift_phi_dd_[dir] = NULL;
   }
+
+  foreach_dimension(dim)
+  {
+    c0d_np1_[dim] = NULL;
+//    ierr = VecCreateGhostNodes(p4est_, nodes_, &c0d_np1_[dim]); CHKERRXX(ierr);
+  }
 }
 
 
@@ -240,6 +246,11 @@ my_p4est_multialloy_t::~my_p4est_multialloy_t()
   p4est_destroy      (shift_p4est_);
 
   my_p4est_brick_destroy(shift_connectivity_, &shift_brick_);
+
+  foreach_dimension(dim)
+  {
+    if (c0d_np1_[dim] != NULL) { ierr = VecDestroy(c0d_np1_[dim]); CHKERRXX(ierr); }
+  }
 }
 
 void my_p4est_multialloy_t::set_normal_velocity(Vec v)
@@ -371,6 +382,12 @@ void my_p4est_multialloy_t::compute_velocity()
   double *vn_p;
   ierr = VecGetArray(vn, &vn_p); CHKERRXX(ierr);
 
+  double *c0d_np1_p[P4EST_DIM];
+  foreach_dimension(dim)
+  {
+    ierr = VecGetArray(c0d_np1_[dim], &c0d_np1_p[dim]); CHKERRXX(ierr);
+  }
+
   double xyz[P4EST_DIM];
 
   quad_neighbor_nodes_of_node_t qnnn;
@@ -382,10 +399,14 @@ void my_p4est_multialloy_t::compute_velocity()
     node_xyz_fr_n(n, p4est_, nodes_, xyz);
     double c0_flux_val = c0_flux_->value(xyz);
 
-    v_gamma_p[0][n] = (c0_flux_val*normal_p[0][n]-qnnn.dx_central(c0_np1_p))*Dl0_ / (1.-kp0_) / MAX(c_interface_p[n], 1e-7);
-    v_gamma_p[1][n] = (c0_flux_val*normal_p[1][n]-qnnn.dy_central(c0_np1_p))*Dl0_ / (1.-kp0_) / MAX(c_interface_p[n], 1e-7);
+//    v_gamma_p[0][n] = (c0_flux_val*normal_p[0][n]-qnnn.dx_central(c0_np1_p))*Dl0_ / (1.-kp0_) / MAX(c_interface_p[n], 1e-7);
+//    v_gamma_p[1][n] = (c0_flux_val*normal_p[1][n]-qnnn.dy_central(c0_np1_p))*Dl0_ / (1.-kp0_) / MAX(c_interface_p[n], 1e-7);
+//#ifdef P4_TO_P8
+//    v_gamma_p[2][n] = (c0_flux_val*normal_p[2][n]-qnnn.dz_central(c0_np1_p))*Dl0_ / (1.-kp0_) / MAX(c_interface_p[n], 1e-7);
+    v_gamma_p[0][n] = (c0_flux_val*normal_p[0][n]-c0d_np1_p[0][n])*Dl0_ / (1.-kp0_) / MAX(c_interface_p[n], 1e-7);
+    v_gamma_p[1][n] = (c0_flux_val*normal_p[1][n]-c0d_np1_p[1][n])*Dl0_ / (1.-kp0_) / MAX(c_interface_p[n], 1e-7);
 #ifdef P4_TO_P8
-    v_gamma_p[2][n] = (c0_flux_val*normal_p[2][n]-qnnn.dz_central(c0_np1_p))*Dl0_ / (1.-kp0_) / MAX(c_interface_p[n], 1e-7);
+    v_gamma_p[2][n] = (c0_flux_val*normal_p[2][n]-c0d_np1_p[2][n])*Dl0_ / (1.-kp0_) / MAX(c_interface_p[n], 1e-7);
     vn_p[n] = (v_gamma_p[0][n]*normal_p[0][n] + v_gamma_p[1][n]*normal_p[1][n] + v_gamma_p[2][n]*normal_p[2][n]);
 #else
     vn_p[n] = (v_gamma_p[0][n]*normal_p[0][n] + v_gamma_p[1][n]*normal_p[1][n]);
@@ -406,10 +427,14 @@ void my_p4est_multialloy_t::compute_velocity()
     node_xyz_fr_n(n, p4est_, nodes_, xyz);
     double c0_flux_val = c0_flux_->value(xyz);
 
-    v_gamma_p[0][n] = (c0_flux_val*normal_p[0][n]-qnnn.dx_central(c0_np1_p))*Dl0_ / (1.-kp0_) / MAX(c_interface_p[n], 1e-7);
-    v_gamma_p[1][n] = (c0_flux_val*normal_p[1][n]-qnnn.dy_central(c0_np1_p))*Dl0_ / (1.-kp0_) / MAX(c_interface_p[n], 1e-7);
+//    v_gamma_p[0][n] = (c0_flux_val*normal_p[0][n]-qnnn.dx_central(c0_np1_p))*Dl0_ / (1.-kp0_) / MAX(c_interface_p[n], 1e-7);
+//    v_gamma_p[1][n] = (c0_flux_val*normal_p[1][n]-qnnn.dy_central(c0_np1_p))*Dl0_ / (1.-kp0_) / MAX(c_interface_p[n], 1e-7);
+//#ifdef P4_TO_P8
+//    v_gamma_p[2][n] = (c0_flux_val*normal_p[2][n]-qnnn.dz_central(c0_np1_p))*Dl0_ / (1.-kp0_) / MAX(c_interface_p[n], 1e-7);
+    v_gamma_p[0][n] = (c0_flux_val*normal_p[0][n]-c0d_np1_p[0][n])*Dl0_ / (1.-kp0_) / MAX(c_interface_p[n], 1e-7);
+    v_gamma_p[1][n] = (c0_flux_val*normal_p[1][n]-c0d_np1_p[1][n])*Dl0_ / (1.-kp0_) / MAX(c_interface_p[n], 1e-7);
 #ifdef P4_TO_P8
-    v_gamma_p[2][n] = (c0_flux_val*normal_p[2][n]-qnnn.dz_central(c0_np1_p))*Dl0_ / (1.-kp0_) / MAX(c_interface_p[n], 1e-7);
+    v_gamma_p[2][n] = (c0_flux_val*normal_p[2][n]-c0d_np1_p[2][n])*Dl0_ / (1.-kp0_) / MAX(c_interface_p[n], 1e-7);
     vn_p[n] = (v_gamma_p[0][n]*normal_p[0][n] + v_gamma_p[1][n]*normal_p[1][n] + v_gamma_p[2][n]*normal_p[2][n]);
 #else
     vn_p[n] = (v_gamma_p[0][n]*normal_p[0][n] + v_gamma_p[1][n]*normal_p[1][n]);
@@ -421,6 +446,12 @@ void my_p4est_multialloy_t::compute_velocity()
   {
     ierr = VecGhostUpdateEnd(v_gamma[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   }
+
+  foreach_dimension(dim)
+  {
+    ierr = VecRestoreArray(c0d_np1_[dim], &c0d_np1_p[dim]); CHKERRXX(ierr);
+  }
+
 
   ierr = VecRestoreArray(vn, &vn_p); CHKERRXX(ierr);
   ierr = VecRestoreArray(c0_np1_, &c0_np1_p); CHKERRXX(ierr);
@@ -438,18 +469,18 @@ void my_p4est_multialloy_t::compute_velocity()
     ierr = VecRestoreArray(v_gamma[dir], &v_gamma_p[dir]); CHKERRXX(ierr);
 
     if (v_interface_np1_[dir] != NULL) { ierr = VecDestroy(v_interface_np1_[dir]); CHKERRXX(ierr); }
-    ierr = VecDuplicate(phi_dd_[dir], &v_interface_np1_[dir]); CHKERRXX(ierr);
 
+    ierr = VecDuplicate(phi_dd_[dir], &v_interface_np1_[dir]); CHKERRXX(ierr);
     ls.extend_from_interface_to_whole_domain_TVD(phi_, v_gamma[dir], v_interface_np1_[dir]);
-//    ls.extend_from_interface_to_whole_domain_TVD(phi_, phi_smooth_, v_gamma[dir], v_interface_np1_[dir]);
     ierr = VecDestroy(v_gamma[dir]); CHKERRXX(ierr);
+
+//    v_interface_np1_[dir] = v_gamma[dir];
   }
 
   if (normal_velocity_np1_ != NULL) { ierr = VecDestroy(normal_velocity_np1_); CHKERRXX(ierr); }
   ierr = VecDuplicate(phi_, &normal_velocity_np1_); CHKERRXX(ierr);
 
   ls.extend_from_interface_to_whole_domain_TVD(phi_, vn, normal_velocity_np1_);
-//  ls.extend_from_interface_to_whole_domain_TVD(phi_, phi_smooth_, vn, normal_velocity_np1_);
   ierr = VecDestroy(vn); CHKERRXX(ierr);
 
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_compute_velocity, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -1028,166 +1059,18 @@ int my_p4est_multialloy_t::one_step()
 //  copy_ghosted_vec(c1_n_, c1_np1_);
 
 //  int one_step_iterations = solver_all_in_one.solve(t_np1_, c0_np1_, c1_np1_, bc_error_, bc_error_max_, dt_n_, cfl_number_);
-  int one_step_iterations = solver_all_in_one.solve(tl_np1_, ts_np1_, c0_np1_, c1_np1_, bc_error_, bc_error_max_, dt_n_, 1.e6);
 
-  // correct by a shifted grid
-  if (0)
+  foreach_dimension(dim)
   {
-    Vec shift_tl_n_; ierr = VecDuplicate(shift_phi_, &shift_tl_n_); CHKERRXX(ierr);
-    Vec shift_ts_n_; ierr = VecDuplicate(shift_phi_, &shift_ts_n_); CHKERRXX(ierr);
-    Vec shift_c0_n_; ierr = VecDuplicate(shift_phi_, &shift_c0_n_); CHKERRXX(ierr);
-    Vec shift_c1_n_; ierr = VecDuplicate(shift_phi_, &shift_c1_n_); CHKERRXX(ierr);
-
-    Vec shift_tl_np1_; ierr = VecDuplicate(shift_phi_, &shift_tl_np1_); CHKERRXX(ierr);
-    Vec shift_ts_np1_; ierr = VecDuplicate(shift_phi_, &shift_ts_np1_); CHKERRXX(ierr);
-    Vec shift_c0_np1_; ierr = VecDuplicate(shift_phi_, &shift_c0_np1_); CHKERRXX(ierr);
-    Vec shift_c1_np1_; ierr = VecDuplicate(shift_phi_, &shift_c1_np1_); CHKERRXX(ierr);
-
-    Vec shift_bc_error_; ierr = VecDuplicate(shift_phi_, &shift_bc_error_); CHKERRXX(ierr);
-
-    my_p4est_interpolation_nodes_t interp_fwd(ngbd_);
-
-    double xyz[P4EST_DIM];
-
-    foreach_node(n, shift_nodes_)
-    {
-      node_xyz_fr_n(n, shift_p4est_, shift_nodes_, xyz);
-      interp_fwd.add_point(n, xyz);
-    }
-
-    interp_fwd.set_input(tl_n_, interpolation_between_grids_); interp_fwd.interpolate(shift_tl_n_);
-    interp_fwd.set_input(ts_n_, interpolation_between_grids_); interp_fwd.interpolate(shift_ts_n_);
-    interp_fwd.set_input(c0_n_, interpolation_between_grids_); interp_fwd.interpolate(shift_c0_n_);
-    interp_fwd.set_input(c1_n_, interpolation_between_grids_); interp_fwd.interpolate(shift_c1_n_);
-
-    Vec rhs_tl; ierr = VecDuplicate(shift_tl_n_, &rhs_tl); CHKERRXX(ierr); copy_ghosted_vec(shift_tl_n_, rhs_tl);
-    Vec rhs_ts; ierr = VecDuplicate(shift_ts_n_, &rhs_ts); CHKERRXX(ierr); copy_ghosted_vec(shift_ts_n_, rhs_ts);
-    Vec rhs_c0; ierr = VecDuplicate(shift_c0_n_, &rhs_c0); CHKERRXX(ierr); copy_ghosted_vec(shift_c0_n_, rhs_c0);
-    Vec rhs_c1; ierr = VecDuplicate(shift_c1_n_, &rhs_c1); CHKERRXX(ierr); copy_ghosted_vec(shift_c1_n_, rhs_c1);
-
-    double *rhs_tl_p; ierr = VecGetArray(rhs_tl, &rhs_tl_p); CHKERRXX(ierr);
-    double *rhs_ts_p; ierr = VecGetArray(rhs_ts, &rhs_ts_p); CHKERRXX(ierr);
-    double *rhs_c0_p; ierr = VecGetArray(rhs_c0, &rhs_c0_p); CHKERRXX(ierr);
-    double *rhs_c1_p; ierr = VecGetArray(rhs_c1, &rhs_c1_p); CHKERRXX(ierr);
-
-    foreach_node(n, shift_nodes_)
-    {
-      node_xyz_fr_n(n, shift_p4est_, shift_nodes_, xyz);
-      rhs_tl_p[n] += dt_n_*rhs_tl_->value(xyz);
-      rhs_ts_p[n] += dt_n_*rhs_ts_->value(xyz);
-      rhs_c0_p[n] += dt_n_*rhs_c0_->value(xyz);
-      rhs_c1_p[n] += dt_n_*rhs_c1_->value(xyz);
-    }
-
-    ierr = VecRestoreArray(rhs_tl, &rhs_tl_p); CHKERRXX(ierr);
-    ierr = VecRestoreArray(rhs_ts, &rhs_ts_p); CHKERRXX(ierr);
-    ierr = VecRestoreArray(rhs_c0, &rhs_c0_p); CHKERRXX(ierr);
-    ierr = VecRestoreArray(rhs_c1, &rhs_c1_p); CHKERRXX(ierr);
-
-    // solve coupled system of equations
-    my_p4est_poisson_nodes_multialloy_t solver_all_in_one(shift_ngbd_);
-    solver_all_in_one.set_phi(shift_phi_, shift_phi_dd_, shift_normal_, shift_kappa_);
-    solver_all_in_one.set_parameters(dt_n_, thermal_diffusivity_, thermal_conductivity_, latent_heat_, Tm_, Dl0_, kp0_, ml0_, Dl1_, kp1_, ml1_);
-    solver_all_in_one.set_bc(bc_t_, bc_c0_, bc_c1_);
-    solver_all_in_one.set_pin_every_n_steps(pin_every_n_steps_);
-    solver_all_in_one.set_tolerance(bc_tolerance_, max_iterations_);
-    solver_all_in_one.set_rhs(rhs_tl, rhs_ts, rhs_c0, rhs_c1);
-
-    solver_all_in_one.set_use_continuous_stencil   (use_continuous_stencil_   );
-    solver_all_in_one.set_use_one_sided_derivatives(use_one_sided_derivatives_);
-    solver_all_in_one.set_use_points_on_interface  (use_points_on_interface_  );
-    solver_all_in_one.set_update_c0_robin          (update_c0_robin_          );
-    solver_all_in_one.set_use_superconvergent_robin(use_superconvergent_robin_);
-    solver_all_in_one.set_zero_negative_velocity   (zero_negative_velocity_);
-
-    solver_all_in_one.set_GT(*GT_);
-    solver_all_in_one.set_jump_t(*jump_t_);
-    solver_all_in_one.set_jump_tn(*jump_tn_);
-    solver_all_in_one.set_flux_c(*c0_flux_, *c1_flux_);
-    solver_all_in_one.set_undercoolings(*eps_v_, *eps_c_);
-
-    my_p4est_interpolation_nodes_t interp_bwd(shift_ngbd_);
-    interp_bwd.set_input(shift_c0_n_, linear);
-
-    solver_all_in_one.set_c0_guess(interp_bwd);
-
-    int one_step_iterations = solver_all_in_one.solve(shift_tl_np1_, shift_ts_np1_, shift_c0_np1_, shift_c1_np1_, shift_bc_error_, bc_error_max_, dt_n_, 1.e6);
-
-    ierr = VecDestroy(rhs_tl); CHKERRXX(ierr);
-    ierr = VecDestroy(rhs_ts); CHKERRXX(ierr);
-    ierr = VecDestroy(rhs_c0); CHKERRXX(ierr);
-    ierr = VecDestroy(rhs_c1); CHKERRXX(ierr);
-
-    foreach_node(n, nodes_)
-    {
-      node_xyz_fr_n(n, p4est_, nodes_, xyz);
-      interp_bwd.add_point(n, xyz);
-    }
-
-    // interpolate back
-    Vec tl_np1_tmp; ierr = VecDuplicate(phi_, &tl_np1_tmp); CHKERRXX(ierr);
-    Vec ts_np1_tmp; ierr = VecDuplicate(phi_, &ts_np1_tmp); CHKERRXX(ierr);
-    Vec c0_np1_tmp; ierr = VecDuplicate(phi_, &c0_np1_tmp); CHKERRXX(ierr);
-    Vec c1_np1_tmp; ierr = VecDuplicate(phi_, &c1_np1_tmp); CHKERRXX(ierr);
-
-    interp_bwd.set_input(shift_tl_np1_, interpolation_between_grids_); interp_bwd.interpolate(tl_np1_tmp);
-    interp_bwd.set_input(shift_ts_np1_, interpolation_between_grids_); interp_bwd.interpolate(ts_np1_tmp);
-    interp_bwd.set_input(shift_c0_np1_, interpolation_between_grids_); interp_bwd.interpolate(c0_np1_tmp);
-    interp_bwd.set_input(shift_c1_np1_, interpolation_between_grids_); interp_bwd.interpolate(c1_np1_tmp);
-
-    ierr = VecDestroy(shift_tl_n_); CHKERRXX(ierr);
-    ierr = VecDestroy(shift_ts_n_); CHKERRXX(ierr);
-    ierr = VecDestroy(shift_c0_n_); CHKERRXX(ierr);
-    ierr = VecDestroy(shift_c1_n_); CHKERRXX(ierr);
-
-    ierr = VecDestroy(shift_tl_np1_); CHKERRXX(ierr);
-    ierr = VecDestroy(shift_ts_np1_); CHKERRXX(ierr);
-    ierr = VecDestroy(shift_c0_np1_); CHKERRXX(ierr);
-    ierr = VecDestroy(shift_c1_np1_); CHKERRXX(ierr);
-
-    ierr = VecDestroy(shift_bc_error_); CHKERRXX(ierr);
-
-    // take average
-    double *tl_np1_tmp_p; ierr = VecGetArray(tl_np1_tmp, &tl_np1_tmp_p); CHKERRXX(ierr);
-    double *ts_np1_tmp_p; ierr = VecGetArray(ts_np1_tmp, &ts_np1_tmp_p); CHKERRXX(ierr);
-    double *c0_np1_tmp_p; ierr = VecGetArray(c0_np1_tmp, &c0_np1_tmp_p); CHKERRXX(ierr);
-    double *c1_np1_tmp_p; ierr = VecGetArray(c1_np1_tmp, &c1_np1_tmp_p); CHKERRXX(ierr);
-
-    double *tl_np1_p; ierr = VecGetArray(tl_np1_, &tl_np1_p); CHKERRXX(ierr);
-    double *ts_np1_p; ierr = VecGetArray(ts_np1_, &ts_np1_p); CHKERRXX(ierr);
-    double *c0_np1_p; ierr = VecGetArray(c0_np1_, &c0_np1_p); CHKERRXX(ierr);
-    double *c1_np1_p; ierr = VecGetArray(c1_np1_, &c1_np1_p); CHKERRXX(ierr);
-
-    foreach_node(n, nodes_)
-    {
-//      tl_np1_p[n] = .5*(tl_np1_p[n] + tl_np1_tmp_p[n]);
-//      ts_np1_p[n] = .5*(ts_np1_p[n] + ts_np1_tmp_p[n]);
-//      c0_np1_p[n] = .5*(c0_np1_p[n] + c0_np1_tmp_p[n]);
-//      c1_np1_p[n] = .5*(c1_np1_p[n] + c1_np1_tmp_p[n]);
-      tl_np1_p[n] = tl_np1_tmp_p[n];
-      ts_np1_p[n] = ts_np1_tmp_p[n];
-      c0_np1_p[n] = c0_np1_tmp_p[n];
-      c1_np1_p[n] = c1_np1_tmp_p[n];
-    }
-
-    ierr = VecRestoreArray(tl_np1_tmp, &tl_np1_tmp_p); CHKERRXX(ierr);
-    ierr = VecRestoreArray(ts_np1_tmp, &ts_np1_tmp_p); CHKERRXX(ierr);
-    ierr = VecRestoreArray(c0_np1_tmp, &c0_np1_tmp_p); CHKERRXX(ierr);
-    ierr = VecRestoreArray(c1_np1_tmp, &c1_np1_tmp_p); CHKERRXX(ierr);
-
-    ierr = VecRestoreArray(tl_np1_, &tl_np1_p); CHKERRXX(ierr);
-    ierr = VecRestoreArray(ts_np1_, &ts_np1_p); CHKERRXX(ierr);
-    ierr = VecRestoreArray(c0_np1_, &c0_np1_p); CHKERRXX(ierr);
-    ierr = VecRestoreArray(c1_np1_, &c1_np1_p); CHKERRXX(ierr);
-
-    ierr = VecDestroy(tl_np1_tmp); CHKERRXX(ierr);
-    ierr = VecDestroy(ts_np1_tmp); CHKERRXX(ierr);
-    ierr = VecDestroy(c0_np1_tmp); CHKERRXX(ierr);
-    ierr = VecDestroy(c1_np1_tmp); CHKERRXX(ierr);
+    if (c0d_np1_[dim] != NULL) { ierr = VecDestroy(c0d_np1_[dim]); CHKERRXX(ierr); }
+    ierr = VecCreateGhostNodes(p4est_, nodes_, &c0d_np1_[dim]); CHKERRXX(ierr);
   }
+
+  int one_step_iterations = solver_all_in_one.solve(tl_np1_, ts_np1_, c0_np1_, c1_np1_, c0d_np1_, bc_error_, bc_error_max_, dt_n_, 1.e6);
 
   // compute velocity
   compute_velocity();
+
 
   if (update_c0_robin_) solver_all_in_one.solve_c0_robin();
 

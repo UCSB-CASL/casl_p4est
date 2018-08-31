@@ -189,7 +189,7 @@ void my_p4est_poisson_nodes_multialloy_t::set_phi(Vec phi, Vec* phi_dd, Vec* nor
 //#endif
 }
 
-int my_p4est_poisson_nodes_multialloy_t::solve(Vec tm, Vec tp, Vec c0, Vec c1, Vec bc_error, double &bc_error_max, double &dt, double cfl, bool use_non_zero_guess, std::vector<double> *num_pdes, std::vector<double> *error)
+int my_p4est_poisson_nodes_multialloy_t::solve(Vec tm, Vec tp, Vec c0, Vec c1, Vec c0d[], Vec bc_error, double &bc_error_max, double &dt, double cfl, bool use_non_zero_guess, std::vector<double> *num_pdes, std::vector<double> *error)
 {
   ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_multialloy_solve, 0, 0, 0, 0); CHKERRXX(ierr);
 
@@ -199,6 +199,11 @@ int my_p4est_poisson_nodes_multialloy_t::solve(Vec tm, Vec tp, Vec c0, Vec c1, V
   tp_.vec = tp;
   c0_.vec = c0;
   c1_.vec = c1;
+
+  foreach_dimension(dim)
+  {
+    c0d_.vec[dim] = c0d[dim];
+  }
 
   second_derivatives_owned_ = true;
 
@@ -1034,52 +1039,196 @@ void my_p4est_poisson_nodes_multialloy_t::compute_c0n()
   ierr = VecDuplicate(phi_.vec, &c0n_.vec); CHKERRXX(ierr);
 
   c0_.get_array();
+  c0d_.get_array();
   c0n_.get_array();
   normal_.get_array();
 
   quad_neighbor_nodes_of_node_t qnnn;
+
+  double dxyz[P4EST_DIM];
+
+  dxyz_min(p4est_, dxyz);
+
+#ifdef P4_TO_P8
+  double diag = sqrt(SQR(dxyz[0]) + SQR(dxyz[1]) + SQR(dxyz[2]));
+#else
+  double diag = sqrt(SQR(dxyz[0]) + SQR(dxyz[1]));
+#endif
+
+  double rel_thresh = 1.e-2;
+
+  vec_and_ptr_t mask;
+
+  ierr = VecDuplicate(phi_.vec, &mask.vec); CHKERRXX(ierr);
+
+  copy_ghosted_vec(phi_.vec, mask.vec);
+
+  mask.get_array();
 
   for(size_t i = 0; i < node_neighbors_->get_layer_size(); ++i)
   {
     p4est_locidx_t n = node_neighbors_->get_layer_node(i);
     qnnn = node_neighbors_->get_neighbors(n);
 
+    c0d_.ptr[0][n] = qnnn.dx_central(c0_.ptr);
+    c0d_.ptr[1][n] = qnnn.dy_central(c0_.ptr);
 #ifdef P4_TO_P8
-    c0n_.ptr[n] = qnnn.dx_central(c0_.ptr)*normal_.ptr[0][n] + qnnn.dy_central(c0_.ptr)*normal_.ptr[1][n] + qnnn.dz_central(c0_.ptr)*normal_.ptr[2][n];
-#else
-    c0n_.ptr[n] = qnnn.dx_central(c0_.ptr)*normal_.ptr[0][n] + qnnn.dy_central(c0_.ptr)*normal_.ptr[1][n];
+    c0d_.ptr[2][n] = qnnn.dz_central(c0_.ptr);
 #endif
 
-//    c0n_.ptr[n] = MAX(c0n_.ptr[n], 0.);
+    // correct near the boundary
+    if (solver_c0->pointwise_bc[n].size() > 0 && use_points_on_interface_)
+    {
+      double d_m00 = qnnn.d_m00, d_p00 = qnnn.d_p00;
+      double d_0m0 = qnnn.d_0m0, d_0p0 = qnnn.d_0p0;
+#ifdef P4_TO_P8
+      double d_00m = qnnn.d_00m, d_00p = qnnn.d_00p;
+#endif
+
+      // assuming grid is uniform near the interface
+      double q_m00 = qnnn.f_m00_linear(c0_.ptr), q_p00 = qnnn.f_p00_linear(c0_.ptr);
+      double q_0m0 = qnnn.f_0m0_linear(c0_.ptr), q_0p0 = qnnn.f_0p0_linear(c0_.ptr);
+#ifdef P4_TO_P8
+      double q_00m = qnnn.f_00m_linear(c0_.ptr), q_00p = qnnn.f_00p_linear(c0_.ptr);
+#endif
+      double q_000 = c0_.ptr[n];
+
+      double d_min = diag;
+      for (unsigned int i = 0; i < solver_c0->pointwise_bc[n].size(); ++i)
+      {
+        switch (solver_c0->pointwise_bc[n][i].dir)
+        {
+          case 0: d_m00 = solver_c0->pointwise_bc[n][i].dist; q_m00 = solver_c0->pointwise_bc[n][i].value; break;
+          case 1: d_p00 = solver_c0->pointwise_bc[n][i].dist; q_p00 = solver_c0->pointwise_bc[n][i].value; break;
+          case 2: d_0m0 = solver_c0->pointwise_bc[n][i].dist; q_0m0 = solver_c0->pointwise_bc[n][i].value; break;
+          case 3: d_0p0 = solver_c0->pointwise_bc[n][i].dist; q_0p0 = solver_c0->pointwise_bc[n][i].value; break;
+#ifdef P4_TO_P8
+          case 4: d_00m = solver_c0->pointwise_bc[n][i].dist; q_00m = solver_c0->pointwise_bc[n][i].value; break;
+          case 5: d_00p = solver_c0->pointwise_bc[n][i].dist; q_00p = solver_c0->pointwise_bc[n][i].value; break;
+#endif
+        }
+
+        d_min = MIN(d_min, solver_c0->pointwise_bc[n][i].dist);
+      }
+
+      if (d_min > rel_thresh*diag && solver_c0->pointwise_bc[n].size() < 3)
+      {
+        c0d_.ptr[0][n] = ((q_p00-q_000)*d_m00/d_p00 + (q_000-q_m00)*d_p00/d_m00)/(d_m00+d_p00);
+        c0d_.ptr[1][n] = ((q_0p0-q_000)*d_0m0/d_0p0 + (q_000-q_0m0)*d_0p0/d_0m0)/(d_0m0+d_0p0);
+#ifdef P4_TO_P8
+        c0d_.ptr[2][n] = ((q_00p-q_000)*d_00m/d_00p + (q_000-q_00m)*d_00p/d_00m)/(d_00m+d_00p);
+#endif
+      } else {
+        mask.ptr[n] = 1;
+      }
+    }
   }
 
-  ierr = VecGhostUpdateBegin(c0n_.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  if (use_points_on_interface_)
+  {
+    ierr = VecGhostUpdateBegin(mask.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  }
+
+  foreach_dimension(dim)
+  {
+    ierr = VecGhostUpdateBegin(c0d_.vec[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  }
 
   for(size_t i = 0; i < node_neighbors_->get_local_size(); ++i)
   {
     p4est_locidx_t n = node_neighbors_->get_local_node(i);
     qnnn = node_neighbors_->get_neighbors(n);
 
+    c0d_.ptr[0][n] = qnnn.dx_central(c0_.ptr);
+    c0d_.ptr[1][n] = qnnn.dy_central(c0_.ptr);
 #ifdef P4_TO_P8
-    c0n_.ptr[n] = qnnn.dx_central(c0_.ptr)*normal_.ptr[0][n] + qnnn.dy_central(c0_.ptr)*normal_.ptr[1][n] + qnnn.dz_central(c0_.ptr)*normal_.ptr[2][n];
-#else
-    c0n_.ptr[n] = qnnn.dx_central(c0_.ptr)*normal_.ptr[0][n] + qnnn.dy_central(c0_.ptr)*normal_.ptr[1][n];
+    c0d_.ptr[2][n] = qnnn.dz_central(c0_.ptr);
 #endif
 
-//    c0n_.ptr[n] = MAX(c0n_.ptr[n], 0.);
+    // correct near the boundary
+    if (solver_c0->pointwise_bc[n].size() > 0 && use_points_on_interface_)
+    {
+      double d_m00 = qnnn.d_m00, d_p00 = qnnn.d_p00;
+      double d_0m0 = qnnn.d_0m0, d_0p0 = qnnn.d_0p0;
+#ifdef P4_TO_P8
+      double d_00m = qnnn.d_00m, d_00p = qnnn.d_00p;
+#endif
+
+      // assuming grid is uniform near the interface
+      double q_m00 = qnnn.f_m00_linear(c0_.ptr), q_p00 = qnnn.f_p00_linear(c0_.ptr);
+      double q_0m0 = qnnn.f_0m0_linear(c0_.ptr), q_0p0 = qnnn.f_0p0_linear(c0_.ptr);
+#ifdef P4_TO_P8
+      double q_00m = qnnn.f_00m_linear(c0_.ptr), q_00p = qnnn.f_00p_linear(c0_.ptr);
+#endif
+      double q_000 = c0_.ptr[n];
+
+      double d_min = diag;
+      for (unsigned int i = 0; i < solver_c0->pointwise_bc[n].size(); ++i)
+      {
+        switch (solver_c0->pointwise_bc[n][i].dir)
+        {
+          case 0: d_m00 = solver_c0->pointwise_bc[n][i].dist; q_m00 = solver_c0->pointwise_bc[n][i].value; break;
+          case 1: d_p00 = solver_c0->pointwise_bc[n][i].dist; q_p00 = solver_c0->pointwise_bc[n][i].value; break;
+          case 2: d_0m0 = solver_c0->pointwise_bc[n][i].dist; q_0m0 = solver_c0->pointwise_bc[n][i].value; break;
+          case 3: d_0p0 = solver_c0->pointwise_bc[n][i].dist; q_0p0 = solver_c0->pointwise_bc[n][i].value; break;
+#ifdef P4_TO_P8
+          case 4: d_00m = solver_c0->pointwise_bc[n][i].dist; q_00m = solver_c0->pointwise_bc[n][i].value; break;
+          case 5: d_00p = solver_c0->pointwise_bc[n][i].dist; q_00p = solver_c0->pointwise_bc[n][i].value; break;
+#endif
+        }
+
+        d_min = MIN(d_min, solver_c0->pointwise_bc[n][i].dist);
+      }
+
+      if (d_min > rel_thresh*diag && solver_c0->pointwise_bc[n].size() < 3)
+      {
+        c0d_.ptr[0][n] = ((q_p00-q_000)*d_m00/d_p00 + (q_000-q_m00)*d_p00/d_m00)/(d_m00+d_p00);
+        c0d_.ptr[1][n] = ((q_0p0-q_000)*d_0m0/d_0p0 + (q_000-q_0m0)*d_0p0/d_0m0)/(d_0m0+d_0p0);
+#ifdef P4_TO_P8
+        c0d_.ptr[2][n] = ((q_00p-q_000)*d_00m/d_00p + (q_000-q_00m)*d_00p/d_00m)/(d_00m+d_00p);
+#endif
+      } else {
+        mask.ptr[n] = 1;
+      }
+    }
   }
 
-  ierr = VecGhostUpdateEnd(c0n_.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  if (use_points_on_interface_)
+  {
+    ierr = VecGhostUpdateEnd(mask.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  }
+
+  foreach_dimension(dim)
+  {
+    ierr = VecGhostUpdateEnd(c0d_.vec[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  }
+
+  foreach_node(n, nodes_)
+  {
+#ifdef P4_TO_P8
+    c0n_.ptr[n] = c0d_.ptr[0][n]*normal_.ptr[0][n] + c0d_.ptr[1][n]*normal_.ptr[1][n] + c0d_.ptr[2][n]*normal_.ptr[2][n];
+#else
+    c0n_.ptr[n] = c0d_.ptr[0][n]*normal_.ptr[0][n] + c0d_.ptr[1][n]*normal_.ptr[1][n];
+#endif
+  }
 
   c0_.restore_array();
   c0n_.restore_array();
+  c0d_.restore_array();
   normal_.restore_array();
+
+  mask.restore_array();
 
   my_p4est_level_set_t ls(node_neighbors_);
   ls.set_use_one_sided_derivaties(use_one_sided_derivatives_);
   ls.set_interpolation_on_interface(quadratic_non_oscillatory_continuous_v2);
 
-//  ls.extend_Over_Interface_TVD(phi_.vec, c0n_.vec, 20, 2, normal_.vec);
+  foreach_dimension(dim)
+  {
+    ls.extend_Over_Interface_TVD_full(phi_.vec, mask.vec, c0d_.vec[dim], num_extend_iterations_, 2);
+  }
+
+  ierr = VecDestroy(mask.vec); CHKERRXX(ierr);
 
   // compute second derivatives for interpolation purposes
   for (short dim = 0; dim < P4EST_DIM; ++dim)
@@ -1095,6 +1244,15 @@ void my_p4est_poisson_nodes_multialloy_t::compute_c0n()
   ls.extend_from_interface_to_whole_domain_TVD(phi_.vec, c0n_.vec, c0n_gamma_.vec);
 
   node_neighbors_->second_derivatives_central(c0n_.vec, c0n_dd_.vec);
+
+  Vec tmp; ierr = VecDuplicate(phi_.vec, &tmp); CHKERRXX(ierr);
+  foreach_dimension(dim)
+  {
+    copy_ghosted_vec(c0d_.vec[dim], tmp);
+    ls.extend_from_interface_to_whole_domain_TVD(phi_.vec, tmp, c0d_.vec[dim]);
+  }
+  ierr = VecDestroy(tmp); CHKERRXX(ierr);
+
   ierr = PetscLogEventEnd  (log_my_p4est_poisson_nodes_multialloy_compute_c0n, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
@@ -1169,6 +1327,8 @@ void my_p4est_poisson_nodes_multialloy_t::adjust_c0_gamma(int iteration)
 
   normal_.get_array();
 
+  c0d_.get_array();
+
   c0n_.get_array();
   c0n_dd_.get_array();
 
@@ -1210,7 +1370,14 @@ void my_p4est_poisson_nodes_multialloy_t::adjust_c0_gamma(int iteration)
 
         // interpolate velocity
 //        double c0n = solver_c0->interpolate_at_interface_point(n, i, c0n_.ptr, c0n_dd_.ptr);
-        double c0n = solver_c0->interpolate_at_interface_point(n, i, c0n_.ptr);
+//        double c0n = solver_c0->interpolate_at_interface_point(n, i, c0n_.ptr);
+
+        double c0n = 0;
+
+        foreach_dimension(dim)
+        {
+          c0n += solver_c0->interpolate_at_interface_point(n, i, c0d_.ptr[dim])*solver_c0->interpolate_at_interface_point(n, i, normal_.ptr[dim]);
+        }
 
 //        double theta_xz = solver_c0->interpolate_at_interface_point(n, i, theta_xz_.ptr);
 //#ifdef P4_TO_P8
@@ -1282,15 +1449,17 @@ void my_p4est_poisson_nodes_multialloy_t::adjust_c0_gamma(int iteration)
   c1_.restore_array();
   c1_dd_.restore_array();
 
-  normal_.get_array();
+  normal_.restore_array();
 
-  c0n_.get_array();
-  c0n_dd_.get_array();
+  c0d_.restore_array();
+
+  c0n_.restore_array();
+  c0n_dd_.restore_array();
 
   if (iteration%pin_every_n_steps_ != 0)
   {
-    psi_c0n_.get_array();
-    psi_c0n_dd_.get_array();
+    psi_c0n_.restore_array();
+    psi_c0n_dd_.restore_array();
   }
 
   bc_error_.restore_array();

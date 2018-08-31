@@ -131,6 +131,8 @@ private:
 
   Vec c0n_np1_, c0n_n_;
 
+  Vec c0d_np1_[P4EST_DIM];
+
   /* velocity */
   Vec v_interface_n_  [P4EST_DIM];
   Vec v_interface_np1_[P4EST_DIM];

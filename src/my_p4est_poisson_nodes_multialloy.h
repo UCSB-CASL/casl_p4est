@@ -14,6 +14,7 @@
 #include <src/my_p8est_poisson_nodes.h>
 #include <src/my_p8est_poisson_nodes_mls_sc.h>
 #include <src/my_p8est_interpolation_nodes.h>
+#include <src/my_p8est_macros.h>
 #else
 #include <src/my_p4est_tools.h>
 #include <p4est.h>
@@ -23,6 +24,7 @@
 #include <src/my_p4est_poisson_nodes.h>
 #include <src/my_p4est_poisson_nodes_mls_sc.h>
 #include <src/my_p4est_interpolation_nodes.h>
+#include <src/my_p4est_macros.h>
 #endif
 
 class my_p4est_poisson_nodes_multialloy_t
@@ -278,7 +280,7 @@ public:
 
   void initialize_solvers();
 
-  int solve(Vec tm, Vec tp, Vec c0, Vec c1, Vec bc_error, double &bc_error_max, double &dt, double cfl, bool use_non_zero_guess = false, std::vector<double> *num_pdes = NULL, std::vector<double> *error = NULL);
+  int solve(Vec tm, Vec tp, Vec c0, Vec c1, Vec c0d[], Vec bc_error, double &bc_error_max, double &dt, double cfl, bool use_non_zero_guess = false, std::vector<double> *num_pdes = NULL, std::vector<double> *error = NULL);
 
   void solve_t();
   void solve_psi_t();
@@ -430,10 +432,21 @@ private:
       ptr_->interp_.set_input(ptr_->c0_gamma_.vec, linear);
       double c0 = ptr_->interp_(x, y);
 
-//      ptr_->interp_.set_input(ptr_->c0n_.vec, ptr_->c0n_dd_.vec[0], ptr_->c0n_dd_.vec[1], quadratic_non_oscillatory_continuous_v1);
-//      ptr_->interp_.set_input(ptr_->c0n_.vec, linear);
-      ptr_->interp_.set_input(ptr_->c0n_gamma_.vec, linear);
-      double c0n = ptr_->interp_(x, y);
+////      ptr_->interp_.set_input(ptr_->c0n_.vec, ptr_->c0n_dd_.vec[0], ptr_->c0n_dd_.vec[1], quadratic_non_oscillatory_continuous_v1);
+////      ptr_->interp_.set_input(ptr_->c0n_.vec, linear);
+//      ptr_->interp_.set_input(ptr_->c0n_gamma_.vec, linear);
+//      double c0n = ptr_->interp_(x, y);
+
+      double n = 0;
+      double c0n = 0;
+
+      foreach_dimension(dim)
+      {
+        ptr_->interp_.set_input(ptr_->normal_.vec[dim], linear);
+        n = ptr_->interp_(x, y);
+        ptr_->interp_.set_input(ptr_->c0d_.vec[dim], linear);
+        c0n += n*ptr_->interp_(x, y);
+      }
 
       return ptr_->Dl0_/(1.-ptr_->kp0_)*((*ptr_->c0_flux_)(x,y) - c0n)/c0;
     }
