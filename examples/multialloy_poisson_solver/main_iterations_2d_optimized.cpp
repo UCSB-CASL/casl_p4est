@@ -47,9 +47,9 @@
 
 #undef MIN
 #undef MAX
-int lmin = 6;
-int lmax = 11;
-int nb_splits = 1;
+int lmin = 5;
+int lmax = 5;
+int nb_splits = 4;
 
 bool use_continuous_stencil = 0;
 bool use_one_sided_derivatives = false;
@@ -1741,7 +1741,8 @@ int main (int argc, char* argv[])
   p4est_nodes_t *nodes;
   p4est_ghost_t *ghost;
 
-  double err_t_n,  err_t_nm1;
+  double err_tm_n, err_tm_nm1;
+  double err_tp_n, err_tp_nm1;
   double err_c0_n, err_c0_nm1;
   double err_c1_n, err_c1_nm1;
   double err_vn_n, err_vn_nm1;
@@ -1751,7 +1752,7 @@ int main (int argc, char* argv[])
 //  double err_ex_n;
 //  double err_ex_nm1;
 
-  vector<double> h, e_v, e_t, e_c0, e_c1, e_g, error_it, pdes_it;
+  vector<double> h, e_v, e_tm, e_tp, e_c0, e_c1, e_g, error_it, pdes_it;
 
   for(int iter=0; iter<nb_splits; ++iter)
   {
@@ -1994,18 +1995,21 @@ int main (int argc, char* argv[])
 
     solver_all_in_one.set_vn(vn_cf);
 
-    Vec sol_t;  ierr = VecCreateGhostNodes(p4est, nodes, &sol_t);  CHKERRXX(ierr);
+    Vec sol_tm; ierr = VecCreateGhostNodes(p4est, nodes, &sol_tm); CHKERRXX(ierr);
+    Vec sol_tp; ierr = VecCreateGhostNodes(p4est, nodes, &sol_tp); CHKERRXX(ierr);
     Vec sol_c0; ierr = VecCreateGhostNodes(p4est, nodes, &sol_c0); CHKERRXX(ierr);
     Vec sol_c1; ierr = VecCreateGhostNodes(p4est, nodes, &sol_c1); CHKERRXX(ierr);
 
-    Vec sol_t_dd[P4EST_DIM];
+    Vec sol_tm_dd[P4EST_DIM];
+    Vec sol_tp_dd[P4EST_DIM];
     Vec sol_c0_dd[P4EST_DIM];
     Vec sol_c1_dd[P4EST_DIM];
     Vec bc_error;
 
     for (short dim = 0; dim < P4EST_DIM; ++dim)
     {
-      ierr = VecDuplicate(phi_dd[dim], &sol_t_dd[dim]); CHKERRXX(ierr);
+      ierr = VecDuplicate(phi_dd[dim], &sol_tm_dd[dim]); CHKERRXX(ierr);
+      ierr = VecDuplicate(phi_dd[dim], &sol_tp_dd[dim]); CHKERRXX(ierr);
       ierr = VecDuplicate(phi_dd[dim], &sol_c0_dd[dim]); CHKERRXX(ierr);
       ierr = VecDuplicate(phi_dd[dim], &sol_c1_dd[dim]); CHKERRXX(ierr);
     }
@@ -2015,7 +2019,7 @@ int main (int argc, char* argv[])
 
     double bc_error_max = 0;
 //    solver_all_in_one.solve(sol_t, sol_t_dd, sol_c0, sol_c0_dd, sol_c1, sol_c1_dd, bc_error_max, bc_error);
-    solver_all_in_one.solve(sol_t, sol_c0, sol_c1, bc_error, bc_error_max, dt, 1.e10, false, &pdes_it, &error_it);
+    solver_all_in_one.solve(sol_tm, sol_tp, sol_c0, sol_c1, bc_error, bc_error_max, dt, 1.e10, false, &pdes_it, &error_it);
 
 
     /* check the error */
@@ -2029,13 +2033,15 @@ int main (int argc, char* argv[])
     double vn_error = 0;
     double kappa_error = 0;
     double theta_xz_error = 0;
-    double *kappa_p; ierr = VecGetArray(kappa, &kappa_p); CHKERRXX(ierr);
+
+    double *kappa_p;    ierr = VecGetArray(kappa,    &kappa_p);    CHKERRXX(ierr);
     double *theta_xz_p; ierr = VecGetArray(theta_xz, &theta_xz_p); CHKERRXX(ierr);
-    Vec err_vn;  ierr = VecDuplicate(sol_t,  &err_vn); CHKERRXX(ierr);
-    Vec err_kappa;  ierr = VecDuplicate(sol_t,  &err_kappa); CHKERRXX(ierr);
-    double *err_vn_p, *err_kappa_p;
-    ierr = VecGetArray(err_kappa,  &err_kappa_p); CHKERRXX(ierr);
-    ierr = VecGetArray(err_vn,  &err_vn_p); CHKERRXX(ierr);
+
+    Vec err_vn;    ierr = VecDuplicate(phi,  &err_vn);    CHKERRXX(ierr);
+    Vec err_kappa; ierr = VecDuplicate(phi,  &err_kappa); CHKERRXX(ierr);
+
+    double *err_kappa_p; ierr = VecGetArray(err_kappa, &err_kappa_p); CHKERRXX(ierr);
+    double *err_vn_p;    ierr = VecGetArray(err_vn,    &err_vn_p);    CHKERRXX(ierr);
 
     for(int dir=0; dir<P4EST_DIM; ++dir)
     {
@@ -2087,27 +2093,29 @@ int main (int argc, char* argv[])
 
     err_kappa_nm1 = err_kappa_n; err_kappa_n = kappa_error;
     err_theta_nm1 = err_theta_n; err_theta_n = theta_xz_error;
-    err_vn_nm1  = err_vn_n;  err_vn_n  = vn_error;
-    err_t_nm1  = err_t_n;  err_t_n  = 0;
+    err_vn_nm1 = err_vn_n; err_vn_n = vn_error;
+    err_tm_nm1 = err_tm_n; err_tm_n = 0;
+    err_tp_nm1 = err_tp_n; err_tp_n = 0;
     err_c0_nm1 = err_c0_n; err_c0_n = 0;
     err_c1_nm1 = err_c1_n; err_c1_n = 0;
 
     const double *phi_p;
     ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr);
 
-    const double *sol_t_p, *sol_c0_p, *sol_c1_p;
-    ierr = VecGetArrayRead(sol_t, &sol_t_p); CHKERRXX(ierr);
-    ierr = VecGetArrayRead(sol_c0, &sol_c0_p); CHKERRXX(ierr);
-    ierr = VecGetArrayRead(sol_c1, &sol_c1_p); CHKERRXX(ierr);
+    const double *sol_tm_p; ierr = VecGetArrayRead(sol_tm, &sol_tm_p); CHKERRXX(ierr);
+    const double *sol_tp_p; ierr = VecGetArrayRead(sol_tp, &sol_tp_p); CHKERRXX(ierr);
+    const double *sol_c0_p; ierr = VecGetArrayRead(sol_c0, &sol_c0_p); CHKERRXX(ierr);
+    const double *sol_c1_p; ierr = VecGetArrayRead(sol_c1, &sol_c1_p); CHKERRXX(ierr);
 
-    Vec err_t_nodes;  ierr = VecDuplicate(sol_t,  &err_t_nodes); CHKERRXX(ierr);
+    Vec err_tm_nodes; ierr = VecDuplicate(sol_tm, &err_tm_nodes); CHKERRXX(ierr);
+    Vec err_tp_nodes; ierr = VecDuplicate(sol_tp, &err_tp_nodes); CHKERRXX(ierr);
     Vec err_c0_nodes; ierr = VecDuplicate(sol_c0, &err_c0_nodes); CHKERRXX(ierr);
     Vec err_c1_nodes; ierr = VecDuplicate(sol_c1, &err_c1_nodes); CHKERRXX(ierr);
 
-    double *err_t_p, *err_c0_p, *err_c1_p;
-    ierr = VecGetArray(err_t_nodes,  &err_t_p); CHKERRXX(ierr);
-    ierr = VecGetArray(err_c0_nodes, &err_c0_p); CHKERRXX(ierr);
-    ierr = VecGetArray(err_c1_nodes, &err_c1_p); CHKERRXX(ierr);
+    double *err_tm_p; ierr = VecGetArray(err_tm_nodes, &err_tm_p); CHKERRXX(ierr);
+    double *err_tp_p; ierr = VecGetArray(err_tp_nodes, &err_tp_p); CHKERRXX(ierr);
+    double *err_c0_p; ierr = VecGetArray(err_c0_nodes, &err_c0_p); CHKERRXX(ierr);
+    double *err_c1_p; ierr = VecGetArray(err_c1_nodes, &err_c1_p); CHKERRXX(ierr);
 
     double xyz[P4EST_DIM];
     for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
@@ -2116,42 +2124,39 @@ int main (int argc, char* argv[])
 
       if(phi_p[n]<0)
       {
-#ifdef P4_TO_P8
-        err_t_p[n] =  fabs(sol_t_p[n]  - t_exact(xyz[0],xyz[1],xyz[2]));
-        err_c0_p[n] = fabs(sol_c0_p[n] - c0_exact(xyz[0],xyz[1],xyz[2]));
-        err_c1_p[n] = fabs(sol_c1_p[n] - c1_exact(xyz[0],xyz[1],xyz[2]));
-#else
-        err_t_p[n] =  fabs(sol_t_p[n]  - t_exact(xyz[0],xyz[1]));
-        err_c0_p[n] = fabs(sol_c0_p[n] - c0_exact(xyz[0],xyz[1]));
-        err_c1_p[n] = fabs(sol_c1_p[n] - c1_exact(xyz[0],xyz[1]));
-#endif
+        err_tm_p[n] = fabs(sol_tm_p[n] - tm_exact.value(xyz));
+        err_tp_p[n] = 0;
+        err_c0_p[n] = fabs(sol_c0_p[n] - c0_exact.value(xyz));
+        err_c1_p[n] = fabs(sol_c1_p[n] - c1_exact.value(xyz));
       } else {
-
-#ifdef P4_TO_P8
-        err_t_p[n] = fabs(sol_t_p[n] - t_exact(xyz[0],xyz[1],xyz[2]));
-#else
-        err_t_p[n] = fabs(sol_t_p[n] - t_exact(xyz[0],xyz[1]));
-#endif
+        err_tm_p[n] = 0;
+        err_tp_p[n] = fabs(sol_tp_p[n] - tp_exact.value(xyz));
         err_c0_p[n] = 0.;
         err_c1_p[n] = 0.;
       }
 
-      err_t_n = MAX(err_t_n, err_t_p[n]);
+      err_tm_n = MAX(err_tm_n, err_tm_p[n]);
+      err_tp_n = MAX(err_tp_n, err_tp_p[n]);
       err_c0_n = MAX(err_c0_n, err_c0_p[n]);
       err_c1_n = MAX(err_c1_n, err_c1_p[n]);
     }
 
     ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
-    ierr = VecRestoreArrayRead(sol_t, &sol_t_p); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(sol_tm, &sol_tm_p); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(sol_tp, &sol_tp_p); CHKERRXX(ierr);
     ierr = VecRestoreArrayRead(sol_c0, &sol_c0_p); CHKERRXX(ierr);
     ierr = VecRestoreArrayRead(sol_c1, &sol_c1_p); CHKERRXX(ierr);
 
-    ierr = VecRestoreArray(err_t_nodes, &err_t_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(err_tm_nodes, &err_tm_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(err_tp_nodes, &err_tp_p); CHKERRXX(ierr);
     ierr = VecRestoreArray(err_c0_nodes, &err_c0_p); CHKERRXX(ierr);
     ierr = VecRestoreArray(err_c1_nodes, &err_c1_p); CHKERRXX(ierr);
 
-    ierr = VecGhostUpdateBegin(err_t_nodes, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateEnd  (err_t_nodes, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateBegin(err_tm_nodes, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd  (err_tm_nodes, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+    ierr = VecGhostUpdateBegin(err_tp_nodes, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd  (err_tp_nodes, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
     ierr = VecGhostUpdateBegin(err_c0_nodes, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecGhostUpdateEnd  (err_c0_nodes, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -2162,20 +2167,23 @@ int main (int argc, char* argv[])
     mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_kappa_n,  1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
     mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_theta_n,  1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
     mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_vn_n,     1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-    mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_t_n,      1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+    mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_tm_n,     1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+    mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_tp_n,     1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
     mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_c0_n,     1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
     mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_c1_n,     1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
 
     ierr = PetscPrintf(p4est->mpicomm, "Error in kappa on nodes : %g, order = %g\n", err_kappa_n, log(err_kappa_nm1/err_kappa_n)/log(2)); CHKERRXX(ierr);
     ierr = PetscPrintf(p4est->mpicomm, "Error in theta on nodes : %g, order = %g\n", err_theta_n, log(err_theta_nm1/err_theta_n)/log(2)); CHKERRXX(ierr);
     ierr = PetscPrintf(p4est->mpicomm, "Error in vn on nodes : %g, order = %g\n", err_vn_n, log(err_vn_nm1/err_vn_n)/log(2)); CHKERRXX(ierr);
-    ierr = PetscPrintf(p4est->mpicomm, "Error in T  on nodes : %g, order = %g\n", err_t_n,  log(err_t_nm1 /err_t_n )/log(2)); CHKERRXX(ierr);
+    ierr = PetscPrintf(p4est->mpicomm, "Error in Tm on nodes : %g, order = %g\n", err_tm_n, log(err_tm_nm1 /err_tm_n)/log(2)); CHKERRXX(ierr);
+    ierr = PetscPrintf(p4est->mpicomm, "Error in Tp on nodes : %g, order = %g\n", err_tp_n, log(err_tp_nm1 /err_tp_n)/log(2)); CHKERRXX(ierr);
     ierr = PetscPrintf(p4est->mpicomm, "Error in C0 on nodes : %g, order = %g\n", err_c0_n, log(err_c0_nm1/err_c0_n)/log(2)); CHKERRXX(ierr);
     ierr = PetscPrintf(p4est->mpicomm, "Error in C1 on nodes : %g, order = %g\n", err_c1_n, log(err_c1_nm1/err_c1_n)/log(2)); CHKERRXX(ierr);
 
     h.push_back(dx);
     e_v.push_back(err_vn_n);
-    e_t.push_back(err_t_n);
+    e_tm.push_back(err_tm_n);
+    e_tp.push_back(err_tp_n);
     e_c0.push_back(err_c0_n);
     e_c1.push_back(err_c1_n);
 
@@ -2207,17 +2215,20 @@ int main (int argc, char* argv[])
              ".split" << iter;
 
       double *phi_p;
-      double *sol_t_p, *err_t_p;
+      double *sol_tm_p, *err_tm_p;
+      double *sol_tp_p, *err_tp_p;
       double *sol_c0_p, *err_c0_p;
       double *sol_c1_p, *err_c1_p;
 
       ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
 
-      ierr = VecGetArray(sol_t,  &sol_t_p);  CHKERRXX(ierr);
+      ierr = VecGetArray(sol_tm, &sol_tm_p); CHKERRXX(ierr);
+      ierr = VecGetArray(sol_tp, &sol_tp_p); CHKERRXX(ierr);
       ierr = VecGetArray(sol_c0, &sol_c0_p); CHKERRXX(ierr);
       ierr = VecGetArray(sol_c1, &sol_c1_p); CHKERRXX(ierr);
 
-      ierr = VecGetArray(err_t_nodes, &err_t_p); CHKERRXX(ierr);
+      ierr = VecGetArray(err_tm_nodes, &err_tm_p); CHKERRXX(ierr);
+      ierr = VecGetArray(err_tp_nodes, &err_tp_p); CHKERRXX(ierr);
       ierr = VecGetArray(err_c0_nodes, &err_c0_p); CHKERRXX(ierr);
       ierr = VecGetArray(err_c1_nodes, &err_c1_p); CHKERRXX(ierr);
 
@@ -2255,12 +2266,14 @@ int main (int argc, char* argv[])
 
       my_p4est_vtk_write_all(p4est, nodes, ghost,
                              P4EST_TRUE, P4EST_TRUE,
-                             10, 1, oss.str().c_str(),
+                             12, 1, oss.str().c_str(),
                              VTK_POINT_DATA, "phi", phi_p,
-                             VTK_POINT_DATA, "sol_t",  sol_t_p,
+                             VTK_POINT_DATA, "sol_tm", sol_tm_p,
+                             VTK_POINT_DATA, "sol_tp", sol_tp_p,
                              VTK_POINT_DATA, "sol_c0", sol_c0_p,
                              VTK_POINT_DATA, "sol_c1", sol_c1_p,
-                             VTK_POINT_DATA, "err_t",  err_t_p,
+                             VTK_POINT_DATA, "err_tm", err_tm_p,
+                             VTK_POINT_DATA, "err_tp", err_tp_p,
                              VTK_POINT_DATA, "err_c0", err_c0_p,
                              VTK_POINT_DATA, "err_c1", err_c1_p,
                              VTK_POINT_DATA, "bc_error", bc_error_p,
@@ -2274,11 +2287,13 @@ int main (int argc, char* argv[])
 
       ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
 
-      ierr = VecRestoreArray(sol_t,  &sol_t_p);  CHKERRXX(ierr);
+      ierr = VecRestoreArray(sol_tm, &sol_tm_p);  CHKERRXX(ierr);
+      ierr = VecRestoreArray(sol_tp, &sol_tp_p);  CHKERRXX(ierr);
       ierr = VecRestoreArray(sol_c0, &sol_c0_p); CHKERRXX(ierr);
       ierr = VecRestoreArray(sol_c1, &sol_c1_p); CHKERRXX(ierr);
 
-      ierr = VecRestoreArray(err_t_nodes, &err_t_p); CHKERRXX(ierr);
+      ierr = VecRestoreArray(err_tm_nodes, &err_tm_p); CHKERRXX(ierr);
+      ierr = VecRestoreArray(err_tp_nodes, &err_tp_p); CHKERRXX(ierr);
       ierr = VecRestoreArray(err_c0_nodes, &err_c0_p); CHKERRXX(ierr);
       ierr = VecRestoreArray(err_c1_nodes, &err_c1_p); CHKERRXX(ierr);
 
@@ -2297,7 +2312,8 @@ int main (int argc, char* argv[])
 
     for (short dim = 0; dim < P4EST_DIM; ++dim)
     {
-      ierr = VecDestroy(sol_t_dd[dim]); CHKERRXX(ierr);
+      ierr = VecDestroy(sol_tm_dd[dim]); CHKERRXX(ierr);
+      ierr = VecDestroy(sol_tp_dd[dim]); CHKERRXX(ierr);
       ierr = VecDestroy(sol_c0_dd[dim]); CHKERRXX(ierr);
       ierr = VecDestroy(sol_c1_dd[dim]); CHKERRXX(ierr);
     }
@@ -2309,11 +2325,13 @@ int main (int argc, char* argv[])
     ierr = VecDestroy(rhs_c0); CHKERRXX(ierr);
     ierr = VecDestroy(rhs_c1); CHKERRXX(ierr);
 
-    ierr = VecDestroy(sol_t); CHKERRXX(ierr);
+    ierr = VecDestroy(sol_tm); CHKERRXX(ierr);
+    ierr = VecDestroy(sol_tp); CHKERRXX(ierr);
     ierr = VecDestroy(sol_c0); CHKERRXX(ierr);
     ierr = VecDestroy(sol_c1); CHKERRXX(ierr);
 
-    ierr = VecDestroy(err_t_nodes); CHKERRXX(ierr);
+    ierr = VecDestroy(err_tm_nodes); CHKERRXX(ierr);
+    ierr = VecDestroy(err_tp_nodes); CHKERRXX(ierr);
     ierr = VecDestroy(err_c0_nodes); CHKERRXX(ierr);
     ierr = VecDestroy(err_c1_nodes); CHKERRXX(ierr);
 
@@ -2343,14 +2361,15 @@ int main (int argc, char* argv[])
     // save level and resolution
     filename = out_dir; filename += "/convergence/h.txt";        save_vector(filename.c_str(), h);
     filename = out_dir; filename += "/convergence/error_v.txt";  save_vector(filename.c_str(), e_v);
-    filename = out_dir; filename += "/convergence/error_t.txt";  save_vector(filename.c_str(), e_t);
+    filename = out_dir; filename += "/convergence/error_tm.txt";  save_vector(filename.c_str(), e_tm);
+    filename = out_dir; filename += "/convergence/error_tp.txt";  save_vector(filename.c_str(), e_tp);
     filename = out_dir; filename += "/convergence/error_c0.txt";  save_vector(filename.c_str(), e_c0);
     filename = out_dir; filename += "/convergence/error_c1.txt";  save_vector(filename.c_str(), e_c1);
     filename = out_dir; filename += "/convergence/error_pdes.txt";  save_vector(filename.c_str(), pdes_it);
     filename = out_dir; filename += "/convergence/error_error_it.txt";  save_vector(filename.c_str(), error_it);
 
     for (int i = 0; i < h.size(); ++i)
-      std::cout << h[i] << " " << e_v[i] << " " << e_t[i] << " " << e_c0[i] << " " << e_c1[i] << "\n";
+      std::cout << h[i] << " " << e_v[i] << " " << e_tm[i] << " " << e_tp[i] << " " << e_c0[i] << " " << e_c1[i] << "\n";
   }
 
   my_p4est_brick_destroy(connectivity, &brick);

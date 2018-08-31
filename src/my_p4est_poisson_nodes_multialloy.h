@@ -156,6 +156,9 @@ class my_p4est_poisson_nodes_multialloy_t
   vec_and_ptr_t c0n_;     vec_and_ptr_dim_t c0n_dd_;
   vec_and_ptr_t psi_c0n_; vec_and_ptr_dim_t psi_c0n_dd_;
 
+  vec_and_ptr_dim_t c0d_;
+  vec_and_ptr_dim_t psi_c0d_;
+
   // rhs
   vec_and_ptr_t rhs_tl_;
   vec_and_ptr_t rhs_ts_;
@@ -174,6 +177,8 @@ class my_p4est_poisson_nodes_multialloy_t
 
   double min_volume_;
   double volume_thresh_;
+
+  unsigned int num_extend_iterations_;
 
   // disallow copy ctr and copy assignment
   my_p4est_poisson_nodes_multialloy_t(const my_p4est_poisson_nodes_t& other);

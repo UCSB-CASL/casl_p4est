@@ -92,6 +92,8 @@ my_p4est_poisson_nodes_multialloy_t::my_p4est_poisson_nodes_multialloy_t(my_p4es
 
   volume_thresh_ = 1.e-2;
 
+  num_extend_iterations_ = 50;
+
   double dxyz[P4EST_DIM];
 
   dxyz_min(p4est_, dxyz);
@@ -501,10 +503,12 @@ void my_p4est_poisson_nodes_multialloy_t::solve_t()
   is_t_matrix_computed_ = true;
 
   my_p4est_level_set_t ls(node_neighbors_);
-  ls.extend_Over_Interface_TVD(phi_.vec, tm_.vec, 20, 2, normal_.vec);
+//  ls.extend_Over_Interface_TVD(phi_.vec, tm_.vec, 20, 2, normal_.vec);
+  ls.extend_Over_Interface_TVD_full(phi_.vec, phi_.vec, tm_.vec, num_extend_iterations_, 2);
 
   invert_phi(nodes_, phi_.vec);
-  ls.extend_Over_Interface_TVD(phi_.vec, tp_.vec, 20, 2, normal_.vec);
+//  ls.extend_Over_Interface_TVD(phi_.vec, tp_.vec, 20, 2, normal_.vec);
+  ls.extend_Over_Interface_TVD_full(phi_.vec, phi_.vec, tp_.vec, num_extend_iterations_, 2);
   invert_phi(nodes_, phi_.vec);
 
   node_neighbors_->second_derivatives_central(tm_.vec, tm_dd_.vec);
@@ -541,7 +545,8 @@ void my_p4est_poisson_nodes_multialloy_t::solve_psi_t()
   is_t_matrix_computed_ = true;
 
   my_p4est_level_set_t ls(node_neighbors_);
-  ls.extend_Over_Interface_TVD(phi_.vec, psi_t_.vec, 20, 2, normal_.vec);
+//  ls.extend_Over_Interface_TVD(phi_.vec, psi_t_.vec, 20, 2, normal_.vec);
+  ls.extend_Over_Interface_TVD_full(phi_.vec, phi_.vec, psi_t_.vec, num_extend_iterations_, 2);
 
   node_neighbors_->second_derivatives_central(psi_t_.vec, psi_t_dd_.vec);
 
@@ -588,8 +593,11 @@ void my_p4est_poisson_nodes_multialloy_t::solve_c0()
   ls.set_use_one_sided_derivaties(use_one_sided_derivatives_);
   ls.set_interpolation_on_interface(quadratic_non_oscillatory_continuous_v2);
 
-  if (use_points_on_interface_) ls.extend_Over_Interface_TVD(phi_.vec, c0_.vec, solver_c0, 50, 2, normal_.vec);
-  else                          ls.extend_Over_Interface_TVD(phi_.vec, c0_.vec, 50, 2, normal_.vec);
+//  if (use_points_on_interface_) ls.extend_Over_Interface_TVD(phi_.vec, c0_.vec, solver_c0, 50, 2, normal_.vec);
+//  else                          ls.extend_Over_Interface_TVD(phi_.vec, c0_.vec, 50, 2, normal_.vec);
+
+  if (use_points_on_interface_) ls.extend_Over_Interface_TVD_full(phi_.vec, phi_.vec, c0_.vec, num_extend_iterations_, 2, solver_c0);
+  else                          ls.extend_Over_Interface_TVD_full(phi_.vec, phi_.vec, c0_.vec, num_extend_iterations_, 2);
 
   if (c0_gamma_.vec != NULL) { ierr = VecDestroy(c0_gamma_.vec); CHKERRXX(ierr); }
 
@@ -696,8 +704,11 @@ void my_p4est_poisson_nodes_multialloy_t::solve_psi_c0()
   ls.set_use_one_sided_derivaties(use_one_sided_derivatives_);
   ls.set_interpolation_on_interface(quadratic_non_oscillatory_continuous_v2);
 
-  if (use_points_on_interface_) ls.extend_Over_Interface_TVD(phi_.vec, psi_c0_.vec, solver_psi_c0, 50, 1, normal_.vec);
-  else                          ls.extend_Over_Interface_TVD(phi_.vec, psi_c0_.vec, 50, 1, normal_.vec);
+//  if (use_points_on_interface_) ls.extend_Over_Interface_TVD(phi_.vec, psi_c0_.vec, solver_psi_c0, 50, 1, normal_.vec);
+//  else                          ls.extend_Over_Interface_TVD(phi_.vec, psi_c0_.vec, 50, 1, normal_.vec);
+
+  if (use_points_on_interface_) ls.extend_Over_Interface_TVD_full(phi_.vec, phi_.vec, psi_c0_.vec, num_extend_iterations_, 2, solver_psi_c0);
+  else                          ls.extend_Over_Interface_TVD_full(phi_.vec, phi_.vec, psi_c0_.vec, num_extend_iterations_, 2);
 
   node_neighbors_->second_derivatives_central(psi_c0_.vec, psi_c0_dd_.vec);
 
@@ -800,7 +811,8 @@ void my_p4est_poisson_nodes_multialloy_t::solve_c1()
   ls.set_use_one_sided_derivaties(use_one_sided_derivatives_);
   ls.set_interpolation_on_interface(quadratic_non_oscillatory_continuous_v2);
 
-  ls.extend_Over_Interface_TVD(phi_.vec, mask.vec, c1_.vec, 20, 2);
+//  ls.extend_Over_Interface_TVD(phi_.vec, mask.vec, c1_.vec, 20, 2);
+  ls.extend_Over_Interface_TVD_full(phi_.vec, mask.vec, c1_.vec, num_extend_iterations_, 2);
 //  ls.extend_Over_Interface_TVD(phi_.vec, c1_.vec, 20, 2, normal_.vec);
 
   node_neighbors_->second_derivatives_central(c1_.vec, c1_dd_.vec);
@@ -886,7 +898,8 @@ void my_p4est_poisson_nodes_multialloy_t::solve_psi_c1()
   ls.set_interpolation_on_interface(quadratic_non_oscillatory_continuous_v2);
 
 //  ls.extend_Over_Interface_TVD(phi_.vec, mask.vec, psi_c1_.vec, 20, 2);
-  ls.extend_Over_Interface_TVD(phi_.vec, psi_c1_.vec, 20, 2, normal_.vec);
+//  ls.extend_Over_Interface_TVD(phi_.vec, psi_c1_.vec, 20, 2, normal_.vec);
+  ls.extend_Over_Interface_TVD_full(phi_.vec, phi_.vec, psi_c1_.vec, num_extend_iterations_, 2);
 
   node_neighbors_->second_derivatives_central(psi_c1_.vec, psi_c1_dd_.vec);
 
@@ -965,7 +978,9 @@ void my_p4est_poisson_nodes_multialloy_t::solve_c0_robin()
     ls.set_use_one_sided_derivaties(use_one_sided_derivatives_);
     ls.set_interpolation_on_interface(quadratic_non_oscillatory_continuous_v2);
 
-    ls.extend_Over_Interface_TVD(phi_.vec, mask.vec, c0_.vec, 100, 2);
+//    ls.extend_Over_Interface_TVD(phi_.vec, mask.vec, c0_.vec, 100, 2);
+    ls.extend_Over_Interface_TVD_full(phi_.vec, mask.vec, c0_.vec, num_extend_iterations_, 2);
+
 
   } else {
 #ifdef P4_TO_P8
@@ -1001,7 +1016,8 @@ void my_p4est_poisson_nodes_multialloy_t::solve_c0_robin()
     ls.set_use_one_sided_derivaties(use_one_sided_derivatives_);
     ls.set_interpolation_on_interface(quadratic_non_oscillatory_continuous_v2);
 
-    ls.extend_Over_Interface_TVD(phi_.vec, mask, c0_.vec, 100, 2);
+//    ls.extend_Over_Interface_TVD(phi_.vec, mask, c0_.vec, 100, 2);
+    ls.extend_Over_Interface_TVD_full(phi_.vec, mask, c0_.vec, num_extend_iterations_, 2);
   }
 
   ierr = VecDestroy(rhs_tmp.vec); CHKERRXX(ierr);

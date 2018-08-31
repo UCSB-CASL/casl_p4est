@@ -7537,7 +7537,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_po
 
 
 
-void my_p4est_level_set_t::extend_Over_Interface_TVD_full( Vec phi, Vec mask, Vec q, int iterations, int order, Vec qd[], Vec qdd[]) const
+void my_p4est_level_set_t::extend_Over_Interface_TVD_full( Vec phi, Vec mask, Vec q, int iterations, int order, my_p4est_poisson_nodes_t *solver) const
 {
 #ifdef CASL_THROWS
   if(order!=0 && order!=1 && order!=2) throw std::invalid_argument("[CASL_ERROR]: my_p4est_level_set_t->extend_Over_Interface_TVD: order must be 0, 1 or 2.");
@@ -7575,6 +7575,13 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_full( Vec phi, Vec mask, Ve
 
   dxyz_min(p4est, dxyz);
 
+#ifdef P4_TO_P8
+  double diag = sqrt(SQR(dxyz[0]) + SQR(dxyz[1]) + SQR(dxyz[2]));
+#else
+  double diag = sqrt(SQR(dxyz[0]) + SQR(dxyz[1]));
+#endif
+
+  double rel_thresh = 1.e-2;
 
   /* init the neighborhood information if needed */
   /* NOTE: from now on the neighbors will be initialized ... do we want to clear them
@@ -7710,7 +7717,65 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_full( Vec phi, Vec mask, Ve
 #ifdef P4_TO_P8
         qz_p[n] = qnnn.dz_central(q_p); qzz_p[n] = qnnn.dyy_central(q_p);
 #endif
-      } else {
+      }
+      else if (mask_p[qnnn.node_000]<-EPS && solver != NULL)
+      {
+        double d_m00 = qnnn.d_m00, d_p00 = qnnn.d_p00;
+        double d_0m0 = qnnn.d_0m0, d_0p0 = qnnn.d_0p0;
+#ifdef P4_TO_P8
+        double d_00m = qnnn.d_00m, d_00p = qnnn.d_00p;
+#endif
+
+        // assuming grid is uniform near the interface
+        double q_m00 = qnnn.f_m00_linear(q_p), q_p00 = qnnn.f_p00_linear(q_p);
+        double q_0m0 = qnnn.f_0m0_linear(q_p), q_0p0 = qnnn.f_0p0_linear(q_p);
+#ifdef P4_TO_P8
+        double q_00m = qnnn.f_00m_linear(q_p), q_00p = qnnn.f_00p_linear(q_p);
+#endif
+        double q_000 = q_p[n];
+
+        double d_min = diag;
+        for (unsigned int i = 0; i < solver->pointwise_bc[n].size(); ++i)
+        {
+          switch (solver->pointwise_bc[n][i].dir)
+          {
+            case 0: d_m00 = solver->pointwise_bc[n][i].dist; q_m00 = solver->pointwise_bc[n][i].value; break;
+            case 1: d_p00 = solver->pointwise_bc[n][i].dist; q_p00 = solver->pointwise_bc[n][i].value; break;
+            case 2: d_0m0 = solver->pointwise_bc[n][i].dist; q_0m0 = solver->pointwise_bc[n][i].value; break;
+            case 3: d_0p0 = solver->pointwise_bc[n][i].dist; q_0p0 = solver->pointwise_bc[n][i].value; break;
+#ifdef P4_TO_P8
+            case 4: d_00m = solver->pointwise_bc[n][i].dist; q_00m = solver->pointwise_bc[n][i].value; break;
+            case 5: d_00p = solver->pointwise_bc[n][i].dist; q_00p = solver->pointwise_bc[n][i].value; break;
+#endif
+          }
+
+          d_min = MIN(d_min, solver->pointwise_bc[n][i].dist);
+        }
+
+        if (d_min > rel_thresh*diag && solver->pointwise_bc[n].size() < 3)
+        {
+          b_qn_well_defined_p[n] = true;
+          qx_p[n] = ((q_p00-q_000)*d_m00/d_p00 + (q_000-q_m00)*d_p00/d_m00)/(d_m00+d_p00);
+          qy_p[n] = ((q_0p0-q_000)*d_0m0/d_0p0 + (q_000-q_0m0)*d_0p0/d_0m0)/(d_0m0+d_0p0);
+#ifdef P4_TO_P8
+          qz_p[n] = ((q_00p-q_000)*d_00m/d_00p + (q_000-q_00m)*d_00p/d_00m)/(d_00m+d_00p);
+#endif
+          qxx_p[n] = 2.*((q_p00-q_000)/d_p00 - (q_000-q_m00)/d_m00)/(d_m00+d_p00);
+          qyy_p[n] = 2.*((q_0p0-q_000)/d_0p0 - (q_000-q_0m0)/d_0m0)/(d_0m0+d_0p0);
+#ifdef P4_TO_P8
+          qzz_p[n] = 2.*((q_00p-q_000)/d_00p - (q_000-q_00m)/d_00m)/(d_00m+d_00p);
+#endif
+        } else {
+          b_qn_well_defined_p[n] = false;
+          qx_p[n] = 0; qxx_p[n] = 0;
+          qy_p[n] = 0; qyy_p[n] = 0;
+#ifdef P4_TO_P8
+          qz_p[n] = 0; qzz_p[n] = 0;
+#endif
+        }
+      }
+      else
+      {
         b_qn_well_defined_p[n] = false;
         qx_p[n] = 0; qxx_p[n] = 0;
         qy_p[n] = 0; qyy_p[n] = 0;
@@ -7789,7 +7854,65 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_full( Vec phi, Vec mask, Ve
 #ifdef P4_TO_P8
         qz_p[n] = qnnn.dz_central(q_p); qzz_p[n] = qnnn.dyy_central(q_p);
 #endif
-      } else {
+      }
+      else if (mask_p[qnnn.node_000]<-EPS && solver != NULL)
+      {
+        double d_m00 = qnnn.d_m00, d_p00 = qnnn.d_p00;
+        double d_0m0 = qnnn.d_0m0, d_0p0 = qnnn.d_0p0;
+#ifdef P4_TO_P8
+        double d_00m = qnnn.d_00m, d_00p = qnnn.d_00p;
+#endif
+
+        // assuming grid is uniform near the interface
+        double q_m00 = qnnn.f_m00_linear(q_p), q_p00 = qnnn.f_p00_linear(q_p);
+        double q_0m0 = qnnn.f_0m0_linear(q_p), q_0p0 = qnnn.f_0p0_linear(q_p);
+#ifdef P4_TO_P8
+        double q_00m = qnnn.f_00m_linear(q_p), q_00p = qnnn.f_00p_linear(q_p);
+#endif
+        double q_000 = q_p[n];
+
+        double d_min = diag;
+        for (unsigned int i = 0; i < solver->pointwise_bc[n].size(); ++i)
+        {
+          switch (solver->pointwise_bc[n][i].dir)
+          {
+            case 0: d_m00 = solver->pointwise_bc[n][i].dist; q_m00 = solver->pointwise_bc[n][i].value; break;
+            case 1: d_p00 = solver->pointwise_bc[n][i].dist; q_p00 = solver->pointwise_bc[n][i].value; break;
+            case 2: d_0m0 = solver->pointwise_bc[n][i].dist; q_0m0 = solver->pointwise_bc[n][i].value; break;
+            case 3: d_0p0 = solver->pointwise_bc[n][i].dist; q_0p0 = solver->pointwise_bc[n][i].value; break;
+#ifdef P4_TO_P8
+            case 4: d_00m = solver->pointwise_bc[n][i].dist; q_00m = solver->pointwise_bc[n][i].value; break;
+            case 5: d_00p = solver->pointwise_bc[n][i].dist; q_00p = solver->pointwise_bc[n][i].value; break;
+#endif
+          }
+
+          d_min = MIN(d_min, solver->pointwise_bc[n][i].dist);
+        }
+
+        if (d_min > rel_thresh*diag && solver->pointwise_bc[n].size() < 3)
+        {
+          b_qn_well_defined_p[n] = true;
+          qx_p[n] = ((q_p00-q_000)*d_m00/d_p00 + (q_000-q_m00)*d_p00/d_m00)/(d_m00+d_p00);
+          qy_p[n] = ((q_0p0-q_000)*d_0m0/d_0p0 + (q_000-q_0m0)*d_0p0/d_0m0)/(d_0m0+d_0p0);
+#ifdef P4_TO_P8
+          qz_p[n] = ((q_00p-q_000)*d_00m/d_00p + (q_000-q_00m)*d_00p/d_00m)/(d_00m+d_00p);
+#endif
+          qxx_p[n] = 2.*((q_p00-q_000)/d_p00 - (q_000-q_m00)/d_m00)/(d_m00+d_p00);
+          qyy_p[n] = 2.*((q_0p0-q_000)/d_0p0 - (q_000-q_0m0)/d_0m0)/(d_0m0+d_0p0);
+#ifdef P4_TO_P8
+          qzz_p[n] = 2.*((q_00p-q_000)/d_00p - (q_000-q_00m)/d_00m)/(d_00m+d_00p);
+#endif
+        } else {
+          b_qn_well_defined_p[n] = false;
+          qx_p[n] = 0; qxx_p[n] = 0;
+          qy_p[n] = 0; qyy_p[n] = 0;
+#ifdef P4_TO_P8
+          qz_p[n] = 0; qzz_p[n] = 0;
+#endif
+        }
+      }
+      else
+      {
         b_qn_well_defined_p[n] = false;
         qx_p[n] = 0; qxx_p[n] = 0;
         qy_p[n] = 0; qyy_p[n] = 0;
@@ -8737,21 +8860,11 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_full( Vec phi, Vec mask, Ve
 #ifdef P4_TO_P8
     ierr = VecRestoreArray(qz, &qz_p); CHKERRXX(ierr);
 #endif
-
-    if (qd == NULL)
-    {
-      ierr = VecDestroy(qx); CHKERRXX(ierr);
-      ierr = VecDestroy(qy); CHKERRXX(ierr);
+    ierr = VecDestroy(qx); CHKERRXX(ierr);
+    ierr = VecDestroy(qy); CHKERRXX(ierr);
 #ifdef P4_TO_P8
-      ierr = VecDestroy(qz); CHKERRXX(ierr);
+    ierr = VecDestroy(qz); CHKERRXX(ierr);
 #endif
-    } else {
-      qd[0] = qx;
-      qd[1] = qy;
-#ifdef P4_TO_P8
-      qd[2] = qz;
-#endif
-    }
   }
 
   if (order == 2)
