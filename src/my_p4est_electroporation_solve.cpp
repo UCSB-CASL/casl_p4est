@@ -411,8 +411,7 @@ void my_p4est_electroporation_solve_t::solve(Vec solution, bool use_nonzero_init
 
     /* interpolate the solution back onto the original mesh */
     interpolate_solution_from_voronoi_to_tree(solution);
-
-  //  interp_sol.set_input(solution, linear);
+    ierr = VecDestroy(sol_voro); CHKERRXX(ierr);
     ierr = PetscLogEventEnd(log_PoissonSolverNodeBasedJump_solve, A, rhs, ksp, 0); CHKERRXX(ierr);
 }
 
@@ -1245,12 +1244,12 @@ void my_p4est_electroporation_solve_t::compute_voronoi_cell(unsigned int n, Voro
 
     /* finally, construct the partition */
 #ifdef P4_TO_P8
-    const double xyz_min [3] = {xyz_min[0], xyz_min[1], xyz_min[2]};
-    const double xyz_max [3] = {xyz_max[0], xyz_max[1], xyz_max[2]};
-    //    double xyz_min [] = {xmin, ymin, zmin};
-    //    double xyz_max [] = {xmax, ymax, zmax};
+    const double xyz_min1 [] = {xyz_min[0], xyz_min[1], xyz_min[2]};
+    const double xyz_max1 [] = {xyz_max[0], xyz_max[1], xyz_max[2]};
+//    double xyz_min [] = {xmin, ymin, zmin};
+//    double xyz_max [] = {xmax, ymax, zmax};
     bool periodic[] = {false, false, false};
-    voro.construct_Partition(xyz_min, xyz_max, periodic);
+    voro.construct_Partition(xyz_min1, xyz_max1, periodic);
 #else
     voro.construct_Partition();
 #endif
@@ -2031,10 +2030,6 @@ void my_p4est_electroporation_solve_t::setup_linear_system()
 #else
         Point2 pc = voro_points[n];
 #endif
-
-
-
-
         if( (ABS(pc.x-xyz_min[0])<EPS || ABS(pc.x-xyz_max[0])<EPS ||
              ABS(pc.y-xyz_min[1])<EPS || ABS(pc.y-xyz_max[1])<EPS
      #ifdef P4_TO_P8
@@ -2056,9 +2051,6 @@ void my_p4est_electroporation_solve_t::setup_linear_system()
 
             continue;
         }
-
-
-
 
 #ifdef P4_TO_P8
         Voronoi3D voro;
@@ -2105,12 +2097,21 @@ void my_p4est_electroporation_solve_t::setup_linear_system()
         }
 
 
-//#ifndef P4_TO_P8
-//        voro.compute_volume();
-//#endif
-//        double volume = voro.get_volume();
+#ifndef P4_TO_P8
+        voro.compute_volume();
+#endif
+        double volume = voro.get_volume();
 
-//        rhs_p[n] *= volume;
+        rhs_p[n] *= volume;
+#ifdef P4_TO_P8
+        double add_n = (*add)(pc.x, pc.y, pc.z);
+#else
+        double add_n = (*add)(pc.x, pc.y);
+#endif
+        if(add_n>EPS) matrix_has_nullspace = false;
+
+        mat_entry_t ent; ent.n = global_n_idx; ent.val = volume*add_n;
+        matrix_entries[n].push_back(ent);
 
         for(unsigned int l=0; l<points->size(); ++l)
         {
@@ -2120,14 +2121,6 @@ void my_p4est_electroporation_solve_t::setup_linear_system()
             int k = (l+partition->size()-1) % partition->size();
             double s = ((*partition)[k]-(*partition)[l]).norm_L2();
 #endif
-
-            /* PAM: desperate fix: avoid 0s in the diagonal entries of the matrix because of roundoff error at high resolutions beyond level 8 */
-//#ifdef P4_TO_P8
-//            if(s<1e-20*d_min*d_min)
-//            {
-//                s=1e-20*d_min*d_min;
-//            }
-//#endif
             if((*points)[l].n>=0)
             {
                 /* regular point */
@@ -2162,151 +2155,166 @@ void my_p4est_electroporation_solve_t::setup_linear_system()
                     o_nnz[n]++;
                 }
 
+#ifdef P4_TO_P8
+                double Smn = 0.5*((*Smm)(pc.x, pc.y, pc.z) + (*Smm)(pl.x, pl.y, pl.z));
+#else
+                double Smn = 0.5*((*Smm)(pc.x, pc.y) + (*Smm)(pl.x, pl.y));
+#endif
+
+                double sigma_harmonic = sigma_n*sigma_l/(sigma_n + sigma_l+2*sigma_n*sigma_l*dt/(Cm+dt*Smn)/d);
+                if(phi_n*phi_l<0)
+                {
+                    mat_entry_t ent; ent.n = global_l_idx; ent.val = -2*s*sigma_harmonic/d;
+                    matrix_entries[n][0].val += 2*s*sigma_harmonic/d;
+                    matrix_entries[n].push_back(ent);
+                } else {
+                    mat_entry_t ent; ent.n = global_l_idx; ent.val = -s*sigma_n/d;
+                    matrix_entries[n][0].val += s*sigma_n/d;
+                    matrix_entries[n].push_back(ent);
+                }
+
 
                 double sigma_disc;
                 if(phi_n*phi_l<0)
                 {
-                    double d = (pc - pl).norm_L2();
-
-
 #ifdef P4_TO_P8
                     Point3 p_ln = (pc+pl)/2;
-                    double Smn = 0.5*((*Smm)(pc.x, pc.y, pc.z) + (*Smm)(pl.x, pl.y, pl.z));
 #else
                     Point2 p_ln = (pc+pl)/2;
-                    double Smn = 0.5*((*Smm)(pc.x, pc.y) + (*Smm)(pl.x, pl.y));
 #endif
 
-                    if(implicit==0)
-                    {
-                        switch(order)
-                        {
-                        case 1:
-                            /* ([u]_n+1 - [u]_n)/dt + Sm_n [u]_n = d u_n+1/d n */
-                            sigma_disc = 2*sigma_n*sigma_l/(sigma_n + sigma_l + sigma_n*sigma_l/(d/2) * dt/Cm);
-                            break;
-                        case 2:
-                            /* (1.5*[u]_n+1 - 2*[u]_n + .5*[u]_n-1)/dt + Sm_n [u]_n = d u_n+1/d n */
-                            sigma_disc = 2*sigma_n*sigma_l/(sigma_n + sigma_l + 2./3. * sigma_n*sigma_l/(d/2) * dt/Cm);
-                            break;
-                        default:
-                            throw std::invalid_argument("Unknown order ... choose 1 or 2 when explicit.");
-                        }
-                    }
-
-                    else
-                    {
-                        switch(order)
-                        {
-                        case 1:
-                            // ([u]_n+1 - [u]_n)/dt + Sm_n [u]_n+1 = d u_n+1/d n
-                            sigma_disc = 2*sigma_n*sigma_l/(sigma_n + sigma_l + sigma_n*sigma_l/(d/2) * dt/(Cm+dt*Smn));
-                            break;
-                        case 2:
-                            // (1.5*[u]_n+1 - 2*[u]_n + .5*[u]_n-1)/dt + Sm_n [u]_n+1 = d u_n+1/d n
-                            sigma_disc = 2*sigma_n*sigma_l/(sigma_n + sigma_l + sigma_n*sigma_l/(d/2) * dt/(1.5*Cm+dt*Smn));
-                            break;
-                        case 3:
-                            // (11/6*[u]_n+1 - 3*[u]_n + 3/2*[u]_n-1 - 1/3*[u]_n-2)/dt + Sm_n [u]_n+1 = d u_n+1/d n
-                            sigma_disc = 2*sigma_n*sigma_l/(sigma_n + sigma_l + sigma_n*sigma_l/(d/2) * dt/(11./6.*Cm+dt*Smn));
-                            break;
-                        default:
-                            throw std::invalid_argument("Unknown order ...");
-                        }
-                    }
-
-                    double sigma_tmp, vi;
-
-                    if(implicit==0)
-                    {
-                        switch(order)
-                        {
-                        case 1:
-                            /* ([u]_n+1 - [u]_n)/dt + Sm_n [u]_n = d u_n+1/d n */
-                            sigma_tmp = sigma_n*sigma_l / (sigma_n + sigma_l + sigma_n*sigma_l/(d/2) * dt/Cm);
-                            //                            vi = .5*(vn_n_p[n] + vn_n_p[(*points)[l].n]);
 #ifdef P4_TO_P8
-                            vi = 0.5*((*vn)(pc.x, pc.y, pc.z) + (*vn)(pl.x, pl.y, pl.z));
+                    rhs_p[n] += s*sigma_harmonic* SIGN(phi_n) * (*u_jump)(p_ln.x, p_ln.y, p_ln.z)*Cm/((Cm+dt*Smn)*d/2);
 #else
-                            vi = 0.5*((*vn)(pc.x, pc.y) + (*vn)(pl.x, pl.y));
+                    rhs_p[n] += s*sigma_harmonic* SIGN(phi_n) * (*u_jump)(p_ln.x, p_ln.y)*Cm/((Cm+dt*Smn)*d/2);
 #endif
-                            rhs_p[n] += SIGN(phi_n) * s/(d/2) * sigma_tmp * vi * (1-dt*Smn/Cm);
-                            break;
-                        case 2:
-                            /* (1.5*[u]_n+1 - 2*[u]_n + .5*[u]_n-1)/dt + Sm_n [u]_n = d u_n+1/d n */
-                            sigma_tmp = sigma_n*sigma_l / (sigma_n + sigma_l + 2./3. * sigma_n*sigma_l/(d/2) * dt/Cm);
-                            //                            vi = .5*2./3.*((2-dt*Smn/Cm)*(vn_n_p[n]+vn_n_p[(*points)[l].n]) - .5*(vnm1_n_p[n]+vnm1_n_p[(*points)[l].n]));
-#ifdef P4_TO_P8
-                            vi = .5*2./3.*((2-dt*Smn/Cm)*((*vn)(pc.x, pc.y, pc.z)+(*vn)(pl.x, pl.y, pl.z)) - .5*((*vnm1)(pc.x, pc.y, pc.z)+(*vnm1)(pl.x, pl.y, pl.z)));
-#else
-                            vi = .5*2./3.*((2-dt*Smn/Cm)*((*vn)(pc.x, pc.y)+(*vn)(pl.x, pl.y)) - .5*((*vnm1)(pc.x, pc.y)+(*vnm1)(pl.x, pl.y)));
-#endif
-                            rhs_p[n] += SIGN(phi_n) * s/(d/2) * sigma_tmp * vi;
 
-                            break;
-                        default:
-                            throw std::invalid_argument("Unknown order ... choose 1 or 2 when explicit.");
-                        }
-                    }
-                    else
-                    {
-                        switch(order)
-                        {
-                        case 1:
-                            /* ([u]_n+1 - [u]_n)/dt + Sm_n [u]_n+1 = d u_n+1/d n */
-                            sigma_tmp = sigma_n*sigma_l / (sigma_n + sigma_l + sigma_n*sigma_l/(d/2) * dt/(Cm+dt*Smn));
 
-                            //vi = .5*(vn_n_p[n] + vn_n_p[(*points)[l].n]);
-#ifdef P4_TO_P8
-                            vi = 0.5*((*vn)(pc.x, pc.y, pc.z) + (*vn)(pl.x, pl.y, pl.z));
-#else
-                            vi = 0.5*((*vn)(pc.x, pc.y) + (*vn)(pl.x, pl.y));
-#endif
-                            rhs_p[n] += SIGN(phi_n) * s/(d/2) * sigma_tmp * Cm*vi / (Cm+dt*Smn);
-                            break;
-                        case 2:
-                            /* (1.5*[u]_n+1 - 2*[u]_n + .5*[u]_n-1)/dt + Sm_n [u]_n+1 = d u_n+1/d n */
-                            sigma_tmp = sigma_n*sigma_l / (sigma_n + sigma_l + sigma_n*sigma_l/(d/2) * dt/(1.5*Cm+dt*Smn));
-                            //vi = .5*(2*vn_n_p[n] - .5*vnm1_n_p[n] + 2*vn_n_p[(*points)[l].n] - .5*vnm1_n_p[(*points)[l].n]);
-#ifdef P4_TO_P8
-                            vi = .5*(2*(*vn)(pc.x, pc.y, pc.z) - .5*(*vnm1)(pc.x, pc.y, pc.z) + 2*(*vn)(pl.x, pl.y, pl.z) - .5*(*vnm1)(pl.x, pl.y, pl.z));
-#else
-                            vi = .5*(2*(*vn)(pc.x, pc.y) - .5*(*vnm1)(pc.x, pc.y) + 2*(*vn)(pl.x, pl.y) - .5*(*vnm1)(pl.x, pl.y));
-#endif
-                            rhs_p[n] += SIGN(phi_n) * s/(d/2) * sigma_tmp * Cm*vi / (1.5*Cm+dt*Smn);
-                            break;
-                        case 3:
-                            /* (11/6*[u]_n+1 - 3*[u]_n + 3/2*[u]_n-1 - 1/3*[u]_n-2)/dt + Sm_n [u]_n+1 = d u_n+1/d n */
-                            sigma_tmp = sigma_n*sigma_l / (sigma_n + sigma_l + sigma_n*sigma_l/(d/2) * dt/(11./6.*Cm+dt*Smn));
-                            //vi = .5*(3*vn_n_p[n] - 3./2.*vnm1_n_p[n] + 1./3.*vnm2_n_p[n] + 3*vn_n_p[(*points)[l].n] - 3./2.*vnm1_n_p[(*points)[l].n] + 1./3.*vnm2_n_p[(*points)[l].n]);
-#ifdef P4_TO_P8
-                            vi = .5*(3*(*vn)(pc.x,pc.y,pc.z) - 3./2.*(*vnm1)(pc.x,pc.y,pc.z) + 1./3.*(*vnm2)(pc.x,pc.y,pc.z) + 3*(*vn)(pl.x,pl.y,pl.z) - 3./2.*(*vnm1)(pl.x,pl.y,pl.z) + 1./3.*(*vnm2)(pl.x,pl.y,pl.z));
-#else
-                            vi = .5*(3*(*vn)(pc.x,pc.y) - 3./2.*(*vnm1)(pc.x,pc.y) + 1./3.*(*vnm2)(pc.x,pc.y) + 3*(*vn)(pl.x,pl.y) - 3./2.*(*vnm1)(pl.x,pl.y) + 1./3.*(*vnm2)(pl.x,pl.y));
-#endif
-                            rhs_p[n] += SIGN(phi_n) * s/(d/2) * sigma_tmp * Cm*vi / (11./6.*Cm+dt*Smn);
+                    //                    if(implicit==0)
+                    //                    {
+                    //                        switch(order)
+                    //                        {
+                    //                        case 1:
+                    //                            /* ([u]_n+1 - [u]_n)/dt + Sm_n [u]_n = d u_n+1/d n */
+                    //                            sigma_disc = 2*sigma_n*sigma_l/(sigma_n + sigma_l + sigma_n*sigma_l/(d/2) * dt/Cm);
+                    //                            break;
+                    //                        case 2:
+                    //                            /* (1.5*[u]_n+1 - 2*[u]_n + .5*[u]_n-1)/dt + Sm_n [u]_n = d u_n+1/d n */
+                    //                            sigma_disc = 2*sigma_n*sigma_l/(sigma_n + sigma_l + 2./3. * sigma_n*sigma_l/(d/2) * dt/Cm);
+                    //                            break;
+                    //                        default:
+                    //                            throw std::invalid_argument("Unknown order ... choose 1 or 2 when explicit.");
+                    //                        }
+                    //                    }
+                    //                    else
+                    //                    {
+                    //                        switch(order)
+                    //                        {
+                    //                        case 1:
+                    //                            // ([u]_n+1 - [u]_n)/dt + Sm_n [u]_n+1 = d u_n+1/d n
+                    //                            sigma_disc = 2*sigma_n*sigma_l/(sigma_n + sigma_l + sigma_n*sigma_l/(d/2) * dt/(Cm+dt*Smn));
+                    //                            break;
+                    //                        case 2:
+                    //                            // (1.5*[u]_n+1 - 2*[u]_n + .5*[u]_n-1)/dt + Sm_n [u]_n+1 = d u_n+1/d n
+                    //                            sigma_disc = 2*sigma_n*sigma_l/(sigma_n + sigma_l + sigma_n*sigma_l/(d/2) * dt/(1.5*Cm+dt*Smn));
+                    //                            break;
+                    //                        case 3:
+                    //                            // (11/6*[u]_n+1 - 3*[u]_n + 3/2*[u]_n-1 - 1/3*[u]_n-2)/dt + Sm_n [u]_n+1 = d u_n+1/d n
+                    //                            sigma_disc = 2*sigma_n*sigma_l/(sigma_n + sigma_l + sigma_n*sigma_l/(d/2) * dt/(11./6.*Cm+dt*Smn));
+                    //                            break;
+                    //                        default:
+                    //                            throw std::invalid_argument("Unknown order ...");
+                    //                        }
+                    //                    }
 
-                            break;
-                        default:
-                            throw std::invalid_argument("Unknown order ...");
-                        }
-                    }
+                    //                    double sigma_tmp, vi;
 
+                    //                    if(implicit==0)
+                    //                    {
+                    //                        switch(order)
+                    //                        {
+                    //                        case 1:
+                    //                            /* ([u]_n+1 - [u]_n)/dt + Sm_n [u]_n = d u_n+1/d n */
+                    //                            sigma_tmp = sigma_n*sigma_l / (sigma_n + sigma_l + sigma_n*sigma_l/(d/2) * dt/Cm);
+                    //                            //                            vi = .5*(vn_n_p[n] + vn_n_p[(*points)[l].n]);
+                    //#ifdef P4_TO_P8
+                    //                            vi = 0.5*((*vn)(pc.x, pc.y, pc.z) + (*vn)(pl.x, pl.y, pl.z));
+                    //#else
+                    //                            vi = 0.5*((*vn)(pc.x, pc.y) + (*vn)(pl.x, pl.y));
+                    //#endif
+                    //                            rhs_p[n] += SIGN(phi_n) * s/(d/2) * sigma_tmp * vi * (1-dt*Smn/Cm);
+                    //                            break;
+                    //                        case 2:
+                    //                            /* (1.5*[u]_n+1 - 2*[u]_n + .5*[u]_n-1)/dt + Sm_n [u]_n = d u_n+1/d n */
+                    //                            sigma_tmp = sigma_n*sigma_l / (sigma_n + sigma_l + 2./3. * sigma_n*sigma_l/(d/2) * dt/Cm);
+                    //                            //                            vi = .5*2./3.*((2-dt*Smn/Cm)*(vn_n_p[n]+vn_n_p[(*points)[l].n]) - .5*(vnm1_n_p[n]+vnm1_n_p[(*points)[l].n]));
+                    //#ifdef P4_TO_P8
+                    //                            vi = .5*2./3.*((2-dt*Smn/Cm)*((*vn)(pc.x, pc.y, pc.z)+(*vn)(pl.x, pl.y, pl.z)) - .5*((*vnm1)(pc.x, pc.y, pc.z)+(*vnm1)(pl.x, pl.y, pl.z)));
+                    //#else
+                    //                            vi = .5*2./3.*((2-dt*Smn/Cm)*((*vn)(pc.x, pc.y)+(*vn)(pl.x, pl.y)) - .5*((*vnm1)(pc.x, pc.y)+(*vnm1)(pl.x, pl.y)));
+                    //#endif
+                    //                            rhs_p[n] += SIGN(phi_n) * s/(d/2) * sigma_tmp * vi;
+
+                    //                            break;
+                    //                        default:
+                    //                            throw std::invalid_argument("Unknown order ... choose 1 or 2 when explicit.");
+                    //                        }
+                    //                    }
+                    //                    else
+                    //                    {
+                    //                        switch(order)
+                    //                        {
+                    //                        case 1:
+                    //                            /* ([u]_n+1 - [u]_n)/dt + Sm_n [u]_n+1 = d u_n+1/d n */
+                    //                            sigma_tmp = sigma_n*sigma_l / (sigma_n + sigma_l + sigma_n*sigma_l/(d/2) * dt/(Cm+dt*Smn));
+
+                    //                            //vi = .5*(vn_n_p[n] + vn_n_p[(*points)[l].n]);
+                    //#ifdef P4_TO_P8
+                    //                            vi = 0.5*((*vn)(pc.x, pc.y, pc.z) + (*vn)(pl.x, pl.y, pl.z));
+                    //#else
+                    //                            vi = 0.5*((*vn)(pc.x, pc.y) + (*vn)(pl.x, pl.y));
+                    //#endif
+                    //                            rhs_p[n] += SIGN(phi_n) * s/(d/2) * sigma_tmp * Cm*vi / (Cm+dt*Smn);
+                    //                            break;
+                    //                        case 2:
+                    //                            /* (1.5*[u]_n+1 - 2*[u]_n + .5*[u]_n-1)/dt + Sm_n [u]_n+1 = d u_n+1/d n */
+                    //                            sigma_tmp = sigma_n*sigma_l / (sigma_n + sigma_l + sigma_n*sigma_l/(d/2) * dt/(1.5*Cm+dt*Smn));
+                    //                            //vi = .5*(2*vn_n_p[n] - .5*vnm1_n_p[n] + 2*vn_n_p[(*points)[l].n] - .5*vnm1_n_p[(*points)[l].n]);
+                    //#ifdef P4_TO_P8
+                    //                            vi = .5*(2*(*vn)(pc.x, pc.y, pc.z) - .5*(*vnm1)(pc.x, pc.y, pc.z) + 2*(*vn)(pl.x, pl.y, pl.z) - .5*(*vnm1)(pl.x, pl.y, pl.z));
+                    //#else
+                    //                            vi = .5*(2*(*vn)(pc.x, pc.y) - .5*(*vnm1)(pc.x, pc.y) + 2*(*vn)(pl.x, pl.y) - .5*(*vnm1)(pl.x, pl.y));
+                    //#endif
+                    //                            rhs_p[n] += SIGN(phi_n) * s/(d/2) * sigma_tmp * Cm*vi / (1.5*Cm+dt*Smn);
+                    //                            break;
+                    //                        case 3:
+                    //                            /* (11/6*[u]_n+1 - 3*[u]_n + 3/2*[u]_n-1 - 1/3*[u]_n-2)/dt + Sm_n [u]_n+1 = d u_n+1/d n */
+                    //                            sigma_tmp = sigma_n*sigma_l / (sigma_n + sigma_l + sigma_n*sigma_l/(d/2) * dt/(11./6.*Cm+dt*Smn));
+                    //                            //vi = .5*(3*vn_n_p[n] - 3./2.*vnm1_n_p[n] + 1./3.*vnm2_n_p[n] + 3*vn_n_p[(*points)[l].n] - 3./2.*vnm1_n_p[(*points)[l].n] + 1./3.*vnm2_n_p[(*points)[l].n]);
+                    //#ifdef P4_TO_P8
+                    //                            vi = .5*(3*(*vn)(pc.x,pc.y,pc.z) - 3./2.*(*vnm1)(pc.x,pc.y,pc.z) + 1./3.*(*vnm2)(pc.x,pc.y,pc.z) + 3*(*vn)(pl.x,pl.y,pl.z) - 3./2.*(*vnm1)(pl.x,pl.y,pl.z) + 1./3.*(*vnm2)(pl.x,pl.y,pl.z));
+                    //#else
+                    //                            vi = .5*(3*(*vn)(pc.x,pc.y) - 3./2.*(*vnm1)(pc.x,pc.y) + 1./3.*(*vnm2)(pc.x,pc.y) + 3*(*vn)(pl.x,pl.y) - 3./2.*(*vnm1)(pl.x,pl.y) + 1./3.*(*vnm2)(pl.x,pl.y));
+                    //#endif
+                    //                            rhs_p[n] += SIGN(phi_n) * s/(d/2) * sigma_tmp * Cm*vi / (11./6.*Cm+dt*Smn);
+
+                    //                            break;
+                    //                        default:
+                    //                            throw std::invalid_argument("Unknown order ...");
+                    //                        }
+                    //                    }
+
+                    //                }
+                    //                else
+                    //                {
+                    //                    sigma_disc = sigma_n;
+                    //                }
+
+                    //                mat_entry_t ent1; ent1.n = global_n_idx; ent1.val = +s*sigma_disc/d;
+                    //                matrix_entries[n].push_back(ent1);
+                    //                mat_entry_t ent; ent.n = global_l_idx; ent.val = -s*sigma_disc/d;
+                    //                matrix_entries[n].push_back(ent);
                 }
-                else
-                {
-                    sigma_disc = sigma_n;
-                }
-
-                mat_entry_t ent1; ent1.n = global_n_idx; ent1.val = +s*sigma_disc/d;
-                matrix_entries[n].push_back(ent1);
-
-
-
-                mat_entry_t ent; ent.n = global_l_idx; ent.val = -s*sigma_disc/d;
-                matrix_entries[n].push_back(ent);
-
-
             }
             else /* wall with neumann */
             {
@@ -2433,8 +2441,8 @@ void my_p4est_electroporation_solve_t::setup_negative_laplace_rhsvec()
 #else
         double phi_n = interp_phi(pc.x, pc.y);
 #endif
-        double sigma_n;
 
+        double sigma_n;
         if(phi_n<0)
         {
 #ifdef P4_TO_P8
@@ -2456,12 +2464,13 @@ void my_p4est_electroporation_solve_t::setup_negative_laplace_rhsvec()
 #endif
         }
 
+
 #ifndef P4_TO_P8
         voro.compute_volume();
 #endif
-        rhs_p[n] *= voro.get_volume();
+        double volume = voro.get_volume();
 
-
+        rhs_p[n] *= volume;
 
         for(unsigned int l=0; l<points->size(); ++l)
         {
@@ -2473,6 +2482,7 @@ void my_p4est_electroporation_solve_t::setup_negative_laplace_rhsvec()
 #endif
             if((*points)[l].n>=0)
             {
+                /* regular point */
 #ifdef P4_TO_P8
                 Point3 pl = (*points)[l].p;
                 double phi_l = interp_phi(pl.x, pl.y, pl.z);
@@ -2481,105 +2491,38 @@ void my_p4est_electroporation_solve_t::setup_negative_laplace_rhsvec()
                 double phi_l = interp_phi(pl.x, pl.y);
 #endif
                 double d = (pc - pl).norm_L2();
+
+                double sigma_l;
+
+#ifdef P4_TO_P8
+                if(phi_l<0) sigma_l = (*mu_m)(pl.x, pl.y, pl.z);
+                else        sigma_l = (*mu_p)(pl.x, pl.y, pl.z);
+#else
+                if(phi_l<0) sigma_l = (*mu_m)(pl.x, pl.y);
+                else        sigma_l = (*mu_p)(pl.x, pl.y);
+#endif
+
+#ifdef P4_TO_P8
+                double Smn = 0.5*((*Smm)(pc.x, pc.y, pc.z) + (*Smm)(pl.x, pl.y, pl.z));
+#else
+                double Smn = 0.5*((*Smm)(pc.x, pc.y) + (*Smm)(pl.x, pl.y));
+#endif
+
+                double sigma_harmonic = sigma_n*sigma_l/(sigma_n + sigma_l+2*sigma_n*sigma_l*dt/(Cm+dt*Smn)/d);
+
                 if(phi_n*phi_l<0)
                 {
-
-
 #ifdef P4_TO_P8
-                    double Smn = 0.5*((*Smm)(pc.x, pc.y,pc.z) + (*Smm)(pl.x, pl.y,pl.z));
-#else
-                    double Smn = 0.5*((*Smm)(pc.x, pc.y) + (*Smm)(pl.x, pl.y));
-#endif
-                    double sigma_l;
-#ifdef P4_TO_P8
-                    if(phi_l<0) sigma_l = (*mu_m)(pl.x, pl.y, pl.z);
-                    else        sigma_l = (*mu_p)(pl.x, pl.y, pl.z);
                     Point3 p_ln = (pc+pl)/2;
 #else
-                    if(phi_l<0) sigma_l = (*mu_m)(pl.x, pl.y);
-                    else        sigma_l = (*mu_p)(pl.x, pl.y);
                     Point2 p_ln = (pc+pl)/2;
 #endif
 
-
-
-                    double sigma_tmp, vi;
-
-                    if(implicit==0)
-                    {
-                        switch(order)
-                        {
-                        case 1:
-                            /* ([u]_n+1 - [u]_n)/dt + Sm_n [u]_n = d u_n+1/d n */
-                            sigma_tmp = sigma_n*sigma_l / (sigma_n + sigma_l + sigma_n*sigma_l/(d/2) * dt/Cm);
-                            //                            vi = .5*(vn_n_p[n] + vn_n_p[(*points)[l].n]);
 #ifdef P4_TO_P8
-                            vi = 0.5*((*vn)(pc.x, pc.y, pc.z) + (*vn)(pl.x, pl.y, pl.z));
+                    rhs_p[n] += s*sigma_harmonic* SIGN(phi_n) * (*u_jump)(p_ln.x, p_ln.y, p_ln.z)*Cm/((Cm+dt*Smn)*d/2);
 #else
-                            vi = 0.5*((*vn)(pc.x, pc.y) + (*vn)(pl.x, pl.y));
+                    rhs_p[n] += s*sigma_harmonic* SIGN(phi_n) * (*u_jump)(p_ln.x, p_ln.y)*Cm/((Cm+dt*Smn)*d/2);
 #endif
-                            rhs_p[n] += SIGN(phi_n) * s/(d/2) * sigma_tmp * vi * (1-dt*Smn/Cm);
-                            break;
-                        case 2:
-                            /* (1.5*[u]_n+1 - 2*[u]_n + .5*[u]_n-1)/dt + Sm_n [u]_n = d u_n+1/d n */
-                            sigma_tmp = sigma_n*sigma_l / (sigma_n + sigma_l + 2./3. * sigma_n*sigma_l/(d/2) * dt/Cm);
-                            //                            vi = .5*2./3.*((2-dt*Smn/Cm)*(vn_n_p[n]+vn_n_p[(*points)[l].n]) - .5*(vnm1_n_p[n]+vnm1_n_p[(*points)[l].n]));
-#ifdef P4_TO_P8
-                            vi = .5*2./3.*((2-dt*Smn/Cm)*((*vn)(pc.x, pc.y, pc.z)+(*vn)(pl.x, pl.y, pl.z)) - .5*((*vnm1)(pc.x, pc.y, pc.z)+(*vnm1)(pl.x, pl.y, pl.z)));
-#else
-                            vi = .5*2./3.*((2-dt*Smn/Cm)*((*vn)(pc.x, pc.y)+(*vn)(pl.x, pl.y)) - .5*((*vnm1)(pc.x, pc.y)+(*vnm1)(pl.x, pl.y)));
-#endif
-                            rhs_p[n] += SIGN(phi_n) * s/(d/2) * sigma_tmp * vi;
-
-                            break;
-                        default:
-                            throw std::invalid_argument("Unknown order ... choose 1 or 2 when explicit.");
-                        }
-                    }
-                    else
-                    {
-                        switch(order)
-                        {
-                        case 1:
-                            /* ([u]_n+1 - [u]_n)/dt + Sm_n [u]_n+1 = d u_n+1/d n */
-                            sigma_tmp = sigma_n*sigma_l / (sigma_n + sigma_l + sigma_n*sigma_l/(d/2) * dt/(Cm+dt*Smn));
-                            //vi = .5*(vn_n_p[n] + vn_n_p[(*points)[l].n]);
-#ifdef P4_TO_P8
-                            vi = 0.5*((*vn)(pc.x, pc.y, pc.z) + (*vn)(pl.x, pl.y, pl.z));
-#else
-                            vi = 0.5*((*vn)(pc.x, pc.y) + (*vn)(pl.x, pl.y));
-#endif
-                            rhs_p[n] += SIGN(phi_n) * s/(d/2) * sigma_tmp * Cm*vi / (Cm+dt*Smn);
-                            break;
-                        case 2:
-                            /* (1.5*[u]_n+1 - 2*[u]_n + .5*[u]_n-1)/dt + Sm_n [u]_n+1 = d u_n+1/d n */
-                            sigma_tmp = sigma_n*sigma_l / (sigma_n + sigma_l + sigma_n*sigma_l/(d/2) * dt/(1.5*Cm+dt*Smn));
-                            //                            vi = .5*(2*vn_n_p[n] - .5*vnm1_n_p[n] + 2*vn_n_p[(*points)[l].n] - .5*vnm1_n_p[(*points)[l].n]);
-#ifdef P4_TO_P8
-                            vi = .5*(2*(*vn)(pc.x, pc.y, pc.z) - .5*(*vnm1)(pc.x, pc.y, pc.z) + 2*(*vn)(pl.x, pl.y, pl.z) - .5*(*vnm1)(pl.x, pl.y, pl.z));
-#else
-                            vi = .5*(2*(*vn)(pc.x, pc.y) - .5*(*vnm1)(pc.x, pc.y) + 2*(*vn)(pl.x, pl.y) - .5*(*vnm1)(pl.x, pl.y));
-#endif
-                            rhs_p[n] += SIGN(phi_n) * s/(d/2) * sigma_tmp * Cm*vi / (1.5*Cm+dt*Smn);
-                            break;
-                        case 3:
-                            /* (11/6*[u]_n+1 - 3*[u]_n + 3/2*[u]_n-1 - 1/3*[u]_n-2)/dt + Sm_n [u]_n+1 = d u_n+1/d n */
-                            sigma_tmp = sigma_n*sigma_l / (sigma_n + sigma_l + sigma_n*sigma_l/(d/2) * dt/(11./6.*Cm+dt*Smn));
-                            //                            vi = .5*(3*vn_n_p[n] - 3./2.*vnm1_n_p[n] + 1./3.*vnm2_n_p[n] + 3*vn_n_p[(*points)[l].n] - 3./2.*vnm1_n_p[(*points)[l].n] + 1./3.*vnm2_n_p[(*points)[l].n]);
-#ifdef P4_TO_P8
-                            vi = .5*(3*(*vn)(pc.x,pc.y,pc.z) - 3./2.*(*vnm1)(pc.x,pc.y,pc.z) + 1./3.*(*vnm2)(pc.x,pc.y,pc.z) + 3*(*vn)(pl.x,pl.y,pl.z) - 3./2.*(*vnm1)(pl.x,pl.y,pl.z) + 1./3.*(*vnm2)(pl.x,pl.y,pl.z));
-#else
-                            vi = .5*(3*(*vn)(pc.x,pc.y) - 3./2.*(*vnm1)(pc.x,pc.y) + 1./3.*(*vnm2)(pc.x,pc.y) + 3*(*vn)(pl.x,pl.y) - 3./2.*(*vnm1)(pl.x,pl.y) + 1./3.*(*vnm2)(pl.x,pl.y));
-#endif
-                            rhs_p[n] += SIGN(phi_n) * s/(d/2) * sigma_tmp * Cm*vi / (11./6.*Cm+dt*Smn);
-                            break;
-                        default:
-                            throw std::invalid_argument("Unknown order ...");
-                        }
-                    }
-
-
-
                 }
             }
             else /* wall with neumann */
@@ -2603,29 +2546,7 @@ void my_p4est_electroporation_solve_t::setup_negative_laplace_rhsvec()
                 if(fabs(pc.y-xyz_min[1])<EPS && ((*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00)) y_tmp += 2*EPS;
                 if(fabs(pc.y-xyz_max[1])<EPS && ((*points)[l].n==WALL_m00  || (*points)[l].n==WALL_p00)) y_tmp -= 2*EPS;
                 rhs_p[n] += s*sigma_n * bc->wallValue(x_tmp, y_tmp);
-
 #endif
-
-                //                if     ((*points)[l].n==WALL_m00)
-                //                {
-                //                    if(bc->wallType(xyz_min[0],pc.y)==DIRICHLET) rhs_p[n] += bc->wallValue(xyz_min[0],pc.y)*s*sigma_n/(pc.x-xyz_min[0]);
-                //                    else                                  rhs_p[n] += bc->wallValue(xyz_min[0],pc.y)*s*sigma_n;
-                //                }
-                //                else if((*points)[l].n==WALL_p00)
-                //                {
-                //                    if(bc->wallType(xyz_max[0],pc.y)==DIRICHLET) rhs_p[n] += bc->wallValue(xyz_max[0],pc.y)*s*sigma_n/(xyz_max[0]-pc.x);
-                //                    else                                  rhs_p[n] += bc->wallValue(xyz_max[0],pc.y)*s*sigma_n;
-                //                }
-                //                else if((*points)[l].n==WALL_0m0)
-                //                {
-                //                    if(bc->wallType(pc.x,xyz_min[1])==DIRICHLET) rhs_p[n] += bc->wallValue(pc.x,xyz_min[1])*s*sigma_n/(pc.y-xyz_min[1]);
-                //                    else                                  rhs_p[n] += bc->wallValue(pc.x,xyz_min[1])*s*sigma_n;
-                //                }
-                //                else if((*points)[l].n==WALL_0p0)
-                //                {
-                //                    if(bc->wallType(pc.x,xyz_max[1])==DIRICHLET) rhs_p[n] += bc->wallValue(pc.x,xyz_max[1])*s*sigma_n/(xyz_max[1]-pc.y);
-                //                    else                                  rhs_p[n] += bc->wallValue(pc.x,xyz_max[1])*s*sigma_n;
-                //                }
             }
         }
     }
@@ -3015,318 +2936,319 @@ double my_p4est_electroporation_solve_t::interpolate_solution_from_voronoi_to_tr
 
 double my_p4est_electroporation_solve_t::interpolate_solution_from_voronoi_to_tree_on_node_n(p4est_locidx_t n) const
 {
-  PetscErrorCode ierr;
+    PetscErrorCode ierr;
 
-  double *sol_voro_p;
-  ierr = VecGetArray(sol_voro, &sol_voro_p); CHKERRXX(ierr);
+    double *sol_voro_p;
+    ierr = VecGetArray(sol_voro, &sol_voro_p); CHKERRXX(ierr);
 
 #ifdef P4_TO_P8
-  Point3 pn(node_x_fr_n(n, p4est, nodes), node_y_fr_n(n, p4est, nodes), node_z_fr_n(n, p4est, nodes));
+    Point3 pn(node_x_fr_n(n, p4est, nodes), node_y_fr_n(n, p4est, nodes), node_z_fr_n(n, p4est, nodes));
 #else
-  Point2 pn(node_x_fr_n(n, p4est, nodes), node_y_fr_n(n, p4est, nodes));
+    Point2 pn(node_x_fr_n(n, p4est, nodes), node_y_fr_n(n, p4est, nodes));
 #endif
 
 #ifdef P4_TO_P8
-  Point3 pm;
+    Point3 pm;
 #else
-  Point2 pm;
+    Point2 pm;
 #endif
-  /* first check if the node is a voronoi point */
-  for(unsigned int m=0; m<grid2voro[n].size(); ++m)
-  {
-    pm = voro_points[grid2voro[n][m]];
-    if((pn-pm).norm_L2()<sqrt(SQR(xyz_max[0]-xyz_min[0])+SQR(xyz_max[1]-xyz_min[1])
+
+    /* first check if the node is a voronoi point */
+    for(unsigned int m=0; m<grid2voro[n].size(); ++m)
+    {
+        pm = voro_points[grid2voro[n][m]];
+        if((pn-pm).norm_L2()<sqrt(SQR(xyz_max[0]-xyz_min[0])+SQR(xyz_max[1]-xyz_min[1])
                           #ifdef P4_TO_P8
-                                +SQR(xyz_max[2]-xyz_min[2])
+                                  +SQR(xyz_max[2]-xyz_min[2])
                           #endif
-                                )*EPS)
-    {
-      double retval = sol_voro_p[grid2voro[n][m]];
-      ierr = VecRestoreArray(sol_voro, &sol_voro_p); CHKERRXX(ierr);
-      return retval;
+                                  )*EPS)
+        {
+            double retval = sol_voro_p[grid2voro[n][m]];
+            ierr = VecRestoreArray(sol_voro, &sol_voro_p); CHKERRXX(ierr);
+            return retval;
+        }
     }
-  }
 
-  double *phi_p;
-  ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
+    double *phi_p;
+    ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
 
-  /* if not a grid point, gather all the neighbor voro points and find the
+    /* if not a grid point, gather all the neighbor voro points and find the
      * three closest with the same sign for phi */
-  p4est_locidx_t quad_idx;
-  p4est_topidx_t tree_idx;
+    p4est_locidx_t quad_idx;
+    p4est_topidx_t tree_idx;
 
-  std::vector<p4est_locidx_t> ngbd_quads;
+    std::vector<p4est_locidx_t> ngbd_quads;
 
 #ifdef P4_TO_P8
-  std::vector<p4est_quadrant_t> tmp;
-  for(char i=-1; i<=1; i+=2)
-  {
-    for(char j=-1; j<=1; j+=2)
+    std::vector<p4est_quadrant_t> tmp;
+    for(char i=-1; i<=1; i+=2)
     {
-      for(char k=-1; k<=1; k+=2)
-      {
-        ngbd_n->find_neighbor_cell_of_node(n,  i,  j, k, quad_idx, tree_idx);
-        if(quad_idx>=0)
+        for(char j=-1; j<=1; j+=2)
         {
-          ngbd_quads.push_back(quad_idx);
-          ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, i, 0, 0);
-          ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, 0, j, 0);
-          ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, 0, 0, k);
-          ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, i, j, 0);
-          ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, i, 0, k);
-          ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, 0, j, k);
-          ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, i, j, k);
-          for(unsigned int m=0; m<tmp.size(); ++m)
-            ngbd_quads.push_back(tmp[m].p.piggy3.local_num);
-          tmp.clear();
-        }
-      }
-    }
-  }
-#else
-  std::vector<p4est_quadrant_t> tmp;
-  for(char i=-1; i<=1; i+=2)
-  {
-    for(char j=-1; j<=1; j+=2)
-    {
-      ngbd_n->find_neighbor_cell_of_node(n,  i,  j, quad_idx, tree_idx);
-      if(quad_idx>=0)
-      {
-        ngbd_quads.push_back(quad_idx);
-        ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, i, 0);
-        ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, 0, j);
-        ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, i, j);
-        for(unsigned int m=0; m<tmp.size(); ++m)
-          ngbd_quads.push_back(tmp[m].p.piggy3.local_num);
-        tmp.clear();
-      }
-    }
-  }
-#endif
-  // FIXME: What is this?
-  // std::cerr << "my_p4est_poisson_jump_nodes_voronoi_t->interpolate_solution_from_voronoi_to_tree: point is double !" << std::endl;
-
-  /* now find the two voronoi points closest to the node */
-  double phi_n = phi_p[n];
-#ifdef P4_TO_P8
-  double di[] = {DBL_MAX, DBL_MAX, DBL_MAX, DBL_MAX};
-  unsigned int ni[] = {UINT_MAX, UINT_MAX, UINT_MAX, UINT_MAX};
-#else
-  double di[] = {DBL_MAX, DBL_MAX, DBL_MAX};
-  unsigned int ni[] = {UINT_MAX, UINT_MAX, UINT_MAX};
-#endif
-  for(unsigned int k=0; k<ngbd_quads.size(); ++k)
-  {
-    for(int dir=0; dir<P4EST_CHILDREN; ++dir)
-    {
-      p4est_locidx_t n_idx = nodes->local_nodes[P4EST_CHILDREN*ngbd_quads[k] + dir];
-      for(unsigned int m=0; m<grid2voro[n_idx].size(); ++m)
-      {
-        /* if point is not already in the list */
-        if( ni[0]!=grid2voro[n_idx][m] &&
-            ni[1]!=grid2voro[n_idx][m] )
-        {
-          pm = voro_points[grid2voro[n_idx][m]];
-#ifdef P4_TO_P8
-          double xyz[] = {pm.x, pm.y, pm.z};
-#else
-          double xyz[] = {pm.x, pm.y};
-#endif
-          p4est_quadrant_t quad;
-          std::vector<p4est_quadrant_t> remote_matches;
-
-          int rank = ngbd_n->hierarchy->find_smallest_quadrant_containing_point(xyz, quad, remote_matches);
-          if(rank!=-1)
-          {
-#ifdef P4_TO_P8
-            double phi_m = interp_phi(pm.x, pm.y, pm.z);
-#else
-            double phi_m = interp_phi(pm.x, pm.y);
-#endif
-            if(phi_m*phi_n>=0)
+            for(char k=-1; k<=1; k+=2)
             {
-              double d = (pm-pn).norm_L2();
-
-              if(d<di[0])
-              {
-                ni[1]=ni[0]; di[1]=di[0];
-                ni[0]=grid2voro[n_idx][m]; di[0]=d;
-              }
-              else if(d<di[1])
-              {
-                ni[1]=grid2voro[n_idx][m]; di[1]=d;
-              }
+                ngbd_n->find_neighbor_cell_of_node(n,  i,  j, k, quad_idx, tree_idx);
+                if(quad_idx>=0)
+                {
+                    ngbd_quads.push_back(quad_idx);
+                    ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, i, 0, 0);
+                    ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, 0, j, 0);
+                    ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, 0, 0, k);
+                    ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, i, j, 0);
+                    ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, i, 0, k);
+                    ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, 0, j, k);
+                    ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, i, j, k);
+                    for(unsigned int m=0; m<tmp.size(); ++m)
+                        ngbd_quads.push_back(tmp[m].p.piggy3.local_num);
+                    tmp.clear();
+                }
             }
-          }
         }
-      }
     }
-  }
-
-#ifdef P4_TO_P8
-  Point3 p0(voro_points[ni[0]]);
-  Point3 p1(voro_points[ni[1]]);
 #else
-  Point2 p0(voro_points[ni[0]]);
-  Point2 p1(voro_points[ni[1]]);
-#endif
-
-  /* find a third point forming a non-flat triangle */
-  for(unsigned int k=0; k<ngbd_quads.size(); ++k)
-  {
-    for(int dir=0; dir<P4EST_CHILDREN; ++dir)
+    std::vector<p4est_quadrant_t> tmp;
+    for(char i=-1; i<=1; i+=2)
     {
-      p4est_locidx_t n_idx = nodes->local_nodes[P4EST_CHILDREN*ngbd_quads[k] + dir];
-      for(unsigned int m=0; m<grid2voro[n_idx].size(); ++m)
-      {
-        /* if point is not already in the list */
-        if( ni[0]!=grid2voro[n_idx][m] &&
-            ni[1]!=grid2voro[n_idx][m] &&
-            ni[2]!=grid2voro[n_idx][m])
+        for(char j=-1; j<=1; j+=2)
         {
-          pm = voro_points[grid2voro[n_idx][m]];
-#ifdef P4_TO_P8
-          double xyz[] = {pm.x, pm.y, pm.z};
-#else
-          double xyz[] = {pm.x, pm.y};
-#endif
-          p4est_quadrant_t quad;
-          std::vector<p4est_quadrant_t> remote_matches;
-
-          int rank = ngbd_n->hierarchy->find_smallest_quadrant_containing_point(xyz, quad, remote_matches);
-          if(rank!=-1)
-          {
-#ifdef P4_TO_P8
-            double phi_m = interp_phi(pm.x, pm.y, pm.z);
-#else
-            double phi_m = interp_phi(pm.x, pm.y);
-#endif
-            if(phi_m*phi_n>=0)
+            ngbd_n->find_neighbor_cell_of_node(n,  i,  j, quad_idx, tree_idx);
+            if(quad_idx>=0)
             {
-              double d = (pm-pn).norm_L2();
-
-#ifdef P4_TO_P8
-              if( d<di[2] && ((p0-p1).normalize().cross((pm-p1).normalize())).norm_L2() > sin(PI/10) )
-#else
-              if(d<di[2] && ABS((p0-p1).normalize().cross((pm-p1).normalize())) > sin(PI/5))
-#endif
-              {
-                ni[2]=grid2voro[n_idx][m]; di[2]=d;
-              }
+                ngbd_quads.push_back(quad_idx);
+                ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, i, 0);
+                ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, 0, j);
+                ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, i, j);
+                for(unsigned int m=0; m<tmp.size(); ++m)
+                    ngbd_quads.push_back(tmp[m].p.piggy3.local_num);
+                tmp.clear();
             }
-          }
         }
-      }
     }
-  }
-
-#ifdef P4_TO_P8
-  Point3 p2(voro_points[ni[2]]);
-#else
-  Point2 p2(voro_points[ni[2]]);
 #endif
+    // FIXME: What is this?
+    // std::cerr << "my_p4est_poisson_jump_nodes_voronoi_t->interpolate_solution_from_voronoi_to_tree: point is double !" << std::endl;
 
+    /* now find the two voronoi points closest to the node */
+    double phi_n = phi_p[n];
 #ifdef P4_TO_P8
-  /* in 3D, found a fourth point to form a non-flat tetrahedron */
-  for(unsigned int k=0; k<ngbd_quads.size(); ++k)
-  {
-    for(int dir=0; dir<P4EST_CHILDREN; ++dir)
+    double di[] = {DBL_MAX, DBL_MAX, DBL_MAX, DBL_MAX};
+    unsigned int ni[] = {UINT_MAX, UINT_MAX, UINT_MAX, UINT_MAX};
+#else
+    double di[] = {DBL_MAX, DBL_MAX, DBL_MAX};
+    unsigned int ni[] = {UINT_MAX, UINT_MAX, UINT_MAX};
+#endif
+    for(unsigned int k=0; k<ngbd_quads.size(); ++k)
     {
-      p4est_locidx_t n_idx = nodes->local_nodes[P4EST_CHILDREN*ngbd_quads[k] + dir];
-      for(unsigned int m=0; m<grid2voro[n_idx].size(); ++m)
-      {
-        /* if point is not already in the list */
-        if( ni[0]!=grid2voro[n_idx][m] &&
-            ni[1]!=grid2voro[n_idx][m] &&
-            ni[2]!=grid2voro[n_idx][m] &&
-            ni[3]!=grid2voro[n_idx][m])
+        for(int dir=0; dir<P4EST_CHILDREN; ++dir)
         {
-          pm = voro_points[grid2voro[n_idx][m]];
-          double xyz[] = {pm.x, pm.y, pm.z};
-          p4est_quadrant_t quad;
-          std::vector<p4est_quadrant_t> remote_matches;
-
-          int rank = ngbd_n->hierarchy->find_smallest_quadrant_containing_point(xyz, quad, remote_matches);
-          if(rank!=-1)
-          {
-            double phi_m = interp_phi(pm.x, pm.y, pm.z);
-            if(phi_m*phi_n>=0)
+            p4est_locidx_t n_idx = nodes->local_nodes[P4EST_CHILDREN*ngbd_quads[k] + dir];
+            for(unsigned int m=0; m<grid2voro[n_idx].size(); ++m)
             {
-              double d = (pm-pn).norm_L2();
+                /* if point is not already in the list */
+                if( ni[0]!=grid2voro[n_idx][m] &&
+                        ni[1]!=grid2voro[n_idx][m] )
+                {
+                    pm = voro_points[grid2voro[n_idx][m]];
+#ifdef P4_TO_P8
+                    double xyz[] = {pm.x, pm.y, pm.z};
+#else
+                    double xyz[] = {pm.x, pm.y};
+#endif
+                    p4est_quadrant_t quad;
+                    std::vector<p4est_quadrant_t> remote_matches;
 
-              Point3 n = (p1-p0).cross(p2-p0).normalize();
-              double h = ABS((pm-p0).dot(n));
+                    int rank = ngbd_n->hierarchy->find_smallest_quadrant_containing_point(xyz, quad, remote_matches);
+                    if(rank!=-1)
+                    {
+#ifdef P4_TO_P8
+                        double phi_m = interp_phi(pm.x, pm.y, pm.z);
+#else
+                        double phi_m = interp_phi(pm.x, pm.y);
+#endif
+                        if(phi_m*phi_n>=0)
+                        {
+                            double d = (pm-pn).norm_L2();
 
-              if(d<di[3] && h > diag_min/5)
-              {
-                ni[3]=grid2voro[n_idx][m]; di[3]=d;
-              }
+                            if(d<di[0])
+                            {
+                                ni[1]=ni[0]; di[1]=di[0];
+                                ni[0]=grid2voro[n_idx][m]; di[0]=d;
+                            }
+                            else if(d<di[1])
+                            {
+                                ni[1]=grid2voro[n_idx][m]; di[1]=d;
+                            }
+                        }
+                    }
+                }
             }
-          }
         }
-      }
     }
-  }
 
-  Point3 p3(voro_points[ni[3]]);
-#endif
-
-  /* make sure we found 3 points */
 #ifdef P4_TO_P8
-  if(di[0]==DBL_MAX || di[1]==DBL_MAX || di[2]==DBL_MAX || di[3]==DBL_MAX)
+    Point3 p0(voro_points[ni[0]]);
+    Point3 p1(voro_points[ni[1]]);
 #else
-  if(di[0]==DBL_MAX || di[1]==DBL_MAX || di[2]==DBL_MAX)
+    Point2 p0(voro_points[ni[0]]);
+    Point2 p1(voro_points[ni[1]]);
 #endif
-  {
-    std::cerr << "my_p4est_poisson_jump_nodes_voronoi_t->interpolate_solution_from_voronoi_to_tree: not enough points found." << std::endl;
-    double retval = sol_voro_p[ni[0]];
-    ierr = VecRestoreArray(phi     , &phi_p     ); CHKERRXX(ierr);
-    ierr = VecRestoreArray(sol_voro, &sol_voro_p); CHKERRXX(ierr);
-    return retval;
-  }
 
+    /* find a third point forming a non-flat triangle */
+    for(unsigned int k=0; k<ngbd_quads.size(); ++k)
+    {
+        for(int dir=0; dir<P4EST_CHILDREN; ++dir)
+        {
+            p4est_locidx_t n_idx = nodes->local_nodes[P4EST_CHILDREN*ngbd_quads[k] + dir];
+            for(unsigned int m=0; m<grid2voro[n_idx].size(); ++m)
+            {
+                /* if point is not already in the list */
+                if( ni[0]!=grid2voro[n_idx][m] &&
+                        ni[1]!=grid2voro[n_idx][m] &&
+                        ni[2]!=grid2voro[n_idx][m])
+                {
+                    pm = voro_points[grid2voro[n_idx][m]];
 #ifdef P4_TO_P8
-  if(ni[0]==ni[1] || ni[0]==ni[2] || ni[0]==ni[3] || ni[1]==ni[2] || ni[1]==ni[3] || ni[2]==ni[3])
+                    double xyz[] = {pm.x, pm.y, pm.z};
 #else
-  if(ni[0]==ni[1] || ni[0]==ni[2] || ni[1]==ni[2])
+                    double xyz[] = {pm.x, pm.y};
 #endif
-    std::cerr << "my_p4est_poisson_jump_nodes_voronoi_t->interpolate_solution_from_voronoi_to_tree: point is double !" << std::endl;
+                    p4est_quadrant_t quad;
+                    std::vector<p4est_quadrant_t> remote_matches;
 
-  double f0 = sol_voro_p[ni[0]];
-  double f1 = sol_voro_p[ni[1]];
-  double f2 = sol_voro_p[ni[2]];
+                    int rank = ngbd_n->hierarchy->find_smallest_quadrant_containing_point(xyz, quad, remote_matches);
+                    if(rank!=-1)
+                    {
 #ifdef P4_TO_P8
-  double f3 = sol_voro_p[ni[3]];
-#endif
-
-#ifdef P4_TO_P8
-  double det = ( -( p1.x*p2.y*p3.z + p2.x*p3.y*p1.z + p3.x*p1.y*p2.z - p3.x*p2.y*p1.z - p2.x*p1.y*p3.z - p1.x*p3.y*p2.z )
-                 +( p0.x*p2.y*p3.z + p2.x*p3.y*p0.z + p3.x*p0.y*p2.z - p3.x*p2.y*p0.z - p2.x*p0.y*p3.z - p0.x*p3.y*p2.z )
-                 -( p0.x*p1.y*p3.z + p1.x*p3.y*p0.z + p3.x*p0.y*p1.z - p3.x*p1.y*p0.z - p1.x*p0.y*p3.z - p0.x*p3.y*p1.z )
-                 +( p0.x*p1.y*p2.z + p1.x*p2.y*p0.z + p2.x*p0.y*p1.z - p2.x*p1.y*p0.z - p1.x*p0.y*p2.z - p0.x*p2.y*p1.z ) );
+                        double phi_m = interp_phi(pm.x, pm.y, pm.z);
 #else
-  double det = p0.x*p1.y + p1.x*p2.y + p2.x*p0.y - p1.x*p0.y - p2.x*p1.y - p0.x*p2.y;
+                        double phi_m = interp_phi(pm.x, pm.y);
+#endif
+                        if(phi_m*phi_n>=0)
+                        {
+                            double d = (pm-pn).norm_L2();
+
+#ifdef P4_TO_P8
+                            if( d<di[2] && ((p0-p1).normalize().cross((pm-p1).normalize())).norm_L2() > sin(PI/10) )
+#else
+                            if(d<di[2] && ABS((p0-p1).normalize().cross((pm-p1).normalize())) > sin(PI/5))
+#endif
+                            {
+                                ni[2]=grid2voro[n_idx][m]; di[2]=d;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+#ifdef P4_TO_P8
+    Point3 p2(voro_points[ni[2]]);
+#else
+    Point2 p2(voro_points[ni[2]]);
+#endif
+
+#ifdef P4_TO_P8
+    /* in 3D, found a fourth point to form a non-flat tetrahedron */
+    for(unsigned int k=0; k<ngbd_quads.size(); ++k)
+    {
+        for(int dir=0; dir<P4EST_CHILDREN; ++dir)
+        {
+            p4est_locidx_t n_idx = nodes->local_nodes[P4EST_CHILDREN*ngbd_quads[k] + dir];
+            for(unsigned int m=0; m<grid2voro[n_idx].size(); ++m)
+            {
+                /* if point is not already in the list */
+                if( ni[0]!=grid2voro[n_idx][m] &&
+                        ni[1]!=grid2voro[n_idx][m] &&
+                        ni[2]!=grid2voro[n_idx][m] &&
+                        ni[3]!=grid2voro[n_idx][m])
+                {
+                    pm = voro_points[grid2voro[n_idx][m]];
+                    double xyz[] = {pm.x, pm.y, pm.z};
+                    p4est_quadrant_t quad;
+                    std::vector<p4est_quadrant_t> remote_matches;
+
+                    int rank = ngbd_n->hierarchy->find_smallest_quadrant_containing_point(xyz, quad, remote_matches);
+                    if(rank!=-1)
+                    {
+                        double phi_m = interp_phi(pm.x, pm.y, pm.z);
+                        if(phi_m*phi_n>=0)
+                        {
+                            double d = (pm-pn).norm_L2();
+
+                            Point3 n = (p1-p0).cross(p2-p0).normalize();
+                            double h = ABS((pm-p0).dot(n));
+
+                            if(d<di[3] && h > diag_min/5)
+                            {
+                                ni[3]=grid2voro[n_idx][m]; di[3]=d;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Point3 p3(voro_points[ni[3]]);
+#endif
+
+    /* make sure we found 3 points */
+#ifdef P4_TO_P8
+    if(di[0]==DBL_MAX || di[1]==DBL_MAX || di[2]==DBL_MAX || di[3]==DBL_MAX)
+#else
+    if(di[0]==DBL_MAX || di[1]==DBL_MAX || di[2]==DBL_MAX)
+#endif
+    {
+        std::cerr << "my_p4est_poisson_jump_nodes_voronoi_t->interpolate_solution_from_voronoi_to_tree: not enough points found." << std::endl;
+        double retval = sol_voro_p[ni[0]];
+        ierr = VecRestoreArray(phi     , &phi_p     ); CHKERRXX(ierr);
+        ierr = VecRestoreArray(sol_voro, &sol_voro_p); CHKERRXX(ierr);
+        return retval;
+    }
+
+#ifdef P4_TO_P8
+    if(ni[0]==ni[1] || ni[0]==ni[2] || ni[0]==ni[3] || ni[1]==ni[2] || ni[1]==ni[3] || ni[2]==ni[3])
+#else
+    if(ni[0]==ni[1] || ni[0]==ni[2] || ni[1]==ni[2])
+#endif
+        std::cerr << "my_p4est_poisson_jump_nodes_voronoi_t->interpolate_solution_from_voronoi_to_tree: point is double !" << std::endl;
+
+    double f0 = sol_voro_p[ni[0]];
+    double f1 = sol_voro_p[ni[1]];
+    double f2 = sol_voro_p[ni[2]];
+#ifdef P4_TO_P8
+    double f3 = sol_voro_p[ni[3]];
+#endif
+
+#ifdef P4_TO_P8
+    double det = ( -( p1.x*p2.y*p3.z + p2.x*p3.y*p1.z + p3.x*p1.y*p2.z - p3.x*p2.y*p1.z - p2.x*p1.y*p3.z - p1.x*p3.y*p2.z )
+                   +( p0.x*p2.y*p3.z + p2.x*p3.y*p0.z + p3.x*p0.y*p2.z - p3.x*p2.y*p0.z - p2.x*p0.y*p3.z - p0.x*p3.y*p2.z )
+                   -( p0.x*p1.y*p3.z + p1.x*p3.y*p0.z + p3.x*p0.y*p1.z - p3.x*p1.y*p0.z - p1.x*p0.y*p3.z - p0.x*p3.y*p1.z )
+                   +( p0.x*p1.y*p2.z + p1.x*p2.y*p0.z + p2.x*p0.y*p1.z - p2.x*p1.y*p0.z - p1.x*p0.y*p2.z - p0.x*p2.y*p1.z ) );
+#else
+    double det = p0.x*p1.y + p1.x*p2.y + p2.x*p0.y - p1.x*p0.y - p2.x*p1.y - p0.x*p2.y;
 #endif
 
 #ifdef CASL_THROWS
-  if(ABS(det)<EPS)
-  {
-    std::cout << p0 << p1 << p2
+    if(ABS(det)<EPS)
+    {
+        std::cout << p0 << p1 << p2
              #ifdef P4_TO_P8
-              << p3;
+                  << p3;
 #else
-                 ;
+                     ;
 #endif
-    throw std::invalid_argument("[CASL_ERROR]: interpolation_Voronoi: could not invert system ...");
-  }
+        throw std::invalid_argument("[CASL_ERROR]: interpolation_Voronoi: could not invert system ...");
+    }
 #endif
 
-  ierr = VecRestoreArray(phi     , &phi_p     ); CHKERRXX(ierr);
-  ierr = VecRestoreArray(sol_voro, &sol_voro_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(phi     , &phi_p     ); CHKERRXX(ierr);
+    ierr = VecRestoreArray(sol_voro, &sol_voro_p); CHKERRXX(ierr);
 
 #ifdef P4_TO_P8
 
-  /*
+    /*
      * solving A*C = F,
      *     | x0 y0 z0 1 |      | c0 |      | f0 |
      *     | x1 y1 z1 1 |      | c1 |      | f1 |
@@ -3339,54 +3261,54 @@ double my_p4est_electroporation_solve_t::interpolate_solution_from_voronoi_to_tr
      *               | b30 b31 b32 b33 |       | c3 |        | f3 |
      *
      */
-  /*
-  double b00 =  ( p1.y*p2.z + p2.y*p3.z + p3.y*p1.z - p1.y*p3.z - p2.y*p1.z - p3.y*p2.z );
-  double b01 = -( p0.y*p2.z + p2.y*p3.z + p3.y*p0.z - p0.y*p3.z - p2.y*p0.z - p3.y*p2.z );
-  double b02 =  ( p0.y*p1.z + p1.y*p3.z + p3.y*p0.z - p0.y*p3.z - p1.y*p0.z - p3.y*p1.z );
-  double b03 = -( p0.y*p1.z + p1.y*p2.z + p2.y*p0.z - p0.y*p2.z - p1.y*p0.z - p2.y*p1.z );
 
-  double b10 = -( p1.x*p2.z + p2.x*p3.z + p3.x*p1.z - p1.x*p3.z - p2.x*p1.z - p3.x*p2.z );
-  double b11 =  ( p0.x*p2.z + p2.x*p3.z + p3.x*p0.z - p0.x*p3.z - p2.x*p0.z - p3.x*p2.z );
-  double b12 = -( p0.x*p1.z + p1.x*p3.z + p3.x*p0.z - p0.x*p3.z - p1.x*p0.z - p3.x*p1.z );
-  double b13 =  ( p0.x*p1.z + p1.x*p2.z + p2.x*p0.z - p0.x*p2.z - p1.x*p0.z - p2.x*p1.z );
+    //  double b00 =  ( p1.y*p2.z + p2.y*p3.z + p3.y*p1.z - p1.y*p3.z - p2.y*p1.z - p3.y*p2.z );
+    //  double b01 = -( p0.y*p2.z + p2.y*p3.z + p3.y*p0.z - p0.y*p3.z - p2.y*p0.z - p3.y*p2.z );
+    //  double b02 =  ( p0.y*p1.z + p1.y*p3.z + p3.y*p0.z - p0.y*p3.z - p1.y*p0.z - p3.y*p1.z );
+    //  double b03 = -( p0.y*p1.z + p1.y*p2.z + p2.y*p0.z - p0.y*p2.z - p1.y*p0.z - p2.y*p1.z );
 
-  double b20 =  ( p1.x*p2.y + p2.x*p3.y + p3.x*p1.y - p1.x*p3.y - p2.x*p1.y - p3.x*p2.y );
-  double b21 = -( p0.x*p2.y + p2.x*p3.y + p3.x*p0.y - p0.x*p3.y - p2.x*p0.y - p3.x*p2.y );
-  double b22 =  ( p0.x*p1.y + p1.x*p3.y + p3.x*p0.y - p0.x*p3.y - p1.x*p0.y - p3.x*p1.y );
-  double b23 = -( p0.x*p1.y + p1.x*p2.y + p2.x*p0.y - p0.x*p2.y - p1.x*p0.y - p2.x*p1.y );
+    //  double b10 = -( p1.x*p2.z + p2.x*p3.z + p3.x*p1.z - p1.x*p3.z - p2.x*p1.z - p3.x*p2.z );
+    //  double b11 =  ( p0.x*p2.z + p2.x*p3.z + p3.x*p0.z - p0.x*p3.z - p2.x*p0.z - p3.x*p2.z );
+    //  double b12 = -( p0.x*p1.z + p1.x*p3.z + p3.x*p0.z - p0.x*p3.z - p1.x*p0.z - p3.x*p1.z );
+    //  double b13 =  ( p0.x*p1.z + p1.x*p2.z + p2.x*p0.z - p0.x*p2.z - p1.x*p0.z - p2.x*p1.z );
 
-  double b30 = -( p1.x*p2.y*p3.z + p2.x*p3.y*p1.z + p3.x*p1.y*p2.z - p1.x*p3.y*p2.z - p2.x*p1.y*p3.z - p3.x*p2.y*p1.z );
-  double b31 =  ( p0.x*p2.y*p3.z + p2.x*p3.y*p0.z + p3.x*p0.y*p2.z - p0.x*p3.y*p2.z - p2.x*p0.y*p3.z - p3.x*p2.y*p0.z );
-  double b32 = -( p0.x*p1.y*p3.z + p1.x*p3.y*p0.z + p3.x*p0.y*p1.z - p0.x*p3.y*p1.z - p1.x*p0.y*p3.z - p3.x*p1.y*p0.z );
-  double b33 =  ( p0.x*p1.y*p2.z + p1.x*p2.y*p0.z + p2.x*p0.y*p1.z - p0.x*p2.y*p1.z - p1.x*p0.y*p2.z - p2.x*p1.y*p0.z );
+    //  double b20 =  ( p1.x*p2.y + p2.x*p3.y + p3.x*p1.y - p1.x*p3.y - p2.x*p1.y - p3.x*p2.y );
+    //  double b21 = -( p0.x*p2.y + p2.x*p3.y + p3.x*p0.y - p0.x*p3.y - p2.x*p0.y - p3.x*p2.y );
+    //  double b22 =  ( p0.x*p1.y + p1.x*p3.y + p3.x*p0.y - p0.x*p3.y - p1.x*p0.y - p3.x*p1.y );
+    //  double b23 = -( p0.x*p1.y + p1.x*p2.y + p2.x*p0.y - p0.x*p2.y - p1.x*p0.y - p2.x*p1.y );
 
-  double c0 = (b00*f0 + b01*f1 + b02*f2 + b03*f3) / det;
-  double c1 = (b10*f0 + b11*f1 + b12*f2 + b13*f3) / det;
-  double c2 = (b20*f0 + b21*f1 + b22*f2 + b23*f3) / det;
-  double c3 = (b30*f0 + b31*f1 + b32*f2 + b33*f3) / det;
+    //  double b30 = -( p1.x*p2.y*p3.z + p2.x*p3.y*p1.z + p3.x*p1.y*p2.z - p1.x*p3.y*p2.z - p2.x*p1.y*p3.z - p3.x*p2.y*p1.z );
+    //  double b31 =  ( p0.x*p2.y*p3.z + p2.x*p3.y*p0.z + p3.x*p0.y*p2.z - p0.x*p3.y*p2.z - p2.x*p0.y*p3.z - p3.x*p2.y*p0.z );
+    //  double b32 = -( p0.x*p1.y*p3.z + p1.x*p3.y*p0.z + p3.x*p0.y*p1.z - p0.x*p3.y*p1.z - p1.x*p0.y*p3.z - p3.x*p1.y*p0.z );
+    //  double b33 =  ( p0.x*p1.y*p2.z + p1.x*p2.y*p0.z + p2.x*p0.y*p1.z - p0.x*p2.y*p1.z - p1.x*p0.y*p2.z - p2.x*p1.y*p0.z );
 
-  return c0*pn.x + c1*pn.y + c2*pn.z + c3;
-  */
+    //  double c0 = (b00*f0 + b01*f1 + b02*f2 + b03*f3) / det;
+    //  double c1 = (b10*f0 + b11*f1 + b12*f2 + b13*f3) / det;
+    //  double c2 = (b20*f0 + b21*f1 + b22*f2 + b23*f3) / det;
+    //  double c3 = (b30*f0 + b31*f1 + b32*f2 + b33*f3) / det;
 
-  p0 -= pn;
-  p1 -= pn;
-  p2 -= pn;
-  p3 -= pn;
+    //  return c0*pn.x + c1*pn.y + c2*pn.z + c3;
 
-  double den  = ((p1-p0).cross(p2-p0)).dot(p3-p0);
-  double c0   = (p1.cross(p2)).dot(p3)/den;
-  double c1   = (p2.cross(p0)).dot(p3)/den;
-  double c2   = (p0.cross(p1)).dot(p3)/den;
-  double c3   = 1.0-c0-c1-c2;
 
-  return (f0*c0+f1*c1+f2*c2+f3*c3);
+    p0 -= pn;
+    p1 -= pn;
+    p2 -= pn;
+    p3 -= pn;
+
+    double den  = ((p1-p0).cross(p2-p0)).dot(p3-p0);
+    double c0   = (p1.cross(p2)).dot(p3)/den;
+    double c1   = (p2.cross(p0)).dot(p3)/den;
+    double c2   = (p0.cross(p1)).dot(p3)/den;
+    double c3   = 1.0-c0-c1-c2;
+
+    return (f0*c0+f1*c1+f2*c2+f3*c3);
 #else
 
-  double c0 = ( (p1.y* 1- 1*p2.y)*f0 + ( 1*p2.y-p0.y* 1)*f1 + (p0.y* 1- 1*p1.y)*f2 ) / det;
-  double c1 = ( ( 1*p2.x-p1.x* 1)*f0 + (p0.x* 1- 1*p2.x)*f1 + ( 1*p1.x-p0.x* 1)*f2 ) / det;
-  double c2 = ( (p1.x*p2.y-p2.x*p1.y)*f0 + (p2.x*p0.y-p0.x*p2.y)*f1 + (p0.x*p1.y-p1.x*p0.y)*f2 ) / det;
+    double c0 = ( (p1.y* 1- 1*p2.y)*f0 + ( 1*p2.y-p0.y* 1)*f1 + (p0.y* 1- 1*p1.y)*f2 ) / det;
+    double c1 = ( ( 1*p2.x-p1.x* 1)*f0 + (p0.x* 1- 1*p2.x)*f1 + ( 1*p1.x-p0.x* 1)*f2 ) / det;
+    double c2 = ( (p1.x*p2.y-p2.x*p1.y)*f0 + (p2.x*p0.y-p0.x*p2.y)*f1 + (p0.x*p1.y-p1.x*p0.y)*f2 ) / det;
 
-  return c0*pn.x + c1*pn.y + c2;
+    return c0*pn.x + c1*pn.y + c2;
 
 #endif
 }
@@ -3521,16 +3443,15 @@ void my_p4est_electroporation_solve_t::print_voronoi_VTK(const char* path) const
     sprintf(name, "%s_%d.vtk", path, p4est->mpirank);
 
 
-
 #ifdef P4_TO_P8
-//    double *vn_p, *sol_voro_p;
-//    VecGetArray(vn_voro, &vn_p);
-//    VecGetArray(sol_voro, &sol_voro_p);
+    double *vn_p, *sol_voro_p;
+    // VecGetArray(vn_voro, &vn_p);
+    VecGetArray(sol_voro, &sol_voro_p);
     bool periodic[P4EST_DIM] = {false, false, false};
-//    Voronoi3D::print_VTK_Format(voro, name, xyz_min, xyz_max, periodic, vn_p, sol_voro_p);
-//    VecRestoreArray(vn_voro, &vn_p);
-//    VecRestoreArray(sol_voro, &sol_voro_p);
-    Voronoi3D::print_VTK_Format(voro, name, xyz_min, xyz_max, periodic);
+    Voronoi3D::print_VTK_Format(voro, name, xyz_min, xyz_max, periodic, sol_voro_p, sol_voro_p, num_local_voro);
+    // VecRestoreArray(vn_voro, &vn_p);
+    VecRestoreArray(sol_voro, &sol_voro_p);
+    // Voronoi3D::print_VTK_Format(voro, name, xyz_min, xyz_max, periodic);
 #else
 
     Voronoi2D::print_VTK_Format(voro, name);
