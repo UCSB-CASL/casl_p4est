@@ -63,7 +63,7 @@ using namespace std;
 int test = 9; //-1: just a positive domain for test, dynamic linear case=2, dynamic nonlinear case=4, static linear case=1, random cube box side enforced = 8, random spheroid=9
 // test=1,2 use the exact solution on the boundary condition! Be careful!
 
-double cellDensity = 0.001;   // only if test = 8 || 9
+double cellDensity = 0.0001;   // only if test = 8 || 9
 double density = 0;         // this is for measuring the density finally. don't change its declaration value.
 double boxSide = 1e-3;      // only if test = 8
 
@@ -114,11 +114,11 @@ const double xyz_max_[] = {xmax, ymax, zmaxx};
 
 int axial_nb = 2*zmaxx/r0/2;
 int lmax_thr = (int)log2(axial_nb)+5;   // the mesh should be fine enough to have enough nodes on each cell for solver not to crash.
-int lmin = 3;
+int lmin = 4;
 int lmax =7;//MAX(lmax_thr, 5);
 int nb_splits = 1;
 
-double dt_scale = 100;
+double dt_scale = 80;
 double tn;
 double tf = 3e-6;//15.0/omega;
 double dt;
@@ -1296,22 +1296,8 @@ void solve_electric_potential( p4est_t *p4est, p4est_nodes_t *nodes,
     ierr = VecDuplicate(phi, &X_0_v); CHKERRXX(ierr);
     ierr = VecDuplicate(phi, &X_1_v); CHKERRXX(ierr);
 
-    double convergence_Sm;
-
     int counter = 0;
-
-
-
-    //my_p4est_interpolation_nodes_t interp_n(ngbd_n);
-    //double xyz_np[3] = {0, 0, R1};
-    //interp_n.add_point(0, xyz_np);
     double Sm_err = 0;
-    //double convergence_Sm_old;
-    // interp_n.set_input(Sm, linear);
-    //interp_n.interpolate(&convergence_Sm_old);
-
-
-    convergence_Sm = 0;
     solver.set_vn(vn);
     solver.set_u_jump(vn);
     solver.set_vnm1(vnm1);
@@ -1327,7 +1313,6 @@ void solve_electric_potential( p4est_t *p4est, p4est_nodes_t *nodes,
     {
         solver.set_Sm(Sm);
         solver.solve(sol);
-
         // PAM BEGIN
         Vec u_plus, u_minus, u_plus_l, u_minus_l, sol_l;
         ierr = VecDuplicate(sol, &u_plus); CHKERRXX(ierr);
@@ -1366,95 +1351,94 @@ void solve_electric_potential( p4est_t *p4est, p4est_nodes_t *nodes,
         }
 
 
-        //         for(unsigned int n=0; n<nodes->num_owned_indeps;++n)
-        //         {
-        //            if(ABS(phi_p[n])<EPS || is_interface(ngbd_n,n,phi_p)<0)
-        //            {
-        //                u_jump_p[n] = u_plus_p[n] - u_minus_p[n];
-        //                continue;
-        //            }
-        //            if(is_interface(ngbd_n,n,phi_p)>0)
-        //            {
-        //                const quad_neighbor_nodes_of_node_t qnnn = ngbd_n->get_neighbors(n);
-        //                double x = node_x_fr_n(n, p4est, nodes);
-        //                double y = node_y_fr_n(n, p4est, nodes);
-        //                double z = node_z_fr_n(n, p4est, nodes);
-        //                double xyz_np[3] = {x,y,z};
-        //                double nx = qnnn.dx_central(phi_p);
-        //                double ny = qnnn.dy_central(phi_p);
-        //                double nz = qnnn.dz_central(phi_p);
-        //                double norm = sqrt(nx*nx+ny*ny+nz*nz);
-        //                norm >EPS ? nx /= norm : nx = 0;
-        //                norm >EPS ? ny /= norm : ny = 0;
-        //                norm >EPS ? nz /= norm : nz = 0;
-        //                double m_in, m_out;
-        //                double dist = ABS(phi_p[n]);
-        //                if(phi_p[n]>0)
-        //                {
-        //                    xyz_np[0] += nx*(diag/5 - dist);
-        //                    xyz_np[1] += ny*(diag/5 - dist);
-        //                    xyz_np[2] += nz*(diag/5 - dist);
-        //                    //interp_nm.add_point(0, xyz_np);
-        //                    //interp_nm.interpolate(&m_in);
-        //                    m_in = (*interp_nm)(xyz_np[0],xyz_np[1],xyz_np[2]);
-        //                    m_out = (*interp_np)(xyz_np[0],xyz_np[1],xyz_np[2]);
-        //                    //                    interp_np.add_point(0, xyz_np);
-        //                    //                    interp_np.interpolate(&m_out);
-        //                    double tmp1 = (m_out - m_in);
-        //                    //                    interp_np.clear();
-        //                    //                    interp_nm.clear();
+//                 for(unsigned int n=0; n<nodes->num_owned_indeps;++n)
+//                 {
+//                    if(ABS(phi_p[n])<EPS || is_interface(ngbd_n,n,phi_p)<0)
+//                    {
+//                        u_jump_p[n] = u_plus_p[n] - u_minus_p[n];
+//                        continue;
+//                    }
+//                    if(is_interface(ngbd_n,n,phi_p)>0)
+//                    {
+//                        const quad_neighbor_nodes_of_node_t qnnn = ngbd_n->get_neighbors(n);
+//                        double x = node_x_fr_n(n, p4est, nodes);
+//                        double y = node_y_fr_n(n, p4est, nodes);
+//                        double z = node_z_fr_n(n, p4est, nodes);
+//                        double xyz_np[3] = {x,y,z};
+//                        double nx = qnnn.dx_central(phi_p);
+//                        double ny = qnnn.dy_central(phi_p);
+//                        double nz = qnnn.dz_central(phi_p);
+//                        double norm = sqrt(nx*nx+ny*ny+nz*nz);
+//                        norm >EPS ? nx /= norm : nx = 0;
+//                        norm >EPS ? ny /= norm : ny = 0;
+//                        norm >EPS ? nz /= norm : nz = 0;
+//                        double m_in, m_out;
+//                        double dist = ABS(phi_p[n]);
+//                        if(phi_p[n]>0)
+//                        {
+//                            xyz_np[0] += nx*(diag/5 - dist);
+//                            xyz_np[1] += ny*(diag/5 - dist);
+//                            xyz_np[2] += nz*(diag/5 - dist);
+//                            //interp_nm.add_point(0, xyz_np);
+//                            //interp_nm.interpolate(&m_in);
+//                            m_in = (*interp_nm)(xyz_np[0],xyz_np[1],xyz_np[2]);
+//                            m_out = (*interp_np)(xyz_np[0],xyz_np[1],xyz_np[2]);
+//                            //                    interp_np.add_point(0, xyz_np);
+//                            //                    interp_np.interpolate(&m_out);
+//                            double tmp1 = (m_out - m_in);
+//                            //                    interp_np.clear();
+//                            //                    interp_nm.clear();
 
-        //                    xyz_np[0] += -nx*2*diag/5;
-        //                    xyz_np[1] += -ny*2*diag/5;
-        //                    xyz_np[2] += -nz*2*diag/5;
-        //                    m_in = (*interp_nm)(xyz_np[0],xyz_np[1],xyz_np[2]);
-        //                    m_out = (*interp_np)(xyz_np[0],xyz_np[1],xyz_np[2]);
-        //                    //                    interp_nm.add_point(0, xyz_np);
-        //                    //                    interp_nm.interpolate(&m_in);
-        //                    //                    interp_np.add_point(0, xyz_np);
-        //                    //                    interp_np.interpolate(&m_out);
+//                            xyz_np[0] += -nx*2*diag/5;
+//                            xyz_np[1] += -ny*2*diag/5;
+//                            xyz_np[2] += -nz*2*diag/5;
+//                            m_in = (*interp_nm)(xyz_np[0],xyz_np[1],xyz_np[2]);
+//                            m_out = (*interp_np)(xyz_np[0],xyz_np[1],xyz_np[2]);
+//                            //                    interp_nm.add_point(0, xyz_np);
+//                            //                    interp_nm.interpolate(&m_in);
+//                            //                    interp_np.add_point(0, xyz_np);
+//                            //                    interp_np.interpolate(&m_out);
 
-        //                    u_jump_p[n] = (tmp1 + (m_out - m_in))/2.0;
-        //                    //                    interp_np.clear();
-        //                    //                    interp_nm.clear();
-        //                }else{
-        //                    xyz_np[0] += -nx*(diag/5 - dist);
-        //                    xyz_np[1] += -ny*(diag/5 - dist);
-        //                    xyz_np[2] += -nz*(diag/5 - dist);
-        //                    m_in = (*interp_nm)(xyz_np[0],xyz_np[1],xyz_np[2]);
-        //                    m_out = (*interp_np)(xyz_np[0],xyz_np[1],xyz_np[2]);
-        //                    //                    interp_nm.add_point(0, xyz_np);
-        //                    //                    interp_nm.interpolate(&m_in);
-        //                    //                    interp_np.add_point(0, xyz_np);
-        //                    //                    interp_np.interpolate(&m_out);
-        //                    double tmp1 = (m_out - m_in);
-        //                    //                    interp_np.clear();
-        //                    //                    interp_nm.clear();
+//                            u_jump_p[n] = (tmp1 + (m_out - m_in))/2.0;
+//                            //                    interp_np.clear();
+//                            //                    interp_nm.clear();
+//                        }else{
+//                            xyz_np[0] += -nx*(diag/5 - dist);
+//                            xyz_np[1] += -ny*(diag/5 - dist);
+//                            xyz_np[2] += -nz*(diag/5 - dist);
+//                            m_in = (*interp_nm)(xyz_np[0],xyz_np[1],xyz_np[2]);
+//                            m_out = (*interp_np)(xyz_np[0],xyz_np[1],xyz_np[2]);
+//                            //                    interp_nm.add_point(0, xyz_np);
+//                            //                    interp_nm.interpolate(&m_in);
+//                            //                    interp_np.add_point(0, xyz_np);
+//                            //                    interp_np.interpolate(&m_out);
+//                            double tmp1 = (m_out - m_in);
+//                            //                    interp_np.clear();
+//                            //                    interp_nm.clear();
 
-        //                    xyz_np[0] += nx*2*diag/5;
-        //                    xyz_np[1] += ny*2*diag/5;
-        //                    xyz_np[2] += nz*2*diag/5;
-        //                    m_in = (*interp_nm)(xyz_np[0],xyz_np[1],xyz_np[2]);
-        //                    m_out = (*interp_np)(xyz_np[0],xyz_np[1],xyz_np[2]);
-        //                    //                    interp_nm.add_point(0, xyz_np);
-        //                    //                    interp_nm.interpolate(&m_in);
-        //                    //                    interp_np.add_point(0, xyz_np);
-        //                    //                    interp_np.interpolate(&m_out);
+//                            xyz_np[0] += nx*2*diag/5;
+//                            xyz_np[1] += ny*2*diag/5;
+//                            xyz_np[2] += nz*2*diag/5;
+//                            m_in = (*interp_nm)(xyz_np[0],xyz_np[1],xyz_np[2]);
+//                            m_out = (*interp_np)(xyz_np[0],xyz_np[1],xyz_np[2]);
+//                            //                    interp_nm.add_point(0, xyz_np);
+//                            //                    interp_nm.interpolate(&m_in);
+//                            //                    interp_np.add_point(0, xyz_np);
+//                            //                    interp_np.interpolate(&m_out);
 
-        //                    u_jump_p[n] = (tmp1 + (m_out - m_in))/2.0;
-        //                    //                    interp_np.clear();
-        //                    //                    interp_nm.clear();
-        //                }
-        //            }
-        //        }
-        //        delete dynamic_cast<my_p4est_interpolation_nodes_t*>(interp_nm);
-        //        delete dynamic_cast<my_p4est_interpolation_nodes_t*>(interp_np);
+//                            u_jump_p[n] = (tmp1 + (m_out - m_in))/2.0;
+//                            //                    interp_np.clear();
+//                            //                    interp_nm.clear();
+//                        }
+//                    }
+//                }
+//                delete dynamic_cast<my_p4est_interpolation_nodes_t*>(interp_nm);
+//                delete dynamic_cast<my_p4est_interpolation_nodes_t*>(interp_np);
         VecRestoreArray(vn, &u_jump_p);
         VecRestoreArray(u_plus, &u_plus_p);
         VecRestoreArray(u_minus, &u_minus_p);
 
         ls.extend_from_interface_to_whole_domain(phi,vn,vn);
-
         // end of measure current jump values
 
         // potential directional gradients
@@ -1485,20 +1469,17 @@ void solve_electric_potential( p4est_t *p4est, p4est_nodes_t *nodes,
         ierr = VecRestoreArray(grad_up, &dup_p); CHKERRXX(ierr);
         ierr = VecRestoreArray(grad_um, &dum_p); CHKERRXX(ierr);
 
-
         Vec du_plus_cte, du_minus_cte;
         ierr = VecDuplicate(sol,&du_plus_cte); CHKERRXX(ierr);
         ls.extend_from_interface_to_whole_domain_TVD(phi, grad_up, grad_up);
         ierr = VecDuplicate(sol,&du_minus_cte); CHKERRXX(ierr);
         ls.extend_from_interface_to_whole_domain_TVD(phi, grad_um, grad_um);
 
-
-
         double *du_plus_cte_p, *du_minus_cte_p;
         VecGetArray(grad_up, &du_plus_cte_p);
         VecGetArray(grad_um, &du_minus_cte_p);
 
-        double *Sm_p, *vn_p, *grad_nm1_p;
+        double *Sm_p, *grad_nm1_p;
         VecGetArray(Sm, &Sm_p);
         VecGetArray(grad_nm1,&grad_nm1_p);
         for(unsigned int n=0; n<nodes->indep_nodes.elem_count;n++)
@@ -1511,84 +1492,8 @@ void solve_electric_potential( p4est_t *p4est, p4est_nodes_t *nodes,
         VecRestoreArray(grad_up, &du_plus_cte_p);
         VecRestoreArray(grad_um, &du_minus_cte_p);
         VecRestoreArray(grad_nm1,&grad_nm1_p);
-        // ls.extend_from_interface_to_whole_domain_TVD(phi, vn, vn);
         ls.extend_from_interface_to_whole_domain_TVD(phi, grad_nm1, grad_nm1);
         //PAM END
-
-
-
-        // Daniil Begin
-        //        // compute jump
-        //        // make 2 other copies of the solution vector
-        //        Vec u_plus_ext, u_minus_ext, u_plus_ext_l, u_minus_ext_l, sol_l;
-        //        ierr = VecDuplicate(sol, &u_plus_ext); CHKERRXX(ierr);
-        //        ierr = VecDuplicate(sol, &u_minus_ext); CHKERRXX(ierr);
-        //        VecGhostGetLocalForm(sol, &sol_l);
-        //        VecGhostGetLocalForm(u_plus_ext, &u_plus_ext_l);
-        //        VecGhostGetLocalForm(u_minus_ext, &u_minus_ext_l);
-        //        ierr = VecCopy(sol_l, u_plus_ext_l); CHKERRXX(ierr);
-        //        ierr = VecCopy(sol_l, u_minus_ext_l); CHKERRXX(ierr);
-        //        VecGhostRestoreLocalForm(sol, &sol_l);
-        //        VecGhostRestoreLocalForm(u_plus_ext, &u_plus_ext_l);
-        //        VecGhostRestoreLocalForm(u_minus_ext, &u_minus_ext_l);
-
-        //        // project solutions onto the interface
-        //        double *phi_p;
-        //        VecGetArray(phi, &phi_p);
-
-        //        ls.extend_Over_Interface_TVD(phi, u_plus_ext);
-        //        for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
-        //            phi_p[i] = -phi_p[i];
-        //        ls.extend_Over_Interface_TVD(phi, u_minus_ext);
-        //        for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
-        //            phi_p[i] = -phi_p[i];
-
-
-
-
-        //        Vec u_plus_cte, u_minus_cte;
-        //        ierr = VecDuplicate(u_plus_ext,&u_plus_cte); CHKERRXX(ierr);
-        //        ls.extend_from_interface_to_whole_domain_TVD(phi, u_plus_ext, u_plus_cte);
-        //        ierr = VecDuplicate(u_minus_ext,&u_minus_cte); CHKERRXX(ierr);
-        //        ls.extend_from_interface_to_whole_domain_TVD(phi, u_minus_ext, u_minus_cte);
-
-        //        // subtract the projected vectors, on the interface it is the jump.
-        //        double *vnp1_p, *u_minus_cte_p, *u_plus_cte_p;
-        //        VecGetArray(u_minus_cte, &u_minus_cte_p);
-        //        VecGetArray(u_plus_cte, &u_plus_cte_p);
-
-
-        //        VecGetArray(vnp1, &vnp1_p);
-        //        double *sol_p;
-        //        VecGetArray(sol, &sol_p);
-        //        for (size_t n = 0; n<nodes->indep_nodes.elem_count; n++)
-        //        {
-        //            vnp1_p[n] = u_minus_cte_p[n] - u_plus_cte_p[n];
-        //        }
-        //        VecRestoreArray(sol, &sol_p);
-        //        VecRestoreArray(phi, &phi_p);
-        //        VecRestoreArray(vnp1, &vnp1_p);
-        //        VecRestoreArray(u_minus_cte, &u_minus_cte_p);
-        //        VecRestoreArray(u_plus_cte, &u_plus_cte_p);
-        //        Vec vn_tmp;
-        //        VecDuplicate(phi,&vn_tmp);
-        //        ls.extend_from_interface_to_whole_domain_TVD(phi, vnp1, vn_tmp);
-        //        double *vn_tmp_p;
-        //        VecGetArray(vn_tmp, &vn_tmp_p);
-        //        VecGetArray(vnp1, &vnp1_p);
-        //        for (size_t n = 0; n<nodes->indep_nodes.elem_count; n++)
-        //        {
-        //            vnp1_p[n] = vn_tmp_p[n];
-        //        }
-        //        VecRestoreArray(vn_tmp, &vn_tmp_p);
-        //        VecRestoreArray(vnp1, &vnp1_p);
-        //        ierr = VecDestroy(u_plus_ext); CHKERRXX(ierr);
-        //        ierr = VecDestroy(u_minus_ext); CHKERRXX(ierr);
-        //        ierr = VecDestroy(u_plus_cte); CHKERRXX(ierr);
-        //        ierr = VecDestroy(u_minus_cte); CHKERRXX(ierr);
-        //        VecDestroy(vn_tmp);
-        // Daniil end
-
 
         if(check_partition)
             solver.check_voronoi_partition();
@@ -1613,51 +1518,6 @@ void solve_electric_potential( p4est_t *p4est, p4est_nodes_t *nodes,
                 solver.print_voronoi_VTK(out_path);
             }
         }
-
-
-        //        Vec u_plus_ext, u_minus_ext, u_plus_ext_l, u_minus_ext_l, vn_l;
-        //        ierr = VecDuplicate(vn, &u_plus_ext); CHKERRXX(ierr);
-        //        ierr = VecDuplicate(vn, &u_minus_ext); CHKERRXX(ierr);
-        //        VecGhostGetLocalForm(vn, &vn_l);
-        //        VecGhostGetLocalForm(u_plus_ext, &u_plus_ext_l);
-        //        VecGhostGetLocalForm(u_minus_ext, &u_minus_ext_l);
-        //        ierr = VecCopy(vn_l, u_plus_ext_l); CHKERRXX(ierr);
-        //        ierr = VecCopy(vn_l, u_minus_ext_l); CHKERRXX(ierr);
-        //        VecGhostRestoreLocalForm(vn, &vn_l);
-        //        VecGhostRestoreLocalForm(u_plus_ext, &u_plus_ext_l);
-        //        VecGhostRestoreLocalForm(u_minus_ext, &u_minus_ext_l);
-
-        //        //        project solutions onto the interface
-        //        double *phi_p;
-        //        VecGetArray(phi, &phi_p);
-
-        //        ls.extend_Over_Interface_TVD(phi, u_plus_ext);
-        //        for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
-        //            phi_p[i] = -phi_p[i];
-        //        ls.extend_Over_Interface_TVD(phi, u_minus_ext);
-        //        for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
-        //        {
-        //            phi_p[i] = -phi_p[i];
-        //        }
-        //        VecRestoreArray(phi, &phi_p);
-        //        double *vn_p, *u_minus_ext_p, *u_plus_ext_p;
-        //        VecGetArray(vn, &vn_p);
-        //        VecGetArray(u_minus_ext, &u_minus_ext_p);
-        //        VecGetArray(u_plus_ext, &u_plus_ext_p);
-        //        for (size_t n = 0; n<nodes->indep_nodes.elem_count; n++)
-        //        {
-        //            vn_p[n] = (u_plus_ext_p[n] + u_minus_ext_p[n])/2;
-        //        }
-        //        VecRestoreArray(vn, &vn_p);
-        //        VecRestoreArray(u_minus_ext, &u_minus_ext_p);
-        //        VecRestoreArray(u_plus_ext, &u_plus_ext_p);
-
-        //        ls.extend_from_interface_to_whole_domain_TVD(phi, vn, vn);
-        //        ls.extend_from_interface_to_whole_domain_TVD(phi, Sm, Sm);
-        //        ls.extend_from_interface_to_whole_domain_TVD(phi, X0, X0);
-        //        ls.extend_from_interface_to_whole_domain_TVD(phi, X1, X1);
-
-
         //        compute X and Sm
         if(test==1 || test==2)
         {
@@ -1699,15 +1559,8 @@ void solve_electric_potential( p4est_t *p4est, p4est_nodes_t *nodes,
             ierr = VecRestoreArray(X_0_v, &X_0_v_p); CHKERRXX(ierr);
             ierr = VecRestoreArray(X_1_v, &X_1_v_p); CHKERRXX(ierr);
             counter++;
-            // interp_n.set_input(Sm, linear);
-            // interp_n.interpolate(&convergence_Sm);
-            //Sm_err = ABS(convergence_Sm - convergence_Sm_old)/convergence_Sm_old;
-            //PetscPrintf(p4est->mpicomm, "relative error in Sm is %g, old value %g, new value %g\n", Sm_err, convergence_Sm_old, convergence_Sm);
-            //convergence_Sm_old = convergence_Sm;
         }
-
-
-    }while(0);//&& Sm_err>0.001);
+    }while(0);
 
     for(int j=0;j<P4EST_DIM;++j)
         VecRestoreArray(grad_phi[j], &grad_phi_p[j]);
@@ -3338,7 +3191,7 @@ int main(int argc, char** argv) {
     dt = MIN(dx,dy)/length_scale/dt_scale;
 #endif
 
-    // dt= 5e-8;
+    //dt= 5e-8;
     // dt = MIN(dx,dy,dz)/mu_e/1000.0;  // by matching boundary conditions with a 0.1 V/m resolution
     //dt=MIN(dt, 0.2/omega, MIN(dx,dy,dz)/dt_scale);  // the last term is to due to diffusion of concentrations
 
@@ -3512,13 +3365,13 @@ int main(int argc, char** argv) {
                     if(iteration ==0){
                         FILE *f = fopen(out_path_Z, "w");
                         fprintf(f, "Simulation Parameters: Omega [Hz] %g \t cell volume fraction %g \t box side length [m] %g \n", omega, density, xmax-xmin);
-                        fprintf(f, "time [s], impedance [Ohm], north pole TMP, Pulse Intensity (A), error, exact TMP [V], REAL relative permittivity, IMAGINARY permittivity, Applied Delta V(t) [Volt], Applied E(t) [V/m], Re(sigma_eff) [S/m], Im(sigma_eff) [S/m], total area permeabilized [m^2], total area [m^2]\n");
-                        fprintf(f, "%g \t %g \t %g \t  %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g\n", tn+dt, impedance, u_Npole, PulseIntensity, des_err, u_Npole_exact, epsilon_r, epsilon_Im, pulse(tn), applied_E, sigma_eff_Real, sigma_eff_Imaginary, total_area_permeabilized, total_area);
+                        fprintf(f, "time [s]    | impedance [Ohm] | TMP [V] | Intensity | Error |TMP_exact [V] |Re(epsilon)| Im(epsilon) | V(t)[V] | E(t) [V/m] | Re(sigma) [S/m] |  Im(sigma)  | Perm. area [m*m] | Total area [m*m]\n");
+                        fprintf(f, "%g \t %g \t %g \t  %g \t %g \t %g \t\t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g\n", tn+dt, impedance, u_Npole, PulseIntensity, des_err, u_Npole_exact, epsilon_r, epsilon_Im, pulse(tn), applied_E, sigma_eff_Real, sigma_eff_Imaginary, total_area_permeabilized, total_area);
                         fclose(f);
                     }
                     else{
                         FILE *f = fopen(out_path_Z, "a");
-                        fprintf(f, "%g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g\n", tn+dt, impedance, u_Npole, PulseIntensity, des_err, u_Npole_exact, epsilon_r, epsilon_Im, pulse(tn), applied_E, sigma_eff_Real, sigma_eff_Imaginary, total_area_permeabilized, total_area);
+                        fprintf(f, "%g \t %g \t %g \t %g \t %g \t %g \t\t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g\n", tn+dt, impedance, u_Npole, PulseIntensity, des_err, u_Npole_exact, epsilon_r, epsilon_Im, pulse(tn), applied_E, sigma_eff_Real, sigma_eff_Imaginary, total_area_permeabilized, total_area);
                         fclose(f);
                     }
 
