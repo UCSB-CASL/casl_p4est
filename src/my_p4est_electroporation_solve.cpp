@@ -335,14 +335,10 @@ void my_p4est_electroporation_solve_t::solve(Vec solution, bool use_nonzero_init
     {
         matrix_has_nullspace = true;
 
-      //  ierr = PetscPrintf(p4est->mpicomm, "Assembling linear system ...\n"); CHKERRXX(ierr);
+        //  ierr = PetscPrintf(p4est->mpicomm, "Assembling linear system ...\n"); CHKERRXX(ierr);
         setup_linear_system();
         //ierr = PetscPrintf(p4est->mpicomm, "Done assembling linear system.\n"); CHKERRXX(ierr);
-
         is_matrix_computed = true;   //PAM: bc electroporation affects the A matrix
-
-
-
         ierr = KSPSetOperators(ksp, A, A, SAME_NONZERO_PATTERN); CHKERRXX(ierr);
     } else {
         setup_negative_laplace_rhsvec();
@@ -399,11 +395,11 @@ void my_p4est_electroporation_solve_t::solve(Vec solution, bool use_nonzero_init
     /* Solve the system */
     ierr = VecDuplicate(rhs, &sol_voro); CHKERRXX(ierr);
 
-   // ierr = PetscPrintf(p4est->mpicomm, "Solving linear system ...\n"); CHKERRXX(ierr);
+    // ierr = PetscPrintf(p4est->mpicomm, "Solving linear system ...\n"); CHKERRXX(ierr);
     ierr = PetscLogEventBegin(log_PoissonSolverNodeBasedJump_KSPSolve, ksp, rhs, sol_voro, 0); CHKERRXX(ierr);
     ierr = KSPSolve(ksp, rhs, sol_voro); CHKERRXX(ierr);
     ierr = PetscLogEventEnd  (log_PoissonSolverNodeBasedJump_KSPSolve, ksp, rhs, sol_voro, 0); CHKERRXX(ierr);
-   // ierr = PetscPrintf(p4est->mpicomm, "Done solving linear system.\n"); CHKERRXX(ierr);
+    // ierr = PetscPrintf(p4est->mpicomm, "Done solving linear system.\n"); CHKERRXX(ierr);
 
     /* update ghosts */
     ierr = VecGhostUpdateBegin(sol_voro, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -1244,12 +1240,12 @@ void my_p4est_electroporation_solve_t::compute_voronoi_cell(unsigned int n, Voro
 
     /* finally, construct the partition */
 #ifdef P4_TO_P8
-    const double xyz_min1 [] = {xyz_min[0], xyz_min[1], xyz_min[2]};
-    const double xyz_max1 [] = {xyz_max[0], xyz_max[1], xyz_max[2]};
-//    double xyz_min [] = {xmin, ymin, zmin};
-//    double xyz_max [] = {xmax, ymax, zmax};
+   // const double xyz_min1 [] = {xyz_min[0], xyz_min[1], xyz_min[2]};
+    //const double xyz_max1 [] = {xyz_max[0], xyz_max[1], xyz_max[2]};
+    //    double xyz_min [] = {xmin, ymin, zmin};
+    //    double xyz_max [] = {xmax, ymax, zmax};
     bool periodic[] = {false, false, false};
-    voro.construct_Partition(xyz_min1, xyz_max1, periodic);
+    voro.construct_Partition(xyz_min, xyz_max, periodic);
 #else
     voro.construct_Partition();
 #endif
@@ -2174,7 +2170,6 @@ void my_p4est_electroporation_solve_t::setup_linear_system()
                 }
 
 
-                double sigma_disc;
                 if(phi_n*phi_l<0)
                 {
 #ifdef P4_TO_P8
@@ -2188,132 +2183,6 @@ void my_p4est_electroporation_solve_t::setup_linear_system()
 #else
                     rhs_p[n] += s*sigma_harmonic* SIGN(phi_n) * (*u_jump)(p_ln.x, p_ln.y)*Cm/((Cm+dt*Smn)*d/2);
 #endif
-
-
-                    //                    if(implicit==0)
-                    //                    {
-                    //                        switch(order)
-                    //                        {
-                    //                        case 1:
-                    //                            /* ([u]_n+1 - [u]_n)/dt + Sm_n [u]_n = d u_n+1/d n */
-                    //                            sigma_disc = 2*sigma_n*sigma_l/(sigma_n + sigma_l + sigma_n*sigma_l/(d/2) * dt/Cm);
-                    //                            break;
-                    //                        case 2:
-                    //                            /* (1.5*[u]_n+1 - 2*[u]_n + .5*[u]_n-1)/dt + Sm_n [u]_n = d u_n+1/d n */
-                    //                            sigma_disc = 2*sigma_n*sigma_l/(sigma_n + sigma_l + 2./3. * sigma_n*sigma_l/(d/2) * dt/Cm);
-                    //                            break;
-                    //                        default:
-                    //                            throw std::invalid_argument("Unknown order ... choose 1 or 2 when explicit.");
-                    //                        }
-                    //                    }
-                    //                    else
-                    //                    {
-                    //                        switch(order)
-                    //                        {
-                    //                        case 1:
-                    //                            // ([u]_n+1 - [u]_n)/dt + Sm_n [u]_n+1 = d u_n+1/d n
-                    //                            sigma_disc = 2*sigma_n*sigma_l/(sigma_n + sigma_l + sigma_n*sigma_l/(d/2) * dt/(Cm+dt*Smn));
-                    //                            break;
-                    //                        case 2:
-                    //                            // (1.5*[u]_n+1 - 2*[u]_n + .5*[u]_n-1)/dt + Sm_n [u]_n+1 = d u_n+1/d n
-                    //                            sigma_disc = 2*sigma_n*sigma_l/(sigma_n + sigma_l + sigma_n*sigma_l/(d/2) * dt/(1.5*Cm+dt*Smn));
-                    //                            break;
-                    //                        case 3:
-                    //                            // (11/6*[u]_n+1 - 3*[u]_n + 3/2*[u]_n-1 - 1/3*[u]_n-2)/dt + Sm_n [u]_n+1 = d u_n+1/d n
-                    //                            sigma_disc = 2*sigma_n*sigma_l/(sigma_n + sigma_l + sigma_n*sigma_l/(d/2) * dt/(11./6.*Cm+dt*Smn));
-                    //                            break;
-                    //                        default:
-                    //                            throw std::invalid_argument("Unknown order ...");
-                    //                        }
-                    //                    }
-
-                    //                    double sigma_tmp, vi;
-
-                    //                    if(implicit==0)
-                    //                    {
-                    //                        switch(order)
-                    //                        {
-                    //                        case 1:
-                    //                            /* ([u]_n+1 - [u]_n)/dt + Sm_n [u]_n = d u_n+1/d n */
-                    //                            sigma_tmp = sigma_n*sigma_l / (sigma_n + sigma_l + sigma_n*sigma_l/(d/2) * dt/Cm);
-                    //                            //                            vi = .5*(vn_n_p[n] + vn_n_p[(*points)[l].n]);
-                    //#ifdef P4_TO_P8
-                    //                            vi = 0.5*((*vn)(pc.x, pc.y, pc.z) + (*vn)(pl.x, pl.y, pl.z));
-                    //#else
-                    //                            vi = 0.5*((*vn)(pc.x, pc.y) + (*vn)(pl.x, pl.y));
-                    //#endif
-                    //                            rhs_p[n] += SIGN(phi_n) * s/(d/2) * sigma_tmp * vi * (1-dt*Smn/Cm);
-                    //                            break;
-                    //                        case 2:
-                    //                            /* (1.5*[u]_n+1 - 2*[u]_n + .5*[u]_n-1)/dt + Sm_n [u]_n = d u_n+1/d n */
-                    //                            sigma_tmp = sigma_n*sigma_l / (sigma_n + sigma_l + 2./3. * sigma_n*sigma_l/(d/2) * dt/Cm);
-                    //                            //                            vi = .5*2./3.*((2-dt*Smn/Cm)*(vn_n_p[n]+vn_n_p[(*points)[l].n]) - .5*(vnm1_n_p[n]+vnm1_n_p[(*points)[l].n]));
-                    //#ifdef P4_TO_P8
-                    //                            vi = .5*2./3.*((2-dt*Smn/Cm)*((*vn)(pc.x, pc.y, pc.z)+(*vn)(pl.x, pl.y, pl.z)) - .5*((*vnm1)(pc.x, pc.y, pc.z)+(*vnm1)(pl.x, pl.y, pl.z)));
-                    //#else
-                    //                            vi = .5*2./3.*((2-dt*Smn/Cm)*((*vn)(pc.x, pc.y)+(*vn)(pl.x, pl.y)) - .5*((*vnm1)(pc.x, pc.y)+(*vnm1)(pl.x, pl.y)));
-                    //#endif
-                    //                            rhs_p[n] += SIGN(phi_n) * s/(d/2) * sigma_tmp * vi;
-
-                    //                            break;
-                    //                        default:
-                    //                            throw std::invalid_argument("Unknown order ... choose 1 or 2 when explicit.");
-                    //                        }
-                    //                    }
-                    //                    else
-                    //                    {
-                    //                        switch(order)
-                    //                        {
-                    //                        case 1:
-                    //                            /* ([u]_n+1 - [u]_n)/dt + Sm_n [u]_n+1 = d u_n+1/d n */
-                    //                            sigma_tmp = sigma_n*sigma_l / (sigma_n + sigma_l + sigma_n*sigma_l/(d/2) * dt/(Cm+dt*Smn));
-
-                    //                            //vi = .5*(vn_n_p[n] + vn_n_p[(*points)[l].n]);
-                    //#ifdef P4_TO_P8
-                    //                            vi = 0.5*((*vn)(pc.x, pc.y, pc.z) + (*vn)(pl.x, pl.y, pl.z));
-                    //#else
-                    //                            vi = 0.5*((*vn)(pc.x, pc.y) + (*vn)(pl.x, pl.y));
-                    //#endif
-                    //                            rhs_p[n] += SIGN(phi_n) * s/(d/2) * sigma_tmp * Cm*vi / (Cm+dt*Smn);
-                    //                            break;
-                    //                        case 2:
-                    //                            /* (1.5*[u]_n+1 - 2*[u]_n + .5*[u]_n-1)/dt + Sm_n [u]_n+1 = d u_n+1/d n */
-                    //                            sigma_tmp = sigma_n*sigma_l / (sigma_n + sigma_l + sigma_n*sigma_l/(d/2) * dt/(1.5*Cm+dt*Smn));
-                    //                            //vi = .5*(2*vn_n_p[n] - .5*vnm1_n_p[n] + 2*vn_n_p[(*points)[l].n] - .5*vnm1_n_p[(*points)[l].n]);
-                    //#ifdef P4_TO_P8
-                    //                            vi = .5*(2*(*vn)(pc.x, pc.y, pc.z) - .5*(*vnm1)(pc.x, pc.y, pc.z) + 2*(*vn)(pl.x, pl.y, pl.z) - .5*(*vnm1)(pl.x, pl.y, pl.z));
-                    //#else
-                    //                            vi = .5*(2*(*vn)(pc.x, pc.y) - .5*(*vnm1)(pc.x, pc.y) + 2*(*vn)(pl.x, pl.y) - .5*(*vnm1)(pl.x, pl.y));
-                    //#endif
-                    //                            rhs_p[n] += SIGN(phi_n) * s/(d/2) * sigma_tmp * Cm*vi / (1.5*Cm+dt*Smn);
-                    //                            break;
-                    //                        case 3:
-                    //                            /* (11/6*[u]_n+1 - 3*[u]_n + 3/2*[u]_n-1 - 1/3*[u]_n-2)/dt + Sm_n [u]_n+1 = d u_n+1/d n */
-                    //                            sigma_tmp = sigma_n*sigma_l / (sigma_n + sigma_l + sigma_n*sigma_l/(d/2) * dt/(11./6.*Cm+dt*Smn));
-                    //                            //vi = .5*(3*vn_n_p[n] - 3./2.*vnm1_n_p[n] + 1./3.*vnm2_n_p[n] + 3*vn_n_p[(*points)[l].n] - 3./2.*vnm1_n_p[(*points)[l].n] + 1./3.*vnm2_n_p[(*points)[l].n]);
-                    //#ifdef P4_TO_P8
-                    //                            vi = .5*(3*(*vn)(pc.x,pc.y,pc.z) - 3./2.*(*vnm1)(pc.x,pc.y,pc.z) + 1./3.*(*vnm2)(pc.x,pc.y,pc.z) + 3*(*vn)(pl.x,pl.y,pl.z) - 3./2.*(*vnm1)(pl.x,pl.y,pl.z) + 1./3.*(*vnm2)(pl.x,pl.y,pl.z));
-                    //#else
-                    //                            vi = .5*(3*(*vn)(pc.x,pc.y) - 3./2.*(*vnm1)(pc.x,pc.y) + 1./3.*(*vnm2)(pc.x,pc.y) + 3*(*vn)(pl.x,pl.y) - 3./2.*(*vnm1)(pl.x,pl.y) + 1./3.*(*vnm2)(pl.x,pl.y));
-                    //#endif
-                    //                            rhs_p[n] += SIGN(phi_n) * s/(d/2) * sigma_tmp * Cm*vi / (11./6.*Cm+dt*Smn);
-
-                    //                            break;
-                    //                        default:
-                    //                            throw std::invalid_argument("Unknown order ...");
-                    //                        }
-                    //                    }
-
-                    //                }
-                    //                else
-                    //                {
-                    //                    sigma_disc = sigma_n;
-                    //                }
-
-                    //                mat_entry_t ent1; ent1.n = global_n_idx; ent1.val = +s*sigma_disc/d;
-                    //                matrix_entries[n].push_back(ent1);
-                    //                mat_entry_t ent; ent.n = global_l_idx; ent.val = -s*sigma_disc/d;
-                    //                matrix_entries[n].push_back(ent);
                 }
             }
             else /* wall with neumann */
@@ -3444,14 +3313,14 @@ void my_p4est_electroporation_solve_t::print_voronoi_VTK(const char* path) const
 
 
 #ifdef P4_TO_P8
-    double *vn_p, *sol_voro_p;
+   // double *vn_p, *sol_voro_p;
     // VecGetArray(vn_voro, &vn_p);
-    VecGetArray(sol_voro, &sol_voro_p);
+   // VecGetArray(sol_voro, &sol_voro_p);
     bool periodic[P4EST_DIM] = {false, false, false};
-    Voronoi3D::print_VTK_Format(voro, name, xyz_min, xyz_max, periodic, sol_voro_p, sol_voro_p, num_local_voro);
+    //Voronoi3D::print_VTK_Format(voro, name, xyz_min, xyz_max, periodic, sol_voro_p, sol_voro_p, num_local_voro);
     // VecRestoreArray(vn_voro, &vn_p);
-    VecRestoreArray(sol_voro, &sol_voro_p);
-    // Voronoi3D::print_VTK_Format(voro, name, xyz_min, xyz_max, periodic);
+   // VecRestoreArray(sol_voro, &sol_voro_p);
+    Voronoi3D::print_VTK_Format(voro, name, xyz_min, xyz_max, periodic);
 #else
 
     Voronoi2D::print_VTK_Format(voro, name);
