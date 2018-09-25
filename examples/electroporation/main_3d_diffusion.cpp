@@ -607,6 +607,14 @@ struct MBCWALLVALUE : CF_3
 
 
 
+struct INTERFACE : CF_3
+{
+    double operator()(double x, double y, double z) const
+    {
+        return 0;
+    }
+} bc_interface_value_p;
+
 double sigma(double x, double y, double z)
 {
     return level_set(x,y,z)<=0 ? sigma_c : sigma_e;
@@ -1350,8 +1358,6 @@ void advect_field_semi_lagrangian(p4est_t *p4est, p4est_nodes_t *nodes, my_p4est
     interp.interpolate(M_np1_p);
 }
 
-
-
 void advect(p4est_t *p4est, p4est_nodes_t *nodes, my_p4est_node_neighbors_t *ngbd_n, Vec phi, Vec v[3], double dt, Vec &M)
 {
     PetscErrorCode ierr;
@@ -2047,16 +2053,17 @@ void solve_diffusion( p4est_t *p4est,  p4est_ghost_t *ghost, p4est_nodes_t *node
             ierr = VecRestoreArray(sol_ext, &u_p); CHKERRXX(ierr);
 
             // Advection by electric field using the semi-Lagrangian, we find departure point values M_departure and update them into M_list[ion].
+            BoundaryConditions3D bc_interface;
+            bc_interface.setInterfaceType(NEUMANN);
+            bc_interface.setInterfaceValue(bc_interface_value_p);
+
             for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
                 phi_p[i] = -phi_p[i];
             for(int dir=0;dir<3; ++dir)
-                ls.extend_Over_Interface_TVD(phi,ElectroPhoresis[dir]);
+                ls.extend_Over_Interface(phi, ElectroPhoresis[dir], bc_interface, 2, 20);
             for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
                 phi_p[i] = -phi_p[i];
-
             advect(p4est, nodes, ngbd_n, phi, ElectroPhoresis,  dt_n,  M_list[ion]);
-            //my_p4est_semi_lagrangian_t sl(&p4est, &nodes, &ghost, ngbd_n);
-            //sl.update_p4est(ElectroPhoresis, dt_n, M_list[ion]);
 
             // measure jump in concentration on the interface
             double *M_plus_p, *M_minus_p;
@@ -2288,16 +2295,16 @@ void solve_diffusion( p4est_t *p4est,  p4est_ghost_t *ghost, p4est_nodes_t *node
             solver.set_u_jump(M_jump);
             solver.set_rhs(rhs_m,rhs_p);
             solver.set_mu_grad_u_jump(grad_M_jump);
-           // solver.solve(M_list[ion]);
+            solver.solve(M_list[ion]);
             //   export jump values for evaluation.
             VecGetArray(M_list[1], &M_p[1]);
-            VecGetArray(ElectroPhoresis[2], &M_jump_p);
+            VecGetArray(M_jump, &M_jump_p);
             for(unsigned int n=0; n<nodes->indep_nodes.elem_count;n++)
             {
                 M_p[1][n] = M_jump_p[n];
             }
             VecRestoreArray(M_list[1], &M_p[1]);
-            VecRestoreArray(ElectroPhoresis[2], &M_jump_p);
+            VecRestoreArray(M_jump, &M_jump_p);
             // measure error on interface, relative error in L2 norm.
             /*         double *error_p;
                         VecGetArray(error,&error_p);
