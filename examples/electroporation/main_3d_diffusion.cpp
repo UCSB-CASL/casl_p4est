@@ -75,7 +75,7 @@ double boxSide = 1e-3;      // only if test = 8
 
 
 
-double omega = 0.5e6;  //example: w= 1e9 = 1 GHz angular frequency
+double omega = 0.25e6;  //angular frequency: if w=0.25 MHz every 1 micro-second pulse will pause, and repeat!
 double epsilon_0 = 8.85e-12; // farad/meter: permitivity in vacuum
 /* 0 or 1 */
 int implicit = 0;
@@ -172,14 +172,18 @@ double M_boundary= 1.0e-6;     // concentration on the boundary of the box
 double R1 = .25*MIN(xmax-xmin, ymax-ymin, zmaxx-zminn);
 double R2 = 3*MAX(xmax-xmin, ymax-ymin, zmaxx-zminn);
 
-bool save_vtk = true;
-bool save_error = false;
+// save statistics
 int save_every_n = 1;
-bool save_voro = false;
-bool save_stats = true;
-bool check_partition = false;
 bool save_impedance = true;
+bool save_transport = true;
+bool save_vtk = true;
+bool save_stats = true;
+
+bool save_error = false;
+bool save_voro = false;
+bool check_partition = false;
 bool save_hierarchy = false;
+// I hope you don't touch the last 4... unless you are troubled!
 
 class LevelSet : public CF_3
 {
@@ -2998,6 +3002,34 @@ int main(int argc, char** argv) {
             }
         }
 
+        if(save_transport){
+            char *out_dir = NULL;
+            out_dir = getenv("OUT_DIR");
+            if(out_dir==NULL)
+            {
+                ierr = PetscPrintf(p4est->mpicomm, "You need to set the environment variable OUT_DIR before running the code to save stats\n"); CHKERRXX(ierr);
+            }
+            else
+            {
+                char out_path_Z[1000];
+                sprintf(out_path_Z, "%s/transport.dat", out_dir);
+                if(p4est->mpirank==0)
+                {
+                    if(iteration ==0){
+                        FILE *f = fopen(out_path_Z, "w");
+                        fprintf(f, "Simulation Parameters: Omega [Hz] %g \t cell volume fraction %g \t box side length [m] %g \n", omega, density, xmax-xmin);
+                        fprintf(f, "time [s]    | total mass [mol^3] | \n");
+                        fprintf(f, "%g \t %g \n", tn+dt, total_mass);
+                        fclose(f);
+                    }
+                    else{
+                        FILE *f = fopen(out_path_Z, "a");
+                        fprintf(f, "%g \t %g \n", tn+dt, total_mass);
+                        fclose(f);
+                    }
+                }
+            }
+        }
         if(save_vtk && iteration%save_every_n == 0)
         {
             save_VTK(p4est, ghost, nodes, &brick, phi, sol, iteration, X0, X1, Sm, vn, err, M_list, Pm, charge_rate);
