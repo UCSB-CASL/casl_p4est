@@ -1229,19 +1229,19 @@ void advect_field_semi_lagrangian(p4est_t *p4est, p4est_nodes_t *nodes, my_p4est
     PetscErrorCode ierr;
 
     my_p4est_interpolation_nodes_t interp(ngbd_n);
-   // my_p4est_interpolation_nodes_t phi_interp(ngbd_n);
+    // my_p4est_interpolation_nodes_t phi_interp(ngbd_n);
     /* find vnp1 */
     std::vector<double> v_tmp[P4EST_DIM];
-//    std::vector<double> phi_tmp, phi_n;
-//    phi_tmp.resize(nodes->indep_nodes.elem_count);
-//    phi_n.resize(nodes->indep_nodes.elem_count);
+    //    std::vector<double> phi_tmp, phi_n;
+    //    phi_tmp.resize(nodes->indep_nodes.elem_count);
+    //    phi_n.resize(nodes->indep_nodes.elem_count);
 
     for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
     {
         double xyz[P4EST_DIM];
         node_xyz_fr_n(n, p4est, nodes, xyz);
         interp.add_point(n, xyz);
-       // phi_interp.add_point(n,xyz);
+        // phi_interp.add_point(n,xyz);
     }
     /* // prepare interpolator for clipping
 #ifdef P4_TO_P8
@@ -1313,7 +1313,7 @@ void advect_field_semi_lagrangian(p4est_t *p4est, p4est_nodes_t *nodes, my_p4est
             else     xyz_d[dir] = MAX(xyz_min_[dir], MIN(xyz_max_[dir], xyz_d[dir]));
         }
         interp.add_point(n, xyz_d);
-//        phi_interp.add_point(n,xyz_d);
+        //        phi_interp.add_point(n,xyz_d);
     }
 
     /*
@@ -2067,6 +2067,14 @@ void solve_diffusion( p4est_t *p4est,  p4est_ghost_t *ghost, p4est_nodes_t *node
                 ls.extend_Over_Interface(phi, ElectroPhoresis[dir], bc_interface, 2, 20);
             for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
                 phi_p[i] = -phi_p[i];
+            for(int dir=0;dir<3; ++dir)
+            {
+                VecGetArray(ElectroPhoresis[dir], &ElectroPhoresis_p[dir]);
+                for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
+                    if(phi_p[i]<0)
+                        ElectroPhoresis_p[dir][i] = 0;
+                VecRestoreArray(ElectroPhoresis[dir], &ElectroPhoresis_p[dir]);
+            }
             advect(p4est, nodes, ngbd_n, phi, ElectroPhoresis,  dt_n,  M_list[ion]);
 
             // measure jump in concentration on the interface
@@ -2651,8 +2659,8 @@ int main(int argc, char** argv) {
 #endif
     /* perturb level set */
     my_p4est_level_set_t ls(&ngbd_n);
-   ls.reinitialize_2nd_order(phi);
-   ls.perturb_level_set_function(phi, EPS);
+    ls.reinitialize_2nd_order(phi);
+    ls.perturb_level_set_function(phi, EPS);
 
     Vec grad_phi[3];
     double *dphi_p[3],*phi_p;
@@ -3018,13 +3026,13 @@ int main(int argc, char** argv) {
                     if(iteration ==0){
                         FILE *f = fopen(out_path_Z, "w");
                         fprintf(f, "Simulation Parameters: Omega [Hz] %g \t cell volume fraction %g \t box side length [m] %g \n", omega, density, xmax-xmin);
-                        fprintf(f, "time [s]    | total mass [mol^3] | \n");
-                        fprintf(f, "%g \t %g \n", tn+dt, total_mass);
+                        fprintf(f, "time [s]    | total mass [mol^3]  | V(t)[V] | E(t) [V/m] |  \n");
+                        fprintf(f, "%g \t %g \t %g \t %g \n", tn+dt, total_mass, pulse(tn), applied_E);
                         fclose(f);
                     }
                     else{
                         FILE *f = fopen(out_path_Z, "a");
-                        fprintf(f, "%g \t %g \n", tn+dt, total_mass);
+                        fprintf(f, "%g \t %g \t %g \t %g\n", tn+dt, total_mass, pulse(tn), applied_E);
                         fclose(f);
                     }
                 }
