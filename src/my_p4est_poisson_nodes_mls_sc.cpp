@@ -234,34 +234,56 @@ my_p4est_poisson_nodes_mls_sc_t::~my_p4est_poisson_nodes_mls_sc_t()
   if (areas_   != NULL && volumes_owned_) {ierr = VecDestroy(areas_);   CHKERRXX(ierr);}
   if (node_type_ != NULL) {ierr = VecDestroy(node_type_); CHKERRXX(ierr);}
   if (is_phi_eff_owned_)    {ierr = VecDestroy(phi_eff_);  CHKERRXX(ierr);}
+
+  // immersed interface stuff
+  if (immersed_interface_.is_phi_dd_owned)
+  {
+    if (immersed_interface_.phi_xx != NULL) { for (unsigned int i = 0; i < immersed_interface_.phi_xx->size(); i++) { ierr = VecDestroy(immersed_interface_.phi_xx->at(i)); CHKERRXX(ierr); } delete immersed_interface_.phi_xx; }
+    if (immersed_interface_.phi_yy != NULL) { for (unsigned int i = 0; i < immersed_interface_.phi_yy->size(); i++) { ierr = VecDestroy(immersed_interface_.phi_yy->at(i)); CHKERRXX(ierr); } delete immersed_interface_.phi_yy; }
+#ifdef P4_TO_P8
+    if (immersed_interface_.phi_zz != NULL) { for (unsigned int i = 0; i < immersed_interface_.phi_zz->size(); i++) { ierr = VecDestroy(immersed_interface_.phi_zz->at(i)); CHKERRXX(ierr); } delete immersed_interface_.phi_zz; }
+#endif
+  }
+
+  if (immersed_interface_.is_phi_d_owned)
+  {
+    if (immersed_interface_.phi_x != NULL) { for (unsigned int i = 0; i < immersed_interface_.phi_x->size(); i++) { ierr = VecDestroy(immersed_interface_.phi_x->at(i)); CHKERRXX(ierr); } delete immersed_interface_.phi_x; }
+    if (immersed_interface_.phi_y != NULL) { for (unsigned int i = 0; i < immersed_interface_.phi_y->size(); i++) { ierr = VecDestroy(immersed_interface_.phi_y->at(i)); CHKERRXX(ierr); } delete immersed_interface_.phi_y; }
+#ifdef P4_TO_P8
+    if (immersed_interface_.phi_z != NULL) { for (unsigned int i = 0; i < immersed_interface_.phi_z->size(); i++) { ierr = VecDestroy(immersed_interface_.phi_z->at(i)); CHKERRXX(ierr); } delete immersed_interface_.phi_z; }
+#endif
+  }
+  if (immersed_interface_.is_phi_eff_owned) { ierr = VecDestroy(immersed_interface_.phi_eff);  CHKERRXX(ierr); }
 }
 
 
-void my_p4est_poisson_nodes_mls_sc_t::compute_phi_eff_()
+void my_p4est_poisson_nodes_mls_sc_t::compute_phi_eff(Vec &phi_eff, std::vector<Vec> *&phi, std::vector<action_t> *&action, bool &is_phi_eff_owned)
 {
-  if (phi_eff_ != NULL && is_phi_eff_owned_) { ierr = VecDestroy(phi_eff_); CHKERRXX(ierr); }
+  if (phi_eff != NULL && is_phi_eff_owned) { ierr = VecDestroy(phi_eff); CHKERRXX(ierr); }
 
-  is_phi_eff_owned_ = true;
+  is_phi_eff_owned = true;
 
-  ierr = VecCreateGhostNodes(p4est_, nodes_, &phi_eff_); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodes(p4est_, nodes_, &phi_eff); CHKERRXX(ierr);
 
-  std::vector<double *>   phi_p(num_interfaces_, NULL);
+  int num_interfaces = phi->size();
+
+  std::vector<double *>   phi_p(num_interfaces, NULL);
   double                 *phi_eff_p;
 
-  for (unsigned int i = 0; i < num_interfaces_; i++)
+  for (unsigned int i = 0; i < num_interfaces; i++)
   {
-    ierr = VecGetArray(phi_->at(i), &phi_p[i]);  CHKERRXX(ierr);
+    ierr = VecGetArray(phi->at(i), &phi_p[i]);  CHKERRXX(ierr);
   }
 
-  ierr = VecGetArray(phi_eff_, &phi_eff_p); CHKERRXX(ierr);
+  ierr = VecGetArray(phi_eff, &phi_eff_p); CHKERRXX(ierr);
 
   for(size_t n=0; n<nodes_->indep_nodes.elem_count; ++n) // loop over nodes
   {
     phi_eff_p[n] = -10.;
 
-    for (unsigned int i = 0; i < num_interfaces_; i++)
+    for (unsigned int i = 0; i < num_interfaces; i++)
     {
-      switch (action_->at(i))
+      switch (action->at(i))
       {
       case INTERSECTION:  phi_eff_p[n] = (phi_eff_p[n] > phi_p[i][n]) ? phi_eff_p[n] : phi_p[i][n]; break;
       case ADDITION:      phi_eff_p[n] = (phi_eff_p[n] < phi_p[i][n]) ? phi_eff_p[n] : phi_p[i][n]; break;
@@ -270,86 +292,98 @@ void my_p4est_poisson_nodes_mls_sc_t::compute_phi_eff_()
     }
   }
 
-  for (unsigned int i = 0; i < num_interfaces_; i++)
+  for (unsigned int i = 0; i < num_interfaces; i++)
   {
-    ierr = VecRestoreArray(phi_->at(i), &phi_p[i]);  CHKERRXX(ierr);
+    ierr = VecRestoreArray(phi->at(i), &phi_p[i]);  CHKERRXX(ierr);
   }
 
-  ierr = VecRestoreArray(phi_eff_, &phi_eff_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(phi_eff, &phi_eff_p); CHKERRXX(ierr);
 }
 
-void my_p4est_poisson_nodes_mls_sc_t::compute_phi_dd_()
-{
-  // Allocate memory for second derivaties
-  if (phi_xx_ != NULL && is_phi_dd_owned_)
-  {
-    for (unsigned int i = 0; i < phi_xx_->size(); i++) {ierr = VecDestroy(phi_xx_->at(i)); CHKERRXX(ierr);}
-    delete phi_xx_;
-  }
-  phi_xx_ = new std::vector<Vec> ();
-
-  if (phi_yy_ != NULL && is_phi_dd_owned_)
-  {
-    for (unsigned int i = 0; i < phi_yy_->size(); i++) {ierr = VecDestroy(phi_yy_->at(i)); CHKERRXX(ierr);}
-    delete phi_yy_;
-  }
-  phi_yy_ = new std::vector<Vec> ();
-
 #ifdef P4_TO_P8
-  if (phi_zz_ != NULL && is_phi_dd_owned_)
-  {
-    for (int i = 0; i < phi_zz_->size(); i++) {ierr = VecDestroy(phi_zz_->at(i)); CHKERRXX(ierr);}
-    delete phi_zz_;
-  }
-  phi_zz_ = new std::vector<Vec> ();
-#endif
-
-  for (unsigned int i = 0; i < num_interfaces_; i++)
-  {
-    phi_xx_->push_back(Vec()); ierr = VecCreateGhostNodes(p4est_, nodes_, &phi_xx_->at(i)); CHKERRXX(ierr);
-    phi_yy_->push_back(Vec()); ierr = VecCreateGhostNodes(p4est_, nodes_, &phi_yy_->at(i)); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    phi_zz_->push_back(Vec()); ierr = VecCreateGhostNodes(p4est_, nodes_, &phi_zz_->at(i)); CHKERRXX(ierr);
-#endif
-
-#ifdef P4_TO_P8
-    node_neighbors_->second_derivatives_central(phi_->at(i), phi_xx_->at(i), phi_yy_->at(i), phi_zz_->at(i));
+void my_p4est_poisson_nodes_mls_sc_t::compute_phi_dd(std::vector<Vec> *&phi, std::vector<Vec> *&phi_xx, std::vector<Vec> *&phi_yy, std::vector<Vec> *&phi_zz, bool &is_phi_dd_owned)
 #else
-    node_neighbors_->second_derivatives_central(phi_->at(i), phi_xx_->at(i), phi_yy_->at(i));
+void my_p4est_poisson_nodes_mls_sc_t::compute_phi_dd(std::vector<Vec> *&phi, std::vector<Vec> *&phi_xx, std::vector<Vec> *&phi_yy, bool &is_phi_dd_owned)
 #endif
-  }
-  is_phi_dd_owned_ = true;
-}
-
-void my_p4est_poisson_nodes_mls_sc_t::compute_phi_d_()
 {
+  int num_interfaces = phi->size();
+
   // Allocate memory for second derivaties
-  if (phi_x_ != NULL && is_phi_d_owned_) { for (unsigned int i = 0; i < phi_x_->size(); i++) {ierr = VecDestroy(phi_x_->at(i)); CHKERRXX(ierr);} delete phi_x_; } phi_x_ = new std::vector<Vec> ();
-  if (phi_y_ != NULL && is_phi_d_owned_) { for (unsigned int i = 0; i < phi_y_->size(); i++) {ierr = VecDestroy(phi_y_->at(i)); CHKERRXX(ierr);} delete phi_y_; } phi_y_ = new std::vector<Vec> ();
-#ifdef P4_TO_P8
-  if (phi_z_ != NULL && is_phi_d_owned_) { for (unsigned int i = 0; i < phi_z_->size(); i++) {ierr = VecDestroy(phi_z_->at(i)); CHKERRXX(ierr);} delete phi_z_; } phi_z_ = new std::vector<Vec> ();
-#endif
-
-  for (unsigned int i = 0; i < num_interfaces_; i++)
+  if (phi_xx != NULL && is_phi_dd_owned)
   {
-    phi_x_->push_back(Vec()); ierr = VecCreateGhostNodes(p4est_, nodes_, &phi_x_->at(i)); CHKERRXX(ierr);
-    phi_y_->push_back(Vec()); ierr = VecCreateGhostNodes(p4est_, nodes_, &phi_y_->at(i)); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    phi_z_->push_back(Vec()); ierr = VecCreateGhostNodes(p4est_, nodes_, &phi_z_->at(i)); CHKERRXX(ierr);
-#endif
-
-#ifdef P4_TO_P8
-    Vec phi_d[P4EST_DIM] = { phi_x_->at(i), phi_y_->at(i), phi_z_->at(i) };
-#else
-    Vec phi_d[P4EST_DIM] = { phi_x_->at(i), phi_y_->at(i) };
-#endif
-
-    node_neighbors_->first_derivatives_central(phi_->at(i), phi_d);
+    for (unsigned int i = 0; i < phi_xx->size(); i++) {ierr = VecDestroy(phi_xx->at(i)); CHKERRXX(ierr);}
+    delete phi_xx;
   }
-  is_phi_d_owned_ = true;
+  phi_xx = new std::vector<Vec> ();
+
+  if (phi_yy != NULL && is_phi_dd_owned)
+  {
+    for (unsigned int i = 0; i < phi_yy->size(); i++) {ierr = VecDestroy(phi_yy->at(i)); CHKERRXX(ierr);}
+    delete phi_yy;
+  }
+  phi_yy = new std::vector<Vec> ();
+
+#ifdef P4_TO_P8
+  if (phi_zz != NULL && is_phi_dd_owned)
+  {
+    for (unsigned int i = 0; i < phi_zz->size(); i++) {ierr = VecDestroy(phi_zz->at(i)); CHKERRXX(ierr);}
+    delete phi_zz;
+  }
+  phi_zz = new std::vector<Vec> ();
+#endif
+
+  for (unsigned int i = 0; i < num_interfaces; i++)
+  {
+    phi_xx->push_back(Vec()); ierr = VecCreateGhostNodes(p4est_, nodes_, &phi_xx->at(i)); CHKERRXX(ierr);
+    phi_yy->push_back(Vec()); ierr = VecCreateGhostNodes(p4est_, nodes_, &phi_yy->at(i)); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    phi_zz->push_back(Vec()); ierr = VecCreateGhostNodes(p4est_, nodes_, &phi_zz->at(i)); CHKERRXX(ierr);
+#endif
+
+#ifdef P4_TO_P8
+    node_neighbors_->second_derivatives_central(phi->at(i), phi_xx->at(i), phi_yy->at(i), phi_zz->at(i));
+#else
+    node_neighbors_->second_derivatives_central(phi->at(i), phi_xx->at(i), phi_yy->at(i));
+#endif
+  }
+  is_phi_dd_owned = true;
 }
 
-void my_p4est_poisson_nodes_mls_sc_t::compute_mue_dd_()
+#ifdef P4_TO_P8
+void my_p4est_poisson_nodes_mls_sc_t::compute_phi_d(std::vector<Vec> *&phi, std::vector<Vec> *&phi_x, std::vector<Vec> *&phi_y, std::vector<Vec> *&phi_z, bool &is_phi_d_owned)
+#else
+void my_p4est_poisson_nodes_mls_sc_t::compute_phi_d(std::vector<Vec> *&phi, std::vector<Vec> *&phi_x, std::vector<Vec> *&phi_y, bool &is_phi_d_owned)
+#endif
+{
+  int num_interfaces = phi->size();
+
+  // Allocate memory for second derivaties
+  if (phi_x != NULL && is_phi_d_owned) { for (unsigned int i = 0; i < phi_x->size(); i++) {ierr = VecDestroy(phi_x->at(i)); CHKERRXX(ierr);} delete phi_x; } phi_x = new std::vector<Vec> ();
+  if (phi_y != NULL && is_phi_d_owned) { for (unsigned int i = 0; i < phi_y->size(); i++) {ierr = VecDestroy(phi_y->at(i)); CHKERRXX(ierr);} delete phi_y; } phi_y = new std::vector<Vec> ();
+#ifdef P4_TO_P8
+  if (phi_z != NULL && is_phi_d_owned) { for (unsigned int i = 0; i < phi_z->size(); i++) {ierr = VecDestroy(phi_z->at(i)); CHKERRXX(ierr);} delete phi_z; } phi_z = new std::vector<Vec> ();
+#endif
+
+  for (unsigned int i = 0; i < num_interfaces; i++)
+  {
+    phi_x->push_back(Vec()); ierr = VecCreateGhostNodes(p4est_, nodes_, &phi_x->at(i)); CHKERRXX(ierr);
+    phi_y->push_back(Vec()); ierr = VecCreateGhostNodes(p4est_, nodes_, &phi_y->at(i)); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    phi_z->push_back(Vec()); ierr = VecCreateGhostNodes(p4est_, nodes_, &phi_z->at(i)); CHKERRXX(ierr);
+#endif
+
+#ifdef P4_TO_P8
+    Vec phi_d[P4EST_DIM] = { phi_x->at(i), phi_y->at(i), phi_z->at(i) };
+#else
+    Vec phi_d[P4EST_DIM] = { phi_x->at(i), phi_y->at(i) };
+#endif
+
+    node_neighbors_->first_derivatives_central(phi->at(i), phi_d);
+  }
+  is_phi_d_owned = true;
+}
+
+void my_p4est_poisson_nodes_mls_sc_t::compute_mue_dd()
 {
   if (mue_xx_ != NULL && is_mue_dd_owned_) { ierr = VecDestroy(mue_xx_); CHKERRXX(ierr); }
   if (mue_yy_ != NULL && is_mue_dd_owned_) { ierr = VecDestroy(mue_yy_); CHKERRXX(ierr); }
@@ -574,6 +608,29 @@ void my_p4est_poisson_nodes_mls_sc_t::solve(Vec solution, bool use_nonzero_initi
     set_geometry(1, action_, color_, phi_);
   }
 
+  bool local_immersed_phi = false;
+  if(immersed_interface_.num_interfaces == 0)
+  {
+    local_immersed_phi = true;
+
+    immersed_interface_.phi    = new std::vector<Vec> ();
+    immersed_interface_.color  = new std::vector<int> ();
+    immersed_interface_.action = new std::vector<action_t> ();
+
+    immersed_interface_.phi->push_back(Vec());
+    immersed_interface_.color->push_back(0);
+    immersed_interface_.action->push_back(INTERSECTION);
+
+    ierr = VecDuplicate(solution, &immersed_interface_.phi->at(0)); CHKERRXX(ierr);
+
+    Vec tmp;
+    ierr = VecGhostGetLocalForm(immersed_interface_.phi->at(0), &tmp); CHKERRXX(ierr);
+    ierr = VecSet(tmp, -1.); CHKERRXX(ierr);
+    ierr = VecGhostRestoreLocalForm(immersed_interface_.phi->at(0), &tmp); CHKERRXX(ierr);
+//    ierr = VecCreateSeq(PETSC_COMM_SELF, nodes->num_owned_indeps, &phi_); CHKERRXX(ierr);
+    set_immersed_interface(1, immersed_interface_.action, immersed_interface_.color, immersed_interface_.phi);
+  }
+
   bool local_rhs = false;
   if (rhs_ == NULL)
   {
@@ -734,6 +791,30 @@ void my_p4est_poisson_nodes_mls_sc_t::solve(Vec solution, bool use_nonzero_initi
     delete color_;
   }
 
+  if(local_immersed_phi)
+  {
+    ierr = VecDestroy(immersed_interface_.phi->at(0)); CHKERRXX(ierr);
+    delete immersed_interface_.phi;
+    immersed_interface_.phi = NULL;
+
+    ierr = VecDestroy(immersed_interface_.phi_xx->at(0)); CHKERRXX(ierr);
+    delete immersed_interface_.phi_xx;
+    immersed_interface_.phi_xx = NULL;
+
+    ierr = VecDestroy(immersed_interface_.phi_yy->at(0)); CHKERRXX(ierr);
+    delete immersed_interface_.phi_yy;
+    immersed_interface_.phi_yy = NULL;
+
+#ifdef P4_TO_P8
+    ierr = VecDestroy(immersed_interface_.phi_zz->at(0)); CHKERRXX(ierr);
+    delete immersed_interface_.phi_zz;
+    immersed_interface_.phi_zz = NULL;
+#endif
+
+    delete immersed_interface_.action;
+    delete immersed_interface_.color;
+  }
+
   ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_mls_sc_solve, A_, rhs_, ksp_, 0); CHKERRXX(ierr);
 }
 
@@ -744,6 +825,12 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
 
   std::vector< std::vector<mat_entry_t>* > matrix_entries(nodes_->num_owned_indeps, NULL);
   std::vector<PetscInt> d_nnz(nodes_->num_owned_indeps, 1), o_nnz(nodes_->num_owned_indeps, 0);
+
+  // auxiliary matrices for immersed interface
+  std::vector< std::vector<mat_entry_t>* > B_matrix_entries(nodes_->num_owned_indeps, NULL);
+  std::vector< std::vector<mat_entry_t>* > C_matrix_entries(nodes_->num_owned_indeps, NULL);
+  std::vector<PetscInt> B_d_nnz(nodes_->num_owned_indeps, 1), B_o_nnz(nodes_->num_owned_indeps, 0);
+  std::vector<PetscInt> C_d_nnz(nodes_->num_owned_indeps, 1), C_o_nnz(nodes_->num_owned_indeps, 0);
 
   if (!setup_matrix && !setup_rhs)
     throw std::invalid_argument("[CASL_ERROR]: If you aren't assembling either matrix or RHS, what the heck then are you trying to do? lol :)");
@@ -846,7 +933,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
   double *mask_p;
   if (setup_matrix)
   {
-    if (!volumes_computed_) compute_volumes_();
+    if (!volumes_computed_) compute_volumes();
     if (mask_ != NULL) { ierr = VecDestroy(mask_); CHKERRXX(ierr); }
     ierr = VecDuplicate(phi_->at(0), &mask_); CHKERRXX(ierr);
   }
@@ -989,6 +1076,8 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
 #ifdef DO_NOT_PREALLOCATE
   mat_entry_t ent;
 #endif
+
+  bool interface_present = false;
 
   for(p4est_locidx_t n=0; n<nodes_->num_owned_indeps; n++) // loop over nodes
   {
@@ -1248,7 +1337,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
 #ifdef DO_NOT_PREALLOCATE
             ent.n = node_000_g; ent.val = 1.; row->push_back(ent);
 #else
-            //ierr = MatSetValue(A_, node_000_g, node_000_g,  bc_strength, ADD_VALUES); CHKERRXX(ierr);
+            ierr = MatSetValue(A_, node_000_g, node_000_g,  bc_strength, ADD_VALUES); CHKERRXX(ierr);
 #endif
 
             if (phi_eff_000 < diag_min_ || num_interfaces_ == 0)
@@ -4009,6 +4098,15 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
       }
 
     } // end of if (discretization_scheme_ = discretization_scheme_t::FVM)
+    else if (discretization_scheme_ == JUMP) {
+
+      double coeffs_m[2*P4EST_DIM + 2];
+      double coeffs_p[2*P4EST_DIM + 2];
+
+      double face_area_m[2*P4EST_DIM];
+      double face_area_p[2*P4EST_DIM];
+
+    }
 
   }
 
@@ -4053,7 +4151,61 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
 
     /* assemble the matrix */
     ierr = MatAssemblyBegin(A_, MAT_FINAL_ASSEMBLY); CHKERRXX(ierr);
-    ierr = MatAssemblyEnd  (A_, MAT_FINAL_ASSEMBLY);   CHKERRXX(ierr);
+    ierr = MatAssemblyEnd  (A_, MAT_FINAL_ASSEMBLY); CHKERRXX(ierr);
+
+    if (interface_present)
+    {
+#ifdef DO_NOT_PREALLOCATE
+      Mat B, C;
+      /* set up the matrix */
+      ierr = MatCreate(p4est_->mpicomm, &B); CHKERRXX(ierr);
+      ierr = MatCreate(p4est_->mpicomm, &C); CHKERRXX(ierr);
+      ierr = MatSetType(B, MATAIJ); CHKERRXX(ierr);
+      ierr = MatSetType(C, MATAIJ); CHKERRXX(ierr);
+      ierr = MatSetSizes(B, num_owned_local , num_owned_local, num_owned_global, num_owned_global); CHKERRXX(ierr);
+      ierr = MatSetSizes(C, num_owned_local , num_owned_local, num_owned_global, num_owned_global); CHKERRXX(ierr);
+      ierr = MatSetFromOptions(B); CHKERRXX(ierr);
+      ierr = MatSetFromOptions(C); CHKERRXX(ierr);
+
+      /* allocate the matrix */
+      ierr = MatSeqAIJSetPreallocation(B, 0, (const PetscInt*)&B_d_nnz[0]); CHKERRXX(ierr);
+      ierr = MatSeqAIJSetPreallocation(C, 0, (const PetscInt*)&C_d_nnz[0]); CHKERRXX(ierr);
+      ierr = MatMPIAIJSetPreallocation(B, 0, (const PetscInt*)&B_d_nnz[0], 0, (const PetscInt*)&B_o_nnz[0]); CHKERRXX(ierr);
+      ierr = MatMPIAIJSetPreallocation(C, 0, (const PetscInt*)&C_d_nnz[0], 0, (const PetscInt*)&C_o_nnz[0]); CHKERRXX(ierr);
+
+      /* fill the matrix with the values */
+      for(int n=0; n<num_owned_local; ++n)
+      {
+        PetscInt global_n_idx = petsc_gloidx_[n];
+        std::vector<mat_entry_t> * B_row = B_matrix_entries[n];
+        std::vector<mat_entry_t> * C_row = C_matrix_entries[n];
+        for(unsigned int m = 0; m < B_row->size(); ++m)
+        {
+          ierr = MatSetValue(B, global_n_idx, B_row->at(m).n, B_row->at(m).val, ADD_VALUES); CHKERRXX(ierr);
+        }
+        for(unsigned int m = 0; m < C_row->size(); ++m)
+        {
+          ierr = MatSetValue(C, global_n_idx, C_row->at(m).n, C_row->at(m).val, ADD_VALUES); CHKERRXX(ierr);
+        }
+        delete B_row;
+        delete C_row;
+      }
+#endif
+      ierr = MatAssemblyBegin(B, MAT_FINAL_ASSEMBLY); CHKERRXX(ierr);
+      ierr = MatAssemblyBegin(C, MAT_FINAL_ASSEMBLY); CHKERRXX(ierr);
+      ierr = MatAssemblyEnd  (B, MAT_FINAL_ASSEMBLY); CHKERRXX(ierr);
+      ierr = MatAssemblyEnd  (C, MAT_FINAL_ASSEMBLY); CHKERRXX(ierr);
+
+      Mat BC;
+
+      ierr = MatMatMult(B, C, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &BC); CHKERRXX(ierr);
+
+      ierr = MatAXPY(A_, 1., BC, DIFFERENT_NONZERO_PATTERN); CHKERRXX(ierr);
+
+      ierr = MatDestroy(B); CHKERRXX(ierr);
+      ierr = MatDestroy(C); CHKERRXX(ierr);
+      ierr = MatDestroy(BC); CHKERRXX(ierr);
+    }
   }
 
 
@@ -4138,7 +4290,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
 }
 
 
-void my_p4est_poisson_nodes_mls_sc_t::compute_volumes_()
+void my_p4est_poisson_nodes_mls_sc_t::compute_volumes()
 {
   volumes_owned_ = true;
   volumes_computed_ = true;

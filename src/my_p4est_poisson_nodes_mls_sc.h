@@ -191,13 +191,18 @@ class my_p4est_poisson_nodes_mls_sc_t
 
   Vec exact_;
 
-  enum discretization_scheme_t { FDM, FVM } discretization_scheme_;
+  enum discretization_scheme_t { FDM, FVM, JUMP } discretization_scheme_;
 
-  void compute_volumes_();
-  void compute_phi_eff_();
-  void compute_phi_dd_();
-  void compute_phi_d_();
-  void compute_mue_dd_();
+  void compute_volumes();
+  void compute_phi_eff(Vec &phi_eff, std::vector<Vec> *&phi, std::vector<action_t> *&action, bool &is_phi_eff_owned);
+#ifdef P4_TO_P8
+  void compute_phi_dd(std::vector<Vec> *&phi, std::vector<Vec> *&phi_xx, std::vector<Vec> *&phi_yy, std::vector<Vec> *&phi_zz, bool &is_phi_dd_owned);
+  void compute_phi_d (std::vector<Vec> *&phi, std::vector<Vec> *&phi_x,  std::vector<Vec> *&phi_y,  std::vector<Vec> *&phi_z,  bool &is_phi_d_owned);
+#else
+  void compute_phi_dd(std::vector<Vec> *&phi, std::vector<Vec> *&phi_xx, std::vector<Vec> *&phi_yy, bool &is_phi_dd_owned);
+  void compute_phi_d (std::vector<Vec> *&phi, std::vector<Vec> *&phi_x,  std::vector<Vec> *&phi_y,  bool &is_phi_d_owned);
+#endif
+  void compute_mue_dd();
 
 #ifdef P4_TO_P8
   double compute_weights_through_face(double A, double B, bool *neighbors_exists_2d, double *weights_2d, double theta, bool *map_2d);
@@ -218,6 +223,51 @@ class my_p4est_poisson_nodes_mls_sc_t
 #endif
 
   bool find_xy_derivative(bool *neighbors_exist, double *weights, bool *map, p4est_locidx_t *neighbors, double *volumes_p);
+
+  struct immersed_interface_t
+  {
+    unsigned int num_interfaces;
+
+    std::vector<Vec> *phi;
+
+    std::vector<action_t> *action;
+    std::vector<int>      *color;
+
+    Vec phi_eff;
+
+    std::vector<Vec> *phi_x;
+    std::vector<Vec> *phi_y;
+#ifdef P4_TO_P8
+    std::vector<Vec> *phi_z;
+#endif
+
+    std::vector<Vec> *phi_xx;
+    std::vector<Vec> *phi_yy;
+#ifdef P4_TO_P8
+    std::vector<Vec> *phi_zz;
+#endif
+
+    bool is_phi_d_owned;
+    bool is_phi_dd_owned;
+    bool is_phi_eff_owned;
+
+    immersed_interface_t() : num_interfaces(0), phi(NULL),  action(NULL), color(NULL), phi_eff(NULL),
+      phi_x(NULL),  phi_y(NULL),
+  #ifdef P4_TO_P8
+      phi_z(NULL),
+  #endif
+      phi_xx(NULL), phi_yy(NULL),
+  #ifdef P4_TO_P8
+      phi_zz(NULL),
+  #endif
+      is_phi_d_owned(false), is_phi_dd_owned(false), is_phi_eff_owned(false) {}
+  } immersed_interface_;
+
+#ifdef P4_TO_P8
+  std::vector< CF_3 *> *jump_value_, *jump_flux_;
+#else
+  std::vector< CF_2 *> *jump_value_, *jump_flux_;
+#endif
 
 public:
   my_p4est_poisson_nodes_mls_sc_t(const my_p4est_node_neighbors_t *node_neighbors);
@@ -266,17 +316,25 @@ public:
 #endif
       is_phi_dd_owned_ = false;
     } else {
-      compute_phi_dd_();
+#ifdef P4_TO_P8
+      compute_phi_dd(phi_, phi_xx_, phi_yy_, phi_zz_, is_phi_dd_owned_);
+#else
+      compute_phi_dd(phi_, phi_xx_, phi_yy_, is_phi_dd_owned_);
+#endif
       is_phi_dd_owned_ = true;
     }
 
-    compute_phi_d_();
+#ifdef P4_TO_P8
+    compute_phi_d(phi_, phi_x_, phi_y_, phi_z_, is_phi_d_owned_);
+#else
+    compute_phi_d(phi_, phi_x_, phi_y_, is_phi_d_owned_);
+#endif
     is_phi_d_owned_ = true;
 
     if (phi_eff != NULL)
       phi_eff_ = phi_eff;
     else
-      compute_phi_eff_();
+      compute_phi_eff(phi_eff_, phi_, action_, is_phi_eff_owned_);
 
     if (volumes == NULL)
       volumes_computed_ = false;
@@ -286,7 +344,7 @@ public:
       volumes_ = volumes;
     }
     volumes_owned_ = false;
-//    compute_volumes_();
+//    compute_volumes();
 
 #ifdef CASL_THROWS
     if (num_interfaces_ > 0)
@@ -303,11 +361,79 @@ public:
 
   }
 
+  inline void set_immersed_interface(int num_interfaces,
+                           std::vector<action_t> *action, std::vector<int> *color,
+                           std::vector<Vec> *phi,
+                           std::vector<Vec> *phi_xx = NULL,
+                           std::vector<Vec> *phi_yy = NULL,
+                         #ifdef P4_TO_P8
+                           std::vector<Vec> *phi_zz = NULL,
+                         #endif
+                           Vec phi_eff = NULL,
+                           Vec volumes = NULL)
+  {
+    immersed_interface_.num_interfaces = num_interfaces;
+    immersed_interface_.action  = action;
+    immersed_interface_.color   = color;
+    immersed_interface_.phi     = phi;
 
-//  void set_geometry(std::vector<Vec> &phi,
-//                    std::vector<action_t> &action, std::vector<int> &color,
-//                    Vec phi_eff = NULL);
+    if (phi_xx != NULL &&
+    #ifdef P4_TO_P8
+        phi_zz != NULL &&
+    #endif
+        phi_yy != NULL)
+    {
+      immersed_interface_.phi_xx  = phi_xx;
+      immersed_interface_.phi_yy  = phi_yy;
+#ifdef P4_TO_P8
+      immersed_interface_.phi_zz  = phi_zz;
+#endif
+      immersed_interface_.is_phi_dd_owned = false;
+    } else {
+#ifdef P4_TO_P8
+      compute_phi_dd(immersed_interface_.phi, immersed_interface_.phi_xx, immersed_interface_.phi_yy, immersed_interface_.phi_zz, immersed_interface_.is_phi_dd_owned);
+#else
+      compute_phi_dd(immersed_interface_.phi, immersed_interface_.phi_xx, immersed_interface_.phi_yy, immersed_interface_.is_phi_dd_owned);
+#endif
+      immersed_interface_.is_phi_dd_owned = true;
+    }
 
+#ifdef P4_TO_P8
+    compute_phi_d(immersed_interface_.phi, immersed_interface_.phi_x, immersed_interface_.phi_y, immersed_interface_.phi_z, immersed_interface_.is_phi_d_owned);
+#else
+    compute_phi_d(immersed_interface_.phi, immersed_interface_.phi_x, immersed_interface_.phi_y, immersed_interface_.is_phi_d_owned);
+#endif
+    immersed_interface_.is_phi_d_owned = true;
+
+    if (phi_eff != NULL)
+      immersed_interface_.phi_eff = phi_eff;
+    else
+      compute_phi_eff(immersed_interface_.phi_eff, immersed_interface_.phi, immersed_interface_.action, immersed_interface_.is_phi_eff_owned);
+
+    if (volumes == NULL)
+      volumes_computed_ = false;
+    else
+    {
+      volumes_computed_ = true;
+      volumes_ = volumes;
+    }
+    volumes_owned_ = false;
+//    compute_volumes();
+
+#ifdef CASL_THROWS
+    if (immersed_interface_.num_interfaces > 0)
+      if (immersed_interface_.action->size() != immersed_interface_.num_interfaces ||
+          immersed_interface_.color->size()  != immersed_interface_.num_interfaces ||
+          immersed_interface_.phi->size()    != immersed_interface_.num_interfaces ||
+          immersed_interface_.phi_xx->size() != immersed_interface_.num_interfaces ||
+    #ifdef P4_TO_P8
+          immersed_interface_.phi_zz->size() != immersed_interface_.num_interfaces ||
+    #endif
+          immersed_interface_.phi_yy->size() != immersed_interface_.num_interfaces )
+        throw std::invalid_argument("[CASL_ERROR]: invalid geometry for the immersed interface");
+#endif
+
+  }
 
   // set BCs
 #ifdef P4_TO_P8
@@ -322,6 +448,12 @@ public:
   inline void set_bc_interface_type (std::vector<BoundaryConditionType> &bc_interface_type)  { bc_interface_type_  = &bc_interface_type;  is_matrix_computed_ = false; }
   inline void set_bc_interface_value(std::vector< CF_2 *> &bc_interface_value)               { bc_interface_value_ = &bc_interface_value; is_matrix_computed_ = false; }
   inline void set_bc_interface_coeff(std::vector< CF_2 *> &bc_interface_coeff)               { bc_interface_coeff_ = &bc_interface_coeff; is_matrix_computed_ = false; }
+#endif
+
+#ifdef P4_TO_P8
+  inline void set_jump_conditions(std::vector< CF_3 *> &jump_value, std::vector< CF_3 *> &jump_flux) { jump_value_ = &jump_value; jump_flux_ = &jump_flux; }
+#else
+  inline void set_jump_conditions(std::vector< CF_2 *> &jump_value, std::vector< CF_2 *> &jump_flux) { jump_value_ = &jump_value; jump_flux_ = &jump_flux; }
 #endif
 
   inline void set_diag_add(double diag_add_scalar) { diag_add_scalar_  = diag_add_scalar; is_matrix_computed_ = false; }
@@ -350,7 +482,7 @@ public:
 #endif
       is_mue_dd_owned_ = false;
     } else {
-      compute_mue_dd_();
+      compute_mue_dd();
       is_mue_dd_owned_ = true;
     }
 

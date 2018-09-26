@@ -7637,7 +7637,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_full( Vec phi, Vec mask, Ve
   {
     ierr = VecCreateGhostNodes(p4est, nodes, &qx);  CHKERRXX(ierr);
     ierr = VecCreateGhostNodes(p4est, nodes, &qy);  CHKERRXX(ierr);
-#ifdef P4_TO_P8                                 )
+#ifdef P4_TO_P8
     ierr = VecCreateGhostNodes(p4est, nodes, &qz);  CHKERRXX(ierr);
 #endif
 
