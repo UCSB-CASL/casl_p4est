@@ -58,7 +58,8 @@
 //#include "nearpt3/nearpt3.cc"
 #include <src/Parser.h>
 #include <src/math.h>
-
+#include <iostream>
+#include <string>
 
 #include "Halton/halton.cpp"
 
@@ -66,7 +67,7 @@ using namespace std;
 
 
 
-int test = 2; //-1: just a positive domain for test, dynamic linear case=2, dynamic nonlinear case=4, static linear case=1, random cube box side enforced = 8, random spheroid=9
+int test = 10; //-1: just a positive domain for test, dynamic linear case=2, dynamic nonlinear case=4, static linear case=1, random cube box side enforced = 8, random spheroid=9, 10=read from initial condition file.
 // test=1,2 use the exact solution on the boundary condition! Be careful!
 
 double cellDensity = 0.0001;   // only if test = 8 || 9
@@ -108,12 +109,12 @@ int nb_cells = test==7 ? 2 : ((test==8 || test==9) ? int (cellDensity*SphereVolu
 
 
 //Note: I changed xmin/ymin/zminn and max's for test<4 from 2*x_cells*r0 to 4*x_cells*r0
-double xmin = test<4 ? -2*x_cells*r0 :  (test == 7 ? -4*pow(nb_cells, 1./3.)*r0  : ((test==8 || test==9) ? -boxSide/2 : -2*x_cells*r0));
-double xmax = test<4 ?  2*x_cells*r0 :  (test == 7 ?  4*pow(nb_cells, 1./3.)*r0  : ((test==8 || test==9) ?  boxSide/2 :  2*x_cells*r0));
-double ymin = test<4 ? -2*y_cells*r0 :  (test == 7 ? -4*pow(nb_cells, 1./3.)*r0  : ((test==8 || test==9) ? -boxSide/2 : -2*y_cells*r0));
-double ymax = test<4 ?  2*y_cells*r0 :  (test == 7 ?  4*pow(nb_cells, 1./3.)*r0  : ((test==8 || test==9) ?  boxSide/2 :  2*y_cells*r0));
-double zminn = test<4 ? -2*z_cells*r0 :  (test == 7 ? -4*pow(nb_cells, 1./3.)*r0  : ((test==8 || test==9) ? -boxSide/2 : -2*z_cells*r0));
-double zmaxx = test<4 ?  2*z_cells*r0 :  (test == 7 ?  4*pow(nb_cells, 1./3.)*r0  : ((test==8 || test==9) ?  boxSide/2 :  2*z_cells*r0));
+double xmin = test<4 ? -2*x_cells*r0 :  (test == 7 ? -4*pow(nb_cells, 1./3.)*r0  : ((test==8 || test==9 || test==10) ? -boxSide/2 : -2*x_cells*r0));
+double xmax = test<4 ?  2*x_cells*r0 :  (test == 7 ?  4*pow(nb_cells, 1./3.)*r0  : ((test==8 || test==9 || test==10) ?  boxSide/2 :  2*x_cells*r0));
+double ymin = test<4 ? -2*y_cells*r0 :  (test == 7 ? -4*pow(nb_cells, 1./3.)*r0  : ((test==8 || test==9 || test==10) ? -boxSide/2 : -2*y_cells*r0));
+double ymax = test<4 ?  2*y_cells*r0 :  (test == 7 ?  4*pow(nb_cells, 1./3.)*r0  : ((test==8 || test==9 || test==10) ?  boxSide/2 :  2*y_cells*r0));
+double zminn = test<4 ? -2*z_cells*r0 :  (test == 7 ? -4*pow(nb_cells, 1./3.)*r0  : ((test==8 || test==9 || test==10) ? -boxSide/2 : -2*z_cells*r0));
+double zmaxx = test<4 ?  2*z_cells*r0 :  (test == 7 ?  4*pow(nb_cells, 1./3.)*r0  : ((test==8 || test==9 || test==10) ?  boxSide/2 :  2*z_cells*r0));
 
 const double xyz_min_[] = {xmin, ymin, zminn};
 const double xyz_max_[] = {xmax, ymax, zmaxx};
@@ -295,6 +296,28 @@ public:
                 d = MIN(d, sqrt(SQR(x_tmp/ex[n].x) + SQR(y_tmp/ex[n].y) + SQR(z_tmp/ex[n].z)) - radii[n]);
             }
             return d;
+        case 10:
+            for(int n=0; n<nb_cells; ++n)
+            {
+                x0 = x - centers[n].x;
+                y0 = y - centers[n].y;
+                z0 = z - centers[n].z;
+
+                x_tmp = x0;
+                y_tmp = cos(theta[n].x)*y0 - sin(theta[n].x)*z0;
+                z_tmp = sin(theta[n].x)*y0 + cos(theta[n].x)*z0;
+
+                x0 = cos(theta[n].y)*x_tmp - sin(theta[n].y)*z_tmp;
+                y0 = y_tmp;
+                z0 = sin(theta[n].y)*x_tmp + cos(theta[n].y)*z_tmp;
+
+                x_tmp = cos(theta[n].z)*x0 - sin(theta[n].z)*y0;
+                y_tmp = sin(theta[n].z)*x0 + cos(theta[n].z)*y0;
+                z_tmp = z0;
+
+                d = MIN(d, sqrt(SQR(x_tmp/ex[n].x) + SQR(y_tmp/ex[n].y) + SQR(z_tmp/ex[n].z)) - radii[n]);
+            }
+            return d;
         default: throw std::invalid_argument("Choose a valid test.");
         }
     }
@@ -402,10 +425,88 @@ public:
             if(rank==0)
                 ierr = PetscPrintf(PETSC_COMM_SELF, "Done initializing random cells. The Cell volume density is = %g\n",density); CHKERRXX(ierr);
         }
+
+
+
+
+        if (test==10){
+            double max_x = 0;
+            double min_x=0;
+            std::ifstream in;
+            in.open("initial_conditions/init_n_10_N_27440.dat");
+            std::string line;
+            if(in.is_open())
+            {
+                int line_number = 0;
+                int n = 0;
+
+                while(std::getline(in, line)) //get 1 row as a string
+                {
+
+                    if(line_number==0 || line_number==2)
+                    {
+                        line_number++;
+                        continue;
+                    } else if (line_number==1)
+                    {
+                        std::istringstream iss(line); //put line into stringstream
+                        std::string word;
+                        iss >> word;
+                        nb_cells = std::stoi(word);
+                        centers.resize(nb_cells);
+                        radii.resize(nb_cells);
+                        ex.resize(nb_cells);
+                        theta.resize(nb_cells);
+                        line_number++;
+                        continue;
+                    } else {
+                        std::istringstream iss(line); //put line into stringstream
+                        std::string word;
+                        iss >> word;
+                        int ID = std::stoi(word);
+                        iss >> word;
+                        centers[n].x = std::stof(word);
+                        min_x = MIN(min_x, centers[n].x);
+                        max_x = MAX(max_x, centers[n].x);
+                        iss >> word;
+                        centers[n].y = std::stof(word);
+                        iss >> word;
+                        centers[n].z = std::stof(word);
+                        iss >> word;
+                        radii[n] = std::stof(word);
+                        iss >> word;
+                        ex[n].x = std::stof(word);
+                        iss >> word;
+                        ex[n].y = std::stof(word);
+                        iss >> word;
+                        ex[n].z = std::stof(word);
+                        iss >> word;
+                        theta[n].x = std::stof(word);
+                        iss >> word;
+                        theta[n].y = std::stof(word);
+                        iss >> word;
+                        theta[n].z = std::stof(word);
+                        iss >> word;
+                        cellVolumes += std::stof(word);
+                        line_number++;
+                        n++;
+                    }
+                }
+            }
+            ClusterRadius = (max_x - min_x)/2.0;
+            SphereVolume = 4*PI*(ClusterRadius*ClusterRadius*ClusterRadius)/3;
+            density = cellVolumes/SphereVolume;
+            if(rank==0)
+            {
+                ierr = PetscPrintf(PETSC_COMM_SELF, "The spheroid is almost bounded between xmin = %g and x_max = %g\n", min_x, max_x); CHKERRXX(ierr);
+                ierr = PetscPrintf(PETSC_COMM_SELF, "Done initializing %d number of random cells. The Spheroid volume density is = %g\n", nb_cells, density); CHKERRXX(ierr);
+            }
+
+        }
     }
 
     void save_cells(){
-        if(test==7 || test==8 || test==9)
+        if(test==7 || test==8 || test==9 || test==10)
         {
             MPI_Comm_rank(PETSC_COMM_WORLD,&rank);
             if(rank==0)
