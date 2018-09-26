@@ -245,6 +245,8 @@ private:
   bool shift_grids_;
   int  phi_grid_refinement_;
 
+  bool enforce_planar_front_;
+
 public:
 
   my_p4est_multialloy_t(my_p4est_node_neighbors_t *ngbd);
@@ -583,6 +585,8 @@ public:
 
   inline void set_dendrite_cut_off_fraction(double value) { dendrite_cut_off_fraction_ = value; }
   inline void set_dendrite_min_length(double value) { dendrite_min_length_ = value; }
+
+  inline void set_enforce_planar_front(bool value) { enforce_planar_front_ = value; }
 };
 
 

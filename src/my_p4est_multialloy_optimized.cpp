@@ -118,6 +118,8 @@ my_p4est_multialloy_t::my_p4est_multialloy_t(my_p4est_node_neighbors_t *ngbd)
   update_c0_robin_           = false;
   zero_negative_velocity_    = false;
 
+  enforce_planar_front_ = 0;
+
   interpolation_between_grids_ = quadratic_non_oscillatory_continuous_v1;
 
   history_p4est_ = p4est_copy(p4est_, P4EST_FALSE);
@@ -482,6 +484,43 @@ void my_p4est_multialloy_t::compute_velocity()
 
   ls.extend_from_interface_to_whole_domain_TVD(phi_, vn, normal_velocity_np1_);
   ierr = VecDestroy(vn); CHKERRXX(ierr);
+
+  if (enforce_planar_front_)
+  {
+    Vec ones;
+    ierr = VecDuplicate(phi_, &ones); CHKERRXX(ierr);
+
+    double *ones_p;
+
+    ierr = VecGetArray(ones, &ones_p); CHKERRXX(ierr);
+
+    foreach_node(n, nodes_)
+    {
+      ones_p[n] = 1;
+    }
+
+    ierr = VecRestoreArray(ones, &ones_p); CHKERRXX(ierr);
+
+    double v_avg = integrate_over_interface(p4est_, nodes_, phi_, v_interface_np1_[1])/integrate_over_interface(p4est_, nodes_, phi_, ones);
+
+    ierr = VecDestroy(ones); CHKERRXX(ierr);
+
+    for(int dir=0; dir<P4EST_DIM; ++dir)
+    {
+      ierr = VecGetArray(v_interface_np1_[dir], &v_gamma_p[dir]); CHKERRXX(ierr);
+    }
+
+    foreach_node(n, nodes_)
+    {
+      v_gamma_p[0][n] = 0;
+      v_gamma_p[1][n] = v_avg;
+    }
+
+    for(int dir=0; dir<P4EST_DIM; ++dir)
+    {
+      ierr = VecRestoreArray(v_interface_np1_[dir], &v_gamma_p[dir]); CHKERRXX(ierr);
+    }
+  }
 
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_compute_velocity, 0, 0, 0, 0); CHKERRXX(ierr);
 }

@@ -57,7 +57,7 @@
 
 // grid parameters
 int lmin = 5;
-int lmax = 10;
+int lmax = 9;
 double lip = 2;
 
 #ifdef P4_TO_P8
@@ -116,6 +116,8 @@ int max_total_iterations   = INT_MAX;
 double time_limit          = DBL_MAX;
 double termination_length  = 1.8;
 double init_perturb        = 0.001;
+
+bool enforce_planar_front   = 1;
 
 int alloy_type = 2;
 
@@ -211,7 +213,7 @@ void set_alloy_parameters()
       rho            = 9.2392e-3;   /* kg.cm-3    */
       heat_capacity  = 356;         /* J.kg-1.K-1 */
       Tm             = 1996;        /* K           */
-      G              = 5000;         /* K.cm-1      */
+      G              = 100;         /* K.cm-1      */
       V              = 0.005;        /* cm.s-1      */
       latent_heat    = 2588.7;      /* J.cm-3      */
       thermal_conductivity =  1.3;/* W.cm-1.K-1  */
@@ -679,6 +681,7 @@ int main (int argc, char* argv[])
     ADD_OPTION(i, time_limit,            "final time");
     ADD_OPTION(i, termination_length,    "defines when a run will be stopped (fraction of box length, from 0 to 1)");
     ADD_OPTION(i, init_perturb,          "init_perturb");
+    ADD_OPTION(i, enforce_planar_front,   "enforce_planar_front");
 
     ADD_OPTION(i, alloy_type,  "choose the type of alloy. Default is 0.\n  0 - NiCuCu\n  1 - NiAlTa");
     if (i == 1) set_alloy_parameters();
@@ -815,6 +818,8 @@ int main (int argc, char* argv[])
   double dt = 0.45*MIN(dx,dy)/V;
 #endif
 
+  if (enforce_planar_front) init_perturb = 0;
+
   double *phi_p;
   ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
 
@@ -881,6 +886,8 @@ int main (int argc, char* argv[])
 
   bas.set_dendrite_cut_off_fraction(dendrite_cut_off_fraction);
   bas.set_dendrite_min_length(dendrite_min_length);
+
+  bas.set_enforce_planar_front(enforce_planar_front);
 
 
 //  bas.set_zero_negative_velocity(zero_negative_velocity);
