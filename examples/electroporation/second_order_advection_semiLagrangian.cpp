@@ -505,6 +505,7 @@ int main (int argc, char* argv[])
   dxyz_min[1] = (ymax-ymin)/ny/(1<<lmax);
   dxyz_min[2] = (zmax-zmin)/nz/(1<<lmax);
   double dt = cfl*MIN(dxyz_min[0], dxyz_min[1], dxyz_min[2]);
+  double dt_nm1 = dt;
   PetscPrintf(mpi.comm(), "test= %d, time-step= %g, dx=%g, cfl=%g\n", test_number, dt, dxyz_min[0], cfl);
 
 
@@ -529,7 +530,7 @@ int main (int argc, char* argv[])
 
   /* initialize the velocity field */
   const CF_3 *velo_cf[3] = { &u, &v, &w };
-  Vec velo_n[3];
+  Vec velo_nm1[3], velo_n[3];
   Vec M;
   VecDuplicate(phi_n, &M);
   sample_cf_on_nodes(p4est, nodes, initial_M, M);
@@ -537,7 +538,10 @@ int main (int argc, char* argv[])
   {
     ierr = VecDuplicate(phi_n, &velo_n[dir]); CHKERRXX(ierr);
     sample_cf_on_nodes(p4est, nodes, *velo_cf[dir], velo_n[dir]);
+    ierr = VecDuplicate(phi_n, &velo_nm1[dir]); CHKERRXX(ierr);
+    sample_cf_on_nodes(p4est, nodes, *velo_cf[dir], velo_nm1[dir]);
   }
+
 
   int iter = 0;
 
@@ -553,20 +557,28 @@ int main (int argc, char* argv[])
   for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
       phi_p[i] = -phi_p[i];
   for(int dir=0;dir<3; ++dir)
+  {
+      ls.extend_Over_Interface(phi_n, velo_nm1[dir], bc_interface, 2, 20);
       ls.extend_Over_Interface(phi_n, velo_n[dir], bc_interface, 2, 20);
+  }
   for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
       phi_p[i] = -phi_p[i];
 
-  double *velo_p[3];
+  double *velo_p[3], *velo_nm1_p[3];
   for(int dir=0;dir<3; ++dir)
   {
 	VecGetArray(velo_n[dir], &velo_p[dir]);
+	VecGetArray(velo_nm1[dir], &velo_nm1_p[dir]);
   	for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
   	{
-      		if(phi_p[i]<0)      
+      		if(phi_p[i]<0)
+		{      
 			velo_p[dir][i] = 0;
+			velo_nm1_p[dir][i] = 0;
+		}
   	}
 	VecRestoreArray(velo_n[dir], &velo_p[dir]);
+	VecRestoreArray(velo_nm1[dir], &velo_nm1_p[dir]);
   }
 
   ierr = VecRestoreArray(phi_n, &phi_p); CHKERRXX(ierr);
@@ -581,7 +593,9 @@ int main (int argc, char* argv[])
   while(tn<tf)
   {
     PetscPrintf(mpi.comm(), "Iteration=%d, time=%g (s) out of %g (s)\n", iter, tn, tf);
-    advect(p4est, nodes, ngbd, phi_n, velo_n, dt, M, true);
+    
+    advect(p4est, nodes, ngbd, velo_nm1, velo_n, dt_nm1, dt, M, true);
+
     double total_mass = integrate_over_negative_domain(p4est, nodes, domain, M);
     PetscPrintf(mpi.comm(), "TOTAL mass is %g\n", total_mass);
     if(save_vtk && iter % save_every_n == 0)
