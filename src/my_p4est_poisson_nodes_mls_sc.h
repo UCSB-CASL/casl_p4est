@@ -129,15 +129,23 @@ class my_p4est_poisson_nodes_mls_sc_t
   Vec    diag_add_;
   double diag_add_scalar_;
 
-  double mu_;
+  double mu_m_;
+  double mu_p_;
 
   bool variable_mu_;
-  bool is_mue_dd_owned_;
-  Vec  mue_;
-  Vec  mue_xx_;
-  Vec  mue_yy_;
+
+  bool is_mue_m_dd_owned_;
+  bool is_mue_p_dd_owned_;
+
+  Vec  mue_m_;
+  Vec  mue_p_;
+  Vec  mue_m_xx_;
+  Vec  mue_p_xx_;
+  Vec  mue_m_yy_;
+  Vec  mue_p_yy_;
 #ifdef P4_TO_P8
-  Vec  mue_zz_;
+  Vec  mue_m_zz_;
+  Vec  mue_p_zz_;
 #endif
 
   // solver options
@@ -459,7 +467,8 @@ public:
   inline void set_diag_add(double diag_add_scalar) { diag_add_scalar_  = diag_add_scalar; is_matrix_computed_ = false; }
   inline void set_diag_add(Vec diag_add)           { diag_add_         = diag_add;        is_matrix_computed_ = false; }
 
-  inline void set_mu(double mu) { mu_ = mu; variable_mu_ = false; }
+  inline void set_mu(double mu) { mu_m_ = mu; mu_p_ = mu; variable_mu_ = false; }
+  inline void set_mu(double mu_m, double mu_p) { mu_m_ = mu_m; mu_p_ = mu_p;  variable_mu_ = false; }
 
 #ifdef P4_TO_P8
   void set_mu(Vec mue, Vec mue_xx = NULL, Vec mue_yy = NULL, Vec mue_zz = NULL)
@@ -467,7 +476,8 @@ public:
   void set_mu(Vec mue, Vec mue_xx = NULL, Vec mue_yy = NULL)
 #endif
   {
-    mue_ = mue;
+    mue_m_ = mue;
+    mue_p_ = mue;
 
     if (mue_xx != NULL &&
     #ifdef P4_TO_P8
@@ -475,15 +485,61 @@ public:
     #endif
         mue_yy != NULL)
     {
-      mue_xx_ = mue_xx;
-      mue_yy_ = mue_yy;
+      mue_m_xx_ = mue_xx;
+      mue_p_xx_ = mue_xx;
+      mue_m_yy_ = mue_yy;
+      mue_p_yy_ = mue_yy;
 #ifdef P4_TO_P8
-      mue_zz_ = mue_zz;
+      mue_m_zz_ = mue_zz;
+      mue_p_zz_ = mue_zz;
 #endif
-      is_mue_dd_owned_ = false;
+      is_mue_m_dd_owned_ = false;
+      is_mue_p_dd_owned_ = false;
     } else {
       compute_mue_dd();
-      is_mue_dd_owned_ = true;
+    }
+
+    is_matrix_computed_ = false;
+
+    variable_mu_ = true;
+  }
+
+#ifdef P4_TO_P8
+  void set_mu(Vec mue_m,
+              Vec mue_p,
+              Vec mue_m_xx = NULL, Vec mue_m_yy = NULL, Vec mue_m_zz = NULL,
+              Vec mue_p_xx = NULL, Vec mue_p_yy = NULL, Vec mue_p_zz = NULL)
+#else
+  void set_mu(Vec mue_m,
+              Vec mue_p,
+              Vec mue_m_xx = NULL, Vec mue_m_yy = NULL,
+              Vec mue_p_xx = NULL, Vec mue_p_yy = NULL)
+#endif
+  {
+    mue_m_ = mue_m;
+    mue_p_ = mue_p;
+
+    if (mue_m_xx != NULL &&
+        mue_p_xx != NULL &&
+    #ifdef P4_TO_P8
+        mue_m_zz != NULL &&
+        mue_p_zz != NULL &&
+    #endif
+        mue_m_yy != NULL &&
+        mue_p_yy != NULL)
+    {
+      mue_m_xx_ = mue_m_xx;
+      mue_p_xx_ = mue_p_xx;
+      mue_m_yy_ = mue_m_yy;
+      mue_p_yy_ = mue_p_yy;
+#ifdef P4_TO_P8
+      mue_m_zz_ = mue_m_zz;
+      mue_p_zz_ = mue_p_zz;
+#endif
+      is_mue_m_dd_owned_ = false;
+      is_mue_p_dd_owned_ = false;
+    } else {
+      compute_mue_dd();
     }
 
     is_matrix_computed_ = false;

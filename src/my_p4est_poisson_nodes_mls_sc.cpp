@@ -84,15 +84,21 @@ my_p4est_poisson_nodes_mls_sc_t::my_p4est_poisson_nodes_mls_sc_t(const my_p4est_
   diag_add_        = NULL;
   diag_add_scalar_ = 0.;
 
-  mu_ = 1.;
+  mu_m_ = 1.;
+  mu_p_ = 1.;
 
   variable_mu_     = false;
-  is_mue_dd_owned_ = false;
-  mue_             = NULL;
-  mue_xx_          = NULL;
-  mue_yy_          = NULL;
+  is_mue_m_dd_owned_ = false;
+  is_mue_p_dd_owned_ = false;
+  mue_m_             = NULL;
+  mue_p_             = NULL;
+  mue_m_xx_          = NULL;
+  mue_p_xx_          = NULL;
+  mue_m_yy_          = NULL;
+  mue_p_yy_          = NULL;
 #ifdef P4_TO_P8
-  mue_zz_          = NULL;
+  mue_m_zz_          = NULL;
+  mue_p_zz_          = NULL;
 #endif
 
   // solver options
@@ -221,19 +227,28 @@ my_p4est_poisson_nodes_mls_sc_t::~my_p4est_poisson_nodes_mls_sc_t()
 #endif
   }
 
-  if (is_mue_dd_owned_)
+  if (is_mue_m_dd_owned_)
   {
-    if (mue_xx_ != NULL) {ierr = VecDestroy(mue_xx_); CHKERRXX(ierr);}
-    if (mue_yy_ != NULL) {ierr = VecDestroy(mue_yy_); CHKERRXX(ierr);}
+    if (mue_m_xx_ != NULL) { ierr = VecDestroy(mue_m_xx_); CHKERRXX(ierr); }
+    if (mue_m_yy_ != NULL) { ierr = VecDestroy(mue_m_yy_); CHKERRXX(ierr); }
 #ifdef P4_TO_P8
-    if (mue_zz_ != NULL) {ierr = VecDestroy(mue_zz_); CHKERRXX(ierr);}
+    if (mue_m_zz_ != NULL) { ierr = VecDestroy(mue_m_zz_); CHKERRXX(ierr); }
+#endif
+  }
+
+  if (is_mue_p_dd_owned_)
+  {
+    if (mue_p_xx_ != NULL) { ierr = VecDestroy(mue_p_xx_); CHKERRXX(ierr); }
+    if (mue_p_yy_ != NULL) { ierr = VecDestroy(mue_p_yy_); CHKERRXX(ierr); }
+#ifdef P4_TO_P8
+    if (mue_p_zz_ != NULL) { ierr = VecDestroy(mue_p_zz_); CHKERRXX(ierr); }
 #endif
   }
 
   if (volumes_ != NULL && volumes_owned_) {ierr = VecDestroy(volumes_); CHKERRXX(ierr);}
   if (areas_   != NULL && volumes_owned_) {ierr = VecDestroy(areas_);   CHKERRXX(ierr);}
   if (node_type_ != NULL) {ierr = VecDestroy(node_type_); CHKERRXX(ierr);}
-  if (is_phi_eff_owned_)    {ierr = VecDestroy(phi_eff_);  CHKERRXX(ierr);}
+  if (is_phi_eff_owned_) {ierr = VecDestroy(phi_eff_);  CHKERRXX(ierr);}
 
   // immersed interface stuff
   if (immersed_interface_.is_phi_dd_owned)
@@ -385,26 +400,55 @@ void my_p4est_poisson_nodes_mls_sc_t::compute_phi_d(std::vector<Vec> *&phi, std:
 
 void my_p4est_poisson_nodes_mls_sc_t::compute_mue_dd()
 {
-  if (mue_xx_ != NULL && is_mue_dd_owned_) { ierr = VecDestroy(mue_xx_); CHKERRXX(ierr); }
-  if (mue_yy_ != NULL && is_mue_dd_owned_) { ierr = VecDestroy(mue_yy_); CHKERRXX(ierr); }
+  if (is_mue_m_dd_owned_)
+  {
+    if (mue_m_xx_ != NULL) { ierr = VecDestroy(mue_m_xx_); CHKERRXX(ierr); }
+    if (mue_m_yy_ != NULL) { ierr = VecDestroy(mue_m_yy_); CHKERRXX(ierr); }
 #ifdef P4_TO_P8
-  if (mue_zz_ != NULL && is_mue_dd_owned_) { ierr = VecDestroy(mue_zz_); CHKERRXX(ierr); }
+    if (mue_m_zz_ != NULL) { ierr = VecDestroy(mue_m_zz_); CHKERRXX(ierr); }
 #endif
+  }
 
-  // Allocate memory for second derivaties
-  ierr = VecCreateGhostNodes(p4est_, nodes_, &mue_xx_); CHKERRXX(ierr);
-  ierr = VecCreateGhostNodes(p4est_, nodes_, &mue_yy_); CHKERRXX(ierr);
+  if (is_mue_p_dd_owned_)
+  {
+    if (mue_p_xx_ != NULL) { ierr = VecDestroy(mue_p_xx_); CHKERRXX(ierr); }
+    if (mue_p_yy_ != NULL) { ierr = VecDestroy(mue_p_yy_); CHKERRXX(ierr); }
 #ifdef P4_TO_P8
-  ierr = VecCreateGhostNodes(p4est_, nodes_, &mue_zz_); CHKERRXX(ierr);
+    if (mue_p_zz_ != NULL) { ierr = VecDestroy(mue_p_zz_); CHKERRXX(ierr); }
 #endif
+  }
 
+  ierr = VecCreateGhostNodes(p4est_, nodes_, &mue_m_xx_); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodes(p4est_, nodes_, &mue_m_yy_); CHKERRXX(ierr);
 #ifdef P4_TO_P8
-  node_neighbors_->second_derivatives_central(mue_, mue_xx_, mue_yy_, mue_zz_);
+  ierr = VecCreateGhostNodes(p4est_, nodes_, &mue_m_zz_); CHKERRXX(ierr);
+
+  node_neighbors_->second_derivatives_central(mue_m_, mue_m_xx_, mue_m_yy_, mue_m_zz_);
 #else
-  node_neighbors_->second_derivatives_central(mue_, mue_xx_, mue_yy_);
+  node_neighbors_->second_derivatives_central(mue_m_, mue_m_xx_, mue_m_yy_);
 #endif
+  is_mue_m_dd_owned_ = true;
 
-  is_mue_dd_owned_ = true;
+  if (mue_m_ == mue_p_)
+  {
+    mue_p_xx_ = mue_m_xx_;
+    mue_p_yy_ = mue_m_yy_;
+#ifdef P4_TO_P8
+    mue_p_zz_ = mue_m_zz_;
+#endif
+    is_mue_p_dd_owned_ = false;
+  } else {
+    ierr = VecCreateGhostNodes(p4est_, nodes_, &mue_p_xx_); CHKERRXX(ierr);
+    ierr = VecCreateGhostNodes(p4est_, nodes_, &mue_p_yy_); CHKERRXX(ierr);
+  #ifdef P4_TO_P8
+    ierr = VecCreateGhostNodes(p4est_, nodes_, &mue_p_zz_); CHKERRXX(ierr);
+
+    node_neighbors_->second_derivatives_central(mue_p_, mue_p_xx_, mue_p_yy_, mue_p_zz_);
+  #else
+    node_neighbors_->second_derivatives_central(mue_p_, mue_p_xx_, mue_p_yy_);
+  #endif
+    is_mue_p_dd_owned_ = true;
+  }
 }
 
 void my_p4est_poisson_nodes_mls_sc_t::preallocate_matrix()
@@ -893,22 +937,51 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
 
   ierr = VecGetArray(phi_eff_, &phi_eff_p); CHKERRXX(ierr);
 
+  double *immersed_phi_eff_p;
+
+  ierr = VecGetArray(immersed_interface_.phi_eff, &immersed_phi_eff_p); CHKERRXX(ierr);
+
+  double *mue_m_ptr=NULL;
+  double *mue_m_xx_ptr=NULL;
+  double *mue_m_yy_ptr=NULL;
+#ifdef P4_TO_P8
+  double *mue_m_zz_ptr=NULL;
+#endif
+
+  if (variable_mu_)
+  {
+    ierr = VecGetArray(mue_m_,    &mue_m_ptr   ); CHKERRXX(ierr);
+    ierr = VecGetArray(mue_m_xx_, &mue_m_xx_ptr); CHKERRXX(ierr);
+    ierr = VecGetArray(mue_m_yy_, &mue_m_yy_ptr); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    ierr = VecGetArray(mue_m_zz_, &mue_m_zz_p)tr; CHKERRXX(ierr);
+#endif
+  }
+
+  double *mue_p_ptr=NULL;
+  double *mue_p_xx_ptr=NULL;
+  double *mue_p_yy_ptr=NULL;
+#ifdef P4_TO_P8
+  double *mue_p_zz_ptr=NULL;
+#endif
+
+  if (variable_mu_)
+  {
+    ierr = VecGetArray(mue_p_,    &mue_p_ptr   ); CHKERRXX(ierr);
+    ierr = VecGetArray(mue_p_xx_, &mue_p_xx_ptr); CHKERRXX(ierr);
+    ierr = VecGetArray(mue_p_yy_, &mue_p_yy_ptr); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    ierr = VecGetArray(mue_p_zz_, &mue_p_zz_p)tr; CHKERRXX(ierr);
+#endif
+  }
+
+  double mu_ = mu_m_;
   double *mue_p=NULL;
   double *mue_xx_p=NULL;
   double *mue_yy_p=NULL;
 #ifdef P4_TO_P8
   double *mue_zz_p=NULL;
 #endif
-
-  if (variable_mu_)
-  {
-    ierr = VecGetArray(mue_,    &mue_p   ); CHKERRXX(ierr);
-    ierr = VecGetArray(mue_xx_, &mue_xx_p); CHKERRXX(ierr);
-    ierr = VecGetArray(mue_yy_, &mue_yy_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-    ierr = VecGetArray(mue_zz_, &mue_zz_p); CHKERRXX(ierr);
-#endif
-  }
 
   double *diag_add_p;
 
@@ -928,6 +1001,16 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
 #ifdef P4_TO_P8
   std::vector<double> phi_00m(num_interfaces_, 0);
   std::vector<double> phi_00p(num_interfaces_, 0);
+#endif
+
+  std::vector<double> immersed_phi_000(immersed_interface_.num_interfaces,-1);
+  std::vector<double> immersed_phi_p00(immersed_interface_.num_interfaces, 0);
+  std::vector<double> immersed_phi_m00(immersed_interface_.num_interfaces, 0);
+  std::vector<double> immersed_phi_0m0(immersed_interface_.num_interfaces, 0);
+  std::vector<double> immersed_phi_0p0(immersed_interface_.num_interfaces, 0);
+#ifdef P4_TO_P8
+  std::vector<double> immersed_phi_00m(immersed_interface_.num_interfaces, 0);
+  std::vector<double> immersed_phi_00p(immersed_interface_.num_interfaces, 0);
 #endif
 
   double *mask_p;
@@ -954,25 +1037,15 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
     ierr = VecGetArray(node_type_, &node_type_p); CHKERRXX(ierr);
 //  }
 
-  double mue_000 = mu_;
-  double mue_p00 = mu_;
-  double mue_m00 = mu_;
-  double mue_0m0 = mu_;
-  double mue_0p0 = mu_;
+  double mue_000 = mu_m_;
+  double mue_p00 = mu_m_;
+  double mue_m00 = mu_m_;
+  double mue_0m0 = mu_m_;
+  double mue_0p0 = mu_m_;
 #ifdef P4_TO_P8
-  double mue_00m = mu_;
-  double mue_00p = mu_;
+  double mue_00m = mu_m_;
+  double mue_00p = mu_m_;
 #endif
-
-  /* Daniil: while working on solidification of alloys I came to realize
-   * that due to very irregular structure of solidification fronts (where
-   * there constantly exist nodes, which belong to one phase but the vertices
-   * of their dual cells belong to the other phase. In such cases simple dual
-   * cells consisting of 2 (6 in 3D) simplices don't capture such complex
-   * topologies. To aleviate this issue I added an option to use a more detailed
-   * dual cells consisting of 8 (48 in 3D) simplices. Clearly, it might increase
-   * the computational cost quite significantly, but oh well...
-   */
 
   // data for refined cells
   unsigned short fv_size_x = 0;
@@ -1000,13 +1073,21 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
   // interpolations
   my_p4est_interpolation_nodes_local_t interp_local(node_neighbors_);
   my_p4est_interpolation_nodes_local_t phi_interp_local(node_neighbors_);
+  my_p4est_interpolation_nodes_local_t mu_m_interp(node_neighbors_);
+  my_p4est_interpolation_nodes_local_t mu_p_interp(node_neighbors_);
 
   if (variable_mu_)
+  {
 #ifdef P4_TO_P8
-    interp_local.set_input(mue_p, mue_xx_p, mue_yy_p, mue_zz_p, interp_method_);
+    interp_local.set_input(mue_m_ptr, mue_m_xx_ptr, mue_m_yy_ptr, mue_m_zz_ptr, interp_method_);
+    mu_m_interp.set_input(mue_m_ptr, mue_m_xx_ptr, mue_m_yy_ptr, mue_m_zz_ptr, interp_method_);
+    mu_p_interp.set_input(mue_p_ptr, mue_p_xx_ptr, mue_p_yy_ptr, mue_p_zz_ptr, interp_method_);
 #else
-    interp_local.set_input(mue_p, mue_xx_p, mue_yy_p, interp_method_);
+    interp_local.set_input(mue_m_ptr, mue_m_xx_ptr, mue_m_yy_ptr, interp_method_);
+    mu_m_interp.set_input(mue_m_ptr, mue_m_xx_ptr, mue_m_yy_ptr, interp_method_);
+    mu_p_interp.set_input(mue_p_ptr, mue_p_xx_ptr, mue_p_yy_ptr, interp_method_);
 #endif
+  }
 
   my_p4est_interpolation_nodes_local_t phi_x_local(node_neighbors_);
   my_p4est_interpolation_nodes_local_t phi_y_local(node_neighbors_);
@@ -1098,6 +1179,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
 #endif
 
     double phi_eff_000 = phi_eff_p[n];
+    double immersed_phi_eff_000 = immersed_phi_eff_p[n];
 
     const quad_neighbor_nodes_of_node_t qnnn = node_neighbors_->get_neighbors(n);
 
@@ -1420,18 +1502,14 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
 #ifdef P4_TO_P8
     for (short phi_idx = 0; phi_idx < num_interfaces_; ++phi_idx)
       qnnn.ngbd_with_quadratic_interpolation(phi_p[phi_idx], phi_000[phi_idx], phi_m00[phi_idx], phi_p00[phi_idx], phi_0m0[phi_idx], phi_0p0[phi_idx], phi_00m[phi_idx], phi_00p[phi_idx]);
-
-    if (variable_mu_)
-      qnnn.ngbd_with_quadratic_interpolation(mue_p, mue_000, mue_m00, mue_p00, mue_0m0, mue_0p0, mue_00m, mue_00p);
 #else
     for (unsigned short phi_idx = 0; phi_idx < num_interfaces_; ++phi_idx)
       qnnn.ngbd_with_quadratic_interpolation(phi_p[phi_idx], phi_000[phi_idx], phi_m00[phi_idx], phi_p00[phi_idx], phi_0m0[phi_idx], phi_0p0[phi_idx]);
-
-    if (variable_mu_)
-      qnnn.ngbd_with_quadratic_interpolation(mue_p, mue_000, mue_m00, mue_p00, mue_0m0, mue_0p0);
 #endif
 
     interp_local.initialize(n);
+    mu_m_interp.copy_init(interp_local);
+    mu_p_interp.copy_init(interp_local);
     phi_interp_local.copy_init(interp_local);
     phi_x_local.copy_init(interp_local);
     phi_y_local.copy_init(interp_local);
@@ -1444,6 +1522,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
     //---------------------------------------------------------------------
     bool is_ngbd_crossed_dirichlet = false;
     bool is_ngbd_crossed_neumann   = false;
+    bool is_ngbd_crossed_immersed  = false;
 
     if (fabs(phi_eff_000) < lip_*diag_min_)
     {
@@ -1468,6 +1547,28 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
           if (bc_interface_type_->at(phi_idx) == NEUMANN)   is_ngbd_crossed_neumann   = true;
           if (bc_interface_type_->at(phi_idx) == ROBIN)     is_ngbd_crossed_neumann   = true;
         }
+      }
+    }
+
+
+    if (fabs(phi_eff_000) < lip_*diag_min_)
+    {
+      get_all_neighbors(n, neighbors, neighbors_exist);
+
+      // sample level-set function at nodes of the extended cube and check if crossed
+      for (unsigned short phi_idx = 0; phi_idx < immersed_interface_.num_interfaces; ++phi_idx)
+      {
+        bool is_one_positive = false;
+        bool is_one_negative = false;
+
+        for (short i = 0; i < num_neighbors_max_; ++i)
+          if (neighbors_exist[i])
+          {
+            is_one_positive = is_one_positive || phi_p[phi_idx][neighbors[i]] > 0;
+            is_one_negative = is_one_negative || phi_p[phi_idx][neighbors[i]] < 0;
+          }
+
+        if (is_one_negative && is_one_positive) is_ngbd_crossed_immersed = true;
       }
     }
 
@@ -1533,6 +1634,41 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
       // then finite difference method
       if (phi_eff_000 < 0.)
       {
+        if (immersed_phi_eff_000 < 0)
+        {
+          mu_ = mu_m_;
+          mue_p    = mue_m_ptr;
+          mue_xx_p = mue_m_xx_ptr;
+          mue_yy_p = mue_m_yy_ptr;
+#ifdef P4_TO_P8
+          mue_zz_p = mue_m_zz_ptr;
+#endif
+        } else {
+          mu_ = mu_p_;
+          mue_p    = mue_p_ptr;
+          mue_xx_p = mue_p_xx_ptr;
+          mue_yy_p = mue_p_yy_ptr;
+#ifdef P4_TO_P8
+          mue_zz_p = mue_p_zz_ptr;
+#endif
+        }
+
+        if (variable_mu_)
+        {
+#ifdef P4_TO_P8
+          qnnn.ngbd_with_quadratic_interpolation(mue_p, mue_000, mue_m00, mue_p00, mue_0m0, mue_0p0, mue_00m, mue_00p);
+#else
+          qnnn.ngbd_with_quadratic_interpolation(mue_p, mue_000, mue_m00, mue_p00, mue_0m0, mue_0p0);
+#endif
+        }
+        else
+        {
+          mue_000 = mue_m00 = mue_p00 = mue_0m0 = mue_0p0 = mu_;
+#ifdef P4_TO_P8
+          mue_00m = mue_00p = mu_;
+#endif
+        }
+
         double theta_m00 = d_m00;
         double theta_p00 = d_p00;
         double theta_0m0 = d_0m0;
@@ -2334,6 +2470,23 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
     }
     else if (discretization_scheme_ == FVM)
     {
+      if (immersed_phi_eff_000 < 0)
+      {
+        mu_ = mu_m_;
+#ifdef P4_TO_P8
+        interp_local.set_input(mue_m_ptr, mue_m_xx_ptr, mue_m_yy_ptr, mue_m_zz_ptr, interp_method_);
+#else
+        interp_local.set_input(mue_m_ptr, mue_m_xx_ptr, mue_m_yy_ptr, interp_method_);
+#endif
+      } else {
+        mu_ = mu_p_;
+#ifdef P4_TO_P8
+        interp_local.set_input(mue_p_ptr, mue_p_xx_ptr, mue_p_yy_ptr, mue_p_zz_ptr, interp_method_);
+#else
+        interp_local.set_input(mue_p_ptr, mue_p_xx_ptr, mue_p_yy_ptr, interp_method_);
+#endif
+      }
+
       if (use_sc_scheme_)
         for (unsigned short idx = 0; idx < num_neighbors_max_; ++idx)
           if (neighbors_exist[idx])
@@ -4236,13 +4389,18 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
   }
 
   ierr = VecRestoreArray(phi_eff_, &phi_eff_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(immersed_interface_.phi_eff, &immersed_phi_eff_p); CHKERRXX(ierr);
 
   if (variable_mu_) {
-    ierr = VecRestoreArray(mue_,    &mue_p   ); CHKERRXX(ierr);
-    ierr = VecRestoreArray(mue_xx_, &mue_xx_p); CHKERRXX(ierr);
-    ierr = VecRestoreArray(mue_yy_, &mue_yy_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(mue_m_,    &mue_m_ptr   ); CHKERRXX(ierr);
+    ierr = VecRestoreArray(mue_p_,    &mue_p_ptr   ); CHKERRXX(ierr);
+    ierr = VecRestoreArray(mue_m_xx_, &mue_m_xx_ptr); CHKERRXX(ierr);
+    ierr = VecRestoreArray(mue_p_xx_, &mue_p_xx_ptr); CHKERRXX(ierr);
+    ierr = VecRestoreArray(mue_m_yy_, &mue_m_yy_ptr); CHKERRXX(ierr);
+    ierr = VecRestoreArray(mue_p_yy_, &mue_p_yy_ptr); CHKERRXX(ierr);
 #ifdef P4_TO_P8
-    ierr = VecRestoreArray(mue_zz_, &mue_zz_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(mue_m_zz_, &mue_m_zz_ptr); CHKERRXX(ierr);
+    ierr = VecRestoreArray(mue_p_zz_, &mue_p_zz_ptr); CHKERRXX(ierr);
 #endif
   }
 
