@@ -20,11 +20,114 @@
 
 #define DO_NOT_PREALLOCATE
 
+
+enum node_neighbor_cube_t
+{
 #ifdef P4_TO_P8
-const unsigned short num_neighbors_max_ = 27;
+  // zm plane
+  nn_mmm = 0, nn_0mm, nn_pmm,
+  nn_m0m,     nn_00m, nn_p0m,
+  nn_mpm,     nn_0pm, nn_ppm,
+
+  // z0 plane
+  nn_mm0, nn_0m0, nn_pm0,
+  nn_m00, nn_000, nn_p00,
+  nn_mp0, nn_0p0, nn_pp0,
+
+  // zp plane
+  nn_mmp, nn_0mp, nn_pmp,
+  nn_m0p, nn_00p, nn_p0p,
+  nn_mpp, nn_0pp, nn_ppp
+
 #else
-const unsigned short num_neighbors_max_ = 9;
+  nn_mm0 = 0, nn_0m0, nn_pm0,
+  nn_m00,     nn_000, nn_p00,
+  nn_mp0,     nn_0p0, nn_pp0
 #endif
+};
+
+enum node_neighbor_face_t
+{
+#ifdef P4_TO_P8
+  nnf_mm = 0, nnf_0m, nnf_pm,
+  nnf_m0,     nnf_00, nnf_p0,
+  nnf_mp,     nnf_0p, nnf_pp,
+#else
+  nnf_m0 = 0, nnf_00, nnf_p0,
+#endif
+};
+
+#ifdef P4_TO_P8
+const unsigned short num_neighbors_cube_ = 27;
+const unsigned short num_neighbors_face_ = 9;
+
+const unsigned short f2c_m[P4EST_FACES][num_neighbors_face_] = { { nn_0mm, nn_00m, nn_0pm,
+                                                                   nn_0m0, nn_000, nn_0p0,
+                                                                   nn_0mp, nn_00p, nn_0pp },
+
+                                                                 { nn_0mm, nn_00m, nn_0pm,
+                                                                   nn_0m0, nn_000, nn_0p0,
+                                                                   nn_0mp, nn_00p, nn_0pp },
+
+                                                                 { nn_m0m, nn_00m, nn_p0m,
+                                                                   nn_m00, nn_000, nn_p00,
+                                                                   nn_m0p, nn_00p, nn_p0p },
+
+                                                                 { nn_m0m, nn_00m, nn_p0m,
+                                                                   nn_m00, nn_000, nn_p00,
+                                                                   nn_m0p, nn_00p, nn_p0p },
+
+                                                                 { nn_mm0, nn_0m0, nn_pm0,
+                                                                   nn_m00, nn_000, nn_p00,
+                                                                   nn_mp0, nn_0p0, nn_pp0 },
+
+                                                                 { nn_mm0, nn_0m0, nn_pm0,
+                                                                   nn_m00, nn_000, nn_p00,
+                                                                   nn_mp0, nn_0p0, nn_pp0 }};
+
+const unsigned short f2c_p[P4EST_FACES][num_neighbors_face_] = { { nn_mmm, nn_m0m, nn_mpm,
+                                                                   nn_mm0, nn_m00, nn_mp0,
+                                                                   nn_mmp, nn_m0p, nn_mpp },
+
+                                                                 { nn_pmm, nn_p0m, nn_ppm,
+                                                                   nn_pm0, nn_p00, nn_pp0,
+                                                                   nn_pmp, nn_p0p, nn_ppp },
+
+                                                                 { nn_mmm, nn_0mm, nn_pmm,
+                                                                   nn_mm0, nn_0m0, nn_pm0,
+                                                                   nn_mmp, nn_0mp, nn_pmp },
+
+                                                                 { nn_mpm, nn_0pm, nn_ppm,
+                                                                   nn_mp0, nn_0p0, nn_pp0,
+                                                                   nn_mpp, nn_0pp, nn_ppp },
+
+                                                                 { nn_mmm, nn_0mm, nn_pmm,
+                                                                   nn_m0m, nn_00m, nn_p0m,
+                                                                   nn_mpm, nn_0pm, nn_ppm },
+
+                                                                 { nn_mmp, nn_0mp, nn_pmp,
+                                                                   nn_m0p, nn_00p, nn_p0p,
+                                                                   nn_mpp, nn_0pp, nn_ppp }};
+const unsigned short i_idx[] = { 0, 1, 2 };
+const unsigned short j_idx[] = { 1, 2, 0 };
+const unsigned short k_idx[] = { 2, 0, 1 };
+#else
+const unsigned short num_neighbors_cube_ = 9;
+const unsigned short num_neighbors_face_ = 3;
+
+const unsigned short f2c_m[P4EST_FACES][num_neighbors_face_] = { { nn_0m0, nn_000, nn_0p0 },
+                                                                 { nn_0m0, nn_000, nn_0p0 },
+                                                                 { nn_m00, nn_000, nn_p00 },
+                                                                 { nn_m00, nn_000, nn_p00 }};
+
+const unsigned short f2c_p[P4EST_FACES][num_neighbors_face_] = { { nn_mm0, nn_m00, nn_mp0 },
+                                                                 { nn_pm0, nn_p00, nn_pp0 },
+                                                                 { nn_mm0, nn_0m0, nn_pm0 },
+                                                                 { nn_mp0, nn_0p0, nn_pp0 }};
+const unsigned short i_idx[] = { 0, 1 };
+const unsigned short j_idx[] = { 1, 0 };
+#endif
+
 
 class my_p4est_poisson_nodes_mls_sc_t
 {
@@ -33,31 +136,6 @@ class my_p4est_poisson_nodes_mls_sc_t
     double val;
     PetscInt n;
   } mat_entry_t;
-
-  enum node_neighbor_t
-  {
-  #ifdef P4_TO_P8
-    // zm plane
-    nn_mmm = 0, nn_0mm = 1, nn_pmm = 2,
-    nn_m0m = 3, nn_00m = 4, nn_p0m = 5,
-    nn_mpm = 6, nn_0pm = 7, nn_ppm = 8,
-
-    // z0 plane
-    nn_mm0, nn_0m0, nn_pm0,
-    nn_m00, nn_000, nn_p00,
-    nn_mp0, nn_0p0, nn_pp0,
-
-    // zp plane
-    nn_mmp, nn_0mp, nn_pmp,
-    nn_m0p, nn_00p, nn_p0p,
-    nn_mpp, nn_0pp, nn_ppp
-
-  #else
-    nn_mm0 = 0, nn_0m0, nn_pm0,
-    nn_m00, nn_000, nn_p00,
-    nn_mp0, nn_0p0, nn_pp0
-  #endif
-  };
 
   // p4est objects
   const my_p4est_node_neighbors_t *node_neighbors_;
@@ -191,6 +269,8 @@ class my_p4est_poisson_nodes_mls_sc_t
   Vec volumes_;
   Vec node_type_;
 
+  double face_area_scalling_;
+
   std::vector<double> scalling_;
 
   bool keep_scalling_;
@@ -213,7 +293,9 @@ class my_p4est_poisson_nodes_mls_sc_t
   void compute_mue_dd();
 
 #ifdef P4_TO_P8
-  double compute_weights_through_face(double A, double B, bool *neighbors_exists_2d, double *weights_2d, double theta, bool *map_2d);
+  double compute_weights_through_face(double A, double B, bool *neighbor_exists_face, double *weights_face, double theta, bool *map_face);
+#else
+  double compute_weights_through_face(double A, bool *neighbor_exists_face, double *weights_face, double theta, bool *map_face);
 #endif
 
   void preallocate_matrix();
@@ -223,14 +305,6 @@ class my_p4est_poisson_nodes_mls_sc_t
   // disallow copy ctr and copy assignment
   my_p4est_poisson_nodes_mls_sc_t(const my_p4est_poisson_nodes_mls_sc_t& other);
   my_p4est_poisson_nodes_mls_sc_t& operator=(const my_p4est_poisson_nodes_mls_sc_t& other);
-
-  bool find_x_derivative(bool *neighbors_exist, double *weights, bool *map, p4est_locidx_t *neighbors, double *volumes_p);
-  bool find_y_derivative(bool *neighbors_exist, double *weights, bool *map, p4est_locidx_t *neighbors, double *volumes_p);
-#ifdef P4_TO_P8
-  bool find_z_derivative(bool *neighbors_exist, double *weights, bool *map, p4est_locidx_t *neighbors, double *volumes_p);
-#endif
-
-  bool find_xy_derivative(bool *neighbors_exist, double *weights, bool *map, p4est_locidx_t *neighbors, double *volumes_p);
 
   struct immersed_interface_t
   {
@@ -571,14 +645,14 @@ public:
   inline void set_use_sc_scheme           (bool value) { use_sc_scheme_             = value; }
   inline void set_integration_order       (int  value) { integration_order_         = value; }
 
-  bool inv_mat2_(double *in, double *out);
-  bool inv_mat3_(double *in, double *out);
-  bool inv_mat4_(const double m[16], double invOut[16]);
+  bool inv_mat2(double *in, double *out);
+  bool inv_mat3(double *in, double *out);
+  bool inv_mat4(const double m[16], double invOut[16]);
 
 //  void find_projection_(double *phi_p, p4est_locidx_t *neighbors, bool *neighbor_exists, double dxyz_pr[], double &dist_pr);
   void find_projection_(const double *phi_p, const quad_neighbor_nodes_of_node_t& qnnn, double dxyz_pr[], double &dist_pr);
 
-  void compute_normal_(const double *phi_p, const quad_neighbor_nodes_of_node_t& qnnn, double n[]);
+  void compute_normal(const double *phi_p, const quad_neighbor_nodes_of_node_t& qnnn, double n[]);
 
   void get_all_neighbors(const p4est_locidx_t n, p4est_locidx_t *neighbors, bool *neighbor_exists);
 
