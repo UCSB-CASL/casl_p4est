@@ -122,12 +122,14 @@ class WallBC2D
 {
 public:
   virtual BoundaryConditionType operator()( double x, double y ) const=0 ;
+  double value(double *xyz) const {return this->operator ()(xyz[0], xyz[1]);}
 };
 
 class WallBC3D
 {
 public:
   virtual BoundaryConditionType operator()( double x, double y, double z ) const=0 ;
+  double value(double *xyz) const {return this->operator ()(xyz[0], xyz[1], xyz[2]);}
 };
 
 

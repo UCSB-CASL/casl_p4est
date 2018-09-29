@@ -198,14 +198,18 @@ class my_p4est_poisson_nodes_mls_sc_t
 
   // Equation
   Vec   rhs_;
+  Vec   rhs_m_;
+  Vec   rhs_p_;
 #ifdef P4_TO_P8
   CF_3 *rhs_cf_;
 #else
   CF_2 *rhs_cf_;
 #endif
 
-  Vec    diag_add_;
-  double diag_add_scalar_;
+  Vec    diag_add_m_;
+  Vec    diag_add_p_;
+  double diag_add_m_scalar_;
+  double diag_add_p_scalar_;
 
   double mu_m_;
   double mu_p_;
@@ -266,7 +270,9 @@ class my_p4est_poisson_nodes_mls_sc_t
   // auxiliary variables
   Vec mask_;
   Vec areas_;
-  Vec volumes_;
+  Vec areas_m_;
+  Vec areas_p_;
+//  Vec volumes_;
   Vec node_type_;
 
   double face_area_scalling_;
@@ -343,12 +349,14 @@ class my_p4est_poisson_nodes_mls_sc_t
       phi_zz(NULL),
   #endif
       is_phi_d_owned(false), is_phi_dd_owned(false), is_phi_eff_owned(false) {}
-  } immersed_interface_;
+  } ii_;
 
 #ifdef P4_TO_P8
-  std::vector< CF_3 *> *jump_value_, *jump_flux_;
+  std::vector< CF_3 *> *jump_flux_;
+  CF_3 *jump_value_;
 #else
-  std::vector< CF_2 *> *jump_value_, *jump_flux_;
+  std::vector< CF_2 *> *jump_flux_;
+  CF_2 *jump_value_;
 #endif
 
 public:
@@ -378,7 +386,7 @@ public:
                            std::vector<Vec> *phi_zz = NULL,
                          #endif
                            Vec phi_eff = NULL,
-                           Vec volumes = NULL)
+                           Vec areas = NULL)
   {
     num_interfaces_ = num_interfaces;
     action_  = action;
@@ -418,12 +426,12 @@ public:
     else
       compute_phi_eff(phi_eff_, phi_, action_, is_phi_eff_owned_);
 
-    if (volumes == NULL)
+    if (areas == NULL)
       volumes_computed_ = false;
     else
     {
       volumes_computed_ = true;
-      volumes_ = volumes;
+      areas_ = areas;
     }
     volumes_owned_ = false;
 //    compute_volumes();
@@ -452,12 +460,13 @@ public:
                            std::vector<Vec> *phi_zz = NULL,
                          #endif
                            Vec phi_eff = NULL,
-                           Vec volumes = NULL)
+                           Vec areas_m = NULL,
+                           Vec areas_p = NULL)
   {
-    immersed_interface_.num_interfaces = num_interfaces;
-    immersed_interface_.action  = action;
-    immersed_interface_.color   = color;
-    immersed_interface_.phi     = phi;
+    ii_.num_interfaces = num_interfaces;
+    ii_.action  = action;
+    ii_.color   = color;
+    ii_.phi     = phi;
 
     if (phi_xx != NULL &&
     #ifdef P4_TO_P8
@@ -465,53 +474,54 @@ public:
     #endif
         phi_yy != NULL)
     {
-      immersed_interface_.phi_xx  = phi_xx;
-      immersed_interface_.phi_yy  = phi_yy;
+      ii_.phi_xx  = phi_xx;
+      ii_.phi_yy  = phi_yy;
 #ifdef P4_TO_P8
-      immersed_interface_.phi_zz  = phi_zz;
+      ii_.phi_zz  = phi_zz;
 #endif
-      immersed_interface_.is_phi_dd_owned = false;
+      ii_.is_phi_dd_owned = false;
     } else {
 #ifdef P4_TO_P8
-      compute_phi_dd(immersed_interface_.phi, immersed_interface_.phi_xx, immersed_interface_.phi_yy, immersed_interface_.phi_zz, immersed_interface_.is_phi_dd_owned);
+      compute_phi_dd(ii_.phi, ii_.phi_xx, ii_.phi_yy, ii_.phi_zz, ii_.is_phi_dd_owned);
 #else
-      compute_phi_dd(immersed_interface_.phi, immersed_interface_.phi_xx, immersed_interface_.phi_yy, immersed_interface_.is_phi_dd_owned);
+      compute_phi_dd(ii_.phi, ii_.phi_xx, ii_.phi_yy, ii_.is_phi_dd_owned);
 #endif
-      immersed_interface_.is_phi_dd_owned = true;
+      ii_.is_phi_dd_owned = true;
     }
 
 #ifdef P4_TO_P8
-    compute_phi_d(immersed_interface_.phi, immersed_interface_.phi_x, immersed_interface_.phi_y, immersed_interface_.phi_z, immersed_interface_.is_phi_d_owned);
+    compute_phi_d(ii_.phi, ii_.phi_x, ii_.phi_y, ii_.phi_z, ii_.is_phi_d_owned);
 #else
-    compute_phi_d(immersed_interface_.phi, immersed_interface_.phi_x, immersed_interface_.phi_y, immersed_interface_.is_phi_d_owned);
+    compute_phi_d(ii_.phi, ii_.phi_x, ii_.phi_y, ii_.is_phi_d_owned);
 #endif
-    immersed_interface_.is_phi_d_owned = true;
+    ii_.is_phi_d_owned = true;
 
     if (phi_eff != NULL)
-      immersed_interface_.phi_eff = phi_eff;
+      ii_.phi_eff = phi_eff;
     else
-      compute_phi_eff(immersed_interface_.phi_eff, immersed_interface_.phi, immersed_interface_.action, immersed_interface_.is_phi_eff_owned);
+      compute_phi_eff(ii_.phi_eff, ii_.phi, ii_.action, ii_.is_phi_eff_owned);
 
-    if (volumes == NULL)
+    if (areas_m == NULL || areas_p == NULL)
       volumes_computed_ = false;
     else
     {
       volumes_computed_ = true;
-      volumes_ = volumes;
+      areas_m_ = areas_m;
+      areas_p_ = areas_p;
     }
     volumes_owned_ = false;
 //    compute_volumes();
 
 #ifdef CASL_THROWS
-    if (immersed_interface_.num_interfaces > 0)
-      if (immersed_interface_.action->size() != immersed_interface_.num_interfaces ||
-          immersed_interface_.color->size()  != immersed_interface_.num_interfaces ||
-          immersed_interface_.phi->size()    != immersed_interface_.num_interfaces ||
-          immersed_interface_.phi_xx->size() != immersed_interface_.num_interfaces ||
+    if (ii_.num_interfaces > 0)
+      if (ii_.action->size() != ii_.num_interfaces ||
+          ii_.color->size()  != ii_.num_interfaces ||
+          ii_.phi->size()    != ii_.num_interfaces ||
+          ii_.phi_xx->size() != ii_.num_interfaces ||
     #ifdef P4_TO_P8
-          immersed_interface_.phi_zz->size() != immersed_interface_.num_interfaces ||
+          ii_.phi_zz->size() != ii_.num_interfaces ||
     #endif
-          immersed_interface_.phi_yy->size() != immersed_interface_.num_interfaces )
+          ii_.phi_yy->size() != ii_.num_interfaces )
         throw std::invalid_argument("[CASL_ERROR]: invalid geometry for the immersed interface");
 #endif
 
@@ -533,13 +543,23 @@ public:
 #endif
 
 #ifdef P4_TO_P8
-  inline void set_jump_conditions(std::vector< CF_3 *> &jump_value, std::vector< CF_3 *> &jump_flux) { jump_value_ = &jump_value; jump_flux_ = &jump_flux; }
+  inline void set_jump_conditions(CF_3 &jump_value, std::vector< CF_3 *> &jump_flux) { jump_value_ = &jump_value; jump_flux_ = &jump_flux; }
 #else
-  inline void set_jump_conditions(std::vector< CF_2 *> &jump_value, std::vector< CF_2 *> &jump_flux) { jump_value_ = &jump_value; jump_flux_ = &jump_flux; }
+  inline void set_jump_conditions(CF_2 &jump_value, std::vector< CF_2 *> &jump_flux) { jump_value_ = &jump_value; jump_flux_ = &jump_flux; }
 #endif
 
-  inline void set_diag_add(double diag_add_scalar) { diag_add_scalar_  = diag_add_scalar; is_matrix_computed_ = false; }
-  inline void set_diag_add(Vec diag_add)           { diag_add_         = diag_add;        is_matrix_computed_ = false; }
+  inline void set_diag_add(double diag_add_scalar)   { diag_add_m_scalar_ = diag_add_scalar;
+                                                       diag_add_p_scalar_ = diag_add_scalar; is_matrix_computed_ = false; }
+
+  inline void set_diag_add(double diag_add_m_scalar,
+                           double diag_add_p_scalar) { diag_add_m_scalar_ = diag_add_m_scalar;
+                                                       diag_add_p_scalar_ = diag_add_p_scalar; is_matrix_computed_ = false; }
+
+  inline void set_diag_add(Vec diag_add)   { diag_add_m_ = diag_add;
+                                             diag_add_p_ = diag_add;   is_matrix_computed_ = false; }
+  inline void set_diag_add(Vec diag_add_m,
+                           Vec diag_add_p) { diag_add_m_ = diag_add_m;
+                                             diag_add_p_ = diag_add_p; is_matrix_computed_ = false; }
 
   inline void set_mu(double mu) { mu_m_ = mu; mu_p_ = mu; variable_mu_ = false; }
   inline void set_mu(double mu_m, double mu_p) { mu_m_ = mu_m; mu_p_ = mu_p;  variable_mu_ = false; }
@@ -622,7 +642,9 @@ public:
   }
 
 
-  inline void set_rhs(Vec rhs) { rhs_ = rhs; }
+  inline void set_rhs(Vec rhs)   { rhs_m_ = rhs;   rhs_p_ = rhs;   }
+  inline void set_rhs(Vec rhs_m,
+                      Vec rhs_p) { rhs_m_ = rhs_m; rhs_p_ = rhs_p; }
 #ifdef P4_TO_P8
   inline void set_rhs(CF_3 &rhs_cf)   { rhs_cf_ = &rhs_cf; }
 #else
@@ -667,7 +689,7 @@ public:
   void assemble_matrix(Vec solution);
 
   inline Vec get_mask() { return mask_; }
-  inline Vec get_volumes() { return volumes_; }
+  inline Vec get_areas() { return areas_; }
 
   inline void get_phi_dd(std::vector<Vec> **phi_dd)
   {

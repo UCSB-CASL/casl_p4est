@@ -181,7 +181,7 @@ double exclude_points_z = 0;
 //-------------------------------------
 // output
 //-------------------------------------
-bool save_vtk           = 1;
+bool save_vtk           = 0;
 bool save_domain        = 0;
 bool save_matrix_ascii  = 0;
 bool save_matrix_binary = 0;
@@ -1136,7 +1136,7 @@ int main (int argc, char* argv[])
 
             Mat A;
             std::vector<double> *scalling;
-            Vec volumes;
+            Vec areas;
 
             my_p4est_poisson_nodes_mls_sc_t solver(&ngbd_n);
 
@@ -1170,7 +1170,7 @@ int main (int argc, char* argv[])
             mask      = solver.get_mask();
             A         = solver.get_matrix();
             scalling  = solver.get_scalling();
-            volumes   = solver.get_volumes();
+            areas     = solver.get_areas();
 
             if (save_matrix_ascii)
             {
@@ -1309,6 +1309,7 @@ int main (int argc, char* argv[])
             integrator.set_phi(phi, action, color);
 #endif
 
+            /*
             if (save_domain)
             {
               std::ostringstream oss; oss << out_dir << "/geometry";
@@ -1361,6 +1362,7 @@ int main (int argc, char* argv[])
               }
 
             }
+            //*/
 
             /* calculate errors */
             Vec vec_error_sl; double *vec_error_sl_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &vec_error_sl); CHKERRXX(ierr);
@@ -2164,8 +2166,8 @@ int main (int argc, char* argv[])
               double *mask_ptr;
               ierr = VecGetArray(mask, &mask_ptr); CHKERRXX(ierr);
 
-              double *volumes_ptr;
-              ierr = VecGetArray(volumes, &volumes_ptr); CHKERRXX(ierr);
+              double *areas_ptr;
+              ierr = VecGetArray(areas, &areas_ptr); CHKERRXX(ierr);
 
               my_p4est_vtk_write_all(p4est, nodes, ghost,
                                      P4EST_TRUE, P4EST_TRUE,
@@ -2181,7 +2183,7 @@ int main (int argc, char* argv[])
                                      VTK_POINT_DATA, "error_ex", vec_error_ex_ptr,
                                      VTK_POINT_DATA, "error_dd", vec_error_dd_ptr,
                                      VTK_POINT_DATA, "mask", mask_ptr,
-                                     VTK_POINT_DATA, "volumes", volumes_ptr,
+                                     VTK_POINT_DATA, "areas", areas_ptr,
                                      VTK_CELL_DATA , "leaf_level", l_p);
 
               ierr = VecRestoreArray(phi_eff, &phi_eff_ptr); CHKERRXX(ierr);
@@ -2196,7 +2198,7 @@ int main (int argc, char* argv[])
               ierr = VecRestoreArray(vec_error_dd, &vec_error_dd_ptr); CHKERRXX(ierr);
 
               ierr = VecRestoreArray(mask, &mask_ptr); CHKERRXX(ierr);
-              ierr = VecRestoreArray(volumes, &volumes_ptr); CHKERRXX(ierr);
+              ierr = VecRestoreArray(areas, &areas_ptr); CHKERRXX(ierr);
 
               ierr = VecRestoreArray(leaf_level, &l_p); CHKERRXX(ierr);
               ierr = VecDestroy(leaf_level); CHKERRXX(ierr);
