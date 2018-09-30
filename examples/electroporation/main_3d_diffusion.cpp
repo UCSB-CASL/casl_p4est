@@ -60,14 +60,20 @@
 #include <src/math.h>
 #include <iostream>
 #include <string>
-
+#include <stack>
+#include <algorithm>
 #include "Halton/halton.cpp"
 
 using namespace std;
 
+template<typename T>
+bool contains(const std::vector<T> &vec, const T& elem)
+{
+    return find(vec.begin(), vec.end(), elem)!=vec.end();
+}
 
 
-int test = 2; //-1: just a positive domain for test, dynamic linear case=2, dynamic nonlinear case=4, static linear case=1, random cube box side enforced = 8, random spheroid=9, 10=read from initial condition file.
+int test = 9; //-1: just a positive domain for test, dynamic linear case=2, dynamic nonlinear case=4, static linear case=1, random cube box side enforced = 8, random spheroid=9, 10=read from initial condition file.
 // test=1,2 use the exact solution on the boundary condition! Be careful!
 
 double cellDensity = 0.0001;   // only if test = 8 || 9
@@ -121,8 +127,8 @@ const double xyz_max_[] = {xmax, ymax, zmaxx};
 
 int axial_nb = 2*zmaxx/r0/2;
 int lmax_thr = (int)log2(axial_nb)+5;   // the mesh should be fine enough to have enough nodes on each cell for solver not to crash.
-int lmin = 4;
-int lmax =6;//MAX(lmax_thr, 5);
+int lmin = 2;
+int lmax =9;//MAX(lmax_thr, 5);
 int nb_splits = 1;
 
 double dt_scale = 20;
@@ -179,6 +185,7 @@ bool save_impedance = true;
 bool save_transport = true;
 bool save_vtk = true;
 bool save_stats = true;
+bool save_dipoles = true;
 
 bool save_error = false;
 bool save_voro = false;
@@ -426,9 +433,6 @@ public:
                 ierr = PetscPrintf(PETSC_COMM_SELF, "Done initializing random cells. The volume fraction is = %g\n",density); CHKERRXX(ierr);
         }
 
-
-
-
         if (test==10){
             double max_x = 0;
             double min_x=0;
@@ -533,6 +537,79 @@ public:
         }
     }
 } level_set;
+
+
+struct SingleCell : CF_3
+{
+public:
+    int ID;
+    double operator()(double x, double y, double z) const
+    {
+
+        double d = DBL_MAX;
+        if(test==7 || test==8 || test==9 || test==10)
+        {
+            double x0 = x - level_set.centers[ID].x;
+            double y0 = y - level_set.centers[ID].y;
+            double z0 = z - level_set.centers[ID].z;
+
+            double x_tmp = x0;
+            double y_tmp = cos(level_set.theta[ID].x)*y0 - sin(level_set.theta[ID].x)*z0;
+            double z_tmp = sin(level_set.theta[ID].x)*y0 + cos(level_set.theta[ID].x)*z0;
+
+            x0 = cos(level_set.theta[ID].y)*x_tmp - sin(level_set.theta[ID].y)*z_tmp;
+            y0 = y_tmp;
+            z0 = sin(level_set.theta[ID].y)*x_tmp + cos(level_set.theta[ID].y)*z_tmp;
+
+            x_tmp = cos(level_set.theta[ID].z)*x0 - sin(level_set.theta[ID].z)*y0;
+            y_tmp = sin(level_set.theta[ID].z)*x0 + cos(level_set.theta[ID].z)*y0;
+            z_tmp = z0;
+
+            d = MIN(d, sqrt(SQR(x_tmp/level_set.ex[ID].x) + SQR(y_tmp/level_set.ex[ID].y) + SQR(z_tmp/level_set.ex[ID].z)) - level_set.radii[ID]);
+
+            return d;
+        }
+        throw std::invalid_argument("Choose a valid test.");
+    }
+} single_cell_phi;
+
+struct CellNumbers : CF_3
+{
+public:
+
+    double operator()(double x, double y, double z) const
+    {
+
+        double d = DBL_MAX;
+        if(test==7 || test==8 || test==9 || test==10)
+        {
+            for(int ID=0; ID<nb_cells; ++ID)
+            {
+                double x0 = x - level_set.centers[ID].x;
+                double y0 = y - level_set.centers[ID].y;
+                double z0 = z - level_set.centers[ID].z;
+
+                double x_tmp = x0;
+                double y_tmp = cos(level_set.theta[ID].x)*y0 - sin(level_set.theta[ID].x)*z0;
+                double z_tmp = sin(level_set.theta[ID].x)*y0 + cos(level_set.theta[ID].x)*z0;
+
+                x0 = cos(level_set.theta[ID].y)*x_tmp - sin(level_set.theta[ID].y)*z_tmp;
+                y0 = y_tmp;
+                z0 = sin(level_set.theta[ID].y)*x_tmp + cos(level_set.theta[ID].y)*z_tmp;
+
+                x_tmp = cos(level_set.theta[ID].z)*x0 - sin(level_set.theta[ID].z)*y0;
+                y_tmp = sin(level_set.theta[ID].z)*x0 + cos(level_set.theta[ID].z)*y0;
+                z_tmp = z0;
+
+                d = sqrt(SQR(x_tmp/level_set.ex[ID].x) + SQR(y_tmp/level_set.ex[ID].y) + SQR(z_tmp/level_set.ex[ID].z)) - level_set.radii[ID];
+                if(d<=0)
+                    return ID;
+            }
+                return -1;
+        }
+        throw std::invalid_argument("Choose a valid test.");
+    }
+} cell_numbering;
 
 double u_exact(double x, double y, double z, double t, bool phi_is_pos)
 {
@@ -1489,7 +1566,9 @@ void advect(p4est_t *p4est, p4est_nodes_t *nodes, my_p4est_node_neighbors_t *ngb
     Vec M_np1;
     ierr = VecCreateGhostNodes(p4est, nodes, &M_np1); CHKERRXX(ierr);
     VecGetArray(M_np1, &M_np1_p);
+
     advect_field_semi_lagrangian(p4est, nodes, ngbd_n, dt_nm1, dt_n, v_nm1, vnm1_xx, v, vxx, M, M_xx, M_np1_p);
+
     VecRestoreArray(M_np1, &M_np1_p);
     ierr = VecDestroy(M); CHKERRXX(ierr);
     M = M_np1;
@@ -2097,7 +2176,7 @@ void solve_transport( p4est_t *p4est,  p4est_ghost_t *ghost, p4est_nodes_t *node
                 ElectroPhoresis_nm1_p[2][n] = ElectroPhoresis_p[2][n];
             }
             for(int dir=0; dir<3; ++dir)
-                ierr = VecGetArray(ElectroPhoresis_nm1[dir], &ElectroPhoresis_nm1_p[dir]); CHKERRXX(ierr);
+                ierr = VecRestoreArray(ElectroPhoresis_nm1[dir], &ElectroPhoresis_nm1_p[dir]); CHKERRXX(ierr);
 
             for(size_t i=0; i<ngbd_n->get_layer_size(); ++i)
             {
@@ -2162,6 +2241,7 @@ void solve_transport( p4est_t *p4est,  p4est_ghost_t *ghost, p4est_nodes_t *node
                 VecRestoreArray(ElectroPhoresis[dir], &ElectroPhoresis_p[dir]);
             }
             advect(p4est, nodes, ngbd_n, ElectroPhoresis_nm1, ElectroPhoresis,  dt_nm1, dt_n,  M_list[ion]);
+
             // measure jump in concentration on the interface
             double *M_plus_p, *M_minus_p;
             VecGetArray(M_plus, &M_plus_p);
@@ -2392,7 +2472,9 @@ void solve_transport( p4est_t *p4est,  p4est_ghost_t *ghost, p4est_nodes_t *node
             solver.set_u_jump(M_jump);
             solver.set_rhs(rhs_m,rhs_p);
             solver.set_mu_grad_u_jump(grad_M_jump);
+
             solver.solve(M_list[ion]);
+
             //   export jump values for evaluation.
             VecGetArray(M_list[1], &M_p[1]);
             VecGetArray(M_jump, &M_jump_p);
@@ -2468,7 +2550,7 @@ void solve_transport( p4est_t *p4est,  p4est_ghost_t *ghost, p4est_nodes_t *node
 
 
 void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4est_brick_t *brick,
-              Vec phi, Vec sol, int compt, Vec X0, Vec X1, Vec Sm, Vec vn, Vec err, Vec M_list[number_ions], Vec Pm, Vec charge_rate)
+              Vec phi, Vec sol, int compt, Vec X0, Vec X1, Vec Sm, Vec vn, Vec err, Vec M_list[number_ions], Vec Pm, Vec charge_rate, Vec cell_number)
 {
     PetscErrorCode ierr;
     char *out_dir = NULL;
@@ -2490,7 +2572,7 @@ void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4e
        #endif
            "." << compt;
 
-    double *phi_p, *sol_p, *X0_p, *X1_p, *Sm_p, *vn_p, *err_p, *Pm_p, *c_rate_p;
+    double *phi_p, *sol_p, *X0_p, *X1_p, *Sm_p, *vn_p, *err_p, *Pm_p, *c_rate_p, *cell_number_p;
     std::vector<const double *> M_p(number_ions);
     for(unsigned int i=0; i<2; ++i)
     {
@@ -2506,6 +2588,7 @@ void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4e
     ierr = VecGetArray(err, &err_p); CHKERRXX(ierr);
     ierr = VecGetArray(Pm, &Pm_p); CHKERRXX(ierr);
     ierr = VecGetArray(charge_rate, &c_rate_p); CHKERRXX(ierr);
+    ierr = VecGetArray(cell_number, &cell_number_p); CHKERRXX(ierr);
     Vec mu;
     ierr = VecDuplicate(phi, &mu); CHKERRXX(ierr);
     double *mu_p_;
@@ -2546,7 +2629,7 @@ void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4e
 
     my_p4est_vtk_write_all(p4est, nodes, ghost,
                            P4EST_TRUE, P4EST_TRUE,
-                           12, 1, oss.str().c_str(),
+                           13, 1, oss.str().c_str(),
                            VTK_POINT_DATA, "phi", phi_p,
                            VTK_POINT_DATA, "mu", mu_p_,
                            VTK_POINT_DATA, "sol", sol_p,
@@ -2558,6 +2641,7 @@ void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4e
                            VTK_POINT_DATA, "M_1", M_p[0],
             VTK_POINT_DATA, "M_2", M_p[1],
             VTK_POINT_DATA, "Charge Diff", c_rate_p,
+            VTK_POINT_DATA, "Cell Numbers", cell_number_p,
             VTK_POINT_DATA, "Pm", Pm_p,
             VTK_CELL_DATA , "leaf_level", l_p);
 
@@ -2575,12 +2659,241 @@ void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4e
     ierr = VecRestoreArray(err, &err_p); CHKERRXX(ierr);
     ierr = VecRestoreArray(Pm, &Pm_p); CHKERRXX(ierr);
     ierr = VecRestoreArray(charge_rate, &c_rate_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(cell_number, &cell_number_p); CHKERRXX(ierr);
     for(unsigned int i=0; i<2; ++i)
     {
         ierr = VecRestoreArrayRead(M_list[i], &M_p[i]); CHKERRXX(ierr);
     }
 
     PetscPrintf(p4est->mpicomm, "VTK saved in %s\n", oss.str().c_str());
+}
+
+
+
+
+void fill_cell(my_p4est_node_neighbors_t *ngbd,  p4est_nodes_t *nodes, const double *phi_p, double *cell_number_p, int number, p4est_locidx_t n)
+{
+    stack<size_t> st;
+    st.push(n);
+    while(!st.empty())
+    {
+        size_t k = st.top();
+        st.pop();
+        cell_number_p[k] = number;
+        const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[k];
+        if(qnnn.node_m00_mm<nodes->num_owned_indeps && qnnn.d_m00_m0==0 && phi_p[qnnn.node_m00_mm]<0 && cell_number_p[qnnn.node_m00_mm]<0) st.push(qnnn.node_m00_mm);
+        if(qnnn.node_m00_pm<nodes->num_owned_indeps && qnnn.d_m00_p0==0 && phi_p[qnnn.node_m00_pm]<0 && cell_number_p[qnnn.node_m00_pm]<0) st.push(qnnn.node_m00_pm);
+        if(qnnn.node_p00_mm<nodes->num_owned_indeps && qnnn.d_p00_m0==0 && phi_p[qnnn.node_p00_mm]<0 && cell_number_p[qnnn.node_p00_mm]<0) st.push(qnnn.node_p00_mm);
+        if(qnnn.node_p00_pm<nodes->num_owned_indeps && qnnn.d_p00_p0==0 && phi_p[qnnn.node_p00_pm]<0 && cell_number_p[qnnn.node_p00_pm]<0) st.push(qnnn.node_p00_pm);
+        if(qnnn.node_0m0_mm<nodes->num_owned_indeps && qnnn.d_0m0_m0==0 && phi_p[qnnn.node_0m0_mm]<0 && cell_number_p[qnnn.node_0m0_mm]<0) st.push(qnnn.node_0m0_mm);
+        if(qnnn.node_0m0_pm<nodes->num_owned_indeps && qnnn.d_0m0_p0==0 && phi_p[qnnn.node_0m0_pm]<0 && cell_number_p[qnnn.node_0m0_pm]<0) st.push(qnnn.node_0m0_pm);
+        if(qnnn.node_0p0_mm<nodes->num_owned_indeps && qnnn.d_0p0_m0==0 && phi_p[qnnn.node_0p0_mm]<0 && cell_number_p[qnnn.node_0p0_mm]<0) st.push(qnnn.node_0p0_mm);
+        if(qnnn.node_0p0_pm<nodes->num_owned_indeps && qnnn.d_0p0_p0==0 && phi_p[qnnn.node_0p0_pm]<0 && cell_number_p[qnnn.node_0p0_pm]<0) st.push(qnnn.node_0p0_pm);
+        if(qnnn.node_00m_mm<nodes->num_owned_indeps && qnnn.d_00m_m0==0 && phi_p[qnnn.node_00m_mm]<0 && cell_number_p[qnnn.node_00m_mm]<0) st.push(qnnn.node_00m_mm);
+        if(qnnn.node_00m_pm<nodes->num_owned_indeps && qnnn.d_00m_p0==0 && phi_p[qnnn.node_00m_pm]<0 && cell_number_p[qnnn.node_00m_pm]<0) st.push(qnnn.node_00m_pm);
+        if(qnnn.node_00p_mm<nodes->num_owned_indeps && qnnn.d_00p_m0==0 && phi_p[qnnn.node_00p_mm]<0 && cell_number_p[qnnn.node_00p_mm]<0) st.push(qnnn.node_00p_mm);
+        if(qnnn.node_00p_pm<nodes->num_owned_indeps && qnnn.d_00p_p0==0 && phi_p[qnnn.node_00p_pm]<0 && cell_number_p[qnnn.node_00p_pm]<0) st.push(qnnn.node_00p_pm);
+
+        if(qnnn.node_m00_mp<nodes->num_owned_indeps && qnnn.d_m00_0m==0 && phi_p[qnnn.node_m00_mp]<0 && cell_number_p[qnnn.node_m00_mp]<0) st.push(qnnn.node_m00_mp);
+        if(qnnn.node_m00_pp<nodes->num_owned_indeps && qnnn.d_m00_0p==0 && phi_p[qnnn.node_m00_pp]<0 && cell_number_p[qnnn.node_m00_pp]<0) st.push(qnnn.node_m00_pp);
+        if(qnnn.node_p00_mp<nodes->num_owned_indeps && qnnn.d_p00_0m==0 && phi_p[qnnn.node_p00_mp]<0 && cell_number_p[qnnn.node_p00_mp]<0) st.push(qnnn.node_p00_mp);
+        if(qnnn.node_p00_pp<nodes->num_owned_indeps && qnnn.d_p00_0p==0 && phi_p[qnnn.node_p00_pp]<0 && cell_number_p[qnnn.node_p00_pp]<0) st.push(qnnn.node_p00_pp);
+        if(qnnn.node_0m0_mp<nodes->num_owned_indeps && qnnn.d_0m0_0m==0 && phi_p[qnnn.node_0m0_mp]<0 && cell_number_p[qnnn.node_0m0_mp]<0) st.push(qnnn.node_0m0_mp);
+        if(qnnn.node_0m0_pp<nodes->num_owned_indeps && qnnn.d_0m0_0p==0 && phi_p[qnnn.node_0m0_pp]<0 && cell_number_p[qnnn.node_0m0_pp]<0) st.push(qnnn.node_0m0_pp);
+        if(qnnn.node_0p0_mp<nodes->num_owned_indeps && qnnn.d_0p0_0m==0 && phi_p[qnnn.node_0p0_mp]<0 && cell_number_p[qnnn.node_0p0_mp]<0) st.push(qnnn.node_0p0_mp);
+        if(qnnn.node_0p0_pp<nodes->num_owned_indeps && qnnn.d_0p0_0p==0 && phi_p[qnnn.node_0p0_pp]<0 && cell_number_p[qnnn.node_0p0_pp]<0) st.push(qnnn.node_0p0_pp);
+        if(qnnn.node_00m_mp<nodes->num_owned_indeps && qnnn.d_00m_0m==0 && phi_p[qnnn.node_00m_mp]<0 && cell_number_p[qnnn.node_00m_mp]<0) st.push(qnnn.node_00m_mp);
+        if(qnnn.node_00m_pp<nodes->num_owned_indeps && qnnn.d_00m_0p==0 && phi_p[qnnn.node_00m_pp]<0 && cell_number_p[qnnn.node_00m_pp]<0) st.push(qnnn.node_00m_pp);
+        if(qnnn.node_00p_mp<nodes->num_owned_indeps && qnnn.d_00p_0m==0 && phi_p[qnnn.node_00p_mp]<0 && cell_number_p[qnnn.node_00p_mp]<0) st.push(qnnn.node_00p_mp);
+        if(qnnn.node_00p_pp<nodes->num_owned_indeps && qnnn.d_00p_0p==0 && phi_p[qnnn.node_00p_pp]<0 && cell_number_p[qnnn.node_00p_pp]<0) st.push(qnnn.node_00p_pp);
+    }
+}
+
+
+void find_connected_ghost_cells(my_p4est_node_neighbors_t *ngbd,  p4est_nodes_t *nodes, const double *phi_p, double *cell_number_p, p4est_locidx_t n, std::vector<double> &connected, std::vector<bool> &visited)
+{
+    stack<size_t> st;
+    st.push(n);
+    while(!st.empty())
+    {
+        size_t k = st.top();
+        st.pop();
+        visited[k] = true;
+
+        const quad_neighbor_nodes_of_node_t& qnnn = (*ngbd)[k];
+        if(qnnn.node_m00_mm<nodes->num_owned_indeps && qnnn.d_m00_m0==0 && phi_p[qnnn.node_m00_mm]<0 && !visited[qnnn.node_m00_mm]) st.push(qnnn.node_m00_mm);
+        if(qnnn.node_m00_pm<nodes->num_owned_indeps && qnnn.d_m00_p0==0 && phi_p[qnnn.node_m00_pm]<0 && !visited[qnnn.node_m00_pm]) st.push(qnnn.node_m00_pm);
+        if(qnnn.node_p00_mm<nodes->num_owned_indeps && qnnn.d_p00_m0==0 && phi_p[qnnn.node_p00_mm]<0 && !visited[qnnn.node_p00_mm]) st.push(qnnn.node_p00_mm);
+        if(qnnn.node_p00_pm<nodes->num_owned_indeps && qnnn.d_p00_p0==0 && phi_p[qnnn.node_p00_pm]<0 && !visited[qnnn.node_p00_pm]) st.push(qnnn.node_p00_pm);
+        if(qnnn.node_0m0_mm<nodes->num_owned_indeps && qnnn.d_0m0_m0==0 && phi_p[qnnn.node_0m0_mm]<0 && !visited[qnnn.node_0m0_mm]) st.push(qnnn.node_0m0_mm);
+        if(qnnn.node_0m0_pm<nodes->num_owned_indeps && qnnn.d_0m0_p0==0 && phi_p[qnnn.node_0m0_pm]<0 && !visited[qnnn.node_0m0_pm]) st.push(qnnn.node_0m0_pm);
+        if(qnnn.node_0p0_mm<nodes->num_owned_indeps && qnnn.d_0p0_m0==0 && phi_p[qnnn.node_0p0_mm]<0 && !visited[qnnn.node_0p0_mm]) st.push(qnnn.node_0p0_mm);
+        if(qnnn.node_0p0_pm<nodes->num_owned_indeps && qnnn.d_0p0_p0==0 && phi_p[qnnn.node_0p0_pm]<0 && !visited[qnnn.node_0p0_pm]) st.push(qnnn.node_0p0_pm);
+        if(qnnn.node_00m_mm<nodes->num_owned_indeps && qnnn.d_00m_m0==0 && phi_p[qnnn.node_00m_mm]<0 && !visited[qnnn.node_00m_mm]) st.push(qnnn.node_00m_mm);
+        if(qnnn.node_00m_pm<nodes->num_owned_indeps && qnnn.d_00m_p0==0 && phi_p[qnnn.node_00m_pm]<0 && !visited[qnnn.node_00m_pm]) st.push(qnnn.node_00m_pm);
+        if(qnnn.node_00p_mm<nodes->num_owned_indeps && qnnn.d_00p_m0==0 && phi_p[qnnn.node_00p_mm]<0 && !visited[qnnn.node_00p_mm]) st.push(qnnn.node_00p_mm);
+        if(qnnn.node_00p_pm<nodes->num_owned_indeps && qnnn.d_00p_p0==0 && phi_p[qnnn.node_00p_pm]<0 && !visited[qnnn.node_00p_pm]) st.push(qnnn.node_00p_pm);
+
+
+
+        if(qnnn.node_m00_mp<nodes->num_owned_indeps && qnnn.d_m00_0m==0 && phi_p[qnnn.node_m00_mp]<0 && !visited[qnnn.node_m00_mp]) st.push(qnnn.node_m00_mp);
+        if(qnnn.node_m00_pp<nodes->num_owned_indeps && qnnn.d_m00_0p==0 && phi_p[qnnn.node_m00_pp]<0 && !visited[qnnn.node_m00_pp]) st.push(qnnn.node_m00_pp);
+        if(qnnn.node_p00_mp<nodes->num_owned_indeps && qnnn.d_p00_0m==0 && phi_p[qnnn.node_p00_mp]<0 && !visited[qnnn.node_p00_mp]) st.push(qnnn.node_p00_mp);
+        if(qnnn.node_p00_pp<nodes->num_owned_indeps && qnnn.d_p00_0p==0 && phi_p[qnnn.node_p00_pp]<0 && !visited[qnnn.node_p00_pp]) st.push(qnnn.node_p00_pp);
+        if(qnnn.node_0m0_mp<nodes->num_owned_indeps && qnnn.d_0m0_0m==0 && phi_p[qnnn.node_0m0_mp]<0 && !visited[qnnn.node_0m0_mp]) st.push(qnnn.node_0m0_mp);
+        if(qnnn.node_0m0_pp<nodes->num_owned_indeps && qnnn.d_0m0_0p==0 && phi_p[qnnn.node_0m0_pp]<0 && !visited[qnnn.node_0m0_pp]) st.push(qnnn.node_0m0_pp);
+        if(qnnn.node_0p0_mp<nodes->num_owned_indeps && qnnn.d_0p0_0m==0 && phi_p[qnnn.node_0p0_mp]<0 && !visited[qnnn.node_0p0_mp]) st.push(qnnn.node_0p0_mp);
+        if(qnnn.node_0p0_pp<nodes->num_owned_indeps && qnnn.d_0p0_0p==0 && phi_p[qnnn.node_0p0_pp]<0 && !visited[qnnn.node_0p0_pp]) st.push(qnnn.node_0p0_pp);
+        if(qnnn.node_00m_mp<nodes->num_owned_indeps && qnnn.d_00m_0m==0 && phi_p[qnnn.node_00m_mp]<0 && !visited[qnnn.node_00m_mp]) st.push(qnnn.node_00m_mp);
+        if(qnnn.node_00m_pp<nodes->num_owned_indeps && qnnn.d_00m_0p==0 && phi_p[qnnn.node_00m_pp]<0 && !visited[qnnn.node_00m_pp]) st.push(qnnn.node_00m_pp);
+        if(qnnn.node_00p_mp<nodes->num_owned_indeps && qnnn.d_00p_0m==0 && phi_p[qnnn.node_00p_mp]<0 && !visited[qnnn.node_00p_mp]) st.push(qnnn.node_00p_mp);
+        if(qnnn.node_00p_pp<nodes->num_owned_indeps && qnnn.d_00p_0p==0 && phi_p[qnnn.node_00p_pp]<0 && !visited[qnnn.node_00p_pp]) st.push(qnnn.node_00p_pp);
+
+
+
+        /* check connected ghost cell and add to list if new */
+        if(qnnn.node_m00_mm>=nodes->num_owned_indeps && qnnn.d_m00_m0==0 && phi_p[qnnn.node_m00_mm]<0 && !contains(connected, cell_number_p[qnnn.node_m00_mm])) connected.push_back(cell_number_p[qnnn.node_m00_mm]);
+        if(qnnn.node_m00_pm>=nodes->num_owned_indeps && qnnn.d_m00_p0==0 && phi_p[qnnn.node_m00_pm]<0 && !contains(connected, cell_number_p[qnnn.node_m00_pm])) connected.push_back(cell_number_p[qnnn.node_m00_pm]);
+        if(qnnn.node_p00_mm>=nodes->num_owned_indeps && qnnn.d_p00_m0==0 && phi_p[qnnn.node_p00_mm]<0 && !contains(connected, cell_number_p[qnnn.node_p00_mm])) connected.push_back(cell_number_p[qnnn.node_p00_mm]);
+        if(qnnn.node_p00_pm>=nodes->num_owned_indeps && qnnn.d_p00_p0==0 && phi_p[qnnn.node_p00_pm]<0 && !contains(connected, cell_number_p[qnnn.node_p00_pm])) connected.push_back(cell_number_p[qnnn.node_p00_pm]);
+        if(qnnn.node_0m0_mm>=nodes->num_owned_indeps && qnnn.d_0m0_m0==0 && phi_p[qnnn.node_0m0_mm]<0 && !contains(connected, cell_number_p[qnnn.node_0m0_mm])) connected.push_back(cell_number_p[qnnn.node_0m0_mm]);
+        if(qnnn.node_0m0_pm>=nodes->num_owned_indeps && qnnn.d_0m0_p0==0 && phi_p[qnnn.node_0m0_pm]<0 && !contains(connected, cell_number_p[qnnn.node_0m0_pm])) connected.push_back(cell_number_p[qnnn.node_0m0_pm]);
+        if(qnnn.node_0p0_mm>=nodes->num_owned_indeps && qnnn.d_0p0_m0==0 && phi_p[qnnn.node_0p0_mm]<0 && !contains(connected, cell_number_p[qnnn.node_0p0_mm])) connected.push_back(cell_number_p[qnnn.node_0p0_mm]);
+        if(qnnn.node_0p0_pm>=nodes->num_owned_indeps && qnnn.d_0p0_p0==0 && phi_p[qnnn.node_0p0_pm]<0 && !contains(connected, cell_number_p[qnnn.node_0p0_pm])) connected.push_back(cell_number_p[qnnn.node_0p0_pm]);
+        if(qnnn.node_00m_mm>=nodes->num_owned_indeps && qnnn.d_00m_m0==0 && phi_p[qnnn.node_00m_mm]<0 && !contains(connected, cell_number_p[qnnn.node_00m_mm])) connected.push_back(cell_number_p[qnnn.node_00m_mm]);
+        if(qnnn.node_00m_pm>=nodes->num_owned_indeps && qnnn.d_00m_p0==0 && phi_p[qnnn.node_00m_pm]<0 && !contains(connected, cell_number_p[qnnn.node_00m_pm])) connected.push_back(cell_number_p[qnnn.node_00m_pm]);
+        if(qnnn.node_00p_mm>=nodes->num_owned_indeps && qnnn.d_00p_m0==0 && phi_p[qnnn.node_00p_mm]<0 && !contains(connected, cell_number_p[qnnn.node_00p_mm])) connected.push_back(cell_number_p[qnnn.node_00p_mm]);
+        if(qnnn.node_00p_pm>=nodes->num_owned_indeps && qnnn.d_00p_p0==0 && phi_p[qnnn.node_00p_pm]<0 && !contains(connected, cell_number_p[qnnn.node_00p_pm])) connected.push_back(cell_number_p[qnnn.node_00p_pm]);
+
+
+        if(qnnn.node_m00_mp>=nodes->num_owned_indeps && qnnn.d_m00_0m==0 && phi_p[qnnn.node_m00_mp]<0 && !contains(connected, cell_number_p[qnnn.node_m00_mp])) connected.push_back(cell_number_p[qnnn.node_m00_mp]);
+        if(qnnn.node_m00_pp>=nodes->num_owned_indeps && qnnn.d_m00_0p==0 && phi_p[qnnn.node_m00_pp]<0 && !contains(connected, cell_number_p[qnnn.node_m00_pp])) connected.push_back(cell_number_p[qnnn.node_m00_pp]);
+        if(qnnn.node_p00_mp>=nodes->num_owned_indeps && qnnn.d_p00_0m==0 && phi_p[qnnn.node_p00_mp]<0 && !contains(connected, cell_number_p[qnnn.node_p00_mp])) connected.push_back(cell_number_p[qnnn.node_p00_mp]);
+        if(qnnn.node_p00_pp>=nodes->num_owned_indeps && qnnn.d_p00_0p==0 && phi_p[qnnn.node_p00_pp]<0 && !contains(connected, cell_number_p[qnnn.node_p00_pp])) connected.push_back(cell_number_p[qnnn.node_p00_pp]);
+        if(qnnn.node_0m0_mp>=nodes->num_owned_indeps && qnnn.d_0m0_0m==0 && phi_p[qnnn.node_0m0_mp]<0 && !contains(connected, cell_number_p[qnnn.node_0m0_mp])) connected.push_back(cell_number_p[qnnn.node_0m0_mp]);
+        if(qnnn.node_0m0_pp>=nodes->num_owned_indeps && qnnn.d_0m0_0p==0 && phi_p[qnnn.node_0m0_pp]<0 && !contains(connected, cell_number_p[qnnn.node_0m0_pp])) connected.push_back(cell_number_p[qnnn.node_0m0_pp]);
+        if(qnnn.node_0p0_mp>=nodes->num_owned_indeps && qnnn.d_0p0_0m==0 && phi_p[qnnn.node_0p0_mp]<0 && !contains(connected, cell_number_p[qnnn.node_0p0_mp])) connected.push_back(cell_number_p[qnnn.node_0p0_mp]);
+        if(qnnn.node_0p0_pp>=nodes->num_owned_indeps && qnnn.d_0p0_0p==0 && phi_p[qnnn.node_0p0_pp]<0 && !contains(connected, cell_number_p[qnnn.node_0p0_pp])) connected.push_back(cell_number_p[qnnn.node_0p0_pp]);
+        if(qnnn.node_00m_mp>=nodes->num_owned_indeps && qnnn.d_00m_0m==0 && phi_p[qnnn.node_00m_mp]<0 && !contains(connected, cell_number_p[qnnn.node_00m_mp])) connected.push_back(cell_number_p[qnnn.node_00m_mp]);
+        if(qnnn.node_00m_pp>=nodes->num_owned_indeps && qnnn.d_00m_0p==0 && phi_p[qnnn.node_00m_pp]<0 && !contains(connected, cell_number_p[qnnn.node_00m_pp])) connected.push_back(cell_number_p[qnnn.node_00m_pp]);
+        if(qnnn.node_00p_mp>=nodes->num_owned_indeps && qnnn.d_00p_0m==0 && phi_p[qnnn.node_00p_mp]<0 && !contains(connected, cell_number_p[qnnn.node_00p_mp])) connected.push_back(cell_number_p[qnnn.node_00p_mp]);
+        if(qnnn.node_00p_pp>=nodes->num_owned_indeps && qnnn.d_00p_0p==0 && phi_p[qnnn.node_00p_pp]<0 && !contains(connected, cell_number_p[qnnn.node_00p_pp])) connected.push_back(cell_number_p[qnnn.node_00p_pp]);
+    }
+}
+
+void compute_cell_number(p4est_t *p4est, my_p4est_node_neighbors_t *ngbd,  p4est_nodes_t *nodes, Vec phi,  Vec &cell_number)
+{
+    PetscErrorCode ierr;
+    int nb_cells_total = 0;
+    int proc_padding = 1e6;
+
+    /* first everyone compute the local numbers */
+    std::vector<int> nb_cells_loc(p4est->mpisize);
+    nb_cells_loc[p4est->mpirank] = p4est->mpirank*proc_padding;
+
+    double *cell_number_p, *phi_p;
+    ierr = VecGetArray(cell_number, &cell_number_p); CHKERRXX(ierr);
+    ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
+    for(size_t i=0; i<ngbd->get_layer_size(); ++i)
+    {
+        p4est_locidx_t n = ngbd->get_layer_node(i);
+        if(phi_p[n]<0 && cell_number_p[n]<0)
+        {
+            fill_cell(ngbd, nodes, phi_p, cell_number_p, nb_cells_loc[p4est->mpirank], n);
+            nb_cells_loc[p4est->mpirank]++;
+        }
+    }
+    ierr = VecGhostUpdateBegin(cell_number, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    for(size_t i=0; i<ngbd->get_local_size(); ++i)
+    {
+        p4est_locidx_t n = ngbd->get_local_node(i);
+        if(phi_p[n]<0 && cell_number_p[n]<0)
+        {
+            fill_cell(ngbd, nodes, phi_p, cell_number_p, nb_cells_loc[p4est->mpirank], n);
+            nb_cells_loc[p4est->mpirank]++;
+        }
+    }
+    ierr = VecGhostUpdateEnd(cell_number, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecRestoreArray(cell_number, &cell_number_p); CHKERRXX(ierr);
+    ierr = VecGetArray(cell_number, &cell_number_p); CHKERRXX(ierr);
+    /* get remote number of cells to prepare graph communication structure */
+    int mpiret = MPI_Allgather(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, &nb_cells_loc[0], 1, MPI_INT, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+    /* compute offset for each process */
+    std::vector<int> proc_offset(p4est->mpisize+1);
+    proc_offset[0] = 0;
+    for(int p=0; p<p4est->mpisize; ++p){
+        proc_offset[p+1] = proc_offset[p] + (nb_cells_loc[p]%proc_padding);
+    }
+
+    /* build a local graph with
+     *   - vertices = cell number
+     *   - edges    = connected cells
+     * in order to simplify the communications, the graph is stored as a full matrix. Given the sparsity, this can be optimized ...
+     */
+
+    int nb_cells_g = proc_offset[p4est->mpisize]; //PAMM
+    std::vector<int> graph(nb_cells_g*nb_cells_g, 0);
+
+    std::vector<double> connected;
+    std::vector<bool> visited(nodes->num_owned_indeps, false);
+    for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+    {
+        if(cell_number_p[n]>=0 && !visited[n])
+        {
+            find_connected_ghost_cells(ngbd, nodes, phi_p, cell_number_p, n, connected, visited);
+            for(unsigned int i=0; i<connected.size(); ++i)
+            {
+                int local_id = proc_offset[p4est->mpirank]+static_cast<int>(cell_number_p[n])%proc_padding;
+                int remote_id = proc_offset[static_cast<int>(connected[i])/proc_padding] + (static_cast<int>(connected[i])%proc_padding);
+                graph[nb_cells_g*local_id + remote_id] = 1;
+            }
+            connected.clear();
+        }
+    }
+
+    std::vector<int> rcvcounts(p4est->mpisize);
+    std::vector<int> displs(p4est->mpisize);
+    for(int p=0; p<p4est->mpisize; ++p)
+    {
+        rcvcounts[p] = (nb_cells_loc[p]%proc_padding) * nb_cells_g;
+        displs[p] = proc_offset[p]*nb_cells_g;
+    }
+
+    mpiret = MPI_Allgatherv(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, &graph[0], &rcvcounts[0], &displs[0], MPI_INT, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+
+    std::vector<int> graph_numbering(nb_cells_g,-1);
+    stack<int> st;
+    for(int i=0; i<nb_cells_g; ++i)
+    {
+        if(graph_numbering[i]==-1)
+        {
+            st.push(i);
+            while(!st.empty())
+            {
+                int k = st.top();
+                st.pop();
+                graph_numbering[k] = nb_cells_total;
+                for(int j=0; j<nb_cells_g; ++j)
+                {
+                    int nj = k*nb_cells_g+j;
+                    if(graph[nj] && graph_numbering[j]==-1)
+                        st.push(j);
+                }
+            }
+            nb_cells_total++;
+        }
+    }
+    for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+    {
+        if(cell_number_p[n]>=0)
+        {
+            int index = proc_offset[static_cast<int>(cell_number_p[n])/proc_padding] + (static_cast<int>(cell_number_p[n])%proc_padding);
+            cell_number_p[n] = graph_numbering[index];
+        }
+    }
+
+    ierr = VecRestoreArray(cell_number, &cell_number_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
 }
 
 
@@ -2720,8 +3033,6 @@ int main(int argc, char** argv) {
     ierr = VecCreateGhostNodes(p4est, nodes, &phi); CHKERRXX(ierr);
     sample_cf_on_nodes(p4est, nodes, level_set, phi);
 
-
-
     /* set initial time step *//* find dx and dy smallest */
     /* p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
         p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
@@ -2741,12 +3052,22 @@ int main(int argc, char** argv) {
 #endif
     /* perturb level set */
     my_p4est_level_set_t ls(&ngbd_n);
-    ls.reinitialize_2nd_order(phi);
+    //  ls.reinitialize_2nd_order(phi);
     ls.perturb_level_set_function(phi, EPS);
+
+    Vec cell_number;
+    ierr = VecCreateGhostNodes(p4est, nodes, &cell_number); CHKERRXX(ierr);
+    //    Vec loc;
+    //    ierr = VecGhostGetLocalForm(cell_number, &loc); CHKERRXX(ierr);
+    //    ierr = VecSet(loc, -1.0); CHKERRXX(ierr);
+    //    ierr = VecGhostRestoreLocalForm(cell_number, &loc); CHKERRXX(ierr);
+    //    compute_cell_number(p4est, &ngbd_n, nodes, phi, cell_number);
+    sample_cf_on_nodes(p4est, nodes, cell_numbering, cell_number);
 
     Vec grad_phi[3];
     double *dphi_p[3],*phi_p;
     ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
+
 
     for(int i=0;i<3;++i)
     {
@@ -2906,7 +3227,8 @@ int main(int argc, char** argv) {
     // dt = MIN(dx,dy,dz)/mu_e/1000.0;  // by matching boundary conditions with a 0.1 V/m resolution
     //dt=MIN(dt, 0.2/omega, MIN(dx,dy,dz)/dt_scale);  // the last term is to due to diffusion of concentrations
 
-    save_VTK(p4est, ghost, nodes, &brick, phi, sol, -1, X0, X1, Sm, vn, err, M_list, Pm, charge_rate);
+
+    save_VTK(p4est, ghost, nodes, &brick, phi, sol, -1, X0, X1, Sm, vn, err, M_list, Pm, charge_rate, cell_number);
     PetscPrintf(p4est->mpicomm, "Proceed with dt=%g [s], dx=%g [m], scaling %g and final time is %g [s].\n", dt, dz/length_scale,MIN(dx,dy,dz)/dt/length_scale, tf);
 
     Vec grad_nm1;
@@ -2918,6 +3240,8 @@ int main(int argc, char** argv) {
     ierr = VecGhostGetLocalForm(grad_up, &lu); CHKERRXX(ierr);
     ierr = VecSet(lu, 0); CHKERRXX(ierr);
     ierr = VecGhostRestoreLocalForm(grad_up, &lu); CHKERRXX(ierr);
+
+
     while (tn<tf)
     {
 
@@ -3060,6 +3384,72 @@ int main(int argc, char** argv) {
         double total_area_permeabilized = integrate_over_interface(p4est, nodes, phi, Sm_thresholded);
         double total_area = integrate_over_interface(p4est, nodes, phi, ones);
 
+
+
+
+        //Begin compute dipoles!
+        if(save_dipoles){
+            std::vector<double> dipole_x(nb_cells);
+            std::vector<double> dipole_y(nb_cells);
+            std::vector<double> dipole_z(nb_cells);
+
+            Vec single_phi, dipole[P4EST_DIM];
+            VecDuplicate(phi,&single_phi);
+            double *dipole_p[P4EST_DIM];
+            for(int j=0;j<P4EST_DIM;++j)
+            {
+                ierr = VecGetArray(grad_phi[j], &dphi_p[j]); CHKERRXX(ierr);
+                VecDuplicate(phi, &dipole[j]);
+            }
+            double *vn_p;
+            VecGetArray(vn, &vn_p);
+            for(int cell_ID=0; cell_ID<nb_cells; ++cell_ID)
+            {
+                single_cell_phi.ID = cell_ID;
+                sample_cf_on_nodes(p4est, nodes, single_cell_phi, single_phi);
+
+                for(int j=0;j<P4EST_DIM;++j)
+                    VecGetArray(dipole[j], &dipole_p[j]);
+                for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+                {
+                    dipole_p[0][n] = epsilon_0*dphi_p[0][n]*vn_p[n];
+                    dipole_p[1][n] = epsilon_0*dphi_p[1][n]*vn_p[n];
+                    dipole_p[2][n] = epsilon_0*dphi_p[2][n]*vn_p[n];
+                }
+                for(int j=0;j<P4EST_DIM;++j)
+                    VecRestoreArray(dipole[j], &dipole_p[j]);
+
+                dipole_x[cell_ID] = integrate_over_interface(p4est, nodes, single_phi, dipole[0]);
+                dipole_y[cell_ID] = integrate_over_interface(p4est, nodes, single_phi, dipole[1]);
+                dipole_z[cell_ID] = integrate_over_interface(p4est, nodes, single_phi, dipole[2]);
+            }
+            VecRestoreArray(vn, &vn_p);
+            for(int j=0;j<P4EST_DIM;++j)
+                ierr = VecRestoreArray(grad_phi[j], &dphi_p[j]); CHKERRXX(ierr);
+
+            if(p4est->mpirank==0)
+            {
+                char out_path[1000];
+                char *out_dir = NULL;
+                out_dir = getenv("OUT_DIR");
+                if(out_dir==NULL)
+                {
+                    ierr = PetscPrintf(p4est->mpicomm, "You need to set the environment variable OUT_DIR before running the code to save topologies...\n"); CHKERRXX(ierr);
+                } else {
+                    sprintf(out_path, "%s/Dipoles_%d.dat", out_dir, iteration);
+                    FILE *f = fopen(out_path, "w");
+                    fprintf(f, "%% Number of cells is: %u\n", nb_cells);
+                    fprintf(f, "%% ID  |\t X_c\t  |\t Y_c\t  |\t Z_c\t |\t dipole_x \t dipole_y \t dipole_z \n");
+                    for(int n=0; n<nb_cells; ++n)
+                    {
+                        fprintf(f, "%d \t %g \t %g \t %g \t %g \t %g \t %g \n", n, level_set.centers[n].x, level_set.centers[n].y, level_set.centers[n].z, dipole_x[n], dipole_y[n], dipole_z[n]);
+                    }
+                    fclose(f);
+                }
+            }
+        }
+        // End of measuring cell dipoles
+
         if(save_impedance){
             char *out_dir = NULL;
             out_dir = getenv("OUT_DIR");
@@ -3120,7 +3510,7 @@ int main(int argc, char** argv) {
         }
         if(save_vtk && iteration%save_every_n == 0)
         {
-            save_VTK(p4est, ghost, nodes, &brick, phi, sol, iteration, X0, X1, Sm, vn, err, M_list, Pm, charge_rate);
+            save_VTK(p4est, ghost, nodes, &brick, phi, sol, iteration, X0, X1, Sm, vn, err, M_list, Pm, charge_rate, cell_number);
         }
         tn += dt;
         iteration++;
