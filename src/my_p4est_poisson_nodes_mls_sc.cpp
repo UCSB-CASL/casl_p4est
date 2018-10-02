@@ -4214,8 +4214,8 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
         // linear system
         char num_constraints = num_neighbors_cube_;
 
-        double gamma = 3.*log(10.);
-//        double gamma = 0;
+//        double gamma = 3.*log(10.);
+        double gamma = 0;
 
         std::vector<double> weight(num_constraints, 0);
         std::vector<double> col_1st(num_constraints, 0);
@@ -4253,7 +4253,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
                                     SQR((z_C+col_4th[idx]-xyz_pr[2])/dz_min_) +
     #endif
                       SQR((y_C+col_3rd[idx]-xyz_pr[1])/dy_min_)));
-                  if (idx == nn_000) weight[idx] = 10;
+//                  if (idx == nn_000) weight[idx] = 10;
                 }
               }
             }
@@ -4393,64 +4393,94 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
         double mu_p_proj = variable_mu_ ? mu_p_interp.value(xyz_pr) : mu_p_;
         double flux_proj = jump_flux_->at(0)->value(xyz_pr);
 
-        if (ii_phi_eff_p[n] < 0)
+        double sign = ii_phi_eff_p[n] < 0 ? 1 : -1;
+
+        rhs_add_ptr[n] = sign*jump_value_->value(xyz_pr);
+        w_ghosts[nn_000] = 1;
+
+        if (num_neg > num_pos)
         {
-          if (face_p_area_max > interface_rel_thresh_)
+          for (unsigned short nei = 0; nei < num_neighbors_cube_; ++nei)
           {
-            double r = mu_m_proj/mu_p_proj;
-
-//            if (r < 1 || 1)
-//            {
-////              rhs_add_ptr[n] = jump_value_->value(xyz_pr);
-//              rhs_add_ptr[n] = jump_value_->value(xyz_C);
-//              w_ghosts[nn_000] = 1;
-//            }
-//            else
-            {
-              rhs_add_ptr[n] = (num_neg > num_pos ? 1. : r) * jump_value_->value(xyz_pr) + dist*flux_proj/mu_p_proj;
-              w_ghosts[nn_000] = r;
-
-              for (unsigned short nei = 0; nei < num_neighbors_cube_; ++nei)
-              {
-                w_ghosts[nei] += (1.-r)*(coeff_const_term[nei]
-                                         + coeff_x_term[nei]*(xyz_pr[0] - xyz_C[0])
+            w_ghosts[nei] += sign*dist*(mu_m_proj/mu_p_proj - 1.)*(coeff_x_term[nei]*normal[0]
     #ifdef P4_TO_P8
-                    + coeff_z_term[nei]*(xyz_pr[2] - xyz_C[2])
+                + coeff_z_term[nei]*normal[2]
     #endif
-                    + coeff_y_term[nei]*(xyz_pr[1] - xyz_C[1]));
-              }
-            }
+                + coeff_y_term[nei]*normal[1]);
           }
+          rhs_add_ptr[n] += sign*dist*flux_proj/mu_p_proj;
         }
         else
         {
-          if (face_m_area_max > interface_rel_thresh_)
+          for (unsigned short nei = 0; nei < num_neighbors_cube_; ++nei)
           {
-            double r = mu_p_proj/mu_m_proj;
-
-//            if (r < 1 || 1)
-//            {
-////              rhs_add_ptr[n] = -jump_value_->value(xyz_pr);
-//              rhs_add_ptr[n] = -jump_value_->value(xyz_C);
-//              w_ghosts[nn_000] = 1;
-//            }
-//            else
-            {
-              rhs_add_ptr[n] = -(num_neg < num_pos ? 1. : r) * jump_value_->value(xyz_pr) - dist*flux_proj/mu_m_proj;
-              w_ghosts[nn_000] = r;
-
-              for (unsigned short nei = 0; nei < num_neighbors_cube_; ++nei)
-              {
-                w_ghosts[nei] += (1.-r)*(coeff_const_term[nei]
-                                         + coeff_x_term[nei]*(xyz_pr[0] - xyz_C[0])
+            w_ghosts[nei] += sign*dist*(1. - mu_p_proj/mu_m_proj)*(coeff_x_term[nei]*normal[0]
     #ifdef P4_TO_P8
-                    + coeff_z_term[nei]*(xyz_pr[2] - xyz_C[2])
+                + coeff_z_term[nei]*normal[2]
     #endif
-                    + coeff_y_term[nei]*(xyz_pr[1] - xyz_C[1]));
-              }
-            }
+                + coeff_y_term[nei]*normal[1]);
           }
+          rhs_add_ptr[n] += sign*dist*flux_proj/mu_m_proj;
         }
+
+//        if (ii_phi_eff_p[n] < 0)
+//        {
+//          if (face_p_area_max > interface_rel_thresh_)
+//          {
+//            double r = mu_m_proj/mu_p_proj;
+
+////            if (r < 1 || 1)
+////            {
+//////              rhs_add_ptr[n] = jump_value_->value(xyz_pr);
+////              rhs_add_ptr[n] = jump_value_->value(xyz_C);
+////              w_ghosts[nn_000] = 1;
+////            }
+////            else
+//            {
+//              rhs_add_ptr[n] = (num_neg > num_pos ? 1. : r) * jump_value_->value(xyz_pr) + dist*flux_proj/mu_p_proj;
+//              w_ghosts[nn_000] = r;
+
+//              for (unsigned short nei = 0; nei < num_neighbors_cube_; ++nei)
+//              {
+//                w_ghosts[nei] += (1.-r)*(coeff_const_term[nei]
+//                                         + coeff_x_term[nei]*(xyz_pr[0] - xyz_C[0])
+//    #ifdef P4_TO_P8
+//                    + coeff_z_term[nei]*(xyz_pr[2] - xyz_C[2])
+//    #endif
+//                    + coeff_y_term[nei]*(xyz_pr[1] - xyz_C[1]));
+//              }
+//            }
+//          }
+//        }
+//        else
+//        {
+//          if (face_m_area_max > interface_rel_thresh_)
+//          {
+//            double r = mu_p_proj/mu_m_proj;
+
+////            if (r < 1 || 1)
+////            {
+//////              rhs_add_ptr[n] = -jump_value_->value(xyz_pr);
+////              rhs_add_ptr[n] = -jump_value_->value(xyz_C);
+////              w_ghosts[nn_000] = 1;
+////            }
+////            else
+//            {
+//              rhs_add_ptr[n] = -(num_neg < num_pos ? 1. : r) * jump_value_->value(xyz_pr) - dist*flux_proj/mu_m_proj;
+//              w_ghosts[nn_000] = r;
+
+//              for (unsigned short nei = 0; nei < num_neighbors_cube_; ++nei)
+//              {
+//                w_ghosts[nei] += (1.-r)*(coeff_const_term[nei]
+//                                         + coeff_x_term[nei]*(xyz_pr[0] - xyz_C[0])
+//    #ifdef P4_TO_P8
+//                    + coeff_z_term[nei]*(xyz_pr[2] - xyz_C[2])
+//    #endif
+//                    + coeff_y_term[nei]*(xyz_pr[1] - xyz_C[1]));
+//              }
+//            }
+//          }
+//        }
 
   //      if (face_m_area_max > interface_rel_thresh_ && face_p_area_max > interface_rel_thresh_)
   //      {
