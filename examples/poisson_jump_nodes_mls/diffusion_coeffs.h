@@ -74,7 +74,7 @@ public:
   {
     switch (num_test_mu_m){
       case 0: return 1.;
-      case 1: return 1.e5;
+      case 1: return 1.e2;
       case 2: return 1.+0.2*cos(x)+0.3*sin(y);
       case 3: return 1.e5*(1.+0.2*cos(x)+0.3*sin(y));
       case 4: return y*y*log(x+2.) + 4.;
@@ -190,7 +190,7 @@ public:
   {
     switch (num_test_mu_p){
       case 0: return 1.;
-      case 1: return 1.e5;
+      case 1: return 1.e2;
       case 2: return 1.+0.2*sin(x)+0.3*cos(y);
       case 3: return 1.e5*(1.+0.2*sin(x)+0.3*cos(y));
       case 4: return y*y*log(x+2.) + 4.;

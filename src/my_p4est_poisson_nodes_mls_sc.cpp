@@ -6,11 +6,13 @@
 #include <src/my_p8est_interpolation_nodes_local.h>
 //#include <src/simplex3_mls_vtk.h>
 //#include <src/simplex3_mls_quadratic_vtk.h>
+#include <src/my_p8est_macros.h>
 #else
 #include "my_p4est_poisson_nodes_mls_sc.h"
 #include <src/my_p4est_refine_coarsen.h>
 #include <src/cube2.h>
 #include <src/my_p4est_interpolation_nodes_local.h>
+#include <src/my_p4est_macros.h>
 #endif
 
 #include <src/petsc_compatibility.h>
@@ -805,7 +807,7 @@ void my_p4est_poisson_nodes_mls_sc_t::solve(Vec solution, bool use_nonzero_initi
 //  setup_linear_system(false, true);
 
   // Solve the system
-  ierr = KSPSetTolerances(ksp_, 1.e-15, 1.e-15, PETSC_DEFAULT, 100); CHKERRXX(ierr);
+  ierr = KSPSetTolerances(ksp_, 1.e-15, 1.e-15, PETSC_DEFAULT, 50); CHKERRXX(ierr);
 //  ierr = KSPSetTolerances(ksp_, 1e-15, PETSC_DEFAULT, PETSC_DEFAULT, 30); CHKERRXX(ierr);
 //  ierr = KSPSetTolerances(ksp_, 1e-200, 1e-30, PETSC_DEFAULT, PETSC_DEFAULT); CHKERRXX(ierr);
   ierr = KSPSetFromOptions(ksp_); CHKERRXX(ierr);
@@ -4189,11 +4191,196 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
       {
         std::vector<double> w_ghosts(num_neighbors_cube_, 0);
 
+        double normal[P4EST_DIM];
+
         // compute projection point
-        find_projection_(ii_phi_p[0], qnnn, dxyz_pr, dist);
+        find_projection_(ii_phi_p[0], qnnn, dxyz_pr, dist, normal);
 
         for (unsigned short i_dim = 0; i_dim < P4EST_DIM; i_dim++)
           xyz_pr[i_dim] = xyz_C[i_dim] + dxyz_pr[i_dim];
+
+        // count numbers of neighbors in negative and positive domains
+        unsigned short num_neg = 0;
+        unsigned short num_pos = 0;
+        for (unsigned short nei = 0; nei < num_neighbors_cube_; ++nei)
+          if (neighbors_exist[nei])
+          {
+            if (ii_phi_eff_p[neighbors[nei]] < 0) num_neg++;
+            else                                  num_pos++;
+          }
+
+        if (num_neg == num_pos) { (ii_phi_eff_p[n] < 0) ? num_neg++ : num_pos++; }
+
+        // linear system
+        char num_constraints = num_neighbors_cube_;
+
+        double gamma = 3.*log(10.);
+//        double gamma = 0;
+
+        std::vector<double> weight(num_constraints, 0);
+        std::vector<double> col_1st(num_constraints, 0);
+        std::vector<double> col_2nd(num_constraints, 0);
+        std::vector<double> col_3rd(num_constraints, 0);
+#ifdef P4_TO_P8
+        std::vector<double> col_4th(num_constraints, 0);
+#endif
+
+#ifdef P4_TO_P8
+        for (char k = 0; k < 3; ++k)
+#endif
+          for (char j = 0; j < 3; ++j)
+            for (char i = 0; i < 3; ++i)
+            {
+#ifdef P4_TO_P8
+              char idx = 9*k+3*j+i;
+#else
+              char idx = 3*j+i;
+#endif
+              col_1st[idx] = 1.;
+              col_2nd[idx] = ((double) (i-1)) * dxyz_m_[0];
+              col_3rd[idx] = ((double) (j-1)) * dxyz_m_[1];
+#ifdef P4_TO_P8
+              col_4th[idx] = ((double) (k-1)) * dxyz_m_[2];
+#endif
+
+              if (neighbors_exist[idx])
+              {
+                if (ii_phi_eff_p[neighbors[idx]] <  0 && num_neg > num_pos ||
+                    ii_phi_eff_p[neighbors[idx]] >= 0 && num_neg < num_pos)
+                {
+                  weight[idx] = exp(-gamma*(SQR((x_C+col_2nd[idx]-xyz_pr[0])/dx_min_) +
+                  #ifdef P4_TO_P8
+                                    SQR((z_C+col_4th[idx]-xyz_pr[2])/dz_min_) +
+    #endif
+                      SQR((y_C+col_3rd[idx]-xyz_pr[1])/dy_min_)));
+                  if (idx == nn_000) weight[idx] = 10;
+                }
+              }
+            }
+
+
+        // assemble and invert matrix
+        unsigned short A_size = (P4EST_DIM+1);
+        double A[(P4EST_DIM+1)*(P4EST_DIM+1)];
+        double A_inv[(P4EST_DIM+1)*(P4EST_DIM+1)];
+
+        A[0*A_size + 0] = 0;
+        A[0*A_size + 1] = 0;
+        A[0*A_size + 2] = 0;
+        A[1*A_size + 1] = 0;
+        A[1*A_size + 2] = 0;
+        A[2*A_size + 2] = 0;
+#ifdef P4_TO_P8
+        A[0*A_size + 3] = 0;
+        A[1*A_size + 3] = 0;
+        A[2*A_size + 3] = 0;
+        A[3*A_size + 3] = 0;
+#endif
+
+        for (unsigned short nei = 0; nei < num_constraints; ++nei)
+        {
+          A[0*A_size + 0] += col_1st[nei]*col_1st[nei]*weight[nei];
+          A[0*A_size + 1] += col_1st[nei]*col_2nd[nei]*weight[nei];
+          A[0*A_size + 2] += col_1st[nei]*col_3rd[nei]*weight[nei];
+          A[1*A_size + 1] += col_2nd[nei]*col_2nd[nei]*weight[nei];
+          A[1*A_size + 2] += col_2nd[nei]*col_3rd[nei]*weight[nei];
+          A[2*A_size + 2] += col_3rd[nei]*col_3rd[nei]*weight[nei];
+#ifdef P4_TO_P8
+          A[0*A_size + 3] += col_1st[nei]*col_4th[nei]*weight[nei];
+          A[1*A_size + 3] += col_2nd[nei]*col_4th[nei]*weight[nei];
+          A[2*A_size + 3] += col_3rd[nei]*col_4th[nei]*weight[nei];
+          A[3*A_size + 3] += col_4th[nei]*col_4th[nei]*weight[nei];
+#endif
+        }
+
+        A[1*A_size + 0] = A[0*A_size + 1];
+        A[2*A_size + 0] = A[0*A_size + 2];
+        A[2*A_size + 1] = A[1*A_size + 2];
+#ifdef P4_TO_P8
+        A[3*A_size + 0] = A[0*A_size + 3];
+        A[3*A_size + 1] = A[1*A_size + 3];
+        A[3*A_size + 2] = A[2*A_size + 3];
+#endif
+
+#ifdef P4_TO_P8
+        if (!inv_mat4(A, A_inv)) throw;
+#else
+        if (!inv_mat3(A, A_inv)) throw;
+#endif
+
+        // compute Taylor expansion coefficients
+        std::vector<double> coeff_const_term(num_constraints, 0);
+        std::vector<double> coeff_x_term    (num_constraints, 0);
+        std::vector<double> coeff_y_term    (num_constraints, 0);
+#ifdef P4_TO_P8
+        std::vector<double> coeff_z_term    (num_constraints, 0);
+#endif
+
+        for (unsigned short nei = 0; nei < num_constraints; ++nei)
+        {
+#ifdef P4_TO_P8
+          coeff_const_term[nei] = weight[nei]*
+              ( A_inv[0*A_size+0]*col_1st[nei]
+              + A_inv[0*A_size+1]*col_2nd[nei]
+              + A_inv[0*A_size+2]*col_3rd[nei]
+              + A_inv[0*A_size+3]*col_4th[nei] );
+
+          coeff_x_term[nei] = weight[nei]*
+              ( A_inv[1*A_size+0]*col_1st[nei]
+              + A_inv[1*A_size+1]*col_2nd[nei]
+              + A_inv[1*A_size+2]*col_3rd[nei]
+              + A_inv[1*A_size+3]*col_4th[nei] );
+
+          coeff_y_term[nei] = weight[nei]*
+              ( A_inv[2*A_size+0]*col_1st[nei]
+              + A_inv[2*A_size+1]*col_2nd[nei]
+              + A_inv[2*A_size+2]*col_3rd[nei]
+              + A_inv[2*A_size+3]*col_4th[nei] );
+
+          coeff_z_term[nei] = weight[nei]*
+              ( A_inv[3*A_size+0]*col_1st[nei]
+              + A_inv[3*A_size+1]*col_2nd[nei]
+              + A_inv[3*A_size+2]*col_3rd[nei]
+              + A_inv[3*A_size+3]*col_4th[nei] );
+#else
+          coeff_const_term[nei] = weight[nei]*
+              ( A_inv[0*A_size+0]*col_1st[nei]
+              + A_inv[0*A_size+1]*col_2nd[nei]
+              + A_inv[0*A_size+2]*col_3rd[nei] );
+
+          coeff_x_term[nei] = weight[nei]*
+              ( A_inv[1*A_size+0]*col_1st[nei]
+              + A_inv[1*A_size+1]*col_2nd[nei]
+              + A_inv[1*A_size+2]*col_3rd[nei] );
+
+          coeff_y_term[nei] = weight[nei]*
+              ( A_inv[2*A_size+0]*col_1st[nei]
+              + A_inv[2*A_size+1]*col_2nd[nei]
+              + A_inv[2*A_size+2]*col_3rd[nei] );
+#endif
+        }
+
+//        double const_term = 1.;
+//        double x_term     = (xyz_pr[0] - xyz_C[0]);
+//        double y_term     = (xyz_pr[1] - xyz_C[1]);
+//#ifdef P4_TO_P8
+//        double z_term     = (xyz_pr[2] - xyz_C[2]);
+//#endif
+
+//        // matrix coefficients
+//        for (unsigned short nei = 0; nei < num_neighbors_cube_; ++nei)
+//        {
+//#ifdef P4_TO_P8
+//          w_ghosts[nei] += coeff_const_term[nei]*const_term
+//              + coeff_x_term[nei]*x_term
+//              + coeff_y_term[nei]*y_term
+//              + coeff_z_term[nei]*z_term;
+//#else
+//          w_ghosts[nei] += coeff_const_term[nei]*const_term
+//              + coeff_x_term[nei]*x_term
+//              + coeff_y_term[nei]*y_term;
+//#endif
+//        }
 
 //        xyz_pr[0] = MIN(xyz_pr[0], fv_xmax); xyz_pr[0] = MAX(xyz_pr[0], fv_xmin);
 //        xyz_pr[1] = MIN(xyz_pr[1], fv_ymax); xyz_pr[1] = MAX(xyz_pr[1], fv_ymin);
@@ -4210,16 +4397,58 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
         {
           if (face_p_area_max > interface_rel_thresh_)
           {
-            rhs_add_ptr[n] =  jump_value_->value(xyz_pr) + dist*flux_proj/mu_p_proj;
-            w_ghosts[nn_000] = 1;
+            double r = mu_m_proj/mu_p_proj;
+
+//            if (r < 1 || 1)
+//            {
+////              rhs_add_ptr[n] = jump_value_->value(xyz_pr);
+//              rhs_add_ptr[n] = jump_value_->value(xyz_C);
+//              w_ghosts[nn_000] = 1;
+//            }
+//            else
+            {
+              rhs_add_ptr[n] = (num_neg > num_pos ? 1. : r) * jump_value_->value(xyz_pr) + dist*flux_proj/mu_p_proj;
+              w_ghosts[nn_000] = r;
+
+              for (unsigned short nei = 0; nei < num_neighbors_cube_; ++nei)
+              {
+                w_ghosts[nei] += (1.-r)*(coeff_const_term[nei]
+                                         + coeff_x_term[nei]*(xyz_pr[0] - xyz_C[0])
+    #ifdef P4_TO_P8
+                    + coeff_z_term[nei]*(xyz_pr[2] - xyz_C[2])
+    #endif
+                    + coeff_y_term[nei]*(xyz_pr[1] - xyz_C[1]));
+              }
+            }
           }
         }
         else
         {
           if (face_m_area_max > interface_rel_thresh_)
           {
-            rhs_add_ptr[n] = -jump_value_->value(xyz_pr) - dist*flux_proj/mu_m_proj;
-            w_ghosts[nn_000] = 1;
+            double r = mu_p_proj/mu_m_proj;
+
+//            if (r < 1 || 1)
+//            {
+////              rhs_add_ptr[n] = -jump_value_->value(xyz_pr);
+//              rhs_add_ptr[n] = -jump_value_->value(xyz_C);
+//              w_ghosts[nn_000] = 1;
+//            }
+//            else
+            {
+              rhs_add_ptr[n] = -(num_neg < num_pos ? 1. : r) * jump_value_->value(xyz_pr) - dist*flux_proj/mu_m_proj;
+              w_ghosts[nn_000] = r;
+
+              for (unsigned short nei = 0; nei < num_neighbors_cube_; ++nei)
+              {
+                w_ghosts[nei] += (1.-r)*(coeff_const_term[nei]
+                                         + coeff_x_term[nei]*(xyz_pr[0] - xyz_C[0])
+    #ifdef P4_TO_P8
+                    + coeff_z_term[nei]*(xyz_pr[2] - xyz_C[2])
+    #endif
+                    + coeff_y_term[nei]*(xyz_pr[1] - xyz_C[1]));
+              }
+            }
           }
         }
 
@@ -4348,6 +4577,26 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
       ierr = MatDestroy(C); CHKERRXX(ierr);
       ierr = MatDestroy(BC); CHKERRXX(ierr);
     }
+  }
+
+  if (setup_matrix || setup_rhs)
+  {
+    Vec diagonal;
+
+    ierr = VecDuplicate(rhs_, &diagonal); CHKERRXX(ierr);
+    ierr = MatGetDiagonal(A_, diagonal); CHKERRXX(ierr);
+
+    double *diagonal_ptr;
+    ierr = VecGetArray(diagonal, &diagonal_ptr); CHKERRXX(ierr);
+    foreach_local_node(n, nodes_)
+    {
+      diagonal_ptr[n] = 1./diagonal_ptr[n];
+    }
+    ierr = VecRestoreArray(diagonal, &diagonal_ptr); CHKERRXX(ierr);
+
+    if (setup_matrix) { ierr = MatDiagonalScale(A_, diagonal, NULL); CHKERRXX(ierr); }
+    if (setup_rhs)    { ierr = VecPointwiseMult(rhs_, rhs_, diagonal); CHKERRXX(ierr); }
+    ierr = VecDestroy(diagonal); CHKERRXX(ierr);
   }
 
 
@@ -5401,7 +5650,7 @@ void my_p4est_poisson_nodes_mls_sc_t::compute_volumes()
 //}
 
 
-void my_p4est_poisson_nodes_mls_sc_t::find_projection_(const double *phi_p, const quad_neighbor_nodes_of_node_t& qnnn, double dxyz_pr[], double &dist_pr)
+void my_p4est_poisson_nodes_mls_sc_t::find_projection_(const double *phi_p, const quad_neighbor_nodes_of_node_t& qnnn, double dxyz_pr[], double &dist_pr, double normal[])
 {
   // find projection point
   double phi_x = 0., phi_y = 0.;
@@ -5454,6 +5703,15 @@ void my_p4est_poisson_nodes_mls_sc_t::find_projection_(const double *phi_p, cons
 #ifdef P4_TO_P8
   dxyz_pr[2] = - dist_pr*phi_z;
 #endif
+
+  if (normal != NULL)
+  {
+    normal[0] = phi_x;
+    normal[1] = phi_y;
+#ifdef P4_TO_P8
+    normal[2] = phi_z;
+#endif
+  }
 }
 
 void my_p4est_poisson_nodes_mls_sc_t::compute_normal(const double *phi_p, const quad_neighbor_nodes_of_node_t& qnnn, double n[])

@@ -672,7 +672,7 @@ public:
   bool inv_mat4(const double m[16], double invOut[16]);
 
 //  void find_projection_(double *phi_p, p4est_locidx_t *neighbors, bool *neighbor_exists, double dxyz_pr[], double &dist_pr);
-  void find_projection_(const double *phi_p, const quad_neighbor_nodes_of_node_t& qnnn, double dxyz_pr[], double &dist_pr);
+  void find_projection_(const double *phi_p, const quad_neighbor_nodes_of_node_t& qnnn, double dxyz_pr[], double &dist_pr, double normal[] = NULL);
 
   void compute_normal(const double *phi_p, const quad_neighbor_nodes_of_node_t& qnnn, double n[]);
 

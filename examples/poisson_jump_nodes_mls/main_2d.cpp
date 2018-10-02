@@ -138,13 +138,13 @@ int iter_start = 0; // is used to skip iterations and get to a problematic case
 int num_test_geometry = 11;
 
 int num_test_mu_m = 0;
-int num_test_mu_p = 0;
+int num_test_mu_p = 1;
 
 int num_test_um = 0;
 int num_test_up = 1;
 
-int num_test_diag_term_m = 0;
-int num_test_diag_term_p = 0;
+int num_test_diag_term_m = 1;
+int num_test_diag_term_p = 1;
 
 BoundaryConditionType bc_wtype = DIRICHLET;
 BoundaryConditionType bc_itype = ROBIN;
