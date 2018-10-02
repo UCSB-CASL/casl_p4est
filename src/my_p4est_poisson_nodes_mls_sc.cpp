@@ -678,6 +678,8 @@ void my_p4est_poisson_nodes_mls_sc_t::solve(Vec solution, bool use_nonzero_initi
     ierr = VecGhostRestoreLocalForm(phi_->at(0), &tmp); CHKERRXX(ierr);
 //    ierr = VecCreateSeq(PETSC_COMM_SELF, nodes->num_owned_indeps, &phi_); CHKERRXX(ierr);
     set_geometry(1, action_, color_, phi_);
+
+    bc_interface_type_ = new std::vector<BoundaryConditionType> (1, DIRICHLET);
   }
 
   bool local_immersed_phi = false;
@@ -863,6 +865,7 @@ void my_p4est_poisson_nodes_mls_sc_t::solve(Vec solution, bool use_nonzero_initi
 
     delete action_;
     delete color_;
+    delete bc_interface_type_;
   }
 
   if(local_immersed_phi)
@@ -1240,8 +1243,8 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
   {
 #ifdef DO_NOT_PREALLOCATE
     std::vector<mat_entry_t> * row = matrix_entries[n];
-    std::vector<mat_entry_t> * row_B = matrix_entries[n];
-    std::vector<mat_entry_t> * row_C = matrix_entries[n];
+    std::vector<mat_entry_t> * row_B = B_matrix_entries[n];
+    std::vector<mat_entry_t> * row_C = C_matrix_entries[n];
 #endif
     // tree information
     p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes_->indep_nodes, n);
@@ -3703,6 +3706,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
     //*
     else if (discretization_scheme_ == JUMP)
     {
+      interface_present = true;
       // reconstruct domain and compute geometric quantities
 #ifdef P4_TO_P8
       cube3_mls_t cube;
@@ -3864,7 +3868,8 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
 
       if (setup_rhs)
       {
-        rhs_ptr[n] = rhs_m_ptr[n]*volume_cut_cell_m + rhs_p_ptr[n]*volume_cut_cell_p + integral_bc;
+        rhs_ptr[n] = rhs_m_ptr[n]*volume_cut_cell_m + rhs_p_ptr[n]*volume_cut_cell_p - integral_bc;
+//        rhs_ptr[n] = 0;
       }
 
       // get quadrature points
@@ -3990,6 +3995,13 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
             neighbors_exist_p[idx] = neighbors_exist[idx] && (areas_p_ptr[neighbors[idx]] > interface_rel_thresh_);
             neighbors_exist_m[idx] = neighbors_exist[idx] && (areas_m_ptr[neighbors[idx]] > interface_rel_thresh_);
           }
+      } else {
+        for (unsigned short idx = 0; idx < num_neighbors_cube_; ++idx)
+          if (neighbors_exist[idx])
+          {
+            neighbors_exist_p[idx] = neighbors_exist[idx];
+            neighbors_exist_m[idx] = neighbors_exist[idx];
+          }
       }
 
       //---------------------------------------------------------------------
@@ -4014,7 +4026,22 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
 
       double theta = EPS;
 
-      for (unsigned short dom = 0; dom < P4EST_DIM; ++dom) // negative and positive domains
+      if (face_m_area_max < interface_rel_thresh_) { face_m_area_max = 0; volume_cut_cell_m = 0; }
+      if (face_p_area_max < interface_rel_thresh_) { face_p_area_max = 0; volume_cut_cell_p = 0; }
+
+      if (face_m_area_max < interface_rel_thresh_ &&
+          face_p_area_max < interface_rel_thresh_)
+        throw;
+
+//      w_m[nn_000] = 4;
+//      w_m[nn_m00] =-1;
+//      w_m[nn_p00] =-1;
+//      w_m[nn_0m0] =-1;
+//      w_m[nn_0p0] =-1;
+//      rhs_ptr[n] = sin(x_C)*cos(y_C);
+//      rhs_ptr[n] = dx_min_*dx_min_*rhs_p_ptr[n];
+      //*
+      for (unsigned short dom = 0; dom < 2; ++dom) // negative and positive domains
       {
         if (dom == 0 && face_m_area_max <= interface_rel_thresh_ ||
             dom == 1 && face_p_area_max <= interface_rel_thresh_)
@@ -4106,6 +4133,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
 
         w[nn_000] += diag_add_ptr[n]*volume_cut_cell;
       }
+      //*/
 
 
       // put values into matrices
@@ -4114,7 +4142,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
         if (neighbors_exist[i])
         {
           PetscInt node_nei_g = petsc_gloidx_[neighbors[i]];
-          if (ii_phi_eff_p[i] < 0)
+          if (ii_phi_eff_p[neighbors[i]] < 0)
           {
             if (neighbors_exist_m[i] && fabs(w_m[i]) > EPS)
             {
@@ -4156,36 +4184,62 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
       }
 
       // express values at ghost cells using values at real cells
-      std::vector<double> w_ghosts(num_neighbors_cube_, 0);
-
-      if (ii_phi_eff_p[n] < 0)
+      if (face_p_area_max > interface_rel_thresh_ &&
+          face_m_area_max > interface_rel_thresh_)
       {
-        if (face_p_area_max > interface_rel_thresh_)
-        {
-          rhs_add_ptr[n] =  jump_value_->value(xyz_C);
-          w_ghosts[nn_000] = 1;
-        }
-      }
-      else
-      {
-        if (face_m_area_max > interface_rel_thresh_)
-        {
-          rhs_add_ptr[n] = -jump_value_->value(xyz_C);
-          w_ghosts[nn_000] = 1;
-        }
-      }
+        std::vector<double> w_ghosts(num_neighbors_cube_, 0);
 
-      // put values into matrix
-      for (unsigned short i = 0; i < num_neighbors_cube_; ++i)
-        if (neighbors_exist[i] && fabs(w_ghosts[i]) > EPS)
+        // compute projection point
+        find_projection_(ii_phi_p[0], qnnn, dxyz_pr, dist);
+
+        for (unsigned short i_dim = 0; i_dim < P4EST_DIM; i_dim++)
+          xyz_pr[i_dim] = xyz_C[i_dim] + dxyz_pr[i_dim];
+
+//        xyz_pr[0] = MIN(xyz_pr[0], fv_xmax); xyz_pr[0] = MAX(xyz_pr[0], fv_xmin);
+//        xyz_pr[1] = MIN(xyz_pr[1], fv_ymax); xyz_pr[1] = MAX(xyz_pr[1], fv_ymin);
+//  #ifdef P4_TO_P8
+//        xyz_pr[2] = MIN(xyz_pr[2], fv_zmax); xyz_pr[2] = MAX(xyz_pr[2], fv_zmin);
+//  #endif
+
+        // sample values at the projection point
+        double mu_m_proj = variable_mu_ ? mu_m_interp.value(xyz_pr) : mu_m_;
+        double mu_p_proj = variable_mu_ ? mu_p_interp.value(xyz_pr) : mu_p_;
+        double flux_proj = jump_flux_->at(0)->value(xyz_pr);
+
+        if (ii_phi_eff_p[n] < 0)
         {
-          PetscInt node_nei_g = petsc_gloidx_[neighbors[i]];
-          if (w_ghosts[i] != w_ghosts[i]) throw std::domain_error("Matrix element is nan\n");
-          ent.n = node_nei_g;
-          ent.val = w_ghosts[i];
-          row_C->push_back(ent);
-          ( neighbors[i] < num_owned_local ) ? C_d_nnz[n]++ : C_o_nnz[n]++;
+          if (face_p_area_max > interface_rel_thresh_)
+          {
+            rhs_add_ptr[n] =  jump_value_->value(xyz_pr) + dist*flux_proj/mu_p_proj;
+            w_ghosts[nn_000] = 1;
+          }
         }
+        else
+        {
+          if (face_m_area_max > interface_rel_thresh_)
+          {
+            rhs_add_ptr[n] = -jump_value_->value(xyz_pr) - dist*flux_proj/mu_m_proj;
+            w_ghosts[nn_000] = 1;
+          }
+        }
+
+  //      if (face_m_area_max > interface_rel_thresh_ && face_p_area_max > interface_rel_thresh_)
+  //      {
+  //        w_ghosts[nn_000] = 1;
+  //      }
+
+        // put values into matrix
+        for (unsigned short i = 0; i < num_neighbors_cube_; ++i)
+          if (neighbors_exist[i] && fabs(w_ghosts[i]) > EPS)
+          {
+            PetscInt node_nei_g = petsc_gloidx_[neighbors[i]];
+            if (w_ghosts[i] != w_ghosts[i]) throw std::domain_error("Matrix element is nan\n");
+            ent.n = node_nei_g;
+            ent.val = w_ghosts[i];
+            row_C->push_back(ent);
+            ( neighbors[i] < num_owned_local ) ? C_d_nnz[n]++ : C_o_nnz[n]++;
+          }
+      }
 
     }//*/
 
@@ -4278,11 +4332,16 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
       ierr = MatAssemblyEnd  (C, MAT_FINAL_ASSEMBLY); CHKERRXX(ierr);
 
       Mat BC;
+//      ierr = MatCreate(p4est_->mpicomm, &BC); CHKERRXX(ierr);
 
       ierr = MatMatMult(B, C, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &BC); CHKERRXX(ierr);
+//      ierr = MatMatMultSymbolic(B, C, PETSC_DEFAULT, &BC); CHKERRXX(ierr);
+//      ierr = MatMatMultNumeric(B, C, BC); CHKERRXX(ierr);
 
       ierr = MatAXPY(A_, 1., BC, DIFFERENT_NONZERO_PATTERN); CHKERRXX(ierr);
+//      ierr = MatAXPY(A_, 1., B, DIFFERENT_NONZERO_PATTERN); CHKERRXX(ierr);
 
+      invert_phi(nodes_, rhs_add);
       ierr = MatMultAdd(B, rhs_add, rhs_, rhs_); CHKERRXX(ierr);
 
       ierr = MatDestroy(B); CHKERRXX(ierr);

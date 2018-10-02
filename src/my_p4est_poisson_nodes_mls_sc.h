@@ -599,12 +599,12 @@ public:
   }
 
 #ifdef P4_TO_P8
-  void set_mu(Vec mue_m,
+  void set_mu2(Vec mue_m,
               Vec mue_p,
               Vec mue_m_xx = NULL, Vec mue_m_yy = NULL, Vec mue_m_zz = NULL,
               Vec mue_p_xx = NULL, Vec mue_p_yy = NULL, Vec mue_p_zz = NULL)
 #else
-  void set_mu(Vec mue_m,
+  void set_mu2(Vec mue_m,
               Vec mue_p,
               Vec mue_m_xx = NULL, Vec mue_m_yy = NULL,
               Vec mue_p_xx = NULL, Vec mue_p_yy = NULL)
@@ -701,6 +701,7 @@ public:
   }
 
   inline Vec get_phi_eff() { return phi_eff_; }
+  inline Vec get_immersed_phi_eff() { return ii_.phi_eff; }
 
   inline Mat get_matrix() { return A_; }
 
