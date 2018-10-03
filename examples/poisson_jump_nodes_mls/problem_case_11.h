@@ -71,7 +71,7 @@ public:
 //    domain0.set_params(r0, xc0, yc0, 0.1, -1);
     double r0 = .5+EPS, xc0 = 0., yc0 = 0.;
 
-    domain0.set_params(r0, xc0, yc0, 0., 1, PI/2.);
+    domain0.set_params(r0, xc0, yc0, 0., -1, PI/2.);
 #endif
 
     phi_cf.push_back(&domain0.phi); action.push_back(INTERSECTION); color.push_back(0);

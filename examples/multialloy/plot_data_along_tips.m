@@ -30,7 +30,7 @@ dir = '/home/dbochkov/Output/multialloy/dendrites';
 % dir = '/home/dbochkov/Outputs/multialloy_optimized/dendrites/00118';
 % dir = '/home/dbochkov/Outputs/multialloy_optimized/dendrites/00139';
 
-dir = '/home/dbochkov/Dendrites/4/data_last/D1_0.00001_G_00500.1972666/dendrites/00115/';
+% dir = '/home/dbochkov/Dendrites/4/data_last/D1_0.00001_G_00500.1972666/dendrites/00115/';
 % dir = '/home/dbochkov/Dendrites/4/data_last/D1_0.00002_G_00500.1972671/dendrites/00129/';
 % dir = '/home/dbochkov/Dendrites/4/data_last/D1_0.00004_G_00500.1972676/dendrites/00141/';
 % dir = '/home/dbochkov/Dendrites/4/data_last/D1_0.00008_G_00500.1972679/dendrites/00149/';
@@ -43,6 +43,14 @@ dir = '/home/dbochkov/Dendrites/4/data_last/D1_0.00001_G_00500.1972666/dendrites
 % dir = '/home/dbochkov/Dendrites/4/data_115/D1_0.00008_G_00500.1972679/dendrites/00115/';
 % dir = '/home/dbochkov/Dendrites/4/data_115/D1_0.00016_G_00500.1972680/dendrites/00115/';
 % dir = '/home/dbochkov/Dendrites/4/data_115/D1_0.00032_G_00500.1972681/dendrites/00115/';
+
+% dir = '/home/dbochkov/Dendrites/5/data_380/D1_0.00001_G_00500.2173295/dendrites/00380/';
+% dir = '/home/dbochkov/Dendrites/5/data_380/D1_0.00002_G_00500.2173296/dendrites/00380/';
+% dir = '/home/dbochkov/Dendrites/5/data_380/D1_0.00004_G_00500.2173297/dendrites/00380/';
+% dir = '/home/dbochkov/Dendrites/5/data_380/D1_0.00008_G_00500.2173298/dendrites/00380/';
+% dir = '/home/dbochkov/Dendrites/5/data_380/D1_0.00016_G_00500.2173299/dendrites/00380/';
+dir = '/home/dbochkov/Dendrites/5/data_380/D1_0.00032_G_00500.2173301/dendrites/00380/';
+
 
 Tm = 1996;
 
