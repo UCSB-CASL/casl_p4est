@@ -73,7 +73,7 @@ bool contains(const std::vector<T> &vec, const T& elem)
 }
 
 
-int test = 9; //-1: just a positive domain for test, dynamic linear case=2, dynamic nonlinear case=4, static linear case=1, random cube box side enforced = 8, random spheroid=9, 10=read from initial condition file.
+int test = 5; //-1: just a positive domain for test, dynamic linear case=2, dynamic nonlinear case=4, static linear case=1, random cube box side enforced = 8, random spheroid=9, 10=read from initial condition file.
 // test=1,2 use the exact solution on the boundary condition! Be careful!
 
 double cellDensity = 0.0001;   // only if test = 8 || 9
@@ -111,29 +111,29 @@ int x_cells = 1;
 int y_cells = 1;
 int z_cells = 1;
 /* number of random cells */
-int nb_cells = test==7 ? 2 : ((test==8 || test==9) ? int (cellDensity*SphereVolume/cellVolume) : x_cells*y_cells*z_cells);
+int nb_cells = test==7 ? 34 : (test==2 || test==4 || test==5)? 1 : ((test==8 || test==9) ? int (cellDensity*SphereVolume/cellVolume) : x_cells*y_cells*z_cells);
 
 
 //Note: I changed xmin/ymin/zminn and max's for test<4 from 2*x_cells*r0 to 4*x_cells*r0
-double xmin = test<4 ? -2*x_cells*r0 :  (test == 7 ? -4*pow(nb_cells, 1./3.)*r0  : ((test==8 || test==9 || test==10) ? -boxSide/2 : -2*x_cells*r0));
-double xmax = test<4 ?  2*x_cells*r0 :  (test == 7 ?  4*pow(nb_cells, 1./3.)*r0  : ((test==8 || test==9 || test==10) ?  boxSide/2 :  2*x_cells*r0));
-double ymin = test<4 ? -2*y_cells*r0 :  (test == 7 ? -4*pow(nb_cells, 1./3.)*r0  : ((test==8 || test==9 || test==10) ? -boxSide/2 : -2*y_cells*r0));
-double ymax = test<4 ?  2*y_cells*r0 :  (test == 7 ?  4*pow(nb_cells, 1./3.)*r0  : ((test==8 || test==9 || test==10) ?  boxSide/2 :  2*y_cells*r0));
-double zminn = test<4 ? -2*z_cells*r0 :  (test == 7 ? -4*pow(nb_cells, 1./3.)*r0  : ((test==8 || test==9 || test==10) ? -boxSide/2 : -2*z_cells*r0));
-double zmaxx = test<4 ?  2*z_cells*r0 :  (test == 7 ?  4*pow(nb_cells, 1./3.)*r0  : ((test==8 || test==9 || test==10) ?  boxSide/2 :  2*z_cells*r0));
+double xmin = test<4 ? -2*x_cells*r0 :  (test == 7 ? -4*pow(nb_cells, 1./3.)*r0  : ((test==8 || test==9 || test==10 || test==11) ? -boxSide/2 : -2*x_cells*r0));
+double xmax = test<4 ?  2*x_cells*r0 :  (test == 7 ?  4*pow(nb_cells, 1./3.)*r0  : ((test==8 || test==9 || test==10 || test==11) ?  boxSide/2 :  2*x_cells*r0));
+double ymin = test<4 ? -2*y_cells*r0 :  (test == 7 ? -4*pow(nb_cells, 1./3.)*r0  : ((test==8 || test==9 || test==10 || test==11) ? -boxSide/2 : -2*y_cells*r0));
+double ymax = test<4 ?  2*y_cells*r0 :  (test == 7 ?  4*pow(nb_cells, 1./3.)*r0  : ((test==8 || test==9 || test==10 || test==11) ?  boxSide/2 :  2*y_cells*r0));
+double zminn = test<4 ? -2*z_cells*r0 :  (test == 7 ? -4*pow(nb_cells, 1./3.)*r0  : ((test==8 || test==9 || test==10 || test==11) ? -boxSide/2 : -2*z_cells*r0));
+double zmaxx = test<4 ?  2*z_cells*r0 :  (test == 7 ?  4*pow(nb_cells, 1./3.)*r0  : ((test==8 || test==9 || test==10 || test==11) ?  boxSide/2 :  2*z_cells*r0));
 
 const double xyz_min_[] = {xmin, ymin, zminn};
 const double xyz_max_[] = {xmax, ymax, zmaxx};
 
 int axial_nb = 2*zmaxx/r0/2;
 int lmax_thr = (int)log2(axial_nb)+5;   // the mesh should be fine enough to have enough nodes on each cell for solver not to crash.
-int lmin = 2;
-int lmax =9;//MAX(lmax_thr, 5);
+int lmin = 4;
+int lmax =6;//MAX(lmax_thr, 5);
 int nb_splits = 1;
 
 double dt_scale = 20;
 double tn;
-double tf = 3e-6;//15.0/omega;
+double tf = 1e-5;//15.0/omega;
 double dt;
 
 double E_unscaled = 40;                       /* applied electric field on the top electrode: kv/m */
@@ -230,7 +230,7 @@ public:
                         d = MIN(d, sqrt(SQR(x-(xmin+i*4*r0+2*r0)) + SQR(y-(ymin+j*4*r0+2*r0)) + SQR(z-(zminn+k*4*r0+2*r0))) - r0);
             return d;
         case 4: return sqrt(SQR(x) + SQR(y) + SQR(z)) - R1;
-        case 5:
+        case 5: return sqrt(SQR(x) + SQR(y) + SQR(z)) - R1;
         case 6:
             for(int i=0; i<x_cells; ++i)
                 for(int j=0; j<y_cells; ++j)
@@ -240,23 +240,11 @@ public:
         case 7:
             for(int n=0; n<nb_cells; ++n)
             {
-                x0 = x - centers[n].x;
-                y0 = y - centers[n].y;
-                z0 = z - centers[n].z;
+                x_tmp = x - centers[n].x;
+                y_tmp = y - centers[n].y;
+                z_tmp = z - centers[n].z;
 
-                x_tmp = x0;
-                y_tmp = cos(theta[n].x)*y0 - sin(theta[n].x)*z0;
-                z_tmp = sin(theta[n].x)*y0 + cos(theta[n].x)*z0;
-
-                x0 = cos(theta[n].y)*x_tmp - sin(theta[n].y)*z_tmp;
-                y0 = y_tmp;
-                z0 = sin(theta[n].y)*x_tmp + cos(theta[n].y)*z_tmp;
-
-                x_tmp = cos(theta[n].z)*x0 - sin(theta[n].z)*y0;
-                y_tmp = sin(theta[n].z)*x0 + cos(theta[n].z)*y0;
-                z_tmp = z0;
-
-                d = MIN(d, sqrt(SQR(x_tmp/ex[n].x) + SQR(y_tmp/ex[n].y) + SQR(z_tmp/ex[n].z)) - radii[n]);
+                d = MIN(d, sqrt(SQR(x_tmp) + SQR(y_tmp) + SQR(z_tmp)) - radii[n]);
             }
             return d;
         case 8:
@@ -325,6 +313,30 @@ public:
                 d = MIN(d, sqrt(SQR(x_tmp/ex[n].x) + SQR(y_tmp/ex[n].y) + SQR(z_tmp/ex[n].z)) - radii[n]);
             }
             return d;
+        case 11:
+            // loading the random close packing spheres of Kenneth Desmond, Emory University
+            for(int n=0; n<nb_cells; ++n)
+            {
+                x0 = x - centers[n].x;
+                y0 = y - centers[n].y;
+                z0 = z - centers[n].z;
+
+                x_tmp = x0;
+                y_tmp = cos(theta[n].x)*y0 - sin(theta[n].x)*z0;
+                z_tmp = sin(theta[n].x)*y0 + cos(theta[n].x)*z0;
+
+                x0 = cos(theta[n].y)*x_tmp - sin(theta[n].y)*z_tmp;
+                y0 = y_tmp;
+                z0 = sin(theta[n].y)*x_tmp + cos(theta[n].y)*z_tmp;
+
+                x_tmp = cos(theta[n].z)*x0 - sin(theta[n].z)*y0;
+                y_tmp = sin(theta[n].z)*x0 + cos(theta[n].z)*y0;
+                z_tmp = z0;
+
+                d = MIN(d, sqrt(SQR(x_tmp/ex[n].x) + SQR(y_tmp/ex[n].y) + SQR(z_tmp/ex[n].z)) - radii[n]);
+            }
+            return d;
+
         default: throw std::invalid_argument("Choose a valid test.");
         }
     }
@@ -333,7 +345,7 @@ public:
     {
         MPI_Comm_rank(PETSC_COMM_WORLD,&rank);
         lip=1.2;
-        if(test==7 || test==8 || test==9)
+        if(test==7)
         {
             centers.resize(nb_cells);
             radii.resize(nb_cells);
@@ -343,7 +355,88 @@ public:
             if(rank==0)
             {
                 ierr = PetscPrintf(PETSC_COMM_SELF, "The random seed is %u\n", seed); CHKERRXX(ierr);
-                ierr = PetscPrintf(PETSC_COMM_SELF, "Number of cells is %u\n", nb_cells); CHKERRXX(ierr);
+                ierr = PetscPrintf(PETSC_COMM_SELF, "Number of SPHERICAL cells is %u\n", nb_cells); CHKERRXX(ierr);
+            }
+            std::vector<std::array<double,3> > v;
+            std::array<double,3> p;
+            double Radius=0.0;
+
+            double *r;
+            int halton_counter = 0;
+            r = halton(halton_counter,3);
+            double azimuth = 0.0;
+            double polar = 0.0;
+            Radius = 0.45*(xmax-xmin-3*r0)*r[0];
+            azimuth = 2*PI*r[1];
+            polar = PI*r[2];
+
+            p[0] = Radius*sin(polar)*cos(azimuth);
+            p[1] = Radius*sin(polar)*sin(azimuth);
+            p[2] = Radius*cos(polar);
+
+            halton_counter++;
+            v.push_back(p);
+            do
+            {
+                r = halton(halton_counter,3);
+                double azimuth = 0;
+                double polar = 0;
+                Radius = 0.45*(xmax-xmin-3*r0)*r[0];
+                azimuth = 2*PI*r[1];
+                polar = PI*r[2];
+                p[0] = Radius*sin(polar)*cos(azimuth);
+                p[1] = Radius*sin(polar)*sin(azimuth);
+                p[2] = Radius*cos(polar);
+                halton_counter++;
+                bool far_enough = true;
+                for(unsigned int ii=0;ii<v.size();++ii){
+                    double mindist = sqrt(SQR(p[0]-v[ii][0])+ SQR(p[1]-v[ii][1])+SQR(p[2]-v[ii][2]));
+                    if(mindist<3*r0){
+                        far_enough = false;
+                        break;
+                    }
+                }
+                if(far_enough){
+                    v.push_back(p);
+                    if(v.size()%((int) nb_cells/10) == 0){
+                        double progress = 100*v.size()/nb_cells;
+                        if(rank==0)
+                            ierr = PetscPrintf(PETSC_COMM_SELF, "Cell Placement is in Progress. Currently at: %g %\n", progress); CHKERRXX(ierr);
+                    }
+                }
+            }while(v.size()<nb_cells);
+
+            cellVolumes = 0;
+            for(int n=0; n<nb_cells; ++n)
+            {
+                centers[n].x = v[n][0];
+                centers[n].y = v[n][1];
+                centers[n].z = v[n][2];
+                radii[n] = r0 + 1e-6*(6*((double)rand()/RAND_MAX) - 3);
+                ex[n].x = 1;
+                ex[n].y = 1;
+                ex[n].z = 1;
+                theta[n].x = 0;
+                theta[n].y =0;
+                theta[n].z =0;
+                cellVolumes += 4*PI*radii[n]*radii[n]*radii[n]*ex[n].x*ex[n].y*ex[n].z/3;
+            }
+            density = cellVolumes/SphereVolume;
+            if(rank==0)
+                ierr = PetscPrintf(PETSC_COMM_SELF, "Done initializing random spherical cells. The volume fraction is = %g\n",density); CHKERRXX(ierr);
+        }
+
+        if(test==8 || test==9)
+        {
+            centers.resize(nb_cells);
+            radii.resize(nb_cells);
+            ex.resize(nb_cells);
+            theta.resize(nb_cells);
+            srand(seed);
+            if(rank==0)
+            {
+                ierr = PetscPrintf(PETSC_COMM_SELF, "The random seed is %u\n", seed); CHKERRXX(ierr);
+                ierr = PetscPrintf(PETSC_COMM_SELF, "Number of ELLIPSOID cells is %u\n", nb_cells); CHKERRXX(ierr);
             }
             std::vector<std::array<double,3> > v;
             std::array<double,3> p;
@@ -505,12 +598,62 @@ public:
                 ierr = PetscPrintf(PETSC_COMM_SELF, "The spheroid is almost bounded between xmin = %g and x_max = %g\n", min_x, max_x); CHKERRXX(ierr);
                 ierr = PetscPrintf(PETSC_COMM_SELF, "Done initializing %d number of random cells. The Spheroid volume fraction is = %g\n", nb_cells, density); CHKERRXX(ierr);
             }
+        }
 
+        if (test==11){
+            double max_x = 0;
+            double min_x=0;
+            std::ifstream in;
+            in.open("./Packing/rcpgenerator/FinalConfig/bidisperse_10000/FinalConfig.dat");
+            std::string line;
+            if(in.is_open())
+            {
+                nb_cells = 1000;
+                centers.resize(nb_cells);
+                radii.resize(nb_cells);
+                ex.resize(nb_cells);
+                theta.resize(nb_cells);
+                int n = 0;
+                while(std::getline(in, line)) //get 1 row as a string
+                {
+                    theta[n].x = 0;
+                    theta[n].y = 0;
+                    theta[n].z = 0;
+                    ex[n].x = 1;
+                    ex[n].y = 1;
+                    ex[n].z = 1;
+                    std::istringstream iss(line); //put line into stringstream
+                    std::string word;
+                    iss >> word;
+                    centers[n].x = std::stof(word)*1e-3 -  boxSide/2.0;
+                    min_x = MIN(min_x, centers[n].x);
+                    max_x = MAX(max_x, centers[n].x);
+                    iss >> word;
+                    centers[n].y = std::stof(word)*1e-3 -  boxSide/2.0;
+                    iss >> word;
+                    centers[n].z = std::stof(word)*1e-3 -  boxSide/2.0;
+                    iss >> word;
+                    int cellType = std::stoi(word);
+                    if(cellType==1)
+                        radii[n] = 0.1*0.0628872*1e-3;
+                    else if (cellType==2)
+                        radii[n] = 0.1*0.037657*1e-3;
+                    cellVolumes += 4*PI*radii[n]*radii[n]*radii[n]/3.0;
+                    n++;
+                }
+            }
+            ClusterRadius = (max_x - min_x)/2.0;
+            density = cellVolumes/boxSide/boxSide/boxSide;
+            if(rank==0)
+            {
+                ierr = PetscPrintf(PETSC_COMM_SELF, "The cube is almost bounded between xmin = %g and x_max = %g\n", min_x, max_x); CHKERRXX(ierr);
+                ierr = PetscPrintf(PETSC_COMM_SELF, "Done initializing %d number of random cells. The packing's volume fraction is = %g\n", nb_cells, density); CHKERRXX(ierr);
+            }
         }
     }
 
     void save_cells(){
-        if(test==7 || test==8 || test==9 || test==10)
+        if(test==7 || test==8 || test==9 || test==10 || test==11)
         {
             MPI_Comm_rank(PETSC_COMM_WORLD,&rank);
             if(rank==0)
@@ -547,7 +690,10 @@ public:
     {
 
         double d = DBL_MAX;
-        if(test==7 || test==8 || test==9 || test==10)
+        if(test==2 || test==4 || test==5)
+        {
+            return sqrt(SQR(x) + SQR(y) + SQR(z)) - R1;
+        }else if(test==7 || test==8 || test==9 || test==10 || test==11)
         {
             double x0 = x - level_set.centers[ID].x;
             double y0 = y - level_set.centers[ID].y;
@@ -581,31 +727,40 @@ public:
     {
 
         double d = DBL_MAX;
-        if(test==7 || test==8 || test==9 || test==10)
+        if(test==2 || test==4 || test==5)
         {
-            for(int ID=0; ID<nb_cells; ++ID)
-            {
-                double x0 = x - level_set.centers[ID].x;
-                double y0 = y - level_set.centers[ID].y;
-                double z0 = z - level_set.centers[ID].z;
-
-                double x_tmp = x0;
-                double y_tmp = cos(level_set.theta[ID].x)*y0 - sin(level_set.theta[ID].x)*z0;
-                double z_tmp = sin(level_set.theta[ID].x)*y0 + cos(level_set.theta[ID].x)*z0;
-
-                x0 = cos(level_set.theta[ID].y)*x_tmp - sin(level_set.theta[ID].y)*z_tmp;
-                y0 = y_tmp;
-                z0 = sin(level_set.theta[ID].y)*x_tmp + cos(level_set.theta[ID].y)*z_tmp;
-
-                x_tmp = cos(level_set.theta[ID].z)*x0 - sin(level_set.theta[ID].z)*y0;
-                y_tmp = sin(level_set.theta[ID].z)*x0 + cos(level_set.theta[ID].z)*y0;
-                z_tmp = z0;
-
-                d = sqrt(SQR(x_tmp/level_set.ex[ID].x) + SQR(y_tmp/level_set.ex[ID].y) + SQR(z_tmp/level_set.ex[ID].z)) - level_set.radii[ID];
-                if(d<=0)
-                    return ID;
-            }
+            double d= sqrt(SQR(x) + SQR(y) + SQR(z)) - R1;
+            if(d<=0)
+                return 0;
+            else
                 return -1;
+        }else{
+            if(test==7 || test==8 || test==9 || test==10 || test==11)
+            {
+                for(int ID=0; ID<nb_cells; ++ID)
+                {
+                    double x0 = x - level_set.centers[ID].x;
+                    double y0 = y - level_set.centers[ID].y;
+                    double z0 = z - level_set.centers[ID].z;
+
+                    double x_tmp = x0;
+                    double y_tmp = cos(level_set.theta[ID].x)*y0 - sin(level_set.theta[ID].x)*z0;
+                    double z_tmp = sin(level_set.theta[ID].x)*y0 + cos(level_set.theta[ID].x)*z0;
+
+                    x0 = cos(level_set.theta[ID].y)*x_tmp - sin(level_set.theta[ID].y)*z_tmp;
+                    y0 = y_tmp;
+                    z0 = sin(level_set.theta[ID].y)*x_tmp + cos(level_set.theta[ID].y)*z_tmp;
+
+                    x_tmp = cos(level_set.theta[ID].z)*x0 - sin(level_set.theta[ID].z)*y0;
+                    y_tmp = sin(level_set.theta[ID].z)*x0 + cos(level_set.theta[ID].z)*y0;
+                    z_tmp = z0;
+
+                    d = sqrt(SQR(x_tmp/level_set.ex[ID].x) + SQR(y_tmp/level_set.ex[ID].y) + SQR(z_tmp/level_set.ex[ID].z)) - level_set.radii[ID];
+                    if(d<=0)
+                        return ID;
+                }
+                return -1;
+            }
         }
         throw std::invalid_argument("Choose a valid test.");
     }
@@ -659,10 +814,13 @@ double u_exact(double x, double y, double z, double t, bool phi_is_pos)
 //PAM: square pulse to be asked from Clair
 double pulse(double tn)
 {
+    return E*sin(2*PI*omega*tn);
+    /*
     if(E*cos(2*PI*omega*tn)>=0)
         return E;
     else
         return 0;
+        */
 }
 
 // rescale later!
@@ -711,6 +869,8 @@ struct BCWALLTYPE : WallBC3D
             else                                   return NEUMANN;
             //return DIRICHLET;
         case 5:
+            if(ABS(z-zminn)<EPS || ABS(z-zmaxx)<EPS) return DIRICHLET;
+            else                                   return NEUMANN;
         case 6:
         case 7:
             if(ABS(z-zminn)<EPS || ABS(z-zmaxx)<EPS) return DIRICHLET;
@@ -721,6 +881,13 @@ struct BCWALLTYPE : WallBC3D
         case 9:
             if(ABS(z-zminn)<EPS || ABS(z-zmaxx)<EPS) return DIRICHLET;
             else                                   return NEUMANN;
+        case 10:
+            if(ABS(z-zminn)<EPS || ABS(z-zmaxx)<EPS) return DIRICHLET;
+            else                                   return NEUMANN;
+        case 11:
+            if(ABS(z-zminn)<EPS || ABS(z-zmaxx)<EPS) return DIRICHLET;
+            else                                   return NEUMANN;
+
         default: throw std::invalid_argument("Choose a valid test.");
         }
     }
@@ -745,6 +912,8 @@ struct BCWALLVALUE : CF_3
             if(ABS(z-zmaxx)<EPS) return E;
             return 0;
         case 5:
+            if(ABS(z-zmaxx)<EPS) return  pulse(t);
+            if(ABS(z-zminn)<EPS) return 0;
         case 6:
         case 7:
             if(ABS(z-zminn)<EPS) return 0;
@@ -755,6 +924,14 @@ struct BCWALLVALUE : CF_3
             if(ABS(z-zminn)<EPS) return 0;
             return 0;
         case 9:
+            if(ABS(z-zmaxx)<EPS) return  pulse(t);
+            if(ABS(z-zminn)<EPS) return 0;
+            return 0;
+        case 10:
+            if(ABS(z-zmaxx)<EPS) return  pulse(t);
+            if(ABS(z-zminn)<EPS) return 0;
+            return 0;
+        case 11:
             if(ABS(z-zmaxx)<EPS) return  pulse(t);
             if(ABS(z-zminn)<EPS) return 0;
             return 0;
@@ -3248,11 +3425,11 @@ int main(int argc, char** argv) {
         PetscPrintf(mpi.comm(), "####################################################\n");
         ierr = PetscPrintf(mpi.comm(), "Iteration %d, time %e\n", iteration, tn); CHKERRXX(ierr);
 
-        if(iteration%DIFF_TO_EP_RATIO==0)
-        {
-            ierr = PetscPrintf(mpi.comm(), ">> solving advection and diffusion with time-step %g [s]... \n", DIFF_TO_EP_RATIO*dt); CHKERRXX(ierr);
-            solve_transport(p4est, ghost, nodes, &ngbd_n, &ngbd_c, phi, sol, X0, X1, Pm, M_list, ls, dt*DIFF_TO_EP_RATIO, dt*DIFF_TO_EP_RATIO, charge_rate, vn, number_ions, grad_up, ElectroPhoresis_nm1, ElectroPhoresis);
-        }
+        //        if(iteration%DIFF_TO_EP_RATIO==0)
+        //        {
+        //            ierr = PetscPrintf(mpi.comm(), ">> solving advection and diffusion with time-step %g [s]... \n", DIFF_TO_EP_RATIO*dt); CHKERRXX(ierr);
+        //            solve_transport(p4est, ghost, nodes, &ngbd_n, &ngbd_c, phi, sol, X0, X1, Pm, M_list, ls, dt*DIFF_TO_EP_RATIO, dt*DIFF_TO_EP_RATIO, charge_rate, vn, number_ions, grad_up, ElectroPhoresis_nm1, ElectroPhoresis);
+        //        }
         ierr = PetscPrintf(mpi.comm(), ">> solving electroporation with time-step %g [s]... \n", dt); CHKERRXX(ierr);
         solve_electric_potential(p4est, nodes,&ngbd_n, &ngbd_c, phi, sol, dt,  X0,  X1, Sm, vn, ls, tn, vnm1, vnm2, grad_phi, charge_rate,grad_nm1, grad_up, grad_um);
 
@@ -3267,7 +3444,7 @@ int main(int argc, char** argv) {
         double u_Npole_exact = 0;
         double u_Npole = 0;
         double xyz_np[3] = {0, R1*cos(PI/4), R1*sin(PI/4)};
-        if(test==1 || test==2 || test==4)
+        if(test==1 || test==2 || test==4 || test==5)
         {
             interp_n.set_input(vn, linear);
             interp_n.add_point(0, xyz_np);
@@ -3330,7 +3507,7 @@ int main(int argc, char** argv) {
         //PetscPrintf(p4est->mpicomm, "tests=1,2: Iter %d maximum error on solution: %g ORDER: %g\n", iteration, err_n, log(err_nm1/err_n)/log(2));
 
         double des_err = 0;
-        if (test==1 || test==2 || test==4)
+        if (test==1 || test==2 || test==4|| test==5)
         {
             interp_n.set_input(err, linear);
             interp_n.add_point(0, xyz_np);
@@ -3401,32 +3578,41 @@ int main(int argc, char** argv) {
                 ierr = VecGetArray(grad_phi[j], &dphi_p[j]); CHKERRXX(ierr);
                 VecDuplicate(phi, &dipole[j]);
             }
+
+
             double *vn_p;
             VecGetArray(vn, &vn_p);
-            for(int cell_ID=0; cell_ID<nb_cells; ++cell_ID)
+            for(int j=0;j<P4EST_DIM;++j)
+                VecGetArray(dipole[j], &dipole_p[j]);
+            for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
             {
-                single_cell_phi.ID = cell_ID;
-                sample_cf_on_nodes(p4est, nodes, single_cell_phi, single_phi);
-
-                for(int j=0;j<P4EST_DIM;++j)
-                    VecGetArray(dipole[j], &dipole_p[j]);
-                for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
-                {
-                    dipole_p[0][n] = epsilon_0*dphi_p[0][n]*vn_p[n];
-                    dipole_p[1][n] = epsilon_0*dphi_p[1][n]*vn_p[n];
-                    dipole_p[2][n] = epsilon_0*dphi_p[2][n]*vn_p[n];
-                }
-                for(int j=0;j<P4EST_DIM;++j)
-                    VecRestoreArray(dipole[j], &dipole_p[j]);
-
-                dipole_x[cell_ID] = integrate_over_interface(p4est, nodes, single_phi, dipole[0]);
-                dipole_y[cell_ID] = integrate_over_interface(p4est, nodes, single_phi, dipole[1]);
-                dipole_z[cell_ID] = integrate_over_interface(p4est, nodes, single_phi, dipole[2]);
+                dipole_p[0][n] = epsilon_0*dphi_p[0][n]*vn_p[n];
+                dipole_p[1][n] = epsilon_0*dphi_p[1][n]*vn_p[n];
+                dipole_p[2][n] = epsilon_0*dphi_p[2][n]*vn_p[n];
             }
+            for(int j=0;j<P4EST_DIM;++j)
+                VecRestoreArray(dipole[j], &dipole_p[j]);
             VecRestoreArray(vn, &vn_p);
             for(int j=0;j<P4EST_DIM;++j)
                 ierr = VecRestoreArray(grad_phi[j], &dphi_p[j]); CHKERRXX(ierr);
 
+            double dipole_x1, dipole_y1, dipole_z1;
+            if(test==2 || test==4 || test==5)
+            {
+                dipole_x1= integrate_over_interface(p4est, nodes, phi, dipole[0]);
+                dipole_y1 = integrate_over_interface(p4est, nodes, phi, dipole[1]);
+                dipole_z1 = integrate_over_interface(p4est, nodes, phi, dipole[2]);
+            } else
+            {
+                for(int cell_ID=0; cell_ID<nb_cells; ++cell_ID)
+                {
+                    single_cell_phi.ID = cell_ID;
+                    sample_cf_on_nodes(p4est, nodes, single_cell_phi, single_phi);
+                    dipole_x[cell_ID] = integrate_over_interface(p4est, nodes, single_phi, dipole[0]);
+                    dipole_y[cell_ID] = integrate_over_interface(p4est, nodes, single_phi, dipole[1]);
+                    dipole_z[cell_ID] = integrate_over_interface(p4est, nodes, single_phi, dipole[2]);
+                }
+            }
             if(p4est->mpirank==0)
             {
                 char out_path[1000];
@@ -3442,7 +3628,10 @@ int main(int argc, char** argv) {
                     fprintf(f, "%% ID  |\t X_c\t  |\t Y_c\t  |\t Z_c\t |\t dipole_x \t dipole_y \t dipole_z \n");
                     for(int n=0; n<nb_cells; ++n)
                     {
-                        fprintf(f, "%d \t %g \t %g \t %g \t %g \t %g \t %g \n", n, level_set.centers[n].x, level_set.centers[n].y, level_set.centers[n].z, dipole_x[n], dipole_y[n], dipole_z[n]);
+                        if(test==2 || test==4 || test==5)
+                            fprintf(f, "%d \t %g \t %g \t %g \t %g \t %g \t %g \n", n, 0.0, 0.0,0.0, dipole_x1, dipole_y1, dipole_z1);
+                        else
+                            fprintf(f, "%d \t %g \t %g \t %g \t %g \t %g \t %g \n", n, level_set.centers[n].x, level_set.centers[n].y, level_set.centers[n].z, dipole_x[n], dipole_y[n], dipole_z[n]);
                     }
                     fclose(f);
                 }
