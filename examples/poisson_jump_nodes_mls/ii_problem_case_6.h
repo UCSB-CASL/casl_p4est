@@ -1,5 +1,5 @@
-#ifndef PROBEM_CASE_6_H
-#define PROBEM_CASE_6_H
+#ifndef II_PROBEM_CASE_6_H
+#define II_PROBEM_CASE_6_H
 #include <vector>
 
 #ifdef P4_TO_P8
@@ -12,7 +12,7 @@
 #include <src/my_p4est_shapes.h>
 #endif
 
-class problem_case_6_t
+class ii_problem_case_6_t
 {
 public:
 
@@ -44,9 +44,9 @@ public:
   public:
       double operator()(double x, double y, double z) const
       {
-//        return sin(x+y)*cos(x-y)*log(z+4.);
-//        return 0.0;
-        return 1.0;
+        return sin(x+y)*cos(x-y)*log(z+4.);
+        return 0.0;
+//        return 1.0;
       }
   } bc_coeff_0;
 #else
@@ -54,32 +54,24 @@ public:
   public:
       double operator()(double x, double y) const
       {
-        (void) x; (void) y;
-//        return 0.0;
         return 1.0;
       }
   } bc_coeff_0;
 #endif
 
-  problem_case_6_t()
+  ii_problem_case_6_t()
   {
 #ifdef P4_TO_P8
-//    double r0 = 0.5, xc0 = 0.08, yc0 = 0.01, zc0 = 0.03;
+    double r0 = 0.5, xc0 = 0.08, yc0 = 0.01, zc0 = 0.03;
 
-//    domain0.set_params(r0, xc0, yc0, zc0, 0.0, -1);
-
-    double r0 = 0.71, xc0 = 0.22, yc0 = 0.17, zc0 = 0.21;
-//    double r0 = 0.81, xc0 = 0.08, yc0 = 0.01, zc0 = 0.03;
-
-    domain0.set_params(r0, xc0, yc0, zc0, 0.0, 1);
+    domain0.set_params(r0, xc0, yc0, zc0, 0.0, -1);
 #else
 //    double r0 = 0.5, xc0 = 0.3, yc0 = -0.2;
 
-//    domain0.set_params(r0, xc0, yc0, 0.0, -1);
+//    domain0.set_params(r0, xc0, yc0, 0.1, -1);
+    double r0 = 0.5+EPS, xc0 = 0., yc0 = 0.;
 
-    double r0 = 1.2, xc0 = 0.12, yc0 = -0.09;
-
-    domain0.set_params(r0, xc0, yc0, 0.0, 1);
+    domain0.set_params(r0, xc0, yc0, 0.15, -1, PI/2.);
 #endif
 
     phi_cf.push_back(&domain0.phi); action.push_back(INTERSECTION); color.push_back(0);
@@ -98,4 +90,4 @@ public:
 
 };
 
-#endif // PROBEM_CASE_6_H
+#endif // II_PROBEM_CASE_6_H

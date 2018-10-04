@@ -46,6 +46,7 @@ public:
   public:
       double operator()(double x, double y, double z) const
       {
+//        return 0.0;
           return 1.0;
       }
   } bc_coeff_0;
@@ -54,7 +55,9 @@ public:
   public:
       double operator()(double x, double y, double z) const
       {
+//        return 0.0;
           return 1.0 + sin(x)*cos(y)*exp(z);
+//          return 1.0;
       }
   } bc_coeff_1;
 
@@ -62,7 +65,9 @@ public:
   public:
       double operator()(double x, double y, double z) const
       {
+//        return 0.0;
           return exp(x+y+z);
+//          return 1.0;
       }
   } bc_coeff_2;
 #else
@@ -70,7 +75,8 @@ public:
   public:
       double operator()(double x, double y) const
       {
-          return 1.0;
+        (void) x; (void) y;
+        return 1.0;
       }
   } bc_coeff_0;
 
@@ -78,7 +84,8 @@ public:
   public:
       double operator()(double x, double y) const
       {
-          return 1.0 + sin(x)*cos(y);
+//        return 1.0;
+        return 1.0 + sin(x)*cos(y);
       }
   } bc_coeff_1;
 
@@ -86,7 +93,8 @@ public:
   public:
       double operator()(double x, double y) const
       {
-          return exp(x+y);
+//        return 1.0;
+        return exp(x+y);
       }
   } bc_coeff_2;
 #endif
@@ -98,12 +106,16 @@ public:
     double r1 = 0.66, xc1 =-0.21, yc1 =-0.23, zc1 =-0.17, nx1 = 1.0, ny1 = 1.0, nz1 = 1.0, theta1 =-0.3*PI, beta1 =-0.08, inside1 = 1;
     double r2 = 0.59, xc2 = 0.45, yc2 =-0.53, zc2 = 0.03, nx2 =-1.0, ny2 = 1.0, nz2 = 0.0, theta2 =-0.2*PI, beta2 =-0.08, inside2 =-1;
 
+//    double r0 = 0.73, xc0 = 0.13, yc0 = 0.16, zc0 = 0.19, nx0 = 1.0, ny0 = 1.0, nz0 = 1.0, theta0 = 0.3*PI, beta0 = 0.0, inside0 = 1;
+//    double r1 = -0.66, xc1 =-0.21, yc1 =-0.23, zc1 =-0.17, nx1 = 1.0, ny1 = 1.0, nz1 = 1.0, theta1 =-0.3*PI, beta1 =-0.0, inside1 = 1;
+//    double r2 = 0.39, xc2 = 0.45, yc2 =-0.53, zc2 = 0.03, nx2 =-1.0, ny2 = 1.0, nz2 = 0.0, theta2 =-0.2*PI, beta2 =-0.0, inside2 =-1;
+
     domain0.set_params(r0, xc0, yc0, zc0, beta0, inside0, nx0, ny0, nz0, theta0);
     domain1.set_params(r1, xc1, yc1, zc1, beta1, inside1, nx1, ny1, nz1, theta1);
     domain2.set_params(r2, xc2, yc2, zc2, beta2, inside2, nx2, ny2, nz2, theta2);
 #else
     double r0 = 0.73, xc0 = 0.13, yc0 = 0.16, theta0 = 0.1*PI, beta0 = 0.08, inside0 = 1;
-    double r1 = 0.66, xc1 =-0.21, yc1 =-0.23, theta1 =-0.2*PI, beta1 =-0.08, inside1 = 1;
+    double r1 = 0.66, xc1 =-0.14, yc1 =-0.21, theta1 =-0.2*PI, beta1 =-0.08, inside1 = 1;
     double r2 = 0.59, xc2 = 0.45, yc2 =-0.53, theta2 = 0.2*PI, beta2 =-0.08, inside2 =-1;
 
     domain0.set_params(r0, xc0, yc0, beta0, inside0, theta0);

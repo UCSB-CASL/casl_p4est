@@ -463,6 +463,7 @@ public:
                            Vec areas_m = NULL,
                            Vec areas_p = NULL)
   {
+    if (num_interfaces > 1) throw std::invalid_argument("Error: piece-wise smooth immersed interfaces are not supported at the moment.n");
     ii_.num_interfaces = num_interfaces;
     ii_.action  = action;
     ii_.color   = color;

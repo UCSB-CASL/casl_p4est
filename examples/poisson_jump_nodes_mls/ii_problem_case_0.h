@@ -1,5 +1,5 @@
-#ifndef PROBEM_CASE_0_H
-#define PROBEM_CASE_0_H
+#ifndef II_PROBEM_CASE_0_H
+#define II_PROBEM_CASE_0_H
 #include <vector>
 
 #ifdef P4_TO_P8
@@ -12,7 +12,7 @@
 #include <src/my_p4est_shapes.h>
 #endif
 
-class problem_case_0_t
+class ii_problem_case_0_t
 {
 public:
 
@@ -49,8 +49,8 @@ public:
   public:
       double operator()(double x, double y, double z) const
       {
-//        return 0.;
-        return 1.0;
+        return 0.0;
+//          return 3.;
           return x-y + (x+y)*(x+y);
       }
   } bc_coeff_0;
@@ -59,8 +59,8 @@ public:
   public:
       double operator()(double x, double y, double z) const
       {
-        return 0.0;
-//          return 1.0;
+//        return 0.0;
+          return 1.0;
 //          return x-y + (x+y)*(x+y);
       }
   } bc_coeff_1;
@@ -70,7 +70,7 @@ public:
       double operator()(double x, double y, double z) const
       {
 //        return 0.0;
-//        return 1.0;
+//        return 2.6;
           return x-y + (x+y)*(x+y);
       }
   } bc_coeff_2;
@@ -80,7 +80,7 @@ public:
       double operator()(double x, double y, double z) const
       {
 //        return 0.0;
-//        return 1.0;
+//        return -1.1;
           return x+y;
       }
   } bc_coeff_3;
@@ -89,8 +89,6 @@ public:
   public:
       double operator()(double x, double y) const
       {
-        (void) x; (void) y;
-//        return 0.0;
           return 1.0;
       }
   } bc_coeff_0;
@@ -99,9 +97,7 @@ public:
   public:
       double operator()(double x, double y) const
       {
-        (void) x; (void) y;
           return 0.0;
-//          return 1.0;
       }
   } bc_coeff_1;
 
@@ -109,22 +105,20 @@ public:
   public:
       double operator()(double x, double y) const
       {
-//        return 0.0;
-//        return 1.0;
+//        return 0.5;
           return x-y + (x+y)*(x+y);
       }
   } bc_coeff_2;
 #endif
 
-  problem_case_0_t()
+  ii_problem_case_0_t()
   {
 
 #ifdef P4_TO_P8
-    double x0 =-0.86, y0 =-0.87, z0 =-0.83;
+    double x0 =-0.86, y0 =-0.91, z0 =-0.83;
     double x1 = 0.88, y1 =-0.52, z1 = 0.63;
     double x2 = 0.67, y2 = 0.82, z2 =-0.87;
-    double x3 =-0.78, y3 = 0.73, z3 = 0.85;
-//    double x3 =-0.85, y3 = 0.73, z3 = 0.85;
+    double x3 =-0.93, y3 = 0.73, z3 = 0.85;
 
     domain0.set_params_points(x0, y0, z0, x2, y2, z2, x1, y1, z1);
     domain1.set_params_points(x1, y1, z1, x2, y2, z2, x3, y3, z3);
@@ -135,12 +129,9 @@ public:
 //    domain2.set_params(-0.15, -0.19, 0.7, 0.9, 0.9, 0.9);
 //    domain3.set_params(-1.0, -0.8, -0.7, -0.2, -0.3, -0.3);
 #else
-    double x2 = 0.74; double y2 =-0.86;
-    double x1 =-0.83; double y1 =-0.11;
-    double x0 = 0.37; double y0 = 0.87;
-//    double x2 = 0.74; double y2 =-0.89;
-//    double x1 =-0.83; double y1 =-0.89;
-//    double x0 =-0.83; double y0 = 0.87;
+    double x0 =-0.74; double y0 =-0.89;
+    double x1 = 0.83; double y1 =-0.11;
+    double x2 =-0.37; double y2 = 0.87;
     domain0.set_params_points(x0, y0, x2, y2);
     domain1.set_params_points(x2, y2, x1, y1);
     domain2.set_params_points(x1, y1, x0, y0);
@@ -182,4 +173,4 @@ public:
 
 };
 
-#endif // PROBEM_CASE_0_H
+#endif // II_PROBEM_CASE_0_H

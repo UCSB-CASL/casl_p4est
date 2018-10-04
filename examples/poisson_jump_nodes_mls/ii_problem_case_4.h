@@ -1,5 +1,5 @@
-#ifndef PROBEM_CASE_4_H
-#define PROBEM_CASE_4_H
+#ifndef II_PROBEM_CASE_4_H
+#define II_PROBEM_CASE_4_H
 #include <vector>
 
 #ifdef P4_TO_P8
@@ -12,7 +12,7 @@
 #include <src/my_p4est_shapes.h>
 #endif
 
-class problem_case_4_t
+class ii_problem_case_4_t
 {
 public:
 
@@ -79,7 +79,6 @@ public:
   public:
       double operator()(double x, double y) const
       {
-        (void) x; (void) y;
           return 1.0;
       }
   } bc_coeff_0;
@@ -88,7 +87,6 @@ public:
   public:
       double operator()(double x, double y) const
       {
-        (void) x; (void) y;
           return 0.0;
       }
   } bc_coeff_1;
@@ -110,7 +108,7 @@ public:
   } bc_coeff_3;
 #endif
 
-  problem_case_4_t()
+  ii_problem_case_4_t()
   {
 #ifdef P4_TO_P8
     double r0 = 0.73, xc0 = 0.13, yc0 = 0.16, zc0 = 0.19, nx0 = 1.0, ny0 = 1.0, nz0 = 1.0, theta0 = 0.3*PI, beta0 = 0.08, inside0 = 1;
@@ -165,4 +163,4 @@ public:
 
 };
 
-#endif // PROBEM_CASE_4_H
+#endif // II_PROBEM_CASE_4_H

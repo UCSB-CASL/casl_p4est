@@ -2962,7 +2962,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
             {
               if (!neighbors_exist[f2c_p[dir][nnf_00]])
               {
-                std::cout << "Warning: neighbor doesn't exist in the zp-direction."
+                std::cout << "Warning: neighbor doesn't exist in the " << dir << "-th direction."
                           << " Own number: " << n
                           << " Nei number: " << neighbors[f2c_p[dir][nnf_00]]
 //                          << " Own area: " << areas_ptr[neighbors[f2c_m[dir][nnf_00]]]
@@ -4217,15 +4217,6 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
         // determine which side to use based on values of diffucion coefficients and neighbors' availability
         double sign_to_use;
 
-//        if (mu_m_proj < mu_p_proj)
-//        {
-//          if (num_neg >= P4EST_DIM-1 && face_m_area_max > 0.1) sign_to_use = -1;
-//          else                        sign_to_use =  1;
-//        } else {
-//          if (num_pos >= P4EST_DIM-1 && face_p_area_max > 0.1) sign_to_use =  1;
-//          else                        sign_to_use = -1;
-//        }
-
         if (mu_m_proj < mu_p_proj)
         {
           if (num_neg >= P4EST_DIM-1 && face_m_area_max > 0.1) sign_to_use = -1;
@@ -4234,8 +4225,6 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
           if (num_pos >= P4EST_DIM-1 && face_p_area_max > 0.1) sign_to_use =  1;
           else                        sign_to_use = -1;
         }
-
-//        if (num_neg == num_pos) { (ii_phi_eff_p[n] < 0) ? num_neg++ : num_pos++; }
 
         // linear system
         char num_constraints = num_neighbors_cube_;
@@ -4385,28 +4374,6 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
 #endif
         }
 
-//        double const_term = 1.;
-//        double x_term     = (xyz_pr[0] - xyz_C[0]);
-//        double y_term     = (xyz_pr[1] - xyz_C[1]);
-//#ifdef P4_TO_P8
-//        double z_term     = (xyz_pr[2] - xyz_C[2]);
-//#endif
-
-//        // matrix coefficients
-//        for (unsigned short nei = 0; nei < num_neighbors_cube_; ++nei)
-//        {
-//#ifdef P4_TO_P8
-//          w_ghosts[nei] += coeff_const_term[nei]*const_term
-//              + coeff_x_term[nei]*x_term
-//              + coeff_y_term[nei]*y_term
-//              + coeff_z_term[nei]*z_term;
-//#else
-//          w_ghosts[nei] += coeff_const_term[nei]*const_term
-//              + coeff_x_term[nei]*x_term
-//              + coeff_y_term[nei]*y_term;
-//#endif
-//        }
-
 //        xyz_pr[0] = MIN(xyz_pr[0], fv_xmax); xyz_pr[0] = MAX(xyz_pr[0], fv_xmin);
 //        xyz_pr[1] = MIN(xyz_pr[1], fv_ymax); xyz_pr[1] = MAX(xyz_pr[1], fv_ymin);
 //  #ifdef P4_TO_P8
@@ -4478,70 +4445,6 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
           w_ghosts[nei] /= scaling;
         }
         rhs_add_ptr[n] /= scaling;
-
-//        if (ii_phi_eff_p[n] < 0)
-//        {
-//          if (face_p_area_max > interface_rel_thresh_)
-//          {
-//            double r = mu_m_proj/mu_p_proj;
-
-////            if (r < 1 || 1)
-////            {
-//////              rhs_add_ptr[n] = jump_value_->value(xyz_pr);
-////              rhs_add_ptr[n] = jump_value_->value(xyz_C);
-////              w_ghosts[nn_000] = 1;
-////            }
-////            else
-//            {
-//              rhs_add_ptr[n] = (num_neg > num_pos ? 1. : r) * jump_value_->value(xyz_pr) + dist*flux_proj/mu_p_proj;
-//              w_ghosts[nn_000] = r;
-
-//              for (unsigned short nei = 0; nei < num_neighbors_cube_; ++nei)
-//              {
-//                w_ghosts[nei] += (1.-r)*(coeff_const_term[nei]
-//                                         + coeff_x_term[nei]*(xyz_pr[0] - xyz_C[0])
-//    #ifdef P4_TO_P8
-//                    + coeff_z_term[nei]*(xyz_pr[2] - xyz_C[2])
-//    #endif
-//                    + coeff_y_term[nei]*(xyz_pr[1] - xyz_C[1]));
-//              }
-//            }
-//          }
-//        }
-//        else
-//        {
-//          if (face_m_area_max > interface_rel_thresh_)
-//          {
-//            double r = mu_p_proj/mu_m_proj;
-
-////            if (r < 1 || 1)
-////            {
-//////              rhs_add_ptr[n] = -jump_value_->value(xyz_pr);
-////              rhs_add_ptr[n] = -jump_value_->value(xyz_C);
-////              w_ghosts[nn_000] = 1;
-////            }
-////            else
-//            {
-//              rhs_add_ptr[n] = -(num_neg < num_pos ? 1. : r) * jump_value_->value(xyz_pr) - dist*flux_proj/mu_m_proj;
-//              w_ghosts[nn_000] = r;
-
-//              for (unsigned short nei = 0; nei < num_neighbors_cube_; ++nei)
-//              {
-//                w_ghosts[nei] += (1.-r)*(coeff_const_term[nei]
-//                                         + coeff_x_term[nei]*(xyz_pr[0] - xyz_C[0])
-//    #ifdef P4_TO_P8
-//                    + coeff_z_term[nei]*(xyz_pr[2] - xyz_C[2])
-//    #endif
-//                    + coeff_y_term[nei]*(xyz_pr[1] - xyz_C[1]));
-//              }
-//            }
-//          }
-//        }
-
-  //      if (face_m_area_max > interface_rel_thresh_ && face_p_area_max > interface_rel_thresh_)
-  //      {
-  //        w_ghosts[nn_000] = 1;
-  //      }
 
         // put values into matrix
         for (unsigned short i = 0; i < num_neighbors_cube_; ++i)

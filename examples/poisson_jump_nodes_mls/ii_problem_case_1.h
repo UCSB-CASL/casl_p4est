@@ -1,5 +1,5 @@
-#ifndef PROBEM_CASE_2_H
-#define PROBEM_CASE_2_H
+#ifndef II_PROBEM_CASE_1_H
+#define II_PROBEM_CASE_1_H
 #include <vector>
 
 #ifdef P4_TO_P8
@@ -12,7 +12,7 @@
 #include <src/my_p4est_shapes.h>
 #endif
 
-class problem_case_2_t
+class ii_problem_case_1_t
 {
 public:
 
@@ -43,63 +43,59 @@ public:
 #ifdef P4_TO_P8
   class bc_coeff_0_t : public CF_3 {
   public:
-    double operator()(double x, double y, double z) const
-    {
-//      return 1.;
-//      return 0.;
-      return cos(x+y)*sin(x-y)*exp(z);
-    }
+      double operator()(double x, double y, double z) const
+      {
+//        return 0.;
+          return 1.0;
+      }
   } bc_coeff_0;
 
   class bc_coeff_1_t : public CF_3 {
   public:
-    double operator()(double x, double y, double z) const
-    {
-//      return 1.;
-//      return 0.;
-      return sin(x+y)*cos(x-y)*log(z+4.);
-    }
+      double operator()(double x, double y, double z) const
+      {
+//        return 0.;
+          return sin(x+y)*cos(x-y)*log(z+4.);
+      }
   } bc_coeff_1;
 #else
   class bc_coeff_0_t : public CF_2 {
   public:
-    double operator()(double x, double y) const
-    {
-//      return 0.;
-      return sin(x-y)*cos(x+y);
-    }
+      double operator()(double x, double y) const
+      {
+//          return 0.;
+          return 1.0;
+      }
   } bc_coeff_0;
 
   class bc_coeff_1_t : public CF_2 {
   public:
-    double operator()(double x, double y) const
-    {
-//      return 0.;
-      return sin(x+y)*cos(x-y);
-    }
+      double operator()(double x, double y) const
+      {
+//          return 0.;
+          return sin(x+y)*cos(x-y);
+      }
   } bc_coeff_1;
 #endif
 
-  problem_case_2_t()
+  ii_problem_case_1_t()
   {
 #ifdef P4_TO_P8
-//    double r0 = 0.71, xc0 = 0.22, yc0 = 0.17, zc0 = 0.21;
-//    double r1 = 0.63, xc1 =-0.19, yc1 =-0.19, zc1 =-0.23;
-    double r0 = 0.86, xc0 = 0.08, yc0 = 0.11, zc0 = 0.03;
-    double r1 = 0.83, xc1 =-0.51, yc1 =-0.46, zc1 =-0.63;
+    double r0 = 0.71, xc0 = 0.13, yc0 = 0.27, zc0 = 0.21;
+    double r1 = 0.63, xc1 =-0.24, yc1 =-0.16, zc1 =-0.33;
 
     domain0.set_params(r0, xc0, yc0, zc0);
-    domain1.set_params(r1, xc1, yc1, zc1, 0, -1);
+    domain1.set_params(r1, xc1, yc1, zc1);
 #else
-    double r0 = 0.84, xc0 = 0.03, yc0 = 0.04;
-    double r1 = 0.63, xc1 =-0.42, yc1 =-0.37;
+    double r0 = 0.61, xc0 = 0.13, yc0 = 0.21;
+    double r1 = 0.43, xc1 =-0.21, yc1 =-0.17;
 
     domain0.set_params(r0, xc0, yc0);
-    domain1.set_params(r1, xc1, yc1, 0, -1);
+    domain1.set_params(r1, xc1, yc1);
 #endif
 
     phi_cf.push_back(&domain0.phi); action.push_back(INTERSECTION); color.push_back(0);
-    phi_cf.push_back(&domain1.phi); action.push_back(INTERSECTION); color.push_back(1);
+    phi_cf.push_back(&domain1.phi); action.push_back(ADDITION); color.push_back(1);
 
     phi_x_cf.push_back(&domain0.phi_x);
     phi_x_cf.push_back(&domain1.phi_x);
@@ -119,4 +115,4 @@ public:
 
 };
 
-#endif // PROBEM_CASE_2_H
+#endif // II_PROBEM_CASE_1_H
