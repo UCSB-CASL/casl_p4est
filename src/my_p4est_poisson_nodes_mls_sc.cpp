@@ -872,6 +872,8 @@ void my_p4est_poisson_nodes_mls_sc_t::solve(Vec solution, bool use_nonzero_initi
 
   if(local_immersed_phi)
   {
+    ii_.num_interfaces = 0;
+
     ierr = VecDestroy(ii_.phi->at(0)); CHKERRXX(ierr);
     delete ii_.phi;
     ii_.phi = NULL;

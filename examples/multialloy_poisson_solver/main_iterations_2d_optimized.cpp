@@ -48,8 +48,8 @@
 #undef MIN
 #undef MAX
 int lmin = 5;
-int lmax = 5;
-int nb_splits = 4;
+int lmax = 10;
+int nb_splits = 1;
 
 bool use_continuous_stencil = 0;
 bool use_one_sided_derivatives = false;
@@ -2004,6 +2004,7 @@ int main (int argc, char* argv[])
     Vec sol_tp_dd[P4EST_DIM];
     Vec sol_c0_dd[P4EST_DIM];
     Vec sol_c1_dd[P4EST_DIM];
+    Vec sol_c0n[P4EST_DIM];
     Vec bc_error;
 
     for (short dim = 0; dim < P4EST_DIM; ++dim)
@@ -2012,6 +2013,7 @@ int main (int argc, char* argv[])
       ierr = VecDuplicate(phi_dd[dim], &sol_tp_dd[dim]); CHKERRXX(ierr);
       ierr = VecDuplicate(phi_dd[dim], &sol_c0_dd[dim]); CHKERRXX(ierr);
       ierr = VecDuplicate(phi_dd[dim], &sol_c1_dd[dim]); CHKERRXX(ierr);
+      ierr = VecDuplicate(phi_dd[dim], &sol_c0n[dim]); CHKERRXX(ierr);
     }
 
     ierr = VecDuplicate(phi, &bc_error); CHKERRXX(ierr);
@@ -2019,7 +2021,7 @@ int main (int argc, char* argv[])
 
     double bc_error_max = 0;
 //    solver_all_in_one.solve(sol_t, sol_t_dd, sol_c0, sol_c0_dd, sol_c1, sol_c1_dd, bc_error_max, bc_error);
-    solver_all_in_one.solve(sol_tm, sol_tp, sol_c0, sol_c1, bc_error, bc_error_max, dt, 1.e10, false, &pdes_it, &error_it);
+    solver_all_in_one.solve(sol_tm, sol_tp, sol_c0, sol_c1, sol_c0n, bc_error, bc_error_max, dt, 1.e10, false, &pdes_it, &error_it);
 
 
     /* check the error */
@@ -2316,6 +2318,7 @@ int main (int argc, char* argv[])
       ierr = VecDestroy(sol_tp_dd[dim]); CHKERRXX(ierr);
       ierr = VecDestroy(sol_c0_dd[dim]); CHKERRXX(ierr);
       ierr = VecDestroy(sol_c1_dd[dim]); CHKERRXX(ierr);
+      ierr = VecDestroy(sol_c0n[dim]); CHKERRXX(ierr);
     }
 
     ierr = VecDestroy(bc_error); CHKERRXX(ierr);

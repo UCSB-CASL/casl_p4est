@@ -182,6 +182,10 @@ class my_p4est_poisson_nodes_multialloy_t
 
   unsigned int num_extend_iterations_;
 
+  enum var_scheme_t { VALUE, ABS_VALUE, QUADRATIC } var_scheme_;
+
+  vec_and_ptr_t bc_error_gamma_;
+
   // disallow copy ctr and copy assignment
   my_p4est_poisson_nodes_multialloy_t(const my_p4est_poisson_nodes_t& other);
   my_p4est_poisson_nodes_multialloy_t& operator=(const my_p4est_poisson_nodes_t& other);
@@ -304,6 +308,8 @@ public:
 #endif
 
 private:
+
+  void compute_bc_error();
 #ifdef P4_TO_P8
   class zero_cf_t : public CF_3
   {
@@ -342,6 +348,29 @@ private:
   } zero_cf1_;
 #endif
 
+#ifdef P4_TO_P8
+  class bc_error_cf_t : public CF_3
+  {
+  public:
+    double operator()(double, double, double) const
+    {
+      return 1;
+    }
+  } bc_error_cf_;
+#else
+  class bc_error_cf_t : public CF_2
+  {
+    my_p4est_poisson_nodes_multialloy_t *ptr_;
+  public:
+    inline void set_ptr(my_p4est_poisson_nodes_multialloy_t* ptr) {ptr_ = ptr;}
+    double operator()(double x, double y) const
+    {
+      ptr_->interp_.set_input(ptr_->bc_error_gamma_.vec, linear);
+      return ptr_->interp_(x, y);
+    }
+  } bc_error_cf_;
+#endif
+
   // boundary conditions for Lagrangian multipliers
 #ifdef P4_TO_P8
   class jump_psi_tn_t : public CF_3
@@ -360,9 +389,13 @@ private:
     my_p4est_poisson_nodes_multialloy_t *ptr_;
   public:
     inline void set_ptr(my_p4est_poisson_nodes_multialloy_t* ptr) {ptr_ = ptr;}
-    double operator()(double, double) const
+    double operator()(double x, double y) const
     {
-      return 1./ptr_->t_diff_/ptr_->ml0_;
+      switch (ptr_->var_scheme_) {
+        case VALUE:     return 1./ptr_->t_diff_/ptr_->ml0_;
+        case ABS_VALUE: return 1./ptr_->t_diff_/ptr_->ml0_*(ptr_->bc_error_cf_(x,y) < 0 ? -1. : 1.);
+        case QUADRATIC: return 1./ptr_->t_diff_/ptr_->ml0_*(ptr_->bc_error_cf_(x,y));
+      }
     }
   } jump_psi_tn_;
 #endif
@@ -387,12 +420,15 @@ private:
     my_p4est_poisson_nodes_multialloy_t *ptr_;
   public:
     inline void set_ptr(my_p4est_poisson_nodes_multialloy_t* ptr) {ptr_ = ptr;}
-    double operator()(double, double) const
+    double operator()(double x, double y) const
     {
-      if (ptr_->use_superconvergent_robin_)
-        return -ptr_->ml1_/ptr_->ml0_*ptr_->dt_;
-      else
-        return -ptr_->ml1_/ptr_->ml0_/ptr_->Dl1_;
+      double factor = ptr_->use_superconvergent_robin_ ? -ptr_->ml1_/ptr_->ml0_*ptr_->dt_ :
+                                                         -ptr_->ml1_/ptr_->ml0_/ptr_->Dl1_;
+      switch (ptr_->var_scheme_) {
+        case VALUE:     return factor;
+        case ABS_VALUE: return factor*(ptr_->bc_error_cf_(x,y) < 0 ? -1. : 1.);
+        case QUADRATIC: return factor*(ptr_->bc_error_cf_(x,y));
+      }
     }
   } psi_c1_interface_value_;
 #endif
