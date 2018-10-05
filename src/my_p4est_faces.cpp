@@ -679,7 +679,7 @@ void my_p4est_faces_t::init_faces()
     {
       p4est_locidx_t quad_idx = q+p4est->local_num_quadrants;
       if(q2f_[dir][quad_idx] != NO_VELOCITY && f2q_[dir/2][q2f_[dir][quad_idx]].quad_idx == -1)
-        f2q_[dir/2][q2f_[dir][quad_idx]].quad_idx = quad_idx;
+        f2q_[dir/2][q2f_[dir][quad_idx]].quad_idx = quad_idx; // [Raphael:] no tree_idx set!
     }
   }
 
@@ -1015,7 +1015,9 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
 #endif
 
   /* gather the neighborhood */
+#ifdef CASL_THROWS
   bool is_local = false;
+#endif
   vector<p4est_quadrant_t> ngbd_tmp;
   p4est_locidx_t quad_idx;
   p4est_topidx_t tree_idx;
@@ -1045,7 +1047,9 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
 
         quad.p.piggy3.local_num = quad_idx;
 
+#ifdef CASL_THROWS
         is_local = is_local || (quad_idx<p4est->local_num_quadrants);
+#endif
 
         ngbd_tmp.push_back(quad);
         scaling = MIN(scaling, .5*qh*(double)P4EST_QUADRANT_LEN(quad.level)/(double)P4EST_ROOT_LEN);
@@ -1093,9 +1097,9 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
   vector<p4est_locidx_t> interp_points;
   matrix_t A;
 #ifdef P4_TO_P8
-  A.resize(1, order>=2 ? 10 : 6);
+  A.resize(1, order>=2 ? 10 : 4);
 #else
-  A.resize(1, order>=2 ? 6 : 4);
+  A.resize(1, order>=2 ? 6 : 3);
 #endif
   vector<double> p;
   vector<double> nb[P4EST_DIM];
@@ -1103,9 +1107,9 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
   double min_w = 1e-6;
   double inv_max_w = 1e-6;
 
-  PetscScalar *face_is_well_defined_p;
+  const PetscScalar *face_is_well_defined_p;
   if(face_is_well_defined!=NULL)
-    ierr = VecGetArray(face_is_well_defined, &face_is_well_defined_p); CHKERRXX(ierr);
+    ierr = VecGetArrayRead(face_is_well_defined, &face_is_well_defined_p); CHKERRXX(ierr);
 
   for(unsigned int m=0; m<ngbd.size(); m++)
   {
@@ -1162,7 +1166,7 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
 
   ierr = VecRestoreArray(f, &f_p); CHKERRXX(ierr);
   if(face_is_well_defined!=NULL)
-    ierr = VecRestoreArray(face_is_well_defined, &face_is_well_defined_p); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(face_is_well_defined, &face_is_well_defined_p); CHKERRXX(ierr);
 
   if(interp_points.size()==0)
     return 0;
@@ -1170,8 +1174,8 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
   A.scale_by_maxabs(p);
 
 #ifdef P4_TO_P8
-  return solve_lsqr_system(A, p, nb[0].size(), nb[1].size(), nb[2].size());
+  return solve_lsqr_system(A, p, nb[0].size(), nb[1].size(), nb[2].size(), order);
 #else
-  return solve_lsqr_system(A, p, nb[0].size(), nb[1].size());
+  return solve_lsqr_system(A, p, nb[0].size(), nb[1].size(), order);
 #endif
 }

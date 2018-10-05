@@ -36,6 +36,7 @@ class my_p4est_node_neighbors_t {
   friend class my_p4est_poisson_jump_nodes_voronoi_t;
   friend class my_p4est_poisson_jump_voronoi_block_t;
   friend class my_p4est_poisson_jump_nodes_extended_t;
+  friend class my_p4est_xgfm_cells_t;
   friend class my_p4est_interpolation_t;
   friend class my_p4est_interpolation_nodes_t;
   friend class my_p4est_interpolation_cells_t;
