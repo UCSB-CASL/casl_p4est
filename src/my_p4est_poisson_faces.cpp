@@ -98,7 +98,7 @@ void my_p4est_poisson_faces_t::reset_linear_solver(bool use_nonzero_initial_gues
    * 2- Coarsennig Type
    * 3- Truncation Factor
    *
-   * Plerase refer to HYPRE manual for more information on the actual importance or check Mohammad Mirzadeh's
+   * Please refer to HYPRE manual for more information on the actual importance or check Mohammad Mirzadeh's
    * summary of HYPRE papers! Also for a complete list of all the options that can be set from PETSc, one can
    * consult the 'src/ksp/pc/impls/hypre.c' in the PETSc home directory.
    */
@@ -116,7 +116,7 @@ void my_p4est_poisson_faces_t::reset_linear_solver(bool use_nonzero_initial_gues
      */
     ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_coarsen_type", "Falgout"); CHKERRXX(ierr);
 
-    /* 3- Trancation factor
+    /* 3- Truncation factor
      * Greater than zero.
      * Use zero for the best convergence. However, if you have memory problems, use greate than zero to save some memory.
      */
