@@ -90,6 +90,7 @@ bool use_second_order_theta_ = false;
 //bool use_second_order_theta_ = true;
 
 bool get_integral = true;
+bool print_summary = false;
 
 int test_number_ = 0;
 /* run the program with the flag -help to know more about the various tests */
@@ -2362,151 +2363,154 @@ Example by Raphael Egan for full periodicity.");
 
   if(mpi.rank() == 0)
   {
-    FILE *fid = fopen(summary_file.c_str(), "w");
-    fprintf(fid, "=================================================================\n");
-    fprintf(fid, "========================= SUMMARY ===============================\n");
-    fprintf(fid, "=================================================================\n");
-    fprintf(fid, "Test number %d in %d-D\n", test_number, P4EST_DIM);
-    fprintf(fid, "lmin: %d\n", lmin);
-    fprintf(fid, "lmax: %d\n", lmax);
-    fprintf(fid, "Number of grids: %d\n", ngrids);
-    fprintf(fid, "Number of trees along minimum dimension of domain in macromesh: %d\n", ntree);
-    fprintf(fid, "Order of accuracy for interface localization: %d\n", (use_second_order_theta? 2:1));
-    fprintf(fid, "Wall boundary condition: %s\n", ((bc_wtype == DIRICHLET)? "dirichlet" : "neumann"));
-    fprintf(fid, "Resolution: " );
-    for (int k = 0; k < ngrids; ++k)
+    if(print_summary)
     {
-      if(k!=ngrids-1)
-        fprintf(fid, "%d/%d ", ntree_*(1<<(lmin+k)), ntree_*(1<<(lmax+k)));
-      else
-        fprintf(fid, "%d/%d\n", ntree_*(1<<(lmin+k)), ntree_*(1<<(lmax+k)));
-    }
-    fprintf(fid, "Error on solution (gfm): " );
-    for (int k = 0; k < ngrids; ++k)
-    {
-      if(k!=ngrids-1)
-        fprintf(fid, "%.5e ", err[k][0]);
-      else
-        fprintf(fid, "%.5e\n", err[k][0]);
-    }
-    fprintf(fid, "Error on solution (xgfm): " );
-    for (int k = 0; k < ngrids; ++k)
-    {
-      if(k!=ngrids-1)
-        fprintf(fid, "%.5e ", err[k][1]);
-      else
-        fprintf(fid, "%.5e\n", err[k][1]);
-    }
+      FILE *fid = fopen(summary_file.c_str(), "w");
+      fprintf(fid, "=================================================================\n");
+      fprintf(fid, "========================= SUMMARY ===============================\n");
+      fprintf(fid, "=================================================================\n");
+      fprintf(fid, "Test number %d in %d-D\n", test_number, P4EST_DIM);
+      fprintf(fid, "lmin: %d\n", lmin);
+      fprintf(fid, "lmax: %d\n", lmax);
+      fprintf(fid, "Number of grids: %d\n", ngrids);
+      fprintf(fid, "Number of trees along minimum dimension of domain in macromesh: %d\n", ntree);
+      fprintf(fid, "Order of accuracy for interface localization: %d\n", (use_second_order_theta? 2:1));
+      fprintf(fid, "Wall boundary condition: %s\n", ((bc_wtype == DIRICHLET)? "dirichlet" : "neumann"));
+      fprintf(fid, "Resolution: " );
+      for (int k = 0; k < ngrids; ++k)
+      {
+        if(k!=ngrids-1)
+          fprintf(fid, "%d/%d ", ntree_*(1<<(lmin+k)), ntree_*(1<<(lmax+k)));
+        else
+          fprintf(fid, "%d/%d\n", ntree_*(1<<(lmin+k)), ntree_*(1<<(lmax+k)));
+      }
+      fprintf(fid, "Error on solution (gfm): " );
+      for (int k = 0; k < ngrids; ++k)
+      {
+        if(k!=ngrids-1)
+          fprintf(fid, "%.5e ", err[k][0]);
+        else
+          fprintf(fid, "%.5e\n", err[k][0]);
+      }
+      fprintf(fid, "Error on solution (xgfm): " );
+      for (int k = 0; k < ngrids; ++k)
+      {
+        if(k!=ngrids-1)
+          fprintf(fid, "%.5e ", err[k][1]);
+        else
+          fprintf(fid, "%.5e\n", err[k][1]);
+      }
 
-    fprintf(fid, "Error on x-derivative (gfm): " );
-    for (int k = 0; k < ngrids; ++k)
-    {
-      if(k!=ngrids-1)
-        fprintf(fid, "%.5e ", err_derivatives_components[k][0][0]);
-      else
-        fprintf(fid, "%.5e\n", err_derivatives_components[k][0][0]);
-    }
-    fprintf(fid, "Error on x-derivative (xgfm): " );
-    for (int k = 0; k < ngrids; ++k)
-    {
-      if(k!=ngrids-1)
-        fprintf(fid, "%.5e ", err_derivatives_components[k][1][0]);
-      else
-        fprintf(fid, "%.5e\n", err_derivatives_components[k][1][0]);
-    }
+      fprintf(fid, "Error on x-derivative (gfm): " );
+      for (int k = 0; k < ngrids; ++k)
+      {
+        if(k!=ngrids-1)
+          fprintf(fid, "%.5e ", err_derivatives_components[k][0][0]);
+        else
+          fprintf(fid, "%.5e\n", err_derivatives_components[k][0][0]);
+      }
+      fprintf(fid, "Error on x-derivative (xgfm): " );
+      for (int k = 0; k < ngrids; ++k)
+      {
+        if(k!=ngrids-1)
+          fprintf(fid, "%.5e ", err_derivatives_components[k][1][0]);
+        else
+          fprintf(fid, "%.5e\n", err_derivatives_components[k][1][0]);
+      }
 
-    fprintf(fid, "Error on y-derivative (gfm): " );
-    for (int k = 0; k < ngrids; ++k)
-    {
-      if(k!=ngrids-1)
-        fprintf(fid, "%.5e ", err_derivatives_components[k][0][1]);
-      else
-        fprintf(fid, "%.5e\n", err_derivatives_components[k][0][1]);
-    }
-    fprintf(fid, "Error on y-derivative (xgfm): " );
-    for (int k = 0; k < ngrids; ++k)
-    {
-      if(k!=ngrids-1)
-        fprintf(fid, "%.5e ", err_derivatives_components[k][1][1]);
-      else
-        fprintf(fid, "%.5e\n", err_derivatives_components[k][1][1]);
-    }
+      fprintf(fid, "Error on y-derivative (gfm): " );
+      for (int k = 0; k < ngrids; ++k)
+      {
+        if(k!=ngrids-1)
+          fprintf(fid, "%.5e ", err_derivatives_components[k][0][1]);
+        else
+          fprintf(fid, "%.5e\n", err_derivatives_components[k][0][1]);
+      }
+      fprintf(fid, "Error on y-derivative (xgfm): " );
+      for (int k = 0; k < ngrids; ++k)
+      {
+        if(k!=ngrids-1)
+          fprintf(fid, "%.5e ", err_derivatives_components[k][1][1]);
+        else
+          fprintf(fid, "%.5e\n", err_derivatives_components[k][1][1]);
+      }
 #ifdef P4_TO_P8
-    fprintf(fid, "Error on z-derivative (gfm): " );
-    for (int k = 0; k < ngrids; ++k)
-    {
-      if(k!=ngrids-1)
-        fprintf(fid, "%.5e ", err_derivatives_components[k][0][2]);
-      else
-        fprintf(fid, "%.5e\n", err_derivatives_components[k][0][2]);
-    }
-    fprintf(fid, "Error on z-derivative (xgfm): " );
-    for (int k = 0; k < ngrids; ++k)
-    {
-      if(k!=ngrids-1)
-        fprintf(fid, "%.5e ", err_derivatives_components[k][1][2]);
-      else
-        fprintf(fid, "%.5e\n", err_derivatives_components[k][1][2]);
-    }
+      fprintf(fid, "Error on z-derivative (gfm): " );
+      for (int k = 0; k < ngrids; ++k)
+      {
+        if(k!=ngrids-1)
+          fprintf(fid, "%.5e ", err_derivatives_components[k][0][2]);
+        else
+          fprintf(fid, "%.5e\n", err_derivatives_components[k][0][2]);
+      }
+      fprintf(fid, "Error on z-derivative (xgfm): " );
+      for (int k = 0; k < ngrids; ++k)
+      {
+        if(k!=ngrids-1)
+          fprintf(fid, "%.5e ", err_derivatives_components[k][1][2]);
+        else
+          fprintf(fid, "%.5e\n", err_derivatives_components[k][1][2]);
+      }
 #endif
 
-    fprintf(fid, "Error on x-flux (gfm): " );
-    for (int k = 0; k < ngrids; ++k)
-    {
-      if(k!=ngrids-1)
-        fprintf(fid, "%.5e ", err_flux_components[k][0][0]);
-      else
-        fprintf(fid, "%.5e\n", err_flux_components[k][0][0]);
-    }
-    fprintf(fid, "Error on x-flux (xgfm): " );
-    for (int k = 0; k < ngrids; ++k)
-    {
-      if(k!=ngrids-1)
-        fprintf(fid, "%.5e ", err_flux_components[k][1][0]);
-      else
-        fprintf(fid, "%.5e\n", err_flux_components[k][1][0]);
-    }
+      fprintf(fid, "Error on x-flux (gfm): " );
+      for (int k = 0; k < ngrids; ++k)
+      {
+        if(k!=ngrids-1)
+          fprintf(fid, "%.5e ", err_flux_components[k][0][0]);
+        else
+          fprintf(fid, "%.5e\n", err_flux_components[k][0][0]);
+      }
+      fprintf(fid, "Error on x-flux (xgfm): " );
+      for (int k = 0; k < ngrids; ++k)
+      {
+        if(k!=ngrids-1)
+          fprintf(fid, "%.5e ", err_flux_components[k][1][0]);
+        else
+          fprintf(fid, "%.5e\n", err_flux_components[k][1][0]);
+      }
 
-    fprintf(fid, "Error on y-flux (gfm): " );
-    for (int k = 0; k < ngrids; ++k)
-    {
-      if(k!=ngrids-1)
-        fprintf(fid, "%.5e ", err_flux_components[k][0][1]);
-      else
-        fprintf(fid, "%.5e\n", err_flux_components[k][0][1]);
-    }
-    fprintf(fid, "Error on y-flux (xgfm): " );
-    for (int k = 0; k < ngrids; ++k)
-    {
-      if(k!=ngrids-1)
-        fprintf(fid, "%.5e ", err_flux_components[k][1][1]);
-      else
-        fprintf(fid, "%.5e\n", err_flux_components[k][1][1]);
-    }
+      fprintf(fid, "Error on y-flux (gfm): " );
+      for (int k = 0; k < ngrids; ++k)
+      {
+        if(k!=ngrids-1)
+          fprintf(fid, "%.5e ", err_flux_components[k][0][1]);
+        else
+          fprintf(fid, "%.5e\n", err_flux_components[k][0][1]);
+      }
+      fprintf(fid, "Error on y-flux (xgfm): " );
+      for (int k = 0; k < ngrids; ++k)
+      {
+        if(k!=ngrids-1)
+          fprintf(fid, "%.5e ", err_flux_components[k][1][1]);
+        else
+          fprintf(fid, "%.5e\n", err_flux_components[k][1][1]);
+      }
 #ifdef P4_TO_P8
-    fprintf(fid, "Error on z-flux (gfm): " );
-    for (int k = 0; k < ngrids; ++k)
-    {
-      if(k!=ngrids-1)
-        fprintf(fid, "%.5e ", err_flux_components[k][0][2]);
-      else
-        fprintf(fid, "%.5e\n", err_flux_components[k][0][2]);
-    }
-    fprintf(fid, "Error on z-flux (xgfm): " );
-    for (int k = 0; k < ngrids; ++k)
-    {
-      if(k!=ngrids-1)
-        fprintf(fid, "%.5e ", err_flux_components[k][1][2]);
-      else
-        fprintf(fid, "%.5e\n", err_flux_components[k][1][2]);
-    }
+      fprintf(fid, "Error on z-flux (gfm): " );
+      for (int k = 0; k < ngrids; ++k)
+      {
+        if(k!=ngrids-1)
+          fprintf(fid, "%.5e ", err_flux_components[k][0][2]);
+        else
+          fprintf(fid, "%.5e\n", err_flux_components[k][0][2]);
+      }
+      fprintf(fid, "Error on z-flux (xgfm): " );
+      for (int k = 0; k < ngrids; ++k)
+      {
+        if(k!=ngrids-1)
+          fprintf(fid, "%.5e ", err_flux_components[k][1][2]);
+        else
+          fprintf(fid, "%.5e\n", err_flux_components[k][1][2]);
+      }
 #endif
 
-    fprintf(fid, "=================================================================\n");
-    fprintf(fid, "===================== END OF SUMMARY ============================\n");
-    fprintf(fid, "=================================================================");
-    fclose(fid);
-    printf("Summary file printed in %s\n", summary_file.c_str());
+      fprintf(fid, "=================================================================\n");
+      fprintf(fid, "===================== END OF SUMMARY ============================\n");
+      fprintf(fid, "=================================================================");
+      fclose(fid);
+      printf("Summary file printed in %s\n", summary_file.c_str());
+    }
   }
 
   my_p4est_brick_destroy(connectivity, &brick);
