@@ -75,10 +75,10 @@ double my_p4est_semi_lagrangian_t::compute_dt(const CF_2 &vx, const CF_2 &vy)
   splitting_criteria_t* data = (splitting_criteria_t*)p4est->user_pointer;
   double dx = (double)P4EST_QUADRANT_LEN(data->max_lvl) / (double)P4EST_ROOT_LEN;
 
-  double tree_xmax = p4est->connectivity->vertices[0 + 0];
-  double tree_ymax = p4est->connectivity->vertices[0 + 1];
+  double tree_xmax = p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*0 + P4EST_CHILDREN - 1] + 0];
+  double tree_ymax = p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*0 + P4EST_CHILDREN - 1] + 1];
 #ifdef P4_TO_P8
-  double tree_zmax = p4est->connectivity->vertices[0 + 2];
+  double tree_zmax = p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*0 + P4EST_CHILDREN - 1] + 2];
 #endif
 
 #ifdef P4_TO_P8
@@ -118,23 +118,23 @@ double my_p4est_semi_lagrangian_t::compute_dt(Vec vx, Vec vy)
 {
   PetscErrorCode ierr;
   double dt = DBL_MAX;
-  double *vx_p, *vy_p;
+  const double *vx_p, *vy_p;
 
-  ierr = VecGetArray(vx, &vx_p); CHKERRXX(ierr);
-  ierr = VecGetArray(vy, &vy_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(vx, &vx_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(vy, &vy_p); CHKERRXX(ierr);
 #ifdef P4_TO_P8
-  double *vz_p;
-  ierr = VecGetArray(vz, &vz_p); CHKERRXX(ierr);
+  const double *vz_p;
+  ierr = VecGetArrayRead(vz, &vz_p); CHKERRXX(ierr);
 #endif
 
   // get the min dx
   splitting_criteria_t* data = (splitting_criteria_t*)p4est->user_pointer;
   double dx = (double)P4EST_QUADRANT_LEN(data->max_lvl) / (double)P4EST_ROOT_LEN;
 
-  double tree_xmax = p4est->connectivity->vertices[0 + 0];
-  double tree_ymax = p4est->connectivity->vertices[0 + 1];
+  double tree_xmax = p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*0 + P4EST_CHILDREN - 1] + 0];
+  double tree_ymax = p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*0 + P4EST_CHILDREN - 1] + 1];
 #ifdef P4_TO_P8
-  double tree_zmax = p4est->connectivity->vertices[0 + 2];
+  double tree_zmax = p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*0 + P4EST_CHILDREN - 1] + 2];
 #endif
 
 #ifdef P4_TO_P8
@@ -153,10 +153,10 @@ double my_p4est_semi_lagrangian_t::compute_dt(Vec vx, Vec vy)
     dt = MIN(dt, dx/vn);
   }
 
-  ierr = VecRestoreArray(vx, &vx_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(vy, &vy_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(vx, &vx_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(vy, &vy_p); CHKERRXX(ierr);
 #ifdef P4_TO_P8
-  ierr = VecRestoreArray(vz, &vz_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(vz, &vz_p); CHKERRXX(ierr);
 #endif
 
   // reduce among processors
