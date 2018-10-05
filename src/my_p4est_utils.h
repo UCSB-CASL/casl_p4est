@@ -178,6 +178,11 @@ public:
     return (*WallType_)(x,y);
   }
 
+  inline BoundaryConditionType wallType(double xyz_[]) const
+  {
+    return wallType(xyz_[0], xyz_[1]);
+  }
+
   inline BoundaryConditionType interfaceType() const{ return InterfaceType_;}
 
   inline double wallValue(double x, double y) const
@@ -186,6 +191,11 @@ public:
     if(p_WallValue == NULL) throw std::invalid_argument("[CASL_ERROR]: The value of the boundary conditions has not been set on the walls.");
 #endif
     return p_WallValue->operator ()(x,y);
+  }
+
+  inline double wallValue(double xyz_[]) const
+  {
+    return wallValue(xyz_[0], xyz_[1]);
   }
 
   inline double interfaceValue(double x, double y) const
@@ -249,6 +259,11 @@ public:
     return (*WallType_)(x,y,z);
   }
 
+  inline BoundaryConditionType wallType( double xyz_[]) const
+  {
+    return (*WallType_)(xyz_[0],xyz_[1],xyz_[2]);
+  }
+
   inline BoundaryConditionType interfaceType() const{ return InterfaceType_;}
 
   inline double wallValue(double x, double y, double z) const
@@ -259,6 +274,11 @@ public:
     return p_WallValue->operator ()(x,y,z);
   }
 
+  inline double wallValue(double xyz_[]) const
+  {
+    return p_WallValue->operator ()(xyz_[0],xyz_[1],xyz_[2]);
+  }
+
   inline double interfaceValue(double x, double y, double z) const
   {
 #ifdef CASL_THROWS
@@ -266,6 +286,7 @@ public:
 #endif
     return p_InterfaceValue->operator ()(x,y,z);
   }
+
 };
 
 double linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *xyz_global);
@@ -323,6 +344,13 @@ PetscErrorCode VecCreateGhostNodesBlock(const p4est_t *p4est, p4est_nodes_t *nod
  * \param v     [out] PETSc vector type
  */
 PetscErrorCode VecCreateGhostCells(const p4est_t *p4est, p4est_ghost_t *ghost, Vec* v);
+
+/*!
+ * \brief VecCreateCellsNoGhost Creates a PETSc parallel vector on the cells
+ * \param p4est [in]  the forest
+ * \param v     [out] PETSc vector type
+ */
+PetscErrorCode VecCreateCellsNoGhost(const p4est_t *p4est, Vec* v);
 
 /*!
  * \brief VecCreateGhostNodesBlock Creates a ghosted block PETSc parallel vector
@@ -1218,7 +1246,11 @@ public:
 
     ierr = PetscInitialize(&argc, &argv, NULL, NULL); CHKERRXX(ierr);
 
+#ifdef DEBUG
+    sc_init (mpicomm, P4EST_FALSE, P4EST_FALSE, NULL, SC_LP_DEFAULT); // to allow easy debugging --> backtracks the P4EST_ASSERTs!
+#else
     sc_init (mpicomm, P4EST_FALSE, P4EST_FALSE, NULL, SC_LP_SILENT);
+#endif
     p4est_init (NULL, SC_LP_SILENT);
 #ifdef CASL_LOG_EVENTS
     register_petsc_logs();
@@ -1270,24 +1302,44 @@ public:
 
   double read_duration(){
     double elap = tf - ts;
+    if (timing_ == all_timings)
+      MPI_Gather(&elap, 1, MPI_DOUBLE, &t[0], 1, MPI_DOUBLE, 0, comm_);
+    return elap;
+  }
 
+  void print_stats_only(){
+    if(timing_ != all_timings)
+    {
+      PetscFPrintf(comm_, stderr, "parStopWatch::print_stats_only() can be called only in 'all_timing' mode.");
+      return;
+    }
+    print_duration(true);
+  }
+
+  double print_duration(bool print_stats_only_ = false){
+    double elap = read_duration();
     PetscPrintf(comm_, "%s ... done in \n", msg_.c_str());
     if (timing_ == all_timings){
-      MPI_Gather(&elap, 1, MPI_DOUBLE, &t[0], 1, MPI_DOUBLE, 0, comm_);
       double tmax, tmin, tavg, tdev;
       tmax = tmin = elap;
       tavg = tdev = 0;
       if (mpirank == 0){
-        PetscFPrintf(comm_, f_, "t = [");
-        for (size_t i=0; i<t.size()-1; i++)
-          PetscFPrintf(comm_, f_, "%.5lf, ", t[i]);
-        PetscFPrintf(comm_, f_, "%.5lf];\n", t.back());
-
-        for (size_t i=0; i<t.size(); i++){
+        if(!print_stats_only_)
+          PetscFPrintf(comm_, f_, "t = [");
+        for (size_t i=0; i<t.size()-1; i++){
+          if(!print_stats_only_)
+            PetscFPrintf(comm_, f_, "%.5lf, ", t[i]);
           tavg += t[i];
           tmax = MAX(tmax, t[i]);
           tmin = MIN(tmin, t[i]);
         }
+        if(!print_stats_only_)
+          PetscFPrintf(comm_, f_, "%.5lf];\n", t.back());
+
+        tavg += t.back();
+        tmax = MAX(tmax, t.back());
+        tmin = MIN(tmin, t.back());
+
         tavg /= mpisize;
 
         for (size_t i=0; i<t.size(); i++){

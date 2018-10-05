@@ -452,6 +452,19 @@ PetscErrorCode VecCreateGhostCells(const p4est_t *p4est, p4est_ghost_t *ghost, V
   return ierr;
 }
 
+PetscErrorCode VecCreateCellsNoGhost(const p4est_t *p4est, Vec* v)
+{
+  PetscErrorCode ierr = 0;
+  p4est_locidx_t num_local = p4est->local_num_quadrants;
+
+  PetscInt num_global = p4est->global_num_quadrants;
+
+  ierr = VecCreateMPI(p4est->mpicomm, num_local, num_global, v); CHKERRQ(ierr);
+  ierr = VecSetFromOptions(*v); CHKERRQ(ierr);
+
+  return ierr;
+}
+
 PetscErrorCode VecCreateGhostCellsBlock(const p4est_t *p4est, p4est_ghost_t *ghost, PetscInt block_size, Vec* v)
 {
   PetscErrorCode ierr = 0;
