@@ -47,10 +47,10 @@ double Cube3::integral(const OctValue &f, const OctValue &ls_values) const
        ls_values.val110<=0 && ls_values.val111<=0 )
     return  (x1-x0)*(y1-y0)*(z1-z0)*(f.val000+f.val001+f.val010+f.val011+f.val100+f.val101+f.val110+f.val111)/8.;
 
-  if(  ls_values.val000>=0 && ls_values.val001>=0 &&
-       ls_values.val010>=0 && ls_values.val011>=0 &&
-       ls_values.val100>=0 && ls_values.val101>=0 &&
-       ls_values.val110>=0 && ls_values.val111>=0 ) return 0;
+  if(  ls_values.val000>0 && ls_values.val001>0 &&
+       ls_values.val010>0 && ls_values.val011>0 &&
+       ls_values.val100>0 && ls_values.val101>0 &&
+       ls_values.val110>0 && ls_values.val111>0 ) return 0;
 
   // iteration on each simplex in the middle cut triangulation
   for(int n=0;n<5;n++)
@@ -94,23 +94,23 @@ double Cube3::integral(const OctValue &f, const OctValue &ls_values) const
     }
 
     // simple cases
-    if(Phi0<0 && Phi1<0 && Phi2<0 && Phi3<0){ sum+=Point3::volume(P0,P1,P2,P3)*(F0+F1+F2+F3)/4.; continue;}
+    if(Phi0<=0 && Phi1<=0 && Phi2<=0 && Phi3<=0){ sum+=Point3::volume(P0,P1,P2,P3)*(F0+F1+F2+F3)/4.; continue;}
     if(Phi0>0 && Phi1>0 && Phi2>0 && Phi3>0){                                                    continue;}
-    if(Phi0==0 && Phi1==0 && Phi2==0 && Phi3<0) {return (F0+ F1+F2+F3)/4.*Point3::volume(P0,P1,P2,P3);}
-    if(Phi0==0 && Phi1==0 && Phi2<0 && Phi3==0) {return (F0+ F1+F2+F3)/4.*Point3::volume(P0,P1,P2,P3);}
-    if(Phi0==0 && Phi1<0 && Phi2==0 && Phi3==0) {return (F0+ F1+F2+F3)/4.*Point3::volume(P0,P1,P2,P3);}
-    if(Phi0<0 && Phi1==0 && Phi2==0 && Phi3==0) {return (F0+ F1+F2+F3)/4.*Point3::volume(P0,P1,P2,P3);}
+//    if(Phi0==0 && Phi1==0 && Phi2==0 && Phi3<0) {return (F0+F1+F2+F3)/4.*Point3::volume(P0,P1,P2,P3);}
+//    if(Phi0==0 && Phi1==0 && Phi2<0 && Phi3==0) {return (F0+F1+F2+F3)/4.*Point3::volume(P0,P1,P2,P3);}
+//    if(Phi0==0 && Phi1<0 && Phi2==0 && Phi3==0) {return (F0+F1+F2+F3)/4.*Point3::volume(P0,P1,P2,P3);}
+//    if(Phi0<0 && Phi1==0 && Phi2==0 && Phi3==0) {return (F0+F1+F2+F3)/4.*Point3::volume(P0,P1,P2,P3);}
 
     // sorting for simplication into two cases,
-    if(Phi0>0 && Phi1<0) swap(Phi0,Phi1,F0,F1,P0,P1);
-    if(Phi0>0 && Phi2<0) swap(Phi0,Phi2,F0,F2,P0,P2);
-    if(Phi0>0 && Phi3<0) swap(Phi0,Phi3,F0,F3,P0,P3);
-    if(Phi1>0 && Phi2<0) swap(Phi1,Phi2,F1,F2,P1,P2);
-    if(Phi1>0 && Phi3<0) swap(Phi1,Phi3,F1,F3,P1,P3);
-    if(Phi2>0 && Phi3<0) swap(Phi2,Phi3,F2,F3,P2,P3);
+    if(Phi0>0 && Phi1<=0) swap(Phi0,Phi1,F0,F1,P0,P1);
+    if(Phi0>0 && Phi2<=0) swap(Phi0,Phi2,F0,F2,P0,P2);
+    if(Phi0>0 && Phi3<=0) swap(Phi0,Phi3,F0,F3,P0,P3);
+    if(Phi1>0 && Phi2<=0) swap(Phi1,Phi2,F1,F2,P1,P2);
+    if(Phi1>0 && Phi3<=0) swap(Phi1,Phi3,F1,F3,P1,P3);
+    if(Phi2>0 && Phi3<=0) swap(Phi2,Phi3,F2,F3,P2,P3);
 
     // frustum of simplex (P0,P1,P2) cut by {Phi<=0}
-    if(Phi0<=0 && Phi1>=0 && Phi2>=0 && Phi3>=0) // type -+++
+    if(Phi0<=0 && Phi1>0 && Phi2>0 && Phi3>0) // type -+++
     {
       Point3 P01 = interpol_p(P0,Phi0,P1,Phi1);
       Point3 P02 = interpol_p(P0,Phi0,P2,Phi2);
@@ -122,7 +122,7 @@ double Cube3::integral(const OctValue &f, const OctValue &ls_values) const
 
       sum += Point3::volume(P0,P01,P02,P03)*(F0+F01+F02+F03)/4.;
     }
-    else if(Phi0<=0 && Phi1<=0 && Phi2>=0 && Phi3>=0) // type --++
+    else if(Phi0<=0 && Phi1<=0 && Phi2>0 && Phi3>0) // type --++
     {
       Point3 P02 = interpol_p(P0,Phi0,P2,Phi2);
       Point3 P03 = interpol_p(P0,Phi0,P3,Phi3);
@@ -141,8 +141,10 @@ double Cube3::integral(const OctValue &f, const OctValue &ls_values) const
     else // type ---+
     {
 #ifdef CASL_THROWS
-      if(Phi0>0 || Phi1>0 || Phi2>0 || Phi3<0)
+      if(Phi0>0 || Phi1>0 || Phi2>0 || Phi3<=0)
+      {
         throw std::runtime_error("[CASL_ERROR]: Cube3->integral: wrong configuration.");
+      }
 #endif
 
       Point3 P03 = interpol_p(P0,Phi0,P3,Phi3);

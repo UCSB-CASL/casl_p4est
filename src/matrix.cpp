@@ -104,7 +104,7 @@ void matrix_t::mtm_product(matrix_t& M )
     }
 }
 
-void matrix_t::scale_by_maxabs(vector<double>& x)
+double matrix_t::scale_by_maxabs(vector<double>& x)
 {
 #ifdef CASL_THROWS
   if( m != (int) x.size() ) throw std::invalid_argument("[CASL_ERROR]: matrix_t->scale_by_maxabs: the matrix and the right hand side don't have the same size");
@@ -119,6 +119,7 @@ void matrix_t::scale_by_maxabs(vector<double>& x)
     for( int j=0; j<n; j++ )
       values[i*n + j] /= abs_max;
   }
+  return abs_max;
 }
 
 matrix_t matrix_t::tr()

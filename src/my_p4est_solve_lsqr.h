@@ -22,4 +22,10 @@ double solve_lsqr_system(matrix_t &A, vector<double> &p, int nb_x, int nb_y, int
 double solve_lsqr_system(matrix_t &A, vector<double> &p, int nb_x, int nb_y, char order=2);
 #endif
 
+#ifdef P4_TO_P8
+double solve_lsqr_system_and_get_coefficients(matrix_t &A, vector<double> &p, int nb_x, int nb_y, int nb_z, std::vector<double>& interp_coeffs, char order=2);
+#else
+double solve_lsqr_system_and_get_coefficients(matrix_t &A, vector<double> &p, int nb_x, int nb_y, std::vector<double>& interp_coeffs, char order=2);
+#endif
+
 #endif /* MY_P4EST_SOLVE_LSQR_H */

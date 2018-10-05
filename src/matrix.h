@@ -53,7 +53,7 @@ public:
 
   void matrix_product(  matrix_t& b, matrix_t& c );
 
-  void scale_by_maxabs(vector<double>& x);
+  double scale_by_maxabs(vector<double>& x);
 
   void mtm_product(matrix_t& m );
 
