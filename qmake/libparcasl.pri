@@ -56,8 +56,10 @@ SOURCES += \
   $$PARCASL/src/petsc_logging.cpp \
   $$PARCASL/src/point2.cpp \
   $$PARCASL/src/simplex2.cpp \
-  $$PARCASL/src/voronoi2D.cpp
+  $$PARCASL/src/voronoi2D.cpp \
+  $$PARCASL/src/my_p4est_xgfm_cells.cpp
 }
+
 
 CONFIG(3d, 2d|3d): {
 SOURCES += \
@@ -100,5 +102,6 @@ SOURCES += \
   $$PARCASL/src/point2.cpp \
   $$PARCASL/src/point3.cpp \
   $$PARCASL/src/simplex2.cpp \
-  $$PARCASL/src/voronoi3D.cpp
+  $$PARCASL/src/voronoi3D.cpp \
+  $$PARCASL/src/my_p8est_xgfm_cells.cpp
 }
