@@ -58,7 +58,8 @@ double my_p4est_interpolation_cells_t::operator ()(double x, double y) const
   std::vector<p4est_quadrant_t> remote_matches;
   int rank_found = ngbd_n->hierarchy->find_smallest_quadrant_containing_point(xyz_clip, best_match, remote_matches);
 
-  if (rank_found == p4est->mpirank)
+//  if (rank_found == p4est->mpirank)
+  if (rank_found != -1)
     return interpolate(best_match, xyz);
 
   throw std::invalid_argument("[ERROR]: my_p4est_interpolation_cells_t->interpolate(): the point does not belong to the local forest.");
