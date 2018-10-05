@@ -120,15 +120,15 @@ protected:
 	static int  refine_fn (p4est_t* p4est, p4est_topidx_t which_tree, p4est_quadrant_t*  quad);
 	static int  coarsen_fn(p4est_t* p4est, p4est_topidx_t which_tree, p4est_quadrant_t** quad);
 	
-  void tag_quadrant(p4est_t* p4est, p4est_quadrant_t* quad, p4est_topidx_t which_tree, const double* f);
+  void tag_quadrant(p4est_t* p4est, p4est_quadrant_t* quad, p4est_topidx_t which_tree, const double* f, bool finest_in_negative_flag);
 public:
   splitting_criteria_tag_t(int min_lvl, int max_lvl, double lip=1.2)
     : splitting_criteria_t(min_lvl, max_lvl, lip)
   {
   }
 
-  bool refine_and_coarsen(p4est_t* p4est, const p4est_nodes_t* nodes, const double* phi);
-  bool refine(p4est_t* p4est, const p4est_nodes_t* nodes, const double* phi);
+  bool refine_and_coarsen(p4est_t* p4est, const p4est_nodes_t* nodes, const double* phi, bool finest_in_negative_flag = false);
+  bool refine(p4est_t* p4est, const p4est_nodes_t* nodes, const double* phi, bool finest_in_negative_flag = false);
 };
 
 /*!
