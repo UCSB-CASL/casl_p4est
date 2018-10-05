@@ -1,6 +1,2 @@
-#include "my_p8est_xgfm_cells.h"
-
-my_p8est_xgfm_cells::my_p8est_xgfm_cells()
-{
-
-}
+#include <src/my_p4est_to_p8est.h>
+#include "my_p4est_xgfm_cells.cpp"
