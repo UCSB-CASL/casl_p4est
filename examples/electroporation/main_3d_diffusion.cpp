@@ -1294,6 +1294,7 @@ void solve_electric_potential( p4est_t *p4est, p4est_nodes_t *nodes,
     do{
         solver.set_Sm(Sm);
         solver.solve(sol);
+
         Vec u_plus, u_minus, u_plus_l, u_minus_l, sol_l;
         ierr = VecDuplicate(sol, &u_plus); CHKERRXX(ierr);
         ierr = VecDuplicate(sol, &u_minus); CHKERRXX(ierr);
@@ -3570,38 +3571,69 @@ int main(int argc, char** argv) {
             std::vector<double> dipole_y(nb_cells);
             std::vector<double> dipole_z(nb_cells);
 
-            Vec single_phi, dipole[P4EST_DIM];
+             std::vector<double> Quad_xx(nb_cells);
+             std::vector<double> Quad_yy(nb_cells);
+             std::vector<double> Quad_zz(nb_cells);
+             std::vector<double> Quad_xy(nb_cells);
+             std::vector<double> Quad_xz(nb_cells);
+             std::vector<double> Quad_yz(nb_cells);
+
+            Vec single_phi, dipole[P4EST_DIM], Quadrupole[6];
             VecDuplicate(phi,&single_phi);
-            double *dipole_p[P4EST_DIM];
+            double *dipole_p[P4EST_DIM], *Quad_p[6];
             for(int j=0;j<P4EST_DIM;++j)
             {
                 ierr = VecGetArray(grad_phi[j], &dphi_p[j]); CHKERRXX(ierr);
                 VecDuplicate(phi, &dipole[j]);
             }
-
-
+            for(int j=0;j<6;++j)
+            {
+                VecDuplicate(phi,&Quadrupole[j]);
+                VecGetArray(Quadrupole[j], &Quad_p[j]);
+             }
             double *vn_p;
             VecGetArray(vn, &vn_p);
             for(int j=0;j<P4EST_DIM;++j)
                 VecGetArray(dipole[j], &dipole_p[j]);
             for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
             {
+                double x = node_x_fr_n(n, p4est, nodes);
+                double y = node_y_fr_n(n, p4est, nodes);
+                double z = node_z_fr_n(n, p4est, nodes);
+
                 dipole_p[0][n] = epsilon_0*dphi_p[0][n]*vn_p[n];
                 dipole_p[1][n] = epsilon_0*dphi_p[1][n]*vn_p[n];
                 dipole_p[2][n] = epsilon_0*dphi_p[2][n]*vn_p[n];
+                // measure Quadropole moments: Q_ij /epsilon_m= integral ( epsilon0*Vn*(3*r_i*r_j-r*r*delta_ij) dS)
+                Quad_p[0][n] = epsilon_0*vn_p[n]*(  x*dphi_p[0][n] - y*dphi_p[1][n] - z*dphi_p[2][n]);
+                Quad_p[1][n] = epsilon_0*vn_p[n]*(-x*dphi_p[0][n] + y*dphi_p[1][n] - z*dphi_p[2][n]);
+                Quad_p[2][n] = epsilon_0*vn_p[n]*(-x*dphi_p[0][n] - y*dphi_p[1][n] + z*dphi_p[2][n]);
+
+                Quad_p[3][n] = epsilon_0*vn_p[n]*(x*dphi_p[1][n] + y*dphi_p[0][n]);
+                Quad_p[4][n] = epsilon_0*vn_p[n]*(x*dphi_p[2][n] + z*dphi_p[0][n]);
+                Quad_p[5][n] = epsilon_0*vn_p[n]*(y*dphi_p[2][n] + z*dphi_p[1][n]);
             }
             for(int j=0;j<P4EST_DIM;++j)
                 VecRestoreArray(dipole[j], &dipole_p[j]);
             VecRestoreArray(vn, &vn_p);
             for(int j=0;j<P4EST_DIM;++j)
                 ierr = VecRestoreArray(grad_phi[j], &dphi_p[j]); CHKERRXX(ierr);
+            for(int j=0;j<6;++j)
+                VecRestoreArray(Quadrupole[j], &Quad_p[j]);
 
-            double dipole_x1, dipole_y1, dipole_z1;
+            double dipole_x1, dipole_y1, dipole_z1, Qxx, Qyy, Qzz, Qxy, Qxz, Qyz;
             if(test==2 || test==4 || test==5)
             {
                 dipole_x1= integrate_over_interface(p4est, nodes, phi, dipole[0]);
                 dipole_y1 = integrate_over_interface(p4est, nodes, phi, dipole[1]);
                 dipole_z1 = integrate_over_interface(p4est, nodes, phi, dipole[2]);
+
+                Qxx = integrate_over_interface(p4est, nodes, phi, Quadrupole[0]);
+                Qyy = integrate_over_interface(p4est, nodes, phi, Quadrupole[1]);
+                Qzz = integrate_over_interface(p4est, nodes, phi, Quadrupole[2]);
+                Qxy = integrate_over_interface(p4est, nodes, phi, Quadrupole[3]);
+                Qxz = integrate_over_interface(p4est, nodes, phi, Quadrupole[4]);
+                Qyz = integrate_over_interface(p4est, nodes, phi, Quadrupole[5]);
             } else
             {
                 for(int cell_ID=0; cell_ID<nb_cells; ++cell_ID)
@@ -3611,6 +3643,13 @@ int main(int argc, char** argv) {
                     dipole_x[cell_ID] = integrate_over_interface(p4est, nodes, single_phi, dipole[0]);
                     dipole_y[cell_ID] = integrate_over_interface(p4est, nodes, single_phi, dipole[1]);
                     dipole_z[cell_ID] = integrate_over_interface(p4est, nodes, single_phi, dipole[2]);
+
+                    Quad_xx[cell_ID] = integrate_over_interface(p4est, nodes, phi, Quadrupole[0]);
+                    Quad_yy[cell_ID] = integrate_over_interface(p4est, nodes, phi, Quadrupole[1]);
+                    Quad_zz[cell_ID] = integrate_over_interface(p4est, nodes, phi, Quadrupole[2]);
+                    Quad_xy[cell_ID] = integrate_over_interface(p4est, nodes, phi, Quadrupole[3]);
+                    Quad_xz[cell_ID] = integrate_over_interface(p4est, nodes, phi, Quadrupole[4]);
+                    Quad_yz[cell_ID] = integrate_over_interface(p4est, nodes, phi, Quadrupole[5]);
                 }
             }
             if(p4est->mpirank==0)
@@ -3622,16 +3661,16 @@ int main(int argc, char** argv) {
                 {
                     ierr = PetscPrintf(p4est->mpicomm, "You need to set the environment variable OUT_DIR before running the code to save topologies...\n"); CHKERRXX(ierr);
                 } else {
-                    sprintf(out_path, "%s/Dipoles_%d.dat", out_dir, iteration);
+                    sprintf(out_path, "%s/Electricity_%d.dat", out_dir, iteration);
                     FILE *f = fopen(out_path, "w");
-                    fprintf(f, "%% Number of cells is: %u\n", nb_cells);
-                    fprintf(f, "%% ID  |\t X_c\t  |\t Y_c\t  |\t Z_c\t |\t dipole_x \t dipole_y \t dipole_z \n");
+                    fprintf(f, "%% Number of cells is: %u. Dipoles and Quadrupoles below are stored per relative permittivity of membrane (\epsilon_m) \n", nb_cells);
+                    fprintf(f, "%% ID  |\t X_c\t  |\t Y_c\t  |\t Z_c\t |\t dipole_x \t dipole_y \t dipole_z \t Quad_xx \t Quad_yy \t Quad_zz \t Quad_xy \t Quad_xz \t Quad_yz \n");
                     for(int n=0; n<nb_cells; ++n)
                     {
                         if(test==2 || test==4 || test==5)
-                            fprintf(f, "%d \t %g \t %g \t %g \t %g \t %g \t %g \n", n, 0.0, 0.0,0.0, dipole_x1, dipole_y1, dipole_z1);
+                            fprintf(f, "%d \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \n", n, 0.0, 0.0,0.0, dipole_x1, dipole_y1, dipole_z1, Qxx, Qyy, Qzz, Qxy, Qxz, Qyz);
                         else
-                            fprintf(f, "%d \t %g \t %g \t %g \t %g \t %g \t %g \n", n, level_set.centers[n].x, level_set.centers[n].y, level_set.centers[n].z, dipole_x[n], dipole_y[n], dipole_z[n]);
+                            fprintf(f, "%d \t %g \t %g \t %g \t %g \t %g \t %g %g \t %g \t %g \t %g \t %g \t %g  \n", n, level_set.centers[n].x, level_set.centers[n].y, level_set.centers[n].z, dipole_x[n], dipole_y[n], dipole_z[n], Quad_xx[n], Quad_yy[n], Quad_zz[n], Quad_xy[n], Quad_xz[n], Quad_yz[n]);
                     }
                     fclose(f);
                 }
