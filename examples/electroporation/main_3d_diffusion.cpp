@@ -73,7 +73,7 @@ bool contains(const std::vector<T> &vec, const T& elem)
 }
 
 
-int test = 5; //-1: just a positive domain for test, dynamic linear case=2, dynamic nonlinear case=4, static linear case=1, random cube box side enforced = 8, random spheroid=9, 10=read from initial condition file.
+int test = 9; //-1: just a positive domain for test, dynamic linear case=2, dynamic nonlinear case=4, static linear case=1, random cube box side enforced = 8, random spheroid=9, 10=read from initial condition file.
 // test=1,2 use the exact solution on the boundary condition! Be careful!
 
 double cellDensity = 0.0001;   // only if test = 8 || 9
@@ -128,7 +128,7 @@ const double xyz_max_[] = {xmax, ymax, zmaxx};
 int axial_nb = 2*zmaxx/r0/2;
 int lmax_thr = (int)log2(axial_nb)+5;   // the mesh should be fine enough to have enough nodes on each cell for solver not to crash.
 int lmin = 4;
-int lmax =6;//MAX(lmax_thr, 5);
+int lmax =9;//MAX(lmax_thr, 5);
 int nb_splits = 1;
 
 double dt_scale = 20;
@@ -3644,12 +3644,12 @@ int main(int argc, char** argv) {
                     dipole_y[cell_ID] = integrate_over_interface(p4est, nodes, single_phi, dipole[1]);
                     dipole_z[cell_ID] = integrate_over_interface(p4est, nodes, single_phi, dipole[2]);
 
-                    Quad_xx[cell_ID] = integrate_over_interface(p4est, nodes, phi, Quadrupole[0]);
-                    Quad_yy[cell_ID] = integrate_over_interface(p4est, nodes, phi, Quadrupole[1]);
-                    Quad_zz[cell_ID] = integrate_over_interface(p4est, nodes, phi, Quadrupole[2]);
-                    Quad_xy[cell_ID] = integrate_over_interface(p4est, nodes, phi, Quadrupole[3]);
-                    Quad_xz[cell_ID] = integrate_over_interface(p4est, nodes, phi, Quadrupole[4]);
-                    Quad_yz[cell_ID] = integrate_over_interface(p4est, nodes, phi, Quadrupole[5]);
+                    Quad_xx[cell_ID] = integrate_over_interface(p4est, nodes, single_phi, Quadrupole[0]);
+                    Quad_yy[cell_ID] = integrate_over_interface(p4est, nodes, single_phi, Quadrupole[1]);
+                    Quad_zz[cell_ID] = integrate_over_interface(p4est, nodes, single_phi, Quadrupole[2]);
+                    Quad_xy[cell_ID] = integrate_over_interface(p4est, nodes, single_phi, Quadrupole[3]);
+                    Quad_xz[cell_ID] = integrate_over_interface(p4est, nodes, single_phi, Quadrupole[4]);
+                    Quad_yz[cell_ID] = integrate_over_interface(p4est, nodes, single_phi, Quadrupole[5]);
                 }
             }
             if(p4est->mpirank==0)
