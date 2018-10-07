@@ -73,7 +73,7 @@ bool contains(const std::vector<T> &vec, const T& elem)
 }
 
 
-int test = 9; //-1: just a positive domain for test, dynamic linear case=2, dynamic nonlinear case=4, static linear case=1, random cube box side enforced = 8, random spheroid=9, 10=read from initial condition file.
+int test = 11; //-1: just a positive domain for test, dynamic linear case=2, dynamic nonlinear case=4, static linear case=1, random cube box side enforced = 8, random spheroid=9, 10=read from initial condition file.
 // test=1,2 use the exact solution on the boundary condition! Be careful!
 
 double cellDensity = 0.0001;   // only if test = 8 || 9
@@ -601,10 +601,11 @@ public:
         }
 
         if (test==11){
-            double max_x = 0;
-            double min_x=0;
+            double ratio = 0.75;
+            double max_x = 0, max_y=0, max_z=0;
+            double min_x=0, min_y=0, min_z=0;
             std::ifstream in;
-            in.open("./Packing/rcpgenerator/FinalConfig/bidisperse_10000/FinalConfig.dat");
+            in.open("./Packing/monodisperse_1000/FinalConfig.dat");
             std::string line;
             if(in.is_open())
             {
@@ -625,25 +626,30 @@ public:
                     std::istringstream iss(line); //put line into stringstream
                     std::string word;
                     iss >> word;
-                    centers[n].x = std::stof(word)*1e-3 -  boxSide/2.0;
+                    centers[n].x = (std::stof(word) - 0.5)*ratio*boxSide;
                     min_x = MIN(min_x, centers[n].x);
                     max_x = MAX(max_x, centers[n].x);
                     iss >> word;
-                    centers[n].y = std::stof(word)*1e-3 -  boxSide/2.0;
+                    centers[n].y = (std::stof(word) - 0.5)*ratio*boxSide;
+                    min_y = MIN(min_y, centers[n].y);
+                    max_y = MAX(max_y, centers[n].y);
                     iss >> word;
-                    centers[n].z = std::stof(word)*1e-3 -  boxSide/2.0;
+                    centers[n].z = (std::stof(word) - 0.5)*ratio*boxSide;
+                    min_z = MIN(min_z, centers[n].z);
+                    max_z = MAX(max_z, centers[n].z);
                     iss >> word;
                     int cellType = std::stoi(word);
                     if(cellType==1)
-                        radii[n] = 0.1*0.0628872*1e-3;
+                        radii[n] = 0.05*boxSide*ratio;
                     else if (cellType==2)
-                        radii[n] = 0.1*0.037657*1e-3;
+                        radii[n] = 0.05*boxSide*ratio;
                     cellVolumes += 4*PI*radii[n]*radii[n]*radii[n]/3.0;
                     n++;
                 }
             }
             ClusterRadius = (max_x - min_x)/2.0;
-            density = cellVolumes/boxSide/boxSide/boxSide;
+            double pack_Volume = (max_x - min_x)*(max_y - min_y)*(max_z - min_z);
+            density = cellVolumes/pack_Volume;
             if(rank==0)
             {
                 ierr = PetscPrintf(PETSC_COMM_SELF, "The cube is almost bounded between xmin = %g and x_max = %g\n", min_x, max_x); CHKERRXX(ierr);
@@ -3571,12 +3577,12 @@ int main(int argc, char** argv) {
             std::vector<double> dipole_y(nb_cells);
             std::vector<double> dipole_z(nb_cells);
 
-             std::vector<double> Quad_xx(nb_cells);
-             std::vector<double> Quad_yy(nb_cells);
-             std::vector<double> Quad_zz(nb_cells);
-             std::vector<double> Quad_xy(nb_cells);
-             std::vector<double> Quad_xz(nb_cells);
-             std::vector<double> Quad_yz(nb_cells);
+            std::vector<double> Quad_xx(nb_cells);
+            std::vector<double> Quad_yy(nb_cells);
+            std::vector<double> Quad_zz(nb_cells);
+            std::vector<double> Quad_xy(nb_cells);
+            std::vector<double> Quad_xz(nb_cells);
+            std::vector<double> Quad_yz(nb_cells);
 
             Vec single_phi, dipole[P4EST_DIM], Quadrupole[6];
             VecDuplicate(phi,&single_phi);
@@ -3590,7 +3596,7 @@ int main(int argc, char** argv) {
             {
                 VecDuplicate(phi,&Quadrupole[j]);
                 VecGetArray(Quadrupole[j], &Quad_p[j]);
-             }
+            }
             double *vn_p;
             VecGetArray(vn, &vn_p);
             for(int j=0;j<P4EST_DIM;++j)
