@@ -476,7 +476,7 @@ void my_p4est_poisson_nodes_mls_sc_t::compute_mue_dd()
 }
 
 void my_p4est_poisson_nodes_mls_sc_t::preallocate_matrix()
-{  
+{
   // enable logging for the preallocation
   ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_sc_matrix_preallocation, A_, 0, 0, 0); CHKERRXX(ierr);
 
@@ -1128,6 +1128,12 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
   double fv_ymin, fv_ymax;
 #ifdef P4_TO_P8
   double fv_zmin, fv_zmax;
+#endif
+
+  double interp_xmin, interp_xmax;
+  double interp_ymin, interp_ymax;
+#ifdef P4_TO_P8
+  double interp_zmin, interp_zmax;
 #endif
 
   double xyz_C[P4EST_DIM];
@@ -2636,13 +2642,13 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
         fv_size_z = 0;
 #endif
 
-        if (!is_node_xmWall(p4est_, ni)) { fv_size_x += cube_refinement_; fv_xmin = x_C - .5*dx_min_; } else { fv_xmin = x_C; }
-        if (!is_node_xpWall(p4est_, ni)) { fv_size_x += cube_refinement_; fv_xmax = x_C + .5*dx_min_; } else { fv_xmax = x_C; }
-        if (!is_node_ymWall(p4est_, ni)) { fv_size_y += cube_refinement_; fv_ymin = y_C - .5*dy_min_; } else { fv_ymin = y_C; }
-        if (!is_node_ypWall(p4est_, ni)) { fv_size_y += cube_refinement_; fv_ymax = y_C + .5*dy_min_; } else { fv_ymax = y_C; }
+        if (!is_node_xmWall(p4est_, ni)) { fv_size_x += cube_refinement_; fv_xmin = x_C - .5*dx_min_; interp_xmin = x_C - dx_min_; } else { fv_xmin = x_C; interp_xmin = x_C; }
+        if (!is_node_xpWall(p4est_, ni)) { fv_size_x += cube_refinement_; fv_xmax = x_C + .5*dx_min_; interp_xmax = x_C + dx_min_; } else { fv_xmax = x_C; interp_xmax = x_C; }
+        if (!is_node_ymWall(p4est_, ni)) { fv_size_y += cube_refinement_; fv_ymin = y_C - .5*dy_min_; interp_ymin = y_C - dy_min_; } else { fv_ymin = y_C; interp_ymin = y_C; }
+        if (!is_node_ypWall(p4est_, ni)) { fv_size_y += cube_refinement_; fv_ymax = y_C + .5*dy_min_; interp_ymax = y_C + dy_min_; } else { fv_ymax = y_C; interp_ymax = y_C; }
 #ifdef P4_TO_P8
-        if (!is_node_zmWall(p4est_, ni)) { fv_size_z += cube_refinement_; fv_zmin = z_C - .5*dz_min_; } else { fv_zmin = z_C; }
-        if (!is_node_zpWall(p4est_, ni)) { fv_size_z += cube_refinement_; fv_zmax = z_C + .5*dz_min_; } else { fv_zmax = z_C; }
+        if (!is_node_zmWall(p4est_, ni)) { fv_size_z += cube_refinement_; fv_zmin = z_C - .5*dz_min_; interp_zmin = z_C - dz_min_; } else { fv_zmin = z_C; interp_zmin = z_C; }
+        if (!is_node_zpWall(p4est_, ni)) { fv_size_z += cube_refinement_; fv_zmax = z_C + .5*dz_min_; interp_zmax = z_C + dz_min_; } else { fv_zmax = z_C; interp_zmax = z_C; }
 #endif
 
         if (attempt_to_expand)
@@ -2929,6 +2935,12 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
         }
       }
 
+      face_centroid_x[dir::f_m00] = fv_xmin - x_C; face_centroid_x[dir::f_p00] = fv_xmax - x_C;
+      face_centroid_y[dir::f_0m0] = fv_ymin - y_C; face_centroid_y[dir::f_0p0] = fv_ymax - y_C;
+#ifdef P4_TO_P8
+      face_centroid_z[dir::f_00m] = fv_zmin - z_C; face_centroid_z[dir::f_00p] = fv_zmax - z_C;
+#endif
+
       if (use_sc_scheme_) face_area_max = areas_ptr[n];
 
       if (face_area_max > interface_rel_thresh_) // check if at least one face has a 'good connection' to neighboring cells
@@ -3009,9 +3021,11 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
                   if (setup_matrix) mask_p[n] = MAX(mask_p[n], mask_result);
 
                   for (unsigned short nn = 0; nn < num_neighbors_face_; ++nn)
-                  {
-                    if (map_face[nn]) { w[f2c_m[dir][nn]] += weights_face[nn] * flux;   w[f2c_p[dir][nn]] -= weights_face[nn] * flux; }
-                  }
+                    if (map_face[nn])
+                    {
+                      w[f2c_m[dir][nn]] += weights_face[nn] * flux;
+                      w[f2c_p[dir][nn]] -= weights_face[nn] * flux;
+                    }
                 }
 
               }
@@ -3129,10 +3143,10 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
 #ifdef P4_TO_P8
               xyz_pr[2] = xyz0[2] - dist0*nz;
 #endif
-              xyz_pr[0] = MIN(xyz_pr[0], fv_xmax); xyz_pr[0] = MAX(xyz_pr[0], fv_xmin);
-              xyz_pr[1] = MIN(xyz_pr[1], fv_ymax); xyz_pr[1] = MAX(xyz_pr[1], fv_ymin);
+              xyz_pr[0] = MIN(xyz_pr[0], interp_xmax); xyz_pr[0] = MAX(xyz_pr[0], interp_xmin);
+              xyz_pr[1] = MIN(xyz_pr[1], interp_ymax); xyz_pr[1] = MAX(xyz_pr[1], interp_ymin);
 #ifdef P4_TO_P8
-              xyz_pr[2] = MIN(xyz_pr[2], fv_zmax); xyz_pr[2] = MAX(xyz_pr[2], fv_zmin);
+              xyz_pr[2] = MIN(xyz_pr[2], interp_zmax); xyz_pr[2] = MAX(xyz_pr[2], interp_zmin);
 #endif
 
               double mu_proj       = variable_mu_ ? interp_local.value(xyz_pr) : mu_;
@@ -3516,10 +3530,10 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
               xyz_pr[2] = xyz0[2] - dist0*nz;
 #endif
 
-              xyz_pr[0] = MIN(xyz_pr[0], fv_xmax); xyz_pr[0] = MAX(xyz_pr[0], fv_xmin);
-              xyz_pr[1] = MIN(xyz_pr[1], fv_ymax); xyz_pr[1] = MAX(xyz_pr[1], fv_ymin);
+              xyz_pr[0] = MIN(xyz_pr[0], interp_xmax); xyz_pr[0] = MAX(xyz_pr[0], interp_xmin);
+              xyz_pr[1] = MIN(xyz_pr[1], interp_ymax); xyz_pr[1] = MAX(xyz_pr[1], interp_ymin);
 #ifdef P4_TO_P8
-              xyz_pr[2] = MIN(xyz_pr[2], fv_zmax); xyz_pr[2] = MAX(xyz_pr[2], fv_zmin);
+              xyz_pr[2] = MIN(xyz_pr[2], interp_zmax); xyz_pr[2] = MAX(xyz_pr[2], interp_zmin);
 #endif
 
               double mu_proj       = variable_mu_ ? interp_local.value(xyz_pr) : mu_;
@@ -3611,10 +3625,10 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
                 for (unsigned short i_dim = 0; i_dim < P4EST_DIM; i_dim++)
                   xyz_pr[i_dim] = xyz_C[i_dim] + dxyz_pr[i_dim];
 
-                xyz_pr[0] = MIN(xyz_pr[0], fv_xmax); xyz_pr[0] = MAX(xyz_pr[0], fv_xmin);
-                xyz_pr[1] = MIN(xyz_pr[1], fv_ymax); xyz_pr[1] = MAX(xyz_pr[1], fv_ymin);
+                xyz_pr[0] = MIN(xyz_pr[0], interp_xmax); xyz_pr[0] = MAX(xyz_pr[0], interp_xmin);
+                xyz_pr[1] = MIN(xyz_pr[1], interp_ymax); xyz_pr[1] = MAX(xyz_pr[1], interp_ymin);
 #ifdef P4_TO_P8
-                xyz_pr[2] = MIN(xyz_pr[2], fv_zmax); xyz_pr[2] = MAX(xyz_pr[2], fv_zmin);
+                xyz_pr[2] = MIN(xyz_pr[2], interp_zmax); xyz_pr[2] = MAX(xyz_pr[2], interp_zmin);
 #endif
 
                 // sample values at the projection point
@@ -3725,13 +3739,13 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
       fv_size_z = 0;
 #endif
 
-      if (!is_node_xmWall(p4est_, ni)) { fv_size_x += cube_refinement_; fv_xmin = x_C - .5*dx_min_; } else { fv_xmin = x_C; }
-      if (!is_node_xpWall(p4est_, ni)) { fv_size_x += cube_refinement_; fv_xmax = x_C + .5*dx_min_; } else { fv_xmax = x_C; }
-      if (!is_node_ymWall(p4est_, ni)) { fv_size_y += cube_refinement_; fv_ymin = y_C - .5*dy_min_; } else { fv_ymin = y_C; }
-      if (!is_node_ypWall(p4est_, ni)) { fv_size_y += cube_refinement_; fv_ymax = y_C + .5*dy_min_; } else { fv_ymax = y_C; }
+      if (!is_node_xmWall(p4est_, ni)) { fv_size_x += cube_refinement_; fv_xmin = x_C - .5*dx_min_; interp_xmin = x_C - dx_min_; } else { fv_xmin = x_C; interp_xmin = x_C; }
+      if (!is_node_xpWall(p4est_, ni)) { fv_size_x += cube_refinement_; fv_xmax = x_C + .5*dx_min_; interp_xmax = x_C + dx_min_; } else { fv_xmax = x_C; interp_xmax = x_C; }
+      if (!is_node_ymWall(p4est_, ni)) { fv_size_y += cube_refinement_; fv_ymin = y_C - .5*dy_min_; interp_ymin = y_C - dy_min_; } else { fv_ymin = y_C; interp_ymin = y_C; }
+      if (!is_node_ypWall(p4est_, ni)) { fv_size_y += cube_refinement_; fv_ymax = y_C + .5*dy_min_; interp_ymax = y_C + dy_min_; } else { fv_ymax = y_C; interp_ymax = y_C; }
 #ifdef P4_TO_P8
-      if (!is_node_zmWall(p4est_, ni)) { fv_size_z += cube_refinement_; fv_zmin = z_C - .5*dz_min_; } else { fv_zmin = z_C; }
-      if (!is_node_zpWall(p4est_, ni)) { fv_size_z += cube_refinement_; fv_zmax = z_C + .5*dz_min_; } else { fv_zmax = z_C; }
+      if (!is_node_zmWall(p4est_, ni)) { fv_size_z += cube_refinement_; fv_zmin = z_C - .5*dz_min_; interp_zmin = z_C - dz_min_; } else { fv_zmin = z_C; interp_zmin = z_C; }
+      if (!is_node_zpWall(p4est_, ni)) { fv_size_z += cube_refinement_; fv_zmax = z_C + .5*dz_min_; interp_zmax = z_C + dz_min_; } else { fv_zmax = z_C; interp_zmax = z_C; }
 #endif
 
       if (cube_refinement_ == 0)
@@ -3985,6 +3999,16 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
         face_p_area_max = MAX(face_p_area_max, face_p_area[dir_idx]);
       }
 
+
+      face_m_centroid_x[dir::f_m00] = fv_xmin - x_C; face_m_centroid_x[dir::f_p00] = fv_xmax - x_C;
+      face_p_centroid_x[dir::f_m00] = fv_xmin - x_C; face_p_centroid_x[dir::f_p00] = fv_xmax - x_C;
+      face_m_centroid_y[dir::f_0m0] = fv_ymin - y_C; face_m_centroid_y[dir::f_0p0] = fv_ymax - y_C;
+      face_p_centroid_y[dir::f_0m0] = fv_ymin - y_C; face_p_centroid_y[dir::f_0p0] = fv_ymax - y_C;
+#ifdef P4_TO_P8
+      face_m_centroid_z[dir::f_00m] = fv_zmin - z_C; face_m_centroid_z[dir::f_00p] = fv_zmax - z_C;
+      face_p_centroid_z[dir::f_00m] = fv_zmin - z_C; face_p_centroid_z[dir::f_00p] = fv_zmax - z_C;
+#endif
+
       face_m_area_max /= face_area_scalling_;
       face_p_area_max /= face_area_scalling_;
 
@@ -4201,6 +4225,12 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
         for (unsigned short i_dim = 0; i_dim < P4EST_DIM; i_dim++)
           xyz_pr[i_dim] = xyz_C[i_dim] + dxyz_pr[i_dim];
 
+        xyz_pr[0] = MIN(xyz_pr[0], interp_xmax); xyz_pr[0] = MAX(xyz_pr[0], interp_xmin);
+        xyz_pr[1] = MIN(xyz_pr[1], interp_ymax); xyz_pr[1] = MAX(xyz_pr[1], interp_ymin);
+#ifdef P4_TO_P8
+        xyz_pr[2] = MIN(xyz_pr[2], interp_zmax); xyz_pr[2] = MAX(xyz_pr[2], interp_zmin);
+#endif
+
         // sample values at the projection point
         double mu_m_proj = variable_mu_ ? mu_m_interp.value(xyz_pr) : mu_m_;
         double mu_p_proj = variable_mu_ ? mu_p_interp.value(xyz_pr) : mu_p_;
@@ -4221,10 +4251,10 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
 
         if (mu_m_proj < mu_p_proj)
         {
-          if (num_neg >= P4EST_DIM-1 && face_m_area_max > 0.1) sign_to_use = -1;
+          if (num_neg >= P4EST_DIM-1 && face_m_area_max > 0.01) sign_to_use = -1;
           else                        sign_to_use =  1;
         } else {
-          if (num_pos >= P4EST_DIM-1 && face_p_area_max > 0.1) sign_to_use =  1;
+          if (num_pos >= P4EST_DIM-1 && face_p_area_max > 0.01) sign_to_use =  1;
           else                        sign_to_use = -1;
         }
 
@@ -4570,25 +4600,25 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
     }
   }
 
-  if (setup_matrix || setup_rhs)
-  {
-    Vec diagonal;
+//  if (setup_matrix || setup_rhs)
+//  {
+//    Vec diagonal;
 
-    ierr = VecDuplicate(rhs_, &diagonal); CHKERRXX(ierr);
-    ierr = MatGetDiagonal(A_, diagonal); CHKERRXX(ierr);
+//    ierr = VecDuplicate(rhs_, &diagonal); CHKERRXX(ierr);
+//    ierr = MatGetDiagonal(A_, diagonal); CHKERRXX(ierr);
 
-    double *diagonal_ptr;
-    ierr = VecGetArray(diagonal, &diagonal_ptr); CHKERRXX(ierr);
-    foreach_local_node(n, nodes_)
-    {
-      diagonal_ptr[n] = 1./diagonal_ptr[n];
-    }
-    ierr = VecRestoreArray(diagonal, &diagonal_ptr); CHKERRXX(ierr);
+//    double *diagonal_ptr;
+//    ierr = VecGetArray(diagonal, &diagonal_ptr); CHKERRXX(ierr);
+//    foreach_local_node(n, nodes_)
+//    {
+//      diagonal_ptr[n] = 1./diagonal_ptr[n];
+//    }
+//    ierr = VecRestoreArray(diagonal, &diagonal_ptr); CHKERRXX(ierr);
 
-    if (setup_matrix) { ierr = MatDiagonalScale(A_, diagonal, NULL); CHKERRXX(ierr); }
-    if (setup_rhs)    { ierr = VecPointwiseMult(rhs_, rhs_, diagonal); CHKERRXX(ierr); }
-    ierr = VecDestroy(diagonal); CHKERRXX(ierr);
-  }
+//    if (setup_matrix) { ierr = MatDiagonalScale(A_, diagonal, NULL); CHKERRXX(ierr); }
+//    if (setup_rhs)    { ierr = VecPointwiseMult(rhs_, rhs_, diagonal); CHKERRXX(ierr); }
+//    ierr = VecDestroy(diagonal); CHKERRXX(ierr);
+//  }
 
 
 //  if (use_sc_scheme_)

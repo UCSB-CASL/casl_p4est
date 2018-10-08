@@ -148,7 +148,7 @@ int iter_start = 0; // is used to skip iterations and get to a problematic case
 // 6,  4, 5, 5, 11
 // 11, 4, 5, 5, 6
 
-int num_test_ii = 11;
+int num_test_ii = 6;
 int num_test_geometry = 6;
 
 int num_test_mu_m = 1;
@@ -161,8 +161,8 @@ int num_test_diag_term_m = 0;
 int num_test_diag_term_p = 0;
 
 BoundaryConditionType bc_wtype = DIRICHLET;
-//BoundaryConditionType bc_itype = DIRICHLET;
-BoundaryConditionType bc_itype = ROBIN;
+BoundaryConditionType bc_itype = DIRICHLET;
+//BoundaryConditionType bc_itype = ROBIN;
 
 //-------------------------------------
 // solver parameters

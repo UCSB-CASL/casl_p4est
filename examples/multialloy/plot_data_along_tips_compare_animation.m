@@ -50,10 +50,10 @@ clear;
 %        
 % outputname = '/home/dbochkov/Dendrites/dendrite_vs_planar_4';
 %        
-dir_all = {'/home/dbochkov/Dendrites/4/data_dendrites_all/D1_0.00008_G_00500.1972679', ...
-           '/home/dbochkov/Dendrites/5/data_dendrites_all/D1_0.00008_G_00500.2173298'};
-       
-outputname = '/home/dbochkov/Dendrites/dendrite_vs_planar_8';
+% dir_all = {'/home/dbochkov/Dendrites/4/data_dendrites_all/D1_0.00008_G_00500.1972679', ...
+%            '/home/dbochkov/Dendrites/5/data_dendrites_all/D1_0.00008_G_00500.2173298'};
+%        
+% outputname = '/home/dbochkov/Dendrites/dendrite_vs_planar_8';
 % 
 % dir_all = {'/home/dbochkov/Dendrites/4/data_dendrites_all/D1_0.00016_G_00500.1972680', ...
 %            '/home/dbochkov/Dendrites/5/data_dendrites_all/D1_0.00016_G_00500.2173299'};
@@ -61,10 +61,10 @@ outputname = '/home/dbochkov/Dendrites/dendrite_vs_planar_8';
 % outputname = '/home/dbochkov/Dendrites/dendrite_vs_planar_16';
 % 
 %        
-% dir_all = {'/home/dbochkov/Dendrites/4/data_dendrites_all/D1_0.00032_G_00500.1972681', ...
-%            '/home/dbochkov/Dendrites/5/data_dendrites_all/D1_0.00032_G_00500.2173301'};
-%        
-% outputname = '/home/dbochkov/Dendrites/dendrite_vs_planar_32';
+dir_all = {'/home/dbochkov/Dendrites/4/data_dendrites_all/D1_0.00032_G_00500.1972681', ...
+           '/home/dbochkov/Dendrites/5/data_dendrites_all/D1_0.00032_G_00500.2173301'};
+       
+outputname = '/home/dbochkov/Dendrites/dendrite_vs_planar_32';
 % 
 titles = {'Dendritic', ...
           'Planar' };

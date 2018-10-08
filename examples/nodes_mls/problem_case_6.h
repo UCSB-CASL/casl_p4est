@@ -55,7 +55,7 @@ public:
       double operator()(double x, double y) const
       {
         (void) x; (void) y;
-//        return 0.0;
+        return 0.0;
         return 1.0;
       }
   } bc_coeff_0;
