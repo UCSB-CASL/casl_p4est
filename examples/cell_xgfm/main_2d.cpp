@@ -1594,9 +1594,9 @@ The full periodicity is enforced.\n\
 * mu_m = 1.0; \n\
 * mu_p = 80.0; \n\
 * u_m  = atan(sin((2.0*M_PI/3.0)*(2.0*x-y)))*log(1.5+cos((2.0*M_PI/3.0)*(2.0*y-z))); \n\
-* u_p  = -1.0 + atan(0.1*x*x*x*y + 2.0*z*cos(y)- y*sin(x+z))/500.0; \n\
-    * no periodicity \n\
-    Example by Raphael Egan for very convoluted 3D interface (AMR required) with large ratio of coefficients");
+* u_p  = tanh(cos((2.0*M_PI/3.0)*(2.0*x+y)))*acos(0.5*sin((2.0*M_PI/3.0)*(2.0*x-x))); n\
+* fully periodic \n\
+Example by Raphael Egan for full periodicity.");
     #else
   cmd.add_option("test", "choose a test.\n\
 0:\n\
@@ -1854,11 +1854,22 @@ Example by Raphael Egan for full periodicity.");
   double err[ngrids][2], err_flux_components[ngrids][2][P4EST_DIM], err_derivatives_components[ngrids][2][P4EST_DIM];
 
   double avg_exa = 0.0;
-  if(bc_wtype==NEUMANN || test_number == 9)
+  if(bc_wtype==NEUMANN ||
+   #ifdef P4_TO_P8
+     test_number == 3
+   #else
+     test_number == 9
+   #endif
+     )
   {
     switch(test_number)
     {
 #ifdef P4_TO_P8
+    case 0: avg_exa = 0.030340553122903;  break; // using Richardson's extrapolation between uniform 512x512x512 and 1024x1024x1024 grids (assuming second-order accurate integration)
+    case 1: avg_exa = 197.6819076161000;  break; // using Richardson's extrapolation between uniform 512x512x512 and 1024x1024x1024 grids (assuming second-order accurate integration)
+    case 2: throw std::invalid_argument("Test case 2 cannot be validated with a non-empty nullspace (i.e. Neumann boundary condition). \n\
+This test case is meant to check the AMR feature, hence the interface is supposedly captured with a very fine grid for which an accurate estimate of the mean value is unknown...");
+    case 3: avg_exa = -0.164222868617700; break; // using Richardson's extrapolation between uniform 512x512x512 and 1024x1024x1024 grids (assuming second-order accurate integration)
 #else
     case 0: avg_exa = 0.117241067253686032041502125837326856300828722393373744878; break; // calculated with Wolfram
     case 1: avg_exa =
