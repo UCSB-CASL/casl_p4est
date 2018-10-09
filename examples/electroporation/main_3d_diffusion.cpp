@@ -73,7 +73,7 @@ bool contains(const std::vector<T> &vec, const T& elem)
 }
 
 
-int test = 11; //-1: just a positive domain for test, dynamic linear case=2, dynamic nonlinear case=4, static linear case=1, random cube box side enforced = 8, random spheroid=9, 10=read from initial condition file.
+int test = 9; //-1: just a positive domain for test, dynamic linear case=2, dynamic nonlinear case=4, static linear case=1, random cube box side enforced = 8, random spheroid=9, 10=read from initial condition file.
 // test=1,2 use the exact solution on the boundary condition! Be careful!
 
 double cellDensity = 0.0001;   // only if test = 8 || 9
@@ -127,7 +127,7 @@ const double xyz_max_[] = {xmax, ymax, zmaxx};
 
 int axial_nb = 2*zmaxx/r0/2;
 int lmax_thr = (int)log2(axial_nb)+5;   // the mesh should be fine enough to have enough nodes on each cell for solver not to crash.
-int lmin = 4;
+int lmin = 2;
 int lmax =9;//MAX(lmax_thr, 5);
 int nb_splits = 1;
 
@@ -820,13 +820,12 @@ double u_exact(double x, double y, double z, double t, bool phi_is_pos)
 //PAM: square pulse to be asked from Clair
 double pulse(double tn)
 {
-    return E*sin(2*PI*omega*tn);
-    /*
+    //return E*sin(2*PI*omega*tn);
+
     if(E*cos(2*PI*omega*tn)>=0)
         return E;
     else
         return 0;
-        */
 }
 
 // rescale later!
@@ -1315,10 +1314,10 @@ void solve_electric_potential( p4est_t *p4est, p4est_nodes_t *nodes,
 
         double *phi_p;
         VecGetArray(phi, &phi_p);
-        ls.extend_Over_Interface_TVD(phi, u_minus,100);
+        ls.extend_Over_Interface(phi, u_minus, 2, 4);
         for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
             phi_p[i] = -phi_p[i];
-        ls.extend_Over_Interface_TVD(phi, u_plus,100);
+        ls.extend_Over_Interface(phi, u_plus, 2, 4);
         for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
             phi_p[i] = -phi_p[i];
 
@@ -2305,7 +2304,7 @@ void solve_transport( p4est_t *p4est,  p4est_ghost_t *ghost, p4est_nodes_t *node
     VecRestoreArray(sol_ext, &u_ext_p);
     for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
         phi_p[i] = -phi_p[i];
-    ls.extend_Over_Interface_TVD(phi, sol_ext,100);
+    ls.extend_Over_Interface(phi, sol_ext,2,4);
     for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
         phi_p[i] = -phi_p[i];
 
@@ -2443,10 +2442,10 @@ void solve_transport( p4est_t *p4est,  p4est_ghost_t *ghost, p4est_nodes_t *node
             VecRestoreArray(M_minus, &M_minus_p);
             VecRestoreArray(M_list[ion], &M_p[ion]);
 
-            ls.extend_Over_Interface_TVD(phi, M_minus,100);
+            ls.extend_Over_Interface(phi, M_minus,2,4);
             for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
                 phi_p[i] = -phi_p[i];
-            ls.extend_Over_Interface_TVD(phi, M_plus,100);
+            ls.extend_Over_Interface(phi, M_plus,2,4);
             for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
                 phi_p[i] = -phi_p[i];
 
@@ -2504,10 +2503,10 @@ void solve_transport( p4est_t *p4est,  p4est_ghost_t *ghost, p4est_nodes_t *node
             ierr = VecRestoreArray(M_minus, &Mm_p); CHKERRXX(ierr);
             //ls.extend_from_interface_to_whole_domain_TVD(phi, grad_Mp, dM_plus_cte);
             //ls.extend_from_interface_to_whole_domain_TVD(phi, grad_Mm, dM_minus_cte);
-            ls.extend_Over_Interface_TVD(phi, grad_Mm,100);
+            ls.extend_Over_Interface(phi, grad_Mm,2,4);
             for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
                 phi_p[i] = -phi_p[i];
-            ls.extend_Over_Interface_TVD(phi, grad_Mp,100);
+            ls.extend_Over_Interface(phi, grad_Mp,2,4);
             for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
                 phi_p[i] = -phi_p[i];
 
@@ -3390,11 +3389,12 @@ int main(int argc, char** argv) {
     ierr = VecDuplicate(phi, &err); CHKERRXX(ierr);
     ierr = VecDuplicate(phi, &sol); CHKERRXX(ierr);
 
-    Vec top_electrode_phi, bottom_electrode_phi, intensity, Sm_thresholded, ones;
+    Vec top_electrode_phi, bottom_electrode_phi, intensity, Sm_thresholded[4], ones;
     ierr = VecDuplicate(phi, &top_electrode_phi); CHKERRXX(ierr);
     ierr = VecDuplicate(phi, &bottom_electrode_phi); CHKERRXX(ierr);
     ierr = VecDuplicate(phi, &intensity); CHKERRXX(ierr);
-    ierr = VecDuplicate(phi, &Sm_thresholded); CHKERRXX(ierr);
+    for(unsigned int i=0;i<4;++i)
+        ierr = VecDuplicate(phi, &Sm_thresholded[i]); CHKERRXX(ierr);
     ierr = VecDuplicate(phi, &ones); CHKERRXX(ierr);
 
     clock_t begin = clock();
@@ -3461,7 +3461,7 @@ int main(int argc, char** argv) {
         }
 
         /* compute the error on the tree*/
-        double *err_p, *sol_p,*TEphi_p, *BEphi_p, *intensity_p, *Sm_p, *Sm_thresholded_p, *ones_p;
+        double *err_p, *sol_p,*TEphi_p, *BEphi_p, *intensity_p, *Sm_p, *Sm_thresholded_p[4], *ones_p;
         ierr = VecGetArray(err, &err_p); CHKERRXX(ierr);
         ierr = VecGetArray(sol, &sol_p); CHKERRXX(ierr);
         ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
@@ -3469,7 +3469,8 @@ int main(int argc, char** argv) {
         ierr = VecGetArray(bottom_electrode_phi, &BEphi_p); CHKERRXX(ierr);
         ierr = VecGetArray(intensity, &intensity_p); CHKERRXX(ierr);
         ierr = VecGetArray(Sm, &Sm_p); CHKERRXX(ierr);
-        ierr = VecGetArray(Sm_thresholded, &Sm_thresholded_p); CHKERRXX(ierr);
+        for(unsigned int i=0;i<4;++i)
+            ierr = VecGetArray(Sm_thresholded[i], &Sm_thresholded_p[i]); CHKERRXX(ierr);
         ierr = VecGetArray(ones, &ones_p); CHKERRXX(ierr);
 
         err_nm1 = err_n;
@@ -3496,15 +3497,34 @@ int main(int argc, char** argv) {
                 err_n = MAX(err_n,err_p[n]);
             }
             ones_p[n] = 1;
-            if(is_interface(&ngbd_n,n,phi_p)>0 && ABS(Sm_p[n])>Sm_threshold_value)
-                Sm_thresholded_p[n] = 1;                                        // this is to mark cells that are permeabilized above a threshold, to compute their area
-            else
-                Sm_thresholded_p[n] = 0;
+            if(is_interface(&ngbd_n,n,phi_p)>0)
+            {
+                if(ABS(Sm_p[n])>100*SL)
+                    Sm_thresholded_p[0][n] = 1;                                        // this is to mark cells that are permeabilized above a threshold, to compute their area
+                else
+                    Sm_thresholded_p[0][n] = 0;
+
+                if(ABS(Sm_p[n])>1000*SL)
+                    Sm_thresholded_p[1][n] = 1;
+                else
+                    Sm_thresholded_p[1][n] = 0;
+
+                if(ABS(Sm_p[n])>10000*SL)
+                    Sm_thresholded_p[2][n] = 1;
+                else
+                    Sm_thresholded_p[2][n] = 0;
+
+                if(ABS(Sm_p[n])>100000*SL)
+                    Sm_thresholded_p[3][n] = 1;
+                else
+                    Sm_thresholded_p[3][n] = 0;
+            }
         }
 
         ierr = VecRestoreArray(top_electrode_phi, &TEphi_p); CHKERRXX(ierr);
         ierr = VecRestoreArray(bottom_electrode_phi, &BEphi_p); CHKERRXX(ierr);
-        ierr = VecRestoreArray(Sm_thresholded, &Sm_thresholded_p); CHKERRXX(ierr);
+        for(unsigned int i=0;i<4;++i)
+            ierr = VecRestoreArray(Sm_thresholded[i], &Sm_thresholded_p[i]); CHKERRXX(ierr);
         ierr = VecRestoreArray(Sm, &Sm_p); CHKERRXX(ierr);
         ierr = VecRestoreArray(ones, &ones_p); CHKERRXX(ierr);
 
@@ -3565,7 +3585,12 @@ int main(int argc, char** argv) {
         sigma_eff_Real = 1/impedance/shape_factor;
         sigma_eff_Imaginary = -epsilon_r*epsilon_0*omega;
 
-        double total_area_permeabilized = integrate_over_interface(p4est, nodes, phi, Sm_thresholded);
+        double total_area_permeabilized[4]={0.,0.,0.,0.};
+        for(unsigned int i=0;i<4;++i)
+            total_area_permeabilized[i] = integrate_over_interface(p4est, nodes, phi, Sm_thresholded[i]);
+
+        MPI_Allreduce(MPI_IN_PLACE, &total_area_permeabilized[0], 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm);
+
         double total_area = integrate_over_interface(p4est, nodes, phi, ones);
 
 
@@ -3700,13 +3725,13 @@ int main(int argc, char** argv) {
                     if(iteration ==0){
                         FILE *f = fopen(out_path_Z, "w");
                         fprintf(f, "Simulation Parameters: Omega [Hz] %g \t cell volume fraction %g \t box side length [m] %g \n", omega, density, xmax-xmin);
-                        fprintf(f, "time [s]    | impedance [Ohm] | TMP [V] | Intensity | Error |TMP_exact [V] |Re(epsilon)| Im(epsilon) | V(t)[V] | E(t) [V/m] | Re(sigma) [S/m] |  Im(sigma)  | Perm. area [m*m] | Total area [m*m]\n");
-                        fprintf(f, "%g \t %g \t %g \t  %g \t %g \t %g \t\t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g\n", tn+dt, impedance, u_Npole, PulseIntensity, des_err, u_Npole_exact, epsilon_r, epsilon_Im, pulse(tn), applied_E, sigma_eff_Real, sigma_eff_Imaginary, total_area_permeabilized, total_area);
+                        fprintf(f, "time [s]    | impedance [Ohm] | TMP [V] | Intensity | Error |TMP_exact [V] |Re(epsilon)| Im(epsilon) | V(t)[V] | E(t) [V/m] | Re(sigma) [S/m] |  Im(sigma)  | (>1e2*SL) area [m*m] | (>1e3*SL) area [m*m] | (>1e4*SL) area [m*m] | (>1e5*SL) area [m*m] | Total area [m*m]\n");
+                        fprintf(f, "%g \t %g \t %g \t  %g \t %g \t %g \t\t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g\n", tn+dt, impedance, u_Npole, PulseIntensity, des_err, u_Npole_exact, epsilon_r, epsilon_Im, pulse(tn), applied_E, sigma_eff_Real, sigma_eff_Imaginary, total_area_permeabilized[0], total_area_permeabilized[1], total_area_permeabilized[2], total_area_permeabilized[3], total_area);
                         fclose(f);
                     }
                     else{
                         FILE *f = fopen(out_path_Z, "a");
-                        fprintf(f, "%g \t %g \t %g \t %g \t %g \t %g \t\t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g\n", tn+dt, impedance, u_Npole, PulseIntensity, des_err, u_Npole_exact, epsilon_r, epsilon_Im, pulse(tn), applied_E, sigma_eff_Real, sigma_eff_Imaginary, total_area_permeabilized, total_area);
+                        fprintf(f, "%g \t %g \t %g \t %g \t %g \t %g \t\t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g\n", tn+dt, impedance, u_Npole, PulseIntensity, des_err, u_Npole_exact, epsilon_r, epsilon_Im, pulse(tn), applied_E, sigma_eff_Real, sigma_eff_Imaginary,  total_area_permeabilized[0], total_area_permeabilized[1], total_area_permeabilized[2], total_area_permeabilized[3], total_area);
                         fclose(f);
                     }
 
@@ -3765,6 +3790,9 @@ int main(int argc, char** argv) {
     ierr = VecDestroy(X0); CHKERRXX(ierr);
     ierr = VecDestroy(X1); CHKERRXX(ierr);
     ierr = VecDestroy(charge_rate); CHKERRXX(ierr);
+
+    for(unsigned int i=0;i<4;++i)
+        ierr = VecDestroy(Sm_thresholded[i]); CHKERRXX(ierr);
 
     for(unsigned int i=0;i<number_ions;++i)
         ierr = VecDestroy(M_list[i]); CHKERRXX(ierr);
