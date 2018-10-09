@@ -73,7 +73,7 @@ bool contains(const std::vector<T> &vec, const T& elem)
 }
 
 
-int test = 9; //-1: just a positive domain for test, dynamic linear case=2, dynamic nonlinear case=4, static linear case=1, random cube box side enforced = 8, random spheroid=9, 10=read from initial condition file.
+int test = 4; //-1: just a positive domain for test, dynamic linear case=2, dynamic nonlinear case=4, static linear case=1, random cube box side enforced = 8, random spheroid=9, 10=read from initial condition file.
 // test=1,2 use the exact solution on the boundary condition! Be careful!
 
 double cellDensity = 0.0001;   // only if test = 8 || 9
@@ -127,11 +127,11 @@ const double xyz_max_[] = {xmax, ymax, zmaxx};
 
 int axial_nb = 2*zmaxx/r0/2;
 int lmax_thr = (int)log2(axial_nb)+5;   // the mesh should be fine enough to have enough nodes on each cell for solver not to crash.
-int lmin = 2;
-int lmax =9;//MAX(lmax_thr, 5);
+int lmin = 4;
+int lmax =6;//MAX(lmax_thr, 5);
 int nb_splits = 1;
 
-double dt_scale = 20;
+double dt_scale = 40;
 double tn;
 double tf = 1e-5;//15.0/omega;
 double dt;
@@ -3592,6 +3592,10 @@ int main(int argc, char** argv) {
         MPI_Allreduce(MPI_IN_PLACE, &total_area_permeabilized[0], 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm);
 
         double total_area = integrate_over_interface(p4est, nodes, phi, ones);
+        double avg_Sm = integrate_over_interface(p4est, nodes, phi, Sm)/total_area;
+        double avg_X0 = integrate_over_interface(p4est, nodes, phi, X0)/total_area;
+        double avg_X1 = integrate_over_interface(p4est, nodes, phi, X1)/total_area;
+        double avg_vn = integrate_over_interface(p4est, nodes, phi, vn)/total_area;
 
 
 
@@ -3725,13 +3729,13 @@ int main(int argc, char** argv) {
                     if(iteration ==0){
                         FILE *f = fopen(out_path_Z, "w");
                         fprintf(f, "Simulation Parameters: Omega [Hz] %g \t cell volume fraction %g \t box side length [m] %g \n", omega, density, xmax-xmin);
-                        fprintf(f, "time [s]    | impedance [Ohm] | TMP [V] | Intensity | Error |TMP_exact [V] |Re(epsilon)| Im(epsilon) | V(t)[V] | E(t) [V/m] | Re(sigma) [S/m] |  Im(sigma)  | (>1e2*SL) area [m*m] | (>1e3*SL) area [m*m] | (>1e4*SL) area [m*m] | (>1e5*SL) area [m*m] | Total area [m*m]\n");
-                        fprintf(f, "%g \t %g \t %g \t  %g \t %g \t %g \t\t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g\n", tn+dt, impedance, u_Npole, PulseIntensity, des_err, u_Npole_exact, epsilon_r, epsilon_Im, pulse(tn), applied_E, sigma_eff_Real, sigma_eff_Imaginary, total_area_permeabilized[0], total_area_permeabilized[1], total_area_permeabilized[2], total_area_permeabilized[3], total_area);
+                        fprintf(f, "time [s]    | impedance [Ohm] | TMP [V] | Intensity | Error |TMP_exact [V] |Re(epsilon)| Im(epsilon) | V(t)[V] | E(t) [V/m] | Re(sigma) [S/m] |  Im(sigma)  | (>1e2*SL) area [m*m] | (>1e3*SL) area [m*m] | (>1e4*SL) area [m*m] | (>1e5*SL) area [m*m] | Total area [m*m] | avg. Sm | avg. vn| avg. X0 | avg. X1 |\n");
+                        fprintf(f, "%g \t %g \t %g \t  %g \t %g \t %g \t\t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g\t %g \t %g \t %g \t %g\n", tn+dt, impedance, u_Npole, PulseIntensity, des_err, u_Npole_exact, epsilon_r, epsilon_Im, pulse(tn), applied_E, sigma_eff_Real, sigma_eff_Imaginary, total_area_permeabilized[0], total_area_permeabilized[1], total_area_permeabilized[2], total_area_permeabilized[3], total_area, avg_Sm, avg_vn, avg_X0, avg_X1);
                         fclose(f);
                     }
                     else{
                         FILE *f = fopen(out_path_Z, "a");
-                        fprintf(f, "%g \t %g \t %g \t %g \t %g \t %g \t\t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g\n", tn+dt, impedance, u_Npole, PulseIntensity, des_err, u_Npole_exact, epsilon_r, epsilon_Im, pulse(tn), applied_E, sigma_eff_Real, sigma_eff_Imaginary,  total_area_permeabilized[0], total_area_permeabilized[1], total_area_permeabilized[2], total_area_permeabilized[3], total_area);
+                        fprintf(f, "%g \t %g \t %g \t %g \t %g \t %g \t\t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g\t %g \t %g \t %g \t %g\n", tn+dt, impedance, u_Npole, PulseIntensity, des_err, u_Npole_exact, epsilon_r, epsilon_Im, pulse(tn), applied_E, sigma_eff_Real, sigma_eff_Imaginary,  total_area_permeabilized[0], total_area_permeabilized[1], total_area_permeabilized[2], total_area_permeabilized[3], total_area, avg_Sm, avg_vn, avg_X0, avg_X1);
                         fclose(f);
                     }
 
