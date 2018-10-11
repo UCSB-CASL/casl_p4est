@@ -61,6 +61,117 @@ enum {
 };
 }
 
+enum node_neighbor_cube_t
+{
+#ifdef P4_TO_P8
+  // zm plane
+  nn_mmm = 0, nn_0mm, nn_pmm,
+  nn_m0m,     nn_00m, nn_p0m,
+  nn_mpm,     nn_0pm, nn_ppm,
+
+  // z0 plane
+  nn_mm0, nn_0m0, nn_pm0,
+  nn_m00, nn_000, nn_p00,
+  nn_mp0, nn_0p0, nn_pp0,
+
+  // zp plane
+  nn_mmp, nn_0mp, nn_pmp,
+  nn_m0p, nn_00p, nn_p0p,
+  nn_mpp, nn_0pp, nn_ppp
+
+#else
+  nn_mm0 = 0, nn_0m0, nn_pm0,
+  nn_m00,     nn_000, nn_p00,
+  nn_mp0,     nn_0p0, nn_pp0
+#endif
+};
+
+enum node_neighbor_face_t
+{
+#ifdef P4_TO_P8
+  nnf_mm = 0, nnf_0m, nnf_pm,
+  nnf_m0,     nnf_00, nnf_p0,
+  nnf_mp,     nnf_0p, nnf_pp,
+#else
+  nnf_m0 = 0, nnf_00, nnf_p0,
+#endif
+};
+
+#ifdef P4_TO_P8
+const unsigned short num_neighbors_cube = 27;
+const unsigned short num_neighbors_face = 9;
+const unsigned short num_neighbors_cube_ = 27;
+const unsigned short num_neighbors_face_ = 9;
+
+const unsigned short f2c_m[P4EST_FACES][num_neighbors_face_] = { { nn_0mm, nn_00m, nn_0pm,
+                                                                   nn_0m0, nn_000, nn_0p0,
+                                                                   nn_0mp, nn_00p, nn_0pp },
+
+                                                                 { nn_0mm, nn_00m, nn_0pm,
+                                                                   nn_0m0, nn_000, nn_0p0,
+                                                                   nn_0mp, nn_00p, nn_0pp },
+
+                                                                 { nn_m0m, nn_00m, nn_p0m,
+                                                                   nn_m00, nn_000, nn_p00,
+                                                                   nn_m0p, nn_00p, nn_p0p },
+
+                                                                 { nn_m0m, nn_00m, nn_p0m,
+                                                                   nn_m00, nn_000, nn_p00,
+                                                                   nn_m0p, nn_00p, nn_p0p },
+
+                                                                 { nn_mm0, nn_0m0, nn_pm0,
+                                                                   nn_m00, nn_000, nn_p00,
+                                                                   nn_mp0, nn_0p0, nn_pp0 },
+
+                                                                 { nn_mm0, nn_0m0, nn_pm0,
+                                                                   nn_m00, nn_000, nn_p00,
+                                                                   nn_mp0, nn_0p0, nn_pp0 }};
+
+const unsigned short f2c_p[P4EST_FACES][num_neighbors_face_] = { { nn_mmm, nn_m0m, nn_mpm,
+                                                                   nn_mm0, nn_m00, nn_mp0,
+                                                                   nn_mmp, nn_m0p, nn_mpp },
+
+                                                                 { nn_pmm, nn_p0m, nn_ppm,
+                                                                   nn_pm0, nn_p00, nn_pp0,
+                                                                   nn_pmp, nn_p0p, nn_ppp },
+
+                                                                 { nn_mmm, nn_0mm, nn_pmm,
+                                                                   nn_mm0, nn_0m0, nn_pm0,
+                                                                   nn_mmp, nn_0mp, nn_pmp },
+
+                                                                 { nn_mpm, nn_0pm, nn_ppm,
+                                                                   nn_mp0, nn_0p0, nn_pp0,
+                                                                   nn_mpp, nn_0pp, nn_ppp },
+
+                                                                 { nn_mmm, nn_0mm, nn_pmm,
+                                                                   nn_m0m, nn_00m, nn_p0m,
+                                                                   nn_mpm, nn_0pm, nn_ppm },
+
+                                                                 { nn_mmp, nn_0mp, nn_pmp,
+                                                                   nn_m0p, nn_00p, nn_p0p,
+                                                                   nn_mpp, nn_0pp, nn_ppp }};
+const unsigned short i_idx[] = { 0, 1, 2 };
+const unsigned short j_idx[] = { 1, 2, 0 };
+const unsigned short k_idx[] = { 2, 0, 1 };
+#else
+const unsigned short num_neighbors_cube = 9;
+const unsigned short num_neighbors_face = 3;
+const unsigned short num_neighbors_cube_ = 9;
+const unsigned short num_neighbors_face_ = 3;
+
+const unsigned short f2c_m[P4EST_FACES][num_neighbors_face_] = { { nn_0m0, nn_000, nn_0p0 },
+                                                                 { nn_0m0, nn_000, nn_0p0 },
+                                                                 { nn_m00, nn_000, nn_p00 },
+                                                                 { nn_m00, nn_000, nn_p00 }};
+
+const unsigned short f2c_p[P4EST_FACES][num_neighbors_face_] = { { nn_mm0, nn_m00, nn_mp0 },
+                                                                 { nn_pm0, nn_p00, nn_pp0 },
+                                                                 { nn_mm0, nn_0m0, nn_pm0 },
+                                                                 { nn_mp0, nn_0p0, nn_pp0 }};
+const unsigned short i_idx[] = { 0, 1 };
+const unsigned short j_idx[] = { 1, 0 };
+#endif
+
 enum interpolation_method{
   linear,
   quadratic,
@@ -1626,4 +1737,5 @@ void fill_island(const my_p4est_node_neighbors_t &ngbd, const double *phi_p, dou
 void find_connected_ghost_islands(const my_p4est_node_neighbors_t &ngbd, const double *phi_p, double *island_number_p, p4est_locidx_t n, std::vector<double> &connected, std::vector<bool> &visited);
 void compute_islands_numbers(const my_p4est_node_neighbors_t &ngbd, const Vec phi, int &nb_islands_total, Vec island_number);
 
+void get_all_neighbors(const p4est_locidx_t n, p4est_t *p4est, p4est_nodes_t *nodes, my_p4est_node_neighbors_t *ngbd, p4est_locidx_t *neighbors, bool *neighbor_exists);
 #endif // UTILS_H

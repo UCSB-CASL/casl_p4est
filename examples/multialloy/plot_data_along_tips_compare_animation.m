@@ -1,5 +1,22 @@
 clear;
 
+% all dendritic coarse
+dir_all = {'/home/dbochkov/Dendrites/6/data_dendrites_all/D1_0.00001_G_00500.2197287', ...  
+           '/home/dbochkov/Dendrites/6/data_dendrites_all/D1_0.00002_G_00500.2197288', ... 
+           '/home/dbochkov/Dendrites/6/data_dendrites_all/D1_0.00004_G_00500.2197290', ... 
+           '/home/dbochkov/Dendrites/6/data_dendrites_all/D1_0.00008_G_00500.2197292', ... 
+           '/home/dbochkov/Dendrites/6/data_dendrites_all/D1_0.00016_G_00500.2197293', ... 
+           '/home/dbochkov/Dendrites/6/data_dendrites_all/D1_0.00032_G_00500.2197294'};
+
+outputname = '/home/dbochkov/Dendrites/coarse_dendritic_all';
+
+titles = {'D_{W}/D_{Al} = 1', ...
+          'D_{W}/D_{Al} = 2', ...
+          'D_{W}/D_{Al} = 4', ...
+          'D_{W}/D_{Al} = 8', ...
+          'D_{W}/D_{Al} = 16', ...
+          'D_{W}/D_{Al} = 32' };
+
 % all dendritic
 % dir_all = {'/home/dbochkov/Dendrites/4/data_dendrites_all/D1_0.00001_G_00500.1972666', ...  
 %            '/home/dbochkov/Dendrites/4/data_dendrites_all/D1_0.00002_G_00500.1972671', ...  
@@ -10,13 +27,13 @@ clear;
 %        
 % outputname = '/home/dbochkov/Dendrites/dendritic_all';
 % 
-% titles = {'D_1/D_0 = 1', ...
-%           'D_1/D_0 = 2', ...
-%           'D_1/D_0 = 4', ...
-%           'D_1/D_0 = 8', ...
-%           'D_1/D_0 = 16', ...
-%           'D_1/D_0 = 32' };
-       
+% titles = {'D_{W}/D_{Al} = 1', ...
+%           'D_{W}/D_{Al} = 2', ...
+%           'D_{W}/D_{Al} = 4', ...
+%           'D_{W}/D_{Al} = 8', ...
+%           'D_{W}/D_{Al} = 16', ...
+%           'D_{W}/D_{Al} = 32' };
+%        
 
 % all planar
 % dir_all = {'/home/dbochkov/Dendrites/5/data_dendrites_all/D1_0.00001_G_00500.2173295', ... 
@@ -28,12 +45,13 @@ clear;
 %       
 % outputname = '/home/dbochkov/Dendrites/planar_all';
 %        
-% titles = {'D_1/D_0 = 1', ...
-%           'D_1/D_0 = 2', ...
-%           'D_1/D_0 = 4', ...
-%           'D_1/D_0 = 8', ...
-%           'D_1/D_0 = 16', ...
-%           'D_1/D_0 = 32' };
+% 
+% titles = {'D_{W}/D_{Al} = 1', ...
+%           'D_{W}/D_{Al} = 2', ...
+%           'D_{W}/D_{Al} = 4', ...
+%           'D_{W}/D_{Al} = 8', ...
+%           'D_{W}/D_{Al} = 16', ...
+%           'D_{W}/D_{Al} = 32' };
 %        
 % dir_all = {'/home/dbochkov/Dendrites/4/data_dendrites_all/D1_0.00001_G_00500.1972666', ...
 %            '/home/dbochkov/Dendrites/5/data_dendrites_all/D1_0.00001_G_00500.2173295'};
@@ -49,7 +67,7 @@ clear;
 %            '/home/dbochkov/Dendrites/5/data_dendrites_all/D1_0.00004_G_00500.2173297'};
 %        
 % outputname = '/home/dbochkov/Dendrites/dendrite_vs_planar_4';
-%        
+       
 % dir_all = {'/home/dbochkov/Dendrites/4/data_dendrites_all/D1_0.00008_G_00500.1972679', ...
 %            '/home/dbochkov/Dendrites/5/data_dendrites_all/D1_0.00008_G_00500.2173298'};
 %        
@@ -61,16 +79,18 @@ clear;
 % outputname = '/home/dbochkov/Dendrites/dendrite_vs_planar_16';
 % 
 %        
-dir_all = {'/home/dbochkov/Dendrites/4/data_dendrites_all/D1_0.00032_G_00500.1972681', ...
-           '/home/dbochkov/Dendrites/5/data_dendrites_all/D1_0.00032_G_00500.2173301'};
-       
-outputname = '/home/dbochkov/Dendrites/dendrite_vs_planar_32';
+% dir_all = {'/home/dbochkov/Dendrites/4/data_dendrites_all/D1_0.00032_G_00500.1972681', ...
+%            '/home/dbochkov/Dendrites/5/data_dendrites_all/D1_0.00032_G_00500.2173301'};
+%        
+% outputname = '/home/dbochkov/Dendrites/dendrite_vs_planar_32';
 % 
-titles = {'Dendritic', ...
-          'Planar' };
+% titles = {'Dendritic', ...
+%           'Planar' };
 
-save_video = 1;
+save_video = 0;
 show_legend = 1;
+
+subplotted = 1;
 
 alpha = 1-0.75^(1/length(dir_all));
 
@@ -98,9 +118,18 @@ N = 1;
 
 dir_case = {};
 
+file_start = 268;
+file_final_force = 268;
+
+if (subplotted ~= 1)
+    f_c = figure;
+    f_t = figure;
+    f_p = figure;
+end
+
 for dir_idx = 1:length(dir_all)
     dir_case(dir_idx) = {[dir_all{dir_idx}, '/dendrites']};
-    file_final(dir_idx) = length(dir(dir_case{dir_idx}))-3;
+    file_final(dir_idx) = min(length(dir(dir_case{dir_idx}))-3, file_final_force);
     
     % get maximum values
     dir_cur = sprintf('%s/%05d', dir_case{dir_idx}, file_final(dir_idx));
@@ -119,8 +148,8 @@ for dir_idx = 1:length(dir_all)
     solid  = phi > 0;
     liquid = phi < 0;
     
-    c0_common = c0.*liquid + c0s.*solid/k0;
-    c1_common = c1.*liquid + c1s.*solid/k1;
+    c0_common = c0.*liquid + c0s.*solid;
+    c1_common = c1.*liquid + c1s.*solid;
     
     t_common = tf.*solid + t.*liquid;
     
@@ -195,8 +224,8 @@ for file_idx = file_start:file_iter:max(file_final)
         
         sorting = sortrows([sum(solid'); 1:length(solid(:,1))]', 'descend');
         
-        c0_common = c0.*liquid + c0s.*solid/k0;
-        c1_common = c1.*liquid + c1s.*solid/k1;
+        c0_common = c0.*liquid + c0s.*solid;
+        c1_common = c1.*liquid + c1s.*solid;
         
         t_common = tf.*solid + t.*liquid;
         
@@ -209,7 +238,11 @@ for file_idx = file_start:file_iter:max(file_final)
         tf  = tf./solid;
         t   = t./liquid;
         
-        subplot(2,2,1);
+        if (subplotted == 1)
+            subplot(2,2,1);
+        else 
+            figure(f_c);
+        end
         
         hold on
         area(x, max([c0_max_gl, c1_max_gl])*solid(sorting(1,2),:),'LineStyle','none','FaceAlpha',alpha,'FaceColor',colors(dir_idx,:), 'HandleVisibility', 'off');
@@ -219,11 +252,16 @@ for file_idx = file_start:file_iter:max(file_final)
             %PropValue = {markers{i}, 1, 3, 'auto', colors(i,:), 'none'};
             PropValue = {'none', 2, 3, 'auto', colors(dir_idx,:), '-'};
             L = plot(x, c0_common(sorting(i,2),:), 'DisplayName', titles{dir_idx}); set(L, PropName, PropValue);
+            PropValue = {'none', 1, 3, 'auto', colors(dir_idx,:), '-'};
             L = plot(x, c1_common(sorting(i,2),:), 'HandleVisibility', 'off');      set(L, PropName, PropValue);
         end
         hold off
         
-        subplot(2,2,3);
+        if (subplotted == 1)
+            subplot(2,2,3);
+        else 
+            figure(f_t);
+        end
         
         hold on
         area(x, t_max_gl*solid(sorting(1,2),:),'LineStyle','none','FaceAlpha',alpha,'FaceColor',colors(dir_idx,:), 'HandleVisibility', 'off');
@@ -235,21 +273,37 @@ for file_idx = file_start:file_iter:max(file_final)
         end
         hold off
         
-        subplot(2,2, [2,4]);
+        
+        if (subplotted == 1)
+            subplot(2,2, [2,4]);
+        else 
+            figure(f_p);
+        end
         
         hold on
         for i = 1:n
             d = sorting(i,2);
-            plot(c0s(d,:)/k0, c1s(d,:)/k1, '-', 'Color', colors(dir_idx,:),'MarkerSize', 2, 'LineWidth', 1, 'Marker', markers{i}, 'DisplayName', titles{dir_idx});  
-            plot(c0s(d,sum(solid(d,:)))/k0, c1s(d,sum(solid(d,:)))/k1, '-', 'Color', colors(dir_idx,:),'MarkerSize', 5, 'LineWidth', 2, 'Marker', markers{i}, 'HandleVisibility', 'off');       
+            plot(c0s(d,:), c1s(d,:), '-', 'Color', colors(dir_idx,:),'MarkerSize', 2, 'LineWidth', 1, 'Marker', markers{i}, 'DisplayName', titles{dir_idx});  
+            plot(c0s(d,sum(solid(d,:))), c1s(d,sum(solid(d,:))), '-', 'Color', colors(dir_idx,:),'MarkerSize', 5, 'LineWidth', 2, 'Marker', markers{i}, 'HandleVisibility', 'off');       
         end
         hold off
     end
         
-    subplot(2,2,1);
+        
+    if (subplotted == 1)
+        subplot(2,2,1);
+    else
+        figure(f_c);
+        if (show_legend == 1)
+            legend('Location','best');
+        end
+        fig = gcf;
+        fig.Units = 'inches';
+        fig.Position = [10 10 7 2.5];
+    end
     
-    xlabel('Distance');
-    ylabel('Concentration');
+    xlabel('Distance, 10^{-4} m');
+    ylabel('Concentration, at%');
     xlim([0, x_plot]);
     ylim([min([c0_min_gl, c1_min_gl]), max([c0_max_gl, c1_max_gl])]);
     grid on
@@ -258,10 +312,20 @@ for file_idx = file_start:file_iter:max(file_final)
 %         legend
 %     end
     
-    subplot(2,2,3);
+    if (subplotted == 1)
+        subplot(2,2,3);
+    else
+        figure(f_t);
+        if (show_legend == 1)
+            legend('Location','best');
+        end
+        fig = gcf;
+        fig.Units = 'inches';
+        fig.Position = [10 10 7 2.5];
+    end
     
-    xlabel('Distance');
-    ylabel('Temperature');
+    xlabel('Distance, 10^{-4} m');
+    ylabel('Temperature, K');
     xlim([0, x_plot]);
     ylim([t_min_gl, t_max_gl]);
     grid on
@@ -269,24 +333,36 @@ for file_idx = file_start:file_iter:max(file_final)
 %     if (show_legend == 1)
 %         legend
 %     end
-    
-    subplot(2,2,[2,4]);
-    
-    xlabel('C_0');
-    ylabel('C_1');
-    xlim([c0_min_gl, c0_max_gl]);
-    ylim([c1_min_gl, c1_max_gl]);
-    grid on
-    
-    if (show_legend == 1)
-        legend('Location','southoutside');
-        box off
+
+    if (subplotted == 1)
+        subplot(2,2, [2,4]);
+        if (show_legend == 1)
+            legend('Location','southoutside');
+            box off
+        end
+        xlim([c0_min_gl, c0_max_gl]);
+        ylim([c1_min_gl, c1_max_gl]);
+    else 
+        figure(f_p);
+%         if (show_legend == 1)
+%             legend('Location','best');
+%         end
+        fig = gcf;
+        fig.Units = 'inches';
+        fig.Position = [10 10 3 2.5];
     end
     
-    % figure size
-    fig = gcf;
-    fig.Units = 'inches';
-    fig.Position = [10 10 15 8];
+    xlabel('Aluminum, at%');
+    ylabel('Tungsten, at%');
+
+    grid on
+    
+    if (subplotted == 1)
+        % figure size
+        fig = gcf;
+        fig.Units = 'inches';
+        fig.Position = [10 10 15 8];
+    end
     
     drawnow;
     

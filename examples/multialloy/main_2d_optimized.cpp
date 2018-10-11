@@ -66,8 +66,8 @@ char direction = 'z';
 char direction = 'y';
 #endif
 
-double xmin = 0, xmax = 0.25; int nx = 1; bool px = 0;
-double ymin = 0, ymax = 1;    int ny = 4; bool py = 1;
+double xmin = 0, xmax = 1; int nx = 1; bool px = 0;
+double ymin = 0, ymax = 2; int ny = 2; bool py = 1;
 #ifdef P4_TO_P8
 double zmin = 0, zmax = 1; int ny = 1; bool pz = 0;
 #endif
@@ -80,9 +80,9 @@ double phi_thresh              = 1e-3;
 int max_iterations             = 50;
 int pin_every_n_steps          = 1000;
 
-bool use_continuous_stencil    = 1;
+bool use_continuous_stencil    = 0;
 bool use_one_sided_derivatives = 0;
-bool use_points_on_interface   = 0;
+bool use_points_on_interface   = 1;
 bool update_c0_robin           = 1;
 bool use_superconvergent_robin = 1;
 bool zero_negative_velocity    = 0;
@@ -94,7 +94,7 @@ int  phi_grid_refinement = 0;
 bool use_superconvergent_jump  = false;
 
 // output parameters
-int save_every_n_iteration = 10;
+int save_every_n_iteration = 1;
 bool save_velocity         = 1;
 bool save_vtk              = 1;
 bool save_history          = 1;
@@ -103,9 +103,9 @@ bool save_dendrites        = 1;
 double save_every_dl = 0.01;
 double save_every_dt = 0.1;
 
-int save_type = 1; // 0 - every n iterations, 1 - every dl of growth, 2 - every dt of time
+int save_type = 0; // 0 - every n iterations, 1 - every dl of growth, 2 - every dt of time
 
-double dendrite_cut_off_fraction = 0.75;
+double dendrite_cut_off_fraction = 1.05;
 double dendrite_min_length       = 0.05;
 
 using namespace std;
@@ -117,7 +117,7 @@ double time_limit          = DBL_MAX;
 double termination_length  = 1.8;
 double init_perturb        = 0.001;
 
-bool enforce_planar_front   = 1;
+bool enforce_planar_front   = 0;
 
 int alloy_type = 2;
 
@@ -213,7 +213,7 @@ void set_alloy_parameters()
       rho            = 9.2392e-3;   /* kg.cm-3    */
       heat_capacity  = 356;         /* J.kg-1.K-1 */
       Tm             = 1996;        /* K           */
-      G              = 100;         /* K.cm-1      */
+      G              = 3000;         /* K.cm-1      */
       V              = 0.005;        /* cm.s-1      */
       latent_heat    = 2588.7;      /* J.cm-3      */
       thermal_conductivity =  1.3;/* W.cm-1.K-1  */
@@ -227,7 +227,7 @@ void set_alloy_parameters()
       c00 = 0.107;     /* at frac.    */
       kp0 = 0.848;     /* partition coefficient */
 
-      Dl1 = 2e-5;
+      Dl1 = 10e-5;
       ml1 =-1378;
       c01 = 0.094;
       kp1 = 0.848;

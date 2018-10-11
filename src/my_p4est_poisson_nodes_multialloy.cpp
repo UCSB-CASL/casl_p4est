@@ -264,6 +264,10 @@ int my_p4est_poisson_nodes_multialloy_t::solve(Vec tm, Vec tp, Vec c0, Vec c1, V
 
   int num_pdes_solved = 0;
 
+  if (var_scheme_ == VALUE)
+  {
+    solve_psi_t(); ++num_pdes_solved;
+  }
 
   if (num_pdes != NULL) num_pdes->clear();
   if (error != NULL) error->clear();
@@ -280,12 +284,15 @@ int my_p4est_poisson_nodes_multialloy_t::solve(Vec tm, Vec tp, Vec c0, Vec c1, V
     solve_t(); ++num_pdes_solved;
     solve_c1(); ++num_pdes_solved;
 
-    compute_bc_error();
-
     // solve for lagrangian multipliers
     if (iteration%pin_every_n_steps_ != 0)
     {
-      solve_psi_t(); ++num_pdes_solved;
+      if (var_scheme_ == ABS_VALUE ||
+          var_scheme_ == QUADRATIC)
+      {
+        compute_bc_error();
+        solve_psi_t(); ++num_pdes_solved;
+      }
       solve_psi_c1(); ++num_pdes_solved;
       solve_psi_c0(); ++num_pdes_solved;
       compute_psi_c0n();
@@ -1455,8 +1462,6 @@ void my_p4est_poisson_nodes_multialloy_t::adjust_c0_gamma(int iteration)
 
   int mpiret = MPI_Allreduce(MPI_IN_PLACE, &bc_error_max_, 1, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
       mpiret = MPI_Allreduce(MPI_IN_PLACE, &velo_max_,     1, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
-
-
 
   /* restore pointers */
 

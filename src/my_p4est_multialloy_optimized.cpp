@@ -790,6 +790,150 @@ void my_p4est_multialloy_t::update_grid()
     interp_bwd.interpolate(phi_);
   }
 
+  /* "solidify" too narrow regions */
+  if (1)
+  {
+    Vec     phi_tmp;
+    double *phi_tmp_ptr;
+    double *phi_ptr;
+
+    p4est_locidx_t nei_n[num_neighbors_cube];
+    bool           nei_e[num_neighbors_cube];
+
+    double band = diag_;
+
+    ierr = VecDuplicate(phi_, &phi_tmp); CHKERRXX(ierr);
+
+    ierr = VecGetArray(phi_tmp, &phi_tmp_ptr); CHKERRXX(ierr);
+    ierr = VecGetArray(phi_,    &phi_ptr);     CHKERRXX(ierr);
+
+    // first pass: smooth out extremely curved regions
+    bool is_changed = false;
+    foreach_local_node(n, nodes_)
+    {
+      if (fabs(phi_ptr[n]) < band)
+      {
+        get_all_neighbors(n, p4est_, nodes_, ngbd_, nei_n, nei_e);
+
+        unsigned short num_neg = 0;
+        unsigned short num_pos = 0;
+
+        for (unsigned short nn = 0; nn < num_neighbors_cube; ++nn)
+        {
+          phi_ptr[nei_n[nn]] < 0 ? num_neg++ : num_pos++;
+        }
+
+        if ( (phi_ptr[n] <  0 && num_neg < 3) ||
+             (phi_ptr[n] >= 0 && num_pos < 3) )
+        {
+          phi_ptr[n] = -phi_ptr[n];
+
+          // check if node is a layer node (= a ghost node for another process)
+          p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes_->indep_nodes, n);
+          if (ni->pad8 != 0) is_changed = true;
+        }
+      }
+    }
+
+    if (is_changed)
+    {
+      ierr = VecGhostUpdateBegin(phi_, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+      ierr = VecGhostUpdateEnd  (phi_, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    }
+
+    copy_ghosted_vec(phi_, phi_tmp);
+
+    // second pass: bridge narrow gaps
+    is_changed = false;
+    foreach_local_node(n, nodes_)
+    {
+      if (phi_ptr[n] < 0 && phi_ptr[n] > -band)
+      {
+        get_all_neighbors(n, p4est_, nodes_, ngbd_, nei_n, nei_e);
+
+        bool merge = (phi_ptr[nei_n[nn_m00]] > 0 && phi_ptr[nei_n[nn_p00]] > 0 && phi_ptr[nei_n[nn_0m0]] > 0 && phi_ptr[nei_n[nn_0p0]] > 0)
+            || ((phi_ptr[nei_n[nn_m00]] > 0 && phi_ptr[nei_n[nn_p00]] > 0) &&
+                (phi_ptr[nei_n[nn_mm0]] < 0 || phi_ptr[nei_n[nn_0m0]] < 0 || phi_ptr[nei_n[nn_pm0]] < 0) &&
+                (phi_ptr[nei_n[nn_mp0]] < 0 || phi_ptr[nei_n[nn_0p0]] < 0 || phi_ptr[nei_n[nn_pp0]] < 0))
+            || ((phi_ptr[nei_n[nn_0m0]] > 0 && phi_ptr[nei_n[nn_0p0]] > 0) &&
+                (phi_ptr[nei_n[nn_mm0]] < 0 || phi_ptr[nei_n[nn_m00]] < 0 || phi_ptr[nei_n[nn_mp0]] < 0) &&
+                (phi_ptr[nei_n[nn_pm0]] < 0 || phi_ptr[nei_n[nn_p00]] < 0 || phi_ptr[nei_n[nn_pp0]] < 0));
+
+        if (merge)
+        {
+          phi_tmp_ptr[n] = .5*dxyz_min_;
+
+          // check if node is a layer node (= a ghost node for another process)
+          p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes_->indep_nodes, n);
+          if (ni->pad8 != 0) is_changed = true;
+        }
+
+      }
+    }
+
+    ierr = VecRestoreArray(phi_tmp, &phi_tmp_ptr); CHKERRXX(ierr);
+    ierr = VecRestoreArray(phi_, &phi_ptr); CHKERRXX(ierr);
+
+    if (is_changed)
+    {
+      ierr = VecGhostUpdateBegin(phi_tmp, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+      ierr = VecGhostUpdateEnd  (phi_tmp, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    }
+
+    // third pass: look for isolated pools of liquid and remove them
+    if (is_changed) // assuming such pools can form only due to the artificial bridging (I guess it's quite safe to say, but not entirely correct)
+    {
+      int num_islands = 0;
+
+      Vec     island_number;
+      double *island_number_ptr;
+
+      ierr = VecDuplicate(phi_, &island_number); CHKERRXX(ierr);
+
+      invert_phi(nodes_, phi_tmp);
+      compute_islands_numbers(*ngbd_, phi_tmp, num_islands, island_number);
+      invert_phi(nodes_, phi_tmp);
+
+      if (num_islands > 1)
+      {
+        int main_island = -10;
+
+        ierr = VecGetArray(phi_tmp, &phi_tmp_ptr); CHKERRXX(ierr);
+        ierr = VecGetArray(island_number, &island_number_ptr); CHKERRXX(ierr);
+
+        foreach_node(n, nodes_)
+        {
+          p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes_->indep_nodes, n);
+
+          node_xyz_fr_n(n, p4est_, nodes_, xyz);
+
+          if (is_node_ypWall(p4est_, ni) &&
+              phi_tmp_ptr[n] < 0 &&
+              island_number_ptr[n] >= 0)
+            main_island = island_number_ptr[n];
+        }
+
+        int mpiret = MPI_Allreduce(MPI_IN_PLACE, &main_island, 1, MPI_INT, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
+
+        if (main_island < 0) throw;
+
+        foreach_node(n, nodes_)
+        {
+          if (phi_tmp_ptr[n] < 0 && island_number_ptr[n] != main_island)
+            phi_tmp_ptr[n] = .5*dxyz_min_;
+        }
+
+        ierr = VecRestoreArray(phi_tmp, &phi_tmp_ptr); CHKERRXX(ierr);
+        ierr = VecRestoreArray(island_number, &island_number_ptr); CHKERRXX(ierr);
+      }
+
+      ierr = VecDestroy(island_number); CHKERRXX(ierr);
+    }
+
+    ierr = VecDestroy(phi_); CHKERRXX(ierr);
+    phi_ = phi_tmp;
+  }
+
   /* reinitialize phi */
   my_p4est_level_set_t ls_new(ngbd_);
   ls_new.reinitialize_1st_order_time_2nd_order_space(phi_);
@@ -1191,13 +1335,8 @@ void my_p4est_multialloy_t::save_VTK(int iter)
 
   my_p4est_vtk_write_all(  p4est_, nodes_, ghost_,
                            P4EST_TRUE, P4EST_TRUE,
-                         #ifdef P4_TO_P8
                            10, 1, name,
-                         #else
-                           10, 1, name,
-                         #endif
                            VTK_POINT_DATA, "phi", phi_p,
-//                           VTK_POINT_DATA, "phi_smooth", phi_smooth_p,
                            VTK_POINT_DATA, "tl", tl_p,
                            VTK_POINT_DATA, "ts", ts_p,
 //                           VTK_POINT_DATA, "tf", tf_p,
