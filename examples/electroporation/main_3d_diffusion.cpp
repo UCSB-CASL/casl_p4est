@@ -73,8 +73,18 @@ bool contains(const std::vector<T> &vec, const T& elem)
 }
 
 
-int test = 4; //-1: just a positive domain for test, dynamic linear case=2, dynamic nonlinear case=4, static linear case=1, random cube box side enforced = 8, random spheroid=9, 10=read from initial condition file.
-// test=1,2 use the exact solution on the boundary condition! Be careful!
+int test = 6;
+/* -1: just a positive domain for test,
+ * static linear case=1,
+* dynamic linear case=2,
+* dynamic nonlinear case=4,
+* dynamic nonlinear case on a cubic lattice = 6, these are ellipsoids
+*  random cube box side enforced = 8,
+*  random spheroid=9,
+* 10=read from initial condition file.
+* 11 = read from high packing distributions close random packings, max allowed density=65%
+* test=1,2 use the exact solution on the boundary condition! Be careful!
+* */
 
 double cellDensity = 0.0001;   // only if test = 8 || 9
 double density = 0;         // this is for measuring the density finally. don't change its declaration value.
@@ -107,9 +117,9 @@ double cellVolume = 4*PI*(coeff*r0)*(coeff*r0)*(coeff*r0)/3;
 
 
 /* number of cells in x and y dimensions */
-int x_cells = 1;
-int y_cells = 1;
-int z_cells = 1;
+int x_cells = 3;
+int y_cells = 3;
+int z_cells = 3;
 /* number of random cells */
 int nb_cells = test==7 ? 34 : (test==2 || test==4 || test==5)? 1 : ((test==8 || test==9) ? int (cellDensity*SphereVolume/cellVolume) : x_cells*y_cells*z_cells);
 
@@ -128,7 +138,7 @@ const double xyz_max_[] = {xmax, ymax, zmaxx};
 int axial_nb = 2*zmaxx/r0/2;
 int lmax_thr = (int)log2(axial_nb)+5;   // the mesh should be fine enough to have enough nodes on each cell for solver not to crash.
 int lmin = 4;
-int lmax =6;//MAX(lmax_thr, 5);
+int lmax =5;//MAX(lmax_thr, 5);
 int nb_splits = 1;
 
 double dt_scale = 40;
@@ -136,7 +146,7 @@ double tn;
 double tf = 1e-5;//15.0/omega;
 double dt;
 
-double E_unscaled = 40;                       /* applied electric field on the top electrode: kv/m */
+double E_unscaled = 20;                       /* applied electric field on the top electrode: kv/m */
 double E = E_unscaled * 1e3 * (zmaxx-zminn);  // this is the potential difference in SI units!
 
 double sigma_c = 1;//0.455;
@@ -186,6 +196,7 @@ bool save_transport = true;
 bool save_vtk = true;
 bool save_stats = true;
 bool save_dipoles = true;
+bool save_avg_dipole_only = true;
 
 bool save_error = false;
 bool save_voro = false;
@@ -199,6 +210,7 @@ private:
     PetscErrorCode      ierr;
     PetscMPIInt           rank;
     unsigned int seed = time(NULL);
+
 public:
     vector<double> radii;
     vector<Point3> centers;
@@ -209,14 +221,14 @@ public:
     double operator()(double x, double y, double z) const
     {
         double d = DBL_MAX;
-
-        double xm, ym, zm; xm=xmin; ym=ymin; zm=zminn;
-        double dx = xmax/(x_cells+1);
-        double dy = ymax/(y_cells+1);
-        double dz = zmaxx/(z_cells+1);
+        double  xm=xmin;
+        double ym=ymin;
+        double zm=zminn;
+        double dx = (xmax-xmin)/(x_cells+1);
+        double dy = (ymax-ymin)/(y_cells+1);
+        double dz = (zmaxx-zminn)/(z_cells+1);
         double x_tmp, y_tmp, z_tmp;
         double x0, y0, z0;
-
         switch(test)
         {
         case -1: return 1;
@@ -345,6 +357,43 @@ public:
     {
         MPI_Comm_rank(PETSC_COMM_WORLD,&rank);
         lip=1.2;
+
+        if(test==6)
+        {
+            double  xm=xmin;
+            double ym=ymin;
+            double zm=zminn;
+            double dx = (xmax - xmin)/(x_cells+1);
+            double dy = (ymax-ymin)/(y_cells+1);
+            double dz = (zmaxx-zminn)/(z_cells+1);
+
+            double cellVolumes = 0;
+            int n = 0;
+            centers.resize(nb_cells);
+            radii.resize(nb_cells);
+            ex.resize(nb_cells);
+            theta.resize(nb_cells);
+            for(int i=0; i<x_cells; ++i)
+                for(int j=0; j<y_cells; ++j)
+                    for(int k=0; k<z_cells; ++k)
+                    {
+                        centers[n].x = (xm+(i+1)*dx)*r0/a;
+                        centers[n].y = (ym+(j+1)*dy)*r0/b;
+                        centers[n].z = (zm+(k+1)*dz)*r0/c;
+                        radii[n] = r0;
+                        ex[n].x = a;
+                        ex[n].y = b;
+                        ex[n].z = c;
+                        theta[n].x = 0;
+                        theta[n].y =0;
+                        theta[n].z =0;
+                        cellVolumes += 4*PI*ex[n].x*ex[n].y*ex[n].z/3;
+                        n++;
+                    }
+            double density = cellVolumes/(xmax-xmin)/(ymax-ymin)/(zmaxx-zminn);
+            if(rank==0)
+                ierr = PetscPrintf(PETSC_COMM_SELF, "The volume fraction is = %g\n",density); CHKERRXX(ierr);
+        }
         if(test==7)
         {
             centers.resize(nb_cells);
@@ -659,7 +708,7 @@ public:
     }
 
     void save_cells(){
-        if(test==7 || test==8 || test==9 || test==10 || test==11)
+        if(test==6 || test==7 || test==8 || test==9 || test==10 || test==11)
         {
             MPI_Comm_rank(PETSC_COMM_WORLD,&rank);
             if(rank==0)
@@ -699,7 +748,7 @@ public:
         if(test==2 || test==4 || test==5)
         {
             return sqrt(SQR(x) + SQR(y) + SQR(z)) - R1;
-        }else if(test==7 || test==8 || test==9 || test==10 || test==11)
+        }else if(test==6 || test==7 || test==8 || test==9 || test==10 || test==11)
         {
             double x0 = x - level_set.centers[ID].x;
             double y0 = y - level_set.centers[ID].y;
@@ -741,7 +790,7 @@ public:
             else
                 return -1;
         }else{
-            if(test==7 || test==8 || test==9 || test==10 || test==11)
+            if(test==6 || test==7 || test==8 || test==9 || test==10 || test==11)
             {
                 for(int ID=0; ID<nb_cells; ++ID)
                 {
@@ -877,6 +926,8 @@ struct BCWALLTYPE : WallBC3D
             if(ABS(z-zminn)<EPS || ABS(z-zmaxx)<EPS) return DIRICHLET;
             else                                   return NEUMANN;
         case 6:
+            if(ABS(z-zminn)<EPS || ABS(z-zmaxx)<EPS) return DIRICHLET;
+            else                                   return NEUMANN;
         case 7:
             if(ABS(z-zminn)<EPS || ABS(z-zmaxx)<EPS) return DIRICHLET;
             else                                   return NEUMANN;
@@ -920,6 +971,8 @@ struct BCWALLVALUE : CF_3
             if(ABS(z-zmaxx)<EPS) return  pulse(t);
             if(ABS(z-zminn)<EPS) return 0;
         case 6:
+            if(ABS(z-zmaxx)<EPS) return  pulse(t);
+            if(ABS(z-zminn)<EPS) return 0;
         case 7:
             if(ABS(z-zminn)<EPS) return 0;
             if(ABS(z-zmaxx)<EPS) return pulse(t);
@@ -1314,10 +1367,10 @@ void solve_electric_potential( p4est_t *p4est, p4est_nodes_t *nodes,
 
         double *phi_p;
         VecGetArray(phi, &phi_p);
-        ls.extend_Over_Interface(phi, u_minus, 2, 4);
+        ls.extend_Over_Interface_TVD(phi, u_minus);
         for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
             phi_p[i] = -phi_p[i];
-        ls.extend_Over_Interface(phi, u_plus, 2, 4);
+        ls.extend_Over_Interface_TVD(phi, u_plus);
         for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
             phi_p[i] = -phi_p[i];
 
@@ -2304,7 +2357,7 @@ void solve_transport( p4est_t *p4est,  p4est_ghost_t *ghost, p4est_nodes_t *node
     VecRestoreArray(sol_ext, &u_ext_p);
     for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
         phi_p[i] = -phi_p[i];
-    ls.extend_Over_Interface(phi, sol_ext,2,4);
+    ls.extend_Over_Interface_TVD(phi, sol_ext);
     for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
         phi_p[i] = -phi_p[i];
 
@@ -2442,10 +2495,10 @@ void solve_transport( p4est_t *p4est,  p4est_ghost_t *ghost, p4est_nodes_t *node
             VecRestoreArray(M_minus, &M_minus_p);
             VecRestoreArray(M_list[ion], &M_p[ion]);
 
-            ls.extend_Over_Interface(phi, M_minus,2,4);
+            ls.extend_Over_Interface_TVD(phi, M_minus);
             for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
                 phi_p[i] = -phi_p[i];
-            ls.extend_Over_Interface(phi, M_plus,2,4);
+            ls.extend_Over_Interface_TVD(phi, M_plus);
             for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
                 phi_p[i] = -phi_p[i];
 
@@ -2503,10 +2556,10 @@ void solve_transport( p4est_t *p4est,  p4est_ghost_t *ghost, p4est_nodes_t *node
             ierr = VecRestoreArray(M_minus, &Mm_p); CHKERRXX(ierr);
             //ls.extend_from_interface_to_whole_domain_TVD(phi, grad_Mp, dM_plus_cte);
             //ls.extend_from_interface_to_whole_domain_TVD(phi, grad_Mm, dM_minus_cte);
-            ls.extend_Over_Interface(phi, grad_Mm,2,4);
+            ls.extend_Over_Interface_TVD(phi, grad_Mm);
             for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
                 phi_p[i] = -phi_p[i];
-            ls.extend_Over_Interface(phi, grad_Mp,2,4);
+            ls.extend_Over_Interface_TVD(phi, grad_Mp);
             for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
                 phi_p[i] = -phi_p[i];
 
@@ -3163,6 +3216,7 @@ int main(int argc, char** argv) {
     ierr = PetscPrintf(mpi.comm(), "Level %d / %d\n", lmin, lmax); CHKERRXX(ierr);
     // initialize level set
     level_set.initialize();
+    ierr = PetscPrintf(mpi.comm(), "Level-set initialized!\n"); CHKERRXX(ierr);
     // saving cell data
     level_set.save_cells();
     ierr = PetscPrintf(mpi.comm(), "Saved cell information to file!\n"); CHKERRXX(ierr);
@@ -3657,7 +3711,7 @@ int main(int argc, char** argv) {
                 VecRestoreArray(Quadrupole[j], &Quad_p[j]);
 
             double dipole_x1, dipole_y1, dipole_z1, Qxx, Qyy, Qzz, Qxy, Qxz, Qyz;
-            if(test==2 || test==4 || test==5)
+            if(test==2 || test==4 || test==5 || save_avg_dipole_only)
             {
                 dipole_x1= integrate_over_interface(p4est, nodes, phi, dipole[0]);
                 dipole_y1 = integrate_over_interface(p4est, nodes, phi, dipole[1]);
@@ -3700,11 +3754,11 @@ int main(int argc, char** argv) {
                     FILE *f = fopen(out_path, "w");
                     fprintf(f, "%% Number of cells is: %u. Dipoles and Quadrupoles below are stored per relative permittivity of membrane (\epsilon_m) \n", nb_cells);
                     fprintf(f, "%% ID  |\t X_c\t  |\t Y_c\t  |\t Z_c\t |\t dipole_x \t dipole_y \t dipole_z \t Quad_xx \t Quad_yy \t Quad_zz \t Quad_xy \t Quad_xz \t Quad_yz \n");
-                    for(int n=0; n<nb_cells; ++n)
+                    if(test==2 || test==4 || test==5 || save_avg_dipole_only)
+                        fprintf(f, "%d \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \n", 0, 0.0, 0.0,0.0, dipole_x1, dipole_y1, dipole_z1, Qxx, Qyy, Qzz, Qxy, Qxz, Qyz);
+                    else
                     {
-                        if(test==2 || test==4 || test==5)
-                            fprintf(f, "%d \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \t %g \n", n, 0.0, 0.0,0.0, dipole_x1, dipole_y1, dipole_z1, Qxx, Qyy, Qzz, Qxy, Qxz, Qyz);
-                        else
+                        for(int n=0; n<nb_cells; ++n)
                             fprintf(f, "%d \t %g \t %g \t %g \t %g \t %g \t %g %g \t %g \t %g \t %g \t %g \t %g  \n", n, level_set.centers[n].x, level_set.centers[n].y, level_set.centers[n].z, dipole_x[n], dipole_y[n], dipole_z[n], Quad_xx[n], Quad_yy[n], Quad_zz[n], Quad_xy[n], Quad_xz[n], Quad_yz[n]);
                     }
                     fclose(f);
