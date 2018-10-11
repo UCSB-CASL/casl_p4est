@@ -94,7 +94,7 @@ int  phi_grid_refinement = 0;
 bool use_superconvergent_jump  = false;
 
 // output parameters
-int save_every_n_iteration = 1;
+int save_every_n_iteration = 10;
 bool save_velocity         = 1;
 bool save_vtk              = 1;
 bool save_history          = 1;
@@ -213,7 +213,7 @@ void set_alloy_parameters()
       rho            = 9.2392e-3;   /* kg.cm-3    */
       heat_capacity  = 356;         /* J.kg-1.K-1 */
       Tm             = 1996;        /* K           */
-      G              = 3000;         /* K.cm-1      */
+      G              = 2000;         /* K.cm-1      */
       V              = 0.005;        /* cm.s-1      */
       latent_heat    = 2588.7;      /* J.cm-3      */
       thermal_conductivity =  1.3;/* W.cm-1.K-1  */

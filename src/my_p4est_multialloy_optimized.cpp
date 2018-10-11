@@ -612,7 +612,7 @@ void my_p4est_multialloy_t::update_grid()
 {
   ierr = PetscLogEventBegin(log_my_p4est_multialloy_update_grid, 0, 0, 0, 0); CHKERRXX(ierr);
 
-  PetscPrintf(p4est_->mpicomm, "Updating grid... ");
+  PetscPrintf(p4est_->mpicomm, "Updating grid...\n");
 
   if (phi_grid_refinement_ != 0 || shift_grids_)
   {
@@ -683,6 +683,7 @@ void my_p4est_multialloy_t::update_grid()
   }
 
   /* interpolate the quantities onto the new grid */
+  PetscPrintf(p4est_->mpicomm, "Transfering data between grids...\n");
   my_p4est_interpolation_nodes_t interp(ngbd_);
 
   double xyz[P4EST_DIM];
@@ -793,6 +794,8 @@ void my_p4est_multialloy_t::update_grid()
   /* "solidify" too narrow regions */
   if (1)
   {
+    PetscPrintf(p4est_->mpicomm, "Removing problem geometries...\n");
+
     Vec     phi_tmp;
     double *phi_tmp_ptr;
     double *phi_ptr;
@@ -826,7 +829,7 @@ void my_p4est_multialloy_t::update_grid()
         if ( (phi_ptr[n] <  0 && num_neg < 3) ||
              (phi_ptr[n] >= 0 && num_pos < 3) )
         {
-          phi_ptr[n] = -phi_ptr[n];
+          phi_ptr[n] = phi_ptr[n] <  0 ? EPS : -EPS;
 
           // check if node is a layer node (= a ghost node for another process)
           p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes_->indep_nodes, n);
@@ -834,6 +837,8 @@ void my_p4est_multialloy_t::update_grid()
         }
       }
     }
+
+    int mpiret = MPI_Allreduce(MPI_IN_PLACE, &is_changed, 1, MPI_LOGICAL, MPI_LOR, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
 
     if (is_changed)
     {
@@ -862,10 +867,7 @@ void my_p4est_multialloy_t::update_grid()
         if (merge)
         {
           phi_tmp_ptr[n] = .5*dxyz_min_;
-
-          // check if node is a layer node (= a ghost node for another process)
-          p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes_->indep_nodes, n);
-          if (ni->pad8 != 0) is_changed = true;
+          is_changed = true;
         }
 
       }
@@ -873,6 +875,8 @@ void my_p4est_multialloy_t::update_grid()
 
     ierr = VecRestoreArray(phi_tmp, &phi_tmp_ptr); CHKERRXX(ierr);
     ierr = VecRestoreArray(phi_, &phi_ptr); CHKERRXX(ierr);
+
+    mpiret = MPI_Allreduce(MPI_IN_PLACE, &is_changed, 1, MPI_LOGICAL, MPI_LOR, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
 
     if (is_changed)
     {
@@ -944,6 +948,7 @@ void my_p4est_multialloy_t::update_grid()
   /* refine history_p4est_ */
   if (1)
   {
+    PetscPrintf(p4est_->mpicomm, "Refining auxiliary p4est for storing data...\n");
     p4est_t       *history_p4est_np1 = p4est_copy(history_p4est_, P4EST_FALSE);
     p4est_ghost_t *history_ghost_np1 = my_p4est_ghost_new(history_p4est_np1, P4EST_CONNECT_FULL);
     p4est_nodes_t *history_nodes_np1 = my_p4est_nodes_new(history_p4est_np1, history_ghost_np1);
