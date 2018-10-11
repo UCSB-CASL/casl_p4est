@@ -377,13 +377,13 @@ public:
                 for(int j=0; j<y_cells; ++j)
                     for(int k=0; k<z_cells; ++k)
                     {
-                        centers[n].x = (xm+(i+1)*dx)*r0/a;
-                        centers[n].y = (ym+(j+1)*dy)*r0/b;
-                        centers[n].z = (zm+(k+1)*dz)*r0/c;
-                        radii[n] = r0;
-                        ex[n].x = a/r0;
-                        ex[n].y = b/r0;
-                        ex[n].z = c/r0;
+                        centers[n].x = (xm+(i+1)*dx);//*r0/a;
+                        centers[n].y = (ym+(j+1)*dy);//*r0/b;
+                        centers[n].z = (zm+(k+1)*dz);//*r0/c;
+                        radii[n] = 1;
+                        ex[n].x = a;
+                        ex[n].y = b;
+                        ex[n].z = c;
                         theta[n].x = 0;
                         theta[n].y =0;
                         theta[n].z =0;
