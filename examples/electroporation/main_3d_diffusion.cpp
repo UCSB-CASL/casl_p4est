@@ -78,7 +78,7 @@ int test = 6;
  * static linear case=1,
 * dynamic linear case=2,
 * dynamic nonlinear case=4,
-* dynamic nonlinear case on a cubic lattice = 6, these are ellipsoids
+* dynamic nonlinear case on a cubic lattice = 6, these are prolate ellipsoids
 *  random cube box side enforced = 8,
 *  random spheroid=9,
 * 10=read from initial condition file.
@@ -92,7 +92,7 @@ double boxSide = 1e-3;      // only if test = 8
 
 
 
-double omega = 0.25e6;  //angular frequency: if w=0.25 MHz every 1 micro-second pulse will pause, and repeat!
+double omega = 0.5e6;  //angular frequency: if w=0.25 MHz every 1 micro-second pulse will pause, and repeat!
 double epsilon_0 = 8.85e-12; // farad/meter: permitivity in vacuum
 /* 0 or 1 */
 int implicit = 0;
@@ -190,7 +190,7 @@ double R1 = .25*MIN(xmax-xmin, ymax-ymin, zmaxx-zminn);
 double R2 = 3*MAX(xmax-xmin, ymax-ymin, zmaxx-zminn);
 
 // save statistics
-int save_every_n = 10;
+int save_every_n = 50;
 bool save_impedance = true;
 bool save_transport = true;
 bool save_vtk = true;
@@ -869,7 +869,7 @@ double u_exact(double x, double y, double z, double t, bool phi_is_pos)
 //PAM: square pulse to be asked from Clair
 double pulse(double tn)
 {
-    //return E*sin(2*PI*omega*tn);
+    return E*sin(2*PI*omega*tn);
 
     if(E*cos(2*PI*omega*tn)>=0)
         return E;
@@ -3694,13 +3694,13 @@ int main(int argc, char** argv) {
                 dipole_p[1][n] = epsilon_0*dphi_p[1][n]*vn_p[n];
                 dipole_p[2][n] = epsilon_0*dphi_p[2][n]*vn_p[n];
                 // measure Quadropole moments: Q_ij /epsilon_m= integral ( epsilon0*Vn*(3*r_i*r_j-r*r*delta_ij) dS)
-                Quad_p[0][n] = epsilon_0*vn_p[n]*(  x*dphi_p[0][n] - y*dphi_p[1][n] - z*dphi_p[2][n]);
-                Quad_p[1][n] = epsilon_0*vn_p[n]*(-x*dphi_p[0][n] + y*dphi_p[1][n] - z*dphi_p[2][n]);
-                Quad_p[2][n] = epsilon_0*vn_p[n]*(-x*dphi_p[0][n] - y*dphi_p[1][n] + z*dphi_p[2][n]);
+                Quad_p[0][n] = 2*epsilon_0*vn_p[n]*( 2* x*dphi_p[0][n] - y*dphi_p[1][n] - z*dphi_p[2][n]);
+                Quad_p[1][n] = 2*epsilon_0*vn_p[n]*(-x*dphi_p[0][n] + 2*y*dphi_p[1][n] - z*dphi_p[2][n]);
+                Quad_p[2][n] = 2*epsilon_0*vn_p[n]*(-x*dphi_p[0][n] - y*dphi_p[1][n] + 2*z*dphi_p[2][n]);
 
-                Quad_p[3][n] = epsilon_0*vn_p[n]*(x*dphi_p[1][n] + y*dphi_p[0][n]);
-                Quad_p[4][n] = epsilon_0*vn_p[n]*(x*dphi_p[2][n] + z*dphi_p[0][n]);
-                Quad_p[5][n] = epsilon_0*vn_p[n]*(y*dphi_p[2][n] + z*dphi_p[1][n]);
+                Quad_p[3][n] = 3*epsilon_0*vn_p[n]*(x*dphi_p[1][n] + y*dphi_p[0][n]);
+                Quad_p[4][n] = 3*epsilon_0*vn_p[n]*(x*dphi_p[2][n] + z*dphi_p[0][n]);
+                Quad_p[5][n] = 3*epsilon_0*vn_p[n]*(y*dphi_p[2][n] + z*dphi_p[1][n]);
             }
             for(int j=0;j<P4EST_DIM;++j)
                 VecRestoreArray(dipole[j], &dipole_p[j]);
