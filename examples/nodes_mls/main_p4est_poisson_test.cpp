@@ -124,10 +124,10 @@ int iter_start = 0; // is used to skip iterations and get to a problematic case
 //-------------------------------------
 // test solutions
 //-------------------------------------
-int n_geometry = 6;
+int n_geometry = 7;
 int n_test     = 0;
-int n_mu       = 1;
-int n_diag_add = 1;
+int n_mu       = 0;
+int n_diag_add = 0;
 
 /* Examples for Poisson paper
  *  0  0 0 0

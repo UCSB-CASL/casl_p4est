@@ -293,7 +293,6 @@ void my_p4est_poisson_nodes_mls_sc_t::compute_phi_eff(Vec &phi_eff, std::vector<
 {
   if (phi_eff != NULL && is_phi_eff_owned) { ierr = VecDestroy(phi_eff); CHKERRXX(ierr); }
 
-  ierr = VecCreateGhostNodes(p4est_, nodes_, &phi_eff); CHKERRXX(ierr);
 
   int num_interfaces = phi->size();
 
@@ -304,6 +303,7 @@ void my_p4est_poisson_nodes_mls_sc_t::compute_phi_eff(Vec &phi_eff, std::vector<
   }
   else
   {
+    ierr = VecCreateGhostNodes(p4est_, nodes_, &phi_eff); CHKERRXX(ierr);
     is_phi_eff_owned = true;
     std::vector<double *>   phi_p(num_interfaces, NULL);
     double                 *phi_eff_p;
@@ -847,6 +847,8 @@ void my_p4est_poisson_nodes_mls_sc_t::solve(Vec solution, bool use_nonzero_initi
   }
   if(local_phi)
   {
+    num_interfaces_ = 0;
+
     ierr = VecDestroy(phi_->at(0)); CHKERRXX(ierr);
     delete phi_;
     phi_ = NULL;
@@ -4530,7 +4532,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
       {
         ierr = MatSetValue(A_, global_n_idx, row->at(m).n, row->at(m).val, ADD_VALUES); CHKERRXX(ierr);
       }
-      delete row;
+//      delete row;
     }
 #endif
 
@@ -4598,6 +4600,13 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
       ierr = MatDestroy(C); CHKERRXX(ierr);
       ierr = MatDestroy(BC); CHKERRXX(ierr);
     }
+  }
+
+  for(int n=0; n<num_owned_local; ++n)
+  {
+    delete matrix_entries[n];
+    delete B_matrix_entries[n];
+    delete C_matrix_entries[n];
   }
 
 //  if (setup_matrix || setup_rhs)
