@@ -138,12 +138,12 @@ const double xyz_max_[] = {xmax, ymax, zmaxx};
 int axial_nb = 2*zmaxx/r0/2;
 int lmax_thr = (int)log2(axial_nb)+5;   // the mesh should be fine enough to have enough nodes on each cell for solver not to crash.
 int lmin = 4;
-int lmax =5;//MAX(lmax_thr, 5);
+int lmax =6;//MAX(lmax_thr, 5);
 int nb_splits = 1;
 
 double dt_scale = 40;
 double tn;
-double tf = 1e-5;//15.0/omega;
+double tf = 1e-3;//15.0/omega;
 double dt;
 
 double E_unscaled = 20;                       /* applied electric field on the top electrode: kv/m */
@@ -190,13 +190,13 @@ double R1 = .25*MIN(xmax-xmin, ymax-ymin, zmaxx-zminn);
 double R2 = 3*MAX(xmax-xmin, ymax-ymin, zmaxx-zminn);
 
 // save statistics
-int save_every_n = 1;
+int save_every_n = 10;
 bool save_impedance = true;
 bool save_transport = true;
 bool save_vtk = true;
 bool save_stats = true;
 bool save_dipoles = true;
-bool save_avg_dipole_only = true;
+bool save_avg_dipole_only = false;
 
 bool save_error = false;
 bool save_voro = false;
@@ -381,9 +381,9 @@ public:
                         centers[n].y = (ym+(j+1)*dy)*r0/b;
                         centers[n].z = (zm+(k+1)*dz)*r0/c;
                         radii[n] = r0;
-                        ex[n].x = a;
-                        ex[n].y = b;
-                        ex[n].z = c;
+                        ex[n].x = a/r0;
+                        ex[n].y = b/r0;
+                        ex[n].z = c/r0;
                         theta[n].x = 0;
                         theta[n].y =0;
                         theta[n].z =0;
@@ -3723,8 +3723,7 @@ int main(int argc, char** argv) {
                 Qxy = integrate_over_interface(p4est, nodes, phi, Quadrupole[3]);
                 Qxz = integrate_over_interface(p4est, nodes, phi, Quadrupole[4]);
                 Qyz = integrate_over_interface(p4est, nodes, phi, Quadrupole[5]);
-            } else
-            {
+            } else  {
                 for(int cell_ID=0; cell_ID<nb_cells; ++cell_ID)
                 {
                     single_cell_phi.ID = cell_ID;
