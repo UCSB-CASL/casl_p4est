@@ -80,7 +80,7 @@ using namespace std;
 int lmin_ = 4;
 int lmax_ = 4;
 
-int ngrids_ = 4;
+int ngrids_ = 3;
 int ntree_ = 1;
 
 BoundaryConditionType bc_wtype_ = DIRICHLET;
@@ -89,10 +89,10 @@ BoundaryConditionType bc_wtype_ = DIRICHLET;
 bool use_second_order_theta_ = false;
 //bool use_second_order_theta_ = true;
 
-bool get_integral = true;
-bool print_summary = false;
+bool get_integral = false;
+bool print_summary = true;
 
-int test_number_ = 0;
+int test_number_ = 3;
 /* run the program with the flag -help to know more about the various tests */
 
 bool track_residuals_and_corrections = false;
@@ -1594,7 +1594,7 @@ The full periodicity is enforced.\n\
 * mu_m = 1.0; \n\
 * mu_p = 80.0; \n\
 * u_m  = atan(sin((2.0*M_PI/3.0)*(2.0*x-y)))*log(1.5+cos((2.0*M_PI/3.0)*(2.0*y-z))); \n\
-* u_p  = tanh(cos((2.0*M_PI/3.0)*(2.0*x+y)))*acos(0.5*sin((2.0*M_PI/3.0)*(2.0*x-x))); n\
+* u_p  = tanh(cos((2.0*M_PI/3.0)*(2.0*x+y)))*acos(0.5*sin((2.0*M_PI/3.0)*(2.0*x-x))); \n\
 * fully periodic \n\
 Example by Raphael Egan for full periodicity.");
     #else
@@ -1865,8 +1865,8 @@ Example by Raphael Egan for full periodicity.");
     switch(test_number)
     {
 #ifdef P4_TO_P8
-    case 0: avg_exa = 0.030340553122903;  break; // using Richardson's extrapolation between uniform 512x512x512 and 1024x1024x1024 grids (assuming second-order accurate integration)
-    case 1: avg_exa = 197.6819076161000;  break; // using Richardson's extrapolation between uniform 512x512x512 and 1024x1024x1024 grids (assuming second-order accurate integration)
+    case 0: avg_exa = 0.030340552739300;  break; // using Richardson's extrapolation between uniform 1024x1024x1024 and 2048x2048x2048 grids (assuming second-order accurate integration)
+    case 1: avg_exa = 197.6819074552000;  break; // using Richardson's extrapolation between uniform 1024x1024x1024 and 2048x2048x2048 grids (assuming second-order accurate integration)
     case 2: throw std::invalid_argument("Test case 2 cannot be validated with a non-empty nullspace (i.e. Neumann boundary condition). \n\
 This test case is meant to check the AMR feature, hence the interface is supposedly captured with a very fine grid for which an accurate estimate of the mean value is unknown...");
     case 3: avg_exa = -0.164222868617700; break; // using Richardson's extrapolation between uniform 512x512x512 and 1024x1024x1024 grids (assuming second-order accurate integration)
