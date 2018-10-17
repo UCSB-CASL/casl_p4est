@@ -197,9 +197,10 @@ bool save_vtk = true;
 bool save_stats = true;
 bool save_dipoles = true;
 bool save_avg_dipole_only = false;
+bool save_shadowing = true;
 
 bool save_error = false;
-bool save_voro = false;
+bool save_voro = true;
 bool check_partition = false;
 bool save_hierarchy = false;
 // I hope you don't touch the last 4... unless you are troubled!
@@ -3653,6 +3654,37 @@ int main(int argc, char** argv) {
 
 
 
+        if(save_shadowing){
+            std::vector<double> X1_cells(nb_cells);
+            Vec single_phi;
+            VecDuplicate(phi,&single_phi);
+            for(int cell_ID=0; cell_ID<nb_cells; ++cell_ID)
+            {
+                single_cell_phi.ID = cell_ID;
+                sample_cf_on_nodes(p4est, nodes, single_cell_phi, single_phi);
+                X1_cells[cell_ID] = integrate_over_interface(p4est, nodes, single_phi, X1);
+            }
+            if(p4est->mpirank==0)
+            {
+                char out_path[1000];
+                char *out_dir = NULL;
+                out_dir = getenv("OUT_DIR");
+                if(out_dir==NULL)
+                {
+                    ierr = PetscPrintf(p4est->mpicomm, "You need to set the environment variable OUT_DIR before running the code to save topologies...\n"); CHKERRXX(ierr);
+                } else {
+                    sprintf(out_path, "%s/ShadowingEffect_%d.dat", out_dir, iteration);
+                    FILE *f = fopen(out_path, "w");
+                    fprintf(f, "%% Number of cells is: %u. These are surface averages of X2 in the model over each cell. (\epsilon_m) \n", nb_cells);
+                    fprintf(f, "%% ID  |\t X_c\t  |\t Y_c\t  |\t Z_c\t |\t <X2> \n");
+                    for(int n=0; n<nb_cells; ++n)
+                            fprintf(f, "%d \t %g \t %g \t %g \t %g  \n", n, level_set.centers[n].x, level_set.centers[n].y, level_set.centers[n].z, X1_cells[n]);
+                    fclose(f);
+                }
+            }
+            VecDestroy(single_phi);
+        }
+
 
         //Begin compute dipoles!
         if(save_dipoles){
@@ -3763,6 +3795,11 @@ int main(int argc, char** argv) {
                     fclose(f);
                 }
             }
+            VecDestroy(single_phi);
+            for(unsigned int i = 0; i<P4EST_DIM;++i)
+                VecDestroy(dipole[i]);
+            for(unsigned int i = 0; i<6;++i)
+                VecDestroy(Quadrupole[i]);
         }
         // End of measuring cell dipoles
 
