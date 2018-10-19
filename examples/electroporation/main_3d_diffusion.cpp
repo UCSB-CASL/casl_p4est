@@ -117,9 +117,9 @@ double cellVolume = 4*PI*(coeff*r0)*(coeff*r0)*(coeff*r0)/3;
 
 
 /* number of cells in x and y dimensions */
-int x_cells = 3;
-int y_cells = 3;
-int z_cells = 3;
+int x_cells = 1;
+int y_cells = 1;
+int z_cells = 1;
 /* number of random cells */
 int nb_cells = test==7 ? 34 : (test==2 || test==4 || test==5)? 1 : ((test==8 || test==9) ? int (cellDensity*SphereVolume/cellVolume) : x_cells*y_cells*z_cells);
 
@@ -186,11 +186,18 @@ double M_0 = 1.0e-6;           // uniform initial condition for concentration
 double M_boundary= 1.0e-6;     // concentration on the boundary of the box
 /* end of diffusion modeling */
 
+/* Electro-Elasticity */
+double lambda = 10;
+
+
+
+
+
 double R1 = .25*MIN(xmax-xmin, ymax-ymin, zmaxx-zminn);
 double R2 = 3*MAX(xmax-xmin, ymax-ymin, zmaxx-zminn);
 
 // save statistics
-int save_every_n = 50;
+int save_every_n = 1;
 bool save_impedance = true;
 bool save_transport = true;
 bool save_vtk = true;
@@ -200,7 +207,7 @@ bool save_avg_dipole_only = false;
 bool save_shadowing = true;
 
 bool save_error = false;
-bool save_voro = true;
+bool save_voro = false;
 bool check_partition = false;
 bool save_hierarchy = false;
 // I hope you don't touch the last 4... unless you are troubled!
@@ -1280,6 +1287,235 @@ double is_interface(my_p4est_node_neighbors_t *ngbd_n, p4est_locidx_t n, double 
     else
         return -1;
 }
+
+
+void compute_normal_and_curvature(p4est_t *p4est, p4est_nodes_t *nodes, my_p4est_node_neighbors_t *ngbd, Vec phi, Vec normal[3], Vec &kappa, double dxyz_max)
+{
+    PetscErrorCode ierr;
+
+
+    double *normal_p[P4EST_DIM];
+    for(int dir=0; dir<P4EST_DIM; ++dir)
+    {
+        if(normal[dir]!=NULL) { ierr = VecDestroy(normal[dir]); CHKERRXX(ierr); }
+        ierr = VecCreateGhostNodes(p4est, nodes, &normal[dir]); CHKERRXX(ierr);
+        ierr = VecGetArray(normal[dir], &normal_p[dir]); CHKERRXX(ierr);
+    }
+    if(kappa!=NULL) { ierr = VecDestroy(kappa); CHKERRXX(ierr); }
+
+    ierr = VecDuplicate(phi, &kappa); CHKERRXX(ierr);
+
+    const double *phi_p;
+    ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr);
+
+    quad_neighbor_nodes_of_node_t qnnn;
+    for(size_t i=0; i<ngbd->get_layer_size(); ++i)
+    {
+        p4est_locidx_t n = ngbd->get_layer_node(i);
+        ngbd->get_neighbors(n, qnnn);
+        normal_p[0][n] = qnnn.dx_central(phi_p);
+        normal_p[1][n] = qnnn.dy_central(phi_p);
+#ifdef P4_TO_P8
+        normal_p[2][n] = qnnn.dz_central(phi_p);
+        double norm = sqrt(SQR(normal_p[0][n]) + SQR(normal_p[1][n]) + SQR(normal_p[2][n]));
+#else
+        double norm = sqrt(SQR(normal_p[0][n]) + SQR(normal_p[1][n]));
+#endif
+
+        normal_p[0][n] = norm<EPS ? 0 : normal_p[0][n]/norm;
+        normal_p[1][n] = norm<EPS ? 0 : normal_p[1][n]/norm;
+#ifdef P4_TO_P8
+        normal_p[2][n] = norm<EPS ? 0 : normal_p[2][n]/norm;
+#endif
+    }
+
+    for(int dir=0; dir<P4EST_DIM; ++dir)
+    {
+        ierr = VecGhostUpdateBegin(normal[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    }
+
+    for(size_t i=0; i<ngbd->get_local_size(); ++i)
+    {
+        p4est_locidx_t n = ngbd->get_local_node(i);
+        ngbd->get_neighbors(n, qnnn);
+        normal_p[0][n] = qnnn.dx_central(phi_p);
+        normal_p[1][n] = qnnn.dy_central(phi_p);
+#ifdef P4_TO_P8
+        normal_p[2][n] = qnnn.dz_central(phi_p);
+        double norm = sqrt(SQR(normal_p[0][n]) + SQR(normal_p[1][n]) + SQR(normal_p[2][n]));
+#else
+        double norm = sqrt(SQR(normal_p[0][n]) + SQR(normal_p[1][n]));
+#endif
+
+        normal_p[0][n] = norm<EPS ? 0 : normal_p[0][n]/norm;
+        normal_p[1][n] = norm<EPS ? 0 : normal_p[1][n]/norm;
+#ifdef P4_TO_P8
+        normal_p[2][n] = norm<EPS ? 0 : normal_p[2][n]/norm;
+#endif
+    }
+    ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
+
+    for(int dir=0; dir<P4EST_DIM; ++dir)
+    {
+        ierr = VecGhostUpdateEnd(normal[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    }
+
+    Vec kappa_tmp;
+    ierr = VecDuplicate(kappa, &kappa_tmp); CHKERRXX(ierr);
+    double *kappa_p;
+    ierr = VecGetArray(kappa_tmp, &kappa_p); CHKERRXX(ierr);
+    for(size_t i=0; i<ngbd->get_layer_size(); ++i)
+    {
+        p4est_locidx_t n = ngbd->get_layer_node(i);
+        ngbd->get_neighbors(n, qnnn);
+#ifdef P4_TO_P8
+        kappa_p[n] = MAX(MIN(qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]) + qnnn.dz_central(normal_p[2]), 1/dxyz_max), -1/dxyz_max);
+#else
+        kappa_p[n] = MAX(MIN(qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]), 1/dxyz_max), -1/dxyz_max);
+#endif
+    }
+    ierr = VecGhostUpdateBegin(kappa_tmp, INSERT_VALUES, SCATTER_FORWARD);
+    for(size_t i=0; i<ngbd->get_local_size(); ++i)
+    {
+        p4est_locidx_t n = ngbd->get_local_node(i);
+        ngbd->get_neighbors(n, qnnn);
+#ifdef P4_TO_P8
+        kappa_p[n] = MAX(MIN(qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]) + qnnn.dz_central(normal_p[2]), 1/dxyz_max), -1/dxyz_max);
+#else
+        kappa_p[n] = MAX(MIN(qnnn.dx_central(normal_p[0]) + qnnn.dy_central(normal_p[1]), 1/dxyz_max), -1/dxyz_max);
+#endif
+    }
+    ierr = VecGhostUpdateEnd(kappa_tmp, INSERT_VALUES, SCATTER_FORWARD);
+    ierr = VecRestoreArray(kappa_tmp, &kappa_p); CHKERRXX(ierr);
+
+    for(int dir=0; dir<P4EST_DIM; ++dir)
+    {
+        ierr = VecRestoreArray(normal[dir], &normal_p[dir]); CHKERRXX(ierr);
+    }
+
+    my_p4est_level_set_t ls(ngbd);
+    ls.extend_from_interface_to_whole_domain_TVD(phi, kappa_tmp, kappa);
+    ierr = VecDestroy(kappa_tmp); CHKERRXX(ierr);
+}
+
+
+void solve_electroelasticity( p4est_t *p4est, p4est_nodes_t *nodes,  p4est_ghost_t *ghost, my_p4est_level_set_t ls, my_p4est_node_neighbors_t *ngbd_n, Vec phi, double dt, double lambda, double dxyz_max)
+{
+    PetscErrorCode ierr;
+    Vec kappa, normals[3], elastic_vel[P4EST_DIM], norm_phi, velo_n;
+    VecDuplicate(phi, &kappa);
+    VecDuplicate(phi, &velo_n);
+    for(unsigned int i=0; i<P4EST_DIM; ++i)
+    {
+         ierr = VecCreateGhostNodes(p4est, nodes, &elastic_vel[i]); CHKERRXX(ierr);
+        VecDuplicate(phi, &normals[i]);
+    }
+    double diag = dxyz_max*sqrt(3);
+    compute_normal_and_curvature(p4est, nodes, ngbd_n, phi, normals, kappa, dxyz_max);
+
+    // compute_normals(ngbd_n, phi, normals);
+    // compute_mean_curvature(ngbd_n, phi, normals, kappa);
+
+
+    double *norm_phi_p, *phi_p;
+    VecDuplicate(phi, &norm_phi);
+    VecGetArray(norm_phi, &norm_phi_p);
+    VecGetArray(phi, &phi_p);
+    for(size_t i=0; i<ngbd_n->get_layer_size(); ++i)
+    {
+        p4est_locidx_t n = ngbd_n->get_layer_node(i);
+        const quad_neighbor_nodes_of_node_t qnnn = ngbd_n->get_neighbors(n);
+
+        double phi_x = qnnn.dx_central(phi_p);
+        double phi_y = qnnn.dy_central(phi_p);
+        double phi_z = qnnn.dz_central(phi_p);
+
+        norm_phi_p[n] = sqrt(phi_x*phi_x+phi_y*phi_y+phi_z*phi_z);
+    }
+    ierr = VecGhostUpdateBegin(norm_phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    for(size_t i=0; i<ngbd_n->get_local_size(); ++i)
+    {
+        p4est_locidx_t n = ngbd_n->get_local_node(i);
+        const quad_neighbor_nodes_of_node_t qnnn = ngbd_n->get_neighbors(n);
+
+        double phi_x = qnnn.dx_central(phi_p);
+        double phi_y = qnnn.dy_central(phi_p);
+        double phi_z = qnnn.dz_central(phi_p);
+
+        norm_phi_p[n] = sqrt(phi_x*phi_x+phi_y*phi_y+phi_z*phi_z);
+    }
+    ierr = VecGhostUpdateEnd(norm_phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    VecRestoreArray(norm_phi, &norm_phi_p);
+
+
+    // compute velocities
+    double *normals_p[3], *kappa_p, *v_p[P4EST_DIM], *velo_n_p;
+    VecGetArray(kappa, &kappa_p);
+    VecGetArray(velo_n, &velo_n_p);
+    VecGetArray(norm_phi, &norm_phi_p);
+    for(unsigned int i=0; i<P4EST_DIM; ++i)
+    {
+        VecGetArray(elastic_vel[i], &v_p[i]);
+        VecGetArray(normals[i], &normals_p[i]);
+    }
+
+    for(size_t i=0; i<ngbd_n->get_layer_size(); ++i)
+    {
+        p4est_locidx_t n = ngbd_n->get_layer_node(i);
+        const quad_neighbor_nodes_of_node_t qnnn = ngbd_n->get_neighbors(n);
+        double npx = lambda*qnnn.dx_central(norm_phi_p);
+        double npy = lambda*qnnn.dy_central(norm_phi_p);
+        double npz = lambda*qnnn.dz_central(norm_phi_p);
+        double normal_area_vel =  (npx*normals_p[0][n]+npy*normals_p[1][n]+npz*normals_p[2][n]);
+        double E_prime = lambda*(norm_phi_p[n] - 1);
+        double zeta = 0.5*(1+cos(PI*phi_p[n]/diag))/diag; // cut-off function
+        v_p[0][n] += 0.5*dt*((npx - normal_area_vel*normals_p[0][n])- E_prime*kappa_p[n]*normals_p[0][n])*norm_phi_p[n]*zeta;
+        v_p[1][n] += 0.5*dt*((npy - normal_area_vel*normals_p[1][n])- E_prime*kappa_p[n]*normals_p[1][n])*norm_phi_p[n]*zeta;
+        v_p[2][n] += 0.5*dt*((npz - normal_area_vel*normals_p[2][n])- E_prime*kappa_p[n]*normals_p[2][n])*norm_phi_p[n]*zeta;
+        velo_n_p[n] = v_p[0][n]*normals_p[0][n]+v_p[1][n]*normals_p[1][n]+v_p[2][n]*normals_p[2][n];
+    }
+    ierr = VecGhostUpdateBegin(velo_n, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateBegin(elastic_vel[0], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateBegin(elastic_vel[1], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateBegin(elastic_vel[2], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+    for(size_t i=0; i<ngbd_n->get_local_size(); ++i)
+    {
+        p4est_locidx_t n = ngbd_n->get_local_node(i);
+        const quad_neighbor_nodes_of_node_t qnnn = ngbd_n->get_neighbors(n);
+        double npx = lambda*qnnn.dx_central(norm_phi_p);
+        double npy = lambda*qnnn.dy_central(norm_phi_p);
+        double npz = lambda*qnnn.dz_central(norm_phi_p);
+        double normal_area_vel =  (npx*normals_p[0][n]+npy*normals_p[1][n]+npz*normals_p[2][n]);
+        double E_prime = lambda*(norm_phi_p[n] - 1);
+        double zeta = 0.5*(1+cos(PI*phi_p[n]/diag))/diag; // cut-off function
+        v_p[0][n] += 0.5*dt*((npx - normal_area_vel*normals_p[0][n])- E_prime*kappa_p[n]*normals_p[0][n])*norm_phi_p[n]*zeta;
+        v_p[1][n] += 0.5*dt*((npy - normal_area_vel*normals_p[1][n])- E_prime*kappa_p[n]*normals_p[1][n])*norm_phi_p[n]*zeta;
+        v_p[2][n] += 0.5*dt*((npz - normal_area_vel*normals_p[2][n])- E_prime*kappa_p[n]*normals_p[2][n])*norm_phi_p[n]*zeta;
+        velo_n_p[n] = v_p[0][n]*normals_p[0][n]+v_p[1][n]*normals_p[1][n]+v_p[2][n]*normals_p[2][n];
+    }
+    ierr = VecGhostUpdateEnd(velo_n, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd(elastic_vel[0], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd(elastic_vel[1], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd(elastic_vel[2], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+    VecRestoreArray(velo_n, &velo_n_p);
+    VecRestoreArray(norm_phi, &norm_phi_p);
+    VecRestoreArray(kappa, &kappa_p);
+    VecRestoreArray(phi, &phi_p);
+    for(unsigned int i=0; i<P4EST_DIM; ++i)
+    {
+        VecRestoreArray(elastic_vel[i], &v_p[i]);
+        VecRestoreArray(normals[i], &normals_p[i]);
+    }
+    ls.extend_from_interface_to_whole_domain_TVD(phi, velo_n, velo_n);
+    ls.advect_in_normal_direction(velo_n, phi, dt);
+    //my_p4est_semi_lagrangian_t sl(&p4est, &nodes, &ghost, ngbd_n);
+    //sl.update_p4est(elastic_vel, dt, phi);
+}
+
+
+
 
 
 void solve_electric_potential( p4est_t *p4est, p4est_nodes_t *nodes,
@@ -3461,7 +3697,7 @@ int main(int argc, char** argv) {
 #else
     dt = MIN(dx,dy)/length_scale/dt_scale;
 #endif
-
+    double dxyz_max = MIN(dx,dy,dz);
     //dt= 1e-7;
     // dt = MIN(dx,dy,dz)/mu_e/1000.0;  // by matching boundary conditions with a 0.1 V/m resolution
     //dt=MIN(dt, 0.2/omega, MIN(dx,dy,dz)/dt_scale);  // the last term is to due to diffusion of concentrations
@@ -3494,7 +3730,9 @@ int main(int argc, char** argv) {
         //        }
         ierr = PetscPrintf(mpi.comm(), ">> solving electroporation with time-step %g [s]... \n", dt); CHKERRXX(ierr);
         solve_electric_potential(p4est, nodes,&ngbd_n, &ngbd_c, phi, sol, dt,  X0,  X1, Sm, vn, ls, tn, vnm1, vnm2, grad_phi, charge_rate,grad_nm1, grad_up, grad_um);
-
+        ierr = PetscPrintf(mpi.comm(), ">> solving elasticity... \n"); CHKERRXX(ierr);
+         solve_electroelasticity(p4est, nodes,  ghost, ls, &ngbd_n, phi, dt,  lambda, dxyz_max);
+        ierr = PetscPrintf(mpi.comm(), ">> Done with elasticity! \n"); CHKERRXX(ierr);
         double maxval;
         VecMax(M_list[0],NULL,&maxval);
         PetscPrintf(mpi.comm(), "maximum concentration in first ion is %g\n", maxval);
@@ -3678,7 +3916,7 @@ int main(int argc, char** argv) {
                     fprintf(f, "%% Number of cells is: %u. These are surface averages of X2 in the model over each cell. (\epsilon_m) \n", nb_cells);
                     fprintf(f, "%% ID  |\t X_c\t  |\t Y_c\t  |\t Z_c\t |\t <X2> \n");
                     for(int n=0; n<nb_cells; ++n)
-                            fprintf(f, "%d \t %g \t %g \t %g \t %g  \n", n, level_set.centers[n].x, level_set.centers[n].y, level_set.centers[n].z, X1_cells[n]);
+                        fprintf(f, "%d \t %g \t %g \t %g \t %g  \n", n, level_set.centers[n].x, level_set.centers[n].y, level_set.centers[n].z, X1_cells[n]);
                     fclose(f);
                 }
             }
