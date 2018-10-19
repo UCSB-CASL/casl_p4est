@@ -187,7 +187,7 @@ double M_boundary= 1.0e-6;     // concentration on the boundary of the box
 /* end of diffusion modeling */
 
 /* Electro-Elasticity */
-double lambda = 10;
+double lambdaEl = 1e5;
 
 
 
@@ -1399,9 +1399,10 @@ void compute_normal_and_curvature(p4est_t *p4est, p4est_nodes_t *nodes, my_p4est
 }
 
 
-void solve_electroelasticity( p4est_t *p4est, p4est_nodes_t *nodes,  p4est_ghost_t *ghost, my_p4est_level_set_t ls, my_p4est_node_neighbors_t *ngbd_n, Vec phi, double dt, double lambda, double dxyz_max)
+void solve_electroelasticity( p4est_t *p4est, p4est_nodes_t *nodes,  p4est_ghost_t *ghost, my_p4est_level_set_t ls, my_p4est_node_neighbors_t *ngbd_n, Vec phi, double dt, double lambda, double dxyz_max, Vec grad_up, Vec grad_um )
 {
     PetscErrorCode ierr;
+
     Vec kappa, normals[3], elastic_vel[P4EST_DIM], norm_phi, velo_n, curvature_force[P4EST_DIM], tmp;
     VecDuplicate(phi, &kappa);
     VecDuplicate(phi, &velo_n);
@@ -1412,7 +1413,7 @@ void solve_electroelasticity( p4est_t *p4est, p4est_nodes_t *nodes,  p4est_ghost
         ierr = VecCreateGhostNodes(p4est, nodes, &elastic_vel[i]); CHKERRXX(ierr);
         VecDuplicate(phi, &normals[i]);
     }
-    double diag = dxyz_max*sqrt(3);
+    double diag = 2*dxyz_max;
     compute_normal_and_curvature(p4est, nodes, ngbd_n, phi, normals, kappa, dxyz_max);
 
     double *norm_phi_p, *phi_p, *curv_p[P4EST_DIM], *tmp_p, *kappa_p;
@@ -1505,6 +1506,10 @@ void solve_electroelasticity( p4est_t *p4est, p4est_nodes_t *nodes,  p4est_ghost
     VecGetArray(norm_phi, &norm_phi_p);
     for(unsigned int i=0; i<P4EST_DIM; ++i)
         VecGetArray(elastic_vel[i], &v_p[i]);
+
+    double *dup_p, *dum_p;
+    VecGetArray(grad_up, &dup_p);
+    VecGetArray(grad_um, &dum_p);
     for(size_t i=0; i<ngbd_n->get_layer_size(); ++i)
     {
         p4est_locidx_t n = ngbd_n->get_layer_node(i);
@@ -1533,7 +1538,7 @@ void solve_electroelasticity( p4est_t *p4est, p4est_nodes_t *nodes,  p4est_ghost
         v_p[2][n] += 0.5*dt*0;
 
         // total velocity in normal direction
-        velo_n_p[n] = v_p[0][n]*normals_p[0][n]+v_p[1][n]*normals_p[1][n]+v_p[2][n]*normals_p[2][n];
+        velo_n_p[n] = v_p[0][n]*normals_p[0][n]+v_p[1][n]*normals_p[1][n]+v_p[2][n]*normals_p[2][n]+0.5*epsilon_0*(SQR(dup_p[n])-SQR(dum_p[n]));
     }
     ierr = VecGhostUpdateBegin(velo_n, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecGhostUpdateBegin(elastic_vel[0], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -1561,13 +1566,13 @@ void solve_electroelasticity( p4est_t *p4est, p4est_nodes_t *nodes,  p4est_ghost
         v_p[0][n] += 0.5*dt*cc*zeta*normals_p[0][n]*norm_phi_p[n];
         v_p[1][n] += 0.5*dt*cc*zeta*normals_p[1][n]*norm_phi_p[n];
         v_p[2][n] += 0.5*dt*cc*zeta*normals_p[2][n]*norm_phi_p[n];
-        // Maxwell stress
+       // Maxwell stress
         v_p[0][n] += 0.5*dt*0;
         v_p[1][n] += 0.5*dt*0;
         v_p[2][n] += 0.5*dt*0;
 
         // total velocity in normal direction
-        velo_n_p[n] = v_p[0][n]*normals_p[0][n]+v_p[1][n]*normals_p[1][n]+v_p[2][n]*normals_p[2][n];
+        velo_n_p[n] = v_p[0][n]*normals_p[0][n]+v_p[1][n]*normals_p[1][n]+v_p[2][n]*normals_p[2][n]+0.5*epsilon_0*(SQR(dup_p[n])-SQR(dum_p[n]));
     }
     ierr = VecGhostUpdateEnd(velo_n, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecGhostUpdateEnd(elastic_vel[0], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -1583,9 +1588,11 @@ void solve_electroelasticity( p4est_t *p4est, p4est_nodes_t *nodes,  p4est_ghost
     }
     VecRestoreArray(kappa, &kappa_p);
     VecRestoreArray(phi, &phi_p);
-
+    VecRestoreArray(grad_up, &dup_p);
+    VecRestoreArray(grad_um, &dum_p);
     ls.extend_from_interface_to_whole_domain_TVD(phi, velo_n, velo_n);
     ls.advect_in_normal_direction(velo_n, phi, dt);
+    //ls.reinitialize_1st_order(phi);
     //my_p4est_semi_lagrangian_t sl(&p4est, &nodes, &ghost, ngbd_n);
     //sl.update_p4est(elastic_vel, dt, phi);
 }
@@ -3807,7 +3814,7 @@ int main(int argc, char** argv) {
         ierr = PetscPrintf(mpi.comm(), ">> solving electroporation with time-step %g [s]... \n", dt); CHKERRXX(ierr);
         solve_electric_potential(p4est, nodes,&ngbd_n, &ngbd_c, phi, sol, dt,  X0,  X1, Sm, vn, ls, tn, vnm1, vnm2, grad_phi, charge_rate,grad_nm1, grad_up, grad_um);
         ierr = PetscPrintf(mpi.comm(), ">> solving elasticity... \n"); CHKERRXX(ierr);
-        solve_electroelasticity(p4est, nodes,  ghost, ls, &ngbd_n, phi, dt,  lambda, dxyz_max);
+        solve_electroelasticity(p4est, nodes,  ghost, ls, &ngbd_n, phi, dt,  lambdaEl, dxyz_max, grad_up, grad_um);
         ierr = PetscPrintf(mpi.comm(), ">> Done with elasticity! \n"); CHKERRXX(ierr);
         double maxval;
         VecMax(M_list[0],NULL,&maxval);
