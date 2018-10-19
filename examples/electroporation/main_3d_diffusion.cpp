@@ -1402,63 +1402,109 @@ void compute_normal_and_curvature(p4est_t *p4est, p4est_nodes_t *nodes, my_p4est
 void solve_electroelasticity( p4est_t *p4est, p4est_nodes_t *nodes,  p4est_ghost_t *ghost, my_p4est_level_set_t ls, my_p4est_node_neighbors_t *ngbd_n, Vec phi, double dt, double lambda, double dxyz_max)
 {
     PetscErrorCode ierr;
-    Vec kappa, normals[3], elastic_vel[P4EST_DIM], norm_phi, velo_n;
+    Vec kappa, normals[3], elastic_vel[P4EST_DIM], norm_phi, velo_n, curvature_force[P4EST_DIM], tmp;
     VecDuplicate(phi, &kappa);
     VecDuplicate(phi, &velo_n);
+    VecDuplicate(phi, &tmp);
     for(unsigned int i=0; i<P4EST_DIM; ++i)
     {
-         ierr = VecCreateGhostNodes(p4est, nodes, &elastic_vel[i]); CHKERRXX(ierr);
+        ierr = VecCreateGhostNodes(p4est, nodes, &curvature_force[i]); CHKERRXX(ierr);
+        ierr = VecCreateGhostNodes(p4est, nodes, &elastic_vel[i]); CHKERRXX(ierr);
         VecDuplicate(phi, &normals[i]);
     }
     double diag = dxyz_max*sqrt(3);
     compute_normal_and_curvature(p4est, nodes, ngbd_n, phi, normals, kappa, dxyz_max);
 
-    // compute_normals(ngbd_n, phi, normals);
-    // compute_mean_curvature(ngbd_n, phi, normals, kappa);
-
-
-    double *norm_phi_p, *phi_p;
-    VecDuplicate(phi, &norm_phi);
+    double *norm_phi_p, *phi_p, *curv_p[P4EST_DIM], *tmp_p, *kappa_p;
+    ierr = VecCreateGhostNodes(p4est, nodes, &norm_phi); CHKERRXX(ierr);
     VecGetArray(norm_phi, &norm_phi_p);
     VecGetArray(phi, &phi_p);
+    for(unsigned int i=0; i<P4EST_DIM; ++i)
+        VecGetArray(curvature_force[i], &curv_p[i]);
+    VecGetArray(kappa, &kappa_p);
+    VecGetArray(norm_phi, &norm_phi_p);
+    VecGetArray(tmp, &tmp_p);
     for(size_t i=0; i<ngbd_n->get_layer_size(); ++i)
     {
         p4est_locidx_t n = ngbd_n->get_layer_node(i);
         const quad_neighbor_nodes_of_node_t qnnn = ngbd_n->get_neighbors(n);
-
         double phi_x = qnnn.dx_central(phi_p);
         double phi_y = qnnn.dy_central(phi_p);
         double phi_z = qnnn.dz_central(phi_p);
-
         norm_phi_p[n] = sqrt(phi_x*phi_x+phi_y*phi_y+phi_z*phi_z);
+        tmp_p[n] = kappa_p[n]*norm_phi_p[n];
     }
+    ierr = VecGhostUpdateBegin(tmp, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecGhostUpdateBegin(norm_phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     for(size_t i=0; i<ngbd_n->get_local_size(); ++i)
     {
         p4est_locidx_t n = ngbd_n->get_local_node(i);
         const quad_neighbor_nodes_of_node_t qnnn = ngbd_n->get_neighbors(n);
-
         double phi_x = qnnn.dx_central(phi_p);
         double phi_y = qnnn.dy_central(phi_p);
         double phi_z = qnnn.dz_central(phi_p);
-
         norm_phi_p[n] = sqrt(phi_x*phi_x+phi_y*phi_y+phi_z*phi_z);
+        tmp_p[n] = kappa_p[n]*norm_phi_p[n];
     }
+    ierr = VecGhostUpdateEnd(tmp, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecGhostUpdateEnd(norm_phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    VecRestoreArray(tmp, &tmp_p);
     VecRestoreArray(norm_phi, &norm_phi_p);
+
+    VecGetArray(tmp, &tmp_p);
+    VecGetArray(norm_phi, &norm_phi_p);
+    double *normals_p[3];
+    for(unsigned int i=0; i<P4EST_DIM; ++i)
+        VecGetArray(normals[i], &normals_p[i]);
+
+
+    for(size_t i=0; i<ngbd_n->get_layer_size(); ++i)
+    {
+        p4est_locidx_t n = ngbd_n->get_layer_node(i);
+        const quad_neighbor_nodes_of_node_t qnnn = ngbd_n->get_neighbors(n);
+        double tx = qnnn.dx_central(tmp_p);
+        double ty = qnnn.dy_central(tmp_p);
+        double tz = qnnn.dz_central(tmp_p);
+        double ttt = (tx*normals_p[0][n]+ty*normals_p[1][n]+tz*normals_p[2][n]);
+        double xcurve = tx-ttt*normals_p[0][n];
+        double ycurve = ty-ttt*normals_p[1][n];
+        double zcurve = tz-ttt*normals_p[2][n];
+        curv_p[0][n] = -0.5*SQR(kappa_p[n])*normals_p[0][n]+(xcurve)/norm_phi_p[n];
+        curv_p[1][n] = -0.5*SQR(kappa_p[n])*normals_p[1][n]+(ycurve)/norm_phi_p[n];
+        curv_p[2][n] = -0.5*SQR(kappa_p[n])*normals_p[2][n]+(zcurve)/norm_phi_p[n];
+    }
+    ierr = VecGhostUpdateBegin(curvature_force[0], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateBegin(curvature_force[1], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateBegin(curvature_force[2], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    for(size_t i=0; i<ngbd_n->get_local_size(); ++i)
+    {
+        p4est_locidx_t n = ngbd_n->get_local_node(i);
+        const quad_neighbor_nodes_of_node_t qnnn = ngbd_n->get_neighbors(n);
+
+        double tx = qnnn.dx_central(tmp_p);
+        double ty = qnnn.dy_central(tmp_p);
+        double tz = qnnn.dz_central(tmp_p);
+        double ttt = (tx*normals_p[0][n]+ty*normals_p[1][n]+tz*normals_p[2][n]);
+        double xcurve = tx-ttt*normals_p[0][n];
+        double ycurve = ty-ttt*normals_p[1][n];
+        double zcurve = tz-ttt*normals_p[2][n];
+        curv_p[0][n] = -0.5*SQR(kappa_p[n])*normals_p[0][n]+(xcurve)/norm_phi_p[n];
+        curv_p[1][n] = -0.5*SQR(kappa_p[n])*normals_p[1][n]+(ycurve)/norm_phi_p[n];
+        curv_p[2][n] = -0.5*SQR(kappa_p[n])*normals_p[2][n]+(zcurve)/norm_phi_p[n];
+    }
+    ierr = VecGhostUpdateEnd(curvature_force[0], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd(curvature_force[1], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd(curvature_force[2], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    VecRestoreArray(norm_phi, &norm_phi_p);
+    VecRestoreArray(tmp, &tmp_p);
 
 
     // compute velocities
-    double *normals_p[3], *kappa_p, *v_p[P4EST_DIM], *velo_n_p;
-    VecGetArray(kappa, &kappa_p);
+    double *v_p[P4EST_DIM], *velo_n_p;
     VecGetArray(velo_n, &velo_n_p);
     VecGetArray(norm_phi, &norm_phi_p);
     for(unsigned int i=0; i<P4EST_DIM; ++i)
-    {
         VecGetArray(elastic_vel[i], &v_p[i]);
-        VecGetArray(normals[i], &normals_p[i]);
-    }
-
     for(size_t i=0; i<ngbd_n->get_layer_size(); ++i)
     {
         p4est_locidx_t n = ngbd_n->get_layer_node(i);
@@ -1469,16 +1515,30 @@ void solve_electroelasticity( p4est_t *p4est, p4est_nodes_t *nodes,  p4est_ghost
         double normal_area_vel =  (npx*normals_p[0][n]+npy*normals_p[1][n]+npz*normals_p[2][n]);
         double E_prime = lambda*(norm_phi_p[n] - 1);
         double zeta = 0.5*(1+cos(PI*phi_p[n]/diag))/diag; // cut-off function
+        // tensile resistance
         v_p[0][n] += 0.5*dt*((npx - normal_area_vel*normals_p[0][n])- E_prime*kappa_p[n]*normals_p[0][n])*norm_phi_p[n]*zeta;
         v_p[1][n] += 0.5*dt*((npy - normal_area_vel*normals_p[1][n])- E_prime*kappa_p[n]*normals_p[1][n])*norm_phi_p[n]*zeta;
         v_p[2][n] += 0.5*dt*((npz - normal_area_vel*normals_p[2][n])- E_prime*kappa_p[n]*normals_p[2][n])*norm_phi_p[n]*zeta;
+        // curvature effects
+        double cc = 0;
+        cc += qnnn.dx_central(curv_p[0]);
+        cc += qnnn.dy_central(curv_p[1]);
+        cc += qnnn.dz_central(curv_p[2]);
+        v_p[0][n] += 0.5*dt*cc*zeta*normals_p[0][n]*norm_phi_p[n];
+        v_p[1][n] += 0.5*dt*cc*zeta*normals_p[1][n]*norm_phi_p[n];
+        v_p[2][n] += 0.5*dt*cc*zeta*normals_p[2][n]*norm_phi_p[n];
+        // Maxwell stress
+        v_p[0][n] += 0.5*dt*0;
+        v_p[1][n] += 0.5*dt*0;
+        v_p[2][n] += 0.5*dt*0;
+
+        // total velocity in normal direction
         velo_n_p[n] = v_p[0][n]*normals_p[0][n]+v_p[1][n]*normals_p[1][n]+v_p[2][n]*normals_p[2][n];
     }
     ierr = VecGhostUpdateBegin(velo_n, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecGhostUpdateBegin(elastic_vel[0], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecGhostUpdateBegin(elastic_vel[1], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecGhostUpdateBegin(elastic_vel[2], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
     for(size_t i=0; i<ngbd_n->get_local_size(); ++i)
     {
         p4est_locidx_t n = ngbd_n->get_local_node(i);
@@ -1489,25 +1549,41 @@ void solve_electroelasticity( p4est_t *p4est, p4est_nodes_t *nodes,  p4est_ghost
         double normal_area_vel =  (npx*normals_p[0][n]+npy*normals_p[1][n]+npz*normals_p[2][n]);
         double E_prime = lambda*(norm_phi_p[n] - 1);
         double zeta = 0.5*(1+cos(PI*phi_p[n]/diag))/diag; // cut-off function
+        // tensile resistance
         v_p[0][n] += 0.5*dt*((npx - normal_area_vel*normals_p[0][n])- E_prime*kappa_p[n]*normals_p[0][n])*norm_phi_p[n]*zeta;
         v_p[1][n] += 0.5*dt*((npy - normal_area_vel*normals_p[1][n])- E_prime*kappa_p[n]*normals_p[1][n])*norm_phi_p[n]*zeta;
         v_p[2][n] += 0.5*dt*((npz - normal_area_vel*normals_p[2][n])- E_prime*kappa_p[n]*normals_p[2][n])*norm_phi_p[n]*zeta;
+        // curvature effects
+        double cc = 0;
+        cc += qnnn.dx_central(curv_p[0]);
+        cc += qnnn.dy_central(curv_p[1]);
+        cc += qnnn.dz_central(curv_p[2]);
+        v_p[0][n] += 0.5*dt*cc*zeta*normals_p[0][n]*norm_phi_p[n];
+        v_p[1][n] += 0.5*dt*cc*zeta*normals_p[1][n]*norm_phi_p[n];
+        v_p[2][n] += 0.5*dt*cc*zeta*normals_p[2][n]*norm_phi_p[n];
+        // Maxwell stress
+        v_p[0][n] += 0.5*dt*0;
+        v_p[1][n] += 0.5*dt*0;
+        v_p[2][n] += 0.5*dt*0;
+
+        // total velocity in normal direction
         velo_n_p[n] = v_p[0][n]*normals_p[0][n]+v_p[1][n]*normals_p[1][n]+v_p[2][n]*normals_p[2][n];
     }
     ierr = VecGhostUpdateEnd(velo_n, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecGhostUpdateEnd(elastic_vel[0], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecGhostUpdateEnd(elastic_vel[1], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecGhostUpdateEnd(elastic_vel[2], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
     VecRestoreArray(velo_n, &velo_n_p);
     VecRestoreArray(norm_phi, &norm_phi_p);
-    VecRestoreArray(kappa, &kappa_p);
-    VecRestoreArray(phi, &phi_p);
     for(unsigned int i=0; i<P4EST_DIM; ++i)
     {
         VecRestoreArray(elastic_vel[i], &v_p[i]);
+        VecRestoreArray(curvature_force[i], &curv_p[i]);
         VecRestoreArray(normals[i], &normals_p[i]);
     }
+    VecRestoreArray(kappa, &kappa_p);
+    VecRestoreArray(phi, &phi_p);
+
     ls.extend_from_interface_to_whole_domain_TVD(phi, velo_n, velo_n);
     ls.advect_in_normal_direction(velo_n, phi, dt);
     //my_p4est_semi_lagrangian_t sl(&p4est, &nodes, &ghost, ngbd_n);
@@ -3731,7 +3807,7 @@ int main(int argc, char** argv) {
         ierr = PetscPrintf(mpi.comm(), ">> solving electroporation with time-step %g [s]... \n", dt); CHKERRXX(ierr);
         solve_electric_potential(p4est, nodes,&ngbd_n, &ngbd_c, phi, sol, dt,  X0,  X1, Sm, vn, ls, tn, vnm1, vnm2, grad_phi, charge_rate,grad_nm1, grad_up, grad_um);
         ierr = PetscPrintf(mpi.comm(), ">> solving elasticity... \n"); CHKERRXX(ierr);
-         solve_electroelasticity(p4est, nodes,  ghost, ls, &ngbd_n, phi, dt,  lambda, dxyz_max);
+        solve_electroelasticity(p4est, nodes,  ghost, ls, &ngbd_n, phi, dt,  lambda, dxyz_max);
         ierr = PetscPrintf(mpi.comm(), ">> Done with elasticity! \n"); CHKERRXX(ierr);
         double maxval;
         VecMax(M_list[0],NULL,&maxval);
