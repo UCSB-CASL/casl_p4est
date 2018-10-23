@@ -178,6 +178,8 @@ class my_p4est_poisson_nodes_mls_sc_t
 
   enum discretization_scheme_t { FDM, FVM, JUMP } discretization_scheme_;
 
+  int jump_scheme_;
+
   void compute_volumes();
   void compute_phi_eff(Vec &phi_eff, std::vector<Vec> *&phi, std::vector<action_t> *&action, bool &is_phi_eff_owned);
 #ifdef P4_TO_P8
@@ -558,6 +560,7 @@ public:
   inline void set_kink_treatment          (bool value) { kink_special_treatment_    = value; }
   inline void set_use_sc_scheme           (bool value) { use_sc_scheme_             = value; }
   inline void set_integration_order       (int  value) { integration_order_         = value; }
+  inline void set_jump_scheme             (int  value) { jump_scheme_               = value; }
 
   bool inv_mat2(double *in, double *out);
   bool inv_mat3(double *in, double *out);

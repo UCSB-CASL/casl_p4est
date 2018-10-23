@@ -148,6 +148,9 @@ my_p4est_poisson_nodes_mls_sc_t::my_p4est_poisson_nodes_mls_sc_t(const my_p4est_
   volumes_owned_    = false;
   volumes_computed_ = false;
 
+  jump_scheme_ = 0;
+//  jump_scheme_ = 1;
+
   // compute global numbering of nodes
   global_node_offset_.resize(p4est_->mpisize+1, 0);
   for (int r = 0; r<p4est_->mpisize; ++r)
@@ -3267,9 +3270,9 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
 #endif
 
 #ifdef P4_TO_P8
-              if (!inv_mat4(A, A_inv)) throw;
+              if (!inv_mat4(A, A_inv)) throw std::domain_error("Error: singular LSQR matrix\n");
 #else
-              if (!inv_mat3(A, A_inv)) throw;
+              if (!inv_mat3(A, A_inv)) throw std::domain_error("Error: singular LSQR matrix\n");
 #endif
 
               // compute Taylor expansion coefficients
@@ -3727,770 +3730,1168 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
     else if (discretization_scheme_ == JUMP)
     {
       interface_present = true;
-      // reconstruct domain and compute geometric quantities
-#ifdef P4_TO_P8
-      cube3_mls_t cube;
-#else
-      cube2_mls_t cube;
-#endif
 
-      // determine dimensions of cube
-      fv_size_x = 0;
-      fv_size_y = 0;
-#ifdef P4_TO_P8
-      fv_size_z = 0;
-#endif
-
-      if (!is_node_xmWall(p4est_, ni)) { fv_size_x += cube_refinement_; fv_xmin = x_C - .5*dx_min_; interp_xmin = x_C - dx_min_; } else { fv_xmin = x_C; interp_xmin = x_C; }
-      if (!is_node_xpWall(p4est_, ni)) { fv_size_x += cube_refinement_; fv_xmax = x_C + .5*dx_min_; interp_xmax = x_C + dx_min_; } else { fv_xmax = x_C; interp_xmax = x_C; }
-      if (!is_node_ymWall(p4est_, ni)) { fv_size_y += cube_refinement_; fv_ymin = y_C - .5*dy_min_; interp_ymin = y_C - dy_min_; } else { fv_ymin = y_C; interp_ymin = y_C; }
-      if (!is_node_ypWall(p4est_, ni)) { fv_size_y += cube_refinement_; fv_ymax = y_C + .5*dy_min_; interp_ymax = y_C + dy_min_; } else { fv_ymax = y_C; interp_ymax = y_C; }
-#ifdef P4_TO_P8
-      if (!is_node_zmWall(p4est_, ni)) { fv_size_z += cube_refinement_; fv_zmin = z_C - .5*dz_min_; interp_zmin = z_C - dz_min_; } else { fv_zmin = z_C; interp_zmin = z_C; }
-      if (!is_node_zpWall(p4est_, ni)) { fv_size_z += cube_refinement_; fv_zmax = z_C + .5*dz_min_; interp_zmax = z_C + dz_min_; } else { fv_zmax = z_C; interp_zmax = z_C; }
-#endif
-
-      if (cube_refinement_ == 0)
+      if (jump_scheme_ == 0)
       {
-        fv_size_x = 1;
-        fv_size_y = 1;
+        // reconstruct domain and compute geometric quantities
 #ifdef P4_TO_P8
-        fv_size_z = 1;
-#endif
-      }
-
-      // Reconstruct geometry
-#ifdef P4_TO_P8
-      double cube_xyz_min[] = { fv_xmin, fv_ymin, fv_zmin };
-      double cube_xyz_max[] = { fv_xmax, fv_ymax, fv_zmax };
-      int  cube_mnk[] = { fv_size_x, fv_size_y, fv_size_z };
+        cube3_mls_t cube;
 #else
-      double cube_xyz_min[] = { fv_xmin, fv_ymin };
-      double cube_xyz_max[] = { fv_xmax, fv_ymax };
-      int  cube_mnk[] = { fv_size_x, fv_size_y };
+        cube2_mls_t cube;
 #endif
 
-      cube.initialize(cube_xyz_min, cube_xyz_max, cube_mnk, integration_order_);
-
-      // get points at which values of level-set functions are needed
-      std::vector<double> x_grid; cube.get_x_coord(x_grid);
-      std::vector<double> y_grid; cube.get_y_coord(y_grid);
+        // determine dimensions of cube
+        fv_size_x = 0;
+        fv_size_y = 0;
 #ifdef P4_TO_P8
-      std::vector<double> z_grid; cube.get_z_coord(z_grid);
+        fv_size_z = 0;
 #endif
-      int points_total = x_grid.size();
 
-      std::vector<double> phi_cube(ii_.num_interfaces*points_total,-1);
-
-      // sample values of level-set functions at those points
-      for (unsigned short phi_idx = 0; phi_idx < ii_.num_interfaces; ++phi_idx)
-      {
+        if (!is_node_xmWall(p4est_, ni)) { fv_size_x += cube_refinement_; fv_xmin = x_C - .5*dx_min_; interp_xmin = x_C - dx_min_; } else { fv_xmin = x_C; interp_xmin = x_C; }
+        if (!is_node_xpWall(p4est_, ni)) { fv_size_x += cube_refinement_; fv_xmax = x_C + .5*dx_min_; interp_xmax = x_C + dx_min_; } else { fv_xmax = x_C; interp_xmax = x_C; }
+        if (!is_node_ymWall(p4est_, ni)) { fv_size_y += cube_refinement_; fv_ymin = y_C - .5*dy_min_; interp_ymin = y_C - dy_min_; } else { fv_ymin = y_C; interp_ymin = y_C; }
+        if (!is_node_ypWall(p4est_, ni)) { fv_size_y += cube_refinement_; fv_ymax = y_C + .5*dy_min_; interp_ymax = y_C + dy_min_; } else { fv_ymax = y_C; interp_ymax = y_C; }
 #ifdef P4_TO_P8
-        phi_interp_local.set_input(ii_phi_p[phi_idx], ii_phi_xx_p[phi_idx], ii_phi_yy_p[phi_idx], ii_phi_zz_p[phi_idx], interp_method_);
-#else
-        phi_interp_local.set_input(ii_phi_p[phi_idx], ii_phi_xx_p[phi_idx], ii_phi_yy_p[phi_idx], interp_method_);
+        if (!is_node_zmWall(p4est_, ni)) { fv_size_z += cube_refinement_; fv_zmin = z_C - .5*dz_min_; interp_zmin = z_C - dz_min_; } else { fv_zmin = z_C; interp_zmin = z_C; }
+        if (!is_node_zpWall(p4est_, ni)) { fv_size_z += cube_refinement_; fv_zmax = z_C + .5*dz_min_; interp_zmax = z_C + dz_min_; } else { fv_zmax = z_C; interp_zmax = z_C; }
 #endif
-        for (int i = 0; i < points_total; ++i)
+
+        if (cube_refinement_ == 0)
         {
+          fv_size_x = 1;
+          fv_size_y = 1;
 #ifdef P4_TO_P8
-          phi_cube[phi_idx*points_total + i] = phi_interp_local(x_grid[i], y_grid[i], z_grid[i]);
-#else
-          phi_cube[phi_idx*points_total + i] = phi_interp_local(x_grid[i], y_grid[i]);
+          fv_size_z = 1;
 #endif
         }
-      }
 
-      // reconstruct geometry
-      cube.reconstruct(phi_cube, *ii_.action, *ii_.color);
-
+        // Reconstruct geometry
 #ifdef P4_TO_P8
-      full_cell_volume = (fv_xmax-fv_xmin)*(fv_ymax-fv_ymin)*(fv_zmax-fv_zmin);
+        double cube_xyz_min[] = { fv_xmin, fv_ymin, fv_zmin };
+        double cube_xyz_max[] = { fv_xmax, fv_ymax, fv_zmax };
+        int  cube_mnk[] = { fv_size_x, fv_size_y, fv_size_z };
 #else
-      full_cell_volume = (fv_xmax-fv_xmin)*(fv_ymax-fv_ymin);
+        double cube_xyz_min[] = { fv_xmin, fv_ymin };
+        double cube_xyz_max[] = { fv_xmax, fv_ymax };
+        int  cube_mnk[] = { fv_size_x, fv_size_y };
 #endif
 
-      // get quadrature points
-      std::vector<double> cube_dom_w;
-      std::vector<double> cube_dom_x;
-      std::vector<double> cube_dom_y;
+        cube.initialize(cube_xyz_min, cube_xyz_max, cube_mnk, integration_order_);
+
+        // get points at which values of level-set functions are needed
+        std::vector<double> x_grid; cube.get_x_coord(x_grid);
+        std::vector<double> y_grid; cube.get_y_coord(y_grid);
 #ifdef P4_TO_P8
-      std::vector<double> cube_dom_z;
+        std::vector<double> z_grid; cube.get_z_coord(z_grid);
 #endif
+        int points_total = x_grid.size();
 
-#ifdef P4_TO_P8
-      cube.quadrature_over_domain(cube_dom_w, cube_dom_x, cube_dom_y, cube_dom_z);
-#else
-      cube.quadrature_over_domain(cube_dom_w, cube_dom_x, cube_dom_y);
-#endif
+        std::vector<double> phi_cube(ii_.num_interfaces*points_total,-1);
 
-      std::vector<std::vector<double> > cube_ifc_w(ii_.num_interfaces);
-      std::vector<std::vector<double> > cube_ifc_x(ii_.num_interfaces);
-      std::vector<std::vector<double> > cube_ifc_y(ii_.num_interfaces);
-#ifdef P4_TO_P8
-      std::vector<std::vector<double> > cube_ifc_z(ii_.num_interfaces);
-#endif
-
-      for (unsigned short phi_idx = 0; phi_idx < ii_.num_interfaces; ++phi_idx)
-      {
-#ifdef P4_TO_P8
-        cube.quadrature_over_interface(phi_idx, cube_ifc_w[phi_idx], cube_ifc_x[phi_idx], cube_ifc_y[phi_idx], cube_ifc_z[phi_idx]);
-#else
-        cube.quadrature_over_interface(phi_idx, cube_ifc_w[phi_idx], cube_ifc_x[phi_idx], cube_ifc_y[phi_idx]);
-#endif
-      }
-
-      // compute cut-cell volume
-      double volume_cut_cell_m = 0.;
-      double volume_cut_cell_p = 0.;
-
-      for (unsigned int i = 0; i < cube_dom_w.size(); ++i)
-      {
-        volume_cut_cell_m += cube_dom_w[i];
-      }
-
-      volume_cut_cell_p = full_cell_volume - volume_cut_cell_m;
-
-      // compute area of the interface and integral of function from jump conditions
-      double integral_bc = 0.;
-
-      std::vector<double> interface_centroid_x(ii_.num_interfaces, 0);
-      std::vector<double> interface_centroid_y(ii_.num_interfaces, 0);
-#ifdef P4_TO_P8
-      std::vector<double> interface_centroid_z(ii_.num_interfaces, 0);
-#endif
-      std::vector<double> interface_area(ii_.num_interfaces, 0);
-
-      for (unsigned short phi_idx = 0; phi_idx < ii_.num_interfaces; ++phi_idx)
-      {
-        if (cube_ifc_w[phi_idx].size() > 0)
+        // sample values of level-set functions at those points
+        for (unsigned short phi_idx = 0; phi_idx < ii_.num_interfaces; ++phi_idx)
         {
-          for (unsigned int i = 0; i < cube_ifc_w[phi_idx].size(); ++i)
-          {
-            interface_area[phi_idx] += cube_ifc_w[phi_idx][i];
 #ifdef P4_TO_P8
-            integral_bc    += cube_ifc_w[phi_idx][i] * (*jump_flux_->at(phi_idx))(cube_ifc_x[phi_idx][i], cube_ifc_y[phi_idx][i], cube_ifc_z[phi_idx][i]);
+          phi_interp_local.set_input(ii_phi_p[phi_idx], ii_phi_xx_p[phi_idx], ii_phi_yy_p[phi_idx], ii_phi_zz_p[phi_idx], interp_method_);
 #else
-            integral_bc    += cube_ifc_w[phi_idx][i] * (*jump_flux_->at(phi_idx))(cube_ifc_x[phi_idx][i], cube_ifc_y[phi_idx][i]);
+          phi_interp_local.set_input(ii_phi_p[phi_idx], ii_phi_xx_p[phi_idx], ii_phi_yy_p[phi_idx], interp_method_);
 #endif
-            interface_centroid_x[phi_idx] += cube_ifc_w[phi_idx][i]*cube_ifc_x[phi_idx][i];
-            interface_centroid_y[phi_idx] += cube_ifc_w[phi_idx][i]*cube_ifc_y[phi_idx][i];
+          for (int i = 0; i < points_total; ++i)
+          {
 #ifdef P4_TO_P8
-            interface_centroid_z[phi_idx] += cube_ifc_w[phi_idx][i]*cube_ifc_z[phi_idx][i];
+            phi_cube[phi_idx*points_total + i] = phi_interp_local(x_grid[i], y_grid[i], z_grid[i]);
+#else
+            phi_cube[phi_idx*points_total + i] = phi_interp_local(x_grid[i], y_grid[i]);
 #endif
           }
-          interface_centroid_x[phi_idx] /= interface_area[phi_idx];
-          interface_centroid_y[phi_idx] /= interface_area[phi_idx];
+        }
+
+        // reconstruct geometry
+        cube.reconstruct(phi_cube, *ii_.action, *ii_.color);
+
 #ifdef P4_TO_P8
-          interface_centroid_z[phi_idx] /= interface_area[phi_idx];
+        full_cell_volume = (fv_xmax-fv_xmin)*(fv_ymax-fv_ymin)*(fv_zmax-fv_zmin);
+#else
+        full_cell_volume = (fv_xmax-fv_xmin)*(fv_ymax-fv_ymin);
+#endif
+
+        // get quadrature points
+        std::vector<double> cube_dom_w;
+        std::vector<double> cube_dom_x;
+        std::vector<double> cube_dom_y;
+#ifdef P4_TO_P8
+        std::vector<double> cube_dom_z;
+#endif
+
+#ifdef P4_TO_P8
+        cube.quadrature_over_domain(cube_dom_w, cube_dom_x, cube_dom_y, cube_dom_z);
+#else
+        cube.quadrature_over_domain(cube_dom_w, cube_dom_x, cube_dom_y);
+#endif
+
+        std::vector<std::vector<double> > cube_ifc_w(ii_.num_interfaces);
+        std::vector<std::vector<double> > cube_ifc_x(ii_.num_interfaces);
+        std::vector<std::vector<double> > cube_ifc_y(ii_.num_interfaces);
+#ifdef P4_TO_P8
+        std::vector<std::vector<double> > cube_ifc_z(ii_.num_interfaces);
+#endif
+
+        for (unsigned short phi_idx = 0; phi_idx < ii_.num_interfaces; ++phi_idx)
+        {
+#ifdef P4_TO_P8
+          cube.quadrature_over_interface(phi_idx, cube_ifc_w[phi_idx], cube_ifc_x[phi_idx], cube_ifc_y[phi_idx], cube_ifc_z[phi_idx]);
+#else
+          cube.quadrature_over_interface(phi_idx, cube_ifc_w[phi_idx], cube_ifc_x[phi_idx], cube_ifc_y[phi_idx]);
 #endif
         }
-      }
 
-      if (setup_rhs)
-      {
-        rhs_ptr[n] = rhs_m_ptr[n]*volume_cut_cell_m + rhs_p_ptr[n]*volume_cut_cell_p - integral_bc;
-//        rhs_ptr[n] = 0;
-      }
+        // compute cut-cell volume
+        double volume_cut_cell_m = 0.;
+        double volume_cut_cell_p = 0.;
 
-      // get quadrature points
-      std::vector<double> cube_dir_w;
-      std::vector<double> cube_dir_x;
-      std::vector<double> cube_dir_y;
-#ifdef P4_TO_P8
-      std::vector<double> cube_dir_z;
-#endif
-
-#ifdef P4_TO_P8
-      double full_sx = (fv_ymax - fv_ymin)*(fv_zmax - fv_zmin);
-      double full_sy = (fv_xmax - fv_xmin)*(fv_zmax - fv_zmin);
-      double full_sz = (fv_xmax - fv_xmin)*(fv_ymax - fv_ymin);
-#else
-      double full_sx = fv_ymax - fv_ymin;
-      double full_sy = fv_xmax - fv_xmin;
-#endif
-
-#ifdef P4_TO_P8
-      double face_area_full[] = { full_sx, full_sx, full_sy, full_sy, full_sz, full_sz };
-#else
-      double face_area_full[] = { full_sx, full_sx, full_sy, full_sy };
-#endif
-
-      double face_center_x[] = { fv_xmin - x_C, fv_xmax - x_C, 0, 0, 0, 0 };
-      double face_center_y[] = { 0, 0, fv_ymin - y_C, fv_ymax - y_C, 0, 0 };
-#ifdef P4_TO_P8
-      double face_center_z[] = { 0, 0, 0, 0, fv_zmin - z_C, fv_zmax - z_C };
-#endif
-
-      std::vector<double> face_m_area      (P4EST_FACES, 0);
-      std::vector<double> face_m_centroid_x(P4EST_FACES, 0);
-      std::vector<double> face_m_centroid_y(P4EST_FACES, 0);
-#ifdef P4_TO_P8
-      std::vector<double> face_m_centroid_z(P4EST_FACES, 0);
-#endif
-
-      std::vector<double> face_p_area      (P4EST_FACES, 0);
-      std::vector<double> face_p_centroid_x(P4EST_FACES, 0);
-      std::vector<double> face_p_centroid_y(P4EST_FACES, 0);
-#ifdef P4_TO_P8
-      std::vector<double> face_p_centroid_z(P4EST_FACES, 0);
-#endif
-
-      double face_m_area_max = 0;
-      double face_p_area_max = 0;
-
-      for (int dir_idx = 0; dir_idx < P4EST_FACES; ++dir_idx)
-      {
-        cube_dir_w.clear();
-        cube_dir_x.clear();
-        cube_dir_y.clear();
-#ifdef P4_TO_P8
-        cube_dir_z.clear();
-
-        cube.quadrature_in_dir(dir_idx, cube_dir_w, cube_dir_x, cube_dir_y, cube_dir_z);
-#else
-        cube.quadrature_in_dir(dir_idx, cube_dir_w, cube_dir_x, cube_dir_y);
-#endif
-        if (cube_dir_w.size() > 0)
+        for (unsigned int i = 0; i < cube_dom_w.size(); ++i)
         {
-          for (unsigned int i = 0; i < cube_dir_w.size(); ++i)
+          volume_cut_cell_m += cube_dom_w[i];
+        }
+
+        volume_cut_cell_p = full_cell_volume - volume_cut_cell_m;
+
+        // compute area of the interface and integral of function from jump conditions
+        double integral_bc = 0.;
+
+        std::vector<double> interface_centroid_x(ii_.num_interfaces, 0);
+        std::vector<double> interface_centroid_y(ii_.num_interfaces, 0);
+#ifdef P4_TO_P8
+        std::vector<double> interface_centroid_z(ii_.num_interfaces, 0);
+#endif
+        std::vector<double> interface_area(ii_.num_interfaces, 0);
+
+        for (unsigned short phi_idx = 0; phi_idx < ii_.num_interfaces; ++phi_idx)
+        {
+          if (cube_ifc_w[phi_idx].size() > 0)
           {
-            face_m_area[dir_idx] += cube_dir_w[i];
+            for (unsigned int i = 0; i < cube_ifc_w[phi_idx].size(); ++i)
+            {
+              interface_area[phi_idx] += cube_ifc_w[phi_idx][i];
+#ifdef P4_TO_P8
+              integral_bc    += cube_ifc_w[phi_idx][i] * (*jump_flux_->at(phi_idx))(cube_ifc_x[phi_idx][i], cube_ifc_y[phi_idx][i], cube_ifc_z[phi_idx][i]);
+#else
+              integral_bc    += cube_ifc_w[phi_idx][i] * (*jump_flux_->at(phi_idx))(cube_ifc_x[phi_idx][i], cube_ifc_y[phi_idx][i]);
+#endif
+              interface_centroid_x[phi_idx] += cube_ifc_w[phi_idx][i]*cube_ifc_x[phi_idx][i];
+              interface_centroid_y[phi_idx] += cube_ifc_w[phi_idx][i]*cube_ifc_y[phi_idx][i];
+#ifdef P4_TO_P8
+              interface_centroid_z[phi_idx] += cube_ifc_w[phi_idx][i]*cube_ifc_z[phi_idx][i];
+#endif
+            }
+            interface_centroid_x[phi_idx] /= interface_area[phi_idx];
+            interface_centroid_y[phi_idx] /= interface_area[phi_idx];
+#ifdef P4_TO_P8
+            interface_centroid_z[phi_idx] /= interface_area[phi_idx];
+#endif
+          }
+        }
+
+        if (setup_rhs)
+        {
+          rhs_ptr[n] = rhs_m_ptr[n]*volume_cut_cell_m + rhs_p_ptr[n]*volume_cut_cell_p - integral_bc;
+          //        rhs_ptr[n] = 0;
+        }
+
+        // get quadrature points
+        std::vector<double> cube_dir_w;
+        std::vector<double> cube_dir_x;
+        std::vector<double> cube_dir_y;
+#ifdef P4_TO_P8
+        std::vector<double> cube_dir_z;
+#endif
+
+#ifdef P4_TO_P8
+        double full_sx = (fv_ymax - fv_ymin)*(fv_zmax - fv_zmin);
+        double full_sy = (fv_xmax - fv_xmin)*(fv_zmax - fv_zmin);
+        double full_sz = (fv_xmax - fv_xmin)*(fv_ymax - fv_ymin);
+#else
+        double full_sx = fv_ymax - fv_ymin;
+        double full_sy = fv_xmax - fv_xmin;
+#endif
+
+#ifdef P4_TO_P8
+        double face_area_full[] = { full_sx, full_sx, full_sy, full_sy, full_sz, full_sz };
+#else
+        double face_area_full[] = { full_sx, full_sx, full_sy, full_sy };
+#endif
+
+        double face_center_x[] = { fv_xmin - x_C, fv_xmax - x_C, 0, 0, 0, 0 };
+        double face_center_y[] = { 0, 0, fv_ymin - y_C, fv_ymax - y_C, 0, 0 };
+#ifdef P4_TO_P8
+        double face_center_z[] = { 0, 0, 0, 0, fv_zmin - z_C, fv_zmax - z_C };
+#endif
+
+        std::vector<double> face_m_area      (P4EST_FACES, 0);
+        std::vector<double> face_m_centroid_x(P4EST_FACES, 0);
+        std::vector<double> face_m_centroid_y(P4EST_FACES, 0);
+#ifdef P4_TO_P8
+        std::vector<double> face_m_centroid_z(P4EST_FACES, 0);
+#endif
+
+        std::vector<double> face_p_area      (P4EST_FACES, 0);
+        std::vector<double> face_p_centroid_x(P4EST_FACES, 0);
+        std::vector<double> face_p_centroid_y(P4EST_FACES, 0);
+#ifdef P4_TO_P8
+        std::vector<double> face_p_centroid_z(P4EST_FACES, 0);
+#endif
+
+        double face_m_area_max = 0;
+        double face_p_area_max = 0;
+
+        for (int dir_idx = 0; dir_idx < P4EST_FACES; ++dir_idx)
+        {
+          cube_dir_w.clear();
+          cube_dir_x.clear();
+          cube_dir_y.clear();
+#ifdef P4_TO_P8
+          cube_dir_z.clear();
+
+          cube.quadrature_in_dir(dir_idx, cube_dir_w, cube_dir_x, cube_dir_y, cube_dir_z);
+#else
+          cube.quadrature_in_dir(dir_idx, cube_dir_w, cube_dir_x, cube_dir_y);
+#endif
+          if (cube_dir_w.size() > 0)
+          {
+            for (unsigned int i = 0; i < cube_dir_w.size(); ++i)
+            {
+              face_m_area[dir_idx] += cube_dir_w[i];
+              if (use_sc_scheme_)
+              {
+                face_m_centroid_x[dir_idx] += cube_dir_w[i]*(cube_dir_x[i] - x_C);
+                face_m_centroid_y[dir_idx] += cube_dir_w[i]*(cube_dir_y[i] - y_C);
+#ifdef P4_TO_P8
+                face_m_centroid_z[dir_idx] += cube_dir_w[i]*(cube_dir_z[i] - z_C);
+#endif
+              }
+            }
+
             if (use_sc_scheme_)
             {
-              face_m_centroid_x[dir_idx] += cube_dir_w[i]*(cube_dir_x[i] - x_C);
-              face_m_centroid_y[dir_idx] += cube_dir_w[i]*(cube_dir_y[i] - y_C);
+              face_m_centroid_x[dir_idx] /= face_m_area[dir_idx];
+              face_m_centroid_y[dir_idx] /= face_m_area[dir_idx];
 #ifdef P4_TO_P8
-              face_m_centroid_z[dir_idx] += cube_dir_w[i]*(cube_dir_z[i] - z_C);
+              face_m_centroid_z[dir_idx] /= face_m_area[dir_idx];
 #endif
             }
           }
+
+          face_p_area[dir_idx] = face_area_full[dir_idx] - face_m_area[dir_idx];
 
           if (use_sc_scheme_)
           {
-            face_m_centroid_x[dir_idx] /= face_m_area[dir_idx];
-            face_m_centroid_y[dir_idx] /= face_m_area[dir_idx];
+            if (face_p_area[dir_idx]/face_area_scalling_ > interface_rel_thresh_)
+            {
+              face_p_centroid_x[dir_idx] = face_center_x[dir_idx] - face_m_area[dir_idx]/face_p_area[dir_idx] * (face_m_centroid_x[dir_idx] - face_center_x[dir_idx]);
+              face_p_centroid_y[dir_idx] = face_center_y[dir_idx] - face_m_area[dir_idx]/face_p_area[dir_idx] * (face_m_centroid_y[dir_idx] - face_center_y[dir_idx]);
 #ifdef P4_TO_P8
-            face_m_centroid_z[dir_idx] /= face_m_area[dir_idx];
+              face_p_centroid_z[dir_idx] = face_center_z[dir_idx] - face_m_area[dir_idx]/face_p_area[dir_idx] * (face_m_centroid_z[dir_idx] - face_center_z[dir_idx]);
 #endif
+            }
+            else
+            {
+              face_p_centroid_x[dir_idx] = face_center_x[dir_idx];
+              face_p_centroid_y[dir_idx] = face_center_y[dir_idx];
+#ifdef P4_TO_P8
+              face_p_centroid_z[dir_idx] = face_center_z[dir_idx];
+#endif
+            }
           }
+
+          face_m_area_max = MAX(face_m_area_max, face_m_area[dir_idx]);
+          face_p_area_max = MAX(face_p_area_max, face_p_area[dir_idx]);
         }
 
-        face_p_area[dir_idx] = face_area_full[dir_idx] - face_m_area[dir_idx];
+
+        face_m_centroid_x[dir::f_m00] = fv_xmin - x_C; face_m_centroid_x[dir::f_p00] = fv_xmax - x_C;
+        face_p_centroid_x[dir::f_m00] = fv_xmin - x_C; face_p_centroid_x[dir::f_p00] = fv_xmax - x_C;
+        face_m_centroid_y[dir::f_0m0] = fv_ymin - y_C; face_m_centroid_y[dir::f_0p0] = fv_ymax - y_C;
+        face_p_centroid_y[dir::f_0m0] = fv_ymin - y_C; face_p_centroid_y[dir::f_0p0] = fv_ymax - y_C;
+#ifdef P4_TO_P8
+        face_m_centroid_z[dir::f_00m] = fv_zmin - z_C; face_m_centroid_z[dir::f_00p] = fv_zmax - z_C;
+        face_p_centroid_z[dir::f_00m] = fv_zmin - z_C; face_p_centroid_z[dir::f_00p] = fv_zmax - z_C;
+#endif
+
+        face_m_area_max /= face_area_scalling_;
+        face_p_area_max /= face_area_scalling_;
 
         if (use_sc_scheme_)
         {
-          if (face_p_area[dir_idx]/face_area_scalling_ > interface_rel_thresh_)
-          {
-            face_p_centroid_x[dir_idx] = face_center_x[dir_idx] - face_m_area[dir_idx]/face_p_area[dir_idx] * (face_m_centroid_x[dir_idx] - face_center_x[dir_idx]);
-            face_p_centroid_y[dir_idx] = face_center_y[dir_idx] - face_m_area[dir_idx]/face_p_area[dir_idx] * (face_m_centroid_y[dir_idx] - face_center_y[dir_idx]);
-#ifdef P4_TO_P8
-            face_p_centroid_z[dir_idx] = face_center_z[dir_idx] - face_m_area[dir_idx]/face_p_area[dir_idx] * (face_m_centroid_z[dir_idx] - face_center_z[dir_idx]);
-#endif
-          }
-          else
-          {
-            face_p_centroid_x[dir_idx] = face_center_x[dir_idx];
-            face_p_centroid_y[dir_idx] = face_center_y[dir_idx];
-#ifdef P4_TO_P8
-            face_p_centroid_z[dir_idx] = face_center_z[dir_idx];
-#endif
-          }
+          face_m_area_max = areas_m_ptr[n];
+          face_p_area_max = areas_p_ptr[n];
+
+          for (unsigned short idx = 0; idx < num_neighbors_cube_; ++idx)
+            if (neighbors_exist[idx])
+            {
+              neighbors_exist_p[idx] = neighbors_exist[idx] && (areas_p_ptr[neighbors[idx]] > interface_rel_thresh_);
+              neighbors_exist_m[idx] = neighbors_exist[idx] && (areas_m_ptr[neighbors[idx]] > interface_rel_thresh_);
+            }
+        } else {
+          for (unsigned short idx = 0; idx < num_neighbors_cube_; ++idx)
+            if (neighbors_exist[idx])
+            {
+              neighbors_exist_p[idx] = neighbors_exist[idx];
+              neighbors_exist_m[idx] = neighbors_exist[idx];
+            }
         }
 
-        face_m_area_max = MAX(face_m_area_max, face_m_area[dir_idx]);
-        face_p_area_max = MAX(face_p_area_max, face_p_area[dir_idx]);
-      }
-
-
-      face_m_centroid_x[dir::f_m00] = fv_xmin - x_C; face_m_centroid_x[dir::f_p00] = fv_xmax - x_C;
-      face_p_centroid_x[dir::f_m00] = fv_xmin - x_C; face_p_centroid_x[dir::f_p00] = fv_xmax - x_C;
-      face_m_centroid_y[dir::f_0m0] = fv_ymin - y_C; face_m_centroid_y[dir::f_0p0] = fv_ymax - y_C;
-      face_p_centroid_y[dir::f_0m0] = fv_ymin - y_C; face_p_centroid_y[dir::f_0p0] = fv_ymax - y_C;
-#ifdef P4_TO_P8
-      face_m_centroid_z[dir::f_00m] = fv_zmin - z_C; face_m_centroid_z[dir::f_00p] = fv_zmax - z_C;
-      face_p_centroid_z[dir::f_00m] = fv_zmin - z_C; face_p_centroid_z[dir::f_00p] = fv_zmax - z_C;
-#endif
-
-      face_m_area_max /= face_area_scalling_;
-      face_p_area_max /= face_area_scalling_;
-
-      if (use_sc_scheme_)
-      {
-        face_m_area_max = areas_m_ptr[n];
-        face_p_area_max = areas_p_ptr[n];
-
-        for (unsigned short idx = 0; idx < num_neighbors_cube_; ++idx)
-          if (neighbors_exist[idx])
-          {
-            neighbors_exist_p[idx] = neighbors_exist[idx] && (areas_p_ptr[neighbors[idx]] > interface_rel_thresh_);
-            neighbors_exist_m[idx] = neighbors_exist[idx] && (areas_m_ptr[neighbors[idx]] > interface_rel_thresh_);
-          }
-      } else {
-        for (unsigned short idx = 0; idx < num_neighbors_cube_; ++idx)
-          if (neighbors_exist[idx])
-          {
-            neighbors_exist_p[idx] = neighbors_exist[idx];
-            neighbors_exist_m[idx] = neighbors_exist[idx];
-          }
-      }
-
-      //---------------------------------------------------------------------
-      // contributions through cell faces
-      //---------------------------------------------------------------------
-      double w_m[num_neighbors_cube_] = { 0,0,0, 0,0,0, 0,0,0,
+        //---------------------------------------------------------------------
+        // contributions through cell faces
+        //---------------------------------------------------------------------
+        double w_m[num_neighbors_cube_] = { 0,0,0, 0,0,0, 0,0,0,
                                     #ifdef P4_TO_P8
-                                          0,0,0, 0,0,0, 0,0,0,
-                                          0,0,0, 0,0,0, 0,0,0
+                                            0,0,0, 0,0,0, 0,0,0,
+                                            0,0,0, 0,0,0, 0,0,0
                                     #endif
-                                        };
-      double w_p[num_neighbors_cube_] = { 0,0,0, 0,0,0, 0,0,0,
+                                          };
+        double w_p[num_neighbors_cube_] = { 0,0,0, 0,0,0, 0,0,0,
                                     #ifdef P4_TO_P8
-                                          0,0,0, 0,0,0, 0,0,0,
-                                          0,0,0, 0,0,0, 0,0,0
+                                            0,0,0, 0,0,0, 0,0,0,
+                                            0,0,0, 0,0,0, 0,0,0
                                     #endif
-                                        };
+                                          };
 
-      bool   neighbors_exist_face[num_neighbors_face_];
-      bool   map_face            [num_neighbors_face_];
-      double weights_face        [num_neighbors_face_];
+        bool   neighbors_exist_face[num_neighbors_face_];
+        bool   map_face            [num_neighbors_face_];
+        double weights_face        [num_neighbors_face_];
 
-      double theta = EPS;
+        double theta = EPS;
 
-      if (face_m_area_max < interface_rel_thresh_) { face_m_area_max = 0; volume_cut_cell_m = 0; }
-      if (face_p_area_max < interface_rel_thresh_) { face_p_area_max = 0; volume_cut_cell_p = 0; }
+        if (face_m_area_max < interface_rel_thresh_) { face_m_area_max = 0; volume_cut_cell_m = 0; }
+        if (face_p_area_max < interface_rel_thresh_) { face_p_area_max = 0; volume_cut_cell_p = 0; }
 
-      if (face_m_area_max < interface_rel_thresh_ &&
-          face_p_area_max < interface_rel_thresh_)
-        throw;
+        if (face_m_area_max < interface_rel_thresh_ &&
+            face_p_area_max < interface_rel_thresh_)
+          throw;
 
-//      w_m[nn_000] = 4;
-//      w_m[nn_m00] =-1;
-//      w_m[nn_p00] =-1;
-//      w_m[nn_0m0] =-1;
-//      w_m[nn_0p0] =-1;
-//      rhs_ptr[n] = sin(x_C)*cos(y_C);
-//      rhs_ptr[n] = dx_min_*dx_min_*rhs_p_ptr[n];
-      //*
-      for (unsigned short dom = 0; dom < 2; ++dom) // negative and positive domains
-      {
-        if (dom == 0 && face_m_area_max <= interface_rel_thresh_ ||
-            dom == 1 && face_p_area_max <= interface_rel_thresh_)
-          continue;
-
-        double *face_area = (dom == 0 ? face_m_area.data() : face_p_area.data());
-//        double *areas_ptr = (dom == 0 ? areas_m_ptr : areas_p_ptr);
-
-        double *face_centroid_x = (dom == 0 ? face_m_centroid_x.data() : face_p_centroid_x.data());
-        double *face_centroid_y = (dom == 0 ? face_m_centroid_y.data() : face_p_centroid_y.data());
-#ifdef P4_TO_P8
-        double *face_centroid_z = (dom == 0 ? face_m_centroid_z.data() : face_p_centroid_z.data());
-#endif
-
-        double *w = (dom == 0 ? w_m : w_p);
-
-        double mu_ = (dom == 0 ? mu_m_ : mu_p_);
-
-        double volume_cut_cell = (dom == 0 ? volume_cut_cell_m : volume_cut_cell_p);
-
-        double *diag_add_ptr = (dom == 0 ? diag_add_m_ptr : diag_add_p_ptr);
-
-        my_p4est_interpolation_nodes_local_t *mu_interp = (dom == 0 ? &mu_m_interp : &mu_p_interp);
-
-        for (unsigned short dim = 0; dim < P4EST_DIM; ++dim) // loop over all dimensions
+        //      w_m[nn_000] = 4;
+        //      w_m[nn_m00] =-1;
+        //      w_m[nn_p00] =-1;
+        //      w_m[nn_0m0] =-1;
+        //      w_m[nn_0p0] =-1;
+        //      rhs_ptr[n] = sin(x_C)*cos(y_C);
+        //      rhs_ptr[n] = dx_min_*dx_min_*rhs_p_ptr[n];
+        //*
+        for (unsigned short dom = 0; dom < 2; ++dom) // negative and positive domains
         {
-          for (unsigned short sign = 0; sign < 2; ++sign) // negative and positive directions
-          {
-            unsigned short dir = 2*dim + sign;
+          if (dom == 0 && face_m_area_max <= interface_rel_thresh_ ||
+              dom == 1 && face_p_area_max <= interface_rel_thresh_)
+            continue;
 
-            if (face_area[dir]/face_area_scalling_ > interface_rel_thresh_)
-            {
-              if (!neighbors_exist[f2c_p[dir][nnf_00]])
-              {
-                std::cout << "Warning: neighbor doesn't exist in the zp-direction."
-                          << " Own number: " << n
-                          << " Nei number: " << neighbors[f2c_p[dir][nnf_00]]
-//                          << " Own area: " << areas_ptr[neighbors[f2c_m[dir][nnf_00]]]
-//                          << " Nei area: " << areas_ptr[neighbors[f2c_p[dir][nnf_00]]]
-                          << " Face Area:" << face_area[dir]/face_area_scalling_ << "\n";
-              }
-              else
-              {
+          double *face_area = (dom == 0 ? face_m_area.data() : face_p_area.data());
+          //        double *areas_ptr = (dom == 0 ? areas_m_ptr : areas_p_ptr);
+
+          double *face_centroid_x = (dom == 0 ? face_m_centroid_x.data() : face_p_centroid_x.data());
+          double *face_centroid_y = (dom == 0 ? face_m_centroid_y.data() : face_p_centroid_y.data());
 #ifdef P4_TO_P8
-                double face_centroid_xyz_gl[P4EST_DIM] = { x_C + face_centroid_x[dir],
-                                                           y_C + face_centroid_y[dir],
-                                                           z_C + face_centroid_z[dir] };
-#else
-                double face_centroid_xyz_gl[P4EST_DIM] = { x_C + face_centroid_x[dir],
-                                                           y_C + face_centroid_y[dir] };
+          double *face_centroid_z = (dom == 0 ? face_m_centroid_z.data() : face_p_centroid_z.data());
 #endif
-                double mu_val = variable_mu_ ? mu_interp->value(face_centroid_xyz_gl) : mu_;
 
-                double flux = mu_val * face_area[dir] / dxyz_m_[dim];
+          double *w = (dom == 0 ? w_m : w_p);
 
-                if (!use_sc_scheme_)
+          double mu_ = (dom == 0 ? mu_m_ : mu_p_);
+
+          double volume_cut_cell = (dom == 0 ? volume_cut_cell_m : volume_cut_cell_p);
+
+          double *diag_add_ptr = (dom == 0 ? diag_add_m_ptr : diag_add_p_ptr);
+
+          my_p4est_interpolation_nodes_local_t *mu_interp = (dom == 0 ? &mu_m_interp : &mu_p_interp);
+
+          for (unsigned short dim = 0; dim < P4EST_DIM; ++dim) // loop over all dimensions
+          {
+            for (unsigned short sign = 0; sign < 2; ++sign) // negative and positive directions
+            {
+              unsigned short dir = 2*dim + sign;
+
+              if (face_area[dir]/face_area_scalling_ > interface_rel_thresh_)
+              {
+                if (!neighbors_exist[f2c_p[dir][nnf_00]])
                 {
-                  w[f2c_m[dir][nnf_00]] += flux;
-                  w[f2c_p[dir][nnf_00]] -= flux;
+                  std::cout << "Warning: neighbor doesn't exist in the zp-direction."
+                            << " Own number: " << n
+                            << " Nei number: " << neighbors[f2c_p[dir][nnf_00]]
+                               //                          << " Own area: " << areas_ptr[neighbors[f2c_m[dir][nnf_00]]]
+                               //                          << " Nei area: " << areas_ptr[neighbors[f2c_p[dir][nnf_00]]]
+                            << " Face Area:" << face_area[dir]/face_area_scalling_ << "\n";
                 }
                 else
                 {
-                  for (unsigned short nn = 0; nn < num_neighbors_face_; ++nn)
-                    neighbors_exist_face[nn] = neighbors_exist[f2c_m[dir][nn]] && neighbors_exist[f2c_p[dir][nn]];
+#ifdef P4_TO_P8
+                  double face_centroid_xyz_gl[P4EST_DIM] = { x_C + face_centroid_x[dir],
+                                                             y_C + face_centroid_y[dir],
+                                                             z_C + face_centroid_z[dir] };
+#else
+                  double face_centroid_xyz_gl[P4EST_DIM] = { x_C + face_centroid_x[dir],
+                                                             y_C + face_centroid_y[dir] };
+#endif
+                  double mu_val = variable_mu_ ? mu_interp->value(face_centroid_xyz_gl) : mu_;
+
+                  double flux = mu_val * face_area[dir] / dxyz_m_[dim];
+
+                  if (!use_sc_scheme_)
+                  {
+                    w[f2c_m[dir][nnf_00]] += flux;
+                    w[f2c_p[dir][nnf_00]] -= flux;
+                  }
+                  else
+                  {
+                    for (unsigned short nn = 0; nn < num_neighbors_face_; ++nn)
+                      neighbors_exist_face[nn] = neighbors_exist[f2c_m[dir][nn]] && neighbors_exist[f2c_p[dir][nn]];
 
 #ifdef P4_TO_P8
-                  double centroid_xyz[] = { face_centroid_x[dir]/dx_min_,
-                                            face_centroid_y[dir]/dy_min_,
-                                            face_centroid_z[dir]/dz_min_ };
-                  double mask_result = compute_weights_through_face(centroid_xyz[j_idx[dim]], centroid_xyz[k_idx[dim]], neighbors_exist_face, weights_face, theta, map_face);
+                    double centroid_xyz[] = { face_centroid_x[dir]/dx_min_,
+                                              face_centroid_y[dir]/dy_min_,
+                                              face_centroid_z[dir]/dz_min_ };
+                    double mask_result = compute_weights_through_face(centroid_xyz[j_idx[dim]], centroid_xyz[k_idx[dim]], neighbors_exist_face, weights_face, theta, map_face);
 #else
-                  double centroid_xyz[] = { face_centroid_x[dir]/dx_min_,
-                                            face_centroid_y[dir]/dy_min_};
-                  double mask_result = compute_weights_through_face(centroid_xyz[j_idx[dim]], neighbors_exist_face, weights_face, theta, map_face);
+                    double centroid_xyz[] = { face_centroid_x[dir]/dx_min_,
+                                              face_centroid_y[dir]/dy_min_};
+                    double mask_result = compute_weights_through_face(centroid_xyz[j_idx[dim]], neighbors_exist_face, weights_face, theta, map_face);
 #endif
 
-                  //            if (setup_matrix) mask_p[n] = MAX(mask_p[n], mask_result);
+                    //            if (setup_matrix) mask_p[n] = MAX(mask_p[n], mask_result);
 
-                  for (unsigned short nn = 0; nn < num_neighbors_face_; ++nn)
+                    for (unsigned short nn = 0; nn < num_neighbors_face_; ++nn)
+                    {
+                      if (map_face[nn]) { w[f2c_m[dir][nn]] += weights_face[nn] * flux;   w[f2c_p[dir][nn]] -= weights_face[nn] * flux; }
+                    }
+                  }
+
+                }
+              }
+            }
+          }
+
+          w[nn_000] += diag_add_ptr[n]*volume_cut_cell;
+        }
+        //*/
+
+
+        // put values into matrices
+        for (unsigned short i = 0; i < num_neighbors_cube_; ++i)
+        {
+          if (neighbors_exist[i])
+          {
+            PetscInt node_nei_g = petsc_gloidx_[neighbors[i]];
+            if (ii_phi_eff_p[neighbors[i]] < 0)
+            {
+              if (neighbors_exist_m[i] && fabs(w_m[i]) > EPS)
+              {
+                if (w_m[i] != w_m[i]) throw std::domain_error("Matrix element is nan\n");
+                ent.n = node_nei_g;
+                ent.val = w_m[i];
+                row->push_back(ent);
+                ( neighbors[i] < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++;
+              }
+              if (neighbors_exist_p[i] && fabs(w_p[i]) > EPS)
+              {
+                if (w_p[i] != w_p[i]) throw std::domain_error("Matrix element is nan\n");
+                ent.n = node_nei_g;
+                ent.val = w_p[i];
+                row_B->push_back(ent);
+                ( neighbors[i] < num_owned_local ) ? B_d_nnz[n]++ : B_o_nnz[n]++;
+              }
+            }
+            else
+            {
+              if (neighbors_exist_m[i] && fabs(w_m[i]) > EPS)
+              {
+                if (w_m[i] != w_m[i]) throw std::domain_error("Matrix element is nan\n");
+                ent.n = node_nei_g;
+                ent.val = w_m[i];
+                row_B->push_back(ent);
+                ( neighbors[i] < num_owned_local ) ? B_d_nnz[n]++ : B_o_nnz[n]++;
+              }
+              if (neighbors_exist_p[i] && fabs(w_p[i]) > EPS)
+              {
+                if (w_p[i] != w_p[i]) throw std::domain_error("Matrix element is nan\n");
+                ent.n = node_nei_g;
+                ent.val = w_p[i];
+                row->push_back(ent);
+                ( neighbors[i] < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++;
+              }
+            }
+          }
+        }
+
+        // express values at ghost cells using values at real cells
+        if (face_p_area_max > interface_rel_thresh_ &&
+            face_m_area_max > interface_rel_thresh_)
+        {
+          std::vector<double> w_ghosts(num_neighbors_cube_, 0);
+
+          double normal[P4EST_DIM];
+
+          // compute projection point
+          find_projection_(ii_phi_p[0], qnnn, dxyz_pr, dist, normal);
+
+          for (unsigned short i_dim = 0; i_dim < P4EST_DIM; i_dim++)
+            xyz_pr[i_dim] = xyz_C[i_dim] + dxyz_pr[i_dim];
+
+          xyz_pr[0] = MIN(xyz_pr[0], interp_xmax); xyz_pr[0] = MAX(xyz_pr[0], interp_xmin);
+          xyz_pr[1] = MIN(xyz_pr[1], interp_ymax); xyz_pr[1] = MAX(xyz_pr[1], interp_ymin);
+#ifdef P4_TO_P8
+          xyz_pr[2] = MIN(xyz_pr[2], interp_zmax); xyz_pr[2] = MAX(xyz_pr[2], interp_zmin);
+#endif
+
+          // sample values at the projection point
+          double mu_m_proj = variable_mu_ ? mu_m_interp.value(xyz_pr) : mu_m_;
+          double mu_p_proj = variable_mu_ ? mu_p_interp.value(xyz_pr) : mu_p_;
+          double flux_proj = jump_flux_->at(0)->value(xyz_pr);
+
+          // count numbers of neighbors in negative and positive domains
+          unsigned short num_neg = 0;
+          unsigned short num_pos = 0;
+          for (unsigned short nei = 0; nei < num_neighbors_cube_; ++nei)
+            if (neighbors_exist[nei] && nei != nn_000)
+            {
+              if (ii_phi_eff_p[neighbors[nei]] < 0) num_neg++;
+              else                                  num_pos++;
+            }
+
+          // determine which side to use based on values of diffucion coefficients and neighbors' availability
+          double sign_to_use;
+
+          if (mu_m_proj < mu_p_proj)
+          {
+            if (num_neg >= P4EST_DIM && face_m_area_max > 0.01) sign_to_use = -1;
+            else                        sign_to_use =  1;
+          } else {
+            if (num_pos >= P4EST_DIM && face_p_area_max > 0.01) sign_to_use =  1;
+            else                        sign_to_use = -1;
+          }
+
+          // linear system
+          char num_constraints = num_neighbors_cube_;
+
+          //        double gamma = 3.*log(10.);
+          double gamma = 0;
+
+          std::vector<double> weight(num_constraints, 0);
+          std::vector<double> col_1st(num_constraints, 0);
+          std::vector<double> col_2nd(num_constraints, 0);
+          std::vector<double> col_3rd(num_constraints, 0);
+#ifdef P4_TO_P8
+          std::vector<double> col_4th(num_constraints, 0);
+#endif
+
+#ifdef P4_TO_P8
+          for (char k = 0; k < 3; ++k)
+#endif
+            for (char j = 0; j < 3; ++j)
+              for (char i = 0; i < 3; ++i)
+              {
+#ifdef P4_TO_P8
+                char idx = 9*k+3*j+i;
+#else
+                char idx = 3*j+i;
+#endif
+                col_1st[idx] = 1.;
+                col_2nd[idx] = ((double) (i-1)) * dxyz_m_[0];
+                col_3rd[idx] = ((double) (j-1)) * dxyz_m_[1];
+#ifdef P4_TO_P8
+                col_4th[idx] = ((double) (k-1)) * dxyz_m_[2];
+#endif
+
+                if (neighbors_exist[idx])
+                {
+                  if (ii_phi_eff_p[neighbors[idx]]*sign_to_use > 0 || idx == nn_000)
                   {
-                    if (map_face[nn]) { w[f2c_m[dir][nn]] += weights_face[nn] * flux;   w[f2c_p[dir][nn]] -= weights_face[nn] * flux; }
+                    weight[idx] = exp(-gamma*(SQR((x_C+col_2nd[idx]-xyz_pr[0])/dx_min_) +
+                  #ifdef P4_TO_P8
+                                      SQR((z_C+col_4th[idx]-xyz_pr[2])/dz_min_) +
+    #endif
+                        SQR((y_C+col_3rd[idx]-xyz_pr[1])/dy_min_)));
+                    if (idx == nn_000) weight[idx] = 10;
                   }
                 }
-
               }
-            }
-          }
-        }
-
-        w[nn_000] += diag_add_ptr[n]*volume_cut_cell;
-      }
-      //*/
 
 
-      // put values into matrices
-      for (unsigned short i = 0; i < num_neighbors_cube_; ++i)
-      {
-        if (neighbors_exist[i])
-        {
-          PetscInt node_nei_g = petsc_gloidx_[neighbors[i]];
-          if (ii_phi_eff_p[neighbors[i]] < 0)
-          {
-            if (neighbors_exist_m[i] && fabs(w_m[i]) > EPS)
-            {
-              if (w_m[i] != w_m[i]) throw std::domain_error("Matrix element is nan\n");
-              ent.n = node_nei_g;
-              ent.val = w_m[i];
-              row->push_back(ent);
-              ( neighbors[i] < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++;
-            }
-            if (neighbors_exist_p[i] && fabs(w_p[i]) > EPS)
-            {
-              if (w_p[i] != w_p[i]) throw std::domain_error("Matrix element is nan\n");
-              ent.n = node_nei_g;
-              ent.val = w_p[i];
-              row_B->push_back(ent);
-              ( neighbors[i] < num_owned_local ) ? B_d_nnz[n]++ : B_o_nnz[n]++;
-            }
-          }
-          else
-          {
-            if (neighbors_exist_m[i] && fabs(w_m[i]) > EPS)
-            {
-              if (w_m[i] != w_m[i]) throw std::domain_error("Matrix element is nan\n");
-              ent.n = node_nei_g;
-              ent.val = w_m[i];
-              row_B->push_back(ent);
-              ( neighbors[i] < num_owned_local ) ? B_d_nnz[n]++ : B_o_nnz[n]++;
-            }
-            if (neighbors_exist_p[i] && fabs(w_p[i]) > EPS)
-            {
-              if (w_p[i] != w_p[i]) throw std::domain_error("Matrix element is nan\n");
-              ent.n = node_nei_g;
-              ent.val = w_p[i];
-              row->push_back(ent);
-              ( neighbors[i] < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++;
-            }
-          }
-        }
-      }
+          // assemble and invert matrix
+          unsigned short A_size = (P4EST_DIM+1);
+          double A[(P4EST_DIM+1)*(P4EST_DIM+1)];
+          double A_inv[(P4EST_DIM+1)*(P4EST_DIM+1)];
 
-      // express values at ghost cells using values at real cells
-      if (face_p_area_max > interface_rel_thresh_ &&
-          face_m_area_max > interface_rel_thresh_)
-      {
-        std::vector<double> w_ghosts(num_neighbors_cube_, 0);
-
-        double normal[P4EST_DIM];
-
-        // compute projection point
-        find_projection_(ii_phi_p[0], qnnn, dxyz_pr, dist, normal);
-
-        for (unsigned short i_dim = 0; i_dim < P4EST_DIM; i_dim++)
-          xyz_pr[i_dim] = xyz_C[i_dim] + dxyz_pr[i_dim];
-
-        xyz_pr[0] = MIN(xyz_pr[0], interp_xmax); xyz_pr[0] = MAX(xyz_pr[0], interp_xmin);
-        xyz_pr[1] = MIN(xyz_pr[1], interp_ymax); xyz_pr[1] = MAX(xyz_pr[1], interp_ymin);
+          A[0*A_size + 0] = 0;
+          A[0*A_size + 1] = 0;
+          A[0*A_size + 2] = 0;
+          A[1*A_size + 1] = 0;
+          A[1*A_size + 2] = 0;
+          A[2*A_size + 2] = 0;
 #ifdef P4_TO_P8
-        xyz_pr[2] = MIN(xyz_pr[2], interp_zmax); xyz_pr[2] = MAX(xyz_pr[2], interp_zmin);
+          A[0*A_size + 3] = 0;
+          A[1*A_size + 3] = 0;
+          A[2*A_size + 3] = 0;
+          A[3*A_size + 3] = 0;
 #endif
 
-        // sample values at the projection point
-        double mu_m_proj = variable_mu_ ? mu_m_interp.value(xyz_pr) : mu_m_;
-        double mu_p_proj = variable_mu_ ? mu_p_interp.value(xyz_pr) : mu_p_;
-        double flux_proj = jump_flux_->at(0)->value(xyz_pr);
-
-        // count numbers of neighbors in negative and positive domains
-        unsigned short num_neg = 0;
-        unsigned short num_pos = 0;
-        for (unsigned short nei = 0; nei < num_neighbors_cube_; ++nei)
-          if (neighbors_exist[nei] && nei != nn_000)
+          for (unsigned short nei = 0; nei < num_constraints; ++nei)
           {
-            if (ii_phi_eff_p[neighbors[nei]] < 0) num_neg++;
-            else                                  num_pos++;
+            A[0*A_size + 0] += col_1st[nei]*col_1st[nei]*weight[nei];
+            A[0*A_size + 1] += col_1st[nei]*col_2nd[nei]*weight[nei];
+            A[0*A_size + 2] += col_1st[nei]*col_3rd[nei]*weight[nei];
+            A[1*A_size + 1] += col_2nd[nei]*col_2nd[nei]*weight[nei];
+            A[1*A_size + 2] += col_2nd[nei]*col_3rd[nei]*weight[nei];
+            A[2*A_size + 2] += col_3rd[nei]*col_3rd[nei]*weight[nei];
+#ifdef P4_TO_P8
+            A[0*A_size + 3] += col_1st[nei]*col_4th[nei]*weight[nei];
+            A[1*A_size + 3] += col_2nd[nei]*col_4th[nei]*weight[nei];
+            A[2*A_size + 3] += col_3rd[nei]*col_4th[nei]*weight[nei];
+            A[3*A_size + 3] += col_4th[nei]*col_4th[nei]*weight[nei];
+#endif
           }
 
-        // determine which side to use based on values of diffucion coefficients and neighbors' availability
-        double sign_to_use;
-
-        if (mu_m_proj < mu_p_proj)
-        {
-          if (num_neg >= P4EST_DIM-1 && face_m_area_max > 0.01) sign_to_use = -1;
-          else                        sign_to_use =  1;
-        } else {
-          if (num_pos >= P4EST_DIM-1 && face_p_area_max > 0.01) sign_to_use =  1;
-          else                        sign_to_use = -1;
-        }
-
-        // linear system
-        char num_constraints = num_neighbors_cube_;
-
-//        double gamma = 3.*log(10.);
-        double gamma = 0;
-
-        std::vector<double> weight(num_constraints, 0);
-        std::vector<double> col_1st(num_constraints, 0);
-        std::vector<double> col_2nd(num_constraints, 0);
-        std::vector<double> col_3rd(num_constraints, 0);
+          A[1*A_size + 0] = A[0*A_size + 1];
+          A[2*A_size + 0] = A[0*A_size + 2];
+          A[2*A_size + 1] = A[1*A_size + 2];
 #ifdef P4_TO_P8
-        std::vector<double> col_4th(num_constraints, 0);
+          A[3*A_size + 0] = A[0*A_size + 3];
+          A[3*A_size + 1] = A[1*A_size + 3];
+          A[3*A_size + 2] = A[2*A_size + 3];
 #endif
 
 #ifdef P4_TO_P8
-        for (char k = 0; k < 3; ++k)
-#endif
-          for (char j = 0; j < 3; ++j)
-            for (char i = 0; i < 3; ++i)
-            {
-#ifdef P4_TO_P8
-              char idx = 9*k+3*j+i;
+          if (!inv_mat4(A, A_inv)) throw std::domain_error("Error: singular LSQR matrix\n");
 #else
-              char idx = 3*j+i;
+          if (!inv_mat3(A, A_inv)) throw std::domain_error("Error: singular LSQR matrix\n");
 #endif
-              col_1st[idx] = 1.;
-              col_2nd[idx] = ((double) (i-1)) * dxyz_m_[0];
-              col_3rd[idx] = ((double) (j-1)) * dxyz_m_[1];
+
+          // compute Taylor expansion coefficients
+          std::vector<double> coeff_const_term(num_constraints, 0);
+          std::vector<double> coeff_x_term    (num_constraints, 0);
+          std::vector<double> coeff_y_term    (num_constraints, 0);
 #ifdef P4_TO_P8
-              col_4th[idx] = ((double) (k-1)) * dxyz_m_[2];
+          std::vector<double> coeff_z_term    (num_constraints, 0);
 #endif
 
-              if (neighbors_exist[idx])
-              {
-                if (ii_phi_eff_p[neighbors[idx]]*sign_to_use > 0 || idx == nn_000)
-                {
-                  weight[idx] = exp(-gamma*(SQR((x_C+col_2nd[idx]-xyz_pr[0])/dx_min_) +
-                  #ifdef P4_TO_P8
-                                    SQR((z_C+col_4th[idx]-xyz_pr[2])/dz_min_) +
-    #endif
-                      SQR((y_C+col_3rd[idx]-xyz_pr[1])/dy_min_)));
-                  if (idx == nn_000) weight[idx] = 10;
-                }
-              }
-            }
-
-
-        // assemble and invert matrix
-        unsigned short A_size = (P4EST_DIM+1);
-        double A[(P4EST_DIM+1)*(P4EST_DIM+1)];
-        double A_inv[(P4EST_DIM+1)*(P4EST_DIM+1)];
-
-        A[0*A_size + 0] = 0;
-        A[0*A_size + 1] = 0;
-        A[0*A_size + 2] = 0;
-        A[1*A_size + 1] = 0;
-        A[1*A_size + 2] = 0;
-        A[2*A_size + 2] = 0;
-#ifdef P4_TO_P8
-        A[0*A_size + 3] = 0;
-        A[1*A_size + 3] = 0;
-        A[2*A_size + 3] = 0;
-        A[3*A_size + 3] = 0;
-#endif
-
-        for (unsigned short nei = 0; nei < num_constraints; ++nei)
-        {
-          A[0*A_size + 0] += col_1st[nei]*col_1st[nei]*weight[nei];
-          A[0*A_size + 1] += col_1st[nei]*col_2nd[nei]*weight[nei];
-          A[0*A_size + 2] += col_1st[nei]*col_3rd[nei]*weight[nei];
-          A[1*A_size + 1] += col_2nd[nei]*col_2nd[nei]*weight[nei];
-          A[1*A_size + 2] += col_2nd[nei]*col_3rd[nei]*weight[nei];
-          A[2*A_size + 2] += col_3rd[nei]*col_3rd[nei]*weight[nei];
-#ifdef P4_TO_P8
-          A[0*A_size + 3] += col_1st[nei]*col_4th[nei]*weight[nei];
-          A[1*A_size + 3] += col_2nd[nei]*col_4th[nei]*weight[nei];
-          A[2*A_size + 3] += col_3rd[nei]*col_4th[nei]*weight[nei];
-          A[3*A_size + 3] += col_4th[nei]*col_4th[nei]*weight[nei];
-#endif
-        }
-
-        A[1*A_size + 0] = A[0*A_size + 1];
-        A[2*A_size + 0] = A[0*A_size + 2];
-        A[2*A_size + 1] = A[1*A_size + 2];
-#ifdef P4_TO_P8
-        A[3*A_size + 0] = A[0*A_size + 3];
-        A[3*A_size + 1] = A[1*A_size + 3];
-        A[3*A_size + 2] = A[2*A_size + 3];
-#endif
-
-#ifdef P4_TO_P8
-        if (!inv_mat4(A, A_inv)) throw;
-#else
-        if (!inv_mat3(A, A_inv)) throw;
-#endif
-
-        // compute Taylor expansion coefficients
-        std::vector<double> coeff_const_term(num_constraints, 0);
-        std::vector<double> coeff_x_term    (num_constraints, 0);
-        std::vector<double> coeff_y_term    (num_constraints, 0);
-#ifdef P4_TO_P8
-        std::vector<double> coeff_z_term    (num_constraints, 0);
-#endif
-
-        for (unsigned short nei = 0; nei < num_constraints; ++nei)
-        {
-#ifdef P4_TO_P8
-          coeff_const_term[nei] = weight[nei]*
-              ( A_inv[0*A_size+0]*col_1st[nei]
-              + A_inv[0*A_size+1]*col_2nd[nei]
-              + A_inv[0*A_size+2]*col_3rd[nei]
-              + A_inv[0*A_size+3]*col_4th[nei] );
-
-          coeff_x_term[nei] = weight[nei]*
-              ( A_inv[1*A_size+0]*col_1st[nei]
-              + A_inv[1*A_size+1]*col_2nd[nei]
-              + A_inv[1*A_size+2]*col_3rd[nei]
-              + A_inv[1*A_size+3]*col_4th[nei] );
-
-          coeff_y_term[nei] = weight[nei]*
-              ( A_inv[2*A_size+0]*col_1st[nei]
-              + A_inv[2*A_size+1]*col_2nd[nei]
-              + A_inv[2*A_size+2]*col_3rd[nei]
-              + A_inv[2*A_size+3]*col_4th[nei] );
-
-          coeff_z_term[nei] = weight[nei]*
-              ( A_inv[3*A_size+0]*col_1st[nei]
-              + A_inv[3*A_size+1]*col_2nd[nei]
-              + A_inv[3*A_size+2]*col_3rd[nei]
-              + A_inv[3*A_size+3]*col_4th[nei] );
-#else
-          coeff_const_term[nei] = weight[nei]*
-              ( A_inv[0*A_size+0]*col_1st[nei]
-              + A_inv[0*A_size+1]*col_2nd[nei]
-              + A_inv[0*A_size+2]*col_3rd[nei] );
-
-          coeff_x_term[nei] = weight[nei]*
-              ( A_inv[1*A_size+0]*col_1st[nei]
-              + A_inv[1*A_size+1]*col_2nd[nei]
-              + A_inv[1*A_size+2]*col_3rd[nei] );
-
-          coeff_y_term[nei] = weight[nei]*
-              ( A_inv[2*A_size+0]*col_1st[nei]
-              + A_inv[2*A_size+1]*col_2nd[nei]
-              + A_inv[2*A_size+2]*col_3rd[nei] );
-#endif
-        }
-
-//        xyz_pr[0] = MIN(xyz_pr[0], fv_xmax); xyz_pr[0] = MAX(xyz_pr[0], fv_xmin);
-//        xyz_pr[1] = MIN(xyz_pr[1], fv_ymax); xyz_pr[1] = MAX(xyz_pr[1], fv_ymin);
-//  #ifdef P4_TO_P8
-//        xyz_pr[2] = MIN(xyz_pr[2], fv_zmax); xyz_pr[2] = MAX(xyz_pr[2], fv_zmin);
-//  #endif
-
-
-        double sign = ii_phi_eff_p[n] < 0 ? 1 : -1;
-
-        rhs_add_ptr[n] = sign*jump_value_->value(xyz_pr);
-        w_ghosts[nn_000] = 1;
-
-        double scaling = 1;
-
-        if (sign_to_use < 0)
-        {
-          for (unsigned short nei = 0; nei < num_neighbors_cube_; ++nei)
+          for (unsigned short nei = 0; nei < num_constraints; ++nei)
           {
-            if (nei != nn_000)
-            w_ghosts[nei] += sign*dist*(mu_m_proj/mu_p_proj - 1.)*(coeff_x_term[nei]*normal[0]
+#ifdef P4_TO_P8
+            coeff_const_term[nei] = weight[nei]*
+                ( A_inv[0*A_size+0]*col_1st[nei]
+                + A_inv[0*A_size+1]*col_2nd[nei]
+                + A_inv[0*A_size+2]*col_3rd[nei]
+                + A_inv[0*A_size+3]*col_4th[nei] );
+
+            coeff_x_term[nei] = weight[nei]*
+                ( A_inv[1*A_size+0]*col_1st[nei]
+                + A_inv[1*A_size+1]*col_2nd[nei]
+                + A_inv[1*A_size+2]*col_3rd[nei]
+                + A_inv[1*A_size+3]*col_4th[nei] );
+
+            coeff_y_term[nei] = weight[nei]*
+                ( A_inv[2*A_size+0]*col_1st[nei]
+                + A_inv[2*A_size+1]*col_2nd[nei]
+                + A_inv[2*A_size+2]*col_3rd[nei]
+                + A_inv[2*A_size+3]*col_4th[nei] );
+
+            coeff_z_term[nei] = weight[nei]*
+                ( A_inv[3*A_size+0]*col_1st[nei]
+                + A_inv[3*A_size+1]*col_2nd[nei]
+                + A_inv[3*A_size+2]*col_3rd[nei]
+                + A_inv[3*A_size+3]*col_4th[nei] );
+#else
+            coeff_const_term[nei] = weight[nei]*
+                ( A_inv[0*A_size+0]*col_1st[nei]
+                + A_inv[0*A_size+1]*col_2nd[nei]
+                + A_inv[0*A_size+2]*col_3rd[nei] );
+
+            coeff_x_term[nei] = weight[nei]*
+                ( A_inv[1*A_size+0]*col_1st[nei]
+                + A_inv[1*A_size+1]*col_2nd[nei]
+                + A_inv[1*A_size+2]*col_3rd[nei] );
+
+            coeff_y_term[nei] = weight[nei]*
+                ( A_inv[2*A_size+0]*col_1st[nei]
+                + A_inv[2*A_size+1]*col_2nd[nei]
+                + A_inv[2*A_size+2]*col_3rd[nei] );
+#endif
+          }
+
+          //        xyz_pr[0] = MIN(xyz_pr[0], fv_xmax); xyz_pr[0] = MAX(xyz_pr[0], fv_xmin);
+          //        xyz_pr[1] = MIN(xyz_pr[1], fv_ymax); xyz_pr[1] = MAX(xyz_pr[1], fv_ymin);
+          //  #ifdef P4_TO_P8
+          //        xyz_pr[2] = MIN(xyz_pr[2], fv_zmax); xyz_pr[2] = MAX(xyz_pr[2], fv_zmin);
+          //  #endif
+
+
+          double sign = ii_phi_eff_p[n] < 0 ? 1 : -1;
+
+          rhs_add_ptr[n] = sign*jump_value_->value(xyz_pr);
+          w_ghosts[nn_000] = 1;
+
+          double scaling = 1;
+
+          if (sign_to_use < 0)
+          {
+            for (unsigned short nei = 0; nei < num_neighbors_cube_; ++nei)
+            {
+              if (nei != nn_000)
+                w_ghosts[nei] += sign*dist*(mu_m_proj/mu_p_proj - 1.)*(coeff_x_term[nei]*normal[0]
     #ifdef P4_TO_P8
-                + coeff_z_term[nei]*normal[2]
+                    + coeff_z_term[nei]*normal[2]
     #endif
-                + coeff_y_term[nei]*normal[1]);
-          }
-          rhs_add_ptr[n] += sign*dist*flux_proj/mu_p_proj;
+                    + coeff_y_term[nei]*normal[1]);
+            }
+            rhs_add_ptr[n] += sign*dist*flux_proj/mu_p_proj;
 
-          double coeff_000 = sign*dist*(mu_m_proj/mu_p_proj - 1.)*(coeff_x_term[nn_000]*normal[0]
+            double coeff_000 = sign*dist*(mu_m_proj/mu_p_proj - 1.)*(coeff_x_term[nn_000]*normal[0]
     #ifdef P4_TO_P8
                 + coeff_z_term[nn_000]*normal[2]
     #endif
                 + coeff_y_term[nn_000]*normal[1]);
 
-          if (ii_phi_eff_p[n] > 0)
+            if (ii_phi_eff_p[n] > 0)
+            {
+              scaling = 1. - coeff_000;
+            } else {
+              w_ghosts[nn_000] += coeff_000;
+            }
+          }
+          else
           {
-            scaling = 1. - coeff_000;
+            for (unsigned short nei = 0; nei < num_neighbors_cube_; ++nei)
+            {
+              if (nei != nn_000)
+                w_ghosts[nei] += sign*dist*(1. - mu_p_proj/mu_m_proj)*(coeff_x_term[nei]*normal[0]
+    #ifdef P4_TO_P8
+                    + coeff_z_term[nei]*normal[2]
+    #endif
+                    + coeff_y_term[nei]*normal[1]);
+            }
+            rhs_add_ptr[n] += sign*dist*flux_proj/mu_m_proj;
+
+            double coeff_000 = sign*dist*(1. - mu_p_proj/mu_m_proj)*(coeff_x_term[nn_000]*normal[0]
+    #ifdef P4_TO_P8
+                + coeff_z_term[nn_000]*normal[2]
+    #endif
+                + coeff_y_term[nn_000]*normal[1]);
+
+            if (ii_phi_eff_p[n] < 0)
+            {
+              scaling = 1. - coeff_000;
+            } else {
+              w_ghosts[nn_000] += coeff_000;
+            }
+          }
+          for (unsigned short nei = 0; nei < num_neighbors_cube_; ++nei)
+          {
+            w_ghosts[nei] /= scaling;
+          }
+          rhs_add_ptr[n] /= scaling;
+
+          // put values into matrix
+          for (unsigned short i = 0; i < num_neighbors_cube_; ++i)
+            if (neighbors_exist[i] && fabs(w_ghosts[i]) > EPS)
+            {
+              PetscInt node_nei_g = petsc_gloidx_[neighbors[i]];
+              if (w_ghosts[i] != w_ghosts[i]) throw std::domain_error("Matrix element is nan\n");
+              ent.n = node_nei_g;
+              ent.val = w_ghosts[i];
+              row_C->push_back(ent);
+              ( neighbors[i] < num_owned_local ) ? C_d_nnz[n]++ : C_o_nnz[n]++;
+            }
+        }
+      }
+      else if (jump_scheme_ == 1)
+      {
+        interp_xmin = x_C - dx_min_; interp_xmax = x_C + dx_min_;
+        interp_ymin = y_C - dy_min_; interp_ymax = y_C + dy_min_;
+#ifdef P4_TO_P8
+        interp_zmin = z_C - dz_min_; interp_zmax = z_C + dz_min_;
+#endif
+
+        double w_000 = ii_phi_eff_000 < 0 ? diag_add_m_ptr[n] : diag_add_p_ptr[n];
+
+        if (variable_mu_)
+        {
+          if (ii_phi_eff_000 < 0)
+          {
+            mue_m00 = .5*(mue_m_ptr[neighbors[nn_m00]] + mue_m_ptr[n]);
+            mue_p00 = .5*(mue_m_ptr[neighbors[nn_p00]] + mue_m_ptr[n]);
+
+            mue_0m0 = .5*(mue_m_ptr[neighbors[nn_0m0]] + mue_m_ptr[n]);
+            mue_0p0 = .5*(mue_m_ptr[neighbors[nn_0p0]] + mue_m_ptr[n]);
+
+            mue_m00 = mu_m_interp(x_C - .5*dx_min_, y_C);
+            mue_p00 = mu_m_interp(x_C + .5*dx_min_, y_C);
+
+            mue_0m0 = mu_m_interp(x_C, y_C - .5*dy_min_);
+            mue_0p0 = mu_m_interp(x_C, y_C + .5*dy_min_);
+#ifdef P4_TO_P8
+            mue_00m = .5*(mue_m_ptr[neighbors[nn_00m]] + mue_m_ptr[n]);
+            mue_00p = .5*(mue_m_ptr[neighbors[nn_00p]] + mue_m_ptr[n]);
+#endif
           } else {
-            w_ghosts[nn_000] += coeff_000;
+            mue_m00 = .5*(mue_p_ptr[neighbors[nn_m00]] + mue_p_ptr[n]);
+            mue_p00 = .5*(mue_p_ptr[neighbors[nn_p00]] + mue_p_ptr[n]);
+
+            mue_0m0 = .5*(mue_p_ptr[neighbors[nn_0m0]] + mue_p_ptr[n]);
+            mue_0p0 = .5*(mue_p_ptr[neighbors[nn_0p0]] + mue_p_ptr[n]);
+
+            mue_m00 = mu_p_interp(x_C - .5*dx_min_, y_C);
+            mue_p00 = mu_p_interp(x_C + .5*dx_min_, y_C);
+
+            mue_0m0 = mu_p_interp(x_C, y_C - .5*dy_min_);
+            mue_0p0 = mu_p_interp(x_C, y_C + .5*dy_min_);
+#ifdef P4_TO_P8
+            mue_00m = .5*(mue_p_ptr[neighbors[nn_00m]] + mue_p_ptr[n]);
+            mue_00p = .5*(mue_p_ptr[neighbors[nn_00p]] + mue_p_ptr[n]);
+#endif
           }
         }
         else
         {
-          for (unsigned short nei = 0; nei < num_neighbors_cube_; ++nei)
+          if (ii_phi_eff_000 < 0)
           {
-            if (nei != nn_000)
-            w_ghosts[nei] += sign*dist*(1. - mu_p_proj/mu_m_proj)*(coeff_x_term[nei]*normal[0]
-    #ifdef P4_TO_P8
-                + coeff_z_term[nei]*normal[2]
-    #endif
-                + coeff_y_term[nei]*normal[1]);
-          }
-          rhs_add_ptr[n] += sign*dist*flux_proj/mu_m_proj;
+            mue_m00 = mu_m_;
+            mue_p00 = mu_m_;
 
-          double coeff_000 = sign*dist*(1. - mu_p_proj/mu_m_proj)*(coeff_x_term[nn_000]*normal[0]
+            mue_0m0 = mu_m_;
+            mue_0p0 = mu_m_;
+#ifdef P4_TO_P8
+            mue_00m = mu_m_;
+            mue_00p = mu_m_;
+#endif
+          } else {
+            mue_m00 = mu_p_;
+            mue_p00 = mu_p_;
+
+            mue_0m0 = mu_p_;
+            mue_0p0 = mu_p_;
+#ifdef P4_TO_P8
+            mue_00m = mu_p_;
+            mue_00p = mu_p_;
+#endif
+          }
+
+        }
+
+        double w_m00 = -mue_m00/dx_min_/dx_min_; w_000 -= w_m00;
+        double w_p00 = -mue_p00/dx_min_/dx_min_; w_000 -= w_p00;
+
+        double w_0m0 = -mue_0m0/dy_min_/dy_min_; w_000 -= w_0m0;
+        double w_0p0 = -mue_0p0/dy_min_/dy_min_; w_000 -= w_0p0;
+#ifdef P4_TO_P8
+        double w_00m = -mue_00m/dz_min_/dz_min_; w_000 -= w_00m;
+        double w_00p = -mue_00p/dz_min_/dz_min_; w_000 -= w_00p;
+#endif
+
+        ent.n = petsc_gloidx_[neighbors[nn_000]]; ent.val = w_000; row->push_back(ent);
+
+        ent.n = petsc_gloidx_[neighbors[nn_m00]]; ent.val = w_m00; if (ii_phi_eff_p[neighbors[nn_m00]]*ii_phi_eff_000 > 0 ) { row->push_back(ent); ( neighbors[nn_m00] < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++; } else { row_B->push_back(ent); ( neighbors[nn_m00] < num_owned_local ) ? B_d_nnz[n]++ : B_o_nnz[n]++; }
+        ent.n = petsc_gloidx_[neighbors[nn_p00]]; ent.val = w_p00; if (ii_phi_eff_p[neighbors[nn_p00]]*ii_phi_eff_000 > 0 ) { row->push_back(ent); ( neighbors[nn_p00] < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++; } else { row_B->push_back(ent); ( neighbors[nn_p00] < num_owned_local ) ? B_d_nnz[n]++ : B_o_nnz[n]++; }
+        ent.n = petsc_gloidx_[neighbors[nn_0m0]]; ent.val = w_0m0; if (ii_phi_eff_p[neighbors[nn_0m0]]*ii_phi_eff_000 > 0 ) { row->push_back(ent); ( neighbors[nn_0m0] < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++; } else { row_B->push_back(ent); ( neighbors[nn_0m0] < num_owned_local ) ? B_d_nnz[n]++ : B_o_nnz[n]++; }
+        ent.n = petsc_gloidx_[neighbors[nn_0p0]]; ent.val = w_0p0; if (ii_phi_eff_p[neighbors[nn_0p0]]*ii_phi_eff_000 > 0 ) { row->push_back(ent); ( neighbors[nn_0p0] < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++; } else { row_B->push_back(ent); ( neighbors[nn_0p0] < num_owned_local ) ? B_d_nnz[n]++ : B_o_nnz[n]++; }
+#ifdef P4_TO_P8
+        ent.n = petsc_gloidx_[neighbors[nn_00m]]; ent.val = w_00m; if (ii_phi_eff_p[neighbors[nn_00m]]*ii_phi_eff_000 > 0 ) { row->push_back(ent); ( neighbors[nn_00m] < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++; } else { row_B->push_back(ent); ( neighbors[nn_00m] < num_owned_local ) ? B_d_nnz[n]++ : B_o_nnz[n]++; }
+        ent.n = petsc_gloidx_[neighbors[nn_00p]]; ent.val = w_00p; if (ii_phi_eff_p[neighbors[nn_00p]]*ii_phi_eff_000 > 0 ) { row->push_back(ent); ( neighbors[nn_00p] < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++; } else { row_B->push_back(ent); ( neighbors[nn_00p] < num_owned_local ) ? B_d_nnz[n]++ : B_o_nnz[n]++; }
+#endif
+
+        if (setup_rhs)
+        {
+          rhs_ptr[n] = ii_phi_eff_000 < 0 ? rhs_m_ptr[n] : rhs_p_ptr[n];
+//          rhs_ptr[n] /= w_000;
+        }
+
+        bool is_ngbd_crossed = false;
+
+        is_ngbd_crossed = is_ngbd_crossed || (ii_phi_eff_p[neighbors[nn_m00]]*ii_phi_eff_000 < 0);
+        is_ngbd_crossed = is_ngbd_crossed || (ii_phi_eff_p[neighbors[nn_p00]]*ii_phi_eff_000 < 0);
+
+        is_ngbd_crossed = is_ngbd_crossed || (ii_phi_eff_p[neighbors[nn_0m0]]*ii_phi_eff_000 < 0);
+        is_ngbd_crossed = is_ngbd_crossed || (ii_phi_eff_p[neighbors[nn_0p0]]*ii_phi_eff_000 < 0);
+#ifdef P4_TO_P8
+        is_ngbd_crossed = is_ngbd_crossed || (ii_phi_eff_p[neighbors[nn_00m]]*ii_phi_eff_000 < 0);
+        is_ngbd_crossed = is_ngbd_crossed || (ii_phi_eff_p[neighbors[nn_00p]]*ii_phi_eff_000 < 0);
+#endif
+
+        // express values at ghost cells using values at real cells
+        if (is_ngbd_crossed)
+        {
+          std::vector<double> w_ghosts(num_neighbors_cube_, 0);
+
+          double normal[P4EST_DIM];
+
+          // compute projection point
+          find_projection_(ii_phi_p[0], qnnn, dxyz_pr, dist, normal);
+
+          for (unsigned short i_dim = 0; i_dim < P4EST_DIM; i_dim++)
+            xyz_pr[i_dim] = xyz_C[i_dim] + dxyz_pr[i_dim];
+
+          xyz_pr[0] = MIN(xyz_pr[0], interp_xmax); xyz_pr[0] = MAX(xyz_pr[0], interp_xmin);
+          xyz_pr[1] = MIN(xyz_pr[1], interp_ymax); xyz_pr[1] = MAX(xyz_pr[1], interp_ymin);
+#ifdef P4_TO_P8
+          xyz_pr[2] = MIN(xyz_pr[2], interp_zmax); xyz_pr[2] = MAX(xyz_pr[2], interp_zmin);
+#endif
+
+          // sample values at the projection point
+          double mu_m_proj = variable_mu_ ? mu_m_interp.value(xyz_pr) : mu_m_;
+          double mu_p_proj = variable_mu_ ? mu_p_interp.value(xyz_pr) : mu_p_;
+          double flux_proj = jump_flux_->at(0)->value(xyz_pr);
+
+          // count numbers of neighbors in negative and positive domains
+          unsigned short num_neg = 0;
+          unsigned short num_pos = 0;
+          for (unsigned short nei = 0; nei < num_neighbors_cube_; ++nei)
+            if (neighbors_exist[nei] && nei != nn_000)
+            {
+              if (ii_phi_eff_p[neighbors[nei]] < 0) num_neg++;
+              else                                  num_pos++;
+            }
+
+          // determine which side to use based on values of diffucion coefficients and neighbors' availability
+          double sign_to_use;
+
+          if (mu_m_proj < mu_p_proj)
+          {
+            if (num_neg >= P4EST_DIM) sign_to_use = -1;
+            else                      sign_to_use =  1;
+          } else {
+            if (num_pos >= P4EST_DIM) sign_to_use =  1;
+            else                      sign_to_use = -1;
+          }
+
+//          sign_to_use = (num_neg > num_pos) ? 1 : -1;
+
+          // linear system
+          char num_constraints = num_neighbors_cube_;
+
+          //        double gamma = 3.*log(10.);
+          double gamma = 0;
+
+          std::vector<double> weight(num_constraints, 0);
+          std::vector<double> col_1st(num_constraints, 0);
+          std::vector<double> col_2nd(num_constraints, 0);
+          std::vector<double> col_3rd(num_constraints, 0);
+#ifdef P4_TO_P8
+          std::vector<double> col_4th(num_constraints, 0);
+#endif
+
+#ifdef P4_TO_P8
+          for (char k = 0; k < 3; ++k)
+#endif
+            for (char j = 0; j < 3; ++j)
+              for (char i = 0; i < 3; ++i)
+              {
+#ifdef P4_TO_P8
+                char idx = 9*k+3*j+i;
+#else
+                char idx = 3*j+i;
+#endif
+                col_1st[idx] = 1.;
+                col_2nd[idx] = ((double) (i-1)) * dxyz_m_[0];
+                col_3rd[idx] = ((double) (j-1)) * dxyz_m_[1];
+#ifdef P4_TO_P8
+                col_4th[idx] = ((double) (k-1)) * dxyz_m_[2];
+#endif
+
+                if (neighbors_exist[idx])
+                {
+                  if (ii_phi_eff_p[neighbors[idx]]*sign_to_use > 0 || idx == nn_000)
+                  {
+                    weight[idx] = exp(-gamma*(SQR((x_C+col_2nd[idx]-xyz_pr[0])/dx_min_) +
+                  #ifdef P4_TO_P8
+                                      SQR((z_C+col_4th[idx]-xyz_pr[2])/dz_min_) +
+    #endif
+                        SQR((y_C+col_3rd[idx]-xyz_pr[1])/dy_min_)));
+                    if (idx == nn_000) weight[idx] = 10;
+                  }
+                }
+              }
+
+
+          // assemble and invert matrix
+          unsigned short A_size = (P4EST_DIM+1);
+          double A[(P4EST_DIM+1)*(P4EST_DIM+1)];
+          double A_inv[(P4EST_DIM+1)*(P4EST_DIM+1)];
+
+          A[0*A_size + 0] = 0;
+          A[0*A_size + 1] = 0;
+          A[0*A_size + 2] = 0;
+          A[1*A_size + 1] = 0;
+          A[1*A_size + 2] = 0;
+          A[2*A_size + 2] = 0;
+#ifdef P4_TO_P8
+          A[0*A_size + 3] = 0;
+          A[1*A_size + 3] = 0;
+          A[2*A_size + 3] = 0;
+          A[3*A_size + 3] = 0;
+#endif
+
+          for (unsigned short nei = 0; nei < num_constraints; ++nei)
+          {
+            A[0*A_size + 0] += col_1st[nei]*col_1st[nei]*weight[nei];
+            A[0*A_size + 1] += col_1st[nei]*col_2nd[nei]*weight[nei];
+            A[0*A_size + 2] += col_1st[nei]*col_3rd[nei]*weight[nei];
+            A[1*A_size + 1] += col_2nd[nei]*col_2nd[nei]*weight[nei];
+            A[1*A_size + 2] += col_2nd[nei]*col_3rd[nei]*weight[nei];
+            A[2*A_size + 2] += col_3rd[nei]*col_3rd[nei]*weight[nei];
+#ifdef P4_TO_P8
+            A[0*A_size + 3] += col_1st[nei]*col_4th[nei]*weight[nei];
+            A[1*A_size + 3] += col_2nd[nei]*col_4th[nei]*weight[nei];
+            A[2*A_size + 3] += col_3rd[nei]*col_4th[nei]*weight[nei];
+            A[3*A_size + 3] += col_4th[nei]*col_4th[nei]*weight[nei];
+#endif
+          }
+
+          A[1*A_size + 0] = A[0*A_size + 1];
+          A[2*A_size + 0] = A[0*A_size + 2];
+          A[2*A_size + 1] = A[1*A_size + 2];
+#ifdef P4_TO_P8
+          A[3*A_size + 0] = A[0*A_size + 3];
+          A[3*A_size + 1] = A[1*A_size + 3];
+          A[3*A_size + 2] = A[2*A_size + 3];
+#endif
+
+#ifdef P4_TO_P8
+          if (!inv_mat4(A, A_inv)) throw std::domain_error("Error: singular LSQR matrix\n");
+#else
+          if (!inv_mat3(A, A_inv)) throw std::domain_error("Error: singular LSQR matrix\n");
+#endif
+
+          // compute Taylor expansion coefficients
+          std::vector<double> coeff_const_term(num_constraints, 0);
+          std::vector<double> coeff_x_term    (num_constraints, 0);
+          std::vector<double> coeff_y_term    (num_constraints, 0);
+#ifdef P4_TO_P8
+          std::vector<double> coeff_z_term    (num_constraints, 0);
+#endif
+
+          for (unsigned short nei = 0; nei < num_constraints; ++nei)
+          {
+#ifdef P4_TO_P8
+            coeff_const_term[nei] = weight[nei]*
+                ( A_inv[0*A_size+0]*col_1st[nei]
+                + A_inv[0*A_size+1]*col_2nd[nei]
+                + A_inv[0*A_size+2]*col_3rd[nei]
+                + A_inv[0*A_size+3]*col_4th[nei] );
+
+            coeff_x_term[nei] = weight[nei]*
+                ( A_inv[1*A_size+0]*col_1st[nei]
+                + A_inv[1*A_size+1]*col_2nd[nei]
+                + A_inv[1*A_size+2]*col_3rd[nei]
+                + A_inv[1*A_size+3]*col_4th[nei] );
+
+            coeff_y_term[nei] = weight[nei]*
+                ( A_inv[2*A_size+0]*col_1st[nei]
+                + A_inv[2*A_size+1]*col_2nd[nei]
+                + A_inv[2*A_size+2]*col_3rd[nei]
+                + A_inv[2*A_size+3]*col_4th[nei] );
+
+            coeff_z_term[nei] = weight[nei]*
+                ( A_inv[3*A_size+0]*col_1st[nei]
+                + A_inv[3*A_size+1]*col_2nd[nei]
+                + A_inv[3*A_size+2]*col_3rd[nei]
+                + A_inv[3*A_size+3]*col_4th[nei] );
+#else
+            coeff_const_term[nei] = weight[nei]*
+                ( A_inv[0*A_size+0]*col_1st[nei]
+                + A_inv[0*A_size+1]*col_2nd[nei]
+                + A_inv[0*A_size+2]*col_3rd[nei] );
+
+            coeff_x_term[nei] = weight[nei]*
+                ( A_inv[1*A_size+0]*col_1st[nei]
+                + A_inv[1*A_size+1]*col_2nd[nei]
+                + A_inv[1*A_size+2]*col_3rd[nei] );
+
+            coeff_y_term[nei] = weight[nei]*
+                ( A_inv[2*A_size+0]*col_1st[nei]
+                + A_inv[2*A_size+1]*col_2nd[nei]
+                + A_inv[2*A_size+2]*col_3rd[nei] );
+#endif
+          }
+
+          //        xyz_pr[0] = MIN(xyz_pr[0], fv_xmax); xyz_pr[0] = MAX(xyz_pr[0], fv_xmin);
+          //        xyz_pr[1] = MIN(xyz_pr[1], fv_ymax); xyz_pr[1] = MAX(xyz_pr[1], fv_ymin);
+          //  #ifdef P4_TO_P8
+          //        xyz_pr[2] = MIN(xyz_pr[2], fv_zmax); xyz_pr[2] = MAX(xyz_pr[2], fv_zmin);
+          //  #endif
+
+
+          double sign = ii_phi_eff_p[n] < 0 ? 1 : -1;
+
+          rhs_add_ptr[n] = sign*jump_value_->value(xyz_pr);
+          w_ghosts[nn_000] = 1;
+
+          double scaling = 1;
+
+          if (sign_to_use < 0)
+          {
+            for (unsigned short nei = 0; nei < num_neighbors_cube_; ++nei)
+            {
+              if (nei != nn_000)
+                w_ghosts[nei] += sign*dist*(mu_m_proj/mu_p_proj - 1.)*(coeff_x_term[nei]*normal[0]
+    #ifdef P4_TO_P8
+                    + coeff_z_term[nei]*normal[2]
+    #endif
+                    + coeff_y_term[nei]*normal[1]);
+            }
+            rhs_add_ptr[n] += sign*dist*flux_proj/mu_p_proj;
+
+            double coeff_000 = sign*dist*(mu_m_proj/mu_p_proj - 1.)*(coeff_x_term[nn_000]*normal[0]
     #ifdef P4_TO_P8
                 + coeff_z_term[nn_000]*normal[2]
     #endif
                 + coeff_y_term[nn_000]*normal[1]);
 
-          if (ii_phi_eff_p[n] < 0)
-          {
-            scaling = 1. - coeff_000;
-          } else {
-            w_ghosts[nn_000] += coeff_000;
+            if (ii_phi_eff_p[n] > 0)
+            {
+              scaling = 1. - coeff_000;
+            } else {
+              w_ghosts[nn_000] += coeff_000;
+            }
           }
-        }
-        for (unsigned short nei = 0; nei < num_neighbors_cube_; ++nei)
-        {
-          w_ghosts[nei] /= scaling;
-        }
-        rhs_add_ptr[n] /= scaling;
+          else
+          {
+            for (unsigned short nei = 0; nei < num_neighbors_cube_; ++nei)
+            {
+              if (nei != nn_000)
+                w_ghosts[nei] += sign*dist*(1. - mu_p_proj/mu_m_proj)*(coeff_x_term[nei]*normal[0]
+    #ifdef P4_TO_P8
+                    + coeff_z_term[nei]*normal[2]
+    #endif
+                    + coeff_y_term[nei]*normal[1]);
+            }
+            rhs_add_ptr[n] += sign*dist*flux_proj/mu_m_proj;
 
-        // put values into matrix
-        for (unsigned short i = 0; i < num_neighbors_cube_; ++i)
-          if (neighbors_exist[i] && fabs(w_ghosts[i]) > EPS)
-          {
-            PetscInt node_nei_g = petsc_gloidx_[neighbors[i]];
-            if (w_ghosts[i] != w_ghosts[i]) throw std::domain_error("Matrix element is nan\n");
-            ent.n = node_nei_g;
-            ent.val = w_ghosts[i];
-            row_C->push_back(ent);
-            ( neighbors[i] < num_owned_local ) ? C_d_nnz[n]++ : C_o_nnz[n]++;
+            double coeff_000 = sign*dist*(1. - mu_p_proj/mu_m_proj)*(coeff_x_term[nn_000]*normal[0]
+    #ifdef P4_TO_P8
+                + coeff_z_term[nn_000]*normal[2]
+    #endif
+                + coeff_y_term[nn_000]*normal[1]);
+
+            if (ii_phi_eff_p[n] < 0)
+            {
+              scaling = 1. - coeff_000;
+            } else {
+              w_ghosts[nn_000] += coeff_000;
+            }
           }
+          for (unsigned short nei = 0; nei < num_neighbors_cube_; ++nei)
+          {
+            w_ghosts[nei] /= scaling;
+          }
+          rhs_add_ptr[n] /= scaling;
+
+          // put values into matrix
+          for (unsigned short i = 0; i < num_neighbors_cube_; ++i)
+            if (neighbors_exist[i] && fabs(w_ghosts[i]) > EPS)
+            {
+              PetscInt node_nei_g = petsc_gloidx_[neighbors[i]];
+              if (w_ghosts[i] != w_ghosts[i]) throw std::domain_error("Matrix element is nan\n");
+              ent.n = node_nei_g;
+              ent.val = w_ghosts[i];
+              row_C->push_back(ent);
+              ( neighbors[i] < num_owned_local ) ? C_d_nnz[n]++ : C_o_nnz[n]++;
+            }
+        }
       }
 
     }//*/
@@ -4540,6 +4941,8 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
     ierr = MatAssemblyBegin(A_, MAT_FINAL_ASSEMBLY); CHKERRXX(ierr);
     ierr = MatAssemblyEnd  (A_, MAT_FINAL_ASSEMBLY); CHKERRXX(ierr);
 
+    MPI_Allreduce(MPI_IN_PLACE, &interface_present, 1, MPI_LOGICAL, MPI_LOR, p4est_->mpicomm);
+
     if (interface_present)
     {
 #ifdef DO_NOT_PREALLOCATE
@@ -4574,10 +4977,11 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
         {
           ierr = MatSetValue(C, global_n_idx, C_row->at(m).n, C_row->at(m).val, ADD_VALUES); CHKERRXX(ierr);
         }
-        delete B_row;
-        delete C_row;
+//        delete B_row;
+//        delete C_row;
       }
 #endif
+//      std::cout << "Here\n";
       ierr = MatAssemblyBegin(B, MAT_FINAL_ASSEMBLY); CHKERRXX(ierr);
       ierr = MatAssemblyBegin(C, MAT_FINAL_ASSEMBLY); CHKERRXX(ierr);
       ierr = MatAssemblyEnd  (B, MAT_FINAL_ASSEMBLY); CHKERRXX(ierr);
@@ -4601,7 +5005,6 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
       ierr = MatDestroy(BC); CHKERRXX(ierr);
     }
   }
-
   for(int n=0; n<num_owned_local; ++n)
   {
     delete matrix_entries[n];
@@ -4609,25 +5012,25 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
     delete C_matrix_entries[n];
   }
 
-//  if (setup_matrix || setup_rhs)
-//  {
-//    Vec diagonal;
+  if (setup_matrix || setup_rhs)
+  {
+    Vec diagonal;
 
-//    ierr = VecDuplicate(rhs_, &diagonal); CHKERRXX(ierr);
-//    ierr = MatGetDiagonal(A_, diagonal); CHKERRXX(ierr);
+    ierr = VecDuplicate(rhs_, &diagonal); CHKERRXX(ierr);
+    ierr = MatGetDiagonal(A_, diagonal); CHKERRXX(ierr);
 
-//    double *diagonal_ptr;
-//    ierr = VecGetArray(diagonal, &diagonal_ptr); CHKERRXX(ierr);
-//    foreach_local_node(n, nodes_)
-//    {
-//      diagonal_ptr[n] = 1./diagonal_ptr[n];
-//    }
-//    ierr = VecRestoreArray(diagonal, &diagonal_ptr); CHKERRXX(ierr);
+    double *diagonal_ptr;
+    ierr = VecGetArray(diagonal, &diagonal_ptr); CHKERRXX(ierr);
+    foreach_local_node(n, nodes_)
+    {
+      diagonal_ptr[n] = 1./diagonal_ptr[n];
+    }
+    ierr = VecRestoreArray(diagonal, &diagonal_ptr); CHKERRXX(ierr);
 
-//    if (setup_matrix) { ierr = MatDiagonalScale(A_, diagonal, NULL); CHKERRXX(ierr); }
-//    if (setup_rhs)    { ierr = VecPointwiseMult(rhs_, rhs_, diagonal); CHKERRXX(ierr); }
-//    ierr = VecDestroy(diagonal); CHKERRXX(ierr);
-//  }
+    if (setup_matrix) { ierr = MatDiagonalScale(A_, diagonal, NULL); CHKERRXX(ierr); }
+    if (setup_rhs)    { ierr = VecPointwiseMult(rhs_, rhs_, diagonal); CHKERRXX(ierr); }
+    ierr = VecDestroy(diagonal); CHKERRXX(ierr);
+  }
 
 
 //  if (use_sc_scheme_)

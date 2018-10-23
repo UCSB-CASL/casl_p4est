@@ -79,6 +79,7 @@ public:
       case 3: return 1.e5*(1.+0.2*cos(x)+0.3*sin(y));
       case 4: return y*y*log(x+2.) + 4.;
       case 5: return exp(-y);
+      case 6: return 10;
     }
   }
 } mu_m_cf;
@@ -94,6 +95,7 @@ public:
       case 3: return -1.e5*.2*sin(x);
       case 4: return y*y/(x+2.);
       case 5: return 0;
+      case 6: return 0;
     }
   }
 } mux_m_cf;
@@ -109,6 +111,7 @@ public:
       case 3: return 1.e5*(0.3)*cos(y);
       case 4: return 2.*y*log(x+2.);
       case 5: return -exp(-y);
+      case 6: return 0;
     }
   }
 } muy_m_cf;
@@ -195,6 +198,7 @@ public:
       case 3: return 1.e5*(1.+0.2*sin(x)+0.3*cos(y));
       case 4: return y*y*log(x+2.) + 4.;
       case 5: return exp(-y);
+      case 6: return 10;
     }
   }
 } mu_p_cf;
@@ -210,6 +214,7 @@ public:
       case 3: return 1.e5*.2*cos(x);
       case 4: return y*y/(x+2.);
       case 5: return 0;
+      case 6: return 0;
     }
   }
 } mux_p_cf;
@@ -225,6 +230,7 @@ public:
       case 3: return 1.e5*(-0.3)*sin(y);
       case 4: return 2.*y*log(x+2.);
       case 5: return -exp(-y);
+      case 6: return 0;
     }
   }
 } muy_p_cf;

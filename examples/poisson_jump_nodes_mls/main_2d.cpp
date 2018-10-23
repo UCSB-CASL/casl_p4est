@@ -121,7 +121,7 @@ int num_shifts_z_dir = 5;
 #else
 int lmin = 5;
 int lmax = 5;
-int num_splits = 6;
+int num_splits = 5;
 int num_splits_per_split = 1;
 int num_shifts_x_dir = 1;
 int num_shifts_y_dir = 1;
@@ -148,14 +148,14 @@ int iter_start = 0; // is used to skip iterations and get to a problematic case
 // 6,  4, 5, 5, 11
 // 11, 4, 5, 5, 6
 
-int num_test_ii = 6;
+int num_test_ii = 11;
 int num_test_geometry = 6;
 
-int num_test_mu_m = 1;
-int num_test_mu_p = 0;
+int num_test_mu_m = 0;
+int num_test_mu_p = 1;
 
-int num_test_um = 0;
-int num_test_up = 1;
+int num_test_um = 1;
+int num_test_up = 0;
 
 int num_test_diag_term_m = 0;
 int num_test_diag_term_p = 0;
@@ -163,6 +163,8 @@ int num_test_diag_term_p = 0;
 BoundaryConditionType bc_wtype = DIRICHLET;
 BoundaryConditionType bc_itype = DIRICHLET;
 //BoundaryConditionType bc_itype = ROBIN;
+
+int jump_scheme = 0;
 
 //-------------------------------------
 // solver parameters
@@ -181,7 +183,7 @@ bool try_remove_hanging_cells = 0;
 // level-set representation parameters
 //-------------------------------------
 bool use_phi_cf       = 0;
-bool reinit_level_set = 1;
+bool reinit_level_set = 0;
 
 // artificial perturbation of level-set values
 int    domain_perturbation     = 0; // 0 - no, 1 - smooth, 2 - noisy
@@ -199,11 +201,11 @@ bool   compute_grad_between = false;
 //-------------------------------------
 // output
 //-------------------------------------
-bool save_vtk           = 1;
+bool save_vtk           = 0;
 bool save_domain        = 0;
 bool save_matrix_ascii  = 0;
 bool save_matrix_binary = 0;
-bool save_convergence   = 1;
+bool save_convergence   = 0;
 
 // DIFFUSION COEFFICIENTS
 #include "diffusion_coeffs.h"
@@ -919,6 +921,8 @@ int main (int argc, char* argv[])
     ADD_OPTION(i, sc_scheme,         "Use super-convergent scheme");
     ADD_OPTION(i, integration_order, "Select integration order (1 - linear, 2 - quadratic)");
 
+    ADD_OPTION(i, jump_scheme,       "Discretization scheme for interface conditions (0 - FVM, 1 - FDM)");
+
     // for symmetric scheme:
     ADD_OPTION(i, taylor_correction,      "Use Taylor correction to approximate Robin term (symmetric scheme)");
     ADD_OPTION(i, kink_special_treatment, "Use the special treatment for kinks (symmetric scheme)");
@@ -1307,6 +1311,7 @@ int main (int argc, char* argv[])
 
             my_p4est_poisson_nodes_mls_sc_t solver(&ngbd_n);
 
+            solver.set_jump_scheme(jump_scheme);
             solver.set_use_sc_scheme(sc_scheme);
             solver.set_integration_order(integration_order);
 
@@ -1336,6 +1341,7 @@ int main (int argc, char* argv[])
             solver.set_try_remove_hanging_cells(try_remove_hanging_cells);
 
             solver.solve(sol);
+
 
             solver.get_phi_dd(phi_dd);
 
@@ -2411,7 +2417,14 @@ int main (int argc, char* argv[])
 
   std::vector<double> cond_num_one(num_resolutions, 0), cond_num_avg(num_resolutions, 0), cond_num_max(num_resolutions, 0);
 
-
+  error_ge_m_arr = error_sl_m_arr;
+  error_dd_m_arr = error_sl_m_arr;
+  error_tr_m_arr = error_sl_m_arr;
+  error_ex_m_arr = error_sl_m_arr;
+  error_ge_p_arr = error_sl_p_arr;
+  error_dd_p_arr = error_sl_p_arr;
+  error_tr_p_arr = error_sl_p_arr;
+  error_ex_p_arr = error_sl_p_arr;
 
   // for each resolution compute max, mean and deviation
   for (int p = 0; p < num_resolutions; ++p)
