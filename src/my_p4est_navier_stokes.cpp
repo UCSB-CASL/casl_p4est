@@ -7,7 +7,7 @@
 #include <src/my_p8est_level_set_cells.h>
 #include <src/my_p8est_level_set_faces.h>
 #include <src/my_p8est_trajectory_of_point.h>
-#include <src/my_p8est_semi_lagrangian.h>
+//#include <src/my_p8est_semi_lagrangian.h>
 #include <src/my_p8est_vtk.h>
 #else
 #include <src/my_p4est_poisson_cells.h>
@@ -16,7 +16,7 @@
 #include <src/my_p4est_level_set_cells.h>
 #include <src/my_p4est_level_set_faces.h>
 #include <src/my_p4est_trajectory_of_point.h>
-#include <src/my_p4est_semi_lagrangian.h>
+//#include <src/my_p4est_semi_lagrangian.h>
 #include <src/my_p4est_vtk.h>
 #endif
 
@@ -111,7 +111,7 @@ void my_p4est_navier_stokes_t::splitting_criteria_vorticity_t::tag_quadrant(p4es
         cor_intf = cor_intf && fabs(phi(x+i*dx, y+j*dy, z+k*dz))>=lip*2*d;
         if(smo!=NULL)
           cor_smok = cor_smok && (*smo)(x+i*dx, y+j*dy, z+k*dz)<smoke_thresh;
-        all_pos = all_pos && phi(x+i*dx, y+j*dy, z+k*dz)>0;
+        all_pos = all_pos && phi(x+i*dx, y+j*dy, z+k*dz)> MAX(2.0, uniform_band)*dxyz_min; // [RAPHAEL:] modified to enforce at least two layers of finest level in positive domain as well (better extrapolation etc.), also required for Neumann BC in the face-solvers
 #else
       {
         cor_vort = cor_vort && fabs(vor(x+i*dx, y+j*dy))*2*MAX(dx,dy)/max_L2_norm_u<threshold;
@@ -119,7 +119,7 @@ void my_p4est_navier_stokes_t::splitting_criteria_vorticity_t::tag_quadrant(p4es
         cor_intf = cor_intf && fabs(phi(x+i*dx, y+j*dy))>=lip*2*d;
         if(smo!=NULL)
           cor_smok = cor_smok && (*smo)(x+i*dx, y+j*dy)<smoke_thresh;
-        all_pos = all_pos && phi(x+i*dx, y+j*dy)>0;
+        all_pos = all_pos && phi(x+i*dx, y+j*dy)> MAX(2.0, uniform_band)*dxyz_min; // [RAPHAEL:] modified to enforce two layers of finest level in positive domain as well (better extrapolation etc.), also required for Neumann BC in the face-solvers
 #endif
       }
 
@@ -143,7 +143,7 @@ void my_p4est_navier_stokes_t::splitting_criteria_vorticity_t::tag_quadrant(p4es
           ref_intf = ref_intf || fabs(phi(x+i*dx/2, y+j*dy/2, z+k*dz/2))<=lip*d;
           if(smo!=NULL)
             ref_smok = ref_smok || (*smo)(x+i*dx/2, y+j*dy/2, z+k*dz/2)>=smoke_thresh;
-          is_neg = is_neg || phi(x+i*dx/2, y+j*dy/2, z+k*dz/2)<0;
+          is_neg = is_neg || phi(x+i*dx/2, y+j*dy/2, z+k*dz/2)< MAX(2.0, uniform_band)*dxyz_min; // [RAPHAEL:] same comment as before
 #else
       {
         ref_vort = ref_vort || fabs(vor(x+i*dx/2, y+j*dy/2))*MAX(dx,dy)/max_L2_norm_u>threshold;
@@ -151,7 +151,7 @@ void my_p4est_navier_stokes_t::splitting_criteria_vorticity_t::tag_quadrant(p4es
         ref_intf = ref_intf || fabs(phi(x+i*dx/2, y+j*dy/2))<=lip*d;
         if(smo!=NULL)
           ref_smok = ref_smok || (*smo)(x+i*dx/2, y+j*dy/2)>=smoke_thresh;
-        is_neg = is_neg || phi(x+i*dx/2, y+j*dy/2)<0;
+        is_neg = is_neg || phi(x+i*dx/2, y+j*dy/2)< MAX(2.0, uniform_band)*dxyz_min; // [RAPHAEL:] same comment as before
 #endif
       }
 
@@ -474,7 +474,6 @@ void my_p4est_navier_stokes_t::set_velocities(Vec *vnm1_nodes, Vec *vn_nodes)
   ierr = VecDuplicate(phi, &vorticity); CHKERRXX(ierr);
 }
 
-
 #ifdef P4_TO_P8
 void my_p4est_navier_stokes_t::set_velocities(CF_3 **vnm1, CF_3 **vn)
 #else
@@ -524,20 +523,16 @@ void my_p4est_navier_stokes_t::set_velocities(CF_2 **vnm1, CF_2 **vn)
   ierr = VecDuplicate(phi, &vorticity); CHKERRXX(ierr);
 }
 
-
-
 void my_p4est_navier_stokes_t::set_vstar(Vec *vstar)
 {
   for(int dir=0; dir<P4EST_DIM; ++dir)
     this->vstar[dir] = vstar[dir];
 }
 
-
 void my_p4est_navier_stokes_t::set_hodge(Vec hodge)
 {
   this->hodge = hodge;
 }
-
 
 void my_p4est_navier_stokes_t::compute_max_L2_norm_u()
 {
@@ -571,7 +566,6 @@ void my_p4est_navier_stokes_t::compute_max_L2_norm_u()
 
   int mpiret = MPI_Allreduce(MPI_IN_PLACE, &max_L2_norm_u, 1, MPI_DOUBLE, MPI_MAX, p4est_n->mpicomm); SC_CHECK_MPI(mpiret);
 }
-
 
 void my_p4est_navier_stokes_t::compute_vorticity()
 {
@@ -619,8 +613,6 @@ void my_p4est_navier_stokes_t::compute_vorticity()
 
   for(int dir=0; dir<P4EST_DIM; dir++) { ierr = VecRestoreArrayRead(vnp1_nodes[dir], &vnp1_p[dir]); CHKERRXX(ierr); }
 }
-
-
 
 double my_p4est_navier_stokes_t::compute_dxyz_hodge(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, int dir)
 {
@@ -803,9 +795,6 @@ double my_p4est_navier_stokes_t::compute_dxyz_hodge(p4est_locidx_t quad_idx, p4e
   }
 }
 
-
-
-
 double my_p4est_navier_stokes_t::compute_divergence(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx)
 {
   PetscErrorCode ierr;
@@ -882,8 +871,6 @@ double my_p4est_navier_stokes_t::compute_divergence(p4est_locidx_t quad_idx, p4e
   return val;
 }
 
-
-
 void my_p4est_navier_stokes_t::solve_viscosity()
 {
   PetscErrorCode ierr;
@@ -915,8 +902,10 @@ void my_p4est_navier_stokes_t::solve_viscosity()
       if(sl_order==2) xyz_nm1[dd].resize(faces_n->num_local[dir]);
       xyz_n  [dd].resize(faces_n->num_local[dir]);
     }
-    if(sl_order==2) trajectory_from_np1_to_nm1(p4est_n, faces_n, ngbd_nm1, ngbd_n, vnm1_nodes, vn_nodes, dt_nm1, dt_n, xyz_nm1, xyz_n, dir);
-    trajectory_from_np1_to_n(p4est_n, faces_n, ngbd_nm1, ngbd_n, vnm1_nodes, vn_nodes, dt_nm1, dt_n, xyz_n, dir);
+    if(sl_order==2)
+      trajectory_from_np1_to_nm1(p4est_n, faces_n, ngbd_nm1, ngbd_n, vnm1_nodes, vn_nodes, dt_nm1, dt_n, xyz_nm1, xyz_n, dir);
+    else
+      trajectory_from_np1_to_n(p4est_n, faces_n, ngbd_nm1, ngbd_n, vnm1_nodes, vn_nodes, dt_nm1, dt_n, xyz_n, dir);
 
     /* find the velocity at the backtraced points */
     my_p4est_interpolation_nodes_t interp_nm1(ngbd_nm1);
@@ -998,7 +987,7 @@ void my_p4est_navier_stokes_t::solve_viscosity()
   solver.set_diagonal(alpha * rho/dt_n);
   solver.set_bc(bc_v, dxyz_hodge, face_is_well_defined);
   solver.set_rhs(rhs);
-#if defined(COMET) || defined(STAMPEDE)
+#if defined(COMET) || defined(STAMPEDE) || defined(POD_CLUSTER)
   solver.set_compute_partition_on_the_fly(true);
 #else
   solver.set_compute_partition_on_the_fly(false);
@@ -1022,8 +1011,6 @@ void my_p4est_navier_stokes_t::solve_viscosity()
 
   ierr = PetscLogEventEnd(log_my_p4est_navier_stokes_viscosity, 0, 0, 0, 0); CHKERRXX(ierr);
 }
-
-
 
 /* solve the projection step
  * laplace Hodge = -div(vstar)
@@ -1192,13 +1179,13 @@ void my_p4est_navier_stokes_t::set_dt(double dt_n)
 }
 
 
-void my_p4est_navier_stokes_t::compute_dt()
+void my_p4est_navier_stokes_t::compute_dt(double min_value_for_umax)
 {
   dt_nm1 = dt_n;
 #ifdef P4_TO_P8
-  dt_n = MIN(1., 1/max_L2_norm_u) * n_times_dt * MIN(dxyz_min[0], dxyz_min[1], dxyz_min[2]);
+  dt_n = MIN(1/min_value_for_umax, 1/max_L2_norm_u) * n_times_dt * MIN(dxyz_min[0], dxyz_min[1], dxyz_min[2]);
 #else
-  dt_n = MIN(1., 1/max_L2_norm_u) * n_times_dt * MIN(dxyz_min[0], dxyz_min[1]);
+  dt_n = MIN(1/min_value_for_umax, 1/max_L2_norm_u) * n_times_dt * MIN(dxyz_min[0], dxyz_min[1]);
 #endif
 
   dt_updated = true;
@@ -1257,7 +1244,8 @@ void my_p4est_navier_stokes_t::advect_smoke(my_p4est_node_neighbors_t *ngbd_np1,
   ierr = VecRestoreArray(smoke_np1, &smoke_p); CHKERRXX(ierr);
 }
 
-
+// [RAPHAEL]: this function is not even called anywhere... it flattens boundary conditions for velocity components on the
+// interface towards the positive domain
 void my_p4est_navier_stokes_t::extrapolate_bc_v(my_p4est_node_neighbors_t *ngbd, Vec *v, Vec phi)
 {
   PetscErrorCode ierr;
