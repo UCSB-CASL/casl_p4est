@@ -103,6 +103,8 @@ void my_p4est_poisson_cells_t::preallocate_matrix()
   const p4est_locidx_t *q2n = nodes->local_nodes;
   std::vector<p4est_locidx_t> indices;
 
+  double xyz_q[P4EST_DIM];
+
   for (p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx){
     p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
     for (size_t q=0; q<tree->quadrants.elem_count; q++)
@@ -121,7 +123,8 @@ void my_p4est_poisson_cells_t::preallocate_matrix()
       }
       phi_c /= (double)P4EST_CHILDREN;
 
-      if((bc->interfaceType()==DIRICHLET && phi_c > 0) || (bc->interfaceType()==NEUMANN && all_pos))
+      quad_xyz_fr_q(quad_idx, tree_idx, p4est, ghost, xyz_q);
+      if((bc->interfaceType(xyz_q)==DIRICHLET && phi_c > 0) || (bc->interfaceType(xyz_q)==NEUMANN && all_pos))
         continue;
 
       indices.resize(0);
@@ -364,6 +367,11 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
 #ifdef P4_TO_P8
       double z = quad_z_fr_q(quad_idx, tree_idx, p4est, ghost);
 #endif
+      double xyz_q[] = {x, y
+                  #ifdef P4_TO_P8
+                        , z
+                  #endif
+                       };
 
       bool all_pos = true;
       for(int i=0; i<P4EST_CHILDREN; ++i)
@@ -389,8 +397,8 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
 #endif
 
       /* Way inside omega_plus and we dont care! */
-      if((bc->interfaceType()==DIRICHLET && phi_q>0) ||
-         (bc->interfaceType()==NEUMANN && (all_pos || volume_cut_cell<EPS)))
+      if((bc->interfaceType(xyz_q)==DIRICHLET && phi_q>0) ||
+         (bc->interfaceType(xyz_q)==NEUMANN && (all_pos || volume_cut_cell<EPS)))
       {
         ierr = MatSetValue(A, quad_gloidx, quad_gloidx, 1, ADD_VALUES); CHKERRXX(ierr);
         if(!nullspace_use_fixed_point) null_space_p[quad_idx] = 0;
@@ -614,7 +622,7 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
           }
 
           /* DIRICHLET Boundary Condition */
-          if(bc->interfaceType()==DIRICHLET && phi_tmp>0)
+          if(bc->interfaceType(xyz_q)==DIRICHLET && phi_tmp>0)
           {
             matrix_has_nullspace = false;
             double dtmp;
@@ -659,7 +667,7 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
             }
           }
           /* NEUMANN Boundary Condition */
-          else if(bc->interfaceType()==NEUMANN && is_pos && is_neg && volume_cut_cell_tmp>EPS)
+          else if(bc->interfaceType(xyz_q)==NEUMANN && is_pos && is_neg && volume_cut_cell_tmp>EPS)
           {
             double d;
             switch(dir)
@@ -710,7 +718,7 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
             }
           }
           /* no interface - regular discretization */
-          else if(is_neg && !(bc->interfaceType()==NEUMANN && volume_cut_cell_tmp<EPS))
+          else if(is_neg && !(bc->interfaceType(xyz_q)==NEUMANN && volume_cut_cell_tmp<EPS))
           {
             double s_tmp = pow((double)P4EST_QUADRANT_LEN(ngbd[0].level)/(double)P4EST_ROOT_LEN, (double)P4EST_DIM-1);
 
@@ -923,6 +931,11 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_rhsvec()
 #ifdef P4_TO_P8
       double z = quad_z_fr_q(quad_idx, tree_idx, p4est, ghost);
 #endif
+      double xyz_q[] = {x, y
+                       #ifdef P4_TO_P8
+                        , z
+                       #endif
+                       };
 
       bool all_pos = true;
       bool is_pos = false;
@@ -952,8 +965,8 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_rhsvec()
 #endif
 
       /* Way inside omega_plus and we dont care! */
-      if((bc->interfaceType()==DIRICHLET && phi_q>0) ||
-         (bc->interfaceType()==NEUMANN && (all_pos || volume_cut_cell<EPS)))
+      if((bc->interfaceType(xyz_q)==DIRICHLET && phi_q>0) ||
+         (bc->interfaceType(xyz_q)==NEUMANN && (all_pos || volume_cut_cell<EPS)))
       {
         rhs_p[quad_idx] = 0;
         continue;
@@ -962,7 +975,7 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_rhsvec()
       rhs_p[quad_idx] *= volume_cut_cell;
 
       /* Neumann BC */
-      if( bc->interfaceType()==NEUMANN && is_pos )
+      if( bc->interfaceType(xyz_q)==NEUMANN && is_pos )
       {
 #ifdef P4_TO_P8
         OctValue interface_values;
@@ -987,7 +1000,7 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_rhsvec()
       }
 
       /* Dirichlet BC */
-      if(bc->interfaceType()==DIRICHLET && fabs(phi_q)<=diag_min)
+      if(bc->interfaceType(xyz_q)==DIRICHLET && fabs(phi_q)<=diag_min)
       {
         for(int dir=0; dir<P4EST_FACES; ++dir)
         {
