@@ -23,6 +23,7 @@
 
 class my_p4est_semi_lagrangian_t
 {
+  friend class my_p4est_ns_free_surface_t;
   p4est_t **p_p4est, *p4est;
   p4est_nodes_t **p_nodes, *nodes;
   p4est_ghost_t **p_ghost, *ghost;
