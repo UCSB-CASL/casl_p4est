@@ -18,12 +18,9 @@
 #endif
 
 
-
-
-
 class my_p4est_navier_stokes_t
 {
-private:
+protected:
 
   class splitting_criteria_vorticity_t : public splitting_criteria_tag_t
   {
@@ -251,7 +248,7 @@ public:
 
   void set_dt(double dt_n);
 
-  void compute_dt();
+  void compute_dt(double min_value_for_umax = 1.0);
 
   void advect_smoke(my_p4est_node_neighbors_t *ngbd_np1, Vec *v, Vec smoke, Vec smoke_np1);
 
