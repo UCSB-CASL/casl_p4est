@@ -31,6 +31,7 @@ SOURCES += \
   $$PARCASL/src/my_p4est_level_set_faces.cpp \
   $$PARCASL/src/my_p4est_navier_stokes.cpp \
   $$PARCASL/src/my_p4est_node_neighbors.cpp \
+  $$PARCASL/src/my_p4est_ns_free_surface.cpp \
   $$PARCASL/src/my_p4est_poisson_cells.cpp \
   $$PARCASL/src/my_p4est_poisson_faces.cpp \
   $$PARCASL/src/my_p4est_poisson_boltzmann_nodes.cpp \
@@ -49,6 +50,7 @@ SOURCES += \
   $$PARCASL/src/my_p4est_nodes.c \
   $$PARCASL/src/my_p4est_tools.c \
   $$PARCASL/src/my_p4est_vtk.cpp \
+  $$PARCASL/src/my_p4est_xgfm_cells.cpp \
   $$PARCASL/src/casl_math.cpp \
   $$PARCASL/src/Parser.cpp \
   $$PARCASL/src/cube2.cpp \
@@ -56,8 +58,7 @@ SOURCES += \
   $$PARCASL/src/petsc_logging.cpp \
   $$PARCASL/src/point2.cpp \
   $$PARCASL/src/simplex2.cpp \
-  $$PARCASL/src/voronoi2D.cpp \
-  $$PARCASL/src/my_p4est_xgfm_cells.cpp
+  $$PARCASL/src/voronoi2D.cpp
 }
 
 
@@ -76,6 +77,7 @@ SOURCES += \
   $$PARCASL/src/my_p8est_level_set_faces.cpp \
   $$PARCASL/src/my_p8est_navier_stokes.cpp \
   $$PARCASL/src/my_p8est_node_neighbors.cpp \
+  $$PARCASL/src/my_p8est_ns_free_surface.cpp \
   $$PARCASL/src/my_p8est_poisson_cells.cpp \
   $$PARCASL/src/my_p8est_poisson_faces.cpp \
   $$PARCASL/src/my_p8est_poisson_boltzmann_nodes.cpp \
@@ -93,6 +95,7 @@ SOURCES += \
   $$PARCASL/src/my_p8est_nodes.c \
   $$PARCASL/src/my_p8est_tools.c \
   $$PARCASL/src/my_p8est_vtk.cpp \
+  $$PARCASL/src/my_p8est_xgfm_cells.cpp \
   $$PARCASL/src/casl_math.cpp \
   $$PARCASL/src/Parser.cpp \
   $$PARCASL/src/cube2.cpp \
@@ -102,6 +105,5 @@ SOURCES += \
   $$PARCASL/src/point2.cpp \
   $$PARCASL/src/point3.cpp \
   $$PARCASL/src/simplex2.cpp \
-  $$PARCASL/src/voronoi3D.cpp \
-  $$PARCASL/src/my_p8est_xgfm_cells.cpp
+  $$PARCASL/src/voronoi3D.cpp
 }
