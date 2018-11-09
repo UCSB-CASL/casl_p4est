@@ -933,9 +933,9 @@ void check_if_faces_are_well_defined(p4est_t *p4est, my_p4est_node_neighbors_t *
       double y = faces->y_fr_f(f_idx,dir);
 #ifdef P4_TO_P8
       double z = faces->z_fr_f(f_idx,dir);
-      face_is_well_defined_p[f_idx] = interp(x,y,z)<0;
+      face_is_well_defined_p[f_idx] = interp(x,y,z)<=0;
 #else
-      face_is_well_defined_p[f_idx] = interp(x,y)<0;
+      face_is_well_defined_p[f_idx] = interp(x,y)<=0;
 #endif
     }
   }
@@ -947,13 +947,13 @@ void check_if_faces_are_well_defined(p4est_t *p4est, my_p4est_node_neighbors_t *
       double y = faces->y_fr_f(f_idx,dir);
 #ifdef P4_TO_P8
       double z = faces->z_fr_f(f_idx,dir);
-      face_is_well_defined_p[f_idx] = ( interp(x-dx, y-dy, z-dz)<0 || interp(x+dx, y-dy, z-dz)<0 ||
-                                        interp(x-dx, y-dy, z+dz)<0 || interp(x+dx, y-dy, z+dz)<0 ||
-                                        interp(x-dx, y+dy, z-dz)<0 || interp(x+dx, y+dy, z-dz)<0 ||
-                                        interp(x-dx, y+dy, z+dz)<0 || interp(x+dx, y+dy, z+dz)<0 );
+      face_is_well_defined_p[f_idx] = ( interp(x-dx, y-dy, z-dz)<=0 || interp(x+dx, y-dy, z-dz)<=0 ||
+                                        interp(x-dx, y-dy, z+dz)<=0 || interp(x+dx, y-dy, z+dz)<=0 ||
+                                        interp(x-dx, y+dy, z-dz)<=0 || interp(x+dx, y+dy, z-dz)<=0 ||
+                                        interp(x-dx, y+dy, z+dz)<=0 || interp(x+dx, y+dy, z+dz)<=0 );
 #else
-      face_is_well_defined_p[f_idx] = ( interp(x-dx, y-dy)<0 || interp(x+dx, y-dy)<0 ||
-                                        interp(x-dx, y+dy)<0 || interp(x+dx, y+dy)<0 );
+      face_is_well_defined_p[f_idx] = ( interp(x-dx, y-dy)<=0 || interp(x+dx, y-dy)<=0 ||
+                                        interp(x-dx, y+dy)<=0 || interp(x+dx, y+dy)<=0 );
 #endif
     }
   }
@@ -992,13 +992,8 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
 
   p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, node_idx);
 
-#ifdef P4_TO_P8
-  if(bc!=NULL && is_node_Wall(p4est, node) && bc[dir].wallType(xyz[0],xyz[1],xyz[2])==DIRICHLET)
-    return bc[dir].wallValue(xyz[0],xyz[1],xyz[2]);
-#else
-  if(bc!=NULL && is_node_Wall(p4est, node) && bc[dir].wallType(xyz[0],xyz[1])==DIRICHLET)
-    return bc[dir].wallValue(xyz[0],xyz[1]);
-#endif
+  if(bc!=NULL && is_node_Wall(p4est, node) && bc[dir].wallType(xyz)==DIRICHLET)
+    return bc[dir].wallValue(xyz);
 
   double *v2c = p4est->connectivity->vertices;
   p4est_topidx_t *t2v = p4est->connectivity->tree_to_vertex;
@@ -1013,6 +1008,17 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
 #else
   double qh = MIN(xmax-xmin, ymax-ymin);
 #endif
+  double domain_size[P4EST_DIM];
+  if(is_periodic(p4est, dir::x) || is_periodic(p4est, dir::y)
+   #ifdef P4_TO_P8
+     || is_periodic(p4est, dir::z)
+   #endif
+     )
+    for (short dim = 0; dim < P4EST_DIM; ++dim)
+      domain_size[dim] =
+          p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*(p4est->trees->elem_count-1) + P4EST_CHILDREN-1] + dim] -
+          p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[0 + 0] + dim];
+
 
   /* gather the neighborhood */
 #ifdef CASL_THROWS
@@ -1096,10 +1102,13 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
 
   vector<p4est_locidx_t> interp_points;
   matrix_t A;
+  bool neumann_wall_x = (bc!=NULL && (is_node_xmWall(p4est, node) || is_node_xpWall(p4est, node)) && bc[dir].wallType(xyz)==NEUMANN);
+  bool neumann_wall_y = (bc!=NULL && (is_node_ymWall(p4est, node) || is_node_ypWall(p4est, node)) && bc[dir].wallType(xyz)==NEUMANN);
 #ifdef P4_TO_P8
-  A.resize(1, order>=2 ? 10 : 4);
+  bool neumann_wall_z = (bc!=NULL && (is_node_zmWall(p4est, node) || is_node_zpWall(p4est, node)) && bc[dir].wallType(xyz)==NEUMANN);
+  A.resize(1, (order>=2 ? 10 : 4) - (neumann_wall_x?1:0)- (neumann_wall_y?1:0) - (neumann_wall_z?1:0));
 #else
-  A.resize(1, order>=2 ? 6 : 3);
+  A.resize(1, (order>=2 ? 6 : 3) - (neumann_wall_x?1:0)- (neumann_wall_y?1:0));
 #endif
   vector<double> p;
   vector<double> nb[P4EST_DIM];
@@ -1120,7 +1129,14 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
       double xyz_t[P4EST_DIM];
       faces->xyz_fr_f(fm_idx, dir, xyz_t);
       for(int i=0; i<P4EST_DIM; ++i)
-        xyz_t[i] = (xyz[i] - xyz_t[i]) / scaling;
+      {
+        double rel_dist = (xyz[i] - xyz_t[i]);
+        if(is_periodic(p4est, i))
+          for (short cc = -1; cc < 2; cc+=2)
+            if(fabs((xyz[i] - xyz_t[i] + ((double) cc)*domain_size[i])) < fabs(rel_dist))
+              rel_dist = (xyz[i] - xyz_t[i] + ((double) cc)*domain_size[i]);
+        xyz_t[i] = rel_dist / scaling;
+      }
 
 #ifdef P4_TO_P8
       double w = MAX(min_w,1./MAX(inv_max_w,sqrt(SQR(xyz_t[0]) + SQR(xyz_t[1]) + SQR(xyz_t[2]))));
@@ -1129,32 +1145,41 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
 #endif
 
 #ifdef P4_TO_P8
-      A.set_value(interp_points.size(), 0, 1                 * w);
-      A.set_value(interp_points.size(), 1, xyz_t[0]          * w);
-      A.set_value(interp_points.size(), 2, xyz_t[1]          * w);
-      A.set_value(interp_points.size(), 3, xyz_t[2]          * w);
+      A.set_value(interp_points.size(), 0, 1                                                                                  * w);
+      if(!neumann_wall_x)
+        A.set_value(interp_points.size(), 1, xyz_t[0]                                                                         * w);
+      if(!neumann_wall_y)
+        A.set_value(interp_points.size(), 2-(neumann_wall_x?1:0), xyz_t[1]                                                    * w);
+      if(!neumann_wall_z)
+        A.set_value(interp_points.size(), 3-(neumann_wall_x?1:0)-(neumann_wall_y?1:0), xyz_t[2]                               * w);
       if(order>=2)
       {
-        A.set_value(interp_points.size(), 4, xyz_t[0]*xyz_t[0] * w);
-        A.set_value(interp_points.size(), 5, xyz_t[0]*xyz_t[1] * w);
-        A.set_value(interp_points.size(), 6, xyz_t[0]*xyz_t[2] * w);
-        A.set_value(interp_points.size(), 7, xyz_t[1]*xyz_t[1] * w);
-        A.set_value(interp_points.size(), 8, xyz_t[1]*xyz_t[2] * w);
-        A.set_value(interp_points.size(), 9, xyz_t[2]*xyz_t[2] * w);
+        A.set_value(interp_points.size(), 4-(neumann_wall_x?1:0)-(neumann_wall_y?1:0)-(neumann_wall_z?1:0), xyz_t[0]*xyz_t[0] * w);
+        A.set_value(interp_points.size(), 5-(neumann_wall_x?1:0)-(neumann_wall_y?1:0)-(neumann_wall_z?1:0), xyz_t[0]*xyz_t[1] * w);
+        A.set_value(interp_points.size(), 6-(neumann_wall_x?1:0)-(neumann_wall_y?1:0)-(neumann_wall_z?1:0), xyz_t[0]*xyz_t[2] * w);
+        A.set_value(interp_points.size(), 7-(neumann_wall_x?1:0)-(neumann_wall_y?1:0)-(neumann_wall_z?1:0), xyz_t[1]*xyz_t[1] * w);
+        A.set_value(interp_points.size(), 8-(neumann_wall_x?1:0)-(neumann_wall_y?1:0)-(neumann_wall_z?1:0), xyz_t[1]*xyz_t[2] * w);
+        A.set_value(interp_points.size(), 9-(neumann_wall_x?1:0)-(neumann_wall_y?1:0)-(neumann_wall_z?1:0), xyz_t[2]*xyz_t[2] * w);
       }
 #else
-      A.set_value(interp_points.size(), 0, 1                 * w);
-      A.set_value(interp_points.size(), 1, xyz_t[0]          * w);
-      A.set_value(interp_points.size(), 2, xyz_t[1]          * w);
+      A.set_value(interp_points.size(), 0, 1                                                              * w);
+      if(!neumann_wall_x)
+        A.set_value(interp_points.size(), 1, xyz_t[0]                                                     * w);
+      if(!neumann_wall_y)
+        A.set_value(interp_points.size(), 2-(neumann_wall_x?1:0), xyz_t[1]                                * w);
       if(order>=2)
       {
-        A.set_value(interp_points.size(), 3, xyz_t[0]*xyz_t[0] * w);
-        A.set_value(interp_points.size(), 4, xyz_t[0]*xyz_t[1] * w);
-        A.set_value(interp_points.size(), 5, xyz_t[1]*xyz_t[1] * w);
+        A.set_value(interp_points.size(), 3-(neumann_wall_x?1:0)-(neumann_wall_y?1:0), xyz_t[0]*xyz_t[0]  * w);
+        A.set_value(interp_points.size(), 4-(neumann_wall_x?1:0)-(neumann_wall_y?1:0), xyz_t[0]*xyz_t[1]  * w);
+        A.set_value(interp_points.size(), 5-(neumann_wall_x?1:0)-(neumann_wall_y?1:0), xyz_t[1]*xyz_t[1]  * w);
       }
 #endif
 
-      p.push_back(f_p[fm_idx] * w);
+      p.push_back((f_p[fm_idx] + (neumann_wall_x? bc->wallValue(xyz)*xyz_t[0]*scaling: 0.0) + (neumann_wall_y? bc->wallValue(xyz)*xyz_t[1]*scaling: 0.0)
+             #ifdef P4_TO_P8
+                   + (neumann_wall_z? bc->wallValue(xyz)*xyz_t[2]*scaling: 0.0)
+             #endif
+                   ) * w);
 
       for(int d=0; d<P4EST_DIM; ++d)
         if(std::find(nb[d].begin(), nb[d].end(), xyz_t[d]) == nb[d].end())

@@ -153,7 +153,7 @@ PetscErrorCode VecCreateGhostFacesBlock(const p4est_t *p4est, const my_p4est_fac
 
 /*!
  * \brief mark the faces that are well defined, i.e. that are solved for in an implicit poisson solve with irregular interface.
- *   For Dirichlet b.c. the condition is phi(face)<0. For Neumann, the control volume of the face must be at least partially in the negative domain.
+ *   For Dirichlet b.c. the condition is phi(face)<=0. For Neumann, the control volume of the face must be at least partially in the negative domain.
  * \param p4est the forest
  * \param ngbd_n the node neighbors structure
  * \param faces the faces structure
