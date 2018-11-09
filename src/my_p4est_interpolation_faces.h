@@ -51,6 +51,14 @@ public:
 #else
   double operator()(double x, double y) const;
 #endif
+  inline double operator()(double xyz[]) const
+  {
+#ifdef P4_TO_P8
+    return this->operator ()(xyz[0], xyz[1], xyz[2]);
+#else
+    return this->operator ()(xyz[0], xyz[1]);
+#endif
+  }
 
   double interpolate(const p4est_quadrant_t &quad, const double *xyz) const;
 };

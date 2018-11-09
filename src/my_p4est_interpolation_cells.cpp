@@ -134,6 +134,16 @@ double my_p4est_interpolation_cells_t::interpolate(const p4est_quadrant_t &quad,
 #else
   scaling *= MIN(tree_xmax-tree_xmin, tree_ymax-tree_ymin);
 #endif
+  double domain_size[P4EST_DIM];
+  if(is_periodic(p4est, dir::x) || is_periodic(p4est, dir::y)
+   #ifdef P4_TO_P8
+     || is_periodic(p4est, dir::z)
+   #endif
+     )
+    for (short dim = 0; dim < P4EST_DIM; ++dim)
+      domain_size[dim] =
+          p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*(p4est->trees->elem_count-1) + P4EST_CHILDREN-1] + dim] -
+          p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[0 + 0] + dim];
 
   std::vector<p4est_locidx_t> interp_points;
   matrix_t A;
@@ -168,7 +178,7 @@ double my_p4est_interpolation_cells_t::interpolate(const p4est_quadrant_t &quad,
       }
       phi_q /= (double) P4EST_CHILDREN;
 
-      if( (bc->interfaceType()==NOINTERFACE || (bc->interfaceType()==DIRICHLET && phi_q<0) || (bc->interfaceType()==NEUMANN && neumann_is_neg) ) )
+      if( (bc->interfaceType()==NOINTERFACE || (bc->interfaceType(xyz)==DIRICHLET && phi_q<0) || (bc->interfaceType(xyz)==NEUMANN && neumann_is_neg) ) )
       {
         double xyz_t[P4EST_DIM];
 
@@ -179,7 +189,15 @@ double my_p4est_interpolation_cells_t::interpolate(const p4est_quadrant_t &quad,
 #endif
 
         for(int i=0; i<P4EST_DIM; ++i)
-          xyz_t[i] = (xyz[i] - xyz_t[i]) / scaling;
+        {
+          double rel_dist = (xyz[i] - xyz_t[i]);
+          if(is_periodic(p4est, i))
+            for (short cc = -1; cc < 2; cc+=2)
+              if(fabs((xyz[i] - xyz_t[i] + ((double) cc)*domain_size[i])) < fabs(rel_dist))
+                rel_dist = (xyz[i] - xyz_t[i] + ((double) cc)*domain_size[i]);
+          xyz_t[i] = rel_dist / scaling;
+        }
+  //        xyz_t[i] = (xyz[i] - xyz_t[i]) / scaling;
 
 #ifdef P4_TO_P8
         double w = MAX(min_w,1./MAX(inv_max_w,sqrt(SQR(xyz_t[0]) + SQR(xyz_t[1]) + SQR(xyz_t[2]))));

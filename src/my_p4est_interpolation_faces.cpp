@@ -51,8 +51,8 @@ double my_p4est_interpolation_faces_t::operator ()(double x, double y) const
 
   // clip to bounding box
   for (short i=0; i<P4EST_DIM; i++){
-    if (xyz_clip[i] > xyz_max[i]) xyz_clip[i] = xyz_max[i];
-    if (xyz_clip[i] < xyz_min[i]) xyz_clip[i] = xyz_min[i];
+    if (xyz_clip[i] > xyz_max[i]) xyz_clip[i] = is_periodic(p4est,i) ?  xyz_clip[i]-(xyz_max[i]-xyz_min[i]) : xyz_max[i];
+    if (xyz_clip[i] < xyz_min[i]) xyz_clip[i] = is_periodic(p4est,i) ?  xyz_clip[i]+(xyz_max[i]-xyz_min[i]) : xyz_min[i];
   }
 
   p4est_quadrant_t best_match;
@@ -81,16 +81,15 @@ double my_p4est_interpolation_faces_t::interpolate(const p4est_quadrant_t &quad,
 #ifdef P4_TO_P8
   double zmin = v2c[3*t2v[0 + 0] + 2];
   double zmax = v2c[3*t2v[P4EST_CHILDREN*(p4est->trees->elem_count-1) + P4EST_CHILDREN-1] + 2];
-  if(bc!=NULL && bc->wallType(xyz[0],xyz[1],xyz[2])==DIRICHLET &&
-     (fabs(xyz[0]-xmin)<EPS || fabs(xyz[0]-xmax)<EPS ||
-      fabs(xyz[1]-ymin)<EPS || fabs(xyz[1]-ymax)<EPS ||
-      fabs(xyz[2]-zmin)<EPS || fabs(xyz[2]-zmax)<EPS))
-    return bc->wallValue(xyz[0], xyz[1], xyz[2]);
-#else
-  if(bc!=NULL && bc->wallType(xyz[0],xyz[1])==DIRICHLET &&
-     (fabs(xyz[0]-xmin)<EPS || fabs(xyz[0]-xmax)<EPS || fabs(xyz[1]-ymin)<EPS || fabs(xyz[1]-ymax)<EPS))
-    return bc->wallValue(xyz[0], xyz[1]);
 #endif
+  if(bc!=NULL && bc->wallType(xyz)==DIRICHLET &&
+     (((fabs(xyz[0]-xmin)<EPS || fabs(xyz[0]-xmax)<EPS) && (!is_periodic(p4est, dir::x)))
+      || ((fabs(xyz[1]-ymin)<EPS || fabs(xyz[1]-ymax)<EPS) && (!is_periodic(p4est, dir::y)))
+    #ifdef P4_TO_P8
+      || ((fabs(xyz[2]-zmin)<EPS || fabs(xyz[2]-zmax)<EPS) && (!is_periodic(p4est, dir::z)))
+    #endif
+      ))
+    return bc->wallValue(xyz);
 
   xmax = v2c[3*t2v[0 + P4EST_CHILDREN-1] + 0];
   ymax = v2c[3*t2v[0 + P4EST_CHILDREN-1] + 1];
@@ -101,6 +100,16 @@ double my_p4est_interpolation_faces_t::interpolate(const p4est_quadrant_t &quad,
   double qh = MIN(xmax-xmin, ymax-ymin);
 #endif
   double scaling = .5 * qh*(double)P4EST_QUADRANT_LEN(quad.level)/(double)P4EST_ROOT_LEN;
+  double domain_size[P4EST_DIM];
+  if(is_periodic(p4est, dir::x) || is_periodic(p4est, dir::y)
+   #ifdef P4_TO_P8
+     || is_periodic(p4est, dir::z)
+   #endif
+     )
+    for (short dim = 0; dim < P4EST_DIM; ++dim)
+      domain_size[dim] =
+          p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*(p4est->trees->elem_count-1) + P4EST_CHILDREN-1] + dim] -
+          p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[0 + 0] + dim];
 
   p4est_topidx_t tree_idx = quad.p.piggy3.which_tree;
   p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
@@ -194,7 +203,15 @@ double my_p4est_interpolation_faces_t::interpolate(const p4est_quadrant_t &quad,
       faces->xyz_fr_f(fm_idx, dir, xyz_t);
 
       for(int i=0; i<P4EST_DIM; ++i)
-        xyz_t[i] = (xyz[i] - xyz_t[i]) / scaling;
+      {
+        double rel_dist = (xyz[i] - xyz_t[i]);
+        if(is_periodic(p4est, i))
+          for (short cc = -1; cc < 2; cc+=2)
+            if(fabs((xyz[i] - xyz_t[i] + ((double) cc)*domain_size[i])) < fabs(rel_dist))
+              rel_dist = (xyz[i] - xyz_t[i] + ((double) cc)*domain_size[i]);
+        xyz_t[i] = rel_dist / scaling;
+      }
+//        xyz_t[i] = (xyz[i] - xyz_t[i]) / scaling;
 
 #ifdef P4_TO_P8
       double w = MAX(min_w,1./MAX(inv_max_w,sqrt(SQR(xyz_t[0]) + SQR(xyz_t[1]) + SQR(xyz_t[2]))));

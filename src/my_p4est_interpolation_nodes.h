@@ -44,7 +44,7 @@ public:
   double operator()(double x, double y) const;
 #endif
 
-  inline double operator()(double xyz[]) const
+  inline double operator()(const double xyz[]) const
   {
 #ifdef P4_TO_P8
     return this->operator ()(xyz[0], xyz[1], xyz[2]);
