@@ -1549,7 +1549,7 @@ int main (int argc, char* argv[])
   cmd.add_option("ngrids", "number of computational grids (increasing refinement levels)");
   cmd.add_option("bc_wtype", "type of boundary condition to use on the wall (0: Dirichlet wall, 1: Neumann Wall)");
   cmd.add_option("save_vtk", "save the p4est in vtk format");
-  cmd.add_option("out_dir", "exportation directory for vtk files (required if save_vtk)");
+  cmd.add_option("work_dir", "exportation directory (required if save_vtk or summary files): work_dir/output for vtk files work_dir/summaries for summary files");
   cmd.add_option("second_order_ls", "active second order interface localization");
   cmd.add_option("summary", "folder for summary file for convergence results");
   cmd.add_option("ntree", "number of trees in the macromesh along the smallest dimension of the computational domain");
@@ -1715,18 +1715,17 @@ Example by Raphael Egan for full periodicity.");
   int lmax = cmd.get<int>("lmax", lmax_);
   int ngrids = cmd.get<int>("ngrids", ngrids_);
   int test_number = cmd.get<int>("test", test_number_);
-  string out_dir = cmd.get<string>("out_dir", "/home/regan/workspace/projects/bubbles/cell_center_xgfm/output");
+#if defined(STAMPEDE)
+  string work_folder = cmd.get<string>("work_dir", "/work/04965/tg842642/stampede2/cell_xgfm");
+#elif defined(POD_CLUSTER)
+  string work_folder = cmd.get<string>("work_dir", "/home/regan/cell_xgfm");
+#else
+  string work_folder = cmd.get<string>("work_dir", "/home/regan/workspace/projects/bubbles/cell_center_xgfm");
+#endif
+  string out_dir = work_folder + "/output";
   BoundaryConditionType bc_wtype = cmd.get<BoundaryConditionType>("bc_wtype", bc_wtype_);
   int ntree = cmd.get<int>("ntree", ntree_);
   bool use_second_order_theta = cmd.get<bool>("second_order_ls", use_second_order_theta_);
-
-#ifdef P4_TO_P8
-  string summary_folder = cmd.get<string>("summary", "/home/regan/workspace/projects/bubbles/cell_center_xgfm/summaries/3D");
-#else
-  string summary_folder = cmd.get<string>("summary", "/home/regan/workspace/projects/bubbles/cell_center_xgfm/summaries/2D");
-#endif
-  string summary_file = summary_folder + "/summary_test" + to_string(test_number) + "_" + to_string(P4EST_DIM) + "D_lmin" + to_string(lmin) + "_lmax" + to_string(lmax) + "_ngrids" + to_string(ngrids) + "_ntree" + to_string(ntree) + "_accuracyls" + to_string(use_second_order_theta?2:1) + "_" + ((bc_wtype == DIRICHLET)? "dirichlet": "neumann") + ".dat";
-
 
   bool save_vtk = cmd.contains("save_vtk");
 
@@ -2376,6 +2375,16 @@ This test case is meant to check the AMR feature, hence the interface is suppose
   {
     if(print_summary)
     {
+#ifdef P4_TO_P8
+      string summary_folder = work_folder + "/summaries/3D";
+#else
+      string summary_folder = work_folder + "/summaries/2D";
+#endif
+      ostringstream command;
+      command << "mkdir -p " << summary_folder.c_str();
+      system(command.str().c_str()); // create the summary folder
+      string summary_file = summary_folder + "/summary_test" + to_string(test_number) + "_" + to_string(P4EST_DIM) + "D_lmin" + to_string(lmin) + "_lmax" + to_string(lmax) + "_ngrids" + to_string(ngrids) + "_ntree" + to_string(ntree) + "_accuracyls" + to_string(use_second_order_theta?2:1) + "_" + ((bc_wtype == DIRICHLET)? "dirichlet": "neumann") + ".dat";
+
       FILE *fid = fopen(summary_file.c_str(), "w");
       fprintf(fid, "=================================================================\n");
       fprintf(fid, "========================= SUMMARY ===============================\n");
