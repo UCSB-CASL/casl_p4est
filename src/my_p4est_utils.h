@@ -110,6 +110,13 @@ typedef enum {
   IGNORE
 } BoundaryConditionType;
 
+class mixed_interface
+{
+public:
+  virtual BoundaryConditionType mixed_type(const double xyz_[]) const=0;
+  virtual ~mixed_interface() {}
+};
+
 std::ostream& operator << (std::ostream& os, BoundaryConditionType  type);
 std::istream& operator >> (std::istream& is, BoundaryConditionType& type);
 
@@ -131,6 +138,7 @@ class BoundaryConditions2D
 private:
   const WallBC2D* WallType_;
   BoundaryConditionType InterfaceType_;
+  const mixed_interface* MixedInterface;
 
   const CF_2 *p_WallValue;
   const CF_2 *p_InterfaceValue;
@@ -141,6 +149,7 @@ public:
     WallType_ = NULL;
     p_WallValue = NULL;
     InterfaceType_ = NOINTERFACE;
+    MixedInterface = NULL;
     p_InterfaceValue = NULL;
   }
 
@@ -158,8 +167,14 @@ public:
     p_WallValue = &v;
   }
 
-  inline void setInterfaceType(BoundaryConditionType bc){
+  inline void setInterfaceType(BoundaryConditionType bc, const mixed_interface* obj_= NULL){
     InterfaceType_ = bc;
+    if(InterfaceType_ == MIXED)
+    {
+      if(obj_ == NULL)
+        throw std::invalid_argument("BoundaryConditions2D::setInterfaceType(): if the interface type is set to MIXED, a pointer to a class of abstract type mixed_interface MUST be provided as well!");
+      MixedInterface = obj_;
+    }
   }
 
   inline void setInterfaceValue(const CF_2& in){
@@ -178,12 +193,22 @@ public:
     return (*WallType_)(x,y);
   }
 
-  inline BoundaryConditionType wallType(double xyz_[]) const
+  inline BoundaryConditionType wallType(const double xyz_[]) const
   {
     return wallType(xyz_[0], xyz_[1]);
   }
 
-  inline BoundaryConditionType interfaceType() const{ return InterfaceType_;}
+  inline BoundaryConditionType interfaceType() const
+  {
+    return InterfaceType_;
+  }
+
+  inline BoundaryConditionType interfaceType(const double* xyz) const
+  {
+    if(InterfaceType_ != MIXED)
+      return interfaceType();
+    return MixedInterface->mixed_type(xyz);
+  }
 
   inline double wallValue(double x, double y) const
   {
@@ -193,7 +218,7 @@ public:
     return p_WallValue->operator ()(x,y);
   }
 
-  inline double wallValue(double xyz_[]) const
+  inline double wallValue(const double xyz_[]) const
   {
     return wallValue(xyz_[0], xyz_[1]);
   }
@@ -205,6 +230,11 @@ public:
 #endif
     return p_InterfaceValue->operator ()(x,y);
   }
+  inline double  interfaceValue(double xyz_[]) const
+  {
+    return interfaceValue(xyz_[0], xyz_[1]);
+  }
+
 };
 
 class BoundaryConditions3D
@@ -212,6 +242,7 @@ class BoundaryConditions3D
 private:
   const WallBC3D* WallType_;
   BoundaryConditionType InterfaceType_;
+  const mixed_interface* MixedInterface;
 
   const CF_3 *p_WallValue;
   const CF_3 *p_InterfaceValue;
@@ -222,6 +253,7 @@ public:
     WallType_ = NULL;
     p_WallValue = NULL;
     InterfaceType_ = NOINTERFACE;
+    MixedInterface = NULL;
     p_InterfaceValue = NULL;
   }
 
@@ -239,8 +271,14 @@ public:
     p_WallValue = &v;
   }
 
-  inline void setInterfaceType(BoundaryConditionType bc){
+  inline void setInterfaceType(BoundaryConditionType bc, const mixed_interface* obj_= NULL){
     InterfaceType_ = bc;
+    if(InterfaceType_ == MIXED)
+    {
+      if(obj_ == NULL)
+        throw std::invalid_argument("BoundaryConditions3D::setInterfaceType(): if the interface type is set to MIXED, a pointer to a class of abstract type mixed_interface MUST be provided as well");
+      MixedInterface = obj_;
+    }
   }
 
   inline void setInterfaceValue(const CF_3& in){
@@ -259,12 +297,19 @@ public:
     return (*WallType_)(x,y,z);
   }
 
-  inline BoundaryConditionType wallType( double xyz_[]) const
+  inline BoundaryConditionType wallType(const double xyz_[]) const
   {
-    return (*WallType_)(xyz_[0],xyz_[1],xyz_[2]);
+    return wallType(xyz_[0],xyz_[1],xyz_[2]);
   }
 
   inline BoundaryConditionType interfaceType() const{ return InterfaceType_;}
+
+  inline BoundaryConditionType interfaceType(const double* xyz) const
+  {
+    if(InterfaceType_ != MIXED)
+      return interfaceType();
+    return MixedInterface->mixed_type(xyz);
+  }
 
   inline double wallValue(double x, double y, double z) const
   {
@@ -274,7 +319,7 @@ public:
     return p_WallValue->operator ()(x,y,z);
   }
 
-  inline double wallValue(double xyz_[]) const
+  inline double wallValue(const double xyz_[]) const
   {
     return p_WallValue->operator ()(xyz_[0],xyz_[1],xyz_[2]);
   }
@@ -285,6 +330,11 @@ public:
     if(p_InterfaceValue == NULL) throw std::invalid_argument("[CASL_ERROR]: The value of the boundary conditions has not been set on the interface.");
 #endif
     return p_InterfaceValue->operator ()(x,y,z);
+  }
+
+  inline double  interfaceValue(double xyz_[]) const
+  {
+    return interfaceValue(xyz_[0], xyz_[1], xyz_[2]);
   }
 
 };
