@@ -1551,7 +1551,6 @@ int main (int argc, char* argv[])
   cmd.add_option("save_vtk", "save the p4est in vtk format");
   cmd.add_option("work_dir", "exportation directory (required if save_vtk or summary files): work_dir/output for vtk files work_dir/summaries for summary files");
   cmd.add_option("second_order_ls", "active second order interface localization");
-  cmd.add_option("summary", "folder for summary file for convergence results");
   cmd.add_option("ntree", "number of trees in the macromesh along the smallest dimension of the computational domain");
 #ifdef P4_TO_P8
   cmd.add_option("test", "choose a test.\n\

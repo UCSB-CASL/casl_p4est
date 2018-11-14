@@ -1206,7 +1206,7 @@ int main (int argc, char* argv[])
 #endif
 
   watch.stop();
-  watch.read_duration();
+  watch.print_duration();
 
   return 0;
 }
