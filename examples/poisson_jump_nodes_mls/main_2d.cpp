@@ -119,9 +119,9 @@ int num_shifts_x_dir = 5;
 int num_shifts_y_dir = 5;
 int num_shifts_z_dir = 5;
 #else
-int lmin = 5;
-int lmax = 5;
-int num_splits = 5;
+int lmin = 3;
+int lmax = 6;
+int num_splits = 7;
 int num_splits_per_split = 1;
 int num_shifts_x_dir = 1;
 int num_shifts_y_dir = 1;
@@ -151,11 +151,11 @@ int iter_start = 0; // is used to skip iterations and get to a problematic case
 int num_test_ii = 11;
 int num_test_geometry = 6;
 
-int num_test_mu_m = 0;
-int num_test_mu_p = 1;
+int num_test_mu_m = 1;
+int num_test_mu_p = 0;
 
-int num_test_um = 1;
-int num_test_up = 0;
+int num_test_um = 6;
+int num_test_up = 7;
 
 int num_test_diag_term_m = 0;
 int num_test_diag_term_p = 0;
@@ -193,7 +193,7 @@ double domain_perturbation_pow = 2.;
 //-------------------------------------
 // convergence study parameters
 //-------------------------------------
-int    compute_cond_num = 0*num_splits;
+int    compute_cond_num = 1*num_splits;
 bool   do_extension     = 0;
 double mask_thresh      = 0;
 bool   compute_grad_between = false;
@@ -201,7 +201,7 @@ bool   compute_grad_between = false;
 //-------------------------------------
 // output
 //-------------------------------------
-bool save_vtk           = 0;
+bool save_vtk           = 1;
 bool save_domain        = 0;
 bool save_matrix_ascii  = 0;
 bool save_matrix_binary = 0;
@@ -2202,6 +2202,8 @@ int main (int argc, char* argv[])
               ierr = PetscPrintf(p4est->mpicomm, "Error (gr_p): %g, order = %g\n", err_gr_p_max, log(error_gr_p_arr[iter-1]/error_gr_p_arr[iter])/log(2)); CHKERRXX(ierr);
 //              ierr = PetscPrintf(p4est->mpicomm, "Error (ex_p): %g, order = %g\n", err_ex_p_max, log(error_ex_p_arr[iter-1]/error_ex_p_arr[iter])/log(2)); CHKERRXX(ierr);
 //              ierr = PetscPrintf(p4est->mpicomm, "Error (dd_p): %g, order = %g\n", err_dd_p_max, log(error_dd_p_arr[iter-1]/error_dd_p_arr[iter])/log(2)); CHKERRXX(ierr);
+
+              ierr = PetscPrintf(p4est->mpicomm, "Cond num: %e\n", cond_num_arr[iter]); CHKERRXX(ierr);
             }
 
             if(save_vtk)

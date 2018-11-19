@@ -172,6 +172,71 @@ const unsigned short i_idx[] = { 0, 1 };
 const unsigned short j_idx[] = { 1, 0 };
 #endif
 
+
+//#ifdef P4_TO_P8
+//const unsigned short q2c[P4EST_CHILDREN][P4EST_CHILDREN] = { { nn_mmm, nn_0mm, nn_m0m, nn_00m,
+//                                                               nn_mm0, nn_0m0, nn_m00, nn_000 },
+
+//                                                             { nn_0mm, nn_pmm, nn_00m, nn_p0m,
+//                                                               nn_0m0, nn_pm0, nn_000, nn_p00 },
+
+//                                                             { nn_m0m, nn_00m, nn_mpm, nn_0pm,
+//                                                               nn_m00, nn_000, nn_mp0, nn_0p0 },
+
+//                                                             { nn_00m, nn_p0m, nn_0pm, nn_ppm,
+//                                                               nn_000, nn_p00, nn_0p0, nn_pp0 },
+
+//                                                             { nn_mm0, nn_0m0, nn_m00, nn_000,
+//                                                               nn_mmp, nn_0mp, nn_m0p, nn_00p },
+
+//                                                             { nn_0m0, nn_pm0, nn_000, nn_p00,
+//                                                               nn_0mp, nn_pmp, nn_00p, nn_p0p },
+
+//                                                             { nn_m00, nn_000, nn_mp0, nn_0p0,
+//                                                               nn_m0p, nn_00p, nn_mpp, nn_0pp },
+
+//                                                             { nn_000, nn_p00, nn_0p0, nn_pp0,
+//                                                               nn_00p, nn_p0p, nn_0pp, nn_ppp }};
+//#else
+//const unsigned short q2c[P4EST_CHILDREN][P4EST_CHILDREN] = { { nn_mm0, nn_0m0, nn_m00, nn_000 },
+//                                                             { nn_0m0, nn_pm0, nn_000, nn_p00 },
+//                                                             { nn_m00, nn_000, nn_mp0, nn_0p0 },
+//                                                             { nn_000, nn_p00, nn_0p0, nn_pp0 } };
+//#endif
+const unsigned short q2c_num_pts = P4EST_CHILDREN;
+const unsigned short t2c_num_pts = P4EST_DIM+1;
+
+#ifdef P4_TO_P8
+const unsigned short q2c[P4EST_CHILDREN][q2c_num_pts] = { { nn_000, nn_m00, nn_0m0, nn_mm0, nn_00m, nn_m0m, nn_0mm, nn_mmm },
+                                                          { nn_000, nn_p00, nn_0m0, nn_pm0, nn_00m, nn_p0m, nn_0mm, nn_pmm },
+                                                          { nn_000, nn_m00, nn_0p0, nn_mp0, nn_00m, nn_m0m, nn_0pm, nn_mpm },
+                                                          { nn_000, nn_p00, nn_0p0, nn_pp0, nn_00m, nn_p0m, nn_0pm, nn_ppm },
+                                                          { nn_000, nn_m00, nn_0m0, nn_mm0, nn_00p, nn_m0p, nn_0mp, nn_mmp },
+                                                          { nn_000, nn_p00, nn_0m0, nn_pm0, nn_00p, nn_p0p, nn_0mp, nn_pmp },
+                                                          { nn_000, nn_m00, nn_0p0, nn_mp0, nn_00p, nn_m0p, nn_0pp, nn_mpp },
+                                                          { nn_000, nn_p00, nn_0p0, nn_pp0, nn_00p, nn_p0p, nn_0pp, nn_ppp } };
+
+const unsigned short t2c[P4EST_CHILDREN][t2c_num_pts] = { { nn_000, nn_m00, nn_0m0, nn_00m },
+                                                          { nn_000, nn_p00, nn_0m0, nn_00m },
+                                                          { nn_000, nn_m00, nn_0p0, nn_00m },
+                                                          { nn_000, nn_p00, nn_0p0, nn_00m },
+                                                          { nn_000, nn_m00, nn_0m0, nn_00p },
+                                                          { nn_000, nn_p00, nn_0m0, nn_00p },
+                                                          { nn_000, nn_m00, nn_0p0, nn_00p },
+                                                          { nn_000, nn_p00, nn_0p0, nn_00p },};
+
+#else
+const unsigned short q2c[P4EST_CHILDREN][q2c_num_pts] = { { nn_000, nn_m00, nn_0m0, nn_mm0 },
+                                                          { nn_000, nn_p00, nn_0m0, nn_pm0 },
+                                                          { nn_000, nn_m00, nn_0p0, nn_mp0 },
+                                                          { nn_000, nn_p00, nn_0p0, nn_pp0 },};
+
+const unsigned short t2c[P4EST_CHILDREN][t2c_num_pts] = { { nn_000, nn_m00, nn_0m0 },
+                                                          { nn_000, nn_p00, nn_0m0 },
+                                                          { nn_000, nn_m00, nn_0p0 },
+                                                          { nn_000, nn_p00, nn_0p0 } };
+#endif
+
 enum interpolation_method{
   linear,
   quadratic,

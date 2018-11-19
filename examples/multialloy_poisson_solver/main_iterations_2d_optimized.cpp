@@ -134,7 +134,7 @@ void set_alloy_parameters()
     eps_v                = 0;
     eps_anisotropy       = 0.05;
 
-    Dl[0] = 1e-4;
+    Dl[0] = 1e-1;
 //    Dl[0] = 1;
 //    Dl[0] = 1;
     ml[0] =-357;
@@ -142,7 +142,7 @@ void set_alloy_parameters()
     c0[0] = 0.4;
     kp[0] = 0.86;
 
-    Dl[1] = 2e-4;
+    Dl[1] = 2e-1;
 //    Dl[1] = 1e-1;
 //    Dl[1] = 1;
     ml[1] =-357;
@@ -1630,8 +1630,8 @@ class c0_guess_t : public CF_2
 public:
   double operator()(double x, double y) const
   {
-    return 1.;
-    return c0_exact(x,y);
+//    return 1.;
+    return c0_exact(x,y)+0.03*sin(5*y)*cos(5*x)-0.05;
 //    return c0_exact(x,y) + 0.1;
   }
 } c0_guess;

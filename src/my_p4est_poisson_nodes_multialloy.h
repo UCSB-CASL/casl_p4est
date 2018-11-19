@@ -182,7 +182,9 @@ class my_p4est_poisson_nodes_multialloy_t
 
   unsigned int num_extend_iterations_;
 
-  enum var_scheme_t { VALUE, ABS_VALUE, QUADRATIC } var_scheme_;
+  enum var_scheme_t { VALUE, ABS_VALUE, QUADRATIC, ABS_ALTER, ABS_SMTH1, ABS_SMTH2, ABS_SMTH3 } var_scheme_;
+
+  double err_eps_;
 
   vec_and_ptr_t bc_error_gamma_;
 
@@ -393,7 +395,11 @@ private:
     {
       switch (ptr_->var_scheme_) {
         case VALUE:     return 1./ptr_->t_diff_/ptr_->ml0_;
+        case ABS_ALTER: return 1./ptr_->t_diff_/ptr_->ml0_;
         case ABS_VALUE: return 1./ptr_->t_diff_/ptr_->ml0_*(ptr_->bc_error_cf_(x,y) < 0 ? -1. : 1.);
+        case ABS_SMTH1: { double err = ptr_->bc_error_cf_(x,y); double err_eps = ptr_->err_eps_; return 1./ptr_->t_diff_/ptr_->ml0_*(2.*exp(err/err_eps)/(1.+exp(err/err_eps)) - 1.); }
+        case ABS_SMTH2: { double err = ptr_->bc_error_cf_(x,y); double err_eps = ptr_->err_eps_; return 1./ptr_->t_diff_/ptr_->ml0_*(err/sqrt(err*err + err_eps*err_eps)); }
+        case ABS_SMTH3: { double err = ptr_->bc_error_cf_(x,y); double err_eps = ptr_->err_eps_; return 1./ptr_->t_diff_/ptr_->ml0_*(err/sqrt(err*err + err_eps*err_eps) + err_eps*err_eps*err/pow(err*err + err_eps*err_eps, 1.5)); }
         case QUADRATIC: return 1./ptr_->t_diff_/ptr_->ml0_*(ptr_->bc_error_cf_(x,y));
       }
     }
@@ -426,7 +432,11 @@ private:
                                                          -ptr_->ml1_/ptr_->ml0_/ptr_->Dl1_;
       switch (ptr_->var_scheme_) {
         case VALUE:     return factor;
+        case ABS_ALTER: return factor;
         case ABS_VALUE: return factor*(ptr_->bc_error_cf_(x,y) < 0 ? -1. : 1.);
+        case ABS_SMTH1: { double err = ptr_->bc_error_cf_(x,y); double err_eps = ptr_->err_eps_; return factor*(2.*exp(err/err_eps)/(1.+exp(err/err_eps)) - 1.); }
+        case ABS_SMTH2: { double err = ptr_->bc_error_cf_(x,y); double err_eps = ptr_->err_eps_; return factor*(err/sqrt(err*err + err_eps*err_eps)); }
+        case ABS_SMTH3: { double err = ptr_->bc_error_cf_(x,y); double err_eps = ptr_->err_eps_; return factor*(err/sqrt(err*err + err_eps*err_eps) + err_eps*err_eps*err/pow(err*err + err_eps*err_eps, 1.5)); }
         case QUADRATIC: return factor*(ptr_->bc_error_cf_(x,y));
       }
     }

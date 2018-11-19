@@ -1193,6 +1193,21 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
 #endif
   }
 
+  std::vector<double *> ii_phi_x_ptr(ii_.num_interfaces, NULL);
+  std::vector<double *> ii_phi_y_ptr(ii_.num_interfaces, NULL);
+#ifdef P4_TO_P8
+  std::vector<double *> ii_phi_z_ptr(ii_.num_interfaces, NULL);
+#endif
+
+  for (unsigned int i = 0; i < ii_.num_interfaces; ++i)
+  {
+    ierr = VecGetArray(ii_.phi_x->at(i), &ii_phi_x_ptr[i]); CHKERRXX(ierr);
+    ierr = VecGetArray(ii_.phi_y->at(i), &ii_phi_y_ptr[i]); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    ierr = VecGetArray(ii_.phi_z->at(i), &ii_phi_z_ptr[i]); CHKERRXX(ierr);
+#endif
+  }
+
   p4est_locidx_t node_m00_mm = NOT_A_VALID_QUADRANT; p4est_locidx_t node_m00_pm = NOT_A_VALID_QUADRANT;
   p4est_locidx_t node_p00_mm = NOT_A_VALID_QUADRANT; p4est_locidx_t node_p00_pm = NOT_A_VALID_QUADRANT;
   p4est_locidx_t node_0m0_mm = NOT_A_VALID_QUADRANT; p4est_locidx_t node_0m0_pm = NOT_A_VALID_QUADRANT;
@@ -1253,6 +1268,28 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
   }
 
   double diag_add = 0;
+
+//  // values on immersed interface at projected points
+//  Vec ii_a; double *ii_a_ptr;
+//  Vec ii_b; double *ii_b_ptr;
+
+//  ierr = VecDuplicate(rhs_m_, &ii_a); CHKERRXX(ierr);
+//  ierr = VecDuplicate(rhs_p_, &ii_b); CHKERRXX(ierr);
+
+//  ierr = VecGetArray(ii_a, &ii_a_ptr); CHKERRXX(ierr);
+//  ierr = VecGetArray(ii_b, &ii_b_ptr); CHKERRXX(ierr);
+//  ierr = VecGetArray(ii_.phi_eff, &phi_eff_p); CHKERRXX(ierr);
+
+//  foreach_local_node(n, nodes_)
+//  {
+//    if (phi_eff_p[n] < proj_band)
+//    {
+
+//    }
+
+//  }
+
+
 
   for(p4est_locidx_t n=0; n<nodes_->num_owned_indeps; n++) // loop over nodes
   {
@@ -2858,11 +2895,15 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
           for (unsigned int i = 0; i < cube_ifc_w[phi_idx].size(); ++i)
           {
             interface_area[phi_idx] += cube_ifc_w[phi_idx][i];
+            if (bc_interface_type_->at(phi_idx) == ROBIN ||
+                bc_interface_type_->at(phi_idx) == NEUMANN)
+            {
 #ifdef P4_TO_P8
-            integral_bc    += cube_ifc_w[phi_idx][i] * (*bc_interface_value_->at(phi_idx))(cube_ifc_x[phi_idx][i], cube_ifc_y[phi_idx][i], cube_ifc_z[phi_idx][i]);
+              integral_bc    += cube_ifc_w[phi_idx][i] * (*bc_interface_value_->at(phi_idx))(cube_ifc_x[phi_idx][i], cube_ifc_y[phi_idx][i], cube_ifc_z[phi_idx][i]);
 #else
-            integral_bc    += cube_ifc_w[phi_idx][i] * (*bc_interface_value_->at(phi_idx))(cube_ifc_x[phi_idx][i], cube_ifc_y[phi_idx][i]);
+              integral_bc    += cube_ifc_w[phi_idx][i] * (*bc_interface_value_->at(phi_idx))(cube_ifc_x[phi_idx][i], cube_ifc_y[phi_idx][i]);
 #endif
+            }
             interface_centroid_x[phi_idx] += cube_ifc_w[phi_idx][i]*cube_ifc_x[phi_idx][i];
             interface_centroid_y[phi_idx] += cube_ifc_w[phi_idx][i]*cube_ifc_y[phi_idx][i];
 #ifdef P4_TO_P8
@@ -3038,597 +3079,504 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
           }
         }
 
-        bool sc_scheme_successful = false;
-        // a variation of the least-square fitting approach
-        if (use_sc_scheme_)
+        if (!is_ngbd_crossed_dirichlet)
         {
-          sc_scheme_successful = true;
-
-          // linear system
-          char num_constraints = num_neighbors_cube_ + num_interfaces_;
-
-          std::vector<double> col_1st(num_constraints, 0);
-          std::vector<double> col_2nd(num_constraints, 0);
-          std::vector<double> col_3rd(num_constraints, 0);
-#ifdef P4_TO_P8
-          std::vector<double> col_4th(num_constraints, 0);
-#endif
-
-          std::vector<double> bc_values(num_interfaces_, 0);
-          std::vector<double> bc_coeffs(num_interfaces_, 0);
-
-          std::vector<double> S(num_interfaces_, 0);
-
-          std::vector<double> x0(num_interfaces_, 0);
-          std::vector<double> y0(num_interfaces_, 0);
-#ifdef P4_TO_P8
-          std::vector<double> z0(num_interfaces_, 0);
-#endif
-
-#ifdef P4_TO_P8
-          for (char k = 0; k < 3; ++k)
-#endif
-            for (char j = 0; j < 3; ++j)
-              for (char i = 0; i < 3; ++i)
-              {
-#ifdef P4_TO_P8
-                char idx = 9*k+3*j+i;
-#else
-                char idx = 3*j+i;
-#endif
-                col_1st[idx] = 1.;
-                col_2nd[idx] = ((double) (i-1)) * dxyz_m_[0];
-                col_3rd[idx] = ((double) (j-1)) * dxyz_m_[1];
-#ifdef P4_TO_P8
-                col_4th[idx] = ((double) (k-1)) * dxyz_m_[2];
-#endif
-              }
-
-          for (unsigned short phi_idx = 0; phi_idx < num_interfaces_; ++phi_idx)
+          bool sc_scheme_successful = false;
+          // a variation of the least-square fitting approach
+          if (use_sc_scheme_)
           {
-            if (cube_ifc_w[phi_idx].size() > 0)
-            {
+            sc_scheme_successful = true;
+
+            // linear system
+            char num_constraints = num_neighbors_cube_ + num_interfaces_;
+
+            std::vector<double> col_1st(num_constraints, 0);
+            std::vector<double> col_2nd(num_constraints, 0);
+            std::vector<double> col_3rd(num_constraints, 0);
 #ifdef P4_TO_P8
-              phi_interp_local.set_input(phi_p[phi_idx], phi_xx_p[phi_idx], phi_yy_p[phi_idx], phi_zz_p[phi_idx], interp_method_);
-#else
-              phi_interp_local.set_input(phi_p[phi_idx], phi_xx_p[phi_idx], phi_yy_p[phi_idx], interp_method_);
-#endif
-              phi_x_local.set_input(phi_x_ptr[phi_idx], linear);
-              phi_y_local.set_input(phi_y_ptr[phi_idx], linear);
-#ifdef P4_TO_P8
-              phi_z_local.set_input(phi_z_ptr[phi_idx], linear);
+            std::vector<double> col_4th(num_constraints, 0);
 #endif
 
-              // compute centroid of an interface
-              for (unsigned int i = 0; i < cube_ifc_w[phi_idx].size(); ++i)
-              {
-                S [phi_idx] += cube_ifc_w[phi_idx][i];
-                x0[phi_idx] += cube_ifc_w[phi_idx][i]*(cube_ifc_x[phi_idx][i]);
-                y0[phi_idx] += cube_ifc_w[phi_idx][i]*(cube_ifc_y[phi_idx][i]);
-#ifdef P4_TO_P8
-                z0[phi_idx] += cube_ifc_w[phi_idx][i]*(cube_ifc_z[phi_idx][i]);
-#endif
-              }
+            std::vector<double> bc_values(num_interfaces_, 0);
+            std::vector<double> bc_coeffs(num_interfaces_, 0);
 
-              x0[phi_idx] /= S[phi_idx];
-              y0[phi_idx] /= S[phi_idx];
+            std::vector<double> S(num_interfaces_, 0);
+
+            std::vector<double> x0(num_interfaces_, 0);
+            std::vector<double> y0(num_interfaces_, 0);
 #ifdef P4_TO_P8
-              z0[phi_idx] /= S[phi_idx];
+            std::vector<double> z0(num_interfaces_, 0);
 #endif
 
 #ifdef P4_TO_P8
-              double xyz0[P4EST_DIM] = { x0[phi_idx], y0[phi_idx], z0[phi_idx] };
-#else
-              double xyz0[P4EST_DIM] = { x0[phi_idx], y0[phi_idx] };
+            for (char k = 0; k < 3; ++k)
 #endif
-
-              // compute signed distance and normal at the centroid
-              double nx = phi_x_local.value(xyz0);
-              double ny = phi_y_local.value(xyz0);
-#ifdef P4_TO_P8
-              double nz = phi_z_local.value(xyz0);
-#endif
-
-#ifdef P4_TO_P8
-              double norm = sqrt(nx*nx+ny*ny+nz*nz);
-#else
-              double norm = sqrt(nx*nx+ny*ny);
-#endif
-              nx /= norm;
-              ny /= norm;
-#ifdef P4_TO_P8
-              nz /= norm;
-#endif
-              double dist0 = phi_interp_local.value(xyz0)/norm;
-
-              double xyz_pr[P4EST_DIM];
-
-              xyz_pr[0] = xyz0[0] - dist0*nx;
-              xyz_pr[1] = xyz0[1] - dist0*ny;
-#ifdef P4_TO_P8
-              xyz_pr[2] = xyz0[2] - dist0*nz;
-#endif
-              xyz_pr[0] = MIN(xyz_pr[0], interp_xmax); xyz_pr[0] = MAX(xyz_pr[0], interp_xmin);
-              xyz_pr[1] = MIN(xyz_pr[1], interp_ymax); xyz_pr[1] = MAX(xyz_pr[1], interp_ymin);
-#ifdef P4_TO_P8
-              xyz_pr[2] = MIN(xyz_pr[2], interp_zmax); xyz_pr[2] = MAX(xyz_pr[2], interp_zmin);
-#endif
-
-              double mu_proj       = variable_mu_ ? interp_local.value(xyz_pr) : mu_;
-              double bc_coeff_proj = bc_interface_coeff_->at(phi_idx)->value(xyz_pr);
-              double bc_value_proj = bc_interface_value_->at(phi_idx)->value(xyz_pr);
-
-              col_1st[num_neighbors_cube_ + phi_idx] = bc_coeff_proj;
-              col_2nd[num_neighbors_cube_ + phi_idx] = (mu_proj*nx + bc_coeff_proj*(xyz_pr[0] - xyz_C[0]));
-              col_3rd[num_neighbors_cube_ + phi_idx] = (mu_proj*ny + bc_coeff_proj*(xyz_pr[1] - xyz_C[1]));
-#ifdef P4_TO_P8
-              col_4th[num_neighbors_cube_ + phi_idx] = (mu_proj*nz + bc_coeff_proj*(xyz_pr[2] - xyz_C[2]));
-#endif
-              bc_coeffs[phi_idx] = bc_coeff_proj;
-              bc_values[phi_idx] = bc_value_proj;
-            }
-          }
-
-          double gamma = 3.*log(10.);
-
-          for (unsigned short phi_idx = 0; phi_idx < num_interfaces_; ++phi_idx)
-          {
-            if (cube_ifc_w[phi_idx].size() > 0 && sc_scheme_successful)
-            {
-              std::vector<double> weight(num_constraints, 0);
-
-              unsigned short num_constraints_present = 0;
-
-#ifdef P4_TO_P8
-              for (unsigned short k = 0; k < 3; ++k)
-#endif
-                for (unsigned short j = 0; j < 3; ++j)
-                  for (unsigned short i = 0; i < 3; ++i)
-                  {
-#ifdef P4_TO_P8
-                    unsigned short idx = 9*k+3*j+i;
-#else
-                    unsigned short idx = 3*j+i;
-#endif
-                    double dx = ((double) (i-1)) * dxyz_m_[0];
-                    double dy = ((double) (j-1)) * dxyz_m_[1];
-#ifdef P4_TO_P8
-                    double dz = ((double) (k-1)) * dxyz_m_[2];
-#endif
-
-                    if (neighbors_exist[idx])
-                    {
-                      weight[idx] = exp(-gamma*(SQR((x_C+dx-x0[phi_idx])/dx_min_) +
-                          #ifdef P4_TO_P8
-                                                SQR((z_C+dz-z0[phi_idx])/dz_min_) +
-                          #endif
-                                                SQR((y_C+dy-y0[phi_idx])/dy_min_)));
-                      num_constraints_present++;
-                    }
-                  }
-
-              for (unsigned short phi_jdx = 0; phi_jdx < num_interfaces_; ++phi_jdx)
-              {
-                if (cube_ifc_w[phi_jdx].size() > 0)
+              for (char j = 0; j < 3; ++j)
+                for (char i = 0; i < 3; ++i)
                 {
-                  weight[num_neighbors_cube_ + phi_jdx] = exp(-gamma*(SQR((x0[phi_jdx]-x0[phi_idx])/dx_min_) +
-                                                    #ifdef P4_TO_P8
-                                                                      SQR((z0[phi_jdx]-z0[phi_idx])/dz_min_) +
-                                                    #endif
-                                                                      SQR((y0[phi_jdx]-y0[phi_idx])/dy_min_)));
-                  num_constraints_present++;
+#ifdef P4_TO_P8
+                  char idx = 9*k+3*j+i;
+#else
+                  char idx = 3*j+i;
+#endif
+                  col_1st[idx] = 1.;
+                  col_2nd[idx] = ((double) (i-1)) * dxyz_m_[0];
+                  col_3rd[idx] = ((double) (j-1)) * dxyz_m_[1];
+#ifdef P4_TO_P8
+                  col_4th[idx] = ((double) (k-1)) * dxyz_m_[2];
+#endif
                 }
-              }
 
-              if (num_constraints_present <= P4EST_DIM+1)
-              {
-                sc_scheme_successful = false;
-                continue;
-              }
-
-              // assemble and invert matrix
-              unsigned short A_size = (P4EST_DIM+1);
-              double A[(P4EST_DIM+1)*(P4EST_DIM+1)];
-              double A_inv[(P4EST_DIM+1)*(P4EST_DIM+1)];
-
-              A[0*A_size + 0] = 0;
-              A[0*A_size + 1] = 0;
-              A[0*A_size + 2] = 0;
-              A[1*A_size + 1] = 0;
-              A[1*A_size + 2] = 0;
-              A[2*A_size + 2] = 0;
-#ifdef P4_TO_P8
-              A[0*A_size + 3] = 0;
-              A[1*A_size + 3] = 0;
-              A[2*A_size + 3] = 0;
-              A[3*A_size + 3] = 0;
-#endif
-
-              for (unsigned short nei = 0; nei < num_constraints; ++nei)
-              {
-                A[0*A_size + 0] += col_1st[nei]*col_1st[nei]*weight[nei];
-                A[0*A_size + 1] += col_1st[nei]*col_2nd[nei]*weight[nei];
-                A[0*A_size + 2] += col_1st[nei]*col_3rd[nei]*weight[nei];
-                A[1*A_size + 1] += col_2nd[nei]*col_2nd[nei]*weight[nei];
-                A[1*A_size + 2] += col_2nd[nei]*col_3rd[nei]*weight[nei];
-                A[2*A_size + 2] += col_3rd[nei]*col_3rd[nei]*weight[nei];
-#ifdef P4_TO_P8
-                A[0*A_size + 3] += col_1st[nei]*col_4th[nei]*weight[nei];
-                A[1*A_size + 3] += col_2nd[nei]*col_4th[nei]*weight[nei];
-                A[2*A_size + 3] += col_3rd[nei]*col_4th[nei]*weight[nei];
-                A[3*A_size + 3] += col_4th[nei]*col_4th[nei]*weight[nei];
-#endif
-              }
-
-              A[1*A_size + 0] = A[0*A_size + 1];
-              A[2*A_size + 0] = A[0*A_size + 2];
-              A[2*A_size + 1] = A[1*A_size + 2];
-#ifdef P4_TO_P8
-              A[3*A_size + 0] = A[0*A_size + 3];
-              A[3*A_size + 1] = A[1*A_size + 3];
-              A[3*A_size + 2] = A[2*A_size + 3];
-#endif
-
-#ifdef P4_TO_P8
-              if (!inv_mat4(A, A_inv)) throw std::domain_error("Error: singular LSQR matrix\n");
-#else
-              if (!inv_mat3(A, A_inv)) throw std::domain_error("Error: singular LSQR matrix\n");
-#endif
-
-              // compute Taylor expansion coefficients
-              std::vector<double> coeff_const_term(num_constraints, 0);
-              std::vector<double> coeff_x_term    (num_constraints, 0);
-              std::vector<double> coeff_y_term    (num_constraints, 0);
-#ifdef P4_TO_P8
-              std::vector<double> coeff_z_term    (num_constraints, 0);
-#endif
-
-              for (unsigned short nei = 0; nei < num_constraints; ++nei)
-              {
-#ifdef P4_TO_P8
-                coeff_const_term[nei] = weight[nei]*
-                    ( A_inv[0*A_size+0]*col_1st[nei]
-                    + A_inv[0*A_size+1]*col_2nd[nei]
-                    + A_inv[0*A_size+2]*col_3rd[nei]
-                    + A_inv[0*A_size+3]*col_4th[nei] );
-
-                coeff_x_term[nei] = weight[nei]*
-                    ( A_inv[1*A_size+0]*col_1st[nei]
-                    + A_inv[1*A_size+1]*col_2nd[nei]
-                    + A_inv[1*A_size+2]*col_3rd[nei]
-                    + A_inv[1*A_size+3]*col_4th[nei] );
-
-                coeff_y_term[nei] = weight[nei]*
-                    ( A_inv[2*A_size+0]*col_1st[nei]
-                    + A_inv[2*A_size+1]*col_2nd[nei]
-                    + A_inv[2*A_size+2]*col_3rd[nei]
-                    + A_inv[2*A_size+3]*col_4th[nei] );
-
-                coeff_z_term[nei] = weight[nei]*
-                    ( A_inv[3*A_size+0]*col_1st[nei]
-                    + A_inv[3*A_size+1]*col_2nd[nei]
-                    + A_inv[3*A_size+2]*col_3rd[nei]
-                    + A_inv[3*A_size+3]*col_4th[nei] );
-#else
-                coeff_const_term[nei] = weight[nei]*
-                    ( A_inv[0*A_size+0]*col_1st[nei]
-                    + A_inv[0*A_size+1]*col_2nd[nei]
-                    + A_inv[0*A_size+2]*col_3rd[nei] );
-
-                coeff_x_term[nei] = weight[nei]*
-                    ( A_inv[1*A_size+0]*col_1st[nei]
-                    + A_inv[1*A_size+1]*col_2nd[nei]
-                    + A_inv[1*A_size+2]*col_3rd[nei] );
-
-                coeff_y_term[nei] = weight[nei]*
-                    ( A_inv[2*A_size+0]*col_1st[nei]
-                    + A_inv[2*A_size+1]*col_2nd[nei]
-                    + A_inv[2*A_size+2]*col_3rd[nei] );
-#endif
-              }
-
-              double rhs_const_term = 0;
-              double rhs_x_term     = 0;
-              double rhs_y_term     = 0;
-#ifdef P4_TO_P8
-              double rhs_z_term     = 0;
-#endif
-              for (unsigned short phi_jdx = 0; phi_jdx < num_interfaces_; ++phi_jdx)
-              {
-                rhs_const_term += coeff_const_term[num_neighbors_cube_ + phi_jdx] * bc_values[phi_jdx];
-                rhs_x_term     += coeff_x_term    [num_neighbors_cube_ + phi_jdx] * bc_values[phi_jdx];
-                rhs_y_term     += coeff_y_term    [num_neighbors_cube_ + phi_jdx] * bc_values[phi_jdx];
-#ifdef P4_TO_P8
-                rhs_z_term     += coeff_z_term    [num_neighbors_cube_ + phi_jdx] * bc_values[phi_jdx];
-#endif
-              }
-
-              // compute integrals
-              double const_term = S[phi_idx]*bc_coeffs[phi_idx];
-              double x_term     = S[phi_idx]*bc_coeffs[phi_idx]*(x0[phi_idx] - xyz_C[0]);
-              double y_term     = S[phi_idx]*bc_coeffs[phi_idx]*(y0[phi_idx] - xyz_C[1]);
-#ifdef P4_TO_P8
-              double z_term     = S[phi_idx]*bc_coeffs[phi_idx]*(z0[phi_idx] - xyz_C[2]);
-#endif
-//              double const_term = S[phi_idx]*(*bc_interface_coeff_->at(phi_idx))(x0[phi_idx], y0[phi_idx]);
-//              double x_term     = S[phi_idx]*(*bc_interface_coeff_->at(phi_idx))(x0[phi_idx], y0[phi_idx])*(x0[phi_idx] - xyz_C[0]);
-//              double y_term     = S[phi_idx]*(*bc_interface_coeff_->at(phi_idx))(x0[phi_idx], y0[phi_idx])*(y0[phi_idx] - xyz_C[1]);
-//#ifdef P4_TO_P8
-//              double z_term     = S[phi_idx]*(*bc_interface_coeff_->at(phi_idx))(x0[phi_idx], y0[phi_idx])*(z0[phi_idx] - xyz_C[2]);
-//#endif
-
-              // matrix coefficients
-              for (unsigned short nei = 0; nei < num_neighbors_cube_; ++nei)
-              {
-#ifdef P4_TO_P8
-                w[nei] += coeff_const_term[nei]*const_term
-                    + coeff_x_term[nei]*x_term
-                    + coeff_y_term[nei]*y_term
-                    + coeff_z_term[nei]*z_term;
-#else
-                w[nei] += coeff_const_term[nei]*const_term
-                    + coeff_x_term[nei]*x_term
-                    + coeff_y_term[nei]*y_term;
-#endif
-              }
-
-              if (setup_rhs)
-#ifdef P4_TO_P8
-                rhs_ptr[n] -= rhs_const_term*const_term + rhs_x_term*x_term + rhs_y_term*y_term + rhs_z_term*z_term;
-#else
-                rhs_ptr[n] -= rhs_const_term*const_term + rhs_x_term*x_term + rhs_y_term*y_term;
-#endif
-
-              if (setup_matrix && fabs(const_term) > 0) matrix_has_nullspace_ = false;
-            }
-          }
-        }
-
-        //*/
-
-        if (!use_sc_scheme_ || !sc_scheme_successful)
-        {
-          if (setup_matrix && use_sc_scheme_)
-          {
-            mask_p[n] = MAX(mask_p[n], -0.1);
-            std::cout << "Fallback Robin BC\n";
-          }
-
-          // code below asumes that we have only Robin or Neumann BC in a cell
-          //---------------------------------------------------------------------
-          // contribution through interfaces
-          //---------------------------------------------------------------------
-
-          // count interfaces
-          std::vector<int> present_interfaces;
-
-          std::vector<double> measure_of_interface(num_interfaces_, 0);
-
-          bool is_there_kink = false;
-
-          for (unsigned short phi_idx = 0; phi_idx < num_interfaces_; phi_idx++)
-          {
-            for (unsigned int i = 0; i < cube_ifc_w[phi_idx].size(); ++i)
-              measure_of_interface[phi_idx] += cube_ifc_w[phi_idx][i];
-
-            if (bc_interface_type_->at(phi_idx) == ROBIN && cube_ifc_w[phi_idx].size() > 0)
+            for (unsigned short phi_idx = 0; phi_idx < num_interfaces_; ++phi_idx)
             {
-              if (present_interfaces.size() > 0 and action_->at(phi_idx) != COLORATION)
-                is_there_kink = true;
+              if (cube_ifc_w[phi_idx].size() > 0)
+              {
+#ifdef P4_TO_P8
+                phi_interp_local.set_input(phi_p[phi_idx], phi_xx_p[phi_idx], phi_yy_p[phi_idx], phi_zz_p[phi_idx], interp_method_);
+#else
+                phi_interp_local.set_input(phi_p[phi_idx], phi_xx_p[phi_idx], phi_yy_p[phi_idx], interp_method_);
+#endif
+                phi_x_local.set_input(phi_x_ptr[phi_idx], linear);
+                phi_y_local.set_input(phi_y_ptr[phi_idx], linear);
+#ifdef P4_TO_P8
+                phi_z_local.set_input(phi_z_ptr[phi_idx], linear);
+#endif
 
-              present_interfaces.push_back(phi_idx);
+                // compute centroid of an interface
+                for (unsigned int i = 0; i < cube_ifc_w[phi_idx].size(); ++i)
+                {
+                  S [phi_idx] += cube_ifc_w[phi_idx][i];
+                  x0[phi_idx] += cube_ifc_w[phi_idx][i]*(cube_ifc_x[phi_idx][i]);
+                  y0[phi_idx] += cube_ifc_w[phi_idx][i]*(cube_ifc_y[phi_idx][i]);
+#ifdef P4_TO_P8
+                  z0[phi_idx] += cube_ifc_w[phi_idx][i]*(cube_ifc_z[phi_idx][i]);
+#endif
+                }
+
+                x0[phi_idx] /= S[phi_idx];
+                y0[phi_idx] /= S[phi_idx];
+#ifdef P4_TO_P8
+                z0[phi_idx] /= S[phi_idx];
+#endif
+
+#ifdef P4_TO_P8
+                double xyz0[P4EST_DIM] = { x0[phi_idx], y0[phi_idx], z0[phi_idx] };
+#else
+                double xyz0[P4EST_DIM] = { x0[phi_idx], y0[phi_idx] };
+#endif
+
+                // compute signed distance and normal at the centroid
+                double nx = phi_x_local.value(xyz0);
+                double ny = phi_y_local.value(xyz0);
+#ifdef P4_TO_P8
+                double nz = phi_z_local.value(xyz0);
+#endif
+
+#ifdef P4_TO_P8
+                double norm = sqrt(nx*nx+ny*ny+nz*nz);
+#else
+                double norm = sqrt(nx*nx+ny*ny);
+#endif
+                nx /= norm;
+                ny /= norm;
+#ifdef P4_TO_P8
+                nz /= norm;
+#endif
+                double dist0 = phi_interp_local.value(xyz0)/norm;
+
+                double xyz_pr[P4EST_DIM];
+
+                xyz_pr[0] = xyz0[0] - dist0*nx;
+                xyz_pr[1] = xyz0[1] - dist0*ny;
+#ifdef P4_TO_P8
+                xyz_pr[2] = xyz0[2] - dist0*nz;
+#endif
+                xyz_pr[0] = MIN(xyz_pr[0], interp_xmax); xyz_pr[0] = MAX(xyz_pr[0], interp_xmin);
+                xyz_pr[1] = MIN(xyz_pr[1], interp_ymax); xyz_pr[1] = MAX(xyz_pr[1], interp_ymin);
+#ifdef P4_TO_P8
+                xyz_pr[2] = MIN(xyz_pr[2], interp_zmax); xyz_pr[2] = MAX(xyz_pr[2], interp_zmin);
+#endif
+
+                double mu_proj       = variable_mu_ ? interp_local.value(xyz_pr) : mu_;
+                double bc_coeff_proj = bc_interface_coeff_->at(phi_idx)->value(xyz_pr);
+                double bc_value_proj = bc_interface_value_->at(phi_idx)->value(xyz_pr);
+
+                col_1st[num_neighbors_cube_ + phi_idx] = bc_coeff_proj;
+                col_2nd[num_neighbors_cube_ + phi_idx] = (mu_proj*nx + bc_coeff_proj*(xyz_pr[0] - xyz_C[0]));
+                col_3rd[num_neighbors_cube_ + phi_idx] = (mu_proj*ny + bc_coeff_proj*(xyz_pr[1] - xyz_C[1]));
+#ifdef P4_TO_P8
+                col_4th[num_neighbors_cube_ + phi_idx] = (mu_proj*nz + bc_coeff_proj*(xyz_pr[2] - xyz_C[2]));
+#endif
+                bc_coeffs[phi_idx] = bc_coeff_proj;
+                bc_values[phi_idx] = bc_value_proj;
+              }
+            }
+
+            double gamma = 3.*log(10.);
+
+            for (unsigned short phi_idx = 0; phi_idx < num_interfaces_; ++phi_idx)
+            {
+              if (cube_ifc_w[phi_idx].size() > 0 && sc_scheme_successful)
+              {
+                std::vector<double> weight(num_constraints, 0);
+
+                unsigned short num_constraints_present = 0;
+
+#ifdef P4_TO_P8
+                for (unsigned short k = 0; k < 3; ++k)
+#endif
+                  for (unsigned short j = 0; j < 3; ++j)
+                    for (unsigned short i = 0; i < 3; ++i)
+                    {
+#ifdef P4_TO_P8
+                      unsigned short idx = 9*k+3*j+i;
+#else
+                      unsigned short idx = 3*j+i;
+#endif
+                      double dx = ((double) (i-1)) * dxyz_m_[0];
+                      double dy = ((double) (j-1)) * dxyz_m_[1];
+#ifdef P4_TO_P8
+                      double dz = ((double) (k-1)) * dxyz_m_[2];
+#endif
+
+                      if (neighbors_exist[idx])
+                      {
+                        weight[idx] = exp(-gamma*(SQR((x_C+dx-x0[phi_idx])/dx_min_) +
+                          #ifdef P4_TO_P8
+                                                  SQR((z_C+dz-z0[phi_idx])/dz_min_) +
+                          #endif
+                                                  SQR((y_C+dy-y0[phi_idx])/dy_min_)));
+                        num_constraints_present++;
+                      }
+                    }
+
+                for (unsigned short phi_jdx = 0; phi_jdx < num_interfaces_; ++phi_jdx)
+                {
+                  if (cube_ifc_w[phi_jdx].size() > 0)
+                  {
+                    weight[num_neighbors_cube_ + phi_jdx] = exp(-gamma*(SQR((x0[phi_jdx]-x0[phi_idx])/dx_min_) +
+                                                    #ifdef P4_TO_P8
+                                                                        SQR((z0[phi_jdx]-z0[phi_idx])/dz_min_) +
+                                                    #endif
+                                                                        SQR((y0[phi_jdx]-y0[phi_idx])/dy_min_)));
+                    num_constraints_present++;
+                  }
+                }
+
+                if (num_constraints_present <= P4EST_DIM+1)
+                {
+                  sc_scheme_successful = false;
+                  continue;
+                }
+
+                // assemble and invert matrix
+                unsigned short A_size = (P4EST_DIM+1);
+                double A[(P4EST_DIM+1)*(P4EST_DIM+1)];
+                double A_inv[(P4EST_DIM+1)*(P4EST_DIM+1)];
+
+                A[0*A_size + 0] = 0;
+                A[0*A_size + 1] = 0;
+                A[0*A_size + 2] = 0;
+                A[1*A_size + 1] = 0;
+                A[1*A_size + 2] = 0;
+                A[2*A_size + 2] = 0;
+#ifdef P4_TO_P8
+                A[0*A_size + 3] = 0;
+                A[1*A_size + 3] = 0;
+                A[2*A_size + 3] = 0;
+                A[3*A_size + 3] = 0;
+#endif
+
+                for (unsigned short nei = 0; nei < num_constraints; ++nei)
+                {
+                  A[0*A_size + 0] += col_1st[nei]*col_1st[nei]*weight[nei];
+                  A[0*A_size + 1] += col_1st[nei]*col_2nd[nei]*weight[nei];
+                  A[0*A_size + 2] += col_1st[nei]*col_3rd[nei]*weight[nei];
+                  A[1*A_size + 1] += col_2nd[nei]*col_2nd[nei]*weight[nei];
+                  A[1*A_size + 2] += col_2nd[nei]*col_3rd[nei]*weight[nei];
+                  A[2*A_size + 2] += col_3rd[nei]*col_3rd[nei]*weight[nei];
+#ifdef P4_TO_P8
+                  A[0*A_size + 3] += col_1st[nei]*col_4th[nei]*weight[nei];
+                  A[1*A_size + 3] += col_2nd[nei]*col_4th[nei]*weight[nei];
+                  A[2*A_size + 3] += col_3rd[nei]*col_4th[nei]*weight[nei];
+                  A[3*A_size + 3] += col_4th[nei]*col_4th[nei]*weight[nei];
+#endif
+                }
+
+                A[1*A_size + 0] = A[0*A_size + 1];
+                A[2*A_size + 0] = A[0*A_size + 2];
+                A[2*A_size + 1] = A[1*A_size + 2];
+#ifdef P4_TO_P8
+                A[3*A_size + 0] = A[0*A_size + 3];
+                A[3*A_size + 1] = A[1*A_size + 3];
+                A[3*A_size + 2] = A[2*A_size + 3];
+#endif
+
+#ifdef P4_TO_P8
+                if (!inv_mat4(A, A_inv)) throw std::domain_error("Error: singular LSQR matrix\n");
+#else
+                if (!inv_mat3(A, A_inv)) throw std::domain_error("Error: singular LSQR matrix\n");
+#endif
+
+                // compute Taylor expansion coefficients
+                std::vector<double> coeff_const_term(num_constraints, 0);
+                std::vector<double> coeff_x_term    (num_constraints, 0);
+                std::vector<double> coeff_y_term    (num_constraints, 0);
+#ifdef P4_TO_P8
+                std::vector<double> coeff_z_term    (num_constraints, 0);
+#endif
+
+                for (unsigned short nei = 0; nei < num_constraints; ++nei)
+                {
+#ifdef P4_TO_P8
+                  coeff_const_term[nei] = weight[nei]*
+                      ( A_inv[0*A_size+0]*col_1st[nei]
+                      + A_inv[0*A_size+1]*col_2nd[nei]
+                      + A_inv[0*A_size+2]*col_3rd[nei]
+                      + A_inv[0*A_size+3]*col_4th[nei] );
+
+                  coeff_x_term[nei] = weight[nei]*
+                      ( A_inv[1*A_size+0]*col_1st[nei]
+                      + A_inv[1*A_size+1]*col_2nd[nei]
+                      + A_inv[1*A_size+2]*col_3rd[nei]
+                      + A_inv[1*A_size+3]*col_4th[nei] );
+
+                  coeff_y_term[nei] = weight[nei]*
+                      ( A_inv[2*A_size+0]*col_1st[nei]
+                      + A_inv[2*A_size+1]*col_2nd[nei]
+                      + A_inv[2*A_size+2]*col_3rd[nei]
+                      + A_inv[2*A_size+3]*col_4th[nei] );
+
+                  coeff_z_term[nei] = weight[nei]*
+                      ( A_inv[3*A_size+0]*col_1st[nei]
+                      + A_inv[3*A_size+1]*col_2nd[nei]
+                      + A_inv[3*A_size+2]*col_3rd[nei]
+                      + A_inv[3*A_size+3]*col_4th[nei] );
+#else
+                  coeff_const_term[nei] = weight[nei]*
+                      ( A_inv[0*A_size+0]*col_1st[nei]
+                      + A_inv[0*A_size+1]*col_2nd[nei]
+                      + A_inv[0*A_size+2]*col_3rd[nei] );
+
+                  coeff_x_term[nei] = weight[nei]*
+                      ( A_inv[1*A_size+0]*col_1st[nei]
+                      + A_inv[1*A_size+1]*col_2nd[nei]
+                      + A_inv[1*A_size+2]*col_3rd[nei] );
+
+                  coeff_y_term[nei] = weight[nei]*
+                      ( A_inv[2*A_size+0]*col_1st[nei]
+                      + A_inv[2*A_size+1]*col_2nd[nei]
+                      + A_inv[2*A_size+2]*col_3rd[nei] );
+#endif
+                }
+
+                double rhs_const_term = 0;
+                double rhs_x_term     = 0;
+                double rhs_y_term     = 0;
+#ifdef P4_TO_P8
+                double rhs_z_term     = 0;
+#endif
+                for (unsigned short phi_jdx = 0; phi_jdx < num_interfaces_; ++phi_jdx)
+                {
+                  rhs_const_term += coeff_const_term[num_neighbors_cube_ + phi_jdx] * bc_values[phi_jdx];
+                  rhs_x_term     += coeff_x_term    [num_neighbors_cube_ + phi_jdx] * bc_values[phi_jdx];
+                  rhs_y_term     += coeff_y_term    [num_neighbors_cube_ + phi_jdx] * bc_values[phi_jdx];
+#ifdef P4_TO_P8
+                  rhs_z_term     += coeff_z_term    [num_neighbors_cube_ + phi_jdx] * bc_values[phi_jdx];
+#endif
+                }
+
+                // compute integrals
+                double const_term = S[phi_idx]*bc_coeffs[phi_idx];
+                double x_term     = S[phi_idx]*bc_coeffs[phi_idx]*(x0[phi_idx] - xyz_C[0]);
+                double y_term     = S[phi_idx]*bc_coeffs[phi_idx]*(y0[phi_idx] - xyz_C[1]);
+#ifdef P4_TO_P8
+                double z_term     = S[phi_idx]*bc_coeffs[phi_idx]*(z0[phi_idx] - xyz_C[2]);
+#endif
+                //              double const_term = S[phi_idx]*(*bc_interface_coeff_->at(phi_idx))(x0[phi_idx], y0[phi_idx]);
+                //              double x_term     = S[phi_idx]*(*bc_interface_coeff_->at(phi_idx))(x0[phi_idx], y0[phi_idx])*(x0[phi_idx] - xyz_C[0]);
+                //              double y_term     = S[phi_idx]*(*bc_interface_coeff_->at(phi_idx))(x0[phi_idx], y0[phi_idx])*(y0[phi_idx] - xyz_C[1]);
+                //#ifdef P4_TO_P8
+                //              double z_term     = S[phi_idx]*(*bc_interface_coeff_->at(phi_idx))(x0[phi_idx], y0[phi_idx])*(z0[phi_idx] - xyz_C[2]);
+                //#endif
+
+                // matrix coefficients
+                for (unsigned short nei = 0; nei < num_neighbors_cube_; ++nei)
+                {
+#ifdef P4_TO_P8
+                  w[nei] += coeff_const_term[nei]*const_term
+                      + coeff_x_term[nei]*x_term
+                      + coeff_y_term[nei]*y_term
+                      + coeff_z_term[nei]*z_term;
+#else
+                  w[nei] += coeff_const_term[nei]*const_term
+                      + coeff_x_term[nei]*x_term
+                      + coeff_y_term[nei]*y_term;
+#endif
+                }
+
+                if (setup_rhs)
+#ifdef P4_TO_P8
+                  rhs_ptr[n] -= rhs_const_term*const_term + rhs_x_term*x_term + rhs_y_term*y_term + rhs_z_term*z_term;
+#else
+                  rhs_ptr[n] -= rhs_const_term*const_term + rhs_x_term*x_term + rhs_y_term*y_term;
+#endif
+
+                if (setup_matrix && fabs(const_term) > 0) matrix_has_nullspace_ = false;
+              }
             }
           }
 
-          short num_interfaces_present = present_interfaces.size();
+          //*/
 
-          // Special treatment for kinks
-          if (is_there_kink && kink_special_treatment_ && num_interfaces_present > 1)
+          if (!use_sc_scheme_ || !sc_scheme_successful)
           {
-            double N_mat[P4EST_DIM*P4EST_DIM];
+            if (setup_matrix && use_sc_scheme_)
+            {
+              mask_p[n] = MAX(mask_p[n], -0.1);
+              std::cout << "Fallback Robin BC\n";
+            }
+
+            // code below asumes that we have only Robin or Neumann BC in a cell
+            //---------------------------------------------------------------------
+            // contribution through interfaces
+            //---------------------------------------------------------------------
+
+            // count interfaces
+            std::vector<int> present_interfaces;
+
+            std::vector<double> measure_of_interface(num_interfaces_, 0);
+
+            bool is_there_kink = false;
+
+            for (unsigned short phi_idx = 0; phi_idx < num_interfaces_; phi_idx++)
+            {
+              for (unsigned int i = 0; i < cube_ifc_w[phi_idx].size(); ++i)
+                measure_of_interface[phi_idx] += cube_ifc_w[phi_idx][i];
+
+              if (bc_interface_type_->at(phi_idx) == ROBIN && cube_ifc_w[phi_idx].size() > 0)
+              {
+                if (present_interfaces.size() > 0 and action_->at(phi_idx) != COLORATION)
+                  is_there_kink = true;
+
+                present_interfaces.push_back(phi_idx);
+              }
+            }
+
+            short num_interfaces_present = present_interfaces.size();
+
+            // Special treatment for kinks
+            if (is_there_kink && kink_special_treatment_ && num_interfaces_present > 1)
+            {
+              double N_mat[P4EST_DIM*P4EST_DIM];
 #ifdef P4_TO_P8
-            /* TO FIX (case of > 3 interfaces in 3D):
+              /* TO FIX (case of > 3 interfaces in 3D):
              * Should be N_mat[P4EST_DIM*num_normals],
              * where num_normals = max(P4EST_DIM, num_ifaces);
              */
 #endif
-            double bc_interface_coeff_avg[P4EST_DIM];
-            double bc_interface_value_avg[P4EST_DIM];
-            double a_coeff[P4EST_DIM];
-            double b_coeff[P4EST_DIM];
+              double bc_interface_coeff_avg[P4EST_DIM];
+              double bc_interface_value_avg[P4EST_DIM];
+              double a_coeff[P4EST_DIM];
+              double b_coeff[P4EST_DIM];
 
-            // Compute normals to interfaces
-            for (short i = 0; i < num_interfaces_present; ++i)
-              compute_normal(phi_p[present_interfaces[i]], qnnn, &N_mat[i*P4EST_DIM]);
+              // Compute normals to interfaces
+              for (short i = 0; i < num_interfaces_present; ++i)
+                compute_normal(phi_p[present_interfaces[i]], qnnn, &N_mat[i*P4EST_DIM]);
 
 #ifdef P4_TO_P8
-            /* an ad-hoc: in case of an intersection of 2 interfaces in 3D
+              /* an ad-hoc: in case of an intersection of 2 interfaces in 3D
              * we choose the third direction to be perpendicular to the first two
              * and set du/dn = 0 (i.e., u = const) along this third direction
              */
-            if (num_interfaces_present == 2)
-            {
-              N_mat[2*P4EST_DIM + 0] = N_mat[0*P4EST_DIM + 1]*N_mat[1*P4EST_DIM + 2] - N_mat[0*P4EST_DIM + 2]*N_mat[1*P4EST_DIM + 1];
-              N_mat[2*P4EST_DIM + 1] = N_mat[0*P4EST_DIM + 2]*N_mat[1*P4EST_DIM + 0] - N_mat[0*P4EST_DIM + 0]*N_mat[1*P4EST_DIM + 2];
-              N_mat[2*P4EST_DIM + 2] = N_mat[0*P4EST_DIM + 0]*N_mat[1*P4EST_DIM + 1] - N_mat[0*P4EST_DIM + 1]*N_mat[1*P4EST_DIM + 0];
-
-              double norm = sqrt(SQR(N_mat[2*P4EST_DIM + 0]) + SQR(N_mat[2*P4EST_DIM + 1]) + SQR(N_mat[2*P4EST_DIM + 2]));
-              N_mat[2*P4EST_DIM + 0] /= norm;
-              N_mat[2*P4EST_DIM + 1] /= norm;
-              N_mat[2*P4EST_DIM + 2] /= norm;
-
-              bc_interface_coeff_avg[2] = 0;
-              bc_interface_value_avg[2] = 0;
-            }
-#endif
-
-
-            // compute centroids projections and sample BC
-            for (unsigned short i = 0; i < num_interfaces_present; ++i)
-            {
-              unsigned short phi_idx = present_interfaces[i];
-
-#ifdef P4_TO_P8
-              phi_interp_local.set_input(phi_p[phi_idx], phi_xx_p[phi_idx], phi_yy_p[phi_idx], phi_zz_p[phi_idx], interp_method_);
-#else
-              phi_interp_local.set_input(phi_p[phi_idx], phi_xx_p[phi_idx], phi_yy_p[phi_idx], interp_method_);
-#endif
-              phi_x_local.set_input(phi_x_ptr[phi_idx], linear);
-              phi_y_local.set_input(phi_y_ptr[phi_idx], linear);
-#ifdef P4_TO_P8
-              phi_z_local.set_input(phi_z_ptr[phi_idx], linear);
-#endif
-              // compute centroid of an interface
-              double S = 0;
-              double x0 = 0;
-              double y0 = 0;
-#ifdef P4_TO_P8
-              double z0 = 0;
-#endif
-
-              for (unsigned int ii = 0; ii < cube_ifc_w[phi_idx].size(); ++ii)
+              if (num_interfaces_present == 2)
               {
-                S  += cube_ifc_w[phi_idx][ii];
-                x0 += cube_ifc_w[phi_idx][ii]*(cube_ifc_x[phi_idx][ii]);
-                y0 += cube_ifc_w[phi_idx][ii]*(cube_ifc_y[phi_idx][ii]);
-#ifdef P4_TO_P8
-                z0 += cube_ifc_w[phi_idx][ii]*(cube_ifc_z[phi_idx][ii]);
-#endif
+                N_mat[2*P4EST_DIM + 0] = N_mat[0*P4EST_DIM + 1]*N_mat[1*P4EST_DIM + 2] - N_mat[0*P4EST_DIM + 2]*N_mat[1*P4EST_DIM + 1];
+                N_mat[2*P4EST_DIM + 1] = N_mat[0*P4EST_DIM + 2]*N_mat[1*P4EST_DIM + 0] - N_mat[0*P4EST_DIM + 0]*N_mat[1*P4EST_DIM + 2];
+                N_mat[2*P4EST_DIM + 2] = N_mat[0*P4EST_DIM + 0]*N_mat[1*P4EST_DIM + 1] - N_mat[0*P4EST_DIM + 1]*N_mat[1*P4EST_DIM + 0];
+
+                double norm = sqrt(SQR(N_mat[2*P4EST_DIM + 0]) + SQR(N_mat[2*P4EST_DIM + 1]) + SQR(N_mat[2*P4EST_DIM + 2]));
+                N_mat[2*P4EST_DIM + 0] /= norm;
+                N_mat[2*P4EST_DIM + 1] /= norm;
+                N_mat[2*P4EST_DIM + 2] /= norm;
+
+                bc_interface_coeff_avg[2] = 0;
+                bc_interface_value_avg[2] = 0;
               }
-
-              x0 /= S;
-              y0 /= S;
-#ifdef P4_TO_P8
-              z0 /= S;
 #endif
 
-#ifdef P4_TO_P8
-              double xyz0[P4EST_DIM] = { x0, y0, z0 };
-#else
-              double xyz0[P4EST_DIM] = { x0, y0 };
-#endif
 
-              // compute signed distance and normal at the centroid
-              double nx = phi_x_local.value(xyz0);
-              double ny = phi_y_local.value(xyz0);
-#ifdef P4_TO_P8
-              double nz = phi_z_local.value(xyz0);
-#endif
-
-#ifdef P4_TO_P8
-              double norm = sqrt(nx*nx+ny*ny+nz*nz);
-#else
-              double norm = sqrt(nx*nx+ny*ny);
-#endif
-              nx /= norm;
-              ny /= norm;
-#ifdef P4_TO_P8
-              nz /= norm;
-#endif
-              double dist0 = phi_interp_local.value(xyz0)/norm;
-
-              double xyz_pr[P4EST_DIM];
-
-              xyz_pr[0] = xyz0[0] - dist0*nx;
-              xyz_pr[1] = xyz0[1] - dist0*ny;
-#ifdef P4_TO_P8
-              xyz_pr[2] = xyz0[2] - dist0*nz;
-#endif
-
-              xyz_pr[0] = MIN(xyz_pr[0], interp_xmax); xyz_pr[0] = MAX(xyz_pr[0], interp_xmin);
-              xyz_pr[1] = MIN(xyz_pr[1], interp_ymax); xyz_pr[1] = MAX(xyz_pr[1], interp_ymin);
-#ifdef P4_TO_P8
-              xyz_pr[2] = MIN(xyz_pr[2], interp_zmax); xyz_pr[2] = MAX(xyz_pr[2], interp_zmin);
-#endif
-
-              double mu_proj       = variable_mu_ ? interp_local.value(xyz_pr) : mu_;
-              double bc_coeff_proj = bc_interface_coeff_->at(phi_idx)->value(xyz_pr);
-              double bc_value_proj = bc_interface_value_->at(phi_idx)->value(xyz_pr);
-
-              for (unsigned short dim = 0; dim < P4EST_DIM; ++dim)
+              // compute centroids projections and sample BC
+              for (unsigned short i = 0; i < num_interfaces_present; ++i)
               {
-                N_mat[i*P4EST_DIM+dim] = N_mat[i*P4EST_DIM+dim]*mu_proj + bc_coeff_proj*(xyz_pr[dim] - xyz_C[dim]);
-              }
+                unsigned short phi_idx = present_interfaces[i];
 
-              bc_interface_coeff_avg[i] = bc_coeff_proj;
-              bc_interface_value_avg[i] = bc_value_proj;
-            }
-
-            // Solve matrix
-            double N_inv_mat[P4EST_DIM*P4EST_DIM];
 #ifdef P4_TO_P8
-            /* TO FIX (case of > 3 interfaces in 3D):
-             * one should solve an overdetermined matrix N by the least-squares approach
-             */
-            inv_mat3(N_mat, N_inv_mat);
+                phi_interp_local.set_input(phi_p[phi_idx], phi_xx_p[phi_idx], phi_yy_p[phi_idx], phi_zz_p[phi_idx], interp_method_);
 #else
-            inv_mat2(N_mat, N_inv_mat);
+                phi_interp_local.set_input(phi_p[phi_idx], phi_xx_p[phi_idx], phi_yy_p[phi_idx], interp_method_);
+#endif
+                phi_x_local.set_input(phi_x_ptr[phi_idx], linear);
+                phi_y_local.set_input(phi_y_ptr[phi_idx], linear);
+#ifdef P4_TO_P8
+                phi_z_local.set_input(phi_z_ptr[phi_idx], linear);
+#endif
+                // compute centroid of an interface
+                double S = 0;
+                double x0 = 0;
+                double y0 = 0;
+#ifdef P4_TO_P8
+                double z0 = 0;
 #endif
 
-            // calculate coefficients in Taylor series of u
-            for (short i_dim = 0; i_dim < P4EST_DIM; i_dim++)
-            {
-              a_coeff[i_dim] = 0;
-              b_coeff[i_dim] = 0;
-              for (short j_dim = 0; j_dim < P4EST_DIM; j_dim++)
-              {
-                a_coeff[i_dim] += N_inv_mat[i_dim*P4EST_DIM + j_dim]*bc_interface_coeff_avg[j_dim];
-                b_coeff[i_dim] += N_inv_mat[i_dim*P4EST_DIM + j_dim]*bc_interface_value_avg[j_dim];
-              }
-            }
-
-            // compute integrals
-            for (unsigned short interface_idx = 0; interface_idx < present_interfaces.size(); ++interface_idx)
-            {
-              int phi_idx = present_interfaces[interface_idx];
-
-              for (unsigned int i = 0; i < cube_ifc_w[phi_idx].size(); ++i)
-              {
+                for (unsigned int ii = 0; ii < cube_ifc_w[phi_idx].size(); ++ii)
+                {
+                  S  += cube_ifc_w[phi_idx][ii];
+                  x0 += cube_ifc_w[phi_idx][ii]*(cube_ifc_x[phi_idx][ii]);
+                  y0 += cube_ifc_w[phi_idx][ii]*(cube_ifc_y[phi_idx][ii]);
 #ifdef P4_TO_P8
-                double xyz[] = { cube_ifc_x[phi_idx][i], cube_ifc_y[phi_idx][i], cube_ifc_z[phi_idx][i] };
-#else
-                double xyz[] = { cube_ifc_x[phi_idx][i], cube_ifc_y[phi_idx][i] };
+                  z0 += cube_ifc_w[phi_idx][ii]*(cube_ifc_z[phi_idx][ii]);
 #endif
-                double bc_coeff = bc_interface_coeff_->at(phi_idx)->value(xyz);
+                }
 
-                double taylor_expansion_coeff_term = bc_coeff*(1.-a_coeff[0]*(xyz[0]-xyz_C[0])
-    #ifdef P4_TO_P8
-                                                                 -a_coeff[2]*(xyz[2]-xyz_C[2])
-    #endif
-                                                                 -a_coeff[1]*(xyz[1]-xyz_C[1]));
+                x0 /= S;
+                y0 /= S;
+#ifdef P4_TO_P8
+                z0 /= S;
+#endif
 
-                double taylor_expansion_const_term = bc_coeff*(b_coeff[0]*(xyz[0]-xyz_C[0]) +
-    #ifdef P4_TO_P8
-                                                               b_coeff[2]*(xyz[2]-xyz_C[2]) +
-    #endif
-                                                               b_coeff[1]*(xyz[1]-xyz_C[1]));
+#ifdef P4_TO_P8
+                double xyz0[P4EST_DIM] = { x0, y0, z0 };
+#else
+                double xyz0[P4EST_DIM] = { x0, y0 };
+#endif
 
-                w[nn_000] += cube_ifc_w[phi_idx][i] * taylor_expansion_coeff_term;
+                // compute signed distance and normal at the centroid
+                double nx = phi_x_local.value(xyz0);
+                double ny = phi_y_local.value(xyz0);
+#ifdef P4_TO_P8
+                double nz = phi_z_local.value(xyz0);
+#endif
 
-                if (setup_rhs)
-                  rhs_ptr[n] -= cube_ifc_w[phi_idx][i] * taylor_expansion_const_term;
-              }
+#ifdef P4_TO_P8
+                double norm = sqrt(nx*nx+ny*ny+nz*nz);
+#else
+                double norm = sqrt(nx*nx+ny*ny);
+#endif
+                nx /= norm;
+                ny /= norm;
+#ifdef P4_TO_P8
+                nz /= norm;
+#endif
+                double dist0 = phi_interp_local.value(xyz0)/norm;
 
-            }
+                double xyz_pr[P4EST_DIM];
 
-          }
-
-          // Cells without kinks
-          if (!is_there_kink || !kink_special_treatment_)
-          {
-            for (unsigned int interface_idx = 0; interface_idx < present_interfaces.size(); interface_idx++)
-            {
-              unsigned short i_phi = present_interfaces[interface_idx];
-
-              if (bc_interface_type_->at(i_phi) == ROBIN)
-              {
-                double measure_of_iface = measure_of_interface[i_phi];
-
-                // compute projection point
-                find_projection_(phi_p[i_phi], qnnn, dxyz_pr, dist);
-
-                for (unsigned short i_dim = 0; i_dim < P4EST_DIM; i_dim++)
-                  xyz_pr[i_dim] = xyz_C[i_dim] + dxyz_pr[i_dim];
+                xyz_pr[0] = xyz0[0] - dist0*nx;
+                xyz_pr[1] = xyz0[1] - dist0*ny;
+#ifdef P4_TO_P8
+                xyz_pr[2] = xyz0[2] - dist0*nz;
+#endif
 
                 xyz_pr[0] = MIN(xyz_pr[0], interp_xmax); xyz_pr[0] = MAX(xyz_pr[0], interp_xmin);
                 xyz_pr[1] = MIN(xyz_pr[1], interp_ymax); xyz_pr[1] = MAX(xyz_pr[1], interp_ymin);
@@ -3636,27 +3584,124 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
                 xyz_pr[2] = MIN(xyz_pr[2], interp_zmax); xyz_pr[2] = MAX(xyz_pr[2], interp_zmin);
 #endif
 
-                // sample values at the projection point
                 double mu_proj       = variable_mu_ ? interp_local.value(xyz_pr) : mu_;
-                double bc_coeff_proj = bc_interface_coeff_->at(i_phi)->value(xyz_pr);
+                double bc_coeff_proj = bc_interface_coeff_->at(phi_idx)->value(xyz_pr);
+                double bc_value_proj = bc_interface_value_->at(phi_idx)->value(xyz_pr);
 
-                // addition to diagonal term
-                if (use_taylor_correction_) { w[nn_000] += bc_coeff_proj*measure_of_iface/(1.-bc_coeff_proj*dist/mu_proj); }
-                else                        { w[nn_000] += bc_coeff_proj*measure_of_iface; }
-
-                // addition to right-hand-side
-                if (setup_rhs && use_taylor_correction_)
+                for (unsigned short dim = 0; dim < P4EST_DIM; ++dim)
                 {
-                  double bc_value_proj = bc_interface_value_->at(i_phi)->value(xyz_pr);
-                  rhs_ptr[n] -= measure_of_iface*bc_coeff_proj*bc_value_proj*dist/(bc_coeff_proj*dist-mu_proj);
+                  N_mat[i*P4EST_DIM+dim] = N_mat[i*P4EST_DIM+dim]*mu_proj + bc_coeff_proj*(xyz_pr[dim] - xyz_C[dim]);
                 }
 
-                if (fabs(bc_coeff_proj) > 0) matrix_has_nullspace_ = false;
+                bc_interface_coeff_avg[i] = bc_coeff_proj;
+                bc_interface_value_avg[i] = bc_value_proj;
+              }
+
+              // Solve matrix
+              double N_inv_mat[P4EST_DIM*P4EST_DIM];
+#ifdef P4_TO_P8
+              /* TO FIX (case of > 3 interfaces in 3D):
+             * one should solve an overdetermined matrix N by the least-squares approach
+             */
+              inv_mat3(N_mat, N_inv_mat);
+#else
+              inv_mat2(N_mat, N_inv_mat);
+#endif
+
+              // calculate coefficients in Taylor series of u
+              for (short i_dim = 0; i_dim < P4EST_DIM; i_dim++)
+              {
+                a_coeff[i_dim] = 0;
+                b_coeff[i_dim] = 0;
+                for (short j_dim = 0; j_dim < P4EST_DIM; j_dim++)
+                {
+                  a_coeff[i_dim] += N_inv_mat[i_dim*P4EST_DIM + j_dim]*bc_interface_coeff_avg[j_dim];
+                  b_coeff[i_dim] += N_inv_mat[i_dim*P4EST_DIM + j_dim]*bc_interface_value_avg[j_dim];
+                }
+              }
+
+              // compute integrals
+              for (unsigned short interface_idx = 0; interface_idx < present_interfaces.size(); ++interface_idx)
+              {
+                int phi_idx = present_interfaces[interface_idx];
+
+                for (unsigned int i = 0; i < cube_ifc_w[phi_idx].size(); ++i)
+                {
+#ifdef P4_TO_P8
+                  double xyz[] = { cube_ifc_x[phi_idx][i], cube_ifc_y[phi_idx][i], cube_ifc_z[phi_idx][i] };
+#else
+                  double xyz[] = { cube_ifc_x[phi_idx][i], cube_ifc_y[phi_idx][i] };
+#endif
+                  double bc_coeff = bc_interface_coeff_->at(phi_idx)->value(xyz);
+
+                  double taylor_expansion_coeff_term = bc_coeff*(1.-a_coeff[0]*(xyz[0]-xyz_C[0])
+    #ifdef P4_TO_P8
+                      -a_coeff[2]*(xyz[2]-xyz_C[2])
+    #endif
+                      -a_coeff[1]*(xyz[1]-xyz_C[1]));
+
+                  double taylor_expansion_const_term = bc_coeff*(b_coeff[0]*(xyz[0]-xyz_C[0]) +
+    #ifdef P4_TO_P8
+                      b_coeff[2]*(xyz[2]-xyz_C[2]) +
+    #endif
+                      b_coeff[1]*(xyz[1]-xyz_C[1]));
+
+                  w[nn_000] += cube_ifc_w[phi_idx][i] * taylor_expansion_coeff_term;
+
+                  if (setup_rhs)
+                    rhs_ptr[n] -= cube_ifc_w[phi_idx][i] * taylor_expansion_const_term;
+                }
+
+              }
+
+            }
+
+            // Cells without kinks
+            if (!is_there_kink || !kink_special_treatment_)
+            {
+              for (unsigned int interface_idx = 0; interface_idx < present_interfaces.size(); interface_idx++)
+              {
+                unsigned short i_phi = present_interfaces[interface_idx];
+
+                if (bc_interface_type_->at(i_phi) == ROBIN)
+                {
+                  double measure_of_iface = measure_of_interface[i_phi];
+
+                  // compute projection point
+                  find_projection_(phi_p[i_phi], qnnn, dxyz_pr, dist);
+
+                  for (unsigned short i_dim = 0; i_dim < P4EST_DIM; i_dim++)
+                    xyz_pr[i_dim] = xyz_C[i_dim] + dxyz_pr[i_dim];
+
+                  xyz_pr[0] = MIN(xyz_pr[0], interp_xmax); xyz_pr[0] = MAX(xyz_pr[0], interp_xmin);
+                  xyz_pr[1] = MIN(xyz_pr[1], interp_ymax); xyz_pr[1] = MAX(xyz_pr[1], interp_ymin);
+#ifdef P4_TO_P8
+                  xyz_pr[2] = MIN(xyz_pr[2], interp_zmax); xyz_pr[2] = MAX(xyz_pr[2], interp_zmin);
+#endif
+
+                  // sample values at the projection point
+                  double mu_proj       = variable_mu_ ? interp_local.value(xyz_pr) : mu_;
+                  double bc_coeff_proj = bc_interface_coeff_->at(i_phi)->value(xyz_pr);
+
+                  // addition to diagonal term
+                  if (use_taylor_correction_) { w[nn_000] += bc_coeff_proj*measure_of_iface/(1.-bc_coeff_proj*dist/mu_proj); }
+                  else                        { w[nn_000] += bc_coeff_proj*measure_of_iface; }
+
+                  // addition to right-hand-side
+                  if (setup_rhs && use_taylor_correction_)
+                  {
+                    double bc_value_proj = bc_interface_value_->at(i_phi)->value(xyz_pr);
+                    rhs_ptr[n] -= measure_of_iface*bc_coeff_proj*bc_value_proj*dist/(bc_coeff_proj*dist-mu_proj);
+                  }
+
+                  if (fabs(bc_coeff_proj) > 0) matrix_has_nullspace_ = false;
+                }
               }
             }
-          }
 
-        } // end of symmetric scheme
+          } // end of symmetric scheme
+        } else {
+        }
 
         // add diagonal term
         w[nn_000] += diag_add*volume_cut_cell;
@@ -3729,10 +3774,10 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
     //*
     else if (discretization_scheme_ == JUMP)
     {
-      interface_present = true;
 
       if (jump_scheme_ == 0)
       {
+        interface_present = true;
         // reconstruct domain and compute geometric quantities
 #ifdef P4_TO_P8
         cube3_mls_t cube;
@@ -4254,7 +4299,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
               else                                  num_pos++;
             }
 
-          // determine which side to use based on values of diffucion coefficients and neighbors' availability
+          // determine which side to use based on values of diffusion coefficients and neighbors' availability
           double sign_to_use;
 
           if (mu_m_proj < mu_p_proj)
@@ -4501,6 +4546,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
       }
       else if (jump_scheme_ == 1)
       {
+        interface_present = true;
         interp_xmin = x_C - dx_min_; interp_xmax = x_C + dx_min_;
         interp_ymin = y_C - dy_min_; interp_ymax = y_C + dy_min_;
 #ifdef P4_TO_P8
@@ -4893,6 +4939,680 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
             }
         }
       }
+      else if (jump_scheme_ == 2 || jump_scheme_ == 3)
+      {
+        rhs_ptr[n] = 0;
+        std::vector<double> weights_cube(num_neighbors_cube, 0);
+
+        std::vector<double> nx_cube(num_neighbors_cube, 0);
+        std::vector<double> ny_cube(num_neighbors_cube, 0);
+#ifdef P4_TO_P8
+        std::vector<double> nz_cube(num_neighbors_cube, 0);
+#endif
+
+        std::vector<double> M_cube (num_neighbors_cube, 0);
+        std::vector<double> frac_cube (num_neighbors_cube, 0);
+
+        std::vector<double> taylor_cube(num_neighbors_cube, 0);
+        std::vector<double> x_proj_cube(num_neighbors_cube, 0);
+        std::vector<double> y_proj_cube(num_neighbors_cube, 0);
+#ifdef P4_TO_P8
+        std::vector<double> z_proj_cube(num_neighbors_cube, 0);
+#endif
+
+#ifdef P4_TO_P8
+        for (short k = 0; k < 3; ++k)
+#endif
+        for (short j = 0; j < 3; ++j)
+        for (short i = 0; i < 3; ++i)
+        {
+#ifdef P4_TO_P8
+          unsigned short idx = 9*k+3*j+i;
+#else
+          unsigned short idx = 3*j+i;
+#endif
+
+          nx_cube[idx] = ii_phi_x_ptr[0][neighbors[idx]];
+          ny_cube[idx] = ii_phi_y_ptr[0][neighbors[idx]];
+#ifdef P4_TO_P8
+          nz_cube[idx] = ii_phi_z_ptr[0][neighbors[idx]];
+#endif
+
+          double norm = sqrt(pow(nx_cube[idx],2.) +
+                   #ifdef P4_TO_P8
+                             pow(nz_cube[idx],2.) +
+                   #endif
+                             pow(ny_cube[idx],2.));
+
+          nx_cube[idx] /= norm;
+          ny_cube[idx] /= norm;
+#ifdef P4_TO_P8
+          nz_cube[idx] /= norm;
+#endif
+
+          double dist = ii_phi_eff_p[neighbors[idx]]/norm;
+
+          x_proj_cube[idx] = x_C + (double) (i-1)*dx_min_ - dist*nx_cube[idx];
+          y_proj_cube[idx] = y_C + (double) (j-1)*dy_min_ - dist*ny_cube[idx];
+#ifdef P4_TO_P8
+          z_proj_cube[idx] = z_C + (double) (k-1)*dz_min_ - dist*nz_cube[idx];
+#endif
+
+          double mu_m = mue_m_ptr[neighbors[idx]];
+          double mu_p = mue_p_ptr[neighbors[idx]];
+
+//          double avg_m = 1;
+//          double avg_p = 1;
+
+//          double avg_m = mu_m;
+//          double avg_p = mu_p;
+
+          double avg_m = mu_p;
+          double avg_p = mu_m;
+
+//          double avg_m = mu_m > mu_p ? 0 : 1;
+//          double avg_p = mu_m > mu_p ? 1 : 0;
+
+//          double avg_m = dist > 0 ? 0.01 : 1;
+//          double avg_p = dist > 0 ? 1 : 0.01;
+
+//          double avg_m = dist > 0 ? 1 : 0;
+//          double avg_p = dist > 0 ? 0 : 1;
+
+//          double avg_m = mu_m > mu_p ? 1 : 0;
+//          double avg_p = mu_m > mu_p ? 0 : 1;
+
+          double avg_sum = avg_m + avg_p;
+
+          avg_m /= avg_sum;
+          avg_p /= avg_sum;
+
+          frac_cube[idx] = avg_m;
+
+          double mu_tilde = mu_m*mu_p*(avg_m/mu_m + avg_p/mu_p);
+
+          double xyz[P4EST_DIM] = { x_proj_cube[idx],
+                                    y_proj_cube[idx]
+                          #ifdef P4_TO_P8
+                                  , z_proj_cube[idx]
+                          #endif
+                                  };
+
+          taylor_cube[idx] = jump_value_->value(xyz) + dist*jump_flux_->at(0)->value(xyz)/mu_tilde;
+          M_cube[idx] = dist*(mu_p-mu_m)/mu_tilde;
+
+        }
+
+        unsigned short num_local_pts = (jump_scheme_ == 2) ? t2c_num_pts : q2c_num_pts;
+
+#ifdef P4_TO_P8
+        for (unsigned short z_dir = 0; z_dir < 2; ++z_dir)
+#endif
+        for (unsigned short y_dir = 0; y_dir < 2; ++y_dir)
+        for (unsigned short x_dir = 0; x_dir < 2; ++x_dir)
+        {
+          double x_sgn = x_dir == 0 ? -1 : +1;
+          double y_sgn = y_dir == 0 ? -1 : +1;
+#ifdef P4_TO_P8
+          double z_sgn = z_dir == 0 ? -1 : +1;
+          unsigned short quad_dir = 4*z_dir + 2*y_dir + x_dir;
+#else
+          unsigned short quad_dir = 2*y_dir + x_dir;
+#endif
+          unsigned short quad_center = q2c[quad_dir][0];
+          unsigned short quad_corner = q2c[quad_dir][P4EST_CHILDREN - 1];
+
+          if (neighbors_exist[quad_corner])
+          {
+            const unsigned short *map_q2c = (jump_scheme_ == 2) ? t2c[quad_dir] : q2c[quad_dir];
+
+            std::vector<double> weights_local(num_local_pts, 0);
+
+            std::vector<double> nx(num_local_pts, 0);
+            std::vector<double> ny(num_local_pts, 0);
+#ifdef P4_TO_P8
+            std::vector<double> nz(num_local_pts, 0);
+#endif
+            std::vector<double> M (num_local_pts, 0);
+            std::vector<double> frac (num_local_pts, 0);
+            std::vector<double> taylor(num_local_pts, 0);
+            std::vector<double> x_proj(num_local_pts, 0);
+            std::vector<double> y_proj(num_local_pts, 0);
+#ifdef P4_TO_P8
+            std::vector<double> z_proj(num_local_pts, 0);
+#endif
+
+            for (unsigned short i = 0; i < num_local_pts; ++i)
+            {
+              nx[i] = nx_cube[map_q2c[i]];
+              ny[i] = ny_cube[map_q2c[i]];
+#ifdef P4_TO_P8
+              nz[i] = nz_cube[map_q2c[i]];
+#endif
+              M[i]  = M_cube [map_q2c[i]];
+
+              frac[i]  = frac_cube [map_q2c[i]];
+
+              taylor[i] = taylor_cube[map_q2c[i]];
+              x_proj[i] = x_proj_cube[map_q2c[i]];
+              y_proj[i] = y_proj_cube[map_q2c[i]];
+#ifdef P4_TO_P8
+              z_proj[i] = z_proj_cube[map_q2c[i]];
+#endif
+            }
+
+            // reconstruct interface and compute geometric quantities
+            unsigned short quad_refinement = MAX(1, cube_refinement_);
+
+#ifdef P4_TO_P8
+            cube3_mls_t cube;
+#else
+            cube2_mls_t cube;
+#endif
+            // coordinates of the p4est quadrant in flipped space
+            double flip_quad_xmin = 0, flip_quad_xmax = dx_min_;
+            double flip_quad_ymin = 0, flip_quad_ymax = dy_min_;
+#ifdef P4_TO_P8
+            double flip_quad_zmin = 0, flip_quad_zmax = dz_min_;
+#endif
+            // coordinates of the finite volume in flipped space
+            double flip_cube_xmin = 0, flip_cube_xmax = .5*dx_min_;
+            double flip_cube_ymin = 0, flip_cube_ymax = .5*dy_min_;
+#ifdef P4_TO_P8
+            double flip_cube_zmin = 0, flip_cube_zmax = .5*dz_min_;
+#endif
+
+            // determine dimensions of cube
+            double cube_scale = MIN(flip_cube_xmax-flip_cube_xmin,
+                        #ifdef P4_TO_P8
+                                    flip_cube_zmax-flip_cube_zmin,
+                        #endif
+                                    flip_cube_ymax-flip_cube_ymin);
+
+            // coordinates of the finite volume in scalled space
+            double fv_xmin = 0, fv_xmax = fv_xmin + (flip_cube_xmax-flip_cube_xmin)/cube_scale;
+            double fv_ymin = 0, fv_ymax = fv_ymin + (flip_cube_ymax-flip_cube_ymin)/cube_scale;
+#ifdef P4_TO_P8
+            double fv_zmin = 0, fv_zmax = fv_zmin + (flip_cube_zmax-flip_cube_zmin)/cube_scale;
+#endif
+
+            // Reconstruct geometry
+#ifdef P4_TO_P8
+            double cube_xyz_min[] = { fv_xmin, fv_ymin, fv_zmin };
+            double cube_xyz_max[] = { fv_xmax, fv_ymax, fv_zmax };
+            int    cube_mnk[]     = { quad_refinement, quad_refinement, quad_refinement };
+#else
+            double cube_xyz_min[] = { fv_xmin, fv_ymin };
+            double cube_xyz_max[] = { fv_xmax, fv_ymax };
+            int    cube_mnk[]     = { quad_refinement, quad_refinement };
+#endif
+
+            cube.initialize(cube_xyz_min, cube_xyz_max, cube_mnk, integration_order_);
+
+            // get points at which values of level-set functions are needed
+            std::vector<double> x_grid; cube.get_x_coord(x_grid);
+            std::vector<double> y_grid; cube.get_y_coord(y_grid);
+#ifdef P4_TO_P8
+            std::vector<double> z_grid; cube.get_z_coord(z_grid);
+#endif
+            int points_total = x_grid.size();
+
+            std::vector<double> phi_cube(ii_.num_interfaces*points_total,-1);
+
+            // sample values of level-set functions at those points
+            for (unsigned short phi_idx = 0; phi_idx < ii_.num_interfaces; ++phi_idx)
+            {
+              phi_interp_local.set_input(ii_phi_p[phi_idx],
+                                         ii_phi_xx_p[phi_idx],
+                                         ii_phi_yy_p[phi_idx],
+                           #ifdef P4_TO_P8
+                                         ii_phi_zz_p[phi_idx],
+                           #endif
+                                         interp_method_);
+
+              for (int i = 0; i < points_total; ++i)
+              {
+                phi_cube[phi_idx*points_total + i] = phi_interp_local(x_C + x_sgn*cube_scale*(x_grid[i]-fv_xmin),
+                                                                      y_C + y_sgn*cube_scale*(y_grid[i]-fv_xmin)
+                                                      #ifdef P4_TO_P8
+                                                                    , z_C + z_sgn*cube_scale*(z_grid[i]-fv_xmin)
+                                                      #endif
+                                                                      );
+              }
+            }
+
+            // reconstruct geometry
+            cube.reconstruct(phi_cube, *ii_.action, *ii_.color);
+
+#ifdef P4_TO_P8
+            full_cell_volume = (fv_xmax-fv_xmin)*(fv_ymax-fv_ymin)*(fv_zmax-fv_zmin);
+#else
+            full_cell_volume = (fv_xmax-fv_xmin)*(fv_ymax-fv_ymin);
+#endif
+
+            // get quadrature points
+            std::vector<double> cube_dom_w;
+            std::vector<double> cube_dom_x;
+            std::vector<double> cube_dom_y;
+#ifdef P4_TO_P8
+            std::vector<double> cube_dom_z;
+#endif
+
+#ifdef P4_TO_P8
+            cube.quadrature_over_domain(cube_dom_w, cube_dom_x, cube_dom_y, cube_dom_z);
+#else
+            cube.quadrature_over_domain(cube_dom_w, cube_dom_x, cube_dom_y);
+#endif
+
+            std::vector<std::vector<double> > cube_ifc_w(ii_.num_interfaces);
+            std::vector<std::vector<double> > cube_ifc_x(ii_.num_interfaces);
+            std::vector<std::vector<double> > cube_ifc_y(ii_.num_interfaces);
+#ifdef P4_TO_P8
+            std::vector<std::vector<double> > cube_ifc_z(ii_.num_interfaces);
+#endif
+
+            for (unsigned short phi_idx = 0; phi_idx < ii_.num_interfaces; ++phi_idx)
+            {
+              cube.quadrature_over_interface(phi_idx, cube_ifc_w[phi_idx],
+                                             cube_ifc_x[phi_idx],
+                                             cube_ifc_y[phi_idx]
+                               #ifdef P4_TO_P8
+                                           , cube_ifc_z[phi_idx]
+                               #endif
+                                             );
+            }
+
+            // compute cut-cell volume
+            double volume_cut_cell_m = 0.;
+            double volume_cut_cell_p = 0.;
+
+            for (unsigned int i = 0; i < cube_dom_w.size(); ++i)
+            {
+              volume_cut_cell_m += cube_dom_w[i];
+            }
+
+            volume_cut_cell_p = full_cell_volume - volume_cut_cell_m;
+
+            // compute integral of jump conditions
+            double integral_bc = 0.;
+
+            for (unsigned short phi_idx = 0; phi_idx < ii_.num_interfaces; ++phi_idx)
+            {
+              if (cube_ifc_w[phi_idx].size() > 0)
+              {
+                for (unsigned int i = 0; i < cube_ifc_w[phi_idx].size(); ++i)
+                {
+                  integral_bc    += cube_ifc_w[phi_idx][i] * (*jump_flux_->at(phi_idx))(x_C + x_sgn*cube_scale*(cube_ifc_x[phi_idx][i]-fv_xmin),
+                                                                                        y_C + y_sgn*cube_scale*(cube_ifc_y[phi_idx][i]-fv_ymin)
+                                                                      #ifdef P4_TO_P8
+                                                                                      , z_C + z_sgn*cube_scale*(cube_ifc_z[phi_idx][i]-fv_zmin)
+                                                                      #endif
+                                                                                        );
+                }
+              }
+            }
+
+            // compute areas and centroids only in positive directions
+            std::vector<double> cube_dir_w;
+            std::vector<double> cube_dir_x;
+            std::vector<double> cube_dir_y;
+#ifdef P4_TO_P8
+            std::vector<double> cube_dir_z;
+#endif
+
+#ifdef P4_TO_P8
+            double full_sx = (fv_ymax - fv_ymin)*(fv_zmax - fv_zmin);
+            double full_sy = (fv_xmax - fv_xmin)*(fv_zmax - fv_zmin);
+            double full_sz = (fv_xmax - fv_xmin)*(fv_ymax - fv_ymin);
+#else
+            double full_sx = (fv_ymax - fv_ymin);
+            double full_sy = (fv_xmax - fv_xmin);
+#endif
+
+#ifdef P4_TO_P8
+            double face_area_full[] = { full_sx, full_sy, full_sz };
+#else
+            double face_area_full[] = { full_sx, full_sy };
+#endif
+
+            double face_center_x[] = { fv_xmax, .5*fv_ymax, 0 };
+            double face_center_y[] = { .5*fv_xmax, fv_ymax, 0 };
+#ifdef P4_TO_P8
+            double face_center_z[] = { 0, 0, fv_zmax };
+#endif
+
+            std::vector<double> face_m_area      (P4EST_DIM, 0);
+            std::vector<double> face_m_centroid_x(P4EST_DIM, 0);
+            std::vector<double> face_m_centroid_y(P4EST_DIM, 0);
+#ifdef P4_TO_P8
+            std::vector<double> face_m_centroid_z(P4EST_DIM, 0);
+#endif
+
+            std::vector<double> face_p_area      (P4EST_DIM, 0);
+            std::vector<double> face_p_centroid_x(P4EST_DIM, 0);
+            std::vector<double> face_p_centroid_y(P4EST_DIM, 0);
+#ifdef P4_TO_P8
+            std::vector<double> face_p_centroid_z(P4EST_DIM, 0);
+#endif
+
+            double face_m_area_max = 0;
+            double face_p_area_max = 0;
+
+            for (int dir_idx = 0; dir_idx < P4EST_DIM; ++dir_idx)
+            {
+              cube_dir_w.clear();
+              cube_dir_x.clear();
+              cube_dir_y.clear();
+#ifdef P4_TO_P8
+              cube_dir_z.clear();
+
+              cube.quadrature_in_dir(2*dir_idx+1, cube_dir_w, cube_dir_x, cube_dir_y, cube_dir_z);
+#else
+              cube.quadrature_in_dir(2*dir_idx+1, cube_dir_w, cube_dir_x, cube_dir_y);
+#endif
+              if (cube_dir_w.size() > 0)
+              {
+                for (unsigned int i = 0; i < cube_dir_w.size(); ++i)
+                {
+                  face_m_area[dir_idx] += cube_dir_w[i];
+                  face_m_centroid_x[dir_idx] += cube_dir_w[i]*(cube_dir_x[i] - fv_xmin);
+                  face_m_centroid_y[dir_idx] += cube_dir_w[i]*(cube_dir_y[i] - fv_ymin);
+#ifdef P4_TO_P8
+                  face_m_centroid_z[dir_idx] += cube_dir_w[i]*(cube_dir_z[i] - fv_zmin);
+#endif
+                }
+
+                face_m_centroid_x[dir_idx] /= face_m_area[dir_idx];
+                face_m_centroid_y[dir_idx] /= face_m_area[dir_idx];
+#ifdef P4_TO_P8
+                face_m_centroid_z[dir_idx] /= face_m_area[dir_idx];
+#endif
+              }
+
+              face_p_area[dir_idx] = face_area_full[dir_idx] - face_m_area[dir_idx];
+
+              if (face_p_area[dir_idx] > interface_rel_thresh_)
+              {
+                face_p_centroid_x[dir_idx] = face_center_x[dir_idx] - face_m_area[dir_idx]/face_p_area[dir_idx] * (face_m_centroid_x[dir_idx] - face_center_x[dir_idx]);
+                face_p_centroid_y[dir_idx] = face_center_y[dir_idx] - face_m_area[dir_idx]/face_p_area[dir_idx] * (face_m_centroid_y[dir_idx] - face_center_y[dir_idx]);
+#ifdef P4_TO_P8
+                face_p_centroid_z[dir_idx] = face_center_z[dir_idx] - face_m_area[dir_idx]/face_p_area[dir_idx] * (face_m_centroid_z[dir_idx] - face_center_z[dir_idx]);
+#endif
+              }
+              else
+              {
+                face_p_centroid_x[dir_idx] = face_center_x[dir_idx];
+                face_p_centroid_y[dir_idx] = face_center_y[dir_idx];
+#ifdef P4_TO_P8
+                face_p_centroid_z[dir_idx] = face_center_z[dir_idx];
+#endif
+              }
+
+              face_m_area_max = MAX(face_m_area_max, face_m_area[dir_idx]);
+              face_p_area_max = MAX(face_p_area_max, face_p_area[dir_idx]);
+            }
+
+            face_m_centroid_x[0] = fv_xmax;
+            face_p_centroid_x[0] = fv_xmax;
+            face_m_centroid_y[1] = fv_ymax;
+            face_p_centroid_y[1] = fv_ymax;
+#ifdef P4_TO_P8
+            face_m_centroid_z[2] = fv_zmax;
+            face_p_centroid_z[2] = fv_zmax;
+#endif
+
+            // scale all quantities to real space
+            double cube_scale_area   = pow(cube_scale, P4EST_DIM-1);
+            double cube_scale_volume = pow(cube_scale, P4EST_DIM);
+
+            volume_cut_cell_m *= cube_scale_volume;
+            volume_cut_cell_p *= cube_scale_volume;
+
+            integral_bc *= cube_scale_area;
+
+            for (unsigned short i = 0; i < P4EST_DIM; ++i)
+            {
+              face_m_area[i] *= cube_scale_area;
+              face_p_area[i] *= cube_scale_area;
+
+              face_m_centroid_x[i] = flip_cube_xmin + cube_scale*(face_m_centroid_x[i] - fv_xmin);
+              face_p_centroid_x[i] = flip_cube_xmin + cube_scale*(face_p_centroid_x[i] - fv_xmin);
+              face_m_centroid_y[i] = flip_cube_ymin + cube_scale*(face_m_centroid_y[i] - fv_ymin);
+              face_p_centroid_y[i] = flip_cube_ymin + cube_scale*(face_p_centroid_y[i] - fv_ymin);
+#ifdef P4_TO_P8
+              face_m_centroid_z[i] = flip_cube_zmin + cube_scale*(face_m_centroid_z[i] - fv_zmin);
+              face_p_centroid_z[i] = flip_cube_zmin + cube_scale*(face_p_centroid_z[i] - fv_zmin);
+#endif
+            }
+
+            // express ghost values through real values
+            std::vector<double> chi_m(num_local_pts, 0);
+            std::vector<double> chi_p(num_local_pts, 0);
+
+            for (unsigned short nn = 0; nn < num_local_pts; ++nn)
+            {
+              if (ii_phi_eff_p[neighbors[map_q2c[nn]]] < 0) chi_m[nn] = 1;
+              else                                          chi_p[nn] = 1;
+            }
+
+            // derivatives at projection points
+            std::vector<double> wx(num_local_pts, 0);
+            std::vector<double> wy(num_local_pts, 0);
+
+            std::vector<double> am(num_local_pts, 0);
+            std::vector<double> ap(num_local_pts, 0);
+
+            std::vector<double>  H  (num_local_pts*num_local_pts, 0);
+            std::vector<double>  G  (num_local_pts*num_local_pts, 0);
+            std::vector<double>  Gin(num_local_pts*num_local_pts, 0);
+            std::vector<double>  Am (num_local_pts*num_local_pts, 0);
+            std::vector<double>  Ap (num_local_pts*num_local_pts, 0);
+
+            if (jump_scheme_ == 2)
+            {
+              wx[0] = -1./dx_min_;
+              wx[1] =  1./dx_min_;
+              wx[2] =  0;
+
+              wy[0] = -1./dy_min_;
+              wy[1] =  0;
+              wy[2] =  1./dy_min_;
+            }
+
+            for (unsigned short i = 0; i < num_local_pts; ++i)
+            {
+
+              double x_pr = flip_quad_xmin + x_sgn*(x_proj[i] - x_C);
+              double y_pr = flip_quad_ymin + y_sgn*(y_proj[i] - y_C);
+
+              if (jump_scheme_ == 3)
+              {
+                double factor = 1./(flip_quad_xmax - flip_quad_xmin)/(flip_quad_ymax - flip_quad_ymin);
+
+                wx[0] = -(flip_quad_ymax - y_pr)*factor;
+                wx[1] =  (flip_quad_ymax - y_pr)*factor;
+                wx[2] = -(y_pr - flip_quad_ymin)*factor;
+                wx[3] =  (y_pr - flip_quad_ymin)*factor;
+
+                wy[0] = -(flip_quad_xmax - x_pr)*factor;
+                wy[1] = -(x_pr - flip_quad_xmin)*factor;
+                wy[2] =  (flip_quad_xmax - x_pr)*factor;
+                wy[3] =  (x_pr - flip_quad_xmin)*factor;
+              }
+
+              H[i*num_local_pts + i] = -(chi_p[i] - chi_m[i]);
+              G[i*num_local_pts + i] = -(chi_p[i] - chi_m[i]);
+
+              for (unsigned short j = 0; j < num_local_pts; ++j)
+              {
+                H[i*num_local_pts + j] -= M[i]*(wx[j]*x_sgn*nx[i] + wy[j]*y_sgn*ny[i])*((1.-frac[i])*chi_p[j] + frac[i]*chi_m[j]);
+                G[i*num_local_pts + j] += M[i]*(wx[j]*x_sgn*nx[i] + wy[j]*y_sgn*ny[i])*((1.-frac[i])*chi_m[j] + frac[i]*chi_p[j]);
+              }
+            }
+
+            // invert G
+            if (jump_scheme_ == 2)
+            {
+              if (!inv_mat3(G.data(), Gin.data())) throw;
+            }
+            else
+            {
+              if (!inv_mat4(G.data(), Gin.data())) throw;
+            }
+
+            for (unsigned short i = 0; i < num_local_pts; ++i)
+            {
+              std::vector<double> GinH_row(num_local_pts, 0);
+              double GinTaylor = 0;
+
+              for (unsigned short j = 0; j < num_local_pts; ++j)
+              {
+                for (unsigned short k = 0; k < num_local_pts; ++k)
+                {
+                  GinH_row[j] += Gin[i*num_local_pts + k]*H[k*num_local_pts + j];
+                }
+                GinTaylor += Gin[i*num_local_pts + j]*taylor[j];
+              }
+
+              // TODO: switch chi_p and chi_m to bool
+              if (chi_p[i] > 0.5)
+              {
+                Ap[i*num_local_pts + i] = 1;
+                for (unsigned short j = 0; j < num_local_pts; ++j)
+                {
+                  Am[i*num_local_pts + j] = GinH_row[j];
+                }
+                ap[i] = 0;
+                am[i] = GinTaylor;
+              }
+              else
+              {
+                Am[i*num_local_pts + i] = 1;
+                for (unsigned short j = 0; j < num_local_pts; ++j)
+                {
+                  Ap[i*num_local_pts + j] = GinH_row[j];
+                }
+                ap[i] = GinTaylor;
+                am[i] = 0;
+              }
+            }
+
+            // compute weights
+
+            // weights for derivaties
+            std::vector<double> wx_m(num_local_pts, 0);
+            std::vector<double> wx_p(num_local_pts, 0);
+            std::vector<double> wy_m(num_local_pts, 0);
+            std::vector<double> wy_p(num_local_pts, 0);
+
+            if (jump_scheme_ == 2)
+            {
+              wx_m[0] = wx_p[0] = -1./dx_min_;
+              wx_m[1] = wx_p[1] =  1./dx_min_;
+              wx_m[2] = wx_p[2] =  0;
+
+              wy_m[0] = wy_p[0] = -1./dy_min_;
+              wy_m[1] = wy_p[1] =  0;
+              wy_m[2] = wy_p[2] =  1./dy_min_;
+            }
+            else if (jump_scheme_ == 3)
+            {
+              double factor = 1./(flip_quad_xmax - flip_quad_xmin)/(flip_quad_ymax - flip_quad_ymin);
+
+              wx_m[0] = -(flip_quad_ymax - face_m_centroid_y[0])*factor;
+              wx_m[1] =  (flip_quad_ymax - face_m_centroid_y[0])*factor;
+              wx_m[2] = -(face_m_centroid_y[0] - flip_quad_ymin)*factor;
+              wx_m[3] =  (face_m_centroid_y[0] - flip_quad_ymin)*factor;
+
+              wx_p[0] = -(flip_quad_ymax - face_p_centroid_y[0])*factor;
+              wx_p[1] =  (flip_quad_ymax - face_p_centroid_y[0])*factor;
+              wx_p[2] = -(face_p_centroid_y[0] - flip_quad_ymin)*factor;
+              wx_p[3] =  (face_p_centroid_y[0] - flip_quad_ymin)*factor;
+
+              wy_m[0] = -(flip_quad_xmax - face_m_centroid_x[1])*factor;
+              wy_m[1] = -(face_m_centroid_x[1] - flip_quad_xmin)*factor;
+              wy_m[2] =  (flip_quad_xmax - face_m_centroid_x[1])*factor;
+              wy_m[3] =  (face_m_centroid_x[1] - flip_quad_xmin)*factor;
+
+              wy_p[0] = -(flip_quad_xmax - face_p_centroid_x[1])*factor;
+              wy_p[1] = -(face_p_centroid_x[1] - flip_quad_xmin)*factor;
+              wy_p[2] =  (flip_quad_xmax - face_p_centroid_x[1])*factor;
+              wy_p[3] =  (face_p_centroid_x[1] - flip_quad_xmin)*factor;
+            }
+
+            weights_local[0] += diag_add_m_ptr[n]*volume_cut_cell_m + diag_add_p_ptr[n]*volume_cut_cell_p;
+
+            double mu_x_m = mu_m_interp(x_C + x_sgn*(face_m_centroid_x[0] - flip_quad_xmin), y_C + y_sgn*(face_m_centroid_y[0] - flip_quad_ymin));
+            double mu_x_p = mu_p_interp(x_C + x_sgn*(face_p_centroid_x[0] - flip_quad_xmin), y_C + y_sgn*(face_p_centroid_y[0] - flip_quad_ymin));
+            double mu_y_m = mu_m_interp(x_C + x_sgn*(face_m_centroid_x[1] - flip_quad_xmin), y_C + y_sgn*(face_m_centroid_y[1] - flip_quad_ymin));
+            double mu_y_p = mu_p_interp(x_C + x_sgn*(face_p_centroid_x[1] - flip_quad_xmin), y_C + y_sgn*(face_p_centroid_y[1] - flip_quad_ymin));
+
+            for (unsigned short i = 0; i < num_local_pts; ++i)
+            {
+              double w_x_m = 0;
+              double w_x_p = 0;
+              double w_y_m = 0;
+              double w_y_p = 0;
+
+              for (unsigned short j = 0; j < num_local_pts; ++j)
+              {
+                w_x_m += wx_m[j]*Am[j*num_local_pts + i];
+                w_x_p += wx_p[j]*Ap[j*num_local_pts + i];
+                w_y_m += wy_m[j]*Am[j*num_local_pts + i];
+                w_y_p += wy_p[j]*Ap[j*num_local_pts + i];
+              }
+
+              weights_local[i] -=
+                  face_m_area[0]*mu_x_m*w_x_m +
+                  face_p_area[0]*mu_x_p*w_x_p +
+                  face_m_area[1]*mu_y_m*w_y_m +
+                  face_p_area[1]*mu_y_p*w_y_p;
+            }
+
+            double r_x_m = 0;
+            double r_x_p = 0;
+            double r_y_m = 0;
+            double r_y_p = 0;
+
+            for (unsigned short j = 0; j < num_local_pts; ++j)
+            {
+              r_x_m += wx_m[j]*am[j];
+              r_x_p += wx_p[j]*ap[j];
+              r_y_m += wy_m[j]*am[j];
+              r_y_p += wy_p[j]*ap[j];
+            }
+
+            rhs_ptr[n] += rhs_m_ptr[n]*volume_cut_cell_m + rhs_p_ptr[n]*volume_cut_cell_p - integral_bc +
+                face_m_area[0]*mu_x_m*r_x_m +
+                face_p_area[0]*mu_x_p*r_x_p +
+                face_m_area[1]*mu_y_m*r_y_m +
+                face_p_area[1]*mu_y_p*r_y_p;
+
+            // transfer quadrant weights to cube
+            for (unsigned short i = 0; i < num_local_pts; ++i)
+            {
+              weights_cube[map_q2c[i]] += weights_local[i];
+            }
+          }
+        }
+
+//        rhs_ptr[n] = rhs_m_ptr[n]*dx_min_*dy_min_;
+
+
+        // put values into matrices
+        for (unsigned short i = 0; i < num_neighbors_cube; ++i)
+        {
+          if (neighbors_exist[i] && fabs(weights_cube[i]) > EPS)
+          {
+            PetscInt node_nei_g = petsc_gloidx_[neighbors[i]];
+            if (weights_cube[i] != weights_cube[i]) throw std::domain_error("Matrix element is nan\n");
+            ent.n = node_nei_g;
+            ent.val = weights_cube[i];
+            row->push_back(ent);
+            ( neighbors[i] < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++;
+          }
+        }
+      }
 
     }//*/
 
@@ -5058,6 +5778,16 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
     ierr = VecRestoreArray(phi_y_->at(i), &phi_y_ptr[i]); CHKERRXX(ierr);
 #ifdef P4_TO_P8
     ierr = VecRestoreArray(phi_z_->at(i), &phi_z_ptr[i]); CHKERRXX(ierr);
+#endif
+  }
+
+
+  for (unsigned int i = 0; i < ii_.num_interfaces; ++i)
+  {
+    ierr = VecRestoreArray(ii_.phi_x->at(i), &ii_phi_x_ptr[i]); CHKERRXX(ierr);
+    ierr = VecRestoreArray(ii_.phi_y->at(i), &ii_phi_y_ptr[i]); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    ierr = VecRestoreArray(ii_.phi_z->at(i), &ii_phi_z_ptr[i]); CHKERRXX(ierr);
 #endif
   }
 

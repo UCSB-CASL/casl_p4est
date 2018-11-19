@@ -270,7 +270,7 @@ public:
   double operator()(double x, double y) const
   {
     switch (num_test_up){
-      case 0: return sin(x)*cos(y);
+      case 0: return sin(x)*cos(y)+1.;
       case 1: return 0.5*log( pow(x+0.8*y, 2.)+(x-0.7*y)+4.0 );
       case 2: return log((0.7*x+3.0)/(y+3.0))*sin(x+0.5*y);
       case 3: return exp(x-y*y)*(y+cos(x));
@@ -290,7 +290,7 @@ public:
           double p = mu_p_cf(x,y)/mu_m_cf(x,y);
           double r = sqrt(x*x+y*y);
           double r0 = 0.5+EPS;
-          return 2.*x/( p+1.+r0*r0*(p-1.) );
+          return 2.*x/( p+1.+r0*r0*(p-1.) ) + 2.;
         }
       case 8: return 1;
       case 9: { double r2 = x*x+y*y; if (r2 < EPS) r2 = EPS; return 1+log(2.*sqrt(r2)); }

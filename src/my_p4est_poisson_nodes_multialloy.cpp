@@ -107,6 +107,10 @@ my_p4est_poisson_nodes_multialloy_t::my_p4est_poisson_nodes_multialloy_t(my_p4es
 
   var_scheme_ = VALUE;
 //  var_scheme_ = ABS_VALUE;
+//  var_scheme_ = ABS_ALTER;
+//  var_scheme_ = ABS_SMTH1;
+//  var_scheme_ = ABS_SMTH2;
+  var_scheme_ = ABS_SMTH3;
 //  var_scheme_ = QUADRATIC;
 }
 
@@ -243,6 +247,8 @@ int my_p4est_poisson_nodes_multialloy_t::solve(Vec tm, Vec tp, Vec c0, Vec c1, V
     ierr = VecDuplicate(c1_dd_.vec[dim], &psi_c1_dd_.vec[dim]); CHKERRXX(ierr);
   }
 
+  err_eps_ = 1.e-5;
+
   double dxyz[P4EST_DIM];
 
   dxyz_min(p4est_, dxyz);
@@ -287,8 +293,7 @@ int my_p4est_poisson_nodes_multialloy_t::solve(Vec tm, Vec tp, Vec c0, Vec c1, V
     // solve for lagrangian multipliers
     if (iteration%pin_every_n_steps_ != 0)
     {
-      if (var_scheme_ == ABS_VALUE ||
-          var_scheme_ == QUADRATIC)
+      if (var_scheme_ != VALUE)
       {
         compute_bc_error();
         solve_psi_t(); ++num_pdes_solved;
@@ -1365,6 +1370,88 @@ void my_p4est_poisson_nodes_multialloy_t::adjust_c0_gamma(int iteration)
 
   velo_max_ = 0;
 
+  double integral_neg = 0;
+  double integral_pos = 0;
+
+  foreach_local_node(n, nodes_)
+  {
+    bc_error_.ptr[n] = 0;
+    if (solver_c0->pointwise_bc[n].size())
+    {
+      for (unsigned short i = 0; i < solver_c0->pointwise_bc[n].size(); ++i)
+      {
+        solver_c0->get_xyz_interface_point(n, i, xyz);
+
+        double c0_gamma = solver_c0->get_interface_point_value(n, i);
+
+        // interpolate concentration
+//        double conc_term = ml0_*c0_gamma + ml1_*solver_c0->interpolate_at_interface_point(n, i, c1_.ptr, c1_dd_.ptr);
+        double conc_term = ml0_*c0_gamma + ml1_*solver_c0->interpolate_at_interface_point(n, i, c1_.ptr);
+
+        // interpolate temperature
+//        double ther_term = solver_c0->interpolate_at_interface_point(n, i, tm_.ptr, tm_dd_.ptr);
+        double ther_term = solver_c0->interpolate_at_interface_point(n, i, tm_.ptr);
+
+        // interpolate velocity
+//        double c0n = solver_c0->interpolate_at_interface_point(n, i, c0n_.ptr, c0n_dd_.ptr);
+//        double c0n = solver_c0->interpolate_at_interface_point(n, i, c0n_.ptr);
+
+        double c0n = 0;
+
+        foreach_dimension(dim)
+        {
+          c0n += solver_c0->interpolate_at_interface_point(n, i, c0d_.ptr[dim])*solver_c0->interpolate_at_interface_point(n, i, normal_.ptr[dim]);
+        }
+
+//        double theta_xz = solver_c0->interpolate_at_interface_point(n, i, theta_xz_.ptr);
+//#ifdef P4_TO_P8
+//        double theta_yz = solver_c0->interpolate_at_interface_point(n, i, theta_yz_.ptr);
+//#endif
+        double kappa = solver_c0->interpolate_at_interface_point(n, i, kappa_.ptr);
+
+//#ifdef P4_TO_P8
+//        double eps_v = (*eps_v_)(theta_xz, theta_yz);
+//        double eps_c = (*eps_c_)(theta_xz, theta_yz);
+//#else
+//        double eps_v = (*eps_v_)(theta_xz);
+//        double eps_c = (*eps_c_)(theta_xz);
+//#endif
+
+        double nx = solver_psi_c0->interpolate_at_interface_point(n,i,normal_.ptr[0]);
+        double ny = solver_psi_c0->interpolate_at_interface_point(n,i,normal_.ptr[1]);
+#ifdef P4_TO_P8
+        double nz = solver_psi_c0->interpolate_at_interface_point(n,i,normal_.ptr[2]);
+        double eps_v = (*eps_v_)(nx, ny, nz);
+        double eps_c = (*eps_c_)(nx, ny, nz);
+#else
+        double eps_v = (*eps_v_)(nx, ny);
+        double eps_c = (*eps_c_)(nx, ny);
+#endif
+
+
+//        double velo = vn_from_c0_.value(xyz);
+        double velo = -( Dl0_/(1.-kp0_)*(c0n-c0_flux_->value(xyz))/c0_gamma );
+//        double error = (conc_term + Tm_ - ther_term - eps_v*( Dl0_/(1.-kp0_)*(c0n-c0_flux_->value(xyz))/c0_gamma ) + eps_c*kappa + GT_->value(xyz));
+        double error = (conc_term + Tm_ - ther_term + eps_v*velo + eps_c*kappa + GT_->value(xyz));
+
+        double change = error/ml0_;
+
+//        (change < 0) ? integral_neg += change : integral_pos += change;
+
+        (change < 0) ? integral_neg = MAX(integral_neg, fabs(change)) : integral_pos = MAX(integral_pos, fabs(change));
+      }
+    }
+  }
+
+  int mpiret;
+//  mpiret = MPI_Allreduce(MPI_IN_PLACE, &integral_neg, 1, MPI_DOUBLE, MPI_SUM, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
+//  mpiret = MPI_Allreduce(MPI_IN_PLACE, &integral_pos, 1, MPI_DOUBLE, MPI_SUM, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
+
+  mpiret = MPI_Allreduce(MPI_IN_PLACE, &integral_neg, 1, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
+  mpiret = MPI_Allreduce(MPI_IN_PLACE, &integral_pos, 1, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
+
+  bool use_neg = fabs(integral_neg) > fabs(integral_pos);
+
   foreach_local_node(n, nodes_)
   {
     bc_error_.ptr[n] = 0;
@@ -1431,13 +1518,28 @@ void my_p4est_poisson_nodes_multialloy_t::adjust_c0_gamma(int iteration)
 
         double change = error/ml0_;
 
+        if (var_scheme_ == ABS_ALTER)
+        {
+          if (use_neg) change = MIN(change, 0.);
+          else         change = MAX(change, 0.);
+
+//          change *= 1.0;
+        }
+
         double factor = 1;
 
         if (var_scheme_ == ABS_VALUE) factor = change < 0 ? -1 : 1;
+        if (var_scheme_ == ABS_SMTH1) factor = 2.*exp(change/err_eps_)/(1.+exp(change/err_eps_)) - 1.;
+        if (var_scheme_ == ABS_SMTH2) factor = change/sqrt(change*change + err_eps_*err_eps_);
+        if (var_scheme_ == ABS_SMTH3) factor = change/sqrt(change*change + err_eps_*err_eps_) + err_eps_*err_eps_*change/pow(change*change + err_eps_*err_eps_, 1.5);
         if (var_scheme_ == QUADRATIC) factor = change;
 
         if (var_scheme_ == ABS_VALUE) change = fabs(change);
-        if (var_scheme_ == QUADRATIC) change = .5*pow(change, 2.);
+        if (var_scheme_ == ABS_SMTH1) change = (2.*err_eps_*log(0.5*(1.+exp(change/err_eps_))) - change);
+        if (var_scheme_ == ABS_SMTH2) change = (sqrt(change*change + err_eps_*err_eps_));
+        if (var_scheme_ == ABS_SMTH3) change = (sqrt(change*change + err_eps_*err_eps_) - err_eps_*err_eps_/sqrt(change*change + err_eps_*err_eps_));
+//        if (var_scheme_ == ABS_SMTH3) change = fabs(change);
+        if (var_scheme_ == QUADRATIC) change = pow(change, 2.);
 
         if (iteration%pin_every_n_steps_ != 0)
         {
@@ -1460,8 +1562,10 @@ void my_p4est_poisson_nodes_multialloy_t::adjust_c0_gamma(int iteration)
     }
   }
 
-  int mpiret = MPI_Allreduce(MPI_IN_PLACE, &bc_error_max_, 1, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
-      mpiret = MPI_Allreduce(MPI_IN_PLACE, &velo_max_,     1, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
+  mpiret = MPI_Allreduce(MPI_IN_PLACE, &bc_error_max_, 1, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
+  mpiret = MPI_Allreduce(MPI_IN_PLACE, &velo_max_,     1, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
+
+  err_eps_ = MIN(1.e-3, 0.01*fabs(bc_error_max_/ml0_));
 
   /* restore pointers */
 
