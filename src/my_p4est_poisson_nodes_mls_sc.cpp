@@ -117,6 +117,7 @@ my_p4est_poisson_nodes_mls_sc_t::my_p4est_poisson_nodes_mls_sc_t(const my_p4est_
   update_ghost_after_solving_ = 0;
   try_remove_hanging_cells_   = 0;
   neumann_wall_first_order_   = 0;
+  enfornce_diag_scalling_     = 1;
   phi_perturbation_           = 1.e-12;
   interp_method_              = quadratic_non_oscillatory_continuous_v2;
 
@@ -772,7 +773,7 @@ void my_p4est_poisson_nodes_mls_sc_t::solve(Vec solution, bool use_nonzero_initi
      * "0 "gives better convergence rate (in 3D).
      * Suggested values (By Hypre manual): 0.25 for 2D, 0.5 for 3D
     */
-//    ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_strong_threshold", "0."); CHKERRXX(ierr);
+//    ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_strong_threshold", "0.01"); CHKERRXX(ierr);
     ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_strong_threshold", "0.93"); CHKERRXX(ierr);
 
     /* 2- Coarsening type
@@ -786,6 +787,7 @@ void my_p4est_poisson_nodes_mls_sc_t::solve(Vec solution, bool use_nonzero_initi
      * Greater than zero.
      * Use zero for the best convergence. However, if you have memory problems, use greate than zero to save some memory.
      */
+//    ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_truncfactor", "0.5"); CHKERRXX(ierr);
     ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_truncfactor", "0."); CHKERRXX(ierr);
 
     // Finally, if matrix has a nullspace, one should _NOT_ use Gaussian-Elimination as the smoother for the coarsest grid
@@ -4304,11 +4306,11 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
 
           if (mu_m_proj < mu_p_proj)
           {
-            if (num_neg >= P4EST_DIM && face_m_area_max > 0.01) sign_to_use = -1;
-            else                        sign_to_use =  1;
+            if (num_neg >= P4EST_DIM && face_m_area_max > 0.01) { sign_to_use = -1; }
+            else                                                { sign_to_use =  1; }
           } else {
-            if (num_pos >= P4EST_DIM && face_p_area_max > 0.01) sign_to_use =  1;
-            else                        sign_to_use = -1;
+            if (num_pos >= P4EST_DIM && face_p_area_max > 0.01) { sign_to_use =  1; }
+            else                                                { sign_to_use = -1; }
           }
 
           // linear system
@@ -4536,7 +4538,12 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
             if (neighbors_exist[i] && fabs(w_ghosts[i]) > EPS)
             {
               PetscInt node_nei_g = petsc_gloidx_[neighbors[i]];
-              if (w_ghosts[i] != w_ghosts[i]) throw std::domain_error("Matrix element is nan\n");
+              switch (std::fpclassify(w_ghosts[i]))
+              {
+                case FP_INFINITE: throw std::domain_error("Matrix element is inf\n");
+                case FP_NAN: throw std::domain_error("Matrix element is nan\n");
+              }
+//              if (w_ghosts[i] != w_ghosts[i]) throw std::domain_error("Matrix element is nan\n");
               ent.n = node_nei_g;
               ent.val = w_ghosts[i];
               row_C->push_back(ent);
@@ -5660,7 +5667,6 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
     /* assemble the matrix */
     ierr = MatAssemblyBegin(A_, MAT_FINAL_ASSEMBLY); CHKERRXX(ierr);
     ierr = MatAssemblyEnd  (A_, MAT_FINAL_ASSEMBLY); CHKERRXX(ierr);
-
     MPI_Allreduce(MPI_IN_PLACE, &interface_present, 1, MPI_LOGICAL, MPI_LOR, p4est_->mpicomm);
 
     if (interface_present)
@@ -5725,6 +5731,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
       ierr = MatDestroy(BC); CHKERRXX(ierr);
     }
   }
+
   for(int n=0; n<num_owned_local; ++n)
   {
     delete matrix_entries[n];
@@ -5732,7 +5739,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
     delete C_matrix_entries[n];
   }
 
-  if (setup_matrix || setup_rhs)
+  if ((setup_matrix || setup_rhs) && enfornce_diag_scalling_)
   {
     Vec diagonal;
 
@@ -5744,6 +5751,12 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
     foreach_local_node(n, nodes_)
     {
       diagonal_ptr[n] = 1./diagonal_ptr[n];
+      switch (std::fpclassify(diagonal_ptr[n]))
+      {
+        case FP_INFINITE: throw std::domain_error("Matrix diag element is inf\n");
+        case FP_NAN: throw std::domain_error("Matrix diag element is nan\n");
+        case FP_ZERO: throw std::domain_error("Matrix diag element is zero\n");
+      }
     }
     ierr = VecRestoreArray(diagonal, &diagonal_ptr); CHKERRXX(ierr);
 

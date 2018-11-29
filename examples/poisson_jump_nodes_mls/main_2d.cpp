@@ -119,8 +119,8 @@ int num_shifts_x_dir = 5;
 int num_shifts_y_dir = 5;
 int num_shifts_z_dir = 5;
 #else
-int lmin = 3;
-int lmax = 6;
+int lmin = 5;
+int lmax = 5;
 int num_splits = 7;
 int num_splits_per_split = 1;
 int num_shifts_x_dir = 1;
@@ -157,8 +157,8 @@ int num_test_mu_p = 0;
 int num_test_um = 6;
 int num_test_up = 7;
 
-int num_test_diag_term_m = 0;
-int num_test_diag_term_p = 0;
+int num_test_diag_term_m = 1;
+int num_test_diag_term_p = 1;
 
 BoundaryConditionType bc_wtype = DIRICHLET;
 BoundaryConditionType bc_itype = DIRICHLET;
@@ -193,7 +193,7 @@ double domain_perturbation_pow = 2.;
 //-------------------------------------
 // convergence study parameters
 //-------------------------------------
-int    compute_cond_num = 1*num_splits;
+int    compute_cond_num = 0*num_splits;
 bool   do_extension     = 0;
 double mask_thresh      = 0;
 bool   compute_grad_between = false;

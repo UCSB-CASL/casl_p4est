@@ -180,6 +180,16 @@ PetscLogEvent log_my_p4est_multialloy_compute_velocity;
 PetscLogEvent log_my_p4est_multialloy_update_grid;
 PetscLogEvent log_my_p4est_multialloy_save_vtk;
 
+// biofilm
+PetscLogEvent log_my_p4est_biofilm_one_step;
+PetscLogEvent log_my_p4est_biofilm_compute_dt;
+PetscLogEvent log_my_p4est_biofilm_compute_geometric_properties;
+PetscLogEvent log_my_p4est_biofilm_compute_velocity;
+PetscLogEvent log_my_p4est_biofilm_solve_concentration;
+PetscLogEvent log_my_p4est_biofilm_solve_pressure;
+PetscLogEvent log_my_p4est_biofilm_update_grid;
+PetscLogEvent log_my_p4est_biofilm_save_vtk;
+
 
 void register_petsc_logs()
 {
@@ -355,4 +365,14 @@ void register_petsc_logs()
   ierr = PetscLogEventRegister("my_p4est_poisson_nodes_multialloy::compute_c0n       ", 0, &log_my_p4est_poisson_nodes_multialloy_compute_c0n       ); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_poisson_nodes_multialloy::compute_psi_c0n   ", 0, &log_my_p4est_poisson_nodes_multialloy_compute_psi_c0n   ); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_p4est_poisson_nodes_multialloy::adjust_c0         ", 0, &log_my_p4est_poisson_nodes_multialloy_adjust_c0         ); CHKERRXX(ierr);
+
+  // biofilm
+  ierr = PetscLogEventRegister("my_p4est_biofilm::one_step                    ", 0, &log_my_p4est_biofilm_one_step                    ); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_biofilm::compute_dt                  ", 0, &log_my_p4est_biofilm_compute_dt                  ); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_biofilm::compute_geometric_properties", 0, &log_my_p4est_biofilm_compute_geometric_properties); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_biofilm::compute_velocity            ", 0, &log_my_p4est_biofilm_compute_velocity            ); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_biofilm::solve_concentration         ", 0, &log_my_p4est_biofilm_solve_concentration         ); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_biofilm::solve_pressure              ", 0, &log_my_p4est_biofilm_solve_pressure              ); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_biofilm::update_grid                 ", 0, &log_my_p4est_biofilm_update_grid                 ); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_biofilm::save_vtk                    ", 0, &log_my_p4est_biofilm_save_vtk                    ); CHKERRXX(ierr);
 }

@@ -2018,7 +2018,6 @@ double quadrant_interp_t::operator()(double x, double y) const
   }
 }
 
-
 void copy_ghosted_vec(Vec input, Vec output)
 {
   PetscErrorCode ierr;
@@ -2028,6 +2027,15 @@ void copy_ghosted_vec(Vec input, Vec output)
   ierr = VecCopy(src, out);                      CHKERRXX(ierr);
   ierr = VecGhostRestoreLocalForm(input, &src);  CHKERRXX(ierr);
   ierr = VecGhostRestoreLocalForm(output, &out); CHKERRXX(ierr);
+}
+
+void set_ghosted_vec(Vec vec, double scalar)
+{
+  PetscErrorCode ierr;
+  Vec ptr;
+  ierr = VecGhostGetLocalForm(vec, &ptr);     CHKERRXX(ierr);
+  ierr = VecSet(ptr, scalar);                 CHKERRXX(ierr);
+  ierr = VecGhostRestoreLocalForm(vec, &ptr); CHKERRXX(ierr);
 }
 
 void invert_phi(p4est_nodes_t *nodes, Vec phi)

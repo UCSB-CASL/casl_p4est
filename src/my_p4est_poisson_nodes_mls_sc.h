@@ -131,6 +131,7 @@ class my_p4est_poisson_nodes_mls_sc_t
   bool update_ghost_after_solving_;
   bool try_remove_hanging_cells_;
   bool neumann_wall_first_order_;
+  bool enfornce_diag_scalling_;
   double phi_perturbation_;
   double domain_rel_thresh_;
   double interface_rel_thresh_;
@@ -561,6 +562,7 @@ public:
   inline void set_use_sc_scheme           (bool value) { use_sc_scheme_             = value; }
   inline void set_integration_order       (int  value) { integration_order_         = value; }
   inline void set_jump_scheme             (int  value) { jump_scheme_               = value; }
+  inline void set_enfornce_diag_scalling  (int  value) { enfornce_diag_scalling_    = value; }
 
   bool inv_mat2(double *in, double *out);
   bool inv_mat3(double *in, double *out);
@@ -606,9 +608,9 @@ public:
   inline void assemble_rhs_only() { setup_linear_system(false, true); }
 
 #ifdef P4_TO_P8
-void reconstruct_domain(std::vector<cube3_mls_t> &cubes);
+  void reconstruct_domain(std::vector<cube3_mls_t> &cubes);
 #else
-void reconstruct_domain(std::vector<cube2_mls_t> &cubes);
+  void reconstruct_domain(std::vector<cube2_mls_t> &cubes);
 #endif
 
 
