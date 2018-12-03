@@ -1324,9 +1324,9 @@ void my_p4est_navier_stokes_t::extrapolate_bc_v(my_p4est_node_neighbors_t *ngbd,
 
 
 #ifdef P4_TO_P8
-void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_3 *level_set, bool convergence_test)
+void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_3 *level_set, bool convergence_test, bool do_reinitialization)
 #else
-void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set, bool convergence_test)
+void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set, bool convergence_test, bool do_reinitialization)
 #endif
 {
   PetscErrorCode ierr;
@@ -1535,9 +1535,12 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set, boo
   {
     sample_cf_on_nodes(p4est_np1, nodes_np1, *level_set, phi_np1);
   }
-  my_p4est_level_set_t lsn(ngbd_np1);
-  lsn.reinitialize_1st_order_time_2nd_order_space(phi_np1);
-  lsn.perturb_level_set_function(phi_np1, EPS);
+  if(do_reinitialization)
+  {
+    my_p4est_level_set_t lsn(ngbd_np1);
+    lsn.reinitialize_1st_order_time_2nd_order_space(phi_np1);
+    lsn.perturb_level_set_function(phi_np1, EPS);
+  }
 
   /* advect smoke */
   if(smoke!=NULL)
@@ -1551,11 +1554,27 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set, boo
   }
 
   /* interpolate the quantities on the new forest at the cells */
-  ierr = VecDestroy(hodge); CHKERRXX(ierr);
-  ierr = VecCreateGhostCells(p4est_np1, ghost_np1, &hodge); CHKERRXX(ierr);
+  my_p4est_interpolation_cells_t interp_cell(ngbd_c, ngbd_n);
+  for (p4est_topidx_t tree_idx = p4est_np1->first_local_tree; tree_idx <= p4est_np1->last_local_tree; ++tree_idx) {
+    p4est_tree_t *tree = p4est_tree_array_index(p4est_np1->trees, tree_idx);
+    for (size_t q = 0; q < tree->quadrants.elem_count; ++q) {
+      p4est_locidx_t quad_idx = tree->quadrants_offset + q;
+      double xyz_c[P4EST_DIM];
+      quad_xyz_fr_q(quad_idx, tree_idx, p4est_np1, ghost_np1, xyz_c);
+      interp_cell.add_point(quad_idx, xyz_c);
+    }
+  }
+  interp_cell.set_input(hodge, phi, &bc_hodge);
+  Vec hodge_tmp;
+  ierr = VecCreateGhostCells(p4est_np1, ghost_np1, &hodge_tmp); CHKERRXX(ierr);
+  interp_cell.interpolate(hodge_tmp);
+  interp_cell.clear();
+  ierr = VecDestroy(hodge); CHKERRXX(ierr); hodge = hodge_tmp;
+  ierr = VecGhostUpdateBegin(hodge, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd(hodge, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
   ierr = VecDestroy(pressure); CHKERRXX(ierr);
-  ierr = VecDuplicate(hodge, &pressure); CHKERRXX(ierr);
+  ierr = VecCreateGhostCells(p4est_np1, ghost_np1, &pressure); CHKERRXX(ierr);
 
   /* interpolate the quantities on the new forest at the faces */
   my_p4est_interpolation_faces_t interp_faces(ngbd_n, faces_n);
@@ -1924,4 +1943,9 @@ void my_p4est_navier_stokes_t::save_vtk(const char* name)
   }
 
   ierr = PetscPrintf(p4est_n->mpicomm, "Saved visual data in ... %s\n", name); CHKERRXX(ierr);
+}
+
+void my_p4est_navier_stokes_t::global_mass_flow_through_slice(const int& dir, const std::vector<double>& section, std::vector<double> mass_flows) const
+{
+  mass_flows.resize(section.size(), 0.0);
 }

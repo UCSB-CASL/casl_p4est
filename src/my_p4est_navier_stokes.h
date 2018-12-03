@@ -255,9 +255,9 @@ public:
   void extrapolate_bc_v(my_p4est_node_neighbors_t *ngbd, Vec *v, Vec phi);
 
 #ifdef P4_TO_P8
-  void update_from_tn_to_tnp1(const CF_3 *level_set=NULL, bool convergence_test=false);
+  void update_from_tn_to_tnp1(const CF_3 *level_set=NULL, bool convergence_test=false, bool do_reinitialization=true);
 #else
-  void update_from_tn_to_tnp1(const CF_2 *level_set=NULL, bool convergence_test=false);
+  void update_from_tn_to_tnp1(const CF_2 *level_set=NULL, bool convergence_test=false, bool do_reinitialization=true);
 #endif
 
   void compute_pressure();
@@ -265,6 +265,8 @@ public:
   void compute_forces(double *f);
 
   void save_vtk(const char* name);
+
+  void global_mass_flow_through_slice(const int& dir, const std::vector<double>& section, std::vector<double> mass_flows) const;
 };
 
 
