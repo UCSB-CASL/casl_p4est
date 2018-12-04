@@ -266,7 +266,7 @@ public:
 
   void save_vtk(const char* name);
 
-  void global_mass_flow_through_slice(const int& dir, const std::vector<double>& section, std::vector<double> mass_flows) const;
+  void global_mass_flow_through_slice(const unsigned int& dir, const std::vector<double>& section, std::vector<double> mass_flows) const;
 };
 
 
