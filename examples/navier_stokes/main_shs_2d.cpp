@@ -453,11 +453,11 @@ int main (int argc, char* argv[])
   int lmax = cmd.get("lmax", 6);
   double threshold_split_cell = cmd.get("thresh", 0.1);
   double wall_layer = cmd.get("wall_layer", 4.0);
-  int length = cmd.get("lmax", 6);
+  int length = cmd.get("length", 6);
 #ifdef P4_TO_P8
-  int width =  cmd.get("lmax", 3);
+  int width =  cmd.get("width", 3);
 #endif
-  double duration = cmd.get("duration", 4.0);
+  double duration = cmd.get("duration", 100.0);
   double wall_shear_Reynolds = cmd.get("Re", 60.0);
   double pitch_to_delta = cmd.get("pitch_to_delta", 0.375);
 #ifdef P4_TO_P8
@@ -479,9 +479,9 @@ int main (int argc, char* argv[])
   double cfl = cmd.get("cfl", 0.75);
 
 #if defined(POD_CLUSTER)
-  string out_dir = cmd.get<string>("export_folder", "/home/regan/superhydrophic_channel");
+  string export_dir = cmd.get<string>("export_folder", "/home/regan/superhydrophic_channel");
 #elif defined(STAMPEDE)
-  string out_dir = cmd.get<string>("export_folder", "/work/04965/tg842642/stampede2/superhydrophic_channel");
+  string export_dir = cmd.get<string>("export_folder", "/work/04965/tg842642/stampede2/superhydrophic_channel");
 #else
   string export_dir = cmd.get<string>("export_folder", "/home/regan/workspace/projects/superhydrophic_channel");
 #endif
