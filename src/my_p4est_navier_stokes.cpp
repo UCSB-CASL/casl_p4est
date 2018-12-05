@@ -2016,9 +2016,15 @@ void my_p4est_navier_stokes_t::global_mass_flow_through_slice(const unsigned int
 #endif
       break;
     }
+
+    bool check_for_periodic_wrapping = is_periodic(p4est_n, dir) && ((fabs(face_coordinate - xyz_min[dir]) < comparison_threshold) || (fabs(face_coordinate - xyz_max[dir]) < comparison_threshold));
     for (size_t ii = 0; ii < section.size(); ++ii)
+    {
+      if(check_for_periodic_wrapping && ((fabs(section[ii] - xyz_min[dir]) < comparison_threshold) || (fabs(section[ii] - xyz_max[dir]) < comparison_threshold)))
+        face_coordinate = section[ii];
       if(fabs(face_coordinate - section[ii]) < comparison_threshold)
         mass_flows[ii] += rho*vel_p[face_idx]*faces_n->face_area_in_negative_domain(face_idx, dir, phi_p, nodes_n);
+    }
   }
   ierr = VecRestoreArrayRead(vnp1[dir], &vel_p); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
