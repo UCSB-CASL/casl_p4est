@@ -83,10 +83,10 @@ public:
    */
   vector<p4est_locidx_t> q2f_[P4EST_FACES];
 
-  /* f2q[P4EST_DIM][u_idx]
+  /* f2q_[P4EST_DIM][u_idx]
    * f2q_[dim][face_idx].quad_idx = local index of the quadrant that owns the face (cumulative over the trees)
    * f2q_[dim][face_idx].tree_idx = tree index of the quadrant that owns the face
-   * e.g. u2q[1][12] is the quadrant whose face in the y direction has index 12
+   * e.g. f2q_[1][12] is the quadrant whose face in the y direction has index 12
    */
   vector<my_p4est_faces_t::face_quad_ngbd> f2q_[P4EST_DIM];
 
@@ -145,6 +145,23 @@ public:
 #endif
 
   void xyz_fr_f(p4est_locidx_t f_idx, int dir, double* xyz) const;
+
+  /*!
+   * \brief calculates the area of the face in negative domain
+   * \param f_idx: local index of the face
+   * \param dir: the cartesian direction of the face (dir::x, dir::y or dir::z)
+   * \param phi_p  [optional]: pointer to read-only node-sampled levelset-values (assumed to be all negative if ignored)
+   * \param nodes  [optional]: p4est_node structure
+   * \param phi_dd [optional, in 2D only, disregarded in 3D]: array of pointers to the second derivatives of the levelset
+   * function to more accurate interface localization
+   * \return the area of the face in negative domain (just the area of the face if the optional inputs are disregarded)
+   */
+#ifdef P4_TO_P8
+  double face_area_in_negative_domain(p4est_locidx_t f_idx, int dir, const double *phi_p=NULL, const p4est_nodes_t* nodes = NULL) const;
+#else
+  double face_area_in_negative_domain(p4est_locidx_t f_idx, int dir, const double *phi_p=NULL, const p4est_nodes_t* nodes = NULL, const double *phi_dd[] = NULL) const;
+#endif
+  double face_area(p4est_locidx_t f_idx, int dir) const {return face_area_in_negative_domain(f_idx, dir);}
 };
 
 PetscErrorCode VecCreateGhostFaces     (const p4est_t *p4est, const my_p4est_faces_t *faces, Vec* v, int dir);

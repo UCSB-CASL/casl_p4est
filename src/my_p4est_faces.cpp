@@ -834,6 +834,90 @@ void my_p4est_faces_t::xyz_fr_f(p4est_locidx_t f_idx, int dir, double* xyz) cons
 #endif
 }
 
+#ifdef P4_TO_P8
+double my_p4est_faces_t::face_area_in_negative_domain(p4est_locidx_t f_idx, int dir, const double *phi_p, const p4est_nodes_t* nodes) const
+#else
+double my_p4est_faces_t::face_area_in_negative_domain(p4est_locidx_t f_idx, int dir, const double *phi_p, const p4est_nodes_t* nodes, const double *phi_dd[]) const
+#endif
+{
+#ifdef CASL_THROWS
+  if((phi_p != NULL) && (nodes == NULL))
+    throw std::invalid_argument("my_p4est_faces_t::face_area: if the node-sampled levelset function is provided, the nodes MUST be provided as well.");
+#endif
+  p4est_locidx_t  *t2v = p4est->connectivity->tree_to_vertex;
+  double          *v2c = p4est->connectivity->vertices;
+
+  p4est_locidx_t quad_idx;
+  p4est_topidx_t tree_idx;
+  f2q(f_idx, dir, quad_idx, tree_idx);
+
+  p4est_quadrant_t *quad;
+  if(quad_idx<p4est->local_num_quadrants)
+  {
+    P4EST_ASSERT(tree_idx>=0);
+    p4est_tree_t* tree = (p4est_tree_t*) sc_array_index(p4est->trees, tree_idx);
+    quad = (p4est_quadrant_t*) sc_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
+  }
+  else
+  {
+    quad = (p4est_quadrant_t*) sc_array_index(&ghost->ghosts, quad_idx-p4est->local_num_quadrants);
+    tree_idx = quad->p.piggy3.which_tree;
+  }
+
+  int tmp = ((q2f(quad_idx, 2*dir)==f_idx)? 0 : 1);
+
+  double area = 1.0;
+  for (short dim = 0; dim < P4EST_DIM; ++dim)
+  {
+    if(dim == dir)
+      continue;
+    area *= (v2c[3*t2v[P4EST_CHILDREN*tree_idx + P4EST_CHILDREN-1] + dir]-v2c[3*t2v[P4EST_CHILDREN*tree_idx + 0] + dir])/((double) (1<<quad->level));
+  }
+  if(phi_p != NULL)
+  {
+    p4est_locidx_t node_indices[2*(P4EST_DIM-1)];
+    short zzz, yyy, xxx;
+    for (short first = 0; first < P4EST_DIM-1; ++first) {
+      for (short second = 0; second < 2; ++second) {
+#ifdef P4_TO_P8
+        zzz = ((dir==dir::z)? tmp : first);
+        yyy = ((dir==dir::y)? tmp : ((dir==dir::z)? first : second));
+        xxx = ((dir==dir::x)? tmp : second);
+#else
+        zzz = first; // always 0...
+        yyy = ((dir==dir::y)? tmp : second);
+        xxx = ((dir==dir::x)? tmp : second);
+#endif
+        node_indices[2*first+second] = nodes->local_nodes[P4EST_CHILDREN*quad_idx+4*zzz+2*yyy+xxx];
+      }
+    }
+    bool they_are_all_positive    = true;
+    bool at_least_one_is_positive = false;
+    for (short kk = 0; kk < 2*(P4EST_DIM-1); ++kk) {
+      bool node_is_in_positive_domain = (phi_p[node_indices[kk]] > 0.0);
+      they_are_all_positive     = they_are_all_positive && node_is_in_positive_domain;
+      at_least_one_is_positive  = at_least_one_is_positive || (node_is_in_positive_domain);
+    }
+    if (they_are_all_positive)
+      return 0.0;
+    if (at_least_one_is_positive)
+    {
+#ifndef P4_TO_P8
+      double h = area;
+      if(phi_dd == NULL)
+        area *= fraction_Interval_Covered_By_Irregular_Domain(phi_p[node_indices[0]], phi_p[node_indices[1]], h, h);
+      else
+        area *= fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(phi_p[node_indices[0]], phi_p[node_indices[1]], phi_dd[(dir?0:1)][node_indices[0]], phi_dd[(dir?0:1)][node_indices[1]], h);
+#else
+      Cube2 my_face(0.0, 1.0, 0.0, 1.0);
+      QuadValue ls_value(phi_p[node_indices[0]], phi_p[node_indices[1]], phi_p[node_indices[2]], phi_p[node_indices[3]]);
+      area *= my_face.area_In_Negative_Domain(ls_value);
+#endif
+    }
+  }
+  return area;
+}
+
 
 
 PetscErrorCode VecCreateGhostFaces(const p4est_t *p4est, const my_p4est_faces_t *faces, Vec* v, int dir)

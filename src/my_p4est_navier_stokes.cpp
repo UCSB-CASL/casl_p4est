@@ -1956,12 +1956,72 @@ void my_p4est_navier_stokes_t::save_vtk(const char* name)
   ierr = PetscPrintf(p4est_n->mpicomm, "Saved visual data in ... %s\n", name); CHKERRXX(ierr);
 }
 
-void my_p4est_navier_stokes_t::global_mass_flow_through_slice(const unsigned int& dir, const std::vector<double>& section, std::vector<double> mass_flows) const
+void my_p4est_navier_stokes_t::global_mass_flow_through_slice(const unsigned int& dir, std::vector<double>& section, std::vector<double>& mass_flows) const
 {
+  PetscErrorCode ierr;
 #ifdef CASL_THROWS
   if (dir >= P4EST_DIM)
     throw std::invalid_argument("my_p4est_navier_stokes_t::global_mass_flow_through_slice: the queried direction MUST be strictly smaller than P4EST_DIM");
 #endif
-  mass_flows.resize(section.size(), 0.0);
+  const splitting_criteria_t *data = (const splitting_criteria_t*) p4est_n->user_pointer;
+  double *v2c = p4est_n->connectivity->vertices;
+  p4est_topidx_t *t2v = p4est_n->connectivity->tree_to_vertex;
 
+  const double size_of_tree         = (v2c[3*t2v[P4EST_CHILDREN*0 + P4EST_CHILDREN - 1] + dir] - v2c[3*t2v[P4EST_CHILDREN*0 + 0] + dir]);
+  const double coarsest_cell_size   = size_of_tree/((double) (1<<data->min_lvl));
+  const double comparison_threshold = 0.5*size_of_tree/((double) (1<<data->max_lvl));
+
+  if(mass_flows.size() != section.size())
+    mass_flows.resize(section.size(), 0.0);
+  for (size_t ii = 0; ii < section.size(); ++ii) {
+#ifdef CASL_THROWS
+    if((section[ii] < xyz_min[dir]) || (section[ii] > xyz_max[dir]))
+      throw std::invalid_argument("my_p4est_navier_stokes_t::global_mass_flow_through_slice: the slice section must be in the computational domain!");
+#endif
+    int tree_dim_idx = (int) floor((section[ii]-xyz_min[dir])/size_of_tree);
+    double should_be_integer = (section[ii]-(xyz_min[dir] + tree_dim_idx*size_of_tree))/coarsest_cell_size;
+    if(fabs(should_be_integer - ((int) should_be_integer)) > 1e-6)
+    {
+#ifdef CASL_THROWS
+      throw std::invalid_argument("my_p4est_navier_stokes_t::global_mass_flow_through_slice: the mass flux can be evaluated only through slices in the \n computational domain that coincide with cell faces of the coarsest cells: choose a valid section!");
+#else
+      section[ii] = xyz_min[dir] + tree_dim_idx*size_of_tree + ((int) should_be_integer)*(section[ii]-(xyz_min[dir] + tree_dim_idx*size_of_tree))/coarsest_cell_size;
+      if(p4est_n->mpirank == 0)
+        std::cerr << "my_p4est_navier_stokes_t::global_mass_flow_through_slice: the section for calculating the mass flow has been relocated!" << std::endl;
+#endif
+    }
+    mass_flows[ii] = 0.0; // initialization
+  }
+
+  const double *vel_p, *phi_p;
+  double face_coordinate = DBL_MAX;
+  ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(vnp1[dir], &vel_p); CHKERRXX(ierr);
+  for (p4est_locidx_t face_idx = 0; face_idx < faces_n->num_local[dir]; ++face_idx) {
+    switch (dir) {
+    case dir::x:
+      face_coordinate = faces_n->x_fr_f(face_idx, dir);
+      break;
+    case dir::y:
+      face_coordinate = faces_n->y_fr_f(face_idx, dir);
+      break;
+#ifdef P4_TO_P8
+    case dir::z:
+      face_coordinate = faces_n->z_fr_f(face_idx, dir);
+      break;
+#endif
+    default:
+#ifdef CASL_THROWS
+      throw std::invalid_argument("my_p4est_navier_stokes_t::global_mass_flow_through_slice: the queried direction MUST be strictly smaller than P4EST_DIM");
+#endif
+      break;
+    }
+    for (size_t ii = 0; ii < section.size(); ++ii)
+      if(fabs(face_coordinate - section[ii]) < comparison_threshold)
+        mass_flows[ii] += rho*vel_p[face_idx]*faces_n->face_area_in_negative_domain(face_idx, dir, phi_p, nodes_n);
+  }
+  ierr = VecRestoreArrayRead(vnp1[dir], &vel_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
+
+  int mpiret = MPI_Allreduce(MPI_IN_PLACE, &mass_flows[0], mass_flows.size(), MPI_DOUBLE, MPI_SUM, p4est_n->mpicomm); SC_CHECK_MPI(mpiret);
 }

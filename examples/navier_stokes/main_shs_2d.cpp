@@ -263,7 +263,7 @@ struct BCWALLVALUE_V : CF_2
 
 struct initial_velocity_unm1_t : CF_2
 {
-  double operator()(double, double y) const
+  double operator()(double, double) const
   {
     return 0.0;
   }
@@ -311,6 +311,93 @@ struct external_force_v_t : CF_2
 #endif
 
 
+void initialize_mass_flow_output(std::vector<double>& sections, std::vector<double>& mass_flows, char* file_mass_flow, const int& length, const char *out_dir, const int& lmin, const int& lmax, const double& threshold_split_cell, const double& cfl, const int& sl_order, const mpi_environment_t& mpi)
+{
+  // initialize sections and mass flows through sections
+  sections.resize(0);
+  sections.push_back(-0.5*((double) length));
+  sections.push_back(-0.25*((double) length));
+  sections.push_back(0.0);
+  sections.push_back(+0.25*((double) length));
+  mass_flows.resize(sections.size(), 0.0);
+
+  sprintf(file_mass_flow, "%s/mass_flow_%d-%d_split_threshold_%.2f_cfl_%.2f_sl_%d.dat", out_dir, lmin, lmax, threshold_split_cell, cfl, sl_order);
+
+  PetscErrorCode ierr = PetscPrintf(mpi.comm(), "Saving mass flow in ... %s\n", file_mass_flow); CHKERRXX(ierr);
+  if(mpi.rank() == 0)
+  {
+    FILE* fp_mass_flow = fopen(file_mass_flow, "w");
+    if(fp_mass_flow==NULL)
+      throw std::runtime_error("initialize_mass_flow_output: could not open file for mass flow output.");
+    fprintf(fp_mass_flow, "%% __ | Normalized mass flows \n");
+    fprintf(fp_mass_flow, "%% tn | Inflow section | 0.25*length | Midway section | 0.75*length \n");
+    fclose(fp_mass_flow);
+
+    FILE* fp_liveplot_mass;
+    char liveplot_mass[1000];
+    sprintf(liveplot_mass, "%s/live_mass_flow.gnu", out_dir);
+    fp_liveplot_mass = fopen(liveplot_mass, "w");
+    if(fp_liveplot_mass==NULL)
+      throw std::runtime_error("initialize_mass_flow_output: could not open file for mass flow liveplot.");
+    fprintf(fp_liveplot_mass, "set key bottom right\n");
+    fprintf(fp_liveplot_mass, "set key bottom right Left font \"Arial,14\"\n");
+    fprintf(fp_liveplot_mass, "set xlabel \"Time\" font \"Arial,14\"\n");
+    fprintf(fp_liveplot_mass, "set ylabel \"Nondimensional mass flow\" font \"Arial,14\"\n");
+    fprintf(fp_liveplot_mass, "plot");
+    for (size_t k_section = 0; k_section < sections.size(); ++k_section)
+    {
+      fprintf(fp_liveplot_mass, "\t \"mass_flow_%d-%d_split_threshold_%.2f_cfl_%.2f_sl_%d.dat\" using 1:%d title 'x = %g' with lines lw 3", lmin, lmax, threshold_split_cell, cfl, sl_order, ((int)k_section+2), sections[k_section]);
+      if(k_section < sections.size()-1)
+        fprintf(fp_liveplot_mass, ",\\");
+      fprintf(fp_liveplot_mass, "\n");
+    }
+    fprintf(fp_liveplot_mass, "pause 4\n");
+    fprintf(fp_liveplot_mass, "reread");
+    fclose(fp_liveplot_mass);
+
+    FILE* fp_tex_plot_mass;
+    char tex_plot_mass[1000];
+    sprintf(tex_plot_mass, "%s/tex_mass_flow.gnu", out_dir);
+    fp_tex_plot_mass = fopen(tex_plot_mass, "w");
+    if(fp_tex_plot_mass==NULL)
+      throw std::runtime_error("initialize_mass_flow_output: could not open file for mass flow tex figure.");
+    fprintf(fp_tex_plot_mass, "set term epslatex color standalone\n");
+    fprintf(fp_tex_plot_mass, "set output 'mass_flow_history.tex'\n");
+    fprintf(fp_tex_plot_mass, "set key bottom right Left \n");
+    fprintf(fp_tex_plot_mass, "set xlabel \"$t$\"\n");
+#ifdef P4_TO_P8
+    fprintf(fp_tex_plot_mass, "set ylabel \"$\\\\frac{1}{\\\\rho \\\\delta^{2} u^{\\\\star}}\\\\int_{%g\\\\delta}^{%g\\\\delta}\\\\int_{-\\\\delta}^{\\\\delta} \\\\rho u \\\\,\\\\mathrm{d}y\\\\mathrm{d}z$\" \n", -0.5*length /*width*/, 0.5*length /*width*/);
+#else
+    fprintf(fp_tex_plot_mass, "set ylabel \"$\\\\frac{1}{\\\\rho \\\\delta u^{\\\\star}}\\\\int_{-\\\\delta}^{\\\\delta} \\\\rho u \\\\,\\\\mathrm{d}y$\" \n");
+#endif
+    fprintf(fp_tex_plot_mass, "plot");
+    for (size_t k_section = 0; k_section < sections.size(); ++k_section)
+    {
+      fprintf(fp_tex_plot_mass, "\t \"mass_flow_%d-%d_split_threshold_%.2f_cfl_%.2f_sl_%d.dat\" using 1:%d title '$x = %g$' with lines lw 3", lmin, lmax, threshold_split_cell, cfl, sl_order, ((int)k_section+2), sections[k_section]);
+      if(k_section < sections.size()-1)
+        fprintf(fp_tex_plot_mass, ",\\\n");
+    }
+    fclose(fp_tex_plot_mass);
+
+    FILE* fp_tex_mass_flow_script;
+    char tex_mass_flow_script[1000];
+    sprintf(tex_mass_flow_script, "%s/plot_tex_mass_flow.sh", out_dir);
+    fp_tex_mass_flow_script = fopen(tex_mass_flow_script, "w");
+    if(fp_tex_mass_flow_script==NULL)
+      throw std::runtime_error("initialize_mass_flow_output: could not open file for bash script plotting mass flow tex figure.");
+    fprintf(fp_tex_mass_flow_script, "#!/bin/sh\n");
+    fprintf(fp_tex_mass_flow_script, "gnuplot ./tex_mass_flow.gnu\n");
+    fprintf(fp_tex_mass_flow_script, "latex ./mass_flow_history.tex\n");
+    fprintf(fp_tex_mass_flow_script, "dvipdf ./mass_flow_history.dvi\n");
+    fclose(fp_tex_mass_flow_script);
+
+    ostringstream chmod_command;
+    chmod_command << "chmod +x " << tex_mass_flow_script;
+    int sys_return = system(chmod_command.str().c_str()); (void) sys_return;
+  }
+}
+
+
 int main (int argc, char* argv[])
 {
   mpi_environment_t mpi;
@@ -339,7 +426,11 @@ int main (int argc, char* argv[])
   cmd.add_option("save_vtk", "activates exportation of results in vtk format");
   cmd.add_option("vtk_dt", "export vtk files every vtk_dt time lapse (REQUIRED if save_vtk is activated)");
   cmd.add_option("save_drag", "activates exportation of the total drag (normalized by regular channel drag force)");
-  cmd.add_option("save_mass_flow", "activates exportation of the streamwise mass flow (non-dimensionalized by rho*SQR(delta)*u_tau, calculated at x = 0)");
+#ifdef P4_TO_P8
+  cmd.add_option("save_mass_flow", "activates exportation of the streamwise mass flow (non-dimensionalized by rho*SQR(delta)*u_tau, calculated at inflow, 0.25*length, 0.5*length and 0.75*length)");
+#else
+  cmd.add_option("save_mass_flow", "activates exportation of the streamwise mass flow (non-dimensionalized by rho*delta*u_tau, calculated at inflow, 0.25*length, 0.5*length and 0.75*length)");
+#endif
   cmd.add_option("save_mean_profile", "compute and save an averaged streamwise-velocity profile (makes sense only if the flow is fully-developed)");
   cmd.add_option("tstart_statistics", "time starting from which the statics can be computed (WARNING: default is 0)");
 
@@ -355,7 +446,7 @@ int main (int argc, char* argv[])
       meters 'length' and 'width' are integers. The Navier-Stokes solver is then invoked with nondimensional inputs \n\
       rho = 1.0, mu = 1.0/Re, body force per unit mass {1.0, 0.0, 0.0} (driving the flow), \n\
       and with periodic boundary conditions in the streamwise and spanwise directions. \n\
-      Developer: Raphael Egan (raphael.egan@gmail.com, raphaelegan@ucsb.edu)";
+      Developer: Raphael Egan (raphaelegan@ucsb.edu)";
   cmd.parse(argc, argv, extra_info);
 
   int lmin = cmd.get("lmin", 4);
@@ -366,8 +457,8 @@ int main (int argc, char* argv[])
 #ifdef P4_TO_P8
   int width =  cmd.get("lmax", 3);
 #endif
-  double duration = cmd.get("duration", 120.0);
-  double wall_shear_Reynolds = cmd.get("Re", 180.0);
+  double duration = cmd.get("duration", 4.0);
+  double wall_shear_Reynolds = cmd.get("Re", 60.0);
   double pitch_to_delta = cmd.get("pitch_to_delta", 0.375);
 #ifdef P4_TO_P8
   if(fabs(width/pitch_to_delta - ((int) width/pitch_to_delta)) > 1e-6)
@@ -415,7 +506,7 @@ int main (int argc, char* argv[])
   }
 
   bool save_drag      = cmd.contains("save_drag");
-  bool save_mass_flow = cmd.contains("save_mass_flow");
+  bool save_mass_flow = cmd.contains("save_mass_flow"); vector<double> mass_flows; vector<double> sections;
   bool save_profile   = cmd.contains("save_mean_profile");
   double stat_start   = cmd.get("tstart_statistics", 0.0);
 
@@ -562,7 +653,7 @@ int main (int argc, char* argv[])
   int iter = 0;
   int export_vtk = -1;
 
-  FILE *fp_drag, *fp_mass_flow, *fp_velocity_profile;
+  FILE *fp_drag, *fp_velocity_profile;
   char file_drag[1000], file_mass_flow[1000], file_velocity_profile[1000];
 
   if(save_drag)
@@ -584,23 +675,7 @@ int main (int argc, char* argv[])
     }
   }
   if(save_mass_flow)
-  {
-    sprintf(file_mass_flow, "%s/mass_flow_%d-%d_split_threshold_%.2f_cfl_%.2f_sl_%d.dat", out_dir, lmin, lmax, threshold_split_cell, cfl, sl_order);
-
-    ierr = PetscPrintf(mpi.comm(), "Saving mass flow in ... %s\n", file_mass_flow); CHKERRXX(ierr);
-    if(mpi.rank() == 0)
-    {
-      fp_mass_flow = fopen(file_mass_flow, "w");
-      if(fp_mass_flow==NULL)
-#ifdef P4_TO_P8
-        throw std::runtime_error("main_shs_3d: could not open file for mass flow output.");
-#else
-        throw std::runtime_error("main_shs_2d: could not open file for mass flow output.");
-#endif
-      fprintf(fp_mass_flow, "%% tn | Normalized mass flow \n");
-      fclose(fp_mass_flow);
-    }
-  }
+    initialize_mass_flow_output(sections, mass_flows, file_mass_flow, length, out_dir, lmin, lmax, threshold_split_cell, cfl, sl_order, mpi);
   if(save_profile)
   {
     sprintf(file_velocity_profile, "%s/velocity_profile_%d-%d_split_threshold_%.2f_cfl_%.2f_sl_%d.dat", out_dir, lmin, lmax, threshold_split_cell, cfl, sl_order);
@@ -716,9 +791,9 @@ int main (int argc, char* argv[])
         fp_drag = fopen(file_drag, "a");
         if(fp_drag==NULL)
 #ifdef P4_TO_P8
-          throw std::invalid_argument("main_shs_3d: could not open file for drag output.");
+          throw std::runtime_error("main_shs_3d: could not open file for drag output.");
 #else
-          throw std::invalid_argument("main_shs_2d: could not open file for drag output.");
+          throw std::runtime_error("main_shs_2d: could not open file for drag output.");
 #endif
 
 //        fprintf(fp_drag, "%g %g\n", tn, drag);
@@ -727,17 +802,20 @@ int main (int argc, char* argv[])
     }
     if(save_mass_flow)
     {
-      // compute mass flow here
+      ns.global_mass_flow_through_slice(dir::x, sections, mass_flows);
       if(!mpi.rank())
       {
-        fp_mass_flow= fopen(file_mass_flow, "a");
+        FILE* fp_mass_flow= fopen(file_mass_flow, "a");
         if(fp_mass_flow==NULL)
 #ifdef P4_TO_P8
-          throw std::invalid_argument("main_shs_3d: could not open file for mass flow output.");
+          throw std::runtime_error("main_shs_3d: could not open file for mass flow output.");
 #else
-          throw std::invalid_argument("main_shs_2d: could not open file for mass flow output.");
+          throw std::runtime_error("main_shs_2d: could not open file for mass flow output.");
 #endif
-//        fprintf(fp_mass_flow, "%g %g\n", tn, mass_flow);
+        fprintf(fp_mass_flow, "%g", tn);
+        for (size_t k_section = 0; k_section < mass_flows.size(); ++k_section)
+          fprintf(fp_mass_flow, " %g", mass_flows[k_section]);
+        fprintf(fp_mass_flow, "\n");
         fclose(fp_mass_flow);
       }
     }
