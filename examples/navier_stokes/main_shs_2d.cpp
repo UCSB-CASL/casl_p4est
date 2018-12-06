@@ -226,14 +226,17 @@ struct BCWALLVALUE_P : CF_2
 class BCWALLTYPE_U : public WallBC2D
 {
 private:
-  int length;
-  double pitch;
-  double gas_frac;
+  const int length;
+  const double pitch;
+  const double gas_frac;
+  const double offset;
 public:
-  BCWALLTYPE_U(int len_, double pitch_, double gas_fraction_): length(len_), pitch(pitch_), gas_frac(gas_fraction_) {}
+  BCWALLTYPE_U(int len_, double pitch_, double gas_fraction_, const my_p4est_brick_t& brick_, int max_lvl):
+    length(len_), pitch(pitch_), gas_frac(gas_fraction_),
+    offset(0.5*(brick_.xyz_max[0]-brick_.xyz_min[0])/((double) (brick_.nxyztrees[0]*(1<<max_lvl)))) {}
   BoundaryConditionType operator()(double x, double) const
   {
-    return ((fmod((x + 0.5*((double) length)), pitch)/pitch <= gas_frac)? NEUMANN: DIRICHLET);
+    return ((fmod((x + 0.5*((double) length) - offset), pitch)/pitch <= gas_frac)? NEUMANN: DIRICHLET);
   }
 };
 
@@ -409,6 +412,10 @@ int main (int argc, char* argv[])
   cmd.add_option("lmax", "max level of the tree");
   cmd.add_option("thresh", "the threshold used for the refinement criteria, default is 0.1");
   cmd.add_option("wall_layer", "number of finest cells desired to layer the channel walls (a minimum of 2 is strictly enforced)");
+  cmd.add_option("nx", "number of trees in the x-direction. The default value is length to ensure aspect ratio of cells = 1 (always 2 trees along y by default!)");
+#ifdef P4_TO_P8
+  cmd.add_option("nz", "number of trees in the z-direction. The default value is width to ensure aspect ratio of cells = 1 (always 2 trees along y by default!)");
+#endif
   // physical parameters for the simulations
   cmd.add_option("length", "length of the channel (dimension in streamwise, x-direction) , in units of delta (integer), default is 6");
 #ifdef P4_TO_P8
@@ -438,9 +445,10 @@ int main (int argc, char* argv[])
   const std::string extra_info = "\
       This program provides a general setup for Navier-Stokes simulations of superhydrophobic channel flow simulations.\n\
       It assumes no solid object and no passive scalar (i.e. smoke) in the channel. The height of the channel is set to \n\
-      2*delta by default, the other channel dimensions are provided by the user in (integer) units of delta, to ensure \n\
-      aspect ratio of computational cells equal to 1 (each tree in the forest is of size deltaXdeltaXdelta). The set up \n\
-      builds on the following non-dimensionalization ('_hat' for dimensional variables): \n\n\
+      2*delta by default, the other channel dimensions are provided by the user in (integer!) units of delta. If the numbers \n\
+      of trees in the streamwise and spanwise directions (resp. input parameters nx and nz) are not provided by the user, they are \n\
+      set in order to ensure aspect ratio of computational cells equal to 1, i.e. each tree in the forest is of size deltaXdeltaXdelta. \n\n\
+      The set up builds upon the following non-dimensionalization ('_hat' for dimensional variables): \n\n\
       u = u_hat/u_tau, {x, y, z} = {x, y, z}_hat/delta, t = t_hat*u_tau/delta, p = p_hat/(rho*u_tau*u_tau) \n\n\
       Therefore, the computational domain is [-0.5*length, 0.5*length]x[-1, 1]x[-0.5*width, 0.5*width] where the para-\n\
       meters 'length' and 'width' are integers. The Navier-Stokes solver is then invoked with nondimensional inputs \n\
@@ -459,7 +467,7 @@ int main (int argc, char* argv[])
 #endif
   double duration = cmd.get("duration", 100.0);
   double wall_shear_Reynolds = cmd.get("Re", 60.0);
-  double pitch_to_delta = cmd.get("pitch_to_delta", 0.375);
+  double pitch_to_delta = cmd.get("pitch_to_delta", 1.0/32.0);
 #ifdef P4_TO_P8
   if(fabs(width/pitch_to_delta - ((int) width/pitch_to_delta)) > 1e-6)
     throw std::invalid_argument("main_shs_3d.cpp: the width MUST be a multiple of pitch_to_delta to satisfy periodicity spanwise.");
@@ -554,13 +562,15 @@ int main (int argc, char* argv[])
   p4est_connectivity_t *connectivity;
   my_p4est_brick_t brick;
 
+  int ntree_x = cmd.get("nx", length);
 #ifdef P4_TO_P8
-  int n_xyz [] = {length, 2, width};
+  int ntree_z = cmd.get("nz", width);
+  int n_xyz [] = {ntree_x, 2, ntree_z};
   double xyz_min [] = {xmin, ymin, zmin};
   double xyz_max [] = {xmax, ymax, zmax};
   int periodic[] = {1, 0, 1};
 #else
-  int n_xyz [] = {length, 2};
+  int n_xyz [] = {ntree_x, 2};
   double xyz_min [] = {xmin, ymin};
   double xyz_max [] = {xmax, ymax};
   int periodic[] = {1, 0};
@@ -625,7 +635,7 @@ int main (int argc, char* argv[])
   BoundaryConditions2D bc_p;
 #endif
 
-  BCWALLTYPE_U bc_wall_type_u(length, pitch_to_delta, gas_fraction);
+  BCWALLTYPE_U bc_wall_type_u(length, pitch_to_delta, gas_fraction, brick, lmax);
   bc_v[0].setWallTypes(bc_wall_type_u); bc_v[0].setWallValues(bc_wall_value_u);
   bc_v[1].setWallTypes(bc_wall_type_v); bc_v[1].setWallValues(bc_wall_value_v);
 #ifdef P4_TO_P8
