@@ -1727,17 +1727,17 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
     switch(dir)
     {
     case dir::x:
-      if(fabs(xyz[0]-xyz_min[0])<EPS) x_pert = xyz_min[0]+2*EPS;
-      if(fabs(xyz[0]-xyz_max[0])<EPS) x_pert = xyz_max[0]-2*EPS;
+      if(fabs(xyz[0]-xyz_min[0])<EPS) x_pert = xyz_min[0]+2*EPS*(xyz_max[0]-xyz_min[0]);
+      if(fabs(xyz[0]-xyz_max[0])<EPS) x_pert = xyz_max[0]-2*EPS*(xyz_max[0]-xyz_min[0]);
       break;
     case dir::y:
-      if(fabs(xyz[1]-xyz_min[1])<EPS) y_pert = xyz_min[1]+2*EPS;
-      if(fabs(xyz[1]-xyz_max[1])<EPS) y_pert = xyz_max[1]-2*EPS;
+      if(fabs(xyz[1]-xyz_min[1])<EPS) y_pert = xyz_min[1]+2*EPS*(xyz_max[1]-xyz_min[1]);
+      if(fabs(xyz[1]-xyz_max[1])<EPS) y_pert = xyz_max[1]-2*EPS*(xyz_max[1]-xyz_min[1]);
       break;
 #ifdef P4_TO_P8
     case dir::z:
-      if(fabs(xyz[2]-xyz_min[2])<EPS) z_pert = xyz_min[2]+2*EPS;
-      if(fabs(xyz[2]-xyz_max[2])<EPS) z_pert = xyz_max[2]-2*EPS;
+      if(fabs(xyz[2]-xyz_min[2])<EPS) z_pert = xyz_min[2]+2*EPS*(xyz_max[2]-xyz_min[2]);
+      if(fabs(xyz[2]-xyz_max[2])<EPS) z_pert = xyz_max[2]-2*EPS*(xyz_max[2]-xyz_min[2]);
       break;
 #endif
     }
