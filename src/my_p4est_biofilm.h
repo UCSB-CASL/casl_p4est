@@ -79,6 +79,8 @@ private:
 
   int velocity_type_;
 
+  bool steady_state_;
+
   /* boundary conditions */
 #ifdef P4_TO_P8
   WallBC3D *bc_wall_type_;
@@ -172,6 +174,7 @@ public:
 
   inline void set_kinetics(CF_1& f_cf, CF_1& fc_cf) { this->f_cf_ = &f_cf; this->fc_cf_ = &fc_cf; }
   inline void set_velocity_type(int velocity_type) { this->velocity_type_ = velocity_type; }
+  inline void set_steady_state(bool value) { this->steady_state_ = value; }
 
   // time discretization parameters
   inline void set_advection_scheme(int advection_scheme) { this->advection_scheme_ = advection_scheme; }

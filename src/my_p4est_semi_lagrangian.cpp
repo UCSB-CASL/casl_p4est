@@ -1425,7 +1425,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *vnm1, Vec *vn, double dt_nm1,
 
     // refine and coarsen grid using the effective LSF
     splitting_criteria_tag_t sp(sp_old->min_lvl, sp_old->max_lvl, sp_old->lip);
-    sp.set_refine_only_inside(true);
+//    sp.set_refine_only_inside(true);
     is_grid_changing = sp.refine_and_coarsen(p4est, nodes, phi_eff_ptr);
 
     ierr = VecRestoreArray(phi_eff, &phi_eff_ptr); CHKERRXX(ierr);

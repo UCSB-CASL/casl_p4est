@@ -812,7 +812,7 @@ void my_p4est_poisson_nodes_mls_sc_t::solve(Vec solution, bool use_nonzero_initi
 //  setup_linear_system(false, true);
 
   // Solve the system
-  ierr = KSPSetTolerances(ksp_, 1.e-15, 1.e-15, PETSC_DEFAULT, 50); CHKERRXX(ierr);
+  ierr = KSPSetTolerances(ksp_, 1.e-50, 1.e-50, PETSC_DEFAULT, 50); CHKERRXX(ierr);
 //  ierr = KSPSetTolerances(ksp_, 1e-15, PETSC_DEFAULT, PETSC_DEFAULT, 30); CHKERRXX(ierr);
 //  ierr = KSPSetTolerances(ksp_, 1e-200, 1e-30, PETSC_DEFAULT, PETSC_DEFAULT); CHKERRXX(ierr);
   ierr = KSPSetFromOptions(ksp_); CHKERRXX(ierr);

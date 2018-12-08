@@ -58,21 +58,17 @@
 using namespace std;
 
 // grid parameters
-int lmin = 5;
+int lmin = 6;
 int lmax = 9;
-double lip = 2;
+double lip = 3.5;
 
 double xmin = 0, xmax = 1; int nx = 1; bool px = 0;
 double ymin = 0, ymax = 1; int ny = 1; bool py = 1;
-#ifdef P4_TO_P8
-double zmin = 0, zmax = 1; int ny = 1; bool pz = 1;
-#endif
+double zmin = 0, zmax = 1; int nz = 1; bool pz = 1;
 
 // model options
-int velocity_type = 1; // 0 - using concentration, 1 - using pressure (Darcy)
-
-int nb_experiment = 0; // 0 -
-
+int  velocity_type; /* 0 - using concentration (not implemented), 1 - using pressure (Darcy) */
+bool steady_state;  /* assume steady state profile for concentration or not */
 
 double box_size; /* lateral dimensions of simulation box      - m         */
 double Df;       /* diffusivity of nutrients in air           - m^2/s     */
@@ -88,54 +84,229 @@ double C0f;      /* initial nutrient concentration in air     - kg/m^3    */
 double C0b;      /* initial nutrient concentration in biofilm - kg/m^3    */
 double C0a;      /* initial nutrient concentration in agar    - kg/m^3    */
 
+BoundaryConditionType bc_agar; /* BC type (on computatoinal domain boundary) for nutrients in agar    */
+BoundaryConditionType bc_free; /* BC type (on computatoinal domain boundary) for nutrients in biofilm */
+BoundaryConditionType bc_biof; /* BC type (on computatoinal domain boundary) for nutrients in air     */
+
+int nb_geometry; /* initial geometry:
+                  * 0 - planar
+                  * 1 - sphere
+                  * 2 - three spheres
+                  * 3 - pipe
+                  * 4 - planar + bump
+                  * 5 - corrugated agar
+                  * 6 - porous media (grains)
+                  * 7 - porous media (cavities)
+                  */
+double h_agar;   /* characteristic size of agar      - m */
+double h_biof;   /* characteristic size of biofilm   - m */
+
+// specifically for porous media examples
+int    grain_num;        /* number of grains or cavities    */
+double grain_dispersity; /* grains/cavities size dispersion */
+double grain_smoothing;  /* smoothing of initial geometry   */
+
 // time discretization
-int advection_scheme = 1; // 0 - 1st order, 1 - 2nd order
-int time_scheme = 1; // 0 - Euler (1st order), 1 - BDF2 (2nd order)
-double cfl_number = 0.5;
+int    advection_scheme = 0;   // 0 - 1st order, 1 - 2nd order
+int    time_scheme      = 0;   // 0 - Euler (1st order), 1 - BDF2 (2nd order)
+double cfl_number       = 0.1; //
 
 // solving non-linear diffusion equation
-int iteration_scheme = 1;     // iterative scheme : 0 - simple fixed-point, 1 - linearized fixed-point
-int max_iterations   = 50;    // max iterations
-double tolerance     = 1.e-10; // tolerance
+int    iteration_scheme = 1;      // iterative scheme : 0 - simple fixed-point, 1 - linearized fixed-point
+int    max_iterations   = 7;      // max iterations
+double tolerance        = 1.e-8; // tolerance
 
 // general poisson solver parameters
 bool use_sc_scheme         = 1;
 bool use_taylor_correction = 1;
-int integration_order = 2;
+int  integration_order     = 2;
 
 // output parameters
-bool save_data = 1;
-bool save_vtk  = 1;
-int save_type = 0; // 0 - every n iterations, 1 - every dl of growth, 2 - every dt of time
-int save_every_n_iteration = 1;
+bool   save_data  = 1; // save scalar characteristics
+bool   save_vtk   = 1; // save spatial data
+int    save_type  = 0; // 0 - every dn iterations, 1 - every dl of growth, 2 - every dt of time
+int    save_every_dn = 1;
 double save_every_dl = 0.01;
 double save_every_dt = 0.1;
 
 // simulation run parameters
-int    limit_iter = INT_MAX;
-double limit_time = DBL_MAX;
+int    limit_iter   = 10000;
+double limit_time   = DBL_MAX;
 double limit_length = 1.8;
-double init_perturb = 0.001;
+double init_perturb = 0.00001;
+
+// pre-defined cases
+int nb_experiment = 1;
+/* 0 - (biofilm + agar + water), planar, transient
+ * 1 - (biofilm + agar + water), planar, steady-state
+ * 2 - (biofilm + agar), planar with a bump, transient
+ * 3 - (biofilm + water), spherical, steady-state
+ * 4 - (biofilm + water), pipe, transient
+ * 5 - (biofilm + water), porous (cavities), transient
+ * 6 - (biofilm + water + agar), porous (grains), transient
+ */
 
 void setup_experiment()
 {
+  // common parameters
+  velocity_type = 1;
+  box_size = 1;
+  sigma = 0.01;
+  rho = 1;
+  lambda = 1.0;
+  A = 100;
+  Kc = 100;
+  gam = 0.0;
+  C0a = 1;
+  C0b = 0.01;
+  C0f = 1;
+
   switch(nb_experiment)
   {
     case 0:
-      box_size = 1;
-      Da = 0.01;
-      Db = 0.01;
-      Df = 0.0001;
-      sigma = 0;
-      rho = 1;
-      lambda = 1;
-      A = 1;
-      Kc = 1;
-      gam = 0.5;
-      C0a = 1;
-      C0b = 1;
-      C0f = 1;
-      break;
+      {
+        steady_state = 0;
+
+        Da = 0.001;
+        Db = 0.01;
+        Df = 0.1;
+
+        bc_agar = NEUMANN;
+        bc_free = NEUMANN;
+        bc_biof = NEUMANN;
+
+        nb_geometry = 0;
+        h_agar      = 0.2;
+        h_biof      = 0.015;
+        break;
+      }
+    case 1:
+      {
+        steady_state = 1;
+
+        Da = 0.5e-5;
+        Db = 0.5e-5;
+        Df = 2.5e-5;
+
+        bc_agar = NEUMANN;
+        bc_free = DIRICHLET;
+        bc_biof = NEUMANN;
+
+        nb_geometry = 0;
+        h_agar      = -0.2;
+        h_biof      = 0.115;
+        break;
+      }
+    case 2:
+      {
+        steady_state = 0;
+
+        Da = 0.001;
+        Db = 0.01;
+        Df = 0;
+
+        bc_agar = NEUMANN;
+        bc_free = NEUMANN;
+        bc_biof = NEUMANN;
+
+        nb_geometry = 4;
+        h_agar      = 0.4;
+        h_biof      = 0.015;
+        break;
+      }
+    case 3:
+      {
+        steady_state = 0;
+
+        Da = 0;
+        Db = 0.01;
+        Df = 0.1;
+
+        bc_agar = NEUMANN;
+        bc_free = DIRICHLET;
+        bc_biof = NEUMANN;
+
+        nb_geometry = 1;
+        h_agar      = 0.025;
+        h_biof      = 0.015;
+        break;
+      }
+    case 4:
+      {
+        steady_state = 0;
+
+        Da = 0;
+        Db = 0.01;
+        Df = 0.1;
+
+        bc_agar = NEUMANN;
+        bc_free = DIRICHLET;
+        bc_biof = NEUMANN;
+
+        nb_geometry = 3;
+        h_agar      = 0.4;
+        h_biof      = 0.015;
+        break;
+      }
+    case 5:
+      {
+        steady_state = 0;
+
+        Da = 0;
+        Db = 0.01;
+        Df = 0.1;
+
+        bc_agar = NEUMANN;
+        bc_free = NEUMANN;
+        bc_biof = NEUMANN;
+
+        nb_geometry = 7;
+        h_agar      = 0.03;
+        h_biof      = 0.015;
+
+        grain_num        = 100;
+        grain_dispersity = 2;
+        grain_smoothing  = 0.01;
+        break;
+      }
+    case 6:
+      {
+        steady_state = 0;
+
+        Da = 0.001;
+        Db = 0.01;
+        Df = 0.1;
+
+        bc_agar = NEUMANN;
+        bc_free = NEUMANN;
+        bc_biof = NEUMANN;
+
+        nb_geometry = 6;
+        h_agar      = 0.011;
+        h_biof      = 0.015;
+
+        grain_num        = 50;
+        grain_dispersity = 1.5;
+        grain_smoothing  = 0.01;
+        break;
+      }
+  }
+}
+
+
+void set_periodicity()
+{
+  switch (nb_geometry)
+  {
+    case 0: px = 0; py = 1; pz = 1; break;
+    case 1: px = 0; py = 0; pz = 0; break;
+    case 2: px = 0; py = 0; pz = 0; break;
+    case 3: px = 0; py = 0; pz = 1; break;
+    case 4: px = 0; py = 1; pz = 1; break;
+    case 5: px = 0; py = 1; pz = 1; break;
+    case 6: px = 1; py = 1; pz = 1; break;
+    case 7: px = 1; py = 1; pz = 1; break;
+    default: throw std::invalid_argument("[ERROR]: Wrong type of initial geometry");
   }
 }
 
@@ -157,7 +328,10 @@ public:
 
 class bc_wall_type_t : public WallBC3D {
 public:
-  BoundaryConditionType operator()( double, double, double ) const { return NEUMANN; }
+  BoundaryConditionType operator()( double, double, double ) const
+  {
+    return NEUMANN;
+  }
 } bc_wall_type;
 
 class bc_wall_value_t : public CF_3 {
@@ -188,12 +362,129 @@ public:
 #else
 class phi_agar_cf_t : public CF_2 {
 public:
-  double operator()(double x, double y) const { return -(x-0.1); }
+  double operator()(double x, double y) const
+  {
+    switch (nb_geometry)
+    {
+      case 0: return -(x-h_agar);
+      case 1: return h_agar - sqrt( SQR(x-0.5*(xmax+xmin)) + SQR(y-0.5*(ymax+ymin)));
+      case 2: return MAX(h_agar - sqrt( SQR(x-(xmin + .3*(xmax-xmin))) + SQR(y-(ymin + .5*(ymax-ymin)))),
+                         h_agar - sqrt( SQR(x-(xmin + .5*(xmax-xmin))) + SQR(y-(ymin + .6*(ymax-ymin)))),
+                         h_agar - sqrt( SQR(x-(xmin + .6*(xmax-xmin))) + SQR(y-(ymin + .4*(ymax-ymin)))));
+      case 3: return -(h_agar - sqrt(SQR(x-.5*(xmax+xmin)) + SQR(y-.5*(ymax+ymin))));
+      case 4: return -(x-h_agar);
+      case 5: return -(x-h_agar) + 0.02*cos(2.*PI*10*(y-ymin)/(ymax-ymin));
+      case 6:
+        {
+          srand(0);
+
+          double sum = 10;
+          for (int i = 0; i < grain_num; ++i)
+          {
+            double R = h_agar * (1. + grain_dispersity*(((double) rand() / (double) RAND_MAX)));
+            double X = xmin + ((double) rand() / (double) RAND_MAX) *(xmax-xmin);
+            double Y = ymin + ((double) rand() / (double) RAND_MAX) *(ymax-ymin);
+
+            int nx = round((X-x)/(xmax-xmin));
+            int ny = round((Y-y)/(ymax-ymin));
+
+            double dist = R - sqrt( SQR(x-X + nx*(xmax-xmin)) + SQR(y-Y + ny*(ymax-ymin)) );
+
+            sum = MIN(sum, -dist);
+          }
+
+          return -sum;
+        }
+      case 7:
+        {
+          srand(0);
+
+          double sum = 10;
+          for (int i = 0; i < grain_num; ++i)
+          {
+            double R = h_agar * (1. + grain_dispersity*(((double) rand() / (double) RAND_MAX)));
+            double X = xmin + ((double) rand() / (double) RAND_MAX) *(xmax-xmin);
+            double Y = ymin + ((double) rand() / (double) RAND_MAX) *(ymax-ymin);
+
+            int nx = round((X-x)/(xmax-xmin));
+            int ny = round((Y-y)/(ymax-ymin));
+
+            double dist = R - sqrt( SQR(x-X + nx*(xmax-xmin)) + SQR(y-Y + ny*(ymax-ymin)) );
+
+            sum = MIN(sum, -dist);
+          }
+
+          return sum;
+        }
+      default: throw std::invalid_argument("[ERROR]: Wrong type of initial geometry");
+    }
+  }
 } phi_agar_cf;
 
 class phi_free_cf_t : public CF_2 {
 public:
-  double operator()(double x, double y) const { return  (x-0.2); }
+  double operator()(double x, double y) const
+  {
+    switch (nb_geometry)
+    {
+      case 0: return (x- MAX(0., h_agar) - h_biof);
+      case 1: return -(MAX(0., h_agar) + h_biof - sqrt( SQR(x-0.5*(xmax+xmin)) + SQR(y-0.5*(ymax+ymin))));
+      case 2: return -MAX(MAX(0., h_agar) + h_biof - sqrt( SQR(x-(xmin + .3*(xmax-xmin))) + SQR(y-(ymin + .5*(ymax-ymin)))),
+                          MAX(0., h_agar) + h_biof - sqrt( SQR(x-(xmin + .5*(xmax-xmin))) + SQR(y-(ymin + .6*(ymax-ymin)))),
+                          MAX(0., h_agar) + h_biof - sqrt( SQR(x-(xmin + .6*(xmax-xmin))) + SQR(y-(ymin + .4*(ymax-ymin)))));
+      case 3: return ((MAX(0., h_agar) - h_biof) - sqrt(SQR(x-.5*(xmax+xmin)) + SQR(y-.5*(ymax+ymin))));
+      case 4:
+        {
+          double plane = (x-(MAX(0., h_agar) + h_biof));
+          double bump = -(.1*(xmax-xmin) - sqrt( SQR(x-(MAX(0., h_agar) + h_biof)) + SQR(y-0.5*(ymax+ymin))));
+          return .5*(plane+bump - sqrt(SQR(plane-bump) + .001*(xmax-xmin)));
+        }
+      case 5: return (x-(MAX(0., h_agar) + h_biof));
+      case 6:
+        {
+          srand(0);
+
+          double sum = 10;
+          for (int i = 0; i < grain_num; ++i)
+          {
+            double R = (MAX(0., h_agar) + h_biof) * (1. + grain_dispersity*(((double) rand() / (double) RAND_MAX)));
+            double X = xmin + ((double) rand() / (double) RAND_MAX) *(xmax-xmin);
+            double Y = ymin + ((double) rand() / (double) RAND_MAX) *(ymax-ymin);
+
+            int nx = round((X-x)/(xmax-xmin));
+            int ny = round((Y-y)/(ymax-ymin));
+
+            double dist = R - sqrt( SQR(x-X + nx*(xmax-xmin)) + SQR(y-Y + ny*(ymax-ymin)) );
+
+            sum = MIN(sum, -dist);
+          }
+
+          return sum;
+        }
+      case 7:
+        {
+          srand(0);
+
+          double sum = 10;
+          for (int i = 0; i < grain_num; ++i)
+          {
+            double R = (MAX(0., h_agar) - h_biof) * (1. + grain_dispersity*(((double) rand() / (double) RAND_MAX)));
+            double X = xmin + ((double) rand() / (double) RAND_MAX) *(xmax-xmin);
+            double Y = ymin + ((double) rand() / (double) RAND_MAX) *(ymax-ymin);
+
+            int nx = round((X-x)/(xmax-xmin));
+            int ny = round((Y-y)/(ymax-ymin));
+
+            double dist = R - sqrt( SQR(x-X + nx*(xmax-xmin)) + SQR(y-Y + ny*(ymax-ymin)) );
+
+            sum = MIN(sum, -dist);
+          }
+
+          return -sum;
+        }
+      default: throw std::invalid_argument("[ERROR]: Wrong type of initial geometry");
+    }
+  }
 } phi_free_cf;
 
 class phi_biof_cf_t : public CF_2 {
@@ -203,12 +494,28 @@ public:
 
 class bc_wall_type_t : public WallBC2D {
 public:
-  BoundaryConditionType operator()( double, double ) const { return NEUMANN; }
+  BoundaryConditionType operator()(double x, double y) const
+  {
+    double pa = phi_agar_cf(x,y);
+    double pf = phi_free_cf(x,y);
+    if (pa < 0 && pf < 0) return bc_biof;
+    else if (pa > 0 && pf > 0) throw;
+    else if (pa > 0)      return bc_agar;
+    else if (pf > 0)      return bc_free;
+  }
 } bc_wall_type;
 
 class bc_wall_value_t : public CF_2 {
 public:
-  double operator()(double , double ) const { return 0; }
+  double operator()(double x, double y) const
+  {
+    double pa = phi_agar_cf(x,y);
+    double pf = phi_free_cf(x,y);
+    if (pa < 0 && pf < 0) return bc_biof == NEUMANN ? 0 : C0b;
+    else if (pa > 0 && pf > 0) throw;
+    else if (pa > 0)      return bc_agar == NEUMANN ? 0 : C0a;
+    else if (pf > 0)      return bc_free == NEUMANN ? 0 : C0f;
+  }
 } bc_wall_value;
 
 class initial_concentration_free_t : public CF_2 {
@@ -287,6 +594,7 @@ int main (int argc, char* argv[])
     if (i == 0) cmd.parse(argc, argv);
   }
   setup_experiment();
+  set_periodicity();
 
   // scale computational box
   double scaling = 1/box_size;
@@ -355,7 +663,8 @@ int main (int argc, char* argv[])
   double dz = (zmax_tree-zmin_tree) / pow(2.,(double) data.max_lvl);
 #endif
 
-  double dt_max = MIN( 1000.*dx*dx/MAX(Da, Db, Df), 1./A);
+//  double dt_max = MIN( 1.e8*dx*dx/MAX(Da, Db, Df), 10000./A);
+  double dt_max = 1.5e-8*pow(2., 3.*(11.-lmax));
 
   /* initial geometry */
   Vec phi_free; ierr = VecCreateGhostNodes(p4est, nodes, &phi_free); CHKERRXX(ierr);
@@ -382,9 +691,44 @@ int main (int argc, char* argv[])
     ierr = VecGhostUpdateEnd  (phi_free, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   }
 
+  if (nb_geometry == 6)
+  {
+    shift_ghosted_vec(phi_free, -grain_smoothing);
+    shift_ghosted_vec(phi_agar, +grain_smoothing);
+  }
+
+  if (nb_geometry == 7)
+  {
+    shift_ghosted_vec(phi_free, +grain_smoothing);
+    shift_ghosted_vec(phi_agar, -grain_smoothing);
+  }
+
   my_p4est_level_set_t ls(ngbd);
-  ls.reinitialize_1st_order_time_2nd_order_space(phi_free);
-  ls.reinitialize_1st_order_time_2nd_order_space(phi_agar);
+  ls.reinitialize_1st_order_time_2nd_order_space(phi_free, 100);
+  ls.reinitialize_1st_order_time_2nd_order_space(phi_agar, 100);
+
+  if (nb_geometry == 6)
+  {
+    shift_ghosted_vec(phi_free, +grain_smoothing);
+    shift_ghosted_vec(phi_agar, -grain_smoothing);
+    copy_ghosted_vec(phi_free, phi_agar);
+    invert_phi(nodes, phi_agar);
+    shift_ghosted_vec(phi_agar, -h_biof);
+  }
+
+  if (nb_geometry == 7)
+  {
+    shift_ghosted_vec(phi_free, -grain_smoothing);
+    shift_ghosted_vec(phi_agar, +grain_smoothing);
+    if (h_agar > 0)
+    {
+      copy_ghosted_vec(phi_agar, phi_free);
+      invert_phi(nodes, phi_free);
+      shift_ghosted_vec(phi_free, -h_biof);
+    } else {
+      set_ghosted_vec(phi_agar, -1);
+    }
+  }
 
   /* initial concentration */
   Vec Ca; ierr = VecDuplicate(phi_free, &Ca); CHKERRXX(ierr);
@@ -403,6 +747,7 @@ int main (int argc, char* argv[])
   biofilm_solver.set_parameters   (Da, Db, Df, sigma, rho, lambda, gam, scaling);
   biofilm_solver.set_kinetics     (f_cf, fc_cf);
   biofilm_solver.set_bc           (bc_wall_type, bc_wall_value);
+  biofilm_solver.set_steady_state (steady_state);
 
   // time discretization parameters
   biofilm_solver.set_advection_scheme(advection_scheme);
@@ -460,6 +805,7 @@ int main (int argc, char* argv[])
   double total_growth = 0;
   double base = 0.1;
 
+  biofilm_solver.update_grid();
   while(keep_going)
   {
     if (tn + biofilm_solver.get_dt() > limit_time) { biofilm_solver.set_dt_max(limit_time-tn); keep_going = false; }
@@ -498,7 +844,7 @@ int main (int argc, char* argv[])
 
     // determine to save or not
     bool save_now =
-        (save_type == 0 && iteration    >= vtk_idx*save_every_n_iteration) ||
+        (save_type == 0 && iteration    >= vtk_idx*save_every_dn) ||
         (save_type == 1 && total_growth >= vtk_idx*save_every_dl) ||
         (save_type == 2 && tn           >= vtk_idx*save_every_dt);
 

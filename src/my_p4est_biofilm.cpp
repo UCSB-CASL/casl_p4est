@@ -61,6 +61,7 @@ my_p4est_biofilm_t::my_p4est_biofilm_t(my_p4est_node_neighbors_t *ngbd)
   sigma_   = 1; /* surface tension of air/film interface     - N/m       */
   lambda_  = 1; /* mobility of biofilm                       - m^4/(N*s) */
   scaling_ = 1;
+  steady_state_ = 0;
 
   /* level set */
   ierr = VecCreateGhostNodes(p4est_, nodes_, &phi_free_); CHKERRXX(ierr);
@@ -201,24 +202,24 @@ void my_p4est_biofilm_t::compute_geometric_properties()
 
   ls.extend_from_interface_to_whole_domain_TVD(phi_biof_, kappa_, kappa_tmp);
 
-  // truncate extremely high curvature values
-  double kappa_rez_max = 1./dxyz_min_;
-
-  double *kappa_tmp_ptr;
-
-  ierr = VecGetArray(kappa_tmp, &kappa_tmp_ptr); CHKERRXX(ierr);
-
-  foreach_node(n, nodes_)
-  {
-    if      (kappa_tmp_ptr[n] > kappa_rez_max) kappa_tmp_ptr[n] = kappa_rez_max;
-    else if (kappa_tmp_ptr[n] <-kappa_rez_max) kappa_tmp_ptr[n] =-kappa_rez_max;
-  }
-
-  ierr = VecRestoreArray(kappa_tmp, &kappa_tmp_ptr); CHKERRXX(ierr);
-
   ierr = VecDestroy(kappa_); CHKERRXX(ierr);
 
   kappa_ = kappa_tmp;
+
+  // truncate extremely high curvature values
+  double kappa_rez_max = 1./dxyz_min_;
+
+  double *kappa_ptr;
+
+  ierr = VecGetArray(kappa_, &kappa_ptr); CHKERRXX(ierr);
+
+  foreach_node(n, nodes_)
+  {
+    if      (kappa_ptr[n] > kappa_rez_max) kappa_ptr[n] = kappa_rez_max;
+    else if (kappa_ptr[n] <-kappa_rez_max) kappa_ptr[n] =-kappa_rez_max;
+  }
+
+  ierr = VecRestoreArray(kappa_, &kappa_ptr); CHKERRXX(ierr);
 
   ierr = PetscLogEventEnd(log_my_p4est_biofilm_compute_geometric_properties, 0, 0, 0, 0); CHKERRXX(ierr);
 }
@@ -266,6 +267,11 @@ void my_p4est_biofilm_t::solve_concentration()
         a2 = r*r/(1.+r)/dt0_;
         break;
       }
+  }
+
+  if (steady_state_)
+  {
+    a0 = 0; a1 = 0; a2 = 0;
   }
 
   // compute diffusivities, diagonal term, right-hand sides and guess
@@ -324,28 +330,28 @@ void my_p4est_biofilm_t::solve_concentration()
     diag_m_ptr[n] = a0;
     diag_p_ptr[n] = a0;
 
-    // additions to rhs due to time discretization
-    switch (time_scheme_)
-    {
-      case 0:
-        foreach_node(n, nodes_)
-        {
-          rhs_tmp_m_ptr[n] = -(a1*Cb0_ptr[n]);
-          rhs_tmp_p_ptr[n] = phi_free_ptr[n] > phi_agar_ptr[n] ? -(a1*Cf0_ptr[n]) : -(a1*Ca0_ptr[n]);
-        }
-        break;
-      case 1:
-        foreach_node(n, nodes_)
-        {
-          rhs_tmp_m_ptr[n] = -(a1*Cb0_ptr[n] + a2*Cb1_ptr[n]);
-          rhs_tmp_p_ptr[n] = phi_free_ptr[n] > phi_agar_ptr[n] ? -(a1*Cf0_ptr[n] + a2*Cf1_ptr[n]) : -(a1*Ca0_ptr[n] + a2*Ca1_ptr[n]);
-        }
-        break;
-    }
-
     // guess
     Cm_tmp_ptr[n] = Cb0_ptr[n];
     Cp_tmp_ptr[n] = phi_free_ptr[n] > phi_agar_ptr[n] ? Cf0_ptr[n] : Ca0_ptr[n];
+  }
+
+  // additions to rhs due to time discretization
+  switch (time_scheme_)
+  {
+    case 0:
+      foreach_node(n, nodes_)
+      {
+        rhs_tmp_m_ptr[n] = -(a1*Cb0_ptr[n]);
+        rhs_tmp_p_ptr[n] = phi_free_ptr[n] > phi_agar_ptr[n] ? -(a1*Cf0_ptr[n]) : -(a1*Ca0_ptr[n]);
+      }
+      break;
+    case 1:
+      foreach_node(n, nodes_)
+      {
+        rhs_tmp_m_ptr[n] = -(a1*Cb0_ptr[n] + a2*Cb1_ptr[n]);
+        rhs_tmp_p_ptr[n] = phi_free_ptr[n] > phi_agar_ptr[n] ? -(a1*Cf0_ptr[n] + a2*Cf1_ptr[n]) : -(a1*Ca0_ptr[n] + a2*Ca1_ptr[n]);
+      }
+      break;
   }
 
   ierr = VecRestoreArray(mu_m, &mu_m_ptr);           CHKERRXX(ierr);
@@ -381,25 +387,48 @@ void my_p4est_biofilm_t::solve_concentration()
   poisson_solver.set_use_sc_scheme(use_sc_scheme_);
   poisson_solver.set_integration_order(integration_order_);
 
-  std::vector<Vec>      phi_array(1, phi_biof_);
-  std::vector<action_t> action(1, INTERSECTION);
-  std::vector<int>      color(1, 0);
-
-  poisson_solver.set_immersed_interface(1, &action, &color, &phi_array);
-
   poisson_solver.set_mu2(mu_m, mu_p);
 
   poisson_solver.set_bc_wall_value(*bc_wall_value_);
   poisson_solver.set_bc_wall_type(*bc_wall_type_);
 
-  std::vector< CF_2* > flux_jump(1, &zero_cf);
-  poisson_solver.set_jump_conditions(zero_cf, flux_jump);
+  std::vector<Vec>      phi_jump;
+  std::vector<Vec>      phi_neum;
+  std::vector<action_t> action(1, INTERSECTION);
+  std::vector<int>      color(1, 0);
+
+  std::vector< CF_2* > zero_cf_array(1, &zero_cf);
+  std::vector< BoundaryConditionType > bc_neum(1, NEUMANN);
+  poisson_solver.set_jump_conditions(zero_cf, zero_cf_array);
+  poisson_solver.set_bc_interface_type(bc_neum);
+  poisson_solver.set_bc_interface_coeff(zero_cf_array);
+  poisson_solver.set_bc_interface_value(zero_cf_array);
+
+  if (Da_ == 0 && Df_ == 0)
+  {
+    phi_neum.push_back(phi_biof_);
+    poisson_solver.set_geometry(1, &action, &color, &phi_neum);
+  } else if (Da_ == 0) {
+    phi_neum.push_back(phi_agar_);
+    phi_jump.push_back(phi_free_);
+    poisson_solver.set_geometry(1, &action, &color, &phi_neum);
+    poisson_solver.set_immersed_interface(1, &action, &color, &phi_jump);
+  } else if (Df_ == 0) {
+    phi_neum.push_back(phi_free_);
+    phi_jump.push_back(phi_agar_);
+    poisson_solver.set_geometry(1, &action, &color, &phi_neum);
+    poisson_solver.set_immersed_interface(1, &action, &color, &phi_jump);
+  } else {
+    phi_jump.push_back(phi_biof_);
+    poisson_solver.set_immersed_interface(1, &action, &color, &phi_jump);
+  }
+
   poisson_solver.set_diag_add(diag_m, diag_p);
   poisson_solver.set_use_taylor_correction(use_taylor_correction_);
   poisson_solver.set_keep_scalling(1);
   poisson_solver.set_kink_treatment(1);
   poisson_solver.set_try_remove_hanging_cells(0);
-  poisson_solver.set_enfornce_diag_scalling(0);
+  poisson_solver.set_enfornce_diag_scalling(1);
 
   Vec rhs_m; double *rhs_m_ptr; ierr = VecDuplicate(phi_free_, &rhs_m); CHKERRXX(ierr);
   Vec rhs_p; double *rhs_p_ptr; ierr = VecDuplicate(phi_free_, &rhs_p); CHKERRXX(ierr);
@@ -884,6 +913,8 @@ void my_p4est_biofilm_t::compute_dt()
   kappa_max_ = 0;
   vn_max_ = 0;
 
+  double kv_max = 0;
+
   ierr = VecGetArrayRead(phi_free_, &phi_free_ptr); CHKERRXX(ierr);
   ierr = VecGetArrayRead(kappa_, &kappa_ptr);       CHKERRXX(ierr);
   ierr = VecGetArrayRead(vn_, &vn_ptr);             CHKERRXX(ierr);
@@ -894,6 +925,7 @@ void my_p4est_biofilm_t::compute_dt()
     {
       vn_max_ = MAX(vn_max_, fabs(vn_ptr[n]));
       kappa_max_ = MAX(kappa_max_, fabs(kappa_ptr[n]));
+      kv_max = MAX(kv_max, fabs(vn_ptr[n]*kappa_ptr[n]));
     }
   }
 
@@ -903,9 +935,16 @@ void my_p4est_biofilm_t::compute_dt()
 
   int mpiret = MPI_Allreduce(MPI_IN_PLACE, &vn_max_,    1, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
       mpiret = MPI_Allreduce(MPI_IN_PLACE, &kappa_max_, 1, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
+      mpiret = MPI_Allreduce(MPI_IN_PLACE, &kv_max,     1, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
 
   dt1_ = dt0_;
-  dt0_ = cfl_number_ * dxyz_min_/MAX(vn_max_, dxyz_min_/dt_max_) ;
+//  dt0_ = cfl_number_ * dxyz_min_/MAX(vn_max_, dxyz_min_/dt_max_) ;
+//  dt0_ = cfl_number_ * dxyz_min_/MAX(vn_max_, dxyz_min_/dt_max_) ;
+  dt0_ = MIN(cfl_number_ * dxyz_min_/vn_max_, dt_max_) ;
+
+  dt0_ = MIN(dt0_, 1./MAX(1.e-10, kv_max));
+
+//  dt0_ = dt_max_;
 
   PetscPrintf(p4est_->mpicomm, "vn_max = %e, kappa_max = %e, dt = %e\n", vn_max_, kappa_max_, dt0_);
 
@@ -937,6 +976,11 @@ void my_p4est_biofilm_t::update_grid()
 
   phi_array[0] = phi_free_;
   phi_array[1] = phi_agar_;
+
+  my_p4est_level_set_t ls_adv(ngbd_);
+
+//  ls_adv.advect_in_normal_direction(vn_, phi_free_, dt0_);
+//  sl.update_p4est(v0_, 0, phi_array, action, 0);
 
   if      (advection_scheme_ == 0) { sl.update_p4est(v0_, dt0_, phi_array, action, 0); }
   else if (advection_scheme_ == 1) { sl.update_p4est(v1_, v0_, dt1_, dt0_, phi_array, action, 0); }
@@ -1036,9 +1080,157 @@ void my_p4est_biofilm_t::update_grid()
   hierarchy_->update(p4est_, ghost_);
   ngbd_->update(hierarchy_, nodes_);
 
+  /* "solidify" too narrow regions */
+  if (1)
+  {
+    invert_phi(nodes_, phi_free_);
+    PetscPrintf(p4est_->mpicomm, "Removing problem geometries...\n");
+
+    Vec     phi_tmp;
+    double *phi_tmp_ptr;
+    double *phi_ptr;
+
+    p4est_locidx_t nei_n[num_neighbors_cube];
+    bool           nei_e[num_neighbors_cube];
+
+    double band = diag_;
+
+    ierr = VecDuplicate(phi_free_, &phi_tmp); CHKERRXX(ierr);
+
+    ierr = VecGetArray(phi_tmp, &phi_tmp_ptr); CHKERRXX(ierr);
+    ierr = VecGetArray(phi_free_,    &phi_ptr);     CHKERRXX(ierr);
+
+    // first pass: smooth out extremely curved regions
+    bool is_changed = false;
+    foreach_local_node(n, nodes_)
+    {
+      if (fabs(phi_ptr[n]) < band)
+      {
+        get_all_neighbors(n, p4est_, nodes_, ngbd_, nei_n, nei_e);
+
+        unsigned short num_neg = 0;
+        unsigned short num_pos = 0;
+
+        for (unsigned short nn = 0; nn < num_neighbors_cube; ++nn)
+        {
+          phi_ptr[nei_n[nn]] < 0 ? num_neg++ : num_pos++;
+        }
+
+        if ( (phi_ptr[n] <  0 && num_neg < 3) ||
+             (phi_ptr[n] >= 0 && num_pos < 3) )
+        {
+          phi_ptr[n] = phi_ptr[n] <  0 ? EPS : -EPS;
+
+          // check if node is a layer node (= a ghost node for another process)
+          p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes_->indep_nodes, n);
+          if (ni->pad8 != 0) is_changed = true;
+        }
+      }
+    }
+
+    int mpiret = MPI_Allreduce(MPI_IN_PLACE, &is_changed, 1, MPI_LOGICAL, MPI_LOR, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
+
+    if (is_changed)
+    {
+      ierr = VecGhostUpdateBegin(phi_free_, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+      ierr = VecGhostUpdateEnd  (phi_free_, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    }
+
+    copy_ghosted_vec(phi_free_, phi_tmp);
+
+    // second pass: bridge narrow gaps
+    is_changed = false;
+    foreach_local_node(n, nodes_)
+    {
+      if (phi_ptr[n] < 0 && phi_ptr[n] > -band)
+      {
+        get_all_neighbors(n, p4est_, nodes_, ngbd_, nei_n, nei_e);
+
+        bool merge = (phi_ptr[nei_n[nn_m00]] > 0 && phi_ptr[nei_n[nn_p00]] > 0 && phi_ptr[nei_n[nn_0m0]] > 0 && phi_ptr[nei_n[nn_0p0]] > 0)
+            || ((phi_ptr[nei_n[nn_m00]] > 0 && phi_ptr[nei_n[nn_p00]] > 0) &&
+                (phi_ptr[nei_n[nn_mm0]] < 0 || phi_ptr[nei_n[nn_0m0]] < 0 || phi_ptr[nei_n[nn_pm0]] < 0) &&
+                (phi_ptr[nei_n[nn_mp0]] < 0 || phi_ptr[nei_n[nn_0p0]] < 0 || phi_ptr[nei_n[nn_pp0]] < 0))
+            || ((phi_ptr[nei_n[nn_0m0]] > 0 && phi_ptr[nei_n[nn_0p0]] > 0) &&
+                (phi_ptr[nei_n[nn_mm0]] < 0 || phi_ptr[nei_n[nn_m00]] < 0 || phi_ptr[nei_n[nn_mp0]] < 0) &&
+                (phi_ptr[nei_n[nn_pm0]] < 0 || phi_ptr[nei_n[nn_p00]] < 0 || phi_ptr[nei_n[nn_pp0]] < 0));
+
+        if (merge)
+        {
+          phi_tmp_ptr[n] = .5*dxyz_min_;
+          is_changed = true;
+        }
+
+      }
+    }
+
+    ierr = VecRestoreArray(phi_tmp, &phi_tmp_ptr); CHKERRXX(ierr);
+    ierr = VecRestoreArray(phi_free_, &phi_ptr); CHKERRXX(ierr);
+
+    mpiret = MPI_Allreduce(MPI_IN_PLACE, &is_changed, 1, MPI_LOGICAL, MPI_LOR, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
+
+    if (is_changed)
+    {
+      ierr = VecGhostUpdateBegin(phi_tmp, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+      ierr = VecGhostUpdateEnd  (phi_tmp, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    }
+
+    int area_thresh_ = 15;
+    // third pass: look for isolated pools of liquid and remove them
+    if (is_changed) // assuming such pools can form only due to the artificial bridging (I guess it's quite safe to say, but not entirely correct)
+    {
+      int num_islands = 0;
+
+      Vec     island_number;
+      double *island_number_ptr;
+
+      ierr = VecDuplicate(phi_free_, &island_number); CHKERRXX(ierr);
+
+      invert_phi(nodes_, phi_tmp);
+      compute_islands_numbers(*ngbd_, phi_tmp, num_islands, island_number);
+      invert_phi(nodes_, phi_tmp);
+
+      if (num_islands > 1)
+      {
+        std::vector<int> areas(num_islands, 0);
+
+        ierr = VecGetArray(phi_tmp, &phi_tmp_ptr); CHKERRXX(ierr);
+        ierr = VecGetArray(island_number, &island_number_ptr); CHKERRXX(ierr);
+
+        foreach_local_node(n, nodes_)
+        {
+          if(island_number_ptr[n] >= 0)
+          {
+            areas[ (unsigned int) island_number_ptr[n]] ++;
+          }
+        }
+
+        int mpiret = MPI_Allreduce(MPI_IN_PLACE, areas.data(), num_islands, MPI_INT, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
+
+        foreach_node(n, nodes_)
+        {
+          if(island_number_ptr[n] >= 0)
+          {
+            if (areas[ (unsigned int) island_number_ptr[n]] < area_thresh_)
+              phi_tmp_ptr[n] = .5*dxyz_min_;
+          }
+        }
+
+        ierr = VecRestoreArray(phi_tmp, &phi_tmp_ptr); CHKERRXX(ierr);
+        ierr = VecRestoreArray(island_number, &island_number_ptr); CHKERRXX(ierr);
+      }
+
+      ierr = VecDestroy(island_number); CHKERRXX(ierr);
+    }
+
+    ierr = VecDestroy(phi_free_); CHKERRXX(ierr);
+    phi_free_ = phi_tmp;
+    invert_phi(nodes_, phi_free_);
+  }
+
   /* reinitialize phi_free_ */
   my_p4est_level_set_t ls_new(ngbd_);
-  ls_new.reinitialize_1st_order_time_2nd_order_space(phi_free_);
+//  ls_new.reinitialize_1st_order_time_2nd_order_space(phi_free_);
+  ls_new.reinitialize_2nd_order(phi_free_);
 
   /* second derivatives, normals, curvature, angles */
   compute_geometric_properties();
