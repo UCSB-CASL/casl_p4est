@@ -59,8 +59,8 @@ using namespace std;
 
 // grid parameters
 int lmin = 6;
-int lmax = 9;
-double lip = 3.5;
+int lmax = 11;
+double lip = 2.5;
 
 double xmin = 0, xmax = 1; int nx = 1; bool px = 0;
 double ymin = 0, ymax = 1; int ny = 1; bool py = 1;

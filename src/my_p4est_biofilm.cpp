@@ -602,6 +602,31 @@ void my_p4est_biofilm_t::solve_pressure()
   ierr = VecRestoreArray(rhs,  &rhs_ptr); CHKERRXX(ierr);
   ierr = VecRestoreArray(Cb0_, &Cb0_ptr); CHKERRXX(ierr);
 
+//  double *rhs_ptr;
+//  double *Cb0_ptr;
+//  double *kappa_ptr;
+
+//  ierr = VecGetArray(rhs,  &rhs_ptr); CHKERRXX(ierr);
+//  ierr = VecGetArray(Cb0_, &Cb0_ptr); CHKERRXX(ierr);
+//  ierr = VecGetArray(kappa_, &kappa_ptr); CHKERRXX(ierr);
+
+//  quad_neighbor_nodes_of_node_t qnnn;
+//  foreach_local_node(n, nodes_)
+//  {
+//    qnnn = ngbd_->get_neighbors(n);
+//    double kappa_xx = 0;
+//    double kappa_yy = 0;
+//    qnnn.laplace(kappa_ptr, kappa_xx, kappa_yy);
+//    rhs_ptr[n] = gam_*(*f_cf_)(Cb0_ptr[n]) + lambda_*sigma_*(kappa_xx + kappa_yy);
+//  }
+
+//  ierr = VecRestoreArray(rhs,  &rhs_ptr); CHKERRXX(ierr);
+//  ierr = VecRestoreArray(Cb0_, &Cb0_ptr); CHKERRXX(ierr);
+//  ierr = VecRestoreArray(kappa_, &kappa_ptr); CHKERRXX(ierr);
+
+//  ierr = VecGhostUpdateBegin(rhs, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//  ierr = VecGhostUpdateEnd(rhs, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
   // compute boundary conditions on free surface
   Vec bc_pressure_vec;
 
@@ -666,6 +691,19 @@ void my_p4est_biofilm_t::solve_pressure()
 
   my_p4est_level_set_t ls(ngbd_);
   ls.extend_Over_Interface_TVD_full(phi_biof_, phi_biof_, P_, extend_iterations_, 2);
+
+//  double *P_ptr;
+
+//  ierr = VecGetArray(P_,  &P_ptr); CHKERRXX(ierr);
+//  ierr = VecGetArray(kappa_, &kappa_ptr); CHKERRXX(ierr);
+
+//  foreach_node(n, nodes_)
+//  {
+//    P_ptr[n] -= sigma_*kappa_ptr[n];
+//  }
+
+//  ierr = VecRestoreArray(P_,  &P_ptr); CHKERRXX(ierr);
+//  ierr = VecRestoreArray(kappa_, &kappa_ptr); CHKERRXX(ierr);
 
   ierr = VecDestroy(bc_pressure_vec); CHKERRXX(ierr);
   ierr = VecDestroy(rhs); CHKERRXX(ierr);
