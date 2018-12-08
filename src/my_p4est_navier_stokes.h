@@ -162,6 +162,26 @@ protected:
 
   void compute_norm_grad_v();
 
+  bool is_in_domain(const double xyz_[]) const {
+      double threshold[P4EST_DIM];
+      for (short dd = 0; dd < P4EST_DIM; ++dd)
+          threshold[dd] = 0.1*dxyz_min[dd];
+      return ((((xyz_[0] - xyz_min[0] > -threshold[0]) && (xyz_[0] - xyz_max[0] < threshold[0])) || is_periodic(p4est_n, dir::x))
+              && (((xyz_[1] - xyz_min[1] > -threshold[1]) && (xyz_[1] - xyz_max[1] < threshold[1])) || is_periodic(p4est_n, dir::y))
+        #ifdef P4_TO_P8
+              && (((xyz_[2] - xyz_min[2] > -threshold[2]) && (xyz_[2] - xyz_max[2] < threshold[2])) || is_periodic(p4est_n, dir::z))
+        #endif
+              );
+  };
+
+  bool is_no_slip(const double xyz_[]) const {
+      return ((bc_v[0].wallType(xyz_) == DIRICHLET) && (bc_v[1].wallType(xyz_) == DIRICHLET) &&
+        #ifdef P4_TO_P8
+              (bc_v[2].wallType(xyz_) == DIRICHLET) &&
+        #endif
+              bc_pressure->wallType(xyz_) == NEUMANN);
+  };
+
 public:
   my_p4est_navier_stokes_t(my_p4est_node_neighbors_t *ngbd_nm1, my_p4est_node_neighbors_t *ngbd_n, my_p4est_faces_t *faces_n);
   ~my_p4est_navier_stokes_t();
@@ -266,7 +286,42 @@ public:
 
   void save_vtk(const char* name);
 
+  /*!
+   * \brief calculates the mass flow through slices in Cartesian direction in the computational domain. The slices must coincide with
+   * cell faces, they mustn't cross any quadrant in the forest. Therefore, their location must coincide with a logical coordinate
+   * for faces of the coarsest computational cells.
+   * In debug mode, the function throws std::invalid_argument if this is not satisfied. In release, the section's location is changed to
+   * the closest consistent location.
+   * \param dir         [in]: Cartesian direction of the normal to the slice of interest (dir::x, dir::y or dir::z).
+   * \param section     [in]: vector of coordinates along the direction of ineterest for the slices. section[ii] must be such that
+   * section[ii] = xyz_min[dir] + nn*(xyz_max[dir]-xyz_min[dir])/(ntrees[dir]*(1<<min_lvl)) where nn must be a positive integer.
+   * \param mass_flows  [out]: vector of computed mass flows across the sections of interest.
+   * Raphael Egan
+   */
   void global_mass_flow_through_slice(const unsigned int& dir, std::vector<double>& section, std::vector<double>& mass_flows) const;
+
+  /*!
+   * \brief calculates the friction force applied onto the fluid from the no-slip walls. This function requires a uniform tesselation of all
+   * no-slip sections of the wall of the computational domain. A wall point in a wall quadrant is considered a no-slip wall point if the boundary
+   * condition type is DIRICHLET for all velocity components and the boundary condition type is NEUMANN for pressure.
+   * NOTE 1: this function uses the velocity field at FACES (no use of the point-interpolated values) to exploit the consistency with regard to the
+   * cell-centered pressure values!
+   * NOTE 2: the force component in Cartesian direction dir (dir = 0,1,2) is obtained by surface integration of the dir component of the surface
+   * stress vector on all no-slip wall surfaces. Given a wall face f of normal aligned with direction dir, the corresponding wall surface element is
+   * - the face itself if the wall normal is aligned with direction dir as well;
+   * - the wall element of dimensions dxyz_min[(dir+1)%P4EST_DIM]*dxyz_min[(dir+2)%P4EST_DIM] (dxyz_min[(dir+1)%P4EST_DIM] in 2D) centered at
+   * the wall projection of the considered face center;
+   * Only the 'logical' no-slip fraction of that element contributes to the global integral: if (the wall projection of) the considered face center
+   * is no-slip, two neighbors that are rr*0.5*dxyz away in a transverse directions are found. For each such wall neighbor, if it is a no-slip point,
+   * i) 0.5 is added to the fraction of the wall area  element that is considered no-slip in 2D
+   * ii) two further neighbors of that point are found in the other transverse direction and each no-slip of them contributes with 0.25 to the fraction
+   * of the wall area element that is considered no-slip in 3D
+   * --> done as such to deal with confusing transitions from slip to no-slip in SHS channels...
+   * \param wall_forces [out]: wall force components (P4EST_DIM array of doubles)
+   * \param with_pressure [in]: flag including the pressure terms in the calculations (i.e. for wall-aligned faces)
+   * Raphael EGAN
+   */
+  void get_noslip_wall_forces(double wall_forces[], const bool with_pressure = false) const;
 };
 
 

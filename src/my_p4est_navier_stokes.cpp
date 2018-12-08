@@ -7,7 +7,6 @@
 #include <src/my_p8est_level_set_cells.h>
 #include <src/my_p8est_level_set_faces.h>
 #include <src/my_p8est_trajectory_of_point.h>
-//#include <src/my_p8est_semi_lagrangian.h>
 #include <src/my_p8est_vtk.h>
 #else
 #include <src/my_p4est_poisson_cells.h>
@@ -16,7 +15,6 @@
 #include <src/my_p4est_level_set_cells.h>
 #include <src/my_p4est_level_set_faces.h>
 #include <src/my_p4est_trajectory_of_point.h>
-//#include <src/my_p4est_semi_lagrangian.h>
 #include <src/my_p4est_vtk.h>
 #endif
 
@@ -2030,4 +2028,167 @@ void my_p4est_navier_stokes_t::global_mass_flow_through_slice(const unsigned int
   ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
 
   int mpiret = MPI_Allreduce(MPI_IN_PLACE, &mass_flows[0], mass_flows.size(), MPI_DOUBLE, MPI_SUM, p4est_n->mpicomm); SC_CHECK_MPI(mpiret);
+}
+
+void my_p4est_navier_stokes_t::get_noslip_wall_forces(double wall_force[], const bool with_pressure) const
+{
+  const splitting_criteria_t *data = (const splitting_criteria_t*) p4est_n->user_pointer;
+  double xyz_stencil[P4EST_DIM], xyz_w[P4EST_DIM], xyz_f[P4EST_DIM];
+  const double rr = 0.95;
+  const double *pressure_p;
+  const double *vnp1_p[P4EST_DIM];
+  PetscErrorCode ierr;
+  if(with_pressure)
+  {
+    ierr = VecGetArrayRead(pressure, &pressure_p); CHKERRXX(ierr);
+  }
+  for (short dd = 0; dd < P4EST_DIM; ++dd) {
+    ierr = VecGetArrayRead(vnp1[dd], &vnp1_p[dd]); CHKERRXX(ierr);
+  }
+
+  for (short dir = 0; dir < P4EST_DIM; ++dir) {
+    // initialize calculation of the force component
+    wall_force[dir] = 0.0;
+    for (p4est_locidx_t normal_face_idx = 0; normal_face_idx < faces_n->num_local[dir]; ++normal_face_idx) {
+      p4est_locidx_t quad_idx;
+      p4est_topidx_t tree_idx;
+      faces_n->f2q(normal_face_idx, dir, quad_idx, tree_idx);
+      p4est_quadrant_t *quad;
+      if(quad_idx<p4est_n->local_num_quadrants)
+      {
+        p4est_tree_t *tree = p4est_tree_array_index(p4est_n->trees, tree_idx);
+        quad = p4est_quadrant_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
+      }
+      else
+        quad = p4est_quadrant_array_index(&ghost_n->ghosts, quad_idx-p4est_n->local_num_quadrants);
+
+      bool is_quad_wall[P4EST_FACES];
+      bool no_wall = true;
+      for (short ff = 0; ff < P4EST_FACES; ++ff)
+      {
+        is_quad_wall[ff] = is_quad_Wall(p4est_n,tree_idx, quad, ff);
+        no_wall = no_wall && !is_quad_wall[ff];
+      }
+
+      if(no_wall)
+        continue;
+
+      faces_n->xyz_fr_f(normal_face_idx, dir, xyz_f);
+      int tmp = ((faces_n->q2f(quad_idx, 2*dir)==normal_face_idx)? 0 : 1);
+
+      for (short wall_dir = 0; wall_dir < P4EST_DIM; ++wall_dir) {
+        if(is_quad_wall[2*wall_dir] || is_quad_wall[2*wall_dir+1])
+        {
+          // if the normal face is parallel to the considered wall normal, then it MUST be the wall face, otherwise skip it (the appropriate one is another one)
+          if(dir == wall_dir && !((tmp == 0)? is_quad_wall[2*wall_dir] : is_quad_wall[2*wall_dir+1]))
+            continue;
+
+          // if the normal face is a wall face, and if it is a no-slip wall face (i.e. xyz_w = xyz_f)
+          if(dir == wall_dir && is_no_slip(xyz_f)) // always in the domain boundary by definition in this case
+          {
+            double fraction_noslip = 0.0;
+            for (short dd = 0; dd < P4EST_DIM; ++dd)
+              xyz_stencil[dd] = xyz_f[dd];
+            for (short ii = -1; ii < 2; ii+=2) {
+              int first_transverse_dir = (dir+1)%P4EST_DIM;
+              xyz_stencil[first_transverse_dir] = xyz_f[first_transverse_dir] + ((double) ii)*0.5*rr*dxyz_min[first_transverse_dir]*((double) (1<<(data->max_lvl - quad->level)));
+#ifdef P4_TO_P8
+              if(is_no_slip(xyz_stencil)) // always in the domain boundary by definition in this case
+              {
+                int second_transverse_dir = (dir+2)%P4EST_DIM;
+                for (short jj = -1; jj < 2; jj+=2) {
+                  xyz_stencil[second_transverse_dir] = xyz_f[second_transverse_dir] + ((double) jj)*0.5*rr*dxyz_min[second_transverse_dir]*((double) (1<<(data->max_lvl - quad->level)));
+                  fraction_noslip += ((is_no_slip(xyz_stencil))?0.25:0) // always in the domain boundary by definition in this case
+                }
+                xyz_stencil[second_transverse_dir] = xyz_f[second_transverse_dir]; // reset that one
+              }
+#else
+              fraction_noslip += ((is_no_slip(xyz_stencil))?0.5:0.0); // always in the domain boundary by definition in this case
+#endif
+            }
+            if(fraction_noslip < EPS)
+              throw std::runtime_error("my_p4est_navier_stokes_t::get_noslip_wall_forces: this case is under-resolved, a wall-face has its center no-slip but no other point in that face is no-slip...");
+            double element_drag = 0.0;
+            if(with_pressure)
+              element_drag -= (pressure_p[quad_idx] + bc_pressure->wallValue(xyz_f)*0.5*dxyz_min[dir]*((double) (1<<(data->max_lvl - quad->level)))); // NEUMANN on pressure, since no-slip wall...
+            p4est_locidx_t opposite_face_idx = faces_n->q2f(quad_idx, 2*dir+1-tmp);
+            P4EST_ASSERT(opposite_face_idx != NO_VELOCITY);
+            double dvdirddir = ((tmp==1)?+1.0:-1.0)*(vnp1_p[dir][normal_face_idx] - vnp1_p[dir][opposite_face_idx])/(dxyz_min[dir]*((double) (1<<(data->max_lvl - quad->level))));
+            element_drag += 2*mu*dvdirddir;
+            element_drag *= faces_n->face_area(normal_face_idx, dir)*fraction_noslip;
+            wall_force[dir] += ((tmp == 1)?+1.0:-1.0)*element_drag;
+          }
+          if(dir != wall_dir)
+          {
+            for (short kk = 0; kk < 2; ++kk) {
+              if(!is_quad_wall[2*wall_dir+kk])
+                continue; // to handle dumbass cases with only 1 cell in transverse direction that some insane person might want to try one day...
+              for (short dd = 0; dd < P4EST_DIM; ++dd)
+                xyz_w[dd] = xyz_f[dd];
+              xyz_w[wall_dir] += ((double) (2*kk-1))*0.5*dxyz_min[wall_dir]*((double) (1<<(data->max_lvl - quad->level)));
+              if(is_no_slip(xyz_w)) // always in the domain boundary by defintion as wall
+              {
+                // first term: mu*dv[dir]/dwall_dir
+                double element_drag = mu*((double) (1-2*kk))*(vnp1_p[dir][normal_face_idx] - bc_v[dir].wallValue(xyz_w))/(0.5*dxyz_min[wall_dir]*((double) (1<<(data->max_lvl - quad->level))));
+                // second term: dv[wall_dir]/ddir
+                double transverse_derivative = 0.0;
+                double fraction_noslip = 0.0;
+                unsigned int n_terms = 0;
+                for (short dd = 0; dd < P4EST_DIM; ++dd)
+                  xyz_stencil[dd] = xyz_w[dd];
+#ifdef P4_TO_P8
+                int second_transverse_dir = ((((dir+1)%P4EST_DIM)==wall_dir)? ((dir+2)%P4EST_DIM) : ((dir+1)%P4EST_DIM));
+#endif
+                for (short ii = -1; ii < 2; ii+=2){
+                  xyz_stencil[dir] = xyz_w[dir] + ((double) ii)*0.5*rr*dxyz_min[dir]*((double) (1<<(data->max_lvl - quad->level)));
+#ifdef P4_TO_P8
+                  if(is_in_domain(xyz_stencil) && is_no_slip(xyz_stencil)) // could be out of the domain (consider a corner in a cavity flow, for instance)
+                  {
+                    for (short jj = -1; jj < 2; jj+=2) {
+                      xyz_stencil[second_transverse_dir] = xyz_w[second_transverse_dir] + ((double) jj)*0.5*rr*dxyz_min[second_transverse_dir]*((double) (1<<(data->max_lvl - quad->level)));
+                      fraction_noslip += ((is_in_domain(xyz_stencil) && is_no_slip(xyz_stencil))?0.25:0) // could be out of the domain (consider a corner in a cavity flow, for instance)
+                    }
+                    xyz_stencil[second_transverse_dir] = xyz_w[second_transverse_dir]; // reset that one
+                  }
+#else
+                  fraction_noslip += ((is_in_domain(xyz_stencil) && is_no_slip(xyz_stencil))?0.5:0.0); // could be out of the domain (consider a corner in a cavity flow, for instance)
+#endif
+                  if(is_in_domain(xyz_stencil) && bc_v[wall_dir].wallType(xyz_stencil) == DIRICHLET) // consistency for that component at least
+                  {
+                    transverse_derivative += ((double) ii)*(bc_v[wall_dir].wallValue(xyz_stencil) - bc_v[wall_dir].wallValue(xyz_w))/(0.5*rr*dxyz_min[dir]*((double) (1<<(data->max_lvl - quad->level))));
+                    n_terms++;
+                  }
+                }
+
+                if(n_terms == 0)
+                  std::runtime_error("my_p4est_navier_stokes_t::get_noslip_wall_forces: this case is under-resolved, less than one-cell size DIRICHLET condition for x-velocity on an x-wall");
+                if(n_terms == 2)
+                  transverse_derivative *= 0.5;
+                if(fraction_noslip < EPS)
+                  throw std::runtime_error("my_p4est_navier_stokes_t::get_noslip_wall_forces: this case is under-resolved, a wall-element associated with a projected face center has its center no-slip but no other point in that element is no-slip...");
+
+                element_drag += mu*transverse_derivative;
+                element_drag *= dxyz_min[dir]*((double) (1<<(data->max_lvl - quad->level)));
+  #ifdef P4_TO_P8
+                element_drag *= dxyz_min[second_transverse_dir]*((double) (1<<(data->max_lvl - quad->level)));
+  #endif
+                wall_force[dir] += ((double) (2*kk-1))*element_drag*fraction_noslip;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  for (short dd = 0; dd < P4EST_DIM; ++dd) {
+    ierr = VecRestoreArrayRead(vnp1[dd], &vnp1_p[dd]); CHKERRXX(ierr);
+  }
+  if(with_pressure)
+  {
+    ierr = VecRestoreArrayRead(pressure, &pressure_p); CHKERRXX(ierr);
+  }
+
+  int mpiret = MPI_Allreduce(MPI_IN_PLACE, &wall_force[0], P4EST_DIM, MPI_DOUBLE, MPI_SUM, p4est_n->mpicomm); SC_CHECK_MPI(mpiret);
+
 }

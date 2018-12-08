@@ -230,13 +230,14 @@ private:
   const double pitch;
   const double gas_frac;
   const double offset;
+  double my_fmod(const double num, const double denom) const { return (num - floor(num/denom)*denom);}
 public:
   BCWALLTYPE_U(int len_, double pitch_, double gas_fraction_, const my_p4est_brick_t& brick_, int max_lvl):
     length(len_), pitch(pitch_), gas_frac(gas_fraction_),
     offset(0.5*(brick_.xyz_max[0]-brick_.xyz_min[0])/((double) (brick_.nxyztrees[0]*(1<<max_lvl)))) {}
   BoundaryConditionType operator()(double x, double) const
   {
-    return ((fmod((x + 0.5*((double) length) - offset), pitch)/pitch <= gas_frac)? NEUMANN: DIRICHLET);
+    return ((my_fmod((x + 0.5*((double) length) - offset), pitch)/pitch < gas_frac)? NEUMANN: DIRICHLET);
   }
 };
 
@@ -342,7 +343,6 @@ void initialize_mass_flow_output(std::vector<double>& sections, std::vector<doub
     fp_liveplot_mass = fopen(liveplot_mass, "w");
     if(fp_liveplot_mass==NULL)
       throw std::runtime_error("initialize_mass_flow_output: could not open file for mass flow liveplot.");
-    fprintf(fp_liveplot_mass, "set key bottom right\n");
     fprintf(fp_liveplot_mass, "set key bottom right Left font \"Arial,14\"\n");
     fprintf(fp_liveplot_mass, "set xlabel \"Time\" font \"Arial,14\"\n");
     fprintf(fp_liveplot_mass, "set ylabel \"Nondimensional mass flow\" font \"Arial,14\"\n");
@@ -369,9 +369,9 @@ void initialize_mass_flow_output(std::vector<double>& sections, std::vector<doub
     fprintf(fp_tex_plot_mass, "set key bottom right Left \n");
     fprintf(fp_tex_plot_mass, "set xlabel \"$t$\"\n");
 #ifdef P4_TO_P8
-    fprintf(fp_tex_plot_mass, "set ylabel \"$\\\\frac{1}{\\\\rho \\\\delta^{2} u^{\\\\star}}\\\\int_{%g\\\\delta}^{%g\\\\delta}\\\\int_{-\\\\delta}^{\\\\delta} \\\\rho u \\\\,\\\\mathrm{d}y\\\\mathrm{d}z$\" \n", -0.5*length /*width*/, 0.5*length /*width*/);
+    fprintf(fp_tex_plot_mass, "set ylabel \"$\\\\frac{1}{\\\\rho \\\\delta^{2} u_{\\\\tau}}\\\\int_{%g\\\\delta}^{%g\\\\delta}\\\\int_{-\\\\delta}^{\\\\delta} \\\\rho u \\\\,\\\\mathrm{d}y\\\\mathrm{d}z$\" \n", -0.5*width, width);
 #else
-    fprintf(fp_tex_plot_mass, "set ylabel \"$\\\\frac{1}{\\\\rho \\\\delta u^{\\\\star}}\\\\int_{-\\\\delta}^{\\\\delta} \\\\rho u \\\\,\\\\mathrm{d}y$\" \n");
+    fprintf(fp_tex_plot_mass, "set ylabel \"$\\\\frac{1}{\\\\rho \\\\delta u_{\\\\tau}}\\\\int_{-\\\\delta}^{\\\\delta} \\\\rho u \\\\,\\\\mathrm{d}y$\" \n");
 #endif
     fprintf(fp_tex_plot_mass, "plot");
     for (size_t k_section = 0; k_section < sections.size(); ++k_section)
@@ -391,7 +391,7 @@ void initialize_mass_flow_output(std::vector<double>& sections, std::vector<doub
     fprintf(fp_tex_mass_flow_script, "#!/bin/sh\n");
     fprintf(fp_tex_mass_flow_script, "gnuplot ./tex_mass_flow.gnu\n");
     fprintf(fp_tex_mass_flow_script, "latex ./mass_flow_history.tex\n");
-    fprintf(fp_tex_mass_flow_script, "dvipdf ./mass_flow_history.dvi\n");
+    fprintf(fp_tex_mass_flow_script, "dvipdf -dAutoRotatePages=/None ./mass_flow_history.dvi\n");
     fclose(fp_tex_mass_flow_script);
 
     ostringstream chmod_command;
@@ -400,6 +400,87 @@ void initialize_mass_flow_output(std::vector<double>& sections, std::vector<doub
   }
 }
 
+void initialize_drag_force_output(char* file_drag, const char *out_dir, const int& lmin, const int& lmax, const double& threshold_split_cell, const double& cfl, const int& sl_order, const mpi_environment_t& mpi)
+{
+  sprintf(file_drag, "%s/drag_%d-%d_split_threshold_%.2f_cfl_%.2f_sl_%d.dat", out_dir, lmin, lmax, threshold_split_cell, cfl, sl_order);
+  PetscErrorCode ierr = PetscPrintf(mpi.comm(), "Saving drag in ... %s\n", file_drag); CHKERRXX(ierr);
+
+  if(mpi.rank() == 0)
+  {
+    FILE* fp_drag = fopen(file_drag, "w");
+    if(fp_drag==NULL)
+      throw std::runtime_error("initialize_drag_force_output: could not open file for drag output.");
+    fprintf(fp_drag, "%% __ | Normalized drag \n");
+#ifdef P4_TO_P8
+    fprintf(fp_drag, "%% tn | x-component | y-component\n");
+#else
+    fprintf(fp_drag, "%% tn | x-component | y-component | z-component\n");
+#endif
+    fclose(fp_drag);
+
+    FILE* fp_liveplot_drag;
+    char liveplot_drag[1000];
+    sprintf(liveplot_drag, "%s/live_drag.gnu", out_dir);
+    fp_liveplot_drag = fopen(liveplot_drag, "w");
+    if(fp_liveplot_drag==NULL)
+      throw std::runtime_error("initialize_drag_force_output: could not open file for drage force liveplot.");
+    fprintf(fp_liveplot_drag, "set key center right Left font \"Arial,14\"\n");
+    fprintf(fp_liveplot_drag, "set xlabel \"Time\" font \"Arial,14\"\n");
+    fprintf(fp_liveplot_drag, "set ylabel \"Nondimensional drag \" font \"Arial,14\"\n");
+    fprintf(fp_liveplot_drag, "plot");
+    for (short dd = 0; dd < P4EST_DIM; ++dd)
+    {
+      fprintf(fp_liveplot_drag, "\t \"drag_%d-%d_split_threshold_%.2f_cfl_%.2f_sl_%d.dat\" using 1:%d title '%c-component' with lines lw 3", lmin, lmax, threshold_split_cell, cfl, sl_order, ((int)dd+2), ((dd==0)?'x':((dd==1)?'y':'z')));
+      if(dd < P4EST_DIM-1)
+        fprintf(fp_liveplot_drag, ",\\");
+      fprintf(fp_liveplot_drag, "\n");
+    }
+    fprintf(fp_liveplot_drag, "pause 4\n");
+    fprintf(fp_liveplot_drag, "reread");
+    fclose(fp_liveplot_drag);
+
+    FILE* fp_tex_plot_drag;
+    char tex_plot_drag[1000];
+    sprintf(tex_plot_drag, "%s/tex_drag.gnu", out_dir);
+    fp_tex_plot_drag = fopen(tex_plot_drag, "w");
+    if(fp_tex_plot_drag==NULL)
+      throw std::runtime_error("initialize_drag_foce_output: could not open file for drag force tex figure.");
+    fprintf(fp_tex_plot_drag, "set term epslatex color standalone\n");
+    fprintf(fp_tex_plot_drag, "set output 'drag_history.tex'\n");
+    fprintf(fp_tex_plot_drag, "set key center right Left \n");
+    fprintf(fp_tex_plot_drag, "set xlabel \"$t$\"\n");
+#ifdef P4_TO_P8
+    fprintf(fp_tex_plot_drag, "set ylabel \"Non-dimensional wall friction $\\\\mathbf{D} = \\\\frac{\\\\hat{\\\\mathbf{D}}}{\\\\rho u_{\\\\tau}^{2} \\\\delta^{2}}$ \" \n");
+#else
+    fprintf(fp_tex_plot_drag, "set ylabel \"Non-dimensional wall friction $\\\\mathbf{D} = \\\\frac{\\\\hat{\\\\mathbf{D}}}{\\\\rho u_{\\\\tau}^{2} \\\\delta}$ \" \n");
+#endif
+    fprintf(fp_tex_plot_drag, "plot");
+    for (short dd = 0; dd < P4EST_DIM; ++dd)
+    {
+      fprintf(fp_liveplot_drag, "\t \"drag_%d-%d_split_threshold_%.2f_cfl_%.2f_sl_%d.dat\" using 1:%d title '$D_{%c}$' with lines lw 3", lmin, lmax, threshold_split_cell, cfl, sl_order, ((int) dd+2), ((dd==0)?'x':((dd==1)?'y':'z')));
+      if(dd < P4EST_DIM-1)
+        fprintf(fp_tex_plot_drag, ",\\\n");
+    }
+    fclose(fp_tex_plot_drag);
+
+    FILE* fp_tex_drag_script;
+    char tex_drag_script[1000];
+    sprintf(tex_drag_script, "%s/plot_tex_drag.sh", out_dir);
+    fp_tex_drag_script = fopen(tex_drag_script, "w");
+    if(fp_tex_drag_script==NULL)
+      throw std::runtime_error("initialize_drag_force_output: could not open file for bash script plotting drag tex figure.");
+    fprintf(fp_tex_drag_script, "#!/bin/sh\n");
+    fprintf(fp_tex_drag_script, "gnuplot ./tex_drag.gnu\n");
+    fprintf(fp_tex_drag_script, "latex ./drag_history.tex\n");
+    fprintf(fp_tex_drag_script, "dvipdf -dAutoRotatePages=/None ./drag_history.dvi\n");
+    fclose(fp_tex_drag_script);
+
+    ostringstream chmod_command;
+    chmod_command << "chmod +x " << tex_drag_script;
+    int sys_return = system(chmod_command.str().c_str()); (void) sys_return;
+ }
+
+}
 
 int main (int argc, char* argv[])
 {
@@ -457,15 +538,15 @@ int main (int argc, char* argv[])
       Developer: Raphael Egan (raphaelegan@ucsb.edu)";
   cmd.parse(argc, argv, extra_info);
 
-  int lmin = cmd.get("lmin", 4);
-  int lmax = cmd.get("lmax", 6);
+  int lmin = cmd.get("lmin", 5);
+  int lmax = cmd.get("lmax", 7);
   double threshold_split_cell = cmd.get("thresh", 0.1);
-  double wall_layer = cmd.get("wall_layer", 4.0);
+  double wall_layer = cmd.get("wall_layer", 8.0);
   int length = cmd.get("length", 6);
 #ifdef P4_TO_P8
   int width =  cmd.get("width", 3);
 #endif
-  double duration = cmd.get("duration", 100.0);
+  double duration = cmd.get("duration", 250.0);
   double wall_shear_Reynolds = cmd.get("Re", 60.0);
   double pitch_to_delta = cmd.get("pitch_to_delta", 1.0/32.0);
 #ifdef P4_TO_P8
@@ -487,11 +568,11 @@ int main (int argc, char* argv[])
   double cfl = cmd.get("cfl", 0.75);
 
 #if defined(POD_CLUSTER)
-  string export_dir = cmd.get<string>("export_folder", "/home/regan/superhydrophic_channel");
+  string export_dir = cmd.get<string>("export_folder", "/home/regan/superhydrophobic_channel");
 #elif defined(STAMPEDE)
-  string export_dir = cmd.get<string>("export_folder", "/work/04965/tg842642/stampede2/superhydrophic_channel");
+  string export_dir = cmd.get<string>("export_folder", "/work/04965/tg842642/stampede2/superhydrophobic_channel");
 #else
-  string export_dir = cmd.get<string>("export_folder", "/home/regan/workspace/projects/superhydrophic_channel");
+  string export_dir = cmd.get<string>("export_folder", "/home/regan/workspace/projects/superhydrophobic_channel");
 #endif
 
   bool save_vtk = cmd.contains("save_vtk");
@@ -513,7 +594,7 @@ int main (int argc, char* argv[])
 #endif
   }
 
-  bool save_drag      = cmd.contains("save_drag");
+  bool save_drag      = cmd.contains("save_drag"); double drag[P4EST_DIM];
   bool save_mass_flow = cmd.contains("save_mass_flow"); vector<double> mass_flows; vector<double> sections;
   bool save_profile   = cmd.contains("save_mean_profile");
   double stat_start   = cmd.get("tstart_statistics", 0.0);
@@ -604,6 +685,7 @@ int main (int argc, char* argv[])
   p4est_t *p4est_n = my_p4est_copy(p4est_nm1, P4EST_FALSE);
 
   p4est_n->user_pointer = (void*)&data;
+  double min_dxyz[P4EST_DIM]; dxyz_min(p4est_n, min_dxyz);
   my_p4est_partition(p4est_n, P4EST_FALSE, NULL);
 
   p4est_ghost_t *ghost_n = my_p4est_ghost_new(p4est_n, P4EST_CONNECT_FULL);
@@ -657,33 +739,22 @@ int main (int argc, char* argv[])
   ns.set_bc(bc_v, &bc_p);
 
 
-  double tn = 0.0;
-  double dt = 0.0;
   double tstart = 0.0;
+  double tn = 0.0;
+#ifdef P4_TO_P8
+  double dt = MIN(min_dxyz[0], min_dxyz[1], min_dxyz[2])/wall_shear_Reynolds; // kinda arbitrary, don't really know what else I could do...
+#else
+  double dt = MIN(min_dxyz[0], min_dxyz[1])/wall_shear_Reynolds;
+#endif
+  ns.set_dt(dt);
   int iter = 0;
   int export_vtk = -1;
 
-  FILE *fp_drag, *fp_velocity_profile;
+  FILE *fp_velocity_profile;
   char file_drag[1000], file_mass_flow[1000], file_velocity_profile[1000];
 
   if(save_drag)
-  {
-    sprintf(file_drag, "%s/drag_%d-%d_split_threshold_%.2f_cfl_%.2f_sl_%d.dat", out_dir, lmin, lmax, threshold_split_cell, cfl, sl_order);
-
-    ierr = PetscPrintf(mpi.comm(), "Saving drag in ... %s\n", file_drag); CHKERRXX(ierr);
-    if(mpi.rank() == 0)
-    {
-      fp_drag = fopen(file_drag, "w");
-      if(fp_drag==NULL)
-#ifdef P4_TO_P8
-        throw std::runtime_error("main_shs_3d: could not open file for drag output.");
-#else
-        throw std::runtime_error("main_shs_2d: could not open file for drag output.");
-#endif
-      fprintf(fp_drag, "%% tn | Normalized drag \n");
-      fclose(fp_drag);
-    }
-  }
+    initialize_drag_force_output(file_drag, out_dir, lmin, lmax, threshold_split_cell, cfl, sl_order, mpi);
   if(save_mass_flow)
     initialize_mass_flow_output(sections, mass_flows, file_mass_flow, length, out_dir, lmin, lmax, threshold_split_cell, cfl, sl_order, mpi);
   if(save_profile)
@@ -795,18 +866,18 @@ int main (int argc, char* argv[])
 
     if(save_drag)
     {
-      // compute drag force here
+      ns.get_noslip_wall_forces(drag);
       if(!mpi.rank())
       {
-        fp_drag = fopen(file_drag, "a");
+        FILE* fp_drag = fopen(file_drag, "a");
         if(fp_drag==NULL)
 #ifdef P4_TO_P8
           throw std::runtime_error("main_shs_3d: could not open file for drag output.");
+        fprintf(fp_drag, "%g %g %g %g\n", tn, drag[0], drag[1], drag[2]);
 #else
           throw std::runtime_error("main_shs_2d: could not open file for drag output.");
+        fprintf(fp_drag, "%g %g %g\n", tn, drag[0], drag[1]);
 #endif
-
-//        fprintf(fp_drag, "%g %g\n", tn, drag);
         fclose(fp_drag);
       }
     }
