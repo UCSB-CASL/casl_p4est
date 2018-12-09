@@ -506,6 +506,7 @@ int main (int argc, char* argv[])
   cmd.add_option("Re", "the Reynolds number based on wall-shear velocity and half the channel height (in a regular, i.e. not SH, channel), i.e. Re_tau = u_tau*delta/nu, default is 180.0;");
   cmd.add_option("pitch_to_delta", "P/delta ratio, default = 0.375");
   cmd.add_option("GF", "gas fraction, default is 0.5");
+  cmd.add_option("adapted_dt", "activates the calculation of dt based on the local cell sizes if present");
   // method-related parameters
   cmd.add_option("sl_order", "the order for the semi lagrangian, either 1 (stable) or 2 (accurate), default is 2");
   cmd.add_option("cfl", "dt = cfl * dx/vmax, default is 0.75");
@@ -513,12 +514,14 @@ int main (int argc, char* argv[])
   cmd.add_option("export_folder", "exportation_folder");
   cmd.add_option("save_vtk", "activates exportation of results in vtk format");
   cmd.add_option("vtk_dt", "export vtk files every vtk_dt time lapse (REQUIRED if save_vtk is activated)");
-  cmd.add_option("save_drag", "activates exportation of the total drag (normalized by regular channel drag force)");
 #ifdef P4_TO_P8
   cmd.add_option("save_mass_flow", "activates exportation of the streamwise mass flow (non-dimensionalized by rho*SQR(delta)*u_tau, calculated at inflow, 0.25*length, 0.5*length and 0.75*length)");
+  cmd.add_option("save_drag", "activates exportation of the total drag (normalized by rho*SQR(u_tau)*SQR(delta))");
 #else
   cmd.add_option("save_mass_flow", "activates exportation of the streamwise mass flow (non-dimensionalized by rho*delta*u_tau, calculated at inflow, 0.25*length, 0.5*length and 0.75*length)");
+  cmd.add_option("save_drag", "activates exportation of the total drag (normalized by rho*SQR(u_tau)*delta)");
 #endif
+  cmd.add_option("save_dt", "if defined, this activates the 'save-state' feature. The solver state is saved every save_dt time steps.");
   cmd.add_option("save_mean_profile", "compute and save an averaged streamwise-velocity profile (makes sense only if the flow is fully-developed)");
   cmd.add_option("tstart_statistics", "time starting from which the statics can be computed (WARNING: default is 0)");
 
@@ -566,6 +569,7 @@ int main (int argc, char* argv[])
 
   int sl_order = cmd.get("sl_order", 2);
   double cfl = cmd.get("cfl", 0.75);
+  bool use_adapted_dt = cmd.contains("adapted_dt");
 
 #if defined(POD_CLUSTER)
   string export_dir = cmd.get<string>("export_folder", "/home/regan/superhydrophobic_channel");
@@ -596,6 +600,17 @@ int main (int argc, char* argv[])
 
   bool save_drag      = cmd.contains("save_drag"); double drag[P4EST_DIM];
   bool save_mass_flow = cmd.contains("save_mass_flow"); vector<double> mass_flows; vector<double> sections;
+  bool save_state     = cmd.contains("save_dt"); double dt_save_data = -1.0;
+  if(save_state)
+  {
+    dt_save_data      = cmd.get("save_dt", -1.0);
+    if(dt_save_data < 0.0)
+#ifdef P4_TO_P8
+      throw std::invalid_argument("main_shs_3d.cpp: the value of save_dt must be strictly positive.");
+#else
+      throw std::invalid_argument("main_shs_2d.cpp: the value of save_dt must be strictly positive.");
+#endif
+  }
   bool save_profile   = cmd.contains("save_mean_profile");
   double stat_start   = cmd.get("tstart_statistics", 0.0);
 
@@ -610,18 +625,20 @@ int main (int argc, char* argv[])
 #ifdef P4_TO_P8
   ierr = PetscPrintf(mpi.comm(), "Parameters : Re_{tau, 0} = %g, domain is %dx2x%d (delta units), P/delta = %g, GF = %g\n", wall_shear_Reynolds, length, width, pitch_to_delta, gas_fraction); CHKERRXX(ierr);
 #else
-  ierr = PetscPrintf(mpi.comm(), "Parameters : Re_{tau, 0}  = %g, mu = %g, domain is %dx2 (delta units), P/delta = %g, GF = %g\n", wall_shear_Reynolds, length, pitch_to_delta, gas_fraction); CHKERRXX(ierr);
+  ierr = PetscPrintf(mpi.comm(), "Parameters : Re_{ll"
+                                 "tau, 0}  = %g, mu = %g, domain is %dx2 (delta units), P/delta = %g, GF = %g\n", wall_shear_Reynolds, length, pitch_to_delta, gas_fraction); CHKERRXX(ierr);
 #endif
   ierr = PetscPrintf(mpi.comm(), "cfl = %g, wall layer = %g\n", cfl, wall_layer);
 
-  char out_dir[1024], vtk_path[1024], vtk_name[1024];
+  char out_dir[1024], vtk_path[1024], vtk_name[1024], solver_state_directory[1024];
 #ifdef P4_TO_P8
   sprintf(out_dir, "%s/%dX2X%d_channel_Retau_%d/pitch_to_delta_%.3f/GF_%.2f/yplus_min_%.4f_yplus_max_%.4f", export_dir.c_str(), length, width, (int) wall_shear_Reynolds, pitch_to_delta, gas_fraction, wall_shear_Reynolds/pow(2.0, lmax), wall_shear_Reynolds/pow(2.0, lmin));
 #else
   sprintf(out_dir, "%s/%dX2_channel_Retau_%d/pitch_to_delta_%.3f/GF_%.2f/yplus_min_%.4f_yplus_max_%.4f", export_dir.c_str(), length, (int) wall_shear_Reynolds, pitch_to_delta, gas_fraction, wall_shear_Reynolds/pow(2.0, lmax), wall_shear_Reynolds/pow(2.0, lmin));
 #endif
   sprintf(vtk_path, "%s/vtu", out_dir);
-  if((save_vtk || save_drag || save_mass_flow || save_profile) && (mpi.rank() == 0))
+  sprintf(solver_state_directory, "%s/solver_state", out_dir);
+  if((save_vtk || save_drag || save_mass_flow || save_profile || save_state) && (mpi.rank() == 0))
   {
     ostringstream command;
     command << "mkdir -p " << out_dir;
@@ -633,6 +650,13 @@ int main (int argc, char* argv[])
       vtk_folder_command << "mkdir -p " << vtk_path;
       cout << "Creating a vtk folder in " << vtk_path << endl;
       int sys_return = system(vtk_folder_command.str().c_str()); (void) sys_return;
+    }
+    if(save_state)
+    {
+      ostringstream state_folder_command;
+      state_folder_command << "mkdir -p " << solver_state_directory;
+      cout << "Creating a vtk folder in " << solver_state_directory << endl;
+      int sys_return = system(state_folder_command.str().c_str()); (void) sys_return;
     }
   }
 
@@ -741,14 +765,16 @@ int main (int argc, char* argv[])
 
   double tstart = 0.0;
   double tn = 0.0;
+  // set he first time step: kinda arbitrary, don't really know what else I could do. I believe an inverse power of Re should be used here...
 #ifdef P4_TO_P8
-  double dt = MIN(min_dxyz[0], min_dxyz[1], min_dxyz[2])/wall_shear_Reynolds; // kinda arbitrary, don't really know what else I could do...
+  double dt = MIN(min_dxyz[0], min_dxyz[1], min_dxyz[2])/wall_shear_Reynolds;
 #else
   double dt = MIN(min_dxyz[0], min_dxyz[1])/wall_shear_Reynolds;
 #endif
   ns.set_dt(dt);
   int iter = 0;
   int export_vtk = -1;
+  int save_data_idx = -1;
 
   FILE *fp_velocity_profile;
   char file_drag[1000], file_mass_flow[1000], file_velocity_profile[1000];
@@ -779,7 +805,10 @@ int main (int argc, char* argv[])
   {
     if(iter>0)
     {
-      ns.compute_dt();
+      if(use_adapted_dt)
+        ns.compute_adapted_dt(0.1*wall_shear_Reynolds/pow(2.0, lmax)); // 0.1*y^{+}_min (assuming full resolution of viscous sublayer in regular channel)
+      else
+        ns.compute_dt(0.1*wall_shear_Reynolds/pow(2.0, lmax)); // 0.1*y^{+}_min (assuming full resolution of viscous sublayer in regular channel)
       dt = ns.get_dt();
 
       if(tn+dt>tstart+duration)
@@ -936,6 +965,11 @@ int main (int argc, char* argv[])
       export_vtk = ((int) floor(tn/vtk_dt));
       sprintf(vtk_name, "%s/snapshot_%d", vtk_path, export_vtk);
       ns.save_vtk(vtk_name);
+    }
+    if(save_state && ((int) floor(tn/dt_save_data)) != save_data_idx)
+    {
+      save_data_idx = ((int) floor(tn/dt_save_data));
+      ns.save_state(solver_state_directory);
     }
 
     iter++;

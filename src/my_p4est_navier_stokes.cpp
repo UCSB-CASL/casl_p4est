@@ -8,6 +8,7 @@
 #include <src/my_p8est_level_set_faces.h>
 #include <src/my_p8est_trajectory_of_point.h>
 #include <src/my_p8est_vtk.h>
+#include <p8est_extended.h>
 #else
 #include <src/my_p4est_poisson_cells.h>
 #include <src/my_p4est_poisson_faces.h>
@@ -16,6 +17,7 @@
 #include <src/my_p4est_level_set_faces.h>
 #include <src/my_p4est_trajectory_of_point.h>
 #include <src/my_p4est_vtk.h>
+#include <p4est_extended.h>
 #endif
 
 #include <algorithm>
@@ -555,7 +557,7 @@ void my_p4est_navier_stokes_t::compute_max_L2_norm_u()
 #ifdef P4_TO_P8
       max_L2_norm_u = MAX(max_L2_norm_u, sqrt(SQR(v_p[0][n]) + SQR(v_p[1][n]) + SQR(v_p[2][n])));
 #else
-      max_L2_norm_u = MAX(max_L2_norm_u, sqrt(SQR(v_p[0][n]) + SQR(v_p[1][n])) );
+      max_L2_norm_u = MAX(max_L2_norm_u, sqrt(SQR(v_p[0][n]) + SQR(v_p[1][n])));
 #endif
   }
 
@@ -1179,6 +1181,45 @@ void my_p4est_navier_stokes_t::set_dt(double dt_n)
   this->dt_n = dt_n;
 }
 
+
+void my_p4est_navier_stokes_t::compute_adapted_dt(double min_value_for_umax)
+{
+  dt_nm1 = dt_n;
+  dt_n = +DBL_MAX;
+#ifdef P4_TO_P8
+  double dxmin = MIN(dxyz_min[0], dxyz_min[1], dxyz_min[2]);
+#else
+  double dxmin = MIN(dxyz_min[0], dxyz_min[1]);
+#endif
+  splitting_criteria_t* data = (splitting_criteria_t*) p4est_n->user_pointer;
+  PetscErrorCode ierr;
+  const double* v_p[P4EST_DIM];
+  for (short dd = 0; dd < P4EST_DIM; ++dd) {
+    ierr = VecGetArrayRead(vnp1_nodes[dd], &v_p[dd]); CHKERRXX(ierr);
+  }
+  for (p4est_topidx_t tree_idx = p4est_n->first_local_tree; tree_idx <= p4est_n->last_local_tree; ++tree_idx) {
+    p4est_tree_t* tree = p4est_tree_array_index(p4est_n->trees, tree_idx);
+    for (size_t qq = 0; qq < tree->quadrants.elem_count; ++qq) {
+      p4est_locidx_t quad_idx = tree->quadrants_offset + qq;
+      double max_local_velocity_magnitude = -1.0;
+      p4est_quadrant_t* quad = p4est_quadrant_array_index(&tree->quadrants, qq);
+      for (short child_idx = 0; child_idx < P4EST_CHILDREN; ++child_idx) {
+        p4est_locidx_t node_idx = nodes_n->local_nodes[P4EST_CHILDREN*quad_idx + child_idx];
+        double node_vel_mag = 0.0;
+        for (short dd = 0; dd < P4EST_DIM; ++dd)
+          node_vel_mag += SQR(v_p[dd][node_idx]);
+        node_vel_mag = sqrt(node_vel_mag);
+        max_local_velocity_magnitude = MAX(max_local_velocity_magnitude, node_vel_mag);
+      }
+      dt_n = MIN(dt_n, MIN(1.0/max_local_velocity_magnitude, 1.0/min_value_for_umax)*n_times_dt*dxmin*((double) (1<<(data->max_lvl - quad->level))));
+    }
+  }
+  for (short dd = 0; dd < P4EST_DIM; ++dd) {
+    ierr = VecRestoreArrayRead(vnp1_nodes[dd], &v_p[dd]); CHKERRXX(ierr);
+  }
+  int mpiret = MPI_Allreduce(MPI_IN_PLACE, &dt_n, 1, MPI_DOUBLE, MPI_MIN, p4est_n->mpicomm); SC_CHECK_MPI(mpiret);
+  dt_updated = true;
+}
 
 void my_p4est_navier_stokes_t::compute_dt(double min_value_for_umax)
 {
@@ -2190,5 +2231,17 @@ void my_p4est_navier_stokes_t::get_noslip_wall_forces(double wall_force[], const
   }
 
   int mpiret = MPI_Allreduce(MPI_IN_PLACE, &wall_force[0], P4EST_DIM, MPI_DOUBLE, MPI_SUM, p4est_n->mpicomm); SC_CHECK_MPI(mpiret);
+}
+
+
+void my_p4est_navier_stokes_t::save_state(const char* path_to_folder) const
+{
+  char filename_p4est_n[1024];
+  sprintf(filename_p4est_n, "%s/p4est_n", path_to_folder);
+  p4est_save_ext(filename_p4est_n, p4est_n, P4EST_FALSE, P4EST_TRUE); // no cell-data
+  char filename_p4est_nm1[1024];
+  sprintf(filename_p4est_nm1, "%s/p4est_nm1", path_to_folder);
+  p4est_save_ext(filename_p4est_nm1, p4est_nm1, P4EST_FALSE, P4EST_TRUE); // no cell-data
 
 }
+

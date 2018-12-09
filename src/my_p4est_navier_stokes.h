@@ -268,6 +268,16 @@ public:
 
   void set_dt(double dt_n);
 
+  /*!
+   * \brief computes the next time step based on the desired cfl condition, but _locally_, i.e.,
+   * for each quadrant in the domain, the local velocity magnitude is calculated and a local maximum
+   * time step is estimated based on that local velocity magnitude and the quadrant size. Then, the
+   * minimum of all such dt is enforced. This should avoid very small time steps due to large velocities in
+   * coarse areas when using a very fine grid to capture zero no-slip conditions elsewhere.
+   * \param min_value_for_umax: minimum value to be considered for the local velocities (to avoid crazy large
+   * time steps because a local velocity is close to 0)...
+   */
+  void compute_adapted_dt(double min_value_for_umax = 1.0);
   void compute_dt(double min_value_for_umax = 1.0);
 
   void advect_smoke(my_p4est_node_neighbors_t *ngbd_np1, Vec *v, Vec smoke, Vec smoke_np1);
@@ -322,6 +332,8 @@ public:
    * Raphael EGAN
    */
   void get_noslip_wall_forces(double wall_forces[], const bool with_pressure = false) const;
+
+  void save_state(const char* path_to_folder) const;
 };
 
 
