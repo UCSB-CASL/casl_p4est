@@ -572,11 +572,11 @@ int main (int argc, char* argv[])
   bool use_adapted_dt = cmd.contains("adapted_dt");
 
 #if defined(POD_CLUSTER)
-  string export_dir = cmd.get<string>("export_folder", "/home/regan/superhydrophobic_channel");
+  string export_dir = cmd.get<string>("export_folder", "/home/temprano/Output/p4est_ns_shs");
 #elif defined(STAMPEDE)
   string export_dir = cmd.get<string>("export_folder", "/work/04965/tg842642/stampede2/superhydrophobic_channel");
 #else
-  string export_dir = cmd.get<string>("export_folder", "/home/regan/workspace/projects/superhydrophobic_channel");
+  string export_dir = cmd.get<string>("export_folder", "/home/temprano/Output/p4est_ns_shs");
 #endif
 
   bool save_vtk = cmd.contains("save_vtk");
