@@ -396,7 +396,8 @@ void initialize_mass_flow_output(std::vector<double>& sections, std::vector<doub
 
     ostringstream chmod_command;
     chmod_command << "chmod +x " << tex_mass_flow_script;
-    int sys_return = system(chmod_command.str().c_str()); (void) sys_return;
+    if(system(chmod_command.str().c_str()))
+      throw std::runtime_error("initialize_mass_flow_output: could not make the plot_tex_mass_flow.sh script executable");
   }
 }
 
@@ -521,7 +522,8 @@ int main (int argc, char* argv[])
   cmd.add_option("save_mass_flow", "activates exportation of the streamwise mass flow (non-dimensionalized by rho*delta*u_tau, calculated at inflow, 0.25*length, 0.5*length and 0.75*length)");
   cmd.add_option("save_drag", "activates exportation of the total drag (normalized by rho*SQR(u_tau)*delta)");
 #endif
-  cmd.add_option("save_dt", "if defined, this activates the 'save-state' feature. The solver state is saved every save_dt time steps.");
+  cmd.add_option("save_state_dt", "if defined, this activates the 'save-state' feature. The solver state is saved every save_state_dt time steps in backup_ subfolders.");
+  cmd.add_option("save_nstates", "determines how many solver states must be memorized in backup_ folders (default is 1).");
   cmd.add_option("save_mean_profile", "compute and save an averaged streamwise-velocity profile (makes sense only if the flow is fully-developed)");
   cmd.add_option("tstart_statistics", "time starting from which the statics can be computed (WARNING: default is 0)");
 
@@ -600,15 +602,16 @@ int main (int argc, char* argv[])
 
   bool save_drag      = cmd.contains("save_drag"); double drag[P4EST_DIM];
   bool save_mass_flow = cmd.contains("save_mass_flow"); vector<double> mass_flows; vector<double> sections;
-  bool save_state     = cmd.contains("save_dt"); double dt_save_data = -1.0;
+  bool save_state     = cmd.contains("save_state_dt"); double dt_save_data = -1.0;
+  unsigned int n_states = cmd.get<unsigned int>("save_nstates", 1);
   if(save_state)
   {
-    dt_save_data      = cmd.get("save_dt", -1.0);
+    dt_save_data      = cmd.get("save_state_dt", -1.0);
     if(dt_save_data < 0.0)
 #ifdef P4_TO_P8
-      throw std::invalid_argument("main_shs_3d.cpp: the value of save_dt must be strictly positive.");
+      throw std::invalid_argument("main_shs_3d.cpp: the value of save_state_dt must be strictly positive.");
 #else
-      throw std::invalid_argument("main_shs_2d.cpp: the value of save_dt must be strictly positive.");
+      throw std::invalid_argument("main_shs_2d.cpp: the value of save_state_dt must be strictly positive.");
 #endif
   }
   bool save_profile   = cmd.contains("save_mean_profile");
@@ -625,38 +628,37 @@ int main (int argc, char* argv[])
 #ifdef P4_TO_P8
   ierr = PetscPrintf(mpi.comm(), "Parameters : Re_{tau, 0} = %g, domain is %dx2x%d (delta units), P/delta = %g, GF = %g\n", wall_shear_Reynolds, length, width, pitch_to_delta, gas_fraction); CHKERRXX(ierr);
 #else
-  ierr = PetscPrintf(mpi.comm(), "Parameters : Re_{ll"
-                                 "tau, 0}  = %g, mu = %g, domain is %dx2 (delta units), P/delta = %g, GF = %g\n", wall_shear_Reynolds, length, pitch_to_delta, gas_fraction); CHKERRXX(ierr);
+  ierr = PetscPrintf(mpi.comm(), "Parameters : Re_{tau, 0}  = %g, domain is %dx2 (delta units), P/delta = %g, GF = %g\n", wall_shear_Reynolds, length, pitch_to_delta, gas_fraction); CHKERRXX(ierr);
 #endif
   ierr = PetscPrintf(mpi.comm(), "cfl = %g, wall layer = %g\n", cfl, wall_layer);
 
-  char out_dir[1024], vtk_path[1024], vtk_name[1024], solver_state_directory[1024];
+  char out_dir[1024], vtk_path[1024], vtk_name[1024];
 #ifdef P4_TO_P8
   sprintf(out_dir, "%s/%dX2X%d_channel_Retau_%d/pitch_to_delta_%.3f/GF_%.2f/yplus_min_%.4f_yplus_max_%.4f", export_dir.c_str(), length, width, (int) wall_shear_Reynolds, pitch_to_delta, gas_fraction, wall_shear_Reynolds/pow(2.0, lmax), wall_shear_Reynolds/pow(2.0, lmin));
 #else
   sprintf(out_dir, "%s/%dX2_channel_Retau_%d/pitch_to_delta_%.3f/GF_%.2f/yplus_min_%.4f_yplus_max_%.4f", export_dir.c_str(), length, (int) wall_shear_Reynolds, pitch_to_delta, gas_fraction, wall_shear_Reynolds/pow(2.0, lmax), wall_shear_Reynolds/pow(2.0, lmin));
 #endif
   sprintf(vtk_path, "%s/vtu", out_dir);
-  sprintf(solver_state_directory, "%s/solver_state", out_dir);
-  if((save_vtk || save_drag || save_mass_flow || save_profile || save_state) && (mpi.rank() == 0))
+  if(save_vtk || save_drag || save_mass_flow || save_profile || save_state)
   {
-    ostringstream command;
-    command << "mkdir -p " << out_dir;
-    cout << "Creating a folder in " << out_dir << endl;
-    int sys_return = system(command.str().c_str()); (void) sys_return;
-    if(save_vtk)
+    if(create_directory(out_dir, mpi.rank(), mpi.comm()))
     {
-      ostringstream vtk_folder_command;
-      vtk_folder_command << "mkdir -p " << vtk_path;
-      cout << "Creating a vtk folder in " << vtk_path << endl;
-      int sys_return = system(vtk_folder_command.str().c_str()); (void) sys_return;
+      char error_msg[1024];
+#ifdef P4_TO_P8
+      sprintf(error_msg, "main_shs_3d: could not create exportation directory %s", out_dir);
+#else
+      sprintf(error_msg, "main_shs_2d: could not create exportation directory %s", out_dir);
+#endif
+      throw std::runtime_error(error_msg);
     }
-    if(save_state)
+    if(save_vtk && create_directory(vtk_path, mpi.rank(), mpi.comm()))
     {
-      ostringstream state_folder_command;
-      state_folder_command << "mkdir -p " << solver_state_directory;
-      cout << "Creating a vtk folder in " << solver_state_directory << endl;
-      int sys_return = system(state_folder_command.str().c_str()); (void) sys_return;
+      char error_msg[1024];
+#ifdef P4_TO_P8
+      sprintf(error_msg, "main_shs_3d: could not create exportation directory for vtk files %s", vtk_path);
+#else
+      sprintf(error_msg, "main_shs_2d: could not create exportation directory for vtk files %s", vtk_path);
+#endif
     }
   }
 
@@ -969,7 +971,7 @@ int main (int argc, char* argv[])
     if(save_state && ((int) floor(tn/dt_save_data)) != save_data_idx)
     {
       save_data_idx = ((int) floor(tn/dt_save_data));
-      ns.save_state(solver_state_directory);
+      ns.save_state(out_dir, n_states);
     }
 
     iter++;

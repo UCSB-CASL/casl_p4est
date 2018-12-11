@@ -17,7 +17,6 @@
 #include <src/my_p4est_interpolation_faces.h>
 #endif
 
-
 class my_p4est_navier_stokes_t
 {
 protected:
@@ -101,7 +100,7 @@ protected:
   double uniform_band;
   double threshold_split_cell;
   double n_times_dt;
-  bool dt_updated;
+  bool   dt_updated;
 
   Vec phi;
   Vec hodge;
@@ -163,24 +162,60 @@ protected:
   void compute_norm_grad_v();
 
   bool is_in_domain(const double xyz_[]) const {
-      double threshold[P4EST_DIM];
-      for (short dd = 0; dd < P4EST_DIM; ++dd)
-          threshold[dd] = 0.1*dxyz_min[dd];
-      return ((((xyz_[0] - xyz_min[0] > -threshold[0]) && (xyz_[0] - xyz_max[0] < threshold[0])) || is_periodic(p4est_n, dir::x))
-              && (((xyz_[1] - xyz_min[1] > -threshold[1]) && (xyz_[1] - xyz_max[1] < threshold[1])) || is_periodic(p4est_n, dir::y))
-        #ifdef P4_TO_P8
-              && (((xyz_[2] - xyz_min[2] > -threshold[2]) && (xyz_[2] - xyz_max[2] < threshold[2])) || is_periodic(p4est_n, dir::z))
-        #endif
-              );
+    double threshold[P4EST_DIM];
+    for (short dd = 0; dd < P4EST_DIM; ++dd)
+      threshold[dd] = 0.1*dxyz_min[dd];
+    return ((((xyz_[0] - xyz_min[0] > -threshold[0]) && (xyz_[0] - xyz_max[0] < threshold[0])) || is_periodic(p4est_n, dir::x))
+        && (((xyz_[1] - xyz_min[1] > -threshold[1]) && (xyz_[1] - xyz_max[1] < threshold[1])) || is_periodic(p4est_n, dir::y))
+    #ifdef P4_TO_P8
+        && (((xyz_[2] - xyz_min[2] > -threshold[2]) && (xyz_[2] - xyz_max[2] < threshold[2])) || is_periodic(p4est_n, dir::z))
+    #endif
+        );
   };
 
   bool is_no_slip(const double xyz_[]) const {
-      return ((bc_v[0].wallType(xyz_) == DIRICHLET) && (bc_v[1].wallType(xyz_) == DIRICHLET) &&
-        #ifdef P4_TO_P8
-              (bc_v[2].wallType(xyz_) == DIRICHLET) &&
-        #endif
-              bc_pressure->wallType(xyz_) == NEUMANN);
+    return ((bc_v[0].wallType(xyz_) == DIRICHLET) && (bc_v[1].wallType(xyz_) == DIRICHLET) &&
+    #ifdef P4_TO_P8
+        (bc_v[2].wallType(xyz_) == DIRICHLET) &&
+    #endif
+        bc_pressure->wallType(xyz_) == NEUMANN);
   };
+
+  typedef enum
+  {
+    SAVE=2451,
+    LOAD
+  } save_or_load;
+
+  /*!
+   * \brief save_or_load_parameters : save or loads the solver parameters in the file of path given in filename
+   * The parameters/variables that are save/loaded are (in this order)
+   * - P4EST_DIM (--> throws std::runtime_error on load if not consistent with calling program's)
+   * - dxyz_min[0:P4EST_DIM-1]
+   * - xyz_min[0:P4EST_DIM-1]
+   * - xyz_max[0:P4EST_DIM-1]
+   * - convert_to_xyz[0:P4EST_DIM-1]
+   * - mu
+   * - rho
+   * - dt_n
+   * - dt_nm1
+   * - max_L2_norm_u
+   * - uniform_band
+   * - threshold_split_cell
+   * - n_times_dt
+   * - refine_with_smoke
+   * - smoke_threshold
+   * - data->min_lvl
+   * - data->max_lvl
+   * - data->lip
+   * - sl_order
+   * \param filename: path to the file to be written or read
+   * \param flag: switch the behavior between write or read
+   * [note: implemented in one given function with switched behavior to avoid ambiguity and confusion due to several
+   * function implementations to be modified in the future if the parameter/variable order or the parameter/variable
+   * list is changed (the save-state files are binary files, order and number of read/write operations is crucial)]
+   */
+  void save_or_load_parameters(const char* filename, save_or_load flag);
 
 public:
   my_p4est_navier_stokes_t(my_p4est_node_neighbors_t *ngbd_nm1, my_p4est_node_neighbors_t *ngbd_n, my_p4est_faces_t *faces_n);
@@ -333,7 +368,17 @@ public:
    */
   void get_noslip_wall_forces(double wall_forces[], const bool with_pressure = false) const;
 
-  void save_state(const char* path_to_folder) const;
+  /*!
+   * \brief save_state saves the solver states in a subdirectory 'backup_' created under the user-provided root-directory.
+   * the n_states (>0) latest succesive states can be saved, with automatic update of the subdirectory names.
+   * If more than n_states subdirectories exist at any time when this function is called, it will automatically delete the extra
+   * subdirectories.
+   * \param path_to_root_directory: path to the root exportation directory. n_saved subdirectories 'backup_' will be created
+   * under the root directory, in which successive solver states will be saved.
+   * \param n_saved: number of solver states to keep in memory (default is 1)
+   */
+  void save_state(const char* path_to_root_directory, unsigned int n_saved=1);
+  void load_state(const char* path_to_folder);
 };
 
 

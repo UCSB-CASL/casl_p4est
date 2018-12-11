@@ -21,7 +21,9 @@
 #include <petsclog.h>
 #include <src/casl_math.h>
 #include <src/petsc_compatibility.h>
-
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <dirent.h>
 
 // logging variables -- defined in src/petsc_logging.cpp
 #ifndef CASL_LOG_TINY_EVENTS
@@ -547,6 +549,147 @@ PetscErrorCode VecGhostChangeLayoutEnd(VecScatter ctx, Vec from, Vec to)
 
   return ierr;
 }
+
+PetscErrorCode VecDump(const char fname[], unsigned int n_vecs, const Vec *x, PetscBool skippheader, PetscBool usempiio)
+{
+  MPI_Comm       comm;
+  PetscViewer    viewer;
+  PetscErrorCode ierr;
+
+  ierr = PetscObjectGetComm((PetscObject)x[0],&comm);CHKERRQ(ierr);
+
+  ierr = PetscViewerCreate(comm,&viewer);CHKERRQ(ierr);
+  ierr = PetscViewerSetType(viewer,PETSCVIEWERBINARY);CHKERRQ(ierr);
+  if (skippheader) { ierr = PetscViewerBinarySetSkipHeader(viewer,PETSC_TRUE);CHKERRQ(ierr); }
+  ierr = PetscViewerFileSetMode(viewer,FILE_MODE_WRITE);CHKERRQ(ierr);
+  if (usempiio) { ierr = PetscViewerBinarySetUseMPIIO(viewer,PETSC_TRUE);CHKERRQ(ierr); }
+  ierr = PetscViewerFileSetName(viewer,fname);CHKERRQ(ierr);
+
+  for (unsigned int kk = 0; kk < n_vecs; ++kk) {
+    ierr = VecView(x[kk],viewer);CHKERRQ(ierr);
+  }
+
+  ierr = PetscViewerDestroy(viewer);CHKERRQ(ierr);
+  return ierr;
+}
+
+PetscErrorCode VecDump(const char fname[], const Vec x, PetscBool skippheader, PetscBool usempiio)
+{
+    return VecDump(fname, 1, &x, skippheader, usempiio);
+}
+
+bool is_folder(const char* path)
+{
+  struct stat info;
+  if(stat(path, &info)!= 0 )
+  {
+    char error_message[1024];
+    sprintf(error_message, "is_folder: could not access %s", path);
+#ifdef CASL_THROWS
+    throw std::runtime_error(error_message);
+#else
+    return false;
+#endif
+  }
+  return (info.st_mode & S_IFDIR);
+}
+
+int create_directory(const char* path, int mpi_rank, MPI_Comm comm)
+{
+  int return_ = 1;
+  if(mpi_rank == 0)
+  {
+    struct stat info;
+    if((stat(path, &info) == 0) &&  (info.st_mode & S_IFDIR)) // if it already exists, no need to create it...
+      return_ = 0;
+    else
+      return_ = mkdir(path, S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH); // permission = 755 like a regular mkdir in terminal
+  }
+  int mpiret = MPI_Bcast(&return_, 1, MPI_INT, 0, comm); SC_CHECK_MPI(mpiret);
+  return return_;
+}
+
+int  get_subdirectories_in(const char* root_path, std::vector<std::string>& subdirectories)
+{
+  if(!is_folder(root_path))
+    return 1;
+
+  subdirectories.resize(0);
+
+  DIR *dir = opendir(root_path);
+  struct dirent *entry = readdir(dir);
+  while (entry != NULL)
+  {
+    if (entry->d_type == DT_DIR && strcmp(entry->d_name, ".") && strcmp(entry->d_name, ".."))
+      subdirectories.push_back(entry->d_name);
+    entry = readdir(dir);
+  }
+
+  closedir(dir);
+
+  return 0;
+}
+
+int delete_directory(const char* root_path, int mpi_rank, MPI_Comm comm, bool non_collective)
+{
+  if(!is_folder(root_path))
+  {
+    char error_message[1024];
+    sprintf(error_message, "delete_directory: path %s is NOT a directory...", root_path);
+    throw std::invalid_argument(error_message);
+  }
+
+  int return_ = 1;
+  if(mpi_rank == 0)
+  {
+    std::vector<std::string> subdirectories; subdirectories.resize(0);
+    std::vector<std::string> reg_files; reg_files.resize(0);
+
+    DIR *dir = opendir(root_path);
+    struct dirent *entry = readdir(dir);
+    while (entry != NULL)
+    {
+      if (strcmp(entry->d_name, ".") && strcmp(entry->d_name, ".."))
+      {
+        if(entry->d_type == DT_DIR)
+          subdirectories.push_back(entry->d_name);
+        else if (entry->d_type == DT_REG)
+          reg_files.push_back(entry->d_name);
+        else
+        {
+          char path_to_weird_thing[1024], error_msg[1024];
+          sprintf(path_to_weird_thing, "%s/%s", root_path, entry->d_name);
+          sprintf(error_msg, "delete_directory: a weird object has been encountered in %s: it is neither a folder nor a file, this function is not designed for that, use maybe 'rm -rf'", path_to_weird_thing);
+          throw std::runtime_error(error_msg);
+          return 1;
+        }
+      }
+      entry = readdir(dir);
+    }
+    for (unsigned int idx = 0; idx < reg_files.size(); ++idx) {
+      char path_to_file[1024];
+      sprintf(path_to_file, "%s/%s", root_path, reg_files[idx].c_str());
+      remove(path_to_file);
+    }
+    for (unsigned int idx = 0; idx < subdirectories.size(); ++idx) {
+      char path_to_subfolder[1024];
+      sprintf(path_to_subfolder, "%s/%s", root_path, subdirectories[idx].c_str());
+      delete_directory(path_to_subfolder, mpi_rank, comm, true);
+    }
+    remove(root_path);
+    if(non_collective)
+      return 0;
+    else
+      return_ = 0;
+  }
+  if(!non_collective)
+  {
+    int mpiret = MPI_Bcast(&return_, 1, MPI_INT, 0, comm); SC_CHECK_MPI(mpiret);
+  }
+  return return_;
+}
+
+
 
 void dxyz_min(const p4est_t *p4est, double *dxyz)
 {

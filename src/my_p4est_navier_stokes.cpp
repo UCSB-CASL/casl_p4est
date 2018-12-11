@@ -2233,15 +2233,186 @@ void my_p4est_navier_stokes_t::get_noslip_wall_forces(double wall_force[], const
   int mpiret = MPI_Allreduce(MPI_IN_PLACE, &wall_force[0], P4EST_DIM, MPI_DOUBLE, MPI_SUM, p4est_n->mpicomm); SC_CHECK_MPI(mpiret);
 }
 
-
-void my_p4est_navier_stokes_t::save_state(const char* path_to_folder) const
+void my_p4est_navier_stokes_t::save_state(const char* path_to_root_directory, unsigned int n_saved)
 {
-  char filename_p4est_n[1024];
-  sprintf(filename_p4est_n, "%s/p4est_n", path_to_folder);
-  p4est_save_ext(filename_p4est_n, p4est_n, P4EST_FALSE, P4EST_TRUE); // no cell-data
-  char filename_p4est_nm1[1024];
-  sprintf(filename_p4est_nm1, "%s/p4est_nm1", path_to_folder);
-  p4est_save_ext(filename_p4est_nm1, p4est_nm1, P4EST_FALSE, P4EST_TRUE); // no cell-data
+  if(!is_folder(path_to_root_directory))
+  {
+    if(!create_directory(path_to_root_directory, p4est_n->mpirank, p4est_n->mpicomm))
+    {
+      char error_msg[1024];
+      sprintf(error_msg, "save_state: the path %s is invalid and the directory could not be created", path_to_root_directory);
+      throw std::invalid_argument(error_msg);
+    }
+  }
+
+  unsigned int backup_idx = 0;
+
+  if(p4est_n->mpirank == 0)
+  {
+    unsigned int n_backup_subfolders = 0;
+    // get the current number of backups already present
+    // delete the extra ones that may exist for whatever reason
+    std::vector<std::string> subfolders; subfolders.resize(0);
+    get_subdirectories_in(path_to_root_directory, subfolders);
+    for (size_t idx = 0; idx < subfolders.size(); ++idx) {
+      if(!subfolders[idx].compare(0, 7, "backup_"))
+      {
+        unsigned int backup_idx;
+        sscanf(subfolders[idx].c_str(), "backup_%d", &backup_idx);
+        if(backup_idx >= n_saved)
+        {
+          char full_path[1024];
+          sprintf(full_path, "%s/%s", path_to_root_directory, subfolders[idx].c_str());
+          delete_directory(full_path, p4est_n->mpirank, p4est_n->mpicomm, true);
+        }
+        else
+          n_backup_subfolders++;
+      }
+    }
+
+    // check that they are successively indexed if less than the max number
+    if(n_backup_subfolders < n_saved)
+    {
+      backup_idx = 0;
+      for (unsigned int idx = 0; idx < n_backup_subfolders; ++idx) {
+        char expected_dir[1024];
+        sprintf(expected_dir, "%s/backup_%d", path_to_root_directory, (int) idx);
+        if(!is_folder(expected_dir))
+          break; // well, it's a mess in there, but I can't really do any better...
+        backup_idx++;
+      }
+    }
+    if ((n_saved > 1) && (n_backup_subfolders == n_saved))
+    {
+      char full_path_zeroth_index[1024];
+      sprintf(full_path_zeroth_index, "%s/backup_0", path_to_root_directory);
+      // delete the 0th
+      delete_directory(full_path_zeroth_index, p4est_n->mpirank, p4est_n->mpicomm, true);
+      // shift the others
+      for (size_t idx = 1; idx < n_saved; ++idx) {
+        char old_name[1024], new_name[1024];
+        sprintf(old_name, "%s/backup_%d", path_to_root_directory, (int) idx);
+        sprintf(new_name, "%s/backup_%d", path_to_root_directory, (int) (idx-1));
+        rename(old_name, new_name);
+      }
+      backup_idx = n_saved-1;
+    }
+  }
+  int mpiret = MPI_Bcast(&backup_idx, 1, MPI_INT, 0, p4est_n->mpicomm); SC_CHECK_MPI(mpiret);
+
+  char path_to_folder[1024];
+  sprintf(path_to_folder, "%s/backup_%d", path_to_root_directory, (int) backup_idx);
+  create_directory(path_to_folder, p4est_n->mpirank, p4est_n->mpicomm);
+
+  PetscErrorCode ierr;
+  char filename[1024];
+
+  // save general solver parameters first
+  sprintf(filename, "%s/solver_parameters.petsc", path_to_folder);
+  save_or_load_parameters(filename, SAVE);
+  // save p4est_n
+  sprintf(filename, "%s/p4est_n", path_to_folder);
+  p4est_save_ext(filename, p4est_n, P4EST_FALSE, P4EST_TRUE); // no cell-data saved
+  // save p4est_nm1
+  sprintf(filename, "%s/p4est_nm1", path_to_folder);
+  p4est_save_ext(filename, p4est_nm1, P4EST_FALSE, P4EST_TRUE); // no cell-data saved
+  // save phi
+  sprintf(filename, "%s/phi.petsc", path_to_folder);
+  ierr = VecDump(filename, phi); CHKERRXX(ierr);
+  // save hodge
+  sprintf(filename, "%s/hodge.petsc", path_to_folder);
+  ierr = VecDump(filename, hodge); CHKERRXX(ierr);
+  // save vnm1_nodes
+  sprintf(filename, "%s/vnm1_nodes.petsc", path_to_folder);
+  ierr = VecDump(filename, P4EST_DIM, vnm1_nodes); CHKERRXX(ierr);
+  // save vn_nodes
+  sprintf(filename, "%s/vn_nodes.petsc", path_to_folder);
+  ierr = VecDump(filename, P4EST_DIM, vn_nodes); CHKERRXX(ierr);
+
+  // save smoke if used
+  if (smoke!=NULL)
+  {
+    sprintf(filename, "%s/vn_nodes.petsc", path_to_folder);
+    ierr = VecDump(filename, P4EST_DIM, vn_nodes); CHKERRXX(ierr);
+  }
+
+  ierr = PetscPrintf(p4est_n->mpicomm, "Saved solver state in ... %s\n", path_to_folder); CHKERRXX(ierr);
+}
+
+void my_p4est_navier_stokes_t::save_or_load_parameters(const char* filename, save_or_load flag)
+{
+  PetscViewer viewer;
+  PetscErrorCode ierr;
+  splitting_criteria_t* data = (splitting_criteria_t*) p4est_n->user_pointer;
+  struct
+  {
+    PetscErrorCode operator()(save_or_load flag_, PetscViewer& viewer_, void* data_, PetscInt n_data, PetscDataType dtype)
+    {
+      switch (flag_) {
+      case SAVE:
+      {
+        return PetscViewerBinaryWrite(viewer_, data_, n_data, dtype, PETSC_FALSE);
+        break;
+      }
+      case LOAD:
+      {
+        PetscInt num_read;
+        PetscErrorCode iierr = PetscViewerBinaryRead(viewer_, data_, n_data, &num_read, dtype);
+        P4EST_ASSERT(num_read == n_data);
+        return iierr;
+        break;
+      }
+      default:
+        throw std::runtime_error("my_p4est_navier_stokes_t::save_or_load_parameters: unknown flag value");
+        break;
+      }
+
+    }
+  } elementary_operation;
+  int P4EST_DIM_COPY;
+  switch (flag) {
+  case SAVE:
+  {
+    ierr = PetscViewerBinaryOpen(p4est_n->mpicomm, filename, FILE_MODE_WRITE, &viewer); CHKERRXX(ierr);
+    P4EST_DIM_COPY = P4EST_DIM;
+    elementary_operation(flag, viewer, &P4EST_DIM_COPY, 1, PETSC_INT);
+    break;
+  }
+  case LOAD:
+  {
+    ierr = PetscViewerBinaryOpen(p4est_n->mpicomm, filename, FILE_MODE_READ, &viewer); CHKERRXX(ierr);
+    elementary_operation(flag, viewer, &P4EST_DIM_COPY, 1, PETSC_INT);
+    if(P4EST_DIM_COPY != P4EST_DIM)
+      throw std::runtime_error("my_p4est_navier_stokes_t::save_or_load_parameters: you are trying to read 2D (resp. 3D) data with a 3D (resp. 2D) program...");
+    break;
+  }
+  default:
+    throw std::runtime_error("my_p4est_navier_stokes_t::save_or_load_parameters: unknown flag value");
+    break;
+  }
+  ierr = elementary_operation(flag, viewer, dxyz_min,               P4EST_DIM,  PETSC_DOUBLE); CHKERRXX(ierr);
+  ierr = elementary_operation(flag, viewer, xyz_min,                P4EST_DIM,  PETSC_DOUBLE); CHKERRXX(ierr);
+  ierr = elementary_operation(flag, viewer, xyz_max,                P4EST_DIM,  PETSC_DOUBLE); CHKERRXX(ierr);
+  ierr = elementary_operation(flag, viewer, convert_to_xyz,         P4EST_DIM,  PETSC_DOUBLE); CHKERRXX(ierr);
+  ierr = elementary_operation(flag, viewer, &mu,                    1,          PETSC_DOUBLE); CHKERRXX(ierr);
+  ierr = elementary_operation(flag, viewer, &rho,                   1,          PETSC_DOUBLE); CHKERRXX(ierr);
+  ierr = elementary_operation(flag, viewer, &dt_n,                  1,          PETSC_DOUBLE); CHKERRXX(ierr);
+  ierr = elementary_operation(flag, viewer, &dt_nm1,                1,          PETSC_DOUBLE); CHKERRXX(ierr);
+  ierr = elementary_operation(flag, viewer, &max_L2_norm_u,         1,          PETSC_DOUBLE); CHKERRXX(ierr);
+  ierr = elementary_operation(flag, viewer, &uniform_band,          1,          PETSC_DOUBLE); CHKERRXX(ierr);
+  ierr = elementary_operation(flag, viewer, &threshold_split_cell,  1,          PETSC_DOUBLE); CHKERRXX(ierr);
+  ierr = elementary_operation(flag, viewer, &n_times_dt,            1,          PETSC_DOUBLE); CHKERRXX(ierr);
+  ierr = elementary_operation(flag, viewer, &refine_with_smoke,     1,          PETSC_BOOL); CHKERRXX(ierr);
+  ierr = elementary_operation(flag, viewer, &smoke_thresh,          1,          PETSC_DOUBLE); CHKERRXX(ierr);
+  ierr = elementary_operation(flag, viewer, &data->min_lvl,         1,          PETSC_INT); CHKERRXX(ierr);
+  ierr = elementary_operation(flag, viewer, &data->max_lvl,         1,          PETSC_INT); CHKERRXX(ierr);
+  ierr = elementary_operation(flag, viewer, &data->lip,             1,          PETSC_DOUBLE); CHKERRXX(ierr);
+  ierr = elementary_operation(flag, viewer, &sl_order,              1,          PETSC_INT); CHKERRXX(ierr);
+  ierr = PetscViewerDestroy(viewer); CHKERRXX(ierr);
+}
+
+void my_p4est_navier_stokes_t::load_state(const char* path_to_folder)
+{
 
 }
 
