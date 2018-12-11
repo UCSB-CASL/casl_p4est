@@ -184,6 +184,7 @@ protected:
   typedef enum
   {
     SAVE=2451,
+    SAVE_ASCII,
     LOAD
   } save_or_load;
 
@@ -197,6 +198,7 @@ protected:
    * - convert_to_xyz[0:P4EST_DIM-1]
    * - mu
    * - rho
+   * - the simulation time tn
    * - dt_n
    * - dt_nm1
    * - max_L2_norm_u
@@ -209,13 +211,15 @@ protected:
    * - data->max_lvl
    * - data->lip
    * - sl_order
-   * \param filename: path to the file to be written or read
-   * \param flag: switch the behavior between write or read
+   * \param filename[in]: path to the file to be written or read
+   * \param flag[in]    : switch the behavior between write or read
+   * \param tn[inout]   : in write mode, simulation time at which the function is called (to be saved, unmodified)
+   *                      in read mode, simulation time at which the data were saved (to be read from file and stored in tn)
    * [note: implemented in one given function with switched behavior to avoid ambiguity and confusion due to several
    * function implementations to be modified in the future if the parameter/variable order or the parameter/variable
    * list is changed (the save-state files are binary files, order and number of read/write operations is crucial)]
    */
-  void save_or_load_parameters(const char* filename, save_or_load flag);
+  void save_or_load_parameters(const char* filename, save_or_load flag, double& tn);
 
 public:
   my_p4est_navier_stokes_t(my_p4est_node_neighbors_t *ngbd_nm1, my_p4est_node_neighbors_t *ngbd_n, my_p4est_faces_t *faces_n);
@@ -375,9 +379,10 @@ public:
    * subdirectories.
    * \param path_to_root_directory: path to the root exportation directory. n_saved subdirectories 'backup_' will be created
    * under the root directory, in which successive solver states will be saved.
+   * \param tn: simulation time at which the function is called
    * \param n_saved: number of solver states to keep in memory (default is 1)
    */
-  void save_state(const char* path_to_root_directory, unsigned int n_saved=1);
+  void save_state(const char* path_to_root_directory, double tn, unsigned int n_saved=1);
   void load_state(const char* path_to_folder);
 };
 

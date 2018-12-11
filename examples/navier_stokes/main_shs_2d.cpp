@@ -971,7 +971,7 @@ int main (int argc, char* argv[])
     if(save_state && ((int) floor(tn/dt_save_data)) != save_data_idx)
     {
       save_data_idx = ((int) floor(tn/dt_save_data));
-      ns.save_state(out_dir, n_states);
+      ns.save_state(out_dir, tn, n_states);
     }
 
     iter++;

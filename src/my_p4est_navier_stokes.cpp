@@ -2233,7 +2233,7 @@ void my_p4est_navier_stokes_t::get_noslip_wall_forces(double wall_force[], const
   int mpiret = MPI_Allreduce(MPI_IN_PLACE, &wall_force[0], P4EST_DIM, MPI_DOUBLE, MPI_SUM, p4est_n->mpicomm); SC_CHECK_MPI(mpiret);
 }
 
-void my_p4est_navier_stokes_t::save_state(const char* path_to_root_directory, unsigned int n_saved)
+void my_p4est_navier_stokes_t::save_state(const char* path_to_root_directory, double tn, unsigned int n_saved)
 {
   if(!is_folder(path_to_root_directory))
   {
@@ -2309,7 +2309,9 @@ void my_p4est_navier_stokes_t::save_state(const char* path_to_root_directory, un
 
   // save general solver parameters first
   sprintf(filename, "%s/solver_parameters.petsc", path_to_folder);
-  save_or_load_parameters(filename, SAVE);
+  save_or_load_parameters(filename, SAVE, tn);
+  sprintf(filename, "%s/solver_parameters.ascii", path_to_folder);
+  save_or_load_parameters(filename, SAVE_ASCII, tn);
   // save p4est_n
   sprintf(filename, "%s/p4est_n", path_to_folder);
   p4est_save_ext(filename, p4est_n, P4EST_FALSE, P4EST_TRUE); // no cell-data saved
@@ -2339,19 +2341,56 @@ void my_p4est_navier_stokes_t::save_state(const char* path_to_root_directory, un
   ierr = PetscPrintf(p4est_n->mpicomm, "Saved solver state in ... %s\n", path_to_folder); CHKERRXX(ierr);
 }
 
-void my_p4est_navier_stokes_t::save_or_load_parameters(const char* filename, save_or_load flag)
+void my_p4est_navier_stokes_t::save_or_load_parameters(const char* filename, save_or_load flag, double &tn)
 {
   PetscViewer viewer;
   PetscErrorCode ierr;
   splitting_criteria_t* data = (splitting_criteria_t*) p4est_n->user_pointer;
   struct
   {
-    PetscErrorCode operator()(save_or_load flag_, PetscViewer& viewer_, void* data_, PetscInt n_data, PetscDataType dtype)
+    PetscErrorCode operator()(save_or_load flag_, PetscViewer& viewer_, void* data_, PetscInt n_data, PetscDataType dtype, const char *var_name = NULL)
     {
       switch (flag_) {
       case SAVE:
       {
         return PetscViewerBinaryWrite(viewer_, data_, n_data, dtype, PETSC_FALSE);
+        break;
+      }
+      case SAVE_ASCII:
+      {
+        if(var_name == NULL)
+          throw std::runtime_error("my_p4est_navier_stokes_t::save_or_load_parameters: the variable name MUST be given when exporting ASCII data");
+        PetscErrorCode iierr;
+        iierr = PetscViewerASCIIPrintf(viewer_, "%s:", var_name);
+        switch (dtype) {
+        case PETSC_INT:
+        {
+          for (PetscInt var_idx = 0; var_idx < n_data; ++var_idx)
+            iierr = iierr || PetscViewerASCIIPrintf(viewer_, " %d", ((PetscInt*)data_)[var_idx]);
+          iierr = PetscViewerASCIIPrintf(viewer_, "\n", var_name);
+          return iierr;
+          break;
+        }
+        case PETSC_BOOL:
+        {
+          for (PetscInt var_idx = 0; var_idx < n_data; ++var_idx)
+            iierr = iierr || PetscViewerASCIIPrintf(viewer_, " %s", ((((PetscBool*) data_)[var_idx])? "true" : "false"));
+          iierr = PetscViewerASCIIPrintf(viewer_, "\n", var_name);
+          return iierr;
+          break;
+        }
+        case PETSC_DOUBLE:
+        {
+          for (PetscInt var_idx = 0; var_idx < n_data; ++var_idx)
+            iierr = iierr || PetscViewerASCIIPrintf(viewer_, " %g", ((PetscReal*) data_)[var_idx]);
+          iierr = PetscViewerASCIIPrintf(viewer_, "\n", var_name);
+          return iierr;
+          break;
+        }
+        default:
+          throw std::runtime_error("my_p4est_navier_stokes_t::save_or_load_parameters: unknonw dataype when exporting parameters in ASCII format.");
+          break;
+        }
         break;
       }
       case LOAD:
@@ -2378,6 +2417,13 @@ void my_p4est_navier_stokes_t::save_or_load_parameters(const char* filename, sav
     elementary_operation(flag, viewer, &P4EST_DIM_COPY, 1, PETSC_INT);
     break;
   }
+  case SAVE_ASCII:
+  {
+    ierr = PetscViewerASCIIOpen(p4est_n->mpicomm, filename, &viewer); CHKERRXX(ierr);
+    P4EST_DIM_COPY = P4EST_DIM;
+    elementary_operation(flag, viewer, &P4EST_DIM_COPY, 1, PETSC_INT, "P4EST_DIM");
+    break;
+  }
   case LOAD:
   {
     ierr = PetscViewerBinaryOpen(p4est_n->mpicomm, filename, FILE_MODE_READ, &viewer); CHKERRXX(ierr);
@@ -2390,24 +2436,25 @@ void my_p4est_navier_stokes_t::save_or_load_parameters(const char* filename, sav
     throw std::runtime_error("my_p4est_navier_stokes_t::save_or_load_parameters: unknown flag value");
     break;
   }
-  ierr = elementary_operation(flag, viewer, dxyz_min,               P4EST_DIM,  PETSC_DOUBLE); CHKERRXX(ierr);
-  ierr = elementary_operation(flag, viewer, xyz_min,                P4EST_DIM,  PETSC_DOUBLE); CHKERRXX(ierr);
-  ierr = elementary_operation(flag, viewer, xyz_max,                P4EST_DIM,  PETSC_DOUBLE); CHKERRXX(ierr);
-  ierr = elementary_operation(flag, viewer, convert_to_xyz,         P4EST_DIM,  PETSC_DOUBLE); CHKERRXX(ierr);
-  ierr = elementary_operation(flag, viewer, &mu,                    1,          PETSC_DOUBLE); CHKERRXX(ierr);
-  ierr = elementary_operation(flag, viewer, &rho,                   1,          PETSC_DOUBLE); CHKERRXX(ierr);
-  ierr = elementary_operation(flag, viewer, &dt_n,                  1,          PETSC_DOUBLE); CHKERRXX(ierr);
-  ierr = elementary_operation(flag, viewer, &dt_nm1,                1,          PETSC_DOUBLE); CHKERRXX(ierr);
-  ierr = elementary_operation(flag, viewer, &max_L2_norm_u,         1,          PETSC_DOUBLE); CHKERRXX(ierr);
-  ierr = elementary_operation(flag, viewer, &uniform_band,          1,          PETSC_DOUBLE); CHKERRXX(ierr);
-  ierr = elementary_operation(flag, viewer, &threshold_split_cell,  1,          PETSC_DOUBLE); CHKERRXX(ierr);
-  ierr = elementary_operation(flag, viewer, &n_times_dt,            1,          PETSC_DOUBLE); CHKERRXX(ierr);
-  ierr = elementary_operation(flag, viewer, &refine_with_smoke,     1,          PETSC_BOOL); CHKERRXX(ierr);
-  ierr = elementary_operation(flag, viewer, &smoke_thresh,          1,          PETSC_DOUBLE); CHKERRXX(ierr);
-  ierr = elementary_operation(flag, viewer, &data->min_lvl,         1,          PETSC_INT); CHKERRXX(ierr);
-  ierr = elementary_operation(flag, viewer, &data->max_lvl,         1,          PETSC_INT); CHKERRXX(ierr);
-  ierr = elementary_operation(flag, viewer, &data->lip,             1,          PETSC_DOUBLE); CHKERRXX(ierr);
-  ierr = elementary_operation(flag, viewer, &sl_order,              1,          PETSC_INT); CHKERRXX(ierr);
+  ierr = elementary_operation(flag, viewer, dxyz_min,               P4EST_DIM,  PETSC_DOUBLE, "dxyz_min");              CHKERRXX(ierr);
+  ierr = elementary_operation(flag, viewer, xyz_min,                P4EST_DIM,  PETSC_DOUBLE, "xyz_min");               CHKERRXX(ierr);
+  ierr = elementary_operation(flag, viewer, xyz_max,                P4EST_DIM,  PETSC_DOUBLE, "xyz_max");               CHKERRXX(ierr);
+  ierr = elementary_operation(flag, viewer, convert_to_xyz,         P4EST_DIM,  PETSC_DOUBLE, "convert_to_xyz");        CHKERRXX(ierr);
+  ierr = elementary_operation(flag, viewer, &mu,                    1,          PETSC_DOUBLE, "mu");                    CHKERRXX(ierr);
+  ierr = elementary_operation(flag, viewer, &rho,                   1,          PETSC_DOUBLE, "rho");                   CHKERRXX(ierr);
+  ierr = elementary_operation(flag, viewer, &tn,                    1,          PETSC_DOUBLE, "tn");                    CHKERRXX(ierr);
+  ierr = elementary_operation(flag, viewer, &dt_n,                  1,          PETSC_DOUBLE, "dt_n");                  CHKERRXX(ierr);
+  ierr = elementary_operation(flag, viewer, &dt_nm1,                1,          PETSC_DOUBLE, "dt_nm1");                CHKERRXX(ierr);
+  ierr = elementary_operation(flag, viewer, &max_L2_norm_u,         1,          PETSC_DOUBLE, "max_L2_norm_u");         CHKERRXX(ierr);
+  ierr = elementary_operation(flag, viewer, &uniform_band,          1,          PETSC_DOUBLE, "uniform_band");          CHKERRXX(ierr);
+  ierr = elementary_operation(flag, viewer, &threshold_split_cell,  1,          PETSC_DOUBLE, "threshold_split_cell");  CHKERRXX(ierr);
+  ierr = elementary_operation(flag, viewer, &n_times_dt,            1,          PETSC_DOUBLE, "n_times_dt");            CHKERRXX(ierr);
+  ierr = elementary_operation(flag, viewer, &refine_with_smoke,     1,          PETSC_BOOL,   "refine_with_smoke");     CHKERRXX(ierr);
+  ierr = elementary_operation(flag, viewer, &smoke_thresh,          1,          PETSC_DOUBLE, "smoke_thresh");          CHKERRXX(ierr);
+  ierr = elementary_operation(flag, viewer, &data->min_lvl,         1,          PETSC_INT,    "data->min_lvl");         CHKERRXX(ierr);
+  ierr = elementary_operation(flag, viewer, &data->max_lvl,         1,          PETSC_INT,    "data->max_lvl");         CHKERRXX(ierr);
+  ierr = elementary_operation(flag, viewer, &data->lip,             1,          PETSC_DOUBLE, "data->lip");             CHKERRXX(ierr);
+  ierr = elementary_operation(flag, viewer, &sl_order,              1,          PETSC_INT,    "sl_order");              CHKERRXX(ierr);
   ierr = PetscViewerDestroy(viewer); CHKERRXX(ierr);
 }
 
