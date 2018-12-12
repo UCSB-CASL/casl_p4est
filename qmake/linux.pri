@@ -5,8 +5,8 @@
 # PETSc
 PETSC_INCLUDES_RELEASE = /home/temprano/Software/petsc-3.6.4/build-release/include
 PETSC_INCLUDES_DEBUG   = /home/temprano/Software/petsc-3.6.4/build-debug/include
-PETSC_LIBS_RELEASE = -Wl,-rpath,/home/temprano/Software/petsc-3.6.4/build-release/include/lib -L/home/temprano/Software/petsc-3.6.4/build-release/include -lpetsc
-PETSC_LIBS_DEBUG   = -Wl,-rpath,/home/temprano/Software/petsc-3.6.4/build-debug/include/lib -L/home/temprano/Software/petsc-3.6.4/build-debug/include -lpetsc
+PETSC_LIBS_RELEASE = -Wl,-rpath,/home/temprano/Software/petsc-3.6.4/build-release/lib -L/home/temprano/Software/petsc-3.6.4/build-release/lib -lpetsc
+PETSC_LIBS_DEBUG   = -Wl,-rpath,/home/temprano/Software/petsc-3.6.4/build-debug/lib -L/home/temprano/Software/petsc-3.6.4/build-debug/lib -lpetsc
 
 # p4est
 P4EST_INCLUDES_RELEASE = /home/temprano/Software/p4est-2.0/build-release/include
