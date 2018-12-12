@@ -32,7 +32,6 @@ class my_p4est_biofilm_t
 private:
   PetscErrorCode ierr;
 
-
 #ifdef P4_TO_P8
   class zero_cf_t : public CF_3
   {
@@ -130,6 +129,9 @@ private:
   double dt0_, dt1_;
   double cfl_number_;
 
+  bool use_godunov_scheme_;
+  bool first_iteration_;
+
   /* general poisson solver parameters */
   bool use_sc_scheme_;
   bool use_taylor_correction_;
@@ -212,7 +214,7 @@ public:
     copy_ghosted_vec(Cb, Cb0_);
     copy_ghosted_vec(Cf, Cf0_);
 
-    if (time_scheme_ == 1)
+    if (time_scheme_ == 2)
     {
       copy_ghosted_vec(Ca, Ca1_);
       copy_ghosted_vec(Cb, Cb1_);

@@ -57,8 +57,8 @@ my_p4est_biofilm_t::my_p4est_biofilm_t(my_p4est_node_neighbors_t *ngbd)
   Db_      = 1; /* diffusivity of nutrients in biofilm       - m^2/s     */
   Da_      = 1; /* diffusivity of nutrients in agar          - m^2/s     */
   rho_     = 1; /* density of biofilm                        - kg/m^3    */
-  gam_     = 1; /* biofilm yield per nutrient mass           -           */
-  sigma_   = 1; /* surface tension of air/film interface     - N/m       */
+  gam_     =.5; /* biofilm yield per nutrient mass           -           */
+  sigma_   = 0; /* surface tension of air/film interface     - N/m       */
   lambda_  = 1; /* mobility of biofilm                       - m^4/(N*s) */
   scaling_ = 1;
   steady_state_ = 0;
@@ -99,7 +99,7 @@ my_p4est_biofilm_t::my_p4est_biofilm_t(my_p4est_node_neighbors_t *ngbd)
   }
 
   /* solving nonlinear equation */
-  iteration_scheme_ = 0;
+  iteration_scheme_ = 1;
   tolerance_        = 1.e-5;
   max_iterations_   = 10;
 
@@ -110,8 +110,8 @@ my_p4est_biofilm_t::my_p4est_biofilm_t(my_p4est_node_neighbors_t *ngbd)
   extend_iterations_     = 40;
 
   /* time discretization */
-  time_scheme_      = 0;
-  advection_scheme_ = 0;
+  time_scheme_      = 1;
+  advection_scheme_ = 1;
 
   time_       = 0;
   dt_max_     = 1;
@@ -129,6 +129,9 @@ my_p4est_biofilm_t::my_p4est_biofilm_t(my_p4est_node_neighbors_t *ngbd)
     set_ghosted_vec(v0_[dim], 0);
     set_ghosted_vec(v1_[dim], 0);
   }
+
+  use_godunov_scheme_ = false;
+  first_iteration_ = true;
 }
 
 
@@ -250,28 +253,26 @@ void my_p4est_biofilm_t::solve_concentration()
   // time discretization coefficients
   double a0, a1, a2;
 
-  switch (time_scheme_)
-  {
-    case 0:
-      {
-        a0 = 1./dt0_;
-        a1 =-1./dt0_;
-        a2 = 0;
-        break;
-      }
-    case 1:
-      {
-        double r = dt0_/dt1_;
-        a0 = (1.+2.*r)/(1.+r)/dt0_;
-        a1 =-(1.+r)/dt0_;
-        a2 = r*r/(1.+r)/dt0_;
-        break;
-      }
-  }
-
   if (steady_state_)
   {
     a0 = 0; a1 = 0; a2 = 0;
+  }
+  else if (time_scheme_ == 1 || first_iteration_)
+  {
+    a0 = 1./dt0_;
+    a1 =-1./dt0_;
+    a2 = 0;
+  }
+  else if (time_scheme_ == 2)
+  {
+    double r = dt0_/dt1_;
+    a0 = (1.+2.*r)/(1.+r)/dt0_;
+    a1 =-(1.+r)/dt0_;
+    a2 = r*r/(1.+r)/dt0_;
+  }
+  else
+  {
+    throw;
   }
 
   // compute diffusivities, diagonal term, right-hand sides and guess
@@ -289,7 +290,7 @@ void my_p4est_biofilm_t::solve_concentration()
   ierr = VecGetArray(Cb0_, &Cb0_ptr); CHKERRXX(ierr);
   ierr = VecGetArray(Cf0_, &Cf0_ptr); CHKERRXX(ierr);
 
-  if (time_scheme_ == 1)
+  if (time_scheme_ == 2)
   {
     ierr = VecGetArray(Ca1_, &Ca1_ptr); CHKERRXX(ierr);
     ierr = VecGetArray(Cb1_, &Cb1_ptr); CHKERRXX(ierr);
@@ -336,22 +337,33 @@ void my_p4est_biofilm_t::solve_concentration()
   }
 
   // additions to rhs due to time discretization
-  switch (time_scheme_)
+  if (steady_state_)
   {
-    case 0:
-      foreach_node(n, nodes_)
-      {
-        rhs_tmp_m_ptr[n] = -(a1*Cb0_ptr[n]);
-        rhs_tmp_p_ptr[n] = phi_free_ptr[n] > phi_agar_ptr[n] ? -(a1*Cf0_ptr[n]) : -(a1*Ca0_ptr[n]);
-      }
-      break;
-    case 1:
-      foreach_node(n, nodes_)
-      {
-        rhs_tmp_m_ptr[n] = -(a1*Cb0_ptr[n] + a2*Cb1_ptr[n]);
-        rhs_tmp_p_ptr[n] = phi_free_ptr[n] > phi_agar_ptr[n] ? -(a1*Cf0_ptr[n] + a2*Cf1_ptr[n]) : -(a1*Ca0_ptr[n] + a2*Ca1_ptr[n]);
-      }
-      break;
+    foreach_node(n, nodes_)
+    {
+      rhs_tmp_m_ptr[n] = 0;
+      rhs_tmp_p_ptr[n] = 0;
+    }
+  }
+  else if (time_scheme_ == 1 || first_iteration_)
+  {
+    foreach_node(n, nodes_)
+    {
+      rhs_tmp_m_ptr[n] = -(a1*Cb0_ptr[n]);
+      rhs_tmp_p_ptr[n] = phi_free_ptr[n] > phi_agar_ptr[n] ? -(a1*Cf0_ptr[n]) : -(a1*Ca0_ptr[n]);
+    }
+  }
+  else if (time_scheme_ == 2)
+  {
+    foreach_node(n, nodes_)
+    {
+      rhs_tmp_m_ptr[n] = -(a1*Cb0_ptr[n] + a2*Cb1_ptr[n]);
+      rhs_tmp_p_ptr[n] = phi_free_ptr[n] > phi_agar_ptr[n] ? -(a1*Cf0_ptr[n] + a2*Cf1_ptr[n]) : -(a1*Ca0_ptr[n] + a2*Ca1_ptr[n]);
+    }
+  }
+  else
+  {
+    throw;
   }
 
   ierr = VecRestoreArray(mu_m, &mu_m_ptr);           CHKERRXX(ierr);
@@ -373,7 +385,7 @@ void my_p4est_biofilm_t::solve_concentration()
   ierr = VecRestoreArray(Cb0_, &Cb0_ptr);            CHKERRXX(ierr);
   ierr = VecRestoreArray(Cf0_, &Cf0_ptr);            CHKERRXX(ierr);
 
-  if (time_scheme_ == 1)
+  if (time_scheme_ == 2)
   {
     ierr = VecRestoreArray(Ca1_, &Ca1_ptr); CHKERRXX(ierr);
     ierr = VecRestoreArray(Cb1_, &Cb1_ptr); CHKERRXX(ierr);
@@ -463,7 +475,6 @@ void my_p4est_biofilm_t::solve_concentration()
             rhs_m_ptr[n] = rhs_tmp_m_ptr[n] - ((*f_cf_)(Cm_tmp_ptr[n]));
             rhs_p_ptr[n] = rhs_tmp_p_ptr[n];
           }
-
 
           poisson_solver.set_diag_add(diag_m, diag_p);
           break;
@@ -929,6 +940,70 @@ void my_p4est_biofilm_t::compute_velocity_from_pressure()
     ierr = VecRestoreArray(v0_[dim], &v0_ptr[dim]);       CHKERRXX(ierr);
   }
 
+//  my_p4est_interpolation_nodes_t phi_interp(ngbd_);
+//  my_p4est_interpolation_nodes_t pre_interp(ngbd_);
+
+//  phi_interp.set_input(phi_free_, linear);
+//  pre_interp.set_input(P_, linear);
+
+//  double phi[3][3];
+//  double pre[3][3];
+//  double x[P4EST_DIM];
+
+//  double *phi_free_ptr;
+
+//  ierr = VecGetArray(vn_tmp, &vn_ptr); CHKERRXX(ierr);
+//  ierr = VecGetArray(phi_free_, &phi_free_ptr); CHKERRXX(ierr);
+
+//  foreach_local_node (n, nodes_)
+//  {
+//    if (fabs(phi_free_ptr[n]) < 15.*diag_)
+//    {
+//      node_xyz_fr_n(n, p4est_, nodes_, x);
+//      for (short i = 0; i < 3; i++)
+//        for (short j = 0; j < 3; j++)
+//        {
+//          pre[i][j] = pre_interp(x[0]+(i-1)*dxyz_[0],x[1]+(j-1)*dxyz_[1]);
+//          phi[i][j] = phi_interp(x[0]+(i-1)*dxyz_[0],x[1]+(j-1)*dxyz_[1]);
+//        }
+
+//      const int i = 1, j = 1;
+
+//      double phix  = (phi[i+1][j]-phi[i-1][j])/(2*dxyz_[0]);
+//      double phiy  = (phi[i][j+1]-phi[i][j-1])/(2*dxyz_[1]);
+
+//      double phin  = MAX(sqrt(phix*phix+phiy*phiy), EPS);
+
+//      double nx = phix/phin;
+//      double ny = phiy/phin;
+
+//      double phi1  = (phi[i+1][j+1]-phi[i-1][j-1])/(2*diag_);
+//      double phi2  = (phi[i-1][j+1]-phi[i+1][j-1])/(2*diag_);
+
+//      phin         = MAX(sqrt(phi1*phi1+phi2*phi2), EPS);
+
+//      double tx = phi1/phin;
+//      double ty = phi2/phin;
+
+//      double prex  = (pre[i+1][j]-pre[i-1][j])/(2*dxyz_[0]);
+//      double prey  = (pre[i][j+1]-pre[i][j-1])/(2*dxyz_[1]);
+
+//      double pre1  = (pre[i+1][j+1]-pre[i-1][j-1])/(2*diag_);
+//      double pre2  = (pre[i-1][j+1]-pre[i+1][j-1])/(2*diag_);
+
+//      vn_ptr[n] = .5*lambda_*(prex*nx + prey*ny + pre1*tx + pre2*ty);
+
+//    } else {
+//      vn_ptr[n] = 0;
+//    }
+//  }
+
+//  ierr = VecRestoreArray(vn_tmp, &vn_ptr); CHKERRXX(ierr);
+//  ierr = VecRestoreArray(phi_free_, &phi_free_ptr); CHKERRXX(ierr);
+
+//  ierr = VecGhostUpdateBegin(vn_tmp, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//  ierr = VecGhostUpdateEnd(vn_tmp, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
   ls.extend_from_interface_to_whole_domain_TVD(phi_free_, vn_tmp, vn_);
 
   ierr = VecDestroy(vn_tmp); CHKERRXX(ierr);
@@ -951,7 +1026,7 @@ void my_p4est_biofilm_t::compute_dt()
   kappa_max_ = 0;
   vn_max_ = 0;
 
-  double kv_max = 0;
+  double kvn_max = 0;
 
   ierr = VecGetArrayRead(phi_free_, &phi_free_ptr); CHKERRXX(ierr);
   ierr = VecGetArrayRead(kappa_, &kappa_ptr);       CHKERRXX(ierr);
@@ -963,7 +1038,7 @@ void my_p4est_biofilm_t::compute_dt()
     {
       vn_max_ = MAX(vn_max_, fabs(vn_ptr[n]));
       kappa_max_ = MAX(kappa_max_, fabs(kappa_ptr[n]));
-      kv_max = MAX(kv_max, fabs(vn_ptr[n]*kappa_ptr[n]));
+      kvn_max = MAX(kvn_max, fabs(vn_ptr[n]*kappa_ptr[n]));
     }
   }
 
@@ -973,18 +1048,12 @@ void my_p4est_biofilm_t::compute_dt()
 
   int mpiret = MPI_Allreduce(MPI_IN_PLACE, &vn_max_,    1, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
       mpiret = MPI_Allreduce(MPI_IN_PLACE, &kappa_max_, 1, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
-      mpiret = MPI_Allreduce(MPI_IN_PLACE, &kv_max,     1, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
+      mpiret = MPI_Allreduce(MPI_IN_PLACE, &kvn_max,    1, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
 
   dt1_ = dt0_;
-//  dt0_ = cfl_number_ * dxyz_min_/MAX(vn_max_, dxyz_min_/dt_max_) ;
-//  dt0_ = cfl_number_ * dxyz_min_/MAX(vn_max_, dxyz_min_/dt_max_) ;
-  dt0_ = MIN(cfl_number_ * dxyz_min_/vn_max_, dt_max_) ;
+  dt0_ = MIN(dt_max_, cfl_number_ * dxyz_min_/MAX(1.e-10, vn_max_), 1./MAX(1.e-10, kvn_max));
 
-  dt0_ = MIN(dt0_, 1./MAX(1.e-10, kv_max));
-
-//  dt0_ = dt_max_;
-
-  PetscPrintf(p4est_->mpicomm, "vn_max = %e, kappa_max = %e, dt = %e\n", vn_max_, kappa_max_, dt0_);
+  PetscPrintf(p4est_->mpicomm, "vn_max = %e, kappa_max = %e, kvn_max = %e, dt = %e\n", vn_max_, kappa_max_, kvn_max, dt0_);
 
   ierr = PetscLogEventEnd(log_my_p4est_biofilm_compute_dt, 0, 0, 0, 0); CHKERRXX(ierr);
 }
@@ -1015,13 +1084,20 @@ void my_p4est_biofilm_t::update_grid()
   phi_array[0] = phi_free_;
   phi_array[1] = phi_agar_;
 
-  my_p4est_level_set_t ls_adv(ngbd_);
-
-//  ls_adv.advect_in_normal_direction(vn_, phi_free_, dt0_);
-//  sl.update_p4est(v0_, 0, phi_array, action, 0);
-
-  if      (advection_scheme_ == 0) { sl.update_p4est(v0_, dt0_, phi_array, action, 0); }
-  else if (advection_scheme_ == 1) { sl.update_p4est(v1_, v0_, dt1_, dt0_, phi_array, action, 0); }
+  if (use_godunov_scheme_)
+  {
+    my_p4est_level_set_t ls_adv(ngbd_);
+    dt0_ = ls_adv.advect_in_normal_direction(vn_, phi_free_, dt0_);
+    sl.update_p4est(v0_, 0, phi_array, action, 0);
+  }
+  else if (advection_scheme_ == 1 || first_iteration_)
+  {
+    sl.update_p4est(v0_, dt0_, phi_array, action, 0);
+  }
+  else if (advection_scheme_ == 2)
+  {
+    sl.update_p4est(v1_, v0_, dt1_, dt0_, phi_array, action, 0);
+  }
 
   phi_free_ = phi_array[0];
   phi_agar_ = phi_array[1];
@@ -1267,11 +1343,12 @@ void my_p4est_biofilm_t::update_grid()
 
   /* reinitialize phi_free_ */
   my_p4est_level_set_t ls_new(ngbd_);
-//  ls_new.reinitialize_1st_order_time_2nd_order_space(phi_free_);
-  ls_new.reinitialize_2nd_order(phi_free_);
+  ls_new.reinitialize_1st_order_time_2nd_order_space(phi_free_);
 
   /* second derivatives, normals, curvature, angles */
   compute_geometric_properties();
+
+  first_iteration_ = false;
 
   PetscPrintf(p4est_->mpicomm, "Done \n");
 

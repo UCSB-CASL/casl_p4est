@@ -39,10 +39,6 @@
 #include <src/my_p4est_biofilm.h>
 #endif
 
-// TODO:
-// - add log variables
-// - sort out jump solver
-
 #include <src/petsc_compatibility.h>
 #include <src/Parser.h>
 
@@ -57,14 +53,15 @@
 
 using namespace std;
 
-// grid parameters
-int lmin = 6;
-int lmax = 11;
-double lip = 2.5;
-
-double xmin = 0, xmax = 1; int nx = 1; bool px = 0;
+// computational domain
+double xmin = 0, xmax = 2; int nx = 2; bool px = 0;
 double ymin = 0, ymax = 1; int ny = 1; bool py = 1;
 double zmin = 0, zmax = 1; int nz = 1; bool pz = 1;
+
+// grid resolution parameters
+int lmin = 6;
+int lmax = 10;
+double lip = 2.0;
 
 // model options
 int  velocity_type; /* 0 - using concentration (not implemented), 1 - using pressure (Darcy) */
@@ -107,35 +104,35 @@ double grain_dispersity; /* grains/cavities size dispersion */
 double grain_smoothing;  /* smoothing of initial geometry   */
 
 // time discretization
-int    advection_scheme = 0;   // 0 - 1st order, 1 - 2nd order
-int    time_scheme      = 0;   // 0 - Euler (1st order), 1 - BDF2 (2nd order)
-double cfl_number       = 0.1; //
+int    advection_scheme = 2;   // 1 - 1st order, 2 - 2nd order
+int    time_scheme      = 2;   // 1 - Euler (1st order), 2 - BDF2 (2nd order)
+double cfl_number       = 0.5; //
 
 // solving non-linear diffusion equation
-int    iteration_scheme = 1;      // iterative scheme : 0 - simple fixed-point, 1 - linearized fixed-point
-int    max_iterations   = 7;      // max iterations
+int    iteration_scheme = 1;     // iterative scheme : 0 - simple fixed-point, 1 - linearized fixed-point (a.k.a. Newton)
+int    max_iterations   = 10;    // max iterations
 double tolerance        = 1.e-8; // tolerance
 
 // general poisson solver parameters
-bool use_sc_scheme         = 1;
-bool use_taylor_correction = 1;
-int  integration_order     = 2;
+bool use_sc_scheme         = 1; // for finite volume schemes (jump, neumann, robin): 0 - simple scheme, 1 - superconvergent (second-order accurate gradients)
+bool use_taylor_correction = 1; // for symmetric scheme for robin bc, irrelevant here actually
+int  integration_order     = 2; // order of geometric recpnstruction for computing domain and boundary integrals: 1 - linear, 2 - quadratic
 
 // output parameters
-bool   save_data  = 1; // save scalar characteristics
+bool   save_data  = 1; // save scalar characteristics (time elapsed, biofilm volume, surface area, etc)
 bool   save_vtk   = 1; // save spatial data
 int    save_type  = 0; // 0 - every dn iterations, 1 - every dl of growth, 2 - every dt of time
-int    save_every_dn = 1;
+int    save_every_dn = 10;
 double save_every_dl = 0.01;
 double save_every_dt = 0.1;
 
 // simulation run parameters
-int    limit_iter   = 10000;
-double limit_time   = DBL_MAX;
-double limit_length = 1.8;
-double init_perturb = 0.00001;
+int    limit_iter   = 10000; // max total time steps
+double limit_time   = DBL_MAX; // max total run time
+double limit_length = 1.8; // max total biofilm growth (not implemented yet)
+double init_perturb = 0.00001; // initial random perturbation of biofilm surface
 
-// pre-defined cases
+// pre-defined examples
 int nb_experiment = 1;
 /* 0 - (biofilm + agar + water), planar, transient
  * 1 - (biofilm + agar + water), planar, steady-state
@@ -151,14 +148,14 @@ void setup_experiment()
   // common parameters
   velocity_type = 1;
   box_size = 1;
-  sigma = 0.01;
+  sigma = 0.0;
   rho = 1;
   lambda = 1.0;
-  A = 100;
-  Kc = 100;
-  gam = 0.0;
+  A = 1;
+  Kc = 1;
+  gam = 0.5;
   C0a = 1;
-  C0b = 0.01;
+  C0b = 0.1;
   C0f = 1;
 
   switch(nb_experiment)
@@ -184,9 +181,9 @@ void setup_experiment()
       {
         steady_state = 1;
 
-        Da = 0.5e-5;
-        Db = 0.5e-5;
-        Df = 2.5e-5;
+        Da = 0.001;
+        Db = 0.01;
+        Df = 0.01;
 
         bc_agar = NEUMANN;
         bc_free = DIRICHLET;
@@ -292,7 +289,6 @@ void setup_experiment()
       }
   }
 }
-
 
 void set_periodicity()
 {
@@ -572,28 +568,104 @@ int main (int argc, char* argv[])
 
   for (short i = 0; i < 2; ++i)
   {
-    // grid parameters
-    ADD_OPTION(i, lmin, "min level of the tree");
-    ADD_OPTION(i, lmax, "max level of the tree");
-    ADD_OPTION(i, lip,  "Lipschitz constant");
-
-    ADD_OPTION(i, nx, "number of blox in x-dimension");
-    ADD_OPTION(i, ny, "number of blox in y-dimension");
-#ifdef P4_TO_P8
-    ADD_OPTION(i, nz, "number of blox in z-dimension");
-#endif
-
+    // computational domain
     ADD_OPTION(i, xmin, "xmin"); ADD_OPTION(i, xmax, "xmax");
     ADD_OPTION(i, ymin, "ymin"); ADD_OPTION(i, ymax, "ymax");
 #ifdef P4_TO_P8
     ADD_OPTION(i, zmin, "zmin"); ADD_OPTION(i, zmax, "zmax");
 #endif
 
-    // TODO: add rest of parameters
+    ADD_OPTION(i, nx, "number of macroblocks in x-dimension");
+    ADD_OPTION(i, ny, "number of macroblocks in y-dimension");
+#ifdef P4_TO_P8
+    ADD_OPTION(i, nz, "number of macroblocks in z-dimension");
+#endif
+
+    // grid resolution parameters
+    ADD_OPTION(i, lmin, "min level of the tree");
+    ADD_OPTION(i, lmax, "max level of the tree");
+    ADD_OPTION(i, lip,  "Lipschitz constant");
+
+    // pre-defined examples
+    ADD_OPTION(i, nb_experiment, "predefined example:\n"
+               "0 - (biofilm + agar + water), planar, transient\n"
+               "1 - (biofilm + agar + water), planar, steady-state\n"
+               "2 - (biofilm + agar), planar with a bump, transient\n"
+               "3 - (biofilm + water), spherical, steady-state\n"
+               "4 - (biofilm + water), pipe, transient\n"
+               "5 - (biofilm + water), porous (cavities), transient\n"
+               "6 - (biofilm + water + agar), porous (grains), transient");
+
+    if (i == 1) setup_experiment();
+
+    ADD_OPTION(i, steady_state, "assume steady state profile for concentration or not");
+
+    ADD_OPTION(i, box_size, "lateral dimensions of simulation box      - m        ");
+    ADD_OPTION(i, Df,       "diffusivity of nutrients in air           - m^2/s    ");
+    ADD_OPTION(i, Db,       "diffusivity of nutrients in biofilm       - m^2/s    ");
+    ADD_OPTION(i, Da,       "diffusivity of nutrients in agar          - m^2/s    ");
+    ADD_OPTION(i, sigma,    "surface tension of air/film interface     - N/m      ");
+    ADD_OPTION(i, rho,      "density of biofilm                        - kg/m^3   ");
+    ADD_OPTION(i, lambda,   "mobility of biofilm                       - m^4/(N*s)");
+    ADD_OPTION(i, A,        "maximum uptake rate                       - kg/m^3   ");
+    ADD_OPTION(i, Kc,       "half-saturation constant                  - kg/m^3   ");
+    ADD_OPTION(i, gam,      "biofilm yield per nutrient mass           -          ");
+    ADD_OPTION(i, C0f,      "initial nutrient concentration in air     - kg/m^3   ");
+    ADD_OPTION(i, C0b,      "initial nutrient concentration in biofilm - kg/m^3   ");
+    ADD_OPTION(i, C0a,      "initial nutrient concentration in agar    - kg/m^3   ");
+
+    ADD_OPTION(i, bc_agar, "BC type (on computatoinal domain boundary) for nutrients in agar"   );
+    ADD_OPTION(i, bc_free, "BC type (on computatoinal domain boundary) for nutrients in biofilm");
+    ADD_OPTION(i, bc_biof, "BC type (on computatoinal domain boundary) for nutrients in air"    );
+
+    ADD_OPTION(i, nb_geometry, " initial geometry: \n"
+                      "0 - planar\n"
+                      "1 - sphere\n"
+                      "2 - three spheres\n"
+                      "3 - pipe\n"
+                      "4 - planar + bump\n"
+                      "5 - corrugated agar\n"
+                      "6 - porous media (grains)\n"
+                      "7 - porous media (cavities).");
+    ADD_OPTION(i, h_agar,   "characteristic size of agar      - m");
+    ADD_OPTION(i, h_biof,   "characteristic size of biofilm   - m");
+
+    // specifically for porous media examples
+    ADD_OPTION(i, grain_num,        "number of grains or cavities   ");
+    ADD_OPTION(i, grain_dispersity, "grains/cavities size dispersion");
+    ADD_OPTION(i, grain_smoothing,  "smoothing of initial geometry  ");
+
+    // time discretization
+    ADD_OPTION(i, advection_scheme, "1 - 1st order, 2 - 2nd order");
+    ADD_OPTION(i, time_scheme     , "1 - Euler (1st order), 2 - BDF2 (2nd order)");
+    ADD_OPTION(i, cfl_number      , "CFL number");
+
+    // solving non-linear diffusion equation
+    ADD_OPTION(i, iteration_scheme, "iterative scheme: 0 - simple fixed-point, 1 - linearized fixed-point (a.k.a. Newton)");
+    ADD_OPTION(i, max_iterations  , "max iterations");
+    ADD_OPTION(i, tolerance       , "tolerance");
+
+    // general poisson solver parameters
+    ADD_OPTION(i, use_sc_scheme        , "for finite volume schemes (jump, neumann, robin): 0 - simple scheme, 1 - superconvergent (second-order accurate gradients)");
+    ADD_OPTION(i, use_taylor_correction, "for symmetric scheme for robin bc, irrelevant here");
+    ADD_OPTION(i, integration_order    , "order of geometric recpnstruction for computing domain and boundary integrals: 1 - linear, 2 - quadratic");
+
+    // output parameters
+    ADD_OPTION(i, save_data, "save scalar characteristics (time elapsed, biofilm volume, surface area, etc)");
+    ADD_OPTION(i, save_vtk , "save spatial data");
+    ADD_OPTION(i, save_type, "0 - every dn iterations, 1 - every dl of growth, 2 - every dt of time");
+    ADD_OPTION(i, save_every_dn, "");
+    ADD_OPTION(i, save_every_dl, "");
+    ADD_OPTION(i, save_every_dt, "");
+
+    // simulation run parameters
+    ADD_OPTION(i, limit_iter  , "max total time steps");
+    ADD_OPTION(i, limit_time  , "max total run time");
+    ADD_OPTION(i, limit_length, "max total biofilm growth (not implemented yet)");
+    ADD_OPTION(i, init_perturb, "initial random perturbation of biofilm surface");
 
     if (i == 0) cmd.parse(argc, argv);
   }
-  setup_experiment();
   set_periodicity();
 
   // scale computational box
@@ -663,8 +735,11 @@ int main (int argc, char* argv[])
   double dz = (zmax_tree-zmin_tree) / pow(2.,(double) data.max_lvl);
 #endif
 
-//  double dt_max = MIN( 1.e8*dx*dx/MAX(Da, Db, Df), 10000./A);
-  double dt_max = 1.5e-8*pow(2., 3.*(11.-lmax));
+  double dt_max = MIN( 1.e3*dx*dx/MAX(Da, Db, Df), 1.e3/A);
+
+  // experimentally determined time-step restriction due to surface tension
+//  double dt_max = 0.5e-10*pow(2., 3.*(11.-lmax))/MAX(sigma, 1.e-30);
+
 
   /* initial geometry */
   Vec phi_free; ierr = VecCreateGhostNodes(p4est, nodes, &phi_free); CHKERRXX(ierr);
@@ -806,13 +881,16 @@ int main (int argc, char* argv[])
   double base = 0.1;
 
   biofilm_solver.update_grid();
+
   while(keep_going)
   {
-    if (tn + biofilm_solver.get_dt() > limit_time) { biofilm_solver.set_dt_max(limit_time-tn); keep_going = false; }
+    if (steady_state && iteration == 0)
+    {
+      biofilm_solver.solve_concentration();
+    }
 
-    tn += biofilm_solver.get_dt();
-
-    biofilm_solver.one_step();
+    biofilm_solver.solve_pressure();
+    biofilm_solver.compute_velocity_from_pressure();
 
     // compute how far the air-biofilm interface has advanced
     {
@@ -893,12 +971,23 @@ int main (int argc, char* argv[])
       biofilm_solver.save_VTK(vtk_idx);
     }
 
+    if (save_now) vtk_idx++;
+
     biofilm_solver.compute_dt();
+
+    if (tn + biofilm_solver.get_dt() > limit_time)
+    {
+      biofilm_solver.set_dt_max(limit_time-tn);
+      keep_going = false;
+    }
+
+    tn += biofilm_solver.get_dt();
+
     biofilm_solver.update_grid();
 
-    iteration++;
+    biofilm_solver.solve_concentration();
 
-    if (save_now) vtk_idx++;
+    iteration++;
   }
 
   /* destroy the p4est and its connectivity structure */
