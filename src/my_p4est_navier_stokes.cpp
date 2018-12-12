@@ -1385,6 +1385,7 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set, boo
   /* construct the new forest */
   splitting_criteria_vorticity_t criteria(data->min_lvl, data->max_lvl, data->lip, uniform_band, threshold_split_cell, max_L2_norm_u, smoke_thresh);
   p4est_t *p4est_np1 = p4est_copy(p4est_n, P4EST_FALSE);
+  p4est_np1->connectivity = p4est_n->connectivity; // connectivity is not duplicated by p4est_copy, the pointer (i.e. the memory-address) of connectivity seems to be copied from my understanding of the source file of p4est_copy, but I feel this is a bit safer [Raphael Egan]
 
   p4est_ghost_t *ghost_np1 = NULL;
   p4est_nodes_t *nodes_np1 = NULL;
@@ -2298,7 +2299,7 @@ void my_p4est_navier_stokes_t::save_state(const char* path_to_root_directory, do
       backup_idx = n_saved-1;
     }
   }
-  int mpiret = MPI_Bcast(&backup_idx, 1, MPI_INT, 0, p4est_n->mpicomm); SC_CHECK_MPI(mpiret);
+  int mpiret = MPI_Bcast(&backup_idx, 1, MPI_INT, 0, p4est_n->mpicomm); SC_CHECK_MPI(mpiret);// acts as a MPI_Barrier, too
 
   char path_to_folder[1024];
   sprintf(path_to_folder, "%s/backup_%d", path_to_root_directory, (int) backup_idx);
@@ -2309,9 +2310,12 @@ void my_p4est_navier_stokes_t::save_state(const char* path_to_root_directory, do
 
   // save general solver parameters first
   sprintf(filename, "%s/solver_parameters.petsc", path_to_folder);
-  save_or_load_parameters(filename, SAVE, tn);
+  save_or_load_parameters(filename, (splitting_criteria_t*) p4est_n->user_pointer, SAVE, tn);
   sprintf(filename, "%s/solver_parameters.ascii", path_to_folder);
-  save_or_load_parameters(filename, SAVE_ASCII, tn);
+  save_or_load_parameters(filename, (splitting_criteria_t*) p4est_n->user_pointer, SAVE_ASCII, tn);
+  // save connectivity
+  sprintf(filename, "%s/connectivity", path_to_folder);
+  p4est_connectivity_save(filename, p4est_n->connectivity);
   // save p4est_n
   sprintf(filename, "%s/p4est_n", path_to_folder);
   p4est_save_ext(filename, p4est_n, P4EST_FALSE, P4EST_TRUE); // no cell-data saved
@@ -2334,18 +2338,17 @@ void my_p4est_navier_stokes_t::save_state(const char* path_to_root_directory, do
   // save smoke if used
   if (smoke!=NULL)
   {
-    sprintf(filename, "%s/vn_nodes.petsc", path_to_folder);
-    ierr = VecDump(filename, P4EST_DIM, vn_nodes); CHKERRXX(ierr);
+    sprintf(filename, "%s/smoke.petsc", path_to_folder);
+    ierr = VecDump(filename, smoke); CHKERRXX(ierr);
   }
 
   ierr = PetscPrintf(p4est_n->mpicomm, "Saved solver state in ... %s\n", path_to_folder); CHKERRXX(ierr);
 }
 
-void my_p4est_navier_stokes_t::save_or_load_parameters(const char* filename, save_or_load flag, double &tn)
+void my_p4est_navier_stokes_t::save_or_load_parameters(const char* filename, splitting_criteria_t* data, save_or_load flag, double &tn)
 {
   PetscViewer viewer;
   PetscErrorCode ierr;
-  splitting_criteria_t* data = (splitting_criteria_t*) p4est_n->user_pointer;
   struct
   {
     PetscErrorCode operator()(save_or_load flag_, PetscViewer& viewer_, void* data_, PetscInt n_data, PetscDataType dtype, const char *var_name = NULL)
@@ -2458,8 +2461,71 @@ void my_p4est_navier_stokes_t::save_or_load_parameters(const char* filename, sav
   ierr = PetscViewerDestroy(viewer); CHKERRXX(ierr);
 }
 
-void my_p4est_navier_stokes_t::load_state(const char* path_to_folder)
+void my_p4est_navier_stokes_t::load_state(const mpi_environment_t& mpi, const char* path_to_folder, splitting_criteria_t* data, p4est_connectivity_t* conn, double& tn)
 {
 
+  PetscErrorCode ierr;
+  char filename[1024];
+
+  // load general solver parameters first
+  if(data != NULL)
+    delete data;
+  sprintf(filename, "%s/solver_parameters.petsc", path_to_folder);
+  save_or_load_parameters(filename, data, LOAD, tn);
+  // load connectivity
+  if(conn != NULL)
+    p4est_connectivity_destroy(conn);
+  sprintf(filename, "%s/connectivity", path_to_folder);
+  conn = p4est_connectivity_load(filename, NULL);
+  // load p4est_n
+  if(p4est_n != NULL)
+    p4est_destroy(p4est_n);
+  sprintf(filename, "%s/p4est_n", path_to_folder);
+  p4est_n = p4est_load_ext(filename, mpi.comm(), 0, P4EST_FALSE, P4EST_FALSE, P4EST_FALSE, (void*) &data, &conn); // no data load, because we assume no data saved, we don't ignore the saved partition, in case we load it with the same number of processes
+  // load p4est_nm1
+  if(p4est_nm1 != NULL)
+    p4est_destroy(p4est_nm1);
+  sprintf(filename, "%s/p4est_nm1", path_to_folder);
+  p4est_nm1 = p4est_load_ext(filename, mpi.comm(), 0, P4EST_FALSE, P4EST_FALSE, P4EST_FALSE, (void*) &data, &conn);
+  // load phi
+  if(phi != NULL)
+  {
+    ierr = VecDestroy(phi); CHKERRXX(ierr);
+  }
+  sprintf(filename, "%s/phi.petsc", path_to_folder);
+  ierr = VecLoad(mpi.comm(), filename, &phi); CHKERRXX(ierr);
+  // check if phi is consistent with p4est_n, ghost it and rebuilt it with updated ghost values
+  // load hodge
+  sprintf(filename, "%s/hodge.petsc", path_to_folder);
+  ierr = VecLoad(mpi.comm(), filename, &hodge); CHKERRXX(ierr);
+  // check if phi is consistent with p4est_n, ghost it and rebuilt it with updated ghost values
+  // load vnm1_nodes
+  for (short kk = 0; kk < P4EST_DIM; ++kk) {
+    if(vnm1_nodes[kk] != NULL)
+    {
+      ierr = VecDestroy(vnm1_nodes[kk]); CHKERRXX(ierr);
+    }
+  }
+  sprintf(filename, "%s/vnm1_nodes.petsc", path_to_folder);
+  ierr = VecLoad(mpi.comm(), filename, P4EST_DIM, vnm1_nodes); CHKERRXX(ierr);
+  // check if every component of vnm1_nodes is consistent with p4est_n, ghost it and rebuilt it with updated ghost values
+  // load vn_nodes
+  for (short kk = 0; kk < P4EST_DIM; ++kk) {
+    if (vn_nodes[kk] != NULL) {
+      ierr = VecDestroy(vnm1_nodes[kk]); CHKERRXX(ierr);
+    }
+  }
+  sprintf(filename, "%s/vn_nodes.petsc", path_to_folder);
+  ierr = VecLoad(mpi.comm(), filename, P4EST_DIM, vn_nodes); CHKERRXX(ierr);
+  // check if every component of vn_nodes is consistent with p4est_n, ghost it and rebuilt it with updated ghost values
+  // load smoke was used
+  sprintf(filename, "%s/smoke.petsc", path_to_folder);
+  if (file_exists(filename))
+  {
+    ierr = VecLoad(mpi.comm(), filename, &smoke); CHKERRXX(ierr);
+    // check if smoke is consistent with p4est_n, ghost it and rebuild it
+  }
+
+  ierr = PetscPrintf(mpi.comm(), "Loaded solver state from ... %s\n", path_to_folder); CHKERRXX(ierr);
 }
 

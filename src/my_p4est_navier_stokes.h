@@ -212,6 +212,7 @@ protected:
    * - data->lip
    * - sl_order
    * \param filename[in]: path to the file to be written or read
+   * \param data[inout] : splitting criterion to be exported/loaded
    * \param flag[in]    : switch the behavior between write or read
    * \param tn[inout]   : in write mode, simulation time at which the function is called (to be saved, unmodified)
    *                      in read mode, simulation time at which the data were saved (to be read from file and stored in tn)
@@ -219,7 +220,7 @@ protected:
    * function implementations to be modified in the future if the parameter/variable order or the parameter/variable
    * list is changed (the save-state files are binary files, order and number of read/write operations is crucial)]
    */
-  void save_or_load_parameters(const char* filename, save_or_load flag, double& tn);
+  void save_or_load_parameters(const char* filename, splitting_criteria_t* data, save_or_load flag, double& tn);
 
 public:
   my_p4est_navier_stokes_t(my_p4est_node_neighbors_t *ngbd_nm1, my_p4est_node_neighbors_t *ngbd_n, my_p4est_faces_t *faces_n);
@@ -383,7 +384,8 @@ public:
    * \param n_saved: number of solver states to keep in memory (default is 1)
    */
   void save_state(const char* path_to_root_directory, double tn, unsigned int n_saved=1);
-  void load_state(const char* path_to_folder);
+
+  void load_state(const mpi_environment_t& mpi, const char* path_to_folder, splitting_criteria_t* data, p4est_connectivity_t* conn, double& tn);
 };
 
 

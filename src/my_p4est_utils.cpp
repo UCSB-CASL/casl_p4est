@@ -578,6 +578,35 @@ PetscErrorCode VecDump(const char fname[], const Vec x, PetscBool skippheader, P
     return VecDump(fname, 1, &x, skippheader, usempiio);
 }
 
+PetscErrorCode VecLoad(MPI_Comm comm, const char fname[], unsigned int n_vecs, Vec *x, PetscBool skippheader, PetscBool usempiio)
+{
+  PetscViewer    viewer;
+  PetscErrorCode ierr;
+
+  ierr = PetscViewerCreate(comm,&viewer);CHKERRQ(ierr);
+  ierr = PetscViewerSetType(viewer,PETSCVIEWERBINARY);CHKERRQ(ierr);
+  if (skippheader) { ierr = PetscViewerBinarySetSkipHeader(viewer,PETSC_TRUE);CHKERRQ(ierr); }
+  ierr = PetscViewerFileSetMode(viewer,FILE_MODE_READ);CHKERRQ(ierr);
+  if (usempiio) { ierr = PetscViewerBinarySetUseMPIIO(viewer,PETSC_TRUE);CHKERRQ(ierr); }
+  ierr = PetscViewerFileSetName(viewer,fname);CHKERRQ(ierr);
+
+  for (unsigned int kk = 0; kk < n_vecs; ++kk) {
+    ierr = VecCreate(comm, &x[kk]);CHKERRQ(ierr);
+    ierr = VecLoad(x[kk], viewer);CHKERRQ(ierr);
+    ierr = VecSetFromOptions(x[kk]); CHKERRQ(ierr);
+  }
+
+  ierr = PetscViewerDestroy(viewer);CHKERRQ(ierr);
+  return ierr;
+}
+
+PetscErrorCode VecLoad(MPI_Comm comm, const char fname[], Vec *x, PetscBool skippheader, PetscBool usempiio)
+{
+  return VecLoad(comm, fname, 1, x, skippheader, usempiio);
+}
+
+
+
 bool is_folder(const char* path)
 {
   struct stat info;
@@ -593,6 +622,13 @@ bool is_folder(const char* path)
   }
   return (info.st_mode & S_IFDIR);
 }
+
+bool file_exists(const char* path)
+{
+  struct stat info;
+  return ((stat(path, &info)== 0) && (info.st_mode & S_IFREG));
+}
+
 
 int create_directory(const char* path, int mpi_rank, MPI_Comm comm)
 {

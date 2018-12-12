@@ -443,20 +443,35 @@ PetscErrorCode VecGhostChangeLayoutBegin(VecScatter ctx, Vec from, Vec to);
 PetscErrorCode VecGhostChangeLayoutEnd(VecScatter ctx, Vec from, Vec to);
 
 /*!
- * \brief VecDump: exports the vectors x in a binary format
+ * \brief VecDump: exports the vectors x in a BINARY format
  * \param fname: name of the file to export the vectors x in
  * \param n_vecs: number of vectors to be exported
  * \param x: vectors to be exported in the binary file
  * \param skippheader: flag controlling whether the header is printed or not. If activated, header information
  * (i.e. information about the global and local size of the vector) won't be exported
- * \param usempiioflag activating MPI-IO for reading/writing
+ * \param usempiio: flag activating MPI-IO for reading/writing
  * \return a regular Petsc Error Code.
  * [NOTE:] modified from the function taken from src/dm/examples/tutorials/ex15.c in the Petsc distribution
  */
 PetscErrorCode VecDump(const char fname[], unsigned int n_vecs, const Vec *x, PetscBool skippheader=PETSC_FALSE, PetscBool usempiio=PETSC_TRUE);
 PetscErrorCode VecDump(const char fname[], const Vec x, PetscBool skippheader=PETSC_FALSE, PetscBool usempiio=PETSC_TRUE);
 
-PetscErrorCode MyVecLoad(const char fname[], Vec x, PetscBool skippheader=PETSC_FALSE, PetscBool usempiio=PETSC_TRUE);
+/*!
+ * \brief VecLoad loads vectors from a binary Petsc-viewer exported on-disk file referred by path fname
+ * \paran comm        [in]: MPI_Comm to which parallel vectors belong
+ * \param fname       [in]: path to the binary Petsc-viewer exported on-disk file
+ * \param n_vecs      [in]: number of vectors to be loaded
+ * \param x           [out]: array of Petsc Vectors
+ * \param skippheader [in]: flag controlling whether the header is read or not. If activated, header information
+ * (i.e. information about the global and local size of the vector) won't be read
+ * \param usempiio: flag activating MPI-IO for reading/writing
+ * \return a regular PetscError code;
+ * [NOTE:] the vectors are created WITHIN the function (just as in VecCreateGhost[...]) do not create the vectors beforehand,
+ * as that would leak to a memory leak...
+ * [NOTE:] modified from the function taken from src/dm/examples/tutorials/ex15.c in the Petsc distribution
+ */
+PetscErrorCode VecLoad(MPI_Comm comm, const char fname[], unsigned int n_vecs, Vec *x, PetscBool skippheader=PETSC_FALSE, PetscBool usempiio=PETSC_TRUE);
+PetscErrorCode VecLoad(MPI_Comm comm, const char fname[], Vec *x, PetscBool skippheader=PETSC_FALSE, PetscBool usempiio=PETSC_TRUE);
 
 /*!
  * \brief is_folder returns true if the path points to an existing folder
@@ -466,6 +481,14 @@ PetscErrorCode MyVecLoad(const char fname[], Vec x, PetscBool skippheader=PETSC_
  * [throws std::runtime_error if the path cannot be accessed]
  */
 bool is_folder(const char* path);
+
+/*!
+ * \brief file_exists returns true if the path points to an existing file
+ * does not use boost nor c++17 standard to maximize portability
+ * \param path:path to be checked
+ * \return true if there exists a file corresponding to the given path
+ */
+bool file_exists(const char* path);
 
 /*!
  * \brief create_directory creates a folder indicated by the given path, permission rights: 755
