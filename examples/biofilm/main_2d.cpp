@@ -183,7 +183,7 @@ void setup_experiment()
 
         Da = 0.001;
         Db = 0.01;
-        Df = 0.01;
+        Df = 0.1;
 
         bc_agar = NEUMANN;
         bc_free = DIRICHLET;
