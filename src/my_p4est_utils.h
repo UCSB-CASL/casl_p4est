@@ -150,9 +150,12 @@ const unsigned short f2c_p[P4EST_FACES][num_neighbors_face_] = { { nn_mmm, nn_m0
                                                                  { nn_mmp, nn_0mp, nn_pmp,
                                                                    nn_m0p, nn_00p, nn_p0p,
                                                                    nn_mpp, nn_0pp, nn_ppp }};
+//const unsigned short i_idx[] = { 0, 1, 2 };
+//const unsigned short j_idx[] = { 1, 2, 0 };
+//const unsigned short k_idx[] = { 2, 0, 1 };
 const unsigned short i_idx[] = { 0, 1, 2 };
-const unsigned short j_idx[] = { 1, 2, 0 };
-const unsigned short k_idx[] = { 2, 0, 1 };
+const unsigned short j_idx[] = { 1, 0, 0 };
+const unsigned short k_idx[] = { 2, 2, 1 };
 #else
 const unsigned short num_neighbors_cube = 9;
 const unsigned short num_neighbors_face = 3;

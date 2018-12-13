@@ -812,7 +812,7 @@ void my_p4est_poisson_nodes_mls_sc_t::solve(Vec solution, bool use_nonzero_initi
 //  setup_linear_system(false, true);
 
   // Solve the system
-  ierr = KSPSetTolerances(ksp_, 1.e-50, 1.e-50, PETSC_DEFAULT, 50); CHKERRXX(ierr);
+  ierr = KSPSetTolerances(ksp_, 1.e-20, 1.e-20, PETSC_DEFAULT, 50); CHKERRXX(ierr);
 //  ierr = KSPSetTolerances(ksp_, 1e-15, PETSC_DEFAULT, PETSC_DEFAULT, 30); CHKERRXX(ierr);
 //  ierr = KSPSetTolerances(ksp_, 1e-200, 1e-30, PETSC_DEFAULT, PETSC_DEFAULT); CHKERRXX(ierr);
   ierr = KSPSetFromOptions(ksp_); CHKERRXX(ierr);
@@ -4566,36 +4566,54 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
         {
           if (ii_phi_eff_000 < 0)
           {
+            // TODO: make this interpolation second order
             mue_m00 = .5*(mue_m_ptr[neighbors[nn_m00]] + mue_m_ptr[n]);
             mue_p00 = .5*(mue_m_ptr[neighbors[nn_p00]] + mue_m_ptr[n]);
 
             mue_0m0 = .5*(mue_m_ptr[neighbors[nn_0m0]] + mue_m_ptr[n]);
             mue_0p0 = .5*(mue_m_ptr[neighbors[nn_0p0]] + mue_m_ptr[n]);
-
-            mue_m00 = mu_m_interp(x_C - .5*dx_min_, y_C);
-            mue_p00 = mu_m_interp(x_C + .5*dx_min_, y_C);
-
-            mue_0m0 = mu_m_interp(x_C, y_C - .5*dy_min_);
-            mue_0p0 = mu_m_interp(x_C, y_C + .5*dy_min_);
 #ifdef P4_TO_P8
             mue_00m = .5*(mue_m_ptr[neighbors[nn_00m]] + mue_m_ptr[n]);
             mue_00p = .5*(mue_m_ptr[neighbors[nn_00p]] + mue_m_ptr[n]);
 #endif
+            // a dirty fix
+#ifdef P4_TO_P8
+            mue_m00 = mu_m_interp(x_C - .5*dx_min_, y_C, z_C);
+            mue_p00 = mu_m_interp(x_C + .5*dx_min_, y_C, z_C);
+            mue_0m0 = mu_m_interp(x_C, y_C - .5*dy_min_, z_C);
+            mue_0p0 = mu_m_interp(x_C, y_C + .5*dy_min_, z_C);
+            mue_00m = mu_m_interp(x_C, y_C, z_C - .5*dz_min_);
+            mue_00p = mu_m_interp(x_C, y_C, z_C + .5*dz_min_);
+#else
+            mue_m00 = mu_m_interp(x_C - .5*dx_min_, y_C);
+            mue_p00 = mu_m_interp(x_C + .5*dx_min_, y_C);
+            mue_0m0 = mu_m_interp(x_C, y_C - .5*dy_min_);
+            mue_0p0 = mu_m_interp(x_C, y_C + .5*dy_min_);
+#endif
           } else {
+            // TODO: make this interpolation second order
             mue_m00 = .5*(mue_p_ptr[neighbors[nn_m00]] + mue_p_ptr[n]);
             mue_p00 = .5*(mue_p_ptr[neighbors[nn_p00]] + mue_p_ptr[n]);
 
             mue_0m0 = .5*(mue_p_ptr[neighbors[nn_0m0]] + mue_p_ptr[n]);
             mue_0p0 = .5*(mue_p_ptr[neighbors[nn_0p0]] + mue_p_ptr[n]);
-
-            mue_m00 = mu_p_interp(x_C - .5*dx_min_, y_C);
-            mue_p00 = mu_p_interp(x_C + .5*dx_min_, y_C);
-
-            mue_0m0 = mu_p_interp(x_C, y_C - .5*dy_min_);
-            mue_0p0 = mu_p_interp(x_C, y_C + .5*dy_min_);
 #ifdef P4_TO_P8
             mue_00m = .5*(mue_p_ptr[neighbors[nn_00m]] + mue_p_ptr[n]);
             mue_00p = .5*(mue_p_ptr[neighbors[nn_00p]] + mue_p_ptr[n]);
+#endif
+            // a dirty fix
+#ifdef P4_TO_P8
+            mue_m00 = mu_p_interp(x_C - .5*dx_min_, y_C, z_C);
+            mue_p00 = mu_p_interp(x_C + .5*dx_min_, y_C, z_C);
+            mue_0m0 = mu_p_interp(x_C, y_C - .5*dy_min_, z_C);
+            mue_0p0 = mu_p_interp(x_C, y_C + .5*dy_min_, z_C);
+            mue_00m = mu_p_interp(x_C, y_C, z_C - .5*dz_min_);
+            mue_00p = mu_p_interp(x_C, y_C, z_C + .5*dz_min_);
+#else
+            mue_m00 = mu_p_interp(x_C - .5*dx_min_, y_C);
+            mue_p00 = mu_p_interp(x_C + .5*dx_min_, y_C);
+            mue_0m0 = mu_p_interp(x_C, y_C - .5*dy_min_);
+            mue_0p0 = mu_p_interp(x_C, y_C + .5*dy_min_);
 #endif
           }
         }
@@ -4946,7 +4964,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
             }
         }
       }
-      else if (jump_scheme_ == 2 || jump_scheme_ == 3)
+      /*else if (jump_scheme_ == 2 || jump_scheme_ == 3)
       {
         rhs_ptr[n] = 0;
         std::vector<double> weights_cube(num_neighbors_cube, 0);
@@ -5619,7 +5637,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
             ( neighbors[i] < num_owned_local ) ? d_nnz[n]++ : o_nnz[n]++;
           }
         }
-      }
+      }//*/
 
     }//*/
 

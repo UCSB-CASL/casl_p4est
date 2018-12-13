@@ -97,18 +97,18 @@ const double grid_xyz_max[3] = { 1.,  1.,  1.};
 #ifdef P4_TO_P8
 int lmin = 4;
 int lmax = 4;
-int num_splits = 3;
-int num_splits_per_split = 1;
-int num_shifts_x_dir = 5;
-int num_shifts_y_dir = 5;
-int num_shifts_z_dir = 5;
-#else
-int lmin = 4;
-int lmax = 4;
 int num_splits = 4;
 int num_splits_per_split = 1;
-int num_shifts_x_dir = 10;
-int num_shifts_y_dir = 10;
+int num_shifts_x_dir = 1;
+int num_shifts_y_dir = 1;
+int num_shifts_z_dir = 1;
+#else
+int lmin = 5;
+int lmax = 5;
+int num_splits = 4;
+int num_splits_per_split = 1;
+int num_shifts_x_dir = 1;
+int num_shifts_y_dir = 1;
 int num_shifts_z_dir = 1;
 #endif
 
@@ -124,9 +124,9 @@ int iter_start = 0; // is used to skip iterations and get to a problematic case
 //-------------------------------------
 // test solutions
 //-------------------------------------
-int n_geometry = 7;
+int n_geometry = 2;
 int n_test     = 0;
-int n_mu       = 0;
+int n_mu       = 1;
 int n_diag_add = 0;
 
 /* Examples for Poisson paper
@@ -145,7 +145,7 @@ BoundaryConditionType bc_itype = ROBIN;
 // solver parameters
 //-------------------------------------
 int  integration_order = 2;
-bool sc_scheme         = 0;
+bool sc_scheme         = 1;
 
 // for symmetric scheme:
 bool taylor_correction      = 1;
