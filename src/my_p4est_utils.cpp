@@ -639,7 +639,21 @@ int create_directory(const char* path, int mpi_rank, MPI_Comm comm)
     if((stat(path, &info) == 0) &&  (info.st_mode & S_IFDIR)) // if it already exists, no need to create it...
       return_ = 0;
     else
+    {
+      char tmp[PATH_MAX];
+      snprintf(tmp, sizeof(tmp), "%s", path);
+      size_t len = strlen(tmp);
+      if(tmp[len-1] == '/')
+        tmp[len-1] = 0;
+      for (char* p = tmp+1; *p; p++){
+        if(*p == '/'){
+          *p = 0;
+          mkdir(tmp, S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH); // permission = 755 like a regular mkdir in terminal
+          *p = '/';
+        }
+      }
       return_ = mkdir(path, S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH); // permission = 755 like a regular mkdir in terminal
+    }
   }
   int mpiret = MPI_Bcast(&return_, 1, MPI_INT, 0, comm); SC_CHECK_MPI(mpiret);
   return return_;
@@ -693,7 +707,7 @@ int delete_directory(const char* root_path, int mpi_rank, MPI_Comm comm, bool no
           reg_files.push_back(entry->d_name);
         else
         {
-          char path_to_weird_thing[1024], error_msg[1024];
+          char path_to_weird_thing[PATH_MAX], error_msg[1024];
           sprintf(path_to_weird_thing, "%s/%s", root_path, entry->d_name);
           sprintf(error_msg, "delete_directory: a weird object has been encountered in %s: it is neither a folder nor a file, this function is not designed for that, use maybe 'rm -rf'", path_to_weird_thing);
           throw std::runtime_error(error_msg);
@@ -703,12 +717,12 @@ int delete_directory(const char* root_path, int mpi_rank, MPI_Comm comm, bool no
       entry = readdir(dir);
     }
     for (unsigned int idx = 0; idx < reg_files.size(); ++idx) {
-      char path_to_file[1024];
+      char path_to_file[PATH_MAX];
       sprintf(path_to_file, "%s/%s", root_path, reg_files[idx].c_str());
       remove(path_to_file);
     }
     for (unsigned int idx = 0; idx < subdirectories.size(); ++idx) {
-      char path_to_subfolder[1024];
+      char path_to_subfolder[PATH_MAX];
       sprintf(path_to_subfolder, "%s/%s", root_path, subdirectories[idx].c_str());
       delete_directory(path_to_subfolder, mpi_rank, comm, true);
     }

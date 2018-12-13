@@ -492,7 +492,7 @@ bool file_exists(const char* path);
 
 /*!
  * \brief create_directory creates a folder indicated by the given path, permission rights: 755
- * does not use boost nor c++17 standard to maximize portability
+ * does not use boost nor c++17 standard to maximize portability (parents are created as well)
  * \param path: path to the folder to be created
  * \param mpi_rank: rank of the calling process
  * \param comm: communicator

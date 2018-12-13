@@ -2262,7 +2262,7 @@ void my_p4est_navier_stokes_t::save_state(const char* path_to_root_directory, do
         sscanf(subfolders[idx].c_str(), "backup_%d", &backup_idx);
         if(backup_idx >= n_saved)
         {
-          char full_path[1024];
+          char full_path[PATH_MAX];
           sprintf(full_path, "%s/%s", path_to_root_directory, subfolders[idx].c_str());
           delete_directory(full_path, p4est_n->mpirank, p4est_n->mpicomm, true);
         }
@@ -2276,7 +2276,7 @@ void my_p4est_navier_stokes_t::save_state(const char* path_to_root_directory, do
     {
       backup_idx = 0;
       for (unsigned int idx = 0; idx < n_backup_subfolders; ++idx) {
-        char expected_dir[1024];
+        char expected_dir[PATH_MAX];
         sprintf(expected_dir, "%s/backup_%d", path_to_root_directory, (int) idx);
         if(!is_folder(expected_dir))
           break; // well, it's a mess in there, but I can't really do any better...
@@ -2285,13 +2285,13 @@ void my_p4est_navier_stokes_t::save_state(const char* path_to_root_directory, do
     }
     if ((n_saved > 1) && (n_backup_subfolders == n_saved))
     {
-      char full_path_zeroth_index[1024];
+      char full_path_zeroth_index[PATH_MAX];
       sprintf(full_path_zeroth_index, "%s/backup_0", path_to_root_directory);
       // delete the 0th
       delete_directory(full_path_zeroth_index, p4est_n->mpirank, p4est_n->mpicomm, true);
       // shift the others
       for (size_t idx = 1; idx < n_saved; ++idx) {
-        char old_name[1024], new_name[1024];
+        char old_name[PATH_MAX], new_name[PATH_MAX];
         sprintf(old_name, "%s/backup_%d", path_to_root_directory, (int) idx);
         sprintf(new_name, "%s/backup_%d", path_to_root_directory, (int) (idx-1));
         rename(old_name, new_name);
@@ -2301,12 +2301,12 @@ void my_p4est_navier_stokes_t::save_state(const char* path_to_root_directory, do
   }
   int mpiret = MPI_Bcast(&backup_idx, 1, MPI_INT, 0, p4est_n->mpicomm); SC_CHECK_MPI(mpiret);// acts as a MPI_Barrier, too
 
-  char path_to_folder[1024];
+  char path_to_folder[PATH_MAX];
   sprintf(path_to_folder, "%s/backup_%d", path_to_root_directory, (int) backup_idx);
   create_directory(path_to_folder, p4est_n->mpirank, p4est_n->mpicomm);
 
   PetscErrorCode ierr;
-  char filename[1024];
+  char filename[PATH_MAX];
 
   // save general solver parameters first
   sprintf(filename, "%s/solver_parameters.petsc", path_to_folder);
@@ -2465,7 +2465,7 @@ void my_p4est_navier_stokes_t::load_state(const mpi_environment_t& mpi, const ch
 {
 
   PetscErrorCode ierr;
-  char filename[1024];
+  char filename[PATH_MAX];
 
   // load general solver parameters first
   if(data != NULL)
