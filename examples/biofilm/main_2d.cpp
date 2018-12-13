@@ -54,13 +54,13 @@
 using namespace std;
 
 // computational domain
-double xmin = 0, xmax = 2; int nx = 2; bool px = 0;
+double xmin = 0, xmax = 1; int nx = 1; bool px = 0;
 double ymin = 0, ymax = 1; int ny = 1; bool py = 1;
 double zmin = 0, zmax = 1; int nz = 1; bool pz = 1;
 
 // grid resolution parameters
-int lmin = 6;
-int lmax = 10;
+int lmin = 4;
+int lmax = 6;
 double lip = 2.0;
 
 // model options
@@ -122,7 +122,7 @@ int  integration_order     = 2; // order of geometric recpnstruction for computi
 bool   save_data  = 1; // save scalar characteristics (time elapsed, biofilm volume, surface area, etc)
 bool   save_vtk   = 1; // save spatial data
 int    save_type  = 0; // 0 - every dn iterations, 1 - every dl of growth, 2 - every dt of time
-int    save_every_dn = 10;
+int    save_every_dn = 1;
 double save_every_dl = 0.01;
 double save_every_dt = 0.1;
 
@@ -133,7 +133,7 @@ double limit_length = 1.8; // max total biofilm growth (not implemented yet)
 double init_perturb = 0.00001; // initial random perturbation of biofilm surface
 
 // pre-defined examples
-int nb_experiment = 1;
+int nb_experiment = 0;
 /* 0 - (biofilm + agar + water), planar, transient
  * 1 - (biofilm + agar + water), planar, steady-state
  * 2 - (biofilm + agar), planar with a bump, transient
@@ -155,7 +155,7 @@ void setup_experiment()
   Kc = 1;
   gam = 0.5;
   C0a = 1;
-  C0b = 0.1;
+  C0b = 1.0;
   C0f = 1;
 
   switch(nb_experiment)
@@ -174,7 +174,7 @@ void setup_experiment()
 
         nb_geometry = 0;
         h_agar      = 0.2;
-        h_biof      = 0.015;
+        h_biof      = 0.215;
         break;
       }
     case 1:
@@ -307,14 +307,200 @@ void set_periodicity()
 }
 
 #ifdef P4_TO_P8
-class phi_agar_cf_t : public CF_DIM {
+class phi_agar_cf_t : public CF_3 {
 public:
-  double operator()(double x, double y, double z) const { return -(x-0.1); }
+  double operator()(double x, double y, double z) const
+  {
+    switch (nb_geometry)
+    {
+      case 0:
+        return -(x-h_agar);
+      case 1:
+        {
+          double xc = xmin +.5*(xmax-xmax);
+          double yc = ymin +.5*(ymax-ymax);
+          double zc = zmin +.5*(zmax-zmax);
+          return h_agar - sqrt( SQR(x-xc) + SQR(y-yc) + SQR(z-zc) );
+        }
+      case 2:
+        {
+          double xc0 = xmin +.3*(xmax-xmax), xc1 = xmin +.5*(xmax-xmax), xc2 = xmin +.6*(xmax-xmax);
+          double yc0 = ymin +.5*(ymax-ymax), yc1 = ymin +.6*(ymax-ymax), yc2 = ymin +.4*(ymax-ymax);
+          double zc0 = zmin +.6*(zmax-zmax), zc1 = zmin +.4*(zmax-zmax), zc2 = zmin +.3*(zmax-zmax);
+
+          return MAX(h_agar - sqrt( SQR(x-xc0) + SQR(y-yc0) + SQR(z-zc0) ),
+                     h_agar - sqrt( SQR(x-xc1) + SQR(y-yc1) + SQR(z-zc1) ),
+                     h_agar - sqrt( SQR(x-xc2) + SQR(y-yc2) + SQR(z-zc2) ));
+        }
+      case 3:
+        {
+          double xc = xmin +.5*(xmax-xmax);
+          double yc = ymin +.5*(ymax-ymax);
+          double zc = zmin +.5*(zmax-zmax);
+          return -h_agar + sqrt( SQR(x-xc) + SQR(y-yc) + SQR(z-zc) );
+        }
+      case 4:
+        return -(x-h_agar);
+      case 5:
+        return -(x-h_agar)
+            + 0.02*cos(2.*PI*5*(y-ymin)/(ymax-ymin))
+            + 0.02*cos(2.*PI*5*(z-zmin)/(zmax-zmin));
+      case 6:
+        {
+          srand(0);
+
+          double sum = 10;
+          for (int i = 0; i < grain_num; ++i)
+          {
+            double R = h_agar * (1. + grain_dispersity*(((double) rand() / (double) RAND_MAX)));
+            double X = xmin + ((double) rand() / (double) RAND_MAX) *(xmax-xmin);
+            double Y = ymin + ((double) rand() / (double) RAND_MAX) *(ymax-ymin);
+            double Z = zmin + ((double) rand() / (double) RAND_MAX) *(zmax-zmin);
+
+            int nx = round((X-x)/(xmax-xmin));
+            int ny = round((Y-y)/(ymax-ymin));
+            int nz = round((Z-z)/(zmax-zmin));
+
+            double dist = R - sqrt( SQR(x-X + nx*(xmax-xmin)) +
+                                    SQR(y-Y + ny*(ymax-ymin)) +
+                                    SQR(z-Z + nz*(zmax-zmin)) );
+
+            sum = MIN(sum, -dist);
+          }
+
+          return -sum;
+        }
+      case 7:
+        {
+          srand(0);
+
+          double sum = 10;
+          for (int i = 0; i < grain_num; ++i)
+          {
+            double R = h_agar * (1. + grain_dispersity*(((double) rand() / (double) RAND_MAX)));
+            double X = xmin + ((double) rand() / (double) RAND_MAX) *(xmax-xmin);
+            double Y = ymin + ((double) rand() / (double) RAND_MAX) *(ymax-ymin);
+            double Z = zmin + ((double) rand() / (double) RAND_MAX) *(zmax-zmin);
+
+            int nx = round((X-x)/(xmax-xmin));
+            int ny = round((Y-y)/(ymax-ymin));
+            int nz = round((Z-z)/(zmax-zmin));
+
+            double dist = R - sqrt( SQR(x-X + nx*(xmax-xmin)) +
+                                    SQR(y-Y + ny*(ymax-ymin)) +
+                                    SQR(z-Z + nz*(zmax-zmin)) );
+
+            sum = MIN(sum, -dist);
+          }
+
+          return sum;
+        }
+      default: throw std::invalid_argument("[ERROR]: Wrong type of initial geometry");
+    }
+  }
 } phi_agar_cf;
 
 class phi_free_cf_t : public CF_3 {
 public:
-  double operator()(double x, double y, double z) const { return  (x-0.2); }
+  double operator()(double x, double y, double z) const
+  {
+    switch (nb_geometry)
+    {
+      case 0:
+        return (x-(MAX(0.,h_agar)+h_biof));
+      case 1:
+        {
+          double xc = xmin +.5*(xmax-xmax);
+          double yc = ymin +.5*(ymax-ymax);
+          double zc = zmin +.5*(zmax-zmax);
+          return -(MAX(0.,h_agar)+h_biof) + sqrt( SQR(x-xc) + SQR(y-yc) + SQR(z-zc) );
+        }
+      case 2:
+        {
+          double xc0 = xmin +.3*(xmax-xmax), xc1 = xmin +.5*(xmax-xmax), xc2 = xmin +.6*(xmax-xmax);
+          double yc0 = ymin +.5*(ymax-ymax), yc1 = ymin +.6*(ymax-ymax), yc2 = ymin +.4*(ymax-ymax);
+          double zc0 = zmin +.6*(zmax-zmax), zc1 = zmin +.4*(zmax-zmax), zc2 = zmin +.3*(zmax-zmax);
+
+          return -MAX((MAX(0.,h_agar)+h_biof) - sqrt( SQR(x-xc0) + SQR(y-yc0) + SQR(z-zc0) ),
+                      (MAX(0.,h_agar)+h_biof) - sqrt( SQR(x-xc1) + SQR(y-yc1) + SQR(z-zc1) ),
+                      (MAX(0.,h_agar)+h_biof) - sqrt( SQR(x-xc2) + SQR(y-yc2) + SQR(z-zc2) ));
+        }
+      case 3:
+        {
+          double xc = xmin +.5*(xmax-xmax);
+          double yc = ymin +.5*(ymax-ymax);
+          double zc = zmin +.5*(zmax-zmax);
+          return (MAX(0.,h_agar)+h_biof) - sqrt( SQR(x-xc) + SQR(y-yc) + SQR(z-zc) );
+        }
+      case 4:
+        {
+          double plane = (x-(MAX(0., h_agar) + h_biof));
+
+          double xc = (MAX(0., h_agar) + h_biof);
+          double yc = ymin +.5*(ymax-ymax);
+          double zc = zmin +.5*(zmax-zmax);
+
+          double bump = -.1*(xmax-xmin) + sqrt( SQR(x-xc) + SQR(y-yc) + SQR(z-zc) );
+
+          return .5*( plane + bump - sqrt( SQR(plane-bump) + SQR(.01*(xmax-xmin)) ) );
+        }
+      case 5:
+        return (x-(MAX(0.,h_agar)+h_biof))
+            + 0.02*cos(2.*PI*5*(y-ymin)/(ymax-ymin))
+            + 0.02*cos(2.*PI*5*(z-zmin)/(zmax-zmin));
+      case 6:
+        {
+          srand(0);
+
+          double sum = 10;
+          for (int i = 0; i < grain_num; ++i)
+          {
+            double R = (MAX(0.,h_agar)+h_biof) * (1. + grain_dispersity*(((double) rand() / (double) RAND_MAX)));
+            double X = xmin + ((double) rand() / (double) RAND_MAX) *(xmax-xmin);
+            double Y = ymin + ((double) rand() / (double) RAND_MAX) *(ymax-ymin);
+            double Z = zmin + ((double) rand() / (double) RAND_MAX) *(zmax-zmin);
+
+            int nx = round((X-x)/(xmax-xmin));
+            int ny = round((Y-y)/(ymax-ymin));
+            int nz = round((Z-z)/(zmax-zmin));
+
+            double dist = R - sqrt( SQR(x-X + nx*(xmax-xmin)) +
+                                    SQR(y-Y + ny*(ymax-ymin)) +
+                                    SQR(z-Z + nz*(zmax-zmin)) );
+
+            sum = MIN(sum, -dist);
+          }
+
+          return sum;
+        }
+      case 7:
+        {
+          srand(0);
+
+          double sum = 10;
+          for (int i = 0; i < grain_num; ++i)
+          {
+            double R = (MAX(0.,h_agar)+h_biof) * (1. + grain_dispersity*(((double) rand() / (double) RAND_MAX)));
+            double X = xmin + ((double) rand() / (double) RAND_MAX) *(xmax-xmin);
+            double Y = ymin + ((double) rand() / (double) RAND_MAX) *(ymax-ymin);
+            double Z = zmin + ((double) rand() / (double) RAND_MAX) *(zmax-zmin);
+
+            int nx = round((X-x)/(xmax-xmin));
+            int ny = round((Y-y)/(ymax-ymin));
+            int nz = round((Z-z)/(zmax-zmin));
+
+            double dist = R - sqrt( SQR(x-X + nx*(xmax-xmin)) +
+                                    SQR(y-Y + ny*(ymax-ymin)) +
+                                    SQR(z-Z + nz*(zmax-zmin)) );
+
+            sum = MIN(sum, -dist);
+          }
+
+          return -sum;
+        }
+      default: throw std::invalid_argument("[ERROR]: Wrong type of initial geometry");
+    }
+  }
 } phi_free_cf;
 
 class phi_biof_cf_t : public CF_3 {
@@ -324,15 +510,28 @@ public:
 
 class bc_wall_type_t : public WallBC3D {
 public:
-  BoundaryConditionType operator()( double, double, double ) const
+  BoundaryConditionType operator()(double x, double y, double z) const
   {
-    return NEUMANN;
+    double pa = phi_agar_cf(x,y,z);
+    double pf = phi_free_cf(x,y,z);
+    if (pa < 0 && pf < 0) return bc_biof;
+    else if (pa > 0 && pf > 0) throw;
+    else if (pa > 0)      return bc_agar;
+    else if (pf > 0)      return bc_free;
   }
 } bc_wall_type;
 
 class bc_wall_value_t : public CF_3 {
 public:
-  double operator()(double , double, double ) const { return 0; }
+  double operator()(double x, double y, double z) const
+  {
+    double pa = phi_agar_cf(x,y,z);
+    double pf = phi_free_cf(x,y,z);
+    if (pa < 0 && pf < 0) return bc_biof == NEUMANN ? 0 : C0b;
+    else if (pa > 0 && pf > 0) throw;
+    else if (pa > 0)      return bc_agar == NEUMANN ? 0 : C0a;
+    else if (pf > 0)      return bc_free == NEUMANN ? 0 : C0f;
+  }
 } bc_wall_value;
 
 class initial_concentration_free_t : public CF_3 {
@@ -779,8 +978,8 @@ int main (int argc, char* argv[])
   }
 
   my_p4est_level_set_t ls(ngbd);
-  ls.reinitialize_1st_order_time_2nd_order_space(phi_free, 100);
-  ls.reinitialize_1st_order_time_2nd_order_space(phi_agar, 100);
+  ls.reinitialize_1st_order_time_2nd_order_space(phi_free);
+  ls.reinitialize_1st_order_time_2nd_order_space(phi_agar);
 
   if (nb_geometry == 6)
   {

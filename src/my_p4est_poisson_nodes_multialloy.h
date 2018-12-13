@@ -462,7 +462,7 @@ private:
       ptr_->interp_.set_input(ptr_->c0n_gamma_.vec, linear);
       double c0n = ptr_->interp_(x, y, z);
 
-      return ptr_->Dl0_/(1.-ptr_->kp0_)*(*ptr_->c0_flux_)(x,y,z)-c0n)/c0;
+      return ptr_->Dl0_/(1.-ptr_->kp0_)*((*ptr_->c0_flux_)(x,y,z)-c0n)/c0;
     }
   } vn_from_c0_;
 #else
@@ -563,33 +563,28 @@ private:
 #endif
 
   // jump in normal derivative of temperature
-#ifdef P4_TO_P8
-  class tn_jump_t : public CF_3
+  class tn_jump_t :
+    #ifdef P4_TO_P8
+      public CF_3
+    #else
+      public CF_2
+    #endif
   {
     my_p4est_poisson_nodes_multialloy_t *ptr_;
   public:
-    inline void set_ptr(my_p4est_poisson_nodes_multialloy_t* ptr) {ptr_ = ptr;}
+    inline void set_ptr(my_p4est_poisson_nodes_multialloy_t* ptr) { ptr_ = ptr; }
+#ifdef P4_TO_P8
     double operator()(double x, double y, double z) const
     {
-      // from now on liquid phase is in \phi < 0 and solid phase is in \phi > 0
-//      return ptr_->latent_heat_/ptr_->t_cond_*(*ptr_->vn_exact_)(x,y,z);
       return -ptr_->latent_heat_/ptr_->t_cond_*ptr_->vn_from_c0_(x,y,z) + (*ptr_->jump_tn_)(x,y,z);
     }
-  } tn_jump_;
 #else
-  class tn_jump_t : public CF_2
-  {
-    my_p4est_poisson_nodes_multialloy_t *ptr_;
-  public:
-    inline void set_ptr(my_p4est_poisson_nodes_multialloy_t* ptr) {ptr_ = ptr;}
     double operator()(double x, double y) const
     {
-      // from now on liquid phase is in \phi < 0 and solid phase is in \phi > 0
-//      return ptr_->latent_heat_/ptr_->t_cond_*(*ptr_->vn_exact_)(x,y);
       return -ptr_->latent_heat_/ptr_->t_cond_*ptr_->vn_from_c0_(x,y) + (*ptr_->jump_tn_)(x,y);
     }
-  } tn_jump_;
 #endif
+  } tn_jump_;
 
 };
 

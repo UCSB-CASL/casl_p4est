@@ -408,8 +408,11 @@ void my_p4est_biofilm_t::solve_concentration()
   std::vector<Vec>      phi_neum;
   std::vector<action_t> action(1, INTERSECTION);
   std::vector<int>      color(1, 0);
-
+#ifdef P4_TO_P8
+  std::vector< CF_3* > zero_cf_array(1, &zero_cf);
+#else
   std::vector< CF_2* > zero_cf_array(1, &zero_cf);
+#endif
   std::vector< BoundaryConditionType > bc_neum(1, NEUMANN);
   poisson_solver.set_jump_conditions(zero_cf, zero_cf_array);
   poisson_solver.set_bc_interface_type(bc_neum);
@@ -667,8 +670,13 @@ void my_p4est_biofilm_t::solve_pressure()
   bc_pressure.set_input(bc_pressure_vec, linear);
 
   std::vector<BoundaryConditionType> bc_interface_type(2);
+#ifdef P4_TO_P8
+  std::vector< CF_3 *> bc_interface_value(2);
+  std::vector< CF_3 *> bc_interface_coeff(2);
+#else
   std::vector< CF_2 *> bc_interface_value(2);
   std::vector< CF_2 *> bc_interface_coeff(2);
+#endif
 
   bc_interface_type[0] = NEUMANN;   bc_interface_value[0] = &zero_cf;     bc_interface_coeff[0] = &zero_cf;
   bc_interface_type[1] = DIRICHLET; bc_interface_value[1] = &bc_pressure; bc_interface_coeff[1] = &zero_cf;
