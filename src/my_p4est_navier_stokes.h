@@ -179,14 +179,7 @@ protected:
         (bc_v[2].wallType(xyz_) == DIRICHLET) &&
     #endif
         bc_pressure->wallType(xyz_) == NEUMANN);
-  };
-
-  typedef enum
-  {
-    SAVE=2451,
-    SAVE_ASCII,
-    LOAD
-  } save_or_load;
+  }
 
   /*!
    * \brief save_or_load_parameters : save or loads the solver parameters in the file of path given in filename
@@ -216,14 +209,19 @@ protected:
    * \param flag[in]    : switch the behavior between write or read
    * \param tn[inout]   : in write mode, simulation time at which the function is called (to be saved, unmodified)
    *                      in read mode, simulation time at which the data were saved (to be read from file and stored in tn)
+   * \param mpi[in]     : pointer to the mpi_environment_t (necessary for the load, disregarded for the save)
    * [note: implemented in one given function with switched behavior to avoid ambiguity and confusion due to several
    * function implementations to be modified in the future if the parameter/variable order or the parameter/variable
    * list is changed (the save-state files are binary files, order and number of read/write operations is crucial)]
    */
-  void save_or_load_parameters(const char* filename, splitting_criteria_t* data, save_or_load flag, double& tn);
+  void save_or_load_parameters(const char* filename, splitting_criteria_t* splitting_criterion, save_or_load flag, double& tn, const mpi_environment_t* mpi = NULL);
+  void fill_or_load_double_parameters(save_or_load flag, PetscReal* data, splitting_criteria_t* splitting_criterion, double& tn);
+  void fill_or_load_integer_parameters(save_or_load flag, PetscInt* data, splitting_criteria_t* splitting_criterion);
 
+  void load_state(const mpi_environment_t& mpi, const char* path_to_folder, double& tn);
 public:
   my_p4est_navier_stokes_t(my_p4est_node_neighbors_t *ngbd_nm1, my_p4est_node_neighbors_t *ngbd_n, my_p4est_faces_t *faces_n);
+  my_p4est_navier_stokes_t(const mpi_environment_t& mpi, const char* path_to_saved_state, double &simulation_time);
   ~my_p4est_navier_stokes_t();
 
   void set_parameters(double mu, double rho, int sl_order, double uniform_band, double threshold_split_cell, double n_times_dt);
@@ -297,6 +295,19 @@ public:
   inline my_p4est_interpolation_nodes_t* get_interp_phi() { return interp_phi; }
 
   inline double get_max_L2_norm_u() { return max_L2_norm_u; }
+
+  inline double get_mu() const {return mu;}
+  inline double get_split_threshold() const {return threshold_split_cell;}
+  inline double get_rho() const {return rho;}
+  inline double get_uniform_band() const {return uniform_band;}
+  inline double get_cfl() const {return n_times_dt;}
+  inline int get_sl_order() const {return sl_order;}
+  inline double get_length_of_domain() const {return (xyz_max[0]-xyz_min[0]);}
+  inline double get_height_of_domain() const {return (xyz_max[1]-xyz_min[1]);}
+#ifdef P4_TO_P8
+  inline double get_width_of_domain() const {return (xyz_max[2]-xyz_min[2]);}
+#endif
+  inline my_p4est_brick_t* get_brick() const {return brick;}
 
   void solve_viscosity();
 
@@ -385,7 +396,6 @@ public:
    */
   void save_state(const char* path_to_root_directory, double tn, unsigned int n_saved=1);
 
-  void load_state(const mpi_environment_t& mpi, const char* path_to_folder, splitting_criteria_t* data, p4est_connectivity_t* conn, double& tn);
 };
 
 

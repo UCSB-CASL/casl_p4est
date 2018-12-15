@@ -342,6 +342,62 @@ my_p4est_navier_stokes_t::my_p4est_navier_stokes_t(my_p4est_node_neighbors_t *ng
   interp_phi->set_input(phi, linear);
 }
 
+my_p4est_navier_stokes_t::my_p4est_navier_stokes_t(const mpi_environment_t& mpi, const char* path_to_save_state, double &simulation_time)
+  : wall_bc_value_hodge(this), interface_bc_value_hodge(this)
+{
+  PetscErrorCode ierr;
+  // we need to initialize those to NULL, otherwise the loader will freak out
+  // no risk of memory leak here, this is a CONSTRUCTOR
+  brick = NULL; conn = NULL;
+  p4est_n = NULL; ghost_n = NULL; nodes_n = NULL;
+  hierarchy_n = NULL; ngbd_n = NULL;
+  ngbd_c = NULL; faces_n = NULL;
+  p4est_nm1 = NULL; ghost_nm1 = NULL; nodes_nm1 = NULL;
+  hierarchy_nm1 = NULL; ngbd_nm1 = NULL;
+  phi = NULL; hodge = NULL; smoke = NULL;
+  for (short kk = 0; kk < P4EST_DIM; ++kk) {
+    vnm1_nodes[kk] = NULL;
+    vn_nodes[kk] = NULL;
+  }
+  load_state(mpi, path_to_save_state, simulation_time);
+  ierr = VecDuplicate(hodge, &pressure); CHKERRXX(ierr);
+
+  bc_v = NULL;
+  bc_pressure = NULL;
+
+  vorticity = NULL;
+  smoke = NULL;
+  bc_smoke = NULL;
+
+  Vec vec_loc;
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    external_forces[dir] = NULL;
+    vstar[dir] = NULL;
+    vnp1[dir] = NULL;
+
+    vnp1_nodes[dir] = NULL;
+
+    ierr = VecCreateGhostFaces(p4est_n, faces_n, &face_is_well_defined[dir], dir); CHKERRXX(ierr);
+    ierr = VecGhostGetLocalForm(face_is_well_defined[dir], &vec_loc); CHKERRXX(ierr);
+    ierr = VecSet(vec_loc, 1); CHKERRXX(ierr);
+    ierr = VecGhostRestoreLocalForm(face_is_well_defined[dir], &vec_loc); CHKERRXX(ierr);
+
+    ierr = VecDuplicate(face_is_well_defined[dir], &dxyz_hodge[dir]); CHKERRXX(ierr);
+    ierr = VecGhostGetLocalForm(dxyz_hodge[dir], &vec_loc); CHKERRXX(ierr);
+    ierr = VecSet(vec_loc, 0); CHKERRXX(ierr);
+    ierr = VecGhostRestoreLocalForm(dxyz_hodge[dir], &vec_loc); CHKERRXX(ierr);
+
+    ierr = VecDuplicate(vn_nodes[dir], &vnp1_nodes [dir]); CHKERRXX(ierr);
+
+    ierr = VecDuplicate(face_is_well_defined[dir], &vstar[dir]); CHKERRXX(ierr);
+    ierr = VecDuplicate(face_is_well_defined[dir], &vnp1[dir]); CHKERRXX(ierr);
+  }
+  ierr = VecCreateGhostNodes(p4est_n, nodes_n, &vorticity); CHKERRXX(ierr);
+  interp_phi = new my_p4est_interpolation_nodes_t(ngbd_n);
+  interp_phi->set_input(phi, linear);
+}
+
 
 my_p4est_navier_stokes_t::~my_p4est_navier_stokes_t()
 {
@@ -365,7 +421,6 @@ my_p4est_navier_stokes_t::~my_p4est_navier_stokes_t()
 
   if(interp_phi!=NULL) delete interp_phi;
 
-
   delete ngbd_nm1;
   delete hierarchy_nm1;
   p4est_nodes_destroy(nodes_nm1);
@@ -381,7 +436,6 @@ my_p4est_navier_stokes_t::~my_p4est_navier_stokes_t()
   p4est_destroy(p4est_n);
 
   my_p4est_brick_destroy(conn, brick);
-
 }
 
 
@@ -2308,14 +2362,12 @@ void my_p4est_navier_stokes_t::save_state(const char* path_to_root_directory, do
   PetscErrorCode ierr;
   char filename[PATH_MAX];
 
-  // save general solver parameters first
-  sprintf(filename, "%s/solver_parameters.petsc", path_to_folder);
+  sprintf(filename, "%s/solver_parameters", path_to_folder);
   save_or_load_parameters(filename, (splitting_criteria_t*) p4est_n->user_pointer, SAVE, tn);
-  sprintf(filename, "%s/solver_parameters.ascii", path_to_folder);
-  save_or_load_parameters(filename, (splitting_criteria_t*) p4est_n->user_pointer, SAVE_ASCII, tn);
-  // save connectivity
-  sprintf(filename, "%s/connectivity", path_to_folder);
-  p4est_connectivity_save(filename, p4est_n->connectivity);
+
+  // save brick
+  sprintf(filename, "%s/brick", path_to_folder);
+  my_p4est_save_or_load_brick(p4est_n->mpicomm, p4est_n->mpirank, filename, SAVE, brick);
   // save p4est_n
   sprintf(filename, "%s/p4est_n", path_to_folder);
   p4est_save_ext(filename, p4est_n, P4EST_FALSE, P4EST_TRUE); // no cell-data saved
@@ -2345,185 +2397,306 @@ void my_p4est_navier_stokes_t::save_state(const char* path_to_root_directory, do
   ierr = PetscPrintf(p4est_n->mpicomm, "Saved solver state in ... %s\n", path_to_folder); CHKERRXX(ierr);
 }
 
-void my_p4est_navier_stokes_t::save_or_load_parameters(const char* filename, splitting_criteria_t* data, save_or_load flag, double &tn)
+void my_p4est_navier_stokes_t::fill_or_load_double_parameters(save_or_load flag, PetscReal *data, splitting_criteria_t *splitting_criterion, double &tn)
 {
-  PetscViewer viewer;
-  PetscErrorCode ierr;
-  struct
+  size_t idx = 0;
+  for (short dim = 0; dim < P4EST_DIM; ++dim)
   {
-    PetscErrorCode operator()(save_or_load flag_, PetscViewer& viewer_, void* data_, PetscInt n_data, PetscDataType dtype, const char *var_name = NULL)
-    {
-      switch (flag_) {
-      case SAVE:
-      {
-        return PetscViewerBinaryWrite(viewer_, data_, n_data, dtype, PETSC_FALSE);
-        break;
-      }
-      case SAVE_ASCII:
-      {
-        if(var_name == NULL)
-          throw std::runtime_error("my_p4est_navier_stokes_t::save_or_load_parameters: the variable name MUST be given when exporting ASCII data");
-        PetscErrorCode iierr;
-        iierr = PetscViewerASCIIPrintf(viewer_, "%s:", var_name);
-        switch (dtype) {
-        case PETSC_INT:
-        {
-          for (PetscInt var_idx = 0; var_idx < n_data; ++var_idx)
-            iierr = iierr || PetscViewerASCIIPrintf(viewer_, " %d", ((PetscInt*)data_)[var_idx]);
-          iierr = PetscViewerASCIIPrintf(viewer_, "\n", var_name);
-          return iierr;
-          break;
-        }
-        case PETSC_BOOL:
-        {
-          for (PetscInt var_idx = 0; var_idx < n_data; ++var_idx)
-            iierr = iierr || PetscViewerASCIIPrintf(viewer_, " %s", ((((PetscBool*) data_)[var_idx])? "true" : "false"));
-          iierr = PetscViewerASCIIPrintf(viewer_, "\n", var_name);
-          return iierr;
-          break;
-        }
-        case PETSC_DOUBLE:
-        {
-          for (PetscInt var_idx = 0; var_idx < n_data; ++var_idx)
-            iierr = iierr || PetscViewerASCIIPrintf(viewer_, " %g", ((PetscReal*) data_)[var_idx]);
-          iierr = PetscViewerASCIIPrintf(viewer_, "\n", var_name);
-          return iierr;
-          break;
-        }
-        default:
-          throw std::runtime_error("my_p4est_navier_stokes_t::save_or_load_parameters: unknonw dataype when exporting parameters in ASCII format.");
-          break;
-        }
-        break;
-      }
-      case LOAD:
-      {
-        PetscInt num_read;
-        PetscErrorCode iierr = PetscViewerBinaryRead(viewer_, data_, n_data, &num_read, dtype);
-        P4EST_ASSERT(num_read == n_data);
-        return iierr;
-        break;
-      }
-      default:
-        throw std::runtime_error("my_p4est_navier_stokes_t::save_or_load_parameters: unknown flag value");
-        break;
-      }
-
+    switch (flag) {
+    case SAVE:
+      data[idx++] = dxyz_min[dim];
+      break;
+    case LOAD:
+      dxyz_min[dim] = data[idx++];
+      break;
+    default:
+      throw std::runtime_error("my_p4est_navier_stokes_t::fill_or_load_double_data: unknown flag value");
+      break;
     }
-  } elementary_operation;
-  int P4EST_DIM_COPY;
+  }
+  for (short dim = 0; dim < P4EST_DIM; ++dim)
+  {
+    switch (flag) {
+    case SAVE:
+      data[idx++] = xyz_min[dim];
+      break;
+    case LOAD:
+      xyz_min[dim] = data[idx++];
+      break;
+    default:
+      throw std::runtime_error("my_p4est_navier_stokes_t::fill_or_load_double_data: unknown flag value");
+      break;
+    }
+  }
+  for (short dim = 0; dim < P4EST_DIM; ++dim)
+  {
+    switch (flag) {
+    case SAVE:
+      data[idx++] = xyz_max[dim];
+      break;
+    case LOAD:
+      xyz_max[dim] = data[idx++];
+      break;
+    default:
+      throw std::runtime_error("my_p4est_navier_stokes_t::fill_or_load_double_data: unknown flag value");
+      break;
+    }
+  }
+  for (short dim = 0; dim < P4EST_DIM; ++dim)
+  {
+    switch (flag) {
+    case SAVE:
+      data[idx++] = convert_to_xyz[dim];
+      break;
+    case LOAD:
+      convert_to_xyz[dim] = data[idx++];
+      break;
+    default:
+      throw std::runtime_error("my_p4est_navier_stokes_t::fill_or_load_double_data: unknown flag value");
+      break;
+    }
+  }
+  {
+    switch (flag) {
+    case SAVE:
+    {
+      data[idx++] = mu;
+      data[idx++] = rho;
+      data[idx++] = tn;
+      data[idx++] = dt_n;
+      data[idx++] = dt_nm1;
+      data[idx++] = max_L2_norm_u;
+      data[idx++] = uniform_band;
+      data[idx++] = threshold_split_cell;
+      data[idx++] = n_times_dt;
+      data[idx++] = smoke_thresh;
+      data[idx++] = splitting_criterion->lip;
+      break;
+    }
+    case LOAD:
+    {
+      mu                        = data[idx++];
+      rho                       = data[idx++];
+      tn                        = data[idx++];
+      dt_n                      = data[idx++];
+      dt_nm1                    = data[idx++];
+      max_L2_norm_u             = data[idx++];
+      uniform_band              = data[idx++];
+      threshold_split_cell      = data[idx++];
+      n_times_dt                = data[idx++];
+      smoke_thresh              = data[idx++];
+      splitting_criterion->lip  = data[idx++];
+      break;
+    }
+    default:
+      throw std::runtime_error("my_p4est_navier_stokes_t::fill_or_load_double_data: unknown flag value");
+      break;
+    }
+  }
+  P4EST_ASSERT(idx==4*P4EST_DIM+11);
+}
+
+void my_p4est_navier_stokes_t::fill_or_load_integer_parameters(save_or_load flag, PetscInt *data, splitting_criteria_t* splitting_criterion)
+{
+  size_t idx = 0;
   switch (flag) {
   case SAVE:
   {
-    ierr = PetscViewerBinaryOpen(p4est_n->mpicomm, filename, FILE_MODE_WRITE, &viewer); CHKERRXX(ierr);
-    P4EST_DIM_COPY = P4EST_DIM;
-    elementary_operation(flag, viewer, &P4EST_DIM_COPY, 1, PETSC_INT);
-    break;
-  }
-  case SAVE_ASCII:
-  {
-    ierr = PetscViewerASCIIOpen(p4est_n->mpicomm, filename, &viewer); CHKERRXX(ierr);
-    P4EST_DIM_COPY = P4EST_DIM;
-    elementary_operation(flag, viewer, &P4EST_DIM_COPY, 1, PETSC_INT, "P4EST_DIM");
+    data[idx++] = P4EST_DIM;
+    data[idx++] = (PetscInt) refine_with_smoke;
+    data[idx++] = splitting_criterion->min_lvl;
+    data[idx++] = splitting_criterion->max_lvl;
+    data[idx++] = sl_order;
     break;
   }
   case LOAD:
   {
-    ierr = PetscViewerBinaryOpen(p4est_n->mpicomm, filename, FILE_MODE_READ, &viewer); CHKERRXX(ierr);
-    elementary_operation(flag, viewer, &P4EST_DIM_COPY, 1, PETSC_INT);
+    PetscInt P4EST_DIM_COPY       = data[idx++];
     if(P4EST_DIM_COPY != P4EST_DIM)
-      throw std::runtime_error("my_p4est_navier_stokes_t::save_or_load_parameters: you are trying to read 2D (resp. 3D) data with a 3D (resp. 2D) program...");
+      throw std::runtime_error("You're trying to load 2D (resp. 3D) data with a 3D (resp. 2D) program...");
+    refine_with_smoke             = (bool) data[idx++];
+    splitting_criterion->min_lvl  = data[idx++];
+    splitting_criterion->max_lvl  = data[idx++];
+    sl_order                      = data[idx++];
+    break;
+  }
+  default:
+    throw std::runtime_error("my_p4est_navier_stokes_t::fill_or_load_integer_data: unknown flag value");
+    break;
+  }
+  P4EST_ASSERT(idx==5);
+}
+
+void my_p4est_navier_stokes_t::save_or_load_parameters(const char* filename, splitting_criteria_t* splitting_criterion, save_or_load flag, double &tn, const mpi_environment_t* mpi)
+{
+  PetscErrorCode ierr;
+  // dxyz_min, xyz_min, xyz_max, convert_to_xyz, mu, rho, tn, dt_n, dt_nm1, max_L2_norm_u, uniform_band, threshold_split_cell, n_times_dt, smoke_thresh, data->lip
+  // that makes 4*P4EST_DIM+11 doubles to save
+  PetscReal double_parameters[4*P4EST_DIM+11];
+  // P4EST_DIM, refine_with_smoke (converted to int), data->min_lvl, data->max_lvl, sl_order
+  // that makes 5 integers
+  PetscInt integer_parameters[5];
+  int fd;
+  char diskfilename[PATH_MAX];
+  switch (flag) {
+  case SAVE:
+  {
+    if(p4est_n->mpirank == 0)
+    {
+      sprintf(diskfilename, "%s_integers", filename);
+      fill_or_load_integer_parameters(flag, integer_parameters, splitting_criterion);
+      ierr = PetscBinaryOpen(diskfilename, FILE_MODE_WRITE, &fd); CHKERRXX(ierr);
+      ierr = PetscBinaryWrite(fd, integer_parameters, 5, PETSC_INT, PETSC_TRUE); CHKERRXX(ierr);
+      ierr = PetscBinaryClose(fd); CHKERRXX(ierr);
+      // Then we save the double parameters
+      sprintf(diskfilename, "%s_doubles", filename);
+      fill_or_load_double_parameters(flag, double_parameters, splitting_criterion, tn);
+      ierr = PetscBinaryOpen(diskfilename, FILE_MODE_WRITE, &fd); CHKERRXX(ierr);
+      ierr = PetscBinaryWrite(fd, double_parameters, 4*P4EST_DIM+11, PETSC_DOUBLE, PETSC_TRUE); CHKERRXX(ierr);
+      ierr = PetscBinaryClose(fd); CHKERRXX(ierr);
+    }
+    break;
+  }
+  case LOAD:
+  {
+    sprintf(diskfilename, "%s_integers", filename);
+    if(mpi->rank() == 0)
+    {
+      ierr = PetscBinaryOpen(diskfilename, FILE_MODE_READ, &fd); CHKERRXX(ierr);
+      ierr = PetscBinaryRead(fd, integer_parameters, 5, PETSC_INT); CHKERRXX(ierr);
+      ierr = PetscBinaryClose(fd); CHKERRXX(ierr);
+    }
+    int mpiret = MPI_Bcast(integer_parameters, 5, MPI_INT, 0, mpi->comm()); SC_CHECK_MPI(mpiret);
+    fill_or_load_integer_parameters(flag, integer_parameters, splitting_criterion);
+    // Then we save the double parameters
+    sprintf(diskfilename, "%s_doubles", filename);
+    if(mpi->rank() == 0)
+    {
+      ierr = PetscBinaryOpen(diskfilename, FILE_MODE_READ, &fd); CHKERRXX(ierr);
+      ierr = PetscBinaryRead(fd, double_parameters, 4*P4EST_DIM+11, PETSC_DOUBLE); CHKERRXX(ierr);
+      ierr = PetscBinaryClose(fd); CHKERRXX(ierr);
+    }
+    mpiret = MPI_Bcast(double_parameters, 4*P4EST_DIM+11, MPI_DOUBLE, 0, mpi->comm()); SC_CHECK_MPI(mpiret);
+    fill_or_load_double_parameters(flag, double_parameters, splitting_criterion, tn);
     break;
   }
   default:
     throw std::runtime_error("my_p4est_navier_stokes_t::save_or_load_parameters: unknown flag value");
     break;
+    break;
   }
-  ierr = elementary_operation(flag, viewer, dxyz_min,               P4EST_DIM,  PETSC_DOUBLE, "dxyz_min");              CHKERRXX(ierr);
-  ierr = elementary_operation(flag, viewer, xyz_min,                P4EST_DIM,  PETSC_DOUBLE, "xyz_min");               CHKERRXX(ierr);
-  ierr = elementary_operation(flag, viewer, xyz_max,                P4EST_DIM,  PETSC_DOUBLE, "xyz_max");               CHKERRXX(ierr);
-  ierr = elementary_operation(flag, viewer, convert_to_xyz,         P4EST_DIM,  PETSC_DOUBLE, "convert_to_xyz");        CHKERRXX(ierr);
-  ierr = elementary_operation(flag, viewer, &mu,                    1,          PETSC_DOUBLE, "mu");                    CHKERRXX(ierr);
-  ierr = elementary_operation(flag, viewer, &rho,                   1,          PETSC_DOUBLE, "rho");                   CHKERRXX(ierr);
-  ierr = elementary_operation(flag, viewer, &tn,                    1,          PETSC_DOUBLE, "tn");                    CHKERRXX(ierr);
-  ierr = elementary_operation(flag, viewer, &dt_n,                  1,          PETSC_DOUBLE, "dt_n");                  CHKERRXX(ierr);
-  ierr = elementary_operation(flag, viewer, &dt_nm1,                1,          PETSC_DOUBLE, "dt_nm1");                CHKERRXX(ierr);
-  ierr = elementary_operation(flag, viewer, &max_L2_norm_u,         1,          PETSC_DOUBLE, "max_L2_norm_u");         CHKERRXX(ierr);
-  ierr = elementary_operation(flag, viewer, &uniform_band,          1,          PETSC_DOUBLE, "uniform_band");          CHKERRXX(ierr);
-  ierr = elementary_operation(flag, viewer, &threshold_split_cell,  1,          PETSC_DOUBLE, "threshold_split_cell");  CHKERRXX(ierr);
-  ierr = elementary_operation(flag, viewer, &n_times_dt,            1,          PETSC_DOUBLE, "n_times_dt");            CHKERRXX(ierr);
-  ierr = elementary_operation(flag, viewer, &refine_with_smoke,     1,          PETSC_BOOL,   "refine_with_smoke");     CHKERRXX(ierr);
-  ierr = elementary_operation(flag, viewer, &smoke_thresh,          1,          PETSC_DOUBLE, "smoke_thresh");          CHKERRXX(ierr);
-  ierr = elementary_operation(flag, viewer, &data->min_lvl,         1,          PETSC_INT,    "data->min_lvl");         CHKERRXX(ierr);
-  ierr = elementary_operation(flag, viewer, &data->max_lvl,         1,          PETSC_INT,    "data->max_lvl");         CHKERRXX(ierr);
-  ierr = elementary_operation(flag, viewer, &data->lip,             1,          PETSC_DOUBLE, "data->lip");             CHKERRXX(ierr);
-  ierr = elementary_operation(flag, viewer, &sl_order,              1,          PETSC_INT,    "sl_order");              CHKERRXX(ierr);
-  ierr = PetscViewerDestroy(viewer); CHKERRXX(ierr);
 }
 
-void my_p4est_navier_stokes_t::load_state(const mpi_environment_t& mpi, const char* path_to_folder, splitting_criteria_t* data, p4est_connectivity_t* conn, double& tn)
+void my_p4est_navier_stokes_t::load_state(const mpi_environment_t& mpi, const char* path_to_folder, double& tn)
 {
-
   PetscErrorCode ierr;
   char filename[PATH_MAX];
 
   // load general solver parameters first
-  if(data != NULL)
-    delete data;
-  sprintf(filename, "%s/solver_parameters.petsc", path_to_folder);
-  save_or_load_parameters(filename, data, LOAD, tn);
-  // load connectivity
-  if(conn != NULL)
-    p4est_connectivity_destroy(conn);
-  sprintf(filename, "%s/connectivity", path_to_folder);
-  conn = p4est_connectivity_load(filename, NULL);
+  splitting_criteria_t* data = new splitting_criteria_t;
+  sprintf(filename, "%s/solver_parameters", path_to_folder);
+  save_or_load_parameters(filename, data, LOAD, tn, &mpi);
+  // load brick
+  if(brick != NULL)
+  {
+    if(brick->nxyz_to_treeid != NULL)
+      P4EST_FREE(brick->nxyz_to_treeid);
+    delete brick;
+  }
+  brick = new my_p4est_brick_t; brick->nxyz_to_treeid = NULL; // set that pointer to NULL because the load will freak out otherwise
+  sprintf(filename, "%s/brick", path_to_folder);
+  my_p4est_save_or_load_brick(mpi.comm(), mpi.rank(), filename, LOAD, brick);
   // load p4est_n
-  if(p4est_n != NULL)
+  if (p4est_n != NULL)
     p4est_destroy(p4est_n);
   sprintf(filename, "%s/p4est_n", path_to_folder);
-  p4est_n = p4est_load_ext(filename, mpi.comm(), 0, P4EST_FALSE, P4EST_FALSE, P4EST_FALSE, (void*) &data, &conn); // no data load, because we assume no data saved, we don't ignore the saved partition, in case we load it with the same number of processes
+  p4est_n = p4est_load_ext(filename, mpi.comm(), 0, P4EST_FALSE, P4EST_TRUE, P4EST_TRUE, (void*) data, &conn); // no data load, because we assume no data saved, we don't ignore the saved partition, in case we load it with the same number of processes
+  // we do not balance because it is supposedly already balanced when saved on disk (if not, we'd be in trouble when loading the node-sampled vectors here below after balancing the p4est in the meantime...)
+  // we do not partition it either because this is supposedly done at the loading stage under the hood by p4est_load_ext
+  if (ghost_n != NULL)
+    p4est_ghost_destroy(ghost_n);
+  ghost_n = my_p4est_ghost_new(p4est_n, P4EST_CONNECT_FULL);
+  my_p4est_ghost_expand(p4est_n, ghost_n);
+  if (nodes_n != NULL)
+    p4est_nodes_destroy(nodes_n);
+  nodes_n = my_p4est_nodes_new(p4est_n, ghost_n);
+  if(hierarchy_n != NULL)
+    delete hierarchy_n;
+  hierarchy_n = new my_p4est_hierarchy_t(p4est_n, ghost_n, brick);
+  if(ngbd_n != NULL)
+    delete ngbd_n;
+  ngbd_n = new my_p4est_node_neighbors_t(hierarchy_n, nodes_n);
+  if(ngbd_c != NULL)
+    delete ngbd_c;
+  ngbd_c = new my_p4est_cell_neighbors_t(hierarchy_n);
+  if(faces_n != NULL)
+    delete faces_n;
+  faces_n = new my_p4est_faces_t(p4est_n, ghost_n, brick, ngbd_c);
+
   // load p4est_nm1
   if(p4est_nm1 != NULL)
     p4est_destroy(p4est_nm1);
   sprintf(filename, "%s/p4est_nm1", path_to_folder);
-  p4est_nm1 = p4est_load_ext(filename, mpi.comm(), 0, P4EST_FALSE, P4EST_FALSE, P4EST_FALSE, (void*) &data, &conn);
+  p4est_nm1 = p4est_load_ext(filename, mpi.comm(), 0, P4EST_FALSE, P4EST_TRUE, P4EST_TRUE, (void*) data, &conn);
+  // we do not balance either because it is supposedly already balanced when saved on disk (if not, we'd be in trouble when loading the node-sampled vectors here below after balancing the p4est in the meantime...)
+  // we do not partition it either because this is supposedly done at the loading stage under the hood by p4est_load_ext
+  if (ghost_nm1 != NULL)
+    p4est_ghost_destroy(ghost_nm1);
+  ghost_nm1 = my_p4est_ghost_new(p4est_nm1, P4EST_CONNECT_FULL);
+  my_p4est_ghost_expand(p4est_nm1, ghost_nm1);
+  if (nodes_nm1 != NULL)
+    p4est_nodes_destroy(nodes_nm1);
+  nodes_nm1 = my_p4est_nodes_new(p4est_nm1, ghost_nm1);
+  if(hierarchy_nm1 != NULL)
+    delete hierarchy_nm1;
+  hierarchy_nm1 = new my_p4est_hierarchy_t(p4est_nm1, ghost_nm1, brick);
+  if(ngbd_nm1 != NULL)
+    delete ngbd_nm1;
+  ngbd_nm1 = new my_p4est_node_neighbors_t(hierarchy_nm1, nodes_nm1);
+
+
   // load phi
-  if(phi != NULL)
-  {
+  if(phi != NULL){
     ierr = VecDestroy(phi); CHKERRXX(ierr);
   }
+  ierr = VecCreateGhostNodes(p4est_n, nodes_n, &phi); CHKERRXX(ierr);
   sprintf(filename, "%s/phi.petsc", path_to_folder);
-  ierr = VecLoad(mpi.comm(), filename, &phi); CHKERRXX(ierr);
-  // check if phi is consistent with p4est_n, ghost it and rebuilt it with updated ghost values
+  ierr = LoadVec(filename, &phi); CHKERRXX(ierr);
   // load hodge
+  if(hodge != NULL){
+    ierr = VecDestroy(hodge); CHKERRXX(ierr);
+  }
+  ierr = VecCreateGhostCells(p4est_n, ghost_n, &hodge); CHKERRXX(ierr);
   sprintf(filename, "%s/hodge.petsc", path_to_folder);
-  ierr = VecLoad(mpi.comm(), filename, &hodge); CHKERRXX(ierr);
-  // check if phi is consistent with p4est_n, ghost it and rebuilt it with updated ghost values
+  ierr = LoadVec(filename, &hodge); CHKERRXX(ierr);
   // load vnm1_nodes
-  for (short kk = 0; kk < P4EST_DIM; ++kk) {
-    if(vnm1_nodes[kk] != NULL)
-    {
+  for (short kk = 0; kk < P4EST_DIM; ++kk){
+    if(vnm1_nodes[kk] != NULL){
       ierr = VecDestroy(vnm1_nodes[kk]); CHKERRXX(ierr);
     }
+    ierr = VecCreateGhostNodes(p4est_nm1, nodes_nm1, &vnm1_nodes[kk]); CHKERRXX(ierr);
   }
   sprintf(filename, "%s/vnm1_nodes.petsc", path_to_folder);
-  ierr = VecLoad(mpi.comm(), filename, P4EST_DIM, vnm1_nodes); CHKERRXX(ierr);
-  // check if every component of vnm1_nodes is consistent with p4est_n, ghost it and rebuilt it with updated ghost values
+  ierr = LoadVec(filename, P4EST_DIM, vnm1_nodes); CHKERRXX(ierr);
   // load vn_nodes
-  for (short kk = 0; kk < P4EST_DIM; ++kk) {
-    if (vn_nodes[kk] != NULL) {
-      ierr = VecDestroy(vnm1_nodes[kk]); CHKERRXX(ierr);
+  for (short kk = 0; kk < P4EST_DIM; ++kk)
+  {
+    if(vn_nodes[kk] != NULL){
+      ierr = VecDestroy(vn_nodes[kk]); CHKERRXX(ierr);
     }
+    ierr = VecCreateGhostNodes(p4est_n, nodes_n, &vn_nodes[kk]); CHKERRXX(ierr);
   }
   sprintf(filename, "%s/vn_nodes.petsc", path_to_folder);
-  ierr = VecLoad(mpi.comm(), filename, P4EST_DIM, vn_nodes); CHKERRXX(ierr);
-  // check if every component of vn_nodes is consistent with p4est_n, ghost it and rebuilt it with updated ghost values
+  ierr = LoadVec(filename, P4EST_DIM, vn_nodes); CHKERRXX(ierr);
   // load smoke was used
   sprintf(filename, "%s/smoke.petsc", path_to_folder);
   if (file_exists(filename))
   {
-    ierr = VecLoad(mpi.comm(), filename, &smoke); CHKERRXX(ierr);
-    // check if smoke is consistent with p4est_n, ghost it and rebuild it
+    if(smoke != NULL){
+      ierr = VecDestroy(smoke); CHKERRXX(ierr);
+    }
+    ierr = VecCreateGhostNodes(p4est_n, nodes_n, &smoke);CHKERRXX(ierr);
+    ierr = LoadVec(filename, &smoke); CHKERRXX(ierr);
   }
 
   ierr = PetscPrintf(mpi.comm(), "Loaded solver state from ... %s\n", path_to_folder); CHKERRXX(ierr);

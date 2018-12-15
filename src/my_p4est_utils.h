@@ -110,6 +110,13 @@ typedef enum {
   IGNORE
 } BoundaryConditionType;
 
+typedef enum
+{
+  SAVE=2451,
+  LOAD
+} save_or_load;
+
+
 class mixed_interface
 {
 public:
@@ -457,8 +464,7 @@ PetscErrorCode VecDump(const char fname[], unsigned int n_vecs, const Vec *x, Pe
 PetscErrorCode VecDump(const char fname[], const Vec x, PetscBool skippheader=PETSC_FALSE, PetscBool usempiio=PETSC_TRUE);
 
 /*!
- * \brief VecLoad loads vectors from a binary Petsc-viewer exported on-disk file referred by path fname
- * \paran comm        [in]: MPI_Comm to which parallel vectors belong
+ * \brief LoadVec loads vectors from a binary Petsc-viewer exported on-disk file referred by path fname
  * \param fname       [in]: path to the binary Petsc-viewer exported on-disk file
  * \param n_vecs      [in]: number of vectors to be loaded
  * \param x           [out]: array of Petsc Vectors
@@ -466,12 +472,12 @@ PetscErrorCode VecDump(const char fname[], const Vec x, PetscBool skippheader=PE
  * (i.e. information about the global and local size of the vector) won't be read
  * \param usempiio: flag activating MPI-IO for reading/writing
  * \return a regular PetscError code;
- * [NOTE:] the vectors are created WITHIN the function (just as in VecCreateGhost[...]) do not create the vectors beforehand,
- * as that would leak to a memory leak...
+ * [NOTE:] the vectors passed by the user must be of the same (global) size as the ones loaded from file... if not, this function
+ * throws an std::invalid_argument exception...
  * [NOTE:] modified from the function taken from src/dm/examples/tutorials/ex15.c in the Petsc distribution
  */
-PetscErrorCode VecLoad(MPI_Comm comm, const char fname[], unsigned int n_vecs, Vec *x, PetscBool skippheader=PETSC_FALSE, PetscBool usempiio=PETSC_TRUE);
-PetscErrorCode VecLoad(MPI_Comm comm, const char fname[], Vec *x, PetscBool skippheader=PETSC_FALSE, PetscBool usempiio=PETSC_TRUE);
+PetscErrorCode LoadVec(const char fname[], unsigned int n_vecs, Vec *x, PetscBool skippheader=PETSC_FALSE, PetscBool usempiio=PETSC_TRUE);
+PetscErrorCode LoadVec(const char fname[], Vec *x, PetscBool skippheader=PETSC_FALSE, PetscBool usempiio=PETSC_TRUE);
 
 /*!
  * \brief is_folder returns true if the path points to an existing folder
@@ -519,6 +525,7 @@ int delete_directory(const char* root_path, int mpi_rank, MPI_Comm comm=MPI_COMM
 
 int get_subdirectories_in(const char* root_path, std::vector<std::string>& subdirectories);
 
+void my_p4est_save_or_load_brick(const MPI_Comm& comm, const int& mpirank, const char *filename, save_or_load flag, my_p4est_brick_t* brick);
 
 inline double int2double_coordinate_transform(p4est_qcoord_t a){
   return static_cast<double>(a)/static_cast<double>(P4EST_ROOT_LEN);
