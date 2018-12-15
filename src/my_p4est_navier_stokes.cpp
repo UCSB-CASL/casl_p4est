@@ -1177,6 +1177,28 @@ void my_p4est_navier_stokes_t::solve_projection()
   ierr = PetscLogEventEnd(log_my_p4est_navier_stokes_projection, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
+void my_p4est_navier_stokes_t::update_dxyz_hodge()
+{
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    double *dxyz_hodge_p;
+    PetscErrorCode ierr = VecGetArray(dxyz_hodge[dir], &dxyz_hodge_p); CHKERRXX(ierr);
+
+    p4est_locidx_t quad_idx;
+    p4est_topidx_t tree_idx;
+
+    for(p4est_locidx_t f_idx=0; f_idx<faces_n->num_local[dir]; ++f_idx)
+    {
+      faces_n->f2q(f_idx, dir, quad_idx, tree_idx);
+      int tmp = faces_n->q2f(quad_idx, 2*dir)==f_idx ? 0 : 1;
+      dxyz_hodge_p[f_idx] = compute_dxyz_hodge(quad_idx, tree_idx, 2*dir+tmp);
+    }
+
+    ierr = VecGhostUpdateBegin(dxyz_hodge[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd  (dxyz_hodge[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecRestoreArray(dxyz_hodge[dir], &dxyz_hodge_p); CHKERRXX(ierr);
+  }
+}
 
 void my_p4est_navier_stokes_t::compute_velocity_at_nodes()
 {
@@ -2194,7 +2216,7 @@ void my_p4est_navier_stokes_t::get_noslip_wall_forces(double wall_force[], const
                 int second_transverse_dir = (dir+2)%P4EST_DIM;
                 for (short jj = -1; jj < 2; jj+=2) {
                   xyz_stencil[second_transverse_dir] = xyz_f[second_transverse_dir] + ((double) jj)*0.5*rr*dxyz_min[second_transverse_dir]*((double) (1<<(data->max_lvl - quad->level)));
-                  fraction_noslip += ((is_no_slip(xyz_stencil))?0.25:0) // always in the domain boundary by definition in this case
+                  fraction_noslip += ((is_no_slip(xyz_stencil))?0.25:0); // always in the domain boundary by definition in this case
                 }
                 xyz_stencil[second_transverse_dir] = xyz_f[second_transverse_dir]; // reset that one
               }
@@ -2242,7 +2264,7 @@ void my_p4est_navier_stokes_t::get_noslip_wall_forces(double wall_force[], const
                   {
                     for (short jj = -1; jj < 2; jj+=2) {
                       xyz_stencil[second_transverse_dir] = xyz_w[second_transverse_dir] + ((double) jj)*0.5*rr*dxyz_min[second_transverse_dir]*((double) (1<<(data->max_lvl - quad->level)));
-                      fraction_noslip += ((is_in_domain(xyz_stencil) && is_no_slip(xyz_stencil))?0.25:0) // could be out of the domain (consider a corner in a cavity flow, for instance)
+                      fraction_noslip += ((is_in_domain(xyz_stencil) && is_no_slip(xyz_stencil))?0.25:0); // could be out of the domain (consider a corner in a cavity flow, for instance)
                     }
                     xyz_stencil[second_transverse_dir] = xyz_w[second_transverse_dir]; // reset that one
                   }
@@ -2265,9 +2287,9 @@ void my_p4est_navier_stokes_t::get_noslip_wall_forces(double wall_force[], const
 
                 element_drag += mu*transverse_derivative;
                 element_drag *= dxyz_min[dir]*((double) (1<<(data->max_lvl - quad->level)));
-  #ifdef P4_TO_P8
+#ifdef P4_TO_P8
                 element_drag *= dxyz_min[second_transverse_dir]*((double) (1<<(data->max_lvl - quad->level)));
-  #endif
+#endif
                 wall_force[dir] += ((double) (2*kk-1))*element_drag*fraction_noslip;
               }
             }
@@ -2606,6 +2628,28 @@ void my_p4est_navier_stokes_t::load_state(const mpi_environment_t& mpi, const ch
   brick = new my_p4est_brick_t; brick->nxyz_to_treeid = NULL; // set that pointer to NULL because the load will freak out otherwise
   sprintf(filename, "%s/brick", path_to_folder);
   my_p4est_save_or_load_brick(mpi.comm(), mpi.rank(), filename, LOAD, brick);
+
+  // load p4est_nm1
+  if(p4est_nm1 != NULL)
+    p4est_destroy(p4est_nm1);
+  sprintf(filename, "%s/p4est_nm1", path_to_folder);
+  p4est_nm1 = p4est_load_ext(filename, mpi.comm(), 0, P4EST_FALSE, P4EST_TRUE, P4EST_TRUE, (void*) data, &conn);
+  // we do not balance either because it is supposedly already balanced when saved on disk (if not, we'd be in trouble when loading the node-sampled vectors here below after balancing the p4est in the meantime...)
+  // we do not partition it either because this is supposedly done at the loading stage under the hood by p4est_load_ext
+  if (ghost_nm1 != NULL)
+    p4est_ghost_destroy(ghost_nm1);
+  ghost_nm1 = my_p4est_ghost_new(p4est_nm1, P4EST_CONNECT_FULL);
+  my_p4est_ghost_expand(p4est_nm1, ghost_nm1);
+  if (nodes_nm1 != NULL)
+    p4est_nodes_destroy(nodes_nm1);
+  nodes_nm1 = my_p4est_nodes_new(p4est_nm1, ghost_nm1);
+  if(hierarchy_nm1 != NULL)
+    delete hierarchy_nm1;
+  hierarchy_nm1 = new my_p4est_hierarchy_t(p4est_nm1, ghost_nm1, brick);
+  if(ngbd_nm1 != NULL)
+    delete ngbd_nm1;
+  ngbd_nm1 = new my_p4est_node_neighbors_t(hierarchy_nm1, nodes_nm1);
+
   // load p4est_n
   if (p4est_n != NULL)
     p4est_destroy(p4est_n);
@@ -2632,27 +2676,6 @@ void my_p4est_navier_stokes_t::load_state(const mpi_environment_t& mpi, const ch
   if(faces_n != NULL)
     delete faces_n;
   faces_n = new my_p4est_faces_t(p4est_n, ghost_n, brick, ngbd_c);
-
-  // load p4est_nm1
-  if(p4est_nm1 != NULL)
-    p4est_destroy(p4est_nm1);
-  sprintf(filename, "%s/p4est_nm1", path_to_folder);
-  p4est_nm1 = p4est_load_ext(filename, mpi.comm(), 0, P4EST_FALSE, P4EST_TRUE, P4EST_TRUE, (void*) data, &conn);
-  // we do not balance either because it is supposedly already balanced when saved on disk (if not, we'd be in trouble when loading the node-sampled vectors here below after balancing the p4est in the meantime...)
-  // we do not partition it either because this is supposedly done at the loading stage under the hood by p4est_load_ext
-  if (ghost_nm1 != NULL)
-    p4est_ghost_destroy(ghost_nm1);
-  ghost_nm1 = my_p4est_ghost_new(p4est_nm1, P4EST_CONNECT_FULL);
-  my_p4est_ghost_expand(p4est_nm1, ghost_nm1);
-  if (nodes_nm1 != NULL)
-    p4est_nodes_destroy(nodes_nm1);
-  nodes_nm1 = my_p4est_nodes_new(p4est_nm1, ghost_nm1);
-  if(hierarchy_nm1 != NULL)
-    delete hierarchy_nm1;
-  hierarchy_nm1 = new my_p4est_hierarchy_t(p4est_nm1, ghost_nm1, brick);
-  if(ngbd_nm1 != NULL)
-    delete ngbd_nm1;
-  ngbd_nm1 = new my_p4est_node_neighbors_t(hierarchy_nm1, nodes_nm1);
 
 
   // load phi

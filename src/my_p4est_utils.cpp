@@ -773,7 +773,6 @@ void my_p4est_save_or_load_brick(const MPI_Comm &comm, const int &mpirank, const
   default:
     throw std::runtime_error("my_p4est_navier_stokes_t::save_or_load_parameters: unknown flag value");
     break;
-    break;
   }
 }
 

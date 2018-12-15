@@ -46,73 +46,293 @@ using namespace std;
 const double ymin =-1.0;
 const double ymax = +1.0;
 
-#ifdef P4_TO_P8
-class LEVEL_SET: public CF_3
+class LEVEL_SET :
+    #ifdef P4_TO_P8
+    public CF_3
+    #else
+    public CF_2
+    #endif
 {
   int max_lvl;
 public:
   LEVEL_SET(int max_lvl_) : max_lvl(max_lvl_) { lip = 1.2; }
-  double operator()(double, double y, double) const
+  double operator()(double, double y
+                  #ifdef P4_TO_P8
+                    , double
+                  #endif
+                    ) const
   {
     return MAX(y-1.0-pow(2.0, -max_lvl), -y-1.0-pow(2.0, -max_lvl));
   }
 };
 
-struct BCWALLTYPE_P : WallBC3D
+struct BCWALLTYPE_P :
+    #ifdef P4_TO_P8
+    WallBC3D
+    #else
+    WallBC2D
+    #endif
 {
-  BoundaryConditionType operator()(double, double, double) const
+  BoundaryConditionType operator()(double, double
+                                 #ifdef P4_TO_P8
+                                   , double
+                                 #endif
+                                   ) const
   {
     return NEUMANN;
   }
 } bc_wall_type_p;
 
-struct BCWALLVALUE_P : CF_3
+struct BCWALLVALUE_P :
+    #ifdef P4_TO_P8
+    CF_3
+    #else
+    CF_2
+    #endif
 {
-  double operator()(double, double, double) const
+  double operator()(double, double
+                  #ifdef P4_TO_P8
+                    , double
+                  #endif
+                    ) const
   {
     return 0.0;
   }
 } bc_wall_value_p;
 
-struct BCWALLTYPE_U : WallBC3D
+class BCWALLTYPE_U :
+    #ifdef P4_TO_P8
+    public WallBC3D
+    #else
+    public WallBC2D
+    #endif
 {
-  BoundaryConditionType operator()(double x, double y, double z) const
+private:
+  const double length;
+#ifdef P4_TO_P8
+  const double width;
+  const bool streamwise;
+#endif
+  const double pitch;
+  const double gas_frac;
+  const double offset;
+  double my_fmod(const double num, const double denom) const { return (num - floor(num/denom)*denom);}
+public:
+#ifdef P4_TO_P8
+  BCWALLTYPE_U(double len_, double width_, bool streamwise_, double pitch_, double gas_fraction_, const my_p4est_brick_t& brick_, int max_lvl)
+    : length(len_), width(width_), streamwise(streamwise_), pitch(pitch_), gas_frac(gas_fraction_),
+      offset(0.1*(brick_.xyz_max[(streamwise?2:0)]-brick_.xyz_min[(streamwise?2:0)])/((double) (brick_.nxyztrees[(streamwise?2:0)]*(1<<max_lvl)))){ }
+#else
+  BCWALLTYPE_U(double len_, double pitch_, double gas_fraction_, const my_p4est_brick_t& brick_, int max_lvl)
+    : length(len_), pitch(pitch_), gas_frac(gas_fraction_),
+      offset(0.5*(brick_.xyz_max[0]-brick_.xyz_min[0])/((double) (brick_.nxyztrees[0]*(1<<max_lvl)))){ }
+#endif
+#ifdef P4_TO_P8
+  BoundaryConditionType operator()(double x, double, double z) const
   {
-    return NEUMANN; // OR DIRICHLET
+    if(streamwise)
+    {
+      double normalized_z = my_fmod((z + 0.5*width), pitch);
+      return (((offset < normalized_z) && (normalized_z < pitch*gas_frac - offset)) ? NEUMANN : DIRICHLET);
+    }
+    else
+    {
+      double normalized_x = my_fmod((x + 0.5*length), pitch);
+      return (((offset < normalized_x) && (normalized_x < pitch*gas_frac - offset)) ? NEUMANN : DIRICHLET);
+    }
   }
-} bc_wall_type_u;
-
-struct BCWALLTYPE_V : WallBC3D
-{
-  BoundaryConditionType operator()(double x, double y, double z) const
+#else
+  BoundaryConditionType operator()(double x, double) const
   {
-    return NEUMANN; // OR DIRICHLET
+    return ((my_fmod((x + 0.5*length - offset), pitch)/pitch < gas_frac)? NEUMANN: DIRICHLET);
   }
-} bc_wall_type_v;
+#endif
+};
 
-struct BCWALLTYPE_W : WallBC3D
+struct BCWALLVALUE_U : // always 0 value whether no slip or free slip
+    #ifdef P4_TO_P8
+    CF_3
+    #else
+    CF_2
+    #endif
 {
-  BoundaryConditionType operator()(double x, double, double) const
-  {
-    return DIRICHLET;
-  }
-} bc_wall_type_w;
-
-struct BCWALLVALUE_U : CF_3
-{
-  double operator()(double, double, double) const
+  double operator()(double, double
+                  #ifdef P4_TO_P8
+                    , double
+                  #endif
+                    ) const
   {
     return 0.0;
   }
 } bc_wall_value_u;
 
-struct BCWALLVALUE_V : CF_3
+struct BCWALLTYPE_V : // always homogeneous dirichlet : no penetration through the channel wall
+    #ifdef P4_TO_P8
+    WallBC3D
+    #else
+    WallBC2D
+    #endif
 {
-  double operator()(double, double, double) const
+  BoundaryConditionType operator()(double, double
+                                 #ifdef P4_TO_P8
+                                   , double
+                                 #endif
+                                   ) const
+  {
+    return DIRICHLET;
+  }
+} bc_wall_type_v;
+
+
+struct BCWALLVALUE_V : // always homogeneous dirichlet : no penetration through the channel wall
+    #ifdef P4_TO_P8
+    CF_3
+    #else
+    CF_2
+    #endif
+{
+  double operator()(double, double
+                  #ifdef P4_TO_P8
+                    , double
+                  #endif
+                    ) const
   {
     return 0.0;
   }
 } bc_wall_value_v;
+
+
+struct initial_velocity_unm1_t :
+    #ifdef P4_TO_P8
+    CF_3
+    #else
+    CF_2
+    #endif
+{
+  double operator()(double, double
+                  #ifdef P4_TO_P8
+                    , double
+                  #endif
+                    ) const
+  {
+    return 0.0;
+  }
+} initial_velocity_unm1;
+
+struct initial_velocity_u_n_t :
+    #ifdef P4_TO_P8
+    CF_3
+    #else
+    CF_2
+    #endif
+{
+  double operator()(double, double
+                  #ifdef P4_TO_P8
+                    , double
+                  #endif
+                    ) const
+  {
+    return 0.0;
+  }
+} initial_velocity_un;
+
+struct initial_velocity_vnm1_t :
+    #ifdef P4_TO_P8
+    CF_3
+    #else
+    CF_2
+    #endif
+{
+  double operator()(double, double
+                  #ifdef P4_TO_P8
+                    , double
+                  #endif
+                    ) const
+  {
+    return 0.0;
+  }
+} initial_velocity_vnm1;
+
+struct initial_velocity_vn_t :
+    #ifdef P4_TO_P8
+    CF_3
+    #else
+    CF_2
+    #endif
+{
+  double operator()(double, double
+                  #ifdef P4_TO_P8
+                    , double
+                  #endif
+                    ) const
+  {
+    return 0.0;
+  }
+} initial_velocity_vn;
+
+struct external_force_u_t :
+    #ifdef P4_TO_P8
+    CF_3
+    #else
+    CF_2
+    #endif
+{
+  double operator()(double, double
+                  #ifdef P4_TO_P8
+                    , double
+                  #endif
+                    ) const
+  {
+    return 1.0;
+  }
+};
+
+struct external_force_v_t :
+    #ifdef P4_TO_P8
+    CF_3
+    #else
+    CF_2
+    #endif
+{
+  double operator()(double, double
+                  #ifdef P4_TO_P8
+                    , double
+                  #endif
+                    ) const
+  {
+    return 0.0;
+  }
+};
+
+#ifdef P4_TO_P8
+struct BCWALLTYPE_W : WallBC3D
+{
+private:
+  const double length;
+  const double width;
+  const bool streamwise;
+  const double pitch;
+  const double gas_frac;
+  const double offset;
+  double my_fmod(const double num, const double denom) const { return (num - floor(num/denom)*denom);}
+public:
+  BCWALLTYPE_W(double len_, double width_, bool streamwise_, double pitch_, double gas_fraction_, const my_p4est_brick_t& brick_, int max_lvl)
+    : length(len_), width(width_), streamwise(streamwise_), pitch(pitch_), gas_frac(gas_fraction_),
+      offset(0.1*(brick_.xyz_max[(streamwise?2:0)]-brick_.xyz_min[(streamwise?2:0)])/((double) (brick_.nxyztrees[(streamwise?2:0)]*(1<<max_lvl)))){ }
+  BoundaryConditionType operator()(double x, double, double z) const
+  {
+    if(streamwise)
+    {
+      double normalized_z = my_fmod((z + 0.5*width), pitch);
+      return (((offset < normalized_z) && (normalized_z < pitch*gas_frac - offset)) ? NEUMANN : DIRICHLET);
+    }
+    else
+    {
+      double normalized_x = my_fmod((x + 0.5*length), pitch);
+      return (((offset < normalized_x) && (normalized_x < pitch*gas_frac - offset)) ? NEUMANN : DIRICHLET);
+    }
+  }
+};
 
 struct BCWALLVALUE_W : CF_3
 {
@@ -121,38 +341,6 @@ struct BCWALLVALUE_W : CF_3
     return 0.0;
   }
 } bc_wall_value_w;
-
-struct initial_velocity_unm1_t : CF_3
-{
-  double operator()(double, double, double) const
-  {
-    return 0.0;
-  }
-} initial_velocity_unm1;
-
-struct initial_velocity_u_n_t : CF_3
-{
-  double operator()(double, double, double) const
-  {
-    return 0.0;
-  }
-} initial_velocity_un;
-
-struct initial_velocity_vnm1_t : CF_3
-{
-  double operator()(double, double, double) const
-  {
-    return 0.0;
-  }
-} initial_velocity_vnm1;
-
-struct initial_velocity_v_n_t : CF_3
-{
-  double operator()(double, double, double) const
-  {
-    return 0.0;
-  }
-} initial_velocity_vn;
 
 struct initial_velocity_wnm1_t : CF_3
 {
@@ -170,22 +358,6 @@ struct initial_velocity_w_n_t : CF_3
   }
 } initial_velocity_wn;
 
-struct external_force_u_t : CF_3
-{
-  double operator()(double, double, double) const
-  {
-    return 1.0;
-  }
-};
-
-struct external_force_v_t : CF_3
-{
-  double operator()(double, double, double) const
-  {
-    return 0.0;
-  }
-};
-
 struct external_force_w_t : CF_3
 {
   double operator()(double, double, double) const
@@ -193,136 +365,20 @@ struct external_force_w_t : CF_3
     return 0.0;
   }
 };
-
-#else
-
-class LEVEL_SET: public CF_2
-{
-  int max_lvl;
-public:
-  LEVEL_SET(int max_lvl_) : max_lvl(max_lvl_) { lip = 1.2; }
-  double operator()(double, double y) const
-  {
-    return MAX(y-1.0-pow(2.0, -max_lvl), -y-1.0-pow(2.0, -max_lvl));
-  }
-};
-
-struct BCWALLTYPE_P : WallBC2D
-{
-  BoundaryConditionType operator()(double, double) const
-  {
-    return NEUMANN;
-  }
-} bc_wall_type_p;
-
-struct BCWALLVALUE_P : CF_2
-{
-  double operator()(double, double) const
-  {
-    return 0.0;
-  }
-} bc_wall_value_p;
-
-class BCWALLTYPE_U : public WallBC2D
-{
-private:
-  const int length;
-  const double pitch;
-  const double gas_frac;
-  const double offset;
-  double my_fmod(const double num, const double denom) const { return (num - floor(num/denom)*denom);}
-public:
-  BCWALLTYPE_U(int len_, double pitch_, double gas_fraction_, const my_p4est_brick_t& brick_, int max_lvl):
-    length(len_), pitch(pitch_), gas_frac(gas_fraction_),
-    offset(0.5*(brick_.xyz_max[0]-brick_.xyz_min[0])/((double) (brick_.nxyztrees[0]*(1<<max_lvl)))){ }
-  BoundaryConditionType operator()(double x, double) const
-  {
-    return ((my_fmod((x + 0.5*((double) length) - offset), pitch)/pitch < gas_frac)? NEUMANN: DIRICHLET);
-  }
-};
-
-struct BCWALLTYPE_V : WallBC2D
-{
-  BoundaryConditionType operator()(double, double) const
-  {
-    return DIRICHLET;
-  }
-} bc_wall_type_v;
-
-struct BCWALLVALUE_U : CF_2
-{
-  double operator()(double, double) const
-  {
-    return 0.0;
-  }
-} bc_wall_value_u;
-
-struct BCWALLVALUE_V : CF_2
-{
-  double operator()(double, double) const
-  {
-    return 0.0;
-  }
-} bc_wall_value_v;
-
-struct initial_velocity_unm1_t : CF_2
-{
-  double operator()(double, double) const
-  {
-    return 0.0;
-  }
-} initial_velocity_unm1;
-
-struct initial_velocity_u_n_t : CF_2
-{
-  double operator()(double, double) const
-  {
-    return 0.0;
-  }
-} initial_velocity_un;
-
-struct initial_velocity_vnm1_t : CF_2
-{
-  double operator()(double, double) const
-  {
-    return 0.0;
-  }
-} initial_velocity_vnm1;
-
-struct initial_velocity_vn_t : CF_2
-{
-  double operator()(double, double) const
-  {
-    return 0.0;
-  }
-} initial_velocity_vn;
-
-struct external_force_u_t : CF_2
-{
-  double operator()(double, double) const
-  {
-    return 1.0;
-  }
-};
-
-struct external_force_v_t : CF_2
-{
-  double operator()(double, double) const
-  {
-    return 0.0;
-  }
-};
 #endif
 
-
-void initialize_mass_flow_output(std::vector<double>& sections, std::vector<double>& mass_flows, char* file_mass_flow, const int& length, const char *out_dir, const int& lmin, const int& lmax, const double& threshold_split_cell, const double& cfl, const int& sl_order, const mpi_environment_t& mpi, const double& tstart)
+#ifdef P4_TO_P8
+void initialize_mass_flow_output(std::vector<double>& sections, std::vector<double>& mass_flows, char* file_mass_flow, const double& length, const double& width, const char *out_dir, const int& lmin, const int& lmax, const double& threshold_split_cell, const double& cfl, const int& sl_order, const mpi_environment_t& mpi, const double& tstart)
+#else
+void initialize_mass_flow_output(std::vector<double>& sections, std::vector<double>& mass_flows, char* file_mass_flow, const double& length, const char *out_dir, const int& lmin, const int& lmax, const double& threshold_split_cell, const double& cfl, const int& sl_order, const mpi_environment_t& mpi, const double& tstart)
+#endif
 {
   // initialize sections and mass flows through sections
   sections.resize(0);
-  sections.push_back(-0.5*((double) length));
-  sections.push_back(-0.25*((double) length));
+  sections.push_back(-0.5*length);
+  sections.push_back(-0.25*length);
   sections.push_back(0.0);
-  sections.push_back(+0.25*((double) length));
+  sections.push_back(+0.25*length);
   mass_flows.resize(sections.size(), 0.0);
 
   sprintf(file_mass_flow, "%s/mass_flow_%d-%d_split_threshold_%.2f_cfl_%.2f_sl_%d.dat", out_dir, lmin, lmax, threshold_split_cell, cfl, sl_order);
@@ -355,8 +411,7 @@ void initialize_mass_flow_output(std::vector<double>& sections, std::vector<doub
       else
         throw std::runtime_error("initialize_mass_flow_output: couldn't read the second header line of mass_flow_...dat");
       double time;
-      char format_specifier[1024];
-      strcat(format_specifier, "%lg");
+      char format_specifier[1024] = "%lg";
       for (size_t kk = 0; kk < sections.size(); ++kk)
         strcat(format_specifier, " %*g");
       while ((len_read = getline(&read_line, &len, fp_mass_flow)) != -1) {
@@ -380,6 +435,7 @@ void initialize_mass_flow_output(std::vector<double>& sections, std::vector<doub
       FILE *fp_liveplot_mass = fopen(liveplot_mass, "w");
       if(fp_liveplot_mass==NULL)
         throw std::runtime_error("initialize_mass_flow_output: could not open file for mass flow liveplot.");
+      fprintf(fp_liveplot_mass, "set term wxt noraise\n");
       fprintf(fp_liveplot_mass, "set key bottom right Left font \"Arial,14\"\n");
       fprintf(fp_liveplot_mass, "set xlabel \"Time\" font \"Arial,14\"\n");
       fprintf(fp_liveplot_mass, "set ylabel \"Nondimensional mass flow\" font \"Arial,14\"\n");
@@ -407,11 +463,11 @@ void initialize_mass_flow_output(std::vector<double>& sections, std::vector<doub
       fprintf(fp_tex_plot_mass, "set output 'mass_flow_history.tex'\n");
       fprintf(fp_tex_plot_mass, "set key bottom right Left \n");
       fprintf(fp_tex_plot_mass, "set xlabel \"$t$\"\n");
-  #ifdef P4_TO_P8
+#ifdef P4_TO_P8
       fprintf(fp_tex_plot_mass, "set ylabel \"$\\\\frac{1}{\\\\rho \\\\delta^{2} u_{\\\\tau}}\\\\int_{%g\\\\delta}^{%g\\\\delta}\\\\int_{-\\\\delta}^{\\\\delta} \\\\rho u \\\\,\\\\mathrm{d}y\\\\mathrm{d}z$\" \n", -0.5*width, width);
-  #else
+#else
       fprintf(fp_tex_plot_mass, "set ylabel \"$\\\\frac{1}{\\\\rho \\\\delta u_{\\\\tau}}\\\\int_{-\\\\delta}^{\\\\delta} \\\\rho u \\\\,\\\\mathrm{d}y$\" \n");
-  #endif
+#endif
       fprintf(fp_tex_plot_mass, "plot");
       for (size_t k_section = 0; k_section < sections.size(); ++k_section)
       {
@@ -424,7 +480,7 @@ void initialize_mass_flow_output(std::vector<double>& sections, std::vector<doub
 
     char tex_mass_flow_script[PATH_MAX];
     sprintf(tex_mass_flow_script, "%s/plot_tex_mass_flow.sh", out_dir);
-    if(file_exists(tex_mass_flow_script))
+    if(!file_exists(tex_mass_flow_script))
     {
       FILE *fp_tex_mass_flow_script = fopen(tex_mass_flow_script, "w");
       if(fp_tex_mass_flow_script==NULL)
@@ -456,11 +512,11 @@ void initialize_drag_force_output(char* file_drag, const char *out_dir, const in
       if(fp_drag==NULL)
         throw std::runtime_error("initialize_drag_force_output: could not open file for drag output.");
       fprintf(fp_drag, "%% __ | Normalized drag \n");
-  #ifdef P4_TO_P8
+#ifdef P4_TO_P8
       fprintf(fp_drag, "%% tn | x-component | y-component\n");
-  #else
+#else
       fprintf(fp_drag, "%% tn | x-component | y-component | z-component\n");
-  #endif
+#endif
       fclose(fp_drag);
     }
     else
@@ -504,6 +560,7 @@ void initialize_drag_force_output(char* file_drag, const char *out_dir, const in
       FILE* fp_liveplot_drag = fopen(liveplot_drag, "w");
       if(fp_liveplot_drag==NULL)
         throw std::runtime_error("initialize_drag_force_output: could not open file for drage force liveplot.");
+      fprintf(fp_liveplot_drag, "set term wxt noraise\n");
       fprintf(fp_liveplot_drag, "set key center right Left font \"Arial,14\"\n");
       fprintf(fp_liveplot_drag, "set xlabel \"Time\" font \"Arial,14\"\n");
       fprintf(fp_liveplot_drag, "set ylabel \"Nondimensional drag \" font \"Arial,14\"\n");
@@ -531,11 +588,11 @@ void initialize_drag_force_output(char* file_drag, const char *out_dir, const in
       fprintf(fp_tex_plot_drag, "set output 'drag_history.tex'\n");
       fprintf(fp_tex_plot_drag, "set key center right Left \n");
       fprintf(fp_tex_plot_drag, "set xlabel \"$t$\"\n");
-  #ifdef P4_TO_P8
+#ifdef P4_TO_P8
       fprintf(fp_tex_plot_drag, "set ylabel \"Non-dimensional wall friction $\\\\mathbf{D} = \\\\frac{\\\\hat{\\\\mathbf{D}}}{\\\\rho u_{\\\\tau}^{2} \\\\delta^{2}}$ \" \n");
-  #else
+#else
       fprintf(fp_tex_plot_drag, "set ylabel \"Non-dimensional wall friction $\\\\mathbf{D} = \\\\frac{\\\\hat{\\\\mathbf{D}}}{\\\\rho u_{\\\\tau}^{2} \\\\delta}$ \" \n");
-  #endif
+#endif
       fprintf(fp_tex_plot_drag, "plot");
       for (short dd = 0; dd < P4EST_DIM; ++dd)
       {
@@ -563,16 +620,16 @@ void initialize_drag_force_output(char* file_drag, const char *out_dir, const in
       chmod_command << "chmod +x " << tex_drag_script;
       int sys_return = system(chmod_command.str().c_str()); (void) sys_return;
     }
- }
+  }
 }
 
 void check_pitch_and_gas_fraction(double length_to_delta, int ntree, int lmax, double pitch_to_delta, double gas_fraction)
 {
   if(fabs(length_to_delta/pitch_to_delta - ((int) length_to_delta/pitch_to_delta)) > 1e-6)
 #ifdef P4_TO_P8
-    throw std::invalid_argument("main_shs_3d.cpp: the transversal length MUST be a multiple of pitch_to_delta to satisfy periodicity spanwise.");
+    throw std::invalid_argument("main_shs_3d.cpp: the length of the domain in the direction transversal to the grooves MUST be a multiple of pitch_to_delta to satisfy periodicity.");
 #else
-    throw std::invalid_argument("main_shs_2d.cpp: the transversal length MUST be a multiple of pitch_to_delta to satisfy periodicity streamwise.");
+    throw std::invalid_argument("main_shs_2d.cpp: the length of the domain in the direction transversal to the grooves MUST be a multiple of pitch_to_delta to satisfy periodicity.");
 #endif
 
   double nb_finest_cell_in_groove =  pitch_to_delta*gas_fraction/(length_to_delta/((double) (ntree*(1<<lmax))));
@@ -607,6 +664,7 @@ int main (int argc, char* argv[])
   cmd.add_option("length", "length of the channel (dimension in streamwise, x-direction) , in units of delta (integer), default is 6");
 #ifdef P4_TO_P8
   cmd.add_option("width", "width of the channel (dimension in spanwise, z-direction), in units of delta (integer), default is 3");
+  cmd.add_option("streamwise", "if present, the grooves and ridges are understood as streamwise, that is parallel to the flow. If absent, the grooves are perpendicular to the flow.");
 #endif
   cmd.add_option("duration", "the duration of the simulation (tfinal-tstart). If not restarted, tstart = 0.0, default duration is 10.");
   cmd.add_option("Re", "the Reynolds number based on wall-shear velocity and half the channel height (in a regular, i.e. not SH, channel), i.e. Re_tau = u_tau*delta/nu, default is 180.0;");
@@ -641,7 +699,7 @@ int main (int argc, char* argv[])
       of trees in the streamwise and spanwise directions (resp. input parameters nx and nz) are not provided by the user, they are \n\
       set in order to ensure aspect ratio of computational cells equal to 1, i.e. each tree in the forest is of size deltaXdeltaXdelta. \n\n\
       The set up builds upon the following non-dimensionalization ('_hat' for dimensional variables): \n\n\
-      u = u_hat/u_tau, {x, y, z} = {x, y, z}_hat/delta, t = t_hat*u_tau/delta, p = p_hat/(rho*u_tau*u_tau), \n\n\
+                                                                                                       u = u_hat/u_tau, {x, y, z} = {x, y, z}_hat/delta, t = t_hat*u_tau/delta, p = p_hat/(rho*u_tau*u_tau), \n\n\
       where u_tau is the wall-friction velocity in an equivalent regular channel (not superhydrophobic). \n\
       Therefore, the computational domain is [-0.5*length, 0.5*length]x[-1, 1]x[-0.5*width, 0.5*width] where the para-\n\
       meters 'length' and 'width' are integers. The Navier-Stokes solver is then invoked with nondimensional inputs \n\
@@ -672,12 +730,11 @@ int main (int argc, char* argv[])
   int n_xyz [P4EST_DIM];
   double xyz_min [P4EST_DIM];
   double xyz_max [P4EST_DIM];
-  int periodic[P4EST_DIM];
 
 
 
-  double duration           = cmd.get<double>("duration", 10.0 /*250.0*/);
-  double pitch_to_delta     = cmd.get<double>("pitch_to_delta", 1.0/32.0);
+  double duration           = cmd.get<double>("duration", 1.0 /*250.0*/);
+  double pitch_to_delta     = cmd.get<double>("pitch_to_delta", 1.0/4.0);
   double gas_fraction       = cmd.get<double>("GF", 0.5);
 #if defined(POD_CLUSTER)
   string export_dir         = cmd.get<string>("export_folder", "/home/regan/superhydrophobic_channel");
@@ -722,6 +779,9 @@ int main (int argc, char* argv[])
   double stat_start         = cmd.get<double>("tstart_statistics", 0.0);
 
   bool use_adapted_dt       = cmd.contains("adapted_dt");
+#ifdef P4_TO_P8
+  bool streamwise           = cmd.contains("streamwise");
+#endif
   PetscErrorCode ierr;
 
   if(cmd.contains("restart"))
@@ -776,7 +836,6 @@ int main (int argc, char* argv[])
     n_xyz[2]                = ntree_z;
     xyz_min[2]              = brick->xyz_min[2];
     xyz_max[2]              = brick->xyz_min[2];
-    periodic[2]             = 1;
 #endif
     n_xyz[1]                = ntree_y;
     n_xyz[0]                = ntree_x;
@@ -784,9 +843,14 @@ int main (int argc, char* argv[])
     xyz_min[0]              = brick->xyz_min[0];
     xyz_max[1]              = brick->xyz_min[1];
     xyz_max[0]              = brick->xyz_min[0];
-    periodic[1]             = 0;
-    periodic[0]             = 1;
+#ifdef P4_TO_P8
+    if(streamwise)
+      check_pitch_and_gas_fraction(length, ntree_x, lmax, pitch_to_delta, gas_fraction);
+    else
+      check_pitch_and_gas_fraction(width, ntree_z, lmax, pitch_to_delta, gas_fraction);
+#else
     check_pitch_and_gas_fraction(length, ntree_x, lmax, pitch_to_delta, gas_fraction);
+#endif
 
     sl_order                = ns->get_sl_order();
     cfl                     = ns->get_cfl();
@@ -810,8 +874,8 @@ int main (int argc, char* argv[])
   }
   else
   {
-    lmin                    = cmd.get<int>("lmin", 5);
-    lmax                    = cmd.get<int>("lmax", 7);
+    lmin                    = cmd.get<int>("lmin", 4);
+    lmax                    = cmd.get<int>("lmax", 6);
     threshold_split_cell    = cmd.get<double>("thresh", 0.1);
     wall_layer              = cmd.get<double>("wall_layer", 8.0);
     length                  = cmd.get<double>("length", 6.0);
@@ -820,6 +884,7 @@ int main (int argc, char* argv[])
 #endif
     wall_shear_Reynolds     = cmd.get<double>("Re", 60.0);
 
+    int periodic[P4EST_DIM];
     ntree_x                 = cmd.get<int>("nx", (int) length);
     ntree_y                 = cmd.get<int>("ny", 2);
 #ifdef P4_TO_P8
@@ -837,7 +902,14 @@ int main (int argc, char* argv[])
     xyz_max[0]              = +0.5*length;
     periodic[1]             = 0;
     periodic[0]             = 1;
+#ifdef P4_TO_P8
+    if(streamwise)
+      check_pitch_and_gas_fraction(length, ntree_x, lmax, pitch_to_delta, gas_fraction);
+    else
+      check_pitch_and_gas_fraction(width, ntree_z, lmax, pitch_to_delta, gas_fraction);
+#else
     check_pitch_and_gas_fraction(length, ntree_x, lmax, pitch_to_delta, gas_fraction);
+#endif
 
 
     sl_order                = cmd.get<int>("sl_order", 2);
@@ -934,14 +1006,16 @@ int main (int argc, char* argv[])
 #ifdef P4_TO_P8
   BoundaryConditions3D bc_v[P4EST_DIM];
   BoundaryConditions3D bc_p;
+  BCWALLTYPE_U bc_wall_type_u(length, width, streamwise, pitch_to_delta, gas_fraction, *brick, lmax);
 #else
   BoundaryConditions2D bc_v[P4EST_DIM];
   BoundaryConditions2D bc_p;
-#endif
   BCWALLTYPE_U bc_wall_type_u(length, pitch_to_delta, gas_fraction, *brick, lmax);
+#endif
   bc_v[0].setWallTypes(bc_wall_type_u); bc_v[0].setWallValues(bc_wall_value_u);
   bc_v[1].setWallTypes(bc_wall_type_v); bc_v[1].setWallValues(bc_wall_value_v);
 #ifdef P4_TO_P8
+  BCWALLTYPE_W bc_wall_type_w(length, width, streamwise, pitch_to_delta, gas_fraction, *brick, lmax);
   bc_v[2].setWallTypes(bc_wall_type_w); bc_v[2].setWallValues(bc_wall_value_w);
 #endif
   bc_p.setWallTypes(bc_wall_type_p); bc_p.setWallValues(bc_wall_value_p);
@@ -953,6 +1027,10 @@ int main (int argc, char* argv[])
 #endif
   ns->set_bc(bc_v, &bc_p);
 
+  if(cmd.contains("restart"))
+  {
+    ns->update_dxyz_hodge();
+  }
 
 #ifdef P4_TO_P8
   ierr = PetscPrintf(mpi.comm(), "Parameters : Re_{tau, 0} = %g, domain is %dx2x%d (delta units), P/delta = %g, GF = %g\n", wall_shear_Reynolds, (int) length, (int) width, pitch_to_delta, gas_fraction); CHKERRXX(ierr);
@@ -1002,7 +1080,11 @@ int main (int argc, char* argv[])
   if(save_drag)
     initialize_drag_force_output(file_drag, out_dir, lmin, lmax, threshold_split_cell, cfl, sl_order, mpi, tstart);
   if(save_mass_flow)
+#ifdef P4_TO_P8
+    initialize_mass_flow_output(sections, mass_flows, file_mass_flow, length, width, out_dir, lmin, lmax, threshold_split_cell, cfl, sl_order, mpi, tstart);
+#else
     initialize_mass_flow_output(sections, mass_flows, file_mass_flow, length, out_dir, lmin, lmax, threshold_split_cell, cfl, sl_order, mpi, tstart);
+#endif
   if(save_profile)
   {
     sprintf(file_velocity_profile, "%s/velocity_profile_%d-%d_split_threshold_%.2f_cfl_%.2f_sl_%d.dat", out_dir, lmin, lmax, threshold_split_cell, cfl, sl_order);
@@ -1049,6 +1131,11 @@ int main (int argc, char* argv[])
       }
 
       ns->update_from_tn_to_tnp1(level_set, false, false);
+    }
+    if(save_state && ((int) floor(tn/dt_save_data)) != save_data_idx)
+    {
+      save_data_idx = ((int) floor(tn/dt_save_data));
+      ns->save_state(out_dir, tn, n_states);
     }
 
     if(external_force_u!=NULL) delete external_force_u;
@@ -1166,7 +1253,7 @@ int main (int argc, char* argv[])
 #else
           throw std::invalid_argument("main_shs_2d: could not open file for averaged velocity profile output.");
 #endif
-//        fprintf(fp_velocity_profile, "%g %g\n", ys, averaged us);
+        //        fprintf(fp_velocity_profile, "%g %g\n", ys, averaged us);
         fclose(fp_velocity_profile);
       }
     }
@@ -1191,12 +1278,6 @@ int main (int argc, char* argv[])
       sprintf(vtk_name, "%s/snapshot_%d", vtk_path, export_vtk);
       ns->save_vtk(vtk_name);
     }
-    if(save_state && ((int) floor(tn/dt_save_data)) != save_data_idx)
-    {
-      save_data_idx = ((int) floor(tn/dt_save_data));
-      ns->save_state(out_dir, tn, n_states);
-    }
-
     iter++;
   }
 

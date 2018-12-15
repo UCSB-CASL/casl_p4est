@@ -7,11 +7,11 @@
 #include <src/my_p8est_refine_coarsen.h>
 #include <src/my_p8est_solve_lsqr.h>
 #include <src/my_p8est_interpolation_nodes.h>
+#include <src/cube2.h>
 #else
 #include <src/my_p4est_refine_coarsen.h>
 #include <src/my_p4est_solve_lsqr.h>
 #include <src/my_p4est_interpolation_nodes.h>
-#include <src/cube2.h>
 #endif
 
 #include <sc_notify.h>

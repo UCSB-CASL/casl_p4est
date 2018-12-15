@@ -313,6 +313,8 @@ public:
 
   void solve_projection();
 
+  void update_dxyz_hodge();
+
   void compute_velocity_at_nodes();
 
   void set_dt(double dt_nm1, double dt_n);
