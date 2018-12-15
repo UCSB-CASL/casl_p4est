@@ -699,7 +699,7 @@ int main (int argc, char* argv[])
       of trees in the streamwise and spanwise directions (resp. input parameters nx and nz) are not provided by the user, they are \n\
       set in order to ensure aspect ratio of computational cells equal to 1, i.e. each tree in the forest is of size deltaXdeltaXdelta. \n\n\
       The set up builds upon the following non-dimensionalization ('_hat' for dimensional variables): \n\n\
-                                                                                                       u = u_hat/u_tau, {x, y, z} = {x, y, z}_hat/delta, t = t_hat*u_tau/delta, p = p_hat/(rho*u_tau*u_tau), \n\n\
+      u = u_hat/u_tau, {x, y, z} = {x, y, z}_hat/delta, t = t_hat*u_tau/delta, p = p_hat/(rho*u_tau*u_tau), \n\n\
       where u_tau is the wall-friction velocity in an equivalent regular channel (not superhydrophobic). \n\
       Therefore, the computational domain is [-0.5*length, 0.5*length]x[-1, 1]x[-0.5*width, 0.5*width] where the para-\n\
       meters 'length' and 'width' are integers. The Navier-Stokes solver is then invoked with nondimensional inputs \n\
