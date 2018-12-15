@@ -695,16 +695,16 @@ int main (int argc, char* argv[])
   const std::string extra_info = "\
       This program provides a general setup for Navier-Stokes simulations of superhydrophobic channel flow simulations.\n\
       It assumes no solid object and no passive scalar (i.e. smoke) in the channel. The height of the channel is set to \n\
-      2*delta by default, the other channel dimensions are provided by the user in (integer!) units of delta. If the numbers \n\
+      2*delta by default, the other channel dimensions are provided by the user in units of delta. If the numbers \n\
       of trees in the streamwise and spanwise directions (resp. input parameters nx and nz) are not provided by the user, they are \n\
       set in order to ensure aspect ratio of computational cells equal to 1, i.e. each tree in the forest is of size deltaXdeltaXdelta. \n\n\
       The set up builds upon the following non-dimensionalization ('_hat' for dimensional variables): \n\n\
       u = u_hat/u_tau, {x, y, z} = {x, y, z}_hat/delta, t = t_hat*u_tau/delta, p = p_hat/(rho*u_tau*u_tau), \n\n\
       where u_tau is the wall-friction velocity in an equivalent regular channel (not superhydrophobic). \n\
-      Therefore, the computational domain is [-0.5*length, 0.5*length]x[-1, 1]x[-0.5*width, 0.5*width] where the para-\n\
-      meters 'length' and 'width' are integers. The Navier-Stokes solver is then invoked with nondimensional inputs \n\
+      Therefore, the computational domain is [-0.5*length, 0.5*length]x[-1, 1]x[-0.5*width, 0.5*width]. \n\
+      The Navier-Stokes solver is then invoked with nondimensional inputs \n\
       rho = 1.0, mu = 1.0/Re, body force per unit mass {1.0, 0.0, 0.0} (driving the flow), \n\
-      and with periodic boundary conditions in the streamwise and spanwise directions. \n\
+      and with periodic boundary conditions in the streamwise (and spanwise in 3D) directions. \n\
       Developer: Raphael Egan (raphaelegan@ucsb.edu)";
   cmd.parse(argc, argv, extra_info);
 
