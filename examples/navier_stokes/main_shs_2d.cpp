@@ -1041,7 +1041,7 @@ int main (int argc, char* argv[])
 
   char out_dir[1024], vtk_path[1024], vtk_name[1024];
 #ifdef P4_TO_P8
-  sprintf(out_dir, "%s/%dX2X%d_channel/Retau_%d/pitch_to_delta_%.3f/GF_%.2f/yplus_min_%.4f_yplus_max_%.4f", export_dir.c_str(), (int) length, (int) width, (int) wall_shear_Reynolds, pitch_to_delta, gas_fraction, wall_shear_Reynolds/pow(2.0, lmax), wall_shear_Reynolds/pow(2.0, lmin));
+  sprintf(out_dir, "%s/%dX2X%d_channel/Retau_%d/%s/pitch_to_delta_%.3f/GF_%.2f/yplus_min_%.4f_yplus_max_%.4f", export_dir.c_str(), (int) length, (int) width, (int) wall_shear_Reynolds, ((streamwise)? "streamwise": "spanwise"), pitch_to_delta, gas_fraction, wall_shear_Reynolds/pow(2.0, lmax), wall_shear_Reynolds/pow(2.0, lmin));
 #else
   sprintf(out_dir, "%s/%dX2_channel/Retau_%d/pitch_to_delta_%.3f/GF_%.2f/yplus_min_%.4f_yplus_max_%.4f", export_dir.c_str(), (int) length, (int) wall_shear_Reynolds, pitch_to_delta, gas_fraction, wall_shear_Reynolds/pow(2.0, lmax), wall_shear_Reynolds/pow(2.0, lmin));
 #endif
