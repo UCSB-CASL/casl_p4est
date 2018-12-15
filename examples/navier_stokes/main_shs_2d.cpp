@@ -693,11 +693,12 @@ int main (int argc, char* argv[])
 
   // --> extra info to be printed when -help is invoked
   const std::string extra_info = "\
-      This program provides a general setup for Navier-Stokes simulations of superhydrophobic channel flow simulations.\n\
+      This program provides a general setup for superhydrophobic channel flow simulations.\n\
       It assumes no solid object and no passive scalar (i.e. smoke) in the channel. The height of the channel is set to \n\
       2*delta by default, the other channel dimensions are provided by the user in units of delta. If the numbers \n\
-      of trees in the streamwise and spanwise directions (resp. input parameters nx and nz) are not provided by the user, they are \n\
-      set in order to ensure aspect ratio of computational cells equal to 1, i.e. each tree in the forest is of size deltaXdeltaXdelta. \n\n\
+      of trees in the streamwise and spanwise directions (resp. input parameters nx and nz) are not provided by the user, they \n\
+      are set in order to ensure aspect ratio of computational cells as close as possible to 1, i.e. each tree in the forest is \n\
+      of size (as close as possible to) deltaXdeltaXdelta. \n\n\
       The set up builds upon the following non-dimensionalization ('_hat' for dimensional variables): \n\n\
       u = u_hat/u_tau, {x, y, z} = {x, y, z}_hat/delta, t = t_hat*u_tau/delta, p = p_hat/(rho*u_tau*u_tau), \n\n\
       where u_tau is the wall-friction velocity in an equivalent regular channel (not superhydrophobic). \n\
