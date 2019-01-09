@@ -12,6 +12,7 @@
 #include <src/my_p8est_nodes.h>
 #include <src/my_p8est_node_neighbors.h>
 #include <src/my_p8est_poisson_nodes.h>
+#include <src/my_p8est_poisson_nodes_mls_sc.h>
 #include <src/my_p8est_interpolation_nodes.h>
 #else
 #include <src/my_p4est_tools.h>
@@ -20,7 +21,7 @@
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_node_neighbors.h>
 #include <src/my_p4est_poisson_nodes.h>
-#include <src/my_p4est_poisson_nodes_mls.h>
+#include <src/my_p4est_poisson_nodes_mls_sc.h>
 #include <src/my_p4est_interpolation_nodes.h>
 #include <src/my_p4est_integration_mls.h>
 #include <src/my_p4est_level_set.h>
@@ -45,19 +46,25 @@ public:
   std::vector<action_t> *action;
 
   /* potentials */
-  Vec mu_m, mu_p;
-  double mu_m_avg, mu_p_avg;
+  Vec    mu_m;
+  Vec    mu_p;
+
+  double mu_m_avg;
+  double mu_p_avg;
 
   /* densities */
-  Vec rho_a, rho_b;
+  Vec rho_a;
+  Vec rho_b;
 
   /* surface tensions */
 //  std::vector<Vec> *gamma_a, *gamma_b;
-  std::vector<CF_2 *> *gamma_a, *gamma_b;
+  std::vector<CF_2 *> *gamma_a;
+  std::vector<CF_2 *> *gamma_b;
   CF_2 *gamma_air;
 
   /* Robin coefficients */
-  std::vector<Vec> bc_coeffs_a, bc_coeffs_b;
+  std::vector<Vec> bc_coeffs_a;
+  std::vector<Vec> bc_coeffs_b;
 
   /* partition function and energy */
   double Q;
@@ -77,10 +84,13 @@ public:
 
   double volume;
 
-  Vec force_p, force_m;
-  double force_p_avg, force_m_avg;
+  Vec force_p;
+  Vec force_m;
+  double force_p_avg;
+  double force_m_avg;
 
-  Vec exp_w_a, exp_w_b;
+  Vec exp_w_a;
+  Vec exp_w_b;
 
   Vec rhs, rhs_old, add_to_rhs;
 
@@ -109,7 +119,7 @@ public:
   double dt_energy;
 
   /* Poisson solver */
-  my_p4est_poisson_nodes_mls_t *solver_a, *solver_b;
+  my_p4est_poisson_nodes_mls_sc_t *solver_a, *solver_b;
 
 //public:
   my_p4est_scft_t(my_p4est_node_neighbors_t *ngbd);
@@ -138,7 +148,7 @@ public:
 
   double integrate_in_time(int start, int end, double *integrand);
 
-  void diffusion_step(my_p4est_poisson_nodes_mls_t *solver, Vec &sol, Vec &sol_nm1);
+  void diffusion_step(my_p4est_poisson_nodes_mls_sc_t *solver, Vec &sol, Vec &sol_nm1);
 
   void save_VTK(int compt);
 
@@ -193,7 +203,7 @@ public:
   void DO_initialize(CF_2 &mu_target_cf);
   void DO_initialize_fields();
   void DO_solve_for_propogators();
-  void DO_diffusion_step(my_p4est_poisson_nodes_mls_t *solver, Vec &sol, Vec &sol_nm1, Vec &exp_w, Vec &q, Vec &lam);
+  void DO_diffusion_step(my_p4est_poisson_nodes_mls_sc_t *solver, Vec &sol, Vec &sol_nm1, Vec &exp_w, Vec &q, Vec &lam);
   void DO_compute_densities();
   void DO_update_potentials();
   void DO_compute_shape_derivative(int phi_idx);

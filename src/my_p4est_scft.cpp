@@ -301,8 +301,7 @@ void my_p4est_scft_t::initialize_bc_smart()
 
   double *integrand_ptr;
 
-  my_p4est_integration_mls_t integration;
-  integration.set_p4est(p4est, nodes);
+  my_p4est_integration_mls_t integration(p4est, nodes);
   integration.set_phi(*phi, *action, color);
 
   ierr = VecGetArray(mu_m, &mu_m_ptr); CHKERRXX(ierr);
@@ -324,7 +323,7 @@ void my_p4est_scft_t::initialize_bc_smart()
 
     ierr = VecRestoreArray(integrand,   &integrand_ptr);    CHKERRXX(ierr);
 
-    singular_part_of_energy += integration.integrate_over_interface(integrand, surf_idx);
+    singular_part_of_energy += integration.integrate_over_interface(surf_idx, integrand);
   }
 
   singular_part_of_energy /= volume;
@@ -343,10 +342,10 @@ void my_p4est_scft_t::initialize_linear_system()
   if (solver_b != NULL) { delete solver_b; }
 
   // chain propogator a
-  solver_a = new my_p4est_poisson_nodes_mls_t(ngbd);
-  solver_a->set_geometry(*phi, *action, color);
+  solver_a = new my_p4est_poisson_nodes_mls_sc_t(ngbd);
+  solver_a->set_geometry(num_surfaces, *phi, *action, color);
   solver_a->set_mu(1.0);
-  solver_a->wall_value.set(0.0);
+  solver_a->set_bc_wall_value(zero_cf);
   solver_a->set_bc_type(bc_types);
   solver_a->set_diag_add(scheme_coeff/ds);
   solver_a->set_bc_coeffs(bc_coeffs_a);
@@ -513,7 +512,7 @@ void my_p4est_scft_t::solve_for_propogators()
   }
 }
 
-void my_p4est_scft_t::diffusion_step(my_p4est_poisson_nodes_mls_t *solver, Vec &sol, Vec &sol_nm1)
+void my_p4est_scft_t::diffusion_step(my_p4est_poisson_nodes_mls_sc_t *solver, Vec &sol, Vec &sol_nm1)
 {
   if (use_cn_scheme)
   {

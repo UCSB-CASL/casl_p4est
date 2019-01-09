@@ -29,10 +29,14 @@
 #include <src/my_p8est_log_wrappers.h>
 #include <src/my_p8est_node_neighbors.h>
 #include <src/my_p8est_level_set.h>
-#include <src/my_p8est_poisson_nodes_mls.h>
+#include <src/my_p8est_poisson_nodes_mls_sc.h>
 #include <src/my_p8est_interpolation_nodes.h>
 #include <src/my_p8est_integration_mls.h>
-#include <src/simplex3_mls_vtk.h>
+#include <src/mls_integration/vtk/simplex3_mls_l_vtk.h>
+#include <src/mls_integration/vtk/simplex3_mls_q_vtk.h>
+#include <src/my_p8est_scft.h>
+#include <src/my_p8est_shapes.h>
+#include <src/my_p8est_tools_mls.h>
 #else
 #include <p4est_bits.h>
 #include <p4est_extended.h>
@@ -44,28 +48,38 @@
 #include <src/my_p4est_log_wrappers.h>
 #include <src/my_p4est_node_neighbors.h>
 #include <src/my_p4est_level_set.h>
-#include <src/my_p4est_poisson_nodes_mls.h>
+#include <src/my_p4est_poisson_nodes_mls_sc.h>
 #include <src/my_p4est_interpolation_nodes.h>
 #include <src/my_p4est_integration_mls.h>
-#include <src/simplex2_mls_vtk.h>
+#include <src/mls_integration/vtk/simplex2_mls_l_vtk.h>
+#include <src/mls_integration/vtk/simplex2_mls_q_vtk.h>
 #include <src/my_p4est_scft.h>
+#include <src/my_p4est_shapes.h>
+#include <src/my_p4est_tools_mls.h>
 #endif
 
 #include <src/point3.h>
-//#include <tools/plotting.h>
 
 #include <src/petsc_compatibility.h>
 #include <src/Parser.h>
 
-
 #undef MIN
 #undef MAX
 
+#define ADD_OPTION(i, var, description) \
+  i == 0 ? cmd.add_option(#var, description) : (void) (var = cmd.get(#var, var));
+
+#define ADD_OPTION2(i, var, name, description) \
+  i == 0 ? cmd.add_option(name, description) : (void) (var = cmd.get(name, var));
+
 using namespace std;
-#include "shapes.h"
 
-bool save_vtk = true;
+// polymer
+double XN = 20.;
+double f  = 0.3;
+int    ns = 100+1;
 
+// grid
 double xmin = -3;
 double xmax =  3;
 double ymin = -3;
@@ -82,33 +96,30 @@ int lmax = 8;
 #endif
 double lip = 1.5;
 
-int steps_back = 3;
-//int steps_back = lmax-lmin;
-
 int nx = 1;
 int ny = 1;
 int nz = 1;
 
 const int periodic[] = {0, 0, 0};
 
-//
-
-double XN = 20.;
-double f = 0.3;
-int ns = 100+1;
-
+// coarse grid
+int steps_back = 3;
 int ns_coarsed = 50+1;
 
+// solver
 double tol = 1.0e-4;
-int save_every_n_iteration = 10;
-
-int num_of_moves = 1000;
 int num_of_bc_adjustments = 10;
+
+// output
+bool save_vtk    = true;
+bool save_change = true;
+int  save_every_n_iteration = 10;
+
+// free surface
+int num_of_moves = 1000;
 double interface_speed = 0.1;
 
-bool save_change = true;
-
-
+// geometry
 int num_surfaces = 2;
 std::vector<action_t> action(num_surfaces, INTERSECTION);
 
@@ -177,71 +188,63 @@ public:
   }
 } phi_ref_cf;
 
+
 int main (int argc, char* argv[])
 {
   PetscErrorCode ierr;
   int mpiret;
+
   mpi_environment_t mpi;
   mpi.init(argc, argv);
 
   cmdParser cmd;
-  cmd.add_option("XN", "Florry-Higgins parameter");
-  cmd.add_option("f", "fraction of polymer A");
-  cmd.add_option("ns", "number of steps along the polymer shain");
-  cmd.add_option("tol", "tolerance for SCFT equations");
+  for (short i = 0; i < 2; ++i)
+  {
+    // grid parameters
+    ADD_OPTION(i, lmin, "min level of the tree");
+    ADD_OPTION(i, lmax, "max level of the tree");
+    ADD_OPTION(i, lip,  "Lipschitz constant");
 
-  cmd.add_option("interface_speed", "interface_speed");
-  cmd.add_option("num_of_moves", "num_of_moves");
+    ADD_OPTION(i, nx, "number of blox in x-dimension");
+    ADD_OPTION(i, ny, "number of blox in y-dimension");
+#ifdef P4_TO_P8
+    ADD_OPTION(i, nz, "number of blox in z-dimension");
+#endif
 
-  cmd.add_option("lmin", "min level of the tree");
-  cmd.add_option("lmax", "max level of the tree");
-  cmd.add_option("lip", "Lipschitz constant");
+    ADD_OPTION(i, px, "periodicity in x-dimension 0/1");
+    ADD_OPTION(i, py, "periodicity in y-dimension 0/1");
+#ifdef P4_TO_P8
+    ADD_OPTION(i, pz, "periodicity in z-dimension 0/1");
+#endif
 
-  cmd.add_option("steps_back", "number of recursive splits");
-  cmd.add_option("ns_coarsed", "chain discretization for coarse grids");
+    ADD_OPTION(i, xmin, "xmin"); ADD_OPTION(i, xmax, "xmax");
+    ADD_OPTION(i, ymin, "ymin"); ADD_OPTION(i, ymax, "ymax");
+#ifdef P4_TO_P8
+    ADD_OPTION(i, zmin, "zmin"); ADD_OPTION(i, zmax, "zmax");
+#endif
 
-  cmd.add_option("save_vtk", "save the p4est in vtk format");
-  cmd.add_option("save_change", "track change in the cost functional");
-  cmd.add_option("save_every_n_iteration", "save_every_n_iteration");
+    // polymer parameters
+    ADD_OPTION(i, XN, "Florry-Higgins parameter");
+    ADD_OPTION(i, f, "Fraction of polymer A");
+    ADD_OPTION(i, ns, "save vtk every n iteration");
+    ADD_OPTION(i, tol, "Tolerance for SCFT equations");
 
-  cmd.parse(argc, argv);
+    ADD_OPTION(i, interface_speed, "interface_speed");
+    ADD_OPTION(i, num_of_moves, "num_of_moves");
 
-  cmd.print();
+    ADD_OPTION(i, steps_back, "number of recursive splits");
+    ADD_OPTION(i, ns_coarsed, "chain discretization for coarse grids");
 
-  XN = cmd.get("XN", XN);
-  f = cmd.get("f", f);
-  ns = cmd.get("ns", ns);
+    // output parameters
+    ADD_OPTION(i, save_every_n_iteration, "save vtk every n iteration");
+    ADD_OPTION(i, save_change,            "track change in the cost functional");
+    ADD_OPTION(i, save_vtk,               "save the p4est in vtk format");
 
-  interface_speed = cmd.get("interface_speed", interface_speed);
-  num_of_moves = cmd.get("num_of_moves", num_of_moves);
-
-  tol = cmd.get("tol", tol);
-
-  lmin = cmd.get("lmin", lmin);
-  lmax = cmd.get("lmax", lmax);
-  lip = cmd.get("lip", lip);
-
-  steps_back = cmd.get("steps_back", steps_back);
-  ns_coarsed = cmd.get("ns_coarsed", ns_coarsed);
-
-  save_vtk = cmd.get("save_vtk", save_vtk);
-  save_change = cmd.get("save_change", save_change);
-
-  save_every_n_iteration = cmd.get("save_every_n_iteration", save_every_n_iteration);
+    if (i == 0) cmd.parse(argc, argv);
+  }
 
   parStopWatch w;
   w.start("total time");
-
-  if(0)
-  {
-    int i = 0;
-    char hostname[256];
-    gethostname(hostname, sizeof(hostname));
-    printf("PID %d on %s ready for attach\n", getpid(), hostname);
-    fflush(stdout);
-    while (0 == i)
-      sleep(5);
-  }
 
   /* create the p4est */
   my_p4est_brick_t brick;
