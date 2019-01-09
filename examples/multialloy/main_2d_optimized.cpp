@@ -844,9 +844,6 @@ int main (int argc, char* argv[])
   /* initialize the solver */
   my_p4est_multialloy_t bas(ngbd);
 
-  bas.set_shift_grids        (shift_grids);
-  bas.set_phi_grid_refinement(phi_grid_refinement);
-
   bas.set_parameters(latent_heat, thermal_conductivity, lambda,
                      V, Tm, scaling,
                      Dl0, kp0, c00, ml0,
@@ -1025,13 +1022,11 @@ int main (int argc, char* argv[])
       bas.count_dendrites(vtk_idx);
       bas.save_VTK(vtk_idx);
       bas.save_VTK_solid(vtk_idx);
-      bas.save_VTK_shift(vtk_idx);
     }
 
     keep_going = keep_going && (iteration < max_total_iterations) && (total_growth < termination_length);
 
     bas.update_grid();
-//    bas.update_grid_eno();
     bas.compute_dt();
 
     iteration++;

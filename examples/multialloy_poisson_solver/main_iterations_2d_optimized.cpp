@@ -106,7 +106,7 @@ double eps_v;                /* kinetic undercooling coefficient           - s.K
 double eps_anisotropy;       /* anisotropy coefficient                                    */
 
 double cfl_number = 0.1;
-double   dt = 0.333;
+double dt = 0.333;
 
 void set_alloy_parameters()
 {
@@ -171,6 +171,15 @@ int test_number = 0;
 
 
 double diag_add = 1;
+
+double solidus_value(double *c)
+{
+  return Tm;
+}
+
+void   solidus_slope(double *c, double *m)
+{
+}
 
 //#ifdef P4_TO_P8
 //class eps_v_cf_t : public CF_2

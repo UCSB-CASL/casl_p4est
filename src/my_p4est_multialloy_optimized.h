@@ -99,17 +99,6 @@ private:
   my_p4est_hierarchy_t        *history_hierarchy_;
   my_p4est_node_neighbors_t   *history_ngbd_;
 
-  /* grid shifted by dx/2 */
-  my_p4est_brick_t            shift_brick_;
-  p4est_connectivity_t        *shift_connectivity_;
-  p4est_t                     *shift_p4est_;
-  p4est_ghost_t               *shift_ghost_;
-  p4est_nodes_t               *shift_nodes_;
-  my_p4est_hierarchy_t        *shift_hierarchy_;
-  my_p4est_node_neighbors_t   *shift_ngbd_;
-
-  splitting_criteria_t shift_sp_;
-
   double dxyz_[P4EST_DIM];
   double dxyz_max_, dxyz_min_;
   double dxyz_close_interface_;
@@ -154,10 +143,6 @@ private:
   Vec history_velo_;
 
   Vec phi_smooth_;
-
-  Vec shift_phi_, shift_phi_dd_[P4EST_DIM];
-  Vec shift_normal_[P4EST_DIM];
-  Vec shift_kappa_;
 
   Vec bc_error_;
   double bc_error_max_;
@@ -242,9 +227,6 @@ private:
   Vec dendrite_number_;
   Vec dendrite_tip_;
 
-  bool shift_grids_;
-  int  phi_grid_refinement_;
-
   bool enforce_planar_front_;
 
 public:
@@ -297,71 +279,6 @@ public:
     my_p4est_interpolation_nodes_t interp(ngbd_);
 
     double xyz[P4EST_DIM];
-
-    if (phi_grid_refinement_ != 0 || shift_grids_)
-    {
-#ifdef P4_TO_P8
-      double dxyz_shift[P4EST_DIM] = { 0, 0, 0 };
-#else
-      double dxyz_shift[P4EST_DIM] = { 0, 0 };
-#endif
-
-      if (shift_grids_)
-      {
-        double factor = .5*(phi_grid_refinement_ > 0 ? 1./pow(2., phi_grid_refinement_) : 1.);
-
-        foreach_dimension(dim) dxyz_shift[dim] = factor*dxyz_[dim];
-      }
-
-  #ifdef P4_TO_P8
-      double xyz_min [] = {brick_->xyz_min[0] + dxyz_shift[0], brick_->xyz_min[1] + dxyz_shift[1], brick_->xyz_min[2] + dxyz_shift[2]};
-      double xyz_max [] = {brick_->xyz_max[0] + dxyz_shift[0], brick_->xyz_max[1] + dxyz_shift[1], brick_->xyz_max[2] + dxyz_shift[2]};
-      int n_xyz [] = {brick_->nxyztrees[0], brick_->nxyztrees[1], brick_->nxyztrees[1]};
-      bool periodic [] = {is_periodic(p4est_, 0), is_periodic(p4est_, 1), is_periodic(p4est_, 2)};
-  #else
-      double xyz_min [] = {brick_->xyz_min[0] + dxyz_shift[0], brick_->xyz_min[1] + dxyz_shift[1]};
-      double xyz_max [] = {brick_->xyz_max[0] + dxyz_shift[0], brick_->xyz_max[1] + dxyz_shift[1]};
-      int n_xyz [] = {brick_->nxyztrees[0], brick_->nxyztrees[1]};
-      int periodic [] = {is_periodic(p4est_, 0), is_periodic(p4est_, 1)};
-  #endif
-
-      shift_connectivity_ = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &shift_brick_, periodic);
-      shift_p4est_        = my_p4est_new(p4est_->mpicomm, shift_connectivity_, 0, NULL, NULL);
-
-      splitting_criteria_cf_t *data = (splitting_criteria_cf_t*)p4est_->user_pointer;
-
-      shift_sp_.min_lvl = data->min_lvl;
-      shift_sp_.max_lvl = data->max_lvl + phi_grid_refinement_;
-      shift_sp_.lip     = data->lip*pow(2., MAX(0, phi_grid_refinement_));
-
-      splitting_criteria_cf_t sp_tmp(shift_sp_.min_lvl, shift_sp_.max_lvl, data->phi, shift_sp_.lip);
-
-      shift_p4est_->user_pointer = (void*)(&sp_tmp);
-      my_p4est_refine(shift_p4est_, P4EST_TRUE, refine_levelset_cf, NULL);
-      my_p4est_partition(shift_p4est_, P4EST_FALSE, NULL);
-
-      shift_ghost_ = my_p4est_ghost_new(shift_p4est_, P4EST_CONNECT_FULL);
-      shift_nodes_ = my_p4est_nodes_new(shift_p4est_, shift_ghost_);
-
-      shift_hierarchy_ = new my_p4est_hierarchy_t(shift_p4est_, shift_ghost_, &shift_brick_);
-      shift_ngbd_      = new my_p4est_node_neighbors_t(shift_hierarchy_, shift_nodes_);
-      shift_ngbd_->init_neighbors();
-
-      shift_p4est_->user_pointer = (void*)(&shift_sp_);
-
-      for(size_t n = 0; n < shift_nodes_->indep_nodes.elem_count; ++n)
-      {
-        node_xyz_fr_n(n, shift_p4est_, shift_nodes_, xyz);
-        interp.add_point(n, xyz);
-      }
-
-      ierr = VecCreateGhostNodes(shift_p4est_, shift_nodes_, &shift_phi_); CHKERRXX(ierr);
-
-      interp.set_input(phi_, interpolation_between_grids_);
-      interp.interpolate(shift_phi_);
-
-      interp.clear();
-    }
 
     {
       ierr = VecCreateGhostNodes(history_p4est_, history_nodes_, &history_phi_); CHKERRXX(ierr);
@@ -525,7 +442,6 @@ public:
   int  one_step();
   void save_VTK(int iter);
   void save_VTK_solid(int iter);
-  void save_VTK_shift(int iter);
 
   void compute_smoothed_phi();
 
@@ -579,9 +495,6 @@ public:
   void count_dendrites(int iter);
 
   void sample_along_line(const double xyz0[], const double xyz1[], const unsigned int nb_points, Vec data, std::vector<double> out);
-
-  inline void set_shift_grids(bool value) { shift_grids_ = value; }
-  inline void set_phi_grid_refinement(int value) { phi_grid_refinement_ = value; }
 
   inline void set_dendrite_cut_off_fraction(double value) { dendrite_cut_off_fraction_ = value; }
   inline void set_dendrite_min_length(double value) { dendrite_min_length_ = value; }
