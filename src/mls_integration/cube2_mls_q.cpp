@@ -227,8 +227,8 @@ void cube2_mls_q_t::quadrature_over_domain(std::vector<double> &weights, std::ve
         simplex[0].quadrature_over_domain(weights, X, Y);
         simplex[1].quadrature_over_domain(weights, X, Y);
       } break;
-    default:
 #ifdef CASL_THROWS
+    default:
       throw std::domain_error("[CASL_ERROR]: Something went wrong during integration.");
 #endif
   }
@@ -313,8 +313,8 @@ void cube2_mls_q_t::quadrature_in_dir(int dir, std::vector<double> &weights, std
         case 3: simplex[1].quadrature_in_dir(0, weights, X, Y); break;
       }
       break;
-    default:
 #ifdef CASL_THROWS
+    default:
       throw std::domain_error("[CASL_ERROR]: Something went wrong during integration.");
 #endif
   }
