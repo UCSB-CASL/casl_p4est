@@ -9,6 +9,7 @@
 #include <time.h>
 #include <stdio.h>
 
+
 // p4est Library
 #ifdef P4_TO_P8
 #include <p8est_bits.h>
@@ -23,7 +24,7 @@
 #include <src/my_p8est_node_neighbors.h>
 #include <src/my_p8est_level_set.h>
 #include <src/my_p8est_poisson_nodes.h>
-#include <src/my_p8est_bialloy.h>
+#include <src/my_p8est_multialloy.h>
 #else
 #include <p4est_bits.h>
 #include <p4est_extended.h>
@@ -37,9 +38,7 @@
 #include <src/my_p4est_node_neighbors.h>
 #include <src/my_p4est_level_set.h>
 #include <src/my_p4est_poisson_nodes.h>
-//#include <src/my_p4est_multialloy.h>
-#include <src/my_p4est_multialloy_without_extension.h>
-//#include <src/my_p4est_multialloy_var2.h>
+#include <src/my_p4est_multialloy.h>
 #endif
 
 #include <src/point3.h>
@@ -50,16 +49,16 @@
 #undef MIN
 #undef MAX
 
+#define ADD_OPTION(i, var, description) \
+  i == 0 ? cmd.add_option(#var, description) : (void) (var = cmd.get(#var, var));
+
+#define ADD_OPTION2(i, var, name, description) \
+  i == 0 ? cmd.add_option(name, description) : (void) (var = cmd.get(name, var));
+
+// grid parameters
 int lmin = 5;
 int lmax = 9;
-int save_every_n_iteration = 50;
-
-double lip = 1.5;
-
-using namespace std;
-
-bool save_velocity = true;
-bool save_vtk = true;
+double lip = 2;
 
 #ifdef P4_TO_P8
 char direction = 'z';
@@ -67,37 +66,68 @@ char direction = 'z';
 char direction = 'y';
 #endif
 
-double termination_length = 0.7;
-
-/* 0 - NiCu
- * 1 - AlCu
- */
-int alloy_type = 0;
-
-double box_size = 4e-2;     //equivalent width (in x) of the box in cm - for plane convergence, 5e-3
-//double box_size = 5e-1;     //equivalent width (in x) of the box in cm - for plane convergence, 5e-3
-double scaling = 1/box_size;
-
-double xmin = 0;
-double ymin = 0;
-double xmax = 1;
-double ymax = 1;
+double xmin = 0, xmax = 1; int nx = 1; bool px = 0;
+double ymin = 0, ymax = 2; int ny = 2; bool py = 1;
 #ifdef P4_TO_P8
-double zmin = 0;
-double zmax = 1;
-int n_xyz[] = {1, 1, 1};
-#else
-int n_xyz[] = {1, 1};
+double zmin = 0, zmax = 1; int ny = 1; bool pz = 0;
 #endif
+
+// solver options
+double cfl_number              = 0.1;
+double bc_tolerance            = 1.e-5;
+double phi_thresh              = 1e-3;
+
+int max_iterations             = 50;
+int pin_every_n_steps          = 1000;
+
+bool use_continuous_stencil    = 0;
+bool use_one_sided_derivatives = 0;
+bool use_points_on_interface   = 1;
+bool update_c0_robin           = 1;
+bool use_superconvergent_robin = 1;
+bool zero_negative_velocity    = 0;
+
+bool shift_grids = 0;
+int  phi_grid_refinement = 0;
+
+// not implemented yet
+bool use_superconvergent_jump  = false;
+
+// output parameters
+int save_every_n_iteration = 10;
+bool save_velocity         = 1;
+bool save_vtk              = 1;
+bool save_history          = 1;
+bool save_dendrites        = 1;
+
+double save_every_dl = 0.01;
+double save_every_dt = 0.1;
+
+int save_type = 0; // 0 - every n iterations, 1 - every dl of growth, 2 - every dt of time
+
+double dendrite_cut_off_fraction = 1.05;
+double dendrite_min_length       = 0.05;
+
+using namespace std;
+
+// problem parameters
+bool concentration_neumann = 1;
+int max_total_iterations   = INT_MAX;
+double time_limit          = DBL_MAX;
+double termination_length  = 1.8;
+double init_perturb        = 0.001;
+
+bool enforce_planar_front   = 0;
+
+int alloy_type = 2;
+
+//double box_size = 4e-2;     //equivalent width (in x) of the box in cm - for plane convergence, 5e-3
+double box_size = 1e-1;     //equivalent width (in x) of the box in cm - for plane convergence, 5e-3
+double scaling = 1/box_size;
 
 double rho;                  /* density                                    - kg.cm-3      */
 double heat_capacity;        /* c, heat capacity                           - J.kg-1.K-1   */
-double ml;                   /* liquidus slope                             - K / at frac. */
-double kp;                   /* partition coefficient                                     */
-double c0;                   /* initial concentration                      - at frac.     */
 double Tm;                   /* melting temperature                        - K            */
-double Dl;                   /* liquid concentration diffusion coefficient - cm2.s-1      */
-double Ds;                   /* solid concentration diffusion coefficient  - cm2.s-1      */
 double G;                    /* thermal gradient                           - k.cm-1       */
 double V;                    /* cooling velocity                           - cm.s-1       */
 double latent_heat;          /* L, latent heat                             - J.cm-3       */
@@ -108,102 +138,142 @@ double eps_c;                /* curvature undercooling coefficient         - cm.
 double eps_v;                /* kinetic undercooling coefficient           - s.K.cm-1     */
 double eps_anisotropy;       /* anisotropy coefficient                                    */
 
-/* second admixture */
-double Ds_sec;
-double Dl_sec;
-double ml_sec;
-double c0_sec;
-double kp_sec;
+double ml0;                   /* liquidus slope                             - K / at frac. */
+double kp0;                   /* partition coefficient                                     */
+double c00;                   /* initial concentration                      - at frac.     */
+double Dl0;                   /* liquid concentration diffusion coefficient - cm2.s-1      */
 
-//double t_final = 1000*ny/V;
-double t_final = 500;
+double ml1;                   /* liquidus slope                             - K / at frac. */
+double kp1;                   /* partition coefficient                                     */
+double c01;                   /* initial concentration                      - at frac.     */
+double Dl1;                   /* liquid concentration diffusion coefficient - cm2.s-1      */
 
-int dt_method = 1;
-double velocity_tol = 1.e-8;
-
-double cfl_number = 0.1;
-double phi_thresh = 0.000;
-double zero_negative_velocity = true;
-int num_of_iters_per_step = 5;
 
 void set_alloy_parameters()
 {
   switch(alloy_type)
   {
-  case 0:
-    /* those are the default parameters for Ni-0.25831at%Cu-0.15at%Cu = Ni-0.40831at%Cu */
-    rho                  = 8.88e-3;        /* kg.cm-3    */
-    heat_capacity        = 0.46e3;         /* J.kg-1.K-1 */
-    ml                   =-357;            /* K / at frac. - liquidous slope */
-    kp                   = 0.86;           /* partition coefficient */
-//    kp                   = 1.0;           /* partition coefficient */
-//    c0                   = 0.40731;        /* at frac.    */
-    c0                   = 0.0;        /* at frac.    */
-    Tm                   = 1728;           /* K           */
-    Dl                   = 1e-5;           /* cm2.s-1 - concentration diffusion coefficient       */
-    Ds                   = 1e-13;          /* cm2.s-1 - solid concentration diffusion coefficient */
-    G                    = 4e2;            /* k.cm-1      */
-    V                    = 0.01;           /* cm.s-1      */
-    latent_heat          = 2350;           /* J.cm-3      */
-    thermal_conductivity = 6.07e-1;        /* W.cm-1.K-1  */
-    lambda               = thermal_conductivity/(rho*heat_capacity); /* cm2.s-1  thermal diffusivity */
-    eps_c                = 2.7207e-5;
-    eps_v                = 2.27e-2;
-//    eps_c                = 0.0;
-//    eps_v                = 0.0;
-    eps_anisotropy       = 0.05;
+    case 0:
+      /* Ni - 0.2at%Cu - 0.2at%Cu */
+      rho                  = 8.88e-3;        /* kg.cm-3    */
+      heat_capacity        = 0.46e3;         /* J.kg-1.K-1 */
+      Tm                   = 1728;           /* K           */
+      G                    = 4e2;            /* k.cm-1      */
+      V                    = 0.01;           /* cm.s-1      */
+      latent_heat          = 2350;           /* J.cm-3      */
+      thermal_conductivity = 6.07e-1;        /* W.cm-1.K-1  */
+      lambda               = thermal_conductivity/(rho*heat_capacity); /* cm2.s-1  thermal diffusivity */
 
-//    box_size = 4e-2;
+      eps_c                = 2.7207e-5;
+      eps_v                = 2.27e-2;
+      eps_anisotropy       = 0.05;
 
-    Dl_sec = 1e-5;
-    Ds_sec = 1e-13;
-    ml_sec =-357;
-    c0_sec = 0.4;
-    kp_sec = 0.86;
-//    kp_sec = 1.;
+      ml0                   =-357;            /* K / at frac. - liquidous slope */
+      kp0                   = 0.86;           /* partition coefficient */
+      c00                   = 0.2;            /* at frac.    */
+      Dl0                   = 1e-5;           /* cm2.s-1 - concentration diffusion coefficient       */
 
-    break;
-  case 1:
-    /* experimental Ni-Al-Ta parameters */
-    rho            = 7.365e-3;  /* kg.cm-3    */
-    heat_capacity  = 660;       /* J.kg-1.K-1 */
-    ml             =-255;       /* K / wt frac. - liquidous slope */
-    kp             = 0.48;      /* partition coefficient */
-    c0             = 0.152;     /* wt frac.    */
-    Tm             = 1754;      /* K           */
-    Dl             = 5e-5;      /* cm2.s-1 - concentration diffusion coefficient       */
-    Ds             = 1e-13;     /* cm2.s-1 - solid concentration diffusion coefficient */
-    G              = 20;        /* K.cm-1      */
-    V              = 0.01;      /* cm.s-1      */
-    latent_heat    = 2136;      /* J.cm-3      */
-    thermal_conductivity =  0.8; /* W.cm-1.K-1  */
-    lambda               = thermal_conductivity/(rho*heat_capacity); /* cm2.s-1  thermal diffusivity */
-    eps_c          = 2.7207e-5;
-    eps_v          = 2.27e-2;
-    eps_anisotropy = 0.05;
+      ml1                   =-357;            /* K / at frac. - liquidous slope */
+      kp1                   = 0.86;           /* partition coefficient */
+      c01                   = 0.2;            /* at frac.    */
+      Dl1                   = 1e-5;           /* cm2.s-1 - concentration diffusion coefficient       */
 
-//    box_size = 5e-1;
+//      box_size = 4e-2;
 
-    Dl_sec = 5e-5;
-    Ds_sec = 1e-13;
-    ml_sec =-517;
-    c0_sec = 0.058;
-    kp_sec = 0.54;
-    break;
+      break;
+    case 1:
+      /* Ni - 15.2wt%Al - 5.8wt%Ta  */
+      rho            = 7.365e-3;  /* kg.cm-3    */
+      heat_capacity  = 660;       /* J.kg-1.K-1 */
+      Tm             = 1754;      /* K           */
+      G              = 200;       /* K.cm-1      */
+      V              = 0.01;      /* cm.s-1      */
+      latent_heat    = 2136;      /* J.cm-3      */
+      thermal_conductivity =  0.8;/* W.cm-1.K-1  */
+      lambda               = thermal_conductivity/(rho*heat_capacity); /* cm2.s-1  thermal diffusivity */
+      eps_c          = 2.7207e-4;
+      eps_v          = 2.27e-2;
+      eps_anisotropy = 0.05;
+
+      Dl0 = 5e-5;      /* cm2.s-1 - concentration diffusion coefficient       */
+      ml0 =-255;       /* K / wt frac. - liquidous slope */
+      c00 = 0.152;     /* wt frac.    */
+      kp0 = 0.48;      /* partition coefficient */
+
+      Dl1 = 5e-5;
+      ml1 =-517;
+      c01 = 0.058;
+      kp1 = 0.54;
+
+//      box_size = 2e-1;
+      break;
+
+    case 2:
+      /* Co - 10.7at%W - 9.4at%Al  */
+      rho            = 9.2392e-3;   /* kg.cm-3    */
+      heat_capacity  = 356;         /* J.kg-1.K-1 */
+      Tm             = 1996;        /* K           */
+      G              = 1000;         /* K.cm-1      */
+      V              = 0.005;        /* cm.s-1      */
+      latent_heat    = 2588.7;      /* J.cm-3      */
+      thermal_conductivity =  1.3;/* W.cm-1.K-1  */
+      lambda               = thermal_conductivity/(rho*heat_capacity); /* cm2.s-1  thermal diffusivity */
+      eps_c          = 0*2.7207e-5;
+      eps_v          = 0*2.27e-2;
+      eps_anisotropy = 0.025;
+
+      Dl0 = 1e-5;      /* cm2.s-1 - concentration diffusion coefficient       */
+      ml0 =-874;       /* K / wt frac. - liquidous slope */
+      c00 = 0.107;     /* at frac.    */
+      kp0 = 0.848;     /* partition coefficient */
+
+      Dl1 = 10e-5;
+      ml1 =-1378;
+      c01 = 0.094;
+      kp1 = 0.848;
+
+      box_size = 1.0e-1;
+
+      break;
+
+    case 3:
+      /* Co - 9.4at%Al - 10.7at%W  */
+      rho            = 9.2392e-3;   /* kg.cm-3    */
+      heat_capacity  = 356;         /* J.kg-1.K-1 */
+      Tm             = 1996;        /* K           */
+      G              = 5;         /* K.cm-1      */
+      V              = 0.01;        /* cm.s-1      */
+      latent_heat    = 2588.7;      /* J.cm-3      */
+      thermal_conductivity =  1.3;/* W.cm-1.K-1  */
+      lambda               = thermal_conductivity/(rho*heat_capacity); /* cm2.s-1  thermal diffusivity */
+      eps_c          = 2.7207e-5;
+      eps_v          = 2.27e-2;
+      eps_anisotropy = 0.05;
+
+      Dl0 = 1e-5;
+      ml0 =-1378;
+      c00 = 0.094;
+      kp0 = 0.848;
+
+      Dl1 = 1e-5;      /* cm2.s-1 - concentration diffusion coefficient       */
+      ml1 =-874;       /* K / wt frac. - liquidous slope */
+      c01 = 0.107;     /* at frac.    */
+      kp1 = 0.848;     /* partition coefficient */
+
+      box_size = 0.5e-1;
+      break;
   }
 }
 
 
 #ifdef P4_TO_P8
-
 struct plan_t : CF_3{
   double operator()(double x, double y, double z) const {
-    if     (direction=='x') return x - 0.1;
-    else if(direction=='y') return y - 0.1;
-    else                    return z - 0.1;
+    if     (direction=='x') return -(x - 0.1);
+    else if(direction=='y') return -(y - 0.1);
+    else                    return -(z - 0.1);
   }
 } LS;
-
 
 class WallBCTypeTemperature : public WallBC3D
 {
@@ -253,6 +323,9 @@ class WallBCTypeConcentration : public WallBC3D
 public:
   BoundaryConditionType operator()( double x, double y, double z ) const
   {
+    if (concentration_neumann)
+      return NEUMANN;
+
     if(direction=='x')
     {
       if (ABS(x-xmin)<EPS || ABS(x-xmax)<EPS)
@@ -277,7 +350,7 @@ public:
   }
 } wall_bc_type_concentration;
 
-class WallBCValueConcentrationS : public CF_3
+class WallBCValueConcentration0 : public CF_3
 {
 public:
   double operator()(double x, double y, double z) const
@@ -285,11 +358,20 @@ public:
     if (wall_bc_type_concentration(x,y,z)==NEUMANN)
       return 0;
     else
-      return kp * c0;
+      return c00;
   }
-} wall_bc_value_concentration_s;
+} wall_bc_value_concentration_0;
 
-class WallBCValueConcentrationL : public CF_3
+class InitialConcentration0 : public CF_3
+{
+public:
+  double operator()(double , double , double ) const
+  {
+    return c00;
+  }
+} initial_concentration_0;
+
+class WallBCValueConcentration1 : public CF_3
 {
 public:
   double operator()(double x, double y, double z) const
@@ -297,44 +379,36 @@ public:
     if (wall_bc_type_concentration(x,y,z)==NEUMANN)
       return 0;
     else
-      return c0;
+      return c01;
   }
-} wall_bc_value_concentration_l;
+} wall_bc_value_concentration_1;
+
+class InitialConcentration1 : public CF_3
+{
+public:
+  double operator()(double , double , double ) const
+  {
+    return c01;
+  }
+} initial_concentration_1;
 
 class InitialTemperature : public CF_3
 {
 public:
   double operator()(double x, double y, double z) const
   {
-    if(LS(x,y,z)<0) return LS(x,y,z)*(G+latent_heat*V/thermal_conductivity) + c0*ml + Tm;
-    else            return LS(x,y,z)*G + c0*ml + Tm;
+//    if(LS(x,y,z)>0) return -LS(x,y,z)*(G+latent_heat*V/thermal_conductivity) + initial_concentration_0(x,y,z)*ml0 + initial_concentration_1(x,y,z)*ml1 + Tm;
+//    else
+      return -LS(x,y,z)*G + initial_concentration_0(x,y,z)*ml0 + initial_concentration_1(x,y,z)*ml1 + Tm;
   }
 } initial_temperature;
-
-class InitialConcentrationS : public CF_3
-{
-public:
-  double operator()(double , double, double ) const
-  {
-    return kp * c0;
-  }
-} initial_concentration_s;
-
-class InitialConcentrationL : public CF_3
-{
-public:
-  double operator()(double , double , double ) const
-  {
-    return c0;
-  }
-} initial_concentration_l;
 
 #else
 
 struct plan_t : CF_2{
   double operator()(double x, double y) const {
-    if(direction=='x') return x - 0.1;
-    else               return y - 0.1 + 0.000*cos(pow(2,lmax)*PI*(x-0.50007));
+    if(direction=='x') return -(x - 0.1);
+    else               return -(y - 0.1) + 0.0*sin(10*PI*x);
   }
 } LS;
 
@@ -342,9 +416,8 @@ struct plan_t : CF_2{
 class WallBCTypeTemperature : public WallBC2D
 {
 public:
-  BoundaryConditionType operator()( double x, double y ) const
+  BoundaryConditionType operator()( double, double ) const
   {
-    (void) x; (void) y;
     return NEUMANN;
   }
 } wall_bc_type_temperature;
@@ -380,6 +453,9 @@ class WallBCTypeConcentration : public WallBC2D
 public:
   BoundaryConditionType operator()( double x, double y ) const
   {
+    if (concentration_neumann)
+      return NEUMANN;
+
     if(direction=='x')
     {
       if (ABS(x-xmin)<EPS || ABS(x-xmax)<EPS)
@@ -389,7 +465,7 @@ public:
     }
     else
     {
-      if (ABS(y-ymin)<EPS || ABS(y-ymax)<EPS)
+      if (ABS(y-ymax)<EPS)
         return DIRICHLET;
       else
         return NEUMANN;
@@ -397,7 +473,7 @@ public:
   }
 } wall_bc_type_concentration;
 
-class WallBCValueConcentrationS : public CF_2
+class WallBCValueConcentration0 : public CF_2
 {
 public:
   double operator()(double x, double y) const
@@ -405,11 +481,29 @@ public:
     if (wall_bc_type_concentration(x,y)==NEUMANN)
       return 0;
     else
-      return kp * c0;
+      return c00;
   }
-} wall_bc_value_concentration_s;
+} wall_bc_value_concentration_0;
 
-class WallBCValueConcentrationL : public CF_2
+class InitialConcentration0 : public CF_2
+{
+public:
+  double operator()(double , double ) const
+  {
+    return c00;
+  }
+} initial_concentration_0;
+
+class InitialConcentration0_solid : public CF_2
+{
+public:
+  double operator()(double , double ) const
+  {
+    return kp0*c00;
+  }
+} initial_concentration_0_solid;
+
+class WallBCValueConcentration1 : public CF_2
 {
 public:
   double operator()(double x, double y) const
@@ -417,87 +511,102 @@ public:
     if (wall_bc_type_concentration(x,y)==NEUMANN)
       return 0;
     else
-      return c0;
+      return c01;
   }
-} wall_bc_value_concentration_l;
+} wall_bc_value_concentration_1;
 
-class InitialConcentrationS : public CF_2
+class InitialConcentration1 : public CF_2
 {
 public:
   double operator()(double , double ) const
   {
-    return kp * c0;
+    return c01;
   }
-} initial_concentration_s;
+} initial_concentration_1;
 
-class InitialConcentrationL : public CF_2
+class InitialConcentration1_solid : public CF_2
 {
 public:
   double operator()(double , double ) const
   {
-    return c0;
+    return kp1*c01;
   }
-} initial_concentration_l;
-
-/* third component */
-
-class WallBCValueConcentrationS_sec : public CF_2
-{
-public:
-  double operator()(double x, double y) const
-  {
-    if (wall_bc_type_concentration(x,y)==NEUMANN)
-      return 0;
-    else
-      return kp_sec * c0_sec;
-  }
-} wall_bc_value_concentration_s_sec;
-
-class WallBCValueConcentrationL_sec : public CF_2
-{
-public:
-  double operator()(double x, double y) const
-  {
-    if (wall_bc_type_concentration(x,y)==NEUMANN)
-      return 0;
-    else
-      return c0_sec;
-  }
-} wall_bc_value_concentration_l_sec;
-
-
-class InitialConcentrationS_sec : public CF_2
-{
-public:
-  double operator()(double , double ) const
-  {
-    return kp_sec * c0_sec;
-  }
-} initial_concentration_s_sec;
-
-class InitialConcentrationL_sec : public CF_2
-{
-public:
-  double operator()(double , double ) const
-  {
-    return c0_sec;
-  }
-} initial_concentration_l_sec;
+} initial_concentration_1_solid;
 
 class InitialTemperature : public CF_2
 {
 public:
   double operator()(double x, double y) const
   {
-//    if(LS(x,y)<0) return LS(x,y)*(G+latent_heat*V/thermal_conductivity) + c0*ml + Tm;
-//    else          return LS(x,y)*G + c0*ml + Tm;
-    if(LS(x,y)<0) return LS(x,y)*(G+latent_heat*V/thermal_conductivity) + initial_concentration_l(x,y)*ml + initial_concentration_l_sec(x,y)*ml_sec + Tm;
-    else          return LS(x,y)*G                                      + initial_concentration_l(x,y)*ml + initial_concentration_l_sec(x,y)*ml_sec + Tm;
+//    if(LS(x,y)>0) return -LS(x,y)*(G+latent_heat*V/thermal_conductivity) + initial_concentration_0(x,y)*ml0 + initial_concentration_1(x,y)*ml1 + Tm;
+//    else
+      return -LS(x,y)*G + initial_concentration_0(x,y)*ml0 + initial_concentration_1(x,y)*ml1 + Tm;
   }
 } initial_temperature;
 
 #endif
 
+#ifdef P4_TO_P8
+class eps_c_cf_t : public CF_3
+{
+public:
+  double operator()(double nx, double ny, double nz) const
+  {
+    double norm = sqrt(nx*nx+ny*ny+nz*nz) + EPS;
+    return eps_c*(1.0-4.0*eps_anisotropy*((pow(nx, 4.) + pow(ny, 4.) + pow(nz, 4.))/pow(norm, 4.) - 0.75));
+  }
+} eps_c_cf;
+
+class eps_v_cf_t : public CF_3
+{
+public:
+  double operator()(double nx, double ny, double nz) const
+  {
+    double norm = sqrt(nx*nx+ny*ny+nz*nz) + EPS;
+    return eps_v*(1.0-4.0*eps_anisotropy*((pow(nx, 4.) + pow(ny, 4.) + pow(nz, 4.))/pow(norm, 4.) - 0.75));
+  }
+} eps_v_cf;
+#else
+class eps_c_cf_t : public CF_2
+{
+public:
+  double operator()(double nx, double ny) const
+  {
+    double theta = atan2(ny, nx);
+    return eps_c*(1.-15.*eps_anisotropy*cos(4.*(theta)));
+  }
+} eps_c_cf;
+
+class eps_v_cf_t : public CF_2
+{
+public:
+  double operator()(double nx, double ny) const
+  {
+    double theta = atan2(ny, nx);
+    return eps_v*(1.-15.*eps_anisotropy*cos(4.*(theta)));
+  }
+} eps_v_cf;
+#endif
+
+#ifdef P4_TO_P8
+  class ZERO : public CF_3
+  {
+  public:
+    double operator()(double, double, double) const
+    {
+      return 0;
+    }
+  } zero_cf;
+#else
+  class ZERO : public CF_2
+  {
+  public:
+    double operator()(double, double) const
+    {
+      return 0;
+    }
+  } zero_cf;
+#endif
 
 
 int main (int argc, char* argv[])
@@ -506,50 +615,89 @@ int main (int argc, char* argv[])
   mpi.init(argc, argv);
 
   cmdParser cmd;
-  cmd.add_option("lmin", "min level of the tree");
-  cmd.add_option("lmax", "max level of the tree");
-  cmd.add_option("nx", "number of blox in x-dimension");
-  cmd.add_option("ny", "number of blox in y-dimension");
+
+  for (short i = 0; i < 2; ++i)
+  {
+    // grid parameters
+    ADD_OPTION(i, lmin, "min level of the tree");
+    ADD_OPTION(i, lmax, "max level of the tree");
+    ADD_OPTION(i, lip,  "Lipschitz constant");
+
+    ADD_OPTION(i, direction, "direction of the crystal growth x/y");
+
+    ADD_OPTION(i, nx, "number of blox in x-dimension");
+    ADD_OPTION(i, ny, "number of blox in y-dimension");
 #ifdef P4_TO_P8
-  cmd.add_option("nz", "number of blox in z-dimension");
+    ADD_OPTION(i, nz, "number of blox in z-dimension");
 #endif
-  cmd.add_option("px", "periodicity in x-dimension 0/1");
-  cmd.add_option("py", "periodicity in y-dimension 0/1");
+
+    ADD_OPTION(i, px, "periodicity in x-dimension 0/1");
+    ADD_OPTION(i, py, "periodicity in y-dimension 0/1");
 #ifdef P4_TO_P8
-  cmd.add_option("pz", "periodicity in z-dimension 0/1");
+    ADD_OPTION(i, pz, "periodicity in z-dimension 0/1");
 #endif
-  cmd.add_option("save_vtk", "1 to save vtu files, 0 otherwise");
-  cmd.add_option("save_velo", "1 to save velocity of the interface, 0 otherwise");
-  cmd.add_option("save_every_n", "save vtk every n iteration");
-  cmd.add_option("write_stats", "write the statistics about the p4est");
-  cmd.add_option("tf", "final time");
-  cmd.add_option("L", "set latent heat");
-  cmd.add_option("G", "set heat gradient");
-  cmd.add_option("V", "set velocity");
-  cmd.add_option("box_size", "set box_size");
-  cmd.add_option("alloy", "choose the type of alloy. Default is 0.\n  0 - NiCuCu\n  1 - NiAlTa");
-  cmd.add_option("direction", "direction of the crystal growth x/y");
-  cmd.add_option("Dl", "set the concentration diffusion coefficient in the liquid phase");
-  cmd.add_option("eps_c", "set the curvature undercooling coefficient");
-  cmd.add_option("eps_v", "set the kinetic undercooling coefficient");
 
-  cmd.add_option("dt_method", "type of time step: 1 - simple CFL, 0 - CFL multiplied by sqrt(dx)");
-  cmd.add_option("velocity_tol", "error tolerance for internal iterations");
-  cmd.add_option("termination_length", "defines when a run will be stopped (fraction of box length, from 0 to 1)");
-  cmd.add_option("lip", "set the lipschitz constant");
-  cmd.add_option("cfl_number", "cfl_number");
-  cmd.add_option("phi_thresh", "phi_thresh");
-  cmd.add_option("zero_negative_velocity", "zero_negative_velocity");
-  cmd.add_option("num_of_iters_per_step", "num_of_iters_per_step");
+    ADD_OPTION(i, xmin, "xmin"); ADD_OPTION(i, xmax, "xmax");
+    ADD_OPTION(i, ymin, "ymin"); ADD_OPTION(i, ymax, "ymax");
+#ifdef P4_TO_P8
+    ADD_OPTION(i, zmin, "zmin"); ADD_OPTION(i, zmax, "zmax");
+#endif
 
+    // solver parameters
+    ADD_OPTION(i, cfl_number,   "cfl_number");
+    ADD_OPTION(i, bc_tolerance, "error tolerance for internal iterations");
+    ADD_OPTION(i, phi_thresh,   "phi_thresh");
 
-  cmd.parse(argc, argv);
+    ADD_OPTION(i, max_iterations,    "max_iterations");
+    ADD_OPTION(i, pin_every_n_steps, "pin_every_n_steps");
 
-  alloy_type = cmd.get("alloy", alloy_type);
-  set_alloy_parameters();
+    ADD_OPTION(i, use_continuous_stencil,    "use_continuous_stencil");
+    ADD_OPTION(i, use_one_sided_derivatives, "use_one_sided_derivatives");
+    ADD_OPTION(i, use_points_on_interface,   "use_points_on_interface");
+    ADD_OPTION(i, update_c0_robin,           "update_c0_robin");
+    ADD_OPTION(i, use_superconvergent_robin, "use_superconvergent_robin");
+    ADD_OPTION(i, use_superconvergent_jump,  "use_superconvergent_jump");
+    ADD_OPTION(i, zero_negative_velocity,    "zero_negative_velocity");
 
-  save_vtk = cmd.get("save_vtk", save_vtk);
-  save_velocity = cmd.get("save_velo", save_velocity);
+    ADD_OPTION(i, shift_grids,         "shift_grids");
+    ADD_OPTION(i, phi_grid_refinement, "phi_grid_refinement");
+
+    // output parameters
+    ADD_OPTION(i, save_every_n_iteration, "save vtk every n iteration");
+    ADD_OPTION(i, save_velocity,          "1 to save velocity of the interface, 0 otherwise");
+    ADD_OPTION(i, save_vtk,               "1 to save vtu files, 0 otherwise");
+    ADD_OPTION(i, save_history,           "save_history");
+    ADD_OPTION(i, save_dendrites,         "save_dendrites");
+    ADD_OPTION(i, save_every_dl,          "save vtk every dl of growth");
+    ADD_OPTION(i, save_every_dt,          "save vtk every dt of time");
+    ADD_OPTION(i, save_type,              "save criterion: 0 - every n iterations, 1 - every dl of growth, 2 - every dt of time");
+
+    ADD_OPTION(i, dendrite_cut_off_fraction, "dendrite_cut_off_fraction");
+    ADD_OPTION(i, dendrite_min_length,       "dendrite_min_length");
+
+    // problem parameters
+    ADD_OPTION(i, concentration_neumann, "concentration_neumann");
+    ADD_OPTION(i, max_total_iterations,  "max_total_iterations");
+    ADD_OPTION(i, time_limit,            "final time");
+    ADD_OPTION(i, termination_length,    "defines when a run will be stopped (fraction of box length, from 0 to 1)");
+    ADD_OPTION(i, init_perturb,          "init_perturb");
+    ADD_OPTION(i, enforce_planar_front,   "enforce_planar_front");
+
+    ADD_OPTION(i, alloy_type,  "choose the type of alloy. Default is 0.\n  0 - NiCuCu\n  1 - NiAlTa");
+    if (i == 1) set_alloy_parameters();
+
+    ADD_OPTION(i, box_size,    "set box_size");
+    ADD_OPTION(i, latent_heat, "latent heat");
+    ADD_OPTION(i, G,           "heat gradient");
+    ADD_OPTION(i, V,           "cooling velocity");
+    ADD_OPTION(i, Dl0,         "solute no. 1 diffusivity in liquid");
+    ADD_OPTION(i, Dl1,         "solute no. 2 diffusivity in liquid");
+
+    ADD_OPTION(i, eps_c, "curvature undercooling coefficient");
+    ADD_OPTION(i, eps_v, "kinetic undercooling coefficient");
+
+    if (i == 0) cmd.parse(argc, argv);
+  }
 
   int periodic[P4EST_DIM];
   periodic[0] = cmd.get("px", (direction=='y' || direction=='z') ? 1 : 0);
@@ -558,16 +706,11 @@ int main (int argc, char* argv[])
   periodic[2] = cmd.get("pz", (direction=='x' || direction=='y') ? 1 : 0);
 #endif
 
-  n_xyz[0] = cmd.get("nx", n_xyz[0]);
-  n_xyz[1] = cmd.get("ny", n_xyz[1]);
+  int n_xyz[P4EST_DIM];
+  n_xyz[0] = nx;
+  n_xyz[1] = ny;
 #ifdef P4_TO_P8
-  n_xyz[2] = cmd.get("nz", n_xyz[2]);
-#endif
-
-#ifdef P4_TO_P8
-  direction = cmd.get("direction", 'z');
-#else
-  direction = cmd.get("direction", 'y');
+  n_xyz[2] = nz;
 #endif
 
   if(0)
@@ -583,26 +726,6 @@ int main (int argc, char* argv[])
 
   PetscErrorCode ierr;
 
-  save_every_n_iteration = cmd.get("save_every_n", save_every_n_iteration);
-  t_final = cmd.get("tf", t_final);
-  latent_heat = cmd.get("L", latent_heat);
-  G = cmd.get("G", G);
-  V = cmd.get("V", V);
-  box_size = cmd.get("box_size", box_size);
-  Dl = cmd.get("Dl", Dl);
-  Dl_sec = cmd.get("Dl", Dl);
-  eps_c = cmd.get("eps_c", eps_c);
-  eps_v = cmd.get("eps_v", eps_v);
-
-  dt_method = cmd.get("dt_method", dt_method);
-  velocity_tol = cmd.get("velocity_tol", velocity_tol);
-  termination_length = cmd.get("termination_length", termination_length);
-  cfl_number = cmd.get("cfl_number", cfl_number);
-  phi_thresh = cmd.get("phi_thresh", phi_thresh);
-  zero_negative_velocity = cmd.get("zero_negative_velocity", zero_negative_velocity);
-  num_of_iters_per_step = cmd.get("num_of_iters_per_step", num_of_iters_per_step);
-
-
   double latent_heat_orig = latent_heat;
   double G_orig = G;
   double V_orig = V;
@@ -610,8 +733,6 @@ int main (int argc, char* argv[])
   scaling = 1/box_size;
   rho                  /= (scaling*scaling*scaling);
   thermal_conductivity /= scaling;
-  Dl                   *= (scaling*scaling);
-  Ds                   *= (scaling*scaling);
   G                    /= scaling;
   V                    *= scaling;
   latent_heat          /= (scaling*scaling*scaling);
@@ -619,8 +740,8 @@ int main (int argc, char* argv[])
   eps_v                /= scaling;
   lambda                = thermal_conductivity/(rho*heat_capacity);
 
-  Dl_sec               *= (scaling*scaling);
-  Ds_sec               *= (scaling*scaling);
+  Dl0                  *= (scaling*scaling);
+  Dl1                  *= (scaling*scaling);
 
   parStopWatch w1;
   w1.start("total time");
@@ -637,10 +758,6 @@ int main (int argc, char* argv[])
   p4est_connectivity_t *connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick, periodic);
   p4est_t *p4est = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
 
-  lmin = cmd.get("lmin", lmin);
-  lmax = cmd.get("lmax", lmax);
-  lip = cmd.get("lip", lip);
-
   splitting_criteria_cf_t data(lmin, lmax, &LS, lip);
 
   p4est->user_pointer = (void*)(&data);
@@ -648,6 +765,8 @@ int main (int argc, char* argv[])
   my_p4est_partition(p4est, P4EST_FALSE, NULL);
 
   p4est_ghost_t *ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
+  if (use_continuous_stencil || use_one_sided_derivatives)
+    my_p4est_ghost_expand(p4est, ghost);
   p4est_nodes_t *nodes = my_p4est_nodes_new(p4est, ghost);
 
   my_p4est_hierarchy_t *hierarchy = new my_p4est_hierarchy_t(p4est,ghost, &brick);
@@ -655,24 +774,23 @@ int main (int argc, char* argv[])
   ngbd->init_neighbors();
 
   /* initialize the variables */
-  Vec phi, temperature, cl, cs, normal_velocity;
+  Vec phi, tl, ts, c0, c1, normal_velocity, c0s, c1s;
   ierr = VecCreateGhostNodes(p4est, nodes, &phi); CHKERRXX(ierr);
-  ierr = VecDuplicate(phi, &temperature    ); CHKERRXX(ierr);
-  ierr = VecDuplicate(phi, &cl             ); CHKERRXX(ierr);
-  ierr = VecDuplicate(phi, &cs             ); CHKERRXX(ierr);
+  ierr = VecDuplicate(phi, &tl             ); CHKERRXX(ierr);
+  ierr = VecDuplicate(phi, &ts             ); CHKERRXX(ierr);
+  ierr = VecDuplicate(phi, &c0             ); CHKERRXX(ierr);
+  ierr = VecDuplicate(phi, &c1             ); CHKERRXX(ierr);
+  ierr = VecDuplicate(phi, &c0s            ); CHKERRXX(ierr);
+  ierr = VecDuplicate(phi, &c1s            ); CHKERRXX(ierr);
   ierr = VecDuplicate(phi, &normal_velocity); CHKERRXX(ierr);
 
   sample_cf_on_nodes(p4est, nodes, LS, phi);
-  sample_cf_on_nodes(p4est, nodes, initial_temperature, temperature);
-  sample_cf_on_nodes(p4est, nodes, initial_concentration_l, cl);
-  sample_cf_on_nodes(p4est, nodes, initial_concentration_s, cs);
-
-  Vec cl_sec, cs_sec;
-  ierr = VecDuplicate(phi, &cl_sec         ); CHKERRXX(ierr);
-  ierr = VecDuplicate(phi, &cs_sec         ); CHKERRXX(ierr);
-
-  sample_cf_on_nodes(p4est, nodes, initial_concentration_l_sec, cl_sec);
-  sample_cf_on_nodes(p4est, nodes, initial_concentration_s_sec, cs_sec);
+  sample_cf_on_nodes(p4est, nodes, initial_temperature, tl);
+  sample_cf_on_nodes(p4est, nodes, initial_temperature, ts);
+  sample_cf_on_nodes(p4est, nodes, initial_concentration_0, c0);
+  sample_cf_on_nodes(p4est, nodes, initial_concentration_1, c1);
+  sample_cf_on_nodes(p4est, nodes, initial_concentration_0_solid, c0s);
+  sample_cf_on_nodes(p4est, nodes, initial_concentration_1_solid, c1s);
 
   Vec tmp;
   ierr = VecGhostGetLocalForm(normal_velocity, &tmp); CHKERRXX(ierr);
@@ -682,16 +800,16 @@ int main (int argc, char* argv[])
   /* set initial time step */
   p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
   p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
-  double xmin = p4est->connectivity->vertices[3*vm + 0];
-  double ymin = p4est->connectivity->vertices[3*vm + 1];
-  double xmax = p4est->connectivity->vertices[3*vp + 0];
-  double ymax = p4est->connectivity->vertices[3*vp + 1];
-  double dx = (xmax-xmin) / pow(2., (double) data.max_lvl);
-  double dy = (ymax-ymin) / pow(2., (double) data.max_lvl);
+  double xmin_tree = p4est->connectivity->vertices[3*vm + 0];
+  double ymin_tree = p4est->connectivity->vertices[3*vm + 1];
+  double xmax_tree = p4est->connectivity->vertices[3*vp + 0];
+  double ymax_tree = p4est->connectivity->vertices[3*vp + 1];
+  double dx = (xmax_tree-xmin_tree) / pow(2., (double) data.max_lvl);
+  double dy = (ymax_tree-ymin_tree) / pow(2., (double) data.max_lvl);
 #ifdef P4_TO_P8
-  double zmin = p4est->connectivity->vertices[3*vm + 2];
-  double zmax = p4est->connectivity->vertices[3*vp + 2];
-  double dz = (zmax-zmin) / pow(2.,(double) data.max_lvl);
+  double zmin_tree = p4est->connectivity->vertices[3*vm + 2];
+  double zmax_tree = p4est->connectivity->vertices[3*vp + 2];
+  double dz = (zmax_tree-zmin_tree) / pow(2.,(double) data.max_lvl);
 #endif
 
 #ifdef P4_TO_P8
@@ -700,20 +818,22 @@ int main (int argc, char* argv[])
   double dt = 0.45*MIN(dx,dy)/V;
 #endif
 
-//  double *phi_p;
-//  ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
+  if (enforce_planar_front) init_perturb = 0;
 
-//  srand(mpi.rank());
+  double *phi_p;
+  ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
 
-//  for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
-//  {
-//    phi_p[n] += 0.1*dx*(double)(rand()%1000)/1000.;
-//  }
+  srand(mpi.rank());
 
-//  ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
+  for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+  {
+    phi_p[n] += init_perturb*dx*(double)(rand()%1000)/1000.;
+  }
 
-//  ierr = VecGhostUpdateBegin(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-//  ierr = VecGhostUpdateEnd(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
+
+  ierr = VecGhostUpdateBegin(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
 
   /* perturb level set */
@@ -723,31 +843,55 @@ int main (int argc, char* argv[])
 
   /* initialize the solver */
   my_p4est_multialloy_t bas(ngbd);
+
   bas.set_parameters(latent_heat, thermal_conductivity, lambda,
-                     Dl, Ds, V, kp, c0, ml, Tm, eps_anisotropy, eps_c, eps_v, scaling,
-                     Dl_sec, Ds_sec, kp_sec, c0_sec, ml_sec);
+                     V, Tm, scaling,
+                     Dl0, kp0, c00, ml0,
+                     Dl1, kp1, c01, ml1);
   bas.set_phi(phi);
   bas.set_bc(wall_bc_type_temperature,
              wall_bc_type_concentration,
              wall_bc_value_temperature,
-             wall_bc_value_concentration_s,
-             wall_bc_value_concentration_l,
-             wall_bc_value_concentration_s_sec,
-             wall_bc_value_concentration_l_sec);
-  bas.set_temperature(temperature);
-  bas.set_concentration(cl, cs, cl_sec, cs_sec);
+             wall_bc_value_concentration_0,
+             wall_bc_value_concentration_1);
+  bas.set_temperature(tl, ts);
+  bas.set_concentration(c0, c1, c0s, c1s);
   bas.set_normal_velocity(normal_velocity);
   bas.set_dt(dt);
 
-  bas.set_dt_method(dt_method);
-  bas.set_velocity_tol(velocity_tol);
-  bas.set_cfl(cfl_number);
-  bas.set_phi_thresh(phi_thresh);
-  bas.set_zero_negative_velocity(zero_negative_velocity);
-  bas.set_num_of_iterations_per_step(num_of_iters_per_step);
+  bas.set_GT(zero_cf);
+  bas.set_jump_t(zero_cf);
+  bas.set_jump_tn(zero_cf);
+  bas.set_flux_c(zero_cf, zero_cf);
+  bas.set_undercoolings(eps_v_cf, eps_c_cf);
 
-  bas.compute_velocity();
-  bas.compute_dt();
+  bas.set_rhs(zero_cf, zero_cf, zero_cf, zero_cf);
+
+  bas.set_bc_tolerance     (bc_tolerance);
+  bas.set_max_iterations   (max_iterations);
+  bas.set_pin_every_n_steps(pin_every_n_steps);
+  bas.set_cfl              (cfl_number);
+  bas.set_phi_thresh       (phi_thresh);
+
+  bas.set_use_continuous_stencil   (use_continuous_stencil   );
+  bas.set_use_one_sided_derivatives(use_one_sided_derivatives);
+  bas.set_use_superconvergent_robin(use_superconvergent_robin);
+  bas.set_use_superconvergent_jump (use_superconvergent_jump );
+  bas.set_use_points_on_interface  (use_points_on_interface  );
+  bas.set_update_c0_robin          (update_c0_robin          );
+  bas.set_zero_negative_velocity   (zero_negative_velocity   );
+
+  bas.set_dendrite_cut_off_fraction(dendrite_cut_off_fraction);
+  bas.set_dendrite_min_length(dendrite_min_length);
+
+  bas.set_enforce_planar_front(enforce_planar_front);
+
+
+//  bas.set_zero_negative_velocity(zero_negative_velocity);
+//  bas.set_num_of_iterations_per_step(num_of_iters_per_step);
+
+//  bas.compute_velocity();
+//  bas.compute_dt();
 
   // loop over time
   double tn = 0;
@@ -761,28 +905,82 @@ int main (int argc, char* argv[])
 #ifdef P4_TO_P8
   sprintf(name, "%s/velo_%dx%dx%d_L_%g_G_%g_V_%g_box_%g_level_%d-%d.dat", out_dir, n_xyz[0], n_xyz[1], n_xyz[2], latent_heat_orig, G_orig, V_orig, box_size, lmin, lmax);
 #else
-  sprintf(name, "%s/velo_%dx%d_L_%g_G_%g_V_%g_box_%g_dt_method_%d_level_%d-%d.dat", out_dir, n_xyz[0], n_xyz[1], latent_heat_orig, G_orig, V_orig, box_size, dt_method, lmin, lmax);
+  sprintf(name, "%s/velo_%dx%d_L_%g_G_%g_V_%g_box_%g_level_%d-%d.dat", out_dir, n_xyz[0], n_xyz[1], latent_heat_orig, G_orig, V_orig, box_size, lmin, lmax);
 #endif
 
   if(save_velocity)
   {
     ierr = PetscFOpen(mpi.comm(), name, "w", &fich); CHKERRXX(ierr);
-    ierr = PetscFPrintf(mpi.comm(), fich, "time average_interface_velocity max_interface_velocity interface_length solid_phase_area\n"); CHKERRXX(ierr);
+    ierr = PetscFPrintf(mpi.comm(), fich, "time average_interface_velocity max_interface_velocity interface_length solid_phase_area time_elapsed iteration local_nodes ghost_nodes sub_iterations\n"); CHKERRXX(ierr);
     ierr = PetscFClose(mpi.comm(), fich); CHKERRXX(ierr);
   }
 
   bool keep_going = true;
+  int sub_iterations = 0;
+
+  int vtk_idx = 0;
+
+  double total_growth = 0;
+  double base = 0.1;
+
   while(keep_going)
 //  while (iteration < 20)
   {
-    ierr = PetscPrintf(mpi.comm(), "Iteration %d, time %e\n", iteration, tn); CHKERRXX(ierr);
-
-    bas.one_step();
+    if (tn + bas.get_dt() > time_limit) { bas.set_dt(time_limit-tn); keep_going = false; }
 
     tn += bas.get_dt();
 
+    sub_iterations += bas.one_step();
+
+    {
+      total_growth = base;
+
+      p4est = bas.get_p4est();
+      nodes = bas.get_nodes();
+      phi = bas.get_phi();
+
+      const double *phi_p;
+      ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr);
+      for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+      {
+        if (phi_p[n] > 0)
+        {
+          double xyz[P4EST_DIM];
+          node_xyz_fr_n(n, p4est, nodes, xyz);
+
+          if (direction=='x')
+          {
+            total_growth = MAX(total_growth, xyz[0]);
+          }
+          else if (direction=='y')
+          {
+            total_growth = MAX(total_growth, xyz[1]);
+          }
+#ifdef P4_TO_P8
+          else if (direction=='z')
+          {
+            total_growth = MAX(total_growth, xyz[2]);
+          }
+#endif
+        }
+      }
+      ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
+
+      int mpiret = MPI_Allreduce(MPI_IN_PLACE, &total_growth, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+
+      total_growth -= base;
+    }
+
+    ierr = PetscPrintf(mpi.comm(), "Iteration %d, growth %e, time %e\n", iteration, total_growth, tn); CHKERRXX(ierr);
+
+    // determine to save or not
+    bool save_now =
+        (save_type == 0 && iteration    >= vtk_idx*save_every_n_iteration) ||
+        (save_type == 1 && total_growth >= vtk_idx*save_every_dl) ||
+        (save_type == 2 && tn           >= vtk_idx*save_every_dt);
+
     // save velocity, lenght of interface and area of solid phase in time
-    if(save_velocity && iteration%save_every_n_iteration == 0)
+    if(save_velocity && save_now)
     {
       p4est = bas.get_p4est();
       nodes = bas.get_nodes();
@@ -797,65 +995,47 @@ int main (int argc, char* argv[])
 
       // calculate the length of the interface and solid phase area
       double interface_length = integrate_over_interface(p4est, nodes, phi, ones);
-      double solid_phase_area = integrate_over_negative_domain(p4est, nodes, phi, ones);
+      double solid_phase_area = 1.-integrate_over_negative_domain(p4est, nodes, phi, ones);
 
       double avg_velo = integrate_over_interface(p4est, nodes, phi, normal_velocity) / interface_length;
 
       ierr = VecDestroy(ones); CHKERRXX(ierr);
 
       ierr = PetscFOpen(mpi.comm(), name, "a", &fich); CHKERRXX(ierr);
-      PetscFPrintf(mpi.comm(), fich, "%e %e %e %e %e\n", tn, avg_velo/scaling, bas.get_max_interface_velocity()/scaling, interface_length, solid_phase_area);
+      double time_elapsed = w1.read_duration_current();
+
+      int num_local_nodes = nodes->num_owned_indeps;
+      int num_ghost_nodes = nodes->indep_nodes.elem_count - num_local_nodes;
+
+      int mpiret = MPI_Allreduce(MPI_IN_PLACE, &num_local_nodes, 1, MPI_INT, MPI_SUM, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+          mpiret = MPI_Allreduce(MPI_IN_PLACE, &num_ghost_nodes, 1, MPI_INT, MPI_SUM, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+
+      PetscFPrintf(mpi.comm(), fich, "%e %e %e %e %e %e %d %d %d %d\n", tn, avg_velo/scaling, bas.get_max_interface_velocity()/scaling, interface_length, solid_phase_area, time_elapsed, iteration, num_local_nodes, num_ghost_nodes, sub_iterations);
       ierr = PetscFClose(mpi.comm(), fich); CHKERRXX(ierr);
       ierr = PetscPrintf(mpi.comm(), "saved velocity in %s\n", name); CHKERRXX(ierr);
+      sub_iterations = 0;
     }
 
     // save field data
-    if(save_vtk && iteration%save_every_n_iteration == 0)
+    if(save_vtk && save_now)
     {
-      bas.save_VTK(iteration/save_every_n_iteration);
+      bas.count_dendrites(vtk_idx);
+      bas.save_VTK(vtk_idx);
+      bas.save_VTK_solid(vtk_idx);
     }
 
-
-    // check if the solid phase has reached the termination length
-    if(save_velocity && iteration%save_every_n_iteration == 0)
-    {
-      int end_of_run = 0;
-      const double *phi_p;
-      ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr);
-      for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
-      {
-        if (phi_p[n] < 0)
-        {
-          double xyz[P4EST_DIM];
-          node_xyz_fr_n(n, p4est, nodes, xyz);
-
-          if (direction=='x')
-          {
-            if ((xyz[0] - xmin)/(xmax-xmin) > termination_length)
-              end_of_run = 1;
-          }
-          else if (direction=='y')
-          {
-            if ((xyz[1] - ymin)/(ymax-ymin) > termination_length)
-              end_of_run = 1;
-          }
-#ifdef P4_TO_P8
-          else if (direction=='z')
-          {
-            if ((xyz[2] - zmin)/(zmax-zmin) > termination_length)
-              end_of_run = 1;
-          }
-#endif
-        }
-      }
-      ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
-
-      int mpiret = MPI_Allreduce(MPI_IN_PLACE, &end_of_run, 1, MPI_INT, MPI_SUM, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-      keep_going = (end_of_run == 0);
-    }
+    keep_going = keep_going && (iteration < max_total_iterations) && (total_growth < termination_length);
 
     bas.update_grid();
+    bas.compute_dt();
+
     iteration++;
+
+    if (save_now) vtk_idx++;
+
+    p4est = bas.get_p4est();
+    nodes = bas.get_nodes();
+    phi = bas.get_phi();
   }
 
   w1.stop(); w1.read_duration();

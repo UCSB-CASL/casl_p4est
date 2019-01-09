@@ -1,8 +1,10 @@
 #ifndef MY_P4EST_MULTIALLOY_H
 #define MY_P4EST_MULTIALLOY_H
 
+
 #include <src/types.h>
 #include <src/casl_math.h>
+
 
 #ifdef P4_TO_P8
 #include <src/my_p8est_tools.h>
@@ -10,17 +12,18 @@
 #include <p8est_ghost.h>
 #include <src/my_p8est_nodes.h>
 #include <src/my_p8est_node_neighbors.h>
-#include <src/my_p8est_poisson_nodes.h>
+#include <src/my_p8est_poisson_nodes_multialloy.h>
 #include <src/my_p8est_interpolation_nodes.h>
+#include <src/my_p8est_macros.h>
 #else
 #include <src/my_p4est_tools.h>
 #include <p4est.h>
 #include <p4est_ghost.h>
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_node_neighbors.h>
-#include <src/my_p4est_poisson_nodes.h>
-#include <src/my_p4est_poisson_nodes_voronoi.h>
+#include <src/my_p4est_poisson_nodes_multialloy.h>
 #include <src/my_p4est_interpolation_nodes.h>
+#include <src/my_p4est_macros.h>
 #endif
 
 
@@ -38,7 +41,7 @@ private:
     {
       return 0;
     }
-  } zero;
+  } zero_;
 #else
   class ZERO : public CF_2
   {
@@ -47,132 +50,184 @@ private:
     {
       return 0;
     }
-  } zero;
+  } zero_;
 #endif
 
 #ifdef P4_TO_P8
-  BoundaryConditions3D bc_t;
-  BoundaryConditions3D bc_cs;
-  BoundaryConditions3D bc_cl;
+  class wall_bc_smoothing_t : public WallBC3D
+  {
+  public:
+    BoundaryConditionType operator()( double , double , double ) const
+    {
+      return NEUMANN;
+    }
+  } wall_bc_smoothing_;
 #else
-  BoundaryConditions2D bc_t;
-  BoundaryConditions2D bc_cs;
-  BoundaryConditions2D bc_cl;
-  BoundaryConditions2D bc_cs_sec;
-  BoundaryConditions2D bc_cl_sec;
+  class wall_bc_smoothing_t : public WallBC2D
+  {
+  public:
+    BoundaryConditionType operator()( double , double ) const
+    {
+      return NEUMANN;
+    }
+  } wall_bc_smoothing_;
+#endif
+
+#ifdef P4_TO_P8
+  BoundaryConditions3D bc_t_;
+  BoundaryConditions3D bc_c0_;
+  BoundaryConditions3D bc_c1_;
+#else
+  BoundaryConditions2D bc_t_;
+  BoundaryConditions2D bc_c0_;
+  BoundaryConditions2D bc_c1_;
 #endif
 
   /* grid */
-  my_p4est_brick_t *brick;
-  p4est_connectivity_t *connectivity;
-  p4est_t *p4est;
-  p4est_ghost_t *ghost;
-  p4est_nodes_t *nodes;
-  my_p4est_hierarchy_t *hierarchy;
-  my_p4est_node_neighbors_t *ngbd;
+  my_p4est_brick_t            *brick_;
+  p4est_connectivity_t        *connectivity_;
+  p4est_t                     *p4est_;
+  p4est_ghost_t               *ghost_;
+  p4est_nodes_t               *nodes_;
+  my_p4est_hierarchy_t        *hierarchy_;
+  my_p4est_node_neighbors_t   *ngbd_;
 
-  double dxyz[P4EST_DIM];
-  double dxyz_max, dxyz_min;
-  double dxyz_close_interface;
-  double diag;
+  /* grid that does not coarsen to keep track of quantities inside the solid */
+  p4est_t                     *history_p4est_;
+  p4est_ghost_t               *history_ghost_;
+  p4est_nodes_t               *history_nodes_;
+  my_p4est_hierarchy_t        *history_hierarchy_;
+  my_p4est_node_neighbors_t   *history_ngbd_;
+
+  double dxyz_[P4EST_DIM];
+  double dxyz_max_, dxyz_min_;
+  double dxyz_close_interface_;
+  double diag_;
 
   /* temperature */
-  Vec temperature_n, temperature_np1;
-  Vec t_interface;
+//  Vec t_n_, t_np1_;
+  Vec tl_n_, tl_np1_;
+  Vec ts_n_, ts_np1_;
+
+  Vec tf_; // temperature at which alloy solidified
 
   /* concentration */
-  Vec cs_n, cs_np1;
-  Vec cl_n, cl_np1;
-  Vec cs_sec_n, cs_sec_np1;
-  Vec cl_sec_n, cl_sec_np1;
-  Vec c_interface;
-  Vec c_sec_interface;
+  Vec c0_n_, c0_np1_;
+  Vec c1_n_, c1_np1_;
+
+  Vec c0s_;
+  Vec c1s_;
+
+  Vec c0n_np1_, c0n_n_;
+
+  Vec c0d_np1_[P4EST_DIM];
 
   /* velocity */
-  Vec v_interface_n  [P4EST_DIM];
-  Vec v_interface_np1[P4EST_DIM];
-  Vec normal_velocity_np1;
+  Vec v_interface_n_  [P4EST_DIM];
+  Vec v_interface_np1_[P4EST_DIM];
+  Vec normal_velocity_n_;
+  Vec normal_velocity_np1_;
+
   /* max interface velocity in normal direction in band 4*MIN(dx,dy,dz) */
-  double vgamma_max;
+  double vgamma_max_;
 
   /* level-set */
-  Vec phi;
-  Vec normal[P4EST_DIM];
-  Vec kappa;
+  Vec phi_, phi_dd_[P4EST_DIM];
+  Vec normal_[P4EST_DIM];
+  Vec kappa_;
+
+  Vec history_phi_;
+  Vec history_phi_nm1_;
+
+  Vec history_kappa_;
+  Vec history_velo_;
+
+  Vec phi_smooth_;
+
+  Vec bc_error_;
+  double bc_error_max_;
 
   /* physical parameters */
-  double dt_nm1, dt_n;
-  double cooling_velocity;     /* V */
-  double latent_heat;          /* L */
-  double thermal_conductivity; /* k */
-  double thermal_diffusivity;  /* lambda, dT/dt = lambda Laplace(T) */
-  double solute_diffusivity_l; /* Dl, dCl/dt = Dl Laplace(Cl) */
-  double solute_diffusivity_s; /* Ds, dCs/dt = Ds Laplace(Cl) */
-  double kp;                   /* partition coefficient */
-  double c0;                   /* initial concentration */
-  double ml;                   /* liquidus slope */
-  double Tm;                   /* melting temperature */
-  double epsilon_anisotropy;   /* anisotropy coefficient */
-  double epsilon_c;            /* curvature undercooling coefficient */
-  double epsilon_v;            /* kinetic undercooling coefficient */
+  double time_, time_limit_;
+  double dt_nm1_, dt_n_;
+  double cooling_velocity_;     /* V */
+  double latent_heat_;          /* L */
+  double thermal_conductivity_; /* k */
+  double thermal_diffusivity_;  /* lambda, dT/dt = lambda Laplace(T) */
+  double Tm_;                   /* melting temperature */
 
-  double solute_diffusivity_l_sec; /* Dl, dCl/dt = Dl Laplace(Cl) */
-  double solute_diffusivity_s_sec; /* Ds, dCs/dt = Ds Laplace(Cl) */
-  double kp_sec;                   /* partition coefficient */
-  double c0_sec;                   /* initial concentration */
-  double ml_sec;                   /* liquidus slope */
+  double Dl0_;                  /* Dl, dCl/dt = Dl Laplace(Cl) */
+  double kp0_;                  /* partition coefficient */
+  double c00_;                  /* initial concentration */
+  double ml0_;                  /* liquidus slope */
 
-  bool solve_concentration_solid;
+  double Dl1_;                  /* Dl, dCl/dt = Dl Laplace(Cl) */
+  double kp1_;                  /* partition coefficient */
+  double c01_;                  /* initial concentration */
+  double ml1_;                  /* liquidus slope */
 
-  double scaling;
+  double scaling_;
 
-  bool matrices_are_constructed;
-  Vec rhs;
+  double cfl_number_;
+  int pin_every_n_steps_;
+  double bc_tolerance_;
+  int max_iterations_;
+  double phi_thresh_;
 
-  int dt_method;
+  bool use_continuous_stencil_;
+  bool use_one_sided_derivatives_;
+  bool use_superconvergent_robin_;
+  bool use_superconvergent_jump_;
+  bool use_points_on_interface_;
+  bool update_c0_robin_;
+  bool zero_negative_velocity_;
 
-  double velocity_tol;
-
-  bool first_step;
-
-  double cfl_number;
-
-  Vec temperature_multiplier;
-  Vec concentration_multiplier;
-
-  double functional;
-
-  int order_of_extension;
-  int order_of_extension_from_interface;
-
-  bool use_more_points_for_extension;
-  bool use_quadratic_form;
-
-  Vec bc_error;
+  bool save_history_;
 
 #ifdef P4_TO_P8
-  Vec theta_xz, theta_yz;
+  CF_3 *rhs_tl_;
+  CF_3 *rhs_ts_;
+  CF_3 *rhs_c0_;
+  CF_3 *rhs_c1_;
 #else
-  Vec theta;
+  CF_2 *rhs_tl_;
+  CF_2 *rhs_ts_;
+  CF_2 *rhs_c0_;
+  CF_2 *rhs_c1_;
 #endif
 
-  Vec ts, tl;
-  bool temperature_interpolation_simple;
+#ifdef P4_TO_P8
+  CF_3 *eps_c_;
+  CF_3 *eps_v_;
+#else
+  CF_2 *eps_c_;
+  CF_2 *eps_v_;
+#endif
 
-  double phi_thresh;
+#ifdef P4_TO_P8
+  CF_3 *GT_;
+  CF_3 *jump_t_;
+  CF_3 *jump_tn_;
+  CF_3 *c0_flux_;
+  CF_3 *c1_flux_;
+#else
+  CF_2 *GT_;
+  CF_2 *jump_t_;
+  CF_2 *jump_tn_;
+  CF_2 *c0_flux_;
+  CF_2 *c1_flux_;
+#endif
 
-  bool zero_negative_velocity;
-  bool use_fd_scheme_for_temperature;
+  interpolation_method interpolation_between_grids_;
 
-  int num_of_iterations_per_step;
+  int num_dendrites_;
+  double dendrite_cut_off_fraction_;
+  double dendrite_min_length_;
 
-  Vec phi_smooth;
+  Vec dendrite_number_;
+  Vec dendrite_tip_;
 
-  bool use_phi_smooth_to_extend_over;
-  bool use_phi_smooth_to_extend_from;
-  int num_of_phi_smooths;
-
-  interpolation_method interpolation_between_grids;
+  bool enforce_planar_front_;
 
 public:
 
@@ -180,107 +235,271 @@ public:
 
   ~my_p4est_multialloy_t();
 
-  void set_parameters( double latent_heat,
-                       double thermal_conductivity,
-                       double thermal_diffusivity,
-                       double solute_diffusivity_l,
-                       double solute_diffusivity_s,
-                       double cooling_velocity,
-                       double kp,
-                       double c0,
-                       double ml,
-                       double Tm,
-                       double epsilon_anisotropy,
-                       double epsilon_c,
-                       double epsilon_v,
-                       double scaling,
-                       double solute_diffusivity_l_sec,
-                       double solute_diffusivity_s_sec,
-                       double kp_sec,
-                       double c0_sec,
-                       double ml_sec);
+  inline void set_parameters(double latent_heat,
+                      double thermal_conductivity,
+                      double thermal_diffusivity,
+                      double cooling_velocity,
+                      double Tm,
+                      double scaling,
+                      double Dl0, double kp0, double c00, double ml0,
+                      double Dl1, double kp1, double c01, double ml1)
+  {
+    this->latent_heat_          = latent_heat;
+    this->thermal_conductivity_ = thermal_conductivity;
+    this->thermal_diffusivity_  = thermal_diffusivity;
+    this->cooling_velocity_     = cooling_velocity;
+    this->Tm_                   = Tm;
+    this->scaling_              = scaling;
 
-  void set_phi(Vec phi);
+    this->Dl0_ = Dl0;
+    this->kp0_ = kp0;
+    this->c00_ = c00;
+    this->ml0_ = ml0;
+
+    this->Dl1_ = Dl1;
+    this->kp1_ = kp1;
+    this->c01_ = c01;
+    this->ml1_ = ml1;
+  }
+
+  inline void set_use_continuous_stencil   (bool value) { use_continuous_stencil_    = value;}
+  inline void set_use_one_sided_derivatives(bool value) { use_one_sided_derivatives_ = value;}
+  inline void set_use_superconvergent_robin(bool value) { use_superconvergent_robin_ = value;}
+  inline void set_use_superconvergent_jump (bool value) { use_superconvergent_jump_  = value;}
+  inline void set_use_points_on_interface  (bool value) { use_points_on_interface_   = value;}
+  inline void set_update_c0_robin          (bool value) { update_c0_robin_           = value;}
+  inline void set_zero_negative_velocity   (bool value) { zero_negative_velocity_    = value;}
+
+
+  inline void set_phi(Vec phi)
+  {
+    this->phi_ = phi;
+    compute_geometric_properties();
+
+    my_p4est_interpolation_nodes_t interp(ngbd_);
+
+    double xyz[P4EST_DIM];
+
+    {
+      ierr = VecCreateGhostNodes(history_p4est_, history_nodes_, &history_phi_); CHKERRXX(ierr);
+      ierr = VecCreateGhostNodes(history_p4est_, history_nodes_, &history_phi_nm1_); CHKERRXX(ierr);
+
+      for(size_t n = 0; n < history_nodes_->indep_nodes.elem_count; ++n)
+      {
+        node_xyz_fr_n(n, history_p4est_, history_nodes_, xyz);
+        interp.add_point(n, xyz);
+      }
+
+      interp.set_input(phi_, interpolation_between_grids_);
+      interp.interpolate(history_phi_);
+
+      copy_ghosted_vec(history_phi_, history_phi_nm1_);
+
+      ierr = VecDuplicate(history_phi_, &history_kappa_); CHKERRXX(ierr);
+
+      interp.set_input(kappa_, interpolation_between_grids_);
+      interp.interpolate(history_kappa_);
+    }
+
+    {
+      if(dendrite_number_ != NULL) { ierr = VecDestroy(dendrite_number_); CHKERRXX(ierr); }
+      if(dendrite_tip_    != NULL) { ierr = VecDestroy(dendrite_tip_);    CHKERRXX(ierr); }
+
+      ierr = VecDuplicate(phi_, &dendrite_number_); CHKERRXX(ierr);
+      ierr = VecDuplicate(phi_, &dendrite_tip_);    CHKERRXX(ierr);
+
+      double *dendrite_number_p; ierr = VecGetArray(dendrite_number_, &dendrite_number_p); CHKERRXX(ierr);
+      double *dendrite_tip_p;    ierr = VecGetArray(dendrite_tip_,    &dendrite_tip_p);    CHKERRXX(ierr);
+
+      foreach_node(n, nodes_)
+      {
+        dendrite_number_p[n] = -1;
+        dendrite_tip_p[n]    = -1;
+      }
+
+      ierr = VecRestoreArray(dendrite_number_, &dendrite_number_p); CHKERRXX(ierr);
+      ierr = VecRestoreArray(dendrite_tip_,    &dendrite_tip_p);    CHKERRXX(ierr);
+    }
+  }
 
 #ifdef P4_TO_P8
-  void set_bc(WallBC3D& bc_wall_type_t,
+  inline void set_bc(WallBC3D& bc_wall_type_t,
               WallBC3D& bc_wall_type_c,
               CF_3& bc_wall_value_t,
-              CF_3& bc_wall_value_cs,
-              CF_3& bc_wall_value_cl);
+              CF_3& bc_wall_value_c0,
+              CF_3& bc_wall_value_c1)
 #else
-  void set_bc(WallBC2D& bc_wall_type_t,
+  inline void set_bc(WallBC2D& bc_wall_type_t,
               WallBC2D& bc_wall_type_c,
               CF_2& bc_wall_value_t,
-              CF_2& bc_wall_value_cs,
-              CF_2& bc_wall_value_cl,
-              CF_2& bc_wall_value_cs_sec,
-              CF_2& bc_wall_value_cl_sec);
+              CF_2& bc_wall_value_c0,
+              CF_2& bc_wall_value_c1)
 #endif
+  {
+    bc_t_.setWallTypes(bc_wall_type_t);
+    bc_t_.setWallValues(bc_wall_value_t);
+    bc_t_.setInterfaceType(NOINTERFACE);
+    bc_t_.setInterfaceValue(zero_);
 
-  void set_temperature(Vec temperature);
+    bc_c0_.setWallTypes(bc_wall_type_c);
+    bc_c0_.setWallValues(bc_wall_value_c0);
+    bc_c0_.setInterfaceType(DIRICHLET);
+    bc_c0_.setInterfaceValue(zero_);
 
-  void set_concentration(Vec cl, Vec cs, Vec cl_sec, Vec cs_sec);
+    bc_c1_.setWallTypes(bc_wall_type_c);
+    bc_c1_.setWallValues(bc_wall_value_c1);
+    bc_c1_.setInterfaceType(ROBIN);
+    bc_c1_.setInterfaceValue(zero_);
+
+  }
+
+  inline void set_temperature(Vec tl, Vec ts)
+  {
+    tl_n_ = tl;
+    ts_n_ = ts;
+
+    ierr = VecDuplicate(tl_n_, &tl_np1_); CHKERRXX(ierr);
+    ierr = VecDuplicate(ts_n_, &ts_np1_); CHKERRXX(ierr);
+
+    copy_ghosted_vec(tl_n_, tl_np1_);
+    copy_ghosted_vec(ts_n_, ts_np1_);
+
+    ierr = VecCreateGhostNodes(history_p4est_, history_nodes_, &tf_); CHKERRXX(ierr);
+
+    my_p4est_interpolation_nodes_t interp(ngbd_);
+
+    double xyz[P4EST_DIM];
+    for(size_t n = 0; n < history_nodes_->indep_nodes.elem_count; ++n)
+    {
+      node_xyz_fr_n(n, history_p4est_, history_nodes_, xyz);
+      interp.add_point(n, xyz);
+    }
+
+    interp.set_input(ts_n_, interpolation_between_grids_);
+    interp.interpolate(tf_);
+  }
+
+  inline void set_concentration(Vec c0, Vec c1, Vec c0s, Vec c1s)
+  {
+    c0_n_ = c0;
+    c1_n_ = c1;
+
+    ierr = VecDuplicate(c0_n_, &c0_np1_); CHKERRXX(ierr);
+    ierr = VecDuplicate(c1_n_, &c1_np1_); CHKERRXX(ierr);
+
+    copy_ghosted_vec(c0_n_, c0_np1_);
+    copy_ghosted_vec(c1_n_, c1_np1_);
+
+    c0s_ = c0s;
+    c1s_ = c1s;
+
+//    ierr = VecDuplicate(c0_n_, &c0n_n_); CHKERRXX(ierr);
+//    ierr = VecDuplicate(c0_n_, &c0n_np1_); CHKERRXX(ierr);
+
+//    double *c0n_n_p;
+//    ierr = VecGetArray(c0n_n_, &c0n_n_p); CHKERRXX(ierr);
+//    for (size_t n = 0; n < nodes_->indep_nodes.elem_count; ++n)
+//      c0n_n_p[n] = 0.;
+//    ierr = VecRestoreArray(c0n_n_, &c0n_n_p); CHKERRXX(ierr);
+  }
 
   void set_normal_velocity(Vec v);
 
-  inline p4est_t* get_p4est() { return p4est; }
+  inline p4est_t*       get_p4est() { return p4est_; }
+  inline p4est_nodes_t* get_nodes() { return nodes_; }
+  inline p4est_ghost_t* get_ghost() { return ghost_; }
+  inline my_p4est_node_neighbors_t* get_ngbd()  { return ngbd_; }
 
-  inline p4est_nodes_t* get_nodes() { return nodes; }
+  inline Vec get_phi() { return phi_; }
+  inline Vec* get_phi_dd() { return phi_dd_; }
 
-  inline Vec get_phi() { return phi; }
 
-  inline Vec get_normal_velocity() { return normal_velocity_np1; }
+  inline Vec get_normal_velocity() { return normal_velocity_np1_; }
 
-  inline double get_dt() { return dt_n; }
+  inline double get_dt() { return dt_n_; }
 
-  inline double get_max_interface_velocity() { return vgamma_max; }
+  inline double get_max_interface_velocity() { return vgamma_max_; }
 
-  void set_dt( double dt );
+  inline void set_dt( double dt )
+  {
+    dt_nm1_ = dt;
+    dt_n_   = dt;
+  }
 
-  void set_dt_method    (int val)    {dt_method     = val;}
-  void set_velocity_tol (double val) {velocity_tol  = val;}
-  void set_cfl          (double val) {cfl_number    = val;}
-  void set_phi_thresh   (double val) {phi_thresh    = val;}
-  void set_zero_negative_velocity (bool val) {zero_negative_velocity = val;}
+  inline void set_cfl (double val) {cfl_number_ = val;}
 
-  void set_num_of_iterations_per_step (int val) {num_of_iterations_per_step = val;}
-  void set_use_fd_scheme_for_temperature (bool val) {use_fd_scheme_for_temperature = val;}
-  void set_use_phi_smooth_to_extend_over (bool val) {use_phi_smooth_to_extend_over = val;}
-  void set_use_phi_smooth_to_extend_from (bool val) {use_phi_smooth_to_extend_from = val;}
-  void set_num_of_phi_smooths (int val) {num_of_phi_smooths = val;}
+  inline void set_bc_tolerance (double bc_tolerance) { bc_tolerance_ = bc_tolerance; }
+  inline void set_pin_every_n_steps (int pin_every_n_steps) { pin_every_n_steps_ = pin_every_n_steps; }
+  inline void set_max_iterations (int max_iterations) { max_iterations_ = max_iterations; }
+  inline void set_phi_thresh (int phi_thresh) { phi_thresh_ = phi_thresh; }
 
-  void compute_normal_and_curvature();
-
-  void compute_normal_velocity();
-
+  void compute_geometric_properties();
   void compute_velocity();
-  void compute_velocity_from_temperature();
-
-  void solve_temperature();
-
-  void solve_concentration();
-
-  void solve_concentration_sec();
 
   void compute_dt();
-
   void update_grid();
-
-  void one_step();
-
-  void compare_velocity_temperature_vs_concentration();
-
+  void update_grid_eno();
+  int  one_step();
   void save_VTK(int iter);
+  void save_VTK_solid(int iter);
 
-  void solve_temperature_multiplier();
-  void solve_concentration_multiplier();
+  void compute_smoothed_phi();
 
-  void adjust_velocity();
-  void smooth_velocity(Vec &input);
+#ifdef P4_TO_P8
+  inline void set_rhs(CF_3& rhs_tl, CF_3& rhs_ts, CF_3& rhs_c0, CF_3& rhs_c1)
+#else
+  inline void set_rhs(CF_2& rhs_tl, CF_2& rhs_ts, CF_2& rhs_c0, CF_2& rhs_c1)
+#endif
+  {
+    rhs_tl_ = &rhs_tl;
+    rhs_ts_ = &rhs_ts;
+    rhs_c0_ = &rhs_c0;
+    rhs_c1_ = &rhs_c1;
+  }
 
-  void invert_phi(Vec input);
-  void copy_ghosted_vec(Vec input, Vec output);
+#ifdef P4_TO_P8
+  inline void set_GT(CF_3& GT_cf) {GT_ = &GT_cf;}
+#else
+  inline void set_GT(CF_2& GT_cf) {GT_ = &GT_cf;}
+#endif
+
+#ifdef P4_TO_P8
+  inline void set_undercoolings(CF_3& eps_v, CF_3& eps_c) {eps_v_ = &eps_v; eps_c_ = &eps_c;}
+#else
+  inline void set_undercoolings(CF_2& eps_v, CF_2& eps_c) {eps_v_ = &eps_v; eps_c_ = &eps_c;}
+#endif
+
+#ifdef P4_TO_P8
+  inline void set_jump_t (CF_3& jump_t)  { jump_t_  = &jump_t;  }
+  inline void set_jump_tn(CF_3& jump_tn) { jump_tn_ = &jump_tn; }
+  inline void set_flux_c (CF_3& c0_flux,
+                          CF_3& c1_flux)
+#else
+  inline void set_jump_t (CF_2& jump_t)  { jump_t_  = &jump_t;  }
+  inline void set_jump_tn(CF_2& jump_tn) { jump_tn_ = &jump_tn; }
+  inline void set_flux_c (CF_2& c0_flux,
+                          CF_2& c1_flux)
+#endif
+  {
+    c0_flux_ = &c0_flux;
+    c1_flux_ = &c1_flux;
+  }
+
+  inline void set_time_limit (double time_limit) { time_limit_ = time_limit; }
+
+  inline Vec get_tl() { return tl_n_; }
+  inline Vec get_ts() { return ts_n_; }
+  inline Vec get_c0() { return c0_np1_; }
+  inline Vec get_c1() { return c1_np1_; }
+
+  void count_dendrites(int iter);
+
+  void sample_along_line(const double xyz0[], const double xyz1[], const unsigned int nb_points, Vec data, std::vector<double> out);
+
+  inline void set_dendrite_cut_off_fraction(double value) { dendrite_cut_off_fraction_ = value; }
+  inline void set_dendrite_min_length(double value) { dendrite_min_length_ = value; }
+
+  inline void set_enforce_planar_front(bool value) { enforce_planar_front_ = value; }
 };
 
 
