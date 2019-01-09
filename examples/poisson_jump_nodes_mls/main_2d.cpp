@@ -113,11 +113,11 @@ const double grid_xyz_max[3] = { 1.5,  1.5,  1.5};
 #ifdef P4_TO_P8
 int lmin = 4;
 int lmax = 4;
-int num_splits = 3;
+int num_splits = 5;
 int num_splits_per_split = 1;
-int num_shifts_x_dir = 5;
-int num_shifts_y_dir = 5;
-int num_shifts_z_dir = 5;
+int num_shifts_x_dir = 1;
+int num_shifts_y_dir = 1;
+int num_shifts_z_dir = 1;
 #else
 int lmin = 5;
 int lmax = 5;
@@ -151,14 +151,14 @@ int iter_start = 0; // is used to skip iterations and get to a problematic case
 int num_test_ii = 11;
 int num_test_geometry = 6;
 
-int num_test_mu_m = 1;
-int num_test_mu_p = 0;
+int num_test_mu_m = 0;
+int num_test_mu_p = 2;
 
-int num_test_um = 6;
-int num_test_up = 7;
+int num_test_um = 0;
+int num_test_up = 1;
 
-int num_test_diag_term_m = 1;
-int num_test_diag_term_p = 1;
+int num_test_diag_term_m = 0;
+int num_test_diag_term_p = 0;
 
 BoundaryConditionType bc_wtype = DIRICHLET;
 BoundaryConditionType bc_itype = DIRICHLET;
@@ -170,7 +170,7 @@ int jump_scheme = 0;
 // solver parameters
 //-------------------------------------
 int  integration_order = 2;
-bool sc_scheme         = 1;
+bool sc_scheme         = 0;
 
 // for symmetric scheme:
 bool taylor_correction      = 1;

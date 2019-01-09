@@ -84,6 +84,7 @@ my_p4est_biofilm_t::my_p4est_biofilm_t(my_p4est_node_neighbors_t *ngbd)
   ierr = VecDuplicate(phi_free_, &Ca1_); CHKERRXX(ierr);
   ierr = VecDuplicate(phi_free_, &Cb1_); CHKERRXX(ierr);
   ierr = VecDuplicate(phi_free_, &Cf1_); CHKERRXX(ierr);
+  ierr = VecDuplicate(phi_free_, &C_); CHKERRXX(ierr);
 
   /* pressure */
   ierr = VecDuplicate(phi_free_, &P_); CHKERRXX(ierr);
@@ -148,6 +149,8 @@ my_p4est_biofilm_t::~my_p4est_biofilm_t()
   if (Cb1_ !=NULL) { ierr = VecDestroy(Cb1_); CHKERRXX(ierr); }
   if (Cf1_ !=NULL) { ierr = VecDestroy(Cf1_); CHKERRXX(ierr); }
 
+  if (C_ !=NULL) { ierr = VecDestroy(C_); CHKERRXX(ierr); }
+
   if (P_ !=NULL) { ierr = VecDestroy(P_); CHKERRXX(ierr); }
 
   if (vn_ !=NULL) { ierr = VecDestroy(vn_); CHKERRXX(ierr); }
@@ -165,6 +168,15 @@ my_p4est_biofilm_t::~my_p4est_biofilm_t()
   if (phi_biof_ !=NULL) { ierr = VecDestroy(phi_biof_); CHKERRXX(ierr); }
   if (phi_agar_ !=NULL) { ierr = VecDestroy(phi_agar_); CHKERRXX(ierr); }
   if (phi_free_ !=NULL) { ierr = VecDestroy(phi_free_); CHKERRXX(ierr); }
+
+
+  /* destroy the p4est and its connectivity structure */
+  delete ngbd_;
+  delete hierarchy_;
+  p4est_nodes_destroy(nodes_);
+  p4est_ghost_destroy(ghost_);
+  p4est_destroy      (p4est_);
+  my_p4est_brick_destroy(connectivity_, brick_);
 }
 
 
@@ -408,8 +420,11 @@ void my_p4est_biofilm_t::solve_concentration()
   std::vector<Vec>      phi_neum;
   std::vector<action_t> action(1, INTERSECTION);
   std::vector<int>      color(1, 0);
-
+#ifdef P4_TO_P8
+  std::vector< CF_3* > zero_cf_array(1, &zero_cf);
+#else
   std::vector< CF_2* > zero_cf_array(1, &zero_cf);
+#endif
   std::vector< BoundaryConditionType > bc_neum(1, NEUMANN);
   poisson_solver.set_jump_conditions(zero_cf, zero_cf_array);
   poisson_solver.set_bc_interface_type(bc_neum);
@@ -586,6 +601,8 @@ void my_p4est_biofilm_t::solve_concentration()
   ierr = VecDestroy(Cm_tmp);    CHKERRXX(ierr);
   ierr = VecDestroy(Cp_tmp);    CHKERRXX(ierr);
 
+  compute_concentration_global();
+
   ierr = PetscLogEventEnd(log_my_p4est_biofilm_solve_concentration, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
@@ -667,8 +684,13 @@ void my_p4est_biofilm_t::solve_pressure()
   bc_pressure.set_input(bc_pressure_vec, linear);
 
   std::vector<BoundaryConditionType> bc_interface_type(2);
+#ifdef P4_TO_P8
+  std::vector< CF_3 *> bc_interface_value(2);
+  std::vector< CF_3 *> bc_interface_coeff(2);
+#else
   std::vector< CF_2 *> bc_interface_value(2);
   std::vector< CF_2 *> bc_interface_coeff(2);
+#endif
 
   bc_interface_type[0] = NEUMANN;   bc_interface_value[0] = &zero_cf;     bc_interface_coeff[0] = &zero_cf;
   bc_interface_type[1] = DIRICHLET; bc_interface_value[1] = &bc_pressure; bc_interface_coeff[1] = &zero_cf;
@@ -1178,6 +1200,13 @@ void my_p4est_biofilm_t::update_grid()
   ierr = VecDestroy(Cf1_); CHKERRXX(ierr);
   Cf1_ = Cf1_tmp;
 
+  Vec C_tmp;
+  ierr = VecDuplicate(phi_free_, &C_tmp); CHKERRXX(ierr);
+  interp.set_input(C_, interpolation_between_grids_);
+  interp.interpolate(C_tmp);
+  ierr = VecDestroy(C_); CHKERRXX(ierr);
+  C_ = C_tmp;
+
   foreach_dimension(dim)
   {
     ierr = VecDestroy(v1_[dim]); CHKERRXX(ierr);
@@ -1388,6 +1417,7 @@ void my_p4est_biofilm_t::save_VTK(int iter)
   const double *Cb0_ptr; ierr = VecGetArrayRead(Cb0_, &Cb0_ptr); CHKERRXX(ierr);
   const double *Cf0_ptr; ierr = VecGetArrayRead(Cf0_, &Cf0_ptr); CHKERRXX(ierr);
 
+  const double *C_ptr; ierr = VecGetArrayRead(C_, &C_ptr); CHKERRXX(ierr);
   const double *P_ptr; ierr = VecGetArrayRead(P_, &P_ptr); CHKERRXX(ierr);
 
   const double *kappa_ptr;  ierr = VecGetArrayRead(kappa_, &kappa_ptr); CHKERRXX(ierr);
@@ -1395,25 +1425,6 @@ void my_p4est_biofilm_t::save_VTK(int iter)
   double *vn_ptr; ierr = VecGetArray(vn_, &vn_ptr); CHKERRXX(ierr);
 
   foreach_node(n, nodes_) { vn_ptr[n] /= scaling_; }
-
-  Vec C;
-  double *C_ptr;
-  ierr = VecDuplicate(phi_free_, &C); CHKERRXX(ierr);
-
-  ierr = VecGetArray(C, &C_ptr); CHKERRXX(ierr);
-
-  foreach_node(n, nodes_)
-  {
-    if (phi_biof_ptr[n] < 0)
-    {
-      C_ptr[n] = Cb0_ptr[n];
-    }
-    else
-    {
-      if (phi_agar_ptr[n] > phi_free_ptr[n]) C_ptr[n] = Ca0_ptr[n];
-      else C_ptr[n] = Cf0_ptr[n];
-    }
-  }
 
   /* save the size of the leaves */
   Vec leaf_level;
@@ -1465,14 +1476,51 @@ void my_p4est_biofilm_t::save_VTK(int iter)
   ierr = VecRestoreArrayRead(Ca0_, &Ca0_ptr); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(Cb0_, &Cb0_ptr); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(Cf0_, &Cf0_ptr); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(C_, &C_ptr); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(P_, &P_ptr); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(kappa_, &kappa_ptr); CHKERRXX(ierr);
   ierr = VecRestoreArray(vn_, &vn_ptr); CHKERRXX(ierr);
-  ierr = VecRestoreArray(C, &C_ptr); CHKERRXX(ierr);
-
-  ierr = VecDestroy(C); CHKERRXX(ierr);
 
 
   PetscPrintf(p4est_->mpicomm, "VTK saved in %s\n", name);
   ierr = PetscLogEventEnd(log_my_p4est_biofilm_save_vtk, 0, 0, 0, 0); CHKERRXX(ierr);
+}
+
+
+
+
+
+void my_p4est_biofilm_t::compute_concentration_global()
+{
+  PetscPrintf(p4est_->mpicomm, "Constructing C global\n");
+  double *C_ptr; ierr = VecGetArray(C_, &C_ptr); CHKERRXX(ierr);
+  double *Ca0_ptr; ierr = VecGetArray(Ca0_, &Ca0_ptr); CHKERRXX(ierr);
+  double *Cb0_ptr; ierr = VecGetArray(Cb0_, &Cb0_ptr); CHKERRXX(ierr);
+  double *Cf0_ptr; ierr = VecGetArray(Cf0_, &Cf0_ptr); CHKERRXX(ierr);
+
+  double *phi_biof_ptr; ierr = VecGetArray(phi_biof_, &phi_biof_ptr); CHKERRXX(ierr);
+  double *phi_agar_ptr; ierr = VecGetArray(phi_agar_, &phi_agar_ptr); CHKERRXX(ierr);
+  double *phi_free_ptr; ierr = VecGetArray(phi_free_, &phi_free_ptr); CHKERRXX(ierr);
+
+  foreach_node(n, nodes_)
+  {
+    if (phi_biof_ptr[n] < 0)
+    {
+      C_ptr[n] = Cb0_ptr[n];
+    }
+    else
+    {
+      if (phi_agar_ptr[n] > phi_free_ptr[n]) C_ptr[n] = Ca0_ptr[n];
+      else C_ptr[n] = Cf0_ptr[n];
+    }
+  }
+
+  ierr = VecRestoreArray(C_, &C_ptr); CHKERRXX(ierr);
+  ierr = VecRestoreArray(Ca0_, &Ca0_ptr); CHKERRXX(ierr);
+  ierr = VecRestoreArray(Cb0_, &Cb0_ptr); CHKERRXX(ierr);
+  ierr = VecRestoreArray(Cf0_, &Cf0_ptr); CHKERRXX(ierr);
+
+  ierr = VecRestoreArray(phi_biof_, &phi_biof_ptr); CHKERRXX(ierr);
+  ierr = VecRestoreArray(phi_agar_, &phi_agar_ptr); CHKERRXX(ierr);
+  ierr = VecRestoreArray(phi_free_, &phi_free_ptr); CHKERRXX(ierr);
 }

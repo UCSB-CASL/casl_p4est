@@ -96,6 +96,7 @@ private:
   Vec Ca0_, Ca1_;
   Vec Cb0_, Cb1_;
   Vec Cf0_, Cf1_;
+  Vec C_;
 
   /* pressure */
   Vec P_;
@@ -220,6 +221,7 @@ public:
       copy_ghosted_vec(Cb, Cb1_);
       copy_ghosted_vec(Cf, Cf1_);
     }
+    compute_concentration_global();
   }
 
   inline p4est_t*                   get_p4est() { return p4est_; }
@@ -232,6 +234,10 @@ public:
   inline Vec get_phi_biof() { return phi_biof_; }
   inline Vec get_vn() { return vn_; }
   inline double get_vn_max() { return vn_max_; }
+  inline Vec get_Ca() { return Ca0_; }
+  inline Vec get_Cb() { return Cb0_; }
+  inline Vec get_Cf() { return Cf0_; }
+  inline Vec get_C()  { return C_; }
 
   inline double get_dt() { return dt0_; }
 
@@ -246,6 +252,8 @@ public:
   void update_grid();
   int  one_step();
   void save_VTK(int iter);
+
+  void compute_concentration_global();
 
 };
 

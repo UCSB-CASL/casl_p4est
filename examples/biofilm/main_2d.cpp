@@ -54,14 +54,20 @@
 using namespace std;
 
 // computational domain
-double xmin = 0, xmax = 2; int nx = 2; bool px = 0;
+double xmin = 0, xmax = 1; int nx = 1; bool px = 0;
 double ymin = 0, ymax = 1; int ny = 1; bool py = 1;
 double zmin = 0, zmax = 1; int nz = 1; bool pz = 1;
 
 // grid resolution parameters
+#ifdef P4_TO_P8
+int lmin = 4;
+int lmax = 6;
+double lip = 1.5;
+#else
 int lmin = 6;
 int lmax = 10;
-double lip = 2.0;
+double lip = 1.5;
+#endif
 
 // model options
 int  velocity_type; /* 0 - using concentration (not implemented), 1 - using pressure (Darcy) */
@@ -106,7 +112,7 @@ double grain_smoothing;  /* smoothing of initial geometry   */
 // time discretization
 int    advection_scheme = 2;   // 1 - 1st order, 2 - 2nd order
 int    time_scheme      = 2;   // 1 - Euler (1st order), 2 - BDF2 (2nd order)
-double cfl_number       = 0.5; //
+double cfl_number       = 0.25; //
 
 // solving non-linear diffusion equation
 int    iteration_scheme = 1;     // iterative scheme : 0 - simple fixed-point, 1 - linearized fixed-point (a.k.a. Newton)
@@ -116,24 +122,26 @@ double tolerance        = 1.e-8; // tolerance
 // general poisson solver parameters
 bool use_sc_scheme         = 1; // for finite volume schemes (jump, neumann, robin): 0 - simple scheme, 1 - superconvergent (second-order accurate gradients)
 bool use_taylor_correction = 1; // for symmetric scheme for robin bc, irrelevant here actually
-int  integration_order     = 2; // order of geometric recpnstruction for computing domain and boundary integrals: 1 - linear, 2 - quadratic
+int  integration_order     = 1; // order of geometric recpnstruction for computing domain and boundary integrals: 1 - linear, 2 - quadratic
 
 // output parameters
 bool   save_data  = 1; // save scalar characteristics (time elapsed, biofilm volume, surface area, etc)
 bool   save_vtk   = 1; // save spatial data
-int    save_type  = 0; // 0 - every dn iterations, 1 - every dl of growth, 2 - every dt of time
+int    save_type  = 2; // 0 - every dn iterations, 1 - every dl of growth, 2 - every dt of time
 int    save_every_dn = 10;
 double save_every_dl = 0.01;
-double save_every_dt = 0.1;
+double save_every_dt = 0.5;
 
 // simulation run parameters
 int    limit_iter   = 10000; // max total time steps
 double limit_time   = DBL_MAX; // max total run time
 double limit_length = 1.8; // max total biofilm growth (not implemented yet)
+double limit_nutrient = 0.02; // terminate simulation when this fraction of initial nutrient is left in the system
+double limit_wall   = 0.05; // terminate simulation when biofilm gets that close to walls of computational domain
 double init_perturb = 0.00001; // initial random perturbation of biofilm surface
 
 // pre-defined examples
-int nb_experiment = 1;
+int nb_experiment = 2;
 /* 0 - (biofilm + agar + water), planar, transient
  * 1 - (biofilm + agar + water), planar, steady-state
  * 2 - (biofilm + agar), planar with a bump, transient
@@ -143,6 +151,7 @@ int nb_experiment = 1;
  * 6 - (biofilm + water + agar), porous (grains), transient
  */
 
+#ifdef P4_TO_P8
 void setup_experiment()
 {
   // common parameters
@@ -155,7 +164,7 @@ void setup_experiment()
   Kc = 1;
   gam = 0.5;
   C0a = 1;
-  C0b = 0.1;
+  C0b = 1.0;
   C0f = 1;
 
   switch(nb_experiment)
@@ -183,15 +192,15 @@ void setup_experiment()
 
         Da = 0.001;
         Db = 0.01;
-        Df = 0.01;
+        Df = 0.1;
 
         bc_agar = NEUMANN;
         bc_free = DIRICHLET;
         bc_biof = NEUMANN;
 
         nb_geometry = 0;
-        h_agar      = -0.2;
-        h_biof      = 0.115;
+        h_agar      = 0.2;
+        h_biof      = 0.015;
         break;
       }
     case 2:
@@ -208,7 +217,9 @@ void setup_experiment()
 
         nb_geometry = 4;
         h_agar      = 0.4;
-        h_biof      = 0.015;
+        h_biof      = 0.115;
+
+        C0f = 0;
         break;
       }
     case 3:
@@ -224,7 +235,7 @@ void setup_experiment()
         bc_biof = NEUMANN;
 
         nb_geometry = 1;
-        h_agar      = 0.025;
+        h_agar      = -0.125;
         h_biof      = 0.015;
         break;
       }
@@ -243,6 +254,8 @@ void setup_experiment()
         nb_geometry = 3;
         h_agar      = 0.4;
         h_biof      = 0.015;
+
+        C0a = 0;
         break;
       }
     case 5:
@@ -264,6 +277,8 @@ void setup_experiment()
         grain_num        = 100;
         grain_dispersity = 2;
         grain_smoothing  = 0.01;
+
+        C0a = 0;
         break;
       }
     case 6:
@@ -289,6 +304,160 @@ void setup_experiment()
       }
   }
 }
+#else
+void setup_experiment()
+{
+  // common parameters
+  velocity_type = 1;
+  box_size = 1;
+  sigma = 0.0;
+  rho = 1;
+  lambda = 1.0;
+  A = 1;
+  Kc = 1;
+  gam = 0.5;
+  C0a = 1;
+  C0b = 1.0;
+  C0f = 1;
+
+  switch(nb_experiment)
+  {
+    case 0:
+      {
+        steady_state = 0;
+
+        Da = 0.001;
+        Db = 0.01;
+        Df = 0.1;
+
+        bc_agar = NEUMANN;
+        bc_free = NEUMANN;
+        bc_biof = NEUMANN;
+
+        nb_geometry = 0;
+        h_agar      = 0.2;
+        h_biof      = 0.015;
+        break;
+      }
+    case 1:
+      {
+        steady_state = 1;
+
+        Da = 0.001;
+        Db = 0.01;
+        Df = 0.1;
+
+        bc_agar = NEUMANN;
+        bc_free = DIRICHLET;
+        bc_biof = NEUMANN;
+
+        nb_geometry = 0;
+        h_agar      = 0.2;
+        h_biof      = 0.015;
+        break;
+      }
+    case 2:
+      {
+        steady_state = 0;
+
+        Da = 0.001;
+        Db = 0.01;
+        Df = 0;
+
+        bc_agar = NEUMANN;
+        bc_free = NEUMANN;
+        bc_biof = NEUMANN;
+
+        nb_geometry = 4;
+        h_agar      = 0.4;
+        h_biof      = 0.015;
+
+        C0f = 0;
+        break;
+      }
+    case 3:
+      {
+        steady_state = 0;
+
+        Da = 0;
+        Db = 0.01;
+        Df = 0.1;
+
+        bc_agar = NEUMANN;
+        bc_free = DIRICHLET;
+        bc_biof = NEUMANN;
+
+        nb_geometry = 1;
+        h_agar      = -0.125;
+        h_biof      = 0.015;
+        break;
+      }
+    case 4:
+      {
+        steady_state = 0;
+
+        Da = 0;
+        Db = 0.01;
+        Df = 0.1;
+
+        bc_agar = NEUMANN;
+        bc_free = DIRICHLET;
+        bc_biof = NEUMANN;
+
+        nb_geometry = 3;
+        h_agar      = 0.4;
+        h_biof      = 0.015;
+
+        C0a = 0;
+        break;
+      }
+    case 5:
+      {
+        steady_state = 0;
+
+        Da = 0;
+        Db = 0.01;
+        Df = 0.1;
+
+        bc_agar = NEUMANN;
+        bc_free = NEUMANN;
+        bc_biof = NEUMANN;
+
+        nb_geometry = 7;
+        h_agar      = 0.03;
+        h_biof      = 0.015;
+
+        grain_num        = 100;
+        grain_dispersity = 2;
+        grain_smoothing  = 0.01;
+
+        C0a = 0;
+        break;
+      }
+    case 6:
+      {
+        steady_state = 0;
+
+        Da = 0.001;
+        Db = 0.01;
+        Df = 0.1;
+
+        bc_agar = NEUMANN;
+        bc_free = NEUMANN;
+        bc_biof = NEUMANN;
+
+        nb_geometry = 6;
+        h_agar      = 0.011;
+        h_biof      = 0.015;
+
+        grain_num        = 50;
+        grain_dispersity = 1.5;
+        grain_smoothing  = 0.01;
+        break;
+      }
+  }
+}
+#endif
 
 void set_periodicity()
 {
@@ -307,14 +476,200 @@ void set_periodicity()
 }
 
 #ifdef P4_TO_P8
-class phi_agar_cf_t : public CF_DIM {
+class phi_agar_cf_t : public CF_3 {
 public:
-  double operator()(double x, double y, double z) const { return -(x-0.1); }
+  double operator()(double x, double y, double z) const
+  {
+    switch (nb_geometry)
+    {
+      case 0:
+        return -(x-h_agar);
+      case 1:
+        {
+          double xc = xmin +.5*(xmax-xmin);
+          double yc = ymin +.5*(ymax-ymin);
+          double zc = zmin +.5*(zmax-zmin);
+          return h_agar - sqrt( SQR(x-xc) + SQR(y-yc) + SQR(z-zc) );
+        }
+      case 2:
+        {
+          double xc0 = xmin +.3*(xmax-xmin), xc1 = xmin +.5*(xmax-xmin), xc2 = xmin +.6*(xmax-xmin);
+          double yc0 = ymin +.5*(ymax-ymin), yc1 = ymin +.6*(ymax-ymin), yc2 = ymin +.4*(ymax-ymin);
+          double zc0 = zmin +.6*(zmax-zmin), zc1 = zmin +.4*(zmax-zmin), zc2 = zmin +.3*(zmax-zmin);
+
+          return MAX(h_agar - sqrt( SQR(x-xc0) + SQR(y-yc0) + SQR(z-zc0) ),
+                     h_agar - sqrt( SQR(x-xc1) + SQR(y-yc1) + SQR(z-zc1) ),
+                     h_agar - sqrt( SQR(x-xc2) + SQR(y-yc2) + SQR(z-zc2) ));
+        }
+      case 3:
+        {
+          double xc = xmin +.5*(xmax-xmin);
+          double yc = ymin +.5*(ymax-ymin);
+          double zc = zmin +.5*(zmax-zmin);
+          return -h_agar + sqrt( SQR(x-xc) + SQR(y-yc) + SQR(z-zc) );
+        }
+      case 4:
+        return -(x-h_agar);
+      case 5:
+        return -(x-h_agar)
+            + 0.02*cos(2.*PI*5*(y-ymin)/(ymax-ymin))
+            + 0.02*cos(2.*PI*5*(z-zmin)/(zmax-zmin));
+      case 6:
+        {
+          srand(0);
+
+          double sum = 10;
+          for (int i = 0; i < grain_num; ++i)
+          {
+            double R = h_agar * (1. + grain_dispersity*(((double) rand() / (double) RAND_MAX)));
+            double X = xmin + ((double) rand() / (double) RAND_MAX) *(xmax-xmin);
+            double Y = ymin + ((double) rand() / (double) RAND_MAX) *(ymax-ymin);
+            double Z = zmin + ((double) rand() / (double) RAND_MAX) *(zmax-zmin);
+
+            int nx = round((X-x)/(xmax-xmin));
+            int ny = round((Y-y)/(ymax-ymin));
+            int nz = round((Z-z)/(zmax-zmin));
+
+            double dist = R - sqrt( SQR(x-X + nx*(xmax-xmin)) +
+                                    SQR(y-Y + ny*(ymax-ymin)) +
+                                    SQR(z-Z + nz*(zmax-zmin)) );
+
+            sum = MIN(sum, -dist);
+          }
+
+          return -sum;
+        }
+      case 7:
+        {
+          srand(0);
+
+          double sum = 10;
+          for (int i = 0; i < grain_num; ++i)
+          {
+            double R = h_agar * (1. + grain_dispersity*(((double) rand() / (double) RAND_MAX)));
+            double X = xmin + ((double) rand() / (double) RAND_MAX) *(xmax-xmin);
+            double Y = ymin + ((double) rand() / (double) RAND_MAX) *(ymax-ymin);
+            double Z = zmin + ((double) rand() / (double) RAND_MAX) *(zmax-zmin);
+
+            int nx = round((X-x)/(xmax-xmin));
+            int ny = round((Y-y)/(ymax-ymin));
+            int nz = round((Z-z)/(zmax-zmin));
+
+            double dist = R - sqrt( SQR(x-X + nx*(xmax-xmin)) +
+                                    SQR(y-Y + ny*(ymax-ymin)) +
+                                    SQR(z-Z + nz*(zmax-zmin)) );
+
+            sum = MIN(sum, -dist);
+          }
+
+          return sum;
+        }
+      default: throw std::invalid_argument("[ERROR]: Wrong type of initial geometry");
+    }
+  }
 } phi_agar_cf;
 
 class phi_free_cf_t : public CF_3 {
 public:
-  double operator()(double x, double y, double z) const { return  (x-0.2); }
+  double operator()(double x, double y, double z) const
+  {
+    switch (nb_geometry)
+    {
+      case 0:
+        return (x-(MAX(0.,h_agar)+h_biof));
+      case 1:
+        {
+          double xc = xmin +.5*(xmax-xmin);
+          double yc = ymin +.5*(ymax-ymin);
+          double zc = zmin +.5*(zmax-zmin);
+          return -(MAX(0.,h_agar)+h_biof) + sqrt( SQR(x-xc) + SQR(y-yc) + SQR(z-zc) );
+        }
+      case 2:
+        {
+          double xc0 = xmin +.3*(xmax-xmin), xc1 = xmin +.5*(xmax-xmin), xc2 = xmin +.6*(xmax-xmin);
+          double yc0 = ymin +.5*(ymax-ymin), yc1 = ymin +.6*(ymax-ymin), yc2 = ymin +.4*(ymax-ymin);
+          double zc0 = zmin +.6*(zmax-zmin), zc1 = zmin +.4*(zmax-zmin), zc2 = zmin +.3*(zmax-zmin);
+
+          return -MAX((MAX(0.,h_agar)+h_biof) - sqrt( SQR(x-xc0) + SQR(y-yc0) + SQR(z-zc0) ),
+                      (MAX(0.,h_agar)+h_biof) - sqrt( SQR(x-xc1) + SQR(y-yc1) + SQR(z-zc1) ),
+                      (MAX(0.,h_agar)+h_biof) - sqrt( SQR(x-xc2) + SQR(y-yc2) + SQR(z-zc2) ));
+        }
+      case 3:
+        {
+          double xc = xmin +.5*(xmax-xmin);
+          double yc = ymin +.5*(ymax-ymin);
+          double zc = zmin +.5*(zmax-zmin);
+          return (MAX(0.,h_agar)+h_biof) - sqrt( SQR(x-xc) + SQR(y-yc) + SQR(z-zc) );
+        }
+      case 4:
+        {
+          double plane = (x-(MAX(0., h_agar) + h_biof));
+
+          double xc = (MAX(0., h_agar) + h_biof);
+          double yc = ymin +.5*(ymax-ymin);
+          double zc = zmin +.5*(zmax-zmin);
+
+          double bump = -.2*(xmax-xmin) + sqrt( SQR(x-xc) + SQR(y-yc) + SQR(z-zc) );
+
+          return .5*( plane + bump - sqrt( SQR(plane-bump) + SQR(.01*(xmax-xmin)) ) );
+        }
+      case 5:
+        return (x-(MAX(0.,h_agar)+h_biof))
+            + 0.02*cos(2.*PI*5*(y-ymin)/(ymax-ymin))
+            + 0.02*cos(2.*PI*5*(z-zmin)/(zmax-zmin));
+      case 6:
+        {
+          srand(0);
+
+          double sum = 10;
+          for (int i = 0; i < grain_num; ++i)
+          {
+            double R = (MAX(0.,h_agar)+h_biof) * (1. + grain_dispersity*(((double) rand() / (double) RAND_MAX)));
+            double X = xmin + ((double) rand() / (double) RAND_MAX) *(xmax-xmin);
+            double Y = ymin + ((double) rand() / (double) RAND_MAX) *(ymax-ymin);
+            double Z = zmin + ((double) rand() / (double) RAND_MAX) *(zmax-zmin);
+
+            int nx = round((X-x)/(xmax-xmin));
+            int ny = round((Y-y)/(ymax-ymin));
+            int nz = round((Z-z)/(zmax-zmin));
+
+            double dist = R - sqrt( SQR(x-X + nx*(xmax-xmin)) +
+                                    SQR(y-Y + ny*(ymax-ymin)) +
+                                    SQR(z-Z + nz*(zmax-zmin)) );
+
+            sum = MIN(sum, -dist);
+          }
+
+          return sum;
+        }
+      case 7:
+        {
+          srand(0);
+
+          double sum = 10;
+          for (int i = 0; i < grain_num; ++i)
+          {
+            double R = (MAX(0.,h_agar)+h_biof) * (1. + grain_dispersity*(((double) rand() / (double) RAND_MAX)));
+            double X = xmin + ((double) rand() / (double) RAND_MAX) *(xmax-xmin);
+            double Y = ymin + ((double) rand() / (double) RAND_MAX) *(ymax-ymin);
+            double Z = zmin + ((double) rand() / (double) RAND_MAX) *(zmax-zmin);
+
+            int nx = round((X-x)/(xmax-xmin));
+            int ny = round((Y-y)/(ymax-ymin));
+            int nz = round((Z-z)/(zmax-zmin));
+
+            double dist = R - sqrt( SQR(x-X + nx*(xmax-xmin)) +
+                                    SQR(y-Y + ny*(ymax-ymin)) +
+                                    SQR(z-Z + nz*(zmax-zmin)) );
+
+            sum = MIN(sum, -dist);
+          }
+
+          return -sum;
+        }
+      default: throw std::invalid_argument("[ERROR]: Wrong type of initial geometry");
+    }
+  }
 } phi_free_cf;
 
 class phi_biof_cf_t : public CF_3 {
@@ -324,15 +679,28 @@ public:
 
 class bc_wall_type_t : public WallBC3D {
 public:
-  BoundaryConditionType operator()( double, double, double ) const
+  BoundaryConditionType operator()(double x, double y, double z) const
   {
-    return NEUMANN;
+    double pa = phi_agar_cf(x,y,z);
+    double pf = phi_free_cf(x,y,z);
+    if (pa < 0 && pf < 0) return bc_biof;
+    else if (pa > 0 && pf > 0) throw;
+    else if (pa > 0)      return bc_agar;
+    else if (pf > 0)      return bc_free;
   }
 } bc_wall_type;
 
 class bc_wall_value_t : public CF_3 {
 public:
-  double operator()(double , double, double ) const { return 0; }
+  double operator()(double x, double y, double z) const
+  {
+    double pa = phi_agar_cf(x,y,z);
+    double pf = phi_free_cf(x,y,z);
+    if (pa < 0 && pf < 0) return bc_biof == NEUMANN ? 0 : C0b;
+    else if (pa > 0 && pf > 0) throw;
+    else if (pa > 0)      return bc_agar == NEUMANN ? 0 : C0a;
+    else if (pf > 0)      return bc_free == NEUMANN ? 0 : C0f;
+  }
 } bc_wall_value;
 
 class initial_concentration_free_t : public CF_3 {
@@ -735,10 +1103,12 @@ int main (int argc, char* argv[])
   double dz = (zmax_tree-zmin_tree) / pow(2.,(double) data.max_lvl);
 #endif
 
-  double dt_max = MIN( 1.e3*dx*dx/MAX(Da, Db, Df), 1.e3/A);
+  double dt_max = MIN( 1.e4*dx*dx/MAX(Da, Db, Df), 1.e4/A);
 
   // experimentally determined time-step restriction due to surface tension
 //  double dt_max = 0.5e-10*pow(2., 3.*(11.-lmax))/MAX(sigma, 1.e-30);
+
+//  dt_max = 1.e6;
 
 
   /* initial geometry */
@@ -779,8 +1149,8 @@ int main (int argc, char* argv[])
   }
 
   my_p4est_level_set_t ls(ngbd);
-  ls.reinitialize_1st_order_time_2nd_order_space(phi_free, 100);
-  ls.reinitialize_1st_order_time_2nd_order_space(phi_agar, 100);
+  ls.reinitialize_1st_order_time_2nd_order_space(phi_free);
+  ls.reinitialize_1st_order_time_2nd_order_space(phi_agar);
 
   if (nb_geometry == 6)
   {
@@ -789,6 +1159,7 @@ int main (int argc, char* argv[])
     copy_ghosted_vec(phi_free, phi_agar);
     invert_phi(nodes, phi_agar);
     shift_ghosted_vec(phi_agar, -h_biof);
+    ls.reinitialize_1st_order_time_2nd_order_space(phi_agar);
   }
 
   if (nb_geometry == 7)
@@ -800,6 +1171,7 @@ int main (int argc, char* argv[])
       copy_ghosted_vec(phi_agar, phi_free);
       invert_phi(nodes, phi_free);
       shift_ghosted_vec(phi_free, -h_biof);
+      ls.reinitialize_1st_order_time_2nd_order_space(phi_free);
     } else {
       set_ghosted_vec(phi_agar, -1);
     }
@@ -879,6 +1251,9 @@ int main (int argc, char* argv[])
 
   double total_growth = 0;
   double base = 0.1;
+  double nutrient_left = 1;
+  double nutrient_init = 1;
+  double wall_proximity = MIN(xmax-xmin, ymax-ymin);
 
   biofilm_solver.update_grid();
 
@@ -889,7 +1264,9 @@ int main (int argc, char* argv[])
       biofilm_solver.solve_concentration();
     }
 
+    ierr = PetscPrintf(mpi.comm(), "Solving for pressure\n"); CHKERRXX(ierr);
     biofilm_solver.solve_pressure();
+    ierr = PetscPrintf(mpi.comm(), "Calculating velocity\n"); CHKERRXX(ierr);
     biofilm_solver.compute_velocity_from_pressure();
 
     // compute how far the air-biofilm interface has advanced
@@ -900,9 +1277,22 @@ int main (int argc, char* argv[])
       nodes = biofilm_solver.get_nodes();
       phi_free = biofilm_solver.get_phi_free();
 
+      Vec C = biofilm_solver.get_C();
+      Vec ones;
+      ierr = VecDuplicate(phi_free, &ones); CHKERRXX(ierr);
+      set_ghosted_vec(ones, -1);
+
+      nutrient_left = integrate_over_negative_domain(p4est, nodes, ones, C);
+
+      ierr = VecDestroy(ones); CHKERRXX(ierr);
+
+      if (iteration == 1) nutrient_init = nutrient_left;
+
+      wall_proximity = MIN(xmax-xmin, ymax-ymin);
+
       const double *phi_free_ptr;
       ierr = VecGetArrayRead(phi_free, &phi_free_ptr); CHKERRXX(ierr);
-      for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+      foreach_local_node(n, nodes)
       {
         if (phi_free_ptr[n] < 0)
         {
@@ -910,15 +1300,25 @@ int main (int argc, char* argv[])
           node_xyz_fr_n(n, p4est, nodes, xyz);
           total_growth = MAX(total_growth, xyz[0]);
         }
+
+        if (phi_free_ptr[n] > 0)
+        {
+          p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
+          if (is_node_Wall(p4est, ni))
+          {
+            wall_proximity = MIN(wall_proximity, phi_free_ptr[n]);
+          }
+        }
       }
       ierr = VecRestoreArrayRead(phi_free, &phi_free_ptr); CHKERRXX(ierr);
 
       int mpiret = MPI_Allreduce(MPI_IN_PLACE, &total_growth, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+          mpiret = MPI_Allreduce(MPI_IN_PLACE, &wall_proximity, 1, MPI_DOUBLE, MPI_MIN, p4est->mpicomm); SC_CHECK_MPI(mpiret);
 
       total_growth -= base;
     }
 
-    ierr = PetscPrintf(mpi.comm(), "Iteration %d, growth %e, time %e\n", iteration, total_growth, tn); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "Iteration %d, growth %e, nutrient left %e, wall proximity %e, time %e\n", iteration, total_growth, nutrient_left/nutrient_init, wall_proximity, tn); CHKERRXX(ierr);
 
     // determine to save or not
     bool save_now =
@@ -943,6 +1343,8 @@ int main (int argc, char* argv[])
       double interface_area = integrate_over_interface(p4est, nodes, phi_free, ones);
       double biofilm_volume = integrate_over_negative_domain(p4est, nodes, phi_biof, ones);
 
+      ierr = VecDestroy(ones); CHKERRXX(ierr);
+
 #ifdef P4_TO_P8
       interface_area /= (scaling*scaling);
       biofilm_volume /= (scaling*scaling*scaling);
@@ -953,7 +1355,6 @@ int main (int argc, char* argv[])
 
       double avg_velo = integrate_over_interface(p4est, nodes, phi_free, vn) / interface_area;
 
-      ierr = VecDestroy(ones); CHKERRXX(ierr);
 
       ierr = PetscFOpen(mpi.comm(), name, "a", &fich); CHKERRXX(ierr);
       double time_elapsed = w1.read_duration_current();
@@ -963,7 +1364,7 @@ int main (int argc, char* argv[])
       ierr = PetscPrintf(mpi.comm(), "saved data in %s\n", name); CHKERRXX(ierr);
     }
 
-    keep_going = keep_going && (iteration < limit_iter) && (total_growth < limit_length);
+    keep_going = keep_going && (iteration < limit_iter) && (total_growth < limit_length) && (nutrient_left > limit_nutrient*nutrient_init) && (wall_proximity > limit_wall);
 
     // save field data
     if(save_vtk && save_now)
@@ -989,14 +1390,6 @@ int main (int argc, char* argv[])
 
     iteration++;
   }
-
-  /* destroy the p4est and its connectivity structure */
-  delete ngbd;
-  delete hierarchy;
-  p4est_nodes_destroy(nodes);
-  p4est_ghost_destroy(ghost);
-  p4est_destroy      (p4est);
-  my_p4est_brick_destroy(connectivity, &brick);
 
   w1.stop(); w1.read_duration();
 
