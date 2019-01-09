@@ -84,13 +84,15 @@ private:
 #endif
 
   /* grid */
-  my_p4est_brick_t            *brick_;
+  my_p4est_brick_t             brick_;
   p4est_connectivity_t        *connectivity_;
   p4est_t                     *p4est_;
   p4est_ghost_t               *ghost_;
   p4est_nodes_t               *nodes_;
   my_p4est_hierarchy_t        *hierarchy_;
   my_p4est_node_neighbors_t   *ngbd_;
+
+  splitting_criteria_t *sp_crit_;
 
   /* grid that does not coarsen to keep track of quantities inside the solid */
   p4est_t                     *history_p4est_;
@@ -231,9 +233,11 @@ private:
 
 public:
 
-  my_p4est_multialloy_t(my_p4est_node_neighbors_t *ngbd);
+  my_p4est_multialloy_t();
 
   ~my_p4est_multialloy_t();
+
+  void initialize_grid(MPI_Comm mpi_comm, double xyz_min[], double xyz_max[], int nxyz[], int periodicity[], CF_2 &level_set, int lmin, int lmax, double lip);
 
   inline void set_parameters(double latent_heat,
                       double thermal_conductivity,

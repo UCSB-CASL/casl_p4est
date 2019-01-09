@@ -35,20 +35,7 @@ extern PetscLogEvent log_my_p4est_multialloy_save_vtk;
 
 
 
-my_p4est_multialloy_t::my_p4est_multialloy_t(my_p4est_node_neighbors_t *ngbd)
-  : brick_(ngbd->myb), connectivity_(ngbd->p4est->connectivity), p4est_(ngbd->p4est), ghost_(ngbd->ghost), nodes_(ngbd->nodes), hierarchy_(ngbd->hierarchy), ngbd_(ngbd),
-    tl_n_(NULL), tl_np1_(NULL),
-    ts_n_(NULL), ts_np1_(NULL),
-    c0_n_(NULL), c0_np1_(NULL),
-    c1_n_(NULL), c1_np1_(NULL),
-    c0s_(NULL),
-    c1s_(NULL),
-    normal_velocity_n_(NULL),
-    normal_velocity_np1_(NULL),
-    phi_(NULL),
-    kappa_(NULL),
-    phi_smooth_(NULL),
-    bc_error_(NULL)
+my_p4est_multialloy_t::my_p4est_multialloy_t()
 {
   /* these default values are for a NiCu alloy, as presented in
    * A Sharp Computational Method for the Simulation of the Solidification of Binary Alloys
@@ -71,19 +58,6 @@ my_p4est_multialloy_t::my_p4est_multialloy_t(my_p4est_node_neighbors_t *ngbd)
   kp1_                  = 0.86;
   c01_                  = 0.20;      /* at frac.    */
   ml1_                  = -357;      /* K / at frac.*/
-
-  ::dxyz_min(p4est_, dxyz_);
-#ifdef P4_TO_P8
-  dxyz_min_ = MIN(dxyz_[0],dxyz_[1],dxyz_[2]);
-  dxyz_max_ = MAX(dxyz_[0],dxyz_[1],dxyz_[2]);
-  diag_ = sqrt(SQR(dxyz_[0])+SQR(dxyz_[1])+SQR(dxyz_[2]));
-#else
-  dxyz_min_ = MIN(dxyz_[0],dxyz_[1]);
-  dxyz_max_ = MAX(dxyz_[0],dxyz_[1]);
-  diag_ = sqrt(SQR(dxyz_[0])+SQR(dxyz_[1]));
-#endif
-//  dxyz_close_interface = 4*dxyz_min;
-  dxyz_close_interface_ = 1.2*dxyz_max_;
 
   eps_c_   = &zero_;
   eps_v_   = &zero_;
@@ -122,14 +96,6 @@ my_p4est_multialloy_t::my_p4est_multialloy_t(my_p4est_node_neighbors_t *ngbd)
 
   interpolation_between_grids_ = quadratic_non_oscillatory_continuous_v2;
 
-  history_p4est_ = p4est_copy(p4est_, P4EST_FALSE);
-  history_ghost_ = my_p4est_ghost_new(history_p4est_, P4EST_CONNECT_FULL);
-  history_nodes_ = my_p4est_nodes_new(history_p4est_, history_ghost_);
-
-  history_hierarchy_ = new my_p4est_hierarchy_t(history_p4est_, history_ghost_, brick_);
-  history_ngbd_      = new my_p4est_node_neighbors_t(history_hierarchy_, history_nodes_);
-  history_ngbd_->init_neighbors();
-
   history_kappa_ = NULL;
   history_velo_  = NULL;
 
@@ -143,6 +109,25 @@ my_p4est_multialloy_t::my_p4est_multialloy_t(my_p4est_node_neighbors_t *ngbd)
     c0d_np1_[dim] = NULL;
 //    ierr = VecCreateGhostNodes(p4est_, nodes_, &c0d_np1_[dim]); CHKERRXX(ierr);
   }
+
+  connectivity_ = NULL;
+  p4est_ = NULL;
+  ghost_ = NULL;
+  nodes_ = NULL;
+  hierarchy_ = NULL;
+  ngbd_ = NULL;
+  tl_n_ = NULL; tl_np1_ = NULL;
+  ts_n_ = NULL; ts_np1_ = NULL;
+  c0_n_ = NULL; c0_np1_ = NULL;
+  c1_n_ = NULL; c1_np1_ = NULL;
+  c0s_ = NULL;
+  c1s_ = NULL;
+  normal_velocity_n_ = NULL;
+  normal_velocity_np1_ = NULL;
+  phi_ = NULL;
+  kappa_ = NULL;
+  phi_smooth_ = NULL;
+  bc_error_ = NULL;
 }
 
 
@@ -199,6 +184,11 @@ my_p4est_multialloy_t::~my_p4est_multialloy_t()
   if(dendrite_number_ != NULL) { ierr = VecDestroy(dendrite_number_); CHKERRXX(ierr); }
   if(dendrite_tip_    != NULL) { ierr = VecDestroy(dendrite_tip_);    CHKERRXX(ierr); }
 
+  foreach_dimension(dim)
+  {
+    if (c0d_np1_[dim] != NULL) { ierr = VecDestroy(c0d_np1_[dim]); CHKERRXX(ierr); }
+  }
+
   /* destroy the p4est and its connectivity structure */
   delete ngbd_;
   delete hierarchy_;
@@ -212,12 +202,52 @@ my_p4est_multialloy_t::~my_p4est_multialloy_t()
   p4est_ghost_destroy(history_ghost_);
   p4est_destroy      (history_p4est_);
 
-  my_p4est_brick_destroy(connectivity_, brick_);
+  my_p4est_brick_destroy(connectivity_, &brick_);
 
-  foreach_dimension(dim)
-  {
-    if (c0d_np1_[dim] != NULL) { ierr = VecDestroy(c0d_np1_[dim]); CHKERRXX(ierr); }
-  }
+  delete sp_crit_;
+}
+
+void my_p4est_multialloy_t::initialize_grid(MPI_Comm mpi_comm, double xyz_min[], double xyz_max[], int nxyz[], int periodicity[], CF_2 &level_set, int lmin, int lmax, double lip)
+{
+  /* create the p4est */
+  connectivity_ = my_p4est_brick_new(nxyz, xyz_min, xyz_max, &brick_, periodicity);
+  p4est_        = my_p4est_new(mpi_comm, connectivity_, 0, NULL, NULL);
+
+  sp_crit_ = new splitting_criteria_cf_t(lmin, lmax, &level_set, lip);
+
+  p4est_->user_pointer = (void*)(sp_crit_);
+  my_p4est_refine(p4est_, P4EST_TRUE, refine_levelset_cf, NULL);
+  my_p4est_partition(p4est_, P4EST_FALSE, NULL);
+
+  ghost_ = my_p4est_ghost_new(p4est_, P4EST_CONNECT_FULL);
+  if (use_continuous_stencil_ || use_one_sided_derivatives_)
+    my_p4est_ghost_expand(p4est_, ghost_);
+  nodes_ = my_p4est_nodes_new(p4est_, ghost_);
+
+  hierarchy_ = new my_p4est_hierarchy_t(p4est_, ghost_, &brick_);
+  ngbd_ = new my_p4est_node_neighbors_t(hierarchy_, nodes_);
+  ngbd_->init_neighbors();
+
+  history_p4est_ = p4est_copy(p4est_, P4EST_FALSE);
+  history_ghost_ = my_p4est_ghost_new(history_p4est_, P4EST_CONNECT_FULL);
+  history_nodes_ = my_p4est_nodes_new(history_p4est_, history_ghost_);
+
+  history_hierarchy_ = new my_p4est_hierarchy_t(history_p4est_, history_ghost_, &brick_);
+  history_ngbd_      = new my_p4est_node_neighbors_t(history_hierarchy_, history_nodes_);
+  history_ngbd_->init_neighbors();
+
+  ::dxyz_min(p4est_, dxyz_);
+#ifdef P4_TO_P8
+  dxyz_min_ = MIN(dxyz_[0],dxyz_[1],dxyz_[2]);
+  dxyz_max_ = MAX(dxyz_[0],dxyz_[1],dxyz_[2]);
+  diag_ = sqrt(SQR(dxyz_[0])+SQR(dxyz_[1])+SQR(dxyz_[2]));
+#else
+  dxyz_min_ = MIN(dxyz_[0],dxyz_[1]);
+  dxyz_max_ = MAX(dxyz_[0],dxyz_[1]);
+  diag_ = sqrt(SQR(dxyz_[0])+SQR(dxyz_[1]));
+#endif
+//  dxyz_close_interface = 4*dxyz_min;
+  dxyz_close_interface_ = 1.2*dxyz_max_;
 }
 
 void my_p4est_multialloy_t::set_normal_velocity(Vec v)
@@ -1211,9 +1241,9 @@ void my_p4est_multialloy_t::save_VTK(int iter)
   char name[1000];
 
 #ifdef P4_TO_P8
-  sprintf(name, "%s/vtu/multialloy_lvl_%d_%d_%d_%dx%dx%d.%05d", out_dir, data->min_lvl, data->max_lvl, p4est_->mpisize, brick_->nxyztrees[0], brick_->nxyztrees[1], brick_->nxyztrees[2], iter);
+  sprintf(name, "%s/vtu/multialloy_lvl_%d_%d_%d_%dx%dx%d.%05d", out_dir, data->min_lvl, data->max_lvl, p4est_->mpisize, brick_.nxyztrees[0], brick_.nxyztrees[1], brick_.nxyztrees[2], iter);
 #else
-  sprintf(name, "%s/vtu/multialloy_lvl_%d_%d_%d_%dx%d.%05d", out_dir, data->min_lvl, data->max_lvl, p4est_->mpisize, brick_->nxyztrees[0], brick_->nxyztrees[1], iter);
+  sprintf(name, "%s/vtu/multialloy_lvl_%d_%d_%d_%dx%d.%05d", out_dir, data->min_lvl, data->max_lvl, p4est_->mpisize, brick_.nxyztrees[0], brick_.nxyztrees[1], iter);
 #endif
 
   const double *phi_p; ierr = VecGetArrayRead(phi_, &phi_p); CHKERRXX(ierr);
@@ -1326,9 +1356,9 @@ void my_p4est_multialloy_t::save_VTK_solid(int iter)
   char name[1000];
 
 #ifdef P4_TO_P8
-  sprintf(name, "%s/vtu/multialloy_solid_lvl_%d_%d_%d_%dx%dx%d.%05d", out_dir, data->min_lvl, data->max_lvl, p4est_->mpisize, brick_->nxyztrees[0], brick_->nxyztrees[1], brick_->nxyztrees[2], iter);
+  sprintf(name, "%s/vtu/multialloy_solid_lvl_%d_%d_%d_%dx%dx%d.%05d", out_dir, data->min_lvl, data->max_lvl, p4est_->mpisize, brick_.nxyztrees[0], brick_.nxyztrees[1], brick_.nxyztrees[2], iter);
 #else
-  sprintf(name, "%s/vtu/multialloy_solid_lvl_%d_%d_%d_%dx%d.%05d", out_dir, data->min_lvl, data->max_lvl, p4est_->mpisize, brick_->nxyztrees[0], brick_->nxyztrees[1], iter);
+  sprintf(name, "%s/vtu/multialloy_solid_lvl_%d_%d_%d_%dx%d.%05d", out_dir, data->min_lvl, data->max_lvl, p4est_->mpisize, brick_.nxyztrees[0], brick_.nxyztrees[1], iter);
 #endif
 
   const double *phi_p; ierr = VecGetArrayRead(history_phi_, &phi_p); CHKERRXX(ierr);
@@ -1401,8 +1431,8 @@ void my_p4est_multialloy_t::count_dendrites(int iter)
   // this code assumes dendrites grow in the positive y-direction
 
   // find boundaries of the "mushy zone"
-  double mushy_zone_min = brick_->xyz_max[1];
-  double mushy_zone_max = brick_->xyz_min[1];
+  double mushy_zone_min = brick_.xyz_max[1];
+  double mushy_zone_max = brick_.xyz_min[1];
 
   const double *phi_p;
   ierr = VecGetArrayRead(phi_, &phi_p); CHKERRXX(ierr);
@@ -1519,7 +1549,7 @@ void my_p4est_multialloy_t::count_dendrites(int iter)
   // specifically: phi, c0, c1, t, vn, c0s, c1s, tf, kappa, velo
 
   splitting_criteria_t *data = (splitting_criteria_t*)p4est_->user_pointer;
-  int nb_sample_points = brick_->nxyztrees[1]*pow(2, data->max_lvl)+1;
+  int nb_sample_points = brick_.nxyztrees[1]*pow(2, data->max_lvl)+1;
 
   std::vector<double> line_phi;
   std::vector<double> line_c0;
@@ -1534,8 +1564,8 @@ void my_p4est_multialloy_t::count_dendrites(int iter)
 
   for (unsigned short dendrite_idx = 0; dendrite_idx < num_dendrites_; ++dendrite_idx)
   {
-    double xyz0[P4EST_DIM] = { x_tip_g[dendrite_idx], brick_->xyz_min[1] };
-    double xyz1[P4EST_DIM] = { x_tip_g[dendrite_idx], brick_->xyz_max[1] };
+    double xyz0[P4EST_DIM] = { x_tip_g[dendrite_idx], brick_.xyz_min[1] };
+    double xyz1[P4EST_DIM] = { x_tip_g[dendrite_idx], brick_.xyz_max[1] };
 
     double xyz[P4EST_DIM];
     double dxyz[P4EST_DIM];

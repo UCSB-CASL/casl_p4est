@@ -746,8 +746,8 @@ int main (int argc, char* argv[])
   parStopWatch w1;
   w1.start("total time");
 
-  /* create the p4est */
-  my_p4est_brick_t brick;
+//  /* create the p4est */
+//  my_p4est_brick_t brick;
 #ifdef P4_TO_P8
   double xyz_min [] = {xmin, ymin, zmin};
   double xyz_max [] = {xmax, ymax, zmax};
@@ -755,23 +755,32 @@ int main (int argc, char* argv[])
   double xyz_min [] = {xmin, ymin};
   double xyz_max [] = {xmax, ymax};
 #endif
-  p4est_connectivity_t *connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick, periodic);
-  p4est_t *p4est = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
+//  p4est_connectivity_t *connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick, periodic);
+//  p4est_t *p4est = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
 
-  splitting_criteria_cf_t data(lmin, lmax, &LS, lip);
+//  splitting_criteria_cf_t data(lmin, lmax, &LS, lip);
 
-  p4est->user_pointer = (void*)(&data);
-  my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
-  my_p4est_partition(p4est, P4EST_FALSE, NULL);
+//  p4est->user_pointer = (void*)(&data);
+//  my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
+//  my_p4est_partition(p4est, P4EST_FALSE, NULL);
 
-  p4est_ghost_t *ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
-  if (use_continuous_stencil || use_one_sided_derivatives)
-    my_p4est_ghost_expand(p4est, ghost);
-  p4est_nodes_t *nodes = my_p4est_nodes_new(p4est, ghost);
+//  p4est_ghost_t *ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
+//  if (use_continuous_stencil || use_one_sided_derivatives)
+//    my_p4est_ghost_expand(p4est, ghost);
+//  p4est_nodes_t *nodes = my_p4est_nodes_new(p4est, ghost);
 
-  my_p4est_hierarchy_t *hierarchy = new my_p4est_hierarchy_t(p4est,ghost, &brick);
-  my_p4est_node_neighbors_t *ngbd = new my_p4est_node_neighbors_t(hierarchy,nodes);
-  ngbd->init_neighbors();
+//  my_p4est_hierarchy_t *hierarchy = new my_p4est_hierarchy_t(p4est,ghost, &brick);
+//  my_p4est_node_neighbors_t *ngbd = new my_p4est_node_neighbors_t(hierarchy,nodes);
+//  ngbd->init_neighbors();
+
+  /* initialize the solver */
+  my_p4est_multialloy_t mas;
+
+  mas.initialize_grid(mpi.comm(), xyz_min, xyz_max, n_xyz, periodic, LS, lmin, lmax, lip);
+
+  p4est_t *p4est = mas.get_p4est();
+  p4est_nodes_t *nodes = mas.get_nodes();
+  my_p4est_node_neighbors_t *ngbd = mas.get_ngbd();
 
   /* initialize the variables */
   Vec phi, tl, ts, c0, c1, normal_velocity, c0s, c1s;
@@ -804,12 +813,12 @@ int main (int argc, char* argv[])
   double ymin_tree = p4est->connectivity->vertices[3*vm + 1];
   double xmax_tree = p4est->connectivity->vertices[3*vp + 0];
   double ymax_tree = p4est->connectivity->vertices[3*vp + 1];
-  double dx = (xmax_tree-xmin_tree) / pow(2., (double) data.max_lvl);
-  double dy = (ymax_tree-ymin_tree) / pow(2., (double) data.max_lvl);
+  double dx = (xmax_tree-xmin_tree) / pow(2., (double) lmax);
+  double dy = (ymax_tree-ymin_tree) / pow(2., (double) lmax);
 #ifdef P4_TO_P8
   double zmin_tree = p4est->connectivity->vertices[3*vm + 2];
   double zmax_tree = p4est->connectivity->vertices[3*vp + 2];
-  double dz = (zmax_tree-zmin_tree) / pow(2.,(double) data.max_lvl);
+  double dz = (zmax_tree-zmin_tree) / pow(2.,(double) lmax);
 #endif
 
 #ifdef P4_TO_P8
@@ -841,57 +850,54 @@ int main (int argc, char* argv[])
   ls.reinitialize_1st_order_time_2nd_order_space(phi);
   ls.perturb_level_set_function(phi, EPS);
 
-  /* initialize the solver */
-  my_p4est_multialloy_t bas(ngbd);
-
-  bas.set_parameters(latent_heat, thermal_conductivity, lambda,
+  mas.set_parameters(latent_heat, thermal_conductivity, lambda,
                      V, Tm, scaling,
                      Dl0, kp0, c00, ml0,
                      Dl1, kp1, c01, ml1);
-  bas.set_phi(phi);
-  bas.set_bc(wall_bc_type_temperature,
+  mas.set_phi(phi);
+  mas.set_bc(wall_bc_type_temperature,
              wall_bc_type_concentration,
              wall_bc_value_temperature,
              wall_bc_value_concentration_0,
              wall_bc_value_concentration_1);
-  bas.set_temperature(tl, ts);
-  bas.set_concentration(c0, c1, c0s, c1s);
-  bas.set_normal_velocity(normal_velocity);
-  bas.set_dt(dt);
+  mas.set_temperature(tl, ts);
+  mas.set_concentration(c0, c1, c0s, c1s);
+  mas.set_normal_velocity(normal_velocity);
+  mas.set_dt(dt);
 
-  bas.set_GT(zero_cf);
-  bas.set_jump_t(zero_cf);
-  bas.set_jump_tn(zero_cf);
-  bas.set_flux_c(zero_cf, zero_cf);
-  bas.set_undercoolings(eps_v_cf, eps_c_cf);
+  mas.set_GT(zero_cf);
+  mas.set_jump_t(zero_cf);
+  mas.set_jump_tn(zero_cf);
+  mas.set_flux_c(zero_cf, zero_cf);
+  mas.set_undercoolings(eps_v_cf, eps_c_cf);
 
-  bas.set_rhs(zero_cf, zero_cf, zero_cf, zero_cf);
+  mas.set_rhs(zero_cf, zero_cf, zero_cf, zero_cf);
 
-  bas.set_bc_tolerance     (bc_tolerance);
-  bas.set_max_iterations   (max_iterations);
-  bas.set_pin_every_n_steps(pin_every_n_steps);
-  bas.set_cfl              (cfl_number);
-  bas.set_phi_thresh       (phi_thresh);
+  mas.set_bc_tolerance     (bc_tolerance);
+  mas.set_max_iterations   (max_iterations);
+  mas.set_pin_every_n_steps(pin_every_n_steps);
+  mas.set_cfl              (cfl_number);
+  mas.set_phi_thresh       (phi_thresh);
 
-  bas.set_use_continuous_stencil   (use_continuous_stencil   );
-  bas.set_use_one_sided_derivatives(use_one_sided_derivatives);
-  bas.set_use_superconvergent_robin(use_superconvergent_robin);
-  bas.set_use_superconvergent_jump (use_superconvergent_jump );
-  bas.set_use_points_on_interface  (use_points_on_interface  );
-  bas.set_update_c0_robin          (update_c0_robin          );
-  bas.set_zero_negative_velocity   (zero_negative_velocity   );
+  mas.set_use_continuous_stencil   (use_continuous_stencil   );
+  mas.set_use_one_sided_derivatives(use_one_sided_derivatives);
+  mas.set_use_superconvergent_robin(use_superconvergent_robin);
+  mas.set_use_superconvergent_jump (use_superconvergent_jump );
+  mas.set_use_points_on_interface  (use_points_on_interface  );
+  mas.set_update_c0_robin          (update_c0_robin          );
+  mas.set_zero_negative_velocity   (zero_negative_velocity   );
 
-  bas.set_dendrite_cut_off_fraction(dendrite_cut_off_fraction);
-  bas.set_dendrite_min_length(dendrite_min_length);
+  mas.set_dendrite_cut_off_fraction(dendrite_cut_off_fraction);
+  mas.set_dendrite_min_length(dendrite_min_length);
 
-  bas.set_enforce_planar_front(enforce_planar_front);
+  mas.set_enforce_planar_front(enforce_planar_front);
 
 
-//  bas.set_zero_negative_velocity(zero_negative_velocity);
-//  bas.set_num_of_iterations_per_step(num_of_iters_per_step);
+//  mas.set_zero_negative_velocity(zero_negative_velocity);
+//  mas.set_num_of_iterations_per_step(num_of_iters_per_step);
 
-//  bas.compute_velocity();
-//  bas.compute_dt();
+//  mas.compute_velocity();
+//  mas.compute_dt();
 
   // loop over time
   double tn = 0;
@@ -926,18 +932,18 @@ int main (int argc, char* argv[])
   while(keep_going)
 //  while (iteration < 20)
   {
-    if (tn + bas.get_dt() > time_limit) { bas.set_dt(time_limit-tn); keep_going = false; }
+    if (tn + mas.get_dt() > time_limit) { mas.set_dt(time_limit-tn); keep_going = false; }
 
-    tn += bas.get_dt();
+    tn += mas.get_dt();
 
-    sub_iterations += bas.one_step();
+    sub_iterations += mas.one_step();
 
     {
       total_growth = base;
 
-      p4est = bas.get_p4est();
-      nodes = bas.get_nodes();
-      phi = bas.get_phi();
+      p4est = mas.get_p4est();
+      nodes = mas.get_nodes();
+      phi = mas.get_phi();
 
       const double *phi_p;
       ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr);
@@ -982,10 +988,10 @@ int main (int argc, char* argv[])
     // save velocity, lenght of interface and area of solid phase in time
     if(save_velocity && save_now)
     {
-      p4est = bas.get_p4est();
-      nodes = bas.get_nodes();
-      phi = bas.get_phi();
-      normal_velocity = bas.get_normal_velocity();
+      p4est = mas.get_p4est();
+      nodes = mas.get_nodes();
+      phi = mas.get_phi();
+      normal_velocity = mas.get_normal_velocity();
 
       Vec ones;
       ierr = VecDuplicate(phi, &ones); CHKERRXX(ierr);
@@ -1010,7 +1016,7 @@ int main (int argc, char* argv[])
       int mpiret = MPI_Allreduce(MPI_IN_PLACE, &num_local_nodes, 1, MPI_INT, MPI_SUM, p4est->mpicomm); SC_CHECK_MPI(mpiret);
           mpiret = MPI_Allreduce(MPI_IN_PLACE, &num_ghost_nodes, 1, MPI_INT, MPI_SUM, p4est->mpicomm); SC_CHECK_MPI(mpiret);
 
-      PetscFPrintf(mpi.comm(), fich, "%e %e %e %e %e %e %d %d %d %d\n", tn, avg_velo/scaling, bas.get_max_interface_velocity()/scaling, interface_length, solid_phase_area, time_elapsed, iteration, num_local_nodes, num_ghost_nodes, sub_iterations);
+      PetscFPrintf(mpi.comm(), fich, "%e %e %e %e %e %e %d %d %d %d\n", tn, avg_velo/scaling, mas.get_max_interface_velocity()/scaling, interface_length, solid_phase_area, time_elapsed, iteration, num_local_nodes, num_ghost_nodes, sub_iterations);
       ierr = PetscFClose(mpi.comm(), fich); CHKERRXX(ierr);
       ierr = PetscPrintf(mpi.comm(), "saved velocity in %s\n", name); CHKERRXX(ierr);
       sub_iterations = 0;
@@ -1019,23 +1025,23 @@ int main (int argc, char* argv[])
     // save field data
     if(save_vtk && save_now)
     {
-      bas.count_dendrites(vtk_idx);
-      bas.save_VTK(vtk_idx);
-      bas.save_VTK_solid(vtk_idx);
+      mas.count_dendrites(vtk_idx);
+      mas.save_VTK(vtk_idx);
+      mas.save_VTK_solid(vtk_idx);
     }
 
     keep_going = keep_going && (iteration < max_total_iterations) && (total_growth < termination_length);
 
-    bas.update_grid();
-    bas.compute_dt();
+    mas.update_grid();
+    mas.compute_dt();
 
     iteration++;
 
     if (save_now) vtk_idx++;
 
-    p4est = bas.get_p4est();
-    nodes = bas.get_nodes();
-    phi = bas.get_phi();
+    p4est = mas.get_p4est();
+    nodes = mas.get_nodes();
+    phi = mas.get_phi();
   }
 
   w1.stop(); w1.read_duration();
