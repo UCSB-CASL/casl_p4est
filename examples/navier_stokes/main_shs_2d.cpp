@@ -42,10 +42,6 @@
 
 using namespace std;
 
-// we enforce the non-dimensional channel height to be from -1.0 to 1.0
-const double ymin =-1.0;
-const double ymax = +1.0;
-
 class LEVEL_SET :
     #ifdef P4_TO_P8
     public CF_3
@@ -464,7 +460,7 @@ void initialize_mass_flow_output(std::vector<double>& sections, std::vector<doub
       fprintf(fp_tex_plot_mass, "set key bottom right Left \n");
       fprintf(fp_tex_plot_mass, "set xlabel \"$t$\"\n");
 #ifdef P4_TO_P8
-      fprintf(fp_tex_plot_mass, "set ylabel \"$\\\\frac{1}{\\\\rho \\\\delta^{2} u_{\\\\tau}}\\\\int_{%g\\\\delta}^{%g\\\\delta}\\\\int_{-\\\\delta}^{\\\\delta} \\\\rho u \\\\,\\\\mathrm{d}y\\\\mathrm{d}z$\" \n", -0.5*width, width);
+      fprintf(fp_tex_plot_mass, "set ylabel \"$\\\\frac{1}{\\\\rho \\\\delta^{2} u_{\\\\tau}}\\\\int_{%g\\\\delta}^{%g\\\\delta}\\\\int_{-\\\\delta}^{\\\\delta} \\\\rho u \\\\,\\\\mathrm{d}y\\\\mathrm{d}z$\" \n", -0.5*width, 0.5*width);
 #else
       fprintf(fp_tex_plot_mass, "set ylabel \"$\\\\frac{1}{\\\\rho \\\\delta u_{\\\\tau}}\\\\int_{-\\\\delta}^{\\\\delta} \\\\rho u \\\\,\\\\mathrm{d}y$\" \n");
 #endif
@@ -734,15 +730,17 @@ int main (int argc, char* argv[])
 
 
 
-  double duration           = cmd.get<double>("duration", 1.0 /*250.0*/);
+  double duration           = cmd.get<double>("duration", 10.0);
   double pitch_to_delta     = cmd.get<double>("pitch_to_delta", 1.0/4.0);
   double gas_fraction       = cmd.get<double>("GF", 0.5);
 #if defined(POD_CLUSTER)
   string export_dir         = cmd.get<string>("export_folder", "/home/regan/superhydrophobic_channel");
 #elif defined(STAMPEDE)
   string export_dir         = cmd.get<string>("export_folder", "/work/04965/tg842642/stampede2/superhydrophobic_channel");
-#else
+#elif defined(LAPTOP)
   string export_dir         = cmd.get<string>("export_folder", "/home/raphael/workspace/projects/superhydrophobic_channel");
+#else
+  string export_dir         = cmd.get<string>("export_folder", "/home/regan/workspace/projects/superhydrophobic_channel");
 #endif
   bool save_vtk             = cmd.contains("save_vtk");
   double vtk_dt = -1.0;
@@ -878,7 +876,7 @@ int main (int argc, char* argv[])
     lmin                    = cmd.get<int>("lmin", 4);
     lmax                    = cmd.get<int>("lmax", 6);
     threshold_split_cell    = cmd.get<double>("thresh", 0.1);
-    wall_layer              = cmd.get<double>("wall_layer", 8.0);
+    wall_layer              = cmd.get<double>("wall_layer", 6.0);
     length                  = cmd.get<double>("length", 6.0);
 #ifdef P4_TO_P8
     width                   = cmd.get<double>("width", 3.0);
@@ -1029,9 +1027,8 @@ int main (int argc, char* argv[])
   ns->set_bc(bc_v, &bc_p);
 
   if(cmd.contains("restart"))
-  {
     ns->update_dxyz_hodge();
-  }
+
 
 #ifdef P4_TO_P8
   ierr = PetscPrintf(mpi.comm(), "Parameters : Re_{tau, 0} = %g, domain is %dx2x%d (delta units), P/delta = %g, GF = %g\n", wall_shear_Reynolds, (int) length, (int) width, pitch_to_delta, gas_fraction); CHKERRXX(ierr);
@@ -1042,9 +1039,9 @@ int main (int argc, char* argv[])
 
   char out_dir[1024], vtk_path[1024], vtk_name[1024];
 #ifdef P4_TO_P8
-  sprintf(out_dir, "%s/%dX2X%d_channel/Retau_%d/%s/pitch_to_delta_%.3f/GF_%.2f/yplus_min_%.4f_yplus_max_%.4f", export_dir.c_str(), (int) length, (int) width, (int) wall_shear_Reynolds, ((streamwise)? "streamwise": "spanwise"), pitch_to_delta, gas_fraction, wall_shear_Reynolds/pow(2.0, lmax), wall_shear_Reynolds/pow(2.0, lmin));
+  sprintf(out_dir, "%s/%dX2X%d_channel/Retau_%d/%s/pitch_to_delta_%.3f/GF_%.2f/yplus_min_%.4f_yplus_max_%.4f", export_dir.c_str(), (int) length, (int) width, (int) wall_shear_Reynolds, ((streamwise)? "streamwise": "spanwise"), pitch_to_delta, gas_fraction, 2.0*wall_shear_Reynolds/(((double) ntree_y)*pow(2.0, lmax)), 2.0*wall_shear_Reynolds/(((double ntree_y)*pow(2.0, lmin)));
 #else
-  sprintf(out_dir, "%s/%dX2_channel/Retau_%d/pitch_to_delta_%.3f/GF_%.2f/yplus_min_%.4f_yplus_max_%.4f", export_dir.c_str(), (int) length, (int) wall_shear_Reynolds, pitch_to_delta, gas_fraction, wall_shear_Reynolds/pow(2.0, lmax), wall_shear_Reynolds/pow(2.0, lmin));
+  sprintf(out_dir, "%s/%dX2_channel/Retau_%d/pitch_to_delta_%.3f/GF_%.2f/yplus_min_%.4f_yplus_max_%.4f", export_dir.c_str(), (int) length, (int) wall_shear_Reynolds, pitch_to_delta, gas_fraction, 2.0*wall_shear_Reynolds/(((double) ntree_y)*pow(2.0, lmax)), 2.0*wall_shear_Reynolds/(((double) ntree_y)*pow(2.0, lmin)));
 #endif
   sprintf(vtk_path, "%s/vtu", out_dir);
   if(save_vtk || save_drag || save_mass_flow || save_profile || save_state)
@@ -1114,9 +1111,9 @@ int main (int argc, char* argv[])
     if(iter>0)
     {
       if(use_adapted_dt)
-        ns->compute_adapted_dt(0.1*wall_shear_Reynolds/pow(2.0, lmax)); // 0.1*y^{+}_min (assuming full resolution of viscous sublayer in regular channel)
+        ns->compute_adapted_dt(0.1*2.0*wall_shear_Reynolds/(((double) ntree_y)*pow(2.0, lmax))); // 0.1*y^{+}_min (assuming full resolution of viscous sublayer in regular channel)
       else
-        ns->compute_dt(0.1*wall_shear_Reynolds/pow(2.0, lmax)); // 0.1*y^{+}_min (assuming full resolution of viscous sublayer in regular channel)
+        ns->compute_dt(0.1*2.0*wall_shear_Reynolds/(((double) ntree_y)*pow(2.0, lmax))); // 0.1*y^{+}_min (assuming full resolution of viscous sublayer in regular channel)
       dt = ns->get_dt();
 
       if(tn+dt>tstart+duration)
