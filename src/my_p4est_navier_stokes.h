@@ -9,13 +9,21 @@
 #include <src/my_p8est_interpolation_nodes.h>
 #include <src/my_p8est_interpolation_cells.h>
 #include <src/my_p8est_interpolation_faces.h>
+#include <src/my_p8est_save_load.h>
 #else
 #include <src/my_p4est_refine_coarsen.h>
 #include <src/my_p4est_faces.h>
 #include <src/my_p4est_interpolation_nodes.h>
 #include <src/my_p4est_interpolation_cells.h>
 #include <src/my_p4est_interpolation_faces.h>
+#include <src/my_p4est_save_load.h>
 #endif
+
+typedef enum
+{
+  SAVE=3541,
+  LOAD
+} save_or_load;
 
 class my_p4est_navier_stokes_t
 {
@@ -182,9 +190,15 @@ protected:
   }
 
   /*!
-   * \brief save_or_load_parameters : save or loads the solver parameters in the file of path given in filename
-   * The parameters/variables that are save/loaded are (in this order)
-   * - P4EST_DIM (--> throws std::runtime_error on load if not consistent with calling program's)
+   * \brief save_or_load_parameters : save or loads the solver parameters in the two files of paths
+   * given by sprintf(path_1, "%s_integers", filename) and sprintf(path_2, "%s_doubles", filename)
+   * The integer parameters that are saved/loaded are (in this order):
+   * - P4EST_DIM
+   * - refine_with_smoke
+   * - data->min_lvl
+   * - data->max_lvl
+   * - sl_order
+   * The double parameters/variables that are saved/loaded are (in this order):
    * - dxyz_min[0:P4EST_DIM-1]
    * - xyz_min[0:P4EST_DIM-1]
    * - xyz_max[0:P4EST_DIM-1]
@@ -198,26 +212,36 @@ protected:
    * - uniform_band
    * - threshold_split_cell
    * - n_times_dt
-   * - refine_with_smoke
    * - smoke_threshold
-   * - data->min_lvl
-   * - data->max_lvl
    * - data->lip
-   * - sl_order
-   * \param filename[in]: path to the file to be written or read
+   * The integer and double parameters are saved separately in two different files to avoid reading errors due to
+   * byte padding (occurs in order to ensure data alignment when written in file)...
+   * \param filename[in]: basename of the path to the files to be written or read (absolute path)
    * \param data[inout] : splitting criterion to be exported/loaded
    * \param flag[in]    : switch the behavior between write or read
    * \param tn[inout]   : in write mode, simulation time at which the function is called (to be saved, unmodified)
    *                      in read mode, simulation time at which the data were saved (to be read from file and stored in tn)
    * \param mpi[in]     : pointer to the mpi_environment_t (necessary for the load, disregarded for the save)
-   * [note: implemented in one given function with switched behavior to avoid ambiguity and confusion due to several
-   * function implementations to be modified in the future if the parameter/variable order or the parameter/variable
-   * list is changed (the save-state files are binary files, order and number of read/write operations is crucial)]
+   * [note: implemented in one given function with switched behavior to avoid ambiguity and confusion due to code duplication
+   * in several functions to be modified in the future if the parameter/variable order or the parameter/variable list is changed
+   * (the save-state files are binary files, order and number of read/write operations is crucial)]
+   * WARNING: this function throws an std::invalid_argument exception if the files can't be found when loading parameters
+   * Raphael EGAN
    */
   void save_or_load_parameters(const char* filename, splitting_criteria_t* splitting_criterion, save_or_load flag, double& tn, const mpi_environment_t* mpi = NULL);
   void fill_or_load_double_parameters(save_or_load flag, PetscReal* data, splitting_criteria_t* splitting_criterion, double& tn);
   void fill_or_load_integer_parameters(save_or_load flag, PetscInt* data, splitting_criteria_t* splitting_criterion);
 
+  /*!
+   * \brief load_state loads a solver state that has been previously saved on disk
+   * \param mpi             [in]    mpi environment to load the solver state in
+   * \param path_to_folder  [in]    path to the folder where the solver state has been stored (absolute path)
+   * \param tn              [inout] simulation time at which the data were saved (to be read from saved solver state)
+   * [NOTE :] the function will destroy and overwrite any grid-related structure like p4est_n, nodes_n, ghost_n, faces_n, etc.
+   * if they have already been constructed beforehand...
+   * WARNING: this function throws an std::invalid_argument exception if path_to_folder is invalid
+   * Raphael EGAN
+   */
   void load_state(const mpi_environment_t& mpi, const char* path_to_folder, double& tn);
 public:
   my_p4est_navier_stokes_t(my_p4est_node_neighbors_t *ngbd_nm1, my_p4est_node_neighbors_t *ngbd_n, my_p4est_faces_t *faces_n);
@@ -313,8 +337,6 @@ public:
 
   void solve_projection();
 
-  void update_dxyz_hodge();
-
   void compute_velocity_at_nodes();
 
   void set_dt(double dt_nm1, double dt_n);
@@ -329,6 +351,7 @@ public:
    * coarse areas when using a very fine grid to capture zero no-slip conditions elsewhere.
    * \param min_value_for_umax: minimum value to be considered for the local velocities (to avoid crazy large
    * time steps because a local velocity is close to 0)...
+   * Raphael EGAN
    */
   void compute_adapted_dt(double min_value_for_umax = 1.0);
   void compute_dt(double min_value_for_umax = 1.0);
@@ -395,6 +418,7 @@ public:
    * under the root directory, in which successive solver states will be saved.
    * \param tn: simulation time at which the function is called
    * \param n_saved: number of solver states to keep in memory (default is 1)
+   * Raphael EGAN
    */
   void save_state(const char* path_to_root_directory, double tn, unsigned int n_saved=1);
 

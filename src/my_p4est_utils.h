@@ -110,13 +110,6 @@ typedef enum {
   IGNORE
 } BoundaryConditionType;
 
-typedef enum
-{
-  SAVE=2451,
-  LOAD
-} save_or_load;
-
-
 class mixed_interface
 {
 public:
@@ -450,36 +443,6 @@ PetscErrorCode VecGhostChangeLayoutBegin(VecScatter ctx, Vec from, Vec to);
 PetscErrorCode VecGhostChangeLayoutEnd(VecScatter ctx, Vec from, Vec to);
 
 /*!
- * \brief VecDump: exports the vectors x in a BINARY format
- * \param fname: name of the file to export the vectors x in
- * \param n_vecs: number of vectors to be exported
- * \param x: vectors to be exported in the binary file
- * \param skippheader: flag controlling whether the header is printed or not. If activated, header information
- * (i.e. information about the global and local size of the vector) won't be exported
- * \param usempiio: flag activating MPI-IO for reading/writing
- * \return a regular Petsc Error Code.
- * [NOTE:] modified from the function taken from src/dm/examples/tutorials/ex15.c in the Petsc distribution
- */
-PetscErrorCode VecDump(const char fname[], unsigned int n_vecs, const Vec *x, PetscBool skippheader=PETSC_FALSE, PetscBool usempiio=PETSC_TRUE);
-PetscErrorCode VecDump(const char fname[], const Vec x, PetscBool skippheader=PETSC_FALSE, PetscBool usempiio=PETSC_TRUE);
-
-/*!
- * \brief LoadVec loads vectors from a binary Petsc-viewer exported on-disk file referred by path fname
- * \param fname       [in]: path to the binary Petsc-viewer exported on-disk file
- * \param n_vecs      [in]: number of vectors to be loaded
- * \param x           [out]: array of Petsc Vectors
- * \param skippheader [in]: flag controlling whether the header is read or not. If activated, header information
- * (i.e. information about the global and local size of the vector) won't be read
- * \param usempiio: flag activating MPI-IO for reading/writing
- * \return a regular PetscError code;
- * [NOTE:] the vectors passed by the user must be of the same (global) size as the ones loaded from file... if not, this function
- * throws an std::invalid_argument exception...
- * [NOTE:] modified from the function taken from src/dm/examples/tutorials/ex15.c in the Petsc distribution
- */
-PetscErrorCode LoadVec(const char fname[], unsigned int n_vecs, Vec *x, PetscBool skippheader=PETSC_FALSE, PetscBool usempiio=PETSC_TRUE);
-PetscErrorCode LoadVec(const char fname[], Vec *x, PetscBool skippheader=PETSC_FALSE, PetscBool usempiio=PETSC_TRUE);
-
-/*!
  * \brief is_folder returns true if the path points to an existing folder
  * does not use boost nor c++17 standard to maximize portability
  * \param path: path to be checked
@@ -524,8 +487,6 @@ int create_directory(const char* path, int mpi_rank, MPI_Comm comm=MPI_COMM_WORL
 int delete_directory(const char* root_path, int mpi_rank, MPI_Comm comm=MPI_COMM_WORLD, bool non_collective=false);
 
 int get_subdirectories_in(const char* root_path, std::vector<std::string>& subdirectories);
-
-void my_p4est_save_or_load_brick(const MPI_Comm& comm, const int& mpirank, const char *filename, save_or_load flag, my_p4est_brick_t* brick);
 
 inline double int2double_coordinate_transform(p4est_qcoord_t a){
   return static_cast<double>(a)/static_cast<double>(P4EST_ROOT_LEN);

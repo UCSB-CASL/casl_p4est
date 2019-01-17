@@ -406,16 +406,23 @@ void initialize_mass_flow_output(std::vector<double>& sections, std::vector<doub
         size_to_keep += (long) len_read;
       else
         throw std::runtime_error("initialize_mass_flow_output: couldn't read the second header line of mass_flow_...dat");
-      double time;
+      double time, time_nm1;
+      double dt = 0.0;
+      bool not_firt_line = false;
       char format_specifier[1024] = "%lg";
       for (size_t kk = 0; kk < sections.size(); ++kk)
         strcat(format_specifier, " %*g");
       while ((len_read = getline(&read_line, &len, fp_mass_flow)) != -1) {
+        if(not_firt_line)
+          time_nm1 = time;
         sscanf(read_line, format_specifier, &time);
-        if(time <= tstart)
+        if(not_firt_line)
+          dt = time - time_nm1;
+        if(time <= tstart+0.1*dt) // +0.1*dt to avoid roundoff errors when exporting the data
           size_to_keep += (long) len_read;
         else
           break;
+        not_firt_line=true;
       }
       fclose(fp_mass_flow);
       if(read_line)
@@ -530,17 +537,24 @@ void initialize_drag_force_output(char* file_drag, const char *out_dir, const in
         size_to_keep += (long) len_read;
       else
         throw std::runtime_error("initialize_drag_force_output: couldn't read the second header line of drag_...dat");
-      double time;
+      double time, time_nm1;
+      double dt = 0.0;
+      bool not_firt_line = false;
       while ((len_read = getline(&read_line, &len, fp_drag)) != -1) {
+        if(not_firt_line)
+          time_nm1 = time;
 #ifdef P4_TO_P8
         sscanf(read_line, "%lg %*g %*g %*g", &time);
 #else
         sscanf(read_line, "%lg %*g %*g", &time);
 #endif
-        if(time <= tstart)
+        if(not_firt_line)
+          dt = time-time_nm1;
+        if(time <= tstart+0.1*dt) // +0.1*dt to avoid roundoff errors when exporting the data
           size_to_keep += (long) len_read;
         else
           break;
+        not_firt_line=true;
       }
       fclose(fp_drag);
       if(read_line)
@@ -706,7 +720,7 @@ int main (int argc, char* argv[])
   cmd.parse(argc, argv, extra_info);
 
   double tstart;
-  double dt, dt_loaded;
+  double dt;
   int lmin, lmax;
   my_p4est_navier_stokes_t* ns  = NULL;
   my_p4est_brick_t* brick       = NULL;
@@ -760,7 +774,7 @@ int main (int argc, char* argv[])
       throw std::invalid_argument("main_shs_2d.cpp: the value of vtk_dt must be strictly positive.");
 #endif
   }
-  bool save_drag            = cmd.contains("save_drag"); double drag[P4EST_DIM]; double loaded_drag[P4EST_DIM];
+  bool save_drag            = cmd.contains("save_drag"); double drag[P4EST_DIM];
   bool save_mass_flow       = cmd.contains("save_mass_flow"); vector<double> mass_flows; vector<double> sections;
   bool save_state           = cmd.contains("save_state_dt"); double dt_save_data = -1.0;
   unsigned int n_states     = cmd.get<unsigned int>("save_nstates", 1);
@@ -1026,9 +1040,6 @@ int main (int argc, char* argv[])
 #endif
   ns->set_bc(bc_v, &bc_p);
 
-  if(cmd.contains("restart"))
-    ns->update_dxyz_hodge();
-
 
 #ifdef P4_TO_P8
   ierr = PetscPrintf(mpi.comm(), "Parameters : Re_{tau, 0} = %g, domain is %dx2x%d (delta units), P/delta = %g, GF = %g\n", wall_shear_Reynolds, (int) length, (int) width, pitch_to_delta, gas_fraction); CHKERRXX(ierr);
@@ -1106,9 +1117,6 @@ int main (int argc, char* argv[])
   watch.start("Total runtime");
   double tn = tstart;
 
-  my_p4est_navier_stokes_t* ns_loaded = NULL;
-  double loaded_tn;
-
   while(tn+0.01*dt<tstart+duration)
   {
     if(iter>0)
@@ -1118,11 +1126,6 @@ int main (int argc, char* argv[])
       else
         ns->compute_dt(0.1*2.0*wall_shear_Reynolds/(((double) ntree_y)*pow(2.0, lmax))); // 0.1*y^{+}_min (assuming full resolution of viscous sublayer in regular channel)
       dt = ns->get_dt();
-
-      if(use_adapted_dt && ns_loaded!=NULL)
-        ns_loaded->compute_adapted_dt(0.1*2.0*wall_shear_Reynolds/(((double) ntree_y)*pow(2.0, lmax))); // 0.1*y^{+}_min (assuming full resolution of viscous sublayer in regular channel)
-      else if(ns_loaded!=NULL)
-        ns_loaded->compute_dt(0.1*2.0*wall_shear_Reynolds/(((double) ntree_y)*pow(2.0, lmax))); // 0.1*y^{+}_min (assuming full resolution of viscous sublayer in regular channel)
 
       if(tn+dt>tstart+duration)
       {
@@ -1138,30 +1141,6 @@ int main (int argc, char* argv[])
 
       ns->update_from_tn_to_tnp1(level_set, false, false);
     }
-
-    if ((tn > 2.0) && (ns_loaded == NULL))
-    {
-      ns_loaded = new my_p4est_navier_stokes_t(mpi, "/home/regan/workspace/projects/superhydrophobic_channel/6X2_channel/Retau_60/pitch_to_delta_0.250/GF_0.50/yplus_min_0.9375_yplus_max_3.7500/backup_0", loaded_tn);
-      p4est_t *loaded_p4est_n        = ns_loaded->get_p4est();
-      p4est_t *loaded_p4est_nm1      = ns_loaded->get_p4est_nm1();
-
-      lmin                    = ((splitting_criteria_t*) p4est_n->user_pointer)->min_lvl;
-      lmax                    = ((splitting_criteria_t*) loaded_p4est_n->user_pointer)->max_lvl;
-      double lip              = ((splitting_criteria_t*) p4est_n->user_pointer)->lip;
-
-
-      level_set = new LEVEL_SET(((splitting_criteria_t*) loaded_p4est_n->user_pointer)->max_lvl);
-      splitting_criteria_cf_t* loaded_data = new splitting_criteria_cf_t(lmin, lmax, level_set, lip);
-      splitting_criteria_t* to_delete = (splitting_criteria_t*) p4est_n->user_pointer;
-      delete to_delete;
-      p4est_n->user_pointer   = (void*) data;
-      p4est_nm1->user_pointer = (void*) data;
-
-      ns_loaded->update_dxyz_hodge();
-    }
-
-//    if(ns_loaded != NULL && (fabs(tn - loaded_tn) > 0.001*max(tn, loaded_tn)))
-//      std::cerr << "the loaded simulation time is not correct..." << std::endl;
 
 
     if(save_state && ((int) floor(tn/dt_save_data)) != save_data_idx)
@@ -1201,11 +1180,6 @@ int main (int argc, char* argv[])
 
       ns->solve_viscosity();
       ns->solve_projection();
-//      if(ns_loaded != NULL)
-//      {
-//        ns_loaded->solve_viscosity();
-//        ns_loaded->solve_projection();
-//      }
 
       hodge_new = ns->get_hodge();
       const double *ho; ierr = VecGetArrayRead(hodge_old, &ho); CHKERRXX(ierr);
@@ -1239,21 +1213,12 @@ int main (int argc, char* argv[])
     ierr = VecDestroy(hodge_old); CHKERRXX(ierr);
     ns->compute_velocity_at_nodes();
     ns->compute_pressure();
-//    if(ns_loaded != NULL)
-//    {
-//      ns_loaded->compute_velocity_at_nodes();
-//      ns_loaded->compute_pressure();
-//    }
 
     tn += dt;
-//    if(ns_loaded != NULL)
-//      loaded_tn += ns_loaded->get_dt();
 
     if(save_drag)
     {
       ns->get_noslip_wall_forces(drag);
-//      if(ns_loaded!=NULL)
-//        ns_loaded->get_noslip_wall_forces(loaded_drag);
       if(!mpi.rank())
       {
         FILE* fp_drag = fopen(file_drag, "a");
@@ -1337,8 +1302,6 @@ int main (int argc, char* argv[])
   watch.read_duration();
 
   delete ns;        // deletes the navier-stokes solver
-  if(ns_loaded != NULL)
-    delete  ns_loaded;
 
   // the brick and the connectivity are deleted within the above destructor...
   // p4est_n and p4est_nm1 are deleted within the above destructor...
