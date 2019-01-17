@@ -406,16 +406,23 @@ void initialize_mass_flow_output(std::vector<double>& sections, std::vector<doub
         size_to_keep += (long) len_read;
       else
         throw std::runtime_error("initialize_mass_flow_output: couldn't read the second header line of mass_flow_...dat");
-      double time;
+      double time, time_nm1;
+      double dt = 0.0;
+      bool not_first_line = false;
       char format_specifier[1024] = "%lg";
       for (size_t kk = 0; kk < sections.size(); ++kk)
         strcat(format_specifier, " %*g");
       while ((len_read = getline(&read_line, &len, fp_mass_flow)) != -1) {
+        if(not_first_line)
+          time_nm1 = time;
         sscanf(read_line, format_specifier, &time);
-        if(time <= tstart)
+        if(not_first_line)
+          dt = time - time_nm1;
+        if(time <= tstart+0.1*dt) // +0.1*dt to avoid roundoff errors when exporting the data
           size_to_keep += (long) len_read;
         else
           break;
+        not_first_line=true;
       }
       fclose(fp_mass_flow);
       if(read_line)
@@ -530,17 +537,24 @@ void initialize_drag_force_output(char* file_drag, const char *out_dir, const in
         size_to_keep += (long) len_read;
       else
         throw std::runtime_error("initialize_drag_force_output: couldn't read the second header line of drag_...dat");
-      double time;
+      double time, time_nm1;
+      double dt = 0.0;
+      bool not_first_line = false;
       while ((len_read = getline(&read_line, &len, fp_drag)) != -1) {
+        if(not_first_line)
+          time_nm1 = time;
 #ifdef P4_TO_P8
         sscanf(read_line, "%lg %*g %*g %*g", &time);
 #else
         sscanf(read_line, "%lg %*g %*g", &time);
 #endif
-        if(time <= tstart)
+        if(not_first_line)
+          dt = time-time_nm1;
+        if(time <= tstart+0.1*dt) // +0.1*dt to avoid roundoff errors when exporting the data
           size_to_keep += (long) len_read;
         else
           break;
+        not_first_line=true;
       }
       fclose(fp_drag);
       if(read_line)
@@ -1025,9 +1039,6 @@ int main (int argc, char* argv[])
   external_force_w_t *external_force_w=NULL;
 #endif
   ns->set_bc(bc_v, &bc_p);
-
-  if(cmd.contains("restart"))
-    ns->update_dxyz_hodge();
 
 
 #ifdef P4_TO_P8

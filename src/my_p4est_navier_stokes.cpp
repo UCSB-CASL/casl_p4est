@@ -66,10 +66,10 @@ void my_p4est_navier_stokes_t::splitting_criteria_vorticity_t::tag_quadrant(p4es
     double ymin = p4est->connectivity->vertices[3*vm + 1];
     double xmax = p4est->connectivity->vertices[3*vp + 0];
     double ymax = p4est->connectivity->vertices[3*vp + 1];
-  #ifdef P4_TO_P8
+#ifdef P4_TO_P8
     double zmin = p4est->connectivity->vertices[3*vm + 2];
     double zmax = p4est->connectivity->vertices[3*vp + 2];
-  #endif
+#endif
 
     double dmin = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
     double dx = (xmax-xmin) * dmin;
@@ -106,12 +106,12 @@ void my_p4est_navier_stokes_t::splitting_criteria_vorticity_t::tag_quadrant(p4es
 #ifdef P4_TO_P8
         for(int k=0; k<2; ++k)
         {
-        cor_vort = cor_vort && fabs(vor(x+i*dx, y+j*dy, z+k*dz))*2*MAX(dx,dy,dz)/max_L2_norm_u<threshold;
-        cor_band = cor_band && fabs(phi(x+i*dx, y+j*dy, z+k*dz))>uniform_band*dxyz_min;
-        cor_intf = cor_intf && fabs(phi(x+i*dx, y+j*dy, z+k*dz))>=lip*2*d;
-        if(smo!=NULL)
-          cor_smok = cor_smok && (*smo)(x+i*dx, y+j*dy, z+k*dz)<smoke_thresh;
-        all_pos = all_pos && phi(x+i*dx, y+j*dy, z+k*dz)> MAX(2.0, uniform_band)*dxyz_min; // [RAPHAEL:] modified to enforce at least two layers of finest level in positive domain as well (better extrapolation etc.), also required for Neumann BC in the face-solvers
+          cor_vort = cor_vort && fabs(vor(x+i*dx, y+j*dy, z+k*dz))*2*MAX(dx,dy,dz)/max_L2_norm_u<threshold;
+          cor_band = cor_band && fabs(phi(x+i*dx, y+j*dy, z+k*dz))>uniform_band*dxyz_min;
+          cor_intf = cor_intf && fabs(phi(x+i*dx, y+j*dy, z+k*dz))>=lip*2*d;
+          if(smo!=NULL)
+            cor_smok = cor_smok && (*smo)(x+i*dx, y+j*dy, z+k*dz)<smoke_thresh;
+          all_pos = all_pos && phi(x+i*dx, y+j*dy, z+k*dz)> MAX(2.0, uniform_band)*dxyz_min; // [RAPHAEL:] modified to enforce at least two layers of finest level in positive domain as well (better extrapolation etc.), also required for Neumann BC in the face-solvers
 #else
       {
         cor_vort = cor_vort && fabs(vor(x+i*dx, y+j*dy))*2*MAX(dx,dy)/max_L2_norm_u<threshold;
@@ -125,7 +125,7 @@ void my_p4est_navier_stokes_t::splitting_criteria_vorticity_t::tag_quadrant(p4es
 
     bool coarsen = true;
     coarsen = (cor_vort && cor_band && cor_intf && cor_smok) || all_pos;
-//    coarsen = ((cor_vort && cor_band && cor_smok) || all_pos) && cor_intf;
+    //    coarsen = ((cor_vort && cor_band && cor_smok) || all_pos) && cor_intf;
     coarsen = coarsen && quad->level > min_lvl;
 
     bool is_neg = false;
@@ -157,7 +157,7 @@ void my_p4est_navier_stokes_t::splitting_criteria_vorticity_t::tag_quadrant(p4es
 
     bool refine = false;
     refine = (ref_vort || ref_band || ref_intf || ref_smok) && is_neg;
-//    refine = ((ref_vort || ref_band || ref_smok) && is_neg) || ref_intf;
+    //    refine = ((ref_vort || ref_band || ref_smok) && is_neg) || ref_intf;
     refine = refine && quad->level < max_lvl;
 
     if (refine)
@@ -383,16 +383,12 @@ my_p4est_navier_stokes_t::my_p4est_navier_stokes_t(const mpi_environment_t& mpi,
     ierr = VecSet(vec_loc, 1); CHKERRXX(ierr);
     ierr = VecGhostRestoreLocalForm(face_is_well_defined[dir], &vec_loc); CHKERRXX(ierr);
 
-    ierr = VecDuplicate(face_is_well_defined[dir], &dxyz_hodge[dir]); CHKERRXX(ierr);
-    ierr = VecGhostGetLocalForm(dxyz_hodge[dir], &vec_loc); CHKERRXX(ierr);
-    ierr = VecSet(vec_loc, 0); CHKERRXX(ierr);
-    ierr = VecGhostRestoreLocalForm(dxyz_hodge[dir], &vec_loc); CHKERRXX(ierr);
-
     ierr = VecDuplicate(vn_nodes[dir], &vnp1_nodes [dir]); CHKERRXX(ierr);
 
     ierr = VecDuplicate(face_is_well_defined[dir], &vstar[dir]); CHKERRXX(ierr);
     ierr = VecDuplicate(face_is_well_defined[dir], &vnp1[dir]); CHKERRXX(ierr);
   }
+
   ierr = VecCreateGhostNodes(p4est_n, nodes_n, &vorticity); CHKERRXX(ierr);
   interp_phi = new my_p4est_interpolation_nodes_t(ngbd_n);
   interp_phi->set_input(phi, linear);
@@ -1167,37 +1163,14 @@ void my_p4est_navier_stokes_t::solve_projection()
     ierr = VecGhostUpdateBegin(vnp1[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecGhostUpdateEnd  (vnp1[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-//    if(bc_pressure->interfaceType()!=NOINTERFACE)
-//    {
-//      my_p4est_level_set_faces_t lsf(ngbd_n, faces_n);
-//      lsf.extend_Over_Interface(phi, vnp1[dir], bc_v[dir], dir, face_is_well_defined[dir], NULL, 2, 8);
-//    }
+    //    if(bc_pressure->interfaceType()!=NOINTERFACE)
+    //    {
+    //      my_p4est_level_set_faces_t lsf(ngbd_n, faces_n);
+    //      lsf.extend_Over_Interface(phi, vnp1[dir], bc_v[dir], dir, face_is_well_defined[dir], NULL, 2, 8);
+    //    }
   }
 
   ierr = PetscLogEventEnd(log_my_p4est_navier_stokes_projection, 0, 0, 0, 0); CHKERRXX(ierr);
-}
-
-void my_p4est_navier_stokes_t::update_dxyz_hodge()
-{
-  for(int dir=0; dir<P4EST_DIM; ++dir)
-  {
-    double *dxyz_hodge_p;
-    PetscErrorCode ierr = VecGetArray(dxyz_hodge[dir], &dxyz_hodge_p); CHKERRXX(ierr);
-
-    p4est_locidx_t quad_idx;
-    p4est_topidx_t tree_idx;
-
-    for(p4est_locidx_t f_idx=0; f_idx<faces_n->num_local[dir]; ++f_idx)
-    {
-      faces_n->f2q(f_idx, dir, quad_idx, tree_idx);
-      int tmp = faces_n->q2f(quad_idx, 2*dir)==f_idx ? 0 : 1;
-      dxyz_hodge_p[f_idx] = compute_dxyz_hodge(quad_idx, tree_idx, 2*dir+tmp);
-    }
-
-    ierr = VecGhostUpdateBegin(dxyz_hodge[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateEnd  (dxyz_hodge[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecRestoreArray(dxyz_hodge[dir], &dxyz_hodge_p); CHKERRXX(ierr);
-  }
 }
 
 void my_p4est_navier_stokes_t::compute_velocity_at_nodes()
@@ -1656,7 +1629,7 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set, boo
   interp_nodes.clear();
 
   /* set velocity inside solid to bc_v */
-//  extrapolate_bc_v(ngbd_np1, vn_nodes, phi_np1);
+  //  extrapolate_bc_v(ngbd_np1, vn_nodes, phi_np1);
 
   if(level_set!=NULL)
   {
@@ -1727,7 +1700,7 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set, boo
     ierr = VecGhostUpdateEnd  (dxyz_hodge[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
     ierr = VecDestroy(face_is_well_defined[dir]); CHKERRXX(ierr);
-		ierr = VecDuplicate(dxyz_hodge[dir], &face_is_well_defined[dir]); CHKERRXX(ierr);
+    ierr = VecDuplicate(dxyz_hodge[dir], &face_is_well_defined[dir]); CHKERRXX(ierr);
     check_if_faces_are_well_defined(p4est_np1, ngbd_np1, faces_np1, dir, phi_np1, bc_v[dir].interfaceType(), face_is_well_defined[dir]);
 
     ierr = VecDestroy(vstar[dir]); CHKERRXX(ierr);
@@ -2018,7 +1991,6 @@ void my_p4est_navier_stokes_t::save_vtk(const char* name)
     ierr = VecGetArrayRead(smoke, &smoke_p); CHKERRXX(ierr);
     my_p4est_vtk_write_all(p4est_n, nodes_n, ghost_n,
                            P4EST_TRUE, P4EST_TRUE,
-//                           P4EST_FALSE, P4EST_FALSE,
                            3+P4EST_DIM, /* number of VTK_POINT_DATA */
                            1, /* number of VTK_CELL_DATA  */
                            name,
@@ -2026,31 +1998,30 @@ void my_p4est_navier_stokes_t::save_vtk(const char* name)
                            VTK_POINT_DATA, "pressure", pressure_nodes_p,
                            VTK_POINT_DATA, "smoke", smoke_p,
                            VTK_POINT_DATA, "vx", vn_p[0],
-                           VTK_POINT_DATA, "vy", vn_p[1],
-                    #ifdef P4_TO_P8
-                           VTK_POINT_DATA, "vz", vn_p[2],
-                    #endif
-                           VTK_CELL_DATA, "leaf_level", l_p
-                           );
+        VTK_POINT_DATA, "vy", vn_p[1],
+    #ifdef P4_TO_P8
+        VTK_POINT_DATA, "vz", vn_p[2],
+    #endif
+        VTK_CELL_DATA, "leaf_level", l_p
+        );
     ierr = VecRestoreArrayRead(smoke, &smoke_p); CHKERRXX(ierr);
   }
   else
   {
     my_p4est_vtk_write_all(p4est_n, nodes_n, ghost_n,
                            P4EST_TRUE, P4EST_TRUE,
-//                           P4EST_FALSE, P4EST_FALSE,
                            2+P4EST_DIM, /* number of VTK_POINT_DATA */
                            1, /* number of VTK_CELL_DATA  */
                            name,
                            VTK_POINT_DATA, "phi", phi_p,
                            VTK_POINT_DATA, "pressure", pressure_nodes_p,
                            VTK_POINT_DATA, "vx", vn_p[0],
-                           VTK_POINT_DATA, "vy", vn_p[1],
-                    #ifdef P4_TO_P8
-                           VTK_POINT_DATA, "vz", vn_p[2],
-                    #endif
-                           VTK_CELL_DATA, "leaf_level", l_p
-                           );
+        VTK_POINT_DATA, "vy", vn_p[1],
+    #ifdef P4_TO_P8
+        VTK_POINT_DATA, "vz", vn_p[2],
+    #endif
+        VTK_CELL_DATA, "leaf_level", l_p
+        );
   }
 
   ierr = VecRestoreArray(leaf_level, &l_p); CHKERRXX(ierr);
@@ -2381,42 +2352,32 @@ void my_p4est_navier_stokes_t::save_state(const char* path_to_root_directory, do
   sprintf(path_to_folder, "%s/backup_%d", path_to_root_directory, (int) backup_idx);
   create_directory(path_to_folder, p4est_n->mpirank, p4est_n->mpicomm);
 
-  PetscErrorCode ierr;
-  char filename[PATH_MAX];
 
+  char filename[PATH_MAX];
+  // save the solver parameters
   sprintf(filename, "%s/solver_parameters", path_to_folder);
   save_or_load_parameters(filename, (splitting_criteria_t*) p4est_n->user_pointer, SAVE, tn);
-
-  // save brick
-  sprintf(filename, "%s/brick", path_to_folder);
-  my_p4est_save_or_load_brick(p4est_n->mpicomm, p4est_n->mpirank, filename, SAVE, brick);
-  // save p4est_n
-  sprintf(filename, "%s/p4est_n", path_to_folder);
-  p4est_save_ext(filename, p4est_n, P4EST_FALSE, P4EST_TRUE); // no cell-data saved
+  // save p4est_n and all corresponding data
+  if(smoke == NULL)
+    my_p4est_save_forest_and_data(path_to_folder, p4est_n, nodes_n, faces_n,
+                                  "p4est_n", 4,
+                                  "phi", 1, &phi,
+                                  "hodge", 1, &hodge,
+                                  "dxyz_hodge", P4EST_DIM, dxyz_hodge,
+                                  "vn_nodes", P4EST_DIM, vn_nodes);
+  else
+    my_p4est_save_forest_and_data(path_to_folder, p4est_n, nodes_n, faces_n,
+                                  "p4est_n", 5,
+                                  "phi", 1, &phi,
+                                  "hodge", 1, &hodge,
+                                  "dxyz_hodge", P4EST_DIM, dxyz_hodge,
+                                  "vn_nodes", P4EST_DIM, vn_nodes,
+                                  "smoke", 1, smoke);
   // save p4est_nm1
-  sprintf(filename, "%s/p4est_nm1", path_to_folder);
-  p4est_save_ext(filename, p4est_nm1, P4EST_FALSE, P4EST_TRUE); // no cell-data saved
-  // save phi
-  sprintf(filename, "%s/phi.petsc", path_to_folder);
-  ierr = VecDump(filename, phi); CHKERRXX(ierr);
-  // save hodge
-  sprintf(filename, "%s/hodge.petsc", path_to_folder);
-  ierr = VecDump(filename, hodge); CHKERRXX(ierr);
-  // save vnm1_nodes
-  sprintf(filename, "%s/vnm1_nodes.petsc", path_to_folder);
-  ierr = VecDump(filename, P4EST_DIM, vnm1_nodes); CHKERRXX(ierr);
-  // save vn_nodes
-  sprintf(filename, "%s/vn_nodes.petsc", path_to_folder);
-  ierr = VecDump(filename, P4EST_DIM, vn_nodes); CHKERRXX(ierr);
-
-  // save smoke if used
-  if (smoke!=NULL)
-  {
-    sprintf(filename, "%s/smoke.petsc", path_to_folder);
-    ierr = VecDump(filename, smoke); CHKERRXX(ierr);
-  }
-
-  ierr = PetscPrintf(p4est_n->mpicomm, "Saved solver state in ... %s\n", path_to_folder); CHKERRXX(ierr);
+  my_p4est_save_forest_and_data(path_to_folder, p4est_nm1, nodes_nm1,
+                                "p4est_nm1", 1,
+                                "vnm1_nodes", P4EST_DIM, vnm1_nodes);
+  PetscErrorCode ierr = PetscPrintf(p4est_n->mpicomm, "Saved solver state in ... %s\n", path_to_folder); CHKERRXX(ierr);
 }
 
 void my_p4est_navier_stokes_t::fill_or_load_double_parameters(save_or_load flag, PetscReal *data, splitting_criteria_t *splitting_criterion, double &tn)
@@ -2582,6 +2543,8 @@ void my_p4est_navier_stokes_t::save_or_load_parameters(const char* filename, spl
   case LOAD:
   {
     sprintf(diskfilename, "%s_integers", filename);
+    if(!file_exists(diskfilename))
+      throw std::invalid_argument("my_p4est_navier_stokes_t::save_or_load_parameters: the file storing the solver's integer parameters could not be found");
     if(mpi->rank() == 0)
     {
       ierr = PetscBinaryOpen(diskfilename, FILE_MODE_READ, &fd); CHKERRXX(ierr);
@@ -2592,6 +2555,8 @@ void my_p4est_navier_stokes_t::save_or_load_parameters(const char* filename, spl
     fill_or_load_integer_parameters(flag, integer_parameters, splitting_criterion);
     // Then we save the double parameters
     sprintf(diskfilename, "%s_doubles", filename);
+    if(!file_exists(diskfilename))
+      throw std::invalid_argument("my_p4est_navier_stokes_t::save_or_load_parameters: the file storing the solver's double parameters could not be found");
     if(mpi->rank() == 0)
     {
       ierr = PetscBinaryOpen(diskfilename, FILE_MODE_READ, &fd); CHKERRXX(ierr);
@@ -2614,35 +2579,57 @@ void my_p4est_navier_stokes_t::load_state(const mpi_environment_t& mpi, const ch
   PetscErrorCode ierr;
   char filename[PATH_MAX];
 
+  if(!is_folder(path_to_folder))
+    throw std::invalid_argument("my_p4est_navier_stokes_t::load_state: path_to_folder is invalid.");
+
   // load general solver parameters first
   splitting_criteria_t* data = new splitting_criteria_t;
   sprintf(filename, "%s/solver_parameters", path_to_folder);
   save_or_load_parameters(filename, data, LOAD, tn, &mpi);
-  // load brick
-  if(brick != NULL)
-  {
-    if(brick->nxyz_to_treeid != NULL)
-      P4EST_FREE(brick->nxyz_to_treeid);
-    delete brick;
-  }
-  brick = new my_p4est_brick_t; brick->nxyz_to_treeid = NULL; // set that pointer to NULL because the load will freak out otherwise
-  sprintf(filename, "%s/brick", path_to_folder);
-  my_p4est_save_or_load_brick(mpi.comm(), mpi.rank(), filename, LOAD, brick);
 
-  // load p4est_nm1
-  if(p4est_nm1 != NULL)
-    p4est_destroy(p4est_nm1);
-  sprintf(filename, "%s/p4est_nm1", path_to_folder);
-  p4est_nm1 = p4est_load_ext(filename, mpi.comm(), 0, P4EST_FALSE, P4EST_TRUE, P4EST_TRUE, (void*) data, &conn);
-  // we do not balance either because it is supposedly already balanced when saved on disk (if not, we'd be in trouble when loading the node-sampled vectors here below after balancing the p4est in the meantime...)
-  // we do not partition it either because this is supposedly done at the loading stage under the hood by p4est_load_ext
-  if (ghost_nm1 != NULL)
-    p4est_ghost_destroy(ghost_nm1);
-  ghost_nm1 = my_p4est_ghost_new(p4est_nm1, P4EST_CONNECT_FULL);
-  my_p4est_ghost_expand(p4est_nm1, ghost_nm1);
-  if (nodes_nm1 != NULL)
-    p4est_nodes_destroy(nodes_nm1);
-  nodes_nm1 = my_p4est_nodes_new(p4est_nm1, ghost_nm1);
+  sprintf(filename, "%s/smoke.petscbin", path_to_folder);
+
+  // load p4est_n and the corresponding objects
+  if(refine_with_smoke && file_exists(filename))
+    my_p4est_load_forest_and_data(mpi.comm(), path_to_folder,
+                                  p4est_n, conn,
+                                  P4EST_TRUE, ghost_n, nodes_n,
+                                  P4EST_TRUE, brick, P4EST_TRUE, faces_n, hierarchy_n, ngbd_c,
+                                  "p4est_n", 5,
+                                  "phi", NODE_DATA, 1, &phi,
+                                  "hodge", CELL_DATA, 1, &hodge,
+                                  "dxyz_hodge", FACE_DATA, P4EST_DIM, dxyz_hodge,
+                                  "vn_nodes", NODE_DATA, P4EST_DIM, vn_nodes,
+                                  "smoke", NODE_DATA, 1, smoke);
+  else
+  {
+    if(refine_with_smoke) // the original solver was refined with smoke, but the smoke was not exported for some reason...
+      refine_with_smoke = false;
+    my_p4est_load_forest_and_data(mpi.comm(), path_to_folder,
+                                  p4est_n, conn,
+                                  P4EST_TRUE, ghost_n, nodes_n,
+                                  P4EST_TRUE, brick, P4EST_TRUE, faces_n, hierarchy_n, ngbd_c,
+                                  "p4est_n", 4,
+                                  "phi", NODE_DATA, 1, &phi,
+                                  "hodge", CELL_DATA, 1, &hodge,
+                                  "dxyz_hodge", FACE_DATA, P4EST_DIM, dxyz_hodge,
+                                  "vn_nodes", NODE_DATA, P4EST_DIM, vn_nodes);
+  }
+
+  if(ngbd_n != NULL)
+    delete ngbd_n;
+  ngbd_n = new my_p4est_node_neighbors_t(hierarchy_n, nodes_n);
+
+  // load p4est_nm1 and the corresponding objects
+  p4est_connectivity_t* conn_nm1 = NULL;
+  my_p4est_load_forest_and_data(mpi.comm(), path_to_folder,
+                                p4est_nm1, conn_nm1,
+                                P4EST_TRUE, ghost_nm1, nodes_nm1,
+                                "p4est_nm1", 1,
+                                "vnm1_nodes", NODE_DATA, P4EST_DIM, vnm1_nodes);
+  p4est_connectivity_destroy(conn_nm1);
+
+  p4est_nm1->connectivity = conn;
   if(hierarchy_nm1 != NULL)
     delete hierarchy_nm1;
   hierarchy_nm1 = new my_p4est_hierarchy_t(p4est_nm1, ghost_nm1, brick);
@@ -2650,78 +2637,8 @@ void my_p4est_navier_stokes_t::load_state(const mpi_environment_t& mpi, const ch
     delete ngbd_nm1;
   ngbd_nm1 = new my_p4est_node_neighbors_t(hierarchy_nm1, nodes_nm1);
 
-  // load p4est_n
-  if (p4est_n != NULL)
-    p4est_destroy(p4est_n);
-  sprintf(filename, "%s/p4est_n", path_to_folder);
-  p4est_n = p4est_load_ext(filename, mpi.comm(), 0, P4EST_FALSE, P4EST_TRUE, P4EST_TRUE, (void*) data, &conn); // no data load, because we assume no data saved, we don't ignore the saved partition, in case we load it with the same number of processes
-  // we do not balance because it is supposedly already balanced when saved on disk (if not, we'd be in trouble when loading the node-sampled vectors here below after balancing the p4est in the meantime...)
-  // we do not partition it either because this is supposedly done at the loading stage under the hood by p4est_load_ext
-  if (ghost_n != NULL)
-    p4est_ghost_destroy(ghost_n);
-  ghost_n = my_p4est_ghost_new(p4est_n, P4EST_CONNECT_FULL);
-  my_p4est_ghost_expand(p4est_n, ghost_n);
-  if (nodes_n != NULL)
-    p4est_nodes_destroy(nodes_n);
-  nodes_n = my_p4est_nodes_new(p4est_n, ghost_n);
-  if(hierarchy_n != NULL)
-    delete hierarchy_n;
-  hierarchy_n = new my_p4est_hierarchy_t(p4est_n, ghost_n, brick);
-  if(ngbd_n != NULL)
-    delete ngbd_n;
-  ngbd_n = new my_p4est_node_neighbors_t(hierarchy_n, nodes_n);
-  if(ngbd_c != NULL)
-    delete ngbd_c;
-  ngbd_c = new my_p4est_cell_neighbors_t(hierarchy_n);
-  if(faces_n != NULL)
-    delete faces_n;
-  faces_n = new my_p4est_faces_t(p4est_n, ghost_n, brick, ngbd_c);
-
-
-  // load phi
-  if(phi != NULL){
-    ierr = VecDestroy(phi); CHKERRXX(ierr);
-  }
-  ierr = VecCreateGhostNodes(p4est_n, nodes_n, &phi); CHKERRXX(ierr);
-  sprintf(filename, "%s/phi.petsc", path_to_folder);
-  ierr = LoadVec(filename, &phi); CHKERRXX(ierr);
-  // load hodge
-  if(hodge != NULL){
-    ierr = VecDestroy(hodge); CHKERRXX(ierr);
-  }
-  ierr = VecCreateGhostCells(p4est_n, ghost_n, &hodge); CHKERRXX(ierr);
-  sprintf(filename, "%s/hodge.petsc", path_to_folder);
-  ierr = LoadVec(filename, &hodge); CHKERRXX(ierr);
-  // load vnm1_nodes
-  for (short kk = 0; kk < P4EST_DIM; ++kk){
-    if(vnm1_nodes[kk] != NULL){
-      ierr = VecDestroy(vnm1_nodes[kk]); CHKERRXX(ierr);
-    }
-    ierr = VecCreateGhostNodes(p4est_nm1, nodes_nm1, &vnm1_nodes[kk]); CHKERRXX(ierr);
-  }
-  sprintf(filename, "%s/vnm1_nodes.petsc", path_to_folder);
-  ierr = LoadVec(filename, P4EST_DIM, vnm1_nodes); CHKERRXX(ierr);
-  // load vn_nodes
-  for (short kk = 0; kk < P4EST_DIM; ++kk)
-  {
-    if(vn_nodes[kk] != NULL){
-      ierr = VecDestroy(vn_nodes[kk]); CHKERRXX(ierr);
-    }
-    ierr = VecCreateGhostNodes(p4est_n, nodes_n, &vn_nodes[kk]); CHKERRXX(ierr);
-  }
-  sprintf(filename, "%s/vn_nodes.petsc", path_to_folder);
-  ierr = LoadVec(filename, P4EST_DIM, vn_nodes); CHKERRXX(ierr);
-  // load smoke was used
-  sprintf(filename, "%s/smoke.petsc", path_to_folder);
-  if (file_exists(filename))
-  {
-    if(smoke != NULL){
-      ierr = VecDestroy(smoke); CHKERRXX(ierr);
-    }
-    ierr = VecCreateGhostNodes(p4est_n, nodes_n, &smoke);CHKERRXX(ierr);
-    ierr = LoadVec(filename, &smoke); CHKERRXX(ierr);
-  }
+  p4est_n->user_pointer = (void*) data;
+  p4est_nm1->user_pointer = (void*) data;
 
   ierr = PetscPrintf(mpi.comm(), "Loaded solver state from ... %s\n", path_to_folder); CHKERRXX(ierr);
 }
-

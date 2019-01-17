@@ -550,80 +550,6 @@ PetscErrorCode VecGhostChangeLayoutEnd(VecScatter ctx, Vec from, Vec to)
   return ierr;
 }
 
-PetscErrorCode VecDump(const char fname[], unsigned int n_vecs, const Vec *x, PetscBool skippheader, PetscBool usempiio)
-{
-  MPI_Comm       comm;
-  PetscViewer    viewer;
-  PetscErrorCode ierr;
-
-  ierr = PetscObjectGetComm((PetscObject)x[0],&comm);CHKERRQ(ierr);
-
-  ierr = PetscViewerCreate(comm,&viewer);CHKERRQ(ierr);
-  ierr = PetscViewerSetType(viewer,PETSCVIEWERBINARY);CHKERRQ(ierr);
-  if (skippheader) { ierr = PetscViewerBinarySetSkipHeader(viewer,PETSC_TRUE);CHKERRQ(ierr); }
-  ierr = PetscViewerFileSetMode(viewer,FILE_MODE_WRITE);CHKERRQ(ierr);
-  if (usempiio) { ierr = PetscViewerBinarySetUseMPIIO(viewer,PETSC_TRUE);CHKERRQ(ierr); }
-  ierr = PetscViewerFileSetName(viewer,fname);CHKERRQ(ierr);
-
-  for (unsigned int kk = 0; kk < n_vecs; ++kk) {
-    ierr = VecView(x[kk],viewer);CHKERRQ(ierr);
-  }
-
-  ierr = PetscViewerDestroy(viewer);CHKERRQ(ierr);
-  return ierr;
-}
-
-PetscErrorCode VecDump(const char fname[], const Vec x, PetscBool skippheader, PetscBool usempiio)
-{
-    return VecDump(fname, 1, &x, skippheader, usempiio);
-}
-
-PetscErrorCode LoadVec(const char fname[], unsigned int n_vecs, Vec *x, PetscBool skippheader, PetscBool usempiio)
-{
-  MPI_Comm       comm;
-  PetscViewer    viewer;
-  PetscErrorCode ierr;
-
-  ierr = PetscObjectGetComm((PetscObject)x[0],&comm);CHKERRQ(ierr);
-
-  ierr = PetscViewerCreate(comm,&viewer);CHKERRQ(ierr);
-  ierr = PetscViewerSetType(viewer,PETSCVIEWERBINARY);CHKERRQ(ierr);
-  if (skippheader) { ierr = PetscViewerBinarySetSkipHeader(viewer,PETSC_TRUE);CHKERRQ(ierr); }
-  ierr = PetscViewerFileSetMode(viewer,FILE_MODE_READ);CHKERRQ(ierr);
-  if (usempiio) { ierr = PetscViewerBinarySetUseMPIIO(viewer,PETSC_TRUE);CHKERRQ(ierr); }
-  ierr = PetscViewerFileSetName(viewer,fname);CHKERRQ(ierr);
-
-  for (unsigned int kk = 0; kk < n_vecs; ++kk) {
-    Vec vector_as_loaded;
-    ierr = VecCreate(comm, &vector_as_loaded);CHKERRQ(ierr);
-    ierr = VecLoad(vector_as_loaded, viewer);CHKERRQ(ierr);
-    PetscInt expected_global_size, global_size;
-    ierr = VecGetSize(vector_as_loaded, &expected_global_size); CHKERRQ(ierr);
-    ierr = VecGetSize(x[kk], &global_size); CHKERRQ(ierr);
-    if(global_size != expected_global_size)
-      throw std::invalid_argument("LoadVec: the passed vector and the vector on disk are not of the same size");
-    VecScatter ctx;
-    ierr = VecScatterCreateChangeLayout(comm, vector_as_loaded, x[kk], &ctx); CHKERRQ(ierr);
-    ierr = VecGhostChangeLayoutBegin(ctx, vector_as_loaded, x[kk]); CHKERRQ(ierr);
-    ierr = VecGhostChangeLayoutEnd(ctx, vector_as_loaded, x[kk]); CHKERRQ(ierr);
-    ierr = VecGhostUpdateBegin(x[kk], INSERT_VALUES, SCATTER_FORWARD); CHKERRQ(ierr);
-    ierr = VecGhostUpdateEnd(x[kk], INSERT_VALUES, SCATTER_FORWARD); CHKERRQ(ierr);
-    ierr = VecSetFromOptions(x[kk]); CHKERRQ(ierr);
-    ierr = VecDestroy(vector_as_loaded); CHKERRQ(ierr);
-    ierr = VecScatterDestroy(ctx); CHKERRQ(ierr);
-  }
-
-  ierr = PetscViewerDestroy(viewer);CHKERRQ(ierr);
-  return ierr;
-}
-
-PetscErrorCode LoadVec(const char fname[], Vec *x, PetscBool skippheader, PetscBool usempiio)
-{
-  return LoadVec(fname, 1, x, skippheader, usempiio);
-}
-
-
-
 bool is_folder(const char* path)
 {
   struct stat info;
@@ -665,11 +591,14 @@ int create_directory(const char* path, int mpi_rank, MPI_Comm comm)
       for (char* p = tmp+1; *p; p++){
         if(*p == '/'){
           *p = 0;
-          mkdir(tmp, S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH); // permission = 755 like a regular mkdir in terminal
+          return_ = mkdir(tmp, S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH); // permission = 755 like a regular mkdir in terminal
           *p = '/';
+          if(return_)
+            break;
         }
       }
-      return_ = mkdir(path, S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH); // permission = 755 like a regular mkdir in terminal
+      if(return_ == 0) // successfull up to here
+        return_ = mkdir(path, S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH); // permission = 755 like a regular mkdir in terminal
     }
   }
   int mpiret = MPI_Bcast(&return_, 1, MPI_INT, 0, comm); SC_CHECK_MPI(mpiret);
@@ -695,85 +624,6 @@ int  get_subdirectories_in(const char* root_path, std::vector<std::string>& subd
   closedir(dir);
 
   return 0;
-}
-
-void my_p4est_save_or_load_brick(const MPI_Comm &comm, const int &mpirank, const char *filename, save_or_load flag, my_p4est_brick_t *brick)
-{
-  PetscErrorCode ierr;
-  // xyz_min, xyz_max
-  // that makes 6 doubles to save
-  PetscReal double_parameters[6];
-  int fd;
-  char diskfilename[PATH_MAX];
-  switch (flag) {
-  case SAVE:
-  {
-    if(mpirank == 0)
-    {
-      sprintf(diskfilename, "%s_doubles", filename);
-      size_t idx = 0;
-      for (short dim = 0; dim < P4EST_DIM; ++dim)
-        double_parameters[idx++] = brick->xyz_min[dim];
-      for (short dim = 0; dim < P4EST_DIM; ++dim)
-        double_parameters[idx++] = brick->xyz_max[dim];
-      ierr = PetscBinaryOpen(diskfilename, FILE_MODE_WRITE, &fd); CHKERRXX(ierr);
-      ierr = PetscBinaryWrite(fd, double_parameters, 6, PETSC_DOUBLE, PETSC_TRUE); CHKERRXX(ierr);
-      ierr = PetscBinaryClose(fd); CHKERRXX(ierr);
-      // Then we save nxyztrees
-      sprintf(diskfilename, "%s_nxyztrees", filename);
-      ierr = PetscBinaryOpen(diskfilename, FILE_MODE_WRITE, &fd); CHKERRXX(ierr);
-      ierr = PetscBinaryWrite(fd, brick->nxyztrees, 3, PETSC_INT, PETSC_FALSE); CHKERRXX(ierr);
-      ierr = PetscBinaryClose(fd); CHKERRXX(ierr);
-      // Then we save nxyz_to_treeid
-      sprintf(diskfilename, "%s_nxyz_to_treeid", filename);
-      ierr = PetscBinaryOpen(diskfilename, FILE_MODE_WRITE, &fd); CHKERRXX(ierr);
-      ierr = PetscBinaryWrite(fd, brick->nxyz_to_treeid, (brick->nxyztrees[0] * brick->nxyztrees[1] * brick->nxyztrees[2]), PETSC_INT, PETSC_FALSE); CHKERRXX(ierr);
-      ierr = PetscBinaryClose(fd); CHKERRXX(ierr);
-    }
-    break;
-  }
-  case LOAD:
-  {
-    sprintf(diskfilename, "%s_doubles", filename);
-    if(mpirank == 0)
-    {
-      ierr = PetscBinaryOpen(diskfilename, FILE_MODE_READ, &fd); CHKERRXX(ierr);
-      ierr = PetscBinaryRead(fd, double_parameters, 6, PETSC_INT); CHKERRXX(ierr);
-      ierr = PetscBinaryClose(fd); CHKERRXX(ierr);
-    }
-    int mpiret = MPI_Bcast(double_parameters, 6, MPI_DOUBLE, 0, comm); SC_CHECK_MPI(mpiret);
-    size_t idx = 0;
-    for (short dim = 0; dim < P4EST_DIM; ++dim)
-      brick->xyz_min[dim] = double_parameters[idx++];
-    for (short dim = 0; dim < P4EST_DIM; ++dim)
-      brick->xyz_max[dim] = double_parameters[idx++];
-    // Then we load nxyztrees
-    sprintf(diskfilename, "%s_nxyztrees", filename);
-    if(mpirank == 0)
-    {
-      ierr = PetscBinaryOpen(diskfilename, FILE_MODE_READ, &fd); CHKERRXX(ierr);
-      ierr = PetscBinaryRead(fd, brick->nxyztrees, 3, PETSC_INT); CHKERRXX(ierr);
-      ierr = PetscBinaryClose(fd); CHKERRXX(ierr);
-    }
-    mpiret = MPI_Bcast(brick->nxyztrees, 3, MPI_INT, 0, comm); SC_CHECK_MPI(mpiret);
-    // Then we load nxyz_to_treeid
-    sprintf(diskfilename, "%s_nxyz_to_treeid", filename);
-    if(brick->nxyz_to_treeid != NULL)
-      P4EST_FREE(brick->nxyz_to_treeid);
-    brick->nxyz_to_treeid = P4EST_ALLOC (p4est_topidx_t, (brick->nxyztrees[0] * brick->nxyztrees[1] * brick->nxyztrees[2]));
-    if(mpirank == 0)
-    {
-      ierr = PetscBinaryOpen(diskfilename, FILE_MODE_READ, &fd); CHKERRXX(ierr);
-      ierr = PetscBinaryRead(fd, brick->nxyz_to_treeid, (brick->nxyztrees[0] * brick->nxyztrees[1] * brick->nxyztrees[2]), PETSC_INT); CHKERRXX(ierr);
-      ierr = PetscBinaryClose(fd); CHKERRXX(ierr);
-    }
-    mpiret = MPI_Bcast(brick->nxyz_to_treeid, (brick->nxyztrees[0] * brick->nxyztrees[1] * brick->nxyztrees[2]), MPI_INT, 0, comm); SC_CHECK_MPI(mpiret);
-    break;
-  }
-  default:
-    throw std::runtime_error("my_p4est_navier_stokes_t::save_or_load_parameters: unknown flag value");
-    break;
-  }
 }
 
 int delete_directory(const char* root_path, int mpi_rank, MPI_Comm comm, bool non_collective)
