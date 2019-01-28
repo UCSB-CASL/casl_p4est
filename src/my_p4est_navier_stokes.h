@@ -9,6 +9,8 @@
 #include <src/my_p8est_interpolation_nodes.h>
 #include <src/my_p8est_interpolation_cells.h>
 #include <src/my_p8est_interpolation_faces.h>
+#include <src/my_p8est_poisson_cells.h>
+#include <src/my_p8est_poisson_faces.h>
 #include <src/my_p8est_save_load.h>
 #else
 #include <src/my_p4est_refine_coarsen.h>
@@ -16,6 +18,8 @@
 #include <src/my_p4est_interpolation_nodes.h>
 #include <src/my_p4est_interpolation_cells.h>
 #include <src/my_p4est_interpolation_faces.h>
+#include <src/my_p4est_poisson_cells.h>
+#include <src/my_p4est_poisson_faces.h>
 #include <src/my_p4est_save_load.h>
 #endif
 
@@ -120,6 +124,16 @@ protected:
   Vec vnm1_nodes[P4EST_DIM];
   Vec vn_nodes  [P4EST_DIM];
   Vec vnp1_nodes[P4EST_DIM];
+
+  // semi-lagrangian backtraced points for faces (needed in viscosity step's setup, needs to be done only once)
+  // no need to destroy these, not dynamically allocated...
+  bool semi_lagrangian_backtrace_is_done;
+  std::vector<double> xyz_n[P4EST_DIM][P4EST_DIM];
+  std::vector<double> xyz_nm1[P4EST_DIM][P4EST_DIM]; // used only if sl_order == 2
+
+  // second_derivatives...[i][j] = second derivatives of velocity component j along Cartesian direction i
+  Vec second_derivatives_vnm1_nodes[P4EST_DIM][P4EST_DIM];
+  Vec second_derivatives_vn_nodes[P4EST_DIM][P4EST_DIM];
 
   Vec vorticity;
 
@@ -333,9 +347,22 @@ public:
 #endif
   inline my_p4est_brick_t* get_brick() const {return brick;}
 
-  void solve_viscosity();
+  void solve_viscosity()
+  {
+    my_p4est_poisson_faces_t* face_solver = NULL;
+    solve_viscosity(face_solver);
+    delete face_solver;
+  }
+  void solve_viscosity(my_p4est_poisson_faces_t* &face_poisson_solver, const bool use_initial_guess = false, const KSPType ksp = KSPBCGS, const PCType pc = PCSOR);
 
-  void solve_projection();
+  void solve_projection()
+  {
+    my_p4est_poisson_cells_t* cell_solver = NULL;
+    solve_projection(cell_solver);
+    delete cell_solver;
+  }
+  void solve_projection(my_p4est_poisson_cells_t* &cell_poisson_solver, const bool use_initial_guess = false, const KSPType ksp = KSPBCGS, const PCType pc = PCSOR);
+
 
   void compute_velocity_at_nodes();
 
@@ -361,9 +388,9 @@ public:
   void extrapolate_bc_v(my_p4est_node_neighbors_t *ngbd, Vec *v, Vec phi);
 
 #ifdef P4_TO_P8
-  void update_from_tn_to_tnp1(const CF_3 *level_set=NULL, bool convergence_test=false, bool do_reinitialization=true);
+  bool update_from_tn_to_tnp1(const CF_3 *level_set=NULL, bool convergence_test=false, bool do_reinitialization=true);
 #else
-  void update_from_tn_to_tnp1(const CF_2 *level_set=NULL, bool convergence_test=false, bool do_reinitialization=true);
+  bool update_from_tn_to_tnp1(const CF_2 *level_set=NULL, bool convergence_test=false, bool do_reinitialization=true);
 #endif
 
   void compute_pressure();

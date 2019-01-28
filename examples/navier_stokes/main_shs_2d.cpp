@@ -637,9 +637,9 @@ void check_pitch_and_gas_fraction(double length_to_delta, int ntree, int lmax, d
 {
   if(fabs(length_to_delta/pitch_to_delta - ((int) length_to_delta/pitch_to_delta)) > 1e-6)
 #ifdef P4_TO_P8
-    throw std::invalid_argument("main_shs_3d.cpp: the length of the domain in the direction transversal to the grooves MUST be a multiple of pitch_to_delta to satisfy periodicity.");
+    throw std::invalid_argument("main_shs_3d.cpp: the length of the domain in the direction transversal to the grooves MUST be a multiple of the pitch to satisfy periodicity.");
 #else
-    throw std::invalid_argument("main_shs_2d.cpp: the length of the domain in the direction transversal to the grooves MUST be a multiple of pitch_to_delta to satisfy periodicity.");
+    throw std::invalid_argument("main_shs_2d.cpp: the length of the domain in the direction transversal to the grooves MUST be a multiple of the pitch to satisfy periodicity.");
 #endif
 
   double nb_finest_cell_in_groove =  pitch_to_delta*gas_fraction/(length_to_delta/((double) (ntree*(1<<lmax))));
@@ -820,11 +820,11 @@ int main (int argc, char* argv[])
     p4est_t *p4est_n        = ns->get_p4est();
     p4est_t *p4est_nm1      = ns->get_p4est_nm1();
 
-    lmin                    = ((splitting_criteria_t*) p4est_n->user_pointer)->min_lvl;
-    lmax                    = ((splitting_criteria_t*) p4est_n->user_pointer)->max_lvl;
+    lmin                    = cmd.get<int>("lmin", ((splitting_criteria_t*) p4est_n->user_pointer)->min_lvl);
+    lmax                    = cmd.get<int>("lmax", ((splitting_criteria_t*) p4est_n->user_pointer)->max_lvl);
     double lip              = ((splitting_criteria_t*) p4est_n->user_pointer)->lip;
-    threshold_split_cell    = ns->get_split_threshold();
-    wall_layer              = ns->get_uniform_band();
+    threshold_split_cell    = cmd.get<double>("thresh", ns->get_split_threshold());
+    wall_layer              = cmd.get<double>("wall_layer", ns->get_uniform_band());
     length                  = ns->get_length_of_domain();
 #ifdef P4EST_ENABLE_DEBUG
     double height           = ns->get_height_of_domain();
@@ -833,7 +833,7 @@ int main (int argc, char* argv[])
     width                   = ns->get_width_of_domain();
 #endif
     P4EST_ASSERT((fabs(height-2.0) < 1e-6) && (fabs(ns->get_rho() - 1.0) < 1e-6));
-    wall_shear_Reynolds     = 1.0/ns->get_mu();
+    wall_shear_Reynolds     = cmd.get<double>("Re", 1.0/ns->get_mu());
 
     if(brick != NULL && brick->nxyz_to_treeid != NULL)
     {
@@ -865,8 +865,8 @@ int main (int argc, char* argv[])
     check_pitch_and_gas_fraction(length, ntree_x, lmax, pitch_to_delta, gas_fraction);
 #endif
 
-    sl_order                = ns->get_sl_order();
-    cfl                     = ns->get_cfl();
+    sl_order                = cmd.get<int>("sl_order", ns->get_sl_order());
+    cfl                     = cmd.get<double>("cfl", ns->get_cfl());
 
     if(level_set != NULL)
     {
@@ -884,6 +884,7 @@ int main (int argc, char* argv[])
     delete to_delete;
     p4est_n->user_pointer   = (void*) data;
     p4est_nm1->user_pointer = (void*) data; // p4est_n and p4est_nm1 always point to the same splitting_criteria_t no need to delete the nm1 one, it's just been done
+    ns->set_parameters(1.0/wall_shear_Reynolds, 1.0, sl_order, wall_layer, threshold_split_cell, cfl);
   }
   else
   {
@@ -917,9 +918,9 @@ int main (int argc, char* argv[])
     periodic[0]             = 1;
 #ifdef P4_TO_P8
     if(streamwise)
-      check_pitch_and_gas_fraction(length, ntree_x, lmax, pitch_to_delta, gas_fraction);
-    else
       check_pitch_and_gas_fraction(width, ntree_z, lmax, pitch_to_delta, gas_fraction);
+    else
+      check_pitch_and_gas_fraction(length, ntree_x, lmax, pitch_to_delta, gas_fraction);
 #else
     check_pitch_and_gas_fraction(length, ntree_x, lmax, pitch_to_delta, gas_fraction);
 #endif
@@ -1050,7 +1051,7 @@ int main (int argc, char* argv[])
 
   char out_dir[1024], vtk_path[1024], vtk_name[1024];
 #ifdef P4_TO_P8
-  sprintf(out_dir, "%s/%dX2X%d_channel/Retau_%d/%s/pitch_to_delta_%.3f/GF_%.2f/yplus_min_%.4f_yplus_max_%.4f", export_dir.c_str(), (int) length, (int) width, (int) wall_shear_Reynolds, ((streamwise)? "streamwise": "spanwise"), pitch_to_delta, gas_fraction, 2.0*wall_shear_Reynolds/(((double) ntree_y)*pow(2.0, lmax)), 2.0*wall_shear_Reynolds/(((double ntree_y)*pow(2.0, lmin)));
+  sprintf(out_dir, "%s/%dX2X%d_channel/Retau_%d/%s/pitch_to_delta_%.3f/GF_%.2f/yplus_min_%.4f_yplus_max_%.4f", export_dir.c_str(), (int) length, (int) width, (int) wall_shear_Reynolds, ((streamwise)? "streamwise": "spanwise"), pitch_to_delta, gas_fraction, 2.0*wall_shear_Reynolds/(((double) ntree_y)*pow(2.0, lmax)), 2.0*wall_shear_Reynolds/(((double) ntree_y)*pow(2.0, lmin)));
 #else
   sprintf(out_dir, "%s/%dX2_channel/Retau_%d/pitch_to_delta_%.3f/GF_%.2f/yplus_min_%.4f_yplus_max_%.4f", export_dir.c_str(), (int) length, (int) wall_shear_Reynolds, pitch_to_delta, gas_fraction, 2.0*wall_shear_Reynolds/(((double) ntree_y)*pow(2.0, lmax)), 2.0*wall_shear_Reynolds/(((double) ntree_y)*pow(2.0, lmin)));
 #endif
@@ -1113,12 +1114,19 @@ int main (int argc, char* argv[])
   }
 
 
-  parStopWatch watch;
+  parStopWatch watch, full_iteration_watch, substep_watch;
   watch.start("Total runtime");
   double tn = tstart;
 
+  double full_iteration_time, update_grid_time, viscosity_step_time, projection_step_time, compute_velocity_at_node_time, compute_pressure_time;
+
+  my_p4est_poisson_cells_t* cell_solver = NULL;
+  my_p4est_poisson_faces_t* face_solver = NULL;
+
   while(tn+0.01*dt<tstart+duration)
   {
+    full_iteration_watch.start("");
+    substep_watch.start("");
     if(iter>0)
     {
       if(use_adapted_dt)
@@ -1139,8 +1147,16 @@ int main (int argc, char* argv[])
         ns->set_dt(dt);
       }
 
-      ns->update_from_tn_to_tnp1(level_set, false, false);
+      bool grid_has_changed = ns->update_from_tn_to_tnp1(level_set, false, false);
+
+      if(cell_solver != NULL && grid_has_changed){
+        delete cell_solver; cell_solver = NULL; }
+      if(face_solver != NULL && grid_has_changed){
+        delete face_solver; face_solver = NULL; }
     }
+
+    substep_watch.stop();
+    update_grid_time = substep_watch.read_duration();
     if(save_state && ((int) floor(tn/dt_save_data)) != save_data_idx)
     {
       save_data_idx = ((int) floor(tn/dt_save_data));
@@ -1171,13 +1187,20 @@ int main (int argc, char* argv[])
     ierr = VecCreateSeq(PETSC_COMM_SELF, ns->get_p4est()->local_num_quadrants, &hodge_old); CHKERRXX(ierr);
     double err_hodge = 1;
     int iter_hodge = 0;
+    viscosity_step_time = projection_step_time = 0.0;
     while(iter_hodge<10 && err_hodge>1e-3)
     {
       hodge_new = ns->get_hodge();
       ierr = VecCopy(hodge_new, hodge_old); CHKERRXX(ierr);
 
-      ns->solve_viscosity();
-      ns->solve_projection();
+      substep_watch.start("");
+      ns->solve_viscosity(face_solver, (face_solver!=NULL), KSPBCGS, PCHYPRE);
+      substep_watch.stop();
+      viscosity_step_time += substep_watch.read_duration();
+      substep_watch.start("");
+      ns->solve_projection(cell_solver, (cell_solver!= NULL), KSPCG, PCHYPRE);
+      substep_watch.stop();
+      projection_step_time += substep_watch.read_duration();
 
       hodge_new = ns->get_hodge();
       const double *ho; ierr = VecGetArrayRead(hodge_old, &ho); CHKERRXX(ierr);
@@ -1209,8 +1232,14 @@ int main (int argc, char* argv[])
       iter_hodge++;
     }
     ierr = VecDestroy(hodge_old); CHKERRXX(ierr);
+    substep_watch.start("");
     ns->compute_velocity_at_nodes();
+    substep_watch.stop();
+    compute_velocity_at_node_time = substep_watch.read_duration();
+    substep_watch.start("");
     ns->compute_pressure();
+    substep_watch.stop();
+    compute_pressure_time = substep_watch.read_duration();
 
     tn += dt;
 
@@ -1287,6 +1316,9 @@ int main (int argc, char* argv[])
       sprintf(vtk_name, "%s/snapshot_%d", vtk_path, export_vtk);
       ns->save_vtk(vtk_name);
     }
+    full_iteration_watch.stop();
+    full_iteration_time = full_iteration_watch.read_duration();
+    ierr = PetscPrintf(mpi.comm(), "Iteration #%04d : total time = %.5e, percent update_grid: %.1f%%, \t percent viscosity step: %.1f%%, \t percent projection step: %.1f%%,  \t percent compute_velocity_nodes: %.1f%%,  \t percent compute_pressure: %.1f%%\n", iter, full_iteration_time, 100*update_grid_time/full_iteration_time, 100*viscosity_step_time/full_iteration_time, 100*projection_step_time/full_iteration_time, 100*compute_velocity_at_node_time/full_iteration_time, 100*compute_pressure_time/full_iteration_time); CHKERRXX(ierr);
     iter++;
   }
 
@@ -1297,7 +1329,7 @@ int main (int argc, char* argv[])
 #endif
 
   watch.stop();
-  watch.read_duration();
+  watch.print_duration();
 
   delete ns;        // deletes the navier-stokes solver
   // the brick and the connectivity are deleted within the above destructor...

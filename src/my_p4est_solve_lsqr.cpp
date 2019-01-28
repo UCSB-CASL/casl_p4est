@@ -81,15 +81,21 @@ bool solve_cholesky_and_get_first_line(matrix_t &A, vector<double> &b, vector<do
   return true;
 }
 
-bool solve_cholesky(matrix_t &A, vector<double> &b, vector<double> &x)
+bool solve_cholesky(matrix_t &A, vector<double> b[], vector<double> x[], unsigned int n_vectors)
 {
 #ifdef CASL_THROWS
-  if(A.num_cols()!=A.num_rows() || A.num_rows()!=(int)b.size() || !A.is_symmetric())
-    throw std::invalid_argument("[CASL_ERROR]: solve_cholesky: wrong input parameters");
+  if(n_vectors == 0)
+    throw std::invalid_argument("[CASL_ERROR]: solve_cholesky: the number of rhs's must be strictly positive!");
+  for (unsigned int k = 0; k < n_vectors; ++k) {
+    if(A.num_cols()!=A.num_rows() || A.num_rows()!=(int)b[k].size() || !A.is_symmetric())
+      throw std::invalid_argument("[CASL_ERROR]: solve_cholesky: wrong input parameters");
+  }
 #endif
 
-  int n = b.size();
-  x.resize(n);
+  int n = b[0].size();
+  for (unsigned int k = 0; k < n_vectors; ++k) {
+    x[k].resize(n);
+  }
 
   /* compute cholesky decomposition */
   double Lf[n][n];
@@ -115,118 +121,145 @@ bool solve_cholesky(matrix_t &A, vector<double> &b, vector<double> &x)
   }
 
   /* forward solve L*y=b */
-  double y[n];
+  double y[n_vectors][n];
+
 
   for(int i=0; i<n; ++i)
   {
-    y[i] = b[i];
+    for (unsigned int k = 0; k < n_vectors; ++k)
+      y[k][i] = b[k][i];
     for(int j=0; j<i; ++j)
-      y[i] -= y[j]*Lf[i][j];
-    y[i] /= Lf[i][i];
+      for (unsigned int k = 0; k < n_vectors; ++k)
+        y[k][i] -= y[k][j]*Lf[i][j];
+    for (unsigned int k = 0; k < n_vectors; ++k)
+      y[k][i] /= Lf[i][i];
   }
 
   /* backward solve for Lt*x=y */
   for(int i=n-1; i>=0; --i)
   {
-    x[i] = y[i];
+    for (unsigned int k = 0; k < n_vectors; ++k)
+      x[k][i] = y[k][i];
     for(int j=i+1; j<n; ++j)
-      x[i] -= x[j]*Lf[j][i];
-    x[i] /= Lf[i][i];
+      for (unsigned int k = 0; k < n_vectors; ++k)
+        x[k][i] -= x[k][j]*Lf[j][i];
+    for (unsigned int k = 0; k < n_vectors; ++k)
+      x[k][i] /= Lf[i][i];
   }
 
   return true;
+}
+
+bool solve_cholesky(matrix_t &A, vector<double> &b, vector<double> &x)
+{
+  return solve_cholesky(A, &b, &x, 1);
 }
 
 
 
 
 #ifdef P4_TO_P8
-double solve_lsqr_system(matrix_t &A, vector<double> &p, int nb_x, int nb_y, int nb_z, char order)
+void solve_lsqr_system(matrix_t &A, vector<double> p[], unsigned int n_vectors, double* solutions, int nb_x, int nb_y, int nb_z, char order)
 #else
-double solve_lsqr_system(matrix_t &A, vector<double> &p, int nb_x, int nb_y, char order)
+void solve_lsqr_system(matrix_t &A, vector<double> p[], unsigned int n_vectors, double* solutions, int nb_x, int nb_y, char order)
 #endif
 {
+#ifdef CASL_THROWS
+  if(n_vectors == 0) throw std::invalid_argument("[CASL_ERROR]: solve_lsqr_system(...): the number of rhs's must be strictly positive!");
+  for (unsigned int k = 0; k < n_vectors; ++k)
+    if( (unsigned int) A.num_rows() != p[k].size() )
+      throw std::invalid_argument("[CASL_ERROR]: solve_lsqr_system(...): the matrix and (one of) the right hand side(s) don't have the same size");
+#endif
+  unsigned int m = (unsigned int) A.num_rows();
 #ifdef P4_TO_P8
-  if(order<1 || p.size()<4 || nb_x<2 || nb_y<2 || nb_z<2)
+  if(order<1 || m<4 || nb_x<2 || nb_y<2 || nb_z<2)
 #else
-  if(order<1 || p.size()<3 || nb_x<2 || nb_y<2)
+  if(order<1 || m<3 || nb_x<2 || nb_y<2)
 #endif
   {
     /* 0-th order polynomial approximation, just compute coeff(0) */
-    double sum = 0;
-    double rhs = 0;
-    for(unsigned int i=0; i<p.size(); ++i)
-    {
-      sum += SQR(A.get_value(i,0));
-      rhs += A.get_value(i,0)*p[i];
+    for (unsigned int k = 0; k < n_vectors; ++k) {
+      double sum = 0;
+      double rhs = 0;
+      for(unsigned int i=0; i<m; ++i)
+      {
+        sum += SQR(A.get_value(i,0));
+        rhs += A.get_value(i,0)*p[k][i];
+      }
+      solutions[k] = rhs/sum;
     }
-    return rhs/sum;
+    return;
   }
 
   matrix_t M;
-  vector<double> Atp;
-  vector<double> coeffs;
+  vector<double> Atp[n_vectors];
+  vector<double> coeffs[n_vectors];
 
 #ifdef P4_TO_P8
-  if(order<2 || p.size()<10 || nb_x<3 || nb_y<3 || nb_z<3)
+  if(order<2 || m<10 || nb_x<3 || nb_y<3 || nb_z<3)
 #else
-  if(order<2 || p.size()<6 || nb_x<3 || nb_y<3)
+  if(order<2 || m<6 || nb_x<3 || nb_y<3)
 #endif
   {
     if(order==2)
     {
       matrix_t Asub;
 #ifdef P4_TO_P8
-      Asub.truncate_matrix(A.num_rows(), 4, A);
+      Asub.truncate_matrix(m, 4, A);
 #else
-      Asub.truncate_matrix(A.num_rows(), 3, A);
+      Asub.truncate_matrix(m, 3, A);
 #endif
 
-      Asub.tranpose_matvec(p, Atp);
+      Asub.tranpose_matvec(p, Atp, n_vectors);
       Asub.mtm_product(M);
     }
     else
     {
-      A.tranpose_matvec(p, Atp);
+      A.tranpose_matvec(p, Atp, n_vectors);
       A.mtm_product(M);
     }
 
     /* the system was not invertible - most likely there was a direction with less than 2 points, e.g. in the diagonal */
-    if(!solve_cholesky(M, Atp, coeffs))
+    if(!solve_cholesky(M, Atp, coeffs, n_vectors))
     {
-      double sum = 0;
-      double rhs = 0;
-      for(unsigned int i=0; i<p.size(); ++i)
-      {
-        sum += SQR(A.get_value(i,0));
-        rhs += A.get_value(i,0)*p[i];
+      for (unsigned int k = 0; k < n_vectors; ++k) {
+        double sum = 0;
+        double rhs = 0;
+        for(unsigned int i=0; i<m; ++i)
+        {
+          sum += SQR(A.get_value(i,0));
+          rhs += A.get_value(i,0)*p[k][i];
+        }
+        solutions[k] = rhs/sum;
       }
-      return rhs/sum;
+      return;
     }
-
-    return coeffs[0];
+    for (unsigned int k = 0; k < n_vectors; ++k)
+      solutions[k] = coeffs[k][0];
+    return;
   }
 
-  A.tranpose_matvec(p, Atp);
+  A.tranpose_matvec(p, Atp, n_vectors);
   A.mtm_product(M);
 
   /* the system was not invertible - most likely there was a direction with less than 3 points, e.g. in the diagonal ! */
-  if(!solve_cholesky(M, Atp, coeffs))
+  if(!solve_cholesky(M, Atp, coeffs, n_vectors))
   {
     matrix_t Asub;
 #ifdef P4_TO_P8
-      Asub.truncate_matrix(A.num_rows(), 4, A);
+    Asub.truncate_matrix(m, 4, A);
 #else
-      Asub.truncate_matrix(A.num_rows(), 3, A);
+    Asub.truncate_matrix(m, 3, A);
 #endif
 
-    Asub.tranpose_matvec(p, Atp);
+    Asub.tranpose_matvec(p, Atp, n_vectors);
     Asub.mtm_product(M);
 
-    solve_cholesky(M, Atp, coeffs);
+    solve_cholesky(M, Atp, coeffs, n_vectors);
   }
-
-  return coeffs[0];
+  for (unsigned int k = 0; k < n_vectors; ++k)
+    solutions[k] = coeffs[k][0];
+  return;
 }
 
 

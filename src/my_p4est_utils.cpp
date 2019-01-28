@@ -43,6 +43,14 @@ std::vector<InterpolatingFunctionLogEntry> InterpolatingFunctionLogger::entries;
 
 double linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *xyz_global)
 {
+  double result;
+  linear_interpolation(p4est, tree_id, quad, F, xyz_global, &result, 1);
+  return result;
+}
+
+void linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *xyz_global, double* results, unsigned int n_results)
+{
+  P4EST_ASSERT(n_results > 0);
   PetscErrorCode ierr;
   p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + 0];
   p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + P4EST_CHILDREN-1];
@@ -101,23 +109,31 @@ double linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const 
   };
 #endif
 
-  double value = 0;
-  for (short j = 0; j<P4EST_CHILDREN; j++)
-    value += F[j]*w_xyz[j];
-
+  for (unsigned int k = 0; k < n_results; ++k)
+  {
+    results[k] = 0.0;
+    for (short j = 0; j<P4EST_CHILDREN; j++)
+      results[k] += + F[P4EST_CHILDREN*k+j]*w_xyz[j];
 #ifdef P4_TO_P8
-  value /= qh*qh*qh;
+    results[k] /= qh*qh*qh;
 #else
-  value /= qh*qh;
+    results[k] /= qh*qh;
 #endif
+  }
 
   ierr = PetscLogFlops(39); CHKERRXX(ierr); // number of flops in this event
-
-  return value;
 }
 
 double quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global)
 {
+  double result;
+  quadratic_non_oscillatory_interpolation(p4est, tree_id, quad, F, Fdd, xyz_global, &result, 1);
+  return result;
+}
+
+void quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results)
+{
+  P4EST_ASSERT(n_results > 0);
   PetscErrorCode ierr;
   p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + 0];
   p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + P4EST_CHILDREN-1];
@@ -182,32 +198,38 @@ double quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topid
 #endif
 
   double fdd[P4EST_DIM];
-  for (short i = 0; i<P4EST_DIM; i++)
-    fdd[i] = Fdd[i];
-
-  for (short j = 1; j<P4EST_CHILDREN; j++)
-    for (short i = 0; i<P4EST_DIM; i++)
-      fdd[i] = MINMOD(fdd[i], Fdd[j*P4EST_DIM + i]);
-
-  double value = 0;
-  for (short j = 0; j<P4EST_CHILDREN; j++)
-    value += F[j]*w_xyz[j];
-
   double sx = (tree_xmax-tree_xmin)*qh;
   double sy = (tree_ymax-tree_ymin)*qh;
 #ifdef P4_TO_P8
   double sz = (tree_zmax-tree_zmin)*qh;
-  value -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1] + sz*sz*d_00p*d_00m*fdd[2]);
-#else
-  value -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1]);
 #endif
+  for (unsigned int k = 0; k < n_results; ++k) {
+    results[k] = 0.0;
+    for (short j = 0; j < P4EST_CHILDREN; ++j) {
+      for (short i = 0; i<P4EST_DIM; i++)
+        fdd[i] = ((j == 0)? Fdd[k*P4EST_CHILDREN*P4EST_DIM+j*P4EST_DIM + i] : MINMOD(fdd[i], Fdd[k*P4EST_CHILDREN*P4EST_DIM+j*P4EST_DIM + i]));
+      results[k] += F[k*P4EST_CHILDREN+j]*w_xyz[j];
+    }
+#ifdef P4_TO_P8
+    results[k] -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1] + sz*sz*d_00p*d_00m*fdd[2]);
+#else
+    results[k] -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1]);
+#endif
+  }
 
   ierr = PetscLogFlops(45); CHKERRXX(ierr); // number of flops in this event
-  return value;
 }
 
-double quadratic_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global)
+double quadratic_interpolation(const p4est_t* p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global)
 {
+  double result;
+  quadratic_interpolation(p4est, tree_id, quad, F, Fdd, xyz_global, &result, 1);
+  return result;
+}
+
+void quadratic_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results)
+{
+  P4EST_ASSERT(n_results > 0);
   PetscErrorCode ierr;
 
   p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + 0];
@@ -282,29 +304,30 @@ double quadratic_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, con
   };
 #endif
 
+
   double fdd[P4EST_DIM];
-  for (short i = 0; i<P4EST_DIM; i++)
-    fdd[i] = 0;
-
-  for (short j=0; j<P4EST_CHILDREN; j++)
-    for (short i = 0; i<P4EST_DIM; i++)
-      fdd[i] += Fdd[j*P4EST_DIM + i] * w_xyz[j];
-
-  double value = 0;
-  for (short j = 0; j<P4EST_CHILDREN; j++)
-    value += F[j]*w_xyz[j];
-
   double sx = (tree_xmax-tree_xmin)*qh;
   double sy = (tree_ymax-tree_ymin)*qh;
 #ifdef P4_TO_P8
   double sz = (tree_zmax-tree_zmin)*qh;
-  value -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1] + sz*sz*d_00p*d_00m*fdd[2]);
-#else
-  value -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1]);
 #endif
+  for (unsigned int k = 0; k < n_results; ++k)
+  {
+    results[k] = 0.0;
+    for (short j=0; j<P4EST_CHILDREN; j++)
+    {
+      for (short i = 0; i<P4EST_DIM; i++)
+        fdd[i] = ((j == 0)? 0.0 : fdd[i]) +Fdd[k*P4EST_CHILDREN*P4EST_DIM+j*P4EST_DIM + i] * w_xyz[j];
+      results[k] += F[k*P4EST_CHILDREN+j]*w_xyz[j];
+    }
+#ifdef P4_TO_P8
+    results[k] -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1] + sz*sz*d_00p*d_00m*fdd[2]);
+#else
+    results[k] -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1]);
+#endif
+  }
 
   ierr = PetscLogFlops(45); CHKERRXX(ierr); // number of flops in this event
-  return value;
 }
 
 void write_comm_stats(const p4est_t *p4est, const p4est_ghost_t *ghost, const p4est_nodes_t *nodes, const char *partition_name, const char *topology_name, const char *neighbors_name)
@@ -591,7 +614,10 @@ int create_directory(const char* path, int mpi_rank, MPI_Comm comm)
       for (char* p = tmp+1; *p; p++){
         if(*p == '/'){
           *p = 0;
-          return_ = mkdir(tmp, S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH); // permission = 755 like a regular mkdir in terminal
+          if((stat(tmp, &info) == 0) &&  (info.st_mode & S_IFDIR)) // if it already exists, no need to create it...
+            return_ = 0;
+          else
+            return_ = mkdir(tmp, S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH); // permission = 755 like a regular mkdir in terminal
           *p = '/';
           if(return_)
             break;

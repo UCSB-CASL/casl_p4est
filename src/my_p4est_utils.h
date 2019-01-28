@@ -339,34 +339,51 @@ public:
 
 };
 
+/*!
+ * \brief linear_interpolation performs linear interpolation for a point
+ * \param [in]    p4est the forest
+ * \param [in]    tree_id the current tree that owns the quadrant
+ * \param [in]    quad the current quarant
+ * \param [in]    F a simple C-style array of size n_results*P4EST_CHILDREN, containing the values of the n_vecs function(s) at the vertices of the quadrant. __MUST__ be z-ordered
+ *                F[k*P4EST_CHILDREN+i] = value of he kth function at quadrant's node i (in z-order), 0 <= i < P4EST_CHILDREN, 0 <= k < n_results
+ * \param [in]    xyz_global global coordinates of the point
+ * \param [inout] simple C-style array of size n_results containing the results of the quadratic_interpolation of the n_results different functions at the node of interest (located at xyz_global)
+ * \param [in]    n_results number of functions to be interpolated
+ */
+void linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *xyz_global, double *results, const unsigned int n_results);
 double linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *xyz_global);
 
 /*!
- * \brief non_oscilatory_quadratic_interpolation performs non-oscilatory quadratic interpolation for a point
- * \param p4est the forest
- * \param tree_id the current tree that owns the quadrant
- * \param quad the current quarant
- * \param F a simple C-style array of size 4, containing the values of the function at the vertices of the quadrant. __MUST__ be z-ordered
- * \param Fxx a simple C-style array of size 4, containing the values of the xx derivative of function at the vertices of the quadrant. does not need to be z-ordered
- * \param Fyy a simple C-style array of size 4, containing the values of the yy derivative of function at the vertices of the quadrant. does not need to be z-ordered
- * \param x_global global x-coordinate ointerface_location_with_second_order_derivativef the point
- * \param y_global global y-coordinate of the point
- * \return interpolated value
+ * \brief quadratic_non_oscillatory_interpolation performs non-oscilatory quadratic interpolation for a point
+ * \param [in]    p4est the forest
+ * \param [in]    tree_id the current tree that owns the quadrant
+ * \param [in]    quad the current quarant
+ * \param [in]    F a simple C-style array of size n_results*P4EST_CHILDREN, containing the values of the n_vecs function(s) at the vertices of the quadrant. __MUST__ be z-ordered
+ *                F[k*P4EST_CHILDREN+i] = value of he kth function at quadrant's node i (in z-order), 0 <= i < P4EST_CHILDREN, 0 <= k < n_results
+ * \param [in]    Fdd a simple C-style array of size n_results*P4EST_CHILDREN*P4EST_DIM, containing the values of the second derivatives of the function(s) at the vertices of the quadrant
+ *                Fdd[k*P4EST_CHILDREN*P4EST_DIM+j*P4EST_DIM+i] = value of the second derivative along dimension i, at quadrant's node j, of the kth function,
+ *                0 <= i < P4EST_DIM, 0<= j < P4EST_CHILDREN, 0 <= k < n_results
+ * \param [in]    xyz_global global coordinates of the point
+ * \param [inout] simple C-style array of size n_results containing the results of the quadratic_interpolation of the n_results different functions at the node of interest (located at xyz_global)
+ * \param [in]    n_results number of functions to be interpolated
  */
+void quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results);
 double quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global);
-
 /*!
  * \brief quadratic_interpolation performs quadratic interpolation for a point
- * \param p4est the forest
- * \param tree_id the current tree that owns the quadrant
- * \param quad the current quarant
- * \param F a simple C-style array of size 4, containing the values of the function at the vertices of the quadrant. __MUST__ be z-ordered
- * \param Fxx a simple C-style array of size 4, containing the values of the xx derivative of function at the vertices of the quadrant. does not need to be z-ordered
- * \param Fyy a simple C-style array of size 4, containing the values of the yy derivative of function at the vertices of the quadrant. does not need to be z-ordered
- * \param x_global global x-coordinate of the point
- * \param y_global global y-coordinate of the point
- * \return interpolated value
+ * \param [in]    p4est the forest
+ * \param [in]    tree_id the current tree that owns the quadrant
+ * \param [in]    quad the current quarant
+ * \param [in]    F a simple C-style array of size n_results*P4EST_CHILDREN, containing the values of the n_vecs function(s) at the vertices of the quadrant. __MUST__ be z-ordered
+ *                F[k*P4EST_CHILDREN+i] = value of he kth function at quadrant's node i (in z-order), 0 <= i < P4EST_CHILDREN, 0 <= k < n_results
+ * \param [in]    Fdd a simple C-style array of size n_results*P4EST_CHILDREN*P4EST_DIM, containing the values of the second derivatives of the function(s) at the vertices of the quadrant
+ *                Fdd[k*P4EST_CHILDREN*P4EST_DIM+j*P4EST_DIM+i] = value of the second derivative along dimension i, at quadrant's node j, of the kth function,
+ *                0 <= i < P4EST_DIM, 0<= j < P4EST_CHILDREN, 0 <= k < n_results
+ * \param [in]    xyz_global global coordinates of the point
+ * \param [inout] simple C-style array of size n_results containing the results of the quadratic_interpolation of the n_results different functions at the node of interest (located at xyz_global)
+ * \param [in]    n_results number of functions to be interpolated
  */
+void quadratic_interpolation(const p4est_t* p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results);
 double quadratic_interpolation(const p4est_t* p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global);
 
 /*!
@@ -1387,7 +1404,8 @@ public:
 
   void start(const std::string& msg){
     msg_ = msg;
-    PetscFPrintf(comm_, f_, "%s ... \n", msg.c_str());
+    if(msg_.length() > 0)
+      PetscFPrintf(comm_, f_, "%s ... \n", msg.c_str());
     ts = MPI_Wtime();
   }
 
