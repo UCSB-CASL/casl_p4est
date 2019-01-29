@@ -32,7 +32,7 @@ private:
     my_p4est_ns_free_surface_t *const  _prnt;
     const field_type which;
   public:
-    wall_bc_value_t(my_p4est_ns_free_surface_t * const obj, const field_type which_) : _prnt(obj), which(which_) {}
+    wall_bc_value_t(my_p4est_ns_free_surface_t * const obj, const field_type which_) : _prnt(obj), which(which_) {}// wall_bc_value class constructs by free_surface class object? not sure
 #ifdef P4_TO_P8
     double operator()( double x, double y, double z ) const
 #else
@@ -127,6 +127,7 @@ private:
 
   Vec fs_phi;
   Vec global_phi;
+  Vec sigma_kappa;
 
   double surf_tension, finest_diag;
 
@@ -148,7 +149,7 @@ private:
   mixed_interface_bc_t* interface_bc_v_global[P4EST_DIM];
 
 
-  my_p4est_interpolation_nodes_t *interp_fs_phi, *interp_global_phi;
+  my_p4est_interpolation_nodes_t *interp_fs_phi, *interp_global_phi, *interp_sigma_kappa;
 
   void build_global_phi_and_face_is_well_defined(p4est_nodes_t* nodes,  Vec phi_, Vec fs_phi_, Vec global_phi_);
 
@@ -183,6 +184,8 @@ private:
    * \return the value of the component of the gradient on the face
    */
   double compute_dxyz_hodge(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, int face_idx);
+
+  void update_sigma_kappa();
 
 public:
   my_p4est_ns_free_surface_t(my_p4est_node_neighbors_t *ngbd_nm1, my_p4est_node_neighbors_t *ngbd_n, my_p4est_faces_t *faces_n);

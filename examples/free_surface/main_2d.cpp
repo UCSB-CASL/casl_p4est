@@ -776,7 +776,7 @@ int main (int argc, char* argv[])
   bool save_vtk = cmd.contains("save_vtk");
   bool save_forces = cmd.get("save_forces", 1);
   double save_every_dt = cmd.get("save_every_delta_t", 1.0/24.0);
-  test_number = cmd.get("test", 0);
+  test_number = cmd.get("test", 1);
 
   bool with_smoke = cmd.get("smoke", 1);
   bool refine_with_smoke = cmd.get("refine_with_smoke", 0);

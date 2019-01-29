@@ -67,6 +67,10 @@ my_p4est_ns_free_surface_t::my_p4est_ns_free_surface_t(my_p4est_node_neighbors_t
   ierr = VecGhostRestoreLocalForm(global_phi, &vec_loc); CHKERRXX(ierr);
   interp_global_phi = new my_p4est_interpolation_nodes_t(ngbd_n);
   interp_global_phi->set_input(global_phi, linear);
+
+  interp_sigma_kappa = new my_p4est_interpolation_nodes_t(ngbd_n);
+  ierr = VecCreateGhostNodes(p4est_n, nodes_n, &sigma_kappa);
+  update_sigma_kappa();
 }
 
 my_p4est_ns_free_surface_t::~my_p4est_ns_free_surface_t()
@@ -74,8 +78,10 @@ my_p4est_ns_free_surface_t::~my_p4est_ns_free_surface_t()
   PetscErrorCode ierr;
   if(fs_phi != NULL) {ierr = VecDestroy(fs_phi); CHKERRXX(ierr);}
   if(global_phi != NULL) {ierr = VecDestroy(global_phi); CHKERRXX(ierr);}
+  if(sigma_kappa != NULL){ ierr = VecDestroy(sigma_kappa); CHKERRXX(ierr); }
   if(interp_fs_phi!=NULL) delete interp_fs_phi;
   if(interp_global_phi!=NULL) delete interp_global_phi;
+  if(interp_sigma_kappa!=NULL) delete interp_sigma_kappa;
 }
 
 // by-pass the "well-defined" faces from the parent class (all faces within the solid are well-defined in this case, forced equal to solid velocity).
@@ -101,6 +107,7 @@ void my_p4est_ns_free_surface_t::set_free_surface(Vec fs_phi_)
   interp_fs_phi->set_input(fs_phi_, linear);
 
   build_global_phi_and_face_is_well_defined(nodes_n, phi, fs_phi, global_phi);
+  update_sigma_kappa();
 }
 
 void my_p4est_ns_free_surface_t::set_phis(Vec solid_phi_, Vec fs_phi_)
@@ -114,6 +121,7 @@ void my_p4est_ns_free_surface_t::set_phis(Vec solid_phi_, Vec fs_phi_)
   interp_fs_phi->set_input(fs_phi_, linear);
 
   build_global_phi_and_face_is_well_defined(nodes_n, phi, fs_phi, global_phi);
+  update_sigma_kappa();
 }
 
 void my_p4est_ns_free_surface_t::build_global_phi_and_face_is_well_defined(p4est_nodes_t* nodes,  Vec phi_, Vec fs_phi_, Vec global_phi_)
@@ -176,19 +184,23 @@ double my_p4est_ns_free_surface_t::mixed_interface_bc_t::operator ()(double x, d
   // same as before, always prioriterize the solid in case of intersection (arbitrary choice!)
   switch (which) {
   case HODGE:
-    // hodge and pressure interface value = 0 for now
+  {
+    double alpha = _prnt->sl_order==1 ? 1 : (2*_prnt->dt_n + _prnt->dt_nm1)/(_prnt->dt_n + _prnt->dt_nm1);
 #ifdef P4_TO_P8
-    return (((*_prnt->interp_phi)(x, y, z) > -1.2*_prnt->finest_diag)? _prnt->bc_hodge.interfaceValue(x, y, z) : _prnt->zero(x, y, z));
+    return _prnt->bc_pressure_global.interfaceValue(x, y, z)   * _prnt->dt_n / (alpha*_prnt->rho);
+//    return (((*_prnt->interp_phi)(x, y, z) > -1.2*_prnt->finest_diag)? _prnt->bc_hodge.interfaceValue(x, y, z) : _prnt->zero(x, y, z));
 #else
-    return (((*_prnt->interp_phi)(x, y) > -1.2*_prnt->finest_diag)? _prnt->bc_hodge.interfaceValue(x, y) : _prnt->zero(x, y));
+    return _prnt->bc_pressure_global.interfaceValue(x, y)   * _prnt->dt_n / (alpha*_prnt->rho);
+//    return (((*_prnt->interp_phi)(x, y) > -1.2*_prnt->finest_diag)? _prnt->bc_hodge.interfaceValue(x, y) : _prnt->zero(x, y));
 #endif
     break;
+  }
   case PRESSURE:
     // hodge and pressure interface value = 0 for now
 #ifdef P4_TO_P8
-    return (((*_prnt->interp_phi)(x, y, z) > -1.2*_prnt->finest_diag)? _prnt->bc_pressure->interfaceValue(x, y, z) : _prnt->zero(x, y, z));
+    return (((*_prnt->interp_phi)(x, y, z) > -1.2*_prnt->finest_diag)? _prnt->bc_pressure->interfaceValue(x, y, z) : _prnt->interp_sigma_kappa->operator ()(x, y, z) /*_prnt->zero(x, y, z)*/);
 #else
-    return (((*_prnt->interp_phi)(x, y) > -1.2*_prnt->finest_diag)? _prnt->bc_pressure->interfaceValue(x, y) : _prnt->zero(x, y));
+    return (((*_prnt->interp_phi)(x, y) > -1.2*_prnt->finest_diag)? _prnt->bc_pressure->interfaceValue(x, y) : _prnt->interp_sigma_kappa->operator ()(x, y) /*_prnt->zero(x, y)*/);
 #endif
     break;
   case VELOCITY_X:
@@ -1173,6 +1185,13 @@ void my_p4est_ns_free_surface_t::update_from_tn_to_tnp1(const CF_2 *level_set, b
   interp_global_phi = new my_p4est_interpolation_nodes_t(ngbd_n);
   interp_global_phi->set_input(global_phi_np1, linear);
 
+  delete interp_sigma_kappa;
+  interp_sigma_kappa = new my_p4est_interpolation_nodes_t(ngbd_n);
+  Vec sigma_kappa_np1;
+  ierr = VecCreateGhostNodes(p4est_n, nodes_n, &sigma_kappa_np1); CHKERRXX(ierr);
+  ierr = VecDestroy(sigma_kappa); CHKERRXX(ierr); sigma_kappa = sigma_kappa_np1;
+  update_sigma_kappa();
+
   // needs to be done AFTER the update of interpolators since interp_global_phi is used in check_if_faces_are_well_defined_for_free_surface
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
@@ -1525,4 +1544,105 @@ void my_p4est_ns_free_surface_t::check_if_faces_are_well_defined_for_free_surfac
 
   ierr = VecGhostUpdateBegin(face_is_well_defined, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecGhostUpdateEnd  (face_is_well_defined, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+}
+
+void my_p4est_ns_free_surface_t::update_sigma_kappa()
+{
+  PetscErrorCode ierr;
+  //Vec vec_loc;
+
+  const double *fs_phi_read_p;
+  Vec phi_der[P4EST_DIM];
+  double *phi_der_p[P4EST_DIM];
+  ierr = VecGetArrayRead(fs_phi, &fs_phi_read_p); CHKERRXX(ierr);
+  for (short dim = 0; dim < P4EST_DIM; ++dim) {
+    ierr = VecCreateGhostNodes(p4est_n, nodes_n, &phi_der[dim]); CHKERRXX(ierr);
+    ierr = VecGetArray(phi_der[dim], &phi_der_p[dim]); CHKERRXX(ierr);
+  }
+  for (size_t k = 0; k < ngbd_n->get_layer_size(); ++k) {
+    p4est_locidx_t node_idx = ngbd_n->get_layer_node(k);
+    quad_neighbor_nodes_of_node_t qnnn = ngbd_n->get_neighbors(node_idx);
+    phi_der_p[0][node_idx] = qnnn.dx_central(fs_phi_read_p);
+    phi_der_p[1][node_idx] = qnnn.dy_central(fs_phi_read_p);
+#ifdef P4_TO_P8
+    phi_der_p[2][node_idx] = qnnn.dz_central(fs_phi_read_p);
+#endif
+  }
+
+  // start updating the ghosts
+  for (short dir = 0; dir < P4EST_DIM; ++dir)
+  {
+    ierr = VecGhostUpdateBegin(phi_der[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  }
+
+  for (size_t k = 0; k < ngbd_n->get_local_size(); ++k) {
+    p4est_locidx_t node_idx = ngbd_n->get_local_node(k);
+    quad_neighbor_nodes_of_node_t qnnn = ngbd_n->get_neighbors(node_idx);
+    phi_der_p[0][node_idx] = qnnn.dx_central(fs_phi_read_p);
+    phi_der_p[1][node_idx] = qnnn.dy_central(fs_phi_read_p);
+#ifdef P4_TO_P8
+    phi_der_p[2][node_idx] = qnnn.dz_central(fs_phi_read_p);
+#endif
+  }
+
+  //end updating
+  for (short dir = 0; dir < P4EST_DIM; ++dir)
+  {
+    ierr = VecGhostUpdateEnd(phi_der[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecRestoreArray(phi_der[dir], &phi_der_p[dir]); CHKERRXX(ierr);
+  }
+
+  ierr = VecRestoreArrayRead(fs_phi, &fs_phi_read_p); CHKERRXX(ierr);
+  compute_mean_curvature(*ngbd_n, fs_phi, phi_der, sigma_kappa);
+
+  for (short dir = 0; dir < P4EST_DIM; ++dir) {
+    ierr = VecDestroy(phi_der[dir]); CHKERRXX(ierr); }
+
+
+  // OPTION 1
+  //  double *sigma_kappa_p;
+  //  VecGetArray(sigma_kappa, &sigma_kappa_p);
+  //  //multiply for the layer nodes
+  //  for (size_t i = 0; i<nodes_n->indep_nodes.elem_count; ++i)
+  //    {
+  //      sigma_kappa_p[i] *= surf_tension;
+  //    }
+  //  VecRestoreArray(sigma_kappa, &sigma_kappa_p);
+
+  // OPTION 2
+  Vec sigma_kappa_loc;
+  ierr = VecGhostGetLocalForm(sigma_kappa, &sigma_kappa_loc); CHKERRXX(ierr);
+  ierr = VecScale(sigma_kappa_loc, surf_tension); CHKERRXX(ierr);
+  ierr = VecGhostRestoreLocalForm(sigma_kappa, &sigma_kappa_loc); CHKERRXX(ierr);
+
+
+
+
+  // OPTION 3 : involves communication... hah...
+  //// multiply the values of sigma_kappa by sigma
+  //  double *sigma_kappa_p;
+  //  VecGetArray(sigma_kappa, &sigma_kappa_p);
+  //  //multiply for the layer nodes
+  //  quad_neighbor_nodes_of_node_t qnnn;
+  //  for (size_t i = 0; i<ngbd_n->get_layer_size(); ++i)
+  //    {
+  //      p4est_locidx_t n = ngbd_n->get_layer_node(i);
+  //      sigma_kappa_p[n] = surf_tension*sigma_kappa_p[n];
+  //    }
+
+  //  //begin update
+  //  VecGhostUpdateBegin(sigma_kappa, INSERT_VALUES, SCATTER_FORWARD);
+
+  //  //compute on local nodes
+  //  for (size_t i = 0; i<ngbd_n->get_local_size(); ++i)
+  //    {
+  //      p4est_locidx_t n = ngbd_n->get_local_node(i);
+  //      sigma_kappa_p[n] = surf_tension*sigma_kappa_p[n];
+  //    }
+
+  //  VecGhostUpdateEnd(sigma_kappa, INSERT_VALUES, SCATTER_FORWARD);
+  //  VecRestoreArray(sigma_kappa, &sigma_kappa_p);
+
+  interp_sigma_kappa->set_input(sigma_kappa, linear);
+
 }
