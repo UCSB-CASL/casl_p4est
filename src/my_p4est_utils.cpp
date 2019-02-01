@@ -21,7 +21,9 @@
 #include <petsclog.h>
 #include <src/casl_math.h>
 #include <src/petsc_compatibility.h>
-
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <dirent.h>
 
 // logging variables -- defined in src/petsc_logging.cpp
 #ifndef CASL_LOG_TINY_EVENTS
@@ -41,6 +43,14 @@ std::vector<InterpolatingFunctionLogEntry> InterpolatingFunctionLogger::entries;
 
 double linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *xyz_global)
 {
+  double result;
+  linear_interpolation(p4est, tree_id, quad, F, xyz_global, &result, 1);
+  return result;
+}
+
+void linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *xyz_global, double* results, unsigned int n_results)
+{
+  P4EST_ASSERT(n_results > 0);
   PetscErrorCode ierr;
   p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + 0];
   p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + P4EST_CHILDREN-1];
@@ -99,23 +109,31 @@ double linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const 
   };
 #endif
 
-  double value = 0;
-  for (short j = 0; j<P4EST_CHILDREN; j++)
-    value += F[j]*w_xyz[j];
-
+  for (unsigned int k = 0; k < n_results; ++k)
+  {
+    results[k] = 0.0;
+    for (short j = 0; j<P4EST_CHILDREN; j++)
+      results[k] += + F[P4EST_CHILDREN*k+j]*w_xyz[j];
 #ifdef P4_TO_P8
-  value /= qh*qh*qh;
+    results[k] /= qh*qh*qh;
 #else
-  value /= qh*qh;
+    results[k] /= qh*qh;
 #endif
+  }
 
   ierr = PetscLogFlops(39); CHKERRXX(ierr); // number of flops in this event
-
-  return value;
 }
 
 double quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global)
 {
+  double result;
+  quadratic_non_oscillatory_interpolation(p4est, tree_id, quad, F, Fdd, xyz_global, &result, 1);
+  return result;
+}
+
+void quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results)
+{
+  P4EST_ASSERT(n_results > 0);
   PetscErrorCode ierr;
   p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + 0];
   p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + P4EST_CHILDREN-1];
@@ -180,32 +198,38 @@ double quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topid
 #endif
 
   double fdd[P4EST_DIM];
-  for (short i = 0; i<P4EST_DIM; i++)
-    fdd[i] = Fdd[i];
-
-  for (short j = 1; j<P4EST_CHILDREN; j++)
-    for (short i = 0; i<P4EST_DIM; i++)
-      fdd[i] = MINMOD(fdd[i], Fdd[j*P4EST_DIM + i]);
-
-  double value = 0;
-  for (short j = 0; j<P4EST_CHILDREN; j++)
-    value += F[j]*w_xyz[j];
-
   double sx = (tree_xmax-tree_xmin)*qh;
   double sy = (tree_ymax-tree_ymin)*qh;
 #ifdef P4_TO_P8
   double sz = (tree_zmax-tree_zmin)*qh;
-  value -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1] + sz*sz*d_00p*d_00m*fdd[2]);
-#else
-  value -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1]);
 #endif
+  for (unsigned int k = 0; k < n_results; ++k) {
+    results[k] = 0.0;
+    for (short j = 0; j < P4EST_CHILDREN; ++j) {
+      for (short i = 0; i<P4EST_DIM; i++)
+        fdd[i] = ((j == 0)? Fdd[k*P4EST_CHILDREN*P4EST_DIM+j*P4EST_DIM + i] : MINMOD(fdd[i], Fdd[k*P4EST_CHILDREN*P4EST_DIM+j*P4EST_DIM + i]));
+      results[k] += F[k*P4EST_CHILDREN+j]*w_xyz[j];
+    }
+#ifdef P4_TO_P8
+    results[k] -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1] + sz*sz*d_00p*d_00m*fdd[2]);
+#else
+    results[k] -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1]);
+#endif
+  }
 
   ierr = PetscLogFlops(45); CHKERRXX(ierr); // number of flops in this event
-  return value;
 }
 
-double quadratic_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global)
+double quadratic_interpolation(const p4est_t* p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global)
 {
+  double result;
+  quadratic_interpolation(p4est, tree_id, quad, F, Fdd, xyz_global, &result, 1);
+  return result;
+}
+
+void quadratic_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results)
+{
+  P4EST_ASSERT(n_results > 0);
   PetscErrorCode ierr;
 
   p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + 0];
@@ -280,29 +304,30 @@ double quadratic_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, con
   };
 #endif
 
+
   double fdd[P4EST_DIM];
-  for (short i = 0; i<P4EST_DIM; i++)
-    fdd[i] = 0;
-
-  for (short j=0; j<P4EST_CHILDREN; j++)
-    for (short i = 0; i<P4EST_DIM; i++)
-      fdd[i] += Fdd[j*P4EST_DIM + i] * w_xyz[j];
-
-  double value = 0;
-  for (short j = 0; j<P4EST_CHILDREN; j++)
-    value += F[j]*w_xyz[j];
-
   double sx = (tree_xmax-tree_xmin)*qh;
   double sy = (tree_ymax-tree_ymin)*qh;
 #ifdef P4_TO_P8
   double sz = (tree_zmax-tree_zmin)*qh;
-  value -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1] + sz*sz*d_00p*d_00m*fdd[2]);
-#else
-  value -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1]);
 #endif
+  for (unsigned int k = 0; k < n_results; ++k)
+  {
+    results[k] = 0.0;
+    for (short j=0; j<P4EST_CHILDREN; j++)
+    {
+      for (short i = 0; i<P4EST_DIM; i++)
+        fdd[i] = ((j == 0)? 0.0 : fdd[i]) +Fdd[k*P4EST_CHILDREN*P4EST_DIM+j*P4EST_DIM + i] * w_xyz[j];
+      results[k] += F[k*P4EST_CHILDREN+j]*w_xyz[j];
+    }
+#ifdef P4_TO_P8
+    results[k] -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1] + sz*sz*d_00p*d_00m*fdd[2]);
+#else
+    results[k] -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1]);
+#endif
+  }
 
   ierr = PetscLogFlops(45); CHKERRXX(ierr); // number of flops in this event
-  return value;
 }
 
 void write_comm_stats(const p4est_t *p4est, const p4est_ghost_t *ghost, const p4est_nodes_t *nodes, const char *partition_name, const char *topology_name, const char *neighbors_name)
@@ -547,6 +572,146 @@ PetscErrorCode VecGhostChangeLayoutEnd(VecScatter ctx, Vec from, Vec to)
 
   return ierr;
 }
+
+bool is_folder(const char* path)
+{
+  struct stat info;
+  if(stat(path, &info)!= 0 )
+  {
+#ifdef CASL_THROWS
+    char error_message[1024];
+    sprintf(error_message, "is_folder: could not access %s", path);
+    throw std::runtime_error(error_message);
+#else
+    return false;
+#endif
+  }
+  return (info.st_mode & S_IFDIR);
+}
+
+bool file_exists(const char* path)
+{
+  struct stat info;
+  return ((stat(path, &info)== 0) && (info.st_mode & S_IFREG));
+}
+
+
+int create_directory(const char* path, int mpi_rank, MPI_Comm comm)
+{
+  int return_ = 1;
+  if(mpi_rank == 0)
+  {
+    struct stat info;
+    if((stat(path, &info) == 0) &&  (info.st_mode & S_IFDIR)) // if it already exists, no need to create it...
+      return_ = 0;
+    else
+    {
+      char tmp[PATH_MAX];
+      snprintf(tmp, sizeof(tmp), "%s", path);
+      size_t len = strlen(tmp);
+      if(tmp[len-1] == '/')
+        tmp[len-1] = 0;
+      for (char* p = tmp+1; *p; p++){
+        if(*p == '/'){
+          *p = 0;
+          if((stat(tmp, &info) == 0) &&  (info.st_mode & S_IFDIR)) // if it already exists, no need to create it...
+            return_ = 0;
+          else
+            return_ = mkdir(tmp, S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH); // permission = 755 like a regular mkdir in terminal
+          *p = '/';
+          if(return_)
+            break;
+        }
+      }
+      if(return_ == 0) // successfull up to here
+        return_ = mkdir(path, S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH); // permission = 755 like a regular mkdir in terminal
+    }
+  }
+  int mpiret = MPI_Bcast(&return_, 1, MPI_INT, 0, comm); SC_CHECK_MPI(mpiret);
+  return return_;
+}
+
+int  get_subdirectories_in(const char* root_path, std::vector<std::string>& subdirectories)
+{
+  if(!is_folder(root_path))
+    return 1;
+
+  subdirectories.resize(0);
+
+  DIR *dir = opendir(root_path);
+  struct dirent *entry = readdir(dir);
+  while (entry != NULL)
+  {
+    if (entry->d_type == DT_DIR && strcmp(entry->d_name, ".") && strcmp(entry->d_name, ".."))
+      subdirectories.push_back(entry->d_name);
+    entry = readdir(dir);
+  }
+
+  closedir(dir);
+
+  return 0;
+}
+
+int delete_directory(const char* root_path, int mpi_rank, MPI_Comm comm, bool non_collective)
+{
+  if(!is_folder(root_path))
+  {
+    char error_message[1024];
+    sprintf(error_message, "delete_directory: path %s is NOT a directory...", root_path);
+    throw std::invalid_argument(error_message);
+  }
+
+  int return_ = 1;
+  if(mpi_rank == 0)
+  {
+    std::vector<std::string> subdirectories; subdirectories.resize(0);
+    std::vector<std::string> reg_files; reg_files.resize(0);
+
+    DIR *dir = opendir(root_path);
+    struct dirent *entry = readdir(dir);
+    while (entry != NULL)
+    {
+      if (strcmp(entry->d_name, ".") && strcmp(entry->d_name, ".."))
+      {
+        if(entry->d_type == DT_DIR)
+          subdirectories.push_back(entry->d_name);
+        else if (entry->d_type == DT_REG)
+          reg_files.push_back(entry->d_name);
+        else
+        {
+          char path_to_weird_thing[PATH_MAX], error_msg[1024];
+          sprintf(path_to_weird_thing, "%s/%s", root_path, entry->d_name);
+          sprintf(error_msg, "delete_directory: a weird object has been encountered in %s: it is neither a folder nor a file, this function is not designed for that, use maybe 'rm -rf'", path_to_weird_thing);
+          throw std::runtime_error(error_msg);
+          return 1;
+        }
+      }
+      entry = readdir(dir);
+    }
+    for (unsigned int idx = 0; idx < reg_files.size(); ++idx) {
+      char path_to_file[PATH_MAX];
+      sprintf(path_to_file, "%s/%s", root_path, reg_files[idx].c_str());
+      remove(path_to_file);
+    }
+    for (unsigned int idx = 0; idx < subdirectories.size(); ++idx) {
+      char path_to_subfolder[PATH_MAX];
+      sprintf(path_to_subfolder, "%s/%s", root_path, subdirectories[idx].c_str());
+      delete_directory(path_to_subfolder, mpi_rank, comm, true);
+    }
+    remove(root_path);
+    if(non_collective)
+      return 0;
+    else
+      return_ = 0;
+  }
+  if(!non_collective)
+  {
+    int mpiret = MPI_Bcast(&return_, 1, MPI_INT, 0, comm); SC_CHECK_MPI(mpiret);
+  }
+  return return_;
+}
+
+
 
 void dxyz_min(const p4est_t *p4est, double *dxyz)
 {

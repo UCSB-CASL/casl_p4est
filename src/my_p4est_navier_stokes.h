@@ -9,14 +9,25 @@
 #include <src/my_p8est_interpolation_nodes.h>
 #include <src/my_p8est_interpolation_cells.h>
 #include <src/my_p8est_interpolation_faces.h>
+#include <src/my_p8est_poisson_cells.h>
+#include <src/my_p8est_poisson_faces.h>
+#include <src/my_p8est_save_load.h>
 #else
 #include <src/my_p4est_refine_coarsen.h>
 #include <src/my_p4est_faces.h>
 #include <src/my_p4est_interpolation_nodes.h>
 #include <src/my_p4est_interpolation_cells.h>
 #include <src/my_p4est_interpolation_faces.h>
+#include <src/my_p4est_poisson_cells.h>
+#include <src/my_p4est_poisson_faces.h>
+#include <src/my_p4est_save_load.h>
 #endif
 
+typedef enum
+{
+  SAVE=3541,
+  LOAD
+} save_or_load;
 
 class my_p4est_navier_stokes_t
 {
@@ -101,7 +112,7 @@ protected:
   double uniform_band;
   double threshold_split_cell;
   double n_times_dt;
-  bool dt_updated;
+  bool   dt_updated;
 
   Vec phi;
   Vec hodge;
@@ -113,6 +124,16 @@ protected:
   Vec vnm1_nodes[P4EST_DIM];
   Vec vn_nodes  [P4EST_DIM];
   Vec vnp1_nodes[P4EST_DIM];
+
+  // semi-lagrangian backtraced points for faces (needed in viscosity step's setup, needs to be done only once)
+  // no need to destroy these, not dynamically allocated...
+  bool semi_lagrangian_backtrace_is_done;
+  std::vector<double> xyz_n[P4EST_DIM][P4EST_DIM];
+  std::vector<double> xyz_nm1[P4EST_DIM][P4EST_DIM]; // used only if sl_order == 2
+
+  // second_derivatives...[i][j] = second derivatives of velocity component j along Cartesian direction i
+  Vec second_derivatives_vnm1_nodes[P4EST_DIM][P4EST_DIM];
+  Vec second_derivatives_vn_nodes[P4EST_DIM][P4EST_DIM];
 
   Vec vorticity;
 
@@ -163,27 +184,82 @@ protected:
   void compute_norm_grad_v();
 
   bool is_in_domain(const double xyz_[]) const {
-      double threshold[P4EST_DIM];
-      for (short dd = 0; dd < P4EST_DIM; ++dd)
-          threshold[dd] = 0.1*dxyz_min[dd];
-      return ((((xyz_[0] - xyz_min[0] > -threshold[0]) && (xyz_[0] - xyz_max[0] < threshold[0])) || is_periodic(p4est_n, dir::x))
-              && (((xyz_[1] - xyz_min[1] > -threshold[1]) && (xyz_[1] - xyz_max[1] < threshold[1])) || is_periodic(p4est_n, dir::y))
-        #ifdef P4_TO_P8
-              && (((xyz_[2] - xyz_min[2] > -threshold[2]) && (xyz_[2] - xyz_max[2] < threshold[2])) || is_periodic(p4est_n, dir::z))
-        #endif
-              );
+    double threshold[P4EST_DIM];
+    for (short dd = 0; dd < P4EST_DIM; ++dd)
+      threshold[dd] = 0.1*dxyz_min[dd];
+    return ((((xyz_[0] - xyz_min[0] > -threshold[0]) && (xyz_[0] - xyz_max[0] < threshold[0])) || is_periodic(p4est_n, dir::x))
+        && (((xyz_[1] - xyz_min[1] > -threshold[1]) && (xyz_[1] - xyz_max[1] < threshold[1])) || is_periodic(p4est_n, dir::y))
+    #ifdef P4_TO_P8
+        && (((xyz_[2] - xyz_min[2] > -threshold[2]) && (xyz_[2] - xyz_max[2] < threshold[2])) || is_periodic(p4est_n, dir::z))
+    #endif
+        );
   };
 
   bool is_no_slip(const double xyz_[]) const {
-      return ((bc_v[0].wallType(xyz_) == DIRICHLET) && (bc_v[1].wallType(xyz_) == DIRICHLET) &&
-        #ifdef P4_TO_P8
-              (bc_v[2].wallType(xyz_) == DIRICHLET) &&
-        #endif
-              bc_pressure->wallType(xyz_) == NEUMANN);
-  };
+    return ((bc_v[0].wallType(xyz_) == DIRICHLET) && (bc_v[1].wallType(xyz_) == DIRICHLET) &&
+    #ifdef P4_TO_P8
+        (bc_v[2].wallType(xyz_) == DIRICHLET) &&
+    #endif
+        bc_pressure->wallType(xyz_) == NEUMANN);
+  }
 
+  /*!
+   * \brief save_or_load_parameters : save or loads the solver parameters in the two files of paths
+   * given by sprintf(path_1, "%s_integers", filename) and sprintf(path_2, "%s_doubles", filename)
+   * The integer parameters that are saved/loaded are (in this order):
+   * - P4EST_DIM
+   * - refine_with_smoke
+   * - data->min_lvl
+   * - data->max_lvl
+   * - sl_order
+   * The double parameters/variables that are saved/loaded are (in this order):
+   * - dxyz_min[0:P4EST_DIM-1]
+   * - xyz_min[0:P4EST_DIM-1]
+   * - xyz_max[0:P4EST_DIM-1]
+   * - convert_to_xyz[0:P4EST_DIM-1]
+   * - mu
+   * - rho
+   * - the simulation time tn
+   * - dt_n
+   * - dt_nm1
+   * - max_L2_norm_u
+   * - uniform_band
+   * - threshold_split_cell
+   * - n_times_dt
+   * - smoke_threshold
+   * - data->lip
+   * The integer and double parameters are saved separately in two different files to avoid reading errors due to
+   * byte padding (occurs in order to ensure data alignment when written in file)...
+   * \param filename[in]: basename of the path to the files to be written or read (absolute path)
+   * \param data[inout] : splitting criterion to be exported/loaded
+   * \param flag[in]    : switch the behavior between write or read
+   * \param tn[inout]   : in write mode, simulation time at which the function is called (to be saved, unmodified)
+   *                      in read mode, simulation time at which the data were saved (to be read from file and stored in tn)
+   * \param mpi[in]     : pointer to the mpi_environment_t (necessary for the load, disregarded for the save)
+   * [note: implemented in one given function with switched behavior to avoid ambiguity and confusion due to code duplication
+   * in several functions to be modified in the future if the parameter/variable order or the parameter/variable list is changed
+   * (the save-state files are binary files, order and number of read/write operations is crucial)]
+   * WARNING: this function throws an std::invalid_argument exception if the files can't be found when loading parameters
+   * Raphael EGAN
+   */
+  void save_or_load_parameters(const char* filename, splitting_criteria_t* splitting_criterion, save_or_load flag, double& tn, const mpi_environment_t* mpi = NULL);
+  void fill_or_load_double_parameters(save_or_load flag, PetscReal* data, splitting_criteria_t* splitting_criterion, double& tn);
+  void fill_or_load_integer_parameters(save_or_load flag, PetscInt* data, splitting_criteria_t* splitting_criterion);
+
+  /*!
+   * \brief load_state loads a solver state that has been previously saved on disk
+   * \param mpi             [in]    mpi environment to load the solver state in
+   * \param path_to_folder  [in]    path to the folder where the solver state has been stored (absolute path)
+   * \param tn              [inout] simulation time at which the data were saved (to be read from saved solver state)
+   * [NOTE :] the function will destroy and overwrite any grid-related structure like p4est_n, nodes_n, ghost_n, faces_n, etc.
+   * if they have already been constructed beforehand...
+   * WARNING: this function throws an std::invalid_argument exception if path_to_folder is invalid
+   * Raphael EGAN
+   */
+  void load_state(const mpi_environment_t& mpi, const char* path_to_folder, double& tn);
 public:
   my_p4est_navier_stokes_t(my_p4est_node_neighbors_t *ngbd_nm1, my_p4est_node_neighbors_t *ngbd_n, my_p4est_faces_t *faces_n);
+  my_p4est_navier_stokes_t(const mpi_environment_t& mpi, const char* path_to_saved_state, double &simulation_time);
   ~my_p4est_navier_stokes_t();
 
   void set_parameters(double mu, double rho, int sl_order, double uniform_band, double threshold_split_cell, double n_times_dt);
@@ -258,9 +334,35 @@ public:
 
   inline double get_max_L2_norm_u() { return max_L2_norm_u; }
 
-  void solve_viscosity();
+  inline double get_mu() const {return mu;}
+  inline double get_split_threshold() const {return threshold_split_cell;}
+  inline double get_rho() const {return rho;}
+  inline double get_uniform_band() const {return uniform_band;}
+  inline double get_cfl() const {return n_times_dt;}
+  inline int get_sl_order() const {return sl_order;}
+  inline double get_length_of_domain() const {return (xyz_max[0]-xyz_min[0]);}
+  inline double get_height_of_domain() const {return (xyz_max[1]-xyz_min[1]);}
+#ifdef P4_TO_P8
+  inline double get_width_of_domain() const {return (xyz_max[2]-xyz_min[2]);}
+#endif
+  inline my_p4est_brick_t* get_brick() const {return brick;}
 
-  void solve_projection();
+  void solve_viscosity()
+  {
+    my_p4est_poisson_faces_t* face_solver = NULL;
+    solve_viscosity(face_solver);
+    delete face_solver;
+  }
+  void solve_viscosity(my_p4est_poisson_faces_t* &face_poisson_solver, const bool use_initial_guess = false, const KSPType ksp = KSPBCGS, const PCType pc = PCSOR);
+
+  void solve_projection()
+  {
+    my_p4est_poisson_cells_t* cell_solver = NULL;
+    solve_projection(cell_solver);
+    delete cell_solver;
+  }
+  void solve_projection(my_p4est_poisson_cells_t* &cell_poisson_solver, const bool use_initial_guess = false, const KSPType ksp = KSPBCGS, const PCType pc = PCSOR);
+
 
   void compute_velocity_at_nodes();
 
@@ -276,6 +378,7 @@ public:
    * coarse areas when using a very fine grid to capture zero no-slip conditions elsewhere.
    * \param min_value_for_umax: minimum value to be considered for the local velocities (to avoid crazy large
    * time steps because a local velocity is close to 0)...
+   * Raphael EGAN
    */
   void compute_adapted_dt(double min_value_for_umax = 1.0);
   void compute_dt(double min_value_for_umax = 1.0);
@@ -285,9 +388,9 @@ public:
   void extrapolate_bc_v(my_p4est_node_neighbors_t *ngbd, Vec *v, Vec phi);
 
 #ifdef P4_TO_P8
-  void update_from_tn_to_tnp1(const CF_3 *level_set=NULL, bool convergence_test=false, bool do_reinitialization=true);
+  bool update_from_tn_to_tnp1(const CF_3 *level_set=NULL, bool convergence_test=false, bool do_reinitialization=true);
 #else
-  void update_from_tn_to_tnp1(const CF_2 *level_set=NULL, bool convergence_test=false, bool do_reinitialization=true);
+  bool update_from_tn_to_tnp1(const CF_2 *level_set=NULL, bool convergence_test=false, bool do_reinitialization=true);
 #endif
 
   void compute_pressure();
@@ -333,7 +436,19 @@ public:
    */
   void get_noslip_wall_forces(double wall_forces[], const bool with_pressure = false) const;
 
-  void save_state(const char* path_to_folder) const;
+  /*!
+   * \brief save_state saves the solver states in a subdirectory 'backup_' created under the user-provided root-directory.
+   * the n_states (>0) latest succesive states can be saved, with automatic update of the subdirectory names.
+   * If more than n_states subdirectories exist at any time when this function is called, it will automatically delete the extra
+   * subdirectories.
+   * \param path_to_root_directory: path to the root exportation directory. n_saved subdirectories 'backup_' will be created
+   * under the root directory, in which successive solver states will be saved.
+   * \param tn: simulation time at which the function is called
+   * \param n_saved: number of solver states to keep in memory (default is 1)
+   * Raphael EGAN
+   */
+  void save_state(const char* path_to_root_directory, double tn, unsigned int n_saved=1);
+
 };
 
 

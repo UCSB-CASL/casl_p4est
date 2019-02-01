@@ -302,9 +302,11 @@ public:
    * \param [out] fzz PETSc vector to store the results in. A check is done to ensure they have the same size as f (only inn 3D)
    */
 #ifdef P4_TO_P8
-  void second_derivatives_central(const Vec f, Vec fxx, Vec fyy, Vec fzz) const;
+  void second_derivatives_central(const Vec f, Vec fxx, Vec fyy, Vec fzz) const { second_derivatives_central(&f, &fxx, &fyy, &fzz, 1); }
+  void second_derivatives_central(const Vec f[], Vec fxx[], Vec fyy[], Vec fzz[], unsigned int n_vecs) const;
 #else
-  void second_derivatives_central(const Vec f, Vec fxx, Vec fyy) const;
+  void second_derivatives_central(const Vec f, Vec fxx, Vec fyy) const { second_derivatives_central(&f, &fxx, &fyy, 1); }
+  void second_derivatives_central(const Vec f[], Vec fxx[], Vec fyy[], unsigned int n_vecs) const;
 #endif
 
   /*!
