@@ -684,6 +684,9 @@ int main (int argc, char* argv[])
   // method-related parameters
   cmd.add_option("sl_order", "the order for the semi lagrangian, either 1 (stable) or 2 (accurate), default is 2");
   cmd.add_option("cfl", "dt = cfl * dx/vmax, default is 0.75");
+  cmd.add_option("hodge_tol", "numerical tolerance on the Hodge variable, at all time steps, default is 1e-3");
+  cmd.add_option("niter_hodge", "max number of iterations for convergence of the Hodge variable, at all time steps, default is 10");
+  cmd.add_option("grid_update", "number of time steps between grid updates, default is 1");
   // output-control parameters
   cmd.add_option("export_folder", "exportation_folder");
   cmd.add_option("save_vtk", "activates exportation of results in vtk format");
@@ -722,13 +725,14 @@ int main (int argc, char* argv[])
   double tstart;
   double dt;
   int lmin, lmax;
-  my_p4est_navier_stokes_t* ns  = NULL;
-  my_p4est_brick_t* brick       = NULL;
-  splitting_criteria_cf_t* data = NULL;
-  LEVEL_SET* level_set          = NULL;
+  my_p4est_navier_stokes_t* ns                    = NULL;
+  my_p4est_brick_t* brick                         = NULL;
+  splitting_criteria_cf_and_uniform_band_t* data  = NULL;
+  LEVEL_SET* level_set                            = NULL;
 
   int sl_order;
-  double threshold_split_cell, wall_layer, cfl;
+  unsigned int wall_layer;
+  double threshold_split_cell, uniform_band, cfl;
   double length;
 #ifdef P4_TO_P8
   double width;
@@ -742,21 +746,23 @@ int main (int argc, char* argv[])
   double xyz_min [P4EST_DIM];
   double xyz_max [P4EST_DIM];
 
+  const double hodge_tolerance          = cmd.get<double>("hodge_tol", 1e-3);
+  const unsigned int niter_hodge_max    = cmd.get<unsigned int>("niter_hodge", 10);
+  const unsigned int steps_grid_update  = cmd.get<unsigned int>("grid_update", 1);
 
-
-  double duration           = cmd.get<double>("duration", 10.0);
-  double pitch_to_delta     = cmd.get<double>("pitch_to_delta", 1.0/4.0);
-  double gas_fraction       = cmd.get<double>("GF", 0.5);
+  double duration                       = cmd.get<double>("duration", 10.0);
+  double pitch_to_delta                 = cmd.get<double>("pitch_to_delta", 1.0/4.0);
+  double gas_fraction                   = cmd.get<double>("GF", 0.5);
 #if defined(POD_CLUSTER)
-  string export_dir         = cmd.get<string>("export_folder", "/home/regan/superhydrophobic_channel");
+  string export_dir                     = cmd.get<string>("export_folder", "/home/regan/superhydrophobic_channel");
 #elif defined(STAMPEDE)
-  string export_dir         = cmd.get<string>("export_folder", "/work/04965/tg842642/stampede2/superhydrophobic_channel");
+  string export_dir                     = cmd.get<string>("export_folder", "/work/04965/tg842642/stampede2/superhydrophobic_channel");
 #elif defined(LAPTOP)
-  string export_dir         = cmd.get<string>("export_folder", "/home/raphael/workspace/projects/superhydrophobic_channel");
+  string export_dir                     = cmd.get<string>("export_folder", "/home/raphael/workspace/projects/superhydrophobic_channel");
 #else
-  string export_dir         = cmd.get<string>("export_folder", "/home/regan/workspace/projects/superhydrophobic_channel");
+  string export_dir                     = cmd.get<string>("export_folder", "/home/regan/workspace/projects/superhydrophobic_channel");
 #endif
-  bool save_vtk             = cmd.contains("save_vtk");
+  bool save_vtk                         = cmd.contains("save_vtk");
   double vtk_dt = -1.0;
   if(save_vtk)
   {
@@ -824,7 +830,6 @@ int main (int argc, char* argv[])
     lmax                    = cmd.get<int>("lmax", ((splitting_criteria_t*) p4est_n->user_pointer)->max_lvl);
     double lip              = ((splitting_criteria_t*) p4est_n->user_pointer)->lip;
     threshold_split_cell    = cmd.get<double>("thresh", ns->get_split_threshold());
-    wall_layer              = cmd.get<double>("wall_layer", ns->get_uniform_band());
     length                  = ns->get_length_of_domain();
 #ifdef P4EST_ENABLE_DEBUG
     double height           = ns->get_height_of_domain();
@@ -856,6 +861,21 @@ int main (int argc, char* argv[])
     xyz_min[0]              = brick->xyz_min[0];
     xyz_max[1]              = brick->xyz_min[1];
     xyz_max[0]              = brick->xyz_min[0];
+
+    if(cmd.contains("wall_layer"))
+    {
+      wall_layer            = cmd.get<unsigned int >("wall_layer");
+#ifdef P4_TO_P8
+      uniform_band          = ((double) wall_layer)*(2.0/((double) ntree_y))/MAX(length/((double) ntree_x), 2.0/((double) ntree_y), width/((double) ntree_z));
+#else
+      uniform_band          = ((double) wall_layer)*(2.0/((double) ntree_y))/MAX(length/((double) ntree_x), 2.0/((double) ntree_y));
+#endif
+    }
+    else
+    {
+      uniform_band          = ns->get_uniform_band();
+      wall_layer            = (unsigned int) (uniform_band*MAX(length/((double) ntree_x), 2.0/((double) ntree_y))/(2.0/((double) ntree_y)));
+    }
 #ifdef P4_TO_P8
     if(streamwise)
       check_pitch_and_gas_fraction(length, ntree_x, lmax, pitch_to_delta, gas_fraction);
@@ -879,19 +899,18 @@ int main (int argc, char* argv[])
       delete data; data = NULL;
     }
     P4EST_ASSERT(data == NULL);
-    data = new splitting_criteria_cf_t(lmin, lmax, level_set, lip);
+    data = new splitting_criteria_cf_and_uniform_band_t(lmin, lmax, level_set, uniform_band, lip);
     splitting_criteria_t* to_delete = (splitting_criteria_t*) p4est_n->user_pointer;
     delete to_delete;
     p4est_n->user_pointer   = (void*) data;
     p4est_nm1->user_pointer = (void*) data; // p4est_n and p4est_nm1 always point to the same splitting_criteria_t no need to delete the nm1 one, it's just been done
-    ns->set_parameters(1.0/wall_shear_Reynolds, 1.0, sl_order, wall_layer, threshold_split_cell, cfl);
+    ns->set_parameters(1.0/wall_shear_Reynolds, 1.0, sl_order, uniform_band, threshold_split_cell, cfl);
   }
   else
   {
     lmin                    = cmd.get<int>("lmin", 4);
     lmax                    = cmd.get<int>("lmax", 6);
     threshold_split_cell    = cmd.get<double>("thresh", 0.1);
-    wall_layer              = cmd.get<double>("wall_layer", 6.0);
     length                  = cmd.get<double>("length", 6.0);
 #ifdef P4_TO_P8
     width                   = cmd.get<double>("width", 3.0);
@@ -916,12 +935,15 @@ int main (int argc, char* argv[])
     xyz_max[0]              = +0.5*length;
     periodic[1]             = 0;
     periodic[0]             = 1;
+    wall_layer              = cmd.get<unsigned int>("wall_layer", 6);
 #ifdef P4_TO_P8
+    uniform_band            = ((double) wall_layer)*(2.0/((double) ntree_y))/MAX(length/((double) ntree_x), 2.0/((double) ntree_y), width/((double) ntree_z));
     if(streamwise)
       check_pitch_and_gas_fraction(width, ntree_z, lmax, pitch_to_delta, gas_fraction);
     else
       check_pitch_and_gas_fraction(length, ntree_x, lmax, pitch_to_delta, gas_fraction);
 #else
+    uniform_band            = ((double) wall_layer)*(2.0/((double) ntree_y))/MAX(length/((double) ntree_x), 2.0/((double) ntree_y));
     check_pitch_and_gas_fraction(length, ntree_x, lmax, pitch_to_delta, gas_fraction);
 #endif
 
@@ -952,14 +974,26 @@ int main (int argc, char* argv[])
       delete data; data = NULL;
     }
     P4EST_ASSERT(data == NULL);
-    data  = new splitting_criteria_cf_t(lmin, lmax, level_set, 1.2);
+    double lip_const = 1.2;
+    // reset the lip_const as such to avoid conflict with the number of cells desired to layer the walls
+    lip_const = MIN(lip_const, (2.0/length)*((double) ntree_x)/((double) ntree_y));
+#ifdef P4_TO_P8
+    lip_const = MIN(lip_const, (2.0/width)*((double) ntree_z)/((double) ntree_y));
+#endif
+    lip_const = MIN(lip_const, (length/2.0)*((double) ntree_y)/((double) ntree_x));
+#ifdef P4_TO_P8
+    lip_const = MIN(lip_const, (length/width)*((double) ntree_z)/((double) ntree_x));
+    lip_const = MIN(lip_const, (width/length)*((double) ntree_x)/((double) ntree_z));
+    lip_const = MIN(lip_const, (width/2.0)*((double) ntree_y)/((double) ntree_z));
+#endif
+    data  = new splitting_criteria_cf_and_uniform_band_t(lmin, lmax, level_set, uniform_band, lip_const);
 
     p4est_t* p4est_nm1 = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
     p4est_nm1->user_pointer = (void*) data;
 
     for(int l=0; l<lmax; ++l)
     {
-      my_p4est_refine(p4est_nm1, P4EST_FALSE, refine_levelset_cf, NULL);
+      my_p4est_refine(p4est_nm1, P4EST_FALSE, refine_levelset_cf_and_uniform_band, NULL);
       my_p4est_partition(p4est_nm1, P4EST_FALSE, NULL);
     }
     /* create the initial forest at time nm1 */
@@ -1002,7 +1036,7 @@ int main (int argc, char* argv[])
 
     ns = new my_p4est_navier_stokes_t(ngbd_nm1, ngbd_n, faces_n);
     ns->set_phi(phi);
-    ns->set_parameters(1.0/wall_shear_Reynolds, 1.0, sl_order, wall_layer, threshold_split_cell, cfl);
+    ns->set_parameters(1.0/wall_shear_Reynolds, 1.0, sl_order, uniform_band, threshold_split_cell, cfl);
     ns->set_velocities(vnm1, vn);
 
     tstart = 0.0; // no restart so we assume we start from 0.0
@@ -1147,11 +1181,11 @@ int main (int argc, char* argv[])
         ns->set_dt(dt);
       }
 
-      bool grid_has_changed = ns->update_from_tn_to_tnp1(level_set, false, false);
+      bool solvers_can_be_reused = ns->update_from_tn_to_tnp1(NULL, (iter%steps_grid_update!=0), false, true);
 
-      if(cell_solver != NULL && grid_has_changed){
+      if(cell_solver != NULL && !solvers_can_be_reused){
         delete cell_solver; cell_solver = NULL; }
-      if(face_solver != NULL && grid_has_changed){
+      if(face_solver != NULL && !solvers_can_be_reused){
         delete face_solver; face_solver = NULL; }
     }
 
@@ -1186,9 +1220,9 @@ int main (int argc, char* argv[])
     Vec hodge_new;
     ierr = VecCreateSeq(PETSC_COMM_SELF, ns->get_p4est()->local_num_quadrants, &hodge_old); CHKERRXX(ierr);
     double err_hodge = 1;
-    int iter_hodge = 0;
+    unsigned int iter_hodge = 0;
     viscosity_step_time = projection_step_time = 0.0;
-    while(iter_hodge<10 && err_hodge>1e-3)
+    while(iter_hodge<niter_hodge_max && err_hodge>hodge_tolerance)
     {
       hodge_new = ns->get_hodge();
       ierr = VecCopy(hodge_new, hodge_old); CHKERRXX(ierr);

@@ -399,6 +399,54 @@ void write_comm_stats(const p4est_t *p4est, const p4est_ghost_t *ghost, const p4
   }
 }
 
+p4est_bool_t nodes_are_equal(int mpi_size, p4est_nodes_t* nodes_1, p4est_nodes_t* nodes_2)
+{
+  if(nodes_1 == nodes_2)
+    return P4EST_TRUE;
+  const p4est_indep_t *node_1, *node_2;
+  p4est_bool_t result = (nodes_1->indep_nodes.elem_count == nodes_2->indep_nodes.elem_count);
+  result = result && (nodes_1->num_local_quadrants  == nodes_2->num_local_quadrants);
+  result = result && (nodes_1->num_owned_indeps     == nodes_2->num_owned_indeps);
+  result = result && (nodes_1->num_owned_shared     == nodes_2->num_owned_shared);
+  result = result && (nodes_1->offset_owned_indeps == 0) && (nodes_2->offset_owned_indeps == 0);
+  if(!result)
+    goto return_time;
+  for (int r = 0; r < mpi_size; ++r) {
+    result = result && (nodes_1->global_owned_indeps[r] == nodes_2->global_owned_indeps[r]);
+    if(!result)
+      goto return_time;
+  }
+  // compare the raw nodes, one by one, first
+  for (size_t k = 0; k < nodes_1->indep_nodes.elem_count; ++k) {
+    node_1 = (const p4est_indep_t*) sc_array_index(&nodes_1->indep_nodes, k);
+    node_2 = (const p4est_indep_t*) sc_array_index(&nodes_2->indep_nodes, k);
+    result = result && (node_1->level == node_2->level);
+    result = result && (node_1->x == node_2->x);
+    result = result && (node_1->y == node_2->y);
+#ifdef P4_TO_P8
+    result = result && (node_1->z == node_2->z);
+#endif
+    result = result && (node_1->pad8 == node_2->pad8);
+    // all nodes must have their p.piggy3 used, local or ghost...
+    result = result && (node_1->p.piggy3.local_num  == node_2->p.piggy3.local_num);
+    result = result && (node_1->p.piggy3.which_tree == node_2->p.piggy3.which_tree);
+    if(k > ((size_t) nodes_1->num_owned_indeps))
+      result = result && (nodes_1->nonlocal_ranks[k-nodes_1->num_owned_indeps] == nodes_2->nonlocal_ranks[k-nodes_2->num_owned_indeps]);
+    if(!result)
+      goto return_time;
+  }
+  // check that the local indices of points associated with local quadrants are equal
+  for (p4est_locidx_t k = 0; k < nodes_1->num_local_quadrants; ++k) {
+    for (short j = 0; j < P4EST_CHILDREN; ++j) {
+      result = result && (nodes_1->local_nodes[P4EST_CHILDREN*k + j] == nodes_2->local_nodes[P4EST_CHILDREN*k + j]);
+      if(!result)
+        goto return_time;
+    }
+  }
+return_time:
+  return result;
+}
+
 PetscErrorCode VecCreateGhostNodes(const p4est_t *p4est, p4est_nodes_t *nodes, Vec* v)
 {
   PetscErrorCode ierr = 0;
@@ -452,6 +500,43 @@ PetscErrorCode VecCreateGhostNodesBlock(const p4est_t *p4est, p4est_nodes_t *nod
   ierr = VecSetFromOptions(*v); CHKERRQ(ierr);
 
   return ierr;
+}
+
+
+p4est_bool_t ghosts_are_equal(p4est_ghost_t* ghost_1, p4est_ghost_t* ghost_2)
+{
+  if(ghost_1 == ghost_2)
+    return P4EST_TRUE;
+
+  const p4est_quadrant_t *quad_1, *quad_2;
+  int mpisize = ghost_1->mpisize;
+  p4est_bool_t result = (ghost_2->mpisize == mpisize);
+  result = result && (ghost_1->ghosts.elem_count == ghost_2->ghosts.elem_count);
+  result = result && (ghost_1->num_trees == ghost_2->num_trees);
+  result = result && (ghost_1->btype == ghost_2->btype);
+  if(!result)
+    goto return_time;
+  for (size_t k = 0; k < ghost_1->ghosts.elem_count; ++k) {
+    quad_1 = p4est_quadrant_array_index(&ghost_1->ghosts, k);
+    quad_2 = p4est_quadrant_array_index(&ghost_2->ghosts, k);
+    result = result && p4est_quadrant_is_equal(quad_1, quad_2);
+    result = result && (quad_1->p.piggy3.local_num == quad_2->p.piggy3.local_num);
+    result = result && (quad_1->p.piggy3.which_tree == quad_2->p.piggy3.which_tree);
+    if(!result)
+      goto return_time;
+  }
+  for (int r = 0; r < mpisize+1; ++r) {
+    result = result && (ghost_1->proc_offsets[r] == ghost_2->proc_offsets[r]);
+    if(!result)
+      goto return_time;
+  }
+  for (p4est_topidx_t tree_idx = 0; tree_idx < ghost_1->num_trees+1; ++tree_idx) {
+    result = result && (ghost_1->tree_offsets[tree_idx] == ghost_2->tree_offsets[tree_idx]);
+    if(!result)
+       goto return_time;
+  }
+return_time:
+  return result;
 }
 
 PetscErrorCode VecCreateGhostCells(const p4est_t *p4est, p4est_ghost_t *ghost, Vec* v)

@@ -173,9 +173,9 @@ void my_p4est_poisson_faces_t::set_diagonal(double add)
 {
   for (short dim = 0; dim < P4EST_DIM; ++dim) {
     desired_diag[dim]           = add;
-    if((fabs(current_diag[dim] - desired_diag[dim]) >= EPS*MAX(fabs(current_diag[dim]), fabs(desired_diag[dim]))) && ((fabs(current_diag[dim] >= EPS) || (fabs(desired_diag[dim]) >= EPS))))
+    if(!current_diag_is_as_desired(dim))
     {
-      // actual modification of diag, do not change the flag values otherwise
+      // actual modification of diag, do not change the flag values otherwise, especially not of is_matrix_ready
       only_diag_is_modified[dim]  = is_matrix_ready[dim];
       is_matrix_ready[dim]        = false;
     }
@@ -997,9 +997,9 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_poisson_faces_setup_linear_system, A, rhs[dir], 0, 0); CHKERRXX(ierr);
 
-  P4EST_ASSERT(!only_diag_is_modified[dir] || !is_matrix_ready[dir]);
   // check that the current "diagonal" is as desired if the matrix is ready to go...
-  P4EST_ASSERT(!is_matrix_ready[dir] || ((fabs(current_diag[dir] - desired_diag[dir]) < EPS*MAX(fabs(current_diag[dir]), fabs(desired_diag[dir]))) || ((fabs(current_diag[dir] < EPS) && (fabs(desired_diag[dir]) < EPS)))));
+  const bool current_diag_is_ok = current_diag_is_as_desired(dir);
+  P4EST_ASSERT(!is_matrix_ready[dir] || current_diag_is_ok);
   if(!only_diag_is_modified[dir] && !is_matrix_ready[dir])
   {
     reset_current_diag(dir);
@@ -2302,8 +2302,9 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
   {
     ierr = KSPSetOperators(ksp[dir], A[dir], A[dir], SAME_NONZERO_PATTERN); CHKERRXX(ierr);
   }
-  is_matrix_ready[dir]  = true;
-  current_diag[dir]     = desired_diag[dir];
+  is_matrix_ready[dir]        = true;
+  current_diag[dir]           = desired_diag[dir];
+  P4EST_ASSERT(current_diag_is_as_desired(dir));
 
   ierr = PetscLogEventEnd(log_my_p4est_poisson_faces_setup_linear_system, A, rhs[dir], 0, 0); CHKERRXX(ierr);
 }

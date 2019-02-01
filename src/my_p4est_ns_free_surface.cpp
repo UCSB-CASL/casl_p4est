@@ -885,7 +885,7 @@ void my_p4est_ns_free_surface_t::update_from_tn_to_tnp1(const CF_2 *level_set, b
       interp_nodes.interpolate(vtmp[dir]);
     }
 
-    advect_smoke(ngbd_np1, vtmp, smoke, smoke_np1);
+    advect_smoke(ngbd_np1, vtmp, smoke_np1);
 
     for(int dir=0; dir<P4EST_DIM; ++dir)
     {
@@ -893,7 +893,7 @@ void my_p4est_ns_free_surface_t::update_from_tn_to_tnp1(const CF_2 *level_set, b
     }
   }
 
-  bool grid_is_changing = criteria.refine_and_coarsen(p4est_np1, ngbd_np1, global_phi_np1, vorticity_np1, smoke_np1); // refine with the GLOBAL phi!!!!!
+  bool grid_is_changing = criteria.refine_and_coarsen(p4est_np1, nodes_np1, global_phi_np1, vorticity_np1, smoke_np1); // refine with the GLOBAL phi!!!!!
   int iter=0;
   while(grid_is_changing)
   {
@@ -956,7 +956,7 @@ void my_p4est_ns_free_surface_t::update_from_tn_to_tnp1(const CF_2 *level_set, b
         interp_nodes.interpolate(vtmp[dir]);
       }
 
-      advect_smoke(ngbd_np1, vtmp, smoke, smoke_np1);
+      advect_smoke(ngbd_np1, vtmp, smoke_np1);
 
       for(int dir=0; dir<P4EST_DIM; ++dir)
       {
@@ -964,7 +964,7 @@ void my_p4est_ns_free_surface_t::update_from_tn_to_tnp1(const CF_2 *level_set, b
       }
     }
 
-    grid_is_changing = criteria.refine_and_coarsen(p4est_np1, ngbd_np1, global_phi_np1, vorticity_np1, smoke_np1); // refine with the GLOBAL phi!!!!!
+    grid_is_changing = criteria.refine_and_coarsen(p4est_np1, nodes_np1, global_phi_np1, vorticity_np1, smoke_np1); // refine with the GLOBAL phi!!!!!
 
     iter++;
 
@@ -1077,7 +1077,7 @@ void my_p4est_ns_free_surface_t::update_from_tn_to_tnp1(const CF_2 *level_set, b
       ierr = VecDestroy(smoke_np1); CHKERRXX(ierr);
     }
     ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &smoke_np1); CHKERRXX(ierr);
-    advect_smoke(ngbd_np1, vn_nodes, smoke, smoke_np1);
+    advect_smoke(ngbd_np1, vn_nodes, smoke_np1);
   }
 
   /* interpolate the quantities on the new forest at the cells */

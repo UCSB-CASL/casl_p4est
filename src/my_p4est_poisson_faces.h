@@ -101,6 +101,11 @@ class my_p4est_poisson_faces_t
     current_diag[dir] = 0.0;
   }
 
+  inline bool current_diag_is_as_desired(int dir) const
+  {
+    return ((fabs(current_diag[dir] - desired_diag[dir]) < EPS*MAX(fabs(current_diag[dir]), fabs(desired_diag[dir]))) || ((fabs(current_diag[dir] < EPS) && (fabs(desired_diag[dir]) < EPS))));
+  }
+
 public:
   my_p4est_poisson_faces_t(const my_p4est_faces_t *faces, const my_p4est_node_neighbors_t *ngbd);
   ~my_p4est_poisson_faces_t();
