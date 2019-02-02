@@ -591,7 +591,10 @@ int create_directory(const char* path, int mpi_rank, MPI_Comm comm)
       for (char* p = tmp+1; *p; p++){
         if(*p == '/'){
           *p = 0;
-          return_ = mkdir(tmp, S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH); // permission = 755 like a regular mkdir in terminal
+          if((stat(tmp, &info) == 0) &&  (info.st_mode & S_IFDIR)) // if it already exists, no need to create it...
+            return_ = 0;
+          else
+            return_ = mkdir(tmp, S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH); // permission = 755 like a regular mkdir in terminal
           *p = '/';
           if(return_)
             break;

@@ -78,10 +78,10 @@ double my_p4est_interpolation_cells_t::interpolate(const p4est_quadrant_t &quad,
   ierr = VecGetArrayRead(Fi, &Fi_p); CHKERRXX(ierr);
 
   /* check if exactly on a point */
-  if(fabs(xyz[0]-quad_x_fr_q(quad_idx, tree_idx, p4est, ghost))<EPS &&
-     fabs(xyz[1]-quad_y_fr_q(quad_idx, tree_idx, p4est, ghost))<EPS
+  if(fabs(xyz[0]-quad_x_fr_q(quad_idx, tree_idx, p4est, ghost))<EPS*(xyz_max[0]-xyz_min[0]) &&
+     fabs(xyz[1]-quad_y_fr_q(quad_idx, tree_idx, p4est, ghost))<EPS*(xyz_max[1]-xyz_min[1])
    #ifdef P4_TO_P8
-     && fabs(xyz[2]-quad_z_fr_q(quad_idx, tree_idx, p4est, ghost))<EPS
+     && fabs(xyz[2]-quad_z_fr_q(quad_idx, tree_idx, p4est, ghost))<EPS*(xyz_max[2]-xyz_min[2])
    #endif
      )
   {

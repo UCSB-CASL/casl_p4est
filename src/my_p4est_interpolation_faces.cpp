@@ -83,10 +83,10 @@ double my_p4est_interpolation_faces_t::interpolate(const p4est_quadrant_t &quad,
   double zmax = v2c[3*t2v[P4EST_CHILDREN*(p4est->trees->elem_count-1) + P4EST_CHILDREN-1] + 2];
 #endif
   if(bc!=NULL && bc->wallType(xyz)==DIRICHLET &&
-     (((fabs(xyz[0]-xmin)<EPS || fabs(xyz[0]-xmax)<EPS) && (!is_periodic(p4est, dir::x)))
-      || ((fabs(xyz[1]-ymin)<EPS || fabs(xyz[1]-ymax)<EPS) && (!is_periodic(p4est, dir::y)))
+     (((fabs(xyz[0]-xmin)<EPS*(xyz_max[0]-xyz_min[0]) || fabs(xyz[0]-xmax)<EPS*(xyz_max[0]-xyz_min[0])) && (!is_periodic(p4est, dir::x)))
+      || ((fabs(xyz[1]-ymin)<EPS*(xyz_max[1]-xyz_min[1]) || fabs(xyz[1]-ymax)<EPS*(xyz_max[1]-xyz_min[1])) && (!is_periodic(p4est, dir::y)))
     #ifdef P4_TO_P8
-      || ((fabs(xyz[2]-zmin)<EPS || fabs(xyz[2]-zmax)<EPS) && (!is_periodic(p4est, dir::z)))
+      || ((fabs(xyz[2]-zmin)<EPS*(xyz_max[2]-xyz_min[2]) || fabs(xyz[2]-zmax)<EPS*(xyz_max[2]-xyz_min[2])) && (!is_periodic(p4est, dir::z)))
     #endif
       ))
     return bc->wallValue(xyz);
@@ -163,10 +163,10 @@ double my_p4est_interpolation_faces_t::interpolate(const p4est_quadrant_t &quad,
       {
 #ifdef P4_TO_P8
         if((face_is_well_defined==NULL || face_is_well_defined_p[f_tmp]) &&
-           fabs(xyz[0]-faces->x_fr_f(f_tmp,dir))<EPS && fabs(xyz[1]-faces->y_fr_f(f_tmp,dir))<EPS && fabs(xyz[2]-faces->z_fr_f(f_tmp,dir))<EPS)
+           fabs(xyz[0]-faces->x_fr_f(f_tmp,dir))<EPS*(xyz_max[0]-xyz_min[0]) && fabs(xyz[1]-faces->y_fr_f(f_tmp,dir))<EPS*(xyz_max[1]-xyz_min[1]) && fabs(xyz[2]-faces->z_fr_f(f_tmp,dir))<EPS*(xyz_max[2]-xyz_min[2]))
 #else
         if((face_is_well_defined==NULL || face_is_well_defined_p[f_tmp]) &&
-           fabs(xyz[0]-faces->x_fr_f(f_tmp,dir))<EPS && fabs(xyz[1]-faces->y_fr_f(f_tmp,dir))<EPS)
+           fabs(xyz[0]-faces->x_fr_f(f_tmp,dir))<EPS*(xyz_max[0]-xyz_min[0]) && fabs(xyz[1]-faces->y_fr_f(f_tmp,dir))<EPS*(xyz_max[1]-xyz_min[1]))
 #endif
         {
           double Fi_tmp = Fi_p[f_tmp];
