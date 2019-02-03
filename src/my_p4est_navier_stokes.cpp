@@ -73,8 +73,9 @@ void my_p4est_navier_stokes_t::splitting_criteria_vorticity_t::tag_quadrant(p4es
 #endif
 
     double xyz_quad[P4EST_DIM];
-    quad_xyz(p4est, quad, xyz_quad);
-    bool print = (fabs(xyz_quad[0]-9.0) < 10.0*EPS) && (fabs(xyz_quad[1]-0.25) < EPS);
+    xyz_quad[0] = p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx] + 0] + tree_dimensions[0]*quad_x_fr_i(quad);
+    xyz_quad[1] = p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx] + 1] + tree_dimensions[1]*quad_y_fr_j(quad);
+    bool print = (fabs(xyz_quad[0]-9.0) < 0.5*smallest_dxyz_max) && (fabs(xyz_quad[1]-0.25) < 0.5*smallest_dxyz_max);
 
     bool coarsen = (quad->level > min_lvl);
     if(coarsen)

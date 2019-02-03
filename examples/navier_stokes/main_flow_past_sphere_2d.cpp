@@ -835,10 +835,10 @@ int main (int argc, char* argv[])
 #endif
 
   char out_dir[PATH_MAX];
-  sprintf(out_dir, "%s/%dD/Re_%.2f/lmin_%d_lmax_%d/opt_2", export_dir.c_str(), P4EST_DIM, Re, lmin, lmax);
+  sprintf(out_dir, "%s/%dD/Re_%.2f/lmin_%d_lmax_%d", export_dir.c_str(), P4EST_DIM, Re, lmin, lmax);
 
   char vtk_path[PATH_MAX], vtk_name[PATH_MAX];
-  sprintf(vtk_path, "%s/vtu", out_dir);
+  sprintf(vtk_path, "%s/vtu/opt_2", out_dir);
 
   if(save_vtk || save_forces || save_state)
   {
