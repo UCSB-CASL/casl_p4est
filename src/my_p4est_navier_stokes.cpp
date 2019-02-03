@@ -89,7 +89,7 @@ void my_p4est_navier_stokes_t::splitting_criteria_vorticity_t::tag_quadrant(p4es
         cor_intf    = cor_intf && fabs(phi_p[node_idx])>=lip*2.0*quad_diag;
         if(smoke_p!=NULL)
           cor_smok  = cor_smok && smoke_p[node_idx]<smoke_thresh;
-        all_pos = all_pos && phi_p[node_idx]>MAX(2.0, uniform_band)*quad_diag;
+        all_pos = all_pos && phi_p[node_idx]>MAX(2.0, uniform_band)*smallest_dxyz_max;
         // [RAPHAEL:] modified to enforce two layers of finest level in positive domain as well (better extrapolation etc.), also required for Neumann BC in the face-solvers
         coarsen = (cor_vort && cor_band && cor_intf && cor_smok) || all_pos;
         //    coarsen = ((cor_vort && cor_band && cor_smok) || all_pos) && cor_intf;
