@@ -72,6 +72,10 @@ void my_p4est_navier_stokes_t::splitting_criteria_vorticity_t::tag_quadrant(p4es
     const double smallest_dxyz_max  = MAX(tree_dimensions[0],tree_dimensions[1])*(((double) P4EST_QUADRANT_LEN((int8_t) max_lvl))/((double) P4EST_ROOT_LEN));
 #endif
 
+    double xyz_quad[P4EST_DIM];
+    quad_xyz(p4est, quad, xyz_quad);
+    bool print = (fabs(xyz_quad[0]-9.0) < 10.0*EPS) && (fabs(xyz_quad[1]-0.25) < EPS);
+
     bool coarsen = (quad->level > min_lvl);
     if(coarsen)
     {
@@ -150,6 +154,8 @@ void my_p4est_navier_stokes_t::splitting_criteria_vorticity_t::tag_quadrant(p4es
 
             refine = is_neg && (ref_vort || ref_band || ref_intf || ref_smok);
             //    refine = ((ref_vort || ref_band || ref_smok) && is_neg) || ref_intf;
+            if(print)
+              std::cout << "j = " << j << ", i = " << i << ", loc_vort = " << loc_vort << ", loc_phi = " << loc_phi << std::endl;
             if(refine)
               break;
           }
