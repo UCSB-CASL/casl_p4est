@@ -72,10 +72,10 @@ void my_p4est_navier_stokes_t::splitting_criteria_vorticity_t::tag_quadrant(p4es
     const double smallest_dxyz_max  = MAX(tree_dimensions[0],tree_dimensions[1])*(((double) P4EST_QUADRANT_LEN((int8_t) max_lvl))/((double) P4EST_ROOT_LEN));
 #endif
 
-    double xyz_quad[P4EST_DIM];
-    xyz_quad[0] = p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx] + 0] + tree_dimensions[0]*quad_x_fr_i(quad);
-    xyz_quad[1] = p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx] + 1] + tree_dimensions[1]*quad_y_fr_j(quad);
-    bool print = (fabs(xyz_quad[0]-9.0) < 0.5*smallest_dxyz_max) && (fabs(xyz_quad[1]-0.25) < 0.5*smallest_dxyz_max);
+//    double xyz_quad[P4EST_DIM];
+//    xyz_quad[0] = p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx] + 0] + tree_dimensions[0]*quad_x_fr_i(quad);
+//    xyz_quad[1] = p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx] + 1] + tree_dimensions[1]*quad_y_fr_j(quad);
+//    bool print = (fabs(xyz_quad[0]-9.0) < 0.5*smallest_dxyz_max) && (fabs(xyz_quad[1]-0.25) < 0.5*smallest_dxyz_max);
 
     bool coarsen = (quad->level > min_lvl);
     if(coarsen)
@@ -112,55 +112,84 @@ void my_p4est_navier_stokes_t::splitting_criteria_vorticity_t::tag_quadrant(p4es
       bool ref_band     = false;
       bool ref_intf     = false;
       bool ref_smok     = false;
-      double loc_vort   = 0.0;
-      double loc_phi    = 0.0;
-      double loc_smoke  = 0.0;
+//      double loc_vort   = 0.0;
+//      double loc_phi    = 0.0;
+//      double loc_smoke  = 0.0;
+      const p4est_qcoord_t mid_qh = P4EST_QUADRANT_LEN (quad->level+1);
+      p4est_quadrant_t r, c;
+      r.level = P4EST_MAXLEVEL;
+      unsigned int node_idx;
 #ifdef P4_TO_P8
       for(unsigned short k=0; k<3; ++k)
 #endif
         for(unsigned short j=0; j<3; ++j)
           for(unsigned short i=0; i<3; ++i)
           {
-            double weight     = ((i==1)? 0.5: 1.0)*((j==1)? 0.5: 1.0);
+            r.x = quad->x + i*mid_qh;
+            r.y = quad->y + j*mid_qh;
 #ifdef P4_TO_P8
-            weight           *= ((k==1)? 0.5: 1.0);
+            r.z = quad->z + k*mid_qh;
 #endif
-            loc_vort   = 0.0;
-            loc_phi    = 0.0;
-            loc_smoke  = 0.0;
-#ifndef P4_TO_P8
-            unsigned short kk = 0;
-#else
-            for (unsigned short kk = k/2; kk < 2-(2-k)/2; ++kk)
+            P4EST_ASSERT (p4est_quadrant_is_node (&r, 0));
+            p4est_node_canonicalize(p4est, tree_idx, &r, &c);
+            if(index_of_node(&c, nodes, node_idx))
             {
-#endif
-              for (unsigned short jj = j/2; jj < 2-(2-j)/2; ++jj)
-                for (unsigned short ii = i/2; ii < 2-(2-i)/2; ++ii)
-                {
-                  p4est_locidx_t node_idx = nodes->local_nodes[P4EST_CHILDREN*quad_idx+4*kk+2*jj+ii];
-                  loc_vort    += weight*vorticity_p[node_idx];
-                  loc_phi     += weight*phi_p[node_idx];
-                  if(smoke_p!=NULL)
-                    loc_smoke += weight*smoke_p[node_idx];
-                }
-#ifdef P4_TO_P8
-            }
-#endif
-            ref_vort        = ref_vort || fabs(loc_vort)*quad_dxyz_max/max_L2_norm_u>threshold;
-            ref_band        = ref_band || fabs(loc_phi)<uniform_band*smallest_dxyz_max;
-            ref_intf        = ref_intf || fabs(loc_phi)<=lip*quad_diag;
-            if(smoke_p!=NULL)
-              ref_smok      = ref_smok || loc_smoke>=smoke_thresh;
-            is_neg = is_neg || loc_phi< MAX(2.0, uniform_band)*smallest_dxyz_max; // [RAPHAEL:] same comment as before
+              P4EST_ASSERT(node_idx < nodes->indep_nodes.elem_count);
+              ref_vort        = ref_vort || fabs(vorticity_p[node_idx])*quad_dxyz_max/max_L2_norm_u>threshold;
+              ref_band        = ref_band || fabs(phi_p[node_idx])<uniform_band*smallest_dxyz_max;
+              ref_intf        = ref_intf || fabs(phi_p[node_idx])<=lip*quad_diag;
+              if(smoke_p!=NULL)
+                ref_smok      = ref_smok || smoke_p[node_idx]>=smoke_thresh;
+              is_neg = is_neg || phi_p[node_idx]< MAX(2.0, uniform_band)*smallest_dxyz_max; // [RAPHAEL:] same comment as before
 
-            refine = is_neg && (ref_vort || ref_band || ref_intf || ref_smok);
-            //    refine = ((ref_vort || ref_band || ref_smok) && is_neg) || ref_intf;
-            if(print)
-              std::cout << "j = " << j << ", i = " << i << ", loc_vort = " << loc_vort << ", loc_phi = " << loc_phi << std::endl;
-            if(refine)
-              break;
+              refine = is_neg && (ref_vort || ref_band || ref_intf || ref_smok);
+              //    refine = ((ref_vort || ref_band || ref_smok) && is_neg) || ref_intf;
+//              if(print)
+//                std::cout << "j = " << j << ", i = " << i << ", loc_vort = " << vorticity_p[node_idx] << ", loc_phi = " << phi_p[node_idx] << std::endl;
+              if(refine)
+                goto end_of_function;
+            }
+//            double weight     = ((i==1)? 0.5: 1.0)*((j==1)? 0.5: 1.0);
+//#ifdef P4_TO_P8
+//            weight           *= ((k==1)? 0.5: 1.0);
+//#endif
+//            loc_vort   = 0.0;
+//            loc_phi    = 0.0;
+//            loc_smoke  = 0.0;
+//#ifndef P4_TO_P8
+//            unsigned short kk = 0;
+//#else
+//            for (unsigned short kk = k/2; kk < 2-(2-k)/2; ++kk)
+//            {
+//#endif
+//              for (unsigned short jj = j/2; jj < 2-(2-j)/2; ++jj)
+//                for (unsigned short ii = i/2; ii < 2-(2-i)/2; ++ii)
+//                {
+//                  p4est_locidx_t node_idx = nodes->local_nodes[P4EST_CHILDREN*quad_idx+4*kk+2*jj+ii];
+//                  loc_vort    += weight*vorticity_p[node_idx];
+//                  loc_phi     += weight*phi_p[node_idx];
+//                  if(smoke_p!=NULL)
+//                    loc_smoke += weight*smoke_p[node_idx];
+//                }
+//#ifdef P4_TO_P8
+//            }
+//#endif
+//            ref_vort        = ref_vort || fabs(loc_vort)*quad_dxyz_max/max_L2_norm_u>threshold;
+//            ref_band        = ref_band || fabs(loc_phi)<uniform_band*smallest_dxyz_max;
+//            ref_intf        = ref_intf || fabs(loc_phi)<=lip*quad_diag;
+//            if(smoke_p!=NULL)
+//              ref_smok      = ref_smok || loc_smoke>=smoke_thresh;
+//            is_neg = is_neg || loc_phi< MAX(2.0, uniform_band)*smallest_dxyz_max; // [RAPHAEL:] same comment as before
+
+//            refine = is_neg && (ref_vort || ref_band || ref_intf || ref_smok);
+//            //    refine = ((ref_vort || ref_band || ref_smok) && is_neg) || ref_intf;
+//            if(print)
+//              std::cout << "j = " << j << ", i = " << i << ", loc_vort = " << loc_vort << ", loc_phi = " << loc_phi << std::endl;
+//            if(refine)
+//              break;
           }
     }
+end_of_function:
 
     if (refine)
       quad->p.user_int = REFINE_QUADRANT;

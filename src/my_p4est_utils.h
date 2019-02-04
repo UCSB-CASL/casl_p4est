@@ -5,12 +5,16 @@
 #ifdef P4_TO_P8
 #include <p8est.h>
 #include <p8est_nodes.h>
+#include <src/my_p8est_nodes.h>
 #include <p8est_ghost.h>
+#include <p8est_bits.h>
 #include <src/my_p8est_refine_coarsen.h>
 #else
 #include <p4est.h>
 #include <p4est_nodes.h>
+#include <src/my_p4est_nodes.h>
 #include <p4est_ghost.h>
+#include <p4est_bits.h>
 #include <src/my_p4est_refine_coarsen.h>
 #endif
 #include <src/petsc_logging.h>
@@ -338,6 +342,8 @@ public:
   }
 
 };
+
+bool index_of_node(const p4est_quadrant_t *n, p4est_nodes_t* nodes, unsigned int &idx);
 
 /*!
  * \brief linear_interpolation performs linear interpolation for a point
