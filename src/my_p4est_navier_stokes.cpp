@@ -1717,7 +1717,7 @@ bool my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set, boo
         P4EST_ASSERT((ghost_np1!=NULL) || (iter == 0));
         hierarchy_np1 = ((iter>0)? (new my_p4est_hierarchy_t(p4est_np1, ghost_np1, brick)): hierarchy_n);
         ngbd_n_np1    = ((iter>0)? (new my_p4est_node_neighbors_t(hierarchy_np1, nodes_np1)): ngbd_n);
-        advect_smoke(ngbd_n, vnp1_nodes, smoke_np1);
+        advect_smoke(ngbd_n_np1, vnp1_nodes, smoke_np1);
         for(short dir=0; dir<P4EST_DIM; ++dir)
           if((vtmp[dir] != NULL) && (vtmp[dir] != vnp1_nodes[dir])){
             ierr = VecDestroy(vtmp[dir]); CHKERRXX(ierr); }
