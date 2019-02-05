@@ -838,7 +838,7 @@ int main (int argc, char* argv[])
   sprintf(out_dir, "%s/%dD/Re_%.2f/lmin_%d_lmax_%d", export_dir.c_str(), P4EST_DIM, Re, lmin, lmax);
 
   char vtk_path[PATH_MAX], vtk_name[PATH_MAX];
-  sprintf(vtk_path, "%s/vtu/opt_2", out_dir);
+  sprintf(vtk_path, "%s/vtu/opt_2_reused_solvers_and_pchypre", out_dir);
 
   if(save_vtk || save_forces || save_state)
   {
@@ -869,6 +869,9 @@ int main (int argc, char* argv[])
   if(save_forces)
     initialize_force_output(file_forces, out_dir, lmin, lmax, threshold_split_cell, cfl, sl_order, mpi, tstart);
 
+  my_p4est_poisson_cells_t* cell_solver = NULL;
+  my_p4est_poisson_faces_t* face_solver = NULL;
+
   tn = tstart;
   int iter = 0;
   int export_vtk = -1;
@@ -894,7 +897,11 @@ int main (int argc, char* argv[])
         ns.set_dt(dt);
       }
 
-      ns.update_from_tn_to_tnp1(NULL, false, false);
+      bool solvers_can_be_reused = ns.update_from_tn_to_tnp1(NULL, false, false);
+      if(cell_solver!=NULL && !solvers_can_be_reused){
+        delete  cell_solver; cell_solver = NULL; }
+      if(face_solver!=NULL && !solvers_can_be_reused){
+        delete  face_solver; face_solver = NULL; }
     }
 
     if(save_state && ((int) floor(tn/dt_save_data)) != save_data_idx)
@@ -903,15 +910,15 @@ int main (int argc, char* argv[])
       ns.save_state(out_dir, tn, n_states);
     }
 
-    if(external_force_u==NULL) delete external_force_u;
+    if(external_force_u!=NULL) delete external_force_u;
     external_force_u = new external_force_u_t;
 
-    if(external_force_v==NULL) delete external_force_v;
+    if(external_force_v!=NULL) delete external_force_v;
     external_force_v = new external_force_v_t;
 
 
 #ifdef P4_TO_P8
-    if(external_force_w==NULL) delete external_force_w;
+    if(external_force_w!=NULL) delete external_force_w;
     external_force_w = new external_force_w_t;
 #endif
 
@@ -933,8 +940,8 @@ int main (int argc, char* argv[])
       hodge_new = ns.get_hodge();
       ierr = VecCopy(hodge_new, hodge_old); CHKERRXX(ierr);
 
-      ns.solve_viscosity();
-      ns.solve_projection();
+      ns.solve_viscosity(face_solver, (face_solver!=NULL), KSPBCGS, PCHYPRE);
+      ns.solve_projection(cell_solver, (cell_solver!=NULL), KSPCG, PCHYPRE);
 
       hodge_new = ns.get_hodge();
       const double *ho; ierr = VecGetArrayRead(hodge_old, &ho); CHKERRXX(ierr);
@@ -1010,10 +1017,10 @@ int main (int argc, char* argv[])
   }
 
 
-  if(external_force_u==NULL) delete external_force_u;
-  if(external_force_v==NULL) delete external_force_v;
+  if(external_force_u!=NULL) delete external_force_u;
+  if(external_force_v!=NULL) delete external_force_v;
 #ifdef P4_TO_P8
-  if(external_force_w==NULL) delete external_force_w;
+  if(external_force_w!=NULL) delete external_force_w;
 #endif
 
   watch.stop();

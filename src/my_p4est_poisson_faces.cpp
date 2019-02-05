@@ -243,7 +243,7 @@ void my_p4est_poisson_faces_t::solve(Vec *solution, bool use_nonzero_initial_gue
     /* assemble the linear system if required, and initialize the Krylov solver and its preconditioner based on that*/
     setup_linear_system(dir);
 
-    setup_linear_solver(use_nonzero_initial_guess, matrix_has_nullspace[dir], ksp_type, pc_type);
+    setup_linear_solver(dir, use_nonzero_initial_guess, ksp_type, pc_type);
 
     /* solve the system */
     ierr = PetscLogEventBegin(log_my_p4est_poisson_faces_KSPSolve, ksp, rhs[dir], solution[dir], 0); CHKERRXX(ierr);
