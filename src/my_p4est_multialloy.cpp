@@ -209,7 +209,7 @@ my_p4est_multialloy_t::~my_p4est_multialloy_t()
 
 void my_p4est_multialloy_t::initialize_grid(MPI_Comm mpi_comm, double xyz_min[], double xyz_max[], int nxyz[], int periodicity[], CF_2 &level_set, int lmin, int lmax, double lip)
 {
-  /* create the p4est */
+  /* create main p4est grid */
   connectivity_ = my_p4est_brick_new(nxyz, xyz_min, xyz_max, &brick_, periodicity);
   p4est_        = my_p4est_new(mpi_comm, connectivity_, 0, NULL, NULL);
 
@@ -228,6 +228,7 @@ void my_p4est_multialloy_t::initialize_grid(MPI_Comm mpi_comm, double xyz_min[],
   ngbd_ = new my_p4est_node_neighbors_t(hierarchy_, nodes_);
   ngbd_->init_neighbors();
 
+  /* create auxiliary p4est grid for keeping values in solid */
   history_p4est_ = p4est_copy(p4est_, P4EST_FALSE);
   history_ghost_ = my_p4est_ghost_new(history_p4est_, P4EST_CONNECT_FULL);
   history_nodes_ = my_p4est_nodes_new(history_p4est_, history_ghost_);
@@ -236,18 +237,20 @@ void my_p4est_multialloy_t::initialize_grid(MPI_Comm mpi_comm, double xyz_min[],
   history_ngbd_      = new my_p4est_node_neighbors_t(history_hierarchy_, history_nodes_);
   history_ngbd_->init_neighbors();
 
+  /* determine the smallest cell size */
   ::dxyz_min(p4est_, dxyz_);
 #ifdef P4_TO_P8
-  dxyz_min_ = MIN(dxyz_[0],dxyz_[1],dxyz_[2]);
-  dxyz_max_ = MAX(dxyz_[0],dxyz_[1],dxyz_[2]);
-  diag_ = sqrt(SQR(dxyz_[0])+SQR(dxyz_[1])+SQR(dxyz_[2]));
+  dxyz_min_ = MIN(dxyz_[0], dxyz_[1], dxyz_[2]);
+  dxyz_max_ = MAX(dxyz_[0], dxyz_[1], dxyz_[2]);
+  diag_ = sqrt(SQR(dxyz_[0]) + SQR(dxyz_[1]) + SQR(dxyz_[2]));
 #else
-  dxyz_min_ = MIN(dxyz_[0],dxyz_[1]);
-  dxyz_max_ = MAX(dxyz_[0],dxyz_[1]);
-  diag_ = sqrt(SQR(dxyz_[0])+SQR(dxyz_[1]));
+  dxyz_min_ = MIN(dxyz_[0], dxyz_[1]);
+  dxyz_max_ = MAX(dxyz_[0], dxyz_[1]);
+  diag_ = sqrt(SQR(dxyz_[0]) + SQR(dxyz_[1]));
 #endif
-//  dxyz_close_interface = 4*dxyz_min;
   dxyz_close_interface_ = 1.2*dxyz_max_;
+
+  /* allocate memory for data fields */
 }
 
 void my_p4est_multialloy_t::set_normal_velocity(Vec v)

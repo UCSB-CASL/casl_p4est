@@ -134,8 +134,7 @@ void set_alloy_parameters()
     eps_v                = 0;
     eps_anisotropy       = 0.05;
 
-    Dl[0] = 1e-1;
-//    Dl[0] = 1;
+    Dl[0] = 1e-1;//    Dl[0] = 1;
 //    Dl[0] = 1;
     ml[0] =-357;
 //    ml[0] =-1;
@@ -1678,35 +1677,7 @@ int main (int argc, char* argv[])
   mpi.init(argc, argv);
 
   cmdParser cmd;
-//  cmd.add_option("lmin", "min level of the tree");
-//  cmd.add_option("lmax", "max level of the tree");
-//  cmd.add_option("nb_splits", "number of recursive splits");
-//  cmd.add_option("bc_wtype", "type of boundary condition to use on the wall");
-//  cmd.add_option("bc_itype", "type of boundary condition to use on the interface");
-//  cmd.add_option("save_vtk", "save the p4est in vtk format");
-//#ifdef P4_TO_P8
-//  cmd.add_option("test", "choose a test.\n\
-//                 0 - x+y+z\n\
-//                 1 - x*x + y*y + z*z\n\
-//                 2 - sin(x)*cos(y)*exp(z)");
-//#else
-//  cmd.add_option("test", "choose a test.\n\
-//                 0 - x+y\n\
-//                 1 - x*x + y*y\n\
-//                 2 - sin(x)*cos(y)\n\
-//                 3 - sin(x) + cos(y)");
-//#endif
   cmd.parse(argc, argv);
-
-//  lmin = cmd.get("lmin", lmin);
-//  lmax = cmd.get("lmax", lmax);
-//  nb_splits = cmd.get("nb_splits", nb_splits);
-//  test_number = cmd.get("test", test_number);
-
-//  bc_wtype = cmd.get("bc_wtype", bc_wtype);
-//  bc_itype = cmd.get("bc_itype", bc_itype);
-
-//  save_vtk = cmd.get("save_vtk", save_vtk);
 
   set_alloy_parameters();
 

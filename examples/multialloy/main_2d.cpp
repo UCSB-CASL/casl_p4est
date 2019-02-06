@@ -746,8 +746,6 @@ int main (int argc, char* argv[])
   parStopWatch w1;
   w1.start("total time");
 
-//  /* create the p4est */
-//  my_p4est_brick_t brick;
 #ifdef P4_TO_P8
   double xyz_min [] = {xmin, ymin, zmin};
   double xyz_max [] = {xmax, ymax, zmax};
@@ -755,32 +753,15 @@ int main (int argc, char* argv[])
   double xyz_min [] = {xmin, ymin};
   double xyz_max [] = {xmax, ymax};
 #endif
-//  p4est_connectivity_t *connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick, periodic);
-//  p4est_t *p4est = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
-
-//  splitting_criteria_cf_t data(lmin, lmax, &LS, lip);
-
-//  p4est->user_pointer = (void*)(&data);
-//  my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
-//  my_p4est_partition(p4est, P4EST_FALSE, NULL);
-
-//  p4est_ghost_t *ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
-//  if (use_continuous_stencil || use_one_sided_derivatives)
-//    my_p4est_ghost_expand(p4est, ghost);
-//  p4est_nodes_t *nodes = my_p4est_nodes_new(p4est, ghost);
-
-//  my_p4est_hierarchy_t *hierarchy = new my_p4est_hierarchy_t(p4est,ghost, &brick);
-//  my_p4est_node_neighbors_t *ngbd = new my_p4est_node_neighbors_t(hierarchy,nodes);
-//  ngbd->init_neighbors();
 
   /* initialize the solver */
   my_p4est_multialloy_t mas;
 
   mas.initialize_grid(mpi.comm(), xyz_min, xyz_max, n_xyz, periodic, LS, lmin, lmax, lip);
 
-  p4est_t *p4est = mas.get_p4est();
-  p4est_nodes_t *nodes = mas.get_nodes();
-  my_p4est_node_neighbors_t *ngbd = mas.get_ngbd();
+  p4est_t                   *p4est = mas.get_p4est();
+  p4est_nodes_t             *nodes = mas.get_nodes();
+  my_p4est_node_neighbors_t *ngbd  = mas.get_ngbd();
 
   /* initialize the variables */
   Vec phi, tl, ts, c0, c1, normal_velocity, c0s, c1s;

@@ -105,8 +105,8 @@ my_p4est_poisson_nodes_multialloy_t::my_p4est_poisson_nodes_multialloy_t(my_p4es
   min_volume_ = dxyz[0]*dxyz[1];
 #endif
 
-//  var_scheme_ = VALUE;
-  var_scheme_ = ABS_VALUE;
+  var_scheme_ = VALUE;
+//  var_scheme_ = ABS_VALUE;
 //  var_scheme_ = ABS_ALTER;
 //  var_scheme_ = ABS_SMTH1;
 //  var_scheme_ = ABS_SMTH2;
