@@ -29,17 +29,18 @@
 
 class my_p4est_scft_t
 {
-public:
   PetscErrorCode ierr;
 
   /* grid */
-  my_p4est_brick_t          *brick;
+  my_p4est_brick_t           brick;
   p4est_connectivity_t      *connectivity;
   p4est_t                   *p4est;
   p4est_ghost_t             *ghost;
   p4est_nodes_t             *nodes;
   my_p4est_hierarchy_t      *hierarchy;
   my_p4est_node_neighbors_t *ngbd;
+
+  splitting_criteria_t *sp_crit;
 
   /* geometry */
   std::vector<Vec> *phi;
@@ -57,7 +58,6 @@ public:
   Vec rho_b;
 
   /* surface tensions */
-//  std::vector<Vec> *gamma_a, *gamma_b;
   std::vector<CF_2 *> *gamma_a;
   std::vector<CF_2 *> *gamma_b;
   CF_2 *gamma_air;
@@ -66,9 +66,13 @@ public:
   std::vector<Vec> bc_coeffs_a;
   std::vector<Vec> bc_coeffs_b;
 
+  std::vector<CF_2 *> bc_coeffs_a_cf;
+  std::vector<CF_2 *> bc_coeffs_b_cf;
+
   /* partition function and energy */
   double Q;
-  double H, singular_part_of_energy;
+  double energy;
+  double energy_singular_part;
 
   /* physical parameters */
   double f;
@@ -76,26 +80,27 @@ public:
   int ns, fns;
 
   /* auxiliary variables */
-  double ds;
+  double ds_a, ds_b;
   double ns_a, ns_b;
   int num_surfaces;
   double lambda;
-  double dxyz[P4EST_DIM], dxyz_min, dxyz_max;
+  double dxyz[P4EST_DIM], dxyz_min, dxyz_max, diag;
+  double dxyz_close_interface;
 
   double volume;
 
   Vec force_p;
   Vec force_m;
-  double force_p_avg;
-  double force_m_avg;
+  double force_p_avg, force_p_max;
+  double force_m_avg, force_m_max;
 
   Vec exp_w_a;
   Vec exp_w_b;
 
-  Vec rhs, rhs_old, add_to_rhs;
+  Vec rhs, add_to_rhs;
 
   std::vector<int> color;
-  std::vector<double> bc_values;
+  std::vector<CF_2 *> bc_values;
   std::vector<BoundaryConditionType> bc_types;
 
   std::vector<Vec> qf;
@@ -107,10 +112,12 @@ public:
   Vec integrating_vec;
   Vec q_tmp;
 
-  double scheme_coeff; // 1 - fully implicit, 2 - crank-nicolson
-  bool use_cn_scheme;
+  int time_discretization;
 
-  std::vector<Vec *> normal;
+  int integration_order;
+  int cube_refinement;
+
+  std::vector<Vec*> normal;
   std::vector<Vec> kappa;
 
   Vec energy_shape_deriv;
@@ -119,14 +126,46 @@ public:
   double dt_energy;
 
   /* Poisson solver */
-  my_p4est_poisson_nodes_mls_sc_t *solver_a, *solver_b;
+  my_p4est_poisson_nodes_mls_sc_t *solver_a;
+  my_p4est_poisson_nodes_mls_sc_t *solver_b;
 
-//public:
-  my_p4est_scft_t(my_p4est_node_neighbors_t *ngbd);
+  class bc_wall_type_t : public WallBC2D
+  {
+  public:
+    BoundaryConditionType operator()( double x, double y ) const
+    {
+      return NEUMANN;
+    }
+  } bc_wall_type;
+
+#ifdef P4_TO_P8
+  class zero_cf_t : public CF_3
+  {
+  public:
+    double operator()(double, double, double) const
+    {
+      return 0;
+    }
+  } zero_cf;
+#else
+  class zero_cf_t : public CF_2
+  {
+  public:
+    double operator()(double, double) const
+    {
+      return 0;
+    }
+  } zero_cf;
+#endif
+
+public:
+  my_p4est_scft_t();
   ~my_p4est_scft_t();
 
+  void initialize(MPI_Comm mpi_comm, double xyz_min[], double xyz_max[], int nxyz[], int periodicity[], CF_2 &level_set, int lmin, int lmax, double lip);
+
   void set_geometry(std::vector<Vec>& in_phi, std::vector<action_t> &in_action);
-  void set_parameters(double in_f, double in_XN, int in_ns);
+  void set_polymer(double f, double XN, int ns);
   void set_surface_tensions(std::vector<CF_2 *>& in_gamma_a, std::vector<CF_2 *>& in_gamma_b, CF_2 &in_gamma_air)
   {
     gamma_a = &in_gamma_a; gamma_b = &in_gamma_b; gamma_air = &in_gamma_air;
@@ -148,11 +187,11 @@ public:
 
   double integrate_in_time(int start, int end, double *integrand);
 
-  void diffusion_step(my_p4est_poisson_nodes_mls_sc_t *solver, Vec &sol, Vec &sol_nm1);
+  void diffusion_step(my_p4est_poisson_nodes_mls_sc_t *solver, double ds, Vec &sol, Vec &sol_nm1);
 
   void save_VTK(int compt);
 
-  double get_energy() { return H;}
+  double get_energy() { return energy;}
   double get_pressure_force() { return force_p_avg; }
   double get_exchange_force() { return force_m_avg; }
 
@@ -174,6 +213,20 @@ public:
   double compute_change_in_energy_contact_term(int phi0_idx, int phi1_idx, Vec norm_velo, double dt);
 
   void update_grid(Vec normal_velo, int surf_idx, double dt);
+
+  inline p4est_t*       get_p4est() { return p4est; }
+  inline p4est_nodes_t* get_nodes() { return nodes; }
+  inline p4est_ghost_t* get_ghost() { return ghost; }
+  inline my_p4est_node_neighbors_t* get_ngbd()  { return ngbd; }
+
+  inline Vec get_mu_m() { return mu_m; }
+  inline Vec get_mu_p() { return mu_p; }
+
+  inline Vec get_rho_a() { return rho_a; }
+  inline Vec get_rho_b() { return rho_b; }
+
+  void recompute_matrices() { solver_a->set_is_matrix_computed(false);
+                              solver_b->set_is_matrix_computed(false); }
 
 
   void save_VTK_q(int compt);
@@ -200,21 +253,21 @@ public:
 
   double dt_density;
 
-  void DO_initialize(CF_2 &mu_target_cf);
-  void DO_initialize_fields();
-  void DO_solve_for_propogators();
-  void DO_diffusion_step(my_p4est_poisson_nodes_mls_sc_t *solver, Vec &sol, Vec &sol_nm1, Vec &exp_w, Vec &q, Vec &lam);
-  void DO_compute_densities();
-  void DO_update_potentials();
-  void DO_compute_shape_derivative(int phi_idx);
-  double DO_compute_cost_functional();
-  double DO_compute_change_in_functional(int phi_idx, Vec norm_velo, double dt);
-  void DO_save_VTK(int compt);
-  void DO_save_VTK_before_moving(int compt);
+//  void DO_initialize(CF_2 &mu_target_cf);
+//  void DO_initialize_fields();
+//  void DO_solve_for_propogators();
+//  void DO_diffusion_step(my_p4est_poisson_nodes_mls_sc_t *solver, Vec &sol, Vec &sol_nm1, Vec &exp_w, Vec &q, Vec &lam);
+//  void DO_compute_densities();
+//  void DO_update_potentials();
+//  void DO_compute_shape_derivative(int phi_idx);
+//  double DO_compute_cost_functional();
+//  double DO_compute_change_in_functional(int phi_idx, Vec norm_velo, double dt);
+//  void DO_save_VTK(int compt);
+//  void DO_save_VTK_before_moving(int compt);
 
-  double DO_get_cost_func() { return cost_func; }
-  double DO_get_pressure_force() { return force_lam_p_avg; }
-  double DO_get_exchange_force() { return force_lam_m_avg; }
+//  double DO_get_cost_func() { return cost_func; }
+//  double DO_get_pressure_force() { return force_lam_p_avg; }
+//  double DO_get_exchange_force() { return force_lam_m_avg; }
 
 };
 
