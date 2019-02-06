@@ -187,11 +187,11 @@ double my_p4est_ns_free_surface_t::mixed_interface_bc_t::operator ()(double x, d
   {
     double alpha = _prnt->sl_order==1 ? 1 : (2*_prnt->dt_n + _prnt->dt_nm1)/(_prnt->dt_n + _prnt->dt_nm1);
 #ifdef P4_TO_P8
-    return _prnt->bc_pressure_global.interfaceValue(x, y, z)   * _prnt->dt_n / (alpha*_prnt->rho);
-//    return (((*_prnt->interp_phi)(x, y, z) > -1.2*_prnt->finest_diag)? _prnt->bc_hodge.interfaceValue(x, y, z) : _prnt->zero(x, y, z));
+//    return _prnt->bc_pressure_global.interfaceValue(x, y, z)   * _prnt->dt_n / (alpha*_prnt->rho);
+    return (((*_prnt->interp_phi)(x, y, z) > -1.2*_prnt->finest_diag)? _prnt->bc_hodge.interfaceValue(x, y, z) : _prnt->interp_sigma_kappa->operator ()(x, y, z)* _prnt->dt_n / (alpha*_prnt->rho));
 #else
-    return _prnt->bc_pressure_global.interfaceValue(x, y)   * _prnt->dt_n / (alpha*_prnt->rho);
-//    return (((*_prnt->interp_phi)(x, y) > -1.2*_prnt->finest_diag)? _prnt->bc_hodge.interfaceValue(x, y) : _prnt->zero(x, y));
+    //return _prnt->bc_pressure_global.interfaceValue(x, y)   * _prnt->dt_n / (alpha*_prnt->rho);
+    return (((*_prnt->interp_phi)(x, y) > -1.2*_prnt->finest_diag)? _prnt->bc_hodge.interfaceValue(x, y) : _prnt->interp_sigma_kappa->operator ()(x, y)* _prnt->dt_n / (alpha*_prnt->rho));
 #endif
     break;
   }

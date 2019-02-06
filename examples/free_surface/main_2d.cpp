@@ -735,6 +735,7 @@ int main (int argc, char* argv[])
   cmd.add_option("save_vtk", "save the p4est in vtk format");
   cmd.add_option("save_every_delta_t", "export images every delta_t simulation time");
   cmd.add_option("save_forces", "save the forces");
+  cmd.add_option("save_water_volume", "save the volume of the water");
   cmd.add_option("smoke", "0 - no smoke, 1 - with smoke");
   cmd.add_option("smoke_thresh", "threshold for smoke refinement");
   cmd.add_option("refine_with_smoke", "refine the grid with the smoke density and threshold smoke_thresh");
@@ -775,6 +776,7 @@ int main (int argc, char* argv[])
   double threshold_split_cell = cmd.get("thresh", 0.1);
   bool save_vtk = cmd.contains("save_vtk");
   bool save_forces = cmd.get("save_forces", 1);
+  bool save_water_volume = cmd.get("save_water_volume", 1);
   double save_every_dt = cmd.get("save_every_delta_t", 1.0/24.0);
   test_number = cmd.get("test", 1);
 
@@ -801,8 +803,8 @@ int main (int argc, char* argv[])
 #ifdef P4_TO_P8
   case 0: nx=cmd.get("nx", 1); ny=cmd.get("ny", 1); nz=cmd.get("nz", 1); xmin=0.0; xmax=1.0; ymin=0; ymax=1.0; zmin=0.0; zmax=1.0; mu=8.9e-4; rho=1000.0; surf_tension=72.86e-3; u0=0.4*M_PI; r0=0.15; tf=cmd.get("tf", 10.0);  break;
 #else
-  case 0: nx=cmd.get("nx", 1); ny=cmd.get("ny", 1); xmin=0.0; xmax=1.0; ymin=0.0; ymax=1.0; mu=8.9e-4; rho=1000.0; surf_tension=72.86e-3; u0=1.0; /*arbitrary estimate...*/ r0=-2.0; tf=cmd.get("tf", 10.0);  break;
-  case 1: nx=cmd.get("nx", 1); ny=cmd.get("ny", 1); xmin=0.0; xmax=1.0; ymin=0.0; ymax=1.0; mu=8.9e-4; rho=1000.0; surf_tension=72.86e-3; u0=0.2*M_PI; r0=0.15; tf=cmd.get("tf", 20.0);  break;
+  case 0: nx=cmd.get("nx", 1); ny=cmd.get("ny", 1); xmin=0.0; xmax=1.0; ymin=0.0; ymax=1.0; mu=8.9e-4; rho=1000.0; surf_tension=10.0/*72.86e-3*/; u0=1.0; /*arbitrary estimate...*/ r0=-2.0; tf=cmd.get("tf", 10.0);  break;
+  case 1: nx=cmd.get("nx", 1); ny=cmd.get("ny", 1); xmin=0.0; xmax=1.0; ymin=0.0; ymax=1.0; mu=8.9e-4; rho=1000.0; surf_tension=10.0; u0=0.2*M_PI; r0=0.15; tf=cmd.get("tf", 20.0);  break;
 #endif
   default: throw std::invalid_argument("choose a valid test.");
   }
@@ -1004,16 +1006,19 @@ int main (int argc, char* argv[])
 
   char vtk_name[1000];
   double forces[P4EST_DIM];
+  double water_volume;
 
   FILE *fp_forces;
+  FILE *fp_water_volume;
   char file_forces[1000];
+  char file_water_volume[1000];
 
 #if defined(POD_CLUSTER)
   string out_dir = cmd.get<string>("out_dir", "/home/regan/free_surface");
 #elif defined(STAMPEDE)
   string out_dir = cmd.get<string>("out_dir", "/work/04965/tg842642/stampede2/free_surface");
 #else
-  string out_dir = cmd.get<string>("out_dir", "/home/regan/workspace/projects/free_surface");
+  string out_dir = cmd.get<string>("out_dir", "/home/mingru/workspace/projects/free_surface");
 #endif
 
   string sub_folder_path = out_dir + "/" + to_string(P4EST_DIM) + "d/test_" + to_string(test_number);
@@ -1060,6 +1065,26 @@ int main (int argc, char* argv[])
       fprintf(fp_forces, "%% tn | Cd_x | Cd_y\n");
 #endif
       fclose(fp_forces);
+    }
+  }
+//save the volume of water
+  if(save_water_volume)
+  {
+    sprintf(file_water_volume, "%s/water_volume_%d-%d_%dx%d_thresh_%g_ntimesdt_%g_sl_%d.dat", sub_folder_path.c_str(), lmin, lmax, nx, ny, threshold_split_cell, n_times_dt, sl_order);
+    ierr = PetscPrintf(mpi.comm(), "Saving water volume in ... %s\n", file_water_volume); CHKERRXX(ierr);
+    if(mpi.rank()==0)
+    {
+      fp_water_volume = fopen(file_water_volume, "w");
+      if(fp_water_volume == NULL)
+
+#ifdef P4_TO_P8
+        throw std::invalid_argument("[ERROR]: free_surface_3d::main(): could not open file for forces output.");
+      fprintf(fp_water_volume, "%% tn | water_volume");
+#else
+        throw std::invalid_argument("[ERROR]: free_surface_2d::main(): could not open file for forces output.");
+      fprintf(fp_water_volume, "%% tn | water_volume");
+#endif
+      fclose(fp_water_volume);
     }
   }
 
@@ -1177,6 +1202,31 @@ int main (int argc, char* argv[])
         fclose(fp_forces);
       }
     }
+    //insert volume writing here
+    if(save_water_volume)
+    {
+      Vec volume_integrator, volume_integrator_loc;
+      ierr = VecCreateGhostNodes(free_surface_solver.get_p4est(), free_surface_solver.get_nodes(), &volume_integrator); CHKERRXX(ierr);
+      ierr = VecGhostGetLocalForm(volume_integrator, &volume_integrator_loc); CHKERRXX(ierr);
+      ierr = VecSet(volume_integrator_loc, 1.0);CHKERRXX(ierr);
+      ierr = VecGhostRestoreLocalForm(volume_integrator, &volume_integrator_loc); CHKERRXX(ierr);
+      water_volume = integrate_over_negative_domain(free_surface_solver.get_p4est(), free_surface_solver.get_nodes(), free_surface_solver.get_global_phi(), volume_integrator);
+      if(mpi.rank() == 0)
+      {
+        fp_water_volume = fopen(file_water_volume, "a");
+        if(fp_water_volume == NULL)
+#ifdef P4_TO_P8
+          throw std::invalid_argument("[ERROR]: free_surface_3d::main(): could not open file for water volume.");
+#else
+          throw std::invalid_argument("[ERROR]: free_surface_2d::main(): could not open file for water volume.");
+#endif
+        fprintf(fp_water_volume, "%g %g\n", tn, water_volume);
+        fclose(fp_water_volume);
+      }
+      ierr = VecDestroy(volume_integrator); CHKERRXX(ierr);
+      ierr = PetscPrintf(mpi.comm(), "Water: %g\n" ,water_volume);
+    }
+
 
     ierr = PetscPrintf(mpi.comm(), "Iteration #%04d : tn = %.5e, percent done : %.1f%%, \t max_L2_norm_u = %.5e, \t number of leaves = %d\n", iter, tn, 100*tn/tf, free_surface_solver.get_max_L2_norm_u(), free_surface_solver.get_p4est()->global_num_quadrants); CHKERRXX(ierr);
 

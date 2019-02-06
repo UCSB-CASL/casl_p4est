@@ -234,6 +234,7 @@ public:
 #endif
 
   inline my_p4est_interpolation_nodes_t* get_interp_global_phi() { return interp_global_phi; }
+  inline Vec get_global_phi() { return global_phi; }
 
   /*!
    * \brief compute_max_L2_norm_u: computes the absolute maximum local velocity in the computational domain
