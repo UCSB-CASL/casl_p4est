@@ -422,6 +422,8 @@ public:
    */
   void save_state(const char* path_to_root_directory, double tn, unsigned int n_saved=1);
 
+  unsigned long int memory_estimate() const;
+
 };
 
 

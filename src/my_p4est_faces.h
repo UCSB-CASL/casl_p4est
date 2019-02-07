@@ -162,6 +162,21 @@ public:
   double face_area_in_negative_domain(p4est_locidx_t f_idx, int dir, const double *phi_p=NULL, const p4est_nodes_t* nodes = NULL, const double *phi_dd[] = NULL) const;
 #endif
   double face_area(p4est_locidx_t f_idx, int dir) const {return face_area_in_negative_domain(f_idx, dir);}
+
+  unsigned long int memory_estimate() const
+  {
+    unsigned long int memory = 0;
+    for (unsigned short dim = 0; dim < P4EST_DIM; ++dim)
+    {
+      memory += ghost_local_num[dim].size()*sizeof (p4est_locidx_t);
+      memory += q2f_[dim].size()*sizeof (p4est_locidx_t);
+      memory += f2q_[dim].size()*sizeof (face_quad_ngbd);
+      memory += nonlocal_ranks[dim].size()*sizeof (int);
+      memory += global_owned_indeps[dim].size()*sizeof (p4est_locidx_t);
+    }
+    memory += 2*P4EST_DIM*sizeof (p4est_locidx_t);
+    return memory;
+  }
 };
 
 PetscErrorCode VecCreateGhostFaces     (const p4est_t *p4est, const my_p4est_faces_t *faces, Vec* v, int dir);

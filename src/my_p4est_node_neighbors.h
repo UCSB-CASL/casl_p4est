@@ -327,6 +327,17 @@ public:
    */
   void first_derivatives_central(const Vec f, Vec fx[P4EST_DIM]) const;
 
+  unsigned long int memory_estimate() const
+  {
+    unsigned long int memory = 0;
+    memory += neighbors.size()*sizeof (quad_neighbor_nodes_of_node_t);
+    memory += is_qnnn_valid.size()*sizeof (bool);
+    memory += layer_nodes.size()*sizeof (p4est_locidx_t);
+    memory += local_nodes.size()*sizeof (p4est_locidx_t);
+    memory += sizeof (is_initialized);
+    return memory;
+  }
+
 private:
 #ifdef P4_TO_P8
   void second_derivatives_central_using_block(const Vec f, Vec fxx, Vec fyy, Vec fzz) const;

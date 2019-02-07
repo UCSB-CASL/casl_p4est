@@ -903,15 +903,15 @@ int main (int argc, char* argv[])
       ns.save_state(out_dir, tn, n_states);
     }
 
-    if(external_force_u==NULL) delete external_force_u;
+    if(external_force_u!=NULL) delete external_force_u;
     external_force_u = new external_force_u_t;
 
-    if(external_force_v==NULL) delete external_force_v;
+    if(external_force_v!=NULL) delete external_force_v;
     external_force_v = new external_force_v_t;
 
 
 #ifdef P4_TO_P8
-    if(external_force_w==NULL) delete external_force_w;
+    if(external_force_w!=NULL) delete external_force_w;
     external_force_w = new external_force_w_t;
 #endif
 
@@ -987,6 +987,11 @@ int main (int argc, char* argv[])
     }
 
     ierr = PetscPrintf(mpi.comm(), "Iteration #%04d : tn = %.5e, percent done : %.1f%%, \t max_L2_norm_u = %.5e, \t number of leaves = %d\n", iter, tn, 100*(tn-tstart)/duration, ns.get_max_L2_norm_u(), ns.get_p4est()->global_num_quadrants); CHKERRXX(ierr);
+//    size_t memory_used_total = ns.memory_estimate();
+//    size_t memory_Gb = memory_used_total/(1<<30);
+//    size_t memory_Mb = (memory_used_total - memory_Gb*(1<<30))/(1<<20);
+//    size_t memory_Kb = (memory_used_total - memory_Gb*(1<<30) - memory_Mb*(1<<20))/(1<<10);
+//    ierr = PetscPrintf(mpi.comm(), "Memory used (estimate): %03dGb %03dMb %03d Kb\n", memory_Gb, memory_Mb, memory_Kb); CHKERRXX(ierr);
 
     if(ns.get_max_L2_norm_u()>200.0)
     {
@@ -1010,10 +1015,10 @@ int main (int argc, char* argv[])
   }
 
 
-  if(external_force_u==NULL) delete external_force_u;
-  if(external_force_v==NULL) delete external_force_v;
+  if(external_force_u!=NULL) delete external_force_u;
+  if(external_force_v!=NULL) delete external_force_v;
 #ifdef P4_TO_P8
-  if(external_force_w==NULL) delete external_force_w;
+  if(external_force_w!=NULL) delete external_force_w;
 #endif
 
   watch.stop();

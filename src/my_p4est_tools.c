@@ -363,3 +363,12 @@ my_p4est_brick_point_lookup (p4est_t * p4est, p4est_ghost_t * ghost,
   return -1;
 }
 #endif
+
+unsigned int long my_p4est_brick_memory_estimate(const my_p4est_brick_t* brick)
+{
+  unsigned long int memory = 0;
+  memory += 3*sizeof (int);
+  memory += 2*3*sizeof (double);
+  memory += brick->nxyztrees[0]*brick->nxyztrees[1]*brick->nxyztrees[2]*sizeof (p4est_topidx_t);
+  return memory;
+}
