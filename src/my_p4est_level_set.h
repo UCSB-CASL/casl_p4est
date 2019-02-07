@@ -169,6 +169,8 @@ public:
 
   void extend_Over_Interface_TVD_full(Vec phi, Vec mask, Vec q, int iterations = 20, int order = 2, my_p4est_poisson_nodes_t *solver = NULL) const;
 
+  void enforce_contact_angle(Vec phi_wall, Vec phi_intf, Vec cos_angle, int iterations, Vec normal[] = NULL) const;
+
 };
 
 #endif // MY_P4EST_LEVELSET_H
