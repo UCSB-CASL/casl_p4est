@@ -41,7 +41,7 @@
 
 std::vector<InterpolatingFunctionLogEntry> InterpolatingFunctionLogger::entries;
 
-bool index_of_node(const p4est_quadrant_t *n, p4est_nodes_t* nodes, unsigned int& idx)
+bool index_of_node(const p4est_quadrant_t *n, p4est_nodes_t* nodes, p4est_locidx_t& idx)
 {
 #ifdef P4EST_DEBUG
   int clamped = 1;
@@ -594,7 +594,6 @@ PetscErrorCode VecCreateGhostNodesBlock(const p4est_t *p4est, p4est_nodes_t *nod
 
   return ierr;
 }
-
 
 p4est_bool_t ghosts_are_equal(p4est_ghost_t* ghost_1, p4est_ghost_t* ghost_2)
 {

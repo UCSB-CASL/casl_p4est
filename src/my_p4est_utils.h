@@ -343,7 +343,17 @@ public:
 
 };
 
-bool index_of_node(const p4est_quadrant_t *n, p4est_nodes_t* nodes, unsigned int &idx);
+/*!
+ * \brief index_of_node finds the (local) index of a node as defined within p4est, i.e. as a pest_quadrant_t structure whose level is P4EST_MAXLEVEL!
+ *        The method uses a binary search through the provided nodes: its complexity is O(log(N_nodes)).
+ *        The given node MUST MANDATORILY be canonicalized before being passed to this function to ensure consistency with the provided nodes: use
+ *        p4est_node_canonicalize beforehand!
+ * \param [in]    n node whose local index is queried!
+ * \param [in]    nodes the nodes data structure
+ * \param [inout] idx the local index of the node on output if found, undefined if not found (i.e. if the returned value is false)
+ * \return true if the queried node exists and was found in the nodes (i.e. if the idx is valid), false otherwise.
+ */
+bool index_of_node(const p4est_quadrant_t *n, p4est_nodes_t* nodes, p4est_locidx_t& idx);
 
 /*!
  * \brief linear_interpolation performs linear interpolation for a point
