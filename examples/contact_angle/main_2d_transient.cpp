@@ -101,7 +101,7 @@ int num_contact_angle = 0;
 
 int num_surfaces = 2;
 
-int max_iterations = 1000;
+int max_iterations = 2000;
 
 /* geometry of interfaces */
 class phi_intf_cf_t : public CF_2
@@ -111,7 +111,7 @@ public:
   {
     switch (num_geometry)
     {
-      case 0: return sqrt( SQR(x-.5) + SQR(y-.5) ) - 0.25;
+      case 0: return sqrt( SQR(x-.5) + SQR(y-.5) ) - 0.15;
       default: throw std::invalid_argument("Error: Invalid geometry number\n");
     }
   }
@@ -124,7 +124,7 @@ public:
   {
     switch (num_geometry)
     {
-      case 0: return ((x-.5)*1. - (y-.3)*2.)/sqrt(SQR(1.) + SQR(2.));
+      case 0: return ((x-.5)*1. - (y-.5)*2.)/sqrt(SQR(1.) + SQR(2.));
       default: throw std::invalid_argument("Error: Invalid geometry number\n");
     }
   }
@@ -148,7 +148,7 @@ public:
   {
     switch (num_geometry)
     {
-      case 0: return 0.99;
+      case 0: return -0.5;
       default: throw std::invalid_argument("Error: Invalid geometry number\n");
     }
   }
@@ -299,8 +299,15 @@ int main (int argc, char* argv[])
     integration.set_phi(phi, acn, clr);
 
     double volume_cur = integration.measure_of_domain();
+    double intf_len = integration.measure_of_interface(0);
 
-    PetscPrintf(mpi.comm(), "Volume change: %f\n", (volume_cur-volume_beg)/volume_beg);
+    double correction = (volume_cur-volume_beg)/intf_len;
+
+    shift_ghosted_vec(phi_extd, correction);
+
+    double volume_cur2 = integration.measure_of_domain();
+
+    PetscPrintf(mpi.comm(), "Volume change: %e, after correction: %e\n", (volume_cur-volume_beg)/volume_beg, (volume_cur2-volume_beg)/volume_beg);
 
     /* normal and curvature */
     Vec normal[P4EST_DIM];
