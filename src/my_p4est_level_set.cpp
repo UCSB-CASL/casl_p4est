@@ -9209,7 +9209,7 @@ void my_p4est_level_set_t::enforce_contact_angle(Vec phi_wall, Vec phi_intf, Vec
         double abs_grad_q = sqrt( MAX(qx_p00*qx_p00 , qx_m00*qx_m00) +
                                   MAX(qy_0p0*qy_0p0 , qy_0m0*qy_0m0) );
 
-        abs_grad_q = 1;
+//        abs_grad_q = 1;
 
         tmp_p[n] = q_p[n] - dt*( nx[n]*qx + ny[n]*qy
                          #ifdef P4_TO_P8
