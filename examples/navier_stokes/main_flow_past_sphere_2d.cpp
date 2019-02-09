@@ -43,34 +43,26 @@
 
 using namespace std;
 
-double xmin = 0;
-double xmax = 1;
-double ymin = 0;
-double ymax = 1;
+const double xmin = 0.0;
+const double xmax = 32.0;
+const double ymin = -8.0;
+const double ymax = 8.0;
 #ifdef P4_TO_P8
-double zmin = 0;
-double zmax = 1;
+const double zmin = -8.0;
+const double zmax = 8.0;
 #endif
 
-int nx = 1;
-int ny = 1;
-#ifdef P4_TO_P8
-int nz = 1;
-#endif
 
 /*
  * - karman street
  */
 
-int test_number;
-
-double mu;
-double rho;
-double tn;
-double dt;
-double u0;
-double r0;
-
+#ifdef P4_TO_P8
+const double r0 = 1.0;
+#else
+const double r0 = 0.5;
+#endif
+const double u0 = 1.0;
 
 #ifdef P4_TO_P8
 
@@ -650,43 +642,30 @@ int main (int argc, char* argv[])
 #endif
   }
 
-  bool is_smoke = cmd.contains("smoke");
-  bool refine_with_smoke = cmd.contains("refine_with_smoke");
-  double smoke_thresh = cmd.get("smoke_thresh", .5);
-  double duration;
-  double Re;
+  bool is_smoke           = cmd.contains("smoke");
+  bool refine_with_smoke  = cmd.contains("refine_with_smoke");
+  double smoke_thresh     = cmd.get("smoke_thresh", .5);
 
-  rho   = 1;
-  u0    = 1;
-  nx    = cmd.get<int>("nx", 8);
-  ny    = cmd.get<int>("ny", 4);
+  const int nx            = cmd.get<int>("nx", 8);
+  const int ny            = cmd.get<int>("ny", 4);
 #ifdef P4_TO_P8
-  nz    = cmd.get<int>("nz", 4);
-#endif
-  xmin  = +0.0;
-  xmax  = +32.0;
-  ymin  = -8.0;
-  ymax  = +8.0;
-#ifdef P4_TO_P8
-  zmin  = -8.0;
-  zmax  = +8.0;
-  Re    = cmd.get("Re",350);
-  r0    = 1;
+  const int nz            = cmd.get<int>("nz", 4);
+  const double Re         = cmd.get("Re",350);
 #else
-  Re    = cmd.get("Re", 200);
-  r0    = 0.5 ;
+  const double Re         = cmd.get("Re", 350);
 #endif
-  mu = 2*r0*rho*u0/Re;
-  duration = cmd.get<double>("duration", 200);
+  const double rho        = 1.0;
+  const double mu         = 2*r0*rho*u0/Re;
+  const double duration   = cmd.get<double>("duration", 200);
 
-  double uniform_band = .5*r0;
+  double uniform_band     = .5*r0;
 #ifdef P4_TO_P8
-  double dxmin = MAX((xmax-xmin)/(double)nx, (ymax-ymin)/(double)ny, (zmax-zmin)/(double)nz) / (1<<lmax);
+  const double dxmin      = MAX((xmax-xmin)/(double)nx, (ymax-ymin)/(double)ny, (zmax-zmin)/(double)nz) / (1<<lmax);
 #else
-  double dxmin = MAX((xmax-xmin)/(double)nx, (ymax-ymin)/(double)ny) / (1<<lmax);
+  const double dxmin      = MAX((xmax-xmin)/(double)nx, (ymax-ymin)/(double)ny) / (1<<lmax);
 #endif
-  uniform_band /= dxmin;
-  uniform_band = cmd.get<double>("uniform_band", uniform_band);
+  uniform_band           /= dxmin;
+  uniform_band            = cmd.get<double>("uniform_band", uniform_band);
 
   PetscErrorCode ierr;
 #ifdef P4_TO_P8
@@ -806,7 +785,7 @@ int main (int argc, char* argv[])
   my_p4est_navier_stokes_t ns(ngbd_nm1, ngbd_n, faces_n);
   ns.set_phi(phi);
   ns.set_parameters(mu, rho, sl_order, uniform_band, threshold_split_cell, cfl);
-  dt = MIN(dxmin*cfl/u0, duration);
+  double dt = MIN(dxmin*cfl/u0, duration);
   if(save_vtk)
     dt = MIN(dt, vtk_dt);
   ns.set_dt(dt);
@@ -872,7 +851,7 @@ int main (int argc, char* argv[])
   my_p4est_poisson_cells_t* cell_solver = NULL;
   my_p4est_poisson_faces_t* face_solver = NULL;
 
-  tn = tstart;
+  double tn = tstart;
   int iter = 0;
   int export_vtk = -1;
   int save_data_idx = (int) floor(tstart/dt_save_data); // so that we don't save the very first one which was either already read from file, or the known initial condition...
@@ -940,8 +919,11 @@ int main (int argc, char* argv[])
       hodge_new = ns.get_hodge();
       ierr = VecCopy(hodge_new, hodge_old); CHKERRXX(ierr);
 
-      ns.solve_viscosity(face_solver, (face_solver!=NULL), KSPBCGS, PCHYPRE);
-      ns.solve_projection(cell_solver, (cell_solver!=NULL), KSPCG, PCHYPRE);
+      ns.solve_viscosity();
+      ns.solve_projection();
+
+//      ns.solve_viscosity(face_solver, (face_solver!=NULL), KSPBCGS, PCHYPRE);
+//     ns.solve_projection(cell_solver, (cell_solver!=NULL), KSPCG, PCHYPRE);
 
       hodge_new = ns.get_hodge();
       const double *ho; ierr = VecGetArrayRead(hodge_old, &ho); CHKERRXX(ierr);
@@ -1022,6 +1004,11 @@ int main (int argc, char* argv[])
 #ifdef P4_TO_P8
   if(external_force_w!=NULL) delete external_force_w;
 #endif
+
+  if(cell_solver!= NULL)
+    delete cell_solver;
+  if(face_solver!=NULL)
+    delete face_solver;
 
   watch.stop();
   watch.print_duration();
