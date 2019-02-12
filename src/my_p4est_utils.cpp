@@ -2047,6 +2047,15 @@ void shift_ghosted_vec(Vec vec, double scalar)
   ierr = VecGhostRestoreLocalForm(vec, &ptr); CHKERRXX(ierr);
 }
 
+void scale_ghosted_vec(Vec vec, double scalar)
+{
+  PetscErrorCode ierr;
+  Vec ptr;
+  ierr = VecGhostGetLocalForm(vec, &ptr);     CHKERRXX(ierr);
+  ierr = VecScale(ptr, scalar);                 CHKERRXX(ierr);
+  ierr = VecGhostRestoreLocalForm(vec, &ptr); CHKERRXX(ierr);
+}
+
 void invert_phi(p4est_nodes_t *nodes, Vec phi)
 {
   PetscErrorCode ierr;

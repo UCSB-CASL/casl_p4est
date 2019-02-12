@@ -54,6 +54,46 @@ class my_p4est_level_set_t {
                                                 const double *dxx, const double *dyy,
                                               #endif
                                                 const double *pn, double *pnp1);
+
+
+#ifdef P4_TO_P8
+  class zero_cf_t : public CF_3
+  {
+  public:
+    double operator()(double, double, double) const
+    {
+      return 0;
+    }
+  } zero_cf;
+
+  class bc_wall_type_t : public WallBC3D
+  {
+  public:
+    BoundaryConditionType operator()( double x, double y, double z ) const
+    {
+      return NEUMANN;
+    }
+  } bc_wall_type;
+#else
+  class zero_cf_t : public CF_2
+  {
+  public:
+    double operator()(double, double) const
+    {
+      return 0;
+    }
+  } zero_cf;
+
+  class bc_wall_type_t : public WallBC2D
+  {
+  public:
+    BoundaryConditionType operator()( double x, double y ) const
+    {
+      return NEUMANN;
+    }
+  } bc_wall_type;
+#endif
+
 public:
   my_p4est_level_set_t(my_p4est_node_neighbors_t *ngbd_ )
     : myb(ngbd_->myb), p4est(ngbd_->p4est), nodes(ngbd_->nodes), ghost(ngbd_->ghost), ngbd(ngbd_),
@@ -169,7 +209,16 @@ public:
 
   void extend_Over_Interface_TVD_full(Vec phi, Vec mask, Vec q, int iterations = 20, int order = 2, my_p4est_poisson_nodes_t *solver = NULL) const;
 
-  void enforce_contact_angle(Vec phi_wall, Vec phi_intf, Vec cos_angle, int iterations, Vec normal[] = NULL) const;
+  void enforce_contact_angle(Vec phi_wall, Vec phi_intf, Vec cos_angle, int iterations=20, Vec normal[] = NULL) const;
+  void enforce_contact_angle2(Vec phi, Vec q, Vec cos_angle, int iterations=20, int order=2, Vec normal[] = NULL) const;
+
+#ifdef P4_TO_P8;
+  double advect_in_normal_direction(const Vec vn, const Vec surf_tns, const Vec phi_wall, CF_3 *cos_angle, Vec phi, double dt_max = DBL_MAX, Vec phi_xx = NULL, Vec phi_yy = NULL, Vec phi_zz = NULL);
+#else
+  double advect_in_normal_direction(const Vec vn, const Vec surf_tns, const Vec phi_wall, CF_2 *cos_angle, Vec phi, double dt_max = DBL_MAX, Vec phi_xx = NULL, Vec phi_yy = NULL);
+#endif
+
+  void extend_Over_Interface_TVD_regional( Vec phi, Vec mask, Vec region, Vec q, int iterations = 20, int order = 2) const;
 
 };
 

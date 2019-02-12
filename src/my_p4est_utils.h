@@ -1715,6 +1715,7 @@ public:
 void copy_ghosted_vec(Vec input, Vec output);
 void set_ghosted_vec(Vec vec, double scalar);
 void shift_ghosted_vec(Vec vec, double scalar);
+void scale_ghosted_vec(Vec vec, double scalar);
 
 void invert_phi(p4est_nodes_t *nodes, Vec phi);
 
