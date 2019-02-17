@@ -327,6 +327,8 @@ public:
   inline Vec get_hodge() { return hodge; }
 
   inline Vec get_smoke() { return smoke; }
+  inline bool get_refine_with_smoke() { return refine_with_smoke; }
+  inline double get_smoke_threshold() { return smoke_thresh; }
 
   inline Vec get_pressure() { return pressure; }
 
@@ -388,9 +390,9 @@ public:
   void extrapolate_bc_v(my_p4est_node_neighbors_t *ngbd, Vec *v, Vec phi);
 
 #ifdef P4_TO_P8
-  bool update_from_tn_to_tnp1(const CF_3 *level_set=NULL, bool keep_grid_as_such=false, bool do_reinitialization=true, bool show_performance=false);
+  bool update_from_tn_to_tnp1(const CF_3 *level_set=NULL, bool keep_grid_as_such=false, bool do_reinitialization=true);
 #else
-  bool update_from_tn_to_tnp1(const CF_2 *level_set=NULL, bool keep_grid_as_such=false, bool do_reinitialization=true, bool show_performance=false);
+  bool update_from_tn_to_tnp1(const CF_2 *level_set=NULL, bool keep_grid_as_such=false, bool do_reinitialization=true);
 #endif
 
   void compute_pressure();

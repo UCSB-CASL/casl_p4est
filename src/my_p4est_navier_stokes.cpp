@@ -391,7 +391,6 @@ my_p4est_navier_stokes_t::my_p4est_navier_stokes_t(const mpi_environment_t& mpi,
   bc_pressure = NULL;
 
   vorticity = NULL;
-  smoke = NULL;
   bc_smoke = NULL;
 
   Vec vec_loc;
@@ -1528,24 +1527,14 @@ void my_p4est_navier_stokes_t::extrapolate_bc_v(my_p4est_node_neighbors_t *ngbd,
 
 
 #ifdef P4_TO_P8
-bool my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_3 *level_set, bool keep_grid_as_such, bool do_reinitialization, bool show_performances)
+bool my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_3 *level_set, bool keep_grid_as_such, bool do_reinitialization)
 #else
-bool my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set, bool keep_grid_as_such, bool do_reinitialization, bool show_performances)
+bool my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set, bool keep_grid_as_such, bool do_reinitialization)
 #endif
 {
   PetscErrorCode ierr;
 
   ierr = PetscLogEventBegin(log_my_p4est_navier_stokes_update, 0, 0, 0, 0); CHKERRXX(ierr);
-
-  parStopWatch *total, *substep;
-  double total_time, grid_update_data_interp, grid_copy, update_grid_operations, update_node_creation, update_ghost_creation, update_hierarchy_creation, update_ngbd_n_creation, update_ngbd_c_creation, update_faces_creation, final_data_update;
-  total_time = grid_update_data_interp = grid_copy = update_grid_operations = update_node_creation = update_ghost_creation = update_hierarchy_creation= update_ngbd_n_creation = update_ngbd_c_creation = update_faces_creation = final_data_update = 0.0;
-  if(show_performances)
-  {
-    total   = new parStopWatch();
-    substep = new parStopWatch();
-    total->start("");
-  }
 
   if(!dt_updated)
     compute_dt();
@@ -1566,19 +1555,12 @@ bool my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set, boo
   bool iterative_grid_update_converged = false;
   if(!keep_grid_as_such)
   {
-    if(show_performances)
-      substep->start("");
     splitting_criteria_t *data = (splitting_criteria_t*)p4est_n->user_pointer;
     splitting_criteria_vorticity_t criteria(data->min_lvl, data->max_lvl, data->lip, uniform_band, threshold_split_cell, max_L2_norm_u, smoke_thresh);
     /* construct a new forest */
     p4est_np1 = p4est_copy(p4est_n, P4EST_FALSE); // very efficient operation, costs almost nothing
     p4est_np1->connectivity = p4est_n->connectivity; // connectivity is not duplicated by p4est_copy, the pointer (i.e. the memory-address) of connectivity seems to be copied from my understanding of the source file of p4est_copy, but I feel this is a bit safer [Raphael Egan]
     p4est_np1->user_pointer = (void*)&criteria;
-    if(show_performances)
-    {
-      substep->stop();
-      grid_copy += substep->read_duration();
-    }
     Vec vorticity_np1 = NULL;
     unsigned int iter=0;
     p4est_ghost_t *ghost_np1 = NULL;
@@ -1591,38 +1573,17 @@ bool my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set, boo
        * simple pure copy of p4est_n, so no node creation nor data interpolation is
        * required. Hence the "if(iter>0)..." statements and the ternary statements
        * ((iter > 0) ? : ) */
-      if(show_performances)
-        substep->start("");
       // partition the grid if it has changed...
       if(iter > 0)
         my_p4est_partition(p4est_np1, P4EST_FALSE, NULL);
-      if(show_performances)
-      {
-        substep->stop();
-        update_grid_operations += substep->read_duration();
-      }
       // ghost_np1, hierarchy_np1 and ngbd_n_np1 are required for the grid update if and only if smoke is defined and refinement with smoke is activated
-      if(show_performances)
-        substep->start("");
       if ((iter>0) && (smoke!=NULL) && refine_with_smoke)
         ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
-      if(show_performances)
-      {
-        substep->stop();
-        update_ghost_creation += substep->read_duration();
-        substep->start("");
-      }
       // get nodes_np1
       // reset nodes_np1 if needed
       if ((nodes_np1 != NULL) && (nodes_np1!=nodes_n)){
         p4est_nodes_destroy(nodes_np1); CHKERRXX(ierr); }
       nodes_np1 = ((iter > 0) ? my_p4est_nodes_new(p4est_np1, ghost_np1) : nodes_n);
-      if(show_performances)
-      {
-        substep->stop();
-        update_node_creation += substep->read_duration();
-        substep->start("");
-      }
       // reset phi_np1 if needed
       if ((phi_np1 != NULL) && (phi_np1!= phi)){
         ierr = VecDestroy(phi_np1); CHKERRXX(ierr); phi_np1 = NULL; }
@@ -1710,19 +1671,9 @@ bool my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set, boo
           delete  ngbd_n_np1;
         }
       }
-      if(show_performances){
-        substep->stop();
-        grid_update_data_interp+=substep->read_duration();
-        substep->start("");
-      }
       iterative_grid_update_converged = !criteria.refine_and_coarsen(p4est_np1, nodes_np1, phi_np1, vorticity_np1, smoke_np1);
       grid_is_unchanged = grid_is_unchanged && iterative_grid_update_converged;
       iter++;
-      if(show_performances)
-      {
-        substep->stop();
-        update_grid_operations += substep->read_duration();
-      }
 
       if(iter>((unsigned int) 2+data->max_lvl-data->min_lvl)) // increase the rhs by one to account for the very first step that used to be out of the loop, [Raphael]
       {
@@ -1736,9 +1687,6 @@ bool my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set, boo
     p4est_np1->user_pointer = data;
   }
 
-
-  if(show_performances)
-    substep->start("");
   int smoke_np1_is_still_valid = (((smoke_np1!= NULL) && iterative_grid_update_converged)? 1 : 0); // collectively the same at this stage: the vectors are still ok if the iterative procedure exited properly by grid_is_changing turning false;
   if(!grid_is_unchanged)
   {
@@ -1763,12 +1711,6 @@ bool my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set, boo
       p4est_destroy(p4est_np1);// no need to keep two identical forests in memory if they are exactly the same, just make p4est_nm1 and p4est_n point to the same one eventually and handle memory correspondingly...
     p4est_np1     = p4est_n;
   }
-  if(show_performances)
-  {
-    substep->stop();
-    update_grid_operations += substep->read_duration();
-    substep->start("");
-  }
 
   /* Get the ghost cells at time np1, */
   p4est_ghost_t *ghost_np1 = NULL;
@@ -1779,12 +1721,6 @@ bool my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set, boo
   }
   else
     ghost_np1 = ghost_n;
-  if(show_performances)
-  {
-    substep->stop();
-    update_ghost_creation += substep->read_duration();
-    substep->start("");
-  }
   if(!grid_is_unchanged)
   {
     p4est_nodes_destroy(nodes_np1);
@@ -1795,23 +1731,11 @@ bool my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set, boo
     P4EST_ASSERT((nodes_np1 == NULL) || (nodes_np1 == nodes_n));
     nodes_np1 = nodes_n;
   }
-  if(show_performances)
-  {
-    substep->stop();
-    update_node_creation += substep->read_duration();
-    substep->start("");
-  }
   my_p4est_hierarchy_t *hierarchy_np1 = NULL;
   if(!grid_is_unchanged)
     hierarchy_np1 = new my_p4est_hierarchy_t(p4est_np1, ghost_np1, brick);
   else
     hierarchy_np1 = hierarchy_n;
-  if(show_performances)
-  {
-    substep->stop();
-    update_hierarchy_creation += substep->read_duration();
-    substep->start("");
-  }
   my_p4est_node_neighbors_t *ngbd_np1 = NULL;
   if(!grid_is_unchanged)
     ngbd_np1 = new my_p4est_node_neighbors_t(hierarchy_np1, nodes_np1);
@@ -1819,34 +1743,16 @@ bool my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set, boo
     ngbd_np1 = ngbd_n;
   ngbd_np1->init_neighbors();
 
-  if(show_performances)
-  {
-    substep->stop();
-    update_ngbd_n_creation += substep->read_duration();
-    substep->start("");
-  }
   my_p4est_cell_neighbors_t *ngbd_c_np1 = NULL;
   if(!grid_is_unchanged)
     ngbd_c_np1 = new my_p4est_cell_neighbors_t(hierarchy_np1);
   else
     ngbd_c_np1 = ngbd_c;
-  if(show_performances)
-  {
-    substep->stop();
-    update_ngbd_c_creation += substep->read_duration();
-    substep->start("");
-  }
   my_p4est_faces_t *faces_np1 = NULL;
   if(!grid_is_unchanged)
     faces_np1 = new my_p4est_faces_t(p4est_np1, ghost_np1, brick, ngbd_c_np1);
   else
     faces_np1 = faces_n;
-  if(show_performances)
-  {
-    substep->stop();
-    update_faces_creation += substep->read_duration();
-    substep->start("");
-  }
 
   /* slide relevant fiels and grids in time: nm1 data are disregarded, n data becomes nm1 data and np1 data become n data...
    * In particular, if grid_is_unchanged is false, the np1 grid is different than grid at time n, we need to
@@ -2100,18 +2006,6 @@ bool my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set, boo
 
   semi_lagrangian_backtrace_is_done = false;
   ierr = PetscLogEventEnd(log_my_p4est_navier_stokes_update, 0, 0, 0, 0); CHKERRXX(ierr);
-
-  if(show_performances)
-  {
-    substep->stop();
-    final_data_update = substep->read_duration();
-    total->stop();
-    total_time = total->read_duration();
-    delete total;
-    delete substep;
-    ierr = PetscPrintf(p4est_n->mpicomm, "total grid update time = %.5e, percent copy: %.1f%%, percent update_grid: %.1f%%, percent update_nodes: %.1f%%, percent update_ghost: %.1f%%, percent update_hierarchy: %.1f%%, percent update_ngbd_n: %.1f%%, percent update_data: %.1f%%, \t percent update_ngbd_c: %.1f%%, \t percent update_faces: %.1f%%, \t percent final data update: %.1f%%\n",
-                       total_time, 100.0*grid_copy/total_time, 100.0*update_grid_operations/total_time, 100.0*update_node_creation/total_time, 100.0*update_ghost_creation/total_time, 100.0*update_hierarchy_creation/total_time, 100.0*update_ngbd_n_creation/total_time, 100.0*grid_update_data_interp/total_time, 100.0*update_ngbd_c_creation/total_time, 100.0*update_faces_creation/total_time, 100.0*final_data_update/total_time); CHKERRXX(ierr);
-  }
 
   return (grid_is_unchanged && (level_set == NULL));
 }
