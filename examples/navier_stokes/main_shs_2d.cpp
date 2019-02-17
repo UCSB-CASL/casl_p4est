@@ -853,14 +853,14 @@ int main (int argc, char* argv[])
     ntree_z                 = brick->nxyztrees[2];
     n_xyz[2]                = ntree_z;
     xyz_min[2]              = brick->xyz_min[2];
-    xyz_max[2]              = brick->xyz_min[2];
+    xyz_max[2]              = brick->xyz_max[2];
 #endif
     n_xyz[1]                = ntree_y;
     n_xyz[0]                = ntree_x;
     xyz_min[1]              = brick->xyz_min[1];
     xyz_min[0]              = brick->xyz_min[0];
-    xyz_max[1]              = brick->xyz_min[1];
-    xyz_max[0]              = brick->xyz_min[0];
+    xyz_max[1]              = brick->xyz_max[1];
+    xyz_max[0]              = brick->xyz_max[0];
 
     if(cmd.contains("wall_layer"))
     {
