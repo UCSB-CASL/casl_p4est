@@ -963,16 +963,19 @@ int main (int argc, char* argv[])
     if(save_forces)
     {
       ns.compute_forces(forces);
-      FILE* fp_forces = fopen(file_forces, "a");
-      if(fp_forces==NULL)
+      if(!mpi.rank())
+      {
+        FILE* fp_forces = fopen(file_forces, "a");
+        if(fp_forces==NULL)
 #ifdef P4_TO_P8
-        throw std::invalid_argument("main_flow_past_sphere_3d: could not open file for forces output.");
-      fprintf(fp_forces, "%g %g %g %g\n", tn, forces[0]/(.5*PI*r0*r0*u0*u0*rho), forces[1]/(.5*PI*r0*r0*u0*u0*rho), forces[2]/(.5*PI*r0*r0*u0*u0*rho));
+          throw std::invalid_argument("main_flow_past_sphere_3d: could not open file for forces output.");
+        fprintf(fp_forces, "%g %g %g %g\n", tn, forces[0]/(.5*PI*r0*r0*u0*u0*rho), forces[1]/(.5*PI*r0*r0*u0*u0*rho), forces[2]/(.5*PI*r0*r0*u0*u0*rho));
 #else
-        throw std::invalid_argument("main_flow_past_sphere_2d: could not open file for forces output.");
-      fprintf(fp_forces, "%g %g %g\n", tn, forces[0]/r0/u0/u0/rho, forces[1]/r0/u0/u0/rho);
+          throw std::invalid_argument("main_flow_past_sphere_2d: could not open file for forces output.");
+        fprintf(fp_forces, "%g %g %g\n", tn, forces[0]/r0/u0/u0/rho, forces[1]/r0/u0/u0/rho);
 #endif
-      fclose(fp_forces);
+        fclose(fp_forces);
+      }
     }
 
     ierr = PetscPrintf(mpi.comm(), "Iteration #%04d : tn = %.5e, percent done : %.1f%%, \t max_L2_norm_u = %.5e, \t number of leaves = %d\n", iter, tn, 100*(tn-tstart)/duration, ns.get_max_L2_norm_u(), ns.get_p4est()->global_num_quadrants); CHKERRXX(ierr);
