@@ -238,7 +238,7 @@ void solve_lsqr_system(matrix_t &A, vector<double> p[], unsigned int n_vectors, 
       {
         // the relevant quantities were already calculated but the cholesky_solve failed...
         matrix_t* M_sub= new matrix_t(P4EST_DIM+1, P4EST_DIM+1);
-        M_sub->truncate_matrix(P4EST_DIM+1, P4EST_DIM, *M);
+        M_sub->truncate_matrix(P4EST_DIM+1, P4EST_DIM+1, *M);
         delete M;
         M = M_sub;
         for (unsigned int k = 0; k < n_vectors; ++k)
