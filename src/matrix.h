@@ -76,6 +76,8 @@ public:
   void operator*=(double s );
   void operator/=(double s );
   void operator =(double s );
+//  const double* read_data() const {return values.data();}
+//  double* get_data() {return values.data();}
 };
 
 

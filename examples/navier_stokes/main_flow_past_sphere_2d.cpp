@@ -449,9 +449,9 @@ void initialize_force_output(char* file_forces, const char *out_dir, const int& 
       if(fp_forces==NULL)
         throw std::runtime_error("initialize_force_output: could not open file for force output.");
 #ifdef P4_TO_P8
-      fprintf(fp_forces, "%% tn | Cd_x | Cd_y\n");
-#else
       fprintf(fp_forces, "%% tn | Cd_x | Cd_y | Cd_z\n");
+#else
+      fprintf(fp_forces, "%% tn | Cd_x | Cd_y\n");
 #endif
       fclose(fp_forces);
     }
@@ -502,7 +502,7 @@ void initialize_force_output(char* file_forces, const char *out_dir, const int& 
       fprintf(fp_liveplot_forces, "set term wxt noraise\n");
       fprintf(fp_liveplot_forces, "set key top right Left font \"Arial,14\"\n");
       fprintf(fp_liveplot_forces, "set xlabel \"Time\" font \"Arial,14\"\n");
-      fprintf(fp_liveplot_forces, "set ylabel \"Nondimensional force \" font \"Arial,14\"\n");
+      fprintf(fp_liveplot_forces, "set ylabel \"Nondimensional force\" font \"Arial,14\"\n");
       fprintf(fp_liveplot_forces, "plot");
       for (short dd = 0; dd < P4EST_DIM; ++dd)
       {
