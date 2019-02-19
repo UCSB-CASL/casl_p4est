@@ -17,15 +17,16 @@ class level_set_tot_t : public CF_2
 #endif
   std::vector<action_t> *action;
   std::vector<int>      *color;
+  std::vector<bool>     *everywhere;
 
 public:
 
 #ifdef P4_TO_P8
-  level_set_tot_t(std::vector<CF_3 *> *phi_cf, std::vector<action_t> *action, std::vector<int> *color) :
+  level_set_tot_t(std::vector<CF_3 *> *phi_cf, std::vector<action_t> *action, std::vector<int> *color, std::vector<bool> *everywhere = NULL) :
 #else
-  level_set_tot_t(std::vector<CF_2 *> *phi_cf, std::vector<action_t> *action, std::vector<int> *color) :
+  level_set_tot_t(std::vector<CF_2 *> *phi_cf, std::vector<action_t> *action, std::vector<int> *color, std::vector<bool> *everywhere = NULL) :
 #endif
-    phi_cf(phi_cf), action(action), color(color) {}
+    phi_cf(phi_cf), action(action), color(color), everywhere(everywhere) {}
 
 #ifdef P4_TO_P8
   double operator()(double x, double y, double z) const
@@ -54,6 +55,20 @@ public:
         if (phi_current < phi_total) phi_total = phi_current;
       }
     }
+
+    if (everywhere != NULL)
+    {
+      for (unsigned short i = 0; i < phi_cf->size(); ++i)
+      {
+        if (everywhere->at(i) && action->at(i) != COLORATION)
+#ifdef P4_TO_P8
+          phi_total = MIN(phi_total, fabs((*phi_cf->at(i))(x,y,z)));
+#else
+          phi_total = MIN(phi_total, fabs((*phi_cf->at(i))(x,y)));
+#endif
+      }
+    }
+
     return phi_total;
   }
 };

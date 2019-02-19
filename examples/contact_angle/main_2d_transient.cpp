@@ -85,39 +85,130 @@ int nz = 1;
 
 // grid parameters
 #ifdef P4_TO_P8
-int lmin = 4;
-int lmax = 4;
+int lmin = 1;
+int lmax = 6;
 #else
 int lmin = 1;
 int lmax = 7;
 #endif
 double lip = 1.5;
 
+bool use_neumann = true;
+int contact_angle_extension = 2;
+
+
 // output parameters
 bool save_vtk = 1;
-int save_every_dn = 10;
+int save_every_dn = 1;
 
+int num_drop;
 int num_geometry = 0;
-int num_contact_angle = 0;
+int num_density = 4;
 
-int num_surfaces = 2;
+int max_iterations = 1000;
 
-int max_iterations = 5000;
+double cfl = 0.5;
 
-double wall_nx = 1;
-double wall_ny =-2;
-double wall_x = .5;
-double wall_y = .5;
+struct {
+  double r = 0.2;
+  double x = .5;
+  double y = .5;
+  double z = .5;
+
+  double r0 = 0.4;
+
+  double k = 5;
+
+  double deform = 0.0;
+
+} drop;
+
+struct {
+  double eps = -.0; // curvature
+  double nx =-1;
+  double ny =-2;
+  double nz =-3;
+  double x  = .35;
+  double y  = .35;
+  double z  = -1.35;
+} wall;
+
+double gamma_Aw = 1;
+double gamma_Bw = 2;
+double gamma_Aa = 4;
+double gamma_Ba = 1;
+double gamma_aw = 1.5;
 
 /* geometry of interfaces */
+#ifdef P4_TO_P8
+class phi_intf_cf_t : public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    switch (num_drop)
+    {
+      case 0: return sqrt( SQR(x-drop.x) + SQR(y-drop.y) + SQR(z-drop.z) )
+            - drop.r
+            *(1.+drop.deform*cos(drop.k*atan2(y-drop.y, x-drop.x))*(1.-cos(2.*acos((z-drop.z)/sqrt( SQR(x-drop.x) + SQR(y-drop.y) + SQR(z-drop.z) + 1.e-12)))));
+      default: throw std::invalid_argument("Error: Invalid geometry number\n");
+    }
+  }
+} phi_intf_cf;
+
+class phi_wall_cf_t : public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    switch (num_geometry)
+    {
+      case 0: return - ( (x-wall.x)*((x-wall.x)*wall.eps - 2.*wall.nx / sqrt(SQR(wall.nx) + SQR(wall.ny) + SQR(wall.nz))) +
+                         (y-wall.y)*((y-wall.y)*wall.eps - 2.*wall.ny / sqrt(SQR(wall.nx) + SQR(wall.ny) + SQR(wall.nz))) +
+                         (z-wall.z)*((z-wall.z)*wall.eps - 2.*wall.nz / sqrt(SQR(wall.nx) + SQR(wall.ny) + SQR(wall.nz))) )
+            / ( sqrt( SQR((x-wall.x)*wall.eps - wall.nx / sqrt(SQR(wall.nx) + SQR(wall.ny) + SQR(wall.nz))) +
+                      SQR((y-wall.y)*wall.eps - wall.ny / sqrt(SQR(wall.nx) + SQR(wall.ny) + SQR(wall.nz))) +
+                      SQR((z-wall.z)*wall.eps - wall.nz / sqrt(SQR(wall.nx) + SQR(wall.ny) + SQR(wall.nz))) ) + 1. );
+      default: throw std::invalid_argument("Error: Invalid geometry number\n");
+    }
+  }
+} phi_wall_cf;
+
+class phi_eff_cf_t : public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    return MIN(fabs(phi_intf_cf(x,y,z)), fabs(phi_wall_cf(x,y,z)));
+//    return MAX((phi_intf_cf(x,y,z)), (phi_wall_cf(x,y,z)));
+  }
+} phi_eff_cf;
+
+class mu_cf_t : public CF_3
+{
+public:
+  double operator()(double x, double y, double z) const
+  {
+    switch (num_density)
+    {
+      case 0: return 0;
+      case 1: return sin(6.*PI*x);
+      case 2: return sin(6.*PI*y);
+      case 3: return sin(6.*PI*x)*cos(6.*PI*y);
+      case 4: return sin(6.*PI*x)*cos(6.*PI*y)*cos(6.*PI*z);
+      default: throw std::invalid_argument("Error: Invalid geometry number\n");
+    }
+  }
+} mu_cf;
+#else
 class phi_intf_cf_t : public CF_2
 {
 public:
   double operator()(double x, double y) const
   {
-    switch (num_geometry)
+    switch (num_drop)
     {
-      case 0: return sqrt( SQR(x-.5) + SQR(y-.5) ) - 0.2;
+      case 0: return sqrt( SQR(x-drop.x) + SQR(y-drop.y) ) - drop.r;
       default: throw std::invalid_argument("Error: Invalid geometry number\n");
     }
   }
@@ -130,7 +221,10 @@ public:
   {
     switch (num_geometry)
     {
-      case 0: return ((x-wall_x)*wall_nx + (y-wall_y)*wall_ny)/sqrt(SQR(wall_nx) + SQR(wall_ny));
+      case 0: return - ( (x-wall.x)*((x-wall.x)*wall.eps - 2.*wall.nx / sqrt(SQR(wall.nx) + SQR(wall.ny))) +
+                         (y-wall.y)*((y-wall.y)*wall.eps - 2.*wall.ny / sqrt(SQR(wall.nx) + SQR(wall.ny))) )
+            / ( sqrt( SQR((x-wall.x)*wall.eps - wall.nx / sqrt(SQR(wall.nx) + SQR(wall.ny))) +
+                      SQR((y-wall.y)*wall.eps - wall.ny / sqrt(SQR(wall.nx) + SQR(wall.ny))) ) + 1. );
       default: throw std::invalid_argument("Error: Invalid geometry number\n");
     }
   }
@@ -146,27 +240,62 @@ public:
   }
 } phi_eff_cf;
 
-// contact angle
-class cos_angle_cf_t : public CF_2
+class mu_cf_t : public CF_2
 {
 public:
   double operator()(double x, double y) const
   {
-    switch (num_geometry)
+    switch (num_density)
     {
-      case 0: return 0.9;
+      case 0: return 0;
+      case 1: return sin(10.*PI*x);
+      case 2: return sin(10.*PI*y);
+      case 3: return sin(10.*PI*x)*cos(10.*PI*y);
       default: throw std::invalid_argument("Error: Invalid geometry number\n");
     }
+  }
+} mu_cf;
+#endif
+
+// surface tension
+class surf_tns_cf_t : public CF_1
+{
+public:
+  double operator()(double x) const
+  {
+    return .5*(gamma_Aa + gamma_Ba) + .5*(gamma_Aa - gamma_Ba)*x;
+  }
+} surf_tns_cf;
+
+class wall_tns_cf_t : public CF_1
+{
+public:
+  double operator()(double x) const
+  {
+    return .5*(gamma_Aw + gamma_Bw) + .5*(gamma_Aw - gamma_Bw)*x;
+  }
+} wall_tns_cf;
+
+// contact angle
+class cos_angle_cf_t : public CF_1
+{
+public:
+  double operator()(double x) const
+  {
+    return (.5*(gamma_Aw + gamma_Bw) + .5*(gamma_Aw - gamma_Bw)*x - gamma_aw)
+        / (.5*(gamma_Aa + gamma_Ba) + .5*(gamma_Aa - gamma_Ba)*x);
   }
 } cos_angle_cf;
 
 int main (int argc, char* argv[])
 {
   PetscErrorCode ierr;
+
+  /* initialize MPI */
   mpi_environment_t mpi;
   mpi.init(argc, argv);
 
-  // create an output directory
+  /* create an output directory */
   const char* out_dir = getenv("OUT_DIR");
   if (!out_dir)
   {
@@ -181,6 +310,7 @@ int main (int argc, char* argv[])
   if(ret_sys < 0)
     throw std::invalid_argument("Could not create directory");
 
+  /* parse command line arguments */
   cmdParser cmd;
   CMD_OPTIONS
   {
@@ -242,37 +372,20 @@ int main (int argc, char* argv[])
   my_p4est_node_neighbors_t *ngbd = new my_p4est_node_neighbors_t(hierarchy,nodes);
   ngbd->init_neighbors();
 
-  p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
-  p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
-  double xmin_tree = p4est->connectivity->vertices[3*vm + 0];
-  double ymin_tree = p4est->connectivity->vertices[3*vm + 1];
-  double xmax_tree = p4est->connectivity->vertices[3*vp + 0];
-  double ymax_tree = p4est->connectivity->vertices[3*vp + 1];
-  double dx = (xmax_tree-xmin_tree) / pow(2., (double) data.max_lvl);
-  double dy = (ymax_tree-ymin_tree) / pow(2., (double) data.max_lvl);
-#ifdef P4_TO_P8
-  double zmin_tree = p4est->connectivity->vertices[3*vm + 2];
-  double zmax_tree = p4est->connectivity->vertices[3*vp + 2];
-  double dz = (zmax_tree-zmin_tree) / pow(2.,(double) data.max_lvl);
-#endif
+  double dxyz[P4EST_DIM], h, diag;
+  get_dxyz_min(p4est, dxyz, h, diag);
 
+  /* initialize data */
   Vec phi_intf; ierr = VecCreateGhostNodes(p4est, nodes, &phi_intf); CHKERRXX(ierr);
+  Vec phi_extd; ierr = VecCreateGhostNodes(p4est, nodes, &phi_extd); CHKERRXX(ierr);
   Vec phi_wall; ierr = VecCreateGhostNodes(p4est, nodes, &phi_wall); CHKERRXX(ierr);
 
   sample_cf_on_nodes(p4est, nodes, phi_intf_cf, phi_intf);
+  sample_cf_on_nodes(p4est, nodes, phi_intf_cf, phi_extd);
   sample_cf_on_nodes(p4est, nodes, phi_wall_cf, phi_wall);
 
-  Vec phi_extd;
-
-  ierr = VecDuplicate(phi_intf, &phi_extd);
-
-  copy_ghosted_vec(phi_intf, phi_extd);
-
-  int iteration = 0;
-
-  double dt = 0.0025*dx;
-
-  double volume_beg = 0;
+  /* compute initial volume for volume-loss corrections */
+  double volume = 0;
 
   {
     std::vector<Vec> phi(2);
@@ -285,128 +398,272 @@ int main (int argc, char* argv[])
     my_p4est_integration_mls_t integration(p4est, nodes);
     integration.set_phi(phi, acn, clr);
 
-    volume_beg = integration.measure_of_domain();
+    volume = integration.measure_of_domain();
   }
 
+  // in case of constant contact angle and simple geometry we can compute analytically position and volume of the steady-state shape
+  double elev = 0;
+  if (num_density == 0 && num_geometry == 0)
+  {
+    double theta = acos(cos_angle_cf(0));
 
+    elev = (wall.eps*drop.r0 - 2.*cos(PI-theta))*drop.r0
+        /(sqrt(SQR(wall.eps*drop.r0) + 1. - 2.*wall.eps*drop.r0*cos(PI-theta)) + 1.);
 
+    double alpha = acos((elev + .5*(SQR(drop.r0) + SQR(elev))*wall.eps)/drop.r0/(1.+wall.eps*elev));
+#ifdef P4_TO_P8
+    volume = 1./3.*PI*pow(drop.r0, 3.)*(2.*(1.-cos(PI-alpha)) + cos(alpha)*SQR(sin(alpha)));
+#else
+    volume = SQR(drop.r0)*(PI - alpha + cos(alpha)*sin(alpha));
+#endif
 
-  double theta = acos(cos_angle_cf(0,0));
-  double r = sqrt(volume_beg/(PI - theta + sin(theta)*cos(theta)));
+    if (wall.eps != 0.)
+    {
+      double beta = acos(1.+.5*SQR(wall.eps)*(SQR(elev) - SQR(drop.r0))/(1.+wall.eps*elev));
+#ifdef P4_TO_P8
+      volume -= 1./3.*PI*(2.*(1.-cos(beta)) - cos(beta)*SQR(sin(beta)))/SQR(wall.eps)/wall.eps;
+#else
+      volume -= (beta - cos(beta)*sin(beta))/fabs(wall.eps)/wall.eps;
+#endif
+    }
+  }
 
-  double elev = r*cos(theta);
+  double cos_angle_A = (gamma_Aw - gamma_aw)/gamma_Aa;
+  double cos_angle_B = (gamma_Bw - gamma_aw)/gamma_Ba;
 
-  double x_ex = wall_x - (elev*wall_nx)/sqrt(SQR(wall_nx) + SQR(wall_ny));
-  double y_ex = wall_y - (elev*wall_ny)/sqrt(SQR(wall_nx) + SQR(wall_ny));
+  ierr = PetscPrintf(mpi.comm(), "Contact angle limits: %e, %e\n", cos_angle_A, cos_angle_B);
 
-  flower_shaped_domain_t exact(r, x_ex, y_ex);
-
-//  sample_cf_on_nodes(p4est, nodes, exact.phi, phi_extd);
-
-
+  double energy = 0;
+  double energy_old = 0;
+  /* main loop */
+  int iteration = 0;
   while (iteration < max_iterations)
   {
-    Vec cos_angle; ierr = VecCreateGhostNodes(p4est, nodes, &cos_angle); CHKERRXX(ierr);
-    sample_cf_on_nodes(p4est, nodes, cos_angle_cf, cos_angle);
-
     std::vector<Vec> phi(2);
     std::vector<action_t> acn(2, INTERSECTION);
+    std::vector<int> acn_int(2, 0);
     std::vector<int> clr(2);
+    std::vector<bool> refine_always(2);
 
-    phi[0] = phi_extd; clr[0] = 0;
-    phi[1] = phi_wall; clr[1] = 1;
+    phi[0] = phi_extd; clr[0] = 0; refine_always[0] = false;
+    phi[1] = phi_wall; clr[1] = 1; refine_always[1] = true;
 
     my_p4est_integration_mls_t integration(p4est, nodes);
     integration.set_phi(phi, acn, clr);
 
-    double volume_cur = integration.measure_of_domain();
-    double intf_len = integration.measure_of_interface(0);
-
-    double correction = (volume_cur-volume_beg)/intf_len;
-
-    shift_ghosted_vec(phi_extd, correction);
-
-    double volume_cur2 = integration.measure_of_domain();
-
-    PetscPrintf(mpi.comm(), "Volume change: %e, after correction: %e\n", (volume_cur-volume_beg)/volume_beg, (volume_cur2-volume_beg)/volume_beg);
+    my_p4est_level_set_t ls(ngbd);
+    ls.set_interpolation_on_interface(quadratic_non_oscillatory_continuous_v2);
 
     /* normal and curvature */
     Vec normal[P4EST_DIM];
     Vec kappa;
 
-    foreach_dimension(dim)
-    {
-      ierr = VecCreateGhostNodes(p4est, nodes, &normal[dim]); CHKERRXX(ierr);
-    }
-
+    foreach_dimension(dim) { ierr = VecCreateGhostNodes(p4est, nodes, &normal[dim]); CHKERRXX(ierr); }
     ierr = VecCreateGhostNodes(p4est, nodes, &kappa); CHKERRXX(ierr);
 
     compute_normals_and_mean_curvature(*ngbd, phi_extd, normal, kappa);
 
     Vec kappa_tmp;
-
     ierr = VecDuplicate(kappa, &kappa_tmp); CHKERRXX(ierr);
-
-    my_p4est_level_set_t ls(ngbd);
-    ls.set_interpolation_on_interface(quadratic_non_oscillatory_continuous_v2);
 
     ls.extend_from_interface_to_whole_domain_TVD(phi_extd, kappa, kappa_tmp);
 
     ierr = VecDestroy(kappa); CHKERRXX(ierr);
-
     kappa = kappa_tmp;
 
-    double kappa_avg = integration.integrate_over_interface(0, kappa)/integration.measure_of_interface(0);
+    /* get density field */
+    Vec mu;
+    ierr = VecDuplicate(phi_extd, &mu); CHKERRXX(ierr);
+    sample_cf_on_nodes(p4est, nodes, mu_cf, mu);
 
-//    shift_ghosted_vec(kappa, -kappa_avg););
+    /* compute energy */
+    Vec mu_wall;
+    Vec mu_intf;
 
+    ierr = VecDuplicate(phi_extd, &mu_wall); CHKERRXX(ierr);
+    ierr = VecDuplicate(phi_extd, &mu_intf); CHKERRXX(ierr);
+
+    ls.extend_from_interface_to_whole_domain_TVD(phi_wall, mu, mu_wall, 20);
+    ls.extend_from_interface_to_whole_domain_TVD(phi_extd, mu, mu_intf, 20);
+
+    energy  = .5*(gamma_Aa+gamma_Ba)*integration.measure_of_interface(0) + .5*(gamma_Aa-gamma_Ba)*integration.integrate_over_interface(0, mu_intf);
+    energy += .5*(gamma_Aw+gamma_Bw)*integration.measure_of_interface(1) + .5*(gamma_Aw-gamma_Bw)*integration.integrate_over_interface(1, mu_wall);
+
+    ierr = PetscPrintf(mpi.comm(), "Energy: %e, Change: %e\n", energy, energy-energy_old);
+
+    energy_old = energy;
+
+    ierr = VecDestroy(mu_wall); CHKERRXX(ierr);
+    ierr = VecDestroy(mu_intf); CHKERRXX(ierr);
+
+    /* compute velocity and contact angle */
+    Vec vn;
+    Vec surf_tns;
+    Vec cos_angle;
+
+    ierr = VecDuplicate(phi_extd, &vn); CHKERRXX(ierr);
+    ierr = VecDuplicate(phi_extd, &surf_tns); CHKERRXX(ierr);
+    ierr = VecDuplicate(phi_extd, &cos_angle); CHKERRXX(ierr);
+
+    double *mu_ptr;
+    double *vn_ptr;
+    double *surf_tns_ptr;
+    double *cos_angle_ptr;
+
+    ierr = VecGetArray(mu, &mu_ptr); CHKERRXX(ierr);
+    ierr = VecGetArray(vn, &vn_ptr); CHKERRXX(ierr);
+    ierr = VecGetArray(surf_tns, &surf_tns_ptr); CHKERRXX(ierr);
+    ierr = VecGetArray(cos_angle, &cos_angle_ptr); CHKERRXX(ierr);
+
+    foreach_node(n, nodes)
+    {
+      surf_tns_ptr[n] = surf_tns_cf(mu_ptr[n]);
+      cos_angle_ptr[n] = cos_angle_cf(mu_ptr[n]);
+    }
+
+    ierr = VecRestoreArray(mu, &mu_ptr); CHKERRXX(ierr);
+    ierr = VecRestoreArray(vn, &vn_ptr); CHKERRXX(ierr);
+    ierr = VecRestoreArray(surf_tns, &surf_tns_ptr); CHKERRXX(ierr);
+    ierr = VecRestoreArray(cos_angle, &cos_angle_ptr); CHKERRXX(ierr);
+
+//    // zero surf tension away from interface
+//    double *phi_extd_ptr;
+//    double *phi_wall_ptr;
+//    ierr = VecGetArray(surf_tns, &surf_tns_ptr); CHKERRXX(ierr);
+//    ierr = VecGetArray(phi_extd, &phi_extd_ptr); CHKERRXX(ierr);
+//    ierr = VecGetArray(phi_wall, &phi_wall_ptr); CHKERRXX(ierr);
+
+//    double surf_tns_tube = 5.*h;
+
+//    foreach_node(n, nodes)
+//    {
+//      double dist = MAX(fabs(phi_extd_ptr[n]), phi_wall_ptr[n]);
+//      if (dist > surf_tns_tube)
+//      {
+//        double X = MAX(0., 1.-(dist-surf_tns_tube)/surf_tns_tube);
+//        surf_tns_ptr[n] *= 3.*pow(X,2.) - 2.*pow(X,3.);
+//      }
+//    }
+
+//    ierr = VecRestoreArray(surf_tns, &surf_tns_ptr); CHKERRXX(ierr);
+//    ierr = VecRestoreArray(phi_extd, &phi_extd_ptr); CHKERRXX(ierr);
+
+
+    // average velocity
+    Vec integrand;
+    Vec surf_tns_d[P4EST_DIM];
+    Vec tmp;
+
+    ierr = VecDuplicate(phi_extd, &integrand); CHKERRXX(ierr);
+    ierr = VecDuplicate(phi_extd, &tmp); CHKERRXX(ierr);
+    foreach_dimension(dim) { ierr = VecDuplicate(normal[dim], &surf_tns_d[dim]); CHKERRXX(ierr); }
+
+    ls.extend_from_interface_to_whole_domain_TVD(phi_extd, surf_tns, tmp);
+    VecPointwiseMultGhost(integrand, kappa, tmp);
+
+    ngbd->first_derivatives_central(surf_tns, surf_tns_d);
+    foreach_dimension(dim)
+    {
+      VecPointwiseMultGhost(surf_tns_d[dim], surf_tns_d[dim], normal[dim]);
+      ls.extend_from_interface_to_whole_domain_TVD(phi_extd, surf_tns_d[dim], tmp);
+      VecAXPBYGhost(integrand, 1, 1, tmp);
+    }
+
+    double vn_avg = integration.integrate_over_interface(0, integrand)/integration.measure_of_interface(0);
+
+    ierr = VecDestroy(integrand); CHKERRXX(ierr);
+    ierr = VecDestroy(tmp); CHKERRXX(ierr);
+    foreach_dimension(dim) { ierr = VecDestroy(surf_tns_d[dim]); CHKERRXX(ierr); }
+
+    VecSetGhost(vn, vn_avg);
+//    VecSetGhost(vn, 0);
+
+    /* compute time step dt */
+    double dt = cfl*h/vn_avg;
+
+//    Vec surf_tns_tmp;
+//    ierr = VecDuplicate(phi_extd, &surf_tns_tmp); CHKERRXX(ierr);
+//    ls.extend_from_interface_to_whole_domain_TVD(phi_extd, surf_tns, surf_tns_tmp, 20);
+//    ierr = VecDestroy(surf_tns); CHKERRXX(ierr);
+//    surf_tns = surf_tns_tmp;
+
+    /* save data */
     if (save_vtk && iteration%save_every_dn == 0)
     {
-
-      // exact
-      Vec XYZ[P4EST_DIM];
-      double *xyz_ptr[P4EST_DIM];
-
-      foreach_dimension(dim)
-      {
-        ierr = VecCreateGhostNodes(p4est, nodes, &XYZ[dim]); CHKERRXX(ierr);
-        ierr = VecGetArray(XYZ[dim], &xyz_ptr[dim]); CHKERRXX(ierr);
-      }
-
-      double xyz[P4EST_DIM];
-      foreach_node(n, nodes)
-      {
-        node_xyz_fr_n(n, p4est, nodes, xyz);
-        xyz_ptr[0][n] = xyz[0];
-        xyz_ptr[1][n] = xyz[1];
-      }
-
-      foreach_dimension(dim)
-      {
-        ierr = VecRestoreArray(XYZ[dim], &xyz_ptr[dim]); CHKERRXX(ierr);
-      }
-
-      double mx = integration.integrate_over_domain(XYZ[0])/volume_cur2;
-      double my = integration.integrate_over_domain(XYZ[1])/volume_cur2;
-
-      double theta = acos(cos_angle_cf(0,0));
-      double r = sqrt(volume_cur2/(PI - theta + sin(theta)*cos(theta)));
-
-      double dist = ( (mx-wall_x)*wall_ny - (my-wall_y)*wall_nx)/sqrt(SQR(wall_nx) + SQR(wall_ny));
-
-      double elev = r*cos(theta);
-
-      double x_ex = wall_x + ( dist*wall_ny - elev*wall_nx)/sqrt(SQR(wall_nx) + SQR(wall_ny));
-      double y_ex = wall_y + (-dist*wall_nx - elev*wall_ny)/sqrt(SQR(wall_nx) + SQR(wall_ny));
-
-      flower_shaped_domain_t exact(r, x_ex, y_ex);
-
+      // compute reference solution
       Vec phi_exact;
-
       ierr = VecDuplicate(phi_extd, &phi_exact); CHKERRXX(ierr);
+      VecSetGhost(phi_exact, -1);
 
-      sample_cf_on_nodes(p4est, nodes, exact.phi, phi_exact);
+      if (num_geometry == 0 && num_density == 0)
+      {
+        Vec XYZ[P4EST_DIM];
+        double *xyz_ptr[P4EST_DIM];
 
+        foreach_dimension(dim)
+        {
+          ierr = VecCreateGhostNodes(p4est, nodes, &XYZ[dim]); CHKERRXX(ierr);
+          ierr = VecGetArray(XYZ[dim], &xyz_ptr[dim]); CHKERRXX(ierr);
+        }
+
+        double xyz[P4EST_DIM];
+        foreach_node(n, nodes)
+        {
+          node_xyz_fr_n(n, p4est, nodes, xyz);
+          foreach_dimension(dim) xyz_ptr[dim][n] = xyz[dim];
+        }
+
+        foreach_dimension(dim) {
+          ierr = VecRestoreArray(XYZ[dim], &xyz_ptr[dim]); CHKERRXX(ierr);
+        }
+
+        double com[P4EST_DIM];
+        double vol = integration.measure_of_domain();
+        foreach_dimension(dim)
+            com[dim] = integration.integrate_over_domain(XYZ[dim])/vol;
+
+#ifdef P4_TO_P8
+        double vec_d[P4EST_DIM] = { wall.x - com[0], wall.y - com[1], wall.z - com[2] };
+        double nw_norm = sqrt(SQR(wall.nx) + SQR(wall.ny) + SQR(wall.nz));
+        double d_norm2 = SQR(vec_d[0]) + SQR(vec_d[1]) + SQR(vec_d[2]);
+        double dn0 = (vec_d[0]*wall.nx + vec_d[1]*wall.ny + vec_d[2]*wall.nz)/nw_norm;
+#else
+        double vec_d[P4EST_DIM] = { wall.x - com[0], wall.y - com[1] };
+        double nw_norm = sqrt(SQR(wall.nx) + SQR(wall.ny));
+        double d_norm2 = SQR(vec_d[0]) + SQR(vec_d[1]);
+        double dn0 = (vec_d[0]*wall.nx + vec_d[1]*wall.ny)/nw_norm;
+#endif
+
+        double del = (d_norm2*wall.eps + 2.*dn0)
+            / ( sqrt(1. + (d_norm2*wall.eps + 2.*dn0)*wall.eps) + 1. );
+
+        double vec_n[P4EST_DIM];
+
+        vec_n[0] = (wall.nx/nw_norm + vec_d[0]*wall.eps)/(1.+wall.eps*del);
+        vec_n[1] = (wall.ny/nw_norm + vec_d[1]*wall.eps)/(1.+wall.eps*del);
+#ifdef P4_TO_P8
+        vec_n[2] = (wall.nz/nw_norm + vec_d[2]*wall.eps)/(1.+wall.eps*del);
+        double norm = sqrt(SQR(vec_n[0]) + SQR(vec_n[1]) + SQR(vec_n[2]));
+#else
+        double norm = sqrt(SQR(vec_n[0]) + SQR(vec_n[1]));
+#endif
+
+        double xyz_c[P4EST_DIM];
+        foreach_dimension(dim)
+            xyz_c[dim] = com[dim] + (del-elev)*vec_n[dim]/norm;
+
+#ifdef P4_TO_P8
+        flower_shaped_domain_t exact(drop.r0, xyz_c[0], xyz_c[1], xyz_c[2]);
+#else
+        flower_shaped_domain_t exact(drop.r0, xyz_c[0], xyz_c[1]);
+#endif
+
+        sample_cf_on_nodes(p4est, nodes, exact.phi, phi_exact);
+
+        foreach_dimension(dim) {
+          ierr = VecDestroy(XYZ[dim]); CHKERRXX(ierr);
+        }
+      }
 
       std::ostringstream oss;
 
@@ -418,7 +675,9 @@ int main (int argc, char* argv[])
        #ifdef P4_TO_P8
              "x" << brick.nxyztrees[2] <<
        #endif
-             "." << iteration/save_every_dn;
+             "." << (int) round(iteration/save_every_dn);
+
+      PetscPrintf(mpi.comm(), "VTK is being saved in %s\n", oss.str().c_str());
 
       /* save the size of the leaves */
       Vec leaf_level;
@@ -442,175 +701,105 @@ int main (int argc, char* argv[])
         l_p[p4est->local_num_quadrants+q] = quad->level;
       }
 
-      double *phi_intf_ptr;
       double *phi_wall_ptr;
       double *phi_extd_ptr;
       double *kappa_ptr;
       double *phi_exact_ptr;
+      double *mu_ptr;
+      double *surf_tns_ptr;
 
-      ierr = VecGetArray(phi_intf, &phi_intf_ptr); CHKERRXX(ierr);
       ierr = VecGetArray(phi_wall, &phi_wall_ptr); CHKERRXX(ierr);
       ierr = VecGetArray(phi_extd, &phi_extd_ptr); CHKERRXX(ierr);
       ierr = VecGetArray(kappa, &kappa_ptr); CHKERRXX(ierr);
       ierr = VecGetArray(phi_exact, &phi_exact_ptr); CHKERRXX(ierr);
+      ierr = VecGetArray(mu, &mu_ptr); CHKERRXX(ierr);
+      ierr = VecGetArray(surf_tns, &surf_tns_ptr); CHKERRXX(ierr);
 
       my_p4est_vtk_write_all(p4est, nodes, ghost,
                              P4EST_TRUE, P4EST_TRUE,
-                             5, 1, oss.str().c_str(),
-                             VTK_POINT_DATA, "phi_intf", phi_intf_ptr,
+                             6, 1, oss.str().c_str(),
                              VTK_POINT_DATA, "phi_wall", phi_wall_ptr,
                              VTK_POINT_DATA, "phi_extd", phi_extd_ptr,
                              VTK_POINT_DATA, "phi_exact", phi_exact_ptr,
                              VTK_POINT_DATA, "kappa", kappa_ptr,
+                             VTK_POINT_DATA, "mu", mu_ptr,
+                             VTK_POINT_DATA, "surf_tns", surf_tns_ptr,
                              VTK_CELL_DATA , "leaf_level", l_p);
 
-      ierr = VecRestoreArray(phi_intf, &phi_intf_ptr); CHKERRXX(ierr);
       ierr = VecRestoreArray(phi_wall, &phi_wall_ptr); CHKERRXX(ierr);
       ierr = VecRestoreArray(phi_extd, &phi_extd_ptr); CHKERRXX(ierr);
       ierr = VecRestoreArray(kappa, &kappa_ptr); CHKERRXX(ierr);
       ierr = VecRestoreArray(phi_exact, &phi_exact_ptr); CHKERRXX(ierr);
+      ierr = VecRestoreArray(mu, &mu_ptr); CHKERRXX(ierr);
+      ierr = VecRestoreArray(surf_tns, &surf_tns_ptr); CHKERRXX(ierr);
 
       ierr = VecRestoreArray(leaf_level, &l_p); CHKERRXX(ierr);
       ierr = VecDestroy(leaf_level); CHKERRXX(ierr);
 
       ierr = VecDestroy(phi_exact); CHKERRXX(ierr);
 
-      foreach_dimension(dim)
-      {
-        ierr = VecDestroy(XYZ[dim]); CHKERRXX(ierr);
-      }
-
       PetscPrintf(mpi.comm(), "VTK saved in %s\n", oss.str().c_str());
     }
 
-    Vec velo[P4EST_DIM];
+    /* advect interface and impose contact angle */
+    ls.set_use_neumann_for_contact_angle(use_neumann);
+    ls.set_contact_angle_extension(contact_angle_extension);
+    ls.advect_in_normal_direction_with_contact_angle(vn, surf_tns, cos_angle, phi_wall, phi_extd, dt);
 
-    double *normal_ptr;
-    double *kappa_ptr;
-    double *velo_ptr;
-
-    foreach_dimension(dim)
-    {
-      ierr = VecDuplicate(normal[dim], &velo[dim]); CHKERRXX(ierr);
-
-      ierr = VecGetArray(normal[dim], &normal_ptr); CHKERRXX(ierr);
-      ierr = VecGetArray(velo[dim], &velo_ptr); CHKERRXX(ierr);
-      ierr = VecGetArray(kappa, &kappa_ptr); CHKERRXX(ierr);
-
-      foreach_node(n, nodes)
-      {
-        velo_ptr[n] = -kappa_ptr[n]*normal_ptr[n];
-      }
-
-      ierr = VecRestoreArray(normal[dim], &normal_ptr); CHKERRXX(ierr);
-      ierr = VecRestoreArray(velo[dim], &velo_ptr); CHKERRXX(ierr);
-      ierr = VecRestoreArray(kappa, &kappa_ptr); CHKERRXX(ierr);
-    }
-
-    if (0) {
-      p4est_t *p4est_np1 = p4est_copy(p4est, P4EST_FALSE);
-      p4est_ghost_t *ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
-      p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
-
-      my_p4est_semi_lagrangian_t sl(&p4est_np1, &nodes_np1, &ghost_np1, ngbd);
-
-      //    sl.update_p4est(velo, dt, phi_extd);
-      sl.update_p4est(velo, dt, phi, acn, 0);
-
-      p4est_destroy(p4est);       p4est = p4est_np1;
-      p4est_ghost_destroy(ghost); ghost = ghost_np1;
-      p4est_nodes_destroy(nodes); nodes = nodes_np1;
-      hierarchy->update(p4est, ghost);
-      ngbd->update(hierarchy, nodes);
-    }
-
-    Vec vn;
-    Vec surf_tns;
-
-    ierr = VecDuplicate(kappa, &vn); CHKERRXX(ierr);
-    ierr = VecDuplicate(kappa, &surf_tns); CHKERRXX(ierr);
-
-    set_ghosted_vec(vn, kappa_avg);
-    set_ghosted_vec(surf_tns, 1);
-
-    Vec region;
-    ierr = VecDuplicate(phi_extd, &region); CHKERRXX(ierr);
-
-    double *region_ptr; ierr = VecGetArray(region, &region_ptr); CHKERRXX(ierr);
-    double *phi_extd_ptr; ierr = VecGetArray(phi_extd, &phi_extd_ptr); CHKERRXX(ierr);
-    double *phi_wall_ptr; ierr = VecGetArray(phi_wall, &phi_wall_ptr); CHKERRXX(ierr);
-
-    double limit_extd = 6.*dx;
-    double limit_wall = 6.*dx;
-
-    foreach_node(n, nodes)
-    {
-      if (fabs(phi_extd_ptr[n]) < limit_extd && phi_wall_ptr[n] < limit_wall)
-        region_ptr[n] = 1;
-      else
-        region_ptr[n] = 0;
-    }
-
-    ierr = VecRestoreArray(region, &region_ptr); CHKERRXX(ierr);
-    ierr = VecRestoreArray(phi_extd, &phi_extd_ptr); CHKERRXX(ierr);
-    ierr = VecRestoreArray(phi_wall, &phi_wall_ptr); CHKERRXX(ierr);
+//    // bound interface
+//    double bound_limit = 10.*h;
 
 //    double *phi_extd_ptr;
+//    double *phi_wall_ptr;
+//    ierr = VecGetArray(surf_tns, &surf_tns_ptr); CHKERRXX(ierr);
+//    ierr = VecGetArray(phi_extd, &phi_extd_ptr); CHKERRXX(ierr);
+//    ierr = VecGetArray(phi_wall, &phi_wall_ptr); CHKERRXX(ierr);
 
-    ierr = VecGetArray(phi_extd, &phi_extd_ptr); CHKERRXX(ierr);
-    double limit = 10*dx;
-    foreach_node(n, nodes)
-    {
-      if (phi_extd_ptr[n] > limit)       phi_extd_ptr[n] = limit;
-      else if (phi_extd_ptr[n] < -limit) phi_extd_ptr[n] = -limit;
-    }
-    ierr = VecRestoreArray(phi_extd, &phi_extd_ptr); CHKERRXX(ierr);
+//    double surf_tns_tube = 5.*h;
 
-//    ls.advect_in_normal_direction(vn, surf_tns, cos_angle, phi_extd, 10*dt);
-    double dt_actual = ls.advect_in_normal_direction(vn, surf_tns, phi_wall, &cos_angle_cf, phi_extd, 10.*dt);
-//    double dt_actual = ls.advect_in_normal_direction(vn, surf_tns, NULL, NULL, phi_extd, 10*dt);
+//    foreach_node(n, nodes)
+//    {
+//      double dist = MAX(fabs(phi_extd_ptr[n]), phi_wall_ptr[n]);
+//      if (dist > surf_tns_tube)
+//      {
+//        double X = MAX(0., 1.-(dist-surf_tns_tube)/surf_tns_tube);
+//        surf_tns_ptr[n] *= 3.*pow(X,2.) - 2.*pow(X,3.);
+//      }
+//    }
 
-//    shift_ghosted_vec(phi_wall, -6.*dx);
-    ls.enforce_contact_angle(phi_wall, phi_extd, cos_angle, 20);
-//    ls.extend_Over_Interface_TVD(phi_wall, phi_extd, 100, 0);
-//    ls.reinitialize_1st_order_time_2nd_order_space(phi_extd, 50);
-//    shift_ghosted_vec(phi_wall,  6.*dx);
-    ls.enforce_contact_angle2(phi_wall, phi_extd, cos_angle, 20);
-//    ls_new.extend_Over_Interface_TVD(phi_wall, phi_extd, 20, 0);
+//    ierr = VecRestoreArray(surf_tns, &surf_tns_ptr); CHKERRXX(ierr);
+//    ierr = VecRestoreArray(phi_extd, &phi_extd_ptr); CHKERRXX(ierr);
 
-//    ls.extend_Over_Interface_TVD(phi_wall, phi_extd, 20, 2);
-//    ls.extend_Over_Interface_TVD(phi_wall, phi_extd, 100, 0);
-//    ls.extend_Over_Interface_TVD_regional(phi_wall, phi_wall, region, phi_extd, 20, 2);
     ls.reinitialize_1st_order_time_2nd_order_space(phi_extd, 50);
 
-    double* phi_eff_ptr;
-    Vec phi_eff;
-    ierr = VecDuplicate(phi_extd, &phi_eff); CHKERRXX(ierr);
-    ierr = VecGetArray(phi_eff, &phi_eff_ptr); CHKERRXX(ierr);
+    ierr = VecDestroy(vn); CHKERRXX(ierr);
+    ierr = VecDestroy(surf_tns); CHKERRXX(ierr);
+    ierr = VecDestroy(cos_angle); CHKERRXX(ierr);
 
-    std::vector<double *> phi_ptr(phi.size(), NULL);
-
-    for (int i = 0; i < phi.size(); i++) { ierr = VecGetArray(phi[i], &phi_ptr[i]); CHKERRXX(ierr); }
-
-    for (size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+    /* correct for volume loss */
+    for (short i = 0; i < 2; ++i)
     {
-      double phi_total = -1.0e6; // this is quite ugly
-      for (unsigned int i = 0; i < phi.size(); i++)
-      {
-        double phi_current = phi_ptr[i][n];
+    double volume_cur = integration.measure_of_domain();
+    double intf_len   = integration.measure_of_interface(0);
+    double correction = (volume_cur-volume)/intf_len;
 
-        if      (acn[i] == INTERSECTION) phi_total = MAX(phi_total, phi_current);
-        else if (acn[i] == ADDITION)     phi_total = MIN(phi_total, phi_current);
-      }
-      phi_eff_ptr[n] = phi_total;
+    VecShiftGhost(phi_extd, correction);
 
-      phi_eff_ptr[n] = MIN(phi_total, fabs(phi_ptr[1][n]));
+    double volume_cur2 = integration.measure_of_domain();
+
+    PetscPrintf(mpi.comm(), "Volume loss: %e, after correction: %e\n", (volume_cur-volume)/volume, (volume_cur2-volume)/volume);
     }
 
-    for (int i = 0; i < phi.size(); i++) { ierr = VecRestoreArray(phi[i], &phi_ptr[i]); CHKERRXX(ierr); }
+    /* refine and coarsen grid */
+    Vec phi_eff;
+    ierr = VecDuplicate(phi_extd, &phi_eff); CHKERRXX(ierr);
+    compute_phi_eff(nodes, &phi, &acn_int, &refine_always, phi_eff);
+
+    double *phi_eff_ptr;
+    ierr = VecGetArray(phi_eff, &phi_eff_ptr); CHKERRXX(ierr);
 
     splitting_criteria_tag_t sp(lmin, lmax, lip);
-//    sp.set_refine_only_inside(true);
+    sp.set_refine_only_inside(1);
 
     p4est_t *p4est_np1 = p4est_copy(p4est, P4EST_FALSE);
     p4est_ghost_t *ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
@@ -624,12 +813,14 @@ int main (int argc, char* argv[])
 
     if (is_grid_changing)
     {
+      // repartition p4est
       my_p4est_partition(p4est_np1, P4EST_TRUE, NULL);
 
       // reset nodes, ghost, and phi
       p4est_ghost_destroy(ghost_np1); ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
       p4est_nodes_destroy(nodes_np1); nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
 
+      // interpolate data between grids
       my_p4est_interpolation_nodes_t interp(ngbd);
 
       double xyz[P4EST_DIM];
@@ -651,6 +842,10 @@ int main (int argc, char* argv[])
         phi[i] = phi_new[i];
       }
 
+      phi_extd = phi[0];
+      phi_wall = phi[1];
+
+      // delete old p4est
       p4est_destroy(p4est);       p4est = p4est_np1;
       p4est_ghost_destroy(ghost); ghost = ghost_np1;
       p4est_nodes_destroy(nodes); nodes = nodes_np1;
@@ -658,28 +853,14 @@ int main (int argc, char* argv[])
       ngbd->update(hierarchy, nodes);
     }
 
-    PetscPrintf(mpi.comm(), "Time step: %e\n", dt_actual);
-
-//    scale_ghosted_vec(kappa, -1.);
-//    ls.advect_in_normal_direction(kappa, phi_extd, 10*dt);
-
-    ierr = VecDestroy(vn); CHKERRXX(ierr);
-    ierr = VecDestroy(surf_tns); CHKERRXX(ierr);
-
-//    my_p4est_level_set_t ls_new(ngbd);
-
-    phi_extd = phi[0];
-    phi_wall = phi[1];
-
     iteration++;
 
     foreach_dimension(dim)
     {
-      ierr = VecDestroy(velo[dim]); CHKERRXX(ierr);
       ierr = VecDestroy(normal[dim]); CHKERRXX(ierr);
     }
     ierr = VecDestroy(kappa); CHKERRXX(ierr);
-    ierr = VecDestroy(cos_angle); CHKERRXX(ierr);
+    ierr = VecDestroy(mu); CHKERRXX(ierr);
   }
 
   ierr = VecDestroy(phi_intf); CHKERRXX(ierr);

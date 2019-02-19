@@ -1408,6 +1408,26 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
     PetscInt node_000_g = petsc_gloidx_[qnnn.node_000];
 
     //* FIX THIS
+#ifdef P4_TO_P8
+    bool is_wall[2*P4EST_DIM] = { 0, 0, 0, 0, 0, 0 };
+#else
+    bool is_wall[2*P4EST_DIM] = { 0, 0, 0, 0 };
+#endif
+    bool is_wall_any = is_node_Wall(p4est_, ni);
+
+    if(is_wall_any)
+    {
+      is_wall[0] = is_node_xmWall(p4est_, ni);
+      is_wall[1] = is_node_xpWall(p4est_, ni);
+      is_wall[2] = is_node_ymWall(p4est_, ni);
+      is_wall[3] = is_node_ypWall(p4est_, ni);
+#ifdef P4_TO_P8
+      is_wall[4] = is_node_zmWall(p4est_, ni);
+      is_wall[5] = is_node_zpWall(p4est_, ni);
+#endif
+    }
+
+
     if(is_node_Wall(p4est_, ni) && phi_eff_000 < 0.)
     {
       if(bc_wall_type_->value(xyz_C) == DIRICHLET)
@@ -3022,7 +3042,43 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
 
             if (face_area[dir]/face_area_scalling_ > interface_rel_thresh_)
             {
-              if (!neighbors_exist[f2c_p[dir][nnf_00]])
+              if (is_wall[dir])
+              {
+                if (bc_wall_type_->value(xyz_C) == NEUMANN && setup_rhs)
+                {
+                  if (use_sc_scheme_)
+                  {
+                    double add_to_rhs = 0;
+                    cube_dir_w.clear();
+                    cube_dir_x.clear();
+                    cube_dir_y.clear();
+#ifdef P4_TO_P8
+                    cube_dir_z.clear();
+
+                    cube.quadrature_in_dir(dir, cube_dir_w, cube_dir_x, cube_dir_y, cube_dir_z);
+#else
+                    cube.quadrature_in_dir(dir, cube_dir_w, cube_dir_x, cube_dir_y);
+#endif
+                    if (cube_dir_w.size() > 0)
+                    {
+                      for (unsigned int i = 0; i < cube_dir_w.size(); ++i)
+                      {
+#ifdef P4_TO_P8
+                        add_to_rhs += cube_dir_w[i]*(*bc_wall_value_)(cube_dir_x[i], cube_dir_y[i], cube_dir_z[i]);
+#else
+                        add_to_rhs += cube_dir_w[i]*(*bc_wall_value_)(cube_dir_x[i], cube_dir_y[i]);
+#endif
+                      }
+                    }
+                    rhs_ptr[n] += add_to_rhs;
+                  } else {
+                    rhs_ptr[n] += face_area[dir]*bc_wall_value_->value(xyz_C);
+                  }
+                } else {
+                  throw std::invalid_argument("Dirichlet or Robin BC are not implemented yet in the case when interfaces are touching walls\n");
+                }
+              }
+              else if (!neighbors_exist[f2c_p[dir][nnf_00]])
               {
                 std::cout << "Warning: neighbor doesn't exist in the " << dir << "-th direction."
                           << " Own number: " << n

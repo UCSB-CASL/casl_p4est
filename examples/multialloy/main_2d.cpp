@@ -77,7 +77,7 @@ double cfl_number              = 0.1;
 double bc_tolerance            = 1.e-5;
 double phi_thresh              = 1e-3;
 
-int max_iterations             = 50;
+int max_iterations             = 6;
 int pin_every_n_steps          = 1000;
 
 bool use_continuous_stencil    = 0;
@@ -98,7 +98,7 @@ int save_every_n_iteration = 10;
 bool save_velocity         = 1;
 bool save_vtk              = 1;
 bool save_history          = 1;
-bool save_dendrites        = 1;
+bool save_dendrites        = 0;
 
 double save_every_dl = 0.01;
 double save_every_dt = 0.1;
@@ -119,11 +119,11 @@ double init_perturb        = 0.001;
 
 bool enforce_planar_front   = 0;
 
-int alloy_type = 2;
+int alloy_type = 0;
 
-//double box_size = 4e-2;     //equivalent width (in x) of the box in cm - for plane convergence, 5e-3
-double box_size = 1e-1;     //equivalent width (in x) of the box in cm - for plane convergence, 5e-3
-double scaling = 1/box_size;
+double box_size = 4e-2;     //equivalent width (in x) of the box in cm - for plane convergence, 5e-3
+//double box_size = 1e-1;     //equivalent width (in x) of the box in cm - for plane convergence, 5e-3
+double scaling = 1./box_size;
 
 double rho;                  /* density                                    - kg.cm-3      */
 double heat_capacity;        /* c, heat capacity                           - J.kg-1.K-1   */

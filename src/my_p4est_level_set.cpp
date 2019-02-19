@@ -10112,130 +10112,48 @@ void my_p4est_level_set_t::enforce_contact_angle2(Vec phi, Vec q, Vec cos_angle,
   ierr = PetscLogEventEnd(log_my_p4est_level_set_extend_over_interface_TVD, phi, q, 0, 0); CHKERRXX(ierr);
 }
 
-#ifdef P4_TO_P8
-double my_p4est_level_set_t::advect_in_normal_direction(const Vec vn, const Vec surf_tns, const Vec phi_wall, CF_3 *cos_angle, Vec phi, double dt_max, Vec phi_xx, Vec phi_yy, Vec phi_zz)
-#else
-double my_p4est_level_set_t::advect_in_normal_direction(const Vec vn, const Vec surf_tns, const Vec phi_wall, CF_2 *cos_angle, Vec phi, double dt_max, Vec phi_xx, Vec phi_yy)
-#endif
+double my_p4est_level_set_t::advect_in_normal_direction_with_contact_angle(const Vec vn, const Vec surf_tns, const Vec cos_angle, const Vec phi_wall, Vec phi, double dt)
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_level_set_advect_in_normal_direction_Vec, 0, 0, 0, 0);
 
-  double *vn_p;
-  ierr = VecGetArray(vn, &vn_p); CHKERRXX(ierr);
-
-  Vec phi_xx_ = phi_xx, phi_yy_ = phi_yy;
-#ifdef P4_TO_P8
-  Vec phi_zz_ = phi_zz;
-#endif
-  bool local_derivatives = false;
-#ifdef P4_TO_P8
-  if (phi_xx_ == NULL && phi_yy_ == NULL && phi_zz_ == NULL)
-  {
-    ierr = VecCreateGhostNodes(p4est, nodes, &phi_xx_); CHKERRXX(ierr);
-    ierr = VecCreateGhostNodes(p4est, nodes, &phi_yy_); CHKERRXX(ierr);
-    ierr = VecCreateGhostNodes(p4est, nodes, &phi_zz_); CHKERRXX(ierr);
-    compute_derivatives(phi, phi_xx_, phi_yy_, phi_zz_);
-    local_derivatives = true;
-  }
-#else
-  if (phi_xx_ == NULL && phi_yy_ == NULL)
-  {
-    ierr = VecCreateGhostNodes(p4est, nodes, &phi_xx_); CHKERRXX(ierr);
-    ierr = VecCreateGhostNodes(p4est, nodes, &phi_yy_); CHKERRXX(ierr);
-    compute_derivatives(phi, phi_xx_, phi_yy_);
-    local_derivatives = true;
-  }
-#endif
-
-  double *phi_p, *phi_xx_p, *phi_yy_p;
-  ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
-  ierr = VecGetArray(phi_xx_, &phi_xx_p); CHKERRXX(ierr);
-  ierr = VecGetArray(phi_yy_, &phi_yy_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  double *phi_zz_p;
-  ierr = VecGetArray(phi_zz_, &phi_zz_p); CHKERRXX(ierr);
-#endif
-
-  /* compute dt based on CFL condition */
-  double dt_local = dt_max;
-  double dt;
-  quad_neighbor_nodes_of_node_t qnnn;
-  for (p4est_locidx_t n = 0; n<nodes->num_owned_indeps; ++n){
-
-    ngbd->get_neighbors(n, qnnn);
-
-    double s_p00 = fabs(qnnn.d_p00); double s_m00 = fabs(qnnn.d_m00);
-    double s_0p0 = fabs(qnnn.d_0p0); double s_0m0 = fabs(qnnn.d_0m0);
-#ifdef P4_TO_P8
-    double s_00p = fabs(qnnn.d_00p); double s_00m = fabs(qnnn.d_00m);
-#endif
-#ifdef P4_TO_P8
-    double s_min = MIN(MIN(s_p00, s_m00), MIN(s_0p0, s_0m0), MIN(s_00p, s_00m));
-#else
-    double s_min = MIN(MIN(s_p00, s_m00), MIN(s_0p0, s_0m0));
-#endif
-
-    /* choose CFL = 0.8 ... just for fun! */
-    dt_local = MIN(dt_local, 0.8*fabs(s_min/vn_p[n]));
-  }
-  MPI_Allreduce(&dt_local, &dt, 1, MPI_DOUBLE, MPI_MIN, p4est->mpicomm);
-
   Vec rhs;
-  double *rhs_p;
-  ierr = VecDuplicate(phi_xx_, &rhs); CHKERRXX(ierr);
+  ierr = VecDuplicate(phi, &rhs); CHKERRXX(ierr);
 
-  ierr = VecGetArray(rhs, &rhs_p); CHKERRXX(ierr);
+  // advection step using (assuming |grad(phi)| = 1)
+  VecCopyGhost(phi, rhs);
+  VecAXPBYGhost(rhs, -1, 1./dt, vn);
 
-  // layer nodes
-  advect_in_normal_direction_one_iteration(ngbd->layer_nodes, vn_p, dt,
-                                         #ifdef P4_TO_P8
-                                           phi_xx_p, phi_yy_p, phi_zz_p,
-                                         #else
-                                           phi_xx_p, phi_yy_p,
-                                         #endif
-                                           phi_p, rhs_p);
-  ierr = VecGhostUpdateBegin(rhs, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-  // local nodes
-  advect_in_normal_direction_one_iteration(ngbd->local_nodes, vn_p, dt,
-                                         #ifdef P4_TO_P8
-                                           phi_xx_p, phi_yy_p, phi_zz_p,
-                                         #else
-                                           phi_xx_p, phi_yy_p,
-                                         #endif
-                                           phi_p, rhs_p);
-  ierr = VecGhostUpdateEnd  (rhs, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-
-  /* restore arrays */
-  ierr = VecRestoreArray(phi,     &phi_p);    CHKERRXX(ierr);
-  ierr = VecRestoreArray(vn,      &vn_p);     CHKERRXX(ierr);
-  ierr = VecRestoreArray(rhs,     &rhs_p);    CHKERRXX(ierr);
-  ierr = VecRestoreArray(phi_xx_, &phi_xx_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(phi_yy_, &phi_yy_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  ierr = VecRestoreArray(phi_zz_, &phi_zz_p); CHKERRXX(ierr);
-#endif
-  ierr = PetscLogFlops(nodes->num_owned_indeps * P4EST_DIM); CHKERRXX(ierr);
-
-  scale_ghosted_vec(rhs, 1./dt);
-
+  // diffusion step (assuming |grad(phi)| = 1)
   my_p4est_poisson_nodes_mls_sc_t solver(ngbd);
 
   std::vector<action_t> acn(1, INTERSECTION);
   std::vector<int> clr(1,0);
   std::vector<Vec> phi_all(1, phi_wall);
 
+#ifdef P4_TO_P8
+  std::vector<CF_3 *> bc_coeff(1, &zero_cf);
+  std::vector<CF_3 *> bc_value(1);
+#else
   std::vector<CF_2 *> bc_coeff(1, &zero_cf);
   std::vector<CF_2 *> bc_value(1);
+#endif
 
-  bc_value[0] = cos_angle;
+  my_p4est_interpolation_nodes_t interp(ngbd);
+  Vec flux;
+  ierr = VecDuplicate(phi, &flux); CHKERRXX(ierr);
+
+  interp.set_input(flux, linear);
+
+  bc_value[0] = &interp;
 
   std::vector<BoundaryConditionType> bc_type(1, NEUMANN);
 
-  if (phi_wall != NULL && cos_angle != NULL)
+  if (phi_wall != NULL && cos_angle != NULL && use_neumann_for_contact_angle)
   {
+    VecCopyGhost(cos_angle, flux);
+    VecPointwiseMultGhost(flux, flux, surf_tns);
+
     solver.set_geometry(1, &acn, &clr, &phi_all);
     solver.set_bc_interface_coeff(bc_coeff);
     solver.set_bc_interface_type(bc_type);
@@ -10243,6 +10161,8 @@ double my_p4est_level_set_t::advect_in_normal_direction(const Vec vn, const Vec 
   }
 
   solver.set_use_sc_scheme(0);
+  solver.set_integration_order(1);
+//  solver.set_first_order_neumann_wall(1);
 
   solver.set_mu(surf_tns);
   solver.set_diag_add(1./dt);
@@ -10251,28 +10171,61 @@ double my_p4est_level_set_t::advect_in_normal_direction(const Vec vn, const Vec 
   solver.set_bc_wall_type(bc_wall_type);
   solver.set_bc_wall_value(zero_cf);
 
-//  Vec phi_old;
-//  ierr = VecDuplicate(phi, phi_old); CHKERRXX(ierr);
-//  copy_ghosted_vec(phi, phi_old);
-
   solver.solve(phi, true);
 
-//  {
-//    double *phi_old_ptr; ierr = VecGetArray(phi_old, &phi_old_ptr); CHKERRXX
-
-//  if (local_derivatives){
-//    ierr = VecDestroy(phi_xx_); CHKERRXX(ierr);
-//    ierr = VecDestroy(phi_yy_); CHKERRXX(ierr);
-//#ifdef P4_TO_P8
-//    ierr = VecDestroy(phi_zz_); CHKERRXX(ierr);
-//#endif
-//  }
-
   ierr = VecDestroy(rhs); CHKERRXX(ierr);
+  ierr = VecDestroy(flux); CHKERRXX(ierr);
+
+  // extend into wall
+  if (phi_wall != NULL && cos_angle != NULL)
+  {
+    switch (contact_angle_extension)
+    {
+      case 0: enforce_contact_angle(phi_wall, phi, cos_angle, 50); break;
+      case 1: enforce_contact_angle2(phi_wall, phi, cos_angle, 50); break;
+      case 2:
+        {
+          Vec region;
+          ierr = VecDuplicate(phi, &region); CHKERRXX(ierr);
+
+          double *region_ptr;
+          double *phi_ptr;
+          double *phi_wall_ptr;
+
+          ierr = VecGetArray(phi, &phi_ptr);           CHKERRXX(ierr);
+          ierr = VecGetArray(phi_wall, &phi_wall_ptr); CHKERRXX(ierr);
+          ierr = VecGetArray(region, &region_ptr);     CHKERRXX(ierr);
+
+          double dxyz[P4EST_DIM];
+          dxyz_min(p4est, dxyz);
+
+#ifdef P4_TO_P8
+          double dx = MIN(dxyz[0], dxyz[1], dxyz[2]);
+#else
+          double dx = MIN(dxyz[0], dxyz[1]);
+#endif
+
+          double limit_extd = 6.*dx;
+          double limit_wall = 6.*dx;
+
+          foreach_node(n, nodes)
+          {
+            if (fabs(phi_ptr[n]) < limit_extd && phi_wall_ptr[n] < limit_wall)
+              region_ptr[n] = 1;
+            else
+              region_ptr[n] = 0;
+          }
+
+          ierr = VecRestoreArray(phi, &phi_ptr);           CHKERRXX(ierr);
+          ierr = VecRestoreArray(phi_wall, &phi_wall_ptr); CHKERRXX(ierr);
+          ierr = VecRestoreArray(region, &region_ptr);     CHKERRXX(ierr);
+
+          extend_Over_Interface_TVD_regional(phi_wall, phi_wall, region, phi, 50, 2); break;
+        }
+    }
+  }
 
   ierr = PetscLogEventEnd(log_my_p4est_level_set_advect_in_normal_direction_Vec, 0, 0, 0, 0);
-
-  return dt;
 }
 
 void my_p4est_level_set_t::extend_Over_Interface_TVD_regional( Vec phi, Vec mask, Vec region, Vec q, int iterations, int order) const

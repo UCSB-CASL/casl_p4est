@@ -789,6 +789,48 @@ void dxyz_min(const p4est_t *p4est, double *dxyz)
   }
 }
 
+void get_dxyz_min(const p4est_t *p4est, double *dxyz, double &dxyz_min)
+{
+  splitting_criteria_t *data = (splitting_criteria_t*)p4est->user_pointer;
+
+  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[0 + 0];
+  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
+  double *v = p4est->connectivity->vertices;
+
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    dxyz[dir] = (v[3*v_p + dir] - v[3*v_m + dir]) / (1<<data->max_lvl);
+  }
+
+#ifdef P4_TO_P8
+  dxyz_min = MIN(dxyz[0], dxyz[1], dxyz[2]);
+#else
+  dxyz_min = MIN(dxyz[0], dxyz[1]);
+#endif
+}
+
+void get_dxyz_min(const p4est_t *p4est, double *dxyz, double &dxyz_min, double &diag_min)
+{
+  splitting_criteria_t *data = (splitting_criteria_t*)p4est->user_pointer;
+
+  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[0 + 0];
+  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
+  double *v = p4est->connectivity->vertices;
+
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    dxyz[dir] = (v[3*v_p + dir] - v[3*v_m + dir]) / (1<<data->max_lvl);
+  }
+
+#ifdef P4_TO_P8
+  dxyz_min = MIN(dxyz[0], dxyz[1], dxyz[2]);
+  diag_min = sqrt( SQR(dxyz[0]) + SQR(dxyz[1]) + SQR(dxyz[2]) );
+#else
+  dxyz_min = MIN(dxyz[0], dxyz[1]);
+  diag_min = sqrt( SQR(dxyz[0]) + SQR(dxyz[1]) );
+#endif
+}
+
 void dxyz_quad(const p4est_t *p4est, const p4est_quadrant_t *quad, double *dxyz)
 {
   p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[0 + 0];
@@ -2043,7 +2085,7 @@ void shift_ghosted_vec(Vec vec, double scalar)
   PetscErrorCode ierr;
   Vec ptr;
   ierr = VecGhostGetLocalForm(vec, &ptr);     CHKERRXX(ierr);
-  ierr = VecShift(ptr, scalar);                 CHKERRXX(ierr);
+  ierr = VecShift(ptr, scalar);               CHKERRXX(ierr);
   ierr = VecGhostRestoreLocalForm(vec, &ptr); CHKERRXX(ierr);
 }
 
@@ -2052,8 +2094,70 @@ void scale_ghosted_vec(Vec vec, double scalar)
   PetscErrorCode ierr;
   Vec ptr;
   ierr = VecGhostGetLocalForm(vec, &ptr);     CHKERRXX(ierr);
-  ierr = VecScale(ptr, scalar);                 CHKERRXX(ierr);
+  ierr = VecScale(ptr, scalar);               CHKERRXX(ierr);
   ierr = VecGhostRestoreLocalForm(vec, &ptr); CHKERRXX(ierr);
+}
+
+void VecCopyGhost(Vec input, Vec output)
+{
+  PetscErrorCode ierr;
+  Vec src, out;
+  ierr = VecGhostGetLocalForm(input, &src);      CHKERRXX(ierr);
+  ierr = VecGhostGetLocalForm(output, &out);     CHKERRXX(ierr);
+  ierr = VecCopy(src, out);                      CHKERRXX(ierr);
+  ierr = VecGhostRestoreLocalForm(input, &src);  CHKERRXX(ierr);
+  ierr = VecGhostRestoreLocalForm(output, &out); CHKERRXX(ierr);
+}
+
+void VecSetGhost(Vec vec, PetscScalar scalar)
+{
+  PetscErrorCode ierr;
+  Vec ptr;
+  ierr = VecGhostGetLocalForm(vec, &ptr);     CHKERRXX(ierr);
+  ierr = VecSet(ptr, scalar);                 CHKERRXX(ierr);
+  ierr = VecGhostRestoreLocalForm(vec, &ptr); CHKERRXX(ierr);
+}
+
+void VecShiftGhost(Vec vec, PetscScalar scalar)
+{
+  PetscErrorCode ierr;
+  Vec ptr;
+  ierr = VecGhostGetLocalForm(vec, &ptr);     CHKERRXX(ierr);
+  ierr = VecShift(ptr, scalar);               CHKERRXX(ierr);
+  ierr = VecGhostRestoreLocalForm(vec, &ptr); CHKERRXX(ierr);
+}
+
+void VecScaleGhost(Vec vec, PetscScalar scalar)
+{
+  PetscErrorCode ierr;
+  Vec ptr;
+  ierr = VecGhostGetLocalForm(vec, &ptr);     CHKERRXX(ierr);
+  ierr = VecScale(ptr, scalar);               CHKERRXX(ierr);
+  ierr = VecGhostRestoreLocalForm(vec, &ptr); CHKERRXX(ierr);
+}
+
+void VecPointwiseMultGhost(Vec output, Vec input1, Vec input2)
+{
+  PetscErrorCode ierr;
+  Vec out, in1, in2;
+  ierr = VecGhostGetLocalForm(input1, &in1);     CHKERRXX(ierr);
+  ierr = VecGhostGetLocalForm(input2, &in2);     CHKERRXX(ierr);
+  ierr = VecGhostGetLocalForm(output, &out);     CHKERRXX(ierr);
+  ierr = VecPointwiseMult(out, in1, in2);        CHKERRXX(ierr);
+  ierr = VecGhostRestoreLocalForm(input1, &in1); CHKERRXX(ierr);
+  ierr = VecGhostRestoreLocalForm(input2, &in2); CHKERRXX(ierr);
+  ierr = VecGhostRestoreLocalForm(output, &out); CHKERRXX(ierr);
+}
+
+void VecAXPBYGhost(Vec y, PetscScalar alpha, PetscScalar beta, Vec x)
+{
+  PetscErrorCode ierr;
+  Vec X, Y;
+  ierr = VecGhostGetLocalForm(x, &X);     CHKERRXX(ierr);
+  ierr = VecGhostGetLocalForm(y, &Y);     CHKERRXX(ierr);
+  ierr = VecAXPBY(Y, alpha, beta, X);     CHKERRXX(ierr);
+  ierr = VecGhostRestoreLocalForm(x, &X); CHKERRXX(ierr);
+  ierr = VecGhostRestoreLocalForm(y, &Y); CHKERRXX(ierr);
 }
 
 void invert_phi(p4est_nodes_t *nodes, Vec phi)
@@ -2539,4 +2643,42 @@ void get_all_neighbors(const p4est_locidx_t n, p4est_t *p4est, p4est_nodes_t *no
   if      (quad_mpm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_mp0] = nodes->local_nodes[P4EST_CHILDREN*quad_mpm_idx + dir::v_mpm];
   if      (quad_ppm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_pp0] = nodes->local_nodes[P4EST_CHILDREN*quad_ppm_idx + dir::v_ppm];
 #endif
+}
+
+void compute_phi_eff(p4est_nodes_t *nodes, std::vector<Vec> *phi, std::vector<int> *acn, std::vector<bool> *refine_always, Vec phi_eff)
+{
+  PetscErrorCode ierr;
+  double* phi_eff_ptr;
+  ierr = VecGetArray(phi_eff, &phi_eff_ptr); CHKERRXX(ierr);
+
+  std::vector<double *> phi_ptr(phi->size(), NULL);
+
+  for (int i = 0; i < phi->size(); i++) { ierr = VecGetArray(phi->at(i), &phi_ptr[i]); CHKERRXX(ierr); }
+
+  for (size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+  {
+    double phi_total = -1.0e6; // this is quite ugly
+    for (unsigned int i = 0; i < phi->size(); i++)
+    {
+      double phi_current = phi_ptr[i][n];
+
+      if      (acn->at(i) == 0) phi_total = MAX(phi_total, phi_current);
+      else if (acn->at(i) == 1) phi_total = MIN(phi_total, phi_current);
+    }
+    phi_eff_ptr[n] = phi_total;
+  }
+
+  if (refine_always != NULL)
+  {
+    for (size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+    {
+      for (unsigned int i = 0; i < phi->size(); i++)
+      {
+        if (refine_always->at(i))
+          phi_eff_ptr[n] = MIN(phi_eff_ptr[n], fabs(phi_ptr[i][n]));
+      }
+    }
+  }
+
+  for (int i = 0; i < phi->size(); i++) { ierr = VecRestoreArray(phi->at(i), &phi_ptr[i]); CHKERRXX(ierr); }
 }

@@ -94,11 +94,14 @@ class my_p4est_level_set_t {
   } bc_wall_type;
 #endif
 
+  bool use_neumann_for_contact_angle;
+  int contact_angle_extension;
+
 public:
   my_p4est_level_set_t(my_p4est_node_neighbors_t *ngbd_ )
     : myb(ngbd_->myb), p4est(ngbd_->p4est), nodes(ngbd_->nodes), ghost(ngbd_->ghost), ngbd(ngbd_),
       interpolation_on_interface(quadratic_non_oscillatory),
-      use_one_sided_derivatives(false)
+      use_one_sided_derivatives(false), use_neumann_for_contact_angle(true), contact_angle_extension(0)
   {}
 
   inline void update(my_p4est_node_neighbors_t *ngbd_) {
@@ -211,14 +214,12 @@ public:
 
   void enforce_contact_angle(Vec phi_wall, Vec phi_intf, Vec cos_angle, int iterations=20, Vec normal[] = NULL) const;
   void enforce_contact_angle2(Vec phi, Vec q, Vec cos_angle, int iterations=20, int order=2, Vec normal[] = NULL) const;
-
-#ifdef P4_TO_P8;
-  double advect_in_normal_direction(const Vec vn, const Vec surf_tns, const Vec phi_wall, CF_3 *cos_angle, Vec phi, double dt_max = DBL_MAX, Vec phi_xx = NULL, Vec phi_yy = NULL, Vec phi_zz = NULL);
-#else
-  double advect_in_normal_direction(const Vec vn, const Vec surf_tns, const Vec phi_wall, CF_2 *cos_angle, Vec phi, double dt_max = DBL_MAX, Vec phi_xx = NULL, Vec phi_yy = NULL);
-#endif
-
   void extend_Over_Interface_TVD_regional( Vec phi, Vec mask, Vec region, Vec q, int iterations = 20, int order = 2) const;
+
+  double advect_in_normal_direction_with_contact_angle(const Vec vn, const Vec surf_tns, const Vec cos_angle, const Vec phi_wall, Vec phi, double dt);
+
+  inline void set_use_neumann_for_contact_angle(bool value) { use_neumann_for_contact_angle = value; }
+  inline void set_contact_angle_extension(int value) { contact_angle_extension = value; }
 
 };
 

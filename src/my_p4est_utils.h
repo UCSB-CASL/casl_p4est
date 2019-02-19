@@ -669,6 +669,9 @@ inline double int2double_coordinate_transform(p4est_qcoord_t a){
 
 void dxyz_min(const p4est_t *p4est, double *dxyz);
 
+void get_dxyz_min(const p4est_t *p4est, double *dxyz, double &dxyz_min);
+void get_dxyz_min(const p4est_t *p4est, double *dxyz, double &dxyz_min, double &diag_min);
+
 void dxyz_quad(const p4est_t *p4est, const p4est_quadrant_t *quad, double *dxyz);
 
 void xyz_min(const p4est_t *p4est, double *xyz_min_);
@@ -1719,6 +1722,13 @@ void scale_ghosted_vec(Vec vec, double scalar);
 
 void invert_phi(p4est_nodes_t *nodes, Vec phi);
 
+void VecCopyGhost(Vec input, Vec output);
+void VecSetGhost(Vec vec, PetscScalar scalar);
+void VecShiftGhost(Vec vec, PetscScalar scalar);
+void VecScaleGhost(Vec vec, PetscScalar scalar);
+void VecPointwiseMultGhost(Vec output, Vec input1, Vec input2);
+void VecAXPBYGhost(Vec y, PetscScalar alpha, PetscScalar beta, Vec x);
+
 struct vec_and_ptr_t
 {
   PetscErrorCode ierr;
@@ -1809,4 +1819,6 @@ void find_connected_ghost_islands(const my_p4est_node_neighbors_t &ngbd, const d
 void compute_islands_numbers(const my_p4est_node_neighbors_t &ngbd, const Vec phi, int &nb_islands_total, Vec island_number);
 
 void get_all_neighbors(const p4est_locidx_t n, p4est_t *p4est, p4est_nodes_t *nodes, my_p4est_node_neighbors_t *ngbd, p4est_locidx_t *neighbors, bool *neighbor_exists);
+
+void compute_phi_eff(p4est_nodes_t *nodes, std::vector<Vec> *phi, std::vector<int> *acn, std::vector<bool> *refine_always, Vec phi_eff);
 #endif // UTILS_H
