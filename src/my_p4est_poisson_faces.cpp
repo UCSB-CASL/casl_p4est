@@ -998,8 +998,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
   ierr = PetscLogEventBegin(log_my_p4est_poisson_faces_setup_linear_system, A, rhs[dir], 0, 0); CHKERRXX(ierr);
 
   // check that the current "diagonal" is as desired if the matrix is ready to go...
-  const bool current_diag_is_ok = current_diag_is_as_desired(dir);
-  P4EST_ASSERT(!is_matrix_ready[dir] || current_diag_is_ok);
+  P4EST_ASSERT(!is_matrix_ready[dir] || current_diag_is_as_desired(dir));
   if(!only_diag_is_modified[dir] && !is_matrix_ready[dir])
   {
     reset_current_diag(dir);
@@ -1047,7 +1046,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
       faces->x_fr_f(f_idx, dir)
       , faces->y_fr_f(f_idx, dir)
   #ifdef P4_TO_P8
-    , faces->z_fr_f(f_idx, dir)
+      , faces->z_fr_f(f_idx, dir)
   #endif
     };
 
@@ -1362,11 +1361,14 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
               // --> introduced a flag 'apply_hodge_second_derivative_if_neumann' to enforce an approximation of what is required
               // if apply_hodge_second_derivative_if_neumann == false, the correction is disregarded!
             }
-            else if(!is_interface[f] && !is_matrix_ready[dir])
+            else if(!is_interface[f])
             {
-              p4est_gloidx_t f_tmp_g = f%2==0 ? face_global_number(faces->q2f(qm_idx, dir_m), dir)
-                                              : face_global_number(faces->q2f(qp_idx, dir_p), dir);
-              ierr = MatSetValue(A[dir], f_idx_g, f_tmp_g, (desired_coeff[f] - current_coeff[f]), ADD_VALUES); CHKERRXX(ierr);
+              if(!is_matrix_ready[dir])
+              {
+                p4est_gloidx_t f_tmp_g = f%2==0 ? face_global_number(faces->q2f(qm_idx, dir_m), dir)
+                                                : face_global_number(faces->q2f(qp_idx, dir_p), dir);
+                ierr = MatSetValue(A[dir], f_idx_g, f_tmp_g, (desired_coeff[f] - current_coeff[f]), ADD_VALUES); CHKERRXX(ierr);
+              }
             }
             else
             {
@@ -1414,19 +1416,21 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
                 throw std::invalid_argument("[CASL_ERROR]: my_p4est_poisson_faces_t->setup_linear_system: invalid boundary condition.");
               }
             }
-
-            else if(!is_interface[f] && !is_matrix_ready[dir])
+            else if(!is_interface[f])
             {
-              ngbd.resize(0);
-              ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, f);
+              if(!is_matrix_ready[dir])
+              {
+                ngbd.resize(0);
+                ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, f);
 #ifdef CASL_THROWS
-              if(ngbd.size()!=1 || ngbd[0].level!=quad->level)
-                throw std::invalid_argument("[CASL_ERROR]: my_p4est_poisson_faces_t->setup_linear_system: the grid is not uniform close to the interface.");
+                if(ngbd.size()!=1 || ngbd[0].level!=quad->level)
+                  throw std::invalid_argument("[CASL_ERROR]: my_p4est_poisson_faces_t->setup_linear_system: the grid is not uniform close to the interface.");
 #endif
-              p4est_gloidx_t f_tmp_g;
-              if(quad_idx==qm_idx) f_tmp_g = face_global_number(faces->q2f(ngbd[0].p.piggy3.local_num, dir_p), dir);
-              else                 f_tmp_g = face_global_number(faces->q2f(ngbd[0].p.piggy3.local_num, dir_m), dir);
-              ierr = MatSetValue(A[dir], f_idx_g, f_tmp_g, (desired_coeff[f] - current_coeff[f]), ADD_VALUES); CHKERRXX(ierr);
+                p4est_gloidx_t f_tmp_g;
+                if(quad_idx==qm_idx) f_tmp_g = face_global_number(faces->q2f(ngbd[0].p.piggy3.local_num, dir_p), dir);
+                else                 f_tmp_g = face_global_number(faces->q2f(ngbd[0].p.piggy3.local_num, dir_m), dir);
+                ierr = MatSetValue(A[dir], f_idx_g, f_tmp_g, (desired_coeff[f] - current_coeff[f]), ADD_VALUES); CHKERRXX(ierr);
+              }
             }
             else
             {
@@ -2298,10 +2302,18 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
   ierr = VecDestroy(null_space[dir]); CHKERRXX(ierr);
   null_space[dir] = NULL;
 
-  if(!is_matrix_ready[dir])
-  {
-    ierr = KSPSetOperators(ksp[dir], A[dir], A[dir], SAME_NONZERO_PATTERN); CHKERRXX(ierr);
-  }
+  ierr = KSPSetOperators(ksp[dir], A[dir], A[dir], SAME_NONZERO_PATTERN); CHKERRXX(ierr);
+  /* [Raphael Egan:] Starting from version 3.5, the last argument in KSPSetOperators became
+   * irrelevant and is now simply disregarded in the above call. The matrices now keep track
+   * of changes to their values and/or to their nonzero pattern by themselves. If no
+   * modification was made to the matrix, the ksp environment can figure it out and knows
+   * that the current preconditioner is still valid, thus it won't be recomputed.
+   * If one desires to force reusing the current preconditioner EVEN IF a modification was
+   * made to the matrix, one needs to call
+   * ierr = KSPSetReusePreconditioner(ksp, PETSC_TRUE); CHKERRXX(ierr);
+   * before the subsequent call to KSPSolve().
+   * I have decided not to enforce that...
+   */
   is_matrix_ready[dir]        = true;
   current_diag[dir]           = desired_diag[dir];
   P4EST_ASSERT(current_diag_is_as_desired(dir));
