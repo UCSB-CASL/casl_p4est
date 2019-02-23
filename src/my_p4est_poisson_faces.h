@@ -112,7 +112,7 @@ public:
 
   void set_second_order_hodge_correction_on_neumann(bool flag_value){ apply_hodge_second_derivative_if_neumann = flag_value; }
 
-  void set_phi(Vec phi, const bool needs_solver_reset=true);// if phi is changed, the linear system should be reset... Except if the user knows more.
+  void set_phi(Vec phi);// if phi is changed, the linear system should be reset...
 
   void set_rhs(Vec *rhs);
 
@@ -120,11 +120,11 @@ public:
 
   void set_mu(double mu);
 
-  // if the type of bcs is changed, the linear system should be reset... Except if the user knows more (for instance if bc and face_is_well_defined are unchanged but dxyz_hodge is).
+  // if the type of bcs is changed, the linear system should be reset...
 #ifdef P4_TO_P8
-  void set_bc(const BoundaryConditions3D *bc, Vec *dxyz_hodge, Vec *face_is_well_defined, const bool needs_solver_reset=true);
+  void set_bc(const BoundaryConditions3D *bc, Vec *dxyz_hodge, Vec *face_is_well_defined);
 #else
-  void set_bc(const BoundaryConditions2D *bc, Vec *dxyz_hodge, Vec *face_is_well_defined, const bool needs_solver_reset=true);
+  void set_bc(const BoundaryConditions2D *bc, Vec *dxyz_hodge, Vec *face_is_well_defined);
 #endif
 
 

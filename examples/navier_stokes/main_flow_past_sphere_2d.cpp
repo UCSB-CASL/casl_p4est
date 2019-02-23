@@ -761,6 +761,38 @@ int main (int argc, char* argv[])
   const int periodic[] = {0, 0};
 #endif
 
+#ifdef P4_TO_P8
+  BoundaryConditions3D bc_v[P4EST_DIM];
+  BoundaryConditions3D bc_p;
+#else
+  BoundaryConditions2D bc_v[P4EST_DIM];
+  BoundaryConditions2D bc_p;
+#endif
+
+  bc_v[0].setWallTypes(bc_wall_type_u); bc_v[0].setWallValues(bc_wall_value_u);
+  bc_v[1].setWallTypes(bc_wall_type_v); bc_v[1].setWallValues(bc_wall_value_v);
+#ifdef P4_TO_P8
+  bc_v[2].setWallTypes(bc_wall_type_w); bc_v[2].setWallValues(bc_wall_value_w);
+#endif
+  bc_p.setWallTypes(bc_wall_type_p); bc_p.setWallValues(bc_wall_value_p);
+
+  bc_v[0].setInterfaceType(DIRICHLET); bc_v[0].setInterfaceValue(bc_interface_value_u);
+  bc_v[1].setInterfaceType(DIRICHLET); bc_v[1].setInterfaceValue(bc_interface_value_v);
+#ifdef P4_TO_P8
+  bc_v[2].setInterfaceType(DIRICHLET); bc_v[2].setInterfaceValue(bc_interface_value_w);
+#endif
+  bc_p.setInterfaceType(NEUMANN); bc_p.setInterfaceValue(bc_interface_value_p);
+
+  external_force_u_t external_force_u;
+  external_force_v_t external_force_v;
+#ifdef P4_TO_P8
+  external_force_w_t external_force_w;
+  CF_3 *external_forces[P4EST_DIM] = { &external_force_u, &external_force_v, &external_force_w };
+#else
+  CF_2 *external_forces[P4EST_DIM] = { &external_force_u, &external_force_v };
+#endif
+
+
   if(cmd.contains("restart"))
   {
     const string backup_directory = cmd.get<string>("restart", "");
@@ -838,6 +870,7 @@ int main (int argc, char* argv[])
     P4EST_ASSERT(data == NULL);
     data = new splitting_criteria_cf_and_uniform_band_t(lmin, lmax, &level_set, uniform_band, lip);
     splitting_criteria_t* to_delete = (splitting_criteria_t*) p4est_n->user_pointer;
+    bool fix_restarted_grid = (lmax!=to_delete->max_lvl);
     delete to_delete;
     p4est_n->user_pointer   = (void*) data;
     p4est_nm1->user_pointer = (void*) data; // p4est_n and p4est_nm1 always point to the same splitting_criteria_t no need to delete the nm1 one, it's just been done
@@ -873,11 +906,15 @@ int main (int argc, char* argv[])
       }
       else
       {
-        refine_with_smoke = ns->get_refine_with_smoke();
+        refine_with_smoke   = ns->get_refine_with_smoke();
         smoke_thresh        = cmd.get("smoke_thresh", ((refine_with_smoke)? ns->get_smoke_threshold(): 0.5));
       }
       ns->set_smoke(smoke, &bc_smoke, refine_with_smoke, smoke_thresh);
     }
+    ns->set_bc(bc_v, &bc_p);
+    ns->set_external_forces(external_forces);
+    if(fix_restarted_grid)
+      ns->refine_coarsen_grid_after_restart(&level_set, false);
   }
   else
   {
@@ -1000,41 +1037,10 @@ int main (int argc, char* argv[])
     dt = MIN(dxmin*cfl/u0, duration);
     if(save_vtk)
         dt = MIN(dt, vtk_dt);
-    ns->set_dt(dt);
+    ns->set_dt(dt, dt);
+    ns->set_bc(bc_v, &bc_p);
+    ns->set_external_forces(external_forces);
   }
-
-#ifdef P4_TO_P8
-  BoundaryConditions3D bc_v[P4EST_DIM];
-  BoundaryConditions3D bc_p;
-#else
-  BoundaryConditions2D bc_v[P4EST_DIM];
-  BoundaryConditions2D bc_p;
-#endif
-
-  bc_v[0].setWallTypes(bc_wall_type_u); bc_v[0].setWallValues(bc_wall_value_u);
-  bc_v[1].setWallTypes(bc_wall_type_v); bc_v[1].setWallValues(bc_wall_value_v);
-#ifdef P4_TO_P8
-  bc_v[2].setWallTypes(bc_wall_type_w); bc_v[2].setWallValues(bc_wall_value_w);
-#endif
-  bc_p.setWallTypes(bc_wall_type_p); bc_p.setWallValues(bc_wall_value_p);
-
-  bc_v[0].setInterfaceType(DIRICHLET); bc_v[0].setInterfaceValue(bc_interface_value_u);
-  bc_v[1].setInterfaceType(DIRICHLET); bc_v[1].setInterfaceValue(bc_interface_value_v);
-#ifdef P4_TO_P8
-  bc_v[2].setInterfaceType(DIRICHLET); bc_v[2].setInterfaceValue(bc_interface_value_w);
-#endif
-  bc_p.setInterfaceType(NEUMANN); bc_p.setInterfaceValue(bc_interface_value_p);
-
-  external_force_u_t external_force_u;
-  external_force_v_t external_force_v;
-#ifdef P4_TO_P8
-  external_force_w_t external_force_w;
-  CF_3 *external_forces[P4EST_DIM] = { &external_force_u, &external_force_v, &external_force_w };
-#else
-  CF_2 *external_forces[P4EST_DIM] = { &external_force_u, &external_force_v };
-#endif
-  ns->set_bc(bc_v, &bc_p);
-  ns->set_external_forces(external_forces);
 
 
 #ifdef P4_TO_P8

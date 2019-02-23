@@ -150,16 +150,15 @@ void my_p4est_poisson_faces_t::setup_linear_solver(int dim, bool use_nonzero_ini
 }
 
 
-void my_p4est_poisson_faces_t::set_phi(Vec phi_, const bool needs_solver_reset)
+void my_p4est_poisson_faces_t::set_phi(Vec phi_)
 {
   this->phi = phi_;
   interp_phi.set_input(phi, linear);
-  if(needs_solver_reset)
-    for (short dim = 0; dim < P4EST_DIM; ++dim)
-    {
-      is_matrix_ready[dim]        = false;
-      only_diag_is_modified[dim]  = false;
-    }
+  for (short dim = 0; dim < P4EST_DIM; ++dim)
+  {
+    is_matrix_ready[dim]        = false;
+    only_diag_is_modified[dim]  = false;
+  }
 }
 
 
@@ -195,19 +194,18 @@ void my_p4est_poisson_faces_t::set_mu(double mu)
 }
 
 #ifdef P4_TO_P8
-void my_p4est_poisson_faces_t::set_bc(const BoundaryConditions3D *bc, Vec *dxyz_hodge, Vec *face_is_well_defined, const bool needs_solver_reset)
+void my_p4est_poisson_faces_t::set_bc(const BoundaryConditions3D *bc, Vec *dxyz_hodge, Vec *face_is_well_defined)
 #else
-void my_p4est_poisson_faces_t::set_bc(const BoundaryConditions2D *bc, Vec *dxyz_hodge, Vec *face_is_well_defined, const bool needs_solver_reset)
+void my_p4est_poisson_faces_t::set_bc(const BoundaryConditions2D *bc, Vec *dxyz_hodge, Vec *face_is_well_defined)
 #endif
 {
   this->bc = bc;
   this->dxyz_hodge = dxyz_hodge;
   this->face_is_well_defined = face_is_well_defined;
-  if (needs_solver_reset)
-    for (short dim = 0; dim < P4EST_DIM; ++dim) {
-      only_diag_is_modified[dim]  = false;
-      is_matrix_ready[dim]        = false;
-    }
+  for (short dim = 0; dim < P4EST_DIM; ++dim) {
+    only_diag_is_modified[dim]  = false;
+    is_matrix_ready[dim]        = false;
+  }
 }
 
 

@@ -156,7 +156,7 @@ void my_p4est_navier_stokes_t::splitting_criteria_vorticity_t::tag_quadrant(p4es
             }
             if(node_found)
             {
-              P4EST_ASSERT(node_idx < nodes->indep_nodes.elem_count);
+              P4EST_ASSERT(node_idx < ((p4est_locidx_t) nodes->indep_nodes.elem_count));
               ref_vort        = ref_vort || fabs(vorticity_p[node_idx])*quad_dxyz_max/max_L2_norm_u>threshold;
               ref_band        = ref_band || fabs(phi_p[node_idx])<uniform_band*smallest_dxyz_max;
               ref_intf        = ref_intf || fabs(phi_p[node_idx])<=lip*quad_diag;
@@ -384,6 +384,7 @@ my_p4est_navier_stokes_t::my_p4est_navier_stokes_t(const mpi_environment_t& mpi,
       second_derivatives_vnm1_nodes[dd][kk]  = NULL;
     }
   }
+  dt_updated = false;
   load_state(mpi, path_to_save_state, simulation_time);
   ierr = VecDuplicate(hodge, &pressure); CHKERRXX(ierr);
 
@@ -399,7 +400,6 @@ my_p4est_navier_stokes_t::my_p4est_navier_stokes_t(const mpi_environment_t& mpi,
     external_forces[dir] = NULL;
     vstar[dir] = NULL;
     vnp1[dir] = NULL;
-
     vnp1_nodes[dir] = NULL;
 
     ierr = VecCreateGhostFaces(p4est_n, faces_n, &face_is_well_defined[dir], dir); CHKERRXX(ierr);
@@ -407,7 +407,7 @@ my_p4est_navier_stokes_t::my_p4est_navier_stokes_t(const mpi_environment_t& mpi,
     ierr = VecSet(vec_loc, 1); CHKERRXX(ierr);
     ierr = VecGhostRestoreLocalForm(face_is_well_defined[dir], &vec_loc); CHKERRXX(ierr);
 
-    ierr = VecCreateGhostFaces(p4est_n, faces_n, &vnp1_nodes [dir], dir); CHKERRXX(ierr);
+    ierr = VecCreateGhostNodes(p4est_n, nodes_n, &vnp1_nodes[dir]); CHKERRXX(ierr);
 
     ierr = VecCreateGhostFaces(p4est_n, faces_n, &vstar[dir], dir); CHKERRXX(ierr);
     ierr = VecCreateGhostFaces(p4est_n, faces_n, &vnp1[dir], dir); CHKERRXX(ierr);
@@ -1147,11 +1147,6 @@ void my_p4est_navier_stokes_t::solve_viscosity(my_p4est_poisson_faces_t* &face_p
     face_poisson_solver->set_compute_partition_on_the_fly(false);
 #endif
   }
-  else
-  {
-    face_poisson_solver->set_phi(phi, false);
-    face_poisson_solver->set_bc(bc_v, dxyz_hodge, face_is_well_defined, false);
-  }
 
   face_poisson_solver->set_mu(mu);
   face_poisson_solver->set_diagonal(alpha * rho/dt_n);
@@ -1212,8 +1207,6 @@ void my_p4est_navier_stokes_t::solve_projection(my_p4est_poisson_cells_t* &cell_
     cell_solver->set_bc(bc_hodge);
     cell_solver->set_nullspace_use_fixed_point(false);
   }
-  else
-    cell_solver->set_phi(phi, false);
   cell_solver->set_mu(1.0);
   cell_solver->set_rhs(rhs);
   cell_solver->solve(hodge, use_initial_guess, ksp, pc);
@@ -1864,6 +1857,7 @@ bool my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set, boo
 #endif
   if(!grid_is_unchanged)
     interp_nodes.clear();
+
   // [Raphael]: the following was already commented in the original version. If uncommented, I think it should be called here...
   /* set velocity inside solid to bc_v */
   //  extrapolate_bc_v(ngbd_np1, vn_nodes, phi_np1);
@@ -2874,7 +2868,7 @@ void my_p4est_navier_stokes_t::load_state(const mpi_environment_t& mpi, const ch
                                   "hodge", CELL_DATA, 1, &hodge,
                                   "dxyz_hodge", FACE_DATA, P4EST_DIM, dxyz_hodge,
                                   "vn_nodes", NODE_DATA, P4EST_DIM, vn_nodes,
-                                  "smoke", NODE_DATA, 1, smoke);
+                                  "smoke", NODE_DATA, 1, &smoke);
   else
   {
     if(refine_with_smoke) // the original solver was refined with smoke, but the smoke was not exported for some reason...
@@ -2916,4 +2910,68 @@ void my_p4est_navier_stokes_t::load_state(const mpi_environment_t& mpi, const ch
   p4est_nm1->user_pointer = (void*) data;
 
   ierr = PetscPrintf(mpi.comm(), "Loaded solver state from ... %s\n", path_to_folder); CHKERRXX(ierr);
+}
+
+void my_p4est_navier_stokes_t::refine_coarsen_grid_after_restart(const CF_2 *level_set, bool do_reinitialization)
+{
+  double dt_nm1_saved             = dt_nm1;
+  double dt_n_saved               = dt_n;
+  p4est_t* p4est_nm1_saved        = p4est_copy(p4est_nm1, P4EST_FALSE);
+  p4est_ghost_t* ghost_nm1_saved  = my_p4est_ghost_new(p4est_nm1_saved, P4EST_CONNECT_FULL);
+  my_p4est_ghost_expand(p4est_nm1_saved, ghost_nm1_saved);
+  P4EST_ASSERT(ghosts_are_equal(ghost_nm1_saved, ghost_nm1));
+  p4est_nodes_t* nodes_nm1_saved  = my_p4est_nodes_new(p4est_nm1_saved, ghost_nm1_saved);
+  P4EST_ASSERT(nodes_are_equal(p4est_n->mpisize, nodes_nm1, nodes_nm1_saved));
+
+  Vec vnm1_nodes_saved[P4EST_DIM];
+  Vec second_derivatives_vnm1_nodes_saved[P4EST_DIM][P4EST_DIM];
+
+  PetscErrorCode ierr;
+  for (unsigned short dir = 0; dir < P4EST_DIM; ++dir) {
+    Vec from_loc, to_loc;
+    ierr = VecGhostGetLocalForm(vn_nodes[dir], &from_loc); CHKERRXX(ierr);
+    ierr = VecGhostGetLocalForm(vnp1_nodes[dir], &to_loc); CHKERRXX(ierr);
+    ierr = VecCopy(from_loc, to_loc); CHKERRXX(ierr);
+
+    ierr = VecDuplicate(vnm1_nodes[dir], &vnm1_nodes_saved[dir]); CHKERRXX(ierr);
+    ierr = VecGhostGetLocalForm(vnm1_nodes[dir], &from_loc); CHKERRXX(ierr);
+    ierr = VecGhostGetLocalForm(vnm1_nodes_saved[dir], &to_loc); CHKERRXX(ierr);
+    ierr = VecCopy(from_loc, to_loc); CHKERRXX(ierr);
+    for (unsigned short dd = 0; dd < P4EST_DIM; ++dd) {
+      ierr = VecDuplicate(second_derivatives_vnm1_nodes[dd][dir], &second_derivatives_vnm1_nodes_saved[dd][dir]); CHKERRXX(ierr);
+      ierr = VecGhostGetLocalForm(second_derivatives_vnm1_nodes[dd][dir], &from_loc); CHKERRXX(ierr);
+      ierr = VecGhostGetLocalForm(second_derivatives_vnm1_nodes_saved[dd][dir], &to_loc); CHKERRXX(ierr);
+      ierr = VecCopy(from_loc, to_loc); CHKERRXX(ierr);
+    }
+  }
+  compute_vorticity();
+
+  update_from_tn_to_tnp1(level_set, false, do_reinitialization);
+
+  dt_nm1    = dt_nm1_saved;
+  dt_n      = dt_n_saved;
+  if(p4est_nm1!=p4est_n)
+    p4est_destroy(p4est_nm1);
+  p4est_nm1 = p4est_nm1_saved;
+  if(ghost_nm1!=ghost_n)
+    p4est_ghost_destroy(ghost_nm1);
+  ghost_nm1 = ghost_nm1_saved;
+  if(nodes_nm1!= nodes_nm1_saved)
+    p4est_nodes_destroy(nodes_nm1);
+  nodes_nm1 = nodes_nm1_saved;
+  if(hierarchy_nm1!=hierarchy_n)
+    delete  hierarchy_nm1;
+  hierarchy_nm1 = new my_p4est_hierarchy_t(p4est_nm1, ghost_nm1, brick);
+  if(ngbd_nm1!=ngbd_n)
+    delete  ngbd_nm1;
+  ngbd_nm1 = new my_p4est_node_neighbors_t(hierarchy_nm1, nodes_nm1);
+
+  for (unsigned short dir = 0; dir < P4EST_DIM; ++dir) {
+    ierr = VecDestroy(vnm1_nodes[dir]); CHKERRXX(ierr);
+    vnm1_nodes[dir] = vnm1_nodes_saved[dir];
+    for (unsigned short dd = 0; dd < P4EST_DIM; ++dd) {
+      ierr = VecDestroy(second_derivatives_vnm1_nodes[dd][dir]); CHKERRXX(ierr);
+      second_derivatives_vnm1_nodes[dd][dir] = second_derivatives_vnm1_nodes_saved[dd][dir];
+    }
+  }
 }

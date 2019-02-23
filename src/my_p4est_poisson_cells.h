@@ -113,14 +113,11 @@ public:
    */
   inline void set_nullspace_use_fixed_point(bool val) {this->nullspace_use_fixed_point = val;}
 
-  inline void set_phi(Vec phi, const bool solver_needs_reset=true)// if phi is changed, the linear system should be reset... Except if the user knows more.
+  inline void set_phi(Vec phi)// if phi is changed, the linear system should be reset
   {
     this->phi      = phi;
-    if(solver_needs_reset)
-    {
-      is_matrix_ready = false;
-      only_diag_is_modified = false;
-    }
+    is_matrix_ready = false;
+    only_diag_is_modified = false;
   }
   inline void set_rhs(Vec rhs)                 {this->rhs      = rhs; }
   inline void set_diagonal(double add)
