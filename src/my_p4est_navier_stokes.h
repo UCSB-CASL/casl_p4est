@@ -451,7 +451,11 @@ public:
    */
   void save_state(const char* path_to_root_directory, double tn, unsigned int n_saved=1);
 
+#ifdef P4_TO_P8
+  void refine_coarsen_grid_after_restart(const CF_3 *level_set, bool do_reinitialization = true);
+#else
   void refine_coarsen_grid_after_restart(const CF_2 *level_set, bool do_reinitialization = true);
+#endif
   unsigned long int memory_estimate() const;
 
 };

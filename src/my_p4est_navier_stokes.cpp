@@ -2941,7 +2941,11 @@ void my_p4est_navier_stokes_t::load_state(const mpi_environment_t& mpi, const ch
   ierr = PetscPrintf(mpi.comm(), "Loaded solver state from ... %s\n", path_to_folder); CHKERRXX(ierr);
 }
 
+#ifdef P4_TO_P8
+void my_p4est_navier_stokes_t::refine_coarsen_grid_after_restart(const CF_3 *level_set, bool do_reinitialization)
+#else
 void my_p4est_navier_stokes_t::refine_coarsen_grid_after_restart(const CF_2 *level_set, bool do_reinitialization)
+#endif
 {
   double dt_nm1_saved             = dt_nm1;
   double dt_n_saved               = dt_n;
