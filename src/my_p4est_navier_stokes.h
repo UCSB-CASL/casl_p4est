@@ -452,6 +452,8 @@ public:
   void save_state(const char* path_to_root_directory, double tn, unsigned int n_saved=1);
 
   void refine_coarsen_grid_after_restart(const CF_2 *level_set, bool do_reinitialization = true);
+  unsigned long int memory_estimate() const;
+
 };
 
 

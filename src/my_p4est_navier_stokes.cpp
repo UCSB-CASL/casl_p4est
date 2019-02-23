@@ -508,6 +508,8 @@ void my_p4est_navier_stokes_t::set_smoke(Vec smoke, CF_3 *bc_smoke, bool refine_
 void my_p4est_navier_stokes_t::set_smoke(Vec smoke, CF_2 *bc_smoke, bool refine_with_smoke, double smoke_thresh)
 #endif
 {
+  if(this->smoke!=NULL){
+    PetscErrorCode ierr= VecDestroy(this->smoke); CHKERRXX(ierr); }
   this->smoke = smoke;
   this->bc_smoke = bc_smoke;
   this->refine_with_smoke = refine_with_smoke;
@@ -570,11 +572,20 @@ void my_p4est_navier_stokes_t::set_velocities(Vec *vnm1_nodes, Vec *vn_nodes)
 
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
+    if(this->vn_nodes[dir]!=NULL){
+      ierr = VecDestroy(this->vn_nodes[dir]); CHKERRXX(ierr); }
     this->vn_nodes[dir]   = vn_nodes[dir];
+    if(this->vnm1_nodes[dir]!=NULL){
+      ierr = VecDestroy(this->vnm1_nodes[dir]); CHKERRXX(ierr); }
     this->vnm1_nodes[dir] = vnm1_nodes[dir];
+    if(this->vnp1_nodes[dir]!=NULL){
+      ierr = VecDestroy(this->vnp1_nodes[dir]); CHKERRXX(ierr); }
     ierr = VecDuplicate(vn_nodes[dir], &vnp1_nodes [dir]); CHKERRXX(ierr);
-
+    if(this->vstar[dir]!=NULL){
+      ierr = VecDestroy(this->vstar[dir]); CHKERRXX(ierr); }
     ierr = VecDuplicate(face_is_well_defined[dir], &vstar[dir]); CHKERRXX(ierr);
+    if(this->vnp1[dir]!=NULL){
+      ierr = VecDestroy(this->vnp1[dir]); CHKERRXX(ierr); }
     ierr = VecDuplicate(face_is_well_defined[dir], &vnp1[dir]); CHKERRXX(ierr);
 
     for (short dd = 0; dd < P4EST_DIM; ++dd) {
@@ -598,6 +609,8 @@ void my_p4est_navier_stokes_t::set_velocities(Vec *vnm1_nodes, Vec *vn_nodes)
   ngbd_nm1->second_derivatives_central(vnm1_nodes, second_derivatives_vnm1_nodes[0], second_derivatives_vnm1_nodes[1], P4EST_DIM);
 #endif
 
+  if(this->vorticity!=NULL){
+    ierr = VecDestroy(this->vorticity); CHKERRXX(ierr); }
   ierr = VecDuplicate(phi, &vorticity); CHKERRXX(ierr);
 }
 
@@ -612,6 +625,8 @@ void my_p4est_navier_stokes_t::set_velocities(CF_2 **vnm1, CF_2 **vn)
   double *v_p;
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
+    if(this->vnm1_nodes[dir]!=NULL){
+      ierr = VecDestroy(this->vnm1_nodes[dir]); CHKERRXX(ierr); }
     ierr = VecCreateGhostNodes(p4est_nm1, nodes_nm1, &vnm1_nodes[dir]); CHKERRXX(ierr);
     ierr = VecGetArray(vnm1_nodes[dir], &v_p); CHKERRXX(ierr);
     for(size_t n=0; n<nodes_nm1->indep_nodes.elem_count; ++n)
@@ -626,7 +641,8 @@ void my_p4est_navier_stokes_t::set_velocities(CF_2 **vnm1, CF_2 **vn)
     }
     ierr = VecRestoreArray(vnm1_nodes[dir], &v_p); CHKERRXX(ierr);
 
-
+    if(this->vn_nodes[dir]!=NULL){
+      ierr = VecDestroy(this->vn_nodes[dir]); CHKERRXX(ierr); }
     ierr = VecCreateGhostNodes(p4est_n, nodes_n, &vn_nodes[dir]); CHKERRXX(ierr);
     ierr = VecGetArray(vn_nodes[dir], &v_p); CHKERRXX(ierr);
     for(size_t n=0; n<nodes_n->indep_nodes.elem_count; ++n)
@@ -641,9 +657,14 @@ void my_p4est_navier_stokes_t::set_velocities(CF_2 **vnm1, CF_2 **vn)
     }
     ierr = VecRestoreArray(vn_nodes[dir], &v_p); CHKERRXX(ierr);
 
-
+    if(this->vnp1_nodes[dir]!=NULL){
+      ierr = VecDestroy(this->vnp1_nodes[dir]); CHKERRXX(ierr); }
     ierr = VecDuplicate(vn_nodes[dir], &vnp1_nodes [dir]); CHKERRXX(ierr);
+    if(this->vstar[dir]!=NULL){
+      ierr = VecDestroy(this->vstar[dir]); CHKERRXX(ierr); }
     ierr = VecDuplicate(face_is_well_defined[dir], &vstar[dir]); CHKERRXX(ierr);
+    if(this->vnp1[dir]!=NULL){
+      ierr = VecDestroy(this->vnp1[dir]); CHKERRXX(ierr); }
     ierr = VecDuplicate(face_is_well_defined[dir], &vnp1[dir]); CHKERRXX(ierr);
 
     for (short dd = 0; dd < P4EST_DIM; ++dd) {
@@ -667,17 +688,25 @@ void my_p4est_navier_stokes_t::set_velocities(CF_2 **vnm1, CF_2 **vn)
   ngbd_nm1->second_derivatives_central(vnm1_nodes, second_derivatives_vnm1_nodes[0], second_derivatives_vnm1_nodes[1], P4EST_DIM);
 #endif
 
+  if(this->vorticity!=NULL){
+    ierr = VecDestroy(this->vorticity); CHKERRXX(ierr); }
   ierr = VecDuplicate(phi, &vorticity); CHKERRXX(ierr);
 }
 
 void my_p4est_navier_stokes_t::set_vstar(Vec *vstar)
 {
   for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    if(this->vstar[dir]!=NULL){
+      PetscErrorCode ierr = VecDestroy(this->vstar[dir]); CHKERRXX(ierr); }
     this->vstar[dir] = vstar[dir];
+  }
 }
 
 void my_p4est_navier_stokes_t::set_hodge(Vec hodge)
 {
+  if(this->hodge!=NULL){
+    PetscErrorCode ierr = VecDestroy(this->hodge); CHKERRXX(ierr); }
   this->hodge = hodge;
 }
 
@@ -2974,4 +3003,47 @@ void my_p4est_navier_stokes_t::refine_coarsen_grid_after_restart(const CF_2 *lev
       second_derivatives_vnm1_nodes[dd][dir] = second_derivatives_vnm1_nodes_saved[dd][dir];
     }
   }
+}
+
+unsigned long int my_p4est_navier_stokes_t::memory_estimate() const
+{
+  unsigned long int memory_used = 0;
+  memory_used += my_p4est_brick_memory_estimate(brick);
+  memory_used += p4est_connectivity_memory_used(conn);
+  if(p4est_nm1!=p4est_n)
+    memory_used += p4est_memory_used(p4est_nm1);
+  memory_used += p4est_memory_used(p4est_n);
+  if(ghost_nm1!=ghost_n)
+    memory_used += p4est_ghost_memory_used(ghost_nm1);
+  memory_used += p4est_ghost_memory_used(ghost_n);
+  if(hierarchy_nm1!=hierarchy_n)
+    memory_used += hierarchy_nm1->memory_estimate();
+  memory_used+= hierarchy_n->memory_estimate();
+  if(ngbd_nm1!=ngbd_n)
+    memory_used += ngbd_nm1->memory_estimate();
+  memory_used += ngbd_n->memory_estimate();
+  // cell-neighbors memory footage is negligible, only contains pointers to other objects...
+  memory_used += faces_n->memory_estimate();
+
+  // internal variables dxyz_min, xyz_min, xyz_max, convert_to_xyz
+  memory_used += 4*P4EST_DIM*sizeof (double);
+  // other internal variables
+  memory_used += sizeof (mu) + sizeof (rho) + sizeof (dt_n) + sizeof (dt_nm1) +
+      sizeof (max_L2_norm_u) + sizeof (uniform_band) + sizeof (threshold_split_cell) +
+      sizeof (n_times_dt) + sizeof (dt_updated) + sizeof (refine_with_smoke) + sizeof (smoke_thresh) +
+      sizeof (sl_order);
+
+  // petsc node vectors at time n: phi, vn_nodes[P4EST_DIM], vnp1_nodes[P4EST_DIM], vorticity, smoke
+  memory_used += (1+2*P4EST_DIM+1+((smoke!=NULL)? 1:0))*(nodes_n->indep_nodes.elem_count)*sizeof (PetscScalar);
+  // petsc node vectors at time nm1: vnm1_nodes[P4EST_DIM],
+  memory_used += P4EST_DIM*(nodes_nm1->indep_nodes.elem_count)*sizeof (PetscScalar);
+  // petsc cell vectors at time n: hodge, pressure
+  memory_used += 2*(p4est_n->local_num_quadrants + ghost_n->ghosts.elem_count)*sizeof (PetscScalar);
+  // petsc face vectors at time n: dxyz_hodge[P4EST_DIM], vstar[P4EST_DIM], vnp1[P4EST_DIM], face_is_well_defined[P4EST_DIM]
+  for (unsigned short dim = 0; dim < P4EST_DIM; ++dim)
+    memory_used += 4*(faces_n->num_local[dim] + faces_n->num_ghost[dim])*sizeof (PetscScalar);
+
+  int mpiret = MPI_Allreduce(MPI_IN_PLACE, &memory_used, 1, MPI_UNSIGNED_LONG, MPI_SUM, p4est_n->mpicomm); SC_CHECK_MPI(mpiret);
+
+  return memory_used;
 }
