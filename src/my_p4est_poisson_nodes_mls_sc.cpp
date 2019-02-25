@@ -114,7 +114,7 @@ my_p4est_poisson_nodes_mls_sc_t::my_p4est_poisson_nodes_mls_sc_t(const my_p4est_
   use_pointwise_dirichlet_    = 0;
   use_taylor_correction_      = 1;
   kink_special_treatment_     = 1;
-  update_ghost_after_solving_ = 0;
+  update_ghost_after_solving_ = 1;
   try_remove_hanging_cells_   = 0;
   neumann_wall_first_order_   = 0;
   enfornce_diag_scalling_     = 1;
@@ -834,8 +834,11 @@ void my_p4est_poisson_nodes_mls_sc_t::solve(Vec solution, bool use_nonzero_initi
   ierr = PetscLogEventEnd  (log_my_p4est_poisson_nodes_mls_sc_KSPSolve, ksp_, rhs_, solution, 0); CHKERRXX(ierr);
 
   // update ghosts
-  ierr = VecGhostUpdateBegin(solution, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecGhostUpdateEnd(solution, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  if (update_ghost_after_solving_)
+  {
+    ierr = VecGhostUpdateBegin(solution, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd(solution, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  }
 
   // get rid of local stuff
   if(local_add)

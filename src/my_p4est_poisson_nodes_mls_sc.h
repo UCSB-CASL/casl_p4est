@@ -563,6 +563,7 @@ public:
   inline void set_integration_order       (int  value) { integration_order_         = value; }
   inline void set_jump_scheme             (int  value) { jump_scheme_               = value; }
   inline void set_enfornce_diag_scalling  (int  value) { enfornce_diag_scalling_    = value; }
+  inline void set_update_ghost_after_solving(bool value) { update_ghost_after_solving_ = value; }
 
   bool inv_mat2(double *in, double *out);
   bool inv_mat3(double *in, double *out);

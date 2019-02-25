@@ -32,7 +32,7 @@ class my_p4est_scft_t
   PetscErrorCode ierr;
 
   /* grid */
-  my_p4est_brick_t           brick;
+  my_p4est_brick_t          *brick;
   p4est_connectivity_t      *connectivity;
   p4est_t                   *p4est;
   p4est_ghost_t             *ghost;
@@ -78,6 +78,8 @@ class my_p4est_scft_t
   double f;
   double XN;
   int ns, fns;
+
+  double scalling;
 
   /* auxiliary variables */
   double ds_a, ds_b;
@@ -159,10 +161,8 @@ class my_p4est_scft_t
 #endif
 
 public:
-  my_p4est_scft_t();
+  my_p4est_scft_t(my_p4est_node_neighbors_t *ngbd);
   ~my_p4est_scft_t();
-
-  void initialize(MPI_Comm mpi_comm, double xyz_min[], double xyz_max[], int nxyz[], int periodicity[], CF_2 &level_set, int lmin, int lmax, double lip);
 
   void set_geometry(std::vector<Vec>& in_phi, std::vector<action_t> &in_action);
   void set_polymer(double f, double XN, int ns);
@@ -175,7 +175,7 @@ public:
   void set_densities (Vec in_rho_a, Vec in_rho_b) { rho_a = in_rho_a; rho_b = in_rho_b; }
 
   void initialize_bc_simple(); // a naive method that produces singularities in the pressure field
-  void initialize_bc_smart();  // a method based on adjusting Robin coeff so that there is no sigularities in the pressure field
+  void initialize_bc_smart(bool adaptive = true);  // a method based on adjusting Robin coeff so that there is no sigularities in the pressure field
 
   void initialize_linear_system();
 
@@ -206,7 +206,7 @@ public:
 
   void compute_normal_and_curvature();
 
-  void compute_energy_shape_derivative(int phi_idx);
+  void compute_energy_shape_derivative(int phi_idx, Vec velo);
   void compute_energy_shape_derivative_contact_term(int phi0_idx, int phi1_idx);
 
   double compute_change_in_energy(int phi_idx, Vec norm_velo, double dt);
@@ -224,6 +224,8 @@ public:
 
   inline Vec get_rho_a() { return rho_a; }
   inline Vec get_rho_b() { return rho_b; }
+
+  inline void set_scalling(double value) { scalling = value; }
 
   void recompute_matrices() { solver_a->set_is_matrix_computed(false);
                               solver_b->set_is_matrix_computed(false); }
@@ -253,21 +255,21 @@ public:
 
   double dt_density;
 
-//  void DO_initialize(CF_2 &mu_target_cf);
-//  void DO_initialize_fields();
-//  void DO_solve_for_propogators();
-//  void DO_diffusion_step(my_p4est_poisson_nodes_mls_sc_t *solver, Vec &sol, Vec &sol_nm1, Vec &exp_w, Vec &q, Vec &lam);
-//  void DO_compute_densities();
-//  void DO_update_potentials();
-//  void DO_compute_shape_derivative(int phi_idx);
-//  double DO_compute_cost_functional();
-//  double DO_compute_change_in_functional(int phi_idx, Vec norm_velo, double dt);
-//  void DO_save_VTK(int compt);
-//  void DO_save_VTK_before_moving(int compt);
+  void dsa_initialize(CF_2 &mu_target_cf);
+  void dsa_initialize_fields();
+  void dsa_solve_for_propogators();
+  void dsa_diffusion_step(my_p4est_poisson_nodes_mls_sc_t *solver, double ds, Vec &sol, Vec &sol_nm1, Vec &exp_w, Vec &q, Vec &lam);
+  void dsa_compute_densities();
+  void dsa_update_potentials();
+  void dsa_compute_shape_gradient(int phi_idx, Vec velo);
+  double dsa_compute_cost_functional();
+  double dsa_compute_change_in_functional(int phi_idx, Vec norm_velo, double dt);
+  void dsa_save_VTK(int compt);
+  void dsa_save_VTK_before_moving(int compt);
 
-//  double DO_get_cost_func() { return cost_func; }
-//  double DO_get_pressure_force() { return force_lam_p_avg; }
-//  double DO_get_exchange_force() { return force_lam_m_avg; }
+  double dsa_get_cost_func() { return cost_func; }
+  double dsa_get_pressure_force() { return force_lam_p_avg; }
+  double dsa_get_exchange_force() { return force_lam_m_avg; }
 
 };
 

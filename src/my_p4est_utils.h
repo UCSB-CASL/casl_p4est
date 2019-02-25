@@ -26,6 +26,15 @@
 class my_p4est_node_neighbors_t;
 struct quad_neighbor_nodes_of_node_t;
 
+#define COMMA ,
+#ifdef P4_TO_P8
+#define P8(a) a
+#define P8C(a) COMMA a
+#else
+#define P8(a)
+#define P8C(a)
+#endif
+
 namespace dir {
 /* vertices directions */
 enum {
@@ -274,6 +283,12 @@ public:
   virtual double operator()(double x, double y, double z) const=0 ;
   virtual ~CF_3() {}
 };
+
+#ifdef P4_TO_P8
+#define CF_DIM CF_3
+#else
+#define CF_DIM CF_2
+#endif
 
 enum {
   WALL_m00 = -1,
@@ -1722,12 +1737,12 @@ void scale_ghosted_vec(Vec vec, double scalar);
 
 void invert_phi(p4est_nodes_t *nodes, Vec phi);
 
-void VecCopyGhost(Vec input, Vec output);
-void VecSetGhost(Vec vec, PetscScalar scalar);
-void VecShiftGhost(Vec vec, PetscScalar scalar);
-void VecScaleGhost(Vec vec, PetscScalar scalar);
-void VecPointwiseMultGhost(Vec output, Vec input1, Vec input2);
-void VecAXPBYGhost(Vec y, PetscScalar alpha, PetscScalar beta, Vec x);
+PetscErrorCode VecCopyGhost(Vec input, Vec output);
+PetscErrorCode VecSetGhost(Vec vec, PetscScalar scalar);
+PetscErrorCode VecShiftGhost(Vec vec, PetscScalar scalar);
+PetscErrorCode VecScaleGhost(Vec vec, PetscScalar scalar);
+PetscErrorCode VecPointwiseMultGhost(Vec output, Vec input1, Vec input2);
+PetscErrorCode VecAXPBYGhost(Vec y, PetscScalar alpha, PetscScalar beta, Vec x);
 
 struct vec_and_ptr_t
 {

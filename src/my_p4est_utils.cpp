@@ -2098,7 +2098,7 @@ void scale_ghosted_vec(Vec vec, double scalar)
   ierr = VecGhostRestoreLocalForm(vec, &ptr); CHKERRXX(ierr);
 }
 
-void VecCopyGhost(Vec input, Vec output)
+PetscErrorCode VecCopyGhost(Vec input, Vec output)
 {
   PetscErrorCode ierr;
   Vec src, out;
@@ -2107,36 +2107,40 @@ void VecCopyGhost(Vec input, Vec output)
   ierr = VecCopy(src, out);                      CHKERRXX(ierr);
   ierr = VecGhostRestoreLocalForm(input, &src);  CHKERRXX(ierr);
   ierr = VecGhostRestoreLocalForm(output, &out); CHKERRXX(ierr);
+  return ierr;
 }
 
-void VecSetGhost(Vec vec, PetscScalar scalar)
+PetscErrorCode VecSetGhost(Vec vec, PetscScalar scalar)
 {
   PetscErrorCode ierr;
   Vec ptr;
   ierr = VecGhostGetLocalForm(vec, &ptr);     CHKERRXX(ierr);
   ierr = VecSet(ptr, scalar);                 CHKERRXX(ierr);
   ierr = VecGhostRestoreLocalForm(vec, &ptr); CHKERRXX(ierr);
+  return ierr;
 }
 
-void VecShiftGhost(Vec vec, PetscScalar scalar)
+PetscErrorCode VecShiftGhost(Vec vec, PetscScalar scalar)
 {
   PetscErrorCode ierr;
   Vec ptr;
   ierr = VecGhostGetLocalForm(vec, &ptr);     CHKERRXX(ierr);
   ierr = VecShift(ptr, scalar);               CHKERRXX(ierr);
   ierr = VecGhostRestoreLocalForm(vec, &ptr); CHKERRXX(ierr);
+  return ierr;
 }
 
-void VecScaleGhost(Vec vec, PetscScalar scalar)
+PetscErrorCode VecScaleGhost(Vec vec, PetscScalar scalar)
 {
   PetscErrorCode ierr;
   Vec ptr;
   ierr = VecGhostGetLocalForm(vec, &ptr);     CHKERRXX(ierr);
   ierr = VecScale(ptr, scalar);               CHKERRXX(ierr);
   ierr = VecGhostRestoreLocalForm(vec, &ptr); CHKERRXX(ierr);
+  return ierr;
 }
 
-void VecPointwiseMultGhost(Vec output, Vec input1, Vec input2)
+PetscErrorCode VecPointwiseMultGhost(Vec output, Vec input1, Vec input2)
 {
   PetscErrorCode ierr;
   Vec out, in1, in2;
@@ -2147,9 +2151,10 @@ void VecPointwiseMultGhost(Vec output, Vec input1, Vec input2)
   ierr = VecGhostRestoreLocalForm(input1, &in1); CHKERRXX(ierr);
   ierr = VecGhostRestoreLocalForm(input2, &in2); CHKERRXX(ierr);
   ierr = VecGhostRestoreLocalForm(output, &out); CHKERRXX(ierr);
+  return ierr;
 }
 
-void VecAXPBYGhost(Vec y, PetscScalar alpha, PetscScalar beta, Vec x)
+PetscErrorCode VecAXPBYGhost(Vec y, PetscScalar alpha, PetscScalar beta, Vec x)
 {
   PetscErrorCode ierr;
   Vec X, Y;
@@ -2158,6 +2163,7 @@ void VecAXPBYGhost(Vec y, PetscScalar alpha, PetscScalar beta, Vec x)
   ierr = VecAXPBY(Y, alpha, beta, X);     CHKERRXX(ierr);
   ierr = VecGhostRestoreLocalForm(x, &X); CHKERRXX(ierr);
   ierr = VecGhostRestoreLocalForm(y, &Y); CHKERRXX(ierr);
+  return ierr;
 }
 
 void invert_phi(p4est_nodes_t *nodes, Vec phi)

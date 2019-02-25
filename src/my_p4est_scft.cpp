@@ -6,26 +6,23 @@
 #include <src/my_p8est_level_set.h>
 #include <src/my_p8est_semi_lagrangian.h>
 #include <src/my_p8est_interpolation_nodes_local.h>
+#include <src/my_p8est_macros.h>
 #else
 #include <src/my_p4est_refine_coarsen.h>
 #include <src/my_p4est_vtk.h>
 #include <src/my_p4est_level_set.h>
 #include <src/my_p4est_semi_lagrangian.h>
 #include <src/my_p4est_interpolation_nodes_local.h>
+#include <src/my_p4est_macros.h>
 #endif
 
-my_p4est_scft_t::my_p4est_scft_t()
+my_p4est_scft_t::my_p4est_scft_t(my_p4est_node_neighbors_t *ngbd)
+  : brick(ngbd->myb), connectivity(ngbd->p4est->connectivity), p4est(ngbd->p4est), ghost(ngbd->ghost), nodes(ngbd->nodes), hierarchy(ngbd->hierarchy), ngbd(ngbd)
 {
-  /* grid */
-  connectivity = NULL;
-  p4est = NULL;
-  ghost = NULL;
-  nodes = NULL;
-  hierarchy = NULL;
-  ngbd = NULL;
-
   phi = NULL;
   action = NULL;
+
+  scalling = 1;
 
   /* potentials */
   mu_m = NULL;
@@ -106,26 +103,6 @@ my_p4est_scft_t::my_p4est_scft_t()
 
   force_lam_m = NULL;
   force_lam_p = NULL;
-}
-
-void my_p4est_scft_t::initialize(MPI_Comm mpi_comm, double xyz_min[], double xyz_max[], int nxyz[], int periodicity[], CF_2 &level_set, int lmin, int lmax, double lip)
-{
-  /* create p4est grid */
-  connectivity = my_p4est_brick_new(nxyz, xyz_min, xyz_max, &brick, periodicity);
-  p4est        = my_p4est_new(mpi_comm, connectivity, 0, NULL, NULL);
-
-  sp_crit = new splitting_criteria_cf_t(lmin, lmax, &level_set, lip);
-
-  p4est->user_pointer = (void*)(sp_crit);
-  my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
-  my_p4est_partition(p4est, P4EST_FALSE, NULL);
-
-  ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
-  nodes = my_p4est_nodes_new(p4est, ghost);
-
-  hierarchy = new my_p4est_hierarchy_t(p4est, ghost, &brick);
-  ngbd = new my_p4est_node_neighbors_t(hierarchy, nodes);
-  ngbd->init_neighbors();
 
   /* determine the smallest cell size */
   ::dxyz_min(p4est, dxyz);
@@ -213,13 +190,6 @@ my_p4est_scft_t::~my_p4est_scft_t()
 
   if (force_lam_m != NULL)    { ierr = VecDestroy(force_lam_m); CHKERRXX(ierr); }
   if (force_lam_p != NULL)    { ierr = VecDestroy(force_lam_p); CHKERRXX(ierr); }
-
-  delete ngbd;
-  delete hierarchy;
-  p4est_nodes_destroy (nodes);
-  p4est_ghost_destroy(ghost);
-  p4est_destroy (p4est);
-  my_p4est_brick_destroy(connectivity, &brick);
 }
 
 void my_p4est_scft_t::set_polymer(double f, double XN, int ns)
@@ -260,11 +230,11 @@ void my_p4est_scft_t::initialize_bc_simple()
     ierr = VecGetArray(bc_coeffs_a[i],  &bc_coeff_a_ptr); CHKERRXX(ierr);
     ierr = VecGetArray(bc_coeffs_b[i],  &bc_coeff_b_ptr); CHKERRXX(ierr);
 
-    for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+    foreach_node(n, nodes)
     {
       node_xyz_fr_n(n, p4est, nodes, xyz);
-      bc_coeff_a_ptr[n] = gamma_a->at(i)->value(xyz);
-      bc_coeff_b_ptr[n] = gamma_b->at(i)->value(xyz);
+      bc_coeff_a_ptr[n] = gamma_a->at(i)->value(xyz)*scalling;
+      bc_coeff_b_ptr[n] = gamma_b->at(i)->value(xyz)*scalling;
     }
 
     ierr = VecRestoreArray(bc_coeffs_a[i],  &bc_coeff_a_ptr); CHKERRXX(ierr);
@@ -278,13 +248,14 @@ void my_p4est_scft_t::initialize_bc_simple()
   energy_singular_part = 0;
 }
 
-void my_p4est_scft_t::initialize_bc_smart()
+void my_p4est_scft_t::initialize_bc_smart(bool adaptive)
 {
   // fill out Vec's
   ierr = VecGhostUpdateBegin(mu_m, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecGhostUpdateEnd  (mu_m, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
   my_p4est_level_set_t ls(ngbd);
+  if (adaptive)
   ls.extend_Over_Interface_TVD_full(phi_smooth, mask, mu_m);
 
   double xyz[P4EST_DIM];
@@ -306,14 +277,16 @@ void my_p4est_scft_t::initialize_bc_smart()
 
   energy_singular_part = 0;
 
-
   my_p4est_integration_mls_t integration(p4est, nodes);
   integration.set_phi(*phi, *action, color);
 
   for (int i = 0; i < num_surfaces; ++i)
   {
     // make mu_m flat in the normal direction
-    ls.extend_from_interface_to_whole_domain_TVD(phi_smooth, mu_m, mu_m_tmp);
+    if (adaptive)
+      ls.extend_from_interface_to_whole_domain_TVD(phi->at(i), mu_m, mu_m_tmp);
+    else
+      VecSetGhost(mu_m_tmp, 0);
 
     ierr = VecGetArray(mu_m_tmp, &mu_m_ptr); CHKERRXX(ierr);
     ierr = VecGetArray(integrand, &integrand_ptr); CHKERRXX(ierr);
@@ -321,16 +294,17 @@ void my_p4est_scft_t::initialize_bc_smart()
     ierr = VecGetArray(bc_coeffs_a[i],  &bc_coeff_a_ptr); CHKERRXX(ierr);
     ierr = VecGetArray(bc_coeffs_b[i],  &bc_coeff_b_ptr); CHKERRXX(ierr);
 
-    for(size_t n = 0; n<nodes->indep_nodes.elem_count; ++n)
+    foreach_node(n, nodes)
     {
       node_xyz_fr_n(n, p4est, nodes, xyz);
       // TODO: project points onto interface?
 
-      bc_coeff_a_ptr[n] = (gamma_a->at(i)->value(xyz)-gamma_b->at(i)->value(xyz))*(-mu_m_ptr[n]/XN+0.5);
-      bc_coeff_b_ptr[n] = (gamma_a->at(i)->value(xyz)-gamma_b->at(i)->value(xyz))*(-mu_m_ptr[n]/XN-0.5);
+      bc_coeff_a_ptr[n] = (gamma_a->at(i)->value(xyz)-gamma_b->at(i)->value(xyz))*(-mu_m_ptr[n]/XN+0.5)*scalling;
+      bc_coeff_b_ptr[n] = (gamma_a->at(i)->value(xyz)-gamma_b->at(i)->value(xyz))*(-mu_m_ptr[n]/XN-0.5)*scalling;
 
       integrand_ptr[n] = 0.5*(gamma_a->at(i)->value(xyz)+gamma_b->at(i)->value(xyz))
           + (gamma_a->at(i)->value(xyz)-gamma_b->at(i)->value(xyz))*mu_m_ptr[n]/XN;
+      integrand_ptr[n] *= scalling;
     }
 
     ierr = VecRestoreArray(bc_coeffs_a[i],  &bc_coeff_a_ptr); CHKERRXX(ierr);
@@ -374,8 +348,8 @@ void my_p4est_scft_t::initialize_linear_system()
   ierr = VecDuplicate(phi_smooth, &exp_w_a); CHKERRXX(ierr);
   ierr = VecDuplicate(phi_smooth, &exp_w_b); CHKERRXX(ierr);
 
-  ierr = VecSet(qf[0], 1.0); CHKERRXX(ierr);
-  ierr = VecSet(qb[ns-1], 1.0); CHKERRXX(ierr);
+  ierr = VecSetGhost(qf[0], 1.0); CHKERRXX(ierr);
+  ierr = VecSetGhost(qb[ns-1], 1.0); CHKERRXX(ierr);
 
   if (q_tmp != NULL) { ierr = VecDestroy(q_tmp); CHKERRXX(ierr); }
   ierr = VecDuplicate(phi_smooth, &q_tmp); CHKERRXX(ierr);
@@ -386,13 +360,15 @@ void my_p4est_scft_t::initialize_linear_system()
   if (rhs != NULL)        { ierr = VecDestroy(rhs); CHKERRXX(ierr); }
   if (add_to_rhs != NULL) { ierr = VecDestroy(add_to_rhs); CHKERRXX(ierr); }
 
-  if (mask != NULL)       { ierr = VecDestroy(mask); CHKERRXX(ierr); }
+//  if (mask != NULL)       { ierr = VecDestroy(mask); CHKERRXX(ierr); }
 
   ierr = VecDuplicate(phi_smooth, &force_m); CHKERRXX(ierr);
   ierr = VecDuplicate(phi_smooth, &force_p); CHKERRXX(ierr);
 
   ierr = VecDuplicate(phi_smooth, &rhs); CHKERRXX(ierr);
   ierr = VecDuplicate(phi_smooth, &add_to_rhs); CHKERRXX(ierr);
+
+  mask = phi_smooth;
 
   /* create solvers */
 
@@ -433,7 +409,7 @@ void my_p4est_scft_t::initialize_linear_system()
 
   solver_a->set_geometry(num_surfaces, action, &color, phi);
 
-  solver_a->set_mu(1.0);
+  solver_a->set_mu(scalling*scalling);
   solver_a->set_diag_add(1./ds_a);
 
   solver_a->set_bc_wall_value(zero_cf);
@@ -443,7 +419,7 @@ void my_p4est_scft_t::initialize_linear_system()
   solver_a->set_bc_interface_coeff(bc_coeffs_a_cf);
   solver_a->set_bc_interface_value(bc_values);
 
-//  solver_a->set_update_ghost_after_solving(false);
+  solver_a->set_update_ghost_after_solving(false);
   solver_a->set_use_taylor_correction(true);
   solver_a->set_kink_treatment(true);
   solver_a->set_keep_scalling(true);
@@ -454,7 +430,7 @@ void my_p4est_scft_t::initialize_linear_system()
 
   solver_b->set_geometry(num_surfaces, action, &color, phi);
 
-  solver_b->set_mu(1.0);
+  solver_b->set_mu(scalling*scalling);
   solver_b->set_diag_add(1./ds_b);
 
   solver_b->set_bc_wall_value(zero_cf);
@@ -464,7 +440,7 @@ void my_p4est_scft_t::initialize_linear_system()
   solver_b->set_bc_interface_coeff(bc_coeffs_b_cf);
   solver_b->set_bc_interface_value(bc_values);
 
-//  solver_b->set_update_ghost_after_solving(false);
+  solver_b->set_update_ghost_after_solving(false);
   solver_b->set_use_taylor_correction(true);
   solver_b->set_kink_treatment(true);
   solver_b->set_keep_scalling(true);
@@ -599,9 +575,9 @@ void my_p4est_scft_t::set_geometry(std::vector<Vec> &in_phi, std::vector<action_
     ierr = VecGetArray(phi->at(i), &phi_ptr[i]); CHKERRXX(ierr);
   }
 
-  double epsilon = 0.*10.*dxyz_min*dxyz_min;
+  double epsilon = 0.001*10.*dxyz_min*dxyz_min;
 
-  for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+  foreach_node(n, nodes)
   {
     double phi_total = phi_ptr[0][n];
     double phi_current = phi_ptr[0][n];
@@ -673,7 +649,7 @@ void my_p4est_scft_t::calculate_densities()
   ierr = VecGetArray(mask, &mask_ptr); CHKERRXX(ierr);
 
   // calculate densities only for local nodes
-  for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+  foreach_node(n, nodes)
   {
     if (mask_ptr[n] < 0)
     {
@@ -756,7 +732,7 @@ void my_p4est_scft_t::update_potentials()
 
   ierr = VecGetArray(mask, &mask_ptr); CHKERRXX(ierr);
 
-  for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+  foreach_node(n, nodes)
   {
     if (mask_ptr[n] < 0.)
     {
@@ -824,10 +800,10 @@ void my_p4est_scft_t::save_VTK(int compt)
   oss << out_dir
       << "/vtu/scft_"
       << p4est->mpisize << "_"
-      << brick.nxyztrees[0] << "x"
-      << brick.nxyztrees[1] <<
+      << brick->nxyztrees[0] << "x"
+      << brick->nxyztrees[1] <<
        #ifdef P4_TO_P8
-         "x" << brick.nxyztrees[2] <<
+         "x" << brick->nxyztrees[2] <<
        #endif
          "." << compt;
 
@@ -912,10 +888,10 @@ void my_p4est_scft_t::save_VTK_q(int compt)
   oss << out_dir
       << "/vtu/scft_q_"
       << p4est->mpisize << "_"
-      << brick.nxyztrees[0] << "x"
-      << brick.nxyztrees[1] <<
+      << brick->nxyztrees[0] << "x"
+      << brick->nxyztrees[1] <<
        #ifdef P4_TO_P8
-         "x" << brick.nxyztrees[2] <<
+         "x" << brick->nxyztrees[2] <<
        #endif
          "." << compt;
 
@@ -1332,23 +1308,21 @@ void my_p4est_scft_t::smooth_singularity_in_pressure_field()
   set_ghosted_vec(mu_p, 0.0);
 }
 
-void my_p4est_scft_t::compute_energy_shape_derivative(int phi_idx)
+void my_p4est_scft_t::compute_energy_shape_derivative(int phi_idx, Vec velo)
 {
-  if (energy_shape_deriv != NULL) { ierr = VecDestroy(energy_shape_deriv); CHKERRXX(ierr); }
-  ierr = VecDuplicate(mu_m, &energy_shape_deriv); CHKERRXX(ierr);
-
   Vec energy_shape_deriv_tmp;
   ierr = VecDuplicate(mu_m, &energy_shape_deriv_tmp); CHKERRXX(ierr);
 
   // volumetric term
   double energy_shape_deriv_volumetric = ( 1.0 - (energy-log(Q)) )/volume;
 
-  // compute velocity only on local nodes
+  // compute velocity
   double *energy_shape_deriv_ptr;
   double *qf_ptr, *rho_a_ptr, *bc_coeffs_a_ptr, *mu_m_ptr;
   double *qb_ptr, *rho_b_ptr, *bc_coeffs_b_ptr, *mu_p_ptr;
   double *kappa_ptr;
 
+  ierr = PetscPrintf(p4est->mpicomm, "here\n"); CHKERRXX(ierr);
   ierr = VecGhostUpdateBegin(qf[ns-1], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecGhostUpdateEnd  (qf[ns-1], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
@@ -1366,40 +1340,17 @@ void my_p4est_scft_t::compute_energy_shape_derivative(int phi_idx)
 
   ierr = VecGhostUpdateBegin(mu_p, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecGhostUpdateEnd  (mu_p, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = PetscPrintf(p4est->mpicomm, "here\n"); CHKERRXX(ierr);
 
   // extend over smoothed interface
   my_p4est_level_set_t ls(ngbd);
-  ls.extend_Over_Interface_TVD(phi_smooth, qf[ns-1]);
-  ls.extend_Over_Interface_TVD(phi_smooth, qb[0]);
-  ls.extend_Over_Interface_TVD(phi_smooth, rho_a);
-  ls.extend_Over_Interface_TVD(phi_smooth, rho_b);
-  ls.extend_Over_Interface_TVD(phi_smooth, mu_m);
-  ls.extend_Over_Interface_TVD(phi_smooth, mu_p);
-
-//  my_p4est_integration_mls_t integration;
-//  integration.set_p4est(p4est, nodes);
-//  integration.set_phi(*phi, *action, color);
-
-//  Vec integrand;
-//  ierr = VecDuplicate(phi_smooth, &integrand); CHKERRXX(ierr);
-
-//  double *integrand_ptr;
-
-//  ierr = VecGetArray(mu_m, &mu_m_ptr); CHKERRXX(ierr);
-//  ierr = VecGetArray(integrand, &integrand_ptr); CHKERRXX(ierr);
-
-//  for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
-//  {
-//    integrand_ptr[n] = mu_m_ptr[n]*mu_m_ptr[n];
-//  }
-
-//  ierr = VecRestoreArray(mu_m, &mu_m_ptr); CHKERRXX(ierr);
-//  ierr = VecRestoreArray(integrand, &integrand_ptr); CHKERRXX(ierr);
-
-//  double mu_m_sqrd_int = integration.integrate_over_domain(integrand);
-//  double mu_p_int = integration.integrate_over_domain(mu_p);
-
-//  ierr = VecDestroy(integrand); CHKERRXX(ierr);
+  ls.extend_Over_Interface_TVD_full(phi_smooth, mask, qf[ns-1]);
+  ls.extend_Over_Interface_TVD_full(phi_smooth, mask, qb[0]);
+  ls.extend_Over_Interface_TVD_full(phi_smooth, mask, rho_a);
+  ls.extend_Over_Interface_TVD_full(phi_smooth, mask, rho_b);
+  ls.extend_Over_Interface_TVD_full(phi_smooth, mask, mu_m);
+  ls.extend_Over_Interface_TVD_full(phi_smooth, mask, mu_p);
+  ierr = PetscPrintf(p4est->mpicomm, "here\n"); CHKERRXX(ierr);
 
   ierr = VecGetArray(energy_shape_deriv_tmp,&energy_shape_deriv_ptr ); CHKERRXX(ierr);
   ierr = VecGetArray(qf[ns-1],              &qf_ptr                 ); CHKERRXX(ierr);
@@ -1408,12 +1359,12 @@ void my_p4est_scft_t::compute_energy_shape_derivative(int phi_idx)
   ierr = VecGetArray(rho_b,                 &rho_b_ptr              ); CHKERRXX(ierr);
   ierr = VecGetArray(bc_coeffs_a[phi_idx],  &bc_coeffs_a_ptr        ); CHKERRXX(ierr);
   ierr = VecGetArray(bc_coeffs_b[phi_idx],  &bc_coeffs_b_ptr        ); CHKERRXX(ierr);
-  ierr = VecGetArray(kappa[phi_idx],        &kappa_ptr              ); CHKERRXX(ierr);
+//  ierr = VecGetArray(kappa[phi_idx],        &kappa_ptr              ); CHKERRXX(ierr);
   ierr = VecGetArray(mu_m,                  &mu_m_ptr               ); CHKERRXX(ierr);
   ierr = VecGetArray(mu_p,                  &mu_p_ptr               ); CHKERRXX(ierr);
+  ierr = PetscPrintf(p4est->mpicomm, "here\n"); CHKERRXX(ierr);
 
   // calculate laplace of total density
-
   Vec rho_total, rho_total_xx, rho_total_yy;
   ierr = VecCreateGhostNodes(p4est, nodes, &rho_total); CHKERRXX(ierr);
   ierr = VecCreateGhostNodes(p4est, nodes, &rho_total_xx); CHKERRXX(ierr);
@@ -1422,79 +1373,33 @@ void my_p4est_scft_t::compute_energy_shape_derivative(int phi_idx)
   double *rho_total_ptr;
   ierr = VecGetArray(rho_total, &rho_total_ptr); CHKERRXX(ierr);
 
-  for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+  foreach_node(n, nodes)
   {
     rho_total_ptr[n] = rho_a_ptr[n]+rho_b_ptr[n];
   }
   ierr = VecRestoreArray(rho_total, &rho_total_ptr); CHKERRXX(ierr);
 
-//  ls.extend_Over_Interface_TVD(phi_smooth, rho_total);
-
   ngbd->second_derivatives_central(rho_total, rho_total_xx, rho_total_yy);
-
-  double *phi_ptr;
-  ierr = VecGetArray(phi_smooth, &phi_ptr); CHKERRXX(ierr);
-  for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
-  {
-    phi_ptr[n] += 1.0*dxyz_min;
-  }
-  ierr = VecRestoreArray(phi_smooth, &phi_ptr); CHKERRXX(ierr);
-
-  ls.extend_Over_Interface_TVD(phi_smooth, rho_total_xx);
-  ls.extend_Over_Interface_TVD(phi_smooth, rho_total_yy);
-
-  ierr = VecGetArray(phi_smooth, &phi_ptr); CHKERRXX(ierr);
-  for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
-  {
-    phi_ptr[n] -= 1.0*dxyz_min;
-  }
-  ierr = VecRestoreArray(phi_smooth, &phi_ptr); CHKERRXX(ierr);
+  ierr = PetscPrintf(p4est->mpicomm, "here\n"); CHKERRXX(ierr);
 
   double *rho_total_xx_ptr;
   double *rho_total_yy_ptr;
   ierr = VecGetArray(rho_total_xx, &rho_total_xx_ptr); CHKERRXX(ierr);
   ierr = VecGetArray(rho_total_yy, &rho_total_yy_ptr); CHKERRXX(ierr);
 
-//  double mu_m_sqrd_int = integrate_over_domain_fast_squared(mu_m);
-//  double mu_p_int = integrate_over_domain_fast(mu_p);
-
-//  my_p4est_integration_mls_t integration;
-//  integration.set_p4est(p4est, nodes);
-//  integration.set_phi(*phi, *action, color);
-
-//  Vec integrand;
-//  ierr = VecCreateGhostNodes(p4est, nodes, &integrand); CHKERRXX(ierr);
-
-//  double *integrand_ptr;
-
-//  ierr = VecGetArray(integrand, &integrand_ptr); CHKERRXX(ierr);
-//  for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
-//  {
-//    integrand_ptr[n] = ( bc_coeffs_a_ptr[n]*rho_a_ptr[n] +
-//                         bc_coeffs_b_ptr[n]*rho_b_ptr[n] );
-//  }
-//  ierr = VecRestoreArray(integrand, &integrand_ptr); CHKERRXX(ierr);
-
-//  double addition_from_bc = Q/volume*integration.integrate_over_interface(integrand,0);
-
-//  ierr = VecDestroy(integrand); CHKERRXX(ierr);
-
-  for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+  double xyz[P4EST_DIM];
+  foreach_node(n, nodes)
   {
-    double x = node_x_fr_n(n, p4est, nodes);
-    double y = node_y_fr_n(n, p4est, nodes);
-#ifdef P4_TO_P8
-    double z = node_z_fr_n(n, p4est, nodes);
-#endif
+    node_xyz_fr_n(n, p4est, nodes, xyz);
 
-    double gamma_a_val = (*gamma_a->at(phi_idx))(x,y);
-    double gamma_b_val = (*gamma_b->at(phi_idx))(x,y);
+    double gamma_a_val = gamma_a->at(phi_idx)->value(xyz)*scalling;
+    double gamma_b_val = gamma_b->at(phi_idx)->value(xyz)*scalling;
 
     energy_shape_deriv_ptr[n] = 1.0*energy_shape_deriv_volumetric
         + (mu_m_ptr[n]*mu_m_ptr[n]/XN - mu_p_ptr[n])/volume
-        - 0.5*(qf_ptr[n]+qb_ptr[n])/Q/volume
-        + 1.0*kappa_ptr[n]*(rho_a_ptr[n]*gamma_a_val + rho_b_ptr[n]*gamma_b_val)/volume
-        - 1.0*2.0*(bc_coeffs_a_ptr[n]*rho_a_ptr[n]*gamma_a_val + bc_coeffs_b_ptr[n]*rho_b_ptr[n]*gamma_b_val)/volume;
+        - 0.5*(qf_ptr[n]+qb_ptr[n])/Q/volume;
+//        + 1.0*kappa_ptr[n]*(rho_a_ptr[n]*gamma_a_val + rho_b_ptr[n]*gamma_b_val)/volume
+//        - 1.0*2.0*(bc_coeffs_a_ptr[n]*rho_a_ptr[n]*gamma_a_val + bc_coeffs_b_ptr[n]*rho_b_ptr[n]*gamma_b_val)/volume;
 
 //    energy_shape_deriv_ptr[n] = - (mu_m_sqrd_int/XN-mu_p_int)/volume/volume
 //        + (mu_m_ptr[n]*mu_m_ptr[n]/XN - mu_p_ptr[n])/volume;
@@ -1510,6 +1415,7 @@ void my_p4est_scft_t::compute_energy_shape_derivative(int phi_idx)
 //    energy_shape_deriv_ptr[n] = 1.0/volume;
   }
 
+  ierr = PetscPrintf(p4est->mpicomm, "here\n"); CHKERRXX(ierr);
   ierr = VecRestoreArray(rho_total_xx, &rho_total_xx_ptr); CHKERRXX(ierr);
   ierr = VecRestoreArray(rho_total_yy, &rho_total_yy_ptr); CHKERRXX(ierr);
 
@@ -1524,47 +1430,14 @@ void my_p4est_scft_t::compute_energy_shape_derivative(int phi_idx)
   ierr = VecRestoreArray(rho_b,                 &rho_b_ptr              ); CHKERRXX(ierr);
   ierr = VecRestoreArray(bc_coeffs_a[phi_idx],  &bc_coeffs_a_ptr        ); CHKERRXX(ierr);
   ierr = VecRestoreArray(bc_coeffs_b[phi_idx],  &bc_coeffs_b_ptr        ); CHKERRXX(ierr);
-  ierr = VecRestoreArray(kappa[phi_idx],        &kappa_ptr              ); CHKERRXX(ierr);
+//  ierr = VecRestoreArray(kappa[phi_idx],        &kappa_ptr              ); CHKERRXX(ierr);
   ierr = VecRestoreArray(mu_m,                  &mu_m_ptr               ); CHKERRXX(ierr);
   ierr = VecRestoreArray(mu_p,                  &mu_p_ptr               ); CHKERRXX(ierr);
 
-  // sync the derivative among procs
-  ierr = VecGhostUpdateBegin(energy_shape_deriv_tmp, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecGhostUpdateEnd  (energy_shape_deriv_tmp, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
   // extrapolate from moving moving interface
-  ls.extend_Over_Interface_TVD(phi_smooth, energy_shape_deriv_tmp);
-  ls.extend_from_interface_to_whole_domain_TVD(phi->at(phi_idx), energy_shape_deriv_tmp, energy_shape_deriv);
+  ls.extend_from_interface_to_whole_domain_TVD(phi->at(phi_idx), energy_shape_deriv_tmp, velo);
 
   ierr = VecDestroy(energy_shape_deriv_tmp); CHKERRXX(ierr);
-
-//  ls.extend_Over_Interface_TVD(phi_smooth, energy_shape_deriv_tmp);
-//  ierr = VecDestroy(energy_shape_deriv); CHKERRXX(ierr);
-//  energy_shape_deriv = energy_shape_deriv_tmp;
-
-  // find max velocity to compute timestep
-  double *phi_eff_ptr;
-  double v_max = 0;
-  ierr = VecGetArray(energy_shape_deriv, &energy_shape_deriv_ptr); CHKERRXX(ierr);
-  ierr = VecGetArray(phi->at(phi_idx), &phi_ptr); CHKERRXX(ierr);
-  ierr = VecGetArray(phi_smooth, &phi_eff_ptr); CHKERRXX(ierr);
-
-  for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
-  {
-    if (fabs(phi_ptr[n]) < 2.0*dxyz_max && phi_eff_ptr[n] < 2.0*dxyz_max)
-    {
-      v_max = MAX(v_max, fabs(energy_shape_deriv_ptr[n]));
-    }
-  }
-
-  ierr = VecRestoreArray(energy_shape_deriv, &energy_shape_deriv_ptr); CHKERRXX(ierr);
-  ierr = VecRestoreArray(phi->at(phi_idx), &phi_ptr); CHKERRXX(ierr);
-  ierr = VecRestoreArray(phi_smooth, &phi_eff_ptr); CHKERRXX(ierr);
-
-  double v_max_global = 0;
-  ierr = MPI_Allreduce(&v_max, &v_max_global, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); CHKERRXX(ierr);
-
-  dt_energy = dxyz_min/MAX(v_max_global, 1.0e-10);
 }
 
 void my_p4est_scft_t::compute_energy_shape_derivative_contact_term(int phi0_idx, int phi1_idx)
@@ -1603,7 +1476,7 @@ void my_p4est_scft_t::compute_energy_shape_derivative_contact_term(int phi0_idx,
     double gamma_air_val  = (*gamma_air)(x,y);
 
 //    energy_shape_deriv_contact_term_ptr[n] = -1.0*(gamma_phi0 - gamma_air_val + gamma_phi1*cos_theta)/sqrt(1.0-cos_theta*cos_theta)*Q*volume;
-    energy_shape_deriv_contact_term_ptr[n] = 1.0*(gamma_phi0 - gamma_air_val + gamma_phi1*cos_theta)/sqrt(1.0-cos_theta*cos_theta)/volume;
+    energy_shape_deriv_contact_term_ptr[n] = 1.0*scalling*(gamma_phi0 - gamma_air_val + gamma_phi1*cos_theta)/sqrt(1.0-cos_theta*cos_theta)/volume;
 //    energy_shape_deriv_contact_term_ptr[n] = (1.0+cos_theta)/sqrt(1.0-cos_theta*cos_theta);
   }
 
@@ -1891,484 +1764,433 @@ void my_p4est_scft_t::update_grid(Vec normal_velo, int surf_idx, double dt)
 // Density optimization
 //-----------------------------------------------------------------
 
-//void my_p4est_scft_t::DO_initialize(CF_2 &mu_target_cf)
-//{
-//  // chain propogators
-//  for (int i = 0; i < lam_fwd.size(); i++) { ierr = VecDestroy(lam_fwd[i]); CHKERRXX(ierr); }
-//  for (int i = 0; i < lam_bwd.size(); i++) { ierr = VecDestroy(lam_bwd[i]); CHKERRXX(ierr); }
-
-//  lam_fwd.resize(ns, NULL);
-//  lam_bwd.resize(ns, NULL);
+void my_p4est_scft_t::dsa_initialize(CF_2 &mu_target_cf)
+{
+  // chain propogators
+  for (int i = 0; i < lam_fwd.size(); i++) { ierr = VecDestroy(lam_fwd[i]); CHKERRXX(ierr); }
+  for (int i = 0; i < lam_bwd.size(); i++) { ierr = VecDestroy(lam_bwd[i]); CHKERRXX(ierr); }
 
-//  for (int i = 0; i < ns; i++)
-//  {
-//    ierr = VecDuplicate(phi_smooth, &lam_fwd[i]); CHKERRXX(ierr);
-//    ierr = VecDuplicate(phi_smooth, &lam_bwd[i]); CHKERRXX(ierr);
-//  }
-
-//  ierr = VecSet(lam_fwd[0000], 0.0); CHKERRXX(ierr);
-//  ierr = VecSet(lam_bwd[ns-1], 0.0); CHKERRXX(ierr);
-
-//  // potentials
-////  if (lam_m != NULL) { ierr = VecDestroy(lam_m); CHKERRXX(ierr); }
-////  if (lam_p != NULL) { ierr = VecDestroy(lam_p); CHKERRXX(ierr); }
-
-////  ierr = VecDuplicate(phi_smooth, &lam_m); CHKERRXX(ierr);
-////  ierr = VecDuplicate(phi_smooth, &lam_p); CHKERRXX(ierr);
+  lam_fwd.resize(ns, NULL);
+  lam_bwd.resize(ns, NULL);
 
-//////  ierr = VecSetRandom(lam_m, NULL); CHKERRXX(ierr);
-////  sample_cf_on_nodes(p4est, nodes, mu_target_cf, lam_m);
-//////  ierr = VecSet(lam_m, 0.0); CHKERRXX(ierr);
-////  ierr = VecSet(lam_p, 0.0); CHKERRXX(ierr);
-
-//  if (lam_a != NULL) { ierr = VecDestroy(lam_a); CHKERRXX(ierr); }
-//  if (lam_b != NULL) { ierr = VecDestroy(lam_b); CHKERRXX(ierr); }
-
-//  ierr = VecDuplicate(phi_smooth, &lam_a); CHKERRXX(ierr);
-//  ierr = VecDuplicate(phi_smooth, &lam_b); CHKERRXX(ierr);
-
-//  if (force_lam_m != NULL)    { ierr = VecDestroy(force_lam_m); CHKERRXX(ierr); }
-//  if (force_lam_p != NULL)    { ierr = VecDestroy(force_lam_p); CHKERRXX(ierr); }
-
-//  ierr = VecDuplicate(phi_smooth, &force_lam_m); CHKERRXX(ierr);
-//  ierr = VecDuplicate(phi_smooth, &force_lam_p); CHKERRXX(ierr);
-
-//  if (density_shape_grad != NULL)    { ierr = VecDestroy(density_shape_grad); CHKERRXX(ierr); }
-
-//  ierr = VecDuplicate(phi_smooth, &density_shape_grad); CHKERRXX(ierr);
-
-//  if (mu_t != NULL)    { ierr = VecDestroy(mu_t); CHKERRXX(ierr); }
-
-//  ierr = VecDuplicate(phi_smooth, &mu_t); CHKERRXX(ierr);
-
-//  sample_cf_on_nodes(p4est, nodes, mu_target_cf, mu_t);
-
-//  // create exp_w vectors
-//  double *mu_p_ptr;
-//  double *mu_m_ptr;
-//  double *exp_w_a_ptr;
-//  double *exp_w_b_ptr;
-
-//  ierr = VecGetArray(mu_p, &mu_p_ptr); CHKERRXX(ierr);
-//  ierr = VecGetArray(mu_m, &mu_m_ptr); CHKERRXX(ierr);
-
-//  ierr = VecGetArray(exp_w_a, &exp_w_a_ptr); CHKERRXX(ierr);
-//  ierr = VecGetArray(exp_w_b, &exp_w_b_ptr); CHKERRXX(ierr);
-
-//  for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
-//  {
-//    if (solver_a->is_calc(n))
-//    {
-//      exp_w_a_ptr[n] = exp(-0.5*(mu_p_ptr[n]-mu_m_ptr[n])*ds);
-//      exp_w_b_ptr[n] = exp(-0.5*(mu_p_ptr[n]+mu_m_ptr[n])*ds);
-//    } else {
-//      exp_w_a_ptr[n] = 1.0;
-//      exp_w_b_ptr[n] = 1.0;
-//    }
-//  }
-
-//  ierr = VecRestoreArray(exp_w_a, &exp_w_a_ptr); CHKERRXX(ierr);
-//  ierr = VecRestoreArray(exp_w_b, &exp_w_b_ptr); CHKERRXX(ierr);
-
-//  ierr = VecRestoreArray(mu_p, &mu_p_ptr); CHKERRXX(ierr);
-//  ierr = VecRestoreArray(mu_m, &mu_m_ptr); CHKERRXX(ierr);
-
-//  if (rho_lam_a != NULL) { ierr = VecDestroy(rho_lam_a); CHKERRXX(ierr); }
-//  if (rho_lam_b != NULL) { ierr = VecDestroy(rho_lam_b); CHKERRXX(ierr); }
-
-//  ierr = VecDuplicate(phi_smooth, &rho_lam_a); CHKERRXX(ierr);
-//  ierr = VecDuplicate(phi_smooth, &rho_lam_b); CHKERRXX(ierr);
-//}
-
-//void my_p4est_scft_t::DO_initialize_fields()
-//{
-//  // potentials
-//  if (lam_m != NULL) { ierr = VecDestroy(lam_m); CHKERRXX(ierr); }
-//  if (lam_p != NULL) { ierr = VecDestroy(lam_p); CHKERRXX(ierr); }
-
-//  ierr = VecDuplicate(phi_smooth, &lam_m); CHKERRXX(ierr);
-//  ierr = VecDuplicate(phi_smooth, &lam_p); CHKERRXX(ierr);
-
-////  ierr = VecWAXPY(lam_m, -1.0, mu_m, mu_t); CHKERRXX(ierr);
-////  ierr = VecScale(lam_m, XN/Q/volume/volume); CHKERRXX(ierr);
-////  ierr = VecSetRandom(lam_m, NULL); CHKERRXX(ierr);
-//  ierr = VecSet(lam_m, 0.0); CHKERRXX(ierr);
-//  ierr = VecSet(lam_p, 0.0); CHKERRXX(ierr);
-////  ierr = VecCopy(mu_p, lam_p); CHKERRXX(ierr);
-////  ierr = VecCopy(mu_m, lam_m); CHKERRXX(ierr);
-
-////  ierr = VecScale(lam_p, -2.0); CHKERRXX(ierr);
-////  ierr = VecScale(lam_m, -2.0); CHKERRXX(ierr);
-//}
-
-//void my_p4est_scft_t::DO_solve_for_propogators()
-//{
-//  // compute lam_a and lam_b
-//  double *lam_p_ptr;
-//  double *lam_m_ptr;
-//  double *lam_a_ptr;
-//  double *lam_b_ptr;
-
-//  lam_0 = 2.0*integrate_over_domain_fast_two(mu_m, lam_m)/XN/volume;
-
-//  ierr = VecGetArray(lam_p, &lam_p_ptr); CHKERRXX(ierr);
-//  ierr = VecGetArray(lam_m, &lam_m_ptr); CHKERRXX(ierr);
-
-//  ierr = VecGetArray(lam_a, &lam_a_ptr); CHKERRXX(ierr);
-//  ierr = VecGetArray(lam_b, &lam_b_ptr); CHKERRXX(ierr);
-
-//  for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
-//  {
-//    if (solver_a->is_calc(n))
-//    {
-//      lam_a_ptr[n] = (lam_p_ptr[n]-lam_m_ptr[n])+lam_0;
-//      lam_b_ptr[n] = (lam_p_ptr[n]+lam_m_ptr[n])+lam_0;
-//    } else {
-//      lam_a_ptr[n] = 0.0;
-//      lam_b_ptr[n] = 0.0;
-//    }
-//  }
-
-//  ierr = VecRestoreArray(lam_p, &lam_p_ptr); CHKERRXX(ierr);
-//  ierr = VecRestoreArray(lam_m, &lam_m_ptr); CHKERRXX(ierr);
-
-//  ierr = VecRestoreArray(lam_a, &lam_a_ptr); CHKERRXX(ierr);
-//  ierr = VecRestoreArray(lam_b, &lam_b_ptr); CHKERRXX(ierr);
-
-//  // forward propagator
-//  for (int is = 1;   is < fns; is++) { DO_diffusion_step(solver_a, lam_fwd[is], lam_fwd[is-1], exp_w_a, qf[is], lam_a); }
-//  for (int is = fns; is < ns;  is++) { DO_diffusion_step(solver_b, lam_fwd[is], lam_fwd[is-1], exp_w_b, qf[is], lam_b); }
-
-//  // backward propagator
-//  for (int is = ns-2;  is > fns-2; is--) { DO_diffusion_step(solver_b, lam_bwd[is], lam_bwd[is+1], exp_w_b, qb[is], lam_b); }
-//  for (int is = fns-2; is > -1;    is--) { DO_diffusion_step(solver_a, lam_bwd[is], lam_bwd[is+1], exp_w_a, qb[is], lam_a); }
-//}
-
-//void my_p4est_scft_t::DO_diffusion_step(my_p4est_poisson_nodes_mls_t *solver, Vec &sol, Vec &sol_nm1, Vec &exp_w, Vec &q, Vec &lam)
-//{
-//  // only fully implicit scheme at the moment (!)
-//  ierr = VecCopy(sol_nm1, rhs); CHKERRXX(ierr);
-//  ierr = VecPointwiseMult(rhs, rhs, exp_w); CHKERRXX(ierr);
-
-//  ierr = VecPointwiseMult(q_tmp, q, lam); CHKERRXX(ierr);
-
-//  ierr = VecAXPBY(rhs, -1.0, 1.0/ds, q_tmp);    CHKERRXX(ierr);
-
-
-//  solver->set_rhs(rhs);
-//  solver->setup_negative_variable_coeff_laplace_rhsvec_sym();
-
-////  if (use_cn_scheme)
-////  {
-////    ierr = VecSet(rhs, 0.0); CHKERRXX(ierr);
-
-////    // Set up RHS
-////    ierr = VecPointwiseMult(add_to_rhs, solver->node_vol, sol_nm1);       CHKERRXX(ierr);
-////    ierr = VecPointwiseDivide(add_to_rhs, add_to_rhs, solver->scalling);  CHKERRXX(ierr);
-////    ierr = VecScale(add_to_rhs, -4.0/ds);                                 CHKERRXX(ierr);
-////    ierr = MatMultAdd(solver->A, sol_nm1, add_to_rhs, add_to_rhs);        CHKERRXX(ierr);
-
-////    // Calculate RHS as for Poisson eqn
-////    solver->set_rhs(rhs);
-////    solver->setup_negative_variable_coeff_laplace_rhsvec_sym();
-
-////    ierr = VecPointwiseMult(add_to_rhs, add_to_rhs, mask);  CHKERRXX(ierr);
-////    ierr = VecAXPBY(solver->rhs, -1.0, 2.0, add_to_rhs);    CHKERRXX(ierr);
-////  } else {
-////    ierr = VecCopy(sol_nm1, rhs); CHKERRXX(ierr);
-////    ierr = VecScale(rhs, 1.0/ds); CHKERRXX(ierr);
-////    solver->set_rhs(rhs);
-////    solver->setup_negative_variable_coeff_laplace_rhsvec_sym();
-////  }
-
-//  // Solve linear system
-//  ierr = VecPointwiseMult(sol, sol, mask); CHKERRXX(ierr);
-//  solver->solve_linear_system(sol, true);
-
-//  ierr = VecPointwiseMult(sol, sol, exp_w); CHKERRXX(ierr);
-//}
-
-//void my_p4est_scft_t::DO_compute_densities()
-//{
-//  // calculate densities
-//  std::vector<double> time_integrand(ns, 0);
-
-//  std::vector<double *> qf_ptr(ns, NULL);
-//  std::vector<double *> qb_ptr(ns, NULL);
-//  std::vector<double *> lam_fwd_ptr(ns, NULL);
-//  std::vector<double *> lam_bwd_ptr(ns, NULL);
-
-//  double *rho_a_ptr;
-//  double *rho_b_ptr;
-
-//  ierr = VecGetArray(rho_lam_a, &rho_a_ptr); CHKERRXX(ierr);
-//  ierr = VecGetArray(rho_lam_b, &rho_b_ptr); CHKERRXX(ierr);
-
-//  for (int is = 0; is < ns; is++)
-//  {
-//    ierr = VecGetArray(qf[is], &qf_ptr[is]); CHKERRXX(ierr);
-//    ierr = VecGetArray(qb[is], &qb_ptr[is]); CHKERRXX(ierr);
-//    ierr = VecGetArray(lam_fwd[is], &lam_fwd_ptr[is]); CHKERRXX(ierr);
-//    ierr = VecGetArray(lam_bwd[is], &lam_bwd_ptr[is]); CHKERRXX(ierr);
-//  }
-
-//  // calculate densities only for local nodes
-//  for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
-//  {
-//    if (solver_a->is_calc(n))
-//    {
-//      for (int is = 0; is < ns; is++)
-//        time_integrand[is] = qf_ptr[is][n]*lam_bwd_ptr[is][n] + lam_fwd_ptr[is][n]*qb_ptr[is][n];
-
-//      rho_a_ptr[n] = compute_rho_a(time_integrand.data());
-//      rho_b_ptr[n] = compute_rho_b(time_integrand.data());
-//    } else {
-//      rho_a_ptr[n] = 0.0;
-//      rho_b_ptr[n] = 0.0;
-//    }
-//  }
-
-//  ierr = VecRestoreArray(rho_lam_a, &rho_a_ptr); CHKERRXX(ierr);
-//  ierr = VecRestoreArray(rho_lam_b, &rho_b_ptr); CHKERRXX(ierr);
-
-//  for (int is = 0; is < ns; is++)
-//  {
-//    ierr = VecRestoreArray(qf[is], &qf_ptr[is]); CHKERRXX(ierr);
-//    ierr = VecRestoreArray(qb[is], &qb_ptr[is]); CHKERRXX(ierr);
-//    ierr = VecRestoreArray(lam_fwd[is], &lam_fwd_ptr[is]); CHKERRXX(ierr);
-//    ierr = VecRestoreArray(lam_bwd[is], &lam_bwd_ptr[is]); CHKERRXX(ierr);
-//  }
-
-//  ierr = VecScale(rho_lam_a, 1.0/Q); CHKERRXX(ierr);
-//  ierr = VecScale(rho_lam_b, 1.0/Q); CHKERRXX(ierr);
-
-//  cost_func = DO_compute_cost_functional();
-//}
-
-//void my_p4est_scft_t::DO_update_potentials()
-//{
-//  double *rho_a_ptr;
-//  double *rho_b_ptr;
-
-//  ierr = VecGetArray(rho_lam_a, &rho_a_ptr); CHKERRXX(ierr);
-//  ierr = VecGetArray(rho_lam_b, &rho_b_ptr); CHKERRXX(ierr);
-
-//  double *force_p_ptr;
-//  double *force_m_ptr;
-
-//  ierr = VecGetArray(force_lam_p, &force_p_ptr); CHKERRXX(ierr);
-//  ierr = VecGetArray(force_lam_m, &force_m_ptr); CHKERRXX(ierr);
-
-//  double *mu_m_ptr;
-//  double *mu_t_ptr;
-
-//  ierr = VecGetArray(mu_m, &mu_m_ptr); CHKERRXX(ierr);
-//  ierr = VecGetArray(mu_t, &mu_t_ptr); CHKERRXX(ierr);
-
-//  double *lam_p_ptr;
-//  double *lam_m_ptr;
-
-//  ierr = VecGetArray(lam_p, &lam_p_ptr); CHKERRXX(ierr);
-//  ierr = VecGetArray(lam_m, &lam_m_ptr); CHKERRXX(ierr);
-
-//  double scale_factor = XN/Q/volume/volume;
-
-//  for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
-//  {
-//    if (solver_a->is_calc(n))
-//    {
-//      force_p_ptr[n] = rho_a_ptr[n] + rho_b_ptr[n];
-//      force_m_ptr[n] = 2.0*(mu_m_ptr[n] - mu_t_ptr[n])/XN + 2.0*lam_m_ptr[n]/XN - rho_a_ptr[n] + rho_b_ptr[n];
-////      force_m_ptr[n] = 2.0*(mu_m_ptr[n] - 0.0*mu_t_ptr[n]) + 2.0*lam_m_ptr[n]*Q*volume/XN - rho_a_ptr[n] + rho_b_ptr[n];
-
-//      lam_p_ptr[n] += 2.0*lambda*force_p_ptr[n];
-//      lam_m_ptr[n] -= 2.0*lambda*force_m_ptr[n];
-//    }
-//  }
-
-//  ierr = VecRestoreArray(force_lam_p, &force_p_ptr); CHKERRXX(ierr);
-//  ierr = VecRestoreArray(force_lam_m, &force_m_ptr); CHKERRXX(ierr);
-
-//  ierr = VecRestoreArray(rho_lam_a, &rho_a_ptr); CHKERRXX(ierr);
-//  ierr = VecRestoreArray(rho_lam_b, &rho_b_ptr); CHKERRXX(ierr);
-
-//  ierr = VecRestoreArray(mu_m, &mu_m_ptr); CHKERRXX(ierr);
-//  ierr = VecRestoreArray(mu_t, &mu_t_ptr); CHKERRXX(ierr);
-
-//  ierr = VecRestoreArray(lam_p, &lam_p_ptr); CHKERRXX(ierr);
-//  ierr = VecRestoreArray(lam_m, &lam_m_ptr); CHKERRXX(ierr);
-
-//  force_lam_p_avg = sqrt(integrate_over_domain_fast_squared(force_lam_p)/volume);
-//  force_lam_m_avg = sqrt(integrate_over_domain_fast_squared(force_lam_m)/volume);
-
-//  double lam_p_avg = integrate_over_domain_fast(lam_p)/volume;
-////  mu_m_avg = integrate_over_domain_fast(mu_m)/volume;
-//  double lam_mu_avg = 2.0*integrate_over_domain_fast_two(mu_m, lam_m)/XN/volume;
-
-//  ierr = VecShift(lam_p, -lam_p_avg); CHKERRXX(ierr);
-
-//  ierr = VecPointwiseMult(lam_p, lam_p, mask); CHKERRXX(ierr);
-//  ierr = VecPointwiseMult(lam_m, lam_m, mask); CHKERRXX(ierr);
-//}
-
-//void my_p4est_scft_t::DO_compute_shape_derivative(int phi_idx)
-//{
+  for (int i = 0; i < ns; i++)
+  {
+    ierr = VecDuplicate(phi_smooth, &lam_fwd[i]); CHKERRXX(ierr);
+    ierr = VecDuplicate(phi_smooth, &lam_bwd[i]); CHKERRXX(ierr);
+  }
+
+  ierr = VecSet(lam_fwd[0000], 0.0); CHKERRXX(ierr);
+  ierr = VecSet(lam_bwd[ns-1], 0.0); CHKERRXX(ierr);
+
+  // potentials
+  if (lam_a != NULL) { ierr = VecDestroy(lam_a); CHKERRXX(ierr); }
+  if (lam_b != NULL) { ierr = VecDestroy(lam_b); CHKERRXX(ierr); }
+
+  ierr = VecDuplicate(phi_smooth, &lam_a); CHKERRXX(ierr);
+  ierr = VecDuplicate(phi_smooth, &lam_b); CHKERRXX(ierr);
+
+  if (force_lam_m != NULL)    { ierr = VecDestroy(force_lam_m); CHKERRXX(ierr); }
+  if (force_lam_p != NULL)    { ierr = VecDestroy(force_lam_p); CHKERRXX(ierr); }
+
+  ierr = VecDuplicate(phi_smooth, &force_lam_m); CHKERRXX(ierr);
+  ierr = VecDuplicate(phi_smooth, &force_lam_p); CHKERRXX(ierr);
+
+  if (density_shape_grad != NULL)    { ierr = VecDestroy(density_shape_grad); CHKERRXX(ierr); }
+
+  ierr = VecDuplicate(phi_smooth, &density_shape_grad); CHKERRXX(ierr);
+
+  if (mu_t != NULL)    { ierr = VecDestroy(mu_t); CHKERRXX(ierr); }
+
+  ierr = VecDuplicate(phi_smooth, &mu_t); CHKERRXX(ierr);
+
+  sample_cf_on_nodes(p4est, nodes, mu_target_cf, mu_t);
+
+  // create exp_w vectors
+  double *mask_ptr;
+  double *mu_p_ptr;
+  double *mu_m_ptr;
+  double *exp_w_a_ptr;
+  double *exp_w_b_ptr;
+
+  ierr = VecGetArray(mask, &mask_ptr); CHKERRXX(ierr);
+
+  ierr = VecGetArray(mu_p, &mu_p_ptr); CHKERRXX(ierr);
+  ierr = VecGetArray(mu_m, &mu_m_ptr); CHKERRXX(ierr);
+
+  ierr = VecGetArray(exp_w_a, &exp_w_a_ptr); CHKERRXX(ierr);
+  ierr = VecGetArray(exp_w_b, &exp_w_b_ptr); CHKERRXX(ierr);
+
+  foreach_node(n, nodes)
+  {
+    if (mask_ptr[n] < 0)
+    {
+      exp_w_a_ptr[n] = exp(-0.5*(mu_p_ptr[n]-mu_m_ptr[n])*ds_a);
+      exp_w_b_ptr[n] = exp(-0.5*(mu_p_ptr[n]+mu_m_ptr[n])*ds_b);
+    } else {
+      exp_w_a_ptr[n] = 1.0;
+      exp_w_b_ptr[n] = 1.0;
+    }
+  }
+
+  ierr = VecRestoreArray(exp_w_a, &exp_w_a_ptr); CHKERRXX(ierr);
+  ierr = VecRestoreArray(exp_w_b, &exp_w_b_ptr); CHKERRXX(ierr);
+
+  ierr = VecRestoreArray(mu_p, &mu_p_ptr); CHKERRXX(ierr);
+  ierr = VecRestoreArray(mu_m, &mu_m_ptr); CHKERRXX(ierr);
+
+  ierr = VecRestoreArray(mask, &mask_ptr); CHKERRXX(ierr);
+
+  if (rho_lam_a != NULL) { ierr = VecDestroy(rho_lam_a); CHKERRXX(ierr); }
+  if (rho_lam_b != NULL) { ierr = VecDestroy(rho_lam_b); CHKERRXX(ierr); }
+
+  ierr = VecDuplicate(phi_smooth, &rho_lam_a); CHKERRXX(ierr);
+  ierr = VecDuplicate(phi_smooth, &rho_lam_b); CHKERRXX(ierr);
+}
+
+void my_p4est_scft_t::dsa_initialize_fields()
+{
+  // potentials
+  if (lam_m != NULL) { ierr = VecDestroy(lam_m); CHKERRXX(ierr); }
+  if (lam_p != NULL) { ierr = VecDestroy(lam_p); CHKERRXX(ierr); }
+
+  ierr = VecDuplicate(phi_smooth, &lam_m); CHKERRXX(ierr);
+  ierr = VecDuplicate(phi_smooth, &lam_p); CHKERRXX(ierr);
+
+  ierr = VecSet(lam_m, 0.0); CHKERRXX(ierr);
+  ierr = VecSet(lam_p, 0.0); CHKERRXX(ierr);
+}
+
+void my_p4est_scft_t::dsa_solve_for_propogators()
+{
+  lam_0 = 2.0*integrate_over_domain_fast_two(mu_m, lam_m)/XN/volume;
+
+  // compute lam_a and lam_b
+  double *lam_p_ptr;
+  double *lam_m_ptr;
+  double *lam_a_ptr;
+  double *lam_b_ptr;
+  double *mask_ptr;
+
+  ierr = VecGetArray(mask, &mask_ptr); CHKERRXX(ierr);
+
+  ierr = VecGetArray(lam_p, &lam_p_ptr); CHKERRXX(ierr);
+  ierr = VecGetArray(lam_m, &lam_m_ptr); CHKERRXX(ierr);
+
+  ierr = VecGetArray(lam_a, &lam_a_ptr); CHKERRXX(ierr);
+  ierr = VecGetArray(lam_b, &lam_b_ptr); CHKERRXX(ierr);
+
+  foreach_node(n, nodes)
+  {
+    if (mask_ptr[n] < 0)
+    {
+      lam_a_ptr[n] = (lam_p_ptr[n]-lam_m_ptr[n])+lam_0;
+      lam_b_ptr[n] = (lam_p_ptr[n]+lam_m_ptr[n])+lam_0;
+    } else {
+      lam_a_ptr[n] = 0.0;
+      lam_b_ptr[n] = 0.0;
+    }
+  }
+
+  ierr = VecRestoreArray(lam_p, &lam_p_ptr); CHKERRXX(ierr);
+  ierr = VecRestoreArray(lam_m, &lam_m_ptr); CHKERRXX(ierr);
+
+  ierr = VecRestoreArray(lam_a, &lam_a_ptr); CHKERRXX(ierr);
+  ierr = VecRestoreArray(lam_b, &lam_b_ptr); CHKERRXX(ierr);
+
+  ierr = VecRestoreArray(mask, &mask_ptr); CHKERRXX(ierr);
+
+  // forward propagator
+  for (int is = 1;   is < fns; is++) { dsa_diffusion_step(solver_a, ds_a, lam_fwd[is], lam_fwd[is-1], exp_w_a, qf[is], lam_a); }
+  for (int is = fns; is < ns;  is++) { dsa_diffusion_step(solver_b, ds_b, lam_fwd[is], lam_fwd[is-1], exp_w_b, qf[is], lam_b); }
+
+  // backward propagator
+  for (int is = ns-2;  is > fns-2; is--) { dsa_diffusion_step(solver_b, ds_a, lam_bwd[is], lam_bwd[is+1], exp_w_b, qb[is], lam_b); }
+  for (int is = fns-2; is > -1;    is--) { dsa_diffusion_step(solver_a, ds_b, lam_bwd[is], lam_bwd[is+1], exp_w_a, qb[is], lam_a); }
+}
+
+void my_p4est_scft_t::dsa_diffusion_step(my_p4est_poisson_nodes_mls_sc_t *solver, double ds, Vec &sol, Vec &sol_nm1, Vec &exp_w, Vec &q, Vec &lam)
+{
+  // only fully implicit scheme at the moment (!)
+  ierr = VecCopy(sol_nm1, rhs); CHKERRXX(ierr);
+  ierr = VecPointwiseMult(rhs, rhs, exp_w); CHKERRXX(ierr);
+
+  ierr = VecPointwiseMult(q_tmp, q, lam); CHKERRXX(ierr);
+
+  ierr = VecAXPBY(rhs, -1.0, 1.0/ds, q_tmp);    CHKERRXX(ierr);
+
+  solver->set_rhs(rhs);
+
+  // Solve linear system
+  solver->solve(sol, true);
+
+  ierr = VecPointwiseMult(sol, sol, exp_w); CHKERRXX(ierr);
+}
+
+void my_p4est_scft_t::dsa_compute_densities()
+{
+  // calculate densities
+  std::vector<double> time_integrand(ns, 0);
+
+  std::vector<double *> qf_ptr(ns, NULL);
+  std::vector<double *> qb_ptr(ns, NULL);
+  std::vector<double *> lam_fwd_ptr(ns, NULL);
+  std::vector<double *> lam_bwd_ptr(ns, NULL);
+
+  double *mask_ptr;
+  double *rho_a_ptr;
+  double *rho_b_ptr;
+
+  ierr = VecGetArray(mask, &mask_ptr); CHKERRXX(ierr);
+  ierr = VecGetArray(rho_lam_a, &rho_a_ptr); CHKERRXX(ierr);
+  ierr = VecGetArray(rho_lam_b, &rho_b_ptr); CHKERRXX(ierr);
+
+  for (int is = 0; is < ns; is++)
+  {
+    ierr = VecGetArray(qf[is], &qf_ptr[is]); CHKERRXX(ierr);
+    ierr = VecGetArray(qb[is], &qb_ptr[is]); CHKERRXX(ierr);
+    ierr = VecGetArray(lam_fwd[is], &lam_fwd_ptr[is]); CHKERRXX(ierr);
+    ierr = VecGetArray(lam_bwd[is], &lam_bwd_ptr[is]); CHKERRXX(ierr);
+  }
+
+  // calculate densities only for local nodes
+  foreach_node(n, nodes)
+  {
+    if (mask_ptr[n] < 0)
+    {
+      for (int is = 0; is < ns; is++)
+        time_integrand[is] = qf_ptr[is][n]*lam_bwd_ptr[is][n] + lam_fwd_ptr[is][n]*qb_ptr[is][n];
+
+      rho_a_ptr[n] = compute_rho_a(time_integrand.data());
+      rho_b_ptr[n] = compute_rho_b(time_integrand.data());
+    } else {
+      rho_a_ptr[n] = 0.0;
+      rho_b_ptr[n] = 0.0;
+    }
+  }
+
+  ierr = VecRestoreArray(mask, &mask_ptr); CHKERRXX(ierr);
+  ierr = VecRestoreArray(rho_lam_a, &rho_a_ptr); CHKERRXX(ierr);
+  ierr = VecRestoreArray(rho_lam_b, &rho_b_ptr); CHKERRXX(ierr);
+
+  for (int is = 0; is < ns; is++)
+  {
+    ierr = VecRestoreArray(qf[is], &qf_ptr[is]); CHKERRXX(ierr);
+    ierr = VecRestoreArray(qb[is], &qb_ptr[is]); CHKERRXX(ierr);
+    ierr = VecRestoreArray(lam_fwd[is], &lam_fwd_ptr[is]); CHKERRXX(ierr);
+    ierr = VecRestoreArray(lam_bwd[is], &lam_bwd_ptr[is]); CHKERRXX(ierr);
+  }
+
+  ierr = VecScale(rho_lam_a, 1.0/Q); CHKERRXX(ierr);
+  ierr = VecScale(rho_lam_b, 1.0/Q); CHKERRXX(ierr);
+
+  cost_func = dsa_compute_cost_functional();
+}
+
+void my_p4est_scft_t::dsa_update_potentials()
+{
+  double *mask_ptr;
+
+  ierr = VecGetArray(mask, &mask_ptr); CHKERRXX(ierr);
+
+  double *rho_a_ptr;
+  double *rho_b_ptr;
+
+  ierr = VecGetArray(rho_lam_a, &rho_a_ptr); CHKERRXX(ierr);
+  ierr = VecGetArray(rho_lam_b, &rho_b_ptr); CHKERRXX(ierr);
+
+  double *force_p_ptr;
+  double *force_m_ptr;
+
+  ierr = VecGetArray(force_lam_p, &force_p_ptr); CHKERRXX(ierr);
+  ierr = VecGetArray(force_lam_m, &force_m_ptr); CHKERRXX(ierr);
+
+  double *mu_m_ptr;
+  double *mu_t_ptr;
+
+  ierr = VecGetArray(mu_m, &mu_m_ptr); CHKERRXX(ierr);
+  ierr = VecGetArray(mu_t, &mu_t_ptr); CHKERRXX(ierr);
+
+  double *lam_p_ptr;
+  double *lam_m_ptr;
+
+  ierr = VecGetArray(lam_p, &lam_p_ptr); CHKERRXX(ierr);
+  ierr = VecGetArray(lam_m, &lam_m_ptr); CHKERRXX(ierr);
+
+  double scale_factor = XN/Q/volume/volume;
+
+  foreach_node(n, nodes)
+  {
+    if (mask_ptr[n] < 0)
+    {
+      force_p_ptr[n] = rho_a_ptr[n] + rho_b_ptr[n];
+      force_m_ptr[n] = 2.0*(mu_m_ptr[n] - mu_t_ptr[n])/XN + 2.0*lam_m_ptr[n]/XN - rho_a_ptr[n] + rho_b_ptr[n];
+
+      lam_p_ptr[n] += 2.0*lambda*force_p_ptr[n];
+      lam_m_ptr[n] -= 2.0*lambda*force_m_ptr[n];
+    } else {
+      lam_p_ptr[n] = 0;
+      lam_m_ptr[n] = 0;
+    }
+  }
+
+  ierr = VecRestoreArray(force_lam_p, &force_p_ptr); CHKERRXX(ierr);
+  ierr = VecRestoreArray(force_lam_m, &force_m_ptr); CHKERRXX(ierr);
+
+  ierr = VecRestoreArray(rho_lam_a, &rho_a_ptr); CHKERRXX(ierr);
+  ierr = VecRestoreArray(rho_lam_b, &rho_b_ptr); CHKERRXX(ierr);
+
+  ierr = VecRestoreArray(mu_m, &mu_m_ptr); CHKERRXX(ierr);
+  ierr = VecRestoreArray(mu_t, &mu_t_ptr); CHKERRXX(ierr);
+
+  ierr = VecRestoreArray(lam_p, &lam_p_ptr); CHKERRXX(ierr);
+  ierr = VecRestoreArray(lam_m, &lam_m_ptr); CHKERRXX(ierr);
+
+  ierr = VecRestoreArray(mask, &mask_ptr); CHKERRXX(ierr);
+
+  force_lam_p_avg = sqrt(integrate_over_domain_fast_squared(force_lam_p)/volume);
+  force_lam_m_avg = sqrt(integrate_over_domain_fast_squared(force_lam_m)/volume);
+
+  double lam_p_avg = integrate_over_domain_fast(lam_p)/volume;
+  double lam_m_avg = 2.0*integrate_over_domain_fast_two(mu_m, lam_m)/XN/volume;
+
+  ierr = VecShift(lam_p, -lam_p_avg); CHKERRXX(ierr);
+}
+
+void my_p4est_scft_t::dsa_compute_shape_gradient(int phi_idx, Vec velo)
+{
 //  if (density_shape_grad != NULL) { ierr = VecDestroy(density_shape_grad); CHKERRXX(ierr); }
 //  ierr = VecDuplicate(mu_m, &density_shape_grad); CHKERRXX(ierr);
 
-//  Vec density_shape_grad_tmp;
-//  ierr = VecDuplicate(mu_m, &density_shape_grad_tmp); CHKERRXX(ierr);
+  Vec density_shape_grad_tmp;
+  ierr = VecDuplicate(mu_m, &density_shape_grad_tmp); CHKERRXX(ierr);
 
-//  // compute velocity only on local nodes
-//  ierr = VecGhostUpdateBegin(lam_fwd[ns-1], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-//  ierr = VecGhostUpdateEnd  (lam_fwd[ns-1], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  // compute velocity only on local nodes
+  ierr = VecGhostUpdateBegin(lam_fwd[ns-1], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd  (lam_fwd[ns-1], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-//  ierr = VecGhostUpdateBegin(lam_bwd[0000], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-//  ierr = VecGhostUpdateEnd  (lam_bwd[0000], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateBegin(lam_bwd[0000], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd  (lam_bwd[0000], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-//  ierr = VecGhostUpdateBegin(lam_m, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-//  ierr = VecGhostUpdateEnd  (lam_m, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateBegin(lam_m, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd  (lam_m, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-//  ierr = VecGhostUpdateBegin(lam_p, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-//  ierr = VecGhostUpdateEnd  (lam_p, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateBegin(lam_p, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd  (lam_p, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-//  // extend over smoothed interface
-//  my_p4est_level_set_t ls(ngbd);
-//  ls.extend_Over_Interface_TVD(phi_smooth, lam_fwd[ns-1]);
-//  ls.extend_Over_Interface_TVD(phi_smooth, lam_bwd[0000]);
-//  ls.extend_Over_Interface_TVD(phi_smooth, lam_m);
-//  ls.extend_Over_Interface_TVD(phi_smooth, lam_p);
+  // extend over smoothed interface
+  my_p4est_level_set_t ls(ngbd);
+  ls.extend_Over_Interface_TVD(phi_smooth, lam_fwd[ns-1]);
+  ls.extend_Over_Interface_TVD(phi_smooth, lam_bwd[0000]);
+  ls.extend_Over_Interface_TVD(phi_smooth, lam_m);
+  ls.extend_Over_Interface_TVD(phi_smooth, lam_p);
 
-//  double *density_shape_grad_ptr;
-//  double *lam_fwd_ptr, *lam_bwd_ptr;
-//  double *lam_m_ptr, *lam_p_ptr;
-//  double *mu_m_ptr, *mu_t_ptr;
-//  double *kappa_ptr;
+  double *density_shape_grad_ptr;
+  double *lam_fwd_ptr;
+  double *lam_bwd_ptr;
+  double *lam_m_ptr;
+  double *lam_p_ptr;
+  double *mu_m_ptr;
+  double *mu_t_ptr;
+  double *kappa_ptr;
 
-//  ierr = VecGetArray(density_shape_grad_tmp, &density_shape_grad_ptr); CHKERRXX(ierr);
-//  ierr = VecGetArray(lam_fwd[ns-1], &lam_fwd_ptr); CHKERRXX(ierr);
-//  ierr = VecGetArray(lam_bwd[0000], &lam_bwd_ptr); CHKERRXX(ierr);
-//  ierr = VecGetArray(lam_m, &lam_m_ptr); CHKERRXX(ierr);
-//  ierr = VecGetArray(lam_p, &lam_p_ptr); CHKERRXX(ierr);
-//  ierr = VecGetArray(mu_m, &mu_m_ptr); CHKERRXX(ierr);
-//  ierr = VecGetArray(mu_t, &mu_t_ptr); CHKERRXX(ierr);
+  ierr = VecGetArray(density_shape_grad_tmp, &density_shape_grad_ptr); CHKERRXX(ierr);
+  ierr = VecGetArray(lam_fwd[ns-1], &lam_fwd_ptr); CHKERRXX(ierr);
+  ierr = VecGetArray(lam_bwd[0000], &lam_bwd_ptr); CHKERRXX(ierr);
+  ierr = VecGetArray(lam_m, &lam_m_ptr); CHKERRXX(ierr);
+  ierr = VecGetArray(lam_p, &lam_p_ptr); CHKERRXX(ierr);
+  ierr = VecGetArray(mu_m, &mu_m_ptr); CHKERRXX(ierr);
+  ierr = VecGetArray(mu_t, &mu_t_ptr); CHKERRXX(ierr);
 
 //  ierr = VecGetArray(kappa[phi_idx], &kappa_ptr); CHKERRXX(ierr);
 
 //  double kappa_cr = 1.0/(5.0*dxyz_min);
 
-//  for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
-//  {
-//    density_shape_grad_ptr[n] = SQR(mu_m_ptr[n] - mu_t_ptr[n])/XN
-//        - 0.5*(lam_fwd_ptr[n] + lam_bwd_ptr[n])/Q
-//        - (lam_p_ptr[n] + lam_0 - 2.0*mu_m_ptr[n]*lam_m_ptr[n]/XN);
+  foreach_local_node(n, nodes)
+  {
+    density_shape_grad_ptr[n] = SQR(mu_m_ptr[n] - mu_t_ptr[n])/XN
+        - 0.5*(lam_fwd_ptr[n] + lam_bwd_ptr[n])/Q
+        - (lam_p_ptr[n] + lam_0 - 2.0*mu_m_ptr[n]*lam_m_ptr[n]/XN);
 
 //    double kappa_abs = fabs(kappa_ptr[n]);
 
 //    if (kappa_abs > kappa_cr) density_shape_grad_ptr[n]*exp(-2.0*pow(kappa_abs/kappa_cr - 1.0, 2.0));
-//  }
+  }
 
-//  ierr = VecRestoreArray(density_shape_grad_tmp, &density_shape_grad_ptr); CHKERRXX(ierr);
-//  ierr = VecRestoreArray(lam_fwd[ns-1], &lam_fwd_ptr); CHKERRXX(ierr);
-//  ierr = VecRestoreArray(lam_bwd[0000], &lam_bwd_ptr); CHKERRXX(ierr);
-//  ierr = VecRestoreArray(lam_m, &lam_m_ptr); CHKERRXX(ierr);
-//  ierr = VecRestoreArray(lam_p, &lam_p_ptr); CHKERRXX(ierr);
-//  ierr = VecRestoreArray(mu_m, &mu_m_ptr); CHKERRXX(ierr);
-//  ierr = VecRestoreArray(mu_t, &mu_t_ptr); CHKERRXX(ierr);
+  ierr = VecRestoreArray(density_shape_grad_tmp, &density_shape_grad_ptr); CHKERRXX(ierr);
+  ierr = VecRestoreArray(lam_fwd[ns-1], &lam_fwd_ptr); CHKERRXX(ierr);
+  ierr = VecRestoreArray(lam_bwd[0000], &lam_bwd_ptr); CHKERRXX(ierr);
+  ierr = VecRestoreArray(lam_m, &lam_m_ptr); CHKERRXX(ierr);
+  ierr = VecRestoreArray(lam_p, &lam_p_ptr); CHKERRXX(ierr);
+  ierr = VecRestoreArray(mu_m, &mu_m_ptr); CHKERRXX(ierr);
+  ierr = VecRestoreArray(mu_t, &mu_t_ptr); CHKERRXX(ierr);
 
 //  ierr = VecRestoreArray(kappa[phi_idx], &kappa_ptr); CHKERRXX(ierr);
 
-//  // sync the derivative among procs
-//  ierr = VecGhostUpdateBegin(density_shape_grad_tmp, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-//  ierr = VecGhostUpdateEnd  (density_shape_grad_tmp, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  // sync the derivative among procs
+  ierr = VecGhostUpdateBegin(density_shape_grad_tmp, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd  (density_shape_grad_tmp, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-//  // extrapolate from moving moving interface
-//  ls.extend_Over_Interface_TVD(phi_smooth, density_shape_grad_tmp);
-//  ls.extend_from_interface_to_whole_domain_TVD(phi->at(phi_idx), density_shape_grad_tmp, density_shape_grad);
+  // extrapolate from moving moving interface
+  ls.extend_Over_Interface_TVD_full(phi_smooth, mask, density_shape_grad_tmp);
+  ls.extend_from_interface_to_whole_domain_TVD(phi->at(phi_idx), density_shape_grad_tmp, velo);
 
-//  ierr = VecDestroy(density_shape_grad_tmp); CHKERRXX(ierr);
+  ierr = VecDestroy(density_shape_grad_tmp); CHKERRXX(ierr);
+}
 
-//  // find max velocity to compute timestep
-//  double *phi_ptr, *phi_eff_ptr;
-//  double v_max = 0;
-//  ierr = VecGetArray(density_shape_grad, &density_shape_grad_ptr); CHKERRXX(ierr);
-//  ierr = VecGetArray(phi->at(phi_idx), &phi_ptr); CHKERRXX(ierr);
-//  ierr = VecGetArray(solver_a->phi_eff, &phi_eff_ptr); CHKERRXX(ierr);
+double my_p4est_scft_t::dsa_compute_cost_functional()
+{
+  Vec integrand;
+  ierr = VecDuplicate(mu_m, &integrand); CHKERRXX(ierr);
 
-//  for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
-//  {
-//    if (fabs(phi_ptr[n]) < 2.0*dxyz_max && phi_eff_ptr[n] < 2.0*dxyz_max)
-//    {
-//      v_max = MAX(v_max, fabs(density_shape_grad_ptr[n]));
-//    }
-//  }
+  double *integrand_ptr; ierr = VecGetArray(integrand, &integrand_ptr); CHKERRXX(ierr);
+  double *mu_t_ptr;      ierr = VecGetArray(mu_t     , &mu_t_ptr     ); CHKERRXX(ierr);
+  double *mu_m_ptr;      ierr = VecGetArray(mu_m     , &mu_m_ptr     ); CHKERRXX(ierr);
 
-//  ierr = VecRestoreArray(density_shape_grad, &density_shape_grad_ptr); CHKERRXX(ierr);
-//  ierr = VecRestoreArray(phi->at(phi_idx), &phi_ptr); CHKERRXX(ierr);
-//  ierr = VecRestoreArray(solver_a->phi_eff, &phi_eff_ptr); CHKERRXX(ierr);
+  foreach_node(n, nodes)
+  {
+    integrand_ptr[n] = SQR(mu_t_ptr[n] - mu_m_ptr[n]);
+  }
 
-//  double v_max_global = 0;
-//  ierr = MPI_Allreduce(&v_max, &v_max_global, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); CHKERRXX(ierr);
+  ierr = VecRestoreArray(integrand, &integrand_ptr); CHKERRXX(ierr);
+  ierr = VecRestoreArray(mu_t     , &mu_t_ptr     ); CHKERRXX(ierr);
+  ierr = VecRestoreArray(mu_m     , &mu_m_ptr     ); CHKERRXX(ierr);
 
-//  dt_density = dxyz_min/MAX(v_max_global, 1.0e-10);
+  double val = integrate_over_domain_fast(integrand)/XN;
 
-//}
+  ierr = VecDestroy(integrand); CHKERRXX(ierr);
 
-//double my_p4est_scft_t::DO_compute_cost_functional()
-//{
-//  Vec integrand;
-//  ierr = VecDuplicate(mu_m, &integrand); CHKERRXX(ierr);
+  return val;
+}
 
-//  double *integrand_ptr; ierr = VecGetArray(integrand, &integrand_ptr); CHKERRXX(ierr);
-//  double *mu_t_ptr;      ierr = VecGetArray(mu_t     , &mu_t_ptr     ); CHKERRXX(ierr);
-//  double *mu_m_ptr;      ierr = VecGetArray(mu_m     , &mu_m_ptr     ); CHKERRXX(ierr);
+double my_p4est_scft_t::dsa_compute_change_in_functional(int phi_idx, Vec norm_velo, double dt)
+{
+  Vec integrand;
+  ierr = VecDuplicate(mu_m, &integrand); CHKERRXX(ierr);
 
-//  for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
-//  {
-//    integrand_ptr[n] = SQR(mu_t_ptr[n] - mu_m_ptr[n]);
-//  }
+  double *energy_shape_deriv_ptr; ierr = VecGetArray(density_shape_grad, &energy_shape_deriv_ptr); CHKERRXX(ierr);
+  double *integrand_ptr;          ierr = VecGetArray(integrand         , &integrand_ptr         ); CHKERRXX(ierr);
+  double *norm_velo_ptr;          ierr = VecGetArray(norm_velo         , &norm_velo_ptr         ); CHKERRXX(ierr);
 
-//  ierr = VecRestoreArray(integrand, &integrand_ptr); CHKERRXX(ierr);
-//  ierr = VecRestoreArray(mu_t     , &mu_t_ptr     ); CHKERRXX(ierr);
-//  ierr = VecRestoreArray(mu_m     , &mu_m_ptr     ); CHKERRXX(ierr);
+  foreach_node(n, nodes)
+  {
+    integrand_ptr[n] = norm_velo_ptr[n]*energy_shape_deriv_ptr[n];
+  }
 
-//  double val = integrate_over_domain_fast(integrand)/XN;
+  ierr = VecRestoreArray(density_shape_grad, &energy_shape_deriv_ptr); CHKERRXX(ierr);
+  ierr = VecRestoreArray(integrand         , &integrand_ptr         ); CHKERRXX(ierr);
+  ierr = VecRestoreArray(norm_velo         , &norm_velo_ptr         ); CHKERRXX(ierr);
 
-//  ierr = VecDestroy(integrand); CHKERRXX(ierr);
+  my_p4est_integration_mls_t integrator(p4est, nodes);
+  integrator.set_phi(*phi, *action, color);
 
-//  return val;
-//}
+  double val = integrator.integrate_over_interface(phi_idx, integrand)*dt;
 
-//double my_p4est_scft_t::DO_compute_change_in_functional(int phi_idx, Vec norm_velo, double dt)
-//{
-//  Vec integrand;
-//  ierr = VecDuplicate(mu_m, &integrand); CHKERRXX(ierr);
+  ierr = VecDestroy(integrand); CHKERRXX(ierr);
 
-//  double *energy_shape_deriv_ptr; ierr = VecGetArray(density_shape_grad, &energy_shape_deriv_ptr); CHKERRXX(ierr);
-//  double *integrand_ptr;          ierr = VecGetArray(integrand         , &integrand_ptr         ); CHKERRXX(ierr);
-//  double *norm_velo_ptr;          ierr = VecGetArray(norm_velo         , &norm_velo_ptr         ); CHKERRXX(ierr);
+  return val;
+}
 
-//  for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
-//  {
-//    integrand_ptr[n] = norm_velo_ptr[n]*energy_shape_deriv_ptr[n];
-//  }
-
-//  ierr = VecRestoreArray(density_shape_grad, &energy_shape_deriv_ptr); CHKERRXX(ierr);
-//  ierr = VecRestoreArray(integrand         , &integrand_ptr         ); CHKERRXX(ierr);
-//  ierr = VecRestoreArray(norm_velo         , &norm_velo_ptr         ); CHKERRXX(ierr);
-
-//  my_p4est_integration_mls_t integrator;
-//  integrator.set_p4est(p4est, nodes);
-//  integrator.set_phi(*phi, *action, color);
-
-//  double val = integrator.integrate_over_interface(integrand, phi_idx)*dt;
-
-//  ierr = VecDestroy(integrand); CHKERRXX(ierr);
-
-//  return val;
-//}
-
-//void my_p4est_scft_t::DO_save_VTK(int compt)
+//void my_p4est_scft_t::dsa_save_VTK(int compt)
 //{
 //  ierr = VecGhostUpdateBegin(mu_p, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 //  ierr = VecGhostUpdateEnd  (mu_p, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -2484,7 +2306,7 @@ void my_p4est_scft_t::update_grid(Vec normal_velo, int surf_idx, double dt)
 //  PetscPrintf(p4est->mpicomm, "VTK saved in %s\n", oss.str().c_str());
 //}
 
-//void my_p4est_scft_t::DO_save_VTK_before_moving(int compt)
+//void my_p4est_scft_t::dsa_save_VTK_before_moving(int compt)
 //{
 //  ierr = VecGhostUpdateBegin(mu_p, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 //  ierr = VecGhostUpdateEnd  (mu_p, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);

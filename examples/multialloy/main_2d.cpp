@@ -112,7 +112,7 @@ using namespace std;
 
 // problem parameters
 bool concentration_neumann = 1;
-int max_total_iterations   = INT_MAX;
+int max_total_iterations   = 10;
 double time_limit          = DBL_MAX;
 double termination_length  = 1.8;
 double init_perturb        = 0.001;
