@@ -648,7 +648,7 @@ int main (int argc, char* argv[])
       Developer: Raphael Egan (raphaelegan@ucsb.edu) based on a general main file from Arthur Guittet";
 #endif
 
-  cmd.parse(argc, argv);
+  cmd.parse(argc, argv, extra_info);
 
   double tstart;
   double dt;
