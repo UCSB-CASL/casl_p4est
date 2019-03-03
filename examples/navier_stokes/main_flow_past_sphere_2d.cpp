@@ -1037,7 +1037,7 @@ int main (int argc, char* argv[])
     dt = MIN(dxmin*cfl/u0, duration);
     if(save_vtk)
         dt = MIN(dt, vtk_dt);
-    ns->set_dt(dt, dt);
+    ns->set_dt(dt);
     ns->set_bc(bc_v, &bc_p);
     ns->set_external_forces(external_forces);
   }
