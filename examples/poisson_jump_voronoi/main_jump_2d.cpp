@@ -48,7 +48,7 @@
 
 using namespace std;
 
-int lmin = 0;
+int lmin = 3;
 int lmax = 5;
 int nb_splits = 5;
 
@@ -61,7 +61,7 @@ int ny = 1;
 int nz = 1;
 
 bool save_vtk = true;
-bool save_voro = false;
+bool save_voro = true;
 bool save_stats = false;
 bool check_partition = true;
 //bool check_partition = false;
@@ -91,10 +91,11 @@ domain omega = centered_ones;
 
 /*
  * 0 - circle
+ * 1 - flower
  */
 int level_set_type = 1;
 
-int test_number = 2;
+int test_number = 5;
 /*
  *  ********* 2D *********
  * 0 - u_m=1+log(r/r0), u_p=1, mu_m=mu_p=1
@@ -833,7 +834,7 @@ void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4e
               int compt)
 {
   PetscErrorCode ierr;
-  string output = "/home/egan/workspace/projects/jump_solver/output";
+  string output = "/home/rochi/LabCode/WorkSpace";
   const char *out_dir = output.c_str();
   if(out_dir==NULL)
   {
@@ -1172,7 +1173,7 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
 //  sample_cf_on_nodes(p4est, nodes, u_m, sol);
 
   char out_path[1000];
-  char *out_dir = "/home/egan/workspace/projects/jump_solver/output";
+  char *out_dir = "/home/rochi/LabCode/WorkSpace";
 //  out_dir = getenv("OUT_DIR");
   if(out_dir==NULL)
   {
@@ -1296,16 +1297,16 @@ int main (int argc, char* argv[])
   parStopWatch w;
   w.start("total time");
 
-  if(0)
-  {
-    int i = 0;
-    char hostname[256];
-    gethostname(hostname, sizeof(hostname));
-    printf("PID %d on %s ready for attach\n", getpid(), hostname);
-    fflush(stdout);
-    while (0 == i)
-      sleep(5);
-  }
+//  if(0)
+//  {
+//    int i = 0;
+//    char hostname[256];
+//    gethostname(hostname, sizeof(hostname));
+//    printf("PID %d on %s ready for attach\n", getpid(), hostname);
+//    fflush(stdout);
+//    while (0 == i)
+//      sleep(5);
+//  }
 
   p4est_connectivity_t *connectivity;
   my_p4est_brick_t brick;
