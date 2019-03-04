@@ -1013,6 +1013,63 @@ double integrate_over_interface_in_one_quadrant(const p4est_t *p4est, const p4es
   return cube.integrate_Over_Interface(f_values,phi_values);
 }
 
+double max_over_interface_in_one_quadrant(const p4est_nodes_t *nodes, p4est_locidx_t quad_idx, Vec phi, Vec f)
+{
+#ifdef P4_TO_P8
+  OctValue phi_values;
+  OctValue f_values;
+#else
+  QuadValue phi_values;
+  QuadValue f_values;
+#endif
+  double *P, *F;
+  PetscErrorCode ierr;
+  ierr = VecGetArray(phi, &P); CHKERRXX(ierr);
+  ierr = VecGetArray(f  , &F); CHKERRXX(ierr);
+
+  const p4est_locidx_t *q2n = nodes->local_nodes;
+#ifdef P4_TO_P8
+  phi_values.val000 = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
+  phi_values.val100 = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
+  phi_values.val010 = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
+  phi_values.val110 = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
+  phi_values.val001 = P[ q2n[ quad_idx*P4EST_CHILDREN + 4 ] ];
+  phi_values.val101 = P[ q2n[ quad_idx*P4EST_CHILDREN + 5 ] ];
+  phi_values.val011 = P[ q2n[ quad_idx*P4EST_CHILDREN + 6 ] ];
+  phi_values.val111 = P[ q2n[ quad_idx*P4EST_CHILDREN + 7 ] ];
+
+  f_values.val000   = F[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
+  f_values.val100   = F[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
+  f_values.val010   = F[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
+  f_values.val110   = F[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
+  f_values.val001   = F[ q2n[ quad_idx*P4EST_CHILDREN + 4 ] ];
+  f_values.val101   = F[ q2n[ quad_idx*P4EST_CHILDREN + 5 ] ];
+  f_values.val011   = F[ q2n[ quad_idx*P4EST_CHILDREN + 6 ] ];
+  f_values.val111   = F[ q2n[ quad_idx*P4EST_CHILDREN + 7 ] ];
+
+#else
+  phi_values.val00 = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
+  phi_values.val10 = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
+  phi_values.val01 = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
+  phi_values.val11 = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
+
+  f_values.val00   = F[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
+  f_values.val10   = F[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
+  f_values.val01   = F[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
+  f_values.val11   = F[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
+#endif
+  ierr = VecRestoreArray(phi, &P); CHKERRXX(ierr);
+  ierr = VecRestoreArray(f  , &F); CHKERRXX(ierr);
+
+#ifdef P4_TO_P8
+  Cube3 cube(0, 1, 0, 1, 0, 1);
+#else
+  Cube2 cube(0, 1, 0, 1);
+#endif
+
+  return cube.max_Over_Interface(f_values,phi_values);
+}
+
 double integrate_over_interface(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec f)
 {
   double sum = 0;
@@ -1035,6 +1092,22 @@ double integrate_over_interface(const p4est_t *p4est, const p4est_nodes_t *nodes
   return sum_global;
 }
 
+double max_over_interface(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec f)
+{
+  double max_over_interface = -DBL_MAX;
+  for(p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx)
+  {
+    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
+    for(size_t quad_idx = 0; quad_idx < tree->quadrants.elem_count; ++quad_idx)
+      max_over_interface = MAX(max_over_interface, max_over_interface_in_one_quadrant(nodes, quad_idx + tree->quadrants_offset, phi, f));
+  }
+
+  /* compute global sum */
+  double max_over_interface_global;
+  PetscErrorCode ierr;
+  ierr = MPI_Allreduce(&max_over_interface, &max_over_interface_global, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); CHKERRXX(ierr);
+  return max_over_interface_global;
+}
 
 double compute_mean_curvature(const quad_neighbor_nodes_of_node_t &qnnn, double *phi, double* phi_x[])
 {

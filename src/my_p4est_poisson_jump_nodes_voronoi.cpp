@@ -198,20 +198,24 @@ void my_p4est_poisson_jump_nodes_voronoi_t::set_mu_grad_u_jump(Vec mu_grad_u_jum
   local_mu_grad_u_jump = true;
 }
 
-void my_p4est_poisson_jump_nodes_voronoi_t::solve(Vec solution, bool use_nonzero_initial_guess, KSPType ksp_type, PCType pc_type, const bool destroy_solution_on_voronoi_mesh)
+
+void my_p4est_poisson_jump_nodes_voronoi_t::solve(Vec solution, bool use_nonzero_initial_guess, KSPType ksp_type, PCType pc_type, bool delete_sol_voro, bool interpolate_solution_back_on_tree)
 {
   ierr = PetscLogEventBegin(log_PoissonSolverNodeBasedJump_solve, A, rhs, ksp, 0); CHKERRXX(ierr);
 
 #ifdef CASL_THROWS
   if(bc == NULL) throw std::domain_error("[CASL_ERROR]: the boundary conditions have not been set.");
 
-  PetscInt sol_size;
-  ierr = VecGetLocalSize(solution, &sol_size); CHKERRXX(ierr);
-  if (sol_size != nodes->num_owned_indeps){
-    std::ostringstream oss;
-    oss << "[CASL_ERROR]: solution vector must be preallocated and locally have the same size as num_owned_indeps"
-        << "solution.local_size = " << sol_size << " nodes->num_owned_indeps = " << nodes->num_owned_indeps << std::endl;
-    throw std::invalid_argument(oss.str());
+  if(interpolate_solution_back_on_tree)
+  {
+    PetscInt sol_size;
+    ierr = VecGetLocalSize(solution, &sol_size); CHKERRXX(ierr);
+    if (sol_size != nodes->num_owned_indeps){
+      std::ostringstream oss;
+      oss << "[CASL_ERROR]: solution vector must be preallocated and locally have the same size as num_owned_indeps"
+          << "solution.local_size = " << sol_size << " nodes->num_owned_indeps = " << nodes->num_owned_indeps << std::endl;
+      throw std::invalid_argument(oss.str());
+    }
   }
 #endif
 
@@ -241,7 +245,7 @@ void my_p4est_poisson_jump_nodes_voronoi_t::solve(Vec solution, bool use_nonzero
 //    ierr = PetscPrintf(p4est->mpicomm, "Assembling linear system ...\n"); CHKERRXX(ierr);
     setup_linear_system();
 //    ierr = PetscPrintf(p4est->mpicomm, "Done assembling linear system.\n"); CHKERRXX(ierr);
-
+    
     is_matrix_computed = true;
     ierr = KSPSetOperators(ksp, A, A, SAME_NONZERO_PATTERN); CHKERRXX(ierr);
   } else {
@@ -289,6 +293,7 @@ void my_p4est_poisson_jump_nodes_voronoi_t::solve(Vec solution, bool use_nonzero
   }
   ierr = PCSetFromOptions(pc); CHKERRXX(ierr);
 
+
   /* set the nullspace */
   if (matrix_has_nullspace){
     // PETSc removed the KSPSetNullSpace in 3.6.0 ... Use MatSetNullSpace instead
@@ -301,8 +306,11 @@ void my_p4est_poisson_jump_nodes_voronoi_t::solve(Vec solution, bool use_nonzero
   }
 
   /* Solve the system */
-  ierr = VecDuplicate(rhs, &sol_voro); CHKERRXX(ierr);
-
+  if(sol_voro == NULL)
+  {
+    ierr = VecDuplicate(rhs, &sol_voro); CHKERRXX(ierr);
+  }
+  
 //  ierr = PetscPrintf(p4est->mpicomm, "Solving linear system ...\n"); CHKERRXX(ierr);
   ierr = PetscLogEventBegin(log_PoissonSolverNodeBasedJump_KSPSolve, ksp, rhs, sol_voro, 0); CHKERRXX(ierr);
   ierr = KSPSolve(ksp, rhs, sol_voro); CHKERRXX(ierr);
@@ -318,7 +326,8 @@ void my_p4est_poisson_jump_nodes_voronoi_t::solve(Vec solution, bool use_nonzero
   ierr = VecGhostUpdateEnd  (sol_voro, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
   /* interpolate the solution back onto the original mesh */
-  interpolate_solution_from_voronoi_to_tree(solution);
+  if(interpolate_solution_back_on_tree)
+    interpolate_solution_from_voronoi_to_tree(solution);
 
   if(destroy_solution_on_voronoi_mesh)
   {
@@ -439,6 +448,10 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_points()
 #else
       Point2 dp((*ngbd_n).get_neighbors(n).dx_central(phi_read_only_p), (*ngbd_n).get_neighbors(n).dy_central(phi_read_only_p));
 #endif
+    {
+      if(is_node_Wall(p4est, node))
+        marked_nodes.push_back(n); // when the interface is close to the boundary, add the boundary point too
+      double d = phi_p[n];
       // note: if phi is somehow a signed distance, dp has no dimension
       if(dp.norm_L2() > EPS) // no issue to calculate the projected point, so do it
       {
@@ -586,6 +599,42 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_points()
 #endif
       grid2voro[n].push_back(voro_seeds.size());
       voro_seeds.push_back(p);
+    }
+    else
+    {
+      if(is_node_Wall(p4est, ((p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n))))
+      {
+        double xn = node_x_fr_n(n, p4est, nodes);
+        double yn = node_y_fr_n(n, p4est, nodes);
+  #ifdef P4_TO_P8
+        double zn = node_z_fr_n(n, p4est, nodes);
+        Point3 p(xn, yn, zn);
+  #else
+        Point2 p(xn, yn);
+  #endif
+        grid2voro[n].push_back(voro_points.size()); // once again, add the wall node if the interface is close to the boundary
+        voro_points.push_back(p);
+      }
+#ifdef P4_TO_P8
+      Point3 dp((*ngbd_n).get_neighbors(n).dx_central(phi_p), (*ngbd_n).get_neighbors(n).dy_central(phi_p), (*ngbd_n).get_neighbors(n).dz_central(phi_p));
+#else
+      Point2 dp((*ngbd_n).get_neighbors(n).dx_central(phi_p), (*ngbd_n).get_neighbors(n).dy_central(phi_p));
+#endif
+      if(dp.norm_L2() > EPS)
+        marked_nodes.push_back(n);
+      else
+      {
+        double xn = node_x_fr_n(n, p4est, nodes);
+        double yn = node_y_fr_n(n, p4est, nodes);
+  #ifdef P4_TO_P8
+        double zn = node_z_fr_n(n, p4est, nodes);
+        Point3 p(xn, yn, zn);
+  #else
+        Point2 p(xn, yn);
+  #endif
+        grid2voro[n].push_back(voro_points.size());
+        voro_points.push_back(p);
+      }
     }
   }
   /* compute how many messages (buffers of "ghost" projected points) we are expecting to receive */
@@ -1416,7 +1465,7 @@ void my_p4est_poisson_jump_nodes_voronoi_t::setup_linear_system()
   }
 
   ierr = VecRestoreArray(rhs, &rhs_p); CHKERRXX(ierr);
-
+ 
   PetscInt num_owned_global = voro_global_offset[p4est->mpisize];
   PetscInt num_owned_local  = (PetscInt) num_local_voro;
 
@@ -1919,6 +1968,17 @@ void my_p4est_poisson_jump_nodes_voronoi_t::interpolate_solution_from_voronoi_to
   PetscErrorCode ierr;
 
   ierr = PetscLogEventBegin(log_PoissonSolverNodeBasedJump_interpolate_to_tree, phi, sol_voro, solution, 0); CHKERRXX(ierr);
+
+#ifdef CASL_THROWS
+  PetscInt sol_size;
+  ierr = VecGetLocalSize(solution, &sol_size); CHKERRXX(ierr);
+  if (sol_size != nodes->num_owned_indeps){
+    std::ostringstream oss;
+    oss << "[CASL_ERROR]: solution vector must be preallocated and locally have the same size as num_owned_indeps"
+        << "solution.local_size = " << sol_size << " nodes->num_owned_indeps = " << nodes->num_owned_indeps << std::endl;
+    throw std::invalid_argument(oss.str());
+  }
+#endif
 
   double *solution_p;
   ierr = VecGetArray(solution, &solution_p); CHKERRXX(ierr);

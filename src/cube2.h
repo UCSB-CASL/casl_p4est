@@ -123,6 +123,14 @@ public:
      * \return the integral of f over the 0-level-set in the Cube2
      */
   double integrate_Over_Interface(const QuadValue &f, const QuadValue &level_set_values ) const;
+
+  /*!
+     * \brief calculate the maximum of a quantity over the 0-level-set in a Cube2
+     * \param f the values of the function to at the corners of the Cube2
+     * \param level_set_values the level-set values at the corners of the Cube2
+     * \return the maximum of f over the 0-level-set in the Cube2
+     */
+  double max_Over_Interface( const QuadValue& f, const QuadValue& level_set_values ) const;
 };
 
 #endif // MY_P4EST_CUBE2_H

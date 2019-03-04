@@ -1014,6 +1014,10 @@ double area_in_negative_domain(const p4est_t *p4est, const p4est_nodes_t *nodes,
  * \brief integrate_over_interface_in_one_quadrant
  */
 double integrate_over_interface_in_one_quadrant(const p4est_t *p4est, const p4est_nodes_t *nodes, const p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi, Vec f);
+/*!
+ * \brief max_over_interface_in_one_quadrant
+ */
+double max_over_interface_in_one_quadrant(const p4est_nodes_t *nodes, p4est_locidx_t quad_idx, Vec phi, Vec f);
 
 /*!
  * \brief integrate_over_interface integrate a scalar f over the 0-contour of the level-set function phi.
@@ -1025,6 +1029,16 @@ double integrate_over_interface_in_one_quadrant(const p4est_t *p4est, const p4es
  * \return the integral of f over the contour defined by phi, i.e. \int_{phi=0} f
  */
 double integrate_over_interface(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec f);
+
+/*!
+ * \brief max_over_interface calculate the maximum value of a scalar f over the 0-contour of the level-set function phi.
+ * \param p4est the p4est
+ * \param nodes the nodes structure associated to p4est
+ * \param phi the level-set function
+ * \param f the scalar to integrate
+ * \return the integral of f over the contour defined by phi, i.e. \max_{phi=0} f
+ */
+double max_over_interface(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec f);
 
 /*!
  * \brief compute_mean_curvature computes the mean curvature using compact stencil k = -div(n)
@@ -1235,7 +1249,7 @@ bool is_quad_Wall  (const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quad
  * \param dir   [in] the direction to check, 0 (x), 1 (y) or 2 (z, only in 3D)
  * \return true if the forest is periodic in direction dir, false otherwise
  */
-inline bool is_periodic(const p4est_t *p4est, int dir)
+inline bool is_periodic(const p4est_connectivity_t *const conn, int dir)
 {
   /* check whether there is not a boundary on the left side of first tree */
   P4EST_ASSERT (0 <= dir && dir < P4EST_DIM);
@@ -1243,8 +1257,12 @@ inline bool is_periodic(const p4est_t *p4est, int dir)
   const int face = 2 * dir;
   const p4est_topidx_t tfindex = 0 * P4EST_FACES + face;
 
-  return !(p4est->connectivity->tree_to_tree[tfindex] == 0 &&
-           p4est->connectivity->tree_to_face[tfindex] == face);
+  return !(conn->tree_to_tree[tfindex] == 0 &&
+           conn->tree_to_face[tfindex] == face);
+}
+inline bool is_periodic(const p4est_t *p4est, int dir)
+{
+  return is_periodic(p4est->connectivity, dir);
 }
 
 /*!
