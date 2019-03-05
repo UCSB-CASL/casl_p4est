@@ -41,6 +41,9 @@
 
 std::vector<InterpolatingFunctionLogEntry> InterpolatingFunctionLogger::entries;
 
+WallBC2D::~WallBC2D() {};
+WallBC3D::~WallBC3D() {};
+
 bool index_of_node(const p4est_quadrant_t *n, p4est_nodes_t* nodes, p4est_locidx_t& idx)
 {
 #ifdef P4EST_DEBUG

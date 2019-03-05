@@ -458,6 +458,8 @@ public:
 #endif
   unsigned long int memory_estimate() const;
 
+  void get_slice_averaged_vnp1_profile(unsigned short vel_component, unsigned short axis, std::vector<double>& avg_velocity_profile);
+
 };
 
 

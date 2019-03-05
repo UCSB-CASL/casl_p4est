@@ -1180,7 +1180,6 @@ void my_p4est_navier_stokes_t::solve_viscosity(my_p4est_poisson_faces_t* &face_p
   face_poisson_solver->set_mu(mu);
   face_poisson_solver->set_diagonal(alpha * rho/dt_n);
   face_poisson_solver->set_rhs(rhs);
-
   face_poisson_solver->solve(vstar, use_initial_guess, ksp, pc);
 
   for(int dir=0; dir<P4EST_DIM; ++dir)
@@ -2512,7 +2511,7 @@ void my_p4est_navier_stokes_t::get_noslip_wall_forces(double wall_force[], const
               for (short dd = 0; dd < P4EST_DIM; ++dd)
                 xyz_w[dd] = xyz_f[dd];
               xyz_w[wall_dir] += ((double) (2*kk-1))*0.5*dxyz_min[wall_dir]*((double) (1<<(data->max_lvl - quad->level)));
-              if(is_no_slip(xyz_w)) // always in the domain boundary by defintion as wall
+              if(is_no_slip(xyz_w)) // always in the domain boundary by definition as wall
               {
                 // first term: mu*dv[dir]/dwall_dir
                 double element_drag = mu*((double) (1-2*kk))*(vnp1_p[dir][normal_face_idx] - bc_v[dir].wallValue(xyz_w))/(0.5*dxyz_min[wall_dir]*((double) (1<<(data->max_lvl - quad->level))));
@@ -2981,6 +2980,10 @@ void my_p4est_navier_stokes_t::refine_coarsen_grid_after_restart(const CF_2 *lev
 
   update_from_tn_to_tnp1(level_set, false, do_reinitialization);
 
+  const p4est_topidx_t* t2v = conn->tree_to_vertex;
+  const double* v2c = conn->vertices;
+  for (int dir=0; dir<P4EST_DIM; dir++)
+    dxyz_min[dir] = (v2c[3*t2v[P4EST_CHILDREN*0+P4EST_CHILDREN-1] + dir]-xyz_min[dir]) / (1<<(((splitting_criteria_t*) p4est_n->user_pointer)->max_lvl));
   dt_nm1    = dt_nm1_saved;
   dt_n      = dt_n_saved;
   if(p4est_nm1!=p4est_n)
@@ -3051,3 +3054,133 @@ unsigned long int my_p4est_navier_stokes_t::memory_estimate() const
 
   return memory_used;
 }
+
+void my_p4est_navier_stokes_t::get_slice_averaged_vnp1_profile(unsigned short vel_component, unsigned short axis, std::vector<double>& avg_velocity_profile)
+{
+  P4EST_ASSERT((vel_component<P4EST_DIM) && (axis<P4EST_DIM) && (vel_component!=axis) && is_periodic(p4est_n, vel_component));
+  splitting_criteria_t* data = (splitting_criteria_t*) p4est_n->user_pointer;
+  unsigned int ndouble = brick->nxyztrees[axis]*(1<<data->max_lvl); // equivalent number of data for a uniform grid with finest level of refinement
+#ifdef P4EST_ENABLE_DEBUG
+  avg_velocity_profile.resize(ndouble*(1+1), 0.0); // slice-averaged velocity component + area of the slice
+#else
+  avg_velocity_profile.resize(ndouble, 0.0); // slice-averaged velocity component
+#endif
+#ifdef P4_TO_P8
+  const double elementary_area = dxyz_min[(axis+1)%P4EST_DIM]*dxyz_min[(axis+2)%P4EST_DIM];
+#else
+  const double elementary_area = dxyz_min[(axis+1)%P4EST_DIM];
+#endif
+  for (size_t k = 0; k < avg_velocity_profile.size(); ++k)
+    avg_velocity_profile[k] = 0.0;
+
+  PetscErrorCode ierr;
+  const double* velocity_component_p;
+  ierr = VecGetArrayRead(vnp1[vel_component], &velocity_component_p); CHKERRXX(ierr);
+  p4est_locidx_t quad_idx;
+  p4est_topidx_t tree_idx, nb_tree_idx = -1;
+  vector<p4est_quadrant_t> ngbd;
+  p4est_quadrant_t quad, nb_quad;
+
+  for (p4est_locidx_t face_idx = 0; face_idx < faces_n->num_local[vel_component]; ++face_idx) {
+    faces_n->f2q(face_idx, vel_component, quad_idx, tree_idx);
+    const p4est_quadrant_t* quad_ptr;
+    P4EST_ASSERT(quad_idx < p4est_n->local_num_quadrants);
+    p4est_tree_t* tree = (p4est_tree_t*) sc_array_index(p4est_n->trees, tree_idx);
+    quad_ptr = (const p4est_quadrant_t*) sc_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
+    if(faces_n->q2f(quad_idx, 2*vel_component)==face_idx)
+    {
+      quad = *quad_ptr; quad.p.piggy3.local_num = quad_idx;
+      ngbd.clear();
+      ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, 2*vel_component);
+      /* note that the potential neighbor has to be the same size or bigger and there MUST be a neighbor*/
+      P4EST_ASSERT(ngbd.size()==1);
+      nb_quad = ngbd[0];
+      nb_tree_idx = ngbd[0].p.piggy3.which_tree;
+    }
+    else
+    {
+      P4EST_ASSERT(faces_n->q2f(quad_idx, 2*vel_component+1)==face_idx);
+      quad = *quad_ptr; quad.p.piggy3.local_num = quad_idx;
+      ngbd.clear();
+      ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, 2*vel_component+1);
+      /* note that the potential neighbor has to be the same size or bigger and there MUST be a neighbor*/
+      P4EST_ASSERT(ngbd.size()==1);
+      nb_quad = ngbd[0];
+      nb_tree_idx = ngbd[0].p.piggy3.which_tree;
+    }
+    p4est_topidx_t cartesian_tree_idx_along_axis=-1, cartesian_nb_tree_idx_along_axis=-1;
+    bool are_found = false;
+    for (p4est_topidx_t tt = 0; tt < conn->num_trees; ++tt) {
+      if (brick->nxyz_to_treeid[tt] == tree_idx)
+        cartesian_tree_idx_along_axis = tt;
+      if (brick->nxyz_to_treeid[tt] == nb_tree_idx)
+        cartesian_nb_tree_idx_along_axis = tt;
+      tt++;
+      are_found = are_found || ((cartesian_tree_idx_along_axis!=-1) && (cartesian_nb_tree_idx_along_axis!=-1));
+      if (are_found)
+        break;
+    }
+    P4EST_ASSERT(are_found);
+    switch (axis) {
+    case 0:
+      cartesian_tree_idx_along_axis = cartesian_tree_idx_along_axis%brick->nxyztrees[0];
+      cartesian_nb_tree_idx_along_axis = cartesian_nb_tree_idx_along_axis%brick->nxyztrees[0];
+      break;
+    case 1:
+      cartesian_tree_idx_along_axis = (cartesian_tree_idx_along_axis/brick->nxyztrees[0])%brick->nxyztrees[1];
+      cartesian_nb_tree_idx_along_axis = (cartesian_nb_tree_idx_along_axis/brick->nxyztrees[0])%brick->nxyztrees[1];
+      break;
+#ifdef P4_TO_P8
+    case 2:
+      cartesian_tree_idx_along_axis = cartesian_tree_idx_along_axis/(brick->nxyztrees[0]*brick->nxyztrees[1]);
+      cartesian_nb_tree_idx_along_axis = cartesian_nb_tree_idx_along_axis/(brick->nxyztrees[0]*brick->nxyztrees[1]);
+      break;
+#endif
+    default:
+      throw std::invalid_argument("my_p4est_navier_stokes_t::get_slice_averaged_vnp1_profile: unknown axis...");
+      break;
+    }
+    P4EST_ASSERT(cartesian_tree_idx_along_axis == cartesian_nb_tree_idx_along_axis);
+    unsigned int idx_in_profile;
+    for (int k = 0; k < (1<<(data->max_lvl - quad.level)); ++k) {
+      switch (axis) {
+      case dir::x:
+        idx_in_profile = cartesian_tree_idx_along_axis*(1<<data->max_lvl) + (quad.x/(1<<(P4EST_MAXLEVEL - data->max_lvl))) + k;
+        break;
+      case dir::y:
+        idx_in_profile = cartesian_tree_idx_along_axis*(1<<data->max_lvl) + (quad.y/(1<<(P4EST_MAXLEVEL - data->max_lvl))) + k;
+        break;
+#ifdef P4_TO_P8
+      case dir::z:
+        idx_in_profile = cartesian_tree_idx_along_axis*(1<<data->max_lvl) + (quad.z/(1<<(P4EST_MAXLEVEL - data->max_lvl))) + k;
+        break;
+#endif
+      default:
+        throw std::invalid_argument("my_p4est_navier_stokes_t::get_slice_averaged_vnp1_profile: unknown axis...");
+        break;
+      }
+      double weighting_area = elementary_area*(1<<(data->max_lvl-quad.level))*((1<<(data->max_lvl-nb_quad.level)) + (1<<(data->max_lvl-quad.level)))*0.5;
+      avg_velocity_profile[idx_in_profile]          += velocity_component_p[face_idx]*weighting_area;
+#ifdef P4EST_ENABLE_DEBUG
+      avg_velocity_profile[ndouble+idx_in_profile]  +=weighting_area;
+#endif
+    }
+  }
+  ierr = VecRestoreArrayRead(vnp1[vel_component], &velocity_component_p); CHKERRXX(ierr);
+  int mpiret;
+  if(p4est_n->mpirank == 0){
+    mpiret = MPI_Reduce(MPI_IN_PLACE, avg_velocity_profile.data(), avg_velocity_profile.size(), MPI_DOUBLE, MPI_SUM, 0, p4est_n->mpicomm); SC_CHECK_MPI(mpiret); }
+  else{
+    mpiret = MPI_Reduce(avg_velocity_profile.data(), avg_velocity_profile.data(), avg_velocity_profile.size(), MPI_DOUBLE, MPI_SUM, 0, p4est_n->mpicomm); SC_CHECK_MPI(mpiret); }
+  const double expected_slice_area = (xyz_max[(axis+1)%P4EST_DIM]-xyz_min[(axis+1)%P4EST_DIM])
+    #ifdef P4_TO_P8
+      *(xyz_max[(axis+2)%P4EST_DIM]-xyz_min[(axis+2)%P4EST_DIM])
+    #endif
+      ;
+  if(!p4est_n->mpirank)
+    for (unsigned int k = 0; k < ndouble; ++k) {
+      P4EST_ASSERT(fabs(avg_velocity_profile[ndouble+k] - expected_slice_area) < 10.0*EPS*MAX(avg_velocity_profile[ndouble+k], expected_slice_area));
+      avg_velocity_profile[k] /= expected_slice_area;
+    }
+}
+

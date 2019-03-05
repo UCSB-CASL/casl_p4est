@@ -53,10 +53,6 @@ const double zmax = 8.0;
 #endif
 
 
-/*
- * - karman street
- */
-
 #ifdef P4_TO_P8
 const double r0 = 1.0;
 #else
@@ -598,9 +594,9 @@ int main (int argc, char* argv[])
   cmd.add_option("niter_hodge", "max number of iterations for convergence of the Hodge variable, at all time steps, default is 10");
   cmd.add_option("grid_update", "number of time steps between grid updates, default is 1");
   cmd.add_option("no_solver_reuse", "deactivate the possibility to reuse face- and cell-solvers (within the inner loop and/or in case of unmodified grid).");
-  cmd.add_option("pc_cell", "preconditioner for cell-solver (jacobi, sor or hypre, default is sor).");
-  cmd.add_option("cell_solver", "Krylov solver used for cell-poisson problem, i.e. hodge variable (cg or bicgstab, default is bicgstab).");
-  cmd.add_option("pc_face", "preconditioner for face-solver (jacobi, sor or hypre, default is sor).");
+  cmd.add_option("pc_cell", "preconditioner for cell-solver: jacobi, sor or hypre, default is sor.");
+  cmd.add_option("cell_solver", "Krylov solver used for cell-poisson problem, i.e. hodge variable: cg or bicgstab, default is bicgstab.");
+  cmd.add_option("pc_face", "preconditioner for face-solver: jacobi, sor or hypre, default is sor.");
   // output-control parameters
   cmd.add_option("export_folder", "exportation_folder");
   cmd.add_option("save_vtk", "activates exportation of results in vtk format");
@@ -647,7 +643,6 @@ int main (int argc, char* argv[])
       rho = 1.0, mu = 1.0/Re, body force per unit mass {0.0, 0.0}. \n\
       Developer: Raphael Egan (raphaelegan@ucsb.edu) based on a general main file from Arthur Guittet";
 #endif
-
   cmd.parse(argc, argv, extra_info);
 
   double tstart;
@@ -698,7 +693,7 @@ int main (int argc, char* argv[])
       throw std::invalid_argument("main_flow_past_sphere_2d.cpp: the value of vtk_dt must be strictly positive.");
 #endif
   }
-  const bool save_forces                = cmd.contains("save_forces");
+  const bool save_forces                = cmd.contains("save_forces"); double forces[P4EST_DIM];
   const bool save_state                 = cmd.contains("save_state_dt"); double dt_save_data = -1.0;
   const unsigned int n_states           = cmd.get<unsigned int>("save_nstates", 1);
   if(save_state)
@@ -711,11 +706,11 @@ int main (int argc, char* argv[])
       throw std::invalid_argument("main_flow_past_sphere_2d.cpp: the value of save_state_dt must be strictly positive.");
 #endif
   }
-  bool use_adapted_dt                   = cmd.contains("adapted_dt");
+  const bool use_adapted_dt             = cmd.contains("adapted_dt");
 
-  const string des_pc_cell          = cmd.get<string>("pc_cell", "sor");
-  const string des_solver_cell      = cmd.get<string>("cell_solver", "bicgstab");
-  const string des_pc_face          = cmd.get<string>("pc_face", "sor");
+  const string des_pc_cell              = cmd.get<string>("pc_cell", "sor");
+  const string des_solver_cell          = cmd.get<string>("cell_solver", "bicgstab");
+  const string des_pc_face              = cmd.get<string>("pc_face", "sor");
   KSPType cell_solver_type;
   PCType pc_cell, pc_face;
   if (des_pc_cell.compare("hypre")==0)
@@ -1073,6 +1068,7 @@ int main (int argc, char* argv[])
 #else
       sprintf(error_msg, "main_flow_past_sphere_2d: could not create exportation directory for vtk files %s", vtk_path);
 #endif
+      throw std::runtime_error(error_msg);
     }
   }
 
@@ -1127,9 +1123,9 @@ int main (int argc, char* argv[])
     Vec hodge_old;
     Vec hodge_new;
     ierr = VecCreateSeq(PETSC_COMM_SELF, ns->get_p4est()->local_num_quadrants, &hodge_old); CHKERRXX(ierr);
-    double err_hodge = 1.0;
+    double corr_hodge = 1.0;
     unsigned int iter_hodge = 0;
-    while(iter_hodge<niter_hodge_max && err_hodge>hodge_tolerance)
+    while(iter_hodge<niter_hodge_max && corr_hodge>hodge_tolerance)
     {
       hodge_new = ns->get_hodge();
       ierr = VecCopy(hodge_new, hodge_old); CHKERRXX(ierr);
@@ -1145,7 +1141,7 @@ int main (int argc, char* argv[])
       hodge_new = ns->get_hodge();
       const double *ho; ierr = VecGetArrayRead(hodge_old, &ho); CHKERRXX(ierr);
       const double *hn; ierr = VecGetArrayRead(hodge_new, &hn); CHKERRXX(ierr);
-      err_hodge = 0.0;
+      corr_hodge = 0.0;
       p4est_t *p4est = ns->get_p4est();
       my_p4est_interpolation_nodes_t *interp_phi = ns->get_interp_phi();
       for(p4est_topidx_t tree_idx=p4est->first_local_tree; tree_idx<=p4est->last_local_tree; ++tree_idx)
@@ -1161,14 +1157,14 @@ int main (int argc, char* argv[])
 #else
           if((*interp_phi)(xyz[0],xyz[1])<0)
 #endif
-            err_hodge = max(err_hodge, fabs(ho[quad_idx]-hn[quad_idx]));
+            corr_hodge = max(corr_hodge, fabs(ho[quad_idx]-hn[quad_idx]));
         }
       }
-      int mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_hodge, 1, MPI_DOUBLE, MPI_MAX, mpi.comm()); SC_CHECK_MPI(mpiret);
+      int mpiret = MPI_Allreduce(MPI_IN_PLACE, &corr_hodge, 1, MPI_DOUBLE, MPI_MAX, mpi.comm()); SC_CHECK_MPI(mpiret);
       ierr = VecRestoreArrayRead(hodge_old, &ho); CHKERRXX(ierr);
       ierr = VecRestoreArrayRead(hodge_new, &hn); CHKERRXX(ierr);
 
-      ierr = PetscPrintf(mpi.comm(), "hodge iteration #%d, error = %e\n", iter_hodge, err_hodge); CHKERRXX(ierr);
+      ierr = PetscPrintf(mpi.comm(), "hodge iteration #%d, error = %e\n", iter_hodge, corr_hodge); CHKERRXX(ierr);
       iter_hodge++;
     }
     ierr = VecDestroy(hodge_old); CHKERRXX(ierr);
@@ -1179,7 +1175,6 @@ int main (int argc, char* argv[])
 
     if(save_forces)
     {
-      double forces[P4EST_DIM];
       ns->compute_forces(forces);
       if(!mpi.rank())
       {
