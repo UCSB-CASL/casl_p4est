@@ -14,11 +14,11 @@
 
 #include <fstream>
 #include <src/petsc_compatibility.h>
-#include <src/math.h>
+#include <src/casl_math.h>
 #include <src/matrix.h>
 #include <algorithm>
 #include <sys/stat.h>
-#include <boost/algorithm/string.hpp>
+//#include <boost/algorithm/string.hpp>
 
 using namespace std;
 
@@ -3690,7 +3690,7 @@ p4est_t* my_p4est_biomolecules_t::construct_SES(const sas_generation_method& met
 
   if(vtk_folder[vtk_folder.size()-1] == '/')
     vtk_folder = vtk_folder.substr(0, vtk_folder.size()-1);
-  bool export_intermediary_results = !boost::iequals(vtk_folder, no_vtk);
+  bool export_intermediary_results = false; // !boost::iequals(vtk_folder, no_vtk);
 
   if(export_intermediary_results)
   {
@@ -5058,9 +5058,9 @@ int     my_p4est_biomolecules_solver_t::solve_nonlinear(double upper_bound_resid
     {
       PetscInt global_n_idx = n+jump_solver->voro_global_offset[biomolecules->p4est->mpirank];
 #ifdef P4_TO_P8
-      Point3 pc = jump_solver->voro_points[n];
+      Point3 pc = jump_solver->voro_seeds[n];
 #else
-      Point2 pc = jump_solver->voro_points[n];
+      Point2 pc = jump_solver->voro_seeds[n];
 #endif
       if( (ABS(pc.x-jump_solver->xyz_min[0])<EPS || ABS(pc.x-jump_solver->xyz_max[0])<EPS ||
            ABS(pc.y-jump_solver->xyz_min[1])<EPS || ABS(pc.y-jump_solver->xyz_max[1])<EPS
@@ -5083,10 +5083,10 @@ int     my_p4est_biomolecules_solver_t::solve_nonlinear(double upper_bound_resid
       const vector<Voronoi3DPoint> *points;
 #else
       const vector<Point2> *partition;
-      const vector<Voronoi2DPoint> *points;
-      voro.get_Partition(partition);
+      const vector<ngbd2Dseed> *points;
+      voro.get_partition(partition);
 #endif
-      voro.get_Points(points);
+      voro.get_neighbor_seeds(points);
 
 #ifdef P4_TO_P8
       double phi_n = jump_solver->interp_phi(pc.x, pc.y, pc.z);
@@ -5200,10 +5200,10 @@ int     my_p4est_biomolecules_solver_t::solve_nonlinear(double upper_bound_resid
     for(unsigned int n=0; n<jump_solver->num_local_voro; ++n)
     {
 #ifdef P4_TO_P8
-      Point3 pc = jump_solver->voro_points[n];
+      Point3 pc = jump_solver->voro_seeds[n];
       Voronoi3D voro;
 #else
-      Point2 pc = jump_solver->voro_points[n];
+      Point2 pc = jump_solver->voro_seeds[n];
       Voronoi2D voro;
 #endif
       jump_solver->compute_voronoi_cell(n, voro);
@@ -5468,9 +5468,9 @@ void my_p4est_biomolecules_solver_t::get_residual_at_voronoi_points_and_set_as_r
   for (unsigned int n = 0; n < jump_solver->num_local_voro; ++n)
   {
 #ifdef P4_TO_P8
-    Point3 pc = jump_solver->voro_points[n];
+    Point3 pc = jump_solver->voro_seeds[n];
 #else
-    Point2 pc = jump_solver->voro_points[n];
+    Point2 pc = jump_solver->voro_seeds[n];
 #endif
     if( (ABS(pc.x-jump_solver->xyz_min[0])<EPS || ABS(pc.x-jump_solver->xyz_max[0])<EPS ||
          ABS(pc.y-jump_solver->xyz_min[1])<EPS || ABS(pc.y-jump_solver->xyz_max[1])<EPS
@@ -5499,10 +5499,10 @@ void my_p4est_biomolecules_solver_t::get_residual_at_voronoi_points_and_set_as_r
     const vector<Voronoi3DPoint> *points;
 #else
     const vector<Point2> *partition;
-    const vector<Voronoi2DPoint> *points;
-    voro.get_Partition(partition);
+    const vector<ngbd2Dseed> *points;
+    voro.get_partition(partition);
 #endif
-    voro.get_Points(points);
+    voro.get_neighbor_seeds(points);
 
     double mu_n, add_n, rhs_n;
 #ifdef P4_TO_P8
@@ -5599,9 +5599,9 @@ void my_p4est_biomolecules_solver_t::get_linear_diagonal_terms(Vec& pristine_dia
   for (unsigned int n = 0; n < jump_solver->num_local_voro; ++n)
   {
 #ifdef P4_TO_P8
-    Point3 pc = jump_solver->voro_points[n];
+    Point3 pc = jump_solver->voro_seeds[n];
 #else
-    Point2 pc = jump_solver->voro_points[n];
+    Point2 pc = jump_solver->voro_seeds[n];
 #endif
     if( (ABS(pc.x-jump_solver->xyz_min[0])<EPS || ABS(pc.x-jump_solver->xyz_max[0])<EPS ||
          ABS(pc.y-jump_solver->xyz_min[1])<EPS || ABS(pc.y-jump_solver->xyz_max[1])<EPS
@@ -5624,10 +5624,10 @@ void my_p4est_biomolecules_solver_t::get_linear_diagonal_terms(Vec& pristine_dia
     const vector<Voronoi3DPoint> *points;
 #else
     const vector<Point2> *partition;
-    const vector<Voronoi2DPoint> *points;
-    voro.get_Partition(partition);
+    const vector<ngbd2Dseed> *points;
+    voro.get_partition(partition);
 #endif
-    voro.get_Points(points);
+    voro.get_neighbor_seeds(points);
 
     double add_n;
 #ifdef P4_TO_P8

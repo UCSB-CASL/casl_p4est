@@ -468,7 +468,7 @@ public:
     ierr = KSPSetTolerances(ksp, rtol, atol, dtol, itmax); CHKERRXX(ierr);
   }
 
-  void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCSOR, bool delete_sol_voro = true, bool interpolate_solution_back_on_tree = true);
+  void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCSOR, bool destroy_solution_on_voronoi_mesh = true, bool interpolate_solution_back_on_tree = true);
 
   void destroy_solution()
   {

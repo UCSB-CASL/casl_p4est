@@ -80,6 +80,7 @@ void Voronoi2D::push( int n, double x, double y, const bool* periodicity, const 
   p.p.x   = x;
   p.p.y   = y;
   p.dist  = (p.p - center_seed).norm_L2();
+  std::cout << "distance =" << p.dist << "for node: x =" << p.p.x << "; y=" << p.p.y << std::endl;
   p.theta = DBL_MAX;
   nb_seeds.push_back(p);
   if(periodicity[0] || periodicity[1]) // some periodicity ?
@@ -174,6 +175,8 @@ void Voronoi2D::construct_partition()
   /*  -------------- Feel free to change the following parameter to any other reasonable value ---------------      */
   const double closest_distance = 1.0;
   const double scaling_length = nb_seeds[0].dist/closest_distance;
+  if(!(scaling_length>0.0 && scaling_length > (nb_seeds.back()).dist*EPS))
+      std::cout << "scaling_length = " << scaling_length << std::endl;
   P4EST_ASSERT(scaling_length>0.0 && scaling_length > (nb_seeds.back()).dist*EPS);
   // center the seed to (0.0, 0.0)
   Point2 center_seed_saved = center_seed; center_seed.x = 0.0; center_seed.y = 0.0;

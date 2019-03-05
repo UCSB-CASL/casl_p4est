@@ -199,7 +199,7 @@ void my_p4est_poisson_jump_nodes_voronoi_t::set_mu_grad_u_jump(Vec mu_grad_u_jum
 }
 
 
-void my_p4est_poisson_jump_nodes_voronoi_t::solve(Vec solution, bool use_nonzero_initial_guess, KSPType ksp_type, PCType pc_type, bool delete_sol_voro, bool interpolate_solution_back_on_tree)
+void my_p4est_poisson_jump_nodes_voronoi_t::solve(Vec solution, bool use_nonzero_initial_guess, KSPType ksp_type, PCType pc_type, bool destroy_solution_on_voronoi_mesh, bool interpolate_solution_back_on_tree)
 {
   ierr = PetscLogEventBegin(log_PoissonSolverNodeBasedJump_solve, A, rhs, ksp, 0); CHKERRXX(ierr);
 
@@ -448,10 +448,7 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_points()
 #else
       Point2 dp((*ngbd_n).get_neighbors(n).dx_central(phi_read_only_p), (*ngbd_n).get_neighbors(n).dy_central(phi_read_only_p));
 #endif
-    {
-      if(is_node_Wall(p4est, node))
-        marked_nodes.push_back(n); // when the interface is close to the boundary, add the boundary point too
-      double d = phi_p[n];
+
       // note: if phi is somehow a signed distance, dp has no dimension
       if(dp.norm_L2() > EPS) // no issue to calculate the projected point, so do it
       {
@@ -612,13 +609,13 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_points()
   #else
         Point2 p(xn, yn);
   #endif
-        grid2voro[n].push_back(voro_points.size()); // once again, add the wall node if the interface is close to the boundary
-        voro_points.push_back(p);
+        grid2voro[n].push_back(voro_seeds.size()); // once again, add the wall node if the interface is close to the boundary
+        voro_seeds.push_back(p);
       }
 #ifdef P4_TO_P8
-      Point3 dp((*ngbd_n).get_neighbors(n).dx_central(phi_p), (*ngbd_n).get_neighbors(n).dy_central(phi_p), (*ngbd_n).get_neighbors(n).dz_central(phi_p));
+      Point3 dp((*ngbd_n).get_neighbors(n).dx_central(phi_read_only_p), (*ngbd_n).get_neighbors(n).dy_central(phi_read_only_p), (*ngbd_n).get_neighbors(n).dz_central(phi_read_only_p));
 #else
-      Point2 dp((*ngbd_n).get_neighbors(n).dx_central(phi_p), (*ngbd_n).get_neighbors(n).dy_central(phi_p));
+      Point2 dp((*ngbd_n).get_neighbors(n).dx_central(phi_read_only_p), (*ngbd_n).get_neighbors(n).dy_central(phi_read_only_p));
 #endif
       if(dp.norm_L2() > EPS)
         marked_nodes.push_back(n);
@@ -632,8 +629,8 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_points()
   #else
         Point2 p(xn, yn);
   #endif
-        grid2voro[n].push_back(voro_points.size());
-        voro_points.push_back(p);
+        grid2voro[n].push_back(voro_seeds.size());
+        voro_seeds.push_back(p);
       }
     }
   }
@@ -924,7 +921,6 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_points()
         p4est_topidx_t tree_idx = quad.p.piggy3.which_tree;
         p4est_tree_t *tree = p4est_tree_array_index(p4est->trees, tree_idx);
         p4est_locidx_t quad_idx;
-        P4EST_ASSERT(rank_found != p4est->mpirank); // this can't happen, in principle
         if(rank_found==p4est->mpirank) quad_idx = quad.p.piggy3.local_num + tree->quadrants_offset; // this can't happen, in principle
         else                           quad_idx = quad.p.piggy3.local_num + p4est->local_num_quadrants;
 

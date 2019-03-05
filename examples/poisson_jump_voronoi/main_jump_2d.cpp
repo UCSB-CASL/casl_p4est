@@ -63,8 +63,8 @@ int nz = 1;
 bool save_vtk = true;
 bool save_voro = true;
 bool save_stats = false;
-bool check_partition = true;
-//bool check_partition = false;
+//bool check_partition = true;
+bool check_partition = false;
 
 const int wave_number = 1;
 const double mu_value = 4.3;
@@ -93,9 +93,9 @@ domain omega = centered_ones;
  * 0 - circle
  * 1 - flower
  */
-int level_set_type = 1;
+int level_set_type = 0;
 
-int test_number = 5;
+int test_number = 2;
 /*
  *  ********* 2D *********
  * 0 - u_m=1+log(r/r0), u_p=1, mu_m=mu_p=1
