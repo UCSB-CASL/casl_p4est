@@ -80,7 +80,11 @@ void Voronoi2D::push( int n, double x, double y, const bool* periodicity, const 
   p.p.x   = x;
   p.p.y   = y;
   p.dist  = (p.p - center_seed).norm_L2();
-  std::cout << "distance =" << p.dist << "for node: x =" << p.p.x << "; y=" << p.p.y << std::endl;
+#ifdef P4_TO_P8
+  P4EST_ASSERT(p.dist>EPS*sqrt(SQR(xyz_max[0]-xyz_min[0]) + SQR(xyz_max[1]-xyz_min[1]) + SQR(xyz_max[2]-xyz_min[2])));
+#else
+  P4EST_ASSERT(p.dist>EPS*sqrt(SQR(xyz_max[0]-xyz_min[0]) + SQR(xyz_max[1]-xyz_min[1])));
+#endif
   p.theta = DBL_MAX;
   nb_seeds.push_back(p);
   if(periodicity[0] || periodicity[1]) // some periodicity ?

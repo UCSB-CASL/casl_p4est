@@ -3,11 +3,6 @@
 
 #include <algorithm>
 
-void Voronoi3D::clear()
-{
-  points.resize(0);
-}
-
 void Voronoi3D::set_cell(vector<ngbd3Dseed> &neighbors, double volume )
 {
   this->nb_seeds = neighbors;
@@ -263,11 +258,11 @@ void Voronoi3D::construct_partition(const double *xyz_min, const double *xyz_max
   /* add the center point */
   voronoi.put(po, idx_center_seed, 0.0, 0.0, 0.0);
 
-  std::vector<double> point_distances(points.size());
-  std::vector<unsigned int> index(points.size(), 0);
-  for(unsigned int m=0; m<points.size(); ++m)
+  std::vector<double> point_distances(nb_seeds.size());
+  std::vector<unsigned int> index(nb_seeds.size(), 0);
+  for(unsigned int m=0; m<nb_seeds.size(); ++m)
   {
-    point_distances.at(m) = (points[m].p - pc).norm_L2();
+    point_distances.at(m) = (nb_seeds[m].p - center_seed).norm_L2();
     index.at(m) = m;
   }
 
@@ -349,7 +344,7 @@ void Voronoi3D::construct_partition(const double *xyz_min, const double *xyz_max
       }
 
       if(new_voro_nb.s > EPS*max_area)
-        final_points.push_back(new_voro_nb);
+        final_nb_seeds.push_back(new_voro_nb);
     }
     nb_seeds.clear();
     nb_seeds = final_nb_seeds;

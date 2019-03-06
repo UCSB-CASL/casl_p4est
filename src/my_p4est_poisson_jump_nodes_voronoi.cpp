@@ -392,7 +392,7 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_points()
     bool look_zm = true, look_zp = true;
 #endif
     bool already_added = false;
-    if(is_node_Wall(p4est, node)) // we add the walls nodes, NO MATTER WHAT!
+    if(is_node_Wall(p4est, node)) // we add the wall nodes, NO MATTER WHAT!
     {
       look_xm = !is_node_xmWall(p4est, node);
       look_xp = !is_node_xpWall(p4est, node);
@@ -559,7 +559,7 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_points()
    #endif
        )
     {
-      // the point is close tom the interface
+      // the point is close to the interface
 #ifdef P4_TO_P8
       Point3 dp((*ngbd_n).get_neighbors(n).dx_central(phi_read_only_p), (*ngbd_n).get_neighbors(n).dy_central(phi_read_only_p), (*ngbd_n).get_neighbors(n).dz_central(phi_read_only_p));
 #else
@@ -596,42 +596,6 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_points()
 #endif
       grid2voro[n].push_back(voro_seeds.size());
       voro_seeds.push_back(p);
-    }
-    else
-    {
-      if(is_node_Wall(p4est, ((p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n))))
-      {
-        double xn = node_x_fr_n(n, p4est, nodes);
-        double yn = node_y_fr_n(n, p4est, nodes);
-  #ifdef P4_TO_P8
-        double zn = node_z_fr_n(n, p4est, nodes);
-        Point3 p(xn, yn, zn);
-  #else
-        Point2 p(xn, yn);
-  #endif
-        grid2voro[n].push_back(voro_seeds.size()); // once again, add the wall node if the interface is close to the boundary
-        voro_seeds.push_back(p);
-      }
-#ifdef P4_TO_P8
-      Point3 dp((*ngbd_n).get_neighbors(n).dx_central(phi_read_only_p), (*ngbd_n).get_neighbors(n).dy_central(phi_read_only_p), (*ngbd_n).get_neighbors(n).dz_central(phi_read_only_p));
-#else
-      Point2 dp((*ngbd_n).get_neighbors(n).dx_central(phi_read_only_p), (*ngbd_n).get_neighbors(n).dy_central(phi_read_only_p));
-#endif
-      if(dp.norm_L2() > EPS)
-        marked_nodes.push_back(n);
-      else
-      {
-        double xn = node_x_fr_n(n, p4est, nodes);
-        double yn = node_y_fr_n(n, p4est, nodes);
-  #ifdef P4_TO_P8
-        double zn = node_z_fr_n(n, p4est, nodes);
-        Point3 p(xn, yn, zn);
-  #else
-        Point2 p(xn, yn);
-  #endif
-        grid2voro[n].push_back(voro_seeds.size());
-        voro_seeds.push_back(p);
-      }
     }
   }
   /* compute how many messages (buffers of "ghost" projected points) we are expecting to receive */

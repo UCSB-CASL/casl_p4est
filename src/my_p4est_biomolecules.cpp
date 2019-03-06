@@ -5080,7 +5080,7 @@ int     my_p4est_biomolecules_solver_t::solve_nonlinear(double upper_bound_resid
       jump_solver->compute_voronoi_cell(n, voro);
 
 #ifdef P4_TO_P8
-      const vector<Voronoi3DPoint> *points;
+      const vector<ngbd3Dseed> *points;
 #else
       const vector<Point2> *partition;
       const vector<ngbd2Dseed> *points;
@@ -5496,7 +5496,7 @@ void my_p4est_biomolecules_solver_t::get_residual_at_voronoi_points_and_set_as_r
     jump_solver->compute_voronoi_cell(n, voro);
 
 #ifdef P4_TO_P8
-    const vector<Voronoi3DPoint> *points;
+    const vector<ngbd3Dseed> *points;
 #else
     const vector<Point2> *partition;
     const vector<ngbd2Dseed> *points;
@@ -5621,7 +5621,7 @@ void my_p4est_biomolecules_solver_t::get_linear_diagonal_terms(Vec& pristine_dia
     jump_solver->compute_voronoi_cell(n, voro);
 
 #ifdef P4_TO_P8
-    const vector<Voronoi3DPoint> *points;
+    const vector<ngbd3Dseed> *points;
 #else
     const vector<Point2> *partition;
     const vector<ngbd2Dseed> *points;
