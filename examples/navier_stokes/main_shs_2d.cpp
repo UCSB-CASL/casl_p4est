@@ -1484,6 +1484,11 @@ int main (int argc, char* argv[])
   ierr = PetscPrintf(mpi.comm(), " grid update: %.5e\n", mean_update_time); CHKERRXX(ierr);
   ierr = PetscPrintf(mpi.comm(), " full iteration (total): %.5e\n", mean_full_iteration_time); CHKERRXX(ierr);
 
+  if(cell_solver!=NULL)
+    delete  cell_solver;
+  if(face_solver!=NULL)
+    delete face_solver;
+
   delete ns;        // deletes the navier-stokes solver
   // the brick and the connectivity are deleted within the above destructor...
   delete data;      // deletes the splitting criterion object
