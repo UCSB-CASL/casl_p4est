@@ -95,6 +95,71 @@ refine_levelset_cf (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t 
 }
 
 p4est_bool_t
+refine_levelset_cf_and_uniform_band (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad)
+{
+
+  splitting_criteria_cf_and_uniform_band_t *data = (splitting_criteria_cf_and_uniform_band_t*)p4est->user_pointer;
+  if (quad->level < data->min_lvl)
+    return P4EST_TRUE;
+  else if (quad->level >= data->max_lvl)
+    return P4EST_FALSE;
+  else
+  {
+    p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*which_tree + 0];
+    p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*which_tree + P4EST_CHILDREN-1];
+
+    double tree_xmin = p4est->connectivity->vertices[3*v_m + 0];
+    double tree_ymin = p4est->connectivity->vertices[3*v_m + 1];
+#ifdef P4_TO_P8
+    double tree_zmin = p4est->connectivity->vertices[3*v_m + 2];
+#endif
+
+    double tree_xmax = p4est->connectivity->vertices[3*v_p + 0];
+    double tree_ymax = p4est->connectivity->vertices[3*v_p + 1];
+#ifdef P4_TO_P8
+    double tree_zmax = p4est->connectivity->vertices[3*v_p + 2];
+#endif
+
+    double dmin = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+    double dx = (tree_xmax-tree_xmin) * dmin;
+    double dy = (tree_ymax-tree_ymin) * dmin;
+    double smallest_dxyz_max = MAX((tree_xmax-tree_xmin), (tree_ymax-tree_ymin))*((double)P4EST_QUADRANT_LEN(data->max_lvl))/((double)P4EST_ROOT_LEN);
+#ifdef P4_TO_P8
+    double dz = (tree_zmax-tree_zmin) * dmin;
+    smallest_dxyz_max = MAX(smallest_dxyz_max, (tree_zmax-tree_zmin)*((double)P4EST_QUADRANT_LEN(data->max_lvl))/((double)P4EST_ROOT_LEN));
+#endif
+
+    double x = (tree_xmax-tree_xmin)*(double)quad->x/(double)P4EST_ROOT_LEN + tree_xmin;
+    double y = (tree_ymax-tree_ymin)*(double)quad->y/(double)P4EST_ROOT_LEN + tree_ymin;
+#ifdef P4_TO_P8
+    double z = (tree_zmax-tree_zmin)*(double)quad->z/(double)P4EST_ROOT_LEN + tree_zmin;
+#endif
+
+#ifdef P4_TO_P8
+    CF_3&  phi = *(data->phi);
+#else
+    CF_2&  phi = *(data->phi);
+#endif
+
+    double f;
+#ifdef P4_TO_P8
+    for (unsigned short ck = 0; ck<2; ++ck)
+#endif
+      for (unsigned short cj = 0; cj<2; ++cj)
+        for (unsigned short ci = 0; ci <2; ++ci){
+#ifdef P4_TO_P8
+          f = phi(x+ci*dx, y+cj*dy, z+ck*dz);
+#else
+          f = phi(x+ci*dx, y+cj*dy);
+#endif
+          if(fabs(f) < data->uniform_band*smallest_dxyz_max)
+            return P4EST_TRUE;
+        }
+  }
+  return refine_levelset_cf(p4est, which_tree, quad);
+}
+
+p4est_bool_t
 coarsen_levelset_cf (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **quad)
 {
   splitting_criteria_cf_t *data = (splitting_criteria_cf_t*)p4est->user_pointer;

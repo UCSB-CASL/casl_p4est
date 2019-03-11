@@ -1,9 +1,18 @@
 #ifdef P4_TO_P8
 #include "my_p8est_solve_lsqr.h"
+#include <p8est_connectivity.h>
 #else
 #include "my_p4est_solve_lsqr.h"
+#include <p4est_connectivity.h>
 #endif
 
+//#include <lapacke.h>
+//#include <cblas.h>
+/* [Raphael:] I tried to optimize some of the routines here below with lapacke
+ * and cblas functions, but it turns out that they are called only for matrices
+ * that are too small to see any improvement. Therefore, I finally decided to
+ * leave them as such, since it increases the general portability of the code...
+ * */
 #include "math.h"
 
 #include <iostream>
@@ -99,6 +108,18 @@ bool solve_cholesky(matrix_t &A, vector<double> b[], vector<double> x[], unsigne
 
   /* compute cholesky decomposition */
   double Lf[n][n];
+//  cblas_dcopy(n*n, A.read_data(), 1, &Lf[0][0], 1);
+//  int info = LAPACKE_dpotrf(LAPACK_ROW_MAJOR, 'L', n, &Lf[0][0], n);
+//#ifdef CASL_THROWS
+//  if(info < 0)
+//    throw  std::invalid_argument("bool solve_cholesky(): the lapack call to cholesky factorization involved an invalid argument");
+//#endif
+//  for (unsigned k = 0; ((k < (unsigned int) n) && (info==0)); ++k) {
+//    const double diag_of_L = Lf[k][k];
+//    info = info || (fabs(diag_of_L) < EPS) || std::isnan(diag_of_L)|| std::isinf(diag_of_L);
+//  }
+//  if(info!=0)
+//    return false;
   for(int j=0; j<n; ++j)
   {
     if(std::isnan(A.get_value(j,j))) return false;
@@ -121,6 +142,11 @@ bool solve_cholesky(matrix_t &A, vector<double> b[], vector<double> x[], unsigne
   }
 
   /* forward solve L*y=b */
+//  for (unsigned int k = 0; k < n_vectors; ++k)
+//  {
+//    x[k] = b[k];
+//    cblas_dtrsv(CblasRowMajor, CblasLower, CblasNoTrans, CblasNonUnit, n, &Lf[0][0], n, x[k].data(), 1);
+//  }
   double y[n_vectors][n];
 
 
@@ -136,6 +162,8 @@ bool solve_cholesky(matrix_t &A, vector<double> b[], vector<double> x[], unsigne
   }
 
   /* backward solve for Lt*x=y */
+//  for (unsigned int k = 0; k < n_vectors; ++k)
+//    cblas_dtrsv(CblasRowMajor, CblasLower, CblasTrans, CblasNonUnit, n, &Lf[0][0], n, x[k].data(), 1);
   for(int i=n-1; i>=0; --i)
   {
     for (unsigned int k = 0; k < n_vectors; ++k)
@@ -171,94 +199,91 @@ void solve_lsqr_system(matrix_t &A, vector<double> p[], unsigned int n_vectors, 
       throw std::invalid_argument("[CASL_ERROR]: solve_lsqr_system(...): the matrix and (one of) the right hand side(s) don't have the same size");
 #endif
   unsigned int m = (unsigned int) A.num_rows();
-#ifdef P4_TO_P8
-  if(order<1 || m<4 || nb_x<2 || nb_y<2 || nb_z<2)
-#else
-  if(order<1 || m<3 || nb_x<2 || nb_y<2)
-#endif
-  {
-    /* 0-th order polynomial approximation, just compute coeff(0) */
-    for (unsigned int k = 0; k < n_vectors; ++k) {
-      double sum = 0;
-      double rhs = 0;
-      for(unsigned int i=0; i<m; ++i)
-      {
-        sum += SQR(A.get_value(i,0));
-        rhs += A.get_value(i,0)*p[k][i];
-      }
-      solutions[k] = rhs/sum;
-    }
-    return;
-  }
-
-  matrix_t M;
+  matrix_t *M = new matrix_t();
   vector<double> Atp[n_vectors];
   vector<double> coeffs[n_vectors];
-
 #ifdef P4_TO_P8
-  if(order<2 || m<10 || nb_x<3 || nb_y<3 || nb_z<3)
+  if(order>=2 && m>=10 && nb_x>=3 && nb_y>=3 && nb_z>=3)
 #else
-  if(order<2 || m<6 || nb_x<3 || nb_y<3)
+  if(order>=2 && m>=6 && nb_x>=3 && nb_y>=3)
+#endif
+  {
+    A.tranpose_matvec(p, Atp, n_vectors);
+    A.mtm_product(*M);
+
+    if(solve_cholesky(*M, Atp, coeffs, n_vectors))
+    {
+      for (unsigned int k = 0; k < n_vectors; ++k)
+        solutions[k] = coeffs[k][0];
+      delete M;
+      return;
+    }
+  }
+
+  /* either the system was not invertible - most likely there was a direction with less than 3 points, e.g. in the diagonal !
+   * or the number of points along cartesian dimensions is lower than expected, or desired order is smaller than 2 */
+#ifdef P4_TO_P8
+  if(order>=1 && m>=4 && nb_x>=2 && nb_y>=2 && nb_z>=2)
+#else
+  if(order>=1 && m>=3 && nb_x>=2 && nb_y>=2)
 #endif
   {
     if(order==2)
     {
-      matrix_t Asub;
 #ifdef P4_TO_P8
-      Asub.truncate_matrix(m, 4, A);
+      if(m>=10 && nb_x>=3 && nb_y>=3 && nb_z>=3)
 #else
-      Asub.truncate_matrix(m, 3, A);
+      if(m>=6 && nb_x>=3 && nb_y>=3)
 #endif
-
-      Asub.tranpose_matvec(p, Atp, n_vectors);
-      Asub.mtm_product(M);
+      {
+        // the relevant quantities were already calculated but the cholesky_solve failed...
+        matrix_t* M_sub= new matrix_t(P4EST_DIM+1, P4EST_DIM+1);
+        M_sub->truncate_matrix(P4EST_DIM+1, P4EST_DIM+1, *M);
+        delete M;
+        M = M_sub;
+        for (unsigned int k = 0; k < n_vectors; ++k)
+          Atp[k].resize(P4EST_DIM+1);
+      }
+      else
+      {
+        matrix_t Asub;
+        Asub.truncate_matrix(m, P4EST_DIM+1, A);
+        Asub.tranpose_matvec(p, Atp, n_vectors);
+        Asub.mtm_product(*M);
+      }
     }
     else
     {
       A.tranpose_matvec(p, Atp, n_vectors);
-      A.mtm_product(M);
+      A.mtm_product(*M);
     }
-
-    /* the system was not invertible - most likely there was a direction with less than 2 points, e.g. in the diagonal */
-    if(!solve_cholesky(M, Atp, coeffs, n_vectors))
+    if(solve_cholesky(*M, Atp, coeffs, n_vectors))
     {
-      for (unsigned int k = 0; k < n_vectors; ++k) {
-        double sum = 0;
-        double rhs = 0;
-        for(unsigned int i=0; i<m; ++i)
-        {
-          sum += SQR(A.get_value(i,0));
-          rhs += A.get_value(i,0)*p[k][i];
-        }
-        solutions[k] = rhs/sum;
-      }
+      for (unsigned int k = 0; k < n_vectors; ++k)
+        solutions[k] = coeffs[k][0];
+      delete M;
       return;
     }
-    for (unsigned int k = 0; k < n_vectors; ++k)
-      solutions[k] = coeffs[k][0];
-    return;
   }
 
-  A.tranpose_matvec(p, Atp, n_vectors);
-  A.mtm_product(M);
-
-  /* the system was not invertible - most likely there was a direction with less than 3 points, e.g. in the diagonal ! */
-  if(!solve_cholesky(M, Atp, coeffs, n_vectors))
+  /* either the system was not invertible - most likely there was a direction with less than 2 points, e.g. in the diagonal !
+   * or the number of points along cartesian dimensions is lower than expected, or desired order is smaller than 1 */
+  /* 0-th order polynomial approximation, just compute coeff(0) */
+  double denominator = 0;
+  double numerator = 0;
+  for(unsigned int i=0; i<m; ++i)
   {
-    matrix_t Asub;
-#ifdef P4_TO_P8
-    Asub.truncate_matrix(m, 4, A);
-#else
-    Asub.truncate_matrix(m, 3, A);
-#endif
-
-    Asub.tranpose_matvec(p, Atp, n_vectors);
-    Asub.mtm_product(M);
-
-    solve_cholesky(M, Atp, coeffs, n_vectors);
+    denominator += SQR(A.get_value(i,0));
+    numerator   += A.get_value(i,0)*p[0][i];
   }
-  for (unsigned int k = 0; k < n_vectors; ++k)
-    solutions[k] = coeffs[k][0];
+  solutions[0] = numerator/denominator;
+  for (unsigned int k = 1; k < n_vectors; ++k) {
+    numerator = 0;
+    for(unsigned int i=0; i<m; ++i)
+      numerator += A.get_value(i,0)*p[k][i];
+    solutions[k] = numerator/denominator;
+  }
+  delete M;
   return;
 }
 

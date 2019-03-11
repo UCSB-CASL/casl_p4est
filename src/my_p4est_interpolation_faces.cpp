@@ -16,7 +16,7 @@ my_p4est_interpolation_faces_t::my_p4est_interpolation_faces_t(const my_p4est_no
   p4est_topidx_t vtx_0_max    = p4est->connectivity->tree_to_vertex[0*P4EST_CHILDREN + P4EST_CHILDREN - 1];
   p4est_topidx_t vtx_0_min    = p4est->connectivity->tree_to_vertex[0*P4EST_CHILDREN + 0];
   for (short dim = 0; dim < P4EST_DIM; ++dim)
-    tree_dimension[dim]     = p4est->connectivity->vertices[3*vtx_0_max     + dim] - p4est->connectivity->vertices[3*vtx_0_min + dim];
+    tree_dimension[dim]       = p4est->connectivity->vertices[3*vtx_0_max+dim] - p4est->connectivity->vertices[3*vtx_0_min + dim];
 }
 
 
@@ -177,11 +177,8 @@ void my_p4est_interpolation_faces_t::interpolate(const p4est_quadrant_t &quad, c
 
   std::vector<p4est_locidx_t> interp_points;
   matrix_t A;
-#ifdef P4_TO_P8
-  A.resize(1,(order>=2) ? 10 : 4);
-#else
-  A.resize(1,(order>=2) ? 6 : 3);
-#endif
+  A.resize(1,(1+P4EST_DIM+((order>=2)?(P4EST_DIM+(P4EST_DIM*(P4EST_DIM-1))/2):0))); // constant term + P4EST_DIM linear terms + (if second order) P4EST_DIM squared terms + 0.5*P4EST_DIM*(P4EST_DIM-1) crossed terms
+
   std::vector<double> p[n_functions];
   for (unsigned int k = 0; k < n_functions; ++k)
     p[k].resize(0);

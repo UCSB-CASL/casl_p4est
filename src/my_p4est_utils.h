@@ -5,12 +5,16 @@
 #ifdef P4_TO_P8
 #include <p8est.h>
 #include <p8est_nodes.h>
+#include <src/my_p8est_nodes.h>
 #include <p8est_ghost.h>
+#include <p8est_bits.h>
 #include <src/my_p8est_refine_coarsen.h>
 #else
 #include <p4est.h>
 #include <p4est_nodes.h>
+#include <src/my_p4est_nodes.h>
 #include <p4est_ghost.h>
+#include <p4est_bits.h>
 #include <src/my_p4est_refine_coarsen.h>
 #endif
 #include <src/petsc_logging.h>
@@ -124,12 +128,14 @@ class WallBC2D
 {
 public:
   virtual BoundaryConditionType operator()( double x, double y ) const=0 ;
+  virtual ~WallBC2D() = 0;
 };
 
 class WallBC3D
 {
 public:
   virtual BoundaryConditionType operator()( double x, double y, double z ) const=0 ;
+  virtual ~WallBC3D() = 0;
 };
 
 
@@ -340,6 +346,18 @@ public:
 };
 
 /*!
+ * \brief index_of_node finds the (local) index of a node as defined within p4est, i.e. as a pest_quadrant_t structure whose level is P4EST_MAXLEVEL!
+ *        The method uses a binary search through the provided nodes: its complexity is O(log(N_nodes)).
+ *        The given node MUST MANDATORILY be canonicalized before being passed to this function to ensure consistency with the provided nodes: use
+ *        p4est_node_canonicalize beforehand!
+ * \param [in]    n node whose local index is queried!
+ * \param [in]    nodes the nodes data structure
+ * \param [inout] idx the local index of the node on output if found, undefined if not found (i.e. if the returned value is false)
+ * \return true if the queried node exists and was found in the nodes (i.e. if the idx is valid), false otherwise.
+ */
+bool index_of_node(const p4est_quadrant_t *n, p4est_nodes_t* nodes, p4est_locidx_t& idx);
+
+/*!
  * \brief linear_interpolation performs linear interpolation for a point
  * \param [in]    p4est the forest
  * \param [in]    tree_id the current tree that owns the quadrant
@@ -386,6 +404,8 @@ double quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topid
 void quadratic_interpolation(const p4est_t* p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results);
 double quadratic_interpolation(const p4est_t* p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global);
 
+p4est_bool_t nodes_are_equal(int mpi_size, p4est_nodes_t* nodes_1, p4est_nodes_t* nodes_2);
+
 /*!
  * \brief VecCreateGhostNodes Creates a ghosted PETSc parallel vector on the nodes based on p4est node ordering
  * \param p4est [in]  the forest
@@ -403,6 +423,8 @@ PetscErrorCode VecCreateGhostNodes(const p4est_t *p4est, p4est_nodes_t *nodes, V
  * \return
  */
 PetscErrorCode VecCreateGhostNodesBlock(const p4est_t *p4est, p4est_nodes_t *nodes, PetscInt block_size, Vec* v);
+
+p4est_bool_t ghosts_are_equal(p4est_ghost_t* ghost_1, p4est_ghost_t* ghost_2);
 
 /*!
  * \brief VecCreateGhostNodes Creates a ghosted PETSc parallel vector on the cells

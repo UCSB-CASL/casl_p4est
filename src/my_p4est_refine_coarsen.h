@@ -62,6 +62,16 @@ struct splitting_criteria_cf_t : splitting_criteria_t {
   }
 };
 
+struct splitting_criteria_cf_and_uniform_band_t : splitting_criteria_cf_t {
+  const double uniform_band;
+#ifdef P4_TO_P8
+  splitting_criteria_cf_and_uniform_band_t(int min_lvl, int max_lvl, CF_3 *phi_, double uniform_band_, double lip=1.2)
+#else
+  splitting_criteria_cf_and_uniform_band_t(int min_lvl, int max_lvl, CF_2 *phi_, double uniform_band_, double lip=1.2)
+#endif
+    : splitting_criteria_cf_t (min_lvl, max_lvl, phi_, lip), uniform_band(uniform_band_) { }
+};
+
 struct splitting_criteria_thresh_t : splitting_criteria_t {
 #ifdef P4_TO_P8
   CF_3 *f;
@@ -140,6 +150,9 @@ public:
  */
 p4est_bool_t
 refine_levelset_cf (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad);
+
+p4est_bool_t
+refine_levelset_cf_and_uniform_band (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad);
 
 /*!
  * \brief coarsen_levelset coarsen based on distance of a cf function

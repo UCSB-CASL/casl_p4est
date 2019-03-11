@@ -36,16 +36,16 @@ protected:
   class splitting_criteria_vorticity_t : public splitting_criteria_tag_t
   {
   private:
-    void tag_quadrant(p4est_t *p4est, p4est_locidx_t quad_idx, p4est_topidx_t tree_idx,
-                      my_p4est_interpolation_nodes_t &phi, my_p4est_interpolation_nodes_t &vor,
-                      my_p4est_interpolation_nodes_t *smo);
+    void tag_quadrant(p4est_t *p4est, p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, p4est_nodes_t* nodes,
+                      const double* tree_dimensions,
+                      const double *phi_p, const double *vorticity_p, const double *smoke_p = NULL);
   public:
     double max_L2_norm_u;
     double threshold;
     double uniform_band;
     double smoke_thresh;
     splitting_criteria_vorticity_t(int min_lvl, int max_lvl, double lip, double uniform_band, double threshold, double max_L2_norm_u, double smoke_thresh);
-    bool refine_and_coarsen(p4est_t* p4est, my_p4est_node_neighbors_t *ngbd_n, Vec phi, Vec vorticity, Vec smoke);
+    bool refine_and_coarsen(p4est_t* p4est, p4est_nodes_t* nodes, Vec phi, Vec vorticity, Vec smoke);
   };
 
 #ifdef P4_TO_P8
@@ -327,6 +327,8 @@ public:
   inline Vec get_hodge() { return hodge; }
 
   inline Vec get_smoke() { return smoke; }
+  inline bool get_refine_with_smoke() { return refine_with_smoke; }
+  inline double get_smoke_threshold() { return smoke_thresh; }
 
   inline Vec get_pressure() { return pressure; }
 
@@ -383,14 +385,14 @@ public:
   void compute_adapted_dt(double min_value_for_umax = 1.0);
   void compute_dt(double min_value_for_umax = 1.0);
 
-  void advect_smoke(my_p4est_node_neighbors_t *ngbd_np1, Vec *v, Vec smoke, Vec smoke_np1);
+  void advect_smoke(my_p4est_node_neighbors_t* ngbd_n_np1, Vec* vnp1, Vec smoke_np1);
 
   void extrapolate_bc_v(my_p4est_node_neighbors_t *ngbd, Vec *v, Vec phi);
 
 #ifdef P4_TO_P8
-  bool update_from_tn_to_tnp1(const CF_3 *level_set=NULL, bool convergence_test=false, bool do_reinitialization=true);
+  bool update_from_tn_to_tnp1(const CF_3 *level_set=NULL, bool keep_grid_as_such=false, bool do_reinitialization=true);
 #else
-  bool update_from_tn_to_tnp1(const CF_2 *level_set=NULL, bool convergence_test=false, bool do_reinitialization=true);
+  bool update_from_tn_to_tnp1(const CF_2 *level_set=NULL, bool keep_grid_as_such=false, bool do_reinitialization=true);
 #endif
 
   void compute_pressure();
@@ -448,6 +450,15 @@ public:
    * Raphael EGAN
    */
   void save_state(const char* path_to_root_directory, double tn, unsigned int n_saved=1);
+
+#ifdef P4_TO_P8
+  void refine_coarsen_grid_after_restart(const CF_3 *level_set, bool do_reinitialization = true);
+#else
+  void refine_coarsen_grid_after_restart(const CF_2 *level_set, bool do_reinitialization = true);
+#endif
+  unsigned long int memory_estimate() const;
+
+  void get_slice_averaged_vnp1_profile(unsigned short vel_component, unsigned short axis, std::vector<double>& avg_velocity_profile);
 
 };
 

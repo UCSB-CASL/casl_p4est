@@ -409,7 +409,6 @@ void trajectory_from_np1_all_faces( p4est_t *p4est_n, my_p4est_faces_t *faces_n,
                                     std::vector<double> xyz_n[P4EST_DIM][P4EST_DIM],
                                     std::vector<double> xyz_nm1[P4EST_DIM][P4EST_DIM])
 {
-
   std::vector<double> xyz_np1[P4EST_DIM][P4EST_DIM];
   std::vector<double> *pointers_to_xyz_n[P4EST_DIM][P4EST_DIM];
   std::vector<double> *pointers_to_xyz_nm1[P4EST_DIM][P4EST_DIM];
@@ -517,6 +516,7 @@ void trajectory_from_np1_bunch_of_points( p4est_t *p4est_n,
   else
     interp_np1.set_input(vn, quadratic, P4EST_DIM);
   interp_np1.interpolate(data, P4EST_DIM);
+
 
   /* find xyz_star */
   my_p4est_interpolation_nodes_t interp_nm1(ngbd_nm1);

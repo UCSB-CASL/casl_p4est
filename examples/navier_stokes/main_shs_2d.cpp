@@ -516,9 +516,9 @@ void initialize_drag_force_output(char* file_drag, const char *out_dir, const in
         throw std::runtime_error("initialize_drag_force_output: could not open file for drag output.");
       fprintf(fp_drag, "%% __ | Normalized drag \n");
 #ifdef P4_TO_P8
-      fprintf(fp_drag, "%% tn | x-component | y-component\n");
-#else
       fprintf(fp_drag, "%% tn | x-component | y-component | z-component\n");
+#else
+      fprintf(fp_drag, "%% tn | x-component | y-component\n");
 #endif
       fclose(fp_drag);
     }
@@ -633,6 +633,64 @@ void initialize_drag_force_output(char* file_drag, const char *out_dir, const in
   }
 }
 
+void initialize_averaged_velocity_profile(char* file_avg_profile, const char *out_dir, const int& ntree_y, const int& lmin, const int& lmax, const double& threshold_split_cell, const double& cfl, const int& sl_order, const mpi_environment_t& mpi, const double& tstart)
+{
+  sprintf(file_avg_profile, "%s/slice_averaged_velocity_profile_ntreey_%d_%d-%d_split_threshold_%.2f_cfl_%.2f_sl_%d.dat", out_dir, ntree_y, lmin, lmax, threshold_split_cell, cfl, sl_order);
+  PetscErrorCode ierr = PetscPrintf(mpi.comm(), "Saving averaged velocity profile in ... %s\n", file_avg_profile); CHKERRXX(ierr);
+
+  if(mpi.rank() == 0)
+  {
+    if(!file_exists(file_avg_profile))
+    {
+      FILE* fp_avg_profile = fopen(file_avg_profile, "w");
+      if(fp_avg_profile==NULL)
+        throw std::runtime_error("initialize_averaged_velocity_profile: could not open file for slice_averaged_velocity_profile_...dat output.");
+      fprintf(fp_avg_profile, "%% __ | coordinates along y axis \n");
+      fprintf(fp_avg_profile, "%% tn");
+      for (int k = 0; k < ntree_y*(1<<lmax); ++k)
+        fprintf(fp_avg_profile, "  | %.12g", (-1.00+(2.0/((double) (ntree_y*(1<<lmax))))*(0.5+k)));
+      fprintf(fp_avg_profile, "\n");
+      fclose(fp_avg_profile);
+    }
+    else
+    {
+      FILE* fp_avg_profile = fopen(file_avg_profile, "r+");
+      char* read_line = NULL;
+      size_t len = 0;
+      ssize_t len_read;
+      long size_to_keep = 0;
+      if(((len_read = getline(&read_line, &len, fp_avg_profile)) != -1))
+        size_to_keep += (long) len_read;
+      else
+        throw std::runtime_error("initialize_averaged_velocity_profile: couldn't read the first header line of slice_averaged_velocity_profile_...dat");
+      if(((len_read = getline(&read_line, &len, fp_avg_profile)) != -1))
+        size_to_keep += (long) len_read;
+      else
+        throw std::runtime_error("initialize_averaged_velocity_profile: couldn't read the second header line of slice_averaged_velocity_profile_...dat");
+      double time, time_nm1;
+      double dt = 0.0;
+      bool not_first_line = false;
+      while ((len_read = getline(&read_line, &len, fp_avg_profile)) != -1) {
+        if(not_first_line)
+          time_nm1 = time;
+        sscanf(read_line, "%lg %*[^\n]", &time);
+        if(not_first_line)
+          dt = time-time_nm1;
+        if(time <= tstart+0.1*dt) // +0.1*dt to avoid roundoff errors when exporting the data
+          size_to_keep += (long) len_read;
+        else
+          break;
+        not_first_line=true;
+      }
+      fclose(fp_avg_profile);
+      if(read_line)
+        free(read_line);
+      if(truncate(file_avg_profile, size_to_keep))
+        throw std::runtime_error("initialize_averaged_velocity_profile: couldn't truncate slice_averaged_velocity_profile_...dat");
+    }
+  }
+}
+
 void check_pitch_and_gas_fraction(double length_to_delta, int ntree, int lmax, double pitch_to_delta, double gas_fraction)
 {
   if(fabs(length_to_delta/pitch_to_delta - ((int) length_to_delta/pitch_to_delta)) > 1e-6)
@@ -646,11 +704,13 @@ void check_pitch_and_gas_fraction(double length_to_delta, int ntree, int lmax, d
   double nb_finest_cell_in_ridge  =  pitch_to_delta*(1.0-gas_fraction)/(length_to_delta/((double) (ntree*(1<<lmax))));
 
   if((fabs(nb_finest_cell_in_groove - ((int) nb_finest_cell_in_groove)) > 1e-6) || (fabs(nb_finest_cell_in_ridge - ((int) nb_finest_cell_in_ridge)) > 1e-6))
+  {
 #ifdef P4_TO_P8
     throw std::invalid_argument("main_shs_3d.cpp: the finest grid cells do not capture the groove and/or the ridge (subcell resolution for boundary condition would be required).");
 #else
     throw std::invalid_argument("main_shs_2d.cpp: the finest grid cells do not capture the groove and/or the ridge (subcell resolution for boundary condition would be required).");
 #endif
+  }
 }
 
 int main (int argc, char* argv[])
@@ -661,103 +721,125 @@ int main (int argc, char* argv[])
   cmdParser cmd;
   cmd.add_option("restart", "if defined, this restarts the simulation from a saved state on disk (the value must be a valid path to a directory in which the solver state was saved)");
   // computational grid parameters
-  cmd.add_option("lmin", "min level of the tree");
-  cmd.add_option("lmax", "max level of the tree");
+  cmd.add_option("lmin", "min level of the trees, default is 4");
+  cmd.add_option("lmax", "max level of the trees, default is 6");
   cmd.add_option("thresh", "the threshold used for the refinement criteria, default is 0.1");
-  cmd.add_option("wall_layer", "number of finest cells desired to layer the channel walls (a minimum of 2 is strictly enforced)");
+  cmd.add_option("wall_layer", "number of finest cells desired to layer the channel walls, default is 6");
   cmd.add_option("nx", "number of trees in the x-direction. The default value is length to ensure aspect ratio of cells = 1");
-  cmd.add_option("ny", "number of trees in the y-direction. The default value is 2.0 (i.e. height) to ensure aspect ratio of cells = 1");
+  cmd.add_option("ny", "number of trees in the y-direction. The default value is 2 (i.e. height) to ensure aspect ratio of cells = 1");
 #ifdef P4_TO_P8
   cmd.add_option("nz", "number of trees in the z-direction. The default value is width to ensure aspect ratio of cells = 1");
 #endif
   // physical parameters for the simulations
-  cmd.add_option("length", "length of the channel (dimension in streamwise, x-direction) , in units of delta (integer), default is 6");
+  cmd.add_option("length", "length of the channel (dimension in streamwise, x-direction), in units of delta, default is 6.0");
 #ifdef P4_TO_P8
-  cmd.add_option("width", "width of the channel (dimension in spanwise, z-direction), in units of delta (integer), default is 3");
+  cmd.add_option("width", "width of the channel (dimension in spanwise, z-direction), in units of delta, default is 3.0");
   cmd.add_option("streamwise", "if present, the grooves and ridges are understood as streamwise, that is parallel to the flow. If absent, the grooves are perpendicular to the flow.");
 #endif
-  cmd.add_option("duration", "the duration of the simulation (tfinal-tstart). If not restarted, tstart = 0.0, default duration is 10.");
-  cmd.add_option("Re", "the Reynolds number based on wall-shear velocity and half the channel height (in a regular, i.e. not SH, channel), i.e. Re_tau = u_tau*delta/nu, default is 180.0;");
+  cmd.add_option("duration", "the duration of the simulation (tfinal-tstart). If not restarted, tstart = 0.0, default duration is 200.0.");
+  cmd.add_option("Re", "the Reynolds number based on wall-shear velocity and half the channel height (in a regular, i.e. not SH, channel), i.e. Re_tau = u_tau*delta/nu, default is 180.0");
   cmd.add_option("pitch_to_delta", "P/delta ratio, default = 0.375");
   cmd.add_option("GF", "gas fraction, default is 0.5");
   cmd.add_option("adapted_dt", "activates the calculation of dt based on the local cell sizes if present");
   // method-related parameters
   cmd.add_option("sl_order", "the order for the semi lagrangian, either 1 (stable) or 2 (accurate), default is 2");
-  cmd.add_option("cfl", "dt = cfl * dx/vmax, default is 0.75");
+  cmd.add_option("cfl", "dt = cfl * dx/vmax, default is 1.00");
+  cmd.add_option("hodge_tol", "numerical tolerance on the Hodge variable, at all time steps, default is 1e-3");
+  cmd.add_option("niter_hodge", "max number of iterations for convergence of the Hodge variable, at all time steps, default is 10");
+  cmd.add_option("grid_update", "number of time steps between grid updates, default is 1");
+  cmd.add_option("pc_cell", "preconditioner for cell-solver: jacobi, sor or hypre, default is sor.");
+  cmd.add_option("cell_solver", "Krylov solver used for cell-poisson problem, i.e. hodge variable: cg or bicgstab, default is bicgstab.");
+  cmd.add_option("pc_face", "preconditioner for face-solver: jacobi, sor or hypre, default is sor.");
   // output-control parameters
   cmd.add_option("export_folder", "exportation_folder");
   cmd.add_option("save_vtk", "activates exportation of results in vtk format");
   cmd.add_option("vtk_dt", "export vtk files every vtk_dt time lapse (REQUIRED if save_vtk is activated)");
 #ifdef P4_TO_P8
   cmd.add_option("save_mass_flow", "activates exportation of the streamwise mass flow (non-dimensionalized by rho*SQR(delta)*u_tau, calculated at inflow, 0.25*length, 0.5*length and 0.75*length)");
-  cmd.add_option("save_drag", "activates exportation of the total drag (normalized by rho*SQR(u_tau)*SQR(delta))");
+  cmd.add_option("save_drag", "activates exportation of the total drag (non-dimensionalized by rho*SQR(u_tau)*SQR(delta))");
 #else
   cmd.add_option("save_mass_flow", "activates exportation of the streamwise mass flow (non-dimensionalized by rho*delta*u_tau, calculated at inflow, 0.25*length, 0.5*length and 0.75*length)");
-  cmd.add_option("save_drag", "activates exportation of the total drag (normalized by rho*SQR(u_tau)*delta)");
+  cmd.add_option("save_drag", "activates exportation of the total drag (non-dimensionalized by rho*SQR(u_tau)*delta)");
 #endif
   cmd.add_option("save_state_dt", "if defined, this activates the 'save-state' feature. The solver state is saved every save_state_dt time steps in backup_ subfolders.");
   cmd.add_option("save_nstates", "determines how many solver states must be memorized in backup_ folders (default is 1).");
-  cmd.add_option("save_mean_profile", "compute and save an averaged streamwise-velocity profile (makes sense only if the flow is fully-developed)");
-  cmd.add_option("tstart_statistics", "time starting from which the statics can be computed (WARNING: default is 0)");
+  cmd.add_option("save_mean_profile", "computes and saves an averaged streamwise-velocity profile (makes sense only if the flow is fully-developed)");
+  cmd.add_option("tstart_average", "starting time for computing the average velocity profile (default is 100.0)");
 
 
   // --> extra info to be printed when -help is invoked
+#ifdef P4_TO_P8
   const std::string extra_info = "\
       This program provides a general setup for superhydrophobic channel flow simulations.\n\
       It assumes no solid object and no passive scalar (i.e. smoke) in the channel. The height of the channel is set to \n\
-      2*delta by default, the other channel dimensions are provided by the user in units of delta. If the numbers \n\
-      of trees in the streamwise and spanwise directions (resp. input parameters nx and nz) are not provided by the user, they \n\
-      are set in order to ensure aspect ratio of computational cells as close as possible to 1, i.e. each tree in the forest is \n\
-      of size (as close as possible to) deltaXdeltaXdelta. \n\n\
+      2*delta by default, the other channel dimensions are provided by the user in units of delta. If the numbers of \n\
+      trees in the streamwise and spanwise directions (resp. input parameters nx and nz) are not provided by the user, \n\
+      they are set in order to ensure aspect ratio of computational cells as close as possible to 1, i.e. each tree in \n\
+      the forest is of size (as close as possible to) deltaXdeltaXdelta. \n\n\
       The set up builds upon the following non-dimensionalization ('_hat' for dimensional variables): \n\n\
       u = u_hat/u_tau, {x, y, z} = {x, y, z}_hat/delta, t = t_hat*u_tau/delta, p = p_hat/(rho*u_tau*u_tau), \n\n\
       where u_tau is the wall-friction velocity in an equivalent regular channel (not superhydrophobic). \n\
       Therefore, the computational domain is [-0.5*length, 0.5*length]x[-1, 1]x[-0.5*width, 0.5*width]. \n\
       The Navier-Stokes solver is then invoked with nondimensional inputs \n\
       rho = 1.0, mu = 1.0/Re, body force per unit mass {1.0, 0.0, 0.0} (driving the flow), \n\
-      and with periodic boundary conditions in the streamwise (and spanwise in 3D) directions. \n\
+      and with periodic boundary conditions in the streamwise and spanwise directions. \n\
       Developer: Raphael Egan (raphaelegan@ucsb.edu)";
+#else
+  const std::string extra_info = "\
+      This program provides a general setup for superhydrophobic channel flow simulations.\n\
+      It assumes no solid object and no passive scalar (i.e. smoke) in the channel. The height of the channel is set \n\
+      to 2*delta by default, the other channel dimension is provided by the user in units of delta. If the number of \n\
+      trees in the streamwise direction (input parameters nx) is not provided by the user, it is set in order to ensure \n\
+      aspect ratio of computational cells as close as possible to 1, i.e. each tree in the forest is of size (as close \n\
+      as possible to) deltaXdeltaXdelta. \n\n\
+      The set up builds upon the following non-dimensionalization ('_hat' for dimensional variables): \n\n\
+      u = u_hat/u_tau, {x, y} = {x, y}_hat/delta, t = t_hat*u_tau/delta, p = p_hat/(rho*u_tau*u_tau), \n\n\
+      where u_tau is the wall-friction velocity in an equivalent regular channel (not superhydrophobic). \n\
+      Therefore, the computational domain is [-0.5*length, 0.5*length]x[-1, 1]. \n\
+      The Navier-Stokes solver is then invoked with nondimensional inputs \n\
+      rho = 1.0, mu = 1.0/Re, body force per unit mass {1.0, 0.0} (driving the flow), \n\
+      and with periodic boundary conditions in the streamwise direction. \n\
+      Developer: Raphael Egan (raphaelegan@ucsb.edu)";
+#endif
   cmd.parse(argc, argv, extra_info);
 
   double tstart;
   double dt;
   int lmin, lmax;
-  my_p4est_navier_stokes_t* ns  = NULL;
-  my_p4est_brick_t* brick       = NULL;
-  splitting_criteria_cf_t* data = NULL;
-  LEVEL_SET* level_set          = NULL;
+  my_p4est_navier_stokes_t* ns                    = NULL;
+  my_p4est_brick_t* brick                         = NULL;
+  splitting_criteria_cf_and_uniform_band_t* data  = NULL;
+  LEVEL_SET* level_set                            = NULL;
 
   int sl_order;
-  double threshold_split_cell, wall_layer, cfl;
+  unsigned int wall_layer;
+  double threshold_split_cell, uniform_band, cfl;
   double length;
-#ifdef P4_TO_P8
-  double width;
-#endif
-  double wall_shear_Reynolds;
   int ntree_x, ntree_y;
 #ifdef P4_TO_P8
+  double width;
   int ntree_z;
 #endif
   int n_xyz [P4EST_DIM];
-  double xyz_min [P4EST_DIM];
-  double xyz_max [P4EST_DIM];
 
+  const double hodge_tolerance          = cmd.get<double>("hodge_tol", 1e-3);
+  const unsigned int niter_hodge_max    = cmd.get<unsigned int>("niter_hodge", 10);
+  const unsigned int steps_grid_update  = cmd.get<unsigned int>("grid_update", 1);
 
-
-  double duration           = cmd.get<double>("duration", 10.0);
-  double pitch_to_delta     = cmd.get<double>("pitch_to_delta", 1.0/4.0);
-  double gas_fraction       = cmd.get<double>("GF", 0.5);
+  const double duration                 = cmd.get<double>("duration", 200.0);
+  const double pitch_to_delta           = cmd.get<double>("pitch_to_delta", 1.0/4.0);
+  const double gas_fraction             = cmd.get<double>("GF", 0.5);
 #if defined(POD_CLUSTER)
   string export_dir = cmd.get<string>("export_folder", "/home/temprano/Output/p4est_ns_shs");
 #elif defined(STAMPEDE)
-  string export_dir         = cmd.get<string>("export_folder", "/work/04965/tg842642/stampede2/superhydrophobic_channel");
+  const string export_dir               = cmd.get<string>("export_folder", "/work/04965/tg842642/stampede2/superhydrophobic_channel");
 #elif defined(LAPTOP)
-  string export_dir         = cmd.get<string>("export_folder", "/home/raphael/workspace/projects/superhydrophobic_channel");
+  const string export_dir               = cmd.get<string>("export_folder", "/home/raphael/workspace/projects/superhydrophobic_channel");
 #else
   string export_dir = cmd.get<string>("export_folder", "/home/temprano/Output/p4est_ns_shs");
 #endif
-  bool save_vtk             = cmd.contains("save_vtk");
-  double vtk_dt = -1.0;
+  const bool save_vtk                   = cmd.contains("save_vtk");
+  double vtk_dt                         = -1.0;
   if(save_vtk)
   {
     if(!cmd.contains("vtk_dt"))
@@ -774,10 +856,10 @@ int main (int argc, char* argv[])
       throw std::invalid_argument("main_shs_2d.cpp: the value of vtk_dt must be strictly positive.");
 #endif
   }
-  bool save_drag            = cmd.contains("save_drag"); double drag[P4EST_DIM];
-  bool save_mass_flow       = cmd.contains("save_mass_flow"); vector<double> mass_flows; vector<double> sections;
-  bool save_state           = cmd.contains("save_state_dt"); double dt_save_data = -1.0;
-  unsigned int n_states     = cmd.get<unsigned int>("save_nstates", 1);
+  const bool save_drag                = cmd.contains("save_drag"); double drag[P4EST_DIM];
+  const bool save_mass_flow           = cmd.contains("save_mass_flow"); vector<double> mass_flows; vector<double> sections;
+  const bool save_state               = cmd.contains("save_state_dt"); double dt_save_data = -1.0;
+  const unsigned int n_states         = cmd.get<unsigned int>("save_nstates", 1);
   if(save_state)
   {
     dt_save_data            = cmd.get<double>("save_state_dt", -1.0);
@@ -788,18 +870,90 @@ int main (int argc, char* argv[])
       throw std::invalid_argument("main_shs_2d.cpp: the value of save_state_dt must be strictly positive.");
 #endif
   }
-  bool save_profile         = cmd.contains("save_mean_profile");
-  double stat_start         = cmd.get<double>("tstart_statistics", 0.0);
-
-  bool use_adapted_dt       = cmd.contains("adapted_dt");
+  const bool save_profile             = cmd.contains("save_mean_profile"); vector<double> slice_averaged_profile;
+  const double avg_start              = cmd.get<double>("tstart_average", 100.0);
+  const bool use_adapted_dt           = cmd.contains("adapted_dt");
 #ifdef P4_TO_P8
-  bool streamwise           = cmd.contains("streamwise");
+  const bool streamwise               = cmd.contains("streamwise");
 #endif
+
+  const string des_pc_cell              = cmd.get<string>("pc_cell", "sor");
+  const string des_solver_cell          = cmd.get<string>("cell_solver", "bicgstab");
+  const string des_pc_face              = cmd.get<string>("pc_face", "sor");
+  KSPType cell_solver_type;
+  PCType pc_cell, pc_face;
+  if (des_pc_cell.compare("hypre")==0)
+    pc_cell = PCHYPRE;
+  else if (des_pc_cell.compare("jacobi'")==0)
+    pc_cell = PCJACOBI;
+  else
+  {
+    if(des_pc_cell.compare("sor")!=0 && !mpi.rank())
+      std::cerr << "The desired preconditioner for the cell-solver was either not allowed or not correctly understood. Successive over-relaxation is used instead" << std::endl;
+    pc_cell = PCSOR;
+  }
+  if(des_solver_cell.compare("cg")==0)
+    cell_solver_type = KSPCG;
+  else
+  {
+    if(des_solver_cell.compare("bicgstab")!=0 && !mpi.rank())
+      std::cerr << "The desired Krylov solver for the cell-solver was either not allowed or not correctly understood. BiCGStab is used instead" << std::endl;
+    cell_solver_type = KSPBCGS;
+  }
+  if (des_pc_face.compare("hypre")==0)
+    pc_face = PCHYPRE;
+  else if (des_pc_face.compare("jacobi'")==0)
+    pc_face = PCJACOBI;
+  else
+  {
+    if(des_pc_face.compare("sor")!=0 && !mpi.rank())
+      std::cerr << "The desired preconditioner for the face-solver was either not allowed or not correctly understood. Successive over-relaxation is used instead" << std::endl;
+    pc_face = PCSOR;
+  }
+
   PetscErrorCode ierr;
+  const double rho = 1.0;
+  double wall_shear_Reynolds, mu;
+  double xyz_min [P4EST_DIM];
+  double xyz_max [P4EST_DIM];
+#ifdef P4_TO_P8
+  const int periodic[] = {1, 0, 1};
+#else
+  const int periodic[] = {1, 0};
+#endif
+
+#ifdef P4_TO_P8
+  BoundaryConditions3D bc_v[P4EST_DIM];
+  BoundaryConditions3D bc_p;
+#else
+  BoundaryConditions2D bc_v[P4EST_DIM];
+  BoundaryConditions2D bc_p;
+#endif
+  BCWALLTYPE_U* bc_wall_type_u = NULL;
+#ifdef P4_TO_P8
+  BCWALLTYPE_W* bc_wall_type_w = NULL;
+#endif
+
+  bc_v[0].setWallValues(bc_wall_value_u); // wall-type is simulation/restart-dependent, needs to be constructed later on
+  bc_v[1].setWallValues(bc_wall_value_v); bc_v[1].setWallTypes(bc_wall_type_v);
+#ifdef P4_TO_P8
+  bc_v[2].setWallValues(bc_wall_value_w); // wall-type is simulation/restart-dependent, needs to be constructed later on
+#endif
+  bc_p.setWallTypes(bc_wall_type_p); bc_p.setWallValues(bc_wall_value_p);
+
+  external_force_u_t external_force_u;
+  external_force_v_t external_force_v;
+#ifdef P4_TO_P8
+  external_force_w_t external_force_w;
+  CF_3 *external_forces[P4EST_DIM] = { &external_force_u, &external_force_v, &external_force_w };
+#else
+  CF_2 *external_forces[P4EST_DIM] = { &external_force_u, &external_force_v };
+#endif
+
 
   if(cmd.contains("restart"))
   {
-    string backup_directory = cmd.get<string>("restart", "");
+    const string backup_directory = cmd.get<string>("restart", "");
     if(!is_folder(backup_directory.c_str()))
     {
       char error_msg[1024];
@@ -824,7 +978,6 @@ int main (int argc, char* argv[])
     lmax                    = cmd.get<int>("lmax", ((splitting_criteria_t*) p4est_n->user_pointer)->max_lvl);
     double lip              = ((splitting_criteria_t*) p4est_n->user_pointer)->lip;
     threshold_split_cell    = cmd.get<double>("thresh", ns->get_split_threshold());
-    wall_layer              = cmd.get<double>("wall_layer", ns->get_uniform_band());
     length                  = ns->get_length_of_domain();
 #ifdef P4EST_ENABLE_DEBUG
     double height           = ns->get_height_of_domain();
@@ -832,8 +985,17 @@ int main (int argc, char* argv[])
 #ifdef P4_TO_P8
     width                   = ns->get_width_of_domain();
 #endif
-    P4EST_ASSERT((fabs(height-2.0) < 1e-6) && (fabs(ns->get_rho() - 1.0) < 1e-6));
-    wall_shear_Reynolds     = cmd.get<double>("Re", 1.0/ns->get_mu());
+    P4EST_ASSERT((fabs(height-2.0) < 2.0*10.0*EPS) && (fabs(ns->get_rho() - 1.0) < 1.0*10.0*EPS));
+    if(cmd.contains("Re"))
+    {
+      wall_shear_Reynolds     = cmd.get<double>("Re");
+      mu                      = 1.0/wall_shear_Reynolds;
+    }
+    else
+    {
+      mu                      = ns->get_mu();
+      wall_shear_Reynolds     = 1.0/mu;
+    }
 
     if(brick != NULL && brick->nxyz_to_treeid != NULL)
     {
@@ -848,19 +1010,38 @@ int main (int argc, char* argv[])
     ntree_z                 = brick->nxyztrees[2];
     n_xyz[2]                = ntree_z;
     xyz_min[2]              = brick->xyz_min[2];
-    xyz_max[2]              = brick->xyz_min[2];
+    xyz_max[2]              = brick->xyz_max[2];
 #endif
     n_xyz[1]                = ntree_y;
     n_xyz[0]                = ntree_x;
     xyz_min[1]              = brick->xyz_min[1];
     xyz_min[0]              = brick->xyz_min[0];
-    xyz_max[1]              = brick->xyz_min[1];
-    xyz_max[0]              = brick->xyz_min[0];
+    xyz_max[1]              = brick->xyz_max[1];
+    xyz_max[0]              = brick->xyz_max[0];
+
+    if(cmd.contains("wall_layer"))
+    {
+      wall_layer            = cmd.get<unsigned int>("wall_layer");
+#ifdef P4_TO_P8
+      uniform_band          = ((double) wall_layer)*(2.0/((double) ntree_y))/MAX(length/((double) ntree_x), 2.0/((double) ntree_y), width/((double) ntree_z));
+#else
+      uniform_band          = ((double) wall_layer)*(2.0/((double) ntree_y))/MAX(length/((double) ntree_x), 2.0/((double) ntree_y));
+#endif
+    }
+    else
+    {
+      uniform_band          = ns->get_uniform_band();
+#ifdef P4_TO_P8
+      wall_layer            = (unsigned int) (uniform_band*MAX(length/((double) ntree_x), 2.0/((double) ntree_y), width/((double) ntree_z))/(2.0/((double) ntree_y)));
+#else
+      wall_layer            = (unsigned int) (uniform_band*MAX(length/((double) ntree_x), 2.0/((double) ntree_y))/(2.0/((double) ntree_y)));
+#endif
+    }
 #ifdef P4_TO_P8
     if(streamwise)
-      check_pitch_and_gas_fraction(length, ntree_x, lmax, pitch_to_delta, gas_fraction);
-    else
       check_pitch_and_gas_fraction(width, ntree_z, lmax, pitch_to_delta, gas_fraction);
+    else
+      check_pitch_and_gas_fraction(length, ntree_x, lmax, pitch_to_delta, gas_fraction);
 #else
     check_pitch_and_gas_fraction(length, ntree_x, lmax, pitch_to_delta, gas_fraction);
 #endif
@@ -879,26 +1060,45 @@ int main (int argc, char* argv[])
       delete data; data = NULL;
     }
     P4EST_ASSERT(data == NULL);
-    data = new splitting_criteria_cf_t(lmin, lmax, level_set, lip);
+    data = new splitting_criteria_cf_and_uniform_band_t(lmin, lmax, level_set, uniform_band, lip);
     splitting_criteria_t* to_delete = (splitting_criteria_t*) p4est_n->user_pointer;
+    bool fix_restarted_grid = (lmax!=to_delete->max_lvl);
     delete to_delete;
     p4est_n->user_pointer   = (void*) data;
     p4est_nm1->user_pointer = (void*) data; // p4est_n and p4est_nm1 always point to the same splitting_criteria_t no need to delete the nm1 one, it's just been done
-    ns->set_parameters(1.0/wall_shear_Reynolds, 1.0, sl_order, wall_layer, threshold_split_cell, cfl);
+    ns->set_parameters(mu, rho, sl_order, uniform_band, threshold_split_cell, cfl);
+
+    if(bc_wall_type_u!=NULL)
+      delete  bc_wall_type_u;
+#ifdef P4_TO_P8
+    if(bc_wall_type_w!=NULL)
+      delete bc_wall_type_w;
+    bc_wall_type_u = new BCWALLTYPE_U(length, width, streamwise, pitch_to_delta, gas_fraction, *brick, lmax);
+    bc_wall_type_w = new BCWALLTYPE_W(length, width, streamwise, pitch_to_delta, gas_fraction, *brick, lmax);
+#else
+    bc_wall_type_u = new BCWALLTYPE_U(length, pitch_to_delta, gas_fraction, *brick, lmax);
+#endif
+    bc_v[0].setWallTypes(*bc_wall_type_u);
+#ifdef P4_TO_P8
+    bc_v[2].setWallTypes(*bc_wall_type_w);
+#endif
+    ns->set_bc(bc_v, &bc_p);
+    ns->set_external_forces(external_forces);
+    if(fix_restarted_grid)
+      ns->refine_coarsen_grid_after_restart(level_set, false);
   }
   else
   {
     lmin                    = cmd.get<int>("lmin", 4);
     lmax                    = cmd.get<int>("lmax", 6);
     threshold_split_cell    = cmd.get<double>("thresh", 0.1);
-    wall_layer              = cmd.get<double>("wall_layer", 6.0);
     length                  = cmd.get<double>("length", 6.0);
 #ifdef P4_TO_P8
     width                   = cmd.get<double>("width", 3.0);
 #endif
-    wall_shear_Reynolds     = cmd.get<double>("Re", 60.0);
+    wall_shear_Reynolds     = cmd.get<double>("Re", 180.0);
+    mu                      = 1.0/wall_shear_Reynolds;
 
-    int periodic[P4EST_DIM];
     ntree_x                 = cmd.get<int>("nx", (int) length);
     ntree_y                 = cmd.get<int>("ny", 2);
 #ifdef P4_TO_P8
@@ -906,7 +1106,6 @@ int main (int argc, char* argv[])
     n_xyz[2]                = ntree_z;
     xyz_min[2]              = -0.5*width;
     xyz_max[2]              = 0.5*width;
-    periodic[2]             = 1;
 #endif
     n_xyz[1]                = ntree_y;
     n_xyz[0]                = ntree_x;
@@ -914,20 +1113,19 @@ int main (int argc, char* argv[])
     xyz_min[0]              = -0.5*length;
     xyz_max[1]              = +1.0;
     xyz_max[0]              = +0.5*length;
-    periodic[1]             = 0;
-    periodic[0]             = 1;
+    wall_layer              = cmd.get<unsigned int>("wall_layer", 6);
 #ifdef P4_TO_P8
+    uniform_band            = ((double) wall_layer)*(2.0/((double) ntree_y))/MAX(length/((double) ntree_x), 2.0/((double) ntree_y), width/((double) ntree_z));
     if(streamwise)
       check_pitch_and_gas_fraction(width, ntree_z, lmax, pitch_to_delta, gas_fraction);
     else
       check_pitch_and_gas_fraction(length, ntree_x, lmax, pitch_to_delta, gas_fraction);
 #else
+    uniform_band            = ((double) wall_layer)*(2.0/((double) ntree_y))/MAX(length/((double) ntree_x), 2.0/((double) ntree_y));
     check_pitch_and_gas_fraction(length, ntree_x, lmax, pitch_to_delta, gas_fraction);
 #endif
-
-
     sl_order                = cmd.get<int>("sl_order", 2);
-    cfl                     = cmd.get<double>("cfl", 0.75);
+    cfl                     = cmd.get<double>("cfl", 1.0);
 
     p4est_connectivity_t *connectivity;
     if(brick != NULL && brick->nxyz_to_treeid != NULL)
@@ -952,14 +1150,26 @@ int main (int argc, char* argv[])
       delete data; data = NULL;
     }
     P4EST_ASSERT(data == NULL);
-    data  = new splitting_criteria_cf_t(lmin, lmax, level_set, 1.2);
+    double lip_const = 1.2;
+    // reset the lip_const as such to avoid conflict with the number of cells desired to layer the walls
+    lip_const = MIN(lip_const, (2.0/length)*((double) ntree_x)/((double) ntree_y));
+#ifdef P4_TO_P8
+    lip_const = MIN(lip_const, (2.0/width)*((double) ntree_z)/((double) ntree_y));
+#endif
+    lip_const = MIN(lip_const, (length/2.0)*((double) ntree_y)/((double) ntree_x));
+#ifdef P4_TO_P8
+    lip_const = MIN(lip_const, (length/width)*((double) ntree_z)/((double) ntree_x));
+    lip_const = MIN(lip_const, (width/length)*((double) ntree_x)/((double) ntree_z));
+    lip_const = MIN(lip_const, (width/2.0)*((double) ntree_y)/((double) ntree_z));
+#endif
+    data  = new splitting_criteria_cf_and_uniform_band_t(lmin, lmax, level_set, uniform_band, lip_const);
 
     p4est_t* p4est_nm1 = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
     p4est_nm1->user_pointer = (void*) data;
 
     for(int l=0; l<lmax; ++l)
     {
-      my_p4est_refine(p4est_nm1, P4EST_FALSE, refine_levelset_cf, NULL);
+      my_p4est_refine(p4est_nm1, P4EST_FALSE, refine_levelset_cf_and_uniform_band, NULL);
       my_p4est_partition(p4est_nm1, P4EST_FALSE, NULL);
     }
     /* create the initial forest at time nm1 */
@@ -976,8 +1186,6 @@ int main (int argc, char* argv[])
     /* create the initial forest at time n */
     p4est_t *p4est_n = my_p4est_copy(p4est_nm1, P4EST_FALSE);
     p4est_n->user_pointer = (void*) data;
-
-    my_p4est_partition(p4est_n, P4EST_FALSE, NULL);
 
     p4est_ghost_t *ghost_n = my_p4est_ghost_new(p4est_n, P4EST_CONNECT_FULL);
     my_p4est_ghost_expand(p4est_n, ghost_n);
@@ -1002,11 +1210,11 @@ int main (int argc, char* argv[])
 
     ns = new my_p4est_navier_stokes_t(ngbd_nm1, ngbd_n, faces_n);
     ns->set_phi(phi);
-    ns->set_parameters(1.0/wall_shear_Reynolds, 1.0, sl_order, wall_layer, threshold_split_cell, cfl);
+    ns->set_parameters(mu , rho, sl_order, uniform_band, threshold_split_cell, cfl);
     ns->set_velocities(vnm1, vn);
 
     tstart = 0.0; // no restart so we assume we start from 0.0
-    // set he first time step: kinda arbitrary, don't really know what else I could do. I believe an inverse power of Re should be used here...
+    // set the first time step: kinda arbitrary, don't really know what else I could do. I believe an inverse power of Re should be used here instead...
     double min_dxyz[P4EST_DIM]; dxyz_min(p4est_n, min_dxyz);
 #ifdef P4_TO_P8
     dt = MIN(min_dxyz[0], min_dxyz[1], min_dxyz[2])/wall_shear_Reynolds;
@@ -1014,38 +1222,29 @@ int main (int argc, char* argv[])
     dt = MIN(min_dxyz[0], min_dxyz[1])/wall_shear_Reynolds;
 #endif
     ns->set_dt(dt);
-  }
 
-
+    if(bc_wall_type_u!=NULL)
+      delete  bc_wall_type_u;
 #ifdef P4_TO_P8
-  BoundaryConditions3D bc_v[P4EST_DIM];
-  BoundaryConditions3D bc_p;
-  BCWALLTYPE_U bc_wall_type_u(length, width, streamwise, pitch_to_delta, gas_fraction, *brick, lmax);
+    if(bc_wall_type_w!=NULL)
+      delete bc_wall_type_w;
+    bc_wall_type_u = new BCWALLTYPE_U(length, width, streamwise, pitch_to_delta, gas_fraction, *brick, lmax);
+    bc_wall_type_w = new BCWALLTYPE_W(length, width, streamwise, pitch_to_delta, gas_fraction, *brick, lmax);
 #else
-  BoundaryConditions2D bc_v[P4EST_DIM];
-  BoundaryConditions2D bc_p;
-  BCWALLTYPE_U bc_wall_type_u(length, pitch_to_delta, gas_fraction, *brick, lmax);
+    bc_wall_type_u = new BCWALLTYPE_U(length, pitch_to_delta, gas_fraction, *brick, lmax);
 #endif
-  bc_v[0].setWallTypes(bc_wall_type_u); bc_v[0].setWallValues(bc_wall_value_u);
-  bc_v[1].setWallTypes(bc_wall_type_v); bc_v[1].setWallValues(bc_wall_value_v);
+    bc_v[0].setWallTypes(*bc_wall_type_u);
 #ifdef P4_TO_P8
-  BCWALLTYPE_W bc_wall_type_w(length, width, streamwise, pitch_to_delta, gas_fraction, *brick, lmax);
-  bc_v[2].setWallTypes(bc_wall_type_w); bc_v[2].setWallValues(bc_wall_value_w);
+    bc_v[2].setWallTypes(*bc_wall_type_w);
 #endif
-  bc_p.setWallTypes(bc_wall_type_p); bc_p.setWallValues(bc_wall_value_p);
-
-  external_force_u_t *external_force_u=NULL;
-  external_force_v_t *external_force_v=NULL;
-#ifdef P4_TO_P8
-  external_force_w_t *external_force_w=NULL;
-#endif
-  ns->set_bc(bc_v, &bc_p);
-
+    ns->set_bc(bc_v, &bc_p);
+    ns->set_external_forces(external_forces);
+  }
 
 #ifdef P4_TO_P8
   ierr = PetscPrintf(mpi.comm(), "Parameters : Re_{tau, 0} = %g, domain is %dx2x%d (delta units), P/delta = %g, GF = %g\n", wall_shear_Reynolds, (int) length, (int) width, pitch_to_delta, gas_fraction); CHKERRXX(ierr);
 #else
-  ierr = PetscPrintf(mpi.comm(), "Parameters : Re_{tau, 0}  = %g, domain is %dx2 (delta units), P/delta = %g, GF = %g\n", wall_shear_Reynolds, (int) length, pitch_to_delta, gas_fraction); CHKERRXX(ierr);
+  ierr = PetscPrintf(mpi.comm(), "Parameters : Re_{tau, 0} = %g, domain is %dx2 (delta units), P/delta = %g, GF = %g\n", wall_shear_Reynolds, (int) length, pitch_to_delta, gas_fraction); CHKERRXX(ierr);
 #endif
   ierr = PetscPrintf(mpi.comm(), "cfl = %g, wall layer = %g\n", cfl, wall_layer);
 
@@ -1076,6 +1275,7 @@ int main (int argc, char* argv[])
 #else
       sprintf(error_msg, "main_shs_2d: could not create exportation directory for vtk files %s", vtk_path);
 #endif
+      throw std::runtime_error(error_msg);
     }
   }
 
@@ -1096,36 +1296,18 @@ int main (int argc, char* argv[])
     initialize_mass_flow_output(sections, mass_flows, file_mass_flow, length, out_dir, lmin, lmax, threshold_split_cell, cfl, sl_order, mpi, tstart);
 #endif
   if(save_profile)
-  {
-    sprintf(file_velocity_profile, "%s/velocity_profile_%d-%d_split_threshold_%.2f_cfl_%.2f_sl_%d.dat", out_dir, lmin, lmax, threshold_split_cell, cfl, sl_order);
+    initialize_averaged_velocity_profile(file_velocity_profile, out_dir, ntree_y, lmin, lmax, threshold_split_cell, cfl, sl_order, mpi, tstart);
 
-    ierr = PetscPrintf(mpi.comm(), "Saving averaged streamwise velocity profile in ... %s\n", file_velocity_profile); CHKERRXX(ierr);
-    if(mpi.rank() == 0)
-    {
-      fp_velocity_profile = fopen(file_velocity_profile, "w");
-      if(fp_velocity_profile==NULL)
-#ifdef P4_TO_P8
-        throw std::runtime_error("main_shs_3d: could not open file for averaged velocity profile output.");
-#else
-        throw std::runtime_error("main_shs_2d: could not open file for averaged velocity profile output.");
-#endif
-      fclose(fp_velocity_profile);
-    }
-  }
-
-
-  parStopWatch watch, full_iteration_watch, substep_watch;
+  parStopWatch watch, substep_watch;
+  double mean_full_iteration_time = 0.0, mean_viscosity_step_time = 0.0, mean_projection_step_time = 0.0, mean_compute_velocity_at_nodes_time = 0.0, mean_update_time = 0.0;
   watch.start("Total runtime");
   double tn = tstart;
-
-  double full_iteration_time, update_grid_time, viscosity_step_time, projection_step_time, compute_velocity_at_node_time, compute_pressure_time;
 
   my_p4est_poisson_cells_t* cell_solver = NULL;
   my_p4est_poisson_faces_t* face_solver = NULL;
 
   while(tn+0.01*dt<tstart+duration)
   {
-    full_iteration_watch.start("");
     substep_watch.start("");
     if(iter>0)
     {
@@ -1147,99 +1329,66 @@ int main (int argc, char* argv[])
         ns->set_dt(dt);
       }
 
-      bool grid_has_changed = ns->update_from_tn_to_tnp1(level_set, false, false);
-
-      if(cell_solver != NULL && grid_has_changed){
+      bool solvers_can_be_reused = ns->update_from_tn_to_tnp1(NULL, (iter%steps_grid_update!=0), false);
+      if(cell_solver != NULL && !solvers_can_be_reused){
         delete cell_solver; cell_solver = NULL; }
-      if(face_solver != NULL && grid_has_changed){
+      if(face_solver != NULL && !solvers_can_be_reused){
         delete face_solver; face_solver = NULL; }
     }
-
     substep_watch.stop();
-    update_grid_time = substep_watch.read_duration();
+    mean_update_time += substep_watch.read_duration();
     if(save_state && ((int) floor(tn/dt_save_data)) != save_data_idx)
     {
       save_data_idx = ((int) floor(tn/dt_save_data));
       ns->save_state(out_dir, tn, n_states);
     }
 
-    if(external_force_u!=NULL) delete external_force_u;
-    external_force_u = new external_force_u_t;
-
-    if(external_force_v!=NULL) delete external_force_v;
-    external_force_v = new external_force_v_t;
-
-#ifdef P4_TO_P8
-    if(external_force_w!=NULL) delete external_force_w;
-    external_force_w = new external_force_w_t;
-#endif
-
-
-#ifdef P4_TO_P8
-    CF_3 *external_forces[P4EST_DIM] = { external_force_u, external_force_v, external_force_w };
-#else
-    CF_2 *external_forces[P4EST_DIM] = { external_force_u, external_force_v };
-#endif
-    ns->set_external_forces(external_forces);
-
     Vec hodge_old;
     Vec hodge_new;
     ierr = VecCreateSeq(PETSC_COMM_SELF, ns->get_p4est()->local_num_quadrants, &hodge_old); CHKERRXX(ierr);
-    double err_hodge = 1;
-    int iter_hodge = 0;
-    viscosity_step_time = projection_step_time = 0.0;
-    while(iter_hodge<10 && err_hodge>1e-3)
+    double corr_hodge = 1.0;
+    unsigned int iter_hodge = 0;
+    while(iter_hodge<niter_hodge_max && corr_hodge>hodge_tolerance)
     {
       hodge_new = ns->get_hodge();
       ierr = VecCopy(hodge_new, hodge_old); CHKERRXX(ierr);
 
       substep_watch.start("");
-      ns->solve_viscosity(face_solver, (face_solver!=NULL), KSPBCGS, PCHYPRE);
+      ns->solve_viscosity(face_solver, (face_solver!=NULL), KSPBCGS, pc_face);
       substep_watch.stop();
-      viscosity_step_time += substep_watch.read_duration();
+      mean_viscosity_step_time += substep_watch.read_duration();
       substep_watch.start("");
-      ns->solve_projection(cell_solver, (cell_solver!= NULL), KSPCG, PCHYPRE);
+      ns->solve_projection(cell_solver, (cell_solver!=NULL), cell_solver_type, pc_cell);
       substep_watch.stop();
-      projection_step_time += substep_watch.read_duration();
+      mean_projection_step_time += substep_watch.read_duration();
 
       hodge_new = ns->get_hodge();
       const double *ho; ierr = VecGetArrayRead(hodge_old, &ho); CHKERRXX(ierr);
       const double *hn; ierr = VecGetArrayRead(hodge_new, &hn); CHKERRXX(ierr);
-      err_hodge = 0;
+      corr_hodge = 0;
       p4est_t *p4est = ns->get_p4est();
-      my_p4est_interpolation_nodes_t *interp_phi = ns->get_interp_phi();
       for(p4est_topidx_t tree_idx=p4est->first_local_tree; tree_idx<=p4est->last_local_tree; ++tree_idx)
       {
         p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
         for(size_t q=0; q<tree->quadrants.elem_count; ++q)
         {
           p4est_locidx_t quad_idx = tree->quadrants_offset+q;
-          double xyz[P4EST_DIM];
-          quad_xyz_fr_q(quad_idx, tree_idx, p4est, ns->get_ghost(), xyz);
-#ifdef P4_TO_P8
-          if((*interp_phi)(xyz[0],xyz[1],xyz[2])<0)
-#else
-          if((*interp_phi)(xyz[0],xyz[1])<0)
-#endif
-            err_hodge = max(err_hodge, fabs(ho[quad_idx]-hn[quad_idx]));
+          corr_hodge = max(corr_hodge, fabs(ho[quad_idx]-hn[quad_idx]));
         }
       }
-      int mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_hodge, 1, MPI_DOUBLE, MPI_MAX, mpi.comm()); SC_CHECK_MPI(mpiret);
+      int mpiret = MPI_Allreduce(MPI_IN_PLACE, &corr_hodge, 1, MPI_DOUBLE, MPI_MAX, mpi.comm()); SC_CHECK_MPI(mpiret);
       ierr = VecRestoreArrayRead(hodge_old, &ho); CHKERRXX(ierr);
       ierr = VecRestoreArrayRead(hodge_new, &hn); CHKERRXX(ierr);
 
-      ierr = PetscPrintf(mpi.comm(), "hodge iteration #%d, error = %e\n", iter_hodge, err_hodge); CHKERRXX(ierr);
+      ierr = PetscPrintf(mpi.comm(), "hodge iteration #%d, correction = %e\n", iter_hodge, corr_hodge); CHKERRXX(ierr);
       iter_hodge++;
     }
     ierr = VecDestroy(hodge_old); CHKERRXX(ierr);
     substep_watch.start("");
     ns->compute_velocity_at_nodes();
     substep_watch.stop();
-    compute_velocity_at_node_time = substep_watch.read_duration();
-    substep_watch.start("");
+    mean_compute_velocity_at_nodes_time += substep_watch.read_duration();
     ns->compute_pressure();
-    substep_watch.stop();
-    compute_pressure_time = substep_watch.read_duration();
 
     tn += dt;
 
@@ -1279,9 +1428,9 @@ int main (int argc, char* argv[])
         fclose(fp_mass_flow);
       }
     }
-    if (save_profile && (tn > stat_start))
+    if (save_profile && (tn > avg_start))
     {
-      // update averaged profile here
+      ns->get_slice_averaged_vnp1_profile(dir::x, dir::y, slice_averaged_profile);
       if(!mpi.rank())
       {
         fp_velocity_profile = fopen(file_velocity_profile, "a");
@@ -1291,11 +1440,13 @@ int main (int argc, char* argv[])
 #else
           throw std::invalid_argument("main_shs_2d: could not open file for averaged velocity profile output.");
 #endif
-        //        fprintf(fp_velocity_profile, "%g %g\n", ys, averaged us);
+        fprintf(fp_velocity_profile, "%.12g", tn);
+        for (int k = 0; k < ntree_y*(1<<lmax); ++k)
+          fprintf(fp_velocity_profile, " %.12g", slice_averaged_profile.at(k));
+        fprintf(fp_velocity_profile, "\n");
         fclose(fp_velocity_profile);
       }
     }
-
 
     ierr = PetscPrintf(mpi.comm(), "Iteration #%04d : tn = %.5e, percent done : %.1f%%, \t max_L2_norm_u = %.5e, \t number of leaves = %d\n", iter, tn, 100*(tn - tstart)/duration, ns->get_max_L2_norm_u(), ns->get_p4est()->global_num_quadrants); CHKERRXX(ierr);
 
@@ -1316,26 +1467,38 @@ int main (int argc, char* argv[])
       sprintf(vtk_name, "%s/snapshot_%d", vtk_path, export_vtk);
       ns->save_vtk(vtk_name);
     }
-    full_iteration_watch.stop();
-    full_iteration_time = full_iteration_watch.read_duration();
-    ierr = PetscPrintf(mpi.comm(), "Iteration #%04d : total time = %.5e, percent update_grid: %.1f%%, \t percent viscosity step: %.1f%%, \t percent projection step: %.1f%%,  \t percent compute_velocity_nodes: %.1f%%,  \t percent compute_pressure: %.1f%%\n", iter, full_iteration_time, 100*update_grid_time/full_iteration_time, 100*viscosity_step_time/full_iteration_time, 100*projection_step_time/full_iteration_time, 100*compute_velocity_at_node_time/full_iteration_time, 100*compute_pressure_time/full_iteration_time); CHKERRXX(ierr);
     iter++;
   }
 
-  if(external_force_u==NULL) delete external_force_u;
-  if(external_force_v==NULL) delete external_force_v;
-#ifdef P4_TO_P8
-  if(external_force_w==NULL) delete external_force_w;
-#endif
-
   watch.stop();
-  watch.print_duration();
+  mean_full_iteration_time             = watch.read_duration()/((double) iter);
+  mean_viscosity_step_time            /= ((double) iter);
+  mean_projection_step_time           /= ((double) iter);
+  mean_compute_velocity_at_nodes_time /= ((double) iter);
+  mean_update_time                    /= ((double) iter);
+
+  ierr = PetscPrintf(mpi.comm(), "Mean computational time spent on \n"); CHKERRXX(ierr);
+  ierr = PetscPrintf(mpi.comm(), " viscosity step: %.5e\n", mean_viscosity_step_time); CHKERRXX(ierr);
+  ierr = PetscPrintf(mpi.comm(), " projection step: %.5e\n", mean_projection_step_time); CHKERRXX(ierr);
+  ierr = PetscPrintf(mpi.comm(), " computing velocities at nodes: %.5e\n", mean_compute_velocity_at_nodes_time); CHKERRXX(ierr);
+  ierr = PetscPrintf(mpi.comm(), " grid update: %.5e\n", mean_update_time); CHKERRXX(ierr);
+  ierr = PetscPrintf(mpi.comm(), " full iteration (total): %.5e\n", mean_full_iteration_time); CHKERRXX(ierr);
+
+  if(cell_solver!=NULL)
+    delete  cell_solver;
+  if(face_solver!=NULL)
+    delete face_solver;
 
   delete ns;        // deletes the navier-stokes solver
   // the brick and the connectivity are deleted within the above destructor...
-  // p4est_n and p4est_nm1 are deleted within the above destructor...
   delete data;      // deletes the splitting criterion object
   delete level_set; // deletes the levelset object
+  if(bc_wall_type_u!=NULL)
+    delete bc_wall_type_u;
+#ifdef P4_TO_P8
+  if(bc_wall_type_w)
+    delete bc_wall_type_w;
+#endif
 
   return 0;
 }

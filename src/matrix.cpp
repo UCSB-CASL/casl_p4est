@@ -1,6 +1,13 @@
 #include "matrix.h"
 #include <stdio.h>
 
+//#include <cblas.h>
+/* [Raphael:] I tried to optimize these routines with cblas functions,
+ * but it turns out that they are called only for matrices that are too small
+ * to see any improvement. Therefore, I decided to leave them as such, as it
+ * increases the general portability of the code...
+ * */
+
 void matrix_t::resize(int m, int n)
 {
   this->m = m;
@@ -51,6 +58,7 @@ void matrix_t::matvec( const vector<double>& x, vector<double>& b )
   if(n != (int) x.size()) throw std::invalid_argument("[CASL_ERROR]: matrix_t->matvec: the matrix and X must have compatible sizes");
 #endif
   b.resize(m);
+//  cblas_dgemv(CblasRowMajor, CblasNoTrans, m, n, 1.0, values.data(), n, x.data(), 1, 0.0, b.data(), 1);
   for( int i=0; i<m; i++ )
   {
     b[i]=0;
@@ -69,6 +77,7 @@ void matrix_t::tranpose_matvec( const vector<double> x[], vector<double> b[], un
 #endif
   for (unsigned int k = 0; k < n_vectors; ++k) {
     b[k].resize(n);
+//    cblas_dgemv(CblasRowMajor, CblasTrans, m, n, 1.0, values.data(), n, x[k].data(), 1, 0.0, b[k].data(), 1);
     for( int i=0; i<n; i++ )
     {
       b[k][i] = 0;
@@ -84,6 +93,7 @@ void matrix_t::matrix_product(  matrix_t& b, matrix_t& c )
   if( n != b.m ) throw std::invalid_argument("[CASL_ERROR]: matrix_t->matrix_product: the matrix sizes don't match");
 #endif
   c.resize(m,b.n);
+//  cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, m, b.n, n, 1.0, this->values.data(), n, b.values.data(), b.n, 0.0, c.values.data(), c.n);
   for( int i=0; i<m; i++ )
     for( int k=0; k<b.n; k++ )
     {
@@ -97,6 +107,7 @@ void matrix_t::matrix_product(  matrix_t& b, matrix_t& c )
 void matrix_t::mtm_product(matrix_t& M )
 {
   M.resize(num_cols(),num_cols());
+//  cblas_dgemm(CblasRowMajor, CblasTrans, CblasNoTrans, this->n, this->n, this->m, 1.0, this->values.data(), this->n, this->values.data(), this->n, 0.0, M.values.data(), this->n);
   for( int i=0; i<n; i++ )
     for( int j=i; j<n; j++ )
     {
@@ -117,6 +128,12 @@ double matrix_t::scale_by_maxabs(vector<double> x[], unsigned int n_vectors)
     if( m != (int) x[k].size() )
       throw std::invalid_argument("[CASL_ERROR]: matrix_t->scale_by_maxabs: the matrix and (one of) the right hand side(s) don't have the same size");
 #endif
+//  double abs_max = MAX(EPS, fabs(values[cblas_idamax(n*m, this->values.data(), 1)]));
+  // these following ones introduce a (very!) slight change of behavior
+//  cblas_dscal(n*m, (1.0/abs_max), this->values.data(), 1);
+//  for (unsigned int k = 0; k < n_vectors; ++k)
+//    cblas_dscal(x[k].size(), (1.0/abs_max), x[k].data(), 1);
+
   double abs_max = EPS;
   for( unsigned int i=0; i< (unsigned int) m; i++ )
     for( int j=0; j<n; j++ )
@@ -192,6 +209,7 @@ void matrix_t::operator+=(matrix_t& M )
 #ifdef CASL_THROWS
   if(m!=M.m || n!=M.n) throw std::invalid_argument("[CASL_ERRO]: matrix_t->+=: the matrices have different sizes");
 #endif
+//  cblas_daxpy(n*m, 1.0, M.values.data(), 1, this->values.data(), 1);
   for(unsigned int i=0; i<values.size(); i++)
     values[i] += M.values[i];
 }
@@ -201,18 +219,21 @@ void matrix_t::operator-=(matrix_t& M )
 #ifdef CASL_THROWS
   if(m!=M.m || n!=M.n) throw std::invalid_argument("[CASL_ERRO]: matrix_t->-=: the matrices have different sizes");
 #endif
+//  cblas_daxpy(n*m, -1.0, M.values.data(), 1, this->values.data(), 1);
   for(unsigned int i=0; i<values.size(); i++)
     values[i] -= M.values[i];
 }
 
 void matrix_t::operator*=( double s )
 {
+//  cblas_dscal(n*m, s, this->values.data(), 1);
   for(unsigned int i=0; i<values.size(); i++)
     values[i] *= s;
 }
 
 void matrix_t::operator/=( double s )
 {
+//  cblas_dscal(n*m, (1.0/s), this->values.data(), 1);
   for(unsigned int i=0; i<values.size(); i++)
     values[i] /= s;
 }

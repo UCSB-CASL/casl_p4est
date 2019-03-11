@@ -240,14 +240,17 @@ void my_p4est_poisson_cells_t::solve(Vec solution, bool use_nonzero_initial_gues
       setup_negative_laplace_matrix();
     }
   }
-  /* [Raphael Egan:] it seems like the option SAME_PRECONDITIONER in KSPSetOperators no longer
-   * exists in versions of PETSc >= 3.7...
-   * I would need to get kinda deep into PETSc internal functions to make sure, but it seems like
-   * such a statement as the above will trigger a preconditioner reset no matter what...
-   * Therefore, I have decided to avoid that call, given that 'is_matrix_ready' can't switch from
-   * false to true without a possible call to KSPSetOperators. Hence, ksp's operators are always
-   * well-defined if is_matrix_ready is true!
-   * IMPORTANT NOTE: any further modification must be consistent with that
+  ierr = KSPSetOperators(ksp, A, A, SAME_NONZERO_PATTERN); CHKERRXX(ierr);
+  /* [Raphael Egan:] Starting from version 3.5, the last argument in KSPSetOperators became
+   * irrelevant and is now simply disregarded in the above call. The matrices now keep track
+   * of changes to their values and/or to their nonzero pattern by themselves. If no
+   * modification was made to the matrix, the ksp environment can figure it out and knows
+   * that the current preconditioner is still valid, thus it won't be recomputed.
+   * If one desires to force reusing the current preconditioner EVEN IF a modification was
+   * made to the matrix, one needs to call
+   * ierr = KSPSetReusePreconditioner(ksp, PETSC_TRUE); CHKERRXX(ierr);
+   * before the subsequent call to KSPSolve().
+   * I have decided not to enforce that...
    */
 
   // setup rhs
@@ -926,8 +929,6 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
     ierr = VecDestroy(null_space); CHKERRXX(ierr);
     null_space = NULL;
   }
-
-  ierr = KSPSetOperators(ksp, A, A, SAME_NONZERO_PATTERN); CHKERRXX(ierr);
   is_matrix_ready = true;
 
   ierr = PetscLogEventEnd(log_my_p4est_poisson_cells_matrix_setup, A, 0, 0, 0); CHKERRXX(ierr);
@@ -1114,7 +1115,6 @@ void my_p4est_poisson_cells_t::update_matrix_diag_only()
     null_space = NULL;
   }
 
-  ierr = KSPSetOperators(ksp, A, A, SAME_NONZERO_PATTERN); CHKERRXX(ierr);
   is_matrix_ready = true;
 
   ierr = PetscLogEventEnd(log_my_p4est_poisson_cells_update_matrix_diag_only, A, 0, 0, 0); CHKERRXX(ierr);

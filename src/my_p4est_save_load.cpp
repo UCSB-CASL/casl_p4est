@@ -305,7 +305,7 @@ PetscErrorCode LoadVec(const char fname[], unsigned int n_vecs, Vec *x, const in
 
 void my_p4est_save_forest(const char* absolute_path_to_file, p4est_t* forest, p4est_nodes_t* nodes, const my_p4est_faces_t* faces)
 {
-  SC_CHECK_ABORTF((forest->data_size == 0), "This function assumes that the p4est object has no cell-associated data, aborting...");
+  SC_CHECK_ABORTF((forest->data_size == 0), "my_p4est_save_forest: this function assumes that the p4est object has no cell-associated data, aborting...");
   void* user_pointer_to_restore = forest->user_pointer;
 
   // node offset in global ordering per proc (compute it once and pass it in the pointer to avoid repeated long calculations on large numbers of procs)
@@ -492,6 +492,7 @@ void my_p4est_load_forest_and_data(const MPI_Comm mpi_comm, const char* absolute
 
     PetscErrorCode ierr = LoadVec(absolute_path_to_file, num_vecs, pointer_to_vecs, data_type, forest, ghost, nodes, faces); CHKERRXX(ierr);
   }
+  p4est_reset_data(forest, 0, NULL, NULL);
 }
 
 void my_p4est_load_forest_and_data(const MPI_Comm mpi_comm, const char* absolute_path_to_folder, p4est_t* &forest, p4est_connectivity_t* &conn,
@@ -544,7 +545,7 @@ my_p4est_brick_t* my_p4est_recover_brick(const p4est_connectivity_t* connectivit
     brick->xyz_max[i] = v2c[3*t2v[P4EST_CHILDREN*last_tree+P4EST_CHILDREN-1] + i];
     brick->xyz_min[i] = v2c[3*t2v[P4EST_CHILDREN*first_tree+0] + i];
   }
-  // initialize the numbers of trees along each dimensions
+  // initialize the numbers of trees along each dimension
   brick->nxyztrees[0] = 1;
   brick->nxyztrees[1] = 1;
   brick->nxyztrees[2] = 1;
