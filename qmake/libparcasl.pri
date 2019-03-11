@@ -44,6 +44,7 @@ SOURCES += \
   $$PARCASL/src/my_p4est_save_load.cpp \
   $$PARCASL/src/my_p4est_semi_lagrangian.cpp \
   $$PARCASL/src/my_p4est_solve_lsqr.cpp \
+ $$PARCASL/src/my_p4est_surfactant.cpp \
   $$PARCASL/src/my_p4est_trajectory_of_point.cpp \
   $$PARCASL/src/my_p4est_utils.cpp \
 #  $$PARCASL/src/my_p4est_epitaxy.cpp \
@@ -91,6 +92,7 @@ SOURCES += \
   $$PARCASL/src/my_p8est_semi_lagrangian.cpp \
   $$PARCASL/src/my_p8est_save_load.cpp \
   $$PARCASL/src/my_p8est_solve_lsqr.cpp \
+  $$PARCASL/src/my_p8est_surfactant.cpp \
   $$PARCASL/src/my_p8est_trajectory_of_point.cpp \
   $$PARCASL/src/my_p8est_utils.cpp \
   $$PARCASL/src/my_p8est_log_wrappers.c \
