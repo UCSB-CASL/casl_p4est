@@ -1836,4 +1836,32 @@ void compute_islands_numbers(const my_p4est_node_neighbors_t &ngbd, const Vec ph
 void get_all_neighbors(const p4est_locidx_t n, p4est_t *p4est, p4est_nodes_t *nodes, my_p4est_node_neighbors_t *ngbd, p4est_locidx_t *neighbors, bool *neighbor_exists);
 
 void compute_phi_eff(p4est_nodes_t *nodes, std::vector<Vec> *phi, std::vector<int> *acn, std::vector<bool> *refine_always, Vec phi_eff);
+
+
+class zero_cf_t : public CF_DIM
+{
+public:
+  double operator()(double, double P8C(double)) const
+  {
+    return 0;
+  }
+};
+
+static zero_cf_t zero_cf;
+
+inline double smooth_max(double a, double b, double e)
+{
+  return .5*(a+b+sqrt(SQR(a-b)+e*e));
+}
+
+inline double smooth_min(double a, double b, double e)
+{
+  return .5*(a+b-(sqrt(SQR(a-b)+e*e)));
+}
+
+inline double smooth_min2(double a, double b, double e)
+{
+  return .5*(a+b-(sqrt(SQR(a-b)+e*e)-e/sqrt(SQR(a-b)+e)));
+}
+
 #endif // UTILS_H

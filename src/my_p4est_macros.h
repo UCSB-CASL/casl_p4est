@@ -28,5 +28,19 @@
 #define foreach_ghost_quad(q, ghost)\
   for (p4est_locidx_t q = 0; q < (p4est_locidx_t) ghost->ghosts.elem_count; ++q)
 
+#define M_PARSER_ICAT(A,B) A ## B
+#define M_PARSER_CAT(A,B) M_PARSER_ICAT(A,B)
+
+#define M_PARSER_START for (short option_action = 0; option_action < 2; ++option_action)
+#define M_PARSER_ADD_OPTION(cmd, type, var, ...) option_action == 0 ? cmd.add_option(M_PARSER_CAT(param_key_,var), M_PARSER_CAT(param_descr_,var)) : (void) (var = cmd.get(M_PARSER_CAT(param_key_,var), var));
+#define M_PARSER_PARSE(cmd, argc, argv) if (option_action == 0) { cmd.parse(argc, argv); }
+#define M_PARSER_STAGE_1 if (option_action == 1)
+
+#define M_PARSER_DEFINE3(type, var, def, key, descr) type var = def; type * M_PARSER_CAT(param_ptr_,var) = &var; char M_PARSER_CAT(param_key_,var) [] =  key; char M_PARSER_CAT(param_descr_,var) [] = descr;
+#define M_PARSER_DEFINE2(type, var, def, descr)      type var = def; type * M_PARSER_CAT(param_ptr_,var) = &var; char M_PARSER_CAT(param_key_,var) [] = #var; char M_PARSER_CAT(param_descr_,var) [] = descr;
+#define M_PARSER_DEFINE1(type, var, def)             type var = def; type * M_PARSER_CAT(param_ptr_,var) = &var; char M_PARSER_CAT(param_key_,var) [] = #var; char M_PARSER_CAT(param_descr_,var) [] = #var;
+
+#define M_PARSER_WRITE_VARIABLE(mpicomm, fich, type, var, ...) PetscFPrintf(mpicomm, fich, "%-30s  %g\n", #var, (double) var);
+
 #endif // MY_P4EST_MACROS_H
 

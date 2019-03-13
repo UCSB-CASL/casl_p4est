@@ -97,36 +97,33 @@ M_PARSER_DEFINE2(int, nz, 1, "number of trees in z-dimension")
 M_PARSER_DEFINE2(int, lmin, 8, "min level of trees")
 M_PARSER_DEFINE2(int, lmax, 8, "max level of trees")
 #else
-M_PARSER_DEFINE2(int, lmin, 7, "min level of trees")
-M_PARSER_DEFINE2(int, lmax, 7, "max level of trees")
+M_PARSER_DEFINE2(int, lmin, 9, "min level of trees")
+M_PARSER_DEFINE2(int, lmax, 9, "max level of trees")
 #endif
-M_PARSER_DEFINE2(double, lip, 1.5, "Lipschitz constant")
-M_PARSER_DEFINE2(bool, refine_only_inside, 1, "Refine only inside")
-
+M_PARSER_DEFINE2(double, lip, 0.8, "Lipschitz constant")
 
 // advection parameters
-M_PARSER_DEFINE2(double, cfl,                     0.1, "CFL number")
+M_PARSER_DEFINE2(double, cfl,                     0.15, "CFL number")
 M_PARSER_DEFINE2(bool,   use_neumann,             1,    "Impose contact angle use Neumann BC 0/1")
 M_PARSER_DEFINE2(bool,   compute_exact,           0,    "Compute exact final shape (only for pure-curvature) 0/1")
 M_PARSER_DEFINE2(bool,   reinit_at_start,         1,    "Reinitialze level-set function at the start 0/1)")
-M_PARSER_DEFINE2(int,    contact_angle_extension, 0,    "Method for extending level-set function into wall: 0 - constant angle, 1 - , 2 - special")
+M_PARSER_DEFINE2(int,    contact_angle_extension, 2,    "Method for extending level-set function into wall: 0 - constant angle, 1 - , 2 - special")
 M_PARSER_DEFINE2(int,    volume_corrections,      2,    "Number of volume correction after each move")
 M_PARSER_DEFINE2(int,    max_iterations,          1000, "Maximum number of advection steps")
-M_PARSER_DEFINE2(int,    tolerance,               1.0e-8, "Stopping criteria")
 
 interpolation_method interpolation_between_grids = quadratic_non_oscillatory_continuous_v2;
 
 // scft parameters
-M_PARSER_DEFINE2(bool,   use_scft,            1,     "Turn on/off SCFT 0/1")
+M_PARSER_DEFINE2(bool,   use_scft,            0,     "Turn on/off SCFT 0/1")
 M_PARSER_DEFINE2(bool,   smooth_pressure,     1,     "Smooth pressure after first BC adjustment 0/1")
-M_PARSER_DEFINE2(int,    max_scft_iterations, 250,   "Maximum SCFT iterations")
+M_PARSER_DEFINE2(int,    max_scft_iterations, 500,   "Maximum SCFT iterations")
 M_PARSER_DEFINE2(int,    bc_adjust_min,       5,     "Minimun SCFT steps between adjusting BC")
 M_PARSER_DEFINE2(double, scft_tol,            1.e-3, "Tolerance for SCFT")
 M_PARSER_DEFINE2(double, scft_bc_tol,         1.e-2, "Tolerance for adjusting BC")
 
 // polymer
 M_PARSER_DEFINE2(double, box_size, 10, "Box size in units of Rg")
-M_PARSER_DEFINE2(double, f,        0.3, "Fraction of polymer A")
+M_PARSER_DEFINE2(double, f,        0.5, "Fraction of polymer A")
 M_PARSER_DEFINE2(double, XN,       20,  "Flory-Higgins interaction parameter")
 M_PARSER_DEFINE2(int,    ns,       40,  "Discretization of polymer chain")
 
@@ -138,21 +135,21 @@ M_PARSER_DEFINE2(int,  save_every_dn,   1, "") // for vtk
 
 // problem setting
 M_PARSER_DEFINE2(int, num_polymer_geometry, 0, "Initial polymer shape: 0 - drop, 1 - film, 2 - combination")
-M_PARSER_DEFINE2(int, num_wall_geometry,    2, "Wall geometry: 0 - no wall, 1 - wall, 2 - well")
+M_PARSER_DEFINE2(int, num_wall_geometry,    0, "Wall geometry: 0 - no wall, 1 - wall, 2 - well")
 M_PARSER_DEFINE2(int, num_wall_pattern,     0, "Wall chemical pattern: 0 - no pattern")
-M_PARSER_DEFINE2(int, num_seed,             3, "Seed: 0 - zero, 1 - random, 2 - horizontal stripes, 3 - vertical stripes, 4 - dots")
+M_PARSER_DEFINE2(int, num_seed,             2, "Seed: 0 - zero, 1 - random, 2 - horizontal stripes, 3 - vertical stripes, 4 - dots")
 M_PARSER_DEFINE2(int, num_example,          0, "Number of predefined example")
 
 // surface energies
 M_PARSER_DEFINE2(int, wall_energy_type, 1, "Method for setting wall surface energy: 0 - explicitly (i.e. convert XN to angles), 1 - through contact angles (i.e. convert angles to XN)")
 
-M_PARSER_DEFINE2(double, XN_air_avg, 1, "Polymer-air surface energy strength: average")
-M_PARSER_DEFINE2(double, XN_air_del, -0.5, "Polymer-air surface energy strength: difference")
+M_PARSER_DEFINE2(double, XN_air_avg, 20, "Polymer-air surface energy strength: average")
+M_PARSER_DEFINE2(double, XN_air_del, 15, "Polymer-air surface energy strength: difference")
 
-M_PARSER_DEFINE2(double, angle_A_min, 45,  "Minimum contact angle for A-block")
-M_PARSER_DEFINE2(double, angle_A_max, 45,  "Maximum contact angle for A-block")
-M_PARSER_DEFINE2(double, angle_B_min, 45, "Minimum contact angle for B-block")
-M_PARSER_DEFINE2(double, angle_B_max, 45, "Maximum contact angle for B-block")
+M_PARSER_DEFINE2(double, angle_A_min, 30,  "Minimum contact angle for A-block")
+M_PARSER_DEFINE2(double, angle_A_max, 30,  "Maximum contact angle for A-block")
+M_PARSER_DEFINE2(double, angle_B_min, 100, "Minimum contact angle for B-block")
+M_PARSER_DEFINE2(double, angle_B_max, 100, "Maximum contact angle for B-block")
 
 M_PARSER_DEFINE2(double, XN_wall_A_min, 5, "Minimum Polymer-wall interaction strength for A-block")
 M_PARSER_DEFINE2(double, XN_wall_A_max, 5, "Maximum Polymer-wall interaction strength for A-block")
@@ -160,13 +157,13 @@ M_PARSER_DEFINE2(double, XN_wall_B_min, 8, "Minimum Polymer-wall interaction str
 M_PARSER_DEFINE2(double, XN_wall_B_max, 8, "Maximum Polymer-wall interaction strength for B-block")
 
 // geometry parameters
-M_PARSER_DEFINE2(double, drop_r,      0.711, "")
-M_PARSER_DEFINE2(double, drop_x,      .0079, "")
-M_PARSER_DEFINE2(double, drop_y,      -.5013, "")
+M_PARSER_DEFINE2(double, drop_r,      0.5, "")
+M_PARSER_DEFINE2(double, drop_x,      .0, "")
+M_PARSER_DEFINE2(double, drop_y,      .0, "")
 M_PARSER_DEFINE2(double, drop_z,      .0, "")
 M_PARSER_DEFINE2(double, drop_r0,     0.6, "")
 M_PARSER_DEFINE2(double, drop_k,      5, "")
-M_PARSER_DEFINE2(double, drop_deform, 0.0, "")
+M_PARSER_DEFINE2(double, drop_deform, 0.05, "")
 
 M_PARSER_DEFINE2(double, film_eps, -1.0, "") // curvature
 M_PARSER_DEFINE2(double, film_nx,  0, "")
@@ -176,17 +173,17 @@ M_PARSER_DEFINE2(double, film_x,   .0, "")
 M_PARSER_DEFINE2(double, film_y,   .0, "")
 M_PARSER_DEFINE2(double, film_z,   .0, "")
 
-M_PARSER_DEFINE2(double, wall_eps, -0.5, "") // curvature
+M_PARSER_DEFINE2(double, wall_eps, -.5, "") // curvature
 M_PARSER_DEFINE2(double, wall_nx,  -0, "")
 M_PARSER_DEFINE2(double, wall_ny,  -1, "")
 M_PARSER_DEFINE2(double, wall_nz,  -0, "")
 M_PARSER_DEFINE2(double, wall_x,   .0, "")
-M_PARSER_DEFINE2(double, wall_y,   -.3+0.01, "")
+M_PARSER_DEFINE2(double, wall_y,   -.5+0.01, "")
 M_PARSER_DEFINE2(double, wall_z,   .0, "")
 
 M_PARSER_DEFINE2(double, well_x, 0.00, "Well geometry: center")
-M_PARSER_DEFINE2(double, well_z, 0.0053, "Well geometry: position")
-M_PARSER_DEFINE2(double, well_h, .50, "Well geometry: depth")
+M_PARSER_DEFINE2(double, well_z, 0.53, "Well geometry: position")
+M_PARSER_DEFINE2(double, well_h, 1.00, "Well geometry: depth")
 M_PARSER_DEFINE2(double, well_w, 0.77, "Well geometry: width")
 M_PARSER_DEFINE2(double, well_r, 0.10, "Well geometry: corner smoothing")
 
@@ -441,15 +438,8 @@ int main (int argc, char* argv[])
     throw std::invalid_argument("Could not create directory");
 
   char name[10000];
-  char data_out[1024];
 
   sprintf(name, "%s/parameters.dat", out_dir);
-  sprintf(data_out, "%s/data.dat", out_dir);
-
-  FILE *data_out_file;
-
-  ierr = PetscFOpen(mpi.comm(), data_out, "w", &data_out_file); CHKERRXX(ierr);
-
 
   parse_cmd(argc, argv);
   write_parameters(mpi.comm(), name);
@@ -525,7 +515,7 @@ int main (int argc, char* argv[])
       ierr = VecGetArray(phi_eff, &phi_eff_ptr); CHKERRXX(ierr);
 
       splitting_criteria_tag_t sp(lmin, lmax, lip);
-      sp.set_refine_only_inside(refine_only_inside);
+      sp.set_refine_only_inside(0);
 
       p4est_t *p4est_np1 = p4est_copy(p4est, P4EST_FALSE);
       p4est_ghost_t *ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
@@ -739,8 +729,6 @@ int main (int argc, char* argv[])
 
       scft.compute_energy_shape_derivative(0, velo);
 
-      ls.extend_from_interface_to_whole_domain_TVD_in_place_mask(phi_intf, phi_wall, velo, phi_intf);
-
       VecScaleGhost(velo, -1);
 
       VecCopyGhost(mu_m_tmp, mu_m);
@@ -768,6 +756,9 @@ int main (int argc, char* argv[])
       ierr = VecDestroy(mu_wall); CHKERRXX(ierr);
       ierr = VecDestroy(mu_intf); CHKERRXX(ierr);
     }
+
+    ierr = PetscPrintf(mpi.comm(), "Energy: %e, Change: %e\n", energy, energy-energy_old);
+    energy_old = energy;
 
     /* compute velocity and contact angle */
     Vec surf_tns;
@@ -826,8 +817,7 @@ int main (int argc, char* argv[])
     VecScaleGhost(velo_full, -1);
     VecAXPBYGhost(velo_full, 1, 1, velo);
 
-//    ls.extend_from_interface_to_whole_domain_TVD_in_place(phi_intf, velo_full, phi_intf);
-    ls.extend_from_interface_to_whole_domain_TVD_in_place_mask(phi_intf, phi_wall, velo_full, phi_intf);
+    ls.extend_from_interface_to_whole_domain_TVD_in_place(phi_intf, velo_full, phi_intf);
 
     double vn_avg = integration.integrate_over_interface(0, velo_full)/integration.measure_of_interface(0);
 
@@ -835,18 +825,12 @@ int main (int argc, char* argv[])
     foreach_dimension(dim) { ierr = VecDestroy(surf_tns_d[dim]); CHKERRXX(ierr); }
 
     VecShiftGhost(velo, -vn_avg);
-    VecShiftGhost(velo_full, -vn_avg);
 //    VecSetGhost(vn, 0);
 
-//    ls.extend_from_interface_to_whole_domain_TVD_in_place(phi_intf, velo, phi_intf);
-    ls.extend_from_interface_to_whole_domain_TVD_in_place_mask(phi_intf, phi_wall, velo, phi_intf);
-//    VecScaleGhost(phi_wall, -1.);
-//    ls.extend_Over_Interface_TVD(phi_wall, velo, 10, 1);
-//    VecScaleGhost(phi_wall, -1.);
+    ls.extend_from_interface_to_whole_domain_TVD_in_place(phi_intf, velo, phi_intf);
 
     /* compute time step dt */
     double dt_local = DBL_MAX;
-    double vmax = 0;
     double dt;
 
     double *velo_ptr;
@@ -874,40 +858,19 @@ int main (int argc, char* argv[])
 
       /* choose CFL = 0.8 ... just for fun! */
       dt_local = MIN(dt_local, cfl*fabs(s_min/velo_ptr[n]));
-      vmax = MAX(vmax, fabs(velo_ptr[n]));
     }
 
     ierr = VecRestoreArray(velo, &velo_ptr); CHKERRXX(ierr);
 
     MPI_Allreduce(&dt_local, &dt, 1, MPI_DOUBLE, MPI_MIN, p4est->mpicomm);
-    MPI_Allreduce(MPI_IN_PLACE, &vmax, 1, MPI_DOUBLE, MPI_MIN, p4est->mpicomm);
 
+    ierr = PetscPrintf(mpi.comm(), "Avg velo: %e, Time step: %e\n", vn_avg, dt);
 
 //    Vec surf_tns_tmp;
 //    ierr = VecDuplicate(phi_intf, &surf_tns_tmp); CHKERRXX(ierr);
 //    ls.extend_from_interface_to_whole_domain_TVD(phi_intf, surf_tns, surf_tns_tmp, 20);
 //    ierr = VecDestroy(surf_tns); CHKERRXX(ierr);
 //    surf_tns = surf_tns_tmp;
-
-    double energy_change_predicted;
-
-    Vec integrand;
-    ierr = VecDuplicate(phi_intf, &integrand); CHKERRXX(ierr);
-
-    VecPointwiseMultGhost(integrand, velo_full, velo_full); CHKERRXX(ierr);
-
-    energy_change_predicted = -dt*integration.integrate_over_interface(0, integrand);
-
-    ierr = VecDestroy(integrand); CHKERRXX(ierr);
-
-    if (save_data && iteration%save_every_dn == 0)
-    {
-      ierr = PetscFPrintf(mpi.comm(), data_out_file, "%d %e %e %e %e %e\n", (int) round(iteration/save_every_dn), dt, energy, energy-energy_old, energy_change_predicted, vmax); CHKERRXX(ierr);
-    }
-
-    ierr = PetscPrintf(mpi.comm(), "Avg velo: %e, Time step: %e\n", vn_avg, dt);
-    ierr = PetscPrintf(mpi.comm(), "Energy: %e, Change: %e, Predicted: %e\n", energy, energy-energy_old, energy_change_predicted);
-    energy_old = energy;
 
     /* save data */
     if (save_vtk && iteration%save_every_dn == 0)
@@ -1121,7 +1084,7 @@ int main (int argc, char* argv[])
       ierr = VecGetArray(phi_eff, &phi_eff_ptr); CHKERRXX(ierr);
 
       splitting_criteria_tag_t sp(lmin, lmax, lip);
-      sp.set_refine_only_inside(refine_only_inside);
+      sp.set_refine_only_inside(0);
 
       p4est_t *p4est_np1 = p4est_copy(p4est, P4EST_FALSE);
       p4est_ghost_t *ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
@@ -1183,9 +1146,6 @@ int main (int argc, char* argv[])
   p4est_ghost_destroy(ghost);
   p4est_destroy      (p4est);
   my_p4est_brick_destroy(connectivity, &brick);
-
-
-  ierr = PetscFClose(mpi.comm(), data_out_file); CHKERRXX(ierr);
 
   return 0;
 }

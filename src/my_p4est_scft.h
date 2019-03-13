@@ -181,7 +181,7 @@ public:
 
   void solve_for_propogators();
   void calculate_densities();
-  void update_potentials();
+  void update_potentials(bool update_mu_m=true, bool update_mu_p=true);
 
   void smooth_singularity_in_pressure_field();
 
@@ -212,6 +212,8 @@ public:
   double compute_change_in_energy(int phi_idx, Vec norm_velo, double dt);
   double compute_change_in_energy_contact_term(int phi0_idx, int phi1_idx, Vec norm_velo, double dt);
 
+  void sync_and_extend();
+
   void update_grid(Vec normal_velo, int surf_idx, double dt);
 
   inline p4est_t*       get_p4est() { return p4est; }
@@ -234,42 +236,48 @@ public:
   void save_VTK_q(int compt);
 
   /* Density Optimization */
-
-  Vec lam_m, lam_p, lam_a, lam_b;
-
-  std::vector<Vec> lam_fwd, lam_bwd;
-
-  Vec density_shape_grad;
-
-  Vec force_lam_m, force_lam_p;
-
-  Vec rho_lam_a, rho_lam_b;
-
   Vec mu_t;
+  Vec nu_m;
+  Vec nu_p;
+  Vec nu_a;
+  Vec nu_b;
 
-  double force_lam_p_avg, force_lam_m_avg;
+  double nu_0;
+  double cost_function;
 
-  double cost_func;
+  std::vector<Vec> zf;
+  std::vector<Vec> zb;
 
-  double lam_0;
+  Vec force_nu_m;
+  Vec force_nu_p;
 
-  double dt_density;
+  double force_nu_p_avg;
+  double force_nu_m_avg;
 
-  void dsa_initialize(CF_2 &mu_target_cf);
+  Vec psi_a;
+  Vec psi_b;
+
+  void dsa_initialize();
   void dsa_initialize_fields();
   void dsa_solve_for_propogators();
-  void dsa_diffusion_step(my_p4est_poisson_nodes_mls_sc_t *solver, double ds, Vec &sol, Vec &sol_nm1, Vec &exp_w, Vec &q, Vec &lam);
+  void dsa_diffusion_step(my_p4est_poisson_nodes_mls_sc_t *solver, double ds, Vec &sol, Vec &sol_nm1, Vec &exp_w, Vec &q, Vec &nu);
   void dsa_compute_densities();
   void dsa_update_potentials();
   void dsa_compute_shape_gradient(int phi_idx, Vec velo);
-  double dsa_compute_cost_functional();
-  double dsa_compute_change_in_functional(int phi_idx, Vec norm_velo, double dt);
+  double dsa_compute_cost_function();
+  double dsa_compute_change_in_functional(int phi_idx, Vec norm_velo, Vec density_grad_shape, double dt);
   void dsa_save_VTK(int compt);
   void dsa_save_VTK_before_moving(int compt);
 
-  double dsa_get_cost_func() { return cost_func; }
-  double dsa_get_pressure_force() { return force_lam_p_avg; }
-  double dsa_get_exchange_force() { return force_lam_m_avg; }
+  void dsa_sync_and_extend();
+  double dsa_get_nu_0() { return nu_0; }
+  double dsa_get_cost_function() { return cost_function; }
+  double dsa_get_pressure_force() { return force_nu_p_avg; }
+  double dsa_get_exchange_force() { return force_nu_m_avg; }
+
+  Vec dsa_get_nu_m() { return nu_m; }
+  Vec dsa_get_nu_p() { return nu_p; }
+  Vec dsa_get_mu_t()  { return mu_t;  }
 
 };
 

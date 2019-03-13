@@ -221,6 +221,42 @@ public:
   inline void set_use_neumann_for_contact_angle(bool value) { use_neumann_for_contact_angle = value; }
   inline void set_contact_angle_extension(int value) { contact_angle_extension = value; }
 
+  inline void extend_from_interface_to_whole_domain_TVD_in_place(Vec phi, Vec &q, Vec parent=NULL, int iterations=20) const
+  {
+    PetscErrorCode ierr;
+    Vec tmp;
+
+    if (parent == NULL) {
+      ierr = VecCreateGhostNodes(p4est, nodes, &tmp); CHKERRXX(ierr);
+    } else {
+      ierr = VecDuplicate(parent, &tmp); CHKERRXX(ierr);
+    }
+
+    extend_from_interface_to_whole_domain_TVD(phi, q, tmp, iterations);
+
+    ierr = VecDestroy(q); CHKERRXX(ierr);
+    q = tmp;
+  }
+
+  void extend_from_interface_to_whole_domain_TVD( Vec phi, Vec mask, Vec qi, Vec q, int iterations ) const;
+
+  inline void extend_from_interface_to_whole_domain_TVD_in_place_mask(Vec phi, Vec mask, Vec &q, Vec parent=NULL, int iterations=20) const
+  {
+    PetscErrorCode ierr;
+    Vec tmp;
+
+    if (parent == NULL) {
+      ierr = VecCreateGhostNodes(p4est, nodes, &tmp); CHKERRXX(ierr);
+    } else {
+      ierr = VecDuplicate(parent, &tmp); CHKERRXX(ierr);
+    }
+
+    extend_from_interface_to_whole_domain_TVD(phi, mask, q, tmp, iterations);
+
+    ierr = VecDestroy(q); CHKERRXX(ierr);
+    q = tmp;
+  }
+
 };
 
 #endif // MY_P4EST_LEVELSET_H

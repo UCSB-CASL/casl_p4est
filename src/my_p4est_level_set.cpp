@@ -11026,3 +11026,528 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_regional( Vec phi, Vec mask
 
   ierr = PetscLogEventEnd(log_my_p4est_level_set_extend_over_interface_TVD, phi, q, 0, 0); CHKERRXX(ierr);
 }
+
+
+
+void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD( Vec phi, Vec mask, Vec qi, Vec q, int iterations ) const
+{
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_level_set_extend_from_interface_TVD, phi, qi, q, 0); CHKERRXX(ierr);
+
+  /* init the neighborhood information if needed */
+  /* NOTE: from now on the neighbors will be initialized ... do we want to clear them
+   * at the end of this function if they were not initialized beforehand ?
+   */
+  ngbd->init_neighbors();
+
+  /* find dx and dy smallest */
+  splitting_criteria_t *data = (splitting_criteria_t*) p4est->user_pointer;
+  p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
+  p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
+  double xmin = p4est->connectivity->vertices[3*vm + 0];
+  double ymin = p4est->connectivity->vertices[3*vm + 1];
+  double xmax = p4est->connectivity->vertices[3*vp + 0];
+  double ymax = p4est->connectivity->vertices[3*vp + 1];
+  double dx = (xmax-xmin) / pow(2.,(double) data->max_lvl);
+  double dy = (ymax-ymin) / pow(2.,(double) data->max_lvl);
+
+#ifdef P4_TO_P8
+  double zmin = p4est->connectivity->vertices[3*vm + 2];
+  double zmax = p4est->connectivity->vertices[3*vp + 2];
+  double dz = (zmax-zmin) / pow(2.,(double) data->max_lvl);
+  double dl = MAX(dx, dy, dz);
+#else
+  double dl = MAX(dx, dy);
+#endif
+
+  Vec qxx, qyy;
+  double *qxx_p, *qyy_p;
+  ierr = VecCreateGhostNodes(p4est, nodes, &qxx); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodes(p4est, nodes, &qyy); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+  Vec qzz; double *qzz_p;
+  ierr = VecCreateGhostNodes(p4est, nodes, &qzz); CHKERRXX(ierr);
+  compute_derivatives(qi, qxx, qyy, qzz);
+#else
+  compute_derivatives(qi, qxx, qyy);
+#endif
+
+  Vec q1, q2;
+  double *q1_p, *q2_p, *q_p, *qi_p, *phi_p;
+  ierr = VecDuplicate(phi, &q1); CHKERRXX(ierr);
+  ierr = VecDuplicate(phi, &q2); CHKERRXX(ierr);
+
+  ierr = VecGetArray(qi, &qi_p); CHKERRXX(ierr);
+  ierr = VecGetArray(q , &q_p); CHKERRXX(ierr);
+  ierr = VecGetArray(q1, &q1_p); CHKERRXX(ierr);
+  ierr = VecGetArray(q2, &q2_p); CHKERRXX(ierr);
+  ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
+
+  /* compute the normals */
+  std::vector<double> nx(nodes->num_owned_indeps);
+  std::vector<double> ny(nodes->num_owned_indeps);
+#ifdef P4_TO_P8
+  std::vector<double> nz(nodes->num_owned_indeps);
+#endif
+  quad_neighbor_nodes_of_node_t qnnn;
+  for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+  {
+    ngbd->get_neighbors(n, qnnn);
+    nx[n] = qnnn.dx_central(phi_p);
+    ny[n] = qnnn.dy_central(phi_p);
+#ifdef P4_TO_P8
+    nz[n] = qnnn.dz_central(phi_p);
+    double norm = sqrt(nx[n]*nx[n] + ny[n]*ny[n] + nz[n]*nz[n]);
+#else
+    double norm = sqrt(nx[n]*nx[n] + ny[n]*ny[n]);
+#endif
+
+    if(norm>EPS)
+    {
+      nx[n] /= norm;
+      ny[n] /= norm;
+#ifdef P4_TO_P8
+      nz[n] /= norm;
+#endif
+    }
+    else
+    {
+      nx[n] = 0;
+      ny[n] = 0;
+#ifdef P4_TO_P8
+      nz[n] = 0;
+#endif
+    }
+  }
+
+  /* compute second order derivatives of phi for second order accurate location */
+  Vec dxx; double *dxx_p; ierr = VecCreateGhostNodes(p4est, nodes, &dxx); CHKERRXX(ierr);
+  Vec dyy; double *dyy_p; ierr = VecCreateGhostNodes(p4est, nodes, &dyy); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+  Vec dzz; double *dzz_p; ierr = VecCreateGhostNodes(p4est, nodes, &dzz); CHKERRXX(ierr);
+#endif
+
+  ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
+
+#ifdef P4_TO_P8
+  compute_derivatives(phi, dxx, dyy, dzz);
+#else
+  compute_derivatives(phi, dxx, dyy);
+#endif
+
+  ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
+
+  double *mask_p;
+  ierr = VecGetArray(mask, &mask_p); CHKERRXX(ierr);
+
+  ierr = VecGetArray(dxx, &dxx_p); CHKERRXX(ierr);
+  ierr = VecGetArray(dyy, &dyy_p); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+  ierr = VecGetArray(dzz, &dzz_p); CHKERRXX(ierr);
+#endif
+
+  /* initialization of q */
+  const std::vector<p4est_locidx_t>& layer_nodes = ngbd->layer_nodes;
+  const std::vector<p4est_locidx_t>& local_nodes = ngbd->local_nodes;
+
+  for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+    q_p[n] = (fabs(phi_p[n])<1.5*dl && mask_p[n] <= 0 )? qi_p[n] : 0;
+
+  // first initialize the quantities at the interface (instead of doing it each time in the loop ...)
+  std::vector<double> qi_m00(nodes->num_owned_indeps);
+  std::vector<double> qi_p00(nodes->num_owned_indeps);
+  std::vector<double> qi_0m0(nodes->num_owned_indeps);
+  std::vector<double> qi_0p0(nodes->num_owned_indeps);
+  std::vector<double> s_m00(nodes->num_owned_indeps);
+  std::vector<double> s_p00(nodes->num_owned_indeps);
+  std::vector<double> s_0m0(nodes->num_owned_indeps);
+  std::vector<double> s_0p0(nodes->num_owned_indeps);
+
+#ifdef P4_TO_P8
+  std::vector<double> qi_00m(nodes->num_owned_indeps);
+  std::vector<double> qi_00p(nodes->num_owned_indeps);
+  std::vector<double> s_00m(nodes->num_owned_indeps);
+  std::vector<double> s_00p(nodes->num_owned_indeps);
+  my_p4est_interpolation_nodes_t interp_m00(ngbd); interp_m00.set_input(qi, qxx, qyy, qzz, interpolation_on_interface);
+  my_p4est_interpolation_nodes_t interp_p00(ngbd); interp_p00.set_input(qi, qxx, qyy, qzz, interpolation_on_interface);
+  my_p4est_interpolation_nodes_t interp_0m0(ngbd); interp_0m0.set_input(qi, qxx, qyy, qzz, interpolation_on_interface);
+  my_p4est_interpolation_nodes_t interp_0p0(ngbd); interp_0p0.set_input(qi, qxx, qyy, qzz, interpolation_on_interface);
+  my_p4est_interpolation_nodes_t interp_00m(ngbd); interp_00m.set_input(qi, qxx, qyy, qzz, interpolation_on_interface);
+  my_p4est_interpolation_nodes_t interp_00p(ngbd); interp_00p.set_input(qi, qxx, qyy, qzz, interpolation_on_interface);
+#else
+  my_p4est_interpolation_nodes_t interp_m00(ngbd); interp_m00.set_input(qi, qxx, qyy, interpolation_on_interface);
+  my_p4est_interpolation_nodes_t interp_p00(ngbd); interp_p00.set_input(qi, qxx, qyy, interpolation_on_interface);
+  my_p4est_interpolation_nodes_t interp_0m0(ngbd); interp_0m0.set_input(qi, qxx, qyy, interpolation_on_interface);
+  my_p4est_interpolation_nodes_t interp_0p0(ngbd); interp_0p0.set_input(qi, qxx, qyy, interpolation_on_interface);
+#endif
+
+  for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+  {
+    ngbd->get_neighbors(n, qnnn);
+    double x = node_x_fr_n(n, p4est, nodes);
+    double y = node_y_fr_n(n, p4est, nodes);
+#ifdef P4_TO_P8
+    double z = node_z_fr_n(n, p4est, nodes);
+#endif
+
+    double p_000, p_m00, p_p00, p_0m0, p_0p0;
+#ifdef P4_TO_P8
+    double p_00m, p_00p;
+#endif
+    qnnn.ngbd_with_quadratic_interpolation(phi_p, p_000,
+                                                 p_m00, p_p00,
+                                                 p_0m0, p_0p0
+                                             #ifdef P4_TO_P8
+                                                 , p_00m, p_00p
+                                             #endif
+                                                 );
+
+
+    double m_000, m_m00, m_p00, m_0m0, m_0p0;
+#ifdef P4_TO_P8
+    double m_00m, m_00p;
+#endif
+    qnnn.ngbd_with_quadratic_interpolation(mask_p, m_000,
+                                                 m_m00, m_p00,
+                                                 m_0m0, m_0p0
+                                             #ifdef P4_TO_P8
+                                                 , m_00m, m_00p
+                                             #endif
+                                                 );
+
+    bool one_is_neg = m_000 < 0 ||
+        m_m00 < 0 || m_p00 < 0 ||
+    #ifdef P4_TO_P8
+        m_00m < 0 || m_00p < 0 ||
+    #endif
+        m_0m0 < 0 || m_0p0 < 0;
+
+
+    double s_p00_ = qnnn.d_p00; double s_m00_ = qnnn.d_m00;
+    double s_0p0_ = qnnn.d_0p0; double s_0m0_ = qnnn.d_0m0;
+#ifdef P4_TO_P8
+    double s_00p_ = qnnn.d_00p; double s_00m_ = qnnn.d_00m;
+#endif
+
+    //---------------------------------------------------------------------
+    // Second Order derivatives
+    //---------------------------------------------------------------------
+    double pxx_000 = dxx_p[n];
+    double pyy_000 = dyy_p[n];
+#ifdef P4_TO_P8
+    double pzz_000 = dzz_p[n];
+#endif
+    double pxx_m00 = qnnn.f_m00_linear(dxx_p);
+    double pxx_p00 = qnnn.f_p00_linear(dxx_p);
+    double pyy_0m0 = qnnn.f_0m0_linear(dyy_p);
+    double pyy_0p0 = qnnn.f_0p0_linear(dyy_p);
+#ifdef P4_TO_P8
+    double pzz_00m = qnnn.f_00m_linear(dzz_p);
+    double pzz_00p = qnnn.f_00p_linear(dzz_p);
+#endif
+
+    if(p_000*p_m00<0){
+//      s_m00[n] = interface_Location(0, s_m00_, p_000, p_m00);
+      s_m00[n] =-interface_Location_With_Second_Order_Derivative(-s_m00_,   0,p_m00,p_000,pxx_m00,pxx_000);
+      s_m00[n] = MAX(s_m00[n],EPS);
+      if (one_is_neg) {
+      double xyz[] = { x-s_m00[n], y
+                 #ifdef P4_TO_P8
+                       , z
+                 #endif
+                     };
+        interp_m00.add_point(n, xyz);
+      } else {
+        qi_m00[n] = 0;
+      }
+
+    }
+    else {
+      qi_m00[n] = qi_p[n];
+      s_m00[n] = s_m00_;
+    }
+    if(p_000*p_p00<0) {
+//      s_p00[n] = interface_Location(0, s_p00_, p_000, p_p00);
+      s_p00[n] = interface_Location_With_Second_Order_Derivative(    0,s_p00_,p_000,p_p00,pxx_000,pxx_p00);
+      s_p00[n] = MAX(s_p00[n],EPS);
+      if (one_is_neg) {
+      double xyz[] = { x+s_p00[n], y
+                 #ifdef P4_TO_P8
+                       , z
+                 #endif
+                     };
+      interp_p00.add_point(n, xyz);
+      } else {
+        qi_p00[n] = 0;
+      }
+    }
+    else {
+      qi_p00[n] = qi_p[n];
+      s_p00[n] = s_p00_;
+    }
+    if(p_000*p_0m0<0) {
+//      s_0m0[n] = interface_Location(0, s_0m0_, p_000, p_0m0);
+      s_0m0[n] =-interface_Location_With_Second_Order_Derivative(-s_0m0_,   0,p_0m0,p_000,pyy_0m0,pyy_000);
+      s_0m0[n] = MAX(s_0m0[n],EPS);
+      if (one_is_neg) {
+      double xyz[] = { x, y-s_0m0[n]
+                 #ifdef P4_TO_P8
+                       , z
+                 #endif
+                     };
+      interp_0m0.add_point(n, xyz);
+      } else {
+        qi_0m0[n] = 0;
+      }
+    }
+    else {
+      qi_0m0[n] = qi_p[n];
+      s_0m0[n] = s_0m0_;
+    }
+    if(p_000*p_0p0<0){
+//      s_0p0[n] = interface_Location(0, s_0p0_, p_000, p_0p0);
+      s_0p0[n] = interface_Location_With_Second_Order_Derivative(    0,s_0p0_,p_000,p_0p0,pyy_000,pyy_0p0);
+      s_0p0[n] = MAX(s_0p0[n],EPS);
+      if (one_is_neg) {
+      double xyz[] = { x, y+s_0p0[n]
+                 #ifdef P4_TO_P8
+                       , z
+                 #endif
+                     };
+      interp_0p0.add_point(n, xyz);
+      } else {
+        qi_0p0[n] = 0;
+      }
+    }
+    else{
+      qi_0p0[n] = qi_p[n];
+      s_0p0[n] = s_0p0_;
+    }
+#ifdef P4_TO_P8
+    if(p_000*p_00m<0) {
+//      s_00m[n] = interface_Location(0, s_00m_, p_000, p_00m);
+      s_00m[n] =-interface_Location_With_Second_Order_Derivative(-s_00m_,   0,p_00m,p_000,pzz_00m,pzz_000);
+      s_00m[n] = MAX(s_00m[n],EPS);
+      if (one_is_neg) {
+      double xyz[] = { x, y, z-s_00m[n]};
+      interp_00m.add_point(n, xyz);
+      } else {
+        qi_00m[n] = 0;
+      }
+    }
+    else {
+      qi_00m[n] = qi_p[n];
+      s_00m[n] = s_00m_;
+    }
+    if(p_000*p_00p<0) {
+//      s_00p[n] = interface_Location(0, s_00p_, p_000, p_00p);
+      s_00p[n] = interface_Location_With_Second_Order_Derivative(    0,s_00p_,p_000,p_00p,pzz_000,pzz_00p);
+      s_00p[n] = MAX(s_00p[n],EPS);
+      if (one_is_neg) {
+      double xyz[] = { x, y, z+s_00p[n] };
+      interp_00p.add_point(n, xyz);
+      } else {
+        qi_00p[n] = 0;
+      }
+    }
+    else {
+      qi_00p[n] = qi_p[n];
+      s_00p[n] = s_00p_;
+    }
+#endif
+  }
+
+  ierr = VecRestoreArray(mask, &mask_p); CHKERRXX(ierr);
+
+  interp_m00.interpolate(qi_m00.data());
+  interp_p00.interpolate(qi_p00.data());
+  interp_0m0.interpolate(qi_0m0.data());
+  interp_0p0.interpolate(qi_0p0.data());
+#ifdef P4_TO_P8
+  interp_00m.interpolate(qi_00m.data());
+  interp_00p.interpolate(qi_00p.data());
+#endif
+
+  for(int it=0; it<iterations; ++it)
+  {
+    //---------------------------------------------------------------------
+    // q1 = q - dt*sgn(phi)*n \cdot \nabla(q) by the Godunov scheme with ENO-2 and subcell resolution
+    //---------------------------------------------------------------------
+
+#ifdef P4_TO_P8
+    compute_derivatives(q, qxx, qyy, qzz);
+#else
+    compute_derivatives(q, qxx, qyy);
+#endif
+
+    ierr = VecGetArray(qxx, &qxx_p); CHKERRXX(ierr);
+    ierr = VecGetArray(qyy, &qyy_p); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    ierr = VecGetArray(qzz, &qzz_p); CHKERRXX(ierr);
+#endif
+
+    /* First do layer nodes */
+    extend_from_interface_to_whole_domain_TVD_one_iteration(layer_nodes, phi_p, nx, ny,
+                                                        #ifdef P4_TO_P8
+                                                            nz,
+                                                        #endif
+                                                            q1_p,
+                                                            q_p, qxx_p, qyy_p,
+                                                        #ifdef P4_TO_P8
+                                                            qzz_p,
+                                                        #endif
+                                                            qi_m00, qi_p00,
+                                                            qi_0m0, qi_0p0,
+                                                        #ifdef P4_TO_P8
+                                                            qi_00m, qi_00p,
+                                                        #endif
+                                                            s_m00, s_p00,
+                                                            s_0m0, s_0p0
+                                                        #ifdef P4_TO_P8
+                                                            , s_00m, s_00p
+                                                        #endif
+                                                            );
+
+    /* initiate communication for q1 */
+    ierr = VecGhostUpdateBegin(q1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+    /* compute the local nodes */
+    extend_from_interface_to_whole_domain_TVD_one_iteration(local_nodes, phi_p, nx, ny,
+                                                        #ifdef P4_TO_P8
+                                                            nz,
+                                                        #endif
+                                                            q1_p,
+                                                            q_p, qxx_p, qyy_p,
+                                                        #ifdef P4_TO_P8
+                                                            qzz_p,
+                                                        #endif
+                                                            qi_m00, qi_p00,
+                                                            qi_0m0, qi_0p0,
+                                                        #ifdef P4_TO_P8
+                                                            qi_00m, qi_00p,
+                                                        #endif
+                                                            s_m00, s_p00,
+                                                            s_0m0, s_0p0
+                                                        #ifdef P4_TO_P8
+                                                            , s_00m, s_00p
+                                                        #endif
+                                                            );
+
+    /* finish communication for q1 */
+    ierr = VecGhostUpdateEnd(q1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+    ierr = VecRestoreArray(qxx, &qxx_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(qyy, &qyy_p); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    ierr = VecRestoreArray(qzz, &qzz_p); CHKERRXX(ierr);
+#endif
+
+#ifdef P4_TO_P8
+    compute_derivatives(q1, qxx, qyy, qzz);
+#else
+    compute_derivatives(q1, qxx, qyy);
+#endif
+
+    ierr = VecGetArray(qxx, &qxx_p); CHKERRXX(ierr);
+    ierr = VecGetArray(qyy, &qyy_p); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    ierr = VecGetArray(qzz, &qzz_p); CHKERRXX(ierr);
+#endif
+
+    //---------------------------------------------------------------------
+    // q2 = q1 - dt*sgn(phi)*n \cdot \nabla(q1) by the Godunov scheme with ENO-2 and subcell resolution
+    //---------------------------------------------------------------------
+    /* First do layer nodes */
+    extend_from_interface_to_whole_domain_TVD_one_iteration(layer_nodes, phi_p, nx, ny,
+                                                        #ifdef P4_TO_P8
+                                                            nz,
+                                                        #endif
+                                                            q2_p,
+                                                            q1_p, qxx_p, qyy_p,
+                                                        #ifdef P4_TO_P8
+                                                            qzz_p,
+                                                        #endif
+                                                            qi_m00, qi_p00,
+                                                            qi_0m0, qi_0p0,
+                                                        #ifdef P4_TO_P8
+                                                            qi_00m, qi_00p,
+                                                        #endif
+                                                            s_m00, s_p00,
+                                                            s_0m0, s_0p0
+                                                        #ifdef P4_TO_P8
+                                                            , s_00m, s_00p
+                                                        #endif
+                                                            );
+
+    /* initiate communication for q2 */
+    ierr = VecGhostUpdateBegin(q2, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+    /* compute the local nodes */
+    extend_from_interface_to_whole_domain_TVD_one_iteration(local_nodes, phi_p, nx, ny,
+                                                        #ifdef P4_TO_P8
+                                                            nz,
+                                                        #endif
+                                                            q2_p,
+                                                            q1_p, qxx_p, qyy_p,
+                                                        #ifdef P4_TO_P8
+                                                            qzz_p,
+                                                        #endif
+                                                            qi_m00, qi_p00,
+                                                            qi_0m0, qi_0p0,
+                                                        #ifdef P4_TO_P8
+                                                            qi_00m, qi_00p,
+                                                        #endif
+                                                            s_m00, s_p00,
+                                                            s_0m0, s_0p0
+                                                        #ifdef P4_TO_P8
+                                                            , s_00m, s_00p
+                                                        #endif
+                                                            );
+
+    /* finish communication for q2 */
+    ierr = VecGhostUpdateEnd(q2, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+    ierr = VecRestoreArray(qxx, &qxx_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(qyy, &qyy_p); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    ierr = VecRestoreArray(qzz, &qzz_p); CHKERRXX(ierr);
+#endif
+
+    //---------------------------------------------------------------------
+    // The third step of TVD RK-2 : q = .5*(q + q2)
+    //---------------------------------------------------------------------
+    for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+      q_p[n] = .5*(q_p[n] + q2_p[n]);
+  }
+
+  /* destroy the local petsc vectors */
+
+  ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(qi, &qi_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(q , &q_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(q1, &q1_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(q2, &q2_p); CHKERRXX(ierr);
+
+  ierr = VecDestroy(q1); CHKERRXX(ierr);
+  ierr = VecDestroy(q2); CHKERRXX(ierr);
+  ierr = VecDestroy(qxx); CHKERRXX(ierr);
+  ierr = VecDestroy(qyy); CHKERRXX(ierr);
+
+#ifdef P4_TO_P8
+  ierr = VecDestroy(qzz); CHKERRXX(ierr);
+#endif
+
+  ierr = VecRestoreArray(dxx, &dxx_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(dyy, &dyy_p); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+  ierr = VecRestoreArray(dzz, &dzz_p); CHKERRXX(ierr);
+#endif
+
+  ierr = VecDestroy(dxx);  CHKERRXX(ierr);
+  ierr = VecDestroy(dyy);  CHKERRXX(ierr);
+#ifdef P4_TO_P8
+  ierr = VecDestroy(dzz); CHKERRXX(ierr);
+#endif
+
+  ierr = PetscLogEventEnd(log_my_p4est_level_set_extend_from_interface_TVD, phi, qi, q, 0); CHKERRXX(ierr);
+}
