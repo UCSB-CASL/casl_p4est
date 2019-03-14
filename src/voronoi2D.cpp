@@ -83,7 +83,7 @@ void Voronoi2D::push( int n, double x, double y, const bool* periodicity, const 
 #ifdef P4_TO_P8
   P4EST_ASSERT(p.dist>EPS*sqrt(SQR(xyz_max[0]-xyz_min[0]) + SQR(xyz_max[1]-xyz_min[1]) + SQR(xyz_max[2]-xyz_min[2])));
 #else
-  P4EST_ASSERT(p.dist>EPS*sqrt(SQR(xyz_max[0]-xyz_min[0]) + SQR(xyz_max[1]-xyz_min[1])));
+  P4EST_ASSERT(((n == WALL_m00) || (n == WALL_p00) || (n == WALL_0m0) || (n == WALL_0p0)) || (p.dist>EPS*sqrt(SQR(xyz_max[0]-xyz_min[0]) + SQR(xyz_max[1]-xyz_min[1]))));
 #endif
   p.theta = DBL_MAX;
   nb_seeds.push_back(p);
