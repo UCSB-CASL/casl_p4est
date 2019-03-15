@@ -273,7 +273,7 @@ my_p4est_navier_stokes_t::my_p4est_navier_stokes_t(my_p4est_node_neighbors_t *ng
     hierarchy_nm1(ngbd_nm1->hierarchy), ngbd_nm1(ngbd_nm1),
     p4est_n(ngbd_n->p4est), ghost_n(ngbd_n->ghost), nodes_n(ngbd_n->nodes),
     hierarchy_n(ngbd_n->hierarchy), ngbd_n(ngbd_n),
-    ngbd_c(faces->ngbd_c), faces_n(faces), semi_lagrangian_backtrace_is_done(false),
+    ngbd_c(faces->get_ngbd_c()), faces_n(faces), semi_lagrangian_backtrace_is_done(false),
     wall_bc_value_hodge(this), interface_bc_value_hodge(this)
 {
   PetscErrorCode ierr;
@@ -320,7 +320,7 @@ my_p4est_navier_stokes_t::my_p4est_navier_stokes_t(my_p4est_node_neighbors_t *ng
   ierr = VecCreateGhostCells(p4est_n, ghost_n, &hodge); CHKERRXX(ierr);
   ierr = VecGhostGetLocalForm(hodge, &vec_loc); CHKERRXX(ierr);
   ierr = VecSet(vec_loc, 0); CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(phi, &vec_loc); CHKERRXX(ierr);
+  ierr = VecGhostRestoreLocalForm(hodge, &vec_loc); CHKERRXX(ierr);
 
   ierr = VecDuplicate(hodge, &pressure); CHKERRXX(ierr);
 
@@ -1226,6 +1226,10 @@ void my_p4est_navier_stokes_t::solve_projection(my_p4est_poisson_cells_t* &cell_
     }
   }
   ierr = VecRestoreArray(rhs, &rhs_p); CHKERRXX(ierr);
+
+  PetscScalar vec_norm;
+  ierr = VecNorm(rhs, NORM_2, &vec_norm); CHKERRXX(ierr);
+  std::cout << " vec_norm = " << vec_norm << std::endl;
 
   /* solve the linear system */
   if(cell_solver == NULL)
@@ -3012,9 +3016,9 @@ void my_p4est_navier_stokes_t::refine_coarsen_grid_after_restart(const CF_2 *lev
   }
 }
 
-unsigned long int my_p4est_navier_stokes_t::memory_estimate() const
+size_t my_p4est_navier_stokes_t::memory_estimate() const
 {
-  unsigned long int memory_used = 0;
+  size_t memory_used = 0;
   memory_used += my_p4est_brick_memory_estimate(brick);
   memory_used += p4est_connectivity_memory_used(conn);
   if(p4est_nm1!=p4est_n)
@@ -3050,7 +3054,7 @@ unsigned long int my_p4est_navier_stokes_t::memory_estimate() const
   for (unsigned short dim = 0; dim < P4EST_DIM; ++dim)
     memory_used += 4*(faces_n->num_local[dim] + faces_n->num_ghost[dim])*sizeof (PetscScalar);
 
-  int mpiret = MPI_Allreduce(MPI_IN_PLACE, &memory_used, 1, MPI_UNSIGNED_LONG, MPI_SUM, p4est_n->mpicomm); SC_CHECK_MPI(mpiret);
+  int mpiret = MPI_Allreduce(MPI_IN_PLACE, &memory_used, 1, my_MPI_SIZE_T, MPI_SUM, p4est_n->mpicomm); SC_CHECK_MPI(mpiret);
 
   return memory_used;
 }

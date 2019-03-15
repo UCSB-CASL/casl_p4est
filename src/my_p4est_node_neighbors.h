@@ -36,7 +36,6 @@ class my_p4est_node_neighbors_t {
   friend class my_p4est_poisson_jump_nodes_voronoi_t;
   friend class my_p4est_poisson_jump_voronoi_block_t;
   friend class my_p4est_poisson_jump_nodes_extended_t;
-  friend class my_p4est_xgfm_cells_t;
   friend class my_p4est_interpolation_t;
   friend class my_p4est_interpolation_nodes_t;
   friend class my_p4est_interpolation_cells_t;
@@ -48,6 +47,8 @@ class my_p4est_node_neighbors_t {
   friend class my_p4est_bialloy_t;
   friend class my_p4est_navier_stokes_t;
   friend class my_p4est_epitaxy_t;
+  friend class my_p4est_two_phase_flows_t;
+  friend class my_p4est_xgfm_cells_t;
 
   /**
      * Initialize the QuadNeighborNodeOfNode information
@@ -226,6 +227,31 @@ public:
     }
   }
 
+  void inline get_neighbors(p4est_locidx_t n, const quad_neighbor_nodes_of_node_t*& qnnn) const {
+    if (is_initialized) {
+#ifdef CASL_THROWS
+      if (is_qnnn_valid[n])
+        qnnn = &neighbors[n];
+      else {
+        std::ostringstream oss;
+        oss << "[ERROR]: const quad_neighbor_nodes_of_node_t* get_neighbors(p4est_locidx_t n): the neighborhood information for the node with idx " << n << " on processor " << p4est->mpirank << " is invalid.";
+        throw std::invalid_argument(oss.str().c_str());
+        qnnn = NULL;
+      }
+#else
+      qnnn = &neighbors[n];
+#endif
+    }
+    else {
+#ifdef CASL_THROWS
+      std::ostringstream oss;
+      oss << "const quad_neighbor_nodes_of_node_t* get_neighbors(p4est_locidx_t n): cannot be used with uninitialized neighbors; on processor " << p4est->mpirank;
+      throw std::runtime_error(oss.str().c_str());
+#endif
+      qnnn = NULL;
+    }
+  }
+
   /*!
    * \brief run_async_computation runs an asynchronous computation across processors by overlapping computation and communication
    * \param async the abstract computation that needs to be run for each local node
@@ -329,9 +355,9 @@ public:
    */
   void first_derivatives_central(const Vec f, Vec fx[P4EST_DIM]) const;
 
-  unsigned long int memory_estimate() const
+  size_t memory_estimate() const
   {
-    unsigned long int memory = 0;
+    size_t memory = 0;
     memory += neighbors.size()*sizeof (quad_neighbor_nodes_of_node_t);
     memory += is_qnnn_valid.size()*sizeof (bool);
     memory += layer_nodes.size()*sizeof (p4est_locidx_t);

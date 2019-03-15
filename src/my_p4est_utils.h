@@ -25,6 +25,23 @@
 #include <sstream>
 #include <vector>
 
+#if SIZE_MAX == UCHAR_MAX
+   #define my_MPI_SIZE_T MPI_UNSIGNED_CHAR
+#elif SIZE_MAX == USHRT_MAX
+   #define my_MPI_SIZE_T MPI_UNSIGNED_SHORT
+#elif SIZE_MAX == UINT_MAX
+   #define my_MPI_SIZE_T MPI_UNSIGNED
+#elif SIZE_MAX == ULONG_MAX
+   #define my_MPI_SIZE_T MPI_UNSIGNED_LONG
+#elif SIZE_MAX == ULLONG_MAX
+   #define my_MPI_SIZE_T MPI_UNSIGNED_LONG_LONG
+#else
+   #error "unknown SIZE_MAX"
+#endif
+
+
+
+
 // forward declaration
 class my_p4est_node_neighbors_t;
 struct quad_neighbor_nodes_of_node_t;
@@ -84,6 +101,7 @@ class CF_2
 public:
   double lip, t;
   virtual double operator()(double x, double y) const=0 ;
+  double operator()(double *xyz) const {return this->operator()(xyz[0], xyz[1]); }
   virtual ~CF_2() {}
 };
 
@@ -92,6 +110,7 @@ class CF_3
 public:
   double lip, t;
   virtual double operator()(double x, double y,double z) const=0 ;
+  double operator()(double *xyz) const {return this->operator()(xyz[0], xyz[1], xyz[2]); }
   virtual ~CF_3() {}
 };
 
@@ -104,6 +123,12 @@ enum {
   WALL_00p = -6,
   INTERFACE = -7
 };
+
+inline int WALL_idx(unsigned char oriented_cart_dir)
+{
+  P4EST_ASSERT(oriented_cart_dir < P4EST_FACES);
+  return (-1-((int) oriented_cart_dir));
+}
 
 typedef enum {
   DIRICHLET,
@@ -405,6 +430,18 @@ void quadratic_interpolation(const p4est_t* p4est, p4est_topidx_t tree_id, const
 double quadratic_interpolation(const p4est_t* p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global);
 
 p4est_bool_t nodes_are_equal(int mpi_size, p4est_nodes_t* nodes_1, p4est_nodes_t* nodes_2);
+
+PetscErrorCode VecGetLocalAndGhostSizes(Vec& v, PetscInt& local_size, PetscInt& ghosted_size);
+
+/*!
+ * \brief vectorIsWellSetForNodes
+ * (collective in debug mode)
+ * \param v
+ * \param nodes
+ * \param mpicomm
+ * \return
+ */
+bool vectorIsWellSetForNodes(Vec& v, const p4est_nodes_t* nodes, const MPI_Comm& mpicomm);
 
 /*!
  * \brief VecCreateGhostNodes Creates a ghosted PETSc parallel vector on the nodes based on p4est node ordering
@@ -1174,9 +1211,17 @@ bool is_node_zpWall(const p4est_t *p4est, const p4est_indep_t *ni);
  * \param p4est [in] p4est
  * \param ni    [in] pointer to the node structure
  * \return true if the point is on the domain boundary and p4est is _NOT_ periodic
- * \note: periodicity is not implemented
  */
 bool is_node_Wall  (const p4est_t *p4est, const p4est_indep_t *ni);
+
+/*!
+ * \brief is_node_Wall checks if a node is on the oriented domain boundary pointed by oriented_dir
+ * \param p4est         [in] p4est
+ * \param ni            [in] pointer to the node structure
+ * \param oriented_dir  [in] oriented direction (dir::f_m00, dir::f_p00, etc.)
+ * \return true if the point is on the domain boundary and p4est is _NOT_ periodic
+ */
+bool is_node_Wall(const p4est_t *p4est, const p4est_indep_t *ni, const unsigned char oriented_dir);
 
 /*!
  * \brief is_quad_xmWall checks if a quad is on x^- domain boundary
@@ -1192,7 +1237,6 @@ bool is_quad_xmWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quad
  * \param p4est [in] p4est
  * \param qi    [in] pointer to the quadrant
  * \return true if the quad is on the right domain boundary and p4est is _NOT_ periodic
- * \note: periodicity is not implemented
  */
 bool is_quad_xpWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi);
 
@@ -1201,7 +1245,6 @@ bool is_quad_xpWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quad
  * \param p4est [in] p4est
  * \param qi    [in] pointer to the quadrant
  * \return true if the quad is on the bottom domain boundary and p4est is _NOT_ periodic
- * \note: periodicity is not implemented
  */
 bool is_quad_ymWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi);
 
@@ -1210,7 +1253,6 @@ bool is_quad_ymWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quad
  * \param p4est [in] p4est
  * \param qi    [in] pointer to the quadrant
  * \return true if the quad is on the top domain boundary and p4est is _NOT_ periodic
- * \note: periodicity is not implemented
  */
 bool is_quad_ypWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi);
 
@@ -1219,7 +1261,6 @@ bool is_quad_ypWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quad
  * \param p4est [in] p4est
  * \param qi    [in] pointer to the quadrant
  * \return true if the quad is on the back domain boundary and p4est is _NOT_ periodic
- * \note: periodicity is not implemented
  */
 bool is_quad_zmWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi);
 
@@ -1228,7 +1269,6 @@ bool is_quad_zmWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quad
  * \param p4est [in] p4est
  * \param qi    [in] pointer to the quadrant
  * \return true if the quad is on the front domain boundary and p4est is _NOT_ periodic
- * \note: periodicity is not implemented
  */
 bool is_quad_zpWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi);
 
@@ -1238,7 +1278,6 @@ bool is_quad_zpWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quad
  * \param qi    [in] pointer to the quadrant
  * \param dir   [in] the direction to check, dir::f_m00, dir::f_p00, dir::f_0m0 ...
  * \return true if the quad is on the domain boundary in the direction dir and p4est is _NOT_ periodic
- * \note: periodicity is not implemented
  */
 bool is_quad_Wall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi, int dir);
 
@@ -1247,7 +1286,6 @@ bool is_quad_Wall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadra
  * \param p4est [in] p4est
  * \param qi    [in] pointer to the quadrant
  * \return true if the quad is on the domain boundary and p4est is _NOT_ periodic
- * \note: periodicity is not implemented
  */
 bool is_quad_Wall  (const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi);
 

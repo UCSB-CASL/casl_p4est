@@ -97,6 +97,14 @@ struct quad_neighbor_nodes_of_node_t {
 #ifdef P4_TO_P8
   double dz_central ( const double *f ) const;
 #endif
+  inline double d_central (const unsigned short& der, const double *f) const
+  {
+#ifdef P4_TO_P8
+    return ((der == dir::x)? dx_central(f) : ((der == dir::y)? dy_central(f) : dz_central(f)));
+#else
+    return ((der == dir::x)? dx_central(f) : dy_central(f));
+#endif
+  }
 
 #ifdef P4_TO_P8
   void gradient( const double* f, double& fx , double& fy , double& fz  ) const;
@@ -112,6 +120,23 @@ struct quad_neighbor_nodes_of_node_t {
   double dz_forward_linear ( const double *f ) const;
   double dz_backward_linear( const double *f ) const;
 #endif
+  inline double d_forward_linear(const unsigned short& der, const double *f) const
+  {
+#ifdef P4_TO_P8
+    return ((der == dir::x)? dx_forward_linear(f) : ((der == dir::y)? dy_forward_linear(f) : dz_forward_linear(f)));
+#else
+    return ((der == dir::x)? dx_forward_linear(f) : dy_forward_linear(f));
+#endif
+  }
+  inline double d_backward_linear(const unsigned short& der, const double *f) const
+  {
+#ifdef P4_TO_P8
+    return ((der == dir::x)? dx_backward_linear(f) : ((der == dir::y)? dy_backward_linear(f) : dz_backward_linear(f)));
+#else
+    return ((der == dir::x)? dx_backward_linear(f) : dy_backward_linear(f));
+#endif
+  }
+
 
   double dx_forward_quadratic ( const double *f, const my_p4est_node_neighbors_t& neighbors ) const;
   double dx_backward_quadratic( const double *f, const my_p4est_node_neighbors_t& neighbors ) const;
@@ -121,6 +146,22 @@ struct quad_neighbor_nodes_of_node_t {
   double dz_forward_quadratic ( const double *f, const my_p4est_node_neighbors_t& neighbors ) const;
   double dz_backward_quadratic( const double *f, const my_p4est_node_neighbors_t& neighbors ) const;
 #endif
+  inline double d_forward_quadratic(const unsigned short& der, const double *f, const my_p4est_node_neighbors_t& neighbors ) const
+  {
+#ifdef P4_TO_P8
+    return ((der == dir::x)? dx_forward_quadratic(f, neighbors) : ((der == dir::y)? dy_forward_quadratic(f, neighbors) : dz_forward_quadratic(f, neighbors)));
+#else
+    return ((der == dir::x)? dx_forward_quadratic(f, neighbors) : dy_forward_quadratic(f, neighbors));
+#endif
+  }
+  inline double d_backward_quadratic(const unsigned short& der, const double *f, const my_p4est_node_neighbors_t& neighbors ) const
+  {
+#ifdef P4_TO_P8
+    return ((der == dir::x)? dx_backward_quadratic(f, neighbors) : ((der == dir::y)? dy_backward_quadratic(f, neighbors) : dz_backward_quadratic(f, neighbors)));
+#else
+    return ((der == dir::x)? dx_backward_quadratic(f, neighbors) : dy_backward_quadratic(f, neighbors));
+#endif
+  }
 
   double dx_forward_quadratic ( const double *f, const double *fxx ) const;
   double dx_backward_quadratic( const double *f, const double *fxx ) const;
@@ -130,6 +171,22 @@ struct quad_neighbor_nodes_of_node_t {
   double dz_forward_quadratic ( const double *f, const double *fzz ) const;
   double dz_backward_quadratic( const double *f, const double *fzz ) const;
 #endif
+  inline double d_forward_quadratic(const unsigned short& der, const double *f, const double *fderder) const
+  {
+#ifdef P4_TO_P8
+    return ((der == dir::x)? dx_forward_quadratic(f, fderder) : ((der == dir::y)? dy_forward_quadratic(f, fderder) : dz_forward_quadratic(f, fderder)));
+#else
+    return ((der == dir::x)? dx_forward_quadratic(f, fderder) : dy_forward_quadratic(f, fderder));
+#endif
+  }
+  inline double d_backward_quadratic(const unsigned short& der, const double *f, const double *fderder) const
+  {
+#ifdef P4_TO_P8
+    return ((der == dir::x)? dx_backward_quadratic(f, fderder) : ((der == dir::y)? dy_backward_quadratic(f, fderder) : dz_backward_quadratic(f, fderder)));
+#else
+    return ((der == dir::x)? dx_backward_quadratic(f, fderder) : dy_backward_quadratic(f, fderder));
+#endif
+  }
 
   /* second-order derivatives */
   double dxx_central( const double *f ) const;
@@ -137,6 +194,14 @@ struct quad_neighbor_nodes_of_node_t {
 #ifdef P4_TO_P8
   double dzz_central( const double *f ) const;
 #endif
+  inline double dd_central (const unsigned short& der, const double *f) const
+  {
+#ifdef P4_TO_P8
+    return ((der == dir::x)? dxx_central(f) : ((der == dir::y)? dyy_central(f) : dzz_central(f)));
+#else
+    return ((der == dir::x)? dxx_central(f) : dyy_central(f));
+#endif
+  }
 
 #ifdef P4_TO_P8
   void laplace ( const double* f, double& fxx, double& fyy, double& fzz ) const;

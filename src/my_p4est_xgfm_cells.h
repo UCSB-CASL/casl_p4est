@@ -551,7 +551,7 @@ public:
 
   /* ! VERY IMPORTANT ! QUALITY OF THE GRID, LAYER OF FINE CELLS, and so on... */
 
-  my_p4est_xgfm_cells_t(const my_p4est_cell_neighbors_t *ngbd_c, const my_p4est_node_neighbors_t *ngbd_n, const my_p4est_node_neighbors_t *fine_ls, const bool activate_x_ = true);
+  my_p4est_xgfm_cells_t(const my_p4est_cell_neighbors_t *ngbd_c, const my_p4est_node_neighbors_t *ngbd_n, const my_p4est_node_neighbors_t *fine_ngbd_n, const bool activate_x_ = true);
   ~my_p4est_xgfm_cells_t();
 
 #ifdef P4_TO_P8
@@ -657,7 +657,7 @@ public:
   std::vector<double> get_max_corrections() const {return max_corrections; }
   std::vector<double> get_relative_residuals() const {return relative_residuals; }
 
-  void get_flux_components_and_subtract_them_from_velocities(Vec flux[P4EST_DIM], my_p4est_faces_t *faces, Vec vstar[P4EST_DIM] = NULL, Vec vnp1[P4EST_DIM] = NULL);
+  void get_flux_components_and_subtract_them_from_velocities(Vec flux[P4EST_DIM], my_p4est_faces_t *faces, Vec vstar[P4EST_DIM] = NULL, Vec vnp1_minus[P4EST_DIM] = NULL, Vec vnp1_plus[P4EST_DIM] = NULL);
   void get_flux_components(Vec flux[P4EST_DIM], my_p4est_faces_t* faces)
   {
     get_flux_components_and_subtract_them_from_velocities(flux, faces);

@@ -2404,15 +2404,9 @@ void my_p4est_xgfm_cells_t::interpolate_cell_field_at_fine_node(const p4est_loci
 
 #ifdef DEBUG
   double value_check = 0.0;
-  double accuracy_threshold = 0.0;
   for (size_t i = 0; i < local_interpolator[fine_node_idx].size(); ++i)
-  {
     value_check += cell_field_read_p[local_interpolator[fine_node_idx][i].quad_idx]*local_interpolator[fine_node_idx][i].weight;
-    accuracy_threshold = MAX(accuracy_threshold, EPS*fabs(cell_field_read_p[local_interpolator[fine_node_idx][i].quad_idx]));
-  }
-  if(fabs(value_check - fine_node_field_p[fine_node_idx]) > accuracy_threshold)
-    std::cerr << "PROBLEM WITH NODE " << fine_node_idx << ": value_check = " << value_check << " while fine_node_field_p[fine_node_idx] = " << fine_node_field_p[fine_node_idx] << " super_fine_node = " << super_fine_node << std::endl;
-  P4EST_ASSERT(fabs(value_check - fine_node_field_p[fine_node_idx]) < accuracy_threshold /*0.000001*MAX(fabs(value_check), fabs(fine_node_field_p[fine_node_idx]))*/);
+  P4EST_ASSERT(fabs(value_check - fine_node_field_p[fine_node_idx]) < MAX(EPS, 0.000001*MAX(fabs(value_check), fabs(fine_node_field_p[fine_node_idx]))));
 #endif
 }
 
@@ -2658,11 +2652,11 @@ void my_p4est_xgfm_cells_t::correct_jump_mu_grad_u()
   }
 }
 
-void my_p4est_xgfm_cells_t::get_flux_components_and_subtract_them_from_velocities(Vec flux[], my_p4est_faces_t *faces, Vec vstar[], Vec vnp1[])
+void my_p4est_xgfm_cells_t::get_flux_components_and_subtract_them_from_velocities(Vec flux[], my_p4est_faces_t *faces, Vec vstar[], Vec vnp1_minus[], Vec vnp1_plus[])
 {
 #ifdef CASL_THROWS
   // make sure the faces are properly defined (from the computational grid)
-  int my_error = !p4est_is_equal(p4est, faces->p4est, P4EST_FALSE);
+  int my_error = !p4est_is_equal(p4est, faces->get_p4est(), P4EST_FALSE);
   if(my_error)
     throw std::invalid_argument("my_p4est_xgfm_cells_t::get_flux_components_and_subtract_them_from_velocities(Vec [], my_p4est_faces_t*, Vec [], Vec []): the faces must be built from the computational (i.e. coarse) p4est.");
 
@@ -2695,16 +2689,16 @@ void my_p4est_xgfm_cells_t::get_flux_components_and_subtract_them_from_velocitie
   if(my_error)
     throw std::invalid_argument("my_p4est_xgfm_cells_t::get_flux_components_and_subtract_them_from_velocities(Vec [], my_p4est_faces_t*, Vec [], Vec[]): the flux vectors cannot be calculated if the solution has been returned to the user beforehand.");
 
-  my_error = my_error || (((vstar != NULL) || (vnp1 != NULL)) && ((vstar == NULL) || (vnp1 == NULL)));
+  my_error = my_error || (((vstar != NULL) || (vnp1_minus != NULL) || (vnp1_plus!= NULL)) && ((vstar == NULL) || (vnp1_minus == NULL) || (vnp1_plus == NULL)));
   mpiret = MPI_Allreduce(MPI_IN_PLACE, &my_error, 1, MPI_INT, MPI_LOR, p4est->mpicomm); SC_CHECK_MPI(mpiret);
   if(my_error)
-    throw std::invalid_argument("my_p4est_xgfm_cells_t::get_flux_components(Vec [], my_p4est_faces_t*, Vec [], Vec[]): the velocities vstart and vnp1 vectors vectors must either be both defined or be both NULL.");
+    throw std::invalid_argument("my_p4est_xgfm_cells_t::get_flux_components(Vec [], my_p4est_faces_t*, Vec [], Vec[]): the velocities vstart and vnp1 vectors vectors must either be all defined or be all NULL.");
 
-  if(vstar != NULL && vnp1 != NULL)
+  if(vstar != NULL && vnp1_minus != NULL && vnp1_plus != NULL)
   {
     Vec* vel;
-    for (short flag = 0; flag < 2; ++flag) {
-      vel = ((flag)? vnp1: vstar);
+    for (short flag = 0; flag < 3; ++flag) {
+      vel = ((flag == 0)? vstar: ((flag == 1)? vnp1_minus : vnp1_plus));
       for (short dim = 0; dim < P4EST_DIM; ++dim) {
         ierr = VecGetSize(vel[dim], &global_size); CHKERRXX(ierr);
         ierr = VecGetLocalSize(vel[dim], &local_size); CHKERRXX(ierr);
@@ -2723,12 +2717,11 @@ void my_p4est_xgfm_cells_t::get_flux_components_and_subtract_them_from_velocitie
     solve();
 
   P4EST_ASSERT(solution_is_set && (solution != NULL));
-  P4EST_ASSERT((((vstar == NULL) && (vnp1 == NULL)) || ((vstar != NULL) && (vnp1 != NULL))));
-  bool velocities_are_defined = ((vstar != NULL) && (vnp1 != NULL));
-
+  P4EST_ASSERT((((vstar == NULL) && (vnp1_minus == NULL) && (vnp1_plus == NULL)) || ((vstar != NULL) && (vnp1_minus != NULL) && (vnp1_plus != NULL))));
+  bool velocities_are_defined = ((vstar != NULL) && (vnp1_minus != NULL) && (vnp1_plus != NULL));
 
   const double *vstar_read_p[P4EST_DIM], *phi_read_p, *solution_read_p, *jump_u_read_p, *jump_mu_grad_u_read_p[P4EST_DIM], *phi_dd_read_p[P4EST_DIM];
-  double *vnp1_p[P4EST_DIM], *flux_p[P4EST_DIM];
+  double *vnp1_plus_p[P4EST_DIM], *vnp1_minus_p[P4EST_DIM], *flux_p[P4EST_DIM];
   std::vector<bool> visited_faces[P4EST_DIM];
   p4est_locidx_t num_visited_faces[P4EST_DIM];
   ierr = VecGetArrayRead(phi, &phi_read_p); CHKERRXX(ierr);
@@ -2741,12 +2734,12 @@ void my_p4est_xgfm_cells_t::get_flux_components_and_subtract_them_from_velocitie
     ierr = VecGetArrayRead(jump_mu_grad_u[dim], &jump_mu_grad_u_read_p[dim]); CHKERRXX(ierr);
     if(velocities_are_defined){
       ierr = VecGetArrayRead(vstar[dim], &vstar_read_p[dim]); CHKERRXX(ierr);
-      ierr = VecGetArray(vnp1[dim], &vnp1_p[dim]); CHKERRXX(ierr);
+      ierr = VecGetArray(vnp1_plus[dim], &vnp1_plus_p[dim]); CHKERRXX(ierr);
+      ierr = VecGetArray(vnp1_minus[dim], &vnp1_minus_p[dim]); CHKERRXX(ierr);
     }
     if(second_derivatives_of_phi_are_set){
       ierr = VecGetArrayRead(phi_second_der[dim], &phi_dd_read_p[dim]); CHKERRXX(ierr);}
   }
-
 
   p4est_locidx_t local_fine_indices_for_quad_interp[P4EST_CHILDREN], local_fine_indices_for_tmp_interp[P4EST_CHILDREN], local_fine_indices_for_face_interp[P4EST_CHILDREN];
   double quad_interp_weights[P4EST_CHILDREN], tmp_interp_weights[P4EST_CHILDREN], face_interp_weights[P4EST_CHILDREN];
@@ -2810,7 +2803,18 @@ void my_p4est_xgfm_cells_t::get_flux_components_and_subtract_them_from_velocitie
             throw std::invalid_argument("my_p4est_xgfm_cells_t::get_flux_components_and_subtract_them_from_velocities(): unknown boundary condition on a wall.");
           }
           if(velocities_are_defined)
-            vnp1_p[dir/2][face_idx] = vstar_read_p[dir/2][face_idx] - flux_p[dir][face_idx];
+          {
+            if(phi_face > 0.0)
+            {
+              vnp1_plus_p[dir/2][face_idx]  = vstar_read_p[dir/2][face_idx] - flux_p[dir/2][face_idx];
+              vnp1_minus_p[dir/2][face_idx]  = DBL_MAX;
+            }
+            else
+            {
+              vnp1_plus_p[dir/2][face_idx]  = DBL_MAX;
+              vnp1_minus_p[dir/2][face_idx] = vstar_read_p[dir/2][face_idx] - flux_p[dir/2][face_idx];
+            }
+          }
           visited_faces[dir/2][face_idx] = true;
           num_visited_faces[dir/2]++;
           continue;
@@ -2889,7 +2893,18 @@ void my_p4est_xgfm_cells_t::get_flux_components_and_subtract_them_from_velocitie
               num_visited_faces[dir/2]++;
             }
             if(velocities_are_defined)
-              vnp1_p[dir/2][face_idx] = vstar_read_p[dir/2][face_idx] - flux_p[dir][face_idx];
+            {
+              if(phi_face > 0.0)
+              {
+                vnp1_plus_p[dir/2][face_idx]  = vstar_read_p[dir/2][face_idx] - flux_p[dir/2][face_idx];
+                vnp1_minus_p[dir/2][face_idx] = DBL_MAX;
+              }
+              else
+              {
+                vnp1_plus_p[dir/2][face_idx]  = DBL_MAX;
+                vnp1_minus_p[dir/2][face_idx] = vstar_read_p[dir/2][face_idx] - flux_p[dir/2][face_idx];
+              }
+            }
           }
           /* no interface - regular discretization */
           else
@@ -2926,7 +2941,18 @@ void my_p4est_xgfm_cells_t::get_flux_components_and_subtract_them_from_velocitie
                 visited_faces[dir/2][face_idx]  = true;
                 num_visited_faces[dir/2]++;
                 if(velocities_are_defined)
-                  vnp1_p[dir/2][face_idx] = vstar_read_p[dir/2][face_idx] - flux_p[dir][face_idx];
+                {
+                  if(phi_face > 0.0)
+                  {
+                    vnp1_plus_p[dir/2][face_idx]  = vstar_read_p[dir/2][face_idx] - flux_p[dir/2][face_idx];
+                    vnp1_minus_p[dir/2][face_idx] = DBL_MAX;
+                  }
+                  else
+                  {
+                    vnp1_plus_p[dir/2][face_idx]  = DBL_MAX;
+                    vnp1_minus_p[dir/2][face_idx] = vstar_read_p[dir/2][face_idx] - flux_p[dir/2][face_idx];
+                  }
+                }
               }
             }
           }
@@ -2969,7 +2995,18 @@ void my_p4est_xgfm_cells_t::get_flux_components_and_subtract_them_from_velocitie
               visited_faces[dir/2][face_idx]  = true;
               num_visited_faces[dir/2]++;
               if(velocities_are_defined)
-                vnp1_p[dir/2][face_idx] = vstar_read_p[dir/2][face_idx] - flux_p[dir][face_idx];
+              {
+                if(phi_face > 0.0)
+                {
+                  vnp1_plus_p[dir/2][face_idx]  = vstar_read_p[dir/2][face_idx] - flux_p[dir/2][face_idx];
+                  vnp1_minus_p[dir/2][face_idx] = DBL_MAX;
+                }
+                else
+                {
+                  vnp1_plus_p[dir/2][face_idx]  = DBL_MAX;
+                  vnp1_minus_p[dir/2][face_idx] = vstar_read_p[dir/2][face_idx] - flux_p[dir/2][face_idx];
+                }
+              }
             }
           }
         }
@@ -2987,15 +3024,17 @@ void my_p4est_xgfm_cells_t::get_flux_components_and_subtract_them_from_velocitie
     ierr = VecGhostUpdateBegin(flux[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     if(velocities_are_defined){
       ierr = VecRestoreArrayRead(vstar[dim], &vstar_read_p[dim]); CHKERRXX(ierr);
-      ierr = VecGhostUpdateBegin(vnp1[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-      ierr = VecGhostUpdateEnd  (vnp1[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-      ierr = VecRestoreArray(vnp1[dim], &vnp1_p[dim]); CHKERRXX(ierr);
+      ierr = VecGhostUpdateBegin(vnp1_plus[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+      ierr = VecGhostUpdateBegin(vnp1_minus[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+      ierr = VecGhostUpdateEnd  (vnp1_plus[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+      ierr = VecGhostUpdateEnd  (vnp1_minus[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+      ierr = VecRestoreArray(vnp1_plus[dim], &vnp1_plus_p[dim]); CHKERRXX(ierr);
+      ierr = VecRestoreArray(vnp1_minus[dim], &vnp1_minus_p[dim]); CHKERRXX(ierr);
     }
     if(second_derivatives_of_phi_are_set){
       ierr = VecRestoreArrayRead(phi_second_der[dim], &phi_dd_read_p[dim]); CHKERRXX(ierr);}
     ierr = VecGhostUpdateEnd  (flux[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   }
-
 }
 
 #ifdef DEBUG

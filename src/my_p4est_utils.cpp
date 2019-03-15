@@ -543,6 +543,29 @@ return_time:
   return result;
 }
 
+PetscErrorCode VecGetLocalAndGhostSizes(Vec& v, PetscInt& local_size, PetscInt& ghosted_size)
+{
+  PetscErrorCode ierr = 0;
+  Vec v_loc;
+  ierr = VecGetLocalSize(v, &local_size); CHKERRQ(ierr);
+  ierr = VecGhostGetLocalForm(v, &v_loc); CHKERRQ(ierr);
+  ierr = VecGetSize(v_loc, &ghosted_size); CHKERRQ(ierr);
+  ierr = VecGhostRestoreLocalForm(v, &v_loc); CHKERRQ(ierr);
+  return ierr;
+}
+
+bool vectorIsWellSetForNodes(Vec& v, const p4est_nodes_t* nodes, const MPI_Comm& mpicomm)
+{
+  P4EST_ASSERT(v!=NULL);
+  PetscInt local_size, ghosted_size;
+  VecGetLocalAndGhostSizes(v, local_size, ghosted_size);
+  int my_test = (local_size==nodes->num_owned_indeps && ghosted_size!=(PetscInt)nodes->indep_nodes.elem_count)?1:0;
+#ifdef DEBUG
+  int mpiret = MPI_Allreduce(MPI_IN_PLACE, &my_test, 1, MPI_INT, MPI_LAND, mpicomm); SC_CHECK_MPI(mpiret);
+#endif
+  return my_test;
+}
+
 PetscErrorCode VecCreateGhostNodes(const p4est_t *p4est, p4est_nodes_t *nodes, Vec* v)
 {
   PetscErrorCode ierr = 0;
@@ -1572,6 +1595,23 @@ bool is_node_Wall(const p4est_t *p4est, const p4est_indep_t *ni)
   return ( is_node_xmWall(p4est, ni) || is_node_xpWall(p4est, ni) ||
            is_node_ymWall(p4est, ni) || is_node_ypWall(p4est, ni) );
 #endif
+}
+
+bool is_node_Wall(const p4est_t *p4est, const p4est_indep_t *ni, const unsigned char oriented_dir)
+{
+  switch(oriented_dir)
+  {
+  case dir::f_m00: return is_node_xmWall(p4est, ni);
+  case dir::f_p00: return is_node_xpWall(p4est, ni);
+  case dir::f_0m0: return is_node_ymWall(p4est, ni);
+  case dir::f_0p0: return is_node_ypWall(p4est, ni);
+#ifdef P4_TO_P8
+  case dir::f_00m: return is_node_zmWall(p4est, ni);
+  case dir::f_00p: return is_node_zpWall(p4est, ni);
+#endif
+  default:
+    throw std::invalid_argument("[CASL_ERROR]: is_node_wall: unknown direction.");
+  }
 }
 
 bool is_quad_xmWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi)

@@ -18,6 +18,16 @@
 
 #include <vector>
 
+inline void transpose_second_derivatives(Vec second_derivatives_vnm1[P4EST_DIM][P4EST_DIM], Vec second_derivatives_vn[P4EST_DIM][P4EST_DIM])
+{
+  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
+    for (unsigned char der = dir+1; der < P4EST_DIM; ++der) {
+      std::swap(second_derivatives_vnm1[dir][der], second_derivatives_vnm1[der][dir]);
+      std::swap(second_derivatives_vn[dir][der], second_derivatives_vn[der][dir]);
+    }
+  }
+}
+
 /*!
  * \brief trajectory_from_np1_to_n backtraces the nodes of p4est to find the one departure points along the characteristics
  * of the velocity field, at time n.
@@ -153,6 +163,14 @@ void trajectory_from_np1_all_faces( p4est_t *p4est_n, my_p4est_faces_t *faces_n,
                                     double dt_nm1, double dt_n,
                                     std::vector<double> xyz_n[P4EST_DIM][P4EST_DIM],
                                     std::vector<double> xyz_nm1[P4EST_DIM][P4EST_DIM]);
+void trajectory_from_np1_all_faces_transposed_second_derivatives( p4est_t *p4est_n, my_p4est_faces_t *faces_n,
+                                                                  my_p4est_node_neighbors_t *ngbd_nm1,
+                                                                  my_p4est_node_neighbors_t *ngbd_n,
+                                                                  Vec vnm1[P4EST_DIM], Vec second_derivatives_vnm1[P4EST_DIM][P4EST_DIM],
+                                                                  Vec vn[P4EST_DIM], Vec second_derivatives_vn[P4EST_DIM][P4EST_DIM],
+                                                                  double dt_nm1, double dt_n,
+                                                                  std::vector<double> xyz_n[P4EST_DIM][P4EST_DIM],
+                                                                  std::vector<double> xyz_nm1[P4EST_DIM][P4EST_DIM]);
 void trajectory_from_np1_all_faces( p4est_t *p4est_n, my_p4est_faces_t *faces_n,
                                     my_p4est_node_neighbors_t *ngbd_nm1,
                                     my_p4est_node_neighbors_t *ngbd_n,
@@ -160,6 +178,18 @@ void trajectory_from_np1_all_faces( p4est_t *p4est_n, my_p4est_faces_t *faces_n,
                                     Vec vn[P4EST_DIM], Vec second_derivatives_vn[P4EST_DIM][P4EST_DIM],
                                     double dt_nm1, double dt_n,
                                     std::vector<double> xyz_n[P4EST_DIM][P4EST_DIM]);
+void trajectory_from_np1_all_faces_transposed_second_derivatives( p4est_t *p4est_n, my_p4est_faces_t *faces_n,
+                                                                  my_p4est_node_neighbors_t *ngbd_nm1,
+                                                                  my_p4est_node_neighbors_t *ngbd_n,
+                                                                  Vec vnm1[P4EST_DIM], Vec second_derivatives_vnm1[P4EST_DIM][P4EST_DIM],
+                                                                  Vec vn[P4EST_DIM], Vec second_derivatives_vn[P4EST_DIM][P4EST_DIM],
+                                                                  double dt_nm1, double dt_n,
+                                                                  std::vector<double> xyz_n[P4EST_DIM][P4EST_DIM]);
+//{
+//  transpose_second_derivatives(second_derivatives_vnm1, second_derivatives_vn);
+//  trajectory_from_np1_all_faces(p4est_n, faces_n, ngbd_nm1, ngbd_n, vnm1, second_derivatives_vnm1, vn, second_derivatives_vn, dt_nm1, dt_n, xyz_n);
+//  transpose_second_derivatives(second_derivatives_vnm1, second_derivatives_vn);
+//}
 
 /*!
  * \brief trajectory_from_np1_bunch_of_points backtraces a bunch of lists of points xyz_np1 (simultaneously) to find the (two)

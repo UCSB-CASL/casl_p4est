@@ -400,6 +400,19 @@ void trajectory_from_np1_all_faces( p4est_t *p4est_n, my_p4est_faces_t *faces_n,
   trajectory_from_np1_all_faces(p4est_n, faces_n, ngbd_nm1, ngbd_n, vnm1, second_derivatives_vnm1, vn, second_derivatives_vn, dt_nm1, dt_n, xyz_n, NULL);
 }
 
+void trajectory_from_np1_all_faces_transposed_second_derivatives( p4est_t *p4est_n, my_p4est_faces_t *faces_n,
+                                                                  my_p4est_node_neighbors_t *ngbd_nm1,
+                                                                  my_p4est_node_neighbors_t *ngbd_n,
+                                                                  Vec vnm1[P4EST_DIM], Vec second_derivatives_vnm1[P4EST_DIM][P4EST_DIM],
+                                                                  Vec vn[P4EST_DIM], Vec second_derivatives_vn[P4EST_DIM][P4EST_DIM],
+                                                                  double dt_nm1, double dt_n,
+                                                                  std::vector<double> xyz_n[P4EST_DIM][P4EST_DIM])
+{
+  transpose_second_derivatives(second_derivatives_vnm1, second_derivatives_vnm1);
+  trajectory_from_np1_all_faces(p4est_n, faces_n, ngbd_nm1, ngbd_n, vnm1, second_derivatives_vnm1, vn, second_derivatives_vn, dt_nm1, dt_n, xyz_n);
+  transpose_second_derivatives(second_derivatives_vnm1, second_derivatives_vnm1);
+}
+
 void trajectory_from_np1_all_faces( p4est_t *p4est_n, my_p4est_faces_t *faces_n,
                                     my_p4est_node_neighbors_t *ngbd_nm1,
                                     my_p4est_node_neighbors_t *ngbd_n,
@@ -436,6 +449,21 @@ void trajectory_from_np1_all_faces( p4est_t *p4est_n, my_p4est_faces_t *faces_n,
                                       ((xyz_nm1 != NULL)? pointers_to_xyz_nm1: NULL),
                                       P4EST_DIM);
 }
+
+void trajectory_from_np1_all_faces_transposed_second_derivatives( p4est_t *p4est_n, my_p4est_faces_t *faces_n,
+                                                                  my_p4est_node_neighbors_t *ngbd_nm1,
+                                                                  my_p4est_node_neighbors_t *ngbd_n,
+                                                                  Vec vnm1[P4EST_DIM], Vec second_derivatives_vnm1[P4EST_DIM][P4EST_DIM],
+                                                                  Vec vn[P4EST_DIM], Vec second_derivatives_vn[P4EST_DIM][P4EST_DIM],
+                                                                  double dt_nm1, double dt_n,
+                                                                  std::vector<double> xyz_n[P4EST_DIM][P4EST_DIM],
+                                                                  std::vector<double> xyz_nm1[P4EST_DIM][P4EST_DIM])
+{
+  transpose_second_derivatives(second_derivatives_vnm1, second_derivatives_vnm1);
+  trajectory_from_np1_all_faces(p4est_n, faces_n, ngbd_nm1, ngbd_n, vnm1, second_derivatives_vnm1, vn, second_derivatives_vn, dt_nm1, dt_n, xyz_n, xyz_nm1);
+  transpose_second_derivatives(second_derivatives_vnm1, second_derivatives_vnm1);
+}
+
 
 void trajectory_from_np1_bunch_of_points( p4est_t *p4est_n,
                                           my_p4est_node_neighbors_t *ngbd_nm1,
@@ -488,6 +516,7 @@ void trajectory_from_np1_bunch_of_points( p4est_t *p4est_n,
       use_second_derivatives_vn   = use_second_derivatives_vn   && (second_derivatives_vn[dd][dim] != NULL);
     }
   }
+
   unsigned int idx = 0;
   for (unsigned int k = 0; k < n_lists; ++k) {
     for (unsigned int lidx = 0; lidx < ndata_in_list[k]; ++lidx) {

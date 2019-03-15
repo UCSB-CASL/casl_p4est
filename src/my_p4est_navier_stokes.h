@@ -456,7 +456,7 @@ public:
 #else
   void refine_coarsen_grid_after_restart(const CF_2 *level_set, bool do_reinitialization = true);
 #endif
-  unsigned long int memory_estimate() const;
+  size_t memory_estimate() const;
 
   void get_slice_averaged_vnp1_profile(unsigned short vel_component, unsigned short axis, std::vector<double>& avg_velocity_profile);
 
