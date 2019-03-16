@@ -175,17 +175,32 @@ double Cube3::integrate_Over_Interface(const OctValue &f, const OctValue &ls_val
   Point3 P101(x1,y0,z1);
   Point3 P110(x1,y1,z0);
   Point3 P111(x1,y1,z1);
+  // [RAPHAEL:] I am ****PISSED****, I have wasted an entire day trying to find yet another bug due to sign
+  // errors in this very function!
+  //
+  // I actually do not care mure about this one, except when it makes my whole set up crash on big grids on
+  // Stampede and thus make things CRASH.
+  //
+  // I am going to introduce some *CLEAR* sign convention in here to fix my issue, I do not care if someone
+  // changes it later on, but PLEASE, juste triple-check the consistency of your sign conventions!!!!!
+  // Here below:
+  // phi <= 0 --> negative domain
+  // phi > 0 --> positive domain
+  // WHATEVER CHANGE BROUGHT BY WHOMEVER CANNOT ALLOW ONE SINGLE VALUE TO BE CONSIDERED BOTH IN NEGATIVE AND
+  // IN POSITIVE DOMAIN!!!
 
   // simple cases
-  if(  ls_values.val000<=0 && ls_values.val001<=0 &&
-       ls_values.val010<=0 && ls_values.val011<=0 &&
-       ls_values.val100<=0 && ls_values.val101<=0 &&
-       ls_values.val110<=0 && ls_values.val111<=0 ) return 0;
+  if(  ls_values.val000<=0.0 && ls_values.val001<=0.0 &&
+       ls_values.val010<=0.0 && ls_values.val011<=0.0 &&
+       ls_values.val100<=0.0 && ls_values.val101<=0.0 &&
+       ls_values.val110<=0.0 && ls_values.val111<=0.0 ) return 0;
 
-  if(  ls_values.val000>=0 && ls_values.val001>=0 &&
-       ls_values.val010>=0 && ls_values.val011>=0 &&
-       ls_values.val100>=0 && ls_values.val101>=0 &&
-       ls_values.val110>=0 && ls_values.val111>=0 ) return 0;
+  if(  ls_values.val000>0.0 && ls_values.val001>0.0 &&
+       ls_values.val010>0.0 && ls_values.val011>0.0 &&
+       ls_values.val100>0.0 && ls_values.val101>0.0 &&
+       ls_values.val110>0.0 && ls_values.val111>0.0 ) return 0;
+
+
 
   double sum=0;
 
@@ -233,20 +248,20 @@ double Cube3::integrate_Over_Interface(const OctValue &f, const OctValue &ls_val
     }
 
     // simple cases
-    if(Phi0<0 && Phi1<0 && Phi2<0 && Phi3<0) continue;
-    if(Phi0>0 && Phi1>0 && Phi2>0 && Phi3>0) continue;
-    if(Phi0==0 && Phi1==0 && Phi2==0 && Phi3!=0) {return (F0+ F1+F2)/3.*Point3::area(P0,P1,P2);}
-    if(Phi0==0 && Phi1==0 && Phi2!=0 && Phi3==0) {return (F0+ F1+F3)/3.*Point3::area(P0,P1,P3);}
-    if(Phi0==0 && Phi1!=0 && Phi2==0 && Phi3==0) {return (F0+ F3+F2)/3.*Point3::area(P0,P3,P2);}
-    if(Phi0!=0 && Phi1==0 && Phi2==0 && Phi3==0) {return (F3+ F1+F2)/3.*Point3::area(P3,P1,P2);}
+    if(Phi0<=0.0 && Phi1<=0.0 && Phi2<=0.0 && Phi3<=0.0) continue;
+    if(Phi0>0.0 && Phi1>0.0 && Phi2>0.0 && Phi3>0.0) continue;
+    if(Phi0==0.0 && Phi1==0.0 && Phi2==0.0 && Phi3!=0.0) {return (F0+ F1+F2)/3.*Point3::area(P0,P1,P2);}
+    if(Phi0==0.0 && Phi1==0.0 && Phi2!=0.0 && Phi3==0.0) {return (F0+ F1+F3)/3.*Point3::area(P0,P1,P3);}
+    if(Phi0==0.0 && Phi1!=0.0 && Phi2==0.0 && Phi3==0.0) {return (F0+ F3+F2)/3.*Point3::area(P0,P3,P2);}
+    if(Phi0!=0.0 && Phi1==0.0 && Phi2==0.0 && Phi3==0.0) {return (F3+ F1+F2)/3.*Point3::area(P3,P1,P2);}
 
     // number_of_negatives = 1,2,3
     int number_of_negatives = 0;
 
-    if(Phi0<0) number_of_negatives++;
-    if(Phi1<0) number_of_negatives++;
-    if(Phi2<0) number_of_negatives++;
-    if(Phi3<0) number_of_negatives++;
+    if(Phi0<=0.0) number_of_negatives++;
+    if(Phi1<=0.0) number_of_negatives++;
+    if(Phi2<=0.0) number_of_negatives++;
+    if(Phi3<=0.0) number_of_negatives++;
 
     if(number_of_negatives==3)
     {
@@ -257,15 +272,15 @@ double Cube3::integrate_Over_Interface(const OctValue &f, const OctValue &ls_val
     }
 
     // sorting for simplication into two cases,
-    if(Phi0>0 && Phi1<0) swap(Phi0,Phi1,F0,F1,P0,P1);
-    if(Phi0>0 && Phi2<0) swap(Phi0,Phi2,F0,F2,P0,P2);
-    if(Phi0>0 && Phi3<0) swap(Phi0,Phi3,F0,F3,P0,P3);
-    if(Phi1>0 && Phi2<0) swap(Phi1,Phi2,F1,F2,P1,P2);
-    if(Phi1>0 && Phi3<0) swap(Phi1,Phi3,F1,F3,P1,P3);
-    if(Phi2>0 && Phi3<0) swap(Phi2,Phi3,F2,F3,P2,P3);
+    if(Phi0>0.0 && Phi1<=0.0) swap(Phi0,Phi1,F0,F1,P0,P1);
+    if(Phi0>0.0 && Phi2<=0.0) swap(Phi0,Phi2,F0,F2,P0,P2);
+    if(Phi0>0.0 && Phi3<=0.0) swap(Phi0,Phi3,F0,F3,P0,P3);
+    if(Phi1>0.0 && Phi2<=0.0) swap(Phi1,Phi2,F1,F2,P1,P2);
+    if(Phi1>0.0 && Phi3<=0.0) swap(Phi1,Phi3,F1,F3,P1,P3);
+    if(Phi2>0.0 && Phi3<=0.0) swap(Phi2,Phi3,F2,F3,P2,P3);
 
     //
-    if(Phi0<=0 && Phi1>=0 && Phi2>=0 && Phi3>=0) // type -+++
+    if(Phi0<=0.0 && Phi1>0.0 && Phi2>0.0 && Phi3>0.0) // type -+++
     {
       Point3 P_btw_01 = interpol_p(P0,Phi0,P1,Phi1);
       Point3 P_btw_02 = interpol_p(P0,Phi0,P2,Phi2);
@@ -281,7 +296,7 @@ double Cube3::integrate_Over_Interface(const OctValue &f, const OctValue &ls_val
     else   // type --++ //if (Phi0<=0 && Phi1<=0 && Phi2>=0 && Phi3>=0)
     {
 #ifdef CASL_THROWS
-      if(Phi0>0 || Phi1>0 || Phi2<0 || Phi3<0)
+      if(Phi0>0.0 || Phi1>0.0 || Phi2<=0.0 || Phi3<=0.0)
         throw std::runtime_error("[CASL_ERROR]: Cube3->integrate_Over_Interface: wrong configuration.");
 #endif
 
