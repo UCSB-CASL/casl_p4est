@@ -349,10 +349,8 @@ double quad_neighbor_nodes_of_node_t::dzz_central( const double* f ) const
 {
     PetscErrorCode ierr = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_dzz_central, 0, 0, 0, 0); CHKERRXX(ierr);
     ierr = PetscLogFlops(7); CHKERRXX(ierr);
-
     double fm,fc,fp;
     z_ngbd_with_quadratic_interpolation(f,fm,fc,fp);
-
     ierr = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_dzz_central, 0, 0, 0, 0); CHKERRXX(ierr);
 
     return ((fp-fc)/d_00p+(fm-fc)/d_00m)*2./(d_00p+d_00m);
@@ -461,9 +459,13 @@ double quad_neighbor_nodes_of_node_t::dzz_central_on_00m(const double *f, const 
   double w_00m_pm = d_00m_m0*d_00m_0p;
   double w_00m_pp = d_00m_m0*d_00m_0m;
 
+
   if (w_00m_mm != 0) { fzz_00m_mm = neighbors[node_00m_mm].dzz_central(f); }
+
   if (w_00m_mp != 0) { fzz_00m_mp = neighbors[node_00m_mp].dzz_central(f); }
+
   if (w_00m_pm != 0) { fzz_00m_pm = neighbors[node_00m_pm].dzz_central(f); }
+
   if (w_00m_pp != 0) { fzz_00m_pp = neighbors[node_00m_pp].dzz_central(f); }
 
   ierr = PetscLogFlops(15); CHKERRXX(ierr);
