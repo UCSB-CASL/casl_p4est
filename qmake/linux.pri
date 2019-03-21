@@ -26,11 +26,11 @@ VORO_INCLUDES_RELEASE = /home/regan/libraries/voro++/include/voro++
 VORO_INCLUDES_DEBUG   = $VORO_INCLUDES_RELEASE
 VORO_LIBS_RELEASE     = /home/regan/libraries/voro++/lib/libvoro++.a
 VORO_LIBS_DEBUG       = $VORO_LIBS_RELEASE
-}
-else {
 QMAKE_CC = mpicc
 QMAKE_CXX = mpicxx
 QMAKE_LINK = mpicxx
+}
+else {
 # PETSc
 PETSC_INCLUDES_RELEASE = /home/rochi/libraries/petsc_release/include
 PETSC_INCLUDES_DEBUG   = /home/rochi/libraries/petsc_debug/include

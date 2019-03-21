@@ -50,7 +50,7 @@ using namespace std;
 
 int lmin = 3;
 int lmax = 5;
-int nb_splits = 5;
+int nb_splits = 3;
 
 int k1 = 1;
 int k2 = 1;
@@ -834,7 +834,11 @@ void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4e
               int compt)
 {
   PetscErrorCode ierr;
+#ifdef DARKNESS
+  string output = "/home/regan/workspace/projects/PB_voronoi/visualization";
+#else
   string output = "/home/rochi/LabCode/WorkSpace";
+#endif
   const char *out_dir = output.c_str();
   if(out_dir==NULL)
   {
@@ -1172,26 +1176,23 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
   //  solver.setup_negative_laplace_rhsvec();
 //  sample_cf_on_nodes(p4est, nodes, u_m, sol);
 
-  char out_path[1000];
-  char *out_dir = "/home/rochi/LabCode/WorkSpace";
-//  out_dir = getenv("OUT_DIR");
-  if(out_dir==NULL)
-  {
-    ierr = PetscPrintf(p4est->mpicomm, "You need to set the environment variable OUT_DIR before running the code to save stats\n"); CHKERRXX(ierr);
-  }
-  else
-  {
-    if(save_stats)
-    {
-      sprintf(out_path, "%s/stats.dat", out_dir);
-      solver.write_stats(out_path);
-    }
+  char out_path[PATH_MAX];
+#ifdef DARKNESS
+  string out_dir = "/home/regan/workspace/projects/PB_voronoi";
+#else
+  string out_dir = "/home/rochi/LabCode/WorkSpace";
+#endif
 
-    if(save_voro)
-    {
-      snprintf(out_path,1000, "%s/voronoi", out_dir);
-      solver.print_voronoi_VTK(out_path);
-    }
+  if(save_stats)
+  {
+    sprintf(out_path, "%s/stats.dat", out_dir.c_str());
+    solver.write_stats(out_path);
+  }
+
+  if(save_voro)
+  {
+    snprintf(out_path,1000, "%s/voronoi", out_dir.c_str());
+    solver.print_voronoi_VTK(out_path);
   }
 
   double shift_value = 0.0;
