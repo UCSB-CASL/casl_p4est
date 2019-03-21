@@ -692,13 +692,13 @@ private:
      * \brief molecule constructor.
      * \param pqr_: path to the pqr file to read;
      * \param xyz_c (optional): pointer to new_centroid (an array of double[P4EST_DIM]).
-     * new_centroid = s*old_centroid if the pointer if NULL (or disregarded);
+     * new_centroid = s*old_centroid if the pointer is NULL (or disregarded);
      * \param angles (optional): pointer to an array of angles (in radians) defining the rotation
      * matrix R.
      * --> In 2D, the right-handed rotation angle (one value).
      * --> in 3D, the angles psi, theta_n, phi_n (three values), representing a right-handed angle
      * of rotation psi around the axis n pointed by polar and azimuthal angles theta_n and phi_n.
-     * R = identity if the pointer if NULL (or disregarded);
+     * R = identity if the pointer is NULL (or disregarded);
      * \param angstrom_to_domain_ (optional): scaling factor from angstrom to domain dimensions
      * (default is 1, i.e. no scaling --> validity check is skipped in debug mode in that case);
      * \param overlap (optional): max number of characters per (relevant) line in the pqr file
