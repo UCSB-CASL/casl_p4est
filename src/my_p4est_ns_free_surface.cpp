@@ -594,11 +594,11 @@ void my_p4est_ns_free_surface_t::solve_viscosity()
   solver.set_diagonal(alpha * rho/dt_n);
   solver.set_bc(bc_v_global, dxyz_hodge, face_is_well_defined);
   solver.set_rhs(rhs);
-#if defined(COMET) || defined(STAMPEDE) || defined(POD_CLUSTER)
-  solver.set_compute_partition_on_the_fly(true);
-#else
+//#if defined(COMET) || defined(STAMPEDE) || defined(POD_CLUSTER)
+//  solver.set_compute_partition_on_the_fly(true);
+//#else
   solver.set_compute_partition_on_the_fly(false);
-#endif
+//#endif
 
   solver.solve(vstar);
 
