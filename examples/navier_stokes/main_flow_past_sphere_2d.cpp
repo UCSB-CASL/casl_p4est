@@ -668,7 +668,7 @@ int main (int argc, char* argv[])
   const bool reuse_solver               = !cmd.contains("no_solver_reuse");
   const double duration                 = cmd.get<double>("duration", 200.0);
 #if defined(POD_CLUSTER)
-  const string export_dir               = cmd.get<string>("export_folder", "/home/regan/flow_past_sphere");
+  const string export_dir               = cmd.get<string>("export_folder", "/scratch/regan/flow_past_sphere");
 #elif defined(STAMPEDE)
   const string export_dir               = cmd.get<string>("export_folder", "/work/04965/tg842642/stampede2/flow_past_sphere");
 #elif defined(LAPTOP)
