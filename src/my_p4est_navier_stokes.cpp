@@ -1170,11 +1170,11 @@ void my_p4est_navier_stokes_t::solve_viscosity(my_p4est_poisson_faces_t* &face_p
     face_poisson_solver = new my_p4est_poisson_faces_t(faces_n, ngbd_n);
     face_poisson_solver->set_phi(phi);
     face_poisson_solver->set_bc(bc_v, dxyz_hodge, face_is_well_defined);
-#if defined(COMET) || defined(STAMPEDE) || defined(POD_CLUSTER)
-    face_poisson_solver->set_compute_partition_on_the_fly(true);
-#else
+//#if defined(COMET) || defined(STAMPEDE) || defined(POD_CLUSTER)
+//    face_poisson_solver->set_compute_partition_on_the_fly(true);
+//#else
     face_poisson_solver->set_compute_partition_on_the_fly(false);
-#endif
+//#endif
   }
 
   face_poisson_solver->set_mu(mu);
