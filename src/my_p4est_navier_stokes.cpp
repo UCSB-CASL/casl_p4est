@@ -320,7 +320,7 @@ my_p4est_navier_stokes_t::my_p4est_navier_stokes_t(my_p4est_node_neighbors_t *ng
   ierr = VecCreateGhostCells(p4est_n, ghost_n, &hodge); CHKERRXX(ierr);
   ierr = VecGhostGetLocalForm(hodge, &vec_loc); CHKERRXX(ierr);
   ierr = VecSet(vec_loc, 0); CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(phi, &vec_loc); CHKERRXX(ierr);
+  ierr = VecGhostRestoreLocalForm(hodge, &vec_loc); CHKERRXX(ierr);
 
   ierr = VecDuplicate(hodge, &pressure); CHKERRXX(ierr);
 
