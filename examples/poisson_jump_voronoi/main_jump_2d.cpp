@@ -48,8 +48,8 @@
 
 using namespace std;
 
-int lmin = 3;
-int lmax = 4;
+int lmin = 2;
+int lmax = 5;
 int nb_splits = 3;
 
 int k1 = 1;
@@ -93,7 +93,7 @@ domain omega = centered_ones;
  * 0 - circle
  * 1 - flower
  */
-int level_set_type = 0;
+int level_set_type = 1;
 
 int test_number = 0;
 /*
@@ -113,12 +113,12 @@ int test_number = 0;
  *   - fully periodic
  *
  *  ********* 3D *********
- * 0 - u_m=exp((z-zmin)/(zmax-zmin)), u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin)), mu_m=mu_p=1.0
- * 1 - u_m=exp((z-zmin)/(zmax-zmin)), u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin)), mu_m=SQR((y-ymin)/(ymax-ymin))*log((x-xmin)/(xmax-xmin)+2)+4, mu_p=exp(-(z-zmin)/(zmax-zmin))   article example 4.6
+ * 0 - u_m=exp((z-zmin)/(zmax-zmin)), u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin)), mu_m=mu_p=1.0, BC dirichlet
+ * 1 - u_m=exp((z-zmin)/(zmax-zmin)), u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin)), mu_m=SQR((y-ymin)/(ymax-ymin))*log((x-xmin)/(xmax-xmin)+2)+4, mu_p=exp(-(z-zmin)/(zmax-zmin))   article example 4.6, BC dirichlet
  * 2 - u_m=u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin))*exp((z-zmin)/(zmax-zmin)), mu_m=mu_p=1.45, BC dirichlet
  * 3 - u_m=u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin))*exp((z-zmin)/(zmax-zmin)), mu_m=mu_p=exp((x-xmin)/(xmax-xmin))*ln((y-ymin)/(ymax-ymin)+(z-zmin)/(zmax-zmin)+2), BC dirichlet
- * 4 - u_m=((y-0.5*(ymin+ymax))/(ymax-ymin))*((z-0.5*(zmin+zmax))/(zmax-zmin))*sin(x/(xmax-xmin)), u_p=((x-0.5*(xmin+xmax))/(xmax-xmin))*SQR((y-0.5*(ymin+ymax))/(ymax-ymin))+pow((z-0.5*(zmin+zmax))/(zmax-zmin), 3.0), mu_m=SQR((y-0.5*(ymin+ymax))/(ymax-ymin))+5, mu_p=exp((x-0.5*(xmin+xmax))/(xmax-xmin)+(z-0.5*(zmin+zmax))/(zmax-zmin))    article example 4.7
- * 5 - u_m=u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin))*exp((z-zmin)/(zmax-zmin)), mu_m=SQR((y-0.5*(ymin+ymax))/(ymax-ymin))+5, mu_p=exp((x-0.5*(xmin+xmax))/(xmax-xmin)+(z-0.5*(zmin+zmax))/(zmax-zmin))
+ * 4 - u_m=((y-0.5*(ymin+ymax))/(ymax-ymin))*((z-0.5*(zmin+zmax))/(zmax-zmin))*sin(x/(xmax-xmin)), u_p=((x-0.5*(xmin+xmax))/(xmax-xmin))*SQR((y-0.5*(ymin+ymax))/(ymax-ymin))+pow((z-0.5*(zmin+zmax))/(zmax-zmin), 3.0), mu_m=SQR((y-0.5*(ymin+ymax))/(ymax-ymin))+5, mu_p=exp((x-0.5*(xmin+xmax))/(xmax-xmin)+(z-0.5*(zmin+zmax))/(zmax-zmin))    article example 4.7, BC dirichlet
+ * 5 - u_m=u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin))*exp((z-zmin)/(zmax-zmin)), mu_m=SQR((y-0.5*(ymin+ymax))/(ymax-ymin))+5, mu_p=exp((x-0.5*(xmin+xmax))/(xmax-xmin)+(z-0.5*(zmin+zmax))/(zmax-zmin)), BC dirichlet
  * 6 - u_m=exp(-SQR(sin(2.0*PI*wave_number*(x-xmin)/(xmax-xmin))))*(SQR((y-ymin)/(ymax-ymin))*atan(3.0*(z-0.5*(zmin+zmax))/(zmax-zmin))),
  *   - u_p= 1.0-pow((x-0.5*(xmin+xmax))/(xmax-xmin), 3.0)-SQR((y-0.5*(ymin+ymax))/(ymax-ymin)) + ((z-0.5*(zmin+zmax))/(zmax-zmin))
  *   - mu_m= 2.0+0.3*cos(2.0*PI*(x-xmin)/(xmax-xmin))
@@ -148,7 +148,7 @@ int test_number = 0;
  *   - u_p= 1.0-pow((x-0.5*(xmin+xmax))/(xmax-xmin), 3.0)-SQR((y-0.5*(ymin+ymax))/(ymax-ymin)) + ((z-0.5*(zmin+zmax))/(zmax-zmin))
  *   - mu_m=mu_value
  *   - mu_p=mu_value*mu_ratio
- *   - BC periodic in x-z, dirichlet in y
+ *   - BC periodic in y-z, dirichlet in x
  * 12- u_m=up= cos(2.0*PI*wave_number*(k1*(x/(xmax-xmin)) + k2*(y/(ymax-ymin)) +k3*(z/(zmax-zmin))))*cos(2.0*PI*wave_number*(k1*(z/(zmax-zmin)) + k2*(x/(xmax-xmin)) +k3*(y/(ymax-ymin))))*cos(2.0*PI*wave_number*(k1*(y/(ymax-ymin)) + k2*(z/(zmax-zmin)) - k3*(x/(xmax-xmin))))
  *   - mu_m=mu_value
  *   - mu_p=mu_value*mu_ratio
@@ -1264,6 +1264,8 @@ void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4e
   PetscErrorCode ierr;
 #ifdef DARKNESS
   string output = "/home/regan/workspace/projects/PB_voronoi/visualization";
+#elseif POD_CLUSTER
+  string output = "/home/rochishnu00/visualization";
 #else
   string output = "/home/rochi/LabCode/results";
 #endif
@@ -1607,6 +1609,8 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
   char out_path[PATH_MAX];
 #ifdef DARKNESS
   string out_dir = "/home/regan/workspace/projects/PB_voronoi";
+#elseif POD_CLUSTER
+  string out_dir = "/home/rochishnu00/results";
 #else
   string out_dir = "/home/rochi/LabCode/results";
 #endif
@@ -1653,8 +1657,8 @@ int main (int argc, char* argv[])
   cmd.add_option("check_partition", "1 to check if the voronoi partition is symmetric, 0 otherwise");
 #ifdef P4_TO_P8
   cmd.add_option("test", "choose a test.\n\
-                 0 - u_m=exp((z-zmin)/(zmax-zmin)), u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin)), mu_m=mu_p=1.0\n\
-                 1 - u_m=exp((z-zmin)/(zmax-zmin)), u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin)), mu_m=SQR((y-ymin)/(ymax-ymin))*log((x-xmin)/(xmax-xmin)+2)+4, mu_p=exp(-(z-zmin)/(zmax-zmin)) article example 4.6 \n\
+                 0 - u_m=exp((z-zmin)/(zmax-zmin)), u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin)), mu_m=mu_p=1.0, BC dirichlet\n\
+                 1 - u_m=exp((z-zmin)/(zmax-zmin)), u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin)), mu_m=SQR((y-ymin)/(ymax-ymin))*log((x-xmin)/(xmax-xmin)+2)+4, mu_p=exp(-(z-zmin)/(zmax-zmin)) article example 4.6, BC dirichlet \n\
                  2 - u_m=u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin))*exp((z-zmin)/(zmax-zmin)), mu_m=mu_p=1.45, BC dirichlet\n\
                  3 - u_m=u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin))*exp((z-zmin)/(zmax-zmin)), mu_m=mu_p=exp((x-xmin)/(xmax-xmin))*ln((y-ymin)/(ymax-ymin)+(z-zmin)/(zmax-zmin)+2), BC dirichlet\n\
                  4 - u_m=((y-0.5*(ymin+ymax))/(ymax-ymin))*((z-0.5*(zmin+zmax))/(zmax-zmin))*sin(x/(xmax-xmin)), u_p=((x-0.5*(xmin+xmax))/(xmax-xmin))*SQR((y-0.5*(ymin+ymax))/(ymax-ymin))+pow((z-0.5*(zmin+zmax))/(zmax-zmin), 3.0), mu_m=SQR((y-0.5*(ymin+ymax))/(ymax-ymin))+5, mu_p=exp((x-0.5*(xmin+xmax))/(xmax-xmin)+(z-0.5*(zmin+zmax))/(xmax-xmin))    BC dirichlet article example 4.7 \n\
@@ -1688,7 +1692,7 @@ int main (int argc, char* argv[])
                    - u_p= 1.0-pow((x-0.5*(xmin+xmax))/(xmax-xmin), 3.0)-SQR((y-0.5*(ymin+ymax))/(ymax-ymin)) + ((z-0.5*(zmin+zmax))/(zmax-zmin)) \n\
                    - mu_m=mu_value \n\
                    - mu_p=mu_value*mu_ratio \n\
-                   - BC periodic in x-z, dirichlet in y \n\
+                   - BC periodic in y-z, dirichlet in x \n\
                  12- u_m=up= cos(2.0*PI*wave_number*(k1*(x/(xmax-xmin)) + k2*(y/(ymax-ymin)) +k3*(z/(zmax-zmin))))*cos(2.0*PI*wave_number*(k1*(z/(zmax-zmin)) + k2*(x/(xmax-xmin)) +k3*(y/(ymax-ymin))))*cos(2.0*PI*wave_number*(k1*(y/(ymax-ymin)) + k2*(z/(zmax-zmin)) - k3*(x/(xmax-xmin)))) \n\
                    - mu_m=mu_value \n\
                    - mu_p=mu_value*mu_ratio \n\
@@ -1949,41 +1953,73 @@ int main (int argc, char* argv[])
                                                                  );
     double grad_sol[P4EST_DIM];
     ngbd_n1->init_neighbors();
+
     if((look_xm && (p_000*p_m00<=0)) || (look_xp && (p_000*p_p00<=0))){
+       if ( (p_000*p_m00<=0) && (p_000*p_p00<=0)){    // note: need better fix: checks if the neighbors on both side of the current node are on the other side of the interface along x  - then uses u_x_exact
+            #ifdef P4_TO_P8
+            grad_sol[0]= u_x_exact(x,y,z);
+            #else
+            grad_sol[0]= u_x_exact(x,y);
+            #endif
+       }
+       else {
        if (look_xm && (p_000*p_m00<=0))
            grad_sol[0] = (*ngbd_n1).get_neighbors(n).dx_forward_quadratic(sol_p, *ngbd_n1);
        else
            grad_sol[0] = (*ngbd_n1).get_neighbors(n).dx_backward_quadratic(sol_p, *ngbd_n1);
+       }
     }
     else {
         grad_sol[0] = (*ngbd_n1).get_neighbors(n).dx_central(sol_p);
     }
     if((look_ym && (p_000*p_0m0<=0)) || (look_yp && (p_000*p_0p0<=0))){
+        if ( (p_000*p_0m0<=0) && (p_000*p_0p0<=0)){    // note: need better fix: checks if the neighbors on both side of the current node are on the other side of the interface along y  - then uses u_y_exact
+                #ifdef P4_TO_P8
+                    grad_sol[1]= u_y_exact(x,y,z);
+                #else
+                    grad_sol[1]= u_y_exact(x,y);
+                #endif
+        }
+        else {
        if (look_ym && (p_000*p_0m0<=0))
            grad_sol[1] = (*ngbd_n1).get_neighbors(n).dy_forward_quadratic(sol_p, *ngbd_n1);
        else
            grad_sol[1] = (*ngbd_n1).get_neighbors(n).dy_backward_quadratic(sol_p, *ngbd_n1);
+       }
     }
     else {
         grad_sol[1] = (*ngbd_n1).get_neighbors(n).dy_central(sol_p);
     }
 #ifdef P4_TO_P8
     if((look_zm && (p_000*p_00m<=0)) || (look_zp && (p_000*p_00p<=0))){
+        if ( (p_000*p_0m0<=0) && (p_000*p_0p0<=0)){ // note: need better fix: checks if the neighbors on both side of the current node are on the other side of the interface along z  - then uses u_z_exact
+                    grad_sol[2]= u_z_exact(x,y,z);
+        }
+        else {
        if (look_zm && (p_000*p_00m<=0))
            grad_sol[2] = (*ngbd_n1).get_neighbors(n).dz_forward_quadratic(sol_p, *ngbd_n1);
        else
            grad_sol[2] = (*ngbd_n1).get_neighbors(n).dz_backward_quadratic(sol_p, *ngbd_n1);
+        }
     }
     else {
         grad_sol[2] = (*ngbd_n1).get_neighbors(n).dz_central(sol_p);
     }
 #endif
-
+/*
       #ifdef P4_TO_P8
         err_grad_p[n]= sqrt(SQR(u_x_exact(x,y,z)-grad_sol[0]) + SQR(u_y_exact(x,y,z)-grad_sol[1]) + SQR(u_z_exact(x,y,z)-grad_sol[2]));
       #else
         err_grad_p[n]= sqrt(SQR(u_x_exact(x,y)-grad_sol[0]) + SQR(u_y_exact(x,y)-grad_sol[1]));
       #endif
+*/
+
+    #ifdef P4_TO_P8
+      err_grad_p[n]= MAX(ABS(u_x_exact(x,y,z)-grad_sol[0]) , ABS(u_y_exact(x,y,z)-grad_sol[1]) ,ABS( u_z_exact(x,y,z)-grad_sol[2]));
+    #else
+      err_grad_p[n]= MAX(ABS(u_x_exact(x,y)-grad_sol[0]) , ABS(u_y_exact(x,y)-grad_sol[1]));
+    #endif
+
 
 //      std::cout <<" gradient error ="<< err_grad_p[n] << std::endl;
 

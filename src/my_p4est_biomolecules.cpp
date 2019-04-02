@@ -4607,10 +4607,10 @@ void    my_p4est_biomolecules_solver_t::solve_singular_part()
     make_sure_is_node_sampled(psi_star_xx);
     biomolecules->neighbors->dxx_central(psi_star, psi_star_xx);
     make_sure_is_node_sampled(psi_star_yy);
-    biomolecules->neighbors->dxx_central(psi_star, psi_star_yy);
+    biomolecules->neighbors->dyy_central(psi_star, psi_star_yy);
 #ifdef P4_TO_P8
     make_sure_is_node_sampled(psi_star_zz);
-    biomolecules->neighbors->dxx_central(psi_star, psi_star_zz);
+    biomolecules->neighbors->dzz_central(psi_star, psi_star_zz);
 #endif
     bc_interface_value.set_input(psi_star, psi_star_xx, psi_star_yy,
                              #ifdef P4_TO_P8
