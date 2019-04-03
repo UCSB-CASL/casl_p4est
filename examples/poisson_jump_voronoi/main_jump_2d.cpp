@@ -1264,7 +1264,7 @@ void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4e
   PetscErrorCode ierr;
 #ifdef DARKNESS
   string output = "/home/regan/workspace/projects/PB_voronoi/visualization";
-#elseif POD_CLUSTER
+#elif POD_CLUSTER
   string output = "/home/rochishnu00/visualization";
 #else
   string output = "/home/rochi/LabCode/results";
@@ -1609,7 +1609,7 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
   char out_path[PATH_MAX];
 #ifdef DARKNESS
   string out_dir = "/home/regan/workspace/projects/PB_voronoi";
-#elseif POD_CLUSTER
+#elif POD_CLUSTER
   string out_dir = "/home/rochishnu00/results";
 #else
   string out_dir = "/home/rochi/LabCode/results";
