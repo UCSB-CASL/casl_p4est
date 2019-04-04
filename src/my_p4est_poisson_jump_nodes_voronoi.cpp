@@ -1271,22 +1271,6 @@ void my_p4est_poisson_jump_nodes_voronoi_t::setup_linear_system()
 #endif
     compute_voronoi_cell(n, voro);
 
-    unsigned int number_of_neighbors_across = 0;
-    double min_surface = DBL_MAX;
-    double phi_center   = interp_phi(voro.center_seed.x, voro.center_seed.y, voro.center_seed.z);
-    for (size_t k = 0; k < voro.nb_seeds.size(); ++k) {
-      double phi_other  = interp_phi(voro.nb_seeds[k].p.x, voro.nb_seeds[k].p.y, voro.nb_seeds[k].p.z);
-      if ((((phi_center<=0) && (phi_other > 0.0)) || ((phi_center>0) && (phi_other <= 0.0))) && (voro.nb_seeds[k].s > 0.0))
-      {
-        number_of_neighbors_across++;
-        min_surface = MIN(min_surface, voro.nb_seeds[k].s);
-      }
-    }
-    if(number_of_neighbors_across >1)
-      std::cerr << "Found more than one neighbor across the interface, actually " << number_of_neighbors_across << "! (from proc " << p4est->mpirank << "). min_surface = " << min_surface << std::endl;
-
-
-
 #ifdef P4_TO_P8
     const std::vector<ngbd3Dseed> *neighbor_seeds;
 #else
