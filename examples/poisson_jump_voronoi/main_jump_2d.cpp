@@ -93,7 +93,7 @@ domain omega = centered_ones;
  * 0 - circle
  * 1 - flower
  */
-int level_set_type = 1;
+int level_set_type = 0;
 
 int test_number = 0;
 /*

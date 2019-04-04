@@ -1281,6 +1281,34 @@ void my_p4est_poisson_jump_nodes_voronoi_t::setup_linear_system()
     voro.get_neighbor_seeds(neighbor_seeds);
 
 #ifdef P4_TO_P8
+    unsigned int number_of_neighbors_across = 0;
+    std::vector<double> surfaces;
+    double min_surface = DBL_MAX;
+    voro.get_neighbor_seeds(neighbor_seeds);
+    double phi_center   = interp_phi(voro.get_center_point().x, voro.get_center_point().y, voro.get_center_point().z);
+    for (size_t k = 0; k < neighbor_seeds->size(); ++k) {
+      double phi_other  = interp_phi(neighbor_seeds->at(k).p.x, neighbor_seeds->at(k).p.y, neighbor_seeds->at(k).p.z);
+      if ((((phi_center<=0) && (phi_other > 0.0)) || ((phi_center>0) && (phi_other <= 0.0))) && (neighbor_seeds->at(k).s > 0.0))
+      {
+        number_of_neighbors_across++;
+        surfaces.push_back(neighbor_seeds->at(k).s);
+      }
+    }
+    std::sort(surfaces.begin(), surfaces.end());
+    if(number_of_neighbors_across >1)
+    {
+      std::cerr << "Found more than one neighbor across the interface, actually " << number_of_neighbors_across << "! (from proc " << p4est->mpirank << ")." << std::endl;
+      if(surfaces[surfaces.size()-2]/surfaces[surfaces.size()-1] > 0.1)
+      {
+        std::cerr << "surfaces = ";
+        for (size_t k = 0; k < surfaces.size(); ++k)
+          std::cerr << surfaces[k] << " ";
+        std::cerr << std::endl;
+      }
+    }
+#endif
+
+#ifdef P4_TO_P8
     double phi_n = interp_phi(pc.x, pc.y, pc.z);
 #else
     double phi_n = interp_phi(pc.x, pc.y);
