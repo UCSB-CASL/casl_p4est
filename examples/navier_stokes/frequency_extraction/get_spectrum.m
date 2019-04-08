@@ -12,10 +12,14 @@ fclose(fid);
 cutoff_freq = 5.0;
 clip_start  = 68.25;
 clip_end    = 378.9;
+start_avg   = 0.0, %84.62;
 
 close all
 plot_signals(time, F)
-filtered_F = filter_signals(time, F, cutoff_freq);
+[filtered_F, avg] = filter_signals(time, F, cutoff_freq, start_avg);
+fprintf('Averaged drag force = %g\n', avg(1))
+fprintf('Averaged lift force = %g\n', avg(2))
+
 name_export = "filtered_"+file_to_load;
 fid = fopen(name_export, 'w');
 fprintf(fid, "%% tn | Cd_x | Cd_y | Cd_z\n");
