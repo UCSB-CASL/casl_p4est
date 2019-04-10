@@ -871,7 +871,7 @@ double my_p4est_faces_t::face_area_in_negative_domain(p4est_locidx_t f_idx, int 
   {
     if(dim == dir)
       continue;
-    area *= (v2c[3*t2v[P4EST_CHILDREN*tree_idx + P4EST_CHILDREN-1] + dir]-v2c[3*t2v[P4EST_CHILDREN*tree_idx + 0] + dir])/((double) (1<<quad->level));
+    area *= (v2c[3*t2v[P4EST_CHILDREN*tree_idx + P4EST_CHILDREN-1] + dim]-v2c[3*t2v[P4EST_CHILDREN*tree_idx + 0] + dim])/((double) (1<<quad->level));
   }
   if(phi_p != NULL)
   {
