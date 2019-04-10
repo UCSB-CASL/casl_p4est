@@ -1358,12 +1358,14 @@ void my_p4est_navier_stokes_t::set_dt(double dt_nm1, double dt_n)
 {
   this->dt_nm1 = dt_nm1;
   this->dt_n = dt_n;
+  dt_updated = true;
 }
 
 
 void my_p4est_navier_stokes_t::set_dt(double dt_n)
 {
   this->dt_n = dt_n;
+  dt_updated = true;
 }
 
 

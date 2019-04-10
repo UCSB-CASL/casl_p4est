@@ -1,4 +1,3 @@
-
 /*
  * The navier stokes solver applied to the oscillating sphere problem
  *
@@ -59,12 +58,16 @@ const double r0 = 0.1;
 const double r0 = 0.05;
 #endif
 
+// mass density
+const double rho  = 1.0; // set to 1.0 for simplicity (nondimensional inputs only)
 // oscillation frequency
-const double f0 = 0.0; // TBD
+const double f0   = 1.0; // arbitrary value: the (nondimensional) results __should__ be frequency-independent!
 // excursion of the sphere/cylinder motion
-const double X0 = 0.0; // TBD
+double X0; // to be set based on the desired Strouhal number
 
-// simulation time and time-step (they are required for the evaluation of the levelset function and initial conditions)
+// current simulation time and (fixed) time step
+// they are required for the evaluation of the levelset function and interface conditions
+// we want to enforce field conditions at time tn+dt
 double tn, dt;
 
 #ifdef P4_TO_P8
@@ -178,7 +181,7 @@ struct initial_velocity_unm1_t : CF_3
 {
   double operator()(double, double, double) const
   {
-    return 2.0*PI*f0*X0*sin(2*PI*f0*(tn-dt)); // no longer u0 as in the original main
+    return 0.0; // 2.0*PI*f0*X0*sin(2*PI*f0*(tn-dt));
   }
 } initial_velocity_unm1;
 
@@ -186,7 +189,7 @@ struct initial_velocity_u_n_t : CF_3
 {
   double operator()(double, double, double) const
   {
-    return 2.0*PI*f0*X0*sin(2*PI*f0*tn); // no longer u0 as in the original main
+    return 0.0; // 2.0*PI*f0*X0*sin(2*PI*f0*tn);
   }
 } initial_velocity_un;
 
@@ -221,31 +224,6 @@ struct initial_velocity_w_n_t : CF_3
     return 0;
   }
 } initial_velocity_wn;
-
-struct external_force_u_t : CF_3
-{
-  double operator()(double, double, double) const
-  {
-    return 0;
-  }
-};
-
-struct external_force_v_t : CF_3
-{
-  double operator()(double, double, double) const
-  {
-    return 0;
-  }
-};
-
-struct external_force_w_t : CF_3
-{
-  double operator()(double, double, double) const
-  {
-    return 0.0;
-  }
-};
-
 #else
 
 class LEVEL_SET: public CF_2
@@ -334,7 +312,7 @@ struct initial_velocity_unm1_t : CF_2
 {
   double operator()(double, double) const
   {
-    return 2.0*PI*X0*f0*sin(2*PI*f0*(tn-dt));
+    return 0.0; //2.0*PI*X0*f0*sin(2*PI*f0*(tn-dt));
   }
 } initial_velocity_unm1;
 
@@ -342,7 +320,7 @@ struct initial_velocity_u_n_t : CF_2
 {
   double operator()(double, double) const
   {
-    return 2.0*PI*X0*f0*sin(2*PI*f0*tn);
+    return 0.0; //2.0*PI*X0*f0*sin(2*PI*f0*tn);
   }
 } initial_velocity_un;
 
@@ -361,27 +339,11 @@ struct initial_velocity_vn_t : CF_2
     return 0;
   }
 } initial_velocity_vn;
-
-struct external_force_u_t : CF_2
-{
-  double operator()(double, double) const
-  {
-    return 0;
-  }
-} external_force_u;
-
-struct external_force_v_t : CF_2
-{
-  double operator()(double, double) const
-  {
-    return 0;
-  }
-};
 #endif
 
-void initialize_force_output(char* file_forces, const char *out_dir, const int& lmin, const int& lmax, const double& threshold_split_cell, const double& cfl, const int& sl_order, const mpi_environment_t& mpi, const double& tstart)
+void initialize_force_output(char* file_forces, const char *out_dir, const int& lmin, const int& lmax, const double& threshold_split_cell, const int& nsteps, const int& sl_order, const mpi_environment_t& mpi, const double& tstart)
 {
-  sprintf(file_forces, "%s/forces_%d-%d_split_threshold_%.2f_cfl_%.2f_sl_%d.dat", out_dir, lmin, lmax, threshold_split_cell, cfl, sl_order);
+  sprintf(file_forces, "%s/forces_%d-%d_split_threshold_%.2f_nsteps_%d_sl_%d.dat", out_dir, lmin, lmax, threshold_split_cell, nsteps, sl_order);
   PetscErrorCode ierr = PetscPrintf(mpi.comm(), "Saving forces in ... %s\n", file_forces); CHKERRXX(ierr);
 
   if(mpi.rank() == 0)
@@ -392,9 +354,9 @@ void initialize_force_output(char* file_forces, const char *out_dir, const int& 
       if(fp_forces==NULL)
         throw std::runtime_error("initialize_force_output: could not open file for force output.");
 #ifdef P4_TO_P8
-      fprintf(fp_forces, "%% tn | Cd_x | Cd_y | Cd_z\n");
+      fprintf(fp_forces, "%% tn/T | Cd_x | Cd_y | Cd_z\n");
 #else
-      fprintf(fp_forces, "%% tn | Cd_x | Cd_y\n");
+      fprintf(fp_forces, "%% tn/T | Cd_x | Cd_y\n");
 #endif
       fclose(fp_forces);
     }
@@ -449,7 +411,7 @@ void initialize_force_output(char* file_forces, const char *out_dir, const int& 
       fprintf(fp_liveplot_forces, "plot");
       for (short dd = 0; dd < P4EST_DIM; ++dd)
       {
-        fprintf(fp_liveplot_forces, "\t \"forces_%d-%d_split_threshold_%.2f_cfl_%.2f_sl_%d.dat\" using 1:%d title '%c-component' with lines lw 3", lmin, lmax, threshold_split_cell, cfl, sl_order, ((int)dd+2), ((dd==0)?'x':((dd==1)?'y':'z')));
+        fprintf(fp_liveplot_forces, "\t \"forces_%d-%d_split_threshold_%.2f_nsteps_%d_sl_%d.dat\" using 1:%d title '%c-component' with lines lw 3", lmin, lmax, threshold_split_cell, nsteps, sl_order, ((int)dd+2), ((dd==0)?'x':((dd==1)?'y':'z')));
         if(dd < P4EST_DIM-1)
           fprintf(fp_liveplot_forces, ",\\");
         fprintf(fp_liveplot_forces, "\n");
@@ -471,14 +433,14 @@ void initialize_force_output(char* file_forces, const char *out_dir, const int& 
       fprintf(fp_tex_plot_forces, "set key top right Right \n");
       fprintf(fp_tex_plot_forces, "set xlabel \"$t$\"\n");
 #ifdef P4_TO_P8
-      fprintf(fp_tex_plot_forces, "set ylabel \"$\\\\mathbf{C}_{\\\\mathrm{D}} = \\\\frac{2}{\\\\rho \\\\pi r^{2}u_{0}^{2}}\\\\int_{\\\\Gamma}{ \\\\left( -p \\\\mathbf{I} + 2\\\\mu \\\\mathbf{D} \\\\right)\\\\cdot \\\\mathbf{n} \\\\, \\\\mathrm{d}\\\\Gamma}$ \" \n");
+      fprintf(fp_tex_plot_forces, "set ylabel \"$\\\\mathbf{C}_{\\\\mathrm{D}} = \\\\frac{2}{\\\\rho \\\\pi r^{2}\\\\left(2\\\\pi f_{0} X_{0}\\\\right)^{2}}\\\\int_{\\\\Gamma}{ \\\\left( -p \\\\mathbf{I} + 2\\\\mu \\\\mathbf{D} \\\\right)\\\\cdot \\\\mathbf{n} \\\\, \\\\mathrm{d}\\\\Gamma}$ \" \n");
 #else
-      fprintf(fp_tex_plot_forces, "set ylabel \"$\\\\mathbf{C}_{\\\\mathrm{D}} = \\\\frac{1}{\\\\rho r u_{0}^{2}}\\\\int_{\\\\Gamma}{ \\\\left( -p \\\\mathbf{I} + 2\\\\mu \\\\mathbf{D} \\\\right)\\\\cdot \\\\mathbf{n} \\\\, \\\\mathrm{d}\\\\Gamma}$ \" \n");
+      fprintf(fp_tex_plot_forces, "set ylabel \"$\\\\mathbf{C}_{\\\\mathrm{D}} = \\\\frac{1}{\\\\rho r \\\\left(2\\\\pi f_{0} X_{0}\\\\right)^{2}}\\\\int_{\\\\Gamma}{ \\\\left( -p \\\\mathbf{I} + 2\\\\mu \\\\mathbf{D} \\\\right)\\\\cdot \\\\mathbf{n} \\\\, \\\\mathrm{d}\\\\Gamma}$ \" \n");
 #endif
       fprintf(fp_tex_plot_forces, "plot");
       for (short dd = 0; dd < P4EST_DIM; ++dd)
       {
-        fprintf(fp_tex_plot_forces, "\t \"forces_%d-%d_split_threshold_%.2f_cfl_%.2f_sl_%d.dat\" using 1:%d title '$C_{\\mathrm{D}, %c}$' with lines lw 3", lmin, lmax, threshold_split_cell, cfl, sl_order, ((int) dd+2), ((dd==0)?'x':((dd==1)?'y':'z')));
+        fprintf(fp_tex_plot_forces, "\t \"forces_%d-%d_split_threshold_%.2f_nsteps_%d_sl_%d.dat\" using 1:%d title '$C_{\\mathrm{D}, %c}$' with lines lw 3", lmin, lmax, threshold_split_cell, nsteps, sl_order, ((int) dd+2), ((dd==0)?'x':((dd==1)?'y':'z')));
         if(dd < P4EST_DIM-1)
           fprintf(fp_tex_plot_forces, ",\\\n");
       }
@@ -514,10 +476,15 @@ int main (int argc, char* argv[])
   cmdParser cmd;
   cmd.add_option("restart", "if defined, this restarts the simulation from a saved state on disk (the value must be a valid path to a directory in which the solver state was saved)");
   // computational grid parameters
+#ifndef P4_TO_P8
+  cmd.add_option("lmin", "min level of the trees, default is 6");
+  cmd.add_option("lmax", "max level of the trees, default is 11");
+#else
   cmd.add_option("lmin", "min level of the trees, default is 5");
   cmd.add_option("lmax", "max level of the trees, default is 10");
+#endif
   cmd.add_option("thresh", "the threshold used for the refinement criteria, default is 0.1");
-  cmd.add_option("uniform_band", "size of the uniform band around the interface, in number of dx (a minimum of 2 is strictly enforced), default is such that half the sphere radius is tesselated");
+  cmd.add_option("uniform_band", "size of the uniform band around the interface, in number of dx (a minimum of 2 is strictly enforced), default is 4.0!");
   cmd.add_option("nx", "number of trees in the x-direction. The default value is 1 (length of domain is 2)");
   cmd.add_option("ny", "number of trees in the y-direction. The default value is 1 (height of domain is 2)");
 #ifdef P4_TO_P8
@@ -525,21 +492,17 @@ int main (int argc, char* argv[])
 #endif
   // physical parameters for the simulations
   cmd.add_option("duration", "the duration of the simulation (tfinal-tstart), in units of oscillating periods! If not restarted, tstart = 0.0, default duration is 3 cycles.");
-  cmd.add_option("St", "the Strouhal number = r/(pi*X0). This sets X0. The minimum value allowed is 0.04, default is 4/PI");
+  cmd.add_option("St", "the Strouhal number = r/(pi*X0). This option sets X0=r/(PI*St). The minimum value allowed is 0.04, default is 4/PI");
 #ifdef P4_TO_P8
-  cmd.add_option("Re", "the Reynolds number = (rho*u0*D)/mu where D=2 is the sphere diameter (default is 350)");
+  cmd.add_option("Re", "the Reynolds number=(rho*(2.0*PI*X0*f0)*2.0*r)/mu=(rho*4.0*f0*r^2)/(St*mu) where rho=1.0, f0=1, r=0.1 (default is 300). This option sets mu.");
 #else
-  cmd.add_option("Re", "the Reynolds number = (rho*u0*D)/mu where D=1 is the sphere diameter (default is 350)");
+  cmd.add_option("Re", "the Reynolds number=(rho*(2.0*PI*X0*f0)*2.0*r)/mu=(rho*4.0*f0*r^2)/(St*mu) where rho=1.0, f0=1, r=0.05 (default is 300). This option sets mu.");
 #endif
-  cmd.add_option("adapted_dt", "activates the calculation of dt based on the local cell sizes if present");
-  cmd.add_option("smoke", "no smoke if option not present, with smoke if option present");
   // method-related parameters
   cmd.add_option("sl_order", "the order for the semi lagrangian, either 1 (stable) or 2 (accurate), default is 2");
-  cmd.add_option("cfl", "dt = cfl * dx/vmax, default is 1.");
-  cmd.add_option("hodge_tol", "numerical tolerance on the Hodge variable, at all time steps, default is 1e-3");
+  cmd.add_option("nsteps", "number of time steps per oscillation period, default is 200.");
+  cmd.add_option("hodge_tol", "numerical tolerance on the Hodge variable, at all time steps, relative to 0.5*rho*SQR(2*pi*X0*x0), default is 0.1");
   cmd.add_option("niter_hodge", "max number of iterations for convergence of the Hodge variable, at all time steps, default is 10");
-  cmd.add_option("grid_update", "number of time steps between grid updates, default is 1");
-  cmd.add_option("no_solver_reuse", "deactivate the possibility to reuse face- and cell-solvers (within the inner loop and/or in case of unmodified grid).");
   cmd.add_option("pc_cell", "preconditioner for cell-solver: jacobi, sor or hypre, default is sor.");
   cmd.add_option("cell_solver", "Krylov solver used for cell-poisson problem, i.e. hodge variable: cg or bicgstab, default is bicgstab.");
   cmd.add_option("pc_face", "preconditioner for face-solver: jacobi, sor or hypre, default is sor.");
@@ -548,79 +511,73 @@ int main (int argc, char* argv[])
   cmd.add_option("save_vtk", "activates exportation of results in vtk format");
   cmd.add_option("vtk_dt", "export vtk files every vtk_dt time lapse (REQUIRED if save_vtk is activated)");
   cmd.add_option("save_forces", "save the forces");
-  cmd.add_option("save_state_dt", "if defined, this activates the 'save-state' feature. The solver state is saved every save_state_dt time steps in backup_ subfolders.");
+  cmd.add_option("save_state_dt", "if defined, this activates the 'save-state' feature. The solver state is saved every save_state_dt/f0 time steps in backup_ subfolders.");
   cmd.add_option("save_nstates", "determines how many solver states must be memorized in backup_ folders (default is 1).");
   cmd.add_option("timing", "if defined, prints timing information (typically for scaling analysis).");
 
   // --> extra info to be printed when -help is invoked
 #ifdef P4_TO_P8
   const std::string extra_info = "\
-      This program provides a general setup for simulating the flow past a static sphere. \n\
-      The domain is [0, 32]x[0, 8]x[0, 8]. A static sphere is centered at (8,0,0). \n\
-      The radius of the sphere is 1.0. The far-flow condition is (u,v,w)=(1,0,0).\n\
-      If activated by the user, smoke (passive scalar) is released into the domain from \n\
-      the inlet wall x = 0 by a constant unit source located at x = 0 and sqrt(y*y+z*z)<0.4. \n\
+      This program provides a general setup for simulating the flow past an oscillating sphere \n\
+      in a closed box. The domain is [-1, 1]x[-1, 1]x[-1, 1]. The radius of the sphere is 0.1, the \n\
+      sphere center follows the kinematics \n\
+                    x(t) = -X0*cos(2.0*PI*f0*t), y(t) = 0.0, z(t) = 0.0 \n\
       The boundary conditions are:\n\
-      - Dirichlet (1,0,0) for the velocity components on all walls but the outlet wall x=32 \n\
-      - homogeneous Neumann for the velocity components on the outlet wall x=32 \n\
-      - homogeneous Neumann for the pressure on all walls but the outlet wall x=32 \n\
-      - homogeneous Dirichlet for the pressure on the outlet wall x=32 \n\
-      - regular no-slip condition on the surface of the sphere (homogeneous Neumann for \n\
-      pressure and homogeneous Dirichlet for velocity components) \n\
-      By the definition of the above parameters and the Reynolds numbers, the Navier-Stokes \n\
-      solver is invoked with nondimensional inputs \n\
-      rho = 1.0, mu = 1.0/Re, body force per unit mass {0.0, 0.0, 0.0}. \n\
-      Developer: Raphael Egan (raphaelegan@ucsb.edu) based on a general main file from Arthur Guittet";
+      - Dirichlet (0,0,0) for the velocity components on all walls (no slip); \n\
+      - no-slip condition, i.e. vx(t)=2.0*PI*X0*f0*sin(2.0*PI*f0*t), vy(t) = 0.0, vz(t) = 0.0 on the sphere surface; \n\
+      - homogeneous Neumann for the pressure on all walls; \n\
+      - homogeneous Neumann for the pressure on the sphere interface. \n\
+      The flow starts from rest. This setup determines two non-dimensional numbers:\n\
+      1) Strouhal=(2*r*f0)/(2.0*PI*X0*f0)=r/(PI*X0);\n\
+      2) Reynolds=rho*(2.0*PI*X0*f0)*2.0*r)/mu=(rho*4.0*f0*r^2)/(St*mu);\n\
+      By the definition of the above parameters and nondimensional numbers, we set \n\
+                                    X0=r/(PI*St) \n\
+      rho is set to 1.0, f0 is set to 1.0, and \n\
+                                mu=(4*rho*f0*r^2)/(St*Re). \n\
+      Developer: Raphael Egan (raphaelegan@ucsb.edu) based on a general main file from Arthur Guittet (with corrections)";
 #else
   const std::string extra_info = "\
-      This program provides a general setup for simulating the flow past a static cylinder. \n\
-      The domain is [0, 32]x[0, 8]. A static cylinder/sphere is centered at (8,0). \n\
-      The radius of the cylinder is 0.5. The far-flow condition is (u,v)=(1,0).\n\
-      If activated by the user, smoke (passive scalar) is released into the domain from \n\
-      the inlet wall x = 0 by a constant unit source located at x = 0 and -0.5<y<0.5. \n\
+      This program provides a general setup for simulating the flow past an oscillating cylinder \n\
+      in a closed box. The domain is [-1, 1]x[-1, 1]. The radius of the cylinder is 0.05, the \n\
+      cylinder center follows the kinematics \n\
+                        x(t) = -X0*cos(2.0*PI*f0*t), y(t) = 0.0 \n\
       The boundary conditions are:\n\
-      - Dirichlet (1,0) for the velocity components on all walls but the outlet wall x=32 \n\
-      - homogeneous Neumann for the velocity components on the outlet wall x=32 \n\
-      - homogeneous Neumann for the pressure on all walls but the outlet wall x=32 \n\
-      - homogeneous Dirichlet for the pressure on the outlet wall x=32 \n\
-      - regular no-slip condition on the surface of the cylinder (homogeneous Neumann for \n\
-      pressure and homogeneous Dirichlet for velocity components)\n\
-      By the definition of the above parameters and the Reynolds numbers, the Navier-Stokes \n\
-      solver is invoked with nondimensional inputs \n\
-      rho = 1.0, mu = 1.0/Re, body force per unit mass {0.0, 0.0}. \n\
-      Developer: Raphael Egan (raphaelegan@ucsb.edu) based on a general main file from Arthur Guittet";
+      - Dirichlet (0,0) for the velocity components on all walls (no slip); \n\
+      - no-slip condition, i.e. vx(t)=2.0*PI*X0*f0*sin(2.0*PI*f0*t), vy(t) = 0.0 on the cylinder surface; \n\
+      - homogeneous Neumann for the pressure on all walls; \n\
+      - homogeneous Neumann for the pressure on the cylinder interface. \n\
+      The flow starts from rest.  This setup determines two non-dimensional numbers:\n\
+      1) Strouhal=(2*r*f0)/(2.0*PI*X0*f0)=r/(PI*X0);\n\
+      2) Reynolds=rho*(2.0*PI*X0*f0)*2.0*r)/mu=(rho*4.0*f0*r^2)/(St*mu);\n\
+      By the definition of the above parameters and nondimensional numbers, we set \n\
+                                    X0=r/(PI*St) \n\
+      rho is set to 1.0, f0 is set to 1.0, and \n\
+                                mu=(4*rho*f0*r^2)/(St*Re). \n\
+      Developer: Raphael Egan (raphaelegan@ucsb.edu) based on a general main file from Arthur Guittet (with corrections)";
 #endif
   cmd.parse(argc, argv, extra_info);
 
-  double tstart;
-  double dt;
   int lmin, lmax;
   my_p4est_navier_stokes_t* ns                    = NULL;
   my_p4est_brick_t* brick                         = NULL;
   splitting_criteria_cf_and_uniform_band_t* data  = NULL;
   LEVEL_SET level_set;
 
-  int sl_order;
-  double threshold_split_cell, uniform_band, cfl;
-  int ntree_x, ntree_y;
-#ifdef P4_TO_P8
-  int ntree_z;
-#endif
+  int sl_order, nsteps_per_period;
+  double threshold_split_cell, uniform_band;
   int n_xyz [P4EST_DIM];
 
-  const double hodge_tolerance          = cmd.get<double>("hodge_tol", 1e-3);
+  const double hodge_tolerance          = cmd.get<double>("hodge_tol", 0.1);
   const unsigned int niter_hodge_max    = cmd.get<unsigned int>("niter_hodge", 10);
-  const unsigned int steps_grid_update  = cmd.get<unsigned int>("grid_update", 1);
-  const bool reuse_solver               = !cmd.contains("no_solver_reuse");
-  const double duration                 = cmd.get<double>("duration", 200.0);
+  const double duration                 = cmd.get<double>("duration", 3.0)*(1.0/f0);
 #if defined(POD_CLUSTER)
-  const string export_dir               = cmd.get<string>("export_folder", "/scratch/regan/flow_past_sphere");
+  const string export_dir               = cmd.get<string>("export_folder", "/scratch/regan/oscillating_sphere");
 #elif defined(STAMPEDE)
-  const string export_dir               = cmd.get<string>("export_folder", "/work/04965/tg842642/stampede2/flow_past_sphere");
+  const string export_dir               = cmd.get<string>("export_folder", "/work/04965/tg842642/stampede2/oscillating_sphere");
 #elif defined(LAPTOP)
-  const string export_dir               = cmd.get<string>("export_folder", "/home/raphael/workspace/projects/flow_past_sphere");
+  const string export_dir               = cmd.get<string>("export_folder", "/home/raphael/workspace/projects/oscillating_sphere");
 #else
-  const string export_dir               = cmd.get<string>("export_folder", "/home/regan/workspace/projects/flow_past_sphere");
+  const string export_dir               = cmd.get<string>("export_folder", "/home/regan/workspace/projects/oscillating_sphere");
 #endif
   const bool save_vtk                   = cmd.contains("save_vtk");
   const bool get_timing                 = cmd.contains("timing");
@@ -629,16 +586,16 @@ int main (int argc, char* argv[])
   {
     if(!cmd.contains("vtk_dt"))
 #ifdef P4_TO_P8
-      throw std::runtime_error("main_flow_past_sphere_3d.cpp: the argument vtk_dt MUST be provided by the user if vtk exportation is desired.");
+      throw std::runtime_error("main_oscillating_sphere_3d.cpp: the argument vtk_dt MUST be provided by the user if vtk exportation is desired.");
 #else
-      throw std::runtime_error("main_flow_past_sphere_2d.cpp: the argument vtk_dt MUST be provided by the user if vtk exportation is desired.");
+      throw std::runtime_error("main_oscillating_sphere_2d.cpp: the argument vtk_dt MUST be provided by the user if vtk exportation is desired.");
 #endif
     vtk_dt = cmd.get<double>("vtk_dt", -1.0);
     if(vtk_dt <= 0.0)
 #ifdef P4_TO_P8
-      throw std::invalid_argument("main_flow_past_sphere_3d.cpp: the value of vtk_dt must be strictly positive.");
+      throw std::invalid_argument("main_oscillating_sphere_3d.cpp: the value of vtk_dt must be strictly positive.");
 #else
-      throw std::invalid_argument("main_flow_past_sphere_2d.cpp: the value of vtk_dt must be strictly positive.");
+      throw std::invalid_argument("main_oscillating_sphere_2d.cpp: the value of vtk_dt must be strictly positive.");
 #endif
   }
   const bool save_forces                = cmd.contains("save_forces"); double forces[P4EST_DIM];
@@ -646,15 +603,14 @@ int main (int argc, char* argv[])
   const unsigned int n_states           = cmd.get<unsigned int>("save_nstates", 1);
   if(save_state)
   {
-    dt_save_data                        = cmd.get<double>("save_state_dt", -1.0);
+    dt_save_data                        = cmd.get<double>("save_state_dt", -1.0)*(1.0/f0);
     if(dt_save_data < 0.0)
 #ifdef P4_TO_P8
-      throw std::invalid_argument("main_flow_past_sphere_3d.cpp: the value of save_state_dt must be strictly positive.");
+      throw std::invalid_argument("main_oscillating_sphere_3d.cpp: the value of save_state_dt must be strictly positive.");
 #else
-      throw std::invalid_argument("main_flow_past_sphere_2d.cpp: the value of save_state_dt must be strictly positive.");
+      throw std::invalid_argument("main_oscillating_sphere_2d.cpp: the value of save_state_dt must be strictly positive.");
 #endif
   }
-  const bool use_adapted_dt             = cmd.contains("adapted_dt");
 
   const string des_pc_cell              = cmd.get<string>("pc_cell", "sor");
   const string des_solver_cell          = cmd.get<string>("cell_solver", "bicgstab");
@@ -692,8 +648,7 @@ int main (int argc, char* argv[])
 
 
   PetscErrorCode ierr;
-  const double rho  = 1.0;
-  double Re, mu;
+  double Re, St, mu;
 #ifdef P4_TO_P8
   const double xyz_min [] = {xmin, ymin, zmin};
   const double xyz_max [] = {xmax, ymax, zmax};
@@ -726,14 +681,6 @@ int main (int argc, char* argv[])
 #endif
   bc_p.setInterfaceType(NEUMANN); bc_p.setInterfaceValue(bc_interface_value_p);
 
-  external_force_u_t external_force_u;
-  external_force_v_t external_force_v;
-#ifdef P4_TO_P8
-  external_force_w_t external_force_w;
-  CF_3 *external_forces[P4EST_DIM] = { &external_force_u, &external_force_v, &external_force_w };
-#else
-  CF_2 *external_forces[P4EST_DIM] = { &external_force_u, &external_force_v };
-#endif
 
 
   if(cmd.contains("restart"))
@@ -743,9 +690,9 @@ int main (int argc, char* argv[])
     {
       char error_msg[1024];
 #ifdef P4_TO_P8
-      sprintf(error_msg, "main_flow_past_sphere_3d: the restart path %s is not an accessible directory.", backup_directory.c_str());
+      sprintf(error_msg, "main_oscillating_sphere_3d: the restart path %s is not an accessible directory.", backup_directory.c_str());
 #else
-      sprintf(error_msg, "main_flow_past_sphere_2d: the restart path %s is not an accessible directory.", backup_directory.c_str());
+      sprintf(error_msg, "main_oscillating_sphere_2d: the restart path %s is not an accessible directory.", backup_directory.c_str());
 #endif
       throw std::invalid_argument(error_msg);
     }
@@ -754,8 +701,11 @@ int main (int argc, char* argv[])
       delete ns; ns = NULL;
     }
     P4EST_ASSERT(ns == NULL);
-    ns                      = new my_p4est_navier_stokes_t(mpi, backup_directory.c_str(), tstart);
-    dt                      = ns->get_dt();
+    ns                      = new my_p4est_navier_stokes_t(mpi, backup_directory.c_str(), tn);
+    nsteps_per_period       = cmd.get<int>("nsteps", 200);
+    dt = 1.0/(((double) nsteps_per_period)*f0);
+
+    ns->set_dt(dt);
     p4est_t *p4est_n        = ns->get_p4est();
     p4est_t *p4est_nm1      = ns->get_p4est_nm1();
 
@@ -768,19 +718,21 @@ int main (int argc, char* argv[])
     double height           = ns->get_height_of_domain();
 #ifdef P4_TO_P8
     double width            = ns->get_width_of_domain();
-    P4EST_ASSERT((fabs(length-32.0) < 32.0*10.0*EPS) && (fabs(height-16.0) < 16.0*10.0*EPS) && (fabs(width-16.0) < 16.0*10.0*EPS) && (fabs(ns->get_rho() - 1.0) < 10.0*EPS));
+    P4EST_ASSERT((fabs(length-2.0) < 2.0*10.0*EPS) && (fabs(height-2.0) < 2.0*10.0*EPS) && (fabs(width-2.0) < 2.0*10.0*EPS) && (fabs(ns->get_rho() - 1.0) < 10.0*EPS));
 #endif
-    P4EST_ASSERT((fabs(length-32.0) < 32.0*10.0*EPS) && (fabs(height-16.0) < 16.0*10.0*EPS) && (fabs(ns->get_rho() - 1.0) < 10.0*EPS));
+    P4EST_ASSERT((fabs(length-2.0) < 2.0*10.0*EPS) && (fabs(height-2.0) < 2.0*10.0*EPS) && (fabs(ns->get_rho() - 1.0) < 10.0*EPS));
 #endif
+    St                      = cmd.get<double>("St", 4.0/PI);
+    X0                      = r0/(PI*St);
     if(cmd.contains("Re"))
     {
       Re                    = cmd.get<double>("Re");
-      mu                    = 2*r0*rho*u0/Re;
+      mu                    = (4.0*rho*f0*r0*r0)/(St*Re);
     }
     else
     {
       mu                    = ns->get_mu();
-      Re                    = 2*r0*rho*u0/mu;
+      Re                    = (4.0*rho*f0*r0*r0)/(St*mu);
     }
 
     if(brick != NULL && brick->nxyz_to_treeid != NULL)
@@ -790,21 +742,17 @@ int main (int argc, char* argv[])
     }
     P4EST_ASSERT(brick == NULL);
     brick                   = ns->get_brick();
-    ntree_x                 = brick->nxyztrees[0];
-    ntree_y                 = brick->nxyztrees[1];
+    n_xyz[0]                = brick->nxyztrees[0];
+    n_xyz[1]                = brick->nxyztrees[1];
 #ifdef P4_TO_P8
-    ntree_z                 = brick->nxyztrees[2];
-    n_xyz[2]                = ntree_z;
+    n_xyz[2]                = brick->nxyztrees[2];
     P4EST_ASSERT((fabs(brick->xyz_min[2]-xyz_min[2]) < fabs(xyz_min[2])*10.0*EPS) && (fabs(brick->xyz_max[2]-xyz_max[2]) < fabs(xyz_max[2])*10.0*EPS));
 #endif
-    n_xyz[1]                = ntree_y;
-    n_xyz[0]                = ntree_x;
     P4EST_ASSERT((fabs(brick->xyz_min[1]-xyz_min[1]) < fabs(xyz_min[1])*10.0*EPS) && (fabs(brick->xyz_max[1]-xyz_max[1]) < fabs(xyz_max[1])*10.0*EPS));
     P4EST_ASSERT((fabs(brick->xyz_min[0]) < 10.0*EPS) && (fabs(xyz_min[0]) < 10.0*EPS) && (fabs(brick->xyz_max[0]-xyz_max[0]) < fabs(xyz_max[0])*10.0*EPS));
 
     uniform_band            = cmd.get<double>("uniform_band", ns->get_uniform_band());
     sl_order                = cmd.get<int>("sl_order", ns->get_sl_order());
-    cfl                     = cmd.get<double>("cfl", ns->get_cfl());
 
     if(data != NULL)
     {
@@ -817,75 +765,33 @@ int main (int argc, char* argv[])
     delete to_delete;
     p4est_n->user_pointer   = (void*) data;
     p4est_nm1->user_pointer = (void*) data; // p4est_n and p4est_nm1 always point to the same splitting_criteria_t no need to delete the nm1 one, it's just been done
-    ns->set_parameters(mu, rho, sl_order, uniform_band, threshold_split_cell, cfl);
+    ns->set_parameters(mu, rho, sl_order, uniform_band, threshold_split_cell, -1.0); // cfl is irrelevant in this case
 
-
-    bool is_smoke           = cmd.contains("smoke");
-    if(!is_smoke)
-    {
-      if(ns->get_smoke()!=NULL)
-      {
-        Vec smoke = ns->get_smoke();
-        ierr = VecDestroy(smoke); CHKERRXX(ierr);
-      }
-      ns->set_smoke(NULL, NULL, false, 1.0);
-    }
-    else
-    {
-      Vec smoke = ns->get_smoke();
-      if(smoke==NULL)
-      {
-        ierr = VecCreateGhostNodes(ns->get_p4est(), ns->get_nodes(), &smoke); CHKERRXX(ierr);
-        sample_cf_on_nodes(ns->get_p4est(), ns->get_nodes(), init_smoke, smoke);
-        // we do not refine with smoke even if not done beforehand and required as this would make
-        // the restart very complicated (needs to reinterpolate data on the new grid, etc.)
-      }
-      bool refine_with_smoke;
-      double smoke_thresh;
-      if(cmd.contains("refine_with_smoke"))
-      {
-        refine_with_smoke   = true;
-        smoke_thresh        = cmd.get("smoke_thresh", 0.5);
-      }
-      else
-      {
-        refine_with_smoke   = ns->get_refine_with_smoke();
-        smoke_thresh        = cmd.get("smoke_thresh", ((refine_with_smoke)? ns->get_smoke_threshold(): 0.5));
-      }
-      ns->set_smoke(smoke, &bc_smoke, refine_with_smoke, smoke_thresh);
-    }
     ns->set_bc(bc_v, &bc_p);
-    ns->set_external_forces(external_forces);
     if(fix_restarted_grid)
       ns->refine_coarsen_grid_after_restart(&level_set, false);
   }
   else
   {
-    lmin                    = cmd.get<int>("lmin", 3);
-    lmax                    = cmd.get<int>("lmax", 3);
+    tn                      = 0.0; // no restart so we assume we start from 0.0
+    nsteps_per_period       = cmd.get<int>("nsteps", 200);
+    dt                      = 1.0/(((double) nsteps_per_period)*f0);
+
+    lmin                    = cmd.get<int>("lmin", (5 + (3-P4EST_DIM)));
+    lmax                    = cmd.get<int>("lmax", (10 +(3-P4EST_DIM)));
     threshold_split_cell    = cmd.get<double>("thresh", 0.1);
-    ntree_x                 = cmd.get<int>("nx", 8);
-    ntree_y                 = cmd.get<int>("ny", 4);
+    n_xyz[0]                = cmd.get<int>("nx", 1);
+    n_xyz[1]                = cmd.get<int>("ny", 1);
 #ifdef P4_TO_P8
-    ntree_z                 = cmd.get<int>("nz", 4);
-    n_xyz[2]                = ntree_z;
+    n_xyz[2]                = cmd.get<int>("nz", 1);
 #endif
-    n_xyz[1]                = ntree_y;
-    n_xyz[0]                = ntree_x;
-
-    uniform_band            = .5*r0;
-#ifdef P4_TO_P8
-    const double dxmin      = MAX((xmax-xmin)/(double)ntree_x, (ymax-ymin)/(double)ntree_y, (zmax-zmin)/(double)ntree_z) / (1<<lmax);
-#else
-    const double dxmin      = MAX((xmax-xmin)/(double)ntree_x, (ymax-ymin)/(double)ntree_y) / (1<<lmax);
-#endif
-    uniform_band           /= dxmin;
-    uniform_band            = cmd.get<double>("uniform_band", uniform_band);
+    uniform_band            = cmd.get<double>("uniform_band", 4.0);
     sl_order                = cmd.get<int>("sl_order", 2);
-    cfl                     = cmd.get<double>("cfl", 1.0);
 
-    Re                      = cmd.get("Re", 350);
-    mu                      = 2*r0*rho*u0/Re;
+    St                      = cmd.get<double>("St", 4.0/PI);
+    X0                      = r0/(PI*St);
+    Re                      = cmd.get<double>("Re", 300.0);
+    mu                      = (4.0*rho*f0*r0*r0)/(St*Re);
 
     p4est_connectivity_t *connectivity;
     if(brick != NULL && brick->nxyz_to_treeid != NULL)
@@ -926,20 +832,6 @@ int main (int argc, char* argv[])
     /* create the initial forest at time n */
     p4est_t *p4est_n = my_p4est_copy(p4est_nm1, P4EST_FALSE);
     p4est_n->user_pointer = (void*) data;
-
-    bool is_smoke           = cmd.contains("smoke");
-    bool refine_with_smoke  = cmd.contains("refine_with_smoke");
-    double smoke_thresh     = cmd.get<double>("smoke_thresh", .5);
-    if(is_smoke && refine_with_smoke)
-    {
-      splitting_criteria_thresh_t crit_thresh(lmin, lmax, &init_smoke, smoke_thresh);
-      p4est_n->user_pointer = (void*)&crit_thresh;
-      my_p4est_refine(p4est_n, P4EST_TRUE, refine_levelset_thresh, NULL);
-      p4est_balance(p4est_n, P4EST_CONNECT_FULL, NULL);
-      my_p4est_partition(p4est_n, P4EST_FALSE, NULL);
-      p4est_n->user_pointer = (void*) data;
-    }
-
     p4est_ghost_t *ghost_n = my_p4est_ghost_new(p4est_n, P4EST_CONNECT_FULL);
     my_p4est_ghost_expand(p4est_n, ghost_n);
 
@@ -952,9 +844,6 @@ int main (int argc, char* argv[])
     Vec phi;
     ierr = VecCreateGhostNodes(p4est_n, nodes_n, &phi); CHKERRXX(ierr);
     sample_cf_on_nodes(p4est_n, nodes_n, level_set, phi);
-    my_p4est_level_set_t lsn(ngbd_n);
-    lsn.reinitialize_1st_order_time_2nd_order_space(phi);
-    lsn.perturb_level_set_function(phi, EPS);
 
 #ifdef P4_TO_P8
     CF_3 *vnm1[P4EST_DIM] = { &initial_velocity_unm1, &initial_velocity_vnm1, &initial_velocity_wnm1 };
@@ -966,32 +855,20 @@ int main (int argc, char* argv[])
 
     ns = new my_p4est_navier_stokes_t(ngbd_nm1, ngbd_n, faces_n);
     ns->set_phi(phi);
-    if(is_smoke)
-    {
-      Vec smoke;
-      ierr = VecCreateGhostNodes(p4est_n, nodes_n, &smoke); CHKERRXX(ierr);
-      sample_cf_on_nodes(p4est_n, nodes_n, init_smoke, smoke);
-      ns->set_smoke(smoke, &bc_smoke, refine_with_smoke, smoke_thresh);
-    }
-    ns->set_parameters(mu, rho, sl_order, uniform_band, threshold_split_cell, cfl);
+    ns->set_parameters(mu, rho, sl_order, uniform_band, threshold_split_cell, -1.0); // cfl is irrelevant in this case
+    ns->set_dt(dt, dt);
     ns->set_velocities(vnm1, vn);
 
-    tstart = 0.0; // no restart so we assume we start from 0.0
-    dt = MIN(dxmin*cfl/u0, duration);
-    if(save_vtk)
-        dt = MIN(dt, vtk_dt);
-    ns->set_dt(dt);
     ns->set_bc(bc_v, &bc_p);
-    ns->set_external_forces(external_forces);
   }
 
 
 #ifdef P4_TO_P8
-  ierr = PetscPrintf(mpi.comm(), "Parameters : Re = %g, mu = %g, rho = %g, grid is %dx%dx%d\n", Re, mu, rho, ntree_x, ntree_y, ntree_z); CHKERRXX(ierr);
+  ierr = PetscPrintf(mpi.comm(), "Parameters : St = %g, Re = %g, f0 = %g, mu = %g, rho = %g, grid is %dx%dx%d\n", St, Re, f0, mu, rho, n_xyz[0], n_xyz[1], n_xyz[2]); CHKERRXX(ierr);
 #else
-  ierr = PetscPrintf(mpi.comm(), "Parameters : Re = %g, mu = %g, rho = %g, grid is %dx%d\n", Re, mu, rho, ntree_x, ntree_y); CHKERRXX(ierr);
+  ierr = PetscPrintf(mpi.comm(), "Parameters : St = %g, Re = %g, f0 = %g, mu = %g, rho = %g, grid is %dx%d\n", St, Re, f0, mu, rho, n_xyz[0], n_xyz[1]); CHKERRXX(ierr);
 #endif
-  ierr = PetscPrintf(mpi.comm(), "cfl = %g, uniform_band = %g\n", cfl, uniform_band);
+  ierr = PetscPrintf(mpi.comm(), "dt = T/%d, uniform_band = %g\n", nsteps_per_period, uniform_band);
 
   char out_dir[PATH_MAX], vtk_path[PATH_MAX], vtk_name[PATH_MAX];
   sprintf(out_dir, "%s/%dD/Re_%.2f/lmin_%d_lmax_%d", export_dir.c_str(), P4EST_DIM, Re, lmin, lmax);
@@ -1002,9 +879,9 @@ int main (int argc, char* argv[])
     {
       char error_msg[1024];
 #ifdef P4_TO_P8
-      sprintf(error_msg, "main_flow_past_sphere_3d: could not create exportation directory %s", out_dir);
+      sprintf(error_msg, "main_oscillating_sphere_3d: could not create exportation directory %s", out_dir);
 #else
-      sprintf(error_msg, "main_flow_past_sphere_2d: could not create exportation directory %s", out_dir);
+      sprintf(error_msg, "main_oscillating_sphere_2d: could not create exportation directory %s", out_dir);
 #endif
       throw std::runtime_error(error_msg);
     }
@@ -1012,9 +889,9 @@ int main (int argc, char* argv[])
     {
       char error_msg[1024];
 #ifdef P4_TO_P8
-      sprintf(error_msg, "main_flow_past_sphere_3d: could not create exportation directory for vtk files %s", vtk_path);
+      sprintf(error_msg, "main_oscillating_sphere_3d: could not create exportation directory for vtk files %s", vtk_path);
 #else
-      sprintf(error_msg, "main_flow_past_sphere_2d: could not create exportation directory for vtk files %s", vtk_path);
+      sprintf(error_msg, "main_oscillating_sphere_2d: could not create exportation directory for vtk files %s", vtk_path);
 #endif
       throw std::runtime_error(error_msg);
     }
@@ -1022,48 +899,39 @@ int main (int argc, char* argv[])
 
   int iter = 0;
   int export_vtk = -1;
-  int save_data_idx = (int) floor(tstart/dt_save_data); // so that we don't save the very first one which was either already read from file, or the known initial condition...
+  int save_data_idx = (int) floor(tn/dt_save_data); // so that we don't save the very first one which was either already read from file, or the known initial condition...
 
   char file_forces[PATH_MAX];
   if(save_forces)
-    initialize_force_output(file_forces, out_dir, lmin, lmax, threshold_split_cell, cfl, sl_order, mpi, tstart);
+    initialize_force_output(file_forces, out_dir, lmin, lmax, threshold_split_cell, nsteps_per_period, sl_order, mpi, tn);
 
   parStopWatch watch, substep_watch;
   double mean_full_iteration_time = 0.0, mean_viscosity_step_time = 0.0, mean_projection_step_time = 0.0, mean_compute_velocity_at_nodes_time = 0.0, mean_update_time = 0.0;
   if(get_timing)
     watch.start("Total runtime");
-  double tn = tstart;
 
   my_p4est_poisson_cells_t* cell_solver = NULL;
   my_p4est_poisson_faces_t* face_solver = NULL;
 
+  const double tstart = tn;
   while(tn+0.01*dt<tstart+duration)
   {
     if(get_timing)
       substep_watch.start("");
     if(iter>0)
     {
-      if(use_adapted_dt)
-        ns->compute_adapted_dt();
-      else
-        ns->compute_dt();
-      dt = ns->get_dt();
+      ns->set_dt(dt);
 
       if(tn+dt>tstart+duration)
       {
         dt = tstart+duration-tn;
         ns->set_dt(dt);
       }
-      if(save_vtk && dt > vtk_dt)
-      {
-        dt = vtk_dt; // so that we don't miss snapshots...
-        ns->set_dt(dt);
-      }
 
-      bool solvers_can_be_reused = ns->update_from_tn_to_tnp1(NULL, (iter%steps_grid_update!=0), false);
-      if(cell_solver!=NULL && (!solvers_can_be_reused || !reuse_solver)){
+      bool solvers_can_be_reused = ns->update_from_tn_to_tnp1(&level_set, false, false);
+      if(cell_solver!=NULL && (!solvers_can_be_reused)){
         delete  cell_solver; cell_solver = NULL; }
-      if(face_solver!=NULL && (!solvers_can_be_reused || !reuse_solver)){
+      if(face_solver!=NULL && (!solvers_can_be_reused)){
         delete  face_solver; face_solver = NULL; }
     }
     if(get_timing)
@@ -1082,7 +950,7 @@ int main (int argc, char* argv[])
     ierr = VecCreateSeq(PETSC_COMM_SELF, ns->get_p4est()->local_num_quadrants, &hodge_old); CHKERRXX(ierr);
     double corr_hodge = 1.0;
     unsigned int iter_hodge = 0;
-    while(iter_hodge<niter_hodge_max && corr_hodge>hodge_tolerance)
+    while(iter_hodge<niter_hodge_max && corr_hodge>hodge_tolerance*(0.5*SQR(2.0*PI*X0*f0)*dt))
     {
       hodge_new = ns->get_hodge();
       ierr = VecCopy(hodge_new, hodge_old); CHKERRXX(ierr);
@@ -1101,12 +969,6 @@ int main (int argc, char* argv[])
       {
         substep_watch.stop();
         mean_projection_step_time += substep_watch.read_duration();
-      }
-
-      if(!reuse_solver)
-      {
-        delete face_solver; face_solver = NULL;
-        delete cell_solver; cell_solver = NULL;
       }
 
       hodge_new = ns->get_hodge();
@@ -1158,20 +1020,20 @@ int main (int argc, char* argv[])
       {
         FILE* fp_forces = fopen(file_forces, "a");
         if(fp_forces==NULL)
-  #ifdef P4_TO_P8
-          throw std::invalid_argument("main_flow_past_sphere_3d: could not open file for forces output.");
-        fprintf(fp_forces, "%g %g %g %g\n", tn, forces[0]/(.5*PI*r0*r0*u0*u0*rho), forces[1]/(.5*PI*r0*r0*u0*u0*rho), forces[2]/(.5*PI*r0*r0*u0*u0*rho));
-  #else
-          throw std::invalid_argument("main_flow_past_sphere_2d: could not open file for forces output.");
-        fprintf(fp_forces, "%g %g %g\n", tn, forces[0]/r0/u0/u0/rho, forces[1]/r0/u0/u0/rho);
-  #endif
+#ifdef P4_TO_P8
+          throw std::invalid_argument("main_oscillating_sphere_3d: could not open file for forces output.");
+        fprintf(fp_forces, "%g %g %g %g\n", f0*tn, forces[0]/(.5*PI*r0*r0*SQR(2.0*PI*X0*f0)*rho), forces[1]/(.5*PI*r0*r0*SQR(2.0*PI*X0*f0)*rho), forces[2]/(.5*PI*r0*r0*SQR(2.0*PI*X0*f0)*rho));
+#else
+          throw std::invalid_argument("main_oscillating_sphere_2d: could not open file for forces output.");
+        fprintf(fp_forces, "%g %g %g\n", f0*tn, forces[0]/(r0*SQR(2.0*PI*X0*f0)*rho), forces[1]/(r0*SQR(2.0*PI*X0*f0)*rho));
+#endif
         fclose(fp_forces);
       }
     }
 
     ierr = PetscPrintf(mpi.comm(), "Iteration #%04d : tn = %.5e, percent done : %.1f%%, \t max_L2_norm_u = %.5e, \t number of leaves = %d\n", iter, tn, 100*(tn-tstart)/duration, ns->get_max_L2_norm_u(), ns->get_p4est()->global_num_quadrants); CHKERRXX(ierr);
 
-    if(ns->get_max_L2_norm_u()>200.0)
+    if(ns->get_max_L2_norm_u()>50.0*2.0*PI*X0*f0)
     {
       if(save_vtk)
       {
