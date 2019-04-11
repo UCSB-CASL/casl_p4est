@@ -1284,7 +1284,7 @@ int main (int argc, char* argv[])
       }
       iter_hodge++;
     }
-    free_surface_solver.compute_vel_bc_value(mu);
+    free_surface_solver.compute_vel_bc_value();
     ierr = VecDestroy(hodge_old); CHKERRXX(ierr);
     for(int dim = 0 ; dim<P4EST_DIM ; ++dim)
     {

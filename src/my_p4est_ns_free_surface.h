@@ -128,6 +128,9 @@ private:
   Vec fs_phi;
   Vec global_phi;
   Vec sigma_kappa;
+  Vec physical_bc[P4EST_DIM];
+  Vec vel_bc_check[P4EST_DIM];
+  bool use_physical_bc;
 
   double surf_tension, finest_diag;
 
@@ -150,6 +153,11 @@ private:
 
 
   my_p4est_interpolation_nodes_t *interp_fs_phi, *interp_global_phi, *interp_sigma_kappa;
+  my_p4est_interpolation_nodes_t *interp_physical_bc_x, *interp_physical_bc_y;
+#ifdef P4_to_P8
+  my_p4est_interpolation_nodes_t *interp_physical_bc_z;
+#endif
+
 
   void build_global_phi_and_face_is_well_defined(p4est_nodes_t* nodes,  Vec phi_, Vec fs_phi_, Vec global_phi_);
 
@@ -283,6 +291,13 @@ public:
    * \param name: path to the directory where the results are saved
    */
   void save_vtk(const char* name);
+
+  void compute_physical_bc();
+//  void set_vnp1_to_vn();
+
+  void physical_bc_on();
+  void save_vtk_hodge(const char* name);
+  void compute_vel_bc_value();
 
 };
 

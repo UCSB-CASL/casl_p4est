@@ -71,6 +71,19 @@ my_p4est_ns_free_surface_t::my_p4est_ns_free_surface_t(my_p4est_node_neighbors_t
   interp_sigma_kappa = new my_p4est_interpolation_nodes_t(ngbd_n);
   ierr = VecCreateGhostNodes(p4est_n, nodes_n, &sigma_kappa);
   update_sigma_kappa();
+
+  interp_physical_bc_x = new my_p4est_interpolation_nodes_t(ngbd_n);
+  interp_physical_bc_y = new my_p4est_interpolation_nodes_t(ngbd_n);
+#ifdef P4_TO_P8
+  interp_physical_bc_z = new my_p4est_interpolation_nodes_t(ngbd_n);
+#endif
+  for(int dim = 0; dim < P4EST_DIM; ++dim)
+  {
+    ierr = VecCreateGhostNodes(p4est_n, nodes_n, &physical_bc[dim]);
+    ierr = VecCreateGhostNodes(p4est_n, nodes_n, &vel_bc_check[dim]);
+  }
+  use_physical_bc = false;
+
 }
 
 my_p4est_ns_free_surface_t::~my_p4est_ns_free_surface_t()
@@ -79,9 +92,16 @@ my_p4est_ns_free_surface_t::~my_p4est_ns_free_surface_t()
   if(fs_phi != NULL) {ierr = VecDestroy(fs_phi); CHKERRXX(ierr);}
   if(global_phi != NULL) {ierr = VecDestroy(global_phi); CHKERRXX(ierr);}
   if(sigma_kappa != NULL){ ierr = VecDestroy(sigma_kappa); CHKERRXX(ierr); }
+  for(int dim = 0; dim<P4EST_DIM; ++dim)
+  {
+    if(physical_bc[dim] != NULL){ierr = VecDestroy(physical_bc[dim]); CHKERRXX(ierr);}
+    if(vel_bc_check[dim] != NULL){ierr = VecDestroy(vel_bc_check[dim]); CHKERRXX(ierr);}
+  }
   if(interp_fs_phi!=NULL) delete interp_fs_phi;
   if(interp_global_phi!=NULL) delete interp_global_phi;
   if(interp_sigma_kappa!=NULL) delete interp_sigma_kappa;
+  if(interp_physical_bc_x!=NULL) delete interp_physical_bc_x;
+  if(interp_physical_bc_y!=NULL) delete interp_physical_bc_y;
 }
 
 // by-pass the "well-defined" faces from the parent class (all faces within the solid are well-defined in this case, forced equal to solid velocity).
@@ -108,6 +128,7 @@ void my_p4est_ns_free_surface_t::set_free_surface(Vec fs_phi_)
 
   build_global_phi_and_face_is_well_defined(nodes_n, phi, fs_phi, global_phi);
   update_sigma_kappa();
+  compute_physical_bc();
 }
 
 void my_p4est_ns_free_surface_t::set_phis(Vec solid_phi_, Vec fs_phi_)
@@ -121,7 +142,8 @@ void my_p4est_ns_free_surface_t::set_phis(Vec solid_phi_, Vec fs_phi_)
   interp_fs_phi->set_input(fs_phi_, linear);
 
   build_global_phi_and_face_is_well_defined(nodes_n, phi, fs_phi, global_phi);
-  update_sigma_kappa();
+  update_sigma_kappa();//should I compute the boundary condition here? Yes
+//  compute_physical_bc();
 }
 
 void my_p4est_ns_free_surface_t::build_global_phi_and_face_is_well_defined(p4est_nodes_t* nodes,  Vec phi_, Vec fs_phi_, Vec global_phi_)
@@ -208,7 +230,7 @@ double my_p4est_ns_free_surface_t::mixed_interface_bc_t::operator ()(double x, d
 #ifdef P4_TO_P8
     return (((*_prnt->interp_phi)(x, y, z) > -1.2*_prnt->finest_diag)? _prnt->bc_v[0].interfaceValue(x, y, z) : _prnt->zero(x, y, z));
 #else
-    return (((*_prnt->interp_phi)(x, y) > -1.2*_prnt->finest_diag)? _prnt->bc_v[0].interfaceValue(x, y) : _prnt->zero(x, y));
+    return (((*_prnt->interp_phi)(x, y) > -1.2*_prnt->finest_diag)? _prnt->bc_v[0].interfaceValue(x, y) : _prnt->interp_physical_bc_x->operator ()(x,y));
 #endif
     break;
   case VELOCITY_Y:
@@ -216,12 +238,12 @@ double my_p4est_ns_free_surface_t::mixed_interface_bc_t::operator ()(double x, d
 #ifdef P4_TO_P8
     return (((*_prnt->interp_phi)(x, y, z) > -1.2*_prnt->finest_diag)? _prnt->bc_v[1].interfaceValue(x, y, z) : _prnt->zero(x, y, z));
 #else
-    return (((*_prnt->interp_phi)(x, y) > -1.2*_prnt->finest_diag)? _prnt->bc_v[1].interfaceValue(x, y) : _prnt->zero(x, y));
+    return (((*_prnt->interp_phi)(x, y) > -1.2*_prnt->finest_diag)? _prnt->bc_v[1].interfaceValue(x, y) :_prnt->interp_physical_bc_y->operator ()(x,y));
 #endif
     break;
 #ifdef P4_TO_P8
   case VELOCITY_Z:
-    return (((*_prnt->interp_phi)(x, y, z) > -1.2*_prnt->finest_diag)? _prnt->bc_v[2].interfaceValue(x, y, z) : _prnt->zero(x, y, z)); // homogeneous Neumann extension for now
+    return (((*_prnt->interp_phi)(x, y, z) > -1.2*_prnt->finest_diag)? _prnt->bc_v[2].interfaceValue(x, y, z) : _prnt->/*zero(x, y)*/interp_physical_bc_z->operator ()(x,y,z)); // homogeneous Neumann extension for now
     break;
 #endif
   default:
@@ -618,7 +640,7 @@ void my_p4est_ns_free_surface_t::solve_viscosity()
 
   my_p4est_level_set_faces_t lsf(ngbd_n, faces_n);
   for(int dir=0; dir<P4EST_DIM; ++dir)
-    lsf.extend_Over_Interface(global_phi, vstar[dir], bc_v_global[dir], dir, face_is_well_defined[dir], dxyz_hodge[dir], 2, 2);
+    lsf.extend_Over_Interface(global_phi, vstar[dir], bc_v_global[dir], dir, face_is_well_defined[dir], dxyz_hodge[dir], 2, 3); //2, 2);
 
   ierr = PetscLogEventEnd(log_my_p4est_navier_stokes_viscosity, 0, 0, 0, 0); CHKERRXX(ierr);
 }
@@ -724,7 +746,7 @@ void my_p4est_ns_free_surface_t::solve_projection()
     // extend the velocity field over the interfaces
     // (will be required for proper interpolation to nodes AND for correction of free surface boundary condition, i.e. Mingru's task)
     my_p4est_level_set_faces_t lsf(ngbd_n, faces_n);
-    lsf.extend_Over_Interface(global_phi, vnp1[dir], bc_v_global[dir], dir, face_is_well_defined[dir], NULL, 2, 8);
+    lsf.extend_Over_Interface(global_phi, vnp1[dir], bc_v_global[dir], dir, face_is_well_defined[dir], NULL, 1/*2*/, 8); // try with order=1
     // Do not set the second-to-last argument to dxyz_hodge!
     // (dxyz_hodge has already been subtracted from vstar, here above)
   }
@@ -770,6 +792,7 @@ void my_p4est_ns_free_surface_t::compute_velocity_at_nodes()
     ierr = VecRestoreArray(vnp1_nodes[dir], &v_p); CHKERRXX(ierr);
 
     my_p4est_level_set_t lsn(ngbd_n);
+//    lsn.extend_Over_Interface(phi, vnp1_nodes[dir]);
     lsn.extend_Over_Interface(phi, vnp1_nodes[dir], bc_v_global[dir]);
   }
 
@@ -1187,10 +1210,26 @@ void my_p4est_ns_free_surface_t::update_from_tn_to_tnp1(const CF_2 *level_set, b
 
   delete interp_sigma_kappa;
   interp_sigma_kappa = new my_p4est_interpolation_nodes_t(ngbd_n);
+  delete interp_physical_bc_x;
+  delete interp_physical_bc_y;
+  interp_physical_bc_x = new my_p4est_interpolation_nodes_t(ngbd_n);
+  interp_physical_bc_y = new my_p4est_interpolation_nodes_t(ngbd_n);
+#ifdef P4_TO_P8
+  delete interp_physical_bc_z;
+  interp_physical_bc_z = new my_p4est_interpolation_nodes_t(ngbd_n);
+#endif
   Vec sigma_kappa_np1;
   ierr = VecCreateGhostNodes(p4est_n, nodes_n, &sigma_kappa_np1); CHKERRXX(ierr);
   ierr = VecDestroy(sigma_kappa); CHKERRXX(ierr); sigma_kappa = sigma_kappa_np1;
   update_sigma_kappa();
+
+  Vec physical_bc_np1[P4EST_DIM];
+  for(int dim = 0; dim < P4EST_DIM; ++dim)
+  {
+    ierr = VecCreateGhostNodes(p4est_n, nodes_n, &physical_bc_np1[dim]); CHKERRXX(ierr);
+    ierr = VecDestroy(physical_bc[dim]); CHKERRXX(ierr); physical_bc[dim] = physical_bc_np1[dim];
+  }
+  compute_physical_bc();
 
   // needs to be done AFTER the update of interpolators since interp_global_phi is used in check_if_faces_are_well_defined_for_free_surface
   for(int dir=0; dir<P4EST_DIM; ++dir)
@@ -1368,6 +1407,7 @@ void my_p4est_ns_free_surface_t::save_vtk(const char* name)
   const double *phi_p;
   const double *fs_phi_p;
   const double *vn_p[P4EST_DIM];
+  const double *vel_bc[P4EST_DIM];
 //  const double *hodge_p;
 //  const double *pressure_p;
 
@@ -1379,6 +1419,7 @@ void my_p4est_ns_free_surface_t::save_vtk(const char* name)
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
     ierr = VecGetArrayRead(vnp1_nodes[dir], &vn_p[dir]); CHKERRXX(ierr);
+    ierr = VecGetArrayRead(vel_bc_check[dir], &vel_bc[dir]); CHKERRXX(ierr);
   }
 
   const double *vort_p;
@@ -1429,7 +1470,7 @@ void my_p4est_ns_free_surface_t::save_vtk(const char* name)
     my_p4est_vtk_write_all(p4est_n, nodes_n, ghost_n,
                            P4EST_TRUE, P4EST_TRUE,
 //                           P4EST_FALSE, P4EST_FALSE,
-                           4+P4EST_DIM, /* number of VTK_POINT_DATA */
+                           4+P4EST_DIM+P4EST_DIM, /* number of VTK_POINT_DATA */
                            1, /* number of VTK_CELL_DATA  */
                            name,
                            VTK_POINT_DATA, "solid", phi_p,
@@ -1438,10 +1479,15 @@ void my_p4est_ns_free_surface_t::save_vtk(const char* name)
                            VTK_POINT_DATA, "smoke", smoke_p,
                            VTK_POINT_DATA, "vx", vn_p[0],
                            VTK_POINT_DATA, "vy", vn_p[1],
-                    #ifdef P4_TO_P8
-                           VTK_POINT_DATA, "vz", vn_p[2],
-                    #endif
-                           VTK_CELL_DATA, "leaf_level", l_p
+    #ifdef P4_TO_P8
+        VTK_POINT_DATA, "vz", vn_p[2],
+    #endif
+        VTK_POINT_DATA, "v_bc_x", vel_bc[0],
+        VTK_POINT_DATA, "v_bc_y", vel_bc[1],
+    #ifdef P4_TO_P8
+        VTK_POINT_DATA, "v_bc_z", vel_bc[2],
+    #endif
+        VTK_CELL_DATA, "leaf_level", l_p
         );
     ierr = VecRestoreArrayRead(smoke, &smoke_p); CHKERRXX(ierr);
   }
@@ -1458,11 +1504,17 @@ void my_p4est_ns_free_surface_t::save_vtk(const char* name)
                            VTK_POINT_DATA, "pressure", pressure_nodes_p,
                            VTK_POINT_DATA, "vx", vn_p[0],
                            VTK_POINT_DATA, "vy", vn_p[1],
-                    #ifdef P4_TO_P8
-                           VTK_POINT_DATA, "vz", vn_p[2],
-                    #endif
-                           VTK_CELL_DATA, "leaf_level", l_p
-                           );
+    #ifdef P4_TO_P8
+        VTK_POINT_DATA, "vz", vn_p[2],
+
+    #endif
+        VTK_POINT_DATA, "v_bc_x", vel_bc[0],
+        VTK_POINT_DATA, "v_bc_y", vel_bc[1],
+    #ifdef P4_TO_P8
+        VTK_POINT_DATA, "v_bc_z", vel_bc[2],
+    #endif
+        VTK_CELL_DATA, "leaf_level", l_p
+        );
   }
 
   ierr = VecRestoreArray(leaf_level, &l_p); CHKERRXX(ierr);
@@ -1481,6 +1533,7 @@ void my_p4est_ns_free_surface_t::save_vtk(const char* name)
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
     ierr = VecRestoreArrayRead(vn_nodes[dir], &vn_p[dir]); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(vel_bc_check[dir], &vel_bc[dir]); CHKERRXX(ierr);
   }
 
   ierr = PetscPrintf(p4est_n->mpicomm, "Saved visual data in ... %s\n", name); CHKERRXX(ierr);
@@ -1644,5 +1697,427 @@ void my_p4est_ns_free_surface_t::update_sigma_kappa()
   //  VecRestoreArray(sigma_kappa, &sigma_kappa_p);
 
   interp_sigma_kappa->set_input(sigma_kappa, linear);
+
+}
+
+void my_p4est_ns_free_surface_t::compute_physical_bc()
+{
+  PetscErrorCode ierr;
+  //check whether vnp1_nodes is defined
+  //first calculate the normal vector
+  Vec normals[P4EST_DIM], vel_grad[P4EST_DIM][P4EST_DIM];
+  double *normals_loc[P4EST_DIM];
+  double *vnp1_nodes_loc[P4EST_DIM], *vel_grad_loc[P4EST_DIM][P4EST_DIM];
+  double *physical_bc_loc[P4EST_DIM];
+  for(int dim = 0; dim<P4EST_DIM; ++dim)
+  {
+    ierr = VecCreateGhostNodes(p4est_n, nodes_n, &normals[dim]);CHKERRXX(ierr);
+    for(int dir = 0; dir<P4EST_DIM; ++dir)
+    {
+      ierr = VecCreateGhostNodes(p4est_n, nodes_n,&vel_grad[dim][dir]);CHKERRXX(ierr);
+      ierr = VecGetArray(vel_grad[dim][dir], &vel_grad_loc[dim][dir]); CHKERRXX(ierr);
+
+    }
+    ierr = VecGetArray(vnp1_nodes[dim], &vnp1_nodes_loc[dim]);CHKERRXX(ierr);
+    ierr = VecGetArray(physical_bc[dim], &physical_bc_loc[dim]); CHKERRXX(ierr);
+  }
+  compute_normals(*ngbd_n, fs_phi, normals);
+
+  for(int dim = 0; dim<P4EST_DIM; ++dim)
+  {
+    ierr = VecGetArray(normals[dim], &normals_loc[dim]); CHKERRXX(ierr);
+  }
+
+  // Then calculate the gradient of velocity fields
+  // first loop over the ghost layer
+  quad_neighbor_nodes_of_node_t qnnn;
+
+  for(size_t t = 0; t<ngbd_n->get_layer_size();++t)
+  {
+    p4est_locidx_t node_idx = ngbd_n->get_layer_node(t);
+    qnnn = ngbd_n->get_neighbors(node_idx);
+    for(int dim = 0; dim < P4EST_DIM; ++dim)
+    {
+      vel_grad_loc[dim][0][node_idx] = qnnn.dx_central(vnp1_nodes_loc[dim]);
+      vel_grad_loc[dim][1][node_idx] = qnnn.dy_central(vnp1_nodes_loc[dim]);
+  #ifdef P4_TO_P8
+        vec_grad_loc[dim][2][node_idx] = qnnn.dz_central(vnp1_nodes_loc[dim]);
+  #endif
+    }
+  }
+
+  //begin to update ghost
+  for(int dim = 0; dim < P4EST_DIM; ++dim)
+  {
+    for(int dir = 0; dir<P4EST_DIM; ++dir)
+    {
+       ierr = VecGhostUpdateBegin(vel_grad[dim][dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    }
+  }
+  //loop over local nodes
+  for(size_t t = 0; t<ngbd_n->get_local_size();++t)
+  {
+    p4est_locidx_t node_idx = ngbd_n->get_local_node(t);
+    qnnn = ngbd_n->get_neighbors(node_idx);
+    for(int dim = 0; dim < P4EST_DIM; ++dim)
+    {
+      vel_grad_loc[dim][0][node_idx] = qnnn.dx_central(vnp1_nodes_loc[dim]);
+      vel_grad_loc[dim][1][node_idx] = qnnn.dy_central(vnp1_nodes_loc[dim]);
+  #ifdef P4_TO_P8
+        vel_grad_loc[dim][2][node_idx] = qnnn.dz_central(vnp1_nodes_loc);
+  #endif
+    }
+  }
+  //end updating ghost
+  for(int dim = 0; dim < P4EST_DIM; ++dim)
+  {
+    for(int dir = 0; dir<P4EST_DIM; ++dir)
+    {
+       ierr = VecGhostUpdateEnd(vel_grad[dim][dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    }
+  }
+  //Then compute the dot product and store it in the physical_bc
+/*
+  for(size_t t = 0; t<nodes_n->indep_nodes.elem_count;++t)
+  {
+    for(int dim = 0; dim < P4EST_DIM; dim++)
+    {
+      if(use_physical_bc)
+      {
+        physical_bc_loc[dim][t] = -(normals_loc[dim][t]*vel_grad_loc[0][dim][t]) - (normals_loc[dim][t]*vel_grad_loc[1][dim][t])// the first index is u/v/w, the second index is du/dv/dw
+        #ifdef P4_TO_P8
+            -(normals_loc[0][t]*vel_grad_loc[2][dim][t])
+        #endif
+            ;
+      }
+      else
+      {
+        physical_bc_loc[dim][t] = 0.0;
+      }
+
+  }
+ }
+*/
+  //calculate the dot product
+  for(size_t t = 0; t < ngbd_n->get_layer_size(); ++t)
+  {
+    p4est_locidx_t node_idx = ngbd_n ->get_layer_node(t);
+    qnnn = ngbd_n->get_neighbors(node_idx);
+    for(short dim = 0; dim < P4EST_DIM; dim++)
+    {
+      if(use_physical_bc)
+      {
+        physical_bc_loc[dim][node_idx] = -(normals_loc[0][node_idx]*vel_grad_loc[0][dim][node_idx]) - (normals_loc[1][node_idx]*vel_grad_loc[1][dim][node_idx])// the first index is u/v/w, the second index is du/dv/dw
+        #ifdef P4_TO_P8
+            -(normals_loc[2][node_idx]*vel_grad_loc[2][dim][node_idx])
+        #endif
+            ;
+      }
+      else
+      {
+        physical_bc_loc[dim][node_idx] = 0.0;
+      }
+    }
+  }
+  //begin update ghost of physical_bc
+  for(short dim = 0; dim < P4EST_DIM; ++dim)
+  {
+    ierr = VecGhostUpdateBegin(physical_bc[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  }
+  //loop over local nodes
+  for(size_t t = 0; t < ngbd_n->get_local_size(); ++t)
+  {
+    p4est_locidx_t node_idx = ngbd_n ->get_local_node(t);
+    qnnn = ngbd_n->get_neighbors(node_idx);
+    for(short dim = 0; dim < P4EST_DIM; dim++)
+    {
+      if(use_physical_bc)
+      {
+        // CHECK THIS, TOO
+        physical_bc_loc[dim][node_idx] = -(normals_loc[0][node_idx]*vel_grad_loc[0][dim][node_idx]) - (normals_loc[1][node_idx]*vel_grad_loc[1][dim][node_idx])// the first index is u/v/w, the second index is du/dv/dw
+        #ifdef P4_TO_P8
+            -(normals_loc[2][node_idx]*vel_grad_loc[2][dim][node_idx])
+        #endif
+            ;
+      }
+      else
+      {
+        physical_bc_loc[dim][node_idx] = 0.0;
+      }
+    }
+  }
+
+  //end update
+  for(short dim = 0; dim < P4EST_DIM; ++dim)
+  {
+    ierr = VecGhostUpdateEnd(physical_bc[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  }
+
+
+  //Restore vectors and destroy
+  for(int dim = 0; dim<P4EST_DIM; ++dim)
+  {
+    for(int dir = 0; dir<P4EST_DIM; ++dir)
+    {
+      ierr = VecRestoreArray(vel_grad[dim][dir], &vel_grad_loc[dim][dir]);CHKERRXX(ierr);
+      ierr = VecDestroy(vel_grad[dim][dir]); CHKERRXX(ierr);
+    }
+    ierr = VecRestoreArray(normals[dim], &normals_loc[dim]); CHKERRXX(ierr);
+    ierr = VecDestroy(normals[dim]); CHKERRXX(ierr);
+    ierr = VecRestoreArray(vnp1_nodes[dim], &vnp1_nodes_loc[dim]);CHKERRXX(ierr);
+    ierr = VecRestoreArray(physical_bc[dim], &physical_bc_loc[dim]); CHKERRXX(ierr);
+  }
+
+
+  interp_physical_bc_x->set_input(physical_bc[0], linear);
+
+  interp_physical_bc_y->set_input(physical_bc[1], linear);
+#ifdef P4_TO_P8
+  interp_physical_bc_z->set_input(physical_bc[2], linear);
+#endif
+}
+
+
+
+//void my_p4est_ns_free_surface_t::set_vnp1_to_vn()
+//{
+//  PetscErrorCode ierr;
+//  for(int dim = 0; dim < P4EST_DIM; ++dim)
+//  {
+//   ierr = VecCopy(vnp1_nodes[dim], vn_nodes[dim]);CHKERRXX(ierr);
+//  }
+//}
+
+void my_p4est_ns_free_surface_t::physical_bc_on()
+{
+  use_physical_bc = true;
+}
+
+void my_p4est_ns_free_surface_t::save_vtk_hodge(const char* name)
+{
+  PetscErrorCode ierr;
+
+  const double *phi_p;
+  const double *fs_phi_p;
+  const double *vn_p[P4EST_DIM];
+  const double *hodge_p;
+//  const double *pressure_p;
+
+
+  ierr = VecGetArrayRead(phi    , &phi_p    ); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(fs_phi , &fs_phi_p ); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(hodge  , &hodge_p  ); CHKERRXX(ierr);
+//  ierr = VecGetArrayRead(pressure  , &pressure_p  ); CHKERRXX(ierr);
+
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    ierr = VecGetArrayRead(vnp1_nodes[dir], &vn_p[dir]); CHKERRXX(ierr);
+  }
+
+  const double *vort_p;
+  ierr = VecGetArrayRead(vorticity, &vort_p); CHKERRXX(ierr);
+
+  const double *smoke_p;
+
+  if(smoke!=NULL)
+  {
+    ierr = VecGetArrayRead(smoke, &smoke_p); CHKERRXX(ierr);
+    my_p4est_vtk_write_all(p4est_n, nodes_n, ghost_n,
+                           P4EST_TRUE, P4EST_TRUE,
+//                           P4EST_FALSE, P4EST_FALSE,
+                           2+P4EST_DIM, /* number of VTK_POINT_DATA */
+                           1, /* number of VTK_CELL_DATA  */
+                           name,
+                           VTK_POINT_DATA, "solid", phi_p,
+                           VTK_POINT_DATA, "free surface", fs_phi_p,
+                           VTK_POINT_DATA, "vx", vn_p[0],
+                           VTK_POINT_DATA, "vy", vn_p[1],
+                    #ifdef P4_TO_P8
+                           VTK_POINT_DATA, "vz", vn_p[2],
+                    #endif
+                           VTK_CELL_DATA, "hodge", hodge_p
+        );
+    ierr = VecRestoreArrayRead(smoke, &smoke_p); CHKERRXX(ierr);
+  }
+  else
+  {
+
+
+    my_p4est_vtk_write_all(p4est_n, nodes_n, ghost_n,
+                           P4EST_TRUE, P4EST_TRUE,
+//                           P4EST_FALSE, P4EST_FALSE,
+                           2+P4EST_DIM, /* number of VTK_POINT_DATA */
+                           1, /* number of VTK_CELL_DATA  */
+                           name,
+                           VTK_POINT_DATA, "solid", phi_p,
+                           VTK_POINT_DATA, "free surface", phi_p,
+                           VTK_POINT_DATA, "vx", vn_p[0],
+                           VTK_POINT_DATA, "vy", vn_p[1],
+                    #ifdef P4_TO_P8
+                           VTK_POINT_DATA, "vz", vn_p[2],
+                    #endif
+                           VTK_CELL_DATA, "hodge", hodge_p
+                           );
+  }
+
+
+  ierr = VecRestoreArrayRead(phi    , &phi_p    ); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(fs_phi , &fs_phi_p ); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(hodge  , &hodge_p  ); CHKERRXX(ierr);
+//  ierr = VecRestoreArrayRead(pressure  , &pressure_p  ); CHKERRXX(ierr);
+
+  ierr = VecRestoreArrayRead(vorticity, &vort_p); CHKERRXX(ierr);
+
+
+
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    ierr = VecRestoreArrayRead(vn_nodes[dir], &vn_p[dir]); CHKERRXX(ierr);
+  }
+
+  //ierr = PetscPrintf(p4est_n->mpicomm, "Saved visual data in ... %s\n", name); CHKERRXX(ierr);
+}
+
+void my_p4est_ns_free_surface_t::compute_vel_bc_value()
+{
+  PetscErrorCode ierr;
+  //check whether vnp1_nodes is defined
+  //first calculate the normal vector
+  Vec normals[P4EST_DIM], vel_grad[P4EST_DIM][P4EST_DIM];
+  double *normals_loc[P4EST_DIM];
+  double *vnp1_nodes_loc[P4EST_DIM], *vel_grad_loc[P4EST_DIM][P4EST_DIM];
+  double *vel_bc_value_loc[P4EST_DIM];
+  for(int dim = 0; dim<P4EST_DIM; ++dim)
+  {
+    ierr = VecCreateGhostNodes(p4est_n, nodes_n, &normals[dim]);CHKERRXX(ierr);
+    for(int dir = 0; dir<P4EST_DIM; ++dir)
+    {
+      ierr = VecCreateGhostNodes(p4est_n, nodes_n,&vel_grad[dim][dir]);CHKERRXX(ierr);
+      ierr = VecGetArray(vel_grad[dim][dir], &vel_grad_loc[dim][dir]); CHKERRXX(ierr);
+
+    }
+    ierr = VecGetArray(vnp1_nodes[dim], &vnp1_nodes_loc[dim]);CHKERRXX(ierr);
+    ierr = VecGetArray(vel_bc_check[dim], &vel_bc_value_loc[dim]); CHKERRXX(ierr);
+  }
+  compute_normals(*ngbd_n, fs_phi, normals);
+
+  for(int dim = 0; dim<P4EST_DIM; ++dim)
+  {
+    ierr = VecGetArray(normals[dim], &normals_loc[dim]); CHKERRXX(ierr);
+  }
+
+  // Then calculate the gradient of velocity fields
+  // first loop over the ghost layer
+  quad_neighbor_nodes_of_node_t qnnn;
+
+  for(size_t t = 0; t<ngbd_n->get_layer_size();++t)
+  {
+    p4est_locidx_t node_idx = ngbd_n->get_layer_node(t);
+    qnnn = ngbd_n->get_neighbors(node_idx);
+    for(int dim = 0; dim < P4EST_DIM; ++dim)
+    {
+      vel_grad_loc[dim][0][node_idx] = qnnn.dx_central(vnp1_nodes_loc[dim]);
+      vel_grad_loc[dim][1][node_idx] = qnnn.dy_central(vnp1_nodes_loc[dim]);
+  #ifdef P4_TO_P8
+        vec_grad_loc[dim][2][node_idx] = qnnn.dz_central(vnp1_nodes_loc[dim]);
+  #endif
+    }
+  }
+
+  //begin to update ghost
+  for(int dim = 0; dim < P4EST_DIM; ++dim)
+  {
+    for(int dir = 0; dir<P4EST_DIM; ++dir)
+    {
+       ierr = VecGhostUpdateBegin(vel_grad[dim][dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    }
+  }
+  //loop over local nodes
+  for(size_t t = 0; t<ngbd_n->get_local_size();++t)
+  {
+    p4est_locidx_t node_idx = ngbd_n->get_local_node(t);
+    qnnn = ngbd_n->get_neighbors(node_idx);
+    for(int dim = 0; dim < P4EST_DIM; ++dim)
+    {
+      vel_grad_loc[dim][0][node_idx] = qnnn.dx_central(vnp1_nodes_loc[dim]);
+      vel_grad_loc[dim][1][node_idx] = qnnn.dy_central(vnp1_nodes_loc[dim]);
+  #ifdef P4_TO_P8
+        vel_grad_loc[dim][2][node_idx] = qnnn.dz_central(vnp1_nodes_loc);
+  #endif
+    }
+  }
+  //end updating ghost
+  for(int dim = 0; dim < P4EST_DIM; ++dim)
+  {
+    for(int dir = 0; dir<P4EST_DIM; ++dir)
+    {
+       ierr = VecGhostUpdateEnd(vel_grad[dim][dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    }
+  }
+
+  //Then we can calculate whether the sum is zero.
+  for(size_t t = 0; t<ngbd_n->get_layer_size(); ++t)
+  {
+    p4est_locidx_t node_idx = ngbd_n -> get_layer_node(t);
+    qnnn = ngbd_n->get_neighbors(node_idx);
+    vel_bc_value_loc[0][node_idx] = mu* (2*vel_grad_loc[0][0][node_idx]*normals_loc[0][node_idx]+normals_loc[1][node_idx]*(vel_grad_loc[0][1][node_idx]+vel_grad_loc[1][0][node_idx])
+    #ifdef P4_TO_P8
+       +normals_loc[2][node_idx]*(vel_grad_loc[0][2][node_idx]+vel_grad_loc[2][0][node_idx])
+    #endif
+        );
+    vel_bc_value_loc[1][node_idx] = mu* ((vel_grad_loc[1][0][node_idx]+vel_grad_loc[0][1][node_idx])*normals_loc[0][node_idx]+normals_loc[1][node_idx]*(vel_grad_loc[1][1][node_idx]+vel_grad_loc[1][1][node_idx])
+    #ifdef P4_TO_P8
+       +normals_loc[2][node_idx]*(vel_grad_loc[1][2][node_idx]+vel_grad_loc[2][1][node_idx])
+    #endif
+        );
+    #ifdef P4_TO_P8
+    vel_bc_value_loc[2][node_idx] = mu* ((vel_grad_loc[2][0][node_idx]+vel_grad_loc[0][2][node_idx])*normals_loc[0][node_idx]+normals_loc[1][node_idx]*(vel_grad_loc[2][1][node_idx]+vel_grad_loc[1][2][node_idx])+normals_loc[2][node_idx]*(vel_grad_loc[2][2][node_idx]+vel_grad_loc[2][2][node_idx]));
+    #endif
+  }
+  //begin update
+  for(short dim = 0; dim < P4EST_DIM; ++dim)
+  {
+    ierr = VecGhostUpdateBegin(vel_bc_check[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  }
+
+  //loop over local nodes
+  for(size_t t = 0; t<ngbd_n->get_local_size(); ++t)
+  {
+    p4est_locidx_t node_idx = ngbd_n -> get_local_node(t);
+    qnnn = ngbd_n->get_neighbors(node_idx);
+    vel_bc_value_loc[0][node_idx] = mu* (2*vel_grad_loc[0][0][node_idx]*normals_loc[0][node_idx]+normals_loc[1][node_idx]*(vel_grad_loc[0][1][node_idx]+vel_grad_loc[1][0][node_idx])
+    #ifdef P4_TO_P8
+       +normals_loc[2][node_idx]*(vel_grad_loc[0][2][node_idx]+vel_grad_loc[2][0][node_idx])
+    #endif
+        );
+    vel_bc_value_loc[1][node_idx] = mu* ((vel_grad_loc[1][0][node_idx]+vel_grad_loc[0][1][node_idx])*normals_loc[0][node_idx]+normals_loc[1][node_idx]*(vel_grad_loc[1][1][node_idx]+vel_grad_loc[1][1][node_idx])
+    #ifdef P4_TO_P8
+       +normals_loc[2][node_idx]*(vel_grad_loc[1][2][node_idx]+vel_grad_loc[2][1][node_idx])
+    #endif
+        );
+    #ifdef P4_TO_P8
+    vel_bc_value_loc[2][node_idx] = mu* ((vel_grad_loc[2][0][node_idx]+vel_grad_loc[0][2][node_idx])*normals_loc[0][node_idx]+normals_loc[1][node_idx]*(vel_grad_loc[2][1][node_idx]+vel_grad_loc[1][2][node_idx])+normals_loc[2][node_idx]*(vel_grad_loc[2][2][node_idx]+vel_grad_loc[2][2][node_idx]));
+    #endif
+  }
+
+  //end update ghost
+  for (int dim = 0; dim < P4EST_DIM; ++dim)
+  {
+    ierr = VecGhostUpdateEnd(vel_bc_check[dim], INSERT_VALUES, SCATTER_FORWARD);CHKERRXX(ierr);
+  }
+
+  //Restore vectors and destroy
+  for(int dim = 0; dim<P4EST_DIM; ++dim)
+  {
+    for(int dir = 0; dir<P4EST_DIM; ++dir)
+    {
+      ierr = VecRestoreArray(vel_grad[dim][dir], &vel_grad_loc[dim][dir]);CHKERRXX(ierr);
+      ierr = VecDestroy(vel_grad[dim][dir]); CHKERRXX(ierr);
+    }
+    ierr = VecRestoreArray(normals[dim], &normals_loc[dim]); CHKERRXX(ierr);
+    ierr = VecDestroy(normals[dim]); CHKERRXX(ierr);
+    ierr = VecRestoreArray(vnp1_nodes[dim], &vnp1_nodes_loc[dim]);CHKERRXX(ierr);
+    ierr = VecRestoreArray(vel_bc_check[dim], &vel_bc_value_loc[dim]); CHKERRXX(ierr);
+  }
 
 }
