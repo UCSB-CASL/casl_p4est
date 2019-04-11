@@ -57,13 +57,13 @@ static void set_quadrant_data_for_exportation(p4est_t* forest, p4est_topidx_t wh
 
   if(faces != NULL)
   {
-    for (short dir = 0; dir < P4EST_DIM; ++dir) {
-      for (short ii = 0; ii < 2; ++ii) {
+    for (unsigned short dir = 0; dir < P4EST_DIM; ++dir) {
+      for (unsigned short ii = 0; ii < 2; ++ii) {
         p4est_locidx_t local_face_idx = faces->q2f(quad_idx, 2*dir+ii);
         if((local_face_idx >=0) && (local_face_idx < faces->num_local[dir]))
           global_indices[P4EST_CHILDREN+2*dir+ii] = local_face_idx + face_offset_on_proc[dir]->at(forest->mpirank);
         else if(local_face_idx >= faces->num_local[dir])
-          global_indices[P4EST_CHILDREN+2*dir+ii] = local_face_idx - faces->num_local[dir] + face_offset_on_proc[dir]->at(faces->nonlocal_ranks[dir][local_face_idx-faces->num_local[dir]]);
+          global_indices[P4EST_CHILDREN+2*dir+ii] = faces->ghost_local_num[dir][local_face_idx-faces->num_local[dir]] + face_offset_on_proc[dir]->at(faces->nonlocal_ranks[dir][local_face_idx-faces->num_local[dir]]);
         else
         {
           P4EST_ASSERT(local_face_idx == NO_VELOCITY);
