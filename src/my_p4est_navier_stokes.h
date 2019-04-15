@@ -365,6 +365,21 @@ public:
   }
   void solve_projection(my_p4est_poisson_cells_t* &cell_poisson_solver, const bool use_initial_guess = false, const KSPType ksp = KSPBCGS, const PCType pc = PCSOR);
 
+  /*!
+   * \brief enforce_mass_flow enforces the mass flow in a desired direction to be equivalent to one of a given mean (bulk) velocity.
+   * This function calculates the (constant-in-space) correction to the gradient of the Hodge variable to enforce a desired mass flow.
+   * The mass-flow forcing direction MUST be periodic (otherwise the approach is simply inconsistent).
+   * This function is ideally called after the projection step and its output should be used to dynamically adapt the driving body
+   * force that enforces the constant mass flow rate (possibly with an added convergence criterion within the inner loop).
+   * \param force_in_direction          [in]  array of P4EST_DIM flags, forcing is applied in the direction dir if force_in_direction[dir] is true
+   * \param desired_mean_velocity       [in]  array of P4EST_DIM doubles, specifying the desired bulk velocity in the forcing direction (the value
+   *                                          desired_mean_velocity[dd] is disregarded if force_in_direction[dd] is false)
+   * \param forcing_mean_hodge_gradient [out] array of P4EST_DIM doubles, returning the correction to gradient component of the the
+   *                                          Hodge variable to enforce the desired mass flow --> can be used to correct the driving force term
+   *                                          afterwards
+   * Raphael EGAN
+   */
+  void enforce_mass_flow(const bool* force_in_direction, const double* desired_mean_velocity, double* forcing_mean_hodge_gradient);
 
   void compute_velocity_at_nodes();
 
@@ -459,6 +474,8 @@ public:
   unsigned long int memory_estimate() const;
 
   void get_slice_averaged_vnp1_profile(unsigned short vel_component, unsigned short axis, std::vector<double>& avg_velocity_profile);
+
+  inline double alpha() const { return ((sl_order == 1)? (1.0): ((2.0*dt_n+dt_nm1)/(dt_n+dt_nm1)));}
 
 };
 

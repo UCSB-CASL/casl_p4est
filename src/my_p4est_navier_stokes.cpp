@@ -1170,6 +1170,8 @@ void my_p4est_navier_stokes_t::solve_viscosity(my_p4est_poisson_faces_t* &face_p
     face_poisson_solver = new my_p4est_poisson_faces_t(faces_n, ngbd_n);
     face_poisson_solver->set_phi(phi);
     face_poisson_solver->set_bc(bc_v, dxyz_hodge, face_is_well_defined);
+// [Raphael:] I decided to deactivate this, I don't see why it was done like this in the
+// first place except for avoiding memory issues perhaps but that would be surprising, imo...
 //#if defined(COMET) || defined(STAMPEDE) || defined(POD_CLUSTER)
 //    face_poisson_solver->set_compute_partition_on_the_fly(true);
 //#else
@@ -1307,6 +1309,41 @@ void my_p4est_navier_stokes_t::solve_projection(my_p4est_poisson_cells_t* &cell_
   }
 
   ierr = PetscLogEventEnd(log_my_p4est_navier_stokes_projection, 0, 0, 0, 0); CHKERRXX(ierr);
+}
+
+void my_p4est_navier_stokes_t::enforce_mass_flow(const bool* force_in_direction, const double* desired_mean_velocity, double* forcing_mean_hodge_gradient)
+{
+  std::vector<double> sections(1);
+  std::vector<double> current_mass_flow(1);
+  PetscErrorCode ierr;
+  double *vel_p;
+  for (short unsigned dir = 0; dir < P4EST_DIM; ++dir) {
+    if(!force_in_direction[dir])
+    {
+      forcing_mean_hodge_gradient[dir] = 0.0;
+      continue;
+    }
+    if(!is_periodic(p4est_n, dir))
+    {
+#ifdef CASL_THROWS
+      throw std::invalid_argument("my_p4est_navier_stokes_t::enforce_mass_flow: this function cannot be called to enforce mass flow in a nonperiodic direction");
+#else
+      forcing_mean_hodge_gradient[dir] = 0.0;
+      continue;
+#endif
+    }
+    sections[0]                       = xyz_min[dir];
+    global_mass_flow_through_slice(dir, sections, current_mass_flow);
+    double current_mean_velocity      = current_mass_flow[0]/(xyz_max[(dir+1)%P4EST_DIM] - xyz_min[(dir+1)%P4EST_DIM]);
+#ifdef P4_TO_P8
+    current_mean_velocity            /= (xyz_max[(dir+2)%P4EST_DIM] - xyz_min[(dir+2)%P4EST_DIM]);
+#endif
+    forcing_mean_hodge_gradient[dir]  = current_mean_velocity - desired_mean_velocity[dir];
+    ierr = VecGetArray(vnp1[dir], &vel_p); CHKERRXX(ierr);
+    for (p4est_locidx_t k = 0; k < (faces_n->num_local[dir] + faces_n->num_ghost[dir]); ++k)
+      vel_p[k] -= forcing_mean_hodge_gradient[dir];
+    ierr = VecRestoreArray(vnp1[dir], &vel_p); CHKERRXX(ierr);
+  }
 }
 
 void my_p4est_navier_stokes_t::compute_velocity_at_nodes()
