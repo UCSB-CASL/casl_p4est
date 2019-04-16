@@ -159,7 +159,7 @@ void my_p4est_integration_mls_t::initialize()
       if (!linear_integration)
         cubes.back().set_check_for_curvature(check_for_curvature);
 #endif
-      cubes.back().reconstruct(phi_cube, *action, *color);
+      reconstruct_cube(cubes.back(), phi_cube, *action, *color);
 
 //      std::cout << "[ERROR]: here " << quad_idx << "\n";
     }
@@ -448,7 +448,7 @@ double my_p4est_integration_mls_t::perform(int_type_t int_type, int n0, int n1, 
         if (!linear_integration)
           cube.set_check_for_curvature(check_for_curvature);
 #endif
-        cube.reconstruct(phi_cube, *action, *color);
+        reconstruct_cube(cube, phi_cube, *action, *color);
 
         std::vector<double> W, X, Y, Z;
 

@@ -32,11 +32,11 @@
 #include <src/my_p8est_poisson_nodes_mls_sc.h>
 #include <src/my_p8est_interpolation_nodes.h>
 #include <src/my_p8est_integration_mls.h>
-#include <src/my_p8est_semi_lagrangian.h>
-#include <src/my_p8est_macros.h>
-#include <src/my_p8est_shapes.h>
 #include <src/mls_integration/vtk/simplex3_mls_l_vtk.h>
 #include <src/mls_integration/vtk/simplex3_mls_q_vtk.h>
+#include <src/my_p8est_semi_lagrangian.h>
+#include <src/my_p8est_tools_mls.h>
+#include <src/my_p8est_macros.h>
 #else
 #include <p4est_bits.h>
 #include <p4est_extended.h>
@@ -51,197 +51,189 @@
 #include <src/my_p4est_poisson_nodes_mls_sc.h>
 #include <src/my_p4est_interpolation_nodes.h>
 #include <src/my_p4est_integration_mls.h>
-#include <src/my_p4est_semi_lagrangian.h>
-#include <src/my_p4est_macros.h>
-#include <src/my_p4est_shapes.h>
 #include <src/mls_integration/vtk/simplex2_mls_l_vtk.h>
 #include <src/mls_integration/vtk/simplex2_mls_q_vtk.h>
+#include <src/my_p4est_semi_lagrangian.h>
+#include <src/my_p4est_tools_mls.h>
+#include <src/my_p4est_macros.h>
 #endif
 
 #include <engine.h>
 
+#include <src/point3.h>
+
 #include <src/petsc_compatibility.h>
 #include <src/Parser.h>
-#include <src/parameter_list_t.h>
+
+#include "problem_case_0.h" // triangle (tetrahedron)
+#include "problem_case_1.h" // two circles union
+#include "problem_case_2.h" // two circles intersection
+#include "problem_case_3.h" // two circles coloration
+#include "problem_case_4.h" // four flowers
+#include "problem_case_5.h" // two circles coloration (naive)
+#include "problem_case_6.h" // one flower
+#include "problem_case_7.h" // three flowers
+#include "problem_case_8.h" // half-space
+#include "problem_case_9.h" // angle
+#include "problem_case_10.h" // angle
+#include "problem_case_11.h" // one circle
+
+#include "ii_problem_case_0.h" // triangle (tetrahedron)
+#include "ii_problem_case_1.h" // two circles union
+#include "ii_problem_case_2.h" // two circles intersection
+#include "ii_problem_case_3.h" // two circles coloration
+#include "ii_problem_case_4.h" // four flowers
+#include "ii_problem_case_5.h" // two circles coloration (naive)
+#include "ii_problem_case_6.h" // one flower
+#include "ii_problem_case_7.h" // three flowers
+#include "ii_problem_case_8.h" // half-space
+#include "ii_problem_case_9.h" // angle
+#include "ii_problem_case_10.h" // angle
+#include "ii_problem_case_11.h" // one circle
 
 #undef MIN
 #undef MAX
 
+#define ADD_OPTION(i, var, description) \
+  i == 0 ? cmd.add_option(#var, description) : (void) (var = cmd.get(#var, var));
+
 using namespace std;
-
-parameter_list_t pl;
-
-DEFINE_PARAMETER(pl, int, n_example, 0, "Predefined example");
 
 //-------------------------------------
 // computational domain parameters
 //-------------------------------------
-DEFINE_PARAMETER(pl, int, px, 0, "Periodicity in the x-direction (0/1)");
-DEFINE_PARAMETER(pl, int, py, 0, "Periodicity in the y-direction (0/1)");
-DEFINE_PARAMETER(pl, int, pz, 0, "Periodicity in the z-direction (0/1)");
-
-DEFINE_PARAMETER(pl, int, nx, 1, "Number of trees in the x-direction");
-DEFINE_PARAMETER(pl, int, ny, 1, "Number of trees in the y-direction");
-DEFINE_PARAMETER(pl, int, nz, 1, "Number of trees in the z-direction");
-
-DEFINE_PARAMETER(pl, double, xmin, -1, "Box xmin");
-DEFINE_PARAMETER(pl, double, ymin, -1, "Box ymin");
-DEFINE_PARAMETER(pl, double, zmin, -1, "Box zmin");
-
-DEFINE_PARAMETER(pl, double, xmax,  1, "Box xmax");
-DEFINE_PARAMETER(pl, double, ymax,  1, "Box ymax");
-DEFINE_PARAMETER(pl, double, zmax,  1, "Box zmax");
+const int periodicity[3] = {0, 0, 0};
+const int num_trees[3]   = {1, 1, 1};
+const double grid_xyz_min[3] = {-1.5, -1.5, -1.5};
+const double grid_xyz_max[3] = { 1.5,  1.5,  1.5};
 
 //-------------------------------------
 // refinement parameters
 //-------------------------------------
 #ifdef P4_TO_P8
-DEFINE_PARAMETER(pl, int, lmin, 5, "Min level of the tree");
-DEFINE_PARAMETER(pl, int, lmax, 5, "Max level of the tree");
-
-DEFINE_PARAMETER(pl, int, num_splits,           7, "Number of recursive splits");
-DEFINE_PARAMETER(pl, int, num_splits_per_split, 1, "Number of additional resolutions");
-
-DEFINE_PARAMETER(pl, int, num_shifts_x_dir, 1, "Number of grid shifts in the x-direction");
-DEFINE_PARAMETER(pl, int, num_shifts_y_dir, 1, "Number of grid shifts in the y-direction");
-DEFINE_PARAMETER(pl, int, num_shifts_z_dir, 1, "Number of grid shifts in the z-direction");
+int lmin = 4;
+int lmax = 4;
+int num_splits = 5;
+int num_splits_per_split = 1;
+int num_shifts_x_dir = 1;
+int num_shifts_y_dir = 1;
+int num_shifts_z_dir = 1;
 #else
-DEFINE_PARAMETER(pl, int, lmin, 5, "Min level of the tree");
-DEFINE_PARAMETER(pl, int, lmax, 5, "Max level of the tree");
-
-DEFINE_PARAMETER(pl, int, num_splits,           7, "Number of recursive splits");
-DEFINE_PARAMETER(pl, int, num_splits_per_split, 1, "Number of additional resolutions");
-
-DEFINE_PARAMETER(pl, int, num_shifts_x_dir, 1, "Number of grid shifts in the x-direction");
-DEFINE_PARAMETER(pl, int, num_shifts_y_dir, 1, "Number of grid shifts in the y-direction");
-DEFINE_PARAMETER(pl, int, num_shifts_z_dir, 1, "Number of grid shifts in the z-direction");
+int lmin = 5;
+int lmax = 5;
+int num_splits = 7;
+int num_splits_per_split = 1;
+int num_shifts_x_dir = 1;
+int num_shifts_y_dir = 1;
+int num_shifts_z_dir = 1;
 #endif
-DEFINE_PARAMETER(pl, int, iter_start, 0, "Skip n first iterations");
-DEFINE_PARAMETER(pl, double, lip, 1.5, "Lipschitz constant");
 
-DEFINE_PARAMETER(pl, bool, refine_strict,  1, "Refines every cell starting from the coarsest case if yes");
-DEFINE_PARAMETER(pl, bool, refine_rand,    0, "Add randomness into adaptive grid");
-DEFINE_PARAMETER(pl, bool, balance_grid,   0, "Enforce 1:2 ratio for adaptive grid");
-DEFINE_PARAMETER(pl, bool, coarse_outside, 0, "Use the coarsest possible grid outside the domain (0/1)");
-DEFINE_PARAMETER(pl, int,  expand_ghost,   0, "Number of ghost layer expansions");
+int num_shifts_total = num_shifts_x_dir*
+                       num_shifts_y_dir*
+                       num_shifts_z_dir;
 
+int num_resolutions = (num_splits-1)*num_splits_per_split + 1;
+int num_iter_total  = num_resolutions*num_shifts_total;
+
+int iter_start = 0; // is used to skip iterations and get to a problematic case
 
 //-------------------------------------
 // test solutions
 //-------------------------------------
 
-DEFINE_PARAMETER(pl, int, n_domain,    1, "Domain geometry");
-DEFINE_PARAMETER(pl, int, n_interface, 1, "Immersed interface geometry");
+// Arthur's examples
+// 11, 0, 0, 9, 8
+// 11, 1, 0, 6, 7
+// 11, 0, 1, 6, 7
+// 6,  4, 5, 5, 11
+// 11, 4, 5, 5, 6
 
-DEFINE_PARAMETER(pl, int, n_um, 0, "");
-DEFINE_PARAMETER(pl, int, n_up, 1, "");
+int n_ii = 11;
+int n_geometry = 6;
 
-DEFINE_PARAMETER(pl, double, mag_um, 1, "");
-DEFINE_PARAMETER(pl, double, mag_up, 1, "");
+int n_mu_m = 0;
+int n_mu_p = 2;
 
-DEFINE_PARAMETER(pl, int, n_mu_m, 0, "");
-DEFINE_PARAMETER(pl, int, n_mu_p, 0, "");
+int n_um = 0;
+int n_up = 1;
 
-DEFINE_PARAMETER(pl, double, mag_mu_m, 1, "");
-DEFINE_PARAMETER(pl, double, mag_mu_p, 1, "");
+int n_diag_m = 0;
+int n_diag_p = 0;
 
-DEFINE_PARAMETER(pl, int, n_diag_m, 0, "");
-DEFINE_PARAMETER(pl, int, n_diag_p, 0, "");
+BoundaryConditionType bc_wtype = DIRICHLET;
+BoundaryConditionType bc_itype = DIRICHLET;
+//BoundaryConditionType bc_itype = ROBIN;
 
-DEFINE_PARAMETER(pl, double, mag_diag_m, 1, "");
-DEFINE_PARAMETER(pl, double, mag_diag_p, 1, "");
-
-DEFINE_PARAMETER(pl, int, n_jc_value,   0, "");
-DEFINE_PARAMETER(pl, int, n_jc_flux_00, 0, "");
-
-DEFINE_PARAMETER(pl, int,    n_bc_coeff_00,   0, "");
-DEFINE_PARAMETER(pl, double, mag_bc_coeff_00, 1, "");
-
-DEFINE_PARAMETER(pl, int, bc_wtype, DIRICHLET, "Type of boundary conditions on the walls");
-DEFINE_PARAMETER(pl, int, bc_itype, ROBIN, "Type of boundary conditions on the domain boundary");
-DEFINE_PARAMETER(pl, int, bc_type_00, ROBIN, "Type of boundary conditions on the domain boundary");
-//DEFINE_PARAMETER(pl, int, bc_itype, ROBIN, "");
-
+int jump_scheme = 0;
 
 //-------------------------------------
 // solver parameters
 //-------------------------------------
-DEFINE_PARAMETER(pl, int,  jc_scheme,         0, "Discretization scheme for interface conditions (0 - FVM, 1 - FDM)");
-DEFINE_PARAMETER(pl, int,  integration_order, 2, "Select integration order (1 - linear, 2 - quadratic)");
-DEFINE_PARAMETER(pl, bool, sc_scheme,         1, "Use super-convergent scheme");
+int  integration_order = 2;
+bool sc_scheme         = 0;
 
 // for symmetric scheme:
-DEFINE_PARAMETER(pl, bool, taylor_correction,      1, "Use Taylor correction to approximate Robin term (symmetric scheme)");
-DEFINE_PARAMETER(pl, bool, kink_special_treatment, 1, "Use the special treatment for kinks (symmetric scheme)");
+bool taylor_correction      = 1;
+bool kink_special_treatment = 1;
 
 // for superconvergent scheme:
-DEFINE_PARAMETER(pl, bool, try_remove_hanging_cells, 0, "Ask solver to eliminate hanging cells");
+bool try_remove_hanging_cells = 0;
 
 //-------------------------------------
 // level-set representation parameters
 //-------------------------------------
-DEFINE_PARAMETER(pl, bool, use_phi_cf,       0, "Use analytical level-set functions");
-DEFINE_PARAMETER(pl, bool, reinit_level_set, 0, "Reinitialize level-set function");
+bool use_phi_cf       = 0;
+bool reinit_level_set = 0;
 
 // artificial perturbation of level-set values
-DEFINE_PARAMETER(pl, int,    dom_perturb,     0,   "Artificially pertub level-set functions (0 - no perturbation, 1 - smooth, 2 - noisy)");
-DEFINE_PARAMETER(pl, double, dom_perturb_mag, 0.1, "Magnitude of level-set perturbations");
-DEFINE_PARAMETER(pl, double, dom_perturb_pow, 2,   "Order of level-set perturbation (e.g. 2 for h^2 perturbations)");
-
-DEFINE_PARAMETER(pl, int,    ifc_perturb,     0,   "Artificially pertub level-set functions (0 - no perturbation, 1 - smooth, 2 - noisy)");
-DEFINE_PARAMETER(pl, double, ifc_perturb_mag, 0.1, "Magnitude of level-set perturbations");
-DEFINE_PARAMETER(pl, double, ifc_perturb_pow, 2,   "Order of level-set perturbation (e.g. 2 for h^2 perturbations)");
+int    domain_perturbation     = 0; // 0 - no, 1 - smooth, 2 - noisy
+double domain_perturbation_mag = 0.1;
+double domain_perturbation_pow = 2.;
 
 //-------------------------------------
 // convergence study parameters
 //-------------------------------------
-DEFINE_PARAMETER(pl, int,    compute_cond_num,     0*num_splits, "Estimate L1-norm condition number");
-DEFINE_PARAMETER(pl, bool,   do_extension,         0, "Extend solution after solving");
-DEFINE_PARAMETER(pl, double, mask_thresh,          0, "Mask threshold for excluding points in convergence study");
-DEFINE_PARAMETER(pl, bool,   compute_grad_between, 0, "Computes gradient between points if yes");
-DEFINE_PARAMETER(pl, bool,   scale_errors,         0, "Scale errors by max solution/gradient value");
+int    compute_cond_num = 0*num_splits;
+bool   do_extension     = 0;
+double mask_thresh      = 0;
+bool   compute_grad_between = false;
 
 //-------------------------------------
 // output
 //-------------------------------------
-DEFINE_PARAMETER(pl, bool, save_vtk,           1, "Save the p4est in vtk format");
-DEFINE_PARAMETER(pl, bool, save_params,        1, "Save list of entered parameters");
-DEFINE_PARAMETER(pl, bool, save_domain,        0, "Save the reconstruction of an irregular domain (works only in serial!)");
-DEFINE_PARAMETER(pl, bool, save_matrix_ascii,  0, "Save the matrix in ASCII MATLAB format");
-DEFINE_PARAMETER(pl, bool, save_matrix_binary, 0, "Save the matrix in BINARY MATLAB format");
-DEFINE_PARAMETER(pl, bool, save_convergence,   0, "Save convergence results");
-
-void set_example(int n_example)
-{
-  switch (n_example) {
-    case 0: ;
-  }
-}
+bool save_vtk           = 1;
+bool save_domain        = 0;
+bool save_matrix_ascii  = 0;
+bool save_matrix_binary = 0;
+bool save_convergence   = 0;
 
 // DIFFUSION COEFFICIENTS
+double mu_m_mag = 1;
+double mu_p_mag = 1;
+
 class mu_all_cf_t : public CF_DIM
 {
+public:
   int    *n;
   double *mag;
-  cf_value_type_t what;
-public:
-  mu_all_cf_t(cf_value_type_t what, int &n, double &mag) : what(what), n(&n), mag(&mag) {}
+  enum value_type { VAL, DDX, DDY, DDZ, LAP } what;
+  mu_all_cf_t(value_type what, int &n, double &mag) : what(what), n(&n), mag(&mag) {}
   double operator()(DIM(double x, double y, double z)) const {
     switch (*n) {
       case 0: switch (what) {
           case VAL: return (*mag);
-          case DDX: return 0.;
-          case DDY: return 0.;
+          case DDX: 0;
+          case DDY: 0;
 #ifdef P4_TO_P8
-          case DDZ: return 0.;
+          case DDZ: 0;
 #endif
         }
       case 1: switch (what) {
-          case VAL: return (*mag)*(1.+(0.2*cos(x)+0.3*sin(y)) P8(*sin(z)));
+          case VAL: return  (*mag)*( 1. + (0.2*cos(x)+0.3*sin(y)) P8(*sin(z)) );
           case DDX: return -0.2*(*mag)*sin(x) P8(*sin(z));
-          case DDY: return (*mag)*0.3*cos(y) P8(*sin(z));
+          case DDY: return  0.3*(*mag)*cos(y) P8(*sin(z));
 #ifdef P4_TO_P8
-          case DDZ: return (*mag)*(0.2*sin(x)+0.3*cos(y))*cos(z);
+          case DDZ: return  (*mag)*(0.2*sin(x)+0.3*cos(y))*cos(z);
 #endif
         }
       case 2: switch (what) {
@@ -249,39 +241,38 @@ public:
           case DDX: return (*mag)*y*y/(x+2.);
           case DDY: return (*mag)*2.*y*log(x+2.);
 #ifdef P4_TO_P8
-          case DDZ: return 0.;
+          case DDZ: return 0;
 #endif
         }
       case 3: switch (what) {
           case VAL: return  (*mag)*(exp(-x));
           case DDX: return -(*mag)*(exp(-x));
-          case DDY: return  0;
+          case DDY: return 0;
 #ifdef P4_TO_P8
-          case DDZ: return  0;
+          case DDZ: return 0;
 #endif
         }
     }
   }
 };
 
-mu_all_cf_t mu_m_cf(VAL, n_mu_m, mag_mu_m);
-mu_all_cf_t mu_p_cf(VAL, n_mu_p, mag_mu_p);
-mu_all_cf_t DIM(mux_m_cf(DDX, n_mu_m, mag_mu_m),
-                muy_m_cf(DDY, n_mu_m, mag_mu_m),
-                muz_m_cf(DDZ, n_mu_m, mag_mu_m));
-mu_all_cf_t DIM(mux_p_cf(DDX, n_mu_p, mag_mu_p),
-                muy_p_cf(DDY, n_mu_p, mag_mu_p),
-                muz_p_cf(DDZ, n_mu_p, mag_mu_p));
+mu_all_cf_t mu_m_cf(mu_all_cf_t::VAL, n_mu_m, mu_m_mag), mu_p_cf(mu_all_cf_t::VAL, n_mu_p, mu_p_mag);
+mu_all_cf_t mux_m_cf(mu_all_cf_t::DDX, n_mu_m, mu_m_mag), mux_p_cf(mu_all_cf_t::DDX, n_mu_p, mu_p_mag);
+mu_all_cf_t muy_m_cf(mu_all_cf_t::DDY, n_mu_m, mu_m_mag), muy_p_cf(mu_all_cf_t::DDY, n_mu_p, mu_p_mag);
+#ifdef P4_TO_P8
+mu_all_cf_t muz_m_cf(mu_all_cf_t::DDZ, n_mu_m, mu_m_mag), muz_p_cf(mu_all_cf_t::DDZ, n_mu_p, mu_p_mag);
+#endif
 
-
-// TEST SOLUTIONS
+// EXACT SOLUTIONS
+double mag_um = 1;
+double mag_up = 1;
 class u_pm_cf_t : public CF_DIM
 {
 public:
   int    *n;
   double *mag;
-  cf_value_type_t what;
-  u_pm_cf_t(cf_value_type_t what, int &n, double &mag) : what(what), n(&n), mag(&mag) {}
+  enum value_type { VAL, DDX, DDY, DDZ, LAP } what;
+  u_pm_cf_t(value_type what, int &n, double &mag) : what(what), n(&n), mag(&mag) {}
   double operator()(DIM(double x, double y, double z)) const
   {
     switch (*n) {
@@ -376,7 +367,7 @@ public:
           case DDX: return (*mag)*( ( 1.0*cos(x+0.3*y)*cos(x-0.7*y) - 1.0*sin(x+0.3*y)*sin(x-0.7*y) )*exp(z) + 3.*x/(x*x+y*y+z*z+0.5) );
           case DDY: return (*mag)*( ( 0.3*cos(x+0.3*y)*cos(x-0.7*y) + 0.7*sin(x+0.3*y)*sin(x-0.7*y) )*exp(z) + 3.*y/(x*x+y*y+z*z+0.5) );
           case DDZ: return (*mag)*( ( 1.0*cos(x-0.7*y)*sin(x+0.3*y)                                 )*exp(z) + 3.*z/(x*x+y*y+z*z+0.5) );
-          case LAP: return (*mag)*( -1.58*( sin(x+0.3*y)*cos(x-0.7*y) + cos(x+0.3*y)*sin(x-0.7*y) )*exp(z) + 3.*(x*x+y*y+z*z+1.5)/pow(x*x+y*y+z*z+0.5, 2.) );
+          case LAP: return (*mag)*( (-1.58*( sin(x+0.3*y)*cos(x-0.7*y) + cos(x+0.3*y)*sin(x-0.7*y) )*exp(z) + 3.*(x*x+y*y+z*z+1.5)/pow(x*x+y*y+z*z+0.5, 2.) );
 #else
           case VAL: return (*mag)*( sin(x+0.3*y)*cos(x-0.7*y) + 3.*log(sqrt(x*x+y*y+0.5)) );
           case DDX: return (*mag)*(  1.00*cos(x+0.3*y)*cos(x-0.7*y) - 1.00*sin(x+0.3*y)*sin(x-0.7*y) + 3.*x/(x*x+y*y+0.5) );
@@ -385,7 +376,7 @@ public:
 #endif
         }
       case 7: {
-        double p = mu_p_cf(DIM(x,y,z))/mu_m_cf(DIM(x,y,z));
+        double p = mu_p_cf(x,y)/mu_m_cf(x,y);
         double r = sqrt(x*x+y*y);
         double r0 = 0.5+EPS;
         switch (what) {
@@ -403,7 +394,7 @@ public:
 #endif
         }}
       case 8: {
-        double p = mu_p_cf(DIM(x,y,z))/mu_m_cf(DIM(x,y,z));
+        double p = mu_p_cf(x,y)/mu_m_cf(x,y);
         double r = sqrt(x*x+y*y);
         if (r < EPS) r = EPS;
         double r0 = 0.5+EPS;
@@ -464,65 +455,42 @@ public:
   }
 };
 
-u_pm_cf_t u_m_cf(VAL, n_um, mag_um),  u_p_cf(VAL, n_up, mag_up);
-u_pm_cf_t ul_m_cf(LAP, n_um, mag_um), ul_p_cf(LAP, n_up, mag_up);
-u_pm_cf_t DIM(ux_m_cf(DDX, n_um, mag_um),
-              uy_m_cf(DDY, n_um, mag_um),
-              uz_m_cf(DDZ, n_um, mag_um));
-u_pm_cf_t DIM(ux_p_cf(DDX, n_up, mag_up),
-              uy_p_cf(DDY, n_up, mag_up),
-              uz_p_cf(DDZ, n_up, mag_up));
+u_pm_cf_t u_m_cf(u_pm_cf_t::VAL, n_um, mag_um), u_p_cf(u_pm_cf_t::VAL, n_up, mag_up);
+u_pm_cf_t ux_m_cf(u_pm_cf_t::DDX, n_um, mag_um), ux_p_cf(u_pm_cf_t::DDX, n_up, mag_up);
+u_pm_cf_t uy_m_cf(u_pm_cf_t::DDY, n_um, mag_um), uy_p_cf(u_pm_cf_t::DDY, n_up, mag_up);
+#ifdef P4_TO_P8
+u_pm_cf_t uz_m_cf(u_pm_cf_t::DDZ, n_um, mag_um), uz_p_cf(u_pm_cf_t::DDZ, n_up, mag_up);
+#endif
+u_pm_cf_t ul_m_cf(u_pm_cf_t::LAP, n_um, mag_um), ul_p_cf(u_pm_cf_t::LAP, n_up, mag_up);
 
 // DIAGONAL TERMS
+double mag_diag_m = 1;
+double mag_diag_p = 1;
+
 class diag_cf_t: public CF_DIM
 {
-  int *n;
+  int    *n;
   double *mag;
 public:
   diag_cf_t(int &n, double &mag) : n(&n), mag(&mag) {}
   double operator()(DIM(double x, double y, double z)) const {
     switch (*n) {
       case 0: return 0.;
-      case 1: return (*mag)*1.;
-      case 2:
-#ifdef P4_TO_P8
-        return (*mag)*cos(x+z)*exp(y);
-#else
-        return (*mag)*cos(x)*exp(y);
-#endif
+      case 1: return 1.;
+      case 2: return cos(x P8(+z))*exp(y);
     }
   }
 };
 
-diag_cf_t diag_m_cf(n_diag_m, mag_diag_m);
-diag_cf_t diag_p_cf(n_diag_p, mag_diag_p);
-
-// RHS
-class rhs_m_cf_t: public CF_DIM
-{
-public:
-  double operator()(DIM(double x, double y, double z)) const {
-    return diag_m_cf(DIM(x,y,z))*u_m_cf(DIM(x,y,z))
-        - mu_m_cf(DIM(x,y,z))*ul_m_cf(DIM(x,y,z))
-        - SUMD(mux_m_cf(DIM(x,y,z))*ux_m_cf(DIM(x,y,z)),
-               muy_m_cf(DIM(x,y,z))*uy_m_cf(DIM(x,y,z)),
-               muz_m_cf(DIM(x,y,z))*uz_m_cf(DIM(x,y,z)));
-  }
-} rhs_m_cf;
-
-class rhs_p_cf_t: public CF_DIM
-{
-public:
-  double operator()(DIM(double x, double y, double z)) const {
-    return diag_p_cf(DIM(x,y,z))*u_p_cf(DIM(x,y,z))
-        - mu_p_cf(DIM(x,y,z))*ul_p_cf(DIM(x,y,z))
-        - SUMD(mux_p_cf(DIM(x,y,z))*ux_p_cf(DIM(x,y,z)),
-               muy_p_cf(DIM(x,y,z))*uy_p_cf(DIM(x,y,z)),
-               muz_p_cf(DIM(x,y,z))*uz_p_cf(DIM(x,y,z)));
-  }
-} rhs_p_cf;
+diag_cf_t diag_m_cf(n_diag_m);
+diag_cf_t diag_p_cf(n_diag_p);
 
 // ROBIN COEFFICIENTS
+int n_bc_coeff_00 = 0; double mag_bc_coeff_00 = 1;
+int n_bc_coeff_01 = 0; double mag_bc_coeff_01 = 1;
+int n_bc_coeff_02 = 0; double mag_bc_coeff_02 = 1;
+int n_bc_coeff_03 = 0; double mag_bc_coeff_03 = 1;
+
 class bc_coeff_cf_t: public CF_DIM
 {
   int    *n;
@@ -534,184 +502,527 @@ public:
       case 0: return (*mag);
       case 1: return (*mag)*(x+y);
       case 2: return (*mag)*(x-y + (x+y)*(x+y));
-      case 3:
-#ifdef P4_TO_P8
-        return (*mag)*(sin(x+y)*cos(x-y)*log(z+4.));
-#else
-        return (*mag)*(sin(x+y)*cos(x-y));
-#endif
-      case 4:
-#ifdef P4_TO_P8
-        return (*mag)*(cos(x+y)*sin(x-y)*exp(z));
-#else
-        return (*mag)*(cos(x+y)*sin(x-y));
-#endif
-      case 5:
-#ifdef P4_TO_P8
-        return (*mag)*( 1.0 + sin(x+z)*cos(y+z) );
-#else
-        return (*mag)*( 1.0 + sin(x)*cos(y) );
-#endif
-      case 6:
-#ifdef P4_TO_P8
-        return (*mag)*(exp(x+y+z));
-#else
-        return (*mag)*(exp(x+y));
-#endif
-      case 7:
-#ifdef P4_TO_P8
-        return (*mag)*(1.0 + sin(x)*cos(y)*exp(z) );
-#else
-        return (*mag)*(1.0 + sin(x)*cos(y) );
-#endif
+      case 3: return (*mag)*(sin(x+y)*cos(x-y) P8(*log(z+4.)) );
+      case 4: return (*mag)*(cos(x+y)*sin(x-y) P8(*exp(z)) );
+      case 5: return (*mag)*(1.0 + sin(x P8(+z)) P8(*cos(y P8(+z))) );
+      case 6: return (*mag)*(exp(x+y P8(+z) ));
+      case 7: return (*mag)*(1.0 + sin(x)*cos(y) P8(*exp(z)) );
     }
   }
 };
 
 bc_coeff_cf_t bc_coeff_cf_00(n_bc_coeff_00, mag_bc_coeff_00);
+bc_coeff_cf_t bc_coeff_cf_01(n_bc_coeff_01, mag_bc_coeff_01);
+bc_coeff_cf_t bc_coeff_cf_02(n_bc_coeff_02, mag_bc_coeff_02);
+bc_coeff_cf_t bc_coeff_cf_03(n_bc_coeff_03, mag_bc_coeff_03);
 
-// DOMAIN GEOMETRY
-class dom_phi_cf_t: public CF_DIM {
-public:
-  int    *n;
-  cf_value_type_t what;
-  dom_phi_cf_t(cf_value_type_t what, int &n) : what(what), n(&n) {}
-  double operator()(DIM(double x, double y, double z)) const {
-    switch (*n) {
-      case 0: return -1;
-      case 1: {
-          double r0 = 0.911;
-          double DIM( xc = 0, yc = 0, zc = 0 );
-          flower_shaped_domain_t circle(r0, DIM(xc, yc, zc));
-          switch (what) {
-            OCOMP( case VAL: return circle.phi(DIM(x,y,z)) );
-            XCOMP( case DDX: return circle.phi_x(DIM(x,y,z)) );
-            YCOMP( case DDY: return circle.phi_y(DIM(x,y,z)) );
-            ZCOMP( case DDZ: return circle.phi_z(DIM(x,y,z)) );
-          }
-        }
-      case 2: {
-          double r0 = 0.311;
-          double DIM( xc = 0, yc = 0, zc = 0 );
-          flower_shaped_domain_t circle(r0, DIM(xc, yc, zc), 0, -1);
-          switch (what) {
-            OCOMP( case VAL: return circle.phi(DIM(x,y,z)) );
-            XCOMP( case DDX: return circle.phi_x(DIM(x,y,z)) );
-            YCOMP( case DDY: return circle.phi_y(DIM(x,y,z)) );
-            ZCOMP( case DDZ: return circle.phi_z(DIM(x,y,z)) );
-          }
-        }
-    }
-  }
-};
-
-dom_phi_cf_t dom_phi_cf_00(VAL, n_domain);
-dom_phi_cf_t DIM( dom_phi_x_cf_00(DDX, n_domain),
-                  dom_phi_y_cf_00(DDY, n_domain),
-                  dom_phi_z_cf_00(DDZ, n_domain) );
-
-// INTERFACE GEOMETRY
-class ifc_phi_cf_t: public CF_DIM {
-public:
-  int    *n;
-  cf_value_type_t what;
-  ifc_phi_cf_t(cf_value_type_t what, int &n) : what(what), n(&n) {}
-  double operator()(DIM(double x, double y, double z)) const {
-    switch (*n) {
-      case 0: return -1;
-      case 1: {
-          double r0 = 0.433;
-          double DIM( xc = 0, yc = 0, zc = 0 );
-          flower_shaped_domain_t circle(r0, DIM(xc, yc, zc), 0.1);
-          switch (what) {
-            OCOMP( case VAL: return circle.phi  (DIM(x,y,z)) );
-            XCOMP( case DDX: return circle.phi_x(DIM(x,y,z)) );
-            YCOMP( case DDY: return circle.phi_y(DIM(x,y,z)) );
-            ZCOMP( case DDZ: return circle.phi_z(DIM(x,y,z)) );
-          }
-        }
-    }
-  }
-};
-
-ifc_phi_cf_t ifc_phi_cf_00(VAL, n_interface);
-ifc_phi_cf_t DIM(ifc_phi_x_cf_00(DDX, n_interface),
-                 ifc_phi_y_cf_00(DDY, n_interface),
-                 ifc_phi_z_cf_00(DDZ, n_interface));
-
-
-const int num_dom_phi_max = 1;
-const int num_ifc_phi_max = 1;
-
-const int num_dom_phi = 1;
-const int num_ifc_phi = 1;
-
-// fold functions into arrays
-std::vector<int>      dom_clr;
-std::vector<mls_opn_t> dom_acn;
-std::vector<CF_DIM *> dom_phi_cf;
-std::vector<CF_DIM *> DIM( dom_phi_x_cf,
-                           dom_phi_y_cf,
-                           dom_phi_z_cf );
-
-std::vector<int>      ifc_clr;
-std::vector<mls_opn_t> ifc_acn;
-std::vector<CF_DIM *> ifc_phi_cf;
-std::vector<CF_DIM *> DIM( ifc_phi_x_cf,
-                           ifc_phi_y_cf,
-                           ifc_phi_z_cf );
-
-// the effective LSF
-mls_eff_cf_t dom_phi_eff_cf(&dom_phi_cf, &dom_acn);
-mls_eff_cf_t ifc_phi_eff_cf(&ifc_phi_cf, &ifc_acn);
-
-class phi_eff_cf_t : public CF_DIM
+// RHS
+class rhs_m_cf_t: public CF_DIM
 {
-  CF_DIM *dom_phi_cf_;
-  CF_DIM *ifc_phi_cf_;
 public:
-  phi_eff_cf_t(CF_DIM &dom_phi_cf, CF_DIM &ifc_phi_cf) : dom_phi_cf_(&dom_phi_cf), ifc_phi_cf_(&ifc_phi_cf) {}
+  double operator()(DIM(double x, double y, double z)) const {
+    return diag_m_cf(DIM(x,y,z))*u_m_cf(DIM(x,y,z))
+        - mu_m_cf(DIM(x,y,z))*ul_m_cf(DIM(x,y,z))
+        - mux_m_cf(DIM(x,y,z))*ux_m_cf(DIM(x,y,z))
+    #ifdef P4_TO_P8
+        - muz_m_cf(DIM(x,y,z))*uz_m_cf(DIM(x,y,z))
+    #endif
+        - muy_m_cf(DIM(x,y,z))*uy_m_cf(DIM(x,y,z));
+  }
+} rhs_m_cf;
+
+class rhs_p_cf_t: public CF_DIM
+{
+public:
+  double operator()(DIM(double x, double y, double z)) const {
+    return diag_p_cf(DIM(x,y,z))*u_p_cf(DIM(x,y,z))
+        - mu_p_cf(DIM(x,y,z))*ul_p_cf(DIM(x,y,z))
+        - mux_p_cf(DIM(x,y,z))*ux_p_cf(DIM(x,y,z))
+    #ifdef P4_TO_P8
+        - muz_p_cf(DIM(x,y,z))*uz_p_cf(DIM(x,y,z))
+    #endif
+        - muy_p_cf(DIM(x,y,z))*uy_p_cf(DIM(x,y,z));
+  }
+} rhs_p_cf;
+
+
+int n_phi_00 = 0;
+
+class dom_phi_cf_t : public CF_DIM
+{
+public:
+  int    *n;
+  enum value_type { VAL, DDX, DDY, DDZ, LAP } what;
+  dom_phi_cf_t(value_type what, int &n) : what(what), n(&n) {}
   double operator()(DIM(double x, double y, double z)) const
   {
-    return MAX( (*dom_phi_cf_)(DIM(x,y,z)), -fabs((*ifc_phi_cf_)(DIM(x,y,z))) );
+    switch (*n) {
+      case 0: switch (what) {
+          case VAL: return -1;
+          case DDX: return  0;
+          case DDY: return  0;
+#ifdef P4_TO_P8
+          case DDZ: return  0;
+#endif
+        }
+      case 1: {
+        double r = 0.711;
+        flower_shaped_domain_t circle(r, DIM(0,0,0));
+        switch (what) {
+          case VAL: return circle.phi(DIM(x,y,z));
+          case DDX: return circle.phi_x(DIM(x,y,z));
+          case DDY: return circle.phi_y(DIM(x,y,z));
+#ifdef P4_TO_P8
+          case DDZ: return circle.phi_z(DIM(x,y,z));
+#endif
+        }}
+    }
   }
-} phi_eff_cf(dom_phi_eff_cf, ifc_phi_eff_cf);
+};
+
+dom_phi_cf_t dom_phi_cf_00(phi_cf_t::VAL, n_phi_00);
+dom_phi_cf_t dom_phi_x_cf_00(phi_cf_t::DDX, n_phi_00);
+dom_phi_cf_t dom_phi_y_cf_00(phi_cf_t::DDY, n_phi_00);
+#ifdef P4_TO_P8
+dom_phi_cf_t dom_phi_z_cf_00(phi_cf_t::DDZ, n_phi_00);
+#endif
+
+int n_dom_phi_00 = 0;
+
+class dom_phi_cf_t : public CF_DIM
+{
+public:
+  int    *n;
+  enum value_type { VAL, DDX, DDY, DDZ, LAP } what;
+  dom_phi_cf_t(value_type what, int &n) : what(what), n(&n) {}
+  double operator()(DIM(double x, double y, double z)) const
+  {
+    switch (*n) {
+      case 0: switch (what) {
+          case VAL: return -1;
+          case DDX: return  0;
+          case DDY: return  0;
+#ifdef P4_TO_P8
+          case DDZ: return  0;
+#endif
+        }
+      case 1: {
+        double r = 0.711;
+        flower_shaped_domain_t circle(r, DIM(0,0,0));
+        switch (what) {
+          case VAL: return circle.phi(DIM(x,y,z));
+          case DDX: return circle.phi_x(DIM(x,y,z));
+          case DDY: return circle.phi_y(DIM(x,y,z));
+#ifdef P4_TO_P8
+          case DDZ: return circle.phi_z(DIM(x,y,z));
+#endif
+        }}
+    }
+  }
+};
+
+dom_phi_cf_t dom_phi_cf_00(phi_cf_t::VAL, n_phi_00);
+dom_phi_cf_t dom_phi_x_cf_00(phi_cf_t::DDX, n_phi_00);
+dom_phi_cf_t dom_phi_y_cf_00(phi_cf_t::DDY, n_phi_00);
+#ifdef P4_TO_P8
+dom_phi_cf_t dom_phi_z_cf_00(phi_cf_t::DDZ, n_phi_00);
+#endif
+
+#ifdef P4_TO_P8
+std::vector<CF_3 *> phi_cf;
+std::vector<CF_3 *> phi_x_cf, phi_y_cf, phi_z_cf;
+std::vector<CF_3 *> bc_coeffs_cf;
+#else
+std::vector<CF_2 *> phi_cf;
+std::vector<CF_2 *> phi_x_cf, phi_y_cf;
+std::vector<CF_2 *> bc_coeffs_cf;
+#endif
+
+std::vector<action_t> action;
+std::vector<int> color;
+
+#ifdef P4_TO_P8
+std::vector<CF_3 *> ii_phi_cf;
+std::vector<CF_3 *> ii_phi_x_cf, ii_phi_y_cf, ii_phi_z_cf;
+std::vector<CF_3 *> ii_bc_coeffs_cf;
+#else
+std::vector<CF_2 *> ii_phi_cf;
+std::vector<CF_2 *> ii_phi_x_cf, ii_phi_y_cf;
+std::vector<CF_2 *> ii_bc_coeffs_cf;
+#endif
+
+std::vector<action_t> ii_action;
+std::vector<int> ii_color;
+
+problem_case_0_t problem_case_0;
+problem_case_1_t problem_case_1;
+problem_case_2_t problem_case_2;
+problem_case_3_t problem_case_3;
+problem_case_4_t problem_case_4;
+problem_case_5_t problem_case_5;
+problem_case_6_t problem_case_6;
+problem_case_7_t problem_case_7;
+problem_case_8_t problem_case_8;
+problem_case_9_t problem_case_9;
+problem_case_10_t problem_case_10;
+problem_case_11_t problem_case_11;
+
+ii_problem_case_0_t  ii_problem_case_0;
+ii_problem_case_1_t  ii_problem_case_1;
+ii_problem_case_2_t  ii_problem_case_2;
+ii_problem_case_3_t  ii_problem_case_3;
+ii_problem_case_4_t  ii_problem_case_4;
+ii_problem_case_5_t  ii_problem_case_5;
+ii_problem_case_6_t  ii_problem_case_6;
+ii_problem_case_7_t  ii_problem_case_7;
+ii_problem_case_8_t  ii_problem_case_8;
+ii_problem_case_9_t  ii_problem_case_9;
+ii_problem_case_10_t ii_problem_case_10;
+ii_problem_case_11_t ii_problem_case_11;
+
+void set_parameters()
+{
+  switch (n_geometry)
+  {
+    case 0:
+    {
+      phi_cf        = problem_case_0.phi_cf;
+      phi_x_cf      = problem_case_0.phi_x_cf;
+      phi_y_cf      = problem_case_0.phi_y_cf;
+#ifdef P4_TO_P8
+      phi_z_cf      = problem_case_0.phi_z_cf;
+#endif
+      bc_coeffs_cf  = problem_case_0.bc_coeffs_cf;
+      action        = problem_case_0.action;
+      color         = problem_case_0.color;
+    } break;
+    case 1:
+    {
+      phi_cf        = problem_case_1.phi_cf;
+      phi_x_cf      = problem_case_1.phi_x_cf;
+      phi_y_cf      = problem_case_1.phi_y_cf;
+#ifdef P4_TO_P8
+      phi_z_cf      = problem_case_1.phi_z_cf;
+#endif
+      bc_coeffs_cf  = problem_case_1.bc_coeffs_cf;
+      action        = problem_case_1.action;
+      color         = problem_case_1.color;
+    } break;
+    case 2:
+    {
+      phi_cf        = problem_case_2.phi_cf;
+      phi_x_cf      = problem_case_2.phi_x_cf;
+      phi_y_cf      = problem_case_2.phi_y_cf;
+#ifdef P4_TO_P8
+      phi_z_cf      = problem_case_2.phi_z_cf;
+#endif
+      bc_coeffs_cf  = problem_case_2.bc_coeffs_cf;
+      action        = problem_case_2.action;
+      color         = problem_case_2.color;
+    } break;
+    case 3:
+    {
+      phi_cf        = problem_case_3.phi_cf;
+      phi_x_cf      = problem_case_3.phi_x_cf;
+      phi_y_cf      = problem_case_3.phi_y_cf;
+#ifdef P4_TO_P8
+      phi_z_cf      = problem_case_3.phi_z_cf;
+#endif
+      bc_coeffs_cf  = problem_case_3.bc_coeffs_cf;
+      action        = problem_case_3.action;
+      color         = problem_case_3.color;
+    } break;
+    case 4:
+    {
+      phi_cf        = problem_case_4.phi_cf;
+      phi_x_cf      = problem_case_4.phi_x_cf;
+      phi_y_cf      = problem_case_4.phi_y_cf;
+#ifdef P4_TO_P8
+      phi_z_cf      = problem_case_4.phi_z_cf;
+#endif
+      bc_coeffs_cf  = problem_case_4.bc_coeffs_cf;
+      action        = problem_case_4.action;
+      color         = problem_case_4.color;
+    } break;
+    case 5:
+    {
+      phi_cf        = problem_case_5.phi_cf;
+      phi_x_cf      = problem_case_5.phi_x_cf;
+      phi_y_cf      = problem_case_5.phi_y_cf;
+#ifdef P4_TO_P8
+      phi_z_cf      = problem_case_5.phi_z_cf;
+#endif
+      bc_coeffs_cf  = problem_case_5.bc_coeffs_cf;
+      action        = problem_case_5.action;
+      color         = problem_case_5.color;
+    } break;
+    case 6:
+    {
+      phi_cf        = problem_case_6.phi_cf;
+      phi_x_cf      = problem_case_6.phi_x_cf;
+      phi_y_cf      = problem_case_6.phi_y_cf;
+#ifdef P4_TO_P8
+      phi_z_cf      = problem_case_6.phi_z_cf;
+#endif
+      bc_coeffs_cf  = problem_case_6.bc_coeffs_cf;
+      action        = problem_case_6.action;
+      color         = problem_case_6.color;
+    } break;
+    case 7:
+    {
+      phi_cf        = problem_case_7.phi_cf;
+      phi_x_cf      = problem_case_7.phi_x_cf;
+      phi_y_cf      = problem_case_7.phi_y_cf;
+#ifdef P4_TO_P8
+      phi_z_cf      = problem_case_7.phi_z_cf;
+#endif
+      bc_coeffs_cf  = problem_case_7.bc_coeffs_cf;
+      action        = problem_case_7.action;
+      color         = problem_case_7.color;
+    } break;
+    case 8:
+    {
+      phi_cf        = problem_case_8.phi_cf;
+      phi_x_cf      = problem_case_8.phi_x_cf;
+      phi_y_cf      = problem_case_8.phi_y_cf;
+#ifdef P4_TO_P8
+      phi_z_cf      = problem_case_8.phi_z_cf;
+#endif
+      bc_coeffs_cf  = problem_case_8.bc_coeffs_cf;
+      action        = problem_case_8.action;
+      color         = problem_case_8.color;
+    } break;
+    case 9:
+    {
+      phi_cf        = problem_case_9.phi_cf;
+      phi_x_cf      = problem_case_9.phi_x_cf;
+      phi_y_cf      = problem_case_9.phi_y_cf;
+#ifdef P4_TO_P8
+      phi_z_cf      = problem_case_9.phi_z_cf;
+#endif
+      bc_coeffs_cf  = problem_case_9.bc_coeffs_cf;
+      action        = problem_case_9.action;
+      color         = problem_case_9.color;
+    } break;
+    case 10:
+    {
+      phi_cf        = problem_case_10.phi_cf;
+      phi_x_cf      = problem_case_10.phi_x_cf;
+      phi_y_cf      = problem_case_10.phi_y_cf;
+#ifdef P4_TO_P8
+      phi_z_cf      = problem_case_10.phi_z_cf;
+#endif
+      bc_coeffs_cf  = problem_case_10.bc_coeffs_cf;
+      action        = problem_case_10.action;
+      color         = problem_case_10.color;
+    } break;
+    case 11:
+    {
+      phi_cf        = problem_case_11.phi_cf;
+      phi_x_cf      = problem_case_11.phi_x_cf;
+      phi_y_cf      = problem_case_11.phi_y_cf;
+#ifdef P4_TO_P8
+      phi_z_cf      = problem_case_11.phi_z_cf;
+#endif
+      bc_coeffs_cf  = problem_case_11.bc_coeffs_cf;
+      action        = problem_case_11.action;
+      color         = problem_case_11.color;
+    } break;
+  }
+  switch (n_ii)
+  {
+    case 0:
+    {
+      ii_phi_cf        = ii_problem_case_0.phi_cf;
+      ii_phi_x_cf      = ii_problem_case_0.phi_x_cf;
+      ii_phi_y_cf      = ii_problem_case_0.phi_y_cf;
+#ifdef P4_TO_P8
+      ii_phi_z_cf      = ii_problem_case_0.phi_z_cf;
+#endif
+      ii_bc_coeffs_cf  = ii_problem_case_0.bc_coeffs_cf;
+      ii_action        = ii_problem_case_0.action;
+      ii_color         = ii_problem_case_0.color;
+    } break;
+    case 1:
+    {
+      ii_phi_cf        = ii_problem_case_1.phi_cf;
+      ii_phi_x_cf      = ii_problem_case_1.phi_x_cf;
+      ii_phi_y_cf      = ii_problem_case_1.phi_y_cf;
+#ifdef P4_TO_P8
+      ii_phi_z_cf      = ii_problem_case_1.phi_z_cf;
+#endif
+      ii_bc_coeffs_cf  = ii_problem_case_1.bc_coeffs_cf;
+      ii_action        = ii_problem_case_1.action;
+      ii_color         = ii_problem_case_1.color;
+    } break;
+    case 2:
+    {
+      ii_phi_cf        = ii_problem_case_2.phi_cf;
+      ii_phi_x_cf      = ii_problem_case_2.phi_x_cf;
+      ii_phi_y_cf      = ii_problem_case_2.phi_y_cf;
+#ifdef P4_TO_P8
+      ii_phi_z_cf      = ii_problem_case_2.phi_z_cf;
+#endif
+      ii_bc_coeffs_cf  = ii_problem_case_2.bc_coeffs_cf;
+      ii_action        = ii_problem_case_2.action;
+      ii_color         = ii_problem_case_2.color;
+    } break;
+    case 3:
+    {
+      ii_phi_cf        = ii_problem_case_3.phi_cf;
+      ii_phi_x_cf      = ii_problem_case_3.phi_x_cf;
+      ii_phi_y_cf      = ii_problem_case_3.phi_y_cf;
+#ifdef P4_TO_P8
+      ii_phi_z_cf      = ii_problem_case_3.phi_z_cf;
+#endif
+      ii_bc_coeffs_cf  = ii_problem_case_3.bc_coeffs_cf;
+      ii_action        = ii_problem_case_3.action;
+      ii_color         = ii_problem_case_3.color;
+    } break;
+    case 4:
+    {
+      ii_phi_cf        = ii_problem_case_4.phi_cf;
+      ii_phi_x_cf      = ii_problem_case_4.phi_x_cf;
+      ii_phi_y_cf      = ii_problem_case_4.phi_y_cf;
+#ifdef P4_TO_P8
+      ii_phi_z_cf      = ii_problem_case_4.phi_z_cf;
+#endif
+      ii_bc_coeffs_cf  = ii_problem_case_4.bc_coeffs_cf;
+      ii_action        = ii_problem_case_4.action;
+      ii_color         = ii_problem_case_4.color;
+    } break;
+    case 5:
+    {
+      ii_phi_cf        = ii_problem_case_5.phi_cf;
+      ii_phi_x_cf      = ii_problem_case_5.phi_x_cf;
+      ii_phi_y_cf      = ii_problem_case_5.phi_y_cf;
+#ifdef P4_TO_P8
+      ii_phi_z_cf      = ii_problem_case_5.phi_z_cf;
+#endif
+      ii_bc_coeffs_cf  = ii_problem_case_5.bc_coeffs_cf;
+      ii_action        = ii_problem_case_5.action;
+      ii_color         = ii_problem_case_5.color;
+    } break;
+    case 6:
+    {
+      ii_phi_cf        = ii_problem_case_6.phi_cf;
+      ii_phi_x_cf      = ii_problem_case_6.phi_x_cf;
+      ii_phi_y_cf      = ii_problem_case_6.phi_y_cf;
+#ifdef P4_TO_P8
+      ii_phi_z_cf      = ii_problem_case_6.phi_z_cf;
+#endif
+      ii_bc_coeffs_cf  = ii_problem_case_6.bc_coeffs_cf;
+      ii_action        = ii_problem_case_6.action;
+      ii_color         = ii_problem_case_6.color;
+    } break;
+    case 7:
+    {
+      ii_phi_cf        = ii_problem_case_7.phi_cf;
+      ii_phi_x_cf      = ii_problem_case_7.phi_x_cf;
+      ii_phi_y_cf      = ii_problem_case_7.phi_y_cf;
+#ifdef P4_TO_P8
+      ii_phi_z_cf      = ii_problem_case_7.phi_z_cf;
+#endif
+      ii_bc_coeffs_cf  = ii_problem_case_7.bc_coeffs_cf;
+      ii_action        = ii_problem_case_7.action;
+      ii_color         = ii_problem_case_7.color;
+    } break;
+    case 8:
+    {
+      ii_phi_cf        = ii_problem_case_8.phi_cf;
+      ii_phi_x_cf      = ii_problem_case_8.phi_x_cf;
+      ii_phi_y_cf      = ii_problem_case_8.phi_y_cf;
+#ifdef P4_TO_P8
+      ii_phi_z_cf      = ii_problem_case_8.phi_z_cf;
+#endif
+      ii_bc_coeffs_cf  = ii_problem_case_8.bc_coeffs_cf;
+      ii_action        = ii_problem_case_8.action;
+      ii_color         = ii_problem_case_8.color;
+    } break;
+    case 9:
+    {
+      ii_phi_cf        = ii_problem_case_9.phi_cf;
+      ii_phi_x_cf      = ii_problem_case_9.phi_x_cf;
+      ii_phi_y_cf      = ii_problem_case_9.phi_y_cf;
+#ifdef P4_TO_P8
+      ii_phi_z_cf      = ii_problem_case_9.phi_z_cf;
+#endif
+      ii_bc_coeffs_cf  = ii_problem_case_9.bc_coeffs_cf;
+      ii_action        = ii_problem_case_9.action;
+      ii_color         = ii_problem_case_9.color;
+    } break;
+    case 10:
+    {
+      ii_phi_cf        = ii_problem_case_10.phi_cf;
+      ii_phi_x_cf      = ii_problem_case_10.phi_x_cf;
+      ii_phi_y_cf      = ii_problem_case_10.phi_y_cf;
+#ifdef P4_TO_P8
+      ii_phi_z_cf      = ii_problem_case_10.phi_z_cf;
+#endif
+      ii_bc_coeffs_cf  = ii_problem_case_10.bc_coeffs_cf;
+      ii_action        = ii_problem_case_10.action;
+      ii_color         = ii_problem_case_10.color;
+    } break;
+    case 11:
+    {
+      ii_phi_cf        = ii_problem_case_11.phi_cf;
+      ii_phi_x_cf      = ii_problem_case_11.phi_x_cf;
+      ii_phi_y_cf      = ii_problem_case_11.phi_y_cf;
+#ifdef P4_TO_P8
+      ii_phi_z_cf      = ii_problem_case_11.phi_z_cf;
+#endif
+      ii_bc_coeffs_cf  = ii_problem_case_11.bc_coeffs_cf;
+      ii_action        = ii_problem_case_11.action;
+      ii_color         = ii_problem_case_11.color;
+    } break;
+  }
+}
 
 class mu_cf_t : public CF_DIM
 {
+  CF_DIM *phi_;
 public:
+  void set_phi(CF_DIM &phi) { phi_ = &phi; }
   double operator()(DIM(double x, double y, double z)) const
   {
-    return ifc_phi_eff_cf(DIM(x,y,z)) > 0 ? mu_p_cf(DIM(x,y,z)) : mu_m_cf(DIM(x,y,z));
+    return (*phi_)(DIM(x,y,z)) > 0 ? mu_p_cf(DIM(x,y,z)) : mu_m_cf(DIM(x,y,z));
   }
 } mu_cf;
 class u_cf_t : public CF_DIM
 {
+  CF_DIM *phi_;
 public:
+  void set_phi(CF_DIM &phi) { phi_ = &phi; }
   double operator()(DIM(double x, double y, double z)) const  {
-    return ifc_phi_eff_cf(DIM(x,y,z)) > 0 ? u_p_cf(DIM(x,y,z)) : u_m_cf(DIM(x,y,z));
+    return (*phi_)(DIM(x,y,z)) > 0 ? u_p_cf(DIM(x,y,z)) : u_m_cf(DIM(x,y,z));
   }
 } u_cf;
 class ux_cf_t : public CF_DIM
 {
+  CF_DIM *phi_;
 public:
+  void set_phi(CF_DIM &phi) { phi_ = &phi; }
   double operator()(DIM(double x, double y, double z)) const  {
-    return ifc_phi_eff_cf(DIM(x,y,z)) > 0 ? ux_p_cf(DIM(x,y,z)) : ux_m_cf(DIM(x,y,z));
+    return (*phi_)(DIM(x,y,z)) > 0 ? ux_p_cf(DIM(x,y,z)) : ux_m_cf(DIM(x,y,z));
   }
 } ux_cf;
 class uy_cf_t : public CF_DIM
 {
+  CF_DIM *phi_;
 public:
+  void set_phi(CF_DIM &phi) { phi_ = &phi; }
   double operator()(DIM(double x, double y, double z)) const  {
-    return ifc_phi_eff_cf(DIM(x,y,z)) > 0 ? uy_p_cf(DIM(x,y,z)) : uy_m_cf(DIM(x,y,z));
+    return (*phi_)(DIM(x,y,z)) > 0 ? uy_p_cf(DIM(x,y,z)) : uy_m_cf(DIM(x,y,z));
   }
 } uy_cf;
 #ifdef P4_TO_P8
 class uz_cf_t : public CF_DIM
 {
+  CF_DIM *phi_;
 public:
+  void set_phi(CF_DIM &phi) { phi_ = &phi; }
   double operator()(DIM(double x, double y, double z)) const  {
-    return ifc_phi_eff_cf(DIM(x,y,z)) > 0 ? uz_p_cf(DIM(x,y,z)) : uz_m_cf(DIM(x,y,z));
+    return (*phi_)(DIM(x,y,z)) > 0 ? uz_p_cf(DIM(x,y,z)) : uz_m_cf(DIM(x,y,z));
   }
 } uz_cf;
 #endif
@@ -719,154 +1030,85 @@ public:
 // BC VALUES
 class bc_value_robin_t : public CF_DIM
 {
-  BoundaryConditionType *bc_type_;
-  CF_DIM DIM(*phi_x_cf_,
-             *phi_y_cf_,
-             *phi_z_cf_);
-  CF_DIM *bc_coeff_cf_;
+  CF_DIM *u;
+  CF_DIM *ux;
+  CF_DIM *uy;
+  CF_DIM *uz;
+  CF_DIM *phi_x;
+  CF_DIM *phi_y;
+  CF_DIM *phi_z;
+  CF_DIM *kappa;
+  CF_DIM *mu;
 public:
-  bc_value_robin_t(BoundaryConditionType *bc_type,
-                   CF_DIM *bc_coeff_cf,
-                   DIM(CF_DIM *phi_x_cf,
-                       CF_DIM *phi_y_cf,
-                       CF_DIM *phi_z_cf))
-    : bc_type_(bc_type),
-      bc_coeff_cf_(bc_coeff_cf),
-      DIM(phi_x_cf_(phi_x_cf),
-          phi_y_cf_(phi_y_cf),
-          phi_z_cf_(phi_z_cf)) {}
+  bc_value_robin_t(CF_DIM *u,
+                   DIM(CF_DIM *ux, CF_DIM *uy, CF_DIM *uz),
+                   DIM(CF_DIM *phi_x, CF_DIM *phi_y, CF_DIM *phi_z),
+                   CF_DIM *kappa,
+                   CF_DIM *mu) :
+    u(u), DIM(ux(ux), uy(uy), uz(uz)), mu(mu), DIM(phi_x(phi_x), phi_y(phi_y), phi_z(phi_z)), kappa(kappa) {}
   double operator()(DIM(double x, double y, double z)) const
   {
-    switch (*bc_type_) {
-      case DIRICHLET: return u_cf(DIM(x,y,z));
-      case NEUMANN: {
-          double DIM( nx = (*phi_x_cf_)(DIM(x,y,z)),
-                      ny = (*phi_y_cf_)(DIM(x,y,z)),
-                      nz = (*phi_z_cf_)(DIM(x,y,z)) );
+    double nx = (*phi_x)(DIM(x,y,z));
+    double ny = (*phi_y)(DIM(x,y,z));
+#ifdef P4_TO_P8
+    double nz = (*phi_z)(DIM(x,y,z));
+    double norm = sqrt(nx*nx+ny*ny+nz*nz);
+    nz /= norm;
+#else
+    double norm = sqrt(nx*nx+ny*ny);
+#endif
+    nx /= norm; ny /= norm;
 
-          double norm = sqrt(SUMD(nx*nx, ny*ny, nz*nz));
-          nx /= norm; ny /= norm; P8( nz /= norm );
-
-          return mu_cf(DIM(x,y,z))*SUMD(nx*ux_cf(DIM(x,y,z)),
-                                        ny*uy_cf(DIM(x,y,z)),
-                                        nz*uz_cf(DIM(x,y,z)));
-        }
-      case ROBIN: {
-          double DIM( nx = (*phi_x_cf_)(DIM(x,y,z)),
-                      ny = (*phi_y_cf_)(DIM(x,y,z)),
-                      nz = (*phi_z_cf_)(DIM(x,y,z)) );
-
-          double norm = sqrt(SUMD(nx*nx, ny*ny, nz*nz));
-          nx /= norm; ny /= norm; CODE3D( nz /= norm );
-
-          return mu_cf(DIM(x,y,z))*(SUMD(nx*ux_cf(DIM(x,y,z)),
-                                         ny*uy_cf(DIM(x,y,z)),
-                                         nz*uz_cf(DIM(x,y,z))) + (*bc_coeff_cf_)(DIM(x,y,z))*u_cf(DIM(x,y,z)));
-        }
-    }
+    return (*mu)(DIM(x,y,z))*(nx*(*ux)(DIM(x,y,z)) + ny*(*uy)(DIM(x,y,z)) P8(+ nz*(*uz)(x,y,z))) + (*kappa)(DIM(x,y,z))*(*u)(DIM(x,y,z));
   }
 };
 
-bc_value_robin_t bc_value_cf_00((BoundaryConditionType *)&bc_type_00, &bc_coeff_cf_00, DIM(&dom_phi_x_cf_00, &dom_phi_y_cf_00, &dom_phi_z_cf_00) );
-
 // JUMP CONDITIONS
-class jc_value_cf_t : public CF_DIM
+class u_jump_cf_t : public CF_DIM
 {
-  int    *n;
-  double *mag;
 public:
-  jc_value_cf_t(int &n) : n(&n) {}
   double operator()(DIM(double x, double y, double z)) const
   {
-    switch(*n) {
-      case 0: return u_p_cf(DIM(x,y,z)) - u_m_cf(DIM(x,y,z));
-      case 1: return 0;
-    }
+    return u_p_cf(DIM(x,y,z)) - u_m_cf(DIM(x,y,z));
   }
-} jc_value_cf(n_jc_value);
+} u_jump_cf;
 
-class jc_flux_t : public CF_DIM
+class mu_un_jump_t : public CF_DIM
 {
-  int    *n;
   CF_DIM *phi_x_;
   CF_DIM *phi_y_;
   CF_DIM *phi_z_;
 public:
-  jc_flux_t(DIM(CF_DIM *phi_x, CF_DIM *phi_y, CF_DIM *phi_z)) :
+  mu_un_jump_t(DIM(CF_DIM *phi_x, CF_DIM *phi_y, CF_DIM *phi_z)) :
     DIM(phi_x_(phi_x), phi_y_(phi_y), phi_z_(phi_z)) {}
 
   double operator()(DIM(double x, double y, double z)) const
   {
-    double DIM( nx = (*phi_x_)(DIM(x,y,z)),
-                ny = (*phi_y_)(DIM(x,y,z)),
-                nz = (*phi_z_)(DIM(x,y,z)) );
-    double norm = sqrt(SUMD(nx*nx, ny*ny, nz*nz));
-    nx /= norm; ny /= norm; P8( nz /= norm; )
+    double nx = (*phi_x_)(DIM(x,y,z));
+    double ny = (*phi_y_)(DIM(x,y,z));
+#ifdef P4_TO_P8
+    double nz = (*phi_z_)(DIM(x,y,z));
+    double norm = sqrt(nx*nx+ny*ny+nz*nz);
+     nz /= norm;
+#else
+    double norm = sqrt(nx*nx+ny*ny);
+#endif
+    nx /= norm; ny /= norm;
 
-    return mu_p_cf(DIM(x,y,z)) * SUMD(ux_p_cf(DIM(x,y,z))*nx, uy_p_cf(DIM(x,y,z))*ny, uz_p_cf(DIM(x,y,z))*nz)
-        -  mu_m_cf(DIM(x,y,z)) * SUMD(ux_m_cf(DIM(x,y,z))*nx, uy_m_cf(DIM(x,y,z))*ny, uz_m_cf(DIM(x,y,z))*nz);
+    return mu_p_cf(DIM(x,y,z)) * (ux_p_cf(DIM(x,y,z))*nx + uy_p_cf(DIM(x,y,z))*ny P8(+ uz_p_cf(x,y,z)*nz) )
+        -  mu_m_cf(DIM(x,y,z)) * (ux_m_cf(DIM(x,y,z))*nx + uy_m_cf(DIM(x,y,z))*ny P8(+ uz_m_cf(x,y,z)*nz) );
   }
 };
-
-jc_flux_t jc_flux_cf_00( DIM(&ifc_phi_x_cf_00, &ifc_phi_y_cf_00, &ifc_phi_z_cf_00) );
 
 class bc_wall_type_t : public WallBCDIM
 {
 public:
   BoundaryConditionType operator()(DIM(double, double, double)) const
   {
-    return (BoundaryConditionType) bc_wtype;
+    return bc_wtype;
   }
 } bc_wall_type;
 
-std::vector<CF_DIM *> bc_coeff_cf;
-std::vector<CF_DIM *> bc_value_cf;
-std::vector<CF_DIM *> jc_flux_cf;
-
-struct initilize_arrays_t
-{
-  initilize_arrays_t()
-  {
-    dom_clr.push_back(0);
-    dom_acn.push_back(MLS_INTERSECTION);
-    dom_phi_cf.push_back(&dom_phi_cf_00);
-    XCOMP( dom_phi_x_cf.push_back(&dom_phi_x_cf_00) );
-    YCOMP( dom_phi_y_cf.push_back(&dom_phi_y_cf_00) );
-    ZCOMP( dom_phi_z_cf.push_back(&dom_phi_z_cf_00) );
-
-    ifc_clr.push_back(0);
-    ifc_acn.push_back(MLS_INTERSECTION);
-    ifc_phi_cf.push_back(&ifc_phi_cf_00);
-    XCOMP( ifc_phi_x_cf.push_back(&ifc_phi_x_cf_00) );
-    YCOMP( ifc_phi_y_cf.push_back(&ifc_phi_y_cf_00) );
-    ZCOMP( ifc_phi_z_cf.push_back(&ifc_phi_z_cf_00) );
-
-    bc_coeff_cf.push_back(&bc_coeff_cf_00);
-    bc_value_cf.push_back(&bc_value_cf_00);
-    jc_flux_cf.push_back(&jc_flux_cf_00);
-  }
-} initilize_arrays;
-
-class perturb_cf_t: public CF_DIM
-{
-  int *n;
-public:
-  perturb_cf_t(int &n) : n(&n) {}
-  double operator()(DIM(double x, double y, double z)) const
-  {
-    switch (*n) {
-      case 0: return 0;
-      case 1:
-#ifdef P4_TO_P8
-        return sin(2.*x-z)*cos(2.*y+z);
-#else
-        return sin(10.*x)*cos(10.*y);
-#endif
-      case 2: return 2.*((double) rand() / (double) RAND_MAX - 0.5);
-      default: throw std::invalid_argument("Invalid test number\n");
-    }
-  }
-} dom_perturb_cf(dom_perturb), ifc_perturb_cf(ifc_perturb);
 
 // additional output functions
 double compute_convergence_order(std::vector<double> &x, std::vector<double> &y);
@@ -884,6 +1126,95 @@ int main (int argc, char* argv[])
   // mpi
   mpi_environment_t mpi;
   mpi.init(argc, argv);
+
+  cmdParser cmd;
+
+  for (short i = 0; i < 2; ++i)
+  {
+    //-------------------------------------
+    // refinement parameters
+    //-------------------------------------
+    ADD_OPTION(i, lmin, "min level of the tree");
+    ADD_OPTION(i, lmax, "max level of the tree");
+
+    ADD_OPTION(i, num_splits,           "number of recursive splits");
+    ADD_OPTION(i, num_splits_per_split, "number of additional resolutions");
+
+    ADD_OPTION(i, num_shifts_x_dir, "number of shifts in x-dir");
+    ADD_OPTION(i, num_shifts_y_dir, "number of shifts in y-dir");
+    ADD_OPTION(i, num_shifts_z_dir, "number of shifts in z-dir");
+
+    //-------------------------------------
+    // output
+    //-------------------------------------
+    ADD_OPTION(i, save_vtk,           "Save the p4est in vtk format");
+    ADD_OPTION(i, save_domain,        "Save the reconstruction of an irregular domain (works only in serial!)");
+    ADD_OPTION(i, save_convergence,   "Save convergence results");
+    ADD_OPTION(i, save_matrix_ascii,  "Save the matrix in ASCII MATLAB format");
+    ADD_OPTION(i, save_matrix_binary, "Save the matrix in BINARY MATLAB format");
+
+    //-------------------------------------
+    // test solution
+    //-------------------------------------
+    ADD_OPTION(i, n_geometry,    "n_geometry");
+    ADD_OPTION(i, n_ii,          "n_ii");
+
+    ADD_OPTION(i, n_mu_m,        "n_mu_m");
+    ADD_OPTION(i, n_mu_p,        "n_mu_p");
+
+    ADD_OPTION(i, n_um,          "n_um");
+    ADD_OPTION(i, n_up,          "n_up");
+
+    ADD_OPTION(i, n_diag_m, "n_diag_m");
+    ADD_OPTION(i, n_diag_p, "n_diag_p");
+
+    ADD_OPTION(i, bc_wtype, "Type of boundary conditions on the walls");
+    ADD_OPTION(i, bc_itype, "Type of boundary conditions on the interface");
+
+    //-------------------------------------
+    // solver parameters
+    //-------------------------------------
+    ADD_OPTION(i, sc_scheme,         "Use super-convergent scheme");
+    ADD_OPTION(i, integration_order, "Select integration order (1 - linear, 2 - quadratic)");
+
+    ADD_OPTION(i, jump_scheme,       "Discretization scheme for interface conditions (0 - FVM, 1 - FDM)");
+
+    // for symmetric scheme:
+    ADD_OPTION(i, taylor_correction,      "Use Taylor correction to approximate Robin term (symmetric scheme)");
+    ADD_OPTION(i, kink_special_treatment, "Use the special treatment for kinks (symmetric scheme)");
+
+    // for superconvergent scheme:
+    ADD_OPTION(i, try_remove_hanging_cells, "Ask solver to eliminate hanging cells");
+
+    //-------------------------------------
+    // convergence study options
+    //-------------------------------------
+    ADD_OPTION(i, compute_cond_num, "Estimate L1-norm condition number");
+    ADD_OPTION(i, mask_thresh,      "Mask threshold for excluding points in convergence study");
+    ADD_OPTION(i, do_extension,     "Extend solution after solving");
+    ADD_OPTION(i, compute_grad_between, "compute_grad_between");
+
+    //-------------------------------------
+    // level-set representation parameters
+    //-------------------------------------
+    ADD_OPTION(i, use_phi_cf,       "Use analytical level-set functions");
+    ADD_OPTION(i, reinit_level_set, "Reinitialize level-set function");
+
+    // artificial perturbation of level-set values
+    ADD_OPTION(i, domain_perturbation,     "Artificially pertub level-set functions (0 - no perturbation, 1 - smooth, 2 - noisy)");
+    ADD_OPTION(i, domain_perturbation_mag, "Magnitude of level-set perturbations");
+    ADD_OPTION(i, domain_perturbation_pow, "Order of level-set perturbation (e.g. 2 for h^2 perturbations)");
+
+    if (i == 0) cmd.parse(argc, argv);
+  }
+
+  // recalculate depending parameters
+  num_shifts_total = num_shifts_x_dir*num_shifts_y_dir*num_shifts_z_dir;
+
+  num_resolutions = (num_splits-1)*num_splits_per_split + 1;
+  num_iter_total = num_resolutions*num_shifts_total;
+
+  set_parameters();
 
   // prepare output directories
   const char* out_dir = getenv("OUT_DIR");
@@ -935,34 +1266,6 @@ int main (int argc, char* argv[])
       throw std::invalid_argument("could not create OUT_DIR/matrix directory");
   }
 
-  // parse command line arguments
-  cmdParser cmd;
-
-  pl.initialize_parser(cmd);
-  cmd.parse(argc, argv);
-
-  n_example = cmd.get("n_example", n_example);
-  set_example(n_example);
-
-  pl.get_all(cmd);
-
-  if (mpi.rank() == 0) pl.print_all();
-  if (mpi.rank() == 0 && save_params) {
-    std::ostringstream file;
-    file << out_dir << "/parameters.dat";
-    pl.save_all(file.str().c_str());
-  }
-
-  int num_shifts_total = MULTD(num_shifts_x_dir, num_shifts_y_dir, num_shifts_z_dir);
-
-  int num_resolutions = (num_splits-1)*num_splits_per_split + 1;
-  int num_iter_total = num_resolutions*num_shifts_total;
-
-  const int periodicity[] = { DIM(px, py, pz) };
-  const int num_trees[]   = { DIM(nx, ny, nz) };
-  const double grid_xyz_min[] = { DIM(xmin, ymin, zmin) };
-  const double grid_xyz_max[] = { DIM(xmax, ymax, zmax) };
-
   // vectors to store convergence results
   vector<double> lvl_arr, h_arr;
 
@@ -1000,7 +1303,11 @@ int main (int argc, char* argv[])
   p4est_nodes_t *nodes;
   p4est_ghost_t *ghost;
 
-  std::vector<BoundaryConditionType> bc_type(num_dom_phi, (BoundaryConditionType)bc_itype);
+  // the effective LSF
+  level_set_tot_t level_set_tot_cf(&phi_cf, &action, &color);
+  level_set_tot_t ii_level_set_tot_cf(&ii_phi_cf, &ii_action, &ii_color);
+  mu_cf.set_phi(ii_level_set_tot_cf);
+  u_cf.set_phi(ii_level_set_tot_cf);
 
   int iteration = -1;
   int file_idx  = -1;
@@ -1030,7 +1337,11 @@ int main (int argc, char* argv[])
       double grid_xyz_min_shift[3];
       double grid_xyz_max_shift[3];
 
-      double dxyz_m = MIN(DIM(dxyz[0],dxyz[1],dxyz[2]));
+#ifdef P4_TO_P8
+      double dxyz_m = MIN(dxyz[0],dxyz[1],dxyz[2]);
+#else
+      double dxyz_m = MIN(dxyz[0],dxyz[1]);
+#endif
 
       h_arr.push_back(dxyz_m);
       lvl_arr.push_back(lmax+iter-scale);
@@ -1060,43 +1371,32 @@ int main (int argc, char* argv[])
             file_idx++;
 
             connectivity = my_p4est_brick_new(num_trees, grid_xyz_min_shift, grid_xyz_max_shift, &brick, periodicity);
+
             p4est = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
 
-            if (refine_strict)
-            {
-              splitting_criteria_cf_t data_tmp(lmin, lmax, &phi_eff_cf, lip);
-              p4est->user_pointer = (void*)(&data_tmp);
+            //    my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
 
-              my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
-              my_p4est_partition(p4est, P4EST_FALSE, NULL);
-              for (int i = 0; i < iter; ++i)
-              {
-                my_p4est_refine(p4est, P4EST_FALSE, refine_every_cell, NULL);
-                my_p4est_partition(p4est, P4EST_FALSE, NULL);
-              }
-            } else {
-              splitting_criteria_cf_t data_tmp(lmin+iter, lmax+iter, &phi_eff_cf, lip);
-              p4est->user_pointer = (void*)(&data_tmp);
-              my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
+            splitting_criteria_cf_t data_tmp(lmin, lmax, &level_set_tot_cf, 1.4);
+            p4est->user_pointer = (void*)(&data_tmp);
+
+            //    my_p4est_refine(p4est, P4EST_TRUE, refine_random, NULL);
+            my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
+            my_p4est_partition(p4est, P4EST_FALSE, NULL);
+            for (int i = 0; i < iter; ++i)
+            {
+              my_p4est_refine(p4est, P4EST_FALSE, refine_every_cell, NULL);
               my_p4est_partition(p4est, P4EST_FALSE, NULL);
             }
 
-            splitting_criteria_cf_t data(lmin+iter, lmax+iter, &phi_eff_cf, lip);
+            splitting_criteria_cf_t data(lmin+iter, lmax+iter, &level_set_tot_cf, 1.4);
             p4est->user_pointer = (void*)(&data);
 
-            if (refine_rand)
-              my_p4est_refine(p4est, P4EST_TRUE, refine_random, NULL);
-
-            if (balance_grid)
-            {
-              my_p4est_partition(p4est, P4EST_FALSE, NULL);
-              p4est_balance(p4est, P4EST_CONNECT_FULL, NULL);
-              my_p4est_partition(p4est, P4EST_FALSE, NULL);
-            }
+            //    my_p4est_partition(p4est, P4EST_FALSE, NULL);
+            //    p4est_balance(p4est, P4EST_CONNECT_FULL, NULL);
+            //    my_p4est_partition(p4est, P4EST_FALSE, NULL);
 
             ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
-            if (expand_ghost)
-              my_p4est_ghost_expand(p4est, ghost);
+            //    my_p4est_ghost_expand(p4est, ghost);
             nodes = my_p4est_nodes_new(p4est, ghost);
 
             my_p4est_hierarchy_t hierarchy(p4est,ghost, &brick);
@@ -1107,66 +1407,118 @@ int main (int argc, char* argv[])
             double dxyz[P4EST_DIM];
             dxyz_min(p4est, dxyz);
 
-            double dxyz_max = MAX(DIM(dxyz[0], dxyz[1], dxyz[2]));
-            double diag = sqrt(SUMD(dxyz[0]*dxyz[0], dxyz[1]*dxyz[1], dxyz[2]*dxyz[2]));
+#ifdef P4_TO_P8
+            double dxyz_max = MAX(dxyz[0], dxyz[1], dxyz[2]);
+//            double diag = sqrt(dxyz[0]*dxyz[0] + dxyz[1]*dxyz[1] + dxyz[2]*dxyz[2]);
+#else
+            double dxyz_max = MAX(dxyz[0], dxyz[1]);
+//            double diag = sqrt(dxyz[0]*dxyz[0] + dxyz[1]*dxyz[1]);
+#endif
+
+            unsigned int num_surfaces = phi_cf.size();
 
             // sample level-set functions
-            std::vector<Vec> dom_phi;
-            for (unsigned int i = 0; i < num_dom_phi; i++)
+            std::vector<Vec> phi;
+            for (unsigned int i = 0; i < num_surfaces; i++)
             {
-              dom_phi.push_back(Vec());
-              ierr = VecCreateGhostNodes(p4est, nodes, &dom_phi.back()); CHKERRXX(ierr);
-              sample_cf_on_nodes(p4est, nodes, *dom_phi_cf[i], dom_phi.back());
+              phi.push_back(Vec());
+              ierr = VecCreateGhostNodes(p4est, nodes, &phi.back()); CHKERRXX(ierr);
+              sample_cf_on_nodes(p4est, nodes, *phi_cf[i], phi.back());
 
-              if (dom_perturb)
-              {
-                double *phi_ptr;
-                ierr = VecGetArray(dom_phi.back(), &phi_ptr); CHKERRXX(ierr);
+//              if (domain_perturbation)
+//              {
+//                double *phi_ptr;
+//                ierr = VecGetArray(phi.back(), &phi_ptr); CHKERRXX(ierr);
 
-                for (p4est_locidx_t n = 0; n < nodes->num_owned_indeps; ++n)
-                {
-                  double xyz[P4EST_DIM];
-                  node_xyz_fr_n(n, p4est, nodes, xyz);
-                  phi_ptr[n] += dom_perturb_mag*dom_perturb_cf.value(xyz)*pow(dxyz_m, dom_perturb_pow);
-                }
+//                for (p4est_locidx_t n = 0; n < nodes->num_owned_indeps; ++n)
+//                {
+//                  double xyz[P4EST_DIM];
+//                  node_xyz_fr_n(n, p4est, nodes, xyz);
+//                  phi_ptr[n] += domain_perturbation_mag*perturb_cf.value(xyz)*pow(dxyz_m, domain_perturbation_pow);
+//                }
 
-                ierr = VecRestoreArray(dom_phi.back(), &phi_ptr); CHKERRXX(ierr);
+//                ierr = VecRestoreArray(phi.back(), &phi_ptr); CHKERRXX(ierr);
 
-                ierr = VecGhostUpdateBegin(dom_phi.back(), INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-                ierr = VecGhostUpdateEnd  (dom_phi.back(), INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-              }
+//                ierr = VecGhostUpdateBegin(phi.back(), INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//                ierr = VecGhostUpdateEnd  (phi.back(), INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//              }
 
               if (reinit_level_set)
-                ls.reinitialize_1st_order_time_2nd_order_space(dom_phi.back(),20);
+                ls.reinitialize_1st_order_time_2nd_order_space(phi.back(),20);
             }
 
-            std::vector<Vec> ifc_phi;
-            for (unsigned int i = 0; i < num_ifc_phi; i++)
+            unsigned int ii_num_surfaces = ii_phi_cf.size();
+
+            // sample level-set functions
+            std::vector<Vec> ii_phi;
+            for (unsigned int i = 0; i < ii_num_surfaces; i++)
             {
-              ifc_phi.push_back(Vec());
-              ierr = VecCreateGhostNodes(p4est, nodes, &ifc_phi.back()); CHKERRXX(ierr);
-              sample_cf_on_nodes(p4est, nodes, *ifc_phi_cf[i], ifc_phi.back());
+              ii_phi.push_back(Vec());
+              ierr = VecCreateGhostNodes(p4est, nodes, &ii_phi.back()); CHKERRXX(ierr);
+              sample_cf_on_nodes(p4est, nodes, *ii_phi_cf[i], ii_phi.back());
 
-              if (ifc_perturb)
-              {
-                double *phi_ptr;
-                ierr = VecGetArray(ifc_phi.back(), &phi_ptr); CHKERRXX(ierr);
+//              if (domain_perturbation)
+//              {
+//                double *phi_ptr;
+//                ierr = VecGetArray(phi.back(), &phi_ptr); CHKERRXX(ierr);
 
-                for (p4est_locidx_t n = 0; n < nodes->num_owned_indeps; ++n)
-                {
-                  double xyz[P4EST_DIM];
-                  node_xyz_fr_n(n, p4est, nodes, xyz);
-                  phi_ptr[n] += ifc_perturb_mag*ifc_perturb_cf.value(xyz)*pow(dxyz_m, ifc_perturb_pow);
-                }
+//                for (p4est_locidx_t n = 0; n < nodes->num_owned_indeps; ++n)
+//                {
+//                  double xyz[P4EST_DIM];
+//                  node_xyz_fr_n(n, p4est, nodes, xyz);
+//                  phi_ptr[n] += domain_perturbation_mag*perturb_cf.value(xyz)*pow(dxyz_m, domain_perturbation_pow);
+//                }
 
-                ierr = VecRestoreArray(ifc_phi.back(), &phi_ptr); CHKERRXX(ierr);
+//                ierr = VecRestoreArray(phi.back(), &phi_ptr); CHKERRXX(ierr);
 
-                ierr = VecGhostUpdateBegin(ifc_phi.back(), INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-                ierr = VecGhostUpdateEnd  (ifc_phi.back(), INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-              }
+//                ierr = VecGhostUpdateBegin(phi.back(), INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//                ierr = VecGhostUpdateEnd  (phi.back(), INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//              }
 
               if (reinit_level_set)
-                ls.reinitialize_1st_order_time_2nd_order_space(ifc_phi.back(),20);
+                ls.reinitialize_1st_order_time_2nd_order_space(ii_phi.back(),20);
+            }
+
+            std::vector<BoundaryConditionType> bc_interface_type(num_surfaces, bc_itype);
+
+            // sample boundary conditions
+#ifdef P4_TO_P8
+            std::vector<bc_value_robin_t *> bc_interface_value_(num_surfaces, NULL);
+            std::vector<CF_3 *> bc_interface_value(num_surfaces, NULL);
+#else
+            std::vector<bc_value_robin_t *> bc_interface_value_(num_surfaces, NULL);
+            std::vector<CF_2 *> bc_interface_value(num_surfaces, NULL);
+#endif
+            for (unsigned int i = 0; i < num_surfaces; i++)
+            {
+              if (bc_interface_type[i] == ROBIN || bc_interface_type[i] == NEUMANN)
+              {
+#ifdef P4_TO_P8
+                bc_interface_value_[i] = new bc_value_robin_t(&u_cf, &ux_cf, &uy_cf, &uz_cf, &mu_cf, phi_x_cf[i], phi_y_cf[i], phi_z_cf[i], bc_coeffs_cf[i]);
+#else
+                bc_interface_value_[i] = new bc_value_robin_t(&u_cf, &ux_cf, &uy_cf, &mu_cf, phi_x_cf[i], phi_y_cf[i], bc_coeffs_cf[i]);
+#endif
+                bc_interface_value[i] = bc_interface_value_[i];
+              } else {
+                bc_interface_value[i] = &u_cf;
+              }
+            }
+
+#ifdef P4_TO_P8
+            std::vector<mu_un_jump_t *> mu_un_jump(ii_num_surfaces, NULL);
+            std::vector<CF_3 *> mu_un_jump_cf(ii_num_surfaces, NULL);
+#else
+            std::vector<mu_un_jump_t *> mu_un_jump(ii_num_surfaces, NULL);
+            std::vector<CF_2 *> mu_un_jump_cf(ii_num_surfaces, NULL);
+#endif
+            for (int i = 0; i < ii_num_surfaces; i++)
+            {
+#ifdef P4_TO_P8
+              mu_un_jump[i] = new mu_un_jump_t(ii_phi_x_cf[i], ii_phi_y_cf[i], ii_phi_z_cf[i]);
+#else
+              mu_un_jump[i] = new mu_un_jump_t(ii_phi_x_cf[i], ii_phi_y_cf[i]);
+#endif
+              mu_un_jump_cf[i] = mu_un_jump[i];
             }
 
 
@@ -1195,10 +1547,13 @@ int main (int argc, char* argv[])
             sample_cf_on_nodes(p4est, nodes, diag_p_cf, diag_p);
 
 
-            Vec sol; double *sol_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &sol); CHKERRXX(ierr);
+//            ierr = PetscPrintf(mpi.comm(), "Starting a solver\n"); CHKERRXX(ierr);
 
-            Vec dom_phi_eff; double *dom_phi_eff_ptr;
-            Vec ifc_phi_eff; double *ifc_phi_eff_ptr;
+            Vec sol; double *sol_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &sol); CHKERRXX(ierr);
+            std::vector<Vec> *phi_dd[P4EST_DIM];
+
+            Vec phi_eff; double *phi_eff_ptr;
+            Vec ii_phi_eff; double *ii_phi_eff_ptr;
             Vec mask;
 
             Mat A;
@@ -1207,32 +1562,27 @@ int main (int argc, char* argv[])
 
             my_p4est_poisson_nodes_mls_sc_t solver(&ngbd_n);
 
-            solver.set_jump_scheme(jc_scheme);
+            solver.set_jump_scheme(jump_scheme);
             solver.set_use_sc_scheme(sc_scheme);
             solver.set_integration_order(integration_order);
 
 //            if (use_phi_cf) solver.set_phi_cf(phi_cf);
 
-            solver.add_boundary(MLS_INTERSECTION, dom_phi[0], NULL, NULL, (BoundaryConditionType) bc_type_00, bc_value_cf_00, bc_coeff_cf_00);
-            solver.set_boundary_phi_eff(dom_phi[0]);
-
-            solver.add_interface(MLS_INTERSECTION, ifc_phi[0], NULL, NULL, jc_value_cf, jc_flux_cf_00);
-            solver.set_interface_phi_eff(ifc_phi[0]);
-
-            solver.set_wc(bc_wall_type, u_cf);
+            solver.set_geometry(num_surfaces, &action, &color, &phi);
+            solver.set_immersed_interface(ii_num_surfaces, &ii_action, &ii_color, &ii_phi);
 
             solver.set_mu2(mu_m, mu_p);
             solver.set_rhs(rhs_m, rhs_p);
 //            solver.set_rhs(rhs);
 
-//            solver.set_bc_wall_value(u_cf);
-//            solver.set_bc_wall_type(bc_wall_type);
+            solver.set_bc_wall_value(u_cf);
+            solver.set_bc_wall_type(bc_wall_type);
 
-//            solver.set_bc_interface_type(bc_type);
-//            solver.set_bc_interface_coeff(bc_coeff_cf);
-//            solver.set_bc_interface_value(bc_value_cf);
+            solver.set_bc_interface_type(bc_interface_type);
+            solver.set_bc_interface_coeff(bc_coeffs_cf);
+            solver.set_bc_interface_value(bc_interface_value);
 
-//            solver.set_jump_conditions(jc_value_cf, jc_flux_cf);
+            solver.set_jump_conditions(u_jump_cf, mu_un_jump_cf);
 
             solver.set_diag_add(diag_m, diag_p);
 
@@ -1243,12 +1593,15 @@ int main (int argc, char* argv[])
 
             solver.solve(sol);
 
-            dom_phi_eff = solver.get_boundary_phi_eff();
-            ifc_phi_eff = solver.get_interface_phi_eff();
-            mask        = solver.get_mask();
-            A           = solver.get_matrix();
-            scalling    = solver.get_scalling();
-            areas       = solver.get_areas();
+
+            solver.get_phi_dd(phi_dd);
+
+            phi_eff   = solver.get_phi_eff();
+            ii_phi_eff= solver.get_immersed_phi_eff();
+            mask      = solver.get_mask();
+            A         = solver.get_matrix();
+            scalling  = solver.get_scalling();
+            areas     = solver.get_areas();
 
             if (save_matrix_ascii)
             {
@@ -1310,7 +1663,7 @@ int main (int argc, char* argv[])
               // Get the local AIJ representation of the matrix
               std::vector<double> aij;
 
-              foreach_local_node(n, nodes)
+              for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
               {
                 int num_elem;
                 const int *icol;
@@ -1381,7 +1734,11 @@ int main (int argc, char* argv[])
             }
 
             my_p4est_integration_mls_t integrator(p4est, nodes);
-            integrator.set_phi(dom_phi, dom_acn, dom_clr);
+#ifdef P4_TO_P8
+            integrator.set_phi(phi, action, color);
+#else
+            integrator.set_phi(phi, action, color);
+#endif
 
             /*
             if (save_domain)
@@ -1447,22 +1804,22 @@ int main (int argc, char* argv[])
             ierr = VecDuplicate(mask, &mask_m); CHKERRXX(ierr);
             ierr = VecDuplicate(mask, &mask_p); CHKERRXX(ierr);
 
-            VecCopyGhost(mask, mask_m);
-            VecCopyGhost(mask, mask_p);
+            copy_ghosted_vec(mask, mask_m);
+            copy_ghosted_vec(mask, mask_p);
 
             ierr = VecGetArray(mask_m, &mask_m_ptr); CHKERRXX(ierr);
             ierr = VecGetArray(mask_p, &mask_p_ptr); CHKERRXX(ierr);
-            ierr = VecGetArray(ifc_phi_eff, &ifc_phi_eff_ptr); CHKERRXX(ierr);
+            ierr = VecGetArray(ii_phi_eff, &ii_phi_eff_ptr); CHKERRXX(ierr);
 
             foreach_node(n, nodes)
             {
-              if (ifc_phi_eff_ptr[n] < 0) mask_p_ptr[n] = 1;
-              else                        mask_m_ptr[n] = 1;
+              if (ii_phi_eff_ptr[n] < 0) mask_p_ptr[n] = 1;
+              else                       mask_m_ptr[n] = 1;
             }
 
             ierr = VecRestoreArray(mask_m, &mask_m_ptr); CHKERRXX(ierr);
             ierr = VecRestoreArray(mask_p, &mask_p_ptr); CHKERRXX(ierr);
-            ierr = VecRestoreArray(ifc_phi_eff, &ifc_phi_eff_ptr); CHKERRXX(ierr);
+            ierr = VecRestoreArray(ii_phi_eff, &ii_phi_eff_ptr); CHKERRXX(ierr);
 
             /* calculate errors */
             Vec vec_error_sl_m; double *vec_error_sl_m_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &vec_error_sl_m); CHKERRXX(ierr);
@@ -1492,7 +1849,7 @@ int main (int argc, char* argv[])
 
             double u_max = 0;
 
-            foreach_local_node(n, nodes)
+            for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
             {
               double xyz[P4EST_DIM];
               node_xyz_fr_n(n, p4est, nodes, xyz);
@@ -1534,7 +1891,7 @@ int main (int argc, char* argv[])
 
             double gr_max = 0;
 
-            foreach_local_node(n, nodes)
+            for (p4est_locidx_t n = 0; n < nodes->num_owned_indeps; ++n)
             {
               double xyz[P4EST_DIM];
               node_xyz_fr_n(n, p4est, nodes, xyz);
@@ -1583,17 +1940,24 @@ int main (int argc, char* argv[])
              #endif
                      )
                 {
-                  double DIM( ux_m_exact = ux_m_cf(DIM(xyz[0], xyz[1], xyz[2])),
-                              uy_m_exact = uy_m_cf(DIM(xyz[0], xyz[1], xyz[2])),
-                              uz_m_exact = uz_m_cf(DIM(xyz[0], xyz[1], xyz[2])) );
-
-                  gr_max = MAX(gr_max, sqrt(SUMD(SQR(ux_m_exact), SQR(uy_m_exact), SQR(uz_m_exact))));
-
-                  double DIM( ux_m_error = fabs(qnnn.dx_central(sol_m_ptr) - ux_m_exact),
-                              uy_m_error = fabs(qnnn.dy_central(sol_m_ptr) - uy_m_exact),
-                              uz_m_error = fabs(qnnn.dz_central(sol_m_ptr) - uz_m_exact) );
-
-                  vec_error_gr_m_ptr[n] = sqrt(SUMD(SQR(ux_m_error), SQR(uy_m_error), SQR(uz_m_error)));
+        #ifdef P4_TO_P8
+                  double ux_m_exact = ux_m_cf(xyz[0], xyz[1], xyz[2]);
+                  double uy_m_exact = uy_m_cf(xyz[0], xyz[1], xyz[2]);
+                  double uz_m_exact = uz_m_cf(xyz[0], xyz[1], xyz[2]);
+                  gr_max = MAX(gr_max, sqrt(SQR(ux_m_exact) + SQR(uy_m_exact)+SQR(uz_m_exact)));
+        #else
+                  double ux_m_exact = ux_m_cf(xyz[0], xyz[1]);
+                  double uy_m_exact = uy_m_cf(xyz[0], xyz[1]);
+                  gr_max = MAX(gr_max, sqrt(SQR(ux_m_exact) + SQR(uy_m_exact)));
+        #endif
+                  double ux_m_error = fabs(qnnn.dx_central(sol_m_ptr) - ux_m_exact);
+                  double uy_m_error = fabs(qnnn.dy_central(sol_m_ptr) - uy_m_exact);
+        #ifdef P4_TO_P8
+                  double uz_m_error = fabs(qnnn.dz_central(sol_m_ptr) - uz_m_exact);
+                  vec_error_gr_m_ptr[n] = sqrt(SQR(ux_m_error) + SQR(uy_m_error) + SQR(uz_m_error));
+        #else
+                  vec_error_gr_m_ptr[n] = sqrt(SQR(ux_m_error) + SQR(uy_m_error));
+        #endif
                 } else {
                   vec_error_gr_m_ptr[n] = 0;
                 }
@@ -1637,23 +2001,31 @@ int main (int argc, char* argv[])
              #endif
                      )
                 {
-                  double DIM( ux_p_exact = ux_p_cf(DIM(xyz[0], xyz[1], xyz[2])),
-                              uy_p_exact = uy_p_cf(DIM(xyz[0], xyz[1], xyz[2])),
-                              uz_p_exact = uz_p_cf(DIM(xyz[0], xyz[1], xyz[2])) );
-
-                  gr_max = MAX(gr_max, sqrt(SUMD(SQR(ux_p_exact), SQR(uy_p_exact), SQR(uz_p_exact))));
-
-                  double DIM( ux_p_error = fabs(qnnn.dx_central(sol_p_ptr) - ux_p_exact),
-                              uy_p_error = fabs(qnnn.dy_central(sol_p_ptr) - uy_p_exact),
-                              uz_p_error = fabs(qnnn.dz_central(sol_p_ptr) - uz_p_exact) );
-
-                  vec_error_gr_p_ptr[n] = sqrt(SUMD(SQR(ux_p_error), SQR(uy_p_error), SQR(uz_p_error)));
+        #ifdef P4_TO_P8
+                  double ux_p_exact = ux_p_cf(xyz[0], xyz[1], xyz[2]);
+                  double uy_p_exact = uy_p_cf(xyz[0], xyz[1], xyz[2]);
+                  double uz_p_exact = uz_p_cf(xyz[0], xyz[1], xyz[2]);
+                  gr_max = MAX(gr_max, sqrt(SQR(ux_p_exact) + SQR(uy_p_exact)+SQR(uz_p_exact)));
+        #else
+                  double ux_p_exact = ux_p_cf(xyz[0], xyz[1]);
+                  double uy_p_exact = uy_p_cf(xyz[0], xyz[1]);
+                  gr_max = MAX(gr_max, sqrt(SQR(ux_p_exact) + SQR(uy_p_exact)));
+        #endif
+                  double ux_p_error = fabs(qnnn.dx_central(sol_p_ptr) - ux_p_exact);
+                  double uy_p_error = fabs(qnnn.dy_central(sol_p_ptr) - uy_p_exact);
+        #ifdef P4_TO_P8
+                  double uz_p_error = fabs(qnnn.dz_central(sol_p_ptr) - uz_p_exact);
+                  vec_error_gr_p_ptr[n] = sqrt(SQR(ux_p_error) + SQR(uy_p_error) + SQR(uz_p_error));
+        #else
+                  vec_error_gr_p_ptr[n] = sqrt(SQR(ux_p_error) + SQR(uy_p_error));
+        #endif
                 } else {
                   vec_error_gr_p_ptr[n] = 0;
                 }
+
               } else {
-                p4est_locidx_t neighbors      [num_neighbors_cube];
-                bool           neighbors_exist[num_neighbors_cube];
+                p4est_locidx_t neighbors      [(int)pow(3, P4EST_DIM)];
+                bool           neighbors_exist[(int)pow(3, P4EST_DIM)];
 
                 double xyz_nei[P4EST_DIM];
                 double xyz_mid[P4EST_DIM];
@@ -1664,40 +2036,48 @@ int main (int argc, char* argv[])
 
                 if (!is_node_Wall(p4est, ni))
                 {
-                  get_all_neighbors(n, p4est, nodes, &ngbd_n, neighbors, neighbors_exist);
+                  solver.get_all_neighbors(n, neighbors, neighbors_exist);
         //          for (int j = 0; j < (int)pow(3, P4EST_DIM); ++j)
                   for (int j = 1; j < (int)pow(3, P4EST_DIM); j+=2)
                   {
                     p4est_locidx_t n_nei = neighbors[j];
+                    double delta = 0;
                     node_xyz_fr_n(n_nei, p4est, nodes, xyz_nei);
 
-                    double delta = 0;
-
-                    foreach_dimension(i)
+                    for (int i = 0; i < P4EST_DIM; ++i)
                     {
                       xyz_mid[i] = .5*(xyz[i]+xyz_nei[i]);
                       delta += SQR(xyz[i]-xyz_nei[i]);
                       normal[i] = xyz_nei[i]-xyz[i];
                     }
-
                     delta = sqrt(delta);
 
-                    foreach_dimension(i)
+                    for (int i = 0; i < P4EST_DIM; ++i)
                       normal[i] /= delta;
 
                     if (mask_m_ptr[n] < 0)
                       if (mask_m_ptr[n_nei] < 0)
                       {
-                        double grad_exact = SUMD(ux_m_cf.value(xyz_mid)*normal[0], uy_m_cf.value(xyz_mid)*normal[1], uz_m_cf.value(xyz_mid)*normal[2]);
+        #ifdef P4_TO_P8
+                        double grad_exact = ux_m_cf.value(xyz_mid)*normal[0] + uy_m_cf.value(xyz_mid)*normal[1] + uz_m_cf.value(xyz_mid)*normal[2];
+        #else
+                        double grad_exact = ux_m_cf.value(xyz_mid)*normal[0] + uy_m_cf.value(xyz_mid)*normal[1];
+        #endif
                         vec_error_gr_m_ptr[n] = MAX(vec_error_gr_m_ptr[n], fabs((sol_m_ptr[n_nei]-sol_m_ptr[n])/delta - grad_exact));
+
                         gr_max = MAX(gr_max, fabs(grad_exact));
                       }
 
                     if (mask_p_ptr[n] < 0)
                       if (mask_p_ptr[n_nei] < 0)
                       {
-                        double grad_exact = SUMD(ux_p_cf.value(xyz_mid)*normal[0], uy_p_cf.value(xyz_mid)*normal[1], uz_p_cf.value(xyz_mid)*normal[2]);
+        #ifdef P4_TO_P8
+                        double grad_exact = ux_p_cf.value(xyz_mid)*normal[0] + uy_p_cf.value(xyz_mid)*normal[1] + uz_p_cf.value(xyz_mid)*normal[2];
+        #else
+                        double grad_exact = ux_p_cf.value(xyz_mid)*normal[0] + uy_p_cf.value(xyz_mid)*normal[1];
+        #endif
                         vec_error_gr_p_ptr[n] = MAX(vec_error_gr_p_ptr[n], fabs((sol_p_ptr[n_nei]-sol_p_ptr[n])/delta - grad_exact));
+
                         gr_max = MAX(gr_max, fabs(grad_exact));
                       }
                   }
@@ -1733,7 +2113,7 @@ int main (int argc, char* argv[])
             ierr = VecGetArray(vec_error_dd_m, &vec_error_dd_m_ptr); CHKERRXX(ierr);
             ierr = VecGetArray(vec_error_dd_p, &vec_error_dd_p_ptr); CHKERRXX(ierr);
 
-            foreach_local_node(n, nodes)
+            for (p4est_locidx_t n = 0; n < nodes->num_owned_indeps; ++n)
             {
               double xyz[P4EST_DIM];
               node_xyz_fr_n(n, p4est, nodes, xyz);
@@ -1779,11 +2159,16 @@ int main (int argc, char* argv[])
              #endif
                    )
               {
-                double udd_exact = ul_m_cf.value(xyz);
-                double DIM( uxx = qnnn.dxx_central(sol_m_ptr),
-                            uyy = qnnn.dyy_central(sol_m_ptr),
-                            uzz = qnnn.dzz_central(sol_m_ptr) );
-                vec_error_dd_m_ptr[n] = fabs(udd_exact - SUMD(uxx,uyy,uzz));
+                double udd_exact = ul_m_cf(DIM(xyz[0],xyz[1],xyz[2]));
+
+                double uxx = qnnn.dxx_central(sol_m_ptr);
+                double uyy = qnnn.dyy_central(sol_m_ptr);
+        #ifdef P4_TO_P8
+                double uzz = qnnn.dzz_central(sol_m_ptr);
+                vec_error_dd_m_ptr[n] = fabs(udd_exact-uxx-uyy-uzz);
+        #else
+                vec_error_dd_m_ptr[n] = fabs(udd_exact-uxx-uyy);
+        #endif
               } else {
                 vec_error_dd_m_ptr[n] = 0;
               }
@@ -1826,11 +2211,16 @@ int main (int argc, char* argv[])
              #endif
                    )
               {
-                double udd_exact = ul_p_cf.value(xyz);
-                double DIM( uxx = qnnn.dxx_central(sol_p_ptr),
-                            uyy = qnnn.dyy_central(sol_p_ptr),
-                            uzz = qnnn.dzz_central(sol_p_ptr) );
-                vec_error_dd_p_ptr[n] = fabs(udd_exact - SUMD(uxx,uyy,uzz));
+                double udd_exact = ul_p_cf(DIM(xyz[0],xyz[1],xyz[2]));
+
+                double uxx = qnnn.dxx_central(sol_p_ptr);
+                double uyy = qnnn.dyy_central(sol_p_ptr);
+        #ifdef P4_TO_P8
+                double uzz = qnnn.dzz_central(sol_p_ptr);
+                vec_error_dd_p_ptr[n] = fabs(udd_exact-uxx-uyy-uzz);
+        #else
+                vec_error_dd_p_ptr[n] = fabs(udd_exact-uxx-uyy);
+        #endif
               } else {
                 vec_error_dd_p_ptr[n] = 0;
               }
@@ -1915,7 +2305,7 @@ int main (int argc, char* argv[])
             // calculate extrapolation error
             //----------------------------------------------------------------------------------------------
             // smoothed LSF
-            mls_smooth_cf_t level_set_smooth_cf(&dom_phi_cf, &dom_acn, 64.*dxyz_max*dxyz_max);
+            level_set_smooth_t level_set_smooth_cf(&phi_cf, &action, &color, 64.*dxyz_max*dxyz_max);
 
             Vec phi_smooth;   double *phi_smooth_ptr;   ierr = VecCreateGhostNodes(p4est, nodes, &phi_smooth); CHKERRXX(ierr);
 
@@ -1929,62 +2319,82 @@ int main (int argc, char* argv[])
             Vec sol_m_ex; double *sol_m_ex_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &sol_m_ex); CHKERRXX(ierr);
             Vec sol_p_ex; double *sol_p_ex_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &sol_p_ex); CHKERRXX(ierr);
 
-            VecCopyGhost(sol_m, sol_m_ex);
-            VecCopyGhost(sol_p, sol_p_ex);
+            ierr = VecGetArray(sol_m, &sol_m_ptr); CHKERRXX(ierr);
+            ierr = VecGetArray(sol_p, &sol_p_ptr); CHKERRXX(ierr);
 
-//            // extend
-//            ls.extend_Over_Interface_TVD(phi_smooth, mask_m, sol_m_ex, 20, 2); CHKERRXX(ierr);
+            ierr = VecGetArray(sol_m_ex, &sol_m_ex_ptr); CHKERRXX(ierr);
+            ierr = VecGetArray(sol_p_ex, &sol_p_ex_ptr); CHKERRXX(ierr);
 
-//            VecScaleGhost(dom_phi_smooth)
+            for (size_t i = 0; i<nodes->indep_nodes.elem_count; ++i)
+            {
+              sol_m_ex_ptr[i] = sol_m_ptr[i];
+              sol_p_ex_ptr[i] = sol_p_ptr[i];
+            }
 
-//            ls.extend_Over_Interface_TVD(phi_smooth, mask_p, sol_p_ex, 20, 2); CHKERRXX(ierr);
+            ierr = VecRestoreArray(sol_m, &sol_m_ptr); CHKERRXX(ierr);
+            ierr = VecRestoreArray(sol_p, &sol_p_ptr); CHKERRXX(ierr);
 
-//            ierr = VecGetArray(phi_smooth, &phi_smooth_ptr); CHKERRXX(ierr);
-//            for (size_t i = 0; i<nodes->indep_nodes.elem_count; ++i)
-//            {
-//              phi_smooth_ptr[i] *= -1.;
-//            }
-//            ierr = VecRestoreArray(phi_smooth, &phi_smooth_ptr); CHKERRXX(ierr);
+            ierr = VecRestoreArray(sol_m_ex, &sol_m_ex_ptr); CHKERRXX(ierr);
+            ierr = VecRestoreArray(sol_p_ex, &sol_p_ex_ptr); CHKERRXX(ierr);
 
-//            // calculate error
-//            ierr = VecGetArray(sol_m_ex, &sol_m_ex_ptr); CHKERRXX(ierr);
-//            ierr = VecGetArray(sol_p_ex, &sol_p_ex_ptr); CHKERRXX(ierr);
+            // extend
+        //    ls.extend_Over_Interface_TVD(phi_smooth, mask_m, sol_m_ex, 20, 2); CHKERRXX(ierr);
 
-//            ierr = VecGetArray(vec_error_ex_m, &vec_error_ex_m_ptr); CHKERRXX(ierr);
-//            ierr = VecGetArray(vec_error_ex_p, &vec_error_ex_p_ptr); CHKERRXX(ierr);
+            ierr = VecGetArray(phi_smooth, &phi_smooth_ptr); CHKERRXX(ierr);
+            for (size_t i = 0; i<nodes->indep_nodes.elem_count; ++i)
+            {
+              phi_smooth_ptr[i] *= -1.;
+            }
+            ierr = VecRestoreArray(phi_smooth, &phi_smooth_ptr); CHKERRXX(ierr);
 
-//            ierr = VecGetArray(mask_m, &mask_m_ptr); CHKERRXX(ierr);
-//            ierr = VecGetArray(mask_p, &mask_p_ptr); CHKERRXX(ierr);
+        //    ls.extend_Over_Interface_TVD(phi_smooth, mask_p, sol_p_ex, 20, 2); CHKERRXX(ierr);
 
-//            ierr = VecGetArray(dom_phi_eff, &dom_phi_eff_ptr); CHKERRXX(ierr);
-//            ierr = VecGetArray(phi_smooth, &phi_smooth_ptr); CHKERRXX(ierr);
+            ierr = VecGetArray(phi_smooth, &phi_smooth_ptr); CHKERRXX(ierr);
+            for (size_t i = 0; i<nodes->indep_nodes.elem_count; ++i)
+            {
+              phi_smooth_ptr[i] *= -1.;
+            }
+            ierr = VecRestoreArray(phi_smooth, &phi_smooth_ptr); CHKERRXX(ierr);
 
-//            foreach_local_node(n, nodes)
-//            {
-//              double xyz[P4EST_DIM];
-//              node_xyz_fr_n(n, p4est, nodes, xyz);
+            // calculate error
+            ierr = VecGetArray(sol_m_ex, &sol_m_ex_ptr); CHKERRXX(ierr);
+            ierr = VecGetArray(sol_p_ex, &sol_p_ex_ptr); CHKERRXX(ierr);
 
-//              vec_error_ex_m_ptr[n] = (mask_m_ptr[n] > 0. && dom_phi_eff_ptr[n] < band*dxyz_max) ? ABS(sol_m_ex_ptr[n] - u_m_cf.value(xyz)) : 0;
-//              vec_error_ex_p_ptr[n] = (mask_p_ptr[n] > 0. && dom_phi_eff_ptr[n] >-band*dxyz_max) ? ABS(sol_p_ex_ptr[n] - u_p_cf.value(xyz)) : 0;
-//            }
+            ierr = VecGetArray(vec_error_ex_m, &vec_error_ex_m_ptr); CHKERRXX(ierr);
+            ierr = VecGetArray(vec_error_ex_p, &vec_error_ex_p_ptr); CHKERRXX(ierr);
 
-//            ierr = VecRestoreArray(sol_m_ex, &sol_m_ex_ptr); CHKERRXX(ierr);
-//            ierr = VecRestoreArray(sol_p_ex, &sol_p_ex_ptr); CHKERRXX(ierr);
+            ierr = VecGetArray(mask_m, &mask_m_ptr); CHKERRXX(ierr);
+            ierr = VecGetArray(mask_p, &mask_p_ptr); CHKERRXX(ierr);
 
-//            ierr = VecRestoreArray(vec_error_ex_m, &vec_error_ex_m_ptr); CHKERRXX(ierr);
-//            ierr = VecRestoreArray(vec_error_ex_p, &vec_error_ex_p_ptr); CHKERRXX(ierr);
+            ierr = VecGetArray(phi_eff, &phi_eff_ptr); CHKERRXX(ierr);
+            ierr = VecGetArray(phi_smooth, &phi_smooth_ptr); CHKERRXX(ierr);
 
-//            ierr = VecRestoreArray(mask_m, &mask_m_ptr); CHKERRXX(ierr);
-//            ierr = VecRestoreArray(mask_p, &mask_p_ptr); CHKERRXX(ierr);
+            for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
+            {
+              double xyz[P4EST_DIM];
+              node_xyz_fr_n(n, p4est, nodes, xyz);
 
-//            ierr = VecRestoreArray(dom_phi_eff, &dom_phi_eff_ptr); CHKERRXX(ierr);
-//            ierr = VecRestoreArray(phi_smooth, &phi_smooth_ptr); CHKERRXX(ierr);
+              vec_error_ex_m_ptr[n] = (mask_m_ptr[n] > 0. && phi_eff_ptr[n] < band*dxyz_max) ? ABS(sol_m_ex_ptr[n] - u_m_cf.value(xyz)) : 0;
+              vec_error_ex_p_ptr[n] = (mask_p_ptr[n] > 0. && phi_eff_ptr[n] >-band*dxyz_max) ? ABS(sol_p_ex_ptr[n] - u_p_cf.value(xyz)) : 0;
+            }
 
-//            ierr = VecGhostUpdateBegin(vec_error_ex_m, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-//            ierr = VecGhostUpdateBegin(vec_error_ex_p, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+            ierr = VecRestoreArray(sol_m_ex, &sol_m_ex_ptr); CHKERRXX(ierr);
+            ierr = VecRestoreArray(sol_p_ex, &sol_p_ex_ptr); CHKERRXX(ierr);
 
-//            ierr = VecGhostUpdateEnd  (vec_error_ex_m, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-//            ierr = VecGhostUpdateEnd  (vec_error_ex_p, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+            ierr = VecRestoreArray(vec_error_ex_m, &vec_error_ex_m_ptr); CHKERRXX(ierr);
+            ierr = VecRestoreArray(vec_error_ex_p, &vec_error_ex_p_ptr); CHKERRXX(ierr);
+
+            ierr = VecRestoreArray(mask_m, &mask_m_ptr); CHKERRXX(ierr);
+            ierr = VecRestoreArray(mask_p, &mask_p_ptr); CHKERRXX(ierr);
+
+            ierr = VecRestoreArray(phi_eff, &phi_eff_ptr); CHKERRXX(ierr);
+            ierr = VecRestoreArray(phi_smooth, &phi_smooth_ptr); CHKERRXX(ierr);
+
+            ierr = VecGhostUpdateBegin(vec_error_ex_m, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+            ierr = VecGhostUpdateBegin(vec_error_ex_p, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+            ierr = VecGhostUpdateEnd  (vec_error_ex_m, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+            ierr = VecGhostUpdateEnd  (vec_error_ex_p, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
 
 
@@ -2006,16 +2416,16 @@ int main (int argc, char* argv[])
             double err_ex_p_max = 0.;   ierr = VecMax(vec_error_ex_p, NULL, &err_ex_p_max); CHKERRXX(ierr);   mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_ex_p_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
             double err_dd_p_max = 0.;   ierr = VecMax(vec_error_dd_p, NULL, &err_dd_p_max); CHKERRXX(ierr);   mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_dd_p_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
 
-            if (scale_errors)
-            {
-              mpiret = MPI_Allreduce(MPI_IN_PLACE, &u_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-              err_sl_m_max /= u_max;
-              err_sl_p_max /= u_max;
+//            if (scale_errors)
+//            {
+//              mpiret = MPI_Allreduce(MPI_IN_PLACE, &u_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+//              err_sl_m_max /= u_max;
+//              err_sl_p_max /= u_max;
 
-              mpiret = MPI_Allreduce(MPI_IN_PLACE, &gr_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-              err_gr_m_max /= gr_max;
-              err_gr_p_max /= gr_max;
-            }
+//              mpiret = MPI_Allreduce(MPI_IN_PLACE, &gr_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+//              err_gr_m_max /= gr_max;
+//              err_gr_p_max /= gr_max;
+//            }
 
             error_sl_m_arr.push_back(err_sl_m_max);
             error_tr_m_arr.push_back(err_tr_m_max);
@@ -2086,18 +2496,10 @@ int main (int argc, char* argv[])
                 l_p[p4est->local_num_quadrants+q] = quad->level;
               }
 
-              Vec     exact;
-              double *exact_ptr;
-
-              ierr = VecDuplicate(sol, &exact); CHKERRXX(ierr);
-              sample_cf_on_nodes(p4est, nodes, u_cf, exact);
-
-              ierr = VecGetArray(dom_phi_eff, &dom_phi_eff_ptr); CHKERRXX(ierr);
-              ierr = VecGetArray(ifc_phi_eff, &ifc_phi_eff_ptr); CHKERRXX(ierr);
+              ierr = VecGetArray(phi_eff,    &phi_eff_ptr);    CHKERRXX(ierr);
               ierr = VecGetArray(phi_smooth, &phi_smooth_ptr); CHKERRXX(ierr);
 
-              ierr = VecGetArray(sol,   &sol_ptr);   CHKERRXX(ierr);
-              ierr = VecGetArray(exact, &exact_ptr); CHKERRXX(ierr);
+              ierr = VecGetArray(sol,    &sol_ptr);    CHKERRXX(ierr);
 
               ierr = VecGetArray(sol_m_ex, &sol_m_ex_ptr); CHKERRXX(ierr);
               ierr = VecGetArray(sol_p_ex, &sol_p_ex_ptr); CHKERRXX(ierr);
@@ -2119,12 +2521,10 @@ int main (int argc, char* argv[])
 
               my_p4est_vtk_write_all(p4est, nodes, ghost,
                                      P4EST_TRUE, P4EST_TRUE,
-                                     6, 1, oss.str().c_str(),
-                                     VTK_POINT_DATA, "phi", dom_phi_eff_ptr,
-                                     VTK_POINT_DATA, "ifc_phi", ifc_phi_eff_ptr,
+                                     4, 1, oss.str().c_str(),
+                                     VTK_POINT_DATA, "phi", phi_eff_ptr,
 //                                     VTK_POINT_DATA, "phi_smooth", phi_smooth_ptr,
                                      VTK_POINT_DATA, "sol", sol_ptr,
-                                     VTK_POINT_DATA, "exact", exact_ptr,
 //                                     VTK_POINT_DATA, "sol_m_ex", sol_m_ex_ptr,
 //                                     VTK_POINT_DATA, "sol_p_ex", sol_p_ex_ptr,
                                      VTK_POINT_DATA, "error_sl_m", vec_error_sl_m_ptr,
@@ -2141,12 +2541,10 @@ int main (int argc, char* argv[])
 //                                     VTK_POINT_DATA, "mask_p", mask_p_ptr,
                                      VTK_CELL_DATA , "leaf_level", l_p);
 
-              ierr = VecRestoreArray(dom_phi_eff, &dom_phi_eff_ptr);    CHKERRXX(ierr);
-              ierr = VecRestoreArray(ifc_phi_eff, &ifc_phi_eff_ptr); CHKERRXX(ierr);
+              ierr = VecRestoreArray(phi_eff,    &phi_eff_ptr);    CHKERRXX(ierr);
               ierr = VecRestoreArray(phi_smooth, &phi_smooth_ptr); CHKERRXX(ierr);
 
-              ierr = VecRestoreArray(sol,   &sol_ptr);   CHKERRXX(ierr);
-              ierr = VecRestoreArray(exact, &exact_ptr); CHKERRXX(ierr);
+              ierr = VecRestoreArray(sol,    &sol_ptr);    CHKERRXX(ierr);
 
               ierr = VecRestoreArray(sol_m_ex, &sol_m_ex_ptr); CHKERRXX(ierr);
               ierr = VecRestoreArray(sol_p_ex, &sol_p_ex_ptr); CHKERRXX(ierr);
@@ -2168,7 +2566,6 @@ int main (int argc, char* argv[])
 
               ierr = VecRestoreArray(leaf_level, &l_p); CHKERRXX(ierr);
               ierr = VecDestroy(leaf_level); CHKERRXX(ierr);
-              ierr = VecDestroy(exact); CHKERRXX(ierr);
 
               PetscPrintf(p4est->mpicomm, "VTK saved in %s\n", oss.str().c_str());
             }
@@ -2191,6 +2588,16 @@ int main (int argc, char* argv[])
             ierr = VecDestroy(sol_m_ex); CHKERRXX(ierr);
             ierr = VecDestroy(sol_p_ex); CHKERRXX(ierr);
 
+            for (int i = 0; i < ii_phi.size(); i++)
+            {
+              ierr = VecDestroy(ii_phi[i]);        CHKERRXX(ierr);
+            }
+
+            for (int i = 0; i < num_surfaces; i++)
+            {
+              delete mu_un_jump[i];
+            }
+
             ierr = VecDestroy(sol);           CHKERRXX(ierr);
 
             ierr = VecDestroy(mu_m);          CHKERRXX(ierr);
@@ -2202,8 +2609,29 @@ int main (int argc, char* argv[])
             ierr = VecDestroy(diag_m);   CHKERRXX(ierr);
             ierr = VecDestroy(diag_p);   CHKERRXX(ierr);
 
-            for (unsigned int i = 0; i < dom_phi.size(); i++) { ierr = VecDestroy(dom_phi[i]); CHKERRXX(ierr); }
-            for (unsigned int i = 0; i < ifc_phi.size(); i++) { ierr = VecDestroy(ifc_phi[i]); CHKERRXX(ierr); }
+//            // destroy Vec's with errors
+//            ierr = VecDestroy(vec_error_sl); CHKERRXX(ierr);
+//            ierr = VecDestroy(vec_error_tr); CHKERRXX(ierr);
+//            ierr = VecDestroy(vec_error_gr); CHKERRXX(ierr);
+//            ierr = VecDestroy(vec_error_ex); CHKERRXX(ierr);
+//            ierr = VecDestroy(vec_error_dd); CHKERRXX(ierr);
+//            ierr = VecDestroy(vec_error_ge); CHKERRXX(ierr);
+
+            ierr = VecDestroy(phi_smooth); CHKERRXX(ierr);
+//            ierr = VecDestroy(sol_ex); CHKERRXX(ierr);
+
+            for (unsigned int i = 0; i < phi.size(); i++)
+            {
+              ierr = VecDestroy(phi[i]); CHKERRXX(ierr);
+            }
+
+            for (unsigned int i = 0; i < num_surfaces; i++)
+            {
+              if (bc_interface_type[i] == ROBIN || bc_interface_type[i] == NEUMANN)
+              {
+                delete bc_interface_value_[i];
+              }
+            }
 
             p4est_nodes_destroy(nodes);
             p4est_ghost_destroy(ghost);
@@ -2429,7 +2857,7 @@ void print_convergence_table(MPI_Comm mpi_comm,
   ierr = PetscPrintf(mpi_comm, "------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n"); CHKERRXX(ierr);
 
 
-  for (int i = 0; i < level.size(); ++i)
+  for (int i = 0; i < num_resolutions; ++i)
   {
     // lvl and h
     ierr = PetscPrintf(mpi_comm, "%.2f | %.5e", level[i], h[i]); CHKERRXX(ierr);

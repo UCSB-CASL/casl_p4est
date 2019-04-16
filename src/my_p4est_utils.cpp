@@ -2651,7 +2651,7 @@ void get_all_neighbors(const p4est_locidx_t n, p4est_t *p4est, p4est_nodes_t *no
 #endif
 }
 
-void compute_phi_eff(p4est_nodes_t *nodes, std::vector<Vec> *phi, std::vector<int> *acn, std::vector<bool> *refine_always, Vec phi_eff)
+void compute_phi_eff(p4est_nodes_t *nodes, std::vector<Vec> *phi, std::vector<mls_opn_t> *opn, std::vector<bool> *refine_always, Vec phi_eff)
 {
   PetscErrorCode ierr;
   double* phi_eff_ptr;
@@ -2661,30 +2661,24 @@ void compute_phi_eff(p4est_nodes_t *nodes, std::vector<Vec> *phi, std::vector<in
 
   for (int i = 0; i < phi->size(); i++) { ierr = VecGetArray(phi->at(i), &phi_ptr[i]); CHKERRXX(ierr); }
 
-  for (size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+  foreach_node(n, nodes)
   {
-    double phi_total = -1.0e6; // this is quite ugly
+    double phi_total = -DBL_MAX;
     for (unsigned int i = 0; i < phi->size(); i++)
     {
       double phi_current = phi_ptr[i][n];
 
-      if      (acn->at(i) == 0) phi_total = MAX(phi_total, phi_current);
-      else if (acn->at(i) == 1) phi_total = MIN(phi_total, phi_current);
+      if      (opn->at(i) == MLS_INTERSECTION) phi_total = MAX(phi_total, phi_current);
+      else if (opn->at(i) == MLS_ADDITION)     phi_total = MIN(phi_total, phi_current);
     }
     phi_eff_ptr[n] = phi_total;
   }
 
   if (refine_always != NULL)
-  {
-    for (size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
-    {
+    foreach_node(n, nodes)
       for (unsigned int i = 0; i < phi->size(); i++)
-      {
         if (refine_always->at(i))
           phi_eff_ptr[n] = MIN(phi_eff_ptr[n], fabs(phi_ptr[i][n]));
-      }
-    }
-  }
 
   for (int i = 0; i < phi->size(); i++) { ierr = VecRestoreArray(phi->at(i), &phi_ptr[i]); CHKERRXX(ierr); }
 }

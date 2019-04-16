@@ -336,6 +336,19 @@ public:
    */
   void first_derivatives_central(const Vec f, Vec fx[P4EST_DIM]) const;
 
+#ifdef P4_TO_P8
+  inline void first_derivatives_central(const Vec f, Vec fx, Vec fy, Vec fz) const {
+#else
+  inline void first_derivatives_central(const Vec f, Vec fx, Vec fy) const {
+#endif
+#ifdef P4_TO_P8
+    Vec fd[] = { fx, fy, fz };
+#else
+    Vec fd[] = { fx, fy };
+#endif
+    first_derivatives_central(f, fd);
+  }
+
 private:
 #ifdef P4_TO_P8
   void second_derivatives_central_using_block(const Vec f, Vec fxx, Vec fyy, Vec fzz) const;

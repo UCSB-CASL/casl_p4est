@@ -22,11 +22,12 @@
 
 class my_p4est_poisson_nodes_mls_sc_t
 {
-  typedef struct
+  struct mat_entry_t
   {
     double val;
     PetscInt n;
-  } mat_entry_t;
+    mat_entry_t(PetscInt n=0, double val=0) : n(n), val(val) {}
+  };
 
   // p4est objects
   const my_p4est_node_neighbors_t *node_neighbors_;
@@ -40,11 +41,7 @@ class my_p4est_poisson_nodes_mls_sc_t
   double lip_;
   double diag_min_;
   double d_min_;
-  double dx_min_;
-  double dy_min_;
-#ifdef P4_TO_P8
-  double dz_min_;
-#endif
+  double DIM( dx_min_, dy_min_, dz_min_ );
   double dxyz_m_[P4EST_DIM];
 
   // PETSc objects
@@ -57,45 +54,71 @@ class my_p4est_poisson_nodes_mls_sc_t
   std::vector<PetscInt> petsc_gloidx_;
 
   // Geometry
-  unsigned int num_interfaces_;
+  struct geometry_t
+  {
+    unsigned int num_phi;
 
-  std::vector<Vec>     *phi_;
-#ifdef P4_TO_P8
-  std::vector< CF_3 *> *phi_cf_;
-#else
-  std::vector< CF_2 *> *phi_cf_;
-#endif
+    Vec phi_eff;
 
-  std::vector<Vec> *phi_xx_;
-  std::vector<Vec> *phi_yy_;
-#ifdef P4_TO_P8
-  std::vector<Vec> *phi_zz_;
-#endif
+    std::vector<Vec>    phi;
+    std::vector<CF_DIM *> *phi_cf;
 
-  Vec phi_eff_;
+    std::vector<Vec> DIM( phi_x,
+                          phi_y,
+                          phi_z );
 
-  std::vector<action_t> *action_;
-  std::vector<int>      *color_;
+    std::vector<Vec> DIM( phi_xx,
+                          phi_yy,
+                          phi_zz );
 
-  std::vector<Vec> *phi_x_;
-  std::vector<Vec> *phi_y_;
-#ifdef P4_TO_P8
-  std::vector<Vec> *phi_z_;
-#endif
+    std::vector<mls_opn_t> opn;
+    std::vector<int>       clr;
 
-  bool is_phi_d_owned_;
-  bool is_phi_dd_owned_;
-  bool is_phi_eff_owned_;
+    bool is_phi_eff_owned;
+    std::vector<bool> is_phi_d_owned;
+    std::vector<bool> is_phi_dd_owned;
+
+    geometry_t() : num_phi(0), phi_eff(NULL), is_phi_eff_owned(0) {}
+    ~geometry_t()
+    {
+      PetscErrorCode ierr;
+      if (is_phi_eff_owned) { ierr = VecDestroy(this->phi_eff); CHKERRXX(ierr); }
+
+      for (unsigned int i = 0; i < num_phi; ++i)
+      {
+        if (is_phi_d_owned[i])
+        {
+          XCOMP( ierr = VecDestroy(phi_x[i]); CHKERRXX(ierr); );
+          YCOMP( ierr = VecDestroy(phi_y[i]); CHKERRXX(ierr); );
+          ZCOMP( ierr = VecDestroy(phi_z[i]); CHKERRXX(ierr); );
+        }
+        if (is_phi_dd_owned[i])
+        {
+          XCOMP( ierr = VecDestroy(phi_xx[i]); CHKERRXX(ierr); );
+          YCOMP( ierr = VecDestroy(phi_yy[i]); CHKERRXX(ierr); );
+          ZCOMP( ierr = VecDestroy(phi_zz[i]); CHKERRXX(ierr); );
+        }
+      }
+    }
+
+  } bdry, infc;
+
+  // Boundary, wall and jump conditions
+  const WallBC2D *wc_type;
+  const CF_DIM   *wc_value;
+
+  std::vector< BoundaryConditionType > bc_type;
+  std::vector< CF_DIM *> bc_value;
+  std::vector< CF_DIM *> bc_coeff;
+
+  std::vector< CF_DIM *> jc_value;
+  std::vector< CF_DIM *> jc_flux;
 
   // Equation
   Vec   rhs_;
   Vec   rhs_m_;
   Vec   rhs_p_;
-#ifdef P4_TO_P8
-  CF_3 *rhs_cf_;
-#else
-  CF_2 *rhs_cf_;
-#endif
+  CF_DIM *rhs_cf_;
 
   Vec    diag_add_m_;
   Vec    diag_add_p_;
@@ -110,16 +133,8 @@ class my_p4est_poisson_nodes_mls_sc_t
   bool is_mue_m_dd_owned_;
   bool is_mue_p_dd_owned_;
 
-  Vec  mue_m_;
-  Vec  mue_p_;
-  Vec  mue_m_xx_;
-  Vec  mue_p_xx_;
-  Vec  mue_m_yy_;
-  Vec  mue_p_yy_;
-#ifdef P4_TO_P8
-  Vec  mue_m_zz_;
-  Vec  mue_p_zz_;
-#endif
+  Vec  mue_m_, DIM(mue_m_xx_, mue_m_yy_, mue_m_zz_);
+  Vec  mue_p_, DIM(mue_p_xx_, mue_p_yy_, mue_p_zz_);
 
   // solver options
   int integration_order_;
@@ -141,23 +156,6 @@ class my_p4est_poisson_nodes_mls_sc_t
   bool new_pc_;
   bool is_matrix_computed_;
   int matrix_has_nullspace_;
-
-  // Bondary conditions
-#ifdef P4_TO_P8
-  const WallBC3D *bc_wall_type_;
-  const CF_3     *bc_wall_value_;
-
-  std::vector< BoundaryConditionType > *bc_interface_type_;
-  std::vector< CF_3 *> *bc_interface_value_;
-  std::vector< CF_3 *> *bc_interface_coeff_;
-#else
-  const WallBC2D *bc_wall_type_;
-  const CF_2     *bc_wall_value_;
-
-  std::vector< BoundaryConditionType > *bc_interface_type_;
-  std::vector< CF_2 *> *bc_interface_value_;
-  std::vector< CF_2 *> *bc_interface_coeff_;
-#endif
 
   // auxiliary variables
   Vec mask_;
@@ -182,21 +180,12 @@ class my_p4est_poisson_nodes_mls_sc_t
   int jump_scheme_;
 
   void compute_volumes();
-  void compute_phi_eff(Vec &phi_eff, std::vector<Vec> *&phi, std::vector<action_t> *&action, bool &is_phi_eff_owned);
-#ifdef P4_TO_P8
-  void compute_phi_dd(std::vector<Vec> *&phi, std::vector<Vec> *&phi_xx, std::vector<Vec> *&phi_yy, std::vector<Vec> *&phi_zz, bool &is_phi_dd_owned);
-  void compute_phi_d (std::vector<Vec> *&phi, std::vector<Vec> *&phi_x,  std::vector<Vec> *&phi_y,  std::vector<Vec> *&phi_z,  bool &is_phi_d_owned);
-#else
-  void compute_phi_dd(std::vector<Vec> *&phi, std::vector<Vec> *&phi_xx, std::vector<Vec> *&phi_yy, bool &is_phi_dd_owned);
-  void compute_phi_d (std::vector<Vec> *&phi, std::vector<Vec> *&phi_x,  std::vector<Vec> *&phi_y,  bool &is_phi_d_owned);
-#endif
+  void compute_phi_eff(Vec &phi_eff, std::vector<Vec> *phi, std::vector<mls_opn_t> *action, bool &is_phi_eff_owned);
+  void compute_phi_dd(std::vector<Vec> *&phi, DIM( std::vector<Vec> *&phi_xx, std::vector<Vec> *&phi_yy, std::vector<Vec> *&phi_zz ), bool &is_phi_dd_owned);
+  void compute_phi_d (std::vector<Vec> *&phi, DIM( std::vector<Vec> *&phi_x,  std::vector<Vec> *&phi_y,  std::vector<Vec> *&phi_z  ), bool &is_phi_d_owned);
   void compute_mue_dd();
 
-#ifdef P4_TO_P8
-  double compute_weights_through_face(double A, double B, bool *neighbor_exists_face, double *weights_face, double theta, bool *map_face);
-#else
-  double compute_weights_through_face(double A, bool *neighbor_exists_face, double *weights_face, double theta, bool *map_face);
-#endif
+  double compute_weights_through_face(double A P8C(double B), bool *neighbor_exists_face, double *weights_face, double theta, bool *map_face);
 
   void preallocate_matrix();
 
@@ -205,244 +194,107 @@ class my_p4est_poisson_nodes_mls_sc_t
   // disallow copy ctr and copy assignment
   my_p4est_poisson_nodes_mls_sc_t(const my_p4est_poisson_nodes_mls_sc_t& other);
   my_p4est_poisson_nodes_mls_sc_t& operator=(const my_p4est_poisson_nodes_mls_sc_t& other);
-
-  struct immersed_interface_t
-  {
-    unsigned int num_interfaces;
-
-    std::vector<Vec> *phi;
-
-    std::vector<action_t> *action;
-    std::vector<int>      *color;
-
-    Vec phi_eff;
-
-    std::vector<Vec> *phi_x;
-    std::vector<Vec> *phi_y;
-#ifdef P4_TO_P8
-    std::vector<Vec> *phi_z;
-#endif
-
-    std::vector<Vec> *phi_xx;
-    std::vector<Vec> *phi_yy;
-#ifdef P4_TO_P8
-    std::vector<Vec> *phi_zz;
-#endif
-
-    bool is_phi_d_owned;
-    bool is_phi_dd_owned;
-    bool is_phi_eff_owned;
-
-    immersed_interface_t() : num_interfaces(0), phi(NULL),  action(NULL), color(NULL), phi_eff(NULL),
-      phi_x(NULL),  phi_y(NULL),
-  #ifdef P4_TO_P8
-      phi_z(NULL),
-  #endif
-      phi_xx(NULL), phi_yy(NULL),
-  #ifdef P4_TO_P8
-      phi_zz(NULL),
-  #endif
-      is_phi_d_owned(false), is_phi_dd_owned(false), is_phi_eff_owned(false) {}
-  } ii_;
-
-#ifdef P4_TO_P8
-  std::vector< CF_3 *> *jump_flux_;
-  CF_3 *jump_value_;
-#else
-  std::vector< CF_2 *> *jump_flux_;
-  CF_2 *jump_value_;
-#endif
-
 public:
   my_p4est_poisson_nodes_mls_sc_t(const my_p4est_node_neighbors_t *node_neighbors);
   ~my_p4est_poisson_nodes_mls_sc_t();
 
   inline PetscInt get_global_idx(p4est_locidx_t n) { return petsc_gloidx_[n]; }
   inline void set_try_remove_hanging_cells(bool value) { try_remove_hanging_cells_ = value; }
-
-#ifdef P4_TO_P8
-  inline void set_phi_cf(std::vector< CF_3 *> &phi_cf) { phi_cf_ = &phi_cf; }
-#else
-  inline void set_phi_cf(std::vector< CF_2 *> &phi_cf) { phi_cf_ = &phi_cf; }
-#endif
-
+  inline void set_phi_cf(std::vector<CF_DIM *> &phi_cf) { bdry.phi_cf = &phi_cf; }
   inline void set_exact(Vec exact) { exact_ = exact; }
+  inline void set_lip(double lip) { lip_ = lip; }
 
-  void set_lip(double lip) { lip_ = lip; }
-
-  // set geometry
-  inline void set_geometry(int num_interfaces,
-                           std::vector<action_t> *action, std::vector<int> *color,
-                           std::vector<Vec> *phi,
-                           std::vector<Vec> *phi_xx = NULL,
-                           std::vector<Vec> *phi_yy = NULL,
-                         #ifdef P4_TO_P8
-                           std::vector<Vec> *phi_zz = NULL,
-                         #endif
-                           Vec phi_eff = NULL,
-                           Vec areas = NULL)
+  void add_phi(geometry_t &g, mls_opn_t opn, Vec phi, Vec phi_d[], Vec phi_dd[])
   {
-    num_interfaces_ = num_interfaces;
-    action_  = action;
-    color_   = color;
-    phi_     = phi;
+    g.opn.push_back(opn);
+    g.phi.push_back(phi);
+    g.clr.push_back(g.num_phi);
 
-    if (phi_xx != NULL &&
-    #ifdef P4_TO_P8
-        phi_zz != NULL &&
-    #endif
-        phi_yy != NULL)
+    if (phi_d != NULL)
     {
-      phi_xx_  = phi_xx;
-      phi_yy_  = phi_yy;
-#ifdef P4_TO_P8
-      phi_zz_  = phi_zz;
-#endif
-      is_phi_dd_owned_ = false;
-    } else {
-#ifdef P4_TO_P8
-      compute_phi_dd(phi_, phi_xx_, phi_yy_, phi_zz_, is_phi_dd_owned_);
-#else
-      compute_phi_dd(phi_, phi_xx_, phi_yy_, is_phi_dd_owned_);
-#endif
-      is_phi_dd_owned_ = true;
+      g.is_phi_d_owned.push_back(0);
+
+      XCOMP( g.phi_x.push_back(phi_d[0]) );
+      YCOMP( g.phi_y.push_back(phi_d[1]) );
+      ZCOMP( g.phi_z.push_back(phi_d[2]) );
     }
-
-#ifdef P4_TO_P8
-    compute_phi_d(phi_, phi_x_, phi_y_, phi_z_, is_phi_d_owned_);
-#else
-    compute_phi_d(phi_, phi_x_, phi_y_, is_phi_d_owned_);
-#endif
-    is_phi_d_owned_ = true;
-
-    if (phi_eff != NULL)
-      phi_eff_ = phi_eff;
-    else
-      compute_phi_eff(phi_eff_, phi_, action_, is_phi_eff_owned_);
-
-    if (areas == NULL)
-      volumes_computed_ = false;
     else
     {
-      volumes_computed_ = true;
-      areas_ = areas;
+      g.is_phi_d_owned.push_back(1);
+
+      XCOMP( g.phi_x.push_back(Vec()); ierr = VecCreateGhostNodes(p4est_, nodes_, &g.phi_x.back() ); CHKERRXX(ierr); );
+      YCOMP( g.phi_y.push_back(Vec()); ierr = VecCreateGhostNodes(p4est_, nodes_, &g.phi_y.back() ); CHKERRXX(ierr); );
+      ZCOMP( g.phi_z.push_back(Vec()); ierr = VecCreateGhostNodes(p4est_, nodes_, &g.phi_z.back() ); CHKERRXX(ierr); );
+
+      node_neighbors_->first_derivatives_central(g.phi.back(), DIM( g.phi_x.back(),
+                                                                    g.phi_y.back(),
+                                                                    g.phi_z.back() ) );
     }
-    volumes_owned_ = false;
-//    compute_volumes();
 
-#ifdef CASL_THROWS
-    if (num_interfaces_ > 0)
-      if (action_->size() != num_interfaces_ ||
-          color_->size()  != num_interfaces_ ||
-          phi_->size()    != num_interfaces_ ||
-          phi_xx_->size() != num_interfaces_ ||
-    #ifdef P4_TO_P8
-          phi_zz_->size() != num_interfaces_ ||
-    #endif
-          phi_yy_->size() != num_interfaces_ )
-        throw std::invalid_argument("[CASL_ERROR]: invalid geometry");
-#endif
+    if (phi_dd != NULL)
+    {
+      g.is_phi_dd_owned.push_back(0);
 
+      XCOMP( g.phi_xx.push_back(phi_dd[0]) );
+      YCOMP( g.phi_yy.push_back(phi_dd[1]) );
+      ZCOMP( g.phi_zz.push_back(phi_dd[2]) );
+    }
+    else
+    {
+      g.is_phi_dd_owned.push_back(1);
+
+      XCOMP( g.phi_xx.push_back(Vec()); ierr = VecCreateGhostNodes(p4est_, nodes_, &g.phi_xx.back() ); CHKERRXX(ierr); );
+      YCOMP( g.phi_yy.push_back(Vec()); ierr = VecCreateGhostNodes(p4est_, nodes_, &g.phi_yy.back() ); CHKERRXX(ierr); );
+      ZCOMP( g.phi_zz.push_back(Vec()); ierr = VecCreateGhostNodes(p4est_, nodes_, &g.phi_zz.back() ); CHKERRXX(ierr); );
+
+      node_neighbors_->second_derivatives_central(g.phi.back(), DIM( g.phi_xx.back(),
+                                                                     g.phi_yy.back(),
+                                                                     g.phi_zz.back() ) );
+    }
+
+    g.num_phi++;
   }
 
-  inline void set_immersed_interface(int num_interfaces,
-                           std::vector<action_t> *action, std::vector<int> *color,
-                           std::vector<Vec> *phi,
-                           std::vector<Vec> *phi_xx = NULL,
-                           std::vector<Vec> *phi_yy = NULL,
-                         #ifdef P4_TO_P8
-                           std::vector<Vec> *phi_zz = NULL,
-                         #endif
-                           Vec phi_eff = NULL,
-                           Vec areas_m = NULL,
-                           Vec areas_p = NULL)
+  inline void add_boundary (mls_opn_t opn, Vec phi, Vec phi_d[], Vec phi_dd[], BoundaryConditionType bc_type, CF_DIM &bc_value, CF_DIM &bc_coeff)
   {
-    if (num_interfaces > 1) throw std::invalid_argument("Error: piece-wise smooth immersed interfaces are not supported at the moment.\n");
-    ii_.num_interfaces = num_interfaces;
-    ii_.action  = action;
-    ii_.color   = color;
-    ii_.phi     = phi;
+    this->bc_type.push_back(bc_type);
+    this->bc_value.push_back(&bc_value);
+    this->bc_coeff.push_back(&bc_coeff);
 
-    if (phi_xx != NULL &&
-    #ifdef P4_TO_P8
-        phi_zz != NULL &&
-    #endif
-        phi_yy != NULL)
-    {
-      ii_.phi_xx  = phi_xx;
-      ii_.phi_yy  = phi_yy;
-#ifdef P4_TO_P8
-      ii_.phi_zz  = phi_zz;
-#endif
-      ii_.is_phi_dd_owned = false;
-    } else {
-#ifdef P4_TO_P8
-      compute_phi_dd(ii_.phi, ii_.phi_xx, ii_.phi_yy, ii_.phi_zz, ii_.is_phi_dd_owned);
-#else
-      compute_phi_dd(ii_.phi, ii_.phi_xx, ii_.phi_yy, ii_.is_phi_dd_owned);
-#endif
-      ii_.is_phi_dd_owned = true;
-    }
-
-#ifdef P4_TO_P8
-    compute_phi_d(ii_.phi, ii_.phi_x, ii_.phi_y, ii_.phi_z, ii_.is_phi_d_owned);
-#else
-    compute_phi_d(ii_.phi, ii_.phi_x, ii_.phi_y, ii_.is_phi_d_owned);
-#endif
-    ii_.is_phi_d_owned = true;
-
-    if (phi_eff != NULL)
-      ii_.phi_eff = phi_eff;
-    else
-      compute_phi_eff(ii_.phi_eff, ii_.phi, ii_.action, ii_.is_phi_eff_owned);
-
-    if (areas_m == NULL || areas_p == NULL)
-      volumes_computed_ = false;
-    else
-    {
-      volumes_computed_ = true;
-      areas_m_ = areas_m;
-      areas_p_ = areas_p;
-    }
-    volumes_owned_ = false;
-//    compute_volumes();
-
-#ifdef CASL_THROWS
-    if (ii_.num_interfaces > 0)
-      if (ii_.action->size() != ii_.num_interfaces ||
-          ii_.color->size()  != ii_.num_interfaces ||
-          ii_.phi->size()    != ii_.num_interfaces ||
-          ii_.phi_xx->size() != ii_.num_interfaces ||
-    #ifdef P4_TO_P8
-          ii_.phi_zz->size() != ii_.num_interfaces ||
-    #endif
-          ii_.phi_yy->size() != ii_.num_interfaces )
-        throw std::invalid_argument("[CASL_ERROR]: invalid geometry for the immersed interface");
-#endif
-
+    add_phi(bdry, opn, phi, phi_d, phi_dd);
   }
+
+  inline void add_interface(mls_opn_t opn, Vec phi, Vec phi_d[], Vec phi_dd[], CF_DIM &jc_value, CF_DIM &jc_flux)
+  {
+    this->jc_value.push_back(&jc_value);
+    this->jc_flux.push_back(&jc_flux);
+
+    add_phi(infc, opn, phi, phi_d, phi_dd);
+  }
+
+  inline void set_boundary_phi_eff(Vec phi_eff)
+  {
+    if (phi_eff == NULL)
+    {
+      if (bdry.num_phi == 1) bdry.phi_eff = bdry.phi[0];
+      else compute_phi_eff(bdry.phi_eff, &bdry.phi, &bdry.opn, bdry.is_phi_eff_owned);
+    } else
+      bdry.phi_eff = phi_eff;
+  }
+
+  inline void set_interface_phi_eff(Vec phi_eff)
+  {
+    if (phi_eff == NULL)
+    {
+      if (infc.num_phi == 1) infc.phi_eff = infc.phi[0];
+      else compute_phi_eff(infc.phi_eff, &infc.phi, &infc.opn, infc.is_phi_eff_owned);
+    } else
+      infc.phi_eff = phi_eff;
+  }
+
+  inline void set_wc(WallBC2D &wc_type, CF_DIM &wc_value) { this->wc_type = &wc_type; this->wc_value = &wc_value; }
 
   // set BCs
-#ifdef P4_TO_P8
-  inline void set_bc_wall_type(WallBC3D &wall_type) { bc_wall_type_ = &wall_type;}
-  inline void set_bc_wall_value(CF_3 &wall_value)   { bc_wall_value_ = &wall_value; }
-  inline void set_bc_interface_type (std::vector<BoundaryConditionType> &bc_interface_type)  { bc_interface_type_  = &bc_interface_type;  is_matrix_computed_ = false; }
-  inline void set_bc_interface_value(std::vector< CF_3 *> &bc_interface_value)               { bc_interface_value_ = &bc_interface_value; is_matrix_computed_ = false; }
-  inline void set_bc_interface_coeff(std::vector< CF_3 *> &bc_interface_coeff)               { bc_interface_coeff_ = &bc_interface_coeff; is_matrix_computed_ = false; }
-#else
-  inline void set_bc_wall_type(const WallBC2D &wall_type) { bc_wall_type_ = &wall_type;}
-  inline void set_bc_wall_value(const CF_2 &wall_value)   { bc_wall_value_ = &wall_value; }
-  inline void set_bc_interface_type (std::vector<BoundaryConditionType> &bc_interface_type)  { bc_interface_type_  = &bc_interface_type;  is_matrix_computed_ = false; }
-  inline void set_bc_interface_value(std::vector< CF_2 *> &bc_interface_value)               { bc_interface_value_ = &bc_interface_value; is_matrix_computed_ = false; }
-  inline void set_bc_interface_coeff(std::vector< CF_2 *> &bc_interface_coeff)               { bc_interface_coeff_ = &bc_interface_coeff; is_matrix_computed_ = false; }
-#endif
-
-#ifdef P4_TO_P8
-  inline void set_jump_conditions(CF_3 &jump_value, std::vector< CF_3 *> &jump_flux) { jump_value_ = &jump_value; jump_flux_ = &jump_flux; }
-#else
-  inline void set_jump_conditions(CF_2 &jump_value, std::vector< CF_2 *> &jump_flux) { jump_value_ = &jump_value; jump_flux_ = &jump_flux; }
-#endif
-
   inline void set_diag_add(double diag_add_scalar)   { diag_add_m_scalar_ = diag_add_scalar;
                                                        diag_add_p_scalar_ = diag_add_scalar; is_matrix_computed_ = false; }
 
@@ -459,29 +311,15 @@ public:
   inline void set_mu(double mu) { mu_m_ = mu; mu_p_ = mu; variable_mu_ = false; }
   inline void set_mu(double mu_m, double mu_p) { mu_m_ = mu_m; mu_p_ = mu_p;  variable_mu_ = false; }
 
-#ifdef P4_TO_P8
-  void set_mu(Vec mue, Vec mue_xx = NULL, Vec mue_yy = NULL, Vec mue_zz = NULL)
-#else
-  void set_mu(Vec mue, Vec mue_xx = NULL, Vec mue_yy = NULL)
-#endif
+  void set_mu(Vec mue, DIM( Vec mue_xx = NULL, Vec mue_yy = NULL, Vec mue_zz = NULL ) )
   {
     mue_m_ = mue;
     mue_p_ = mue;
 
-    if (mue_xx != NULL &&
-    #ifdef P4_TO_P8
-        mue_zz != NULL &&
-    #endif
-        mue_yy != NULL)
+    if (ANDD(mue_xx != NULL, mue_yy != NULL, mue_zz != NULL))
     {
-      mue_m_xx_ = mue_xx;
-      mue_p_xx_ = mue_xx;
-      mue_m_yy_ = mue_yy;
-      mue_p_yy_ = mue_yy;
-#ifdef P4_TO_P8
-      mue_m_zz_ = mue_zz;
-      mue_p_zz_ = mue_zz;
-#endif
+      mue_m_xx_ = mue_xx; mue_m_yy_ = mue_yy; ONLY3D(mue_m_zz_ = mue_zz);
+      mue_p_xx_ = mue_xx; mue_p_yy_ = mue_yy; ONLY3D(mue_p_zz_ = mue_zz);
       is_mue_m_dd_owned_ = false;
       is_mue_p_dd_owned_ = false;
     } else {
@@ -493,38 +331,19 @@ public:
     variable_mu_ = true;
   }
 
-#ifdef P4_TO_P8
   void set_mu2(Vec mue_m,
-              Vec mue_p,
-              Vec mue_m_xx = NULL, Vec mue_m_yy = NULL, Vec mue_m_zz = NULL,
-              Vec mue_p_xx = NULL, Vec mue_p_yy = NULL, Vec mue_p_zz = NULL)
-#else
-  void set_mu2(Vec mue_m,
-              Vec mue_p,
-              Vec mue_m_xx = NULL, Vec mue_m_yy = NULL,
-              Vec mue_p_xx = NULL, Vec mue_p_yy = NULL)
-#endif
+               Vec mue_p,
+               DIM( Vec mue_m_xx = NULL, Vec mue_m_yy = NULL, Vec mue_m_zz = NULL ),
+               DIM( Vec mue_p_xx = NULL, Vec mue_p_yy = NULL, Vec mue_p_zz = NULL ))
   {
     mue_m_ = mue_m;
     mue_p_ = mue_p;
 
-    if (mue_m_xx != NULL &&
-        mue_p_xx != NULL &&
-    #ifdef P4_TO_P8
-        mue_m_zz != NULL &&
-        mue_p_zz != NULL &&
-    #endif
-        mue_m_yy != NULL &&
-        mue_p_yy != NULL)
+    if (ANDD(mue_m_xx != NULL, mue_m_yy != NULL, mue_m_zz != NULL) &&
+        ANDD(mue_p_xx != NULL, mue_p_yy != NULL, mue_p_zz != NULL))
     {
-      mue_m_xx_ = mue_m_xx;
-      mue_p_xx_ = mue_p_xx;
-      mue_m_yy_ = mue_m_yy;
-      mue_p_yy_ = mue_p_yy;
-#ifdef P4_TO_P8
-      mue_m_zz_ = mue_m_zz;
-      mue_p_zz_ = mue_p_zz;
-#endif
+      mue_m_xx_ = mue_m_xx; mue_m_yy_ = mue_m_yy; ONLY3D(mue_m_zz_ = mue_m_zz);
+      mue_p_xx_ = mue_p_xx; mue_p_yy_ = mue_p_yy; ONLY3D(mue_p_zz_ = mue_p_zz);
       is_mue_m_dd_owned_ = false;
       is_mue_p_dd_owned_ = false;
     } else {
@@ -536,15 +355,10 @@ public:
     variable_mu_ = true;
   }
 
-
   inline void set_rhs(Vec rhs)   { rhs_m_ = rhs;   rhs_p_ = rhs;   }
   inline void set_rhs(Vec rhs_m,
                       Vec rhs_p) { rhs_m_ = rhs_m; rhs_p_ = rhs_p; }
-#ifdef P4_TO_P8
-  inline void set_rhs(CF_3 &rhs_cf)   { rhs_cf_ = &rhs_cf; }
-#else
-  inline void set_rhs(CF_2 &rhs_cf)   { rhs_cf_ = &rhs_cf; }
-#endif
+  inline void set_rhs(CF_DIM &rhs_cf)   { rhs_cf_ = &rhs_cf; }
 
   inline void set_is_matrix_computed(bool is_matrix_computed) { is_matrix_computed_ = is_matrix_computed; }
 
@@ -569,43 +383,27 @@ public:
   bool inv_mat3(double *in, double *out);
   bool inv_mat4(const double m[16], double invOut[16]);
 
-//  void find_projection_(double *phi_p, p4est_locidx_t *neighbors, bool *neighbor_exists, double dxyz_pr[], double &dist_pr);
-  void find_projection_(const double *phi_p, const quad_neighbor_nodes_of_node_t& qnnn, double dxyz_pr[], double &dist_pr, double normal[] = NULL);
-
-  void compute_normal(const double *phi_p, const quad_neighbor_nodes_of_node_t& qnnn, double n[]);
-
+  void find_projection(const double *phi_p, const quad_neighbor_nodes_of_node_t& qnnn, double dxyz_pr[], double &dist_pr, double normal[] = NULL);
+  void compute_normal (const double *phi_p, const quad_neighbor_nodes_of_node_t& qnnn, double n[]);
   void get_all_neighbors(const p4est_locidx_t n, p4est_locidx_t *neighbors, bool *neighbor_exists);
-
   void find_hanging_cells(int *network, bool *hanging_cells);
-
-//  void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCSOR);
-//  void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCASM);
   void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCHYPRE);
-//  void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPGMRES, PCType pc_type = PCSOR);
-//  void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPCG, PCType pc_type = PCHYPRE);
-//  void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCASM);
-
   void assemble_matrix(Vec solution);
 
   inline Vec get_mask() { return mask_; }
   inline Vec get_areas() { return areas_; }
 
-  inline void get_phi_dd(std::vector<Vec> **phi_dd)
+  inline void get_phi_dd(std::vector<Vec> *(&phi_dd))
   {
-    phi_dd[0] = phi_xx_;
-    phi_dd[1] = phi_yy_;
-#ifdef P4_TO_P8
-    phi_dd[2] = phi_zz_;
-#endif
+    XCOMP( phi_dd[0] = bdry.phi_xx );
+    YCOMP( phi_dd[1] = bdry.phi_yy );
+    ZCOMP( phi_dd[2] = bdry.phi_zz );
   }
 
-  inline Vec get_phi_eff() { return phi_eff_; }
-  inline Vec get_immersed_phi_eff() { return ii_.phi_eff; }
-
+  inline Vec get_boundary_phi_eff()  { return bdry.phi_eff; }
+  inline Vec get_interface_phi_eff() { return infc.phi_eff; }
   inline Mat get_matrix() { return A_; }
-
   inline std::vector<double>* get_scalling() { return &scalling_; }
-
   inline void assemble_rhs_only() { setup_linear_system(false, true); }
 
 #ifdef P4_TO_P8

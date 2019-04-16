@@ -52,7 +52,7 @@ void cube3_mls_l_t::construct_domain(std::vector<double> &phi_all, std::vector<a
 
      if (all_positive)
      {
-       if (acn[p] == INTERSECTION)
+       if (acn[p] == CUBE_MLS_INTERSECTION)
        {
          loc = OUT;
 //         nt_phi.clear();
@@ -63,7 +63,7 @@ void cube3_mls_l_t::construct_domain(std::vector<double> &phi_all, std::vector<a
      }
      else if (all_negative)
      {
-       if (acn[p] == ADDITION)
+       if (acn[p] == CUBE_MLS_ADDITION)
        {
          loc = INS;
 //         nt_phi.clear();
@@ -72,7 +72,7 @@ void cube3_mls_l_t::construct_domain(std::vector<double> &phi_all, std::vector<a
          nt_idx.clear();
        }
      }
-     else if (loc == FCE || (loc == INS && acn[p] == INTERSECTION) || (loc == OUT && acn[p] == ADDITION))
+     else if (loc == FCE || (loc == INS && acn[p] == CUBE_MLS_INTERSECTION) || (loc == OUT && acn[p] == CUBE_MLS_ADDITION))
      {
        loc = FCE;
 //       nt_phi.push_back(phi[p]);
@@ -86,7 +86,7 @@ void cube3_mls_l_t::construct_domain(std::vector<double> &phi_all, std::vector<a
 
    if (loc == FCE)
    {
-     if (nt_acn[0] == ADDITION) nt_acn[0] = INTERSECTION;
+     if (nt_acn[0] == CUBE_MLS_ADDITION) nt_acn[0] = CUBE_MLS_INTERSECTION;
 
      double x[8] = {x0,x1,x0,x1,x0,x1,x0,x1};
      double y[8] = {y0,y0,y1,y1,y0,y0,y1,y1};

@@ -28,13 +28,13 @@ void cube2_mls_l_t::construct_domain(std::vector<double> &phi_all, std::vector<a
 
     if (all_positive)
     {
-      if (acn[p] == INTERSECTION) loc = OUT;
+      if (acn[p] == CUBE_MLS_INTERSECTION) loc = OUT;
     }
     else if (all_negative)
     {
-      if (acn[p] == ADDITION) loc = INS;
+      if (acn[p] == CUBE_MLS_ADDITION) loc = INS;
     }
-    else if ((loc == INS && acn[p] == INTERSECTION) || (loc == OUT && acn[p] == ADDITION))
+    else if ((loc == INS && acn[p] == CUBE_MLS_INTERSECTION) || (loc == OUT && acn[p] == CUBE_MLS_ADDITION))
     {
       loc = FCE;
     }
@@ -44,8 +44,8 @@ void cube2_mls_l_t::construct_domain(std::vector<double> &phi_all, std::vector<a
 
   if (loc == FCE)
   {
-//    if (non_trivial_action[0] == ADDITION) // the first action always has to be INTERSECTION
-//      non_trivial_action[0] = INTERSECTION;
+//    if (non_trivial_action[0] == CUBE_MLS_ADDITION) // the first action always has to be CUBE_MLS_INTERSECTION
+//      non_trivial_action[0] = CUBE_MLS_INTERSECTION;
 
     /* Split the cube into 2 simplices */
     double x[4] = {x0, x1, x0, x1}; double y[4] = {y0, y0, y1, y1};

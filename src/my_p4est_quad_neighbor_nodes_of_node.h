@@ -236,6 +236,22 @@ struct quad_neighbor_nodes_of_node_t {
   p4est_locidx_t neighbor_00m() const;
   p4est_locidx_t neighbor_00p() const;
 #endif
+
+  inline p4est_locidx_t neighbor(int dir) const
+  {
+    switch (dir)
+    {
+      case dir::f_m00: return neighbor_m00();
+      case dir::f_p00: return neighbor_p00();
+      case dir::f_0m0: return neighbor_0m0();
+      case dir::f_0p0: return neighbor_0p0();
+#ifdef P4_TO_P8
+      case dir::f_00m: return neighbor_00m();
+      case dir::f_00p: return neighbor_00p();
+#endif
+      default: throw std::invalid_argument("Invalid direction\n");
+    }
+  }
 };
 
 #endif /* !MY_P4EST_QUAD_NEIGHBOR_NODES_OF_NODE_H */

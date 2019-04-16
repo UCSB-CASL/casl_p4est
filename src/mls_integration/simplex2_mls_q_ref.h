@@ -1,7 +1,7 @@
 #ifndef MLS_INTEGRATION_TYPES
 #define MLS_INTEGRATION_TYPES
 enum loc_t {INS, OUT, FCE, LNE, PNT};
-enum action_t {INTERSECTION, ADDITION, COLORATION};
+enum action_t {CUBE_MLS_INTERSECTION, CUBE_MLS_ADDITION, CUBE_MLS_COLORATION};
 #endif
 
 #ifndef simplex2_mls_q_ref_H

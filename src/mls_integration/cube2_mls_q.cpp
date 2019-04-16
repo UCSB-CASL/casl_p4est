@@ -106,7 +106,7 @@ void cube2_mls_q_t::construct_domain(std::vector<double> &phi_all, std::vector<a
 
     if (all_positive)
     {
-      if (acn[p] == INTERSECTION)
+      if (acn[p] == CUBE_MLS_INTERSECTION)
       {
         loc = OUT;
 //        nt_phi.clear();
@@ -117,7 +117,7 @@ void cube2_mls_q_t::construct_domain(std::vector<double> &phi_all, std::vector<a
     }
     else if (all_negative)
     {
-      if (acn[p] == ADDITION)
+      if (acn[p] == CUBE_MLS_ADDITION)
       {
         loc = INS;
 //        nt_phi.clear();
@@ -126,7 +126,7 @@ void cube2_mls_q_t::construct_domain(std::vector<double> &phi_all, std::vector<a
         nt_idx.clear();
       }
     }
-    else if (loc == FCE || (loc == INS && acn[p] == INTERSECTION) || (loc == OUT && acn[p] == ADDITION))
+    else if (loc == FCE || (loc == INS && acn[p] == CUBE_MLS_INTERSECTION) || (loc == OUT && acn[p] == CUBE_MLS_ADDITION))
     {
       loc = FCE;
 //      nt_phi.push_back(phi[p]);
@@ -144,8 +144,8 @@ void cube2_mls_q_t::construct_domain(std::vector<double> &phi_all, std::vector<a
 
   if (loc == FCE)
   {
-    // the first action always has to be INTERSECTION
-    if (nt_acn[0] == ADDITION) nt_acn[0] = INTERSECTION;
+    // the first action always has to be CUBE_MLS_INTERSECTION
+    if (nt_acn[0] == CUBE_MLS_ADDITION) nt_acn[0] = CUBE_MLS_INTERSECTION;
 
     /* Split the cube into 2 simplices */
     double x[] = { x0, xc, x1, x0, xc, x1, x0, xc, x1 };

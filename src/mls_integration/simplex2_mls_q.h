@@ -1,9 +1,3 @@
-#ifndef MLS_INTEGRATION_TYPES
-#define MLS_INTEGRATION_TYPES
-enum loc_t {INS, OUT, FCE, LNE, PNT};
-enum action_t {INTERSECTION, ADDITION, COLORATION};
-#endif
-
 #ifndef simplex2_mls_q_H
 #define simplex2_mls_q_H
 
@@ -13,6 +7,7 @@ enum action_t {INTERSECTION, ADDITION, COLORATION};
 #include <iostream>
 #include <cfloat>
 #include <climits>
+#include "simplex_utils.h"
 
 #define SIMPLEX2_MLS_Q_DEBUG
 

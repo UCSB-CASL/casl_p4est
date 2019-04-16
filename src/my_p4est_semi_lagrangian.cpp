@@ -1224,8 +1224,8 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, std::vector<Vec
       {
         double phi_current = phi_np1_ptr[i][n];
 
-        if      (action[i] == INTERSECTION) phi_total = MAX(phi_total, phi_current);
-        else if (action[i] == ADDITION)     phi_total = MIN(phi_total, phi_current);
+        if      (action[i] == MLS_INTERSECTION) phi_total = MAX(phi_total, phi_current);
+        else if (action[i] == MLS_ADDITION)     phi_total = MIN(phi_total, phi_current);
       }
       phi_eff_ptr[n] = phi_total;
     }
@@ -1415,8 +1415,8 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *vnm1, Vec *vn, double dt_nm1,
       {
         double phi_current = phi_np1_ptr[i][n];
 
-        if      (action[i] == INTERSECTION) phi_total = MAX(phi_total, phi_current);
-        else if (action[i] == ADDITION)     phi_total = MIN(phi_total, phi_current);
+        if      (action[i] == MLS_INTERSECTION) phi_total = MAX(phi_total, phi_current);
+        else if (action[i] == MLS_ADDITION)     phi_total = MIN(phi_total, phi_current);
       }
       phi_eff_ptr[n] = phi_total;
     }

@@ -303,9 +303,9 @@ void simplex2_mls_q_t::do_action_vtx(int n_vtx, int cn, action_t action)
 
   switch (action)
   {
-    case INTERSECTION:  if (vtx->value > 0)                                      vtx->set(OUT, -1, -1);  break;
-    case ADDITION:      if (vtx->value < 0)                                      vtx->set(INS, -1, -1);  break;
-    case COLORATION:    if (vtx->value < 0) if (vtx->loc==FCE || vtx->loc==PNT)  vtx->set(FCE, cn, -1);  break;
+    case CUBE_MLS_INTERSECTION:  if (vtx->value > 0)                                      vtx->set(OUT, -1, -1);  break;
+    case CUBE_MLS_ADDITION:      if (vtx->value < 0)                                      vtx->set(INS, -1, -1);  break;
+    case CUBE_MLS_COLORATION:    if (vtx->value < 0) if (vtx->loc==FCE || vtx->loc==PNT)  vtx->set(FCE, cn, -1);  break;
   }
 }
 
@@ -341,9 +341,9 @@ void simplex2_mls_q_t::do_action_edg(int n_edg, int cn, action_t action)
       /* apply rules */
       switch (action)
       {
-        case INTERSECTION:  edg->set(OUT,-1); break;
-        case ADDITION:      /* do nothig */   break;
-        case COLORATION:    /* do nothig */   break;
+        case CUBE_MLS_INTERSECTION:  edg->set(OUT,-1); break;
+        case CUBE_MLS_ADDITION:      /* do nothig */   break;
+        case CUBE_MLS_COLORATION:    /* do nothig */   break;
       }
       break;
     case 1: // -+
@@ -401,7 +401,7 @@ void simplex2_mls_q_t::do_action_edg(int n_edg, int cn, action_t action)
 #endif
       switch (action)
       {
-        case INTERSECTION:
+        case CUBE_MLS_INTERSECTION:
           switch (edg->loc)
           {
             case OUT: c_vtx_x->set(OUT, -1, -1); c_edg0->set(OUT, -1); c_vtx_0x->set(OUT, -1, -1); c_edg1->set(OUT, -1); c_vtx_x2->set(OUT, -1, -1); break;
@@ -413,7 +413,7 @@ void simplex2_mls_q_t::do_action_edg(int n_edg, int cn, action_t action)
 #endif
           }
           break;
-        case ADDITION:
+        case CUBE_MLS_ADDITION:
           switch (edg->loc)
           {
             case OUT: c_vtx_x->set(FCE, cn, -1); c_edg0->set(INS, -1); c_vtx_0x->set(INS, -1, -1); c_edg1->set(OUT, -1); c_vtx_x2->set(OUT, -1, -1); break;
@@ -425,7 +425,7 @@ void simplex2_mls_q_t::do_action_edg(int n_edg, int cn, action_t action)
 #endif
           }
           break;
-        case COLORATION:
+        case CUBE_MLS_COLORATION:
           switch (edg->loc)
           {
             case OUT: c_vtx_x->set(OUT, -1, -1); c_edg0->set(OUT, -1); c_vtx_0x->set(OUT, -1, -1); c_edg1->set(OUT, -1); c_vtx_x2->set(OUT, -1, -1); break;
@@ -447,9 +447,9 @@ void simplex2_mls_q_t::do_action_edg(int n_edg, int cn, action_t action)
       /* apply rules */
       switch (action)
       {
-        case INTERSECTION:  /* do nothing */                        break;
-        case ADDITION:                          edg->set(INS, -1);  break;
-        case COLORATION:    if (edg->loc==FCE)  edg->set(FCE, cn);  break;
+        case CUBE_MLS_INTERSECTION:  /* do nothing */                        break;
+        case CUBE_MLS_ADDITION:                          edg->set(INS, -1);  break;
+        case CUBE_MLS_COLORATION:    if (edg->loc==FCE)  edg->set(FCE, cn);  break;
       }
       break;
   }
@@ -513,9 +513,9 @@ void simplex2_mls_q_t::do_action_tri(int n_tri, int cn, action_t action)
 
       /* apply rules */
       switch (action){
-        case INTERSECTION:  tri->set(OUT);    break;
-        case ADDITION:      /* do nothing */  break;
-        case COLORATION:    /* do nothing */  break;
+        case CUBE_MLS_INTERSECTION:  tri->set(OUT);    break;
+        case CUBE_MLS_ADDITION:      /* do nothing */  break;
+        case CUBE_MLS_COLORATION:    /* do nothing */  break;
       }
       break;
 
@@ -671,7 +671,7 @@ void simplex2_mls_q_t::do_action_tri(int n_tri, int cn, action_t action)
         vtx_u0 = &vtxs_[u0];
         vtx_u1 = &vtxs_[u1];
 
-        if (action == INTERSECTION || action == ADDITION) c_edg0->p_lsf = cn;
+        if (action == CUBE_MLS_INTERSECTION || action == CUBE_MLS_ADDITION) c_edg0->p_lsf = cn;
 
 #ifdef SIMPLEX2_MLS_Q_DEBUG
         if (!tri_is_ok(tri->c_tri0) || !tri_is_ok(tri->c_tri1) || !tri_is_ok(tri->c_tri2))
@@ -687,7 +687,7 @@ void simplex2_mls_q_t::do_action_tri(int n_tri, int cn, action_t action)
 
         switch (action)
         {
-          case INTERSECTION:
+          case CUBE_MLS_INTERSECTION:
             switch (tri->loc)
             {
               case OUT: c_edg0->set(OUT, -1); vtx_u0->set(OUT, -1, -1); c_edg1->set(OUT, -1); vtx_u1->set(OUT, -1, -1); c_tri0->set(OUT); c_tri1->set(OUT); c_tri2->set(OUT); break;
@@ -697,7 +697,7 @@ void simplex2_mls_q_t::do_action_tri(int n_tri, int cn, action_t action)
                 throw std::domain_error("[CASL_ERROR]: (simplex2_mls_q_t) An element has wrong location.");
 #endif
             } break;
-          case ADDITION:
+          case CUBE_MLS_ADDITION:
             switch (tri->loc)
             {
               case OUT: c_edg0->set(FCE, cn); vtx_u0->set(FCE, cn, -1); c_edg1->set(OUT, -1); vtx_u1->set(OUT, -1, -1); c_tri0->set(INS); c_tri1->set(OUT); c_tri2->set(OUT); break;
@@ -707,7 +707,7 @@ void simplex2_mls_q_t::do_action_tri(int n_tri, int cn, action_t action)
                 throw std::domain_error("[CASL_ERROR]: (simplex2_mls_q_t) An element has wrong location.");
 #endif
             } break;
-          case COLORATION:
+          case CUBE_MLS_COLORATION:
             switch (tri->loc)
             {
               case OUT: c_edg0->set(OUT, -1); vtx_u0->set(OUT, -1, -1); c_edg1->set(OUT, -1); vtx_u1->set(OUT, -1, -1); c_tri0->set(OUT); c_tri1->set(OUT); c_tri2->set(OUT); break;
@@ -872,7 +872,7 @@ void simplex2_mls_q_t::do_action_tri(int n_tri, int cn, action_t action)
         vtx_u0 = &vtxs_[u0];
         vtx_u1 = &vtxs_[u1];
 
-        if (action == INTERSECTION || action == ADDITION) c_edg1->p_lsf = cn;
+        if (action == CUBE_MLS_INTERSECTION || action == CUBE_MLS_ADDITION) c_edg1->p_lsf = cn;
 
 #ifdef SIMPLEX2_MLS_Q_DEBUG
         if (!tri_is_ok(tri->c_tri0) || !tri_is_ok(tri->c_tri1) || !tri_is_ok(tri->c_tri2))
@@ -888,7 +888,7 @@ void simplex2_mls_q_t::do_action_tri(int n_tri, int cn, action_t action)
 
         switch (action)
         {
-          case INTERSECTION:
+          case CUBE_MLS_INTERSECTION:
             switch (tri->loc)
             {
               case OUT: c_edg0->set(OUT, -1); vtx_u0->set(OUT, -1, -1); c_edg1->set(OUT, -1); vtx_u1->set(OUT, -1, -1); c_tri0->set(OUT); c_tri1->set(OUT); c_tri2->set(OUT); break;
@@ -898,7 +898,7 @@ void simplex2_mls_q_t::do_action_tri(int n_tri, int cn, action_t action)
                 throw std::domain_error("[CASL_ERROR]: (simplex2_mls_q_t) An element has wrong location.");
 #endif
             } break;
-          case ADDITION:
+          case CUBE_MLS_ADDITION:
             switch (tri->loc)
             {
               case OUT: c_edg0->set(INS, -1); vtx_u0->set(INS, -1, -1); c_edg1->set(FCE, cn); vtx_u1->set(FCE, cn, -1); c_tri0->set(INS); c_tri1->set(INS); c_tri2->set(OUT); break;
@@ -908,7 +908,7 @@ void simplex2_mls_q_t::do_action_tri(int n_tri, int cn, action_t action)
                 throw std::domain_error("[CASL_ERROR]: (simplex2_mls_q_t) An element has wrong location.");
 #endif
             } break;
-          case COLORATION:
+          case CUBE_MLS_COLORATION:
             switch (tri->loc)
             {
               case OUT: c_edg0->set(OUT, -1); vtx_u0->set(OUT, -1, -1); c_edg1->set(OUT, -1); vtx_u1->set(OUT, -1, -1); c_tri0->set(OUT); c_tri1->set(OUT); c_tri2->set(OUT); break;
@@ -928,9 +928,9 @@ void simplex2_mls_q_t::do_action_tri(int n_tri, int cn, action_t action)
 
       /* apply rules */
       switch (action){
-        case INTERSECTION:  /* do nothing */  break;
-        case ADDITION:      tri->set(INS);    break;
-        case COLORATION:                      break;
+        case CUBE_MLS_INTERSECTION:  /* do nothing */  break;
+        case CUBE_MLS_ADDITION:      tri->set(INS);    break;
+        case CUBE_MLS_COLORATION:                      break;
       }
       break;
   }

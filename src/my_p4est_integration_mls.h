@@ -40,7 +40,7 @@ public:
 #endif
 
   std::vector<int>      *color;
-  std::vector<action_t> *action;
+  std::vector<mls_opn_t> *action;
 
   bool initialized;
   bool linear_integration;
@@ -71,7 +71,7 @@ public:
 
 #ifdef P4_TO_P8
   void set_phi    (std::vector<CF_3 *> &phi_,
-                   std::vector<action_t> &acn_, std::vector<int> &clr_, bool linear)
+                   std::vector<mls_opn_t> &acn_, std::vector<int> &clr_, bool linear)
   {
     phi_cf  = &phi_;
     phi     = NULL; phi_xx = NULL; phi_yy = NULL;
@@ -81,7 +81,7 @@ public:
   }
 
   void set_phi    (std::vector<Vec> &phi_,
-                   std::vector<action_t> &acn_, std::vector<int> &clr_)
+                   std::vector<mls_opn_t> &acn_, std::vector<int> &clr_)
   {
     phi_cf  = NULL;
     phi     = &phi_; phi_xx = NULL; phi_yy = NULL; phi_zz = NULL;
@@ -94,7 +94,7 @@ public:
                    std::vector<Vec> &phi_xx_,
                    std::vector<Vec> &phi_yy_,
                    std::vector<Vec> &phi_zz_,
-                   std::vector<action_t> &acn_, std::vector<int> &clr_)
+                   std::vector<mls_opn_t> &acn_, std::vector<int> &clr_)
   {
     phi_cf  = NULL;
     phi     = &phi_; phi_xx = &phi_xx_; phi_yy = &phi_yy_; phi_zz = &phi_zz_;
@@ -104,7 +104,7 @@ public:
   }
 #else
   void set_phi    (std::vector<CF_2 *> &phi_,
-                   std::vector<action_t> &acn_, std::vector<int> &clr_, bool linear)
+                   std::vector<mls_opn_t> &acn_, std::vector<int> &clr_, bool linear)
   {
     phi_cf  = &phi_;
     phi     = NULL; phi_xx = NULL; phi_yy = NULL;
@@ -114,7 +114,7 @@ public:
   }
 
   void set_phi    (std::vector<Vec> &phi_,
-                   std::vector<action_t> &acn_, std::vector<int> &clr_)
+                   std::vector<mls_opn_t> &acn_, std::vector<int> &clr_)
   {
     phi_cf  = NULL;
     phi     = &phi_; phi_xx = NULL; phi_yy = NULL;
@@ -126,7 +126,7 @@ public:
   void set_phi    (std::vector<Vec> &phi_,
                    std::vector<Vec> &phi_xx_,
                    std::vector<Vec> &phi_yy_,
-                   std::vector<action_t> &acn_, std::vector<int> &clr_)
+                   std::vector<mls_opn_t> &acn_, std::vector<int> &clr_)
   {
     phi_cf  = NULL;
     phi     = &phi_; phi_xx = &phi_xx_; phi_yy = &phi_yy_;

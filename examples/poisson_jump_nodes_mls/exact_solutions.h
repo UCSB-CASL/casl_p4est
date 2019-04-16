@@ -3,9 +3,6 @@ double phase_y =  1.55;
 double phase_z =  0.7;
 
 
-
-
-
 //-----------------------------------------------------------------------------------
 // UM function
 //-----------------------------------------------------------------------------------
@@ -15,7 +12,7 @@ class u_m_cf_t: public CF_3
 public:
   double operator()(double x, double y, double z) const
   {
-    switch (num_test_um){
+    switch (n_um){
       case 0: return sin(x)*cos(y)*exp(z);
       case 1: return 0.5*log(x+0.5*y-0.3*z+3. + pow(x-0.7*y-0.9*z, 2.));
       case 2: return log((x+y+3.)/(y+z+3.))*sin(x+0.5*y+0.7*z);
@@ -33,7 +30,7 @@ class u_m_cf_t: public CF_2
 public:
   double operator()(double x, double y) const
   {
-    switch (num_test_um){
+    switch (n_um){
       case 0: return sin(x)*cos(y);
       case 1: return 0.5*log( pow(x+0.8*y, 2.)+(x-0.7*y)+4.0 );
       case 2: return log((0.7*x+3.0)/(y+3.0))*sin(x+0.5*y);
@@ -71,7 +68,7 @@ class ux_m_cf_t: public CF_3
 public:
   double operator()(double x, double y, double z) const
   {
-    switch (num_test_um){
+    switch (n_um){
       case 0: return cos(x)*cos(y)*exp(z);
       case 1: return 0.5*(1.+2.*(x-0.7*y-0.9*z))/(x+0.5*y-0.3*z+3. + pow(x-0.7*y-0.9*z, 2.));
       case 2: return log((x+y+3.)/(y+z+3.))*cos(x+0.5*y+0.7*z) + sin(x+0.5*y+0.7*z)/(x+y+3.);
@@ -89,7 +86,7 @@ class uy_m_cf_t: public CF_3
 public:
   double operator()(double x, double y, double z) const
   {
-    switch (num_test_um){
+    switch (n_um){
       case 0: return -sin(x)*sin(y)*exp(z);
       case 1: return 0.5*(0.5-1.4*(x-0.7*y-0.9*z))/(x+0.5*y-0.3*z+3. + pow(x-0.7*y-0.9*z, 2.));
       case 2: return 0.5*log((x+y+3.)/(y+z+3.))*cos(x+0.5*y+0.7*z) + sin(x+0.5*y+0.7*z)*(1.0/(x+y+3.)-1.0/(y+z+3.));
@@ -107,7 +104,7 @@ class uz_m_cf_t: public CF_3
 public:
   double operator()(double x, double y, double z) const
   {
-    switch (num_test_um){
+    switch (n_um){
       case 0: return sin(x)*cos(y)*exp(z);
       case 1: return 0.5*(-0.3-1.8*(x-0.7*y-0.9*z))/(x+0.5*y-0.3*z+3. + pow(x-0.7*y-0.9*z, 2.));
       case 2: return 0.7*log((x+y+3.)/(y+z+3.))*cos(x+0.5*y+0.7*z) + sin(x+0.5*y+0.7*z)*(-1.0/(y+z+3.));
@@ -125,7 +122,7 @@ class lap_u_m_cf_t: public CF_3
 public:
   double operator()(double x, double y, double z) const
   {
-    switch (num_test_um){
+    switch (n_um){
       case 0: return -1.0*sin(x)*cos(y)*exp(z);
       case 1: return 2.3/(x+0.5*y-0.3*z+3. + pow(x-0.7*y-0.9*z, 2.))
             -0.5*( pow(1.+2.*(x-0.7*y-0.9*z),2.) + pow(0.5-1.4*(x-0.7*y-0.9*z),2.) + pow(-0.3-1.8*(x-0.7*y-0.9*z),2.) )/pow((x+0.5*y-0.3*z+3. + pow(x-0.7*y-0.9*z, 2.)), 2.);
@@ -145,7 +142,7 @@ class ux_m_cf_t: public CF_2
 public:
   double operator()(double x, double y) const
   {
-    switch (num_test_um){
+    switch (n_um){
       case 0: return cos(x)*cos(y);
       case 1: return (x+0.8*y+0.5)/( pow(x+0.8*y, 2.)+(x-0.7*y)+4.0 );
       case 2: return ( 0.7/(0.7*x+3.) )*sin(x+0.5*y)
@@ -182,7 +179,7 @@ class uy_m_cf_t: public CF_2
 public:
   double operator()(double x, double y) const
   {
-    switch (num_test_um){
+    switch (n_um){
       case 0: return -sin(x)*sin(y);
       case 1: return (0.8*x+0.64*y-0.35)/( pow(x+0.8*y, 2.)+(x-0.7*y)+4.0 );
       case 2: return ( - 1./(y+3.) )*sin(x+0.5*y)
@@ -216,7 +213,7 @@ class lap_u_m_cf_t: public CF_2
 public:
   double operator()(double x, double y) const
   {
-    switch (num_test_um){
+    switch (n_um){
       case 0: return -2.0*sin(x)*cos(y);
       case 1: {
         double C = (x+0.8*y)*(x+0.8*y)+(x-0.7*y)+4.0;
@@ -251,7 +248,7 @@ class u_p_cf_t: public CF_3
 public:
   double operator()(double x, double y, double z) const
   {
-    switch (num_test_up){
+    switch (n_up){
       case 0: return sin(x)*cos(y)*exp(z);
       case 1: return 0.5*log(x+0.5*y-0.3*z+3. + pow(x-0.7*y-0.9*z, 2.));
       case 2: return log((x+y+3.)/(y+z+3.))*sin(x+0.5*y+0.7*z);
@@ -269,7 +266,7 @@ class u_p_cf_t: public CF_2
 public:
   double operator()(double x, double y) const
   {
-    switch (num_test_up){
+    switch (n_up){
       case 0: return sin(x)*cos(y)+1.;
       case 1: return 0.5*log( pow(x+0.8*y, 2.)+(x-0.7*y)+4.0 );
       case 2: return log((0.7*x+3.0)/(y+3.0))*sin(x+0.5*y);
@@ -308,7 +305,7 @@ class ux_p_cf_t: public CF_3
 public:
   double operator()(double x, double y, double z) const
   {
-    switch (num_test_up){
+    switch (n_up){
       case 0: return cos(x)*cos(y)*exp(z);
       case 1: return 0.5*(1.+2.*(x-0.7*y-0.9*z))/(x+0.5*y-0.3*z+3. + pow(x-0.7*y-0.9*z, 2.));
       case 2: return log((x+y+3.)/(y+z+3.))*cos(x+0.5*y+0.7*z) + sin(x+0.5*y+0.7*z)/(x+y+3.);
@@ -326,7 +323,7 @@ class uy_p_cf_t: public CF_3
 public:
   double operator()(double x, double y, double z) const
   {
-    switch (num_test_up){
+    switch (n_up){
       case 0: return -sin(x)*sin(y)*exp(z);
       case 1: return 0.5*(0.5-1.4*(x-0.7*y-0.9*z))/(x+0.5*y-0.3*z+3. + pow(x-0.7*y-0.9*z, 2.));
       case 2: return 0.5*log((x+y+3.)/(y+z+3.))*cos(x+0.5*y+0.7*z) + sin(x+0.5*y+0.7*z)*(1.0/(x+y+3.)-1.0/(y+z+3.));
@@ -344,7 +341,7 @@ class uz_p_cf_t: public CF_3
 public:
   double operator()(double x, double y, double z) const
   {
-    switch (num_test_up){
+    switch (n_up){
       case 0: return sin(x)*cos(y)*exp(z);
       case 1: return 0.5*(-0.3-1.8*(x-0.7*y-0.9*z))/(x+0.5*y-0.3*z+3. + pow(x-0.7*y-0.9*z, 2.));
       case 2: return 0.7*log((x+y+3.)/(y+z+3.))*cos(x+0.5*y+0.7*z) + sin(x+0.5*y+0.7*z)*(-1.0/(y+z+3.));
@@ -362,7 +359,7 @@ class lap_u_p_cf_t: public CF_3
 public:
   double operator()(double x, double y, double z) const
   {
-    switch (num_test_up){
+    switch (n_up){
       case 0: return -1.0*sin(x)*cos(y)*exp(z);
       case 1: return 2.3/(x+0.5*y-0.3*z+3. + pow(x-0.7*y-0.9*z, 2.))
             -0.5*( pow(1.+2.*(x-0.7*y-0.9*z),2.) + pow(0.5-1.4*(x-0.7*y-0.9*z),2.) + pow(-0.3-1.8*(x-0.7*y-0.9*z),2.) )/pow((x+0.5*y-0.3*z+3. + pow(x-0.7*y-0.9*z, 2.)), 2.);
@@ -382,7 +379,7 @@ class ux_p_cf_t: public CF_2
 public:
   double operator()(double x, double y) const
   {
-    switch (num_test_up){
+    switch (n_up){
       case 0: return cos(x)*cos(y);
       case 1: return (x+0.8*y+0.5)/( pow(x+0.8*y, 2.)+(x-0.7*y)+4.0 );
       case 2: return ( 0.7/(0.7*x+3.) )*sin(x+0.5*y)
@@ -420,7 +417,7 @@ class uy_p_cf_t: public CF_2
 public:
   double operator()(double x, double y) const
   {
-    switch (num_test_up){
+    switch (n_up){
       case 0: return -sin(x)*sin(y);
       case 1: return (0.8*x+0.64*y-0.35)/( pow(x+0.8*y, 2.)+(x-0.7*y)+4.0 );
       case 2: return ( - 1./(y+3.) )*sin(x+0.5*y)
@@ -455,7 +452,7 @@ class lap_u_p_cf_t: public CF_2
 public:
   double operator()(double x, double y) const
   {
-    switch (num_test_up){
+    switch (n_up){
       case 0: return -2.0*sin(x)*cos(y);
       case 1: {
         double C = (x+0.8*y)*(x+0.8*y)+(x-0.7*y)+4.0;

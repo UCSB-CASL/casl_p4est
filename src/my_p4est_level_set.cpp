@@ -10127,7 +10127,7 @@ double my_p4est_level_set_t::advect_in_normal_direction_with_contact_angle(const
   // diffusion step (assuming |grad(phi)| = 1)
   my_p4est_poisson_nodes_mls_sc_t solver(ngbd);
 
-  std::vector<action_t> acn(1, INTERSECTION);
+  std::vector<mls_opn_t> acn(1, MLS_INTERSECTION);
   std::vector<int> clr(1,0);
   std::vector<Vec> phi_all(1, phi_wall);
 
@@ -10154,10 +10154,11 @@ double my_p4est_level_set_t::advect_in_normal_direction_with_contact_angle(const
     VecCopyGhost(cos_angle, flux);
     VecPointwiseMultGhost(flux, flux, surf_tns);
 
-    solver.set_geometry(1, &acn, &clr, &phi_all);
-    solver.set_bc_interface_coeff(bc_coeff);
-    solver.set_bc_interface_type(bc_type);
-    solver.set_bc_interface_value(bc_value);
+//    solver.set_geometry(1, &acn, &clr, &phi_all);
+    solver.add_boundary(MLS_INTERSECTION, phi_wall, NULL, NULL, NEUMANN, interp, zero_cf);
+//    solver.set_bc_interface_coeff(bc_coeff);
+//    solver.set_bc_interface_type(bc_type);
+//    solver.set_bc_interface_value(bc_value);
   }
 
   solver.set_use_sc_scheme(0);
@@ -10168,8 +10169,10 @@ double my_p4est_level_set_t::advect_in_normal_direction_with_contact_angle(const
   solver.set_diag_add(1./dt);
   solver.set_rhs(rhs);
 
-  solver.set_bc_wall_type(bc_wall_type);
-  solver.set_bc_wall_value(zero_cf);
+//  solver.set_bc_wall_type(bc_wall_type);
+//  solver.set_bc_wall_value(zero_cf);
+
+  solver.set_wc(bc_wall_type, zero_cf);
 
   solver.solve(phi, true);
 

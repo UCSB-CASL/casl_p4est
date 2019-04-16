@@ -28,6 +28,9 @@
 #define foreach_ghost_quad(q, ghost)\
   for (p4est_locidx_t q = 0; q < (p4est_locidx_t) ghost->ghosts.elem_count; ++q)
 
+#define foreach_direction(dim) \
+  for (short dim = 0; dim<P4EST_FACES; ++dim)
+
 #define M_PARSER_ICAT(A,B) A ## B
 #define M_PARSER_CAT(A,B) M_PARSER_ICAT(A,B)
 
