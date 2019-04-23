@@ -974,7 +974,12 @@ void my_p4est_poisson_faces_t::preallocate_matrix(int dir)
 
 #ifndef P4_TO_P8
       /* in 2D, clip the partition by the interface and by the walls of the domain */
-      clip_voro_cell_by_interface(f_idx, dir);
+      try {
+        clip_voro_cell_by_interface(f_idx, dir);
+      } catch (std::exception e) {
+        // [FIXME]: I found this issue but I have other urgent things to do for now... Raphael
+        throw std::runtime_error("Error when clipping voronoi cell in 2D... consider using an aspect ratio closer to 1");
+      }
 #endif
     }
   }
