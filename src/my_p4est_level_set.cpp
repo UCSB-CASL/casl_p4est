@@ -10125,52 +10125,26 @@ double my_p4est_level_set_t::advect_in_normal_direction_with_contact_angle(const
   VecAXPBYGhost(rhs, -1, 1./dt, vn);
 
   // diffusion step (assuming |grad(phi)| = 1)
-  my_p4est_poisson_nodes_mls_sc_t solver(ngbd);
-
-  std::vector<mls_opn_t> acn(1, MLS_INTERSECTION);
-  std::vector<int> clr(1,0);
-  std::vector<Vec> phi_all(1, phi_wall);
-
-#ifdef P4_TO_P8
-  std::vector<CF_3 *> bc_coeff(1, &zero_cf);
-  std::vector<CF_3 *> bc_value(1);
-#else
-  std::vector<CF_2 *> bc_coeff(1, &zero_cf);
-  std::vector<CF_2 *> bc_value(1);
-#endif
-
   my_p4est_interpolation_nodes_t interp(ngbd);
   Vec flux;
   ierr = VecDuplicate(phi, &flux); CHKERRXX(ierr);
-
   interp.set_input(flux, linear);
 
-  bc_value[0] = &interp;
-
-  std::vector<BoundaryConditionType> bc_type(1, NEUMANN);
-
+  my_p4est_poisson_nodes_mls_sc_t solver(ngbd);
   if (phi_wall != NULL && cos_angle != NULL && use_neumann_for_contact_angle)
   {
     VecCopyGhost(cos_angle, flux);
     VecPointwiseMultGhost(flux, flux, surf_tns);
 
-//    solver.set_geometry(1, &acn, &clr, &phi_all);
     solver.add_boundary(MLS_INTERSECTION, phi_wall, NULL, NULL, NEUMANN, interp, zero_cf);
-//    solver.set_bc_interface_coeff(bc_coeff);
-//    solver.set_bc_interface_type(bc_type);
-//    solver.set_bc_interface_value(bc_value);
   }
 
   solver.set_use_sc_scheme(0);
   solver.set_integration_order(1);
-//  solver.set_first_order_neumann_wall(1);
 
   solver.set_mu(surf_tns);
   solver.set_diag_add(1./dt);
   solver.set_rhs(rhs);
-
-//  solver.set_bc_wall_type(bc_wall_type);
-//  solver.set_bc_wall_value(zero_cf);
 
   solver.set_wc(bc_wall_type, zero_cf);
 

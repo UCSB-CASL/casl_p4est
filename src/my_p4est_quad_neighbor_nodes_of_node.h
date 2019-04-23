@@ -252,6 +252,46 @@ struct quad_neighbor_nodes_of_node_t {
       default: throw std::invalid_argument("Invalid direction\n");
     }
   }
+
+  inline bool is_stencil_in_negative_domain(double *phi_p)
+  {
+    return phi_p[this->node_000]<-EPS &&
+    #ifdef P4_TO_P8
+        ( phi_p[this->node_m00_mm]<-EPS || fabs(this->d_m00_p0)<EPS || fabs(this->d_m00_0p)<EPS) &&
+        ( phi_p[this->node_m00_mp]<-EPS || fabs(this->d_m00_p0)<EPS || fabs(this->d_m00_0m)<EPS) &&
+        ( phi_p[this->node_m00_pm]<-EPS || fabs(this->d_m00_m0)<EPS || fabs(this->d_m00_0p)<EPS) &&
+        ( phi_p[this->node_m00_pp]<-EPS || fabs(this->d_m00_m0)<EPS || fabs(this->d_m00_0m)<EPS) &&
+        ( phi_p[this->node_p00_mm]<-EPS || fabs(this->d_p00_p0)<EPS || fabs(this->d_p00_0p)<EPS) &&
+        ( phi_p[this->node_p00_mp]<-EPS || fabs(this->d_p00_p0)<EPS || fabs(this->d_p00_0m)<EPS) &&
+        ( phi_p[this->node_p00_pm]<-EPS || fabs(this->d_p00_m0)<EPS || fabs(this->d_p00_0p)<EPS) &&
+        ( phi_p[this->node_p00_pp]<-EPS || fabs(this->d_p00_m0)<EPS || fabs(this->d_p00_0m)<EPS) &&
+        ( phi_p[this->node_0m0_mm]<-EPS || fabs(this->d_0m0_p0)<EPS || fabs(this->d_0m0_0p)<EPS) &&
+        ( phi_p[this->node_0m0_mp]<-EPS || fabs(this->d_0m0_p0)<EPS || fabs(this->d_0m0_0m)<EPS) &&
+        ( phi_p[this->node_0m0_pm]<-EPS || fabs(this->d_0m0_m0)<EPS || fabs(this->d_0m0_0p)<EPS) &&
+        ( phi_p[this->node_0m0_pp]<-EPS || fabs(this->d_0m0_m0)<EPS || fabs(this->d_0m0_0m)<EPS) &&
+        ( phi_p[this->node_0p0_mm]<-EPS || fabs(this->d_0p0_p0)<EPS || fabs(this->d_0p0_0p)<EPS) &&
+        ( phi_p[this->node_0p0_mp]<-EPS || fabs(this->d_0p0_p0)<EPS || fabs(this->d_0p0_0m)<EPS) &&
+        ( phi_p[this->node_0p0_pm]<-EPS || fabs(this->d_0p0_m0)<EPS || fabs(this->d_0p0_0p)<EPS) &&
+        ( phi_p[this->node_0p0_pp]<-EPS || fabs(this->d_0p0_m0)<EPS || fabs(this->d_0p0_0m)<EPS) &&
+        ( phi_p[this->node_00m_mm]<-EPS || fabs(this->d_00m_p0)<EPS || fabs(this->d_00m_0p)<EPS) &&
+        ( phi_p[this->node_00m_mp]<-EPS || fabs(this->d_00m_p0)<EPS || fabs(this->d_00m_0m)<EPS) &&
+        ( phi_p[this->node_00m_pm]<-EPS || fabs(this->d_00m_m0)<EPS || fabs(this->d_00m_0p)<EPS) &&
+        ( phi_p[this->node_00m_pp]<-EPS || fabs(this->d_00m_m0)<EPS || fabs(this->d_00m_0m)<EPS) &&
+        ( phi_p[this->node_00p_mm]<-EPS || fabs(this->d_00p_p0)<EPS || fabs(this->d_00p_0p)<EPS) &&
+        ( phi_p[this->node_00p_mp]<-EPS || fabs(this->d_00p_p0)<EPS || fabs(this->d_00p_0m)<EPS) &&
+        ( phi_p[this->node_00p_pm]<-EPS || fabs(this->d_00p_m0)<EPS || fabs(this->d_00p_0p)<EPS) &&
+        ( phi_p[this->node_00p_pp]<-EPS || fabs(this->d_00p_m0)<EPS || fabs(this->d_00p_0m)<EPS)
+    #else
+        ( phi_p[this->node_m00_mm]<-EPS || fabs(this->d_m00_p0)<EPS) &&
+        ( phi_p[this->node_m00_pm]<-EPS || fabs(this->d_m00_m0)<EPS) &&
+        ( phi_p[this->node_p00_mm]<-EPS || fabs(this->d_p00_p0)<EPS) &&
+        ( phi_p[this->node_p00_pm]<-EPS || fabs(this->d_p00_m0)<EPS) &&
+        ( phi_p[this->node_0m0_mm]<-EPS || fabs(this->d_0m0_p0)<EPS) &&
+        ( phi_p[this->node_0m0_pm]<-EPS || fabs(this->d_0m0_m0)<EPS) &&
+        ( phi_p[this->node_0p0_mm]<-EPS || fabs(this->d_0p0_p0)<EPS) &&
+        ( phi_p[this->node_0p0_pm]<-EPS || fabs(this->d_0p0_m0)<EPS);
+#endif
+  }
 };
 
 #endif /* !MY_P4EST_QUAD_NEIGHBOR_NODES_OF_NODE_H */

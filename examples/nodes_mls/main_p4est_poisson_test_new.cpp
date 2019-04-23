@@ -300,7 +300,7 @@ std::vector<CF_2 *> phi_x_cf, phi_y_cf;
 std::vector<CF_2 *> bc_coeffs_cf;
 #endif
 
-std::vector<action_t> action;
+std::vector<mls_opn_t> action;
 std::vector<int> color;
 
 problem_case_0_t problem_case_0;

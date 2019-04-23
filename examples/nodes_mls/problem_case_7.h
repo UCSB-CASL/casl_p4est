@@ -27,7 +27,7 @@ public:
   std::vector<CF_2 *> phi_x_cf;
   std::vector<CF_2 *> phi_y_cf;
 #endif
-  std::vector<action_t> action;
+  std::vector<mls_opn_t> action;
   std::vector<int> color;
 
   flower_shaped_domain_t domain0;
@@ -123,9 +123,9 @@ public:
     domain2.set_params(r2, xc2, yc2, beta2, inside2, theta2);
 #endif
 
-    phi_cf.push_back(&domain0.phi); action.push_back(INTERSECTION); color.push_back(0);
-    phi_cf.push_back(&domain1.phi); action.push_back(ADDITION); color.push_back(1);
-    phi_cf.push_back(&domain2.phi); action.push_back(INTERSECTION); color.push_back(2);
+    phi_cf.push_back(&domain0.phi); action.push_back(MLS_INTERSECTION); color.push_back(0);
+    phi_cf.push_back(&domain1.phi); action.push_back(MLS_ADDITION); color.push_back(1);
+    phi_cf.push_back(&domain2.phi); action.push_back(MLS_INTERSECTION); color.push_back(2);
 
     phi_x_cf.push_back(&domain0.phi_x);
     phi_x_cf.push_back(&domain1.phi_x);

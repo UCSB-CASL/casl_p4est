@@ -5,7 +5,7 @@ subplotted = 0;
 plot_detailed_convergence = 0;
 plot_condensed_convergence = 1;
 plot_detailed_cond_num = 0;
-plot_condensed_cond_num = 0;
+plot_condensed_cond_num = 1;
 
 plot_slope_sl = 1;
 plot_slope_gr = 1;
@@ -29,16 +29,16 @@ PropValue_guide = {'none', 1, 2, 'auto', '-', 'k'};
 % smooth solutions
 % -----------------------------
 figure;
+ 
+dirs = {}; titles = {};
+dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Presentations/13_socal_fluids_2019_jump_solver/data/results/v1.0/2d/conditioning/fvm/slow/convergence'; titles{end+1} = 'Slow';
+dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Presentations/13_socal_fluids_2019_jump_solver/data/results/v1.0/2d/conditioning/fvm/fast/convergence'; titles{end+1} = 'Fast';
+dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Presentations/13_socal_fluids_2019_jump_solver/data/results/v1.0/2d/conditioning/fvm/neut/convergence'; titles{end+1} = 'Random';
 
 % dirs = {}; titles = {};
-% dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Presentations/13_socal_fluids_2019_jump_solver/data/results/v1.0/2d/accuracy/fvm/slow/convergence'; titles{end+1} = 'Slow';
-% dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Presentations/13_socal_fluids_2019_jump_solver/data/results/v1.0/2d/accuracy/fvm/fast/convergence'; titles{end+1} = 'Fast';
-% dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Presentations/13_socal_fluids_2019_jump_solver/data/results/v1.0/2d/accuracy/fvm/neut/convergence'; titles{end+1} = 'Random';
-%  
-dirs = {}; titles = {};
-dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Presentations/13_socal_fluids_2019_jump_solver/data/results/v1.0/3d/accuracy2/fvm/slow/convergence'; titles{end+1} = 'Slow';
-dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Presentations/13_socal_fluids_2019_jump_solver/data/results/v1.0/3d/accuracy2/fvm/fast/convergence'; titles{end+1} = 'Fast';
-dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Presentations/13_socal_fluids_2019_jump_solver/data/results/v1.0/3d/accuracy2/fvm/neut/convergence'; titles{end+1} = 'Random';
+% dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Presentations/13_socal_fluids_2019_jump_solver/data/results/v1.0/3d/conditioning/fvm/slow/convergence'; titles{end+1} = 'Slow';
+% dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Presentations/13_socal_fluids_2019_jump_solver/data/results/v1.0/3d/conditioning/fvm/fast/convergence'; titles{end+1} = 'Fast';
+% dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Presentations/13_socal_fluids_2019_jump_solver/data/results/v1.0/3d/conditioning/fvm/neut/convergence'; titles{end+1} = 'Random';
 
 h = importdata(strcat(dirs{1},'/h_arr.txt'));
 mu = importdata(strcat(dirs{1},'/mu_arr.txt'));
@@ -168,23 +168,15 @@ if (plot_condensed_convergence == 1)
     
     % error plots    
     for i = 1:length(dirs)
-        L = loglog(h, error_sl_max{i}); set(L, PropName_max, PropValue_max); set(L, 'MarkerFaceColor', get(L, 'Color')); set(L, 'DisplayName', titles{i});
+        L = loglog(mu, error_sl_max{i}); set(L, PropName_max, PropValue_max); set(L, 'MarkerFaceColor', get(L, 'Color')); set(L, 'DisplayName', titles{i});
         if (i==1); hold on; end
     end
-    
-    % guide lines
-    for i = 1:length(dirs)
-        slope = polyfit(log(h(fit)), log(error_sl_max{i}(fit)),1);
-        if (plot_slope_sl > i-1)
-            L = loglog(h, exp(slope(2))*h.^slope(1)); set(L, PropName_guide, PropValue_guide); set(L, 'DisplayName', ['Slope: ', num2str(slope(1),3)]);
-        end
-    end 
     
     hold off
     grid on
     
     % axes
-    xlabel('Grid resolution');
+    xlabel('Ratio');
     ylabel('Solution Error');
     
     % legend, 
@@ -207,23 +199,15 @@ if (plot_condensed_convergence == 1)
     
     % error plots    
     for i = 1:length(dirs)
-        L = loglog(h, error_gr_max{i}); set(L, PropName_max, PropValue_max); set(L, 'MarkerFaceColor', get(L, 'Color')); set(L, 'DisplayName', titles{i});
+        L = loglog(mu, error_gr_max{i}); set(L, PropName_max, PropValue_max); set(L, 'MarkerFaceColor', get(L, 'Color')); set(L, 'DisplayName', titles{i});
         if (i==1); hold on; end
     end
-    
-    % guide lines
-    for i = 1:length(dirs)
-        slope = polyfit(log(h(fit)), log(error_gr_max{i}(fit)),1);
-        if (plot_slope_sl > i-1)
-            L = loglog(h, exp(slope(2))*h.^slope(1));  set(L, PropName_guide, PropValue_guide); set(L, 'DisplayName', ['Slope: ', num2str(slope(1),3)]);
-        end
-    end 
     
     hold off
     grid on
     
     % axes
-    xlabel('Grid resolution');
+    xlabel('Ratio');
     ylabel('Gradient Error');
     
     % legend
@@ -298,23 +282,14 @@ if (plot_condensed_cond_num == 1)
     
     % plots    
     for i = 1:length(dirs)
-        L = loglog(h, cond_num_max{i}); set(L, PropName_max, PropValue_max); set(L, 'MarkerFaceColor', get(L, 'Color')); set(L, 'DisplayName', titles{i});
+        L = loglog(mu, cond_num_max{i}); set(L, PropName_max, PropValue_max); set(L, 'MarkerFaceColor', get(L, 'Color')); set(L, 'DisplayName', titles{i});
         if (i==1); hold on; end
-    end
-    
-    % guide lines
-    for i = 1:length(dirs)
-        slope = polyfit(log(h(fit)), log(cond_num_max{i}(fit)),1);
-        if (plot_slope_sl > i-1)
-            L = loglog(h, exp(slope(2))*h.^slope(1));  set(L, PropName_guide, PropValue_guide); set(L, 'DisplayName', ['Slope: ', num2str(slope(1),3)]);
-        end
-    end 
-    
+    end    
     hold off
     grid on
     
     % axes
-    L = xlabel('Grid resolution'); %set(L, 'interpreter', 'latex');
+    L = xlabel('Ratio'); %set(L, 'interpreter', 'latex');
     L = ylabel('Max condition number'); %set(L, 'interpreter', 'latex');
     
     % legend

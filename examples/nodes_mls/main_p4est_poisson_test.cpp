@@ -35,7 +35,6 @@
 #include <src/mls_integration/vtk/simplex3_mls_l_vtk.h>
 #include <src/mls_integration/vtk/simplex3_mls_q_vtk.h>
 #include <src/my_p8est_semi_lagrangian.h>
-#include <src/my_p8est_tools_mls.h>
 #include <src/my_p8est_macros.h>
 #else
 #include <p4est_bits.h>
@@ -54,7 +53,6 @@
 #include <src/mls_integration/vtk/simplex2_mls_l_vtk.h>
 #include <src/mls_integration/vtk/simplex2_mls_q_vtk.h>
 #include <src/my_p4est_semi_lagrangian.h>
-#include <src/my_p4est_tools_mls.h>
 #include <src/my_p4est_macros.h>
 #endif
 
@@ -124,7 +122,7 @@ int iter_start = 0; // is used to skip iterations and get to a problematic case
 //-------------------------------------
 // test solutions
 //-------------------------------------
-int n_geometry = 2;
+int n_geometry = 1;
 int n_test     = 0;
 int n_mu       = 1;
 int n_diag_add = 0;
@@ -182,7 +180,7 @@ double exclude_points_z = 0;
 //-------------------------------------
 // output
 //-------------------------------------
-bool save_vtk           = 0;
+bool save_vtk           = 1;
 bool save_domain        = 0;
 bool save_matrix_ascii  = 0;
 bool save_matrix_binary = 0;
@@ -373,7 +371,7 @@ std::vector<CF_2 *> phi_x_cf, phi_y_cf;
 std::vector<CF_2 *> bc_coeffs_cf;
 #endif
 
-std::vector<action_t> action;
+std::vector<mls_opn_t> action;
 std::vector<int> color;
 
 problem_case_0_t problem_case_0;
@@ -601,27 +599,6 @@ public:
     return bc_wtype;
   }
 } bc_wall_type;
-#endif
-
-
-#ifdef P4_TO_P8
-class ZERO_CF: public CF_3
-{
-public:
-  double operator()(double, double, double) const
-  {
-    return 0;
-  }
-} zero_cf;
-#else
-class ZERO_CF: public CF_2
-{
-public:
-  double operator()(double, double) const
-  {
-    return 0;
-  }
-} zero_cf;
 #endif
 
 namespace p11 {
@@ -932,7 +909,7 @@ int main (int argc, char* argv[])
   p4est_ghost_t *ghost;
 
   // the effective LSF
-  level_set_tot_t level_set_tot_cf(&phi_cf, &action, &color);
+  mls_eff_cf_t level_set_tot_cf(&phi_cf, &action);
 
   int iteration = -1;
   int file_idx  = -1;
@@ -1130,7 +1107,7 @@ int main (int argc, char* argv[])
 //            ierr = PetscPrintf(mpi.comm(), "Starting a solver\n"); CHKERRXX(ierr);
 
             Vec sol; double *sol_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &sol); CHKERRXX(ierr);
-            std::vector<Vec> *phi_dd[P4EST_DIM];
+            std::vector<Vec> phi_dd[P4EST_DIM];
 
             Vec phi_eff;
             Vec mask;
@@ -1146,15 +1123,20 @@ int main (int argc, char* argv[])
 
             if (use_phi_cf) solver.set_phi_cf(phi_cf);
 
-            solver.set_geometry(num_surfaces, &action, &color, &phi);
+//            solver.set_geometry(num_surfaces, &action, &color, &phi);
             solver.set_mu(mu);
             solver.set_rhs(rhs);
 
-            solver.set_bc_wall_value(u_cf);
-            solver.set_bc_wall_type(bc_wall_type);
-            solver.set_bc_interface_type(bc_interface_type);
-            solver.set_bc_interface_coeff(bc_coeffs_cf);
-            solver.set_bc_interface_value(bc_interface_value);
+//            solver.set_bc_wall_value(u_cf);
+//            solver.set_bc_wall_type(bc_wall_type);
+//            solver.set_bc_interface_type(bc_interface_type);
+//            solver.set_bc_interface_coeff(bc_coeffs_cf);
+//            solver.set_bc_interface_value(bc_interface_value);
+
+            solver.set_wc(bc_wall_type, u_cf);
+
+            for (int i = 0; i < num_surfaces; ++i)
+              solver.add_boundary(action[i], phi[i], NULL, NULL, bc_itype, *bc_interface_value[i], *bc_coeffs_cf[i]);
 
             solver.set_diag_add(diag_add);
 
@@ -1165,7 +1147,7 @@ int main (int argc, char* argv[])
 
             solver.solve(sol);
 
-            solver.get_phi_dd(phi_dd);
+//            solver.get_phi_dd(phi_dd);
 
             phi_eff   = solver.get_phi_eff();
             mask      = solver.get_mask();
@@ -1445,7 +1427,7 @@ int main (int argc, char* argv[])
             // calculate extrapolation error
             //----------------------------------------------------------------------------------------------
             // smoothed LSF
-            level_set_smooth_t level_set_smooth_cf(&phi_cf, &action, &color, 9.*dxyz_max*dxyz_max);
+            mls_smooth_cf_t level_set_smooth_cf(&phi_cf, &action, 9.*dxyz_max*dxyz_max);
 
             Vec phi_smooth;
             double *phi_smooth_ptr;

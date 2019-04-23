@@ -2166,6 +2166,34 @@ PetscErrorCode VecAXPBYGhost(Vec y, PetscScalar alpha, PetscScalar beta, Vec x)
   return ierr;
 }
 
+PetscErrorCode VecPointwiseMinGhost(Vec output, Vec input1, Vec input2)
+{
+  PetscErrorCode ierr;
+  Vec out, in1, in2;
+  ierr = VecGhostGetLocalForm(input1, &in1);     CHKERRXX(ierr);
+  ierr = VecGhostGetLocalForm(input2, &in2);     CHKERRXX(ierr);
+  ierr = VecGhostGetLocalForm(output, &out);     CHKERRXX(ierr);
+  ierr = VecPointwiseMin(out, in1, in2);        CHKERRXX(ierr);
+  ierr = VecGhostRestoreLocalForm(input1, &in1); CHKERRXX(ierr);
+  ierr = VecGhostRestoreLocalForm(input2, &in2); CHKERRXX(ierr);
+  ierr = VecGhostRestoreLocalForm(output, &out); CHKERRXX(ierr);
+  return ierr;
+}
+
+PetscErrorCode VecPointwiseMaxGhost(Vec output, Vec input1, Vec input2)
+{
+  PetscErrorCode ierr;
+  Vec out, in1, in2;
+  ierr = VecGhostGetLocalForm(input1, &in1);     CHKERRXX(ierr);
+  ierr = VecGhostGetLocalForm(input2, &in2);     CHKERRXX(ierr);
+  ierr = VecGhostGetLocalForm(output, &out);     CHKERRXX(ierr);
+  ierr = VecPointwiseMax(out, in1, in2);        CHKERRXX(ierr);
+  ierr = VecGhostRestoreLocalForm(input1, &in1); CHKERRXX(ierr);
+  ierr = VecGhostRestoreLocalForm(input2, &in2); CHKERRXX(ierr);
+  ierr = VecGhostRestoreLocalForm(output, &out); CHKERRXX(ierr);
+  return ierr;
+}
+
 void invert_phi(p4est_nodes_t *nodes, Vec phi)
 {
   PetscErrorCode ierr;

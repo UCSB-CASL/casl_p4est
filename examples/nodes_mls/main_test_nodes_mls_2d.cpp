@@ -864,25 +864,25 @@ int main (int argc, char* argv[])
     my_p4est_node_neighbors_t ngbd_n(&hierarchy,nodes);
 
     std::vector<Vec>        phi;
-    std::vector<action_t>   action;
+    std::vector<mls_opn_t>   action;
     std::vector<int>        color;
 
     phi.push_back(Vec());
     ierr = VecCreateGhostNodes(p4est, nodes, &phi.back()); CHKERRXX(ierr);
     sample_cf_on_nodes(p4est, nodes, level_set_0, phi.back());
-    action.push_back(INTERSECTION);
+    action.push_back(MLS_INTERSECTION);
     color.push_back(0);
 
     phi.push_back(Vec());
     ierr = VecCreateGhostNodes(p4est, nodes, &phi.back()); CHKERRXX(ierr);
     sample_cf_on_nodes(p4est, nodes, level_set_1, phi.back());
-    action.push_back(ADDITION);
+    action.push_back(MLS_ADDITION);
     color.push_back(1);
 
     phi.push_back(Vec());
     ierr = VecCreateGhostNodes(p4est, nodes, &phi.back()); CHKERRXX(ierr);
     sample_cf_on_nodes(p4est, nodes, level_set_2, phi.back());
-    action.push_back(INTERSECTION);
+    action.push_back(MLS_INTERSECTION);
     color.push_back(2);
 
     Vec phi_tot;

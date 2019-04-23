@@ -1823,6 +1823,8 @@ PetscErrorCode VecSetGhost(Vec vec, PetscScalar scalar);
 PetscErrorCode VecShiftGhost(Vec vec, PetscScalar scalar);
 PetscErrorCode VecScaleGhost(Vec vec, PetscScalar scalar);
 PetscErrorCode VecPointwiseMultGhost(Vec output, Vec input1, Vec input2);
+PetscErrorCode VecPointwiseMinGhost(Vec output, Vec input1, Vec input2);
+PetscErrorCode VecPointwiseMaxGhost(Vec output, Vec input1, Vec input2);
 PetscErrorCode VecAXPBYGhost(Vec y, PetscScalar alpha, PetscScalar beta, Vec x);
 
 struct vec_and_ptr_t
@@ -1957,8 +1959,8 @@ public:
 
   double operator()( DIM(double x, double y, double z) ) const
   {
-    double phi_eff = -DBL_MAX;
-    double phi_cur = -DBL_MAX;
+    double phi_eff = -10;
+    double phi_cur = -10;
     for (unsigned short i = 0; i < phi_cf->size(); ++i)
     {
       phi_cur = (*phi_cf->at(i))( DIM(x,y,z) );
@@ -2013,7 +2015,7 @@ public:
 
   std::vector<mls_opn_t>& get_opn() { return opn; }
   std::vector<Vec *>&     get_phi() { return phi; }
-  std::vector<int>&       get_cld() { return clr; }
+  std::vector<int>&       get_clr() { return clr; }
 
   mls_t() : size(0) {}
 

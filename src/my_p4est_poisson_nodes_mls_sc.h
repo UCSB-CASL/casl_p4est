@@ -104,8 +104,8 @@ class my_p4est_poisson_nodes_mls_sc_t
   } bdry, infc;
 
   // Boundary, wall and jump conditions
-  const WallBC2D *wc_type;
-  const CF_DIM   *wc_value;
+  const WallBCDIM *wc_type;
+  const CF_DIM    *wc_value;
 
   std::vector< BoundaryConditionType > bc_type;
   std::vector< CF_DIM *> bc_value;
@@ -158,10 +158,11 @@ class my_p4est_poisson_nodes_mls_sc_t
   int matrix_has_nullspace_;
 
   // auxiliary variables
-  Vec mask_;
   Vec areas_;
   Vec areas_m_;
   Vec areas_p_;
+  Vec mask_m;
+  Vec mask_p;
 //  Vec volumes_;
   Vec node_type_;
 
@@ -178,6 +179,7 @@ class my_p4est_poisson_nodes_mls_sc_t
   enum discretization_scheme_t { FDM, FVM, JUMP } discretization_scheme_;
 
   int jump_scheme_;
+  int jump_sub_scheme;
 
   void compute_volumes();
   void compute_phi_eff(Vec &phi_eff, std::vector<Vec> *phi, std::vector<mls_opn_t> *action, bool &is_phi_eff_owned);
@@ -272,7 +274,7 @@ public:
     add_phi(infc, opn, phi, phi_d, phi_dd);
   }
 
-  inline void set_boundary_phi_eff(Vec phi_eff)
+  inline void set_boundary_phi_eff(Vec phi_eff = NULL)
   {
     if (phi_eff == NULL)
     {
@@ -282,7 +284,7 @@ public:
       bdry.phi_eff = phi_eff;
   }
 
-  inline void set_interface_phi_eff(Vec phi_eff)
+  inline void set_interface_phi_eff(Vec phi_eff = NULL)
   {
     if (phi_eff == NULL)
     {
@@ -292,7 +294,7 @@ public:
       infc.phi_eff = phi_eff;
   }
 
-  inline void set_wc(WallBC2D &wc_type, CF_DIM &wc_value) { this->wc_type = &wc_type; this->wc_value = &wc_value; }
+  inline void set_wc(WallBCDIM &wc_type, CF_DIM &wc_value) { this->wc_type = &wc_type; this->wc_value = &wc_value; }
 
   // set BCs
   inline void set_diag_add(double diag_add_scalar)   { diag_add_m_scalar_ = diag_add_scalar;
@@ -331,10 +333,8 @@ public:
     variable_mu_ = true;
   }
 
-  void set_mu2(Vec mue_m,
-               Vec mue_p,
-               DIM( Vec mue_m_xx = NULL, Vec mue_m_yy = NULL, Vec mue_m_zz = NULL ),
-               DIM( Vec mue_p_xx = NULL, Vec mue_p_yy = NULL, Vec mue_p_zz = NULL ))
+  void set_mu(Vec mue_m, DIM( Vec mue_m_xx, Vec mue_m_yy, Vec mue_m_zz ),
+              Vec mue_p, DIM( Vec mue_p_xx, Vec mue_p_yy, Vec mue_p_zz ))
   {
     mue_m_ = mue_m;
     mue_p_ = mue_p;
@@ -376,6 +376,7 @@ public:
   inline void set_use_sc_scheme           (bool value) { use_sc_scheme_             = value; }
   inline void set_integration_order       (int  value) { integration_order_         = value; }
   inline void set_jump_scheme             (int  value) { jump_scheme_               = value; }
+  inline void set_jump_sub_scheme         (int  value) { jump_sub_scheme            = value; }
   inline void set_enfornce_diag_scalling  (int  value) { enfornce_diag_scalling_    = value; }
   inline void set_update_ghost_after_solving(bool value) { update_ghost_after_solving_ = value; }
 
@@ -390,8 +391,13 @@ public:
   void solve(Vec solution, bool use_nonzero_initial_guess = false, KSPType ksp_type = KSPBCGS, PCType pc_type = PCHYPRE);
   void assemble_matrix(Vec solution);
 
-  inline Vec get_mask() { return mask_; }
+  inline Vec get_mask() { return mask_m; }
+  inline Vec get_mask_m() { return mask_m; }
+  inline Vec get_mask_p() { return mask_p; }
+
   inline Vec get_areas() { return areas_; }
+  inline Vec get_areas_m() { return areas_m_; }
+  inline Vec get_areas_p() { return areas_p_; }
 
   inline void get_phi_dd(std::vector<Vec> *(&phi_dd))
   {
@@ -400,6 +406,7 @@ public:
     ZCOMP( phi_dd[2] = bdry.phi_zz );
   }
 
+  inline Vec get_phi_eff()  { return bdry.phi_eff; }
   inline Vec get_boundary_phi_eff()  { return bdry.phi_eff; }
   inline Vec get_interface_phi_eff() { return infc.phi_eff; }
   inline Mat get_matrix() { return A_; }

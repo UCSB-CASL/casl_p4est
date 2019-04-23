@@ -99,7 +99,7 @@ DEFINE_PARAMETER(pl, double, zmax,  1, "Box zmax");
 DEFINE_PARAMETER(pl, int, lmin, 5, "Min level of the tree");
 DEFINE_PARAMETER(pl, int, lmax, 5, "Max level of the tree");
 
-DEFINE_PARAMETER(pl, int, num_splits,           7, "Number of recursive splits");
+DEFINE_PARAMETER(pl, int, num_splits,           3, "Number of recursive splits");
 DEFINE_PARAMETER(pl, int, num_splits_per_split, 1, "Number of additional resolutions");
 
 DEFINE_PARAMETER(pl, int, num_shifts_x_dir, 1, "Number of grid shifts in the x-direction");
@@ -109,7 +109,7 @@ DEFINE_PARAMETER(pl, int, num_shifts_z_dir, 1, "Number of grid shifts in the z-d
 DEFINE_PARAMETER(pl, int, lmin, 5, "Min level of the tree");
 DEFINE_PARAMETER(pl, int, lmax, 5, "Max level of the tree");
 
-DEFINE_PARAMETER(pl, int, num_splits,           7, "Number of recursive splits");
+DEFINE_PARAMETER(pl, int, num_splits,           4, "Number of recursive splits");
 DEFINE_PARAMETER(pl, int, num_splits_per_split, 1, "Number of additional resolutions");
 
 DEFINE_PARAMETER(pl, int, num_shifts_x_dir, 1, "Number of grid shifts in the x-direction");
@@ -125,16 +125,15 @@ DEFINE_PARAMETER(pl, bool, balance_grid,   0, "Enforce 1:2 ratio for adaptive gr
 DEFINE_PARAMETER(pl, bool, coarse_outside, 0, "Use the coarsest possible grid outside the domain (0/1)");
 DEFINE_PARAMETER(pl, int,  expand_ghost,   0, "Number of ghost layer expansions");
 
-
 //-------------------------------------
 // test solutions
 //-------------------------------------
 
-DEFINE_PARAMETER(pl, int, n_domain,    1, "Domain geometry");
+DEFINE_PARAMETER(pl, int, n_domain,    3, "Domain geometry");
 DEFINE_PARAMETER(pl, int, n_interface, 1, "Immersed interface geometry");
 
 DEFINE_PARAMETER(pl, int, n_um, 0, "");
-DEFINE_PARAMETER(pl, int, n_up, 1, "");
+DEFINE_PARAMETER(pl, int, n_up, 4, "");
 
 DEFINE_PARAMETER(pl, double, mag_um, 1, "");
 DEFINE_PARAMETER(pl, double, mag_up, 1, "");
@@ -143,7 +142,12 @@ DEFINE_PARAMETER(pl, int, n_mu_m, 0, "");
 DEFINE_PARAMETER(pl, int, n_mu_p, 0, "");
 
 DEFINE_PARAMETER(pl, double, mag_mu_m, 1, "");
-DEFINE_PARAMETER(pl, double, mag_mu_p, 1, "");
+DEFINE_PARAMETER(pl, double, mag_mu_p, 10, "");
+
+DEFINE_PARAMETER(pl, double, mu_iter_num, 1, "");
+DEFINE_PARAMETER(pl, double, mag_mu_m_min, 1, "");
+DEFINE_PARAMETER(pl, double, mag_mu_m_max, 1, "");
+
 
 DEFINE_PARAMETER(pl, int, n_diag_m, 0, "");
 DEFINE_PARAMETER(pl, int, n_diag_p, 0, "");
@@ -158,8 +162,8 @@ DEFINE_PARAMETER(pl, int,    n_bc_coeff_00,   0, "");
 DEFINE_PARAMETER(pl, double, mag_bc_coeff_00, 1, "");
 
 DEFINE_PARAMETER(pl, int, bc_wtype, DIRICHLET, "Type of boundary conditions on the walls");
-DEFINE_PARAMETER(pl, int, bc_itype, ROBIN, "Type of boundary conditions on the domain boundary");
-DEFINE_PARAMETER(pl, int, bc_type_00, ROBIN, "Type of boundary conditions on the domain boundary");
+DEFINE_PARAMETER(pl, int, bc_itype, DIRICHLET, "Type of boundary conditions on the domain boundary");
+DEFINE_PARAMETER(pl, int, bc_type_00, DIRICHLET, "Type of boundary conditions on the domain boundary");
 //DEFINE_PARAMETER(pl, int, bc_itype, ROBIN, "");
 
 
@@ -167,8 +171,9 @@ DEFINE_PARAMETER(pl, int, bc_type_00, ROBIN, "Type of boundary conditions on the
 // solver parameters
 //-------------------------------------
 DEFINE_PARAMETER(pl, int,  jc_scheme,         0, "Discretization scheme for interface conditions (0 - FVM, 1 - FDM)");
-DEFINE_PARAMETER(pl, int,  integration_order, 2, "Select integration order (1 - linear, 2 - quadratic)");
-DEFINE_PARAMETER(pl, bool, sc_scheme,         1, "Use super-convergent scheme");
+DEFINE_PARAMETER(pl, int,  jc_sub_scheme,     0, "Interpolation subscheme for interface conditions (0 - from slow region, 1 - from fast region, 2 - based on nodes availability)");
+DEFINE_PARAMETER(pl, int,  integration_order, 1, "Select integration order (1 - linear, 2 - quadratic)");
+DEFINE_PARAMETER(pl, bool, sc_scheme,         0, "Use super-convergent scheme");
 
 // for symmetric scheme:
 DEFINE_PARAMETER(pl, bool, taylor_correction,      1, "Use Taylor correction to approximate Robin term (symmetric scheme)");
@@ -196,7 +201,7 @@ DEFINE_PARAMETER(pl, double, ifc_perturb_pow, 2,   "Order of level-set perturbat
 // convergence study parameters
 //-------------------------------------
 DEFINE_PARAMETER(pl, int,    compute_cond_num,     0*num_splits, "Estimate L1-norm condition number");
-DEFINE_PARAMETER(pl, bool,   do_extension,         0, "Extend solution after solving");
+DEFINE_PARAMETER(pl, bool,   do_extension,         1, "Extend solution after solving");
 DEFINE_PARAMETER(pl, double, mask_thresh,          0, "Mask threshold for excluding points in convergence study");
 DEFINE_PARAMETER(pl, bool,   compute_grad_between, 0, "Computes gradient between points if yes");
 DEFINE_PARAMETER(pl, bool,   scale_errors,         0, "Scale errors by max solution/gradient value");
@@ -209,7 +214,7 @@ DEFINE_PARAMETER(pl, bool, save_params,        1, "Save list of entered paramete
 DEFINE_PARAMETER(pl, bool, save_domain,        0, "Save the reconstruction of an irregular domain (works only in serial!)");
 DEFINE_PARAMETER(pl, bool, save_matrix_ascii,  0, "Save the matrix in ASCII MATLAB format");
 DEFINE_PARAMETER(pl, bool, save_matrix_binary, 0, "Save the matrix in BINARY MATLAB format");
-DEFINE_PARAMETER(pl, bool, save_convergence,   0, "Save convergence results");
+DEFINE_PARAMETER(pl, bool, save_convergence,   1, "Save convergence results");
 
 void set_example(int n_example)
 {
@@ -291,7 +296,7 @@ public:
           case DDX: return  (*mag)*cos(x)*cos(y)*exp(z);
           case DDY: return -(*mag)*sin(x)*sin(y)*exp(z);
           case DDZ: return  (*mag)*sin(x)*cos(y)*exp(z);
-          case LAP: return -(*mag)*sin(x)*cos(y);
+          case LAP: return -(*mag)*sin(x)*cos(y)*exp(z);
 #else
           case VAL: return  (*mag)*sin(x)*cos(y);
           case DDX: return  (*mag)*cos(x)*cos(y);
@@ -305,7 +310,7 @@ public:
           case DDX: return -(*mag)*sin(x)*sin(y)*exp(z);
           case DDY: return  (*mag)*cos(x)*cos(y)*exp(z);
           case DDZ: return  (*mag)*cos(x)*sin(y)*exp(z);
-          case LAP: return -(*mag)*cos(x)*sin(y);
+          case LAP: return -(*mag)*cos(x)*sin(y)*exp(z);
 #else
           case VAL: return  (*mag)*cos(x)*sin(y);
           case DDX: return -(*mag)*sin(x)*sin(y);
@@ -601,6 +606,19 @@ public:
             ZCOMP( case DDZ: return circle.phi_z(DIM(x,y,z)) );
           }
         }
+      case 3: {
+          double r0_in = 0.151;
+          double r0_ex = 0.911;
+          double DIM( xc = 0, yc = 0, zc = 0 );
+          flower_shaped_domain_t circle_in(r0_in, DIM(xc, yc, zc), 0, -1);
+          flower_shaped_domain_t circle_ex(r0_ex, DIM(xc, yc, zc), 0,  1);
+          switch (what) {
+            OCOMP( case VAL: return (circle_in.phi(DIM(x,y,z)) > circle_ex.phi(DIM(x,y,z))) ? circle_in.phi(DIM(x,y,z)) : circle_ex.phi(DIM(x,y,z)); );
+            XCOMP( case DDX: return (circle_in.phi(DIM(x,y,z)) > circle_ex.phi(DIM(x,y,z))) ? circle_in.phi_x(DIM(x,y,z)) : circle_ex.phi_x(DIM(x,y,z)); );
+            YCOMP( case DDY: return (circle_in.phi(DIM(x,y,z)) > circle_ex.phi(DIM(x,y,z))) ? circle_in.phi_y(DIM(x,y,z)) : circle_ex.phi_y(DIM(x,y,z)); );
+            ZCOMP( case DDZ: return (circle_in.phi(DIM(x,y,z)) > circle_ex.phi(DIM(x,y,z))) ? circle_in.phi_z(DIM(x,y,z)) : circle_ex.phi_z(DIM(x,y,z)); );
+          }
+        }
     }
   }
 };
@@ -620,9 +638,20 @@ public:
     switch (*n) {
       case 0: return -1;
       case 1: {
-          double r0 = 0.433;
+          double r0 = 0.533;
           double DIM( xc = 0, yc = 0, zc = 0 );
           flower_shaped_domain_t circle(r0, DIM(xc, yc, zc), 0.1);
+          switch (what) {
+            OCOMP( case VAL: return circle.phi  (DIM(x,y,z)) );
+            XCOMP( case DDX: return circle.phi_x(DIM(x,y,z)) );
+            YCOMP( case DDY: return circle.phi_y(DIM(x,y,z)) );
+            ZCOMP( case DDZ: return circle.phi_z(DIM(x,y,z)) );
+          }
+        }
+      case 2: {
+          double r0 = 0.533;
+          double DIM( xc = 0, yc = 0, zc = 0 );
+          flower_shaped_domain_t circle(r0, DIM(xc, yc, zc), 0.1, -1);
           switch (what) {
             OCOMP( case VAL: return circle.phi  (DIM(x,y,z)) );
             XCOMP( case DDX: return circle.phi_x(DIM(x,y,z)) );
@@ -759,9 +788,9 @@ public:
           double norm = sqrt(SUMD(nx*nx, ny*ny, nz*nz));
           nx /= norm; ny /= norm; CODE3D( nz /= norm );
 
-          return mu_cf(DIM(x,y,z))*(SUMD(nx*ux_cf(DIM(x,y,z)),
-                                         ny*uy_cf(DIM(x,y,z)),
-                                         nz*uz_cf(DIM(x,y,z))) + (*bc_coeff_cf_)(DIM(x,y,z))*u_cf(DIM(x,y,z)));
+          return mu_cf(DIM(x,y,z))*SUMD(nx*ux_cf(DIM(x,y,z)),
+                                        ny*uy_cf(DIM(x,y,z)),
+                                        nz*uz_cf(DIM(x,y,z))) + (*bc_coeff_cf_)(DIM(x,y,z))*u_cf(DIM(x,y,z));
         }
     }
   }
@@ -825,7 +854,7 @@ std::vector<CF_DIM *> jc_flux_cf;
 
 struct initilize_arrays_t
 {
-  initilize_arrays_t()
+  initilize_arrays_t() // using srtucture initialization to do some work before the main code
   {
     dom_clr.push_back(0);
     dom_acn.push_back(MLS_INTERSECTION);
@@ -870,10 +899,6 @@ public:
 
 // additional output functions
 double compute_convergence_order(std::vector<double> &x, std::vector<double> &y);
-void print_convergence_table(MPI_Comm mpi_comm,
-                             std::vector<double> &level, std::vector<double> &h,
-                             std::vector<double> &L_one, std::vector<double> &L_avg, std::vector<double> &L_dev, std::vector<double> &L_max,
-                             std::vector<double> &Q_one, std::vector<double> &Q_avg, std::vector<double> &Q_dev, std::vector<double> &Q_max);
 
 int main (int argc, char* argv[])
 {
@@ -955,7 +980,7 @@ int main (int argc, char* argv[])
 
   int num_shifts_total = MULTD(num_shifts_x_dir, num_shifts_y_dir, num_shifts_z_dir);
 
-  int num_resolutions = (num_splits-1)*num_splits_per_split + 1;
+  int num_resolutions = ((num_splits-1)*num_splits_per_split + 1)*mu_iter_num;
   int num_iter_total = num_resolutions*num_shifts_total;
 
   const int periodicity[] = { DIM(px, py, pz) };
@@ -964,21 +989,17 @@ int main (int argc, char* argv[])
   const double grid_xyz_max[] = { DIM(xmax, ymax, zmax) };
 
   // vectors to store convergence results
-  vector<double> lvl_arr, h_arr;
+  vector<double> lvl_arr, h_arr, mu_arr;
 
   vector<double> error_sl_m_arr;
   vector<double> error_ex_m_arr;
   vector<double> error_dd_m_arr;
-  vector<double> error_tr_m_arr;
   vector<double> error_gr_m_arr;
-  vector<double> error_ge_m_arr;
 
   vector<double> error_sl_p_arr;
   vector<double> error_ex_p_arr;
   vector<double> error_dd_p_arr;
-  vector<double> error_tr_p_arr;
   vector<double> error_gr_p_arr;
-  vector<double> error_ge_p_arr;
 
   vector<double> cond_num_arr;
 
@@ -1005,385 +1026,377 @@ int main (int argc, char* argv[])
   int iteration = -1;
   int file_idx  = -1;
 
-  for(int iter=0; iter<num_splits; ++iter)
+  for(int mu_iter = 0; mu_iter < mu_iter_num; ++mu_iter)
   {
-    ierr = PetscPrintf(mpi.comm(), "Level %2d / %2d.\n", lmin+iter, lmax+iter); CHKERRXX(ierr);
+    if (mu_iter_num > 1)
+      mag_mu_m = mag_mu_m_min * pow(mag_mu_m_max/mag_mu_m_min, ((double) mu_iter / (double) (mu_iter_num-1)));
 
-    int num_sub_iter = (iter == 0 ? 1 : num_splits_per_split);
-
-    for (int sub_iter = 0; sub_iter < num_sub_iter; ++sub_iter)
+    for(int iter=0; iter<num_splits; ++iter)
     {
+      ierr = PetscPrintf(mpi.comm(), "Level %2d / %2d.\n", lmin+iter, lmax+iter); CHKERRXX(ierr);
 
-      double grid_xyz_min_alt[3];
-      double grid_xyz_max_alt[3];
+      int num_sub_iter = (iter == 0 ? 1 : num_splits_per_split);
 
-      double scale = (double) (num_sub_iter-1-sub_iter) / (double) num_sub_iter;
-      grid_xyz_min_alt[0] = grid_xyz_min[0] - .5*(pow(2.,scale)-1)*(grid_xyz_max[0]-grid_xyz_min[0]); grid_xyz_max_alt[0] = grid_xyz_max[0] + .5*(pow(2.,scale)-1)*(grid_xyz_max[0]-grid_xyz_min[0]);
-      grid_xyz_min_alt[1] = grid_xyz_min[1] - .5*(pow(2.,scale)-1)*(grid_xyz_max[1]-grid_xyz_min[1]); grid_xyz_max_alt[1] = grid_xyz_max[1] + .5*(pow(2.,scale)-1)*(grid_xyz_max[1]-grid_xyz_min[1]);
-      grid_xyz_min_alt[2] = grid_xyz_min[2] - .5*(pow(2.,scale)-1)*(grid_xyz_max[2]-grid_xyz_min[2]); grid_xyz_max_alt[2] = grid_xyz_max[2] + .5*(pow(2.,scale)-1)*(grid_xyz_max[2]-grid_xyz_min[2]);
+      for (int sub_iter = 0; sub_iter < num_sub_iter; ++sub_iter)
+      {
+
+        double grid_xyz_min_alt[3];
+        double grid_xyz_max_alt[3];
+
+        double scale = (double) (num_sub_iter-1-sub_iter) / (double) num_sub_iter;
+        grid_xyz_min_alt[0] = grid_xyz_min[0] - .5*(pow(2.,scale)-1)*(grid_xyz_max[0]-grid_xyz_min[0]); grid_xyz_max_alt[0] = grid_xyz_max[0] + .5*(pow(2.,scale)-1)*(grid_xyz_max[0]-grid_xyz_min[0]);
+        grid_xyz_min_alt[1] = grid_xyz_min[1] - .5*(pow(2.,scale)-1)*(grid_xyz_max[1]-grid_xyz_min[1]); grid_xyz_max_alt[1] = grid_xyz_max[1] + .5*(pow(2.,scale)-1)*(grid_xyz_max[1]-grid_xyz_min[1]);
+        grid_xyz_min_alt[2] = grid_xyz_min[2] - .5*(pow(2.,scale)-1)*(grid_xyz_max[2]-grid_xyz_min[2]); grid_xyz_max_alt[2] = grid_xyz_max[2] + .5*(pow(2.,scale)-1)*(grid_xyz_max[2]-grid_xyz_min[2]);
 
 
-      double dxyz[3] = { (grid_xyz_max_alt[0]-grid_xyz_min_alt[0])/pow(2., (double) lmax+iter),
-                         (grid_xyz_max_alt[1]-grid_xyz_min_alt[1])/pow(2., (double) lmax+iter),
-                         (grid_xyz_max_alt[2]-grid_xyz_min_alt[2])/pow(2., (double) lmax+iter) };
+        double dxyz[3] = { (grid_xyz_max_alt[0]-grid_xyz_min_alt[0])/pow(2., (double) lmax+iter),
+                           (grid_xyz_max_alt[1]-grid_xyz_min_alt[1])/pow(2., (double) lmax+iter),
+                           (grid_xyz_max_alt[2]-grid_xyz_min_alt[2])/pow(2., (double) lmax+iter) };
 
-      double grid_xyz_min_shift[3];
-      double grid_xyz_max_shift[3];
+        double grid_xyz_min_shift[3];
+        double grid_xyz_max_shift[3];
 
-      double dxyz_m = MIN(DIM(dxyz[0],dxyz[1],dxyz[2]));
+        double dxyz_m = MIN(DIM(dxyz[0],dxyz[1],dxyz[2]));
 
-      h_arr.push_back(dxyz_m);
-      lvl_arr.push_back(lmax+iter-scale);
+        mu_arr.push_back(mag_mu_m);
+        h_arr.push_back(dxyz_m);
+        lvl_arr.push_back(lmax+iter-scale);
 
-      ierr = PetscPrintf(mpi.comm(), "Level %2d / %2d. Sub split %2d (lvl %5.2f / %5.2f).\n", lmin+iter, lmax+iter, sub_iter, lmin+iter-scale, lmax+iter-scale); CHKERRXX(ierr);
+        ierr = PetscPrintf(mpi.comm(), "Level %2d / %2d. Sub split %2d (lvl %5.2f / %5.2f).\n", lmin+iter, lmax+iter, sub_iter, lmin+iter-scale, lmax+iter-scale); CHKERRXX(ierr);
 
 #ifdef P4_TO_P8
-      for (int k_shift = 0; k_shift < num_shifts_z_dir; ++k_shift)
-      {
-        grid_xyz_min_shift[2] = grid_xyz_min_alt[2] + (double) (k_shift) / (double) (num_shifts_z_dir) * dxyz[2];
-        grid_xyz_max_shift[2] = grid_xyz_max_alt[2] + (double) (k_shift) / (double) (num_shifts_z_dir) * dxyz[2];
-#endif
-        for (int j_shift = 0; j_shift < num_shifts_y_dir; ++j_shift)
+        for (int k_shift = 0; k_shift < num_shifts_z_dir; ++k_shift)
         {
-          grid_xyz_min_shift[1] = grid_xyz_min_alt[1] + (double) (j_shift) / (double) (num_shifts_y_dir) * dxyz[1];
-          grid_xyz_max_shift[1] = grid_xyz_max_alt[1] + (double) (j_shift) / (double) (num_shifts_y_dir) * dxyz[1];
-
-          for (int i_shift = 0; i_shift < num_shifts_x_dir; ++i_shift)
+          grid_xyz_min_shift[2] = grid_xyz_min_alt[2] + (double) (k_shift) / (double) (num_shifts_z_dir) * dxyz[2];
+          grid_xyz_max_shift[2] = grid_xyz_max_alt[2] + (double) (k_shift) / (double) (num_shifts_z_dir) * dxyz[2];
+#endif
+          for (int j_shift = 0; j_shift < num_shifts_y_dir; ++j_shift)
           {
-            grid_xyz_min_shift[0] = grid_xyz_min_alt[0] + (double) (i_shift) / (double) (num_shifts_x_dir) * dxyz[0];
-            grid_xyz_max_shift[0] = grid_xyz_max_alt[0] + (double) (i_shift) / (double) (num_shifts_x_dir) * dxyz[0];
+            grid_xyz_min_shift[1] = grid_xyz_min_alt[1] + (double) (j_shift) / (double) (num_shifts_y_dir) * dxyz[1];
+            grid_xyz_max_shift[1] = grid_xyz_max_alt[1] + (double) (j_shift) / (double) (num_shifts_y_dir) * dxyz[1];
 
-            iteration++;
-
-            if (iteration < iter_start) continue;
-
-            file_idx++;
-
-            connectivity = my_p4est_brick_new(num_trees, grid_xyz_min_shift, grid_xyz_max_shift, &brick, periodicity);
-            p4est = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
-
-            if (refine_strict)
+            for (int i_shift = 0; i_shift < num_shifts_x_dir; ++i_shift)
             {
-              splitting_criteria_cf_t data_tmp(lmin, lmax, &phi_eff_cf, lip);
-              p4est->user_pointer = (void*)(&data_tmp);
+              grid_xyz_min_shift[0] = grid_xyz_min_alt[0] + (double) (i_shift) / (double) (num_shifts_x_dir) * dxyz[0];
+              grid_xyz_max_shift[0] = grid_xyz_max_alt[0] + (double) (i_shift) / (double) (num_shifts_x_dir) * dxyz[0];
 
-              my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
-              my_p4est_partition(p4est, P4EST_FALSE, NULL);
-              for (int i = 0; i < iter; ++i)
+              iteration++;
+
+              if (iteration < iter_start) continue;
+
+              file_idx++;
+
+              connectivity = my_p4est_brick_new(num_trees, grid_xyz_min_shift, grid_xyz_max_shift, &brick, periodicity);
+              p4est = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
+
+              if (refine_strict)
               {
-                my_p4est_refine(p4est, P4EST_FALSE, refine_every_cell, NULL);
+                splitting_criteria_cf_t data_tmp(lmin, lmax, &phi_eff_cf, lip);
+                p4est->user_pointer = (void*)(&data_tmp);
+
+                my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
+                my_p4est_partition(p4est, P4EST_FALSE, NULL);
+                for (int i = 0; i < iter; ++i)
+                {
+                  my_p4est_refine(p4est, P4EST_FALSE, refine_every_cell, NULL);
+                  my_p4est_partition(p4est, P4EST_FALSE, NULL);
+                }
+              } else {
+                splitting_criteria_cf_t data_tmp(lmin+iter, lmax+iter, &phi_eff_cf, lip);
+                p4est->user_pointer = (void*)(&data_tmp);
+                my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
                 my_p4est_partition(p4est, P4EST_FALSE, NULL);
               }
-            } else {
-              splitting_criteria_cf_t data_tmp(lmin+iter, lmax+iter, &phi_eff_cf, lip);
-              p4est->user_pointer = (void*)(&data_tmp);
-              my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
-              my_p4est_partition(p4est, P4EST_FALSE, NULL);
-            }
 
-            splitting_criteria_cf_t data(lmin+iter, lmax+iter, &phi_eff_cf, lip);
-            p4est->user_pointer = (void*)(&data);
+              splitting_criteria_cf_t data(lmin+iter, lmax+iter, &phi_eff_cf, lip);
+              p4est->user_pointer = (void*)(&data);
 
-            if (refine_rand)
-              my_p4est_refine(p4est, P4EST_TRUE, refine_random, NULL);
+              if (refine_rand)
+                my_p4est_refine(p4est, P4EST_TRUE, refine_random, NULL);
 
-            if (balance_grid)
-            {
-              my_p4est_partition(p4est, P4EST_FALSE, NULL);
-              p4est_balance(p4est, P4EST_CONNECT_FULL, NULL);
-              my_p4est_partition(p4est, P4EST_FALSE, NULL);
-            }
-
-            ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
-            if (expand_ghost)
-              my_p4est_ghost_expand(p4est, ghost);
-            nodes = my_p4est_nodes_new(p4est, ghost);
-
-            my_p4est_hierarchy_t hierarchy(p4est,ghost, &brick);
-            my_p4est_node_neighbors_t ngbd_n(&hierarchy,nodes);
-
-            my_p4est_level_set_t ls(&ngbd_n);
-
-            double dxyz[P4EST_DIM];
-            dxyz_min(p4est, dxyz);
-
-            double dxyz_max = MAX(DIM(dxyz[0], dxyz[1], dxyz[2]));
-            double diag = sqrt(SUMD(dxyz[0]*dxyz[0], dxyz[1]*dxyz[1], dxyz[2]*dxyz[2]));
-
-            // sample level-set functions
-            std::vector<Vec> dom_phi;
-            for (unsigned int i = 0; i < num_dom_phi; i++)
-            {
-              dom_phi.push_back(Vec());
-              ierr = VecCreateGhostNodes(p4est, nodes, &dom_phi.back()); CHKERRXX(ierr);
-              sample_cf_on_nodes(p4est, nodes, *dom_phi_cf[i], dom_phi.back());
-
-              if (dom_perturb)
+              if (balance_grid)
               {
-                double *phi_ptr;
-                ierr = VecGetArray(dom_phi.back(), &phi_ptr); CHKERRXX(ierr);
-
-                for (p4est_locidx_t n = 0; n < nodes->num_owned_indeps; ++n)
-                {
-                  double xyz[P4EST_DIM];
-                  node_xyz_fr_n(n, p4est, nodes, xyz);
-                  phi_ptr[n] += dom_perturb_mag*dom_perturb_cf.value(xyz)*pow(dxyz_m, dom_perturb_pow);
-                }
-
-                ierr = VecRestoreArray(dom_phi.back(), &phi_ptr); CHKERRXX(ierr);
-
-                ierr = VecGhostUpdateBegin(dom_phi.back(), INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-                ierr = VecGhostUpdateEnd  (dom_phi.back(), INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+                my_p4est_partition(p4est, P4EST_FALSE, NULL);
+                p4est_balance(p4est, P4EST_CONNECT_FULL, NULL);
+                my_p4est_partition(p4est, P4EST_FALSE, NULL);
               }
 
-              if (reinit_level_set)
-                ls.reinitialize_1st_order_time_2nd_order_space(dom_phi.back(),20);
-            }
+              ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
+              if (expand_ghost)
+                my_p4est_ghost_expand(p4est, ghost);
+              nodes = my_p4est_nodes_new(p4est, ghost);
 
-            std::vector<Vec> ifc_phi;
-            for (unsigned int i = 0; i < num_ifc_phi; i++)
-            {
-              ifc_phi.push_back(Vec());
-              ierr = VecCreateGhostNodes(p4est, nodes, &ifc_phi.back()); CHKERRXX(ierr);
-              sample_cf_on_nodes(p4est, nodes, *ifc_phi_cf[i], ifc_phi.back());
+              my_p4est_hierarchy_t hierarchy(p4est,ghost, &brick);
+              my_p4est_node_neighbors_t ngbd_n(&hierarchy,nodes);
 
-              if (ifc_perturb)
+              my_p4est_level_set_t ls(&ngbd_n);
+
+              double dxyz[P4EST_DIM];
+              dxyz_min(p4est, dxyz);
+
+              double dxyz_max = MAX(DIM(dxyz[0], dxyz[1], dxyz[2]));
+              double diag = sqrt(SUMD(dxyz[0]*dxyz[0], dxyz[1]*dxyz[1], dxyz[2]*dxyz[2]));
+
+              // sample level-set functions
+              std::vector<Vec> dom_phi;
+              for (unsigned int i = 0; i < num_dom_phi; i++)
               {
-                double *phi_ptr;
-                ierr = VecGetArray(ifc_phi.back(), &phi_ptr); CHKERRXX(ierr);
+                dom_phi.push_back(Vec());
+                ierr = VecCreateGhostNodes(p4est, nodes, &dom_phi.back()); CHKERRXX(ierr);
+                sample_cf_on_nodes(p4est, nodes, *dom_phi_cf[i], dom_phi.back());
 
-                for (p4est_locidx_t n = 0; n < nodes->num_owned_indeps; ++n)
+                if (dom_perturb)
                 {
-                  double xyz[P4EST_DIM];
-                  node_xyz_fr_n(n, p4est, nodes, xyz);
-                  phi_ptr[n] += ifc_perturb_mag*ifc_perturb_cf.value(xyz)*pow(dxyz_m, ifc_perturb_pow);
+                  double *phi_ptr;
+                  ierr = VecGetArray(dom_phi.back(), &phi_ptr); CHKERRXX(ierr);
+
+                  for (p4est_locidx_t n = 0; n < nodes->num_owned_indeps; ++n)
+                  {
+                    double xyz[P4EST_DIM];
+                    node_xyz_fr_n(n, p4est, nodes, xyz);
+                    phi_ptr[n] += dom_perturb_mag*dom_perturb_cf.value(xyz)*pow(dxyz_m, dom_perturb_pow);
+                  }
+
+                  ierr = VecRestoreArray(dom_phi.back(), &phi_ptr); CHKERRXX(ierr);
+
+                  ierr = VecGhostUpdateBegin(dom_phi.back(), INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+                  ierr = VecGhostUpdateEnd  (dom_phi.back(), INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
                 }
 
-                ierr = VecRestoreArray(ifc_phi.back(), &phi_ptr); CHKERRXX(ierr);
-
-                ierr = VecGhostUpdateBegin(ifc_phi.back(), INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-                ierr = VecGhostUpdateEnd  (ifc_phi.back(), INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+                if (reinit_level_set)
+                  ls.reinitialize_1st_order_time_2nd_order_space(dom_phi.back(),20);
               }
 
-              if (reinit_level_set)
-                ls.reinitialize_1st_order_time_2nd_order_space(ifc_phi.back(),20);
-            }
+              std::vector<Vec> ifc_phi;
+              for (unsigned int i = 0; i < num_ifc_phi; i++)
+              {
+                ifc_phi.push_back(Vec());
+                ierr = VecCreateGhostNodes(p4est, nodes, &ifc_phi.back()); CHKERRXX(ierr);
+                sample_cf_on_nodes(p4est, nodes, *ifc_phi_cf[i], ifc_phi.back());
+
+                if (ifc_perturb)
+                {
+                  double *phi_ptr;
+                  ierr = VecGetArray(ifc_phi.back(), &phi_ptr); CHKERRXX(ierr);
+
+                  for (p4est_locidx_t n = 0; n < nodes->num_owned_indeps; ++n)
+                  {
+                    double xyz[P4EST_DIM];
+                    node_xyz_fr_n(n, p4est, nodes, xyz);
+                    phi_ptr[n] += ifc_perturb_mag*ifc_perturb_cf.value(xyz)*pow(dxyz_m, ifc_perturb_pow);
+                  }
+
+                  ierr = VecRestoreArray(ifc_phi.back(), &phi_ptr); CHKERRXX(ierr);
+
+                  ierr = VecGhostUpdateBegin(ifc_phi.back(), INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+                  ierr = VecGhostUpdateEnd  (ifc_phi.back(), INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+                }
+
+                if (reinit_level_set)
+                  ls.reinitialize_1st_order_time_2nd_order_space(ifc_phi.back(),20);
+              }
 
 
-            Vec rhs_m;
-            ierr = VecCreateGhostNodes(p4est, nodes, &rhs_m); CHKERRXX(ierr);
-            sample_cf_on_nodes(p4est, nodes, rhs_m_cf, rhs_m);
+              Vec rhs_m;
+              ierr = VecCreateGhostNodes(p4est, nodes, &rhs_m); CHKERRXX(ierr);
+              sample_cf_on_nodes(p4est, nodes, rhs_m_cf, rhs_m);
 
-            Vec rhs_p;
-            ierr = VecCreateGhostNodes(p4est, nodes, &rhs_p); CHKERRXX(ierr);
-            sample_cf_on_nodes(p4est, nodes, rhs_p_cf, rhs_p);
+              Vec rhs_p;
+              ierr = VecCreateGhostNodes(p4est, nodes, &rhs_p); CHKERRXX(ierr);
+              sample_cf_on_nodes(p4est, nodes, rhs_p_cf, rhs_p);
 
-            Vec mu_m;
-            ierr = VecCreateGhostNodes(p4est, nodes, &mu_m); CHKERRXX(ierr);
-            sample_cf_on_nodes(p4est, nodes, mu_m_cf, mu_m);
+              Vec mu_m;
+              ierr = VecCreateGhostNodes(p4est, nodes, &mu_m); CHKERRXX(ierr);
+              sample_cf_on_nodes(p4est, nodes, mu_m_cf, mu_m);
 
-            Vec mu_p;
-            ierr = VecCreateGhostNodes(p4est, nodes, &mu_p); CHKERRXX(ierr);
-            sample_cf_on_nodes(p4est, nodes, mu_p_cf, mu_p);
+              Vec mu_p;
+              ierr = VecCreateGhostNodes(p4est, nodes, &mu_p); CHKERRXX(ierr);
+              sample_cf_on_nodes(p4est, nodes, mu_p_cf, mu_p);
 
-            Vec diag_m;
-            ierr = VecCreateGhostNodes(p4est, nodes, &diag_m); CHKERRXX(ierr);
-            sample_cf_on_nodes(p4est, nodes, diag_m_cf, diag_m);
+              Vec diag_m;
+              ierr = VecCreateGhostNodes(p4est, nodes, &diag_m); CHKERRXX(ierr);
+              sample_cf_on_nodes(p4est, nodes, diag_m_cf, diag_m);
 
-            Vec diag_p;
-            ierr = VecCreateGhostNodes(p4est, nodes, &diag_p); CHKERRXX(ierr);
-            sample_cf_on_nodes(p4est, nodes, diag_p_cf, diag_p);
+              Vec diag_p;
+              ierr = VecCreateGhostNodes(p4est, nodes, &diag_p); CHKERRXX(ierr);
+              sample_cf_on_nodes(p4est, nodes, diag_p_cf, diag_p);
 
 
-            Vec sol; double *sol_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &sol); CHKERRXX(ierr);
+              Vec sol; double *sol_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &sol); CHKERRXX(ierr);
 
-            Vec dom_phi_eff; double *dom_phi_eff_ptr;
-            Vec ifc_phi_eff; double *ifc_phi_eff_ptr;
-            Vec mask;
+              my_p4est_poisson_nodes_mls_sc_t solver(&ngbd_n);
 
-            Mat A;
-            std::vector<double> *scalling;
-            Vec areas;
+              solver.set_jump_scheme(jc_scheme);
+              solver.set_jump_sub_scheme(jc_sub_scheme);
+              solver.set_use_sc_scheme(sc_scheme);
+              solver.set_integration_order(integration_order);
 
-            my_p4est_poisson_nodes_mls_sc_t solver(&ngbd_n);
+              //            if (use_phi_cf) solver.set_phi_cf(phi_cf);
 
-            solver.set_jump_scheme(jc_scheme);
-            solver.set_use_sc_scheme(sc_scheme);
-            solver.set_integration_order(integration_order);
+              solver.add_boundary (MLS_INTERSECTION, dom_phi[0], NULL, NULL, (BoundaryConditionType) bc_type_00, bc_value_cf_00, bc_coeff_cf_00);
+              solver.add_interface(MLS_INTERSECTION, ifc_phi[0], NULL, NULL, jc_value_cf, jc_flux_cf_00);
 
-//            if (use_phi_cf) solver.set_phi_cf(phi_cf);
 
-            solver.add_boundary(MLS_INTERSECTION, dom_phi[0], NULL, NULL, (BoundaryConditionType) bc_type_00, bc_value_cf_00, bc_coeff_cf_00);
-            solver.set_boundary_phi_eff(dom_phi[0]);
+              solver.set_mu(mu_m, DIM(NULL, NULL, NULL),
+                            mu_p, DIM(NULL, NULL, NULL));
 
-            solver.add_interface(MLS_INTERSECTION, ifc_phi[0], NULL, NULL, jc_value_cf, jc_flux_cf_00);
-            solver.set_interface_phi_eff(ifc_phi[0]);
+              solver.set_wc(bc_wall_type, u_cf);
+              solver.set_rhs(rhs_m, rhs_p);
+              solver.set_diag_add(diag_m, diag_p);
 
-            solver.set_wc(bc_wall_type, u_cf);
+              solver.set_use_taylor_correction(taylor_correction);
+              solver.set_keep_scalling(1);
+              solver.set_kink_treatment(kink_special_treatment);
+              solver.set_try_remove_hanging_cells(try_remove_hanging_cells);
 
-            solver.set_mu2(mu_m, mu_p);
-            solver.set_rhs(rhs_m, rhs_p);
-//            solver.set_rhs(rhs);
+              solver.solve(sol);
 
-//            solver.set_bc_wall_value(u_cf);
-//            solver.set_bc_wall_type(bc_wall_type);
+              Vec dom_phi_eff = solver.get_boundary_phi_eff();
+              Vec ifc_phi_eff = solver.get_interface_phi_eff();
 
-//            solver.set_bc_interface_type(bc_type);
-//            solver.set_bc_interface_coeff(bc_coeff_cf);
-//            solver.set_bc_interface_value(bc_value_cf);
+              Vec mask_m  = solver.get_mask_m();
+              Vec mask_p  = solver.get_mask_p();
+              Mat A       = solver.get_matrix();
 
-//            solver.set_jump_conditions(jc_value_cf, jc_flux_cf);
+              double *dom_phi_eff_ptr;
+              double *ifc_phi_eff_ptr;
+              double *mask_m_ptr;
+              double *mask_p_ptr;
 
-            solver.set_diag_add(diag_m, diag_p);
+              if (save_matrix_ascii)
+              {
+                std::ostringstream oss; oss << out_dir << "/matrix/mat_" << file_idx << ".m";
 
-            solver.set_use_taylor_correction(taylor_correction);
-            solver.set_keep_scalling(1);
-            solver.set_kink_treatment(kink_special_treatment);
-            solver.set_try_remove_hanging_cells(try_remove_hanging_cells);
+                PetscViewer viewer;
+                ierr = PetscViewerASCIIOpen(mpi.comm(), oss.str().c_str(), &viewer); CHKERRXX(ierr);
+                ierr = PetscViewerPushFormat(viewer, 	PETSC_VIEWER_ASCII_MATLAB); CHKERRXX(ierr);
 
-            solver.solve(sol);
+                ierr = PetscObjectSetName((PetscObject)A, "mat");
+                ierr = MatView(A, viewer); CHKERRXX(ierr);
 
-            dom_phi_eff = solver.get_boundary_phi_eff();
-            ifc_phi_eff = solver.get_interface_phi_eff();
-            mask        = solver.get_mask();
-            A           = solver.get_matrix();
-            scalling    = solver.get_scalling();
-            areas       = solver.get_areas();
+                Vec lex_order;
+                ierr = VecCreateGhostNodes(p4est, nodes, &lex_order); CHKERRXX(ierr);
 
-            if (save_matrix_ascii)
-            {
-              std::ostringstream oss; oss << out_dir << "/matrix/mat_" << file_idx << ".m";
+                double *vec_ptr; ierr = VecGetArray(lex_order, &vec_ptr); CHKERRXX(ierr);
 
-              PetscViewer viewer;
-              ierr = PetscViewerASCIIOpen(mpi.comm(), oss.str().c_str(), &viewer); CHKERRXX(ierr);
-              ierr = PetscViewerPushFormat(viewer, 	PETSC_VIEWER_ASCII_MATLAB); CHKERRXX(ierr);
-
-              ierr = PetscObjectSetName((PetscObject)A, "mat");
-              ierr = MatView(A, viewer); CHKERRXX(ierr);
-
-              Vec lex_order;
-              ierr = VecCreateGhostNodes(p4est, nodes, &lex_order); CHKERRXX(ierr);
-
-              double *vec_ptr; ierr = VecGetArray(lex_order, &vec_ptr); CHKERRXX(ierr);
-
-              int nx = round((grid_xyz_max_shift[0]-grid_xyz_min_shift[0])/dxyz[0] + 1);
+                int nx = round((grid_xyz_max_shift[0]-grid_xyz_min_shift[0])/dxyz[0] + 1);
 #ifdef P4_TO_P8
-              int ny = round((grid_xyz_max_shift[1]-grid_xyz_min_shift[1])/dxyz[1] + 1);
-              int nz = round((grid_xyz_max_shift[2]-grid_xyz_min_shift[2])/dxyz[2] + 1);
+                int ny = round((grid_xyz_max_shift[1]-grid_xyz_min_shift[1])/dxyz[1] + 1);
+                int nz = round((grid_xyz_max_shift[2]-grid_xyz_min_shift[2])/dxyz[2] + 1);
 #endif
-              for (p4est_locidx_t n = 0; n < nodes->num_owned_indeps; ++n)
-              {
-                double xyz[P4EST_DIM];
-                node_xyz_fr_n(n, p4est, nodes, xyz);
+                for (p4est_locidx_t n = 0; n < nodes->num_owned_indeps; ++n)
+                {
+                  double xyz[P4EST_DIM];
+                  node_xyz_fr_n(n, p4est, nodes, xyz);
 
-                int ix = round((xyz[0]-grid_xyz_min_shift[0])/dxyz[0]);
-                int iy = round((xyz[1]-grid_xyz_min_shift[1])/dxyz[1]);
+                  int ix = round((xyz[0]-grid_xyz_min_shift[0])/dxyz[0]);
+                  int iy = round((xyz[1]-grid_xyz_min_shift[1])/dxyz[1]);
 #ifdef P4_TO_P8
-                int iz = round((xyz[2]-grid_xyz_min_shift[2])/dxyz[2]);
-                vec_ptr[n] = iz*nx*ny + iy*(nx) + ix + 1;
+                  int iz = round((xyz[2]-grid_xyz_min_shift[2])/dxyz[2]);
+                  vec_ptr[n] = iz*nx*ny + iy*(nx) + ix + 1;
 #else
-                vec_ptr[n] = iy*(nx) + ix + 1;
+                  vec_ptr[n] = iy*(nx) + ix + 1;
 #endif
-              }
-
-              ierr = VecRestoreArray(lex_order, &vec_ptr); CHKERRXX(ierr);
-
-              ierr = PetscObjectSetName((PetscObject)lex_order, "vec");
-              ierr = VecView(lex_order, viewer); CHKERRXX(ierr);
-
-              ierr = PetscViewerDestroy(viewer); CHKERRXX(ierr);
-            }
-
-            if (save_matrix_binary)
-            {
-              std::ostringstream oss; oss << out_dir << "/matrix/mat_" << file_idx << ".dat";
-
-              PetscViewer viewer;
-              ierr = PetscViewerBinaryOpen(mpi.comm(), oss.str().c_str(), FILE_MODE_WRITE, &viewer); CHKERRXX(ierr);
-              ierr = PetscViewerPushFormat(viewer, 	PETSC_VIEWER_BINARY_MATLAB); CHKERRXX(ierr);
-              ierr = MatView(A, viewer); CHKERRXX(ierr);
-              ierr = PetscViewerDestroy(viewer); CHKERRXX(ierr);
-            }
-
-            if (iter < compute_cond_num)
-            {
-              // Get the local AIJ representation of the matrix
-              std::vector<double> aij;
-
-              foreach_local_node(n, nodes)
-              {
-                int num_elem;
-                const int *icol;
-                const double *vals;
-
-                PetscInt N = solver.get_global_idx(n);
-                MatGetRow(A, N, &num_elem, &icol, &vals);
-                for (int i = 0; i < num_elem; ++i)
-                {
-                  aij.push_back((double) (N+1));
-                  aij.push_back((double) (icol[i]+1));
-                  aij.push_back(vals[i]);
                 }
-                MatRestoreRow(A, N, &num_elem, &icol, &vals);
+
+                ierr = VecRestoreArray(lex_order, &vec_ptr); CHKERRXX(ierr);
+
+                ierr = PetscObjectSetName((PetscObject)lex_order, "vec");
+                ierr = VecView(lex_order, viewer); CHKERRXX(ierr);
+
+                ierr = PetscViewerDestroy(viewer); CHKERRXX(ierr);
               }
 
-              int num_local_entries = aij.size();
-
-              // Collect all chucks of the matrix into global_aij on the 0-rank process
-              std::vector<int> local_sizes(mpi.size(), 0);
-              std::vector<int> displs(mpi.size(), 0);
-
-              MPI_Gather(&num_local_entries, 1, MPI_INT, local_sizes.data(), 1, MPI_INT, 0, mpi.comm());
-
-              int num_total_entries = local_sizes[0];
-
-              for (int i = 1; i < mpi.size(); ++i)
+              if (save_matrix_binary)
               {
-                displs[i] = displs[i-1] + local_sizes[i-1];
-                num_total_entries += local_sizes[i];
+                std::ostringstream oss; oss << out_dir << "/matrix/mat_" << file_idx << ".dat";
+
+                PetscViewer viewer;
+                ierr = PetscViewerBinaryOpen(mpi.comm(), oss.str().c_str(), FILE_MODE_WRITE, &viewer); CHKERRXX(ierr);
+                ierr = PetscViewerPushFormat(viewer, 	PETSC_VIEWER_BINARY_MATLAB); CHKERRXX(ierr);
+                ierr = MatView(A, viewer); CHKERRXX(ierr);
+                ierr = PetscViewerDestroy(viewer); CHKERRXX(ierr);
               }
 
-              mxArray *mat = NULL;
-              mxDouble *mat_data = NULL;
-
-              if (mpi.rank() == 0)
+              if (iter < compute_cond_num)
               {
-                mat = mxCreateDoubleMatrix(3, num_total_entries/3, mxREAL);
-                mat_data = mxGetDoubles(mat);
-              }
+                // Get the local AIJ representation of the matrix
+                std::vector<double> aij;
 
-              MPI_Gatherv(aij.data(), aij.size(), MPI_DOUBLE, mat_data, local_sizes.data(), displs.data(), MPI_DOUBLE, 0, mpi.comm());
+                foreach_local_node(n, nodes)
+                {
+                  int num_elem;
+                  const int *icol;
+                  const double *vals;
 
-              aij.clear();
+                  PetscInt N = solver.get_global_idx(n);
+                  MatGetRow(A, N, &num_elem, &icol, &vals);
+                  for (int i = 0; i < num_elem; ++i)
+                  {
+                    aij.push_back((double) (N+1));
+                    aij.push_back((double) (icol[i]+1));
+                    aij.push_back(vals[i]);
+                  }
+                  MatRestoreRow(A, N, &num_elem, &icol, &vals);
+                }
 
-              // pass the matrix to MATLAB and ask to compute condition number
-              if (mpi.rank() == 0)
-              {
-                // send the matrix to MATLAB
-                engPutVariable(mengine, "AIJ", mat);
-                mxDestroyArray(mat);
+                int num_local_entries = aij.size();
 
-                // ask to compute condition number
-                engEvalString(mengine, "cn = condest(spconvert(AIJ'));");
+                // Collect all chucks of the matrix into global_aij on the 0-rank process
+                std::vector<int> local_sizes(mpi.size(), 0);
+                std::vector<int> displs(mpi.size(), 0);
 
-                // get the result
-                mxArray *value = engGetVariable(mengine, "cn");
-                double cn = *mxGetDoubles(value);
-                mxDestroyArray(value);
+                MPI_Gather(&num_local_entries, 1, MPI_INT, local_sizes.data(), 1, MPI_INT, 0, mpi.comm());
 
-                // store
-                cond_num_arr.push_back(cn);
+                int num_total_entries = local_sizes[0];
+
+                for (int i = 1; i < mpi.size(); ++i)
+                {
+                  displs[i] = displs[i-1] + local_sizes[i-1];
+                  num_total_entries += local_sizes[i];
+                }
+
+                mxArray *mat = NULL;
+                mxDouble *mat_data = NULL;
+
+                if (mpi.rank() == 0)
+                {
+                  mat = mxCreateDoubleMatrix(3, num_total_entries/3, mxREAL);
+                  mat_data = mxGetDoubles(mat);
+                }
+
+                MPI_Gatherv(aij.data(), aij.size(), MPI_DOUBLE, mat_data, local_sizes.data(), displs.data(), MPI_DOUBLE, 0, mpi.comm());
+
+                aij.clear();
+
+                // pass the matrix to MATLAB and ask to compute condition number
+                if (mpi.rank() == 0)
+                {
+                  // send the matrix to MATLAB
+                  engPutVariable(mengine, "AIJ", mat);
+                  mxDestroyArray(mat);
+
+                  // ask to compute condition number
+                  engEvalString(mengine, "cn = condest(spconvert(AIJ'));");
+
+                  // get the result
+                  mxArray *value = engGetVariable(mengine, "cn");
+                  double cn = *mxGetDoubles(value);
+                  mxDestroyArray(value);
+
+                  // store
+                  cond_num_arr.push_back(cn);
+                } else {
+                  cond_num_arr.push_back(NAN);
+                }
               } else {
                 cond_num_arr.push_back(NAN);
               }
-            } else {
-              cond_num_arr.push_back(NAN);
-            }
 
-            my_p4est_integration_mls_t integrator(p4est, nodes);
-            integrator.set_phi(dom_phi, dom_acn, dom_clr);
+              my_p4est_integration_mls_t integrator(p4est, nodes);
+              integrator.set_phi(dom_phi, dom_acn, dom_clr);
 
-            /*
+              /*
             if (save_domain)
             {
               std::ostringstream oss; oss << out_dir << "/geometry";
@@ -1438,783 +1451,526 @@ int main (int argc, char* argv[])
             }
             //*/
 
-            Vec sol_m = sol; double *sol_m_ptr;
-            Vec sol_p = sol; double *sol_p_ptr;
-
-            Vec mask_m; double *mask_m_ptr;
-            Vec mask_p; double *mask_p_ptr;
-
-            ierr = VecDuplicate(mask, &mask_m); CHKERRXX(ierr);
-            ierr = VecDuplicate(mask, &mask_p); CHKERRXX(ierr);
-
-            VecCopyGhost(mask, mask_m);
-            VecCopyGhost(mask, mask_p);
-
-            ierr = VecGetArray(mask_m, &mask_m_ptr); CHKERRXX(ierr);
-            ierr = VecGetArray(mask_p, &mask_p_ptr); CHKERRXX(ierr);
-            ierr = VecGetArray(ifc_phi_eff, &ifc_phi_eff_ptr); CHKERRXX(ierr);
-
-            foreach_node(n, nodes)
-            {
-              if (ifc_phi_eff_ptr[n] < 0) mask_p_ptr[n] = 1;
-              else                        mask_m_ptr[n] = 1;
-            }
-
-            ierr = VecRestoreArray(mask_m, &mask_m_ptr); CHKERRXX(ierr);
-            ierr = VecRestoreArray(mask_p, &mask_p_ptr); CHKERRXX(ierr);
-            ierr = VecRestoreArray(ifc_phi_eff, &ifc_phi_eff_ptr); CHKERRXX(ierr);
-
-            /* calculate errors */
-            Vec vec_error_sl_m; double *vec_error_sl_m_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &vec_error_sl_m); CHKERRXX(ierr);
-            Vec vec_error_gr_m; double *vec_error_gr_m_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &vec_error_gr_m); CHKERRXX(ierr);
-            Vec vec_error_ex_m; double *vec_error_ex_m_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &vec_error_ex_m); CHKERRXX(ierr);
-            Vec vec_error_dd_m; double *vec_error_dd_m_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &vec_error_dd_m); CHKERRXX(ierr);
-            Vec vec_error_tr_m; double *vec_error_tr_m_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &vec_error_tr_m); CHKERRXX(ierr);
-
-            Vec vec_error_sl_p; double *vec_error_sl_p_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &vec_error_sl_p); CHKERRXX(ierr);
-            Vec vec_error_gr_p; double *vec_error_gr_p_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &vec_error_gr_p); CHKERRXX(ierr);
-            Vec vec_error_ex_p; double *vec_error_ex_p_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &vec_error_ex_p); CHKERRXX(ierr);
-            Vec vec_error_dd_p; double *vec_error_dd_p_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &vec_error_dd_p); CHKERRXX(ierr);
-            Vec vec_error_tr_p; double *vec_error_tr_p_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &vec_error_tr_p); CHKERRXX(ierr);
-
-
-            //----------------------------------------------------------------------------------------------
-            // calculate error of solution
-            //----------------------------------------------------------------------------------------------
-            ierr = VecGetArray(sol_m, &sol_m_ptr); CHKERRXX(ierr);
-            ierr = VecGetArray(sol_p, &sol_p_ptr); CHKERRXX(ierr);
-
-            ierr = VecGetArray(vec_error_sl_m, &vec_error_sl_m_ptr); CHKERRXX(ierr);
-            ierr = VecGetArray(vec_error_sl_p, &vec_error_sl_p_ptr); CHKERRXX(ierr);
-
-            ierr = VecGetArray(mask_m, &mask_m_ptr); CHKERRXX(ierr);
-            ierr = VecGetArray(mask_p, &mask_p_ptr); CHKERRXX(ierr);
-
-            double u_max = 0;
-
-            foreach_local_node(n, nodes)
-            {
-              double xyz[P4EST_DIM];
-              node_xyz_fr_n(n, p4est, nodes, xyz);
-
-              vec_error_sl_m_ptr[n] = mask_m_ptr[n] < 0 ? ABS(sol_m_ptr[n] - u_m_cf.value(xyz)) : 0;
-              vec_error_sl_p_ptr[n] = mask_p_ptr[n] < 0 ? ABS(sol_p_ptr[n] - u_p_cf.value(xyz)) : 0;
-
-              u_max = MAX(u_max, fabs(u_m_cf.value(xyz)), fabs(u_p_cf.value(xyz)));
-            }
-
-            ierr = VecRestoreArray(mask_m, &mask_m_ptr); CHKERRXX(ierr);
-            ierr = VecRestoreArray(mask_p, &mask_p_ptr); CHKERRXX(ierr);
-
-            ierr = VecRestoreArray(sol_m, &sol_m_ptr); CHKERRXX(ierr);
-            ierr = VecRestoreArray(sol_p, &sol_p_ptr); CHKERRXX(ierr);
-
-            ierr = VecRestoreArray(vec_error_sl_m, &vec_error_sl_m_ptr); CHKERRXX(ierr);
-            ierr = VecRestoreArray(vec_error_sl_p, &vec_error_sl_p_ptr); CHKERRXX(ierr);
-
-            ierr = VecGhostUpdateBegin(vec_error_sl_m, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-            ierr = VecGhostUpdateBegin(vec_error_sl_p, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-            ierr = VecGhostUpdateEnd  (vec_error_sl_m, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-            ierr = VecGhostUpdateEnd  (vec_error_sl_p, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-
-            //----------------------------------------------------------------------------------------------
-            // calculate error of gradients
-            //----------------------------------------------------------------------------------------------
-            ierr = VecGetArray(sol_m, &sol_m_ptr); CHKERRXX(ierr);
-            ierr = VecGetArray(sol_p, &sol_p_ptr); CHKERRXX(ierr);
-
-            ierr = VecGetArray(mask_m, &mask_m_ptr); CHKERRXX(ierr);
-            ierr = VecGetArray(mask_p, &mask_p_ptr); CHKERRXX(ierr);
-
-            ierr = VecGetArray(vec_error_gr_m, &vec_error_gr_m_ptr); CHKERRXX(ierr);
-            ierr = VecGetArray(vec_error_gr_p, &vec_error_gr_p_ptr); CHKERRXX(ierr);
-
-            quad_neighbor_nodes_of_node_t qnnn;
-
-            double gr_max = 0;
-
-            foreach_local_node(n, nodes)
-            {
-              double xyz[P4EST_DIM];
-              node_xyz_fr_n(n, p4est, nodes, xyz);
-
-              p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
-
-              if (!compute_grad_between)
-              {
-                ngbd_n.get_neighbors(n, qnnn);
-
-                if ( mask_m_ptr[qnnn.node_000]<-EPS && !is_node_Wall(p4est, ni) &&
-             #ifdef P4_TO_P8
-                     ( mask_m_ptr[qnnn.node_m00_mm]<-EPS || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
-                     ( mask_m_ptr[qnnn.node_m00_mp]<-EPS || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
-                     ( mask_m_ptr[qnnn.node_m00_pm]<-EPS || fabs(qnnn.d_m00_m0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
-                     ( mask_m_ptr[qnnn.node_m00_pp]<-EPS || fabs(qnnn.d_m00_m0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
-                     ( mask_m_ptr[qnnn.node_p00_mm]<-EPS || fabs(qnnn.d_p00_p0)<EPS || fabs(qnnn.d_p00_0p)<EPS) &&
-                     ( mask_m_ptr[qnnn.node_p00_mp]<-EPS || fabs(qnnn.d_p00_p0)<EPS || fabs(qnnn.d_p00_0m)<EPS) &&
-                     ( mask_m_ptr[qnnn.node_p00_pm]<-EPS || fabs(qnnn.d_p00_m0)<EPS || fabs(qnnn.d_p00_0p)<EPS) &&
-                     ( mask_m_ptr[qnnn.node_p00_pp]<-EPS || fabs(qnnn.d_p00_m0)<EPS || fabs(qnnn.d_p00_0m)<EPS) &&
-                     ( mask_m_ptr[qnnn.node_0m0_mm]<-EPS || fabs(qnnn.d_0m0_p0)<EPS || fabs(qnnn.d_0m0_0p)<EPS) &&
-                     ( mask_m_ptr[qnnn.node_0m0_mp]<-EPS || fabs(qnnn.d_0m0_p0)<EPS || fabs(qnnn.d_0m0_0m)<EPS) &&
-                     ( mask_m_ptr[qnnn.node_0m0_pm]<-EPS || fabs(qnnn.d_0m0_m0)<EPS || fabs(qnnn.d_0m0_0p)<EPS) &&
-                     ( mask_m_ptr[qnnn.node_0m0_pp]<-EPS || fabs(qnnn.d_0m0_m0)<EPS || fabs(qnnn.d_0m0_0m)<EPS) &&
-                     ( mask_m_ptr[qnnn.node_0p0_mm]<-EPS || fabs(qnnn.d_0p0_p0)<EPS || fabs(qnnn.d_0p0_0p)<EPS) &&
-                     ( mask_m_ptr[qnnn.node_0p0_mp]<-EPS || fabs(qnnn.d_0p0_p0)<EPS || fabs(qnnn.d_0p0_0m)<EPS) &&
-                     ( mask_m_ptr[qnnn.node_0p0_pm]<-EPS || fabs(qnnn.d_0p0_m0)<EPS || fabs(qnnn.d_0p0_0p)<EPS) &&
-                     ( mask_m_ptr[qnnn.node_0p0_pp]<-EPS || fabs(qnnn.d_0p0_m0)<EPS || fabs(qnnn.d_0p0_0m)<EPS) &&
-                     ( mask_m_ptr[qnnn.node_00m_mm]<-EPS || fabs(qnnn.d_00m_p0)<EPS || fabs(qnnn.d_00m_0p)<EPS) &&
-                     ( mask_m_ptr[qnnn.node_00m_mp]<-EPS || fabs(qnnn.d_00m_p0)<EPS || fabs(qnnn.d_00m_0m)<EPS) &&
-                     ( mask_m_ptr[qnnn.node_00m_pm]<-EPS || fabs(qnnn.d_00m_m0)<EPS || fabs(qnnn.d_00m_0p)<EPS) &&
-                     ( mask_m_ptr[qnnn.node_00m_pp]<-EPS || fabs(qnnn.d_00m_m0)<EPS || fabs(qnnn.d_00m_0m)<EPS) &&
-                     ( mask_m_ptr[qnnn.node_00p_mm]<-EPS || fabs(qnnn.d_00p_p0)<EPS || fabs(qnnn.d_00p_0p)<EPS) &&
-                     ( mask_m_ptr[qnnn.node_00p_mp]<-EPS || fabs(qnnn.d_00p_p0)<EPS || fabs(qnnn.d_00p_0m)<EPS) &&
-                     ( mask_m_ptr[qnnn.node_00p_pm]<-EPS || fabs(qnnn.d_00p_m0)<EPS || fabs(qnnn.d_00p_0p)<EPS) &&
-                     ( mask_m_ptr[qnnn.node_00p_pp]<-EPS || fabs(qnnn.d_00p_m0)<EPS || fabs(qnnn.d_00p_0m)<EPS)
-             #else
-                     ( mask_m_ptr[qnnn.node_m00_mm]<-EPS || fabs(qnnn.d_m00_p0)<EPS) &&
-                     ( mask_m_ptr[qnnn.node_m00_pm]<-EPS || fabs(qnnn.d_m00_m0)<EPS) &&
-                     ( mask_m_ptr[qnnn.node_p00_mm]<-EPS || fabs(qnnn.d_p00_p0)<EPS) &&
-                     ( mask_m_ptr[qnnn.node_p00_pm]<-EPS || fabs(qnnn.d_p00_m0)<EPS) &&
-                     ( mask_m_ptr[qnnn.node_0m0_mm]<-EPS || fabs(qnnn.d_0m0_p0)<EPS) &&
-                     ( mask_m_ptr[qnnn.node_0m0_pm]<-EPS || fabs(qnnn.d_0m0_m0)<EPS) &&
-                     ( mask_m_ptr[qnnn.node_0p0_mm]<-EPS || fabs(qnnn.d_0p0_p0)<EPS) &&
-                     ( mask_m_ptr[qnnn.node_0p0_pm]<-EPS || fabs(qnnn.d_0p0_m0)<EPS)
-             #endif
-                     )
-                {
-                  double DIM( ux_m_exact = ux_m_cf(DIM(xyz[0], xyz[1], xyz[2])),
-                              uy_m_exact = uy_m_cf(DIM(xyz[0], xyz[1], xyz[2])),
-                              uz_m_exact = uz_m_cf(DIM(xyz[0], xyz[1], xyz[2])) );
-
-                  gr_max = MAX(gr_max, sqrt(SUMD(SQR(ux_m_exact), SQR(uy_m_exact), SQR(uz_m_exact))));
-
-                  double DIM( ux_m_error = fabs(qnnn.dx_central(sol_m_ptr) - ux_m_exact),
-                              uy_m_error = fabs(qnnn.dy_central(sol_m_ptr) - uy_m_exact),
-                              uz_m_error = fabs(qnnn.dz_central(sol_m_ptr) - uz_m_exact) );
-
-                  vec_error_gr_m_ptr[n] = sqrt(SUMD(SQR(ux_m_error), SQR(uy_m_error), SQR(uz_m_error)));
-                } else {
-                  vec_error_gr_m_ptr[n] = 0;
-                }
-
-
-                if ( mask_p_ptr[qnnn.node_000]<-EPS && !is_node_Wall(p4est, ni) &&
-             #ifdef P4_TO_P8
-                     ( mask_p_ptr[qnnn.node_m00_mm]<-EPS || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
-                     ( mask_p_ptr[qnnn.node_m00_mp]<-EPS || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
-                     ( mask_p_ptr[qnnn.node_m00_pm]<-EPS || fabs(qnnn.d_m00_m0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
-                     ( mask_p_ptr[qnnn.node_m00_pp]<-EPS || fabs(qnnn.d_m00_m0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
-                     ( mask_p_ptr[qnnn.node_p00_mm]<-EPS || fabs(qnnn.d_p00_p0)<EPS || fabs(qnnn.d_p00_0p)<EPS) &&
-                     ( mask_p_ptr[qnnn.node_p00_mp]<-EPS || fabs(qnnn.d_p00_p0)<EPS || fabs(qnnn.d_p00_0m)<EPS) &&
-                     ( mask_p_ptr[qnnn.node_p00_pm]<-EPS || fabs(qnnn.d_p00_m0)<EPS || fabs(qnnn.d_p00_0p)<EPS) &&
-                     ( mask_p_ptr[qnnn.node_p00_pp]<-EPS || fabs(qnnn.d_p00_m0)<EPS || fabs(qnnn.d_p00_0m)<EPS) &&
-                     ( mask_p_ptr[qnnn.node_0m0_mm]<-EPS || fabs(qnnn.d_0m0_p0)<EPS || fabs(qnnn.d_0m0_0p)<EPS) &&
-                     ( mask_p_ptr[qnnn.node_0m0_mp]<-EPS || fabs(qnnn.d_0m0_p0)<EPS || fabs(qnnn.d_0m0_0m)<EPS) &&
-                     ( mask_p_ptr[qnnn.node_0m0_pm]<-EPS || fabs(qnnn.d_0m0_m0)<EPS || fabs(qnnn.d_0m0_0p)<EPS) &&
-                     ( mask_p_ptr[qnnn.node_0m0_pp]<-EPS || fabs(qnnn.d_0m0_m0)<EPS || fabs(qnnn.d_0m0_0m)<EPS) &&
-                     ( mask_p_ptr[qnnn.node_0p0_mm]<-EPS || fabs(qnnn.d_0p0_p0)<EPS || fabs(qnnn.d_0p0_0p)<EPS) &&
-                     ( mask_p_ptr[qnnn.node_0p0_mp]<-EPS || fabs(qnnn.d_0p0_p0)<EPS || fabs(qnnn.d_0p0_0m)<EPS) &&
-                     ( mask_p_ptr[qnnn.node_0p0_pm]<-EPS || fabs(qnnn.d_0p0_m0)<EPS || fabs(qnnn.d_0p0_0p)<EPS) &&
-                     ( mask_p_ptr[qnnn.node_0p0_pp]<-EPS || fabs(qnnn.d_0p0_m0)<EPS || fabs(qnnn.d_0p0_0m)<EPS) &&
-                     ( mask_p_ptr[qnnn.node_00m_mm]<-EPS || fabs(qnnn.d_00m_p0)<EPS || fabs(qnnn.d_00m_0p)<EPS) &&
-                     ( mask_p_ptr[qnnn.node_00m_mp]<-EPS || fabs(qnnn.d_00m_p0)<EPS || fabs(qnnn.d_00m_0m)<EPS) &&
-                     ( mask_p_ptr[qnnn.node_00m_pm]<-EPS || fabs(qnnn.d_00m_m0)<EPS || fabs(qnnn.d_00m_0p)<EPS) &&
-                     ( mask_p_ptr[qnnn.node_00m_pp]<-EPS || fabs(qnnn.d_00m_m0)<EPS || fabs(qnnn.d_00m_0m)<EPS) &&
-                     ( mask_p_ptr[qnnn.node_00p_mm]<-EPS || fabs(qnnn.d_00p_p0)<EPS || fabs(qnnn.d_00p_0p)<EPS) &&
-                     ( mask_p_ptr[qnnn.node_00p_mp]<-EPS || fabs(qnnn.d_00p_p0)<EPS || fabs(qnnn.d_00p_0m)<EPS) &&
-                     ( mask_p_ptr[qnnn.node_00p_pm]<-EPS || fabs(qnnn.d_00p_m0)<EPS || fabs(qnnn.d_00p_0p)<EPS) &&
-                     ( mask_p_ptr[qnnn.node_00p_pp]<-EPS || fabs(qnnn.d_00p_m0)<EPS || fabs(qnnn.d_00p_0m)<EPS)
-             #else
-                     ( mask_p_ptr[qnnn.node_m00_mm]<-EPS || fabs(qnnn.d_m00_p0)<EPS) &&
-                     ( mask_p_ptr[qnnn.node_m00_pm]<-EPS || fabs(qnnn.d_m00_m0)<EPS) &&
-                     ( mask_p_ptr[qnnn.node_p00_mm]<-EPS || fabs(qnnn.d_p00_p0)<EPS) &&
-                     ( mask_p_ptr[qnnn.node_p00_pm]<-EPS || fabs(qnnn.d_p00_m0)<EPS) &&
-                     ( mask_p_ptr[qnnn.node_0m0_mm]<-EPS || fabs(qnnn.d_0m0_p0)<EPS) &&
-                     ( mask_p_ptr[qnnn.node_0m0_pm]<-EPS || fabs(qnnn.d_0m0_m0)<EPS) &&
-                     ( mask_p_ptr[qnnn.node_0p0_mm]<-EPS || fabs(qnnn.d_0p0_p0)<EPS) &&
-                     ( mask_p_ptr[qnnn.node_0p0_pm]<-EPS || fabs(qnnn.d_0p0_m0)<EPS)
-             #endif
-                     )
-                {
-                  double DIM( ux_p_exact = ux_p_cf(DIM(xyz[0], xyz[1], xyz[2])),
-                              uy_p_exact = uy_p_cf(DIM(xyz[0], xyz[1], xyz[2])),
-                              uz_p_exact = uz_p_cf(DIM(xyz[0], xyz[1], xyz[2])) );
-
-                  gr_max = MAX(gr_max, sqrt(SUMD(SQR(ux_p_exact), SQR(uy_p_exact), SQR(uz_p_exact))));
-
-                  double DIM( ux_p_error = fabs(qnnn.dx_central(sol_p_ptr) - ux_p_exact),
-                              uy_p_error = fabs(qnnn.dy_central(sol_p_ptr) - uy_p_exact),
-                              uz_p_error = fabs(qnnn.dz_central(sol_p_ptr) - uz_p_exact) );
-
-                  vec_error_gr_p_ptr[n] = sqrt(SUMD(SQR(ux_p_error), SQR(uy_p_error), SQR(uz_p_error)));
-                } else {
-                  vec_error_gr_p_ptr[n] = 0;
-                }
-              } else {
-                p4est_locidx_t neighbors      [num_neighbors_cube];
-                bool           neighbors_exist[num_neighbors_cube];
-
-                double xyz_nei[P4EST_DIM];
-                double xyz_mid[P4EST_DIM];
-                double normal[P4EST_DIM];
-
-                vec_error_gr_m_ptr[n] = 0;
-                vec_error_gr_p_ptr[n] = 0;
-
-                if (!is_node_Wall(p4est, ni))
-                {
-                  get_all_neighbors(n, p4est, nodes, &ngbd_n, neighbors, neighbors_exist);
-        //          for (int j = 0; j < (int)pow(3, P4EST_DIM); ++j)
-                  for (int j = 1; j < (int)pow(3, P4EST_DIM); j+=2)
-                  {
-                    p4est_locidx_t n_nei = neighbors[j];
-                    node_xyz_fr_n(n_nei, p4est, nodes, xyz_nei);
-
-                    double delta = 0;
-
-                    foreach_dimension(i)
-                    {
-                      xyz_mid[i] = .5*(xyz[i]+xyz_nei[i]);
-                      delta += SQR(xyz[i]-xyz_nei[i]);
-                      normal[i] = xyz_nei[i]-xyz[i];
-                    }
-
-                    delta = sqrt(delta);
-
-                    foreach_dimension(i)
-                      normal[i] /= delta;
-
-                    if (mask_m_ptr[n] < 0)
-                      if (mask_m_ptr[n_nei] < 0)
-                      {
-                        double grad_exact = SUMD(ux_m_cf.value(xyz_mid)*normal[0], uy_m_cf.value(xyz_mid)*normal[1], uz_m_cf.value(xyz_mid)*normal[2]);
-                        vec_error_gr_m_ptr[n] = MAX(vec_error_gr_m_ptr[n], fabs((sol_m_ptr[n_nei]-sol_m_ptr[n])/delta - grad_exact));
-                        gr_max = MAX(gr_max, fabs(grad_exact));
-                      }
-
-                    if (mask_p_ptr[n] < 0)
-                      if (mask_p_ptr[n_nei] < 0)
-                      {
-                        double grad_exact = SUMD(ux_p_cf.value(xyz_mid)*normal[0], uy_p_cf.value(xyz_mid)*normal[1], uz_p_cf.value(xyz_mid)*normal[2]);
-                        vec_error_gr_p_ptr[n] = MAX(vec_error_gr_p_ptr[n], fabs((sol_p_ptr[n_nei]-sol_p_ptr[n])/delta - grad_exact));
-                        gr_max = MAX(gr_max, fabs(grad_exact));
-                      }
-                  }
-                }
-              }
-
-            }
-
-            ierr = VecRestoreArray(sol_m, &sol_m_ptr); CHKERRXX(ierr);
-            ierr = VecRestoreArray(sol_p, &sol_p_ptr); CHKERRXX(ierr);
-
-            ierr = VecRestoreArray(mask_m, &mask_m_ptr); CHKERRXX(ierr);
-            ierr = VecRestoreArray(mask_p, &mask_p_ptr); CHKERRXX(ierr);
-
-            ierr = VecRestoreArray(vec_error_gr_m, &vec_error_gr_m_ptr); CHKERRXX(ierr);
-            ierr = VecRestoreArray(vec_error_gr_p, &vec_error_gr_p_ptr); CHKERRXX(ierr);
-
-            ierr = VecGhostUpdateBegin(vec_error_gr_m, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-            ierr = VecGhostUpdateBegin(vec_error_gr_p, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-            ierr = VecGhostUpdateEnd  (vec_error_gr_m, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-            ierr = VecGhostUpdateEnd  (vec_error_gr_p, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-
-            //----------------------------------------------------------------------------------------------
-            // calculate error of Laplacian
-            //----------------------------------------------------------------------------------------------
-            ierr = VecGetArray(sol_m, &sol_m_ptr); CHKERRXX(ierr);
-            ierr = VecGetArray(sol_p, &sol_p_ptr); CHKERRXX(ierr);
-
-            ierr = VecGetArray(mask_m, &mask_m_ptr); CHKERRXX(ierr);
-            ierr = VecGetArray(mask_p, &mask_p_ptr); CHKERRXX(ierr);
-
-            ierr = VecGetArray(vec_error_dd_m, &vec_error_dd_m_ptr); CHKERRXX(ierr);
-            ierr = VecGetArray(vec_error_dd_p, &vec_error_dd_p_ptr); CHKERRXX(ierr);
-
-            foreach_local_node(n, nodes)
-            {
-              double xyz[P4EST_DIM];
-              node_xyz_fr_n(n, p4est, nodes, xyz);
-
-              p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
-              ngbd_n.get_neighbors(n, qnnn);
-
-              if ( mask_m_ptr[qnnn.node_000]<-EPS && !is_node_Wall(p4est, ni) &&
-             #ifdef P4_TO_P8
-                   ( mask_m_ptr[qnnn.node_m00_mm]<-EPS || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
-                   ( mask_m_ptr[qnnn.node_m00_mp]<-EPS || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
-                   ( mask_m_ptr[qnnn.node_m00_pm]<-EPS || fabs(qnnn.d_m00_m0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
-                   ( mask_m_ptr[qnnn.node_m00_pp]<-EPS || fabs(qnnn.d_m00_m0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
-                   ( mask_m_ptr[qnnn.node_p00_mm]<-EPS || fabs(qnnn.d_p00_p0)<EPS || fabs(qnnn.d_p00_0p)<EPS) &&
-                   ( mask_m_ptr[qnnn.node_p00_mp]<-EPS || fabs(qnnn.d_p00_p0)<EPS || fabs(qnnn.d_p00_0m)<EPS) &&
-                   ( mask_m_ptr[qnnn.node_p00_pm]<-EPS || fabs(qnnn.d_p00_m0)<EPS || fabs(qnnn.d_p00_0p)<EPS) &&
-                   ( mask_m_ptr[qnnn.node_p00_pp]<-EPS || fabs(qnnn.d_p00_m0)<EPS || fabs(qnnn.d_p00_0m)<EPS) &&
-                   ( mask_m_ptr[qnnn.node_0m0_mm]<-EPS || fabs(qnnn.d_0m0_p0)<EPS || fabs(qnnn.d_0m0_0p)<EPS) &&
-                   ( mask_m_ptr[qnnn.node_0m0_mp]<-EPS || fabs(qnnn.d_0m0_p0)<EPS || fabs(qnnn.d_0m0_0m)<EPS) &&
-                   ( mask_m_ptr[qnnn.node_0m0_pm]<-EPS || fabs(qnnn.d_0m0_m0)<EPS || fabs(qnnn.d_0m0_0p)<EPS) &&
-                   ( mask_m_ptr[qnnn.node_0m0_pp]<-EPS || fabs(qnnn.d_0m0_m0)<EPS || fabs(qnnn.d_0m0_0m)<EPS) &&
-                   ( mask_m_ptr[qnnn.node_0p0_mm]<-EPS || fabs(qnnn.d_0p0_p0)<EPS || fabs(qnnn.d_0p0_0p)<EPS) &&
-                   ( mask_m_ptr[qnnn.node_0p0_mp]<-EPS || fabs(qnnn.d_0p0_p0)<EPS || fabs(qnnn.d_0p0_0m)<EPS) &&
-                   ( mask_m_ptr[qnnn.node_0p0_pm]<-EPS || fabs(qnnn.d_0p0_m0)<EPS || fabs(qnnn.d_0p0_0p)<EPS) &&
-                   ( mask_m_ptr[qnnn.node_0p0_pp]<-EPS || fabs(qnnn.d_0p0_m0)<EPS || fabs(qnnn.d_0p0_0m)<EPS) &&
-                   ( mask_m_ptr[qnnn.node_00m_mm]<-EPS || fabs(qnnn.d_00m_p0)<EPS || fabs(qnnn.d_00m_0p)<EPS) &&
-                   ( mask_m_ptr[qnnn.node_00m_mp]<-EPS || fabs(qnnn.d_00m_p0)<EPS || fabs(qnnn.d_00m_0m)<EPS) &&
-                   ( mask_m_ptr[qnnn.node_00m_pm]<-EPS || fabs(qnnn.d_00m_m0)<EPS || fabs(qnnn.d_00m_0p)<EPS) &&
-                   ( mask_m_ptr[qnnn.node_00m_pp]<-EPS || fabs(qnnn.d_00m_m0)<EPS || fabs(qnnn.d_00m_0m)<EPS) &&
-                   ( mask_m_ptr[qnnn.node_00p_mm]<-EPS || fabs(qnnn.d_00p_p0)<EPS || fabs(qnnn.d_00p_0p)<EPS) &&
-                   ( mask_m_ptr[qnnn.node_00p_mp]<-EPS || fabs(qnnn.d_00p_p0)<EPS || fabs(qnnn.d_00p_0m)<EPS) &&
-                   ( mask_m_ptr[qnnn.node_00p_pm]<-EPS || fabs(qnnn.d_00p_m0)<EPS || fabs(qnnn.d_00p_0p)<EPS) &&
-                   ( mask_m_ptr[qnnn.node_00p_pp]<-EPS || fabs(qnnn.d_00p_m0)<EPS || fabs(qnnn.d_00p_0m)<EPS)
-             #else
-                   ( mask_m_ptr[qnnn.node_m00_mm]<-EPS || fabs(qnnn.d_m00_p0)<EPS) &&
-                   ( mask_m_ptr[qnnn.node_m00_pm]<-EPS || fabs(qnnn.d_m00_m0)<EPS) &&
-                   ( mask_m_ptr[qnnn.node_p00_mm]<-EPS || fabs(qnnn.d_p00_p0)<EPS) &&
-                   ( mask_m_ptr[qnnn.node_p00_pm]<-EPS || fabs(qnnn.d_p00_m0)<EPS) &&
-                   ( mask_m_ptr[qnnn.node_0m0_mm]<-EPS || fabs(qnnn.d_0m0_p0)<EPS) &&
-                   ( mask_m_ptr[qnnn.node_0m0_pm]<-EPS || fabs(qnnn.d_0m0_m0)<EPS) &&
-                   ( mask_m_ptr[qnnn.node_0p0_mm]<-EPS || fabs(qnnn.d_0p0_p0)<EPS) &&
-                   ( mask_m_ptr[qnnn.node_0p0_pm]<-EPS || fabs(qnnn.d_0p0_m0)<EPS)
-             #endif
-                   )
-              {
-                double udd_exact = ul_m_cf.value(xyz);
-                double DIM( uxx = qnnn.dxx_central(sol_m_ptr),
-                            uyy = qnnn.dyy_central(sol_m_ptr),
-                            uzz = qnnn.dzz_central(sol_m_ptr) );
-                vec_error_dd_m_ptr[n] = fabs(udd_exact - SUMD(uxx,uyy,uzz));
-              } else {
-                vec_error_dd_m_ptr[n] = 0;
-              }
-
-              if ( mask_p_ptr[qnnn.node_000]<-EPS && !is_node_Wall(p4est, ni) &&
-             #ifdef P4_TO_P8
-                   ( mask_p_ptr[qnnn.node_m00_mm]<-EPS || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
-                   ( mask_p_ptr[qnnn.node_m00_mp]<-EPS || fabs(qnnn.d_m00_p0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
-                   ( mask_p_ptr[qnnn.node_m00_pm]<-EPS || fabs(qnnn.d_m00_m0)<EPS || fabs(qnnn.d_m00_0p)<EPS) &&
-                   ( mask_p_ptr[qnnn.node_m00_pp]<-EPS || fabs(qnnn.d_m00_m0)<EPS || fabs(qnnn.d_m00_0m)<EPS) &&
-                   ( mask_p_ptr[qnnn.node_p00_mm]<-EPS || fabs(qnnn.d_p00_p0)<EPS || fabs(qnnn.d_p00_0p)<EPS) &&
-                   ( mask_p_ptr[qnnn.node_p00_mp]<-EPS || fabs(qnnn.d_p00_p0)<EPS || fabs(qnnn.d_p00_0m)<EPS) &&
-                   ( mask_p_ptr[qnnn.node_p00_pm]<-EPS || fabs(qnnn.d_p00_m0)<EPS || fabs(qnnn.d_p00_0p)<EPS) &&
-                   ( mask_p_ptr[qnnn.node_p00_pp]<-EPS || fabs(qnnn.d_p00_m0)<EPS || fabs(qnnn.d_p00_0m)<EPS) &&
-                   ( mask_p_ptr[qnnn.node_0m0_mm]<-EPS || fabs(qnnn.d_0m0_p0)<EPS || fabs(qnnn.d_0m0_0p)<EPS) &&
-                   ( mask_p_ptr[qnnn.node_0m0_mp]<-EPS || fabs(qnnn.d_0m0_p0)<EPS || fabs(qnnn.d_0m0_0m)<EPS) &&
-                   ( mask_p_ptr[qnnn.node_0m0_pm]<-EPS || fabs(qnnn.d_0m0_m0)<EPS || fabs(qnnn.d_0m0_0p)<EPS) &&
-                   ( mask_p_ptr[qnnn.node_0m0_pp]<-EPS || fabs(qnnn.d_0m0_m0)<EPS || fabs(qnnn.d_0m0_0m)<EPS) &&
-                   ( mask_p_ptr[qnnn.node_0p0_mm]<-EPS || fabs(qnnn.d_0p0_p0)<EPS || fabs(qnnn.d_0p0_0p)<EPS) &&
-                   ( mask_p_ptr[qnnn.node_0p0_mp]<-EPS || fabs(qnnn.d_0p0_p0)<EPS || fabs(qnnn.d_0p0_0m)<EPS) &&
-                   ( mask_p_ptr[qnnn.node_0p0_pm]<-EPS || fabs(qnnn.d_0p0_m0)<EPS || fabs(qnnn.d_0p0_0p)<EPS) &&
-                   ( mask_p_ptr[qnnn.node_0p0_pp]<-EPS || fabs(qnnn.d_0p0_m0)<EPS || fabs(qnnn.d_0p0_0m)<EPS) &&
-                   ( mask_p_ptr[qnnn.node_00m_mm]<-EPS || fabs(qnnn.d_00m_p0)<EPS || fabs(qnnn.d_00m_0p)<EPS) &&
-                   ( mask_p_ptr[qnnn.node_00m_mp]<-EPS || fabs(qnnn.d_00m_p0)<EPS || fabs(qnnn.d_00m_0m)<EPS) &&
-                   ( mask_p_ptr[qnnn.node_00m_pm]<-EPS || fabs(qnnn.d_00m_m0)<EPS || fabs(qnnn.d_00m_0p)<EPS) &&
-                   ( mask_p_ptr[qnnn.node_00m_pp]<-EPS || fabs(qnnn.d_00m_m0)<EPS || fabs(qnnn.d_00m_0m)<EPS) &&
-                   ( mask_p_ptr[qnnn.node_00p_mm]<-EPS || fabs(qnnn.d_00p_p0)<EPS || fabs(qnnn.d_00p_0p)<EPS) &&
-                   ( mask_p_ptr[qnnn.node_00p_mp]<-EPS || fabs(qnnn.d_00p_p0)<EPS || fabs(qnnn.d_00p_0m)<EPS) &&
-                   ( mask_p_ptr[qnnn.node_00p_pm]<-EPS || fabs(qnnn.d_00p_m0)<EPS || fabs(qnnn.d_00p_0p)<EPS) &&
-                   ( mask_p_ptr[qnnn.node_00p_pp]<-EPS || fabs(qnnn.d_00p_m0)<EPS || fabs(qnnn.d_00p_0m)<EPS)
-             #else
-                   ( mask_p_ptr[qnnn.node_m00_mm]<-EPS || fabs(qnnn.d_m00_p0)<EPS) &&
-                   ( mask_p_ptr[qnnn.node_m00_pm]<-EPS || fabs(qnnn.d_m00_m0)<EPS) &&
-                   ( mask_p_ptr[qnnn.node_p00_mm]<-EPS || fabs(qnnn.d_p00_p0)<EPS) &&
-                   ( mask_p_ptr[qnnn.node_p00_pm]<-EPS || fabs(qnnn.d_p00_m0)<EPS) &&
-                   ( mask_p_ptr[qnnn.node_0m0_mm]<-EPS || fabs(qnnn.d_0m0_p0)<EPS) &&
-                   ( mask_p_ptr[qnnn.node_0m0_pm]<-EPS || fabs(qnnn.d_0m0_m0)<EPS) &&
-                   ( mask_p_ptr[qnnn.node_0p0_mm]<-EPS || fabs(qnnn.d_0p0_p0)<EPS) &&
-                   ( mask_p_ptr[qnnn.node_0p0_pm]<-EPS || fabs(qnnn.d_0p0_m0)<EPS)
-             #endif
-                   )
-              {
-                double udd_exact = ul_p_cf.value(xyz);
-                double DIM( uxx = qnnn.dxx_central(sol_p_ptr),
-                            uyy = qnnn.dyy_central(sol_p_ptr),
-                            uzz = qnnn.dzz_central(sol_p_ptr) );
-                vec_error_dd_p_ptr[n] = fabs(udd_exact - SUMD(uxx,uyy,uzz));
-              } else {
-                vec_error_dd_p_ptr[n] = 0;
-              }
-            }
-
-            ierr = VecRestoreArray(sol_m, &sol_m_ptr); CHKERRXX(ierr);
-            ierr = VecRestoreArray(sol_p, &sol_p_ptr); CHKERRXX(ierr);
-
-            ierr = VecRestoreArray(mask_m, &mask_m_ptr); CHKERRXX(ierr);
-            ierr = VecRestoreArray(mask_p, &mask_p_ptr); CHKERRXX(ierr);
-
-            ierr = VecRestoreArray(vec_error_dd_m, &vec_error_dd_m_ptr); CHKERRXX(ierr);
-            ierr = VecRestoreArray(vec_error_dd_p, &vec_error_dd_p_ptr); CHKERRXX(ierr);
-
-            ierr = VecGhostUpdateBegin(vec_error_dd_m, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-            ierr = VecGhostUpdateBegin(vec_error_dd_p, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-            ierr = VecGhostUpdateEnd  (vec_error_dd_m, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-            ierr = VecGhostUpdateEnd  (vec_error_dd_p, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-
-            //----------------------------------------------------------------------------------------------
-            // calculate truncation error
-            //----------------------------------------------------------------------------------------------
-        //    sample_cf_on_nodes(p4est, nodes, rhs_cf, rhs);
-        //    solver.set_rhs(rhs);
-        //    solver.assemble_rhs_only();
-
-            Vec vec_u_exact_block;    double *vec_u_exact_block_ptr;    ierr = VecCreateGhostNodesBlock(p4est, nodes, 2, &vec_u_exact_block);    CHKERRXX(ierr);
-            Vec vec_error_tr_block;   double *vec_error_tr_block_ptr;   ierr = VecCreateGhostNodesBlock(p4est, nodes, 2, &vec_error_tr_block);   CHKERRXX(ierr);
-
-//            ierr = VecGetArray(vec_u_exact_block, &vec_u_exact_block_ptr); CHKERRXX(ierr);
-
-//            ierr = VecGetArray(mask_m, &mask_m_ptr); CHKERRXX(ierr);
-//            ierr = VecGetArray(mask_p, &mask_p_ptr); CHKERRXX(ierr);
-
-//            for (size_t i = 0; i<nodes->indep_nodes.elem_count; ++i)
-//            {
-//              double xyz[P4EST_DIM];
-//              node_xyz_fr_n(i, p4est, nodes, xyz);
-
-//              vec_u_exact_block_ptr[2*i  ] = mask_m_ptr[i] < 0 ? u_m_cf.value(xyz) : 0;
-//              vec_u_exact_block_ptr[2*i+1] = mask_p_ptr[i] < 0 ? u_p_cf.value(xyz) : 0;
-//            }
-
-//            ierr = VecRestoreArray(vec_u_exact_block, &vec_u_exact_block_ptr); CHKERRXX(ierr);
-
-////            ierr = MatMult(A, vec_u_exact_block, vec_error_tr_block); CHKERRXX(ierr);
-
-//            ierr = VecGetArray(vec_error_tr_block, &vec_error_tr_block_ptr); CHKERRXX(ierr);
-//            ierr = VecGetArray(vec_error_tr_m,     &vec_error_tr_m_ptr); CHKERRXX(ierr);
-//            ierr = VecGetArray(vec_error_tr_p,     &vec_error_tr_p_ptr); CHKERRXX(ierr);
-
-//            // FIX THIS
-//            Vec rhs = sol;
-//            double *rhs_ptr;
-//            ierr = VecGetArray(rhs, &rhs_ptr); CHKERRXX(ierr);
-
-//            for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; n++)
-//            {
-//              vec_error_tr_m_ptr[n] = (mask_m_ptr[n] < 0) ? (vec_error_tr_block_ptr[2*n  ] - rhs_ptr[2*n  ])*scalling->at(2*n  ) : 0;
-//              vec_error_tr_p_ptr[n] = (mask_p_ptr[n] < 0) ? (vec_error_tr_block_ptr[2*n+1] - rhs_ptr[2*n+1])*scalling->at(2*n+1) : 0;
-//            }
-
-//            ierr = VecRestoreArray(vec_error_tr_block, &vec_error_tr_block_ptr);  CHKERRXX(ierr);
-//            ierr = VecRestoreArray(vec_error_tr_m,     &vec_error_tr_m_ptr);  CHKERRXX(ierr);
-//            ierr = VecRestoreArray(vec_error_tr_p,     &vec_error_tr_p_ptr);  CHKERRXX(ierr);
-
-//            ierr = VecRestoreArray(mask_m, &mask_m_ptr); CHKERRXX(ierr);
-//            ierr = VecRestoreArray(mask_p, &mask_p_ptr); CHKERRXX(ierr);
-
-//            ierr = VecRestoreArray(rhs, &rhs_ptr); CHKERRXX(ierr);
-
-//            ierr = VecGhostUpdateBegin(vec_error_tr_m, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-//            ierr = VecGhostUpdateBegin(vec_error_tr_p, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-//            ierr = VecGhostUpdateEnd  (vec_error_tr_m, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-//            ierr = VecGhostUpdateEnd  (vec_error_tr_p, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-//            ierr = VecDestroy(vec_u_exact_block); CHKERRXX(ierr);
-
-            //----------------------------------------------------------------------------------------------
-            // calculate extrapolation error
-            //----------------------------------------------------------------------------------------------
-            // smoothed LSF
-            mls_smooth_cf_t level_set_smooth_cf(&dom_phi_cf, &dom_acn, 64.*dxyz_max*dxyz_max);
-
-            Vec phi_smooth;   double *phi_smooth_ptr;   ierr = VecCreateGhostNodes(p4est, nodes, &phi_smooth); CHKERRXX(ierr);
-
-            sample_cf_on_nodes(p4est, nodes, level_set_smooth_cf, phi_smooth);
-        //    ls.reinitialize_1st_order_time_2nd_order_space(phi_smooth);
-        //    ls.reinitialize_1st_order_time_2nd_order_space(phi_eff);
-
-            double band = 3.0;
-
-            // copy solution into a new Vec
-            Vec sol_m_ex; double *sol_m_ex_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &sol_m_ex); CHKERRXX(ierr);
-            Vec sol_p_ex; double *sol_p_ex_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &sol_p_ex); CHKERRXX(ierr);
-
-            VecCopyGhost(sol_m, sol_m_ex);
-            VecCopyGhost(sol_p, sol_p_ex);
-
-//            // extend
-//            ls.extend_Over_Interface_TVD(phi_smooth, mask_m, sol_m_ex, 20, 2); CHKERRXX(ierr);
-
-//            VecScaleGhost(dom_phi_smooth)
-
-//            ls.extend_Over_Interface_TVD(phi_smooth, mask_p, sol_p_ex, 20, 2); CHKERRXX(ierr);
-
-//            ierr = VecGetArray(phi_smooth, &phi_smooth_ptr); CHKERRXX(ierr);
-//            for (size_t i = 0; i<nodes->indep_nodes.elem_count; ++i)
-//            {
-//              phi_smooth_ptr[i] *= -1.;
-//            }
-//            ierr = VecRestoreArray(phi_smooth, &phi_smooth_ptr); CHKERRXX(ierr);
-
-//            // calculate error
-//            ierr = VecGetArray(sol_m_ex, &sol_m_ex_ptr); CHKERRXX(ierr);
-//            ierr = VecGetArray(sol_p_ex, &sol_p_ex_ptr); CHKERRXX(ierr);
-
-//            ierr = VecGetArray(vec_error_ex_m, &vec_error_ex_m_ptr); CHKERRXX(ierr);
-//            ierr = VecGetArray(vec_error_ex_p, &vec_error_ex_p_ptr); CHKERRXX(ierr);
-
-//            ierr = VecGetArray(mask_m, &mask_m_ptr); CHKERRXX(ierr);
-//            ierr = VecGetArray(mask_p, &mask_p_ptr); CHKERRXX(ierr);
-
-//            ierr = VecGetArray(dom_phi_eff, &dom_phi_eff_ptr); CHKERRXX(ierr);
-//            ierr = VecGetArray(phi_smooth, &phi_smooth_ptr); CHKERRXX(ierr);
-
-//            foreach_local_node(n, nodes)
-//            {
-//              double xyz[P4EST_DIM];
-//              node_xyz_fr_n(n, p4est, nodes, xyz);
-
-//              vec_error_ex_m_ptr[n] = (mask_m_ptr[n] > 0. && dom_phi_eff_ptr[n] < band*dxyz_max) ? ABS(sol_m_ex_ptr[n] - u_m_cf.value(xyz)) : 0;
-//              vec_error_ex_p_ptr[n] = (mask_p_ptr[n] > 0. && dom_phi_eff_ptr[n] >-band*dxyz_max) ? ABS(sol_p_ex_ptr[n] - u_p_cf.value(xyz)) : 0;
-//            }
-
-//            ierr = VecRestoreArray(sol_m_ex, &sol_m_ex_ptr); CHKERRXX(ierr);
-//            ierr = VecRestoreArray(sol_p_ex, &sol_p_ex_ptr); CHKERRXX(ierr);
-
-//            ierr = VecRestoreArray(vec_error_ex_m, &vec_error_ex_m_ptr); CHKERRXX(ierr);
-//            ierr = VecRestoreArray(vec_error_ex_p, &vec_error_ex_p_ptr); CHKERRXX(ierr);
-
-//            ierr = VecRestoreArray(mask_m, &mask_m_ptr); CHKERRXX(ierr);
-//            ierr = VecRestoreArray(mask_p, &mask_p_ptr); CHKERRXX(ierr);
-
-//            ierr = VecRestoreArray(dom_phi_eff, &dom_phi_eff_ptr); CHKERRXX(ierr);
-//            ierr = VecRestoreArray(phi_smooth, &phi_smooth_ptr); CHKERRXX(ierr);
-
-//            ierr = VecGhostUpdateBegin(vec_error_ex_m, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-//            ierr = VecGhostUpdateBegin(vec_error_ex_p, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-//            ierr = VecGhostUpdateEnd  (vec_error_ex_m, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-//            ierr = VecGhostUpdateEnd  (vec_error_ex_p, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-
-
-
-
-
-
-
-            // compute L-inf norm of errors
-            double err_sl_m_max = 0.;   ierr = VecMax(vec_error_sl_m, NULL, &err_sl_m_max); CHKERRXX(ierr);   mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_sl_m_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-            double err_tr_m_max = 0.;   ierr = VecMax(vec_error_tr_m, NULL, &err_tr_m_max); CHKERRXX(ierr);   mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_tr_m_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-            double err_gr_m_max = 0.;   ierr = VecMax(vec_error_gr_m, NULL, &err_gr_m_max); CHKERRXX(ierr);   mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_gr_m_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-            double err_ex_m_max = 0.;   ierr = VecMax(vec_error_ex_m, NULL, &err_ex_m_max); CHKERRXX(ierr);   mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_ex_m_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-            double err_dd_m_max = 0.;   ierr = VecMax(vec_error_dd_m, NULL, &err_dd_m_max); CHKERRXX(ierr);   mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_dd_m_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-
-            double err_sl_p_max = 0.;   ierr = VecMax(vec_error_sl_p, NULL, &err_sl_p_max); CHKERRXX(ierr);   mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_sl_p_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-            double err_tr_p_max = 0.;   ierr = VecMax(vec_error_tr_p, NULL, &err_tr_p_max); CHKERRXX(ierr);   mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_tr_p_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-            double err_gr_p_max = 0.;   ierr = VecMax(vec_error_gr_p, NULL, &err_gr_p_max); CHKERRXX(ierr);   mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_gr_p_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-            double err_ex_p_max = 0.;   ierr = VecMax(vec_error_ex_p, NULL, &err_ex_p_max); CHKERRXX(ierr);   mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_ex_p_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-            double err_dd_p_max = 0.;   ierr = VecMax(vec_error_dd_p, NULL, &err_dd_p_max); CHKERRXX(ierr);   mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_dd_p_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-
-            if (scale_errors)
-            {
-              mpiret = MPI_Allreduce(MPI_IN_PLACE, &u_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-              err_sl_m_max /= u_max;
-              err_sl_p_max /= u_max;
-
-              mpiret = MPI_Allreduce(MPI_IN_PLACE, &gr_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-              err_gr_m_max /= gr_max;
-              err_gr_p_max /= gr_max;
-            }
-
-            error_sl_m_arr.push_back(err_sl_m_max);
-            error_tr_m_arr.push_back(err_tr_m_max);
-            error_gr_m_arr.push_back(err_gr_m_max);
-            error_ex_m_arr.push_back(err_ex_m_max);
-            error_dd_m_arr.push_back(err_dd_m_max);
-
-            error_sl_p_arr.push_back(err_sl_p_max);
-            error_tr_p_arr.push_back(err_tr_p_max);
-            error_gr_p_arr.push_back(err_gr_p_max);
-            error_ex_p_arr.push_back(err_ex_p_max);
-            error_dd_p_arr.push_back(err_dd_p_max);
-
-            // Print current errors
-            if (iter > -1)
-            {
-              ierr = PetscPrintf(p4est->mpicomm, "Error (sl_m): %g, order = %g\n", err_sl_m_max, log(error_sl_m_arr[iter-1]/error_sl_m_arr[iter])/log(2)); CHKERRXX(ierr);
-//              ierr = PetscPrintf(p4est->mpicomm, "Error (tr_m): %g, order = %g\n", err_tr_m_max, log(error_tr_m_arr[iter-1]/error_tr_m_arr[iter])/log(2)); CHKERRXX(ierr);
-              ierr = PetscPrintf(p4est->mpicomm, "Error (gr_m): %g, order = %g\n", err_gr_m_max, log(error_gr_m_arr[iter-1]/error_gr_m_arr[iter])/log(2)); CHKERRXX(ierr);
-//              ierr = PetscPrintf(p4est->mpicomm, "Error (ex_m): %g, order = %g\n", err_ex_m_max, log(error_ex_m_arr[iter-1]/error_ex_m_arr[iter])/log(2)); CHKERRXX(ierr);
-//              ierr = PetscPrintf(p4est->mpicomm, "Error (dd_m): %g, order = %g\n", err_dd_m_max, log(error_dd_m_arr[iter-1]/error_dd_m_arr[iter])/log(2)); CHKERRXX(ierr);
-
-              ierr = PetscPrintf(p4est->mpicomm, "Error (sl_p): %g, order = %g\n", err_sl_p_max, log(error_sl_p_arr[iter-1]/error_sl_p_arr[iter])/log(2)); CHKERRXX(ierr);
-//              ierr = PetscPrintf(p4est->mpicomm, "Error (tr_p): %g, order = %g\n", err_tr_p_max, log(error_tr_p_arr[iter-1]/error_tr_p_arr[iter])/log(2)); CHKERRXX(ierr);
-              ierr = PetscPrintf(p4est->mpicomm, "Error (gr_p): %g, order = %g\n", err_gr_p_max, log(error_gr_p_arr[iter-1]/error_gr_p_arr[iter])/log(2)); CHKERRXX(ierr);
-//              ierr = PetscPrintf(p4est->mpicomm, "Error (ex_p): %g, order = %g\n", err_ex_p_max, log(error_ex_p_arr[iter-1]/error_ex_p_arr[iter])/log(2)); CHKERRXX(ierr);
-//              ierr = PetscPrintf(p4est->mpicomm, "Error (dd_p): %g, order = %g\n", err_dd_p_max, log(error_dd_p_arr[iter-1]/error_dd_p_arr[iter])/log(2)); CHKERRXX(ierr);
-
-              ierr = PetscPrintf(p4est->mpicomm, "Cond num: %e\n", cond_num_arr[iter]); CHKERRXX(ierr);
-            }
-
-            if(save_vtk)
-            {
-              char *out_dir;
-              out_dir = getenv("OUT_DIR");
-
-              std::ostringstream oss;
-
-              oss << out_dir
-                  << "/vtu/nodes_"
-                  << p4est->mpisize << "_"
-                  << brick.nxyztrees[0] << "x"
-                  << brick.nxyztrees[1] <<
-                   #ifdef P4_TO_P8
-                     "x" << brick.nxyztrees[2] <<
-                   #endif
-                     "." << iter;
-
-              /* save the size of the leaves */
-              Vec leaf_level;
-              ierr = VecCreateGhostCells(p4est, ghost, &leaf_level); CHKERRXX(ierr);
-              double *l_p;
-              ierr = VecGetArray(leaf_level, &l_p); CHKERRXX(ierr);
-
-              for(p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx)
-              {
-                p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
-                for( size_t q=0; q<tree->quadrants.elem_count; ++q)
-                {
-                  const p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, q);
-                  l_p[tree->quadrants_offset+q] = quad->level;
-                }
-              }
-
-              for(size_t q=0; q<ghost->ghosts.elem_count; ++q)
-              {
-                const p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts, q);
-                l_p[p4est->local_num_quadrants+q] = quad->level;
-              }
-
-              Vec     exact;
-              double *exact_ptr;
-
-              ierr = VecDuplicate(sol, &exact); CHKERRXX(ierr);
-              sample_cf_on_nodes(p4est, nodes, u_cf, exact);
-
-              ierr = VecGetArray(dom_phi_eff, &dom_phi_eff_ptr); CHKERRXX(ierr);
-              ierr = VecGetArray(ifc_phi_eff, &ifc_phi_eff_ptr); CHKERRXX(ierr);
-              ierr = VecGetArray(phi_smooth, &phi_smooth_ptr); CHKERRXX(ierr);
-
-              ierr = VecGetArray(sol,   &sol_ptr);   CHKERRXX(ierr);
-              ierr = VecGetArray(exact, &exact_ptr); CHKERRXX(ierr);
-
-              ierr = VecGetArray(sol_m_ex, &sol_m_ex_ptr); CHKERRXX(ierr);
-              ierr = VecGetArray(sol_p_ex, &sol_p_ex_ptr); CHKERRXX(ierr);
+              Vec sol_m = sol; double *sol_m_ptr;
+              Vec sol_p = sol; double *sol_p_ptr;
+
+              /* calculate errors */
+              Vec vec_error_sl_m; double *vec_error_sl_m_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &vec_error_sl_m); CHKERRXX(ierr);
+              Vec vec_error_gr_m; double *vec_error_gr_m_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &vec_error_gr_m); CHKERRXX(ierr);
+              Vec vec_error_ex_m; double *vec_error_ex_m_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &vec_error_ex_m); CHKERRXX(ierr);
+              Vec vec_error_dd_m; double *vec_error_dd_m_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &vec_error_dd_m); CHKERRXX(ierr);
+
+              Vec vec_error_sl_p; double *vec_error_sl_p_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &vec_error_sl_p); CHKERRXX(ierr);
+              Vec vec_error_gr_p; double *vec_error_gr_p_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &vec_error_gr_p); CHKERRXX(ierr);
+              Vec vec_error_ex_p; double *vec_error_ex_p_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &vec_error_ex_p); CHKERRXX(ierr);
+              Vec vec_error_dd_p; double *vec_error_dd_p_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &vec_error_dd_p); CHKERRXX(ierr);
+
+              //----------------------------------------------------------------------------------------------
+              // calculate error of solution
+              //----------------------------------------------------------------------------------------------
+              ierr = VecGetArray(sol_m, &sol_m_ptr); CHKERRXX(ierr);
+              ierr = VecGetArray(sol_p, &sol_p_ptr); CHKERRXX(ierr);
 
               ierr = VecGetArray(vec_error_sl_m, &vec_error_sl_m_ptr); CHKERRXX(ierr);
-              ierr = VecGetArray(vec_error_tr_m, &vec_error_tr_m_ptr); CHKERRXX(ierr);
-              ierr = VecGetArray(vec_error_gr_m, &vec_error_gr_m_ptr); CHKERRXX(ierr);
-              ierr = VecGetArray(vec_error_ex_m, &vec_error_ex_m_ptr); CHKERRXX(ierr);
-              ierr = VecGetArray(vec_error_dd_m, &vec_error_dd_m_ptr); CHKERRXX(ierr);
-
               ierr = VecGetArray(vec_error_sl_p, &vec_error_sl_p_ptr); CHKERRXX(ierr);
-              ierr = VecGetArray(vec_error_tr_p, &vec_error_tr_p_ptr); CHKERRXX(ierr);
-              ierr = VecGetArray(vec_error_gr_p, &vec_error_gr_p_ptr); CHKERRXX(ierr);
-              ierr = VecGetArray(vec_error_ex_p, &vec_error_ex_p_ptr); CHKERRXX(ierr);
-              ierr = VecGetArray(vec_error_dd_p, &vec_error_dd_p_ptr); CHKERRXX(ierr);
 
               ierr = VecGetArray(mask_m, &mask_m_ptr); CHKERRXX(ierr);
               ierr = VecGetArray(mask_p, &mask_p_ptr); CHKERRXX(ierr);
 
-              my_p4est_vtk_write_all(p4est, nodes, ghost,
-                                     P4EST_TRUE, P4EST_TRUE,
-                                     6, 1, oss.str().c_str(),
-                                     VTK_POINT_DATA, "phi", dom_phi_eff_ptr,
-                                     VTK_POINT_DATA, "ifc_phi", ifc_phi_eff_ptr,
-//                                     VTK_POINT_DATA, "phi_smooth", phi_smooth_ptr,
-                                     VTK_POINT_DATA, "sol", sol_ptr,
-                                     VTK_POINT_DATA, "exact", exact_ptr,
-//                                     VTK_POINT_DATA, "sol_m_ex", sol_m_ex_ptr,
-//                                     VTK_POINT_DATA, "sol_p_ex", sol_p_ex_ptr,
-                                     VTK_POINT_DATA, "error_sl_m", vec_error_sl_m_ptr,
-//                                     VTK_POINT_DATA, "error_tr_m", vec_error_tr_m_ptr,
-//                                     VTK_POINT_DATA, "error_gr_m", vec_error_gr_m_ptr,
-//                                     VTK_POINT_DATA, "error_ex_m", vec_error_ex_m_ptr,
-//                                     VTK_POINT_DATA, "error_dd_m", vec_error_dd_m_ptr,
-                                     VTK_POINT_DATA, "error_sl_p", vec_error_sl_p_ptr,
-//                                     VTK_POINT_DATA, "error_tr_p", vec_error_tr_p_ptr,
-//                                     VTK_POINT_DATA, "error_gr_p", vec_error_gr_p_ptr,
-//                                     VTK_POINT_DATA, "error_ex_p", vec_error_ex_p_ptr,
-//                                     VTK_POINT_DATA, "error_dd_p", vec_error_dd_p_ptr,
-//                                     VTK_POINT_DATA, "mask_m", mask_m_ptr,
-//                                     VTK_POINT_DATA, "mask_p", mask_p_ptr,
-                                     VTK_CELL_DATA , "leaf_level", l_p);
+              double u_max = 0;
 
-              ierr = VecRestoreArray(dom_phi_eff, &dom_phi_eff_ptr);    CHKERRXX(ierr);
-              ierr = VecRestoreArray(ifc_phi_eff, &ifc_phi_eff_ptr); CHKERRXX(ierr);
-              ierr = VecRestoreArray(phi_smooth, &phi_smooth_ptr); CHKERRXX(ierr);
+              foreach_local_node(n, nodes)
+              {
+                double xyz[P4EST_DIM];
+                node_xyz_fr_n(n, p4est, nodes, xyz);
 
-              ierr = VecRestoreArray(sol,   &sol_ptr);   CHKERRXX(ierr);
-              ierr = VecRestoreArray(exact, &exact_ptr); CHKERRXX(ierr);
+                vec_error_sl_m_ptr[n] = mask_m_ptr[n] < 0 ? ABS(sol_m_ptr[n] - u_m_cf.value(xyz)) : 0;
+                vec_error_sl_p_ptr[n] = mask_p_ptr[n] < 0 ? ABS(sol_p_ptr[n] - u_p_cf.value(xyz)) : 0;
 
-              ierr = VecRestoreArray(sol_m_ex, &sol_m_ex_ptr); CHKERRXX(ierr);
-              ierr = VecRestoreArray(sol_p_ex, &sol_p_ex_ptr); CHKERRXX(ierr);
-
-              ierr = VecRestoreArray(vec_error_sl_m, &vec_error_sl_m_ptr); CHKERRXX(ierr);
-              ierr = VecRestoreArray(vec_error_tr_m, &vec_error_tr_m_ptr); CHKERRXX(ierr);
-              ierr = VecRestoreArray(vec_error_gr_m, &vec_error_gr_m_ptr); CHKERRXX(ierr);
-              ierr = VecRestoreArray(vec_error_ex_m, &vec_error_ex_m_ptr); CHKERRXX(ierr);
-              ierr = VecRestoreArray(vec_error_dd_m, &vec_error_dd_m_ptr); CHKERRXX(ierr);
-
-              ierr = VecRestoreArray(vec_error_sl_p, &vec_error_sl_p_ptr); CHKERRXX(ierr);
-              ierr = VecRestoreArray(vec_error_tr_p, &vec_error_tr_p_ptr); CHKERRXX(ierr);
-              ierr = VecRestoreArray(vec_error_gr_p, &vec_error_gr_p_ptr); CHKERRXX(ierr);
-              ierr = VecRestoreArray(vec_error_ex_p, &vec_error_ex_p_ptr); CHKERRXX(ierr);
-              ierr = VecRestoreArray(vec_error_dd_p, &vec_error_dd_p_ptr); CHKERRXX(ierr);
+                u_max = MAX(u_max, fabs(u_m_cf.value(xyz)), fabs(u_p_cf.value(xyz)));
+              }
 
               ierr = VecRestoreArray(mask_m, &mask_m_ptr); CHKERRXX(ierr);
               ierr = VecRestoreArray(mask_p, &mask_p_ptr); CHKERRXX(ierr);
 
-              ierr = VecRestoreArray(leaf_level, &l_p); CHKERRXX(ierr);
-              ierr = VecDestroy(leaf_level); CHKERRXX(ierr);
-              ierr = VecDestroy(exact); CHKERRXX(ierr);
+              ierr = VecRestoreArray(sol_m, &sol_m_ptr); CHKERRXX(ierr);
+              ierr = VecRestoreArray(sol_p, &sol_p_ptr); CHKERRXX(ierr);
 
-              PetscPrintf(p4est->mpicomm, "VTK saved in %s\n", oss.str().c_str());
+              ierr = VecRestoreArray(vec_error_sl_m, &vec_error_sl_m_ptr); CHKERRXX(ierr);
+              ierr = VecRestoreArray(vec_error_sl_p, &vec_error_sl_p_ptr); CHKERRXX(ierr);
+
+              ierr = VecGhostUpdateBegin(vec_error_sl_m, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+              ierr = VecGhostUpdateBegin(vec_error_sl_p, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+              ierr = VecGhostUpdateEnd  (vec_error_sl_m, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+              ierr = VecGhostUpdateEnd  (vec_error_sl_p, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+              //----------------------------------------------------------------------------------------------
+              // calculate error of gradients
+              //----------------------------------------------------------------------------------------------
+              ierr = VecGetArray(sol_m, &sol_m_ptr); CHKERRXX(ierr);
+              ierr = VecGetArray(sol_p, &sol_p_ptr); CHKERRXX(ierr);
+
+              ierr = VecGetArray(mask_m, &mask_m_ptr); CHKERRXX(ierr);
+              ierr = VecGetArray(mask_p, &mask_p_ptr); CHKERRXX(ierr);
+
+              ierr = VecGetArray(vec_error_gr_m, &vec_error_gr_m_ptr); CHKERRXX(ierr);
+              ierr = VecGetArray(vec_error_gr_p, &vec_error_gr_p_ptr); CHKERRXX(ierr);
+
+              quad_neighbor_nodes_of_node_t qnnn;
+
+              double gr_max = 0;
+
+              foreach_local_node(n, nodes)
+              {
+                double xyz[P4EST_DIM];
+                node_xyz_fr_n(n, p4est, nodes, xyz);
+
+                p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
+
+                if (!compute_grad_between)
+                {
+                  ngbd_n.get_neighbors(n, qnnn);
+
+                  if (!is_node_Wall(p4est, ni) && qnnn.is_stencil_in_negative_domain(mask_m_ptr))
+                  {
+                    double DIM( ux_m_exact = ux_m_cf(DIM(xyz[0], xyz[1], xyz[2])),
+                                uy_m_exact = uy_m_cf(DIM(xyz[0], xyz[1], xyz[2])),
+                                uz_m_exact = uz_m_cf(DIM(xyz[0], xyz[1], xyz[2])) );
+
+                    gr_max = MAX(gr_max, sqrt(SUMD(SQR(ux_m_exact), SQR(uy_m_exact), SQR(uz_m_exact))));
+
+                    double DIM( ux_m_error = fabs(qnnn.dx_central(sol_m_ptr) - ux_m_exact),
+                                uy_m_error = fabs(qnnn.dy_central(sol_m_ptr) - uy_m_exact),
+                                uz_m_error = fabs(qnnn.dz_central(sol_m_ptr) - uz_m_exact) );
+
+                    vec_error_gr_m_ptr[n] = sqrt(SUMD(SQR(ux_m_error), SQR(uy_m_error), SQR(uz_m_error)));
+                  } else {
+                    vec_error_gr_m_ptr[n] = 0;
+                  }
+
+                  if (!is_node_Wall(p4est, ni) && qnnn.is_stencil_in_negative_domain(mask_p_ptr))
+                  {
+                    double DIM( ux_p_exact = ux_p_cf(DIM(xyz[0], xyz[1], xyz[2])),
+                        uy_p_exact = uy_p_cf(DIM(xyz[0], xyz[1], xyz[2])),
+                        uz_p_exact = uz_p_cf(DIM(xyz[0], xyz[1], xyz[2])) );
+
+                    gr_max = MAX(gr_max, sqrt(SUMD(SQR(ux_p_exact), SQR(uy_p_exact), SQR(uz_p_exact))));
+
+                    double DIM( ux_p_error = fabs(qnnn.dx_central(sol_p_ptr) - ux_p_exact),
+                                uy_p_error = fabs(qnnn.dy_central(sol_p_ptr) - uy_p_exact),
+                                uz_p_error = fabs(qnnn.dz_central(sol_p_ptr) - uz_p_exact) );
+
+                    vec_error_gr_p_ptr[n] = sqrt(SUMD(SQR(ux_p_error), SQR(uy_p_error), SQR(uz_p_error)));
+                  } else {
+                    vec_error_gr_p_ptr[n] = 0;
+                  }
+                } else {
+                  p4est_locidx_t neighbors      [num_neighbors_cube];
+                  bool           neighbors_exist[num_neighbors_cube];
+
+                  double xyz_nei[P4EST_DIM];
+                  double xyz_mid[P4EST_DIM];
+                  double normal[P4EST_DIM];
+
+                  vec_error_gr_m_ptr[n] = 0;
+                  vec_error_gr_p_ptr[n] = 0;
+
+                  if (!is_node_Wall(p4est, ni))
+                  {
+                    get_all_neighbors(n, p4est, nodes, &ngbd_n, neighbors, neighbors_exist);
+                    //          for (int j = 0; j < (int)pow(3, P4EST_DIM); ++j)
+                    for (int j = 1; j < (int)pow(3, P4EST_DIM); j+=2)
+                    {
+                      p4est_locidx_t n_nei = neighbors[j];
+                      node_xyz_fr_n(n_nei, p4est, nodes, xyz_nei);
+
+                      double delta = 0;
+
+                      foreach_dimension(i)
+                      {
+                        xyz_mid[i] = .5*(xyz[i]+xyz_nei[i]);
+                        delta += SQR(xyz[i]-xyz_nei[i]);
+                        normal[i] = xyz_nei[i]-xyz[i];
+                      }
+
+                      delta = sqrt(delta);
+
+                      foreach_dimension(i)
+                          normal[i] /= delta;
+
+                      if (mask_m_ptr[n] < 0)
+                        if (mask_m_ptr[n_nei] < 0)
+                        {
+                          double grad_exact = SUMD(ux_m_cf.value(xyz_mid)*normal[0], uy_m_cf.value(xyz_mid)*normal[1], uz_m_cf.value(xyz_mid)*normal[2]);
+                          vec_error_gr_m_ptr[n] = MAX(vec_error_gr_m_ptr[n], fabs((sol_m_ptr[n_nei]-sol_m_ptr[n])/delta - grad_exact));
+                          gr_max = MAX(gr_max, fabs(grad_exact));
+                        }
+
+                      if (mask_p_ptr[n] < 0)
+                        if (mask_p_ptr[n_nei] < 0)
+                        {
+                          double grad_exact = SUMD(ux_p_cf.value(xyz_mid)*normal[0], uy_p_cf.value(xyz_mid)*normal[1], uz_p_cf.value(xyz_mid)*normal[2]);
+                          vec_error_gr_p_ptr[n] = MAX(vec_error_gr_p_ptr[n], fabs((sol_p_ptr[n_nei]-sol_p_ptr[n])/delta - grad_exact));
+                          gr_max = MAX(gr_max, fabs(grad_exact));
+                        }
+                    }
+                  }
+                }
+
+              }
+
+              ierr = VecRestoreArray(sol_m, &sol_m_ptr); CHKERRXX(ierr);
+              ierr = VecRestoreArray(sol_p, &sol_p_ptr); CHKERRXX(ierr);
+
+              ierr = VecRestoreArray(mask_m, &mask_m_ptr); CHKERRXX(ierr);
+              ierr = VecRestoreArray(mask_p, &mask_p_ptr); CHKERRXX(ierr);
+
+              ierr = VecRestoreArray(vec_error_gr_m, &vec_error_gr_m_ptr); CHKERRXX(ierr);
+              ierr = VecRestoreArray(vec_error_gr_p, &vec_error_gr_p_ptr); CHKERRXX(ierr);
+
+              ierr = VecGhostUpdateBegin(vec_error_gr_m, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+              ierr = VecGhostUpdateBegin(vec_error_gr_p, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+              ierr = VecGhostUpdateEnd  (vec_error_gr_m, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+              ierr = VecGhostUpdateEnd  (vec_error_gr_p, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+              //---------------------------------------------------------------------------------------------
+              // calculate error of Laplacian
+              //----------------------------------------------------------------------------------------------
+              ierr = VecGetArray(sol_m, &sol_m_ptr); CHKERRXX(ierr);
+              ierr = VecGetArray(sol_p, &sol_p_ptr); CHKERRXX(ierr);
+
+              ierr = VecGetArray(mask_m, &mask_m_ptr); CHKERRXX(ierr);
+              ierr = VecGetArray(mask_p, &mask_p_ptr); CHKERRXX(ierr);
+
+              ierr = VecGetArray(vec_error_dd_m, &vec_error_dd_m_ptr); CHKERRXX(ierr);
+              ierr = VecGetArray(vec_error_dd_p, &vec_error_dd_p_ptr); CHKERRXX(ierr);
+
+              foreach_local_node(n, nodes)
+              {
+                double xyz[P4EST_DIM];
+                node_xyz_fr_n(n, p4est, nodes, xyz);
+
+                p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
+                ngbd_n.get_neighbors(n, qnnn);
+
+                if (!is_node_Wall(p4est, ni) && qnnn.is_stencil_in_negative_domain(mask_m_ptr))
+                {
+                  double udd_exact = ul_m_cf.value(xyz);
+                  double DIM( uxx = qnnn.dxx_central(sol_m_ptr),
+                              uyy = qnnn.dyy_central(sol_m_ptr),
+                              uzz = qnnn.dzz_central(sol_m_ptr) );
+                  vec_error_dd_m_ptr[n] = fabs(udd_exact - SUMD(uxx,uyy,uzz));
+                } else {
+                  vec_error_dd_m_ptr[n] = 0;
+                }
+
+                if (!is_node_Wall(p4est, ni) && qnnn.is_stencil_in_negative_domain(mask_p_ptr))
+                {
+                  double udd_exact = ul_p_cf.value(xyz);
+                  double DIM( uxx = qnnn.dxx_central(sol_p_ptr),
+                              uyy = qnnn.dyy_central(sol_p_ptr),
+                              uzz = qnnn.dzz_central(sol_p_ptr) );
+                  vec_error_dd_p_ptr[n] = fabs(udd_exact - SUMD(uxx,uyy,uzz));
+                } else {
+                  vec_error_dd_p_ptr[n] = 0;
+                }
+              }
+
+              ierr = VecRestoreArray(sol_m, &sol_m_ptr); CHKERRXX(ierr);
+              ierr = VecRestoreArray(sol_p, &sol_p_ptr); CHKERRXX(ierr);
+
+              ierr = VecRestoreArray(mask_m, &mask_m_ptr); CHKERRXX(ierr);
+              ierr = VecRestoreArray(mask_p, &mask_p_ptr); CHKERRXX(ierr);
+
+              ierr = VecRestoreArray(vec_error_dd_m, &vec_error_dd_m_ptr); CHKERRXX(ierr);
+              ierr = VecRestoreArray(vec_error_dd_p, &vec_error_dd_p_ptr); CHKERRXX(ierr);
+
+              ierr = VecGhostUpdateBegin(vec_error_dd_m, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+              ierr = VecGhostUpdateBegin(vec_error_dd_p, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+              ierr = VecGhostUpdateEnd  (vec_error_dd_m, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+              ierr = VecGhostUpdateEnd  (vec_error_dd_p, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+              //----------------------------------------------------------------------------------------------
+              // calculate extrapolation error
+              //----------------------------------------------------------------------------------------------
+              double band = 3.0;
+
+              // copy solution into a new Vec
+              Vec sol_m_ex; double *sol_m_ex_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &sol_m_ex); CHKERRXX(ierr);
+              Vec sol_p_ex; double *sol_p_ex_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &sol_p_ex); CHKERRXX(ierr);
+
+              VecCopyGhost(sol_m, sol_m_ex);
+              VecCopyGhost(sol_p, sol_p_ex);
+
+              Vec phi_m; ierr = VecDuplicate(dom_phi_eff, &phi_m); CHKERRXX(ierr); VecCopyGhost(dom_phi_eff, phi_m);
+              Vec phi_p; ierr = VecDuplicate(dom_phi_eff, &phi_p); CHKERRXX(ierr); VecCopyGhost(dom_phi_eff, phi_p);
+
+              double *phi_m_ptr;
+              double *phi_p_ptr;
+
+              VecPointwiseMaxGhost(phi_m, phi_m, ifc_phi_eff);
+              VecScaleGhost(ifc_phi_eff, -1);
+              VecPointwiseMaxGhost(phi_p, phi_p, ifc_phi_eff);
+              VecScaleGhost(ifc_phi_eff, -1);
+
+              // extend
+              if (do_extension)
+              {
+                ls.extend_Over_Interface_TVD_full(phi_m, mask_m, sol_m_ex, 50, 2); CHKERRXX(ierr);
+                ls.extend_Over_Interface_TVD_full(phi_p, mask_p, sol_p_ex, 50, 2); CHKERRXX(ierr);
+              }
+
+              // calculate error
+              ierr = VecGetArray(sol_m_ex, &sol_m_ex_ptr); CHKERRXX(ierr);
+              ierr = VecGetArray(sol_p_ex, &sol_p_ex_ptr); CHKERRXX(ierr);
+
+              ierr = VecGetArray(vec_error_ex_m, &vec_error_ex_m_ptr); CHKERRXX(ierr);
+              ierr = VecGetArray(vec_error_ex_p, &vec_error_ex_p_ptr); CHKERRXX(ierr);
+
+              ierr = VecGetArray(mask_m, &mask_m_ptr); CHKERRXX(ierr);
+              ierr = VecGetArray(mask_p, &mask_p_ptr); CHKERRXX(ierr);
+
+              ierr = VecGetArray(phi_m, &phi_m_ptr); CHKERRXX(ierr);
+              ierr = VecGetArray(phi_p, &phi_p_ptr); CHKERRXX(ierr);
+
+              foreach_local_node(n, nodes)
+              {
+                double xyz[P4EST_DIM];
+                node_xyz_fr_n(n, p4est, nodes, xyz);
+
+                vec_error_ex_m_ptr[n] = (mask_m_ptr[n] > 0. && phi_m_ptr[n] < band*dxyz_max) ? ABS(sol_m_ex_ptr[n] - u_m_cf.value(xyz)) : 0;
+                vec_error_ex_p_ptr[n] = (mask_p_ptr[n] > 0. && phi_p_ptr[n] < band*dxyz_max) ? ABS(sol_p_ex_ptr[n] - u_p_cf.value(xyz)) : 0;
+              }
+
+              ierr = VecRestoreArray(sol_m_ex, &sol_m_ex_ptr); CHKERRXX(ierr);
+              ierr = VecRestoreArray(sol_p_ex, &sol_p_ex_ptr); CHKERRXX(ierr);
+
+              ierr = VecRestoreArray(vec_error_ex_m, &vec_error_ex_m_ptr); CHKERRXX(ierr);
+              ierr = VecRestoreArray(vec_error_ex_p, &vec_error_ex_p_ptr); CHKERRXX(ierr);
+
+              ierr = VecRestoreArray(mask_m, &mask_m_ptr); CHKERRXX(ierr);
+              ierr = VecRestoreArray(mask_p, &mask_p_ptr); CHKERRXX(ierr);
+
+              ierr = VecRestoreArray(phi_m, &phi_m_ptr); CHKERRXX(ierr);
+              ierr = VecRestoreArray(phi_p, &phi_p_ptr); CHKERRXX(ierr);
+
+              ierr = VecGhostUpdateBegin(vec_error_ex_m, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+              ierr = VecGhostUpdateBegin(vec_error_ex_p, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+              ierr = VecGhostUpdateEnd  (vec_error_ex_m, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+              ierr = VecGhostUpdateEnd  (vec_error_ex_p, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+              ierr = VecDestroy(phi_m); CHKERRXX(ierr);
+              ierr = VecDestroy(phi_p); CHKERRXX(ierr);
+
+              // compute L-inf norm of errors
+              double err_sl_m_max = 0.;   ierr = VecMax(vec_error_sl_m, NULL, &err_sl_m_max); CHKERRXX(ierr);   mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_sl_m_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+              double err_gr_m_max = 0.;   ierr = VecMax(vec_error_gr_m, NULL, &err_gr_m_max); CHKERRXX(ierr);   mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_gr_m_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+              double err_ex_m_max = 0.;   ierr = VecMax(vec_error_ex_m, NULL, &err_ex_m_max); CHKERRXX(ierr);   mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_ex_m_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+              double err_dd_m_max = 0.;   ierr = VecMax(vec_error_dd_m, NULL, &err_dd_m_max); CHKERRXX(ierr);   mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_dd_m_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+
+              double err_sl_p_max = 0.;   ierr = VecMax(vec_error_sl_p, NULL, &err_sl_p_max); CHKERRXX(ierr);   mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_sl_p_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+              double err_gr_p_max = 0.;   ierr = VecMax(vec_error_gr_p, NULL, &err_gr_p_max); CHKERRXX(ierr);   mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_gr_p_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+              double err_ex_p_max = 0.;   ierr = VecMax(vec_error_ex_p, NULL, &err_ex_p_max); CHKERRXX(ierr);   mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_ex_p_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+              double err_dd_p_max = 0.;   ierr = VecMax(vec_error_dd_p, NULL, &err_dd_p_max); CHKERRXX(ierr);   mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_dd_p_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+
+              if (scale_errors)
+              {
+                mpiret = MPI_Allreduce(MPI_IN_PLACE, &u_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+                err_sl_m_max /= u_max;
+                err_sl_p_max /= u_max;
+
+                mpiret = MPI_Allreduce(MPI_IN_PLACE, &gr_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+                err_gr_m_max /= gr_max;
+                err_gr_p_max /= gr_max;
+              }
+
+              error_sl_m_arr.push_back(err_sl_m_max);
+              error_gr_m_arr.push_back(err_gr_m_max);
+              error_ex_m_arr.push_back(err_ex_m_max);
+              error_dd_m_arr.push_back(err_dd_m_max);
+
+              error_sl_p_arr.push_back(err_sl_p_max);
+              error_gr_p_arr.push_back(err_gr_p_max);
+              error_ex_p_arr.push_back(err_ex_p_max);
+              error_dd_p_arr.push_back(err_dd_p_max);
+
+              // Print current errors
+              if (iter > -1)
+              {
+                ierr = PetscPrintf(p4est->mpicomm, "Errors:\n"); CHKERRXX(ierr);
+
+                ierr = PetscPrintf(p4est->mpicomm, "Neg: "); CHKERRXX(ierr);
+                ierr = PetscPrintf(p4est->mpicomm, "sol = %3.2e (%+3.2f), ", err_sl_m_max, log(error_sl_m_arr[iter-1]/error_sl_m_arr[iter])/log(2)); CHKERRXX(ierr);
+                ierr = PetscPrintf(p4est->mpicomm, "gra = %3.2e (%+3.2f), ", err_gr_m_max, log(error_gr_m_arr[iter-1]/error_gr_m_arr[iter])/log(2)); CHKERRXX(ierr);
+                ierr = PetscPrintf(p4est->mpicomm, "ext = %3.2e (%+3.2f), ", err_ex_m_max, log(error_ex_m_arr[iter-1]/error_ex_m_arr[iter])/log(2)); CHKERRXX(ierr);
+                ierr = PetscPrintf(p4est->mpicomm, "lap = %3.2e (%+3.2f). ", err_dd_m_max, log(error_dd_m_arr[iter-1]/error_dd_m_arr[iter])/log(2)); CHKERRXX(ierr);
+                ierr = PetscPrintf(p4est->mpicomm, "\n"); CHKERRXX(ierr);
+
+                ierr = PetscPrintf(p4est->mpicomm, "Pos: "); CHKERRXX(ierr);
+                ierr = PetscPrintf(p4est->mpicomm, "sol = %3.2e (%+3.2f), ", err_sl_p_max, log(error_sl_p_arr[iter-1]/error_sl_p_arr[iter])/log(2)); CHKERRXX(ierr);
+                ierr = PetscPrintf(p4est->mpicomm, "gra = %3.2e (%+3.2f), ", err_gr_p_max, log(error_gr_p_arr[iter-1]/error_gr_p_arr[iter])/log(2)); CHKERRXX(ierr);
+                ierr = PetscPrintf(p4est->mpicomm, "ext = %3.2e (%+3.2f), ", err_ex_p_max, log(error_ex_p_arr[iter-1]/error_ex_p_arr[iter])/log(2)); CHKERRXX(ierr);
+                ierr = PetscPrintf(p4est->mpicomm, "lap = %3.2e (%+3.2f). ", err_dd_p_max, log(error_dd_p_arr[iter-1]/error_dd_p_arr[iter])/log(2)); CHKERRXX(ierr);
+                ierr = PetscPrintf(p4est->mpicomm, "\n"); CHKERRXX(ierr);
+
+                ierr = PetscPrintf(p4est->mpicomm, "Cond num: %e\n", cond_num_arr[iter]); CHKERRXX(ierr);
+              }
+
+              if(save_vtk)
+              {
+                char *out_dir;
+                out_dir = getenv("OUT_DIR");
+
+                std::ostringstream oss;
+
+                oss << out_dir
+                    << "/vtu/nodes_"
+                    << p4est->mpisize << "_"
+                    << brick.nxyztrees[0] << "x"
+                    << brick.nxyztrees[1] <<
+       #ifdef P4_TO_P8
+                       "x" << brick.nxyztrees[2] <<
+       #endif
+                       "." << iter;
+
+                /* save the size of the leaves */
+                Vec leaf_level;
+                ierr = VecCreateGhostCells(p4est, ghost, &leaf_level); CHKERRXX(ierr);
+                double *l_p;
+                ierr = VecGetArray(leaf_level, &l_p); CHKERRXX(ierr);
+
+                for(p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx)
+                {
+                  p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
+                  for( size_t q=0; q<tree->quadrants.elem_count; ++q)
+                  {
+                    const p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, q);
+                    l_p[tree->quadrants_offset+q] = quad->level;
+                  }
+                }
+
+                for(size_t q=0; q<ghost->ghosts.elem_count; ++q)
+                {
+                  const p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts, q);
+                  l_p[p4est->local_num_quadrants+q] = quad->level;
+                }
+
+                Vec     exact;
+                double *exact_ptr;
+
+                ierr = VecDuplicate(sol, &exact); CHKERRXX(ierr);
+                sample_cf_on_nodes(p4est, nodes, u_cf, exact);
+
+                ierr = VecGetArray(dom_phi_eff, &dom_phi_eff_ptr); CHKERRXX(ierr);
+                ierr = VecGetArray(ifc_phi_eff, &ifc_phi_eff_ptr); CHKERRXX(ierr);
+
+                ierr = VecGetArray(sol,   &sol_ptr);   CHKERRXX(ierr);
+                ierr = VecGetArray(exact, &exact_ptr); CHKERRXX(ierr);
+
+                ierr = VecGetArray(sol_m_ex, &sol_m_ex_ptr); CHKERRXX(ierr);
+                ierr = VecGetArray(sol_p_ex, &sol_p_ex_ptr); CHKERRXX(ierr);
+
+                ierr = VecGetArray(vec_error_sl_m, &vec_error_sl_m_ptr); CHKERRXX(ierr);
+                ierr = VecGetArray(vec_error_gr_m, &vec_error_gr_m_ptr); CHKERRXX(ierr);
+                ierr = VecGetArray(vec_error_ex_m, &vec_error_ex_m_ptr); CHKERRXX(ierr);
+                ierr = VecGetArray(vec_error_dd_m, &vec_error_dd_m_ptr); CHKERRXX(ierr);
+
+                ierr = VecGetArray(vec_error_sl_p, &vec_error_sl_p_ptr); CHKERRXX(ierr);
+                ierr = VecGetArray(vec_error_gr_p, &vec_error_gr_p_ptr); CHKERRXX(ierr);
+                ierr = VecGetArray(vec_error_ex_p, &vec_error_ex_p_ptr); CHKERRXX(ierr);
+                ierr = VecGetArray(vec_error_dd_p, &vec_error_dd_p_ptr); CHKERRXX(ierr);
+
+                ierr = VecGetArray(mask_m, &mask_m_ptr); CHKERRXX(ierr);
+                ierr = VecGetArray(mask_p, &mask_p_ptr); CHKERRXX(ierr);
+
+                my_p4est_vtk_write_all(p4est, nodes, ghost,
+                                       P4EST_TRUE, P4EST_TRUE,
+                                       14, 1, oss.str().c_str(),
+                                       VTK_POINT_DATA, "phi", dom_phi_eff_ptr,
+                                       VTK_POINT_DATA, "ifc_phi", ifc_phi_eff_ptr,
+                                       VTK_POINT_DATA, "sol", sol_ptr,
+                                       VTK_POINT_DATA, "exact", exact_ptr,
+                                       VTK_POINT_DATA, "sol_m_ex", sol_m_ex_ptr,
+                                       VTK_POINT_DATA, "sol_p_ex", sol_p_ex_ptr,
+                                       VTK_POINT_DATA, "error_sl_m", vec_error_sl_m_ptr,
+                                       VTK_POINT_DATA, "error_gr_m", vec_error_gr_m_ptr,
+                                       VTK_POINT_DATA, "error_ex_m", vec_error_ex_m_ptr,
+                                       VTK_POINT_DATA, "error_dd_m", vec_error_dd_m_ptr,
+                                       VTK_POINT_DATA, "error_sl_p", vec_error_sl_p_ptr,
+                                       VTK_POINT_DATA, "error_gr_p", vec_error_gr_p_ptr,
+                                       VTK_POINT_DATA, "error_ex_p", vec_error_ex_p_ptr,
+                                       VTK_POINT_DATA, "error_dd_p", vec_error_dd_p_ptr,
+                                       VTK_CELL_DATA , "leaf_level", l_p);
+
+                ierr = VecRestoreArray(dom_phi_eff, &dom_phi_eff_ptr);    CHKERRXX(ierr);
+                ierr = VecRestoreArray(ifc_phi_eff, &ifc_phi_eff_ptr); CHKERRXX(ierr);
+
+                ierr = VecRestoreArray(sol,   &sol_ptr);   CHKERRXX(ierr);
+                ierr = VecRestoreArray(exact, &exact_ptr); CHKERRXX(ierr);
+
+                ierr = VecRestoreArray(sol_m_ex, &sol_m_ex_ptr); CHKERRXX(ierr);
+                ierr = VecRestoreArray(sol_p_ex, &sol_p_ex_ptr); CHKERRXX(ierr);
+
+                ierr = VecRestoreArray(vec_error_sl_m, &vec_error_sl_m_ptr); CHKERRXX(ierr);
+                ierr = VecRestoreArray(vec_error_gr_m, &vec_error_gr_m_ptr); CHKERRXX(ierr);
+                ierr = VecRestoreArray(vec_error_ex_m, &vec_error_ex_m_ptr); CHKERRXX(ierr);
+                ierr = VecRestoreArray(vec_error_dd_m, &vec_error_dd_m_ptr); CHKERRXX(ierr);
+
+                ierr = VecRestoreArray(vec_error_sl_p, &vec_error_sl_p_ptr); CHKERRXX(ierr);
+                ierr = VecRestoreArray(vec_error_gr_p, &vec_error_gr_p_ptr); CHKERRXX(ierr);
+                ierr = VecRestoreArray(vec_error_ex_p, &vec_error_ex_p_ptr); CHKERRXX(ierr);
+                ierr = VecRestoreArray(vec_error_dd_p, &vec_error_dd_p_ptr); CHKERRXX(ierr);
+
+                ierr = VecRestoreArray(mask_m, &mask_m_ptr); CHKERRXX(ierr);
+                ierr = VecRestoreArray(mask_p, &mask_p_ptr); CHKERRXX(ierr);
+
+                ierr = VecRestoreArray(leaf_level, &l_p); CHKERRXX(ierr);
+                ierr = VecDestroy(leaf_level); CHKERRXX(ierr);
+                ierr = VecDestroy(exact); CHKERRXX(ierr);
+
+                PetscPrintf(p4est->mpicomm, "VTK saved in %s\n", oss.str().c_str());
+              }
+
+              // destroy Vec's with errors
+              ierr = VecDestroy(vec_error_sl_m); CHKERRXX(ierr);
+              ierr = VecDestroy(vec_error_gr_m); CHKERRXX(ierr);
+              ierr = VecDestroy(vec_error_ex_m); CHKERRXX(ierr);
+              ierr = VecDestroy(vec_error_dd_m); CHKERRXX(ierr);
+
+              ierr = VecDestroy(vec_error_sl_p); CHKERRXX(ierr);
+              ierr = VecDestroy(vec_error_gr_p); CHKERRXX(ierr);
+              ierr = VecDestroy(vec_error_ex_p); CHKERRXX(ierr);
+              ierr = VecDestroy(vec_error_dd_p); CHKERRXX(ierr);
+
+              ierr = VecDestroy(sol_m_ex); CHKERRXX(ierr);
+              ierr = VecDestroy(sol_p_ex); CHKERRXX(ierr);
+
+              ierr = VecDestroy(sol);           CHKERRXX(ierr);
+
+              ierr = VecDestroy(mu_m);          CHKERRXX(ierr);
+              ierr = VecDestroy(mu_p);          CHKERRXX(ierr);
+
+              ierr = VecDestroy(rhs_m);         CHKERRXX(ierr);
+              ierr = VecDestroy(rhs_p);         CHKERRXX(ierr);
+
+              ierr = VecDestroy(diag_m);   CHKERRXX(ierr);
+              ierr = VecDestroy(diag_p);   CHKERRXX(ierr);
+
+              for (unsigned int i = 0; i < dom_phi.size(); i++) { ierr = VecDestroy(dom_phi[i]); CHKERRXX(ierr); }
+              for (unsigned int i = 0; i < ifc_phi.size(); i++) { ierr = VecDestroy(ifc_phi[i]); CHKERRXX(ierr); }
+
+              p4est_nodes_destroy(nodes);
+              p4est_ghost_destroy(ghost);
+              p4est_destroy      (p4est);
+              my_p4est_brick_destroy(connectivity, &brick);
+
             }
-
-            // destroy Vec's with errors
-            ierr = VecDestroy(vec_error_sl_m); CHKERRXX(ierr);
-            ierr = VecDestroy(vec_error_tr_m); CHKERRXX(ierr);
-            ierr = VecDestroy(vec_error_gr_m); CHKERRXX(ierr);
-            ierr = VecDestroy(vec_error_ex_m); CHKERRXX(ierr);
-            ierr = VecDestroy(vec_error_dd_m); CHKERRXX(ierr);
-
-            ierr = VecDestroy(vec_error_sl_p); CHKERRXX(ierr);
-            ierr = VecDestroy(vec_error_tr_p); CHKERRXX(ierr);
-            ierr = VecDestroy(vec_error_gr_p); CHKERRXX(ierr);
-            ierr = VecDestroy(vec_error_ex_p); CHKERRXX(ierr);
-            ierr = VecDestroy(vec_error_dd_p); CHKERRXX(ierr);
-
-            ierr = VecDestroy(phi_smooth); CHKERRXX(ierr);
-
-            ierr = VecDestroy(sol_m_ex); CHKERRXX(ierr);
-            ierr = VecDestroy(sol_p_ex); CHKERRXX(ierr);
-
-            ierr = VecDestroy(sol);           CHKERRXX(ierr);
-
-            ierr = VecDestroy(mu_m);          CHKERRXX(ierr);
-            ierr = VecDestroy(mu_p);          CHKERRXX(ierr);
-
-            ierr = VecDestroy(rhs_m);         CHKERRXX(ierr);
-            ierr = VecDestroy(rhs_p);         CHKERRXX(ierr);
-
-            ierr = VecDestroy(diag_m);   CHKERRXX(ierr);
-            ierr = VecDestroy(diag_p);   CHKERRXX(ierr);
-
-            for (unsigned int i = 0; i < dom_phi.size(); i++) { ierr = VecDestroy(dom_phi[i]); CHKERRXX(ierr); }
-            for (unsigned int i = 0; i < ifc_phi.size(); i++) { ierr = VecDestroy(ifc_phi[i]); CHKERRXX(ierr); }
-
-            p4est_nodes_destroy(nodes);
-            p4est_ghost_destroy(ghost);
-            p4est_destroy      (p4est);
-            my_p4est_brick_destroy(connectivity, &brick);
-
           }
-        }
 #ifdef P4_TO_P8
-      }
+        }
 #endif
+      }
     }
   }
 
@@ -2228,28 +1984,20 @@ int main (int argc, char* argv[])
 
   std::vector<double> error_m_sl_one(num_resolutions, 0), error_m_sl_avg(num_resolutions, 0), error_m_sl_max(num_resolutions, 0);
   std::vector<double> error_m_gr_one(num_resolutions, 0), error_m_gr_avg(num_resolutions, 0), error_m_gr_max(num_resolutions, 0);
-  std::vector<double> error_m_ge_one(num_resolutions, 0), error_m_ge_avg(num_resolutions, 0), error_m_ge_max(num_resolutions, 0);
   std::vector<double> error_m_dd_one(num_resolutions, 0), error_m_dd_avg(num_resolutions, 0), error_m_dd_max(num_resolutions, 0);
-  std::vector<double> error_m_tr_one(num_resolutions, 0), error_m_tr_avg(num_resolutions, 0), error_m_tr_max(num_resolutions, 0);
   std::vector<double> error_m_ex_one(num_resolutions, 0), error_m_ex_avg(num_resolutions, 0), error_m_ex_max(num_resolutions, 0);
 
   std::vector<double> error_p_sl_one(num_resolutions, 0), error_p_sl_avg(num_resolutions, 0), error_p_sl_max(num_resolutions, 0);
   std::vector<double> error_p_gr_one(num_resolutions, 0), error_p_gr_avg(num_resolutions, 0), error_p_gr_max(num_resolutions, 0);
-  std::vector<double> error_p_ge_one(num_resolutions, 0), error_p_ge_avg(num_resolutions, 0), error_p_ge_max(num_resolutions, 0);
   std::vector<double> error_p_dd_one(num_resolutions, 0), error_p_dd_avg(num_resolutions, 0), error_p_dd_max(num_resolutions, 0);
-  std::vector<double> error_p_tr_one(num_resolutions, 0), error_p_tr_avg(num_resolutions, 0), error_p_tr_max(num_resolutions, 0);
   std::vector<double> error_p_ex_one(num_resolutions, 0), error_p_ex_avg(num_resolutions, 0), error_p_ex_max(num_resolutions, 0);
 
   std::vector<double> cond_num_one(num_resolutions, 0), cond_num_avg(num_resolutions, 0), cond_num_max(num_resolutions, 0);
 
-  error_ge_m_arr = error_sl_m_arr;
-  error_dd_m_arr = error_sl_m_arr;
-  error_tr_m_arr = error_sl_m_arr;
-  error_ex_m_arr = error_sl_m_arr;
-  error_ge_p_arr = error_sl_p_arr;
-  error_dd_p_arr = error_sl_p_arr;
-  error_tr_p_arr = error_sl_p_arr;
-  error_ex_p_arr = error_sl_p_arr;
+////  error_dd_m_arr = error_sl_m_arr;
+//  error_ex_m_arr = error_sl_m_arr;
+////  error_dd_p_arr = error_sl_p_arr;
+//  error_ex_p_arr = error_sl_p_arr;
 
   // for each resolution compute max, mean and deviation
   for (int p = 0; p < num_resolutions; ++p)
@@ -2257,16 +2005,12 @@ int main (int argc, char* argv[])
     // one
     error_m_sl_one[p] = error_sl_m_arr[p*num_shifts_total];
     error_m_gr_one[p] = error_gr_m_arr[p*num_shifts_total];
-    error_m_ge_one[p] = error_ge_m_arr[p*num_shifts_total];
     error_m_dd_one[p] = error_dd_m_arr[p*num_shifts_total];
-    error_m_tr_one[p] = error_tr_m_arr[p*num_shifts_total];
     error_m_ex_one[p] = error_ex_m_arr[p*num_shifts_total];
 
     error_p_sl_one[p] = error_sl_p_arr[p*num_shifts_total];
     error_p_gr_one[p] = error_gr_p_arr[p*num_shifts_total];
-    error_p_ge_one[p] = error_ge_p_arr[p*num_shifts_total];
     error_p_dd_one[p] = error_dd_p_arr[p*num_shifts_total];
-    error_p_tr_one[p] = error_tr_p_arr[p*num_shifts_total];
     error_p_ex_one[p] = error_ex_p_arr[p*num_shifts_total];
 
     cond_num_one[p] = cond_num_arr[p*num_shifts_total];
@@ -2276,16 +2020,12 @@ int main (int argc, char* argv[])
     {
       error_m_sl_max[p] = MAX(error_m_sl_max[p], error_sl_m_arr[p*num_shifts_total + s]);
       error_m_gr_max[p] = MAX(error_m_gr_max[p], error_gr_m_arr[p*num_shifts_total + s]);
-      error_m_ge_max[p] = MAX(error_m_ge_max[p], error_ge_m_arr[p*num_shifts_total + s]);
       error_m_dd_max[p] = MAX(error_m_dd_max[p], error_dd_m_arr[p*num_shifts_total + s]);
-      error_m_tr_max[p] = MAX(error_m_tr_max[p], error_tr_m_arr[p*num_shifts_total + s]);
       error_m_ex_max[p] = MAX(error_m_ex_max[p], error_ex_m_arr[p*num_shifts_total + s]);
 
       error_p_sl_max[p] = MAX(error_p_sl_max[p], error_sl_p_arr[p*num_shifts_total + s]);
       error_p_gr_max[p] = MAX(error_p_gr_max[p], error_gr_p_arr[p*num_shifts_total + s]);
-      error_p_ge_max[p] = MAX(error_p_ge_max[p], error_ge_p_arr[p*num_shifts_total + s]);
       error_p_dd_max[p] = MAX(error_p_dd_max[p], error_dd_p_arr[p*num_shifts_total + s]);
-      error_p_tr_max[p] = MAX(error_p_tr_max[p], error_tr_p_arr[p*num_shifts_total + s]);
       error_p_ex_max[p] = MAX(error_p_ex_max[p], error_ex_p_arr[p*num_shifts_total + s]);
 
       cond_num_max[p] = MAX(cond_num_max[p], cond_num_arr[p*num_shifts_total + s]);
@@ -2296,16 +2036,12 @@ int main (int argc, char* argv[])
     {
       error_m_sl_avg[p] += error_sl_m_arr[p*num_shifts_total + s];
       error_m_gr_avg[p] += error_gr_m_arr[p*num_shifts_total + s];
-      error_m_ge_avg[p] += error_ge_m_arr[p*num_shifts_total + s];
       error_m_dd_avg[p] += error_dd_m_arr[p*num_shifts_total + s];
-      error_m_tr_avg[p] += error_tr_m_arr[p*num_shifts_total + s];
       error_m_ex_avg[p] += error_ex_m_arr[p*num_shifts_total + s];
 
       error_p_sl_avg[p] += error_sl_p_arr[p*num_shifts_total + s];
       error_p_gr_avg[p] += error_gr_p_arr[p*num_shifts_total + s];
-      error_p_ge_avg[p] += error_ge_p_arr[p*num_shifts_total + s];
       error_p_dd_avg[p] += error_dd_p_arr[p*num_shifts_total + s];
-      error_p_tr_avg[p] += error_tr_p_arr[p*num_shifts_total + s];
       error_p_ex_avg[p] += error_ex_p_arr[p*num_shifts_total + s];
 
       cond_num_avg[p] += cond_num_arr[p*num_shifts_total + s];
@@ -2313,16 +2049,12 @@ int main (int argc, char* argv[])
 
     error_m_sl_avg[p] /= num_shifts_total;
     error_m_gr_avg[p] /= num_shifts_total;
-    error_m_ge_avg[p] /= num_shifts_total;
     error_m_dd_avg[p] /= num_shifts_total;
-    error_m_tr_avg[p] /= num_shifts_total;
     error_m_ex_avg[p] /= num_shifts_total;
 
     error_p_sl_avg[p] /= num_shifts_total;
     error_p_gr_avg[p] /= num_shifts_total;
-    error_p_ge_avg[p] /= num_shifts_total;
     error_p_dd_avg[p] /= num_shifts_total;
-    error_p_tr_avg[p] /= num_shifts_total;
     error_p_ex_avg[p] /= num_shifts_total;
 
     cond_num_avg[p] /= num_shifts_total;
@@ -2341,61 +2073,46 @@ int main (int argc, char* argv[])
     // save level and resolution
     filename = out_dir; filename += "/convergence/lvl.txt";   save_vector(filename.c_str(), lvl_arr);
     filename = out_dir; filename += "/convergence/h_arr.txt"; save_vector(filename.c_str(), h_arr);
+    filename = out_dir; filename += "/convergence/mu_arr.txt"; save_vector(filename.c_str(), mu_arr);
 
     filename = out_dir; filename += "/convergence/error_m_sl_all.txt"; save_vector(filename.c_str(), error_sl_m_arr);
     filename = out_dir; filename += "/convergence/error_m_gr_all.txt"; save_vector(filename.c_str(), error_gr_m_arr);
-    filename = out_dir; filename += "/convergence/error_m_ge_all.txt"; save_vector(filename.c_str(), error_ge_m_arr);
     filename = out_dir; filename += "/convergence/error_m_dd_all.txt"; save_vector(filename.c_str(), error_dd_m_arr);
-    filename = out_dir; filename += "/convergence/error_m_tr_all.txt"; save_vector(filename.c_str(), error_tr_m_arr);
     filename = out_dir; filename += "/convergence/error_m_ex_all.txt"; save_vector(filename.c_str(), error_ex_m_arr);
 
     filename = out_dir; filename += "/convergence/error_m_sl_one.txt"; save_vector(filename.c_str(), error_m_sl_one);
     filename = out_dir; filename += "/convergence/error_m_gr_one.txt"; save_vector(filename.c_str(), error_m_gr_one);
-    filename = out_dir; filename += "/convergence/error_m_ge_one.txt"; save_vector(filename.c_str(), error_m_ge_one);
     filename = out_dir; filename += "/convergence/error_m_dd_one.txt"; save_vector(filename.c_str(), error_m_dd_one);
-    filename = out_dir; filename += "/convergence/error_m_tr_one.txt"; save_vector(filename.c_str(), error_m_tr_one);
     filename = out_dir; filename += "/convergence/error_m_ex_one.txt"; save_vector(filename.c_str(), error_m_ex_one);
 
     filename = out_dir; filename += "/convergence/error_m_sl_avg.txt"; save_vector(filename.c_str(), error_m_sl_avg);
     filename = out_dir; filename += "/convergence/error_m_gr_avg.txt"; save_vector(filename.c_str(), error_m_gr_avg);
-    filename = out_dir; filename += "/convergence/error_m_ge_avg.txt"; save_vector(filename.c_str(), error_m_ge_avg);
     filename = out_dir; filename += "/convergence/error_m_dd_avg.txt"; save_vector(filename.c_str(), error_m_dd_avg);
-    filename = out_dir; filename += "/convergence/error_m_tr_avg.txt"; save_vector(filename.c_str(), error_m_tr_avg);
     filename = out_dir; filename += "/convergence/error_m_ex_avg.txt"; save_vector(filename.c_str(), error_m_ex_avg);
 
     filename = out_dir; filename += "/convergence/error_m_sl_max.txt"; save_vector(filename.c_str(), error_m_sl_max);
     filename = out_dir; filename += "/convergence/error_m_gr_max.txt"; save_vector(filename.c_str(), error_m_gr_max);
-    filename = out_dir; filename += "/convergence/error_m_ge_max.txt"; save_vector(filename.c_str(), error_m_ge_max);
     filename = out_dir; filename += "/convergence/error_m_dd_max.txt"; save_vector(filename.c_str(), error_m_dd_max);
-    filename = out_dir; filename += "/convergence/error_m_tr_max.txt"; save_vector(filename.c_str(), error_m_tr_max);
     filename = out_dir; filename += "/convergence/error_m_ex_max.txt"; save_vector(filename.c_str(), error_m_ex_max);
 
     filename = out_dir; filename += "/convergence/error_p_sl_all.txt"; save_vector(filename.c_str(), error_sl_p_arr);
     filename = out_dir; filename += "/convergence/error_p_gr_all.txt"; save_vector(filename.c_str(), error_gr_p_arr);
-    filename = out_dir; filename += "/convergence/error_p_ge_all.txt"; save_vector(filename.c_str(), error_ge_p_arr);
     filename = out_dir; filename += "/convergence/error_p_dd_all.txt"; save_vector(filename.c_str(), error_dd_p_arr);
-    filename = out_dir; filename += "/convergence/error_p_tr_all.txt"; save_vector(filename.c_str(), error_tr_p_arr);
     filename = out_dir; filename += "/convergence/error_p_ex_all.txt"; save_vector(filename.c_str(), error_ex_p_arr);
 
     filename = out_dir; filename += "/convergence/error_p_sl_one.txt"; save_vector(filename.c_str(), error_p_sl_one);
     filename = out_dir; filename += "/convergence/error_p_gr_one.txt"; save_vector(filename.c_str(), error_p_gr_one);
-    filename = out_dir; filename += "/convergence/error_p_ge_one.txt"; save_vector(filename.c_str(), error_p_ge_one);
     filename = out_dir; filename += "/convergence/error_p_dd_one.txt"; save_vector(filename.c_str(), error_p_dd_one);
-    filename = out_dir; filename += "/convergence/error_p_tr_one.txt"; save_vector(filename.c_str(), error_p_tr_one);
     filename = out_dir; filename += "/convergence/error_p_ex_one.txt"; save_vector(filename.c_str(), error_p_ex_one);
 
     filename = out_dir; filename += "/convergence/error_p_sl_avg.txt"; save_vector(filename.c_str(), error_p_sl_avg);
     filename = out_dir; filename += "/convergence/error_p_gr_avg.txt"; save_vector(filename.c_str(), error_p_gr_avg);
-    filename = out_dir; filename += "/convergence/error_p_ge_avg.txt"; save_vector(filename.c_str(), error_p_ge_avg);
     filename = out_dir; filename += "/convergence/error_p_dd_avg.txt"; save_vector(filename.c_str(), error_p_dd_avg);
-    filename = out_dir; filename += "/convergence/error_p_tr_avg.txt"; save_vector(filename.c_str(), error_p_tr_avg);
     filename = out_dir; filename += "/convergence/error_p_ex_avg.txt"; save_vector(filename.c_str(), error_p_ex_avg);
 
     filename = out_dir; filename += "/convergence/error_p_sl_max.txt"; save_vector(filename.c_str(), error_p_sl_max);
     filename = out_dir; filename += "/convergence/error_p_gr_max.txt"; save_vector(filename.c_str(), error_p_gr_max);
-    filename = out_dir; filename += "/convergence/error_p_ge_max.txt"; save_vector(filename.c_str(), error_p_ge_max);
     filename = out_dir; filename += "/convergence/error_p_dd_max.txt"; save_vector(filename.c_str(), error_p_dd_max);
-    filename = out_dir; filename += "/convergence/error_p_tr_max.txt"; save_vector(filename.c_str(), error_p_tr_max);
     filename = out_dir; filename += "/convergence/error_p_ex_max.txt"; save_vector(filename.c_str(), error_p_ex_max);
 
     filename = out_dir; filename += "/convergence/cond_num_all.txt"; save_vector(filename.c_str(), cond_num_arr);
@@ -2408,81 +2125,6 @@ int main (int argc, char* argv[])
   w.stop(); w.read_duration();
 
   return 0;
-}
-
-void print_convergence_table(MPI_Comm mpi_comm,
-                             std::vector<double> &level, std::vector<double> &h,
-                             std::vector<double> &L_one, std::vector<double> &L_avg, std::vector<double> &L_dev, std::vector<double> &L_max,
-                             std::vector<double> &Q_one, std::vector<double> &Q_avg, std::vector<double> &Q_dev, std::vector<double> &Q_max)
-{
-  PetscErrorCode ierr;
-  double order;
-
-  ierr = PetscPrintf(mpi_comm, "\n"); CHKERRXX(ierr);
-
-  ierr = PetscPrintf(mpi_comm, "------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n"); CHKERRXX(ierr);
-  ierr = PetscPrintf(mpi_comm, "                    |  Linear Integration                                                                     |  Quadratic Integration                                                                \n"); CHKERRXX(ierr);
-  ierr = PetscPrintf(mpi_comm, "------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n"); CHKERRXX(ierr);
-  ierr = PetscPrintf(mpi_comm, "                    |  Average                    |  One                        |  Max                        |  Average                    |  One                        |  Max                      \n"); CHKERRXX(ierr);
-  ierr = PetscPrintf(mpi_comm, "------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n"); CHKERRXX(ierr);
-  ierr = PetscPrintf(mpi_comm, "lvl  | Resolution   |  Error      ( Dev )  Order  |  Error      ( Dev )  Order  |  Error      ( Dev )  Order  |  Error      ( Dev )  Order  |  Error      ( Dev )  Order  |  Error      ( Dev )  Order\n"); CHKERRXX(ierr);
-  ierr = PetscPrintf(mpi_comm, "------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n"); CHKERRXX(ierr);
-
-
-  for (int i = 0; i < level.size(); ++i)
-  {
-    // lvl and h
-    ierr = PetscPrintf(mpi_comm, "%.2f | %.5e", level[i], h[i]); CHKERRXX(ierr);
-    ierr = PetscPrintf(mpi_comm, "  |  "); CHKERRXX(ierr);
-
-
-    /* linear integration */
-    // avg
-    if (i == 0) order = compute_convergence_order(h, L_avg);
-    else        order = log(L_avg[i-1]/L_avg[i])/log(h[i-1]/h[i]);
-
-    ierr = PetscPrintf(mpi_comm, "%.2e   (%5.1f) %6.2f", L_avg[i], 100.*L_dev[i]/L_avg[i], order); CHKERRXX(ierr);
-    ierr = PetscPrintf(mpi_comm, "  |  "); CHKERRXX(ierr);
-
-    // one
-    if (i == 0) order = compute_convergence_order(h, L_one);
-    else        order = log(L_one[i-1]/L_one[i])/log(h[i-1]/h[i]);
-
-    ierr = PetscPrintf(mpi_comm, "%.2e   (%5.1f) %6.2f", L_one[i], 100.*fabs(L_one[i]-L_avg[i])/L_avg[i], order); CHKERRXX(ierr);
-    ierr = PetscPrintf(mpi_comm, "  |  "); CHKERRXX(ierr);
-
-    // max
-    if (i == 0) order = compute_convergence_order(h, L_max);
-    else        order = log(L_max[i-1]/L_max[i])/log(h[i-1]/h[i]);
-
-    ierr = PetscPrintf(mpi_comm, "%.2e   (%5.1f) %6.2f", L_max[i], 100.*fabs(L_max[i]-L_avg[i])/L_avg[i], order); CHKERRXX(ierr);
-    ierr = PetscPrintf(mpi_comm, "  |  "); CHKERRXX(ierr);
-
-    /* quadratic integration */
-    //avg
-    if (i == 0) order = compute_convergence_order(h, Q_avg);
-    else        order = log(Q_avg[i-1]/Q_avg[i])/log(h[i-1]/h[i]);
-
-    ierr = PetscPrintf(mpi_comm, "%.2e   (%5.1f) %6.2f", Q_avg[i], 100.*Q_dev[i]/Q_avg[i], order); CHKERRXX(ierr);
-    ierr = PetscPrintf(mpi_comm, "  |  "); CHKERRXX(ierr);
-
-    // one
-    if (i == 0) order = compute_convergence_order(h, Q_one);
-    else        order = log(Q_one[i-1]/Q_one[i])/log(h[i-1]/h[i]);
-
-    ierr = PetscPrintf(mpi_comm, "%.2e   (%5.1f) %6.2f", Q_one[i], 100.*fabs(Q_one[i]-Q_avg[i])/Q_avg[i], order); CHKERRXX(ierr);
-    ierr = PetscPrintf(mpi_comm, "  |  "); CHKERRXX(ierr);
-
-    // max
-    if (i == 0) order = compute_convergence_order(h, Q_max);
-    else        order = log(Q_max[i-1]/Q_max[i])/log(h[i-1]/h[i]);
-
-    ierr = PetscPrintf(mpi_comm, "%.2e   (%5.1f) %6.2f", Q_max[i], 100.*fabs(Q_max[i]-Q_avg[i])/Q_avg[i], order); CHKERRXX(ierr);
-    ierr = PetscPrintf(mpi_comm, "\n"); CHKERRXX(ierr);
-  }
-  ierr = PetscPrintf(mpi_comm, "------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\n"); CHKERRXX(ierr);
-
-  ierr = PetscPrintf(mpi_comm, "\n"); CHKERRXX(ierr);
 }
 
 double compute_convergence_order(std::vector<double> &x, std::vector<double> &y)
