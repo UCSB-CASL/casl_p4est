@@ -42,67 +42,53 @@
 
 using namespace std;
 
-class LEVEL_SET :
-    #ifdef P4_TO_P8
-    public CF_3
-    #else
-    public CF_2
-    #endif
-{
+#ifdef P4_TO_P8
+class LEVEL_SET : public CF_3 {
+#else
+class LEVEL_SET : public CF_2 {
+#endif
   int max_lvl;
 public:
   LEVEL_SET(int max_lvl_) : max_lvl(max_lvl_) { lip = 1.2; }
-  double operator()(double, double y
-                  #ifdef P4_TO_P8
-                    , double
-                  #endif
-                    ) const
+#ifdef P4_TO_P8
+  double operator()(double, double y, double) const
+#else
+  double operator()(double, double y) const
+#endif
   {
     return MAX(y-1.0-pow(2.0, -max_lvl), -y-1.0-pow(2.0, -max_lvl));
   }
 };
 
-struct BCWALLTYPE_P :
-    #ifdef P4_TO_P8
-    WallBC3D
-    #else
-    WallBC2D
-    #endif
-{
-  BoundaryConditionType operator()(double, double
-                                 #ifdef P4_TO_P8
-                                   , double
-                                 #endif
-                                   ) const
+#ifdef P4_TO_P8
+struct BCWALLTYPE_P : WallBC3D {
+  BoundaryConditionType operator()(double, double, double) const
+#else
+struct BCWALLTYPE_P : WallBC2D {
+  BoundaryConditionType operator()(double, double) const
+#endif
   {
     return NEUMANN;
   }
 } bc_wall_type_p;
 
-struct BCWALLVALUE_P :
-    #ifdef P4_TO_P8
-    CF_3
-    #else
-    CF_2
-    #endif
-{
-  double operator()(double, double
-                  #ifdef P4_TO_P8
-                    , double
-                  #endif
-                    ) const
+#ifdef P4_TO_P8
+struct BCWALLVALUE_P : CF_3 {
+  double operator()(double, double, double) const
+#else
+struct BCWALLVALUE_P : CF_2 {
+  double operator()(double, double) const
+#endif
   {
     return 0.0;
   }
 } bc_wall_value_p;
 
-class BCWALLTYPE_U :
-    #ifdef P4_TO_P8
-    public WallBC3D
-    #else
-    public WallBC2D
-    #endif
-{
+#ifdef P4_TO_P8
+class BCWALLTYPE_U : public WallBC3D {
+#else
+class BCWALLTYPE_U : public WallBC2D {
+#endif
 private:
   const double length;
 #ifdef P4_TO_P8
@@ -117,7 +103,7 @@ public:
 #ifdef P4_TO_P8
   BCWALLTYPE_U(double len_, double width_, bool streamwise_, double pitch_, double gas_fraction_, const my_p4est_brick_t& brick_, int max_lvl)
     : length(len_), width(width_), streamwise(streamwise_), pitch(pitch_), gas_frac(gas_fraction_),
-      offset(0.1*(brick_.xyz_max[(streamwise?2:0)]-brick_.xyz_min[(streamwise?2:0)])/((double) (brick_.nxyztrees[(streamwise?2:0)]*(1<<max_lvl)))){ }
+      offset(streamwise? (0.1*(brick_.xyz_max[2]-brick_.xyz_min[2])/((double) (brick_.nxyztrees[2]*(1<<max_lvl)))) : (0.5*(brick_.xyz_max[0]-brick_.xyz_min[0])/((double) (brick_.nxyztrees[0]*(1<<max_lvl))))){ }
 #else
   BCWALLTYPE_U(double len_, double pitch_, double gas_fraction_, const my_p4est_brick_t& brick_, int max_lvl)
     : length(len_), pitch(pitch_), gas_frac(gas_fraction_),
@@ -132,10 +118,7 @@ public:
       return (((offset < normalized_z) && (normalized_z < pitch*gas_frac - offset)) ? NEUMANN : DIRICHLET);
     }
     else
-    {
-      double normalized_x = my_fmod((x + 0.5*length), pitch);
-      return (((offset < normalized_x) && (normalized_x < pitch*gas_frac - offset)) ? NEUMANN : DIRICHLET);
-    }
+      return  ((my_fmod((x + 0.5*length - offset), pitch)/pitch < gas_frac)? NEUMANN: DIRICHLET);
   }
 #else
   BoundaryConditionType operator()(double x, double) const
@@ -145,156 +128,122 @@ public:
 #endif
 };
 
-struct BCWALLVALUE_U : // always 0 value whether no slip or free slip
-    #ifdef P4_TO_P8
-    CF_3
-    #else
-    CF_2
-    #endif
-{
-  double operator()(double, double
-                  #ifdef P4_TO_P8
-                    , double
-                  #endif
-                    ) const
+#ifdef P4_TO_P8
+struct BCWALLVALUE_U : CF_3 {
+  double operator()(double, double, double) const
+#else
+struct BCWALLVALUE_U : CF_2 {
+  double operator()(double, double) const
+#endif
   {
-    return 0.0;
+    return 0.0; // always 0 value whether no slip or free slip
   }
 } bc_wall_value_u;
 
-struct BCWALLTYPE_V : // always homogeneous dirichlet : no penetration through the channel wall
-    #ifdef P4_TO_P8
-    WallBC3D
-    #else
-    WallBC2D
-    #endif
-{
-  BoundaryConditionType operator()(double, double
-                                 #ifdef P4_TO_P8
-                                   , double
-                                 #endif
-                                   ) const
+#ifdef P4_TO_P8
+struct BCWALLTYPE_V : WallBC3D {
+  BoundaryConditionType operator()(double, double, double) const
+#else
+struct BCWALLTYPE_V : WallBC2D {
+  BoundaryConditionType operator()(double, double) const
+#endif
   {
-    return DIRICHLET;
+    return DIRICHLET; // always homogeneous dirichlet : no penetration through the channel wall
   }
 } bc_wall_type_v;
 
-
-struct BCWALLVALUE_V : // always homogeneous dirichlet : no penetration through the channel wall
-    #ifdef P4_TO_P8
-    CF_3
-    #else
-    CF_2
-    #endif
-{
-  double operator()(double, double
-                  #ifdef P4_TO_P8
-                    , double
-                  #endif
-                    ) const
+#ifdef P4_TO_P8
+struct BCWALLVALUE_V : CF_3 {
+  double operator()(double, double, double) const
+#else
+struct BCWALLVALUE_V : CF_2 {
+  double operator()(double, double) const
+#endif
   {
-    return 0.0;
+    return 0.0; // always homogeneous dirichlet : no penetration through the channel wall
   }
 } bc_wall_value_v;
 
-
-struct initial_velocity_unm1_t :
-    #ifdef P4_TO_P8
-    CF_3
-    #else
-    CF_2
-    #endif
-{
-  double operator()(double, double
-                  #ifdef P4_TO_P8
-                    , double
-                  #endif
-                    ) const
+#ifdef P4_TO_P8
+struct initial_velocity_unm1_t : CF_3 {
+  double operator()(double, double, double) const
+#else
+struct initial_velocity_unm1_t : CF_2 {
+  double operator()(double, double) const
+#endif
   {
     return 0.0;
   }
 } initial_velocity_unm1;
 
-struct initial_velocity_u_n_t :
-    #ifdef P4_TO_P8
-    CF_3
-    #else
-    CF_2
-    #endif
-{
-  double operator()(double, double
-                  #ifdef P4_TO_P8
-                    , double
-                  #endif
-                    ) const
+#ifdef P4_TO_P8
+struct initial_velocity_un_t : CF_3 {
+  double operator()(double, double, double) const
+#else
+struct initial_velocity_un_t : CF_2 {
+  double operator()(double, double) const
+#endif
   {
     return 0.0;
   }
 } initial_velocity_un;
 
-struct initial_velocity_vnm1_t :
-    #ifdef P4_TO_P8
-    CF_3
-    #else
-    CF_2
-    #endif
-{
-  double operator()(double, double
-                  #ifdef P4_TO_P8
-                    , double
-                  #endif
-                    ) const
+#ifdef P4_TO_P8
+struct initial_velocity_vnm1_t : CF_3 {
+  double operator()(double, double, double) const
+#else
+struct initial_velocity_vnm1_t : CF_2 {
+  double operator()(double, double) const
+#endif
   {
     return 0.0;
   }
 } initial_velocity_vnm1;
 
-struct initial_velocity_vn_t :
-    #ifdef P4_TO_P8
-    CF_3
-    #else
-    CF_2
-    #endif
-{
-  double operator()(double, double
-                  #ifdef P4_TO_P8
-                    , double
-                  #endif
-                    ) const
+#ifdef P4_TO_P8
+struct initial_velocity_vn_t : CF_3 {
+  double operator()(double, double, double) const
+#else
+struct initial_velocity_vn_t : CF_2 {
+  double operator()(double, double) const
+#endif
   {
     return 0.0;
   }
 } initial_velocity_vn;
 
-struct external_force_u_t :
-    #ifdef P4_TO_P8
-    CF_3
-    #else
-    CF_2
-    #endif
-{
-  double operator()(double, double
-                  #ifdef P4_TO_P8
-                    , double
-                  #endif
-                    ) const
+#ifdef P4_TO_P8
+class external_force_u_t : public CF_3 {
+#else
+class external_force_u_t : public CF_2 {
+#endif
+private:
+  double forcing_term;
+public:
+  external_force_u_t(const double& forcing_term_):forcing_term(forcing_term_) {}
+  external_force_u_t(): external_force_u_t(1.0) {}
+#ifdef P4_TO_P8
+  double operator()(double, double, double) const
+#else
+  double operator()(double, double) const
+#endif
   {
-    return 1.0;
+    return forcing_term;
   }
+  void update_term(const double& correction)
+  {
+    forcing_term += correction;
+  }
+  double get_value() const {return forcing_term;}
 };
 
-struct external_force_v_t :
-    #ifdef P4_TO_P8
-    CF_3
-    #else
-    CF_2
-    #endif
-{
-  double operator()(double, double
-                  #ifdef P4_TO_P8
-                    , double
-                  #endif
-                    ) const
+#ifdef P4_TO_P8
+struct external_force_v_t : CF_3 {
+  double operator()(double, double, double) const
+#else
+struct external_force_v_t : CF_2 {
+  double operator()(double, double) const
+#endif
   {
     return 0.0;
   }
@@ -363,56 +312,37 @@ struct external_force_w_t : CF_3
 };
 #endif
 
-#ifdef P4_TO_P8
-void initialize_mass_flow_output(std::vector<double>& sections, std::vector<double>& mass_flows, char* file_mass_flow, const double& length, const double& width, const char *out_dir, const int& lmin, const int& lmax, const double& threshold_split_cell, const double& cfl, const int& sl_order, const mpi_environment_t& mpi, const double& tstart)
-#else
-void initialize_mass_flow_output(std::vector<double>& sections, std::vector<double>& mass_flows, char* file_mass_flow, const double& length, const char *out_dir, const int& lmin, const int& lmax, const double& threshold_split_cell, const double& cfl, const int& sl_order, const mpi_environment_t& mpi, const double& tstart)
-#endif
+void initialize_monitoring(char* file_monitoring, const char *out_dir, const int& ntree_y, const int& lmin, const int& lmax, const double& threshold_split_cell, const double& cfl, const int& sl_order, const mpi_environment_t& mpi, const double& tstart)
 {
-  // initialize sections and mass flows through sections
-  sections.resize(0);
-  sections.push_back(-0.5*length);
-  sections.push_back(-0.25*length);
-  sections.push_back(0.0);
-  sections.push_back(+0.25*length);
-  mass_flows.resize(sections.size(), 0.0);
+  sprintf(file_monitoring, "%s/flow_monitoring_ny_%d_lmin_%d_lmax_%d_split_threshold_%.2f_cfl_%.2f_sl_%d.dat", out_dir, ntree_y, lmin, lmax, threshold_split_cell, cfl, sl_order);
 
-  sprintf(file_mass_flow, "%s/mass_flow_%d-%d_split_threshold_%.2f_cfl_%.2f_sl_%d.dat", out_dir, lmin, lmax, threshold_split_cell, cfl, sl_order);
-
-  PetscErrorCode ierr = PetscPrintf(mpi.comm(), "Saving mass flow in ... %s\n", file_mass_flow); CHKERRXX(ierr);
+  PetscErrorCode ierr = PetscPrintf(mpi.comm(), "Monitoring flow in ... %s\n", file_monitoring); CHKERRXX(ierr);
   if(mpi.rank() == 0)
   {
-    if(!file_exists(file_mass_flow))
+    if(!file_exists(file_monitoring))
     {
-      FILE* fp_mass_flow = fopen(file_mass_flow, "w");
-      if(fp_mass_flow==NULL)
-        throw std::runtime_error("initialize_mass_flow_output: could not open file for mass flow output.");
-      fprintf(fp_mass_flow, "%% __ | Normalized mass flows \n");
-      fprintf(fp_mass_flow, "%% tn | Inflow section | 0.25*length | Midway section | 0.75*length \n");
-      fclose(fp_mass_flow);
+      FILE* fp_monitor = fopen(file_monitoring, "w");
+      if(fp_monitor==NULL)
+        throw std::runtime_error("initialize_monitoring: could not open file for flow monitoring.");
+      fprintf(fp_monitor, "%% tn | Re_tau | Re_b \n");
+      fclose(fp_monitor);
     }
     else
     {
-      FILE* fp_mass_flow= fopen(file_mass_flow, "r+");
+      FILE* fp_monitor = fopen(file_monitoring, "r+");
       char* read_line = NULL;
       size_t len = 0;
       ssize_t len_read;
       long size_to_keep = 0;
-      if(((len_read = getline(&read_line, &len, fp_mass_flow)) != -1))
+      if(((len_read = getline(&read_line, &len, fp_monitor)) != -1))
         size_to_keep += (long) len_read;
       else
-        throw std::runtime_error("initialize_mass_flow_output: couldn't read the first header line of mass_flow_...dat");
-      if(((len_read = getline(&read_line, &len, fp_mass_flow)) != -1))
-        size_to_keep += (long) len_read;
-      else
-        throw std::runtime_error("initialize_mass_flow_output: couldn't read the second header line of mass_flow_...dat");
+        throw std::runtime_error("initialize_monitoring: couldn't read the first header line of mass_flow_...dat");
       double time, time_nm1;
       double dt = 0.0;
       bool not_first_line = false;
-      char format_specifier[1024] = "%lg";
-      for (size_t kk = 0; kk < sections.size(); ++kk)
-        strcat(format_specifier, " %*g");
-      while ((len_read = getline(&read_line, &len, fp_mass_flow)) != -1) {
+      char format_specifier[1024] = "%lg %*g %*g";
+      while ((len_read = getline(&read_line, &len, fp_monitor)) != -1) {
         if(not_first_line)
           time_nm1 = time;
         sscanf(read_line, format_specifier, &time);
@@ -424,80 +354,67 @@ void initialize_mass_flow_output(std::vector<double>& sections, std::vector<doub
           break;
         not_first_line=true;
       }
-      fclose(fp_mass_flow);
+      fclose(fp_monitor);
       if(read_line)
         free(read_line);
-      if(truncate(file_mass_flow, size_to_keep))
-        throw std::runtime_error("initialize_mass_flow_output: couldn't truncate mass_flow_...dat");
+      if(truncate(file_monitoring, size_to_keep))
+        throw std::runtime_error("initialize_monitoring: couldn't truncate flow_monitoring_...dat");
     }
 
-    char liveplot_mass[PATH_MAX];
-    sprintf(liveplot_mass, "%s/live_mass_flow.gnu", out_dir);
-    if(!file_exists(liveplot_mass))
+    char liveplot_Re[PATH_MAX];
+    sprintf(liveplot_Re, "%s/live_monitor.gnu", out_dir);
+    if(!file_exists(liveplot_Re))
     {
-      FILE *fp_liveplot_mass = fopen(liveplot_mass, "w");
-      if(fp_liveplot_mass==NULL)
-        throw std::runtime_error("initialize_mass_flow_output: could not open file for mass flow liveplot.");
-      fprintf(fp_liveplot_mass, "set term wxt noraise\n");
-      fprintf(fp_liveplot_mass, "set key bottom right Left font \"Arial,14\"\n");
-      fprintf(fp_liveplot_mass, "set xlabel \"Time\" font \"Arial,14\"\n");
-      fprintf(fp_liveplot_mass, "set ylabel \"Nondimensional mass flow\" font \"Arial,14\"\n");
-      fprintf(fp_liveplot_mass, "plot");
-      for (size_t k_section = 0; k_section < sections.size(); ++k_section)
-      {
-        fprintf(fp_liveplot_mass, "\t \"mass_flow_%d-%d_split_threshold_%.2f_cfl_%.2f_sl_%d.dat\" using 1:%d title 'x = %g' with lines lw 3", lmin, lmax, threshold_split_cell, cfl, sl_order, ((int)k_section+2), sections[k_section]);
-        if(k_section < sections.size()-1)
-          fprintf(fp_liveplot_mass, ",\\");
-        fprintf(fp_liveplot_mass, "\n");
-      }
-      fprintf(fp_liveplot_mass, "pause 4\n");
-      fprintf(fp_liveplot_mass, "reread");
-      fclose(fp_liveplot_mass);
+      FILE *fp_liveplot_Re= fopen(liveplot_Re, "w");
+      if(fp_liveplot_Re==NULL)
+        throw std::runtime_error("initialize_monitoring: could not open file for Re liveplot.");
+      fprintf(fp_liveplot_Re, "set term wxt noraise\n");
+      fprintf(fp_liveplot_Re, "set key bottom right Left font \"Arial,14\"\n");
+      fprintf(fp_liveplot_Re, "set xlabel \"Time\" font \"Arial,14\"\n");
+      fprintf(fp_liveplot_Re, "set ylabel \"Re\" font \"Arial,14\"\n");
+      fprintf(fp_liveplot_Re, "plot");
+      fprintf(fp_liveplot_Re, "\t \"flow_monitoring_ny_%d_lmin_%d_lmax_%d_split_threshold_%.2f_cfl_%.2f_sl_%d.dat\" using 1:2 title 'Re_{tau}' with lines lw 3,\\\n", ntree_y, lmin, lmax, threshold_split_cell, cfl, sl_order);
+      fprintf(fp_liveplot_Re, "\t \"flow_monitoring_ny_%d_lmin_%d_lmax_%d_split_threshold_%.2f_cfl_%.2f_sl_%d.dat\" using 1:3 title 'Re_b' with lines lw 3\n", ntree_y, lmin, lmax, threshold_split_cell, cfl, sl_order);
+      fprintf(fp_liveplot_Re, "pause 4\n");
+      fprintf(fp_liveplot_Re, "reread");
+      fclose(fp_liveplot_Re);
     }
 
-    char tex_plot_mass[PATH_MAX];
-    sprintf(tex_plot_mass, "%s/tex_mass_flow.gnu", out_dir);
-    if(!file_exists(tex_plot_mass))
+    char tex_plot_Re[PATH_MAX];
+    sprintf(tex_plot_Re, "%s/tex_monitor.gnu", out_dir);
+    if(!file_exists(tex_plot_Re))
     {
-      FILE *fp_tex_plot_mass = fopen(tex_plot_mass, "w");
-      if(fp_tex_plot_mass==NULL)
-        throw std::runtime_error("initialize_mass_flow_output: could not open file for mass flow tex figure.");
-      fprintf(fp_tex_plot_mass, "set term epslatex color standalone\n");
-      fprintf(fp_tex_plot_mass, "set output 'mass_flow_history.tex'\n");
-      fprintf(fp_tex_plot_mass, "set key bottom right Left \n");
-      fprintf(fp_tex_plot_mass, "set xlabel \"$t$\"\n");
-#ifdef P4_TO_P8
-      fprintf(fp_tex_plot_mass, "set ylabel \"$\\\\frac{1}{\\\\rho \\\\delta^{2} u_{\\\\tau}}\\\\int_{%g\\\\delta}^{%g\\\\delta}\\\\int_{-\\\\delta}^{\\\\delta} \\\\rho u \\\\,\\\\mathrm{d}y\\\\mathrm{d}z$\" \n", -0.5*width, 0.5*width);
-#else
-      fprintf(fp_tex_plot_mass, "set ylabel \"$\\\\frac{1}{\\\\rho \\\\delta u_{\\\\tau}}\\\\int_{-\\\\delta}^{\\\\delta} \\\\rho u \\\\,\\\\mathrm{d}y$\" \n");
-#endif
-      fprintf(fp_tex_plot_mass, "plot");
-      for (size_t k_section = 0; k_section < sections.size(); ++k_section)
-      {
-        fprintf(fp_tex_plot_mass, "\t \"mass_flow_%d-%d_split_threshold_%.2f_cfl_%.2f_sl_%d.dat\" using 1:%d title '$x = %g$' with lines lw 3", lmin, lmax, threshold_split_cell, cfl, sl_order, ((int)k_section+2), sections[k_section]);
-        if(k_section < sections.size()-1)
-          fprintf(fp_tex_plot_mass, ",\\\n");
-      }
-      fclose(fp_tex_plot_mass);
+      FILE *fp_tex_plot_Re = fopen(tex_plot_Re, "w");
+      if(fp_tex_plot_Re==NULL)
+        throw std::runtime_error("initialize_monitoring: could not open file for Re monitoring figure.");
+      fprintf(fp_tex_plot_Re, "set term epslatex color standalone\n");
+      fprintf(fp_tex_plot_Re, "set output 'monitor_history.tex'\n");
+      fprintf(fp_tex_plot_Re, "set key bottom right Left \n");
+      fprintf(fp_tex_plot_Re, "set xlabel \"$t$\"\n");
+      fprintf(fp_tex_plot_Re, "set ylabel \"$\\\\mathrm{Re}$\" \n");
+      fprintf(fp_tex_plot_Re, "plot");
+      fprintf(fp_tex_plot_Re, "\t \"flow_monitoring_ny_%d_lmin_%d_lmax_%d_split_threshold_%.2f_cfl_%.2f_sl_%d.dat\" using 1:2 title '$Re_{tau}$' with lines lw 3,\\\n", ntree_y, lmin, lmax, threshold_split_cell, cfl, sl_order);
+      fprintf(fp_tex_plot_Re, "\t \"flow_monitoring_ny_%d_lmin_%d_lmax_%d_split_threshold_%.2f_cfl_%.2f_sl_%d.dat\" using 1:3 title '$Re_{b}$' with lines lw 3", ntree_y, lmin, lmax, threshold_split_cell, cfl, sl_order);
+      fclose(fp_tex_plot_Re);
     }
 
-    char tex_mass_flow_script[PATH_MAX];
-    sprintf(tex_mass_flow_script, "%s/plot_tex_mass_flow.sh", out_dir);
-    if(!file_exists(tex_mass_flow_script))
+    char tex_Re_script[PATH_MAX];
+    sprintf(tex_Re_script, "%s/plot_tex_monitor.sh", out_dir);
+    if(!file_exists(tex_Re_script))
     {
-      FILE *fp_tex_mass_flow_script = fopen(tex_mass_flow_script, "w");
-      if(fp_tex_mass_flow_script==NULL)
-        throw std::runtime_error("initialize_mass_flow_output: could not open file for bash script plotting mass flow tex figure.");
-      fprintf(fp_tex_mass_flow_script, "#!/bin/sh\n");
-      fprintf(fp_tex_mass_flow_script, "gnuplot ./tex_mass_flow.gnu\n");
-      fprintf(fp_tex_mass_flow_script, "latex ./mass_flow_history.tex\n");
-      fprintf(fp_tex_mass_flow_script, "dvipdf -dAutoRotatePages=/None ./mass_flow_history.dvi\n");
-      fclose(fp_tex_mass_flow_script);
+      FILE *fp_tex_monitor_script = fopen(tex_Re_script, "w");
+      if(fp_tex_monitor_script==NULL)
+        throw std::runtime_error("initialize_monitoring: could not open file for bash script plotting monitoring tex figure.");
+      fprintf(fp_tex_monitor_script, "#!/bin/sh\n");
+      fprintf(fp_tex_monitor_script, "gnuplot ./tex_monitor.gnu\n");
+      fprintf(fp_tex_monitor_script, "latex ./monitor_history.tex\n");
+      fprintf(fp_tex_monitor_script, "dvipdf -dAutoRotatePages=/None ./monitor_history.dvi\n");
+      fclose(fp_tex_monitor_script);
 
       ostringstream chmod_command;
-      chmod_command << "chmod +x " << tex_mass_flow_script;
+      chmod_command << "chmod +x " << tex_Re_script;
       if(system(chmod_command.str().c_str()))
-        throw std::runtime_error("initialize_mass_flow_output: could not make the plot_tex_mass_flow.sh script executable");
+        throw std::runtime_error("initialize_monitoring: could not make the plot_tex_monitor.sh script executable");
     }
   }
 }
@@ -633,18 +550,19 @@ void initialize_drag_force_output(char* file_drag, const char *out_dir, const in
   }
 }
 
-void initialize_averaged_velocity_profile(char* file_avg_profile, const char *out_dir, const int& ntree_y, const int& lmin, const int& lmax, const double& threshold_split_cell, const double& cfl, const int& sl_order, const mpi_environment_t& mpi, const double& tstart)
+void initialize_velocity_profile_file(const char* filename, const int& ntree_y, const int &lmax, const double& tstart,  const mpi_environment_t& mpi)
 {
-  sprintf(file_avg_profile, "%s/slice_averaged_velocity_profile_ntreey_%d_%d-%d_split_threshold_%.2f_cfl_%.2f_sl_%d.dat", out_dir, ntree_y, lmin, lmax, threshold_split_cell, cfl, sl_order);
-  PetscErrorCode ierr = PetscPrintf(mpi.comm(), "Saving averaged velocity profile in ... %s\n", file_avg_profile); CHKERRXX(ierr);
-
   if(mpi.rank() == 0)
   {
-    if(!file_exists(file_avg_profile))
+    if(!file_exists(filename))
     {
-      FILE* fp_avg_profile = fopen(file_avg_profile, "w");
+      FILE* fp_avg_profile = fopen(filename, "w");
       if(fp_avg_profile==NULL)
-        throw std::runtime_error("initialize_averaged_velocity_profile: could not open file for slice_averaged_velocity_profile_...dat output.");
+      {
+        char error_msg[1024];
+        sprintf(error_msg, "initialize_velocity_profile_file: could not open file %s.", filename);
+        throw std::invalid_argument(error_msg);
+      }
       fprintf(fp_avg_profile, "%% __ | coordinates along y axis \n");
       fprintf(fp_avg_profile, "%% tn");
       for (int k = 0; k < ntree_y*(1<<lmax); ++k)
@@ -654,7 +572,7 @@ void initialize_averaged_velocity_profile(char* file_avg_profile, const char *ou
     }
     else
     {
-      FILE* fp_avg_profile = fopen(file_avg_profile, "r+");
+      FILE* fp_avg_profile = fopen(filename, "r+");
       char* read_line = NULL;
       size_t len = 0;
       ssize_t len_read;
@@ -662,11 +580,19 @@ void initialize_averaged_velocity_profile(char* file_avg_profile, const char *ou
       if(((len_read = getline(&read_line, &len, fp_avg_profile)) != -1))
         size_to_keep += (long) len_read;
       else
-        throw std::runtime_error("initialize_averaged_velocity_profile: couldn't read the first header line of slice_averaged_velocity_profile_...dat");
+      {
+        char error_msg[1024];
+        sprintf(error_msg, "initialize_velocity_profile_file: couldn't read the first header line of %s", filename);
+        throw std::runtime_error(error_msg);
+      }
       if(((len_read = getline(&read_line, &len, fp_avg_profile)) != -1))
         size_to_keep += (long) len_read;
       else
-        throw std::runtime_error("initialize_averaged_velocity_profile: couldn't read the second header line of slice_averaged_velocity_profile_...dat");
+      {
+        char error_msg[1024];
+        sprintf(error_msg, "initialize_velocity_profile_file: couldn't read the second header line of %s", filename);
+        throw std::runtime_error(error_msg);
+      }
       double time, time_nm1;
       double dt = 0.0;
       bool not_first_line = false;
@@ -685,9 +611,77 @@ void initialize_averaged_velocity_profile(char* file_avg_profile, const char *ou
       fclose(fp_avg_profile);
       if(read_line)
         free(read_line);
-      if(truncate(file_avg_profile, size_to_keep))
-        throw std::runtime_error("initialize_averaged_velocity_profile: couldn't truncate slice_averaged_velocity_profile_...dat");
+      if(truncate(filename, size_to_keep))
+      {
+        char error_msg[1024];
+        sprintf(error_msg, "initialize_velocity_profile_file: couldn't truncate %s", filename);
+        throw std::runtime_error(error_msg);
+      }
     }
+  }
+}
+
+void initialize_averaged_velocity_profiles(char* file_slice_avg_profile, const char *profile_dir, const int* ntree, const int& lmin, const int& lmax, const double& threshold_split_cell, const double& cfl, const int& sl_order, const mpi_environment_t& mpi, const double& tstart,
+                                           vector<unsigned int>& bin_index, vector<string>& file_line_avg_profile, const double* dimensions_to_delta, const double& pitch_to_delta, const double& gas_fraction, unsigned int& number_of_bins, const bool& spanwise)
+{
+  PetscErrorCode ierr;
+  sprintf(file_slice_avg_profile, "%s/slice_averaged_velocity_profile_ntreey_%d_%d-%d_split_threshold_%.2f_cfl_%.2f_sl_%d.dat", profile_dir, ntree[1], lmin, lmax, threshold_split_cell, cfl, sl_order);
+  ierr = PetscPrintf(mpi.comm(), "Saving slice-averaged velocity profile in %s\n", file_slice_avg_profile); CHKERRXX(ierr);
+  initialize_velocity_profile_file(file_slice_avg_profile, ntree[1], lmax, tstart, mpi);
+  unsigned int nb_cells_in_groove = (unsigned int)((pitch_to_delta*gas_fraction)/((spanwise)? (dimensions_to_delta[0]/(ntree[0]*(1<<lmax))) : (dimensions_to_delta[2]/(ntree[2]*(1<<lmax)))));
+  unsigned int nb_cells_in_ridge  = (unsigned int)((pitch_to_delta*(1.0-gas_fraction))/((spanwise)? (dimensions_to_delta[0]/(ntree[0]*(1<<lmax))) : (dimensions_to_delta[2]/(ntree[2]*(1<<lmax)))));
+  P4EST_ASSERT(nb_cells_in_groove+nb_cells_in_ridge==(unsigned int)(pitch_to_delta/((spanwise)? (dimensions_to_delta[0]/(ntree[0]*(1<<lmax))) : (dimensions_to_delta[2]/(ntree[2]*(1<<lmax))))));
+  bin_index.resize(nb_cells_in_groove+nb_cells_in_ridge);
+  unsigned int nbins_in_groove = (nb_cells_in_groove+((nb_cells_in_groove%2==1)? 1:0))/2;
+  if(nb_cells_in_groove%2 == 0)
+  {
+    bin_index[(spanwise?1:0)+nbins_in_groove-1] = 0;
+    bin_index[(spanwise?1:0)+nbins_in_groove]   = 0;
+  }
+  else
+    bin_index[(spanwise?1:0)+nbins_in_groove-1] = 0;
+  for (unsigned int bin_idx = 1; bin_idx < nbins_in_groove; ++bin_idx)
+  {
+    if(nb_cells_in_groove%2 == 0)
+    {
+      bin_index[(spanwise?1:0)+nbins_in_groove-1-bin_idx] = bin_idx;
+      bin_index[(spanwise?1:0)+nbins_in_groove+bin_idx]   = bin_idx;
+    }
+    else
+    {
+      bin_index[(spanwise?1:0)+nbins_in_groove-1-bin_idx] = bin_idx;
+      bin_index[(spanwise?1:0)+nbins_in_groove-1+bin_idx] = bin_idx;
+    }
+  }
+  unsigned int nbins_in_ridge = (nb_cells_in_ridge+((nb_cells_in_ridge%2==1)? 1:0))/2;
+  if(nb_cells_in_ridge%2 == 0)
+  {
+    bin_index[((spanwise?1:0)+nb_cells_in_groove+nbins_in_ridge-1)%bin_index.size()] = nbins_in_groove+nbins_in_ridge-1;
+    bin_index[((spanwise?1:0)+nb_cells_in_groove+nbins_in_ridge)%bin_index.size()]   = nbins_in_groove+nbins_in_ridge-1;
+  }
+  else
+    bin_index[((spanwise?1:0)+nb_cells_in_groove+nbins_in_ridge-1)%bin_index.size()] = nbins_in_groove+nbins_in_ridge-1;
+  for (unsigned int bin_idx = 1; bin_idx < nbins_in_ridge; ++bin_idx)
+  {
+    if(nb_cells_in_ridge%2 == 0)
+    {
+      bin_index[((spanwise?1:0)+nb_cells_in_groove+nbins_in_ridge-1-bin_idx)%bin_index.size()] = nbins_in_groove + nbins_in_ridge-1-bin_idx;
+      bin_index[((spanwise?1:0)+nb_cells_in_groove+nbins_in_ridge+bin_idx)%bin_index.size()]   = nbins_in_groove + nbins_in_ridge-1-bin_idx;
+    }
+    else
+    {
+      bin_index[((spanwise?1:0)+nb_cells_in_groove+nbins_in_ridge-1-bin_idx)%bin_index.size()] = nbins_in_groove+nbins_in_ridge-1-bin_idx;
+      bin_index[((spanwise?1:0)+nb_cells_in_groove+nbins_in_ridge-1+bin_idx)%bin_index.size()] = nbins_in_groove+nbins_in_ridge-1-bin_idx;
+    }
+  }
+  number_of_bins = nbins_in_groove + nbins_in_ridge;
+  file_line_avg_profile.resize(number_of_bins);
+  for (unsigned int bin_idx = 0; bin_idx < number_of_bins; ++bin_idx) {
+    char filename[PATH_MAX];
+    sprintf(filename, "%s/line_averaged_velocity_profile_ntreey_%d_%d-%d_split_threshold_%.2f_cfl_%.2f_sl_%d_index_%d.dat", profile_dir, ntree[1], lmin, lmax, threshold_split_cell, cfl, sl_order, bin_idx);
+    file_line_avg_profile[bin_idx] = filename;
+    ierr = PetscPrintf(mpi.comm(), "Saving line-averaged velocity profile in %s\n", file_line_avg_profile[bin_idx].c_str()); CHKERRXX(ierr);
+    initialize_velocity_profile_file(file_line_avg_profile[bin_idx].c_str(), ntree[1], lmax, tstart, mpi);
   }
 }
 
@@ -713,6 +707,16 @@ void check_pitch_and_gas_fraction(double length_to_delta, int ntree, int lmax, d
   }
 }
 
+double Re_tau(const external_force_u_t& force_per_unit_mass_x, const double& rho, const double& mu)
+{
+  return rho*1.0*sqrt(force_per_unit_mass_x.get_value()*1.0)/mu; // delta = 1.0
+}
+
+double Re_b(const double& mass_flow, const double &width, const double& rho, const double& mu)
+{
+  return rho*mass_flow*1.0/(mu*2.0*width); // delta = 1.0 --> height = 2.0
+}
+
 int main (int argc, char* argv[])
 {
   mpi_environment_t mpi;
@@ -734,17 +738,19 @@ int main (int argc, char* argv[])
   cmd.add_option("length", "length of the channel (dimension in streamwise, x-direction), in units of delta, default is 6.0");
 #ifdef P4_TO_P8
   cmd.add_option("width", "width of the channel (dimension in spanwise, z-direction), in units of delta, default is 3.0");
-  cmd.add_option("streamwise", "if present, the grooves and ridges are understood as streamwise, that is parallel to the flow. If absent, the grooves are perpendicular to the flow.");
+  cmd.add_option("spanwise", "if present, the grooves and ridges are understood as spanwise, that is perpendicular to the flow. If absent, the grooves are parallel to the flow.");
 #endif
   cmd.add_option("duration", "the duration of the simulation (tfinal-tstart). If not restarted, tstart = 0.0, default duration is 200.0.");
-  cmd.add_option("Re", "the Reynolds number based on wall-shear velocity and half the channel height (in a regular, i.e. not SH, channel), i.e. Re_tau = u_tau*delta/nu, default is 180.0");
+  cmd.add_option("Re_tau", "Reynolds number based on the wall-shear velocity and half the channel height, i.e. Re_tau = u_tau*delta/nu where u_tau = sqrt(-dp_dx*delta/rho), default is 180.0");
+  cmd.add_option("Re_b", "Reynolds number, based on the mean (bulk) velocity and half the channel height, i.e. Re_b   = U_b*delta/nu, default is 4200.0. Can be used exclusively in case of restart and without Re_tau");
   cmd.add_option("pitch_to_delta", "P/delta ratio, default = 0.375");
   cmd.add_option("GF", "gas fraction, default is 0.5");
   cmd.add_option("adapted_dt", "activates the calculation of dt based on the local cell sizes if present");
   // method-related parameters
   cmd.add_option("sl_order", "the order for the semi lagrangian, either 1 (stable) or 2 (accurate), default is 2");
   cmd.add_option("cfl", "dt = cfl * dx/vmax, default is 1.00");
-  cmd.add_option("hodge_tol", "numerical tolerance on the Hodge variable, at all time steps, default is 1e-3");
+  cmd.add_option("Ub_tol", "relative numerical tolerance on the bulk velocity to be set (is restart and Re_b set), default is 1e-3");
+  cmd.add_option("hodge_tol", "absolute numerical tolerance on the Hodge variable, at all time steps, default is 1e-3");
   cmd.add_option("niter_hodge", "max number of iterations for convergence of the Hodge variable, at all time steps, default is 10");
   cmd.add_option("grid_update", "number of time steps between grid updates, default is 1");
   cmd.add_option("pc_cell", "preconditioner for cell-solver: jacobi, sor or hypre, default is sor.");
@@ -755,16 +761,15 @@ int main (int argc, char* argv[])
   cmd.add_option("save_vtk", "activates exportation of results in vtk format");
   cmd.add_option("vtk_dt", "export vtk files every vtk_dt time lapse (REQUIRED if save_vtk is activated)");
 #ifdef P4_TO_P8
-  cmd.add_option("save_mass_flow", "activates exportation of the streamwise mass flow (non-dimensionalized by rho*SQR(delta)*u_tau, calculated at inflow, 0.25*length, 0.5*length and 0.75*length)");
   cmd.add_option("save_drag", "activates exportation of the total drag (non-dimensionalized by rho*SQR(u_tau)*SQR(delta))");
 #else
-  cmd.add_option("save_mass_flow", "activates exportation of the streamwise mass flow (non-dimensionalized by rho*delta*u_tau, calculated at inflow, 0.25*length, 0.5*length and 0.75*length)");
   cmd.add_option("save_drag", "activates exportation of the total drag (non-dimensionalized by rho*SQR(u_tau)*delta)");
 #endif
   cmd.add_option("save_state_dt", "if defined, this activates the 'save-state' feature. The solver state is saved every save_state_dt time steps in backup_ subfolders.");
   cmd.add_option("save_nstates", "determines how many solver states must be memorized in backup_ folders (default is 1).");
-  cmd.add_option("save_mean_profile", "computes and saves an averaged streamwise-velocity profile (makes sense only if the flow is fully-developed)");
+  cmd.add_option("save_mean_profiles", "computes and saves averaged streamwise-velocity profiles (makes sense only if the flow is fully-developed)");
   cmd.add_option("tstart_average", "starting time for computing the average velocity profile (default is 100.0)");
+  cmd.add_option("timing", "if defined, prints timing information (typically for scaling analysis).");
 
 
   // --> extra info to be printed when -help is invoked
@@ -778,11 +783,16 @@ int main (int argc, char* argv[])
       the forest is of size (as close as possible to) deltaXdeltaXdelta. \n\n\
       The set up builds upon the following non-dimensionalization ('_hat' for dimensional variables): \n\n\
       u = u_hat/u_tau, {x, y, z} = {x, y, z}_hat/delta, t = t_hat*u_tau/delta, p = p_hat/(rho*u_tau*u_tau), \n\n\
-      where u_tau is the wall-friction velocity in an equivalent regular channel (not superhydrophobic). \n\
+      where u_tau is the wall-friction velocity defined as sqrt(-dp_dx*delta/rho). \n\
       Therefore, the computational domain is [-0.5*length, 0.5*length]x[-1, 1]x[-0.5*width, 0.5*width]. \n\
-      The Navier-Stokes solver is then invoked with nondimensional inputs \n\
-      rho = 1.0, mu = 1.0/Re, body force per unit mass {1.0, 0.0, 0.0} (driving the flow), \n\
+      When started from scratch, the user can set Re_tau ONLY and the Navier-Stokes solver is then invoked with\n\
+      nondimensional inputs: \n\
+      rho = 1.0, mu = 1.0/Re_tau, body force per unit mass {1.0, 0.0, 0.0} (driving the flow), \n\
       and with periodic boundary conditions in the streamwise and spanwise directions. \n\
+      When restarted from a saved state, the user can either\n\
+      1) (re)set Re_tau: this resets only the viscosity of the fluid but keeps the body force per unit mass {1.0, 0.0, 0.0}\n\
+      2) set Re_b: this leaves the viscosity unchanged (i.e. as read from the saved state) but adapts the body force per unit\n\
+         mass dynamically in order to set the mean (bulk) velocity to the desired value that matches the desired bulk Reynolds\n\
       Developer: Raphael Egan (raphaelegan@ucsb.edu)";
 #else
   const std::string extra_info = "\
@@ -794,11 +804,16 @@ int main (int argc, char* argv[])
       as possible to) deltaXdeltaXdelta. \n\n\
       The set up builds upon the following non-dimensionalization ('_hat' for dimensional variables): \n\n\
       u = u_hat/u_tau, {x, y} = {x, y}_hat/delta, t = t_hat*u_tau/delta, p = p_hat/(rho*u_tau*u_tau), \n\n\
-      where u_tau is the wall-friction velocity in an equivalent regular channel (not superhydrophobic). \n\
+      where u_tau is the wall-friction velocity defined as sqrt(-dp_dx*delta/rho). \n\
       Therefore, the computational domain is [-0.5*length, 0.5*length]x[-1, 1]. \n\
-      The Navier-Stokes solver is then invoked with nondimensional inputs \n\
-      rho = 1.0, mu = 1.0/Re, body force per unit mass {1.0, 0.0} (driving the flow), \n\
-      and with periodic boundary conditions in the streamwise direction. \n\
+      When started from scratch, the user can set Re_tau ONLY and the Navier-Stokes solver is then invoked with\n\
+      nondimensional inputs: \n\
+      rho = 1.0, mu = 1.0/Re_tau, body force per unit mass {1.0, 0.0} (driving the flow), \n\
+      and with periodic boundary conditions in the streamwise and directions. \n\
+      When restarted from a saved state, the user can either\n\
+      1) (re)set Re_tau: this resets only the viscosity of the fluid but keeps the body force per unit mass {1.0, 0.0}\n\
+      2) set Re_b: this leaves the viscosity unchanged (i.e. as read from the saved state) but adapts the body force per unit\n\
+          mass dynamically in order to set the mean (bulk) velocity to the desired value that matches the desired bulk Reynolds\n\
       Developer: Raphael Egan (raphaelegan@ucsb.edu)";
 #endif
   cmd.parse(argc, argv, extra_info);
@@ -822,6 +837,7 @@ int main (int argc, char* argv[])
 #endif
   int n_xyz [P4EST_DIM];
 
+  const double Ub_tolerance             = cmd.get<double>("Ub_tol", 1e-3);
   const double hodge_tolerance          = cmd.get<double>("hodge_tol", 1e-3);
   const unsigned int niter_hodge_max    = cmd.get<unsigned int>("niter_hodge", 10);
   const unsigned int steps_grid_update  = cmd.get<unsigned int>("grid_update", 1);
@@ -830,7 +846,7 @@ int main (int argc, char* argv[])
   const double pitch_to_delta           = cmd.get<double>("pitch_to_delta", 1.0/4.0);
   const double gas_fraction             = cmd.get<double>("GF", 0.5);
 #if defined(POD_CLUSTER)
-  const string export_dir               = cmd.get<string>("export_folder", "/home/regan/superhydrophobic_channel");
+  const string export_dir               = cmd.get<string>("export_folder", "/scratch/regan/superhydrophobic_channel");
 #elif defined(STAMPEDE)
   const string export_dir               = cmd.get<string>("export_folder", "/work/04965/tg842642/stampede2/superhydrophobic_channel");
 #elif defined(LAPTOP)
@@ -839,6 +855,7 @@ int main (int argc, char* argv[])
   const string export_dir               = cmd.get<string>("export_folder", "/home/regan/workspace/projects/superhydrophobic_channel");
 #endif
   const bool save_vtk                   = cmd.contains("save_vtk");
+  const bool get_timing                 = cmd.contains("timing");
   double vtk_dt                         = -1.0;
   if(save_vtk)
   {
@@ -856,13 +873,12 @@ int main (int argc, char* argv[])
       throw std::invalid_argument("main_shs_2d.cpp: the value of vtk_dt must be strictly positive.");
 #endif
   }
-  const bool save_drag                = cmd.contains("save_drag"); double drag[P4EST_DIM];
-  const bool save_mass_flow           = cmd.contains("save_mass_flow"); vector<double> mass_flows; vector<double> sections;
-  const bool save_state               = cmd.contains("save_state_dt"); double dt_save_data = -1.0;
-  const unsigned int n_states         = cmd.get<unsigned int>("save_nstates", 1);
+  const bool save_drag                  = cmd.contains("save_drag"); double drag[P4EST_DIM];
+  const bool save_state                 = cmd.contains("save_state_dt"); double dt_save_data = -1.0;
+  const unsigned int n_states           = cmd.get<unsigned int>("save_nstates", 1);
   if(save_state)
   {
-    dt_save_data            = cmd.get<double>("save_state_dt", -1.0);
+    dt_save_data                        = cmd.get<double>("save_state_dt", -1.0);
     if(dt_save_data < 0.0)
 #ifdef P4_TO_P8
       throw std::invalid_argument("main_shs_3d.cpp: the value of save_state_dt must be strictly positive.");
@@ -870,11 +886,13 @@ int main (int argc, char* argv[])
       throw std::invalid_argument("main_shs_2d.cpp: the value of save_state_dt must be strictly positive.");
 #endif
   }
-  const bool save_profile             = cmd.contains("save_mean_profile"); vector<double> slice_averaged_profile;
-  const double avg_start              = cmd.get<double>("tstart_average", 100.0);
-  const bool use_adapted_dt           = cmd.contains("adapted_dt");
+  const bool save_profiles              = cmd.contains("save_mean_profiles");
+  vector<double>            slice_averaged_profile;
+  vector< vector<double> >  line_averaged_profiles;
+  const double avg_start                = cmd.get<double>("tstart_average", 100.0);
+  const bool use_adapted_dt             = cmd.contains("adapted_dt");
 #ifdef P4_TO_P8
-  const bool streamwise               = cmd.contains("streamwise");
+  const bool spanwise                   = cmd.contains("spanwise");
 #endif
 
   const string des_pc_cell              = cmd.get<string>("pc_cell", "sor");
@@ -911,9 +929,29 @@ int main (int argc, char* argv[])
     pc_face = PCSOR;
   }
 
+  if(cmd.contains("Re_b") && !cmd.contains("restart"))
+#ifdef P4_TO_P8
+    throw std::invalid_argument("main_shs_3d.cpp: forcing a constant bulk velocity, i.e. a constant mass flow, cannot be done if starting the simulation from scratch (no adequate initial condition): advance the simulation with constant pressure gradient first, fixing Re_tau; then restart it with Re_b.");
+#else
+    throw std::invalid_argument("main_shs_2d.cpp: forcing a constant bulk velocity, i.e. a constant mass flow, cannot be done if starting the simulation from scratch (no adequate initial condition): advance the simulation with constant pressure gradient first, fixing Re_tau; then restart it with Re_b.");
+#endif
+  if(cmd.contains("Re_b") && cmd.contains("Re_tau"))
+#ifdef P4_TO_P8
+    throw std::invalid_argument("main_shs_3d.cpp: forcing a constant bulk velocity AND a constant pressure gradient cannot be done: choose one!");
+#else
+    throw std::invalid_argument("main_shs_2d.cpp: forcing a constant bulk velocity AND a constant pressure gradient cannot be done: choose one!");
+#endif
+  if(cmd.contains("restart") && !cmd.contains("Re_b") && !cmd.contains("Re_tau"))
+#ifdef P4_TO_P8
+    throw std::invalid_argument("main_shs_3d.cpp: you need to specify either the desired Re_tau or the desired Re_b when restarting...");
+#else
+    throw std::invalid_argument("main_shs_2d.cpp: you need to specify either the desired Re_tau or the desired Re_b when restarting...");
+#endif
+
   PetscErrorCode ierr;
   const double rho = 1.0;
-  double wall_shear_Reynolds, mu;
+  double mu;
+  double bulk_velocity_to_set = 0.0; // irrelevant, except if enforcing mass flow after restart --> reset in that case
   double xyz_min [P4EST_DIM];
   double xyz_max [P4EST_DIM];
 #ifdef P4_TO_P8
@@ -986,15 +1024,16 @@ int main (int argc, char* argv[])
     width                   = ns->get_width_of_domain();
 #endif
     P4EST_ASSERT((fabs(height-2.0) < 2.0*10.0*EPS) && (fabs(ns->get_rho() - 1.0) < 1.0*10.0*EPS));
-    if(cmd.contains("Re"))
-    {
-      wall_shear_Reynolds     = cmd.get<double>("Re");
-      mu                      = 1.0/wall_shear_Reynolds;
-    }
+    // if restarting with a specific Re_tau, adjust and reset the viscosity to match dp_dx = -1.0
+    // otherwise, just read the solver's viscosity
+    if(cmd.contains("Re_tau"))
+      mu                    = rho*1.0*sqrt(external_force_u.get_value()*1.0)/(cmd.get<double>("Re_tau")); // delta = 1.0
     else
     {
-      mu                      = ns->get_mu();
-      wall_shear_Reynolds     = 1.0/mu;
+      P4EST_ASSERT(cmd.contains("Re_b"));
+      mu                    = ns->get_mu();
+      // if restarting with a specific Re_b, set the desired bulk velocity to match it
+      bulk_velocity_to_set  = mu*(cmd.get<double>("Re_b"))/(rho*1.0); // delta = 1.0
     }
 
     if(brick != NULL && brick->nxyz_to_treeid != NULL)
@@ -1038,10 +1077,10 @@ int main (int argc, char* argv[])
 #endif
     }
 #ifdef P4_TO_P8
-    if(streamwise)
-      check_pitch_and_gas_fraction(width, ntree_z, lmax, pitch_to_delta, gas_fraction);
-    else
+    if(spanwise)
       check_pitch_and_gas_fraction(length, ntree_x, lmax, pitch_to_delta, gas_fraction);
+    else
+      check_pitch_and_gas_fraction(width, ntree_z, lmax, pitch_to_delta, gas_fraction);
 #else
     check_pitch_and_gas_fraction(length, ntree_x, lmax, pitch_to_delta, gas_fraction);
 #endif
@@ -1073,8 +1112,8 @@ int main (int argc, char* argv[])
 #ifdef P4_TO_P8
     if(bc_wall_type_w!=NULL)
       delete bc_wall_type_w;
-    bc_wall_type_u = new BCWALLTYPE_U(length, width, streamwise, pitch_to_delta, gas_fraction, *brick, lmax);
-    bc_wall_type_w = new BCWALLTYPE_W(length, width, streamwise, pitch_to_delta, gas_fraction, *brick, lmax);
+    bc_wall_type_u = new BCWALLTYPE_U(length, width, !spanwise, pitch_to_delta, gas_fraction, *brick, lmax);
+    bc_wall_type_w = new BCWALLTYPE_W(length, width, !spanwise, pitch_to_delta, gas_fraction, *brick, lmax);
 #else
     bc_wall_type_u = new BCWALLTYPE_U(length, pitch_to_delta, gas_fraction, *brick, lmax);
 #endif
@@ -1096,8 +1135,7 @@ int main (int argc, char* argv[])
 #ifdef P4_TO_P8
     width                   = cmd.get<double>("width", 3.0);
 #endif
-    wall_shear_Reynolds     = cmd.get<double>("Re", 180.0);
-    mu                      = 1.0/wall_shear_Reynolds;
+    mu                      = rho*1.0*sqrt(external_force_u.get_value()*1.0)/(cmd.get<double>("Re_tau", 180.0)); // delta = 1.0
 
     ntree_x                 = cmd.get<int>("nx", (int) length);
     ntree_y                 = cmd.get<int>("ny", 2);
@@ -1116,10 +1154,10 @@ int main (int argc, char* argv[])
     wall_layer              = cmd.get<unsigned int>("wall_layer", 6);
 #ifdef P4_TO_P8
     uniform_band            = ((double) wall_layer)*(2.0/((double) ntree_y))/MAX(length/((double) ntree_x), 2.0/((double) ntree_y), width/((double) ntree_z));
-    if(streamwise)
-      check_pitch_and_gas_fraction(width, ntree_z, lmax, pitch_to_delta, gas_fraction);
-    else
+    if(spanwise)
       check_pitch_and_gas_fraction(length, ntree_x, lmax, pitch_to_delta, gas_fraction);
+    else
+      check_pitch_and_gas_fraction(width, ntree_z, lmax, pitch_to_delta, gas_fraction);
 #else
     uniform_band            = ((double) wall_layer)*(2.0/((double) ntree_y))/MAX(length/((double) ntree_x), 2.0/((double) ntree_y));
     check_pitch_and_gas_fraction(length, ntree_x, lmax, pitch_to_delta, gas_fraction);
@@ -1210,26 +1248,26 @@ int main (int argc, char* argv[])
 
     ns = new my_p4est_navier_stokes_t(ngbd_nm1, ngbd_n, faces_n);
     ns->set_phi(phi);
-    ns->set_parameters(mu , rho, sl_order, uniform_band, threshold_split_cell, cfl);
+    ns->set_parameters(mu, rho, sl_order, uniform_band, threshold_split_cell, cfl);
     ns->set_velocities(vnm1, vn);
 
     tstart = 0.0; // no restart so we assume we start from 0.0
-    // set the first time step: kinda arbitrary, don't really know what else I could do. I believe an inverse power of Re should be used here instead...
+    // set the first time step: kinda arbitrary, don't really know what else I could do. I believe an inverse power of Re_tau should be used here instead...
     double min_dxyz[P4EST_DIM]; dxyz_min(p4est_n, min_dxyz);
 #ifdef P4_TO_P8
-    dt = MIN(min_dxyz[0], min_dxyz[1], min_dxyz[2])/wall_shear_Reynolds;
+    dt = MIN(min_dxyz[0], min_dxyz[1], min_dxyz[2])/Re_tau(external_force_u, ns->get_rho(), ns->get_mu());
 #else
-    dt = MIN(min_dxyz[0], min_dxyz[1])/wall_shear_Reynolds;
+    dt = MIN(min_dxyz[0], min_dxyz[1])/Re_tau(external_force_u, ns->get_rho(), ns->get_mu());
 #endif
-    ns->set_dt(dt);
+    ns->set_dt(dt, dt);
 
     if(bc_wall_type_u!=NULL)
       delete  bc_wall_type_u;
 #ifdef P4_TO_P8
     if(bc_wall_type_w!=NULL)
       delete bc_wall_type_w;
-    bc_wall_type_u = new BCWALLTYPE_U(length, width, streamwise, pitch_to_delta, gas_fraction, *brick, lmax);
-    bc_wall_type_w = new BCWALLTYPE_W(length, width, streamwise, pitch_to_delta, gas_fraction, *brick, lmax);
+    bc_wall_type_u = new BCWALLTYPE_U(length, width, !spanwise, pitch_to_delta, gas_fraction, *brick, lmax);
+    bc_wall_type_w = new BCWALLTYPE_W(length, width, !spanwise, pitch_to_delta, gas_fraction, *brick, lmax);
 #else
     bc_wall_type_u = new BCWALLTYPE_U(length, pitch_to_delta, gas_fraction, *brick, lmax);
 #endif
@@ -1241,66 +1279,113 @@ int main (int argc, char* argv[])
     ns->set_external_forces(external_forces);
   }
 
+  char out_dir[PATH_MAX], profile_path[PATH_MAX], vtk_path[PATH_MAX], vtk_name[PATH_MAX];
+  if(cmd.contains("restart")){
+    ierr = PetscPrintf(mpi.comm(), "Simulation restarted from state saved in %s\n", (cmd.get<string>("restart")).c_str()); CHKERRXX(ierr); }
+  if(cmd.contains("Re_tau") || !cmd.contains("restart"))
+  {
 #ifdef P4_TO_P8
-  ierr = PetscPrintf(mpi.comm(), "Parameters : Re_{tau, 0} = %g, domain is %dx2x%d (delta units), P/delta = %g, GF = %g\n", wall_shear_Reynolds, (int) length, (int) width, pitch_to_delta, gas_fraction); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "Parameters : Re_tau = %g, domain is %dx2x%d (delta units), P/delta = %g, GF = %g\n", cmd.get<double>("Re_tau"), (int) length, (int) width, pitch_to_delta, gas_fraction); CHKERRXX(ierr);
+    sprintf(out_dir, "%s/%dX2X%d_channel/Re_tau_%.2f/%s/pitch_to_delta_%.3f/GF_%.2f/ny_%d_lmin_%d_lmax_%d", export_dir.c_str(), (int) length, (int) width, cmd.get<double>("Re_tau"), ((spanwise)? "spanwise": "streamwise"), pitch_to_delta, gas_fraction, n_xyz[1], lmin, lmax);
 #else
-  ierr = PetscPrintf(mpi.comm(), "Parameters : Re_{tau, 0} = %g, domain is %dx2 (delta units), P/delta = %g, GF = %g\n", wall_shear_Reynolds, (int) length, pitch_to_delta, gas_fraction); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "Parameters : Re_tau = %g, domain is %dx2 (delta units), P/delta = %g, GF = %g\n", cmd.get<double>("Re_tau"), (int) length, pitch_to_delta, gas_fraction); CHKERRXX(ierr);
+    sprintf(out_dir, "%s/%dX2_channel/Re_tau_%.2f/pitch_to_delta_%.3f/GF_%.2f/ny_%d_lmin_%d_lmax_%d", export_dir.c_str(), (int) length, cmd.get<double>("Re_tau"), pitch_to_delta, gas_fraction, n_xyz[1], lmin, lmax);
 #endif
+  }
+  else
+  {
+#ifdef P4_TO_P8
+    ierr = PetscPrintf(mpi.comm(), "Parameters : Re_b = %g, domain is %dx2x%d (delta units), P/delta = %g, GF = %g\n", cmd.get<double>("Re_b"), (int) length, (int) width, pitch_to_delta, gas_fraction); CHKERRXX(ierr);
+    sprintf(out_dir, "%s/%dX2X%d_channel/Re_b_%.2f/%s/pitch_to_delta_%.3f/GF_%.2f/ny_%d_lmin_%d_lmax_%d", export_dir.c_str(), (int) length, (int) width, cmd.get<double>("Re_b"), ((spanwise)? "spanwise": "streamwise"), pitch_to_delta, gas_fraction, n_xyz[1], lmin, lmax);
+#else
+    ierr = PetscPrintf(mpi.comm(), "Parameters : Re_b = %g, domain is %dx2 (delta units), P/delta = %g, GF = %g\n", cmd.get<double>("Re_b"), (int) length, pitch_to_delta, gas_fraction); CHKERRXX(ierr);
+    sprintf(out_dir, "%s/%dX2_channel/Re_b_%.2f/pitch_to_delta_%.3f/GF_%.2f/ny_%d_lmin_%d_lmax_%d", export_dir.c_str(), (int) length, cmd.get<double>("Re_b"), pitch_to_delta, gas_fraction, n_xyz[1], lmin, lmax);
+#endif
+  }
   ierr = PetscPrintf(mpi.comm(), "cfl = %g, wall layer = %g\n", cfl, wall_layer);
 
-  char out_dir[1024], vtk_path[1024], vtk_name[1024];
-#ifdef P4_TO_P8
-  sprintf(out_dir, "%s/%dX2X%d_channel/Retau_%d/%s/pitch_to_delta_%.3f/GF_%.2f/yplus_min_%.4f_yplus_max_%.4f", export_dir.c_str(), (int) length, (int) width, (int) wall_shear_Reynolds, ((streamwise)? "streamwise": "spanwise"), pitch_to_delta, gas_fraction, 2.0*wall_shear_Reynolds/(((double) ntree_y)*pow(2.0, lmax)), 2.0*wall_shear_Reynolds/(((double) ntree_y)*pow(2.0, lmin)));
-#else
-  sprintf(out_dir, "%s/%dX2_channel/Retau_%d/pitch_to_delta_%.3f/GF_%.2f/yplus_min_%.4f_yplus_max_%.4f", export_dir.c_str(), (int) length, (int) wall_shear_Reynolds, pitch_to_delta, gas_fraction, 2.0*wall_shear_Reynolds/(((double) ntree_y)*pow(2.0, lmax)), 2.0*wall_shear_Reynolds/(((double) ntree_y)*pow(2.0, lmin)));
-#endif
-  sprintf(vtk_path, "%s/vtu", out_dir);
-  if(save_vtk || save_drag || save_mass_flow || save_profile || save_state)
+  if(create_directory(out_dir, mpi.rank(), mpi.comm()))
   {
-    if(create_directory(out_dir, mpi.rank(), mpi.comm()))
-    {
-      char error_msg[1024];
+    char error_msg[1024];
 #ifdef P4_TO_P8
-      sprintf(error_msg, "main_shs_3d: could not create exportation directory %s", out_dir);
+    sprintf(error_msg, "main_shs_3d: could not create exportation directory %s", out_dir);
 #else
-      sprintf(error_msg, "main_shs_2d: could not create exportation directory %s", out_dir);
+    sprintf(error_msg, "main_shs_2d: could not create exportation directory %s", out_dir);
 #endif
-      throw std::runtime_error(error_msg);
-    }
-    if(save_vtk && create_directory(vtk_path, mpi.rank(), mpi.comm()))
-    {
-      char error_msg[1024];
+    throw std::runtime_error(error_msg);
+  }
+  sprintf(vtk_path, "%s/vtu", out_dir);
+  if(save_vtk && create_directory(vtk_path, mpi.rank(), mpi.comm()))
+  {
+    char error_msg[1024];
 #ifdef P4_TO_P8
-      sprintf(error_msg, "main_shs_3d: could not create exportation directory for vtk files %s", vtk_path);
+    sprintf(error_msg, "main_shs_3d: could not create exportation directory for vtk files %s", vtk_path);
 #else
-      sprintf(error_msg, "main_shs_2d: could not create exportation directory for vtk files %s", vtk_path);
+    sprintf(error_msg, "main_shs_2d: could not create exportation directory for vtk files %s", vtk_path);
 #endif
-      throw std::runtime_error(error_msg);
-    }
+    throw std::runtime_error(error_msg);
   }
 
+  // for mass_flow_forcing
+#ifdef P4_TO_P8
+  const bool force_mass_flow[P4EST_DIM]         = {(cmd.contains("restart") && cmd.contains("Re_b")), false, false};
+  const double desired_bulk_velocity[P4EST_DIM] = {bulk_velocity_to_set, 0.0, 0.0}; // 2nd and 3rd components are irrelevant
+  double current_mass_flow[P4EST_DIM]           = {0.0,0.0};
+  double mean_grad_hodge_correction[P4EST_DIM];
+#else
+  const bool force_mass_flow[P4EST_DIM]         = {(cmd.contains("restart") && cmd.contains("Re_b")), false};
+  const double desired_bulk_velocity[P4EST_DIM] = {bulk_velocity_to_set, 0.0}; // 2nd component is irrelevant;
+  double current_mass_flow[P4EST_DIM]           = {0.0,0.0};
+  double mean_grad_hodge_correction[P4EST_DIM];
+#endif
 
   int iter = 0;
   int export_vtk = -1;
   int save_data_idx = (int) floor(tstart/dt_save_data); // so that we don't save the very first one which was either already read from file, or the known initial condition...
 
   FILE *fp_velocity_profile;
-  char file_drag[PATH_MAX], file_mass_flow[PATH_MAX], file_velocity_profile[PATH_MAX];
+  char file_drag[PATH_MAX], file_monitoring[PATH_MAX];
 
   if(save_drag)
     initialize_drag_force_output(file_drag, out_dir, lmin, lmax, threshold_split_cell, cfl, sl_order, mpi, tstart);
-  if(save_mass_flow)
+  // initialize sections and mass flows through sections
+  double section = -0.5*length;
+  double mass_flow;
+  initialize_monitoring(file_monitoring, out_dir, ns->get_brick()->nxyztrees[1], lmin, lmax, threshold_split_cell, cfl, sl_order, mpi, tstart);
+
+  sprintf(profile_path, "%s/profiles", out_dir);
+  if(save_profiles && create_directory(profile_path, mpi.rank(), mpi.comm()))
+  {
+    char error_msg[1024];
 #ifdef P4_TO_P8
-    initialize_mass_flow_output(sections, mass_flows, file_mass_flow, length, width, out_dir, lmin, lmax, threshold_split_cell, cfl, sl_order, mpi, tstart);
+    sprintf(error_msg, "main_shs_3d: could not create exportation directory for velocity profiles %s", profile_path);
 #else
-    initialize_mass_flow_output(sections, mass_flows, file_mass_flow, length, out_dir, lmin, lmax, threshold_split_cell, cfl, sl_order, mpi, tstart);
+    sprintf(error_msg, "main_shs_2d: could not create exportation directory for velocity profiles %s", profile_path);
 #endif
-  if(save_profile)
-    initialize_averaged_velocity_profile(file_velocity_profile, out_dir, ntree_y, lmin, lmax, threshold_split_cell, cfl, sl_order, mpi, tstart);
+    throw std::runtime_error(error_msg);
+  }
+  char file_slice_avg_velocity_profile[PATH_MAX];
+  vector<string> file_line_avg_velocity_profile;
+  vector<unsigned int> bin_index;
+  unsigned int nbins;
+  if(save_profiles)
+  {
+#ifdef P4_TO_P8
+    double domain_dimensions[P4EST_DIM] = {length, 2.0, width};
+    initialize_averaged_velocity_profiles(file_slice_avg_velocity_profile, profile_path, n_xyz, lmin, lmax, threshold_split_cell, cfl, sl_order, mpi, tstart,
+                                          bin_index, file_line_avg_velocity_profile, domain_dimensions, pitch_to_delta, gas_fraction, nbins, spanwise);
+#else
+    double domain_dimensions[P4EST_DIM] = {length, 2.0};
+    initialize_averaged_velocity_profiles(file_slice_avg_velocity_profile, profile_path, n_xyz, lmin, lmax, threshold_split_cell, cfl, sl_order, mpi, tstart,
+                                          bin_index, file_line_avg_velocity_profile, domain_dimensions, pitch_to_delta, gas_fraction, nbins, true);
+#endif
+    line_averaged_profiles.resize(nbins);
+  }
 
   parStopWatch watch, substep_watch;
   double mean_full_iteration_time = 0.0, mean_viscosity_step_time = 0.0, mean_projection_step_time = 0.0, mean_compute_velocity_at_nodes_time = 0.0, mean_update_time = 0.0;
-  watch.start("Total runtime");
+  if(get_timing)
+    watch.start("Total runtime");
   double tn = tstart;
 
   my_p4est_poisson_cells_t* cell_solver = NULL;
@@ -1308,13 +1393,14 @@ int main (int argc, char* argv[])
 
   while(tn+0.01*dt<tstart+duration)
   {
-    substep_watch.start("");
+    if(get_timing)
+      substep_watch.start("");
     if(iter>0)
     {
       if(use_adapted_dt)
-        ns->compute_adapted_dt(0.1*2.0*wall_shear_Reynolds/(((double) ntree_y)*pow(2.0, lmax))); // 0.1*y^{+}_min (assuming full resolution of viscous sublayer in regular channel)
+        ns->compute_adapted_dt(0.1*2.0*Re_tau(external_force_u, ns->get_rho(), ns->get_mu())/(((double) n_xyz[1])*pow(2.0, lmax))); // 0.1*y^{+}_min (assuming full resolution of viscous sublayer in regular channel), (assuming u_tau = y^{+} as in canonical channel flows)
       else
-        ns->compute_dt(0.1*2.0*wall_shear_Reynolds/(((double) ntree_y)*pow(2.0, lmax))); // 0.1*y^{+}_min (assuming full resolution of viscous sublayer in regular channel)
+        ns->compute_dt(0.1*2.0*Re_tau(external_force_u, ns->get_rho(), ns->get_mu())/(((double) n_xyz[1])*pow(2.0, lmax))); // 0.1*y^{+}_min (assuming full resolution of viscous sublayer in regular channel), (assuming u_tau = y^{+} as in canonical channel flows)
       dt = ns->get_dt();
 
       if(tn+dt>tstart+duration)
@@ -1335,8 +1421,11 @@ int main (int argc, char* argv[])
       if(face_solver != NULL && !solvers_can_be_reused){
         delete face_solver; face_solver = NULL; }
     }
-    substep_watch.stop();
-    mean_update_time += substep_watch.read_duration();
+    if(get_timing)
+    {
+      substep_watch.stop();
+      mean_update_time += substep_watch.read_duration();
+    }
     if(save_state && ((int) floor(tn/dt_save_data)) != save_data_idx)
     {
       save_data_idx = ((int) floor(tn/dt_save_data));
@@ -1348,19 +1437,36 @@ int main (int argc, char* argv[])
     ierr = VecCreateSeq(PETSC_COMM_SELF, ns->get_p4est()->local_num_quadrants, &hodge_old); CHKERRXX(ierr);
     double corr_hodge = 1.0;
     unsigned int iter_hodge = 0;
-    while(iter_hodge<niter_hodge_max && corr_hodge>hodge_tolerance)
+    double constant_mass_flow_correction = 10.0*Ub_tolerance*MAX(fabs(desired_bulk_velocity[0]), 1.0);
+    while((iter_hodge<niter_hodge_max && corr_hodge>hodge_tolerance) || (force_mass_flow[0] && (fabs(constant_mass_flow_correction) > Ub_tolerance*fabs(desired_bulk_velocity[0]))))
     {
       hodge_new = ns->get_hodge();
       ierr = VecCopy(hodge_new, hodge_old); CHKERRXX(ierr);
 
-      substep_watch.start("");
+      if(get_timing)
+        substep_watch.start("");
       ns->solve_viscosity(face_solver, (face_solver!=NULL), KSPBCGS, pc_face);
-      substep_watch.stop();
-      mean_viscosity_step_time += substep_watch.read_duration();
-      substep_watch.start("");
+      if(get_timing)
+      {
+        substep_watch.stop();
+        mean_viscosity_step_time += substep_watch.read_duration();
+        substep_watch.start("");
+      }
       ns->solve_projection(cell_solver, (cell_solver!=NULL), cell_solver_type, pc_cell);
-      substep_watch.stop();
-      mean_projection_step_time += substep_watch.read_duration();
+      if(force_mass_flow[0])
+      {
+        ns->global_mass_flow_through_slice(dir::x, section, mass_flow);
+        current_mass_flow[0] = mass_flow;
+        ns->enforce_mass_flow(force_mass_flow, desired_bulk_velocity, mean_grad_hodge_correction, current_mass_flow);
+        constant_mass_flow_correction = mean_grad_hodge_correction[0];
+        external_force_u.update_term(-constant_mass_flow_correction*ns->get_rho()*ns->alpha()/ns->get_dt());
+      }
+
+      if(get_timing)
+      {
+        substep_watch.stop();
+        mean_projection_step_time += substep_watch.read_duration();
+      }
 
       hodge_new = ns->get_hodge();
       const double *ho; ierr = VecGetArrayRead(hodge_old, &ho); CHKERRXX(ierr);
@@ -1384,14 +1490,35 @@ int main (int argc, char* argv[])
       iter_hodge++;
     }
     ierr = VecDestroy(hodge_old); CHKERRXX(ierr);
-    substep_watch.start("");
+    if(get_timing)
+      substep_watch.start("");
     ns->compute_velocity_at_nodes();
-    substep_watch.stop();
-    mean_compute_velocity_at_nodes_time += substep_watch.read_duration();
+    if(get_timing)
+    {
+      substep_watch.stop();
+      mean_compute_velocity_at_nodes_time += substep_watch.read_duration();
+    }
     ns->compute_pressure();
 
     tn += dt;
 
+    // monitoring Re_tau and Re_b
+    ns->global_mass_flow_through_slice(dir::x, section, mass_flow);
+    if(!mpi.rank())
+    {
+      FILE* fp_monitor = fopen(file_monitoring, "a");
+      if(fp_monitor==NULL)
+#ifdef P4_TO_P8
+        throw std::runtime_error("main_shs_3d: could not open monitoring file.");
+      fprintf(fp_monitor, "%g %g %g\n", tn, Re_tau(external_force_u, ns->get_rho(), ns->get_mu()), Re_b(mass_flow, ns->get_width_of_domain(), ns->get_rho(), ns->get_mu()));
+#else
+        throw std::runtime_error("main_shs_2d: could not open monitoring file.");
+      fprintf(fp_monitor, "%g %g %g\n", tn, Re_tau(external_force_u, ns->get_rho(), ns->get_mu()), Re_b(mass_flow, 1.0, ns->get_rho(), ns->get_mu()));
+#endif
+      fclose(fp_monitor);
+    }
+
+    // exporting drag if desired
     if(save_drag)
     {
       ns->get_noslip_wall_forces(drag);
@@ -1409,36 +1536,17 @@ int main (int argc, char* argv[])
         fclose(fp_drag);
       }
     }
-    if(save_mass_flow)
-    {
-      ns->global_mass_flow_through_slice(dir::x, sections, mass_flows);
-      if(!mpi.rank())
-      {
-        FILE* fp_mass_flow= fopen(file_mass_flow, "a");
-        if(fp_mass_flow==NULL)
-#ifdef P4_TO_P8
-          throw std::runtime_error("main_shs_3d: could not open file for mass flow output.");
-#else
-          throw std::runtime_error("main_shs_2d: could not open file for mass flow output.");
-#endif
-        fprintf(fp_mass_flow, "%g", tn);
-        for (size_t k_section = 0; k_section < mass_flows.size(); ++k_section)
-          fprintf(fp_mass_flow, " %g", mass_flows[k_section]);
-        fprintf(fp_mass_flow, "\n");
-        fclose(fp_mass_flow);
-      }
-    }
-    if (save_profile && (tn > avg_start))
+    if (save_profiles && (tn > avg_start))
     {
       ns->get_slice_averaged_vnp1_profile(dir::x, dir::y, slice_averaged_profile);
       if(!mpi.rank())
       {
-        fp_velocity_profile = fopen(file_velocity_profile, "a");
+        fp_velocity_profile = fopen(file_slice_avg_velocity_profile, "a");
         if(fp_velocity_profile==NULL)
 #ifdef P4_TO_P8
-          throw std::invalid_argument("main_shs_3d: could not open file for averaged velocity profile output.");
+          throw std::invalid_argument("main_shs_3d: could not open file for slice-averaged velocity profile output.");
 #else
-          throw std::invalid_argument("main_shs_2d: could not open file for averaged velocity profile output.");
+          throw std::invalid_argument("main_shs_2d: could not open file for slice-averaged velocity profile output.");
 #endif
         fprintf(fp_velocity_profile, "%.12g", tn);
         for (int k = 0; k < ntree_y*(1<<lmax); ++k)
@@ -1446,11 +1554,39 @@ int main (int argc, char* argv[])
         fprintf(fp_velocity_profile, "\n");
         fclose(fp_velocity_profile);
       }
+#ifdef P4_TO_P8
+      ns->get_line_averaged_vnp1_profiles(dir::x, dir::y, (spanwise? dir::z : dir::x), bin_index, line_averaged_profiles);
+#else
+      ns->get_line_averaged_vnp1_profiles(dir::x, dir::y, bin_index, line_averaged_profiles);
+#endif
+      for (unsigned int bin_idx = 0; bin_idx < nbins; ++bin_idx) {
+        if(((unsigned int) mpi.rank()) == (bin_idx%mpi.size()))
+        {
+          fp_velocity_profile = fopen(file_line_avg_velocity_profile[bin_idx].c_str(), "a");
+          if(fp_velocity_profile==NULL)
+  #ifdef P4_TO_P8
+            throw std::invalid_argument("main_shs_3d: could not open file for line-averaged velocity profile output.");
+  #else
+            throw std::invalid_argument("main_shs_2d: could not open file for line-averaged velocity profile output.");
+  #endif
+          fprintf(fp_velocity_profile, "%.12g", tn);
+          for (int k = 0; k < ntree_y*(1<<lmax); ++k)
+            fprintf(fp_velocity_profile, " %.12g", line_averaged_profiles[bin_idx].at(k));
+          fprintf(fp_velocity_profile, "\n");
+          fclose(fp_velocity_profile);
+        }
+      }
     }
 
-    ierr = PetscPrintf(mpi.comm(), "Iteration #%04d : tn = %.5e, percent done : %.1f%%, \t max_L2_norm_u = %.5e, \t number of leaves = %d\n", iter, tn, 100*(tn - tstart)/duration, ns->get_max_L2_norm_u(), ns->get_p4est()->global_num_quadrants); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "Iteration #%04d : tn = %.5e, percent done : %.1f%%, \t max_L2_norm_u = %.5e, \t number of leaves = %d, \t Re_tau = %.2f, \t Re_b = %.2f\n", iter, tn, 100*(tn - tstart)/duration, ns->get_max_L2_norm_u(), ns->get_p4est()->global_num_quadrants, Re_tau(external_force_u, ns->get_rho(), ns->get_mu())
+                   #ifdef P4_TO_P8
+                       , Re_b(mass_flow, ns->get_width_of_domain(), ns->get_rho(), ns->get_mu())
+                   #else
+                       , Re_b(mass_flow, 1.0, ns->get_rho(), ns->get_mu())
+                   #endif
+                       ); CHKERRXX(ierr);
 
-    if(ns->get_max_L2_norm_u()>1000)
+    if(ns->get_max_L2_norm_u()>5.0*(force_mass_flow[0]? desired_bulk_velocity[0] : Re_tau(external_force_u, ns->get_rho(), ns->get_mu())*sqrt(external_force_u.get_value()*1.0))) // delta = 1.0
     {
       if(save_vtk)
       {
@@ -1470,19 +1606,22 @@ int main (int argc, char* argv[])
     iter++;
   }
 
-  watch.stop();
-  mean_full_iteration_time             = watch.read_duration()/((double) iter);
-  mean_viscosity_step_time            /= ((double) iter);
-  mean_projection_step_time           /= ((double) iter);
-  mean_compute_velocity_at_nodes_time /= ((double) iter);
-  mean_update_time                    /= ((double) iter);
+  if(get_timing)
+  {
+    watch.stop();
+    mean_full_iteration_time             = watch.read_duration()/((double) iter);
+    mean_viscosity_step_time            /= ((double) iter);
+    mean_projection_step_time           /= ((double) iter);
+    mean_compute_velocity_at_nodes_time /= ((double) iter);
+    mean_update_time                    /= ((double) iter);
 
-  ierr = PetscPrintf(mpi.comm(), "Mean computational time spent on \n"); CHKERRXX(ierr);
-  ierr = PetscPrintf(mpi.comm(), " viscosity step: %.5e\n", mean_viscosity_step_time); CHKERRXX(ierr);
-  ierr = PetscPrintf(mpi.comm(), " projection step: %.5e\n", mean_projection_step_time); CHKERRXX(ierr);
-  ierr = PetscPrintf(mpi.comm(), " computing velocities at nodes: %.5e\n", mean_compute_velocity_at_nodes_time); CHKERRXX(ierr);
-  ierr = PetscPrintf(mpi.comm(), " grid update: %.5e\n", mean_update_time); CHKERRXX(ierr);
-  ierr = PetscPrintf(mpi.comm(), " full iteration (total): %.5e\n", mean_full_iteration_time); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "Mean computational time spent on \n"); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), " viscosity step: %.5e\n", mean_viscosity_step_time); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), " projection step: %.5e\n", mean_projection_step_time); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), " computing velocities at nodes: %.5e\n", mean_compute_velocity_at_nodes_time); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), " grid update: %.5e\n", mean_update_time); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), " full iteration (total): %.5e\n", mean_full_iteration_time); CHKERRXX(ierr);
+  }
 
   if(cell_solver!=NULL)
     delete  cell_solver;
