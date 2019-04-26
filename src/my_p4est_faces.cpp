@@ -1259,11 +1259,14 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
       }
 #endif
 
-      p.push_back((f_p[fm_idx] + (neumann_wall_x? bc->wallValue(xyz)*xyz_t[0]*scaling: 0.0) + (neumann_wall_y? bc->wallValue(xyz)*xyz_t[1]*scaling: 0.0)
-             #ifdef P4_TO_P8
-                   + (neumann_wall_z? bc->wallValue(xyz)*xyz_t[2]*scaling: 0.0)
-             #endif
-                   ) * w);
+      p.push_back((f_p[fm_idx]
+                   + (neumann_wall_x? ((is_node_xpWall(p4est, node)?+1.0:-1.0)*bc->wallValue(xyz)*xyz_t[0]*scaling): 0.0)
+                  + (neumann_wall_y? ((is_node_ypWall(p4est, node)?+1.0:-1.0)*bc->wallValue(xyz)*xyz_t[1]*scaling): 0.0)
+    #ifdef P4_TO_P8
+          + (neumann_wall_z? ((is_node_zpWall(p4est, node)?+1.0:-1.0)*bc->wallValue(xyz)*xyz_t[2]*scaling: 0.0)
+    #endif
+          ) * w);
+      // [Raphael:] note the sign used when defining xyz_t above, it is counter intuitive, imo
 
       for(int d=0; d<P4EST_DIM; ++d)
         if(std::find(nb[d].begin(), nb[d].end(), xyz_t[d]) == nb[d].end())
