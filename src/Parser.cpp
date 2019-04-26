@@ -44,7 +44,7 @@ void cmdParser::parse(int argc, char* argv[], const std::string &extra_info)
     if(!extra_info.empty())
     {
       PetscPrintf(MPI_COMM_WORLD, "\n\n");
-    PetscPrintf(MPI_COMM_WORLD, " -----------== EXTRA INFORMATION FROM THE DEVELOPER ==------------ \n\n");
+      PetscPrintf(MPI_COMM_WORLD, " -----------== EXTRA INFORMATION FROM THE DEVELOPER ==------------ \n\n");
       PetscPrintf(MPI_COMM_WORLD, extra_info.c_str());
     }
     PetscPrintf(MPI_COMM_WORLD, "\n\n");
