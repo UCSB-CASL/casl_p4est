@@ -17,19 +17,19 @@ using std::vector;
  * \return
  */
 #ifdef P4_TO_P8
-void solve_lsqr_system(matrix_t &A, vector<double> p[], unsigned int n_vectors, double *solutions, int nb_x, int nb_y, int nb_z, char order=2);
-inline double solve_lsqr_system(matrix_t &A, vector<double> &p, int nb_x, int nb_y, int nb_z, char order=2)
+void solve_lsqr_system(matrix_t &A, vector<double> p[], unsigned int n_vectors, double *solutions, int nb_x, int nb_y, int nb_z, char order=2, unsigned short nconstraints=0);
+inline double solve_lsqr_system(matrix_t &A, vector<double> &p, int nb_x, int nb_y, int nb_z, char order=2, unsigned short nconstraints=0)
 {
   double solution;
-  solve_lsqr_system(A, &p, 1, &solution, nb_x, nb_y, nb_z, order);
+  solve_lsqr_system(A, &p, 1, &solution, nb_x, nb_y, nb_z, order, nconstraints);
   return solution;
 }
 #else
-void solve_lsqr_system(matrix_t &A, vector<double> p[], unsigned int n_vectors, double *solutions, int nb_x, int nb_y, char order=2);
-inline double solve_lsqr_system(matrix_t &A, vector<double> &p, int nb_x, int nb_y, char order=2)
+void solve_lsqr_system(matrix_t &A, vector<double> p[], unsigned int n_vectors, double *solutions, int nb_x, int nb_y, char order=2, unsigned short nconstraints=0);
+inline double solve_lsqr_system(matrix_t &A, vector<double> &p, int nb_x, int nb_y, char order=2, unsigned short nconstraints=0)
 {
   double solution;
-  solve_lsqr_system(A, &p, 1, &solution, nb_x, nb_y, order);
+  solve_lsqr_system(A, &p, 1, &solution, nb_x, nb_y, order, nconstraints);
   return solution;
 }
 #endif
