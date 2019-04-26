@@ -1311,10 +1311,9 @@ void my_p4est_navier_stokes_t::solve_projection(my_p4est_poisson_cells_t* &cell_
   ierr = PetscLogEventEnd(log_my_p4est_navier_stokes_projection, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
-void my_p4est_navier_stokes_t::enforce_mass_flow(const bool* force_in_direction, const double* desired_mean_velocity, double* forcing_mean_hodge_gradient)
+void my_p4est_navier_stokes_t::enforce_mass_flow(const bool* force_in_direction, const double* desired_mean_velocity, double* forcing_mean_hodge_gradient, double* mass_flow)
 {
-  std::vector<double> sections(1);
-  std::vector<double> current_mass_flow(1);
+  double current_mass_flow;
   PetscErrorCode ierr;
   double *vel_p;
   for (short unsigned dir = 0; dir < P4EST_DIM; ++dir) {
@@ -1332,16 +1331,30 @@ void my_p4est_navier_stokes_t::enforce_mass_flow(const bool* force_in_direction,
       continue;
 #endif
     }
-    sections[0]                       = xyz_min[dir];
-    global_mass_flow_through_slice(dir, sections, current_mass_flow);
-    double current_mean_velocity      = current_mass_flow[0]/(xyz_max[(dir+1)%P4EST_DIM] - xyz_min[(dir+1)%P4EST_DIM]);
+    if(mass_flow == NULL)
+    {
+      double section = xyz_min[dir];
+      global_mass_flow_through_slice(dir, section, current_mass_flow);
+    }
+    else
+      current_mass_flow = mass_flow[dir];
+
+    double current_mean_velocity      = current_mass_flow/(xyz_max[(dir+1)%P4EST_DIM] - xyz_min[(dir+1)%P4EST_DIM]);
 #ifdef P4_TO_P8
     current_mean_velocity            /= (xyz_max[(dir+2)%P4EST_DIM] - xyz_min[(dir+2)%P4EST_DIM]);
 #endif
+
     forcing_mean_hodge_gradient[dir]  = current_mean_velocity - desired_mean_velocity[dir];
     ierr = VecGetArray(vnp1[dir], &vel_p); CHKERRXX(ierr);
     for (p4est_locidx_t k = 0; k < (faces_n->num_local[dir] + faces_n->num_ghost[dir]); ++k)
       vel_p[k] -= forcing_mean_hodge_gradient[dir];
+    if(mass_flow!=NULL)
+    {
+      mass_flow[dir] = desired_mean_velocity[dir]*(xyz_max[(dir+1)%P4EST_DIM] - xyz_min[(dir+1)%P4EST_DIM]);
+#ifdef P4_TO_P8
+      mass_flow[dir] *= (xyz_max[(dir+2)%P4EST_DIM] - xyz_min[(dir+2)%P4EST_DIM]);
+#endif
+    }
     ierr = VecRestoreArray(vnp1[dir], &vel_p); CHKERRXX(ierr);
   }
 }
@@ -2381,7 +2394,7 @@ void my_p4est_navier_stokes_t::save_vtk(const char* name)
   ierr = PetscPrintf(p4est_n->mpicomm, "Saved visual data in ... %s\n", name); CHKERRXX(ierr);
 }
 
-void my_p4est_navier_stokes_t::global_mass_flow_through_slice(const unsigned int& dir, std::vector<double>& section, std::vector<double>& mass_flows) const
+void my_p4est_navier_stokes_t::global_mass_flow_through_slice(const unsigned int& dir, double& section, double& mass_flow) const
 {
   PetscErrorCode ierr;
 #ifdef CASL_THROWS
@@ -2396,27 +2409,23 @@ void my_p4est_navier_stokes_t::global_mass_flow_through_slice(const unsigned int
   const double coarsest_cell_size   = size_of_tree/((double) (1<<data->min_lvl));
   const double comparison_threshold = 0.5*size_of_tree/((double) (1<<data->max_lvl));
 
-  if(mass_flows.size() != section.size())
-    mass_flows.resize(section.size(), 0.0);
-  for (size_t ii = 0; ii < section.size(); ++ii) {
 #ifdef CASL_THROWS
-    if((section[ii] < xyz_min[dir]) || (section[ii] > xyz_max[dir]))
-      throw std::invalid_argument("my_p4est_navier_stokes_t::global_mass_flow_through_slice: the slice section must be in the computational domain!");
+  if((section < xyz_min[dir]) || (section > xyz_max[dir]))
+    throw std::invalid_argument("my_p4est_navier_stokes_t::global_mass_flow_through_slice: the slice section must be in the computational domain!");
 #endif
-    int tree_dim_idx = (int) floor((section[ii]-xyz_min[dir])/size_of_tree);
-    double should_be_integer = (section[ii]-(xyz_min[dir] + tree_dim_idx*size_of_tree))/coarsest_cell_size;
-    if(fabs(should_be_integer - ((int) should_be_integer)) > 1e-6)
-    {
+  int tree_dim_idx = (int) floor((section-xyz_min[dir])/size_of_tree);
+  double should_be_integer = (section-(xyz_min[dir] + tree_dim_idx*size_of_tree))/coarsest_cell_size;
+  if(fabs(should_be_integer - ((int) should_be_integer)) > 1e-6)
+  {
 #ifdef CASL_THROWS
-      throw std::invalid_argument("my_p4est_navier_stokes_t::global_mass_flow_through_slice: the mass flux can be evaluated only through slices in the \n computational domain that coincide with cell faces of the coarsest cells: choose a valid section!");
+    throw std::invalid_argument("my_p4est_navier_stokes_t::global_mass_flow_through_slice: the mass flux can be evaluated only through a slice in the \n computational domain that coincides with cell faces of the coarsest cells: choose a valid section!");
 #else
-      section[ii] = xyz_min[dir] + tree_dim_idx*size_of_tree + ((int) should_be_integer)*(section[ii]-(xyz_min[dir] + tree_dim_idx*size_of_tree))/coarsest_cell_size;
-      if(p4est_n->mpirank == 0)
-        std::cerr << "my_p4est_navier_stokes_t::global_mass_flow_through_slice: the section for calculating the mass flow has been relocated!" << std::endl;
+    section = xyz_min[dir] + tree_dim_idx*size_of_tree + ((int) should_be_integer)*(section-(xyz_min[dir] + tree_dim_idx*size_of_tree))/coarsest_cell_size;
+    if(p4est_n->mpirank == 0)
+      std::cerr << "my_p4est_navier_stokes_t::global_mass_flow_through_slice: the section for calculating the mass flow has been relocated!" << std::endl;
 #endif
-    }
-    mass_flows[ii] = 0.0; // initialization
   }
+  mass_flow = 0.0; // initialization
 
   const double *vel_p, *phi_p;
   double face_coordinate = DBL_MAX;
@@ -2443,18 +2452,15 @@ void my_p4est_navier_stokes_t::global_mass_flow_through_slice(const unsigned int
     }
 
     bool check_for_periodic_wrapping = is_periodic(p4est_n, dir) && ((fabs(face_coordinate - xyz_min[dir]) < comparison_threshold) || (fabs(face_coordinate - xyz_max[dir]) < comparison_threshold));
-    for (size_t ii = 0; ii < section.size(); ++ii)
-    {
-      if(check_for_periodic_wrapping && ((fabs(section[ii] - xyz_min[dir]) < comparison_threshold) || (fabs(section[ii] - xyz_max[dir]) < comparison_threshold)))
-        face_coordinate = section[ii];
-      if(fabs(face_coordinate - section[ii]) < comparison_threshold)
-        mass_flows[ii] += rho*vel_p[face_idx]*faces_n->face_area_in_negative_domain(face_idx, dir, phi_p, nodes_n);
-    }
+    if(check_for_periodic_wrapping && ((fabs(section - xyz_min[dir]) < comparison_threshold) || (fabs(section - xyz_max[dir]) < comparison_threshold)))
+      face_coordinate = section;
+    if(fabs(face_coordinate - section) < comparison_threshold)
+      mass_flow += rho*vel_p[face_idx]*faces_n->face_area_in_negative_domain(face_idx, dir, phi_p, nodes_n);
   }
   ierr = VecRestoreArrayRead(vnp1[dir], &vel_p); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
 
-  int mpiret = MPI_Allreduce(MPI_IN_PLACE, &mass_flows[0], mass_flows.size(), MPI_DOUBLE, MPI_SUM, p4est_n->mpicomm); SC_CHECK_MPI(mpiret);
+  int mpiret = MPI_Allreduce(MPI_IN_PLACE, &mass_flow, 1, MPI_DOUBLE, MPI_SUM, p4est_n->mpicomm); SC_CHECK_MPI(mpiret);
 }
 
 void my_p4est_navier_stokes_t::get_noslip_wall_forces(double wall_force[], const bool with_pressure) const
@@ -3097,9 +3103,16 @@ unsigned long int my_p4est_navier_stokes_t::memory_estimate() const
   return memory_used;
 }
 
-void my_p4est_navier_stokes_t::get_slice_averaged_vnp1_profile(unsigned short vel_component, unsigned short axis, std::vector<double>& avg_velocity_profile)
+void my_p4est_navier_stokes_t::get_slice_averaged_vnp1_profile(const unsigned short& vel_component, const unsigned short& axis, std::vector<double>& avg_velocity_profile)
 {
   P4EST_ASSERT((vel_component<P4EST_DIM) && (axis<P4EST_DIM) && (vel_component!=axis) && is_periodic(p4est_n, vel_component));
+#ifdef P4_TO_P8
+  for (unsigned short dd = 0; dd < P4EST_DIM; ++dd) {
+    if((dd == vel_component) || (dd == axis))
+      continue;
+    P4EST_ASSERT(is_periodic(p4est_n, dd));
+  }
+#endif
   splitting_criteria_t* data = (splitting_criteria_t*) p4est_n->user_pointer;
   unsigned int ndouble = brick->nxyztrees[axis]*(1<<data->max_lvl); // equivalent number of data for a uniform grid with finest level of refinement
 #ifdef P4EST_ENABLE_DEBUG
@@ -3119,9 +3132,189 @@ void my_p4est_navier_stokes_t::get_slice_averaged_vnp1_profile(unsigned short ve
   const double* velocity_component_p;
   ierr = VecGetArrayRead(vnp1[vel_component], &velocity_component_p); CHKERRXX(ierr);
   p4est_locidx_t quad_idx;
-  p4est_topidx_t tree_idx, nb_tree_idx = -1;
+  p4est_topidx_t tree_idx;
+#ifdef P4EST_ENABLE_DEBUG
+  p4est_topidx_t nb_tree_idx = -1;
+#endif
   vector<p4est_quadrant_t> ngbd;
   p4est_quadrant_t quad, nb_quad;
+
+  for (p4est_locidx_t face_idx = 0; face_idx < faces_n->num_local[vel_component]; ++face_idx) {
+    faces_n->f2q(face_idx, vel_component, quad_idx, tree_idx);
+    const p4est_quadrant_t* quad_ptr;
+    P4EST_ASSERT(quad_idx < p4est_n->local_num_quadrants);
+    p4est_tree_t* tree = (p4est_tree_t*) sc_array_index(p4est_n->trees, tree_idx);
+    quad_ptr = (const p4est_quadrant_t*) sc_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
+    if(faces_n->q2f(quad_idx, 2*vel_component)==face_idx)
+    {
+      quad = *quad_ptr; quad.p.piggy3.local_num = quad_idx;
+      ngbd.clear();
+      ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, 2*vel_component);
+      /* note that the potential neighbor has to be the same size or bigger and there MUST be a neighbor*/
+      P4EST_ASSERT(ngbd.size()==1);
+      nb_quad = ngbd[0];
+#ifdef P4EST_ENABLE_DEBUG
+      nb_tree_idx = ngbd[0].p.piggy3.which_tree;
+#endif
+    }
+    else
+    {
+      P4EST_ASSERT(faces_n->q2f(quad_idx, 2*vel_component+1)==face_idx);
+      quad = *quad_ptr; quad.p.piggy3.local_num = quad_idx;
+      ngbd.clear();
+      ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, 2*vel_component+1);
+      /* note that the potential neighbor has to be the same size or bigger and there MUST be a neighbor*/
+      P4EST_ASSERT(ngbd.size()==1);
+      nb_quad = ngbd[0];
+#ifdef P4EST_ENABLE_DEBUG
+      nb_tree_idx = ngbd[0].p.piggy3.which_tree;
+#endif
+    }
+    p4est_topidx_t cartesian_tree_idx_along_axis=-1;
+#ifdef P4EST_ENABLE_DEBUG
+    p4est_topidx_t cartesian_nb_tree_idx_along_axis=-1;
+#endif
+    bool is_found = false;
+    for (p4est_topidx_t tt = 0; tt < conn->num_trees; ++tt) {
+      if (brick->nxyz_to_treeid[tt] == tree_idx)
+        cartesian_tree_idx_along_axis = tt;
+#ifdef P4EST_ENABLE_DEBUG
+      if (brick->nxyz_to_treeid[tt] == nb_tree_idx)
+        cartesian_nb_tree_idx_along_axis = tt;
+      is_found = is_found || ((cartesian_tree_idx_along_axis!=-1) && (cartesian_nb_tree_idx_along_axis!=-1));
+#else
+      is_found = is_found || (cartesian_tree_idx_along_axis!=-1);
+#endif
+      if (is_found)
+        break;
+    }
+    P4EST_ASSERT(is_found);
+    switch (axis) {
+    case dir::x:
+      cartesian_tree_idx_along_axis = cartesian_tree_idx_along_axis%brick->nxyztrees[0];
+#ifdef P4EST_ENABLE_DEBUG
+      cartesian_nb_tree_idx_along_axis = cartesian_nb_tree_idx_along_axis%brick->nxyztrees[0];
+#endif
+      break;
+    case dir::y:
+      cartesian_tree_idx_along_axis = (cartesian_tree_idx_along_axis/brick->nxyztrees[0])%brick->nxyztrees[1];
+#ifdef P4EST_ENABLE_DEBUG
+      cartesian_nb_tree_idx_along_axis = (cartesian_nb_tree_idx_along_axis/brick->nxyztrees[0])%brick->nxyztrees[1];
+#endif
+      break;
+#ifdef P4_TO_P8
+    case dir::z:
+      cartesian_tree_idx_along_axis = cartesian_tree_idx_along_axis/(brick->nxyztrees[0]*brick->nxyztrees[1]);
+#ifdef P4EST_ENABLE_DEBUG
+      cartesian_nb_tree_idx_along_axis = cartesian_nb_tree_idx_along_axis/(brick->nxyztrees[0]*brick->nxyztrees[1]);
+#endif
+      break;
+#endif
+    default:
+      throw std::invalid_argument("my_p4est_navier_stokes_t::get_slice_averaged_vnp1_profile: unknown axis...");
+      break;
+    }
+    P4EST_ASSERT(cartesian_tree_idx_along_axis == cartesian_nb_tree_idx_along_axis);
+    unsigned int idx_in_profile;
+    for (int k = 0; k < (1<<(data->max_lvl - quad.level)); ++k) {
+      switch (axis) {
+      case dir::x:
+        idx_in_profile = cartesian_tree_idx_along_axis*(1<<data->max_lvl) + (quad.x/(1<<(P4EST_MAXLEVEL - data->max_lvl))) + k;
+        break;
+      case dir::y:
+        idx_in_profile = cartesian_tree_idx_along_axis*(1<<data->max_lvl) + (quad.y/(1<<(P4EST_MAXLEVEL - data->max_lvl))) + k;
+        break;
+#ifdef P4_TO_P8
+      case dir::z:
+        idx_in_profile = cartesian_tree_idx_along_axis*(1<<data->max_lvl) + (quad.z/(1<<(P4EST_MAXLEVEL - data->max_lvl))) + k;
+        break;
+#endif
+      default:
+        throw std::invalid_argument("my_p4est_navier_stokes_t::get_slice_averaged_vnp1_profile: unknown axis...");
+        break;
+      }
+#ifdef P4_TO_P8
+      double weighting_area = elementary_area*(1<<(data->max_lvl-quad.level))*((1<<(data->max_lvl-nb_quad.level)) + (1<<(data->max_lvl-quad.level)))*0.5;
+#else
+      double weighting_area = elementary_area*((1<<(data->max_lvl-nb_quad.level)) + (1<<(data->max_lvl-quad.level)))*0.5;
+#endif
+      avg_velocity_profile[idx_in_profile]          += velocity_component_p[face_idx]*weighting_area;
+#ifdef P4EST_ENABLE_DEBUG
+      avg_velocity_profile[ndouble+idx_in_profile]  +=weighting_area;
+#endif
+    }
+  }
+  ierr = VecRestoreArrayRead(vnp1[vel_component], &velocity_component_p); CHKERRXX(ierr);
+  int mpiret;
+  if(p4est_n->mpirank == 0){
+    mpiret = MPI_Reduce(MPI_IN_PLACE, avg_velocity_profile.data(), avg_velocity_profile.size(), MPI_DOUBLE, MPI_SUM, 0, p4est_n->mpicomm); SC_CHECK_MPI(mpiret); }
+  else{
+    mpiret = MPI_Reduce(avg_velocity_profile.data(), avg_velocity_profile.data(), avg_velocity_profile.size(), MPI_DOUBLE, MPI_SUM, 0, p4est_n->mpicomm); SC_CHECK_MPI(mpiret); }
+  const double expected_slice_area = (xyz_max[(axis+1)%P4EST_DIM]-xyz_min[(axis+1)%P4EST_DIM])
+    #ifdef P4_TO_P8
+      *(xyz_max[(axis+2)%P4EST_DIM]-xyz_min[(axis+2)%P4EST_DIM])
+    #endif
+      ;
+  if(!p4est_n->mpirank)
+    for (unsigned int k = 0; k < ndouble; ++k) {
+      P4EST_ASSERT(fabs(avg_velocity_profile[ndouble+k] - expected_slice_area) < 10.0*EPS*MAX(avg_velocity_profile[ndouble+k], expected_slice_area));
+      avg_velocity_profile[k] /= expected_slice_area;
+    }
+}
+
+void my_p4est_navier_stokes_t::get_line_averaged_vnp1_profiles(const unsigned short& vel_component, const unsigned short& axis,
+                                                               #ifdef P4_TO_P8
+                                                               const unsigned short& averaging_direction,
+                                                               #endif
+                                                               const std::vector<unsigned int>& bin_index, std::vector< std::vector<double> >& avg_velocity_profile)
+{
+  P4EST_ASSERT((vel_component<P4EST_DIM) && (axis<P4EST_DIM) && (vel_component!=axis) && is_periodic(p4est_n, vel_component));
+#ifdef P4_TO_P8
+  P4EST_ASSERT((averaging_direction<P4EST_DIM) && (averaging_direction!=axis) && is_periodic(p4est_n, averaging_direction));
+  unsigned short transverse_direction = (3 & ~axis) & ~averaging_direction; // bitwise binary operation
+  P4EST_ASSERT(transverse_direction != averaging_direction);
+  P4EST_ASSERT((vel_component == averaging_direction) || (vel_component == transverse_direction));
+#else
+  unsigned short transverse_direction = ((axis==dir::x) ? dir::y : dir::x);
+  P4EST_ASSERT(vel_component == transverse_direction);
+#endif
+  P4EST_ASSERT((transverse_direction < P4EST_DIM) && (transverse_direction != axis));
+  splitting_criteria_t* data = (splitting_criteria_t*) p4est_n->user_pointer;
+  if((brick->nxyztrees[transverse_direction]*(1<<data->max_lvl))%bin_index.size() != 0)
+    throw std::invalid_argument("my_p4est_navier_stokes_t::get_line_averaged_vnp1_profiles(...): invalid size of bin indices, it does not match domain length by periodic repetition!");
+#ifdef P4EST_ENABLE_DEBUG
+  for (size_t k = 0; k < bin_index.size(); ++k)
+    P4EST_ASSERT(bin_index[k]<avg_velocity_profile.size());
+#endif
+  unsigned int ndouble = brick->nxyztrees[axis]*(1<<data->max_lvl); // equivalent number of data for a uniform grid with finest level of refinement
+  for (unsigned int profile_idx = 0; profile_idx < avg_velocity_profile.size(); ++profile_idx)
+  {
+#ifdef P4EST_ENABLE_DEBUG
+    avg_velocity_profile[profile_idx].resize(ndouble*(1+1), 0.0); // line-averaged velocity component profiles + averaging lengths
+#else
+    avg_velocity_profile[profile_idx].resize(ndouble, 0.0); // line-averaged velocity component profiles
+#endif
+    for (size_t k = 0; k < avg_velocity_profile[profile_idx].size(); ++k)
+      avg_velocity_profile[profile_idx][k] = 0.0;
+  }
+
+  PetscErrorCode ierr;
+  const double* velocity_component_p;
+  ierr = VecGetArrayRead(vnp1[vel_component], &velocity_component_p); CHKERRXX(ierr);
+  p4est_locidx_t quad_idx;
+  p4est_topidx_t tree_idx, nb_tree_idx;
+  vector<p4est_quadrant_t> ngbd;
+  p4est_quadrant_t quad, nb_quad;
+
+  p4est_locidx_t bounds_along_axis[2];
+#ifdef P4_TO_P8
+  // if (vel_component==averaging_direction)
+  unsigned int bounds_transverse_direction[2]; // we declare these variables unsigned int to avoid misbehaved results due to type conversion during the periodic mapping hereunder
+#endif
+  // else, i.e., if (vel_component==transverse_direction)
+  unsigned int logical_idx_of_face; // we declare these variables unsigned int to avoid misbehaved results due to type conversion during the periodic mapping hereunder
+  unsigned int negative_coverage, positive_coverage;
+  double covering_length;
 
   for (p4est_locidx_t face_idx = 0; face_idx < faces_n->num_local[vel_component]; ++face_idx) {
     faces_n->f2q(face_idx, vel_component, quad_idx, tree_idx);
@@ -3150,79 +3343,225 @@ void my_p4est_navier_stokes_t::get_slice_averaged_vnp1_profile(unsigned short ve
       nb_quad = ngbd[0];
       nb_tree_idx = ngbd[0].p.piggy3.which_tree;
     }
-    p4est_topidx_t cartesian_tree_idx_along_axis=-1, cartesian_nb_tree_idx_along_axis=-1;
+    p4est_topidx_t cartesian_ordered_tree_idx=-1;
+    p4est_topidx_t cartesian_ordered_nb_tree_idx=-1;
     bool are_found = false;
     for (p4est_topidx_t tt = 0; tt < conn->num_trees; ++tt) {
       if (brick->nxyz_to_treeid[tt] == tree_idx)
-        cartesian_tree_idx_along_axis = tt;
+        cartesian_ordered_tree_idx = tt;
       if (brick->nxyz_to_treeid[tt] == nb_tree_idx)
-        cartesian_nb_tree_idx_along_axis = tt;
-      tt++;
-      are_found = are_found || ((cartesian_tree_idx_along_axis!=-1) && (cartesian_nb_tree_idx_along_axis!=-1));
+        cartesian_ordered_nb_tree_idx = tt;
+      are_found = are_found || ((cartesian_ordered_tree_idx!=-1) && (cartesian_ordered_nb_tree_idx!=-1));
       if (are_found)
         break;
     }
     P4EST_ASSERT(are_found);
+    // logical bounds along the axis of the velocity profiles
+    p4est_topidx_t cartesian_tree_idx_along_axis;
+#ifdef P4EST_ENABLE_DEBUG
+    p4est_topidx_t cartesian_nb_tree_idx_along_axis;
+#endif
     switch (axis) {
-    case 0:
-      cartesian_tree_idx_along_axis = cartesian_tree_idx_along_axis%brick->nxyztrees[0];
-      cartesian_nb_tree_idx_along_axis = cartesian_nb_tree_idx_along_axis%brick->nxyztrees[0];
+    case dir::x:
+      cartesian_tree_idx_along_axis     = cartesian_ordered_tree_idx%brick->nxyztrees[0];
+      bounds_along_axis[0]              = quad.x/(1<<(P4EST_MAXLEVEL - data->max_lvl));
+#ifdef P4EST_ENABLE_DEBUG
+      cartesian_nb_tree_idx_along_axis  = cartesian_ordered_nb_tree_idx%brick->nxyztrees[0];
+#endif
       break;
-    case 1:
-      cartesian_tree_idx_along_axis = (cartesian_tree_idx_along_axis/brick->nxyztrees[0])%brick->nxyztrees[1];
-      cartesian_nb_tree_idx_along_axis = (cartesian_nb_tree_idx_along_axis/brick->nxyztrees[0])%brick->nxyztrees[1];
+    case dir::y:
+      cartesian_tree_idx_along_axis     = (cartesian_ordered_tree_idx/brick->nxyztrees[0])%brick->nxyztrees[1];
+      bounds_along_axis[0]              = quad.y/(1<<(P4EST_MAXLEVEL - data->max_lvl));
+#ifdef P4EST_ENABLE_DEBUG
+      cartesian_nb_tree_idx_along_axis  = (cartesian_ordered_nb_tree_idx/brick->nxyztrees[0])%brick->nxyztrees[1];
+#endif
       break;
 #ifdef P4_TO_P8
-    case 2:
-      cartesian_tree_idx_along_axis = cartesian_tree_idx_along_axis/(brick->nxyztrees[0]*brick->nxyztrees[1]);
-      cartesian_nb_tree_idx_along_axis = cartesian_nb_tree_idx_along_axis/(brick->nxyztrees[0]*brick->nxyztrees[1]);
+    case dir::z:
+      cartesian_tree_idx_along_axis     = cartesian_ordered_tree_idx/(brick->nxyztrees[0]*brick->nxyztrees[1]);
+      bounds_along_axis[0]              = quad.z/(1<<(P4EST_MAXLEVEL - data->max_lvl));
+#ifdef P4EST_ENABLE_DEBUG
+      cartesian_nb_tree_idx_along_axis  = cartesian_ordered_nb_tree_idx/(brick->nxyztrees[0]*brick->nxyztrees[1]);
+#endif
       break;
 #endif
     default:
-      throw std::invalid_argument("my_p4est_navier_stokes_t::get_slice_averaged_vnp1_profile: unknown axis...");
+      throw std::invalid_argument("my_p4est_navier_stokes_t::get_line_averaged_vnp1_profiles: unknown axis...");
       break;
     }
-    P4EST_ASSERT(cartesian_tree_idx_along_axis == cartesian_nb_tree_idx_along_axis);
-    unsigned int idx_in_profile;
-    for (int k = 0; k < (1<<(data->max_lvl - quad.level)); ++k) {
-      switch (axis) {
-      case dir::x:
-        idx_in_profile = cartesian_tree_idx_along_axis*(1<<data->max_lvl) + (quad.x/(1<<(P4EST_MAXLEVEL - data->max_lvl))) + k;
-        break;
-      case dir::y:
-        idx_in_profile = cartesian_tree_idx_along_axis*(1<<data->max_lvl) + (quad.y/(1<<(P4EST_MAXLEVEL - data->max_lvl))) + k;
-        break;
-#ifdef P4_TO_P8
-      case dir::z:
-        idx_in_profile = cartesian_tree_idx_along_axis*(1<<data->max_lvl) + (quad.z/(1<<(P4EST_MAXLEVEL - data->max_lvl))) + k;
-        break;
+    bounds_along_axis[0]               += cartesian_tree_idx_along_axis*(1<<data->max_lvl);
+    bounds_along_axis[1]                = bounds_along_axis[0] + (1<<(data->max_lvl - quad.level));
+    P4EST_ASSERT(cartesian_tree_idx_along_axis==cartesian_nb_tree_idx_along_axis);
+    // logical bounds along transverse direction
+    // if (vel_component == averaging_direction), the bounds are the owning quadrant's bounds in the transverse direction
+    // otherwise, i.e. if (vel_component == transverse_direction), the bounds are of the form
+    // [logical_idx_of_face-/+(2**(lmax-quad.level))/2 : logical_idx_of_face+/-(2**(lmax-nb_quad.level))/2] with weight
+    // factors of 0.5 for the extremities if different than the logical index of the face...
+    p4est_topidx_t cartesian_tree_idx_along_transverse_dir;
+#if defined(P4_TO_P8) && defined(P4EST_ENABLE_DEBUG)
+    p4est_topidx_t cartesian_nb_tree_idx_along_transverse_dir;
 #endif
-      default:
-        throw std::invalid_argument("my_p4est_navier_stokes_t::get_slice_averaged_vnp1_profile: unknown axis...");
-        break;
-      }
-      double weighting_area = elementary_area*(1<<(data->max_lvl-quad.level))*((1<<(data->max_lvl-nb_quad.level)) + (1<<(data->max_lvl-quad.level)))*0.5;
-      avg_velocity_profile[idx_in_profile]          += velocity_component_p[face_idx]*weighting_area;
+    switch (transverse_direction) {
+    case dir::x:
+      cartesian_tree_idx_along_transverse_dir     = cartesian_ordered_tree_idx%brick->nxyztrees[0];
+#ifdef P4_TO_P8
+      if(vel_component == averaging_direction)
+        bounds_transverse_direction[0]            = quad.x/(1<<(P4EST_MAXLEVEL - data->max_lvl));
+      else
+        logical_idx_of_face                       = (quad.x + ((faces_n->q2f(quad_idx, 2*vel_component+1) == face_idx)? P4EST_QUADRANT_LEN(quad.level) : 0))/(1<<(P4EST_MAXLEVEL - data->max_lvl));
 #ifdef P4EST_ENABLE_DEBUG
-      avg_velocity_profile[ndouble+idx_in_profile]  +=weighting_area;
+      cartesian_nb_tree_idx_along_transverse_dir  = cartesian_ordered_nb_tree_idx%brick->nxyztrees[0];
+#endif
+#else
+      logical_idx_of_face                         = (quad.x + ((faces_n->q2f(quad_idx, 2*vel_component+1) == face_idx)? P4EST_QUADRANT_LEN(quad.level) : 0))/(1<<(P4EST_MAXLEVEL - data->max_lvl));
+#endif
+      break;
+    case dir::y:
+      cartesian_tree_idx_along_transverse_dir     = (cartesian_ordered_tree_idx/brick->nxyztrees[0])%brick->nxyztrees[1];
+#ifdef P4_TO_P8
+      if(vel_component == averaging_direction)
+        bounds_transverse_direction[0]            = quad.y/(1<<(P4EST_MAXLEVEL - data->max_lvl));
+      else
+        logical_idx_of_face                       = (quad.y + ((faces_n->q2f(quad_idx, 2*vel_component+1) == face_idx)? P4EST_QUADRANT_LEN(quad.level) : 0))/(1<<(P4EST_MAXLEVEL - data->max_lvl));
+#ifdef P4EST_ENABLE_DEBUG
+      cartesian_nb_tree_idx_along_transverse_dir  = (cartesian_ordered_nb_tree_idx/brick->nxyztrees[0])%brick->nxyztrees[1];
+#endif
+#else
+      logical_idx_of_face                         = (quad.y + ((faces_n->q2f(quad_idx, 2*vel_component+1) == face_idx)? P4EST_QUADRANT_LEN(quad.level) : 0))/(1<<(P4EST_MAXLEVEL - data->max_lvl));
+#endif
+      break;
+#ifdef P4_TO_P8
+    case dir::z:
+      cartesian_tree_idx_along_transverse_dir     = cartesian_ordered_tree_idx/(brick->nxyztrees[0]*brick->nxyztrees[1]);
+      if(vel_component == averaging_direction)
+        bounds_transverse_direction[0]            = quad.z/(1<<(P4EST_MAXLEVEL - data->max_lvl));
+      else
+        logical_idx_of_face                       = (quad.z + ((faces_n->q2f(quad_idx, 2*vel_component+1) == face_idx)? P4EST_QUADRANT_LEN(quad.level) : 0))/(1<<(P4EST_MAXLEVEL - data->max_lvl));
+#ifdef P4EST_ENABLE_DEBUG
+      cartesian_nb_tree_idx_along_transverse_dir  = cartesian_ordered_nb_tree_idx/(brick->nxyztrees[0]*brick->nxyztrees[1]);
+#endif
+      break;
+#endif
+    default:
+      throw std::invalid_argument("my_p4est_navier_stokes_t::get_line_averaged_vnp1_profiles: unknown transverse direction...");
+      break;
+    }
+#ifdef P4_TO_P8
+    if(vel_component == averaging_direction)
+    {
+      P4EST_ASSERT(cartesian_tree_idx_along_transverse_dir==cartesian_nb_tree_idx_along_transverse_dir);
+      bounds_transverse_direction[0]             += cartesian_tree_idx_along_transverse_dir*(1<<data->max_lvl);
+      bounds_transverse_direction[1]              = bounds_transverse_direction[0] + (1<<(data->max_lvl - quad.level));
+      covering_length                             = 0.5*dxyz_min[averaging_direction]*((double) (1<<(data->max_lvl-quad.level)) + (double) (1<<(data->max_lvl-nb_quad.level)));
+    }
+    else
+    {
+      P4EST_ASSERT(vel_component == transverse_direction);
+      logical_idx_of_face                        += cartesian_tree_idx_along_transverse_dir*(1<<data->max_lvl);
+      negative_coverage                           = data->max_lvl - ((faces_n->q2f(quad_idx, 2*vel_component+1) == face_idx)? quad.level: nb_quad.level);
+      negative_coverage                           = ((negative_coverage > 0)? (1<<(negative_coverage-1)): 0);
+      positive_coverage                           = data->max_lvl - ((faces_n->q2f(quad_idx, 2*vel_component+1) == face_idx)? nb_quad.level: quad.level);
+      positive_coverage                           = ((positive_coverage > 0)? (1<<(positive_coverage-1)): 0);
+      covering_length                             = dxyz_min[averaging_direction]*((double) (1<<(data->max_lvl-quad.level)));
+    }
+#else
+    logical_idx_of_face                          += cartesian_tree_idx_along_transverse_dir*(1<<data->max_lvl);
+    negative_coverage                             = data->max_lvl - ((faces_n->q2f(quad_idx, 2*vel_component+1) == face_idx)? quad.level: nb_quad.level);
+    negative_coverage                             = ((negative_coverage > 0)? (1<<(negative_coverage-1)): 0);
+    positive_coverage                             = data->max_lvl - ((faces_n->q2f(quad_idx, 2*vel_component+1) == face_idx)? nb_quad.level: quad.level);
+    positive_coverage                             = ((positive_coverage > 0)? (1<<(positive_coverage-1)): 0);
+    covering_length                               = 1.0;
+#endif
+
+    for (p4est_locidx_t idx_in_profile = bounds_along_axis[0]; idx_in_profile < bounds_along_axis[1]; ++idx_in_profile) {
+      size_t wrapped_idx;
+#ifdef P4_TO_P8
+      if(vel_component == averaging_direction)
+      {
+        for (unsigned int transverse_logical_idx = bounds_transverse_direction[0]; transverse_logical_idx < bounds_transverse_direction[1]; ++transverse_logical_idx) {
+          wrapped_idx = transverse_logical_idx%bin_index.size();
+          avg_velocity_profile[bin_index.at(wrapped_idx)][idx_in_profile] += covering_length*velocity_component_p[face_idx];
+#ifdef P4EST_ENABLE_DEBUG
+          avg_velocity_profile[bin_index.at(wrapped_idx)][idx_in_profile+ndouble] += covering_length;
+#endif
+        }
+      }
+      else
+      {
+        wrapped_idx = logical_idx_of_face%bin_index.size();
+        avg_velocity_profile[bin_index.at(wrapped_idx)][idx_in_profile] += covering_length*velocity_component_p[face_idx];
+#ifdef P4EST_ENABLE_DEBUG
+        avg_velocity_profile[bin_index.at(wrapped_idx)][idx_in_profile+ndouble] += covering_length;
+#endif
+        for (unsigned int k = 1; k <= negative_coverage; ++k) {
+          wrapped_idx = (logical_idx_of_face+((k>logical_idx_of_face)?(((k-logical_idx_of_face)/bin_index.size()+1)*bin_index.size()):0)-k)%bin_index.size(); // avoid negative intermediary result...
+          avg_velocity_profile[bin_index.at(wrapped_idx)][idx_in_profile] += ((k == negative_coverage)? 0.5: 1.0)*covering_length*velocity_component_p[face_idx];
+#ifdef P4EST_ENABLE_DEBUG
+          avg_velocity_profile[bin_index.at(wrapped_idx)][idx_in_profile+ndouble] += ((k == negative_coverage)? 0.5: 1.0)*covering_length;
+#endif
+        }
+        for (unsigned int k = 1; k <= positive_coverage; ++k) {
+          wrapped_idx = (logical_idx_of_face+k)%bin_index.size();
+          avg_velocity_profile[bin_index.at(wrapped_idx)][idx_in_profile] += ((k == positive_coverage)? 0.5: 1.0)*covering_length*velocity_component_p[face_idx];
+#ifdef P4EST_ENABLE_DEBUG
+          avg_velocity_profile[bin_index.at(wrapped_idx)][idx_in_profile+ndouble] += ((k == positive_coverage)? 0.5: 1.0)*covering_length;
+#endif
+        }
+      }
+#else
+      wrapped_idx = logical_idx_of_face%bin_index.size();
+      avg_velocity_profile[bin_index.at(wrapped_idx)][idx_in_profile] += covering_length*velocity_component_p[face_idx];
+#ifdef P4EST_ENABLE_DEBUG
+      avg_velocity_profile[bin_index.at(wrapped_idx)][idx_in_profile+ndouble] += covering_length;
+#endif
+      for (unsigned int k = 1; k <= negative_coverage; ++k) {
+        wrapped_idx = (logical_idx_of_face+((k>logical_idx_of_face)?(((k-logical_idx_of_face)/bin_index.size()+1)*bin_index.size()):0)-k)%bin_index.size(); // avoid negative intermediary result...
+        avg_velocity_profile[bin_index.at(wrapped_idx)][idx_in_profile] += ((k == negative_coverage)? 0.5: 1.0)*covering_length*velocity_component_p[face_idx];
+#ifdef P4EST_ENABLE_DEBUG
+        avg_velocity_profile[bin_index.at(wrapped_idx)][idx_in_profile+ndouble] += ((k == negative_coverage)? 0.5: 1.0)*covering_length;
+#endif
+      }
+      for (unsigned int k = 1; k <= positive_coverage; ++k) {
+        wrapped_idx = (logical_idx_of_face+k)%bin_index.size();
+        avg_velocity_profile[bin_index.at(wrapped_idx)][idx_in_profile] += ((k == positive_coverage)? 0.5: 1.0)*covering_length*velocity_component_p[face_idx];
+#ifdef P4EST_ENABLE_DEBUG
+        avg_velocity_profile[bin_index.at(wrapped_idx)][idx_in_profile+ndouble] += ((k == positive_coverage)? 0.5: 1.0)*covering_length;
+#endif
+      }
 #endif
     }
   }
   ierr = VecRestoreArrayRead(vnp1[vel_component], &velocity_component_p); CHKERRXX(ierr);
+
   int mpiret;
-  if(p4est_n->mpirank == 0){
-    mpiret = MPI_Reduce(MPI_IN_PLACE, avg_velocity_profile.data(), avg_velocity_profile.size(), MPI_DOUBLE, MPI_SUM, 0, p4est_n->mpicomm); SC_CHECK_MPI(mpiret); }
-  else{
-    mpiret = MPI_Reduce(avg_velocity_profile.data(), avg_velocity_profile.data(), avg_velocity_profile.size(), MPI_DOUBLE, MPI_SUM, 0, p4est_n->mpicomm); SC_CHECK_MPI(mpiret); }
-  const double expected_slice_area = (xyz_max[(axis+1)%P4EST_DIM]-xyz_min[(axis+1)%P4EST_DIM])
-    #ifdef P4_TO_P8
-      *(xyz_max[(axis+2)%P4EST_DIM]-xyz_min[(axis+2)%P4EST_DIM])
-    #endif
-      ;
-  if(!p4est_n->mpirank)
-    for (unsigned int k = 0; k < ndouble; ++k) {
-      P4EST_ASSERT(fabs(avg_velocity_profile[ndouble+k] - expected_slice_area) < 10.0*EPS*MAX(avg_velocity_profile[ndouble+k], expected_slice_area));
-      avg_velocity_profile[k] /= expected_slice_area;
+  std::vector<MPI_Request> requests(avg_velocity_profile.size());
+  for (size_t profile_idx = 0; profile_idx < avg_velocity_profile.size(); ++profile_idx) {
+    int rcv_rank = profile_idx%p4est_n->mpisize;
+    if(p4est_n->mpirank == rcv_rank){
+      mpiret = MPI_Ireduce(MPI_IN_PLACE, avg_velocity_profile[profile_idx].data(), avg_velocity_profile[profile_idx].size(), MPI_DOUBLE, MPI_SUM, rcv_rank, p4est_n->mpicomm, &requests[profile_idx]); SC_CHECK_MPI(mpiret); }
+    else{
+      mpiret = MPI_Ireduce(avg_velocity_profile[profile_idx].data(), avg_velocity_profile[profile_idx].data(), avg_velocity_profile[profile_idx].size(), MPI_DOUBLE, MPI_SUM, rcv_rank, p4est_n->mpicomm, &requests[profile_idx]); SC_CHECK_MPI(mpiret); }
+  }
+  mpiret = MPI_Waitall(avg_velocity_profile.size(), &requests[0], MPI_STATUSES_IGNORE); SC_CHECK_MPI(mpiret);
+
+  std::vector<double> expected_averaging_lengths(avg_velocity_profile.size(), 0.0);
+  for (size_t k = 0; k < bin_index.size(); ++k)
+  {
+#ifdef P4_TO_P8
+    expected_averaging_lengths[bin_index[k]] += (xyz_max[averaging_direction]-xyz_min[averaging_direction])*((double) (brick->nxyztrees[transverse_direction]*(1<<data->max_lvl))/bin_index.size());
+#else
+    expected_averaging_lengths[bin_index[k]] += (brick->nxyztrees[transverse_direction]*(1<<data->max_lvl))/bin_index.size();
+#endif
+  }
+  for (size_t profile_idx = 0; profile_idx < avg_velocity_profile.size(); ++profile_idx) {
+    int rcv_rank = profile_idx%p4est_n->mpisize;
+    if(p4est_n->mpirank == rcv_rank)
+    {
+      for (unsigned int k = 0; k < ndouble; ++k) {
+        P4EST_ASSERT(fabs(avg_velocity_profile[profile_idx][ndouble+k] - expected_averaging_lengths[profile_idx]) < 10.0*EPS*MAX(avg_velocity_profile[profile_idx][ndouble+k], expected_averaging_lengths[profile_idx]));
+        avg_velocity_profile[profile_idx][k] /= expected_averaging_lengths[profile_idx];
+      }
     }
+  }
 }
 

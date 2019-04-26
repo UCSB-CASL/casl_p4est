@@ -371,15 +371,18 @@ public:
    * The mass-flow forcing direction MUST be periodic (otherwise the approach is simply inconsistent).
    * This function is ideally called after the projection step and its output should be used to dynamically adapt the driving body
    * force that enforces the constant mass flow rate (possibly with an added convergence criterion within the inner loop).
-   * \param force_in_direction          [in]  array of P4EST_DIM flags, forcing is applied in the direction dir if force_in_direction[dir] is true
-   * \param desired_mean_velocity       [in]  array of P4EST_DIM doubles, specifying the desired bulk velocity in the forcing direction (the value
-   *                                          desired_mean_velocity[dd] is disregarded if force_in_direction[dd] is false)
-   * \param forcing_mean_hodge_gradient [out] array of P4EST_DIM doubles, returning the correction to gradient component of the the
-   *                                          Hodge variable to enforce the desired mass flow --> can be used to correct the driving force term
-   *                                          afterwards
+   * \param force_in_direction          [in]    array of P4EST_DIM flags, forcing is applied in the direction dir if force_in_direction[dir] is true
+   * \param desired_mean_velocity       [in]    array of P4EST_DIM doubles, specifying the desired bulk velocity in the forcing direction (the value
+   *                                            desired_mean_velocity[dd] is disregarded if force_in_direction[dd] is false)
+   * \param forcing_mean_hodge_gradient [out]   array of P4EST_DIM doubles, returning the correction to gradient component of the the
+   *                                            Hodge variable to enforce the desired mass flow --> can be used to correct the driving force term
+   *                                            afterwards
+   * \param mass_flow                   [inout] (optional) array of P4EST_DIM doubles, mass_flow[d] is the mass flow along cartesian direction d
+   *                                            before forcing on input, after forcing on input. Only the values for which force_in_direction[d] is
+   *                                            true are relevant on input. If NULL, the function calculates the relevant value(s) internally.
    * Raphael EGAN
    */
-  void enforce_mass_flow(const bool* force_in_direction, const double* desired_mean_velocity, double* forcing_mean_hodge_gradient);
+  void enforce_mass_flow(const bool* force_in_direction, const double* desired_mean_velocity, double* forcing_mean_hodge_gradient, double* mass_flow = NULL);
 
   void compute_velocity_at_nodes();
 
@@ -417,18 +420,18 @@ public:
   void save_vtk(const char* name);
 
   /*!
-   * \brief calculates the mass flow through slices in Cartesian direction in the computational domain. The slices must coincide with
-   * cell faces, they mustn't cross any quadrant in the forest. Therefore, their location must coincide with a logical coordinate
+   * \brief calculates the mass flow through a slice in Cartesian direction in the computational domain. The slice must coincide with
+   * cell faces, it mustn't cross any quadrant in the forest. Therefore, their location must coincide with a logical coordinate
    * for faces of the coarsest computational cells.
    * In debug mode, the function throws std::invalid_argument if this is not satisfied. In release, the section's location is changed to
    * the closest consistent location.
    * \param dir         [in]: Cartesian direction of the normal to the slice of interest (dir::x, dir::y or dir::z).
-   * \param section     [in]: vector of coordinates along the direction of ineterest for the slices. section[ii] must be such that
-   * section[ii] = xyz_min[dir] + nn*(xyz_max[dir]-xyz_min[dir])/(ntrees[dir]*(1<<min_lvl)) where nn must be a positive integer.
-   * \param mass_flows  [out]: vector of computed mass flows across the sections of interest.
+   * \param section     [in]: coordinate along the direction of interest for the slice. section must be such that
+   *                          section = xyz_min[dir] + nn*(xyz_max[dir]-xyz_min[dir])/(ntrees[dir]*(1<<min_lvl)) where nn must be a positive integer.
+   * \param mass_flow  [out]: computed mass flows across the section of interest.
    * Raphael Egan
    */
-  void global_mass_flow_through_slice(const unsigned int& dir, std::vector<double>& section, std::vector<double>& mass_flows) const;
+  void global_mass_flow_through_slice(const unsigned int& dir, double& section, double& mass_flow) const;
 
   /*!
    * \brief calculates the friction force applied onto the fluid from the no-slip walls. This function requires a uniform tesselation of all
@@ -466,14 +469,103 @@ public:
    */
   void save_state(const char* path_to_root_directory, double tn, unsigned int n_saved=1);
 
+  /*!
+   * \brief refine_coarsen_grid_after_restart: this function refines and/or coarsens the grid to satisfy the (new) grid requirements after being
+   * loaded from disk.
+   * \param level_set           [in] : levelset function
+   * \param do_reinitialization [in] : requires reinitialization for the node-sampled levelset function values, if true (default is true)
+   * Raphael EGAN
+   */
 #ifdef P4_TO_P8
   void refine_coarsen_grid_after_restart(const CF_3 *level_set, bool do_reinitialization = true);
 #else
   void refine_coarsen_grid_after_restart(const CF_2 *level_set, bool do_reinitialization = true);
 #endif
+
+  /*!
+   * \brief memory_estimate: self-explanatory
+   * \return memory estimates in number of bytes
+   * Raphael EGAN
+   */
   unsigned long int memory_estimate() const;
 
-  void get_slice_averaged_vnp1_profile(unsigned short vel_component, unsigned short axis, std::vector<double>& avg_velocity_profile);
+  /*!
+   * \brief get_slice_averaged_vnp1_profile: calculates a slice-averaged profile for a velocity component in the domain. The direction along which
+   * the profile is calculated (i.e. axis) cannot be equal to the velocity component (i.e. vel_component). The computational domain must be periodic
+   * in all direction(s) perpendicular to axis.
+   * The profile is calculated as mapped to an equivalent uniform grid of the finest refinement level. The velocity component value associated with
+   * a face that is bigger than the finest possible is considered constant on the entire face and its associated weighting area is defined as
+   * in 3D:
+   *   (half the sum of the lengths of neighboring quads in one transverse direction) x (length of the face in the other transverse direction)
+   * in 2D:
+   *   (half the sum of the lengths of neighboring quads in the transverse direction).
+   * Note 1:            only proc 0 has the correct result after completion.
+   * Note 2:            assumes no interface in the domain, i.e. levelset < 0 everywhere.
+   * local complexity:  every processor loops through their local faces only once.
+   * communication:     MPI_reduce to proc 0 who is the only holding the correct results after completion.
+   * \param vel_component         [in]    : velocity component of interest in the profile, 0 <= vel_component < P4EST_DIM
+   * \param axis                  [in]    : axis along which the profile is calculated, 0 <= axis < P4EST_DIM
+   * \param avg_velocity_profile  [inout] : vector containing the values of the desired velocity components (slice-averaged) along the profile axis
+   *                                        this vector is resized (if needed) to contain brick->nxyztrees[axis]*(1<<data->max_lvl) elements as if
+   *                                        the grid was uniform.
+   * Raphael EGAN
+   */
+  void get_slice_averaged_vnp1_profile(const unsigned short& vel_component, const unsigned short& axis, std::vector<double>& avg_velocity_profile);
+
+  /*!
+   * \brief get_line_averaged_vnp1_profiles: calculates line-averaged profiles for a velocity component in the domain. The direction along which
+   * the profile is calculated (i.e. axis) cannot be equal to the velocity component (i.e. vel_component). The computational domain must be periodic
+   * in the velocity component direction and/or in the averaging direction. The "transverse" direction is defined as the direction
+   * - perpendicular to axis in 2D;
+   * - perpendicular to axis and to averaging_direction in 3D.
+   * Every line along the averaging_direction in the computational is mapped to a coordinate in a profile of appropriate index via the bin_idx
+   * vector. The total number of lines, as on an equivalent uniform grid (i.e. brick->nxyztrees[transverse_direction]*(1<<data->max_lvl)), must be
+   * dividible by the number of elements in bin_idx. The total number of velocity profiles may be smaller than the size of bin_idx (but not larger).
+   * Illustration for a 2D SHS simulation:
+   *   Say that you are interested in z-averaged y-profiles of the x-component of velocity in a SHS simulation with spanwise (i.e. z-aligned) ridges.
+   *   Say that the boundary conditions on the bottom and top walls alternate as (for a z-perpendicular cross section)
+   *
+   *  __                                                               ____________________________________________________________
+   *    |                      slip                                    |                      no slip                              |        ... etc.
+   *    |______________________________________________________________|                                                           |___________________
+   * |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   <-- limits of the finest computational cells
+   * 0   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15  16  17  18  19  20  21  22  23  24  25  26  27  28  29  30  31  32  33  34  35   <-- logical coordinates of the x-faces
+   * 8   7   6   5   4   3   2   1   0   0   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15  14  13  12  11  10   9   8   7   6   5   4   <-- appropriate profiles indices by mapping periodicity and symmetry equivalences
+   * 8   7   6   5   4   3   2   1   0   0   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15  14  13  12  11  10   9                       <-- corresponding (elementary) bin_idx vector
+   *                                                                                                                                           \
+   *                                                                                                                                            \
+   * ____________________________________________________________________________________________________________________________________________\  x axis
+   *                                                                                                                                             /
+   *                                                                                                                                            /
+   *                                                                                                                                           /
+   *
+   * The profile is calculated as mapped to an equivalent uniform grid of the finest refinement level. The velocity component value associated with
+   * a face that is bigger than the finest possible is considered constant on the entire face.
+   * If the averaging direction matches the velocity component of interest (possible only in 3D), the associated weighting length is defined as half
+   * the sum of the lengths of neighboring quads in the transverse direction.
+   * If the averaging direction is perpendicular to velocity component of interest (only possible case, i.e. default, in 2D), the associated weighting
+   * length is defined as the length of the considered face in the averaging direction. The velocity component is considered constant in the tranverse
+   * direction between the centers of the neighboring quadrants. (A weighing factor 0.5 applies for extremity-points if not equivalent to the considered
+   * face)
+   * Note 1:            calculations done at the faces (--> check if boundary conditions are correctly enforced even before interpolation).
+   * Note 2:            proc r has the correct result after completion for all profile indices p_idx such that (p_idx%mpi_size==r).
+   * Note 3:            assumes no interface in the domain, i.e. levelset < 0 everywhere.
+   * local complexity:  every processor loops through their local faces only once.
+   * communication:     for every profile index p_idx, a non-blocking MPI_Ireduce to proc r=p_dx%mpi_size is performed, so that only proc r holds the
+   *                    correct results for that profile after completion.
+   * \param vel_component         [in]    : velocity component of interest in the profile, 0 <= vel_component < P4EST_DIM
+   * \param axis                  [in]    : axis along which the profile is calculated, 0 <= axis < P4EST_DIM
+   * \param averaging_direction   [in]    : direction along which averaging is desired (only in 3D, default to unrepresented perpendicular-to-plane direction in 2D)
+   * \param bin_idx               [in]    : elementary vector of mapping to profile indices by periodic repetition, as illustrated here above
+   * \param avg_velocity_profile  [out]   : set of vectors containing the values of the desired velocity components (line-averaged) along the profile axis.
+   *                                        These vectors are resized (if needed) to contain brick->nxyztrees[tranverse_direction]*(1<<data->max_lvl) elements as if
+   *                                        the grid was uniform.
+   */
+  void get_line_averaged_vnp1_profiles(const unsigned short& vel_component, const unsigned short& axis,
+                                     #ifdef P4_TO_P8
+                                       const unsigned short& averaging_direction,
+                                     #endif
+                                       const std::vector<unsigned int>& bin_idx, std::vector<std::vector<double> >& avg_velocity_profile);
 
   inline double alpha() const { return ((sl_order == 1)? (1.0): ((2.0*dt_n+dt_nm1)/(dt_n+dt_nm1)));}
 
