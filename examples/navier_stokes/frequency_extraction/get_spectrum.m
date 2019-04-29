@@ -12,7 +12,7 @@ fclose(fid);
 cutoff_freq = 5.0;
 clip_start  = 68.25;
 clip_end    = 378.9;
-start_avg   = 0.0, %84.62;
+start_avg   = 0.0; %84.62;
 
 close all
 plot_signals(time, F)
