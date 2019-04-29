@@ -199,7 +199,7 @@ void solve_lsqr_system(matrix_t &A, vector<double> p[], unsigned int n_vectors, 
       throw std::invalid_argument("[CASL_ERROR]: solve_lsqr_system(...): the matrix and (one of) the right hand side(s) don't have the same size");
 #endif
   P4EST_ASSERT(nconstraints<P4EST_DIM);
-  unsigned int m = (unsigned int) A.num_rows();
+  int m = A.num_rows();
   matrix_t *M = new matrix_t();
   vector<double> Atp[n_vectors];
   vector<double> coeffs[n_vectors];
@@ -272,7 +272,7 @@ void solve_lsqr_system(matrix_t &A, vector<double> p[], unsigned int n_vectors, 
   /* 0-th order polynomial approximation, just compute coeff(0) */
   double denominator = 0;
   double numerator = 0;
-  for(unsigned int i=0; i<m; ++i)
+  for(int i=0; i<m; ++i)
   {
     denominator += SQR(A.get_value(i,0));
     numerator   += A.get_value(i,0)*p[0][i];
@@ -280,7 +280,7 @@ void solve_lsqr_system(matrix_t &A, vector<double> p[], unsigned int n_vectors, 
   solutions[0] = numerator/denominator;
   for (unsigned int k = 1; k < n_vectors; ++k) {
     numerator = 0;
-    for(unsigned int i=0; i<m; ++i)
+    for( int i=0; i<m; ++i)
       numerator += A.get_value(i,0)*p[k][i];
     solutions[k] = numerator/denominator;
   }
