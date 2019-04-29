@@ -42,22 +42,74 @@
 
 using namespace std;
 
+class detect_ridge
+{
+private:
+  const double length;
+#ifdef P4_TO_P8
+  const double width;
+  const bool streamwise;
+#endif
+  const double pitch;
+  const double gas_frac;
+  const double offset;
+  double my_fmod(const double num, const double denom) const { return (num - floor(num/denom)*denom);}
+public:
+#ifdef P4_TO_P8
+  detect_ridge(double len_, double width_, bool streamwise_, double pitch_, double gas_fraction_, const my_p4est_brick_t& brick_, int max_lvl)
+    : length(len_), width(width_), streamwise(streamwise_), pitch(pitch_), gas_frac(gas_fraction_),
+      offset(streamwise? (0.1*(brick_.xyz_max[2]-brick_.xyz_min[2])/((double) (brick_.nxyztrees[2]*(1<<max_lvl)))) : (0.5*(brick_.xyz_max[0]-brick_.xyz_min[0])/((double) (brick_.nxyztrees[0]*(1<<max_lvl))))){ }
+  double normalized_z(const double& z) const
+  {
+    return my_fmod((z + 0.5*width), pitch);
+  }
+  bool operator () (double x, double, double z) const {
+    if(streamwise)
+      return ((offset >= normalized_z(z)) || (normalized_z(z) >= pitch*gas_frac - offset));
+    else
+      return (my_fmod((x + 0.5*length - offset), pitch)/pitch >= gas_frac);
+  }
+  double distance_to_ridge(double x, double y, double z) const
+  {
+    if(streamwise)
+      return sqrt(SQR(MIN(1.0-y, y+1.0)) + ((this->operator()(x, y, z))? 0.0: SQR(MIN(normalized_z(z)-offset, pitch*gas_frac - offset - normalized_z(z)))));
+    else
+      return sqrt(SQR(MIN(1.0-y, y+1.0)) + ((this->operator()(x, y, z))? 0.0: SQR(MIN(my_fmod((x + 0.5*length - offset), pitch), gas_frac*pitch-my_fmod((x + 0.5*length - offset), pitch)))));
+  }
+#else
+  detect_ridge(double len_, double pitch_, double gas_fraction_, const my_p4est_brick_t& brick_, int max_lvl)
+    : length(len_), pitch(pitch_), gas_frac(gas_fraction_),
+      offset(0.5*(brick_.xyz_max[0]-brick_.xyz_min[0])/((double) (brick_.nxyztrees[0]*(1<<max_lvl)))){ }
+  bool operator () (double x, double) const {
+    return (my_fmod((x + 0.5*length - offset), pitch)/pitch >= gas_frac);
+  }
+  double distance_to_ridge(double x, double y) const
+  {
+    return sqrt(SQR(MIN(1.0-y, y+1.0)) + ((this->operator()(x, y))? 0.0: SQR(MIN(my_fmod((x + 0.5*length - offset), pitch), gas_frac*pitch-my_fmod((x + 0.5*length - offset), pitch)))));
+  }
+#endif
+};
+
 #ifdef P4_TO_P8
 class LEVEL_SET : public CF_3 {
 #else
 class LEVEL_SET : public CF_2 {
 #endif
   int max_lvl;
+  const detect_ridge* ridge_detector;
 public:
-  LEVEL_SET(int max_lvl_) : max_lvl(max_lvl_) { lip = 1.2; }
+  LEVEL_SET(int max_lvl_, detect_ridge* ridge_detector_) : max_lvl(max_lvl_), ridge_detector(ridge_detector_) { lip = 1.2; }
 #ifdef P4_TO_P8
-  double operator()(double, double y, double) const
-#else
-  double operator()(double, double y) const
-#endif
+  double operator()(double x, double y, double z) const
   {
-    return MAX(y-1.0-pow(2.0, -max_lvl), -y-1.0-pow(2.0, -max_lvl));
+    return -ridge_detector->distance_to_ridge(x, y, z)-pow(2.0, -max_lvl);
   }
+#else
+  double operator()(double x, double y) const
+  {
+    return -ridge_detector->distance_to_ridge(x, y)-pow(2.0, -max_lvl);
+  }
+#endif
 };
 
 #ifdef P4_TO_P8
@@ -90,40 +142,18 @@ class BCWALLTYPE_U : public WallBC3D {
 class BCWALLTYPE_U : public WallBC2D {
 #endif
 private:
-  const double length;
-#ifdef P4_TO_P8
-  const double width;
-  const bool streamwise;
-#endif
-  const double pitch;
-  const double gas_frac;
-  const double offset;
-  double my_fmod(const double num, const double denom) const { return (num - floor(num/denom)*denom);}
+  const detect_ridge* ridge_detector;
 public:
+  BCWALLTYPE_U(detect_ridge* ridge_detector_): ridge_detector(ridge_detector_){ }
 #ifdef P4_TO_P8
-  BCWALLTYPE_U(double len_, double width_, bool streamwise_, double pitch_, double gas_fraction_, const my_p4est_brick_t& brick_, int max_lvl)
-    : length(len_), width(width_), streamwise(streamwise_), pitch(pitch_), gas_frac(gas_fraction_),
-      offset(streamwise? (0.1*(brick_.xyz_max[2]-brick_.xyz_min[2])/((double) (brick_.nxyztrees[2]*(1<<max_lvl)))) : (0.5*(brick_.xyz_max[0]-brick_.xyz_min[0])/((double) (brick_.nxyztrees[0]*(1<<max_lvl))))){ }
-#else
-  BCWALLTYPE_U(double len_, double pitch_, double gas_fraction_, const my_p4est_brick_t& brick_, int max_lvl)
-    : length(len_), pitch(pitch_), gas_frac(gas_fraction_),
-      offset(0.5*(brick_.xyz_max[0]-brick_.xyz_min[0])/((double) (brick_.nxyztrees[0]*(1<<max_lvl)))){ }
-#endif
-#ifdef P4_TO_P8
-  BoundaryConditionType operator()(double x, double, double z) const
+  BoundaryConditionType operator()(double x, double y, double z) const
   {
-    if(streamwise)
-    {
-      double normalized_z = my_fmod((z + 0.5*width), pitch);
-      return (((offset < normalized_z) && (normalized_z < pitch*gas_frac - offset)) ? NEUMANN : DIRICHLET);
-    }
-    else
-      return  ((my_fmod((x + 0.5*length - offset), pitch)/pitch < gas_frac)? NEUMANN: DIRICHLET);
+    return (((*ridge_detector)(x, y, z))? DIRICHLET: NEUMANN);
   }
 #else
-  BoundaryConditionType operator()(double x, double) const
+  BoundaryConditionType operator()(double x, double y) const
   {
-    return ((my_fmod((x + 0.5*length - offset), pitch)/pitch < gas_frac)? NEUMANN: DIRICHLET);
+    return (((*ridge_detector)(x, y))? DIRICHLET: NEUMANN);
   }
 #endif
 };
@@ -253,29 +283,12 @@ struct external_force_v_t : CF_2 {
 struct BCWALLTYPE_W : WallBC3D
 {
 private:
-  const double length;
-  const double width;
-  const bool streamwise;
-  const double pitch;
-  const double gas_frac;
-  const double offset;
-  double my_fmod(const double num, const double denom) const { return (num - floor(num/denom)*denom);}
+  const detect_ridge* ridge_detector;
 public:
-  BCWALLTYPE_W(double len_, double width_, bool streamwise_, double pitch_, double gas_fraction_, const my_p4est_brick_t& brick_, int max_lvl)
-    : length(len_), width(width_), streamwise(streamwise_), pitch(pitch_), gas_frac(gas_fraction_),
-      offset(0.1*(brick_.xyz_max[(streamwise?2:0)]-brick_.xyz_min[(streamwise?2:0)])/((double) (brick_.nxyztrees[(streamwise?2:0)]*(1<<max_lvl)))){ }
-  BoundaryConditionType operator()(double x, double, double z) const
+  BCWALLTYPE_W(detect_ridge* ridge_detector_): ridge_detector(ridge_detector_){ }
+  BoundaryConditionType operator()(double x, double y, double z) const
   {
-    if(streamwise)
-    {
-      double normalized_z = my_fmod((z + 0.5*width), pitch);
-      return (((offset < normalized_z) && (normalized_z < pitch*gas_frac - offset)) ? NEUMANN : DIRICHLET);
-    }
-    else
-    {
-      double normalized_x = my_fmod((x + 0.5*length), pitch);
-      return (((offset < normalized_x) && (normalized_x < pitch*gas_frac - offset)) ? NEUMANN : DIRICHLET);
-    }
+    return (((*ridge_detector)(x, y, z))? DIRICHLET: NEUMANN);
   }
 };
 
@@ -967,6 +980,7 @@ int main (int argc, char* argv[])
   BoundaryConditions2D bc_v[P4EST_DIM];
   BoundaryConditions2D bc_p;
 #endif
+  detect_ridge* ridge_detector = NULL;
   BCWALLTYPE_U* bc_wall_type_u = NULL;
 #ifdef P4_TO_P8
   BCWALLTYPE_W* bc_wall_type_w = NULL;
@@ -1093,7 +1107,14 @@ int main (int argc, char* argv[])
       delete level_set; level_set = NULL;
     }
     P4EST_ASSERT(level_set == NULL);
-    level_set = new LEVEL_SET(lmax);
+    if(ridge_detector!=NULL)
+      delete ridge_detector;
+#ifdef P4_TO_P8
+    ridge_detector = new detect_ridge(length, width, !spanwise, pitch_to_delta, gas_fraction, *brick, lmax);
+#else
+    ridge_detector = new detect_ridge(length, pitch_to_delta, gas_fraction, *brick, lmax);
+#endif
+    level_set = new LEVEL_SET(lmax, ridge_detector);
     if(data != NULL)
     {
       delete data; data = NULL;
@@ -1112,13 +1133,11 @@ int main (int argc, char* argv[])
 #ifdef P4_TO_P8
     if(bc_wall_type_w!=NULL)
       delete bc_wall_type_w;
-    bc_wall_type_u = new BCWALLTYPE_U(length, width, !spanwise, pitch_to_delta, gas_fraction, *brick, lmax);
-    bc_wall_type_w = new BCWALLTYPE_W(length, width, !spanwise, pitch_to_delta, gas_fraction, *brick, lmax);
-#else
-    bc_wall_type_u = new BCWALLTYPE_U(length, pitch_to_delta, gas_fraction, *brick, lmax);
 #endif
+    bc_wall_type_u = new BCWALLTYPE_U(ridge_detector);
     bc_v[0].setWallTypes(*bc_wall_type_u);
 #ifdef P4_TO_P8
+    bc_wall_type_w = new BCWALLTYPE_W(ridge_detector);
     bc_v[2].setWallTypes(*bc_wall_type_w);
 #endif
     ns->set_bc(bc_v, &bc_p);
@@ -1181,7 +1200,14 @@ int main (int argc, char* argv[])
       delete level_set; level_set = NULL;
     }
     P4EST_ASSERT(level_set == NULL);
-    level_set = new LEVEL_SET(lmax);
+    if(ridge_detector!=NULL)
+      delete ridge_detector;
+#ifdef P4_TO_P8
+    ridge_detector = new detect_ridge(length, width, !spanwise, pitch_to_delta, gas_fraction, *brick, lmax);
+#else
+    ridge_detector = new detect_ridge(length, pitch_to_delta, gas_fraction, *brick, lmax);
+#endif
+    level_set = new LEVEL_SET(lmax, ridge_detector);
 
     if(data != NULL)
     {
@@ -1266,15 +1292,14 @@ int main (int argc, char* argv[])
 #ifdef P4_TO_P8
     if(bc_wall_type_w!=NULL)
       delete bc_wall_type_w;
-    bc_wall_type_u = new BCWALLTYPE_U(length, width, !spanwise, pitch_to_delta, gas_fraction, *brick, lmax);
-    bc_wall_type_w = new BCWALLTYPE_W(length, width, !spanwise, pitch_to_delta, gas_fraction, *brick, lmax);
-#else
-    bc_wall_type_u = new BCWALLTYPE_U(length, pitch_to_delta, gas_fraction, *brick, lmax);
 #endif
+    bc_wall_type_u = new BCWALLTYPE_U(ridge_detector);
     bc_v[0].setWallTypes(*bc_wall_type_u);
 #ifdef P4_TO_P8
+    bc_wall_type_w = new BCWALLTYPE_W(ridge_detector);
     bc_v[2].setWallTypes(*bc_wall_type_w);
 #endif
+
     ns->set_bc(bc_v, &bc_p);
     ns->set_external_forces(external_forces);
   }
@@ -1632,6 +1657,8 @@ int main (int argc, char* argv[])
   // the brick and the connectivity are deleted within the above destructor...
   delete data;      // deletes the splitting criterion object
   delete level_set; // deletes the levelset object
+  if(ridge_detector!=NULL)
+    delete ridge_detector;
   if(bc_wall_type_u!=NULL)
     delete bc_wall_type_u;
 #ifdef P4_TO_P8
