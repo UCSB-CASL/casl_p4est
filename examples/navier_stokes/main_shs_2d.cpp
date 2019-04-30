@@ -1327,7 +1327,7 @@ int main (int argc, char* argv[])
     sprintf(out_dir, "%s/%dX2_channel/Re_b_%.2f/pitch_to_delta_%.3f/GF_%.2f/ny_%d_lmin_%d_lmax_%d", export_dir.c_str(), (int) length, cmd.get<double>("Re_b"), pitch_to_delta, gas_fraction, n_xyz[1], lmin, lmax);
 #endif
   }
-  ierr = PetscPrintf(mpi.comm(), "cfl = %g, wall layer = %g\n", cfl, wall_layer);
+  ierr = PetscPrintf(mpi.comm(), "cfl = %g, wall layer = %u\n", cfl, wall_layer);
 
   if(create_directory(out_dir, mpi.rank(), mpi.comm()))
   {
