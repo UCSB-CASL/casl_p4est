@@ -49,6 +49,7 @@
 #include <src/my_p4est_node_neighbors.h>
 #include <src/my_p4est_level_set.h>
 #include <src/my_p4est_poisson_nodes_mls_sc.h>
+#include <src/my_p4est_poisson_jump_nodes_voronoi.h>
 #include <src/my_p4est_interpolation_nodes.h>
 #include <src/my_p4est_integration_mls.h>
 #include <src/my_p4est_semi_lagrangian.h>
@@ -109,7 +110,7 @@ DEFINE_PARAMETER(pl, int, num_shifts_z_dir, 1, "Number of grid shifts in the z-d
 DEFINE_PARAMETER(pl, int, lmin, 5, "Min level of the tree");
 DEFINE_PARAMETER(pl, int, lmax, 5, "Max level of the tree");
 
-DEFINE_PARAMETER(pl, int, num_splits,           4, "Number of recursive splits");
+DEFINE_PARAMETER(pl, int, num_splits,           3, "Number of recursive splits");
 DEFINE_PARAMETER(pl, int, num_splits_per_split, 1, "Number of additional resolutions");
 
 DEFINE_PARAMETER(pl, int, num_shifts_x_dir, 1, "Number of grid shifts in the x-direction");
@@ -130,19 +131,19 @@ DEFINE_PARAMETER(pl, int,  expand_ghost,   0, "Number of ghost layer expansions"
 //-------------------------------------
 
 DEFINE_PARAMETER(pl, int, n_domain,    3, "Domain geometry");
-DEFINE_PARAMETER(pl, int, n_interface, 1, "Immersed interface geometry");
+DEFINE_PARAMETER(pl, int, n_interface, 3, "Immersed interface geometry");
 
-DEFINE_PARAMETER(pl, int, n_um, 0, "");
-DEFINE_PARAMETER(pl, int, n_up, 4, "");
+DEFINE_PARAMETER(pl, int, n_um, 12, "");
+DEFINE_PARAMETER(pl, int, n_up, 11, "");
 
 DEFINE_PARAMETER(pl, double, mag_um, 1, "");
 DEFINE_PARAMETER(pl, double, mag_up, 1, "");
 
-DEFINE_PARAMETER(pl, int, n_mu_m, 0, "");
+DEFINE_PARAMETER(pl, int, n_mu_m, 4, "");
 DEFINE_PARAMETER(pl, int, n_mu_p, 0, "");
 
-DEFINE_PARAMETER(pl, double, mag_mu_m, 1, "");
-DEFINE_PARAMETER(pl, double, mag_mu_p, 10, "");
+DEFINE_PARAMETER(pl, double, mag_mu_m, 10, "");
+DEFINE_PARAMETER(pl, double, mag_mu_p, 1, "");
 
 DEFINE_PARAMETER(pl, double, mu_iter_num, 1, "");
 DEFINE_PARAMETER(pl, double, mag_mu_m_min, 1, "");
@@ -200,8 +201,8 @@ DEFINE_PARAMETER(pl, double, ifc_perturb_pow, 2,   "Order of level-set perturbat
 //-------------------------------------
 // convergence study parameters
 //-------------------------------------
-DEFINE_PARAMETER(pl, int,    compute_cond_num,     0*num_splits, "Estimate L1-norm condition number");
-DEFINE_PARAMETER(pl, bool,   do_extension,         1, "Extend solution after solving");
+DEFINE_PARAMETER(pl, int,    compute_cond_num,     0, "Estimate L1-norm condition number");
+DEFINE_PARAMETER(pl, bool,   do_extension,         0, "Extend solution after solving");
 DEFINE_PARAMETER(pl, double, mask_thresh,          0, "Mask threshold for excluding points in convergence study");
 DEFINE_PARAMETER(pl, bool,   compute_grad_between, 0, "Computes gradient between points if yes");
 DEFINE_PARAMETER(pl, bool,   scale_errors,         0, "Scale errors by max solution/gradient value");
@@ -242,11 +243,15 @@ public:
 #endif
         }
       case 1: switch (what) {
-          case VAL: return (*mag)*(1.+(0.2*cos(x)+0.3*sin(y)) P8(*sin(z)));
-          case DDX: return -0.2*(*mag)*sin(x) P8(*sin(z));
-          case DDY: return (*mag)*0.3*cos(y) P8(*sin(z));
 #ifdef P4_TO_P8
+          case VAL: return (*mag)*(1.+(0.2*cos(x)+0.3*sin(y))*sin(z));
+          case DDX: return -0.2*(*mag)*sin(x)*sin(z);
+          case DDY: return (*mag)*0.3*cos(y)*sin(z);
           case DDZ: return (*mag)*(0.2*sin(x)+0.3*cos(y))*cos(z);
+#else
+          case VAL: return (*mag)*(1. + (0.2*cos(x)+0.3*sin(y)));
+          case DDX: return (*mag)*(-0.2)*sin(x);
+          case DDY: return (*mag)*( 0.3)*cos(y);
 #endif
         }
       case 2: switch (what) {
@@ -264,6 +269,25 @@ public:
 #ifdef P4_TO_P8
           case DDZ: return  0;
 #endif
+        }
+      case 4: {
+          XCODE( double X = (x-xmin)/(xmax-xmin) );
+          YCODE( double Y = (y-ymin)/(ymax-ymin) );
+          ZCODE( double Z = (z-zmin)/(zmax-zmin) );
+          double v = 0.2;
+          double w = 2.*PI;
+          switch (what) {
+#ifdef P4_TO_P8
+            case VAL: return (*mag)*(1. + v*cos(w*(X+Y))*sin(w*(X-Y))*sin(w*Z));
+            case DDX: return (*mag)*v*w/(xmax-xmin)*( cos(w*(X+Y))*cos(w*(X-Y)) - sin(w*(X+Y))*sin(w*(X-Y)))*sin(w*Z);
+            case DDY: return (*mag)*v*w/(ymax-ymin)*(-cos(w*(X+Y))*cos(w*(X-Y)) - sin(w*(X+Y))*sin(w*(X-Y)))*sin(w*Z);
+            case DDZ: return (*mag)*v*w/(zmax-zmin)*cos(w*(X+Y))*sin(w*(X-Y))*cos(w*Z);
+#else
+            case VAL: return (*mag)*(1. + v*cos(w*(X+Y))*sin(w*(X-Y)));
+            case DDX: return (*mag)*v*w/(xmax-xmin)*( cos(w*(X+Y))*cos(w*(X-Y)) - sin(w*(X+Y))*sin(w*(X-Y)));
+            case DDY: return (*mag)*v*w/(ymax-ymin)*(-cos(w*(X+Y))*cos(w*(X-Y)) - sin(w*(X+Y))*sin(w*(X-Y)));
+#endif
+          }
         }
     }
   }
@@ -463,6 +487,40 @@ public:
           case LAP: return -(*mag)*PI*PI*(kx*kx+ky*ky)*sin(PI*kx*x+phase_x)*sin(PI*ky*y+phase_y);
 #endif
         }}
+      case 11: {
+          double X    = (-x+y)/3.;
+          double T5   = 16.*pow(X,5.)  - 20.*pow(X,3.) + 5.*X;
+          double T5d  = 5.*(16.*pow(X,4.) - 12.*pow(X,2.) + 1.);
+          double T5dd = 40.*X*(8.*X*X-3.);
+        switch (what) {
+#ifdef P4_TO_P8
+          case VAL: return  T5*log(x+y+3.)*cos(z);
+          case DDX: return  (T5/(x+y+3.) - T5d*log(x+y+3.)/3.)*cos(z);
+          case DDY: return  (T5/(x+y+3.) + T5d*log(x+y+3.)/3.)*cos(z);
+          case DDZ: return -T5*log(x+y+3.)*sin(z);
+          case LAP: return  (2.*T5dd*log(x+y+3.)/9. - 2.*T5/pow(x+y+3.,2.))*cos(z)
+                - T5*log(x+y+3.)*cos(z);
+#else
+          case VAL: return T5*log(x+y+3.);
+          case DDX: return T5/(x+y+3.) - T5d*log(x+y+3.)/3.;
+          case DDY: return T5/(x+y+3.) + T5d*log(x+y+3.)/3.;
+          case LAP: return 2.*T5dd*log(x+y+3.)/9. - 2.*T5/pow(x+y+3.,2.);
+#endif
+        }}
+      case 12: switch (what) {
+#ifdef P4_TO_P8
+          case VAL: return  (*mag)*sin(2.*x)*cos(2.*y)*exp(z);
+          case DDX: return  (*mag)*2.*cos(2.*x)*cos(2.*y)*exp(z);
+          case DDY: return -(*mag)*2.*sin(2.*x)*sin(2.*y)*exp(z);
+          case DDZ: return  (*mag)*sin(2.*x)*cos(2.*y)*exp(z);
+          case LAP: return -(*mag)*(2.*2.*2. - 1.)*sin(2.*x)*cos(2.*y)*exp(z);
+#else
+          case VAL: return  (*mag)*sin(2.*x)*cos(2.*y);
+          case DDX: return  (*mag)*2.*cos(2.*x)*cos(2.*y);
+          case DDY: return -(*mag)*2.*sin(2.*x)*sin(2.*y);
+          case LAP: return -(*mag)*2.*2.*2.*sin(2.*x)*cos(2.*y);
+#endif
+        }
       default:
         throw std::invalid_argument("Unknown test function\n");
     }
@@ -640,7 +698,7 @@ public:
       case 1: {
           double r0 = 0.533;
           double DIM( xc = 0, yc = 0, zc = 0 );
-          flower_shaped_domain_t circle(r0, DIM(xc, yc, zc), 0.1);
+          flower_shaped_domain_t circle(r0, DIM(xc, yc, zc), 0.2);
           switch (what) {
             OCOMP( case VAL: return circle.phi  (DIM(x,y,z)) );
             XCOMP( case DDX: return circle.phi_x(DIM(x,y,z)) );
@@ -651,7 +709,48 @@ public:
       case 2: {
           double r0 = 0.533;
           double DIM( xc = 0, yc = 0, zc = 0 );
-          flower_shaped_domain_t circle(r0, DIM(xc, yc, zc), 0.1, -1);
+          flower_shaped_domain_t circle(r0, DIM(xc, yc, zc), 0.2, -1);
+          switch (what) {
+            OCOMP( case VAL: return circle.phi  (DIM(x,y,z)) );
+            XCOMP( case DDX: return circle.phi_x(DIM(x,y,z)) );
+            YCOMP( case DDY: return circle.phi_y(DIM(x,y,z)) );
+            ZCOMP( case DDZ: return circle.phi_z(DIM(x,y,z)) );
+          }
+        }
+      case 3: {
+          double r0 = 0.483;
+          double DIM( xc = 0, yc = 0, zc = 0 );
+          double N = 3;
+          double n[] = { 7.0, 3.0, 4.0 };
+          double b[] = { .15, .10, -.10 };
+          double t[] = { 0.0, 0.5, 1.8 };
+          radial_shaped_domain_t shape(r0, DIM(xc, yc, zc), 1, N, n, b, t);
+          switch (what) {
+            OCOMP( case VAL: return shape.phi  (DIM(x,y,z)) );
+            XCOMP( case DDX: return shape.phi_x(DIM(x,y,z)) );
+            YCOMP( case DDY: return shape.phi_y(DIM(x,y,z)) );
+            ZCOMP( case DDZ: return shape.phi_z(DIM(x,y,z)) );
+          }
+        }
+      case 4: {
+          double r0 = 0.483;
+          double DIM( xc = 0, yc = 0, zc = 0 );
+          double N = 3;
+          double n[] = { 5.0, 3.0, 4.0 };
+          double b[] = { .20, .00, .00 };
+          double t[] = { 0.0, 0.5, 1.8 };
+          radial_shaped_domain_t shape(r0, DIM(xc, yc, zc), 1, N, n, b, t);
+          switch (what) {
+            OCOMP( case VAL: return shape.phi  (DIM(x,y,z)) );
+            XCOMP( case DDX: return shape.phi_x(DIM(x,y,z)) );
+            YCOMP( case DDY: return shape.phi_y(DIM(x,y,z)) );
+            ZCOMP( case DDZ: return shape.phi_z(DIM(x,y,z)) );
+          }
+        }
+      case 5: {
+          double r0 = 0.483;
+          double DIM( xc = 0, yc = 0, zc = 0 );
+          flower_shaped_domain_t circle(r0, DIM(xc, yc, zc), 0.0);
           switch (what) {
             OCOMP( case VAL: return circle.phi  (DIM(x,y,z)) );
             XCOMP( case DDX: return circle.phi_x(DIM(x,y,z)) );
@@ -1223,6 +1322,7 @@ int main (int argc, char* argv[])
 
 
               Vec sol; double *sol_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &sol); CHKERRXX(ierr);
+              Vec sol2; ierr = VecCreateGhostNodes(p4est, nodes, &sol2); CHKERRXX(ierr);
 
               my_p4est_poisson_nodes_mls_sc_t solver(&ngbd_n);
 
@@ -1251,12 +1351,41 @@ int main (int argc, char* argv[])
 
               solver.solve(sol);
 
+//              my_p4est_cell_neighbors_t ngbd_c(&hierarchy);
+
+//              BoundaryConditionsDIM bc;
+//              bc.setWallTypes(bc_wall_type);
+//              bc.setWallValues(u_cf);
+
+//              Vec u_jump;
+//              Vec mu_grad_u_jump;
+
+//              ierr = VecDuplicate(sol, &u_jump); CHKERRXX(ierr);
+//              ierr = VecDuplicate(sol, &mu_grad_u_jump); CHKERRXX(ierr);
+
+//              sample_cf_on_nodes(p4est, nodes, jc_value_cf, u_jump);
+//              sample_cf_on_nodes(p4est, nodes, jc_flux_cf_00, mu_grad_u_jump);
+
+//              my_p4est_poisson_jump_nodes_voronoi_t voro_solver(&ngbd_n, &ngbd_c);
+//              voro_solver.set_phi(ifc_phi[0]);
+//              voro_solver.set_bc(bc);
+//              voro_solver.set_mu(mu_m, mu_p);
+//              voro_solver.set_u_jump(u_jump);
+//              voro_solver.set_mu_grad_u_jump(mu_grad_u_jump);
+//              voro_solver.set_rhs(rhs_m, rhs_p);
+
+//              voro_solver.solve(sol);
+
+//              ierr = VecDestroy(u_jump); CHKERRXX(ierr);
+//              ierr = VecDestroy(mu_grad_u_jump); CHKERRXX(ierr);
+
               Vec dom_phi_eff = solver.get_boundary_phi_eff();
               Vec ifc_phi_eff = solver.get_interface_phi_eff();
 
               Vec mask_m  = solver.get_mask_m();
               Vec mask_p  = solver.get_mask_p();
               Mat A       = solver.get_matrix();
+//              Mat A       = voro_solver.get_matrix();
 
               double *dom_phi_eff_ptr;
               double *ifc_phi_eff_ptr;
@@ -1323,13 +1452,19 @@ int main (int argc, char* argv[])
                 // Get the local AIJ representation of the matrix
                 std::vector<double> aij;
 
-                foreach_local_node(n, nodes)
+                int M,N;
+
+                ierr = MatGetLocalSize(A, &M, &N);
+
+//                foreach_local_node(n, nodes)
+                for (int n = 0; n < M; ++n)
                 {
                   int num_elem;
                   const int *icol;
                   const double *vals;
 
                   PetscInt N = solver.get_global_idx(n);
+//                  PetscInt N = voro_solver.get_global_idx(n);
                   MatGetRow(A, N, &num_elem, &icol, &vals);
                   for (int i = 0; i < num_elem; ++i)
                   {
@@ -1798,16 +1933,14 @@ int main (int argc, char* argv[])
               // Print current errors
               if (iter > -1)
               {
-                ierr = PetscPrintf(p4est->mpicomm, "Errors:\n"); CHKERRXX(ierr);
-
-                ierr = PetscPrintf(p4est->mpicomm, "Neg: "); CHKERRXX(ierr);
+                ierr = PetscPrintf(p4est->mpicomm, "Errors Neg: "); CHKERRXX(ierr);
                 ierr = PetscPrintf(p4est->mpicomm, "sol = %3.2e (%+3.2f), ", err_sl_m_max, log(error_sl_m_arr[iter-1]/error_sl_m_arr[iter])/log(2)); CHKERRXX(ierr);
                 ierr = PetscPrintf(p4est->mpicomm, "gra = %3.2e (%+3.2f), ", err_gr_m_max, log(error_gr_m_arr[iter-1]/error_gr_m_arr[iter])/log(2)); CHKERRXX(ierr);
                 ierr = PetscPrintf(p4est->mpicomm, "ext = %3.2e (%+3.2f), ", err_ex_m_max, log(error_ex_m_arr[iter-1]/error_ex_m_arr[iter])/log(2)); CHKERRXX(ierr);
                 ierr = PetscPrintf(p4est->mpicomm, "lap = %3.2e (%+3.2f). ", err_dd_m_max, log(error_dd_m_arr[iter-1]/error_dd_m_arr[iter])/log(2)); CHKERRXX(ierr);
                 ierr = PetscPrintf(p4est->mpicomm, "\n"); CHKERRXX(ierr);
 
-                ierr = PetscPrintf(p4est->mpicomm, "Pos: "); CHKERRXX(ierr);
+                ierr = PetscPrintf(p4est->mpicomm, "Errors Pos: "); CHKERRXX(ierr);
                 ierr = PetscPrintf(p4est->mpicomm, "sol = %3.2e (%+3.2f), ", err_sl_p_max, log(error_sl_p_arr[iter-1]/error_sl_p_arr[iter])/log(2)); CHKERRXX(ierr);
                 ierr = PetscPrintf(p4est->mpicomm, "gra = %3.2e (%+3.2f), ", err_gr_p_max, log(error_gr_p_arr[iter-1]/error_gr_p_arr[iter])/log(2)); CHKERRXX(ierr);
                 ierr = PetscPrintf(p4est->mpicomm, "ext = %3.2e (%+3.2f), ", err_ex_p_max, log(error_ex_p_arr[iter-1]/error_ex_p_arr[iter])/log(2)); CHKERRXX(ierr);
@@ -1884,15 +2017,23 @@ int main (int argc, char* argv[])
                 ierr = VecGetArray(mask_m, &mask_m_ptr); CHKERRXX(ierr);
                 ierr = VecGetArray(mask_p, &mask_p_ptr); CHKERRXX(ierr);
 
+                double *mu_m_ptr;
+                double *mu_p_ptr;
+
+                ierr = VecGetArray(mu_m, &mu_m_ptr); CHKERRXX(ierr);
+                ierr = VecGetArray(mu_p, &mu_p_ptr); CHKERRXX(ierr);
+
                 my_p4est_vtk_write_all(p4est, nodes, ghost,
                                        P4EST_TRUE, P4EST_TRUE,
-                                       14, 1, oss.str().c_str(),
+                                       16, 1, oss.str().c_str(),
                                        VTK_POINT_DATA, "phi", dom_phi_eff_ptr,
                                        VTK_POINT_DATA, "ifc_phi", ifc_phi_eff_ptr,
                                        VTK_POINT_DATA, "sol", sol_ptr,
                                        VTK_POINT_DATA, "exact", exact_ptr,
                                        VTK_POINT_DATA, "sol_m_ex", sol_m_ex_ptr,
                                        VTK_POINT_DATA, "sol_p_ex", sol_p_ex_ptr,
+                                       VTK_POINT_DATA, "mu_m", mu_m_ptr,
+                                       VTK_POINT_DATA, "mu_p", mu_p_ptr,
                                        VTK_POINT_DATA, "error_sl_m", vec_error_sl_m_ptr,
                                        VTK_POINT_DATA, "error_gr_m", vec_error_gr_m_ptr,
                                        VTK_POINT_DATA, "error_ex_m", vec_error_ex_m_ptr,
@@ -1924,6 +2065,9 @@ int main (int argc, char* argv[])
 
                 ierr = VecRestoreArray(mask_m, &mask_m_ptr); CHKERRXX(ierr);
                 ierr = VecRestoreArray(mask_p, &mask_p_ptr); CHKERRXX(ierr);
+
+                ierr = VecRestoreArray(mu_m, &mu_m_ptr); CHKERRXX(ierr);
+                ierr = VecRestoreArray(mu_p, &mu_p_ptr); CHKERRXX(ierr);
 
                 ierr = VecRestoreArray(leaf_level, &l_p); CHKERRXX(ierr);
                 ierr = VecDestroy(leaf_level); CHKERRXX(ierr);

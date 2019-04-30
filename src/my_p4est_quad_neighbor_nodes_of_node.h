@@ -280,7 +280,7 @@ struct quad_neighbor_nodes_of_node_t {
         ( phi_p[this->node_00p_mm]<-EPS || fabs(this->d_00p_p0)<EPS || fabs(this->d_00p_0p)<EPS) &&
         ( phi_p[this->node_00p_mp]<-EPS || fabs(this->d_00p_p0)<EPS || fabs(this->d_00p_0m)<EPS) &&
         ( phi_p[this->node_00p_pm]<-EPS || fabs(this->d_00p_m0)<EPS || fabs(this->d_00p_0p)<EPS) &&
-        ( phi_p[this->node_00p_pp]<-EPS || fabs(this->d_00p_m0)<EPS || fabs(this->d_00p_0m)<EPS)
+        ( phi_p[this->node_00p_pp]<-EPS || fabs(this->d_00p_m0)<EPS || fabs(this->d_00p_0m)<EPS);
     #else
         ( phi_p[this->node_m00_mm]<-EPS || fabs(this->d_m00_p0)<EPS) &&
         ( phi_p[this->node_m00_pm]<-EPS || fabs(this->d_m00_m0)<EPS) &&

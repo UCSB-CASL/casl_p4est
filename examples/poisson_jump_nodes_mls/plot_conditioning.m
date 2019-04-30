@@ -28,12 +28,40 @@ PropValue_guide = {'none', 1, 2, 'auto', '-', 'k'};
 % -----------------------------
 % smooth solutions
 % -----------------------------
-figure;
- 
+figure; 
+
+% dirs = {}; titles = {};
+% dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/v0.1/2d/conditioning/slow/convergence'; titles{end+1} = 'Slow';
+% dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/v0.1/2d/conditioning/fast/convergence'; titles{end+1} = 'Fast';
+% dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/v0.1/2d/conditioning/neut/convergence'; titles{end+1} = 'Random';
+
+% dirs = {}; titles = {};
+% dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/2d/single/conditioning/slow/convergence'; titles{end+1} = 'Slow';
+% dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/2d/single/conditioning/fast/convergence'; titles{end+1} = 'Fast';
+% dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/2d/single/conditioning/neut/convergence'; titles{end+1} = 'Random';
+
 dirs = {}; titles = {};
-dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Presentations/13_socal_fluids_2019_jump_solver/data/results/v1.0/2d/conditioning/fvm/slow/convergence'; titles{end+1} = 'Slow';
-dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Presentations/13_socal_fluids_2019_jump_solver/data/results/v1.0/2d/conditioning/fvm/fast/convergence'; titles{end+1} = 'Fast';
-dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Presentations/13_socal_fluids_2019_jump_solver/data/results/v1.0/2d/conditioning/fvm/neut/convergence'; titles{end+1} = 'Random';
+dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/2d/multiple/conditioning/slow/convergence'; titles{end+1} = 'Slow';
+dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/2d/multiple/conditioning/fast/convergence'; titles{end+1} = 'Fast';
+dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/2d/multiple/conditioning/neut/convergence'; titles{end+1} = 'Random';
+
+% dirs = {}; titles = {};
+% dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/3d/single/conditioning/slow/convergence'; titles{end+1} = 'Slow';
+% dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/3d/single/conditioning/fast/convergence'; titles{end+1} = 'Fast';
+% dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/3d/single/conditioning/neut/convergence'; titles{end+1} = 'Random';
+
+% dirs = {}; titles = {};
+% dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/3d/multiple/conditioning/slow/convergence'; titles{end+1} = 'Slow';
+% dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/3d/multiple/conditioning/fast/convergence'; titles{end+1} = 'Fast';
+% dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/3d/multiple/conditioning/neut/convergence'; titles{end+1} = 'Random';
+
+% dirs = {}; titles = {};
+% dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/v0.1/voro/2d/conditioning/slow/convergence'; titles{end+1} = 'Slow';
+
+% dirs = {}; titles = {};
+% dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Presentations/13_socal_fluids_2019_jump_solver/data/results/v1.0/2d/conditioning/fvm/slow/convergence'; titles{end+1} = 'Slow';
+% dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Presentations/13_socal_fluids_2019_jump_solver/data/results/v1.0/2d/conditioning/fvm/fast/convergence'; titles{end+1} = 'Fast';
+% dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Presentations/13_socal_fluids_2019_jump_solver/data/results/v1.0/2d/conditioning/fvm/neut/convergence'; titles{end+1} = 'Random';
 
 % dirs = {}; titles = {};
 % dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Presentations/13_socal_fluids_2019_jump_solver/data/results/v1.0/3d/conditioning/fvm/slow/convergence'; titles{end+1} = 'Slow';
@@ -48,6 +76,8 @@ fit = 1+round((1-use_n_points)*length(h)):length(h);
 
 lvl = importdata(strcat(dirs{1},'/lvl.txt'));
 
+limit = 1;
+
 for i = 1:length(dirs)
     error_sl_all{i} = max( [importdata(strcat(dirs{i},'/error_m_sl_all.txt')); importdata(strcat(dirs{i},'/error_p_sl_all.txt'))] );
     error_gr_all{i} = max( [importdata(strcat(dirs{i},'/error_m_gr_all.txt')); importdata(strcat(dirs{i},'/error_p_gr_all.txt'))] );
@@ -55,6 +85,15 @@ for i = 1:length(dirs)
     error_gr_max{i} = max( [importdata(strcat(dirs{i},'/error_m_gr_max.txt')); importdata(strcat(dirs{i},'/error_p_gr_max.txt'))] );
     cond_num_all{i} = importdata(strcat(dirs{i},'/cond_num_all.txt'));
     cond_num_max{i} = importdata(strcat(dirs{i},'/cond_num_max.txt'));
+    
+    for j = 1:length(error_sl_max{i})
+        if (error_sl_max{i}(j) > limit)
+            error_sl_max{i}(j) = nan;
+        end
+        if (error_gr_max{i}(j) > limit)
+            error_gr_max{i}(j) = nan;
+        end
+    end
 end
 
 num_resolutions = length(h);
@@ -176,7 +215,7 @@ if (plot_condensed_convergence == 1)
     grid on
     
     % axes
-    xlabel('Ratio');
+    L = xlabel('Ratio \mu^{−}/\mu^+'); %set(L, 'interpreter', 'latex');
     ylabel('Solution Error');
     
     % legend, 
@@ -207,7 +246,7 @@ if (plot_condensed_convergence == 1)
     grid on
     
     % axes
-    xlabel('Ratio');
+    L = xlabel('Ratio \mu^{−}/\mu^+'); %set(L, 'interpreter', 'latex');
     ylabel('Gradient Error');
     
     % legend
@@ -289,8 +328,8 @@ if (plot_condensed_cond_num == 1)
     grid on
     
     % axes
-    L = xlabel('Ratio'); %set(L, 'interpreter', 'latex');
-    L = ylabel('Max condition number'); %set(L, 'interpreter', 'latex');
+    L = xlabel('Ratio \mu^{−}/\mu^+'); %set(L, 'interpreter', 'latex');
+    L = ylabel('Condition number'); %set(L, 'interpreter', 'latex');
     
     % legend
     L = legend('Location', 'best');

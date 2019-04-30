@@ -5,13 +5,13 @@ subplotted = 0;
 plot_detailed_convergence = 0;
 plot_condensed_convergence = 1;
 plot_detailed_cond_num = 0;
-plot_condensed_cond_num = 0;
+plot_condensed_cond_num = 1;
 
 plot_slope_sl = 1;
 plot_slope_gr = 1;
 plot_slope_cn = 1;
 
-use_n_points = 1;
+use_n_points = 0.75;
 
 PropName_all  = {'Marker', 'LineWidth', 'MarkerSize', 'MarkerFaceColor'};
 PropValue_all = {'none', 1, 2, 'auto'};
@@ -29,16 +29,41 @@ PropValue_guide = {'none', 1, 2, 'auto', '-', 'k'};
 % smooth solutions
 % -----------------------------
 figure;
+% 
+% dirs = {}; titles = {};
+% dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/v0.1/2d/accuracy/slow/convergence'; titles{end+1} = 'Slow';
+% dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/v0.1/2d/accuracy/fast/convergence'; titles{end+1} = 'Fast';
+% dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/v0.1/2d/accuracy/neut/convergence'; titles{end+1} = 'Random';
+
+% dirs = {}; titles = {};
+% dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/2d/single/accuracy/slow/convergence'; titles{end+1} = 'Slow';
+% dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/2d/single/accuracy/fast/convergence'; titles{end+1} = 'Fast';
+% dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/2d/single/accuracy/neut/convergence'; titles{end+1} = 'Random';
+
+dirs = {}; titles = {};
+dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/2d/multiple/accuracy/slow/convergence'; titles{end+1} = 'Slow';
+dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/2d/multiple/accuracy/fast/convergence'; titles{end+1} = 'Fast';
+dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/2d/multiple/accuracy/neut/convergence'; titles{end+1} = 'Random';
+
+% dirs = {}; titles = {};
+% dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/3d/single/accuracy/slow/convergence'; titles{end+1} = 'Slow';
+% dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/3d/single/accuracy/fast/convergence'; titles{end+1} = 'Fast';
+% dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/3d/single/accuracy/neut/convergence'; titles{end+1} = 'Random';
+
+% dirs = {}; titles = {};
+% dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/3d/multiple/accuracy/slow/convergence'; titles{end+1} = 'Slow';
+% dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/3d/multiple/accuracy/fast/convergence'; titles{end+1} = 'Fast';
+% dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/3d/multiple/accuracy/neut/convergence'; titles{end+1} = 'Random';
 
 % dirs = {}; titles = {};
 % dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Presentations/13_socal_fluids_2019_jump_solver/data/results/v1.0/2d/accuracy/fvm/slow/convergence'; titles{end+1} = 'Slow';
 % dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Presentations/13_socal_fluids_2019_jump_solver/data/results/v1.0/2d/accuracy/fvm/fast/convergence'; titles{end+1} = 'Fast';
 % dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Presentations/13_socal_fluids_2019_jump_solver/data/results/v1.0/2d/accuracy/fvm/neut/convergence'; titles{end+1} = 'Random';
 %  
-dirs = {}; titles = {};
-dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Presentations/13_socal_fluids_2019_jump_solver/data/results/v1.0/3d/accuracy2/fvm/slow/convergence'; titles{end+1} = 'Slow';
-dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Presentations/13_socal_fluids_2019_jump_solver/data/results/v1.0/3d/accuracy2/fvm/fast/convergence'; titles{end+1} = 'Fast';
-dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Presentations/13_socal_fluids_2019_jump_solver/data/results/v1.0/3d/accuracy2/fvm/neut/convergence'; titles{end+1} = 'Random';
+% dirs = {}; titles = {};
+% dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Presentations/13_socal_fluids_2019_jump_solver/data/results/v1.0/3d/accuracy2/fvm/slow/convergence'; titles{end+1} = 'Slow';
+% dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Presentations/13_socal_fluids_2019_jump_solver/data/results/v1.0/3d/accuracy2/fvm/fast/convergence'; titles{end+1} = 'Fast';
+% dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Presentations/13_socal_fluids_2019_jump_solver/data/results/v1.0/3d/accuracy2/fvm/neut/convergence'; titles{end+1} = 'Random';
 
 h = importdata(strcat(dirs{1},'/h_arr.txt'));
 mu = importdata(strcat(dirs{1},'/mu_arr.txt'));
@@ -296,17 +321,19 @@ if (plot_condensed_cond_num == 1)
         figure;
     end
     
+    idx = 1:length(cond_num_max{1});
+    
     % plots    
     for i = 1:length(dirs)
-        L = loglog(h, cond_num_max{i}); set(L, PropName_max, PropValue_max); set(L, 'MarkerFaceColor', get(L, 'Color')); set(L, 'DisplayName', titles{i});
+        L = loglog(h(idx), cond_num_max{i}); set(L, PropName_max, PropValue_max); set(L, 'MarkerFaceColor', get(L, 'Color')); set(L, 'DisplayName', titles{i});
         if (i==1); hold on; end
     end
     
     % guide lines
     for i = 1:length(dirs)
-        slope = polyfit(log(h(fit)), log(cond_num_max{i}(fit)),1);
+        slope = polyfit(log(h(idx)), log(cond_num_max{i}(idx)),1);
         if (plot_slope_sl > i-1)
-            L = loglog(h, exp(slope(2))*h.^slope(1));  set(L, PropName_guide, PropValue_guide); set(L, 'DisplayName', ['Slope: ', num2str(slope(1),3)]);
+            L = loglog(h(idx), exp(slope(2))*h(idx).^slope(1));  set(L, PropName_guide, PropValue_guide); set(L, 'DisplayName', ['Slope: ', num2str(slope(1),3)]);
         end
     end 
     
@@ -315,7 +342,7 @@ if (plot_condensed_cond_num == 1)
     
     % axes
     L = xlabel('Grid resolution'); %set(L, 'interpreter', 'latex');
-    L = ylabel('Max condition number'); %set(L, 'interpreter', 'latex');
+    L = ylabel('Condition number'); %set(L, 'interpreter', 'latex');
     
     % legend
     L = legend('Location', 'best');

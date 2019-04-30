@@ -667,7 +667,7 @@ void my_p4est_poisson_nodes_mls_sc_t::solve(Vec solution, bool use_nonzero_initi
 //  setup_linear_system(false, true);
 
   // Solve the system
-  ierr = KSPSetTolerances(ksp_, 1.e-20, 1.e-20, PETSC_DEFAULT, 50); CHKERRXX(ierr);
+  ierr = KSPSetTolerances(ksp_, 1.e-16, 1.e-16, PETSC_DEFAULT, 50); CHKERRXX(ierr);
 //  ierr = KSPSetTolerances(ksp_, 1e-15, PETSC_DEFAULT, PETSC_DEFAULT, 30); CHKERRXX(ierr);
 //  ierr = KSPSetTolerances(ksp_, 1e-200, 1e-30, PETSC_DEFAULT, PETSC_DEFAULT); CHKERRXX(ierr);
   ierr = KSPSetFromOptions(ksp_); CHKERRXX(ierr);
@@ -687,6 +687,11 @@ void my_p4est_poisson_nodes_mls_sc_t::solve(Vec solution, bool use_nonzero_initi
     ierr = MatNullSpaceDestroy(A_null);
   }
   ierr = PetscLogEventEnd  (log_my_p4est_poisson_nodes_mls_sc_KSPSolve, ksp_, rhs_, solution, 0); CHKERRXX(ierr);
+  KSPConvergedReason outcome;
+  ierr = KSPGetConvergedReason(ksp_, &outcome); CHKERRXX(ierr);
+
+  if (outcome < 0)
+    VecSetGhost(solution, 0);
 
   // update ghosts
   if (update_ghost_after_solving_)
@@ -3368,7 +3373,7 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
 
         std::vector<double> weight(num_constraints, 0);
 
-        _CODE( std::vector<double> col_c(num_constraints, 0) );
+//        _CODE( std::vector<double> col_c(num_constraints, 0) );
         XCODE( std::vector<double> col_x(num_constraints, 0) );
         YCODE( std::vector<double> col_y(num_constraints, 0) );
         ZCODE( std::vector<double> col_z(num_constraints, 0) );
@@ -3381,84 +3386,68 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
             {
               char idx = i + 3*j CODE3D( + 9*k );
 
-              _CODE( col_c[idx] = 1. );
+//              _CODE( col_c[idx] = 1. );
               XCODE( col_x[idx] = ((double) (i-1)) * dxyz_m_[0] );
               YCODE( col_y[idx] = ((double) (j-1)) * dxyz_m_[1] );
               ZCODE( col_z[idx] = ((double) (k-1)) * dxyz_m_[2] );
 
               if (neighbors_exist[idx])
-              {
-                if (infc_phi_eff_ptr[neighbors[idx]]*sign_to_use > 0 || idx == nn_000)
-                {
-                  weight[idx] = exp(-gamma*SUMD(SQR((x_C+col_x[idx]-xyz_pr[0])/dx_min_),
-                                                SQR((y_C+col_y[idx]-xyz_pr[1])/dy_min_),
-                                                SQR((z_C+col_z[idx]-xyz_pr[2])/dz_min_)));
-                  if (idx == nn_000) weight[idx] = 10;
-                }
-              }
+                if (infc_phi_eff_ptr[neighbors[idx]]*sign_to_use > 0 && idx != nn_000)
+                  weight[idx] = 1;
             }
 
 
         // assemble and invert matrix
-        unsigned short A_size = (P4EST_DIM+1);
-        double A[(P4EST_DIM+1)*(P4EST_DIM+1)];
-        double A_inv[(P4EST_DIM+1)*(P4EST_DIM+1)];
+        unsigned short A_size = (P4EST_DIM);
+        double A[(P4EST_DIM)*(P4EST_DIM)];
+        double A_inv[(P4EST_DIM)*(P4EST_DIM)];
 
         A[0*A_size + 0] = 0;
         A[0*A_size + 1] = 0;
-        A[0*A_size + 2] = 0;
         A[1*A_size + 1] = 0;
+#ifdef P4_TO_P8
+        A[0*A_size + 2] = 0;
         A[1*A_size + 2] = 0;
         A[2*A_size + 2] = 0;
-#ifdef P4_TO_P8
-        A[0*A_size + 3] = 0;
-        A[1*A_size + 3] = 0;
-        A[2*A_size + 3] = 0;
-        A[3*A_size + 3] = 0;
 #endif
 
         for (unsigned short nei = 0; nei < num_constraints; ++nei)
         {
-          A[0*A_size + 0] += col_c[nei]*col_c[nei]*weight[nei];
-          A[0*A_size + 1] += col_c[nei]*col_x[nei]*weight[nei];
-          A[0*A_size + 2] += col_c[nei]*col_y[nei]*weight[nei];
-          A[1*A_size + 1] += col_x[nei]*col_x[nei]*weight[nei];
-          A[1*A_size + 2] += col_x[nei]*col_y[nei]*weight[nei];
-          A[2*A_size + 2] += col_y[nei]*col_y[nei]*weight[nei];
+          A[0*A_size + 0] += col_x[nei]*col_x[nei]*weight[nei];
+          A[0*A_size + 1] += col_x[nei]*col_y[nei]*weight[nei];
+          A[1*A_size + 1] += col_y[nei]*col_y[nei]*weight[nei];
 #ifdef P4_TO_P8
-          A[0*A_size + 3] += col_c[nei]*col_z[nei]*weight[nei];
-          A[1*A_size + 3] += col_x[nei]*col_z[nei]*weight[nei];
-          A[2*A_size + 3] += col_y[nei]*col_z[nei]*weight[nei];
-          A[3*A_size + 3] += col_z[nei]*col_z[nei]*weight[nei];
+          A[0*A_size + 2] += col_x[nei]*col_z[nei]*weight[nei];
+          A[1*A_size + 2] += col_y[nei]*col_z[nei]*weight[nei];
+          A[2*A_size + 2] += col_z[nei]*col_z[nei]*weight[nei];
 #endif
         }
 
         A[1*A_size + 0] = A[0*A_size + 1];
+#ifdef P4_TO_P8
         A[2*A_size + 0] = A[0*A_size + 2];
         A[2*A_size + 1] = A[1*A_size + 2];
-#ifdef P4_TO_P8
-        A[3*A_size + 0] = A[0*A_size + 3];
-        A[3*A_size + 1] = A[1*A_size + 3];
-        A[3*A_size + 2] = A[2*A_size + 3];
 #endif
 
-        CODE2D( if (!inv_mat3(A, A_inv)) )
-        CODE3D( if (!inv_mat4(A, A_inv)) )
+        CODE2D( if (!inv_mat2(A, A_inv)) )
+        CODE3D( if (!inv_mat3(A, A_inv)) )
           throw std::domain_error("Error: singular LSQR matrix\n");
 
         // compute Taylor expansion coefficients
-        _CODE( std::vector<double> coeff_const_term(num_constraints, 0) );
         XCODE( std::vector<double> coeff_x_term    (num_constraints, 0) );
         YCODE( std::vector<double> coeff_y_term    (num_constraints, 0) );
         ZCODE( std::vector<double> coeff_z_term    (num_constraints, 0) );
 
         for (unsigned short nei = 0; nei < num_constraints; ++nei)
-        {
-          OCOMP( coeff_const_term[nei] = weight[nei]*( A_inv[0*A_size+0]*col_c[nei] + SUMD(A_inv[0*A_size+1]*col_x[nei], A_inv[0*A_size+2]*col_y[nei], A_inv[0*A_size+3]*col_z[nei]) ) );
-          XCOMP( coeff_x_term[nei]     = weight[nei]*( A_inv[0*A_size+1]*col_c[nei] + SUMD(A_inv[1*A_size+1]*col_x[nei], A_inv[1*A_size+2]*col_y[nei], A_inv[1*A_size+3]*col_z[nei]) ) );
-          YCOMP( coeff_y_term[nei]     = weight[nei]*( A_inv[0*A_size+2]*col_c[nei] + SUMD(A_inv[2*A_size+1]*col_x[nei], A_inv[2*A_size+2]*col_y[nei], A_inv[2*A_size+3]*col_z[nei]) ) );
-          ZCOMP( coeff_z_term[nei]     = weight[nei]*( A_inv[0*A_size+3]*col_c[nei] + SUMD(A_inv[3*A_size+1]*col_x[nei], A_inv[3*A_size+2]*col_y[nei], A_inv[3*A_size+3]*col_z[nei]) ) );
-        }
+          if (nei != nn_000)
+          {
+            XCOMP( coeff_x_term[nei] = weight[nei] * SUMD(A_inv[0*A_size+0]*col_x[nei], A_inv[0*A_size+1]*col_y[nei], A_inv[0*A_size+2]*col_z[nei]) );
+            YCOMP( coeff_y_term[nei] = weight[nei] * SUMD(A_inv[1*A_size+0]*col_x[nei], A_inv[1*A_size+1]*col_y[nei], A_inv[1*A_size+2]*col_z[nei]) );
+            ZCOMP( coeff_z_term[nei] = weight[nei] * SUMD(A_inv[2*A_size+0]*col_x[nei], A_inv[2*A_size+1]*col_y[nei], A_inv[2*A_size+2]*col_z[nei]) );
+            XCOMP( coeff_x_term[nn_000] -= coeff_x_term[nei]);
+            YCOMP( coeff_y_term[nn_000] -= coeff_y_term[nei]);
+            ZCOMP( coeff_z_term[nn_000] -= coeff_z_term[nei]);
+          }
 
         double sign    = infc_phi_eff_ptr[n] < 0 ? 1 : -1;
         double scaling = 1;
