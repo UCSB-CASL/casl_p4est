@@ -78,7 +78,7 @@ class my_p4est_poisson_nodes_mls_sc_t
     std::vector<bool> is_phi_d_owned;
     std::vector<bool> is_phi_dd_owned;
 
-    geometry_t() : num_phi(0), phi_eff(NULL), is_phi_eff_owned(0) {}
+    geometry_t() : num_phi(0), phi_eff(NULL), is_phi_eff_owned(0), phi_cf(NULL) {}
     ~geometry_t()
     {
       PetscErrorCode ierr;
@@ -294,7 +294,14 @@ public:
       infc.phi_eff = phi_eff;
   }
 
-  inline void set_wc(WallBCDIM &wc_type, CF_DIM &wc_value) { this->wc_type = &wc_type; this->wc_value = &wc_value; }
+  inline void set_wc(const WallBCDIM &wc_type, const CF_DIM &wc_value) { this->wc_type = &wc_type; this->wc_value = &wc_value; }
+
+  inline void set_bc(int phi_idx, BoundaryConditionType bc_type, CF_DIM &bc_value, CF_DIM &bc_coeff)
+  {
+    this->bc_type [phi_idx] =  bc_type;
+    this->bc_value[phi_idx] = &bc_value;
+    this->bc_coeff[phi_idx] = &bc_coeff;
+  }
 
   // set BCs
   inline void set_diag_add(double diag_add_scalar)   { diag_add_m_scalar_ = diag_add_scalar;

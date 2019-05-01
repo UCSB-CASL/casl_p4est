@@ -1218,7 +1218,7 @@ int my_p4est_multialloy_t::one_step()
   compute_velocity();
 
 
-  if (update_c0_robin_) solver_all_in_one.solve_c0_robin();
+//  if (update_c0_robin_) solver_all_in_one.solve_c0_robin();
 
   ierr = VecDestroy(rhs_tl); CHKERRXX(ierr);
   ierr = VecDestroy(rhs_ts); CHKERRXX(ierr);

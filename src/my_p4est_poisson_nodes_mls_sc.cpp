@@ -1653,60 +1653,60 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
         else                                w_00p += -2.0*wk/d_00p/(d_00m+d_00p);
 
         if(!is_interface_m00 && !is_node_xmWall(p4est_, ni) && setup_matrix) {
-          w_m00_mm = 0.5*(mue_000 + mue_p[node_m00_mm])*w_m00*d_m00_p0*d_m00_0p/(d_m00_m0+d_m00_p0)/(d_m00_0m+d_m00_0p);
-          w_m00_mp = 0.5*(mue_000 + mue_p[node_m00_mp])*w_m00*d_m00_p0*d_m00_0m/(d_m00_m0+d_m00_p0)/(d_m00_0m+d_m00_0p);
-          w_m00_pm = 0.5*(mue_000 + mue_p[node_m00_pm])*w_m00*d_m00_m0*d_m00_0p/(d_m00_m0+d_m00_p0)/(d_m00_0m+d_m00_0p);
-          w_m00_pp = 0.5*(mue_000 + mue_p[node_m00_pp])*w_m00*d_m00_m0*d_m00_0m/(d_m00_m0+d_m00_p0)/(d_m00_0m+d_m00_0p);
+          w_m00_mm = 0.5*(mue_000 + !variable_mu_ ? mu_ : mue_p[node_m00_mm])*w_m00*d_m00_p0*d_m00_0p/(d_m00_m0+d_m00_p0)/(d_m00_0m+d_m00_0p);
+          w_m00_mp = 0.5*(mue_000 + !variable_mu_ ? mu_ : mue_p[node_m00_mp])*w_m00*d_m00_p0*d_m00_0m/(d_m00_m0+d_m00_p0)/(d_m00_0m+d_m00_0p);
+          w_m00_pm = 0.5*(mue_000 + !variable_mu_ ? mu_ : mue_p[node_m00_pm])*w_m00*d_m00_m0*d_m00_0p/(d_m00_m0+d_m00_p0)/(d_m00_0m+d_m00_0p);
+          w_m00_pp = 0.5*(mue_000 + !variable_mu_ ? mu_ : mue_p[node_m00_pp])*w_m00*d_m00_m0*d_m00_0m/(d_m00_m0+d_m00_p0)/(d_m00_0m+d_m00_0p);
           w_m00 = w_m00_mm + w_m00_mp + w_m00_pm + w_m00_pp;
         } else {
           w_m00 *= 0.5*(mue_000 + mue_m00);
         }
 
         if(!is_interface_p00 && !is_node_xpWall(p4est_, ni) && setup_matrix) {
-          w_p00_mm = 0.5*(mue_000 + mue_p[node_p00_mm])*w_p00*d_p00_p0*d_p00_0p/(d_p00_m0+d_p00_p0)/(d_p00_0m+d_p00_0p);
-          w_p00_mp = 0.5*(mue_000 + mue_p[node_p00_mp])*w_p00*d_p00_p0*d_p00_0m/(d_p00_m0+d_p00_p0)/(d_p00_0m+d_p00_0p);
-          w_p00_pm = 0.5*(mue_000 + mue_p[node_p00_pm])*w_p00*d_p00_m0*d_p00_0p/(d_p00_m0+d_p00_p0)/(d_p00_0m+d_p00_0p);
-          w_p00_pp = 0.5*(mue_000 + mue_p[node_p00_pp])*w_p00*d_p00_m0*d_p00_0m/(d_p00_m0+d_p00_p0)/(d_p00_0m+d_p00_0p);
+          w_p00_mm = 0.5*(mue_000 + !variable_mu_ ? mu_ : mue_p[node_p00_mm])*w_p00*d_p00_p0*d_p00_0p/(d_p00_m0+d_p00_p0)/(d_p00_0m+d_p00_0p);
+          w_p00_mp = 0.5*(mue_000 + !variable_mu_ ? mu_ : mue_p[node_p00_mp])*w_p00*d_p00_p0*d_p00_0m/(d_p00_m0+d_p00_p0)/(d_p00_0m+d_p00_0p);
+          w_p00_pm = 0.5*(mue_000 + !variable_mu_ ? mu_ : mue_p[node_p00_pm])*w_p00*d_p00_m0*d_p00_0p/(d_p00_m0+d_p00_p0)/(d_p00_0m+d_p00_0p);
+          w_p00_pp = 0.5*(mue_000 + !variable_mu_ ? mu_ : mue_p[node_p00_pp])*w_p00*d_p00_m0*d_p00_0m/(d_p00_m0+d_p00_p0)/(d_p00_0m+d_p00_0p);
           w_p00 = w_p00_mm + w_p00_mp + w_p00_pm + w_p00_pp;
         } else {
           w_p00 *= 0.5*(mue_000 + mue_p00);
         }
 
         if(!is_interface_0m0 && !is_node_ymWall(p4est_, ni) && setup_matrix) {
-          w_0m0_mm = 0.5*(mue_000 + mue_p[node_0m0_mm])*w_0m0*d_0m0_p0*d_0m0_0p/(d_0m0_m0+d_0m0_p0)/(d_0m0_0m+d_0m0_0p);
-          w_0m0_mp = 0.5*(mue_000 + mue_p[node_0m0_mp])*w_0m0*d_0m0_p0*d_0m0_0m/(d_0m0_m0+d_0m0_p0)/(d_0m0_0m+d_0m0_0p);
-          w_0m0_pm = 0.5*(mue_000 + mue_p[node_0m0_pm])*w_0m0*d_0m0_m0*d_0m0_0p/(d_0m0_m0+d_0m0_p0)/(d_0m0_0m+d_0m0_0p);
-          w_0m0_pp = 0.5*(mue_000 + mue_p[node_0m0_pp])*w_0m0*d_0m0_m0*d_0m0_0m/(d_0m0_m0+d_0m0_p0)/(d_0m0_0m+d_0m0_0p);
+          w_0m0_mm = 0.5*(mue_000 + !variable_mu_ ? mu_ : mue_p[node_0m0_mm])*w_0m0*d_0m0_p0*d_0m0_0p/(d_0m0_m0+d_0m0_p0)/(d_0m0_0m+d_0m0_0p);
+          w_0m0_mp = 0.5*(mue_000 + !variable_mu_ ? mu_ : mue_p[node_0m0_mp])*w_0m0*d_0m0_p0*d_0m0_0m/(d_0m0_m0+d_0m0_p0)/(d_0m0_0m+d_0m0_0p);
+          w_0m0_pm = 0.5*(mue_000 + !variable_mu_ ? mu_ : mue_p[node_0m0_pm])*w_0m0*d_0m0_m0*d_0m0_0p/(d_0m0_m0+d_0m0_p0)/(d_0m0_0m+d_0m0_0p);
+          w_0m0_pp = 0.5*(mue_000 + !variable_mu_ ? mu_ : mue_p[node_0m0_pp])*w_0m0*d_0m0_m0*d_0m0_0m/(d_0m0_m0+d_0m0_p0)/(d_0m0_0m+d_0m0_0p);
           w_0m0 = w_0m0_mm + w_0m0_mp + w_0m0_pm + w_0m0_pp;
         } else {
           w_0m0 *= 0.5*(mue_000 + mue_0m0);
         }
 
         if(!is_interface_0p0 && !is_node_ypWall(p4est_, ni) && setup_matrix) {
-          w_0p0_mm = 0.5*(mue_000 + mue_p[node_0p0_mm])*w_0p0*d_0p0_p0*d_0p0_0p/(d_0p0_m0+d_0p0_p0)/(d_0p0_0m+d_0p0_0p);
-          w_0p0_mp = 0.5*(mue_000 + mue_p[node_0p0_mp])*w_0p0*d_0p0_p0*d_0p0_0m/(d_0p0_m0+d_0p0_p0)/(d_0p0_0m+d_0p0_0p);
-          w_0p0_pm = 0.5*(mue_000 + mue_p[node_0p0_pm])*w_0p0*d_0p0_m0*d_0p0_0p/(d_0p0_m0+d_0p0_p0)/(d_0p0_0m+d_0p0_0p);
-          w_0p0_pp = 0.5*(mue_000 + mue_p[node_0p0_pp])*w_0p0*d_0p0_m0*d_0p0_0m/(d_0p0_m0+d_0p0_p0)/(d_0p0_0m+d_0p0_0p);
+          w_0p0_mm = 0.5*(mue_000 + !variable_mu_ ? mu_ : mue_p[node_0p0_mm])*w_0p0*d_0p0_p0*d_0p0_0p/(d_0p0_m0+d_0p0_p0)/(d_0p0_0m+d_0p0_0p);
+          w_0p0_mp = 0.5*(mue_000 + !variable_mu_ ? mu_ : mue_p[node_0p0_mp])*w_0p0*d_0p0_p0*d_0p0_0m/(d_0p0_m0+d_0p0_p0)/(d_0p0_0m+d_0p0_0p);
+          w_0p0_pm = 0.5*(mue_000 + !variable_mu_ ? mu_ : mue_p[node_0p0_pm])*w_0p0*d_0p0_m0*d_0p0_0p/(d_0p0_m0+d_0p0_p0)/(d_0p0_0m+d_0p0_0p);
+          w_0p0_pp = 0.5*(mue_000 + !variable_mu_ ? mu_ : mue_p[node_0p0_pp])*w_0p0*d_0p0_m0*d_0p0_0m/(d_0p0_m0+d_0p0_p0)/(d_0p0_0m+d_0p0_0p);
           w_0p0 = w_0p0_mm + w_0p0_mp + w_0p0_pm + w_0p0_pp;
         } else {
           w_0p0 *= 0.5*(mue_000 + mue_0p0);
         }
 
         if(!is_interface_00m && !is_node_zmWall(p4est_, ni) && setup_matrix) {
-          w_00m_mm = 0.5*(mue_000 + mue_p[node_00m_mm])*w_00m*d_00m_p0*d_00m_0p/(d_00m_m0+d_00m_p0)/(d_00m_0m+d_00m_0p);
-          w_00m_mp = 0.5*(mue_000 + mue_p[node_00m_mp])*w_00m*d_00m_p0*d_00m_0m/(d_00m_m0+d_00m_p0)/(d_00m_0m+d_00m_0p);
-          w_00m_pm = 0.5*(mue_000 + mue_p[node_00m_pm])*w_00m*d_00m_m0*d_00m_0p/(d_00m_m0+d_00m_p0)/(d_00m_0m+d_00m_0p);
-          w_00m_pp = 0.5*(mue_000 + mue_p[node_00m_pp])*w_00m*d_00m_m0*d_00m_0m/(d_00m_m0+d_00m_p0)/(d_00m_0m+d_00m_0p);
+          w_00m_mm = 0.5*(mue_000 + !variable_mu_ ? mu_ : mue_p[node_00m_mm])*w_00m*d_00m_p0*d_00m_0p/(d_00m_m0+d_00m_p0)/(d_00m_0m+d_00m_0p);
+          w_00m_mp = 0.5*(mue_000 + !variable_mu_ ? mu_ : mue_p[node_00m_mp])*w_00m*d_00m_p0*d_00m_0m/(d_00m_m0+d_00m_p0)/(d_00m_0m+d_00m_0p);
+          w_00m_pm = 0.5*(mue_000 + !variable_mu_ ? mu_ : mue_p[node_00m_pm])*w_00m*d_00m_m0*d_00m_0p/(d_00m_m0+d_00m_p0)/(d_00m_0m+d_00m_0p);
+          w_00m_pp = 0.5*(mue_000 + !variable_mu_ ? mu_ : mue_p[node_00m_pp])*w_00m*d_00m_m0*d_00m_0m/(d_00m_m0+d_00m_p0)/(d_00m_0m+d_00m_0p);
           w_00m = w_00m_mm + w_00m_mp + w_00m_pm + w_00m_pp;
         } else {
           w_00m *= 0.5*(mue_000 + mue_00m);
         }
 
         if(!is_interface_00p && !is_node_zpWall(p4est_, ni) && setup_matrix) {
-          w_00p_mm = 0.5*(mue_000 + mue_p[node_00p_mm])*w_00p*d_00p_p0*d_00p_0p/(d_00p_m0+d_00p_p0)/(d_00p_0m+d_00p_0p);
-          w_00p_mp = 0.5*(mue_000 + mue_p[node_00p_mp])*w_00p*d_00p_p0*d_00p_0m/(d_00p_m0+d_00p_p0)/(d_00p_0m+d_00p_0p);
-          w_00p_pm = 0.5*(mue_000 + mue_p[node_00p_pm])*w_00p*d_00p_m0*d_00p_0p/(d_00p_m0+d_00p_p0)/(d_00p_0m+d_00p_0p);
-          w_00p_pp = 0.5*(mue_000 + mue_p[node_00p_pp])*w_00p*d_00p_m0*d_00p_0m/(d_00p_m0+d_00p_p0)/(d_00p_0m+d_00p_0p);
+          w_00p_mm = 0.5*(mue_000 + !variable_mu_ ? mu_ : mue_p[node_00p_mm])*w_00p*d_00p_p0*d_00p_0p/(d_00p_m0+d_00p_p0)/(d_00p_0m+d_00p_0p);
+          w_00p_mp = 0.5*(mue_000 + !variable_mu_ ? mu_ : mue_p[node_00p_mp])*w_00p*d_00p_p0*d_00p_0m/(d_00p_m0+d_00p_p0)/(d_00p_0m+d_00p_0p);
+          w_00p_pm = 0.5*(mue_000 + !variable_mu_ ? mu_ : mue_p[node_00p_pm])*w_00p*d_00p_m0*d_00p_0p/(d_00p_m0+d_00p_p0)/(d_00p_0m+d_00p_0p);
+          w_00p_pp = 0.5*(mue_000 + !variable_mu_ ? mu_ : mue_p[node_00p_pp])*w_00p*d_00p_m0*d_00p_0m/(d_00p_m0+d_00p_p0)/(d_00p_0m+d_00p_0p);
           w_00p = w_00p_mm + w_00p_mp + w_00p_pm + w_00p_pp;
         } else {
           w_00p *= 0.5*(mue_000 + mue_00p);
@@ -1745,32 +1745,32 @@ void my_p4est_poisson_nodes_mls_sc_t::setup_linear_system(bool setup_matrix, boo
         // addition to diagonal elements
         //---------------------------------------------------------------------
         if(!is_interface_m00 && !is_node_xmWall(p4est_, ni) && setup_matrix) {
-          w_m00_mm = 0.5*(mue_000 + mue_p[node_m00_mm])*w_m00*d_m00_p0/(d_m00_m0+d_m00_p0);
-          w_m00_pm = 0.5*(mue_000 + mue_p[node_m00_pm])*w_m00*d_m00_m0/(d_m00_m0+d_m00_p0);
+          w_m00_mm = 0.5*(mue_000 + !variable_mu_ ? mu_ : mue_p[node_m00_mm])*w_m00*d_m00_p0/(d_m00_m0+d_m00_p0);
+          w_m00_pm = 0.5*(mue_000 + !variable_mu_ ? mu_ : mue_p[node_m00_pm])*w_m00*d_m00_m0/(d_m00_m0+d_m00_p0);
           w_m00 = w_m00_mm + w_m00_pm;
         } else {
           w_m00 *= 0.5*(mue_000 + mue_m00);
         }
 
         if(!is_interface_p00 && !is_node_xpWall(p4est_, ni) && setup_matrix) {
-          w_p00_mm = 0.5*(mue_000 + mue_p[node_p00_mm])*w_p00*d_p00_p0/(d_p00_m0+d_p00_p0);
-          w_p00_pm = 0.5*(mue_000 + mue_p[node_p00_pm])*w_p00*d_p00_m0/(d_p00_m0+d_p00_p0);
+          w_p00_mm = 0.5*(mue_000 + !variable_mu_ ? mu_ : mue_p[node_p00_mm])*w_p00*d_p00_p0/(d_p00_m0+d_p00_p0);
+          w_p00_pm = 0.5*(mue_000 + !variable_mu_ ? mu_ : mue_p[node_p00_pm])*w_p00*d_p00_m0/(d_p00_m0+d_p00_p0);
           w_p00    = w_p00_mm + w_p00_pm;
         } else {
           w_p00 *= 0.5*(mue_000 + mue_p00);
         }
 
         if(!is_interface_0m0 && !is_node_ymWall(p4est_, ni) && setup_matrix) {
-          w_0m0_mm = 0.5*(mue_000 + mue_p[node_0m0_mm])*w_0m0*d_0m0_p0/(d_0m0_m0+d_0m0_p0);
-          w_0m0_pm = 0.5*(mue_000 + mue_p[node_0m0_pm])*w_0m0*d_0m0_m0/(d_0m0_m0+d_0m0_p0);
+          w_0m0_mm = 0.5*(mue_000 + !variable_mu_ ? mu_ : mue_p[node_0m0_mm])*w_0m0*d_0m0_p0/(d_0m0_m0+d_0m0_p0);
+          w_0m0_pm = 0.5*(mue_000 + !variable_mu_ ? mu_ : mue_p[node_0m0_pm])*w_0m0*d_0m0_m0/(d_0m0_m0+d_0m0_p0);
           w_0m0 = w_0m0_mm + w_0m0_pm;
         } else {
           w_0m0 *= 0.5*(mue_000 + mue_0m0);
         }
 
         if(!is_interface_0p0 && !is_node_ypWall(p4est_, ni) && setup_matrix) {
-          w_0p0_mm = 0.5*(mue_000 + mue_p[node_0p0_mm])*w_0p0*d_0p0_p0/(d_0p0_m0+d_0p0_p0);
-          w_0p0_pm = 0.5*(mue_000 + mue_p[node_0p0_pm])*w_0p0*d_0p0_m0/(d_0p0_m0+d_0p0_p0);
+          w_0p0_mm = 0.5*(mue_000 + !variable_mu_ ? mu_ : mue_p[node_0p0_mm])*w_0p0*d_0p0_p0/(d_0p0_m0+d_0p0_p0);
+          w_0p0_pm = 0.5*(mue_000 + !variable_mu_ ? mu_ : mue_p[node_0p0_pm])*w_0p0*d_0p0_m0/(d_0p0_m0+d_0p0_p0);
           w_0p0 = w_0p0_mm + w_0p0_pm;
         } else {
           w_0p0 *= 0.5*(mue_000 + mue_0p0);

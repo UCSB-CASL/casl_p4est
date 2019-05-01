@@ -129,10 +129,9 @@ class my_p4est_poisson_nodes_multialloy_t
   // solvers
   my_p4est_poisson_nodes_t *solver_t;
   my_p4est_poisson_nodes_t *solver_c0;
-  my_p4est_poisson_nodes_t *solver_c1;
   my_p4est_poisson_nodes_t *solver_psi_c0;
 
-  my_p4est_poisson_nodes_mls_sc_t *solver_c1_sc;
+  my_p4est_poisson_nodes_mls_sc_t *solver_c1;
 
   bool is_t_matrix_computed_;
   bool is_c1_matrix_computed_;

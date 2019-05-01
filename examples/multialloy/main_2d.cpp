@@ -588,26 +588,6 @@ public:
 } eps_v_cf;
 #endif
 
-#ifdef P4_TO_P8
-  class ZERO : public CF_3
-  {
-  public:
-    double operator()(double, double, double) const
-    {
-      return 0;
-    }
-  } zero_cf;
-#else
-  class ZERO : public CF_2
-  {
-  public:
-    double operator()(double, double) const
-    {
-      return 0;
-    }
-  } zero_cf;
-#endif
-
 
 int main (int argc, char* argv[])
 {

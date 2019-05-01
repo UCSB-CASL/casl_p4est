@@ -75,8 +75,6 @@ my_p4est_poisson_nodes_multialloy_t::my_p4est_poisson_nodes_multialloy_t(my_p4es
   solver_c1     = NULL;
   solver_psi_c0 = NULL;
 
-  solver_c1_sc  = NULL;
-
   is_t_matrix_computed_  = false;
   is_c1_matrix_computed_ = false;
 
@@ -134,7 +132,6 @@ my_p4est_poisson_nodes_multialloy_t::~my_p4est_poisson_nodes_multialloy_t()
   if (solver_c0     != NULL) delete solver_c0;
   if (solver_c1     != NULL) delete solver_c1;
   if (solver_psi_c0 != NULL) delete solver_psi_c0;
-  if (solver_c1_sc  != NULL) delete solver_c1_sc;
 
   if (c0_gamma_.vec != NULL) { ierr = VecDestroy(c0_gamma_.vec); CHKERRXX(ierr); }
   if (c0n_gamma_.vec != NULL) { ierr = VecDestroy(c0n_gamma_.vec); CHKERRXX(ierr); }
@@ -386,35 +383,22 @@ void my_p4est_poisson_nodes_multialloy_t::initialize_solvers()
 #ifdef P4_TO_P8
   phi_zz_vector_.clear(); phi_zz_vector_.push_back(phi_dd_.vec[2]);
 #endif
-  action_.clear(); action_.push_back(INTERSECTION);
-  color_.clear();  color_ .push_back(0);
+//  action_.clear(); action_.push_back(MLS_INTERSECTION);
+//  color_.clear();  color_ .push_back(0);
 
   if (solver_t      != NULL) { delete solver_t      ; }
   if (solver_c0     != NULL) { delete solver_c0     ; }
   if (solver_c1     != NULL) { delete solver_c1     ; }
-  if (solver_c1_sc  != NULL) { delete solver_c1_sc  ; }
   if (solver_psi_c0 != NULL) { delete solver_psi_c0 ; }
 
   solver_t      = new my_p4est_poisson_nodes_t(node_neighbors_);
   solver_c0     = new my_p4est_poisson_nodes_t(node_neighbors_);
   solver_psi_c0 = new my_p4est_poisson_nodes_t(node_neighbors_);
+  solver_c1     = new my_p4est_poisson_nodes_mls_sc_t(node_neighbors_);
 
-  if (use_superconvergent_robin_) solver_c1_sc = new my_p4est_poisson_nodes_mls_sc_t(node_neighbors_);
-  else                            solver_c1    = new my_p4est_poisson_nodes_t(node_neighbors_);
-
-#ifdef P4_TO_P8
-  solver_t->      set_phi(phi_.vec, phi_dd_.vec[0], phi_dd_.vec[1], phi_dd_.vec[2]);
-  solver_c0->     set_phi(phi_.vec, phi_dd_.vec[0], phi_dd_.vec[1], phi_dd_.vec[2]);
-  solver_psi_c0-> set_phi(phi_.vec, phi_dd_.vec[0], phi_dd_.vec[1], phi_dd_.vec[2]);
-  if (use_superconvergent_robin_) solver_c1_sc->  set_geometry(1, &action_, &color_, &phi_vector_, &phi_xx_vector_, &phi_yy_vector_, &phi_zz_vector_);
-  else                            solver_c1->     set_phi(phi_.vec, phi_dd_.vec[0], phi_dd_.vec[1], phi_dd_.vec[2]);
-#else
-  solver_t->      set_phi(phi_.vec, phi_dd_.vec[0], phi_dd_.vec[1]);
-  solver_c0->     set_phi(phi_.vec, phi_dd_.vec[0], phi_dd_.vec[1]);
-  solver_psi_c0-> set_phi(phi_.vec, phi_dd_.vec[0], phi_dd_.vec[1]);
-  if (use_superconvergent_robin_) solver_c1_sc->  set_geometry(1, &action_, &color_, &phi_vector_, &phi_xx_vector_, &phi_yy_vector_);
-  else                            solver_c1->     set_phi(phi_.vec, phi_dd_.vec[0], phi_dd_.vec[1]);
-#endif
+  solver_t->      set_phi(phi_.vec, DIM(phi_dd_.vec[0], phi_dd_.vec[1], phi_dd_.vec[2]));
+  solver_c0->     set_phi(phi_.vec, DIM(phi_dd_.vec[0], phi_dd_.vec[1], phi_dd_.vec[2]));
+  solver_psi_c0-> set_phi(phi_.vec, DIM(phi_dd_.vec[0], phi_dd_.vec[1], phi_dd_.vec[2]));
 
   // t
   solver_t->set_diagonal(1.0);
@@ -448,22 +432,15 @@ void my_p4est_poisson_nodes_multialloy_t::initialize_solvers()
   solver_psi_c0->assemble_matrix(psi_c0_.vec);
 
   // c1
-  if (use_superconvergent_robin_)
-  {
-    solver_c1_sc->set_diag_add(1.);
-    solver_c1_sc->set_mu(Dl1_*dt_);
-    solver_c1_sc->set_use_sc_scheme(true);
-    solver_c1_sc->set_integration_order(2);
-
-    solver_c1_sc->set_use_taylor_correction(1);
-    solver_c1_sc->set_keep_scalling(true);
-    solver_c1_sc->set_kink_treatment(1);
-    solver_c1_sc->set_try_remove_hanging_cells(0);
-  } else {
-    solver_c1->set_diagonal(1.);
-    solver_c1->set_mu(dt_*Dl1_);
-    solver_c1->set_use_refined_cube(use_refined_cube_);
-  }
+  solver_c1->add_boundary(MLS_INTERSECTION, phi_.vec, NULL, phi_dd_.vec, ROBIN, *c1_flux_, c1_robin_coef_);
+  solver_c1->set_diag_add(1.);
+  solver_c1->set_mu(Dl1_*dt_);
+  solver_c1->set_use_sc_scheme(use_superconvergent_robin_);
+  solver_c1->set_integration_order(1);
+  solver_c1->set_use_taylor_correction(1);
+  solver_c1->set_keep_scalling(true);
+  solver_c1->set_kink_treatment(1);
+  solver_c1->set_try_remove_hanging_cells(0);
 
   is_c1_matrix_computed_ = false;
 
@@ -762,73 +739,13 @@ void my_p4est_poisson_nodes_multialloy_t::solve_c1()
 
   vec_and_ptr_t mask;
 
-  if (use_superconvergent_robin_)
-  {
-    std::vector<BoundaryConditionType> interface_type(1, ROBIN);
-#ifdef P4_TO_P8
-    std::vector<CF_3 *>                interface_value(1, c1_flux_);
-    std::vector<CF_3 *>                interface_coeff(1, &c1_robin_coef_);
-#else
-    std::vector<CF_2 *>                interface_value(1, c1_flux_);
-    std::vector<CF_2 *>                interface_coeff(1, &c1_robin_coef_);
-#endif
+  solver_c1->set_wc(bc_c1_.getWallType(), bc_c1_.getWallValue());
+  solver_c1->set_bc(0, ROBIN, *c1_flux_, c1_robin_coef_);
+  solver_c1->set_is_matrix_computed(is_c1_matrix_computed_);
+  solver_c1->set_rhs(rhs_tmp.vec);
+  solver_c1->solve(c1_.vec, use_non_zero_guess_);
 
-//#ifdef P4_TO_P8
-//    solver_c1_sc->set_geometry(1, &action_, &color_, &phi_vector_, &phi_xx_vector_, &phi_yy_vector_, &phi_zz_vector_, NULL, volumes_.vec);
-//#else
-//    solver_c1_sc->set_geometry(1, &action_, &color_, &phi_vector_, &phi_xx_vector_, &phi_yy_vector_, NULL, volumes_.vec);
-//#endif
-
-    solver_c1_sc->set_bc_wall_type(bc_c1_.getWallType());
-    solver_c1_sc->set_bc_wall_value(bc_c1_.getWallValue());
-    solver_c1_sc->set_bc_interface_type(interface_type);
-    solver_c1_sc->set_bc_interface_value(interface_value);
-    solver_c1_sc->set_bc_interface_coeff(interface_coeff);
-    solver_c1_sc->set_is_matrix_computed(is_c1_matrix_computed_);
-    solver_c1_sc->set_rhs(rhs_tmp.vec);
-    solver_c1_sc->solve(c1_.vec, use_non_zero_guess_);
-
-    mask.vec = solver_c1_sc->get_mask();
-
-//    vec_and_ptr_t volumes;
-
-//    volumes.vec = solver_c1_sc->get_volumes();
-
-//    volumes.get_array();
-//    mask.get_array();
-
-//    foreach_node(n, nodes_) if (mask.ptr[n] >= -0.3 || volumes.ptr[n] < volume_thresh_*min_volume_) mask.ptr[n] = 1.;
-
-//    mask.restore_array();
-//    volumes.restore_array();
-
-//    if (volumes_.vec == NULL)
-//    {
-//      Vec volumes_tmp = solver_c1_sc->get_volumes();
-//      ierr = VecDuplicate(phi_.vec, &volumes_.vec); CHKERRXX(ierr);
-//      copy_ghosted_vec(volumes_tmp, volumes_.vec);
-//    }
-
-  } else {
-#ifdef P4_TO_P8
-    BoundaryConditions3D bc_tmp;
-#else
-    BoundaryConditions2D bc_tmp;
-#endif
-
-    bc_tmp.setInterfaceType(ROBIN);
-    bc_tmp.setInterfaceValue(*c1_flux_);
-    bc_tmp.setRobinCoef(c1_robin_coef_);
-    bc_tmp.setWallTypes(bc_c1_.getWallType());
-    bc_tmp.setWallValues(bc_c1_.getWallValue());
-
-    solver_c1->set_bc(bc_tmp);
-    solver_c1->set_is_matrix_computed(is_c1_matrix_computed_);
-    solver_c1->set_rhs(rhs_tmp.vec);
-    solver_c1->solve(c1_.vec, use_non_zero_guess_);
-
-    mask.vec = solver_c1->get_mask();
-  }
+  mask.vec = solver_c1->get_mask();
 
   is_c1_matrix_computed_ = true;
 
@@ -836,10 +753,7 @@ void my_p4est_poisson_nodes_multialloy_t::solve_c1()
   my_p4est_level_set_t ls(node_neighbors_);
   ls.set_use_one_sided_derivaties(use_one_sided_derivatives_);
   ls.set_interpolation_on_interface(quadratic_non_oscillatory_continuous_v2);
-
-//  ls.extend_Over_Interface_TVD(phi_.vec, mask.vec, c1_.vec, 20, 2);
   ls.extend_Over_Interface_TVD_full(phi_.vec, mask.vec, c1_.vec, num_extend_iterations_, 2);
-//  ls.extend_Over_Interface_TVD(phi_.vec, c1_.vec, 20, 2, normal_.vec);
 
   node_neighbors_->second_derivatives_central(c1_.vec, c1_dd_.vec);
 
@@ -862,69 +776,18 @@ void my_p4est_poisson_nodes_multialloy_t::solve_psi_c1()
 
   vec_and_ptr_t mask;
 
-  if (use_superconvergent_robin_)
-  {
-    std::vector<BoundaryConditionType> interface_type(1, ROBIN);
-#ifdef P4_TO_P8
-    std::vector<CF_3 *>                interface_value(1, &psi_c1_interface_value_);
-    std::vector<CF_3 *>                interface_coeff(1, &c1_robin_coef_);
-#else
-    std::vector<CF_2 *>                interface_value(1, &psi_c1_interface_value_);
-    std::vector<CF_2 *>                interface_coeff(1, &c1_robin_coef_);
-#endif
-
-    solver_c1_sc->set_bc_wall_type(bc_c1_.getWallType());
-    solver_c1_sc->set_bc_wall_value(zero_cf_);
-    solver_c1_sc->set_bc_interface_type(interface_type);
-    solver_c1_sc->set_bc_interface_value(interface_value);
-    solver_c1_sc->set_bc_interface_coeff(interface_coeff);
-    solver_c1_sc->set_is_matrix_computed(is_c1_matrix_computed_);
-    solver_c1_sc->set_rhs(rhs_tmp.vec);
-    solver_c1_sc->solve(psi_c1_.vec);
-
-    mask.vec = solver_c1_sc->get_mask();
-
-//    vec_and_ptr_t volumes;
-
-//    volumes.vec = solver_c1_sc->get_volumes();
-
-//    volumes.get_array();
-//    mask.get_array();
-
-//    foreach_node(n, nodes_) if (mask.ptr[n] >= -0.3 || volumes.ptr[n] < volume_thresh_*min_volume_) mask.ptr[n] = 1.;
-
-//    mask.restore_array();
-//    volumes.restore_array();
-
-  } else {
-#ifdef P4_TO_P8
-    BoundaryConditions3D bc_tmp;
-#else
-    BoundaryConditions2D bc_tmp;
-#endif
-
-    bc_tmp.setInterfaceType(ROBIN);
-    bc_tmp.setInterfaceValue(psi_c1_interface_value_);
-    bc_tmp.setRobinCoef(c1_robin_coef_);
-    bc_tmp.setWallTypes(bc_c1_.getWallType());
-    bc_tmp.setWallValues(zero_cf_);
-
-    solver_c1->set_bc(bc_tmp);
-    solver_c1->set_is_matrix_computed(is_c1_matrix_computed_);
-    solver_c1->set_rhs(rhs_tmp.vec);
-    solver_c1->solve(psi_c1_.vec);
-
-    mask.vec = solver_c1->get_mask();
-  }
+  solver_c1->set_wc(bc_c1_.getWallType(), zero_cf_);
+  solver_c1->set_bc(0, ROBIN, psi_c1_interface_value_, c1_robin_coef_);
+  solver_c1->set_is_matrix_computed(is_c1_matrix_computed_);
+  solver_c1->set_rhs(rhs_tmp.vec);
+  solver_c1->solve(psi_c1_.vec);
+  mask.vec = solver_c1->get_mask();
 
   is_c1_matrix_computed_ = true;
 
   my_p4est_level_set_t ls(node_neighbors_);
   ls.set_use_one_sided_derivaties(use_one_sided_derivatives_);
   ls.set_interpolation_on_interface(quadratic_non_oscillatory_continuous_v2);
-
-//  ls.extend_Over_Interface_TVD(phi_.vec, mask.vec, psi_c1_.vec, 20, 2);
-//  ls.extend_Over_Interface_TVD(phi_.vec, psi_c1_.vec, 20, 2, normal_.vec);
   ls.extend_Over_Interface_TVD_full(phi_.vec, phi_.vec, psi_c1_.vec, num_extend_iterations_, 2);
 
   node_neighbors_->second_derivatives_central(psi_c1_.vec, psi_c1_dd_.vec);
@@ -936,118 +799,118 @@ void my_p4est_poisson_nodes_multialloy_t::solve_psi_c1()
 
 
 
-void my_p4est_poisson_nodes_multialloy_t::solve_c0_robin()
-{
-  vec_and_ptr_t rhs_tmp;
-  ierr = VecDuplicate(rhs_c0_.vec, &rhs_tmp.vec); CHKERRXX(ierr);
+//void my_p4est_poisson_nodes_multialloy_t::solve_c0_robin()
+//{
+//  vec_and_ptr_t rhs_tmp;
+//  ierr = VecDuplicate(rhs_c0_.vec, &rhs_tmp.vec); CHKERRXX(ierr);
 
-  rhs_c0_.get_array();
-  rhs_tmp.get_array();
+//  rhs_c0_.get_array();
+//  rhs_tmp.get_array();
 
-  foreach_node(n, nodes_) rhs_tmp.ptr[n] = rhs_c0_.ptr[n];
+//  foreach_node(n, nodes_) rhs_tmp.ptr[n] = rhs_c0_.ptr[n];
 
-  rhs_c0_.restore_array();
-  rhs_tmp.restore_array();
+//  rhs_c0_.restore_array();
+//  rhs_tmp.restore_array();
 
-  if (use_superconvergent_robin_)
-  {
-    my_p4est_poisson_nodes_mls_sc_t solver_c0_sc(node_neighbors_);
+//  if (use_superconvergent_robin_)
+//  {
+//    my_p4est_poisson_nodes_mls_sc_t solver_c0_sc(node_neighbors_);
 
-#ifdef P4_TO_P8
-    solver_c0_sc.set_geometry(1, &action_, &color_, &phi_vector_, &phi_xx_vector_, &phi_yy_vector_, &phi_zz_vector_, NULL, volumes_.vec);
-#else
-    solver_c0_sc.set_geometry(1, &action_, &color_, &phi_vector_, &phi_xx_vector_, &phi_yy_vector_, NULL, volumes_.vec);
-#endif
+//#ifdef P4_TO_P8
+//    solver_c0_sc.set_geometry(1, &action_, &color_, &phi_vector_, &phi_xx_vector_, &phi_yy_vector_, &phi_zz_vector_, NULL, volumes_.vec);
+//#else
+//    solver_c0_sc.set_geometry(1, &action_, &color_, &phi_vector_, &phi_xx_vector_, &phi_yy_vector_, NULL, volumes_.vec);
+//#endif
 
-    solver_c0_sc.set_diag_add(1.);
-    solver_c0_sc.set_mu(Dl0_*dt_);
-    solver_c0_sc.set_use_sc_scheme(true);
-    solver_c0_sc.set_integration_order(2);
-    solver_c0_sc.set_use_taylor_correction(1);
-    solver_c0_sc.set_keep_scalling(true);
-    solver_c0_sc.set_kink_treatment(1);
-    solver_c0_sc.set_try_remove_hanging_cells(0);
+//    solver_c0_sc.set_diag_add(1.);
+//    solver_c0_sc.set_mu(Dl0_*dt_);
+//    solver_c0_sc.set_use_sc_scheme(true);
+//    solver_c0_sc.set_integration_order(2);
+//    solver_c0_sc.set_use_taylor_correction(1);
+//    solver_c0_sc.set_keep_scalling(true);
+//    solver_c0_sc.set_kink_treatment(1);
+//    solver_c0_sc.set_try_remove_hanging_cells(0);
 
-    std::vector<BoundaryConditionType> interface_type(1, ROBIN);
-#ifdef P4_TO_P8
-    std::vector<CF_3 *>                interface_value(1, c0_flux_);
-    std::vector<CF_3 *>                interface_coeff(1, &c0_robin_coef_);
-#else
-    std::vector<CF_2 *>                interface_value(1, c0_flux_);
-    std::vector<CF_2 *>                interface_coeff(1, &c0_robin_coef_);
-#endif
+//    std::vector<BoundaryConditionType> interface_type(1, ROBIN);
+//#ifdef P4_TO_P8
+//    std::vector<CF_3 *>                interface_value(1, c0_flux_);
+//    std::vector<CF_3 *>                interface_coeff(1, &c0_robin_coef_);
+//#else
+//    std::vector<CF_2 *>                interface_value(1, c0_flux_);
+//    std::vector<CF_2 *>                interface_coeff(1, &c0_robin_coef_);
+//#endif
 
-    solver_c0_sc.set_bc_wall_type(bc_c0_.getWallType());
-    solver_c0_sc.set_bc_wall_value(bc_c0_.getWallValue());
-    solver_c0_sc.set_bc_interface_type(interface_type);
-    solver_c0_sc.set_bc_interface_value(interface_value);
-    solver_c0_sc.set_bc_interface_coeff(interface_coeff);
-    solver_c0_sc.set_rhs(rhs_tmp.vec);
-    solver_c0_sc.solve(c0_.vec);
+//    solver_c0_sc.set_bc_wall_type(bc_c0_.getWallType());
+//    solver_c0_sc.set_bc_wall_value(bc_c0_.getWallValue());
+//    solver_c0_sc.set_bc_interface_type(interface_type);
+//    solver_c0_sc.set_bc_interface_value(interface_value);
+//    solver_c0_sc.set_bc_interface_coeff(interface_coeff);
+//    solver_c0_sc.set_rhs(rhs_tmp.vec);
+//    solver_c0_sc.solve(c0_.vec);
 
-    vec_and_ptr_t mask;
-    mask.vec = solver_c0_sc.get_mask();
+//    vec_and_ptr_t mask;
+//    mask.vec = solver_c0_sc.get_mask();
 
-//    vec_and_ptr_t volumes;
+////    vec_and_ptr_t volumes;
 
-//    volumes.vec = solver_c0_sc.get_volumes();
+////    volumes.vec = solver_c0_sc.get_volumes();
 
-//    volumes.get_array();
-//    mask.get_array();
+////    volumes.get_array();
+////    mask.get_array();
 
-//    foreach_node(n, nodes_) if (mask.ptr[n] >= -0.3 || volumes.ptr[n] < volume_thresh_*min_volume_) mask.ptr[n] = 1.;
+////    foreach_node(n, nodes_) if (mask.ptr[n] >= -0.3 || volumes.ptr[n] < volume_thresh_*min_volume_) mask.ptr[n] = 1.;
 
-//    mask.restore_array();
-//    volumes.restore_array();
+////    mask.restore_array();
+////    volumes.restore_array();
 
-    my_p4est_level_set_t ls(node_neighbors_);
-    ls.set_use_one_sided_derivaties(use_one_sided_derivatives_);
-    ls.set_interpolation_on_interface(quadratic_non_oscillatory_continuous_v2);
+//    my_p4est_level_set_t ls(node_neighbors_);
+//    ls.set_use_one_sided_derivaties(use_one_sided_derivatives_);
+//    ls.set_interpolation_on_interface(quadratic_non_oscillatory_continuous_v2);
 
-//    ls.extend_Over_Interface_TVD(phi_.vec, mask.vec, c0_.vec, 100, 2);
-    ls.extend_Over_Interface_TVD_full(phi_.vec, mask.vec, c0_.vec, num_extend_iterations_, 2);
-
-
-  } else {
-#ifdef P4_TO_P8
-    BoundaryConditions3D bc_tmp;
-#else
-    BoundaryConditions2D bc_tmp;
-#endif
-
-    bc_tmp.setInterfaceType(ROBIN);
-    bc_tmp.setInterfaceValue(*c0_flux_);
-    bc_tmp.setRobinCoef(c0_robin_coef_);
-    bc_tmp.setWallTypes(bc_c0_.getWallType());
-    bc_tmp.setWallValues(bc_c0_.getWallValue());
+////    ls.extend_Over_Interface_TVD(phi_.vec, mask.vec, c0_.vec, 100, 2);
+//    ls.extend_Over_Interface_TVD_full(phi_.vec, mask.vec, c0_.vec, num_extend_iterations_, 2);
 
 
-    // solve for c0 using Robin BC
-    my_p4est_poisson_nodes_t solver_c0_robin(node_neighbors_);
-#ifdef P4_TO_P8
-    solver_c0_robin.set_phi(phi_.vec, phi_dd_.vec[0], phi_dd_.vec[1], phi_dd_.vec[2]);
-#else
-    solver_c0_robin.set_phi(phi_.vec, phi_dd_.vec[0], phi_dd_.vec[1]);
-#endif
-    solver_c0_robin.set_diagonal(1.);
-    solver_c0_robin.set_mu(dt_*Dl0_);
-    solver_c0_robin.set_use_refined_cube(use_refined_cube_);
-    solver_c0_robin.set_bc(bc_tmp);
-    solver_c0_robin.set_rhs(rhs_tmp.vec);
-    solver_c0_robin.solve(c0_.vec);
+//  } else {
+//#ifdef P4_TO_P8
+//    BoundaryConditions3D bc_tmp;
+//#else
+//    BoundaryConditions2D bc_tmp;
+//#endif
 
-    Vec mask = solver_c0->get_mask();
+//    bc_tmp.setInterfaceType(ROBIN);
+//    bc_tmp.setInterfaceValue(*c0_flux_);
+//    bc_tmp.setRobinCoef(c0_robin_coef_);
+//    bc_tmp.setWallTypes(bc_c0_.getWallType());
+//    bc_tmp.setWallValues(bc_c0_.getWallValue());
 
-    my_p4est_level_set_t ls(node_neighbors_);
-    ls.set_use_one_sided_derivaties(use_one_sided_derivatives_);
-    ls.set_interpolation_on_interface(quadratic_non_oscillatory_continuous_v2);
 
-//    ls.extend_Over_Interface_TVD(phi_.vec, mask, c0_.vec, 100, 2);
-    ls.extend_Over_Interface_TVD_full(phi_.vec, mask, c0_.vec, num_extend_iterations_, 2);
-  }
+//    // solve for c0 using Robin BC
+//    my_p4est_poisson_nodes_t solver_c0_robin(node_neighbors_);
+//#ifdef P4_TO_P8
+//    solver_c0_robin.set_phi(phi_.vec, phi_dd_.vec[0], phi_dd_.vec[1], phi_dd_.vec[2]);
+//#else
+//    solver_c0_robin.set_phi(phi_.vec, phi_dd_.vec[0], phi_dd_.vec[1]);
+//#endif
+//    solver_c0_robin.set_diagonal(1.);
+//    solver_c0_robin.set_mu(dt_*Dl0_);
+//    solver_c0_robin.set_use_refined_cube(use_refined_cube_);
+//    solver_c0_robin.set_bc(bc_tmp);
+//    solver_c0_robin.set_rhs(rhs_tmp.vec);
+//    solver_c0_robin.solve(c0_.vec);
 
-  ierr = VecDestroy(rhs_tmp.vec); CHKERRXX(ierr);
-}
+//    Vec mask = solver_c0->get_mask();
+
+//    my_p4est_level_set_t ls(node_neighbors_);
+//    ls.set_use_one_sided_derivaties(use_one_sided_derivatives_);
+//    ls.set_interpolation_on_interface(quadratic_non_oscillatory_continuous_v2);
+
+////    ls.extend_Over_Interface_TVD(phi_.vec, mask, c0_.vec, 100, 2);
+//    ls.extend_Over_Interface_TVD_full(phi_.vec, mask, c0_.vec, num_extend_iterations_, 2);
+//  }
+
+//  ierr = VecDestroy(rhs_tmp.vec); CHKERRXX(ierr);
+//}
 
 
 
