@@ -1920,16 +1920,6 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
                 ngbd.resize(0);
                 ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, 0, 0, 1);
                 P4EST_ASSERT((ngbd.size()==1) && (ngbd[0].level == quad->level)); // must have a uniform tesselation with maximum refinement
-                if(!((ngbd.size()==1) && (ngbd[0].level == quad->level)))
-                {
-                  std::cerr << "ngbd.size() = " << ngbd.size() << std::endl;
-                  std::cerr << "ngbd[0].lveel = " << (int) ngbd[0].level << " while quad.level = " << (int) quad->level << std::endl;
-                  std::cerr << "area between control volumes = " << s_00p << std::endl;
-                  std::cerr << "location of the face of interest: x = " << xyz[0] << ", y = " << xyz[1] << ", z = " << xyz[2] << std::endl;
-                  std::cerr << "the face has direction " << dir << std::endl;
-                  for (size_t k = 0; k < ngbd.size(); ++k)
-                    std::cerr << "neighbor " << k << " has local num" << ngbd[k].p.piggy3.local_num << " on proc " << p4est->mpirank << std::endl;
-                }
                 if(quad_idx==qm_idx)
                 {
                   P4EST_ASSERT(faces->q2f(ngbd[0].p.piggy3.local_num, dir_p) != NO_VELOCITY);
