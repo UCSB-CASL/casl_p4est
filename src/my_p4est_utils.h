@@ -102,7 +102,8 @@ enum {
   WALL_0p0 = -4,
   WALL_00m = -5,
   WALL_00p = -6,
-  INTERFACE = -7
+  INTERFACE = -7,
+  WALL_parallel_to_face = -8 // to allow for Dirichlet wall boundary conditions on the face_solver even with rectangular grids
 };
 
 typedef enum {

@@ -1169,7 +1169,7 @@ void my_p4est_navier_stokes_t::solve_viscosity(my_p4est_poisson_faces_t* &face_p
   {
     face_poisson_solver = new my_p4est_poisson_faces_t(faces_n, ngbd_n);
     face_poisson_solver->set_phi(phi);
-    face_poisson_solver->set_bc(bc_v, dxyz_hodge, face_is_well_defined);
+    face_poisson_solver->set_bc(bc_v, dxyz_hodge, face_is_well_defined, &bc_hodge);
 // [Raphael:] I decided to deactivate this, I don't see why it was done like this in the
 // first place except for avoiding memory issues perhaps but that would be surprising, imo...
 //#if defined(COMET) || defined(STAMPEDE) || defined(POD_CLUSTER)

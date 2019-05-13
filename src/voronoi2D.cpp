@@ -67,13 +67,10 @@ void Voronoi2D::set_level_set_values( vector<double>& phi_values, double phi_c )
 void Voronoi2D::push( int n, double x, double y, const bool* periodicity, const double* xyz_min, const double* xyz_max)
 {
   for(unsigned int m=0; m<nb_seeds.size(); m++)
-  {
     if(nb_seeds[m].n == n)
-    {
       return;
-    }
-  }
-
+  /* note: technically wrong if one wants to add TWO WALL_parallel_to_face points, but that can happen only
+   * if the grid is VERY coarse in theory, so I do not check for it... [Raphael] */
 
   ngbd2Dseed p;
   p.n     = n;
