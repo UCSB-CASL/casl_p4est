@@ -2082,7 +2082,6 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
           {
             bool positive = ((dir==dir::x)? ((*points)[m].p.x > xyz[0]):((dir==dir::y)? ((*points)[m].p.y > xyz[1]): ((*points)[m].p.z > xyz[2])));
             rhs_p[f_idx] += mu*s*(bc[dir].wallValue((*points)[m].p.x, (*points)[m].p.y, (*points)[m].p.z) + (positive?+1.0:-1.0)*bc_hodge->wallValue((*points)[m].p.x, (*points)[m].p.y, (*points)[m].p.z)) / d;
-            std::cout << "Here you are: you got it, dude!" << std::endl;
           }
           else
           {
