@@ -762,7 +762,7 @@ int main (int argc, char* argv[])
   // method-related parameters
   cmd.add_option("sl_order", "the order for the semi lagrangian, either 1 (stable) or 2 (accurate), default is 2");
   cmd.add_option("cfl", "dt = cfl * dx/vmax, default is 1.00");
-  cmd.add_option("Ub_tol", "relative numerical tolerance on the bulk velocity to be set (is restart and Re_b set), default is 1e-3");
+  cmd.add_option("Ub_tol", "relative numerical tolerance on the bulk velocity to be set (if restart and Re_b set), default is 1e-3");
   cmd.add_option("hodge_tol", "absolute numerical tolerance on the Hodge variable, at all time steps, default is 1e-3");
   cmd.add_option("niter_hodge", "max number of iterations for convergence of the Hodge variable, at all time steps, default is 10");
   cmd.add_option("grid_update", "number of time steps between grid updates, default is 1");
