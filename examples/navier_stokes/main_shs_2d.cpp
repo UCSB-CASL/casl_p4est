@@ -1629,8 +1629,8 @@ int main (int argc, char* argv[])
                    #endif
                          ); CHKERRXX(ierr);}
     else{
-      ierr = PetscPrintf(mpi.comm(), "Iteration #%04d : pressure gradient is currently negative\n", iter); CHKERRXX(ierr);
-      ierr = PetscPrintf(mpi.comm(), "Iteration #%04d : tn = %.5e, percent done : %.1f%%, \t max_L2_norm_u = %.5e, \t number of leaves = %d, \t dp_dx = %.2f, \t Re_b = %.2f\n",
+      ierr = PetscPrintf(mpi.comm(), "Iteration #%04d : driving bulk force is currently negative\n", iter); CHKERRXX(ierr);
+      ierr = PetscPrintf(mpi.comm(), "Iteration #%04d : tn = %.5e, percent done : %.1f%%, \t max_L2_norm_u = %.5e, \t number of leaves = %d, \t f_x = %.2f, \t Re_b = %.2f\n",
                          iter, tn, 100*(tn - tstart)/duration, ns->get_max_L2_norm_u(), ns->get_p4est()->global_num_quadrants,
                          external_force_u.get_value(),
                    #ifdef P4_TO_P8
