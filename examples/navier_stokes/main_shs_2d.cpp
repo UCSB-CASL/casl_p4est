@@ -1281,9 +1281,9 @@ int main (int argc, char* argv[])
     // set the first time step: kinda arbitrary, don't really know what else I could do. I believe an inverse power of Re_tau should be used here instead...
     double min_dxyz[P4EST_DIM]; dxyz_min(p4est_n, min_dxyz);
 #ifdef P4_TO_P8
-    dt = MIN(min_dxyz[0], min_dxyz[1], min_dxyz[2])/Re_tau(external_force_u, ns->get_rho(), ns->get_mu());
+    dt = MIN(min_dxyz[0], min_dxyz[1], min_dxyz[2])/Re_tau(external_force_u, ns->get_rho(), ns->get_mu()); // no problem using Re_tau() here, external_force_u returns 1.0 by default, by solver's initialization
 #else
-    dt = MIN(min_dxyz[0], min_dxyz[1])/Re_tau(external_force_u, ns->get_rho(), ns->get_mu());
+    dt = MIN(min_dxyz[0], min_dxyz[1])/Re_tau(external_force_u, ns->get_rho(), ns->get_mu()); // no problem using Re_tau() here, external_force_u returns 1.0 by default, by solver's initialization
 #endif
     ns->set_dt(dt, dt);
 
@@ -1375,7 +1375,7 @@ int main (int argc, char* argv[])
     initialize_drag_force_output(file_drag, out_dir, lmin, lmax, threshold_split_cell, cfl, sl_order, mpi, tstart);
   // initialize sections and mass flows through sections
   double section = -0.5*length;
-  double mass_flow;
+  double mass_flow = -1.0;
   initialize_monitoring(file_monitoring, out_dir, ns->get_brick()->nxyztrees[1], lmin, lmax, threshold_split_cell, cfl, sl_order, mpi, tstart);
 
   sprintf(profile_path, "%s/profiles", out_dir);
@@ -1422,10 +1422,19 @@ int main (int argc, char* argv[])
       substep_watch.start("");
     if(iter>0)
     {
+      if(mass_flow < 0.0)
+        std::runtime_error("main_shs_*d: something went wrong, the mass flow should be strictly positive and known to the solver at this stage...");
+      // let's use 10% of the current average velocity for the min value considered for u_max in evaluating dt
+      // (kinda arbitrary, but this parameter is not really relevant, we just want to avoid crazy big time step due to flow currently at rest or pretty much)
+#ifdef P4_TO_P8
+      double min_value_considered_for_umax = 0.1*mass_flow/(ns->get_height_of_domain()*ns->get_width_of_domain());
+#else
+      double min_value_considered_for_umax = 0.1*mass_flow/ns->get_height_of_domain();
+#endif
       if(use_adapted_dt)
-        ns->compute_adapted_dt(0.1*2.0*Re_tau(external_force_u, ns->get_rho(), ns->get_mu())/(((double) n_xyz[1])*pow(2.0, lmax))); // 0.1*y^{+}_min (assuming full resolution of viscous sublayer in regular channel), (assuming u_tau = y^{+} as in canonical channel flows)
+        ns->compute_adapted_dt(min_value_considered_for_umax);
       else
-        ns->compute_dt(0.1*2.0*Re_tau(external_force_u, ns->get_rho(), ns->get_mu())/(((double) n_xyz[1])*pow(2.0, lmax))); // 0.1*y^{+}_min (assuming full resolution of viscous sublayer in regular channel), (assuming u_tau = y^{+} as in canonical channel flows)
+        ns->compute_dt(min_value_considered_for_umax);
       dt = ns->get_dt();
 
       if(tn+dt>tstart+duration)
@@ -1535,10 +1544,16 @@ int main (int argc, char* argv[])
       if(fp_monitor==NULL)
 #ifdef P4_TO_P8
         throw std::runtime_error("main_shs_3d: could not open monitoring file.");
-      fprintf(fp_monitor, "%g %g %g\n", tn, Re_tau(external_force_u, ns->get_rho(), ns->get_mu()), Re_b(mass_flow, ns->get_width_of_domain(), ns->get_rho(), ns->get_mu()));
+      if(external_force_u.get_value() > 0.0)
+        fprintf(fp_monitor, "%g %g %g\n", tn, Re_tau(external_force_u, ns->get_rho(), ns->get_mu()),  Re_b(mass_flow, ns->get_width_of_domain(), ns->get_rho(), ns->get_mu()));
+      else
+        fprintf(fp_monitor, "%g %g %g\n", tn, -1.0,                                                   Re_b(mass_flow, ns->get_width_of_domain(), ns->get_rho(), ns->get_mu()));
 #else
         throw std::runtime_error("main_shs_2d: could not open monitoring file.");
-      fprintf(fp_monitor, "%g %g %g\n", tn, Re_tau(external_force_u, ns->get_rho(), ns->get_mu()), Re_b(mass_flow, 1.0, ns->get_rho(), ns->get_mu()));
+      if(external_force_u.get_value() > 0.0)
+        fprintf(fp_monitor, "%g %g %g\n", tn, Re_tau(external_force_u, ns->get_rho(), ns->get_mu()),  Re_b(mass_flow, 1.0,                       ns->get_rho(), ns->get_mu()));
+      else
+        fprintf(fp_monitor, "%g %g %g\n", tn, -1.0,                                                   Re_b(mass_flow, 1.0,                       ns->get_rho(), ns->get_mu()));
 #endif
       fclose(fp_monitor);
     }
@@ -1603,13 +1618,27 @@ int main (int argc, char* argv[])
       }
     }
 
-    ierr = PetscPrintf(mpi.comm(), "Iteration #%04d : tn = %.5e, percent done : %.1f%%, \t max_L2_norm_u = %.5e, \t number of leaves = %d, \t Re_tau = %.2f, \t Re_b = %.2f\n", iter, tn, 100*(tn - tstart)/duration, ns->get_max_L2_norm_u(), ns->get_p4est()->global_num_quadrants, Re_tau(external_force_u, ns->get_rho(), ns->get_mu())
+    if(external_force_u.get_value() > 0.0){
+      ierr = PetscPrintf(mpi.comm(), "Iteration #%04d : tn = %.5e, percent done : %.1f%%, \t max_L2_norm_u = %.5e, \t number of leaves = %d, \t Re_tau = %.2f, \t Re_b = %.2f\n",
+                         iter, tn, 100*(tn - tstart)/duration, ns->get_max_L2_norm_u(), ns->get_p4est()->global_num_quadrants,
+                         Re_tau(external_force_u, ns->get_rho(), ns->get_mu()),
                    #ifdef P4_TO_P8
-                       , Re_b(mass_flow, ns->get_width_of_domain(), ns->get_rho(), ns->get_mu())
+                         Re_b(mass_flow, ns->get_width_of_domain(), ns->get_rho(), ns->get_mu())
                    #else
-                       , Re_b(mass_flow, 1.0, ns->get_rho(), ns->get_mu())
+                         Re_b(mass_flow, 1.0,                       ns->get_rho(), ns->get_mu())
                    #endif
-                       ); CHKERRXX(ierr);
+                         ); CHKERRXX(ierr);}
+    else{
+      ierr = PetscPrintf(mpi.comm(), "Iteration #%04d : pressure gradient is currently negative\n", iter); CHKERRXX(ierr);
+      ierr = PetscPrintf(mpi.comm(), "Iteration #%04d : tn = %.5e, percent done : %.1f%%, \t max_L2_norm_u = %.5e, \t number of leaves = %d, \t dp_dx = %.2f, \t Re_b = %.2f\n",
+                         iter, tn, 100*(tn - tstart)/duration, ns->get_max_L2_norm_u(), ns->get_p4est()->global_num_quadrants,
+                         external_force_u.get_value(),
+                   #ifdef P4_TO_P8
+                         Re_b(mass_flow, ns->get_width_of_domain(), ns->get_rho(), ns->get_mu())
+                   #else
+                         Re_b(mass_flow, 1.0,                       ns->get_rho(), ns->get_mu())
+                   #endif
+                         ); CHKERRXX(ierr);}
 
     if(ns->get_max_L2_norm_u()>5.0*(force_mass_flow[0]? desired_bulk_velocity[0] : Re_tau(external_force_u, ns->get_rho(), ns->get_mu())*sqrt(external_force_u.get_value()*1.0))) // delta = 1.0
     {
