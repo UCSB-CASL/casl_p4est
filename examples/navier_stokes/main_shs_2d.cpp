@@ -755,7 +755,7 @@ int main (int argc, char* argv[])
 #endif
   cmd.add_option("duration", "the duration of the simulation (tfinal-tstart). If not restarted, tstart = 0.0, default duration is 200.0.");
   cmd.add_option("Re_tau", "Reynolds number based on the wall-shear velocity and half the channel height, i.e. Re_tau = u_tau*delta/nu where u_tau = sqrt(-dp_dx*delta/rho), default is 180.0");
-  cmd.add_option("Re_b", "Reynolds number, based on the mean (bulk) velocity and half the channel height, i.e. Re_b   = U_b*delta/nu, default is 4200.0. Can be used exclusively in case of restart and without Re_tau");
+  cmd.add_option("Re_b", "Reynolds number, based on the mean (bulk) velocity and half the channel height, i.e. Re_b   = U_b*delta/nu, no default value. Can be used exclusively in case of restart and without Re_tau");
   cmd.add_option("pitch_to_delta", "P/delta ratio, default = 0.375");
   cmd.add_option("GF", "gas fraction, default is 0.5");
   cmd.add_option("adapted_dt", "activates the calculation of dt based on the local cell sizes if present");
