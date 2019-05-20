@@ -1655,7 +1655,7 @@ int main (int argc, char* argv[])
     {
       export_vtk = ((int) floor(tn/vtk_dt));
       sprintf(vtk_name, "%s/snapshot_%d", vtk_path, export_vtk);
-      ns->save_vtk(vtk_name);
+      ns->save_vtk(vtk_name, true);
     }
     iter++;
   }

@@ -180,6 +180,7 @@ protected:
   void compute_max_L2_norm_u();
 
   void compute_vorticity();
+  void compute_Q_value(Vec& Q_value_nodes) const;
 
   void compute_norm_grad_v();
 
@@ -417,7 +418,7 @@ public:
 
   void compute_forces(double *f);
 
-  void save_vtk(const char* name);
+  void save_vtk(const char* name, bool with_Q_value = false);
 
   /*!
    * \brief calculates the mass flow through a slice in Cartesian direction in the computational domain. The slice must coincide with
