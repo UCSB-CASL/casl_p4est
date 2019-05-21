@@ -730,6 +730,50 @@ double Re_b(const double& mass_flow, const double &width, const double& rho, con
   return rho*mass_flow*1.0/(mu*2.0*width); // delta = 1.0 --> height = 2.0
 }
 
+#ifdef P4_TO_P8
+void check_accuracy_of_solution(my_p4est_navier_stokes_t* ns, const external_force_u_t& force_per_unit_mass_x, const double& pitch, const double& GF, const bool spanwise, double my_errors[])
+#else
+void check_accuracy_of_solution(my_p4est_navier_stokes_t* ns, const external_force_u_t& force_per_unit_mass_x, const double& pitch, const double& GF, double my_errors[])
+#endif
+{
+  const double rho        = ns->get_rho();
+  const double mu         = ns->get_mu();
+  const double length     = ns->get_length_of_domain();
+  const double height     = ns->get_height_of_domain();
+#ifdef P4_TO_P8
+  const double width      = ns->get_width_of_domain();
+#endif
+  const double abs_dp_dx  = force_per_unit_mass_x.get_value();
+  double my_infty_norm_error_u = 0.0;
+  double my_infty_norm_error_v = 0.0;
+#ifdef P4_TO_P8
+  double my_infty_norm_error_w = 0.0;
+#endif
+  // calculate the face errors here;
+
+  my_errors[0] = my_infty_norm_error_u;
+  my_errors[1] = my_infty_norm_error_v;
+#ifdef P4_TO_P8
+  my_errors[2] = my_infty_norm_error_w;
+#endif
+
+  my_infty_norm_error_u = 0.0;
+  my_infty_norm_error_v = 0.0;
+#ifdef P4_TO_P8
+  my_infty_norm_error_w = 0.0;
+#endif
+  // calculate the node errors here;
+
+
+  my_errors[P4EST_DIM+0] = my_infty_norm_error_u;
+  my_errors[P4EST_DIM+1] = my_infty_norm_error_v;
+#ifdef P4_TO_P8
+  my_errors[P4EST_DIM+2] = my_infty_norm_error_w;
+#endif
+  int mpiret = MPI_Allreduce(MPI_IN_PLACE, my_errors, 2*P4EST_DIM, MPI_DOUBLE, MPI_MAX, ns->get_p4est()->mpicomm); SC_CHECK_MPI(mpiret);
+}
+
+
 int main (int argc, char* argv[])
 {
   mpi_environment_t mpi;
@@ -783,6 +827,7 @@ int main (int argc, char* argv[])
   cmd.add_option("save_mean_profiles", "computes and saves averaged streamwise-velocity profiles (makes sense only if the flow is fully-developed)");
   cmd.add_option("tstart_average", "starting time for computing the average velocity profile (default is 100.0)");
   cmd.add_option("timing", "if defined, prints timing information (typically for scaling analysis).");
+  cmd.add_option("accuracy_check", "if defined, prints information about accuracy with comparison to analytical solution (ONLY if restart after steady-state reached and with Re_tau enforced).");
 
 
   // --> extra info to be printed when -help is invoked
@@ -887,6 +932,7 @@ int main (int argc, char* argv[])
 #endif
   }
   const bool save_drag                  = cmd.contains("save_drag"); double drag[P4EST_DIM];
+  const bool do_accuracy_check          = cmd.contains("accuracy_check") && cmd.contains("restart") && cmd.contains("Re_tau"); double my_accuracy_check_errors[2*P4EST_DIM];
   const bool save_state                 = cmd.contains("save_state_dt"); double dt_save_data = -1.0;
   const unsigned int n_states           = cmd.get<unsigned int>("save_nstates", 1);
   if(save_state)
@@ -1416,7 +1462,8 @@ int main (int argc, char* argv[])
   my_p4est_poisson_cells_t* cell_solver = NULL;
   my_p4est_poisson_faces_t* face_solver = NULL;
 
-  while(tn+0.01*dt<tstart+duration)
+  bool accuracy_check_done = false;
+  while(tn+0.01*dt<tstart+duration && !accuracy_check_done)
   {
     if(get_timing)
       substep_watch.start("");
@@ -1656,6 +1703,26 @@ int main (int argc, char* argv[])
       export_vtk = ((int) floor(tn/vtk_dt));
       sprintf(vtk_name, "%s/snapshot_%d", vtk_path, export_vtk);
       ns->save_vtk(vtk_name, true);
+    }
+
+    if(do_accuracy_check)
+    {
+#ifdef P4_TO_P8
+      check_accuracy_of_solution(ns, external_force_u, pitch_to_delta, gas_fraction, spanwise, my_accuracy_check_errors);
+#else
+      check_accuracy_of_solution(ns, external_force_u, pitch_to_delta, gas_fraction, my_accuracy_check_errors);
+#endif
+      ierr = PetscPrintf(mpi.comm(), "The face-error on u is %.8f\n", my_accuracy_check_errors[0]); CHKERRXX(ierr);
+      ierr = PetscPrintf(mpi.comm(), "The face-error on v is %.8f\n", my_accuracy_check_errors[1]); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+      ierr = PetscPrintf(mpi.comm(), "The face-error on w is %.8f\n", my_accuracy_check_errors[2]); CHKERRXX(ierr);
+#endif
+      ierr = PetscPrintf(mpi.comm(), "The node-error on u is %.8f\n", my_accuracy_check_errors[P4EST_DIM+0]); CHKERRXX(ierr);
+      ierr = PetscPrintf(mpi.comm(), "The node-error on v is %.8f\n", my_accuracy_check_errors[P4EST_DIM+1]); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+      ierr = PetscPrintf(mpi.comm(), "The node-error on w is %.8f\n", my_accuracy_check_errors[P4EST_DIM+2]); CHKERRXX(ierr);
+#endif
+      accuracy_check_done = true;
     }
     iter++;
   }
