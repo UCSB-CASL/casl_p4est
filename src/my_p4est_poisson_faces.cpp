@@ -36,7 +36,7 @@ using std::vector;
 
 my_p4est_poisson_faces_t::my_p4est_poisson_faces_t(const my_p4est_faces_t *faces, const my_p4est_node_neighbors_t *ngbd_n)
   : faces(faces), p4est(faces->p4est), ngbd_c(faces->ngbd_c), ngbd_n(ngbd_n), interp_phi(ngbd_n),
-    phi(NULL), apply_hodge_second_derivative_if_neumann(false), bc(NULL), dxyz_hodge(NULL)
+    phi(NULL), apply_hodge_second_derivative_if_neumann(false), bc(NULL), bc_hodge(NULL), dxyz_hodge(NULL)
 {
   PetscErrorCode ierr;
 
@@ -194,12 +194,13 @@ void my_p4est_poisson_faces_t::set_mu(double mu)
 }
 
 #ifdef P4_TO_P8
-void my_p4est_poisson_faces_t::set_bc(const BoundaryConditions3D *bc, Vec *dxyz_hodge, Vec *face_is_well_defined)
+void my_p4est_poisson_faces_t::set_bc(const BoundaryConditions3D *bc, Vec *dxyz_hodge, Vec *face_is_well_defined, const BoundaryConditions3D *bc_hodge_)
 #else
-void my_p4est_poisson_faces_t::set_bc(const BoundaryConditions2D *bc, Vec *dxyz_hodge, Vec *face_is_well_defined)
+void my_p4est_poisson_faces_t::set_bc(const BoundaryConditions2D *bc, Vec *dxyz_hodge, Vec *face_is_well_defined, const BoundaryConditions2D *bc_hodge_)
 #endif
 {
   this->bc = bc;
+  this->bc_hodge = bc_hodge_;
   this->dxyz_hodge = dxyz_hodge;
   this->face_is_well_defined = face_is_well_defined;
   for (short dim = 0; dim < P4EST_DIM; ++dim) {
@@ -767,36 +768,89 @@ void my_p4est_poisson_faces_t::compute_voronoi_cell(p4est_locidx_t f_idx, int di
     {
       p4est_locidx_t q_tmp = ngbd[m].p.piggy3.local_num;
       p4est_locidx_t f_tmp = faces->q2f(q_tmp, dir_m);
+      double xyz_tmp[P4EST_DIM];
       if(f_tmp!=NO_VELOCITY && f_tmp!=f_idx)
       {
+        faces->xyz_fr_f(f_tmp, dir, xyz_tmp);
 #ifdef P4_TO_P8
-        voro_tmp.push(f_tmp, faces->x_fr_f(f_tmp, dir), faces->y_fr_f(f_tmp, dir), faces->z_fr_f(f_tmp, dir), periodic, xyz_min, xyz_max);
+        voro_tmp.push(f_tmp, xyz_tmp[0], xyz_tmp[1], xyz_tmp[2], periodic, xyz_min, xyz_max);
 #else
-        voro_tmp.push(f_tmp, faces->x_fr_f(f_tmp, dir), faces->y_fr_f(f_tmp, dir), periodic, xyz_min, xyz_max);
+        voro_tmp.push(f_tmp, xyz_tmp[0], xyz_tmp[1], periodic, xyz_min, xyz_max);
 #endif
       }
 
       f_tmp = faces->q2f(q_tmp, dir_p);
       if(f_tmp!=NO_VELOCITY && f_tmp!=f_idx)
       {
+        faces->xyz_fr_f(f_tmp, dir, xyz_tmp);
 #ifdef P4_TO_P8
-        voro_tmp.push(f_tmp, faces->x_fr_f(f_tmp, dir), faces->y_fr_f(f_tmp, dir), faces->z_fr_f(f_tmp, dir), periodic, xyz_min, xyz_max);
+        voro_tmp.push(f_tmp, xyz_tmp[0], xyz_tmp[1], xyz_tmp[2], periodic, xyz_min, xyz_max);
 #else
-        voro_tmp.push(f_tmp, faces->x_fr_f(f_tmp, dir), faces->y_fr_f(f_tmp, dir), periodic, xyz_min, xyz_max);
+        voro_tmp.push(f_tmp, xyz_tmp[0], xyz_tmp[1], periodic, xyz_min, xyz_max);
 #endif
       }
+
     }
 
 #ifdef P4_TO_P8
-//    p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
-//    double xyz_max[0]_ = p4est->connectivity->vertices[3*vp + 0];
-//    double xyz_max[1]_ = p4est->connectivity->vertices[3*vp + 1];
-//    double xyz_max[2]_ = p4est->connectivity->vertices[3*vp + 2];
     voro_tmp.construct_partition(xyz_min, xyz_max, periodic);
 #else
     voro_tmp.construct_partition();
     voro_tmp.compute_volume();
 #endif
+
+    // in case of very stretched grids, problems might occur at the boundaries
+#ifdef P4_TO_P8
+    const bool might_need_more_care = !is_periodic(p4est, dir) && ((dir==dir::x)? (MIN(dx/dy, dx/dz)  < sqrt(3.0)/4.0): ((dir==dir::y)? (MIN(dy/dx, dy/dz)  < sqrt(3.0)/4.0): (MIN(dz/dx, dz/dy) < sqrt(3.0)/4.0)));
+#else
+    const bool might_need_more_care = !is_periodic(p4est, dir) && ((dir==dir::x)? (dx/dy              < sqrt(3.0)/4.0): (dy/dx                              < sqrt(3.0)/4.0));
+#endif
+    if(might_need_more_care)
+    {
+#ifdef P4_TO_P8
+      const vector<ngbd3Dseed> *neighbor_seeds;
+      int parallel_wall_m = ((dir==dir::x)? WALL_m00: ((dir==dir::y)? WALL_0m0: WALL_00m));
+      int parallel_wall_p = ((dir==dir::x)? WALL_p00: ((dir==dir::y)? WALL_0p0: WALL_00p));
+#else
+      vector<ngbd2Dseed> *neighbor_seeds;
+      int parallel_wall_m = ((dir==dir::x)? WALL_m00: WALL_0m0);
+      int parallel_wall_p = ((dir==dir::x)? WALL_p00: WALL_0p0);
+#endif
+      voro_tmp.get_neighbor_seeds(neighbor_seeds);
+      bool wall_added_manually = false;
+      for (unsigned int m=0; m<neighbor_seeds->size(); ++m) {
+        if((neighbor_seeds->at(m).n == parallel_wall_m) || (neighbor_seeds->at(m).n == parallel_wall_p))
+        {
+          try {
+#ifdef P4_TO_P8
+            double xyz_projected_point[P4EST_DIM] = {x, y, z};
+#else
+            double xyz_projected_point[P4EST_DIM] = {x, y};
+#endif
+            xyz_projected_point[dir] = ((neighbor_seeds->at(m).n == parallel_wall_m)? xyz_min[dir]: xyz_max[dir]);
+            BoundaryConditionType bc_type_on_pojected_point = bc[dir].wallType(xyz_projected_point);
+            if(bc_type_on_pojected_point == DIRICHLET)
+#ifdef P4_TO_P8
+              voro_tmp.push(WALL_parallel_to_face, xyz_projected_point[0], xyz_projected_point[1], xyz_projected_point[2], periodic, xyz_min, xyz_max);
+#else
+              voro_tmp.push(WALL_parallel_to_face, xyz_projected_point[0], xyz_projected_point[1], periodic, xyz_min, xyz_max);
+#endif
+          } catch (std::exception e) {
+            throw std::runtime_error("my_p4est_poisson_faces_t: the boundary condition type needs to be readable from everywhere in the domain when using such stretched grids and non-periodic wall conditions, sorry...");
+          }
+          wall_added_manually = true;
+        }
+      }
+      if(wall_added_manually)
+      {
+#ifdef P4_TO_P8
+        voro_tmp.construct_partition(xyz_min, xyz_max, periodic);
+#else
+        voro_tmp.construct_partition();
+        voro_tmp.compute_volume();
+#endif
+      }
+    }
   }
 
   ierr = PetscLogEventEnd(log_my_p4est_poisson_faces_compute_voronoi_cell, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -974,7 +1028,12 @@ void my_p4est_poisson_faces_t::preallocate_matrix(int dir)
 
 #ifndef P4_TO_P8
       /* in 2D, clip the partition by the interface and by the walls of the domain */
-      clip_voro_cell_by_interface(f_idx, dir);
+      try {
+        clip_voro_cell_by_interface(f_idx, dir);
+      } catch (std::exception e) {
+        // [FIXME]: I found this issue but I have other urgent things to do for now... Raphael
+        throw std::runtime_error("Error when clipping voronoi cell in 2D... consider using an aspect ratio closer to 1");
+      }
 #endif
     }
   }
@@ -1915,16 +1974,6 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
                 ngbd.resize(0);
                 ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, 0, 0, 1);
                 P4EST_ASSERT((ngbd.size()==1) && (ngbd[0].level == quad->level)); // must have a uniform tesselation with maximum refinement
-                if(!((ngbd.size()==1) && (ngbd[0].level == quad->level)))
-                {
-                  std::cerr << "ngbd.size() = " << ngbd.size() << std::endl;
-                  std::cerr << "ngbd[0].lveel = " << (int) ngbd[0].level << " while quad.level = " << (int) quad->level << std::endl;
-                  std::cerr << "area between control volumes = " << s_00p << std::endl;
-                  std::cerr << "location of the face of interest: x = " << xyz[0] << ", y = " << xyz[1] << ", z = " << xyz[2] << std::endl;
-                  std::cerr << "the face has direction " << dir << std::endl;
-                  for (size_t k = 0; k < ngbd.size(); ++k)
-                    std::cerr << "neighbor " << k << " has local num" << ngbd[k].p.piggy3.local_num << " on proc " << p4est->mpirank << std::endl;
-                }
                 if(quad_idx==qm_idx)
                 {
                   P4EST_ASSERT(faces->q2f(ngbd[0].p.piggy3.local_num, dir_p) != NO_VELOCITY);
@@ -2019,6 +2068,45 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
 
       switch((*points)[m].n)
       {
+      case WALL_parallel_to_face:
+      {
+        matrix_has_nullspace[dir] = false;
+        // no need to divide d by 2 in this special case, by construction in Voronoi2/3D
+        if(!only_diag_is_modified[dir] && !is_matrix_ready[dir])
+        {
+          ierr = MatSetValue(A[dir], f_idx_g, f_idx_g, mu*s/d, ADD_VALUES); CHKERRXX(ierr); // needs only to be done if fully reset
+        }
+        try {
+#ifdef P4_TO_P8
+          if(bc_hodge!=NULL && (bc_hodge->wallType((*points)[m].p.x, (*points)[m].p.y, (*points)[m].p.z)==NEUMANN))
+          {
+            bool positive = ((dir==dir::x)? ((*points)[m].p.x > xyz[0]):((dir==dir::y)? ((*points)[m].p.y > xyz[1]): ((*points)[m].p.z > xyz[2])));
+            rhs_p[f_idx] += mu*s*(bc[dir].wallValue((*points)[m].p.x, (*points)[m].p.y, (*points)[m].p.z) + (positive?+1.0:-1.0)*bc_hodge->wallValue((*points)[m].p.x, (*points)[m].p.y, (*points)[m].p.z)) / d;
+          }
+          else
+          {
+            // this is the least desirable scenario and main reason for the try-catch:
+            // the user wants to use a stretched grid, but does not provide bc's that can easily be evaluated from everywhere so the solver's usage requires locality: if dxyz_hodge can't be interpolated where it's desired this is very likely to throw an exception
+            rhs_p[f_idx] += mu*s*(bc[dir].wallValue((*points)[m].p.x, (*points)[m].p.y, (*points)[m].p.z) + interp_dxyz_hodge((*points)[m].p.x, (*points)[m].p.y, (*points)[m].p.z)) / d;
+          }
+#else
+          if(bc_hodge!=NULL && (bc_hodge->wallType((*points)[m].p.x, (*points)[m].p.y)==NEUMANN))
+          {
+            bool positive = ((dir==dir::x)? ((*points)[m].p.x > xyz[0]): ((*points)[m].p.y > xyz[1]));
+            rhs_p[f_idx] += mu*s*(bc[dir].wallValue((*points)[m].p.x, (*points)[m].p.y) + (positive?+1.0:-1.0)*bc_hodge->wallValue((*points)[m].p.x, (*points)[m].p.y)) / d;
+          }
+          else
+          {
+            // this is the least desirable scenario and main reason for the try-catch:
+            // the user wants to use a stretched grid, but does not provide bc's that can easily be evaluated from everywhere so the solver's usage requires locality: if dxyz_hodge can't be interpolated where it's desired this is very likely to throw an exception
+            rhs_p[f_idx] += mu*s*(bc[dir].wallValue((*points)[m].p.x, (*points)[m].p.y) + interp_dxyz_hodge((*points)[m].p.x, (*points)[m].p.y)) / d;
+          }
+#endif
+        } catch (std::exception e) {
+          throw std::runtime_error("my_p4est_poisson_faces_t: the boundary condition value needs to be readable from everywhere in the domain when using such stretched grids and non-periodic wall conditions, sorry...");
+        }
+        break;
+      }
       case WALL_m00:
 #ifdef P4_TO_P8
         switch(bc[dir].wallType(xyz_min[0],y_pert,z_pert))

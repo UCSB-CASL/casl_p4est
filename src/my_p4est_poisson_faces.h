@@ -51,9 +51,9 @@ class my_p4est_poisson_faces_t
   double mu;
 
 #ifdef P4_TO_P8
-  const BoundaryConditions3D *bc;
+  const BoundaryConditions3D *bc, *bc_hodge;
 #else
-  const BoundaryConditions2D *bc;
+  const BoundaryConditions2D *bc, *bc_hodge;
 #endif
   Vec *dxyz_hodge;
   Vec *face_is_well_defined;
@@ -122,9 +122,9 @@ public:
 
   // if the type of bcs is changed, the linear system should be reset...
 #ifdef P4_TO_P8
-  void set_bc(const BoundaryConditions3D *bc, Vec *dxyz_hodge, Vec *face_is_well_defined);
+  void set_bc(const BoundaryConditions3D *bc, Vec *dxyz_hodge, Vec *face_is_well_defined, const BoundaryConditions3D *bc_hodge_=NULL);
 #else
-  void set_bc(const BoundaryConditions2D *bc, Vec *dxyz_hodge, Vec *face_is_well_defined);
+  void set_bc(const BoundaryConditions2D *bc, Vec *dxyz_hodge, Vec *face_is_well_defined, const BoundaryConditions2D *bc_hodge_=NULL);
 #endif
 
 

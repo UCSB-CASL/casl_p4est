@@ -14,12 +14,10 @@ void Voronoi3D::push( int n, Point3 &pt, const bool* periodicity, const double* 
   if(n == idx_center_seed)
     return;
   for(unsigned int m=0; m<nb_seeds.size(); m++)
-  {
     if(nb_seeds[m].n == n)
-    {
       return;
-    }
-  }
+  /* note: technically wrong if one wants to add TWO WALL_parallel_to_face points, but that can happen only
+   * if the grid is VERY coarse in theory, so I do not check for it... [Raphael] */
 
   ngbd3Dseed ngbd_seed;
   ngbd_seed.n = n;
@@ -286,7 +284,7 @@ void Voronoi3D::construct_partition(const double *xyz_min, const double *xyz_max
       new_voro_nb.n = neigh[n];
       new_voro_nb.s = min_dist*min_dist*areas[n];
 
-      if(neigh[n]<0)
+      if(neigh[n]<0 && neigh[n]!=WALL_parallel_to_face)
       {
         switch(neigh[n])
         {

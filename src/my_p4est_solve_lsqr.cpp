@@ -187,9 +187,9 @@ bool solve_cholesky(matrix_t &A, vector<double> &b, vector<double> &x)
 
 
 #ifdef P4_TO_P8
-void solve_lsqr_system(matrix_t &A, vector<double> p[], unsigned int n_vectors, double* solutions, int nb_x, int nb_y, int nb_z, char order)
+void solve_lsqr_system(matrix_t &A, vector<double> p[], unsigned int n_vectors, double* solutions, int nb_x, int nb_y, int nb_z, char order, unsigned short nconstraints)
 #else
-void solve_lsqr_system(matrix_t &A, vector<double> p[], unsigned int n_vectors, double* solutions, int nb_x, int nb_y, char order)
+void solve_lsqr_system(matrix_t &A, vector<double> p[], unsigned int n_vectors, double* solutions, int nb_x, int nb_y, char order, unsigned short nconstraints)
 #endif
 {
 #ifdef CASL_THROWS
@@ -198,14 +198,15 @@ void solve_lsqr_system(matrix_t &A, vector<double> p[], unsigned int n_vectors, 
     if( (unsigned int) A.num_rows() != p[k].size() )
       throw std::invalid_argument("[CASL_ERROR]: solve_lsqr_system(...): the matrix and (one of) the right hand side(s) don't have the same size");
 #endif
-  unsigned int m = (unsigned int) A.num_rows();
+  P4EST_ASSERT(nconstraints<P4EST_DIM);
+  int m = A.num_rows();
   matrix_t *M = new matrix_t();
   vector<double> Atp[n_vectors];
   vector<double> coeffs[n_vectors];
 #ifdef P4_TO_P8
-  if(order>=2 && m>=10 && nb_x>=3 && nb_y>=3 && nb_z>=3)
+  if(order>=2 && m>=(10-nconstraints) && nb_x>=3 && nb_y>=3 && nb_z>=3)
 #else
-  if(order>=2 && m>=6 && nb_x>=3 && nb_y>=3)
+  if(order>=2 && m>=(6-nconstraints) && nb_x>=3 && nb_y>=3)
 #endif
   {
     A.tranpose_matvec(p, Atp, n_vectors);
@@ -222,32 +223,32 @@ void solve_lsqr_system(matrix_t &A, vector<double> p[], unsigned int n_vectors, 
 
   /* either the system was not invertible - most likely there was a direction with less than 3 points, e.g. in the diagonal !
    * or the number of points along cartesian dimensions is lower than expected, or desired order is smaller than 2 */
-#ifdef P4_TO_P8
-  if(order>=1 && m>=4 && nb_x>=2 && nb_y>=2 && nb_z>=2)
-#else
-  if(order>=1 && m>=3 && nb_x>=2 && nb_y>=2)
-#endif
+  if(order>=1 && m>=(1+P4EST_DIM-nconstraints) && nb_x>=2 && nb_y>=2
+   #ifdef P4_TO_P8
+     && nb_z>=2
+   #endif
+     )
   {
     if(order==2)
     {
 #ifdef P4_TO_P8
-      if(m>=10 && nb_x>=3 && nb_y>=3 && nb_z>=3)
+      if(m>=(10-nconstraints) && nb_x>=3 && nb_y>=3 && nb_z>=3)
 #else
-      if(m>=6 && nb_x>=3 && nb_y>=3)
+      if(m>=(6-nconstraints) && nb_x>=3 && nb_y>=3)
 #endif
       {
         // the relevant quantities were already calculated but the cholesky_solve failed...
-        matrix_t* M_sub= new matrix_t(P4EST_DIM+1, P4EST_DIM+1);
-        M_sub->truncate_matrix(P4EST_DIM+1, P4EST_DIM+1, *M);
+        matrix_t* M_sub= new matrix_t(P4EST_DIM+1-nconstraints, P4EST_DIM+1-nconstraints);
+        M_sub->truncate_matrix(P4EST_DIM+1-nconstraints, P4EST_DIM+1-nconstraints, *M);
         delete M;
         M = M_sub;
         for (unsigned int k = 0; k < n_vectors; ++k)
-          Atp[k].resize(P4EST_DIM+1);
+          Atp[k].resize(P4EST_DIM+1-nconstraints);
       }
       else
       {
         matrix_t Asub;
-        Asub.truncate_matrix(m, P4EST_DIM+1, A);
+        Asub.truncate_matrix(m, P4EST_DIM+1-nconstraints, A);
         Asub.tranpose_matvec(p, Atp, n_vectors);
         Asub.mtm_product(*M);
       }
@@ -271,7 +272,7 @@ void solve_lsqr_system(matrix_t &A, vector<double> p[], unsigned int n_vectors, 
   /* 0-th order polynomial approximation, just compute coeff(0) */
   double denominator = 0;
   double numerator = 0;
-  for(unsigned int i=0; i<m; ++i)
+  for(int i=0; i<m; ++i)
   {
     denominator += SQR(A.get_value(i,0));
     numerator   += A.get_value(i,0)*p[0][i];
@@ -279,7 +280,7 @@ void solve_lsqr_system(matrix_t &A, vector<double> p[], unsigned int n_vectors, 
   solutions[0] = numerator/denominator;
   for (unsigned int k = 1; k < n_vectors; ++k) {
     numerator = 0;
-    for(unsigned int i=0; i<m; ++i)
+    for( int i=0; i<m; ++i)
       numerator += A.get_value(i,0)*p[k][i];
     solutions[k] = numerator/denominator;
   }

@@ -604,6 +604,7 @@ int main (int argc, char* argv[])
   cmd.add_option("save_forces", "save the forces");
   cmd.add_option("save_state_dt", "if defined, this activates the 'save-state' feature. The solver state is saved every save_state_dt time steps in backup_ subfolders.");
   cmd.add_option("save_nstates", "determines how many solver states must be memorized in backup_ folders (default is 1).");
+  cmd.add_option("timing", "if defined, prints timing information (typically for scaling analysis).");
 
   // --> extra info to be printed when -help is invoked
 #ifdef P4_TO_P8
@@ -667,7 +668,7 @@ int main (int argc, char* argv[])
   const bool reuse_solver               = !cmd.contains("no_solver_reuse");
   const double duration                 = cmd.get<double>("duration", 200.0);
 #if defined(POD_CLUSTER)
-  const string export_dir               = cmd.get<string>("export_folder", "/home/regan/flow_past_sphere");
+  const string export_dir               = cmd.get<string>("export_folder", "/scratch/regan/flow_past_sphere");
 #elif defined(STAMPEDE)
   const string export_dir               = cmd.get<string>("export_folder", "/work/04965/tg842642/stampede2/flow_past_sphere");
 #elif defined(LAPTOP)
@@ -676,6 +677,7 @@ int main (int argc, char* argv[])
   const string export_dir               = cmd.get<string>("export_folder", "/home/regan/workspace/projects/flow_past_sphere");
 #endif
   const bool save_vtk                   = cmd.contains("save_vtk");
+  const bool get_timing                 = cmd.contains("timing");
   double vtk_dt                         = -1.0;
   if(save_vtk)
   {
@@ -1082,7 +1084,8 @@ int main (int argc, char* argv[])
 
   parStopWatch watch, substep_watch;
   double mean_full_iteration_time = 0.0, mean_viscosity_step_time = 0.0, mean_projection_step_time = 0.0, mean_compute_velocity_at_nodes_time = 0.0, mean_update_time = 0.0;
-  watch.start("Total runtime");
+  if(get_timing)
+    watch.start("Total runtime");
   double tn = tstart;
 
   my_p4est_poisson_cells_t* cell_solver = NULL;
@@ -1090,7 +1093,8 @@ int main (int argc, char* argv[])
 
   while(tn+0.01*dt<tstart+duration)
   {
-    substep_watch.start("");
+    if(get_timing)
+      substep_watch.start("");
     if(iter>0)
     {
       if(use_adapted_dt)
@@ -1116,8 +1120,11 @@ int main (int argc, char* argv[])
       if(face_solver!=NULL && (!solvers_can_be_reused || !reuse_solver)){
         delete  face_solver; face_solver = NULL; }
     }
-    substep_watch.stop();
-    mean_update_time += substep_watch.read_duration();
+    if(get_timing)
+    {
+      substep_watch.stop();
+      mean_update_time += substep_watch.read_duration();
+    }
     if(save_state && ((int) floor(tn/dt_save_data)) != save_data_idx)
     {
       save_data_idx = ((int) floor(tn/dt_save_data));
@@ -1134,14 +1141,21 @@ int main (int argc, char* argv[])
       hodge_new = ns->get_hodge();
       ierr = VecCopy(hodge_new, hodge_old); CHKERRXX(ierr);
 
-      substep_watch.start("");
-      ns->solve_viscosity(face_solver, (face_solver!=NULL), KSPBCGS, pc_face); // no other (good) choice than KSPCGS for this one, symmetry is broken
-      substep_watch.stop();
-      mean_viscosity_step_time += substep_watch.read_duration();
-      substep_watch.start("");
+      if(get_timing)
+        substep_watch.start("");
+      ns->solve_viscosity(face_solver, (face_solver!=NULL), KSPBCGS, pc_face); // no other (good) choice than KSPBCGS for this one, symmetry is broken
+      if(get_timing)
+      {
+        substep_watch.stop();
+        mean_viscosity_step_time += substep_watch.read_duration();
+        substep_watch.start("");
+      }
       ns->solve_projection(cell_solver, (cell_solver!=NULL), cell_solver_type, pc_cell);
-      substep_watch.stop();
-      mean_projection_step_time += substep_watch.read_duration();
+      if(get_timing)
+      {
+        substep_watch.stop();
+        mean_projection_step_time += substep_watch.read_duration();
+      }
 
       if(!reuse_solver)
       {
@@ -1179,10 +1193,14 @@ int main (int argc, char* argv[])
       iter_hodge++;
     }
     ierr = VecDestroy(hodge_old); CHKERRXX(ierr);
-    substep_watch.start("");
+    if(get_timing)
+      substep_watch.start("");
     ns->compute_velocity_at_nodes();
-    substep_watch.stop();
-    mean_compute_velocity_at_nodes_time += substep_watch.read_duration();
+    if(get_timing)
+    {
+      substep_watch.stop();
+      mean_compute_velocity_at_nodes_time += substep_watch.read_duration();
+    }
     ns->compute_pressure();
 
     tn += dt;
@@ -1228,19 +1246,22 @@ int main (int argc, char* argv[])
     iter++;
   }
 
-  watch.stop();
-  mean_full_iteration_time             = watch.read_duration()/((double) iter);
-  mean_viscosity_step_time            /= ((double) iter);
-  mean_projection_step_time           /= ((double) iter);
-  mean_compute_velocity_at_nodes_time /= ((double) iter);
-  mean_update_time                    /= ((double) iter);
+  if(get_timing)
+  {
+    watch.stop();
+    mean_full_iteration_time             = watch.read_duration()/((double) iter);
+    mean_viscosity_step_time            /= ((double) iter);
+    mean_projection_step_time           /= ((double) iter);
+    mean_compute_velocity_at_nodes_time /= ((double) iter);
+    mean_update_time                    /= ((double) iter);
 
-  ierr = PetscPrintf(mpi.comm(), "Mean computational time spent on \n"); CHKERRXX(ierr);
-  ierr = PetscPrintf(mpi.comm(), " viscosity step: %.5e\n", mean_viscosity_step_time); CHKERRXX(ierr);
-  ierr = PetscPrintf(mpi.comm(), " projection step: %.5e\n", mean_projection_step_time); CHKERRXX(ierr);
-  ierr = PetscPrintf(mpi.comm(), " computing velocities at nodes: %.5e\n", mean_compute_velocity_at_nodes_time); CHKERRXX(ierr);
-  ierr = PetscPrintf(mpi.comm(), " grid update: %.5e\n", mean_update_time); CHKERRXX(ierr);
-  ierr = PetscPrintf(mpi.comm(), " full iteration (total): %.5e\n", mean_full_iteration_time); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "Mean computational time spent on \n"); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), " viscosity step: %.5e\n", mean_viscosity_step_time); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), " projection step: %.5e\n", mean_projection_step_time); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), " computing velocities at nodes: %.5e\n", mean_compute_velocity_at_nodes_time); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), " grid update: %.5e\n", mean_update_time); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), " full iteration (total): %.5e\n", mean_full_iteration_time); CHKERRXX(ierr);
+  }
 
   if(cell_solver!= NULL)
     delete cell_solver;
