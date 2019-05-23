@@ -786,6 +786,7 @@ int main (int argc, char* argv[])
   cmd.add_option("lmax", "max level of the trees, default is 6");
   cmd.add_option("thresh", "the threshold used for the refinement criteria, default is 0.1");
   cmd.add_option("wall_layer", "number of finest cells desired to layer the channel walls, default is 6");
+  cmd.add_option("lip", "Lipschitz constant L for grid refinement. The levelset is defined as the negative distance to the closest no-slip region. The criterion compares the levelset value to L\\Delta y. Default value is the standard 1.2 or value read from solver state if restarted (fyi: that's very thin for turbulent cases).");
   cmd.add_option("nx", "number of trees in the x-direction. The default value is length to ensure aspect ratio of cells = 1");
   cmd.add_option("ny", "number of trees in the y-direction. The default value is 2 (i.e. height) to ensure aspect ratio of cells = 1");
 #ifdef P4_TO_P8
@@ -1074,7 +1075,9 @@ int main (int argc, char* argv[])
 
     lmin                    = cmd.get<int>("lmin", ((splitting_criteria_t*) p4est_n->user_pointer)->min_lvl);
     lmax                    = cmd.get<int>("lmax", ((splitting_criteria_t*) p4est_n->user_pointer)->max_lvl);
-    double lip              = ((splitting_criteria_t*) p4est_n->user_pointer)->lip;
+    double lip;
+    if(!cmd.contains("lip"))
+      lip                   = ((splitting_criteria_t*) p4est_n->user_pointer)->lip;
     threshold_split_cell    = cmd.get<double>("thresh", ns->get_split_threshold());
     length                  = ns->get_length_of_domain();
 #ifdef P4EST_ENABLE_DEBUG
@@ -1117,6 +1120,13 @@ int main (int argc, char* argv[])
     xyz_min[0]              = brick->xyz_min[0];
     xyz_max[1]              = brick->xyz_max[1];
     xyz_max[0]              = brick->xyz_max[0];
+
+    if(cmd.contains("lip"))
+#ifdef P4_TO_P8
+      lip                   = cmd.get<double>("lip")*(2.0/ntree_y)/sqrt(SQR(2.0/ntree_y)+SQR(length/ntree_x)+SQR(width/ntree_z));
+#else
+      lip                   = cmd.get<double>("lip")*(2.0/ntree_y)/sqrt(SQR(2.0/ntree_y)+SQR(length/ntree_x));
+#endif
 
     if(cmd.contains("wall_layer"))
     {
@@ -1260,17 +1270,11 @@ int main (int argc, char* argv[])
       delete data; data = NULL;
     }
     P4EST_ASSERT(data == NULL);
-    double lip_const = 1.2;
-    // reset the lip_const as such to avoid conflict with the number of cells desired to layer the walls
-    lip_const = MIN(lip_const, (2.0/length)*((double) ntree_x)/((double) ntree_y));
+    // lip_const multiplies the cell-diagonal internally, but  we need only dy --> so scale it appropriately
 #ifdef P4_TO_P8
-    lip_const = MIN(lip_const, (2.0/width)*((double) ntree_z)/((double) ntree_y));
-#endif
-    lip_const = MIN(lip_const, (length/2.0)*((double) ntree_y)/((double) ntree_x));
-#ifdef P4_TO_P8
-    lip_const = MIN(lip_const, (length/width)*((double) ntree_z)/((double) ntree_x));
-    lip_const = MIN(lip_const, (width/length)*((double) ntree_x)/((double) ntree_z));
-    lip_const = MIN(lip_const, (width/2.0)*((double) ntree_y)/((double) ntree_z));
+    const double lip_const = cmd.get<double>("lip", 1.2)*(2.0/ntree_y)/sqrt(SQR(2.0/ntree_y)+SQR(length/ntree_x)+SQR(width/ntree_z));
+#else
+    const double lip_const = cmd.get<double>("lip", 1.2)*(2.0/ntree_y)/sqrt(SQR(2.0/ntree_y)+SQR(length/ntree_x));
 #endif
     data  = new splitting_criteria_cf_and_uniform_band_t(lmin, lmax, level_set, uniform_band, lip_const);
 
