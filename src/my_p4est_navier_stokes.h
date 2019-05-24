@@ -131,6 +131,10 @@ protected:
   std::vector<double> xyz_n[P4EST_DIM][P4EST_DIM];
   std::vector<double> xyz_nm1[P4EST_DIM][P4EST_DIM]; // used only if sl_order == 2
 
+  // face interpolator to nodes: store them in memory to accelerate execution if static grid
+  bool interpolators_from_face_to_nodes_are_set;
+  std::vector<face_interpolator> interpolator_from_face_to_nodes[P4EST_DIM];
+
   // second_derivatives...[i][j] = second derivatives of velocity component j along Cartesian direction i
   Vec second_derivatives_vnm1_nodes[P4EST_DIM][P4EST_DIM];
   Vec second_derivatives_vn_nodes[P4EST_DIM][P4EST_DIM];
@@ -385,7 +389,7 @@ public:
    */
   void enforce_mass_flow(const bool* force_in_direction, const double* desired_mean_velocity, double* forcing_mean_hodge_gradient, double* mass_flow = NULL);
 
-  void compute_velocity_at_nodes();
+  void compute_velocity_at_nodes(const bool store_interpolators = false);
 
   void set_dt(double dt_nm1, double dt_n);
 

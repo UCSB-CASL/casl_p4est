@@ -1577,7 +1577,7 @@ int main (int argc, char* argv[])
     ierr = VecDestroy(hodge_old); CHKERRXX(ierr);
     if(get_timing)
       substep_watch.start("");
-    ns->compute_velocity_at_nodes();
+    ns->compute_velocity_at_nodes((steps_grid_update > 1));
     if(get_timing)
     {
       substep_watch.stop();
