@@ -187,9 +187,9 @@ bool solve_cholesky(matrix_t &A, vector<double> &b, vector<double> &x)
 
 
 #ifdef P4_TO_P8
-void solve_lsqr_system(matrix_t &A, vector<double> p[], unsigned int n_vectors, double* solutions, int nb_x, int nb_y, int nb_z, char order, unsigned short nconstraints)
+void solve_lsqr_system(matrix_t &A, vector<double> p[], unsigned int n_vectors, double* solutions, int nb_x, int nb_y, int nb_z, char order, unsigned short nconstraints, std::vector<double>* interp_coeffs)
 #else
-void solve_lsqr_system(matrix_t &A, vector<double> p[], unsigned int n_vectors, double* solutions, int nb_x, int nb_y, char order, unsigned short nconstraints)
+void solve_lsqr_system(matrix_t &A, vector<double> p[], unsigned int n_vectors, double* solutions, int nb_x, int nb_y, char order, unsigned short nconstraints, std::vector<double>* interp_coeffs)
 #endif
 {
 #ifdef CASL_THROWS
