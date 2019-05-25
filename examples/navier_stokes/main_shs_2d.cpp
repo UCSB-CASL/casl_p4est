@@ -581,6 +581,7 @@ void initialize_velocity_profile_file(const char* filename, const int& ntree_y, 
       for (int k = 0; k < ntree_y*(1<<lmax); ++k)
         fprintf(fp_avg_profile, "  | %.12g", (-1.00+(2.0/((double) (ntree_y*(1<<lmax))))*(0.5+k)));
       fprintf(fp_avg_profile, "\n");
+      fprintf(fp_avg_profile, "%.12g", tstart);
       fclose(fp_avg_profile);
     }
     else
@@ -630,6 +631,10 @@ void initialize_velocity_profile_file(const char* filename, const int& ntree_y, 
         sprintf(error_msg, "initialize_velocity_profile_file: couldn't truncate %s", filename);
         throw std::runtime_error(error_msg);
       }
+
+      fp_avg_profile = fopen(filename, "a");
+      fprintf(fp_avg_profile, "%.12g", tstart);
+      fclose(fp_avg_profile);
     }
   }
 }
@@ -826,7 +831,7 @@ int main (int argc, char* argv[])
   cmd.add_option("save_state_dt", "if defined, this activates the 'save-state' feature. The solver state is saved every save_state_dt time steps in backup_ subfolders.");
   cmd.add_option("save_nstates", "determines how many solver states must be memorized in backup_ folders (default is 1).");
   cmd.add_option("save_mean_profiles", "computes and saves averaged streamwise-velocity profiles (makes sense only if the flow is fully-developed)");
-  cmd.add_option("tstart_average", "starting time for computing the average velocity profile (default is 100.0)");
+  cmd.add_option("nexport_avg", "number of iterations between two exportation of averaged velocity profiles (default is 100)");
   cmd.add_option("timing", "if defined, prints timing information (typically for scaling analysis).");
   cmd.add_option("accuracy_check", "if defined, prints information about accuracy with comparison to analytical solution (ONLY if restart after steady-state reached and with Re_tau enforced).");
 
@@ -947,9 +952,15 @@ int main (int argc, char* argv[])
 #endif
   }
   const bool save_profiles              = cmd.contains("save_mean_profiles");
+  const unsigned int nexport_avg        = cmd.get<unsigned int>("nexport_avg", 100);
+  double                    t_slice_average;
   vector<double>            slice_averaged_profile;
+  vector<double>            slice_averaged_profile_nm1;
+  vector<double>            time_averaged_slice_averaged_profile;
+  vector<double>            t_line_average;
   vector< vector<double> >  line_averaged_profiles;
-  const double avg_start                = cmd.get<double>("tstart_average", 100.0);
+  vector< vector<double> >  line_averaged_profiles_nm1;
+  vector< vector<double> >  time_averaged_line_averaged_profiles;
   const bool use_adapted_dt             = cmd.contains("adapted_dt");
 #ifdef P4_TO_P8
   const bool spanwise                   = cmd.contains("spanwise");
@@ -1454,7 +1465,10 @@ int main (int argc, char* argv[])
     initialize_averaged_velocity_profiles(file_slice_avg_velocity_profile, profile_path, n_xyz, lmin, lmax, threshold_split_cell, cfl, sl_order, mpi, tstart,
                                           bin_index, file_line_avg_velocity_profile, domain_dimensions, pitch_to_delta, gas_fraction, nbins, true);
 #endif
+    t_line_average.resize(nbins);
     line_averaged_profiles.resize(nbins);
+    line_averaged_profiles_nm1.resize(nbins);
+    time_averaged_line_averaged_profiles.resize(nbins);
   }
 
   parStopWatch watch, substep_watch;
@@ -1627,23 +1641,47 @@ int main (int argc, char* argv[])
         fclose(fp_drag);
       }
     }
-    if (save_profiles && (tn > avg_start))
+    if (save_profiles)
     {
       ns->get_slice_averaged_vnp1_profile(dir::x, dir::y, slice_averaged_profile);
       if(!mpi.rank())
       {
-        fp_velocity_profile = fopen(file_slice_avg_velocity_profile, "a");
-        if(fp_velocity_profile==NULL)
+        if(iter == 0)
+        {
+          t_slice_average = tn;
+          slice_averaged_profile_nm1.resize(slice_averaged_profile.size(), 0.0);
+          time_averaged_slice_averaged_profile.resize(slice_averaged_profile.size(), 0.0);
+        }
+        else
+        {
+          for (unsigned int idx = 0; idx < slice_averaged_profile.size(); ++idx)
+          {
+            time_averaged_slice_averaged_profile[idx] += 0.5*dt*(slice_averaged_profile_nm1[idx]+slice_averaged_profile[idx]);
+            slice_averaged_profile_nm1[idx] = slice_averaged_profile[idx];
+          }
+        }
+
+        if((iter!=0) && (iter%nexport_avg ==0))
+        {
+          fp_velocity_profile = fopen(file_slice_avg_velocity_profile, "a");
+          if(fp_velocity_profile==NULL)
 #ifdef P4_TO_P8
-          throw std::invalid_argument("main_shs_3d: could not open file for slice-averaged velocity profile output.");
+            throw std::invalid_argument("main_shs_3d: could not open file for slice-averaged velocity profile output.");
 #else
-          throw std::invalid_argument("main_shs_2d: could not open file for slice-averaged velocity profile output.");
+            throw std::invalid_argument("main_shs_2d: could not open file for slice-averaged velocity profile output.");
 #endif
-        fprintf(fp_velocity_profile, "%.12g", tn);
-        for (int k = 0; k < ntree_y*(1<<lmax); ++k)
-          fprintf(fp_velocity_profile, " %.12g", slice_averaged_profile.at(k));
-        fprintf(fp_velocity_profile, "\n");
-        fclose(fp_velocity_profile);
+          for (int k = 0; k < ntree_y*(1<<lmax); ++k)
+          {
+            fprintf(fp_velocity_profile, " %.12g", time_averaged_slice_averaged_profile.at(k)/(tn-t_slice_average));
+            time_averaged_slice_averaged_profile.at(k) = 0.0;
+          }
+          fprintf(fp_velocity_profile, "\n");
+          // write the next start time
+          fprintf(fp_velocity_profile, "%.12g", tn);
+          fclose(fp_velocity_profile);
+          // reset these
+          t_slice_average = tn;
+        }
       }
 #ifdef P4_TO_P8
       ns->get_line_averaged_vnp1_profiles(dir::x, dir::y, (spanwise? dir::z : dir::x), bin_index, line_averaged_profiles);
@@ -1653,18 +1691,42 @@ int main (int argc, char* argv[])
       for (unsigned int bin_idx = 0; bin_idx < nbins; ++bin_idx) {
         if(((unsigned int) mpi.rank()) == (bin_idx%mpi.size()))
         {
-          fp_velocity_profile = fopen(file_line_avg_velocity_profile[bin_idx].c_str(), "a");
-          if(fp_velocity_profile==NULL)
-  #ifdef P4_TO_P8
-            throw std::invalid_argument("main_shs_3d: could not open file for line-averaged velocity profile output.");
-  #else
-            throw std::invalid_argument("main_shs_2d: could not open file for line-averaged velocity profile output.");
-  #endif
-          fprintf(fp_velocity_profile, "%.12g", tn);
-          for (int k = 0; k < ntree_y*(1<<lmax); ++k)
-            fprintf(fp_velocity_profile, " %.12g", line_averaged_profiles[bin_idx].at(k));
-          fprintf(fp_velocity_profile, "\n");
-          fclose(fp_velocity_profile);
+          if(iter == 0)
+          {
+            t_line_average[bin_idx] = tn;
+            line_averaged_profiles_nm1[bin_idx].resize(line_averaged_profiles[bin_idx].size(), 0.0);
+            time_averaged_line_averaged_profiles[bin_idx].resize(line_averaged_profiles[bin_idx].size(), 0.0);
+          }
+          else
+          {
+            for (unsigned int idx = 0; idx < line_averaged_profiles[bin_idx].size(); ++idx)
+            {
+              time_averaged_line_averaged_profiles[bin_idx][idx] += 0.5*dt*(line_averaged_profiles_nm1[bin_idx][idx]+line_averaged_profiles[bin_idx][idx]);
+              line_averaged_profiles_nm1[bin_idx][idx] = line_averaged_profiles[bin_idx][idx];
+            }
+          }
+
+          if((iter!=0) && (iter%nexport_avg ==0))
+          {
+            fp_velocity_profile = fopen(file_line_avg_velocity_profile[bin_idx].c_str(), "a");
+            if(fp_velocity_profile==NULL)
+#ifdef P4_TO_P8
+              throw std::invalid_argument("main_shs_3d: could not open file for line-averaged velocity profile output.");
+#else
+              throw std::invalid_argument("main_shs_2d: could not open file for line-averaged velocity profile output.");
+#endif
+            for (int k = 0; k < ntree_y*(1<<lmax); ++k)
+            {
+              fprintf(fp_velocity_profile, " %.12g", time_averaged_line_averaged_profiles[bin_idx].at(k)/(tn-t_line_average[bin_idx]));
+              time_averaged_line_averaged_profiles[bin_idx].at(k) = 0.0;
+            }
+            fprintf(fp_velocity_profile, "\n");
+            // write the next start time
+            fprintf(fp_velocity_profile, "%.12g", tn);
+            fclose(fp_velocity_profile);
+            // reset these
+            t_line_average[bin_idx] = tn;
+          }
         }
       }
     }

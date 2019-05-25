@@ -91,7 +91,7 @@ void read_my_line(const char* read_line, double& time, vector<double> *slice_avg
     slice_avg_profile->at(idx++) = tmp;
     format = base_format + read_double;
   }
-  if(idx<slice_avg_profile->size())
+  if(idx<slice_avg_profile->size() && idx > 0)
     throw runtime_error("read_line: something went wrong when reading a line: less values than expected...");
 }
 
@@ -195,7 +195,7 @@ int main (int argc, char* argv[])
         dt_nm1 = time_read_n - time_read_nm1;
         if(integrate)
           for (size_t k = 0; k < time_avg_profile.size(); k++)
-            time_avg_profile[k] += 0.5*dt_nm1*(slice_avg_nm1->at(k)+slice_avg_n->at(k));
+            time_avg_profile[k] += dt_nm1*slice_avg_nm1->at(k);
         integrate = true;
       }
       if(time_read_n > t_end)
