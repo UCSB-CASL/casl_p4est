@@ -792,7 +792,7 @@ void my_p4est_navier_stokes_t::compute_vorticity()
   for(int dir=0; dir<P4EST_DIM; dir++) { ierr = VecRestoreArrayRead(vnp1_nodes[dir], &vnp1_p[dir]); CHKERRXX(ierr); }
 }
 
-void my_p4est_navier_stokes_t::compute_Q_value(Vec& Q_value_nodes, const double U_scaling, const double x_scaling) const
+void my_p4est_navier_stokes_t::compute_Q_and_lambda_2_value(Vec& Q_value_nodes, Vec& lambda_2_nodes, const double U_scaling, const double x_scaling) const
 {
   PetscErrorCode ierr;
 
@@ -801,38 +801,37 @@ void my_p4est_navier_stokes_t::compute_Q_value(Vec& Q_value_nodes, const double 
   const double *vnp1_p[P4EST_DIM];
   for(unsigned short dir=0; dir<P4EST_DIM; dir++) { ierr = VecGetArrayRead(vnp1_nodes[dir], &vnp1_p[dir]); CHKERRXX(ierr); }
 
-  double *Q_value_nodes_p;
+  double *Q_value_nodes_p, *lambda_2_nodes_p;
   ierr = VecGetArray(Q_value_nodes, &Q_value_nodes_p); CHKERRXX(ierr);
+  ierr = VecGetArray(lambda_2_nodes, &lambda_2_nodes_p); CHKERRXX(ierr);
 
   for(size_t i=0; i<ngbd_n->get_layer_size(); ++i)
   {
     p4est_locidx_t n = ngbd_n->get_layer_node(i);
     ngbd_n->get_neighbors(n, qnnn);
-    Q_value_nodes_p[n] = -0.5*(SQR(qnnn.dx_central(vnp1_p[0])) + SQR(qnnn.dy_central(vnp1_p[1])) +
-        2.0*qnnn.dx_central(vnp1_p[1])*qnnn.dy_central(vnp1_p[0])
-    #ifdef P4_TO_P8
-        + SQR(qnnn.dz_central(vnp1_p[2])) + 2.0*qnnn.dz_central(vnp1_p[0])*qnnn.dx_central(vnp1_p[2]) + 2.0*qnnn.dy_central(vnp1_p[2])*qnnn.dz_central(vnp1_p[1])
-    #endif
-        )*SQR(x_scaling/U_scaling);
+
+    get_Q_and_lambda_2_values(qnnn, vnp1_p, x_scaling, U_scaling, Q_value_nodes_p[n], lambda_2_nodes_p[n]);
   }
 
   ierr = VecGhostUpdateBegin(Q_value_nodes, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateBegin(lambda_2_nodes, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
   for(size_t i=0; i<ngbd_n->get_local_size(); ++i)
   {
     p4est_locidx_t n = ngbd_n->get_local_node(i);
     ngbd_n->get_neighbors(n, qnnn);
-    Q_value_nodes_p[n] = -0.5*(SQR(qnnn.dx_central(vnp1_p[0])) + SQR(qnnn.dy_central(vnp1_p[1])) +
-        2.0*qnnn.dx_central(vnp1_p[1])*qnnn.dy_central(vnp1_p[0])
-    #ifdef P4_TO_P8
-        + SQR(qnnn.dz_central(vnp1_p[2])) + 2.0*qnnn.dz_central(vnp1_p[0])*qnnn.dx_central(vnp1_p[2]) + 2.0*qnnn.dy_central(vnp1_p[2])*qnnn.dz_central(vnp1_p[1])
-    #endif
-        )*SQR(x_scaling/U_scaling);
+
+    get_Q_and_lambda_2_values(qnnn, vnp1_p, x_scaling, U_scaling, Q_value_nodes_p[n], lambda_2_nodes_p[n]);
   }
 
   ierr = VecGhostUpdateEnd(Q_value_nodes, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd(lambda_2_nodes, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
 
   for(unsigned short dir=0; dir<P4EST_DIM; dir++) { ierr = VecRestoreArrayRead(vnp1_nodes[dir], &vnp1_p[dir]); CHKERRXX(ierr); }
+  ierr = VecRestoreArray(Q_value_nodes,   &Q_value_nodes_p);  CHKERRXX(ierr);
+  ierr = VecRestoreArray(lambda_2_nodes,  &lambda_2_nodes_p); CHKERRXX(ierr);
+
 }
 
 
@@ -2394,7 +2393,7 @@ void my_p4est_navier_stokes_t::compute_forces(double *f)
 
 
 
-void my_p4est_navier_stokes_t::save_vtk(const char* name, bool with_Q_value, const double U_scaling_for_Q, const double x_scaling_for_Q)
+void my_p4est_navier_stokes_t::save_vtk(const char* name, bool with_Q_and_lambda_2_value, const double U_scaling_for_Q_and_lambda_2, const double x_scaling_for_Q_and_lambda_2)
 {
   PetscErrorCode ierr;
 
@@ -2402,13 +2401,17 @@ void my_p4est_navier_stokes_t::save_vtk(const char* name, bool with_Q_value, con
   const double *vn_p[P4EST_DIM];
   const double *hodge_p;
 
-  Vec Q_value_nodes             = NULL;
-  const double *Q_value_nodes_p = NULL;
-  if(with_Q_value)
+  Vec Q_value_nodes               = NULL;
+  Vec lambda_2_nodes              = NULL;
+  const double *Q_value_nodes_p   = NULL;
+  const double *lambda_2_nodes_p  = NULL;
+  if(with_Q_and_lambda_2_value)
   {
     ierr = VecCreateGhostNodes(p4est_n, nodes_n, &Q_value_nodes); CHKERRXX(ierr);
-    compute_Q_value(Q_value_nodes, U_scaling_for_Q, x_scaling_for_Q);
+    ierr = VecCreateGhostNodes(p4est_n, nodes_n, &lambda_2_nodes); CHKERRXX(ierr);
+    compute_Q_and_lambda_2_value(Q_value_nodes, lambda_2_nodes, U_scaling_for_Q_and_lambda_2, x_scaling_for_Q_and_lambda_2);
     ierr = VecGetArrayRead(Q_value_nodes, &Q_value_nodes_p); CHKERRXX(ierr);
+    ierr = VecGetArrayRead(lambda_2_nodes, &lambda_2_nodes_p); CHKERRXX(ierr);
   }
 
   ierr = VecGetArrayRead(phi  , &phi_p  ); CHKERRXX(ierr);
@@ -2465,10 +2468,10 @@ void my_p4est_navier_stokes_t::save_vtk(const char* name, bool with_Q_value, con
   {
     ierr = VecGetArrayRead(smoke, &smoke_p); CHKERRXX(ierr);
 
-    if(with_Q_value)
+    if(with_Q_and_lambda_2_value)
       my_p4est_vtk_write_all(p4est_n, nodes_n, ghost_n,
                              P4EST_TRUE, P4EST_TRUE,
-                             5+P4EST_DIM, /* number of VTK_POINT_DATA */
+                             6+P4EST_DIM, /* number of VTK_POINT_DATA */
                              1, /* number of VTK_CELL_DATA  */
                              name,
                              VTK_POINT_DATA, "phi", phi_p,
@@ -2476,6 +2479,7 @@ void my_p4est_navier_stokes_t::save_vtk(const char* name, bool with_Q_value, con
                              VTK_POINT_DATA, "smoke", smoke_p,
                              VTK_POINT_DATA, "vorticity", vort_p,
                              VTK_POINT_DATA, "Q-value", Q_value_nodes_p,
+                             VTK_POINT_DATA, "lambda_2", lambda_2_nodes_p,
                              VTK_POINT_DATA, "vx", vn_p[0],
           VTK_POINT_DATA, "vy", vn_p[1],
       #ifdef P4_TO_P8
@@ -2504,16 +2508,17 @@ void my_p4est_navier_stokes_t::save_vtk(const char* name, bool with_Q_value, con
   }
   else
   {
-    if(with_Q_value)
+    if(with_Q_and_lambda_2_value)
       my_p4est_vtk_write_all(p4est_n, nodes_n, ghost_n,
                              P4EST_TRUE, P4EST_TRUE,
-                             4+P4EST_DIM, /* number of VTK_POINT_DATA */
+                             5+P4EST_DIM, /* number of VTK_POINT_DATA */
                              1, /* number of VTK_CELL_DATA  */
                              name,
                              VTK_POINT_DATA, "phi", phi_p,
                              VTK_POINT_DATA, "pressure", pressure_nodes_p,
                              VTK_POINT_DATA, "vorticity", vort_p,
                              VTK_POINT_DATA, "Q-value", Q_value_nodes_p,
+                             VTK_POINT_DATA, "lambda_2", lambda_2_nodes_p,
                              VTK_POINT_DATA, "vx", vn_p[0],
           VTK_POINT_DATA, "vy", vn_p[1],
     #ifdef P4_TO_P8
@@ -2555,10 +2560,12 @@ void my_p4est_navier_stokes_t::save_vtk(const char* name, bool with_Q_value, con
     ierr = VecRestoreArrayRead(vn_nodes[dir], &vn_p[dir]); CHKERRXX(ierr);
   }
 
-  if(with_Q_value)
+  if(with_Q_and_lambda_2_value)
   {
     ierr = VecRestoreArrayRead(Q_value_nodes, &Q_value_nodes_p); CHKERRXX(ierr); Q_value_nodes_p = NULL;
+    ierr = VecRestoreArrayRead(lambda_2_nodes, &lambda_2_nodes_p); CHKERRXX(ierr); lambda_2_nodes_p = NULL;
     ierr = VecDestroy(Q_value_nodes); CHKERRXX(ierr); Q_value_nodes = NULL;
+    ierr = VecDestroy(lambda_2_nodes); CHKERRXX(ierr); lambda_2_nodes = NULL;
   }
 
   ierr = PetscPrintf(p4est_n->mpicomm, "Saved visual data in ... %s\n", name); CHKERRXX(ierr);
