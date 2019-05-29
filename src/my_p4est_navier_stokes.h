@@ -184,7 +184,7 @@ protected:
   void compute_max_L2_norm_u();
 
   void compute_vorticity();
-  void compute_Q_value(Vec& Q_value_nodes) const;
+  void compute_Q_value(Vec& Q_value_nodes, const double U_scaling, const double x_scaling) const;
 
   void compute_norm_grad_v();
 
@@ -422,7 +422,7 @@ public:
 
   void compute_forces(double *f);
 
-  void save_vtk(const char* name, bool with_Q_value = false);
+  void save_vtk(const char* name, bool with_Q_value = false, const double U_scaling_for_Q = 1.0, const double x_scaling_for_Q = 1.0);
 
   /*!
    * \brief calculates the mass flow through a slice in Cartesian direction in the computational domain. The slice must coincide with
@@ -515,7 +515,7 @@ public:
    *                                        the grid was uniform.
    * Raphael EGAN
    */
-  void get_slice_averaged_vnp1_profile(const unsigned short& vel_component, const unsigned short& axis, std::vector<double>& avg_velocity_profile);
+  void get_slice_averaged_vnp1_profile(const unsigned short& vel_component, const unsigned short& axis, std::vector<double>& avg_velocity_profile, const double u_scaling = 1.0);
 
   /*!
    * \brief get_line_averaged_vnp1_profiles: calculates line-averaged profiles for a velocity component in the domain. The direction along which
@@ -570,7 +570,7 @@ public:
                                      #ifdef P4_TO_P8
                                        const unsigned short& averaging_direction,
                                      #endif
-                                       const std::vector<unsigned int>& bin_idx, std::vector<std::vector<double> >& avg_velocity_profile);
+                                       const std::vector<unsigned int>& bin_idx, std::vector<std::vector<double> >& avg_velocity_profile, const double u_scaling = 1.0);
 
   inline double alpha() const { return ((sl_order == 1)? (1.0): ((2.0*dt_n+dt_nm1)/(dt_n+dt_nm1)));}
 

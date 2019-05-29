@@ -792,7 +792,7 @@ void my_p4est_navier_stokes_t::compute_vorticity()
   for(int dir=0; dir<P4EST_DIM; dir++) { ierr = VecRestoreArrayRead(vnp1_nodes[dir], &vnp1_p[dir]); CHKERRXX(ierr); }
 }
 
-void my_p4est_navier_stokes_t::compute_Q_value(Vec& Q_value_nodes) const
+void my_p4est_navier_stokes_t::compute_Q_value(Vec& Q_value_nodes, const double U_scaling, const double x_scaling) const
 {
   PetscErrorCode ierr;
 
@@ -813,7 +813,7 @@ void my_p4est_navier_stokes_t::compute_Q_value(Vec& Q_value_nodes) const
     #ifdef P4_TO_P8
         + SQR(qnnn.dz_central(vnp1_p[2])) + 2.0*qnnn.dz_central(vnp1_p[0])*qnnn.dx_central(vnp1_p[2]) + 2.0*qnnn.dy_central(vnp1_p[2])*qnnn.dz_central(vnp1_p[1])
     #endif
-        );
+        )*SQR(x_scaling/U_scaling);
   }
 
   ierr = VecGhostUpdateBegin(Q_value_nodes, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -827,7 +827,7 @@ void my_p4est_navier_stokes_t::compute_Q_value(Vec& Q_value_nodes) const
     #ifdef P4_TO_P8
         + SQR(qnnn.dz_central(vnp1_p[2])) + 2.0*qnnn.dz_central(vnp1_p[0])*qnnn.dx_central(vnp1_p[2]) + 2.0*qnnn.dy_central(vnp1_p[2])*qnnn.dz_central(vnp1_p[1])
     #endif
-        );
+        )*SQR(x_scaling/U_scaling);
   }
 
   ierr = VecGhostUpdateEnd(Q_value_nodes, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -2394,7 +2394,7 @@ void my_p4est_navier_stokes_t::compute_forces(double *f)
 
 
 
-void my_p4est_navier_stokes_t::save_vtk(const char* name, bool with_Q_value)
+void my_p4est_navier_stokes_t::save_vtk(const char* name, bool with_Q_value, const double U_scaling_for_Q, const double x_scaling_for_Q)
 {
   PetscErrorCode ierr;
 
@@ -2407,7 +2407,7 @@ void my_p4est_navier_stokes_t::save_vtk(const char* name, bool with_Q_value)
   if(with_Q_value)
   {
     ierr = VecCreateGhostNodes(p4est_n, nodes_n, &Q_value_nodes); CHKERRXX(ierr);
-    compute_Q_value(Q_value_nodes);
+    compute_Q_value(Q_value_nodes, U_scaling_for_Q, x_scaling_for_Q);
     ierr = VecGetArrayRead(Q_value_nodes, &Q_value_nodes_p); CHKERRXX(ierr);
   }
 
@@ -3281,7 +3281,7 @@ unsigned long int my_p4est_navier_stokes_t::memory_estimate() const
   return memory_used;
 }
 
-void my_p4est_navier_stokes_t::get_slice_averaged_vnp1_profile(const unsigned short& vel_component, const unsigned short& axis, std::vector<double>& avg_velocity_profile)
+void my_p4est_navier_stokes_t::get_slice_averaged_vnp1_profile(const unsigned short& vel_component, const unsigned short& axis, std::vector<double>& avg_velocity_profile, const double u_scaling)
 {
   P4EST_ASSERT((vel_component<P4EST_DIM) && (axis<P4EST_DIM) && (vel_component!=axis) && is_periodic(p4est_n, vel_component));
 #ifdef P4_TO_P8
@@ -3416,7 +3416,7 @@ void my_p4est_navier_stokes_t::get_slice_averaged_vnp1_profile(const unsigned sh
 #else
       double weighting_area = elementary_area*((1<<(data->max_lvl-nb_quad.level)) + (1<<(data->max_lvl-quad.level)))*0.5;
 #endif
-      avg_velocity_profile[idx_in_profile]          += velocity_component_p[face_idx]*weighting_area;
+      avg_velocity_profile[idx_in_profile]          += velocity_component_p[face_idx]*weighting_area/u_scaling;
 #ifdef P4EST_ENABLE_DEBUG
       avg_velocity_profile[ndouble+idx_in_profile]  +=weighting_area;
 #endif
@@ -3444,7 +3444,7 @@ void my_p4est_navier_stokes_t::get_line_averaged_vnp1_profiles(const unsigned sh
                                                                #ifdef P4_TO_P8
                                                                const unsigned short& averaging_direction,
                                                                #endif
-                                                               const std::vector<unsigned int>& bin_index, std::vector< std::vector<double> >& avg_velocity_profile)
+                                                               const std::vector<unsigned int>& bin_index, std::vector< std::vector<double> >& avg_velocity_profile, const double u_scaling)
 {
   P4EST_ASSERT((vel_component<P4EST_DIM) && (axis<P4EST_DIM) && (vel_component!=axis) && is_periodic(p4est_n, vel_component));
 #ifdef P4_TO_P8
@@ -3658,7 +3658,7 @@ void my_p4est_navier_stokes_t::get_line_averaged_vnp1_profiles(const unsigned sh
       {
         for (unsigned int transverse_logical_idx = bounds_transverse_direction[0]; transverse_logical_idx < bounds_transverse_direction[1]; ++transverse_logical_idx) {
           wrapped_idx = transverse_logical_idx%bin_index.size();
-          avg_velocity_profile[bin_index.at(wrapped_idx)][idx_in_profile] += covering_length*velocity_component_p[face_idx];
+          avg_velocity_profile[bin_index.at(wrapped_idx)][idx_in_profile] += covering_length*velocity_component_p[face_idx]/u_scaling;
 #ifdef P4EST_ENABLE_DEBUG
           avg_velocity_profile[bin_index.at(wrapped_idx)][idx_in_profile+ndouble] += covering_length;
 #endif
@@ -3667,20 +3667,20 @@ void my_p4est_navier_stokes_t::get_line_averaged_vnp1_profiles(const unsigned sh
       else
       {
         wrapped_idx = logical_idx_of_face%bin_index.size();
-        avg_velocity_profile[bin_index.at(wrapped_idx)][idx_in_profile] += covering_length*velocity_component_p[face_idx];
+        avg_velocity_profile[bin_index.at(wrapped_idx)][idx_in_profile] += covering_length*velocity_component_p[face_idx]/u_scaling;
 #ifdef P4EST_ENABLE_DEBUG
         avg_velocity_profile[bin_index.at(wrapped_idx)][idx_in_profile+ndouble] += covering_length;
 #endif
         for (unsigned int k = 1; k <= negative_coverage; ++k) {
           wrapped_idx = (logical_idx_of_face+((k>logical_idx_of_face)?(((k-logical_idx_of_face)/bin_index.size()+1)*bin_index.size()):0)-k)%bin_index.size(); // avoid negative intermediary result...
-          avg_velocity_profile[bin_index.at(wrapped_idx)][idx_in_profile] += ((k == negative_coverage)? 0.5: 1.0)*covering_length*velocity_component_p[face_idx];
+          avg_velocity_profile[bin_index.at(wrapped_idx)][idx_in_profile] += ((k == negative_coverage)? 0.5: 1.0)*covering_length*velocity_component_p[face_idx]/u_scaling;
 #ifdef P4EST_ENABLE_DEBUG
           avg_velocity_profile[bin_index.at(wrapped_idx)][idx_in_profile+ndouble] += ((k == negative_coverage)? 0.5: 1.0)*covering_length;
 #endif
         }
         for (unsigned int k = 1; k <= positive_coverage; ++k) {
           wrapped_idx = (logical_idx_of_face+k)%bin_index.size();
-          avg_velocity_profile[bin_index.at(wrapped_idx)][idx_in_profile] += ((k == positive_coverage)? 0.5: 1.0)*covering_length*velocity_component_p[face_idx];
+          avg_velocity_profile[bin_index.at(wrapped_idx)][idx_in_profile] += ((k == positive_coverage)? 0.5: 1.0)*covering_length*velocity_component_p[face_idx]/u_scaling;
 #ifdef P4EST_ENABLE_DEBUG
           avg_velocity_profile[bin_index.at(wrapped_idx)][idx_in_profile+ndouble] += ((k == positive_coverage)? 0.5: 1.0)*covering_length;
 #endif
@@ -3688,20 +3688,20 @@ void my_p4est_navier_stokes_t::get_line_averaged_vnp1_profiles(const unsigned sh
       }
 #else
       wrapped_idx = logical_idx_of_face%bin_index.size();
-      avg_velocity_profile[bin_index.at(wrapped_idx)][idx_in_profile] += covering_length*velocity_component_p[face_idx];
+      avg_velocity_profile[bin_index.at(wrapped_idx)][idx_in_profile] += covering_length*velocity_component_p[face_idx]/u_scaling;
 #ifdef P4EST_ENABLE_DEBUG
       avg_velocity_profile[bin_index.at(wrapped_idx)][idx_in_profile+ndouble] += covering_length;
 #endif
       for (unsigned int k = 1; k <= negative_coverage; ++k) {
         wrapped_idx = (logical_idx_of_face+((k>logical_idx_of_face)?(((k-logical_idx_of_face)/bin_index.size()+1)*bin_index.size()):0)-k)%bin_index.size(); // avoid negative intermediary result...
-        avg_velocity_profile[bin_index.at(wrapped_idx)][idx_in_profile] += ((k == negative_coverage)? 0.5: 1.0)*covering_length*velocity_component_p[face_idx];
+        avg_velocity_profile[bin_index.at(wrapped_idx)][idx_in_profile] += ((k == negative_coverage)? 0.5: 1.0)*covering_length*velocity_component_p[face_idx]/u_scaling;
 #ifdef P4EST_ENABLE_DEBUG
         avg_velocity_profile[bin_index.at(wrapped_idx)][idx_in_profile+ndouble] += ((k == negative_coverage)? 0.5: 1.0)*covering_length;
 #endif
       }
       for (unsigned int k = 1; k <= positive_coverage; ++k) {
         wrapped_idx = (logical_idx_of_face+k)%bin_index.size();
-        avg_velocity_profile[bin_index.at(wrapped_idx)][idx_in_profile] += ((k == positive_coverage)? 0.5: 1.0)*covering_length*velocity_component_p[face_idx];
+        avg_velocity_profile[bin_index.at(wrapped_idx)][idx_in_profile] += ((k == positive_coverage)? 0.5: 1.0)*covering_length*velocity_component_p[face_idx]/u_scaling;
 #ifdef P4EST_ENABLE_DEBUG
         avg_velocity_profile[bin_index.at(wrapped_idx)][idx_in_profile+ndouble] += ((k == positive_coverage)? 0.5: 1.0)*covering_length;
 #endif
