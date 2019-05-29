@@ -248,7 +248,7 @@ int main (int argc, char* argv[])
       throw runtime_error("Could not open file for time-averaged tex figure.");
     fprintf(fp, "set term epslatex color standalone\n");
     fprintf(fp, "set output 'time_average_%s.tex'\n", raw_file_name);
-    fprintf(fp, "set xlabel \"$<u>$\"\n"); // =\\\\frac{1}{t_{\\\\mathrm{end}} - t_{\\\\mathrm{start}}} \\\\frac{1}{L_{x}} \\\\frac{1}{L_{z}} \\\\int_{t_{\\\\mathrm{start}}}^{t_{\\\\mathrm{end}}}{\\\\int_{-L_{z}/2}^{L_{z}/2}{\\\\int_{-L_{x}/2}^{L_{x}/2}{ u \\\\,\\\\mathrm{d}x}\\\\,\\\\mathrm{d}z}\\\\,\\\\mathrm{d}t}$\"\n");
+    fprintf(fp, "set xlabel \"$\\\\left\\\\langle\\\\frac{u}{U_{\\\\mathrm{b}}}\\\\right\\\\rangle$\"\n"); // =\\\\frac{1}{t_{\\\\mathrm{end}} - t_{\\\\mathrm{start}}} \\\\frac{1}{L_{x}} \\\\frac{1}{L_{z}} \\\\int_{t_{\\\\mathrm{start}}}^{t_{\\\\mathrm{end}}}{\\\\int_{-L_{z}/2}^{L_{z}/2}{\\\\int_{-L_{x}/2}^{L_{x}/2}{ u \\\\,\\\\mathrm{d}x}\\\\,\\\\mathrm{d}z}\\\\,\\\\mathrm{d}t}$\"\n");
     fprintf(fp, "set ylabel \"$y$\"\n");
     if(only_one_file)
       fprintf(fp, "plot\t \"./time_averaged_%s%s\" using 2:1 notitle with linespoints lc rgb \"blue\" dashtype 5 lw 2 pt 7 pi -0.5 ps 0.5", raw_file_name, extension);
