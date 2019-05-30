@@ -1388,6 +1388,7 @@ void my_p4est_navier_stokes_t::enforce_mass_flow(const bool* force_in_direction,
 #ifdef P4_TO_P8
     current_mean_velocity            /= (xyz_max[(dir+2)%P4EST_DIM] - xyz_min[(dir+2)%P4EST_DIM]);
 #endif
+    current_mean_velocity            /= rho;
 
     forcing_mean_hodge_gradient[dir]  = current_mean_velocity - desired_mean_velocity[dir];
     ierr = VecGetArray(vnp1[dir], &vel_p); CHKERRXX(ierr);
