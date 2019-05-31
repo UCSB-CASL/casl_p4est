@@ -80,6 +80,10 @@ double r0;
 short omega_coeff = 20;
 double omega = 0.1*omega_coeff*M_PI;
 bool save_hodge = false;
+int k_n = 1;
+double We = 7520;
+double Re=1000.0;
+int use_phy=1;
 
 #ifdef P4_TO_P8
 class INIT_SMOKE : public CF_3
@@ -441,6 +445,7 @@ public:
     {
     case 0:
     case 1:
+    case 2:
       return (sqrt(SQR(x-0.25) + SQR(y-0.25))<0.1) ? 1 : 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
@@ -457,6 +462,7 @@ public:
     {
     case 0:
     case 1:
+    case 2:
       return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
@@ -474,6 +480,7 @@ public:
     {
     case 0: return -1;
     case 1: return 0.15 - sqrt(SQR(x-(0.5 + 0.1*cos(omega*(tn+dt)))) + SQR(y- 0.3));
+    case 2: return -1;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -489,6 +496,7 @@ public:
     {
     case 0: return y - (0.7 + 0.05*cos(2.0*M_PI*x)); // increasing the amplitude will make the simulation blow up (unphysical conditions on the side walls...)
     case 1: return y - 0.7;
+    case 2: return y - (0.5+0.08*sin(k_n*2.0*M_PI*x));
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -515,6 +523,7 @@ struct BCWALLTYPE_P : WallBC2D
     {
     case 0:
     case 1:
+    case 2:
       return NEUMANN;
     default: throw std::invalid_argument("choose a valid test.");
     }
@@ -529,6 +538,7 @@ struct BCWALLVALUE_P : CF_2
     {
     case 0:
     case 1:
+    case 2:
       return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
@@ -543,6 +553,7 @@ struct BCINTERFACEVALUE_P : CF_2
     {
     case 0:
     case 1:
+    case 2:
       return 0;
     default: throw std::invalid_argument("choose a valid test.");
     }
@@ -557,6 +568,7 @@ struct BCWALLTYPE_U : WallBC2D
     {
     case 0:
     case 1:
+    case 2:
       return DIRICHLET;
     default: throw std::invalid_argument("choose a valid test.");
     }
@@ -571,6 +583,7 @@ struct BCWALLTYPE_V : WallBC2D
     {
     case 0:
     case 1:
+    case 2:
       return (((fabs(y) < EPS) || (fabs(y - 1.0) < EPS))? DIRICHLET : NEUMANN);
     default: throw std::invalid_argument("choose a valid test.");
     }
@@ -585,6 +598,7 @@ struct BCWALLVALUE_U : CF_2
     {
     case 0:
     case 1:
+    case 2:
       return 0.0;
     default: throw std::invalid_argument("choose a valid test.");
     }
@@ -599,6 +613,7 @@ struct BCWALLVALUE_V : CF_2
     {
     case 0:
     case 1:
+    case 2:
       return 0.0;
     default: throw std::invalid_argument("choose a valid test.");
     }
@@ -613,6 +628,7 @@ struct BCINTERFACE_VALUE_U : CF_2
     {
     case 0: return 0.0;
     case 1: return -0.1*omega*sin(omega*(tn+dt));
+    case 2: return 0.0;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -626,6 +642,7 @@ struct BCINTERFACE_VALUE_V : CF_2
     {
     case 0:
     case 1:
+    case 2:
       return 0.0;
     default: throw std::invalid_argument("choose a valid test.");
     }
@@ -640,6 +657,7 @@ struct initial_velocity_unm1_t : CF_2
     {
     case 0:
     case 1:
+    case 2:
       return 0.0;
     default: throw std::invalid_argument("choose a valid test.");
     }
@@ -654,6 +672,7 @@ struct initial_velocity_u_n_t : CF_2
     {
     case 0:
     case 1:
+    case 2:
       return 0.0;
     default: throw std::invalid_argument("choose a valid test.");
     }
@@ -668,6 +687,7 @@ struct initial_velocity_vnm1_t : CF_2
     {
     case 0:
     case 1:
+    case 2:
       return 0.0;
     default: throw std::invalid_argument("choose a valid test.");
     }
@@ -682,6 +702,7 @@ struct initial_velocity_vn_t : CF_2
     {
     case 0:
     case 1:
+    case 2:
       return 0.0;
     default: throw std::invalid_argument("choose a valid test.");
     }
@@ -696,6 +717,7 @@ struct external_force_u_t : CF_2
     {
     case 0:
     case 1:
+    case 2:
       return 0.0;
     default: throw std::invalid_argument("choose a valid test.");
     }
@@ -711,6 +733,8 @@ struct external_force_v_t : CF_2
     case 0:
     case 1:
       return -9.81*rho;
+    case 2:
+      return -25.0*rho;
     default: throw std::invalid_argument("choose a valid test.");
     }
   }
@@ -745,6 +769,10 @@ int main (int argc, char* argv[])
   cmd.add_option("smoke_thresh", "threshold for smoke refinement");
   cmd.add_option("refine_with_smoke", "refine the grid with the smoke density and threshold smoke_thresh");
   cmd.add_option("out_dir", "exportation directory");
+  cmd.add_option("k_n", "number of wavelength of initial free surface");
+  cmd.add_option("Re", "Renolds number");
+  cmd.add_option("We", "Weber number");
+  cmd.add_option("use_phy", "Physical bc");
 #ifdef P4_TO_P8
   cmd.add_option("test", "choose a test.\n\
                  0: [0, 1]X[0, 1]X[0, 1] computational box, periodic x and y; \n\
@@ -775,20 +803,20 @@ int main (int argc, char* argv[])
   cmd.parse(argc, argv);
 
   int sl_order = cmd.get("sl_order", 2);
-  int lmin = cmd.get("lmin", 4);
-  int lmax = cmd.get("lmax", 6);
+  int lmin = cmd.get("lmin", 5);
+  int lmax = cmd.get("lmax", 7);
   double n_times_dt = cmd.get("n_times_dt", 1.0);
   double threshold_split_cell = cmd.get("thresh", 0.1);
   bool save_vtk = cmd.contains("save_vtk");
   bool save_forces = cmd.get("save_forces", 1);
   bool save_water_volume = cmd.get("save_water_volume", 1);
   double save_every_dt = cmd.get("save_every_delta_t", 1.0/24.0);
-  test_number = cmd.get("test", 1);
+  test_number = cmd.get("test", 2);
 
   bool with_smoke = cmd.get("smoke", 1);
   bool refine_with_smoke = cmd.get("refine_with_smoke", 0);
   double smoke_thresh = cmd.get("smoke_thresh", .5);
-  double uniform_band = cmd.get("uniform_band", 4.0);
+  double uniform_band = cmd.get("uniform_band", 5.0);
 
   if(0)
   {
@@ -809,7 +837,9 @@ int main (int argc, char* argv[])
   case 0: nx=cmd.get("nx", 1); ny=cmd.get("ny", 1); nz=cmd.get("nz", 1); xmin=0.0; xmax=1.0; ymin=0; ymax=1.0; zmin=0.0; zmax=1.0; mu=8.9e-4; rho=1000.0; surf_tension=72.86e-3; u0=0.4*M_PI; r0=0.15; tf=cmd.get("tf", 10.0);  break;
 #else
   case 0: nx=cmd.get("nx", 1); ny=cmd.get("ny", 1); xmin=0.0; xmax=1.0; ymin=0.0; ymax=1.0; mu=8.9e-4; rho=1000.0; surf_tension=0.0/*72.86e-3*/; u0=1.0; /*arbitrary estimate...*/ r0=-2.0; tf=cmd.get("tf", 10.0);  break;
-  case 1: nx=cmd.get("nx", 1); ny=cmd.get("ny", 1); xmin=0.0; xmax=1.0; ymin=0.0; ymax=1.0; mu=8.9e-4; rho=1000.0; surf_tension=0.0/*72.86e-3*/; u0=0.2*M_PI; r0=0.15; tf=cmd.get("tf", 40.0/*20*2*M_PI/omega*/);  break;//changg_tf
+  case 1: nx=cmd.get("nx", 1); ny=cmd.get("ny", 1); xmin=0.0; xmax=1.0; ymin=0.0; ymax=1.0; mu=8.9e-4; rho=1000.0; surf_tension=0.0/*72.86e-3*/; u0=0.2*M_PI; r0=0.15; tf=cmd.get("tf", 0.4/*20*2*M_PI/omega*/);  break;//changg_tf
+  case 2: nx=cmd.get("nx", 1); ny=cmd.get("ny", 1); xmin=0.0; xmax=1.0; ymin=0.0; ymax=1.0; mu=1/(k_n*M_PI*Re); rho=1.0; surf_tension=0/*1/(We*k_n)*/ /*72.86e-3*/; u0=1.0; /*arbitrary estimate...*/ r0=-2.0; tf=cmd.get("tf", 10.0);  break;
+
 #endif
   default: throw std::invalid_argument("choose a valid test.");
   }
@@ -860,6 +890,10 @@ int main (int argc, char* argv[])
     periodic[1] = 0;
     break;
   case 1:
+    periodic[0] = 1;
+    periodic[1] = 0;
+    break;
+  case 2:
     periodic[0] = 1;
     periodic[1] = 0;
     break;
@@ -983,6 +1017,9 @@ int main (int argc, char* argv[])
   case 1:
     free_surface_solver.set_dt(MIN(dxmin*n_times_dt/u0, 0.05), MIN(dxmin*n_times_dt/u0, 0.05)); // MIN(max_cfl_solid_velocity, 0.05*period)
     break;
+  case 2:
+    free_surface_solver.set_dt(dxmin*n_times_dt/u0, dxmin*n_times_dt/u0);
+    break;
 #endif
   default:
 #ifdef P4_TO_P8
@@ -993,7 +1030,10 @@ int main (int argc, char* argv[])
     break;
   }
   dt = free_surface_solver.get_dt();
-  free_surface_solver.physical_bc_on();
+  if(use_phy ==1)
+  {
+    free_surface_solver.physical_bc_on();
+  }
   free_surface_solver.set_velocities(vnm1, vn);
   free_surface_solver.set_bc(bc_v, &bc_p);
 
@@ -1028,9 +1068,11 @@ int main (int argc, char* argv[])
 #else
   string out_dir = cmd.get<string>("out_dir", "/home/mingru/workspace/projects/free_surface");
 #endif
-
+  string name_fix;
+  if(free_surface_solver.use_physical_bc == true){name_fix = "fix_";}
+  else{name_fix = "nofix_";}
   string sub_folder_path = out_dir + "/" + to_string(P4EST_DIM) + "d/test_" + to_string(test_number);
-  string vtk_path = sub_folder_path + "/vtu";
+  string vtk_path = sub_folder_path + "/vtu" + name_fix;
   string hodge_path = vtk_path + "/hodge_iter";
   string hodge_sub_path;
   if (mpi.rank()==0 && (save_forces || save_vtk))
@@ -1059,7 +1101,7 @@ int main (int argc, char* argv[])
    #ifdef P4_TO_P8
      (test_number==0)
    #else
-     (test_number==1)
+     ((test_number==1) | (test_number ==2))
    #endif
      )
   {
@@ -1185,10 +1227,11 @@ int main (int argc, char* argv[])
 
     double err_hodge = 1;
     double err_vel[P4EST_DIM];
-    err_vel[0] = 1;
+    err_vel[0] = 1.0;
     int iter_hodge = 0;
     //while(iter_hodge< 200 && err_vel[0]> 1e-3/*(0.01*free_surface_solver.get_max_L2_norm_u())*/)
-    while(iter_hodge<100 && err_hodge > 1e-3)
+    //while(iter_hodge<100 && err_hodge > 1e-4)
+    while(iter_hodge<200)
     {
       hodge_new = free_surface_solver.get_hodge();
       ierr = VecCopy(hodge_new, hodge_old); CHKERRXX(ierr);
@@ -1202,6 +1245,9 @@ int main (int argc, char* argv[])
       free_surface_solver.solve_viscosity();
       free_surface_solver.solve_projection();
       free_surface_solver.compute_velocity_at_nodes();//without this line, vnp1_nodes is not updated
+
+
+
       //ierr = PetscPrintf(mpi.comm(), "   Velocity iteration #%d, error = %e\n", err_vel); CHKERRXX(ierr);
 
       hodge_new = free_surface_solver.get_hodge();
@@ -1268,13 +1314,13 @@ int main (int argc, char* argv[])
 
       ierr = PetscPrintf(mpi.comm(), "hodge iteration #%d, error = %e, x-velocity error = %e, y-velocity error = %e\n", iter_hodge, err_hodge, err_vel[0], err_vel[1]); CHKERRXX(ierr);
 
-/*
+
       //find the lower bound
       if(hodge_lower_bound < err_vel[0])
         break;
       else
         hodge_lower_bound = err_vel[0];
-*/
+
 
       //save each hodge iteration step
       if(save_hodge)
@@ -1285,6 +1331,7 @@ int main (int argc, char* argv[])
       iter_hodge++;
     }
     free_surface_solver.compute_vel_bc_value();
+
     ierr = VecDestroy(hodge_old); CHKERRXX(ierr);
     for(int dim = 0 ; dim<P4EST_DIM ; ++dim)
     {
@@ -1301,7 +1348,7 @@ int main (int argc, char* argv[])
      #ifdef P4_TO_P8
        (test_number==0)
      #else
-       (test_number==1)
+       ((test_number==1) | (test_number == 2))
      #endif
        )
     {
@@ -1365,17 +1412,16 @@ int main (int argc, char* argv[])
     if(free_surface_solver.get_max_L2_norm_u()>100.0) {
       if(save_vtk)
       {
-        sprintf(vtk_name, "%s/with_time_%d", vtk_path.c_str(), export_n+1);
+        sprintf(vtk_name, "%s/%swith_time_%d", vtk_path.c_str(), name_fix.c_str(), export_n+1);
         free_surface_solver.save_vtk(vtk_name);
       }
       std::cerr << "I think I've blown up..." << std::endl;
       break;
     }
-
     if(save_vtk && ((int) floor(tn/save_every_dt)) != export_n)
     {
       export_n = ((int) floor(tn/save_every_dt));
-      sprintf(vtk_name, "%s/with_time_%d", vtk_path.c_str(), export_n);
+      sprintf(vtk_name, "%s/%swith_time_%d", vtk_path.c_str(),name_fix.c_str(), export_n);
       free_surface_solver.save_vtk(vtk_name);
     }
     iter++;

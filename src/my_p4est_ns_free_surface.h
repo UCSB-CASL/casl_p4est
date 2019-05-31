@@ -129,8 +129,8 @@ private:
   Vec global_phi;
   Vec sigma_kappa;
   Vec physical_bc[P4EST_DIM];
-  Vec vel_bc_check[P4EST_DIM];
-  bool use_physical_bc;
+  Vec dxyz_hodge_nodes[P4EST_DIM];
+  Vec vel_bc_check;
 
   double surf_tension, finest_diag;
 
@@ -154,7 +154,7 @@ private:
 
   my_p4est_interpolation_nodes_t *interp_fs_phi, *interp_global_phi, *interp_sigma_kappa;
   my_p4est_interpolation_nodes_t *interp_physical_bc_x, *interp_physical_bc_y;
-#ifdef P4_to_P8
+#ifdef P4_TO_P8
   my_p4est_interpolation_nodes_t *interp_physical_bc_z;
 #endif
 
@@ -198,6 +198,8 @@ private:
 public:
   my_p4est_ns_free_surface_t(my_p4est_node_neighbors_t *ngbd_nm1, my_p4est_node_neighbors_t *ngbd_n, my_p4est_faces_t *faces_n);
   ~my_p4est_ns_free_surface_t();
+
+  bool use_physical_bc;
 
   void set_parameters(double mu_, double rho, int sl_order, double uniform_band, double threshold_split_cell, double n_times_dt, double surf_tension_)
   {
