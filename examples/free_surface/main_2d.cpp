@@ -1062,7 +1062,7 @@ int main (int argc, char* argv[])
   char file_lower_bound[1000];
 
 #if defined(POD_CLUSTER)
-  string out_dir = cmd.get<string>("out_dir", "/home/mingru/free_surface");
+  string out_dir = cmd.get<string>("out_dir", "/scratch/mingru/free_surface");
 #elif defined(STAMPEDE)
   string out_dir = cmd.get<string>("out_dir", "/work/04965/tg842642/stampede2/free_surface");
 #else
