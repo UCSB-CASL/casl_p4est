@@ -1533,7 +1533,7 @@ void my_p4est_ns_free_surface_t::save_vtk(const char* name)
     my_p4est_vtk_write_all(p4est_n, nodes_n, ghost_n,
                            P4EST_TRUE, P4EST_TRUE,
 //                           P4EST_FALSE, P4EST_FALSE,
-                           3+P4EST_DIM+P4EST_DIM, /* number of VTK_POINT_DATA */
+                           3+P4EST_DIM /*+P4EST_DIM*/, /* number of VTK_POINT_DATA */
                            1, /* number of VTK_CELL_DATA  */
                            name,
                            VTK_POINT_DATA, "solid", phi_p,
@@ -1545,11 +1545,11 @@ void my_p4est_ns_free_surface_t::save_vtk(const char* name)
         VTK_POINT_DATA, "vz", vn_p[2],
 
     #endif
-        VTK_POINT_DATA, "v_bc_x", vel_bc[0],
-        VTK_POINT_DATA, "v_bc_y", vel_bc[1],
-    #ifdef P4_TO_P8
-        VTK_POINT_DATA, "v_bc_z", vel_bc[2],
-    #endif
+//        VTK_POINT_DATA, "v_bc_x", vel_bc[0],
+//        VTK_POINT_DATA, "v_bc_y", vel_bc[1],
+//    #ifdef P4_TO_P8
+//        VTK_POINT_DATA, "v_bc_z", vel_bc[2],
+//    #endif
         VTK_CELL_DATA, "leaf_level", l_p
         );
   }

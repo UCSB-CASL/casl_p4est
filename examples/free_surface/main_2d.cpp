@@ -1339,11 +1339,10 @@ int main (int argc, char* argv[])
 //      ierr = VecDestroy(vnp1_nodes_old[dim]);CHKERRXX(ierr);
 //    }
 
-    //free_surface_solver.compute_velocity_at_nodes();
+    free_surface_solver.compute_velocity_at_nodes();
     free_surface_solver.compute_pressure();
 
     tn += dt;
-
 
     if(save_forces &&
      #ifdef P4_TO_P8
