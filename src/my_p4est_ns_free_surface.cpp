@@ -238,7 +238,7 @@ double my_p4est_ns_free_surface_t::mixed_interface_bc_t::operator ()(double x, d
   case VELOCITY_X:
     // homogeneous Neumann for now
 #ifdef P4_TO_P8
-    return (((*_prnt->interp_phi)(x, y, z) > -1.2*_prnt->finest_diag)? _prnt->bc_v[0].interfaceValue(x, y, z) : _prnt->/*zero(x, y, z)*/interp_physical_bc_x->operator ()(x,y,z));
+    return (((*_prnt->interp_phi)(x, y, z) > -1.2*_prnt->finest_diag)? _prnt->bc_v[0].interfaceValue(x, y, z) : _prnt->zero(x, y, z) /*interp_physical_bc_x->operator ()(x,y,z)*/);
 #else
     return (((*_prnt->interp_phi)(x, y) > -1.2*_prnt->finest_diag)? _prnt->bc_v[0].interfaceValue(x, y) : _prnt->interp_physical_bc_x->operator ()(x,y));
 #endif
@@ -246,14 +246,14 @@ double my_p4est_ns_free_surface_t::mixed_interface_bc_t::operator ()(double x, d
   case VELOCITY_Y:
     // homogeneous Neumann for now
 #ifdef P4_TO_P8
-    return (((*_prnt->interp_phi)(x, y, z) > -1.2*_prnt->finest_diag)? _prnt->bc_v[1].interfaceValue(x, y, z) : _prnt->/*zero(x, y, z))*/interp_physical_bc_y->operator()(x,y,z));
+    return (((*_prnt->interp_phi)(x, y, z) > -1.2*_prnt->finest_diag)? _prnt->bc_v[1].interfaceValue(x, y, z) : _prnt->zero(x, y, z) /*interp_physical_bc_y->operator()(x,y,z)*/);
 #else
     return (((*_prnt->interp_phi)(x, y) > -1.2*_prnt->finest_diag)? _prnt->bc_v[1].interfaceValue(x, y) :_prnt->interp_physical_bc_y->operator ()(x,y));
 #endif
     break;
 #ifdef P4_TO_P8
   case VELOCITY_Z:
-    return (((*_prnt->interp_phi)(x, y, z) > -1.2*_prnt->finest_diag)? _prnt->bc_v[2].interfaceValue(x, y, z) : _prnt->/*zero(x, y)*/interp_physical_bc_z->operator ()(x,y,z)); // homogeneous Neumann extension for now
+    return (((*_prnt->interp_phi)(x, y, z) > -1.2*_prnt->finest_diag)? _prnt->bc_v[2].interfaceValue(x, y, z) : _prnt->zero(x, y, z)/*interp_physical_bc_z->operator ()(x,y,z)*/); // homogeneous Neumann extension for now
     break;
 #endif
   default:

@@ -83,7 +83,7 @@ bool save_hodge = false;
 int k_n = 1;
 double We = 7520;
 double Re=1000.0;
-int use_phy=1;
+int use_phy=0;
 
 #ifdef P4_TO_P8
 class INIT_SMOKE : public CF_3
@@ -803,17 +803,17 @@ int main (int argc, char* argv[])
   cmd.parse(argc, argv);
 
   int sl_order = cmd.get("sl_order", 2);
-  int lmin = cmd.get("lmin", 5);
-  int lmax = cmd.get("lmax", 7);
+  int lmin = cmd.get("lmin", 4);
+  int lmax = cmd.get("lmax", 8);
   double n_times_dt = cmd.get("n_times_dt", 1.0);
   double threshold_split_cell = cmd.get("thresh", 0.1);
   bool save_vtk = cmd.contains("save_vtk");
   bool save_forces = cmd.get("save_forces", 1);
   bool save_water_volume = cmd.get("save_water_volume", 1);
   double save_every_dt = cmd.get("save_every_delta_t", 1.0/24.0);
-  test_number = cmd.get("test", 2);
+  test_number = cmd.get("test", 0);
 
-  bool with_smoke = cmd.get("smoke", 1);
+  bool with_smoke = cmd.get("smoke", 0);
   bool refine_with_smoke = cmd.get("refine_with_smoke", 0);
   double smoke_thresh = cmd.get("smoke_thresh", .5);
   double uniform_band = cmd.get("uniform_band", 5.0);
@@ -834,10 +834,10 @@ int main (int argc, char* argv[])
   switch(test_number)
   {
 #ifdef P4_TO_P8
-  case 0: nx=cmd.get("nx", 1); ny=cmd.get("ny", 1); nz=cmd.get("nz", 1); xmin=0.0; xmax=1.0; ymin=0; ymax=1.0; zmin=0.0; zmax=1.0; mu=8.9e-4; rho=1000.0; surf_tension=72.86e-3; u0=0.4*M_PI; r0=0.15; tf=cmd.get("tf", 10.0);  break;
+  case 0: nx=cmd.get("nx", 1); ny=cmd.get("ny", 1); nz=cmd.get("nz", 1); xmin=0.0; xmax=1.0; ymin=0; ymax=1.0; zmin=0.0; zmax=1.0; mu=10000*8.9e-4; rho=1450.0; surf_tension=50e-3/*72.86e-3*/; u0=0.4*M_PI; r0=0.15; tf=cmd.get("tf", 30.0);  break;
 #else
   case 0: nx=cmd.get("nx", 1); ny=cmd.get("ny", 1); xmin=0.0; xmax=1.0; ymin=0.0; ymax=1.0; mu=8.9e-4; rho=1000.0; surf_tension=0.0/*72.86e-3*/; u0=1.0; /*arbitrary estimate...*/ r0=-2.0; tf=cmd.get("tf", 10.0);  break;
-  case 1: nx=cmd.get("nx", 1); ny=cmd.get("ny", 1); xmin=0.0; xmax=1.0; ymin=0.0; ymax=1.0; mu=8.9e-4; rho=1000.0; surf_tension=0.0/*72.86e-3*/; u0=0.2*M_PI; r0=0.15; tf=cmd.get("tf", 0.4/*20*2*M_PI/omega*/);  break;//changg_tf
+  case 1: nx=cmd.get("nx", 1); ny=cmd.get("ny", 1); xmin=0.0; xmax=1.0; ymin=0.0; ymax=1.0; mu=8.9e-4*10000; rho=1450.0; surf_tension=0.0/*72.86e-3*/; u0=0.2*M_PI; r0=0.15; tf=cmd.get("tf", 10/*20*2*M_PI/omega*/);  break;//changg_tf
   case 2: nx=cmd.get("nx", 1); ny=cmd.get("ny", 1); xmin=0.0; xmax=1.0; ymin=0.0; ymax=1.0; mu=1/(k_n*M_PI*Re); rho=1.0; surf_tension=0/*1/(We*k_n)*/ /*72.86e-3*/; u0=1.0; /*arbitrary estimate...*/ r0=-2.0; tf=cmd.get("tf", 10.0);  break;
 
 #endif
@@ -1062,7 +1062,7 @@ int main (int argc, char* argv[])
   char file_lower_bound[1000];
 
 #if defined(POD_CLUSTER)
-  string out_dir = cmd.get<string>("out_dir", "/home/regan/free_surface");
+  string out_dir = cmd.get<string>("out_dir", "/home/mingru/free_surface");
 #elif defined(STAMPEDE)
   string out_dir = cmd.get<string>("out_dir", "/work/04965/tg842642/stampede2/free_surface");
 #else
@@ -1141,7 +1141,7 @@ int main (int argc, char* argv[])
       fprintf(fp_water_volume, "%% tn | water_volume");
 #else
         throw std::invalid_argument("[ERROR]: free_surface_2d::main(): could not open file for forces output.");
-      fprintf(fp_water_volume, "%% tn | water_volume");
+      fprintf(fp_water_volume, "%% tn | water_volume\n");
 #endif
       fclose(fp_water_volume);
     }
@@ -1218,33 +1218,33 @@ int main (int argc, char* argv[])
 
     Vec hodge_old;
     Vec hodge_new;
-    Vec vnp1_nodes_old[P4EST_DIM];
+//    Vec vnp1_nodes_old[P4EST_DIM];
     Vec *vnp1_nodes_new;
     ierr = VecCreateSeq(PETSC_COMM_SELF, free_surface_solver.get_p4est()->local_num_quadrants, &hodge_old); CHKERRXX(ierr);
-    for (short dir = 0; dir < P4EST_DIM; ++dir) {
-      ierr = VecCreateSeq(PETSC_COMM_SELF, free_surface_solver.get_nodes()->num_owned_indeps, &vnp1_nodes_old[dir]); CHKERRXX(ierr);
-    }
+//    for (short dir = 0; dir < P4EST_DIM; ++dir) {
+//      ierr = VecCreateSeq(PETSC_COMM_SELF, free_surface_solver.get_nodes()->num_owned_indeps, &vnp1_nodes_old[dir]); CHKERRXX(ierr);
+//    }
 
     double err_hodge = 1;
-    double err_vel[P4EST_DIM];
-    err_vel[0] = 1.0;
+//    double err_vel[P4EST_DIM];
+//    err_vel[0] = 1.0;
     int iter_hodge = 0;
     //while(iter_hodge< 200 && err_vel[0]> 1e-3/*(0.01*free_surface_solver.get_max_L2_norm_u())*/)
-    //while(iter_hodge<100 && err_hodge > 1e-4)
-    while(iter_hodge<200)
+    while(iter_hodge<100 && err_hodge > 1e-3)
+    //while(iter_hodge<200)
     {
       hodge_new = free_surface_solver.get_hodge();
       ierr = VecCopy(hodge_new, hodge_old); CHKERRXX(ierr);
-      vnp1_nodes_new = free_surface_solver.get_velocity_np1();
-      for(short dim = 0; dim < P4EST_DIM; ++dim)
-      {
-        ierr = VecCopy(vnp1_nodes_new[dim], vnp1_nodes_old[dim]); CHKERRXX(ierr);
-      }
+//      vnp1_nodes_new = free_surface_solver.get_velocity_np1();
+//      for(short dim = 0; dim < P4EST_DIM; ++dim)
+//      {
+//        ierr = VecCopy(vnp1_nodes_new[dim], vnp1_nodes_old[dim]); CHKERRXX(ierr);
+//      }
 
-      free_surface_solver.compute_physical_bc();
+//      free_surface_solver.compute_physical_bc();
       free_surface_solver.solve_viscosity();
       free_surface_solver.solve_projection();
-      free_surface_solver.compute_velocity_at_nodes();//without this line, vnp1_nodes is not updated
+//      free_surface_solver.compute_velocity_at_nodes();//without this line, vnp1_nodes is not updated
 
 
 
@@ -1253,18 +1253,18 @@ int main (int argc, char* argv[])
       hodge_new = free_surface_solver.get_hodge();
       const double *ho; ierr = VecGetArrayRead(hodge_old, &ho); CHKERRXX(ierr);
       const double *hn; ierr = VecGetArrayRead(hodge_new, &hn); CHKERRXX(ierr);
-      const double *vnp1_old[P4EST_DIM];
-      const double *vnp1_new[P4EST_DIM];
-      vnp1_nodes_new = free_surface_solver.get_velocity_np1();
-      for(int dim = 0; dim < P4EST_DIM; ++dim)
-      {
-        ierr = VecGetArrayRead(vnp1_nodes_old[dim], &vnp1_old[dim]); CHKERRXX(ierr);
-        ierr = VecGetArrayRead(vnp1_nodes_new[dim], &vnp1_new[dim]); CHKERRXX(ierr);
-      }
+//      const double *vnp1_old[P4EST_DIM];
+//      const double *vnp1_new[P4EST_DIM];
+//      vnp1_nodes_new = free_surface_solver.get_velocity_np1();
+//      for(int dim = 0; dim < P4EST_DIM; ++dim)
+//      {
+//        ierr = VecGetArrayRead(vnp1_nodes_old[dim], &vnp1_old[dim]); CHKERRXX(ierr);
+//        ierr = VecGetArrayRead(vnp1_nodes_new[dim], &vnp1_new[dim]); CHKERRXX(ierr);
+//      }
 
       err_hodge = 0;
-      for (short d = 0; d < P4EST_DIM; ++d)
-        err_vel[d]   = 0.0;
+//      for (short d = 0; d < P4EST_DIM; ++d)
+//        err_vel[d]   = 0.0;
       p4est_t *p4est = free_surface_solver.get_p4est();
       my_p4est_interpolation_nodes_t *interp_global_phi = free_surface_solver.get_interp_global_phi();
       for(p4est_topidx_t tree_idx=p4est->first_local_tree; tree_idx<=p4est->last_local_tree; ++tree_idx)
@@ -1285,42 +1285,43 @@ int main (int argc, char* argv[])
           }
         }
       }
-      for (unsigned int k = 0; k < free_surface_solver.get_nodes()->num_owned_indeps; ++k) {
-        double xyz[P4EST_DIM];
-        node_xyz_fr_n(k, free_surface_solver.get_p4est(), free_surface_solver.get_nodes(), xyz);
-#ifdef P4_TO_P8
-        if((*interp_global_phi)(xyz[0],xyz[1],xyz[2])<1.5*dxmin)
-#else
-        if((*interp_global_phi)(xyz[0],xyz[1])<1.5*dxmin)
-#endif
-        {
-          for(int dim = 0; dim <P4EST_DIM; ++dim)
-          {
-            err_vel[dim] = max(err_vel[dim], fabs(vnp1_new[dim][k] - vnp1_old[dim][k]));
-          }
-        }
-      }
+//      for (unsigned int k = 0; k < free_surface_solver.get_nodes()->num_owned_indeps; ++k) {
+//        double xyz[P4EST_DIM];
+//        node_xyz_fr_n(k, free_surface_solver.get_p4est(), free_surface_solver.get_nodes(), xyz);
+//#ifdef P4_TO_P8
+//        if((*interp_global_phi)(xyz[0],xyz[1],xyz[2])<1.5*dxmin)
+//#else
+//        if((*interp_global_phi)(xyz[0],xyz[1])<1.5*dxmin)
+//#endif
+//        {
+//          for(int dim = 0; dim <P4EST_DIM; ++dim)
+//          {
+//            err_vel[dim] = max(err_vel[dim], fabs(vnp1_new[dim][k] - vnp1_old[dim][k]));
+//          }
+//        }
+//      }
 
       int mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_hodge, 1, MPI_DOUBLE, MPI_MAX, mpi.comm()); SC_CHECK_MPI(mpiret);
-      int mpirets = MPI_Allreduce(MPI_IN_PLACE, &err_vel[0], P4EST_DIM, MPI_DOUBLE, MPI_MAX, mpi.comm()); SC_CHECK_MPI(mpirets);
+//      int mpirets = MPI_Allreduce(MPI_IN_PLACE, &err_vel[0], P4EST_DIM, MPI_DOUBLE, MPI_MAX, mpi.comm()); SC_CHECK_MPI(mpirets);
 
       ierr = VecRestoreArrayRead(hodge_old, &ho); CHKERRXX(ierr);
       ierr = VecRestoreArrayRead(hodge_new, &hn); CHKERRXX(ierr);
-      for(int dim = 0; dim < P4EST_DIM; ++dim)
-      {
-        ierr = VecRestoreArrayRead(vnp1_nodes_old[dim], &vnp1_old[dim]); CHKERRXX(ierr);
-        ierr = VecRestoreArrayRead(vnp1_nodes_new[dim], &vnp1_new[dim]); CHKERRXX(ierr);
-      }
+//      for(int dim = 0; dim < P4EST_DIM; ++dim)
+//      {
+//        ierr = VecRestoreArrayRead(vnp1_nodes_old[dim], &vnp1_old[dim]); CHKERRXX(ierr);
+//        ierr = VecRestoreArrayRead(vnp1_nodes_new[dim], &vnp1_new[dim]); CHKERRXX(ierr);
+//      }
 
-      ierr = PetscPrintf(mpi.comm(), "hodge iteration #%d, error = %e, x-velocity error = %e, y-velocity error = %e\n", iter_hodge, err_hodge, err_vel[0], err_vel[1]); CHKERRXX(ierr);
+      ierr = PetscPrintf(mpi.comm(), "hodge iteration #%d, error = %e\n", iter_hodge, err_hodge); CHKERRXX(ierr);
+//      ierr = PetscPrintf(mpi.comm(), "hodge iteration #%d, error = %e, x-velocity error = %e, y-velocity error = %e\n", iter_hodge, err_hodge, err_vel[0], err_vel[1]); CHKERRXX(ierr);
 
-
+/*
       //find the lower bound
       if(hodge_lower_bound < err_vel[0])
         break;
       else
         hodge_lower_bound = err_vel[0];
-
+*/
 
       //save each hodge iteration step
       if(save_hodge)
@@ -1330,13 +1331,13 @@ int main (int argc, char* argv[])
       }
       iter_hodge++;
     }
-    free_surface_solver.compute_vel_bc_value();
+//    free_surface_solver.compute_vel_bc_value();
 
     ierr = VecDestroy(hodge_old); CHKERRXX(ierr);
-    for(int dim = 0 ; dim<P4EST_DIM ; ++dim)
-    {
-      ierr = VecDestroy(vnp1_nodes_old[dim]);CHKERRXX(ierr);
-    }
+//    for(int dim = 0 ; dim<P4EST_DIM ; ++dim)
+//    {
+//      ierr = VecDestroy(vnp1_nodes_old[dim]);CHKERRXX(ierr);
+//    }
 
     //free_surface_solver.compute_velocity_at_nodes();
     free_surface_solver.compute_pressure();
