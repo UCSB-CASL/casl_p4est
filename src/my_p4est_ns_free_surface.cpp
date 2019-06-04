@@ -1537,7 +1537,7 @@ void my_p4est_ns_free_surface_t::save_vtk(const char* name)
                            1, /* number of VTK_CELL_DATA  */
                            name,
                            VTK_POINT_DATA, "solid", phi_p,
-                           VTK_POINT_DATA, "free surface", phi_p,
+                           VTK_POINT_DATA, "free surface", fs_phi_p,
                            VTK_POINT_DATA, "pressure", pressure_nodes_p,
                            VTK_POINT_DATA, "vx", vn_p[0],
                            VTK_POINT_DATA, "vy", vn_p[1],
