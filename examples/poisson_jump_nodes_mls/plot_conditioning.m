@@ -40,20 +40,20 @@ figure;
 % dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/2d/single/conditioning/fast/convergence'; titles{end+1} = 'Fast';
 % dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/2d/single/conditioning/neut/convergence'; titles{end+1} = 'Random';
 
-dirs = {}; titles = {};
-dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/2d/multiple/conditioning/slow/convergence'; titles{end+1} = 'Slow';
-dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/2d/multiple/conditioning/fast/convergence'; titles{end+1} = 'Fast';
-dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/2d/multiple/conditioning/neut/convergence'; titles{end+1} = 'Random';
+% dirs = {}; titles = {};
+% dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/2d/multiple/conditioning/slow/convergence'; titles{end+1} = 'Bias Slow';
+% dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/2d/multiple/conditioning/fast/convergence'; titles{end+1} = 'Bias Fast';
+% dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/2d/multiple/conditioning/neut/convergence'; titles{end+1} = 'Random';
 
 % dirs = {}; titles = {};
 % dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/3d/single/conditioning/slow/convergence'; titles{end+1} = 'Slow';
 % dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/3d/single/conditioning/fast/convergence'; titles{end+1} = 'Fast';
 % dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/3d/single/conditioning/neut/convergence'; titles{end+1} = 'Random';
 
-% dirs = {}; titles = {};
-% dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/3d/multiple/conditioning/slow/convergence'; titles{end+1} = 'Slow';
-% dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/3d/multiple/conditioning/fast/convergence'; titles{end+1} = 'Fast';
-% dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/3d/multiple/conditioning/neut/convergence'; titles{end+1} = 'Random';
+dirs = {}; titles = {};
+dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/3d/multiple/conditioning/slow/convergence'; titles{end+1} = 'Bias Slow';
+dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/3d/multiple/conditioning/fast/convergence'; titles{end+1} = 'Bias Fast';
+dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/3d/multiple/conditioning/neut/convergence'; titles{end+1} = 'Random';
 
 % dirs = {}; titles = {};
 % dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/v0.1/voro/2d/conditioning/slow/convergence'; titles{end+1} = 'Slow';

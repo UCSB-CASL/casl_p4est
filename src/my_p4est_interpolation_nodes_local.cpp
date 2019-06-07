@@ -113,7 +113,8 @@ double my_p4est_interpolation_nodes_local_t::interpolate(double x, double y) con
 #endif
 
   // clip to bounding box
-  for (short i=0; i<P4EST_DIM; i++){
+  for (short i=0; i<P4EST_DIM; i++)
+  {
     if (xyz[i] > xyz_max[i]) xyz[i] = is_periodic(p4est,i) ? xyz[i]-(xyz_max[i]-xyz_min[i]) : xyz_max[i];
     if (xyz[i] < xyz_min[i]) xyz[i] = is_periodic(p4est,i) ? xyz[i]+(xyz_max[i]-xyz_min[i]) : xyz_min[i];
   }

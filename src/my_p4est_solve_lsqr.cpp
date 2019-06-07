@@ -65,6 +65,74 @@ bool solve_cholesky(matrix_t &A, vector<double> &b, vector<double> &x)
   return true;
 }
 
+bool invert_cholesky(matrix_t &A, matrix_t &Ai)
+{
+#ifdef CASL_THROWS
+  if(A.num_cols()!=A.num_rows() || !A.is_symmetric())
+    throw std::invalid_argument("[CASL_ERROR]: solve_cholesky: wrong input parameters");
+#endif
+
+  int n = A.num_cols();
+
+  /* compute cholesky decomposition */
+  double Lf[n][n];
+  for(int j=0; j<n; ++j)
+  {
+    if(std::isnan(A.get_value(j,j))) return false;
+
+    Lf[j][j] = A.get_value(j,j);
+    for(int k=0; k<j; ++k)
+      Lf[j][j] -= SQR(Lf[j][k]);
+
+    Lf[j][j] = sqrt(Lf[j][j]);
+    if(Lf[j][j]<EPS || std::isnan(Lf[j][j]) || std::isinf(Lf[j][j]))
+      return false;
+
+    for(int i=j+1; i<n; ++i)
+    {
+      Lf[i][j] = A.get_value(i,j);
+      for(int k=0; k<j; ++k)
+        Lf[i][j] -= Lf[i][k]*Lf[j][k];
+      Lf[i][j] /= Lf[j][j];
+    }
+  }
+
+  /* compute inverse of cholesky decomposition by forward substituion*/
+  double Li[n][n];
+  for(int i=0; i<n; ++i)
+  {
+    Li[i][i] = 1./Lf[i][i];
+    for (int j=0; j<i; ++j)
+    {
+      double sum = 0;
+      for (int k=0; k<i; ++k)
+      {
+        sum += Li[k][j]*Lf[j][k];
+      }
+      Li[i][j] = -sum*Li[i][i];
+    }
+  }
+
+  Ai.resize(n,n);
+
+  /* compute inverse of the original matrix as (L^-1)^T*(L^-1) */
+  for (int i=0; i<n; ++i)
+  {
+    for (int j=i; j<n; ++j)
+    {
+      double sum=0;
+      for (int k=j; k<n; ++k)
+      {
+        sum += Li[k][i]*Li[k][j];
+      }
+      Ai.set_value(i,j,sum);
+      if (i != j) Ai.set_value(j,i,sum);
+    }
+  }
+
+  return true;
+}
+
 
 
 
@@ -155,4 +223,26 @@ double solve_lsqr_system(matrix_t &A, vector<double> &p, int nb_x, int nb_y, cha
   }
 
   return coeffs[0];
+}
+
+bool solve_lsqr_system(matrix_t &A, matrix_t &B)
+{
+  matrix_t AtA;
+  A.mtm_product(AtA);
+  bool result = invert_cholesky(AtA, AtA);
+  B = A;
+  B.tr();
+}
+
+bool solve_lsqr_system(matrix_t &A, vector<double> &W, vector<double> &p, vector<double> &y)
+{
+  matrix_t AtWA;
+  vector<double> Wp = p;
+  vector<double> AtWp;
+
+  for (int i=0; i<Wp.size(); ++i) Wp[i] *= W[i];
+
+  A.tranpose_matvec(Wp, AtWp);
+  A.mtm_product(AtWA, W);
+  return solve_cholesky(AtWA, AtWp, y);
 }

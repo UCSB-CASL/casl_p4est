@@ -47,7 +47,7 @@
 
 #undef MIN
 #undef MAX
-int lmin = 5;
+int lmin = 7;
 int lmax = 10;
 int nb_splits = 1;
 
@@ -134,14 +134,14 @@ void set_alloy_parameters()
     eps_v                = 0;
     eps_anisotropy       = 0.05;
 
-    Dl[0] = 1e-1;//    Dl[0] = 1;
+    Dl[0] = 1e-5;//    Dl[0] = 1;
 //    Dl[0] = 1;
     ml[0] =-357;
 //    ml[0] =-1;
     c0[0] = 0.4;
     kp[0] = 0.86;
 
-    Dl[1] = 2e-1;
+    Dl[1] = 2e-5;
 //    Dl[1] = 1e-1;
 //    Dl[1] = 1;
     ml[1] =-357;
@@ -264,27 +264,6 @@ public:
     return eps_c*(1.0-15.0*eps_anisotropy*cos(4.0*theta));
   }
 } eps_c_cf;
-#endif
-
-
-#ifdef P4_TO_P8
-class zero_cf_t: public CF_3
-{
-public:
-  double operator()(double x, double y, double z) const
-  {
-    return 0;
-  }
-} zero_cf;
-#else
-class zero_cf_t: public CF_2
-{
-public:
-  double operator()(double x, double y) const
-  {
-    return 0;
-  }
-} zero_cf;
 #endif
 
 //------------------------------------------------------------

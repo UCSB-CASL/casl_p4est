@@ -30,6 +30,7 @@
 #include <src/my_p8est_node_neighbors.h>
 #include <src/my_p8est_level_set.h>
 #include <src/my_p8est_poisson_nodes_mls_sc.h>
+#include <src/my_p8est_poisson_nodes_mls.h>
 #include <src/my_p8est_interpolation_nodes.h>
 #include <src/my_p8est_integration_mls.h>
 #include <src/my_p8est_semi_lagrangian.h>
@@ -49,6 +50,7 @@
 #include <src/my_p4est_node_neighbors.h>
 #include <src/my_p4est_level_set.h>
 #include <src/my_p4est_poisson_nodes_mls_sc.h>
+#include <src/my_p4est_poisson_nodes_mls.h>
 #include <src/my_p4est_poisson_jump_nodes_voronoi.h>
 #include <src/my_p4est_interpolation_nodes.h>
 #include <src/my_p4est_integration_mls.h>
@@ -131,7 +133,7 @@ DEFINE_PARAMETER(pl, int,  expand_ghost,   0, "Number of ghost layer expansions"
 //-------------------------------------
 
 DEFINE_PARAMETER(pl, int, n_domain,    3, "Domain geometry");
-DEFINE_PARAMETER(pl, int, n_interface, 3, "Immersed interface geometry");
+DEFINE_PARAMETER(pl, int, n_interface, 5, "Immersed interface geometry");
 
 DEFINE_PARAMETER(pl, int, n_um, 12, "");
 DEFINE_PARAMETER(pl, int, n_up, 11, "");
@@ -139,10 +141,10 @@ DEFINE_PARAMETER(pl, int, n_up, 11, "");
 DEFINE_PARAMETER(pl, double, mag_um, 1, "");
 DEFINE_PARAMETER(pl, double, mag_up, 1, "");
 
-DEFINE_PARAMETER(pl, int, n_mu_m, 4, "");
+DEFINE_PARAMETER(pl, int, n_mu_m, 0, "");
 DEFINE_PARAMETER(pl, int, n_mu_p, 0, "");
 
-DEFINE_PARAMETER(pl, double, mag_mu_m, 10, "");
+DEFINE_PARAMETER(pl, double, mag_mu_m, 1, "");
 DEFINE_PARAMETER(pl, double, mag_mu_p, 1, "");
 
 DEFINE_PARAMETER(pl, double, mu_iter_num, 1, "");
@@ -213,7 +215,7 @@ DEFINE_PARAMETER(pl, bool,   scale_errors,         0, "Scale errors by max solut
 DEFINE_PARAMETER(pl, bool, save_vtk,           1, "Save the p4est in vtk format");
 DEFINE_PARAMETER(pl, bool, save_params,        1, "Save list of entered parameters");
 DEFINE_PARAMETER(pl, bool, save_domain,        0, "Save the reconstruction of an irregular domain (works only in serial!)");
-DEFINE_PARAMETER(pl, bool, save_matrix_ascii,  0, "Save the matrix in ASCII MATLAB format");
+DEFINE_PARAMETER(pl, bool, save_matrix_ascii,  1, "Save the matrix in ASCII MATLAB format");
 DEFINE_PARAMETER(pl, bool, save_matrix_binary, 0, "Save the matrix in BINARY MATLAB format");
 DEFINE_PARAMETER(pl, bool, save_convergence,   1, "Save convergence results");
 
@@ -749,7 +751,7 @@ public:
         }
       case 5: {
           double r0 = 0.483;
-          double DIM( xc = 0, yc = 0, zc = 0 );
+          double DIM( xc = 0.05, yc = 0.03, zc = 0 );
           flower_shaped_domain_t circle(r0, DIM(xc, yc, zc), 0.0);
           switch (what) {
             OCOMP( case VAL: return circle.phi  (DIM(x,y,z)) );
@@ -1324,7 +1326,7 @@ int main (int argc, char* argv[])
               Vec sol; double *sol_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &sol); CHKERRXX(ierr);
               Vec sol2; ierr = VecCreateGhostNodes(p4est, nodes, &sol2); CHKERRXX(ierr);
 
-              my_p4est_poisson_nodes_mls_sc_t solver(&ngbd_n);
+              my_p4est_poisson_nodes_mls_t solver(&ngbd_n);
 
               solver.set_jump_scheme(jc_scheme);
               solver.set_jump_sub_scheme(jc_sub_scheme);
@@ -1342,12 +1344,12 @@ int main (int argc, char* argv[])
 
               solver.set_wc(bc_wall_type, u_cf);
               solver.set_rhs(rhs_m, rhs_p);
-              solver.set_diag_add(diag_m, diag_p);
+              solver.set_diag(diag_m, diag_p);
 
               solver.set_use_taylor_correction(taylor_correction);
               solver.set_keep_scalling(1);
               solver.set_kink_treatment(kink_special_treatment);
-              solver.set_try_remove_hanging_cells(try_remove_hanging_cells);
+//              solver.set_try_remove_hanging_cells(try_remove_hanging_cells);
 
               solver.solve(sol);
 
@@ -1712,7 +1714,8 @@ int main (int argc, char* argv[])
 
                   if (!is_node_Wall(p4est, ni))
                   {
-                    get_all_neighbors(n, p4est, nodes, &ngbd_n, neighbors, neighbors_exist);
+                    ngbd_n.get_all_neighbors(n, neighbors, neighbors_exist);
+//                    get_all_neighbors(n, p4est, nodes, &ngbd_n, neighbors, neighbors_exist);
                     //          for (int j = 0; j < (int)pow(3, P4EST_DIM); ++j)
                     for (int j = 1; j < (int)pow(3, P4EST_DIM); j+=2)
                     {

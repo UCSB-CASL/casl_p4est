@@ -1414,6 +1414,15 @@ bool is_node_zpWall(const p4est_t *p4est, const p4est_indep_t *ni);
 bool is_node_Wall  (const p4est_t *p4est, const p4est_indep_t *ni);
 
 /*!
+ * \brief is_node_Wall checks if a node is on any of domain boundaries
+ * \param p4est [in] p4est
+ * \param ni    [in] pointer to the node structure
+ * \return true if the point is on the domain boundary and p4est is _NOT_ periodic
+ * \note: periodicity is not implemented
+ */
+bool is_node_Wall  (const p4est_t *p4est, const p4est_indep_t *ni, bool is_wall[]);
+
+/*!
  * \brief is_quad_xmWall checks if a quad is on x^- domain boundary
  * \param p4est [in] p4est
  * \param qi    [in] pointer to the quadrant
@@ -1826,6 +1835,7 @@ PetscErrorCode VecPointwiseMultGhost(Vec output, Vec input1, Vec input2);
 PetscErrorCode VecPointwiseMinGhost(Vec output, Vec input1, Vec input2);
 PetscErrorCode VecPointwiseMaxGhost(Vec output, Vec input1, Vec input2);
 PetscErrorCode VecAXPBYGhost(Vec y, PetscScalar alpha, PetscScalar beta, Vec x);
+PetscErrorCode VecReciprocalGhost(Vec input);
 
 struct vec_and_ptr_t
 {
@@ -1916,7 +1926,7 @@ void fill_island(const my_p4est_node_neighbors_t &ngbd, const double *phi_p, dou
 void find_connected_ghost_islands(const my_p4est_node_neighbors_t &ngbd, const double *phi_p, double *island_number_p, p4est_locidx_t n, std::vector<double> &connected, std::vector<bool> &visited);
 void compute_islands_numbers(const my_p4est_node_neighbors_t &ngbd, const Vec phi, int &nb_islands_total, Vec island_number);
 
-void get_all_neighbors(const p4est_locidx_t n, p4est_t *p4est, p4est_nodes_t *nodes, my_p4est_node_neighbors_t *ngbd, p4est_locidx_t *neighbors, bool *neighbor_exists);
+//void get_all_neighbors(const p4est_locidx_t n, const p4est_t *p4est, const p4est_nodes_t *nodes, const my_p4est_node_neighbors_t *ngbd, p4est_locidx_t *neighbors, bool *neighbor_exists);
 
 void compute_phi_eff(p4est_nodes_t *nodes, std::vector<Vec> *phi, std::vector<mls_opn_t> *opn, std::vector<bool> *refine_always, Vec phi_eff);
 
@@ -2094,4 +2104,144 @@ inline void reconstruct_cube(cube3_mls_t &cube, std::vector<double> &phi, std::v
   cube.reconstruct(phi, acn, clr);
 }
 
+//void find_interface_points(p4est_locidx_t n, const my_p4est_node_neighbors_t *ngbd,
+//                           std::vector<mls_opn_t> opn,
+//                           std::vector<double *> phi_ptr, DIM( std::vector<double *> phi_xx_ptr,
+//                                                               std::vector<double *> phi_yy_ptr,
+//                                                               std::vector<double *> phi_zz_ptr ),
+//                           int phi_idx[], double dist[]);
+
+void find_closest_interface_location(int &phi_idx, double &dist, double d, std::vector<mls_opn_t> opn,
+                                     std::vector<double> &phi_a,
+                                     std::vector<double> &phi_b,
+                                     std::vector<double> &phi_a_xx,
+                                     std::vector<double> &phi_b_xx);
+
+struct interface_point_t
+{
+  double xyz[P4EST_DIM];
+
+  interface_point_t() { set(DIM(0,0,0)); }
+  interface_point_t(double xyz[]) { set(xyz); }
+  interface_point_t(DIM(double x, double y, double z)){ set(DIM(x,y,z)); }
+
+  inline double x() { return xyz[0]; }
+  inline double y() { return xyz[1]; }
+  inline double z() { return xyz[2]; }
+  inline void get_xyz(double xyz[])
+  {
+    XCODE( xyz[0] = this->xyz[0] );
+    YCODE( xyz[1] = this->xyz[1] );
+    ZCODE( xyz[2] = this->xyz[2] );
+  }
+  inline void set(double xyz[]) { set(DIM(xyz[0], xyz[1], xyz[2])); }
+  inline void set(DIM(double x, double y, double z))
+  {
+    XCODE( this->xyz[0] = x );
+    YCODE( this->xyz[1] = y );
+    ZCODE( this->xyz[2] = z );
+  }
+};
+
+struct interface_point_cartesian_t
+{
+  p4est_locidx_t n;
+  short          dir;
+  double         dist;
+  interface_point_cartesian_t (p4est_locidx_t n=-1,int dir=0, double dist=0)
+    : dir(dir), dist(dist) {}
+
+  inline void get_xyz(p4est_t *p4est, p4est_nodes_t *nodes, double *xyz)
+  {
+    node_xyz_fr_n(n, p4est, nodes, xyz);
+
+    switch (dir)
+    {
+      case 0: xyz[0] -= dist; break;
+      case 1: xyz[0] += dist; break;
+
+      case 2: xyz[1] -= dist; break;
+      case 3: xyz[1] += dist; break;
+#ifdef P4_TO_P8
+      case 4: xyz[2] -= dist; break;
+      case 5: xyz[2] += dist; break;
+#endif
+    }
+  }
+
+//  // linear interpolation of a Vec at an interface point (assumes locally uniform grid!)
+//  inline double interpolate(my_p4est_node_neighbors_t *ngbd, double *ptr)
+//  {
+//    const quad_neighbor_nodes_of_node_t qnnn = ngbd->get_neighbors(n);
+
+//    p4est_locidx_t neigh = qnnn.neighbor(dir);
+//    double         h     = qnnn.distance(dir);
+
+//    return (ptr[n]*(h-dist) + ptr[neigh]*dist)/h;
+//  }
+
+//  // quadratic interpolation of a Vec at an interface point (assumes locally uniform grid!)
+//  inline double interpolate(my_p4est_node_neighbors_t *ngbd, double *ptr, double *ptr_dd[P4EST_DIM])
+//  {
+//    const quad_neighbor_nodes_of_node_t qnnn = ngbd->get_neighbors(n);
+
+//    p4est_locidx_t neigh = qnnn.neighbor(dir);
+//    double         h     = qnnn.distance(dir);
+//    short          dim   = dir / 2;
+
+//    double p0  = ptr[n];
+//    double p1  = ptr[neigh];
+//    double pdd = MINMOD(ptr_dd[dim][n], ptr_dd[dim][neigh]);
+
+//    return .5*(p0+p1) + (p1-p0)*(dist/h-.5) + .5*pdd*(dist*dist-dist*h);
+//  }
+};
+
+struct interface_info_t
+{
+  int    id;
+  double area;
+  double centroid[P4EST_DIM];
+};
+
+struct my_p4est_finite_volume_t
+{
+  double full_cell_volume;
+  double volume;
+
+  std::vector<interface_info_t> interfaces;
+
+  _CODE( double full_face_area [P4EST_FACES]; )
+  _CODE( double face_area      [P4EST_FACES]; )
+  XCODE( double face_centroid_x[P4EST_FACES]; )
+  YCODE( double face_centroid_y[P4EST_FACES]; )
+  ZCODE( double face_centroid_z[P4EST_FACES]; )
+};
+
+void construct_finite_volume(my_p4est_finite_volume_t& fv, p4est_locidx_t n, p4est_t *p4est, p4est_nodes_t *nodes, std::vector<CF_DIM *> phi, std::vector<mls_opn_t> opn, int order=1, int cube_refinement=0, bool compute_centroids=false, double perturb=1.0e-12);
+
+void compute_wall_normal(const int &dir, double normal[]);
+
+struct points_around_node_map_t
+{
+  int count;
+  std::vector<int> size;
+  std::vector<int> offset;
+
+  points_around_node_map_t(int num_nodes=0)
+    : size(num_nodes,0), offset(num_nodes+1, 0) {}
+
+  inline void reinitialize(int num_nodes) { size.assign(num_nodes, 0); offset.assign(num_nodes+1, 0); }
+
+  inline void add_point(p4est_locidx_t n) { ++size[n]; offset[n+1] = offset[n]+size[n]; }
+  inline int  get_idx(p4est_locidx_t n, int i) { return offset[n] + i; }
+  inline int  get_num_points_node(p4est_locidx_t n) { return size[n]; }
+  inline int  get_num_points_total() { return count; }
+  inline void recompute_offsets()
+  {
+    offset[0] = 0;
+    for (int i=1; i<size.size(); ++i)
+      offset[i] = offset[i-1] + size[i-1];
+  }
+};
 #endif // UTILS_H

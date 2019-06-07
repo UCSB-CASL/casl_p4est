@@ -94,7 +94,7 @@ int  phi_grid_refinement = 0;
 bool use_superconvergent_jump  = false;
 
 // output parameters
-int save_every_n_iteration = 10;
+int save_every_n_iteration = 1;
 bool save_velocity         = 1;
 bool save_vtk              = 1;
 bool save_history          = 1;
@@ -115,7 +115,7 @@ bool concentration_neumann = 1;
 int max_total_iterations   = 10;
 double time_limit          = DBL_MAX;
 double termination_length  = 1.8;
-double init_perturb        = 0.001;
+double init_perturb        = 0.000;
 
 bool enforce_planar_front   = 0;
 

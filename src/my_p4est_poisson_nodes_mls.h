@@ -1,0 +1,513 @@
+#ifndef MY_P4EST_POISSON_NODES_MLS_H
+#define MY_P4EST_POISSON_NODES_MLS_H
+
+#include <petsc.h>
+
+#ifdef P4_TO_P8
+#include <src/my_p8est_node_neighbors.h>
+#include <src/my_p8est_tools.h>
+#include <src/my_p8est_interpolation_nodes.h>
+#include <src/my_p8est_interpolation_nodes_local.h>
+#include <src/my_p8est_utils.h>
+#else
+#include <src/my_p4est_node_neighbors.h>
+#include <src/my_p4est_tools.h>
+#include <src/my_p4est_interpolation_nodes.h>
+#include <src/my_p4est_interpolation_nodes_local.h>
+#include <src/my_p4est_utils.h>
+#endif
+
+#include <src/mls_integration/cube3_mls.h>
+#include <src/mls_integration/cube2_mls.h>
+
+#define DO_NOT_PREALLOCATE
+
+using std::vector;
+
+class my_p4est_poisson_nodes_mls_t
+{
+  const int phi_idx_wall_shift_ = 10;
+  struct mat_entry_t
+  {
+    double val;
+    PetscInt n;
+    mat_entry_t(PetscInt n=0, double val=0) : n(n), val(val) {}
+  };
+
+  PetscErrorCode ierr;
+
+  // p4est objects
+  p4est_t          *p4est_;
+  p4est_nodes_t    *nodes_;
+  p4est_ghost_t    *ghost_;
+  my_p4est_brick_t *brick_;
+  const my_p4est_node_neighbors_t *ngbd_;
+
+  // grid variables
+  double lip_;
+  double d_min_;
+  double diag_min_;
+  double dxyz_m_[P4EST_DIM];
+  double DIM( dx_min_, dy_min_, dz_min_ );
+
+  // linear system
+  Mat     A_;
+  Vec     diag_scaling_;
+  Vec     rhs_;
+  double *rhs_ptr;
+  Vec     rhs_jump_;
+  double *rhs_jump_ptr;
+
+  // components of linear system
+  Mat submat_main_;
+  Vec submat_diag_; double *submat_diag_ptr;
+  Mat submat_jump_;
+  Mat submat_robin_sc_;
+  Vec submat_robin_sym_; double *submat_robin_sym_ptr;
+
+  bool new_submat_main_;
+  bool new_submat_diag_;
+  bool new_submat_robin_;
+
+  bool there_is_diag_;
+  bool there_is_dirichlet_;
+  bool there_is_neumann_;
+  bool there_is_robin_;
+  bool there_is_jump_;
+  bool there_is_jump_mu_;
+
+  // PETSc solver
+  KSP         ksp_;
+  bool        new_pc_;
+  PetscInt    itmax_;
+  PetscScalar rtol_, atol_, dtol_;
+
+  // local to global node number mapping
+  std::vector<PetscInt> global_node_offset_;
+  std::vector<PetscInt> petsc_gloidx_;
+
+  // pinning point (for ill-defined all-neumann case)
+  int            matrix_has_nullspace_;
+  p4est_gloidx_t fixed_value_idx_g_;
+  p4est_gloidx_t fixed_value_idx_l_;
+
+  // geometry
+  class geometry_t
+  {
+    const my_p4est_node_neighbors_t *ngbd_;
+    p4est_t       *p4est_;
+    p4est_nodes_t *nodes_;
+  public:
+    int                    num_phi;
+    Vec                    phi_eff;
+    std::vector<mls_opn_t> opn;
+    std::vector<int>       clr;
+    std::vector<Vec>       phi;
+    std::vector<Vec>       DIM( phi_xx,
+                                phi_yy,
+                                phi_zz );
+
+    // pointers
+    double                *phi_eff_ptr;
+    std::vector<double *>  phi_ptr;
+    std::vector<double *>  DIM( phi_xx_ptr,
+                                phi_yy_ptr,
+                                phi_zz_ptr );
+
+    // auxilary
+    bool              is_phi_eff_owned;
+    std::vector<bool> is_phi_dd_owned;
+
+    geometry_t(const my_p4est_node_neighbors_t *ngbd, p4est_t *p4est, p4est_nodes_t *nodes)
+      : ngbd_(ngbd), p4est_(p4est), nodes_(nodes), num_phi(0), phi_eff(NULL), is_phi_eff_owned(0) {}
+    ~geometry_t();
+
+    void get_arrays();
+    void restore_arrays();
+    void calculate_phi_eff();
+    void add_phi(mls_opn_t opn, Vec phi, DIM(Vec phi_xx, Vec phi_yy, Vec phi_zz));
+  };
+
+  geometry_t bdry_;
+  geometry_t infc_;
+
+  // forces
+  Vec   rhs_m_;
+  Vec   rhs_p_;
+
+  double *rhs_m_ptr;
+  double *rhs_p_ptr;
+
+  // linear term
+  bool   var_diag_;
+  double diag_m_scalar_;
+  double diag_p_scalar_;
+  Vec    diag_m_;
+  Vec    diag_p_;
+
+  double *diag_m_ptr;
+  double *diag_p_ptr;
+
+  // diffusion coefficient
+  bool   var_mu_;
+  double mu_m_;
+  double mu_p_;
+  Vec    mue_m_, DIM(mue_m_xx_, mue_m_yy_, mue_m_zz_);
+  Vec    mue_p_, DIM(mue_p_xx_, mue_p_yy_, mue_p_zz_);
+  bool   is_mue_m_dd_owned_;
+  bool   is_mue_p_dd_owned_;
+
+  double *mue_m_ptr, DIM(*mue_m_xx_ptr, *mue_m_yy_ptr, *mue_m_zz_ptr);
+  double *mue_p_ptr, DIM(*mue_p_xx_ptr, *mue_p_yy_ptr, *mue_p_zz_ptr);
+
+  // wall conditions
+  const WallBCDIM *wc_type_;
+  const CF_DIM    *wc_value_;
+  const CF_DIM    *wc_coeff_;
+
+  // boundary conditions
+  std::vector< BoundaryConditionType > bc_type_;
+  std::vector< CF_DIM *> bc_value_;
+  std::vector< CF_DIM *> bc_coeff_;
+
+  // interface conditions
+  std::vector< CF_DIM *> jc_value_;
+  std::vector< CF_DIM *> jc_flux_;
+
+  // solver options
+  int    integration_order_;
+  int    cube_refinement_;
+  bool   use_sc_scheme_;
+  bool   use_pointwise_dirichlet_;
+  bool   use_taylor_correction_;
+  bool   kink_special_treatment_;
+  bool   neumann_wall_first_order_;
+  bool   enfornce_diag_scaling_;
+  bool   use_centroid_always_;
+  double phi_perturbation_;
+  double domain_rel_thresh_;
+  double interface_rel_thresh_;
+  interpolation_method interp_method_;
+
+  // auxiliary variables
+  Vec volumes_m_; double *volumes_m_ptr;
+  Vec volumes_p_; double *volumes_p_ptr;
+  Vec areas_m_;   double *areas_m_ptr;
+  Vec areas_p_;   double *areas_p_ptr;
+  Vec mask_m_;    double *mask_m_ptr;
+  Vec mask_p_;    double *mask_p_ptr;
+
+  double face_area_scalling_;
+
+  // finite volumes
+  bool store_finite_volumes_;
+  bool finite_volumes_initialized_;
+  bool finite_volumes_owned_;
+  std::vector<int> bdry_node_to_fv_;
+  std::vector<int> infc_node_to_fv_;
+  std::vector<my_p4est_finite_volume_t> *bdry_fvs_;
+  std::vector<my_p4est_finite_volume_t> *infc_fvs_;
+
+  bool keep_scalling_;
+  bool volumes_computed_;
+  bool volumes_owned_;
+
+  vector<double> jump_scaling_;
+
+  enum discretization_scheme_t
+  {
+    UNDEFINED,
+    NO_DISCRETIZATION,
+    WALL_DIRICHLET,
+    WALL_NEUMANN,
+    FINITE_DIFFERENCE,
+    FINITE_VOLUME,
+    IMMERSED_INTERFACE,
+  };
+
+  std::vector<discretization_scheme_t> node_scheme_;
+
+  int jump_scheme_;
+  int jump_sub_scheme_;
+
+  my_p4est_interpolation_nodes_local_t mu_m_interp_;
+  my_p4est_interpolation_nodes_local_t mu_p_interp_;
+
+  std::vector<my_p4est_interpolation_nodes_local_t *> bdry_phi_interp_;
+  std::vector<my_p4est_interpolation_nodes_local_t *> infc_phi_interp_;
+
+  std::vector<CF_DIM *> bdry_phi_cf_;
+  std::vector<CF_DIM *> infc_phi_cf_;
+
+  void interpolators_initialize();
+  void interpolators_prepare(p4est_locidx_t n);
+  void interpolators_finalize();
+
+  void compute_mue_dd();
+
+  double compute_weights_through_face(double A P8C(double B), bool *neighbor_exists_face, double *weights_face, double theta, bool *map_face);
+
+  void setup_linear_system(bool setup_rhs);
+
+  void discretize_dirichlet(bool setup_rhs, p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
+                            double infc_phi_eff_000, bool is_wall[],
+                            std::vector<mat_entry_t> *row_main, int &d_nnz, int &o_nnz);
+
+  void discretize_robin(bool setup_rhs, p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
+                        double infc_phi_eff_000, bool is_wall[],
+                        std::vector<mat_entry_t> *row_main, int &d_nnz_main, int &o_nnz_main,
+                        std::vector<mat_entry_t> *row_robin_sc, int &d_nnz_robin_sc, int &o_nnz_robin_sc);
+
+  void discretize_jump(bool setup_rhs,  p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
+                       bool is_wall[],
+                       std::vector<mat_entry_t> *row_main, int &d_nnz_main, int &o_nnz_main,
+                       std::vector<mat_entry_t> *row_jump, int &d_nnz_jump, int &o_nnz_jump,
+                       std::vector<mat_entry_t> *row_jump_aux, int &d_nnz_jump_aux, int &o_nnz_jump_aux);
+
+  void find_interface_points(p4est_locidx_t n, const my_p4est_node_neighbors_t *ngbd,
+                             std::vector<mls_opn_t> opn,
+                             std::vector<double *> phi_ptr, DIM( std::vector<double *> phi_xx_ptr,
+                                                                 std::vector<double *> phi_yy_ptr,
+                                                                 std::vector<double *> phi_zz_ptr ),
+                             int phi_idx[], double dist[]);
+
+  // disallow copy ctr and copy assignment
+  my_p4est_poisson_nodes_mls_t(const my_p4est_poisson_nodes_mls_t& other);
+  my_p4est_poisson_nodes_mls_t& operator=(const my_p4est_poisson_nodes_mls_t& other);
+public:
+
+  bool use_ptwise_dirichlet_;
+  bool use_ptwise_neumann_;
+  bool use_ptwise_robin_;
+  bool use_ptwise_jump_;
+
+  // pointwise Dirichlet
+  points_around_node_map_t                  bdry_cart_points_map;
+  std::vector<int>                          bdry_cart_points_id;
+  std::vector<interface_point_cartesian_t>  bdry_cart_points;
+
+  std::vector<double>                       ptwise_dirichlet_weights;
+  std::vector<double>                      *ptwise_dirichlet_values;
+
+  void     save_cart_points(p4est_locidx_t n, vector<bool> &is_interface, vector<int> &bdry_points_id, vector<double> &bdry_dist, vector<double> &bdry_points_weights);
+  void retrieve_cart_points(p4est_locidx_t n, vector<bool> &is_interface, vector<int> &bdry_points_id, vector<double> &bdry_dist, vector<double> &bdry_points_weights);
+
+  // pointwise Neumann and Robin
+  points_around_node_map_t        bdry_pieces_map;
+  std::vector<int>                bdry_pieces_id;
+  std::vector<double>             bdry_pieces_area;
+
+  std::vector<interface_point_t>  ptwise_neumann_points;
+  std::vector<double>            *ptwise_neumann_values;
+
+  std::vector<interface_point_t>  ptwise_robin_points;
+  std::vector<double>            *ptwise_robin_values;
+  std::vector<double>            *ptwise_robin_coeffs;
+
+  void     save_bdry_data(p4est_locidx_t n, vector<int> &bdry_id, vector<double> &bdry_area, vector<interface_point_t> &bdry_xyz, vector<interface_point_t> &bdry_robin_xyz);
+  void retrieve_bdry_data(p4est_locidx_t n, vector<int> &bdry_id, vector<double> &bdry_area, vector<interface_point_t> &bdry_xyz, vector<interface_point_t> &bdry_robin_xyz);
+
+  // pointwise jump
+  points_around_node_map_t        infc_pieces_map;
+  std::vector<int>                infc_pieces_id;
+  std::vector<double>             infc_pieces_area;
+
+  std::vector<interface_point_t>  ptwise_surfgen_points;
+  std::vector<double>            *ptwise_surfgen_values;
+
+  std::vector<interface_point_t>  ptwise_jump_points;
+  std::vector<double>            *ptwise_jump_fluxes;
+  std::vector<double>            *ptwise_jump_values;
+
+  void     save_infc_data(p4est_locidx_t n, vector<int> &infc_id, vector<double> &infc_area, vector<interface_point_t> &infc_xyz, vector<interface_point_t> &infc_jump_xyz);
+  void retrieve_infc_data(p4est_locidx_t n, vector<int> &infc_id, vector<double> &infc_area, vector<interface_point_t> &infc_xyz, vector<interface_point_t> &infc_jump_xyz);
+
+  // wall pieces
+  points_around_node_map_t       wall_pieces_map;
+  std::vector<int>               wall_pieces_id;
+  std::vector<double>            wall_pieces_area;
+  std::vector<interface_point_t> wall_pieces_centroid;
+
+  void     save_wall_data(p4est_locidx_t n, vector<int> &wall_id, vector<double> &wall_area, vector<interface_point_t> &wall_xyz);
+  void retrieve_wall_data(p4est_locidx_t n, vector<int> &wall_id, vector<double> &wall_area, vector<interface_point_t> &wall_xyz);
+
+  my_p4est_poisson_nodes_mls_t(const my_p4est_node_neighbors_t *ngbd);
+  ~my_p4est_poisson_nodes_mls_t();
+
+  // set geometry
+  inline void set_lip(double lip) { lip_ = lip; }
+
+  inline void add_boundary (mls_opn_t opn, Vec phi, DIM(Vec phi_xx, Vec phi_yy, Vec phi_zz), BoundaryConditionType bc_type, CF_DIM &bc_value, CF_DIM &bc_coeff)
+  {
+    this->bc_type_ .push_back(bc_type);
+    this->bc_value_.push_back(&bc_value);
+    this->bc_coeff_.push_back(&bc_coeff);
+
+    bdry_.add_phi(opn, phi, DIM(phi_xx, phi_yy, phi_zz));
+
+    switch (bc_type)
+    {
+      case NEUMANN:   there_is_neumann_   = true; break;
+      case ROBIN:     there_is_robin_     = true; break;
+      case DIRICHLET: there_is_dirichlet_ = true; break;
+    }
+  }
+
+  inline void add_interface(mls_opn_t opn, Vec phi, DIM(Vec phi_xx, Vec phi_yy, Vec phi_zz), CF_DIM &jc_value, CF_DIM &jc_flux)
+  {
+    this->jc_value_.push_back(&jc_value);
+    this->jc_flux_ .push_back(&jc_flux);
+
+    infc_.add_phi(opn, phi, DIM(phi_xx, phi_yy, phi_zz));
+
+    there_is_jump_ = true;
+  }
+
+  inline void set_boundary_phi_eff (Vec phi_eff) { bdry_.phi_eff = phi_eff; bdry_.calculate_phi_eff(); }
+  inline void set_interface_phi_eff(Vec phi_eff) { infc_.phi_eff = phi_eff; infc_.calculate_phi_eff(); }
+
+  // set wall conditions
+//  inline void set_wc(const WallBCDIM &wc_type, const CF_DIM &wc_value, const CF_DIM &wc_coeff)
+  inline void set_wc(const WallBCDIM &wc_type, const CF_DIM &wc_value)
+  {
+    this->wc_type_  = &wc_type;
+    this->wc_value_ = &wc_value;
+
+    new_submat_main_  = true;
+//    new_submat_robin_ = true;
+  }
+
+  // overwrite boundary conditions (optional)
+  inline void set_bc(int phi_idx, BoundaryConditionType bc_type, CF_DIM &bc_value, CF_DIM &bc_coeff)
+  {
+    if (this->bc_type_ [phi_idx] != bc_type) throw std::invalid_argument("Cannot change BC on fly\n");
+    if (bc_type == ROBIN) new_submat_robin_ = true;
+
+    this->bc_type_ [phi_idx] =  bc_type;
+    this->bc_value_[phi_idx] = &bc_value;
+    this->bc_coeff_[phi_idx] = &bc_coeff;
+
+  }
+
+  inline void set_ptwise_dirichlet(vector<double> &ptwise_dirichlet_value)
+  {
+    this->ptwise_dirichlet_values = &ptwise_dirichlet_value;
+    this->use_ptwise_dirichlet_  = true;
+  }
+
+
+  inline void set_ptwise_robin(vector<double> &ptwise_neumann_values,
+                               vector<double> &ptwise_robin_values,
+                               vector<double> &ptwise_robin_coeffs)
+  {
+    this->ptwise_neumann_values = &ptwise_neumann_values;
+    this->ptwise_robin_values   = &ptwise_robin_values;
+    this->ptwise_robin_coeffs   = &ptwise_robin_coeffs;
+    this->use_ptwise_robin_     = true;
+    this->new_submat_robin_     = true;
+  }
+
+  // overwtire jump conditions (optional)
+  inline void set_jc(int phi_idx, CF_DIM &jc_value, CF_DIM &jc_flux)
+  {
+    this->jc_value_[phi_idx] = &jc_value;
+    this->jc_flux_ [phi_idx] = &jc_flux;
+  }
+
+  inline void set_ptwise_jump(vector<double> &ptwise_surfgen_values,
+                              vector<double> &ptwise_jump_values,
+                              vector<double> &ptwise_jump_fluxes)
+  {
+    this->ptwise_surfgen_values = &ptwise_surfgen_values;
+    this->ptwise_jump_values    = &ptwise_jump_values;
+    this->ptwise_jump_fluxes    = &ptwise_jump_fluxes;
+    this->use_ptwise_jump_      = true;
+  }
+
+  // set linear term
+  inline void set_diag(double diag_m, double diag_p) { diag_m_scalar_ = diag_m; diag_p_scalar_ = diag_p; var_diag_ = false; new_submat_diag_ = true; there_is_diag_ = true; }
+  inline void set_diag(double diag)                  { diag_m_scalar_ = diag;   diag_p_scalar_ = diag;   var_diag_ = false; new_submat_diag_ = true; there_is_diag_ = true; }
+
+  inline void set_diag(Vec diag_m, Vec diag_p) { diag_m_ = diag_m; diag_p_ = diag_p; var_diag_ = true; new_submat_diag_ = true; there_is_diag_ = true; }
+  inline void set_diag(Vec diag)               { diag_m_ = diag;   diag_p_ = diag;   var_diag_ = true; new_submat_diag_ = true; there_is_diag_ = true; }
+
+  // set diffusion coefficient
+  inline void set_mu(double mu_m, double mu_p) { mu_m_ = mu_m; mu_p_ = mu_p;  var_mu_ = false; new_submat_main_ = new_submat_robin_ = true; there_is_jump_mu_ = !(mu_m == mu_p); }
+  inline void set_mu(double mu)                { mu_m_ = mu;   mu_p_ = mu;    var_mu_ = false; new_submat_main_ = new_submat_robin_ = true; there_is_jump_mu_ = false; }
+
+  void set_mu(Vec mue_m, DIM(Vec mue_m_xx, Vec mue_m_yy, Vec mue_m_zz),
+              Vec mue_p, DIM(Vec mue_p_xx, Vec mue_p_yy, Vec mue_p_zz));
+
+  inline void set_mu(Vec mue, DIM(Vec mue_xx, Vec mue_yy, Vec mue_zz))
+  {
+    set_mu(mue, DIM(mue_xx, mue_yy, mue_zz),
+           mue, DIM(mue_xx, mue_yy, mue_zz));
+  }
+  inline void set_mu(Vec mue_m, Vec mue_p)
+  {
+    set_mu(mue_m, DIM(NULL, NULL, NULL),
+           mue_p, DIM(NULL, NULL, NULL));
+  }
+  inline void set_mu(Vec mue)
+  {
+    set_mu(mue, DIM(NULL, NULL, NULL),
+           mue, DIM(NULL, NULL, NULL));
+  }
+
+  // set rhs
+  inline void set_rhs(Vec rhs)              { rhs_m_ = rhs;   rhs_p_ = rhs;   }
+  inline void set_rhs(Vec rhs_m, Vec rhs_p) { rhs_m_ = rhs_m; rhs_p_ = rhs_p; }
+
+  inline void set_tolerances(double rtol, int itmax = PETSC_DEFAULT, double atol = PETSC_DEFAULT, double dtol = PETSC_DEFAULT)
+  {
+    this->rtol_  = rtol;
+    this->atol_  = atol;
+    this->dtol_  = dtol;
+    this->itmax_ = itmax;
+  }
+
+  inline bool get_matrix_has_nullspace() { return matrix_has_nullspace_; }
+
+  inline void set_first_order_neumann_wall(bool value) { neumann_wall_first_order_  = value; }
+  inline void set_use_pointwise_dirichlet (bool value) { use_pointwise_dirichlet_   = value; }
+  inline void set_use_taylor_correction   (bool value) { use_taylor_correction_     = value; }
+  inline void set_keep_scalling           (bool value) { keep_scalling_             = value; }
+  inline void set_kink_treatment          (bool value) { kink_special_treatment_    = value; }
+  inline void set_use_sc_scheme           (bool value) { use_sc_scheme_             = value; }
+  inline void set_integration_order       (int  value) { integration_order_         = value; }
+  inline void set_jump_scheme             (int  value) { jump_scheme_               = value; }
+  inline void set_jump_sub_scheme         (int  value) { jump_sub_scheme_           = value; }
+  inline void set_use_centroid_always     (int  value) { use_centroid_always_       = value; }
+
+  inline void set_new_submat_main (bool value) { new_submat_main_  = value; }
+  inline void set_new_submat_diag (bool value) { new_submat_diag_  = value; }
+  inline void set_new_submat_robin(bool value) { new_submat_robin_ = value; }
+
+  bool inv_mat2(const double *in, double *out);
+  bool inv_mat3(const double *in, double *out);
+  bool inv_mat4(const double *in, double *out);
+
+  void find_projection(const quad_neighbor_nodes_of_node_t& qnnn, const double *phi_p, double dxyz_pr[], double &dist_pr, double normal[] = NULL);
+
+  void preassemble_linear_system();
+  void solve(Vec solution, bool use_nonzero_guess = false, bool update_ghost = true, KSPType ksp_type = KSPBCGS, PCType pc_type = PCHYPRE);
+  void invert_linear_system(Vec solution, bool use_nonzero_guess, bool update_ghost, KSPType ksp_type, PCType pc_type);
+  void assemble_matrix(std::vector< std::vector<mat_entry_t> > &entries, std::vector<int> &d_nnz, std::vector<int> &o_nnz, Mat *matrix);
+
+  inline Vec get_mask()   { return mask_m_; }
+  inline Vec get_mask_m() { return mask_m_; }
+  inline Vec get_mask_p() { return mask_p_; }
+
+  inline Vec get_areas()   { return areas_m_;   }
+  inline Vec get_areas_m() { return areas_m_; }
+  inline Vec get_areas_p() { return areas_p_; }
+
+  inline Vec get_boundary_phi_eff()  { return bdry_.phi_eff; }
+  inline Vec get_interface_phi_eff() { return infc_.phi_eff; }
+
+  inline Mat get_matrix() { return A_; }
+
+  inline PetscInt get_global_idx(p4est_locidx_t n) { return petsc_gloidx_[n]; }
+};
+
+#endif // MY_P4EST_POISSON_NODES_MLS_H

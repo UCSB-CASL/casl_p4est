@@ -22,4 +22,21 @@ double solve_lsqr_system(matrix_t &A, vector<double> &p, int nb_x, int nb_y, int
 double solve_lsqr_system(matrix_t &A, vector<double> &p, int nb_x, int nb_y, char order=2);
 #endif
 
+/*!
+ * \brief compute the inverse (At.A)^(-1).At of a generic least square system A using a cholesky decomposition
+ * \param A the lsqr matrix
+ * \param B the solution
+ * \return
+ */
+bool solve_lsqr_system(matrix_t &A, matrix_t &B);
+
+/*!
+ * \brief compute the inverse (At.W.A)^(-1).At.W of a generic weighted least square system W.A using a cholesky decomposition
+ * \param A the lsqr matrix
+ * \param W the weights
+ * \param B the solution
+ * \return
+ */
+bool solve_lsqr_system(matrix_t &A, vector<double> &W, matrix_t &B);
+
 #endif /* MY_P4EST_SOLVE_LSQR_H */

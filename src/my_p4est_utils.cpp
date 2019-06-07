@@ -1498,6 +1498,21 @@ bool is_node_Wall(const p4est_t *p4est, const p4est_indep_t *ni)
 #endif
 }
 
+bool is_node_Wall(const p4est_t *p4est, const p4est_indep_t *ni, bool is_wall[])
+{
+  bool is_any = false;
+
+  is_wall[dir::f_m00] = is_node_xmWall(p4est, ni); is_any = is_any || is_wall[dir::f_m00];
+  is_wall[dir::f_p00] = is_node_xpWall(p4est, ni); is_any = is_any || is_wall[dir::f_p00];
+  is_wall[dir::f_0m0] = is_node_ymWall(p4est, ni); is_any = is_any || is_wall[dir::f_0m0];
+  is_wall[dir::f_0p0] = is_node_ypWall(p4est, ni); is_any = is_any || is_wall[dir::f_0p0];
+#ifdef P4_TO_P8
+  is_wall[dir::f_00m] = is_node_zmWall(p4est, ni); is_any = is_any || is_wall[dir::f_00m];
+  is_wall[dir::f_00p] = is_node_zpWall(p4est, ni); is_any = is_any || is_wall[dir::f_00p];
+#endif
+  return is_any;
+}
+
 bool is_quad_xmWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi)
 {
   if (is_periodic(p4est, 0)) return false;
@@ -2194,6 +2209,16 @@ PetscErrorCode VecPointwiseMaxGhost(Vec output, Vec input1, Vec input2)
   return ierr;
 }
 
+PetscErrorCode VecReciprocalGhost(Vec input)
+{
+  PetscErrorCode ierr;
+  Vec in;
+  ierr = VecGhostGetLocalForm(input, &in);     CHKERRXX(ierr);
+  ierr = VecReciprocal(in);                    CHKERRXX(ierr);
+  ierr = VecGhostRestoreLocalForm(input, &in); CHKERRXX(ierr);
+  return ierr;
+}
+
 void invert_phi(p4est_nodes_t *nodes, Vec phi)
 {
   PetscErrorCode ierr;
@@ -2450,235 +2475,6 @@ void compute_islands_numbers(const my_p4est_node_neighbors_t &ngbd, const Vec ph
   ierr = VecRestoreArray(island_number, &island_number_p); CHKERRXX(ierr);
 }
 
-void get_all_neighbors(const p4est_locidx_t n, p4est_t *p4est, p4est_nodes_t *nodes, my_p4est_node_neighbors_t *ngbd, p4est_locidx_t *neighbors, bool *neighbor_exists)
-{
-  p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
-
-  // check if the node is a wall node
-  bool xm_wall = is_node_xmWall(p4est, ni);
-  bool xp_wall = is_node_xpWall(p4est, ni);
-  bool ym_wall = is_node_ymWall(p4est, ni);
-  bool yp_wall = is_node_ypWall(p4est, ni);
-#ifdef P4_TO_P8
-  bool zm_wall = is_node_zmWall(p4est, ni);
-  bool zp_wall = is_node_zpWall(p4est, ni);
-#endif
-
-  // count neighbors
-  for (int i = 0; i < num_neighbors_cube; i++) neighbor_exists[i] = true;
-
-  if (xm_wall)
-  {
-    int i = 0;
-    for (int j = 0; j < 3; j++)
-#ifdef P4_TO_P8
-      for (int k = 0; k < 3; k++)
-        neighbor_exists[i + j*3 + k*3*3] = false;
-#else
-      neighbor_exists[i + j*3] = false;
-#endif
-  }
-
-  if (xp_wall)
-  {
-    int i = 2;
-    for (int j = 0; j < 3; j++)
-#ifdef P4_TO_P8
-      for (int k = 0; k < 3; k++)
-        neighbor_exists[i + j*3 + k*3*3] = false;
-#else
-      neighbor_exists[i + j*3] = false;
-#endif
-  }
-
-  if (ym_wall)
-  {
-    int j = 0;
-    for (int i = 0; i < 3; i++)
-#ifdef P4_TO_P8
-      for (int k = 0; k < 3; k++)
-        neighbor_exists[i + j*3 + k*3*3] = false;
-#else
-      neighbor_exists[i + j*3] = false;
-#endif
-  }
-
-  if (yp_wall)
-  {
-    int j = 2;
-    for (int i = 0; i < 3; i++)
-#ifdef P4_TO_P8
-      for (int k = 0; k < 3; k++)
-        neighbor_exists[i + j*3 + k*3*3] = false;
-#else
-      neighbor_exists[i + j*3] = false;
-#endif
-  }
-
-#ifdef P4_TO_P8
-  if (zm_wall)
-  {
-    int k = 0;
-    for (int j = 0; j < 3; j++)
-      for (int i = 0; i < 3; i++)
-        neighbor_exists[i + j*3 + k*3*3] = false;
-  }
-
-  if (zp_wall)
-  {
-    int k = 2;
-    for (int j = 0; j < 3; j++)
-      for (int i = 0; i < 3; i++)
-        neighbor_exists[i + j*3 + k*3*3] = false;
-  }
-#endif
-
-  // find neighboring quadrants
-  p4est_locidx_t quad_mmm_idx; p4est_topidx_t tree_mmm_idx;
-  p4est_locidx_t quad_mpm_idx; p4est_topidx_t tree_mpm_idx;
-  p4est_locidx_t quad_pmm_idx; p4est_topidx_t tree_pmm_idx;
-  p4est_locidx_t quad_ppm_idx; p4est_topidx_t tree_ppm_idx;
-#ifdef P4_TO_P8
-  p4est_locidx_t quad_mmp_idx; p4est_topidx_t tree_mmp_idx;
-  p4est_locidx_t quad_mpp_idx; p4est_topidx_t tree_mpp_idx;
-  p4est_locidx_t quad_pmp_idx; p4est_topidx_t tree_pmp_idx;
-  p4est_locidx_t quad_ppp_idx; p4est_topidx_t tree_ppp_idx;
-#endif
-
-#ifdef P4_TO_P8
-  ngbd->find_neighbor_cell_of_node(n, -1, -1, -1, quad_mmm_idx, tree_mmm_idx); //nei_quads[dir::v_mmm] = quad_mmm_idx;
-  ngbd->find_neighbor_cell_of_node(n, -1,  1, -1, quad_mpm_idx, tree_mpm_idx); //nei_quads[dir::v_mpm] = quad_mpm_idx;
-  ngbd->find_neighbor_cell_of_node(n,  1, -1, -1, quad_pmm_idx, tree_pmm_idx); //nei_quads[dir::v_pmm] = quad_pmm_idx;
-  ngbd->find_neighbor_cell_of_node(n,  1,  1, -1, quad_ppm_idx, tree_ppm_idx); //nei_quads[dir::v_ppm] = quad_ppm_idx;
-  ngbd->find_neighbor_cell_of_node(n, -1, -1,  1, quad_mmp_idx, tree_mmp_idx); //nei_quads[dir::v_mmp] = quad_mmp_idx;
-  ngbd->find_neighbor_cell_of_node(n, -1,  1,  1, quad_mpp_idx, tree_mpp_idx); //nei_quads[dir::v_mpp] = quad_mpp_idx;
-  ngbd->find_neighbor_cell_of_node(n,  1, -1,  1, quad_pmp_idx, tree_pmp_idx); //nei_quads[dir::v_pmp] = quad_pmp_idx;
-  ngbd->find_neighbor_cell_of_node(n,  1,  1,  1, quad_ppp_idx, tree_ppp_idx); //nei_quads[dir::v_ppp] = quad_ppp_idx;
-#else
-  ngbd->find_neighbor_cell_of_node(n, -1, -1, quad_mmm_idx, tree_mmm_idx); //nei_quads[dir::v_mmm] = quad_mmm_idx;
-  ngbd->find_neighbor_cell_of_node(n, -1, +1, quad_mpm_idx, tree_mpm_idx); //nei_quads[dir::v_mpm] = quad_mpm_idx;
-  ngbd->find_neighbor_cell_of_node(n, +1, -1, quad_pmm_idx, tree_pmm_idx); //nei_quads[dir::v_pmm] = quad_pmm_idx;
-  ngbd->find_neighbor_cell_of_node(n, +1, +1, quad_ppm_idx, tree_ppm_idx); //nei_quads[dir::v_ppm] = quad_ppm_idx;
-#endif
-
-  // find neighboring nodes
-#ifdef P4_TO_P8
-  neighbors[nn_000] = n;
-
-  // m00
-  if      (quad_mmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_m00] = nodes->local_nodes[P4EST_CHILDREN*quad_mmm_idx + dir::v_mpp];
-  else if (quad_mpm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_m00] = nodes->local_nodes[P4EST_CHILDREN*quad_mpm_idx + dir::v_mmp];
-  else if (quad_mmp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_m00] = nodes->local_nodes[P4EST_CHILDREN*quad_mmp_idx + dir::v_mpm];
-  else if (quad_mpp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_m00] = nodes->local_nodes[P4EST_CHILDREN*quad_mpp_idx + dir::v_mmm];
-
-  // p00
-  if      (quad_pmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_p00] = nodes->local_nodes[P4EST_CHILDREN*quad_pmm_idx + dir::v_ppp];
-  else if (quad_ppm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_p00] = nodes->local_nodes[P4EST_CHILDREN*quad_ppm_idx + dir::v_pmp];
-  else if (quad_pmp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_p00] = nodes->local_nodes[P4EST_CHILDREN*quad_pmp_idx + dir::v_ppm];
-  else if (quad_ppp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_p00] = nodes->local_nodes[P4EST_CHILDREN*quad_ppp_idx + dir::v_pmm];
-
-  // 0m0
-  if      (quad_mmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0m0] = nodes->local_nodes[P4EST_CHILDREN*quad_mmm_idx + dir::v_pmp];
-  else if (quad_pmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0m0] = nodes->local_nodes[P4EST_CHILDREN*quad_pmm_idx + dir::v_mmp];
-  else if (quad_mmp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0m0] = nodes->local_nodes[P4EST_CHILDREN*quad_mmp_idx + dir::v_pmm];
-  else if (quad_pmp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0m0] = nodes->local_nodes[P4EST_CHILDREN*quad_pmp_idx + dir::v_mmm];
-
-  // 0p0
-  if      (quad_mpm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0p0] = nodes->local_nodes[P4EST_CHILDREN*quad_mpm_idx + dir::v_ppp];
-  else if (quad_ppm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0p0] = nodes->local_nodes[P4EST_CHILDREN*quad_ppm_idx + dir::v_mpp];
-  else if (quad_mpp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0p0] = nodes->local_nodes[P4EST_CHILDREN*quad_mpp_idx + dir::v_ppm];
-  else if (quad_ppp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0p0] = nodes->local_nodes[P4EST_CHILDREN*quad_ppp_idx + dir::v_mpm];
-
-  // 00m
-  if      (quad_mmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_00m] = nodes->local_nodes[P4EST_CHILDREN*quad_mmm_idx + dir::v_ppm];
-  else if (quad_pmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_00m] = nodes->local_nodes[P4EST_CHILDREN*quad_pmm_idx + dir::v_mpm];
-  else if (quad_mpm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_00m] = nodes->local_nodes[P4EST_CHILDREN*quad_mpm_idx + dir::v_pmm];
-  else if (quad_ppm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_00m] = nodes->local_nodes[P4EST_CHILDREN*quad_ppm_idx + dir::v_mmm];
-
-  // 00p
-  if      (quad_mmp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_00p] = nodes->local_nodes[P4EST_CHILDREN*quad_mmp_idx + dir::v_ppp];
-  else if (quad_pmp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_00p] = nodes->local_nodes[P4EST_CHILDREN*quad_pmp_idx + dir::v_mpp];
-  else if (quad_mpp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_00p] = nodes->local_nodes[P4EST_CHILDREN*quad_mpp_idx + dir::v_pmp];
-  else if (quad_ppp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_00p] = nodes->local_nodes[P4EST_CHILDREN*quad_ppp_idx + dir::v_mmp];
-
-  // 0mm
-  if      (quad_mmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0mm] = nodes->local_nodes[P4EST_CHILDREN*quad_mmm_idx + dir::v_pmm];
-  else if (quad_pmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0mm] = nodes->local_nodes[P4EST_CHILDREN*quad_pmm_idx + dir::v_mmm];
-  // 0pm
-  if      (quad_mpm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0pm] = nodes->local_nodes[P4EST_CHILDREN*quad_mpm_idx + dir::v_ppm];
-  else if (quad_ppm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0pm] = nodes->local_nodes[P4EST_CHILDREN*quad_ppm_idx + dir::v_mpm];
-  // 0mp
-  if      (quad_mmp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0mp] = nodes->local_nodes[P4EST_CHILDREN*quad_mmp_idx + dir::v_pmp];
-  else if (quad_pmp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0mp] = nodes->local_nodes[P4EST_CHILDREN*quad_pmp_idx + dir::v_mmp];
-  // 0pp
-  if      (quad_mpp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0pp] = nodes->local_nodes[P4EST_CHILDREN*quad_mpp_idx + dir::v_ppp];
-  else if (quad_ppp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0pp] = nodes->local_nodes[P4EST_CHILDREN*quad_ppp_idx + dir::v_mpp];
-
-  // m0m
-  if      (quad_mmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_m0m] = nodes->local_nodes[P4EST_CHILDREN*quad_mmm_idx + dir::v_mpm];
-  else if (quad_mpm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_m0m] = nodes->local_nodes[P4EST_CHILDREN*quad_mpm_idx + dir::v_mmm];
-  // p0m
-  if      (quad_pmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_p0m] = nodes->local_nodes[P4EST_CHILDREN*quad_pmm_idx + dir::v_ppm];
-  else if (quad_ppm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_p0m] = nodes->local_nodes[P4EST_CHILDREN*quad_ppm_idx + dir::v_pmm];
-  // m0p
-  if      (quad_mmp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_m0p] = nodes->local_nodes[P4EST_CHILDREN*quad_mmp_idx + dir::v_mpp];
-  else if (quad_mpp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_m0p] = nodes->local_nodes[P4EST_CHILDREN*quad_mpp_idx + dir::v_mmp];
-  // p0p
-  if      (quad_pmp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_p0p] = nodes->local_nodes[P4EST_CHILDREN*quad_pmp_idx + dir::v_ppp];
-  else if (quad_ppp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_p0p] = nodes->local_nodes[P4EST_CHILDREN*quad_ppp_idx + dir::v_pmp];
-
-  // mm0
-  if      (quad_mmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_mm0] = nodes->local_nodes[P4EST_CHILDREN*quad_mmm_idx + dir::v_mmp];
-  else if (quad_mmp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_mm0] = nodes->local_nodes[P4EST_CHILDREN*quad_mmp_idx + dir::v_mmm];
-  // pm0
-  if      (quad_pmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_pm0] = nodes->local_nodes[P4EST_CHILDREN*quad_pmm_idx + dir::v_pmp];
-  else if (quad_pmp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_pm0] = nodes->local_nodes[P4EST_CHILDREN*quad_pmp_idx + dir::v_pmm];
-  // mp0
-  if      (quad_mpm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_mp0] = nodes->local_nodes[P4EST_CHILDREN*quad_mpm_idx + dir::v_mpp];
-  else if (quad_mpp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_mp0] = nodes->local_nodes[P4EST_CHILDREN*quad_mpp_idx + dir::v_mpm];
-  // pp0
-  if      (quad_ppm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_pp0] = nodes->local_nodes[P4EST_CHILDREN*quad_ppm_idx + dir::v_ppp];
-  else if (quad_ppp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_pp0] = nodes->local_nodes[P4EST_CHILDREN*quad_ppp_idx + dir::v_ppm];
-
-  // mmm
-  if      (quad_mmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_mmm] = nodes->local_nodes[P4EST_CHILDREN*quad_mmm_idx + dir::v_mmm];
-  // pmm
-  if      (quad_pmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_pmm] = nodes->local_nodes[P4EST_CHILDREN*quad_pmm_idx + dir::v_pmm];
-  // mpm
-  if      (quad_mpm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_mpm] = nodes->local_nodes[P4EST_CHILDREN*quad_mpm_idx + dir::v_mpm];
-  // ppm
-  if      (quad_ppm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_ppm] = nodes->local_nodes[P4EST_CHILDREN*quad_ppm_idx + dir::v_ppm];
-
-  // mmp
-  if      (quad_mmp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_mmp] = nodes->local_nodes[P4EST_CHILDREN*quad_mmp_idx + dir::v_mmp];
-  // pmp
-  if      (quad_pmp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_pmp] = nodes->local_nodes[P4EST_CHILDREN*quad_pmp_idx + dir::v_pmp];
-  // mpp
-  if      (quad_mpp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_mpp] = nodes->local_nodes[P4EST_CHILDREN*quad_mpp_idx + dir::v_mpp];
-  // ppp
-  if      (quad_ppp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_ppp] = nodes->local_nodes[P4EST_CHILDREN*quad_ppp_idx + dir::v_ppp];
-#else
-  neighbors[nn_000] = n;
-
-  if      (quad_mmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_m00] = nodes->local_nodes[P4EST_CHILDREN*quad_mmm_idx + dir::v_mpm];
-  else if (quad_mpm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_m00] = nodes->local_nodes[P4EST_CHILDREN*quad_mpm_idx + dir::v_mmm];
-
-  if      (quad_pmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_p00] = nodes->local_nodes[P4EST_CHILDREN*quad_pmm_idx + dir::v_ppm];
-  else if (quad_ppm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_p00] = nodes->local_nodes[P4EST_CHILDREN*quad_ppm_idx + dir::v_pmm];
-
-  if      (quad_mmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0m0] = nodes->local_nodes[P4EST_CHILDREN*quad_mmm_idx + dir::v_pmm];
-  else if (quad_pmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0m0] = nodes->local_nodes[P4EST_CHILDREN*quad_pmm_idx + dir::v_mmm];
-
-  if      (quad_ppm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0p0] = nodes->local_nodes[P4EST_CHILDREN*quad_ppm_idx + dir::v_mpm];
-  else if (quad_mpm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0p0] = nodes->local_nodes[P4EST_CHILDREN*quad_mpm_idx + dir::v_ppm];
-
-  if      (quad_mmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_mm0] = nodes->local_nodes[P4EST_CHILDREN*quad_mmm_idx + dir::v_mmm];
-  if      (quad_pmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_pm0] = nodes->local_nodes[P4EST_CHILDREN*quad_pmm_idx + dir::v_pmm];
-  if      (quad_mpm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_mp0] = nodes->local_nodes[P4EST_CHILDREN*quad_mpm_idx + dir::v_mpm];
-  if      (quad_ppm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_pp0] = nodes->local_nodes[P4EST_CHILDREN*quad_ppm_idx + dir::v_ppm];
-#endif
-}
-
 void compute_phi_eff(p4est_nodes_t *nodes, std::vector<Vec> *phi, std::vector<mls_opn_t> *opn, std::vector<bool> *refine_always, Vec phi_eff)
 {
   PetscErrorCode ierr;
@@ -2709,4 +2505,250 @@ void compute_phi_eff(p4est_nodes_t *nodes, std::vector<Vec> *phi, std::vector<ml
           phi_eff_ptr[n] = MIN(phi_eff_ptr[n], fabs(phi_ptr[i][n]));
 
   for (int i = 0; i < phi->size(); i++) { ierr = VecRestoreArray(phi->at(i), &phi_ptr[i]); CHKERRXX(ierr); }
+}
+
+void find_closest_interface_location(int &phi_idx, double &dist, double d, std::vector<mls_opn_t> opn,
+                                     std::vector<double> &phi_a,
+                                     std::vector<double> &phi_b,
+                                     std::vector<double> &phi_a_xx,
+                                     std::vector<double> &phi_b_xx)
+{
+  dist    = d;
+  phi_idx =-1;
+
+  for (int i = 0; i < opn.size(); ++i)
+  {
+    if (phi_a[i] > 0. && phi_b[i] > 0.)
+    {
+      if (opn[i] == MLS_INTERSECTION)
+      {
+        dist    =  0;
+        phi_idx = -1;
+      }
+    } else if (phi_a[i] < 0. && phi_b[i] < 0.) {
+      if (opn[i] == MLS_ADDITION)
+      {
+        dist    =  d;
+        phi_idx = -1;
+      }
+    } else {
+      double dist_new = interface_Location_With_Second_Order_Derivative(0., d, phi_a[i], phi_b[i], phi_a_xx[i], phi_b_xx[i]);
+
+      switch (opn[i])
+      {
+        case MLS_INTERSECTION:
+          if (phi_a[i] < 0.)
+          {
+            if (dist_new < dist)
+            {
+              dist    = dist_new;
+              phi_idx = i;
+            }
+          } else {
+            dist    =  0;
+            phi_idx = -1;
+          }
+          break;
+        case MLS_ADDITION:
+          if (phi_a[i] < 0.)
+          {
+            if (dist_new > dist)
+            {
+              dist    = dist_new;
+              phi_idx = i;
+            }
+          } else {
+            if (dist_new < dist)
+            {
+              dist    =  d;
+              phi_idx = -1;
+            }
+          }
+          break;
+      }
+    }
+  }
+}
+
+void construct_finite_volume(my_p4est_finite_volume_t& fv, p4est_locidx_t n, p4est_t *p4est, p4est_nodes_t *nodes, std::vector<CF_DIM *> phi, std::vector<mls_opn_t> opn, int order, int cube_refinement, bool compute_centroids, double perturb)
+{
+  double xyz_C[P4EST_DIM];
+  double dxyz [P4EST_DIM];
+
+  node_xyz_fr_n(n, p4est, nodes, xyz_C);
+  dxyz_min(p4est, dxyz);
+
+  double scale = 1./MAX(dxyz[0], dxyz[1], dxyz[2]);
+  double diag  = sqrt(SUMD(SQR(dxyz[0]), SQR(dxyz[1]), SQR(dxyz[2])));
+
+  // Reconstruct geometry
+  double cube_xyz_min[] = { DIM( 0, 0, 0 ) };
+  double cube_xyz_max[] = { DIM( 0, 0, 0 ) };
+  int    cube_mnk[]     = { DIM( 0, 0, 0 ) };
+
+  CODE2D( cube2_mls_t cube );
+  CODE3D( cube3_mls_t cube );
+
+  // determine dimensions of cube
+  p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
+
+  if (!is_node_xmWall(p4est, ni)) { cube_mnk[0] += cube_refinement; cube_xyz_min[0] -= .5*dxyz[0]*scale; }
+  if (!is_node_xpWall(p4est, ni)) { cube_mnk[0] += cube_refinement; cube_xyz_max[0] += .5*dxyz[0]*scale; }
+
+  if (!is_node_ymWall(p4est, ni)) { cube_mnk[1] += cube_refinement; cube_xyz_min[1] -= .5*dxyz[1]*scale; }
+  if (!is_node_ypWall(p4est, ni)) { cube_mnk[1] += cube_refinement; cube_xyz_max[1] += .5*dxyz[1]*scale; }
+#ifdef P4_TO_P8
+  if (!is_node_zmWall(p4est, ni)) { cube_mnk[2] += cube_refinement; cube_xyz_min[2] -= .5*dxyz[2]*scale; }
+  if (!is_node_zpWall(p4est, ni)) { cube_mnk[2] += cube_refinement; cube_xyz_max[2] += .5*dxyz[2]*scale; }
+#endif
+
+  fv.full_cell_volume = MULTD( cube_xyz_max[0]-cube_xyz_min[0],
+                               cube_xyz_max[1]-cube_xyz_min[1],
+                               cube_xyz_max[2]-cube_xyz_min[2] ) / pow(scale, P4EST_DIM);
+
+  fv.full_face_area[dir::f_m00] = (cube_xyz_max[1]-cube_xyz_min[1]) CODE3D(*(cube_xyz_max[2]-cube_xyz_min[2])) / pow(scale, P4EST_DIM-1);
+  fv.full_face_area[dir::f_p00] = (cube_xyz_max[1]-cube_xyz_min[1]) CODE3D(*(cube_xyz_max[2]-cube_xyz_min[2])) / pow(scale, P4EST_DIM-1);
+
+  fv.full_face_area[dir::f_0m0] = (cube_xyz_max[0]-cube_xyz_min[0]) CODE3D(*(cube_xyz_max[2]-cube_xyz_min[2])) / pow(scale, P4EST_DIM-1);
+  fv.full_face_area[dir::f_0p0] = (cube_xyz_max[0]-cube_xyz_min[0]) CODE3D(*(cube_xyz_max[2]-cube_xyz_min[2])) / pow(scale, P4EST_DIM-1);
+#ifdef P4_TO_P8
+  fv.full_face_area[dir::f_00m] = (cube_xyz_max[0]-cube_xyz_min[0])*(cube_xyz_max[1]-cube_xyz_min[1]) / pow(scale, P4EST_DIM-1);
+  fv.full_face_area[dir::f_00p] = (cube_xyz_max[0]-cube_xyz_min[0])*(cube_xyz_max[1]-cube_xyz_min[1]) / pow(scale, P4EST_DIM-1);
+#endif
+
+  if (cube_refinement == 0) cube_mnk[0] = cube_mnk[1] = CODE3D( cube_mnk[2] = ) 1;
+
+  cube.initialize(cube_xyz_min, cube_xyz_max, cube_mnk, order);
+
+  // get points at which values of level-set functions are needed
+  XCODE( std::vector<double> x_grid; cube.get_x_coord(x_grid); );
+  YCODE( std::vector<double> y_grid; cube.get_y_coord(y_grid); );
+  ZCODE( std::vector<double> z_grid; cube.get_z_coord(z_grid); );
+
+  int    points_total = x_grid.size();
+  double num_phi      = phi.size();
+
+  std::vector<double> phi_cube(num_phi*points_total,-1);
+
+  // compute values of level-set functions at needed points
+  for (int phi_idx=0; phi_idx<num_phi; ++phi_idx)
+  {
+    for (int i=0; i<points_total; ++i)
+    {
+      phi_cube[phi_idx*points_total + i] = (*phi[phi_idx])(DIM(xyz_C[0] + x_grid[i]/scale, xyz_C[1] + y_grid[i]/scale, xyz_C[2] + z_grid[i]/scale));
+
+      // push interfaces inside the domain
+      if (fabs(phi_cube[phi_idx*points_total + i]) < perturb*diag)
+      {
+        phi_cube[phi_idx*points_total + i] = perturb*diag;
+      }
+    }
+  }
+
+  std::vector<int> clr(num_phi);
+  for (int i=0; i<num_phi; ++i) clr[i] = i;
+
+  // reconstruct geometry
+  reconstruct_cube(cube, phi_cube, opn, clr);
+
+  // get quadrature points
+  _CODE( std::vector<double> qp_w );
+  XCODE( std::vector<double> qp_x );
+  YCODE( std::vector<double> qp_y );
+  ZCODE( std::vector<double> qp_z );
+
+  cube.quadrature_over_domain(qp_w, DIM(qp_x, qp_y, qp_z));
+
+  // compute cut-cell volume
+  fv.volume = 0;
+  for (int i=0; i<qp_w.size(); ++i)
+    fv.volume += qp_w[i];
+
+  fv.volume /= pow(scale, P4EST_DIM);
+
+  // compute areas and centroinds of interfaces
+  fv.interfaces.clear();
+
+  for (int phi_idx=0; phi_idx<num_phi; ++phi_idx)
+  {
+    cube.quadrature_over_interface(phi_idx, qp_w, DIM(qp_x, qp_y, qp_z));
+    if (qp_w.size() > 0)
+    {
+      interface_info_t data;
+
+      _CODE( data.id          = phi_idx );
+      _CODE( data.area        = 0 );
+      XCODE( data.centroid[0] = 0 );
+      YCODE( data.centroid[1] = 0 );
+      ZCODE( data.centroid[2] = 0 );
+
+      for (int i=0; i<qp_w.size(); ++i)
+      {
+        _CODE( data.area        += qp_w[i]         );
+        XCODE( data.centroid[0] += qp_w[i]*qp_x[i] );
+        YCODE( data.centroid[1] += qp_w[i]*qp_y[i] );
+        ZCODE( data.centroid[2] += qp_w[i]*qp_z[i] );
+      }
+
+      XCODE( data.centroid[0] /= scale*data.area);
+      YCODE( data.centroid[1] /= scale*data.area);
+      ZCODE( data.centroid[2] /= scale*data.area);
+      _CODE( data.area        /= pow(scale, P4EST_DIM-1) );
+
+      fv.interfaces.push_back(data);
+    }
+  }
+
+  // compute cut-face areas and their centroids
+  for (int dir_idx=0; dir_idx<P4EST_FACES; ++dir_idx)
+  {
+    _CODE( fv.face_area      [dir_idx] = 0 );
+    XCODE( fv.face_centroid_x[dir_idx] = 0 );
+    YCODE( fv.face_centroid_y[dir_idx] = 0 );
+    ZCODE( fv.face_centroid_z[dir_idx] = 0 );
+
+    cube.quadrature_in_dir(dir_idx, qp_w, DIM(qp_x, qp_y, qp_z));
+    if (qp_w.size() > 0)
+    {
+      for (int i=0; i<qp_w.size(); ++i) fv.face_area[dir_idx] += qp_w[i];
+
+      if (compute_centroids)
+      {
+        for (int i=0; i<qp_w.size(); ++i)
+        {
+          XCODE( fv.face_centroid_x[dir_idx] += qp_w[i]*qp_x[i] );
+          YCODE( fv.face_centroid_y[dir_idx] += qp_w[i]*qp_y[i] );
+          ZCODE( fv.face_centroid_z[dir_idx] += qp_w[i]*qp_z[i] );
+        }
+
+        XCODE( fv.face_centroid_x[dir_idx] /= scale*fv.face_area[dir_idx] );
+        YCODE( fv.face_centroid_y[dir_idx] /= scale*fv.face_area[dir_idx] );
+        ZCODE( fv.face_centroid_z[dir_idx] /= scale*fv.face_area[dir_idx] );
+      }
+
+      fv.face_area[dir_idx] /= pow(scale, P4EST_DIM-1);
+    }
+  }
+
+  XCODE( fv.face_centroid_x[dir::f_m00] = cube_xyz_min[0]/scale; fv.face_centroid_x[dir::f_p00] = cube_xyz_max[0]/scale );
+  YCODE( fv.face_centroid_y[dir::f_0m0] = cube_xyz_min[1]/scale; fv.face_centroid_y[dir::f_0p0] = cube_xyz_max[1]/scale );
+  ZCODE( fv.face_centroid_z[dir::f_00m] = cube_xyz_min[2]/scale; fv.face_centroid_z[dir::f_00p] = cube_xyz_max[2]/scale );
+}
+
+void compute_wall_normal(const int &dir, double normal[])
+{
+  switch (dir)
+  {
+    case dir::f_m00: normal[0] =-1; normal[1] = 0; CODE3D( normal[2] = 0;) break;
+    case dir::f_p00: normal[0] = 1; normal[1] = 0; CODE3D( normal[2] = 0;) break;
+
+    case dir::f_0m0: normal[0] = 0; normal[1] =-1; CODE3D( normal[2] = 0;) break;
+    case dir::f_0p0: normal[0] = 0; normal[1] = 1; CODE3D( normal[2] = 0;) break;
+#ifdef P4_TO_P8
+    case dir::f_00m: normal[0] = 0; normal[1] = 0; CODE3D( normal[2] =-1;) break;
+    case dir::f_00p: normal[0] = 0; normal[1] = 0; CODE3D( normal[2] = 1;) break;
+#endif
+    default:
+      throw std::invalid_argument("Invalid direction\n");
+  }
 }

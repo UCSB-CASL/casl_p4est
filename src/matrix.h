@@ -56,6 +56,7 @@ public:
   void scale_by_maxabs(vector<double>& x);
 
   void mtm_product(matrix_t& m );
+  void mtm_product(matrix_t& m, vector<double>& w);
 
 
   /*!

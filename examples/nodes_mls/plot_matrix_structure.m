@@ -1,6 +1,7 @@
 clear;
 
-dir = '/home/dbochkov/Outputs/poisson_nodes_mls/matrix';
+% dir = '/home/dbochkov/Outputs/poisson_nodes_mls/matrix';
+dir = '/home/dbochkov/Outputs/poisson_jump_nodes_mls/matrix';
 
 run(strcat(dir, "/mat_0.m"));
 

@@ -40,20 +40,20 @@ figure;
 % dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/2d/single/accuracy/fast/convergence'; titles{end+1} = 'Fast';
 % dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/2d/single/accuracy/neut/convergence'; titles{end+1} = 'Random';
 
-dirs = {}; titles = {};
-dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/2d/multiple/accuracy/slow/convergence'; titles{end+1} = 'Slow';
-dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/2d/multiple/accuracy/fast/convergence'; titles{end+1} = 'Fast';
-dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/2d/multiple/accuracy/neut/convergence'; titles{end+1} = 'Random';
+% dirs = {}; titles = {};
+% dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/2d/multiple/accuracy/slow/convergence'; titles{end+1} = 'Bias Slow';
+% dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/2d/multiple/accuracy/fast/convergence'; titles{end+1} = 'Bias Fast';
+% dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/2d/multiple/accuracy/neut/convergence'; titles{end+1} = 'Random';
 
 % dirs = {}; titles = {};
 % dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/3d/single/accuracy/slow/convergence'; titles{end+1} = 'Slow';
 % dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/3d/single/accuracy/fast/convergence'; titles{end+1} = 'Fast';
 % dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/3d/single/accuracy/neut/convergence'; titles{end+1} = 'Random';
 
-% dirs = {}; titles = {};
-% dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/3d/multiple/accuracy/slow/convergence'; titles{end+1} = 'Slow';
-% dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/3d/multiple/accuracy/fast/convergence'; titles{end+1} = 'Fast';
-% dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/3d/multiple/accuracy/neut/convergence'; titles{end+1} = 'Random';
+dirs = {}; titles = {};
+dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/3d/multiple/accuracy/slow/convergence'; titles{end+1} = 'Bias Slow';
+dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/3d/multiple/accuracy/fast/convergence'; titles{end+1} = 'Bias Fast';
+dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Papers/09_jump_solver/v0.1/data/3d/multiple/accuracy/neut/convergence'; titles{end+1} = 'Random';
 
 % dirs = {}; titles = {};
 % dirs{end+1} = '/home/dbochkov/Dropbox/Docs/Presentations/13_socal_fluids_2019_jump_solver/data/results/v1.0/2d/accuracy/fvm/slow/convergence'; titles{end+1} = 'Slow';

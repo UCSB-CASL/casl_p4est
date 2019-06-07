@@ -52,6 +52,7 @@ class my_p4est_node_neighbors_t {
   friend class my_p4est_epitaxy_t;
   friend class my_p4est_poisson_nodes_multialloy_t;
   friend class my_p4est_poisson_nodes_mls_sc_t;
+  friend class my_p4est_poisson_nodes_mls_t;
   friend class my_p4est_poisson_jump_nodes_mls_sc_t;
   friend class my_p4est_interpolation_nodes_local_t;
   friend class my_p4est_integration_mls_t;
@@ -348,6 +349,8 @@ public:
 #endif
     first_derivatives_central(f, fd);
   }
+
+  void get_all_neighbors(const p4est_locidx_t n, p4est_locidx_t *neighbors, bool *neighbor_exists) const;
 
 private:
 #ifdef P4_TO_P8

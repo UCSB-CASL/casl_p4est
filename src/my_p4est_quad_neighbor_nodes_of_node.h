@@ -82,6 +82,15 @@ struct quad_neighbor_nodes_of_node_t {
                                         #endif
                                           ) const;
 
+  inline void ngbd_with_quadratic_interpolation( const double *f, double& f_000,double f_nei[]) const
+  {
+#ifdef P4_TO_P8
+    ngbd_with_quadratic_interpolation(f, f_000, f_nei[dir::f_m00], f_nei[dir::f_p00], f_nei[dir::f_0m0], f_nei[dir::f_0p0], f_nei[dir::f_00m], f_nei[dir::f_00p]);
+#else
+    ngbd_with_quadratic_interpolation(f, f_000, f_nei[dir::f_m00], f_nei[dir::f_p00], f_nei[dir::f_0m0], f_nei[dir::f_0p0]);
+#endif
+  }
+
   void x_ngbd_with_quadratic_interpolation( const double *f,
                                             double& f_m00, double& f_000, double& f_p00) const;
 
@@ -253,7 +262,23 @@ struct quad_neighbor_nodes_of_node_t {
     }
   }
 
-  inline bool is_stencil_in_negative_domain(double *phi_p)
+  inline double distance(int dir) const
+  {
+    switch (dir)
+    {
+      case dir::f_m00: return d_m00;
+      case dir::f_p00: return d_p00;
+      case dir::f_0m0: return d_0m0;
+      case dir::f_0p0: return d_0p0;
+#ifdef P4_TO_P8
+      case dir::f_00m: return d_00m;
+      case dir::f_00p: return d_00p;
+#endif
+      default: throw std::invalid_argument("Invalid direction\n");
+    }
+  }
+
+  inline bool is_stencil_in_negative_domain(double *phi_p) const
   {
     return phi_p[this->node_000]<-EPS &&
     #ifdef P4_TO_P8
@@ -292,6 +317,32 @@ struct quad_neighbor_nodes_of_node_t {
         ( phi_p[this->node_0p0_pm]<-EPS || fabs(this->d_0p0_m0)<EPS);
 #endif
   }
+
+  inline double interpolate_in_dir(int dir, double dist, double *f_ptr) const
+  {
+    p4est_locidx_t node_nei = neighbor(dir);
+    double         h   = distance(dir);
+    if (node_nei == -1) throw std::domain_error("interpolate_in_dir doesn't not support non-uniform grids yet\n");
+    return f_ptr[node_000]*(1-dist/h) + f_ptr[node_nei]*dist/h;
+  }
+
+  inline double interpolate_in_dir(int dir, double dist, double *f_ptr, double *f_dd_ptr) const
+  {
+    p4est_locidx_t node_nei = neighbor(dir);
+    double         h   = distance(dir);
+    if (node_nei == -1) throw std::domain_error("interpolate_in_dir doesn't not support non-uniform grids yet\n");
+    return f_ptr[node_000]*(1-dist/h) + f_ptr[node_nei]*dist/h + 0.5*dist*(dist-h)*MINMOD(f_dd_ptr[node_000], f_dd_ptr[node_nei]);
+  }
+
+  inline double interpolate_in_dir(int dir, double dist, double *f_ptr, double *f_dd_ptr[]) const
+  {
+    p4est_locidx_t node_nei = neighbor(dir);
+    double         h   = distance(dir);
+    int            dim = dir / 2;
+    if (node_nei == -1) throw std::domain_error("interpolate_in_dir doesn't not support non-uniform grids yet\n");
+    return f_ptr[node_000]*(1-dist/h) + f_ptr[node_nei]*dist/h + 0.5*dist*(dist-h)*MINMOD(f_dd_ptr[dim][node_000], f_dd_ptr[dim][node_nei]);
+  }
+
 };
 
 #endif /* !MY_P4EST_QUAD_NEIGHBOR_NODES_OF_NODE_H */

@@ -436,7 +436,7 @@ void my_p4est_poisson_nodes_multialloy_t::initialize_solvers()
   solver_c1->set_diag_add(1.);
   solver_c1->set_mu(Dl1_*dt_);
   solver_c1->set_use_sc_scheme(use_superconvergent_robin_);
-  solver_c1->set_integration_order(1);
+  solver_c1->set_integration_order(2);
   solver_c1->set_use_taylor_correction(1);
   solver_c1->set_keep_scalling(true);
   solver_c1->set_kink_treatment(1);
