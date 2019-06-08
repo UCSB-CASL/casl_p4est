@@ -58,12 +58,14 @@ class my_p4est_poisson_nodes_mls_t
   Vec     rhs_jump_;
   double *rhs_jump_ptr;
 
-  // components of linear system
-  Mat submat_main_;
-  Vec submat_diag_; double *submat_diag_ptr;
-  Mat submat_jump_;
-  Mat submat_robin_sc_;
-  Vec submat_robin_sym_; double *submat_robin_sym_ptr;
+  // subcomponents of linear system
+  Mat     submat_main_;
+  Vec     submat_diag_;
+  double *submat_diag_ptr;
+  Mat     submat_jump_;
+  Mat     submat_robin_sc_;
+  Vec     submat_robin_sym_;
+  double *submat_robin_sym_ptr;
 
   bool new_submat_main_;
   bool new_submat_diag_;
@@ -87,7 +89,7 @@ class my_p4est_poisson_nodes_mls_t
   std::vector<PetscInt> petsc_gloidx_;
 
   // pinning point (for ill-defined all-neumann case)
-  int            matrix_has_nullspace_;
+  bool           matrix_has_nullspace_;
   p4est_gloidx_t fixed_value_idx_g_;
   p4est_gloidx_t fixed_value_idx_l_;
 
@@ -126,25 +128,24 @@ class my_p4est_poisson_nodes_mls_t
     void restore_arrays();
     void calculate_phi_eff();
     void add_phi(mls_opn_t opn, Vec phi, DIM(Vec phi_xx, Vec phi_yy, Vec phi_zz));
+    inline double phi_eff_value(p4est_locidx_t n) { return (num_phi == 0) ? -1 : phi_eff_ptr[n]; }
   };
 
   geometry_t bdry_;
   geometry_t infc_;
 
   // forces
-  Vec   rhs_m_;
-  Vec   rhs_p_;
-
+  Vec     rhs_m_;
+  Vec     rhs_p_;
   double *rhs_m_ptr;
   double *rhs_p_ptr;
 
   // linear term
-  bool   var_diag_;
-  double diag_m_scalar_;
-  double diag_p_scalar_;
-  Vec    diag_m_;
-  Vec    diag_p_;
-
+  bool    var_diag_;
+  double  diag_m_scalar_;
+  double  diag_p_scalar_;
+  Vec     diag_m_;
+  Vec     diag_p_;
   double *diag_m_ptr;
   double *diag_p_ptr;
 
@@ -173,20 +174,25 @@ class my_p4est_poisson_nodes_mls_t
   // interface conditions
   std::vector< CF_DIM *> jc_value_;
   std::vector< CF_DIM *> jc_flux_;
+  std::vector< CF_DIM *> jc_coeff_;
 
   // solver options
   int    integration_order_;
   int    cube_refinement_;
+  int    jump_scheme_;
+  int    jump_sub_scheme_;
+
   bool   use_sc_scheme_;
-  bool   use_pointwise_dirichlet_;
   bool   use_taylor_correction_;
   bool   kink_special_treatment_;
   bool   neumann_wall_first_order_;
   bool   enfornce_diag_scaling_;
   bool   use_centroid_always_;
+
   double phi_perturbation_;
   double domain_rel_thresh_;
   double interface_rel_thresh_;
+
   interpolation_method interp_method_;
 
   // auxiliary variables
@@ -197,7 +203,11 @@ class my_p4est_poisson_nodes_mls_t
   Vec mask_m_;    double *mask_m_ptr;
   Vec mask_p_;    double *mask_p_ptr;
 
+  bool volumes_computed_;
+  bool volumes_owned_;
+
   double face_area_scalling_;
+  vector<double> jump_scaling_;
 
   // finite volumes
   bool store_finite_volumes_;
@@ -208,12 +218,7 @@ class my_p4est_poisson_nodes_mls_t
   std::vector<my_p4est_finite_volume_t> *bdry_fvs_;
   std::vector<my_p4est_finite_volume_t> *infc_fvs_;
 
-  bool keep_scalling_;
-  bool volumes_computed_;
-  bool volumes_owned_;
-
-  vector<double> jump_scaling_;
-
+  // discretization type
   enum discretization_scheme_t
   {
     UNDEFINED,
@@ -227,9 +232,7 @@ class my_p4est_poisson_nodes_mls_t
 
   std::vector<discretization_scheme_t> node_scheme_;
 
-  int jump_scheme_;
-  int jump_sub_scheme_;
-
+  // interpolators
   my_p4est_interpolation_nodes_local_t mu_m_interp_;
   my_p4est_interpolation_nodes_local_t mu_p_interp_;
 
@@ -243,26 +246,23 @@ class my_p4est_poisson_nodes_mls_t
   void interpolators_prepare(p4est_locidx_t n);
   void interpolators_finalize();
 
-  void compute_mue_dd();
-
-  double compute_weights_through_face(double A P8C(double B), bool *neighbor_exists_face, double *weights_face, double theta, bool *map_face);
-
-  void setup_linear_system(bool setup_rhs);
+  // discretization
+  void setup_linear_system (bool setup_rhs);
 
   void discretize_dirichlet(bool setup_rhs, p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
                             double infc_phi_eff_000, bool is_wall[],
                             std::vector<mat_entry_t> *row_main, int &d_nnz, int &o_nnz);
 
-  void discretize_robin(bool setup_rhs, p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
-                        double infc_phi_eff_000, bool is_wall[],
-                        std::vector<mat_entry_t> *row_main, int &d_nnz_main, int &o_nnz_main,
-                        std::vector<mat_entry_t> *row_robin_sc, int &d_nnz_robin_sc, int &o_nnz_robin_sc);
+  void discretize_robin    (bool setup_rhs, p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
+                            double infc_phi_eff_000, bool is_wall[],
+                            std::vector<mat_entry_t> *row_main, int &d_nnz_main, int &o_nnz_main,
+                            std::vector<mat_entry_t> *row_robin_sc, int &d_nnz_robin_sc, int &o_nnz_robin_sc);
 
-  void discretize_jump(bool setup_rhs,  p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
-                       bool is_wall[],
-                       std::vector<mat_entry_t> *row_main, int &d_nnz_main, int &o_nnz_main,
-                       std::vector<mat_entry_t> *row_jump, int &d_nnz_jump, int &o_nnz_jump,
-                       std::vector<mat_entry_t> *row_jump_aux, int &d_nnz_jump_aux, int &o_nnz_jump_aux);
+  void discretize_jump     (bool setup_rhs,  p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
+                            bool is_wall[],
+                            std::vector<mat_entry_t> *row_main, int &d_nnz_main, int &o_nnz_main,
+                            std::vector<mat_entry_t> *row_jump, int &d_nnz_jump, int &o_nnz_jump,
+                            std::vector<mat_entry_t> *row_jump_aux, int &d_nnz_jump_aux, int &o_nnz_jump_aux);
 
   void find_interface_points(p4est_locidx_t n, const my_p4est_node_neighbors_t *ngbd,
                              std::vector<mls_opn_t> opn,
@@ -270,6 +270,16 @@ class my_p4est_poisson_nodes_mls_t
                                                                  std::vector<double *> phi_yy_ptr,
                                                                  std::vector<double *> phi_zz_ptr ),
                              int phi_idx[], double dist[]);
+
+  bool inv_mat2(const double *in, double *out);
+  bool inv_mat3(const double *in, double *out);
+  bool inv_mat4(const double *in, double *out);
+
+  void compute_mue_dd();
+  double compute_weights_through_face(double A P8C(double B), bool *neighbor_exists_face, double *weights_face, double theta, bool *map_face);
+  void find_projection(const quad_neighbor_nodes_of_node_t& qnnn, const double *phi_p, double dxyz_pr[], double &dist_pr, double normal[] = NULL);
+  void invert_linear_system(Vec solution, bool use_nonzero_guess, bool update_ghost, KSPType ksp_type, PCType pc_type);
+  void assemble_matrix(std::vector< std::vector<mat_entry_t> > &entries, std::vector<int> &d_nnz, std::vector<int> &o_nnz, Mat *matrix);
 
   // disallow copy ctr and copy assignment
   my_p4est_poisson_nodes_mls_t(const my_p4est_poisson_nodes_mls_t& other);
@@ -392,7 +402,7 @@ public:
   inline void set_ptwise_dirichlet(vector<double> &ptwise_dirichlet_value)
   {
     this->ptwise_dirichlet_values = &ptwise_dirichlet_value;
-    this->use_ptwise_dirichlet_  = true;
+    this->use_ptwise_dirichlet_   = true;
   }
 
 
@@ -466,46 +476,72 @@ public:
     this->itmax_ = itmax;
   }
 
-  inline bool get_matrix_has_nullspace() { return matrix_has_nullspace_; }
 
-  inline void set_first_order_neumann_wall(bool value) { neumann_wall_first_order_  = value; }
-  inline void set_use_pointwise_dirichlet (bool value) { use_pointwise_dirichlet_   = value; }
-  inline void set_use_taylor_correction   (bool value) { use_taylor_correction_     = value; }
-  inline void set_keep_scalling           (bool value) { keep_scalling_             = value; }
-  inline void set_kink_treatment          (bool value) { kink_special_treatment_    = value; }
-  inline void set_use_sc_scheme           (bool value) { use_sc_scheme_             = value; }
-  inline void set_integration_order       (int  value) { integration_order_         = value; }
-  inline void set_jump_scheme             (int  value) { jump_scheme_               = value; }
-  inline void set_jump_sub_scheme         (int  value) { jump_sub_scheme_           = value; }
-  inline void set_use_centroid_always     (int  value) { use_centroid_always_       = value; }
+  // solver options
+  inline void set_integration_order(int value) { integration_order_ = value; }
+  inline void set_cube_refinement  (int value) { cube_refinement_   = value; }
+  inline void set_jump_scheme      (int value) { jump_scheme_       = value; }
+  inline void set_jump_sub_scheme  (int value) { jump_sub_scheme_   = value; }
 
+  inline void set_use_sc_scheme           (bool value) { use_sc_scheme_            = value; }
+  inline void set_use_taylor_correction   (bool value) { use_taylor_correction_    = value; }
+  inline void set_kink_treatment          (bool value) { kink_special_treatment_   = value; }
+  inline void set_first_order_neumann_wall(bool value) { neumann_wall_first_order_ = value; }
+  inline void set_enfornce_diag_scaling   (bool value) { enfornce_diag_scaling_    = value; }
+  inline void set_use_centroid_always     (bool value) { use_centroid_always_      = value; }
+  inline void set_store_finite_volumes_   (bool value) { store_finite_volumes_     = value; }
+
+  inline void set_phi_perturbation    (double value) { phi_perturbation_     = value; }
+  inline void set_domain_rel_thresh   (double value) { domain_rel_thresh_    = value; }
+  inline void set_interface_rel_thresh(double value) { interface_rel_thresh_ = value; }
+
+  inline void set_interpolation_method(interpolation_method value) { interp_method_ = value; }
+
+  // some override capabilities just in case
   inline void set_new_submat_main (bool value) { new_submat_main_  = value; }
   inline void set_new_submat_diag (bool value) { new_submat_diag_  = value; }
   inline void set_new_submat_robin(bool value) { new_submat_robin_ = value; }
 
-  bool inv_mat2(const double *in, double *out);
-  bool inv_mat3(const double *in, double *out);
-  bool inv_mat4(const double *in, double *out);
-
-  void find_projection(const quad_neighbor_nodes_of_node_t& qnnn, const double *phi_p, double dxyz_pr[], double &dist_pr, double normal[] = NULL);
-
   void preassemble_linear_system();
   void solve(Vec solution, bool use_nonzero_guess = false, bool update_ghost = true, KSPType ksp_type = KSPBCGS, PCType pc_type = PCHYPRE);
-  void invert_linear_system(Vec solution, bool use_nonzero_guess, bool update_ghost, KSPType ksp_type, PCType pc_type);
-  void assemble_matrix(std::vector< std::vector<mat_entry_t> > &entries, std::vector<int> &d_nnz, std::vector<int> &o_nnz, Mat *matrix);
 
   inline Vec get_mask()   { return mask_m_; }
   inline Vec get_mask_m() { return mask_m_; }
   inline Vec get_mask_p() { return mask_p_; }
 
-  inline Vec get_areas()   { return areas_m_;   }
+  inline Vec get_areas()   { return areas_m_; }
   inline Vec get_areas_m() { return areas_m_; }
   inline Vec get_areas_p() { return areas_p_; }
 
   inline Vec get_boundary_phi_eff()  { return bdry_.phi_eff; }
   inline Vec get_interface_phi_eff() { return infc_.phi_eff; }
 
+  inline bool get_matrix_has_nullspace() { return matrix_has_nullspace_; }
+
   inline Mat get_matrix() { return A_; }
+
+  // finite volumes
+  inline void get_boundary_finite_volumes(vector< my_p4est_finite_volume_t > *bdry_fvs, vector<int> *bdry_node_to_fv)
+  {
+    bdry_fvs        =  bdry_fvs_;
+    bdry_node_to_fv = &bdry_node_to_fv_;
+  }
+
+  inline void get_interface_finite_volumes(vector< my_p4est_finite_volume_t > *infc_fvs, vector<int> *infc_node_to_fv)
+  {
+    infc_fvs        =  infc_fvs_;
+    infc_node_to_fv = &infc_node_to_fv_;
+  }
+
+  inline void set_finite_volumes(vector< my_p4est_finite_volume_t > *bdry_fvs, vector<int> *bdry_node_to_fv,
+                                 vector< my_p4est_finite_volume_t > *infc_fvs, vector<int> *infc_node_to_fv)
+  {
+    bdry_fvs_        =  bdry_fvs;
+    bdry_node_to_fv_ = *bdry_node_to_fv;
+    infc_fvs_        =  infc_fvs;
+    infc_node_to_fv_ = *infc_node_to_fv;
+    finite_volumes_initialized_ = true;
+  }
 
   inline PetscInt get_global_idx(p4est_locidx_t n) { return petsc_gloidx_[n]; }
 };

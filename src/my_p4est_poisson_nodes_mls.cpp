@@ -33,6 +33,7 @@
 #endif
 
 
+
 my_p4est_poisson_nodes_mls_t::my_p4est_poisson_nodes_mls_t(const my_p4est_node_neighbors_t *ngbd)
   : ngbd_(ngbd),
     p4est_(ngbd->p4est),
@@ -44,19 +45,37 @@ my_p4est_poisson_nodes_mls_t::my_p4est_poisson_nodes_mls_t(const my_p4est_node_n
     mu_m_interp_(ngbd),
     mu_p_interp_(ngbd)
 {
-  atol_  = 1.0e-16;
-  rtol_  = 1.0e-16;
-  dtol_  = PETSC_DEFAULT;
-  itmax_ = 50;
-
-  // default parameters
+  // grid variables
   lip_ = 2.0;
+
+  ::dxyz_min(p4est_, dxyz_m_);
+
+  XCODE( dx_min_ = dxyz_m_[0]; )
+  YCODE( dy_min_ = dxyz_m_[1]; )
+  ZCODE( dz_min_ = dxyz_m_[2]; )
+
+  d_min_ = MIN(DIM(dx_min_, dy_min_, dz_min_));
+  diag_min_ = sqrt( SUMD(dx_min_*dx_min_, dy_min_*dy_min_, dz_min_*dz_min_) );
 
   // linear system
   A_            = NULL;
   diag_scaling_ = NULL;
+  rhs_          = NULL;
+  rhs_ptr       = NULL;
+  rhs_jump_     = NULL;
+  rhs_jump_ptr  = NULL;
+
+  // rhs_ gonna serve as a template vector for VecDuplicate
   ierr = VecCreateGhostNodes(p4est_, nodes_, &rhs_); CHKERRXX(ierr);
-  rhs_jump_ = NULL;
+
+  // subcomponents of linear system
+  submat_main_         = NULL;
+  submat_diag_         = NULL;
+  submat_diag_ptr      = NULL;
+  submat_jump_         = NULL;
+  submat_robin_sc_     = NULL;
+  submat_robin_sym_    = NULL;
+  submat_robin_sym_ptr = NULL;
 
   new_submat_main_  = true;
   new_submat_diag_  = true;
@@ -69,100 +88,19 @@ my_p4est_poisson_nodes_mls_t::my_p4est_poisson_nodes_mls_t(const my_p4est_node_n
   there_is_jump_      = false;
   there_is_jump_mu_   = false;
 
-  // equation
-  rhs_m_  = NULL;
-  rhs_p_  = NULL;
+  // PETSc solver
+  ierr = KSPCreate(p4est_->mpicomm, &ksp_); CHKERRXX(ierr);
+  new_pc_ = true;
+  atol_   = 1.0e-16;
+  rtol_   = 1.0e-16;
+  dtol_   = PETSC_DEFAULT;
+  itmax_  = 50;
 
-  var_diag_      = false;
-  diag_m_        = NULL;
-  diag_p_        = NULL;
-  diag_m_scalar_ = 0.;
-  diag_p_scalar_ = 0.;
-
-  mu_m_ = 1.;
-  mu_p_ = 1.;
-
-  var_mu_            = false;
-  is_mue_m_dd_owned_ = false;
-  is_mue_p_dd_owned_ = false;
-  mue_m_ = NULL; mue_m_xx_ = NULL; mue_m_yy_ = NULL; ONLY3D(mue_m_zz_ = NULL);
-  mue_p_ = NULL; mue_p_xx_ = NULL; mue_p_yy_ = NULL; ONLY3D(mue_p_zz_ = NULL);
-
-  // solver options
-  integration_order_          = 2;
-  cube_refinement_            = 0;
-  use_sc_scheme_              = 1;
-  use_pointwise_dirichlet_    = 0;
-  use_taylor_correction_      = 1;
-  kink_special_treatment_     = 1;
-  neumann_wall_first_order_   = 0;
-  enfornce_diag_scaling_      = 1;
-  use_centroid_always_        = 0;
-  phi_perturbation_           = 1.e-12;
-  interp_method_              = quadratic_non_oscillatory_continuous_v2;
-
-  domain_rel_thresh_    = 1.e-11;
-  interface_rel_thresh_ = 1.e-11;
-
-  // some flags
-  new_pc_               = true;
-  matrix_has_nullspace_ = false;
-
-  // auxiliary variables
-  mask_m_    = NULL;
-  mask_p_    = NULL;
-  areas_m_   = NULL;
-  areas_p_   = NULL;
-  volumes_m_ = NULL;
-  volumes_p_ = NULL;
-
-  keep_scalling_    = false;
-  volumes_owned_    = false;
-  volumes_computed_ = false;
-
-  jump_scheme_     = 0;
-  jump_sub_scheme_ = 0;
-
+  // local to global node number mapping
   // compute global numbering of nodes
   global_node_offset_.resize(p4est_->mpisize+1, 0);
   for (int r = 0; r<p4est_->mpisize; ++r)
     global_node_offset_[r+1] = global_node_offset_[r] + (PetscInt)nodes_->global_owned_indeps[r];
-
-  // set up the KSP solver
-  ierr = KSPCreate(p4est_->mpicomm, &ksp_); CHKERRXX(ierr);
-  ierr = KSPSetTolerances(ksp_, 1e-12, PETSC_DEFAULT, PETSC_DEFAULT, PETSC_DEFAULT); CHKERRXX(ierr);
-
-  splitting_criteria_t *data = (splitting_criteria_t*)p4est_->user_pointer;
-
-  // compute grid parameters
-  // NOTE: Assuming all trees are of the same size. Must be generalized if different trees have
-  // different sizes
-  p4est_topidx_t vm = p4est_->connectivity->tree_to_vertex[0 + 0];
-  p4est_topidx_t vp = p4est_->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
-  double xmin = p4est_->connectivity->vertices[3*vm + 0];
-  double ymin = p4est_->connectivity->vertices[3*vm + 1];
-  double xmax = p4est_->connectivity->vertices[3*vp + 0];
-  double ymax = p4est_->connectivity->vertices[3*vp + 1];
-  dx_min_ = (xmax-xmin) / pow(2.,(double) data->max_lvl);
-  dy_min_ = (ymax-ymin) / pow(2.,(double) data->max_lvl);
-#ifdef P4_TO_P8
-  double zmin = p4est_->connectivity->vertices[3*vm + 2];
-  double zmax = p4est_->connectivity->vertices[3*vp + 2];
-  dz_min_ = (zmax-zmin) / pow(2.,(double) data->max_lvl);
-#endif
-
-  d_min_ = MIN(DIM(dx_min_, dy_min_, dz_min_));
-  diag_min_ = sqrt( SUMD(dx_min_*dx_min_, dy_min_*dy_min_, dz_min_*dz_min_) );
-
-  XCODE( dxyz_m_[0] = dx_min_; )
-  YCODE( dxyz_m_[1] = dy_min_; )
-  ZCODE( dxyz_m_[2] = dz_min_; )
-
-#ifdef P4_TO_P8
-  face_area_scalling_ = diag_min_*diag_min_;
-#else
-  face_area_scalling_ = diag_min_;
-#endif
 
   // construct petsc global indices
   petsc_gloidx_.resize(nodes_->indep_nodes.elem_count);
@@ -178,9 +116,80 @@ my_p4est_poisson_nodes_mls_t::my_p4est_poisson_nodes_mls_t(const my_p4est_node_n
     petsc_gloidx_[i+nodes_->num_owned_indeps] = global_node_offset_[nodes_->nonlocal_ranks[i]] + ni->p.piggy3.local_num;
   }
 
-  // for all-neumann case
-  fixed_value_idx_g_ = global_node_offset_[p4est_->mpisize];
+  // pinning point (for ill-defined all-neumann case)
+  matrix_has_nullspace_ = false;
+  fixed_value_idx_l_    = global_node_offset_[p4est_->mpisize];
+  fixed_value_idx_g_    = global_node_offset_[p4est_->mpisize];
 
+  // forces
+  rhs_m_ = NULL; rhs_m_ptr = NULL;
+  rhs_p_ = NULL; rhs_p_ptr = NULL;
+
+  // linear term
+  var_diag_      = false;
+  diag_m_scalar_ = 0.;
+  diag_p_scalar_ = 0.;
+  diag_m_        = NULL;
+  diag_p_        = NULL;
+  diag_m_ptr     = NULL;
+  diag_p_ptr     = NULL;
+
+  // diffusion coefficient
+  mu_m_ = 1.;
+  mu_p_ = 1.;
+
+  var_mu_            = false;
+  is_mue_m_dd_owned_ = false;
+  is_mue_p_dd_owned_ = false;
+  mue_m_ = NULL; mue_m_xx_ = NULL; mue_m_yy_ = NULL; ONLY3D(mue_m_zz_ = NULL);
+  mue_p_ = NULL; mue_p_xx_ = NULL; mue_p_yy_ = NULL; ONLY3D(mue_p_zz_ = NULL);
+
+  mue_m_ptr = NULL; mue_m_xx_ptr = NULL; mue_m_yy_ptr = NULL; ONLY3D(mue_m_zz_ptr = NULL);
+  mue_p_ptr = NULL; mue_p_xx_ptr = NULL; mue_p_yy_ptr = NULL; ONLY3D(mue_p_zz_ptr = NULL);
+
+  // wall conditions
+  wc_type_  = NULL;
+  wc_value_ = NULL;
+  wc_coeff_ = NULL;
+
+  // solver options
+  integration_order_          = 2;
+  cube_refinement_            = 0;
+  jump_scheme_                = 0;
+  jump_sub_scheme_            = 0;
+  use_sc_scheme_              = 1;
+  use_taylor_correction_      = 1;
+  kink_special_treatment_     = 1;
+  neumann_wall_first_order_   = 0;
+  enfornce_diag_scaling_      = 1;
+  use_centroid_always_        = 0;
+  phi_perturbation_           = 1.e-12;
+  interp_method_              = quadratic_non_oscillatory_continuous_v2;
+
+  domain_rel_thresh_    = 1.e-11;
+  interface_rel_thresh_ = 1.e-11;
+
+  // auxiliary variables
+  mask_m_    = NULL; mask_m_ptr    = NULL;
+  mask_p_    = NULL; mask_p_ptr    = NULL;
+  areas_m_   = NULL; areas_m_ptr   = NULL;
+  areas_p_   = NULL; areas_p_ptr   = NULL;
+  volumes_m_ = NULL; volumes_m_ptr = NULL;
+  volumes_p_ = NULL; volumes_p_ptr = NULL;
+
+  volumes_owned_    = false;
+  volumes_computed_ = false;
+
+  face_area_scalling_ = pow(diag_min_, P4EST_DIM-1);
+
+  // finite volumes
+  store_finite_volumes_       = false;
+  finite_volumes_initialized_ = false;
+  finite_volumes_owned_       = false;
+  bdry_fvs_                   = NULL;
+  infc_fvs_                   = NULL;
+
+  // pointwise wall, boundary and jump conditions
   use_ptwise_dirichlet_ = false;
   use_ptwise_neumann_   = false;
   use_ptwise_robin_     = false;
@@ -193,17 +202,21 @@ my_p4est_poisson_nodes_mls_t::my_p4est_poisson_nodes_mls_t(const my_p4est_node_n
   ptwise_surfgen_values   = NULL;
   ptwise_jump_fluxes      = NULL;
   ptwise_jump_values      = NULL;
-
-  store_finite_volumes_       = false;
-  finite_volumes_initialized_ = false;
-  finite_volumes_owned_       = false;
 }
 
 my_p4est_poisson_nodes_mls_t::~my_p4est_poisson_nodes_mls_t()
 {
-  if (mask_m_ != NULL) { ierr = VecDestroy(mask_m_); CHKERRXX(ierr); }
-  if (mask_p_ != NULL) { ierr = VecDestroy(mask_p_); CHKERRXX(ierr); }
+  // subcomponents of linear system
+  if (submat_main_      != NULL) { ierr = MatDestroy(submat_main_     ); CHKERRXX(ierr); }
+  if (submat_diag_      != NULL) { ierr = VecDestroy(submat_diag_     ); CHKERRXX(ierr); }
+  if (submat_jump_      != NULL) { ierr = MatDestroy(submat_jump_     ); CHKERRXX(ierr); }
+  if (submat_robin_sc_  != NULL) { ierr = MatDestroy(submat_robin_sc_ ); CHKERRXX(ierr); }
+  if (submat_robin_sym_ != NULL) { ierr = VecDestroy(submat_robin_sym_); CHKERRXX(ierr); }
 
+  // PETSc solver
+  if (ksp_ != NULL) { ierr = KSPDestroy(ksp_); CHKERRXX(ierr); }
+
+  // diffusion coefficient
   if (is_mue_p_dd_owned_)
   {
     XCODE( if (mue_p_xx_ != NULL) { ierr = VecDestroy(mue_p_xx_); CHKERRXX(ierr); } );
@@ -218,16 +231,26 @@ my_p4est_poisson_nodes_mls_t::~my_p4est_poisson_nodes_mls_t()
     ZCODE( if (mue_m_zz_ != NULL) { ierr = VecDestroy(mue_m_zz_); CHKERRXX(ierr); } );
   }
 
-  if (areas_m_ != NULL && volumes_owned_) { ierr = VecDestroy(areas_m_); CHKERRXX(ierr); }
-  if (areas_p_ != NULL && volumes_owned_) { ierr = VecDestroy(areas_p_); CHKERRXX(ierr); }
-
+  // auxiliary variables
+  if (mask_m_    != NULL) { ierr = VecDestroy(mask_m_); CHKERRXX(ierr); }
+  if (mask_p_    != NULL) { ierr = VecDestroy(mask_p_); CHKERRXX(ierr); }
+  if (areas_m_   != NULL && volumes_owned_) { ierr = VecDestroy(areas_m_); CHKERRXX(ierr); }
+  if (areas_p_   != NULL && volumes_owned_) { ierr = VecDestroy(areas_p_); CHKERRXX(ierr); }
   if (volumes_m_ != NULL && volumes_owned_) { ierr = VecDestroy(volumes_m_); CHKERRXX(ierr); }
   if (volumes_p_ != NULL && volumes_owned_) { ierr = VecDestroy(volumes_p_); CHKERRXX(ierr); }
 
-  if (A_   != NULL) { ierr = MatDestroy(A_);   CHKERRXX(ierr); }
-  if (diag_scaling_ != NULL) { ierr = VecDestroy(diag_scaling_);   CHKERRXX(ierr); }
-  if (rhs_ != NULL) { ierr = VecDestroy(rhs_); CHKERRXX(ierr); }
-  if (ksp_ != NULL) { ierr = KSPDestroy(ksp_); CHKERRXX(ierr); }
+  // finite volumes
+  if (finite_volumes_owned_)
+  {
+    if (bdry_fvs_ != NULL) { delete bdry_fvs_; }
+    if (infc_fvs_ != NULL) { delete infc_fvs_; }
+  }
+
+  // linear system
+  if (A_            != NULL) { ierr = MatDestroy(A_           ); CHKERRXX(ierr); }
+  if (diag_scaling_ != NULL) { ierr = VecDestroy(diag_scaling_); CHKERRXX(ierr); }
+  if (rhs_jump_     != NULL) { ierr = VecDestroy(rhs_jump_    ); CHKERRXX(ierr); }
+  if (rhs_          != NULL) { ierr = VecDestroy(rhs_         ); CHKERRXX(ierr); } // must be deleted last since it's a parent for others
 }
 
 my_p4est_poisson_nodes_mls_t::geometry_t::~geometry_t()
