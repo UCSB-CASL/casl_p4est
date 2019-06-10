@@ -20,6 +20,10 @@ VORO_INCLUDES_DEBUG   = /home/temprano/Software/voro++-0.4.6/build/include/voro+
 VORO_LIBS_RELEASE     = /home/temprano/Software/voro++-0.4.6/build/lib/libvoro++.a
 VORO_LIBS_DEBUG       = /home/temprano/Software/voro++-0.4.6/build/lib/libvoro++.a
 
+# lapacke
+LAPACKE_INCLUDE     = /usr/include/lapacke.h
+LAPACKE_LIBS        = -Wl,-rpath,/usr/lib -L/usr/lib -llapacke
+
 QMAKE_CC = mpicc
 QMAKE_CXX = mpicxx
 QMAKE_LINK = mpicxx
