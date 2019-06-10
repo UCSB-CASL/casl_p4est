@@ -6,7 +6,11 @@
  */
 
 // System
+#ifdef JUPITER
 #include <mpi/mpi.h>
+#else
+#include <mpi.h>
+#endif
 #include <stdexcept>
 #include <iostream>
 #include <sys/stat.h>
@@ -613,14 +617,14 @@ void initialize_velocity_profile_file(const char* filename, const int& ntree_y, 
         throw std::runtime_error(error_msg);
       }
       double time, time_nm1;
-      double dt = 0.0;
+//      double dt = 0.0;
       bool not_first_line = false;
       while ((len_read = getline(&read_line, &len, fp_avg_profile)) != -1) {
         if(not_first_line)
           time_nm1 = time;
         sscanf(read_line, "%lg %*[^\n]", &time);
-        if(not_first_line)
-          dt = time-time_nm1;
+//        if(not_first_line)
+//          dt = time-time_nm1;
         if(time <= tstart-(1.0e-12)*pow(10.0, floor(log10(tstart)))) // (1.0e-12)*pow(10.0, floor(log10(tstart))) == given precision when exporting
           size_to_keep += (long) len_read;
         else
@@ -951,7 +955,7 @@ public:
                    although the computation time solving in all processors is similar. The assembly + solve time in my machine
                    for N=2500 coefficients (should be enough except for crazy low gas fractions 0 < GF < 0.01) is of 2-3 sec.*/
     if(_ns->get_p4est()->mpirank == 0) compute_series_coeff();
-    MPI_Bcast(coeff.data(), coeff.size(), MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    int mpiret = MPI_Bcast(coeff.data(), coeff.size(), MPI_DOUBLE, 0, MPI_COMM_WORLD); SC_CHECK_MPI(mpiret);
   }
 
 #ifdef P4_TO_P8
@@ -1386,8 +1390,10 @@ int main (int argc, char* argv[])
   const string export_dir               = cmd.get<string>("export_folder", "/work/04965/tg842642/stampede2/superhydrophobic_channel");
 #elif defined(LAPTOP)
   const string export_dir               = cmd.get<string>("export_folder", "/home/raphael/workspace/projects/superhydrophobic_channel");
-#else
+#elif defined(JUPITER)
   const string export_dir               = cmd.get<string>("export_folder", "/home/temprano/Output/p4est_ns_shs");
+#else
+  const string export_dir               = cmd.get<string>("export_folder", "/home/regan/workspace/projects/superhydrophobic_channel");
 #endif
   const bool save_vtk                   = cmd.contains("save_vtk");
   const bool get_timing                 = cmd.contains("timing");
