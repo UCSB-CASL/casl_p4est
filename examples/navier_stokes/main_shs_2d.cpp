@@ -746,6 +746,29 @@ inline double Re_b(const double& mass_flow, const double &width, const double& r
   return rho*mean_u(mass_flow, rho, width)*1.0/mu; // delta = 1.0
 }
 
+void write_vector_to_binary_file(const std::vector<double>& myVector, std::string filename)
+{
+    std::ofstream ofs(filename, std::ios::out | std::ofstream::binary);
+    std::ostream_iterator<char> osi{ ofs };
+    const char* beginByte = (char*)&myVector[0];
+    const char* endByte = (char*)&myVector.back() + sizeof(double);
+    std::copy(beginByte, endByte, osi);
+    ofs.flush();
+    ofs.close();
+}
+
+void read_vector_from_file(std::string filename, std::vector<double>& to_return)
+{
+    std::vector<char> buffer{};
+    std::ifstream ifs(filename, std::ios::in | std::ifstream::binary);
+    std::istreambuf_iterator<char> iter(ifs);
+    std::istreambuf_iterator<char> end{};
+    std::copy(iter, end, std::back_inserter(buffer));
+    ifs.close();
+    to_return.resize(buffer.size() / sizeof(double));
+    memcpy(&to_return[0], &buffer[0], buffer.size());
+}
+
 //------------------------------ EXACT SOLUTIONS FOR SIMPLIFIED CASES ------------------------------//
 
 class unit_nondim_sol
@@ -1225,29 +1248,6 @@ void check_accuracy_of_solution(my_p4est_navier_stokes_t* ns, const double& pitc
       ierr = VecRestoreArrayRead(v_exact_nodes[dir], &v_exact_vtk_ptr[dir]); CHKERRXX(ierr);
     }
   }
-}
-
-void write_vector_to_binary_file(const std::vector<double>& myVector, std::string filename)
-{
-    std::ofstream ofs(filename, std::ios::out | std::ofstream::binary);
-    std::ostream_iterator<char> osi{ ofs };
-    const char* beginByte = (char*)&myVector[0];
-    const char* endByte = (char*)&myVector.back() + sizeof(double);
-    std::copy(beginByte, endByte, osi);
-    ofs.flush();
-    ofs.close();
-}
-
-void read_vector_from_file(std::string filename, std::vector<double>& to_return)
-{
-    std::vector<char> buffer{};
-    std::ifstream ifs(filename, std::ios::in | std::ifstream::binary);
-    std::istreambuf_iterator<char> iter(ifs);
-    std::istreambuf_iterator<char> end{};
-    std::copy(iter, end, std::back_inserter(buffer));
-    ifs.close();
-    to_return.resize(buffer.size() / sizeof(double));
-    memcpy(&to_return[0], &buffer[0], buffer.size());
 }
 
 int main (int argc, char* argv[])
