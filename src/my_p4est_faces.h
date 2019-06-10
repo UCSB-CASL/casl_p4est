@@ -25,6 +25,13 @@ using std::vector;
 
 #define NO_VELOCITY -1
 
+typedef struct {
+  p4est_locidx_t face_idx;
+  double weight;
+} face_interpolator_element;
+
+typedef std::vector<face_interpolator_element> face_interpolator;
+
 class my_p4est_faces_t
 {
   friend class my_p4est_poisson_faces_t;
@@ -197,16 +204,18 @@ PetscErrorCode VecCreateGhostFacesBlock(const p4est_t *p4est, const my_p4est_fac
 void check_if_faces_are_well_defined(p4est_t *p4est, my_p4est_node_neighbors_t *ngbd_n, my_p4est_faces_t *faces, int dir,
                                      Vec phi, BoundaryConditionType bc_type, Vec is_well_defined);
 
+
+// NOTE: reusing the interpolator_from_faces is ok afterwards for Neumann-BC nodes ONLY if the Neumann bc is HOMOGENEOUS!
 #ifdef P4_TO_P8
 double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4est_faces_t *faces,
                                my_p4est_cell_neighbors_t *ngbd_c, my_p4est_node_neighbors_t *ngbd_n,
                                p4est_locidx_t node_idx, Vec f, int dir,
-                               Vec face_is_well_defined=NULL, int order=2, BoundaryConditions3D *bc=NULL);
+                               Vec face_is_well_defined=NULL, int order=2, BoundaryConditions3D *bc=NULL, face_interpolator* interpolator_from_faces = NULL);
 #else
 double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4est_faces_t *faces,
                                my_p4est_cell_neighbors_t *ngbd_c, my_p4est_node_neighbors_t *ngbd_n,
                                p4est_locidx_t node_idx, Vec f, int dir,
-                               Vec face_is_well_defined=NULL, int order=2, BoundaryConditions2D *bc=NULL);
+                               Vec face_is_well_defined=NULL, int order=2, BoundaryConditions2D *bc=NULL, face_interpolator* interpolator_from_faces = NULL);
 #endif
 
 #endif /* MY_P4EST_FACES_H */

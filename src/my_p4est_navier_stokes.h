@@ -2,6 +2,7 @@
 #define MY_P4EST_NAVIER_STOKES_H
 
 #include <petsc.h>
+#include <algorithm>
 
 #ifdef P4_TO_P8
 #include <src/my_p8est_refine_coarsen.h>
@@ -131,6 +132,10 @@ protected:
   std::vector<double> xyz_n[P4EST_DIM][P4EST_DIM];
   std::vector<double> xyz_nm1[P4EST_DIM][P4EST_DIM]; // used only if sl_order == 2
 
+  // face interpolator to nodes: store them in memory to accelerate execution if static grid
+  bool interpolators_from_face_to_nodes_are_set;
+  std::vector<face_interpolator> interpolator_from_face_to_nodes[P4EST_DIM];
+
   // second_derivatives...[i][j] = second derivatives of velocity component j along Cartesian direction i
   Vec second_derivatives_vnm1_nodes[P4EST_DIM][P4EST_DIM];
   Vec second_derivatives_vn_nodes[P4EST_DIM][P4EST_DIM];
@@ -180,7 +185,76 @@ protected:
   void compute_max_L2_norm_u();
 
   void compute_vorticity();
-  void compute_Q_value(Vec& Q_value_nodes) const;
+  void compute_Q_and_lambda_2_value(Vec& Q_value_nodes, Vec& lambda_2_nodes, const double U_scaling, const double x_scaling) const;
+
+  inline void get_Q_and_lambda_2_values(const quad_neighbor_nodes_of_node_t& qnnn, const double *vnp1_p[P4EST_DIM], const double& x_scaling, const double& U_scaling, double& Qvalue, double& lambda_2_value) const
+  {
+    double S[P4EST_DIM][P4EST_DIM];
+    double omega[P4EST_DIM][P4EST_DIM];
+    double S_squared_plus_omega_squared[P4EST_DIM][P4EST_DIM];
+    double lambda_coeffs[P4EST_DIM+1];
+
+    S[0][0] = qnnn.dx_central(vnp1_p[0])*x_scaling/U_scaling;                                     omega[0][0] = 0.0;
+    S[0][1] = 0.5*(qnnn.dy_central(vnp1_p[0]) + qnnn.dx_central(vnp1_p[1]))*x_scaling/U_scaling;  omega[0][1] = 0.5*(qnnn.dy_central(vnp1_p[0]) - qnnn.dx_central(vnp1_p[1]))*x_scaling/U_scaling;
+#ifdef P4_TO_P8
+    S[0][2] = 0.5*(qnnn.dz_central(vnp1_p[0]) + qnnn.dx_central(vnp1_p[2]))*x_scaling/U_scaling;  omega[0][2] = 0.5*(qnnn.dz_central(vnp1_p[0]) - qnnn.dx_central(vnp1_p[2]))*x_scaling/U_scaling;
+#endif
+    S[1][0] = 0.5*(qnnn.dx_central(vnp1_p[1]) + qnnn.dy_central(vnp1_p[0]))*x_scaling/U_scaling;  omega[1][0] = 0.5*(qnnn.dx_central(vnp1_p[1]) - qnnn.dy_central(vnp1_p[0]))*x_scaling/U_scaling;
+    S[1][1] = qnnn.dy_central(vnp1_p[1])*x_scaling/U_scaling;                                     omega[1][1] = 0.0;
+#ifdef P4_TO_P8
+    S[1][2] = 0.5*(qnnn.dz_central(vnp1_p[1]) + qnnn.dy_central(vnp1_p[2]))*x_scaling/U_scaling;  omega[1][2] = 0.5*(qnnn.dz_central(vnp1_p[1]) - qnnn.dy_central(vnp1_p[2]))*x_scaling/U_scaling;
+    S[2][0] = 0.5*(qnnn.dx_central(vnp1_p[2]) + qnnn.dz_central(vnp1_p[0]))*x_scaling/U_scaling;  omega[2][0] = 0.5*(qnnn.dx_central(vnp1_p[2]) - qnnn.dz_central(vnp1_p[0]))*x_scaling/U_scaling;
+    S[2][1] = 0.5*(qnnn.dy_central(vnp1_p[2]) + qnnn.dz_central(vnp1_p[1]))*x_scaling/U_scaling;  omega[2][1] = 0.5*(qnnn.dy_central(vnp1_p[2]) - qnnn.dz_central(vnp1_p[1]))*x_scaling/U_scaling;
+    S[2][2] = qnnn.dz_central(vnp1_p[2])*x_scaling/U_scaling;                                     omega[2][2] = 0.0;
+#endif
+
+    Qvalue = 0;
+    for (unsigned short ii = 0; ii < P4EST_DIM; ++ii) {
+      for (unsigned short jj = 0; jj < P4EST_DIM; ++jj){
+        Qvalue += 0.5*(SQR(omega[ii][jj])-SQR(S[ii][jj]));
+        S_squared_plus_omega_squared[ii][jj] = 0.0;
+        for (unsigned short kk = 0; kk < P4EST_DIM; ++kk){
+          S_squared_plus_omega_squared[ii][jj] += S[ii][kk]*S[kk][jj] + omega[ii][kk]*omega[kk][jj];
+        }
+      }
+    }
+    lambda_coeffs[0] = 1.0;
+#ifdef P4_TO_P8
+    lambda_coeffs[1] = -S_squared_plus_omega_squared[0][0]-S_squared_plus_omega_squared[1][1]-S_squared_plus_omega_squared[2][2];
+    lambda_coeffs[2] = S_squared_plus_omega_squared[0][0]*S_squared_plus_omega_squared[1][1] + S_squared_plus_omega_squared[0][0]*S_squared_plus_omega_squared[2][2] + S_squared_plus_omega_squared[1][1]*S_squared_plus_omega_squared[2][2] - S_squared_plus_omega_squared[0][1]*S_squared_plus_omega_squared[1][0] - S_squared_plus_omega_squared[0][2]*S_squared_plus_omega_squared[2][0] - S_squared_plus_omega_squared[1][2]*S_squared_plus_omega_squared[2][1];
+    lambda_coeffs[3] = SQR(S_squared_plus_omega_squared[0][2])*S_squared_plus_omega_squared[1][1] + SQR(S_squared_plus_omega_squared[1][2])*S_squared_plus_omega_squared[0][0] + SQR(S_squared_plus_omega_squared[0][1])*S_squared_plus_omega_squared[2][2] - 2.0*S_squared_plus_omega_squared[0][1]*S_squared_plus_omega_squared[1][2]*S_squared_plus_omega_squared[0][2] - S_squared_plus_omega_squared[0][0]*S_squared_plus_omega_squared[1][1]*S_squared_plus_omega_squared[2][2];
+#else
+    lambda_coeffs[1] = -S_squared_plus_omega_squared[0][0]-S_squared_plus_omega_squared[1][1];
+    lambda_coeffs[2] = S_squared_plus_omega_squared[0][0]*S_squared_plus_omega_squared[1][1]-S_squared_plus_omega_squared[0][1]*S_squared_plus_omega_squared[1][0];
+#endif
+
+#ifdef DEBUG
+#ifdef P4_TO_P8
+    double discriminant = 18.0*lambda_coeffs[0]*lambda_coeffs[1]*lambda_coeffs[2]*lambda_coeffs[3] - 4.0*pow(lambda_coeffs[1], 3)*lambda_coeffs[3] + SQR(lambda_coeffs[1])*SQR(lambda_coeffs[2]) - 4.0*lambda_coeffs[0]*pow(lambda_coeffs[2], 3) - 27.0*SQR(lambda_coeffs[0])*SQR(lambda_coeffs[3]);
+#else
+    double discriminant = SQR(lambda_coeffs[1])-4.0*lambda_coeffs[0]*lambda_coeffs[2];
+#endif
+    P4EST_ASSERT(discriminant >=0.0);
+#endif
+
+#ifndef P4_TO_P8
+    lambda_2_value = 0.5*(-lambda_coeffs[1] - sqrt(SQR(lambda_coeffs[1]) - 4.0*lambda_coeffs[0]*lambda_coeffs[2]))/lambda_coeffs[0];
+#else
+    double pp = (3.0*lambda_coeffs[0]*lambda_coeffs[2]-SQR(lambda_coeffs[1]))/(3.0*SQR(lambda_coeffs[0]));
+    double qq = (2.0*pow(lambda_coeffs[1], 3) - 9.0*lambda_coeffs[0]*lambda_coeffs[1]*lambda_coeffs[2] + 27.0*SQR(lambda_coeffs[0])*lambda_coeffs[3])/(27.0*pow(lambda_coeffs[0], 3));
+    std::vector<double> lambda_values(P4EST_DIM);
+    if(pp > 0.0)
+      throw std::runtime_error("negative pp");
+    for (unsigned short kk = 0; kk < P4EST_DIM; ++kk)
+    {
+      if(fabs(3.0*qq*sqrt(-3.0/pp)/(2.0*pp)) > 1.0)
+        throw std::runtime_error("argument of acos > 1 in absolute value");
+      lambda_values[kk] = (lambda_coeffs[1]/(3.0*lambda_coeffs[0])) + 2.0*sqrt(-pp/3.0)*cos(acos(3.0*qq*sqrt(-3.0/pp)/(2.0*pp))/3.0 - 2.0*M_PI*((double) kk)/3.0);
+    }
+    std::sort(lambda_values.begin(), lambda_values.end());
+    lambda_2_value = lambda_values[1];
+#endif
+  }
 
   void compute_norm_grad_v();
 
@@ -385,7 +459,7 @@ public:
    */
   void enforce_mass_flow(const bool* force_in_direction, const double* desired_mean_velocity, double* forcing_mean_hodge_gradient, double* mass_flow = NULL);
 
-  void compute_velocity_at_nodes();
+  void compute_velocity_at_nodes(const bool store_interpolators = false);
 
   void set_dt(double dt_nm1, double dt_n);
 
@@ -418,7 +492,7 @@ public:
 
   void compute_forces(double *f);
 
-  void save_vtk(const char* name, bool with_Q_value = false);
+  void save_vtk(const char* name, bool with_Q_and_lambda_2_value = false, const double U_scaling_for_Q_and_lambda_2 = 1.0, const double x_scaling_for_Q_and_lambda_2 = 1.0);
 
   /*!
    * \brief calculates the mass flow through a slice in Cartesian direction in the computational domain. The slice must coincide with
@@ -511,7 +585,7 @@ public:
    *                                        the grid was uniform.
    * Raphael EGAN
    */
-  void get_slice_averaged_vnp1_profile(const unsigned short& vel_component, const unsigned short& axis, std::vector<double>& avg_velocity_profile);
+  void get_slice_averaged_vnp1_profile(const unsigned short& vel_component, const unsigned short& axis, std::vector<double>& avg_velocity_profile, const double u_scaling = 1.0);
 
   /*!
    * \brief get_line_averaged_vnp1_profiles: calculates line-averaged profiles for a velocity component in the domain. The direction along which
@@ -566,7 +640,7 @@ public:
                                      #ifdef P4_TO_P8
                                        const unsigned short& averaging_direction,
                                      #endif
-                                       const std::vector<unsigned int>& bin_idx, std::vector<std::vector<double> >& avg_velocity_profile);
+                                       const std::vector<unsigned int>& bin_idx, std::vector<std::vector<double> >& avg_velocity_profile, const double u_scaling = 1.0);
 
   inline double alpha() const { return ((sl_order == 1)? (1.0): ((2.0*dt_n+dt_nm1)/(dt_n+dt_nm1)));}
 
