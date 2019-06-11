@@ -6,8 +6,8 @@
  */
 
 // System
-#ifdef JUPITER
-#include <mpi/mpi.h>
+#if defined(JUPITER)
+#include <mpich/mpi.h>
 #else
 #include <mpi.h>
 #endif
@@ -860,20 +860,20 @@ private:
     PetscPrintf(_ns->get_p4est()->mpicomm, "Assembling the linear system of N=%i coefficients of the analytical solution...", N);
 
     for(int i=0; i<N; ++i)           vec_of_betam1[i] = beta_(i)-1.0;
-    for(int i=0; i<3*(N-1); ++i)     vec_of_sines[i]  = sin((i-(N-2))*PI*(*_GF));//vec_of_sines[i]  = sin((i-(N-1))*PI*(*_GF));
+    for(int i=0; i<3*(N-1); ++i)     vec_of_sines[i]  = sin((i-(N-2))*PI*(*_GF));
 
     for(int m=0; m<N; ++m)
     {
       if(m==0) coeff[m] = *_GF;
-      else     coeff[m] = vec_of_sines[m+(N-2)]/(m*PI);//sin(m*PI*(*_GF))/(m*PI);
+      else     coeff[m] = vec_of_sines[m+(N-2)]/(m*PI);
 
       for(int n=0; n<N; ++n)
       {
         if(m==0 && n==0)    A[m+N*n] = 1-(*_GF);
-        else if(m==0)       A[m+N*n] = vec_of_betam1[n]*vec_of_sines[n+(N-2)]/(n*PI);//(beta_(n)-1.0)*sin(n*PI*(*_GF))/(n*PI);
-        else if(n==0)       A[m+N*n] = -vec_of_sines[m+(N-2)]/(m*PI);//-sin(m*PI*(*_GF))/(m*PI);
-        else if(m==n)       A[m+N*n] = 0.5*(1.0 + vec_of_betam1[m]*((*_GF)+(vec_of_sines[(2*m)+(N-2)]/(2*m*PI))));//0.5*(1.0 + (beta_(m)-1.0)*((*_GF)+(sin(2*m*PI*(*_GF))/(2*m*PI))));
-        else                A[m+N*n] = vec_of_betam1[n]*((vec_of_sines[m-n+(N-2)]/(m-n))+(vec_of_sines[m+n+(N-2)]/(m+n)))/(2*PI);//(beta_(n)-1.0)*((sin((m-n)*PI*(*_GF))/(m-n))+(sin((m+n)*PI*(*_GF))/(m+n)))/(2*PI);
+        else if(m==0)       A[m+N*n] = vec_of_betam1[n]*vec_of_sines[n+(N-2)]/(n*PI);
+        else if(n==0)       A[m+N*n] = -vec_of_sines[m+(N-2)]/(m*PI);
+        else if(m==n)       A[m+N*n] = 0.5*(1.0 + vec_of_betam1[m]*((*_GF)+(vec_of_sines[(2*m)+(N-2)]/(2*m*PI))));
+        else                A[m+N*n] = vec_of_betam1[n]*((vec_of_sines[m-n+(N-2)]/(m-n))+(vec_of_sines[m+n+(N-2)]/(m+n)))/(2*PI);
       }
     }
 
@@ -1077,10 +1077,10 @@ public:
 #else
   double operator() (double x, double y) const {
 #endif
-  // Modular transfomation { x_mod = fmod( x+0.5*(length-pitch*(1-GF)), pitch ) - 0.5*pitch } (maps [-length/2,length/2] to [-pitch/2,pitch/2] with all gap centers being mapped to zero)
+  // Modular transfomation { x_mod = fmod( x+0.5*(length+pitch*(1-GF)), pitch ) - 0.5*pitch } (maps [-length/2,length/2] to [-pitch/2,pitch/2] with all gap centers being mapped to zero)
   double x_mod = my_fmod(x+0.5*(_nsol->_ns->get_length_of_domain()+(*_nsol->_pitch)*(1-(*_nsol->_GF))),(*_nsol->_pitch))-0.5*(*_nsol->_pitch);
 #ifdef P4_TO_P8
-  // Modular transfomation { z_mod = fmod( z+0.5*(width -pitch*(1-GF)), pitch ) - 0.5*pitch } (maps [-width/2,width/2] to [-pitch/2,pitch/2] with all gap centers being mapped to zero)
+  // Modular transfomation { z_mod = fmod( z+0.5*(width +pitch*(1-GF)), pitch ) - 0.5*pitch } (maps [-width/2,width/2] to [-pitch/2,pitch/2] with all gap centers being mapped to zero)
   double z_mod = my_fmod(z+0.5*(_nsol->_ns->get_width_of_domain()+(*_nsol->_pitch)*(1-(*_nsol->_GF))),(*_nsol->_pitch))-0.5*(*_nsol->_pitch);
   return Re_tau*(_nsol->v_y(x_mod, y, z_mod));
 #else
@@ -1099,9 +1099,9 @@ public:
   v_z_exact(unit_nondim_sol* nsol_ptr): _nsol(nsol_ptr), Re_tau(1/(nsol_ptr->_ns->get_mu())) {}
   double operator() (double x, double y, double z) const
   {
-    // Modular transfomation { x_mod = fmod( x+0.5*(length-pitch*(1-GF)), pitch ) - 0.5*pitch } (maps [-length/2,length/2] to [-pitch/2,pitch/2] with all gap centers being mapped to zero)
+    // Modular transfomation { x_mod = fmod( x+0.5*(length+pitch*(1-GF)), pitch ) - 0.5*pitch } (maps [-length/2,length/2] to [-pitch/2,pitch/2] with all gap centers being mapped to zero)
     double x_mod = my_fmod(x+0.5*(_nsol->_ns->get_length_of_domain()+(*_nsol->_pitch)*(1-(*_nsol->_GF))),(*_nsol->_pitch))-0.5*(*_nsol->_pitch);
-    // Modular transfomation { z_mod = fmod( z+0.5*(width -pitch*(1-GF)), pitch ) - 0.5*pitch } (maps [-width/2,width/2] to [-pitch/2,pitch/2] with all gap centers being mapped to zero)
+    // Modular transfomation { z_mod = fmod( z+0.5*(width +pitch*(1-GF)), pitch ) - 0.5*pitch } (maps [-width/2,width/2] to [-pitch/2,pitch/2] with all gap centers being mapped to zero)
     double z_mod = my_fmod(z+0.5*(_nsol->_ns->get_width_of_domain()+(*_nsol->_pitch)*(1-(*_nsol->_GF))),(*_nsol->_pitch))-0.5*(*_nsol->_pitch);
     return Re_tau*(_nsol->v_z(x_mod, y, z_mod));
   }
