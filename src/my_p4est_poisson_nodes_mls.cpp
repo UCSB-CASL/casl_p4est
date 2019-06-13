@@ -318,7 +318,7 @@ void my_p4est_poisson_nodes_mls_t::geometry_t::calculate_phi_eff()
     else
     {
       ierr = VecCreateGhostNodes(this->p4est_, this->nodes_, &phi_eff); CHKERRXX(ierr);
-      compute_phi_eff(nodes_, &phi, &opn, NULL, phi_eff);
+      compute_phi_eff(phi_eff, nodes_, phi, opn);
       is_phi_eff_owned = true;
     }
   }

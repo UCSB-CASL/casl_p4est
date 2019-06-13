@@ -106,7 +106,7 @@ struct quad_neighbor_nodes_of_node_t;
 
 enum cf_value_type_t { VAL, DDX, DDY, DDZ, LAP };
 
-enum mls_opn_t { MLS_INTERSECTION = 0, MLS_ADDITION = 1, MLS_COLORATION = 2 };
+enum mls_opn_t { MLS_INTERSECTION = 0, MLS_ADDITION = 1, MLS_COLORATION = 2, MLS_INT = MLS_INTERSECTION, MLS_ADD = MLS_ADDITION };
 
 namespace dir {
 /* vertices directions */
@@ -1928,8 +1928,9 @@ void compute_islands_numbers(const my_p4est_node_neighbors_t &ngbd, const Vec ph
 
 //void get_all_neighbors(const p4est_locidx_t n, const p4est_t *p4est, const p4est_nodes_t *nodes, const my_p4est_node_neighbors_t *ngbd, p4est_locidx_t *neighbors, bool *neighbor_exists);
 
-void compute_phi_eff(p4est_nodes_t *nodes, std::vector<Vec> *phi, std::vector<mls_opn_t> *opn, std::vector<bool> *refine_always, Vec phi_eff);
+void compute_phi_eff(Vec phi_eff, p4est_nodes_t* nodes, std::vector<Vec>& phi, std::vector<mls_opn_t>& opn);
 
+void compute_phi_eff(Vec phi_eff, p4est_nodes_t *nodes, int num_phi, ...);
 
 class zero_cf_t : public CF_DIM
 {
@@ -1960,30 +1961,42 @@ inline double smooth_min2(double a, double b, double e)
 
 class mls_eff_cf_t : public CF_DIM
 {
-  std::vector<CF_DIM *> *phi_cf;
-  std::vector<mls_opn_t> *action;
-  std::vector<bool>     *everywhere;
+  std::vector<CF_DIM *>  phi_cf;
+  std::vector<mls_opn_t> action;
 public:
-  mls_eff_cf_t(std::vector<CF_DIM *> *phi_cf, std::vector<mls_opn_t> *action, std::vector<bool> *everywhere = NULL) :
-    phi_cf(phi_cf), action(action), everywhere(everywhere) {}
+  mls_eff_cf_t() {}
+  mls_eff_cf_t(std::vector<CF_DIM *> &phi_cf, std::vector<mls_opn_t> &action) { set(phi_cf, action); }
 
-  double operator()( DIM(double x, double y, double z) ) const
+  inline void set(std::vector<CF_DIM *> &phi_cf, std::vector<mls_opn_t> &action)
+  {
+    this->phi_cf = phi_cf;
+    this->action = action;
+  }
+
+  inline void clear()
+  {
+    this->phi_cf.clear();
+    this->action.clear();
+  }
+
+  inline void add_domain(CF_DIM &phi_cf, mls_opn_t opn)
+  {
+    this->phi_cf.push_back(&phi_cf);
+    this->action.push_back(opn);
+  }
+
+  double operator()(DIM(double x, double y, double z)) const
   {
     double phi_eff = -10;
     double phi_cur = -10;
-    for (unsigned short i = 0; i < phi_cf->size(); ++i)
+    for (int i=0; i<phi_cf.size(); ++i)
     {
-      phi_cur = (*phi_cf->at(i))( DIM(x,y,z) );
-      switch (action->at(i)) {
+      phi_cur = (*phi_cf[i])( DIM(x,y,z) );
+      switch (action[i]) {
         case MLS_INTERSECTION: if (phi_cur > phi_eff) phi_eff = phi_cur; break;
         case MLS_ADDITION:     if (phi_cur < phi_eff) phi_eff = phi_cur; break;
       }
     }
-
-    if (everywhere != NULL)
-      for (unsigned short i = 0; i < phi_cf->size(); ++i)
-        if (everywhere->at(i) && action->at(i) != MLS_COLORATION)
-          phi_eff = MIN(phi_eff, fabs((*phi_cf->at(i))( DIM(x,y,z) )));
 
     return phi_eff;
   }
@@ -1991,21 +2004,39 @@ public:
 
 class mls_smooth_cf_t : public CF_DIM
 {
-  std::vector<CF_DIM *> *phi_cf;
-  std::vector<mls_opn_t> *action;
+  std::vector<CF_DIM *>  phi_cf;
+  std::vector<mls_opn_t> action;
   double epsilon;
 public:
-  mls_smooth_cf_t(std::vector<CF_DIM *> *phi_cf, std::vector<mls_opn_t> *action, double epsilon) :
-    phi_cf(phi_cf), action(action), epsilon(epsilon) {}
+  mls_smooth_cf_t() {}
+  mls_smooth_cf_t(std::vector<CF_DIM *> &phi_cf, std::vector<mls_opn_t> &action, double epsilon=0) { set(phi_cf, action, epsilon); }
+
+  inline void set(std::vector<CF_DIM *> &phi_cf, std::vector<mls_opn_t> &action, double epsilon=0)
+  {
+    this->phi_cf  = phi_cf;
+    this->action  = action;
+    this->epsilon = epsilon;
+  }
+
+  inline void set_smoothing(double epsilon)
+  {
+    this->epsilon = epsilon;
+  }
+
+  inline void add_domain(CF_DIM &phi_cf, mls_opn_t opn)
+  {
+    this->phi_cf.push_back(&phi_cf);
+    this->action.push_back(opn);
+  }
 
   double operator()( DIM(double x, double y, double z) ) const
   {
     double phi_eff = -10;
     double phi_cur = -10;
-    for (unsigned short i = 0; i < phi_cf->size(); ++i)
+    for (unsigned short i = 0; i < phi_cf.size(); ++i)
     {
-      phi_cur = (*phi_cf->at(i))( DIM(x,y,z) );
-      switch (action->at(i)) {
+      phi_cur = (*phi_cf[i])( DIM(x,y,z) );
+      switch (action[i]) {
         case MLS_INTERSECTION: phi_eff = 0.5*(phi_eff+phi_cur+sqrt(SQR(phi_eff-phi_cur)+epsilon)); break;
         case MLS_ADDITION:     phi_eff = 0.5*(phi_eff+phi_cur-sqrt(SQR(phi_eff-phi_cur)+epsilon)+(epsilon)/sqrt(SQR(phi_eff-phi_cur)+epsilon)); break;
       }
@@ -2014,63 +2045,63 @@ public:
   }
 };
 
-class mls_t
-{
-public:
-  unsigned int size;
+//class mls_t
+//{
+//public:
+//  unsigned int size;
 
-  std::vector<mls_opn_t> opn;
-  std::vector<Vec *>     phi;
-  std::vector<int>       clr;
+//  std::vector<mls_opn_t> opn;
+//  std::vector<Vec *>     phi;
+//  std::vector<int>       clr;
 
-  std::vector<mls_opn_t>& get_opn() { return opn; }
-  std::vector<Vec *>&     get_phi() { return phi; }
-  std::vector<int>&       get_clr() { return clr; }
+//  std::vector<mls_opn_t>& get_opn() { return opn; }
+//  std::vector<Vec *>&     get_phi() { return phi; }
+//  std::vector<int>&       get_clr() { return clr; }
 
-  mls_t() : size(0) {}
+//  mls_t() : size(0) {}
 
-  inline void add_level_set(Vec &phi, mls_opn_t opn, int clr)
-  {
-    this->phi.push_back(&phi);
-    this->opn.push_back(opn);
-    this->clr.push_back(clr);
-    ++size;
-  }
+//  inline void add_level_set(Vec &phi, mls_opn_t opn, int clr)
+//  {
+//    this->phi.push_back(&phi);
+//    this->opn.push_back(opn);
+//    this->clr.push_back(clr);
+//    ++size;
+//  }
 
-  inline void add_level_set(Vec &phi, mls_opn_t opn)
-  {
-    this->phi.push_back(&phi);
-    this->opn.push_back(opn);
-    this->clr.push_back(size);
-    ++size;
-  }
+//  inline void add_level_set(Vec &phi, mls_opn_t opn)
+//  {
+//    this->phi.push_back(&phi);
+//    this->opn.push_back(opn);
+//    this->clr.push_back(size);
+//    ++size;
+//  }
 
-  inline void add_level_set(std::vector<Vec *> phi, std::vector<mls_opn_t> opn, std::vector<int> clr)
-  {
-    if (phi.size() != opn.size() || phi.size() != clr.size())
-      throw std::invalid_argument("Number of elements in arrays phi, acn and clr does not coincide\n");
+//  inline void add_level_set(std::vector<Vec *> phi, std::vector<mls_opn_t> opn, std::vector<int> clr)
+//  {
+//    if (phi.size() != opn.size() || phi.size() != clr.size())
+//      throw std::invalid_argument("Number of elements in arrays phi, acn and clr does not coincide\n");
 
-    for (unsigned int i = 0; i < phi.size(); ++i) {
-      this->phi.push_back(phi[i]);
-      this->opn.push_back(opn[i]);
-      this->clr.push_back(clr[i]);
-      ++size;
-    }
-  }
+//    for (unsigned int i = 0; i < phi.size(); ++i) {
+//      this->phi.push_back(phi[i]);
+//      this->opn.push_back(opn[i]);
+//      this->clr.push_back(clr[i]);
+//      ++size;
+//    }
+//  }
 
-  inline void add_level_set(std::vector<Vec *> phi, std::vector<mls_opn_t> opn)
-  {
-    if (phi.size() != opn.size() || phi.size() != clr.size())
-      throw std::invalid_argument("Number of elements in arrays phi, acn and clr does not coincide\n");
+//  inline void add_level_set(std::vector<Vec *> phi, std::vector<mls_opn_t> opn)
+//  {
+//    if (phi.size() != opn.size() || phi.size() != clr.size())
+//      throw std::invalid_argument("Number of elements in arrays phi, acn and clr does not coincide\n");
 
-    for (unsigned int i = 0; i < phi.size(); ++i) {
-      this->phi.push_back(phi[i]);
-      this->opn.push_back(opn[i]);
-      this->clr.push_back(size);
-      ++size;
-    }
-  }
-};
+//    for (unsigned int i = 0; i < phi.size(); ++i) {
+//      this->phi.push_back(phi[i]);
+//      this->opn.push_back(opn[i]);
+//      this->clr.push_back(size);
+//      ++size;
+//    }
+//  }
+//};
 
 inline void reconstruct_cube(cube2_mls_t &cube, std::vector<double> &phi, std::vector<mls_opn_t> &opn, std::vector<int> &clr)
 {

@@ -61,20 +61,23 @@
 #include <src/mls_integration/vtk/simplex2_mls_q_vtk.h>
 #endif
 
+#ifdef MATLAB_PROVIDED
 #include <engine.h>
+#endif
 
 #include <src/petsc_compatibility.h>
 #include <src/Parser.h>
-#include <src/parameter_list_t.h>
+#include <src/parameter_list.h>
 
 #undef MIN
 #undef MAX
 
 using namespace std;
 
-parameter_list_t pl;
+const int bdry_phi_max_num = 4;
+const int infc_phi_max_num = 4;
 
-DEFINE_PARAMETER(pl, int, n_example, 0, "Predefined example");
+parameter_list_t pl;
 
 //-------------------------------------
 // computational domain parameters
@@ -109,10 +112,10 @@ DEFINE_PARAMETER(pl, int, num_shifts_x_dir, 1, "Number of grid shifts in the x-d
 DEFINE_PARAMETER(pl, int, num_shifts_y_dir, 1, "Number of grid shifts in the y-direction");
 DEFINE_PARAMETER(pl, int, num_shifts_z_dir, 1, "Number of grid shifts in the z-direction");
 #else
-DEFINE_PARAMETER(pl, int, lmin, 5, "Min level of the tree");
-DEFINE_PARAMETER(pl, int, lmax, 5, "Max level of the tree");
+DEFINE_PARAMETER(pl, int, lmin, 6, "Min level of the tree");
+DEFINE_PARAMETER(pl, int, lmax, 6, "Max level of the tree");
 
-DEFINE_PARAMETER(pl, int, num_splits,           3, "Number of recursive splits");
+DEFINE_PARAMETER(pl, int, num_splits,           2, "Number of recursive splits");
 DEFINE_PARAMETER(pl, int, num_splits_per_split, 1, "Number of additional resolutions");
 
 DEFINE_PARAMETER(pl, int, num_shifts_x_dir, 1, "Number of grid shifts in the x-direction");
@@ -132,11 +135,8 @@ DEFINE_PARAMETER(pl, int,  expand_ghost,   0, "Number of ghost layer expansions"
 // test solutions
 //-------------------------------------
 
-DEFINE_PARAMETER(pl, int, n_domain,    3, "Domain geometry");
-DEFINE_PARAMETER(pl, int, n_interface, 5, "Immersed interface geometry");
-
-DEFINE_PARAMETER(pl, int, n_um, 12, "");
-DEFINE_PARAMETER(pl, int, n_up, 11, "");
+DEFINE_PARAMETER(pl, int, n_um, 0, "");
+DEFINE_PARAMETER(pl, int, n_up, 0, "");
 
 DEFINE_PARAMETER(pl, double, mag_um, 1, "");
 DEFINE_PARAMETER(pl, double, mag_up, 1, "");
@@ -151,24 +151,72 @@ DEFINE_PARAMETER(pl, double, mu_iter_num, 1, "");
 DEFINE_PARAMETER(pl, double, mag_mu_m_min, 1, "");
 DEFINE_PARAMETER(pl, double, mag_mu_m_max, 1, "");
 
-
 DEFINE_PARAMETER(pl, int, n_diag_m, 0, "");
 DEFINE_PARAMETER(pl, int, n_diag_p, 0, "");
 
 DEFINE_PARAMETER(pl, double, mag_diag_m, 1, "");
 DEFINE_PARAMETER(pl, double, mag_diag_p, 1, "");
 
-DEFINE_PARAMETER(pl, int, n_jc_value,   0, "");
-DEFINE_PARAMETER(pl, int, n_jc_flux_00, 0, "");
-
-DEFINE_PARAMETER(pl, int,    n_bc_coeff_00,   0, "");
-DEFINE_PARAMETER(pl, double, mag_bc_coeff_00, 1, "");
-
 DEFINE_PARAMETER(pl, int, bc_wtype, DIRICHLET, "Type of boundary conditions on the walls");
-DEFINE_PARAMETER(pl, int, bc_itype, DIRICHLET, "Type of boundary conditions on the domain boundary");
-DEFINE_PARAMETER(pl, int, bc_type_00, DIRICHLET, "Type of boundary conditions on the domain boundary");
-//DEFINE_PARAMETER(pl, int, bc_itype, ROBIN, "");
 
+// boundary geometry
+DEFINE_PARAMETER(pl, bool, bdry_present_00, 0, "Domain geometry");
+DEFINE_PARAMETER(pl, bool, bdry_present_01, 0, "Domain geometry");
+DEFINE_PARAMETER(pl, bool, bdry_present_02, 0, "Domain geometry");
+DEFINE_PARAMETER(pl, bool, bdry_present_03, 0, "Domain geometry");
+
+DEFINE_PARAMETER(pl, int, bdry_geom_00, 0, "Domain geometry");
+DEFINE_PARAMETER(pl, int, bdry_geom_01, 0, "Domain geometry");
+DEFINE_PARAMETER(pl, int, bdry_geom_02, 0, "Domain geometry");
+DEFINE_PARAMETER(pl, int, bdry_geom_03, 0, "Domain geometry");
+
+DEFINE_PARAMETER(pl, int, bdry_opn_00, MLS_INTERSECTION, "Domain geometry");
+DEFINE_PARAMETER(pl, int, bdry_opn_01, MLS_INTERSECTION, "Domain geometry");
+DEFINE_PARAMETER(pl, int, bdry_opn_02, MLS_INTERSECTION, "Domain geometry");
+DEFINE_PARAMETER(pl, int, bdry_opn_03, MLS_INTERSECTION, "Domain geometry");
+
+DEFINE_PARAMETER(pl, int, bc_coeff_00, 0, "Domain geometry");
+DEFINE_PARAMETER(pl, int, bc_coeff_01, 0, "Domain geometry");
+DEFINE_PARAMETER(pl, int, bc_coeff_02, 0, "Domain geometry");
+DEFINE_PARAMETER(pl, int, bc_coeff_03, 0, "Domain geometry");
+
+DEFINE_PARAMETER(pl, double, bc_coeff_00_mag, 1, "Domain geometry");
+DEFINE_PARAMETER(pl, double, bc_coeff_01_mag, 1, "Domain geometry");
+DEFINE_PARAMETER(pl, double, bc_coeff_02_mag, 1, "Domain geometry");
+DEFINE_PARAMETER(pl, double, bc_coeff_03_mag, 1, "Domain geometry");
+
+DEFINE_PARAMETER(pl, int, bc_type_00, DIRICHLET, "Type of boundary conditions on the domain boundary");
+DEFINE_PARAMETER(pl, int, bc_type_01, DIRICHLET, "Type of boundary conditions on the domain boundary");
+DEFINE_PARAMETER(pl, int, bc_type_02, DIRICHLET, "Type of boundary conditions on the domain boundary");
+DEFINE_PARAMETER(pl, int, bc_type_03, DIRICHLET, "Type of boundary conditions on the domain boundary");
+
+// interface geometry
+DEFINE_PARAMETER(pl, bool, infc_present_00, 0, "Domain geometry");
+DEFINE_PARAMETER(pl, bool, infc_present_01, 0, "Domain geometry");
+DEFINE_PARAMETER(pl, bool, infc_present_02, 0, "Domain geometry");
+DEFINE_PARAMETER(pl, bool, infc_present_03, 0, "Domain geometry");
+
+DEFINE_PARAMETER(pl, int, infc_geom_00, 0, "Domain geometry");
+DEFINE_PARAMETER(pl, int, infc_geom_01, 0, "Domain geometry");
+DEFINE_PARAMETER(pl, int, infc_geom_02, 0, "Domain geometry");
+DEFINE_PARAMETER(pl, int, infc_geom_03, 0, "Domain geometry");
+
+DEFINE_PARAMETER(pl, int, infc_opn_00, MLS_INTERSECTION, "Domain geometry");
+DEFINE_PARAMETER(pl, int, infc_opn_01, MLS_INTERSECTION, "Domain geometry");
+DEFINE_PARAMETER(pl, int, infc_opn_02, MLS_INTERSECTION, "Domain geometry");
+DEFINE_PARAMETER(pl, int, infc_opn_03, MLS_INTERSECTION, "Domain geometry");
+
+DEFINE_PARAMETER(pl, int, jc_value_00, 0, "0 - automatic, others - hardcoded");
+DEFINE_PARAMETER(pl, int, jc_value_01, 0, "0 - automatic, others - hardcoded");
+DEFINE_PARAMETER(pl, int, jc_value_02, 0, "0 - automatic, others - hardcoded");
+DEFINE_PARAMETER(pl, int, jc_value_03, 0, "0 - automatic, others - hardcoded");
+
+DEFINE_PARAMETER(pl, int, jc_flux_00, 0, "0 - automatic, others - hardcoded");
+DEFINE_PARAMETER(pl, int, jc_flux_01, 0, "0 - automatic, others - hardcoded");
+DEFINE_PARAMETER(pl, int, jc_flux_02, 0, "0 - automatic, others - hardcoded");
+DEFINE_PARAMETER(pl, int, jc_flux_03, 0, "0 - automatic, others - hardcoded");
+
+//DEFINE_PARAMETER(pl, int, bc_itype, ROBIN, "");
 
 //-------------------------------------
 // solver parameters
@@ -219,12 +267,285 @@ DEFINE_PARAMETER(pl, bool, save_matrix_ascii,  1, "Save the matrix in ASCII MATL
 DEFINE_PARAMETER(pl, bool, save_matrix_binary, 0, "Save the matrix in BINARY MATLAB format");
 DEFINE_PARAMETER(pl, bool, save_convergence,   1, "Save convergence results");
 
+DEFINE_PARAMETER(pl, int, n_example, 9, "Predefined example");
+
 void set_example(int n_example)
 {
-  switch (n_example) {
-    case 0: ;
+  switch (n_example)
+  {
+    case 0: // no boundaries, no interfaces
+
+      n_um = 0; mag_um = 1; n_mu_m = 0; mag_mu_m = 1; n_diag_m = 0; mag_diag_m = 1;
+      n_up = 0; mag_up = 1; n_mu_p = 0; mag_mu_p = 1; n_diag_p = 0; mag_diag_p = 1;
+
+      infc_present_00 = 0;
+      infc_present_01 = 0;
+      infc_present_02 = 0;
+      infc_present_03 = 0;
+
+      bdry_present_00 = 0;
+      bdry_present_01 = 0;
+      bdry_present_02 = 0;
+      bdry_present_03 = 0;
+
+      break;
+    case 1: // sphere interior
+
+      n_um = 0; mag_um = 1; n_mu_m = 0; mag_mu_m = 1; n_diag_m = 0; mag_diag_m = 1;
+      n_up = 0; mag_up = 1; n_mu_p = 0; mag_mu_p = 1; n_diag_p = 0; mag_diag_p = 1;
+
+      infc_present_00 = 0;
+      infc_present_01 = 0;
+      infc_present_02 = 0;
+      infc_present_03 = 0;
+
+      bdry_present_00 = 1; bdry_geom_00 = 1; bdry_opn_00 = MLS_INT; bc_coeff_00 = 0; bc_coeff_00_mag = 1; bc_type_00 = ROBIN;
+      bdry_present_01 = 0; bdry_geom_01 = 0; bdry_opn_01 = MLS_INT; bc_coeff_01 = 0; bc_coeff_01_mag = 1; bc_type_01 = ROBIN;
+      bdry_present_02 = 0; bdry_geom_02 = 0; bdry_opn_02 = MLS_INT; bc_coeff_02 = 0; bc_coeff_02_mag = 1; bc_type_02 = ROBIN;
+      bdry_present_03 = 0; bdry_geom_03 = 0; bdry_opn_03 = MLS_INT; bc_coeff_03 = 0; bc_coeff_03_mag = 1; bc_type_03 = ROBIN;
+
+      break;
+    case 2: // sphere exterior
+
+      n_um = 0; mag_um = 1; n_mu_m = 0; mag_mu_m = 1; n_diag_m = 0; mag_diag_m = 1;
+      n_up = 0; mag_up = 1; n_mu_p = 0; mag_mu_p = 1; n_diag_p = 0; mag_diag_p = 1;
+
+      infc_present_00 = 0;
+      infc_present_01 = 0;
+      infc_present_02 = 0;
+      infc_present_03 = 0;
+
+      bdry_present_00 = 1; bdry_geom_00 = 2; bdry_opn_00 = MLS_INT; bc_coeff_00 = 0; bc_coeff_00_mag = 1; bc_type_00 = ROBIN;
+      bdry_present_01 = 0; bdry_geom_01 = 0; bdry_opn_01 = MLS_INT; bc_coeff_01 = 0; bc_coeff_01_mag = 1; bc_type_01 = ROBIN;
+      bdry_present_02 = 0; bdry_geom_02 = 0; bdry_opn_02 = MLS_INT; bc_coeff_02 = 0; bc_coeff_02_mag = 1; bc_type_02 = ROBIN;
+      bdry_present_03 = 0; bdry_geom_03 = 0; bdry_opn_03 = MLS_INT; bc_coeff_03 = 0; bc_coeff_03_mag = 1; bc_type_03 = ROBIN;
+
+      break;
+    case 3: // moderately star-shaped boundary
+
+      n_um = 0; mag_um = 1; n_mu_m = 0; mag_mu_m = 1; n_diag_m = 0; mag_diag_m = 1;
+      n_up = 0; mag_up = 1; n_mu_p = 0; mag_mu_p = 1; n_diag_p = 0; mag_diag_p = 1;
+
+      infc_present_00 = 0;
+      infc_present_01 = 0;
+      infc_present_02 = 0;
+      infc_present_03 = 0;
+
+      bdry_present_00 = 1; bdry_geom_00 = 4; bdry_opn_00 = MLS_INT; bc_coeff_00 = 0; bc_coeff_00_mag = 1; bc_type_00 = ROBIN;
+      bdry_present_01 = 0; bdry_geom_01 = 0; bdry_opn_01 = MLS_INT; bc_coeff_01 = 0; bc_coeff_01_mag = 1; bc_type_01 = ROBIN;
+      bdry_present_02 = 0; bdry_geom_02 = 0; bdry_opn_02 = MLS_INT; bc_coeff_02 = 0; bc_coeff_02_mag = 1; bc_type_02 = ROBIN;
+      bdry_present_03 = 0; bdry_geom_03 = 0; bdry_opn_03 = MLS_INT; bc_coeff_03 = 0; bc_coeff_03_mag = 1; bc_type_03 = ROBIN;
+
+      break;
+    case 4: // highly star-shaped boundary
+
+      n_um = 0; mag_um = 1; n_mu_m = 0; mag_mu_m = 1; n_diag_m = 0; mag_diag_m = 1;
+      n_up = 0; mag_up = 1; n_mu_p = 0; mag_mu_p = 1; n_diag_p = 0; mag_diag_p = 1;
+
+      infc_present_00 = 0;
+      infc_present_01 = 0;
+      infc_present_02 = 0;
+      infc_present_03 = 0;
+
+      bdry_present_00 = 1; bdry_geom_00 = 5; bdry_opn_00 = MLS_INT; bc_coeff_00 = 0; bc_coeff_00_mag = 1; bc_type_00 = ROBIN;
+      bdry_present_01 = 0; bdry_geom_01 = 0; bdry_opn_01 = MLS_INT; bc_coeff_01 = 0; bc_coeff_01_mag = 1; bc_type_01 = ROBIN;
+      bdry_present_02 = 0; bdry_geom_02 = 0; bdry_opn_02 = MLS_INT; bc_coeff_02 = 0; bc_coeff_02_mag = 1; bc_type_02 = ROBIN;
+      bdry_present_03 = 0; bdry_geom_03 = 0; bdry_opn_03 = MLS_INT; bc_coeff_03 = 0; bc_coeff_03_mag = 1; bc_type_03 = ROBIN;
+
+      break;
+    case 5: // triangle/tetrahedron example from (Bochkov&Gibou, JCP, 2019)
+
+      n_um = 0; mag_um = 1; n_mu_m = 0; mag_mu_m = 1; n_diag_m = 0; mag_diag_m = 1;
+      n_up = 0; mag_up = 1; n_mu_p = 0; mag_mu_p = 1; n_diag_p = 0; mag_diag_p = 1;
+
+      infc_present_00 = 0;
+      infc_present_01 = 0;
+      infc_present_02 = 0;
+      infc_present_03 = 0;
+
+      bdry_present_00 = 1; bdry_geom_00 = 13; bdry_opn_00 = MLS_INT; bc_coeff_00 = 0; bc_coeff_00_mag = 1; bc_type_00 = ROBIN;
+      bdry_present_01 = 1; bdry_geom_01 = 14; bdry_opn_01 = MLS_INT; bc_coeff_01 = 0; bc_coeff_01_mag = 0; bc_type_01 = ROBIN;
+      bdry_present_02 = 1; bdry_geom_02 = 15; bdry_opn_02 = MLS_INT; bc_coeff_02 = 2; bc_coeff_02_mag = 1; bc_type_02 = ROBIN;
+      bdry_present_03 = 1; bdry_geom_03 = 16; bdry_opn_03 = MLS_INT; bc_coeff_03 = 1; bc_coeff_03_mag = 1; bc_type_03 = ROBIN;
+
+      break;
+
+    case 6: // union of spheres example from (Bochkov&Gibou, JCP, 2019)
+
+      n_um = 3; mag_um = 1; n_mu_m = 0; mag_mu_m = 1; n_diag_m = 0; mag_diag_m = 1;
+      n_up = 0; mag_up = 1; n_mu_p = 0; mag_mu_p = 1; n_diag_p = 0; mag_diag_p = 1;
+
+      infc_present_00 = 0; infc_geom_00 = 0;
+      infc_present_01 = 0; infc_geom_01 = 0;
+      infc_present_02 = 0; infc_geom_02 = 0;
+      infc_present_03 = 0; infc_geom_03 = 0;
+
+      bdry_present_00 = 1; bdry_geom_00 = 6; bdry_opn_00 = MLS_INT; bc_coeff_00 = 0; bc_coeff_00_mag = 1; bc_type_00 = ROBIN;
+      bdry_present_01 = 1; bdry_geom_01 = 7; bdry_opn_01 = MLS_ADD; bc_coeff_01 = 3; bc_coeff_01_mag = 1; bc_type_01 = ROBIN;
+      bdry_present_02 = 0; bdry_geom_02 = 0; bdry_opn_02 = MLS_INT; bc_coeff_02 = 0; bc_coeff_02_mag = 1; bc_type_02 = ROBIN;
+      bdry_present_03 = 0; bdry_geom_03 = 0; bdry_opn_03 = MLS_INT; bc_coeff_03 = 0; bc_coeff_03_mag = 1; bc_type_03 = ROBIN;
+
+      break;
+
+    case 7: // difference of spheres example from (Bochkov&Gibou, JCP, 2019)
+
+      n_um = 4; mag_um = 1; n_mu_m = 1; mag_mu_m = 1; n_diag_m = 1; mag_diag_m = 1;
+      n_up = 0; mag_up = 1; n_mu_p = 0; mag_mu_p = 1; n_diag_p = 0; mag_diag_p = 1;
+
+      infc_present_00 = 0;
+      infc_present_01 = 0;
+      infc_present_02 = 0;
+      infc_present_03 = 0;
+
+      bdry_present_00 = 1; bdry_geom_00 = 8; bdry_opn_00 = MLS_INT; bc_coeff_00 = 4; bc_coeff_00_mag = 1; bc_type_00 = ROBIN;
+      bdry_present_01 = 1; bdry_geom_01 = 9; bdry_opn_01 = MLS_INT; bc_coeff_01 = 3; bc_coeff_01_mag = 1; bc_type_01 = ROBIN;
+      bdry_present_02 = 0; bdry_geom_02 = 0; bdry_opn_02 = MLS_INT; bc_coeff_02 = 0; bc_coeff_02_mag = 1; bc_type_02 = ROBIN;
+      bdry_present_03 = 0; bdry_geom_03 = 0; bdry_opn_03 = MLS_INT; bc_coeff_03 = 0; bc_coeff_03_mag = 1; bc_type_03 = ROBIN;
+
+      break;
+
+    case 8: // three stars example from (Bochkov&Gibou, JCP, 2019)
+
+      n_um = 6; mag_um = 1; n_mu_m = 1; mag_mu_m = 1; n_diag_m = 2; mag_diag_m = 1;
+      n_up = 0; mag_up = 1; n_mu_p = 0; mag_mu_p = 1; n_diag_p = 0; mag_diag_p = 1;
+
+      infc_present_00 = 0;
+      infc_present_01 = 0;
+      infc_present_02 = 0;
+      infc_present_03 = 0;
+
+      bdry_present_00 = 1; bdry_geom_00 = 10; bdry_opn_00 = MLS_INT; bc_coeff_00 = 0; bc_coeff_00_mag = 1; bc_type_00 = ROBIN;
+      bdry_present_01 = 1; bdry_geom_01 = 11; bdry_opn_01 = MLS_ADD; bc_coeff_01 = 5; bc_coeff_01_mag = 1; bc_type_01 = ROBIN;
+      bdry_present_02 = 1; bdry_geom_02 = 12; bdry_opn_02 = MLS_INT; bc_coeff_02 = 6; bc_coeff_02_mag = 1; bc_type_02 = ROBIN;
+      bdry_present_03 = 0; bdry_geom_03 =  0; bdry_opn_03 = MLS_INT; bc_coeff_03 = 0; bc_coeff_03_mag = 1; bc_type_03 = ROBIN;
+
+      break;
+
+    case 9: // shperical interface
+
+      n_um = 11; mag_um = 1; n_mu_m = 1; mag_mu_m = 10; n_diag_m = 0; mag_diag_m = 1;
+      n_up = 12; mag_up = 1; n_mu_p = 0; mag_mu_p =  1; n_diag_p = 0; mag_diag_p = 1;
+
+      infc_present_00 = 1; infc_geom_00 = 1; infc_opn_00 = MLS_INT;
+      infc_present_01 = 0; infc_geom_01 = 0; infc_opn_01 = MLS_INT;
+      infc_present_02 = 0; infc_geom_02 = 0; infc_opn_02 = MLS_INT;
+      infc_present_03 = 0; infc_geom_03 = 0; infc_opn_03 = MLS_INT;
+
+      bdry_present_00 = 0;
+      bdry_present_01 = 0;
+      bdry_present_02 = 0;
+      bdry_present_03 = 0;
+
+      break;
+
+    case 10: // moderately star-shaped interface
+
+      n_um = 11; mag_um = 1; n_mu_m = 1; mag_mu_m = 10; n_diag_m = 0; mag_diag_m = 1;
+      n_up = 12; mag_up = 1; n_mu_p = 0; mag_mu_p =  1; n_diag_p = 0; mag_diag_p = 1;
+
+      infc_present_00 = 1; infc_geom_00 = 2; infc_opn_00 = MLS_INT;
+      infc_present_01 = 0; infc_geom_01 = 0; infc_opn_01 = MLS_INT;
+      infc_present_02 = 0; infc_geom_02 = 0; infc_opn_02 = MLS_INT;
+      infc_present_03 = 0; infc_geom_03 = 0; infc_opn_03 = MLS_INT;
+
+      bdry_present_00 = 0;
+      bdry_present_01 = 0;
+      bdry_present_02 = 0;
+      bdry_present_03 = 0;
+
+      break;
+
+    case 11: // highly star-shaped interface
+
+      n_um = 11; mag_um = 1; n_mu_m = 1; mag_mu_m = 10; n_diag_m = 0; mag_diag_m = 1;
+      n_up = 12; mag_up = 1; n_mu_p = 0; mag_mu_p =  1; n_diag_p = 0; mag_diag_p = 1;
+
+      infc_present_00 = 1; infc_geom_00 = 3; infc_opn_00 = MLS_INT;
+      infc_present_01 = 0; infc_geom_01 = 0; infc_opn_01 = MLS_INT;
+      infc_present_02 = 0; infc_geom_02 = 0; infc_opn_02 = MLS_INT;
+      infc_present_03 = 0; infc_geom_03 = 0; infc_opn_03 = MLS_INT;
+
+      bdry_present_00 = 0;
+      bdry_present_01 = 0;
+      bdry_present_02 = 0;
+      bdry_present_03 = 0;
+
+      break;
+
+    case 12: // curvy interface in an annular region from (Bochkov&Gibou, JCP, 2019)
+
+      n_um = 11; mag_um = 1; n_mu_m = 0; mag_mu_m =  1; n_diag_m = 0; mag_diag_m = 1;
+      n_up = 12; mag_up = 1; n_mu_p = 1; mag_mu_p =  1; n_diag_p = 0; mag_diag_p = 1;
+
+      infc_present_00 = 1; infc_geom_00 = 4; infc_opn_00 = MLS_INT;
+      infc_present_01 = 0; infc_geom_01 = 0; infc_opn_01 = MLS_INT;
+      infc_present_02 = 0; infc_geom_02 = 0; infc_opn_02 = MLS_INT;
+      infc_present_03 = 0; infc_geom_03 = 0; infc_opn_03 = MLS_INT;
+
+      bdry_present_00 = 1; bdry_geom_00 = 3; bdry_opn_00 = MLS_INT; bc_coeff_00 = 0; bc_coeff_00_mag = 1; bc_type_00 = DIRICHLET;
+      bdry_present_01 = 0; bdry_geom_01 = 0; bdry_opn_01 = MLS_INT; bc_coeff_01 = 0; bc_coeff_01_mag = 1; bc_type_01 = ROBIN;
+      bdry_present_02 = 0; bdry_geom_02 = 0; bdry_opn_02 = MLS_INT; bc_coeff_02 = 0; bc_coeff_02_mag = 1; bc_type_02 = ROBIN;
+      bdry_present_03 = 0; bdry_geom_03 = 0; bdry_opn_03 = MLS_INT; bc_coeff_03 = 0; bc_coeff_03_mag = 1; bc_type_03 = ROBIN;
+
+      break;
   }
 }
+
+
+bool *bdry_present_all[] = { &bdry_present_00,
+                             &bdry_present_01,
+                             &bdry_present_02,
+                             &bdry_present_03 };
+
+int *bdry_geom_all[] = { &bdry_geom_00,
+                         &bdry_geom_01,
+                         &bdry_geom_02,
+                         &bdry_geom_03 };
+
+int *bdry_opn_all[] = { &bdry_opn_00,
+                        &bdry_opn_01,
+                        &bdry_opn_02,
+                        &bdry_opn_03 };
+
+int *bc_coeff_all[] = { &bc_coeff_00,
+                        &bc_coeff_01,
+                        &bc_coeff_02,
+                        &bc_coeff_03 };
+
+double *bc_coeff_all_mag[] = { &bc_coeff_00_mag,
+                               &bc_coeff_01_mag,
+                               &bc_coeff_02_mag,
+                               &bc_coeff_03_mag };
+
+int *bc_type_all[] = { &bc_type_00,
+                       &bc_type_01,
+                       &bc_type_02,
+                       &bc_type_03 };
+
+bool *infc_present_all[] = { &infc_present_00,
+                             &infc_present_01,
+                             &infc_present_02,
+                             &infc_present_03 };
+
+int *infc_geom_all[] = { &infc_geom_00,
+                         &infc_geom_01,
+                         &infc_geom_02,
+                         &infc_geom_03 };
+
+int *infc_opn_all[] = { &infc_opn_00,
+                        &infc_opn_01,
+                        &infc_opn_02,
+                        &infc_opn_03 };
+
+int *jc_value_all[] = { &jc_value_00,
+                        &jc_value_01,
+                        &jc_value_02,
+                        &jc_value_03 };
+
+int *jc_flux_all[] = { &jc_flux_00,
+                       &jc_flux_01,
+                       &jc_flux_02,
+                       &jc_flux_03 };
 
 // DIFFUSION COEFFICIENTS
 class mu_all_cf_t : public CF_DIM
@@ -633,215 +954,371 @@ public:
   }
 };
 
-bc_coeff_cf_t bc_coeff_cf_00(n_bc_coeff_00, mag_bc_coeff_00);
+bc_coeff_cf_t bc_coeff_cf_all[] = { bc_coeff_cf_t(bc_coeff_00, bc_coeff_00_mag),
+                                    bc_coeff_cf_t(bc_coeff_01, bc_coeff_01_mag),
+                                    bc_coeff_cf_t(bc_coeff_02, bc_coeff_02_mag),
+                                    bc_coeff_cf_t(bc_coeff_03, bc_coeff_03_mag) };
 
 // DOMAIN GEOMETRY
-class dom_phi_cf_t: public CF_DIM {
+class bdry_phi_cf_t: public CF_DIM {
 public:
-  int    *n;
+  int *n; // geometry number
   cf_value_type_t what;
-  dom_phi_cf_t(cf_value_type_t what, int &n) : what(what), n(&n) {}
+  bdry_phi_cf_t(cf_value_type_t what, int &n) : what(what), n(&n) {}
   double operator()(DIM(double x, double y, double z)) const {
     switch (*n) {
-      case 0: return -1;
-      case 1: {
-          double r0 = 0.911;
-          double DIM( xc = 0, yc = 0, zc = 0 );
-          flower_shaped_domain_t circle(r0, DIM(xc, yc, zc));
-          switch (what) {
-            OCOMP( case VAL: return circle.phi(DIM(x,y,z)) );
-            XCOMP( case DDX: return circle.phi_x(DIM(x,y,z)) );
-            YCOMP( case DDY: return circle.phi_y(DIM(x,y,z)) );
-            ZCOMP( case DDZ: return circle.phi_z(DIM(x,y,z)) );
-          }
+      case 0: // no boundaries
+        break;
+      case 1: // circle/sphere interior
+      {
+        static const double r0 = 0.911, DIM(xc = 0, yc = 0, zc = 0);
+        static flower_shaped_domain_t circle(r0, DIM(xc, yc, zc));
+        switch (what) {
+          OCOMP( case VAL: return circle.phi  (DIM(x,y,z)) );
+          XCOMP( case DDX: return circle.phi_x(DIM(x,y,z)) );
+          YCOMP( case DDY: return circle.phi_y(DIM(x,y,z)) );
+          ZCOMP( case DDZ: return circle.phi_z(DIM(x,y,z)) );
         }
-      case 2: {
-          double r0 = 0.311;
-          double DIM( xc = 0, yc = 0, zc = 0 );
-          flower_shaped_domain_t circle(r0, DIM(xc, yc, zc), 0, -1);
-          switch (what) {
-            OCOMP( case VAL: return circle.phi(DIM(x,y,z)) );
-            XCOMP( case DDX: return circle.phi_x(DIM(x,y,z)) );
-            YCOMP( case DDY: return circle.phi_y(DIM(x,y,z)) );
-            ZCOMP( case DDZ: return circle.phi_z(DIM(x,y,z)) );
-          }
+      } break;
+      case 2: // circle/sphere exterior
+      {
+        static double r0 = 0.311, DIM(xc = 0, yc = 0, zc = 0);
+        static flower_shaped_domain_t circle(r0, DIM(xc, yc, zc), 0, -1);
+        switch (what) {
+          OCOMP( case VAL: return circle.phi  (DIM(x,y,z)) );
+          XCOMP( case DDX: return circle.phi_x(DIM(x,y,z)) );
+          YCOMP( case DDY: return circle.phi_y(DIM(x,y,z)) );
+          ZCOMP( case DDZ: return circle.phi_z(DIM(x,y,z)) );
         }
-      case 3: {
-          double r0_in = 0.151;
-          double r0_ex = 0.911;
-          double DIM( xc = 0, yc = 0, zc = 0 );
-          flower_shaped_domain_t circle_in(r0_in, DIM(xc, yc, zc), 0, -1);
-          flower_shaped_domain_t circle_ex(r0_ex, DIM(xc, yc, zc), 0,  1);
-          switch (what) {
-            OCOMP( case VAL: return (circle_in.phi(DIM(x,y,z)) > circle_ex.phi(DIM(x,y,z))) ? circle_in.phi(DIM(x,y,z)) : circle_ex.phi(DIM(x,y,z)); );
-            XCOMP( case DDX: return (circle_in.phi(DIM(x,y,z)) > circle_ex.phi(DIM(x,y,z))) ? circle_in.phi_x(DIM(x,y,z)) : circle_ex.phi_x(DIM(x,y,z)); );
-            YCOMP( case DDY: return (circle_in.phi(DIM(x,y,z)) > circle_ex.phi(DIM(x,y,z))) ? circle_in.phi_y(DIM(x,y,z)) : circle_ex.phi_y(DIM(x,y,z)); );
-            ZCOMP( case DDZ: return (circle_in.phi(DIM(x,y,z)) > circle_ex.phi(DIM(x,y,z))) ? circle_in.phi_z(DIM(x,y,z)) : circle_ex.phi_z(DIM(x,y,z)); );
-          }
+      } break;
+      case 3: // annular/shell region
+      {
+        static double r0_in = 0.151, DIM(xc_in = 0, yc_in = 0, zc_in = 0);
+        static double r0_ex = 0.911, DIM(xc_ex = 0, yc_ex = 0, zc_ex = 0);
+        static flower_shaped_domain_t circle_in(r0_in, DIM(xc_in, yc_in, zc_in), 0, -1);
+        static flower_shaped_domain_t circle_ex(r0_ex, DIM(xc_ex, yc_ex, zc_ex), 0,  1);
+        switch (what) {
+          OCOMP( case VAL: return (circle_in.phi(DIM(x,y,z)) > circle_ex.phi(DIM(x,y,z))) ? circle_in.phi  (DIM(x,y,z)) : circle_ex.phi  (DIM(x,y,z)); );
+          XCOMP( case DDX: return (circle_in.phi(DIM(x,y,z)) > circle_ex.phi(DIM(x,y,z))) ? circle_in.phi_x(DIM(x,y,z)) : circle_ex.phi_x(DIM(x,y,z)); );
+          YCOMP( case DDY: return (circle_in.phi(DIM(x,y,z)) > circle_ex.phi(DIM(x,y,z))) ? circle_in.phi_y(DIM(x,y,z)) : circle_ex.phi_y(DIM(x,y,z)); );
+          ZCOMP( case DDZ: return (circle_in.phi(DIM(x,y,z)) > circle_ex.phi(DIM(x,y,z))) ? circle_in.phi_z(DIM(x,y,z)) : circle_ex.phi_z(DIM(x,y,z)); );
         }
+      } break;
+      case 4: // moderately star-shaped domain
+      {
+        static double r0 = 0.611, DIM(xc = 0, yc = 0, zc = 0), deform = 0.15;
+        static flower_shaped_domain_t circle(r0, DIM(xc, yc, zc), deform);
+        switch (what) {
+          OCOMP( case VAL: return circle.phi  (DIM(x,y,z)) );
+          XCOMP( case DDX: return circle.phi_x(DIM(x,y,z)) );
+          YCOMP( case DDY: return circle.phi_y(DIM(x,y,z)) );
+          ZCOMP( case DDZ: return circle.phi_z(DIM(x,y,z)) );
+        }
+      } break;
+      case 5: // highly start-shaped domain
+      {
+        static double r0 = 0.611, DIM(xc = 0, yc = 0, zc = 0), deform = 0.3;
+        static flower_shaped_domain_t circle(r0, DIM(xc, yc, zc), deform);
+        switch (what) {
+          OCOMP( case VAL: return circle.phi  (DIM(x,y,z)) );
+          XCOMP( case DDX: return circle.phi_x(DIM(x,y,z)) );
+          YCOMP( case DDY: return circle.phi_y(DIM(x,y,z)) );
+          ZCOMP( case DDZ: return circle.phi_z(DIM(x,y,z)) );
+        }
+      }
+      case 6: // unioun of two spheres: 1st sphere
+      case 7: // unioun of two spheres: 2nd sphere
+      {
+#ifdef P4_TO_P8
+        static double r0 = 0.71, xc0 = 0.22, yc0 = 0.17, zc0 = 0.21;
+        static double r1 = 0.63, xc1 =-0.19, yc1 =-0.19, zc1 =-0.23;
+#else
+        static double r0 = 0.77, xc0 = 0.13, yc0 = 0.21;
+        static double r1 = 0.49, xc1 =-0.33, yc1 =-0.37;
+#endif
+        static flower_shaped_domain_t circle0(r0, DIM(xc0, yc0, zc0));
+        static flower_shaped_domain_t circle1(r1, DIM(xc1, yc1, zc1));
+
+        flower_shaped_domain_t *shape_ptr = (*n) == 6 ? &circle0 : &circle1;
+
+        switch (what) {
+          OCOMP( case VAL: return shape_ptr->phi  (DIM(x,y,z)) );
+          XCOMP( case DDX: return shape_ptr->phi_x(DIM(x,y,z)) );
+          YCOMP( case DDY: return shape_ptr->phi_y(DIM(x,y,z)) );
+          ZCOMP( case DDZ: return shape_ptr->phi_z(DIM(x,y,z)) );
+        }
+      } break;
+      case 8: // difference of two spheres: 1st shpere
+      case 9: // difference of two spheres: 2nd shpere
+      {
+#ifdef P4_TO_P8
+        static double r0 = 0.86, xc0 = 0.08, yc0 = 0.11, zc0 = 0.03;
+        static double r1 = 0.83, xc1 =-0.51, yc1 =-0.46, zc1 =-0.63;
+#else
+        static double r0 = 0.84, xc0 = 0.03, yc0 = 0.04;
+        static double r1 = 0.63, xc1 =-0.42, yc1 =-0.37;
+#endif
+        static flower_shaped_domain_t circle0(r0, DIM(xc0, yc0, zc0), 0,  1);
+        static flower_shaped_domain_t circle1(r1, DIM(xc1, yc1, zc1), 0, -1);
+
+        flower_shaped_domain_t *shape_ptr = (*n) == 8 ? &circle0 : &circle1;
+
+        switch (what) {
+          OCOMP( case VAL: return shape_ptr->phi  (DIM(x,y,z)) );
+          XCOMP( case DDX: return shape_ptr->phi_x(DIM(x,y,z)) );
+          YCOMP( case DDY: return shape_ptr->phi_y(DIM(x,y,z)) );
+          ZCOMP( case DDZ: return shape_ptr->phi_z(DIM(x,y,z)) );
+        }
+
+      } break;
+      case 10: // three star-shaped domains: 1st domain
+      case 11: // three star-shaped domains: 2nd domain
+      case 12: // three star-shaped domains: 3rd domain
+      {
+#ifdef P4_TO_P8
+        static double r0 = 0.73, xc0 = 0.13, yc0 = 0.16, zc0 = 0.19, nx0 = 1.0, ny0 = 1.0, nz0 = 1.0, theta0 = 0.3*PI, beta0 = 0.08, inside0 = 1;
+        static double r1 = 0.66, xc1 =-0.21, yc1 =-0.23, zc1 =-0.17, nx1 = 1.0, ny1 = 1.0, nz1 = 1.0, theta1 =-0.3*PI, beta1 =-0.08, inside1 = 1;
+        static double r2 = 0.59, xc2 = 0.45, yc2 =-0.53, zc2 = 0.03, nx2 =-1.0, ny2 = 1.0, nz2 = 0.0, theta2 =-0.2*PI, beta2 =-0.08, inside2 =-1;
+
+        static flower_shaped_domain_t shape0(r0, xc0, yc0, zc0, beta0, inside0, nx0, ny0, nz0, theta0);
+        static flower_shaped_domain_t shape1(r1, xc1, yc1, zc1, beta1, inside1, nx1, ny1, nz1, theta1);
+        static flower_shaped_domain_t shape2(r2, xc2, yc2, zc2, beta2, inside2, nx2, ny2, nz2, theta2);
+#else
+        static double r0 = 0.73, xc0 = 0.13, yc0 = 0.16, theta0 = 0.1*PI, beta0 = 0.08, inside0 = 1;
+        static double r1 = 0.66, xc1 =-0.14, yc1 =-0.21, theta1 =-0.2*PI, beta1 =-0.08, inside1 = 1;
+        static double r2 = 0.59, xc2 = 0.45, yc2 =-0.53, theta2 = 0.2*PI, beta2 =-0.08, inside2 =-1;
+
+        static flower_shaped_domain_t shape0(r0, xc0, yc0, beta0, inside0, theta0);
+        static flower_shaped_domain_t shape1(r1, xc1, yc1, beta1, inside1, theta1);
+        static flower_shaped_domain_t shape2(r2, xc2, yc2, beta2, inside2, theta2);
+#endif
+
+        flower_shaped_domain_t *shape_ptr;
+        switch (*n){
+          case 10: shape_ptr = &shape0; break;
+          case 11: shape_ptr = &shape1; break;
+          case 12: shape_ptr = &shape2; break;
+        }
+
+        switch (what) {
+          OCOMP( case VAL: return shape_ptr->phi  (DIM(x,y,z)) );
+          XCOMP( case DDX: return shape_ptr->phi_x(DIM(x,y,z)) );
+          YCOMP( case DDY: return shape_ptr->phi_y(DIM(x,y,z)) );
+          ZCOMP( case DDZ: return shape_ptr->phi_z(DIM(x,y,z)) );
+        }
+      } break;
+      case 13: // triangle/tetrahedron: 1st plane
+      case 14: // triangle/tetrahedron: 2nd plane
+      case 15: // triangle/tetrahedron: 3rd plane
+#ifdef P4_TO_P8
+      case 16: // triangle/tetrahedron: 4th plane
+#endif
+      {
+#ifdef P4_TO_P8
+        static double x0 =-0.86, y0 =-0.87, z0 =-0.83;
+        static double x1 = 0.88, y1 =-0.52, z1 = 0.63;
+        static double x2 = 0.67, y2 = 0.82, z2 =-0.87;
+        static double x3 =-0.78, y3 = 0.73, z3 = 0.85;
+
+        static half_space_t plane0(x0, y0, z0, x2, y2, z2, x1, y1, z1);
+        static half_space_t plane1(x1, y1, z1, x2, y2, z2, x3, y3, z3);
+        static half_space_t plane2(x0, y0, z0, x3, y3, z3, x2, y2, z2);
+        static half_space_t plane3(x0, y0, z0, x1, y1, z1, x3, y3, z3);
+#else
+        static double x2 = 0.74, y2 =-0.86;
+        static double x1 =-0.83, y1 =-0.11;
+        static double x0 = 0.37, y0 = 0.87;
+
+        static half_space_t plane0; plane0.set_params_points(x0, y0, x2, y2);
+        static half_space_t plane1; plane1.set_params_points(x2, y2, x1, y1);
+        static half_space_t plane2; plane2.set_params_points(x1, y1, x0, y0);
+#endif
+
+        half_space_t *shape_ptr;
+        switch (*n) {
+          case 13: shape_ptr = &plane0; break;
+          case 14: shape_ptr = &plane1; break;
+          case 15: shape_ptr = &plane2; break;
+#ifdef P4_TO_P8
+          case 16: shape_ptr = &plane3; break;
+#endif
+        }
+
+        switch (what) {
+          OCOMP( case VAL: return shape_ptr->phi  (DIM(x,y,z)) );
+          XCOMP( case DDX: return shape_ptr->phi_x(DIM(x,y,z)) );
+          YCOMP( case DDY: return shape_ptr->phi_y(DIM(x,y,z)) );
+          ZCOMP( case DDZ: return shape_ptr->phi_z(DIM(x,y,z)) );
+        }
+      } break;
+    }
+
+    // default value
+    switch (what) {
+      OCOMP( case VAL: return -1 );
+      XCOMP( case DDX: return  0 );
+      YCOMP( case DDY: return  0 );
+      ZCOMP( case DDZ: return  0 );
     }
   }
 };
 
-dom_phi_cf_t dom_phi_cf_00(VAL, n_domain);
-dom_phi_cf_t DIM( dom_phi_x_cf_00(DDX, n_domain),
-                  dom_phi_y_cf_00(DDY, n_domain),
-                  dom_phi_z_cf_00(DDZ, n_domain) );
+bdry_phi_cf_t bdry_phi_cf_all  [] = { bdry_phi_cf_t(VAL, bdry_geom_00),
+                                      bdry_phi_cf_t(VAL, bdry_geom_01),
+                                      bdry_phi_cf_t(VAL, bdry_geom_02),
+                                      bdry_phi_cf_t(VAL, bdry_geom_03) };
+
+bdry_phi_cf_t bdry_phi_x_cf_all[] = { bdry_phi_cf_t(DDX, bdry_geom_00),
+                                      bdry_phi_cf_t(DDX, bdry_geom_01),
+                                      bdry_phi_cf_t(DDX, bdry_geom_02),
+                                      bdry_phi_cf_t(DDX, bdry_geom_03) };
+
+bdry_phi_cf_t bdry_phi_y_cf_all[] = { bdry_phi_cf_t(DDY, bdry_geom_00),
+                                      bdry_phi_cf_t(DDY, bdry_geom_01),
+                                      bdry_phi_cf_t(DDY, bdry_geom_02),
+                                      bdry_phi_cf_t(DDY, bdry_geom_03) };
+#ifdef P4_TO_P8
+bdry_phi_cf_t bdry_phi_z_cf_all[] = { bdry_phi_cf_t(DDZ, bdry_geom_00),
+                                      bdry_phi_cf_t(DDZ, bdry_geom_01),
+                                      bdry_phi_cf_t(DDZ, bdry_geom_02),
+                                      bdry_phi_cf_t(DDZ, bdry_geom_03) };
+#endif
 
 // INTERFACE GEOMETRY
-class ifc_phi_cf_t: public CF_DIM {
+class infc_phi_cf_t: public CF_DIM {
 public:
   int    *n;
   cf_value_type_t what;
-  ifc_phi_cf_t(cf_value_type_t what, int &n) : what(what), n(&n) {}
+  infc_phi_cf_t(cf_value_type_t what, int &n) : what(what), n(&n) {}
   double operator()(DIM(double x, double y, double z)) const {
     switch (*n) {
-      case 0: return -1;
-      case 1: {
-          double r0 = 0.533;
-          double DIM( xc = 0, yc = 0, zc = 0 );
-          flower_shaped_domain_t circle(r0, DIM(xc, yc, zc), 0.2);
-          switch (what) {
-            OCOMP( case VAL: return circle.phi  (DIM(x,y,z)) );
-            XCOMP( case DDX: return circle.phi_x(DIM(x,y,z)) );
-            YCOMP( case DDY: return circle.phi_y(DIM(x,y,z)) );
-            ZCOMP( case DDZ: return circle.phi_z(DIM(x,y,z)) );
-          }
+      case 0: // no interface
+        return -1;
+      case 1: // sphere
+      {
+        static double r0 = 0.533;
+        static double DIM( xc = 0, yc = 0, zc = 0 );
+        static flower_shaped_domain_t circle(r0, DIM(xc, yc, zc));
+        switch (what) {
+          OCOMP( case VAL: return circle.phi  (DIM(x,y,z)) );
+          XCOMP( case DDX: return circle.phi_x(DIM(x,y,z)) );
+          YCOMP( case DDY: return circle.phi_y(DIM(x,y,z)) );
+          ZCOMP( case DDZ: return circle.phi_z(DIM(x,y,z)) );
         }
-      case 2: {
-          double r0 = 0.533;
-          double DIM( xc = 0, yc = 0, zc = 0 );
-          flower_shaped_domain_t circle(r0, DIM(xc, yc, zc), 0.2, -1);
-          switch (what) {
-            OCOMP( case VAL: return circle.phi  (DIM(x,y,z)) );
-            XCOMP( case DDX: return circle.phi_x(DIM(x,y,z)) );
-            YCOMP( case DDY: return circle.phi_y(DIM(x,y,z)) );
-            ZCOMP( case DDZ: return circle.phi_z(DIM(x,y,z)) );
-          }
+      }
+      case 2: // moderately star-shaped domain
+      {
+        static double r0 = 0.533, DIM( xc = 0, yc = 0, zc = 0 );
+        static flower_shaped_domain_t circle(r0, DIM(xc, yc, zc), 0.15, -1);
+        switch (what) {
+          OCOMP( case VAL: return circle.phi  (DIM(x,y,z)) );
+          XCOMP( case DDX: return circle.phi_x(DIM(x,y,z)) );
+          YCOMP( case DDY: return circle.phi_y(DIM(x,y,z)) );
+          ZCOMP( case DDZ: return circle.phi_z(DIM(x,y,z)) );
         }
-      case 3: {
-          double r0 = 0.483;
-          double DIM( xc = 0, yc = 0, zc = 0 );
-          double N = 3;
-          double n[] = { 7.0, 3.0, 4.0 };
-          double b[] = { .15, .10, -.10 };
-          double t[] = { 0.0, 0.5, 1.8 };
-          radial_shaped_domain_t shape(r0, DIM(xc, yc, zc), 1, N, n, b, t);
-          switch (what) {
-            OCOMP( case VAL: return shape.phi  (DIM(x,y,z)) );
-            XCOMP( case DDX: return shape.phi_x(DIM(x,y,z)) );
-            YCOMP( case DDY: return shape.phi_y(DIM(x,y,z)) );
-            ZCOMP( case DDZ: return shape.phi_z(DIM(x,y,z)) );
-          }
+      }
+      case 3: // highly star-shaped domain
+      {
+        static double r0 = 0.533, DIM( xc = 0, yc = 0, zc = 0 );
+        static flower_shaped_domain_t circle(r0, DIM(xc, yc, zc), 0.3, -1);
+        switch (what) {
+          OCOMP( case VAL: return circle.phi  (DIM(x,y,z)) );
+          XCOMP( case DDX: return circle.phi_x(DIM(x,y,z)) );
+          YCOMP( case DDY: return circle.phi_y(DIM(x,y,z)) );
+          ZCOMP( case DDZ: return circle.phi_z(DIM(x,y,z)) );
         }
-      case 4: {
-          double r0 = 0.483;
-          double DIM( xc = 0, yc = 0, zc = 0 );
-          double N = 3;
-          double n[] = { 5.0, 3.0, 4.0 };
-          double b[] = { .20, .00, .00 };
-          double t[] = { 0.0, 0.5, 1.8 };
-          radial_shaped_domain_t shape(r0, DIM(xc, yc, zc), 1, N, n, b, t);
-          switch (what) {
-            OCOMP( case VAL: return shape.phi  (DIM(x,y,z)) );
-            XCOMP( case DDX: return shape.phi_x(DIM(x,y,z)) );
-            YCOMP( case DDY: return shape.phi_y(DIM(x,y,z)) );
-            ZCOMP( case DDZ: return shape.phi_z(DIM(x,y,z)) );
-          }
+      }
+      case 4: // assymetric curvy domain
+      {
+        static double r0 = 0.483, DIM( xc = 0, yc = 0, zc = 0 );
+        static double N = 3;
+        static double n[] = { 7.0, 3.0, 4.0 };
+        static double b[] = { .15, .10, -.10 };
+        static double t[] = { 0.0, 0.5, 1.8 };
+        static radial_shaped_domain_t shape(r0, DIM(xc, yc, zc), 1, N, n, b, t);
+        switch (what) {
+          OCOMP( case VAL: return shape.phi  (DIM(x,y,z)) );
+          XCOMP( case DDX: return shape.phi_x(DIM(x,y,z)) );
+          YCOMP( case DDY: return shape.phi_y(DIM(x,y,z)) );
+          ZCOMP( case DDZ: return shape.phi_z(DIM(x,y,z)) );
         }
-      case 5: {
-          double r0 = 0.483;
-          double DIM( xc = 0.05, yc = 0.03, zc = 0 );
-          flower_shaped_domain_t circle(r0, DIM(xc, yc, zc), 0.0);
-          switch (what) {
-            OCOMP( case VAL: return circle.phi  (DIM(x,y,z)) );
-            XCOMP( case DDX: return circle.phi_x(DIM(x,y,z)) );
-            YCOMP( case DDY: return circle.phi_y(DIM(x,y,z)) );
-            ZCOMP( case DDZ: return circle.phi_z(DIM(x,y,z)) );
-          }
-        }
+      }
     }
   }
 };
 
-ifc_phi_cf_t ifc_phi_cf_00(VAL, n_interface);
-ifc_phi_cf_t DIM(ifc_phi_x_cf_00(DDX, n_interface),
-                 ifc_phi_y_cf_00(DDY, n_interface),
-                 ifc_phi_z_cf_00(DDZ, n_interface));
 
+infc_phi_cf_t infc_phi_cf_all  [] = { infc_phi_cf_t(VAL, infc_geom_00),
+                                      infc_phi_cf_t(VAL, infc_geom_01),
+                                      infc_phi_cf_t(VAL, infc_geom_02),
+                                      infc_phi_cf_t(VAL, infc_geom_03) };
 
-const int num_dom_phi_max = 1;
-const int num_ifc_phi_max = 1;
+infc_phi_cf_t infc_phi_x_cf_all[] = { infc_phi_cf_t(DDX, infc_geom_00),
+                                      infc_phi_cf_t(DDX, infc_geom_01),
+                                      infc_phi_cf_t(DDX, infc_geom_02),
+                                      infc_phi_cf_t(DDX, infc_geom_03) };
 
-const int num_dom_phi = 1;
-const int num_ifc_phi = 1;
+infc_phi_cf_t infc_phi_y_cf_all[] = { infc_phi_cf_t(DDY, infc_geom_00),
+                                      infc_phi_cf_t(DDY, infc_geom_01),
+                                      infc_phi_cf_t(DDY, infc_geom_02),
+                                      infc_phi_cf_t(DDY, infc_geom_03) };
+#ifdef P4_TO_P8
+infc_phi_cf_t infc_phi_z_cf_all[] = { infc_phi_cf_t(DDZ, infc_geom_00),
+                                      infc_phi_cf_t(DDZ, infc_geom_01),
+                                      infc_phi_cf_t(DDZ, infc_geom_02),
+                                      infc_phi_cf_t(DDZ, infc_geom_03) };
+#endif
 
-// fold functions into arrays
-std::vector<int>      dom_clr;
-std::vector<mls_opn_t> dom_acn;
-std::vector<CF_DIM *> dom_phi_cf;
-std::vector<CF_DIM *> DIM( dom_phi_x_cf,
-                           dom_phi_y_cf,
-                           dom_phi_z_cf );
-
-std::vector<int>      ifc_clr;
-std::vector<mls_opn_t> ifc_acn;
-std::vector<CF_DIM *> ifc_phi_cf;
-std::vector<CF_DIM *> DIM( ifc_phi_x_cf,
-                           ifc_phi_y_cf,
-                           ifc_phi_z_cf );
-
-// the effective LSF
-mls_eff_cf_t dom_phi_eff_cf(&dom_phi_cf, &dom_acn);
-mls_eff_cf_t ifc_phi_eff_cf(&ifc_phi_cf, &ifc_acn);
+// the effective LSF (initialized in main!)
+mls_eff_cf_t bdry_phi_eff_cf;
+mls_eff_cf_t infc_phi_eff_cf;
 
 class phi_eff_cf_t : public CF_DIM
 {
-  CF_DIM *dom_phi_cf_;
-  CF_DIM *ifc_phi_cf_;
+  CF_DIM *bdry_phi_cf_;
+  CF_DIM *infc_phi_cf_;
 public:
-  phi_eff_cf_t(CF_DIM &dom_phi_cf, CF_DIM &ifc_phi_cf) : dom_phi_cf_(&dom_phi_cf), ifc_phi_cf_(&ifc_phi_cf) {}
+  phi_eff_cf_t(CF_DIM &bdry_phi_cf, CF_DIM &infc_phi_cf) : bdry_phi_cf_(&bdry_phi_cf), infc_phi_cf_(&infc_phi_cf) {}
   double operator()(DIM(double x, double y, double z)) const
   {
-    return MAX( (*dom_phi_cf_)(DIM(x,y,z)), -fabs((*ifc_phi_cf_)(DIM(x,y,z))) );
+    return MAX( (*bdry_phi_cf_)(DIM(x,y,z)), -fabs((*infc_phi_cf_)(DIM(x,y,z))) );
   }
-} phi_eff_cf(dom_phi_eff_cf, ifc_phi_eff_cf);
+} phi_eff_cf(bdry_phi_eff_cf, infc_phi_eff_cf);
 
 class mu_cf_t : public CF_DIM
 {
 public:
-  double operator()(DIM(double x, double y, double z)) const
-  {
-    return ifc_phi_eff_cf(DIM(x,y,z)) > 0 ? mu_p_cf(DIM(x,y,z)) : mu_m_cf(DIM(x,y,z));
+  double operator()(DIM(double x, double y, double z)) const {
+    return infc_phi_eff_cf(DIM(x,y,z)) > 0 ? mu_p_cf(DIM(x,y,z)) : mu_m_cf(DIM(x,y,z));
   }
 } mu_cf;
 class u_cf_t : public CF_DIM
 {
 public:
-  double operator()(DIM(double x, double y, double z)) const  {
-    return ifc_phi_eff_cf(DIM(x,y,z)) > 0 ? u_p_cf(DIM(x,y,z)) : u_m_cf(DIM(x,y,z));
+  double operator()(DIM(double x, double y, double z)) const {
+    return infc_phi_eff_cf(DIM(x,y,z)) > 0 ? u_p_cf(DIM(x,y,z)) : u_m_cf(DIM(x,y,z));
   }
 } u_cf;
 class ux_cf_t : public CF_DIM
 {
 public:
   double operator()(DIM(double x, double y, double z)) const  {
-    return ifc_phi_eff_cf(DIM(x,y,z)) > 0 ? ux_p_cf(DIM(x,y,z)) : ux_m_cf(DIM(x,y,z));
+    return infc_phi_eff_cf(DIM(x,y,z)) > 0 ? ux_p_cf(DIM(x,y,z)) : ux_m_cf(DIM(x,y,z));
   }
 } ux_cf;
 class uy_cf_t : public CF_DIM
 {
 public:
-  double operator()(DIM(double x, double y, double z)) const  {
-    return ifc_phi_eff_cf(DIM(x,y,z)) > 0 ? uy_p_cf(DIM(x,y,z)) : uy_m_cf(DIM(x,y,z));
+  double operator()(DIM(double x, double y, double z)) const {
+    return infc_phi_eff_cf(DIM(x,y,z)) > 0 ? uy_p_cf(DIM(x,y,z)) : uy_m_cf(DIM(x,y,z));
   }
 } uy_cf;
 #ifdef P4_TO_P8
 class uz_cf_t : public CF_DIM
 {
 public:
-  double operator()(DIM(double x, double y, double z)) const  {
-    return ifc_phi_eff_cf(DIM(x,y,z)) > 0 ? uz_p_cf(DIM(x,y,z)) : uz_m_cf(DIM(x,y,z));
+  double operator()(DIM(double x, double y, double z)) const {
+    return infc_phi_eff_cf(DIM(x,y,z)) > 0 ? uz_p_cf(DIM(x,y,z)) : uz_m_cf(DIM(x,y,z));
   }
 } uz_cf;
 #endif
@@ -897,7 +1374,10 @@ public:
   }
 };
 
-bc_value_robin_t bc_value_cf_00((BoundaryConditionType *)&bc_type_00, &bc_coeff_cf_00, DIM(&dom_phi_x_cf_00, &dom_phi_y_cf_00, &dom_phi_z_cf_00) );
+bc_value_robin_t bc_value_cf_all[] = { bc_value_robin_t((BoundaryConditionType *)&bc_type_00, &bc_coeff_cf_all[0], DIM(&bdry_phi_x_cf_all[0], &bdry_phi_y_cf_all[0], &bdry_phi_z_cf_all[0])),
+                                       bc_value_robin_t((BoundaryConditionType *)&bc_type_01, &bc_coeff_cf_all[1], DIM(&bdry_phi_x_cf_all[1], &bdry_phi_y_cf_all[1], &bdry_phi_z_cf_all[1])),
+                                       bc_value_robin_t((BoundaryConditionType *)&bc_type_02, &bc_coeff_cf_all[2], DIM(&bdry_phi_x_cf_all[2], &bdry_phi_y_cf_all[2], &bdry_phi_z_cf_all[2])),
+                                       bc_value_robin_t((BoundaryConditionType *)&bc_type_03, &bc_coeff_cf_all[3], DIM(&bdry_phi_x_cf_all[3], &bdry_phi_y_cf_all[3], &bdry_phi_z_cf_all[3])) };
 
 // JUMP CONDITIONS
 class jc_value_cf_t : public CF_DIM
@@ -913,7 +1393,14 @@ public:
       case 1: return 0;
     }
   }
-} jc_value_cf(n_jc_value);
+};
+
+jc_value_cf_t jc_value_cf_all[] = { jc_value_cf_t(jc_value_00),
+                                    jc_value_cf_t(jc_value_01),
+                                    jc_value_cf_t(jc_value_02),
+                                    jc_value_cf_t(jc_value_03) };
+
+jc_value_cf_t jc_value_cf(jc_value_00);
 
 class jc_flux_t : public CF_DIM
 {
@@ -922,23 +1409,34 @@ class jc_flux_t : public CF_DIM
   CF_DIM *phi_y_;
   CF_DIM *phi_z_;
 public:
-  jc_flux_t(DIM(CF_DIM *phi_x, CF_DIM *phi_y, CF_DIM *phi_z)) :
-    DIM(phi_x_(phi_x), phi_y_(phi_y), phi_z_(phi_z)) {}
+  jc_flux_t(int &n, DIM(CF_DIM *phi_x, CF_DIM *phi_y, CF_DIM *phi_z)) :
+    n(&n), DIM(phi_x_(phi_x), phi_y_(phi_y), phi_z_(phi_z)) {}
 
   double operator()(DIM(double x, double y, double z)) const
   {
-    double DIM( nx = (*phi_x_)(DIM(x,y,z)),
-                ny = (*phi_y_)(DIM(x,y,z)),
-                nz = (*phi_z_)(DIM(x,y,z)) );
-    double norm = sqrt(SUMD(nx*nx, ny*ny, nz*nz));
-    nx /= norm; ny /= norm; P8( nz /= norm; )
+    switch(*n) {
+      case 0:
+      {
+        double DIM( nx = (*phi_x_)(DIM(x,y,z)),
+                    ny = (*phi_y_)(DIM(x,y,z)),
+                    nz = (*phi_z_)(DIM(x,y,z)) );
+        double norm = sqrt(SUMD(nx*nx, ny*ny, nz*nz));
+        nx /= norm; ny /= norm; CODE3D( nz /= norm; )
 
-    return mu_p_cf(DIM(x,y,z)) * SUMD(ux_p_cf(DIM(x,y,z))*nx, uy_p_cf(DIM(x,y,z))*ny, uz_p_cf(DIM(x,y,z))*nz)
-        -  mu_m_cf(DIM(x,y,z)) * SUMD(ux_m_cf(DIM(x,y,z))*nx, uy_m_cf(DIM(x,y,z))*ny, uz_m_cf(DIM(x,y,z))*nz);
+            return mu_p_cf(DIM(x,y,z)) * SUMD(ux_p_cf(DIM(x,y,z))*nx, uy_p_cf(DIM(x,y,z))*ny, uz_p_cf(DIM(x,y,z))*nz)
+            -  mu_m_cf(DIM(x,y,z)) * SUMD(ux_m_cf(DIM(x,y,z))*nx, uy_m_cf(DIM(x,y,z))*ny, uz_m_cf(DIM(x,y,z))*nz);
+      }
+      case 1: return 0;
+    }
   }
 };
 
-jc_flux_t jc_flux_cf_00( DIM(&ifc_phi_x_cf_00, &ifc_phi_y_cf_00, &ifc_phi_z_cf_00) );
+jc_flux_t jc_flux_cf_all[] = { jc_flux_t(jc_flux_00, DIM(&infc_phi_x_cf_all[0], &infc_phi_y_cf_all[0], &infc_phi_z_cf_all[0])),
+                               jc_flux_t(jc_flux_01, DIM(&infc_phi_x_cf_all[1], &infc_phi_y_cf_all[1], &infc_phi_z_cf_all[1])),
+                               jc_flux_t(jc_flux_02, DIM(&infc_phi_x_cf_all[2], &infc_phi_y_cf_all[2], &infc_phi_z_cf_all[2])),
+                               jc_flux_t(jc_flux_03, DIM(&infc_phi_x_cf_all[3], &infc_phi_y_cf_all[3], &infc_phi_z_cf_all[3])) };
+
+//jc_flux_t jc_flux_cf_00( DIM(&infc_phi_x_cf_00, &infc_phi_y_cf_00, &infc_phi_z_cf_00) );
 
 class bc_wall_type_t : public WallBCDIM
 {
@@ -948,34 +1446,6 @@ public:
     return (BoundaryConditionType) bc_wtype;
   }
 } bc_wall_type;
-
-std::vector<CF_DIM *> bc_coeff_cf;
-std::vector<CF_DIM *> bc_value_cf;
-std::vector<CF_DIM *> jc_flux_cf;
-
-struct initilize_arrays_t
-{
-  initilize_arrays_t() // using srtucture initialization to do some work before the main code
-  {
-    dom_clr.push_back(0);
-    dom_acn.push_back(MLS_INTERSECTION);
-    dom_phi_cf.push_back(&dom_phi_cf_00);
-    XCOMP( dom_phi_x_cf.push_back(&dom_phi_x_cf_00) );
-    YCOMP( dom_phi_y_cf.push_back(&dom_phi_y_cf_00) );
-    ZCOMP( dom_phi_z_cf.push_back(&dom_phi_z_cf_00) );
-
-    ifc_clr.push_back(0);
-    ifc_acn.push_back(MLS_INTERSECTION);
-    ifc_phi_cf.push_back(&ifc_phi_cf_00);
-    XCOMP( ifc_phi_x_cf.push_back(&ifc_phi_x_cf_00) );
-    YCOMP( ifc_phi_y_cf.push_back(&ifc_phi_y_cf_00) );
-    ZCOMP( ifc_phi_z_cf.push_back(&ifc_phi_z_cf_00) );
-
-    bc_coeff_cf.push_back(&bc_coeff_cf_00);
-    bc_value_cf.push_back(&bc_value_cf_00);
-    jc_flux_cf.push_back(&jc_flux_cf_00);
-  }
-} initilize_arrays;
 
 class perturb_cf_t: public CF_DIM
 {
@@ -995,6 +1465,7 @@ public:
       case 2: return 2.*((double) rand() / (double) RAND_MAX - 0.5);
       default: throw std::invalid_argument("Invalid test number\n");
     }
+
   }
 } dom_perturb_cf(dom_perturb), ifc_perturb_cf(ifc_perturb);
 
@@ -1079,6 +1550,17 @@ int main (int argc, char* argv[])
     pl.save_all(file.str().c_str());
   }
 
+  // initialize effective level-sets
+  for (int i = 0; i < bdry_phi_max_num; ++i)
+  {
+    if (*bdry_present_all[i] == true) bdry_phi_eff_cf.add_domain(bdry_phi_cf_all[i], (mls_opn_t) *bdry_opn_all[i]);
+  }
+
+  for (int i = 0; i < infc_phi_max_num; ++i)
+  {
+    if (*infc_present_all[i] == true) infc_phi_eff_cf.add_domain(infc_phi_cf_all[i], (mls_opn_t) *infc_opn_all[i]);
+  }
+
   int num_shifts_total = MULTD(num_shifts_x_dir, num_shifts_y_dir, num_shifts_z_dir);
 
   int num_resolutions = ((num_splits-1)*num_splits_per_split + 1)*mu_iter_num;
@@ -1105,12 +1587,20 @@ int main (int argc, char* argv[])
   vector<double> cond_num_arr;
 
   // Start up a MATLAB Engine to calculate condidition number
+#ifdef MATLAB_PROVIDED
   Engine *mengine = NULL;
   if (mpi.rank() == 0 && compute_cond_num)
   {
     mengine = engOpen("matlab -nodisplay -nojvm");
     if (mengine == NULL) throw std::runtime_error("Cannot start a MATLAB Engine session.\n");
   }
+#else
+  if (compute_cond_num)
+  {
+    ierr = PetscPrintf(mpi.comm(), "[Warning]: MATLAB is either not provided or found. Condition numbers will not be computed. \n");
+  }
+#endif
+
 
   parStopWatch w;
   w.start("total time");
@@ -1122,7 +1612,7 @@ int main (int argc, char* argv[])
   p4est_nodes_t *nodes;
   p4est_ghost_t *ghost;
 
-  std::vector<BoundaryConditionType> bc_type(num_dom_phi, (BoundaryConditionType)bc_itype);
+//  std::vector<BoundaryConditionType> bc_type(num_bdry_phi, (BoundaryConditionType)bc_itype);
 
   int iteration = -1;
   int file_idx  = -1;
@@ -1239,64 +1729,72 @@ int main (int argc, char* argv[])
               double diag = sqrt(SUMD(dxyz[0]*dxyz[0], dxyz[1]*dxyz[1], dxyz[2]*dxyz[2]));
 
               // sample level-set functions
-              std::vector<Vec> dom_phi;
-              for (unsigned int i = 0; i < num_dom_phi; i++)
+              Vec bdry_phi_vec_all[bdry_phi_max_num];
+              Vec infc_phi_vec_all[infc_phi_max_num];
+
+              for (int i = 0; i < bdry_phi_max_num; ++i)
               {
-                dom_phi.push_back(Vec());
-                ierr = VecCreateGhostNodes(p4est, nodes, &dom_phi.back()); CHKERRXX(ierr);
-                sample_cf_on_nodes(p4est, nodes, *dom_phi_cf[i], dom_phi.back());
-
-                if (dom_perturb)
+                if (*bdry_present_all[i] == true)
                 {
-                  double *phi_ptr;
-                  ierr = VecGetArray(dom_phi.back(), &phi_ptr); CHKERRXX(ierr);
+                  ierr = VecCreateGhostNodes(p4est, nodes, &bdry_phi_vec_all[i]); CHKERRXX(ierr);
+                  sample_cf_on_nodes(p4est, nodes, bdry_phi_cf_all[i], bdry_phi_vec_all[i]);
 
-                  for (p4est_locidx_t n = 0; n < nodes->num_owned_indeps; ++n)
+                  if (dom_perturb)
                   {
-                    double xyz[P4EST_DIM];
-                    node_xyz_fr_n(n, p4est, nodes, xyz);
-                    phi_ptr[n] += dom_perturb_mag*dom_perturb_cf.value(xyz)*pow(dxyz_m, dom_perturb_pow);
+                    double *phi_ptr;
+                    ierr = VecGetArray(bdry_phi_vec_all[i], &phi_ptr); CHKERRXX(ierr);
+
+                    for (p4est_locidx_t n = 0; n < nodes->num_owned_indeps; ++n)
+                    {
+                      double xyz[P4EST_DIM];
+                      node_xyz_fr_n(n, p4est, nodes, xyz);
+                      phi_ptr[n] += dom_perturb_mag*dom_perturb_cf.value(xyz)*pow(dxyz_m, dom_perturb_pow);
+                    }
+
+                    ierr = VecRestoreArray(bdry_phi_vec_all[i], &phi_ptr); CHKERRXX(ierr);
+
+                    ierr = VecGhostUpdateBegin(bdry_phi_vec_all[i], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+                    ierr = VecGhostUpdateEnd  (bdry_phi_vec_all[i], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
                   }
 
-                  ierr = VecRestoreArray(dom_phi.back(), &phi_ptr); CHKERRXX(ierr);
-
-                  ierr = VecGhostUpdateBegin(dom_phi.back(), INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-                  ierr = VecGhostUpdateEnd  (dom_phi.back(), INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+                  if (reinit_level_set)
+                  {
+                    ls.reinitialize_1st_order_time_2nd_order_space(bdry_phi_vec_all[i], 20);
+                  }
                 }
-
-                if (reinit_level_set)
-                  ls.reinitialize_1st_order_time_2nd_order_space(dom_phi.back(),20);
               }
 
-              std::vector<Vec> ifc_phi;
-              for (unsigned int i = 0; i < num_ifc_phi; i++)
+              for (int i = 0; i < infc_phi_max_num; ++i)
               {
-                ifc_phi.push_back(Vec());
-                ierr = VecCreateGhostNodes(p4est, nodes, &ifc_phi.back()); CHKERRXX(ierr);
-                sample_cf_on_nodes(p4est, nodes, *ifc_phi_cf[i], ifc_phi.back());
-
-                if (ifc_perturb)
+                if (*infc_present_all[i] == true)
                 {
-                  double *phi_ptr;
-                  ierr = VecGetArray(ifc_phi.back(), &phi_ptr); CHKERRXX(ierr);
+                  ierr = VecCreateGhostNodes(p4est, nodes, &infc_phi_vec_all[i]); CHKERRXX(ierr);
+                  sample_cf_on_nodes(p4est, nodes, infc_phi_cf_all[i], infc_phi_vec_all[i]);
 
-                  for (p4est_locidx_t n = 0; n < nodes->num_owned_indeps; ++n)
+                  if (ifc_perturb)
                   {
-                    double xyz[P4EST_DIM];
-                    node_xyz_fr_n(n, p4est, nodes, xyz);
-                    phi_ptr[n] += ifc_perturb_mag*ifc_perturb_cf.value(xyz)*pow(dxyz_m, ifc_perturb_pow);
+                    double *phi_ptr;
+                    ierr = VecGetArray(infc_phi_vec_all[i], &phi_ptr); CHKERRXX(ierr);
+
+                    for (p4est_locidx_t n = 0; n < nodes->num_owned_indeps; ++n)
+                    {
+                      double xyz[P4EST_DIM];
+                      node_xyz_fr_n(n, p4est, nodes, xyz);
+                      phi_ptr[n] += ifc_perturb_mag*ifc_perturb_cf.value(xyz)*pow(dxyz_m, ifc_perturb_pow);
+                    }
+
+                    ierr = VecRestoreArray(infc_phi_vec_all[i], &phi_ptr); CHKERRXX(ierr);
+
+                    ierr = VecGhostUpdateBegin(infc_phi_vec_all[i], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+                    ierr = VecGhostUpdateEnd  (infc_phi_vec_all[i], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
                   }
 
-                  ierr = VecRestoreArray(ifc_phi.back(), &phi_ptr); CHKERRXX(ierr);
-
-                  ierr = VecGhostUpdateBegin(ifc_phi.back(), INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-                  ierr = VecGhostUpdateEnd  (ifc_phi.back(), INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+                  if (reinit_level_set)
+                  {
+                    ls.reinitialize_1st_order_time_2nd_order_space(infc_phi_vec_all[i], 20);
+                  }
                 }
-
-                if (reinit_level_set)
-                  ls.reinitialize_1st_order_time_2nd_order_space(ifc_phi.back(),20);
               }
-
 
               Vec rhs_m;
               ierr = VecCreateGhostNodes(p4est, nodes, &rhs_m); CHKERRXX(ierr);
@@ -1335,8 +1833,17 @@ int main (int argc, char* argv[])
 
               //            if (use_phi_cf) solver.set_phi_cf(phi_cf);
 
-              solver.add_boundary (MLS_INTERSECTION, dom_phi[0], NULL, NULL, (BoundaryConditionType) bc_type_00, bc_value_cf_00, bc_coeff_cf_00);
-              solver.add_interface(MLS_INTERSECTION, ifc_phi[0], NULL, NULL, jc_value_cf, jc_flux_cf_00);
+              for (int i = 0; i < bdry_phi_max_num; ++i)
+                if (*bdry_present_all[i] == true)
+                {
+                  solver.add_boundary((mls_opn_t) *bdry_opn_all[i], bdry_phi_vec_all[i], DIM(NULL, NULL, NULL), (BoundaryConditionType) *bc_type_all[i], bc_value_cf_all[i], bc_coeff_cf_all[i]);
+                }
+
+              for (int i = 0; i < infc_phi_max_num; ++i)
+                if (*infc_present_all[i] == true)
+                {
+                  solver.add_interface((mls_opn_t) *infc_opn_all[i], infc_phi_vec_all[i], DIM(NULL, NULL, NULL), jc_value_cf_all[i], jc_flux_cf_all[i]);
+                }
 
 
               solver.set_mu(mu_m, DIM(NULL, NULL, NULL),
@@ -1348,48 +1855,18 @@ int main (int argc, char* argv[])
 
               solver.set_use_taylor_correction(taylor_correction);
               solver.set_kink_treatment(kink_special_treatment);
-//              solver.set_try_remove_hanging_cells(try_remove_hanging_cells);
 
               solver.solve(sol);
 
-//              my_p4est_cell_neighbors_t ngbd_c(&hierarchy);
-
-//              BoundaryConditionsDIM bc;
-//              bc.setWallTypes(bc_wall_type);
-//              bc.setWallValues(u_cf);
-
-//              Vec u_jump;
-//              Vec mu_grad_u_jump;
-
-//              ierr = VecDuplicate(sol, &u_jump); CHKERRXX(ierr);
-//              ierr = VecDuplicate(sol, &mu_grad_u_jump); CHKERRXX(ierr);
-
-//              sample_cf_on_nodes(p4est, nodes, jc_value_cf, u_jump);
-//              sample_cf_on_nodes(p4est, nodes, jc_flux_cf_00, mu_grad_u_jump);
-
-//              my_p4est_poisson_jump_nodes_voronoi_t voro_solver(&ngbd_n, &ngbd_c);
-//              voro_solver.set_phi(ifc_phi[0]);
-//              voro_solver.set_bc(bc);
-//              voro_solver.set_mu(mu_m, mu_p);
-//              voro_solver.set_u_jump(u_jump);
-//              voro_solver.set_mu_grad_u_jump(mu_grad_u_jump);
-//              voro_solver.set_rhs(rhs_m, rhs_p);
-
-//              voro_solver.solve(sol);
-
-//              ierr = VecDestroy(u_jump); CHKERRXX(ierr);
-//              ierr = VecDestroy(mu_grad_u_jump); CHKERRXX(ierr);
-
-              Vec dom_phi_eff = solver.get_boundary_phi_eff();
-              Vec ifc_phi_eff = solver.get_interface_phi_eff();
+              Vec bdry_phi_eff = solver.get_boundary_phi_eff();
+              Vec infc_phi_eff = solver.get_interface_phi_eff();
 
               Vec mask_m  = solver.get_mask_m();
               Vec mask_p  = solver.get_mask_p();
               Mat A       = solver.get_matrix();
-//              Mat A       = voro_solver.get_matrix();
 
-              double *dom_phi_eff_ptr;
-              double *ifc_phi_eff_ptr;
+              double *bdry_phi_eff_ptr;
+              double *infc_phi_eff_ptr;
               double *mask_m_ptr;
               double *mask_p_ptr;
 
@@ -1443,11 +1920,12 @@ int main (int argc, char* argv[])
 
                 PetscViewer viewer;
                 ierr = PetscViewerBinaryOpen(mpi.comm(), oss.str().c_str(), FILE_MODE_WRITE, &viewer); CHKERRXX(ierr);
-                ierr = PetscViewerPushFormat(viewer, 	PETSC_VIEWER_BINARY_MATLAB); CHKERRXX(ierr);
+                ierr = PetscViewerPushFormat(viewer, PETSC_VIEWER_BINARY_MATLAB); CHKERRXX(ierr);
                 ierr = MatView(A, viewer); CHKERRXX(ierr);
                 ierr = PetscViewerDestroy(viewer); CHKERRXX(ierr);
               }
 
+#ifdef MATLAB_PROVIDED
               if (iter < compute_cond_num)
               {
                 // Get the local AIJ representation of the matrix
@@ -1457,7 +1935,6 @@ int main (int argc, char* argv[])
 
                 ierr = MatGetLocalSize(A, &M, &N);
 
-//                foreach_local_node(n, nodes)
                 for (int n = 0; n < M; ++n)
                 {
                   int num_elem;
@@ -1465,7 +1942,6 @@ int main (int argc, char* argv[])
                   const double *vals;
 
                   PetscInt N = solver.get_global_idx(n);
-//                  PetscInt N = voro_solver.get_global_idx(n);
                   MatGetRow(A, N, &num_elem, &icol, &vals);
                   for (int i = 0; i < num_elem; ++i)
                   {
@@ -1528,9 +2004,12 @@ int main (int argc, char* argv[])
               } else {
                 cond_num_arr.push_back(NAN);
               }
+#else
+              cond_num_arr.push_back(NAN);
+#endif
 
               my_p4est_integration_mls_t integrator(p4est, nodes);
-              integrator.set_phi(dom_phi, dom_acn, dom_clr);
+//              integrator.set_phi(bdry_phi, dom_acn, dom_clr);
 
               /*
             if (save_domain)
@@ -1839,16 +2318,16 @@ int main (int argc, char* argv[])
               VecCopyGhost(sol_m, sol_m_ex);
               VecCopyGhost(sol_p, sol_p_ex);
 
-              Vec phi_m; ierr = VecDuplicate(dom_phi_eff, &phi_m); CHKERRXX(ierr); VecCopyGhost(dom_phi_eff, phi_m);
-              Vec phi_p; ierr = VecDuplicate(dom_phi_eff, &phi_p); CHKERRXX(ierr); VecCopyGhost(dom_phi_eff, phi_p);
+              Vec phi_m; ierr = VecDuplicate(bdry_phi_eff, &phi_m); CHKERRXX(ierr); VecCopyGhost(bdry_phi_eff, phi_m);
+              Vec phi_p; ierr = VecDuplicate(bdry_phi_eff, &phi_p); CHKERRXX(ierr); VecCopyGhost(bdry_phi_eff, phi_p);
 
               double *phi_m_ptr;
               double *phi_p_ptr;
 
-              VecPointwiseMaxGhost(phi_m, phi_m, ifc_phi_eff);
-              VecScaleGhost(ifc_phi_eff, -1);
-              VecPointwiseMaxGhost(phi_p, phi_p, ifc_phi_eff);
-              VecScaleGhost(ifc_phi_eff, -1);
+              VecPointwiseMaxGhost(phi_m, phi_m, infc_phi_eff);
+              VecScaleGhost(infc_phi_eff, -1);
+              VecPointwiseMaxGhost(phi_p, phi_p, infc_phi_eff);
+              VecScaleGhost(infc_phi_eff, -1);
 
               // extend
               if (do_extension)
@@ -1997,8 +2476,8 @@ int main (int argc, char* argv[])
                 ierr = VecDuplicate(sol, &exact); CHKERRXX(ierr);
                 sample_cf_on_nodes(p4est, nodes, u_cf, exact);
 
-                ierr = VecGetArray(dom_phi_eff, &dom_phi_eff_ptr); CHKERRXX(ierr);
-                ierr = VecGetArray(ifc_phi_eff, &ifc_phi_eff_ptr); CHKERRXX(ierr);
+                ierr = VecGetArray(bdry_phi_eff, &bdry_phi_eff_ptr); CHKERRXX(ierr);
+                ierr = VecGetArray(infc_phi_eff, &infc_phi_eff_ptr); CHKERRXX(ierr);
 
                 ierr = VecGetArray(sol,   &sol_ptr);   CHKERRXX(ierr);
                 ierr = VecGetArray(exact, &exact_ptr); CHKERRXX(ierr);
@@ -2028,8 +2507,8 @@ int main (int argc, char* argv[])
                 my_p4est_vtk_write_all(p4est, nodes, ghost,
                                        P4EST_TRUE, P4EST_TRUE,
                                        16, 1, oss.str().c_str(),
-                                       VTK_POINT_DATA, "phi", dom_phi_eff_ptr,
-                                       VTK_POINT_DATA, "ifc_phi", ifc_phi_eff_ptr,
+                                       VTK_POINT_DATA, "phi", bdry_phi_eff_ptr,
+                                       VTK_POINT_DATA, "infc_phi", infc_phi_eff_ptr,
                                        VTK_POINT_DATA, "sol", sol_ptr,
                                        VTK_POINT_DATA, "exact", exact_ptr,
                                        VTK_POINT_DATA, "sol_m_ex", sol_m_ex_ptr,
@@ -2046,8 +2525,8 @@ int main (int argc, char* argv[])
                                        VTK_POINT_DATA, "error_dd_p", vec_error_dd_p_ptr,
                                        VTK_CELL_DATA , "leaf_level", l_p);
 
-                ierr = VecRestoreArray(dom_phi_eff, &dom_phi_eff_ptr);    CHKERRXX(ierr);
-                ierr = VecRestoreArray(ifc_phi_eff, &ifc_phi_eff_ptr); CHKERRXX(ierr);
+                ierr = VecRestoreArray(bdry_phi_eff, &bdry_phi_eff_ptr);    CHKERRXX(ierr);
+                ierr = VecRestoreArray(infc_phi_eff, &infc_phi_eff_ptr); CHKERRXX(ierr);
 
                 ierr = VecRestoreArray(sol,   &sol_ptr);   CHKERRXX(ierr);
                 ierr = VecRestoreArray(exact, &exact_ptr); CHKERRXX(ierr);
@@ -2103,8 +2582,8 @@ int main (int argc, char* argv[])
               ierr = VecDestroy(diag_m);   CHKERRXX(ierr);
               ierr = VecDestroy(diag_p);   CHKERRXX(ierr);
 
-              for (unsigned int i = 0; i < dom_phi.size(); i++) { ierr = VecDestroy(dom_phi[i]); CHKERRXX(ierr); }
-              for (unsigned int i = 0; i < ifc_phi.size(); i++) { ierr = VecDestroy(ifc_phi[i]); CHKERRXX(ierr); }
+              for (unsigned int i = 0; i < bdry_phi_max_num; i++) { if (*bdry_present_all[i] == true) { ierr = VecDestroy(bdry_phi_vec_all[i]); CHKERRXX(ierr); } }
+              for (unsigned int i = 0; i < infc_phi_max_num; i++) { if (*infc_present_all[i] == true) { ierr = VecDestroy(infc_phi_vec_all[i]); CHKERRXX(ierr); } }
 
               p4est_nodes_destroy(nodes);
               p4est_ghost_destroy(ghost);
@@ -2120,10 +2599,12 @@ int main (int argc, char* argv[])
     }
   }
 
+#ifdef MATLAB_PROVIDED
   if (mpi.rank() == 0 && compute_cond_num)
   {
     engClose(mengine);
   }
+#endif
 
 
   MPI_Barrier(mpi.comm());

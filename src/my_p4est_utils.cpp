@@ -2475,37 +2475,56 @@ void compute_islands_numbers(const my_p4est_node_neighbors_t &ngbd, const Vec ph
   ierr = VecRestoreArray(island_number, &island_number_p); CHKERRXX(ierr);
 }
 
-void compute_phi_eff(p4est_nodes_t *nodes, std::vector<Vec> *phi, std::vector<mls_opn_t> *opn, std::vector<bool> *refine_always, Vec phi_eff)
+void compute_phi_eff(Vec phi_eff, p4est_nodes_t *nodes, std::vector<Vec> &phi, std::vector<mls_opn_t> &opn)
 {
   PetscErrorCode ierr;
   double* phi_eff_ptr;
   ierr = VecGetArray(phi_eff, &phi_eff_ptr); CHKERRXX(ierr);
 
-  std::vector<double *> phi_ptr(phi->size(), NULL);
+  std::vector<double *> phi_ptr(phi.size(), NULL);
 
-  for (int i = 0; i < phi->size(); i++) { ierr = VecGetArray(phi->at(i), &phi_ptr[i]); CHKERRXX(ierr); }
+  for (int i = 0; i < phi.size(); i++) { ierr = VecGetArray(phi.at(i), &phi_ptr[i]); CHKERRXX(ierr); }
 
   foreach_node(n, nodes)
   {
     double phi_total = -DBL_MAX;
-    for (unsigned int i = 0; i < phi->size(); i++)
+    for (unsigned int i = 0; i < phi.size(); i++)
     {
       double phi_current = phi_ptr[i][n];
 
-      if      (opn->at(i) == MLS_INTERSECTION) phi_total = MAX(phi_total, phi_current);
-      else if (opn->at(i) == MLS_ADDITION)     phi_total = MIN(phi_total, phi_current);
+      if      (opn.at(i) == MLS_INTERSECTION) phi_total = MAX(phi_total, phi_current);
+      else if (opn.at(i) == MLS_ADDITION)     phi_total = MIN(phi_total, phi_current);
     }
     phi_eff_ptr[n] = phi_total;
   }
 
-  if (refine_always != NULL)
-    foreach_node(n, nodes)
-      for (unsigned int i = 0; i < phi->size(); i++)
-        if (refine_always->at(i))
-          phi_eff_ptr[n] = MIN(phi_eff_ptr[n], fabs(phi_ptr[i][n]));
+//  if (refine_always != NULL)
+//    foreach_node(n, nodes)
+//      for (unsigned int i = 0; i < phi->size(); i++)
+//        if (refine_always->at(i))
+//          phi_eff_ptr[n] = MIN(phi_eff_ptr[n], fabs(phi_ptr[i][n]));
 
-  for (int i = 0; i < phi->size(); i++) { ierr = VecRestoreArray(phi->at(i), &phi_ptr[i]); CHKERRXX(ierr); }
+  for (int i = 0; i < phi.size(); i++) { ierr = VecRestoreArray(phi.at(i), &phi_ptr[i]); CHKERRXX(ierr); }
 }
+
+void compute_phi_eff(Vec phi_eff, p4est_nodes_t *nodes, int num_phi, ...)
+{
+  va_list ap;
+
+  va_start(ap, num_phi);
+
+  std::vector<Vec> phi;
+  std::vector<mls_opn_t> opn;
+  for (int i=0; i<num_phi; ++i) {
+    Vec       P = va_arg(ap, Vec);       phi.push_back(P);
+    mls_opn_t O = va_arg(ap, mls_opn_t); opn.push_back(O);
+  }
+
+  va_end(ap);
+
+  compute_phi_eff(phi_eff, nodes, phi, opn);
+}
+
 
 void find_closest_interface_location(int &phi_idx, double &dist, double d, std::vector<mls_opn_t> opn,
                                      std::vector<double> &phi_a,

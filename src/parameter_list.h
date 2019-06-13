@@ -1,5 +1,5 @@
-#ifndef PARAMETER_LIST_T_H
-#define PARAMETER_LIST_T_H
+#ifndef PARAMETER_LIST_H
+#define PARAMETER_LIST_H
 
 #include <vector>
 #include <string>
@@ -133,4 +133,4 @@ public:
 #define ADD_TO_LIST(list, var, description) add_to_list CAT(adding_,var) (list, var, #var, description)
 
 
-#endif // PARAMETER_LIST_T_H
+#endif // PARAMETER_LIST_H
