@@ -1057,12 +1057,12 @@ void check_if_faces_are_well_defined(p4est_t *p4est, my_p4est_node_neighbors_t *
 double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4est_faces_t *faces,
                                my_p4est_cell_neighbors_t *ngbd_c, my_p4est_node_neighbors_t *ngbd_n,
                                p4est_locidx_t node_idx, Vec f, int dir,
-                               Vec face_is_well_defined, int order, BoundaryConditions3D *bc)
+                               Vec face_is_well_defined, int order, BoundaryConditions3D *bc, face_interpolator* interpolator_from_faces)
 #else
 double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4est_faces_t *faces,
                                my_p4est_cell_neighbors_t *ngbd_c, my_p4est_node_neighbors_t *ngbd_n,
                                p4est_locidx_t node_idx, Vec f, int dir,
-                               Vec face_is_well_defined, int order, BoundaryConditions2D *bc)
+                               Vec face_is_well_defined, int order, BoundaryConditions2D *bc, face_interpolator* interpolator_from_faces)
 #endif
 {
   PetscErrorCode ierr;
@@ -1077,7 +1077,15 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
   p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, node_idx);
 
   if(bc!=NULL && is_node_Wall(p4est, node) && bc[dir].wallType(xyz)==DIRICHLET)
+  {
+    if(interpolator_from_faces!=NULL)
+    {
+      interpolator_from_faces->resize(1);
+      interpolator_from_faces->at(0).face_idx = -1;
+      interpolator_from_faces->at(0).weight   = +1.0;
+    }
     return bc[dir].wallValue(xyz);
+  }
 
   double *v2c = p4est->connectivity->vertices;
   p4est_topidx_t *t2v = p4est->connectivity->tree_to_vertex;
@@ -1185,14 +1193,16 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
   ierr = VecGetArray(f, &f_p); CHKERRXX(ierr);
 
   vector<p4est_locidx_t> interp_points;
+  if(interpolator_from_faces!=NULL)
+    interpolator_from_faces->resize(0);
   matrix_t A;
   bool neumann_wall_x = (bc!=NULL && (is_node_xmWall(p4est, node) || is_node_xpWall(p4est, node)) && bc[dir].wallType(xyz)==NEUMANN);
   bool neumann_wall_y = (bc!=NULL && (is_node_ymWall(p4est, node) || is_node_ypWall(p4est, node)) && bc[dir].wallType(xyz)==NEUMANN);
 #ifdef P4_TO_P8
   bool neumann_wall_z = (bc!=NULL && (is_node_zmWall(p4est, node) || is_node_zpWall(p4est, node)) && bc[dir].wallType(xyz)==NEUMANN);
-  A.resize(1, (order>=2 ? 10 : 4) - (neumann_wall_x?1:0)- (neumann_wall_y?1:0) - (neumann_wall_z?1:0));
+  A.resize(1, (1+P4EST_DIM)+(order>=2 ? (P4EST_DIM*(P4EST_DIM+1)/2):0)-(neumann_wall_x?1:0)-(neumann_wall_y?1:0)-(neumann_wall_z?1:0));
 #else
-  A.resize(1, (order>=2 ? 6 : 3) - (neumann_wall_x?1:0)- (neumann_wall_y?1:0));
+  A.resize(1, (1+P4EST_DIM)+(order>=2 ? (P4EST_DIM*(P4EST_DIM+1)/2):0)-(neumann_wall_x?1:0)-(neumann_wall_y?1:0));
 #endif
   vector<double> p;
   vector<double> nb[P4EST_DIM];
@@ -1210,6 +1220,11 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
     p4est_locidx_t fm_idx = ngbd[m];
     if((face_is_well_defined==NULL || face_is_well_defined_p[fm_idx]) && std::find(interp_points.begin(), interp_points.end(),fm_idx)==interp_points.end() )
     {
+      if(interpolator_from_faces!=NULL)
+      {
+        face_interpolator_element new_element; new_element.face_idx = fm_idx;
+        interpolator_from_faces->push_back(new_element);
+      }
       double xyz_t[P4EST_DIM];
       faces->xyz_fr_f(fm_idx, dir, xyz_t);
       for(int i=0; i<P4EST_DIM; ++i)
@@ -1266,7 +1281,9 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
           + (neumann_wall_z? ((is_node_zpWall(p4est, node)?+1.0:-1.0)*bc->wallValue(xyz)*xyz_t[2]*scaling): 0.0)
     #endif
           ) * w);
-      // [Raphael:] note the sign used when defining xyz_t above, it is counter intuitive, imo
+      if(interpolator_from_faces!=NULL)
+        interpolator_from_faces->back().weight = w;
+      // [Raphael:] note the sign used when defining xyz_t above, it is counter-intuitive, imo
 
       for(int d=0; d<P4EST_DIM; ++d)
         if(std::find(nb[d].begin(), nb[d].end(), xyz_t[d]) == nb[d].end())
@@ -1281,13 +1298,44 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
     ierr = VecRestoreArrayRead(face_is_well_defined, &face_is_well_defined_p); CHKERRXX(ierr);
 
   if(interp_points.size()==0)
+  {
+    if(interpolator_from_faces!=NULL)
+      interpolator_from_faces->resize(0);
     return 0;
+  }
 
-  A.scale_by_maxabs(p);
+  double abs_max = A.scale_by_maxabs(p);
+  std::vector<double>* interp_weights = NULL;
+  if(interpolator_from_faces!=NULL)
+    interp_weights = new std::vector<double>(0);
 
 #ifdef P4_TO_P8
-  return solve_lsqr_system(A, p, nb[0].size(), nb[1].size(), nb[2].size(), order, ((neumann_wall_x?1:0) + (neumann_wall_y?1:0) + (neumann_wall_z?1:0)));
+  double value_to_return = solve_lsqr_system(A, p, nb[0].size(), nb[1].size(), nb[2].size(), order, ((neumann_wall_x?1:0) + (neumann_wall_y?1:0) + (neumann_wall_z?1:0)), interp_weights);
 #else
-  return solve_lsqr_system(A, p, nb[0].size(), nb[1].size(), order, ((neumann_wall_x?1:0) + (neumann_wall_y?1:0)));
+  double value_to_return = solve_lsqr_system(A, p, nb[0].size(), nb[1].size(), order, ((neumann_wall_x?1:0) + (neumann_wall_y?1:0)), interp_weights);
 #endif
+  if(interpolator_from_faces!=NULL)
+  {
+    P4EST_ASSERT(interp_weights->size() <= interpolator_from_faces->size());
+    interpolator_from_faces->resize(interp_weights->size());
+    for (unsigned int k = 0; k < interpolator_from_faces->size(); ++k)
+      interpolator_from_faces->at(k).weight *= interp_weights->at(k)/abs_max;
+  }
+  if(interp_weights!=NULL)
+    delete  interp_weights;
+
+#ifdef DEBUG
+  if(interpolator_from_faces!=NULL)
+  {
+    double my_new_value = 0.0;
+    const double *f_read_p;
+    ierr = VecGetArrayRead(f, &f_read_p); CHKERRXX(ierr);
+    for (unsigned int k = 0; k < interpolator_from_faces->size(); ++k)
+      my_new_value += f_read_p[interpolator_from_faces->at(k).face_idx]*interpolator_from_faces->at(k).weight;
+    ierr = VecRestoreArrayRead(f, &f_read_p); CHKERRXX(ierr);
+    P4EST_ASSERT(fabs(my_new_value - value_to_return) < MAX(EPS, 1e-6*MAX(fabs(my_new_value), fabs(value_to_return))));
+  }
+#endif
+
+  return value_to_return;
 }

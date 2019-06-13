@@ -91,7 +91,7 @@ void read_my_line(const char* read_line, double& time, vector<double> *slice_avg
     slice_avg_profile->at(idx++) = tmp;
     format = base_format + read_double;
   }
-  if(idx<slice_avg_profile->size())
+  if(idx<slice_avg_profile->size() && idx > 0)
     throw runtime_error("read_line: something went wrong when reading a line: less values than expected...");
 }
 
@@ -195,7 +195,7 @@ int main (int argc, char* argv[])
         dt_nm1 = time_read_n - time_read_nm1;
         if(integrate)
           for (size_t k = 0; k < time_avg_profile.size(); k++)
-            time_avg_profile[k] += 0.5*dt_nm1*(slice_avg_nm1->at(k)+slice_avg_n->at(k));
+            time_avg_profile[k] += dt_nm1*slice_avg_nm1->at(k);
         integrate = true;
       }
       if(time_read_n > t_end)
@@ -248,7 +248,7 @@ int main (int argc, char* argv[])
       throw runtime_error("Could not open file for time-averaged tex figure.");
     fprintf(fp, "set term epslatex color standalone\n");
     fprintf(fp, "set output 'time_average_%s.tex'\n", raw_file_name);
-    fprintf(fp, "set xlabel \"$<u>$\"\n"); // =\\\\frac{1}{t_{\\\\mathrm{end}} - t_{\\\\mathrm{start}}} \\\\frac{1}{L_{x}} \\\\frac{1}{L_{z}} \\\\int_{t_{\\\\mathrm{start}}}^{t_{\\\\mathrm{end}}}{\\\\int_{-L_{z}/2}^{L_{z}/2}{\\\\int_{-L_{x}/2}^{L_{x}/2}{ u \\\\,\\\\mathrm{d}x}\\\\,\\\\mathrm{d}z}\\\\,\\\\mathrm{d}t}$\"\n");
+    fprintf(fp, "set xlabel \"$\\\\left\\\\langle\\\\frac{u}{U_{\\\\mathrm{b}}}\\\\right\\\\rangle$\"\n"); // =\\\\frac{1}{t_{\\\\mathrm{end}} - t_{\\\\mathrm{start}}} \\\\frac{1}{L_{x}} \\\\frac{1}{L_{z}} \\\\int_{t_{\\\\mathrm{start}}}^{t_{\\\\mathrm{end}}}{\\\\int_{-L_{z}/2}^{L_{z}/2}{\\\\int_{-L_{x}/2}^{L_{x}/2}{ u \\\\,\\\\mathrm{d}x}\\\\,\\\\mathrm{d}z}\\\\,\\\\mathrm{d}t}$\"\n");
     fprintf(fp, "set ylabel \"$y$\"\n");
     if(only_one_file)
       fprintf(fp, "plot\t \"./time_averaged_%s%s\" using 2:1 notitle with linespoints lc rgb \"blue\" dashtype 5 lw 2 pt 7 pi -0.5 ps 0.5", raw_file_name, extension);
