@@ -1,24 +1,24 @@
 # --------------------------------------------------------------
 # Common settings for projects using generic linux builds
 # --------------------------------------------------------------
-CONFIG(raphael, raphael|fernando) {
+CONFIG(raphael, raphael|fernando|helene) {
 # PETSc
-PETSC_INCLUDES_RELEASE = /home/hlevy/Software/petsc-3.10.5/build-release/include
-PETSC_INCLUDES_DEBUG   = /home/hlevy/Software/petsc-3.10.5/build-debug/include
-PETSC_LIBS_RELEASE = -Wl,-rpath,/home/hlevy/Software/petsc-3.10.5/build-release/lib -L/home/hlevy/Software/petsc-3.10.5/build-release/lib -lpetsc
-PETSC_LIBS_DEBUG   = -Wl,-rpath,/home/hlevy/Software/petsc-3.10.5/build-debug/lib -L/home/hlevy/Software/petsc-3.10.5/build-debug/lib -lpetsc
+PETSC_INCLUDES_RELEASE = /home/regan/libraries/petsc/include
+PETSC_INCLUDES_DEBUG   = /home/regan/libraries/petsc_debug/include
+PETSC_LIBS_RELEASE = -Wl,-rpath,/home/regan/libraries/petsc/lib -L/home/regan/libraries/petsc/lib -lpetsc
+PETSC_LIBS_DEBUG   = -Wl,-rpath,/home/regan/libraries/petsc_debug/lib -L/home/regan/libraries/petsc_debug/lib -lpetsc
 
 # p4est
-P4EST_INCLUDES_RELEASE = /home/hlevy/Software/p4est-2.0/build-release/include
-P4EST_INCLUDES_DEBUG   = /home/hlevy/Software/p4est-2.0/build-debug/include
-P4EST_LIBS_RELEASE = -Wl,-rpath,/home/hlevy/Software/p4est-2.0/build-release/lib -L/home/hlevy/Software/p4est-2.0/build-release/lib -lp4est -lsc
-P4EST_LIBS_DEBUG   = -Wl,-rpath,/home/hlevy/Software/p4est-2.0/build-debug/lib -L/home/hlevy/Software/p4est-2.0/build-debug/lib -lp4est -lsc
+P4EST_INCLUDES_RELEASE = /home/regan/libraries/p4est/include
+P4EST_INCLUDES_DEBUG   = /home/regan/libraries/p4est_debug/include
+P4EST_LIBS_RELEASE = -Wl,-rpath,/home/regan/libraries/p4est/lib -L/home/regan/libraries/p4est/lib -lp4est -lsc
+P4EST_LIBS_DEBUG   = -Wl,-rpath,/home/regan/libraries/p4est_debug/lib -L/home/regan/libraries/p4est_debug/lib -lp4est -lsc
 
 # voro++
-VORO_INCLUDES_RELEASE = /home/hlevy/Software/voro++-0.4.6/build/include/voro++
-VORO_INCLUDES_DEBUG   = /home/hlevy/Software/voro++-0.4.6/build/include/voro++
-VORO_LIBS_RELEASE     = /home/hlevy/Software/voro++-0.4.6/build/lib/libvoro++.a
-VORO_LIBS_DEBUG       = /home/hlevy/Software/voro++-0.4.6/build/lib/libvoro++.a
+VORO_INCLUDES_RELEASE = /home/regan/libraries/voro++/include/voro++
+VORO_INCLUDES_DEBUG   = /home/regan/libraries/voro++/include/voro++
+VORO_LIBS_RELEASE     = /home/regan/libraries/voro++/lib/libvoro++.a
+VORO_LIBS_DEBUG       = /home/regan/libraries/voro++/lib/libvoro++.a
 
 # lapacke
 LAPACKE_INCLUDE     = /usr/include/lapacke.h
@@ -29,7 +29,7 @@ QMAKE_CXX = mpicxx
 QMAKE_LINK = mpicxx
 }
 
-CONFIG(fernando, raphael|fernando) {
+CONFIG(fernando, raphael|fernando|helene) {
 # PETSc
 PETSC_INCLUDES_RELEASE = /home/temprano/Software/petsc-3.10.3/build-release/include
 PETSC_INCLUDES_DEBUG   = /home/temprano/Software/petsc-3.10.3/build-debug/include
@@ -47,6 +47,34 @@ VORO_INCLUDES_RELEASE = /home/temprano/Software/voro++-0.4.6/build/include/voro+
 VORO_INCLUDES_DEBUG   = /home/temprano/Software/voro++-0.4.6/build/include/voro++
 VORO_LIBS_RELEASE     = /home/temprano/Software/voro++-0.4.6/build/lib/libvoro++.a
 VORO_LIBS_DEBUG       = /home/temprano/Software/voro++-0.4.6/build/lib/libvoro++.a
+
+# lapacke
+LAPACKE_INCLUDE     = /usr/include/lapacke.h
+LAPACKE_LIBS        = -Wl,-rpath,/usr/lib -L/usr/lib -llapacke
+
+QMAKE_CC = mpicc
+QMAKE_CXX = mpicxx
+QMAKE_LINK = mpicxx
+}
+
+CONFIG(helene, raphael|fernando|helene) {
+# PETSc
+PETSC_INCLUDES_RELEASE = /home/hlevy/Software/petsc-3.10.5/build-release/include
+PETSC_INCLUDES_DEBUG   = /home/hlevy/Software/petsc-3.10.5/build-debug/include
+PETSC_LIBS_RELEASE = -Wl,-rpath,/home/hlevy/Software/petsc-3.10.5/build-release/lib -L/home/hlevy/Software/petsc-3.10.5/build-release/lib -lpetsc
+PETSC_LIBS_DEBUG   = -Wl,-rpath,/home/hlevy/Software/petsc-3.10.5/build-debug/lib -L/home/hlevy/Software/petsc-3.10.5/build-debug/lib -lpetsc
+
+# p4est
+P4EST_INCLUDES_RELEASE = /home/hlevy/Software/p4est-2.0/build-release/include
+P4EST_INCLUDES_DEBUG   = /home/hlevy/Software/p4est-2.0/build-debug/include
+P4EST_LIBS_RELEASE = -Wl,-rpath,/home/hlevy/Software/p4est-2.0/build-release/lib -L/home/hlevy/Software/p4est-2.0/build-release/lib -lp4est -lsc
+P4EST_LIBS_DEBUG   = -Wl,-rpath,/home/hlevy/Software/p4est-2.0/build-debug/lib -L/home/hlevy/Software/p4est-2.0/build-debug/lib -lp4est -lsc
+
+# voro++
+VORO_INCLUDES_RELEASE = /home/hlevy/Software/voro++-0.4.6/build/include/voro++
+VORO_INCLUDES_DEBUG   = /home/hlevy/Software/voro++-0.4.6/build/include/voro++
+VORO_LIBS_RELEASE     = /home/hlevy/Software/voro++-0.4.6/build/lib/libvoro++.a
+VORO_LIBS_DEBUG       = /home/hlevy/Software/voro++-0.4.6/build/lib/libvoro++.a
 
 # lapacke
 LAPACKE_INCLUDE     = /usr/include/lapacke.h

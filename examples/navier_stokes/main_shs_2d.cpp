@@ -1392,8 +1392,10 @@ int main (int argc, char* argv[])
   const string export_dir               = cmd.get<string>("export_folder", "/home/raphael/workspace/projects/superhydrophobic_channel");
 #elif defined(JUPITER)
   const string export_dir               = cmd.get<string>("export_folder", "/home/temprano/Output/p4est_ns_shs");
-#else
+#elif defined(NEPTUNE)
   const string export_dir               = cmd.get<string>("export_folder", "/home/hlevy/workspace/superhydrophobic_channel");
+#else
+  const string export_dir               = cmd.get<string>("export_folder", "/home/regan/workspace/projects/superhydrophobic_channel");
 #endif
   const bool save_vtk                   = cmd.contains("save_vtk");
   const bool get_timing                 = cmd.contains("timing");
