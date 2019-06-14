@@ -65,7 +65,7 @@
 
 #include <src/petsc_compatibility.h>
 #include <src/Parser.h>
-#include <src/parameter_list_t.h>
+#include <src/parameter_list.h>
 
 #undef MIN
 #undef MAX
@@ -144,7 +144,7 @@ DEFINE_PARAMETER(pl, double, mag_up, 1, "");
 DEFINE_PARAMETER(pl, int, n_mu_m, 0, "");
 DEFINE_PARAMETER(pl, int, n_mu_p, 0, "");
 
-DEFINE_PARAMETER(pl, double, mag_mu_m, 1, "");
+DEFINE_PARAMETER(pl, double, mag_mu_m, 5, "");
 DEFINE_PARAMETER(pl, double, mag_mu_p, 1, "");
 
 DEFINE_PARAMETER(pl, double, mu_iter_num, 1, "");
@@ -792,8 +792,8 @@ std::vector<CF_DIM *> DIM( ifc_phi_x_cf,
                            ifc_phi_z_cf );
 
 // the effective LSF
-mls_eff_cf_t dom_phi_eff_cf(&dom_phi_cf, &dom_acn);
-mls_eff_cf_t ifc_phi_eff_cf(&ifc_phi_cf, &ifc_acn);
+mls_eff_cf_t dom_phi_eff_cf;
+mls_eff_cf_t ifc_phi_eff_cf;
 
 class phi_eff_cf_t : public CF_DIM
 {
@@ -1072,6 +1072,9 @@ int main (int argc, char* argv[])
 
   pl.get_all(cmd);
 
+  dom_phi_eff_cf.set(dom_phi_cf, dom_acn);
+  ifc_phi_eff_cf.set(ifc_phi_cf, ifc_acn);
+
   if (mpi.rank() == 0) pl.print_all();
   if (mpi.rank() == 0 && save_params) {
     std::ostringstream file;
@@ -1326,6 +1329,7 @@ int main (int argc, char* argv[])
               Vec sol; double *sol_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &sol); CHKERRXX(ierr);
               Vec sol2; ierr = VecCreateGhostNodes(p4est, nodes, &sol2); CHKERRXX(ierr);
 
+//              my_p4est_poisson_nodes_mls_sc_t solver(&ngbd_n);
               my_p4est_poisson_nodes_mls_t solver(&ngbd_n);
 
               solver.set_jump_scheme(jc_scheme);
@@ -1344,6 +1348,7 @@ int main (int argc, char* argv[])
 
               solver.set_wc(bc_wall_type, u_cf);
               solver.set_rhs(rhs_m, rhs_p);
+//              solver.set_diag_add(diag_m, diag_p);
               solver.set_diag(diag_m, diag_p);
 
               solver.set_use_taylor_correction(taylor_correction);

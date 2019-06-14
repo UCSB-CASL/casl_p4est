@@ -642,7 +642,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
     ptwise_surfgen_points.clear();
     ptwise_jump_points.clear();
 
-    jump_scaling_.resize(nodes_->num_owned_indeps);
+    jump_scaling_.resize(nodes_->num_owned_indeps, 1.);
   }
 
   // get access to vectors
@@ -3910,8 +3910,9 @@ void my_p4est_poisson_nodes_mls_t::discretize_jump(bool setup_rhs, p4est_locidx_
                   coeff_y_term[nn_000]*normal[1],
                   coeff_z_term[nn_000]*normal[2]);
 
-        if (infc_.phi_eff_ptr[n] > 0) scaling           = 1. - coeff_000;
-        else                          w_ghosts[nn_000] += coeff_000;
+        w_ghosts[nn_000] += coeff_000;
+
+        if (infc_.phi_eff_ptr[n] > 0) scaling = 1. - coeff_000;
       }
       else
       {
@@ -3929,8 +3930,9 @@ void my_p4est_poisson_nodes_mls_t::discretize_jump(bool setup_rhs, p4est_locidx_
                   coeff_y_term[nn_000]*normal[1],
                   coeff_z_term[nn_000]*normal[2]);
 
-        if (infc_.phi_eff_ptr[n] < 0) scaling           = 1. - coeff_000;
-        else                          w_ghosts[nn_000] += coeff_000;
+        w_ghosts[nn_000] += coeff_000;
+
+        if (infc_.phi_eff_ptr[n] < 0) scaling = 1. - coeff_000;
       }
 
       for (int nei=0; nei<num_neighbors_cube; ++nei)
@@ -3943,7 +3945,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_jump(bool setup_rhs, p4est_locidx_
         {
           row_jump_aux->push_back(mat_entry_t(neighbors[i], w_ghosts[i]));
           (neighbors[i] < nodes_->num_owned_indeps) ? ++d_nnz_jump_aux:
-                                             ++o_nnz_jump_aux;
+                                                      ++o_nnz_jump_aux;
         }
       }
 
@@ -3952,9 +3954,10 @@ void my_p4est_poisson_nodes_mls_t::discretize_jump(bool setup_rhs, p4est_locidx_
 
     if (setup_rhs)
     {
+      if (there_is_jump_mu_ && !new_submat_main_) scaling = jump_scaling_[n];
       double flux_proj  = use_ptwise_jump_ ? ptwise_jump_fluxes->at(infc_pieces_map.get_idx(n,0)) : jc_flux_ [0]->value(xyz_pr);
       double value_proj = use_ptwise_jump_ ? ptwise_jump_values->at(infc_pieces_map.get_idx(n,0)) : jc_value_[0]->value(xyz_pr);
-      rhs_jump_ptr[n]   = (sign*value_proj + sign*dist*flux_proj/( sign_to_use < 0 ? mu_p_proj : mu_m_proj))/jump_scaling_[n];
+      rhs_jump_ptr[n]   = (sign*value_proj + sign*dist*flux_proj/( sign_to_use < 0 ? mu_p_proj : mu_m_proj))/scaling;
     }
   }
 

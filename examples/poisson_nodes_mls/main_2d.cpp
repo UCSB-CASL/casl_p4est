@@ -267,7 +267,7 @@ DEFINE_PARAMETER(pl, bool, save_matrix_ascii,  1, "Save the matrix in ASCII MATL
 DEFINE_PARAMETER(pl, bool, save_matrix_binary, 0, "Save the matrix in BINARY MATLAB format");
 DEFINE_PARAMETER(pl, bool, save_convergence,   1, "Save convergence results");
 
-DEFINE_PARAMETER(pl, int, n_example, 9, "Predefined example");
+DEFINE_PARAMETER(pl, int, n_example, 12, "Predefined example");
 
 void set_example(int n_example)
 {
@@ -423,8 +423,8 @@ void set_example(int n_example)
 
     case 9: // shperical interface
 
-      n_um = 11; mag_um = 1; n_mu_m = 1; mag_mu_m = 10; n_diag_m = 0; mag_diag_m = 1;
-      n_up = 12; mag_up = 1; n_mu_p = 0; mag_mu_p =  1; n_diag_p = 0; mag_diag_p = 1;
+      n_um = 11; mag_um = 1; n_mu_m = 0; mag_mu_m = 5; n_diag_m = 0; mag_diag_m = 1;
+      n_up = 12; mag_up = 1; n_mu_p = 0; mag_mu_p = 1; n_diag_p = 0; mag_diag_p = 1;
 
       infc_present_00 = 1; infc_geom_00 = 1; infc_opn_00 = MLS_INT;
       infc_present_01 = 0; infc_geom_01 = 0; infc_opn_01 = MLS_INT;
@@ -474,8 +474,8 @@ void set_example(int n_example)
 
     case 12: // curvy interface in an annular region from (Bochkov&Gibou, JCP, 2019)
 
-      n_um = 11; mag_um = 1; n_mu_m = 0; mag_mu_m =  1; n_diag_m = 0; mag_diag_m = 1;
-      n_up = 12; mag_up = 1; n_mu_p = 1; mag_mu_p =  1; n_diag_p = 0; mag_diag_p = 1;
+      n_um = 11; mag_um = 1; n_mu_m = 1; mag_mu_m = 10; n_diag_m = 0; mag_diag_m = 1;
+      n_up = 12; mag_up = 1; n_mu_p = 0; mag_mu_p =  1; n_diag_p = 0; mag_diag_p = 1;
 
       infc_present_00 = 1; infc_geom_00 = 4; infc_opn_00 = MLS_INT;
       infc_present_01 = 0; infc_geom_01 = 0; infc_opn_01 = MLS_INT;
