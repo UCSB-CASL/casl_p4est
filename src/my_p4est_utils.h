@@ -2180,7 +2180,7 @@ struct interface_point_cartesian_t
   short          dir;
   double         dist;
   interface_point_cartesian_t (p4est_locidx_t n=-1,int dir=0, double dist=0)
-    : dir(dir), dist(dist) {}
+    : n(n), dir(dir), dist(dist) {}
 
   inline void get_xyz(p4est_t *p4est, p4est_nodes_t *nodes, double *xyz)
   {
@@ -2260,15 +2260,15 @@ struct points_around_node_map_t
   std::vector<int> offset;
 
   points_around_node_map_t(int num_nodes=0)
-    : size(num_nodes,0), offset(num_nodes+1, 0) {}
+    : size(num_nodes,0), offset(num_nodes+1, 0), count(0) {}
 
-  inline void reinitialize(int num_nodes) { size.assign(num_nodes, 0); offset.assign(num_nodes+1, 0); }
+  inline void reinitialize(int num_nodes) { size.assign(num_nodes, 0); offset.assign(num_nodes+1, 0); count = 0; }
 
-  inline void add_point(p4est_locidx_t n) { ++size[n]; offset[n+1] = offset[n]+size[n]; }
+  inline void add_point(p4est_locidx_t n) { ++size[n]; count++; }
   inline int  get_idx(p4est_locidx_t n, int i) { return offset[n] + i; }
   inline int  get_num_points_node(p4est_locidx_t n) { return size[n]; }
   inline int  get_num_points_total() { return count; }
-  inline void recompute_offsets()
+  inline void compute_offsets()
   {
     offset[0] = 0;
     for (int i=1; i<size.size(); ++i)

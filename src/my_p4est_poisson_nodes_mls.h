@@ -341,6 +341,32 @@ public:
   void     save_wall_data(p4est_locidx_t n, vector<int> &wall_id, vector<double> &wall_area, vector<interface_point_t> &wall_xyz);
   void retrieve_wall_data(p4est_locidx_t n, vector<int> &wall_id, vector<double> &wall_area, vector<interface_point_t> &wall_xyz);
 
+  inline int ptwise_dirichlet_size() { return bdry_cart_points_map.count; }
+  inline int ptwise_neumann_size()   { return bdry_pieces_map.count; }
+  inline int ptwise_robin_size()     { return bdry_pieces_map.count; }
+  inline int ptwise_jump_size()      { return infc_pieces_map.count; }
+
+  inline int ptwise_dirichlet_size(p4est_locidx_t n) { return bdry_cart_points_map.size[n]; }
+  inline int ptwise_neumann_size  (p4est_locidx_t n) { return bdry_pieces_map.size[n]; }
+  inline int ptwise_robin_size    (p4est_locidx_t n) { return bdry_pieces_map.size[n]; }
+  inline int ptwise_jump_size     (p4est_locidx_t n) { return infc_pieces_map.size[n]; }
+
+  inline int ptwise_dirichlet_get_id(int i) { return bdry_cart_points_id[i]; }
+  inline int ptwise_neumann_get_id  (int i) { return bdry_pieces_id[i]; }
+  inline int ptwise_robin_get_id    (int i) { return bdry_pieces_id[i]; }
+  inline int ptwise_jump_get_id     (int i) { return infc_pieces_id[i]; }
+
+  inline int ptwise_dirichlet_get_idx(p4est_locidx_t n, int i) { return bdry_cart_points_map.get_idx(n,i); }
+  inline int ptwise_neumann_get_idx  (p4est_locidx_t n, int i) { return bdry_pieces_map.get_idx(n,i); }
+  inline int ptwise_robin_get_idx    (p4est_locidx_t n, int i) { return bdry_pieces_map.get_idx(n,i); }
+  inline int ptwise_jump_get_idx     (p4est_locidx_t n, int i) { return infc_pieces_map.get_idx(n,i); }
+
+  inline void ptwise_dirichlet_get_xyz(int i, double xyz[]) { return bdry_cart_points     [i].get_xyz(p4est_, nodes_, xyz); }
+  inline void ptwise_neumann_get_xyz  (int i, double xyz[]) { return ptwise_neumann_points[i].get_xyz(xyz); }
+  inline void ptwise_robin_get_xyz    (int i, double xyz[]) { return ptwise_robin_points  [i].get_xyz(xyz); }
+  inline void ptwise_surfgen_get_xyz  (int i, double xyz[]) { return ptwise_surfgen_points[i].get_xyz(xyz); }
+  inline void ptwise_jump_get_xyz     (int i, double xyz[]) { return ptwise_jump_points   [i].get_xyz(xyz); }
+
   my_p4est_poisson_nodes_mls_t(const my_p4est_node_neighbors_t *ngbd);
   ~my_p4est_poisson_nodes_mls_t();
 
@@ -489,7 +515,7 @@ public:
   inline void set_first_order_neumann_wall(bool value) { neumann_wall_first_order_ = value; }
   inline void set_enfornce_diag_scaling   (bool value) { enfornce_diag_scaling_    = value; }
   inline void set_use_centroid_always     (bool value) { use_centroid_always_      = value; }
-  inline void set_store_finite_volumes_   (bool value) { store_finite_volumes_     = value; }
+  inline void set_store_finite_volumes    (bool value) { store_finite_volumes_     = value; }
 
   inline void set_phi_perturbation    (double value) { phi_perturbation_     = value; }
   inline void set_domain_rel_thresh   (double value) { domain_rel_thresh_    = value; }

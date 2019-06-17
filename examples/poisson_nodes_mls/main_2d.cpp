@@ -224,7 +224,7 @@ DEFINE_PARAMETER(pl, int, jc_flux_03, 0, "0 - automatic, others - hardcoded");
 DEFINE_PARAMETER(pl, int,  jc_scheme,         0, "Discretization scheme for interface conditions (0 - FVM, 1 - FDM)");
 DEFINE_PARAMETER(pl, int,  jc_sub_scheme,     0, "Interpolation subscheme for interface conditions (0 - from slow region, 1 - from fast region, 2 - based on nodes availability)");
 DEFINE_PARAMETER(pl, int,  integration_order, 1, "Select integration order (1 - linear, 2 - quadratic)");
-DEFINE_PARAMETER(pl, bool, sc_scheme,         0, "Use super-convergent scheme");
+DEFINE_PARAMETER(pl, bool, sc_scheme,         1, "Use super-convergent scheme");
 
 // for symmetric scheme:
 DEFINE_PARAMETER(pl, bool, taylor_correction,      1, "Use Taylor correction to approximate Robin term (symmetric scheme)");
@@ -232,6 +232,11 @@ DEFINE_PARAMETER(pl, bool, kink_special_treatment, 1, "Use the special treatment
 
 // for superconvergent scheme:
 DEFINE_PARAMETER(pl, bool, try_remove_hanging_cells, 0, "Ask solver to eliminate hanging cells");
+
+DEFINE_PARAMETER(pl, bool, store_finite_volumes,   1, "");
+DEFINE_PARAMETER(pl, bool, apply_bc_pointwise,     1, "");
+DEFINE_PARAMETER(pl, bool, use_centroid_always,    1, "");
+DEFINE_PARAMETER(pl, bool, sample_bc_node_by_node, 1, "");
 
 //-------------------------------------
 // level-set representation parameters
@@ -267,7 +272,7 @@ DEFINE_PARAMETER(pl, bool, save_matrix_ascii,  1, "Save the matrix in ASCII MATL
 DEFINE_PARAMETER(pl, bool, save_matrix_binary, 0, "Save the matrix in BINARY MATLAB format");
 DEFINE_PARAMETER(pl, bool, save_convergence,   1, "Save convergence results");
 
-DEFINE_PARAMETER(pl, int, n_example, 12, "Predefined example");
+DEFINE_PARAMETER(pl, int, n_example, 8, "Predefined example");
 
 void set_example(int n_example)
 {
@@ -299,7 +304,7 @@ void set_example(int n_example)
       infc_present_02 = 0;
       infc_present_03 = 0;
 
-      bdry_present_00 = 1; bdry_geom_00 = 1; bdry_opn_00 = MLS_INT; bc_coeff_00 = 0; bc_coeff_00_mag = 1; bc_type_00 = ROBIN;
+      bdry_present_00 = 1; bdry_geom_00 = 1; bdry_opn_00 = MLS_INT; bc_coeff_00 = 0; bc_coeff_00_mag = 1; bc_type_00 = DIRICHLET;
       bdry_present_01 = 0; bdry_geom_01 = 0; bdry_opn_01 = MLS_INT; bc_coeff_01 = 0; bc_coeff_01_mag = 1; bc_type_01 = ROBIN;
       bdry_present_02 = 0; bdry_geom_02 = 0; bdry_opn_02 = MLS_INT; bc_coeff_02 = 0; bc_coeff_02_mag = 1; bc_type_02 = ROBIN;
       bdry_present_03 = 0; bdry_geom_03 = 0; bdry_opn_03 = MLS_INT; bc_coeff_03 = 0; bc_coeff_03_mag = 1; bc_type_03 = ROBIN;
@@ -1826,6 +1831,8 @@ int main (int argc, char* argv[])
 
               my_p4est_poisson_nodes_mls_t solver(&ngbd_n);
 
+              solver.set_use_centroid_always(use_centroid_always);
+              solver.set_store_finite_volumes(store_finite_volumes);
               solver.set_jump_scheme(jc_scheme);
               solver.set_jump_sub_scheme(jc_sub_scheme);
               solver.set_use_sc_scheme(sc_scheme);
@@ -1855,6 +1862,110 @@ int main (int argc, char* argv[])
 
               solver.set_use_taylor_correction(taylor_correction);
               solver.set_kink_treatment(kink_special_treatment);
+
+              std::vector<double> ptwise_dirichlet_values;
+
+              std::vector<double> ptwise_neumann_values;
+              std::vector<double> ptwise_robin_values;
+              std::vector<double> ptwise_robin_coeffs;
+
+              std::vector<double> ptwise_surfgen_values;
+              std::vector<double> ptwise_jump_values;
+              std::vector<double> ptwise_jump_fluxes;
+
+              if (apply_bc_pointwise)
+              {
+                solver.preassemble_linear_system();
+
+                ptwise_dirichlet_values.assign(solver.ptwise_dirichlet_size(), 0);
+
+                ptwise_neumann_values.assign(solver.ptwise_neumann_size(), 0);
+                ptwise_robin_values.assign(solver.ptwise_robin_size(), 0);
+                ptwise_robin_coeffs.assign(solver.ptwise_robin_size(), 0);
+
+                ptwise_surfgen_values.assign(solver.ptwise_jump_size(), 0);
+                ptwise_jump_values.assign(solver.ptwise_jump_size(), 0);
+                ptwise_jump_fluxes.assign(solver.ptwise_jump_size(), 0);
+
+                double xyz[P4EST_DIM];
+                if (sample_bc_node_by_node)
+                {
+                  // sample dirichlet values
+                  foreach_local_node(n, nodes)
+                  {
+                    for (int i = 0; i < solver.ptwise_dirichlet_size(n); ++i)
+                    {
+                      int idx = solver.ptwise_dirichlet_get_idx(n,i);
+                      solver.ptwise_dirichlet_get_xyz(idx, xyz);
+                      ptwise_dirichlet_values[idx] = bc_value_cf_all[solver.ptwise_dirichlet_get_id(idx)].value(xyz);
+                    }
+                  }
+
+                  // sample neumann and robin values
+                  foreach_local_node(n, nodes)
+                  {
+                    for (int i = 0; i < solver.ptwise_neumann_size(n); ++i)
+                    {
+                      int idx = solver.ptwise_neumann_get_idx(n,i);
+                      solver.ptwise_neumann_get_xyz(idx, xyz);
+                      ptwise_neumann_values[idx] = bc_value_cf_all[solver.ptwise_neumann_get_id(idx)].value(xyz);
+
+                      solver.ptwise_robin_get_xyz(idx, xyz);
+                      ptwise_robin_values[idx] = bc_value_cf_all[solver.ptwise_robin_get_id(idx)].value(xyz);
+                      ptwise_robin_coeffs[idx] = bc_coeff_cf_all[solver.ptwise_robin_get_id(idx)].value(xyz);
+                    }
+                  }
+
+                  // sample jump conditions
+                  foreach_local_node(n, nodes)
+                  {
+                    for (int i = 0; i < solver.ptwise_jump_size(n); ++i)
+                    {
+                      int idx = solver.ptwise_jump_get_idx(n,i);
+                      solver.ptwise_surfgen_get_xyz(idx, xyz);
+                      ptwise_surfgen_values[idx] = jc_flux_cf_all[solver.ptwise_jump_get_id(idx)].value(xyz);
+
+                      solver.ptwise_jump_get_xyz(idx, xyz);
+                      ptwise_jump_values[idx] = jc_value_cf_all[solver.ptwise_jump_get_id(idx)].value(xyz);
+                      ptwise_jump_fluxes[idx] = jc_flux_cf_all [solver.ptwise_jump_get_id(idx)].value(xyz);
+                    }
+                  }
+                } else {
+
+                  // sample dirichlet values
+                  for (int i = 0; i < solver.ptwise_dirichlet_size(); ++i)
+                  {
+                    solver.ptwise_dirichlet_get_xyz(i, xyz);
+                    ptwise_dirichlet_values[i] = bc_value_cf_all[solver.ptwise_dirichlet_get_id(i)].value(xyz);
+                  }
+
+                  // sample neumann and robin values
+                  for (int i = 0; i < solver.ptwise_neumann_size(); ++i)
+                  {
+                    solver.ptwise_neumann_get_xyz(i, xyz);
+                    ptwise_neumann_values[i] = bc_value_cf_all[solver.ptwise_neumann_get_id(i)].value(xyz);
+
+                    solver.ptwise_robin_get_xyz(i, xyz);
+                    ptwise_robin_values[i] = bc_value_cf_all[solver.ptwise_robin_get_id(i)].value(xyz);
+                    ptwise_robin_coeffs[i] = bc_coeff_cf_all[solver.ptwise_robin_get_id(i)].value(xyz);
+                  }
+
+                  // sample jump conditions
+                  for (int i = 0; i < solver.ptwise_jump_size(); ++i)
+                  {
+                    solver.ptwise_surfgen_get_xyz(i, xyz);
+                    ptwise_surfgen_values[i] = jc_flux_cf_all[solver.ptwise_jump_get_id(i)].value(xyz);
+
+                    solver.ptwise_jump_get_xyz(i, xyz);
+                    ptwise_jump_values[i] = jc_value_cf_all[solver.ptwise_jump_get_id(i)].value(xyz);
+                    ptwise_jump_fluxes[i] = jc_flux_cf_all [solver.ptwise_jump_get_id(i)].value(xyz);
+                  }
+                }
+
+                solver.set_ptwise_dirichlet(ptwise_dirichlet_values);
+                solver.set_ptwise_robin(ptwise_neumann_values, ptwise_robin_values, ptwise_robin_coeffs);
+                solver.set_ptwise_jump(ptwise_surfgen_values, ptwise_jump_values, ptwise_jump_fluxes);
+              }
 
               solver.solve(sol);
 

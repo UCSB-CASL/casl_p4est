@@ -617,25 +617,24 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
   }
 
   // structures for quick reassembling
-  if (new_submat_main_ && there_is_dirichlet_)
+  if (new_submat_main_)
   {
     bdry_cart_points_map.reinitialize(nodes_->num_owned_indeps);
     bdry_cart_points_id.clear();
     bdry_cart_points.clear();
     ptwise_dirichlet_weights.clear();
-  }
 
-  if (new_submat_main_ && (there_is_robin_ || there_is_neumann_))
-  {
     bdry_pieces_map.reinitialize(nodes_->num_owned_indeps);
     bdry_pieces_id.clear();
     bdry_pieces_area.clear();
     ptwise_neumann_points.clear();
     ptwise_robin_points.clear();
-  }
 
-  if (new_submat_main_ && there_is_jump_)
-  {
+    wall_pieces_map.reinitialize(nodes_->num_owned_indeps);
+    wall_pieces_id.clear();
+    wall_pieces_area.clear();
+    wall_pieces_centroid.clear();
+
     infc_pieces_map.reinitialize(nodes_->num_owned_indeps);
     infc_pieces_id.clear();
     infc_pieces_area.clear();
@@ -1086,6 +1085,14 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
 
   // interpolators
   interpolators_finalize();
+
+  if (new_submat_main_)
+  {
+    bdry_cart_points_map.compute_offsets();
+    bdry_pieces_map.compute_offsets();
+    wall_pieces_map.compute_offsets();
+    infc_pieces_map.compute_offsets();
+  }
 
 //  if (setup_rhs && there_is_jump_)
 //  {
@@ -2153,7 +2160,10 @@ void my_p4est_poisson_nodes_mls_t::discretize_dirichlet(bool setup_rhs, p4est_lo
 
   double bdry_phi_eff_000 = bdry_.num_phi == 0 ? -1. : bdry_.phi_eff_ptr[n];
 
-  row_main->clear();
+  if (new_submat_main_)
+  {
+    row_main->clear();
+  }
 
   // far away from the boundary
   if (bdry_phi_eff_000 > 0.)
@@ -2182,23 +2192,26 @@ void my_p4est_poisson_nodes_mls_t::discretize_dirichlet(bool setup_rhs, p4est_lo
   std::vector<double> bdry_point_dist  (P4EST_FACES, 0);
   std::vector<double> bdry_point_weight(P4EST_FACES, 0);
 
-  if (new_submat_main_)
+  if (there_is_dirichlet_)
   {
-    find_interface_points(n, ngbd_, bdry_.opn, bdry_.phi_ptr, DIM(bdry_.phi_xx_ptr, bdry_.phi_yy_ptr, bdry_.phi_zz_ptr), bdry_point_id.data(), bdry_point_dist.data());
-
-    int num_interfaces = 0;
-    foreach_direction(i)
+    if (new_submat_main_)
     {
-      if (bdry_point_id[i] >= 0)
+      find_interface_points(n, ngbd_, bdry_.opn, bdry_.phi_ptr, DIM(bdry_.phi_xx_ptr, bdry_.phi_yy_ptr, bdry_.phi_zz_ptr), bdry_point_id.data(), bdry_point_dist.data());
+
+      int num_interfaces = 0;
+      foreach_direction(i)
       {
-        is_interface[i] = true;
-        ++num_interfaces;
+        if (bdry_point_id[i] >= 0)
+        {
+          is_interface[i] = true;
+          ++num_interfaces;
+        }
       }
     }
-  }
-  else
-  {
-    retrieve_cart_points(n, is_interface, bdry_point_id, bdry_point_dist, bdry_point_weight);
+    else
+    {
+      retrieve_cart_points(n, is_interface, bdry_point_id, bdry_point_dist, bdry_point_weight);
+    }
   }
 
   // check whether boundary goes exactly through the node
@@ -2612,34 +2625,37 @@ void my_p4est_poisson_nodes_mls_t::discretize_dirichlet(bool setup_rhs, p4est_lo
     {
       rhs_ptr[n] = rhs_loc_ptr[n];
 
-      // get boundary conditions values
-      std::vector<double> bc_values(P4EST_FACES, 0);
-
-      if (use_ptwise_dirichlet_)
+      if (there_is_dirichlet_)
       {
-        for (int i=0; i<bdry_cart_points_map.size[n]; ++i)
+        // get boundary conditions values
+        std::vector<double> bc_values(P4EST_FACES, 0);
+
+        if (use_ptwise_dirichlet_)
         {
-          int idx = bdry_cart_points_map.get_idx(n,i);
-          bc_values[bdry_cart_points[idx].dir] = ptwise_dirichlet_values->at(idx);
+          for (int i=0; i<bdry_cart_points_map.size[n]; ++i)
+          {
+            int idx = bdry_cart_points_map.get_idx(n,i);
+            bc_values[bdry_cart_points[idx].dir] = ptwise_dirichlet_values->at(idx);
+          }
         }
-      }
-      else
-      {
-        if(is_interface[dir::f_m00]) bc_values[dir::f_m00] = (*bc_value_[bdry_point_id[dir::f_m00]])( DIM(x_C - bdry_point_dist[dir::f_m00], y_C, z_C) );
-        if(is_interface[dir::f_p00]) bc_values[dir::f_p00] = (*bc_value_[bdry_point_id[dir::f_p00]])( DIM(x_C + bdry_point_dist[dir::f_p00], y_C, z_C) );
+        else
+        {
+          if(is_interface[dir::f_m00]) bc_values[dir::f_m00] = (*bc_value_[bdry_point_id[dir::f_m00]])( DIM(x_C - bdry_point_dist[dir::f_m00], y_C, z_C) );
+          if(is_interface[dir::f_p00]) bc_values[dir::f_p00] = (*bc_value_[bdry_point_id[dir::f_p00]])( DIM(x_C + bdry_point_dist[dir::f_p00], y_C, z_C) );
 
-        if(is_interface[dir::f_0m0]) bc_values[dir::f_0m0] = (*bc_value_[bdry_point_id[dir::f_0m0]])( DIM(x_C, y_C - bdry_point_dist[dir::f_0m0], z_C) );
-        if(is_interface[dir::f_0p0]) bc_values[dir::f_0p0] = (*bc_value_[bdry_point_id[dir::f_0p0]])( DIM(x_C, y_C + bdry_point_dist[dir::f_0p0], z_C) );
+          if(is_interface[dir::f_0m0]) bc_values[dir::f_0m0] = (*bc_value_[bdry_point_id[dir::f_0m0]])( DIM(x_C, y_C - bdry_point_dist[dir::f_0m0], z_C) );
+          if(is_interface[dir::f_0p0]) bc_values[dir::f_0p0] = (*bc_value_[bdry_point_id[dir::f_0p0]])( DIM(x_C, y_C + bdry_point_dist[dir::f_0p0], z_C) );
 #ifdef P4_TO_P8
-        if(is_interface[dir::f_00m]) bc_values[dir::f_00m] = (*bc_value_[bdry_point_id[dir::f_00m]])( DIM(x_C, y_C, z_C - bdry_point_dist[dir::f_00m]) );
-        if(is_interface[dir::f_00p]) bc_values[dir::f_00p] = (*bc_value_[bdry_point_id[dir::f_00p]])( DIM(x_C, y_C, z_C + bdry_point_dist[dir::f_00p]) );
+          if(is_interface[dir::f_00m]) bc_values[dir::f_00m] = (*bc_value_[bdry_point_id[dir::f_00m]])( DIM(x_C, y_C, z_C - bdry_point_dist[dir::f_00m]) );
+          if(is_interface[dir::f_00p]) bc_values[dir::f_00p] = (*bc_value_[bdry_point_id[dir::f_00p]])( DIM(x_C, y_C, z_C + bdry_point_dist[dir::f_00p]) );
 #endif
-      }
+        }
 
-      // add to rhs boundary conditions
-      foreach_direction(i)
-      {
-        if (is_interface[i]) rhs_ptr[n] -= bdry_point_weight[i] * bc_values[i];
+        // add to rhs boundary conditions
+        foreach_direction(i)
+        {
+          if (is_interface[i]) rhs_ptr[n] -= bdry_point_weight[i] * bc_values[i];
+        }
       }
 
       // add to rhs wall conditions
@@ -2660,7 +2676,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_dirichlet(bool setup_rhs, p4est_lo
   }
 
   // save information about interface points
-  if (new_submat_main_)
+  if (new_submat_main_ & there_is_dirichlet_)
   {
     save_cart_points(n, is_interface, bdry_point_id, bdry_point_dist, bdry_point_weight);
   }
@@ -3378,7 +3394,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
                   double normal[P4EST_DIM];
                   compute_normals(qnnn, bdry_.phi_ptr[id], normal);
                   bdry_xyz[i].get_xyz(xyz_pr);
-                  foreach_dimension(dim) dist += normal[dim]*(xyz_C[dim] - dxyz_pr[dim]);
+                  foreach_dimension(dim) dist += normal[dim]*(xyz_C[dim] - xyz_pr[dim]);
                 }
                 else
                 {
