@@ -29,7 +29,6 @@
 #include <src/my_p8est_log_wrappers.h>
 #include <src/my_p8est_node_neighbors.h>
 #include <src/my_p8est_level_set.h>
-#include <src/my_p8est_poisson_nodes_mls_sc.h>
 #include <src/my_p8est_poisson_nodes_mls.h>
 #include <src/my_p8est_interpolation_nodes.h>
 #include <src/my_p8est_integration_mls.h>
@@ -49,7 +48,6 @@
 #include <src/my_p4est_log_wrappers.h>
 #include <src/my_p4est_node_neighbors.h>
 #include <src/my_p4est_level_set.h>
-#include <src/my_p4est_poisson_nodes_mls_sc.h>
 #include <src/my_p4est_poisson_nodes_mls.h>
 #include <src/my_p4est_poisson_jump_nodes_voronoi.h>
 #include <src/my_p4est_interpolation_nodes.h>
@@ -112,16 +110,17 @@ DEFINE_PARAMETER(pl, int, num_shifts_x_dir, 1, "Number of grid shifts in the x-d
 DEFINE_PARAMETER(pl, int, num_shifts_y_dir, 1, "Number of grid shifts in the y-direction");
 DEFINE_PARAMETER(pl, int, num_shifts_z_dir, 1, "Number of grid shifts in the z-direction");
 #else
-DEFINE_PARAMETER(pl, int, lmin, 6, "Min level of the tree");
-DEFINE_PARAMETER(pl, int, lmax, 6, "Max level of the tree");
+DEFINE_PARAMETER(pl, int, lmin, 10, "Min level of the tree");
+DEFINE_PARAMETER(pl, int, lmax, 13, "Max level of the tree");
 
-DEFINE_PARAMETER(pl, int, num_splits,           2, "Number of recursive splits");
+DEFINE_PARAMETER(pl, int, num_splits,           1, "Number of recursive splits");
 DEFINE_PARAMETER(pl, int, num_splits_per_split, 1, "Number of additional resolutions");
 
 DEFINE_PARAMETER(pl, int, num_shifts_x_dir, 1, "Number of grid shifts in the x-direction");
 DEFINE_PARAMETER(pl, int, num_shifts_y_dir, 1, "Number of grid shifts in the y-direction");
 DEFINE_PARAMETER(pl, int, num_shifts_z_dir, 1, "Number of grid shifts in the z-direction");
 #endif
+
 DEFINE_PARAMETER(pl, int, iter_start, 0, "Skip n first iterations");
 DEFINE_PARAMETER(pl, double, lip, 1.5, "Lipschitz constant");
 
@@ -223,7 +222,7 @@ DEFINE_PARAMETER(pl, int, jc_flux_03, 0, "0 - automatic, others - hardcoded");
 //-------------------------------------
 DEFINE_PARAMETER(pl, int,  jc_scheme,         0, "Discretization scheme for interface conditions (0 - FVM, 1 - FDM)");
 DEFINE_PARAMETER(pl, int,  jc_sub_scheme,     0, "Interpolation subscheme for interface conditions (0 - from slow region, 1 - from fast region, 2 - based on nodes availability)");
-DEFINE_PARAMETER(pl, int,  integration_order, 1, "Select integration order (1 - linear, 2 - quadratic)");
+DEFINE_PARAMETER(pl, int,  integration_order, 2, "Select integration order (1 - linear, 2 - quadratic)");
 DEFINE_PARAMETER(pl, bool, sc_scheme,         1, "Use super-convergent scheme");
 
 // for symmetric scheme:
@@ -235,8 +234,8 @@ DEFINE_PARAMETER(pl, bool, try_remove_hanging_cells, 0, "Ask solver to eliminate
 
 DEFINE_PARAMETER(pl, bool, store_finite_volumes,   1, "");
 DEFINE_PARAMETER(pl, bool, apply_bc_pointwise,     1, "");
-DEFINE_PARAMETER(pl, bool, use_centroid_always,    1, "");
-DEFINE_PARAMETER(pl, bool, sample_bc_node_by_node, 1, "");
+DEFINE_PARAMETER(pl, bool, use_centroid_always,    0, "");
+DEFINE_PARAMETER(pl, bool, sample_bc_node_by_node, 0, "");
 
 //-------------------------------------
 // level-set representation parameters
@@ -265,14 +264,14 @@ DEFINE_PARAMETER(pl, bool,   scale_errors,         0, "Scale errors by max solut
 //-------------------------------------
 // output
 //-------------------------------------
-DEFINE_PARAMETER(pl, bool, save_vtk,           1, "Save the p4est in vtk format");
-DEFINE_PARAMETER(pl, bool, save_params,        1, "Save list of entered parameters");
+DEFINE_PARAMETER(pl, bool, save_vtk,           0, "Save the p4est in vtk format");
+DEFINE_PARAMETER(pl, bool, save_params,        0, "Save list of entered parameters");
 DEFINE_PARAMETER(pl, bool, save_domain,        0, "Save the reconstruction of an irregular domain (works only in serial!)");
-DEFINE_PARAMETER(pl, bool, save_matrix_ascii,  1, "Save the matrix in ASCII MATLAB format");
+DEFINE_PARAMETER(pl, bool, save_matrix_ascii,  0, "Save the matrix in ASCII MATLAB format");
 DEFINE_PARAMETER(pl, bool, save_matrix_binary, 0, "Save the matrix in BINARY MATLAB format");
-DEFINE_PARAMETER(pl, bool, save_convergence,   1, "Save convergence results");
+DEFINE_PARAMETER(pl, bool, save_convergence,   0, "Save convergence results");
 
-DEFINE_PARAMETER(pl, int, n_example, 8, "Predefined example");
+DEFINE_PARAMETER(pl, int, n_example, 10, "Predefined example");
 
 void set_example(int n_example)
 {
@@ -1724,6 +1723,7 @@ int main (int argc, char* argv[])
 
               my_p4est_hierarchy_t hierarchy(p4est,ghost, &brick);
               my_p4est_node_neighbors_t ngbd_n(&hierarchy,nodes);
+              ngbd_n.init_neighbors();
 
               my_p4est_level_set_t ls(&ngbd_n);
 

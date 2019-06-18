@@ -37,6 +37,31 @@ PetscLogEvent log_my_p4est_poisson_nodes_jump_rhsvec_setup;
 PetscLogEvent log_my_p4est_poisson_nodes_solve;
 PetscLogEvent log_my_p4est_poisson_nodes_KSPSolve;
 
+// my_p4est_poisson_nodes_mls_t
+PetscLogEvent log_my_p4est_poisson_nodes_mls_matrix_preallocation;
+PetscLogEvent log_my_p4est_poisson_nodes_mls_setup_linear_system;
+PetscLogEvent log_my_p4est_poisson_nodes_mls_discretize_matrix_and_rhs;
+PetscLogEvent log_my_p4est_poisson_nodes_mls_discretize_matrix;
+PetscLogEvent log_my_p4est_poisson_nodes_mls_discretize_rhs;
+PetscLogEvent log_my_p4est_poisson_nodes_mls_preassemble_linear_system;
+PetscLogEvent log_my_p4est_poisson_nodes_mls_KSPSolve;
+PetscLogEvent log_my_p4est_poisson_nodes_mls_solve;
+PetscLogEvent log_my_p4est_poisson_nodes_mls_compute_finite_volumes;
+PetscLogEvent log_my_p4est_poisson_nodes_mls_compute_finite_volumes_connections;
+PetscLogEvent log_my_p4est_poisson_nodes_mls_determine_node_types;
+PetscLogEvent log_my_p4est_poisson_nodes_mls_discretize;
+PetscLogEvent log_my_p4est_poisson_nodes_mls_assemble_submatrix;
+PetscLogEvent log_my_p4est_poisson_nodes_mls_correct_rhs_jump;
+PetscLogEvent log_my_p4est_poisson_nodes_mls_correct_submat_main_jump;
+PetscLogEvent log_my_p4est_poisson_nodes_mls_assemble_matrix;
+PetscLogEvent log_my_p4est_poisson_nodes_mls_assemble_submat_main;
+PetscLogEvent log_my_p4est_poisson_nodes_mls_assemble_submat_jump;
+PetscLogEvent log_my_p4est_poisson_nodes_mls_add_submat_robin;
+PetscLogEvent log_my_p4est_poisson_nodes_mls_add_submat_diag;
+PetscLogEvent log_my_p4est_poisson_nodes_mls_scale_matrix_by_diagonal;
+PetscLogEvent log_my_p4est_poisson_nodes_mls_scale_rhs_by_diagonal;
+PetscLogEvent log_my_p4est_poisson_nodes_mls_compute_diagonal_scaling;
+
 // my_p4est_poisson_nodes_mls_sc_t
 PetscLogEvent log_my_p4est_poisson_nodes_mls_sc_matrix_preallocation;
 PetscLogEvent log_my_p4est_poisson_nodes_mls_sc_matrix_setup;
@@ -344,6 +369,31 @@ void register_petsc_logs()
   ierr = PetscLogEventRegister("my_p4est_balance                                        ", 0, &log_my_p4est_balance); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_sc_notify                                            ", 0, &log_my_sc_notify); CHKERRXX(ierr);
   ierr = PetscLogEventRegister("my_sc_notify_allgather                                  ", 0, &log_my_sc_notify_allgather); CHKERRXX(ierr);
+
+  // poisson nodes mls
+  ierr = PetscLogEventRegister("my_p4est_poisson_nodes_mls::matrix_preallocation              ", 0, &log_my_p4est_poisson_nodes_mls_matrix_preallocation             ); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_nodes_mls::setup_linear_system               ", 0, &log_my_p4est_poisson_nodes_mls_setup_linear_system              ); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_nodes_mls::discretize_matrix_and_rhs         ", 0, &log_my_p4est_poisson_nodes_mls_discretize_matrix_and_rhs        ); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_nodes_mls::discretize_matrix                 ", 0, &log_my_p4est_poisson_nodes_mls_discretize_matrix                ); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_nodes_mls::discretize_rhs                    ", 0, &log_my_p4est_poisson_nodes_mls_discretize_rhs                   ); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_nodes_mls::preassemble_linear_system         ", 0, &log_my_p4est_poisson_nodes_mls_preassemble_linear_system        ); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_nodes_mls::KSPSolve                          ", 0, &log_my_p4est_poisson_nodes_mls_KSPSolve                         ); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_nodes_mls::solve                             ", 0, &log_my_p4est_poisson_nodes_mls_solve                            ); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_nodes_mls::compute_finite_volumes            ", 0, &log_my_p4est_poisson_nodes_mls_compute_finite_volumes           ); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_nodes_mls::compute_finite_volumes_connections", 0, &log_my_p4est_poisson_nodes_mls_compute_finite_volumes_connections); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_nodes_mls::determine_node_types              ", 0, &log_my_p4est_poisson_nodes_mls_determine_node_types             ); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_nodes_mls::discretize                        ", 0, &log_my_p4est_poisson_nodes_mls_discretize                       ); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_nodes_mls::assemble_submatrix                ", 0, &log_my_p4est_poisson_nodes_mls_assemble_submatrix               ); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_nodes_mls::correct_rhs_jump                  ", 0, &log_my_p4est_poisson_nodes_mls_correct_rhs_jump                 ); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_nodes_mls::correct_submat_main_jump          ", 0, &log_my_p4est_poisson_nodes_mls_correct_submat_main_jump         ); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_nodes_mls::assemble_matrix                   ", 0, &log_my_p4est_poisson_nodes_mls_assemble_matrix                  ); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_nodes_mls::assemble_submat_main              ", 0, &log_my_p4est_poisson_nodes_mls_assemble_submat_main             ); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_nodes_mls::assemble_submat_jump              ", 0, &log_my_p4est_poisson_nodes_mls_assemble_submat_jump             ); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_nodes_mls::add_submat_robin                  ", 0, &log_my_p4est_poisson_nodes_mls_add_submat_robin                 ); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_nodes_mls::add_submat_diag                   ", 0, &log_my_p4est_poisson_nodes_mls_add_submat_diag                  ); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_nodes_mls::scale_matrix_by_diagonal          ", 0, &log_my_p4est_poisson_nodes_mls_scale_matrix_by_diagonal         ); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_nodes_mls::scale_rhs_by_diagonal             ", 0, &log_my_p4est_poisson_nodes_mls_scale_rhs_by_diagonal            ); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_poisson_nodes_mls::compute_diagonal_scaling          ", 0, &log_my_p4est_poisson_nodes_mls_compute_diagonal_scaling         ); CHKERRXX(ierr);
 
   // multialloy
   ierr = PetscLogEventRegister("my_p4est_multialloy::one_step                    ", 0, &log_my_p4est_multialloy_one_step                    ); CHKERRXX(ierr);

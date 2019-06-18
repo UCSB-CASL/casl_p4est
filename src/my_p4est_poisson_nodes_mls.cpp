@@ -20,12 +20,29 @@
 #define PetscLogEventBegin(e, o1, o2, o3, o4) 0
 #define PetscLogEventEnd(e, o1, o2, o3, o4) 0
 #else
-//extern PetscLogEvent log_my_p4est_poisson_nodes_mls_matrix_preallocation;
-//extern PetscLogEvent log_my_p4est_poisson_nodes_mls_matrix_setup;
-//extern PetscLogEvent log_my_p4est_poisson_nodes_mls_rhsvec_setup;
-//extern PetscLogEvent log_my_p4est_poisson_nodes_mls_KSPSolve;
-//extern PetscLogEvent log_my_p4est_poisson_nodes_mls_solve;
-//extern PetscLogEvent log_my_p4est_poisson_nodes_mls_compute_volumes;
+extern PetscLogEvent log_my_p4est_poisson_nodes_mls_matrix_preallocation;
+extern PetscLogEvent log_my_p4est_poisson_nodes_mls_setup_linear_system;
+extern PetscLogEvent log_my_p4est_poisson_nodes_mls_discretize_matrix_and_rhs;
+extern PetscLogEvent log_my_p4est_poisson_nodes_mls_discretize_matrix;
+extern PetscLogEvent log_my_p4est_poisson_nodes_mls_discretize_rhs;
+extern PetscLogEvent log_my_p4est_poisson_nodes_mls_preassemble_linear_system;
+extern PetscLogEvent log_my_p4est_poisson_nodes_mls_KSPSolve;
+extern PetscLogEvent log_my_p4est_poisson_nodes_mls_solve;
+extern PetscLogEvent log_my_p4est_poisson_nodes_mls_compute_finite_volumes;
+extern PetscLogEvent log_my_p4est_poisson_nodes_mls_compute_finite_volumes_connections;
+extern PetscLogEvent log_my_p4est_poisson_nodes_mls_determine_node_types;
+extern PetscLogEvent log_my_p4est_poisson_nodes_mls_discretize;
+extern PetscLogEvent log_my_p4est_poisson_nodes_mls_assemble_submatrix;
+extern PetscLogEvent log_my_p4est_poisson_nodes_mls_correct_rhs_jump;
+extern PetscLogEvent log_my_p4est_poisson_nodes_mls_correct_submat_main_jump;
+extern PetscLogEvent log_my_p4est_poisson_nodes_mls_assemble_matrix;
+extern PetscLogEvent log_my_p4est_poisson_nodes_mls_assemble_submat_main;
+extern PetscLogEvent log_my_p4est_poisson_nodes_mls_assemble_submat_jump;
+extern PetscLogEvent log_my_p4est_poisson_nodes_mls_add_submat_robin;
+extern PetscLogEvent log_my_p4est_poisson_nodes_mls_add_submat_diag;
+extern PetscLogEvent log_my_p4est_poisson_nodes_mls_scale_matrix_by_diagonal;
+extern PetscLogEvent log_my_p4est_poisson_nodes_mls_scale_rhs_by_diagonal;
+extern PetscLogEvent log_my_p4est_poisson_nodes_mls_compute_diagonal_scaling;
 #endif
 #ifndef CASL_LOG_FLOPS
 #undef PetscLogFlops
@@ -39,7 +56,7 @@ my_p4est_poisson_nodes_mls_t::my_p4est_poisson_nodes_mls_t(const my_p4est_node_n
     p4est_(ngbd->p4est),
     nodes_(ngbd->nodes),
     ghost_(ngbd->ghost),
-    brick_  (ngbd->myb),
+    brick_(ngbd->myb),
     bdry_(ngbd_, p4est_, nodes_),
     infc_(ngbd_, p4est_, nodes_),
     mu_m_interp_(ngbd),
@@ -430,14 +447,21 @@ void my_p4est_poisson_nodes_mls_t::compute_mue_dd()
 
 void my_p4est_poisson_nodes_mls_t::preassemble_linear_system()
 {
+  ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_preassemble_linear_system, 0, 0, 0, 0); CHKERRXX(ierr);
+
   setup_linear_system(false);
+
+  ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_mls_preassemble_linear_system, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
 void my_p4est_poisson_nodes_mls_t::solve(Vec solution, bool use_nonzero_guess, bool update_ghost, KSPType ksp_type, PCType pc_type)
 {
-  if (use_sc_scheme_) setup_linear_system(false);
+  ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_solve, 0, 0, 0, 0); CHKERRXX(ierr);
+
   setup_linear_system(true);
   invert_linear_system(solution, use_nonzero_guess, update_ghost, ksp_type, pc_type);
+
+  ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_mls_solve, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
 void my_p4est_poisson_nodes_mls_t::invert_linear_system(Vec solution, bool use_nonzero_guess, bool update_ghost, KSPType ksp_type, PCType pc_type)
@@ -520,7 +544,9 @@ void my_p4est_poisson_nodes_mls_t::invert_linear_system(Vec solution, bool use_n
     ierr = KSPSetType(ksp_, KSPGMRES); CHKERRXX(ierr);
   }
 
+  ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_KSPSolve, 0, 0, 0, 0); CHKERRXX(ierr);
   ierr = KSPSolve(ksp_, rhs_, solution); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_mls_KSPSolve, 0, 0, 0, 0); CHKERRXX(ierr);
   if (matrix_has_nullspace_) {
     ierr = MatNullSpaceDestroy(A_null);
   }
@@ -545,6 +571,7 @@ void my_p4est_poisson_nodes_mls_t::invert_linear_system(Vec solution, bool use_n
 
 void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
 {
+  ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_setup_linear_system, 0, 0, 0, 0); CHKERRXX(ierr);
 #ifdef CASL_THROWS
   if (wc_type_ == NULL || wc_value_ == NULL)
     throw std::domain_error("[CASL_ERROR]: the boundary conditions on walls have not been set.");
@@ -717,6 +744,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
     //-------------------------------------------------------------------------------------
     // determine discretization type for each node
     //-------------------------------------------------------------------------------------
+    ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_determine_node_types, 0, 0, 0, 0); CHKERRXX(ierr);
     node_scheme_.resize(nodes_->num_owned_indeps, UNDEFINED);
     int num_bdry_fvs = 0;
     int num_infc_fvs = 0;
@@ -829,6 +857,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
 
       node_scheme_[n] = scheme;
     }
+    ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_mls_determine_node_types, 0, 0, 0, 0); CHKERRXX(ierr);
 
     bdry_cart_points_id     .reserve(num_bdry_cart_points);
     bdry_cart_points        .reserve(num_bdry_cart_points);
@@ -849,10 +878,12 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
     wall_pieces_centroid.reserve(num_wall_pieces);
 
     //-------------------------------------------------------------------------------------
-    // determine discretization type for each node
+    // compute finite volumes
     //-------------------------------------------------------------------------------------
     if (store_finite_volumes_ && !finite_volumes_initialized_)
     {
+      ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_compute_finite_volumes, 0, 0, 0, 0); CHKERRXX(ierr);
+
       bdry_node_to_fv_.resize(nodes_->num_owned_indeps, -1);
       infc_node_to_fv_.resize(nodes_->num_owned_indeps, -1);
 
@@ -888,13 +919,17 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
       }
 
       finite_volumes_initialized_ = true;
+
+      ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_mls_compute_finite_volumes, 0, 0, 0, 0); CHKERRXX(ierr);
     }
 
     //-------------------------------------------------------------------------------------
     // determine which nodes will be part of discretization (needed for superconvergent schemes)
     //-------------------------------------------------------------------------------------
-    if (use_sc_scheme_ && !volumes_computed_)
+    if (use_sc_scheme_ && !volumes_computed_ && there_is_robin_)
     {
+      ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_compute_finite_volumes_connections, 0, 0, 0, 0); CHKERRXX(ierr);
+
       my_p4est_finite_volume_t fv;
 
       foreach_local_node(n, nodes_)
@@ -946,6 +981,8 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
         }
       }
 
+      ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_mls_compute_finite_volumes_connections, 0, 0, 0, 0); CHKERRXX(ierr);
+
       ierr = VecGhostUpdateBegin(areas_m_, MAX_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
       ierr = VecGhostUpdateEnd  (areas_m_, MAX_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
       ierr = VecGhostUpdateBegin(areas_p_, MAX_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -966,6 +1003,15 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
   //-------------------------------------------------------------------------------------
   // compute linear system
   //-------------------------------------------------------------------------------------
+  if (assembling_main && setup_rhs)
+  {
+    ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_discretize_matrix_and_rhs, 0, 0, 0, 0); CHKERRXX(ierr);
+  } else if (assembling_main) {
+    ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_discretize_matrix, 0, 0, 0, 0); CHKERRXX(ierr);
+  } else {
+    ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_discretize_rhs, 0, 0, 0, 0); CHKERRXX(ierr);
+  }
+
   foreach_local_node(n, nodes_)
   {
     row_main     = assembling_main     ? &entries_main    [n] : NULL;
@@ -1094,6 +1140,26 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
     infc_pieces_map.compute_offsets();
   }
 
+  if (assembling_main && setup_rhs)
+  {
+    ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_mls_discretize_matrix_and_rhs, 0, 0, 0, 0); CHKERRXX(ierr);
+  } else if (assembling_main) {
+    ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_mls_discretize_matrix, 0, 0, 0, 0); CHKERRXX(ierr);
+  } else {
+    ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_mls_discretize_rhs, 0, 0, 0, 0); CHKERRXX(ierr);
+  }
+
+  //-------------------------------------------------------------------------------------
+  // correct matrix for jump conditions (effectively, eliminate additional degrees of freedom)
+  //-------------------------------------------------------------------------------------
+//  foreach_local_node(n, nodes_)
+//  {
+//    std::map<PetscInt, double> w_jump;
+//    for (int i = 0; i < entries_jump[n].size(); ++i)
+
+//  }
+
+
 //  if (setup_rhs && there_is_jump_)
 //  {
 //    ierr = VecRestoreArray(rhs_jump_, &rhs_jump_ptr); CHKERRXX(ierr);
@@ -1114,36 +1180,52 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
 
   if (assembling_main)
   {
+    ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_assemble_submat_main, 0, 0, 0, 0); CHKERRXX(ierr);
     assemble_matrix(entries_main, d_nnz_main, o_nnz_main, &submat_main_);
+    ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_mls_assemble_submat_main, 0, 0, 0, 0); CHKERRXX(ierr);
 
     if (there_is_jump_)
     {
+      ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_assemble_submat_jump, 0, 0, 0, 0); CHKERRXX(ierr);
       assemble_matrix(entries_jump, d_nnz_jump, o_nnz_jump, &submat_jump_);
+      ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_mls_assemble_submat_jump, 0, 0, 0, 0); CHKERRXX(ierr);
+
       if (there_is_jump_mu_)
       {
+        ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_correct_submat_main_jump, 0, 0, 0, 0); CHKERRXX(ierr);
+
         Mat BC, submat_jump_aux = NULL;
 
         assemble_matrix(entries_jump_aux, d_nnz_jump_aux, o_nnz_jump_aux, &submat_jump_aux);
 
         ierr = MatMatMult(submat_jump_, submat_jump_aux, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &BC); CHKERRXX(ierr);
-        ierr = MatAXPY(submat_main_, 1., BC, DIFFERENT_NONZERO_PATTERN); CHKERRXX(ierr);
+        ierr = MatAYPX(submat_main_, 1., BC, DIFFERENT_NONZERO_PATTERN); CHKERRXX(ierr);
 
         ierr = MatDestroy(submat_jump_aux); CHKERRXX(ierr);
         ierr = MatDestroy(BC); CHKERRXX(ierr);
+
+        ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_mls_correct_submat_main_jump, 0, 0, 0, 0); CHKERRXX(ierr);
       }
     }
   }
 
   if (new_submat_main_ || (new_submat_diag_ && there_is_diag_) || (new_submat_robin_ && there_is_robin_))
   {
-    if (A_ != NULL) { ierr = MatDestroy(A_); CHKERRXX(ierr); }
+    ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_assemble_matrix, 0, 0, 0, 0); CHKERRXX(ierr);
 
-//    ierr = MatDuplicate(submat_main_, MAT_COPY_VALUES, &A_); CHKERRXX(ierr);
+    if (A_ != NULL) { ierr = MatDestroy(A_); CHKERRXX(ierr); }
     ierr = MatConvert(submat_main_, MATSAME, MAT_INITIAL_MATRIX, &A_); CHKERRXX(ierr);
 
-    if (there_is_diag_) { ierr = MatDiagonalSet(A_, submat_diag_, ADD_VALUES); CHKERRXX(ierr); }
+    if (there_is_diag_)
+    {
+      ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_add_submat_diag, 0, 0, 0, 0); CHKERRXX(ierr);
+      ierr = MatDiagonalSet(A_, submat_diag_, ADD_VALUES); CHKERRXX(ierr);
+      ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_mls_add_submat_diag, 0, 0, 0, 0); CHKERRXX(ierr);
+    }
+
     if (there_is_robin_)
     {
+      ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_add_submat_robin, 0, 0, 0, 0); CHKERRXX(ierr);
       if (use_sc_scheme_)
       {
         if (new_submat_robin_)
@@ -1151,40 +1233,54 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
           assemble_matrix(entries_robin_sc, d_nnz_robin_sc, o_nnz_robin_sc, &submat_robin_sc_);
         }
         ierr = MatAXPY(A_, 1., submat_robin_sc_, DIFFERENT_NONZERO_PATTERN); CHKERRXX(ierr);
+//        ierr = MatAXPY(A_, 1., A_, SUBSET_NONZERO_PATTERN); CHKERRXX(ierr);
       }
       else
       {
         ierr = MatDiagonalSet(A_, submat_robin_sym_, ADD_VALUES); CHKERRXX(ierr);
       }
+      ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_mls_add_submat_robin, 0, 0, 0, 0); CHKERRXX(ierr);
     }
 
+    ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_compute_diagonal_scaling, 0, 0, 0, 0); CHKERRXX(ierr);
     if (diag_scaling_ != NULL) { ierr = VecDestroy(diag_scaling_); CHKERRXX(ierr); }
 
     ierr = VecDuplicate(rhs_, &diag_scaling_); CHKERRXX(ierr);
     ierr = MatGetDiagonal(A_, diag_scaling_); CHKERRXX(ierr);
     ierr = VecReciprocalGhost(diag_scaling_); CHKERRXX(ierr);
+    ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_mls_compute_diagonal_scaling, 0, 0, 0, 0); CHKERRXX(ierr);
 
     if (enfornce_diag_scaling_)
     {
+      ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_scale_matrix_by_diagonal, 0, 0, 0, 0); CHKERRXX(ierr);
       ierr = MatDiagonalScale(A_, diag_scaling_, NULL); CHKERRXX(ierr);
+      ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_mls_scale_matrix_by_diagonal, 0, 0, 0, 0); CHKERRXX(ierr);
     }
 
     new_submat_diag_  = false;
     new_submat_main_  = false;
     new_submat_robin_ = false;
+
+    ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_mls_assemble_matrix, 0, 0, 0, 0); CHKERRXX(ierr);
   }
 
   if (there_is_jump_ && setup_rhs)
   {
+    ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_correct_rhs_jump, 0, 0, 0, 0); CHKERRXX(ierr);
+
     ierr = VecRestoreArray(rhs_jump_, &rhs_jump_ptr); CHKERRXX(ierr);
     ierr = VecScaleGhost(rhs_jump_, -1); CHKERRXX(ierr);
     ierr = MatMultAdd(submat_jump_, rhs_jump_, rhs_, rhs_); CHKERRXX(ierr);
     ierr = VecDestroy(rhs_jump_); CHKERRXX(ierr);
+
+    ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_mls_correct_rhs_jump, 0, 0, 0, 0); CHKERRXX(ierr);
   }
 
   if (setup_rhs && enfornce_diag_scaling_)
   {
+    ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_scale_rhs_by_diagonal, 0, 0, 0, 0); CHKERRXX(ierr);
     ierr = VecPointwiseMult(rhs_, rhs_, diag_scaling_); CHKERRXX(ierr);
+    ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_mls_scale_rhs_by_diagonal, 0, 0, 0, 0); CHKERRXX(ierr);
   }
 
   if (there_is_neumann_ || there_is_robin_ || there_is_jump_)
@@ -1244,10 +1340,14 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
 //      ierr = MatZeroRows(A, 1, (PetscInt*)(&fixed_value_idx_g), 1.0, NULL, NULL); CHKERRXX(ierr);
 //    }
 //  }
+
+  ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_mls_setup_linear_system, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
 void my_p4est_poisson_nodes_mls_t::assemble_matrix(std::vector< std::vector<mat_entry_t> > &entries, std::vector<int> &d_nnz, std::vector<int> &o_nnz, Mat *matrix)
 {
+  ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_assemble_submatrix, 0, 0, 0, 0); CHKERRXX(ierr);
+
   PetscInt num_owned_global = global_node_offset_[p4est_->mpisize];
   PetscInt num_owned_local  = (PetscInt)(nodes_->num_owned_indeps);
 
@@ -1264,20 +1364,36 @@ void my_p4est_poisson_nodes_mls_t::assemble_matrix(std::vector< std::vector<mat_
   ierr = MatMPIAIJSetPreallocation(*matrix, 0, (const PetscInt*)&d_nnz[0], 0, (const PetscInt*)&o_nnz[0]); CHKERRXX(ierr);
 
   /* fill the matrix with the values */
+  std::vector<PetscInt>    columns;
+  std::vector<PetscScalar> values;
+
   foreach_local_node(n, nodes_)
   {
     PetscInt                  n_gl = petsc_gloidx_[n];
     std::vector<mat_entry_t> *row  = &entries[n];
 
+//    for (int m=0; m < row->size(); ++m)
+//    {
+//      ierr = MatSetValue(*matrix, n_gl, petsc_gloidx_[row->at(m).n], row->at(m).val, ADD_VALUES); CHKERRXX(ierr);
+//    }
+
+    columns.clear();
+    values.clear();
     for (int m=0; m < row->size(); ++m)
     {
-      ierr = MatSetValue(*matrix, n_gl, petsc_gloidx_[row->at(m).n], row->at(m).val, ADD_VALUES); CHKERRXX(ierr);
+      columns.push_back(petsc_gloidx_[row->at(m).n]);
+      values.push_back(row->at(m).val);
     }
+
+    ierr = MatSetValues(*matrix, 1, &n_gl, row->size(), columns.data(), values.data(), ADD_VALUES); CHKERRXX(ierr);
+
   }
 
   /* assemble the matrix */
   ierr = MatAssemblyBegin(*matrix, MAT_FINAL_ASSEMBLY); CHKERRXX(ierr);
   ierr = MatAssemblyEnd  (*matrix, MAT_FINAL_ASSEMBLY); CHKERRXX(ierr);
+
+  ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_mls_assemble_submatrix, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
 void my_p4est_poisson_nodes_mls_t::find_projection(const quad_neighbor_nodes_of_node_t& qnnn, const double *phi_ptr, double dxyz_pr[], double &dist_pr, double normal[])
