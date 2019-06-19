@@ -110,10 +110,10 @@ DEFINE_PARAMETER(pl, int, num_shifts_x_dir, 1, "Number of grid shifts in the x-d
 DEFINE_PARAMETER(pl, int, num_shifts_y_dir, 1, "Number of grid shifts in the y-direction");
 DEFINE_PARAMETER(pl, int, num_shifts_z_dir, 1, "Number of grid shifts in the z-direction");
 #else
-DEFINE_PARAMETER(pl, int, lmin, 10, "Min level of the tree");
-DEFINE_PARAMETER(pl, int, lmax, 13, "Max level of the tree");
+DEFINE_PARAMETER(pl, int, lmin, 7, "Min level of the tree");
+DEFINE_PARAMETER(pl, int, lmax, 11, "Max level of the tree");
 
-DEFINE_PARAMETER(pl, int, num_splits,           1, "Number of recursive splits");
+DEFINE_PARAMETER(pl, int, num_splits,           2, "Number of recursive splits");
 DEFINE_PARAMETER(pl, int, num_splits_per_split, 1, "Number of additional resolutions");
 
 DEFINE_PARAMETER(pl, int, num_shifts_x_dir, 1, "Number of grid shifts in the x-direction");
@@ -122,7 +122,7 @@ DEFINE_PARAMETER(pl, int, num_shifts_z_dir, 1, "Number of grid shifts in the z-d
 #endif
 
 DEFINE_PARAMETER(pl, int, iter_start, 0, "Skip n first iterations");
-DEFINE_PARAMETER(pl, double, lip, 1.5, "Lipschitz constant");
+DEFINE_PARAMETER(pl, double, lip, 2, "Lipschitz constant");
 
 DEFINE_PARAMETER(pl, bool, refine_strict,  1, "Refines every cell starting from the coarsest case if yes");
 DEFINE_PARAMETER(pl, bool, refine_rand,    0, "Add randomness into adaptive grid");
@@ -223,7 +223,7 @@ DEFINE_PARAMETER(pl, int, jc_flux_03, 0, "0 - automatic, others - hardcoded");
 DEFINE_PARAMETER(pl, int,  jc_scheme,         0, "Discretization scheme for interface conditions (0 - FVM, 1 - FDM)");
 DEFINE_PARAMETER(pl, int,  jc_sub_scheme,     0, "Interpolation subscheme for interface conditions (0 - from slow region, 1 - from fast region, 2 - based on nodes availability)");
 DEFINE_PARAMETER(pl, int,  integration_order, 2, "Select integration order (1 - linear, 2 - quadratic)");
-DEFINE_PARAMETER(pl, bool, sc_scheme,         1, "Use super-convergent scheme");
+DEFINE_PARAMETER(pl, bool, sc_scheme,         0, "Use super-convergent scheme");
 
 // for symmetric scheme:
 DEFINE_PARAMETER(pl, bool, taylor_correction,      1, "Use Taylor correction to approximate Robin term (symmetric scheme)");
@@ -264,14 +264,14 @@ DEFINE_PARAMETER(pl, bool,   scale_errors,         0, "Scale errors by max solut
 //-------------------------------------
 // output
 //-------------------------------------
-DEFINE_PARAMETER(pl, bool, save_vtk,           0, "Save the p4est in vtk format");
+DEFINE_PARAMETER(pl, bool, save_vtk,           1, "Save the p4est in vtk format");
 DEFINE_PARAMETER(pl, bool, save_params,        0, "Save list of entered parameters");
 DEFINE_PARAMETER(pl, bool, save_domain,        0, "Save the reconstruction of an irregular domain (works only in serial!)");
 DEFINE_PARAMETER(pl, bool, save_matrix_ascii,  0, "Save the matrix in ASCII MATLAB format");
 DEFINE_PARAMETER(pl, bool, save_matrix_binary, 0, "Save the matrix in BINARY MATLAB format");
 DEFINE_PARAMETER(pl, bool, save_convergence,   0, "Save convergence results");
 
-DEFINE_PARAMETER(pl, int, n_example, 10, "Predefined example");
+DEFINE_PARAMETER(pl, int, n_example, 9, "Predefined example");
 
 void set_example(int n_example)
 {
