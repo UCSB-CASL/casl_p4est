@@ -78,6 +78,8 @@ class my_p4est_poisson_nodes_mls_t
   bool there_is_jump_;
   bool there_is_jump_mu_;
 
+  bool A_needs_reassembly_;
+
   // PETSc solver
   KSP         ksp_;
   bool        new_pc_;

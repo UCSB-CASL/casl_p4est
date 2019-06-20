@@ -105,6 +105,8 @@ my_p4est_poisson_nodes_mls_t::my_p4est_poisson_nodes_mls_t(const my_p4est_node_n
   there_is_jump_      = false;
   there_is_jump_mu_   = false;
 
+  A_needs_reassembly_ = true;
+
   // PETSc solver
   ierr = KSPCreate(p4est_->mpicomm, &ksp_); CHKERRXX(ierr);
   new_pc_ = true;
@@ -458,7 +460,10 @@ void my_p4est_poisson_nodes_mls_t::solve(Vec solution, bool use_nonzero_guess, b
 {
   ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_solve, 0, 0, 0, 0); CHKERRXX(ierr);
 
+  ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_setup_linear_system, 0, 0, 0, 0); CHKERRXX(ierr);
   setup_linear_system(true);
+  ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_mls_setup_linear_system, 0, 0, 0, 0); CHKERRXX(ierr);
+
   invert_linear_system(solution, use_nonzero_guess, update_ghost, ksp_type, pc_type);
 
   ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_mls_solve, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -571,7 +576,6 @@ void my_p4est_poisson_nodes_mls_t::invert_linear_system(Vec solution, bool use_n
 
 void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
 {
-  ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_setup_linear_system, 0, 0, 0, 0); CHKERRXX(ierr);
 #ifdef CASL_THROWS
   if (wc_type_ == NULL || wc_value_ == NULL)
     throw std::domain_error("[CASL_ERROR]: the boundary conditions on walls have not been set.");
@@ -926,7 +930,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
     //-------------------------------------------------------------------------------------
     // determine which nodes will be part of discretization (needed for superconvergent schemes)
     //-------------------------------------------------------------------------------------
-    if (use_sc_scheme_ && !volumes_computed_ && there_is_robin_)
+    if (use_sc_scheme_ && !volumes_computed_ && (there_is_robin_ || there_is_jump_))
     {
       ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_compute_finite_volumes_connections, 0, 0, 0, 0); CHKERRXX(ierr);
 
@@ -1149,89 +1153,6 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
     ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_mls_discretize_rhs, 0, 0, 0, 0); CHKERRXX(ierr);
   }
 
-
-  //-------------------------------------------------------------------------------------
-  // correct matrix and rhs for jump conditions (effectively, eliminate additional degrees of freedom)
-  //-------------------------------------------------------------------------------------
-  if (there_is_jump_)
-  {
-    if (assembling_main)
-    {
-      // create list
-      struct interpolation_weights_t
-      {
-        bool     node_used[num_neighbors_cube];
-        PetscInt node_gl  [num_neighbors_cube];
-        double   weight   [num_neighbors_cube];
-      };
-
-      std::map<PetscInt, interpolation_weights_t> ghost_values;
-
-      std::set<PetscInt> local_ghost_values;
-      std::vector< std::set<PetscInt> > remote_ghost_values(p4est_->mpisize);
-
-//      foreach_local_node(n, nodes_)
-//      {
-//        for (int i = 0; i < entries_jump[n].size(); ++i)
-//        {
-//          if (entries_jump[n][i].n < nodes_->num_owned_indeps)
-//          {
-//            local_ghost_values.insert(petsc_gloidx_[entries_jump[n][i].n]);
-//          } else {
-//            int rank = nodes_->nonlocal_ranks[entries_jump[n][i].n-nodes_->num_owned_indeps];
-//            remote_ghost_values[rank].insert(petsc_gloidx_[entries_jump[n][i].n]);
-//          }
-//        }
-//      }
-
-      //  for (std::set<PetscInt>::iterator it=local_ghost_values.begin(); it!=local_ghost_values.end(); ++it)
-      //    std::cout << ' ' << *it;
-
-      //  std::cout << local_ghost_values.size();
-
-//      for (int i = 0; i < p4est_->mpisize; ++i)
-//      {
-//        std::cout << p4est_->mpirank << " " << i << " " << remote_ghost_values[i].size() << std::endl;
-//        for (std::set<PetscInt>::iterator it=remote_ghost_values[i].begin(); it!=remote_ghost_values[i].end(); ++it)
-//          std::cout << ' ' << *it;
-//        std::cout << std::endl;
-//      }
-
-
-      //  std::map<PetscInt, double> w_jump;
-
-      //  foreach_local_node(n, nodes_)
-      //  {
-      //    w_jump.clear();
-      //    for (int i = 0; i < entries_jump[n].size(); ++i)
-      //    {
-      //      double weight = entries_jump[n][i].val;
-      //      interpolation_weights_t *interp = &ghost_values[entries_jump[n][i].n];
-      //      for (int j = 0; j < num_neighbors_cube; ++j)
-      //      {
-      //        if (interp->node_used[j])
-      //        {
-      //          w_jump[interp->node_gl[j]] += weight*interp->weight[j];
-      //        }
-      //      }
-      //    }
-
-
-      //    for (std::map<PetscInt, double>::iterator it=w_jump.begin(); it!=w_jump.end(); ++it)
-      //    {
-      //      entries_main[n].push_back(mat_entry_t(it->first, it->second));
-      //    }
-      //  }
-    }
-  }
-
-
-//  if (setup_rhs && there_is_jump_)
-//  {
-//    ierr = VecRestoreArray(rhs_jump_, &rhs_jump_ptr); CHKERRXX(ierr);
-//    ierr = VecDestroy(rhs_jump_); CHKERRXX(ierr);
-//  }
-
   // restore pointers
   if (assembling_main)
   {
@@ -1246,10 +1167,6 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
 
   if (assembling_main)
   {
-    ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_assemble_submat_main, 0, 0, 0, 0); CHKERRXX(ierr);
-    assemble_matrix(entries_main, d_nnz_main, o_nnz_main, &submat_main_);
-    ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_mls_assemble_submat_main, 0, 0, 0, 0); CHKERRXX(ierr);
-
     if (there_is_jump_)
     {
       ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_assemble_submat_jump, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -1262,10 +1179,93 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
 
         Mat BC, submat_jump_aux = NULL;
 
+        // assemble matrix that expresses additional degrees of freedom (ghost values) through regular node values
         assemble_matrix(entries_jump_aux, d_nnz_jump_aux, o_nnz_jump_aux, &submat_jump_aux);
 
+        // compute correction doing matrix product
         ierr = MatMatMult(submat_jump_, submat_jump_aux, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &BC); CHKERRXX(ierr);
-        ierr = MatAYPX(submat_main_, 1., BC, DIFFERENT_NONZERO_PATTERN); CHKERRXX(ierr);
+
+        // add jump correction matrix to main matrix
+        // variant 1: use PETSc tools (quite slow)
+        /*
+        ierr = MatAYPX(submat_main_, 1., BC, DIFFERENT_NONZERO_PATTERN); CHKERRXX(ierr); //*/
+
+        // variant 2: do it exmplicitly by hands taking into account that
+        // number of nonzero rows in BC is much less than the total number of rows
+        //*
+        PetscInt            offset = global_node_offset_[p4est_->mpirank];
+        PetscInt            N;
+        PetscBool           done;
+        const PetscInt     *ia;
+        const PetscInt     *ja;
+        Mat                 BC_local;
+        PetscScalar        *data;
+        mat_entry_t         ent;
+        std::set<PetscInt>  d_elems;
+        std::set<PetscInt>  o_elems;
+        PetscInt            cur;
+
+        // get access to matrix structure of matrix product
+        if (p4est_->mpisize > 1)
+        {
+          ierr = MatMPIAIJGetLocalMat(BC, MAT_INITIAL_MATRIX, &BC_local); CHKERRXX(ierr);
+        } else {
+          BC_local = BC;
+        }
+        ierr = MatGetRowIJ(BC_local, 0, PETSC_FALSE, PETSC_FALSE, &N, &ia, &ja, &done); CHKERRXX(ierr);
+        ierr = MatSeqAIJGetArray(BC_local, &data); CHKERRXX(ierr);
+
+        // iterate through nonzero rows of BC
+        foreach_local_node(n, nodes_)
+        {
+          if (node_scheme_[n] == IMMERSED_INTERFACE)
+          {
+            if (ia[n+1] > ia[n])
+            {
+              // for better allocations we will recount exact numbers of diagonal and off-diagonal elements
+              // using std::set's
+              d_elems.clear();
+              o_elems.clear();
+
+              //
+              for (int i = 0; i < entries_main[n].size(); ++i)
+              {
+                cur = entries_main[n][i].n;
+
+                if (cur < offset || cur >= offset + nodes_->num_owned_indeps)
+                  o_elems.insert(cur);
+                else
+                  d_elems.insert(cur);
+              }
+
+              for (int i = ia[n]; i < ia[n+1]; ++i)
+              {
+                // add element from BC to submat_main
+                ent.n   = ja[i];
+                ent.val = data[i];
+                entries_main[n].push_back(ent);
+
+                //
+                if (ent.n < offset || ent.n >= offset + nodes_->num_owned_indeps)
+                  o_elems.insert(ent.n);
+                else
+                  d_elems.insert(ent.n);
+              }
+
+              d_nnz_main[n] = d_elems.size();
+              o_nnz_main[n] = o_elems.size();
+            }
+          }
+        }
+
+        // restore matrix structure
+        ierr = MatSeqAIJRestoreArray(BC_local, &data); CHKERRXX(ierr);
+        ierr = MatRestoreRowIJ(BC_local, 0, PETSC_FALSE, PETSC_FALSE, &N, &ia, &ja, &done); CHKERRXX(ierr);
+        if (p4est_->mpisize > 1)
+        {
+          ierr = MatDestroy(BC_local); CHKERRXX(ierr);
+        }
+        //*/
 
         ierr = MatDestroy(submat_jump_aux); CHKERRXX(ierr);
         ierr = MatDestroy(BC); CHKERRXX(ierr);
@@ -1273,41 +1273,140 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
         ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_mls_correct_submat_main_jump, 0, 0, 0, 0); CHKERRXX(ierr);
       }
     }
+
+    // explicitly add zeros in place of elements from robin bc to speed up matrix sum later
+    if (there_is_robin_ && use_sc_scheme_)
+    {
+      PetscInt           offset = global_node_offset_[p4est_->mpirank];
+      PetscInt           cur;
+      mat_entry_t        ent;
+      std::set<PetscInt> d_elems;
+      std::set<PetscInt> o_elems;
+
+      ent.val = 0;
+
+      foreach_local_node(n, nodes_)
+      {
+        if (node_scheme_[n] == FINITE_VOLUME)
+        {
+          if (entries_robin_sc[n].size() > 0)
+          {
+            d_elems.clear();
+            o_elems.clear();
+
+            for (int i = 0; i < entries_main[n].size(); ++i)
+            {
+              cur = entries_main[n][i].n;
+
+              if (cur < offset || cur >= offset + nodes_->num_owned_indeps)
+                o_elems.insert(cur);
+              else
+                d_elems.insert(cur);
+            }
+
+            for (int i = 0; i < entries_robin_sc[n].size(); ++i)
+            {
+              ent.n = entries_robin_sc[n][i].n;
+              entries_main[n].push_back(ent);
+
+              if (ent.n < offset || ent.n >= offset + nodes_->num_owned_indeps)
+                o_elems.insert(ent.n);
+              else
+                d_elems.insert(ent.n);
+            }
+
+            d_nnz_main[n] = d_elems.size();
+            o_nnz_main[n] = o_elems.size();
+          }
+        }
+      }
+    }
+
+    ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_assemble_submat_main, 0, 0, 0, 0); CHKERRXX(ierr);
+    assemble_matrix(entries_main, d_nnz_main, o_nnz_main, &submat_main_);
+    ierr = PetscLogEventEnd  (log_my_p4est_poisson_nodes_mls_assemble_submat_main, 0, 0, 0, 0); CHKERRXX(ierr);
   }
 
-  if (new_submat_main_ || (new_submat_diag_ && there_is_diag_) || (new_submat_robin_ && there_is_robin_))
+  A_needs_reassembly_ = A_needs_reassembly_ || (new_submat_main_ || (new_submat_diag_ && there_is_diag_) || (new_submat_robin_ && there_is_robin_));
+
+  new_submat_diag_  = false;
+  new_submat_main_  = false;
+  new_submat_robin_ = false;
+
+  // compute resulting matrix (if needed)
+  if (A_needs_reassembly_ && setup_rhs)
   {
+    A_needs_reassembly_ = false;
     ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_assemble_matrix, 0, 0, 0, 0); CHKERRXX(ierr);
 
+    // start by cloning submat_main_ into A_
     if (A_ != NULL) { ierr = MatDestroy(A_); CHKERRXX(ierr); }
-    ierr = MatConvert(submat_main_, MATSAME, MAT_INITIAL_MATRIX, &A_); CHKERRXX(ierr);
+    //    ierr = MatConvert(submat_main_, MATSAME, MAT_INITIAL_MATRIX, &A_); CHKERRXX(ierr);
+    ierr = MatDuplicate(submat_main_, MAT_COPY_VALUES, &A_); CHKERRXX(ierr);
 
+    // add correction from linear term
     if (there_is_diag_)
     {
       ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_add_submat_diag, 0, 0, 0, 0); CHKERRXX(ierr);
       ierr = MatDiagonalSet(A_, submat_diag_, ADD_VALUES); CHKERRXX(ierr);
-      ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_mls_add_submat_diag, 0, 0, 0, 0); CHKERRXX(ierr);
+      ierr = PetscLogEventEnd  (log_my_p4est_poisson_nodes_mls_add_submat_diag, 0, 0, 0, 0); CHKERRXX(ierr);
     }
 
+    // add correction for Robin b.c.
     if (there_is_robin_)
     {
       ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_add_submat_robin, 0, 0, 0, 0); CHKERRXX(ierr);
-      if (use_sc_scheme_)
+
+      if (!use_sc_scheme_)
       {
-        if (new_submat_robin_)
-        {
-          assemble_matrix(entries_robin_sc, d_nnz_robin_sc, o_nnz_robin_sc, &submat_robin_sc_);
-        }
-        ierr = MatAXPY(A_, 1., submat_robin_sc_, DIFFERENT_NONZERO_PATTERN); CHKERRXX(ierr);
-//        ierr = MatAXPY(A_, 1., A_, SUBSET_NONZERO_PATTERN); CHKERRXX(ierr);
+        // if symmetric scheme is used then the only correction is to diagonal elements
+        ierr = MatDiagonalSet(A_, submat_robin_sym_, ADD_VALUES); CHKERRXX(ierr);
       }
       else
       {
-        ierr = MatDiagonalSet(A_, submat_robin_sym_, ADD_VALUES); CHKERRXX(ierr);
+        // if non-symmetric scheme is used then
+
+        // variant 1: create a PETSc Mat that represents the correction and use PETSc tool to add up matrices.
+        // It turns out to be rather slow.
+        //if (new_submat_robin_)
+        //{
+        //  assemble_matrix(entries_robin_sc, d_nnz_robin_sc, o_nnz_robin_sc, &submat_robin_sc_);
+        //}
+        //ierr = MatAXPY(A_, 1., submat_robin_sc_, SUBSET_NONZERO_PATTERN); CHKERRXX(ierr);
+
+        // variant 2: add new elements explicitly by hands taking into account that only small number of rows are affected
+        std::vector<PetscInt>    columns;
+        std::vector<PetscScalar> values;
+
+        foreach_local_node(n, nodes_)
+        {
+          if (node_scheme_[n] == FINITE_VOLUME)
+          {
+            PetscInt                  n_gl = petsc_gloidx_[n];
+            std::vector<mat_entry_t> *row  = &entries_robin_sc[n];
+
+            columns.clear();
+            values.clear();
+            for (int m=0; m < row->size(); ++m)
+            {
+              columns.push_back(row->at(m).n);
+              values.push_back(row->at(m).val);
+            }
+
+            if (row->size() > 0)
+            {
+              ierr = MatSetValues(A_, 1, &n_gl, row->size(), columns.data(), values.data(), ADD_VALUES); CHKERRXX(ierr);
+            }
+          }
+        }
+
+        ierr = MatAssemblyBegin(A_, MAT_FINAL_ASSEMBLY); CHKERRXX(ierr);
+        ierr = MatAssemblyEnd  (A_, MAT_FINAL_ASSEMBLY); CHKERRXX(ierr);
       }
       ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_mls_add_submat_robin, 0, 0, 0, 0); CHKERRXX(ierr);
     }
 
+    // get diagonal scaling of the resulting matrix
     ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_compute_diagonal_scaling, 0, 0, 0, 0); CHKERRXX(ierr);
     if (diag_scaling_ != NULL) { ierr = VecDestroy(diag_scaling_); CHKERRXX(ierr); }
 
@@ -1316,16 +1415,13 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
     ierr = VecReciprocalGhost(diag_scaling_); CHKERRXX(ierr);
     ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_mls_compute_diagonal_scaling, 0, 0, 0, 0); CHKERRXX(ierr);
 
+    // scale the matrix by its diagonal (to speed up inversion)
     if (enfornce_diag_scaling_)
     {
       ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_scale_matrix_by_diagonal, 0, 0, 0, 0); CHKERRXX(ierr);
       ierr = MatDiagonalScale(A_, diag_scaling_, NULL); CHKERRXX(ierr);
       ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_mls_scale_matrix_by_diagonal, 0, 0, 0, 0); CHKERRXX(ierr);
     }
-
-    new_submat_diag_  = false;
-    new_submat_main_  = false;
-    new_submat_robin_ = false;
 
     ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_mls_assemble_matrix, 0, 0, 0, 0); CHKERRXX(ierr);
   }
@@ -1406,8 +1502,6 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
 //      ierr = MatZeroRows(A, 1, (PetscInt*)(&fixed_value_idx_g), 1.0, NULL, NULL); CHKERRXX(ierr);
 //    }
 //  }
-
-  ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_mls_setup_linear_system, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
 void my_p4est_poisson_nodes_mls_t::assemble_matrix(std::vector< std::vector<mat_entry_t> > &entries, std::vector<int> &d_nnz, std::vector<int> &o_nnz, Mat *matrix)
@@ -3788,6 +3882,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_jump(bool setup_rhs, p4est_locidx_
       double *w               = (dom == 0 ? w_m.data()        : w_p.data()        );
       double  mu              = (dom == 0 ? mu_m_             : mu_p_             );
       CF_DIM *mu_interp       = (dom == 0 ? &mu_m_interp_     : &mu_p_interp_     );
+      bool   *neighbors_exist_pm = (dom == 0 ? neighbors_exist_m     : neighbors_exist_p     );
 
       my_p4est_finite_volume_t &fv = (dom == 0 ? fv_m : fv_p);
 
@@ -3813,7 +3908,6 @@ void my_p4est_poisson_nodes_mls_t::discretize_jump(bool setup_rhs, p4est_locidx_
                   (var_mu_ ? (*mu_interp)(DIM(x_C + fv.face_centroid_x[dir],
                                               y_C + fv.face_centroid_y[dir],
                                               z_C + fv.face_centroid_z[dir])) : mu);
-
               if (!use_sc_scheme_)
               {
                 w[f2c_m[dir][nnf_00]] += flux;
@@ -3822,7 +3916,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_jump(bool setup_rhs, p4est_locidx_
               else
               {
                 for (unsigned short nn = 0; nn < num_neighbors_face_; ++nn)
-                  neighbors_exist_face[nn] = neighbors_exist[f2c_m[dir][nn]] && neighbors_exist[f2c_p[dir][nn]];
+                  neighbors_exist_face[nn] = neighbors_exist_pm[f2c_m[dir][nn]] && neighbors_exist_pm[f2c_p[dir][nn]];
 
                 double centroid_xyz[] = { DIM( fv.face_centroid_x[dir]/dx_min_,
                                           fv.face_centroid_y[dir]/dy_min_,
