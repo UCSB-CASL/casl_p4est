@@ -59,17 +59,22 @@ void matrix_t::matvec( const vector<double>& x, vector<double>& b )
   }
 }
 
-void matrix_t::tranpose_matvec( const vector<double>& x, vector<double>& b )
+void matrix_t::tranpose_matvec( const vector<double> x[], vector<double> b[], unsigned int n_vectors)
 {
 #ifdef CASL_THROWS
-  if(m != (int) x.size()) throw std::invalid_argument("[CASL_ERROR]: matrix_t->transpose_matvec: the matrix and X must have compatible sizes");
+  if(n_vectors == 0) throw std::invalid_argument("[CASL_ERROR]: matrix_t->transpose_matvec: the number of rhs's must be strictly positive!");
+  for (unsigned int k = 0; k < n_vectors; ++k)
+    if(m != (int) x[k].size())
+      throw std::invalid_argument("[CASL_ERROR]: matrix_t->transpose_matvec: the matrix and (all columns of) X must have compatible sizes");
 #endif
-  b.resize(n);
-  for( int i=0; i<n; i++ )
-  {
-    b[i] = 0;
-    for( int j=0; j<m; j++ )
-      b[i] += values[j*n+i]*x[j];
+  for (unsigned int k = 0; k < n_vectors; ++k) {
+    b[k].resize(n);
+    for( int i=0; i<n; i++ )
+    {
+      b[k][i] = 0;
+      for( int j=0; j<m; j++ )
+        b[k][i] += values[j*n+i]*x[k][j];
+    }
   }
 }
 
@@ -119,21 +124,29 @@ void matrix_t::mtm_product(matrix_t& M, vector<double>& W)
     }
 }
 
-void matrix_t::scale_by_maxabs(vector<double>& x)
+double matrix_t::scale_by_maxabs(vector<double> x[], unsigned int n_vectors)
 {
 #ifdef CASL_THROWS
-  if( m != (int) x.size() ) throw std::invalid_argument("[CASL_ERROR]: matrix_t->scale_by_maxabs: the matrix and the right hand side don't have the same size");
+  if(n_vectors == 0) throw std::invalid_argument("[CASL_ERROR]: matrix_t->scale_by_maxabs: the number of rhs's must be strictly positive!");
+  for (unsigned int k = 0; k < n_vectors; ++k)
+    if( m != (int) x[k].size() )
+      throw std::invalid_argument("[CASL_ERROR]: matrix_t->scale_by_maxabs: the matrix and (one of) the right hand side(s) don't have the same size");
 #endif
   double abs_max = EPS;
-  for( unsigned int i=0; i< x.size(); i++ )
+  for( unsigned int i=0; i< (unsigned int) m; i++ )
     for( int j=0; j<n; j++ )
       abs_max = MAX(abs_max, fabs(values[i*n + j]));
 
-  for( unsigned int i=0; i<x.size(); i++ ){
-    x[i] /= abs_max;
-    for( int j=0; j<n; j++ )
-      values[i*n + j] /= abs_max;
+  for( unsigned int i=0; i<(unsigned int) m; i++ ){
+    for( unsigned int k=0; k<MAX(n_vectors, (unsigned int) n); k++ )
+    {
+      if(k < n_vectors)
+        x[k][i] /= abs_max;
+      if(k < (unsigned int) n)
+        values[i*n + k] /= abs_max;
+    }
   }
+  return abs_max;
 }
 
 matrix_t matrix_t::tr()

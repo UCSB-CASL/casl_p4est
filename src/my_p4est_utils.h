@@ -382,6 +382,13 @@ typedef enum {
   IGNORE
 } BoundaryConditionType;
 
+class mixed_interface
+{
+public:
+  virtual BoundaryConditionType mixed_type(const double xyz_[]) const=0;
+  virtual ~mixed_interface() {}
+};
+
 std::ostream& operator << (std::ostream& os, BoundaryConditionType  type);
 std::istream& operator >> (std::istream& is, BoundaryConditionType& type);
 
@@ -413,6 +420,7 @@ class BoundaryConditions2D
 private:
   const WallBC2D* WallType_;
   BoundaryConditionType InterfaceType_;
+  const mixed_interface* MixedInterface;
 
   const CF_2 *p_WallValue;
   const CF_2 *p_InterfaceValue;
@@ -424,6 +432,7 @@ public:
     WallType_ = NULL;
     p_WallValue = NULL;
     InterfaceType_ = NOINTERFACE;
+    MixedInterface = NULL;
     p_InterfaceValue = NULL;
     p_RobinCoef = NULL;
   }
@@ -442,8 +451,14 @@ public:
     p_WallValue = &v;
   }
 
-  inline void setInterfaceType(BoundaryConditionType bc){
+  inline void setInterfaceType(BoundaryConditionType bc, const mixed_interface* obj_= NULL){
     InterfaceType_ = bc;
+    if(InterfaceType_ == MIXED)
+    {
+      if(obj_ == NULL)
+        throw std::invalid_argument("BoundaryConditions2D::setInterfaceType(): if the interface type is set to MIXED, a pointer to a class of abstract type mixed_interface MUST be provided as well!");
+      MixedInterface = obj_;
+    }
   }
 
   inline void setInterfaceValue(const CF_2& in){
@@ -474,7 +489,22 @@ public:
     return (*WallType_)(x,y);
   }
 
-  inline BoundaryConditionType interfaceType() const{ return InterfaceType_;}
+  inline BoundaryConditionType wallType(const double xyz_[]) const
+  {
+    return wallType(xyz_[0], xyz_[1]);
+  }
+
+  inline BoundaryConditionType interfaceType() const
+  {
+    return InterfaceType_;
+  }
+
+  inline BoundaryConditionType interfaceType(const double* xyz) const
+  {
+    if(InterfaceType_ != MIXED)
+      return interfaceType();
+    return MixedInterface->mixed_type(xyz);
+  }
 
   inline double wallValue(double x, double y) const
   {
@@ -484,6 +514,11 @@ public:
     return p_WallValue->operator ()(x,y);
   }
 
+  inline double wallValue(const double xyz_[]) const
+  {
+    return wallValue(xyz_[0], xyz_[1]);
+  }
+
   inline double interfaceValue(double x, double y) const
   {
 #ifdef CASL_THROWS
@@ -491,6 +526,11 @@ public:
 #endif
     return p_InterfaceValue->operator ()(x,y);
   }
+  inline double  interfaceValue(double xyz_[]) const
+  {
+    return interfaceValue(xyz_[0], xyz_[1]);
+  }
+
 
   inline double robinCoef(double x, double y) const
   {
@@ -539,6 +579,7 @@ class BoundaryConditions3D
 private:
   const WallBC3D* WallType_;
   BoundaryConditionType InterfaceType_;
+  const mixed_interface* MixedInterface;
 
   const CF_3 *p_WallValue;
   const CF_3 *p_InterfaceValue;
@@ -550,6 +591,7 @@ public:
     WallType_ = NULL;
     p_WallValue = NULL;
     InterfaceType_ = NOINTERFACE;
+    MixedInterface = NULL;
     p_InterfaceValue = NULL;
     p_RobinCoef = NULL;
   }
@@ -568,8 +610,14 @@ public:
     p_WallValue = &v;
   }
 
-  inline void setInterfaceType(BoundaryConditionType bc){
+  inline void setInterfaceType(BoundaryConditionType bc, const mixed_interface* obj_= NULL){
     InterfaceType_ = bc;
+    if(InterfaceType_ == MIXED)
+    {
+      if(obj_ == NULL)
+        throw std::invalid_argument("BoundaryConditions3D::setInterfaceType(): if the interface type is set to MIXED, a pointer to a class of abstract type mixed_interface MUST be provided as well");
+      MixedInterface = obj_;
+    }
   }
 
   inline void setInterfaceValue(const CF_3& in){
@@ -600,7 +648,19 @@ public:
     return (*WallType_)(x,y,z);
   }
 
+  inline BoundaryConditionType wallType(const double xyz_[]) const
+  {
+    return wallType(xyz_[0],xyz_[1],xyz_[2]);
+  }
+
   inline BoundaryConditionType interfaceType() const{ return InterfaceType_;}
+
+  inline BoundaryConditionType interfaceType(const double* xyz) const
+  {
+    if(InterfaceType_ != MIXED)
+      return interfaceType();
+    return MixedInterface->mixed_type(xyz);
+  }
 
   inline double wallValue(double x, double y, double z) const
   {
@@ -610,6 +670,11 @@ public:
     return p_WallValue->operator ()(x,y,z);
   }
 
+  inline double wallValue(const double xyz_[]) const
+  {
+    return p_WallValue->operator ()(xyz_[0],xyz_[1],xyz_[2]);
+  }
+
   inline double interfaceValue(double x, double y, double z) const
   {
 #ifdef CASL_THROWS
@@ -617,6 +682,12 @@ public:
 #endif
     return p_InterfaceValue->operator ()(x,y,z);
   }
+
+  inline double  interfaceValue(double xyz_[]) const
+  {
+    return interfaceValue(xyz_[0], xyz_[1], xyz_[2]);
+  }
+
 
   inline double robinCoef(double x, double y, double z) const
   {
@@ -660,36 +731,54 @@ public:
   }
 };
 
+/*!
+ * \brief linear_interpolation performs linear interpolation for a point
+ * \param [in]    p4est the forest
+ * \param [in]    tree_id the current tree that owns the quadrant
+ * \param [in]    quad the current quarant
+ * \param [in]    F a simple C-style array of size n_results*P4EST_CHILDREN, containing the values of the n_vecs function(s) at the vertices of the quadrant. __MUST__ be z-ordered
+ *                F[k*P4EST_CHILDREN+i] = value of he kth function at quadrant's node i (in z-order), 0 <= i < P4EST_CHILDREN, 0 <= k < n_results
+ * \param [in]    xyz_global global coordinates of the point
+ * \param [inout] simple C-style array of size n_results containing the results of the quadratic_interpolation of the n_results different functions at the node of interest (located at xyz_global)
+ * \param [in]    n_results number of functions to be interpolated
+ */
+void linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *xyz_global, double *results, const unsigned int n_results);
 double linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *xyz_global);
 
 /*!
- * \brief non_oscilatory_quadratic_interpolation performs non-oscilatory quadratic interpolation for a point
- * \param p4est the forest
- * \param tree_id the current tree that owns the quadrant
- * \param quad the current quarant
- * \param F a simple C-style array of size 4, containing the values of the function at the vertices of the quadrant. __MUST__ be z-ordered
- * \param Fxx a simple C-style array of size 4, containing the values of the xx derivative of function at the vertices of the quadrant. does not need to be z-ordered
- * \param Fyy a simple C-style array of size 4, containing the values of the yy derivative of function at the vertices of the quadrant. does not need to be z-ordered
- * \param x_global global x-coordinate ointerface_location_with_second_order_derivativef the point
- * \param y_global global y-coordinate of the point
- * \return interpolated value
+ * \brief quadratic_non_oscillatory_interpolation performs non-oscilatory quadratic interpolation for a point
+ * \param [in]    p4est the forest
+ * \param [in]    tree_id the current tree that owns the quadrant
+ * \param [in]    quad the current quarant
+ * \param [in]    F a simple C-style array of size n_results*P4EST_CHILDREN, containing the values of the n_vecs function(s) at the vertices of the quadrant. __MUST__ be z-ordered
+ *                F[k*P4EST_CHILDREN+i] = value of he kth function at quadrant's node i (in z-order), 0 <= i < P4EST_CHILDREN, 0 <= k < n_results
+ * \param [in]    Fdd a simple C-style array of size n_results*P4EST_CHILDREN*P4EST_DIM, containing the values of the second derivatives of the function(s) at the vertices of the quadrant
+ *                Fdd[k*P4EST_CHILDREN*P4EST_DIM+j*P4EST_DIM+i] = value of the second derivative along dimension i, at quadrant's node j, of the kth function,
+ *                0 <= i < P4EST_DIM, 0<= j < P4EST_CHILDREN, 0 <= k < n_results
+ * \param [in]    xyz_global global coordinates of the point
+ * \param [inout] simple C-style array of size n_results containing the results of the quadratic_interpolation of the n_results different functions at the node of interest (located at xyz_global)
+ * \param [in]    n_results number of functions to be interpolated
  */
+void quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results);
 double quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global);
 double quadratic_non_oscillatory_continuous_v1_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global);
 double quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global);
 
 /*!
  * \brief quadratic_interpolation performs quadratic interpolation for a point
- * \param p4est the forest
- * \param tree_id the current tree that owns the quadrant
- * \param quad the current quarant
- * \param F a simple C-style array of size 4, containing the values of the function at the vertices of the quadrant. __MUST__ be z-ordered
- * \param Fxx a simple C-style array of size 4, containing the values of the xx derivative of function at the vertices of the quadrant. does not need to be z-ordered
- * \param Fyy a simple C-style array of size 4, containing the values of the yy derivative of function at the vertices of the quadrant. does not need to be z-ordered
- * \param x_global global x-coordinate of the point
- * \param y_global global y-coordinate of the point
- * \return interpolated value
+ * \param [in]    p4est the forest
+ * \param [in]    tree_id the current tree that owns the quadrant
+ * \param [in]    quad the current quarant
+ * \param [in]    F a simple C-style array of size n_results*P4EST_CHILDREN, containing the values of the n_vecs function(s) at the vertices of the quadrant. __MUST__ be z-ordered
+ *                F[k*P4EST_CHILDREN+i] = value of he kth function at quadrant's node i (in z-order), 0 <= i < P4EST_CHILDREN, 0 <= k < n_results
+ * \param [in]    Fdd a simple C-style array of size n_results*P4EST_CHILDREN*P4EST_DIM, containing the values of the second derivatives of the function(s) at the vertices of the quadrant
+ *                Fdd[k*P4EST_CHILDREN*P4EST_DIM+j*P4EST_DIM+i] = value of the second derivative along dimension i, at quadrant's node j, of the kth function,
+ *                0 <= i < P4EST_DIM, 0<= j < P4EST_CHILDREN, 0 <= k < n_results
+ * \param [in]    xyz_global global coordinates of the point
+ * \param [inout] simple C-style array of size n_results containing the results of the quadratic_interpolation of the n_results different functions at the node of interest (located at xyz_global)
+ * \param [in]    n_results number of functions to be interpolated
  */
+void quadratic_interpolation(const p4est_t* p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results);
 double quadratic_interpolation(const p4est_t* p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global);
 
 /*!
@@ -717,6 +806,13 @@ PetscErrorCode VecCreateGhostNodesBlock(const p4est_t *p4est, p4est_nodes_t *nod
  * \param v     [out] PETSc vector type
  */
 PetscErrorCode VecCreateGhostCells(const p4est_t *p4est, p4est_ghost_t *ghost, Vec* v);
+
+/*!
+ * \brief VecCreateCellsNoGhost Creates a PETSc parallel vector on the cells
+ * \param p4est [in]  the forest
+ * \param v     [out] PETSc vector type
+ */
+PetscErrorCode VecCreateCellsNoGhost(const p4est_t *p4est, Vec* v);
 
 /*!
  * \brief VecCreateGhostNodesBlock Creates a ghosted block PETSc parallel vector
@@ -758,6 +854,51 @@ PetscErrorCode VecGhostChangeLayoutBegin(VecScatter ctx, Vec from, Vec to);
  */
 PetscErrorCode VecGhostChangeLayoutEnd(VecScatter ctx, Vec from, Vec to);
 
+/*!
+ * \brief is_folder returns true if the path points to an existing folder
+ * does not use boost nor c++17 standard to maximize portability
+ * \param path: path to be checked
+ * \return true if the path points to a folder
+ * [throws std::runtime_error if the path cannot be accessed]
+ */
+bool is_folder(const char* path);
+
+/*!
+ * \brief file_exists returns true if the path points to an existing file
+ * does not use boost nor c++17 standard to maximize portability
+ * \param path:path to be checked
+ * \return true if there exists a file corresponding to the given path
+ */
+bool file_exists(const char* path);
+
+/*!
+ * \brief create_directory creates a folder indicated by the given path, permission rights: 755
+ * does not use boost nor c++17 standard to maximize portability (parents are created as well)
+ * \param path: path to the folder to be created
+ * \param mpi_rank: rank of the calling process
+ * \param comm: communicator
+ * \return 0 if the creation was successful, non-0 otherwise
+ * [the root process creates the folder, the operation is collective by MPI_Bcast on the result]
+ */
+int create_directory(const char* path, int mpi_rank, MPI_Comm comm=MPI_COMM_WORLD);
+
+/*!
+ * \brief delete_directory_recursive explores a directory then
+ * - it deletes all regular files in the directrory;
+ * - it goes through subdirectories and calls the same function on them;
+ * - after recursive call returns the subdirectory is removed;
+ * does not use boost nor c++17 standard to maximize portability
+ * \param root_path: path to the root directory to be entirely deleted
+ * \param mpi_rank: rank of the calling process
+ * \param comm: communicator
+ * \param non_collective: flag skipping the (collective) steps (for recursive calls on root process)
+ * \return 0 if the deletion was successful, non-0 otherwise
+ * [the root process deletes the content, the operation is collective by MPI_Bcast on the final result]
+ * [throws std::invalid_argument if the root_path is NOT a directory]
+ */
+int delete_directory(const char* root_path, int mpi_rank, MPI_Comm comm=MPI_COMM_WORLD, bool non_collective=false);
+
+int get_subdirectories_in(const char* root_path, std::vector<std::string>& subdirectories);
 
 inline double int2double_coordinate_transform(p4est_qcoord_t a){
   return static_cast<double>(a)/static_cast<double>(P4EST_ROOT_LEN);
@@ -1271,6 +1412,10 @@ double area_in_negative_domain(const p4est_t *p4est, const p4est_nodes_t *nodes,
  * \brief integrate_over_interface_in_one_quadrant
  */
 double integrate_over_interface_in_one_quadrant(const p4est_t *p4est, const p4est_nodes_t *nodes, const p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi, Vec f);
+/*!
+ * \brief max_over_interface_in_one_quadrant
+ */
+double max_over_interface_in_one_quadrant(const p4est_nodes_t *nodes, p4est_locidx_t quad_idx, Vec phi, Vec f);
 
 /*!
  * \brief integrate_over_interface integrate a scalar f over the 0-contour of the level-set function phi.
@@ -1282,6 +1427,16 @@ double integrate_over_interface_in_one_quadrant(const p4est_t *p4est, const p4es
  * \return the integral of f over the contour defined by phi, i.e. \int_{phi=0} f
  */
 double integrate_over_interface(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec f);
+
+/*!
+ * \brief max_over_interface calculate the maximum value of a scalar f over the 0-contour of the level-set function phi.
+ * \param p4est the p4est
+ * \param nodes the nodes structure associated to p4est
+ * \param phi the level-set function
+ * \param f the scalar to integrate
+ * \return the integral of f over the contour defined by phi, i.e. \max_{phi=0} f
+ */
+double max_over_interface(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec f);
 
 /*!
  * \brief compute_mean_curvature computes the mean curvature using compact stencil k = -div(n)
@@ -1501,7 +1656,7 @@ bool is_quad_Wall  (const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quad
  * \param dir   [in] the direction to check, 0 (x), 1 (y) or 2 (z, only in 3D)
  * \return true if the forest is periodic in direction dir, false otherwise
  */
-inline bool is_periodic(const p4est_t *p4est, int dir)
+inline bool is_periodic(const p4est_connectivity_t *const conn, int dir)
 {
   /* check whether there is not a boundary on the left side of first tree */
   P4EST_ASSERT (0 <= dir && dir < P4EST_DIM);
@@ -1509,8 +1664,12 @@ inline bool is_periodic(const p4est_t *p4est, int dir)
   const int face = 2 * dir;
   const p4est_topidx_t tfindex = 0 * P4EST_FACES + face;
 
-  return !(p4est->connectivity->tree_to_tree[tfindex] == 0 &&
-           p4est->connectivity->tree_to_face[tfindex] == face);
+  return !(conn->tree_to_tree[tfindex] == 0 &&
+           conn->tree_to_face[tfindex] == face);
+}
+inline bool is_periodic(const p4est_t *p4est, int dir)
+{
+  return is_periodic(p4est->connectivity, dir);
 }
 
 /*!
@@ -1638,7 +1797,11 @@ public:
 
     ierr = PetscInitialize(&argc, &argv, NULL, NULL); CHKERRXX(ierr);
 
+#ifdef DEBUG
+    sc_init (mpicomm, P4EST_FALSE, P4EST_FALSE, NULL, SC_LP_DEFAULT); // to allow easy debugging --> backtracks the P4EST_ASSERTs!
+#else
     sc_init (mpicomm, P4EST_FALSE, P4EST_FALSE, NULL, SC_LP_SILENT);
+#endif
     p4est_init (NULL, SC_LP_SILENT);
 #ifdef CASL_LOG_EVENTS
     register_petsc_logs();
@@ -1680,7 +1843,8 @@ public:
 
   void start(const std::string& msg){
     msg_ = msg;
-    PetscFPrintf(comm_, f_, "%s ... \n", msg.c_str());
+    if(msg_.length() > 0)
+      PetscFPrintf(comm_, f_, "%s ... \n", msg.c_str());
     ts = MPI_Wtime();
   }
 
@@ -1690,24 +1854,44 @@ public:
 
   double read_duration(){
     double elap = tf - ts;
+    if (timing_ == all_timings)
+      MPI_Gather(&elap, 1, MPI_DOUBLE, &t[0], 1, MPI_DOUBLE, 0, comm_);
+    return elap;
+  }
 
+  void print_stats_only(){
+    if(timing_ != all_timings)
+    {
+      PetscFPrintf(comm_, stderr, "parStopWatch::print_stats_only() can be called only in 'all_timing' mode.");
+      return;
+    }
+    print_duration(true);
+  }
+
+  double print_duration(bool print_stats_only_ = false){
+    double elap = read_duration();
     PetscPrintf(comm_, "%s ... done in \n", msg_.c_str());
     if (timing_ == all_timings){
-      MPI_Gather(&elap, 1, MPI_DOUBLE, &t[0], 1, MPI_DOUBLE, 0, comm_);
       double tmax, tmin, tavg, tdev;
       tmax = tmin = elap;
       tavg = tdev = 0;
       if (mpirank == 0){
-        PetscFPrintf(comm_, f_, "t = [");
-        for (size_t i=0; i<t.size()-1; i++)
-          PetscFPrintf(comm_, f_, "%.5lf, ", t[i]);
-        PetscFPrintf(comm_, f_, "%.5lf];\n", t.back());
-
-        for (size_t i=0; i<t.size(); i++){
+        if(!print_stats_only_)
+          PetscFPrintf(comm_, f_, "t = [");
+        for (size_t i=0; i<t.size()-1; i++){
+          if(!print_stats_only_)
+            PetscFPrintf(comm_, f_, "%.5lf, ", t[i]);
           tavg += t[i];
           tmax = MAX(tmax, t[i]);
           tmin = MIN(tmin, t[i]);
         }
+        if(!print_stats_only_)
+          PetscFPrintf(comm_, f_, "%.5lf];\n", t.back());
+
+        tavg += t.back();
+        tmax = MAX(tmax, t.back());
+        tmin = MIN(tmin, t.back());
+
         tavg /= mpisize;
 
         for (size_t i=0; i<t.size(); i++){

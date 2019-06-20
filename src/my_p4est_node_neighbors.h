@@ -37,6 +37,7 @@ class my_p4est_node_neighbors_t {
   friend class my_p4est_poisson_jump_nodes_voronoi_t;
   friend class my_p4est_poisson_jump_voronoi_block_t;
   friend class my_p4est_poisson_jump_nodes_extended_t;
+  friend class my_p4est_xgfm_cells_t;
   friend class my_p4est_interpolation_t;
   friend class my_p4est_interpolation_nodes_t;
   friend class my_p4est_interpolation_nodes_local_t;
@@ -50,6 +51,8 @@ class my_p4est_node_neighbors_t {
   friend class my_p4est_multialloy_t;
   friend class my_p4est_navier_stokes_t;
   friend class my_p4est_epitaxy_t;
+  friend class my_p4est_biomolecules_t;
+  friend class my_p4est_biomolecules_solver_t;
   friend class my_p4est_poisson_nodes_multialloy_t;
   friend class my_p4est_poisson_nodes_mls_sc_t;
   friend class my_p4est_poisson_nodes_mls_t;
@@ -309,12 +312,31 @@ public:
    * \param [in]  f   PETSc vector to compute the derivaties on
    * \param [out] fxx PETSc vector to store the results in. A check is done to ensure they have the same size as f
    * \param [out] fyy PETSc vector to store the results in. A check is done to ensure they have the same size as f
-   * \param [out] fzz PETSc vector to store the results in. A check is done to ensure they have the same size as f (only inn 3D)
+   * \param [out] fzz PETSc vector to store the results in. A check is done to ensure they have the same size as f (only in 3D)
    */
 #ifdef P4_TO_P8
-  void second_derivatives_central(const Vec f, Vec fxx, Vec fyy, Vec fzz) const;
+  void second_derivatives_central(const Vec f, Vec fxx, Vec fyy, Vec fzz) const { second_derivatives_central(&f, &fxx, &fyy, &fzz, 1); }
+  void second_derivatives_central(const Vec f[], Vec fxx[], Vec fyy[], Vec fzz[], unsigned int n_vecs) const;
 #else
-  void second_derivatives_central(const Vec f, Vec fxx, Vec fyy) const;
+  void second_derivatives_central(const Vec f, Vec fxx, Vec fyy) const { second_derivatives_central(&f, &fxx, &fyy, 1); }
+  void second_derivatives_central(const Vec f[], Vec fxx[], Vec fyy[], unsigned int n_vecs) const;
+#endif
+
+  /*!
+   * \brief second_derivatives_central_above_threshold computes dxx, dyy, and dzz
+   * central at all points where f is greater than threshold. Similar to the function
+   * but disregards points where f < threshold.
+   *
+   * \param [in]  f   PETSc vector to compute the derivaties on
+   * \param [in]  thr double threshold value mentioned above
+   * \param [out] fxx PETSc vector to store the results in. A check is done to ensure they have the same size as f
+   * \param [out] fyy PETSc vector to store the results in. A check is done to ensure they have the same size as f
+   * \param [out] fzz PETSc vector to store the results in. A check is done to ensure they have the same size as f (only in 3D)
+   */
+#ifdef P4_TO_P8
+  void second_derivatives_central_above_threshold(const Vec f, double thr, Vec fxx, Vec fyy, Vec fzz) const;
+#else
+  void second_derivatives_central_above_threshold(const Vec f, double thr, Vec fxx, Vec fyy) const;
 #endif
 
   /*!

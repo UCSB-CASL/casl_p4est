@@ -7,11 +7,11 @@
 #include <src/my_p8est_refine_coarsen.h>
 #include <src/my_p8est_solve_lsqr.h>
 #include <src/my_p8est_interpolation_nodes.h>
+#include <src/cube2.h>
 #else
 #include <src/my_p4est_refine_coarsen.h>
 #include <src/my_p4est_solve_lsqr.h>
 #include <src/my_p4est_interpolation_nodes.h>
-#include <src/cube2.h>
 #endif
 
 #include <sc_notify.h>
@@ -679,7 +679,7 @@ void my_p4est_faces_t::init_faces()
     {
       p4est_locidx_t quad_idx = q+p4est->local_num_quadrants;
       if(q2f_[dir][quad_idx] != NO_VELOCITY && f2q_[dir/2][q2f_[dir][quad_idx]].quad_idx == -1)
-        f2q_[dir/2][q2f_[dir][quad_idx]].quad_idx = quad_idx;
+        f2q_[dir/2][q2f_[dir][quad_idx]].quad_idx = quad_idx; // [Raphael:] no tree_idx set!
     }
   }
 
@@ -834,6 +834,90 @@ void my_p4est_faces_t::xyz_fr_f(p4est_locidx_t f_idx, int dir, double* xyz) cons
 #endif
 }
 
+#ifdef P4_TO_P8
+double my_p4est_faces_t::face_area_in_negative_domain(p4est_locidx_t f_idx, int dir, const double *phi_p, const p4est_nodes_t* nodes) const
+#else
+double my_p4est_faces_t::face_area_in_negative_domain(p4est_locidx_t f_idx, int dir, const double *phi_p, const p4est_nodes_t* nodes, const double *phi_dd[]) const
+#endif
+{
+#ifdef CASL_THROWS
+  if((phi_p != NULL) && (nodes == NULL))
+    throw std::invalid_argument("my_p4est_faces_t::face_area: if the node-sampled levelset function is provided, the nodes MUST be provided as well.");
+#endif
+  p4est_locidx_t  *t2v = p4est->connectivity->tree_to_vertex;
+  double          *v2c = p4est->connectivity->vertices;
+
+  p4est_locidx_t quad_idx;
+  p4est_topidx_t tree_idx;
+  f2q(f_idx, dir, quad_idx, tree_idx);
+
+  p4est_quadrant_t *quad;
+  if(quad_idx<p4est->local_num_quadrants)
+  {
+    P4EST_ASSERT(tree_idx>=0);
+    p4est_tree_t* tree = (p4est_tree_t*) sc_array_index(p4est->trees, tree_idx);
+    quad = (p4est_quadrant_t*) sc_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
+  }
+  else
+  {
+    quad = (p4est_quadrant_t*) sc_array_index(&ghost->ghosts, quad_idx-p4est->local_num_quadrants);
+    tree_idx = quad->p.piggy3.which_tree;
+  }
+
+  int tmp = ((q2f(quad_idx, 2*dir)==f_idx)? 0 : 1);
+
+  double area = 1.0;
+  for (short dim = 0; dim < P4EST_DIM; ++dim)
+  {
+    if(dim == dir)
+      continue;
+    area *= (v2c[3*t2v[P4EST_CHILDREN*tree_idx + P4EST_CHILDREN-1] + dir]-v2c[3*t2v[P4EST_CHILDREN*tree_idx + 0] + dir])/((double) (1<<quad->level));
+  }
+  if(phi_p != NULL)
+  {
+    p4est_locidx_t node_indices[2*(P4EST_DIM-1)];
+    short zzz, yyy, xxx;
+    for (short first = 0; first < P4EST_DIM-1; ++first) {
+      for (short second = 0; second < 2; ++second) {
+#ifdef P4_TO_P8
+        zzz = ((dir==dir::z)? tmp : first);
+        yyy = ((dir==dir::y)? tmp : ((dir==dir::z)? first : second));
+        xxx = ((dir==dir::x)? tmp : second);
+#else
+        zzz = first; // always 0...
+        yyy = ((dir==dir::y)? tmp : second);
+        xxx = ((dir==dir::x)? tmp : second);
+#endif
+        node_indices[2*first+second] = nodes->local_nodes[P4EST_CHILDREN*quad_idx+4*zzz+2*yyy+xxx];
+      }
+    }
+    bool they_are_all_positive    = true;
+    bool at_least_one_is_positive = false;
+    for (short kk = 0; kk < 2*(P4EST_DIM-1); ++kk) {
+      bool node_is_in_positive_domain = (phi_p[node_indices[kk]] > 0.0);
+      they_are_all_positive     = they_are_all_positive && node_is_in_positive_domain;
+      at_least_one_is_positive  = at_least_one_is_positive || (node_is_in_positive_domain);
+    }
+    if (they_are_all_positive)
+      return 0.0;
+    if (at_least_one_is_positive)
+    {
+#ifndef P4_TO_P8
+      double h = area;
+      if(phi_dd == NULL)
+        area *= fraction_Interval_Covered_By_Irregular_Domain(phi_p[node_indices[0]], phi_p[node_indices[1]], h, h);
+      else
+        area *= fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(phi_p[node_indices[0]], phi_p[node_indices[1]], phi_dd[(dir?0:1)][node_indices[0]], phi_dd[(dir?0:1)][node_indices[1]], h);
+#else
+      Cube2 my_face(0.0, 1.0, 0.0, 1.0);
+      QuadValue ls_value(phi_p[node_indices[0]], phi_p[node_indices[1]], phi_p[node_indices[2]], phi_p[node_indices[3]]);
+      area *= my_face.area_In_Negative_Domain(ls_value);
+#endif
+    }
+  }
+  return area;
+}
+
 
 
 PetscErrorCode VecCreateGhostFaces(const p4est_t *p4est, const my_p4est_faces_t *faces, Vec* v, int dir)
@@ -933,9 +1017,9 @@ void check_if_faces_are_well_defined(p4est_t *p4est, my_p4est_node_neighbors_t *
       double y = faces->y_fr_f(f_idx,dir);
 #ifdef P4_TO_P8
       double z = faces->z_fr_f(f_idx,dir);
-      face_is_well_defined_p[f_idx] = interp(x,y,z)<0;
+      face_is_well_defined_p[f_idx] = interp(x,y,z)<=0;
 #else
-      face_is_well_defined_p[f_idx] = interp(x,y)<0;
+      face_is_well_defined_p[f_idx] = interp(x,y)<=0;
 #endif
     }
   }
@@ -947,13 +1031,13 @@ void check_if_faces_are_well_defined(p4est_t *p4est, my_p4est_node_neighbors_t *
       double y = faces->y_fr_f(f_idx,dir);
 #ifdef P4_TO_P8
       double z = faces->z_fr_f(f_idx,dir);
-      face_is_well_defined_p[f_idx] = ( interp(x-dx, y-dy, z-dz)<0 || interp(x+dx, y-dy, z-dz)<0 ||
-                                        interp(x-dx, y-dy, z+dz)<0 || interp(x+dx, y-dy, z+dz)<0 ||
-                                        interp(x-dx, y+dy, z-dz)<0 || interp(x+dx, y+dy, z-dz)<0 ||
-                                        interp(x-dx, y+dy, z+dz)<0 || interp(x+dx, y+dy, z+dz)<0 );
+      face_is_well_defined_p[f_idx] = ( interp(x-dx, y-dy, z-dz)<=0 || interp(x+dx, y-dy, z-dz)<=0 ||
+                                        interp(x-dx, y-dy, z+dz)<=0 || interp(x+dx, y-dy, z+dz)<=0 ||
+                                        interp(x-dx, y+dy, z-dz)<=0 || interp(x+dx, y+dy, z-dz)<=0 ||
+                                        interp(x-dx, y+dy, z+dz)<=0 || interp(x+dx, y+dy, z+dz)<=0 );
 #else
-      face_is_well_defined_p[f_idx] = ( interp(x-dx, y-dy)<0 || interp(x+dx, y-dy)<0 ||
-                                        interp(x-dx, y+dy)<0 || interp(x+dx, y+dy)<0 );
+      face_is_well_defined_p[f_idx] = ( interp(x-dx, y-dy)<=0 || interp(x+dx, y-dy)<=0 ||
+                                        interp(x-dx, y+dy)<=0 || interp(x+dx, y+dy)<=0 );
 #endif
     }
   }
@@ -992,13 +1076,8 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
 
   p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, node_idx);
 
-#ifdef P4_TO_P8
-  if(bc!=NULL && is_node_Wall(p4est, node) && bc[dir].wallType(xyz[0],xyz[1],xyz[2])==DIRICHLET)
-    return bc[dir].wallValue(xyz[0],xyz[1],xyz[2]);
-#else
-  if(bc!=NULL && is_node_Wall(p4est, node) && bc[dir].wallType(xyz[0],xyz[1])==DIRICHLET)
-    return bc[dir].wallValue(xyz[0],xyz[1]);
-#endif
+  if(bc!=NULL && is_node_Wall(p4est, node) && bc[dir].wallType(xyz)==DIRICHLET)
+    return bc[dir].wallValue(xyz);
 
   double *v2c = p4est->connectivity->vertices;
   p4est_topidx_t *t2v = p4est->connectivity->tree_to_vertex;
@@ -1013,9 +1092,22 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
 #else
   double qh = MIN(xmax-xmin, ymax-ymin);
 #endif
+  double domain_size[P4EST_DIM];
+  if(is_periodic(p4est, dir::x) || is_periodic(p4est, dir::y)
+   #ifdef P4_TO_P8
+     || is_periodic(p4est, dir::z)
+   #endif
+     )
+    for (short dim = 0; dim < P4EST_DIM; ++dim)
+      domain_size[dim] =
+          p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*(p4est->trees->elem_count-1) + P4EST_CHILDREN-1] + dim] -
+          p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[0 + 0] + dim];
+
 
   /* gather the neighborhood */
+#ifdef CASL_THROWS
   bool is_local = false;
+#endif
   vector<p4est_quadrant_t> ngbd_tmp;
   p4est_locidx_t quad_idx;
   p4est_topidx_t tree_idx;
@@ -1045,7 +1137,9 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
 
         quad.p.piggy3.local_num = quad_idx;
 
+#ifdef CASL_THROWS
         is_local = is_local || (quad_idx<p4est->local_num_quadrants);
+#endif
 
         ngbd_tmp.push_back(quad);
         scaling = MIN(scaling, .5*qh*(double)P4EST_QUADRANT_LEN(quad.level)/(double)P4EST_ROOT_LEN);
@@ -1092,10 +1186,13 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
 
   vector<p4est_locidx_t> interp_points;
   matrix_t A;
+  bool neumann_wall_x = (bc!=NULL && (is_node_xmWall(p4est, node) || is_node_xpWall(p4est, node)) && bc[dir].wallType(xyz)==NEUMANN);
+  bool neumann_wall_y = (bc!=NULL && (is_node_ymWall(p4est, node) || is_node_ypWall(p4est, node)) && bc[dir].wallType(xyz)==NEUMANN);
 #ifdef P4_TO_P8
-  A.resize(1, order>=2 ? 10 : 6);
+  bool neumann_wall_z = (bc!=NULL && (is_node_zmWall(p4est, node) || is_node_zpWall(p4est, node)) && bc[dir].wallType(xyz)==NEUMANN);
+  A.resize(1, (order>=2 ? 10 : 4) - (neumann_wall_x?1:0)- (neumann_wall_y?1:0) - (neumann_wall_z?1:0));
 #else
-  A.resize(1, order>=2 ? 6 : 4);
+  A.resize(1, (order>=2 ? 6 : 3) - (neumann_wall_x?1:0)- (neumann_wall_y?1:0));
 #endif
   vector<double> p;
   vector<double> nb[P4EST_DIM];
@@ -1103,9 +1200,9 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
   double min_w = 1e-6;
   double inv_max_w = 1e-6;
 
-  PetscScalar *face_is_well_defined_p;
+  const PetscScalar *face_is_well_defined_p;
   if(face_is_well_defined!=NULL)
-    ierr = VecGetArray(face_is_well_defined, &face_is_well_defined_p); CHKERRXX(ierr);
+    ierr = VecGetArrayRead(face_is_well_defined, &face_is_well_defined_p); CHKERRXX(ierr);
 
   for(unsigned int m=0; m<ngbd.size(); m++)
   {
@@ -1116,7 +1213,14 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
       double xyz_t[P4EST_DIM];
       faces->xyz_fr_f(fm_idx, dir, xyz_t);
       for(int i=0; i<P4EST_DIM; ++i)
-        xyz_t[i] = (xyz[i] - xyz_t[i]) / scaling;
+      {
+        double rel_dist = (xyz[i] - xyz_t[i]);
+        if(is_periodic(p4est, i))
+          for (short cc = -1; cc < 2; cc+=2)
+            if(fabs((xyz[i] - xyz_t[i] + ((double) cc)*domain_size[i])) < fabs(rel_dist))
+              rel_dist = (xyz[i] - xyz_t[i] + ((double) cc)*domain_size[i]);
+        xyz_t[i] = rel_dist / scaling;
+      }
 
 #ifdef P4_TO_P8
       double w = MAX(min_w,1./MAX(inv_max_w,sqrt(SQR(xyz_t[0]) + SQR(xyz_t[1]) + SQR(xyz_t[2]))));
@@ -1125,32 +1229,41 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
 #endif
 
 #ifdef P4_TO_P8
-      A.set_value(interp_points.size(), 0, 1                 * w);
-      A.set_value(interp_points.size(), 1, xyz_t[0]          * w);
-      A.set_value(interp_points.size(), 2, xyz_t[1]          * w);
-      A.set_value(interp_points.size(), 3, xyz_t[2]          * w);
+      A.set_value(interp_points.size(), 0, 1                                                                                  * w);
+      if(!neumann_wall_x)
+        A.set_value(interp_points.size(), 1, xyz_t[0]                                                                         * w);
+      if(!neumann_wall_y)
+        A.set_value(interp_points.size(), 2-(neumann_wall_x?1:0), xyz_t[1]                                                    * w);
+      if(!neumann_wall_z)
+        A.set_value(interp_points.size(), 3-(neumann_wall_x?1:0)-(neumann_wall_y?1:0), xyz_t[2]                               * w);
       if(order>=2)
       {
-        A.set_value(interp_points.size(), 4, xyz_t[0]*xyz_t[0] * w);
-        A.set_value(interp_points.size(), 5, xyz_t[0]*xyz_t[1] * w);
-        A.set_value(interp_points.size(), 6, xyz_t[0]*xyz_t[2] * w);
-        A.set_value(interp_points.size(), 7, xyz_t[1]*xyz_t[1] * w);
-        A.set_value(interp_points.size(), 8, xyz_t[1]*xyz_t[2] * w);
-        A.set_value(interp_points.size(), 9, xyz_t[2]*xyz_t[2] * w);
+        A.set_value(interp_points.size(), 4-(neumann_wall_x?1:0)-(neumann_wall_y?1:0)-(neumann_wall_z?1:0), xyz_t[0]*xyz_t[0] * w);
+        A.set_value(interp_points.size(), 5-(neumann_wall_x?1:0)-(neumann_wall_y?1:0)-(neumann_wall_z?1:0), xyz_t[0]*xyz_t[1] * w);
+        A.set_value(interp_points.size(), 6-(neumann_wall_x?1:0)-(neumann_wall_y?1:0)-(neumann_wall_z?1:0), xyz_t[0]*xyz_t[2] * w);
+        A.set_value(interp_points.size(), 7-(neumann_wall_x?1:0)-(neumann_wall_y?1:0)-(neumann_wall_z?1:0), xyz_t[1]*xyz_t[1] * w);
+        A.set_value(interp_points.size(), 8-(neumann_wall_x?1:0)-(neumann_wall_y?1:0)-(neumann_wall_z?1:0), xyz_t[1]*xyz_t[2] * w);
+        A.set_value(interp_points.size(), 9-(neumann_wall_x?1:0)-(neumann_wall_y?1:0)-(neumann_wall_z?1:0), xyz_t[2]*xyz_t[2] * w);
       }
 #else
-      A.set_value(interp_points.size(), 0, 1                 * w);
-      A.set_value(interp_points.size(), 1, xyz_t[0]          * w);
-      A.set_value(interp_points.size(), 2, xyz_t[1]          * w);
+      A.set_value(interp_points.size(), 0, 1                                                              * w);
+      if(!neumann_wall_x)
+        A.set_value(interp_points.size(), 1, xyz_t[0]                                                     * w);
+      if(!neumann_wall_y)
+        A.set_value(interp_points.size(), 2-(neumann_wall_x?1:0), xyz_t[1]                                * w);
       if(order>=2)
       {
-        A.set_value(interp_points.size(), 3, xyz_t[0]*xyz_t[0] * w);
-        A.set_value(interp_points.size(), 4, xyz_t[0]*xyz_t[1] * w);
-        A.set_value(interp_points.size(), 5, xyz_t[1]*xyz_t[1] * w);
+        A.set_value(interp_points.size(), 3-(neumann_wall_x?1:0)-(neumann_wall_y?1:0), xyz_t[0]*xyz_t[0]  * w);
+        A.set_value(interp_points.size(), 4-(neumann_wall_x?1:0)-(neumann_wall_y?1:0), xyz_t[0]*xyz_t[1]  * w);
+        A.set_value(interp_points.size(), 5-(neumann_wall_x?1:0)-(neumann_wall_y?1:0), xyz_t[1]*xyz_t[1]  * w);
       }
 #endif
 
-      p.push_back(f_p[fm_idx] * w);
+      p.push_back((f_p[fm_idx] + (neumann_wall_x? bc->wallValue(xyz)*xyz_t[0]*scaling: 0.0) + (neumann_wall_y? bc->wallValue(xyz)*xyz_t[1]*scaling: 0.0)
+             #ifdef P4_TO_P8
+                   + (neumann_wall_z? bc->wallValue(xyz)*xyz_t[2]*scaling: 0.0)
+             #endif
+                   ) * w);
 
       for(int d=0; d<P4EST_DIM; ++d)
         if(std::find(nb[d].begin(), nb[d].end(), xyz_t[d]) == nb[d].end())
@@ -1162,7 +1275,7 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
 
   ierr = VecRestoreArray(f, &f_p); CHKERRXX(ierr);
   if(face_is_well_defined!=NULL)
-    ierr = VecRestoreArray(face_is_well_defined, &face_is_well_defined_p); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(face_is_well_defined, &face_is_well_defined_p); CHKERRXX(ierr);
 
   if(interp_points.size()==0)
     return 0;
@@ -1170,8 +1283,8 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
   A.scale_by_maxabs(p);
 
 #ifdef P4_TO_P8
-  return solve_lsqr_system(A, p, nb[0].size(), nb[1].size(), nb[2].size());
+  return solve_lsqr_system(A, p, nb[0].size(), nb[1].size(), nb[2].size(), order);
 #else
-  return solve_lsqr_system(A, p, nb[0].size(), nb[1].size());
+  return solve_lsqr_system(A, p, nb[0].size(), nb[1].size(), order);
 #endif
 }

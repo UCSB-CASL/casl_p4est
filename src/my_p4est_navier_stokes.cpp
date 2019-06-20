@@ -7,8 +7,9 @@
 #include <src/my_p8est_level_set_cells.h>
 #include <src/my_p8est_level_set_faces.h>
 #include <src/my_p8est_trajectory_of_point.h>
-#include <src/my_p8est_semi_lagrangian.h>
 #include <src/my_p8est_vtk.h>
+#include <p8est_extended.h>
+#include <p8est_algorithms.h>
 #else
 #include <src/my_p4est_poisson_cells.h>
 #include <src/my_p4est_poisson_faces.h>
@@ -16,8 +17,9 @@
 #include <src/my_p4est_level_set_cells.h>
 #include <src/my_p4est_level_set_faces.h>
 #include <src/my_p4est_trajectory_of_point.h>
-#include <src/my_p4est_semi_lagrangian.h>
 #include <src/my_p4est_vtk.h>
+#include <p4est_extended.h>
+#include <p4est_algorithms.h>
 #endif
 
 #include <algorithm>
@@ -38,10 +40,10 @@ extern PetscLogEvent log_my_p4est_navier_stokes_update;
 my_p4est_navier_stokes_t::splitting_criteria_vorticity_t::splitting_criteria_vorticity_t(int min_lvl, int max_lvl, double lip, double uniform_band, double threshold, double max_L2_norm_u, double smoke_thresh)
   : splitting_criteria_tag_t(min_lvl, max_lvl, lip)
 {
-  this->uniform_band = uniform_band;
-  this->threshold = threshold;
+  this->uniform_band  = uniform_band;
+  this->threshold     = threshold;
   this->max_L2_norm_u = max_L2_norm_u;
-  this->smoke_thresh = smoke_thresh;
+  this->smoke_thresh  = smoke_thresh;
 }
 
 
@@ -66,10 +68,10 @@ void my_p4est_navier_stokes_t::splitting_criteria_vorticity_t::tag_quadrant(p4es
     double ymin = p4est->connectivity->vertices[3*vm + 1];
     double xmax = p4est->connectivity->vertices[3*vp + 0];
     double ymax = p4est->connectivity->vertices[3*vp + 1];
-  #ifdef P4_TO_P8
+#ifdef P4_TO_P8
     double zmin = p4est->connectivity->vertices[3*vm + 2];
     double zmax = p4est->connectivity->vertices[3*vp + 2];
-  #endif
+#endif
 
     double dmin = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
     double dx = (xmax-xmin) * dmin;
@@ -106,12 +108,12 @@ void my_p4est_navier_stokes_t::splitting_criteria_vorticity_t::tag_quadrant(p4es
 #ifdef P4_TO_P8
         for(int k=0; k<2; ++k)
         {
-        cor_vort = cor_vort && fabs(vor(x+i*dx, y+j*dy, z+k*dz))*2*MAX(dx,dy,dz)/max_L2_norm_u<threshold;
-        cor_band = cor_band && fabs(phi(x+i*dx, y+j*dy, z+k*dz))>uniform_band*dxyz_min;
-        cor_intf = cor_intf && fabs(phi(x+i*dx, y+j*dy, z+k*dz))>=lip*2*d;
-        if(smo!=NULL)
-          cor_smok = cor_smok && (*smo)(x+i*dx, y+j*dy, z+k*dz)<smoke_thresh;
-        all_pos = all_pos && phi(x+i*dx, y+j*dy, z+k*dz)>0;
+          cor_vort = cor_vort && fabs(vor(x+i*dx, y+j*dy, z+k*dz))*2*MAX(dx,dy,dz)/max_L2_norm_u<threshold;
+          cor_band = cor_band && fabs(phi(x+i*dx, y+j*dy, z+k*dz))>uniform_band*dxyz_min;
+          cor_intf = cor_intf && fabs(phi(x+i*dx, y+j*dy, z+k*dz))>=lip*2*d;
+          if(smo!=NULL)
+            cor_smok = cor_smok && (*smo)(x+i*dx, y+j*dy, z+k*dz)<smoke_thresh;
+          all_pos = all_pos && phi(x+i*dx, y+j*dy, z+k*dz)> MAX(2.0, uniform_band)*dxyz_min; // [RAPHAEL:] modified to enforce at least two layers of finest level in positive domain as well (better extrapolation etc.), also required for Neumann BC in the face-solvers
 #else
       {
         cor_vort = cor_vort && fabs(vor(x+i*dx, y+j*dy))*2*MAX(dx,dy)/max_L2_norm_u<threshold;
@@ -119,13 +121,13 @@ void my_p4est_navier_stokes_t::splitting_criteria_vorticity_t::tag_quadrant(p4es
         cor_intf = cor_intf && fabs(phi(x+i*dx, y+j*dy))>=lip*2*d;
         if(smo!=NULL)
           cor_smok = cor_smok && (*smo)(x+i*dx, y+j*dy)<smoke_thresh;
-        all_pos = all_pos && phi(x+i*dx, y+j*dy)>0;
+        all_pos = all_pos && phi(x+i*dx, y+j*dy)> MAX(2.0, uniform_band)*dxyz_min; // [RAPHAEL:] modified to enforce two layers of finest level in positive domain as well (better extrapolation etc.), also required for Neumann BC in the face-solvers
 #endif
       }
 
     bool coarsen = true;
     coarsen = (cor_vort && cor_band && cor_intf && cor_smok) || all_pos;
-//    coarsen = ((cor_vort && cor_band && cor_smok) || all_pos) && cor_intf;
+    //    coarsen = ((cor_vort && cor_band && cor_smok) || all_pos) && cor_intf;
     coarsen = coarsen && quad->level > min_lvl;
 
     bool is_neg = false;
@@ -143,7 +145,7 @@ void my_p4est_navier_stokes_t::splitting_criteria_vorticity_t::tag_quadrant(p4es
           ref_intf = ref_intf || fabs(phi(x+i*dx/2, y+j*dy/2, z+k*dz/2))<=lip*d;
           if(smo!=NULL)
             ref_smok = ref_smok || (*smo)(x+i*dx/2, y+j*dy/2, z+k*dz/2)>=smoke_thresh;
-          is_neg = is_neg || phi(x+i*dx/2, y+j*dy/2, z+k*dz/2)<0;
+          is_neg = is_neg || phi(x+i*dx/2, y+j*dy/2, z+k*dz/2)< MAX(2.0, uniform_band)*dxyz_min; // [RAPHAEL:] same comment as before
 #else
       {
         ref_vort = ref_vort || fabs(vor(x+i*dx/2, y+j*dy/2))*MAX(dx,dy)/max_L2_norm_u>threshold;
@@ -151,13 +153,13 @@ void my_p4est_navier_stokes_t::splitting_criteria_vorticity_t::tag_quadrant(p4es
         ref_intf = ref_intf || fabs(phi(x+i*dx/2, y+j*dy/2))<=lip*d;
         if(smo!=NULL)
           ref_smok = ref_smok || (*smo)(x+i*dx/2, y+j*dy/2)>=smoke_thresh;
-        is_neg = is_neg || phi(x+i*dx/2, y+j*dy/2)<0;
+        is_neg = is_neg || phi(x+i*dx/2, y+j*dy/2)< MAX(2.0, uniform_band)*dxyz_min; // [RAPHAEL:] same comment as before
 #endif
       }
 
     bool refine = false;
     refine = (ref_vort || ref_band || ref_intf || ref_smok) && is_neg;
-//    refine = ((ref_vort || ref_band || ref_smok) && is_neg) || ref_intf;
+    //    refine = ((ref_vort || ref_band || ref_smok) && is_neg) || ref_intf;
     refine = refine && quad->level < max_lvl;
 
     if (refine)
@@ -259,7 +261,7 @@ my_p4est_navier_stokes_t::my_p4est_navier_stokes_t(my_p4est_node_neighbors_t *ng
     hierarchy_nm1(ngbd_nm1->hierarchy), ngbd_nm1(ngbd_nm1),
     p4est_n(ngbd_n->p4est), ghost_n(ngbd_n->ghost), nodes_n(ngbd_n->nodes),
     hierarchy_n(ngbd_n->hierarchy), ngbd_n(ngbd_n),
-    ngbd_c(faces->ngbd_c), faces_n(faces),
+    ngbd_c(faces->ngbd_c), faces_n(faces), semi_lagrangian_backtrace_is_done(false),
     wall_bc_value_hodge(this), interface_bc_value_hodge(this)
 {
   PetscErrorCode ierr;
@@ -326,6 +328,10 @@ my_p4est_navier_stokes_t::my_p4est_navier_stokes_t(my_p4est_node_neighbors_t *ng
     vnm1_nodes[dir] = NULL;
     vn_nodes  [dir] = NULL;
     vnp1_nodes[dir] = NULL;
+    for (short dd = 0; dd < P4EST_DIM; ++dd) {
+      second_derivatives_vn_nodes[dd][dir]    = NULL;
+      second_derivatives_vnm1_nodes[dd][dir]  = NULL;
+    }
 
     ierr = VecCreateGhostFaces(p4est_n, faces_n, &face_is_well_defined[dir], dir); CHKERRXX(ierr);
     ierr = VecGhostGetLocalForm(face_is_well_defined[dir], &vec_loc); CHKERRXX(ierr);
@@ -338,6 +344,88 @@ my_p4est_navier_stokes_t::my_p4est_navier_stokes_t(my_p4est_node_neighbors_t *ng
     ierr = VecGhostRestoreLocalForm(dxyz_hodge[dir], &vec_loc); CHKERRXX(ierr);
   }
 
+//  ngbd_n->init_neighbors();
+//  ngbd_nm1->init_neighbors();
+
+  interp_phi = new my_p4est_interpolation_nodes_t(ngbd_n);
+  interp_phi->set_input(phi, linear);
+}
+
+my_p4est_navier_stokes_t::my_p4est_navier_stokes_t(const mpi_environment_t& mpi, const char* path_to_save_state, double &simulation_time)
+  : semi_lagrangian_backtrace_is_done(false), wall_bc_value_hodge(this), interface_bc_value_hodge(this)
+{
+  PetscErrorCode ierr;
+  // we need to initialize those to NULL, otherwise the loader will freak out
+  // no risk of memory leak here, this is a CONSTRUCTOR
+  brick = NULL; conn = NULL;
+  p4est_n = NULL; ghost_n = NULL; nodes_n = NULL;
+  hierarchy_n = NULL; ngbd_n = NULL;
+  ngbd_c = NULL; faces_n = NULL;
+  p4est_nm1 = NULL; ghost_nm1 = NULL; nodes_nm1 = NULL;
+  hierarchy_nm1 = NULL; ngbd_nm1 = NULL;
+  phi = NULL; hodge = NULL; smoke = NULL;
+  for (short kk = 0; kk < P4EST_DIM; ++kk) {
+    vnm1_nodes[kk] = NULL;
+    vn_nodes[kk] = NULL;
+    for (short dd = 0; dd < P4EST_DIM; ++dd) {
+      second_derivatives_vn_nodes[dd][kk]    = NULL;
+      second_derivatives_vnm1_nodes[dd][kk]  = NULL;
+    }
+  }
+  load_state(mpi, path_to_save_state, simulation_time);
+  ierr = VecDuplicate(hodge, &pressure); CHKERRXX(ierr);
+
+  bc_v = NULL;
+  bc_pressure = NULL;
+
+  vorticity = NULL;
+  smoke = NULL;
+  bc_smoke = NULL;
+
+  Vec vec_loc;
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    external_forces[dir] = NULL;
+    vstar[dir] = NULL;
+    vnp1[dir] = NULL;
+
+    vnp1_nodes[dir] = NULL;
+
+    ierr = VecCreateGhostFaces(p4est_n, faces_n, &face_is_well_defined[dir], dir); CHKERRXX(ierr);
+    ierr = VecGhostGetLocalForm(face_is_well_defined[dir], &vec_loc); CHKERRXX(ierr);
+    ierr = VecSet(vec_loc, 1); CHKERRXX(ierr);
+    ierr = VecGhostRestoreLocalForm(face_is_well_defined[dir], &vec_loc); CHKERRXX(ierr);
+
+    ierr = VecDuplicate(vn_nodes[dir], &vnp1_nodes [dir]); CHKERRXX(ierr);
+
+    ierr = VecDuplicate(face_is_well_defined[dir], &vstar[dir]); CHKERRXX(ierr);
+    ierr = VecDuplicate(face_is_well_defined[dir], &vnp1[dir]); CHKERRXX(ierr);
+
+    for (short dd = 0; dd < P4EST_DIM; ++dd) {
+      if(second_derivatives_vn_nodes[dd][dir]!= NULL)
+      {
+        ierr = VecDestroy(second_derivatives_vn_nodes[dd][dir]); CHKERRXX(ierr);
+      }
+      if(second_derivatives_vnm1_nodes[dd][dir]!= NULL)
+      {
+        ierr = VecDestroy(second_derivatives_vnm1_nodes[dd][dir]); CHKERRXX(ierr);
+      }
+      ierr = VecCreateGhostNodes(p4est_n, nodes_n, &second_derivatives_vn_nodes[dd][dir]); CHKERRXX(ierr);
+      ierr = VecCreateGhostNodes(p4est_nm1, nodes_nm1, &second_derivatives_vnm1_nodes[dd][dir]); CHKERRXX(ierr);
+    }
+  }
+#ifdef P4_TO_P8
+  ngbd_n->second_derivatives_central(vn_nodes, second_derivatives_vn_nodes[0], second_derivatives_vn_nodes[1], second_derivatives_vn_nodes[2], P4EST_DIM);
+  ngbd_nm1->second_derivatives_central(vnm1_nodes, second_derivatives_vnm1_nodes[0], second_derivatives_vnm1_nodes[1], second_derivatives_vnm1_nodes[2], P4EST_DIM);
+#else
+  ngbd_n->second_derivatives_central(vn_nodes, second_derivatives_vn_nodes[0], second_derivatives_vn_nodes[1], P4EST_DIM);
+  ngbd_nm1->second_derivatives_central(vnm1_nodes, second_derivatives_vnm1_nodes[0], second_derivatives_vnm1_nodes[1], P4EST_DIM);
+#endif
+
+  ierr = VecCreateGhostNodes(p4est_n, nodes_n, &vorticity); CHKERRXX(ierr);
+
+//  ngbd_n->init_neighbors();
+//  ngbd_nm1->init_neighbors();
   interp_phi = new my_p4est_interpolation_nodes_t(ngbd_n);
   interp_phi->set_input(phi, linear);
 }
@@ -354,17 +442,23 @@ my_p4est_navier_stokes_t::~my_p4est_navier_stokes_t()
 
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
-    if(dxyz_hodge[dir]!=NULL) { ierr = VecDestroy(dxyz_hodge[dir]); CHKERRXX(ierr); }
-    if(vstar[dir]!=NULL)      { ierr = VecDestroy(vstar[dir]);      CHKERRXX(ierr); }
-    if(vnp1[dir]!=NULL)       { ierr = VecDestroy(vnp1[dir]);       CHKERRXX(ierr); }
-    if(vnm1_nodes[dir]!=NULL) { ierr = VecDestroy(vnm1_nodes[dir]); CHKERRXX(ierr); }
-    if(vn_nodes[dir]!=NULL)   { ierr = VecDestroy(vn_nodes[dir]);   CHKERRXX(ierr); }
-    if(vnp1_nodes[dir]!=NULL) { ierr = VecDestroy(vnp1_nodes[dir]); CHKERRXX(ierr); }
-    if(face_is_well_defined[dir]!=NULL) { ierr = VecDestroy(face_is_well_defined[dir]); CHKERRXX(ierr); }
+    if(dxyz_hodge[dir]!=NULL) { ierr = VecDestroy(dxyz_hodge[dir]);                         CHKERRXX(ierr); }
+    if(vstar[dir]!=NULL)      { ierr = VecDestroy(vstar[dir]);                              CHKERRXX(ierr); }
+    if(vnp1[dir]!=NULL)       { ierr = VecDestroy(vnp1[dir]);                               CHKERRXX(ierr); }
+    if(vnm1_nodes[dir]!=NULL) { ierr = VecDestroy(vnm1_nodes[dir]);                         CHKERRXX(ierr); }
+    if(vn_nodes[dir]!=NULL)   { ierr = VecDestroy(vn_nodes[dir]);                           CHKERRXX(ierr); }
+    if(vnp1_nodes[dir]!=NULL) { ierr = VecDestroy(vnp1_nodes[dir]);                         CHKERRXX(ierr); }
+    if(face_is_well_defined[dir]!=NULL)
+                              { ierr = VecDestroy(face_is_well_defined[dir]);               CHKERRXX(ierr); }
+    for (short dd = 0; dd < P4EST_DIM; ++dd) {
+      if(second_derivatives_vn_nodes[dd][dir]!=NULL)
+                              { ierr = VecDestroy(second_derivatives_vn_nodes[dd][dir]);    CHKERRXX(ierr); }
+      if(second_derivatives_vnm1_nodes[dd][dir]!=NULL)
+                              { ierr = VecDestroy(second_derivatives_vnm1_nodes[dd][dir]);  CHKERRXX(ierr); }
+    }
   }
 
   if(interp_phi!=NULL) delete interp_phi;
-
 
   delete ngbd_nm1;
   delete hierarchy_nm1;
@@ -381,7 +475,6 @@ my_p4est_navier_stokes_t::~my_p4est_navier_stokes_t()
   p4est_destroy(p4est_n);
 
   my_p4est_brick_destroy(conn, brick);
-
 }
 
 
@@ -469,11 +562,30 @@ void my_p4est_navier_stokes_t::set_velocities(Vec *vnm1_nodes, Vec *vn_nodes)
 
     ierr = VecDuplicate(face_is_well_defined[dir], &vstar[dir]); CHKERRXX(ierr);
     ierr = VecDuplicate(face_is_well_defined[dir], &vnp1[dir]); CHKERRXX(ierr);
+
+    for (short dd = 0; dd < P4EST_DIM; ++dd) {
+      if(second_derivatives_vn_nodes[dd][dir]!= NULL)
+      {
+        ierr = VecDestroy(second_derivatives_vn_nodes[dd][dir]); CHKERRXX(ierr);
+      }
+      if(second_derivatives_vnm1_nodes[dd][dir]!= NULL)
+      {
+        ierr = VecDestroy(second_derivatives_vnm1_nodes[dd][dir]); CHKERRXX(ierr);
+      }
+      ierr = VecCreateGhostNodes(p4est_n, nodes_n, &second_derivatives_vn_nodes[dd][dir]); CHKERRXX(ierr);
+      ierr = VecCreateGhostNodes(p4est_nm1, nodes_nm1, &second_derivatives_vnm1_nodes[dd][dir]); CHKERRXX(ierr);
+    }
   }
+#ifdef P4_TO_P8
+  ngbd_n->second_derivatives_central(vn_nodes, second_derivatives_vn_nodes[0], second_derivatives_vn_nodes[1], second_derivatives_vn_nodes[2], P4EST_DIM);
+  ngbd_nm1->second_derivatives_central(vnm1_nodes, second_derivatives_vnm1_nodes[0], second_derivatives_vnm1_nodes[1], second_derivatives_vnm1_nodes[2], P4EST_DIM);
+#else
+  ngbd_n->second_derivatives_central(vn_nodes, second_derivatives_vn_nodes[0], second_derivatives_vn_nodes[1], P4EST_DIM);
+  ngbd_nm1->second_derivatives_central(vnm1_nodes, second_derivatives_vnm1_nodes[0], second_derivatives_vnm1_nodes[1], P4EST_DIM);
+#endif
 
   ierr = VecDuplicate(phi, &vorticity); CHKERRXX(ierr);
 }
-
 
 #ifdef P4_TO_P8
 void my_p4est_navier_stokes_t::set_velocities(CF_3 **vnm1, CF_3 **vn)
@@ -519,12 +631,30 @@ void my_p4est_navier_stokes_t::set_velocities(CF_2 **vnm1, CF_2 **vn)
     ierr = VecDuplicate(vn_nodes[dir], &vnp1_nodes [dir]); CHKERRXX(ierr);
     ierr = VecDuplicate(face_is_well_defined[dir], &vstar[dir]); CHKERRXX(ierr);
     ierr = VecDuplicate(face_is_well_defined[dir], &vnp1[dir]); CHKERRXX(ierr);
+
+    for (short dd = 0; dd < P4EST_DIM; ++dd) {
+      if(second_derivatives_vn_nodes[dd][dir]!= NULL)
+      {
+        ierr = VecDestroy(second_derivatives_vn_nodes[dd][dir]); CHKERRXX(ierr);
+      }
+      if(second_derivatives_vnm1_nodes[dd][dir]!= NULL)
+      {
+        ierr = VecDestroy(second_derivatives_vnm1_nodes[dd][dir]); CHKERRXX(ierr);
+      }
+      ierr = VecCreateGhostNodes(p4est_n, nodes_n, &second_derivatives_vn_nodes[dd][dir]); CHKERRXX(ierr);
+      ierr = VecCreateGhostNodes(p4est_nm1, nodes_nm1, &second_derivatives_vnm1_nodes[dd][dir]); CHKERRXX(ierr);
+    }
   }
+#ifdef P4_TO_P8
+  ngbd_n->second_derivatives_central(vn_nodes, second_derivatives_vn_nodes[0], second_derivatives_vn_nodes[1], second_derivatives_vn_nodes[2], P4EST_DIM);
+  ngbd_nm1->second_derivatives_central(vnm1_nodes, second_derivatives_vnm1_nodes[0], second_derivatives_vnm1_nodes[1], second_derivatives_vnm1_nodes[2], P4EST_DIM);
+#else
+  ngbd_n->second_derivatives_central(vn_nodes, second_derivatives_vn_nodes[0], second_derivatives_vn_nodes[1], P4EST_DIM);
+  ngbd_nm1->second_derivatives_central(vnm1_nodes, second_derivatives_vnm1_nodes[0], second_derivatives_vnm1_nodes[1], P4EST_DIM);
+#endif
 
   ierr = VecDuplicate(phi, &vorticity); CHKERRXX(ierr);
 }
-
-
 
 void my_p4est_navier_stokes_t::set_vstar(Vec *vstar)
 {
@@ -532,12 +662,10 @@ void my_p4est_navier_stokes_t::set_vstar(Vec *vstar)
     this->vstar[dir] = vstar[dir];
 }
 
-
 void my_p4est_navier_stokes_t::set_hodge(Vec hodge)
 {
   this->hodge = hodge;
 }
-
 
 void my_p4est_navier_stokes_t::compute_max_L2_norm_u()
 {
@@ -562,7 +690,7 @@ void my_p4est_navier_stokes_t::compute_max_L2_norm_u()
 #ifdef P4_TO_P8
       max_L2_norm_u = MAX(max_L2_norm_u, sqrt(SQR(v_p[0][n]) + SQR(v_p[1][n]) + SQR(v_p[2][n])));
 #else
-      max_L2_norm_u = MAX(max_L2_norm_u, sqrt(SQR(v_p[0][n]) + SQR(v_p[1][n])) );
+      max_L2_norm_u = MAX(max_L2_norm_u, sqrt(SQR(v_p[0][n]) + SQR(v_p[1][n])));
 #endif
   }
 
@@ -571,7 +699,6 @@ void my_p4est_navier_stokes_t::compute_max_L2_norm_u()
 
   int mpiret = MPI_Allreduce(MPI_IN_PLACE, &max_L2_norm_u, 1, MPI_DOUBLE, MPI_MAX, p4est_n->mpicomm); SC_CHECK_MPI(mpiret);
 }
-
 
 void my_p4est_navier_stokes_t::compute_vorticity()
 {
@@ -619,8 +746,6 @@ void my_p4est_navier_stokes_t::compute_vorticity()
 
   for(int dir=0; dir<P4EST_DIM; dir++) { ierr = VecRestoreArrayRead(vnp1_nodes[dir], &vnp1_p[dir]); CHKERRXX(ierr); }
 }
-
-
 
 double my_p4est_navier_stokes_t::compute_dxyz_hodge(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, int dir)
 {
@@ -748,7 +873,10 @@ double my_p4est_navier_stokes_t::compute_dxyz_hodge(p4est_locidx_t quad_idx, p4e
         }
 
         double theta = fraction_Interval_Covered_By_Irregular_Domain(phi_q, phi_0, dx, dx);
-        if(theta<EPS) theta = EPS; if(theta>1) theta = 1;
+        if(theta<EPS)
+          theta = EPS;
+        if(theta>1)
+          theta = 1.0;
         double val_interface;
         double dist = dx*theta;
         switch(dir)
@@ -802,9 +930,6 @@ double my_p4est_navier_stokes_t::compute_dxyz_hodge(p4est_locidx_t quad_idx, p4e
     }
   }
 }
-
-
-
 
 double my_p4est_navier_stokes_t::compute_divergence(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx)
 {
@@ -882,9 +1007,7 @@ double my_p4est_navier_stokes_t::compute_divergence(p4est_locidx_t quad_idx, p4e
   return val;
 }
 
-
-
-void my_p4est_navier_stokes_t::solve_viscosity()
+void my_p4est_navier_stokes_t::solve_viscosity(my_p4est_poisson_faces_t* &face_poisson_solver, const bool use_initial_guess, const KSPType ksp, const PCType pc)
 {
   PetscErrorCode ierr;
 
@@ -904,20 +1027,20 @@ void my_p4est_navier_stokes_t::solve_viscosity()
   }
 
   /* construct the right hand side */
-  std::vector<double> xyz_nm1[P4EST_DIM];
-  std::vector<double> xyz_n  [P4EST_DIM];
-  Vec rhs[P4EST_DIM];
-  for(int dir=0; dir<P4EST_DIM; ++dir)
+  if(!semi_lagrangian_backtrace_is_done)
   {
-    /* backtrace the nodes with semi-Lagrangian / BDF scheme */
-    for(int dd=0; dd<P4EST_DIM; ++dd)
-    {
-      if(sl_order==2) xyz_nm1[dd].resize(faces_n->num_local[dir]);
-      xyz_n  [dd].resize(faces_n->num_local[dir]);
-    }
-    if(sl_order==2) trajectory_from_np1_to_nm1(p4est_n, faces_n, ngbd_nm1, ngbd_n, vnm1_nodes, vn_nodes, dt_nm1, dt_n, xyz_nm1, xyz_n, dir);
-    trajectory_from_np1_to_n(p4est_n, faces_n, ngbd_nm1, ngbd_n, vnm1_nodes, vn_nodes, dt_nm1, dt_n, xyz_n, dir);
+    trajectory_from_np1_all_faces(p4est_n, faces_n, ngbd_nm1, ngbd_n,
+                                  vnm1_nodes, second_derivatives_vnm1_nodes,
+                                  vn_nodes, second_derivatives_vn_nodes, dt_nm1, dt_n,
+                                  xyz_n, ((sl_order == 2)? xyz_nm1 : NULL));
+    semi_lagrangian_backtrace_is_done = true;
+  }
 
+
+  // rhs is modified by the solver so it should be reset every-time (could be modified, if required)
+  Vec rhs[P4EST_DIM];
+  for(short dir=0; dir<P4EST_DIM; ++dir)
+  {
     /* find the velocity at the backtraced points */
     my_p4est_interpolation_nodes_t interp_nm1(ngbd_nm1);
     my_p4est_interpolation_nodes_t interp_n  (ngbd_n  );
@@ -928,17 +1051,17 @@ void my_p4est_navier_stokes_t::solve_viscosity()
       if(sl_order==2)
       {
 #ifdef P4_TO_P8
-        xyz_tmp[0] = xyz_nm1[0][f_idx]; xyz_tmp[1] = xyz_nm1[1][f_idx]; xyz_tmp[2] = xyz_nm1[2][f_idx];
+        xyz_tmp[0] = xyz_nm1[dir][0][f_idx]; xyz_tmp[1] = xyz_nm1[dir][1][f_idx]; xyz_tmp[2] = xyz_nm1[dir][2][f_idx];
 #else
-        xyz_tmp[0] = xyz_nm1[0][f_idx]; xyz_tmp[1] = xyz_nm1[1][f_idx];
+        xyz_tmp[0] = xyz_nm1[dir][0][f_idx]; xyz_tmp[1] = xyz_nm1[dir][1][f_idx];
 #endif
         interp_nm1.add_point(f_idx, xyz_tmp);
       }
 
 #ifdef P4_TO_P8
-      xyz_tmp[0] = xyz_n[0][f_idx]; xyz_tmp[1] = xyz_n[1][f_idx]; xyz_tmp[2] = xyz_n[2][f_idx];
+      xyz_tmp[0] = xyz_n[dir][0][f_idx]; xyz_tmp[1] = xyz_n[dir][1][f_idx]; xyz_tmp[2] = xyz_n[dir][2][f_idx];
 #else
-      xyz_tmp[0] = xyz_n[0][f_idx]; xyz_tmp[1] = xyz_n[1][f_idx];
+      xyz_tmp[0] = xyz_n[dir][0][f_idx]; xyz_tmp[1] = xyz_n[dir][1][f_idx];
 #endif
       interp_n.add_point(f_idx, xyz_tmp);
     }
@@ -947,12 +1070,20 @@ void my_p4est_navier_stokes_t::solve_viscosity()
     if(sl_order==2)
     {
       vnm1_faces.resize(faces_n->num_local[dir]);
-      interp_nm1.set_input(vnm1_nodes[dir], quadratic);
+      interp_nm1.set_input(vnm1_nodes[dir], second_derivatives_vnm1_nodes[0][dir], second_derivatives_vnm1_nodes[1][dir],
+    #ifdef P4_TO_P8
+          second_derivatives_vnm1_nodes[2][dir],
+    #endif
+          quadratic);
       interp_nm1.interpolate(vnm1_faces.data());
     }
 
     std::vector<double> vn_faces(faces_n->num_local[dir]);
-    interp_n.set_input(vn_nodes[dir], quadratic);
+    interp_n.set_input(vn_nodes[dir], second_derivatives_vn_nodes[0][dir], second_derivatives_vn_nodes[1][dir],
+    #ifdef P4_TO_P8
+        second_derivatives_vn_nodes[2][dir],
+    #endif
+        quadratic);
     interp_n.interpolate(vn_faces.data());
 
     /* assemble the right-hand-side */
@@ -992,19 +1123,28 @@ void my_p4est_navier_stokes_t::solve_viscosity()
     ierr = VecRestoreArrayRead(face_is_well_defined[dir], &face_is_well_defined_p); CHKERRXX(ierr);
   }
 
-  my_p4est_poisson_faces_t solver(faces_n, ngbd_n);
-  solver.set_phi(phi);
-  solver.set_mu(mu);
-  solver.set_diagonal(alpha * rho/dt_n);
-  solver.set_bc(bc_v, dxyz_hodge, face_is_well_defined);
-  solver.set_rhs(rhs);
-#if defined(COMET) || defined(STAMPEDE)
-  solver.set_compute_partition_on_the_fly(true);
+  if(face_poisson_solver == NULL)
+  {
+    face_poisson_solver = new my_p4est_poisson_faces_t(faces_n, ngbd_n);
+    face_poisson_solver->set_phi(phi);
+    face_poisson_solver->set_bc(bc_v, dxyz_hodge, face_is_well_defined);
+#if defined(COMET) || defined(STAMPEDE) || defined(POD_CLUSTER)
+    face_poisson_solver->set_compute_partition_on_the_fly(true);
 #else
-  solver.set_compute_partition_on_the_fly(false);
+    face_poisson_solver->set_compute_partition_on_the_fly(false);
 #endif
+  }
+  else
+  {
+    face_poisson_solver->set_phi(phi, false);
+    face_poisson_solver->set_bc(bc_v, dxyz_hodge, face_is_well_defined, false);
+  }
 
-  solver.solve(vstar);
+  face_poisson_solver->set_mu(mu);
+  face_poisson_solver->set_diagonal(alpha * rho/dt_n);
+  face_poisson_solver->set_rhs(rhs);
+
+  face_poisson_solver->solve(vstar, use_initial_guess, ksp, pc);
 
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
@@ -1023,12 +1163,10 @@ void my_p4est_navier_stokes_t::solve_viscosity()
   ierr = PetscLogEventEnd(log_my_p4est_navier_stokes_viscosity, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
-
-
 /* solve the projection step
  * laplace Hodge = -div(vstar)
  */
-void my_p4est_navier_stokes_t::solve_projection()
+void my_p4est_navier_stokes_t::solve_projection(my_p4est_poisson_cells_t* &cell_solver, const bool use_initial_guess, const KSPType ksp, const PCType pc)
 {
   PetscErrorCode ierr;
 
@@ -1054,19 +1192,23 @@ void my_p4est_navier_stokes_t::solve_projection()
   ierr = VecRestoreArray(rhs, &rhs_p); CHKERRXX(ierr);
 
   /* solve the linear system */
-  my_p4est_poisson_cells_t solver(ngbd_c, ngbd_n);
-  solver.set_phi(phi);
-  solver.set_mu(1);
-  solver.set_bc(bc_hodge);
-  solver.set_rhs(rhs);
-  solver.set_nullspace_use_fixed_point(false);
-
-  solver.solve(hodge);
+  if(cell_solver == NULL)
+  {
+    cell_solver = new my_p4est_poisson_cells_t(ngbd_c, ngbd_n);
+    cell_solver->set_phi(phi);
+    cell_solver->set_bc(bc_hodge);
+    cell_solver->set_nullspace_use_fixed_point(false);
+  }
+  else
+    cell_solver->set_phi(phi, false);
+  cell_solver->set_mu(1.0);
+  cell_solver->set_rhs(rhs);
+  cell_solver->solve(hodge, use_initial_guess, ksp, pc);
 
   ierr = VecDestroy(rhs); CHKERRXX(ierr);
 
   /* if needed, shift the hodge variable to a zero average */
-  if(1 && solver.get_matrix_has_nullspace())
+  if(1 && cell_solver->get_matrix_has_nullspace())
   {
     my_p4est_level_set_cells_t lsc(ngbd_c, ngbd_n);
     double average = lsc.integrate(phi, hodge) / area_in_negative_domain(p4est_n, nodes_n, phi);
@@ -1123,16 +1265,15 @@ void my_p4est_navier_stokes_t::solve_projection()
     ierr = VecGhostUpdateBegin(vnp1[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecGhostUpdateEnd  (vnp1[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-//    if(bc_pressure->interfaceType()!=NOINTERFACE)
-//    {
-//      my_p4est_level_set_faces_t lsf(ngbd_n, faces_n);
-//      lsf.extend_Over_Interface(phi, vnp1[dir], bc_v[dir], dir, face_is_well_defined[dir], NULL, 2, 8);
-//    }
+    //    if(bc_pressure->interfaceType()!=NOINTERFACE)
+    //    {
+    //      my_p4est_level_set_faces_t lsf(ngbd_n, faces_n);
+    //      lsf.extend_Over_Interface(phi, vnp1[dir], bc_v[dir], dir, face_is_well_defined[dir], NULL, 2, 8);
+    //    }
   }
 
   ierr = PetscLogEventEnd(log_my_p4est_navier_stokes_projection, 0, 0, 0, 0); CHKERRXX(ierr);
 }
-
 
 void my_p4est_navier_stokes_t::compute_velocity_at_nodes()
 {
@@ -1192,13 +1333,52 @@ void my_p4est_navier_stokes_t::set_dt(double dt_n)
 }
 
 
-void my_p4est_navier_stokes_t::compute_dt()
+void my_p4est_navier_stokes_t::compute_adapted_dt(double min_value_for_umax)
+{
+  dt_nm1 = dt_n;
+  dt_n = +DBL_MAX;
+#ifdef P4_TO_P8
+  double dxmin = MIN(dxyz_min[0], dxyz_min[1], dxyz_min[2]);
+#else
+  double dxmin = MIN(dxyz_min[0], dxyz_min[1]);
+#endif
+  splitting_criteria_t* data = (splitting_criteria_t*) p4est_n->user_pointer;
+  PetscErrorCode ierr;
+  const double* v_p[P4EST_DIM];
+  for (short dd = 0; dd < P4EST_DIM; ++dd) {
+    ierr = VecGetArrayRead(vnp1_nodes[dd], &v_p[dd]); CHKERRXX(ierr);
+  }
+  for (p4est_topidx_t tree_idx = p4est_n->first_local_tree; tree_idx <= p4est_n->last_local_tree; ++tree_idx) {
+    p4est_tree_t* tree = p4est_tree_array_index(p4est_n->trees, tree_idx);
+    for (size_t qq = 0; qq < tree->quadrants.elem_count; ++qq) {
+      p4est_locidx_t quad_idx = tree->quadrants_offset + qq;
+      double max_local_velocity_magnitude = -1.0;
+      p4est_quadrant_t* quad = p4est_quadrant_array_index(&tree->quadrants, qq);
+      for (short child_idx = 0; child_idx < P4EST_CHILDREN; ++child_idx) {
+        p4est_locidx_t node_idx = nodes_n->local_nodes[P4EST_CHILDREN*quad_idx + child_idx];
+        double node_vel_mag = 0.0;
+        for (short dd = 0; dd < P4EST_DIM; ++dd)
+          node_vel_mag += SQR(v_p[dd][node_idx]);
+        node_vel_mag = sqrt(node_vel_mag);
+        max_local_velocity_magnitude = MAX(max_local_velocity_magnitude, node_vel_mag);
+      }
+      dt_n = MIN(dt_n, MIN(1.0/max_local_velocity_magnitude, 1.0/min_value_for_umax)*n_times_dt*dxmin*((double) (1<<(data->max_lvl - quad->level))));
+    }
+  }
+  for (short dd = 0; dd < P4EST_DIM; ++dd) {
+    ierr = VecRestoreArrayRead(vnp1_nodes[dd], &v_p[dd]); CHKERRXX(ierr);
+  }
+  int mpiret = MPI_Allreduce(MPI_IN_PLACE, &dt_n, 1, MPI_DOUBLE, MPI_MIN, p4est_n->mpicomm); SC_CHECK_MPI(mpiret);
+  dt_updated = true;
+}
+
+void my_p4est_navier_stokes_t::compute_dt(double min_value_for_umax)
 {
   dt_nm1 = dt_n;
 #ifdef P4_TO_P8
-  dt_n = MIN(1., 1/max_L2_norm_u) * n_times_dt * MIN(dxyz_min[0], dxyz_min[1], dxyz_min[2]);
+  dt_n = MIN(1/min_value_for_umax, 1/max_L2_norm_u) * n_times_dt * MIN(dxyz_min[0], dxyz_min[1], dxyz_min[2]);
 #else
-  dt_n = MIN(1., 1/max_L2_norm_u) * n_times_dt * MIN(dxyz_min[0], dxyz_min[1]);
+  dt_n = MIN(1/min_value_for_umax, 1/max_L2_norm_u) * n_times_dt * MIN(dxyz_min[0], dxyz_min[1]);
 #endif
 
   dt_updated = true;
@@ -1209,19 +1389,17 @@ void my_p4est_navier_stokes_t::advect_smoke(my_p4est_node_neighbors_t *ngbd_np1,
   PetscErrorCode ierr;
 
   std::vector<double> xyz_d[P4EST_DIM];
-  for(int dir=0; dir<P4EST_DIM; ++dir)
-    xyz_d[dir].resize(ngbd_np1->nodes->num_owned_indeps);
   trajectory_from_np1_to_n(ngbd_np1->p4est, ngbd_np1->nodes, ngbd_np1, dt_n, v, xyz_d);
 
   my_p4est_interpolation_nodes_t interp_nodes(ngbd_n);
   for(p4est_locidx_t n=0; n<ngbd_np1->nodes->num_owned_indeps; ++n)
   {
 #ifdef P4_TO_P8
-    double xyz_n[] = {xyz_d[0][n], xyz_d[1][n], xyz_d[2][n]};
+    double xyz_d_[] = {xyz_d[0][n], xyz_d[1][n], xyz_d[2][n]};
 #else
-    double xyz_n[] = {xyz_d[0][n], xyz_d[1][n]};
+    double xyz_d_[] = {xyz_d[0][n], xyz_d[1][n]};
 #endif
-    interp_nodes.add_point(n, xyz_n);
+    interp_nodes.add_point(n, xyz_d_);
   }
   interp_nodes.set_input(smoke, linear);
   interp_nodes.interpolate(smoke_np1);
@@ -1257,7 +1435,8 @@ void my_p4est_navier_stokes_t::advect_smoke(my_p4est_node_neighbors_t *ngbd_np1,
   ierr = VecRestoreArray(smoke_np1, &smoke_p); CHKERRXX(ierr);
 }
 
-
+// [RAPHAEL]: this function is not even called anywhere... it flattens boundary conditions for velocity components on the
+// interface towards the positive domain
 void my_p4est_navier_stokes_t::extrapolate_bc_v(my_p4est_node_neighbors_t *ngbd, Vec *v, Vec phi)
 {
   PetscErrorCode ierr;
@@ -1336,9 +1515,9 @@ void my_p4est_navier_stokes_t::extrapolate_bc_v(my_p4est_node_neighbors_t *ngbd,
 
 
 #ifdef P4_TO_P8
-void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_3 *level_set, bool convergence_test)
+bool my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_3 *level_set, bool convergence_test, bool do_reinitialization)
 #else
-void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set, bool convergence_test)
+bool my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set, bool convergence_test, bool do_reinitialization)
 #endif
 {
   PetscErrorCode ierr;
@@ -1355,16 +1534,18 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set, boo
   /* construct the new forest */
   splitting_criteria_vorticity_t criteria(data->min_lvl, data->max_lvl, data->lip, uniform_band, threshold_split_cell, max_L2_norm_u, smoke_thresh);
   p4est_t *p4est_np1 = p4est_copy(p4est_n, P4EST_FALSE);
+  p4est_np1->connectivity = p4est_n->connectivity; // connectivity is not duplicated by p4est_copy, the pointer (i.e. the memory-address) of connectivity seems to be copied from my understanding of the source file of p4est_copy, but I feel this is a bit safer [Raphael Egan]
 
   p4est_ghost_t *ghost_np1 = NULL;
   p4est_nodes_t *nodes_np1 = NULL;
   my_p4est_hierarchy_t *hierarchy_np1 = NULL;
   my_p4est_node_neighbors_t *ngbd_np1 = NULL;
 
-  Vec phi_np1 = NULL;
+  Vec phi_np1 = NULL; double *phi_np1_p;
   Vec smoke_np1 = NULL;
   my_p4est_interpolation_nodes_t interp_nodes(ngbd_n);
   bool grid_is_changing = false;
+  int grid_or_partition_has_changed = 0;
 
   if(convergence_test==false)
   {
@@ -1372,6 +1553,8 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set, boo
     nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
     hierarchy_np1 = new my_p4est_hierarchy_t(p4est_np1, ghost_np1, brick);
     ngbd_np1 = new my_p4est_node_neighbors_t(hierarchy_np1, nodes_np1);
+    std::vector<Vec> interp_inputs; interp_inputs.resize(0);
+    std::vector<Vec> interp_outputs; interp_outputs.resize(0);
 
     p4est_np1->user_pointer = (void*)&criteria;
     ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
@@ -1379,39 +1562,49 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set, boo
     Vec vorticity_np1;
     ierr = VecDuplicate(phi_np1, &vorticity_np1); CHKERRXX(ierr);
 
+    if(level_set!= NULL){
+      ierr = VecGetArray(phi_np1, &phi_np1_p); CHKERRXX(ierr); }
     for(size_t n=0; n<nodes_np1->indep_nodes.elem_count; ++n)
     {
       double xyz[P4EST_DIM];
       node_xyz_fr_n(n, p4est_np1, nodes_np1, xyz);
       interp_nodes.add_point(n, xyz);
+      if(level_set != NULL)
+#ifdef P4_TO_P8
+        phi_np1_p[n] = (*level_set)(xyz[0], xyz[1], xyz[2]);
+#else
+        phi_np1_p[n] = (*level_set)(xyz[0], xyz[1]);
+#endif
     }
-    interp_nodes.set_input(vorticity, linear);
-    interp_nodes.interpolate(vorticity_np1);
-
-    if(level_set==NULL)
-    {
-      interp_nodes.set_input(phi, linear);
-      interp_nodes.interpolate(phi_np1);
-    }
+    if(level_set != NULL){
+      ierr = VecRestoreArray(phi_np1, &phi_np1_p); CHKERRXX(ierr); }
     else
     {
-      sample_cf_on_nodes(p4est_np1, nodes_np1, *level_set, phi_np1);
+      interp_inputs.push_back(phi);
+      interp_outputs.push_back(phi_np1);
     }
+    interp_inputs.push_back(vorticity);
+    interp_outputs.push_back(vorticity_np1);
 
+    Vec vtmp[P4EST_DIM];
     if(smoke!=NULL && refine_with_smoke)
     {
       ierr = VecDuplicate(phi_np1, &smoke_np1); CHKERRXX(ierr);
 
-      Vec vtmp[P4EST_DIM];
       for(int dir=0; dir<P4EST_DIM; ++dir)
       {
         ierr = VecDuplicate(phi_np1, &vtmp[dir]); CHKERRXX(ierr);
-        interp_nodes.set_input(vnp1_nodes[dir], linear);
-        interp_nodes.interpolate(vtmp[dir]);
+        interp_inputs.push_back(vnp1_nodes[dir]);
+        interp_outputs.push_back(vtmp[dir]);
       }
+    }
+    interp_nodes.set_input(interp_inputs, linear);
+    interp_nodes.interpolate(interp_outputs);
+    interp_inputs.resize(0); interp_outputs.resize(0);
 
+    if(smoke!=NULL && refine_with_smoke)
+    {
       advect_smoke(ngbd_np1, vtmp, smoke, smoke_np1);
-
       for(int dir=0; dir<P4EST_DIM; ++dir)
       {
         ierr = VecDestroy(vtmp[dir]); CHKERRXX(ierr);
@@ -1419,8 +1612,10 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set, boo
     }
 
     grid_is_changing = criteria.refine_and_coarsen(p4est_np1, ngbd_np1, phi_np1, vorticity_np1, smoke_np1);
+    if((grid_or_partition_has_changed == 0) && grid_is_changing)
+      grid_or_partition_has_changed = 1;
     int iter=0;
-    while(1 && grid_is_changing)
+    while(grid_is_changing)
     {
       my_p4est_partition(p4est_np1, P4EST_FALSE, NULL);
       p4est_ghost_destroy(ghost_np1); ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
@@ -1435,41 +1630,50 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set, boo
       ierr = VecDuplicate(phi_np1, &vorticity_np1); CHKERRXX(ierr);
 
       interp_nodes.clear();
+      if(level_set!= NULL){
+        ierr = VecGetArray(phi_np1, &phi_np1_p); CHKERRXX(ierr); }
       for(size_t n=0; n<nodes_np1->indep_nodes.elem_count; ++n)
       {
         double xyz[P4EST_DIM];
         node_xyz_fr_n(n, p4est_np1, nodes_np1, xyz);
         interp_nodes.add_point(n, xyz);
+        if(level_set != NULL)
+#ifdef P4_TO_P8
+          phi_np1_p[n] = (*level_set)(xyz[0], xyz[1], xyz[2]);
+#else
+          phi_np1_p[n] = (*level_set)(xyz[0], xyz[1]);
+#endif
       }
-
-      interp_nodes.set_input(vorticity, linear);
-      interp_nodes.interpolate(vorticity_np1);
-
-      if(level_set==NULL)
-      {
-        interp_nodes.set_input(phi, linear);
-        interp_nodes.interpolate(phi_np1);
-      }
+      if(level_set != NULL){
+        ierr = VecRestoreArray(phi_np1, &phi_np1_p); CHKERRXX(ierr); }
       else
       {
-        sample_cf_on_nodes(p4est_np1, nodes_np1, *level_set, phi_np1);
+        interp_inputs.push_back(phi);
+        interp_outputs.push_back(phi_np1);
       }
+
+      interp_inputs.push_back(vorticity);
+      interp_outputs.push_back(vorticity_np1);
 
       if(smoke!=NULL && refine_with_smoke)
       {
         ierr = VecDestroy(smoke_np1); CHKERRXX(ierr);
         ierr = VecDuplicate(phi_np1, &smoke_np1); CHKERRXX(ierr);
 
-        Vec vtmp[P4EST_DIM];
         for(int dir=0; dir<P4EST_DIM; ++dir)
         {
           ierr = VecDuplicate(phi_np1, &vtmp[dir]); CHKERRXX(ierr);
-          interp_nodes.set_input(vnp1_nodes[dir], linear);
-          interp_nodes.interpolate(vtmp[dir]);
+          interp_inputs.push_back(vnp1_nodes[dir]);
+          interp_outputs.push_back(vtmp[dir]);
         }
+      }
+      interp_nodes.set_input(interp_inputs, linear);
+      interp_nodes.interpolate(interp_outputs);
+      interp_inputs.resize(0); interp_outputs.resize(0);
 
+      if(smoke!=NULL && refine_with_smoke)
+      {
         advect_smoke(ngbd_np1, vtmp, smoke, smoke_np1);
-
         for(int dir=0; dir<P4EST_DIM; ++dir)
         {
           ierr = VecDestroy(vtmp[dir]); CHKERRXX(ierr);
@@ -1477,6 +1681,8 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set, boo
       }
 
       grid_is_changing = criteria.refine_and_coarsen(p4est_np1, ngbd_np1, phi_np1, vorticity_np1, smoke_np1);
+      if((grid_or_partition_has_changed == 0) && grid_is_changing)
+        grid_or_partition_has_changed = 1;
 
       iter++;
 
@@ -1494,138 +1700,367 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set, boo
   /* balance the forest and expand the ghost layer */
   p4est_balance(p4est_np1, P4EST_CONNECT_FULL, NULL);
   my_p4est_partition(p4est_np1, P4EST_FALSE, NULL);
-  if(ghost_np1!=NULL) p4est_ghost_destroy(ghost_np1); ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
+  if((grid_or_partition_has_changed == 0) && !p4est_is_equal(p4est_np1, p4est_n, P4EST_FALSE))
+    grid_or_partition_has_changed = 1;
+  int mpiret = MPI_Allreduce(MPI_IN_PLACE, &grid_or_partition_has_changed, 1, MPI_INT, MPI_LOR, p4est_n->mpicomm); SC_CHECK_MPI(mpiret);
+
+  if(ghost_np1!=NULL)
+    p4est_ghost_destroy(ghost_np1);
+  ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
   my_p4est_ghost_expand(p4est_np1, ghost_np1);
-  if(nodes_np1!=NULL) p4est_nodes_destroy(nodes_np1); nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
-  if(hierarchy_np1!=NULL) delete hierarchy_np1; hierarchy_np1 = new my_p4est_hierarchy_t(p4est_np1, ghost_np1, brick);
-  if(ngbd_np1!=NULL) delete ngbd_np1; ngbd_np1 = new my_p4est_node_neighbors_t(hierarchy_np1, nodes_np1);
+  if(nodes_np1!=NULL)
+    p4est_nodes_destroy(nodes_np1);
+  nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
+  if(hierarchy_np1!=NULL)
+    delete hierarchy_np1;
+  hierarchy_np1 = new my_p4est_hierarchy_t(p4est_np1, ghost_np1, brick);
+  if(ngbd_np1!=NULL)
+    delete ngbd_np1;
+  ngbd_np1 = new my_p4est_node_neighbors_t(hierarchy_np1, nodes_np1); ngbd_np1->init_neighbors();
 
-  if(phi_np1!=NULL)
+  // since the nodes needed to be recreated with on more layer of nodes, we destroy the corresponding data...
+  if(phi_np1 != NULL){
+    ierr = VecDestroy(phi_np1); CHKERRXX(ierr); }
+  if(smoke_np1!=NULL){
+    ierr = VecDestroy(smoke_np1); CHKERRXX(ierr); }
+
+  if(grid_or_partition_has_changed)
   {
-    ierr = VecDestroy(phi_np1); CHKERRXX(ierr);
-  }
-  ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
+    /* do the regular stuff here:
+     * slide relevant fiels and grids in time: nm1 data are disregarded, n data becomes nm1 data and np1 data become n data...
+     * In particular, since the np1 grid is different than grid at time n, we need to re-construct its faces and the corresponding
+     * face data, and the solvers we have used will need to be reset...
+     */
+    my_p4est_cell_neighbors_t *ngbd_c_np1 = new my_p4est_cell_neighbors_t(hierarchy_np1);
+    my_p4est_faces_t *faces_np1 = new my_p4est_faces_t(p4est_np1, ghost_np1, brick, ngbd_c_np1);
 
-  interp_nodes.clear();
-
-  for(size_t n=0; n<nodes_np1->indep_nodes.elem_count; ++n)
-  {
-    double xyz[P4EST_DIM];
-    node_xyz_fr_n(n, p4est_np1, nodes_np1, xyz);
-    interp_nodes.add_point(n, xyz);
-  }
-
-  my_p4est_cell_neighbors_t *ngbd_c_np1 = new my_p4est_cell_neighbors_t(hierarchy_np1);
-  my_p4est_faces_t *faces_np1 = new my_p4est_faces_t(p4est_np1, ghost_np1, brick, ngbd_c_np1);
-
-  ierr = VecDestroy(vorticity); CHKERRXX(ierr);
-  ierr = VecDuplicate(phi_np1, &vorticity); CHKERRXX(ierr);
-
-  /* interpolate the quantities on the new forest at the nodes */
-  for(int dir=0; dir<P4EST_DIM; ++dir)
-  {
-    ierr = VecDestroy(vnm1_nodes[dir]); CHKERRXX(ierr);
-    vnm1_nodes[dir] = vn_nodes[dir];
-
-    ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &vn_nodes[dir]); CHKERRXX(ierr);
-    interp_nodes.set_input(vnp1_nodes[dir], quadratic);
-    interp_nodes.interpolate(vn_nodes[dir]); CHKERRXX(ierr);
-
-    ierr = VecDestroy(vnp1_nodes[dir]); CHKERRXX(ierr);
-    ierr = VecDuplicate(vn_nodes[dir], &vnp1_nodes[dir]); CHKERRXX(ierr);
-  }
-
-  interp_nodes.set_input(phi, quadratic_non_oscillatory);
-  interp_nodes.interpolate(phi_np1);
-
-  interp_nodes.clear();
-
-  /* set velocity inside solid to bc_v */
-//  extrapolate_bc_v(ngbd_np1, vn_nodes, phi_np1);
-
-  if(level_set!=NULL)
-  {
-    sample_cf_on_nodes(p4est_np1, nodes_np1, *level_set, phi_np1);
-  }
-  my_p4est_level_set_t lsn(ngbd_np1);
-  lsn.reinitialize_1st_order_time_2nd_order_space(phi_np1);
-  lsn.perturb_level_set_function(phi_np1, EPS);
-
-  /* advect smoke */
-  if(smoke!=NULL)
-  {
-    if(smoke_np1!=NULL)
-    {
-      ierr = VecDestroy(smoke_np1); CHKERRXX(ierr);
-    }
-    ierr = VecDuplicate(phi_np1, &smoke_np1); CHKERRXX(ierr);
-    advect_smoke(ngbd_np1, vn_nodes, smoke, smoke_np1);
-  }
-
-  /* interpolate the quantities on the new forest at the cells */
-  ierr = VecDestroy(hodge); CHKERRXX(ierr);
-  ierr = VecCreateGhostCells(p4est_np1, ghost_np1, &hodge); CHKERRXX(ierr);
-
-  ierr = VecDestroy(pressure); CHKERRXX(ierr);
-  ierr = VecDuplicate(hodge, &pressure); CHKERRXX(ierr);
-
-  /* interpolate the quantities on the new forest at the faces */
-  my_p4est_interpolation_faces_t interp_faces(ngbd_n, faces_n);
-
-  for(int dir=0; dir<P4EST_DIM; ++dir)
-  {
-    Vec dxyz_hodge_tmp;
-    ierr = VecCreateGhostFaces(p4est_np1, faces_np1, &dxyz_hodge_tmp, dir); CHKERRXX(ierr);
-    for(p4est_locidx_t f_idx=0; f_idx<faces_np1->num_local[dir]; ++f_idx)
+    // build the new phi, either by direct evaluation if levelset is given
+    // or by non-oscillatory interpolation from current state if not.
+    // Reinitialize the final levelset if desired...
+    interp_nodes.clear();
+    ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
+    if(level_set != NULL){
+      ierr = VecGetArray(phi_np1, &phi_np1_p); CHKERRXX(ierr); }
+    for(size_t n=0; n<nodes_np1->indep_nodes.elem_count; ++n)
     {
       double xyz[P4EST_DIM];
-      faces_np1->xyz_fr_f(f_idx, dir, xyz);
-      interp_faces.add_point(f_idx, xyz);
+      node_xyz_fr_n(n, p4est_np1, nodes_np1, xyz);
+      interp_nodes.add_point(n, xyz);
+      if(level_set!= NULL)
+  #ifdef P4_TO_P8
+        phi_np1_p[n] = (*level_set)(xyz[0], xyz[1], xyz[2]);
+  #else
+        phi_np1_p[n] = (*level_set)(xyz[0], xyz[1]);
+  #endif
     }
-    interp_faces.set_input(dxyz_hodge[dir], dir, 1, face_is_well_defined[dir]);
-    interp_faces.interpolate(dxyz_hodge_tmp);
-    interp_faces.clear();
+    if(level_set != NULL){
+      ierr = VecRestoreArray(phi_np1, &phi_np1_p); CHKERRXX(ierr); }
+    else
+    {
+      interp_nodes.set_input(phi, quadratic_non_oscillatory);
+      interp_nodes.interpolate(phi_np1);
+    }
+    if(do_reinitialization)
+    {
+      my_p4est_level_set_t lsn(ngbd_np1);
+      lsn.reinitialize_1st_order_time_2nd_order_space(phi_np1);
+      lsn.perturb_level_set_function(phi_np1, EPS);
+    }
 
-    ierr = VecDestroy(dxyz_hodge[dir]); CHKERRXX(ierr);
-    dxyz_hodge[dir] = dxyz_hodge_tmp;
+    // Reinitilize the vorticity vector to appropriate size
+    ierr = VecDestroy(vorticity); CHKERRXX(ierr);
+    ierr = VecDuplicate(phi_np1, &vorticity); CHKERRXX(ierr);
 
-    ierr = VecGhostUpdateBegin(dxyz_hodge[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateEnd  (dxyz_hodge[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    /* slide the velocity fields, interpolate the np1 velocity field onto the new forest at the nodes */
+    for(int dir=0; dir<P4EST_DIM; ++dir)
+    {
+      ierr = VecDestroy(vnm1_nodes[dir]); CHKERRXX(ierr);
+      vnm1_nodes[dir] = vn_nodes[dir];
+      ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &vn_nodes[dir]); CHKERRXX(ierr);
+      for (short dd = 0; dd < P4EST_DIM; ++dd) {
+        if(second_derivatives_vnm1_nodes[dd][dir]!= NULL){
+          ierr = VecDestroy(second_derivatives_vnm1_nodes[dd][dir]); CHKERRXX(ierr); }
+        second_derivatives_vnm1_nodes[dd][dir] = second_derivatives_vn_nodes[dd][dir];
+        ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &second_derivatives_vn_nodes[dd][dir]); CHKERRXX(ierr);
+      }
+    }
+    interp_nodes.set_input(vnp1_nodes, quadratic, P4EST_DIM);
+    interp_nodes.interpolate(vn_nodes, P4EST_DIM); CHKERRXX(ierr);
+    for (short dir = 0; dir < P4EST_DIM; ++dir) {
+      ierr = VecDestroy(vnp1_nodes[dir]); CHKERRXX(ierr);
+      ierr = VecDuplicate(vn_nodes[dir], &vnp1_nodes[dir]); CHKERRXX(ierr);
+    }
+  #ifdef P4_TO_P8
+    ngbd_np1->second_derivatives_central(vn_nodes, second_derivatives_vn_nodes[0], second_derivatives_vn_nodes[1], second_derivatives_vn_nodes[2], P4EST_DIM);
+  #else
+    ngbd_np1->second_derivatives_central(vn_nodes, second_derivatives_vn_nodes[0], second_derivatives_vn_nodes[1], P4EST_DIM);
+  #endif
+    interp_nodes.clear();
 
-    ierr = VecDestroy(face_is_well_defined[dir]); CHKERRXX(ierr);
-		ierr = VecDuplicate(dxyz_hodge[dir], &face_is_well_defined[dir]); CHKERRXX(ierr);
-    check_if_faces_are_well_defined(p4est_np1, ngbd_np1, faces_np1, dir, phi_np1, bc_v[dir].interfaceType(), face_is_well_defined[dir]);
+    /* set velocity inside solid to bc_v */
+    //  extrapolate_bc_v(ngbd_np1, vn_nodes, phi_np1);
 
-    ierr = VecDestroy(vstar[dir]); CHKERRXX(ierr);
-    ierr = VecDuplicate(dxyz_hodge[dir], &vstar[dir]); CHKERRXX(ierr);
+    /* advect smoke and slide it in time, if required */
+    if(smoke!=NULL)
+    {
+      ierr = VecDuplicate(phi_np1, &smoke_np1); CHKERRXX(ierr);
+      advect_smoke(ngbd_np1, vn_nodes, smoke, smoke_np1);
+      ierr = VecDestroy(smoke); CHKERRXX(ierr);
+      smoke = smoke_np1;
+    }
 
-    ierr = VecDestroy(vnp1[dir]); CHKERRXX(ierr);
-    ierr = VecDuplicate(dxyz_hodge[dir], &vnp1[dir]); CHKERRXX(ierr);
+    /* interpolate the Hodge variable on the new forest (for good initial guess for next projection step)
+     * build a new cell-centered pressure vector for calculating the next pressure field */
+    my_p4est_interpolation_cells_t interp_cell(ngbd_c, ngbd_n);
+    for (p4est_topidx_t tree_idx = p4est_np1->first_local_tree; tree_idx <= p4est_np1->last_local_tree; ++tree_idx) {
+      p4est_tree_t *tree = p4est_tree_array_index(p4est_np1->trees, tree_idx);
+      for (size_t q = 0; q < tree->quadrants.elem_count; ++q) {
+        p4est_locidx_t quad_idx = tree->quadrants_offset + q;
+        double xyz_c[P4EST_DIM];
+        quad_xyz_fr_q(quad_idx, tree_idx, p4est_np1, ghost_np1, xyz_c);
+        interp_cell.add_point(quad_idx, xyz_c);
+      }
+    }
+    interp_cell.set_input(hodge, phi, &bc_hodge);
+    Vec hodge_tmp;
+    ierr = VecCreateGhostCells(p4est_np1, ghost_np1, &hodge_tmp); CHKERRXX(ierr);
+    interp_cell.interpolate(hodge_tmp);
+    interp_cell.clear();
+    ierr = VecDestroy(hodge); CHKERRXX(ierr); hodge = hodge_tmp;
+    ierr = VecGhostUpdateBegin(hodge, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd(hodge, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    // create a new pressure vector...
+    ierr = VecDestroy(pressure); CHKERRXX(ierr);
+    ierr = VecCreateGhostCells(p4est_np1, ghost_np1, &pressure); CHKERRXX(ierr);
+
+    /* interpolate the gradient of the Hodgae variable on the new forest
+     * The (Dirichlet) velocity boundary conditions depend on the components of the gradient of Hodge, so they are
+     * required to condition the solver for the next step...
+     * [Raphael's note:] it might be better to recalculate them from the interpolated Hodge here above for
+     * better conditioning of the iterative solver and consistency (since this is how the solver itself defines it) */
+    my_p4est_interpolation_faces_t interp_faces(ngbd_n, faces_n);
+
+    for(int dir=0; dir<P4EST_DIM; ++dir)
+    {
+      Vec dxyz_hodge_tmp;
+      ierr = VecCreateGhostFaces(p4est_np1, faces_np1, &dxyz_hodge_tmp, dir); CHKERRXX(ierr);
+      for(p4est_locidx_t f_idx=0; f_idx<faces_np1->num_local[dir]; ++f_idx)
+      {
+        double xyz[P4EST_DIM];
+        faces_np1->xyz_fr_f(f_idx, dir, xyz);
+        interp_faces.add_point(f_idx, xyz);
+      }
+      interp_faces.set_input(dxyz_hodge[dir], dir, 1, face_is_well_defined[dir]);
+      interp_faces.interpolate(dxyz_hodge_tmp);
+      interp_faces.clear();
+
+      ierr = VecDestroy(dxyz_hodge[dir]); CHKERRXX(ierr);
+      dxyz_hodge[dir] = dxyz_hodge_tmp;
+
+      ierr = VecGhostUpdateBegin(dxyz_hodge[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+      ierr = VecGhostUpdateEnd  (dxyz_hodge[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+      ierr = VecDestroy(face_is_well_defined[dir]); CHKERRXX(ierr);
+      ierr = VecDuplicate(dxyz_hodge[dir], &face_is_well_defined[dir]); CHKERRXX(ierr);
+      check_if_faces_are_well_defined(p4est_np1, ngbd_np1, faces_np1, dir, phi_np1, bc_v[dir].interfaceType(), face_is_well_defined[dir]);
+
+      ierr = VecDestroy(vstar[dir]); CHKERRXX(ierr);
+      ierr = VecDuplicate(dxyz_hodge[dir], &vstar[dir]); CHKERRXX(ierr);
+
+      ierr = VecDestroy(vnp1[dir]); CHKERRXX(ierr);
+      ierr = VecDuplicate(dxyz_hodge[dir], &vnp1[dir]); CHKERRXX(ierr);
+    }
+
+
+    // we can finally slide phi, current phi is no longer needed...
+    ierr = VecDestroy(phi); CHKERRXX(ierr);
+    phi = phi_np1;
+
+    /* update the variables */
+    p4est_destroy(p4est_nm1); p4est_nm1 = p4est_n; p4est_n = p4est_np1;
+    p4est_ghost_destroy(ghost_nm1); ghost_nm1 = ghost_n; ghost_n = ghost_np1;
+    p4est_nodes_destroy(nodes_nm1); nodes_nm1 = nodes_n; nodes_n = nodes_np1;
+    delete hierarchy_nm1; hierarchy_nm1 = hierarchy_n; hierarchy_n = hierarchy_np1;
+    delete ngbd_nm1; ngbd_nm1 = ngbd_n; ngbd_n = ngbd_np1;
+    delete ngbd_c; ngbd_c = ngbd_c_np1;
+    delete faces_n; faces_n = faces_np1;
+
+    /* reset the phi-interpolator tool */
+    delete interp_phi;
+    interp_phi = new my_p4est_interpolation_nodes_t(ngbd_n);
   }
-
-  /* update the variables */
-  p4est_destroy(p4est_nm1); p4est_nm1 = p4est_n; p4est_n = p4est_np1;
-  p4est_ghost_destroy(ghost_nm1); ghost_nm1 = ghost_n; ghost_n = ghost_np1;
-  p4est_nodes_destroy(nodes_nm1); nodes_nm1 = nodes_n; nodes_n = nodes_np1;
-  delete hierarchy_nm1; hierarchy_nm1 = hierarchy_n; hierarchy_n = hierarchy_np1;
-  delete ngbd_nm1; ngbd_nm1 = ngbd_n; ngbd_n = ngbd_np1;
-  delete ngbd_c; ngbd_c = ngbd_c_np1;
-  delete faces_n; faces_n = faces_np1;
-
-  ierr = VecDestroy(phi); CHKERRXX(ierr);
-  phi = phi_np1;
-
-  if(smoke!=NULL)
+  else
   {
-    ierr = VecDestroy(smoke); CHKERRXX(ierr);
-    smoke = smoke_np1;
+    /* In this case, we want to keep all the grid data at time step n exactly unchanged in order to possibly re-use
+     * the relevant solvers for future time steps. However, relevant grid data structures might differ for two
+     * exaclty similar grids: for instance, the creation of a p4est_nodes_t structure involves the creation of a hash
+     * table on the fly based on non-blocking communications between processes. The unpredictable sequence of such
+     * communications may affect the ordering and/or the partitioning of ghost nodes locally referenced.
+     * Therefore, we want to keep the GRID information (p4est, ghost, nodes, faces ngbd_n, ngbd_c) at time n EXACTLY
+     * the same! We can save a bunch of cell-to-cell and face-to-face interpolation and Vec reconstructions doing so!
+     * nm1 grid information and data still need to be updated from n data in this case, of course. However, we want
+     * grid n to stay at n, so we'll use np1 grid to eventually become nm1. Since we know that np1 and n grids are
+     * conceptually the same, this is an ok procedure! */
+
+    double *phi_p, *vnm1_nodes_p[P4EST_DIM], *second_derivatives_vnm1_nodes_p[P4EST_DIM][P4EST_DIM];
+    const double *vn_nodes_p[P4EST_DIM], *second_derivatives_vn_nodes_p[P4EST_DIM][P4EST_DIM];
+    ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
+    for (short dir = 0; dir < P4EST_DIM; ++dir) {
+      ierr = VecDestroy(vnm1_nodes[dir]); CHKERRXX(ierr);
+      ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &vnm1_nodes[dir]); CHKERRXX(ierr);
+      ierr = VecGetArray(vnm1_nodes[dir], &vnm1_nodes_p[dir]); CHKERRXX(ierr);
+      ierr = VecGetArrayRead(vn_nodes[dir], &vn_nodes_p[dir]); CHKERRXX(ierr);
+      for (short dd = 0; dd < P4EST_DIM; ++dd) {
+        ierr = VecDestroy(second_derivatives_vnm1_nodes[dd][dir]); CHKERRXX(ierr);
+        ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &second_derivatives_vnm1_nodes[dd][dir]); CHKERRXX(ierr);
+        ierr = VecGetArray(second_derivatives_vnm1_nodes[dd][dir], &second_derivatives_vnm1_nodes_p[dd][dir]); CHKERRXX(ierr);
+        ierr = VecGetArrayRead(second_derivatives_vn_nodes[dd][dir], &second_derivatives_vn_nodes_p[dd][dir]); CHKERRXX(ierr);
+      }
+    }
+    vector<p4est_bool_t> done_np1(nodes_np1->num_owned_indeps, P4EST_FALSE);
+    vector<p4est_bool_t> done_n(((level_set == NULL)? 0: nodes_n->num_owned_indeps), (level_set == NULL));
+    p4est_locidx_t nb_done_np1 = 0;
+    p4est_locidx_t nb_done_n = ((level_set == NULL)? nodes_n->num_owned_indeps:0);
+    for (p4est_topidx_t tree_idx = p4est_np1->first_local_tree; tree_idx <= p4est_np1->last_local_tree; ++tree_idx) {
+      p4est_tree_t* tree_np1          = p4est_tree_array_index(p4est_np1->trees, tree_idx);
+      p4est_tree_t* tree_n            = p4est_tree_array_index(p4est_n->trees, tree_idx);
+      P4EST_ASSERT(tree_np1->quadrants.elem_count == tree_n->quadrants.elem_count);
+      for (size_t q = 0; q < tree_np1->quadrants.elem_count; ++q) {
+        p4est_locidx_t quad_idx       = tree_np1->quadrants_offset + q;
+        p4est_quadrant_t* quad_np1    = p4est_quadrant_array_index(&tree_np1->quadrants, q);
+        p4est_quadrant_t* quad_n      = p4est_quadrant_array_index(&tree_n->quadrants, q);
+        P4EST_ASSERT(p4est_quadrant_is_equal(quad_np1, quad_n));
+        for (short nn = 0; nn < P4EST_CHILDREN; ++nn) {
+          p4est_locidx_t node_np1_idx = nodes_np1->local_nodes[P4EST_CHILDREN*quad_idx + nn];
+          p4est_locidx_t node_n_idx   = nodes_n->local_nodes[P4EST_CHILDREN*quad_idx + nn];
+          p4est_indep_t* node_np1 = (p4est_indep_t*)sc_array_index(&nodes_np1->indep_nodes, node_np1_idx);
+          p4est_indep_t* node_n   = (p4est_indep_t*)sc_array_index(&nodes_n->indep_nodes, node_n_idx);
+          if((node_np1_idx < nodes_np1->num_owned_indeps) && !done_np1[node_np1_idx] && (node_np1->pad8 != 0))
+          {
+            for (short dir = 0; dir < P4EST_DIM; ++dir) {
+              vnm1_nodes_p[dir][node_np1_idx] = vn_nodes_p[dir][node_n_idx];
+              for (short dd = 0; dd < P4EST_DIM; ++dd) {
+                second_derivatives_vnm1_nodes_p[dd][dir][node_np1_idx] = second_derivatives_vn_nodes_p[dd][dir][node_n_idx];
+              }
+            }
+            done_np1[node_np1_idx] = P4EST_TRUE;
+            nb_done_np1++;
+          }
+          if((node_n_idx < nodes_n->num_owned_indeps) && (level_set!= NULL) && !done_n[node_n_idx] && (node_n->pad8 != 0))
+          {
+            double xyz[P4EST_DIM];
+            node_xyz_fr_n(node_n_idx, p4est_n, nodes_n, xyz);
+#ifdef P4_TO_P8
+            phi_p[node_n_idx] = (*level_set)(xyz[0], xyz[1], xyz[2]);
+#else
+            phi_p[node_n_idx] = (*level_set)(xyz[0], xyz[1]);
+#endif
+            done_n[node_n_idx] = P4EST_TRUE;
+            nb_done_n++;
+          }
+        }
+      }
+    }
+    P4EST_ASSERT(((size_t) nb_done_np1) == ngbd_np1->get_layer_size());
+    P4EST_ASSERT((level_set == NULL) || (((size_t) nb_done_n) == ngbd_n->get_layer_size()));
+    if(level_set!= NULL){
+      ierr = VecGhostUpdateBegin(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr); }
+    for (short dir = 0; dir < P4EST_DIM; ++dir) {
+      ierr = VecGhostUpdateBegin(vnm1_nodes[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+      for (short dd = 0; dd < P4EST_DIM; ++dd) {
+        ierr = VecGhostUpdateBegin(second_derivatives_vnm1_nodes[dd][dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+      }
+    }
+    for (p4est_topidx_t tree_idx = p4est_np1->first_local_tree; tree_idx <= p4est_np1->last_local_tree; ++tree_idx) {
+      p4est_tree_t* tree_np1          = p4est_tree_array_index(p4est_np1->trees, tree_idx);
+      p4est_tree_t* tree_n            = p4est_tree_array_index(p4est_n->trees, tree_idx);
+      P4EST_ASSERT(tree_np1->quadrants.elem_count == tree_n->quadrants.elem_count);
+      for (size_t q = 0; q < tree_np1->quadrants.elem_count; ++q) {
+        p4est_locidx_t quad_idx       = tree_np1->quadrants_offset + q;
+        p4est_quadrant_t* quad_np1    = p4est_quadrant_array_index(&tree_np1->quadrants, q);
+        p4est_quadrant_t* quad_n      = p4est_quadrant_array_index(&tree_n->quadrants, q);
+        P4EST_ASSERT(p4est_quadrant_is_equal(quad_np1, quad_n));
+        for (short nn = 0; nn < P4EST_CHILDREN; ++nn) {
+          p4est_locidx_t node_np1_idx = nodes_np1->local_nodes[P4EST_CHILDREN*quad_idx + nn];
+          p4est_locidx_t node_n_idx   = nodes_n->local_nodes[P4EST_CHILDREN*quad_idx + nn];
+          p4est_indep_t* node_np1 = (p4est_indep_t*)sc_array_index(&nodes_np1->indep_nodes, node_np1_idx);
+          p4est_indep_t* node_n   = (p4est_indep_t*)sc_array_index(&nodes_n->indep_nodes, node_n_idx);
+          if((node_np1_idx < nodes_np1->num_owned_indeps) && !done_np1[node_np1_idx] && (node_np1->pad8 == 0))
+          {
+            for (short dir = 0; dir < P4EST_DIM; ++dir) {
+              vnm1_nodes_p[dir][node_np1_idx] = vn_nodes_p[dir][node_n_idx];
+              for (short dd = 0; dd < P4EST_DIM; ++dd) {
+                second_derivatives_vnm1_nodes_p[dd][dir][node_np1_idx] = second_derivatives_vn_nodes_p[dd][dir][node_n_idx];
+              }
+            }
+            done_np1[node_np1_idx] = P4EST_TRUE;
+            nb_done_np1++;
+          }
+          if((node_n_idx < nodes_n->num_owned_indeps) && (level_set!= NULL) && !done_n[node_n_idx] && (node_n->pad8 == 0))
+          {
+            double xyz[P4EST_DIM];
+            node_xyz_fr_n(node_n_idx, p4est_n, nodes_n, xyz);
+#ifdef P4_TO_P8
+            phi_p[node_n_idx] = (*level_set)(xyz[0], xyz[1], xyz[2]);
+#else
+            phi_p[node_n_idx] = (*level_set)(xyz[0], xyz[1]);
+#endif
+            done_n[node_n_idx] = P4EST_TRUE;
+            nb_done_n++;
+          }
+        }
+      }
+    }
+
+    if(level_set!= NULL){
+      ierr = VecGhostUpdateEnd(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr); }
+    ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
+    for (short dir = 0; dir < P4EST_DIM; ++dir) {
+      ierr = VecGhostUpdateEnd(vnm1_nodes[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+      ierr = VecRestoreArray(vnm1_nodes[dir], &vnm1_nodes_p[dir]); CHKERRXX(ierr);
+      ierr = VecRestoreArrayRead(vn_nodes[dir], &vn_nodes_p[dir]); CHKERRXX(ierr);
+      for (short dd = 0; dd < P4EST_DIM; ++dd) {
+        ierr = VecGhostUpdateEnd(second_derivatives_vnm1_nodes[dd][dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+        ierr = VecRestoreArray(second_derivatives_vnm1_nodes[dd][dir], &second_derivatives_vnm1_nodes_p[dd][dir]); CHKERRXX(ierr);
+        ierr = VecRestoreArrayRead(second_derivatives_vn_nodes[dd][dir], &second_derivatives_vn_nodes_p[dd][dir]); CHKERRXX(ierr);
+      }
+      Vec vtmp = vn_nodes[dir];
+      vn_nodes[dir] = vnp1_nodes[dir];
+      vnp1_nodes[dir] = vtmp;
+//      ierr = VecDuplicate(vn_nodes[dir], &vnp1_nodes[dir]); CHKERRXX(ierr);
+    }
+    if(do_reinitialization)
+    {
+      my_p4est_level_set_t lsn(ngbd_n);
+      lsn.reinitialize_1st_order_time_2nd_order_space(phi);
+      lsn.perturb_level_set_function(phi, EPS);
+    }
+#ifdef P4_TO_P8
+    ngbd_n->second_derivatives_central(vn_nodes, second_derivatives_vn_nodes[0], second_derivatives_vn_nodes[1], second_derivatives_vn_nodes[2], P4EST_DIM);
+#else
+    ngbd_n->second_derivatives_central(vn_nodes, second_derivatives_vn_nodes[0], second_derivatives_vn_nodes[1], P4EST_DIM);
+#endif
+    if(smoke!=NULL)
+    {
+      ierr = VecDuplicate(phi, &smoke_np1); CHKERRXX(ierr);
+      advect_smoke(ngbd_n, vn_nodes, smoke, smoke_np1);
+      ierr = VecDestroy(smoke); CHKERRXX(ierr);
+      smoke = smoke_np1;
+    }
+
+    p4est_destroy(p4est_nm1); p4est_nm1 = p4est_np1;
+    p4est_ghost_destroy(ghost_nm1); ghost_nm1 = ghost_np1;
+    p4est_nodes_destroy(nodes_nm1); nodes_nm1 = nodes_np1;
+    delete hierarchy_nm1; hierarchy_nm1 = hierarchy_np1;
+    delete ngbd_nm1; ngbd_nm1 = ngbd_np1;
   }
 
-  delete interp_phi;
-  interp_phi = new my_p4est_interpolation_nodes_t(ngbd_n);
   interp_phi->set_input(phi, linear);
 
+  semi_lagrangian_backtrace_is_done = false;
   ierr = PetscLogEventEnd(log_my_p4est_navier_stokes_update, 0, 0, 0, 0); CHKERRXX(ierr);
+
+  return ((grid_or_partition_has_changed != 0) ? true: false);
 }
 
 
@@ -1884,7 +2319,6 @@ void my_p4est_navier_stokes_t::save_vtk(const char* name)
     ierr = VecGetArrayRead(smoke, &smoke_p); CHKERRXX(ierr);
     my_p4est_vtk_write_all(p4est_n, nodes_n, ghost_n,
                            P4EST_TRUE, P4EST_TRUE,
-//                           P4EST_FALSE, P4EST_FALSE,
                            3+P4EST_DIM, /* number of VTK_POINT_DATA */
                            1, /* number of VTK_CELL_DATA  */
                            name,
@@ -1892,31 +2326,30 @@ void my_p4est_navier_stokes_t::save_vtk(const char* name)
                            VTK_POINT_DATA, "pressure", pressure_nodes_p,
                            VTK_POINT_DATA, "smoke", smoke_p,
                            VTK_POINT_DATA, "vx", vn_p[0],
-                           VTK_POINT_DATA, "vy", vn_p[1],
-                    #ifdef P4_TO_P8
-                           VTK_POINT_DATA, "vz", vn_p[2],
-                    #endif
-                           VTK_CELL_DATA, "leaf_level", l_p
-                           );
+        VTK_POINT_DATA, "vy", vn_p[1],
+    #ifdef P4_TO_P8
+        VTK_POINT_DATA, "vz", vn_p[2],
+    #endif
+        VTK_CELL_DATA, "leaf_level", l_p
+        );
     ierr = VecRestoreArrayRead(smoke, &smoke_p); CHKERRXX(ierr);
   }
   else
   {
     my_p4est_vtk_write_all(p4est_n, nodes_n, ghost_n,
                            P4EST_TRUE, P4EST_TRUE,
-//                           P4EST_FALSE, P4EST_FALSE,
                            2+P4EST_DIM, /* number of VTK_POINT_DATA */
                            1, /* number of VTK_CELL_DATA  */
                            name,
                            VTK_POINT_DATA, "phi", phi_p,
                            VTK_POINT_DATA, "pressure", pressure_nodes_p,
                            VTK_POINT_DATA, "vx", vn_p[0],
-                           VTK_POINT_DATA, "vy", vn_p[1],
-                    #ifdef P4_TO_P8
-                           VTK_POINT_DATA, "vz", vn_p[2],
-                    #endif
-                           VTK_CELL_DATA, "leaf_level", l_p
-                           );
+        VTK_POINT_DATA, "vy", vn_p[1],
+    #ifdef P4_TO_P8
+        VTK_POINT_DATA, "vz", vn_p[2],
+    #endif
+        VTK_CELL_DATA, "leaf_level", l_p
+        );
   }
 
   ierr = VecRestoreArray(leaf_level, &l_p); CHKERRXX(ierr);
@@ -1936,4 +2369,604 @@ void my_p4est_navier_stokes_t::save_vtk(const char* name)
   }
 
   ierr = PetscPrintf(p4est_n->mpicomm, "Saved visual data in ... %s\n", name); CHKERRXX(ierr);
+}
+
+void my_p4est_navier_stokes_t::global_mass_flow_through_slice(const unsigned int& dir, std::vector<double>& section, std::vector<double>& mass_flows) const
+{
+  PetscErrorCode ierr;
+#ifdef CASL_THROWS
+  if (dir >= P4EST_DIM)
+    throw std::invalid_argument("my_p4est_navier_stokes_t::global_mass_flow_through_slice: the queried direction MUST be strictly smaller than P4EST_DIM");
+#endif
+  const splitting_criteria_t *data = (const splitting_criteria_t*) p4est_n->user_pointer;
+  double *v2c = p4est_n->connectivity->vertices;
+  p4est_topidx_t *t2v = p4est_n->connectivity->tree_to_vertex;
+
+  const double size_of_tree         = (v2c[3*t2v[P4EST_CHILDREN*0 + P4EST_CHILDREN - 1] + dir] - v2c[3*t2v[P4EST_CHILDREN*0 + 0] + dir]);
+  const double coarsest_cell_size   = size_of_tree/((double) (1<<data->min_lvl));
+  const double comparison_threshold = 0.5*size_of_tree/((double) (1<<data->max_lvl));
+
+  if(mass_flows.size() != section.size())
+    mass_flows.resize(section.size(), 0.0);
+  for (size_t ii = 0; ii < section.size(); ++ii) {
+#ifdef CASL_THROWS
+    if((section[ii] < xyz_min[dir]) || (section[ii] > xyz_max[dir]))
+      throw std::invalid_argument("my_p4est_navier_stokes_t::global_mass_flow_through_slice: the slice section must be in the computational domain!");
+#endif
+    int tree_dim_idx = (int) floor((section[ii]-xyz_min[dir])/size_of_tree);
+    double should_be_integer = (section[ii]-(xyz_min[dir] + tree_dim_idx*size_of_tree))/coarsest_cell_size;
+    if(fabs(should_be_integer - ((int) should_be_integer)) > 1e-6)
+    {
+#ifdef CASL_THROWS
+      throw std::invalid_argument("my_p4est_navier_stokes_t::global_mass_flow_through_slice: the mass flux can be evaluated only through slices in the \n computational domain that coincide with cell faces of the coarsest cells: choose a valid section!");
+#else
+      section[ii] = xyz_min[dir] + tree_dim_idx*size_of_tree + ((int) should_be_integer)*(section[ii]-(xyz_min[dir] + tree_dim_idx*size_of_tree))/coarsest_cell_size;
+      if(p4est_n->mpirank == 0)
+        std::cerr << "my_p4est_navier_stokes_t::global_mass_flow_through_slice: the section for calculating the mass flow has been relocated!" << std::endl;
+#endif
+    }
+    mass_flows[ii] = 0.0; // initialization
+  }
+
+  const double *vel_p, *phi_p;
+  double face_coordinate = DBL_MAX;
+  ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(vnp1[dir], &vel_p); CHKERRXX(ierr);
+  for (p4est_locidx_t face_idx = 0; face_idx < faces_n->num_local[dir]; ++face_idx) {
+    switch (dir) {
+    case dir::x:
+      face_coordinate = faces_n->x_fr_f(face_idx, dir);
+      break;
+    case dir::y:
+      face_coordinate = faces_n->y_fr_f(face_idx, dir);
+      break;
+#ifdef P4_TO_P8
+    case dir::z:
+      face_coordinate = faces_n->z_fr_f(face_idx, dir);
+      break;
+#endif
+    default:
+#ifdef CASL_THROWS
+      throw std::invalid_argument("my_p4est_navier_stokes_t::global_mass_flow_through_slice: the queried direction MUST be strictly smaller than P4EST_DIM");
+#endif
+      break;
+    }
+
+    bool check_for_periodic_wrapping = is_periodic(p4est_n, dir) && ((fabs(face_coordinate - xyz_min[dir]) < comparison_threshold) || (fabs(face_coordinate - xyz_max[dir]) < comparison_threshold));
+    for (size_t ii = 0; ii < section.size(); ++ii)
+    {
+      if(check_for_periodic_wrapping && ((fabs(section[ii] - xyz_min[dir]) < comparison_threshold) || (fabs(section[ii] - xyz_max[dir]) < comparison_threshold)))
+        face_coordinate = section[ii];
+      if(fabs(face_coordinate - section[ii]) < comparison_threshold)
+        mass_flows[ii] += rho*vel_p[face_idx]*faces_n->face_area_in_negative_domain(face_idx, dir, phi_p, nodes_n);
+    }
+  }
+  ierr = VecRestoreArrayRead(vnp1[dir], &vel_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
+
+  int mpiret = MPI_Allreduce(MPI_IN_PLACE, &mass_flows[0], mass_flows.size(), MPI_DOUBLE, MPI_SUM, p4est_n->mpicomm); SC_CHECK_MPI(mpiret);
+}
+
+void my_p4est_navier_stokes_t::get_noslip_wall_forces(double wall_force[], const bool with_pressure) const
+{
+  const splitting_criteria_t *data = (const splitting_criteria_t*) p4est_n->user_pointer;
+  double xyz_stencil[P4EST_DIM], xyz_w[P4EST_DIM], xyz_f[P4EST_DIM];
+  const double rr = 0.95;
+  const double *pressure_p;
+  const double *vnp1_p[P4EST_DIM];
+  PetscErrorCode ierr;
+  if(with_pressure)
+  {
+    ierr = VecGetArrayRead(pressure, &pressure_p); CHKERRXX(ierr);
+  }
+  for (short dd = 0; dd < P4EST_DIM; ++dd) {
+    ierr = VecGetArrayRead(vnp1[dd], &vnp1_p[dd]); CHKERRXX(ierr);
+  }
+
+  for (short dir = 0; dir < P4EST_DIM; ++dir) {
+    // initialize calculation of the force component
+    wall_force[dir] = 0.0;
+    for (p4est_locidx_t normal_face_idx = 0; normal_face_idx < faces_n->num_local[dir]; ++normal_face_idx) {
+      p4est_locidx_t quad_idx;
+      p4est_topidx_t tree_idx;
+      faces_n->f2q(normal_face_idx, dir, quad_idx, tree_idx);
+      p4est_quadrant_t *quad;
+      if(quad_idx<p4est_n->local_num_quadrants)
+      {
+        p4est_tree_t *tree = p4est_tree_array_index(p4est_n->trees, tree_idx);
+        quad = p4est_quadrant_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
+      }
+      else
+        quad = p4est_quadrant_array_index(&ghost_n->ghosts, quad_idx-p4est_n->local_num_quadrants);
+
+      bool is_quad_wall[P4EST_FACES];
+      bool no_wall = true;
+      for (short ff = 0; ff < P4EST_FACES; ++ff)
+      {
+        is_quad_wall[ff] = is_quad_Wall(p4est_n,tree_idx, quad, ff);
+        no_wall = no_wall && !is_quad_wall[ff];
+      }
+
+      if(no_wall)
+        continue;
+
+      faces_n->xyz_fr_f(normal_face_idx, dir, xyz_f);
+      int tmp = ((faces_n->q2f(quad_idx, 2*dir)==normal_face_idx)? 0 : 1);
+
+      for (short wall_dir = 0; wall_dir < P4EST_DIM; ++wall_dir) {
+        if(is_quad_wall[2*wall_dir] || is_quad_wall[2*wall_dir+1])
+        {
+          // if the normal face is parallel to the considered wall normal, then it MUST be the wall face, otherwise skip it (the appropriate one is another one)
+          if(dir == wall_dir && !((tmp == 0)? is_quad_wall[2*wall_dir] : is_quad_wall[2*wall_dir+1]))
+            continue;
+
+          // if the normal face is a wall face, and if it is a no-slip wall face (i.e. xyz_w = xyz_f)
+          if(dir == wall_dir && is_no_slip(xyz_f)) // always in the domain boundary by definition in this case
+          {
+            double fraction_noslip = 0.0;
+            for (short dd = 0; dd < P4EST_DIM; ++dd)
+              xyz_stencil[dd] = xyz_f[dd];
+            for (short ii = -1; ii < 2; ii+=2) {
+              int first_transverse_dir = (dir+1)%P4EST_DIM;
+              xyz_stencil[first_transverse_dir] = xyz_f[first_transverse_dir] + ((double) ii)*0.5*rr*dxyz_min[first_transverse_dir]*((double) (1<<(data->max_lvl - quad->level)));
+#ifdef P4_TO_P8
+              if(is_no_slip(xyz_stencil)) // always in the domain boundary by definition in this case
+              {
+                int second_transverse_dir = (dir+2)%P4EST_DIM;
+                for (short jj = -1; jj < 2; jj+=2) {
+                  xyz_stencil[second_transverse_dir] = xyz_f[second_transverse_dir] + ((double) jj)*0.5*rr*dxyz_min[second_transverse_dir]*((double) (1<<(data->max_lvl - quad->level)));
+                  fraction_noslip += ((is_no_slip(xyz_stencil))?0.25:0); // always in the domain boundary by definition in this case
+                }
+                xyz_stencil[second_transverse_dir] = xyz_f[second_transverse_dir]; // reset that one
+              }
+#else
+              fraction_noslip += ((is_no_slip(xyz_stencil))?0.5:0.0); // always in the domain boundary by definition in this case
+#endif
+            }
+            if(fraction_noslip < EPS)
+              throw std::runtime_error("my_p4est_navier_stokes_t::get_noslip_wall_forces: this case is under-resolved, a wall-face has its center no-slip but no other point in that face is no-slip...");
+            double element_drag = 0.0;
+            if(with_pressure)
+              element_drag -= (pressure_p[quad_idx] + bc_pressure->wallValue(xyz_f)*0.5*dxyz_min[dir]*((double) (1<<(data->max_lvl - quad->level)))); // NEUMANN on pressure, since no-slip wall...
+            p4est_locidx_t opposite_face_idx = faces_n->q2f(quad_idx, 2*dir+1-tmp);
+            P4EST_ASSERT(opposite_face_idx != NO_VELOCITY);
+            double dvdirddir = ((tmp==1)?+1.0:-1.0)*(vnp1_p[dir][normal_face_idx] - vnp1_p[dir][opposite_face_idx])/(dxyz_min[dir]*((double) (1<<(data->max_lvl - quad->level))));
+            element_drag += 2*mu*dvdirddir;
+            element_drag *= faces_n->face_area(normal_face_idx, dir)*fraction_noslip;
+            wall_force[dir] += ((tmp == 1)?+1.0:-1.0)*element_drag;
+          }
+          if(dir != wall_dir)
+          {
+            for (short kk = 0; kk < 2; ++kk) {
+              if(!is_quad_wall[2*wall_dir+kk])
+                continue; // to handle dumbass cases with only 1 cell in transverse direction that some insane person might want to try one day...
+              for (short dd = 0; dd < P4EST_DIM; ++dd)
+                xyz_w[dd] = xyz_f[dd];
+              xyz_w[wall_dir] += ((double) (2*kk-1))*0.5*dxyz_min[wall_dir]*((double) (1<<(data->max_lvl - quad->level)));
+              if(is_no_slip(xyz_w)) // always in the domain boundary by defintion as wall
+              {
+                // first term: mu*dv[dir]/dwall_dir
+                double element_drag = mu*((double) (1-2*kk))*(vnp1_p[dir][normal_face_idx] - bc_v[dir].wallValue(xyz_w))/(0.5*dxyz_min[wall_dir]*((double) (1<<(data->max_lvl - quad->level))));
+                // second term: dv[wall_dir]/ddir
+                double transverse_derivative = 0.0;
+                double fraction_noslip = 0.0;
+                unsigned int n_terms = 0;
+                for (short dd = 0; dd < P4EST_DIM; ++dd)
+                  xyz_stencil[dd] = xyz_w[dd];
+#ifdef P4_TO_P8
+                int second_transverse_dir = ((((dir+1)%P4EST_DIM)==wall_dir)? ((dir+2)%P4EST_DIM) : ((dir+1)%P4EST_DIM));
+#endif
+                for (short ii = -1; ii < 2; ii+=2){
+                  xyz_stencil[dir] = xyz_w[dir] + ((double) ii)*0.5*rr*dxyz_min[dir]*((double) (1<<(data->max_lvl - quad->level)));
+#ifdef P4_TO_P8
+                  if(is_in_domain(xyz_stencil) && is_no_slip(xyz_stencil)) // could be out of the domain (consider a corner in a cavity flow, for instance)
+                  {
+                    for (short jj = -1; jj < 2; jj+=2) {
+                      xyz_stencil[second_transverse_dir] = xyz_w[second_transverse_dir] + ((double) jj)*0.5*rr*dxyz_min[second_transverse_dir]*((double) (1<<(data->max_lvl - quad->level)));
+                      fraction_noslip += ((is_in_domain(xyz_stencil) && is_no_slip(xyz_stencil))?0.25:0); // could be out of the domain (consider a corner in a cavity flow, for instance)
+                    }
+                    xyz_stencil[second_transverse_dir] = xyz_w[second_transverse_dir]; // reset that one
+                  }
+#else
+                  fraction_noslip += ((is_in_domain(xyz_stencil) && is_no_slip(xyz_stencil))?0.5:0.0); // could be out of the domain (consider a corner in a cavity flow, for instance)
+#endif
+                  if(is_in_domain(xyz_stencil) && bc_v[wall_dir].wallType(xyz_stencil) == DIRICHLET) // consistency for that component at least
+                  {
+                    transverse_derivative += ((double) ii)*(bc_v[wall_dir].wallValue(xyz_stencil) - bc_v[wall_dir].wallValue(xyz_w))/(0.5*rr*dxyz_min[dir]*((double) (1<<(data->max_lvl - quad->level))));
+                    n_terms++;
+                  }
+                }
+
+                if(n_terms == 0)
+                  std::runtime_error("my_p4est_navier_stokes_t::get_noslip_wall_forces: this case is under-resolved, less than one-cell size DIRICHLET condition for x-velocity on an x-wall");
+                if(n_terms == 2)
+                  transverse_derivative *= 0.5;
+                if(fraction_noslip < EPS)
+                  throw std::runtime_error("my_p4est_navier_stokes_t::get_noslip_wall_forces: this case is under-resolved, a wall-element associated with a projected face center has its center no-slip but no other point in that element is no-slip...");
+
+                element_drag += mu*transverse_derivative;
+                element_drag *= dxyz_min[dir]*((double) (1<<(data->max_lvl - quad->level)));
+#ifdef P4_TO_P8
+                element_drag *= dxyz_min[second_transverse_dir]*((double) (1<<(data->max_lvl - quad->level)));
+#endif
+                wall_force[dir] += ((double) (2*kk-1))*element_drag*fraction_noslip;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  for (short dd = 0; dd < P4EST_DIM; ++dd) {
+    ierr = VecRestoreArrayRead(vnp1[dd], &vnp1_p[dd]); CHKERRXX(ierr);
+  }
+  if(with_pressure)
+  {
+    ierr = VecRestoreArrayRead(pressure, &pressure_p); CHKERRXX(ierr);
+  }
+
+  int mpiret = MPI_Allreduce(MPI_IN_PLACE, &wall_force[0], P4EST_DIM, MPI_DOUBLE, MPI_SUM, p4est_n->mpicomm); SC_CHECK_MPI(mpiret);
+}
+
+void my_p4est_navier_stokes_t::save_state(const char* path_to_root_directory, double tn, unsigned int n_saved)
+{
+  if(!is_folder(path_to_root_directory))
+  {
+    if(!create_directory(path_to_root_directory, p4est_n->mpirank, p4est_n->mpicomm))
+    {
+      char error_msg[1024];
+      sprintf(error_msg, "save_state: the path %s is invalid and the directory could not be created", path_to_root_directory);
+      throw std::invalid_argument(error_msg);
+    }
+  }
+
+  unsigned int backup_idx = 0;
+
+  if(p4est_n->mpirank == 0)
+  {
+    unsigned int n_backup_subfolders = 0;
+    // get the current number of backups already present
+    // delete the extra ones that may exist for whatever reason
+    std::vector<std::string> subfolders; subfolders.resize(0);
+    get_subdirectories_in(path_to_root_directory, subfolders);
+    for (size_t idx = 0; idx < subfolders.size(); ++idx) {
+      if(!subfolders[idx].compare(0, 7, "backup_"))
+      {
+        unsigned int backup_idx;
+        sscanf(subfolders[idx].c_str(), "backup_%d", &backup_idx);
+        if(backup_idx >= n_saved)
+        {
+          char full_path[PATH_MAX];
+          sprintf(full_path, "%s/%s", path_to_root_directory, subfolders[idx].c_str());
+          delete_directory(full_path, p4est_n->mpirank, p4est_n->mpicomm, true);
+        }
+        else
+          n_backup_subfolders++;
+      }
+    }
+
+    // check that they are successively indexed if less than the max number
+    if(n_backup_subfolders < n_saved)
+    {
+      backup_idx = 0;
+      for (unsigned int idx = 0; idx < n_backup_subfolders; ++idx) {
+        char expected_dir[PATH_MAX];
+        sprintf(expected_dir, "%s/backup_%d", path_to_root_directory, (int) idx);
+        if(!is_folder(expected_dir))
+          break; // well, it's a mess in there, but I can't really do any better...
+        backup_idx++;
+      }
+    }
+    if ((n_saved > 1) && (n_backup_subfolders == n_saved))
+    {
+      char full_path_zeroth_index[PATH_MAX];
+      sprintf(full_path_zeroth_index, "%s/backup_0", path_to_root_directory);
+      // delete the 0th
+      delete_directory(full_path_zeroth_index, p4est_n->mpirank, p4est_n->mpicomm, true);
+      // shift the others
+      for (size_t idx = 1; idx < n_saved; ++idx) {
+        char old_name[PATH_MAX], new_name[PATH_MAX];
+        sprintf(old_name, "%s/backup_%d", path_to_root_directory, (int) idx);
+        sprintf(new_name, "%s/backup_%d", path_to_root_directory, (int) (idx-1));
+        rename(old_name, new_name);
+      }
+      backup_idx = n_saved-1;
+    }
+  }
+  int mpiret = MPI_Bcast(&backup_idx, 1, MPI_INT, 0, p4est_n->mpicomm); SC_CHECK_MPI(mpiret);// acts as a MPI_Barrier, too
+
+  char path_to_folder[PATH_MAX];
+  sprintf(path_to_folder, "%s/backup_%d", path_to_root_directory, (int) backup_idx);
+  create_directory(path_to_folder, p4est_n->mpirank, p4est_n->mpicomm);
+
+
+  char filename[PATH_MAX];
+  // save the solver parameters
+  sprintf(filename, "%s/solver_parameters", path_to_folder);
+  save_or_load_parameters(filename, (splitting_criteria_t*) p4est_n->user_pointer, SAVE, tn);
+  // save p4est_n and all corresponding data
+  if(smoke == NULL)
+    my_p4est_save_forest_and_data(path_to_folder, p4est_n, nodes_n, faces_n,
+                                  "p4est_n", 4,
+                                  "phi", 1, &phi,
+                                  "hodge", 1, &hodge,
+                                  "dxyz_hodge", P4EST_DIM, dxyz_hodge,
+                                  "vn_nodes", P4EST_DIM, vn_nodes);
+  else
+    my_p4est_save_forest_and_data(path_to_folder, p4est_n, nodes_n, faces_n,
+                                  "p4est_n", 5,
+                                  "phi", 1, &phi,
+                                  "hodge", 1, &hodge,
+                                  "dxyz_hodge", P4EST_DIM, dxyz_hodge,
+                                  "vn_nodes", P4EST_DIM, vn_nodes,
+                                  "smoke", 1, smoke);
+  // save p4est_nm1
+  my_p4est_save_forest_and_data(path_to_folder, p4est_nm1, nodes_nm1,
+                                "p4est_nm1", 1,
+                                "vnm1_nodes", P4EST_DIM, vnm1_nodes);
+  PetscErrorCode ierr = PetscPrintf(p4est_n->mpicomm, "Saved solver state in ... %s\n", path_to_folder); CHKERRXX(ierr);
+}
+
+void my_p4est_navier_stokes_t::fill_or_load_double_parameters(save_or_load flag, PetscReal *data, splitting_criteria_t *splitting_criterion, double &tn)
+{
+  size_t idx = 0;
+  for (short dim = 0; dim < P4EST_DIM; ++dim)
+  {
+    switch (flag) {
+    case SAVE:
+      data[idx++] = dxyz_min[dim];
+      break;
+    case LOAD:
+      dxyz_min[dim] = data[idx++];
+      break;
+    default:
+      throw std::runtime_error("my_p4est_navier_stokes_t::fill_or_load_double_data: unknown flag value");
+      break;
+    }
+  }
+  for (short dim = 0; dim < P4EST_DIM; ++dim)
+  {
+    switch (flag) {
+    case SAVE:
+      data[idx++] = xyz_min[dim];
+      break;
+    case LOAD:
+      xyz_min[dim] = data[idx++];
+      break;
+    default:
+      throw std::runtime_error("my_p4est_navier_stokes_t::fill_or_load_double_data: unknown flag value");
+      break;
+    }
+  }
+  for (short dim = 0; dim < P4EST_DIM; ++dim)
+  {
+    switch (flag) {
+    case SAVE:
+      data[idx++] = xyz_max[dim];
+      break;
+    case LOAD:
+      xyz_max[dim] = data[idx++];
+      break;
+    default:
+      throw std::runtime_error("my_p4est_navier_stokes_t::fill_or_load_double_data: unknown flag value");
+      break;
+    }
+  }
+  for (short dim = 0; dim < P4EST_DIM; ++dim)
+  {
+    switch (flag) {
+    case SAVE:
+      data[idx++] = convert_to_xyz[dim];
+      break;
+    case LOAD:
+      convert_to_xyz[dim] = data[idx++];
+      break;
+    default:
+      throw std::runtime_error("my_p4est_navier_stokes_t::fill_or_load_double_data: unknown flag value");
+      break;
+    }
+  }
+  {
+    switch (flag) {
+    case SAVE:
+    {
+      data[idx++] = mu;
+      data[idx++] = rho;
+      data[idx++] = tn;
+      data[idx++] = dt_n;
+      data[idx++] = dt_nm1;
+      data[idx++] = max_L2_norm_u;
+      data[idx++] = uniform_band;
+      data[idx++] = threshold_split_cell;
+      data[idx++] = n_times_dt;
+      data[idx++] = smoke_thresh;
+      data[idx++] = splitting_criterion->lip;
+      break;
+    }
+    case LOAD:
+    {
+      mu                        = data[idx++];
+      rho                       = data[idx++];
+      tn                        = data[idx++];
+      dt_n                      = data[idx++];
+      dt_nm1                    = data[idx++];
+      max_L2_norm_u             = data[idx++];
+      uniform_band              = data[idx++];
+      threshold_split_cell      = data[idx++];
+      n_times_dt                = data[idx++];
+      smoke_thresh              = data[idx++];
+      splitting_criterion->lip  = data[idx++];
+      break;
+    }
+    default:
+      throw std::runtime_error("my_p4est_navier_stokes_t::fill_or_load_double_data: unknown flag value");
+      break;
+    }
+  }
+  P4EST_ASSERT(idx==4*P4EST_DIM+11);
+}
+
+void my_p4est_navier_stokes_t::fill_or_load_integer_parameters(save_or_load flag, PetscInt *data, splitting_criteria_t* splitting_criterion)
+{
+  size_t idx = 0;
+  switch (flag) {
+  case SAVE:
+  {
+    data[idx++] = P4EST_DIM;
+    data[idx++] = (PetscInt) refine_with_smoke;
+    data[idx++] = splitting_criterion->min_lvl;
+    data[idx++] = splitting_criterion->max_lvl;
+    data[idx++] = sl_order;
+    break;
+  }
+  case LOAD:
+  {
+    PetscInt P4EST_DIM_COPY       = data[idx++];
+    if(P4EST_DIM_COPY != P4EST_DIM)
+      throw std::runtime_error("You're trying to load 2D (resp. 3D) data with a 3D (resp. 2D) program...");
+    refine_with_smoke             = (bool) data[idx++];
+    splitting_criterion->min_lvl  = data[idx++];
+    splitting_criterion->max_lvl  = data[idx++];
+    sl_order                      = data[idx++];
+    break;
+  }
+  default:
+    throw std::runtime_error("my_p4est_navier_stokes_t::fill_or_load_integer_data: unknown flag value");
+    break;
+  }
+  P4EST_ASSERT(idx==5);
+}
+
+void my_p4est_navier_stokes_t::save_or_load_parameters(const char* filename, splitting_criteria_t* splitting_criterion, save_or_load flag, double &tn, const mpi_environment_t* mpi)
+{
+  PetscErrorCode ierr;
+  // dxyz_min, xyz_min, xyz_max, convert_to_xyz, mu, rho, tn, dt_n, dt_nm1, max_L2_norm_u, uniform_band, threshold_split_cell, n_times_dt, smoke_thresh, data->lip
+  // that makes 4*P4EST_DIM+11 doubles to save
+  PetscReal double_parameters[4*P4EST_DIM+11];
+  // P4EST_DIM, refine_with_smoke (converted to int), data->min_lvl, data->max_lvl, sl_order
+  // that makes 5 integers
+  PetscInt integer_parameters[5];
+  int fd;
+  char diskfilename[PATH_MAX];
+  switch (flag) {
+  case SAVE:
+  {
+    if(p4est_n->mpirank == 0)
+    {
+      sprintf(diskfilename, "%s_integers", filename);
+      fill_or_load_integer_parameters(flag, integer_parameters, splitting_criterion);
+      ierr = PetscBinaryOpen(diskfilename, FILE_MODE_WRITE, &fd); CHKERRXX(ierr);
+      ierr = PetscBinaryWrite(fd, integer_parameters, 5, PETSC_INT, PETSC_TRUE); CHKERRXX(ierr);
+      ierr = PetscBinaryClose(fd); CHKERRXX(ierr);
+      // Then we save the double parameters
+      sprintf(diskfilename, "%s_doubles", filename);
+      fill_or_load_double_parameters(flag, double_parameters, splitting_criterion, tn);
+      ierr = PetscBinaryOpen(diskfilename, FILE_MODE_WRITE, &fd); CHKERRXX(ierr);
+      ierr = PetscBinaryWrite(fd, double_parameters, 4*P4EST_DIM+11, PETSC_DOUBLE, PETSC_TRUE); CHKERRXX(ierr);
+      ierr = PetscBinaryClose(fd); CHKERRXX(ierr);
+    }
+    break;
+  }
+  case LOAD:
+  {
+    sprintf(diskfilename, "%s_integers", filename);
+    if(!file_exists(diskfilename))
+      throw std::invalid_argument("my_p4est_navier_stokes_t::save_or_load_parameters: the file storing the solver's integer parameters could not be found");
+    if(mpi->rank() == 0)
+    {
+      ierr = PetscBinaryOpen(diskfilename, FILE_MODE_READ, &fd); CHKERRXX(ierr);
+      ierr = PetscBinaryRead(fd, integer_parameters, 5, PETSC_INT); CHKERRXX(ierr);
+      ierr = PetscBinaryClose(fd); CHKERRXX(ierr);
+    }
+    int mpiret = MPI_Bcast(integer_parameters, 5, MPI_INT, 0, mpi->comm()); SC_CHECK_MPI(mpiret);
+    fill_or_load_integer_parameters(flag, integer_parameters, splitting_criterion);
+    // Then we save the double parameters
+    sprintf(diskfilename, "%s_doubles", filename);
+    if(!file_exists(diskfilename))
+      throw std::invalid_argument("my_p4est_navier_stokes_t::save_or_load_parameters: the file storing the solver's double parameters could not be found");
+    if(mpi->rank() == 0)
+    {
+      ierr = PetscBinaryOpen(diskfilename, FILE_MODE_READ, &fd); CHKERRXX(ierr);
+      ierr = PetscBinaryRead(fd, double_parameters, 4*P4EST_DIM+11, PETSC_DOUBLE); CHKERRXX(ierr);
+      ierr = PetscBinaryClose(fd); CHKERRXX(ierr);
+    }
+    mpiret = MPI_Bcast(double_parameters, 4*P4EST_DIM+11, MPI_DOUBLE, 0, mpi->comm()); SC_CHECK_MPI(mpiret);
+    fill_or_load_double_parameters(flag, double_parameters, splitting_criterion, tn);
+    break;
+  }
+  default:
+    throw std::runtime_error("my_p4est_navier_stokes_t::save_or_load_parameters: unknown flag value");
+    break;
+    break;
+  }
+}
+
+void my_p4est_navier_stokes_t::load_state(const mpi_environment_t& mpi, const char* path_to_folder, double& tn)
+{
+  PetscErrorCode ierr;
+  char filename[PATH_MAX];
+
+  if(!is_folder(path_to_folder))
+    throw std::invalid_argument("my_p4est_navier_stokes_t::load_state: path_to_folder is invalid.");
+
+  // load general solver parameters first
+  splitting_criteria_t* data = new splitting_criteria_t;
+  sprintf(filename, "%s/solver_parameters", path_to_folder);
+  save_or_load_parameters(filename, data, LOAD, tn, &mpi);
+
+  sprintf(filename, "%s/smoke.petscbin", path_to_folder);
+
+  // load p4est_n and the corresponding objects
+  if(refine_with_smoke && file_exists(filename))
+    my_p4est_load_forest_and_data(mpi.comm(), path_to_folder,
+                                  p4est_n, conn,
+                                  P4EST_TRUE, ghost_n, nodes_n,
+                                  P4EST_TRUE, brick, P4EST_TRUE, faces_n, hierarchy_n, ngbd_c,
+                                  "p4est_n", 5,
+                                  "phi", NODE_DATA, 1, &phi,
+                                  "hodge", CELL_DATA, 1, &hodge,
+                                  "dxyz_hodge", FACE_DATA, P4EST_DIM, dxyz_hodge,
+                                  "vn_nodes", NODE_DATA, P4EST_DIM, vn_nodes,
+                                  "smoke", NODE_DATA, 1, smoke);
+  else
+  {
+    if(refine_with_smoke) // the original solver was refined with smoke, but the smoke was not exported for some reason...
+      refine_with_smoke = false;
+    my_p4est_load_forest_and_data(mpi.comm(), path_to_folder,
+                                  p4est_n, conn,
+                                  P4EST_TRUE, ghost_n, nodes_n,
+                                  P4EST_TRUE, brick, P4EST_TRUE, faces_n, hierarchy_n, ngbd_c,
+                                  "p4est_n", 4,
+                                  "phi", NODE_DATA, 1, &phi,
+                                  "hodge", CELL_DATA, 1, &hodge,
+                                  "dxyz_hodge", FACE_DATA, P4EST_DIM, dxyz_hodge,
+                                  "vn_nodes", NODE_DATA, P4EST_DIM, vn_nodes);
+  }
+
+  if(ngbd_n != NULL)
+    delete ngbd_n;
+  ngbd_n = new my_p4est_node_neighbors_t(hierarchy_n, nodes_n);
+
+  // load p4est_nm1 and the corresponding objects
+  p4est_connectivity_t* conn_nm1 = NULL;
+  my_p4est_load_forest_and_data(mpi.comm(), path_to_folder,
+                                p4est_nm1, conn_nm1,
+                                P4EST_TRUE, ghost_nm1, nodes_nm1,
+                                "p4est_nm1", 1,
+                                "vnm1_nodes", NODE_DATA, P4EST_DIM, vnm1_nodes);
+  p4est_connectivity_destroy(conn_nm1);
+
+  p4est_nm1->connectivity = conn;
+  if(hierarchy_nm1 != NULL)
+    delete hierarchy_nm1;
+  hierarchy_nm1 = new my_p4est_hierarchy_t(p4est_nm1, ghost_nm1, brick);
+  if(ngbd_nm1 != NULL)
+    delete ngbd_nm1;
+  ngbd_nm1 = new my_p4est_node_neighbors_t(hierarchy_nm1, nodes_nm1);
+
+  p4est_n->user_pointer = (void*) data;
+  p4est_nm1->user_pointer = (void*) data;
+
+  ierr = PetscPrintf(mpi.comm(), "Loaded solver state from ... %s\n", path_to_folder); CHKERRXX(ierr);
 }

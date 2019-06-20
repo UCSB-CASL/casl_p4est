@@ -25,6 +25,7 @@
 
 class my_p4est_semi_lagrangian_t
 {
+  friend class my_p4est_ns_free_surface_t;
   p4est_t **p_p4est, *p4est;
   p4est_nodes_t **p_nodes, *nodes;
   p4est_ghost_t **p_ghost, *ghost;
@@ -82,9 +83,9 @@ public:
    * \note you need to update ngbd_n and hierarchy yourself !
    */
 #ifdef P4_TO_P8
-  void update_p4est(const CF_3 **v, double dt, Vec &phi, Vec *phi_xx=NULL);
+  void update_p4est(const CF_3 **v, double dt, Vec &phi, Vec *phi_xx);
 #else
-  void update_p4est(const CF_2 **v, double dt, Vec &phi, Vec *phi_xx=NULL);
+  void update_p4est(const CF_2 **v, double dt, Vec &phi, Vec *phi_xx);
 #endif
 
   /*!

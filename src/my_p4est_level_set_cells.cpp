@@ -525,9 +525,12 @@ void my_p4est_level_set_cells_t::extend_Over_Interface( Vec phi, Vec q, Boundary
   std::vector<double> q2;
 
   q0.resize(p4est->local_num_quadrants);
-  if(order >= 1 || (order==0 && bc->interfaceType()==NEUMANN)) q1.resize(p4est->local_num_quadrants);
-  if(order >= 2)                                               q2.resize(p4est->local_num_quadrants);
+  if(order >= 1 || (order==0 && ((bc->interfaceType()==NEUMANN) || (bc->interfaceType()==MIXED))))
+    q1.resize(p4est->local_num_quadrants);
+  if(order >= 2)
+    q2.resize(p4est->local_num_quadrants);
 
+  double xyz_q[P4EST_DIM];
   /* now buffer the interpolation points */
   for(p4est_topidx_t tree_idx=p4est->first_local_tree; tree_idx<=p4est->last_local_tree; ++tree_idx)
   {
@@ -547,7 +550,9 @@ void my_p4est_level_set_cells_t::extend_Over_Interface( Vec phi, Vec q, Boundary
       }
       phi_q /= (double) P4EST_CHILDREN;
 
-      if( (bc->interfaceType()==DIRICHLET && phi_q>0) || (bc->interfaceType()==NEUMANN && neumann_all_pos) )
+      quad_xyz_fr_q(q_idx, tree_idx, p4est, ghost, xyz_q);
+
+      if( (bc->interfaceType(xyz_q)==DIRICHLET && phi_q>0) || (bc->interfaceType(xyz_q)==NEUMANN && neumann_all_pos) )
       {
         double x = quad_x_fr_q(q_idx, tree_idx, p4est, ghost);
         double y = quad_y_fr_q(q_idx, tree_idx, p4est, ghost);
@@ -573,7 +578,7 @@ void my_p4est_level_set_cells_t::extend_Over_Interface( Vec phi, Vec q, Boundary
           };
           interp0.add_point(q_idx, xyz_i);
 
-          if(order >= 1 || (order==0 && bc->interfaceType()==NEUMANN))
+          if(order >= 1 || (order==0 && bc->interfaceType(xyz_q)==NEUMANN))
           {
             double xyz_ [] =
             {
@@ -628,7 +633,9 @@ void my_p4est_level_set_cells_t::extend_Over_Interface( Vec phi, Vec q, Boundary
       }
       phi_q /= (double) P4EST_CHILDREN;
 
-      if( (bc->interfaceType()==DIRICHLET && phi_q>0) || (bc->interfaceType()==NEUMANN && neumann_all_pos) )
+      quad_xyz_fr_q(q_idx, tree_idx, p4est, ghost, xyz_q);
+
+      if( (bc->interfaceType(xyz_q)==DIRICHLET && phi_q>0) || (bc->interfaceType(xyz_q)==NEUMANN && neumann_all_pos) )
       {
         double x = quad_x_fr_q(q_idx, tree_idx, p4est, ghost);
         double y = quad_y_fr_q(q_idx, tree_idx, p4est, ghost);
@@ -646,7 +653,7 @@ void my_p4est_level_set_cells_t::extend_Over_Interface( Vec phi, Vec q, Boundary
 
           if(order==0)
           {
-            if(bc->interfaceType()==DIRICHLET)
+            if(bc->interfaceType(xyz_q)==DIRICHLET)
               q_p[q_idx] = q0[q_idx];
             else /* interface neumann */
               q_p[q_idx] = q1[q_idx];
@@ -654,7 +661,7 @@ void my_p4est_level_set_cells_t::extend_Over_Interface( Vec phi, Vec q, Boundary
 
           else if(order==1)
           {
-            if(bc->interfaceType()==DIRICHLET)
+            if(bc->interfaceType(xyz_q)==DIRICHLET)
             {
               double dif01 = (q1[q_idx] - q0[q_idx])/(2*diag - 0);
               q_p[q_idx] = q0[q_idx] + (-phi_q - 0) * dif01;
@@ -668,14 +675,14 @@ void my_p4est_level_set_cells_t::extend_Over_Interface( Vec phi, Vec q, Boundary
 
           else if(order==2)
           {
-            if(bc->interfaceType()==DIRICHLET)
+            if(bc->interfaceType(xyz_q)==DIRICHLET)
             {
               double dif01  = (q1[q_idx] - q0[q_idx]) / (2*diag);
               double dif12  = (q2[q_idx] - q1[q_idx]) / (diag);
               double dif012 = (dif12 - dif01) / (3*diag);
               q_p[q_idx] = q0[q_idx] + (-phi_q - 0) * dif01 + (-phi_q - 0)*(-phi_q - 2*diag) * dif012;
             }
-            else if (bc->interfaceType() == NEUMANN) /* interface Neumann */
+            else if (bc->interfaceType(xyz_q) == NEUMANN) /* interface Neumann */
             {
               double x1 = 2*diag;
               double x2 = 3*diag;
