@@ -4,14 +4,14 @@
 #include <src/my_p8est_interpolation_nodes.h>
 #include <src/my_p8est_refine_coarsen.h>
 #include <src/my_p8est_macros.h>
-#include <src/my_p8est_poisson_nodes_mls_sc.h>
+#include <src/my_p8est_poisson_nodes_mls.h>
 #else
 #include "my_p4est_level_set.h"
 #include <src/point2.h>
 #include <src/my_p4est_interpolation_nodes.h>
 #include <src/my_p4est_refine_coarsen.h>
 #include <src/my_p4est_macros.h>
-#include <src/my_p4est_poisson_nodes_mls_sc.h>
+#include <src/my_p4est_poisson_nodes_mls.h>
 #endif
 
 #include <src/casl_math.h>
@@ -10130,7 +10130,7 @@ double my_p4est_level_set_t::advect_in_normal_direction_with_contact_angle(const
   ierr = VecDuplicate(phi, &flux); CHKERRXX(ierr);
   interp.set_input(flux, linear);
 
-  my_p4est_poisson_nodes_mls_sc_t solver(ngbd);
+  my_p4est_poisson_nodes_mls_t solver(ngbd);
   if (phi_wall != NULL && cos_angle != NULL && use_neumann_for_contact_angle)
   {
     VecCopyGhost(cos_angle, flux);
@@ -10143,7 +10143,7 @@ double my_p4est_level_set_t::advect_in_normal_direction_with_contact_angle(const
   solver.set_integration_order(1);
 
   solver.set_mu(surf_tns);
-  solver.set_diag_add(1./dt);
+  solver.set_diag(1./dt);
   solver.set_rhs(rhs);
 
   solver.set_wc(bc_wall_type, zero_cf);
