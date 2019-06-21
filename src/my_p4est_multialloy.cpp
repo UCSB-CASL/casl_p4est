@@ -5,6 +5,7 @@
 #include <src/my_p8est_level_set.h>
 #include <src/my_p8est_semi_lagrangian.h>
 #include <src/my_p8est_macros.h>
+#include <src/my_p8est_utils.h>
 #else
 #include "my_p4est_multialloy.h"
 #include <src/my_p4est_refine_coarsen.h>
@@ -12,6 +13,7 @@
 #include <src/my_p4est_level_set.h>
 #include <src/my_p4est_semi_lagrangian.h>
 #include <src/my_p4est_macros.h>
+#include <src/my_p4est_utils.h>
 #endif
 
 #ifndef CASL_LOG_EVENTS
@@ -774,7 +776,7 @@ void my_p4est_multialloy_t::update_grid()
     {
       if (fabs(phi_ptr[n]) < band)
       {
-        get_all_neighbors(n, p4est_, nodes_, ngbd_, nei_n, nei_e);
+        ngbd_->get_all_neighbors(n, nei_n, nei_e);
 
         unsigned short num_neg = 0;
         unsigned short num_pos = 0;
@@ -812,7 +814,7 @@ void my_p4est_multialloy_t::update_grid()
     {
       if (phi_ptr[n] < 0 && phi_ptr[n] > -band)
       {
-        get_all_neighbors(n, p4est_, nodes_, ngbd_, nei_n, nei_e);
+        ngbd_->get_all_neighbors(n, nei_n, nei_e);
 
         bool merge = (phi_ptr[nei_n[nn_m00]] > 0 && phi_ptr[nei_n[nn_p00]] > 0 && phi_ptr[nei_n[nn_0m0]] > 0 && phi_ptr[nei_n[nn_0p0]] > 0)
             || ((phi_ptr[nei_n[nn_m00]] > 0 && phi_ptr[nei_n[nn_p00]] > 0) &&

@@ -56,8 +56,8 @@
   i == 0 ? cmd.add_option(name, description) : (void) (var = cmd.get(name, var));
 
 // grid parameters
-int lmin = 5;
-int lmax = 9;
+int lmin = 7;
+int lmax = 12;
 double lip = 2;
 
 #ifdef P4_TO_P8
@@ -84,7 +84,7 @@ bool use_continuous_stencil    = 0;
 bool use_one_sided_derivatives = 0;
 bool use_points_on_interface   = 1;
 bool update_c0_robin           = 1;
-bool use_superconvergent_robin = 1;
+bool use_superconvergent_robin = 0;
 bool zero_negative_velocity    = 0;
 
 bool shift_grids = 0;
@@ -95,9 +95,9 @@ bool use_superconvergent_jump  = false;
 
 // output parameters
 int save_every_n_iteration = 1;
-bool save_velocity         = 1;
-bool save_vtk              = 1;
-bool save_history          = 1;
+bool save_velocity         = 0;
+bool save_vtk              = 0;
+bool save_history          = 0;
 bool save_dendrites        = 0;
 
 double save_every_dl = 0.01;

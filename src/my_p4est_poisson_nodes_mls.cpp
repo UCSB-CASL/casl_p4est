@@ -475,7 +475,7 @@ void my_p4est_poisson_nodes_mls_t::invert_linear_system(Vec solution, bool use_n
   ierr = KSPSetType(ksp_, ksp_type); CHKERRXX(ierr);
   ierr = KSPSetInitialGuessNonzero(ksp_, (PetscBool) use_nonzero_guess); CHKERRXX(ierr);
 
-  if (new_pc_)
+  if (new_pc_ || 1)
   {
     new_pc_ = false;
     ierr = KSPSetOperators(ksp_, A_, A_, SAME_NONZERO_PATTERN); CHKERRXX(ierr);

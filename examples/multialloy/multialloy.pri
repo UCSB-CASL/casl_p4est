@@ -1,5 +1,3 @@
-TARGET = p4est_multialloy
-
 CONFIG(2d, 2d|3d): {
   SOURCES += $$PWD/main_2d.cpp
 }

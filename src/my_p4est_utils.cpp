@@ -2771,3 +2771,28 @@ void compute_wall_normal(const int &dir, double normal[])
       throw std::invalid_argument("Invalid direction\n");
   }
 }
+
+double interface_point_cartesian_t::interpolate(const my_p4est_node_neighbors_t *ngbd, double *ptr)
+{
+  const quad_neighbor_nodes_of_node_t qnnn = ngbd->get_neighbors(n);
+
+  p4est_locidx_t neigh = qnnn.neighbor(dir);
+  double         h     = qnnn.distance(dir);
+
+  return (ptr[n]*(h-dist) + ptr[neigh]*dist)/h;
+}
+
+double interface_point_cartesian_t::interpolate(const my_p4est_node_neighbors_t *ngbd, double *ptr, double *ptr_dd[P4EST_DIM])
+{
+  const quad_neighbor_nodes_of_node_t qnnn = ngbd->get_neighbors(n);
+
+  p4est_locidx_t neigh = qnnn.neighbor(dir);
+  double         h     = qnnn.distance(dir);
+  short          dim   = dir / 2;
+
+  double p0  = ptr[n];
+  double p1  = ptr[neigh];
+  double pdd = MINMOD(ptr_dd[dim][n], ptr_dd[dim][neigh]);
+
+  return .5*(p0+p1) + (p1-p0)*(dist/h-.5) + .5*pdd*(dist*dist-dist*h);
+}

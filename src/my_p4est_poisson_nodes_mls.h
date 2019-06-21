@@ -406,13 +406,12 @@ public:
 
   // set wall conditions
 //  inline void set_wc(const WallBCDIM &wc_type, const CF_DIM &wc_value, const CF_DIM &wc_coeff)
-  inline void set_wc(const WallBCDIM &wc_type, const CF_DIM &wc_value)
+  inline void set_wc(const WallBCDIM &wc_type, const CF_DIM &wc_value, bool new_submat_main = true)
   {
     this->wc_type_  = &wc_type;
     this->wc_value_ = &wc_value;
 
-    new_submat_main_  = true;
-//    new_submat_robin_ = true;
+    new_submat_main_  = new_submat_main;
   }
 
   // overwrite boundary conditions (optional)
@@ -442,6 +441,7 @@ public:
     this->ptwise_robin_values   = &ptwise_robin_values;
     this->ptwise_robin_coeffs   = &ptwise_robin_coeffs;
     this->use_ptwise_robin_     = true;
+    this->use_ptwise_neumann_   = true;
     this->new_submat_robin_     = true;
   }
 

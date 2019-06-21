@@ -48,19 +48,19 @@
 #undef MIN
 #undef MAX
 int lmin = 7;
-int lmax = 10;
+int lmax = 12;
 int nb_splits = 1;
 
 bool use_continuous_stencil = 0;
 bool use_one_sided_derivatives = false;
-bool use_points_on_interface = 1;
+bool use_points_on_interface = 0;
 bool update_c0_robin = 0;
 
-bool use_superconvergent_robin = 1;
+bool use_superconvergent_robin = 0;
 
 int pin_every_n_steps = 1000;
 double bc_tolerance = 1.e-11;
-int max_iterations = 1000;
+int max_iterations = 50;
 
 double lip = 1.5;
 
@@ -70,7 +70,7 @@ using namespace std;
  */
 int alloy_type = 0;
 
-double box_size = 10.0e-1;     //equivalent width (in x) of the box in cm - for plane convergence, 5e-3
+double box_size = 1;     //equivalent width (in x) of the box in cm - for plane convergence, 5e-3
 double scaling = 1/box_size;
 
 double xmin = 0;
@@ -107,6 +107,7 @@ double eps_anisotropy;       /* anisotropy coefficient                          
 
 double cfl_number = 0.1;
 double dt = 0.333;
+//double dt = 1;
 
 void set_alloy_parameters()
 {
@@ -134,14 +135,14 @@ void set_alloy_parameters()
     eps_v                = 0;
     eps_anisotropy       = 0.05;
 
-    Dl[0] = 1e-5;//    Dl[0] = 1;
+    Dl[0] = 1e-4;//    Dl[0] = 1;
 //    Dl[0] = 1;
     ml[0] =-357;
 //    ml[0] =-1;
     c0[0] = 0.4;
     kp[0] = 0.86;
 
-    Dl[1] = 2e-5;
+    Dl[1] = 5e-4;
 //    Dl[1] = 1e-1;
 //    Dl[1] = 1;
     ml[1] =-357;
@@ -1280,6 +1281,7 @@ class rhs_c0_cf_t : public CF_2
 public:
   double operator()(double x, double y) const
   {
+//    return 1000;
     return diag_add*c0_exact(x,y) - dt*Dl[0]*c0_dd_exact(x,y);
   }
 } rhs_c0_cf;
@@ -1337,7 +1339,8 @@ class vn_cf_t : public CF_2
 public:
   double operator()(double x, double y) const
   {
-    return -0.01*cos(x)*sin(y);
+//    return -0.01*cos(x)*sin(y);
+    return 0;
     double nx = phi_x_cf(x,y);
     double ny = phi_y_cf(x,y);
     double norm = sqrt(nx*nx+ny*ny)+EPS;
@@ -1421,7 +1424,7 @@ public:
   double operator()(double x, double y, double z) const
   {
 //    return 1.0;
-    return (1.-kp[1])/Dl[1]*vn_cf(x,y,z);
+    return (1.-kp[1])*vn_cf(x,y,z);
   }
 } c1_robin_coef_cf;
 
@@ -1435,10 +1438,7 @@ public:
     double nz = phi_z_cf(x,y,z);
     double norm = sqrt(nx*nx+ny*ny+nz*nz)+EPS;
     nx /= norm; ny /= norm; nz /= norm;
-    if (use_superconvergent_robin)
-      return dt*Dl[1]*(c1_x_exact(x,y,z)*nx + c1_y_exact(x,y,z)*ny + c1_z_exact(x,y,z)*nz + c1_robin_coef_cf(x,y,z)*c1_exact(x,y,z));
-    else
-      return c1_x_exact(x,y,z)*nx + c1_y_exact(x,y,z)*ny + c1_z_exact(x,y,z)*nz + c1_robin_coef_cf(x,y,z)*c1_exact(x,y,z);
+    return Dl[1]*(c1_x_exact(x,y,z)*nx + c1_y_exact(x,y,z)*ny + c1_z_exact(x,y,z)*nz) + c1_robin_coef_cf(x,y,z)*c1_exact(x,y,z);
   }
 } c1_interface_val_cf;
 #else
@@ -1448,7 +1448,7 @@ public:
   double operator()(double x, double y) const
   {
 //    return 1.0;
-    return (1.-kp[1])/Dl[1]*vn_cf(x,y);
+    return (1.-kp[1])*vn_cf(x,y);
   }
 } c1_robin_coef_cf;
 
@@ -1461,10 +1461,7 @@ public:
     double ny = phi_y_cf(x,y);
     double norm = sqrt(nx*nx+ny*ny)+EPS;
     nx /= norm; ny /= norm;
-    if (use_superconvergent_robin)
-      return dt*Dl[1]*(c1_x_exact(x,y)*nx + c1_y_exact(x,y)*ny + c1_robin_coef_cf(x,y)*c1_exact(x,y));
-    else
-      return c1_x_exact(x,y)*nx + c1_y_exact(x,y)*ny + c1_robin_coef_cf(x,y)*c1_exact(x,y);
+    return Dl[1]*(c1_x_exact(x,y)*nx + c1_y_exact(x,y)*ny) + c1_robin_coef_cf(x,y)*c1_exact(x,y);
   }
 } c1_interface_val_cf;
 #endif
@@ -1550,7 +1547,7 @@ public:
     double nz = phi_z_cf(x,y,z);
     double norm = sqrt(nx*nx+ny*ny+nz*nz)+EPS;
     nx /= norm; ny /= norm; nz /= norm;
-    return c0_x_exact(x,y,z)*nx + c0_y_exact(x,y,z)*ny + c0_z_exact(x,y,z)*nz + (1.-kp[0])/Dl[0]*vn_cf(x,y,z)*c0_exact(x,y,z);
+    return Dl[0]*(c0_x_exact(x,y,z)*nx + c0_y_exact(x,y,z)*ny + c0_z_exact(x,y,z)*nz) + (1.-kp[0])*vn_cf(x,y,z)*c0_exact(x,y,z);
   }
 } c0_interface_val_cf;
 #else
@@ -1563,7 +1560,7 @@ public:
     double ny = phi_y_cf(x,y);
     double norm = sqrt(nx*nx+ny*ny)+EPS;
     nx /= norm; ny /= norm;
-    return c0_x_exact(x,y)*nx + c0_y_exact(x,y)*ny + (1.-kp[0])/Dl[0]*vn_cf(x,y)*c0_exact(x,y);
+    return Dl[0]*(c0_x_exact(x,y)*nx + c0_y_exact(x,y)*ny) + (1.-kp[0])*vn_cf(x,y)*c0_exact(x,y);
   }
 } c0_interface_val_cf;
 #endif
@@ -1618,8 +1615,8 @@ public:
   double operator()(double x, double y) const
   {
 //    return 1.;
-    return c0_exact(x,y)+0.03*sin(5*y)*cos(5*x)-0.05;
-//    return c0_exact(x,y) + 0.1;
+//    return c0_exact(x,y)+0.03*sin(5*y)*cos(5*x)-0.05;
+    return c0_exact(x,y);
   }
 } c0_guess;
 #endif
@@ -1984,7 +1981,7 @@ int main (int argc, char* argv[])
 
 
     /* check the error */
-    my_p4est_poisson_nodes_t *solver_c0 = solver_all_in_one.get_solver_c0();
+//    my_p4est_poisson_nodes_t *solver_c0 = solver_all_in_one.get_solver_c0();
 #ifdef P4_TO_P8
     CF_3 *vn = solver_all_in_one.get_vn();
 #else
@@ -2013,34 +2010,34 @@ int main (int argc, char* argv[])
     {
       err_kappa_p[n] = 0;
       err_vn_p[n] = 0;
-      for (short i = 0; i < solver_c0->pointwise_bc[n].size(); ++i)
-      {
-        double xyz[P4EST_DIM];
-        solver_c0->get_xyz_interface_point(n, i, xyz);
-        vn_error = MAX(vn_error, fabs(vn->value(xyz) - vn_cf.value(xyz)));
-        kappa_error = MAX(kappa_error, fabs(kappa_cf.value(xyz) - solver_c0->interpolate_at_interface_point(n, i, kappa_p)));
-//        theta_xz_error = MAX(theta_xz_error, fabs(theta_xz_cf.value(xyz) - solver_c0->interpolate_at_interface_point(n, i, theta_xz_p)));
+//      for (short i = 0; i < solver_c0->pointwise_bc[n].size(); ++i)
+//      {
+//        double xyz[P4EST_DIM];
+//        solver_c0->get_xyz_interface_point(n, i, xyz);
+//        vn_error = MAX(vn_error, fabs(vn->value(xyz) - vn_cf.value(xyz)));
+//        kappa_error = MAX(kappa_error, fabs(kappa_cf.value(xyz) - solver_c0->interpolate_at_interface_point(n, i, kappa_p)));
+////        theta_xz_error = MAX(theta_xz_error, fabs(theta_xz_cf.value(xyz) - solver_c0->interpolate_at_interface_point(n, i, theta_xz_p)));
 
-        double nx = phi_x_cf.value(xyz);
-        double ny = phi_y_cf.value(xyz);
-#ifdef P4_TO_P8
-        double nz = phi_z_cf.value(xyz);
-        double norm = sqrt(nx*nx+ny*ny+nz*nz)+EPS;
-#else
-        double norm = sqrt(nx*nx+ny*ny)+EPS;
-#endif
+//        double nx = phi_x_cf.value(xyz);
+//        double ny = phi_y_cf.value(xyz);
+//#ifdef P4_TO_P8
+//        double nz = phi_z_cf.value(xyz);
+//        double norm = sqrt(nx*nx+ny*ny+nz*nz)+EPS;
+//#else
+//        double norm = sqrt(nx*nx+ny*ny)+EPS;
+//#endif
 
-        double normal_error = sqrt(SQR(nx/norm - solver_c0->interpolate_at_interface_point(n, i, normal_p[0])) +
-    #ifdef P4_TO_P8
-                                   SQR(nz/norm - solver_c0->interpolate_at_interface_point(n, i, normal_p[2])) +
-    #endif
-                                   SQR(ny/norm - solver_c0->interpolate_at_interface_point(n, i, normal_p[1])));
+//        double normal_error = sqrt(SQR(nx/norm - solver_c0->interpolate_at_interface_point(n, i, normal_p[0])) +
+//    #ifdef P4_TO_P8
+//                                   SQR(nz/norm - solver_c0->interpolate_at_interface_point(n, i, normal_p[2])) +
+//    #endif
+//                                   SQR(ny/norm - solver_c0->interpolate_at_interface_point(n, i, normal_p[1])));
 
-        theta_xz_error = MAX(theta_xz_error, normal_error);
+//        theta_xz_error = MAX(theta_xz_error, normal_error);
 
-        err_kappa_p[n] = MAX(err_kappa_p[n], fabs(kappa_cf.value(xyz) - solver_c0->interpolate_at_interface_point(n, i, kappa_p)));
-        err_vn_p[n] = MAX(err_vn_p[n], fabs(theta_xz_cf.value(xyz) - solver_c0->interpolate_at_interface_point(n, i, theta_xz_p)));
-      }
+//        err_kappa_p[n] = MAX(err_kappa_p[n], fabs(kappa_cf.value(xyz) - solver_c0->interpolate_at_interface_point(n, i, kappa_p)));
+//        err_vn_p[n] = MAX(err_vn_p[n], fabs(theta_xz_cf.value(xyz) - solver_c0->interpolate_at_interface_point(n, i, theta_xz_p)));
+//      }
     }
     ierr = VecRestoreArray(err_kappa,  &err_kappa_p); CHKERRXX(ierr);
     ierr = VecRestoreArray(err_vn,  &err_vn_p); CHKERRXX(ierr);
