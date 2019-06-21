@@ -224,7 +224,7 @@ void quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topidx_
   ierr = PetscLogFlops(45); CHKERRXX(ierr); // number of flops in this event
 }
 
-double quadratic_non_oscillatory_continuous_v1_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global)
+void quadratic_non_oscillatory_continuous_v1_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results)
 {
   PetscErrorCode ierr;
   p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + 0];
@@ -291,53 +291,68 @@ double quadratic_non_oscillatory_continuous_v1_interpolation(const p4est_t *p4es
 
 // First alternative scheme: first, minmod on every edge, then weight-average
   double fdd[P4EST_DIM];
-  for (short i = 0; i<P4EST_DIM; i++)
-    fdd[i] = 0;
-
-  int i, jm, jp;
-
-  i = 0;
-  jm = 0; jp = 1; fdd[i] += MINMOD(Fdd[jm*P4EST_DIM + i], Fdd[jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
-  jm = 2; jp = 3; fdd[i] += MINMOD(Fdd[jm*P4EST_DIM + i], Fdd[jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
-#ifdef P4_TO_P8
-  jm = 4; jp = 5; fdd[i] += MINMOD(Fdd[jm*P4EST_DIM + i], Fdd[jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
-  jm = 6; jp = 7; fdd[i] += MINMOD(Fdd[jm*P4EST_DIM + i], Fdd[jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
-#endif
-
-  i = 1;
-  jm = 0; jp = 2; fdd[i] += MINMOD(Fdd[jm*P4EST_DIM + i], Fdd[jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
-  jm = 1; jp = 3; fdd[i] += MINMOD(Fdd[jm*P4EST_DIM + i], Fdd[jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
-#ifdef P4_TO_P8
-  jm = 4; jp = 6; fdd[i] += MINMOD(Fdd[jm*P4EST_DIM + i], Fdd[jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
-  jm = 5; jp = 7; fdd[i] += MINMOD(Fdd[jm*P4EST_DIM + i], Fdd[jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
-#endif
-
-#ifdef P4_TO_P8
-  i = 2;
-  jm = 0; jp = 4; fdd[i] += MINMOD(Fdd[jm*P4EST_DIM + i], Fdd[jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
-  jm = 1; jp = 5; fdd[i] += MINMOD(Fdd[jm*P4EST_DIM + i], Fdd[jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
-  jm = 2; jp = 6; fdd[i] += MINMOD(Fdd[jm*P4EST_DIM + i], Fdd[jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
-  jm = 3; jp = 7; fdd[i] += MINMOD(Fdd[jm*P4EST_DIM + i], Fdd[jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
-#endif
-
-  double value = 0;
-  for (short j = 0; j<P4EST_CHILDREN; j++)
-    value += F[j]*w_xyz[j];
-
   double sx = (tree_xmax-tree_xmin)*qh;
   double sy = (tree_ymax-tree_ymin)*qh;
 #ifdef P4_TO_P8
   double sz = (tree_zmax-tree_zmin)*qh;
-  value -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1] + sz*sz*d_00p*d_00m*fdd[2]);
-#else
-  value -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1]);
 #endif
 
+
+  for (unsigned int k = 0; k < n_results; ++k) {
+    results[k] = 0.0;
+    for (short j = 0; j<P4EST_CHILDREN; j++){
+
+        for (short i = 0; i<P4EST_DIM; i++)
+         fdd[i] = 0;
+
+        int i, jm, jp;
+
+        i = 0;
+        jm = 0; jp = 1; fdd[i] += MINMOD(Fdd[jm*P4EST_DIM + i], Fdd[jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
+        jm = 2; jp = 3; fdd[i] += MINMOD(Fdd[jm*P4EST_DIM + i], Fdd[jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
+       #ifdef P4_TO_P8
+        jm = 4; jp = 5; fdd[i] += MINMOD(Fdd[jm*P4EST_DIM + i], Fdd[jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
+        jm = 6; jp = 7; fdd[i] += MINMOD(Fdd[jm*P4EST_DIM + i], Fdd[jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
+       #endif
+
+        i = 1;
+        jm = 0; jp = 2; fdd[i] += MINMOD(Fdd[jm*P4EST_DIM + i], Fdd[jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
+        jm = 1; jp = 3; fdd[i] += MINMOD(Fdd[jm*P4EST_DIM + i], Fdd[jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
+       #ifdef P4_TO_P8
+        jm = 4; jp = 6; fdd[i] += MINMOD(Fdd[jm*P4EST_DIM + i], Fdd[jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
+        jm = 5; jp = 7; fdd[i] += MINMOD(Fdd[jm*P4EST_DIM + i], Fdd[jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
+       #endif
+
+       #ifdef P4_TO_P8
+        i = 2;
+        jm = 0; jp = 4; fdd[i] += MINMOD(Fdd[jm*P4EST_DIM + i], Fdd[jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
+        jm = 1; jp = 5; fdd[i] += MINMOD(Fdd[jm*P4EST_DIM + i], Fdd[jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
+        jm = 2; jp = 6; fdd[i] += MINMOD(Fdd[jm*P4EST_DIM + i], Fdd[jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
+        jm = 3; jp = 7; fdd[i] += MINMOD(Fdd[jm*P4EST_DIM + i], Fdd[jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
+       #endif
+
+        results[k] += F[k*P4EST_CHILDREN+j]*w_xyz[j];
+    }
+
+#ifdef P4_TO_P8
+    results[k] -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1] + sz*sz*d_00p*d_00m*fdd[2]);
+#else
+    results[k] -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1]);
+#endif
+  }
+
   ierr = PetscLogFlops(45); CHKERRXX(ierr); // number of flops in this event
-  return value;
 }
 
-double quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global)
+double quadratic_non_oscillatory_continuous_v1_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global)
+{
+    double result;
+    quadratic_non_oscillatory_continuous_v1_interpolation(p4est, tree_id, quad, F, Fdd, xyz_global, &result, 1);
+    return result;
+}
+
+
+void quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results)
 {
   PetscErrorCode ierr;
   p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + 0];
@@ -402,64 +417,77 @@ double quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_t *p4es
   };
 #endif
 
+  // First alternative scheme: first, minmod on every edge, then weight-average
+    double fdd[P4EST_DIM];
+    double sx = (tree_xmax-tree_xmin)*qh;
+    double sy = (tree_ymax-tree_ymin)*qh;
+  #ifdef P4_TO_P8
+    double sz = (tree_zmax-tree_zmin)*qh;
+  #endif
 
-// Second alternative scheme: first, weight-average in perpendicular plane, then minmod
-  double fdd[P4EST_DIM];
-  for (short i = 0; i<P4EST_DIM; i++)
-    fdd[i] = 0;
 
-  int i, jm, jp;
-  double fdd_m, fdd_p;
+    for (unsigned int k = 0; k < n_results; ++k) {
+      results[k] = 0.0;
+      for (short j = 0; j<P4EST_CHILDREN; j++){
 
-  i = 0;
-  fdd_m = 0;
-  fdd_p = 0;
-  jm = 0; jp = 1; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
-  jm = 2; jp = 3; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
-#ifdef P4_TO_P8
-  jm = 4; jp = 5; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
-  jm = 6; jp = 7; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
-#endif
-  fdd[i] = MINMOD(fdd_m, fdd_p);
+          for (short i = 0; i<P4EST_DIM; i++)
+           fdd[i] = 0;
 
-  i = 1;
-  fdd_m = 0;
-  fdd_p = 0;
-  jm = 0; jp = 2; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
-  jm = 1; jp = 3; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
-#ifdef P4_TO_P8
-  jm = 4; jp = 6; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
-  jm = 5; jp = 7; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
-#endif
-  fdd[i] = MINMOD(fdd_m, fdd_p);
+          int i, jm, jp;
+          double fdd_m, fdd_p;
+          i = 0;
+          fdd_m = 0;
+          fdd_p = 0;
+          jm = 0; jp = 1; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
+          jm = 2; jp = 3; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
+        #ifdef P4_TO_P8
+          jm = 4; jp = 5; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
+          jm = 6; jp = 7; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
+        #endif
+          fdd[i] = MINMOD(fdd_m, fdd_p);
 
-#ifdef P4_TO_P8
-  i = 2;
-  fdd_m = 0;
-  fdd_p = 0;
-  jm = 0; jp = 4; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
-  jm = 1; jp = 5; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
-  jm = 2; jp = 6; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
-  jm = 3; jp = 7; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
-  fdd[i] = MINMOD(fdd_m, fdd_p);
-#endif
+          i = 1;
+          fdd_m = 0;
+          fdd_p = 0;
+          jm = 0; jp = 2; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
+          jm = 1; jp = 3; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
+        #ifdef P4_TO_P8
+          jm = 4; jp = 6; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
+          jm = 5; jp = 7; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
+        #endif
+          fdd[i] = MINMOD(fdd_m, fdd_p);
 
-  double value = 0;
-  for (short j = 0; j<P4EST_CHILDREN; j++)
-    value += F[j]*w_xyz[j];
+        #ifdef P4_TO_P8
+          i = 2;
+          fdd_m = 0;
+          fdd_p = 0;
+          jm = 0; jp = 4; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
+          jm = 1; jp = 5; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
+          jm = 2; jp = 6; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
+          jm = 3; jp = 7; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
+          fdd[i] = MINMOD(fdd_m, fdd_p);
+        #endif
 
-  double sx = (tree_xmax-tree_xmin)*qh;
-  double sy = (tree_ymax-tree_ymin)*qh;
-#ifdef P4_TO_P8
-  double sz = (tree_zmax-tree_zmin)*qh;
-  value -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1] + sz*sz*d_00p*d_00m*fdd[2]);
-#else
-  value -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1]);
-#endif
 
-  ierr = PetscLogFlops(45); CHKERRXX(ierr); // number of flops in this event
-  return value;
+          results[k] += F[k*P4EST_CHILDREN+j]*w_xyz[j];
+      }
+
+  #ifdef P4_TO_P8
+      results[k] -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1] + sz*sz*d_00p*d_00m*fdd[2]);
+  #else
+      results[k] -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1]);
+  #endif
+    }
+    ierr = PetscLogFlops(45); CHKERRXX(ierr); // number of flops in this event
+  }
+
+double quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global)
+{
+    double result;
+    quadratic_non_oscillatory_continuous_v2_interpolation(p4est, tree_id, quad, F, Fdd, xyz_global, &result, 1);
+    return result;
 }
+
 
 double quadratic_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global)
 {

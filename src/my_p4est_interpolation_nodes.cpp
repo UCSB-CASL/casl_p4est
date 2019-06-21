@@ -202,9 +202,9 @@ void my_p4est_interpolation_nodes_t::operator ()(double x, double y, double* res
     } else if (method == quadratic_non_oscillatory) {
       quadratic_non_oscillatory_interpolation(p4est, best_match.p.piggy3.which_tree, best_match, f, fdd, xyz_p, results, n_functions);
     } else if (method == quadratic_non_oscillatory_continuous_v1) {
-      value = quadratic_non_oscillatory_continuous_v1_interpolation(p4est, best_match.p.piggy3.which_tree, best_match, f, fdd, xyz_p);
+        quadratic_non_oscillatory_continuous_v1_interpolation(p4est, best_match.p.piggy3.which_tree, best_match, f, fdd, xyz_p, results, n_functions);
     } else if (method == quadratic_non_oscillatory_continuous_v2) {
-      value = quadratic_non_oscillatory_continuous_v2_interpolation(p4est, best_match.p.piggy3.which_tree, best_match, f, fdd, xyz_p);
+        quadratic_non_oscillatory_continuous_v2_interpolation(p4est, best_match.p.piggy3.which_tree, best_match, f, fdd, xyz_p, results, n_functions);
     }
     
   } else {
@@ -347,9 +347,15 @@ void my_p4est_interpolation_nodes_t::interpolate(const p4est_quadrant_t &quad, c
       return;
     }
     else if (method==quadratic_non_oscillatory_continuous_v1)
-      return quadratic_non_oscillatory_continuous_v1_interpolation(p4est, quad.p.piggy3.which_tree, quad, f, fdd, xyz_p);
+    {
+        quadratic_non_oscillatory_continuous_v1_interpolation(p4est, quad.p.piggy3.which_tree, quad, f, fdd, xyz_p, results, n_functions);
+      return;
+    }
     else if (method==quadratic_non_oscillatory_continuous_v2)
-      return quadratic_non_oscillatory_continuous_v2_interpolation(p4est, quad.p.piggy3.which_tree, quad, f, fdd, xyz_p);
+    {
+        quadratic_non_oscillatory_continuous_v2_interpolation(p4est, quad.p.piggy3.which_tree, quad, f, fdd, xyz_p, results, n_functions);
+        return;
+    }
   }
   for (unsigned int k = 0; k < n_functions; ++k) {
     ierr = VecRestoreArrayRead(Fi[k], &Fi_p[k]); CHKERRXX(ierr);

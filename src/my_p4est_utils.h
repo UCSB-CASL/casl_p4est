@@ -526,11 +526,6 @@ public:
 #endif
     return p_InterfaceValue->operator ()(x,y);
   }
-  inline double  interfaceValue(double xyz_[]) const
-  {
-    return interfaceValue(xyz_[0], xyz_[1]);
-  }
-
 
   inline double robinCoef(double x, double y) const
   {
@@ -683,12 +678,6 @@ public:
     return p_InterfaceValue->operator ()(x,y,z);
   }
 
-  inline double  interfaceValue(double xyz_[]) const
-  {
-    return interfaceValue(xyz_[0], xyz_[1], xyz_[2]);
-  }
-
-
   inline double robinCoef(double x, double y, double z) const
   {
 #ifdef CASL_THROWS
@@ -761,7 +750,9 @@ double linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const 
  */
 void quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results);
 double quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global);
+void quadratic_non_oscillatory_continuous_v1_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results);
 double quadratic_non_oscillatory_continuous_v1_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global);
+void quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results);
 double quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global);
 
 /*!
