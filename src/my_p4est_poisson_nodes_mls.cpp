@@ -3023,6 +3023,8 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
     foreach_direction(i) face_area_max = MAX(face_area_max, fv.face_area[i]);
     volume_cut_cell = fv.volume;
 
+    face_area_max /= face_area_scalling_;
+
     areas_ptr  [n] = face_area_max;
     volumes_ptr[n] = volume_cut_cell;
   }
@@ -3797,6 +3799,9 @@ void my_p4est_poisson_nodes_mls_t::discretize_jump(bool setup_rhs, p4est_locidx_
       face_m_area_max =  MAX(face_m_area_max, fabs(fv_m.face_area[i]));
       face_p_area_max =  MAX(face_p_area_max, fabs(fv_p.face_area[i]));
     }
+
+    face_m_area_max /= face_area_scalling_;
+    face_p_area_max /= face_area_scalling_;
 
     // save
     areas_m_ptr[n] = face_m_area_max;
