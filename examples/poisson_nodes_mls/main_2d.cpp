@@ -271,7 +271,7 @@ DEFINE_PARAMETER(pl, bool, save_matrix_ascii,  0, "Save the matrix in ASCII MATL
 DEFINE_PARAMETER(pl, bool, save_matrix_binary, 0, "Save the matrix in BINARY MATLAB format");
 DEFINE_PARAMETER(pl, bool, save_convergence,   0, "Save convergence results");
 
-DEFINE_PARAMETER(pl, int, n_example, 12, "Predefined example");
+DEFINE_PARAMETER(pl, int, n_example, 8, "Predefined example");
 
 void set_example(int n_example)
 {
@@ -1843,13 +1843,20 @@ int main (int argc, char* argv[])
               for (int i = 0; i < bdry_phi_max_num; ++i)
                 if (*bdry_present_all[i] == true)
                 {
-                  solver.add_boundary((mls_opn_t) *bdry_opn_all[i], bdry_phi_vec_all[i], DIM(NULL, NULL, NULL), (BoundaryConditionType) *bc_type_all[i], bc_value_cf_all[i], bc_coeff_cf_all[i]);
+                  if (apply_bc_pointwise)
+                    solver.add_boundary((mls_opn_t) *bdry_opn_all[i], bdry_phi_vec_all[i], DIM(NULL, NULL, NULL), (BoundaryConditionType) *bc_type_all[i], zero_cf, zero_cf);
+                  else
+                    solver.add_boundary((mls_opn_t) *bdry_opn_all[i], bdry_phi_vec_all[i], DIM(NULL, NULL, NULL), (BoundaryConditionType) *bc_type_all[i], bc_value_cf_all[i], bc_coeff_cf_all[i]);
+
                 }
 
               for (int i = 0; i < infc_phi_max_num; ++i)
                 if (*infc_present_all[i] == true)
                 {
-                  solver.add_interface((mls_opn_t) *infc_opn_all[i], infc_phi_vec_all[i], DIM(NULL, NULL, NULL), jc_value_cf_all[i], jc_flux_cf_all[i]);
+                  if (apply_bc_pointwise)
+                    solver.add_interface((mls_opn_t) *infc_opn_all[i], infc_phi_vec_all[i], DIM(NULL, NULL, NULL), zero_cf, zero_cf);
+                  else
+                    solver.add_interface((mls_opn_t) *infc_opn_all[i], infc_phi_vec_all[i], DIM(NULL, NULL, NULL), jc_value_cf_all[i], jc_flux_cf_all[i]);
                 }
 
 

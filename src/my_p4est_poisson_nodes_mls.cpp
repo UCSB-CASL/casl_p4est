@@ -3506,7 +3506,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
             {
               for (int i=0; i<num_neighbors_cube; ++i)
               {
-                if (neighbors_exist[i] && fabs(w_robin[i]) > EPS)
+                if (neighbors_exist[i])
                 {
                   row_robin_sc->push_back(mat_entry_t(petsc_gloidx_[neighbors[i]], w_robin[i]));
                   (neighbors[i] < nodes_->num_owned_indeps) ? d_nnz_robin_sc++ : o_nnz_robin_sc++;
