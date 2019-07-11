@@ -1173,7 +1173,7 @@ int my_p4est_multialloy_t::one_step()
 
   // solve coupled system of equations
   my_p4est_poisson_nodes_multialloy_t solver_all_in_one(ngbd_);
-  solver_all_in_one.set_phi(phi_, phi_dd_, normal_, kappa_);
+  solver_all_in_one.set_interface(phi_, phi_dd_, normal_, kappa_);
   solver_all_in_one.set_parameters(dt_n_, thermal_diffusivity_, thermal_conductivity_, latent_heat_, Tm_, Dl0_, kp0_, ml0_, Dl1_, kp1_, ml1_);
   solver_all_in_one.set_bc(bc_t_, bc_c0_, bc_c1_);
   solver_all_in_one.set_pin_every_n_steps(pin_every_n_steps_);

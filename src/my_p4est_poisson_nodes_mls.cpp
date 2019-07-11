@@ -207,20 +207,6 @@ my_p4est_poisson_nodes_mls_t::my_p4est_poisson_nodes_mls_t(const my_p4est_node_n
   finite_volumes_owned_       = false;
   bdry_fvs_                   = NULL;
   infc_fvs_                   = NULL;
-
-  // pointwise wall, boundary and jump conditions
-  use_ptwise_dirichlet_ = false;
-  use_ptwise_neumann_   = false;
-  use_ptwise_robin_     = false;
-  use_ptwise_jump_      = false;
-
-  ptwise_dirichlet_values = NULL;
-  ptwise_neumann_values   = NULL;
-  ptwise_robin_values     = NULL;
-  ptwise_robin_coeffs     = NULL;
-  ptwise_surfgen_values   = NULL;
-  ptwise_jump_fluxes      = NULL;
-  ptwise_jump_values      = NULL;
 }
 
 my_p4est_poisson_nodes_mls_t::~my_p4est_poisson_nodes_mls_t()
@@ -650,27 +636,13 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
   // structures for quick reassembling
   if (new_submat_main_)
   {
-    bdry_cart_points_map.reinitialize(nodes_->num_owned_indeps);
-    bdry_cart_points_id.clear();
-    bdry_cart_points.clear();
-    ptwise_dirichlet_weights.clear();
-
-    bdry_pieces_map.reinitialize(nodes_->num_owned_indeps);
-    bdry_pieces_id.clear();
-    bdry_pieces_area.clear();
-    ptwise_neumann_points.clear();
-    ptwise_robin_points.clear();
+    for (int i = 0; i < bc_.size(); ++i) bc_[i].reset(nodes_->num_owned_indeps);
+    for (int i = 0; i < jc_.size(); ++i) jc_[i].reset(nodes_->num_owned_indeps);
 
     wall_pieces_map.reinitialize(nodes_->num_owned_indeps);
     wall_pieces_id.clear();
     wall_pieces_area.clear();
     wall_pieces_centroid.clear();
-
-    infc_pieces_map.reinitialize(nodes_->num_owned_indeps);
-    infc_pieces_id.clear();
-    infc_pieces_area.clear();
-    ptwise_surfgen_points.clear();
-    ptwise_jump_points.clear();
 
     jump_scaling_.resize(nodes_->num_owned_indeps, 1.);
   }
@@ -809,7 +781,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
 
             if (is_one_negative && is_one_positive)
             {
-              switch (bc_type_[phi_idx])
+              switch (bc_[phi_idx].type)
               {
                 case DIRICHLET: is_ngbd_crossed_dirichlet = true; break;
                 case NEUMANN:   is_ngbd_crossed_neumann   = true; break;
@@ -862,20 +834,6 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
       node_scheme_[n] = scheme;
     }
     ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_mls_determine_node_types, 0, 0, 0, 0); CHKERRXX(ierr);
-
-    bdry_cart_points_id     .reserve(num_bdry_cart_points);
-    bdry_cart_points        .reserve(num_bdry_cart_points);
-    ptwise_dirichlet_weights.reserve(num_bdry_cart_points);
-
-    bdry_pieces_area     .reserve(num_bdry_pieces);
-    bdry_pieces_id       .reserve(num_bdry_pieces);
-    ptwise_neumann_points.reserve(num_bdry_pieces);
-    ptwise_robin_points  .reserve(num_bdry_pieces);
-
-    infc_pieces_area     .reserve(num_infc_pieces);
-    infc_pieces_id       .reserve(num_infc_pieces);
-    ptwise_surfgen_points.reserve(num_infc_pieces);
-    ptwise_jump_points   .reserve(num_infc_pieces);
 
     wall_pieces_area    .reserve(num_wall_pieces);
     wall_pieces_id      .reserve(num_wall_pieces);
@@ -1042,6 +1000,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
 
     if (assembling_main)
     {
+//      row_main->push_back(mat_entry_t(petsc_gloidx_[n], 0));
       mask_m_ptr[n] = MAX(mask_m_ptr[n], infc_phi_eff_000 < 0 ? -1. : 1.);
       mask_p_ptr[n] = MAX(mask_p_ptr[n], infc_phi_eff_000 < 0 ?  1. :-1.);
     }
@@ -1138,10 +1097,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
 
   if (new_submat_main_)
   {
-    bdry_cart_points_map.compute_offsets();
-    bdry_pieces_map.compute_offsets();
     wall_pieces_map.compute_offsets();
-    infc_pieces_map.compute_offsets();
   }
 
   if (assembling_main && setup_rhs)
@@ -2486,7 +2442,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_dirichlet(bool setup_rhs, p4est_lo
     }
     else
     {
-      retrieve_cart_points(n, is_interface, bdry_point_id, bdry_point_dist, bdry_point_weight);
+      load_cart_points(n, is_interface, bdry_point_id, bdry_point_dist, bdry_point_weight);
     }
   }
 
@@ -2520,8 +2476,9 @@ void my_p4est_poisson_nodes_mls_t::discretize_dirichlet(bool setup_rhs, p4est_lo
     // compute submat_rhs
     if (setup_rhs)
     {
-      rhs_ptr[n] = use_ptwise_dirichlet_ ? ptwise_dirichlet_values->at(bdry_cart_points_map.get_idx(n, 0)) :
-                                           bc_value_[node_on_boundary_phi_id]->value(xyz_C);
+      boundary_conditions_t *bc = &bc_[node_on_boundary_phi_id];
+      rhs_ptr[n] = bc->pointwise ? bc->get_value_pw(n,0) :
+                                   bc->get_value_cf(xyz_C);
     }
   }
   else
@@ -2903,29 +2860,33 @@ void my_p4est_poisson_nodes_mls_t::discretize_dirichlet(bool setup_rhs, p4est_lo
 
       if (there_is_dirichlet_)
       {
-        // get boundary conditions values
+        // sample boundary conditions
         std::vector<double> bc_values(P4EST_FACES, 0);
 
-        if (use_ptwise_dirichlet_)
+        // first get pointwise given values
+        for (int i = 0; i < bc_.size(); ++i)
         {
-          for (int i=0; i<bdry_cart_points_map.size[n]; ++i)
+          if (bc_[i].type == DIRICHLET && bc_[i].pointwise)
           {
-            int idx = bdry_cart_points_map.get_idx(n,i);
-            bc_values[bdry_cart_points[idx].dir] = ptwise_dirichlet_values->at(idx);
+            for (int j = 0; j < bc_[i].num_value_pts(n); ++j)
+            {
+              // TODO: this is kind of ugly, fix this
+              int idx = bc_[i].idx_value_pt(n, j);
+              bc_values[ bc_[i].dirichlet_pts[idx].dir ] = (*bc_[i].value_pw)[idx];
+            }
           }
         }
-        else
-        {
-          if(is_interface[dir::f_m00]) bc_values[dir::f_m00] = (*bc_value_[bdry_point_id[dir::f_m00]])( DIM(x_C - bdry_point_dist[dir::f_m00], y_C, z_C) );
-          if(is_interface[dir::f_p00]) bc_values[dir::f_p00] = (*bc_value_[bdry_point_id[dir::f_p00]])( DIM(x_C + bdry_point_dist[dir::f_p00], y_C, z_C) );
 
-          if(is_interface[dir::f_0m0]) bc_values[dir::f_0m0] = (*bc_value_[bdry_point_id[dir::f_0m0]])( DIM(x_C, y_C - bdry_point_dist[dir::f_0m0], z_C) );
-          if(is_interface[dir::f_0p0]) bc_values[dir::f_0p0] = (*bc_value_[bdry_point_id[dir::f_0p0]])( DIM(x_C, y_C + bdry_point_dist[dir::f_0p0], z_C) );
+        // second get function-given values
+        if(is_interface[dir::f_m00] && (!bc_[bdry_point_id[dir::f_m00]].pointwise)) bc_values[dir::f_m00] = (*bc_[bdry_point_id[dir::f_m00]].value_cf)( DIM(x_C - bdry_point_dist[dir::f_m00], y_C, z_C) );
+        if(is_interface[dir::f_p00] && (!bc_[bdry_point_id[dir::f_p00]].pointwise)) bc_values[dir::f_p00] = (*bc_[bdry_point_id[dir::f_p00]].value_cf)( DIM(x_C + bdry_point_dist[dir::f_p00], y_C, z_C) );
+
+        if(is_interface[dir::f_0m0] && (!bc_[bdry_point_id[dir::f_0m0]].pointwise)) bc_values[dir::f_0m0] = (*bc_[bdry_point_id[dir::f_0m0]].value_cf)( DIM(x_C, y_C - bdry_point_dist[dir::f_0m0], z_C) );
+        if(is_interface[dir::f_0p0] && (!bc_[bdry_point_id[dir::f_0p0]].pointwise)) bc_values[dir::f_0p0] = (*bc_[bdry_point_id[dir::f_0p0]].value_cf)( DIM(x_C, y_C + bdry_point_dist[dir::f_0p0], z_C) );
 #ifdef P4_TO_P8
-          if(is_interface[dir::f_00m]) bc_values[dir::f_00m] = (*bc_value_[bdry_point_id[dir::f_00m]])( DIM(x_C, y_C, z_C - bdry_point_dist[dir::f_00m]) );
-          if(is_interface[dir::f_00p]) bc_values[dir::f_00p] = (*bc_value_[bdry_point_id[dir::f_00p]])( DIM(x_C, y_C, z_C + bdry_point_dist[dir::f_00p]) );
+        if(is_interface[dir::f_00m] && (!bc_[bdry_point_id[dir::f_00m]].pointwise)) bc_values[dir::f_00m] = (*bc_[bdry_point_id[dir::f_00m]].value_cf)( DIM(x_C, y_C, z_C - bdry_point_dist[dir::f_00m]) );
+        if(is_interface[dir::f_00p] && (!bc_[bdry_point_id[dir::f_00p]].pointwise)) bc_values[dir::f_00p] = (*bc_[bdry_point_id[dir::f_00p]].value_cf)( DIM(x_C, y_C, z_C + bdry_point_dist[dir::f_00p]) );
 #endif
-        }
 
         // add to rhs boundary conditions
         foreach_direction(i)
@@ -3097,8 +3058,8 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
     }
     else
     {
-      retrieve_bdry_data(n, bdry_id,  bdry_area, bdry_xyz, bdry_robin_xyz);
-      retrieve_wall_data(n, wall_dir, wall_area, wall_xyz);
+      load_bdry_data(n, bdry_id,  bdry_area, bdry_xyz, bdry_robin_xyz);
+      load_wall_data(n, wall_dir, wall_area, wall_xyz);
     }
 
     // check for Dirichlet BC at walls
@@ -3231,9 +3192,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
         // neumann flux through domain boundary
         for (int i=0; i<bdry_area.size(); ++i)
         {
-          rhs_ptr[n] += bdry_area[i] *
-              (use_ptwise_neumann_ ? (*ptwise_neumann_values)[bdry_pieces_map.get_idx(n,i)] :
-                                     (*bc_value_[bdry_id[i]]).value(bdry_xyz[i].xyz));
+          rhs_ptr[n] += bdry_area[i] * (bc_[bdry_id[i]].pointwise ? bc_[bdry_id[i]].get_value_pw(n,0) : bc_[bdry_id[i]].get_value_cf(bdry_xyz[i].xyz));
         }
 
         for (int i=0; i<wall_area.size(); ++i)
@@ -3296,9 +3255,9 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
 
             bdry_robin_xyz[i].set(xyz_pr);
 
-            double mu_proj           = var_mu_ ? mu_cf->value(xyz_pr) : mu;
-            double bc_coeff_proj     = use_ptwise_robin_ ? (*ptwise_robin_coeffs)[bdry_pieces_map.get_idx(n,i)] : bc_coeff_[id]->value(xyz_pr);
-            double bc_value_proj     = use_ptwise_robin_ ? (*ptwise_robin_values)[bdry_pieces_map.get_idx(n,i)] : bc_value_[id]->value(xyz_pr);
+            double mu_proj       = var_mu_ ? mu_cf->value(xyz_pr) : mu;
+            double bc_coeff_proj = bc_[id].pointwise ? bc_[id].get_robin_pw_coeff(n) : bc_[id].get_coeff_cf(xyz_pr);
+            double bc_value_proj = bc_[id].pointwise ? bc_[id].get_robin_pw_value(n) : bc_[id].get_value_cf(xyz_pr);
 
             _CODE( col_c[bdry_offset + i] = bc_coeff_proj );
             XCODE( col_x[bdry_offset + i] = bc_coeff_proj*(xyz_pr[0] - xyz_C[0]) + mu_proj*normal[0] );
@@ -3559,8 +3518,8 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
               double xyz_pr[P4EST_DIM]; bdry_xyz[i].get_xyz(xyz_pr);
 
               mu_values[i] = var_mu_ ? mu_cf->value(xyz_pr) : mu;
-              bc_coeffs[i] = use_ptwise_robin_ ? (*ptwise_robin_coeffs)[bdry_pieces_map.get_idx(n,i)] : bc_coeff_[id]->value(xyz_pr);
-              bc_values[i] = use_ptwise_robin_ ? (*ptwise_robin_values)[bdry_pieces_map.get_idx(n,i)] : bc_value_[id]->value(xyz_pr);
+              bc_coeffs[i] = bc_[id].pointwise ? bc_[id].get_robin_pw_coeff(n) : bc_[id].get_coeff_cf(xyz_pr);
+              bc_values[i] = bc_[id].pointwise ? bc_[id].get_robin_pw_value(n) : bc_[id].get_value_cf(xyz_pr);
 
               N_mat[i*P4EST_DIM + 0] = normal[0];
               N_mat[i*P4EST_DIM + 1] = normal[1];
@@ -3661,7 +3620,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
             {
               int id = bdry_id[i];
 
-              if (bc_type_[id] == ROBIN)
+              if (bc_[id].type == ROBIN)
               {
                 // compute projection point
                 double dxyz_pr[P4EST_DIM];
@@ -3688,8 +3647,8 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
 
                 // sample values at the projection point
                 double mu_proj       = var_mu_ ? mu_cf->value(xyz_pr) : mu;
-                double bc_coeff_proj = use_ptwise_robin_ ? ptwise_robin_coeffs->at(bdry_pieces_map.get_idx(n,i)) : bc_coeff_[id]->value(xyz_pr);
-                double bc_value_proj = use_ptwise_robin_ ? ptwise_robin_values->at(bdry_pieces_map.get_idx(n,i)) : bc_value_[id]->value(xyz_pr);
+                double bc_coeff_proj = bc_[id].pointwise ? bc_[id].get_robin_pw_coeff(n) : bc_[id].get_coeff_cf(xyz_pr);
+                double bc_value_proj = bc_[id].pointwise ? bc_[id].get_robin_pw_value(n) : bc_[id].get_value_cf(xyz_pr);
 
                 // addition to diagonal term
                 if (use_taylor_correction_) { add_to_matrix += bc_coeff_proj*bdry_area[i]/(1.-bc_coeff_proj*dist/mu_proj); }
@@ -4028,7 +3987,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_jump(bool setup_rhs, p4est_locidx_
   }
   else
   {
-    retrieve_infc_data(n, infc_id, infc_area, infc_xyz, infc_jump_xyz);
+    load_infc_data(n, infc_id, infc_area, infc_xyz, infc_jump_xyz);
   }
 
   //---------------------------------------------------------------------
@@ -4043,9 +4002,10 @@ void my_p4est_poisson_nodes_mls_t::discretize_jump(bool setup_rhs, p4est_locidx_
     // neumann flux through domain boundary
     for (int i=0; i<infc_area.size(); ++i)
     {
-      rhs_ptr[n] -= infc_area[i] *
-          (use_ptwise_jump_ ? (*ptwise_surfgen_values)[infc_pieces_map.get_idx(n,i)] :
-                              (*jc_flux_[infc_id[i]]).value(infc_xyz[i].xyz)         );
+      interface_conditions_t *jc = &jc_[infc_id[i]];
+
+      rhs_ptr[n] -= infc_area[i] * (jc->pointwise ? jc->get_flx_jump_pw_integr(n) :
+                                                    jc->get_flx_jump_cf(infc_xyz[i].xyz));
     }
   }
 
@@ -4252,9 +4212,9 @@ void my_p4est_poisson_nodes_mls_t::discretize_jump(bool setup_rhs, p4est_locidx_
     if (setup_rhs)
     {
       if (there_is_jump_mu_ && !new_submat_main_) scaling = jump_scaling_[n];
-      double flux_proj  = use_ptwise_jump_ ? ptwise_jump_fluxes->at(infc_pieces_map.get_idx(n,0)) : jc_flux_ [0]->value(xyz_pr);
-      double value_proj = use_ptwise_jump_ ? ptwise_jump_values->at(infc_pieces_map.get_idx(n,0)) : jc_value_[0]->value(xyz_pr);
-      rhs_jump_ptr[n]   = (sign*value_proj + sign*dist*flux_proj/( sign_to_use < 0 ? mu_p_proj : mu_m_proj))/scaling;
+      double flx_jump_proj = jc_[0].pointwise ? jc_[0].get_flx_jump_pw_taylor(n) : jc_[0].get_flx_jump_cf(xyz_pr);
+      double sol_jump_proj = jc_[0].pointwise ? jc_[0].get_sol_jump_pw_taylor(n) : jc_[0].get_sol_jump_cf(xyz_pr);
+      rhs_jump_ptr[n]   = (sign*sol_jump_proj + sign*dist*flx_jump_proj/( sign_to_use < 0 ? mu_p_proj : mu_m_proj))/scaling;
     }
   }
 
@@ -4307,37 +4267,39 @@ void my_p4est_poisson_nodes_mls_t::interpolators_finalize()
 
 
 
-void my_p4est_poisson_nodes_mls_t::save_bdry_data(p4est_locidx_t n, vector<int> &bdry_id, vector<double> &bdry_area, vector<interface_point_t> &bdry_xyz, vector<interface_point_t> &bdry_robin_xyz)
+void my_p4est_poisson_nodes_mls_t::save_bdry_data(p4est_locidx_t n, vector<int> &bdry_ids, vector<double> &bdry_areas, vector<interface_point_t> &bdry_value_pts, vector<interface_point_t> &bdry_robin_pts)
 {
-  if (bdry_id.size() != bdry_area.size() ||
-      bdry_id.size() != bdry_xyz.size()  ||
-      bdry_id.size() != bdry_robin_xyz.size())
+#ifdef CASL_THROWS
+  if (bdry_ids.size() != bdry_areas    .size() ||
+      bdry_ids.size() != bdry_value_pts.size()  ||
+      bdry_ids.size() != bdry_robin_pts.size())
     throw std::invalid_argument("Vectors of different sizes\n");
+#endif
 
-  for (int i=0; i<bdry_id.size(); ++i)
+  for (int i=0; i<bdry_ids.size(); ++i)
   {
-    bdry_pieces_map.add_point(n);
-    bdry_pieces_id       .push_back(bdry_id       [i]);
-    bdry_pieces_area     .push_back(bdry_area     [i]);
-    ptwise_neumann_points.push_back(bdry_xyz      [i]);
-    ptwise_robin_points  .push_back(bdry_robin_xyz[i]);
+    bc_[bdry_ids[i]].add_fv_pt(n, bdry_areas[i], bdry_value_pts[i], bdry_robin_pts[i]);
   }
 }
 
-void my_p4est_poisson_nodes_mls_t::retrieve_bdry_data(p4est_locidx_t n, vector<int> &bdry_id, vector<double> &bdry_area, vector<interface_point_t> &bdry_xyz, vector<interface_point_t> &bdry_robin_xyz)
+void my_p4est_poisson_nodes_mls_t::load_bdry_data(p4est_locidx_t n, vector<int> &bdry_ids, vector<double> &bdry_areas, vector<interface_point_t> &bdry_value_pts, vector<interface_point_t> &bdry_robin_pts)
 {
-  bdry_id       .clear();
-  bdry_area     .clear();
-  bdry_xyz      .clear();
-  bdry_robin_xyz.clear();
+  bdry_ids      .clear();
+  bdry_areas    .clear();
+  bdry_value_pts.clear();
+  bdry_robin_pts.clear();
 
-  for (int i=0; i<bdry_pieces_map.size[n]; ++i)
+  for (int i=0; i<bc_.size(); ++i)
   {
-    int idx = bdry_pieces_map.get_idx(n,i);
-    bdry_id       .push_back(bdry_pieces_id       [idx]);
-    bdry_area     .push_back(bdry_pieces_area     [idx]);
-    bdry_xyz      .push_back(ptwise_neumann_points[idx]);
-    bdry_robin_xyz.push_back(ptwise_robin_points  [idx]);
+    boundary_conditions_t *bc = &bc_[i];
+    if ((bc->type == ROBIN || bc->type == NEUMANN) && bc->is_boundary_node(n))
+    {
+      int idx = bc->node_map[n];
+      bdry_ids      .push_back(i);
+      bdry_areas    .push_back(bc->areas[idx]);
+      bdry_value_pts.push_back(bc->neumann_pts[idx]);
+      bdry_robin_pts.push_back(bc->robin_pts[idx]);
+    }
   }
 }
 
@@ -4348,70 +4310,89 @@ void my_p4est_poisson_nodes_mls_t::save_cart_points(p4est_locidx_t n, vector<boo
       id.size() != weights.size())
     throw std::invalid_argument("Vectors of different sizes\n");
 
+  static double xyz[P4EST_DIM];
+
   for (int i=0; i<P4EST_FACES; ++i)
   {
     if (is_interface[i])
     {
-      interface_point_cartesian_t pt(n, i, dist[i]);
+      node_xyz_fr_n(n, p4est_, nodes_, xyz);
+      switch (i)
+      {
+        case 0: xyz[0] -= dist[i]; break;
+        case 1: xyz[0] += dist[i]; break;
 
-      bdry_cart_points_map    .add_point(n);
-      bdry_cart_points_id     .push_back(id[i]);
-      bdry_cart_points        .push_back(pt);
-      ptwise_dirichlet_weights.push_back(weights[i]);
+        case 2: xyz[1] -= dist[i]; break;
+        case 3: xyz[1] += dist[i]; break;
+    #ifdef P4_TO_P8
+        case 4: xyz[2] -= dist[i]; break;
+        case 5: xyz[2] += dist[i]; break;
+    #endif
+      }
+      bc_[id[i]].add_fd_pt(n, i, dist[i], xyz, weights[i]);
     }
   }
 }
 
-void my_p4est_poisson_nodes_mls_t::retrieve_cart_points(p4est_locidx_t n, vector<bool> &is_interface, vector<int> &id, vector<double> &dist, vector<double> &weights)
+void my_p4est_poisson_nodes_mls_t::load_cart_points(p4est_locidx_t n, vector<bool> &is_interface, vector<int> &id, vector<double> &dist, vector<double> &weights)
 {
   is_interface.assign(P4EST_FACES, false);
   weights     .assign(P4EST_FACES, 0);
 
-  for (int i=0; i<bdry_cart_points_map.size[n]; ++i)
+  for (int i = 0; i < bc_.size(); ++i)
   {
-    int idx = bdry_cart_points_map.get_idx(n,i);
-    int dir = bdry_cart_points[idx].dir;
+    boundary_conditions_t *bc = &bc_[i];
 
-    is_interface[dir] = true;
-    id          [dir] = bdry_cart_points_id     [idx];
-    dist        [dir] = bdry_cart_points        [idx].dist;
-    weights     [dir] = ptwise_dirichlet_weights[idx];
+    if (bc->type == DIRICHLET && bc->is_boundary_node(n))
+    {
+      for (int k = 0; k < bc->num_value_pts(n); ++k)
+      {
+        int idx = bc->idx_value_pt(n,k);
+        interface_point_cartesian_t *pt = &bc->dirichlet_pts[idx];
+
+        is_interface[pt->dir] = true;
+        id          [pt->dir] = i;
+        dist        [pt->dir] = pt->dist;
+        weights     [pt->dir] = bc->dirichlet_weights[idx];
+      }
+    }
   }
 }
 
 
 
-void my_p4est_poisson_nodes_mls_t::save_infc_data(p4est_locidx_t n, vector<int> &infc_id, vector<double> &infc_area, vector<interface_point_t> &infc_xyz, vector<interface_point_t> &infc_jump_xyz)
+void my_p4est_poisson_nodes_mls_t::save_infc_data(p4est_locidx_t n, vector<int> &infc_ids, vector<double> &infc_areas, vector<interface_point_t> &infc_integr_pts, vector<interface_point_t> &infc_taylor_pts)
 {
-  if (infc_id.size() != infc_area.size() ||
-      infc_id.size() != infc_xyz.size()  ||
-      infc_id.size() != infc_jump_xyz.size())
+  if (infc_ids.size() != infc_areas     .size() ||
+      infc_ids.size() != infc_integr_pts.size() ||
+      infc_ids.size() != infc_taylor_pts.size())
     throw std::invalid_argument("Vectors of different sizes\n");
 
-  for (int i=0; i<infc_id.size(); ++i)
+  for (int i=0; i<infc_ids.size(); ++i)
   {
-    infc_pieces_map.add_point(n);
-    infc_pieces_id       .push_back(infc_id      [i]);
-    infc_pieces_area     .push_back(infc_area    [i]);
-    ptwise_surfgen_points.push_back(infc_xyz     [i]);
-    ptwise_jump_points   .push_back(infc_jump_xyz[i]);
+    jc_[infc_ids[i]].add_pt(n, infc_areas[i], infc_taylor_pts[i], infc_integr_pts[i]);
   }
 }
 
-void my_p4est_poisson_nodes_mls_t::retrieve_infc_data(p4est_locidx_t n, vector<int> &infc_id, vector<double> &infc_area, vector<interface_point_t> &infc_xyz, vector<interface_point_t> &infc_jump_xyz)
+void my_p4est_poisson_nodes_mls_t::load_infc_data(p4est_locidx_t n, vector<int> &infc_ids, vector<double> &infc_areas, vector<interface_point_t> &infc_integr_pts, vector<interface_point_t> &infc_taylor_pts)
 {
-  infc_id      .clear();
-  infc_area    .clear();
-  infc_xyz     .clear();
-  infc_jump_xyz.clear();
+  infc_ids       .clear();
+  infc_areas     .clear();
+  infc_integr_pts.clear();
+  infc_taylor_pts.clear();
 
-  for (int i=0; i<infc_pieces_map.size[n]; ++i)
+  for (int i = 0; i < jc_.size(); ++i)
   {
-    int idx = infc_pieces_map.get_idx(n,i);
-    infc_id      .push_back(infc_pieces_id       [idx]);
-    infc_area    .push_back(infc_pieces_area     [idx]);
-    infc_xyz     .push_back(ptwise_surfgen_points[idx]);
-    infc_jump_xyz.push_back(ptwise_jump_points   [idx]);
+    interface_conditions_t *jc = &jc_[i];
+
+    if (jc->is_interface_node(n))
+    {
+      int idx = jc->node_map[n];
+      infc_ids       .push_back(i);
+      infc_areas     .push_back(jc->areas[idx]);
+      infc_taylor_pts.push_back(jc->taylor_pts[idx]);
+      infc_integr_pts.push_back(jc->integr_pts[idx]);
+    }
   }
 }
 
@@ -4431,7 +4412,7 @@ void my_p4est_poisson_nodes_mls_t::save_wall_data(p4est_locidx_t n, vector<int> 
   }
 }
 
-void my_p4est_poisson_nodes_mls_t::retrieve_wall_data(p4est_locidx_t n, vector<int> &wall_id, vector<double> &wall_area, vector<interface_point_t> &wall_xyz)
+void my_p4est_poisson_nodes_mls_t::load_wall_data(p4est_locidx_t n, vector<int> &wall_id, vector<double> &wall_area, vector<interface_point_t> &wall_xyz)
 {
   wall_id  .clear();
   wall_xyz .clear();

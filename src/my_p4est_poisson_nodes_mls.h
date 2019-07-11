@@ -164,19 +164,29 @@ class my_p4est_poisson_nodes_mls_t
   double *mue_p_ptr, DIM(*mue_p_xx_ptr, *mue_p_yy_ptr, *mue_p_zz_ptr);
 
   // wall conditions
+  points_around_node_map_t       wall_pieces_map;
+  std::vector<int>               wall_pieces_id;
+  std::vector<double>            wall_pieces_area;
+  std::vector<interface_point_t> wall_pieces_centroid;
+
   const WallBCDIM *wc_type_;
   const CF_DIM    *wc_value_;
   const CF_DIM    *wc_coeff_;
 
-  // boundary conditions
-  std::vector< BoundaryConditionType > bc_type_;
-  std::vector< CF_DIM *> bc_value_;
-  std::vector< CF_DIM *> bc_coeff_;
+  void save_wall_data(p4est_locidx_t n, vector<int> &wall_id, vector<double> &wall_area, vector<interface_point_t> &wall_xyz);
+  void load_wall_data(p4est_locidx_t n, vector<int> &wall_id, vector<double> &wall_area, vector<interface_point_t> &wall_xyz);
 
-  // interface conditions
-  std::vector< CF_DIM *> jc_value_;
-  std::vector< CF_DIM *> jc_flux_;
-  std::vector< CF_DIM *> jc_coeff_;
+  vector< boundary_conditions_t> bc_;
+  vector<interface_conditions_t> jc_;
+
+  void save_cart_points(p4est_locidx_t n, vector<bool> &is_interface, vector<int> &bdry_points_id, vector<double> &bdry_dist, vector<double> &bdry_points_weights);
+  void load_cart_points(p4est_locidx_t n, vector<bool> &is_interface, vector<int> &bdry_points_id, vector<double> &bdry_dist, vector<double> &bdry_points_weights);
+
+  void save_bdry_data(p4est_locidx_t n, vector<int> &bdry_ids, vector<double> &bdry_areas, vector<interface_point_t> &bdry_value_pts, vector<interface_point_t> &bdry_robin_pts);
+  void load_bdry_data(p4est_locidx_t n, vector<int> &bdry_ids, vector<double> &bdry_areas, vector<interface_point_t> &bdry_value_pts, vector<interface_point_t> &bdry_robin_pts);
+
+  void save_infc_data(p4est_locidx_t n, vector<int> &infc_ids, vector<double> &infc_areas, vector<interface_point_t> &infc_integr_pts, vector<interface_point_t> &infc_taylor_pts);
+  void load_infc_data(p4est_locidx_t n, vector<int> &infc_ids, vector<double> &infc_areas, vector<interface_point_t> &infc_integr_pts, vector<interface_point_t> &infc_taylor_pts);
 
   // solver options
   int    integration_order_;
@@ -288,98 +298,46 @@ class my_p4est_poisson_nodes_mls_t
   my_p4est_poisson_nodes_mls_t& operator=(const my_p4est_poisson_nodes_mls_t& other);
 public:
 
-  bool use_ptwise_dirichlet_;
-  bool use_ptwise_neumann_;
-  bool use_ptwise_robin_;
-  bool use_ptwise_jump_;
-
-  // pointwise Dirichlet
-  points_around_node_map_t                  bdry_cart_points_map;
-  std::vector<int>                          bdry_cart_points_id;
-  std::vector<interface_point_cartesian_t>  bdry_cart_points;
-
-  std::vector<double>                       ptwise_dirichlet_weights;
-  std::vector<double>                      *ptwise_dirichlet_values;
-
-  void     save_cart_points(p4est_locidx_t n, vector<bool> &is_interface, vector<int> &bdry_points_id, vector<double> &bdry_dist, vector<double> &bdry_points_weights);
-  void retrieve_cart_points(p4est_locidx_t n, vector<bool> &is_interface, vector<int> &bdry_points_id, vector<double> &bdry_dist, vector<double> &bdry_points_weights);
-
-  // pointwise Neumann and Robin
-  points_around_node_map_t        bdry_pieces_map;
-  std::vector<int>                bdry_pieces_id;
-  std::vector<double>             bdry_pieces_area;
-
-  std::vector<interface_point_t>  ptwise_neumann_points;
-  std::vector<double>            *ptwise_neumann_values;
-
-  std::vector<interface_point_t>  ptwise_robin_points;
-  std::vector<double>            *ptwise_robin_values;
-  std::vector<double>            *ptwise_robin_coeffs;
-
-  void     save_bdry_data(p4est_locidx_t n, vector<int> &bdry_id, vector<double> &bdry_area, vector<interface_point_t> &bdry_xyz, vector<interface_point_t> &bdry_robin_xyz);
-  void retrieve_bdry_data(p4est_locidx_t n, vector<int> &bdry_id, vector<double> &bdry_area, vector<interface_point_t> &bdry_xyz, vector<interface_point_t> &bdry_robin_xyz);
-
-  // pointwise jump
-  points_around_node_map_t        infc_pieces_map;
-  std::vector<int>                infc_pieces_id;
-  std::vector<double>             infc_pieces_area;
-
-  std::vector<interface_point_t>  ptwise_surfgen_points;
-  std::vector<double>            *ptwise_surfgen_values;
-
-  std::vector<interface_point_t>  ptwise_jump_points;
-  std::vector<double>            *ptwise_jump_fluxes;
-  std::vector<double>            *ptwise_jump_values;
-
-  void     save_infc_data(p4est_locidx_t n, vector<int> &infc_id, vector<double> &infc_area, vector<interface_point_t> &infc_xyz, vector<interface_point_t> &infc_jump_xyz);
-  void retrieve_infc_data(p4est_locidx_t n, vector<int> &infc_id, vector<double> &infc_area, vector<interface_point_t> &infc_xyz, vector<interface_point_t> &infc_jump_xyz);
-
-  // wall pieces
-  points_around_node_map_t       wall_pieces_map;
-  std::vector<int>               wall_pieces_id;
-  std::vector<double>            wall_pieces_area;
-  std::vector<interface_point_t> wall_pieces_centroid;
-
-  void     save_wall_data(p4est_locidx_t n, vector<int> &wall_id, vector<double> &wall_area, vector<interface_point_t> &wall_xyz);
-  void retrieve_wall_data(p4est_locidx_t n, vector<int> &wall_id, vector<double> &wall_area, vector<interface_point_t> &wall_xyz);
-
-  inline int ptwise_dirichlet_size() { return bdry_cart_points_map.count; }
-  inline int ptwise_neumann_size()   { return bdry_pieces_map.count; }
-  inline int ptwise_robin_size()     { return bdry_pieces_map.count; }
-  inline int ptwise_jump_size()      { return infc_pieces_map.count; }
-
-  inline int ptwise_dirichlet_size(p4est_locidx_t n) { return bdry_cart_points_map.size[n]; }
-  inline int ptwise_neumann_size  (p4est_locidx_t n) { return bdry_pieces_map.size[n]; }
-  inline int ptwise_robin_size    (p4est_locidx_t n) { return bdry_pieces_map.size[n]; }
-  inline int ptwise_jump_size     (p4est_locidx_t n) { return infc_pieces_map.size[n]; }
-
-  inline int ptwise_dirichlet_get_id(int i) { return bdry_cart_points_id[i]; }
-  inline int ptwise_neumann_get_id  (int i) { return bdry_pieces_id[i]; }
-  inline int ptwise_robin_get_id    (int i) { return bdry_pieces_id[i]; }
-  inline int ptwise_jump_get_id     (int i) { return infc_pieces_id[i]; }
-
-  inline int ptwise_dirichlet_get_idx(p4est_locidx_t n, int i) { return bdry_cart_points_map.get_idx(n,i); }
-  inline int ptwise_neumann_get_idx  (p4est_locidx_t n, int i) { return bdry_pieces_map.get_idx(n,i); }
-  inline int ptwise_robin_get_idx    (p4est_locidx_t n, int i) { return bdry_pieces_map.get_idx(n,i); }
-  inline int ptwise_jump_get_idx     (p4est_locidx_t n, int i) { return infc_pieces_map.get_idx(n,i); }
-
-  inline void ptwise_dirichlet_get_xyz(int i, double xyz[]) { return bdry_cart_points     [i].get_xyz(p4est_, nodes_, xyz); }
-  inline void ptwise_neumann_get_xyz  (int i, double xyz[]) { return ptwise_neumann_points[i].get_xyz(xyz); }
-  inline void ptwise_robin_get_xyz    (int i, double xyz[]) { return ptwise_robin_points  [i].get_xyz(xyz); }
-  inline void ptwise_surfgen_get_xyz  (int i, double xyz[]) { return ptwise_surfgen_points[i].get_xyz(xyz); }
-  inline void ptwise_jump_get_xyz     (int i, double xyz[]) { return ptwise_jump_points   [i].get_xyz(xyz); }
-
   my_p4est_poisson_nodes_mls_t(const my_p4est_node_neighbors_t *ngbd);
   ~my_p4est_poisson_nodes_mls_t();
+
+  inline int  pw_bc_num_value_pts(int phi_idx) { return bc_[phi_idx].num_value_pts(); }
+  inline int  pw_bc_num_robin_pts(int phi_idx) { return bc_[phi_idx].num_robin_pts(); }
+
+  inline void pw_bc_xyz_value_pt (int phi_idx, int pt_idx, double pt_xyz[]) { bc_[phi_idx].xyz_value_pt(pt_idx, pt_xyz); }
+  inline void pw_bc_xyz_robin_pt (int phi_idx, int pt_idx, double pt_xyz[]) { bc_[phi_idx].xyz_robin_pt(pt_idx, pt_xyz); }
+
+  inline int  pw_bc_num_value_pts(int phi_idx, p4est_locidx_t n) { return bc_[phi_idx].num_value_pts(n); }
+  inline int  pw_bc_num_robin_pts(int phi_idx, p4est_locidx_t n) { return bc_[phi_idx].num_robin_pts(n); }
+
+  inline int  pw_bc_idx_value_pt (int phi_idx, p4est_locidx_t n, int k) { return bc_[phi_idx].idx_value_pt(n, k); }
+  inline int  pw_bc_idx_robin_pt (int phi_idx, p4est_locidx_t n, int k) { return bc_[phi_idx].idx_robin_pt(n, k); }
+
+  inline int  pw_bc_get_boundary_pt(int phi_idx, int pt_idx, interface_point_cartesian_t* &pt) { pt = &bc_[phi_idx].dirichlet_pts[pt_idx]; }
+
+  inline int  pw_jc_num_integr_pts(int phi_idx) { return jc_[phi_idx].num_integr_pts(); }
+  inline int  pw_jc_num_taylor_pts(int phi_idx) { return jc_[phi_idx].num_taylor_pts(); }
+
+  inline void pw_jc_xyz_integr_pt (int phi_idx, int pt_idx, double pt_xyz[]) { jc_[phi_idx].xyz_integr_pt(pt_idx, pt_xyz); }
+  inline void pw_jc_xyz_taylor_pt (int phi_idx, int pt_idx, double pt_xyz[]) { jc_[phi_idx].xyz_taylor_pt(pt_idx, pt_xyz); }
+
+  inline int  pw_jc_num_integr_pts(int phi_idx, p4est_locidx_t n) { return jc_[phi_idx].num_integr_pts(n); }
+  inline int  pw_jc_num_taylor_pts(int phi_idx, p4est_locidx_t n) { return jc_[phi_idx].num_taylor_pts(n); }
+
+  inline int  pw_jc_idx_integr_pt (int phi_idx, p4est_locidx_t n, int k) { return jc_[phi_idx].idx_integr_pt(n, k); }
+  inline int  pw_jc_idx_taylor_pt (int phi_idx, p4est_locidx_t n, int k) { return jc_[phi_idx].idx_taylor_pt(n, k); }
 
   // set geometry
   inline void set_lip(double lip) { lip_ = lip; }
 
   inline void add_boundary (mls_opn_t opn, Vec phi, DIM(Vec phi_xx, Vec phi_yy, Vec phi_zz), BoundaryConditionType bc_type, CF_DIM &bc_value, CF_DIM &bc_coeff)
   {
-    this->bc_type_ .push_back(bc_type);
-    this->bc_value_.push_back(&bc_value);
-    this->bc_coeff_.push_back(&bc_coeff);
+    boundary_conditions_t bc;
+    bc.type     =  bc_type;
+    bc.value_cf = &bc_value;
+    bc.coeff_cf = &bc_coeff;
+
+    this->bc_.push_back(bc);
 
     bdry_.add_phi(opn, phi, DIM(phi_xx, phi_yy, phi_zz));
 
@@ -391,14 +349,27 @@ public:
     }
   }
 
+  inline void add_boundary (mls_opn_t opn, Vec phi, Vec* phi_dd, BoundaryConditionType bc_type, CF_DIM &bc_value, CF_DIM &bc_coeff)
+  {
+    add_boundary(opn, phi, DIM(phi_dd[0], phi_dd[1], phi_dd[2]), bc_type, bc_value, bc_coeff);
+  }
+
   inline void add_interface(mls_opn_t opn, Vec phi, DIM(Vec phi_xx, Vec phi_yy, Vec phi_zz), CF_DIM &jc_value, CF_DIM &jc_flux)
   {
-    this->jc_value_.push_back(&jc_value);
-    this->jc_flux_ .push_back(&jc_flux);
+    interface_conditions_t jc;
+    jc.sol_jump_cf = &jc_value;
+    jc.flx_jump_cf = &jc_flux;
+
+    this->jc_.push_back(jc);
 
     infc_.add_phi(opn, phi, DIM(phi_xx, phi_yy, phi_zz));
 
     there_is_jump_ = true;
+  }
+
+  inline void add_interface(mls_opn_t opn, Vec phi, Vec* phi_dd, CF_DIM &jc_value, CF_DIM &jc_flux)
+  {
+    add_interface(opn, phi, DIM(phi_dd[0], phi_dd[1], phi_dd[2]), jc_value, jc_flux);
   }
 
   inline void set_boundary_phi_eff (Vec phi_eff) { bdry_.phi_eff = phi_eff; bdry_.calculate_phi_eff(); }
@@ -417,49 +388,50 @@ public:
   // overwrite boundary conditions (optional)
   inline void set_bc(int phi_idx, BoundaryConditionType bc_type, CF_DIM &bc_value, CF_DIM &bc_coeff)
   {
-    if (this->bc_type_ [phi_idx] != bc_type) throw std::invalid_argument("Cannot change BC on fly\n");
+    if (this->bc_[phi_idx].type != bc_type) throw std::invalid_argument("Cannot change BC on fly\n");
     if (bc_type == ROBIN) new_submat_robin_ = true;
 
-    this->bc_type_ [phi_idx] =  bc_type;
-    this->bc_value_[phi_idx] = &bc_value;
-    this->bc_coeff_[phi_idx] = &bc_coeff;
-
+    this->bc_[phi_idx].pointwise = false;
+    this->bc_[phi_idx].value_cf  = &bc_value;
+    this->bc_[phi_idx].coeff_cf  = &bc_coeff;
   }
 
-  inline void set_ptwise_dirichlet(vector<double> &ptwise_dirichlet_value)
+  inline void set_bc(int phi_idx, BoundaryConditionType bc_type, vector<double> &bc_value_pw, vector<double> &bc_value_pw_robin, vector<double> &bc_coeff_pw_robin)
   {
-    this->ptwise_dirichlet_values = &ptwise_dirichlet_value;
-    this->use_ptwise_dirichlet_   = true;
+    if (this->bc_[phi_idx].type != bc_type) throw std::invalid_argument("Cannot change BC on fly\n");
+    if (bc_type == ROBIN) new_submat_robin_ = true;
+
+    this->bc_[phi_idx].pointwise      = true;
+    this->bc_[phi_idx].value_pw       = &bc_value_pw;
+    this->bc_[phi_idx].value_pw_robin = &bc_value_pw_robin;
+    this->bc_[phi_idx].coeff_pw_robin = &bc_coeff_pw_robin;
   }
 
-
-  inline void set_ptwise_robin(vector<double> &ptwise_neumann_values,
-                               vector<double> &ptwise_robin_values,
-                               vector<double> &ptwise_robin_coeffs)
+  inline void set_bc(int phi_idx, BoundaryConditionType bc_type, vector<double> &bc_value_pw)
   {
-    this->ptwise_neumann_values = &ptwise_neumann_values;
-    this->ptwise_robin_values   = &ptwise_robin_values;
-    this->ptwise_robin_coeffs   = &ptwise_robin_coeffs;
-    this->use_ptwise_robin_     = true;
-    this->use_ptwise_neumann_   = true;
-    this->new_submat_robin_     = true;
+    if (this->bc_[phi_idx].type != bc_type) throw std::invalid_argument("Cannot change BC on fly\n");
+    if (bc_type == ROBIN) throw;
+
+    this->bc_[phi_idx].pointwise      = true;
+    this->bc_[phi_idx].value_pw       = &bc_value_pw;
+    this->bc_[phi_idx].value_pw_robin = NULL;
+    this->bc_[phi_idx].coeff_pw_robin = NULL;
   }
 
   // overwtire jump conditions (optional)
   inline void set_jc(int phi_idx, CF_DIM &jc_value, CF_DIM &jc_flux)
   {
-    this->jc_value_[phi_idx] = &jc_value;
-    this->jc_flux_ [phi_idx] = &jc_flux;
+    this->jc_[phi_idx].pointwise   = false;
+    this->jc_[phi_idx].sol_jump_cf = &jc_value;
+    this->jc_[phi_idx].flx_jump_cf = &jc_flux;
   }
 
-  inline void set_ptwise_jump(vector<double> &ptwise_surfgen_values,
-                              vector<double> &ptwise_jump_values,
-                              vector<double> &ptwise_jump_fluxes)
+  inline void set_jc(int phi_idx, vector<double> &jc_sol_jump_taylor, vector<double> &jc_flx_jump_taylor, vector<double> &jc_flx_jump_integr)
   {
-    this->ptwise_surfgen_values = &ptwise_surfgen_values;
-    this->ptwise_jump_values    = &ptwise_jump_values;
-    this->ptwise_jump_fluxes    = &ptwise_jump_fluxes;
-    this->use_ptwise_jump_      = true;
+    this->jc_[phi_idx].pointwise          = true;
+    this->jc_[phi_idx].sol_jump_pw_taylor = &jc_sol_jump_taylor;
+    this->jc_[phi_idx].flx_jump_pw_taylor = &jc_flx_jump_taylor;
+    this->jc_[phi_idx].flx_jump_pw_integr = &jc_flx_jump_integr;
   }
 
   // set linear term
@@ -549,13 +521,13 @@ public:
   inline Mat get_matrix() { return A_; }
 
   // finite volumes
-  inline void get_boundary_finite_volumes(vector< my_p4est_finite_volume_t > *bdry_fvs, vector<int> *bdry_node_to_fv)
+  inline void get_boundary_finite_volumes(vector< my_p4est_finite_volume_t > *&bdry_fvs, vector<int> *&bdry_node_to_fv)
   {
     bdry_fvs        =  bdry_fvs_;
     bdry_node_to_fv = &bdry_node_to_fv_;
   }
 
-  inline void get_interface_finite_volumes(vector< my_p4est_finite_volume_t > *infc_fvs, vector<int> *infc_node_to_fv)
+  inline void get_interface_finite_volumes(vector< my_p4est_finite_volume_t > *&infc_fvs, vector<int> *&infc_node_to_fv)
   {
     infc_fvs        =  infc_fvs_;
     infc_node_to_fv = &infc_node_to_fv_;
@@ -564,10 +536,16 @@ public:
   inline void set_finite_volumes(vector< my_p4est_finite_volume_t > *bdry_fvs, vector<int> *bdry_node_to_fv,
                                  vector< my_p4est_finite_volume_t > *infc_fvs, vector<int> *infc_node_to_fv)
   {
-    bdry_fvs_        =  bdry_fvs;
-    bdry_node_to_fv_ = *bdry_node_to_fv;
-    infc_fvs_        =  infc_fvs;
-    infc_node_to_fv_ = *infc_node_to_fv;
+    if (bdry_fvs != NULL && bdry_node_to_fv != NULL)
+    {
+      bdry_fvs_        =  bdry_fvs;
+      bdry_node_to_fv_ = *bdry_node_to_fv;
+    }
+    if (infc_fvs != NULL && infc_node_to_fv != NULL)
+    {
+      infc_fvs_        =  infc_fvs;
+      infc_node_to_fv_ = *infc_node_to_fv;
+    }
     finite_volumes_initialized_ = true;
   }
 

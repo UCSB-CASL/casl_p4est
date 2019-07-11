@@ -104,7 +104,7 @@ struct quad_neighbor_nodes_of_node_t;
 #define ZFOR(a)
 #endif
 
-enum cf_value_type_t { VAL, DDX, DDY, DDZ, LAP };
+enum cf_value_type_t { VAL, DDX, DDY, DDZ, LAP, CUR };
 
 enum mls_opn_t { MLS_INTERSECTION = 0, MLS_ADDITION = 1, MLS_COLORATION = 2, MLS_INT = MLS_INTERSECTION, MLS_ADD = MLS_ADDITION };
 
@@ -1839,60 +1839,106 @@ PetscErrorCode VecReciprocalGhost(Vec input);
 
 struct vec_and_ptr_t
 {
-  PetscErrorCode ierr;
-  Vec vec;
+  static PetscErrorCode ierr;
+
+  Vec     vec;
   double *ptr;
 
   vec_and_ptr_t() : vec(NULL), ptr(NULL) {}
-//  vec_and_ptr_t(p4est_t *p4est, p4est_nodes_t *nodes) : vec(NULL), ptr(NULL)
-//  {
-//    initialize(p4est, nodes);
-//  }
-//  vec_and_ptr_t(Vec template_vec) : vec(NULL), ptr(NULL)
-//  {
-//    initialize(template_vec);
-//  }
-//  ~vec_and_ptr_t()
-//  {
-//    finalize();
-//  }
+
+  vec_and_ptr_t(Vec parent) : vec(NULL), ptr(NULL) { create(parent); }
+
+  vec_and_ptr_t(p4est_t *p4est, p4est_nodes_t *nodes) : vec(NULL), ptr(NULL) { create(p4est, nodes); }
+
+  inline void create(Vec parent)
+  {
+    ierr = VecDuplicate(parent, &vec); CHKERRXX(ierr);
+  }
+
+  inline void create(p4est_t *p4est, p4est_nodes_t *nodes)
+  {
+    ierr = VecCreateGhostNodes(p4est, nodes, &vec); CHKERRXX(ierr);
+  }
+
+  inline void destroy()
+  {
+    if (vec != NULL) { ierr = VecDestroy(vec); CHKERRXX(ierr); }
+  }
 
   inline void get_array()
   {
     ierr = VecGetArray(vec, &ptr); CHKERRXX(ierr);
   }
+
   inline void restore_array()
   {
     ierr = VecRestoreArray(vec, &ptr); CHKERRXX(ierr);
   }
 
-//  inline void initialize(p4est_t *p4est, p4est_nodes_t *nodes)
-//  {
-//    finalize();
-//    ierr = VecCreateGhostNodes(p4est, nodes, &vec); CHKERRXX(ierr);
-//  }
-//  inline void initialize(Vec template_vec)
-//  {
-//    finalize();
-//    ierr = VecDuplicate(template_vec, &vec); CHKERRXX(ierr);
-//  }
-//  inline void finalize()
-//  {
-//    if (vec != NULL) { ierr = VecDestroy(vec); CHKERRXX(ierr); }
-//  }
+  inline void set(Vec input)
+  {
+    vec = input;
+  }
 };
 
 
 struct vec_and_ptr_dim_t
 {
-  PetscErrorCode ierr;
-  Vec vec[P4EST_DIM];
+  static PetscErrorCode ierr;
+
+  Vec     vec[P4EST_DIM];
   double *ptr[P4EST_DIM];
 
-  vec_and_ptr_dim_t() {
+  vec_and_ptr_dim_t()
+  {
     for (short dim = 0; dim < P4EST_DIM; ++dim)
     {
-      vec[dim] = NULL; ptr[dim] = NULL;
+      vec[dim] = NULL;
+      ptr[dim] = NULL;
+    }
+  }
+
+  vec_and_ptr_dim_t(Vec parent[])
+  {
+    for (short dim = 0; dim < P4EST_DIM; ++dim)
+    {
+      vec[dim] = NULL;
+      ptr[dim] = NULL;
+    }
+    create(parent);
+  }
+
+  vec_and_ptr_dim_t(p4est_t *p4est, p4est_nodes_t *nodes)
+  {
+    for (short dim = 0; dim < P4EST_DIM; ++dim)
+    {
+      vec[dim] = NULL;
+      ptr[dim] = NULL;
+    }
+    create(p4est, nodes);
+  }
+
+  inline void create(Vec parent[])
+  {
+    for (short dim = 0; dim < P4EST_DIM; ++dim)
+    {
+      ierr = VecDuplicate(parent[dim], &vec[dim]); CHKERRXX(ierr);
+    }
+  }
+
+  inline void create(p4est_t *p4est, p4est_nodes_t *nodes)
+  {
+    for (short dim = 0; dim < P4EST_DIM; ++dim)
+    {
+      ierr = VecCreateGhostNodes(p4est, nodes, &vec[dim]); CHKERRXX(ierr);
+    }
+  }
+
+  inline void destroy()
+  {
+    for (short dim = 0; dim < P4EST_DIM; ++dim)
+    {
+      if (vec[dim] != NULL) { ierr = VecDestroy(vec[dim]); CHKERRXX(ierr); }
     }
   }
 
@@ -1903,11 +1949,20 @@ struct vec_and_ptr_dim_t
       ierr = VecGetArray(vec[dim], &ptr[dim]); CHKERRXX(ierr);
     }
   }
+
   inline void restore_array()
   {
     for (short dim = 0; dim < P4EST_DIM; ++dim)
     {
       ierr = VecRestoreArray(vec[dim], &ptr[dim]); CHKERRXX(ierr);
+    }
+  }
+
+  inline void set(Vec input[])
+  {
+    for (short dim = 0; dim < P4EST_DIM; ++dim)
+    {
+      vec[dim] = input[dim];
     }
   }
 };
@@ -2179,25 +2234,23 @@ struct interface_point_cartesian_t
   p4est_locidx_t n;
   short          dir;
   double         dist;
-  interface_point_cartesian_t (p4est_locidx_t n=-1,int dir=0, double dist=0)
-    : n(n), dir(dir), dist(dist) {}
-
-  inline void get_xyz(p4est_t *p4est, p4est_nodes_t *nodes, double *xyz)
+  double         xyz[P4EST_DIM];
+  interface_point_cartesian_t (p4est_locidx_t n=-1, int dir=0, double dist=0, double *xyz=NULL)
+    : n(n), dir(dir), dist(dist)
   {
-    node_xyz_fr_n(n, p4est, nodes, xyz);
-
-    switch (dir)
+    if (xyz != NULL)
     {
-      case 0: xyz[0] -= dist; break;
-      case 1: xyz[0] += dist; break;
-
-      case 2: xyz[1] -= dist; break;
-      case 3: xyz[1] += dist; break;
-#ifdef P4_TO_P8
-      case 4: xyz[2] -= dist; break;
-      case 5: xyz[2] += dist; break;
-#endif
+      XCODE( this->xyz[0] = xyz[0] );
+      YCODE( this->xyz[1] = xyz[1] );
+      ZCODE( this->xyz[2] = xyz[2] );
     }
+  }
+
+  inline void get_xyz(double *xyz)
+  {
+    XCODE( xyz[0] = this->xyz[0] );
+    YCODE( xyz[1] = this->xyz[1] );
+    ZCODE( xyz[2] = this->xyz[2] );
   }
 
   // linear interpolation of a Vec at an interface point (assumes locally uniform grid!)
@@ -2226,6 +2279,8 @@ struct my_p4est_finite_volume_t
   XCODE( double face_centroid_x[P4EST_FACES]; )
   YCODE( double face_centroid_y[P4EST_FACES]; )
   ZCODE( double face_centroid_z[P4EST_FACES]; )
+
+  my_p4est_finite_volume_t() { interfaces.reserve(1); }
 };
 
 void construct_finite_volume(my_p4est_finite_volume_t& fv, p4est_locidx_t n, p4est_t *p4est, p4est_nodes_t *nodes, std::vector<CF_DIM *> phi, std::vector<mls_opn_t> opn, int order=1, int cube_refinement=0, bool compute_centroids=false, double perturb=1.0e-12);
@@ -2235,8 +2290,8 @@ void compute_wall_normal(const int &dir, double normal[]);
 struct points_around_node_map_t
 {
   int count;
-  std::vector<int> size;
-  std::vector<int> offset;
+  std::vector<int> size;   // N*sizeof(int)
+  std::vector<int> offset; // N*sizeof(int)
 
   points_around_node_map_t(int num_nodes=0)
     : size(num_nodes,0), offset(num_nodes+1, 0), count(0) {}
@@ -2253,5 +2308,373 @@ struct points_around_node_map_t
     for (int i=1; i<size.size(); ++i)
       offset[i] = offset[i-1] + size[i-1];
   }
+};
+
+struct cartesian_intersections_map_t
+{
+  int idx[P4EST_FACES];
+};
+
+
+// advanced boundary conditions structure with pointwise application features
+struct boundary_conditions_t
+{
+  // N = num_owned_indeps
+  // M = number of boundary nodes (nodes at which we impose boundary conditions)
+  // K = number of cartesian intersections
+
+  BoundaryConditionType  type;
+  bool                   pointwise;
+  CF_DIM                *value_cf; // either solution value for Dirichlet or flux for Robin/Neumann
+  CF_DIM                *coeff_cf; // coefficient in Robin b.c.
+  std::vector<double>   *value_pw; // values for imposing Dirichlet (size K) or Neumann bc (size M)
+  std::vector<double>   *value_pw_robin; // for imposing Robin bc (size M) (_in addition_ to value_pw)
+  std::vector<double>   *coeff_pw_robin; // for imposing Robin bc (size M)
+
+  std::vector<int>       node_map; // N -> dirichlet_local_map or areas, neumann_pts and robin_pts
+
+  std::vector< std::vector<int> >            dirichlet_local_map; // M -> dirichlet_points and dirichlet_weights
+  std::vector<double>                        dirichlet_weights;   // K
+  std::vector<interface_point_cartesian_t>   dirichlet_pts;       // K
+
+  std::vector<double>            areas;       // M
+  std::vector<interface_point_t> neumann_pts; // M
+  std::vector<interface_point_t> robin_pts;   // M
+
+  boundary_conditions_t()
+    : type(NOINTERFACE), pointwise(false),
+      value_cf(NULL), coeff_cf(NULL),
+      value_pw(NULL), value_pw_robin(NULL), coeff_pw_robin(NULL) {}
+
+  inline void set(BoundaryConditionType type, CF_DIM &value_cf, CF_DIM &coeff_cf)
+  {
+    this->type      = type;
+    this->pointwise = false;
+    this->value_cf  = &value_cf;
+    this->coeff_cf  = &coeff_cf;
+  }
+
+  inline void set(BoundaryConditionType type, CF_DIM &value_cf)
+  {
+    if (type == ROBIN) throw;
+    this->type      = type;
+    this->pointwise = false;
+    this->value_cf  = &value_cf;
+    this->coeff_cf  = NULL;
+  }
+
+  inline void set(BoundaryConditionType type, std::vector<double> &value_pw, std::vector<double> &value_pw_robin, std::vector<double> &coeff_pw_robin)
+  {
+    this->type      = type;
+    this->pointwise = true;
+    this->value_pw  = &value_pw;
+    this->value_pw_robin = &value_pw_robin;
+    this->coeff_pw_robin = &coeff_pw_robin;
+  }
+
+  inline void set(BoundaryConditionType type, std::vector<double> &value_pw)
+  {
+    if (type == ROBIN) throw;
+    this->type      = type;
+    this->pointwise = true;
+    this->value_pw  = &value_pw;
+    this->value_pw_robin = NULL;
+    this->coeff_pw_robin = NULL;
+  }
+
+  inline void add_fv_pt(p4est_locidx_t n, double &area, interface_point_t &neumann, interface_point_t &robin)
+  {
+#ifdef CASL_THROWS
+    if (type == DIRICHLET) throw;
+    if (node_map[n] != -1) throw;
+#endif
+
+    node_map[n] = areas.size();
+
+    areas      .push_back(area);
+    robin_pts  .push_back(robin);
+    neumann_pts.push_back(neumann);
+  }
+
+  inline void add_fd_pt(p4est_locidx_t n, int dir, double dist, double *xyz, double weight)
+  {
+    if (node_map[n] == -1)
+    {
+      node_map[n] = dirichlet_local_map.size();
+      dirichlet_local_map.push_back(std::vector<int>());
+    }
+#ifdef CASL_THROWS
+    else
+    {
+      if (node_map[n] > dirichlet_local_map.size()-1) throw;
+    }
+
+    if (type == ROBIN || type == NEUMANN) throw;
+#endif
+
+    dirichlet_local_map[node_map[n]].push_back(dirichlet_weights.size());
+
+    dirichlet_weights.push_back(weight);
+    dirichlet_pts    .push_back(interface_point_cartesian_t(n, dir, dist, xyz));
+  }
+
+  inline bool is_boundary_node(p4est_locidx_t n) { return node_map[n] != -1; }
+
+  inline int num_value_pts()
+  {
+    switch (type)
+    {
+      case DIRICHLET: return dirichlet_weights.size();
+      case NEUMANN:   return areas.size();
+      case ROBIN:     return areas.size();
+      default: throw;
+    }
+  }
+
+  inline int num_robin_pts()
+  {
+    switch (type)
+    {
+      case DIRICHLET: return 0;
+      case NEUMANN:   return 0;
+      case ROBIN:     return areas.size();
+      default: throw;
+    }
+  }
+
+  inline void xyz_value_pt(int idx, double xyz[])
+  {
+    switch (type)
+    {
+      case DIRICHLET: dirichlet_pts[idx].get_xyz(xyz); break;
+      case NEUMANN:   neumann_pts  [idx].get_xyz(xyz); break;
+      case ROBIN:     neumann_pts  [idx].get_xyz(xyz); break;
+      default: throw;
+    }
+  }
+
+  inline void xyz_robin_pt(int idx, double xyz[])
+  {
+    switch (type)
+    {
+      case DIRICHLET: throw;
+      case NEUMANN:   throw;
+      case ROBIN:     robin_pts[idx].get_xyz(xyz); break;
+      default: throw;
+    }
+  }
+
+  inline int num_value_pts(p4est_locidx_t n)
+  {
+    if (node_map[n] == -1) return 0;
+    else
+    {
+      switch (type)
+      {
+        case DIRICHLET: return dirichlet_local_map[node_map[n]].size();
+        case NEUMANN:   return 1;
+        case ROBIN:     return 1;
+        default: throw;
+      }
+    }
+  }
+
+  inline int num_robin_pts(p4est_locidx_t n)
+  {
+    if (node_map[n] == -1) return 0;
+    else
+    {
+      switch (type)
+      {
+        case DIRICHLET: return 0;
+        case NEUMANN:   return 0;
+        case ROBIN:     return 1;
+        default: throw;
+      }
+    }
+  }
+
+  inline int idx_value_pt(p4est_locidx_t n, int k)
+  {
+    if (node_map[n] == -1) throw;
+
+    switch (type)
+    {
+      case DIRICHLET: return dirichlet_local_map[node_map[n]][k];
+      case NEUMANN:   return node_map[n];
+      case ROBIN:     return node_map[n];
+      default: throw;
+    }
+  }
+
+  inline int idx_robin_pt(p4est_locidx_t n, int k)
+  {
+    if (node_map[n] == -1) throw;
+
+    switch (type)
+    {
+      case DIRICHLET: throw;
+      case NEUMANN:   throw;
+      case ROBIN:     return node_map[n];
+      default: throw;
+    }
+  }
+
+  inline void reset(int num_nodes)
+  {
+    node_map.assign(num_nodes, -1);
+
+    areas      .clear();
+    neumann_pts.clear();
+    robin_pts  .clear();
+
+    dirichlet_local_map.clear();
+    dirichlet_weights  .clear();
+    dirichlet_pts      .clear();
+
+    pointwise      = NULL;
+    value_pw       = NULL;
+    value_pw_robin = NULL;
+    coeff_pw_robin = NULL;
+  }
+
+  inline double get_value_pw(p4est_locidx_t n, int i)
+  {
+    if (node_map[n] == -1) throw;
+
+    switch (type)
+    {
+      case DIRICHLET: return (*value_pw)[dirichlet_local_map[node_map[n]][i]];
+      case NEUMANN:   return (*value_pw)[node_map[n]];
+      case ROBIN:     return (*value_pw)[node_map[n]];
+    }
+
+  }
+
+  inline double get_robin_pw_value(p4est_locidx_t n)
+  {
+    if (node_map[n] == -1) throw;
+
+    switch (type)
+    {
+      case DIRICHLET: throw;
+      case NEUMANN:   throw;
+      case ROBIN:     return (*value_pw_robin)[node_map[n]];
+    }
+
+  }
+
+  inline double get_robin_pw_coeff(p4est_locidx_t n)
+  {
+    if (node_map[n] == -1) throw;
+
+    switch (type)
+    {
+      case DIRICHLET: throw;
+      case NEUMANN:   throw;
+      case ROBIN:     return (*coeff_pw_robin)[node_map[n]];
+    }
+  }
+
+  inline double get_value_cf(double xyz[]) { return value_cf->value(xyz); }
+  inline double get_coeff_cf(double xyz[]) { return coeff_cf->value(xyz); }
+};
+
+// interface conditions
+struct interface_conditions_t
+{
+  // N = num_owned_indeps
+  // M = number of boundary nodes (nodes at which we impose boundary conditions)
+  bool                   pointwise;
+  CF_DIM                *sol_jump_cf;
+  CF_DIM                *flx_jump_cf;
+  std::vector<double>   *sol_jump_pw_taylor; // M, values used in Taylor expansion (usually at projection points)
+  std::vector<double>   *flx_jump_pw_taylor; // M, values used in Taylor expansion (usually at projection points)
+  std::vector<double>   *flx_jump_pw_integr; // M, values used for integration of "surface generation" term (usually at centroids)
+
+  std::vector<int>               node_map;   // N
+  std::vector<double>            areas;      // M
+  std::vector<interface_point_t> integr_pts; // M, points for integration (usually centroids)
+  std::vector<interface_point_t> taylor_pts; // M, points for Taylor expansion (usually projections)
+
+  // total number of sampling points
+  inline int num_integr_pts() { return integr_pts.size(); }
+  inline int num_taylor_pts() { return taylor_pts.size(); }
+
+  // coordinates of a given sampling point
+  inline void xyz_integr_pt(int idx, double xyz[]) { return integr_pts[idx].get_xyz(xyz); }
+  inline void xyz_taylor_pt(int idx, double xyz[]) { return taylor_pts[idx].get_xyz(xyz); }
+
+  // number of sampling points for a given grid node
+  inline int num_integr_pts(p4est_locidx_t n) { return node_map[n] == -1 ? 0 : 1; }
+  inline int num_taylor_pts(p4est_locidx_t n) { return node_map[n] == -1 ? 0 : 1; }
+
+  // index of local point in common list
+  inline int idx_integr_pt(p4est_locidx_t n, int j) { if (j != 0) throw; return node_map[n]; }
+  inline int idx_taylor_pt(p4est_locidx_t n, int j) { if (j != 0) throw; return node_map[n]; }
+
+  interface_conditions_t()
+    : pointwise(false), sol_jump_cf(NULL), flx_jump_cf(NULL),
+      sol_jump_pw_taylor(NULL), flx_jump_pw_taylor(NULL), flx_jump_pw_integr(NULL) {}
+
+  inline void set(CF_DIM &sol_jump_cf, CF_DIM &flx_jump_cf)
+  {
+    this->pointwise   = false;
+    this->sol_jump_cf = &sol_jump_cf;
+    this->flx_jump_cf = &flx_jump_cf;
+  }
+
+  inline bool is_interface_node(p4est_locidx_t n) { return node_map[n] != -1; }
+
+  inline void add_pt(p4est_locidx_t n, double &area, interface_point_t &taylor_pt, interface_point_t &integr_pt)
+  {
+#ifdef CASL_THROWS
+    if (is_interface_node(n)) throw;
+#endif
+    node_map[n] = areas.size();
+
+    areas     .push_back(area);
+    taylor_pts.push_back(taylor_pt);
+    integr_pts.push_back(integr_pt);
+  }
+
+  inline void get_pt(p4est_locidx_t n, double &area, interface_point_t &taylor_pt, interface_point_t &integr_pt)
+  {
+#ifdef CASL_THROWS
+    if (!is_interface_node(n)) throw;
+#endif
+    area      = areas     [node_map[n]];
+    taylor_pt = taylor_pts[node_map[n]];
+    integr_pt = integr_pts[node_map[n]];
+  }
+
+  inline void set(std::vector<double> &sol_jump_pw_taylor, std::vector<double> &flx_jump_pw_taylor, std::vector<double> &flx_jump_pw_integr)
+  {
+    this->pointwise          = true;
+    this->sol_jump_pw_taylor = &sol_jump_pw_taylor;
+    this->flx_jump_pw_taylor = &flx_jump_pw_taylor;
+    this->flx_jump_pw_integr = &flx_jump_pw_integr;
+  }
+
+  inline void reset(int num_nodes)
+  {
+    node_map.assign(num_nodes, -1);
+
+    areas     .clear();
+    integr_pts.clear();
+    taylor_pts.clear();
+
+    pointwise          = false;
+    sol_jump_pw_taylor = NULL;
+    flx_jump_pw_taylor = NULL;
+    flx_jump_pw_integr = NULL;
+  }
+
+  inline double get_sol_jump_pw_taylor(p4est_locidx_t n) { if (node_map[n] == -1) throw; return (*sol_jump_pw_taylor)[node_map[n]]; }
+  inline double get_flx_jump_pw_taylor(p4est_locidx_t n) { if (node_map[n] == -1) throw; return (*flx_jump_pw_taylor)[node_map[n]]; }
+  inline double get_flx_jump_pw_integr(p4est_locidx_t n) { if (node_map[n] == -1) throw; return (*flx_jump_pw_integr)[node_map[n]]; }
+
+  inline double get_sol_jump_cf(double xyz[]) { return sol_jump_cf->value(xyz); }
+  inline double get_flx_jump_cf(double xyz[]) { return flx_jump_cf->value(xyz); }
 };
 #endif // UTILS_H

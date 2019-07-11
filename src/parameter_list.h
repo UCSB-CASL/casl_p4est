@@ -7,6 +7,7 @@
 #include <fstream>
 #include <stdexcept>
 #include "Parser.h"
+#include <src/my_p4est_utils.h>
 
 class parameter_list_t
 {
@@ -35,6 +36,11 @@ class parameter_list_t
     std::vector<std::string> keys;
     std::vector<std::string> desc;
   } chrs;
+  struct bcs_t {
+    std::vector<BoundaryConditionType *> ptrs;
+    std::vector<std::string> keys;
+    std::vector<std::string> desc;
+  } bcs;
 public:
   parameter_list_t();
 
@@ -73,6 +79,13 @@ public:
     chrs.desc.push_back(description);
   }
 
+  void add(BoundaryConditionType &parameter, const std::string& key, const std::string& description)
+  {
+    bcs.ptrs.push_back(&parameter);
+    bcs.keys.push_back(key);
+    bcs.desc.push_back(description);
+  }
+
   void initialize_parser(cmdParser &cmd)
   {
     for (int i = 0; i < dbls.ptrs.size(); ++i) cmd.add_option(dbls.keys[i], dbls.desc[i]);
@@ -80,6 +93,7 @@ public:
     for (int i = 0; i < blns.ptrs.size(); ++i) cmd.add_option(blns.keys[i], blns.desc[i]);
     for (int i = 0; i < strs.ptrs.size(); ++i) cmd.add_option(strs.keys[i], strs.desc[i]);
     for (int i = 0; i < chrs.ptrs.size(); ++i) cmd.add_option(chrs.keys[i], chrs.desc[i]);
+    for (int i = 0; i < bcs .ptrs.size(); ++i) cmd.add_option(bcs .keys[i], bcs .desc[i]);
   }
 
   void get_all(cmdParser &cmd)
@@ -89,6 +103,7 @@ public:
     for (int i = 0; i < blns.ptrs.size(); ++i) (*blns.ptrs[i]) = cmd.get(blns.keys[i], *blns.ptrs[i]);
     for (int i = 0; i < strs.ptrs.size(); ++i) (*strs.ptrs[i]) = cmd.get(strs.keys[i], *strs.ptrs[i]);
     for (int i = 0; i < chrs.ptrs.size(); ++i) (*chrs.ptrs[i]) = cmd.get(chrs.keys[i], *chrs.ptrs[i]);
+    for (int i = 0; i < bcs .ptrs.size(); ++i) (*bcs .ptrs[i]) = cmd.get(bcs .keys[i], *bcs .ptrs[i]);
   }
 
   void print_all()
@@ -98,6 +113,7 @@ public:
     for (int i = 0; i < blns.ptrs.size(); ++i) std::cout << blns.keys[i] << ": " << (*blns.ptrs[i]) << std::endl;
     for (int i = 0; i < strs.ptrs.size(); ++i) std::cout << strs.keys[i] << ": " << (*strs.ptrs[i]) << std::endl;
     for (int i = 0; i < chrs.ptrs.size(); ++i) std::cout << chrs.keys[i] << ": " << (*chrs.ptrs[i]) << std::endl;
+    for (int i = 0; i < bcs .ptrs.size(); ++i) std::cout << bcs .keys[i] << ": " << (*bcs .ptrs[i]) << std::endl;
   }
 
   void save_all(const char output[])
@@ -110,6 +126,7 @@ public:
       for (int i = 0; i < blns.ptrs.size(); ++i) out << blns.keys[i] << ": " << (*blns.ptrs[i]) << std::endl;
       for (int i = 0; i < strs.ptrs.size(); ++i) out << strs.keys[i] << ": " << (*strs.ptrs[i]) << std::endl;
       for (int i = 0; i < chrs.ptrs.size(); ++i) out << chrs.keys[i] << ": " << (*chrs.ptrs[i]) << std::endl;
+      for (int i = 0; i < bcs .ptrs.size(); ++i) out << bcs .keys[i] << ": " << (*bcs .ptrs[i]) << std::endl;
       out.close();
     }
     else throw std::invalid_argument("Unable to open file\n");
@@ -124,6 +141,7 @@ public:
   add_to_list(parameter_list_t &list, int &parameter, const std::string& key, const std::string& description) { list.add(parameter, key, description); }
   add_to_list(parameter_list_t &list, std::string &parameter, const std::string& key, const std::string& description) { list.add(parameter, key, description); }
   add_to_list(parameter_list_t &list, char *&parameter, const std::string& key, const std::string& description) { list.add(parameter, key, description); }
+  add_to_list(parameter_list_t &list, BoundaryConditionType &parameter, const std::string& key, const std::string& description) { list.add(parameter, key, description); }
 };
 
 #define ICAT(A,B) A ## B

@@ -2597,7 +2597,7 @@ void construct_finite_volume(my_p4est_finite_volume_t& fv, p4est_locidx_t n, p4e
   node_xyz_fr_n(n, p4est, nodes, xyz_C);
   dxyz_min(p4est, dxyz);
 
-  double scale = 1./MAX(dxyz[0], dxyz[1], dxyz[2]);
+  double scale = 1./MAX(DIM(dxyz[0], dxyz[1], dxyz[2]));
   double diag  = sqrt(SUMD(SQR(dxyz[0]), SQR(dxyz[1]), SQR(dxyz[2])));
 
   // Reconstruct geometry
@@ -2796,3 +2796,6 @@ double interface_point_cartesian_t::interpolate(const my_p4est_node_neighbors_t 
 
   return .5*(p0+p1) + (p1-p0)*(dist/h-.5) + .5*pdd*(dist*dist-dist*h);
 }
+
+PetscErrorCode vec_and_ptr_t::ierr;
+PetscErrorCode vec_and_ptr_dim_t::ierr;
