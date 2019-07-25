@@ -2925,9 +2925,9 @@ void my_p4est_xgfm_cells_t::get_flux_components_and_subtract_them_from_velocitie
               double s_nb = pow((double)P4EST_QUADRANT_LEN(ngbd[i].level)/(double)P4EST_ROOT_LEN, (double)P4EST_DIM-1);
               weighted_distance += (s_nb/s_tmp) * 0.5 * (double)(P4EST_QUADRANT_LEN(level_tmp)+P4EST_QUADRANT_LEN(ngbd[i].level))/(double)P4EST_ROOT_LEN;
               local_flux += mu_face*(solution_read_p[quad_tmp_idx] - solution_read_p[ngbd[i].p.piggy3.local_num])*s_nb/s_tmp;
-  #ifdef DEBUG
+#ifdef DEBUG
               check_sum += s_nb/s_tmp;
-  #endif
+#endif
             }
             P4EST_ASSERT(fabs(check_sum - 1.0) < EPS);
             weighted_distance *= tree_dimensions[dir/2];

@@ -64,6 +64,7 @@ class my_p4est_node_neighbors_t {
   std::vector<p4est_locidx_t> layer_nodes;
   std::vector<p4est_locidx_t> local_nodes;  
   bool is_initialized;
+  bool periodic[P4EST_DIM];
 
   bool construct_neighbors(p4est_locidx_t n, quad_neighbor_nodes_of_node_t& qnnn) const;
 
@@ -72,6 +73,9 @@ public:
     : hierarchy(hierarchy_), p4est(hierarchy_->p4est), ghost(hierarchy_->ghost), nodes(nodes_), myb(hierarchy_->myb)
   {
     is_initialized = false;
+
+    for (unsigned char dd = 0; dd < P4EST_DIM; ++dd)
+      periodic[dd] = is_periodic(p4est, dd);
 
     /* compute the layer and local nodes.
      * layer_nodes: This is a list of indices for nodes in the local range on this
@@ -363,6 +367,7 @@ public:
     memory += layer_nodes.size()*sizeof (p4est_locidx_t);
     memory += local_nodes.size()*sizeof (p4est_locidx_t);
     memory += sizeof (is_initialized);
+    memory += P4EST_DIM*sizeof (bool); // periodic
     return memory;
   }
 

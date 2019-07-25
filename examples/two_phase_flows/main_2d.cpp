@@ -436,10 +436,6 @@ int main (int argc, char* argv[])
   CF_2 *external_forces[P4EST_DIM] = { &external_force_u, &external_force_v };
 #endif
 
-
-
-
-
   lmin                    = cmd.get<int>("lmin", 4);
   lmax                    = cmd.get<int>("lmax", 6);
   threshold_split_cell    = cmd.get<double>("thresh", 0.05);
@@ -449,7 +445,7 @@ int main (int argc, char* argv[])
   n_tree_xyz[2]           = cmd.get<int>("nz", 1);
 #endif
 
-  uniform_band_m = uniform_band_p = .1*r0;
+  uniform_band_m = uniform_band_p = .15*r0;
 #ifdef P4_TO_P8
   const double dxmin      = MAX((xmax-xmin)/(double)n_tree_xyz[0], (ymax-ymin)/(double)n_tree_xyz[1], (zmax-zmin)/(double)n_tree_xyz[2]) / (1<<lmax);
 #else
@@ -493,9 +489,11 @@ int main (int argc, char* argv[])
   p4est_ghost_t *ghost_nm1 = my_p4est_ghost_new(p4est_nm1, P4EST_CONNECT_FULL);
   my_p4est_ghost_expand(p4est_nm1, ghost_nm1);
 
+
   p4est_nodes_t *nodes_nm1 = my_p4est_nodes_new(p4est_nm1, ghost_nm1);
   my_p4est_hierarchy_t *hierarchy_nm1 = new my_p4est_hierarchy_t(p4est_nm1, ghost_nm1, brick);
   my_p4est_node_neighbors_t *ngbd_nm1 = new my_p4est_node_neighbors_t(hierarchy_nm1, nodes_nm1); ngbd_nm1->init_neighbors();
+
 
   /* create the initial forest at time n */
   p4est_t *p4est_n = my_p4est_copy(p4est_nm1, P4EST_FALSE);
@@ -630,7 +628,6 @@ int main (int argc, char* argv[])
     unsigned int iter_hodge = 0;
 //    while(iter_hodge<niter_hodge_max && corr_hodge>hodge_tolerance)
 //    {
-
       hodge_new = two_phase_flow_solver->get_hodge();
       ierr = VecCopy(hodge_new, hodge_old); CHKERRXX(ierr);
 
@@ -696,42 +693,47 @@ int main (int argc, char* argv[])
 
 
   const double *hodge_p;
-  ierr = VecGetArrayRead(two_phase_flow_solver->get_hodge(), &hodge_p); CHKERRXX(ierr);
-  my_p4est_vtk_write_all(p4est_n, nodes_n, ghost_n,
-                         P4EST_TRUE, P4EST_TRUE,
-                         0, /* number of VTK_POINT_DATA */
-                         1, /* number of VTK_CELL_DATA  */
-                         "/home/regan/workspace/projects/two_phase_flow/coarse",
-                         VTK_CELL_DATA, "hodge", hodge_p);
-  ierr = VecRestoreArrayRead(two_phase_flow_solver->get_hodge(), &hodge_p); CHKERRXX(ierr);
-  const double* fine_phi_p, *fine_curvature_p, *fine_normal[P4EST_DIM];
   const double *v_nodes_omega_plus_p[P4EST_DIM], *v_nodes_omega_minus_p[P4EST_DIM];
+  ierr = VecGetArrayRead(two_phase_flow_solver->get_hodge(), &hodge_p); CHKERRXX(ierr);
   for (unsigned short dir = 0; dir < P4EST_DIM; ++dir) {
-    ierr = VecGetArrayRead(two_phase_flow_solver->get_normals()[dir], &fine_normal[dir]); CHKERRXX(ierr);
     ierr = VecGetArrayRead(two_phase_flow_solver->get_vnp1_nodes_omega_minus()[dir], &v_nodes_omega_minus_p[dir]); CHKERRXX(ierr);
     ierr = VecGetArrayRead(two_phase_flow_solver->get_vnp1_nodes_omega_plus()[dir], &v_nodes_omega_plus_p[dir]); CHKERRXX(ierr);
+  }
+  my_p4est_vtk_write_all(p4est_n, nodes_n, ghost_n,
+                         P4EST_TRUE, P4EST_TRUE,
+                         4, /* number of VTK_POINT_DATA */
+                         1, /* number of VTK_CELL_DATA  */
+                         (export_dir+"/coarse").c_str(),
+                         VTK_POINT_DATA, "vn_x_plus", v_nodes_omega_plus_p[0],
+                         VTK_POINT_DATA, "vn_y_plus", v_nodes_omega_plus_p[1],
+                         VTK_POINT_DATA, "vn_x_minus", v_nodes_omega_minus_p[0],
+                         VTK_POINT_DATA, "vn_y_minus", v_nodes_omega_minus_p[1],
+      VTK_CELL_DATA, "hodge", hodge_p);
+  ierr = VecRestoreArrayRead(two_phase_flow_solver->get_hodge(), &hodge_p); CHKERRXX(ierr);
+  for (unsigned short dir = 0; dir < P4EST_DIM; ++dir) {
+    ierr = VecRestoreArrayRead(two_phase_flow_solver->get_vnp1_nodes_omega_minus()[dir], &v_nodes_omega_minus_p[dir]); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(two_phase_flow_solver->get_vnp1_nodes_omega_plus()[dir], &v_nodes_omega_plus_p[dir]); CHKERRXX(ierr);
+  }
+
+  const double* fine_phi_p, *fine_curvature_p, *fine_normal[P4EST_DIM];
+  for (unsigned short dir = 0; dir < P4EST_DIM; ++dir) {
+    ierr = VecGetArrayRead(two_phase_flow_solver->get_normals()[dir], &fine_normal[dir]); CHKERRXX(ierr);
   }
   ierr = VecGetArrayRead(two_phase_flow_solver->get_curvature(), &fine_curvature_p); CHKERRXX(ierr);
   ierr = VecGetArrayRead(fine_phi, &fine_phi_p); CHKERRXX(ierr);
   my_p4est_vtk_write_all(p4est_fine, nodes_fine, ghost_fine,
                          P4EST_TRUE, P4EST_TRUE,
-                         8, /* number of VTK_POINT_DATA */
+                         4, /* number of VTK_POINT_DATA */
                          0, /* number of VTK_CELL_DATA  */
-                         "/home/regan/workspace/projects/two_phase_flow/fine",
+                         (export_dir+"/fine").c_str(),
                          VTK_POINT_DATA, "phi", fine_phi_p,
                          VTK_POINT_DATA, "curvature", fine_curvature_p,
                          VTK_POINT_DATA, "nx", fine_normal[0],
-      VTK_POINT_DATA, "ny", fine_normal[1],
-      VTK_POINT_DATA, "vn_x_plus", v_nodes_omega_plus_p[0],
-      VTK_POINT_DATA, "vn_y_plus", v_nodes_omega_plus_p[1],
-      VTK_POINT_DATA, "vn_x_minus", v_nodes_omega_minus_p[0],
-      VTK_POINT_DATA, "vn_y_minus", v_nodes_omega_minus_p[1]);
+      VTK_POINT_DATA, "ny", fine_normal[1]);
   ierr = VecRestoreArrayRead(fine_phi, &fine_phi_p); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(two_phase_flow_solver->get_curvature(), &fine_curvature_p); CHKERRXX(ierr);
   for (unsigned short dir = 0; dir < P4EST_DIM; ++dir) {
     ierr = VecRestoreArrayRead(two_phase_flow_solver->get_normals()[dir], &fine_normal[dir]); CHKERRXX(ierr);
-    ierr = VecRestoreArrayRead(two_phase_flow_solver->get_vnp1_nodes_omega_minus()[dir], &v_nodes_omega_minus_p[dir]); CHKERRXX(ierr);
-    ierr = VecRestoreArrayRead(two_phase_flow_solver->get_vnp1_nodes_omega_plus()[dir], &v_nodes_omega_plus_p[dir]); CHKERRXX(ierr);
   }
 
 

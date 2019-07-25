@@ -83,6 +83,7 @@ private:
 #else
   const p4est_t *p4est;
 #endif
+  const uint8_t max_p4est_lvl;
   double smallest_dxyz[P4EST_DIM];
   p4est_ghost_t *ghost;
   const my_p4est_brick_t *myb;
@@ -138,7 +139,7 @@ private:
     return to_return;
   }
 
-  void find_fine_face_neighbors_and_store_it(const p4est_topidx_t& tree_idx, const p4est_locidx_t& quad_idx, p4est_tree_t*tree, const unsigned short& face_dir, const u_int8_t& max_lvl, const p4est_locidx_t& local_face_idx);
+  void find_fine_face_neighbors_and_store_it(const p4est_topidx_t& tree_idx, const p4est_locidx_t& quad_idx, p4est_tree_t*tree, const unsigned short& face_dir, const p4est_locidx_t& local_face_idx);
 
 
 public:
@@ -219,6 +220,21 @@ public:
 
   void xyz_fr_f(p4est_locidx_t f_idx, int dir, double* xyz) const;
 
+  /*!
+   * \brief rel_xyz_face_fr_node calculates the relative cartesian coordinates between a face and a given grid node (very useful for lsqr interpolation).
+   * The method also returns the cartesian differences in terms of logical coordinate units (in order to efficiently and unambiguously count the number
+   * of independent points along Cartesian directions).
+   * \param f_idx               [in]  local index of the face of interest
+   * \param dir                 [in]  cartesian direction of the face normal (dir::x, dir::y or dir::z)
+   * \param xyz_rel             [out] pointer to an array of P4EST_DIM doubles: difference of Cartesian coordinates between the face and the point in physical units
+   * \param xyz_node            [in]  pointer to an array of P4EST_DIM doubles: cartesian cooordinates of the grid node
+   * \param node                [in]  pointer to the grid node of interest
+   * \param brick               [in]  pointer to the brick (macromesh) structure
+   * \param logical_qcoord_diff [out] pointer to an array of P4EST_DIM __int64_t: difference of Cartesian coordinates between the face and the point in logical units
+   * NOTE: logical_qcoord_diff must point to __int64_t type to make sure that logical differences and calculations across trees are correct.
+   */
+  void rel_xyz_face_fr_node(const p4est_locidx_t& f_idx, const unsigned char& dir, double* xyz_rel, const double* xyz_node, const p4est_indep_t* node, const my_p4est_brick_t* brick,  __int64_t* logical_qcoord_diff) const;
+
 #ifdef P4_TO_P8
   void point_fr_f(p4est_locidx_t f_idx, int dir, Point3& point) const
 #else
@@ -294,10 +310,131 @@ public:
   }
 
   /*!
+   * \brief found_finest_face_neighbor: looks for the (finest) face neighbor of a given face in a cartesian direction if the given face is 'finest' itself.
+   * \param local_face_idx    [in]  local face index of the face whose neighbor is looked for
+   * \param dir               [in]  cartesian direction of the face normal (dir::x, dir::y or dir::z)
+   * \param oriented_dir      [in]  oriented direction in which the neighbor is search (dir::f_m00, dir::f_p00, dir::f_0m0, etc.)
+   * \param neighbor_face_idx [out] local index of the neighbor face on output if neighbor is found
+   * \return true if the neighbor is found, false otherwise.
+   */
+  inline bool found_finest_face_neighbor(const p4est_locidx_t& local_face_idx, const unsigned short& dir, const unsigned char& oriented_dir, p4est_locidx_t& neighbor_face_idx) const
+  {
+    const uniform_face_ngbd* face_neighborhood;
+    if(finest_faces_neighborhoods_are_set && found_uniform_face_neighborhood(local_face_idx, dir, face_neighborhood))
+    {
+      neighbor_face_idx = face_neighborhood->neighbor_face_idx[oriented_dir];
+      return true;
+    }
+    p4est_locidx_t quad_idx;
+    p4est_topidx_t tree_idx;
+    const p4est_quadrant_t* quad;
+    f2q(local_face_idx, dir, quad_idx, tree_idx);
+    if(quad_idx < p4est->local_num_quadrants)
+    {
+      p4est_tree_t* tree = p4est_tree_array_index(p4est->trees, tree_idx);
+      quad = p4est_quadrant_array_index(&tree->quadrants, quad_idx - tree->quadrants_offset);
+    }
+    else
+      quad = p4est_quadrant_array_index(&ghost->ghosts, quad_idx-p4est->local_num_quadrants);
+    return found_finest_face_neighbor(quad, quad_idx, tree_idx, local_face_idx, dir, oriented_dir, neighbor_face_idx);
+  }
+
+  /*!
+   * \brief found_finest_face_neighbor: looks for the (finest) face neighbor of a given face in a cartesian direction if the given face is 'finest' itself.
+   * \param quad              [in]  pointer to the quadrant owning the face of interest
+   * \param quad_idx          [in]  local index of the quadrant owning the face of interest
+   * \param tree_idx          [in]  index of the tree in which the quadrant owning the face lies
+   * \param local_face_idx    [in]  local face index of the face whose neighbor is looked for
+   * \param dir               [in]  cartesian direction of the face normal (dir::x, dir::y or dir::z)
+   * \param oriented_dir      [in]  oriented direction in which the neighbor is search (dir::f_m00, dir::f_p00, dir::f_0m0, etc.)
+   * \param neighbor_face_idx [out] local index of the neighbor face on output if neighbor is found
+   * \return true if the neighbor is found, false otherwise.
+   */
+  inline bool found_finest_face_neighbor(const p4est_quadrant_t* quad, const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx,
+                                         const p4est_locidx_t& local_face_idx, const unsigned short& dir,
+                                         const unsigned char& oriented_dir, p4est_locidx_t& neighbor_face_idx) const
+  {
+    const uniform_face_ngbd* face_neighborhood;
+    if(finest_faces_neighborhoods_are_set && found_uniform_face_neighborhood(local_face_idx, dir, face_neighborhood))
+    {
+      neighbor_face_idx = face_neighborhood->neighbor_face_idx[oriented_dir];
+      return true;
+    }
+    if (quad->level < max_p4est_lvl)
+      return false;
+    const unsigned char face_dir      = ((q2f_[2*dir][quad_idx] == local_face_idx)? (2*dir) : (2*dir+1));
+    const unsigned char dual_face_dir = ((face_dir%2==1)? (face_dir-1) : (face_dir+1));
+    P4EST_ASSERT(q2f_[face_dir][quad_idx] == local_face_idx);
+    if(oriented_dir/2 == dir)
+    {
+      if(oriented_dir != face_dir)
+      {
+        P4EST_ASSERT(oriented_dir == dual_face_dir);
+        neighbor_face_idx = q2f_[dual_face_dir][quad_idx];
+        return true;
+      }
+      if(is_quad_Wall(p4est, tree_idx, quad, face_dir))
+      {
+        neighbor_face_idx = WALL_idx(face_dir);
+        return true;
+      }
+      vector<p4est_quadrant_t> cell_neighbor(0);
+      ngbd_c->find_neighbor_cells_of_cell(cell_neighbor, quad_idx, tree_idx, face_dir);
+      P4EST_ASSERT(cell_neighbor.size()<=1);
+      if((cell_neighbor.size()>0) && (cell_neighbor[0].level == max_p4est_lvl))
+      {
+        P4EST_ASSERT((q2f_[face_dir][cell_neighbor[0].p.piggy3.local_num] != NO_VELOCITY) && (q2f_[dual_face_dir][cell_neighbor[0].p.piggy3.local_num] == local_face_idx));
+        neighbor_face_idx = q2f_[face_dir][cell_neighbor[0].p.piggy3.local_num];
+        return true;
+      }
+      return false;
+    }
+    if(is_quad_Wall(p4est, tree_idx, quad, oriented_dir))
+    {
+      neighbor_face_idx = WALL_idx(oriented_dir);
+      return true;
+    }
+    vector<p4est_quadrant_t> cell_neighbor(0);
+    ngbd_c->find_neighbor_cells_of_cell(cell_neighbor, quad_idx, tree_idx, oriented_dir);
+    P4EST_ASSERT(cell_neighbor.size()<=1);
+    if((cell_neighbor.size()>0) && (cell_neighbor[0].level == max_p4est_lvl))
+    {
+      P4EST_ASSERT(q2f_[face_dir][cell_neighbor[0].p.piggy3.local_num] != NO_VELOCITY);
+      neighbor_face_idx = q2f_[face_dir][cell_neighbor[0].p.piggy3.local_num];
+      return true;
+    }
+    P4EST_ASSERT((cell_neighbor.size() == 0) || (cell_neighbor[0].level < max_p4est_lvl));
+    cell_neighbor.clear();
+    char search_dir[P4EST_DIM];
+    for (unsigned char k = 0; k < P4EST_DIM; ++k) {
+      if(dir==k)
+        search_dir[k] = 2*(face_dir%2)-1;
+      else if (oriented_dir/2==k)
+        search_dir[k] = 2*(oriented_dir%2)-1;
+      else
+        search_dir[k] = 0;
+    }
+#ifdef P4_TO_P8
+    ngbd_c->find_neighbor_cells_of_cell(cell_neighbor, quad_idx, tree_idx, search_dir[0], search_dir[1], search_dir[2]);
+#else
+    ngbd_c->find_neighbor_cells_of_cell(cell_neighbor, quad_idx, tree_idx, search_dir[0], search_dir[1]);
+#endif
+    P4EST_ASSERT(cell_neighbor.size()<=1);
+    if((cell_neighbor.size()>0) && (cell_neighbor[0].level == max_p4est_lvl))
+    {
+      P4EST_ASSERT(q2f_[dual_face_dir][cell_neighbor[0].p.piggy3.local_num] != NO_VELOCITY);
+      neighbor_face_idx = q2f_[dual_face_dir][cell_neighbor[0].p.piggy3.local_num];
+      return true;
+    }
+    return false;
+  }
+
+
+  /*!
    * \brief find_quads_touching_face find the quadrant(s) (two at most) on either side of a face. The queried face MUST be connected to at least
    * one quadrant in the domain (i.e. should work for any locally own face).
    * \param face_idx  [in]    the idx of the local face that is queried;
-   * \param dir       [in]    the orientation of the queried face;
+   * \param dir       [in]    cartesian direction of the normal of the queried face (dir::x, dir::y or dir::z)
    * \param qm        [inout] the quadrant touching the face in (oriented) direction 2*dir
    * \param qp        [inout] the quadrant touching the face in (oriented) direction 2*dir+1
    * NOTE: the p.piggy3 member of qm and qp are filled with the corresponding local quad index and their tree idx (if found, otherwise, both set to -1 and their level too)
@@ -366,9 +503,10 @@ public:
       memory += global_owned_indeps[dim].size()*sizeof (p4est_locidx_t);
       memory += local_inner_face_index[dim].size()*sizeof (p4est_locidx_t);
       memory += local_layer_face_index[dim].size()*sizeof (p4est_locidx_t);
-      memory += uniform_face_neighbors[dim].size()*sizeof (uniform_face_neighbors);
+      memory += uniform_face_neighbors[dim].size()*(sizeof (p4est_locidx_t) + sizeof (uniform_face_ngbd)) + sizeof (uniform_face_neighbors[dim]);
     }
     memory += sizeof (bool); // finest_faces_neighborhoods_are_set
+    memory += sizeof (uint8_t); // max_p4est_lvl
     memory += P4EST_DIM*sizeof (double); // smallest_dxyz_min
     memory += 2*P4EST_DIM*sizeof (p4est_locidx_t); // num_local and num_ghost;
     return memory;

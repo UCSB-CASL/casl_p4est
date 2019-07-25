@@ -749,6 +749,7 @@ private:
             jump_mu_grad_v_p[dir][der][fine_node_idx] += viscosity_jump()*n_[dir]*n_[der]*n_[k]*n_[r]*grad_underlined_u[k][r];
           }
         }
+        jump_mu_grad_v_p[dir][der][fine_node_idx] = 0.0;
       }
     }
   }
@@ -765,9 +766,7 @@ private:
   inline double overlined_viscosity() const { return ((overlined_side(velocity_field) == OMEGA_PLUS)? mu_plus:mu_minus);}
 
   void interpolate_velocity_at_node(const p4est_locidx_t& node_idx, double* v_nodes_omega_plus_p[P4EST_DIM], double* v_nodes_omega_minus_p[P4EST_DIM],
-                                    const double *fine_phi_p, const double *vnp1_plus_p[P4EST_DIM], const double *vnp1_minus_p[P4EST_DIM]);
-
-  void initialize_normal_derivative_of_velocity_on_faces(Vec normal_derivative_of_vnp1_minus[P4EST_DIM], Vec normal_derivative_of_vnp1_plus[P4EST_DIM], Vec vnp1_minus_p[P4EST_DIM], Vec vnp1_plus_p[P4EST_DIM]);
+                                    const double *vnp1_plus_p[P4EST_DIM], const double *vnp1_minus_p[P4EST_DIM]);
 
   /*
    * qm and qp must be defined and have their p.piggy3 filled!
@@ -782,7 +781,7 @@ private:
   /*
    * qm and qp must be defined and have their p.piggy3 filled!
    */
-  void get_velocity_seen_from_face(neighbor_value& neighbor_velocity, const p4est_locidx_t& face_idx, const uniform_face_ngbd* face_neighbors,
+  void get_velocity_seen_from_face(neighbor_value& neighbor_velocity, const p4est_locidx_t& face_idx, const p4est_locidx_t& neighbor_face_idx,
                                    const double *fine_phi_p, const double *fine_phi_xxyyzz_p[P4EST_DIM],
                                    const unsigned char &der, const unsigned char &dir,
                                    const double *vn_dir_minus_p, const double *vn_dir_plus_p, const double *jump_mu_grad_vdir_p[P4EST_DIM],
@@ -817,6 +816,11 @@ private:
     }
     quad_ngbd.clear();
   }
+
+  void initialize_normal_derivative_of_velocity_on_faces_local(const p4est_locidx_t& local_face_idx, const unsigned char& dir, const my_p4est_interpolation_nodes_t& interp_normal,
+                                                               const double* jump_mu_grad_vdir_p[P4EST_DIM], const double* fine_phi_p, const double *fine_phi_xxyyzz_p[P4EST_DIM],
+                                                               double* vnp1_minus_p[P4EST_DIM], double* vnp1_plus_p[P4EST_DIM],
+                                                               double* normal_derivative_of_vnp1_minus_p[P4EST_DIM], double* normal_derivative_of_vnp1_plus_p[P4EST_DIM]);
 
   void solve_velocity_extrapolation_local(const p4est_locidx_t& local_face_idx, const unsigned char& dir, const my_p4est_interpolation_nodes_t& interp_normal,
                                           const double* jump_mu_grad_vdir_p[P4EST_DIM], const double* fine_phi_p, const double *fine_phi_xxyyzz_p[P4EST_DIM],

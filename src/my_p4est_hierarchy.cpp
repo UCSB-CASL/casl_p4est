@@ -124,7 +124,7 @@ void my_p4est_hierarchy_t::construct_tree() {
     for( size_t q=0; q<tree->quadrants.elem_count; ++q)
     {
       const p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, q);
-      if(ghost!=NULL && p4est_quadrant_is_equal_piggy(quad, mirror)) // mirrors and quadrant are stored using the same convention, parse both simultaneously for efficiency
+      if((ghost!=NULL) && (mirror!=NULL) && p4est_quadrant_is_equal_piggy(quad, mirror)) // mirrors and quadrant are stored using the same convention, parse both simultaneously for efficiency
       {
         local_layer_quadrant_index.push_back(q+tree->quadrants_offset);
         if(mirror_idx < ghost->mirrors.elem_count)
