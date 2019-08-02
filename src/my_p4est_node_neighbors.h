@@ -61,6 +61,8 @@ class my_p4est_node_neighbors_t {
   friend class my_p4est_integration_mls_t;
   friend class my_p4est_scft_t;
   friend class my_p4est_biofilm_t;
+  friend class my_p4est_biomol_nonlinear_t;
+  friend class my_p4est_biomol_nonlinear_solver_t;
 
   /**
      * Initialize the QuadNeighborNodeOfNode information

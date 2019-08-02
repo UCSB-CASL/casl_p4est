@@ -137,7 +137,7 @@ int main(int argc, char *argv[]) {
     string stdout_str = "stdout";
     string stderr_str = "stderr";
     // molecule(s)
-    const string input_folder                 = cmd.get<string> ("input-dir", "/home/rochi/LabCode/casl_p4est/examples/biomol/mols");
+    const string input_folder                 = cmd.get<string> ("input-dir", "/home/egan/workspace/projects/biomol/mols");
 //    const string pqr_input                    = cmd.get<string>("pqr", "single_sphere."); // for validation, irrelevant for now
     const string pqr_input                    = cmd.get<string>("pqr", "3J6D."); // in 2D, for the illustrative planar molecule in the paper
 //    const string pqr_input                    = cmd.get<string>("pqr", "/3J3Q/pqr/3j3q-bundle."); // in 3D, for the graphical abstract of the paper
@@ -168,7 +168,7 @@ int main(int argc, char *argv[]) {
     const int lmin                            = cmd.get<int>("lmin", 5);
     const int lmax                            = cmd.get<int>("lmax", 10);
     const double lip                          = cmd.get<double>("lip", 1.2);
-    const int surf_gen                        = cmd.get<int>("surfgen", 1);
+    const int surf_gen                        = cmd.get<int>("surfgen", 2);
     const double probe_radius                 = cmd.get<double>("rp", 1.4);
     const int order_of_accuracy               = cmd.get<int>("OOA", 2);
 //    const string validation_string            = cmd.get<string>("validation", "no");
@@ -186,7 +186,7 @@ int main(int argc, char *argv[]) {
 
 
     // exportation folder and files
-    string output_folder                      = cmd.get<string>("output-dir", "/home/rochi/LabCode/results/biomol");
+    string output_folder                      = cmd.get<string>("output-dir", "/home/egan/workspace/projects/biomol/report/illustrations/illustration2d_exact_method");
     mkdir(output_folder.c_str(), 0755);
     string subvtk                             = cmd.get<string>("subvtk", "yes");
     const bool subvtk_flag                    = (boost::iequals("1", subvtk) || boost::iequals("yes", subvtk) || boost::iequals("true", subvtk));

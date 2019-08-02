@@ -30,9 +30,11 @@ VORO_LIBS_RELEASE     = -L$$VORO_DIR_RLS/lib -lvoro++
 VORO_LIBS_DEBUG       = -L$$VORO_DIR_DBG/lib -lvoro++
 
 # Boost
-#BOOST_INCLUDES = /home/dbochkov/Software/Boost/boost_1_70_0
+BOOST_DIR       = /home/rochi/libraries/boost/release
+BOOST_INCLUDES  = $$BOOST_DIR/include/boost
+BOOST_LIBS      = -Wl,-rpath,$$BOOST_DIR/lib -L$$BOOST_DIR/lib -lboost_filesystem
 
-QMAKE_CC=mpicc
-QMAKE_CXX=mpicxx
-QMAKE_LINK=mpicxx
+QMAKE_CC=/usr/local/bin/mpicc
+QMAKE_CXX=/usr/local/bin/mpicxx
+QMAKE_LINK=/usr/local/bin/mpicxx
 

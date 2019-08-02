@@ -1,5 +1,5 @@
-#ifndef MY_P4EST_BIOMOLECULES_H
-#define MY_P4EST_BIOMOLECULES_H
+#ifndef my_p4est_biomol_nonlinear_H
+#define my_p4est_biomol_nonlinear_H
 
 #ifdef P4_TO_P8
 #include <src/my_p8est_utils.h>
@@ -20,7 +20,7 @@
 #include <src/my_p4est_level_set.h>
 #include <src/my_p4est_cell_neighbors.h>
 #include <src/my_p4est_poisson_nodes.h>
-#include <src/my_p4est_poisson_jump_nodes_voronoi.h>
+#include <src/my_p4est_poisson_nodes_mls.h>
 #include <src/my_p4est_poisson_nodes_mls.h>
 #include <p4est_extended.h>
 #endif
@@ -576,14 +576,14 @@ public:
 
 typedef shared_ptr<reduced_list>  reduced_list_ptr;
 
-class my_p4est_biomolecules_t:public
+class my_p4est_biomol_nonlinear_t:public
     #ifdef P4_TO_P8
     CF_3
     #else
     CF_2
     #endif
 {
-  friend class my_p4est_biomolecules_solver_t;
+  friend class my_p4est_biomol_nonlinear_solver_t;
 private:
   class par_error_manager
   {
@@ -915,7 +915,7 @@ private:
     {
       if (sas_timer != NULL)
         sas_timer->start("    step 0: initialization ");
-      my_p4est_biomolecules_t* biomol = (my_p4est_biomolecules_t*) park->user_pointer;
+      my_p4est_biomol_nonlinear_t* biomol = (my_p4est_biomol_nonlinear_t*) park->user_pointer;
       biomol->update_last_current_level_only = false;
       partition_forest_and_update_sas(park);
       biomol->update_last_current_level_only = true;
@@ -1045,7 +1045,7 @@ private:
       CF_2
     #endif
   {
-    const my_p4est_biomolecules_t* biomol_pointer;
+    const my_p4est_biomol_nonlinear_t* biomol_pointer;
     double operator()(double x, double y
                   #ifdef P4_TO_P8
                       , double z
@@ -1058,7 +1058,7 @@ public:
   static FILE*        timing_file;
   static FILE*        error_file;
   /*!
-   * \brief my_p4est_biomolecules_t: constructor. Reads molecule(s) from a list of files, rotates, translates
+   * \brief my_p4est_biomol_nonlinear_t: constructor. Reads molecule(s) from a list of files, rotates, translates
    * and scales them if desired.
    * \param p4est_        [required]: a valid pointer to a valid p4est_t;
    * \param mpi_          [required]: a valid pointer to a valid mpi_environment_t
@@ -1089,18 +1089,18 @@ public:
    * be calculated and applied. The pointed value must be in )0.0, 1.0(.
    * If disregarded or NULL, no universal scaling is applied.
    */
-  my_p4est_biomolecules_t(p4est_t* p4est_, mpi_environment_t* mpi_,
+  my_p4est_biomol_nonlinear_t(p4est_t* p4est_, mpi_environment_t* mpi_,
                           const vector<string>* pqr_names = NULL, const string* input_folder = NULL,
                           vector<double>* angles = NULL,
                           const vector<double>* centroids = NULL,
                           const double* rel_side_length_biggest_box = NULL);
   /* overloads the constructor, allows to skip the input_folder argument */
-  my_p4est_biomolecules_t(p4est_t* p4est_, mpi_environment_t* mpi_,
+  my_p4est_biomol_nonlinear_t(p4est_t* p4est_, mpi_environment_t* mpi_,
                           const vector<string>* pqr_names = NULL,
                           vector<double>* angles = NULL,
                           const vector<double>* centroids = NULL,
                           const double* rel_side_length_biggest_box = NULL) :
-    my_p4est_biomolecules_t(p4est_,mpi_, pqr_names, NULL, angles, centroids, rel_side_length_biggest_box){}
+    my_p4est_biomol_nonlinear_t(p4est_,mpi_, pqr_names, NULL, angles, centroids, rel_side_length_biggest_box){}
   /* overloading the private method for public use, enabling sanity checks */
   void                add_single_molecule(const string& file_path, const vector<double>* centroid = NULL, vector<double>* angles = NULL, const double* angstrom_to_domain = NULL);
   /*!
@@ -1166,7 +1166,7 @@ public:
       break;
     default:
 #ifdef CASL_THROWSb
-      string err_msg = "my_p4est_biomolecules_t::remove_internal_cavities(const my_p4est_node_neighbors_t& ngbd, const cavity_removal_method& method_to_use = region_growing): unknown method...";
+      string err_msg = "my_p4est_biomol_nonlinear_t::remove_internal_cavities(const my_p4est_node_neighbors_t& ngbd, const cavity_removal_method& method_to_use = region_growing): unknown method...";
       err_manager.print_message_and_abort(err_msg, 314159);
 #else
       MPI_Abort(p4est->mpicomm, 314159);
@@ -1182,12 +1182,12 @@ public:
   void                return_phi_vector_nodes_and_ghost(Vec& phi_out, p4est_nodes_t*& nodes_out, p4est_ghost_t*& ghost_out);
   inline int          nmol() const {return bio_molecules.size();}
   inline int          natoms() const {return total_nb_atoms;}
-  ~my_p4est_biomolecules_t();
+  ~my_p4est_biomol_nonlinear_t();
 };
 
 
-class my_p4est_biomolecules_solver_t{
-  const my_p4est_biomolecules_t * const biomolecules;
+class my_p4est_biomol_nonlinear_solver_t{
+  const my_p4est_biomol_nonlinear_t * const biomolecules;
 
   typedef enum {
     linearPB,
@@ -1210,7 +1210,7 @@ class my_p4est_biomolecules_solver_t{
   PetscErrorCode ierr;
 
   my_p4est_cell_neighbors_t*              cell_neighbors = NULL;
-  my_p4est_poisson_jump_nodes_voronoi_t*  jump_solver = NULL;
+  my_p4est_poisson_nodes_mls_t*  jump_solver = NULL;
   my_p4est_poisson_nodes_t*               node_solver = NULL;
 
   Vec           psi_star, psi_naught, psi_bar, validation_error;
@@ -1240,7 +1240,7 @@ class my_p4est_biomolecules_solver_t{
     double psi_star_value = 0;
     for (int mol_idx = 0; mol_idx < biomolecules->nmol(); ++mol_idx)
     {
-      const my_p4est_biomolecules_t::molecule& mol = biomolecules->bio_molecules.at(mol_idx);
+      const my_p4est_biomol_nonlinear_t::molecule& mol = biomolecules->bio_molecules.at(mol_idx);
       for (int charged_atom_idx = 0; charged_atom_idx < mol.get_number_of_charged_atoms(); ++charged_atom_idx)
       {
         const Atom* a = mol.get_charged_atom(charged_atom_idx);
@@ -1300,7 +1300,7 @@ class my_p4est_biomolecules_solver_t{
 #endif
 
 public:
-  my_p4est_biomolecules_solver_t(const my_p4est_biomolecules_t* biomolecules_);
+  my_p4est_biomol_nonlinear_solver_t(const my_p4est_biomol_nonlinear_t* biomolecules_);
   // relative permittivities: coefficients in the poisson jump solver
   void          set_molecular_relative_permittivity(double epsilon_molecule);
   void          set_electrolyte_relative_permittivity(double epsilon_electrolyte);
@@ -1328,7 +1328,7 @@ public:
   Vec           return_validation_error();
   Vec           return_residual();
   void          return_all_psi_vectors(Vec& psi_star_out, Vec& psi_naught_out, Vec& psi_bar_out, Vec& psi_hat_out, bool validation_flag = false);
-  ~my_p4est_biomolecules_solver_t();
+  ~my_p4est_biomol_nonlinear_solver_t();
 };
 
-#endif // MY_P4EST_BIOMOLECULES_H
+#endif // my_p4est_biomol_nonlinear_H

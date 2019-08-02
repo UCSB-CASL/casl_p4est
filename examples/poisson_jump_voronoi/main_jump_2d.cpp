@@ -48,8 +48,8 @@
 
 using namespace std;
 
-int lmin = 2;
-int lmax = 5;
+int lmin = 3;
+int lmax = 10;
 int nb_splits = 3;
 
 int k1 = 1;
@@ -60,9 +60,9 @@ int nx = 1;
 int ny = 1;
 int nz = 1;
 
-bool save_vtk = false;
-bool save_voro = false;
-bool save_stats = false;
+bool save_vtk = true;
+bool save_voro = true;
+bool save_stats = true;
 //bool check_partition = true;
 bool check_partition = false;
 
@@ -95,7 +95,7 @@ domain omega = centered_ones;
  */
 int level_set_type = 0;
 
-int test_number = 0;
+int test_number = 3;
 /*
  *  ********* 2D *********
  * 0 - u_m=1+log(r/r0), u_p=1, mu_m=mu_p=1
@@ -1231,7 +1231,7 @@ class BC_WALL_TYPE : public WallBC2D
 public:
   BoundaryConditionType operator() (double, double) const
   {
-    if(test_number==2) return NEUMANN;
+    //if(test_number==2) return NEUMANN; rochi edit
     return DIRICHLET;
   }
 } bc_wall_type;
@@ -1267,7 +1267,7 @@ void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4e
 #elif POD_CLUSTER
   string output = "/home/rochishnu00/visualization";
 #else
-  string output = "/home/rochi/LabCode/results";
+  string output = "/home/rochi/LabCode/results/cmparewithDaniil";
 #endif
   const char *out_dir = output.c_str();
   if(out_dir==NULL)

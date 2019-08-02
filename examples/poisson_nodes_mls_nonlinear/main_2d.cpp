@@ -1,3 +1,4 @@
+
 /*
  * Test the cell based multi level-set p4est.
  * Intersection of two circles
@@ -99,7 +100,7 @@ DEFINE_PARAMETER(pl, double, zmax,  1, "Box zmax");
 // refinement parameters
 //-------------------------------------
 #ifdef P4_TO_P8
-DEFINE_PARAMETER(pl, int, lmin, 2, "Min level of the tree");
+DEFINE_PARAMETER(pl, int, lmin, 5, "Min level of the tree");
 DEFINE_PARAMETER(pl, int, lmax, 5, "Max level of the tree");
 
 DEFINE_PARAMETER(pl, int, num_splits,           3, "Number of recursive splits");
@@ -109,11 +110,11 @@ DEFINE_PARAMETER(pl, int, num_shifts_x_dir, 1, "Number of grid shifts in the x-d
 DEFINE_PARAMETER(pl, int, num_shifts_y_dir, 1, "Number of grid shifts in the y-direction");
 DEFINE_PARAMETER(pl, int, num_shifts_z_dir, 1, "Number of grid shifts in the z-direction");
 #else
-DEFINE_PARAMETER(pl, int, lmin, 5, "Min level of the tree");
-DEFINE_PARAMETER(pl, int, lmax, 5, "Max level of the tree");
+DEFINE_PARAMETER(pl, int, lmin, 8, "Min level of the tree");
+DEFINE_PARAMETER(pl, int, lmax, 15, "Max level of the tree");
 
-DEFINE_PARAMETER(pl, int, num_splits,           5, "Number of recursive splits");
-DEFINE_PARAMETER(pl, int, num_splits_per_split, 0, "Number of additional resolutions");
+DEFINE_PARAMETER(pl, int, num_splits,           1, "Number of recursive splits");
+DEFINE_PARAMETER(pl, int, num_splits_per_split, 1, "Number of additional resolutions");
 
 DEFINE_PARAMETER(pl, int, num_shifts_x_dir, 1, "Number of grid shifts in the x-direction");
 DEFINE_PARAMETER(pl, int, num_shifts_y_dir, 1, "Number of grid shifts in the y-direction");
@@ -270,7 +271,7 @@ DEFINE_PARAMETER(pl, bool, save_matrix_ascii,  0, "Save the matrix in ASCII MATL
 DEFINE_PARAMETER(pl, bool, save_matrix_binary, 0, "Save the matrix in BINARY MATLAB format");
 DEFINE_PARAMETER(pl, bool, save_convergence,   0, "Save convergence results");
 
-DEFINE_PARAMETER(pl, int, n_example, 1, "Predefined example");
+DEFINE_PARAMETER(pl, int, n_example, 8, "Predefined example");
 
 void set_example(int n_example)
 {
@@ -278,17 +279,13 @@ void set_example(int n_example)
   {
     case 0: // no boundaries, no interfaces
 
-      n_um = 14; mag_um = 1; n_mu_m = 6; mag_mu_m = 1; n_diag_m = 0; mag_diag_m = 0;
-      n_up = 13; mag_up = 1; n_mu_p = 5; mag_mu_p = 1; n_diag_p = 0; mag_diag_p = 0;
+      n_um = 0; mag_um = 1; n_mu_m = 0; mag_mu_m = 1; n_diag_m = 0; mag_diag_m = 1;
+      n_up = 0; mag_up = 1; n_mu_p = 0; mag_mu_p = 1; n_diag_p = 0; mag_diag_p = 1;
 
-//      infc_present_00 = 1;
-//      infc_present_01 = 0;
-//      infc_present_02 = 0;
-//      infc_present_03 = 0;
-      infc_present_00 = 1; infc_geom_00 = 1; infc_opn_00 = MLS_INT;
-      infc_present_01 = 0; infc_geom_01 = 0; infc_opn_01 = MLS_INT;
-      infc_present_02 = 0; infc_geom_02 = 0; infc_opn_02 = MLS_INT;
-      infc_present_03 = 0; infc_geom_03 = 0; infc_opn_03 = MLS_INT;
+      infc_present_00 = 0;
+      infc_present_01 = 0;
+      infc_present_02 = 0;
+      infc_present_03 = 0;
 
       bdry_present_00 = 0;
       bdry_present_01 = 0;
@@ -323,7 +320,7 @@ void set_example(int n_example)
       infc_present_03 = 0;
 
       bdry_present_00 = 1; bdry_geom_00 = 2; bdry_opn_00 = MLS_INT; bc_coeff_00 = 0; bc_coeff_00_mag = 1; bc_type_00 = ROBIN;
-      bdry_present_01 = 0; bdry_geom_00 = 0; bdry_opn_01 = MLS_INT; bc_coeff_01 = 0; bc_coeff_01_mag = 1; bc_type_01 = ROBIN;
+      bdry_present_01 = 0; bdry_geom_01 = 0; bdry_opn_01 = MLS_INT; bc_coeff_01 = 0; bc_coeff_01_mag = 1; bc_type_01 = ROBIN;
       bdry_present_02 = 0; bdry_geom_02 = 0; bdry_opn_02 = MLS_INT; bc_coeff_02 = 0; bc_coeff_02_mag = 1; bc_type_02 = ROBIN;
       bdry_present_03 = 0; bdry_geom_03 = 0; bdry_opn_03 = MLS_INT; bc_coeff_03 = 0; bc_coeff_03_mag = 1; bc_type_03 = ROBIN;
 
@@ -619,24 +616,6 @@ public:
 #endif
           }
         }
-    case 5: {
-        XCODE( double X = (x-xmin)/(xmax-xmin) );
-        YCODE( double Y = (y-ymin)/(ymax-ymin) );
-        switch (what) {
-        case VAL: return (*mag)*SQR((y-ymin)/(ymax-ymin))*log((x-0.5*(xmax+xmin))/(xmax- xmin)+2) +4;
-        case DDX: return (*mag)*SQR((y-ymin)/(ymax-ymin))*((-1)/SQR(x-0.5*(xmax+xmin)+2*(xmax-xmin)));
-        case DDY: return (*mag)*(2/SQR(ymax-ymin))*log((x-0.5*(xmax+xmin))/(xmax- xmin)+2);
-        }
-       }
-    case 6: {
-        XCODE( double X = (x-xmin)/(xmax-xmin) );
-        YCODE( double Y = (y-ymin)/(ymax-ymin) );
-        switch (what) {
-        case VAL: return (*mag)*exp((-1)*(y-0.5*(ymin+ymax))/(ymax-ymin));
-        case DDX: return 0.0;
-        case DDY: return (*mag)*exp((-1)*(y-0.5*(ymin+ymax))/(ymax-ymin))*(1/SQR(ymax-ymin));
-        }
-     }
     }
   }
 };
@@ -869,19 +848,6 @@ public:
           case LAP: return -(*mag)*2.*2.*2.*sin(2.*x)*cos(2.*y);
 #endif
         }
-        case 13: switch (what){
-        case VAL: return (*mag)*(exp((x - 0.5*(xmin+xmax))/(xmax -xmin)));
-        case DDX: return (*mag)*(exp((x - 0.5*(xmin+xmax))/(xmax -xmin)))*(1/(SQR(xmax-xmin)));
-        case DDY: return 0.0;
-        case LAP: return (*mag)*(1/(SQR(xmax-xmin)));
-        }
-        case 14: switch (what){
-        case VAL: return (*mag)*(cos(x/(xmax-xmin))*sin(y/(ymax-ymin)));
-        case DDX: return -(*mag)*(cos(x/(xmax-xmin))*sin(y/(ymax-ymin)))*(1/SQR(xmax-xmin));
-        case DDY: return -(*mag)*(cos(x/(xmax-xmin))*sin(y/(ymax-ymin)))*(1/SQR(ymax-ymin));
-        case LAP: return -(*mag)*((1/(SQR(xmax-xmin)))+(1/(SQR(ymax-ymin))));
-        }
-
       default:
         throw std::invalid_argument("Unknown test function\n");
     }
@@ -1234,7 +1200,7 @@ public:
         return -1;
       case 1: // sphere
       {
-        static double r0 = 0.5;
+        static double r0 = 0.533;
         static double DIM( xc = 0, yc = 0, zc = 0 );
         static flower_shaped_domain_t circle(r0, DIM(xc, yc, zc));
         switch (what) {

@@ -749,7 +749,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
     // determine discretization type for each node
     //-------------------------------------------------------------------------------------
     ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_determine_node_types, 0, 0, 0, 0); CHKERRXX(ierr);
-    node_scheme_.resize(nodes_->num_owned_indeps, UNDEFINED);
+    node_scheme_ .resize(nodes_->num_owned_indeps, UNDEFINED);
     int num_bdry_fvs = 0;
     int num_infc_fvs = 0;
     int num_bdry_cart_points = 0;
