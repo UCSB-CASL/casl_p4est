@@ -1,9 +1,3 @@
-# --------------------------------------------------------------
-# Common settings for projects using on stampede supercomputer 
-# --------------------------------------------------------------
-
-CASL_P4EST = /home/dbochkov/Dropbox/Code/casl_p4est_multialloy
-
 # PETSc
 PETSC_DIR_DBG = /home/dbochkov/Software/PETSc/petsc-3.9.2/build-debug-mpich
 PETSC_DIR_RLS = /home/dbochkov/Software/PETSc/petsc-3.9.2/build-release-mpich

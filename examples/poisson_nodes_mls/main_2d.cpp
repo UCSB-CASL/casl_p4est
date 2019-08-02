@@ -109,11 +109,11 @@ DEFINE_PARAMETER(pl, int, num_shifts_x_dir, 1, "Number of grid shifts in the x-d
 DEFINE_PARAMETER(pl, int, num_shifts_y_dir, 1, "Number of grid shifts in the y-direction");
 DEFINE_PARAMETER(pl, int, num_shifts_z_dir, 1, "Number of grid shifts in the z-direction");
 #else
-DEFINE_PARAMETER(pl, int, lmin, 5, "Min level of the tree");
+DEFINE_PARAMETER(pl, int, lmin, 2, "Min level of the tree");
 DEFINE_PARAMETER(pl, int, lmax, 5, "Max level of the tree");
 
 DEFINE_PARAMETER(pl, int, num_splits,           5, "Number of recursive splits");
-DEFINE_PARAMETER(pl, int, num_splits_per_split, 0, "Number of additional resolutions");
+DEFINE_PARAMETER(pl, int, num_splits_per_split, 1, "Number of additional resolutions");
 
 DEFINE_PARAMETER(pl, int, num_shifts_x_dir, 1, "Number of grid shifts in the x-direction");
 DEFINE_PARAMETER(pl, int, num_shifts_y_dir, 1, "Number of grid shifts in the y-direction");
@@ -158,6 +158,9 @@ DEFINE_PARAMETER(pl, double, mag_diag_p, 1, "");
 DEFINE_PARAMETER(pl, int, bc_wtype, DIRICHLET, "Type of boundary conditions on the walls");
 
 // boundary geometry
+DEFINE_PARAMETER(pl, int, bdry_phi_num, 0, "Domain geometry");
+DEFINE_PARAMETER(pl, int, infc_phi_num, 0, "Domain geometry");
+
 DEFINE_PARAMETER(pl, bool, bdry_present_00, 0, "Domain geometry");
 DEFINE_PARAMETER(pl, bool, bdry_present_01, 0, "Domain geometry");
 DEFINE_PARAMETER(pl, bool, bdry_present_02, 0, "Domain geometry");
@@ -233,7 +236,7 @@ DEFINE_PARAMETER(pl, bool, try_remove_hanging_cells, 0, "Ask solver to eliminate
 
 DEFINE_PARAMETER(pl, bool, store_finite_volumes,   1, "");
 DEFINE_PARAMETER(pl, bool, apply_bc_pointwise,     1, "");
-DEFINE_PARAMETER(pl, bool, use_centroid_always,    0, "");
+DEFINE_PARAMETER(pl, bool, use_centroid_always,    1, "");
 DEFINE_PARAMETER(pl, bool, sample_bc_node_by_node, 0, "");
 
 //-------------------------------------
@@ -281,14 +284,13 @@ void set_example(int n_example)
       n_um = 14; mag_um = 1; n_mu_m = 6; mag_mu_m = 1; n_diag_m = 0; mag_diag_m = 0;
       n_up = 13; mag_up = 1; n_mu_p = 5; mag_mu_p = 1; n_diag_p = 0; mag_diag_p = 0;
 
-//      infc_present_00 = 1;
-//      infc_present_01 = 0;
-//      infc_present_02 = 0;
-//      infc_present_03 = 0;
-      infc_present_00 = 1; infc_geom_00 = 1; infc_opn_00 = MLS_INT;
-      infc_present_01 = 0; infc_geom_01 = 0; infc_opn_01 = MLS_INT;
-      infc_present_02 = 0; infc_geom_02 = 0; infc_opn_02 = MLS_INT;
-      infc_present_03 = 0; infc_geom_03 = 0; infc_opn_03 = MLS_INT;
+      infc_phi_num = 0;
+      bdry_phi_num = 0;
+
+      infc_present_00 = 0;
+      infc_present_01 = 0;
+      infc_present_02 = 0;
+      infc_present_03 = 0;
 
       bdry_present_00 = 0;
       bdry_present_01 = 0;
@@ -300,6 +302,9 @@ void set_example(int n_example)
 
       n_um = 0; mag_um = 1; n_mu_m = 0; mag_mu_m = 1; n_diag_m = 0; mag_diag_m = 1;
       n_up = 0; mag_up = 1; n_mu_p = 0; mag_mu_p = 1; n_diag_p = 0; mag_diag_p = 1;
+
+      infc_phi_num = 0;
+      bdry_phi_num = 1;
 
       infc_present_00 = 0;
       infc_present_01 = 0;
@@ -317,6 +322,9 @@ void set_example(int n_example)
       n_um = 0; mag_um = 1; n_mu_m = 0; mag_mu_m = 1; n_diag_m = 0; mag_diag_m = 1;
       n_up = 0; mag_up = 1; n_mu_p = 0; mag_mu_p = 1; n_diag_p = 0; mag_diag_p = 1;
 
+      infc_phi_num = 0;
+      bdry_phi_num = 1;
+
       infc_present_00 = 0;
       infc_present_01 = 0;
       infc_present_02 = 0;
@@ -332,6 +340,9 @@ void set_example(int n_example)
 
       n_um = 0; mag_um = 1; n_mu_m = 0; mag_mu_m = 1; n_diag_m = 0; mag_diag_m = 1;
       n_up = 0; mag_up = 1; n_mu_p = 0; mag_mu_p = 1; n_diag_p = 0; mag_diag_p = 1;
+
+      infc_phi_num = 0;
+      bdry_phi_num = 1;
 
       infc_present_00 = 0;
       infc_present_01 = 0;
@@ -349,6 +360,9 @@ void set_example(int n_example)
       n_um = 0; mag_um = 1; n_mu_m = 0; mag_mu_m = 1; n_diag_m = 0; mag_diag_m = 1;
       n_up = 0; mag_up = 1; n_mu_p = 0; mag_mu_p = 1; n_diag_p = 0; mag_diag_p = 1;
 
+      infc_phi_num = 0;
+      bdry_phi_num = 1;
+
       infc_present_00 = 0;
       infc_present_01 = 0;
       infc_present_02 = 0;
@@ -364,6 +378,9 @@ void set_example(int n_example)
 
       n_um = 0; mag_um = 1; n_mu_m = 0; mag_mu_m = 1; n_diag_m = 0; mag_diag_m = 1;
       n_up = 0; mag_up = 1; n_mu_p = 0; mag_mu_p = 1; n_diag_p = 0; mag_diag_p = 1;
+
+      infc_phi_num = 0;
+      bdry_phi_num = P4EST_DIM+1;
 
       infc_present_00 = 0;
       infc_present_01 = 0;
@@ -382,6 +399,9 @@ void set_example(int n_example)
       n_um = 3; mag_um = 1; n_mu_m = 0; mag_mu_m = 1; n_diag_m = 0; mag_diag_m = 1;
       n_up = 0; mag_up = 1; n_mu_p = 0; mag_mu_p = 1; n_diag_p = 0; mag_diag_p = 1;
 
+      infc_phi_num = 0;
+      bdry_phi_num = 2;
+
       infc_present_00 = 0; infc_geom_00 = 0;
       infc_present_01 = 0; infc_geom_01 = 0;
       infc_present_02 = 0; infc_geom_02 = 0;
@@ -398,6 +418,9 @@ void set_example(int n_example)
 
       n_um = 4; mag_um = 1; n_mu_m = 1; mag_mu_m = 1; n_diag_m = 1; mag_diag_m = 1;
       n_up = 0; mag_up = 1; n_mu_p = 0; mag_mu_p = 1; n_diag_p = 0; mag_diag_p = 1;
+
+      infc_phi_num = 0;
+      bdry_phi_num = 2;
 
       infc_present_00 = 0;
       infc_present_01 = 0;
@@ -416,6 +439,9 @@ void set_example(int n_example)
       n_um = 6; mag_um = 1; n_mu_m = 1; mag_mu_m = 1; n_diag_m = 2; mag_diag_m = 1;
       n_up = 0; mag_up = 1; n_mu_p = 0; mag_mu_p = 1; n_diag_p = 0; mag_diag_p = 1;
 
+      infc_phi_num = 0;
+      bdry_phi_num = 3;
+
       infc_present_00 = 0;
       infc_present_01 = 0;
       infc_present_02 = 0;
@@ -432,6 +458,9 @@ void set_example(int n_example)
 
       n_um = 11; mag_um = 1; n_mu_m = 0; mag_mu_m = 5; n_diag_m = 0; mag_diag_m = 1;
       n_up = 12; mag_up = 1; n_mu_p = 0; mag_mu_p = 1; n_diag_p = 0; mag_diag_p = 1;
+
+      infc_phi_num = 1;
+      bdry_phi_num = 0;
 
       infc_present_00 = 1; infc_geom_00 = 1; infc_opn_00 = MLS_INT;
       infc_present_01 = 0; infc_geom_01 = 0; infc_opn_01 = MLS_INT;
@@ -450,6 +479,9 @@ void set_example(int n_example)
       n_um = 11; mag_um = 1; n_mu_m = 1; mag_mu_m = 5; n_diag_m = 0; mag_diag_m = 1;
       n_up = 12; mag_up = 1; n_mu_p = 0; mag_mu_p = 1; n_diag_p = 0; mag_diag_p = 1;
 
+      infc_phi_num = 1;
+      bdry_phi_num = 0;
+
       infc_present_00 = 1; infc_geom_00 = 2; infc_opn_00 = MLS_INT;
       infc_present_01 = 0; infc_geom_01 = 0; infc_opn_01 = MLS_INT;
       infc_present_02 = 0; infc_geom_02 = 0; infc_opn_02 = MLS_INT;
@@ -466,6 +498,9 @@ void set_example(int n_example)
 
       n_um = 11; mag_um = 1; n_mu_m = 1; mag_mu_m = 10; n_diag_m = 0; mag_diag_m = 1;
       n_up = 12; mag_up = 1; n_mu_p = 0; mag_mu_p =  1; n_diag_p = 0; mag_diag_p = 1;
+
+      infc_phi_num = 1;
+      bdry_phi_num = 0;
 
       infc_present_00 = 1; infc_geom_00 = 3; infc_opn_00 = MLS_INT;
       infc_present_01 = 0; infc_geom_01 = 0; infc_opn_01 = MLS_INT;
@@ -484,6 +519,9 @@ void set_example(int n_example)
       n_um = 11; mag_um = 1; n_mu_m = 1; mag_mu_m = 10; n_diag_m = 0; mag_diag_m = 1;
       n_up = 12; mag_up = 1; n_mu_p = 0; mag_mu_p =  1; n_diag_p = 0; mag_diag_p = 1;
 
+      infc_phi_num = 1;
+      bdry_phi_num = 1;
+
       infc_present_00 = 1; infc_geom_00 = 4; infc_opn_00 = MLS_INT;
       infc_present_01 = 0; infc_geom_01 = 0; infc_opn_01 = MLS_INT;
       infc_present_02 = 0; infc_geom_02 = 0; infc_opn_02 = MLS_INT;
@@ -493,6 +531,30 @@ void set_example(int n_example)
       bdry_present_01 = 0; bdry_geom_01 = 0; bdry_opn_01 = MLS_INT; bc_coeff_01 = 0; bc_coeff_01_mag = 1; bc_type_01 = ROBIN;
       bdry_present_02 = 0; bdry_geom_02 = 0; bdry_opn_02 = MLS_INT; bc_coeff_02 = 0; bc_coeff_02_mag = 1; bc_type_02 = ROBIN;
       bdry_present_03 = 0; bdry_geom_03 = 0; bdry_opn_03 = MLS_INT; bc_coeff_03 = 0; bc_coeff_03_mag = 1; bc_type_03 = ROBIN;
+
+      break;
+
+    case 13: // example form Maxime's multiphase paper
+
+      XCODE( xmin = -2; xmax = 2 );
+      YCODE( ymin = -2; ymax = 2 );
+      ZCODE( zmin = -2; zmax = 2 );
+
+      n_um = 1; mag_um = 1; n_mu_m = 0; mag_mu_m = 1; n_diag_m = 0; mag_diag_m = 1;
+      n_up = 0; mag_up = 1; n_mu_p = 0; mag_mu_p = 1.e8; n_diag_p = 0; mag_diag_p = 1;
+
+      infc_phi_num = 1;
+      bdry_phi_num = 0;
+
+      infc_present_00 = 1; infc_geom_00 = 1; infc_opn_00 = MLS_INT;
+      infc_present_01 = 0; infc_geom_01 = 0; infc_opn_01 = MLS_INT;
+      infc_present_02 = 0; infc_geom_02 = 0; infc_opn_02 = MLS_INT;
+      infc_present_03 = 0; infc_geom_03 = 0; infc_opn_03 = MLS_INT;
+
+      bdry_present_00 = 0;
+      bdry_present_01 = 0;
+      bdry_present_02 = 0;
+      bdry_present_03 = 0;
 
       break;
   }
@@ -1234,9 +1296,9 @@ public:
         return -1;
       case 1: // sphere
       {
-        static double r0 = 0.5;
+        static double r0 = 0.58;
         static double DIM( xc = 0, yc = 0, zc = 0 );
-        static flower_shaped_domain_t circle(r0, DIM(xc, yc, zc));
+        static flower_shaped_domain_t circle(r0, DIM(xc, yc, zc), 0, -1);
         switch (what) {
           OCOMP( case VAL: return circle.phi  (DIM(x,y,z)) );
           XCOMP( case DDX: return circle.phi_x(DIM(x,y,z)) );
@@ -1877,13 +1939,19 @@ int main (int argc, char* argv[])
               for (int i = 0; i < bdry_phi_max_num; ++i)
                 if (*bdry_present_all[i] == true)
                 {
-                  solver.add_boundary((mls_opn_t) *bdry_opn_all[i], bdry_phi_vec_all[i], DIM(NULL, NULL, NULL), (BoundaryConditionType) *bc_type_all[i], bc_value_cf_all[i], bc_coeff_cf_all[i]);
+                  if (apply_bc_pointwise)
+                    solver.add_boundary((mls_opn_t) *bdry_opn_all[i], bdry_phi_vec_all[i], DIM(NULL, NULL, NULL), (BoundaryConditionType) *bc_type_all[i], zero_cf, zero_cf);
+                  else
+                    solver.add_boundary((mls_opn_t) *bdry_opn_all[i], bdry_phi_vec_all[i], DIM(NULL, NULL, NULL), (BoundaryConditionType) *bc_type_all[i], bc_value_cf_all[i], bc_coeff_cf_all[i]);
                 }
 
               for (int i = 0; i < infc_phi_max_num; ++i)
                 if (*infc_present_all[i] == true)
                 {
-                  solver.add_interface((mls_opn_t) *infc_opn_all[i], infc_phi_vec_all[i], DIM(NULL, NULL, NULL), jc_value_cf_all[i], jc_flux_cf_all[i]);
+                  if (apply_bc_pointwise)
+                    solver.add_interface((mls_opn_t) *infc_opn_all[i], infc_phi_vec_all[i], DIM(NULL, NULL, NULL), zero_cf, zero_cf);
+                  else
+                    solver.add_interface((mls_opn_t) *infc_opn_all[i], infc_phi_vec_all[i], DIM(NULL, NULL, NULL), jc_value_cf_all[i], jc_flux_cf_all[i]);
                 }
 
 
@@ -1897,108 +1965,121 @@ int main (int argc, char* argv[])
               solver.set_use_taylor_correction(taylor_correction);
               solver.set_kink_treatment(kink_special_treatment);
 
-              std::vector<double> ptwise_dirichlet_values;
+              vector< vector<double> > pw_bc_values(bdry_phi_num);
+              vector< vector<double> > pw_bc_values_robin(bdry_phi_num);
+              vector< vector<double> > pw_bc_coeffs_robin(bdry_phi_num);
 
-              std::vector<double> ptwise_neumann_values;
-              std::vector<double> ptwise_robin_values;
-              std::vector<double> ptwise_robin_coeffs;
-
-              std::vector<double> ptwise_surfgen_values;
-              std::vector<double> ptwise_jump_values;
-              std::vector<double> ptwise_jump_fluxes;
+              vector< vector<double> > pw_jc_sol_jump_taylor(infc_phi_num);
+              vector< vector<double> > pw_jc_flx_jump_taylor(infc_phi_num);
+              vector< vector<double> > pw_jc_flx_jump_integr(infc_phi_num);
 
               if (apply_bc_pointwise)
               {
                 solver.preassemble_linear_system();
 
-                ptwise_dirichlet_values.assign(solver.ptwise_dirichlet_size(), 0);
+                // allocate memory for bc values
+                for (int i = 0; i < bdry_phi_num; ++i)
+                {
+                  pw_bc_values      [i].assign(solver.pw_bc_num_value_pts(i), 0);
+                  pw_bc_values_robin[i].assign(solver.pw_bc_num_robin_pts(i), 0);
+                  pw_bc_coeffs_robin[i].assign(solver.pw_bc_num_robin_pts(i), 0);
+                }
 
-                ptwise_neumann_values.assign(solver.ptwise_neumann_size(), 0);
-                ptwise_robin_values.assign(solver.ptwise_robin_size(), 0);
-                ptwise_robin_coeffs.assign(solver.ptwise_robin_size(), 0);
-
-                ptwise_surfgen_values.assign(solver.ptwise_jump_size(), 0);
-                ptwise_jump_values.assign(solver.ptwise_jump_size(), 0);
-                ptwise_jump_fluxes.assign(solver.ptwise_jump_size(), 0);
+                for (int i = 0; i < infc_phi_num; ++i)
+                {
+                  pw_jc_sol_jump_taylor[i].assign(solver.pw_jc_num_taylor_pts(i), 0);
+                  pw_jc_flx_jump_taylor[i].assign(solver.pw_jc_num_taylor_pts(i), 0);
+                  pw_jc_flx_jump_integr[i].assign(solver.pw_jc_num_integr_pts(i), 0);
+                }
 
                 double xyz[P4EST_DIM];
+                // sample bc and jc at requested points
                 if (sample_bc_node_by_node)
                 {
-                  // sample dirichlet values
                   foreach_local_node(n, nodes)
                   {
-                    for (int i = 0; i < solver.ptwise_dirichlet_size(n); ++i)
+                    for (int i = 0; i < bdry_phi_num; ++i)
                     {
-                      int idx = solver.ptwise_dirichlet_get_idx(n,i);
-                      solver.ptwise_dirichlet_get_xyz(idx, xyz);
-                      ptwise_dirichlet_values[idx] = bc_value_cf_all[solver.ptwise_dirichlet_get_id(idx)].value(xyz);
+                      for (int k = 0; k < solver.pw_bc_num_value_pts(i,n); ++k)
+                      {
+                        int j = solver.pw_bc_idx_value_pt(i,n,k);
+                        solver.pw_bc_xyz_value_pt(i, j, xyz);
+                        pw_bc_values[i][j] = bc_value_cf_all[i].value(xyz);
+                      }
+
+                      for (int k = 0; k < solver.pw_bc_num_robin_pts(i,n); ++k)
+                      {
+                        int j = solver.pw_bc_idx_robin_pt(i,n,k);
+                        solver.pw_bc_xyz_robin_pt(i, j, xyz);
+                        pw_bc_values_robin[i][j] = bc_value_cf_all[i].value(xyz);
+                        pw_bc_coeffs_robin[i][j] = bc_coeff_cf_all[i].value(xyz);
+                      }
+                    }
+
+                    for (int i = 0; i < infc_phi_num; ++i)
+                    {
+                      for (int k = 0; k < solver.pw_jc_num_taylor_pts(i,n); ++k)
+                      {
+                        int j = solver.pw_jc_idx_taylor_pt(i,n,k);
+                        solver.pw_jc_xyz_taylor_pt(i, j, xyz);
+                        pw_jc_sol_jump_taylor[i][j] = jc_value_cf_all[i].value(xyz);
+                        pw_jc_flx_jump_taylor[i][j] = jc_flux_cf_all[i].value(xyz);
+                      }
+
+                      for (int k = 0; k < solver.pw_jc_num_integr_pts(i,n); ++k)
+                      {
+                        int j = solver.pw_jc_idx_integr_pt(i,n,k);
+                        solver.pw_jc_xyz_integr_pt(i, j, xyz);
+                        pw_jc_flx_jump_integr[i][j] = jc_flux_cf_all[i].value(xyz);
+                      }
+                    }
+                  }
+                }
+                else
+                {
+                  for (int i = 0; i < bdry_phi_num; ++i)
+                  {
+                    for (int j = 0; j < solver.pw_bc_num_value_pts(i); ++j)
+                    {
+                      solver.pw_bc_xyz_value_pt(i, j, xyz);
+                      pw_bc_values[i][j] = bc_value_cf_all[i].value(xyz);
+                    }
+
+                    for (int j = 0; j < solver.pw_bc_num_robin_pts(i); ++j)
+                    {
+                      solver.pw_bc_xyz_robin_pt(i, j, xyz);
+                      pw_bc_values_robin[i][j] = bc_value_cf_all[i].value(xyz);
+                      pw_bc_coeffs_robin[i][j] = bc_coeff_cf_all[i].value(xyz);
                     }
                   }
 
-                  // sample neumann and robin values
-                  foreach_local_node(n, nodes)
+                  for (int i = 0; i < infc_phi_num; ++i)
                   {
-                    for (int i = 0; i < solver.ptwise_neumann_size(n); ++i)
+                    for (int j = 0; j < solver.pw_jc_num_taylor_pts(i); ++j)
                     {
-                      int idx = solver.ptwise_neumann_get_idx(n,i);
-                      solver.ptwise_neumann_get_xyz(idx, xyz);
-                      ptwise_neumann_values[idx] = bc_value_cf_all[solver.ptwise_neumann_get_id(idx)].value(xyz);
-
-                      solver.ptwise_robin_get_xyz(idx, xyz);
-                      ptwise_robin_values[idx] = bc_value_cf_all[solver.ptwise_robin_get_id(idx)].value(xyz);
-                      ptwise_robin_coeffs[idx] = bc_coeff_cf_all[solver.ptwise_robin_get_id(idx)].value(xyz);
+                      solver.pw_jc_xyz_taylor_pt(i, j, xyz);
+                      pw_jc_sol_jump_taylor[i][j] = jc_value_cf_all[i].value(xyz);
+                      pw_jc_flx_jump_taylor[i][j] = jc_flux_cf_all [i].value(xyz);
                     }
-                  }
 
-                  // sample jump conditions
-                  foreach_local_node(n, nodes)
-                  {
-                    for (int i = 0; i < solver.ptwise_jump_size(n); ++i)
+                    for (int j = 0; j < solver.pw_jc_num_integr_pts(i); ++j)
                     {
-                      int idx = solver.ptwise_jump_get_idx(n,i);
-                      solver.ptwise_surfgen_get_xyz(idx, xyz);
-                      ptwise_surfgen_values[idx] = jc_flux_cf_all[solver.ptwise_jump_get_id(idx)].value(xyz);
-
-                      solver.ptwise_jump_get_xyz(idx, xyz);
-                      ptwise_jump_values[idx] = jc_value_cf_all[solver.ptwise_jump_get_id(idx)].value(xyz);
-                      ptwise_jump_fluxes[idx] = jc_flux_cf_all [solver.ptwise_jump_get_id(idx)].value(xyz);
+                      solver.pw_jc_xyz_integr_pt(i, j, xyz);
+                      pw_jc_flx_jump_integr[i][j] = jc_flux_cf_all[i].value(xyz);
                     }
-                  }
-                } else {
-
-                  // sample dirichlet values
-                  for (int i = 0; i < solver.ptwise_dirichlet_size(); ++i)
-                  {
-                    solver.ptwise_dirichlet_get_xyz(i, xyz);
-                    ptwise_dirichlet_values[i] = bc_value_cf_all[solver.ptwise_dirichlet_get_id(i)].value(xyz);
-                  }
-
-                  // sample neumann and robin values
-                  for (int i = 0; i < solver.ptwise_neumann_size(); ++i)
-                  {
-                    solver.ptwise_neumann_get_xyz(i, xyz);
-                    ptwise_neumann_values[i] = bc_value_cf_all[solver.ptwise_neumann_get_id(i)].value(xyz);
-
-                    solver.ptwise_robin_get_xyz(i, xyz);
-                    ptwise_robin_values[i] = bc_value_cf_all[solver.ptwise_robin_get_id(i)].value(xyz);
-                    ptwise_robin_coeffs[i] = bc_coeff_cf_all[solver.ptwise_robin_get_id(i)].value(xyz);
-                  }
-
-                  // sample jump conditions
-                  for (int i = 0; i < solver.ptwise_jump_size(); ++i)
-                  {
-                    solver.ptwise_surfgen_get_xyz(i, xyz);
-                    ptwise_surfgen_values[i] = jc_flux_cf_all[solver.ptwise_jump_get_id(i)].value(xyz);
-
-                    solver.ptwise_jump_get_xyz(i, xyz);
-                    ptwise_jump_values[i] = jc_value_cf_all[solver.ptwise_jump_get_id(i)].value(xyz);
-                    ptwise_jump_fluxes[i] = jc_flux_cf_all [solver.ptwise_jump_get_id(i)].value(xyz);
                   }
                 }
 
-                solver.set_ptwise_dirichlet(ptwise_dirichlet_values);
-                solver.set_ptwise_robin(ptwise_neumann_values, ptwise_robin_values, ptwise_robin_coeffs);
-                solver.set_ptwise_jump(ptwise_surfgen_values, ptwise_jump_values, ptwise_jump_fluxes);
+                // pass the sampled values to solver
+                for (int i = 0; i < bdry_phi_num; ++i)
+                {
+                  solver.set_bc(i, (BoundaryConditionType) *bc_type_all[i], pw_bc_values[i], pw_bc_values_robin[i], pw_bc_coeffs_robin[i]);
+                }
+
+                for (int i = 0; i < infc_phi_num; ++i)
+                {
+                  solver.set_jc(i, pw_jc_sol_jump_taylor[i], pw_jc_flx_jump_taylor[i], pw_jc_flx_jump_integr[i]);
+                }
               }
 
               solver.solve(sol);

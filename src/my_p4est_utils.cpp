@@ -2877,7 +2877,7 @@ void construct_finite_volume(my_p4est_finite_volume_t& fv, p4est_locidx_t n, p4e
   node_xyz_fr_n(n, p4est, nodes, xyz_C);
   dxyz_min(p4est, dxyz);
 
-  double scale = 1./MAX(dxyz[0], dxyz[1], dxyz[2]);
+  double scale = 1./MAX(DIM(dxyz[0], dxyz[1], dxyz[2]));
   double diag  = sqrt(SUMD(SQR(dxyz[0]), SQR(dxyz[1]), SQR(dxyz[2])));
 
   // Reconstruct geometry
@@ -3049,5 +3049,115 @@ void compute_wall_normal(const int &dir, double normal[])
 #endif
     default:
       throw std::invalid_argument("Invalid direction\n");
+  }
+}
+
+double interface_point_cartesian_t::interpolate(const my_p4est_node_neighbors_t *ngbd, double *ptr)
+{
+  const quad_neighbor_nodes_of_node_t qnnn = ngbd->get_neighbors(n);
+
+  p4est_locidx_t neigh = qnnn.neighbor(dir);
+  double         h     = qnnn.distance(dir);
+
+  return (ptr[n]*(h-dist) + ptr[neigh]*dist)/h;
+}
+
+double interface_point_cartesian_t::interpolate(const my_p4est_node_neighbors_t *ngbd, double *ptr, double *ptr_dd[P4EST_DIM])
+{
+  const quad_neighbor_nodes_of_node_t qnnn = ngbd->get_neighbors(n);
+
+  p4est_locidx_t neigh = qnnn.neighbor(dir);
+  double         h     = qnnn.distance(dir);
+  short          dim   = dir / 2;
+
+  double p0  = ptr[n];
+  double p1  = ptr[neigh];
+  double pdd = MINMOD(ptr_dd[dim][n], ptr_dd[dim][neigh]);
+
+  return .5*(p0+p1) + (p1-p0)*(dist/h-.5) + .5*pdd*(dist*dist-dist*h);
+}
+
+PetscErrorCode vec_and_ptr_t::ierr;
+PetscErrorCode vec_and_ptr_dim_t::ierr;
+PetscErrorCode vec_and_ptr_array_t::ierr;
+
+// Generalized smoothstep
+
+// Returns binomial coefficient without explicit use of factorials,
+// which can't be used with negative integers
+double pascalTriangle(int a, int b) {
+  double result = 1.;
+  for (int i = 0; i < b; ++i)
+    result *= double(a - i) / double(i + 1);
+  return result;
+}
+
+double clamp(double x, double lowerlimit, double upperlimit)
+{
+  if (x < lowerlimit) x = lowerlimit;
+  if (x > upperlimit) x = upperlimit;
+  return x;
+}
+
+double smoothstep(int N, double x) {
+  x = clamp(x, 0, 1); // x must be equal to or between 0 and 1
+  double result = 0;
+  for (int n = 0; n <= N; ++n)
+  {
+    result += pascalTriangle(-N - 1, n) *
+              pascalTriangle(2 * N + 1, N - n) *
+              pow(x, N + n + 1);
+  }
+  return result;
+}
+
+void variable_step_BDF_implicit(const int order, std::vector<double> &dt, std::vector<double> &coeffs)
+{
+  coeffs.assign(order+1, 0);
+  std::vector<double> r(order-1, 1.);
+
+  if (dt.size() < order) throw;
+
+  switch (order)
+  {
+    case 1:
+      coeffs[0] =  1;
+      coeffs[1] = -1;
+      break;
+    case 2:
+      r[0] = dt[0]/dt[1];
+
+      coeffs[0] = (1.+2.*r[0])/(1.+r[0]);
+      coeffs[1] = -(1.+r[0]);
+      coeffs[2] = SQR(r[0])/(1.+r[0]);
+      break;
+    case 3:
+      r[0] = dt[0]/dt[1];
+      r[1] = dt[1]/dt[2];
+
+      coeffs[0] = 1. + r[0]/(1.+r[0]) + r[1]*r[0]/(1.+r[1]*(1.+r[0]));
+      coeffs[1] = -1. - r[0] - r[0]*r[1]*(1.+r[0])/(1.+r[1]);
+      coeffs[2] = SQR(r[0])*(r[1] + 1./(1.+r[0]));
+      coeffs[3] = - pow(r[1], 3.)*pow(r[0], 2)*(1.+r[0])/(1.+r[1])/(1.+r[1]+r[1]*r[0]);
+      break;
+    case 4:
+    {
+      r[0] = dt[0]/dt[1];
+      r[1] = dt[1]/dt[2];
+      r[2] = dt[2]/dt[3];
+
+      double a1 = 1.+r[2]*(1.+r[1]);
+      double a2 = 1.+r[1]*(1.+r[0]);
+      double a3 = 1.+r[2]*a2;
+
+      coeffs[0] = 1. + r[0]/(1.+r[0]) + r[1]*r[0]/a2 + r[2]*r[1]*r[0]/a3;
+      coeffs[1] = -1.-r[0]*(1.+r[1]*(1.+r[0])/(1.+r[1])*(1.+r[2]*a2/a1));
+      coeffs[2] = r[0]*(r[0]/(1.+r[0]) + r[1]*r[0]*(a3+r[2])/(1.+r[2]));
+      coeffs[3] = -pow(r[1],3.)*pow(r[0],2.)*(1.+r[0])/(1.+r[1])*a3/a2;
+      coeffs[4] = (1.+r[0])/(1+r[2])*a2/a1*pow(r[2],4.)*pow(r[1],3.)*pow(r[0],2.)/a3;
+    }
+      break;
+    default:
+      throw;
   }
 }

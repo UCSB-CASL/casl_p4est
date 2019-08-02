@@ -20,7 +20,7 @@
   for (p4est_locidx_t n = nodes->num_owned_indeps; n < (p4est_locidx_t) nodes->indep_nodes.elem_count; ++n)
 
 #define foreach_node(n, nodes)\
-  for (p4est_locidx_t n = 0; n < (p4est_locidx_t) nodes->indep_nodes.elem_count; ++n)
+  for (p4est_locidx_t n = 0; n < p4est_locidx_t (nodes->indep_nodes.elem_count); ++n)
 
 #define foreach_local_quad(q, tree)\
   for (p4est_locidx_t q = 0; q < (p4est_locidx_t) tree->quadrants.elem_count; ++q)

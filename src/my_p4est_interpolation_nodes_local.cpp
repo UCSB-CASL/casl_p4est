@@ -591,7 +591,9 @@ double my_p4est_interpolation_nodes_local_t::quadratic_non_oscillatory_continuou
 #endif
 
   if (value != value)
-    throw std::domain_error("[CASL_ERROR]: interpolation result is nan");
+  {
+    throw std::domain_error("[CASL_ERROR]: interpolation result is nan here");
+  }
 
   return value;
 }
