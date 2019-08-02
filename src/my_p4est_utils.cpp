@@ -2799,3 +2799,85 @@ double interface_point_cartesian_t::interpolate(const my_p4est_node_neighbors_t 
 
 PetscErrorCode vec_and_ptr_t::ierr;
 PetscErrorCode vec_and_ptr_dim_t::ierr;
+PetscErrorCode vec_and_ptr_array_t::ierr;
+
+// Generalized smoothstep
+
+// Returns binomial coefficient without explicit use of factorials,
+// which can't be used with negative integers
+double pascalTriangle(int a, int b) {
+  double result = 1.;
+  for (int i = 0; i < b; ++i)
+    result *= double(a - i) / double(i + 1);
+  return result;
+}
+
+double clamp(double x, double lowerlimit, double upperlimit)
+{
+  if (x < lowerlimit) x = lowerlimit;
+  if (x > upperlimit) x = upperlimit;
+  return x;
+}
+
+double smoothstep(int N, double x) {
+  x = clamp(x, 0, 1); // x must be equal to or between 0 and 1
+  double result = 0;
+  for (int n = 0; n <= N; ++n)
+  {
+    result += pascalTriangle(-N - 1, n) *
+              pascalTriangle(2 * N + 1, N - n) *
+              pow(x, N + n + 1);
+  }
+  return result;
+}
+
+void variable_step_BDF_implicit(const int order, std::vector<double> &dt, std::vector<double> &coeffs)
+{
+  coeffs.assign(order+1, 0);
+  std::vector<double> r(order-1, 1.);
+
+  if (dt.size() < order) throw;
+
+  switch (order)
+  {
+    case 1:
+      coeffs[0] =  1;
+      coeffs[1] = -1;
+      break;
+    case 2:
+      r[0] = dt[0]/dt[1];
+
+      coeffs[0] = (1.+2.*r[0])/(1.+r[0]);
+      coeffs[1] = -(1.+r[0]);
+      coeffs[2] = SQR(r[0])/(1.+r[0]);
+      break;
+    case 3:
+      r[0] = dt[0]/dt[1];
+      r[1] = dt[1]/dt[2];
+
+      coeffs[0] = 1. + r[0]/(1.+r[0]) + r[1]*r[0]/(1.+r[1]*(1.+r[0]));
+      coeffs[1] = -1. - r[0] - r[0]*r[1]*(1.+r[0])/(1.+r[1]);
+      coeffs[2] = SQR(r[0])*(r[1] + 1./(1.+r[0]));
+      coeffs[3] = - pow(r[1], 3.)*pow(r[0], 2)*(1.+r[0])/(1.+r[1])/(1.+r[1]+r[1]*r[0]);
+      break;
+    case 4:
+    {
+      r[0] = dt[0]/dt[1];
+      r[1] = dt[1]/dt[2];
+      r[2] = dt[2]/dt[3];
+
+      double a1 = 1.+r[2]*(1.+r[1]);
+      double a2 = 1.+r[1]*(1.+r[0]);
+      double a3 = 1.+r[2]*a2;
+
+      coeffs[0] = 1. + r[0]/(1.+r[0]) + r[1]*r[0]/a2 + r[2]*r[1]*r[0]/a3;
+      coeffs[1] = -1.-r[0]*(1.+r[1]*(1.+r[0])/(1.+r[1])*(1.+r[2]*a2/a1));
+      coeffs[2] = r[0]*(r[0]/(1.+r[0]) + r[1]*r[0]*(a3+r[2])/(1.+r[2]));
+      coeffs[3] = -pow(r[1],3.)*pow(r[0],2.)*(1.+r[0])/(1.+r[1])*a3/a2;
+      coeffs[4] = (1.+r[0])/(1+r[2])*a2/a1*pow(r[2],4.)*pow(r[1],3.)*pow(r[0],2.)/a3;
+    }
+      break;
+    default:
+      throw;
+  }
+}

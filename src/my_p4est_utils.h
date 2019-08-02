@@ -1967,6 +1967,88 @@ struct vec_and_ptr_dim_t
   }
 };
 
+struct vec_and_ptr_array_t
+{
+  static PetscErrorCode ierr;
+
+  int i, size;
+  std::vector<Vec>      vec;
+  std::vector<double *> ptr;
+
+  vec_and_ptr_array_t() : size(0) {}
+
+  vec_and_ptr_array_t(int size) : size(size), vec(size, NULL), ptr(size, NULL) {}
+
+  vec_and_ptr_array_t(int size, Vec parent) : size(size), vec(size, NULL), ptr(size, NULL) { create(parent); }
+
+  vec_and_ptr_array_t(int size, Vec parent[]) : size(size), vec(size, NULL), ptr(size, NULL) { create(parent); }
+
+  vec_and_ptr_array_t(int size, p4est_t *p4est, p4est_nodes_t *nodes) : size(size), vec(size, NULL), ptr(size, NULL) { create(p4est, nodes); }
+
+  inline void resize(int size)
+  {
+    this->size = size;
+    vec.assign(size, NULL);
+    ptr.assign(size, NULL);
+  }
+
+  inline void create(Vec parent)
+  {
+    for (i = 0; i < size; ++i)
+    {
+      ierr = VecDuplicate(parent, &vec[i]); CHKERRXX(ierr);
+    }
+  }
+
+  inline void create(Vec parent[])
+  {
+    for (i = 0; i < size; ++i)
+    {
+      ierr = VecDuplicate(parent[i], &vec[i]); CHKERRXX(ierr);
+    }
+  }
+
+  inline void create(p4est_t *p4est, p4est_nodes_t *nodes)
+  {
+    for (i = 0; i < size; ++i)
+    {
+      ierr = VecCreateGhostNodes(p4est, nodes, &vec[i]); CHKERRXX(ierr);
+    }
+  }
+
+  inline void destroy()
+  {
+    for (i = 0; i < size; ++i)
+    {
+      if (vec[i] != NULL) { ierr = VecDestroy(vec[i]); CHKERRXX(ierr); }
+    }
+  }
+
+  inline void get_array()
+  {
+    for (i = 0; i < size; ++i)
+    {
+      ierr = VecGetArray(vec[i], &ptr[i]); CHKERRXX(ierr);
+    }
+  }
+
+  inline void restore_array()
+  {
+    for (i = 0; i < size; ++i)
+    {
+      ierr = VecRestoreArray(vec[i], &ptr[i]); CHKERRXX(ierr);
+    }
+  }
+
+  inline void set(Vec input[])
+  {
+    for (int i = 0; i < size; ++i)
+    {
+      vec[i] = input[i];
+    }
+  }
+};
+
 void compute_normals_and_mean_curvature(const my_p4est_node_neighbors_t &neighbors, const Vec phi, Vec normals[], Vec kappa);
 
 void save_vector(const char *filename, const std::vector<double> &data, std::ios_base::openmode mode = std::ios_base::out, char delim = ',');
@@ -2677,4 +2759,8 @@ struct interface_conditions_t
   inline double get_sol_jump_cf(double xyz[]) { return sol_jump_cf->value(xyz); }
   inline double get_flx_jump_cf(double xyz[]) { return flx_jump_cf->value(xyz); }
 };
+
+double smoothstep(int N, double x);
+
+void variable_step_BDF_implicit(const int order, std::vector<double> &dt, std::vector<double> &coeffs);
 #endif // UTILS_H

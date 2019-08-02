@@ -2969,6 +2969,15 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
               y_C = xyz_C[1],
               z_C = xyz_C[2] );
 
+  double interp_min[P4EST_DIM] = { DIM(x_C, y_C, z_C) };
+  double interp_max[P4EST_DIM] = { DIM(x_C, y_C, z_C) };
+
+  foreach_dimension(dim)
+  {
+    if (!is_wall[0+2*dim]) interp_min[dim] -= dxyz_m_[dim];
+    if (!is_wall[1+2*dim]) interp_max[dim] += dxyz_m_[dim];
+  }
+
   bool           neighbors_exist[num_neighbors_cube];
   p4est_locidx_t neighbors      [num_neighbors_cube];
 
@@ -3026,6 +3035,10 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
         int phi_idx = bdry_id[i];
         interface_point_t *pt = &bdry_xyz[i];
 
+        XCODE( pt->xyz[0] = MIN(pt->xyz[0], interp_max[0]); pt->xyz[0] = MAX(pt->xyz[0], interp_min[0]) );
+        YCODE( pt->xyz[1] = MIN(pt->xyz[1], interp_max[1]); pt->xyz[1] = MAX(pt->xyz[1], interp_min[1]) );
+        ZCODE( pt->xyz[2] = MIN(pt->xyz[2], interp_max[2]); pt->xyz[2] = MAX(pt->xyz[2], interp_min[2]) );
+
         // compute signed distance and normal at the centroid
         XCODE( double nx = qnnn.dx_central(bdry_.phi_ptr[phi_idx]) );
         YCODE( double ny = qnnn.dy_central(bdry_.phi_ptr[phi_idx]) );
@@ -3037,6 +3050,10 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
         XCODE( pt->xyz[0] -= dist*nx/norm );
         YCODE( pt->xyz[1] -= dist*ny/norm );
         ZCODE( pt->xyz[2] -= dist*nz/norm );
+
+        XCODE( pt->xyz[0] = MIN(pt->xyz[0], interp_max[0]); pt->xyz[0] = MAX(pt->xyz[0], interp_min[0]) );
+        YCODE( pt->xyz[1] = MIN(pt->xyz[1], interp_max[1]); pt->xyz[1] = MAX(pt->xyz[1], interp_min[1]) );
+        ZCODE( pt->xyz[2] = MIN(pt->xyz[2], interp_max[2]); pt->xyz[2] = MAX(pt->xyz[2], interp_min[2]) );
       }
 
       // get information about walls
@@ -3639,11 +3656,11 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
                   foreach_dimension(dim) xyz_pr[dim] = xyz_C[dim] + dxyz_pr[dim];
                 }
 
-                bdry_robin_xyz[i].set(xyz_pr);
+                XCODE( xyz_pr[0] = MIN(xyz_pr[0], interp_max[0]); xyz_pr[0] = MAX(xyz_pr[0], interp_min[0]) );
+                YCODE( xyz_pr[1] = MIN(xyz_pr[1], interp_max[1]); xyz_pr[1] = MAX(xyz_pr[1], interp_min[1]) );
+                ZCODE( xyz_pr[2] = MIN(xyz_pr[2], interp_max[2]); xyz_pr[2] = MAX(xyz_pr[2], interp_min[2]) );
 
-                //                XCODE( xyz_pr[0] = MIN(xyz_pr[0], interp_xmax); xyz_pr[0] = MAX(xyz_pr[0], interp_xmin) );
-                //                YCODE( xyz_pr[1] = MIN(xyz_pr[1], interp_ymax); xyz_pr[1] = MAX(xyz_pr[1], interp_ymin) );
-                //                ZCODE( xyz_pr[2] = MIN(xyz_pr[2], interp_zmax); xyz_pr[2] = MAX(xyz_pr[2], interp_zmin) );
+                bdry_robin_xyz[i].set(xyz_pr);
 
                 // sample values at the projection point
                 double mu_proj       = var_mu_ ? mu_cf->value(xyz_pr) : mu;
@@ -3713,6 +3730,14 @@ void my_p4est_poisson_nodes_mls_t::discretize_jump(bool setup_rhs, p4est_locidx_
               y_C = xyz_C[1],
               z_C = xyz_C[2] );
 
+  double interp_min[P4EST_DIM] = { DIM(x_C, y_C, z_C) };
+  double interp_max[P4EST_DIM] = { DIM(x_C, y_C, z_C) };
+
+  foreach_dimension(dim)
+  {
+    if (!is_wall[0+2*dim]) interp_min[dim] -= dxyz_m_[dim];
+    if (!is_wall[1+2*dim]) interp_max[dim] += dxyz_m_[dim];
+  }
 
   double face_m_area_max = 0;
   double face_p_area_max = 0;
@@ -3970,6 +3995,10 @@ void my_p4est_poisson_nodes_mls_t::discretize_jump(bool setup_rhs, p4est_locidx_
       int phi_idx = infc_id[i];
       interface_point_t *pt = &infc_xyz[i];
 
+      XCODE( pt->xyz[0] = MIN(pt->xyz[0], interp_max[0]); pt->xyz[0] = MAX(pt->xyz[0], interp_min[0]) );
+      YCODE( pt->xyz[1] = MIN(pt->xyz[1], interp_max[1]); pt->xyz[1] = MAX(pt->xyz[1], interp_min[1]) );
+      ZCODE( pt->xyz[2] = MIN(pt->xyz[2], interp_max[2]); pt->xyz[2] = MAX(pt->xyz[2], interp_min[2]) );
+
       // compute signed distance and normal at the centroid
       XCODE( double nx = qnnn.dx_central(infc_.phi_ptr[phi_idx]) );
       YCODE( double ny = qnnn.dy_central(infc_.phi_ptr[phi_idx]) );
@@ -3981,6 +4010,10 @@ void my_p4est_poisson_nodes_mls_t::discretize_jump(bool setup_rhs, p4est_locidx_
       XCODE( pt->xyz[0] -= dist*nx/norm );
       YCODE( pt->xyz[1] -= dist*ny/norm );
       ZCODE( pt->xyz[2] -= dist*nz/norm );
+
+      XCODE( pt->xyz[0] = MIN(pt->xyz[0], interp_max[0]); pt->xyz[0] = MAX(pt->xyz[0], interp_min[0]) );
+      YCODE( pt->xyz[1] = MIN(pt->xyz[1], interp_max[1]); pt->xyz[1] = MAX(pt->xyz[1], interp_min[1]) );
+      ZCODE( pt->xyz[2] = MIN(pt->xyz[2], interp_max[2]); pt->xyz[2] = MAX(pt->xyz[2], interp_min[2]) );
     }
 
     infc_jump_xyz = infc_xyz;
@@ -4030,6 +4063,10 @@ void my_p4est_poisson_nodes_mls_t::discretize_jump(bool setup_rhs, p4est_locidx_
 
     foreach_dimension(i_dim)
       xyz_pr[i_dim] = xyz_C[i_dim] + dxyz_pr[i_dim];
+
+    XCODE( xyz_pr[0] = MIN(xyz_pr[0], interp_max[0]); xyz_pr[0] = MAX(xyz_pr[0], interp_min[0]) );
+    YCODE( xyz_pr[1] = MIN(xyz_pr[1], interp_max[1]); xyz_pr[1] = MAX(xyz_pr[1], interp_min[1]) );
+    ZCODE( xyz_pr[2] = MIN(xyz_pr[2], interp_max[2]); xyz_pr[2] = MAX(xyz_pr[2], interp_min[2]) );
 
     infc_jump_xyz[0].set(xyz_pr);
 

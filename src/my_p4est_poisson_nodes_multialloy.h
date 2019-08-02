@@ -99,9 +99,10 @@ private:
   double (*liquidus_slope_)(int, double *);
 
   // right-hand sides
-  vec_and_ptr_t rhs_tl_, rhs_ts_;
+  vec_and_ptr_t         rhs_zero_;
+  vec_and_ptr_t         rhs_tl_;
+  vec_and_ptr_t         rhs_ts_;
   vector<vec_and_ptr_t> rhs_c_;
-  vec_and_ptr_t rhs_zero_;
 
   // undercoolings
   int              num_seeds_;
@@ -251,6 +252,7 @@ private:
   // Solvers and solutions
   //--------------------------------------------------
   my_p4est_poisson_nodes_mls_t          *solver_temp_;
+  my_p4est_poisson_nodes_mls_t          *solver_conc_leading_;
   vector<my_p4est_poisson_nodes_mls_t *> solver_conc_;
 
   // solution
@@ -293,18 +295,18 @@ private:
   void solve_psi_t();
 
   void solve_c0();
-//  void solve_c0_robin();
+  void solve_c0_robin();
   void solve_psi_c0();
 
-  void solve_c();
-  void solve_psi_c();
+  void solve_c(int start, int num);
+  void solve_psi_c(int start, int num);
 
   void compute_c0n();
   void compute_psi_c0n();
 
   void adjust_c0_gamma(bool simple);
-  void compute_pw_bc_values();
-  void compute_pw_bc_psi_values();
+  void compute_pw_bc_values(int start, int num);
+  void compute_pw_bc_psi_values(int start, int num);
 
 public:
   my_p4est_poisson_nodes_mls_t* get_solver_temp() { return solver_temp_; }
@@ -336,6 +338,8 @@ private:
   vector<double> pw_psi_t_flx_jump_taylor_;
   vector<double> pw_psi_t_flx_jump_integr_;
 
+  vector<double> pw_c0_values_;
+  vector<double> pw_psi_c0_values_;
 
   //--------------------------------------------------
   // Solver parameters
@@ -343,6 +347,7 @@ private:
   double bc_tolerance_;
   int    max_iterations_;
   int    pin_every_n_iterations_;
+  int    update_c0_robin_;
 
   bool   second_derivatives_owned_;
   bool   use_superconvergent_robin_;
@@ -350,7 +355,6 @@ private:
   bool   use_points_on_interface_;
   bool   zero_negative_velocity_;
   bool   use_non_zero_guess_;
-  bool   update_c0_robin_;
   bool   flatten_front_values_;
   bool   always_use_centroid_;
 
@@ -375,10 +379,10 @@ private:
 public:
   inline void set_pin_every_n_iterations    (int          value) { pin_every_n_iterations_    = value; }
   inline void set_cube_refinement           (int          value) { cube_refinement_           = value; }
+  inline void set_update_c0_robin           (int          value) { update_c0_robin_           = value; }
   inline void set_use_superconvergent_robin (bool         value) { use_superconvergent_robin_ = value; }
   inline void set_use_superconvergent_jump  (bool         value) { use_superconvergent_jump_  = value; }
   inline void set_use_points_on_interface   (bool         value) { use_points_on_interface_   = value; }
-  inline void set_update_c0_robin           (bool         value) { update_c0_robin_           = value; }
   inline void set_zero_negative_velocity    (bool         value) { zero_negative_velocity_    = value; }
   inline void set_flatten_front_values      (bool         value) { flatten_front_values_      = value; }
   inline void set_scheme                    (var_scheme_t value) { var_scheme_                = value; }

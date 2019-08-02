@@ -73,6 +73,7 @@ my_p4est_poisson_nodes_multialloy_t::my_p4est_poisson_nodes_multialloy_t(my_p4es
   bc_error_max_ = 1.;
 
   solver_temp_ = NULL;
+  solver_conc_leading_ = NULL;
   set_number_of_components(1);
 
   cube_refinement_ = 1;
@@ -80,7 +81,7 @@ my_p4est_poisson_nodes_multialloy_t::my_p4est_poisson_nodes_multialloy_t(my_p4es
   second_derivatives_owned_  = false;
   use_superconvergent_robin_ = false;
   use_superconvergent_jump_  = false;
-  update_c0_robin_           = false;
+  update_c0_robin_           = 0;
   use_points_on_interface_   = true;
   zero_negative_velocity_    = false;
   flatten_front_values_      = true;
@@ -114,6 +115,7 @@ my_p4est_poisson_nodes_multialloy_t::~my_p4est_poisson_nodes_multialloy_t()
   psi_c0d_       .destroy();
 
   if (solver_temp_ != NULL) delete solver_temp_;
+  if (solver_conc_leading_ != NULL) delete solver_conc_leading_;
 
   for (int i = 0; i < num_comps_; ++i)
   {
@@ -260,6 +262,9 @@ int my_p4est_poisson_nodes_multialloy_t::solve(Vec tl, Vec ts, Vec c[], Vec c0d[
   int  iteration = 0;
   bc_error_max_  = DBL_MAX;
 
+  int conc_start = update_c0_robin_ == 2 ? 0 : 1;
+  int conc_num = num_comps_ - conc_start;
+
   while (bc_error_max_ > bc_tolerance_ &&
          iteration < max_iterations_)
   {
@@ -269,9 +274,9 @@ int my_p4est_poisson_nodes_multialloy_t::solve(Vec tl, Vec ts, Vec c[], Vec c0d[
 
     solve_c0(); ++num_pdes_solved;
     compute_c0n();
-    compute_pw_bc_values();
+    compute_pw_bc_values(conc_start, conc_num);
     solve_t();  ++num_pdes_solved;
-    solve_c();  ++num_pdes_solved;
+    solve_c(conc_start, conc_num);  ++num_pdes_solved;
 
 //    if (iteration < max_iterations_)
     bool check = iteration%pin_every_n_iterations_ == 0;
@@ -280,13 +285,13 @@ int my_p4est_poisson_nodes_multialloy_t::solve(Vec tl, Vec ts, Vec c[], Vec c0d[
       // solve for lagrangian multipliers
       if (iteration%pin_every_n_iterations_ != 0)
       {
-        compute_pw_bc_psi_values();
+        compute_pw_bc_psi_values(conc_start, conc_num);
 
         if (var_scheme_ != VALUE || iteration == 1)
         {
           solve_psi_t();   ++num_pdes_solved;
         }
-        solve_psi_c();   ++num_pdes_solved;
+        solve_psi_c(conc_start, conc_num);   ++num_pdes_solved;
         solve_psi_c0();  ++num_pdes_solved;
         compute_psi_c0n();
       }
@@ -310,7 +315,11 @@ int my_p4est_poisson_nodes_multialloy_t::solve(Vec tl, Vec ts, Vec c[], Vec c0d[
     c0n_gamma_.restore_array();
   }
 
-//  if (update_c0_robin_) solve_c0_robin();
+  if (update_c0_robin_ == 1)
+  {
+    compute_pw_bc_values(0, 1);
+    solve_c(0, 1);
+  }
 
   // clean everything
   psi_t_   .destroy();
@@ -342,25 +351,28 @@ void my_p4est_poisson_nodes_multialloy_t::initialize_solvers()
   if (solver_temp_ != NULL) delete solver_temp_ ;
   solver_temp_ = new my_p4est_poisson_nodes_mls_t(node_neighbors_);
 
-  for (int i = 0; i < num_comps_; ++i)
+  if (solver_conc_leading_ != NULL) delete solver_conc_leading_ ;
+  solver_conc_leading_ = new my_p4est_poisson_nodes_mls_t(node_neighbors_);
+
+  for (int i = update_c0_robin_ == 0 ? 1 : 0; i < num_comps_; ++i)
   {
     if (solver_conc_[i] != NULL) delete solver_conc_[i];
     solver_conc_[i] = new my_p4est_poisson_nodes_mls_t(node_neighbors_);
   }
 
   // c[0]
-  solver_conc_[0]->add_boundary(MLS_INTERSECTION, front_phi_.vec, front_phi_dd_.vec, DIRICHLET, zero_cf, zero_cf);
-  solver_conc_[0]->set_diag(conc_diag_[0]);
-  solver_conc_[0]->set_mu(conc_diff_[0]);
-  solver_conc_[0]->set_wc(*wall_bc_type_conc_[0], *wall_bc_value_conc_[0]);
-  solver_conc_[0]->set_rhs(rhs_c_[0].vec);
+  solver_conc_leading_->add_boundary(MLS_INTERSECTION, front_phi_.vec, front_phi_dd_.vec, DIRICHLET, zero_cf, zero_cf);
+  solver_conc_leading_->set_diag(conc_diag_[0]);
+  solver_conc_leading_->set_mu(conc_diff_[0]);
+  solver_conc_leading_->set_wc(*wall_bc_type_conc_[0], *wall_bc_value_conc_[0]);
+  solver_conc_leading_->set_rhs(rhs_c_[0].vec);
 
   if (contr_phi_.vec != NULL)
   {
-    solver_conc_[0]->add_boundary(MLS_INTERSECTION, contr_phi_.vec, contr_phi_dd_.vec, contr_bc_type_conc_[0], zero_cf, zero_cf);
+    solver_conc_leading_->add_boundary(MLS_INTERSECTION, contr_phi_.vec, contr_phi_dd_.vec, contr_bc_type_conc_[0], zero_cf, zero_cf);
   }
 
-  solver_conc_[0]->preassemble_linear_system();
+  solver_conc_leading_->preassemble_linear_system();
 
   // t
   solver_temp_->add_interface(MLS_INTERSECTION, front_phi_.vec, front_phi_dd_.vec, zero_cf, zero_cf);
@@ -387,7 +399,7 @@ void my_p4est_poisson_nodes_multialloy_t::initialize_solvers()
   solver_temp_->get_interface_finite_volumes(fvs, fvs_map);
 
   // rest of c[]
-  for (int i = 1; i < num_comps_; ++i)
+  for (int i = update_c0_robin_ == 0 ? 1 : 0; i < num_comps_; ++i)
   {
     solver_conc_[i]->add_boundary(MLS_INTERSECTION, front_phi_.vec, front_phi_dd_.vec, ROBIN, zero_cf, zero_cf);
     solver_conc_[i]->set_diag(conc_diag_[i]);
@@ -418,7 +430,7 @@ void my_p4est_poisson_nodes_multialloy_t::initialize_solvers()
   pw_psi_c_values_robin_.resize(num_comps_);
   pw_psi_c_coeffs_robin_.resize(num_comps_);
 
-  for (int i = 0; i < num_comps_; ++i)
+  for (int i = update_c0_robin_ == 0 ? 1 : 0; i < num_comps_; ++i)
   {
     pw_c_values_      [i].resize(solver_conc_[i]->pw_bc_num_value_pts(0), 0);
     pw_c_values_robin_[i].resize(solver_conc_[i]->pw_bc_num_robin_pts(0), 0);
@@ -437,12 +449,15 @@ void my_p4est_poisson_nodes_multialloy_t::initialize_solvers()
   pw_psi_t_flx_jump_taylor_.resize(solver_temp_->pw_jc_num_taylor_pts(0), 0);
   pw_psi_t_flx_jump_integr_.resize(solver_temp_->pw_jc_num_taylor_pts(0), 0);
 
+  pw_c0_values_.resize(solver_conc_leading_->pw_bc_num_value_pts(0), 0);
+  pw_psi_c0_values_.resize(solver_conc_leading_->pw_bc_num_value_pts(0), 0);
+
   // sample c0 guess at boundary points
   double xyz[P4EST_DIM];
-  for (int i = 0; i < solver_conc_[0]->pw_bc_num_value_pts(0); ++i)
+  for (int i = 0; i < solver_conc_leading_->pw_bc_num_value_pts(0); ++i)
   {
-    solver_conc_[0]->pw_bc_xyz_value_pt(0, i, xyz);
-    pw_c_values_[0][i] = c0_guess_->value(xyz);
+    solver_conc_leading_->pw_bc_xyz_value_pt(0, i, xyz);
+    pw_c0_values_[i] = c0_guess_->value(xyz);
   }
 
   ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_multialloy_initialize_solvers, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -453,6 +468,7 @@ void my_p4est_poisson_nodes_multialloy_t::initialize_solvers()
 
 void my_p4est_poisson_nodes_multialloy_t::solve_t()
 {
+//  ierr = PetscPrintf(p4est_->mpicomm, "Solving for temperature... \n"); CHKERRXX(ierr);
   ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_multialloy_solve_t, 0, 0, 0, 0); CHKERRXX(ierr);
 
   vec_and_ptr_t sol;
@@ -500,6 +516,8 @@ void my_p4est_poisson_nodes_multialloy_t::solve_t()
 
   node_neighbors_->second_derivatives_central(tl_.vec, tl_dd_.vec);
 
+//  MPI_Barrier(p4est_->mpicomm);
+//  ierr = PetscPrintf(p4est_->mpicomm, "Done. \n"); CHKERRXX(ierr);
   ierr = PetscLogEventEnd  (log_my_p4est_poisson_nodes_multialloy_solve_t, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
@@ -533,16 +551,16 @@ void my_p4est_poisson_nodes_multialloy_t::solve_c0()
 {
   ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_multialloy_solve_c0, 0, 0, 0, 0); CHKERRXX(ierr);
 
-  solver_conc_[0]->set_wc(*wall_bc_type_conc_[0], *wall_bc_value_conc_[0], false);
-  solver_conc_[0]->set_bc(0, DIRICHLET, pw_c_values_[0]);
-  solver_conc_[0]->set_rhs(rhs_c_[0].vec);
+  solver_conc_leading_->set_wc(*wall_bc_type_conc_[0], *wall_bc_value_conc_[0], false);
+  solver_conc_leading_->set_bc(0, DIRICHLET, pw_c0_values_);
+  solver_conc_leading_->set_rhs(rhs_c_[0].vec);
 
   if (contr_phi_.vec != NULL)
   {
-    solver_conc_[0]->set_bc(1, contr_bc_type_conc_[0], *contr_bc_value_conc_[0], zero_cf);
+    solver_conc_leading_->set_bc(1, contr_bc_type_conc_[0], *contr_bc_value_conc_[0], zero_cf);
   }
 
-  solver_conc_[0]->solve(c_[0].vec, use_non_zero_guess_);
+  solver_conc_leading_->solve(c_[0].vec, use_non_zero_guess_);
 
   my_p4est_level_set_t ls(node_neighbors_);
   ls.set_interpolation_on_interface(quadratic_non_oscillatory_continuous_v2);
@@ -562,6 +580,36 @@ void my_p4est_poisson_nodes_multialloy_t::solve_c0()
 
   ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_multialloy_solve_c0, 0, 0, 0, 0); CHKERRXX(ierr);
 }
+
+
+//void my_p4est_poisson_nodes_multialloy_t::solve_c0_robin()
+//{
+//  ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_multialloy_solve_c0, 0, 0, 0, 0); CHKERRXX(ierr);
+
+//  for (int i = 1; i < num_comps_; ++i)
+//  {
+//    solver_conc_[i]->set_wc(*wall_bc_type_conc_[i], *wall_bc_value_conc_[i], false);
+//    solver_conc_[i]->set_bc(0, ROBIN, pw_c_values_[i], pw_c_values_robin_[i], pw_c_coeffs_robin_[i]);
+//    solver_conc_[i]->set_rhs(rhs_c_[i].vec);
+
+//    if (contr_phi_.vec != NULL)
+//    {
+//      solver_conc_[i]->set_bc(1, contr_bc_type_conc_[i], *contr_bc_value_conc_[i], zero_cf);
+//    }
+
+//    solver_conc_[i]->solve(c_[i].vec, use_non_zero_guess_);
+
+//    Vec mask = solver_conc_[i]->get_mask();
+
+//    my_p4est_level_set_t ls(node_neighbors_);
+//    ls.set_interpolation_on_interface(quadratic_non_oscillatory_continuous_v2);
+//    ls.extend_Over_Interface_TVD_full(front_phi_.vec, mask, c_[i].vec, num_extend_iterations_, 2);
+
+//    node_neighbors_->second_derivatives_central(c_[i].vec, c_dd_[i].vec);
+//  }
+
+//  ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_multialloy_solve_c0, 0, 0, 0, 0); CHKERRXX(ierr);
+//}
 
 void my_p4est_poisson_nodes_multialloy_t::solve_psi_c0()
 {
@@ -596,14 +644,14 @@ void my_p4est_poisson_nodes_multialloy_t::solve_psi_c0()
 
   foreach_local_node(n, nodes_)
   {
-    for (unsigned short i = 0; i < solver_conc_[0]->pw_bc_num_value_pts(0, n); ++i)
+    for (unsigned short i = 0; i < solver_conc_leading_->pw_bc_num_value_pts(0, n); ++i)
     {
-      idx = solver_conc_[0]->pw_bc_idx_value_pt(0, n, i);
+      idx = solver_conc_leading_->pw_bc_idx_value_pt(0, n, i);
 
-      solver_conc_[0]->pw_bc_get_boundary_pt(0, idx, pt);
-      solver_conc_[0]->pw_bc_xyz_value_pt(0, idx, xyz);
+      solver_conc_leading_->pw_bc_get_boundary_pt(0, idx, pt);
+      solver_conc_leading_->pw_bc_xyz_value_pt(0, idx, xyz);
 
-      c_gamma_all[0] = pw_c_values_[0][idx];
+      c_gamma_all[0] = pw_c0_values_[idx];
 
       XCODE( normal[0] = pt->interpolate(node_neighbors_, front_normal_.ptr[0]) );
       YCODE( normal[1] = pt->interpolate(node_neighbors_, front_normal_.ptr[1]) );
@@ -615,14 +663,14 @@ void my_p4est_poisson_nodes_multialloy_t::solve_psi_c0()
       kappa = pt->interpolate(node_neighbors_, front_curvature_.ptr);
 
       conc_term = 0;
-      for (int i = 1; i < num_comps_; ++i)
+      for (int i = update_c0_robin_ == 2 ? 0 : 1; i < num_comps_; ++i)
       {
         c_gamma_all[i] = pt->interpolate(node_neighbors_, c_[i].ptr, c_dd_[i].ptr);
         conc_term += (1.-part_coeff_[i]) * c_gamma_all[i]
                      * pt->interpolate(node_neighbors_, psi_c_[i].ptr);
       }
 
-      pw_psi_c_values_[0][idx] =
+      pw_psi_c0_values_[idx] =
           -( conc_term + eps_v
              + latent_heat_*(1.+eps_c*kappa)*pt->interpolate(node_neighbors_, psi_t_.ptr)
              ) /(1.-part_coeff_[0])/c_gamma_all[0];
@@ -644,16 +692,16 @@ void my_p4est_poisson_nodes_multialloy_t::solve_psi_c0()
   front_normal_   .restore_array();
   front_curvature_.restore_array();
 
-  solver_conc_[0]->set_wc(*wall_bc_type_conc_[0], zero_cf, false);
-  solver_conc_[0]->set_rhs(rhs_zero_.vec);
-  solver_conc_[0]->set_bc(0, DIRICHLET, pw_psi_c_values_[0]);
+  solver_conc_leading_->set_wc(*wall_bc_type_conc_[0], zero_cf, false);
+  solver_conc_leading_->set_rhs(rhs_zero_.vec);
+  solver_conc_leading_->set_bc(0, DIRICHLET, pw_psi_c0_values_);
 
   if (contr_phi_.vec != NULL)
   {
-    solver_conc_[0]->set_bc(1, contr_bc_type_conc_[0], zero_cf, zero_cf);
+    solver_conc_leading_->set_bc(1, contr_bc_type_conc_[0], zero_cf, zero_cf);
   }
 
-  solver_conc_[0]->solve(psi_c_[0].vec);
+  solver_conc_leading_->solve(psi_c_[0].vec);
 
   my_p4est_level_set_t ls(node_neighbors_);
   ls.set_interpolation_on_interface(quadratic_non_oscillatory_continuous_v2);
@@ -670,11 +718,12 @@ void my_p4est_poisson_nodes_multialloy_t::solve_psi_c0()
 
 
 
-void my_p4est_poisson_nodes_multialloy_t::solve_c()
+void my_p4est_poisson_nodes_multialloy_t::solve_c(int start, int num)
 {
+//  ierr = PetscPrintf(p4est_->mpicomm, "Solve for concentrations... \n"); CHKERRXX(ierr);
   ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_multialloy_solve_c1, 0, 0, 0, 0); CHKERRXX(ierr);
 
-  for (int i = 1; i < num_comps_; ++i)
+  for (int i = start; i < start+num; ++i)
   {
     solver_conc_[i]->set_wc(*wall_bc_type_conc_[i], *wall_bc_value_conc_[i], false);
     solver_conc_[i]->set_bc(0, ROBIN, pw_c_values_[i], pw_c_values_robin_[i], pw_c_coeffs_robin_[i]);
@@ -697,13 +746,15 @@ void my_p4est_poisson_nodes_multialloy_t::solve_c()
   }
 
   ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_multialloy_solve_c1, 0, 0, 0, 0); CHKERRXX(ierr);
+//  MPI_Barrier(p4est_->mpicomm);
+//  ierr = PetscPrintf(p4est_->mpicomm, "Done.\n"); CHKERRXX(ierr);
 }
 
-void my_p4est_poisson_nodes_multialloy_t::solve_psi_c()
+void my_p4est_poisson_nodes_multialloy_t::solve_psi_c(int start, int num)
 {
   ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_multialloy_solve_psi_c1, 0, 0, 0, 0); CHKERRXX(ierr);
 
-  for (int i = 1; i < num_comps_; ++i)
+  for (int i = start; i < start+num; ++i)
   {
     solver_conc_[i]->set_wc(*wall_bc_type_conc_[i], zero_cf, false);
     solver_conc_[i]->set_bc(0, ROBIN, pw_psi_c_values_[i], pw_psi_c_values_robin_[i], pw_c_coeffs_robin_[i]);
@@ -1150,8 +1201,10 @@ void my_p4est_poisson_nodes_multialloy_t::compute_psi_c0n()
   ierr = PetscLogEventEnd  (log_my_p4est_poisson_nodes_multialloy_compute_psi_c0n, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
-void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_values()
+void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_values(int start, int num)
 {
+//  ierr = PetscPrintf(p4est_->mpicomm, "Computing bc values... \n"); CHKERRXX(ierr);
+
   my_p4est_interpolation_nodes_local_t interp_local(node_neighbors_);
   bool interp_initialized;
 
@@ -1232,7 +1285,7 @@ void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_values()
       pw_t_flx_jump_integr_[idx] = front_temp_flux_jump_->value(xyz_cd) - latent_heat_*(1.0+eps_c_cd*kappa_cd)*vn_cd;
     }
 
-    for (int i = 1; i < num_comps_; ++i)
+    for (int i = start; i < start+num; ++i)
     {
       if (solver_conc_[i]->pw_bc_num_value_pts(0,n) > 0)
       {
@@ -1273,10 +1326,14 @@ void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_values()
   c0d_            .restore_array();
   c_[0]           .restore_array();
   c_dd_[0]        .restore_array();
+
+//  MPI_Barrier(p4est_->mpicomm);
+//  ierr = PetscPrintf(p4est_->mpicomm, "Done.\n"); CHKERRXX(ierr);
 }
 
-void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_psi_values()
+void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_psi_values(int start, int num)
 {
+//  ierr = PetscPrintf(p4est_->mpicomm, "Computing bc psi values... \n"); CHKERRXX(ierr);
   my_p4est_interpolation_nodes_local_t interp_local(node_neighbors_);
   bool interp_initialized;
 
@@ -1359,7 +1416,7 @@ void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_psi_values()
       pw_psi_t_flx_jump_integr_[idx] = 1;
     }
 
-    if (num_comps_ > 1)
+    if (num_comps_ > start)
     {
       if (solver_conc_[1]->pw_bc_num_value_pts(0, n) > 0)
       {
@@ -1380,7 +1437,7 @@ void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_psi_values()
       }
     }
 
-    for (int i = 1; i < num_comps_; ++i)
+    for (int i = start; i < start+num; ++i)
     {
       if (solver_conc_[i]->pw_bc_num_value_pts(0, n) > 0)
       {
@@ -1417,6 +1474,9 @@ void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_psi_values()
     c_   [i].restore_array();
     c_dd_[i].restore_array();
   }
+
+//  MPI_Barrier(p4est_->mpicomm);
+//  ierr = PetscPrintf(p4est_->mpicomm, "Done.\n"); CHKERRXX(ierr);
 }
 
 void my_p4est_poisson_nodes_multialloy_t::adjust_c0_gamma(bool simple)
@@ -1464,26 +1524,26 @@ void my_p4est_poisson_nodes_multialloy_t::adjust_c0_gamma(bool simple)
   {
     bc_error_.ptr[n] = 0;
 
-    for (int i = 0; i < solver_conc_[0]->pw_bc_num_value_pts(0, n); ++i)
+    for (int i = 0; i < solver_conc_leading_->pw_bc_num_value_pts(0, n); ++i)
     {
-      idx = solver_conc_[0]->pw_bc_idx_value_pt(0, n, i);
+      idx = solver_conc_leading_->pw_bc_idx_value_pt(0, n, i);
 
       // fetch boundary point
-      solver_conc_[0]->pw_bc_xyz_value_pt(0, idx, xyz);
-      solver_conc_[0]->pw_bc_get_boundary_pt(0, idx, pt);
+      solver_conc_leading_->pw_bc_xyz_value_pt(0, idx, xyz);
+      solver_conc_leading_->pw_bc_get_boundary_pt(0, idx, pt);
 
       // interpolate concentration
-      c_all[0] = pw_c_values_[0][idx];
-      for (int k = 1; k < num_comps_; ++k)
+      c_all[0] = pw_c0_values_[idx];
+      for (int k = update_c0_robin_ == 2 ? 0 : 1; k < num_comps_; ++k)
       {
-//        c_all[k] = pt->interpolate(node_neighbors_, c_[k].ptr, c_dd_[k].ptr);
-        c_all[k] = pt->interpolate(node_neighbors_, c_[k].ptr);
+        c_all[k] = pt->interpolate(node_neighbors_, c_[k].ptr, c_dd_[k].ptr);
+//        c_all[k] = pt->interpolate(node_neighbors_, c_[k].ptr);
 //        c_all[k] = c_[k].ptr[n];
       }
 
       // interpolate temperature
-//      tl_val = pt->interpolate(node_neighbors_, tl_.ptr, tl_dd_.ptr);
-      tl_val = pt->interpolate(node_neighbors_, tl_.ptr);
+      tl_val = pt->interpolate(node_neighbors_, tl_.ptr, tl_dd_.ptr);
+//      tl_val = pt->interpolate(node_neighbors_, tl_.ptr);
 //      tl_val = tl_.ptr[n];
 
       // normal velocity
@@ -1503,8 +1563,6 @@ void my_p4est_poisson_nodes_multialloy_t::adjust_c0_gamma(bool simple)
       eps_c = eps_c_[seed_map_.ptr[n]]->value(normal);
 
       // error
-      double conc_term = liquidus_value_(c_all.data());
-      double gb_term = melting_temp_*(1.0 + eps_c*kappa) + gibbs_thomson_->value(xyz);
       error = tl_val
               - melting_temp_*(1.0 + eps_c*kappa)
               - liquidus_value_(c_all.data())
@@ -1545,16 +1603,17 @@ void my_p4est_poisson_nodes_multialloy_t::adjust_c0_gamma(bool simple)
       }
       else
       {
-        psi_c0  = pw_psi_c_values_[0][idx];
+        psi_c0  = pw_psi_c0_values_[idx];
         psi_c0n = 0;
         foreach_dimension(dim)
         {
           psi_c0n += pt->interpolate(node_neighbors_, psi_c0d_.ptr[dim])*normal[dim];
         }
-        change /= -liquidus_slope_(0, c_all.data()) + conc_diff_[0]*psi_c0n - (1.-part_coeff_[0])*vn*psi_c0;
+        change /= - (update_c0_robin_ == 2 ? 0 : liquidus_slope_(0, c_all.data())) + conc_diff_[0]*psi_c0n - (1.-part_coeff_[0])*vn*psi_c0;
       }
 
-      pw_c_values_[0][idx] -= change;
+      pw_c0_values_[idx] -= change;
+//      pw_c0_values_[idx] = c_all[0] - change;
 
       velo_max_ = MAX(velo_max_, fabs(vn));
     }

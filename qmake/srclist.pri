@@ -81,7 +81,7 @@ HEADERS += \
   $$PARCASL/src/my_p4est_level_set.h \
   $$PARCASL/src/my_p4est_level_set_cells.h \
   $$PARCASL/src/my_p4est_level_set_faces.h \
-#  $$PARCASL/src/my_p4est_multialloy.h \
+  $$PARCASL/src/my_p4est_multialloy.h \
   $$PARCASL/src/my_p4est_navier_stokes.h \
   $$PARCASL/src/my_p4est_node_neighbors.h \
   $$PARCASL/src/my_p4est_poisson_boltzmann_nodes.h \
@@ -122,7 +122,7 @@ SOURCES += \
   $$PARCASL/src/my_p4est_level_set.cpp \
   $$PARCASL/src/my_p4est_level_set_cells.cpp \
   $$PARCASL/src/my_p4est_level_set_faces.cpp \
-#  $$PARCASL/src/my_p4est_multialloy.cpp \
+  $$PARCASL/src/my_p4est_multialloy.cpp \
   $$PARCASL/src/my_p4est_navier_stokes.cpp \
   $$PARCASL/src/my_p4est_node_neighbors.cpp \
   $$PARCASL/src/my_p4est_poisson_boltzmann_nodes.cpp \

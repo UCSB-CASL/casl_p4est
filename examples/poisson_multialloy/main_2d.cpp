@@ -1164,9 +1164,22 @@ int main (int argc, char* argv[])
   mpi.init(argc, argv);
 
   cmdParser cmd;
+
+  pl.initialize_parser(cmd);
   cmd.parse(argc, argv);
 
+  alloy = cmd.get("alloy", alloy);
   set_alloy_parameters();
+
+  pl.get_all(cmd);
+
+//  if (mpi.rank() == 0) pl.print_all();
+//  if (mpi.rank() == 0 && save_params) {
+//    std::ostringstream file;
+//    file << out_dir << "/parameters.dat";
+//    pl.save_all(file.str().c_str());
+//  }
+
 
   for (int i = 0; i < num_seeds; ++i)
   {
@@ -1205,10 +1218,10 @@ int main (int argc, char* argv[])
   p4est_connectivity_t *connectivity;
   my_p4est_brick_t brick;
 
-  const int n_xyz[] = { nx, ny, nz };
-  const double xyz_min[] = {xmin, ymin, zmin};
-  const double xyz_max[] = {xmax, ymax, zmax};
-  const int periodic[] = {0, 0, 0};
+  const int    n_xyz   [] = { nx, ny, nz };
+  const int    periodic[] = { px, py, pz };
+  const double xyz_min [] = { xmin, ymin, zmin };
+  const double xyz_max [] = { xmax, ymax, zmax };
   connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick, periodic);
 
   p4est_t       *p4est;

@@ -632,6 +632,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *
     ierr = VecRestoreArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
 
     if (is_grid_changing) {
+      PetscPrintf(p4est->mpicomm, "Grid changed\n");
       my_p4est_partition(p4est, P4EST_TRUE, NULL);
 
       // reset nodes, ghost, and phi
