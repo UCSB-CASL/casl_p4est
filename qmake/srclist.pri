@@ -110,9 +110,7 @@ HEADERS += \
   $$PARCASL/src/voronoi2D.h
 
 SOURCES += \
-#  $$PARCASL/src/my_p4est_bialloy.cpp \
-  $$PARCASL/src/my_p4est_biomolecules.cpp \
-#  $$PARCASL/src/my_p4est_biomol_nonlinear.cpp \
+  $$PARCASL/src/my_p4est_bialloy.cpp \
 #  $$PARCASL/src/my_p4est_biofilm.cpp \
   $$PARCASL/src/my_p4est_cell_neighbors.cpp \
 #  $$PARCASL/src/my_p4est_epitaxy.cpp \
@@ -161,9 +159,7 @@ HEADERS += \
 
 CONFIG(3d, 2d|3d): {
 HEADERS += \
-#  $$PARCASL/src/my_p8est_bialloy.h \
-  $$PARCASL/src/my_p8est_biomolecules.h \
-#  $$PARCASL/src/my_p8est_biomol_nonlinear.h \
+  $$PARCASL/src/my_p8est_bialloy.h \
 #  $$PARCASL/src/my_p8est_biofilm.h \
   $$PARCASL/src/my_p8est_cell_neighbors.h \
 #  $$PARCASL/src/my_p8est_epitaxy.h \
@@ -178,7 +174,7 @@ HEADERS += \
   $$PARCASL/src/my_p8est_level_set.h \
   $$PARCASL/src/my_p8est_level_set_cells.h \
   $$PARCASL/src/my_p8est_level_set_faces.h \
-  $$PARCASL/src/my_p8est_multialloy.h \
+#  $$PARCASL/src/my_p8est_multialloy.h \
   $$PARCASL/src/my_p8est_navier_stokes.h \
   $$PARCASL/src/my_p8est_node_neighbors.h \
   $$PARCASL/src/my_p8est_poisson_boltzmann_nodes.h \
@@ -205,9 +201,7 @@ HEADERS += \
   $$PARCASL/src/voronoi3D.h
 
 SOURCES += \
-#  $$PARCASL/src/my_p8est_bialloy.cpp \
-  $$PARCASL/src/my_p8est_biomolecules.cpp \
-#  $$PARCASL/src/my_p8est_biomol_nonlinear.cpp \
+  $$PARCASL/src/my_p8est_bialloy.cpp \
 #  $$PARCASL/src/my_p8est_biofilm.cpp \
   $$PARCASL/src/my_p8est_cell_neighbors.cpp \
 #  $$PARCASL/src/my_p8est_epitaxy.cpp \

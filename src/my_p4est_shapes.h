@@ -788,7 +788,7 @@ public:
 
         for (int i = 0; i < N; ++i)
         {
-           perturb_0 +=  beta[i]*cos(n[i]*(t - theta[i]));
+          perturb_0 +=  beta[i]*cos(n[i]*(t - theta[i]));
         }
 
         return inside*( r -r0*(1.+ perturb_0*pow(r2/r,p)) );
@@ -826,9 +826,9 @@ public:
 
         for (int i = 0; i < N; ++i)
         {
-          perturb_0 +=  beta[i]* cos(n[i]*(t - theta[i]));
-          perturb_1 += -beta[i]* sin(n[i]*(t - theta[i]))*n[i];
-          perturb_2 += -beta[i]* cos(n[i]*(t - theta[i]))*n[i]*n[i];
+          perturb_0 +=  beta[i]*cos(n[i]*(t - theta[i]));
+          perturb_1 += -beta[i]*sin(n[i]*(t - theta[i]))*n[i];
+          perturb_2 += -beta[i]*cos(n[i]*(t - theta[i]))*n[i]*n[i];
         }
 
         double t_x = - Y/r/r;
@@ -862,7 +862,7 @@ public:
         double r2_yz = 0;
         double r2_zx = 0;
 
-        double e= perturb_0;
+        double e = perturb_0;
 
         double e_x = perturb_1*t_x;
         double e_y = perturb_1*t_y;
