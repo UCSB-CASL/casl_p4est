@@ -355,9 +355,10 @@ public:
   inline void set_use_points_on_interface  (bool value)   { use_points_on_interface_   = value; }
   inline void set_enforce_planar_front     (bool value)   { enforce_planar_front_      = value; }
 
-  inline void set_update_c0_robin          (int value)   { update_c0_robin_           = value; }
+  inline void set_update_c0_robin          (int value)    { update_c0_robin_           = value; }
   inline void set_pin_every_n_iterations   (int value)    { pin_every_n_iterations_    = value; }
   inline void set_max_iterations           (int value)    { max_iterations_            = value; }
+  inline void set_front_smoothing          (int value)    { front_smoothing_           = value; }
 
   inline void set_phi_thresh               (double value) { phi_thresh_                = value; }
   inline void set_bc_tolerance             (double value) { bc_tolerance_              = value; }

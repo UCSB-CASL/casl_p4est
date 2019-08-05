@@ -451,6 +451,10 @@ void my_p4est_multialloy_t::compute_velocity()
   }
   ls.extend_from_interface_to_whole_domain_TVD(front_phi_.vec, front_velo_norm_tmp.vec, front_velo_norm_[0].vec);
 
+  c_interface.destroy();
+  front_velo_norm_tmp.destroy();
+  front_velo_tmp.destroy();
+
   if (enforce_planar_front_)
   {
     vec_and_ptr_t ones(front_phi_.vec);
@@ -613,6 +617,7 @@ void my_p4est_multialloy_t::update_grid()
   interp.interpolate(contr_phi_tmp.vec);
   contr_phi_.destroy();
   contr_phi_.set(contr_phi_tmp.vec);
+  contr_phi_dd_.destroy();
   contr_phi_dd_.create(p4est_np1, nodes_np1);
 
   cl0_grad_.destroy();
@@ -1137,13 +1142,13 @@ void my_p4est_multialloy_t::save_VTK_solid(int iter)
 
   /* save the size of the leaves */
   Vec leaf_level;
-  ierr = VecCreateGhostCells(p4est_, ghost_, &leaf_level); CHKERRXX(ierr);
+  ierr = VecCreateGhostCells(history_p4est_, history_ghost_, &leaf_level); CHKERRXX(ierr);
   double *l_p;
   ierr = VecGetArray(leaf_level, &l_p); CHKERRXX(ierr);
 
-  for(p4est_topidx_t tree_idx = p4est_->first_local_tree; tree_idx <= p4est_->last_local_tree; ++tree_idx)
+  for(p4est_topidx_t tree_idx = history_p4est_->first_local_tree; tree_idx <= history_p4est_->last_local_tree; ++tree_idx)
   {
-    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est_->trees, tree_idx);
+    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(history_p4est_->trees, tree_idx);
     for( size_t q=0; q<tree->quadrants.elem_count; ++q)
     {
       const p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, q);
@@ -1151,10 +1156,10 @@ void my_p4est_multialloy_t::save_VTK_solid(int iter)
     }
   }
 
-  for(size_t q=0; q<ghost_->ghosts.elem_count; ++q)
+  for(size_t q=0; q<history_ghost_->ghosts.elem_count; ++q)
   {
-    const p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&ghost_->ghosts, q);
-    l_p[p4est_->local_num_quadrants+q] = quad->level;
+    const p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&history_ghost_->ghosts, q);
+    l_p[history_p4est_->local_num_quadrants+q] = quad->level;
   }
 
   cell_data.push_back(l_p); cell_data_names.push_back("leaf_level");
@@ -1178,7 +1183,7 @@ void my_p4est_multialloy_t::save_VTK_solid(int iter)
 
   VecScaleGhost(history_front_velo_norm_.vec, 1./scaling_);
 
-  my_p4est_vtk_write_all_vector_form(p4est_, nodes_, ghost_,
+  my_p4est_vtk_write_all_vector_form(history_p4est_, history_nodes_, history_ghost_,
                                      P4EST_TRUE, P4EST_TRUE,
                                      name,
                                      point_data, point_data_names,
@@ -1453,8 +1458,65 @@ void my_p4est_multialloy_t::regularize_front()
   /* remove problem geometries */
   PetscPrintf(p4est_->mpicomm, "Removing problem geometries...\n");
 
+  vec_and_ptr_t front_phi_cur;
 
-  vec_and_ptr_t front_phi_tmp(front_phi_.vec);
+  front_phi_cur.set(front_phi_.vec);
+
+  p4est_t       *p4est_cur = p4est_;
+  p4est_nodes_t *nodes_cur = nodes_;
+  p4est_ghost_t *ghost_cur = ghost_;
+  my_p4est_node_neighbors_t *ngbd_cur = ngbd_;
+  my_p4est_hierarchy_t *hierarchy_cur = hierarchy_;
+
+  if (front_smoothing_ != 0)
+  {
+    p4est_cur = p4est_copy(p4est_, P4EST_FALSE);
+    ghost_cur = my_p4est_ghost_new(p4est_cur, P4EST_CONNECT_FULL);
+    nodes_cur = my_p4est_nodes_new(p4est_cur, ghost_cur);
+
+    front_phi_cur.create(front_phi_.vec);
+    VecCopyGhost(front_phi_.vec, front_phi_cur.vec);
+
+    splitting_criteria_t* sp_old = (splitting_criteria_t*)p4est_->user_pointer;
+    bool is_grid_changing = true;
+    while (is_grid_changing)
+    {
+      front_phi_cur.get_array();
+      splitting_criteria_tag_t sp(sp_old->min_lvl, sp_old->max_lvl-front_smoothing_, sp_old->lip);
+      is_grid_changing = sp.refine_and_coarsen(p4est_cur, nodes_cur, front_phi_cur.ptr);
+      front_phi_cur.restore_array();
+
+      if (is_grid_changing)
+      {
+        my_p4est_partition(p4est_cur, P4EST_TRUE, NULL);
+
+        // reset nodes, ghost, and phi
+        p4est_ghost_destroy(ghost_cur); ghost_cur = my_p4est_ghost_new(p4est_cur, P4EST_CONNECT_FULL);
+        p4est_nodes_destroy(nodes_cur); nodes_cur = my_p4est_nodes_new(p4est_cur, ghost_cur);
+
+        front_phi_cur.destroy();
+        front_phi_cur.create(p4est_cur, nodes_cur);
+
+        my_p4est_interpolation_nodes_t interp(ngbd_);
+
+        double xyz[P4EST_DIM];
+        foreach_node(n, nodes_cur)
+        {
+          node_xyz_fr_n(n, p4est_cur, nodes_cur, xyz);
+          interp.add_point(n, xyz);
+        }
+
+        interp.set_input(front_phi_.vec, linear); // we know that it is not really an interpolation, rather just a transfer, so therefore linear
+        interp.interpolate(front_phi_cur.vec);
+      }
+    }
+
+    hierarchy_cur = new my_p4est_hierarchy_t(p4est_cur, ghost_cur, &brick_);
+    ngbd_cur = new my_p4est_node_neighbors_t(hierarchy_cur, nodes_cur);
+    ngbd_cur->init_neighbors();
+  }
+
+  vec_and_ptr_t front_phi_tmp(front_phi_cur.vec);
 
   p4est_locidx_t nei_n[num_neighbors_cube];
   bool           nei_e[num_neighbors_cube];
@@ -1462,32 +1524,32 @@ void my_p4est_multialloy_t::regularize_front()
   double band = diag_;
 
   front_phi_tmp.get_array();
-  front_phi_   .get_array();
+  front_phi_cur.get_array();
 
   // first pass: smooth out extremely curved regions
   // TODO: make it iterative
   bool is_changed = false;
-  foreach_local_node(n, nodes_)
+  foreach_local_node(n, nodes_cur)
   {
-    if (fabs(front_phi_.ptr[n]) < band)
+    if (fabs(front_phi_cur.ptr[n]) < band)
     {
-      ngbd_->get_all_neighbors(n, nei_n, nei_e);
+      ngbd_cur->get_all_neighbors(n, nei_n, nei_e);
 
       unsigned short num_neg = 0;
       unsigned short num_pos = 0;
 
       for (unsigned short nn = 0; nn < num_neighbors_cube; ++nn)
       {
-        front_phi_.ptr[nei_n[nn]] < 0 ? num_neg++ : num_pos++;
+        front_phi_cur.ptr[nei_n[nn]] < 0 ? num_neg++ : num_pos++;
       }
 
-      if ( (front_phi_.ptr[n] <  0 && num_neg < 3) ||
-           (front_phi_.ptr[n] >= 0 && num_pos < 3) )
+      if ( (front_phi_cur.ptr[n] <  0 && num_neg < 3) ||
+           (front_phi_cur.ptr[n] >= 0 && num_pos < 3) )
       {
-        front_phi_.ptr[n] = front_phi_.ptr[n] <  0 ? EPS : -EPS;
+        front_phi_cur.ptr[n] = front_phi_cur.ptr[n] <  0 ? EPS : -EPS;
 
         // check if node is a layer node (= a ghost node for another process)
-        p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes_->indep_nodes, n);
+        p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes_cur->indep_nodes, n);
         if (ni->pad8 != 0) is_changed = true;
       }
     }
@@ -1497,64 +1559,68 @@ void my_p4est_multialloy_t::regularize_front()
 
   if (is_changed)
   {
-    ierr = VecGhostUpdateBegin(front_phi_.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateEnd  (front_phi_.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateBegin(front_phi_cur.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd  (front_phi_cur.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   }
 
-  VecCopyGhost(front_phi_.vec, front_phi_tmp.vec);
+  VecCopyGhost(front_phi_cur.vec, front_phi_tmp.vec);
 
   // second pass: bridge narrow gaps
   // TODO: develop a more general approach that works in 3D as well
+  double new_phi_val = .5*dxyz_min_*pow(2., front_smoothing_);
   is_changed = false;
-  foreach_local_node(n, nodes_)
+  bool is_ghost_changed = false;
+  foreach_local_node(n, nodes_cur)
   {
-    if (front_phi_.ptr[n] < 0 && front_phi_.ptr[n] > -band)
+    if (front_phi_cur.ptr[n] < 0 && front_phi_cur.ptr[n] > -band)
     {
-      ngbd_->get_all_neighbors(n, nei_n, nei_e);
+      ngbd_cur->get_all_neighbors(n, nei_n, nei_e);
 
-      bool merge = (front_phi_.ptr[nei_n[nn_m00]] > 0 &&
-                   front_phi_.ptr[nei_n[nn_p00]] > 0 &&
-          front_phi_.ptr[nei_n[nn_0m0]] > 0 &&
-          front_phi_.ptr[nei_n[nn_0p0]] > 0)
-          || ((front_phi_.ptr[nei_n[nn_m00]] > 0 && front_phi_.ptr[nei_n[nn_p00]] > 0) &&
-          (front_phi_.ptr[nei_n[nn_mm0]] < 0 || front_phi_.ptr[nei_n[nn_0m0]] < 0 || front_phi_.ptr[nei_n[nn_pm0]] < 0) &&
-          (front_phi_.ptr[nei_n[nn_mp0]] < 0 || front_phi_.ptr[nei_n[nn_0p0]] < 0 || front_phi_.ptr[nei_n[nn_pp0]] < 0))
-          || ((front_phi_.ptr[nei_n[nn_0m0]] > 0 && front_phi_.ptr[nei_n[nn_0p0]] > 0) &&
-          (front_phi_.ptr[nei_n[nn_mm0]] < 0 || front_phi_.ptr[nei_n[nn_m00]] < 0 || front_phi_.ptr[nei_n[nn_mp0]] < 0) &&
-          (front_phi_.ptr[nei_n[nn_pm0]] < 0 || front_phi_.ptr[nei_n[nn_p00]] < 0 || front_phi_.ptr[nei_n[nn_pp0]] < 0));
+      bool merge = (front_phi_cur.ptr[nei_n[nn_m00]] > 0 &&
+                   front_phi_cur.ptr[nei_n[nn_p00]] > 0 &&
+          front_phi_cur.ptr[nei_n[nn_0m0]] > 0 &&
+          front_phi_cur.ptr[nei_n[nn_0p0]] > 0)
+          || ((front_phi_cur.ptr[nei_n[nn_m00]] > 0 && front_phi_cur.ptr[nei_n[nn_p00]] > 0) &&
+          (front_phi_cur.ptr[nei_n[nn_mm0]] < 0 || front_phi_cur.ptr[nei_n[nn_0m0]] < 0 || front_phi_cur.ptr[nei_n[nn_pm0]] < 0) &&
+          (front_phi_cur.ptr[nei_n[nn_mp0]] < 0 || front_phi_cur.ptr[nei_n[nn_0p0]] < 0 || front_phi_cur.ptr[nei_n[nn_pp0]] < 0))
+          || ((front_phi_cur.ptr[nei_n[nn_0m0]] > 0 && front_phi_cur.ptr[nei_n[nn_0p0]] > 0) &&
+          (front_phi_cur.ptr[nei_n[nn_mm0]] < 0 || front_phi_cur.ptr[nei_n[nn_m00]] < 0 || front_phi_cur.ptr[nei_n[nn_mp0]] < 0) &&
+          (front_phi_cur.ptr[nei_n[nn_pm0]] < 0 || front_phi_cur.ptr[nei_n[nn_p00]] < 0 || front_phi_cur.ptr[nei_n[nn_pp0]] < 0));
 
       if (merge)
       {
-        front_phi_tmp.ptr[n] = .5*dxyz_min_;
+        front_phi_tmp.ptr[n] = new_phi_val;
 
         // check if node is a layer node (= a ghost node for another process)
-        p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes_->indep_nodes, n);
-        if (ni->pad8 != 0) is_changed = true;
+        p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes_cur->indep_nodes, n);
+        if (ni->pad8 != 0) is_ghost_changed = true;
+
+        is_changed = true;
       }
 
     }
   }
 
   front_phi_tmp.restore_array();
-  front_phi_   .restore_array();
+  front_phi_cur.restore_array();
 
   mpiret = MPI_Allreduce(MPI_IN_PLACE, &is_changed, 1, MPI_LOGICAL, MPI_LOR, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
 
-  if (is_changed)
+  if (is_ghost_changed)
   {
     ierr = VecGhostUpdateBegin(front_phi_tmp.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecGhostUpdateEnd  (front_phi_tmp.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   }
 
   // third pass: look for isolated pools of liquid and remove them
-  if (1) // assuming such pools can form only due to the artificial bridging (I guess it's quite safe to say, but not entirely correct)
+  if (is_changed) // assuming such pools can form only due to the artificial bridging (I guess it's quite safe to say, but not entirely correct)
   {
     int num_islands = 0;
-    vec_and_ptr_t island_number(front_phi_.vec);
+    vec_and_ptr_t island_number(front_phi_cur.vec);
 
-    VecScaleGhost(front_phi_.vec, -1.);
-    compute_islands_numbers(*ngbd_, front_phi_.vec, num_islands, island_number.vec);
-    VecScaleGhost(front_phi_.vec, -1.);
+    VecScaleGhost(front_phi_tmp.vec, -1.);
+    compute_islands_numbers(*ngbd_cur, front_phi_tmp.vec, num_islands, island_number.vec);
+    VecScaleGhost(front_phi_tmp.vec, -1.);
 
     if (num_islands > 1)
     {
@@ -1565,7 +1631,7 @@ void my_p4est_multialloy_t::regularize_front()
       // TODO: make it real area instead of number of points
       std::vector<double> island_area(num_islands, 0);
 
-      foreach_local_node(n, nodes_)
+      foreach_local_node(n, nodes_cur)
       {
         if (island_number.ptr[n] >= 0)
         {
@@ -1573,7 +1639,7 @@ void my_p4est_multialloy_t::regularize_front()
         }
       }
 
-      int mpiret = MPI_Allreduce(MPI_IN_PLACE, island_area.data(), num_islands, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
+      int mpiret = MPI_Allreduce(MPI_IN_PLACE, island_area.data(), num_islands, MPI_DOUBLE, MPI_SUM, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
 
       // find the biggest liquid pool
       int main_island = 0;
@@ -1591,11 +1657,11 @@ void my_p4est_multialloy_t::regularize_front()
       if (main_island < 0) throw;
 
       // solidify all but the biggest pool
-      foreach_node(n, nodes_)
+      foreach_node(n, nodes_cur)
       {
         if (front_phi_tmp.ptr[n] < 0 && island_number.ptr[n] != main_island)
         {
-          front_phi_tmp.ptr[n] = .5*dxyz_min_;
+          front_phi_tmp.ptr[n] = new_phi_val;
         }
       }
 
@@ -1609,6 +1675,34 @@ void my_p4est_multialloy_t::regularize_front()
     island_number.destroy();
   }
 
-  front_phi_.destroy();
-  front_phi_.set(front_phi_tmp.vec);
+  front_phi_cur.destroy();
+  front_phi_cur.set(front_phi_tmp.vec);
+
+  // iterpolate back onto fine grid
+  if (front_smoothing_ != 0)
+  {
+    my_p4est_level_set_t ls(ngbd_cur);
+    ls.reinitialize_1st_order_time_2nd_order_space(front_phi_cur.vec, 20);
+
+    my_p4est_interpolation_nodes_t interp(ngbd_cur);
+
+    double xyz[P4EST_DIM];
+    foreach_node(n, nodes_)
+    {
+      node_xyz_fr_n(n, p4est_, nodes_, xyz);
+      interp.add_point(n, xyz);
+    }
+
+    interp.set_input(front_phi_cur.vec, quadratic_non_oscillatory_continuous_v2); // we know that it is not really an interpolation, rather just a transfer, so therefore linear
+    interp.interpolate(front_phi_.vec);
+
+    front_phi_cur.destroy();
+    delete ngbd_cur;
+    delete hierarchy_cur;
+    p4est_nodes_destroy(nodes_cur);
+    p4est_ghost_destroy(ghost_cur);
+    p4est_destroy(p4est_cur);
+  } else {
+    front_phi_.set(front_phi_cur.vec);
+  }
 }

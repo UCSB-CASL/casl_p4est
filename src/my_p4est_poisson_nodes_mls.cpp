@@ -239,10 +239,10 @@ my_p4est_poisson_nodes_mls_t::~my_p4est_poisson_nodes_mls_t()
   // auxiliary variables
   if (mask_m_    != NULL) { ierr = VecDestroy(mask_m_); CHKERRXX(ierr); }
   if (mask_p_    != NULL) { ierr = VecDestroy(mask_p_); CHKERRXX(ierr); }
-  if (areas_m_   != NULL && volumes_owned_) { ierr = VecDestroy(areas_m_); CHKERRXX(ierr); }
-  if (areas_p_   != NULL && volumes_owned_) { ierr = VecDestroy(areas_p_); CHKERRXX(ierr); }
-  if (volumes_m_ != NULL && volumes_owned_) { ierr = VecDestroy(volumes_m_); CHKERRXX(ierr); }
-  if (volumes_p_ != NULL && volumes_owned_) { ierr = VecDestroy(volumes_p_); CHKERRXX(ierr); }
+  if (areas_m_   != NULL) { ierr = VecDestroy(areas_m_); CHKERRXX(ierr); }
+  if (areas_p_   != NULL) { ierr = VecDestroy(areas_p_); CHKERRXX(ierr); }
+  if (volumes_m_ != NULL) { ierr = VecDestroy(volumes_m_); CHKERRXX(ierr); }
+  if (volumes_p_ != NULL) { ierr = VecDestroy(volumes_p_); CHKERRXX(ierr); }
 
   // finite volumes
   if (finite_volumes_owned_)
@@ -881,6 +881,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
       }
 
       finite_volumes_initialized_ = true;
+      finite_volumes_owned_       = true;
 
       ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_mls_compute_finite_volumes, 0, 0, 0, 0); CHKERRXX(ierr);
     }
@@ -1365,7 +1366,6 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
     // get diagonal scaling of the resulting matrix
     ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_compute_diagonal_scaling, 0, 0, 0, 0); CHKERRXX(ierr);
     if (diag_scaling_ != NULL) { ierr = VecDestroy(diag_scaling_); CHKERRXX(ierr); }
-
     ierr = VecDuplicate(rhs_, &diag_scaling_); CHKERRXX(ierr);
     ierr = MatGetDiagonal(A_, diag_scaling_); CHKERRXX(ierr);
     ierr = VecReciprocalGhost(diag_scaling_); CHKERRXX(ierr);

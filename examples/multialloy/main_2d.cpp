@@ -62,7 +62,7 @@ DEFINE_PARAMETER(pl, int, py, 0, "Periodicity in the y-direction (0/1)");
 DEFINE_PARAMETER(pl, int, pz, 0, "Periodicity in the z-direction (0/1)");
 
 DEFINE_PARAMETER(pl, int, nx, 1, "Number of trees in the x-direction");
-DEFINE_PARAMETER(pl, int, ny, 1, "Number of trees in the y-direction");
+DEFINE_PARAMETER(pl, int, ny, 2, "Number of trees in the y-direction");
 DEFINE_PARAMETER(pl, int, nz, 1, "Number of trees in the z-direction");
 
 DEFINE_PARAMETER(pl, double, xmin, 0, "Box xmin");
@@ -70,7 +70,7 @@ DEFINE_PARAMETER(pl, double, ymin, 0, "Box ymin");
 DEFINE_PARAMETER(pl, double, zmin, 0, "Box zmin");
 
 DEFINE_PARAMETER(pl, double, xmax, 1, "Box xmax");
-DEFINE_PARAMETER(pl, double, ymax, 1, "Box ymax");
+DEFINE_PARAMETER(pl, double, ymax, 2, "Box ymax");
 DEFINE_PARAMETER(pl, double, zmax, 1, "Box zmax");
 
 //-------------------------------------
@@ -80,11 +80,11 @@ DEFINE_PARAMETER(pl, double, zmax, 1, "Box zmax");
 DEFINE_PARAMETER(pl, int, lmin, 5, "Min level of the tree");
 DEFINE_PARAMETER(pl, int, lmax, 5, "Max level of the tree");
 #else
-DEFINE_PARAMETER(pl, int, lmin, 7, "Min level of the tree");
+DEFINE_PARAMETER(pl, int, lmin, 6, "Min level of the tree");
 DEFINE_PARAMETER(pl, int, lmax, 10, "Max level of the tree");
 #endif
 
-DEFINE_PARAMETER(pl, double, lip, 1.5, "");
+DEFINE_PARAMETER(pl, double, lip, 1.75, "");
 
 //-------------------------------------
 // solver parameters
@@ -95,20 +95,21 @@ DEFINE_PARAMETER(pl, bool, use_superconvergent_robin, false, "");
 DEFINE_PARAMETER(pl, int,    update_c0_robin, 1, "Solve for c0 using Robin BC: 0 - never, 1 - once, 2 - always");
 DEFINE_PARAMETER(pl, int,    num_time_layers, 3, "");
 DEFINE_PARAMETER(pl, int,    pin_every_n_iterations, 20, "");
-DEFINE_PARAMETER(pl, int,    max_iterations,    10, "");
+DEFINE_PARAMETER(pl, int,    max_iterations,   10, "");
+DEFINE_PARAMETER(pl, int,    front_smoothing,   1, "");
 DEFINE_PARAMETER(pl, double, bc_tolerance,      1.e-5, "");
-DEFINE_PARAMETER(pl, double, cfl_number, 0.25, "");
+DEFINE_PARAMETER(pl, double, cfl_number, 0.5, "");
 DEFINE_PARAMETER(pl, double, phi_thresh, 0.1, "");
 
 //-------------------------------------
 // output parameters
 //-------------------------------------
-DEFINE_PARAMETER(pl, int,  save_every_n_iteration, 10, "");
-DEFINE_PARAMETER(pl, bool, save_characteristics,    0, "");
+DEFINE_PARAMETER(pl, int,  save_every_n_iteration, 50, "");
+DEFINE_PARAMETER(pl, bool, save_characteristics,    1, "");
 DEFINE_PARAMETER(pl, bool, save_dendrites,          0, "");
-DEFINE_PARAMETER(pl, bool, save_history,            0, "");
-DEFINE_PARAMETER(pl, bool, save_params,             0, "");
-DEFINE_PARAMETER(pl, bool, save_vtk,                0, "");
+DEFINE_PARAMETER(pl, bool, save_history,            1, "");
+DEFINE_PARAMETER(pl, bool, save_params,             1, "");
+DEFINE_PARAMETER(pl, bool, save_vtk,                1, "");
 
 DEFINE_PARAMETER(pl, double, save_every_dl, 0.01, "");
 DEFINE_PARAMETER(pl, double, save_every_dt, 0.1,  "");
@@ -120,13 +121,13 @@ DEFINE_PARAMETER(pl, double, dendrite_min_length,       0.05, "");
 
 // problem parameters
 DEFINE_PARAMETER(pl, bool,   concentration_neumann, 1, "");
-DEFINE_PARAMETER(pl, int,    max_total_iterations,  10, "");
+DEFINE_PARAMETER(pl, int,    max_total_iterations,  INT_MAX, "");
 DEFINE_PARAMETER(pl, double, time_limit,            DBL_MAX, "");
 DEFINE_PARAMETER(pl, double, termination_length,    1.8, "");
 DEFINE_PARAMETER(pl, double, init_perturb,          0.000, "");
 DEFINE_PARAMETER(pl, bool,   enforce_planar_front,  0,"");
 
-DEFINE_PARAMETER(pl, double, box_size, 1.e-1, "equivalent width (in x) of the box in cm");
+DEFINE_PARAMETER(pl, double, box_size, 1.e-2, "equivalent width (in x) of the box in cm");
 
 double scaling = 1./box_size;
 
@@ -144,7 +145,7 @@ int num_comps = 1; // Number of components used
 
 DEFINE_PARAMETER(pl, double, volumetric_heat,  0, "Volumetric heat generation, J/cm^3");
 DEFINE_PARAMETER(pl, double, cooling_velocity, 0.01, "Cooling velocity, cm/s");
-DEFINE_PARAMETER(pl, double, temp_gradient,    400, "Temperature gradient, K/cm");
+DEFINE_PARAMETER(pl, double, temp_gradient,    200, "Temperature gradient, K/cm");
 
 DEFINE_PARAMETER(pl, int, smoothstep_order, 5, "Time for volumetric heat to fully switch on, s");
 DEFINE_PARAMETER(pl, double, volumetric_heat_tau, 0, "Time for volumetric heat to fully switch on, s");
@@ -188,7 +189,7 @@ DEFINE_PARAMETER(pl, double, eps_c, 0, ""); /* curvature undercooling coefficien
 DEFINE_PARAMETER(pl, double, eps_v, 0, ""); /* kinetic undercooling coefficient           - s.K.cm-1     */
 DEFINE_PARAMETER(pl, double, eps_a, 0, ""); /* anisotropy coefficient                                    */
 
-DEFINE_PARAMETER(pl, int, alloy, 7, "0: Ni -  0.4at%Cu bi-alloy, "
+DEFINE_PARAMETER(pl, int, alloy, 1, "0: Ni -  0.4at%Cu bi-alloy, "
                                     "1: Ni -  0.3at%Cu -  0.1at%Cu tri-alloy, "
                                     "2: Co - 10.7at%W  -  9.4at%Al tri-alloy, "
                                     "3: Co -  9.4at%Al - 10.7at%W  tri-alloy, "
@@ -238,12 +239,12 @@ void set_alloy_parameters()
       thermal_cond_s  = 6.07e-1; // W.cm-1.K-1
 
       num_comps = 2;
-      solute_diff_0    = 1.e-4;
-      solute_diff_1    = 1.e-4;
+      solute_diff_0    = 1.e-5;
+      solute_diff_1    = 5.e-5;
       liquidus_slope_0 = -357;
       liquidus_slope_1 = -357;
-      initial_conc_0   = 0.3;
-      initial_conc_1   = 0.1;
+      initial_conc_0   = 0.2;
+      initial_conc_1   = 0.2;
       part_coeff_0     = 0.86;
       part_coeff_1     = 0.86;
 
@@ -858,7 +859,7 @@ int main (int argc, char* argv[])
   double dt = cfl_number*MIN(DIM(dx,dy,dz))/cooling_velocity;
 
   mas.set_dt(dt);
-  mas.set_dt_limits(0.001*dt, 10.*dt);
+  mas.set_dt_limits(0.0*dt, 10.*dt);
 
   // set initial conditions
   mas.set_temperature(tl.vec, ts.vec);
@@ -871,6 +872,7 @@ int main (int argc, char* argv[])
   mas.set_max_iterations           (max_iterations);
   mas.set_cfl                      (cfl_number);
   mas.set_phi_thresh               (phi_thresh);
+  mas.set_front_smoothing          (front_smoothing);
 
   mas.set_use_superconvergent_robin(use_superconvergent_robin);
   mas.set_use_points_on_interface  (use_points_on_interface);
@@ -904,7 +906,6 @@ int main (int argc, char* argv[])
   int    sub_iterations = 0;
   int    vtk_idx        = 0;
   int    mpiret;
-
 
   while (keep_going)
   {
@@ -982,8 +983,6 @@ int main (int argc, char* argv[])
       num_local_nodes = buffer[0];
       num_ghost_nodes = buffer[1];
 
-      ones.destroy();
-
       // write into file
       ierr = PetscFOpen(mpi.comm(), name, "a", &fich); CHKERRXX(ierr);
       PetscFPrintf(mpi.comm(), fich, "%e %e %e %e %e %e %d %d %d %d\n", tn, velocity_avg/scaling, mas.get_front_velocity_max()/scaling, front_area, solid_volume, time_elapsed, iteration, num_local_nodes, num_ghost_nodes, sub_iterations);
@@ -991,6 +990,8 @@ int main (int argc, char* argv[])
       ierr = PetscPrintf(mpi.comm(), "saved velocity in %s\n", name); CHKERRXX(ierr);
 
       sub_iterations = 0;
+      ones.destroy();
+      phi_liquid.destroy();
     }
 
     // save field data
