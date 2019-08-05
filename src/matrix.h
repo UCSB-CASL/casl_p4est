@@ -49,11 +49,13 @@ public:
   //--------------------------------------------------------------------------
   void matvec( const vector<double>& x, vector<double>& b );
 
-  void tranpose_matvec( const vector<double>& x, vector<double>& b );
+  void tranpose_matvec( const vector<double>& x, vector<double>& b ) {tranpose_matvec(&x, &b, 1);}
+  void tranpose_matvec( const vector<double> x[], vector<double> b[], unsigned int n_vectors);
 
   void matrix_product(  matrix_t& b, matrix_t& c );
 
-  void scale_by_maxabs(vector<double>& x);
+  double scale_by_maxabs(vector<double>& x) {return scale_by_maxabs(&x, 1); }
+  double scale_by_maxabs(vector<double> x[], unsigned int n_vectors);
 
   void mtm_product(matrix_t& m );
   void mtm_product(matrix_t& m, vector<double>& w);
@@ -75,6 +77,8 @@ public:
   void operator*=(double s );
   void operator/=(double s );
   void operator =(double s );
+//  const double* read_data() const {return values.data();}
+//  double* get_data() {return values.data();}
 };
 
 

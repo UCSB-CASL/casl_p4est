@@ -1,15 +1,29 @@
 #ifdef P4_TO_P8
 #include "my_p8est_solve_lsqr.h"
+#include <p8est_connectivity.h>
 #else
 #include "my_p4est_solve_lsqr.h"
+#include <p4est_connectivity.h>
 #endif
 
+//#include <lapacke.h>
+//#include <cblas.h>
+/* [Raphael:] I tried to optimize some of the routines here below with lapacke
+ * and cblas functions, but it turns out that they are called only for matrices
+ * that are too small to see any improvement. Therefore, I finally decided to
+ * leave them as such, since it increases the general portability of the code...
+ * */
 #include "math.h"
 
 #include <iostream>
 using namespace std;
 
-bool solve_cholesky(matrix_t &A, vector<double> &b, vector<double> &x)
+int tri_idx(int i, int j)
+{
+  return i*(i+1)/2+j;
+}
+
+bool solve_cholesky_and_get_first_line(matrix_t &A, vector<double> &b, vector<double> &x, vector<double> &first_line)
 {
 #ifdef CASL_THROWS
   if(A.num_cols()!=A.num_rows() || A.num_rows()!=(int)b.size() || !A.is_symmetric())
@@ -18,11 +32,14 @@ bool solve_cholesky(matrix_t &A, vector<double> &b, vector<double> &x)
 
   int n = b.size();
   x.resize(n);
+  first_line.resize(n, 0.0);
 
   /* compute cholesky decomposition */
   double Lf[n][n];
+  vector<double> Linv; Linv.resize(n*(n+1)/2, 0.0); // inverse of L
   for(int j=0; j<n; ++j)
   {
+    Linv.at(tri_idx(j, j)) = 1.0;
     if(std::isnan(A.get_value(j,j))) return false;
 
     Lf[j][j] = A.get_value(j,j);
@@ -48,6 +65,11 @@ bool solve_cholesky(matrix_t &A, vector<double> &b, vector<double> &x)
   for(int i=0; i<n; ++i)
   {
     y[i] = b[i];
+    for (int k=0; k<i; ++k)
+      for(int j=k; j<i; ++j)
+        Linv.at(tri_idx(i, k)) -= Linv.at(tri_idx(j, k))*Lf[i][j];
+    for (int k=0; k<=i ; ++k)
+      Linv.at(tri_idx(i, k)) /= Lf[i][i];
     for(int j=0; j<i; ++j)
       y[i] -= y[j]*Lf[i][j];
     y[i] /= Lf[i][i];
@@ -62,6 +84,9 @@ bool solve_cholesky(matrix_t &A, vector<double> &b, vector<double> &x)
     x[i] /= Lf[i][i];
   }
 
+  for(int i=0; i < n; i++)
+    for (int j = i; j < n; ++j)
+      first_line[i] += Linv.at(tri_idx(j, 0))*Linv.at(tri_idx(j, i));
   return true;
 }
 
@@ -137,9 +162,145 @@ bool invert_cholesky(matrix_t &A, matrix_t &Ai)
 
 
 #ifdef P4_TO_P8
-double solve_lsqr_system(matrix_t &A, vector<double> &p, int nb_x, int nb_y, int nb_z, char order)
+void solve_lsqr_system(matrix_t &A, vector<double> p[], unsigned int n_vectors, double* solutions, int nb_x, int nb_y, int nb_z, char order, unsigned short nconstraints, std::vector<double>* interp_coeffs)
 #else
-double solve_lsqr_system(matrix_t &A, vector<double> &p, int nb_x, int nb_y, char order)
+void solve_lsqr_system(matrix_t &A, vector<double> p[], unsigned int n_vectors, double* solutions, int nb_x, int nb_y, char order, unsigned short nconstraints, std::vector<double>* interp_coeffs)
+#endif
+{
+#ifdef CASL_THROWS
+  if(n_vectors == 0) throw std::invalid_argument("[CASL_ERROR]: solve_lsqr_system(...): the number of rhs's must be strictly positive!");
+  for (unsigned int k = 0; k < n_vectors; ++k)
+    if( (unsigned int) A.num_rows() != p[k].size() )
+      throw std::invalid_argument("[CASL_ERROR]: solve_lsqr_system(...): the matrix and (one of) the right hand side(s) don't have the same size");
+#endif
+  P4EST_ASSERT(nconstraints<=P4EST_DIM);
+  int m = A.num_rows();
+  matrix_t *M = new matrix_t();
+  vector<double> Atp[n_vectors];
+  vector<double> coeffs[n_vectors];
+  vector<double>* my_interp_coeffs = NULL;
+  if(interp_coeffs!= NULL)
+    my_interp_coeffs = new vector<double>(0);
+#ifdef P4_TO_P8
+  if(order>=2 && m>=(1+P4EST_DIM+P4EST_DIM*(P4EST_DIM+1)/2-nconstraints) && nb_x>=3 && nb_y>=3 && nb_z>=3)
+#else
+  if(order>=2 && m>=(1+P4EST_DIM+P4EST_DIM*(P4EST_DIM+1)/2-nconstraints) && nb_x>=3 && nb_y>=3)
+#endif
+  {
+    A.tranpose_matvec(p, Atp, n_vectors);
+    A.mtm_product(*M);
+
+    if(solve_cholesky(*M, Atp, coeffs, n_vectors, my_interp_coeffs))
+    {
+      for (unsigned int k = 0; k < n_vectors; ++k)
+        solutions[k] = coeffs[k][0];
+      delete M;
+      if(interp_coeffs)
+        A.matvec(*my_interp_coeffs, *interp_coeffs);
+      if(my_interp_coeffs!=NULL)
+        delete  my_interp_coeffs;
+      return;
+    }
+  }
+
+  /* either the system was not invertible - most likely there was a direction with less than 3 points, e.g. in the diagonal !
+   * or the number of points along cartesian dimensions is lower than expected, or desired order is smaller than 2 */
+  if(my_interp_coeffs!= NULL)
+    my_interp_coeffs->resize(0);
+  if(order>=1 && m>=(1+P4EST_DIM-nconstraints) && nb_x>=2 && nb_y>=2
+   #ifdef P4_TO_P8
+     && nb_z>=2
+   #endif
+     )
+  {
+    matrix_t *trunc_mat = NULL;
+    if(order==2)
+    {
+#ifdef P4_TO_P8
+      if(m>=(1+P4EST_DIM+P4EST_DIM*(P4EST_DIM+1)/2-nconstraints) && nb_x>=3 && nb_y>=3 && nb_z>=3)
+#else
+      if(m>=(1+P4EST_DIM+P4EST_DIM*(P4EST_DIM+1)/2-nconstraints) && nb_x>=3 && nb_y>=3)
+#endif
+      {
+        if(my_interp_coeffs!=NULL)
+        {
+          trunc_mat = new matrix_t(m, P4EST_DIM+1-nconstraints);
+          trunc_mat->truncate_matrix(m, P4EST_DIM+1-nconstraints, A);
+        }
+        // the relevant quantities were already calculated but the cholesky_solve failed...
+        matrix_t* M_sub= new matrix_t(P4EST_DIM+1-nconstraints, P4EST_DIM+1-nconstraints);
+        M_sub->truncate_matrix(P4EST_DIM+1-nconstraints, P4EST_DIM+1-nconstraints, *M);
+        delete M;
+        M = M_sub;
+        for (unsigned int k = 0; k < n_vectors; ++k)
+          Atp[k].resize(P4EST_DIM+1-nconstraints);
+      }
+      else
+      {
+        trunc_mat = new matrix_t(m, P4EST_DIM+1-nconstraints);
+        trunc_mat->truncate_matrix(m, P4EST_DIM+1-nconstraints, A);
+        trunc_mat->tranpose_matvec(p, Atp, n_vectors);
+        trunc_mat->mtm_product(*M);
+      }
+    }
+    else
+    {
+      trunc_mat = &A;
+      A.tranpose_matvec(p, Atp, n_vectors);
+      A.mtm_product(*M);
+    }
+    if(solve_cholesky(*M, Atp, coeffs, n_vectors, my_interp_coeffs))
+    {
+      for (unsigned int k = 0; k < n_vectors; ++k)
+        solutions[k] = coeffs[k][0];
+      delete M;
+      if(interp_coeffs)
+        trunc_mat->matvec(*my_interp_coeffs, *interp_coeffs);
+      if(my_interp_coeffs!=NULL)
+        delete  my_interp_coeffs;
+      if((trunc_mat!=NULL) && (trunc_mat!=&A))
+        delete trunc_mat;
+      return;
+    }
+    if((trunc_mat!=NULL) && (trunc_mat!=&A))
+      delete trunc_mat;
+  }
+  if(my_interp_coeffs!=NULL)
+    delete my_interp_coeffs;
+
+  /* either the system was not invertible - most likely there was a direction with less than 2 points, e.g. in the diagonal !
+   * or the number of points along cartesian dimensions is lower than expected, or desired order is smaller than 1 */
+  /* 0-th order polynomial approximation, just compute coeff(0) */
+  double denominator = 0;
+  double numerator = 0;
+  if(interp_coeffs!=NULL)
+    interp_coeffs->resize(m);
+  for(int i=0; i<m; ++i)
+  {
+    denominator += SQR(A.get_value(i,0));
+    numerator   += A.get_value(i,0)*p[0][i];
+    if(interp_coeffs!=NULL)
+      interp_coeffs->at(i) = A.get_value(i,0);
+  }
+  solutions[0] = numerator/denominator;
+  if(interp_coeffs!=NULL)
+    for(int i=0; i<m; ++i)
+      interp_coeffs->at(i) /= denominator;
+  for (unsigned int k = 1; k < n_vectors; ++k) {
+    numerator = 0;
+    for( int i=0; i<m; ++i)
+      numerator += A.get_value(i,0)*p[k][i];
+    solutions[k] = numerator/denominator;
+  }
+  delete M;
+  return;
+}
+
+
+#ifdef P4_TO_P8
+double solve_lsqr_system_and_get_coefficients(matrix_t &A, vector<double> &p, int nb_x, int nb_y, int nb_z, vector<double> &interp_coeffs, char order)
+#else
+double solve_lsqr_system_and_get_coefficients(matrix_t &A, vector<double> &p, int nb_x, int nb_y, vector<double> &interp_coeffs, char order)
 #endif
 {
 #ifdef P4_TO_P8
@@ -151,17 +312,22 @@ double solve_lsqr_system(matrix_t &A, vector<double> &p, int nb_x, int nb_y, cha
     /* 0-th order polynomial approximation, just compute coeff(0) */
     double sum = 0;
     double rhs = 0;
+    interp_coeffs.resize(p.size());
     for(unsigned int i=0; i<p.size(); ++i)
     {
       sum += SQR(A.get_value(i,0));
       rhs += A.get_value(i,0)*p[i];
+      interp_coeffs[i] = A.get_value(i,0);
     }
+    for (unsigned int i = 0; i < p.size(); ++i)
+      interp_coeffs[i] /= sum;
     return rhs/sum;
   }
 
   matrix_t M;
   vector<double> Atp;
   vector<double> coeffs;
+  vector<double> my_interp_coeffs;
 
 #ifdef P4_TO_P8
   if(order<2 || p.size()<10 || nb_x<3 || nb_y<3 || nb_z<3)
@@ -169,9 +335,10 @@ double solve_lsqr_system(matrix_t &A, vector<double> &p, int nb_x, int nb_y, cha
   if(order<2 || p.size()<6 || nb_x<3 || nb_y<3)
 #endif
   {
+    matrix_t *trunc_mat;
+    matrix_t Asub;
     if(order==2)
     {
-      matrix_t Asub;
 #ifdef P4_TO_P8
       Asub.truncate_matrix(A.num_rows(), 4, A);
 #else
@@ -180,25 +347,33 @@ double solve_lsqr_system(matrix_t &A, vector<double> &p, int nb_x, int nb_y, cha
 
       Asub.tranpose_matvec(p, Atp);
       Asub.mtm_product(M);
+      trunc_mat = &Asub;
     }
     else
     {
       A.tranpose_matvec(p, Atp);
       A.mtm_product(M);
+      trunc_mat = &A;
     }
 
     /* the system was not invertible - most likely there was a direction with less than 2 points, e.g. in the diagonal */
-    if(!solve_cholesky(M, Atp, coeffs))
+    if(!solve_cholesky_and_get_first_line(M, Atp, coeffs, my_interp_coeffs))
     {
       double sum = 0;
       double rhs = 0;
+      interp_coeffs.resize(p.size());
       for(unsigned int i=0; i<p.size(); ++i)
       {
         sum += SQR(A.get_value(i,0));
         rhs += A.get_value(i,0)*p[i];
+        interp_coeffs[i] = A.get_value(i,0);
       }
+      for (unsigned int i = 0; i < interp_coeffs.size(); ++i)
+        interp_coeffs[i] /= sum;
+
       return rhs/sum;
     }
+    trunc_mat->matvec(my_interp_coeffs, interp_coeffs);
 
     return coeffs[0];
   }
@@ -207,7 +382,7 @@ double solve_lsqr_system(matrix_t &A, vector<double> &p, int nb_x, int nb_y, cha
   A.mtm_product(M);
 
   /* the system was not invertible - most likely there was a direction with less than 3 points, e.g. in the diagonal ! */
-  if(!solve_cholesky(M, Atp, coeffs))
+  if(!solve_cholesky_and_get_first_line(M, Atp, coeffs, my_interp_coeffs))
   {
     matrix_t Asub;
 #ifdef P4_TO_P8
@@ -219,8 +394,11 @@ double solve_lsqr_system(matrix_t &A, vector<double> &p, int nb_x, int nb_y, cha
     Asub.tranpose_matvec(p, Atp);
     Asub.mtm_product(M);
 
-    solve_cholesky(M, Atp, coeffs);
+    solve_cholesky_and_get_first_line(M, Atp, coeffs, my_interp_coeffs);
+    Asub.matvec(my_interp_coeffs, interp_coeffs);
   }
+  else
+    A.matvec(my_interp_coeffs, interp_coeffs);
 
   return coeffs[0];
 }

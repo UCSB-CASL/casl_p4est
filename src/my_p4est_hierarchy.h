@@ -123,6 +123,14 @@ public:
   int find_smallest_quadrant_containing_point(double *xyz, p4est_quadrant_t &best_match, std::vector<p4est_quadrant_t> &remote_matches) const;
   void update(p4est_t *p4est_, p4est_ghost_t *ghost_);
   void write_vtk(const char* filename) const;
+
+  unsigned long int memory_estimate() const
+  {
+    unsigned long int memory = 0;
+    for (size_t tree_idx = 0; tree_idx < trees.size(); ++tree_idx)
+      memory += (trees[tree_idx].size())*sizeof (HierarchyCell);
+    return memory;
+  }
 };
 
 #endif /* !MY_P4EST_HIERARCHY_H */

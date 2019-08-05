@@ -80,10 +80,10 @@ double my_p4est_semi_lagrangian_t::compute_dt(const CF_2 &vx, const CF_2 &vy)
   splitting_criteria_t* data = (splitting_criteria_t*)p4est->user_pointer;
   double dx = (double)P4EST_QUADRANT_LEN(data->max_lvl) / (double)P4EST_ROOT_LEN;
 
-  double tree_xmax = p4est->connectivity->vertices[0 + 0];
-  double tree_ymax = p4est->connectivity->vertices[0 + 1];
+  double tree_xmax = p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*0 + P4EST_CHILDREN - 1] + 0];
+  double tree_ymax = p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*0 + P4EST_CHILDREN - 1] + 1];
 #ifdef P4_TO_P8
-  double tree_zmax = p4est->connectivity->vertices[0 + 2];
+  double tree_zmax = p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*0 + P4EST_CHILDREN - 1] + 2];
 #endif
 
 #ifdef P4_TO_P8
@@ -123,23 +123,23 @@ double my_p4est_semi_lagrangian_t::compute_dt(Vec vx, Vec vy)
 {
   PetscErrorCode ierr;
   double dt = DBL_MAX;
-  double *vx_p, *vy_p;
+  const double *vx_p, *vy_p;
 
-  ierr = VecGetArray(vx, &vx_p); CHKERRXX(ierr);
-  ierr = VecGetArray(vy, &vy_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(vx, &vx_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(vy, &vy_p); CHKERRXX(ierr);
 #ifdef P4_TO_P8
-  double *vz_p;
-  ierr = VecGetArray(vz, &vz_p); CHKERRXX(ierr);
+  const double *vz_p;
+  ierr = VecGetArrayRead(vz, &vz_p); CHKERRXX(ierr);
 #endif
 
   // get the min dx
   splitting_criteria_t* data = (splitting_criteria_t*)p4est->user_pointer;
   double dx = (double)P4EST_QUADRANT_LEN(data->max_lvl) / (double)P4EST_ROOT_LEN;
 
-  double tree_xmax = p4est->connectivity->vertices[0 + 0];
-  double tree_ymax = p4est->connectivity->vertices[0 + 1];
+  double tree_xmax = p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*0 + P4EST_CHILDREN - 1] + 0];
+  double tree_ymax = p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*0 + P4EST_CHILDREN - 1] + 1];
 #ifdef P4_TO_P8
-  double tree_zmax = p4est->connectivity->vertices[0 + 2];
+  double tree_zmax = p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*0 + P4EST_CHILDREN - 1] + 2];
 #endif
 
 #ifdef P4_TO_P8
@@ -158,10 +158,10 @@ double my_p4est_semi_lagrangian_t::compute_dt(Vec vx, Vec vy)
     dt = MIN(dt, dx/vn);
   }
 
-  ierr = VecRestoreArray(vx, &vx_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(vy, &vy_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(vx, &vx_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(vy, &vy_p); CHKERRXX(ierr);
 #ifdef P4_TO_P8
-  ierr = VecRestoreArray(vz, &vz_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(vz, &vz_p); CHKERRXX(ierr);
 #endif
 
   // reduce among processors
@@ -253,6 +253,17 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt, Vec *v, Vec **v
   my_p4est_interpolation_nodes_t interp(ngbd_n);
   my_p4est_interpolation_nodes_t interp_phi(ngbd_phi);
 
+  double *interp_output[P4EST_DIM];
+
+#ifndef P4_TO_P8
+  Vec xx_v_derivatives[P4EST_DIM] = {vxx[0][0], vxx[1][0]};
+  Vec yy_v_derivatives[P4EST_DIM] = {vxx[0][1], vxx[1][1]};
+#else
+  Vec xx_v_derivatives[P4EST_DIM] = {vxx[0][0], vxx[1][0], vxx[2][0]};
+  Vec yy_v_derivatives[P4EST_DIM] = {vxx[0][1], vxx[1][1], vxx[2][1]};
+  Vec zz_v_derivatives[P4EST_DIM] = {vxx[0][2], vxx[1][2], vxx[2][2]};
+#endif
+
   /* find vnp1 */
   std::vector<double> v_tmp[P4EST_DIM];
   for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
@@ -262,16 +273,17 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt, Vec *v, Vec **v
     interp.add_point(n, xyz);
   }
 
-  for(int dir=0; dir<P4EST_DIM; ++dir)
+  for (unsigned short dir = 0; dir < P4EST_DIM; ++dir)
   {
     v_tmp[dir].resize(nodes->indep_nodes.elem_count);
-#ifdef P4_TO_P8
-    interp.set_input(v[dir], vxx[dir][0], vxx[dir][1], vxx[dir][2], velo_interpolation);
-#else
-    interp.set_input(v[dir], vxx[dir][0], vxx[dir][1], velo_interpolation);
-#endif
-    interp.interpolate(v_tmp[dir].data());
+    interp_output[dir] = v_tmp[dir].data();
   }
+#ifndef P4_TO_P8
+  interp.set_input(v, xx_v_derivatives, yy_v_derivatives, quadratic, P4EST_DIM);
+#else
+  interp.set_input(v, xx_v_derivatives, yy_v_derivatives, zz_v_derivatives, quadratic, P4EST_DIM);
+#endif
+  interp.interpolate(interp_output, P4EST_DIM);
   interp.clear();
 
   /* now find v_star */
@@ -298,14 +310,13 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt, Vec *v, Vec **v
   }
 
   for(int dir=0; dir<P4EST_DIM; ++dir)
-  {
-#ifdef P4_TO_P8
-    interp.set_input(v[dir], vxx[dir][0], vxx[dir][1], vxx[dir][2], velo_interpolation);
+    interp_output[dir] = v_tmp[dir].data();
+#ifndef P4_TO_P8
+  interp.set_input(v, xx_v_derivatives, yy_v_derivatives, quadratic, P4EST_DIM);
 #else
-    interp.set_input(v[dir], vxx[dir][0], vxx[dir][1], velo_interpolation);
+  interp.set_input(v, xx_v_derivatives, yy_v_derivatives, zz_v_derivatives, quadratic, P4EST_DIM);
 #endif
-    interp.interpolate(v_tmp[dir].data());
-  }
+  interp.interpolate(interp_output, P4EST_DIM);
   interp.clear();
 
   /* finally, find the backtracing value */
@@ -354,6 +365,22 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt_nm1, double dt_n
   my_p4est_interpolation_nodes_t interp_n  (ngbd_n);
   my_p4est_interpolation_nodes_t interp_phi(ngbd_phi);
 
+  double *interp_output[P4EST_DIM];
+
+#ifndef P4_TO_P8
+  Vec xx_vn_derivatives[P4EST_DIM] = {vxx_n[0][0], vxx_n[1][0]};
+  Vec yy_vn_derivatives[P4EST_DIM] = {vxx_n[0][1], vxx_n[1][1]};
+  Vec xx_vnm1_derivatives[P4EST_DIM] = {vxx_nm1[0][0], vxx_nm1[1][0]};
+  Vec yy_vnm1_derivatives[P4EST_DIM] = {vxx_nm1[0][1], vxx_nm1[1][1]};
+#else
+  Vec xx_vn_derivatives[P4EST_DIM] = {vxx_n[0][0], vxx_n[1][0], vxx_n[2][0]};
+  Vec yy_vn_derivatives[P4EST_DIM] = {vxx_n[0][1], vxx_n[1][1], vxx_n[2][1]};
+  Vec zz_vn_derivatives[P4EST_DIM] = {vxx_n[0][2], vxx_n[1][2], vxx_n[2][2]};
+  Vec xx_vnm1_derivatives[P4EST_DIM] = {vxx_nm1[0][0], vxx_nm1[1][0], vxx_nm1[2][0]};
+  Vec yy_vnm1_derivatives[P4EST_DIM] = {vxx_nm1[0][1], vxx_nm1[1][1], vxx_nm1[2][1]};
+  Vec zz_vnm1_derivatives[P4EST_DIM] = {vxx_nm1[0][2], vxx_nm1[1][2], vxx_nm1[2][2]};
+#endif
+
   std::vector<double> v_tmp_nm1[P4EST_DIM];
   std::vector<double> v_tmp_n  [P4EST_DIM];
 
@@ -365,17 +392,17 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt_nm1, double dt_n
     interp_n.add_point(n, xyz);
   }
 
-  for(int dir=0; dir<P4EST_DIM; ++dir)
-  {
+  for (unsigned short dir = 0; dir < P4EST_DIM; ++dir) {
     v_tmp_n[dir].resize(nodes->indep_nodes.elem_count);
-
-#ifdef P4_TO_P8
-    interp_n.set_input(vn[dir], vxx_n[dir][0], vxx_n[dir][1], vxx_n[dir][2], velo_interpolation);
-#else
-    interp_n.set_input(vn[dir], vxx_n[dir][0], vxx_n[dir][1], velo_interpolation);
-#endif
-    interp_n.interpolate(v_tmp_n[dir].data());
+    interp_output[dir] = v_tmp_n[dir].data();
   }
+
+#ifndef P4_TO_P8
+  interp_n.set_input(vn, xx_vn_derivatives, yy_vn_derivatives, quadratic, P4EST_DIM);
+#else
+  interp_n.set_input(vn, xx_vn_derivatives, yy_vn_derivatives, zz_vn_derivatives, quadratic, P4EST_DIM);
+#endif
+  interp_n.interpolate(interp_output, P4EST_DIM);
   interp_n.clear();
 
   /* now find x_star */
@@ -403,27 +430,26 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt_nm1, double dt_n
   }
 
   /* interpolate vnm1 */
-  for(int dir=0; dir<P4EST_DIM; ++dir)
-  {
+  for (unsigned short dir = 0; dir < P4EST_DIM; ++dir) {
     v_tmp_nm1[dir].resize(nodes->indep_nodes.elem_count);
-
-#ifdef P4_TO_P8
-    interp_nm1.set_input(vnm1[dir], vxx_nm1[dir][0], vxx_nm1[dir][1], vxx_nm1[dir][2], velo_interpolation);
-#else
-    interp_nm1.set_input(vnm1[dir], vxx_nm1[dir][0], vxx_nm1[dir][1], velo_interpolation);
-#endif
-    interp_nm1.interpolate(v_tmp_nm1[dir].data());
-
-
-#ifdef P4_TO_P8
-    interp_n.set_input(vn[dir], vxx_n[dir][0], vxx_n[dir][1], vxx_n[dir][2], velo_interpolation);
-#else
-    interp_n.set_input(vn[dir], vxx_n[dir][0], vxx_n[dir][1], velo_interpolation);
-#endif
-    interp_n.interpolate(v_tmp_n[dir].data());
+    interp_output[dir] = v_tmp_nm1[dir].data();
   }
+#ifndef P4_TO_P8
+  interp_nm1.set_input(vnm1, xx_vnm1_derivatives, yy_vnm1_derivatives, quadratic, P4EST_DIM);
+#else
+  interp_nm1.set_input(vnm1, xx_vnm1_derivatives, yy_vnm1_derivatives, zz_vnm1_derivatives, quadratic, P4EST_DIM);
+#endif
+  interp_nm1.interpolate(interp_output, P4EST_DIM);
   interp_nm1.clear();
-  interp_n  .clear();
+  for (unsigned short dir = 0; dir < P4EST_DIM; ++dir)
+    interp_output[dir] = v_tmp_n[dir].data();
+#ifndef P4_TO_P8
+  interp_n.set_input(vn, xx_vn_derivatives, yy_vn_derivatives, quadratic, P4EST_DIM);
+#else
+  interp_n.set_input(vn, xx_vn_derivatives, yy_vn_derivatives, zz_vn_derivatives, quadratic, P4EST_DIM);
+#endif
+  interp_n.interpolate(interp_output, P4EST_DIM);
+  interp_n.clear();
 
   /* finally, find the backtracing value */
   /* find the departure node via backtracing */

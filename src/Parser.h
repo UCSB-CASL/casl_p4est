@@ -25,8 +25,10 @@ public:
      * \brief parse: parses the input and genrates the option database
      * \param argc: argc parameter from main function
      * \param argv: argc parameter from main function
+     * \param extra_info: extra information about the program (to be printed only if non-empty and
+     * when -help is invoked by the user)
      */
-    void parse(int argc, char* argv[]);
+    void parse(int argc, char* argv[], const std::string &extra_info="");
 
     /*!
      * \brief contains: searches the option database for a specific key

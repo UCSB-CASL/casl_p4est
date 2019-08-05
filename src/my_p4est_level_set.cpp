@@ -4255,13 +4255,13 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD_one_iterati
     //---------------------------------------------------------------------
     // Second order accurate One-Sided Differecing
     //---------------------------------------------------------------------
-    double qxm = (q_000-q_m00)/s_m00_ + 0.5*s_m00_*MINMOD(qxx_m00, qxx_000);
-    double qxp = (q_p00-q_000)/s_p00_ - 0.5*s_p00_*MINMOD(qxx_p00, qxx_000);
-    double qym = (q_000-q_0m0)/s_0m0_ + 0.5*s_0m0_*MINMOD(qyy_0m0, qyy_000);
-    double qyp = (q_0p0-q_000)/s_0p0_ - 0.5*s_0p0_*MINMOD(qyy_0p0, qyy_000);
+    double qxm = ((fabs(s_m00_) > EPS*qnnn.d_m00)? (q_000-q_m00)/s_m00_ : 0.0) + 0.5*s_m00_*MINMOD(qxx_m00, qxx_000);
+    double qxp = ((fabs(s_p00_) > EPS*qnnn.d_p00)? (q_p00-q_000)/s_p00_ : 0.0) - 0.5*s_p00_*MINMOD(qxx_p00, qxx_000);
+    double qym = ((fabs(s_0m0_) > EPS*qnnn.d_0m0)? (q_000-q_0m0)/s_0m0_ : 0.0) + 0.5*s_0m0_*MINMOD(qyy_0m0, qyy_000);
+    double qyp = ((fabs(s_0p0_) > EPS*qnnn.d_0p0)? (q_0p0-q_000)/s_0p0_ : 0.0) - 0.5*s_0p0_*MINMOD(qyy_0p0, qyy_000);
 #ifdef P4_TO_P8
-    double qzm = (q_000-q_00m)/s_00m_ + 0.5*s_00m_*MINMOD(qzz_00m, qzz_000);
-    double qzp = (q_00p-q_000)/s_00p_ - 0.5*s_00p_*MINMOD(qzz_00p, qzz_000);
+    double qzm = ((fabs(s_00m_) > EPS*qnnn.d_00m)? (q_000-q_00m)/s_00m_ : 0.0) + 0.5*s_00m_*MINMOD(qzz_00m, qzz_000);
+    double qzp = ((fabs(s_00p_) > EPS*qnnn.d_00p)? (q_00p-q_000)/s_00p_ : 0.0) - 0.5*s_00p_*MINMOD(qzz_00p, qzz_000);
 #endif
 
     //---------------------------------------------------------------------
@@ -4282,6 +4282,7 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD_one_iterati
                                       + nz[n]*( (sgn*nz[n]>0) ? qzm : qzp)
                                   #endif
                                       );
+
   }
 }
 

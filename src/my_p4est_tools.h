@@ -92,6 +92,7 @@ int                 my_p4est_brick_point_lookup (p4est_t * p4est,
                                                  p4est_quadrant_t *best_match,
                                                  sc_array_t * remote_matches);
 
+unsigned int long my_p4est_brick_memory_estimate(const my_p4est_brick_t* brick);
 
 #ifdef __cplusplus
 #if 0

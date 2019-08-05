@@ -1,252 +1,277 @@
 #include <src/voronoi2D.h>
 #include <src/simplex2.h>
+#include <algorithm>
 
 void Voronoi2D::clear()
 {
-  points.resize(0);
+  nb_seeds.resize(0);
   partition.resize(0);
   phi_values.resize(0);
 }
 
 void Voronoi2D::operator=( const Voronoi2D& voro )
 {
-  pc = voro.pc;
-  points = voro.points;
+  center_seed = voro.center_seed;
+  nb_seeds = voro.nb_seeds;
   partition = voro.partition;
   phi_values = voro.phi_values;
   phi_c = voro.phi_c;
 }
 
-void Voronoi2D::get_Points( const vector<Voronoi2DPoint>*& points) const
+void Voronoi2D::get_neighbor_seeds(const vector<ngbd2Dseed>*& neighbors) const
 {
-  points = &this->points;
+  neighbors = &this->nb_seeds;
 }
 
-void Voronoi2D::get_Partition( const vector<Point2> *&partition ) const
+void Voronoi2D::get_partition(const vector<Point2> *&partition_ ) const
 {
-  partition = &(this->partition);
+  partition_ = &(this->partition);
 }
 
-void Voronoi2D::get_Points( vector<Voronoi2DPoint>*& points)
+void Voronoi2D::get_neighbor_seeds(vector<ngbd2Dseed>*& neighbors)
 {
-  points = &this->points;
+  neighbors = &this->nb_seeds;
 }
 
-void Voronoi2D::get_Partition( vector<Point2> *&partition )
+void Voronoi2D::get_partition( vector<Point2> *&partition_ )
 {
-  partition = &(this->partition);
+  partition_ = &(this->partition);
 }
 
-void Voronoi2D::set_Partition( vector<Point2>& partition )
+void Voronoi2D::set_partition( vector<Point2>& partition_ )
 {
-  this->partition = partition;
+  this->partition = partition_;
 }
 
-void Voronoi2D::set_Points_And_Partition( vector<Voronoi2DPoint>& points, vector<Point2>& partition, double volume )
+void Voronoi2D::set_neighbors_and_partition(vector<ngbd2Dseed>& neighbors_, vector<Point2>& partition_, double volume_)
 {
-  this->points = points;
-  this->partition = partition;
-  this->volume = volume;
+  this->nb_seeds = neighbors_;
+  this->partition = partition_;
+  this->volume = volume_;
 }
 
-void Voronoi2D::set_Level_Set_Values( const CF_2 &ls )
+void Voronoi2D::set_level_set_values(const CF_2 &ls )
 {
-  phi_c = ls(pc.x, pc.y);
+  phi_c = ls(center_seed.x, center_seed.y);
   phi_values.resize(partition.size());
   for(unsigned  m=0; m<partition.size(); ++m)
     phi_values[m] = ls(partition[m].x, partition[m].y);
 }
 
-void Voronoi2D::set_Level_Set_Values( vector<double>& phi_values, double phi_c )
+void Voronoi2D::set_level_set_values( vector<double>& phi_values, double phi_c )
 {
   this->phi_c = phi_c;
   this->phi_values = phi_values;
 }
 
-void Voronoi2D::push( int n, double x, double y )
+void Voronoi2D::push( int n, double x, double y, const bool* periodicity, const double* xyz_min, const double* xyz_max)
 {
-  for(unsigned int m=0; m<points.size(); m++)
-  {
-    if(points[m].n == n)
-    {
+  for(unsigned int m=0; m<nb_seeds.size(); m++)
+    if(nb_seeds[m].n == n)
       return;
+  /* note: technically wrong if one wants to add TWO WALL_parallel_to_face points, but that can happen only
+   * if the grid is VERY coarse in theory, so I do not check for it... [Raphael] */
+
+  ngbd2Dseed p;
+  p.n     = n;
+  p.p.x   = x;
+  p.p.y   = y;
+  p.dist  = (p.p - center_seed).norm_L2();
+  p.theta = DBL_MAX;
+  nb_seeds.push_back(p);
+  if(periodicity[0] || periodicity[1]) // some periodicity ?
+  {
+    const double domain_diag = sqrt(SQR(xyz_max[0] - xyz_min[0]) + SQR(xyz_max[1] - xyz_min[1]));
+    if(periodicity[0]) // x periodic
+    {
+      // we use 0.49 instead of 0.5 to ensure everything goes fine even for a 1/1 grid
+      int x_coeff = (fabs(x-center_seed.x) > 0.49*(xyz_max[0] - xyz_min[0]))? ((x<center_seed.x)?+1:-1): 0;
+      if(x_coeff != 0)
+      {
+        ngbd2Dseed x_wrapped_neighbor;
+        x_wrapped_neighbor.n      = n;
+        x_wrapped_neighbor.p.x    = x + ((double) x_coeff)*(xyz_max[0] - xyz_min[0]);
+        x_wrapped_neighbor.p.y    = y;
+        x_wrapped_neighbor.dist   = (x_wrapped_neighbor.p - center_seed).norm_L2();
+        x_wrapped_neighbor.theta  = DBL_MAX;
+        if(x_wrapped_neighbor.dist < 0.51*domain_diag)
+          nb_seeds.push_back(x_wrapped_neighbor);
+      }
+      if(periodicity[1]) // x periodic AND y periodic
+      {
+        int y_coeff = (fabs(y-center_seed.y) > 0.49*(xyz_max[1] - xyz_min[1]))? ((y<center_seed.y)?+1:-1): 0;
+        // first add the y-wrapped if needed
+        if(y_coeff != 0)
+        {
+          ngbd2Dseed y_wrapped_neighbor;
+          y_wrapped_neighbor.n      = n;
+          y_wrapped_neighbor.p.x    = x;
+          y_wrapped_neighbor.p.y    = y + ((double) y_coeff)*(xyz_max[1] - xyz_min[1]);
+          y_wrapped_neighbor.dist   = (y_wrapped_neighbor.p - center_seed).norm_L2();
+          y_wrapped_neighbor.theta  = DBL_MAX;
+          if(y_wrapped_neighbor.dist < 0.51*domain_diag)
+            nb_seeds.push_back(y_wrapped_neighbor);
+        }
+        // then add the xy-wrapped if need
+        if(x_coeff != 0)
+        {
+          ngbd2Dseed xy_wrapped_neighbor;
+          xy_wrapped_neighbor.n     = n;
+          xy_wrapped_neighbor.p.x   = x + ((double) x_coeff)*(xyz_max[0] - xyz_min[0]);
+          xy_wrapped_neighbor.p.y   = y + ((double) y_coeff)*(xyz_max[1] - xyz_min[1]);
+          xy_wrapped_neighbor.dist  = (xy_wrapped_neighbor.p - center_seed).norm_L2();
+          xy_wrapped_neighbor.theta = DBL_MAX;
+          if(xy_wrapped_neighbor.dist < 0.51*domain_diag)
+            nb_seeds.push_back(xy_wrapped_neighbor);
+        }
+      }
+    }
+    else // only y-periodic
+    {
+      int y_coeff = (fabs(y-center_seed.y) > 0.49*(xyz_max[1] - xyz_min[1]))? ((y<center_seed.y)?+1:-1): 0;
+      if(y_coeff != 0)
+      {
+        ngbd2Dseed y_wrapped_neighbor;
+        y_wrapped_neighbor.n      = n;
+        y_wrapped_neighbor.p.x    = x;
+        y_wrapped_neighbor.p.y    = y + ((double) y_coeff)*(xyz_max[1] - xyz_min[1]);
+        y_wrapped_neighbor.dist   = (y_wrapped_neighbor.p - center_seed).norm_L2();
+        y_wrapped_neighbor.theta  = DBL_MAX;
+        if(y_wrapped_neighbor.dist < 0.51*domain_diag)
+          nb_seeds.push_back(y_wrapped_neighbor);
+      }
     }
   }
-
-  Voronoi2DPoint p;
-  p.n = n;
-  p.p.x = x;
-  p.p.y = y;
-  points.push_back(p);
 }
 
-void Voronoi2D::set_Center_Point( Point2 pc )
+void Voronoi2D::set_center_point(Point2 center_seed_ )
 {
-  this->pc = pc;
+  this->center_seed = center_seed_;
 }
 
-void Voronoi2D::set_Center_Point( double x, double y )
+void Voronoi2D::set_center_point(double x, double y)
 {
-  pc.x = x;
-  pc.y = y;
+  center_seed.x = x;
+  center_seed.y = y;
 }
 
-void Voronoi2D::enforce_Periodicity( bool p_x, bool p_y, double xmin, double xmax, double ymin, double ymax )
-{
-  double dx = (xmax-xmin);
-  double dy = (ymax-ymin);
-  double xc = (xmax+xmin)/2.;
-  double yc = (ymax+ymin)/2.;
-
-  for(unsigned  m=0; m<points.size(); m++)
-  {
-    if(p_x && ABS(pc.x-points[m].p.x) > dx/2.)
-      points[m].p.x += pc.x<xc ? -dx : dx;
-
-    if(p_y && ABS(pc.y-points[m].p.y) > dy/2.)
-      points[m].p.y += pc.y<yc ? -dy : dy;
-  }
-}
-
-void Voronoi2D::construct_Partition()
+void Voronoi2D::construct_partition()
 {
 #ifdef CASL_THROWS
-  if(pc.x==DBL_MAX || pc.y==DBL_MAX) throw std::invalid_argument("[CASL_ERROR]: Voronoi2D: invalid center point to build the voronoi partition.");
-  if(points.size()<3) throw std::runtime_error("[CASL_ERROR]: Voronoi2D: not enough points to build the voronoi partition.");
+  if(center_seed.x==DBL_MAX || center_seed.y==DBL_MAX) throw std::invalid_argument("[CASL_ERROR]: Voronoi2D: invalid center point to build the voronoi partition.");
+  if(nb_seeds.size()<3) throw std::runtime_error("[CASL_ERROR]: Voronoi2D: not enough points to build the voronoi partition.");
 #endif
 
-  // first find the closest point to (ic,jc)
-  int m_min = 0;
-  double d0 = (points[0].p-pc).norm_L2();
-  for(unsigned  m=1; m<points.size(); ++m)
-  {
-    double d = (points[m].p-pc).norm_L2();
-    if(d<d0)
+  // angles are not set yet so sort by increasing distance from the seed
+  std::sort(nb_seeds.begin(), nb_seeds.end());
+
+  // scale it to a domain-independent geometry (closest neighbor at distance 1.0)
+  // compute the angles with the reference point on-the-fly
+  // scaling information
+  /*  -------------- Feel free to change the following parameter to any other reasonable value ---------------      */
+  const double closest_distance = 1.0;
+  const double scaling_length = nb_seeds[0].dist/closest_distance;
+  P4EST_ASSERT(scaling_length>0.0 && scaling_length > (nb_seeds.back()).dist*EPS);
+  // center the seed to (0.0, 0.0)
+  Point2 center_seed_saved = center_seed; center_seed.x = 0.0; center_seed.y = 0.0;
+  double angle;
+  for (size_t m = 0; m < nb_seeds.size(); ++m) {
+    nb_seeds[m].p     = (nb_seeds[m].p - center_seed_saved)/scaling_length;
+    nb_seeds[m].dist  /= scaling_length;
+    if(m == 0)
+      angle = 0.0;
+    else
     {
-      d0    = d;
-      m_min = m;
+      angle = acos(MAX(-1., MIN(1., (nb_seeds[0].p).dot(nb_seeds[m].p)/(closest_distance*(nb_seeds[m].p).norm_L2()))));
+      if((nb_seeds[0].p).cross(nb_seeds[m].p) < 0.0)
+        angle = 2.0*PI - angle;
     }
+    nb_seeds[m].theta = angle;
   }
 
-  // put the closest point as the head of the list, with reference theta angle 0
-  Voronoi2DPoint tmp = points[0];
-  points[0] = points[m_min];
-  points[m_min] = tmp;
-  points[0].theta = 0.;
+  // sort the list with increasing theta angles
+  // although the first element in the list should remain first on paper,
+  // we do not include it in the list to be sorted to ensure robust behavior...
+  std::sort(nb_seeds.begin()+1, nb_seeds.end());
 
-  // compute the angle with the reference point for all points in the list
-  Point2 v0(points[0].p-pc);
-  for(unsigned int m=1; m<points.size(); ++m)
-  {
-    Point2 vm(points[m].p-pc);
-    double dm = vm.norm_L2();
-
-    double angle = MAX(-1., MIN(1., v0.dot(vm)/(dm*d0)) );
-    double a = acos(angle);
-
-    if(v0.cross(vm) < 0)
-      a = 2.*PI-a;
-
-    points[m].theta = a;
-  }
-
-  // sort the list with increasing theta angle and find bissectrix information
-  vector<Point2> middle(points.size());
-  vector<Point2> dir(points.size());
-
-  middle[0] = (points[0].p+pc) / 2.;
-  dir[0].x = -(points[0].p.y - pc.y);
-  dir[0].y =  (points[0].p.x - pc.x);
-  dir[0] /= dir[0].norm_L2();
-
-  for(unsigned int m=1; m<points.size(); ++m)
-  {
-    unsigned int swp = m;
-    for(unsigned int k=m+1; k<points.size(); ++k)
-      if(points[k].theta < points[swp].theta)
-        swp = k;
-    if(swp!=m)
-    {
-      tmp = points[m];
-      points[m] = points[swp];
-      points[swp] = tmp;
-    }
-
-    middle[m] = (points[m].p + pc) / 2.;
-    dir[m].x = -(points[m].p.y - pc.y);
-    dir[m].y =  (points[m].p.x - pc.x);
-    dir[m]  /= dir[m].norm_L2();
-  }
 
   // construct the vertices of the voronoi partition
-  vector<double> theta_vertices(points.size());
-  partition.resize(points.size());
-  for(unsigned int m=0; m<points.size(); ++m)
+  vector<double> theta_vertices(nb_seeds.size());
+  partition.resize(nb_seeds.size());
+  for(size_t m=0; m<nb_seeds.size(); ++m)
   {
-    unsigned int k = mod(m+1, points.size());
-    double denom = dir[m].cross(dir[k]);
+    size_t k = mod(m+1, nb_seeds.size());
+    // find unit director vector of bisector planes m or k by (normed) cross
+    // product between e_z and nb_seeds[m].p or nb_seeds[k].p, where e_z it the
+    // out-of-plane unit vector
+    Point2 bisector_dir_m(-nb_seeds[m].p.y, nb_seeds[m].p.x); bisector_dir_m /= nb_seeds[m].dist;
+    Point2 bisector_dir_k(-nb_seeds[k].p.y, nb_seeds[k].p.x); bisector_dir_k /= nb_seeds[k].dist;
+    double denom = bisector_dir_m.cross(bisector_dir_k); // also the sine of the angle between the bisector cuts
 
-    // if the points are aligned, keep the point that is the closest to pc
+    // if the points are aligned, keep the point that is the closest to center_seed
     if(denom < EPS)
     {
-      if( (points[m].p-pc).norm_L2() > (points[k].p-pc).norm_L2() )
+      if( (nb_seeds[m].p-center_seed).norm_L2() > (nb_seeds[k].p-center_seed).norm_L2() )
         k = m;
-      points.erase(points.begin() + k);
+      nb_seeds.erase(nb_seeds.begin() + k);
       partition.erase(partition.begin() + k);
-      middle.erase(middle.begin() + k);
-      dir.erase(dir.begin() + k);
       theta_vertices.erase(theta_vertices.begin() + k);
       m -= m==k? 2:1;
       continue;
     }
 
-    double lambda = ( dir[k].y*(middle[k].x-middle[m].x) - dir[k].x*(middle[k].y-middle[m].y) ) / denom;
-
-    partition[m] = middle[m] + dir[m]*lambda;
+    // law of sines:
+    double lambda = 0.5*((nb_seeds[k].p - nb_seeds[m].p).cross(bisector_dir_k))/denom;
+    partition[m] = nb_seeds[m].p*0.5 + bisector_dir_m*lambda;
 
     // compute the angle between the new vertex point and the reference point
-    Point2 vm(partition[m]-pc);
-    double dm = vm.norm_L2();
-    double a = acos(v0.dot(vm)/(dm*d0));
+    angle = acos((nb_seeds[0].p).dot(partition[m])/(closest_distance*partition[m].norm_L2()));
 
-    if(v0.cross(vm) < 0)
-      a = 2.*PI-a;
-    theta_vertices[m] = a;
+    if((nb_seeds[0].p).cross(partition[m]) < 0)
+      angle = 2.*PI-angle;
+    theta_vertices[m] = angle;
 
     // check if the new vertex point is indeed a vertex of the voronoi partition
     if(m!=0)
     {
-      k = mod(m-1, points.size());
+      k = mod(m-1, nb_seeds.size());
 
       // if the new vertex is before the previous one, in trigonometric order
       // or check for a double vertex, which means the new point [m] leads to an edge of length zero
-      if( (partition[k]-pc).cross((partition[m]-pc)) < 0 || ABS(fmod(theta_vertices[m],2.*PI)-fmod(theta_vertices[k],2.*PI)) < EPS )
+      if( partition[k].cross(partition[m]) < 0.0 || (partition[m] - partition[k]).norm_L2() < EPS*partition[k].norm_L2())
       {
-        points.erase(points.begin() + m);
+        nb_seeds.erase(nb_seeds.begin() + m);
         partition.erase(partition.begin() + m);
-        middle.erase(middle.begin() + m);
-        dir.erase(dir.begin() + m);
         theta_vertices.erase(theta_vertices.begin() + m);
         m-=2;
       }
     }
   }
 
+  P4EST_ASSERT(partition.size() == nb_seeds.size());
+  center_seed = center_seed_saved;
+  for (size_t m = 0; m < partition.size(); ++m) {
+    nb_seeds[m].p     = center_seed + (nb_seeds[m].p)*scaling_length;
+    nb_seeds[m].dist  *= scaling_length;
+    partition[m]      = center_seed + (partition[m])*scaling_length;
+  }
+
   compute_volume();
 }
 
 
-void Voronoi2D::clip_Interface( const CF_2& ls )
+
+void Voronoi2D::clip_interface( const CF_2& ls )
 {
-  set_Level_Set_Values(ls);
-  clip_Interface();
+  set_level_set_values(ls);
+  clip_interface();
 }
 
 
-void Voronoi2D::clip_Interface()
+void Voronoi2D::clip_interface()
 {
 #ifdef CASL_THROWS
-  if(phi_values.size()!=points.size() || phi_values.size()!= partition.size())
+  if(phi_values.size()!=nb_seeds.size() || phi_values.size()!= partition.size())
     throw std::invalid_argument("[CASL_THROWS]: Voronoi2D: the lists of points, vertices and/or level-set values do not have the same length.");
 #endif
 
@@ -266,7 +291,7 @@ void Voronoi2D::clip_Interface()
   /* the partition is entirely in the positive domain */
   if(m0>=partition.size())
   {
-    points.resize(0);
+    nb_seeds.resize(0);
     partition.resize(0);
     phi_values.resize(0);
     volume = 0;
@@ -304,7 +329,7 @@ void Voronoi2D::clip_Interface()
         unsigned int h = mod(k+1, partition.size());
         while(h!=l)
         {
-          points.erase(points.begin() + h);
+          nb_seeds.erase(nb_seeds.begin() + h);
           partition.erase(partition.begin() + h);
           phi_values.erase(phi_values.begin() + h);
 
@@ -334,11 +359,11 @@ void Voronoi2D::clip_Interface()
       }
 
       u /= u.norm_L2();
-      Voronoi2DPoint tmp;
+      ngbd2Dseed tmp;
       tmp.n = INTERFACE;
       Point2 n; n.x = u.y; n.y = -u.x;
-      double d = (u.x*(pc.y-pmk.y) - u.y*(pc.x-pmk.x)) / n.cross(u);
-      tmp.p = pc + n*2*d;
+      double d = (u.x*(center_seed.y-pmk.y) - u.y*(center_seed.x-pmk.x)) / n.cross(u);
+      tmp.p = center_seed + n*2*d;
 
       partition[k] = pmk;
       phi_values[k] = 0;
@@ -347,7 +372,7 @@ void Voronoi2D::clip_Interface()
       {
         partition.insert(partition.begin()+r, plr);
         phi_values.insert(phi_values.begin()+r, 0);
-        points.insert(points.begin()+r, tmp);
+        nb_seeds.insert(nb_seeds.begin()+r, tmp);
         if(r<=m0) m0++;
 
         /* move on to next point */
@@ -357,7 +382,7 @@ void Voronoi2D::clip_Interface()
       {
         partition[l] = plr;
         phi_values[l] = 0;
-        points[l] = tmp;
+        nb_seeds[l] = tmp;
 
         /* move on to next point */
         m = mod(l+1, partition.size());
@@ -372,7 +397,7 @@ void Voronoi2D::clip_Interface()
   } while(k!=m0 && m!=m0);
 
 #ifdef CASL_THROWS
-  if(partition.size()!=points.size() || phi_values.size()!=points.size())
+  if(partition.size()!=nb_seeds.size() || phi_values.size()!=nb_seeds.size())
     throw std::invalid_argument("[CASL_ERROR]: Voronoi2D->clip_Interface: error while clipping the interface.");
 #endif
 
@@ -380,10 +405,10 @@ void Voronoi2D::clip_Interface()
 }
 
 
-bool Voronoi2D::is_Interface() const
+bool Voronoi2D::is_interface() const
 {
-  for(unsigned int n=0; n<points.size(); ++n)
-    if(points[n].n == INTERFACE)
+  for(unsigned int n=0; n<nb_seeds.size(); ++n)
+    if(nb_seeds[n].n == INTERFACE)
       return true;
   return false;
 }
@@ -395,23 +420,23 @@ void Voronoi2D::compute_volume()
   for(unsigned int m=0; m<partition.size(); ++m)
   {
     unsigned int k = mod(m+partition.size()-1, partition.size());
-    Point2 u = partition[k]-pc;
-    Point2 v = partition[m]-pc;
+    Point2 u = partition[k]-center_seed;
+    Point2 v = partition[m]-center_seed;
     volume += u.cross(v)/2.;
   }
 }
 
 
-bool Voronoi2D::is_Wall() const
+bool Voronoi2D::is_wall() const
 {
-  for(unsigned int m=0; m<points.size(); ++m)
-    if(points[m].n==WALL_m00 || points[m].n==WALL_p00 || points[m].n==WALL_0m0 || points[m].n==WALL_0p0)
+  for(unsigned int m=0; m<nb_seeds.size(); ++m)
+    if(nb_seeds[m].n==WALL_m00 || nb_seeds[m].n==WALL_p00 || nb_seeds[m].n==WALL_0m0 || nb_seeds[m].n==WALL_0p0)
       return true;
   return false;
 }
 
 
-double Voronoi2D::area_In_Negative_Domain( const CF_2& ls ) const
+double Voronoi2D::area_in_negative_domain( const CF_2& ls ) const
 {
   double sum = 0;
   Simplex2 s;
@@ -420,7 +445,7 @@ double Voronoi2D::area_In_Negative_Domain( const CF_2& ls ) const
   {
     unsigned int k = mod(m+partition.size()-1, partition.size());
 
-    s.x0 = pc.x; s.y0 = pc.y;
+    s.x0 = center_seed.x; s.y0 = center_seed.y;
     s.x1 = partition[m].x; s.y1 = partition[m].y;
     s.x2 = partition[k].x; s.y2 = partition[k].y;
 
@@ -431,7 +456,7 @@ double Voronoi2D::area_In_Negative_Domain( const CF_2& ls ) const
 }
 
 
-double Voronoi2D::area_In_Negative_Domain() const
+double Voronoi2D::area_in_negative_domain() const
 {
   double sum = 0;
   Simplex2 s;
@@ -440,7 +465,7 @@ double Voronoi2D::area_In_Negative_Domain() const
   {
     int k = mod(m+1, partition.size());
 
-    s.x0 = pc.x; s.y0 = pc.y;
+    s.x0 = center_seed.x; s.y0 = center_seed.y;
     s.x1 = partition[m].x; s.y1 = partition[m].y;
     s.x2 = partition[k].x; s.y2 = partition[k].y;
 
@@ -465,7 +490,7 @@ double Voronoi2D::integral( const CF_2& ls, double fc, vector<double> &f ) const
   {
     int k = mod(m+1, partition.size());
 
-    s.x0 = pc.x; s.y0 = pc.y;
+    s.x0 = center_seed.x; s.y0 = center_seed.y;
     s.x1 = partition[m].x; s.y1 = partition[m].y;
     s.x2 = partition[k].x; s.y2 = partition[k].y;
 
@@ -491,7 +516,7 @@ double Voronoi2D::integral( double fc, vector<double> &f ) const
   {
     int k = mod(m+1, partition.size());
 
-    s.x0 = pc.x; s.y0 = pc.y;
+    s.x0 = center_seed.x; s.y0 = center_seed.y;
     s.x1 = partition[m].x; s.y1 = partition[m].y;
     s.x2 = partition[k].x; s.y2 = partition[k].y;
 
@@ -501,7 +526,7 @@ double Voronoi2D::integral( double fc, vector<double> &f ) const
   return sum;
 }
 
-double Voronoi2D::integrate_Over_Interface( double fc, vector<double> &f ) const
+double Voronoi2D::integrate_over_interface( double fc, vector<double> &f ) const
 {
 #ifdef CASL_THROWS
   if(phi_values.size() != partition.size())
@@ -517,7 +542,7 @@ double Voronoi2D::integrate_Over_Interface( double fc, vector<double> &f ) const
   {
     int k = mod(m+1, partition.size());
 
-    s.x0 = pc.x; s.y0 = pc.y;
+    s.x0 = center_seed.x; s.y0 = center_seed.y;
     s.x1 = partition[m].x; s.y1 = partition[m].y;
     s.x2 = partition[k].x; s.y2 = partition[k].y;
 
@@ -527,7 +552,7 @@ double Voronoi2D::integrate_Over_Interface( double fc, vector<double> &f ) const
   return sum;
 }
 
-double Voronoi2D::integrate_Over_Interface( const CF_2& f ) const
+double Voronoi2D::integrate_over_interface( const CF_2& f ) const
 {
 #ifdef CASL_THROWS
   if(phi_values.size() != partition.size())
@@ -541,7 +566,7 @@ double Voronoi2D::integrate_Over_Interface( const CF_2& f ) const
   {
     int k = mod(m+1, partition.size());
 
-    s.x0 = pc.x; s.y0 = pc.y;
+    s.x0 = center_seed.x; s.y0 = center_seed.y;
     s.x1 = partition[m].x; s.y1 = partition[m].y;
     s.x2 = partition[k].x; s.y2 = partition[k].y;
 
@@ -552,7 +577,7 @@ double Voronoi2D::integrate_Over_Interface( const CF_2& f ) const
 }
 
 
-void Voronoi2D::print_VTK_Format( const vector<Voronoi2D>& voro, std::string file_name )
+void Voronoi2D::print_VTK_format( const vector<Voronoi2D>& voro, std::string file_name )
 {
   FILE *fp;
   fp = fopen(file_name.c_str(), "w");
@@ -596,7 +621,7 @@ void Voronoi2D::print_VTK_Format( const vector<Voronoi2D>& voro, std::string fil
   fclose(fp);
 }
 
-void Voronoi2D::print_VTK_Format( const vector<Voronoi2D> &voro, const vector<double> &f, std::string data_name, std::string file_name )
+void Voronoi2D::print_VTK_format( const vector<Voronoi2D> &voro, const vector<double> &f, std::string data_name, std::string file_name )
 {
   FILE *fp;
   fp = fopen(file_name.c_str(), "a");
@@ -615,7 +640,7 @@ void Voronoi2D::print_VTK_Format( const vector<Voronoi2D> &voro, const vector<do
 }
 
 
-void Voronoi2D::print_VTK_Format( const vector<Voronoi2D> &voro, const vector<double> &u, const vector<double> &v, std::string data_name, std::string file_name )
+void Voronoi2D::print_VTK_format( const vector<Voronoi2D> &voro, const vector<double> &u, const vector<double> &v, std::string data_name, std::string file_name )
 {
   FILE *fp;
   fp = fopen(file_name.c_str(), "a");
@@ -636,10 +661,10 @@ void Voronoi2D::print_VTK_Format( const vector<Voronoi2D> &voro, const vector<do
 
 std::ostream& operator<<(std::ostream& os, const Voronoi2D& v)
 {
-  os << "Center point : " << v.pc.x << "," << v.pc.y << std::endl;
+  os << "Center point : " << v.center_seed.x << "," << v.center_seed.y << std::endl;
 
-  for (unsigned int n=0; n<v.points.size(); n++)
-    os << v.points[n].n << " : (" << v.points[n].p.x << "," << v.points[n].p.y << "," << v.points[n].theta << ")" << std::endl;
+  for (unsigned int n=0; n<v.nb_seeds.size(); n++)
+    os << v.nb_seeds[n].n << " : (" << v.nb_seeds[n].p.x << "," << v.nb_seeds[n].p.y << "," << v.nb_seeds[n].theta << ")" << std::endl;
   os << std::endl;
 
   return os;

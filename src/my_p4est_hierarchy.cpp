@@ -285,7 +285,7 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(double *xyz, p
     std::ostringstream oss;
     oss << "[ERROR]: Point (" << xyz[0] << "," << xyz[1] <<
        #ifdef P4_TO_P8
-           xyz[2] <<
+            "," << xyz[2] <<
        #endif
            ") is outside computational domain" << std::endl;
     throw std::invalid_argument(oss.str());

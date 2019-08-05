@@ -65,8 +65,13 @@ void my_p4est_level_set_faces_t::extend_Over_Interface( Vec phi, Vec q, Boundary
   double *phi_z_p;
   ierr = VecGetArray(phi_z, &phi_z_p); CHKERRXX(ierr);
 #endif
+  Vec interface_value;
+  ierr = VecCreateGhostNodes(p4est, nodes, &interface_value); CHKERRXX(ierr);
+  double *interface_value_p;
+  ierr = VecGetArray(interface_value, &interface_value_p); CHKERRXX(ierr);
 
   quad_neighbor_nodes_of_node_t qnnn;
+  double node_xyz[P4EST_DIM];
   for(size_t i=0; i<ngbd_n->get_layer_size(); ++i)
   {
     p4est_locidx_t n = ngbd_n->get_layer_node(i);
@@ -76,6 +81,8 @@ void my_p4est_level_set_faces_t::extend_Over_Interface( Vec phi, Vec q, Boundary
 #ifdef P4_TO_P8
     phi_z_p[n] = qnnn.dz_central(phi_p);
 #endif
+    node_xyz_fr_n(n, p4est, nodes, node_xyz);
+    interface_value_p[n] = bc.interfaceValue(node_xyz);
   }
 
   ierr = VecGhostUpdateBegin(phi_x, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -83,6 +90,7 @@ void my_p4est_level_set_faces_t::extend_Over_Interface( Vec phi, Vec q, Boundary
 #ifdef P4_TO_P8
   ierr = VecGhostUpdateBegin(phi_z, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 #endif
+  ierr = VecGhostUpdateBegin(interface_value, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
   for(size_t i=0; i<ngbd_n->get_local_size(); ++i)
   {
@@ -93,6 +101,8 @@ void my_p4est_level_set_faces_t::extend_Over_Interface( Vec phi, Vec q, Boundary
 #ifdef P4_TO_P8
     phi_z_p[n] = qnnn.dz_central(phi_p);
 #endif
+    node_xyz_fr_n(n, p4est, nodes, node_xyz);
+    interface_value_p[n] = bc.interfaceValue(node_xyz);
   }
 
   ierr = VecGhostUpdateEnd(phi_x, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -100,6 +110,7 @@ void my_p4est_level_set_faces_t::extend_Over_Interface( Vec phi, Vec q, Boundary
 #ifdef P4_TO_P8
   ierr = VecGhostUpdateEnd(phi_z, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 #endif
+  ierr = VecGhostUpdateEnd(interface_value, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
   ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr);
   ierr = VecRestoreArray(phi_x, &phi_x_p); CHKERRXX(ierr);
@@ -107,6 +118,7 @@ void my_p4est_level_set_faces_t::extend_Over_Interface( Vec phi, Vec q, Boundary
 #ifdef P4_TO_P8
   ierr = VecRestoreArray(phi_z, &phi_z_p); CHKERRXX(ierr);
 #endif
+  ierr = VecRestoreArray(interface_value, &interface_value_p); CHKERRXX(ierr);
 
   my_p4est_interpolation_nodes_t interp_phi  (ngbd_n); interp_phi  .set_input(phi  , linear);
   my_p4est_interpolation_nodes_t interp_phi_x(ngbd_n); interp_phi_x.set_input(phi_x, linear);
@@ -114,6 +126,7 @@ void my_p4est_level_set_faces_t::extend_Over_Interface( Vec phi, Vec q, Boundary
 #ifdef P4_TO_P8
   my_p4est_interpolation_nodes_t interp_phi_z(ngbd_n); interp_phi_z.set_input(phi_z, linear);
 #endif
+  my_p4est_interpolation_nodes_t interp_interface_values(ngbd_n); interp_interface_values.set_input(interface_value, linear);
   my_p4est_interpolation_faces_t interp0(ngbd_n, faces); interp0.set_input(dxyz_hodge, dir, 1, face_is_well_defined);
   my_p4est_interpolation_faces_t interp1(ngbd_n, faces); interp1.set_input(q, dir, 2, face_is_well_defined);
   my_p4est_interpolation_faces_t interp2(ngbd_n, faces); interp2.set_input(q, dir, 2, face_is_well_defined);
@@ -146,7 +159,7 @@ void my_p4est_level_set_faces_t::extend_Over_Interface( Vec phi, Vec q, Boundary
   std::vector<double> q2;
 
   q0.resize(faces->num_local[dir]);
-  if(order >= 1 || (order==0 && bc.interfaceType()==NEUMANN)) q1.resize(faces->num_local[dir]);
+  if(order >= 1 || (order==0 && (bc.interfaceType()==NEUMANN || bc.interfaceType() == MIXED))) q1.resize(faces->num_local[dir]);
   if(order >= 2)                                              q2.resize(faces->num_local[dir]);
 
   std::vector<double> q0_dxyz_hodge;
@@ -160,16 +173,19 @@ void my_p4est_level_set_faces_t::extend_Over_Interface( Vec phi, Vec q, Boundary
   {
     if(!face_is_well_defined_p[f_idx])
     {
-      double x = faces->x_fr_f(f_idx, dir);
-      double y = faces->y_fr_f(f_idx, dir);
+      double xyz[] = {
+        faces->x_fr_f(f_idx, dir),
+        faces->y_fr_f(f_idx, dir)
+  #ifdef P4_TO_P8
+        , faces->z_fr_f(f_idx, dir)
+  #endif
+      };
 
+      double phi_f = interp_phi(xyz);
 #ifdef P4_TO_P8
-      double z = faces->z_fr_f(f_idx, dir);
-      double phi_f = interp_phi(x,y,z);
-      Point3 grad_phi(interp_phi_x(x,y,z), interp_phi_y(x,y,z), interp_phi_z(x,y,z));
+      Point3 grad_phi(interp_phi_x(xyz), interp_phi_y(xyz), interp_phi_z(xyz));
 #else
-      double phi_f = interp_phi(x,y);
-      Point2 grad_phi(interp_phi_x(x,y), interp_phi_y(x,y));
+      Point2 grad_phi(interp_phi_x(xyz), interp_phi_y(xyz));
 #endif
 
       if(phi_f<band_to_extend*diag && grad_phi.norm_L2()>EPS)
@@ -178,32 +194,29 @@ void my_p4est_level_set_faces_t::extend_Over_Interface( Vec phi, Vec q, Boundary
 
         double xyz_i[] =
         {
-          x - grad_phi.x*phi_f,
-          y - grad_phi.y*phi_f
+          xyz[0] - grad_phi.x*phi_f,
+          xyz[1] - grad_phi.y*phi_f
   #ifdef P4_TO_P8
-          ,z - grad_phi.z*phi_f
+          ,xyz[2] - grad_phi.z*phi_f
   #endif
         };
 
-#ifdef P4_TO_P8
-        q0[f_idx] = bc.interfaceValue(xyz_i[0], xyz_i[1], xyz_i[2]);
-#else
-        q0[f_idx] = bc.interfaceValue(xyz_i[0], xyz_i[1]);
-#endif
+        interp_interface_values.add_point(f_idx, xyz_i); // [Raphael:] I had to do that in case bc.interfaceValue is a local interpolator...
+//        q0[f_idx] = bc.interfaceValue(xyz_i);
         if(dxyz_hodge!=NULL)
         {
-          for(int dd=0; dd<P4EST_DIM; ++dd)
+//          for(int dd=0; dd<P4EST_DIM; ++dd) // commented by Raphael, I don't understand why that would be required??? it seems that it would uselessly increase the workload...
             interp0.add_point(f_idx, xyz_i);
         }
 
-        if(order >= 1 || (order==0 && bc.interfaceType()==NEUMANN))
+        if(order >= 1 || (order==0 && bc.interfaceType(xyz)==NEUMANN))
         {
           double xyz_ [] =
           {
-            x - grad_phi.x * (2*diag + phi_f),
-            y - grad_phi.y * (2*diag + phi_f)
+            xyz[0] - grad_phi.x * (2*diag + phi_f),
+            xyz[1] - grad_phi.y * (2*diag + phi_f)
   #ifdef P4_TO_P8
-            , z - grad_phi.z * (2*diag + phi_f)
+            , xyz[2] - grad_phi.z * (2*diag + phi_f)
   #endif
           };
           interp1.add_point(f_idx, xyz_);
@@ -213,10 +226,10 @@ void my_p4est_level_set_faces_t::extend_Over_Interface( Vec phi, Vec q, Boundary
         {
           double xyz_ [] =
           {
-            x - grad_phi.x * (3*diag + phi_f),
-            y - grad_phi.y * (3*diag + phi_f)
+            xyz[0] - grad_phi.x * (3*diag + phi_f),
+            xyz[1] - grad_phi.y * (3*diag + phi_f)
   #ifdef P4_TO_P8
-            , z - grad_phi.z * (3*diag + phi_f)
+            , xyz[2] - grad_phi.z * (3*diag + phi_f)
   #endif
           };
           interp2.add_point(f_idx, xyz_);
@@ -224,13 +237,28 @@ void my_p4est_level_set_faces_t::extend_Over_Interface( Vec phi, Vec q, Boundary
       }
     }
   }
+  interp_interface_values.interpolate(q0.data());
+  interp_interface_values.clear();
 
   if(dxyz_hodge!=NULL)
   {
     interp0.interpolate(q0_dxyz_hodge.data());
     interp0.clear();
     for(p4est_locidx_t f_idx=0; f_idx<faces->num_local[dir]; ++f_idx)
-      q0[f_idx] += q0_dxyz_hodge[f_idx];
+    {
+      if(!face_is_well_defined_p[f_idx])
+      {
+        double xyz[] = {
+          faces->x_fr_f(f_idx, dir),
+          faces->y_fr_f(f_idx, dir)
+    #ifdef P4_TO_P8
+          , faces->z_fr_f(f_idx, dir)
+    #endif
+        };
+        if(bc.interfaceType(xyz) == DIRICHLET) // [RAPHAEL]: fixed because wrong if not DIRICHLET...
+          q0[f_idx] += q0_dxyz_hodge[f_idx];
+      }
+    }
     q0_dxyz_hodge.clear();
   }
 
@@ -241,22 +269,26 @@ void my_p4est_level_set_faces_t::extend_Over_Interface( Vec phi, Vec q, Boundary
   interp2.clear();
 
   /* now compute the extrapolated values */
+
   double *q_p;
   ierr = VecGetArray(q, &q_p); CHKERRXX(ierr);
   for(p4est_locidx_t f_idx=0; f_idx<faces->num_local[dir]; ++f_idx)
   {
     if(!face_is_well_defined_p[f_idx])
     {
-      double x = faces->x_fr_f(f_idx, dir);
-      double y = faces->y_fr_f(f_idx, dir);
+      double xyz[] = {
+        faces->x_fr_f(f_idx, dir),
+        faces->y_fr_f(f_idx, dir)
+  #ifdef P4_TO_P8
+        , faces->z_fr_f(f_idx, dir)
+  #endif
+      };
 
+      double phi_f = interp_phi(xyz);
 #ifdef P4_TO_P8
-      double z = faces->z_fr_f(f_idx, dir);
-      double phi_f = interp_phi(x,y,z);
-      Point3 grad_phi(interp_phi_x(x,y,z), interp_phi_y(x,y,z), interp_phi_z(x,y,z));
+      Point3 grad_phi(interp_phi_x(xyz), interp_phi_y(xyz), interp_phi_z(xyz));
 #else
-      double phi_f = interp_phi(x,y);
-      Point2 grad_phi(interp_phi_x(x,y), interp_phi_y(x,y));
+      Point2 grad_phi(interp_phi_x(xyz), interp_phi_y(xyz));
 #endif
 
       if(phi_f<band_to_extend*diag && grad_phi.norm_L2()>EPS)
@@ -265,7 +297,7 @@ void my_p4est_level_set_faces_t::extend_Over_Interface( Vec phi, Vec q, Boundary
 
         if(order==0)
         {
-          if(bc.interfaceType()==DIRICHLET)
+          if(bc.interfaceType(xyz)==DIRICHLET)
             q_p[f_idx] = q0[f_idx];
           else /* interface neumann */
             q_p[f_idx] = q1[f_idx];
@@ -273,7 +305,7 @@ void my_p4est_level_set_faces_t::extend_Over_Interface( Vec phi, Vec q, Boundary
 
         else if(order==1)
         {
-          if(bc.interfaceType()==DIRICHLET)
+          if(bc.interfaceType(xyz)==DIRICHLET)
           {
             double dif01 = (q1[f_idx] - q0[f_idx])/(2*diag - 0);
             q_p[f_idx] = q0[f_idx] + (-phi_f - 0) * dif01;
@@ -287,14 +319,14 @@ void my_p4est_level_set_faces_t::extend_Over_Interface( Vec phi, Vec q, Boundary
 
         else if(order==2)
         {
-          if(bc.interfaceType()==DIRICHLET)
+          if(bc.interfaceType(xyz)==DIRICHLET)
           {
             double dif01  = (q1[f_idx] - q0[f_idx]) / (2*diag);
             double dif12  = (q2[f_idx] - q1[f_idx]) / (diag);
             double dif012 = (dif12 - dif01) / (3*diag);
             q_p[f_idx] = q0[f_idx] + (-phi_f - 0) * dif01 + (-phi_f - 0)*(-phi_f - 2*diag) * dif012;
           }
-          else if (bc.interfaceType() == NEUMANN) /* interface Neumann */
+          else if (bc.interfaceType(xyz) == NEUMANN) /* interface Neumann */
           {
             double x1 = 2*diag;
             double x2 = 3*diag;
@@ -320,6 +352,7 @@ void my_p4est_level_set_faces_t::extend_Over_Interface( Vec phi, Vec q, Boundary
 #ifdef P4_TO_P8
   ierr = VecDestroy(phi_z); CHKERRXX(ierr);
 #endif
+  ierr = VecDestroy(interface_value); CHKERRXX(ierr);
 
   ierr = VecRestoreArray(q, &q_p); CHKERRXX(ierr);
 

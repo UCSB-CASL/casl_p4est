@@ -21,6 +21,9 @@
 #include <petsclog.h>
 #include <src/casl_math.h>
 #include <src/petsc_compatibility.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <dirent.h>
 
 #include <stack>
 #include <algorithm>
@@ -42,8 +45,112 @@
 
 std::vector<InterpolatingFunctionLogEntry> InterpolatingFunctionLogger::entries;
 
+WallBC2D::~WallBC2D() {};
+WallBC3D::~WallBC3D() {};
+
+bool index_of_node(const p4est_quadrant_t *n, p4est_nodes_t* nodes, p4est_locidx_t& idx)
+{
+#ifdef P4EST_DEBUG
+  int clamped = 1;
+#endif
+  P4EST_ASSERT(p4est_quadrant_is_node(n, clamped));
+  unsigned int idx_l, idx_u, idx_m;
+  const p4est_indep_t *node_l, *node_u, *node_m;
+  // check if the candidate can be in the locally owned nodes first, or in the ghost ones
+  idx_l   = 0;
+  idx_u   = nodes->num_owned_indeps-1;
+  node_l  = (const p4est_indep_t*) sc_array_index(&nodes->indep_nodes, idx_l);
+  node_u  = (const p4est_indep_t*) sc_array_index(&nodes->indep_nodes, idx_u);
+  if((p4est_quadrant_compare_piggy(node_l, n) > 0) || (p4est_quadrant_compare_piggy(node_u, n) < 0))
+    goto lookup_in_ghost_nodes;
+  while((p4est_quadrant_compare_piggy(node_l, n) <= 0) && (p4est_quadrant_compare_piggy(node_u, n) >= 0))
+  {
+    if(!p4est_quadrant_compare_piggy(node_l, n))
+    {
+      idx = idx_l;
+      return true;
+    }
+    if(!p4est_quadrant_compare_piggy(node_u, n))
+    {
+      idx = idx_u;
+      return true;
+    }
+    if(idx_u-idx_l == 1)
+      break;
+    idx_m   = (idx_l + idx_u)/2;
+    node_m  = (const p4est_indep_t*) sc_array_index(&nodes->indep_nodes, idx_m);
+    P4EST_ASSERT((p4est_quadrant_compare_piggy(node_l, node_m) <= 0) && (p4est_quadrant_compare_piggy(node_u, node_m) >= 0));
+    if(p4est_quadrant_compare_piggy(node_m, n) <0)
+    {
+      idx_l   = idx_m;
+      node_l  = node_m;
+    }
+    else if (p4est_quadrant_compare_piggy(node_m, n) >0)
+    {
+      idx_u   = idx_m;
+      node_u  = node_m;
+    }
+    else
+    {
+      P4EST_ASSERT(!p4est_quadrant_compare_piggy(node_m, n));
+      idx = idx_m;
+      return true;
+    }
+  }
+  return false;
+lookup_in_ghost_nodes:
+  P4EST_ASSERT((p4est_quadrant_compare_piggy(node_l, n) > 0) || (p4est_quadrant_compare_piggy(node_u, n) < 0));
+  idx_l   = nodes->num_owned_indeps;
+  idx_u   = nodes->indep_nodes.elem_count-1;
+  node_l  = (const p4est_indep_t*) sc_array_index(&nodes->indep_nodes, idx_l);
+  node_u  = (const p4est_indep_t*) sc_array_index(&nodes->indep_nodes, idx_u);
+  while((p4est_quadrant_compare_piggy(node_l, n) <= 0) && (p4est_quadrant_compare_piggy(node_u, n) >= 0))
+  {
+    if(!p4est_quadrant_compare_piggy(node_l, n))
+    {
+      idx = idx_l;
+      return true;
+    }
+    if(!p4est_quadrant_compare_piggy(node_u, n))
+    {
+      idx = idx_u;
+      return true;
+    }
+    if(idx_u-idx_l == 1)
+      break;
+    idx_m   = (idx_l + idx_u)/2;
+    node_m  = (const p4est_indep_t*) sc_array_index(&nodes->indep_nodes, idx_m);
+    P4EST_ASSERT((p4est_quadrant_compare_piggy(node_l, node_m) <= 0) && (p4est_quadrant_compare_piggy(node_u, node_m) >= 0));
+    if(p4est_quadrant_compare_piggy(node_m, n) <0)
+    {
+      idx_l   = idx_m;
+      node_l  = node_m;
+    }
+    else if (p4est_quadrant_compare_piggy(node_m, n) >0)
+    {
+      idx_u   = idx_m;
+      node_u  = node_m;
+    }
+    else
+    {
+      P4EST_ASSERT(!p4est_quadrant_compare_piggy(node_m, n));
+      idx = idx_m;
+      return true;
+    }
+  }
+  return false;
+}
+
 double linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *xyz_global)
 {
+  double result;
+  linear_interpolation(p4est, tree_id, quad, F, xyz_global, &result, 1);
+  return result;
+}
+
+void linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *xyz_global, double* results, unsigned int n_results)
+{
+  P4EST_ASSERT(n_results > 0);
   PetscErrorCode ierr;
   p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + 0];
   p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + P4EST_CHILDREN-1];
@@ -102,23 +209,31 @@ double linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const 
   };
 #endif
 
-  double value = 0;
-  for (short j = 0; j<P4EST_CHILDREN; j++)
-    value += F[j]*w_xyz[j];
-
+  for (unsigned int k = 0; k < n_results; ++k)
+  {
+    results[k] = 0.0;
+    for (short j = 0; j<P4EST_CHILDREN; j++)
+      results[k] += + F[P4EST_CHILDREN*k+j]*w_xyz[j];
 #ifdef P4_TO_P8
-  value /= qh*qh*qh;
+    results[k] /= qh*qh*qh;
 #else
-  value /= qh*qh;
+    results[k] /= qh*qh;
 #endif
+  }
 
   ierr = PetscLogFlops(39); CHKERRXX(ierr); // number of flops in this event
-
-  return value;
 }
 
 double quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global)
 {
+  double result;
+  quadratic_non_oscillatory_interpolation(p4est, tree_id, quad, F, Fdd, xyz_global, &result, 1);
+  return result;
+}
+
+void quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results)
+{
+  P4EST_ASSERT(n_results > 0);
   PetscErrorCode ierr;
   p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + 0];
   p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + P4EST_CHILDREN-1];
@@ -183,28 +298,26 @@ double quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topid
 #endif
 
   double fdd[P4EST_DIM];
-  for (short i = 0; i<P4EST_DIM; i++)
-    fdd[i] = Fdd[i];
-
-  for (short j = 1; j<P4EST_CHILDREN; j++)
-    for (short i = 0; i<P4EST_DIM; i++)
-      fdd[i] = MINMOD(fdd[i], Fdd[j*P4EST_DIM + i]);
-
-  double value = 0;
-  for (short j = 0; j<P4EST_CHILDREN; j++)
-    value += F[j]*w_xyz[j];
-
   double sx = (tree_xmax-tree_xmin)*qh;
   double sy = (tree_ymax-tree_ymin)*qh;
 #ifdef P4_TO_P8
   double sz = (tree_zmax-tree_zmin)*qh;
-  value -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1] + sz*sz*d_00p*d_00m*fdd[2]);
-#else
-  value -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1]);
 #endif
+  for (unsigned int k = 0; k < n_results; ++k) {
+    results[k] = 0.0;
+    for (short j = 0; j < P4EST_CHILDREN; ++j) {
+      for (short i = 0; i<P4EST_DIM; i++)
+        fdd[i] = ((j == 0)? Fdd[k*P4EST_CHILDREN*P4EST_DIM+j*P4EST_DIM + i] : MINMOD(fdd[i], Fdd[k*P4EST_CHILDREN*P4EST_DIM+j*P4EST_DIM + i]));
+      results[k] += F[k*P4EST_CHILDREN+j]*w_xyz[j];
+    }
+#ifdef P4_TO_P8
+    results[k] -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1] + sz*sz*d_00p*d_00m*fdd[2]);
+#else
+    results[k] -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1]);
+#endif
+  }
 
   ierr = PetscLogFlops(45); CHKERRXX(ierr); // number of flops in this event
-  return value;
 }
 
 double quadratic_non_oscillatory_continuous_v1_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global)
@@ -444,8 +557,16 @@ double quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_t *p4es
   return value;
 }
 
-double quadratic_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global)
+double quadratic_interpolation(const p4est_t* p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global)
 {
+  double result;
+  quadratic_interpolation(p4est, tree_id, quad, F, Fdd, xyz_global, &result, 1);
+  return result;
+}
+
+void quadratic_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results)
+{
+  P4EST_ASSERT(n_results > 0);
   PetscErrorCode ierr;
 
   p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + 0];
@@ -520,29 +641,30 @@ double quadratic_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, con
   };
 #endif
 
+
   double fdd[P4EST_DIM];
-  for (short i = 0; i<P4EST_DIM; i++)
-    fdd[i] = 0;
-
-  for (short j=0; j<P4EST_CHILDREN; j++)
-    for (short i = 0; i<P4EST_DIM; i++)
-      fdd[i] += Fdd[j*P4EST_DIM + i] * w_xyz[j];
-
-  double value = 0;
-  for (short j = 0; j<P4EST_CHILDREN; j++)
-    value += F[j]*w_xyz[j];
-
   double sx = (tree_xmax-tree_xmin)*qh;
   double sy = (tree_ymax-tree_ymin)*qh;
 #ifdef P4_TO_P8
   double sz = (tree_zmax-tree_zmin)*qh;
-  value -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1] + sz*sz*d_00p*d_00m*fdd[2]);
-#else
-  value -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1]);
 #endif
+  for (unsigned int k = 0; k < n_results; ++k)
+  {
+    results[k] = 0.0;
+    for (short j=0; j<P4EST_CHILDREN; j++)
+    {
+      for (short i = 0; i<P4EST_DIM; i++)
+        fdd[i] = ((j == 0)? 0.0 : fdd[i]) +Fdd[k*P4EST_CHILDREN*P4EST_DIM+j*P4EST_DIM + i] * w_xyz[j];
+      results[k] += F[k*P4EST_CHILDREN+j]*w_xyz[j];
+    }
+#ifdef P4_TO_P8
+    results[k] -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1] + sz*sz*d_00p*d_00m*fdd[2]);
+#else
+    results[k] -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1]);
+#endif
+  }
 
   ierr = PetscLogFlops(45); CHKERRXX(ierr); // number of flops in this event
-  return value;
 }
 
 void write_comm_stats(const p4est_t *p4est, const p4est_ghost_t *ghost, const p4est_nodes_t *nodes, const char *partition_name, const char *topology_name, const char *neighbors_name)
@@ -614,6 +736,54 @@ void write_comm_stats(const p4est_t *p4est, const p4est_ghost_t *ghost, const p4
   }
 }
 
+p4est_bool_t nodes_are_equal(int mpi_size, p4est_nodes_t* nodes_1, p4est_nodes_t* nodes_2)
+{
+  if(nodes_1 == nodes_2)
+    return P4EST_TRUE;
+  const p4est_indep_t *node_1, *node_2;
+  p4est_bool_t result = (nodes_1->indep_nodes.elem_count == nodes_2->indep_nodes.elem_count);
+  result = result && (nodes_1->num_local_quadrants  == nodes_2->num_local_quadrants);
+  result = result && (nodes_1->num_owned_indeps     == nodes_2->num_owned_indeps);
+  result = result && (nodes_1->num_owned_shared     == nodes_2->num_owned_shared);
+  result = result && (nodes_1->offset_owned_indeps == 0) && (nodes_2->offset_owned_indeps == 0);
+  if(!result)
+    goto return_time;
+  for (int r = 0; r < mpi_size; ++r) {
+    result = result && (nodes_1->global_owned_indeps[r] == nodes_2->global_owned_indeps[r]);
+    if(!result)
+      goto return_time;
+  }
+  // compare the raw nodes, one by one, first
+  for (size_t k = 0; k < nodes_1->indep_nodes.elem_count; ++k) {
+    node_1 = (const p4est_indep_t*) sc_array_index(&nodes_1->indep_nodes, k);
+    node_2 = (const p4est_indep_t*) sc_array_index(&nodes_2->indep_nodes, k);
+    result = result && (node_1->level == node_2->level);
+    result = result && (node_1->x == node_2->x);
+    result = result && (node_1->y == node_2->y);
+#ifdef P4_TO_P8
+    result = result && (node_1->z == node_2->z);
+#endif
+    result = result && (node_1->pad8 == node_2->pad8);
+    // all nodes must have their p.piggy3 used, local or ghost...
+    result = result && (node_1->p.piggy3.local_num  == node_2->p.piggy3.local_num);
+    result = result && (node_1->p.piggy3.which_tree == node_2->p.piggy3.which_tree);
+    if(k > ((size_t) nodes_1->num_owned_indeps))
+      result = result && (nodes_1->nonlocal_ranks[k-nodes_1->num_owned_indeps] == nodes_2->nonlocal_ranks[k-nodes_2->num_owned_indeps]);
+    if(!result)
+      goto return_time;
+  }
+  // check that the local indices of points associated with local quadrants are equal
+  for (p4est_locidx_t k = 0; k < nodes_1->num_local_quadrants; ++k) {
+    for (short j = 0; j < P4EST_CHILDREN; ++j) {
+      result = result && (nodes_1->local_nodes[P4EST_CHILDREN*k + j] == nodes_2->local_nodes[P4EST_CHILDREN*k + j]);
+      if(!result)
+        goto return_time;
+    }
+  }
+return_time:
+  return result;
+}
+
 PetscErrorCode VecCreateGhostNodes(const p4est_t *p4est, p4est_nodes_t *nodes, Vec* v)
 {
   PetscErrorCode ierr = 0;
@@ -669,6 +839,42 @@ PetscErrorCode VecCreateGhostNodesBlock(const p4est_t *p4est, p4est_nodes_t *nod
   return ierr;
 }
 
+p4est_bool_t ghosts_are_equal(p4est_ghost_t* ghost_1, p4est_ghost_t* ghost_2)
+{
+  if(ghost_1 == ghost_2)
+    return P4EST_TRUE;
+
+  const p4est_quadrant_t *quad_1, *quad_2;
+  int mpisize = ghost_1->mpisize;
+  p4est_bool_t result = (ghost_2->mpisize == mpisize);
+  result = result && (ghost_1->ghosts.elem_count == ghost_2->ghosts.elem_count);
+  result = result && (ghost_1->num_trees == ghost_2->num_trees);
+  result = result && (ghost_1->btype == ghost_2->btype);
+  if(!result)
+    goto return_time;
+  for (size_t k = 0; k < ghost_1->ghosts.elem_count; ++k) {
+    quad_1 = p4est_quadrant_array_index(&ghost_1->ghosts, k);
+    quad_2 = p4est_quadrant_array_index(&ghost_2->ghosts, k);
+    result = result && p4est_quadrant_is_equal(quad_1, quad_2);
+    result = result && (quad_1->p.piggy3.local_num == quad_2->p.piggy3.local_num);
+    result = result && (quad_1->p.piggy3.which_tree == quad_2->p.piggy3.which_tree);
+    if(!result)
+      goto return_time;
+  }
+  for (int r = 0; r < mpisize+1; ++r) {
+    result = result && (ghost_1->proc_offsets[r] == ghost_2->proc_offsets[r]);
+    if(!result)
+      goto return_time;
+  }
+  for (p4est_topidx_t tree_idx = 0; tree_idx < ghost_1->num_trees+1; ++tree_idx) {
+    result = result && (ghost_1->tree_offsets[tree_idx] == ghost_2->tree_offsets[tree_idx]);
+    if(!result)
+       goto return_time;
+  }
+return_time:
+  return result;
+}
+
 PetscErrorCode VecCreateGhostCells(const p4est_t *p4est, p4est_ghost_t *ghost, Vec* v)
 {
   PetscErrorCode ierr = 0;
@@ -687,6 +893,19 @@ PetscErrorCode VecCreateGhostCells(const p4est_t *p4est, p4est_ghost_t *ghost, V
   ierr = VecCreateGhost(p4est->mpicomm,
                         num_local, num_global,
                         ghost_cells.size(), (const PetscInt*)&ghost_cells[0], v); CHKERRQ(ierr);
+  ierr = VecSetFromOptions(*v); CHKERRQ(ierr);
+
+  return ierr;
+}
+
+PetscErrorCode VecCreateCellsNoGhost(const p4est_t *p4est, Vec* v)
+{
+  PetscErrorCode ierr = 0;
+  p4est_locidx_t num_local = p4est->local_num_quadrants;
+
+  PetscInt num_global = p4est->global_num_quadrants;
+
+  ierr = VecCreateMPI(p4est->mpicomm, num_local, num_global, v); CHKERRQ(ierr);
   ierr = VecSetFromOptions(*v); CHKERRQ(ierr);
 
   return ierr;
@@ -774,6 +993,146 @@ PetscErrorCode VecGhostChangeLayoutEnd(VecScatter ctx, Vec from, Vec to)
 
   return ierr;
 }
+
+bool is_folder(const char* path)
+{
+  struct stat info;
+  if(stat(path, &info)!= 0 )
+  {
+#ifdef CASL_THROWS
+    char error_message[1024];
+    sprintf(error_message, "is_folder: could not access %s", path);
+    throw std::runtime_error(error_message);
+#else
+    return false;
+#endif
+  }
+  return (info.st_mode & S_IFDIR);
+}
+
+bool file_exists(const char* path)
+{
+  struct stat info;
+  return ((stat(path, &info)== 0) && (info.st_mode & S_IFREG));
+}
+
+
+int create_directory(const char* path, int mpi_rank, MPI_Comm comm)
+{
+  int return_ = 1;
+  if(mpi_rank == 0)
+  {
+    struct stat info;
+    if((stat(path, &info) == 0) &&  (info.st_mode & S_IFDIR)) // if it already exists, no need to create it...
+      return_ = 0;
+    else
+    {
+      char tmp[PATH_MAX];
+      snprintf(tmp, sizeof(tmp), "%s", path);
+      size_t len = strlen(tmp);
+      if(tmp[len-1] == '/')
+        tmp[len-1] = 0;
+      for (char* p = tmp+1; *p; p++){
+        if(*p == '/'){
+          *p = 0;
+          if((stat(tmp, &info) == 0) &&  (info.st_mode & S_IFDIR)) // if it already exists, no need to create it...
+            return_ = 0;
+          else
+            return_ = mkdir(tmp, S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH); // permission = 755 like a regular mkdir in terminal
+          *p = '/';
+          if(return_)
+            break;
+        }
+      }
+      if(return_ == 0) // successfull up to here
+        return_ = mkdir(path, S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH); // permission = 755 like a regular mkdir in terminal
+    }
+  }
+  int mpiret = MPI_Bcast(&return_, 1, MPI_INT, 0, comm); SC_CHECK_MPI(mpiret);
+  return return_;
+}
+
+int  get_subdirectories_in(const char* root_path, std::vector<std::string>& subdirectories)
+{
+  if(!is_folder(root_path))
+    return 1;
+
+  subdirectories.resize(0);
+
+  DIR *dir = opendir(root_path);
+  struct dirent *entry = readdir(dir);
+  while (entry != NULL)
+  {
+    if (entry->d_type == DT_DIR && strcmp(entry->d_name, ".") && strcmp(entry->d_name, ".."))
+      subdirectories.push_back(entry->d_name);
+    entry = readdir(dir);
+  }
+
+  closedir(dir);
+
+  return 0;
+}
+
+int delete_directory(const char* root_path, int mpi_rank, MPI_Comm comm, bool non_collective)
+{
+  if(!is_folder(root_path))
+  {
+    char error_message[1024];
+    sprintf(error_message, "delete_directory: path %s is NOT a directory...", root_path);
+    throw std::invalid_argument(error_message);
+  }
+
+  int return_ = 1;
+  if(mpi_rank == 0)
+  {
+    std::vector<std::string> subdirectories; subdirectories.resize(0);
+    std::vector<std::string> reg_files; reg_files.resize(0);
+
+    DIR *dir = opendir(root_path);
+    struct dirent *entry = readdir(dir);
+    while (entry != NULL)
+    {
+      if (strcmp(entry->d_name, ".") && strcmp(entry->d_name, ".."))
+      {
+        if(entry->d_type == DT_DIR)
+          subdirectories.push_back(entry->d_name);
+        else if (entry->d_type == DT_REG)
+          reg_files.push_back(entry->d_name);
+        else
+        {
+          char path_to_weird_thing[PATH_MAX], error_msg[1024];
+          sprintf(path_to_weird_thing, "%s/%s", root_path, entry->d_name);
+          sprintf(error_msg, "delete_directory: a weird object has been encountered in %s: it is neither a folder nor a file, this function is not designed for that, use maybe 'rm -rf'", path_to_weird_thing);
+          throw std::runtime_error(error_msg);
+          return 1;
+        }
+      }
+      entry = readdir(dir);
+    }
+    for (unsigned int idx = 0; idx < reg_files.size(); ++idx) {
+      char path_to_file[PATH_MAX];
+      sprintf(path_to_file, "%s/%s", root_path, reg_files[idx].c_str());
+      remove(path_to_file);
+    }
+    for (unsigned int idx = 0; idx < subdirectories.size(); ++idx) {
+      char path_to_subfolder[PATH_MAX];
+      sprintf(path_to_subfolder, "%s/%s", root_path, subdirectories[idx].c_str());
+      delete_directory(path_to_subfolder, mpi_rank, comm, true);
+    }
+    remove(root_path);
+    if(non_collective)
+      return 0;
+    else
+      return_ = 0;
+  }
+  if(!non_collective)
+  {
+    int mpiret = MPI_Bcast(&return_, 1, MPI_INT, 0, comm); SC_CHECK_MPI(mpiret);
+  }
+  return return_;
+}
+
+
 
 void dxyz_min(const p4est_t *p4est, double *dxyz)
 {

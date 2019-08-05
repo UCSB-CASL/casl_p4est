@@ -67,9 +67,23 @@ double Cube2::integrate_Over_Interface( const QuadValue& f, const QuadValue& lev
   Point2 p10(x1,y0); double f10 = f.val10; double phi10 = level_set_values.val10;
   Point2 p11(x1,y1); double f11 = f.val11; double phi11 = level_set_values.val11;
 
+  // [RAPHAEL:] I am ****PISSED****, I have wasted an entire day trying to find yet another bug due to sign
+  // errors in this very function!
+  //
+  // I actually do not care mure about this one, except when it makes my whole set up crash on big grids on
+  // Stampede and thus make things CRASH.
+  //
+  // I am going to introduce some *CLEAR* sign convention in here to fix my issue, I do not care if someone
+  // changes it later on, but PLEASE, juste triple-check the consistency of your sign conventions!!!!!
+  // Here below:
+  // phi <= 0 --> negative domain
+  // phi > 0 --> positive domain
+  // WHATEVER CHANGE BROUGHT BY WHOMEVER CANNOT ALLOW ONE SINGLE VALUE TO BE CONSIDERED BOTH IN NEGATIVE AND
+  // IN POSITIVE DOMAIN!!!
+
   // simple cases
-  if(phi00<=0 && phi01<=0 && phi10<=0 && phi11<=0) return 0;
-  if(phi00>=0 && phi01>=0 && phi10>=0 && phi11>=0) return 0;
+  if(phi00<=0.0 && phi01<=0.0 && phi10<=0.0 && phi11<=0.0) return 0;
+  if(phi00>0 && phi01>0 && phi10>0 && phi11>0) return 0;
 
   // iteration on each simplex in the Kuhn triangulation
   for(int n=0;n<2;n++)
@@ -112,15 +126,15 @@ double Cube2::integrate_Over_Interface( const QuadValue& f, const QuadValue& lev
     }
 
     // simple cases
-    if(phi0<=0 && phi1<=0 && phi2<=0) continue;
-    if(phi0>=0 && phi1>=0 && phi2>=0) continue;
+    if(phi0<=0.0 && phi1<=0.0 && phi2<=0.0) continue;
+    if(phi0>0.0 && phi1>0.0 && phi2>0.0) continue;
 
     //
     int number_of_negatives = 0;
 
-    if(phi0<0) number_of_negatives++;
-    if(phi1<0) number_of_negatives++;
-    if(phi2<0) number_of_negatives++;
+    if(phi0<=0.0) number_of_negatives++;
+    if(phi1<=0.0) number_of_negatives++;
+    if(phi2<=0.0) number_of_negatives++;
 
 #ifdef CASL_THROWS
     if(number_of_negatives!=1 && number_of_negatives!=2) throw std::runtime_error("[CASL_ERROR]: Wrong configuration.");
@@ -134,9 +148,9 @@ double Cube2::integrate_Over_Interface( const QuadValue& f, const QuadValue& lev
     }
 
     // sorting for simplication into one case
-    if(phi0>0 && phi1<0) swap(phi0,phi1,f0,f1,p0,p1);
-    if(phi0>0 && phi2<0) swap(phi0,phi2,f0,f2,p0,p2);
-    if(phi1>0 && phi2<0) swap(phi1,phi2,f1,f2,p1,p2);
+    if(phi0>0 && phi1<=0.0) swap(phi0,phi1,f0,f1,p0,p1);
+    if(phi0>0 && phi2<=0.0) swap(phi0,phi2,f0,f2,p0,p2);
+    if(phi1>0 && phi2<=0.0) swap(phi1,phi2,f1,f2,p1,p2);
 
     // type : (-++)
     Point2 p_btw_01 = interpol_p(p0,phi0,p1,phi1); Point2 p_btw_02 = interpol_p(p0,phi0,p2,phi2);

@@ -37,6 +37,7 @@ class my_p4est_node_neighbors_t {
   friend class my_p4est_poisson_jump_nodes_voronoi_t;
   friend class my_p4est_poisson_jump_voronoi_block_t;
   friend class my_p4est_poisson_jump_nodes_extended_t;
+  friend class my_p4est_xgfm_cells_t;
   friend class my_p4est_interpolation_t;
   friend class my_p4est_interpolation_nodes_t;
   friend class my_p4est_interpolation_nodes_local_t;
@@ -312,9 +313,11 @@ public:
    * \param [out] fzz PETSc vector to store the results in. A check is done to ensure they have the same size as f (only inn 3D)
    */
 #ifdef P4_TO_P8
-  void second_derivatives_central(const Vec f, Vec fxx, Vec fyy, Vec fzz) const;
+  void second_derivatives_central(const Vec f, Vec fxx, Vec fyy, Vec fzz) const { second_derivatives_central(&f, &fxx, &fyy, &fzz, 1); }
+  void second_derivatives_central(const Vec f[], Vec fxx[], Vec fyy[], Vec fzz[], unsigned int n_vecs) const;
 #else
-  void second_derivatives_central(const Vec f, Vec fxx, Vec fyy) const;
+  void second_derivatives_central(const Vec f, Vec fxx, Vec fyy) const { second_derivatives_central(&f, &fxx, &fyy, 1); }
+  void second_derivatives_central(const Vec f[], Vec fxx[], Vec fyy[], unsigned int n_vecs) const;
 #endif
 
   /*!
@@ -351,6 +354,17 @@ public:
   }
 
   void get_all_neighbors(const p4est_locidx_t n, p4est_locidx_t *neighbors, bool *neighbor_exists) const;
+
+  unsigned long int memory_estimate() const
+  {
+    unsigned long int memory = 0;
+    memory += neighbors.size()*sizeof (quad_neighbor_nodes_of_node_t);
+    memory += is_qnnn_valid.size()*sizeof (bool);
+    memory += layer_nodes.size()*sizeof (p4est_locidx_t);
+    memory += local_nodes.size()*sizeof (p4est_locidx_t);
+    memory += sizeof (is_initialized);
+    return memory;
+  }
 
 private:
 #ifdef P4_TO_P8
