@@ -181,7 +181,7 @@ public:
   /* extend a quantity over the interface with the TVD algorithm using mask */
   void extend_Over_Interface_TVD(Vec phi, Vec mask, Vec q, int iterations=20, int order=2) const;
 
-  void extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_poisson_nodes_t *solver, int iterations=20, int order=2, Vec normal[P4EST_DIM] = NULL) const;
+//  void extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_poisson_nodes_t *solver, int iterations=20, int order=2, Vec normal[P4EST_DIM] = NULL) const;
 
   void extend_Over_Interface_TVD_not_parallel(Vec phi, Vec q, int iterations=20, int order=2) const;
 

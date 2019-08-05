@@ -104,7 +104,7 @@ struct quad_neighbor_nodes_of_node_t;
 #define ZFOR(a)
 #endif
 
-enum cf_value_type_t { VAL, DDX, DDY, DDZ, LAP };
+enum cf_value_type_t { VAL, DDX, DDY, DDZ, LAP, CUR };
 
 enum mls_opn_t { MLS_INTERSECTION = 0, MLS_ADDITION = 1, MLS_COLORATION = 2, MLS_INT = MLS_INTERSECTION, MLS_ADD = MLS_ADDITION };
 
@@ -414,7 +414,6 @@ public:
 #define BoundaryConditionsDIM BoundaryConditions2D
 #endif
 
-
 class BoundaryConditions2D
 {
 private:
@@ -721,12 +720,24 @@ public:
 };
 
 /*!
+ * \brief index_of_node finds the (local) index of a node as defined within p4est, i.e. as a pest_quadrant_t structure whose level is P4EST_MAXLEVEL!
+ *        The method uses a binary search through the provided nodes: its complexity is O(log(N_nodes)).
+ *        The given node MUST MANDATORILY be canonicalized before being passed to this function to ensure consistency with the provided nodes: use
+ *        p4est_node_canonicalize beforehand!
+ * \param [in]    n node whose local index is queried!
+ * \param [in]    nodes the nodes data structure
+ * \param [inout] idx the local index of the node on output if found, undefined if not found (i.e. if the returned value is false)
+ * \return true if the queried node exists and was found in the nodes (i.e. if the idx is valid), false otherwise.
+ */
+bool index_of_node(const p4est_quadrant_t *n, p4est_nodes_t* nodes, p4est_locidx_t& idx);
+
+/*!
  * \brief linear_interpolation performs linear interpolation for a point
  * \param [in]    p4est the forest
  * \param [in]    tree_id the current tree that owns the quadrant
  * \param [in]    quad the current quarant
  * \param [in]    F a simple C-style array of size n_results*P4EST_CHILDREN, containing the values of the n_vecs function(s) at the vertices of the quadrant. __MUST__ be z-ordered
- *                F[k*P4EST_CHILDREN+i] = value of he kth function at quadrant's node i (in z-order), 0 <= i < P4EST_CHILDREN, 0 <= k < n_results
+ *                F[k*P4EST_CHILDREN+i] = value of the kth function at quadrant's node i (in z-order), 0 <= i < P4EST_CHILDREN, 0 <= k < n_results
  * \param [in]    xyz_global global coordinates of the point
  * \param [inout] simple C-style array of size n_results containing the results of the quadratic_interpolation of the n_results different functions at the node of interest (located at xyz_global)
  * \param [in]    n_results number of functions to be interpolated
@@ -772,6 +783,8 @@ double quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_t *p4es
 void quadratic_interpolation(const p4est_t* p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results);
 double quadratic_interpolation(const p4est_t* p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global);
 
+p4est_bool_t nodes_are_equal(int mpi_size, p4est_nodes_t* nodes_1, p4est_nodes_t* nodes_2);
+
 /*!
  * \brief VecCreateGhostNodes Creates a ghosted PETSc parallel vector on the nodes based on p4est node ordering
  * \param p4est [in]  the forest
@@ -790,6 +803,8 @@ PetscErrorCode VecCreateGhostNodes(const p4est_t *p4est, p4est_nodes_t *nodes, V
  */
 PetscErrorCode VecCreateGhostNodesBlock(const p4est_t *p4est, p4est_nodes_t *nodes, PetscInt block_size, Vec* v);
 
+p4est_bool_t ghosts_are_equal(p4est_ghost_t* ghost_1, p4est_ghost_t* ghost_2);
+
 /*!
  * \brief VecCreateGhostNodes Creates a ghosted PETSc parallel vector on the cells
  * \param p4est [in]  the forest
@@ -797,13 +812,6 @@ PetscErrorCode VecCreateGhostNodesBlock(const p4est_t *p4est, p4est_nodes_t *nod
  * \param v     [out] PETSc vector type
  */
 PetscErrorCode VecCreateGhostCells(const p4est_t *p4est, p4est_ghost_t *ghost, Vec* v);
-
-/*!
- * \brief VecCreateCellsNoGhost Creates a PETSc parallel vector on the cells
- * \param p4est [in]  the forest
- * \param v     [out] PETSc vector type
- */
-PetscErrorCode VecCreateCellsNoGhost(const p4est_t *p4est, Vec* v);
 
 /*!
  * \brief VecCreateGhostNodesBlock Creates a ghosted block PETSc parallel vector
@@ -1403,10 +1411,6 @@ double area_in_negative_domain(const p4est_t *p4est, const p4est_nodes_t *nodes,
  * \brief integrate_over_interface_in_one_quadrant
  */
 double integrate_over_interface_in_one_quadrant(const p4est_t *p4est, const p4est_nodes_t *nodes, const p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi, Vec f);
-/*!
- * \brief max_over_interface_in_one_quadrant
- */
-double max_over_interface_in_one_quadrant(const p4est_nodes_t *nodes, p4est_locidx_t quad_idx, Vec phi, Vec f);
 
 /*!
  * \brief integrate_over_interface integrate a scalar f over the 0-contour of the level-set function phi.
@@ -1418,16 +1422,6 @@ double max_over_interface_in_one_quadrant(const p4est_nodes_t *nodes, p4est_loci
  * \return the integral of f over the contour defined by phi, i.e. \int_{phi=0} f
  */
 double integrate_over_interface(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec f);
-
-/*!
- * \brief max_over_interface calculate the maximum value of a scalar f over the 0-contour of the level-set function phi.
- * \param p4est the p4est
- * \param nodes the nodes structure associated to p4est
- * \param phi the level-set function
- * \param f the scalar to integrate
- * \return the integral of f over the contour defined by phi, i.e. \max_{phi=0} f
- */
-double max_over_interface(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec f);
 
 /*!
  * \brief compute_mean_curvature computes the mean curvature using compact stencil k = -div(n)
@@ -1647,7 +1641,7 @@ bool is_quad_Wall  (const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quad
  * \param dir   [in] the direction to check, 0 (x), 1 (y) or 2 (z, only in 3D)
  * \return true if the forest is periodic in direction dir, false otherwise
  */
-inline bool is_periodic(const p4est_connectivity_t *const conn, int dir)
+inline bool is_periodic(const p4est_t *p4est, int dir)
 {
   /* check whether there is not a boundary on the left side of first tree */
   P4EST_ASSERT (0 <= dir && dir < P4EST_DIM);
@@ -1655,12 +1649,8 @@ inline bool is_periodic(const p4est_connectivity_t *const conn, int dir)
   const int face = 2 * dir;
   const p4est_topidx_t tfindex = 0 * P4EST_FACES + face;
 
-  return !(conn->tree_to_tree[tfindex] == 0 &&
-           conn->tree_to_face[tfindex] == face);
-}
-inline bool is_periodic(const p4est_t *p4est, int dir)
-{
-  return is_periodic(p4est->connectivity, dir);
+  return !(p4est->connectivity->tree_to_tree[tfindex] == 0 &&
+           p4est->connectivity->tree_to_face[tfindex] == face);
 }
 
 /*!
@@ -1788,11 +1778,7 @@ public:
 
     ierr = PetscInitialize(&argc, &argv, NULL, NULL); CHKERRXX(ierr);
 
-#ifdef DEBUG
-    sc_init (mpicomm, P4EST_FALSE, P4EST_FALSE, NULL, SC_LP_DEFAULT); // to allow easy debugging --> backtracks the P4EST_ASSERTs!
-#else
     sc_init (mpicomm, P4EST_FALSE, P4EST_FALSE, NULL, SC_LP_SILENT);
-#endif
     p4est_init (NULL, SC_LP_SILENT);
 #ifdef CASL_LOG_EVENTS
     register_petsc_logs();
@@ -1834,8 +1820,7 @@ public:
 
   void start(const std::string& msg){
     msg_ = msg;
-    if(msg_.length() > 0)
-      PetscFPrintf(comm_, f_, "%s ... \n", msg.c_str());
+    PetscFPrintf(comm_, f_, "%s ... \n", msg.c_str());
     ts = MPI_Wtime();
   }
 
@@ -1845,44 +1830,24 @@ public:
 
   double read_duration(){
     double elap = tf - ts;
-    if (timing_ == all_timings)
-      MPI_Gather(&elap, 1, MPI_DOUBLE, &t[0], 1, MPI_DOUBLE, 0, comm_);
-    return elap;
-  }
 
-  void print_stats_only(){
-    if(timing_ != all_timings)
-    {
-      PetscFPrintf(comm_, stderr, "parStopWatch::print_stats_only() can be called only in 'all_timing' mode.");
-      return;
-    }
-    print_duration(true);
-  }
-
-  double print_duration(bool print_stats_only_ = false){
-    double elap = read_duration();
     PetscPrintf(comm_, "%s ... done in \n", msg_.c_str());
     if (timing_ == all_timings){
+      MPI_Gather(&elap, 1, MPI_DOUBLE, &t[0], 1, MPI_DOUBLE, 0, comm_);
       double tmax, tmin, tavg, tdev;
       tmax = tmin = elap;
       tavg = tdev = 0;
       if (mpirank == 0){
-        if(!print_stats_only_)
-          PetscFPrintf(comm_, f_, "t = [");
-        for (size_t i=0; i<t.size()-1; i++){
-          if(!print_stats_only_)
-            PetscFPrintf(comm_, f_, "%.5lf, ", t[i]);
+        PetscFPrintf(comm_, f_, "t = [");
+        for (size_t i=0; i<t.size()-1; i++)
+          PetscFPrintf(comm_, f_, "%.5lf, ", t[i]);
+        PetscFPrintf(comm_, f_, "%.5lf];\n", t.back());
+
+        for (size_t i=0; i<t.size(); i++){
           tavg += t[i];
           tmax = MAX(tmax, t[i]);
           tmin = MIN(tmin, t[i]);
         }
-        if(!print_stats_only_)
-          PetscFPrintf(comm_, f_, "%.5lf];\n", t.back());
-
-        tavg += t.back();
-        tmax = MAX(tmax, t.back());
-        tmin = MIN(tmin, t.back());
-
         tavg /= mpisize;
 
         for (size_t i=0; i<t.size(); i++){
@@ -2014,60 +1979,106 @@ PetscErrorCode VecReciprocalGhost(Vec input);
 
 struct vec_and_ptr_t
 {
-  PetscErrorCode ierr;
-  Vec vec;
+  static PetscErrorCode ierr;
+
+  Vec     vec;
   double *ptr;
 
   vec_and_ptr_t() : vec(NULL), ptr(NULL) {}
-//  vec_and_ptr_t(p4est_t *p4est, p4est_nodes_t *nodes) : vec(NULL), ptr(NULL)
-//  {
-//    initialize(p4est, nodes);
-//  }
-//  vec_and_ptr_t(Vec template_vec) : vec(NULL), ptr(NULL)
-//  {
-//    initialize(template_vec);
-//  }
-//  ~vec_and_ptr_t()
-//  {
-//    finalize();
-//  }
+
+  vec_and_ptr_t(Vec parent) : vec(NULL), ptr(NULL) { create(parent); }
+
+  vec_and_ptr_t(p4est_t *p4est, p4est_nodes_t *nodes) : vec(NULL), ptr(NULL) { create(p4est, nodes); }
+
+  inline void create(Vec parent)
+  {
+    ierr = VecDuplicate(parent, &vec); CHKERRXX(ierr);
+  }
+
+  inline void create(p4est_t *p4est, p4est_nodes_t *nodes)
+  {
+    ierr = VecCreateGhostNodes(p4est, nodes, &vec); CHKERRXX(ierr);
+  }
+
+  inline void destroy()
+  {
+    if (vec != NULL) { ierr = VecDestroy(vec); CHKERRXX(ierr); }
+  }
 
   inline void get_array()
   {
     ierr = VecGetArray(vec, &ptr); CHKERRXX(ierr);
   }
+
   inline void restore_array()
   {
     ierr = VecRestoreArray(vec, &ptr); CHKERRXX(ierr);
   }
 
-//  inline void initialize(p4est_t *p4est, p4est_nodes_t *nodes)
-//  {
-//    finalize();
-//    ierr = VecCreateGhostNodes(p4est, nodes, &vec); CHKERRXX(ierr);
-//  }
-//  inline void initialize(Vec template_vec)
-//  {
-//    finalize();
-//    ierr = VecDuplicate(template_vec, &vec); CHKERRXX(ierr);
-//  }
-//  inline void finalize()
-//  {
-//    if (vec != NULL) { ierr = VecDestroy(vec); CHKERRXX(ierr); }
-//  }
+  inline void set(Vec input)
+  {
+    vec = input;
+  }
 };
 
 
 struct vec_and_ptr_dim_t
 {
-  PetscErrorCode ierr;
-  Vec vec[P4EST_DIM];
+  static PetscErrorCode ierr;
+
+  Vec     vec[P4EST_DIM];
   double *ptr[P4EST_DIM];
 
-  vec_and_ptr_dim_t() {
+  vec_and_ptr_dim_t()
+  {
     for (short dim = 0; dim < P4EST_DIM; ++dim)
     {
-      vec[dim] = NULL; ptr[dim] = NULL;
+      vec[dim] = NULL;
+      ptr[dim] = NULL;
+    }
+  }
+
+  vec_and_ptr_dim_t(Vec parent[])
+  {
+    for (short dim = 0; dim < P4EST_DIM; ++dim)
+    {
+      vec[dim] = NULL;
+      ptr[dim] = NULL;
+    }
+    create(parent);
+  }
+
+  vec_and_ptr_dim_t(p4est_t *p4est, p4est_nodes_t *nodes)
+  {
+    for (short dim = 0; dim < P4EST_DIM; ++dim)
+    {
+      vec[dim] = NULL;
+      ptr[dim] = NULL;
+    }
+    create(p4est, nodes);
+  }
+
+  inline void create(Vec parent[])
+  {
+    for (short dim = 0; dim < P4EST_DIM; ++dim)
+    {
+      ierr = VecDuplicate(parent[dim], &vec[dim]); CHKERRXX(ierr);
+    }
+  }
+
+  inline void create(p4est_t *p4est, p4est_nodes_t *nodes)
+  {
+    for (short dim = 0; dim < P4EST_DIM; ++dim)
+    {
+      ierr = VecCreateGhostNodes(p4est, nodes, &vec[dim]); CHKERRXX(ierr);
+    }
+  }
+
+  inline void destroy()
+  {
+    for (short dim = 0; dim < P4EST_DIM; ++dim)
+    {
+      if (vec[dim] != NULL) { ierr = VecDestroy(vec[dim]); CHKERRXX(ierr); }
     }
   }
 
@@ -2078,11 +2089,102 @@ struct vec_and_ptr_dim_t
       ierr = VecGetArray(vec[dim], &ptr[dim]); CHKERRXX(ierr);
     }
   }
+
   inline void restore_array()
   {
     for (short dim = 0; dim < P4EST_DIM; ++dim)
     {
       ierr = VecRestoreArray(vec[dim], &ptr[dim]); CHKERRXX(ierr);
+    }
+  }
+
+  inline void set(Vec input[])
+  {
+    for (short dim = 0; dim < P4EST_DIM; ++dim)
+    {
+      vec[dim] = input[dim];
+    }
+  }
+};
+
+struct vec_and_ptr_array_t
+{
+  static PetscErrorCode ierr;
+
+  int i, size;
+  std::vector<Vec>      vec;
+  std::vector<double *> ptr;
+
+  vec_and_ptr_array_t() : size(0) {}
+
+  vec_and_ptr_array_t(int size) : size(size), vec(size, NULL), ptr(size, NULL) {}
+
+  vec_and_ptr_array_t(int size, Vec parent) : size(size), vec(size, NULL), ptr(size, NULL) { create(parent); }
+
+  vec_and_ptr_array_t(int size, Vec parent[]) : size(size), vec(size, NULL), ptr(size, NULL) { create(parent); }
+
+  vec_and_ptr_array_t(int size, p4est_t *p4est, p4est_nodes_t *nodes) : size(size), vec(size, NULL), ptr(size, NULL) { create(p4est, nodes); }
+
+  inline void resize(int size)
+  {
+    this->size = size;
+    vec.assign(size, NULL);
+    ptr.assign(size, NULL);
+  }
+
+  inline void create(Vec parent)
+  {
+    for (i = 0; i < size; ++i)
+    {
+      ierr = VecDuplicate(parent, &vec[i]); CHKERRXX(ierr);
+    }
+  }
+
+  inline void create(Vec parent[])
+  {
+    for (i = 0; i < size; ++i)
+    {
+      ierr = VecDuplicate(parent[i], &vec[i]); CHKERRXX(ierr);
+    }
+  }
+
+  inline void create(p4est_t *p4est, p4est_nodes_t *nodes)
+  {
+    for (i = 0; i < size; ++i)
+    {
+      ierr = VecCreateGhostNodes(p4est, nodes, &vec[i]); CHKERRXX(ierr);
+    }
+  }
+
+  inline void destroy()
+  {
+    for (i = 0; i < size; ++i)
+    {
+      if (vec[i] != NULL) { ierr = VecDestroy(vec[i]); CHKERRXX(ierr); }
+    }
+  }
+
+  inline void get_array()
+  {
+    for (i = 0; i < size; ++i)
+    {
+      ierr = VecGetArray(vec[i], &ptr[i]); CHKERRXX(ierr);
+    }
+  }
+
+  inline void restore_array()
+  {
+    for (i = 0; i < size; ++i)
+    {
+      ierr = VecRestoreArray(vec[i], &ptr[i]); CHKERRXX(ierr);
+    }
+  }
+
+  inline void set(Vec input[])
+  {
+    for (int i = 0; i < size; ++i)
+    {
+      vec[i] = input[i];
     }
   }
 };
@@ -2354,53 +2456,30 @@ struct interface_point_cartesian_t
   p4est_locidx_t n;
   short          dir;
   double         dist;
-  interface_point_cartesian_t (p4est_locidx_t n=-1,int dir=0, double dist=0)
-    : n(n), dir(dir), dist(dist) {}
-
-  inline void get_xyz(p4est_t *p4est, p4est_nodes_t *nodes, double *xyz)
+  double         xyz[P4EST_DIM];
+  interface_point_cartesian_t (p4est_locidx_t n=-1, int dir=0, double dist=0, double *xyz=NULL)
+    : n(n), dir(dir), dist(dist)
   {
-    node_xyz_fr_n(n, p4est, nodes, xyz);
-
-    switch (dir)
+    if (xyz != NULL)
     {
-      case 0: xyz[0] -= dist; break;
-      case 1: xyz[0] += dist; break;
-
-      case 2: xyz[1] -= dist; break;
-      case 3: xyz[1] += dist; break;
-#ifdef P4_TO_P8
-      case 4: xyz[2] -= dist; break;
-      case 5: xyz[2] += dist; break;
-#endif
+      XCODE( this->xyz[0] = xyz[0] );
+      YCODE( this->xyz[1] = xyz[1] );
+      ZCODE( this->xyz[2] = xyz[2] );
     }
   }
 
-//  // linear interpolation of a Vec at an interface point (assumes locally uniform grid!)
-//  inline double interpolate(my_p4est_node_neighbors_t *ngbd, double *ptr)
-//  {
-//    const quad_neighbor_nodes_of_node_t qnnn = ngbd->get_neighbors(n);
+  inline void get_xyz(double *xyz)
+  {
+    XCODE( xyz[0] = this->xyz[0] );
+    YCODE( xyz[1] = this->xyz[1] );
+    ZCODE( xyz[2] = this->xyz[2] );
+  }
 
-//    p4est_locidx_t neigh = qnnn.neighbor(dir);
-//    double         h     = qnnn.distance(dir);
+  // linear interpolation of a Vec at an interface point (assumes locally uniform grid!)
+  double interpolate(const my_p4est_node_neighbors_t *ngbd, double *ptr);
 
-//    return (ptr[n]*(h-dist) + ptr[neigh]*dist)/h;
-//  }
-
-//  // quadratic interpolation of a Vec at an interface point (assumes locally uniform grid!)
-//  inline double interpolate(my_p4est_node_neighbors_t *ngbd, double *ptr, double *ptr_dd[P4EST_DIM])
-//  {
-//    const quad_neighbor_nodes_of_node_t qnnn = ngbd->get_neighbors(n);
-
-//    p4est_locidx_t neigh = qnnn.neighbor(dir);
-//    double         h     = qnnn.distance(dir);
-//    short          dim   = dir / 2;
-
-//    double p0  = ptr[n];
-//    double p1  = ptr[neigh];
-//    double pdd = MINMOD(ptr_dd[dim][n], ptr_dd[dim][neigh]);
-
-//    return .5*(p0+p1) + (p1-p0)*(dist/h-.5) + .5*pdd*(dist*dist-dist*h);
-//  }
+  // quadratic interpolation of a Vec at an interface point (assumes locally uniform grid!)
+  double interpolate(const my_p4est_node_neighbors_t *ngbd, double *ptr, double *ptr_dd[P4EST_DIM]);
 };
 
 struct interface_info_t
@@ -2422,6 +2501,8 @@ struct my_p4est_finite_volume_t
   XCODE( double face_centroid_x[P4EST_FACES]; )
   YCODE( double face_centroid_y[P4EST_FACES]; )
   ZCODE( double face_centroid_z[P4EST_FACES]; )
+
+  my_p4est_finite_volume_t() { interfaces.reserve(1); }
 };
 
 void construct_finite_volume(my_p4est_finite_volume_t& fv, p4est_locidx_t n, p4est_t *p4est, p4est_nodes_t *nodes, std::vector<CF_DIM *> phi, std::vector<mls_opn_t> opn, int order=1, int cube_refinement=0, bool compute_centroids=false, double perturb=1.0e-12);
@@ -2431,8 +2512,8 @@ void compute_wall_normal(const int &dir, double normal[]);
 struct points_around_node_map_t
 {
   int count;
-  std::vector<int> size;
-  std::vector<int> offset;
+  std::vector<int> size;   // N*sizeof(int)
+  std::vector<int> offset; // N*sizeof(int)
 
   points_around_node_map_t(int num_nodes=0)
     : size(num_nodes,0), offset(num_nodes+1, 0), count(0) {}
@@ -2450,4 +2531,376 @@ struct points_around_node_map_t
       offset[i] = offset[i-1] + size[i-1];
   }
 };
+
+struct cartesian_intersections_map_t
+{
+  int idx[P4EST_FACES];
+};
+
+
+// advanced boundary conditions structure with pointwise application features
+struct boundary_conditions_t
+{
+  // N = num_owned_indeps
+  // M = number of boundary nodes (nodes at which we impose boundary conditions)
+  // K = number of cartesian intersections
+
+  BoundaryConditionType  type;
+  bool                   pointwise;
+  CF_DIM                *value_cf; // either solution value for Dirichlet or flux for Robin/Neumann
+  CF_DIM                *coeff_cf; // coefficient in Robin b.c.
+  std::vector<double>   *value_pw; // values for imposing Dirichlet (size K) or Neumann bc (size M)
+  std::vector<double>   *value_pw_robin; // for imposing Robin bc (size M) (_in addition_ to value_pw)
+  std::vector<double>   *coeff_pw_robin; // for imposing Robin bc (size M)
+
+  std::vector<int>       node_map; // N -> dirichlet_local_map or areas, neumann_pts and robin_pts
+
+  std::vector< std::vector<int> >            dirichlet_local_map; // M -> dirichlet_points and dirichlet_weights
+  std::vector<double>                        dirichlet_weights;   // K
+  std::vector<interface_point_cartesian_t>   dirichlet_pts;       // K
+
+  std::vector<double>            areas;       // M
+  std::vector<interface_point_t> neumann_pts; // M
+  std::vector<interface_point_t> robin_pts;   // M
+
+  boundary_conditions_t()
+    : type(NOINTERFACE), pointwise(false),
+      value_cf(NULL), coeff_cf(NULL),
+      value_pw(NULL), value_pw_robin(NULL), coeff_pw_robin(NULL) {}
+
+  inline void set(BoundaryConditionType type, CF_DIM &value_cf, CF_DIM &coeff_cf)
+  {
+    this->type      = type;
+    this->pointwise = false;
+    this->value_cf  = &value_cf;
+    this->coeff_cf  = &coeff_cf;
+  }
+
+  inline void set(BoundaryConditionType type, CF_DIM &value_cf)
+  {
+    if (type == ROBIN) throw;
+    this->type      = type;
+    this->pointwise = false;
+    this->value_cf  = &value_cf;
+    this->coeff_cf  = NULL;
+  }
+
+  inline void set(BoundaryConditionType type, std::vector<double> &value_pw, std::vector<double> &value_pw_robin, std::vector<double> &coeff_pw_robin)
+  {
+    this->type      = type;
+    this->pointwise = true;
+    this->value_pw  = &value_pw;
+    this->value_pw_robin = &value_pw_robin;
+    this->coeff_pw_robin = &coeff_pw_robin;
+  }
+
+  inline void set(BoundaryConditionType type, std::vector<double> &value_pw)
+  {
+    if (type == ROBIN) throw;
+    this->type      = type;
+    this->pointwise = true;
+    this->value_pw  = &value_pw;
+    this->value_pw_robin = NULL;
+    this->coeff_pw_robin = NULL;
+  }
+
+  inline void add_fv_pt(p4est_locidx_t n, double &area, interface_point_t &neumann, interface_point_t &robin)
+  {
+#ifdef CASL_THROWS
+    if (type == DIRICHLET) throw;
+    if (node_map[n] != -1) throw;
+#endif
+
+    node_map[n] = areas.size();
+
+    areas      .push_back(area);
+    robin_pts  .push_back(robin);
+    neumann_pts.push_back(neumann);
+  }
+
+  inline void add_fd_pt(p4est_locidx_t n, int dir, double dist, double *xyz, double weight)
+  {
+    if (node_map[n] == -1)
+    {
+      node_map[n] = dirichlet_local_map.size();
+      dirichlet_local_map.push_back(std::vector<int>());
+    }
+#ifdef CASL_THROWS
+    else
+    {
+      if (node_map[n] > dirichlet_local_map.size()-1) throw;
+    }
+
+    if (type == ROBIN || type == NEUMANN) throw;
+#endif
+
+    dirichlet_local_map[node_map[n]].push_back(dirichlet_weights.size());
+
+    dirichlet_weights.push_back(weight);
+    dirichlet_pts    .push_back(interface_point_cartesian_t(n, dir, dist, xyz));
+  }
+
+  inline bool is_boundary_node(p4est_locidx_t n) { return node_map[n] != -1; }
+
+  inline int num_value_pts()
+  {
+    switch (type)
+    {
+      case DIRICHLET: return dirichlet_weights.size();
+      case NEUMANN:   return areas.size();
+      case ROBIN:     return areas.size();
+      default: throw;
+    }
+  }
+
+  inline int num_robin_pts()
+  {
+    switch (type)
+    {
+      case DIRICHLET: return 0;
+      case NEUMANN:   return 0;
+      case ROBIN:     return areas.size();
+      default: throw;
+    }
+  }
+
+  inline void xyz_value_pt(int idx, double xyz[])
+  {
+    switch (type)
+    {
+      case DIRICHLET: dirichlet_pts[idx].get_xyz(xyz); break;
+      case NEUMANN:   neumann_pts  [idx].get_xyz(xyz); break;
+      case ROBIN:     neumann_pts  [idx].get_xyz(xyz); break;
+      default: throw;
+    }
+  }
+
+  inline void xyz_robin_pt(int idx, double xyz[])
+  {
+    switch (type)
+    {
+      case DIRICHLET: throw;
+      case NEUMANN:   throw;
+      case ROBIN:     robin_pts[idx].get_xyz(xyz); break;
+      default: throw;
+    }
+  }
+
+  inline int num_value_pts(p4est_locidx_t n)
+  {
+    if (node_map[n] == -1) return 0;
+    else
+    {
+      switch (type)
+      {
+        case DIRICHLET: return dirichlet_local_map[node_map[n]].size();
+        case NEUMANN:   return 1;
+        case ROBIN:     return 1;
+        default: throw;
+      }
+    }
+  }
+
+  inline int num_robin_pts(p4est_locidx_t n)
+  {
+    if (node_map[n] == -1) return 0;
+    else
+    {
+      switch (type)
+      {
+        case DIRICHLET: return 0;
+        case NEUMANN:   return 0;
+        case ROBIN:     return 1;
+        default: throw;
+      }
+    }
+  }
+
+  inline int idx_value_pt(p4est_locidx_t n, int k)
+  {
+    if (node_map[n] == -1) throw;
+
+    switch (type)
+    {
+      case DIRICHLET: return dirichlet_local_map[node_map[n]][k];
+      case NEUMANN:   return node_map[n];
+      case ROBIN:     return node_map[n];
+      default: throw;
+    }
+  }
+
+  inline int idx_robin_pt(p4est_locidx_t n, int k)
+  {
+    if (node_map[n] == -1) throw;
+
+    switch (type)
+    {
+      case DIRICHLET: throw;
+      case NEUMANN:   throw;
+      case ROBIN:     return node_map[n];
+      default: throw;
+    }
+  }
+
+  inline void reset(int num_nodes)
+  {
+    node_map.assign(num_nodes, -1);
+
+    areas      .clear();
+    neumann_pts.clear();
+    robin_pts  .clear();
+
+    dirichlet_local_map.clear();
+    dirichlet_weights  .clear();
+    dirichlet_pts      .clear();
+
+    pointwise      = NULL;
+    value_pw       = NULL;
+    value_pw_robin = NULL;
+    coeff_pw_robin = NULL;
+  }
+
+  inline double get_value_pw(p4est_locidx_t n, int i)
+  {
+    if (node_map[n] == -1) throw;
+
+    switch (type)
+    {
+      case DIRICHLET: return (*value_pw)[dirichlet_local_map[node_map[n]][i]];
+      case NEUMANN:   return (*value_pw)[node_map[n]];
+      case ROBIN:     return (*value_pw)[node_map[n]];
+    }
+
+  }
+
+  inline double get_robin_pw_value(p4est_locidx_t n)
+  {
+    if (node_map[n] == -1) throw;
+
+    switch (type)
+    {
+      case DIRICHLET: throw;
+      case NEUMANN:   throw;
+      case ROBIN:     return (*value_pw_robin)[node_map[n]];
+    }
+
+  }
+
+  inline double get_robin_pw_coeff(p4est_locidx_t n)
+  {
+    if (node_map[n] == -1) throw;
+
+    switch (type)
+    {
+      case DIRICHLET: throw;
+      case NEUMANN:   throw;
+      case ROBIN:     return (*coeff_pw_robin)[node_map[n]];
+    }
+  }
+
+  inline double get_value_cf(double xyz[]) { return value_cf->value(xyz); }
+  inline double get_coeff_cf(double xyz[]) { return coeff_cf->value(xyz); }
+};
+
+// interface conditions
+struct interface_conditions_t
+{
+  // N = num_owned_indeps
+  // M = number of boundary nodes (nodes at which we impose boundary conditions)
+  bool                   pointwise;
+  CF_DIM                *sol_jump_cf;
+  CF_DIM                *flx_jump_cf;
+  std::vector<double>   *sol_jump_pw_taylor; // M, values used in Taylor expansion (usually at projection points)
+  std::vector<double>   *flx_jump_pw_taylor; // M, values used in Taylor expansion (usually at projection points)
+  std::vector<double>   *flx_jump_pw_integr; // M, values used for integration of "surface generation" term (usually at centroids)
+
+  std::vector<int>               node_map;   // N
+  std::vector<double>            areas;      // M
+  std::vector<interface_point_t> integr_pts; // M, points for integration (usually centroids)
+  std::vector<interface_point_t> taylor_pts; // M, points for Taylor expansion (usually projections)
+
+  // total number of sampling points
+  inline int num_integr_pts() { return integr_pts.size(); }
+  inline int num_taylor_pts() { return taylor_pts.size(); }
+
+  // coordinates of a given sampling point
+  inline void xyz_integr_pt(int idx, double xyz[]) { return integr_pts[idx].get_xyz(xyz); }
+  inline void xyz_taylor_pt(int idx, double xyz[]) { return taylor_pts[idx].get_xyz(xyz); }
+
+  // number of sampling points for a given grid node
+  inline int num_integr_pts(p4est_locidx_t n) { return node_map[n] == -1 ? 0 : 1; }
+  inline int num_taylor_pts(p4est_locidx_t n) { return node_map[n] == -1 ? 0 : 1; }
+
+  // index of local point in common list
+  inline int idx_integr_pt(p4est_locidx_t n, int j) { if (j != 0) throw; return node_map[n]; }
+  inline int idx_taylor_pt(p4est_locidx_t n, int j) { if (j != 0) throw; return node_map[n]; }
+
+  interface_conditions_t()
+    : pointwise(false), sol_jump_cf(NULL), flx_jump_cf(NULL),
+      sol_jump_pw_taylor(NULL), flx_jump_pw_taylor(NULL), flx_jump_pw_integr(NULL) {}
+
+  inline void set(CF_DIM &sol_jump_cf, CF_DIM &flx_jump_cf)
+  {
+    this->pointwise   = false;
+    this->sol_jump_cf = &sol_jump_cf;
+    this->flx_jump_cf = &flx_jump_cf;
+  }
+
+  inline bool is_interface_node(p4est_locidx_t n) { return node_map[n] != -1; }
+
+  inline void add_pt(p4est_locidx_t n, double &area, interface_point_t &taylor_pt, interface_point_t &integr_pt)
+  {
+#ifdef CASL_THROWS
+    if (is_interface_node(n)) throw;
+#endif
+    node_map[n] = areas.size();
+
+    areas     .push_back(area);
+    taylor_pts.push_back(taylor_pt);
+    integr_pts.push_back(integr_pt);
+  }
+
+  inline void get_pt(p4est_locidx_t n, double &area, interface_point_t &taylor_pt, interface_point_t &integr_pt)
+  {
+#ifdef CASL_THROWS
+    if (!is_interface_node(n)) throw;
+#endif
+    area      = areas     [node_map[n]];
+    taylor_pt = taylor_pts[node_map[n]];
+    integr_pt = integr_pts[node_map[n]];
+  }
+
+  inline void set(std::vector<double> &sol_jump_pw_taylor, std::vector<double> &flx_jump_pw_taylor, std::vector<double> &flx_jump_pw_integr)
+  {
+    this->pointwise          = true;
+    this->sol_jump_pw_taylor = &sol_jump_pw_taylor;
+    this->flx_jump_pw_taylor = &flx_jump_pw_taylor;
+    this->flx_jump_pw_integr = &flx_jump_pw_integr;
+  }
+
+  inline void reset(int num_nodes)
+  {
+    node_map.assign(num_nodes, -1);
+
+    areas     .clear();
+    integr_pts.clear();
+    taylor_pts.clear();
+
+    pointwise          = false;
+    sol_jump_pw_taylor = NULL;
+    flx_jump_pw_taylor = NULL;
+    flx_jump_pw_integr = NULL;
+  }
+
+  inline double get_sol_jump_pw_taylor(p4est_locidx_t n) { if (node_map[n] == -1) throw; return (*sol_jump_pw_taylor)[node_map[n]]; }
+  inline double get_flx_jump_pw_taylor(p4est_locidx_t n) { if (node_map[n] == -1) throw; return (*flx_jump_pw_taylor)[node_map[n]]; }
+  inline double get_flx_jump_pw_integr(p4est_locidx_t n) { if (node_map[n] == -1) throw; return (*flx_jump_pw_integr)[node_map[n]]; }
+
+  inline double get_sol_jump_cf(double xyz[]) { return sol_jump_cf->value(xyz); }
+  inline double get_flx_jump_cf(double xyz[]) { return flx_jump_cf->value(xyz); }
+};
+
+double smoothstep(int N, double x);
+
+void variable_step_BDF_implicit(const int order, std::vector<double> &dt, std::vector<double> &coeffs);
 #endif // UTILS_H
