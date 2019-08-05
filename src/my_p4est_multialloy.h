@@ -371,6 +371,7 @@ public:
   void compute_geometric_properties_front();
   void compute_geometric_properties_contr();
   void compute_velocity();
+  void compute_solid();
 
   void compute_dt();
   void update_grid();

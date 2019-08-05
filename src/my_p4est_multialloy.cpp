@@ -656,7 +656,11 @@ void my_p4est_multialloy_t::update_grid()
   /* reinitialize phi */
   my_p4est_level_set_t ls_new(ngbd_);
   ls_new.reinitialize_1st_order_time_2nd_order_space(front_phi_.vec);
-//  ls_new.extend_Over_Interface_TVD(front_phi_.vec, seed_map_.vec, 10, 0);
+
+  if (num_seeds_ > 1)
+  {
+    ls_new.extend_Over_Interface_TVD(front_phi_.vec, seed_map_.vec, 10, 0);
+  }
 
   /* second derivatives, normals, curvature, angles */
   compute_geometric_properties_front();
@@ -666,6 +670,11 @@ void my_p4est_multialloy_t::update_grid()
   if (1)
   {
     PetscPrintf(p4est_->mpicomm, "Refining auxiliary p4est for storing data...\n");
+
+    Vec tmp = history_front_phi_.vec;
+    history_front_phi_.vec = history_front_phi_nm1_.vec;
+    history_front_phi_nm1_.vec = tmp;
+
     p4est_t       *history_p4est_np1 = p4est_copy(history_p4est_, P4EST_FALSE);
     p4est_ghost_t *history_ghost_np1 = my_p4est_ghost_new(history_p4est_np1, P4EST_CONNECT_FULL);
     p4est_nodes_t *history_nodes_np1 = my_p4est_nodes_new(history_p4est_np1, history_ghost_np1);
@@ -691,7 +700,7 @@ void my_p4est_multialloy_t::update_grid()
         interp.add_point(n, xyz);
       }
 
-      interp.set_input(front_phi_.vec, interpolation_between_grids_);
+      interp.set_input(front_phi_.vec, linear);
       interp.interpolate(front_phi_np1.ptr);
 
       splitting_criteria_tag_t sp(sp_old->min_lvl, sp_old->max_lvl, sp_old->lip);
@@ -767,92 +776,6 @@ void my_p4est_multialloy_t::update_grid()
     p4est_nodes_destroy(history_nodes_); history_nodes_ = history_nodes_np1;
     history_hierarchy_->update(history_p4est_, history_ghost_);
     history_ngbd_->update(history_hierarchy_, history_nodes_);
-
-    // get new values for nodes that just solidified
-    history_front_phi_    .get_array();
-    history_front_phi_nm1_.get_array();
-
-    // first, figure out which nodes just became solid
-    my_p4est_interpolation_nodes_t interp(ngbd_);
-    std::vector<p4est_locidx_t> freezing_nodes;
-    foreach_node(n, history_nodes_)
-    {
-      if (history_front_phi_    .ptr[n] > 0 &&
-          history_front_phi_nm1_.ptr[n] < 0)
-      {
-        node_xyz_fr_n(n, history_p4est_, history_nodes_, xyz);
-        interp.add_point(n, xyz);
-        freezing_nodes.push_back(n);
-      }
-    }
-
-    // get values concentrations and temperature at those nodes
-    vec_and_ptr_array_t cl_new(num_comps_, history_front_phi_.vec);
-    vec_and_ptr_array_t cl_old(num_comps_, history_front_phi_.vec);
-
-    vec_and_ptr_t tl_new(history_front_phi_.vec);
-    vec_and_ptr_t tl_old(history_front_phi_.vec);
-
-    for (i = 0; i < num_comps_; ++i)
-    {
-      interp.set_input(cl_[1].vec[i], interpolation_between_grids_); interp.interpolate(cl_old.vec[i]);
-      interp.set_input(cl_[0].vec[i], interpolation_between_grids_); interp.interpolate(cl_new.vec[i]);
-    }
-    interp.set_input(tl_[1].vec,   interpolation_between_grids_); interp.interpolate(tl_old.vec);
-    interp.set_input(tl_[0].vec, interpolation_between_grids_); interp.interpolate(tl_new.vec);
-
-    interp.set_input(front_curvature_.vec,    interpolation_between_grids_); interp.interpolate(history_front_curvature_.vec);
-    interp.set_input(front_velo_norm_[0].vec, interpolation_between_grids_); interp.interpolate(history_front_velo_norm_.vec);
-
-    cl_old.get_array();
-    cl_new.get_array();
-    tl_old.get_array();
-    tl_new.get_array();
-
-    history_cs_.get_array();
-    history_tf_.get_array();
-
-    for (unsigned int i = 0; i < freezing_nodes.size(); ++i)
-    {
-      p4est_locidx_t n = freezing_nodes[i];
-
-      // estimate the time when the interface crossed a node
-      double tau = (fabs(history_front_phi_nm1_.ptr[n])+EPS)
-                   /(fabs(history_front_phi_nm1_.ptr[n]) + fabs(history_front_phi_.ptr[n]) + EPS);
-
-      for (int i = 0; i < num_comps_; ++i)
-      {
-        history_cs_.ptr[i][n] = part_coeff_[i]*(cl_old.ptr[i][n]*(1.-tau) + cl_new.ptr[i][n]*tau);
-      }
-      history_tf_.ptr[n] = tl_old.ptr[n]*(1.-tau) + tl_new.ptr[n]*tau;
-    }
-
-    cl_old.restore_array();
-    cl_new.restore_array();
-    tl_old.restore_array();
-    tl_new.restore_array();
-
-    history_cs_.restore_array();
-    history_tf_.restore_array();
-
-    cl_old.destroy();
-    cl_new.destroy();
-    tl_old.destroy();
-    tl_new.destroy();
-
-    VecCopyGhost(history_front_phi_.vec, history_front_phi_nm1_.vec);
-
-    my_p4est_level_set_t ls(history_ngbd_);
-
-    VecScaleGhost(history_front_phi_.vec, -1.);
-    for (int i = 0; i < num_comps_; ++i)
-    {
-      ls.extend_Over_Interface_TVD(history_front_phi_.vec, history_cs_.vec[i], 5, 1);
-    }
-    ls.extend_Over_Interface_TVD(history_front_phi_.vec, history_tf_.vec,  5, 1);
-    ls.extend_Over_Interface_TVD(history_front_phi_.vec, history_front_curvature_.vec,  5, 1);
-    ls.extend_Over_Interface_TVD(history_front_phi_.vec, history_front_velo_norm_.vec,  5, 1);
-    VecScaleGhost(history_front_phi_.vec, -1.);
   }
 
   PetscPrintf(p4est_->mpicomm, "Done \n");
@@ -1004,6 +927,7 @@ int my_p4est_multialloy_t::one_step()
 
   // compute velocity
   compute_velocity();
+  compute_solid();
 
   rhs_tl.destroy();
   rhs_ts.destroy();
@@ -1705,4 +1629,91 @@ void my_p4est_multialloy_t::regularize_front()
   } else {
     front_phi_.set(front_phi_cur.vec);
   }
+}
+
+void my_p4est_multialloy_t::compute_solid()
+{
+  // get new values for nodes that just solidified
+  history_front_phi_    .get_array();
+  history_front_phi_nm1_.get_array();
+
+  // first, figure out which nodes just became solid
+  my_p4est_interpolation_nodes_t interp(ngbd_);
+  std::vector<p4est_locidx_t> freezing_nodes;
+  double xyz[P4EST_DIM];
+  foreach_node(n, history_nodes_)
+  {
+    if (history_front_phi_    .ptr[n] > 0 &&
+        history_front_phi_nm1_.ptr[n] < 0)
+    {
+      node_xyz_fr_n(n, history_p4est_, history_nodes_, xyz);
+      interp.add_point(n, xyz);
+      freezing_nodes.push_back(n);
+    }
+  }
+
+  // get values concentrations and temperature at those nodes
+  vec_and_ptr_array_t cl_new(num_comps_, history_front_phi_.vec);
+  vec_and_ptr_array_t cl_old(num_comps_, history_front_phi_.vec);
+
+  vec_and_ptr_t tl_new(history_front_phi_.vec);
+  vec_and_ptr_t tl_old(history_front_phi_.vec);
+
+  for (i = 0; i < num_comps_; ++i)
+  {
+    interp.set_input(cl_[1].vec[i], linear); interp.interpolate(cl_old.vec[i]);
+    interp.set_input(cl_[0].vec[i], linear); interp.interpolate(cl_new.vec[i]);
+  }
+  interp.set_input(tl_[1].vec, linear); interp.interpolate(tl_old.vec);
+  interp.set_input(tl_[0].vec, linear); interp.interpolate(tl_new.vec);
+
+  interp.set_input(front_curvature_.vec,    linear); interp.interpolate(history_front_curvature_.vec);
+  interp.set_input(front_velo_norm_[0].vec, linear); interp.interpolate(history_front_velo_norm_.vec);
+
+  cl_old.get_array();
+  cl_new.get_array();
+  tl_old.get_array();
+  tl_new.get_array();
+
+  history_cs_.get_array();
+  history_tf_.get_array();
+
+  for (unsigned int i = 0; i < freezing_nodes.size(); ++i)
+  {
+    p4est_locidx_t n = freezing_nodes[i];
+
+    // estimate the time when the interface crossed a node
+    double tau = (fabs(history_front_phi_nm1_.ptr[n])+EPS)
+                 /(fabs(history_front_phi_nm1_.ptr[n]) + fabs(history_front_phi_.ptr[n]) + EPS);
+
+    for (int i = 0; i < num_comps_; ++i)
+    {
+      history_cs_.ptr[i][n] = part_coeff_[i]*(cl_old.ptr[i][n]*(1.-tau) + cl_new.ptr[i][n]*tau);
+    }
+    history_tf_.ptr[n] = tl_old.ptr[n]*(1.-tau) + tl_new.ptr[n]*tau;
+  }
+
+  cl_old.restore_array();
+  cl_new.restore_array();
+  tl_old.restore_array();
+  tl_new.restore_array();
+
+  history_cs_.restore_array();
+  history_tf_.restore_array();
+
+  cl_old.destroy();
+  cl_new.destroy();
+  tl_old.destroy();
+  tl_new.destroy();
+
+  my_p4est_level_set_t ls(history_ngbd_);
+  VecScaleGhost(history_front_phi_.vec, -1.);
+  for (int i = 0; i < num_comps_; ++i)
+  {
+    ls.extend_Over_Interface_TVD(history_front_phi_.vec, history_cs_.vec[i], 5, 1);
+  }
+  ls.extend_Over_Interface_TVD(history_front_phi_.vec, history_tf_.vec,  5, 1);
+  ls.extend_Over_Interface_TVD(history_front_phi_.vec, history_front_curvature_.vec,  5, 1);
+  ls.extend_Over_Interface_TVD(history_front_phi_.vec, history_front_velo_norm_.vec,  5, 1);
+  VecScaleGhost(history_front_phi_.vec, -1.);
 }

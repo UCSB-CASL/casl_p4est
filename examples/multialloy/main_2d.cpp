@@ -69,8 +69,8 @@ DEFINE_PARAMETER(pl, double, xmin, 0, "Box xmin");
 DEFINE_PARAMETER(pl, double, ymin, 0, "Box ymin");
 DEFINE_PARAMETER(pl, double, zmin, 0, "Box zmin");
 
-DEFINE_PARAMETER(pl, double, xmax, 1, "Box xmax");
-DEFINE_PARAMETER(pl, double, ymax, 2, "Box ymax");
+DEFINE_PARAMETER(pl, double, xmax, 0.5, "Box xmax");
+DEFINE_PARAMETER(pl, double, ymax, 1, "Box ymax");
 DEFINE_PARAMETER(pl, double, zmax, 1, "Box zmax");
 
 //-------------------------------------
@@ -98,13 +98,13 @@ DEFINE_PARAMETER(pl, int,    pin_every_n_iterations, 20, "");
 DEFINE_PARAMETER(pl, int,    max_iterations,   10, "");
 DEFINE_PARAMETER(pl, int,    front_smoothing,   1, "");
 DEFINE_PARAMETER(pl, double, bc_tolerance,      1.e-5, "");
-DEFINE_PARAMETER(pl, double, cfl_number, 0.5, "");
+DEFINE_PARAMETER(pl, double, cfl_number, 0.3, "");
 DEFINE_PARAMETER(pl, double, phi_thresh, 0.1, "");
 
 //-------------------------------------
 // output parameters
 //-------------------------------------
-DEFINE_PARAMETER(pl, int,  save_every_n_iteration, 50, "");
+DEFINE_PARAMETER(pl, int,  save_every_n_iteration,  1, "");
 DEFINE_PARAMETER(pl, bool, save_characteristics,    1, "");
 DEFINE_PARAMETER(pl, bool, save_dendrites,          0, "");
 DEFINE_PARAMETER(pl, bool, save_history,            1, "");
@@ -127,7 +127,7 @@ DEFINE_PARAMETER(pl, double, termination_length,    1.8, "");
 DEFINE_PARAMETER(pl, double, init_perturb,          0.000, "");
 DEFINE_PARAMETER(pl, bool,   enforce_planar_front,  0,"");
 
-DEFINE_PARAMETER(pl, double, box_size, 1.e-2, "equivalent width (in x) of the box in cm");
+DEFINE_PARAMETER(pl, double, box_size, 5.e-2, "equivalent width (in x) of the box in cm");
 
 double scaling = 1./box_size;
 
@@ -145,7 +145,7 @@ int num_comps = 1; // Number of components used
 
 DEFINE_PARAMETER(pl, double, volumetric_heat,  0, "Volumetric heat generation, J/cm^3");
 DEFINE_PARAMETER(pl, double, cooling_velocity, 0.01, "Cooling velocity, cm/s");
-DEFINE_PARAMETER(pl, double, temp_gradient,    200, "Temperature gradient, K/cm");
+DEFINE_PARAMETER(pl, double, temp_gradient,    600, "Temperature gradient, K/cm");
 
 DEFINE_PARAMETER(pl, int, smoothstep_order, 5, "Time for volumetric heat to fully switch on, s");
 DEFINE_PARAMETER(pl, double, volumetric_heat_tau, 0, "Time for volumetric heat to fully switch on, s");
