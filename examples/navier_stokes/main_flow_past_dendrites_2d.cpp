@@ -44,9 +44,9 @@
 using namespace std;
 
 const double xmin = 0.0;
-const double xmax = 32.0;
-const double ymin = -8.0;
-const double ymax = 8.0;
+const double xmax = 32.0; //
+const double ymin = 0.0;//
+const double ymax = 16.0;//
 #ifdef P4_TO_P8
 const double zmin = -8.0;
 const double zmax = 8.0;
@@ -56,9 +56,9 @@ const double zmax = 8.0;
 #ifdef P4_TO_P8
 const double r0 = 1.0;
 #else
-const double r0 = 0.5;
+const double r0 =0.5;//
 #endif
-const double u0 = 1.0;
+const double u0 = 1.0;//
 
 #ifdef P4_TO_P8
 
@@ -275,7 +275,7 @@ class INIT_SMOKE : public CF_2
 public:
   double operator()(double x, double y) const
   {
-    return (x<2 && y>-1 && y<1) ? 1 : 0;
+    return (x<(xmax-xmin)/15.0 ) && (y>(ymax - ymin)*5.0/16.0) && (y<((3.0/4.0)*(ymax - ymin))) ? 1 : 0;
   }
 } init_smoke;
 
@@ -285,7 +285,7 @@ class BC_SMOKE : public CF_2
 public:
   double operator()(double x, double y) const
   {
-    return(fabs(x-xmin)<EPS && y>-.5 && y<.5) ? 1 : 0;
+    return(fabs(x-xmin)<EPS && (y>(ymax - ymin)*5.0/16.0) && (y<((3.0/4.0)*(ymax - ymin)))) ? 1 : 0;
   }
 } bc_smoke;
 
@@ -295,8 +295,92 @@ class LEVEL_SET: public CF_2
 public:
   LEVEL_SET() { lip = 1.2; }
   double operator()(double x, double y) const
+
   {
-    return r0 - sqrt(SQR(x-(xmax+xmin)/4) + SQR(y-(ymax+ymin)/2));
+      // Generates a "fake dendrite" via superposition of ellipses
+      double LS = 0.0;
+
+      // Initialize variables
+      double rx = 1.0, yc = 0.0, xc_0 = 1.65, xc_inc = 1.65, xc;
+      double ry[19] = {4.0 , 2.0 , 5.0 , 1.0 , 2.0 , 3.0 , 4.0 , 4.0 , 2.0 , 5.0 , 1.0 , 2.0 , 3.0 , 2.0 , 4.0 , 2.0 , 5.0 , 1.0 , 2.0 };
+
+      int no_ellipses = 19;
+
+      // Get the intersection points of the ellipses (computed in MATLAB)
+      double xint_upper[19];
+      double xint_lower[19] ={xmin , 2.5866 , 3.9925 , 5.9387 , 7.3134 , 9.0018 , 10.6713 , 12.3750 , 14.1366 , 15.5425 , 17.4887 , 18.8634 , 20.5518 , 22.3482 , 23.8134 , 25.6866 , 27.0925 , 29.0387 , 30.4134};
+
+      for (int i = 0; i<no_ellipses;i++){
+          // Get the upper bounds:
+          if(i == no_ellipses-1){
+              xint_upper[i] = xmax;
+          }
+          else{
+              xint_upper[i] = xint_lower[i+1];
+          }
+          xc = xc_0 + i*xc_inc;
+          // Now, evaluate the LSF within the appropriate bounds:
+          double perturb;
+          double rx_p;
+          double ry_p;
+          if (i == 0) xint_lower[i] = xc_0 - rx;
+
+          if ((xint_lower[i] - EPS<= x) && (x< xint_upper[i] + EPS)){
+              perturb = 1.0;//+ 0.025*fabs(sin(2.0*PI*(x - xc)*(y - yc)));
+              rx_p = perturb*rx;
+              ry_p = perturb*ry[i];
+              LS = 1 - sqrt(SQR((x - xc)/rx_p) + SQR((y - yc)/ry_p));
+          }
+
+          // Account for gap before first "dendrite"
+          if (x <= xc_0 - rx - EPS){
+              LS = 1 - sqrt(SQR((x - xc)/rx) + SQR((y - yc)/ry[1]));
+          }
+
+      }
+
+      return LS;
+
+      /*// Generates flower shaped domain:
+
+      double LS, r;
+      x -=8.0;
+
+      r = sqrt(SQR(x) + SQR(y));
+      if (r <=0.2 + EPS){r+=0.2;}
+
+      LS = r - 0.5 - (pow(y,5.0) + 5.0*pow(x,4.0)*y - 10.0*SQR(x)*pow(y,3.0))/(3.0*pow(r,5));
+      LS *=-1.0;
+      return LS;
+        */
+
+
+      /* //Generates 2 ellipses superposed:
+      double rx1, rx2, ry1, ry2, xc1, xc2, yc1, yc2,LS1,LS2;
+     rx1 = 2.0; rx2 = 2.0; ry1 = 0.75; ry2 = 0.75;
+     xc1 = 12.0; xc2 = 12.0; yc1 = -0.25; yc2 = 0.25;
+
+     double etol = 1.0e-7;
+
+     double LS;
+
+     LS1 = 1.0 - sqrt(SQR(x - xc1)/SQR(rx1) + SQR(y - yc1)/SQR(ry1));
+     LS2 = 1.0 - sqrt(SQR(x - xc2)/SQR(rx2) + SQR(y - yc2)/SQR(ry2));
+
+     if(y <=etol){
+         LS = LS1;
+
+     }Untitled folder
+     else{
+         LS = LS2;
+     }
+
+
+     return LS; // <-- corresponds to a superposition of two ellipses
+    */
+
+    //return 1.0 - sqrt(SQR(x - 12.0)/16.0 + SQR(y)/SQR(0.25)); // <-- corresponds to a thin ellipse
+    //return r0 - sqrt(SQR(x-(xmax+xmin)/4) + SQR(y-(ymax+ymin)/2));// <-- corresponds to a sphere
   }
 } level_set;
 
@@ -304,7 +388,7 @@ struct BCWALLTYPE_P : WallBC2D
 {
   BoundaryConditionType operator()(double x, double) const
   {
-    if(fabs(x-xmax)<EPS)
+    if(fabs(x-xmax)<EPS) // Back wall
       return DIRICHLET;
     return NEUMANN;
   }
@@ -340,7 +424,7 @@ struct BCWALLTYPE_V : WallBC2D
 {
   BoundaryConditionType operator()(double x, double y) const
   {
-    if((fabs(x-xmax)<EPS) && (fabs(y-ymin) > EPS) && (fabs(y-ymax) > EPS))
+    if((fabs(x-xmax)<EPS) && (fabs(y-ymin) > EPS) && (fabs(y-ymax) > EPS)) // back wall
       return NEUMANN;
     return DIRICHLET;
   }
@@ -350,8 +434,13 @@ struct BCWALLVALUE_U : CF_2
 {
   double operator()(double x, double y) const
   {
-    if((fabs(x-xmax)<EPS) && (fabs(y-ymin) > EPS) && (fabs(y-ymax) > EPS))
+    double offset = 4.0;
+    if((fabs(x-xmax)<EPS) && (fabs(y-ymin) > EPS) && (fabs(y-ymax) > EPS)) // back wall
       return 0;
+    else if ((fabs(x-xmin)<EPS) && (fabs(y-ymin) > EPS) && (fabs(y-ymax) > EPS)) // front wall --> shear flow
+        return u0*(y/ymax);
+    else if (fabs(y - ymin)<EPS) // bottom wall --> dirichlet velocity, ux = 0
+        return 0;
     else
       return u0;
   }
@@ -383,17 +472,17 @@ struct BCINTERFACE_VALUE_V : CF_2
 
 struct initial_velocity_unm1_t : CF_2
 {
-  double operator()(double, double) const
+  double operator()(double x, double y) const
   {
-    return u0;
+    return u0*(y/ymax);
   }
 } initial_velocity_unm1;
 
 struct initial_velocity_u_n_t : CF_2
 {
-  double operator()(double, double) const
+  double operator()(double x, double y) const
   {
-    return u0;
+    return u0*(y/ymax);
   }
 } initial_velocity_un;
 
@@ -674,9 +763,10 @@ int main (int argc, char* argv[])
 #elif defined(LAPTOP)
   const string export_dir               = cmd.get<string>("export_folder", "/home/raphael/workspace/projects/flow_past_sphere");
 #else
-  const string export_dir               = cmd.get<string>("export_folder", "/home/regan/workspace/projects/flow_past_sphere");
+  const string export_dir               = cmd.get<string>("export_folder", "/home/elyce/workspace/projects/navier_stokes/output");
 #endif
   const bool save_vtk                   = cmd.contains("save_vtk");
+  const bool save_simulation_times      = 0;
   const bool get_timing                 = cmd.contains("timing");
   double vtk_dt                         = -1.0;
   if(save_vtk)
@@ -938,7 +1028,7 @@ int main (int argc, char* argv[])
     sl_order                = cmd.get<int>("sl_order", 2);
     cfl                     = cmd.get<double>("cfl", 1.0);
 
-    Re                      = cmd.get("Re", 350);
+    Re                      = cmd.get("Re", 6.344);
     mu                      = 2*r0*rho*u0/Re;
 
     p4est_connectivity_t *connectivity;

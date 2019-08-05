@@ -226,7 +226,7 @@ void solve_lsqr_system(matrix_t &A, vector<double> p[], unsigned int n_vectors, 
     if( (unsigned int) A.num_rows() != p[k].size() )
       throw std::invalid_argument("[CASL_ERROR]: solve_lsqr_system(...): the matrix and (one of) the right hand side(s) don't have the same size");
 #endif
-  P4EST_ASSERT(nconstraints<P4EST_DIM);
+  P4EST_ASSERT(nconstraints<=P4EST_DIM);
   int m = A.num_rows();
   matrix_t *M = new matrix_t();
   vector<double> Atp[n_vectors];

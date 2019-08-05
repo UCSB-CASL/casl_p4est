@@ -1050,7 +1050,7 @@ void my_p4est_poisson_faces_t::preallocate_matrix(int dir)
 
 
 void my_p4est_poisson_faces_t::setup_linear_system(int dir)
-{
+{ //E: Sets up the linear system for a given direction --
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_poisson_faces_setup_linear_system, A, rhs[dir], 0, 0); CHKERRXX(ierr);
 
@@ -1067,8 +1067,8 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
   p4est_topidx_t tree_idx;
   matrix_has_nullspace[dir] = true;
 
-  int dir_m = 2*dir;
-  int dir_p = 2*dir+1;
+  int dir_m = 2*dir; // E: Set an index for the minus direction face in the given direction (ie. x, y, z)
+  int dir_p = 2*dir+1; // E: Set an index for the plus direction face in the given direction (ie. x, y, z)
 
   const PetscScalar *face_is_well_defined_p;
   ierr = VecGetArrayRead(face_is_well_defined[dir], &face_is_well_defined_p); CHKERRXX(ierr);
@@ -1089,16 +1089,18 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
   my_p4est_interpolation_faces_t interp_dxyz_hodge(ngbd_n, faces);
   interp_dxyz_hodge.set_input(dxyz_hodge[dir], dir, 1, face_is_well_defined[dir]);
 
+  // E: Loop over all faces in the given direction (ie. all x faces on local processor, or all y faces on local processor)
   for(p4est_locidx_t f_idx=0; f_idx<faces->num_local[dir]; ++f_idx)
   {
     null_space_p[f_idx] = 1;
-    p4est_gloidx_t f_idx_g = f_idx + proc_offset[dir][p4est->mpirank];
+    p4est_gloidx_t f_idx_g = f_idx + proc_offset[dir][p4est->mpirank]; //E: Grab the global index for the given face
 
-    faces->f2q(f_idx, dir, quad_idx, tree_idx);
+    faces->f2q(f_idx, dir, quad_idx, tree_idx); //E: Grabs the local index of quadrant that owns the face (in the given direction) (since faces are accounted for by their index and direction)
 
     p4est_tree_t *tree = (p4est_tree_t*) sc_array_index(p4est->trees, tree_idx);
     p4est_quadrant_t *quad = (p4est_quadrant_t*) sc_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
 
+    // E: Get the coordinates of the center of the given face
     double xyz[] = {
       faces->x_fr_f(f_idx, dir)
       , faces->y_fr_f(f_idx, dir)
@@ -1107,9 +1109,9 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
   #endif
     };
 
-
+    //E: Get LSF value interpolated to the face center
     double phi_c = interp_phi(xyz);
-    /* far in the positive domain */
+    /* far in the positive domain, E: AKA in the part of the domain that we are not concerned in getting a solution*/
     if(!face_is_well_defined_p[f_idx])
     {
       if(!only_diag_is_modified[dir] && !is_matrix_ready[dir])
@@ -1125,7 +1127,13 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
     vector<p4est_quadrant_t> ngbd;
     p4est_quadrant_t qm, qp;
     p4est_topidx_t tm_idx=-1, tp_idx=-1;
-    if(faces->q2f(quad_idx, dir_m)==f_idx)
+
+    /*//E: Check if a face is the positive or negative face of its owner quad cell in specified direction, and index the quadrant and its neighbor accordingly
+    * --> ex.) If a face is the minus face of the quad, then the quad that owns that face is listed as a plus quad( aka position is positive relative to minus face),
+    *     and the face neighbor is listed as a minus quad (aka in  the minus direction relative to the face)
+    * --> Vice versa, positive face --> owning quad is listed as minus position relative to face, and the neighbor quad is positive position relative to face
+    */
+    if(faces->q2f(quad_idx, dir_m)==f_idx) //E: If the current face is the minus face of its owner quad cell
     {
       qp_idx = quad_idx;
       tp_idx = tree_idx;
@@ -1140,7 +1148,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
         tm_idx = ngbd[0].p.piggy3.which_tree;
       }
     }
-    else
+    else //E: If the current face is the plus face of its owner quad cell
     {
       qm_idx = quad_idx;
       tm_idx = tree_idx;
@@ -1156,7 +1164,12 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
       }
     }
 
-    /* check for walls */
+    /* -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
+    /* CHECK FOR WALLS -- Apply Dirichlet Wall Conditions if they are specified on the given wall*/
+    /* -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
+
+    // E: If the qm_idx or the qp_idx remain unchanged from their initialized values of (-1), that implies there is no neighbor in the given direction, thus there is a wall
+    // E: If there is a wall, apply appropriate diagonal term to A matrix, and add BC value to the RHS
     if(qm_idx==-1 && bc[dir].wallType(xyz)==DIRICHLET)
     {
       matrix_has_nullspace[dir] = false;
@@ -1180,6 +1193,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
     }
 
     bool wall[P4EST_FACES];
+    //E: Loop over each direction and record for both plus and minus faces whether or not there is a wall present
     for(int d=0; d<P4EST_DIM; ++d)
     {
       int f_m = 2*d;
@@ -1196,6 +1210,11 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
       }
     }
 
+    /*-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+     * Compute the Voronoi Cell for the given face
+     * Then store the Voronoi partition and points
+     -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
+
     if(compute_partition_on_the_fly)
     {
       compute_voronoi_cell(f_idx, dir);
@@ -1211,29 +1230,31 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
     Voronoi2D &voro_tmp = compute_partition_on_the_fly ? voro[dir][0] : voro[dir][f_idx];
     vector<ngbd2Dseed> *points;
     vector<Point2> *partition;
+
+    // E: Store Voronoi partition and points:
     voro_tmp.get_partition(partition);
 #endif
     voro_tmp.get_neighbor_seeds(points);
 
-    /*
-     * close to interface and dirichlet => finite differences
-     */
+    /* -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+     * Apply Dirichelt Interfacial Conditions  -- close to interface and dirichlet => finite differences
+     ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
 #ifdef P4_TO_P8
     if(bc[dir].interfaceType(xyz)==DIRICHLET && phi_c>-2*MAX(dxyz[0],dxyz[1],dxyz[2]))
 #else
-    if(bc[dir].interfaceType(xyz)==DIRICHLET && phi_c>-2*MAX(dxyz[0],dxyz[1]))
+    if(bc[dir].interfaceType(xyz)==DIRICHLET && phi_c>-2*MAX(dxyz[0],dxyz[1])) //E: Check if interface is within 2 cells (?)
 #endif
     {
-      if(fabs(phi_c) < EPS)
+      if(fabs(phi_c) < EPS) // E: If interface is directly at the face
       {
         if(!only_diag_is_modified[dir] && !is_matrix_ready[dir])
         {
           ierr = MatSetValue(A[dir], f_idx_g, f_idx_g, 1, ADD_VALUES); CHKERRXX(ierr); // only needs to be done if full reset
         }
-        rhs_p[f_idx] = bc[dir].interfaceValue(xyz);
-        interp_dxyz_hodge.add_point(bc_index.size(), xyz);
-        bc_index.push_back(f_idx);
-        bc_coeffs.push_back(1);
+        rhs_p[f_idx] = bc[dir].interfaceValue(xyz); // E: Add Interface bc value to RHS
+        interp_dxyz_hodge.add_point(bc_index.size(), xyz); // E: Add xyz location of face to list of points to interpolate grad(hodge) at
+        bc_index.push_back(f_idx);                         // E: Add face index to list of bc index
+        bc_coeffs.push_back(1);                            // E: Add 1 to lsit of bc coefficients
         matrix_has_nullspace[dir] = false;
         continue;
       }
@@ -1249,6 +1270,35 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
         continue;
       }
 
+      // E: Now get the values of the LSF in the area surrounding the quadrant --> Used to detect the presence of the interface in the area around the current face
+      // Also save the distances used
+      /*
+       ie.)
+                                         -------------- | ----------------
+                                          |             |               |
+                                          |             |               |
+                                          |      phi(xyz(f_idx) + dy)   |
+                                          |             ^        ^      |
+                                          |             |        |      |
+                                          |             dy       d_[3]  |
+                                          |             |        |      |
+                                          |----------dir: fopo----------|
+                                          |             |        |      |
+                                          |   <-d_[0]-> |        |      |
+           phi(xyz(f_idx) -dx)<--dx-- dir: fm00  .....f_idx..... v    dir: fp00 --dx--> phi(xyz(f_idx) + dx)
+                                          |      ^      |   <-d_[1]->   |
+                                          |      |      |               |
+                                          |-----------dir: f0m0---------|
+                                          |      |      |               |
+                                          |     d_[2]   dy              |
+                                          |      |      |               |
+                                          |      v      v               |
+                                          |     phi(xyz(f_idx) - dy)    |
+                                          |             |               |
+                                          |             |               |
+                                           ------------ | ----------------
+
+      */
       double phi[P4EST_FACES];
 #ifdef P4_TO_P8
       phi[dir::f_m00] = interp_phi(xyz[0]-dxyz[0], xyz[1], xyz[2]);
@@ -1258,12 +1308,14 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
       phi[dir::f_00m] = interp_phi(xyz[0], xyz[1], xyz[2]-dxyz[2]);
       phi[dir::f_00p] = interp_phi(xyz[0], xyz[1], xyz[2]+dxyz[2]);
 #else
+      //E: Get value of LSF in each direction around the face
       phi[dir::f_m00] = interp_phi(xyz[0]-dxyz[0], xyz[1]);
       phi[dir::f_p00] = interp_phi(xyz[0]+dxyz[0], xyz[1]);
       phi[dir::f_0m0] = interp_phi(xyz[0], xyz[1]-dxyz[1]);
       phi[dir::f_0p0] = interp_phi(xyz[0], xyz[1]+dxyz[1]);
 #endif
 
+      // E: Check for presence of interface via a sign change in LSF and by checking the Voronoi points
       bool is_interface = false;
       for(int i=0; i<P4EST_FACES; ++i)
         is_interface = is_interface || phi[i]>0;
@@ -1277,7 +1329,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
         double val_interface[P4EST_FACES];
         for(int f=0; f<P4EST_FACES; ++f)
         {
-          is_interface[f] = !wall[f] && phi[f]*phi_c<=0;
+          is_interface[f] = !wall[f] && phi[f]*phi_c<=0; //E: Interface present if sign change in LSF between face value and value in local area
           is_crossed_by_interface = is_crossed_by_interface || is_interface[f];
           val_interface[f] = 0;
         }
@@ -1285,7 +1337,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
         if(is_crossed_by_interface)
           matrix_has_nullspace[dir] = false;
 
-        double d_[P4EST_FACES];
+        double d_[P4EST_FACES]; // E: Get the local dx,dy,or dz to the next face or wall(if near a wall, grab distance between face and wall)
         d_[dir::f_m00] = wall[dir::f_m00] ? xyz[0]-xyz_min[0] : dxyz[0];
         d_[dir::f_p00] = wall[dir::f_p00] ? xyz_max[0]-xyz[0] : dxyz[0];
         d_[dir::f_0m0] = wall[dir::f_0m0] ? xyz[1]-xyz_min[1] : dxyz[1];
@@ -1300,8 +1352,8 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
         {
           if(is_interface[f]) {
             theta[f] = interface_Location(0, d_[f], phi_c, phi[f]);
-            theta[f] = MAX(EPS, MIN(d_[f], theta[f]));
-            d_[f] = theta[f];
+            theta[f] = MAX(EPS, MIN(d_[f], theta[f])); //E: Grab distance from face to interface location (if the distance is smaller than the grid resolution)
+            d_[f] = theta[f]; // E: Shorten the dx,dy,or dz arm to the length to the interface (Shortley Weller method)
             switch(f)
             {
 #ifdef P4_TO_P8
@@ -1312,6 +1364,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
             case dir::f_00m: val_interface[f] = bc[dir].interfaceValue(xyz[0], xyz[1], xyz[2] - theta[f]); break;
             case dir::f_00p: val_interface[f] = bc[dir].interfaceValue(xyz[0], xyz[1], xyz[2] + theta[f]); break;
 #else
+            // E: Evaluate the boundary condition at the location of the interface that has been found
             case dir::f_m00: val_interface[f] = bc[dir].interfaceValue(xyz[0] - theta[f], xyz[1]); break;
             case dir::f_p00: val_interface[f] = bc[dir].interfaceValue(xyz[0] + theta[f], xyz[1]); break;
             case dir::f_0m0: val_interface[f] = bc[dir].interfaceValue(xyz[0], xyz[1] - theta[f]); break;
@@ -1367,9 +1420,9 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
           /* this is the cartesian direction for which the linear system is assembled.
            * the treatment is different, for example x-velocity can be ON the x-walls
            */
-          if(f/2==dir)
+          if(f/2==dir) // E: If the face is in direction we are currently solving for
           {
-            if(wall[f])
+            if(wall[f]) // E: If the face f of the quad owning f_idx is on the wall
             {
               /*
                * if the code reaches this point, it must be a non-DIRICHLET wall boundary condition.
@@ -1506,14 +1559,14 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
         } /* end of going through P4EST_FACES to assemble the system with finite differences */
         continue;
       }
-    }
+    } // End of if bcType.interface == DIRICHLET and LSF relatively close to 0
 
 #ifdef P4_TO_P8
-    /*
+    /* --------------------------------------------------------------------------------------------------------------------------
      * If close to the interface and Neumann bc, do finite volume by hand
      * since cutting the voronoi cells in 3D with voro++ to have a nice level set is a nightmare ...
      * In 2D, cutting the partition is easy ... so Neumann interface is handled in the bulk case
-     */
+     --------------------------------------------------------------------------------------------------------------------------*/
     if(bc[dir].interfaceType(xyz)==NEUMANN && phi_c>-2*MAX(dxyz[0], dxyz[1], dxyz[2]))
     {
       Cube3 c3;
@@ -1996,10 +2049,12 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
     }
 #endif
 
-    /*
+    /* ----------------------------------------------------------------------------------------------------------------------------------------------------------------
+     * BULK CASE: Finite Volume Discretization using Voronoi Cells
+     * ------------------------
      * Bulk case, away from the interface
      * Use finite volumes on the voronoi cells
-     */
+     ----------------------------------------------------------------------------------------------------------------------------------------------------------------*/
 
     /* integrally in positive domain */
 #ifndef P4_TO_P8
@@ -2027,7 +2082,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
 #ifdef P4_TO_P8
     Point3 pc(xyz[0],xyz[1],xyz[2]);
 #else
-    Point2 pc(xyz[0],xyz[1]);
+    Point2 pc(xyz[0],xyz[1]); // E: The face center, which is the center point of the Voronoi cell
 #endif
 
     double x_pert = xyz[0];
@@ -2054,7 +2109,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
 #endif
     }
 
-    for(unsigned int m=0; m<points->size(); ++m)
+    for(unsigned int m=0; m<points->size(); ++m) //E: Loop over the Voronoi points in the given face's associated Voronoi cell
     {
       PetscInt m_idx_g;
 
@@ -2062,11 +2117,11 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
       double s = (*points)[m].s;
 #else
       int k = mod(m-1, points->size());
-      double s = ((*partition)[m] - (*partition)[k]).norm_L2();
+      double s = ((*partition)[m] - (*partition)[k]).norm_L2(); //E: Distance s of the edge joining two points
 #endif
-      double d = ((*points)[m].p - pc).norm_L2();
+      double d = ((*points)[m].p - pc).norm_L2(); // E: Distance d between the center point of the Voronoi cell and the mth Voronoi point (distance to each neighbor value)
 
-      switch((*points)[m].n)
+      switch((*points)[m].n) // E: *points[m].n returns the index of the point, which corresponds to what kind of face the point lies on
       {
       case WALL_parallel_to_face:
       {
@@ -2108,6 +2163,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
         break;
       }
       case WALL_m00:
+      {
 #ifdef P4_TO_P8
         switch(bc[dir].wallType(xyz_min[0],y_pert,z_pert))
 #else
@@ -2137,13 +2193,14 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
 #endif
           break;
         default:
-          throw std::invalid_argument("[CASL_ERROR]: my_p4est_poisson_faces_t: unknown boundary condition type.");
+          throw std::invalid_argument("[CASL_ERROR]: my_p4est_poisson_faces_t: unknown boundary condition type. Issue on Wall m00");
         }
         break;
 
 
-
+      }
       case WALL_p00:
+      {
 #ifdef P4_TO_P8
         switch(bc[dir].wallType(xyz_max[0],y_pert,z_pert))
 #else
@@ -2173,11 +2230,12 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
 #endif
           break;
         default:
-          throw std::invalid_argument("[CASL_ERROR]: my_p4est_poisson_faces_t: unknown boundary condition type.");
+          throw std::invalid_argument("[CASL_ERROR]: my_p4est_poisson_faces_t: unknown boundary condition type. Issue on Wall p00");
         }
         break;
-
+      }
       case WALL_0m0:
+      {
 #ifdef P4_TO_P8
         switch(bc[dir].wallType(x_pert,xyz_min[1],z_pert))
 #else
@@ -2207,11 +2265,13 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
 #endif
           break;
         default:
-          throw std::invalid_argument("[CASL_ERROR]: my_p4est_poisson_faces_t: unknown boundary condition type.");
+          throw std::invalid_argument("[CASL_ERROR]: my_p4est_poisson_faces_t: unknown boundary condition type. Issue on Wall 0m0");
         }
         break;
+      }
 
       case WALL_0p0:
+      {
 #ifdef P4_TO_P8
         switch(bc[dir].wallType(x_pert,xyz_max[1],z_pert))
 #else
@@ -2241,10 +2301,11 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
 #endif
           break;
         default:
-          throw std::invalid_argument("[CASL_ERROR]: my_p4est_poisson_faces_t: unknown boundary condition type.");
+
+          throw std::invalid_argument("[CASL_ERROR]: my_p4est_poisson_faces_t: unknown boundary condition type. Issue on Wall 0p0");
         }
         break;
-
+      }
 #ifdef P4_TO_P8
       case WALL_00m:
         switch(bc[dir].wallType(x_pert,y_pert,xyz_min[2]))
@@ -2264,7 +2325,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
           rhs_p[f_idx] += mu*s*(bc[dir].wallValue(x_pert,y_pert,xyz_min[2]) + ((apply_hodge_second_derivative_if_neumann)? 0.0 : 0.0)); // apply_hodge_second_derivative_if_neumann: would need to be fixed later on
           break;
         default:
-          throw std::invalid_argument("[CASL_ERROR]: my_p4est_poisson_faces_t: unknown boundary condition type.");
+          throw std::invalid_argument("[CASL_ERROR]: my_p4est_poisson_faces_t: unknown boundary condition type. Issue on Wall 00m");
         }
         break;
 
@@ -2287,7 +2348,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
           rhs_p[f_idx] += mu*s*(bc[dir].wallValue(x_pert,y_pert,xyz_max[2]) + ((apply_hodge_second_derivative_if_neumann)? 0.0 : 0.0)); // apply_hodge_second_derivative_if_neumann: would need to be fixed later on
           break;
         default:
-          throw std::invalid_argument("[CASL_ERROR]: my_p4est_poisson_faces_t: unknown boundary condition type.");
+          throw std::invalid_argument("[CASL_ERROR]: my_p4est_poisson_faces_t: unknown boundary condition type. Issue on Wall 00p");
         }
         break;
 #endif
@@ -2304,7 +2365,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
 #endif
           break;
         default:
-          throw std::invalid_argument("[CASL_ERROR]: my_p4est_poisson_faces_t: unknown boundary condition type.");
+          throw std::invalid_argument("[CASL_ERROR]: my_p4est_poisson_faces_t: unknown boundary condition type. Issue on interface");
         }
         break;
 
@@ -2319,14 +2380,18 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
         }
       }
     }
-  }
+  } // End of loop through all faces in the direction dir (ie. end of loop through all x faces)
 
   ierr = VecRestoreArrayRead(face_is_well_defined[dir], &face_is_well_defined_p); CHKERRXX(ierr);
 
   int global_size_bc_index = bc_index.size();
-  int mpiret = MPI_Allreduce(MPI_IN_PLACE, &global_size_bc_index, 1, MPI_INT, MPI_SUM, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+  int mpiret = MPI_Allreduce(MPI_IN_PLACE, &global_size_bc_index, 1, MPI_INT, MPI_SUM, p4est->mpicomm); SC_CHECK_MPI(mpiret); //E: Sum the number of BC additions to the RHS to make across all processors,
+                                                                                                                              //store on all processors as global_size_bc_index
 
-  /* complete the right hand side with correct boundary condition: bc_v + grad(dxyz_hodge) */
+
+  /* -----------------------------------------------------------------------------------------------------------------
+   * Complete the right hand side with correct boundary condition: bc_v + grad(dxyz_hodge) (Aka, complete the applying of the Interfacial Dirichlet boundary condition)
+   *-----------------------------------------------------------------------------------------------------------------*/
   if(global_size_bc_index > 0 /*bc[dir].interfaceType()==DIRICHLET*/)
   {
     std::vector<double> bc_val(bc_index.size());
@@ -2338,7 +2403,9 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
     bc_index.clear();
     bc_coeffs.clear();
   }
-
+  /* -----------------------------------------------------------------------------------------------------------------
+   * Finish Assembling the Linear System
+   *-----------------------------------------------------------------------------------------------------------------*/
   ierr = VecRestoreArray(null_space[dir], &null_space_p); CHKERRXX(ierr);
   ierr = VecRestoreArray(rhs[dir], &rhs_p); CHKERRXX(ierr);
 

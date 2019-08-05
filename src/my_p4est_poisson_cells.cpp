@@ -390,26 +390,33 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
   std::vector<p4est_quadrant_t> ngbd;
 
   for(p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx){
+      //E: Loop over each tree in the grid
     p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
 
+    //E: Loop over each quadrant in the given tree:
     for (size_t q=0; q<tree->quadrants.elem_count; ++q){
       const p4est_quadrant_t *quad = (const p4est_quadrant_t*)sc_array_index(&tree->quadrants, q);
+
+      // E: Grab the local and global index of the current quadrant
       p4est_locidx_t quad_idx = q + tree->quadrants_offset;
       PetscInt quad_gloidx = quad_idx + p4est->global_first_quadrant[p4est->mpirank];
 
       p4est_locidx_t corners[P4EST_CHILDREN];
+      // E: Get the corner nodes of each quadrant
       for(int i=0; i<P4EST_CHILDREN; ++i)
         corners[i] = nodes->local_nodes[quad_idx*P4EST_CHILDREN + i];
 
+      // E: Get the average value of phi for the given quadrant (average over the four corners)
       double phi_q = phi_cell(quad_idx, phi_p);
 
+      //E: Get the dx and dy associated with the given cell
       double dtmp = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
       double dx = (xyz_max[0]-xyz_min[0]) * dtmp;
       double dy = (xyz_max[1]-xyz_min[1]) * dtmp;
   #ifdef P4_TO_P8
       double dz = (xyz_max[2]-xyz_min[2]) * dtmp;
   #endif
-
+      // E: Get the coordiantes of the center of the given quadrant, and store these coordinates
       double x = quad_x_fr_q(quad_idx, tree_idx, p4est, ghost);
       double y = quad_y_fr_q(quad_idx, tree_idx, p4est, ghost);
 #ifdef P4_TO_P8
@@ -421,10 +428,12 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
                   #endif
                        };
 
+      // E: Initialize a boolean to check if the LSF is positive at each corner of the quadrant, then loop through and check if all corners are positive
       bool all_pos = true;
       for(int i=0; i<P4EST_CHILDREN; ++i)
-        all_pos = all_pos && (phi_p[corners[i]]>0);
+        all_pos = all_pos && (phi_p[corners[i]]>0); //E: will remain true only if all corners are positive
 
+      // E: Get the coordinates of the faces of the cell
       cube.x0 = x - 0.5*dx;
       cube.x1 = x + 0.5*dx;
       cube.y0 = y - 0.5*dy;
@@ -440,15 +449,18 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
       cube.z1 = z + 0.5*dz;
       double volume_cut_cell = cube.volume_In_Negative_Domain(p);
 #else
+      //E : Set the values of LSF at each corner in the Quadvalue object
       QuadValue p(phi_p[corners[dir::v_mmm]], phi_p[corners[dir::v_mpm]], phi_p[corners[dir::v_pmm]], phi_p[corners[dir::v_ppm]]);
+
+      // E: Get the area of the quad cell that is in the negative domain (aka the domain we are solving for) using the values of the LSF
       double volume_cut_cell = cube.area_In_Negative_Domain(p);
 #endif
 
-      /* Way inside omega_plus and we dont care! */
+      /* Way inside omega_plus and we dont care! E: AKA, out of the domain that we care about solving for */
       if((bc->interfaceType(xyz_q)==DIRICHLET && phi_q>0) ||
          (bc->interfaceType(xyz_q)==NEUMANN && (all_pos || volume_cut_cell<EPS)))
       {
-        ierr = MatSetValue(A, quad_gloidx, quad_gloidx, 1, ADD_VALUES); CHKERRXX(ierr);
+        ierr = MatSetValue(A, quad_gloidx, quad_gloidx, 1, ADD_VALUES); CHKERRXX(ierr); // E: Set the diagonal in the discretization matrix to 1
         if(!nullspace_use_fixed_point) null_space_p[quad_idx] = 0;
         continue;
       }
@@ -458,6 +470,8 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
       /* First add the diagonal term */
       if((desired_diag!= NULL) && (desired_diag_p[quad_idx]!=0))
       {
+        // E: Set the desired diagonal value in the discretization matrix to the diagonal multiplied by the volume of the cut cell
+        // E: The desired diagonal value is the new constant coefficient set by the user
         ierr = MatSetValue(A, quad_gloidx, quad_gloidx, volume_cut_cell*desired_diag_p[quad_idx], ADD_VALUES); CHKERRXX(ierr);
         current_diag_p[quad_idx]  = desired_diag_p[quad_idx];
         matrix_has_nullspace = false;
@@ -599,15 +613,20 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
 
         /* now get the neighbors */
         ngbd.resize(0);
-        ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, dir);
+        ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, dir); //E: Find the neighbor cells in a given direction
 
-        if(ngbd.size()==1)
+        //E: (neighbors being cells that share the given face with the current cell/quadrant)
+
+
+        if(ngbd.size()==1) //E: Case where there is only one neighbor --> means we might be close to the interface OR dealing with a neighbor that might be bigger
         {
+          //E: Grab the level, quadrant index, and tree index of the neighbor
           int8_t level_tmp = ngbd[0].level;
           p4est_locidx_t quad_tmp_idx = ngbd[0].p.piggy3.local_num;
           p4est_locidx_t tree_tmp_idx = ngbd[0].p.piggy3.which_tree;
 
           /* make sure the neighbor is well defined ... important for the nullspace to be correct */
+          // E: Grab corners and face coordinates of the neighbor
           p4est_locidx_t corners_tmp[P4EST_CHILDREN];
           for(int i=0; i<P4EST_CHILDREN; ++i)
             corners_tmp[i] = nodes->local_nodes[quad_tmp_idx*P4EST_CHILDREN + i];
@@ -635,12 +654,15 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
           cube_tmp.z1 = z_tmp + 0.5*dz;
           double volume_cut_cell_tmp = cube_tmp.volume_In_Negative_Domain(p_tmp);
 #else
+          // E: Set the LSF values at each corner of the neighbor cell
           QuadValue p_tmp(phi_p[corners_tmp[dir::v_mmm]], phi_p[corners_tmp[dir::v_mpm]], phi_p[corners_tmp[dir::v_pmm]], phi_p[corners_tmp[dir::v_ppm]]);
+          // E: Get the area of the neighbor cell which is in the negative domain
           double volume_cut_cell_tmp = cube_tmp.area_In_Negative_Domain(p_tmp);
 #endif
 
-          double phi_tmp = phi_cell(quad_tmp_idx, phi_p);
+          double phi_tmp = phi_cell(quad_tmp_idx, phi_p); // E: Get the average LSF value for the neighbor quadrant
 
+          // E: Setup booleans to track if the given face has a positive or negative value of the LSF
           bool is_pos = false;
           bool is_neg = false;
           switch(dir)
@@ -687,6 +709,8 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
             default: throw std::invalid_argument("[ERROR]: unknown direction.");
             }
 
+            // E: Get the fraction of the distance between the two cell centers that is covered by the interface
+            // E: Set the fraction to either 0 EPS (error tolerance) or 1 if it is beyond these bounds (fraction should be between EPS and 1)
             double theta = fraction_Interval_Covered_By_Irregular_Domain(phi_q, phi_tmp, dtmp, dtmp);
             if(theta<EPS) theta = EPS;
             if(theta>1  ) theta = 1;
@@ -706,6 +730,8 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
               ierr = MatSetValue(A, quad_gloidx, quad_gloidx, mu/theta * dx*dy/dz, ADD_VALUES); CHKERRXX(ierr);
               break;
 #else
+            // E: Set the diagonal values of the discretization matrix for the Dirichlet BC case (do this only on positive faces)
+            // E: The discretization values are scaled by the fraction of the interface on the face --> as per the Shortley-Weller method, which shortened "discretization arms" for applying Dirichlet in a finite difference manner, where the "discretization arms" have been shortened to be the distance to the interface (instead of the standard dx or dy )
             case dir::f_m00:
             case dir::f_p00:
               ierr = MatSetValue(A, quad_gloidx, quad_gloidx, mu/theta * dy/dx, ADD_VALUES); CHKERRXX(ierr);
@@ -755,6 +781,7 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
               s = c2.area_In_Negative_Domain(q2); d = dz;
               break;
 #else
+            // E: Define and get s, which is the length of the given face which is covered by the interface
             case dir::f_m00: s = dy*fraction_Interval_Covered_By_Irregular_Domain(p.val00, p.val01, dy, dy); d = dx; break;
             case dir::f_p00: s = dy*fraction_Interval_Covered_By_Irregular_Domain(p.val10, p.val11, dy, dy); d = dx; break;
             case dir::f_0m0: s = dx*fraction_Interval_Covered_By_Irregular_Domain(p.val00, p.val10, dx, dx); d = dy; break;
@@ -762,12 +789,14 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
 #endif
             }
 
-            if(s>EPS)
+            if(s>EPS) //E: If the size of s is nonnegligible, go ahead and apply the Neumann discretization terms
             {
+              //E: Set the diagonal discretization term, and set the off diagonal corresponding to the one neighbor which shares the given face
               ierr = MatSetValue(A, quad_gloidx, quad_gloidx                       ,  mu*s/d, ADD_VALUES); CHKERRXX(ierr);
               ierr = MatSetValue(A, quad_gloidx, compute_global_index(quad_tmp_idx), -mu*s/d, ADD_VALUES); CHKERRXX(ierr);
             }
           }
+
           /* no interface - regular discretization */
           else if(is_neg && !(bc->interfaceType(xyz_q)==NEUMANN && volume_cut_cell_tmp<EPS))
           {
@@ -816,11 +845,11 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
         /* there is more than one neighbor, regular bulk case. This assumes uniform on interface ! */
         else if(ngbd.size()>1)
         {
-          double s_tmp = pow((double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN, (double)P4EST_DIM-1);
+          double s_tmp = pow((double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN, (double)P4EST_DIM-1); //E: length of a face of the given quad
 
           std::vector<double> s_ng(ngbd.size());
           for(unsigned int i=0; i<ngbd.size(); ++i)
-            s_ng[i] = pow((double)P4EST_QUADRANT_LEN(ngbd[i].level)/(double)P4EST_ROOT_LEN, (double)P4EST_DIM-1);
+            s_ng[i] = pow((double)P4EST_QUADRANT_LEN(ngbd[i].level)/(double)P4EST_ROOT_LEN, (double)P4EST_DIM-1); //E: length of each neighbor face
 
           double d = 0;
           for(unsigned int i=0; i<ngbd.size(); ++i)
@@ -1140,45 +1169,47 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_rhsvec()
   std::vector<p4est_quadrant_t> ngbd;
 
   /* Main loop over all local quadrant */
-  for(p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx){
+  for(p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx){ // Loop over each tree
     p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
 
-    for (size_t q=0; q<tree->quadrants.elem_count; ++q){
-      const p4est_quadrant_t *quad = (const p4est_quadrant_t*)sc_array_index(&tree->quadrants, q);
-      p4est_locidx_t quad_idx = q + tree->quadrants_offset;
+    for (size_t q=0; q<tree->quadrants.elem_count; ++q){ // Loop over each quadrant in the given tree
+      const p4est_quadrant_t *quad = (const p4est_quadrant_t*)sc_array_index(&tree->quadrants, q); // the current quadrant
+      p4est_locidx_t quad_idx = q + tree->quadrants_offset; // The index of the current quadrant
 
       p4est_locidx_t corners[P4EST_CHILDREN];
-      for(int i=0; i<P4EST_CHILDREN; ++i)
+      for(int i=0; i<P4EST_CHILDREN; ++i) // Loop over each child of given quadrant to get the corners of the given quadrant
         corners[i] = nodes->local_nodes[quad_idx*P4EST_CHILDREN + i];
 
-      double phi_q = phi_cell(quad_idx, phi_p);
+      double phi_q = phi_cell(quad_idx, phi_p); // Grab the LSF of the quadrant
 
-      double dtmp = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
-      double dx = (xyz_max[0]-xyz_min[0]) * dtmp;
+      double dtmp = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN; // Ratio of the quadrant length to the tree root length
+      double dx = (xyz_max[0]-xyz_min[0]) * dtmp; // Get the dx and dy in terms of the ratio of quad_length/root_length
       double dy = (xyz_max[1]-xyz_min[1]) * dtmp;
   #ifdef P4_TO_P8
       double dz = (xyz_max[2]-xyz_min[2]) * dtmp;
   #endif
 
+      // Get the x and y coordinates of the center of the given quadrant:
       double x = quad_x_fr_q(quad_idx, tree_idx, p4est, ghost);
       double y = quad_y_fr_q(quad_idx, tree_idx, p4est, ghost);
 #ifdef P4_TO_P8
       double z = quad_z_fr_q(quad_idx, tree_idx, p4est, ghost);
 #endif
+      // E: Store the coordinates of the center of the given quadrant:
       double xyz_q[] = {x, y
                        #ifdef P4_TO_P8
                         , z
                        #endif
                        };
-
+      // E: Pre-allocate booleans to check LSF is positive at all corners of the quadrant or not, then update them by scanning values of LSF at corners
       bool all_pos = true;
       bool is_pos = false;
       for(int i=0; i<P4EST_CHILDREN; ++i)
       {
-        all_pos = all_pos && (phi_p[corners[i]]>0);
-        is_pos = is_pos || (phi_p[corners[i]]>0);
+        all_pos = all_pos && (phi_p[corners[i]]>0); //E: will be true unless one corner is negative (Thus, presence of interface in quad)
+        is_pos = is_pos || (phi_p[corners[i]]>0); //E: will only be true if all corners are positive
       }
-
+      // E: Get the coordinates of the faces of the quad:
       cube.x0 = x - 0.5*dx;
       cube.x1 = x + 0.5*dx;
       cube.y0 = y - 0.5*dy;
@@ -1194,18 +1225,21 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_rhsvec()
       cube.z1 = z + 0.5*dz;
       double volume_cut_cell = cube.volume_In_Negative_Domain(p);
 #else
+      // E: Set the values of the LSF at each corner of the quad into the QuadValue object
       QuadValue p(phi_p[corners[dir::v_mmm]], phi_p[corners[dir::v_mpm]], phi_p[corners[dir::v_pmm]], phi_p[corners[dir::v_ppm]]);
+
+      // E: Use this quadvalue object now to call function of cube: gets area of the quadrant which is in the negative subdomain (aka, the region we are solving for)
       double volume_cut_cell = cube.area_In_Negative_Domain(p);
 #endif
 
-      /* Way inside omega_plus and we dont care! */
+      /* Way inside omega_plus and we dont care! --> E: AKA, we are within the region of the "solid object"*/
       if((bc->interfaceType(xyz_q)==DIRICHLET && phi_q>0) ||
          (bc->interfaceType(xyz_q)==NEUMANN && (all_pos || volume_cut_cell<EPS)))
       {
         rhs_p[quad_idx] = 0;
         continue;
       }
-
+      // E: If we are in the negative subdomain, AKA the fluid region, then we multiply the RHS by the cut cell volume (since this is FVM)
       rhs_p[quad_idx] *= volume_cut_cell;
 
       /* Neumann BC */
@@ -1222,30 +1256,33 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_rhsvec()
         interface_values.val110 = bc->interfaceValue(cube.x1, cube.y1, cube.z0);
         interface_values.val111 = bc->interfaceValue(cube.x1, cube.y1, cube.z1);
 #else
+        //E: Set an object "interface_values", which stores values at each face of a quad, to hold the BC interface values evaluated at the coordinates of each face
         QuadValue interface_values;
         interface_values.val00 = bc->interfaceValue(cube.x0, cube.y0);
         interface_values.val01 = bc->interfaceValue(cube.x0, cube.y1);
         interface_values.val10 = bc->interfaceValue(cube.x1, cube.y0);
         interface_values.val11 = bc->interfaceValue(cube.x1, cube.y1);
 #endif
-
+        //E: Integrate over the interface values computed on each face of the quad to get one average value of the interface for the given quad
         double val_interface = cube.integrate_Over_Interface(interface_values,p);
+
+        //E: Set the average interface value computed equal to the RHS for the given quadrant (since it's a cell solver, so we have one RHS value per cell)
         rhs_p[quad_idx] += mu*val_interface;
       }
 
       /* Dirichlet BC */
       if(bc->interfaceType(xyz_q)==DIRICHLET && fabs(phi_q)<=diag_min)
       {
-        for(int dir=0; dir<P4EST_FACES; ++dir)
+        for(int dir=0; dir<P4EST_FACES; ++dir) //E: Loop over each face of the quadrant --> Will need to gather neighbors in each direction
         {
           if(!is_quad_Wall(p4est, tree_idx, quad, dir))
           {
             ngbd.resize(0);
-            ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, dir);
+            ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, dir); //E: Look for neighbors in the given direction
 
-            double phi_tmp = phi_cell(ngbd[0].p.piggy3.local_num, phi_p);
+            double phi_tmp = phi_cell(ngbd[0].p.piggy3.local_num, phi_p); //E: Grab the LSF value from the first neighbor (?)
 
-            if(phi_tmp*phi_q < 0)
+            if(phi_tmp*phi_q < 0) //If the LSF of the neighbor and the LSF of the quad have different signs --> indicates there is an interface nearby
             {
               double dtmp;
               switch(dir)
@@ -1257,7 +1294,7 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_rhsvec()
 #endif
               default: throw std::invalid_argument("[ERROR]: unknown direction.");
               }
-
+              //E: Get the fraction of the interval between the quad and its neighbor that are covered by the fluid domain
               double theta = fraction_Interval_Covered_By_Irregular_Domain(phi_q, phi_tmp, dtmp, dtmp);
               if (theta < EPS) theta = EPS;
               if (theta > 1  ) theta = 1;
@@ -1272,6 +1309,9 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_rhsvec()
               case dir::f_00m: rhs_p[quad_idx] += mu*dx*dy/dz/theta * bc->interfaceValue(x, y, z-theta*dz); break;
               case dir::f_00p: rhs_p[quad_idx] += mu*dx*dy/dz/theta * bc->interfaceValue(x, y, z+theta*dz); break;
 #else
+              // E: For each face, add the Dirichlet value scaled by the length of the "arm" aka the discretization length
+              // --> This is as per the Shortley-Weller method, which shortens the finite difference discretization arms to be
+              // the distance to the interface
               case dir::f_m00: rhs_p[quad_idx] += mu*dy/dx/theta * bc->interfaceValue(x-theta*dx, y); break;
               case dir::f_p00: rhs_p[quad_idx] += mu*dy/dx/theta * bc->interfaceValue(x+theta*dx, y); break;
               case dir::f_0m0: rhs_p[quad_idx] += mu*dx/dy/theta * bc->interfaceValue(x, y-theta*dy); break;
@@ -1293,7 +1333,7 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_rhsvec()
       BoundaryConditionType bc_wtype;
 
       /* accounting for the contributions from the wall */
-      for(int dir=0; dir<P4EST_FACES; ++dir)
+      for(int dir=0; dir<P4EST_FACES; ++dir) //E: Loop over each face of the given quadrant to check for wall conditions that may need to be applied
       {
         if(is_quad_Wall(p4est, tree_idx, quad, dir))
         {
@@ -1361,6 +1401,8 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_rhsvec()
             d = dz;
             break;
 #else
+          // E: Grab the boundary condition type and value evaluated at the middle of each quadrant face
+          // Then compute the fraction of the face that is covered by the irregular domain using the value of the LSF at the corners of the given face
           case dir::f_m00:
             bc_wtype = bc->wallType (x-.5*dx, y);
             val_wall = bc->wallValue(x-.5*dx, y);
@@ -1387,7 +1429,7 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_rhsvec()
             break;
 #endif
           }
-
+          // E: Using the computed fraction of faces in the irregular domain, apply the appropriate wall BC's by adding them to the RHS: --> Thus if a cell is entirely in the domain, the entirety of the wall value will be applied.
           switch(bc_wtype)
           {
           case DIRICHLET:
