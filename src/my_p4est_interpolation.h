@@ -101,6 +101,7 @@ public:
   void set_input(Vec& F) {set_input(&F, 1);}
 
   void add_point(p4est_locidx_t locidx, const double *xyz);
+  void add_point_local(p4est_locidx_t locidx, const double *xyz);
 
   // interpolation methods
   void interpolate(Vec Fo)
@@ -115,6 +116,8 @@ public:
     interpolate(&Fo, 1);
   }
   void interpolate(double * const *Fo, unsigned int n_functions);
+
+  void interpolate_local(double *Fo_p);
 
 #ifdef P4_TO_P8
   virtual void operator()(double x, double y, double z, double* results) const = 0;
