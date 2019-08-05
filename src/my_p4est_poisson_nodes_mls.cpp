@@ -867,13 +867,13 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
           case FINITE_DIFFERENCE: break;
           case FINITE_VOLUME:
             interpolators_prepare(n);
-            construct_finite_volume(fv, n, p4est_, nodes_, bdry_phi_cf_, bdry_.opn, integration_order_, cube_refinement_, use_sc_scheme_, phi_perturbation_);
+            construct_finite_volume(fv, n, p4est_, nodes_, bdry_phi_cf_, bdry_.opn, integration_order_, cube_refinement_, 1, phi_perturbation_);
             bdry_fvs_->push_back(fv);
             bdry_node_to_fv_[n] = bdry_fvs_->size()-1;
           break;
           case IMMERSED_INTERFACE:
             interpolators_prepare(n);
-            construct_finite_volume(fv, n, p4est_, nodes_, infc_phi_cf_, infc_.opn, integration_order_, cube_refinement_, use_sc_scheme_, phi_perturbation_);
+            construct_finite_volume(fv, n, p4est_, nodes_, infc_phi_cf_, infc_.opn, integration_order_, cube_refinement_, 1, phi_perturbation_);
             infc_fvs_->push_back(fv);
             infc_node_to_fv_[n] = infc_fvs_->size()-1;
           break;
@@ -912,7 +912,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
           case FINITE_VOLUME:
           {
             if (finite_volumes_initialized_) fv = bdry_fvs_->at(bdry_node_to_fv_[n]);
-            else construct_finite_volume(fv, n, p4est_, nodes_, bdry_phi_cf_, bdry_.opn, integration_order_, cube_refinement_, use_sc_scheme_, phi_perturbation_);
+            else construct_finite_volume(fv, n, p4est_, nodes_, bdry_phi_cf_, bdry_.opn, integration_order_, cube_refinement_, 1, phi_perturbation_);
 
             double face_area_max = 0;
 
@@ -926,7 +926,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
           case IMMERSED_INTERFACE:
           {
             if (finite_volumes_initialized_) fv = infc_fvs_->at(infc_node_to_fv_[n]);
-            else construct_finite_volume(fv, n, p4est_, nodes_, infc_phi_cf_, infc_.opn, integration_order_, cube_refinement_, use_sc_scheme_, phi_perturbation_);
+            else construct_finite_volume(fv, n, p4est_, nodes_, infc_phi_cf_, infc_.opn, integration_order_, cube_refinement_, 1, phi_perturbation_);
 
             double face_area_max_m = 0;
             double face_area_max_p = 0;
@@ -2645,60 +2645,60 @@ void my_p4est_poisson_nodes_mls_t::discretize_dirichlet(bool setup_rhs, p4est_lo
       else                          w_00p += -2.0*wk/d_00p/(d_00m+d_00p);
 
       if(!is_interface[dir::f_m00] && !is_wall[dir::f_m00]) {
-        w_m00_mm = (var_mu_ ? 0.5*(mue_000 + mue_p[node_m00_mm]) : mu)*w_m00*d_m00_p0*d_m00_0p/(d_m00_m0+d_m00_p0)/(d_m00_0m+d_m00_0p);
-        w_m00_mp = (var_mu_ ? 0.5*(mue_000 + mue_p[node_m00_mp]) : mu)*w_m00*d_m00_p0*d_m00_0m/(d_m00_m0+d_m00_p0)/(d_m00_0m+d_m00_0p);
-        w_m00_pm = (var_mu_ ? 0.5*(mue_000 + mue_p[node_m00_pm]) : mu)*w_m00*d_m00_m0*d_m00_0p/(d_m00_m0+d_m00_p0)/(d_m00_0m+d_m00_0p);
-        w_m00_pp = (var_mu_ ? 0.5*(mue_000 + mue_p[node_m00_pp]) : mu)*w_m00*d_m00_m0*d_m00_0m/(d_m00_m0+d_m00_p0)/(d_m00_0m+d_m00_0p);
+        w_m00_mm = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_m00_mm]) : mu)*w_m00*d_m00_p0*d_m00_0p/(d_m00_m0+d_m00_p0)/(d_m00_0m+d_m00_0p);
+        w_m00_mp = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_m00_mp]) : mu)*w_m00*d_m00_p0*d_m00_0m/(d_m00_m0+d_m00_p0)/(d_m00_0m+d_m00_0p);
+        w_m00_pm = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_m00_pm]) : mu)*w_m00*d_m00_m0*d_m00_0p/(d_m00_m0+d_m00_p0)/(d_m00_0m+d_m00_0p);
+        w_m00_pp = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_m00_pp]) : mu)*w_m00*d_m00_m0*d_m00_0m/(d_m00_m0+d_m00_p0)/(d_m00_0m+d_m00_0p);
         w_m00 = w_m00_mm + w_m00_mp + w_m00_pm + w_m00_pp;
       } else {
-        w_m00 *= (var_mu_ ? 0.5*(mue_000 + mue_m00);
+        w_m00 *= (var_mu_ ? 0.5*(mue_000 + mue_m00) : mu);
       }
 
       if(!is_interface[dir::f_p00] && !is_wall[dir::f_p00]) {
-        w_p00_mm = (var_mu_ ? 0.5*(mue_000 + mue_p[node_p00_mm]) : mu)*w_p00*d_p00_p0*d_p00_0p/(d_p00_m0+d_p00_p0)/(d_p00_0m+d_p00_0p);
-        w_p00_mp = (var_mu_ ? 0.5*(mue_000 + mue_p[node_p00_mp]) : mu)*w_p00*d_p00_p0*d_p00_0m/(d_p00_m0+d_p00_p0)/(d_p00_0m+d_p00_0p);
-        w_p00_pm = (var_mu_ ? 0.5*(mue_000 + mue_p[node_p00_pm]) : mu)*w_p00*d_p00_m0*d_p00_0p/(d_p00_m0+d_p00_p0)/(d_p00_0m+d_p00_0p);
-        w_p00_pp = (var_mu_ ? 0.5*(mue_000 + mue_p[node_p00_pp]) : mu)*w_p00*d_p00_m0*d_p00_0m/(d_p00_m0+d_p00_p0)/(d_p00_0m+d_p00_0p);
+        w_p00_mm = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_p00_mm]) : mu)*w_p00*d_p00_p0*d_p00_0p/(d_p00_m0+d_p00_p0)/(d_p00_0m+d_p00_0p);
+        w_p00_mp = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_p00_mp]) : mu)*w_p00*d_p00_p0*d_p00_0m/(d_p00_m0+d_p00_p0)/(d_p00_0m+d_p00_0p);
+        w_p00_pm = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_p00_pm]) : mu)*w_p00*d_p00_m0*d_p00_0p/(d_p00_m0+d_p00_p0)/(d_p00_0m+d_p00_0p);
+        w_p00_pp = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_p00_pp]) : mu)*w_p00*d_p00_m0*d_p00_0m/(d_p00_m0+d_p00_p0)/(d_p00_0m+d_p00_0p);
         w_p00 = w_p00_mm + w_p00_mp + w_p00_pm + w_p00_pp;
       } else {
         w_p00 *= (var_mu_ ? 0.5*(mue_000 + mue_p00) : mu);
       }
 
       if(!is_interface[dir::f_0m0] && !is_wall[dir::f_0m0]) {
-        w_0m0_mm = (var_mu_ ? 0.5*(mue_000 + mue_p[node_0m0_mm]) : mu)*w_0m0*d_0m0_p0*d_0m0_0p/(d_0m0_m0+d_0m0_p0)/(d_0m0_0m+d_0m0_0p);
-        w_0m0_mp = (var_mu_ ? 0.5*(mue_000 + mue_p[node_0m0_mp]) : mu)*w_0m0*d_0m0_p0*d_0m0_0m/(d_0m0_m0+d_0m0_p0)/(d_0m0_0m+d_0m0_0p);
-        w_0m0_pm = (var_mu_ ? 0.5*(mue_000 + mue_p[node_0m0_pm]) : mu)*w_0m0*d_0m0_m0*d_0m0_0p/(d_0m0_m0+d_0m0_p0)/(d_0m0_0m+d_0m0_0p);
-        w_0m0_pp = (var_mu_ ? 0.5*(mue_000 + mue_p[node_0m0_pp]) : mu)*w_0m0*d_0m0_m0*d_0m0_0m/(d_0m0_m0+d_0m0_p0)/(d_0m0_0m+d_0m0_0p);
+        w_0m0_mm = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_0m0_mm]) : mu)*w_0m0*d_0m0_p0*d_0m0_0p/(d_0m0_m0+d_0m0_p0)/(d_0m0_0m+d_0m0_0p);
+        w_0m0_mp = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_0m0_mp]) : mu)*w_0m0*d_0m0_p0*d_0m0_0m/(d_0m0_m0+d_0m0_p0)/(d_0m0_0m+d_0m0_0p);
+        w_0m0_pm = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_0m0_pm]) : mu)*w_0m0*d_0m0_m0*d_0m0_0p/(d_0m0_m0+d_0m0_p0)/(d_0m0_0m+d_0m0_0p);
+        w_0m0_pp = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_0m0_pp]) : mu)*w_0m0*d_0m0_m0*d_0m0_0m/(d_0m0_m0+d_0m0_p0)/(d_0m0_0m+d_0m0_0p);
         w_0m0 = w_0m0_mm + w_0m0_mp + w_0m0_pm + w_0m0_pp;
       } else {
         w_0m0 *= (var_mu_ ? 0.5*(mue_000 + mue_0m0) : mu);
       }
 
       if(!is_interface[dir::f_0p0] && !is_wall[dir::f_0p0]) {
-        w_0p0_mm = (var_mu_ ? 0.5*(mue_000 + mue_p[node_0p0_mm]) : mu)*w_0p0*d_0p0_p0*d_0p0_0p/(d_0p0_m0+d_0p0_p0)/(d_0p0_0m+d_0p0_0p);
-        w_0p0_mp = (var_mu_ ? 0.5*(mue_000 + mue_p[node_0p0_mp]) : mu)*w_0p0*d_0p0_p0*d_0p0_0m/(d_0p0_m0+d_0p0_p0)/(d_0p0_0m+d_0p0_0p);
-        w_0p0_pm = (var_mu_ ? 0.5*(mue_000 + mue_p[node_0p0_pm]) : mu)*w_0p0*d_0p0_m0*d_0p0_0p/(d_0p0_m0+d_0p0_p0)/(d_0p0_0m+d_0p0_0p);
-        w_0p0_pp = (var_mu_ ? 0.5*(mue_000 + mue_p[node_0p0_pp]) : mu)*w_0p0*d_0p0_m0*d_0p0_0m/(d_0p0_m0+d_0p0_p0)/(d_0p0_0m+d_0p0_0p);
+        w_0p0_mm = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_0p0_mm]) : mu)*w_0p0*d_0p0_p0*d_0p0_0p/(d_0p0_m0+d_0p0_p0)/(d_0p0_0m+d_0p0_0p);
+        w_0p0_mp = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_0p0_mp]) : mu)*w_0p0*d_0p0_p0*d_0p0_0m/(d_0p0_m0+d_0p0_p0)/(d_0p0_0m+d_0p0_0p);
+        w_0p0_pm = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_0p0_pm]) : mu)*w_0p0*d_0p0_m0*d_0p0_0p/(d_0p0_m0+d_0p0_p0)/(d_0p0_0m+d_0p0_0p);
+        w_0p0_pp = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_0p0_pp]) : mu)*w_0p0*d_0p0_m0*d_0p0_0m/(d_0p0_m0+d_0p0_p0)/(d_0p0_0m+d_0p0_0p);
         w_0p0 = w_0p0_mm + w_0p0_mp + w_0p0_pm + w_0p0_pp;
       } else {
         w_0p0 *= (var_mu_ ? 0.5*(mue_000 + mue_0p0) : mu);
       }
 
       if(!is_interface[dir::f_00m] && !is_wall[dir::f_00m]) {
-        w_00m_mm = (var_mu_ ? 0.5*(mue_000 + mue_p[node_00m_mm]) : mu)*w_00m*d_00m_p0*d_00m_0p/(d_00m_m0+d_00m_p0)/(d_00m_0m+d_00m_0p);
-        w_00m_mp = (var_mu_ ? 0.5*(mue_000 + mue_p[node_00m_mp]) : mu)*w_00m*d_00m_p0*d_00m_0m/(d_00m_m0+d_00m_p0)/(d_00m_0m+d_00m_0p);
-        w_00m_pm = (var_mu_ ? 0.5*(mue_000 + mue_p[node_00m_pm]) : mu)*w_00m*d_00m_m0*d_00m_0p/(d_00m_m0+d_00m_p0)/(d_00m_0m+d_00m_0p);
-        w_00m_pp = (var_mu_ ? 0.5*(mue_000 + mue_p[node_00m_pp]) : mu)*w_00m*d_00m_m0*d_00m_0m/(d_00m_m0+d_00m_p0)/(d_00m_0m+d_00m_0p);
+        w_00m_mm = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_00m_mm]) : mu)*w_00m*d_00m_p0*d_00m_0p/(d_00m_m0+d_00m_p0)/(d_00m_0m+d_00m_0p);
+        w_00m_mp = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_00m_mp]) : mu)*w_00m*d_00m_p0*d_00m_0m/(d_00m_m0+d_00m_p0)/(d_00m_0m+d_00m_0p);
+        w_00m_pm = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_00m_pm]) : mu)*w_00m*d_00m_m0*d_00m_0p/(d_00m_m0+d_00m_p0)/(d_00m_0m+d_00m_0p);
+        w_00m_pp = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_00m_pp]) : mu)*w_00m*d_00m_m0*d_00m_0m/(d_00m_m0+d_00m_p0)/(d_00m_0m+d_00m_0p);
         w_00m = w_00m_mm + w_00m_mp + w_00m_pm + w_00m_pp;
       } else {
         w_00m *= (var_mu_ ? 0.5*(mue_000 + mue_00m) : mu);
       }
 
       if(!is_interface[dir::f_00p] && !is_wall[dir::f_00p]) {
-        w_00p_mm = (var_mu_ ? 0.5*(mue_000 + mue_p[node_00p_mm]) : mu)*w_00p*d_00p_p0*d_00p_0p/(d_00p_m0+d_00p_p0)/(d_00p_0m+d_00p_0p);
-        w_00p_mp = (var_mu_ ? 0.5*(mue_000 + mue_p[node_00p_mp]) : mu)*w_00p*d_00p_p0*d_00p_0m/(d_00p_m0+d_00p_p0)/(d_00p_0m+d_00p_0p);
-        w_00p_pm = (var_mu_ ? 0.5*(mue_000 + mue_p[node_00p_pm]) : mu)*w_00p*d_00p_m0*d_00p_0p/(d_00p_m0+d_00p_p0)/(d_00p_0m+d_00p_0p);
-        w_00p_pp = (var_mu_ ? 0.5*(mue_000 + mue_p[node_00p_pp]) : mu)*w_00p*d_00p_m0*d_00p_0m/(d_00p_m0+d_00p_p0)/(d_00p_0m+d_00p_0p);
+        w_00p_mm = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_00p_mm]) : mu)*w_00p*d_00p_p0*d_00p_0p/(d_00p_m0+d_00p_p0)/(d_00p_0m+d_00p_0p);
+        w_00p_mp = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_00p_mp]) : mu)*w_00p*d_00p_p0*d_00p_0m/(d_00p_m0+d_00p_p0)/(d_00p_0m+d_00p_0p);
+        w_00p_pm = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_00p_pm]) : mu)*w_00p*d_00p_m0*d_00p_0p/(d_00p_m0+d_00p_p0)/(d_00p_0m+d_00p_0p);
+        w_00p_pp = (var_mu_ ? 0.5*(mue_000 + mue_ptr[node_00p_pp]) : mu)*w_00p*d_00p_m0*d_00p_0m/(d_00p_m0+d_00p_p0)/(d_00p_0m+d_00p_0p);
         w_00p = w_00p_mm + w_00p_mp + w_00p_pm + w_00p_pp;
       } else {
         w_00p *= (var_mu_ ? 0.5*(mue_000 + mue_00p) : mu);
@@ -2988,7 +2988,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
   if (new_submat_main_)
   {
     if (finite_volumes_initialized_) fv = bdry_fvs_->at(bdry_node_to_fv_[n]);
-    else construct_finite_volume(fv, n, p4est_, nodes_, bdry_phi_cf_, bdry_.opn, integration_order_, cube_refinement_, use_sc_scheme_, phi_perturbation_);
+    else construct_finite_volume(fv, n, p4est_, nodes_, bdry_phi_cf_, bdry_.opn, integration_order_, cube_refinement_, 1, phi_perturbation_);
 
     foreach_direction(i) face_area_max = MAX(face_area_max, fv.face_area[i]);
     volume_cut_cell = fv.volume;
@@ -3749,7 +3749,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_jump(bool setup_rhs, p4est_locidx_
   {
     // compute geometric info about negative region
     if (finite_volumes_initialized_) fv_m = infc_fvs_->at(infc_node_to_fv_[n]);
-    else construct_finite_volume(fv_m, n, p4est_, nodes_, infc_phi_cf_, infc_.opn, integration_order_, cube_refinement_, use_sc_scheme_, phi_perturbation_);
+    else construct_finite_volume(fv_m, n, p4est_, nodes_, infc_phi_cf_, infc_.opn, integration_order_, cube_refinement_, 1, phi_perturbation_);
 
     // compute geometric info about positive region
     fv_p.full_cell_volume = fv_m.full_cell_volume;

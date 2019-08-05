@@ -630,8 +630,6 @@ void my_p4est_multialloy_t::update_grid()
   bc_error_.destroy();
   bc_error_.create(front_phi_.vec);
 
-
-//  std::cout << "HERE\n";
   if (num_seeds_ == 1)
   {
     seed_map_.destroy();

@@ -81,7 +81,7 @@ DEFINE_PARAMETER(pl, int, lmin, 5, "Min level of the tree");
 DEFINE_PARAMETER(pl, int, lmax, 5, "Max level of the tree");
 #else
 DEFINE_PARAMETER(pl, int, lmin, 6, "Min level of the tree");
-DEFINE_PARAMETER(pl, int, lmax, 10, "Max level of the tree");
+DEFINE_PARAMETER(pl, int, lmax, 9, "Max level of the tree");
 #endif
 
 DEFINE_PARAMETER(pl, double, lip, 1.75, "");
@@ -92,12 +92,12 @@ DEFINE_PARAMETER(pl, double, lip, 1.75, "");
 DEFINE_PARAMETER(pl, bool, use_points_on_interface,   false, "");
 DEFINE_PARAMETER(pl, bool, use_superconvergent_robin, false, "");
 
-DEFINE_PARAMETER(pl, int,    update_c0_robin, 1, "Solve for c0 using Robin BC: 0 - never, 1 - once, 2 - always");
-DEFINE_PARAMETER(pl, int,    num_time_layers, 3, "");
+DEFINE_PARAMETER(pl, int,    update_c0_robin, 0, "Solve for c0 using Robin BC: 0 - never, 1 - once, 2 - always");
+DEFINE_PARAMETER(pl, int,    num_time_layers, 2, "");
 DEFINE_PARAMETER(pl, int,    pin_every_n_iterations, 20, "");
 DEFINE_PARAMETER(pl, int,    max_iterations,   10, "");
-DEFINE_PARAMETER(pl, int,    front_smoothing,   1, "");
-DEFINE_PARAMETER(pl, double, bc_tolerance,      1.e-5, "");
+DEFINE_PARAMETER(pl, int,    front_smoothing,   3, "");
+DEFINE_PARAMETER(pl, double, bc_tolerance,      1.e-12, "");
 DEFINE_PARAMETER(pl, double, cfl_number, 0.3, "");
 DEFINE_PARAMETER(pl, double, phi_thresh, 0.1, "");
 
@@ -248,9 +248,9 @@ void set_alloy_parameters()
       part_coeff_0     = 0.86;
       part_coeff_1     = 0.86;
 
-      eps_c = 0;
+      eps_c = 1.e-3/melting_temp;
       eps_v = 0;
-      eps_a = 0.05;
+      eps_a = 0.0;
       break;
     case 7:// Ni - 0.3at%Cu - 0.1at%Cu
       density_l       = 8.88e-3; // kg.cm-3
@@ -495,7 +495,7 @@ public:
     {
       case 0:
         if (ABS(y-ymax)<EPS) return +(temp_gradient);
-        if (ABS(y-ymin)<EPS) return -(temp_gradient + cooling_velocity*latent_heat/thermal_cond_s * smoothstep(smoothstep_order, (t+EPS)/(cooling_velocity_tau+EPS)));
+        if (ABS(y-ymin)<EPS) return -(temp_gradient + 0*cooling_velocity*latent_heat/thermal_cond_s * smoothstep(smoothstep_order, (t+EPS)/(cooling_velocity_tau+EPS)));
         return 0;
       default: throw;
     }
@@ -837,8 +837,8 @@ int main (int argc, char* argv[])
                              density_l, heat_capacity_l, thermal_cond_l,
                              density_s, heat_capacity_s, thermal_cond_s);
 
-  eps_c_cf_t eps_c_cf; std::vector<CF_DIM *> eps_v_all(num_seeds(), &eps_c_cf);
-  eps_v_cf_t eps_v_cf; std::vector<CF_DIM *> eps_c_all(num_seeds(), &eps_v_cf);
+  eps_c_cf_t eps_c_cf; std::vector<CF_DIM *> eps_c_all(num_seeds(), &eps_c_cf);
+  eps_v_cf_t eps_v_cf; std::vector<CF_DIM *> eps_v_all(num_seeds(), &eps_v_cf);
 
   mas.set_undercoolings(num_seeds(), seed_map.vec, eps_v_all.data(), eps_c_all.data());
 
@@ -858,8 +858,11 @@ int main (int argc, char* argv[])
   // set time steps
   double dt = cfl_number*MIN(DIM(dx,dy,dz))/cooling_velocity;
 
+  dt = 1.0e-3;
+
   mas.set_dt(dt);
   mas.set_dt_limits(0.0*dt, 10.*dt);
+  mas.set_dt_limits(dt, dt);
 
   // set initial conditions
   mas.set_temperature(tl.vec, ts.vec);

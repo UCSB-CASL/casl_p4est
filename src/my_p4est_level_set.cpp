@@ -10136,7 +10136,7 @@ double my_p4est_level_set_t::advect_in_normal_direction_with_contact_angle(const
     VecCopyGhost(cos_angle, flux);
     VecPointwiseMultGhost(flux, flux, surf_tns);
 
-    solver.add_boundary(MLS_INTERSECTION, phi_wall, NULL, NULL, NEUMANN, interp, zero_cf);
+    solver.add_boundary(MLS_INTERSECTION, phi_wall, NULL, NEUMANN, interp, zero_cf);
   }
 
   solver.set_use_sc_scheme(0);

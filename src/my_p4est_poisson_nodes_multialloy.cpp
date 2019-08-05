@@ -694,7 +694,7 @@ void my_p4est_poisson_nodes_multialloy_t::solve_psi_c0()
       pw_psi_c0_values_[idx] =
           -( conc_term + eps_v
              + latent_heat_*(1.+eps_c*kappa)*pt->interpolate(node_neighbors_, psi_t_.ptr)
-             ) /(1.-part_coeff_[0])/c_gamma_all[0];
+             ) /(1.-part_coeff_[0])/pw_c0_values_[idx];
     }
   }
 
@@ -1156,7 +1156,7 @@ void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_values(int start, int nu
       interp_local.set_input(front_curvature_.vec, linear);
       kappa_pr = interp_local.value(xyz_pr);
 
-      eps_c_pr = eps_c_[seed_map_.ptr[n]]->value(normal);
+      eps_c_pr = 0.*eps_c_[seed_map_.ptr[n]]->value(normal);
 
 //      vn_pr = vn_exact_->value(xyz_pr);
 
@@ -1185,7 +1185,7 @@ void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_values(int start, int nu
       interp_local.set_input(front_curvature_.vec, linear);
       kappa_cd = interp_local.value(xyz_cd);
 
-      eps_c_cd = eps_c_[seed_map_.ptr[n]]->value(normal);
+      eps_c_cd = 0.*eps_c_[seed_map_.ptr[n]]->value(normal);
 
       pw_t_flx_jump_integr_[idx] = front_temp_flux_jump_->value(xyz_cd) - latent_heat_*(1.0+eps_c_cd*kappa_cd)*vn_cd;
     }
@@ -1458,7 +1458,7 @@ void my_p4est_poisson_nodes_multialloy_t::adjust_c0_gamma(bool simple)
         normal[dim] = pt->interpolate(node_neighbors_, front_normal_.ptr[dim]);
         vn += pt->interpolate(node_neighbors_, c0d_.ptr[dim])*normal[dim];
       }
-      vn = ( (conc_diff_[0]*vn - front_conc_flux_[0]->value(xyz))/(1.-part_coeff_[0])/c_all[0] );
+      vn = ( (conc_diff_[0]*vn - front_conc_flux_[0]->value(xyz))/(1.-part_coeff_[0])/pw_c0_values_[idx] );
 
       // curvature
       kappa = pt->interpolate(node_neighbors_, front_curvature_.ptr);
