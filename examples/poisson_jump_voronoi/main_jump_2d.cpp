@@ -48,9 +48,9 @@
 
 using namespace std;
 
-int lmin = 3;
-int lmax = 10;
-int nb_splits = 3;
+int lmin = 2;
+int lmax = 5;
+int nb_splits = 5;
 
 int k1 = 1;
 int k2 = 1;
@@ -67,7 +67,7 @@ bool save_stats = true;
 bool check_partition = false;
 
 const int wave_number = 1;
-const double mu_value = 4.3;
+const double mu_value = 1;
 const double mu_ratio = 10.0;
 
 struct domain{

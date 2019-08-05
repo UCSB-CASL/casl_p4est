@@ -273,7 +273,7 @@ DEFINE_PARAMETER(pl, bool, save_matrix_ascii,  0, "Save the matrix in ASCII MATL
 DEFINE_PARAMETER(pl, bool, save_matrix_binary, 0, "Save the matrix in BINARY MATLAB format");
 DEFINE_PARAMETER(pl, bool, save_convergence,   0, "Save convergence results");
 
-DEFINE_PARAMETER(pl, int, n_example, 1, "Predefined example");
+DEFINE_PARAMETER(pl, int, n_example, 3, "Predefined example");
 
 void set_example(int n_example)
 {

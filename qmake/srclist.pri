@@ -66,7 +66,7 @@ SOURCES += \
 # dimension-specific stuff
 CONFIG(2d, 2d|3d): {
 HEADERS += \
-  $$PARCASL/src/my_p4est_bialloy.h \
+#  $$PARCASL/src/my_p4est_bialloy.h \
   $$PARCASL/src/my_p4est_biomolecules.h \
 #  $$PARCASL/src/my_p4est_biomol_nonlinear.h \
 #  $$PARCASL/src/my_p4est_biofilm.h \
@@ -110,7 +110,7 @@ HEADERS += \
   $$PARCASL/src/voronoi2D.h
 
 SOURCES += \
-  $$PARCASL/src/my_p4est_bialloy.cpp \
+#  $$PARCASL/src/my_p4est_bialloy.cpp \
   $$PARCASL/src/my_p4est_biomolecules.cpp \
 #  $$PARCASL/src/my_p4est_biomol_nonlinear.cpp \
 #  $$PARCASL/src/my_p4est_biofilm.cpp \
@@ -161,12 +161,12 @@ HEADERS += \
 
 CONFIG(3d, 2d|3d): {
 HEADERS += \
-  $$PARCASL/src/my_p8est_bialloy.h \
+#  $$PARCASL/src/my_p8est_bialloy.h \
   $$PARCASL/src/my_p8est_biomolecules.h \
 #  $$PARCASL/src/my_p8est_biomol_nonlinear.h \
 #  $$PARCASL/src/my_p8est_biofilm.h \
   $$PARCASL/src/my_p8est_cell_neighbors.h \
-  $$PARCASL/src/my_p8est_epitaxy.h \
+#  $$PARCASL/src/my_p8est_epitaxy.h \
   $$PARCASL/src/my_p8est_faces.h \
   $$PARCASL/src/my_p8est_hierarchy.h \
   $$PARCASL/src/my_p8est_integration_mls.h \
@@ -193,7 +193,7 @@ HEADERS += \
   $$PARCASL/src/my_p8est_quad_neighbor_nodes_of_node.h \
   $$PARCASL/src/my_p8est_refine_coarsen.h \
   $$PARCASL/src/my_p8est_save_load.h \
-  $$PARCASL/src/my_p8est_scft.h \
+#  $$PARCASL/src/my_p8est_scft.h \
   $$PARCASL/src/my_p8est_semi_lagrangian.h \
   $$PARCASL/src/my_p8est_solve_lsqr.h \
   $$PARCASL/src/my_p8est_trajectory_of_point.h \
@@ -205,12 +205,12 @@ HEADERS += \
   $$PARCASL/src/voronoi3D.h
 
 SOURCES += \
-  $$PARCASL/src/my_p8est_bialloy.cpp \
+#  $$PARCASL/src/my_p8est_bialloy.cpp \
   $$PARCASL/src/my_p8est_biomolecules.cpp \
-###  $$PARCASL/src/my_p8est_biomol_nonlinear.cpp \
+#  $$PARCASL/src/my_p8est_biomol_nonlinear.cpp \
 #  $$PARCASL/src/my_p8est_biofilm.cpp \
   $$PARCASL/src/my_p8est_cell_neighbors.cpp \
-  $$PARCASL/src/my_p8est_epitaxy.cpp \
+#  $$PARCASL/src/my_p8est_epitaxy.cpp \
   $$PARCASL/src/my_p8est_faces.cpp \
   $$PARCASL/src/my_p8est_hierarchy.cpp \
   $$PARCASL/src/my_p8est_integration_mls.cpp \
@@ -222,7 +222,7 @@ SOURCES += \
   $$PARCASL/src/my_p8est_level_set.cpp \
   $$PARCASL/src/my_p8est_level_set_cells.cpp \
   $$PARCASL/src/my_p8est_level_set_faces.cpp \
-  $$PARCASL/src/my_p8est_multialloy.cpp \
+#  $$PARCASL/src/my_p8est_multialloy.cpp \
   $$PARCASL/src/my_p8est_navier_stokes.cpp \
   $$PARCASL/src/my_p8est_node_neighbors.cpp \
   $$PARCASL/src/my_p8est_poisson_boltzmann_nodes.cpp \
@@ -237,7 +237,7 @@ SOURCES += \
   $$PARCASL/src/my_p8est_quad_neighbor_nodes_of_node.cpp \
   $$PARCASL/src/my_p8est_refine_coarsen.cpp \
   $$PARCASL/src/my_p8est_save_load.cpp \
-  $$PARCASL/src/my_p8est_scft.cpp \
+#  $$PARCASL/src/my_p8est_scft.cpp \
   $$PARCASL/src/my_p8est_semi_lagrangian.cpp \
   $$PARCASL/src/my_p8est_solve_lsqr.cpp \
   $$PARCASL/src/my_p8est_trajectory_of_point.cpp \

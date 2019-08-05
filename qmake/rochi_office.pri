@@ -8,8 +8,8 @@ PETSC_DIR_RLS = /home/rochi/libraries/petsc_release
 
 PETSC_INCLUDES_RELEASE = $$PETSC_DIR_RLS/include
 PETSC_INCLUDES_DEBUG   = $$PETSC_DIR_DBG/include
-PETSC_LIBS_RELEASE = -L$$PETSC_DIR_RLS/lib -lpetsc
-PETSC_LIBS_DEBUG   = -L$$PETSC_DIR_DBG/lib -lpetsc
+PETSC_LIBS_RELEASE = -Wl,-rpath,$$PETSC_DIR_RLS/lib -L$$PETSC_DIR_RLS/lib -lpetsc
+PETSC_LIBS_DEBUG   = -Wl,-rpath,$$PETSC_DIR_DBG/lib -L$$PETSC_DIR_DBG/lib -lpetsc
 
 # p4est
 P4EST_DIR_DBG = /home/rochi/libraries/p4est_debug
@@ -21,13 +21,11 @@ P4EST_LIBS_RELEASE = -Wl,-rpath,$$P4EST_DIR_RLS/lib -L$$P4EST_DIR_RLS/lib -lp4es
 P4EST_LIBS_DEBUG   = -Wl,-rpath,$$P4EST_DIR_DBG/lib -L$$P4EST_DIR_DBG/lib -lp4est -lsc
 
 # voro++
-VORO_DIR_DBG = /usr/local/include/voro++
-VORO_DIR_RLS = /usr/local/include/voro++
 
-VORO_INCLUDES_RELEASE = $$VORO_DIR_RLS/include
-VORO_INCLUDES_DEBUG   = $$VORO_DIR_DBG/include
-VORO_LIBS_RELEASE     = -L$$VORO_DIR_RLS/lib -lvoro++
-VORO_LIBS_DEBUG       = -L$$VORO_DIR_DBG/lib -lvoro++
+VORO_INCLUDES_RELEASE = /usr/local/include/voro++
+VORO_INCLUDES_DEBUG   = /usr/local/include/voro++
+VORO_LIBS_RELEASE     = -Wl,-rpath,/usr/local/bin -L/usr/local/bin -lvoro++
+VORO_LIBS_DEBUG       = -Wl,-rpath,/usr/local/bin -L/usr/local/bin -lvoro++
 
 # Boost
 BOOST_DIR       = /home/rochi/libraries/boost/release
