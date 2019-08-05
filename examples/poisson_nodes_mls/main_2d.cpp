@@ -274,7 +274,7 @@ DEFINE_PARAMETER(pl, bool, save_matrix_ascii,  0, "Save the matrix in ASCII MATL
 DEFINE_PARAMETER(pl, bool, save_matrix_binary, 0, "Save the matrix in BINARY MATLAB format");
 DEFINE_PARAMETER(pl, bool, save_convergence,   0, "Save convergence results");
 
-DEFINE_PARAMETER(pl, int, n_example, 1, "Predefined example");
+DEFINE_PARAMETER(pl, int, n_example, 9, "Predefined example");
 
 void set_example(int n_example)
 {
@@ -312,7 +312,7 @@ void set_example(int n_example)
       infc_present_02 = 0;
       infc_present_03 = 0;
 
-      bdry_present_00 = 1; bdry_geom_00 = 1; bdry_opn_00 = MLS_INT; bc_coeff_00 = 0; bc_coeff_00_mag = 1; bc_type_00 = DIRICHLET;
+      bdry_present_00 = 1; bdry_geom_00 = 1; bdry_opn_00 = MLS_INT; bc_coeff_00 = 0; bc_coeff_00_mag = 1; bc_type_00 = ROBIN;
       bdry_present_01 = 0; bdry_geom_01 = 0; bdry_opn_01 = MLS_INT; bc_coeff_01 = 0; bc_coeff_01_mag = 1; bc_type_01 = ROBIN;
       bdry_present_02 = 0; bdry_geom_02 = 0; bdry_opn_02 = MLS_INT; bc_coeff_02 = 0; bc_coeff_02_mag = 1; bc_type_02 = ROBIN;
       bdry_present_03 = 0; bdry_geom_03 = 0; bdry_opn_03 = MLS_INT; bc_coeff_03 = 0; bc_coeff_03_mag = 1; bc_type_03 = ROBIN;
@@ -1190,10 +1190,10 @@ public:
         static double x2 = 0.67, y2 = 0.82, z2 =-0.87;
         static double x3 =-0.78, y3 = 0.73, z3 = 0.85;
 
-        static half_space_t plane0(x0, y0, z0, x2, y2, z2, x1, y1, z1);
-        static half_space_t plane1(x1, y1, z1, x2, y2, z2, x3, y3, z3);
-        static half_space_t plane2(x0, y0, z0, x3, y3, z3, x2, y2, z2);
-        static half_space_t plane3(x0, y0, z0, x1, y1, z1, x3, y3, z3);
+        static half_space_t plane0; plane0.set_params_points(x0, y0, z0, x2, y2, z2, x1, y1, z1);
+        static half_space_t plane1; plane1.set_params_points(x1, y1, z1, x2, y2, z2, x3, y3, z3);
+        static half_space_t plane2; plane2.set_params_points(x0, y0, z0, x3, y3, z3, x2, y2, z2);
+        static half_space_t plane3; plane3.set_params_points(x0, y0, z0, x1, y1, z1, x3, y3, z3);
 #else
         static double x2 = 0.74, y2 =-0.86;
         static double x1 =-0.83, y1 =-0.11;
