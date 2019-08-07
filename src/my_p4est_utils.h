@@ -370,7 +370,8 @@ enum {
   WALL_0p0 = -4,
   WALL_00m = -5,
   WALL_00p = -6,
-  INTERFACE = -7
+  INTERFACE = -7,
+  WALL_parallel_to_face = -8 // to allow for Dirichlet wall boundary conditions on the face_solver even with rectangular grids
 };
 
 typedef enum {
@@ -812,6 +813,13 @@ p4est_bool_t ghosts_are_equal(p4est_ghost_t* ghost_1, p4est_ghost_t* ghost_2);
  * \param v     [out] PETSc vector type
  */
 PetscErrorCode VecCreateGhostCells(const p4est_t *p4est, p4est_ghost_t *ghost, Vec* v);
+
+/*!
+ * \brief VecCreateCellsNoGhost Creates a PETSc parallel vector on the cells
+ * \param p4est [in]  the forest
+ * \param v     [out] PETSc vector type
+ */
+PetscErrorCode VecCreateCellsNoGhost(const p4est_t *p4est, Vec* v);
 
 /*!
  * \brief VecCreateGhostNodesBlock Creates a ghosted block PETSc parallel vector

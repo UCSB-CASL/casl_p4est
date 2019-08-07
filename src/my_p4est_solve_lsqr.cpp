@@ -90,6 +90,130 @@ bool solve_cholesky_and_get_first_line(matrix_t &A, vector<double> &b, vector<do
   return true;
 }
 
+bool solve_cholesky(matrix_t &A, vector<double> b[], vector<double> x[], unsigned int n_vectors, vector<double>* first_line=NULL)
+{
+#ifdef CASL_THROWS
+  if(n_vectors == 0)
+    throw std::invalid_argument("[CASL_ERROR]: solve_cholesky: the number of rhs's must be strictly positive!");
+  for (unsigned int k = 0; k < n_vectors; ++k) {
+    if(A.num_cols()!=A.num_rows() || A.num_rows()!=(int)b[k].size() || !A.is_symmetric())
+      throw std::invalid_argument("[CASL_ERROR]: solve_cholesky: wrong input parameters");
+  }
+#endif
+
+  int n = b[0].size();
+  for (unsigned int k = 0; k < n_vectors; ++k) {
+    x[k].resize(n);
+  }
+  if(first_line!=NULL)
+    first_line->resize(n, 0.0);
+
+  /* compute cholesky decomposition */
+  double Lf[n][n];
+  vector<double>* Linv = NULL;
+  if(first_line!=NULL)
+    Linv = new vector<double>(n*(n+1)/2, 0.0); // inverse of L
+//  cblas_dcopy(n*n, A.read_data(), 1, &Lf[0][0], 1);
+//  int info = LAPACKE_dpotrf(LAPACK_ROW_MAJOR, 'L', n, &Lf[0][0], n);
+//#ifdef CASL_THROWS
+//  if(info < 0)
+//    throw  std::invalid_argument("bool solve_cholesky(): the lapack call to cholesky factorization involved an invalid argument");
+//#endif
+//  for (unsigned k = 0; ((k < (unsigned int) n) && (info==0)); ++k) {
+//    const double diag_of_L = Lf[k][k];
+//    info = info || (fabs(diag_of_L) < EPS) || std::isnan(diag_of_L)|| std::isinf(diag_of_L);
+//  }
+//  if(info!=0)
+//    return false;
+  for(int j=0; j<n; ++j)
+  {
+    if(Linv!=NULL)
+      Linv->at(tri_idx(j, j)) = 1.0;
+    if(std::isnan(A.get_value(j,j)))
+    {
+      if(Linv!=NULL)
+        delete Linv;
+      return false;
+    }
+
+    Lf[j][j] = A.get_value(j,j);
+    for(int k=0; k<j; ++k)
+      Lf[j][j] -= SQR(Lf[j][k]);
+
+    Lf[j][j] = sqrt(Lf[j][j]);
+    if(Lf[j][j]<EPS || std::isnan(Lf[j][j]) || std::isinf(Lf[j][j]))
+    {
+      if(Linv!=NULL)
+        delete Linv;
+      return false;
+    }
+
+    for(int i=j+1; i<n; ++i)
+    {
+      Lf[i][j] = A.get_value(i,j);
+      for(int k=0; k<j; ++k)
+        Lf[i][j] -= Lf[i][k]*Lf[j][k];
+      Lf[i][j] /= Lf[j][j];
+    }
+  }
+
+  /* forward solve L*y=b */
+//  for (unsigned int k = 0; k < n_vectors; ++k)
+//  {
+//    x[k] = b[k];
+//    cblas_dtrsv(CblasRowMajor, CblasLower, CblasNoTrans, CblasNonUnit, n, &Lf[0][0], n, x[k].data(), 1);
+//  }
+  double y[n_vectors][n];
+
+
+  for(int i=0; i<n; ++i)
+  {
+    if(Linv!=NULL)
+    {
+      for (int k=0; k<i; ++k)
+        for(int j=k; j<i; ++j)
+          Linv->at(tri_idx(i, k)) -= Linv->at(tri_idx(j, k))*Lf[i][j];
+      for (int k=0; k<=i ; ++k)
+        Linv->at(tri_idx(i, k)) /= Lf[i][i];
+    }
+    for (unsigned int k = 0; k < n_vectors; ++k)
+      y[k][i] = b[k][i];
+    for(int j=0; j<i; ++j)
+      for (unsigned int k = 0; k < n_vectors; ++k)
+        y[k][i] -= y[k][j]*Lf[i][j];
+    for (unsigned int k = 0; k < n_vectors; ++k)
+      y[k][i] /= Lf[i][i];
+  }
+
+  /* backward solve for Lt*x=y */
+//  for (unsigned int k = 0; k < n_vectors; ++k)
+//    cblas_dtrsv(CblasRowMajor, CblasLower, CblasTrans, CblasNonUnit, n, &Lf[0][0], n, x[k].data(), 1);
+  for(int i=n-1; i>=0; --i)
+  {
+    for (unsigned int k = 0; k < n_vectors; ++k)
+      x[k][i] = y[k][i];
+    for(int j=i+1; j<n; ++j)
+      for (unsigned int k = 0; k < n_vectors; ++k)
+        x[k][i] -= x[k][j]*Lf[j][i];
+    for (unsigned int k = 0; k < n_vectors; ++k)
+      x[k][i] /= Lf[i][i];
+  }
+
+  if(first_line!=NULL)
+    for(int i=0; i < n; i++)
+      for (int j = i; j < n; ++j)
+        first_line->at(i) += Linv->at(tri_idx(j, 0))*Linv->at(tri_idx(j, i));
+  if(Linv!=NULL)
+    delete Linv;
+
+  return true;
+}
+
+bool solve_cholesky(matrix_t &A, vector<double> &b, vector<double> &x, vector<double>* first_line=NULL)
+{
+  return solve_cholesky(A, &b, &x, 1, first_line);
+}
+
 bool invert_cholesky(matrix_t &A, matrix_t &Ai)
 {
 #ifdef CASL_THROWS
@@ -157,9 +281,6 @@ bool invert_cholesky(matrix_t &A, matrix_t &Ai)
 
   return true;
 }
-
-
-
 
 #ifdef P4_TO_P8
 void solve_lsqr_system(matrix_t &A, vector<double> p[], unsigned int n_vectors, double* solutions, int nb_x, int nb_y, int nb_z, char order, unsigned short nconstraints, std::vector<double>* interp_coeffs)
