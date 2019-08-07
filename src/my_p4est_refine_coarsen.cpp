@@ -680,7 +680,7 @@ function_end:
 }
 
 
-bool splitting_criteria_tag_t::refine(p4est_t *p4est, const p4est_nodes_t *nodes, const double *phi, bool finest_in_negative_flag) {
+bool splitting_criteria_tag_t::refine(p4est_t* p4est, const p4est_nodes_t* nodes, const double *phi) {
 
   double f[P4EST_CHILDREN];
   for (p4est_topidx_t it = p4est->first_local_tree; it <= p4est->last_local_tree; ++it) {
@@ -691,7 +691,8 @@ bool splitting_criteria_tag_t::refine(p4est_t *p4est, const p4est_nodes_t *nodes
 
       for (short i = 0; i<P4EST_CHILDREN; i++)
         f[i] = phi[nodes->local_nodes[qu_idx*P4EST_CHILDREN + i]];
-      tag_quadrant(p4est, quad, it, f, finest_in_negative_flag);
+      if (refine_only_inside) tag_quadrant_inside(p4est, quad, it, f);
+      else                    tag_quadrant(p4est, quad, it, f);
     }
   }
 

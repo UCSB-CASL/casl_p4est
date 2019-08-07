@@ -15,6 +15,7 @@
 #include <sc_notify.h>
 #include <mpi.h>
 #include <src/ipm_logging.h>
+#include <src/my_p4est_semi_lagrangian.h>
 
 // system
 #include <iostream>

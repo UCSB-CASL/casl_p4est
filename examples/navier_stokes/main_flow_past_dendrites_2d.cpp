@@ -326,7 +326,7 @@ public:
           if (i == 0) xint_lower[i] = xc_0 - rx;
 
           if ((xint_lower[i] - EPS<= x) && (x< xint_upper[i] + EPS)){
-              perturb = 1.0;//+ 0.025*fabs(sin(2.0*PI*(x - xc)*(y - yc)));
+              perturb = 1.0; //- 0.025*fabs(sin(2.0*PI*(x - xc)*(y - yc)));
               rx_p = perturb*rx;
               ry_p = perturb*ry[i];
               LS = 1 - sqrt(SQR((x - xc)/rx_p) + SQR((y - yc)/ry_p));

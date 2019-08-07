@@ -10,8 +10,8 @@ PETSC_DIR_RLS =  /home/elyce/workspace/libraries/petsc/petsc_release
 
 PETSC_INCLUDES_RELEASE = $$PETSC_DIR_RLS/include
 PETSC_INCLUDES_DEBUG   = $$PETSC_DIR_DBG/include
-PETSC_LIBS_RELEASE = -L$$PETSC_DIR_RLS/lib -lpetsc
-PETSC_LIBS_DEBUG   = -L$$PETSC_DIR_DBG/lib -lpetsc
+PETSC_LIBS_RELEASE = -Wl,-rpath,$$PETSC_DIR_RLS/lib -L$$PETSC_DIR_RLS/lib -lpetsc
+PETSC_LIBS_DEBUG   = -Wl,-rpath,$$PETSC_DIR_DBG/lib -L$$PETSC_DIR_DBG/lib -lpetsc
 
 # p4est
 P4EST_DIR_DBG =  /home/elyce/workspace/libraries/p4est/p4est_debug
