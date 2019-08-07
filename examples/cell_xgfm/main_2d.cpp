@@ -77,10 +77,10 @@ struct box
 
 using namespace std;
 
-int lmin_ = 4;
-int lmax_ = 4;
+int lmin_ = 2;
+int lmax_ = 10;
 
-int ngrids_ = 3;
+int ngrids_ = 1;
 int ntree_ = 1;
 
 BoundaryConditionType bc_wtype_ = DIRICHLET;
@@ -92,7 +92,7 @@ bool use_second_order_theta_ = false;
 bool get_integral = false;
 bool print_summary = true;
 
-int test_number_ = 3;
+int test_number_ = 7;
 /* run the program with the flag -help to know more about the various tests */
 
 bool track_residuals_and_corrections = false;
@@ -1565,7 +1565,7 @@ int main (int argc, char* argv[])
 Example 4 from Liu, Fedkiw, Kang 2000 \n\
 1: \n\
 * domain = [-2.0, 2.0] X [-2.0, 2.0] X [-2.0, 2.0] \n\
-* interface = parameterized by (theta in [0.0, 2*pi[, phi in [0.0, pi[) \n\
+* interface = parameterized by (theta in [0.0, pi[, phi in [0.0, 2*pi[) \n\
 r(theta, phi) = 1.25 + 0.2*(1.0 - 0.2*(1.0 - 0.2*cos(6.0*phi))*(1.0 - cos(6.0*theta)), spherical coordinates \n\
 negative inside, positive outside \n\
 * mu_m = 2000.0; \n\
@@ -1577,7 +1577,7 @@ Example by Raphael Egan for mildly convoluted 3D interface with large ratio of c
 2: \n\
 * domain = [-2.0, 2.0] X [-2.0, 2.0] X [-2.0, 2.0] \n\
 * interface = parameterized by \n\
-r(theta, phi) = 0.75 + 0.2*(1.0 - 0.2*cos(6.0*phi))*(1.0-cos(6.0*theta)) \n\
+r(theta, phi) = 0.75 + 0.2*(1.0 - 0.6*cos(6.0*phi))*(1.0-cos(6.0*theta)) \n\
 negative inside, positive outside \n\
 * mu_m = 1.0; \n\
 * mu_p = 1250.0; \n\
@@ -1593,7 +1593,7 @@ The full periodicity is enforced.\n\
 * mu_m = 1.0; \n\
 * mu_p = 80.0; \n\
 * u_m  = atan(sin((2.0*M_PI/3.0)*(2.0*x-y)))*log(1.5+cos((2.0*M_PI/3.0)*(2.0*y-z))); \n\
-* u_p  = tanh(cos((2.0*M_PI/3.0)*(2.0*x+y)))*acos(0.5*sin((2.0*M_PI/3.0)*(2.0*x-x))); \n\
+* u_p  = tanh(cos((2.0*M_PI/3.0)*(2.0*x+y)))*acos(0.5*sin((2.0*M_PI/3.0)*(2.0*z-x))); \n\
 * fully periodic \n\
 Example by Raphael Egan for full periodicity.");
     #else
@@ -1719,7 +1719,7 @@ Example by Raphael Egan for full periodicity.");
 #elif defined(POD_CLUSTER)
   string work_folder = cmd.get<string>("work_dir", "/home/regan/cell_xgfm");
 #else
-  string work_folder = cmd.get<string>("work_dir", "/home/regan/workspace/projects/bubbles/cell_center_xgfm");
+  string work_folder = cmd.get<string>("work_dir", "/home/regan/workspace/projects/improved_gfm");
 #endif
   string out_dir = work_folder + "/output";
   BoundaryConditionType bc_wtype = cmd.get<BoundaryConditionType>("bc_wtype", bc_wtype_);

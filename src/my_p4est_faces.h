@@ -488,7 +488,11 @@ public:
     }
   }
 
+#ifdef CASL_THROWS
   inline p4est_t* get_p4est() const {return  p4est; }
+#else
+  inline const p4est_t* get_p4est() const {return  p4est; }
+#endif
   inline my_p4est_cell_neighbors_t* get_ngbd_c() const { return ngbd_c;}
 
   size_t memory_estimate() const
