@@ -1475,6 +1475,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
             {
               if(!is_matrix_ready[dir])
               {
+                P4EST_ASSERT(faces->q2f(qp_idx, dir_p)!=NO_VELOCITY);
                 p4est_gloidx_t f_tmp_g = f%2==0 ? face_global_number(faces->q2f(qm_idx, dir_m), dir)
                                                 : face_global_number(faces->q2f(qp_idx, dir_p), dir);
                 ierr = MatSetValue(A[dir], f_idx_g, f_tmp_g, (desired_coeff[f] - current_coeff[f]), ADD_VALUES); CHKERRXX(ierr);
@@ -1533,8 +1534,8 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
                 ngbd.resize(0);
                 ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, f);
 #ifdef CASL_THROWS
-                if(ngbd.size()!=1 || ngbd[0].level!=quad->level)
-                  throw std::invalid_argument("[CASL_ERROR]: my_p4est_poisson_faces_t->setup_linear_system: the grid is not uniform close to the interface.");
+                P4EST_ASSERT((ngbd.size()==1) && (ngbd[0].level == quad->level));
+                // std::invalid_argument("[CASL_ERROR]: my_p4est_poisson_faces_t->setup_linear_system: the grid is not uniform close to the interface.");
 #endif
                 p4est_gloidx_t f_tmp_g;
                 if(quad_idx==qm_idx) f_tmp_g = face_global_number(faces->q2f(ngbd[0].p.piggy3.local_num, dir_p), dir);

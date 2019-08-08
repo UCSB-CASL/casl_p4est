@@ -13,10 +13,6 @@
 #include <src/my_p4est_refine_coarsen.h>
 #include <src/my_p4est_log_wrappers.h>
 #include <src/my_p4est_node_neighbors.h>
-#include <src/my_p4est_level_set.h>
-
-#include <src/my_p4est_semi_lagrangian.h>
-
 #include <src/my_p4est_macros.h>
 #else
 #include <src/my_p8est_utils.h>
@@ -25,9 +21,6 @@
 #include <src/my_p8est_tools.h>
 #include <src/my_p8est_refine_coarsen.h>
 #include <src/my_p8est_log_wrappers.h>
-#include <src/my_p8est_semi_lagrangian.h>
-#include <src/my_p8est_level_set.h>
-
 #include <src/my_p8est_node_neighbors.h>
 #include <src/my_p8est_macros.h>
 #endif
@@ -115,13 +108,6 @@ int main(int argc, char** argv) {
   // create node structure
   nodes = my_p4est_nodes_new(p4est, ghost); //same
 
-  // Create hierarchy
-  my_p4est_hierarchy_t *hierarchy = new my_p4est_hierarchy_t(p4est, ghost, &brick);
-
-  // Get neighbors
-  my_p4est_node_neighbors_t *ngbd = new my_p4est_node_neighbors_t(hierarchy, nodes);
-  ngbd->init_neighbors();
-
   // -----------------------------------------------
   // Initialize the Level Set function:
   // -----------------------------------------------
@@ -198,23 +184,6 @@ int main(int argc, char** argv) {
       p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
 
       // Create the semi-lagrangian object and do the advection:
-      my_p4est_semi_lagrangian_t sl(&p4est_np1, &nodes_np1, &ghost_np1, ngbd);
-
-      // Advect the grid under the velocity field:
-      sl.update_p4est(vel_n,dt,phi);
-
-      // Delete the old grid and update with the new one:
-      p4est_destroy(p4est); p4est = p4est_np1;
-      p4est_ghost_destroy(ghost); ghost = ghost_np1;
-      p4est_nodes_destroy(nodes); nodes = nodes_np1;
-
-      delete hierarchy; hierarchy = new my_p4est_hierarchy_t(p4est,ghost,&brick);
-      delete ngbd; ngbd = new my_p4est_node_neighbors_t(hierarchy, nodes);
-      ngbd->init_neighbors();
-
-      // Create level set object and reinitialize it:
-      my_p4est_level_set_t ls(ngbd);
-      ls.reinitialize_1st_order_time_2nd_order_space(phi);
 
 
 

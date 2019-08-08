@@ -336,7 +336,6 @@ public:
           if (x <= xc_0 - rx - EPS){
               LS = 1 - sqrt(SQR((x - xc)/rx) + SQR((y - yc)/ry[1]));
           }
-
       }
 
       return LS;
@@ -1005,8 +1004,8 @@ int main (int argc, char* argv[])
   }
   else
   {
-    lmin                    = cmd.get<int>("lmin", 3);
-    lmax                    = cmd.get<int>("lmax", 3);
+    lmin                    = cmd.get<int>("lmin", 6);
+    lmax                    = cmd.get<int>("lmax", 7);
     threshold_split_cell    = cmd.get<double>("thresh", 0.1);
     ntree_x                 = cmd.get<int>("nx", 8);
     ntree_y                 = cmd.get<int>("ny", 4);

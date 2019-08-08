@@ -1786,7 +1786,11 @@ public:
 
     ierr = PetscInitialize(&argc, &argv, NULL, NULL); CHKERRXX(ierr);
 
+#ifdef DEBUG
+    sc_init (mpicomm, P4EST_FALSE, P4EST_FALSE, NULL, SC_LP_DEFAULT); // to allow easy debugging --> backtracks the P4EST_ASSERTs!
+#else
     sc_init (mpicomm, P4EST_FALSE, P4EST_FALSE, NULL, SC_LP_SILENT);
+#endif
     p4est_init (NULL, SC_LP_SILENT);
 #ifdef CASL_LOG_EVENTS
     register_petsc_logs();
