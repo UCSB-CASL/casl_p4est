@@ -1004,7 +1004,7 @@ int main (int argc, char* argv[])
   }
   else
   {
-    lmin                    = cmd.get<int>("lmin", 7);
+    lmin                    = cmd.get<int>("lmin", 6);
     lmax                    = cmd.get<int>("lmax", 7);
     threshold_split_cell    = cmd.get<double>("thresh", 0.1);
     ntree_x                 = cmd.get<int>("nx", 8);
