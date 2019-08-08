@@ -1318,7 +1318,8 @@ double my_p4est_level_set_t::advect_in_normal_direction(const Vec vn, Vec phi, d
   compute_derivatives(phi, phi_xx_, phi_yy_, phi_zz_);
 #else
   compute_derivatives(phi, phi_xx_, phi_yy_);
-#endifAdvect the function in time and then get a computed timestep
+#endif
+  // Advect the function in time and then get a computed timestep
 
   // layer nodes
   advect_in_normal_direction_one_iteration(ngbd->layer_nodes, vn_p, dt,
