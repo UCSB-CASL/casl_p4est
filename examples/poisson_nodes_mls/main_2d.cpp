@@ -100,17 +100,17 @@ DEFINE_PARAMETER(pl, double, zmax,  1, "Box zmax");
 // refinement parameters
 //-------------------------------------
 #ifdef P4_TO_P8
-DEFINE_PARAMETER(pl, int, lmin, 5, "Min level of the tree");
-DEFINE_PARAMETER(pl, int, lmax, 5, "Max level of the tree");
+DEFINE_PARAMETER(pl, int, lmin, 7, "Min level of the tree");
+DEFINE_PARAMETER(pl, int, lmax, 9, "Max level of the tree");
 
-DEFINE_PARAMETER(pl, int, num_splits,           3, "Number of recursive splits");
+DEFINE_PARAMETER(pl, int, num_splits,           1, "Number of recursive splits");
 DEFINE_PARAMETER(pl, int, num_splits_per_split, 1, "Number of additional resolutions");
 
 DEFINE_PARAMETER(pl, int, num_shifts_x_dir, 1, "Number of grid shifts in the x-direction");
 DEFINE_PARAMETER(pl, int, num_shifts_y_dir, 1, "Number of grid shifts in the y-direction");
 DEFINE_PARAMETER(pl, int, num_shifts_z_dir, 1, "Number of grid shifts in the z-direction");
 #else
-DEFINE_PARAMETER(pl, int, lmin, 2, "Min level of the tree");
+DEFINE_PARAMETER(pl, int, lmin, 5, "Min level of the tree");
 DEFINE_PARAMETER(pl, int, lmax, 5, "Max level of the tree");
 
 DEFINE_PARAMETER(pl, int, num_splits,           5, "Number of recursive splits");
@@ -124,7 +124,7 @@ DEFINE_PARAMETER(pl, int, num_shifts_z_dir, 1, "Number of grid shifts in the z-d
 DEFINE_PARAMETER(pl, int, iter_start, 0, "Skip n first iterations");
 DEFINE_PARAMETER(pl, double, lip, 2, "Lipschitz constant");
 
-DEFINE_PARAMETER(pl, bool, refine_strict,  1, "Refines every cell starting from the coarsest case if yes");
+DEFINE_PARAMETER(pl, bool, refine_strict,  0, "Refines every cell starting from the coarsest case if yes");
 DEFINE_PARAMETER(pl, bool, refine_rand,    0, "Add randomness into adaptive grid");
 DEFINE_PARAMETER(pl, bool, balance_grid,   0, "Enforce 1:2 ratio for adaptive grid");
 DEFINE_PARAMETER(pl, bool, coarse_outside, 0, "Use the coarsest possible grid outside the domain (0/1)");
@@ -225,8 +225,8 @@ DEFINE_PARAMETER(pl, int, jc_flux_03, 0, "0 - automatic, others - hardcoded");
 //-------------------------------------
 DEFINE_PARAMETER(pl, int,  jc_scheme,         0, "Discretization scheme for interface conditions (0 - FVM, 1 - FDM)");
 DEFINE_PARAMETER(pl, int,  jc_sub_scheme,     0, "Interpolation subscheme for interface conditions (0 - from slow region, 1 - from fast region, 2 - based on nodes availability)");
-DEFINE_PARAMETER(pl, int,  integration_order, 2, "Select integration order (1 - linear, 2 - quadratic)");
-DEFINE_PARAMETER(pl, bool, sc_scheme,         1, "Use super-convergent scheme");
+DEFINE_PARAMETER(pl, int,  integration_order, 1, "Select integration order (1 - linear, 2 - quadratic)");
+DEFINE_PARAMETER(pl, bool, sc_scheme,         0, "Use super-convergent scheme");
 
 // for symmetric scheme:
 DEFINE_PARAMETER(pl, bool, taylor_correction,      1, "Use Taylor correction to approximate Robin term (symmetric scheme)");
@@ -252,7 +252,7 @@ DEFINE_PARAMETER(pl, double, dom_perturb_mag, 0.1, "Magnitude of level-set pertu
 DEFINE_PARAMETER(pl, double, dom_perturb_pow, 2,   "Order of level-set perturbation (e.g. 2 for h^2 perturbations)");
 
 DEFINE_PARAMETER(pl, int,    ifc_perturb,     0,   "Artificially pertub level-set functions (0 - no perturbation, 1 - smooth, 2 - noisy)");
-DEFINE_PARAMETER(pl, double, ifc_perturb_mag, 0.1, "Magnitude of level-set perturbations");
+DEFINE_PARAMETER(pl, double, ifc_perturb_mag, 0.1e-6, "Magnitude of level-set perturbations");
 DEFINE_PARAMETER(pl, double, ifc_perturb_pow, 2,   "Order of level-set perturbation (e.g. 2 for h^2 perturbations)");
 
 //-------------------------------------
@@ -274,7 +274,7 @@ DEFINE_PARAMETER(pl, bool, save_matrix_ascii,  0, "Save the matrix in ASCII MATL
 DEFINE_PARAMETER(pl, bool, save_matrix_binary, 0, "Save the matrix in BINARY MATLAB format");
 DEFINE_PARAMETER(pl, bool, save_convergence,   0, "Save convergence results");
 
-DEFINE_PARAMETER(pl, int, n_example, 9, "Predefined example");
+DEFINE_PARAMETER(pl, int, n_example, 10, "Predefined example");
 
 void set_example(int n_example)
 {
@@ -477,6 +477,8 @@ void set_example(int n_example)
 
     case 10: // moderately star-shaped interface
 
+//      n_um = 14; mag_um = 1; n_mu_m = 0; mag_mu_m = 1; n_diag_m = 0; mag_diag_m = 1;
+//      n_up = 14; mag_up = 2; n_mu_p = 0; mag_mu_p = 1; n_diag_p = 0; mag_diag_p = 1;
       n_um = 11; mag_um = 1; n_mu_m = 1; mag_mu_m = 5; n_diag_m = 0; mag_diag_m = 1;
       n_up = 12; mag_up = 1; n_mu_p = 0; mag_mu_p = 1; n_diag_p = 0; mag_diag_p = 1;
 
@@ -640,7 +642,7 @@ public:
           case VAL: return (*mag)*(1.+(0.2*cos(x)+0.3*sin(y))*sin(z));
           case DDX: return -0.2*(*mag)*sin(x)*sin(z);
           case DDY: return (*mag)*0.3*cos(y)*sin(z);
-          case DDZ: return (*mag)*(0.2*sin(x)+0.3*cos(y))*cos(z);
+          case DDZ: return (*mag)*(0.2*cos(x)+0.3*sin(y))*cos(z);
 #else
           case VAL: return (*mag)*(1. + (0.2*cos(x)+0.3*sin(y)));
           case DDX: return (*mag)*(-0.2)*sin(x);
@@ -856,8 +858,10 @@ public:
           case DDY: return (*mag)*y/r2;
 #ifdef P4_TO_P8
           case DDZ: return (*mag)*z/r2;
-#endif
+          case LAP: return (*mag)/r2;
+#else
           case LAP: return 0;
+#endif
         }}
       case 10: {
         double phase_x =  0.13;
@@ -913,6 +917,35 @@ public:
           case DDY: return -(*mag)*2.*sin(2.*x)*sin(2.*y);
           case LAP: return -(*mag)*2.*2.*2.*sin(2.*x)*cos(2.*y);
 #endif
+        }
+      case 13: {
+          double X    = (-x+y)/3.;
+          double T5   = 16.*pow(X,5.)  - 20.*pow(X,3.) + 5.*X;
+          double T5d  = 5.*(16.*pow(X,4.) - 12.*pow(X,2.) + 1.);
+          double T5dd = 40.*X*(8.*X*X-3.);
+        switch (what) {
+#ifdef P4_TO_P8
+          case VAL: return  1.+T5*log(x+y+3.)*cos(z);
+          case DDX: return  (T5/(x+y+3.) - T5d*log(x+y+3.)/3.)*cos(z);
+          case DDY: return  (T5/(x+y+3.) + T5d*log(x+y+3.)/3.)*cos(z);
+          case DDZ: return -T5*log(x+y+3.)*sin(z);
+          case LAP: return  (2.*T5dd*log(x+y+3.)/9. - 2.*T5/pow(x+y+3.,2.))*cos(z)
+                - T5*log(x+y+3.)*cos(z);
+#else
+          case VAL: return 1.+T5*log(x+y+3.);
+          case DDX: return T5/(x+y+3.) - T5d*log(x+y+3.)/3.;
+          case DDY: return T5/(x+y+3.) + T5d*log(x+y+3.)/3.;
+          case LAP: return 2.*T5dd*log(x+y+3.)/9. - 2.*T5/pow(x+y+3.,2.);
+#endif
+        }}
+      case 14: switch (what) {
+          case VAL: return (*mag);
+          case DDX: return 0;
+          case DDY: return 0;
+#ifdef P4_TO_P8
+          case DDZ: return 0;
+#endif
+          case LAP: return 0;
         }
       default:
         throw std::invalid_argument("Unknown test function\n");
@@ -1266,7 +1299,7 @@ public:
         return -1;
       case 1: // sphere
       {
-        static double r0 = 0.58;
+        static double r0 = 0.5;
         static double DIM( xc = 0, yc = 0, zc = 0 );
         static flower_shaped_domain_t circle(r0, DIM(xc, yc, zc), 0, -1);
         switch (what) {
@@ -1359,28 +1392,28 @@ class mu_cf_t : public CF_DIM
 {
 public:
   double operator()(DIM(double x, double y, double z)) const {
-    return infc_phi_eff_cf(DIM(x,y,z)) > 0 ? mu_p_cf(DIM(x,y,z)) : mu_m_cf(DIM(x,y,z));
+    return infc_phi_eff_cf(DIM(x,y,z)) >= 0 ? mu_p_cf(DIM(x,y,z)) : mu_m_cf(DIM(x,y,z));
   }
 } mu_cf;
 class u_cf_t : public CF_DIM
 {
 public:
   double operator()(DIM(double x, double y, double z)) const {
-    return infc_phi_eff_cf(DIM(x,y,z)) > 0 ? u_p_cf(DIM(x,y,z)) : u_m_cf(DIM(x,y,z));
+    return infc_phi_eff_cf(DIM(x,y,z)) >= 0 ? u_p_cf(DIM(x,y,z)) : u_m_cf(DIM(x,y,z));
   }
 } u_cf;
 class ux_cf_t : public CF_DIM
 {
 public:
   double operator()(DIM(double x, double y, double z)) const  {
-    return infc_phi_eff_cf(DIM(x,y,z)) > 0 ? ux_p_cf(DIM(x,y,z)) : ux_m_cf(DIM(x,y,z));
+    return infc_phi_eff_cf(DIM(x,y,z)) >= 0 ? ux_p_cf(DIM(x,y,z)) : ux_m_cf(DIM(x,y,z));
   }
 } ux_cf;
 class uy_cf_t : public CF_DIM
 {
 public:
   double operator()(DIM(double x, double y, double z)) const {
-    return infc_phi_eff_cf(DIM(x,y,z)) > 0 ? uy_p_cf(DIM(x,y,z)) : uy_m_cf(DIM(x,y,z));
+    return infc_phi_eff_cf(DIM(x,y,z)) >= 0 ? uy_p_cf(DIM(x,y,z)) : uy_m_cf(DIM(x,y,z));
   }
 } uy_cf;
 #ifdef P4_TO_P8
@@ -1388,7 +1421,7 @@ class uz_cf_t : public CF_DIM
 {
 public:
   double operator()(DIM(double x, double y, double z)) const {
-    return infc_phi_eff_cf(DIM(x,y,z)) > 0 ? uz_p_cf(DIM(x,y,z)) : uz_m_cf(DIM(x,y,z));
+    return infc_phi_eff_cf(DIM(x,y,z)) >= 0 ? uz_p_cf(DIM(x,y,z)) : uz_m_cf(DIM(x,y,z));
   }
 } uz_cf;
 #endif
@@ -2702,7 +2735,7 @@ int main (int argc, char* argv[])
 
                 my_p4est_vtk_write_all(p4est, nodes, ghost,
                                        P4EST_TRUE, P4EST_TRUE,
-                                       16, 1, oss.str().c_str(),
+                                       18, 1, oss.str().c_str(),
                                        VTK_POINT_DATA, "phi", bdry_phi_eff_ptr,
                                        VTK_POINT_DATA, "infc_phi", infc_phi_eff_ptr,
                                        VTK_POINT_DATA, "sol", sol_ptr,
@@ -2711,6 +2744,8 @@ int main (int argc, char* argv[])
                                        VTK_POINT_DATA, "sol_p_ex", sol_p_ex_ptr,
                                        VTK_POINT_DATA, "mu_m", mu_m_ptr,
                                        VTK_POINT_DATA, "mu_p", mu_p_ptr,
+                                       VTK_POINT_DATA, "mask_m", mask_m_ptr,
+                                       VTK_POINT_DATA, "mask_p", mask_p_ptr,
                                        VTK_POINT_DATA, "error_sl_m", vec_error_sl_m_ptr,
                                        VTK_POINT_DATA, "error_gr_m", vec_error_gr_m_ptr,
                                        VTK_POINT_DATA, "error_ex_m", vec_error_ex_m_ptr,

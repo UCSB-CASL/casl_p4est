@@ -20,8 +20,8 @@ P4EST_LIBS_DEBUG   = -Wl,-rpath,$$P4EST_DIR_DBG/lib -L$$P4EST_DIR_DBG/lib -lp4es
 VORO_DIR_DBG = /home/dbochkov/Software/voro++/voro++-0.4.6/build-release
 VORO_DIR_RLS = /home/dbochkov/Software/voro++/voro++-0.4.6/build-release
 
-VORO_INCLUDES_RELEASE = $$VORO_DIR_RLS/include
-VORO_INCLUDES_DEBUG   = $$VORO_DIR_DBG/include
+VORO_INCLUDES_RELEASE = $$VORO_DIR_RLS/include/voro++
+VORO_INCLUDES_DEBUG   = $$VORO_DIR_DBG/include/voro++
 VORO_LIBS_RELEASE     = -L$$VORO_DIR_RLS/lib -lvoro++
 VORO_LIBS_DEBUG       = -L$$VORO_DIR_DBG/lib -lvoro++
 

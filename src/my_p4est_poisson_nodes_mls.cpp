@@ -489,8 +489,8 @@ void my_p4est_poisson_nodes_mls_t::invert_linear_system(Vec solution, bool use_n
      * "0 "gives better convergence rate (in 3D).
      * Suggested values (By Hypre manual): 0.25 for 2D, 0.5 for 3D
     */
-//    ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_strong_threshold", "0.01"); CHKERRXX(ierr);
-    ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_strong_threshold", "0.93"); CHKERRXX(ierr);
+    ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_strong_threshold", "0.1"); CHKERRXX(ierr);
+//    ierr = PetscOptionsSetValue("-pc_hypre_boomeramg_strong_threshold", "0.93"); CHKERRXX(ierr);
 
     /* 2- Coarsening type
      * Available Options:
@@ -775,8 +775,8 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
             for (short i = 0; i < num_neighbors_cube; ++i)
               if (neighbors_exist[i])
               {
-                is_one_positive = is_one_positive || bdry_.phi_ptr[phi_idx][neighbors[i]] > 0;
-                is_one_negative = is_one_negative || bdry_.phi_ptr[phi_idx][neighbors[i]] < 0;
+                is_one_positive = is_one_positive || bdry_.phi_ptr[phi_idx][neighbors[i]] >= 0;
+                is_one_negative = is_one_negative || bdry_.phi_ptr[phi_idx][neighbors[i]] <  0;
               }
 
             if (is_one_negative && is_one_positive)
@@ -805,8 +805,8 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
             for (short i = 0; i < num_neighbors_cube; ++i)
               if (neighbors_exist[i])
               {
-                is_one_positive = is_one_positive || infc_.phi_ptr[phi_idx][neighbors[i]] > 0;
-                is_one_negative = is_one_negative || infc_.phi_ptr[phi_idx][neighbors[i]] < 0;
+                is_one_positive = is_one_positive || infc_.phi_ptr[phi_idx][neighbors[i]] >= 0;
+                is_one_negative = is_one_negative || infc_.phi_ptr[phi_idx][neighbors[i]] <  0;
               }
 
             if (is_one_negative && is_one_positive) is_ngbd_crossed_immersed = true;
@@ -1147,7 +1147,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
         /*
         ierr = MatAYPX(submat_main_, 1., BC, DIFFERENT_NONZERO_PATTERN); CHKERRXX(ierr); //*/
 
-        // variant 2: do it exmplicitly by hands taking into account that
+        // variant 2: do it explicitly by hands taking into account that
         // number of nonzero rows in BC is much less than the total number of rows
         //*
         PetscInt            offset = global_node_offset_[p4est_->mpirank];
@@ -1198,15 +1198,18 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
               for (int i = ia[n]; i < ia[n+1]; ++i)
               {
                 // add element from BC to submat_main
-                ent.n   = ja[i];
-                ent.val = data[i];
-                entries_main[n].push_back(ent);
+                if (fabs(data[i]) > EPS)
+                {
+                  ent.n   = ja[i];
+                  ent.val = data[i];
+                  entries_main[n].push_back(ent);
 
-                //
-                if (ent.n < offset || ent.n >= offset + nodes_->num_owned_indeps)
-                  o_elems.insert(ent.n);
-                else
-                  d_elems.insert(ent.n);
+                  //
+                  if (ent.n < offset || ent.n >= offset + nodes_->num_owned_indeps)
+                    o_elems.insert(ent.n);
+                  else
+                    d_elems.insert(ent.n);
+                }
               }
 
               d_nnz_main[n] = d_elems.size();
@@ -3753,7 +3756,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_jump(bool setup_rhs, p4est_locidx_
 
     // compute geometric info about positive region
     fv_p.full_cell_volume = fv_m.full_cell_volume;
-    fv_p.volume         = fv_m.full_cell_volume - fv_m.volume;
+    fv_p.volume           = fv_m.full_cell_volume - fv_m.volume;
 
     foreach_direction(i)
     {
@@ -4055,7 +4058,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_jump(bool setup_rhs, p4est_locidx_
     double dxyz_pr[P4EST_DIM];
     double normal [P4EST_DIM];
 
-    double sign    = infc_.phi_eff_ptr[n] < 0 ? 1 : -1;
+    double sign    = (infc_.phi_eff_ptr[n] < 0 ? 1 : -1);
     double scaling = 1;
 
     // compute projection point
@@ -4084,7 +4087,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_jump(bool setup_rhs, p4est_locidx_
         else                                       num_pos++;
       }
 
-    // determine which side to use based on values of diffucion coefficients and neighbors' availability
+    // determine which side to use based on values of diffusion coefficients and neighbors' availability
     double sign_to_use;
 
     switch (jump_sub_scheme_)
@@ -4100,6 +4103,8 @@ void my_p4est_poisson_nodes_mls_t::discretize_jump(bool setup_rhs, p4est_locidx_
       case 2:
         sign_to_use = (num_neg > num_pos) ? -1 : 1;
         break;
+      default:
+        throw;
     }
 
     if (there_is_jump_mu_ && new_submat_main_)
@@ -4129,7 +4134,8 @@ void my_p4est_poisson_nodes_mls_t::discretize_jump(bool setup_rhs, p4est_locidx_
             ZCODE( col_z[idx] = ((double) (k-1)) * dxyz_m_[2] );
 
             if (neighbors_exist[idx])
-              if (infc_.phi_eff_ptr[neighbors[idx]]*sign_to_use > 0 && idx != nn_000)
+              if (((infc_.phi_eff_ptr[neighbors[idx]] <  0 && sign_to_use < 0) ||
+                   (infc_.phi_eff_ptr[neighbors[idx]] >= 0 && sign_to_use > 0)) && idx != nn_000)
                 weight[idx] = 1;
           }
 
@@ -4206,7 +4212,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_jump(bool setup_rhs, p4est_locidx_
 
         w_ghosts[nn_000] += coeff_000;
 
-        if (infc_.phi_eff_ptr[n] > 0) scaling = 1. - coeff_000;
+        if (infc_.phi_eff_ptr[n] >= 0) scaling = 1. - coeff_000;
       }
       else
       {
