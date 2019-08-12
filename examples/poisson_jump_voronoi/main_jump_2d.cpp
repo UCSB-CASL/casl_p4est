@@ -149,7 +149,7 @@ int test_number = 3;
  *   - mu_m=mu_value
  *   - mu_p=mu_value*mu_ratio
  *   - BC periodic in y-z, dirichlet in x
- * 12- u_m=up= cos(2.0*PI*wave_number*(k1*(x/(xmax-xmin)) + k2*(y/(ymax-ymin)) +k3*(z/(zmax-zmin))))*cos(2.0*PI*wave_number*(k1*(z/(zmax-zmin)) + k2*(x/(xmax-xmin)) +k3*(y/(ymax-ymin))))*cos(2.0*PI*wave_number*(k1*(y/(ymax-ymin)) + k2*(z/(zmax-zmin)) - k3*(x/(xmax-xmin))))
+ * 12- u_m=u_p= cos(2.0*PI*wave_number*(k1*(x/(xmax-xmin)) + k2*(y/(ymax-ymin)) +k3*(z/(zmax-zmin))))*cos(2.0*PI*wave_number*(k1*(z/(zmax-zmin)) + k2*(x/(xmax-xmin)) +k3*(y/(ymax-ymin))))*cos(2.0*PI*wave_number*(k1*(y/(ymax-ymin)) + k2*(z/(zmax-zmin)) - k3*(x/(xmax-xmin))))
  *   - mu_m=mu_value
  *   - mu_p=mu_value*mu_ratio
  *   - fully periodic

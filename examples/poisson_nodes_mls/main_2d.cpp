@@ -99,17 +99,17 @@ DEFINE_PARAMETER(pl, double, zmax,  1, "Box zmax");
 // refinement parameters
 //-------------------------------------
 #ifdef P4_TO_P8
-DEFINE_PARAMETER(pl, int, lmin, 7, "Min level of the tree");
-DEFINE_PARAMETER(pl, int, lmax, 9, "Max level of the tree");
+DEFINE_PARAMETER(pl, int, lmin, 3, "Min level of the tree");
+DEFINE_PARAMETER(pl, int, lmax, 4, "Max level of the tree");
 
-DEFINE_PARAMETER(pl, int, num_splits,           1, "Number of recursive splits");
+DEFINE_PARAMETER(pl, int, num_splits,           5, "Number of recursive splits");
 DEFINE_PARAMETER(pl, int, num_splits_per_split, 1, "Number of additional resolutions");
 
 DEFINE_PARAMETER(pl, int, num_shifts_x_dir, 1, "Number of grid shifts in the x-direction");
 DEFINE_PARAMETER(pl, int, num_shifts_y_dir, 1, "Number of grid shifts in the y-direction");
 DEFINE_PARAMETER(pl, int, num_shifts_z_dir, 1, "Number of grid shifts in the z-direction");
 #else
-DEFINE_PARAMETER(pl, int, lmin, 5, "Min level of the tree");
+DEFINE_PARAMETER(pl, int, lmin, 4, "Min level of the tree");
 DEFINE_PARAMETER(pl, int, lmax, 5, "Max level of the tree");
 
 DEFINE_PARAMETER(pl, int, num_splits,           5, "Number of recursive splits");
@@ -273,7 +273,7 @@ DEFINE_PARAMETER(pl, bool, save_matrix_ascii,  0, "Save the matrix in ASCII MATL
 DEFINE_PARAMETER(pl, bool, save_matrix_binary, 0, "Save the matrix in BINARY MATLAB format");
 DEFINE_PARAMETER(pl, bool, save_convergence,   0, "Save convergence results");
 
-DEFINE_PARAMETER(pl, int, n_example, 10, "Predefined example");
+DEFINE_PARAMETER(pl, int, n_example, 11, "Predefined example");
 
 void set_example(int n_example)
 {
@@ -498,7 +498,7 @@ void set_example(int n_example)
 
     case 11: // highly star-shaped interface
 
-      n_um = 11; mag_um = 1; n_mu_m = 1; mag_mu_m = 10; n_diag_m = 0; mag_diag_m = 1;
+      n_um = 11; mag_um = 1; n_mu_m = 1; mag_mu_m =  5; n_diag_m = 0; mag_diag_m = 1;
       n_up = 12; mag_up = 1; n_mu_p = 0; mag_mu_p =  1; n_diag_p = 0; mag_diag_p = 1;
 
       infc_phi_num = 1;
@@ -559,6 +559,108 @@ void set_example(int n_example)
       bdry_present_03 = 0;
 
       break;
+
+  case 14: // shperical interface - case 4 from voronoi jump solver3D
+
+     n_um = 17; mag_um = 1; n_mu_m = 8; mag_mu_m = 1; n_diag_m = 0; mag_diag_m = 1;
+     n_up = 18; mag_up = 1; n_mu_p = 7; mag_mu_p = 1; n_diag_p = 0; mag_diag_p = 1;
+
+
+      infc_phi_num = 1;
+      bdry_phi_num = 0;
+
+      infc_present_00 = 1; infc_geom_00 = 1; infc_opn_00 = MLS_INT;
+      infc_present_01 = 0; infc_geom_01 = 0; infc_opn_01 = MLS_INT;
+      infc_present_02 = 0; infc_geom_02 = 0; infc_opn_02 = MLS_INT;
+      infc_present_03 = 0; infc_geom_03 = 0; infc_opn_03 = MLS_INT;
+
+      bdry_present_00 = 0;
+      bdry_present_01 = 0;
+      bdry_present_02 = 0;
+      bdry_present_03 = 0;
+
+      break;
+
+    case 15: // shperical interface - case 1 from voronoi jump solver3D
+
+      n_um = 15; mag_um = 1; n_mu_m = 9; mag_mu_m = 1; n_diag_m = 0; mag_diag_m = 1;
+      n_up = 16; mag_up = 1; n_mu_p = 10; mag_mu_p = 1; n_diag_p = 0; mag_diag_p = 1;
+
+      infc_phi_num = 1;
+      bdry_phi_num = 0;
+
+      infc_present_00 = 1; infc_geom_00 = 2; infc_opn_00 = MLS_INT;
+      infc_present_01 = 0; infc_geom_01 = 0; infc_opn_01 = MLS_INT;
+      infc_present_02 = 0; infc_geom_02 = 0; infc_opn_02 = MLS_INT;
+      infc_present_03 = 0; infc_geom_03 = 0; infc_opn_03 = MLS_INT;
+
+      bdry_present_00 = 0;
+      bdry_present_01 = 0;
+      bdry_present_02 = 0;
+      bdry_present_03 = 0;
+
+      break;
+
+    case 16: // shperical interface - case 5 from voronoi jump solver3D
+
+      n_um = 14; mag_um = 1; n_mu_m = 8; mag_mu_m = 1; n_diag_m = 0; mag_diag_m = 1;
+      n_up = 14; mag_up = 1; n_mu_p = 7; mag_mu_p = 1; n_diag_p = 0; mag_diag_p = 1;
+
+      infc_phi_num = 1;
+      bdry_phi_num = 0;
+
+      infc_present_00 = 1; infc_geom_00 = 1; infc_opn_00 = MLS_INT;
+      infc_present_01 = 0; infc_geom_01 = 0; infc_opn_01 = MLS_INT;
+      infc_present_02 = 0; infc_geom_02 = 0; infc_opn_02 = MLS_INT;
+      infc_present_03 = 0; infc_geom_03 = 0; infc_opn_03 = MLS_INT;
+
+      bdry_present_00 = 0;
+      bdry_present_01 = 0;
+      bdry_present_02 = 0;
+      bdry_present_03 = 0;
+
+      break;
+
+  case 17: // shperical interface - case 3 from voronoi jump solver2D
+
+    n_um = 13; mag_um = 1; n_mu_m = 5; mag_mu_m = 1; n_diag_m = 0; mag_diag_m = 1;
+    n_up = 16; mag_up = 1; n_mu_p = 6; mag_mu_p = 1; n_diag_p = 0; mag_diag_p = 1;
+
+    infc_phi_num = 1;
+    bdry_phi_num = 0;
+
+    infc_present_00 = 1; infc_geom_00 = 3; infc_opn_00 = MLS_INT;
+    infc_present_01 = 0; infc_geom_01 = 0; infc_opn_01 = MLS_INT;
+    infc_present_02 = 0; infc_geom_02 = 0; infc_opn_02 = MLS_INT;
+    infc_present_03 = 0; infc_geom_03 = 0; infc_opn_03 = MLS_INT;
+
+    bdry_present_00 = 0;
+    bdry_present_01 = 0;
+    bdry_present_02 = 0;
+    bdry_present_03 = 0;
+
+    break;
+
+  case 18: // shperical interface - case 0 from voronoi jump solver3D
+
+    n_um = 15; mag_um = 1; n_mu_m = 0; mag_mu_m = 1; n_diag_m = 0; mag_diag_m = 1;
+    n_up = 16; mag_up = 1; n_mu_p = 0; mag_mu_p = 1; n_diag_p = 0; mag_diag_p = 1;
+
+    infc_phi_num = 1;
+    bdry_phi_num = 0;
+
+    infc_present_00 = 1; infc_geom_00 = 3; infc_opn_00 = MLS_INT;
+    infc_present_01 = 0; infc_geom_01 = 0; infc_opn_01 = MLS_INT;
+    infc_present_02 = 0; infc_geom_02 = 0; infc_opn_02 = MLS_INT;
+    infc_present_03 = 0; infc_geom_03 = 0; infc_opn_03 = MLS_INT;
+
+    bdry_present_00 = 0;
+    bdry_present_01 = 0;
+    bdry_present_02 = 0;
+    bdry_present_03 = 0;
+
+    break;
+
   }
 }
 
@@ -688,19 +790,68 @@ public:
         YCODE( double Y = (y-ymin)/(ymax-ymin) );
         switch (what) {
         case VAL: return (*mag)*SQR((y-ymin)/(ymax-ymin))*log((x-0.5*(xmax+xmin))/(xmax- xmin)+2) +4;
-        case DDX: return (*mag)*SQR((y-ymin)/(ymax-ymin))*((-1)/SQR(x-0.5*(xmax+xmin)+2*(xmax-xmin)));
-        case DDY: return (*mag)*(2/SQR(ymax-ymin))*log((x-0.5*(xmax+xmin))/(xmax- xmin)+2);
+        case DDX: return (*mag)*SQR((y-ymin)/(ymax-ymin))*((+1)/(x-0.5*(xmax+xmin)+2*(xmax-xmin)));
+        case DDY: return (*mag)*(2.0*(y-ymin)/SQR(ymax-ymin))*log((x-0.5*(xmax+xmin))/(xmax- xmin)+2);
         }
-       }
+       }//works
     case 6: {
         XCODE( double X = (x-xmin)/(xmax-xmin) );
         YCODE( double Y = (y-ymin)/(ymax-ymin) );
         switch (what) {
         case VAL: return (*mag)*exp((-1)*(y-0.5*(ymin+ymax))/(ymax-ymin));
         case DDX: return 0.0;
-        case DDY: return (*mag)*exp((-1)*(y-0.5*(ymin+ymax))/(ymax-ymin))*(1/SQR(ymax-ymin));
+        case DDY: return (*mag)*exp((-1)*(y-0.5*(ymin+ymax))/(ymax-ymin))*((-1.0)/(ymax-ymin));
+        }
+     }//works
+#ifdef P4_TO_P8
+    case 7: {
+        XCODE( double X = (x-xmin)/(xmax-xmin) );
+        YCODE( double Y = (y-ymin)/(ymax-ymin) );
+        switch (what) {
+        case VAL: return (*mag)*exp((x-0.5*(xmin+xmax))/(xmax-xmin)+(z-0.5*(zmin+zmax))/(zmax-zmin));
+        case DDX: return (*mag)*exp((x-0.5*(xmin+xmax))/(xmax-xmin)+(z-0.5*(zmin+zmax))/(zmax-zmin))*(1/(xmax-xmin));
+        case DDY: return 0.0;
+        case DDZ: return (*mag)*exp((x-0.5*(xmin+xmax))/(xmax-xmin)+(z-0.5*(zmin+zmax))/(zmax-zmin))*(1/(zmax-zmin));
         }
      }
+#endif
+    case 8: {
+        XCODE( double X = (x-xmin)/(xmax-xmin) );
+        YCODE( double Y = (y-ymin)/(ymax-ymin) );
+        switch (what) {
+        case VAL: return (*mag)*SQR((y-0.5*(ymin+ymax))/(ymax-ymin))+5;
+        case DDX: return 0.0;
+        case DDY: return (*mag)*(2.*(y-0.5*(ymin+ymax))/SQR(ymax-ymin));
+#ifdef P4_TO_P8
+          case DDZ: return 0.;
+#endif
+        }
+     }
+
+   case 9: {
+            XCODE( double X = (x-xmin)/(xmax-xmin) );
+            YCODE( double Y = (y-ymin)/(ymax-ymin) );
+            switch (what) {
+            case VAL: return (*mag)*SQR((y-ymin)/(ymax-ymin))*log((x-xmin)/(xmax- xmin)+2) +4;
+            case DDX: return (*mag)*SQR((y-ymin)/(ymax-ymin))*((+1.)/(x-xmin+2.*(xmax-xmin)));
+            case DDY: return (*mag)*((2*(y-ymin))/SQR(ymax-ymin))*log((x-xmin)/(xmax- xmin)+2);
+    #ifdef P4_TO_P8
+              case DDZ: return 0.0;
+    #endif
+       }
+    }
+#ifdef P4_TO_P8
+   case 10: {
+             switch (what) {
+             case VAL: return (*mag)*exp(-(z-zmin)/(zmax-zmin));
+             case DDX: return 0.0;
+             case DDY: return 0.0;
+             case DDZ: return (*mag)*exp(-(z-zmin)/(zmax-zmin))*(-1./(zmax-zmin));
+             }
+    }
+#endif
+
+
     }
   }
 };
@@ -935,37 +1086,102 @@ public:
           case LAP: return -(*mag)*2.*2.*2.*sin(2.*x)*cos(2.*y);
 #endif
         }
-      case 13: {
-          double X    = (-x+y)/3.;
-          double T5   = 16.*pow(X,5.)  - 20.*pow(X,3.) + 5.*X;
-          double T5d  = 5.*(16.*pow(X,4.) - 12.*pow(X,2.) + 1.);
-          double T5dd = 40.*X*(8.*X*X-3.);
-        switch (what) {
+
+
+    case 13: switch (what){
+            case VAL: return (*mag)*(exp((x - 0.5*(xmin+xmax))/(xmax -xmin)));
+            case DDX: return (*mag)*(exp((x - 0.5*(xmin+xmax))/(xmax -xmin)))*(1/((xmax-xmin)));
+            case DDY: return 0.0;
+            case LAP: return (*mag)*(1/(SQR(xmax-xmin)))*(exp((x - 0.5*(xmin+xmax))/(xmax -xmin)));
+            }
+
+    case 14: switch (what){
+    #ifdef P4_TO_P8
+            case VAL: return (*mag)*(cos(x/(xmax-xmin))*sin(y/(ymax-ymin)))*exp((z-zmin)/(zmax-zmin));
+            case DDX: return -(*mag)*(sin(x/(xmax-xmin))*sin(y/(ymax-ymin)))*(1/(xmax-xmin))*exp((z-zmin)/(zmax-zmin));
+            case DDY: return (*mag)*(cos(x/(xmax-xmin))*cos(y/(ymax-ymin)))*(1/(ymax-ymin))*exp((z-zmin)/(zmax-zmin));
+            case DDZ: return (*mag)*(cos(x/(xmax-xmin))*sin(y/(ymax-ymin)))*(exp((z-zmin)/(zmax-zmin))*(1/(zmax-zmin)));
+            case LAP: return (*mag)*((-1/(SQR(xmax-xmin)))+(-1/(SQR(ymax-ymin)))+1/SQR(zmax-zmin))*(cos(x/(xmax-xmin))*sin(y/(ymax-ymin))*exp((z-zmin)/(zmax-zmin)));
+    #else
+            case VAL: return (*mag)*(cos(x/(xmax-xmin))*sin(y/(ymax-ymin)));
+            case DDX: return -(*mag)*(sin(x/(xmax-xmin))*sin(y/(ymax-ymin)))*(1/(xmax-xmin));
+            case DDY: return (*mag)*(cos(x/(xmax-xmin))*cos(y/(ymax-ymin)))*(1/(ymax-ymin));
+            case LAP: return -(*mag)*((1/(SQR(xmax-xmin)))+(1/(SQR(ymax-ymin))))*(cos(x/(xmax-xmin))*sin(y/(ymax-ymin)));
+    #endif
+            }
+    #ifdef P4_TO_P8
+        case 15: switch (what){
+            case VAL: return (*mag)*exp((z-zmin)/(zmax-zmin));
+            case DDX: return 0.0;
+            case DDY: return 0.0;
+            case DDZ: return (*mag)*(exp((z-zmin)/(zmax-zmin))*(1/(zmax-zmin)));
+            case LAP: return (*mag)*(exp((z-zmin)/(zmax-zmin))*SQR(1/(zmax-zmin)));
+            }
+    #endif
+
+        case 16: switch (what){
+            case VAL: return (*mag)*(cos(x/(xmax-xmin))*sin(y/(ymax-ymin)));
+            case DDX: return -(*mag)*(sin(x/(xmax-xmin))*sin(y/(ymax-ymin)))*(1/(xmax-xmin));
+            case DDY: return (*mag)*(cos(x/(xmax-xmin))*cos(y/(ymax-ymin)))*(1/(ymax-ymin));
+    #ifdef P4_TO_P8
+            case DDZ: return 0.0;
+    #endif
+            case LAP: return -(*mag)*((1/(SQR(xmax-xmin)))+(1/(SQR(ymax-ymin))))*(cos(x/(xmax-xmin))*sin(y/(ymax-ymin)));
+            }
+    #ifdef P4_TO_P8
+        case 17: switch (what){
+            case VAL: return ((y-0.5*(ymin+ymax))/(ymax-ymin))*((z-0.5*(zmin+zmax))/(zmax-zmin))*sin(x/(xmax-xmin));
+            case DDX: return ((y-0.5*(ymin+ymax))/(ymax-ymin))*((z-0.5*(zmin+zmax))/(zmax-zmin))*cos(x/(xmax-xmin))*(1/(xmax-xmin));
+            case DDY: return ((z-0.5*(zmin+zmax))/(zmax-zmin))*sin(x/(xmax-xmin))*(1/(ymax-ymin));
+            case DDZ: return ((y-0.5*(ymin+ymax))/(ymax-ymin))*sin(x/(xmax-xmin))*(1/(zmax-zmin));
+            case LAP: return ((y-0.5*(ymin+ymax))/(ymax-ymin))*((z-0.5*(zmin+zmax))/(zmax-zmin))*sin(x/(xmax-xmin))*(-SQR(1/(xmax-xmin)));
+           }
+    #endif
+
+    #ifdef P4_TO_P8
+        case 18: switch (what){
+            case VAL: return ((x-0.5*(xmin+xmax))/(xmax-xmin))*SQR((y-0.5*(ymin+ymax))/(ymax-ymin))+pow((z-0.5*(zmin+zmax))/(zmax-zmin), 3.0);
+            case DDX: return SQR((y-0.5*(ymin+ymax))/(ymax-ymin))*(1/(xmax-xmin));
+            case DDY: return ((x-0.5*(xmin+xmax))/(xmax-xmin))*(2*(y-0.5*(ymin+ymax))/SQR(ymax-ymin));
+            case DDZ: return 3.*SQR(z-0.5*(zmin+zmax))/(pow((zmax-zmin), 3.0));
+            case LAP: return ((x-0.5*(xmin+xmax))/(xmax-xmin))*(2./SQR(ymax-ymin))+6.*(z-0.5*(zmin+zmax))/(pow((zmax-zmin), 3.0)) ;
+           }
+    #endif
+
+    case 19: {
+        double X    = (-x+y)/3.;
+        double T5   = 16.*pow(X,5.)  - 20.*pow(X,3.) + 5.*X;
+        double T5d  = 5.*(16.*pow(X,4.) - 12.*pow(X,2.) + 1.);
+        double T5dd = 40.*X*(8.*X*X-3.);
+      switch (what) {
 #ifdef P4_TO_P8
-          case VAL: return  1.+T5*log(x+y+3.)*cos(z);
-          case DDX: return  (T5/(x+y+3.) - T5d*log(x+y+3.)/3.)*cos(z);
-          case DDY: return  (T5/(x+y+3.) + T5d*log(x+y+3.)/3.)*cos(z);
-          case DDZ: return -T5*log(x+y+3.)*sin(z);
-          case LAP: return  (2.*T5dd*log(x+y+3.)/9. - 2.*T5/pow(x+y+3.,2.))*cos(z)
-                - T5*log(x+y+3.)*cos(z);
+        case VAL: return  1.+T5*log(x+y+3.)*cos(z);
+        case DDX: return  (T5/(x+y+3.) - T5d*log(x+y+3.)/3.)*cos(z);
+        case DDY: return  (T5/(x+y+3.) + T5d*log(x+y+3.)/3.)*cos(z);
+        case DDZ: return -T5*log(x+y+3.)*sin(z);
+        case LAP: return  (2.*T5dd*log(x+y+3.)/9. - 2.*T5/pow(x+y+3.,2.))*cos(z)
+              - T5*log(x+y+3.)*cos(z);
 #else
-          case VAL: return 1.+T5*log(x+y+3.);
-          case DDX: return T5/(x+y+3.) - T5d*log(x+y+3.)/3.;
-          case DDY: return T5/(x+y+3.) + T5d*log(x+y+3.)/3.;
-          case LAP: return 2.*T5dd*log(x+y+3.)/9. - 2.*T5/pow(x+y+3.,2.);
+        case VAL: return 1.+T5*log(x+y+3.);
+        case DDX: return T5/(x+y+3.) - T5d*log(x+y+3.)/3.;
+        case DDY: return T5/(x+y+3.) + T5d*log(x+y+3.)/3.;
+        case LAP: return 2.*T5dd*log(x+y+3.)/9. - 2.*T5/pow(x+y+3.,2.);
 #endif
-        }}
-      case 14: switch (what) {
-          case VAL: return (*mag);
-          case DDX: return 0;
-          case DDY: return 0;
+      }}
+
+
+
+    case 20: switch (what) {
+        case VAL: return (*mag);
+        case DDX: return 0;
+        case DDY: return 0;
 #ifdef P4_TO_P8
-          case DDZ: return 0;
+        case DDZ: return 0;
 #endif
-          case LAP: return 0;
-        }
-      default:
-        throw std::invalid_argument("Unknown test function\n");
+        case LAP: return 0;
+      }
+          default:
+            throw std::invalid_argument("Unknown test function\n");
     }
   }
 };
