@@ -520,6 +520,8 @@ public:
 
   inline Mat get_matrix() { return A_; }
 
+  inline boundary_conditions_t* get_bc(int phi_idx) { return &bc_[phi_idx]; }
+
   // finite volumes
   inline void get_boundary_finite_volumes(vector< my_p4est_finite_volume_t > *&bdry_fvs, vector<int> *&bdry_node_to_fv)
   {

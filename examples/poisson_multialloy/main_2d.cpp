@@ -88,8 +88,8 @@ DEFINE_PARAMETER(pl, int, num_shifts_x_dir, 1, "Number of grid shifts in the x-d
 DEFINE_PARAMETER(pl, int, num_shifts_y_dir, 1, "Number of grid shifts in the y-direction");
 DEFINE_PARAMETER(pl, int, num_shifts_z_dir, 1, "Number of grid shifts in the z-direction");
 #else
-DEFINE_PARAMETER(pl, int, lmin, 7, "Min level of the tree");
-DEFINE_PARAMETER(pl, int, lmax, 7, "Max level of the tree");
+DEFINE_PARAMETER(pl, int, lmin, 6, "Min level of the tree");
+DEFINE_PARAMETER(pl, int, lmax, 6, "Max level of the tree");
 
 DEFINE_PARAMETER(pl, int, num_splits,           4, "Number of recursive splits");
 DEFINE_PARAMETER(pl, int, num_splits_per_split, 1, "Number of additional resolutions");
@@ -104,9 +104,9 @@ DEFINE_PARAMETER(pl, double, lip, 1.5, "");
 //-------------------------------------
 // solver parameters
 //-------------------------------------
-DEFINE_PARAMETER(pl, bool, use_points_on_interface,   false, "");
-DEFINE_PARAMETER(pl, bool, update_c0_robin,           false, "");
-DEFINE_PARAMETER(pl, bool, use_superconvergent_robin, false, "");
+DEFINE_PARAMETER(pl, bool, use_points_on_interface,   1, "");
+DEFINE_PARAMETER(pl, int,  update_c0_robin,           0, "");
+DEFINE_PARAMETER(pl, bool, use_superconvergent_robin, 0, "");
 
 DEFINE_PARAMETER(pl, int,    pin_every_n_iterations, 1000, "");
 DEFINE_PARAMETER(pl, int,    max_iterations,    100, "");
@@ -250,8 +250,8 @@ void set_alloy_parameters()
       thermal_cond_s  = 6.07e-1; // W.cm-1.K-1
 
       num_comps = 2;
-      solute_diff_0    = 1.e-1;
-      solute_diff_1    = 1.e-1;
+      solute_diff_0    = 1.e-4;
+      solute_diff_1    = 1.e-3;
       liquidus_slope_0 = -357;
       liquidus_slope_1 = -357;
       initial_conc_0   = 0.3;
@@ -616,6 +616,7 @@ container_phi_cf_t contr_phi_z_cf(DDZ, container_geometry);
 //-------------------------------------
 // undercoolings
 //-------------------------------------
+int const P4EST_DIM_SQR = MULTD(P4EST_DIM,P4EST_DIM,P4EST_DIM);
 class undercooling_cf_t : public CF_DIM
 {
   double *eps;
@@ -624,7 +625,7 @@ class undercooling_cf_t : public CF_DIM
   double *phase_yz; // rotation around x axis
   double *phase_zx; // rotation around y axis
 #endif
-  double R[(int)pow(P4EST_DIM,2)]; // rotation matrix;
+  double R[P4EST_DIM_SQR]; // rotation matrix;
   bool initialized;
 public:
 #ifdef P4_TO_P8

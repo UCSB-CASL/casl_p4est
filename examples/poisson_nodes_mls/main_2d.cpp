@@ -259,7 +259,7 @@ DEFINE_PARAMETER(pl, double, ifc_perturb_pow, 2,   "Order of level-set perturbat
 // convergence study parameters
 //-------------------------------------
 DEFINE_PARAMETER(pl, int,    compute_cond_num,     0, "Estimate L1-norm condition number");
-DEFINE_PARAMETER(pl, bool,   do_extension,         0, "Extend solution after solving");
+DEFINE_PARAMETER(pl, int,    extend_solution,      1, "Extend solution after solving: 0 - no extension, 1 - extend using normal derivatives, 2 - extend using all derivatives");
 DEFINE_PARAMETER(pl, double, mask_thresh,          0, "Mask threshold for excluding points in convergence study");
 DEFINE_PARAMETER(pl, bool,   compute_grad_between, 0, "Computes gradient between points if yes");
 DEFINE_PARAMETER(pl, bool,   scale_errors,         0, "Scale errors by max solution/gradient value");
@@ -274,7 +274,7 @@ DEFINE_PARAMETER(pl, bool, save_matrix_ascii,  0, "Save the matrix in ASCII MATL
 DEFINE_PARAMETER(pl, bool, save_matrix_binary, 0, "Save the matrix in BINARY MATLAB format");
 DEFINE_PARAMETER(pl, bool, save_convergence,   0, "Save convergence results");
 
-DEFINE_PARAMETER(pl, int, n_example, 10, "Predefined example");
+DEFINE_PARAMETER(pl, int, n_example, 1, "Predefined example");
 
 void set_example(int n_example)
 {
@@ -312,7 +312,7 @@ void set_example(int n_example)
       infc_present_02 = 0;
       infc_present_03 = 0;
 
-      bdry_present_00 = 1; bdry_geom_00 = 1; bdry_opn_00 = MLS_INT; bc_coeff_00 = 0; bc_coeff_00_mag = 1; bc_type_00 = ROBIN;
+      bdry_present_00 = 1; bdry_geom_00 = 1; bdry_opn_00 = MLS_INT; bc_coeff_00 = 0; bc_coeff_00_mag = 1; bc_type_00 = DIRICHLET;
       bdry_present_01 = 0; bdry_geom_01 = 0; bdry_opn_01 = MLS_INT; bc_coeff_01 = 0; bc_coeff_01_mag = 1; bc_type_01 = ROBIN;
       bdry_present_02 = 0; bdry_geom_02 = 0; bdry_opn_02 = MLS_INT; bc_coeff_02 = 0; bc_coeff_02_mag = 1; bc_type_02 = ROBIN;
       bdry_present_03 = 0; bdry_geom_03 = 0; bdry_opn_03 = MLS_INT; bc_coeff_03 = 0; bc_coeff_03_mag = 1; bc_type_03 = ROBIN;
@@ -448,10 +448,10 @@ void set_example(int n_example)
       infc_present_02 = 0;
       infc_present_03 = 0;
 
-      bdry_present_00 = 1; bdry_geom_00 = 10; bdry_opn_00 = MLS_INT; bc_coeff_00 = 0; bc_coeff_00_mag = 1; bc_type_00 = ROBIN;
-      bdry_present_01 = 1; bdry_geom_01 = 11; bdry_opn_01 = MLS_ADD; bc_coeff_01 = 5; bc_coeff_01_mag = 1; bc_type_01 = ROBIN;
-      bdry_present_02 = 1; bdry_geom_02 = 12; bdry_opn_02 = MLS_INT; bc_coeff_02 = 6; bc_coeff_02_mag = 1; bc_type_02 = ROBIN;
-      bdry_present_03 = 0; bdry_geom_03 =  0; bdry_opn_03 = MLS_INT; bc_coeff_03 = 0; bc_coeff_03_mag = 1; bc_type_03 = ROBIN;
+      bdry_present_00 = 1; bdry_geom_00 = 10; bdry_opn_00 = MLS_INT; bc_coeff_00 = 0; bc_coeff_00_mag = 1; bc_type_00 = DIRICHLET;
+      bdry_present_01 = 1; bdry_geom_01 = 11; bdry_opn_01 = MLS_ADD; bc_coeff_01 = 5; bc_coeff_01_mag = 1; bc_type_01 = DIRICHLET;
+      bdry_present_02 = 1; bdry_geom_02 = 12; bdry_opn_02 = MLS_INT; bc_coeff_02 = 6; bc_coeff_02_mag = 1; bc_type_02 = DIRICHLET;
+      bdry_present_03 = 0; bdry_geom_03 =  0; bdry_opn_03 = MLS_INT; bc_coeff_03 = 0; bc_coeff_03_mag = 1; bc_type_03 = DIRICHLET;
 
       break;
 
@@ -2559,10 +2559,22 @@ int main (int argc, char* argv[])
               VecScaleGhost(infc_phi_eff, -1);
 
               // extend
-              if (do_extension)
+              boundary_conditions_t *bc = NULL;
+              if (apply_bc_pointwise)
               {
-                ls.extend_Over_Interface_TVD_full(phi_m, mask_m, sol_m_ex, 50, 2); CHKERRXX(ierr);
-                ls.extend_Over_Interface_TVD_full(phi_p, mask_p, sol_p_ex, 50, 2); CHKERRXX(ierr);
+                bc = solver.get_bc(0);
+              }
+
+              switch (extend_solution)
+              {
+                case 1:
+                  ls.extend_Over_Interface_TVD(phi_m, sol_m_ex, 50, 2, NULL, mask_m, bc); CHKERRXX(ierr);
+                  ls.extend_Over_Interface_TVD(phi_p, sol_p_ex, 50, 2, NULL, mask_p, bc); CHKERRXX(ierr);
+                  break;
+                case 2:
+                  ls.extend_Over_Interface_TVD_Full(phi_m, sol_m_ex, 50, 2, NULL, mask_m, bc); CHKERRXX(ierr);
+                  ls.extend_Over_Interface_TVD_Full(phi_p, sol_p_ex, 50, 2, NULL, mask_p, bc); CHKERRXX(ierr);
+                  break;
               }
 
               // calculate error

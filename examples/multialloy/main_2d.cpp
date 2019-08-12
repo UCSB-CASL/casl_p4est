@@ -89,8 +89,8 @@ DEFINE_PARAMETER(pl, double, lip, 1.75, "");
 //-------------------------------------
 // solver parameters
 //-------------------------------------
-DEFINE_PARAMETER(pl, bool, use_points_on_interface,   false, "");
-DEFINE_PARAMETER(pl, bool, use_superconvergent_robin, false, "");
+DEFINE_PARAMETER(pl, bool, use_points_on_interface,   1, "");
+DEFINE_PARAMETER(pl, bool, use_superconvergent_robin, 1, "");
 
 DEFINE_PARAMETER(pl, int,    update_c0_robin, 1, "Solve for c0 using Robin BC: 0 - never, 1 - once, 2 - always");
 DEFINE_PARAMETER(pl, int,    num_time_layers, 2, "");

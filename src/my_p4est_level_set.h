@@ -176,12 +176,10 @@ public:
   void extend_from_interface_to_whole_domain( Vec phi_petsc, Vec q_petsc, Vec q_extended_petsc, int band_to_extend=INT_MAX) const;
 
   /* extend a quantity over the interface with the TVD algorithm */
-  void extend_Over_Interface_TVD(Vec phi, Vec q, int iterations=20, int order=2, Vec normal[P4EST_DIM] = NULL) const;
+  void extend_Over_Interface_TVD(Vec phi, Vec q, int iterations=20, int order=2, Vec normal[P4EST_DIM] = NULL, Vec mask = NULL, boundary_conditions_t *bc = NULL) const;
 
-  /* extend a quantity over the interface with the TVD algorithm using mask */
-  void extend_Over_Interface_TVD(Vec phi, Vec mask, Vec q, int iterations=20, int order=2) const;
-
-  void extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_poisson_nodes_t *solver, int iterations=20, int order=2, Vec normal[P4EST_DIM] = NULL) const;
+  /* extend a quantity over the interface with the TVD algorithm (all derivatives are extended, not just q_n and q_nn) */
+  void extend_Over_Interface_TVD_Full(Vec phi, Vec q, int iterations = 20, int order = 2, Vec normal[P4EST_DIM] = NULL, Vec mask = NULL, boundary_conditions_t *bc = NULL) const;
 
   void extend_Over_Interface_TVD_not_parallel(Vec phi, Vec q, int iterations=20, int order=2) const;
 
@@ -208,10 +206,6 @@ public:
                                                                 ) const;
   void extend_from_interface_to_whole_domain_TVD( Vec phi, Vec q_interface, Vec q, int iterations=20) const;
 
-  void extend_Over_Interface_Iterative(Vec phi_petsc, Vec phi_smooth_petsc, Vec mask_petsc, Vec q_petsc, int iterations = 20, int order = 2, int band_to_extend = INT_MAX) const;
-
-  void extend_Over_Interface_TVD_full(Vec phi, Vec mask, Vec q, int iterations = 20, int order = 2, my_p4est_poisson_nodes_t *solver = NULL) const;
-
   void enforce_contact_angle(Vec phi_wall, Vec phi_intf, Vec cos_angle, int iterations=20, Vec normal[] = NULL) const;
   void enforce_contact_angle2(Vec phi, Vec q, Vec cos_angle, int iterations=20, int order=2, Vec normal[] = NULL) const;
   void extend_Over_Interface_TVD_regional( Vec phi, Vec mask, Vec region, Vec q, int iterations = 20, int order = 2) const;
@@ -237,26 +231,6 @@ public:
     ierr = VecDestroy(q); CHKERRXX(ierr);
     q = tmp;
   }
-
-  void extend_from_interface_to_whole_domain_TVD( Vec phi, Vec mask, Vec qi, Vec q, int iterations ) const;
-
-  inline void extend_from_interface_to_whole_domain_TVD_in_place_mask(Vec phi, Vec mask, Vec &q, Vec parent=NULL, int iterations=20) const
-  {
-    PetscErrorCode ierr;
-    Vec tmp;
-
-    if (parent == NULL) {
-      ierr = VecCreateGhostNodes(p4est, nodes, &tmp); CHKERRXX(ierr);
-    } else {
-      ierr = VecDuplicate(parent, &tmp); CHKERRXX(ierr);
-    }
-
-    extend_from_interface_to_whole_domain_TVD(phi, mask, q, tmp, iterations);
-
-    ierr = VecDestroy(q); CHKERRXX(ierr);
-    q = tmp;
-  }
-
 };
 
 #endif // MY_P4EST_LEVELSET_H
