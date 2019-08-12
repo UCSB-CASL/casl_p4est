@@ -1,4 +1,4 @@
-/* 
+/*
  * Title: multialloy_with_fluids
  * Description:
  * Author: Elyce
@@ -13,6 +13,10 @@
 #include <src/my_p4est_refine_coarsen.h>
 #include <src/my_p4est_log_wrappers.h>
 #include <src/my_p4est_node_neighbors.h>
+#include <src/my_p4est_level_set.h>
+
+#include <src/my_p4est_semi_lagrangian.h>
+
 #include <src/my_p4est_macros.h>
 #else
 #include <src/my_p8est_utils.h>
@@ -21,6 +25,9 @@
 #include <src/my_p8est_tools.h>
 #include <src/my_p8est_refine_coarsen.h>
 #include <src/my_p8est_log_wrappers.h>
+#include <src/my_p8est_semi_lagrangian.h>
+#include <src/my_p8est_level_set.h>
+
 #include <src/my_p8est_node_neighbors.h>
 #include <src/my_p8est_macros.h>
 #endif
@@ -108,6 +115,13 @@ int main(int argc, char** argv) {
   // create node structure
   nodes = my_p4est_nodes_new(p4est, ghost); //same
 
+  // Create hierarchy
+  my_p4est_hierarchy_t *hierarchy = new my_p4est_hierarchy_t(p4est, ghost, &brick);
+
+  // Get neighbors
+  my_p4est_node_neighbors_t *ngbd = new my_p4est_node_neighbors_t(hierarchy, nodes);
+  ngbd->init_neighbors();
+
   // -----------------------------------------------
   // Initialize the Level Set function:
   // -----------------------------------------------
@@ -169,13 +183,10 @@ int main(int argc, char** argv) {
   double tf = 0.5;
   int tstep = 0;
   int save = 1;
-  double dt = 0.1;
+  double dt = 0.01;
 
   for (double t = 0; t<tf; t+=dt, tstep++){
       ierr = PetscPrintf(mpi.comm(),"Iteration %d , Time: %0.2f \n",tstep,t);
-
-      // Save data every specified amout of timesteps:
-      if (tstep % save ==0){}
 
 
       // Make a copy of the grid objects for the next timestep:
@@ -184,7 +195,67 @@ int main(int argc, char** argv) {
       p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
 
       // Create the semi-lagrangian object and do the advection:
+      my_p4est_semi_lagrangian_t sl(&p4est_np1, &nodes_np1, &ghost_np1, ngbd);
 
+      // Advect the grid under the velocity field:
+      sl.update_p4est(vel_n,dt,phi);
+
+      // Delete the old grid and update with the new one:
+      p4est_destroy(p4est); p4est = p4est_np1;
+      p4est_ghost_destroy(ghost); ghost = ghost_np1;
+      p4est_nodes_destroy(nodes); nodes = nodes_np1;
+
+      delete hierarchy; hierarchy = new my_p4est_hierarchy_t(p4est,ghost,&brick);
+      delete ngbd; ngbd = new my_p4est_node_neighbors_t(hierarchy, nodes);
+      ngbd->init_neighbors();
+
+      // Create level set object and reinitialize it:
+      my_p4est_level_set_t ls(ngbd);
+      ls.reinitialize_1st_order_time_2nd_order_space(phi);
+
+      // Update the velocity field onto the new grid:
+      for (int dir=0;dir<P4EST_DIM;dir++){
+          ierr = VecDestroy(vel_n[dir]);
+          ierr = VecDuplicate(phi,&vel_n[dir]);
+          sample_cf_on_nodes(p4est,nodes,*vel_cf[dir],vel_n[dir]);
+        }
+
+
+      // Save data every specified amout of timesteps:
+      if (tstep % save ==0){
+          out_idx++;
+          sprintf(outdir,"/home/elyce/workspace/projects/build/advecting_a_LSF/output/advecting_a_LSF_snapshot_%d",out_idx);
+          // -----------------------------------------------
+          // Get local array to write initial LSF and velocity fields to vtk:
+          // -----------------------------------------------
+
+          double *phi_ptr;
+          ierr = VecGetArray(phi,&phi_ptr); CHKERRXX(ierr); // Gets the part of the array which is on this processor so we can write it out
+
+          // Get velocity data:
+          double *vel_p[P4EST_DIM];
+          for (int dir=0; dir< P4EST_DIM; dir++){
+            ierr = VecGetArray(vel_n[dir], &vel_p[dir]);
+            }
+
+
+          //ierr = VecView(phi,viewer);
+          // Write out the data:
+          my_p4est_vtk_write_all(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,
+                                 3,0,outdir,
+                                 VTK_POINT_DATA,"phi",phi_ptr,
+                                 VTK_POINT_DATA,"vx",vel_p[0],
+                                 VTK_POINT_DATA,"vy",vel_p[1]);
+
+
+          // Restores that part of the array once we don't need it anymore
+          ierr = VecRestoreArray(phi,&phi_ptr); CHKERRXX(ierr);
+
+          for (int dir=0; dir< P4EST_DIM; dir++){
+            ierr = VecRestoreArray(vel_n[dir], &vel_p[dir]);
+            }
+
+        }
 
 
 
