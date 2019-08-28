@@ -535,6 +535,30 @@ void my_p4est_poisson_nodes_mls_t::invert_linear_system(Vec solution, bool use_n
     ierr = KSPSetType(ksp_, KSPGMRES); CHKERRXX(ierr);
   }
 
+  // set
+  double *mask_m_ptr; ierr = VecGetArray(mask_m_, &mask_m_ptr); CHKERRXX(ierr);
+  double *mask_p_ptr; ierr = VecGetArray(mask_p_, &mask_p_ptr); CHKERRXX(ierr);
+  double *sol_ptr;    ierr = VecGetArray(solution, &sol_ptr); CHKERRXX(ierr);
+  double *rhs_ptr;    ierr = VecGetArray(rhs_, &rhs_ptr); CHKERRXX(ierr);
+
+  if (use_nonzero_guess)
+  {
+    foreach_node(n, nodes_)
+    {
+      if (mask_m_ptr[n] > 0 && mask_p_ptr[n] > 0) rhs_ptr[n] = sol_ptr[n];
+    }
+  } else {
+    foreach_node(n, nodes_)
+    {
+      if (mask_m_ptr[n] > 0 && mask_p_ptr[n] > 0) sol_ptr[n] = rhs_ptr[n];
+    }
+  }
+
+  ierr = VecRestoreArray(mask_m_, &mask_m_ptr); CHKERRXX(ierr);
+  ierr = VecRestoreArray(mask_p_, &mask_p_ptr); CHKERRXX(ierr);
+  ierr = VecRestoreArray(solution, &sol_ptr); CHKERRXX(ierr);
+  ierr = VecRestoreArray(rhs_, &rhs_ptr); CHKERRXX(ierr);
+
   ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_KSPSolve, 0, 0, 0, 0); CHKERRXX(ierr);
   ierr = KSPSolve(ksp_, rhs_, solution); CHKERRXX(ierr);
   ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_mls_KSPSolve, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -889,7 +913,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
     //-------------------------------------------------------------------------------------
     // determine which nodes will be part of discretization (needed for superconvergent schemes)
     //-------------------------------------------------------------------------------------
-    if (use_sc_scheme_ && !volumes_computed_ && (there_is_robin_ || there_is_jump_))
+    if (use_sc_scheme_ && !volumes_computed_ && (there_is_neumann_ || there_is_robin_ || there_is_jump_))
     {
       ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_compute_finite_volumes_connections, 0, 0, 0, 0); CHKERRXX(ierr);
 

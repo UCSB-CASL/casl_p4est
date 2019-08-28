@@ -110,10 +110,10 @@ DEFINE_PARAMETER(pl, int, num_shifts_x_dir, 1, "Number of grid shifts in the x-d
 DEFINE_PARAMETER(pl, int, num_shifts_y_dir, 1, "Number of grid shifts in the y-direction");
 DEFINE_PARAMETER(pl, int, num_shifts_z_dir, 1, "Number of grid shifts in the z-direction");
 #else
-DEFINE_PARAMETER(pl, int, lmin, 5, "Min level of the tree");
-DEFINE_PARAMETER(pl, int, lmax, 5, "Max level of the tree");
+DEFINE_PARAMETER(pl, int, lmin, 11, "Min level of the tree");
+DEFINE_PARAMETER(pl, int, lmax, 11, "Max level of the tree");
 
-DEFINE_PARAMETER(pl, int, num_splits,           5, "Number of recursive splits");
+DEFINE_PARAMETER(pl, int, num_splits,           1, "Number of recursive splits");
 DEFINE_PARAMETER(pl, int, num_splits_per_split, 1, "Number of additional resolutions");
 
 DEFINE_PARAMETER(pl, int, num_shifts_x_dir, 1, "Number of grid shifts in the x-direction");
@@ -225,8 +225,8 @@ DEFINE_PARAMETER(pl, int, jc_flux_03, 0, "0 - automatic, others - hardcoded");
 //-------------------------------------
 DEFINE_PARAMETER(pl, int,  jc_scheme,         0, "Discretization scheme for interface conditions (0 - FVM, 1 - FDM)");
 DEFINE_PARAMETER(pl, int,  jc_sub_scheme,     0, "Interpolation subscheme for interface conditions (0 - from slow region, 1 - from fast region, 2 - based on nodes availability)");
-DEFINE_PARAMETER(pl, int,  integration_order, 1, "Select integration order (1 - linear, 2 - quadratic)");
-DEFINE_PARAMETER(pl, bool, sc_scheme,         0, "Use super-convergent scheme");
+DEFINE_PARAMETER(pl, int,  integration_order, 2, "Select integration order (1 - linear, 2 - quadratic)");
+DEFINE_PARAMETER(pl, bool, sc_scheme,         1, "Use super-convergent scheme");
 
 // for symmetric scheme:
 DEFINE_PARAMETER(pl, bool, taylor_correction,      1, "Use Taylor correction to approximate Robin term (symmetric scheme)");
@@ -244,7 +244,7 @@ DEFINE_PARAMETER(pl, bool, sample_bc_node_by_node, 0, "");
 // level-set representation parameters
 //-------------------------------------
 DEFINE_PARAMETER(pl, bool, use_phi_cf,       0, "Use analytical level-set functions");
-DEFINE_PARAMETER(pl, bool, reinit_level_set, 0, "Reinitialize level-set function");
+DEFINE_PARAMETER(pl, bool, reinit_level_set, 1, "Reinitialize level-set function");
 
 // artificial perturbation of level-set values
 DEFINE_PARAMETER(pl, int,    dom_perturb,     0,   "Artificially pertub level-set functions (0 - no perturbation, 1 - smooth, 2 - noisy)");
@@ -258,11 +258,18 @@ DEFINE_PARAMETER(pl, double, ifc_perturb_pow, 2,   "Order of level-set perturbat
 //-------------------------------------
 // convergence study parameters
 //-------------------------------------
-DEFINE_PARAMETER(pl, int,    compute_cond_num,     0, "Estimate L1-norm condition number");
-DEFINE_PARAMETER(pl, int,    extend_solution,      1, "Extend solution after solving: 0 - no extension, 1 - extend using normal derivatives, 2 - extend using all derivatives");
-DEFINE_PARAMETER(pl, double, mask_thresh,          0, "Mask threshold for excluding points in convergence study");
-DEFINE_PARAMETER(pl, bool,   compute_grad_between, 0, "Computes gradient between points if yes");
-DEFINE_PARAMETER(pl, bool,   scale_errors,         0, "Scale errors by max solution/gradient value");
+DEFINE_PARAMETER(pl, int,    compute_cond_num,       0, "Estimate L1-norm condition number");
+DEFINE_PARAMETER(pl, int,    extend_solution,        2, "Extend solution after solving: 0 - no extension, 1 - extend using normal derivatives, 2 - extend using all derivatives");
+DEFINE_PARAMETER(pl, double, mask_thresh,            0, "Mask threshold for excluding points in convergence study");
+DEFINE_PARAMETER(pl, bool,   compute_grad_between,   0, "Computes gradient between points if yes");
+DEFINE_PARAMETER(pl, bool,   scale_errors,           0, "Scale errors by max solution/gradient value");
+DEFINE_PARAMETER(pl, bool,   use_nonzero_guess,      0, "");
+DEFINE_PARAMETER(pl, double, extension_band_extend,  6, "");
+DEFINE_PARAMETER(pl, double, extension_band_compute, 6, "");
+DEFINE_PARAMETER(pl, double, extension_band_check,   6, "");
+DEFINE_PARAMETER(pl, double, extension_tol,          -1.e-10, "");
+DEFINE_PARAMETER(pl, int,    extension_iterations,   100, "");
+
 
 //-------------------------------------
 // output
@@ -274,7 +281,7 @@ DEFINE_PARAMETER(pl, bool, save_matrix_ascii,  0, "Save the matrix in ASCII MATL
 DEFINE_PARAMETER(pl, bool, save_matrix_binary, 0, "Save the matrix in BINARY MATLAB format");
 DEFINE_PARAMETER(pl, bool, save_convergence,   0, "Save convergence results");
 
-DEFINE_PARAMETER(pl, int, n_example, 1, "Predefined example");
+DEFINE_PARAMETER(pl, int, n_example, 8, "Predefined example");
 
 void set_example(int n_example)
 {
@@ -312,7 +319,7 @@ void set_example(int n_example)
       infc_present_02 = 0;
       infc_present_03 = 0;
 
-      bdry_present_00 = 1; bdry_geom_00 = 1; bdry_opn_00 = MLS_INT; bc_coeff_00 = 0; bc_coeff_00_mag = 1; bc_type_00 = DIRICHLET;
+      bdry_present_00 = 1; bdry_geom_00 = 1; bdry_opn_00 = MLS_INT; bc_coeff_00 = 0; bc_coeff_00_mag = 1; bc_type_00 = ROBIN;
       bdry_present_01 = 0; bdry_geom_01 = 0; bdry_opn_01 = MLS_INT; bc_coeff_01 = 0; bc_coeff_01_mag = 1; bc_type_01 = ROBIN;
       bdry_present_02 = 0; bdry_geom_02 = 0; bdry_opn_02 = MLS_INT; bc_coeff_02 = 0; bc_coeff_02_mag = 1; bc_type_02 = ROBIN;
       bdry_present_03 = 0; bdry_geom_03 = 0; bdry_opn_03 = MLS_INT; bc_coeff_03 = 0; bc_coeff_03_mag = 1; bc_type_03 = ROBIN;
@@ -499,7 +506,7 @@ void set_example(int n_example)
 
     case 11: // highly star-shaped interface
 
-      n_um = 11; mag_um = 1; n_mu_m = 1; mag_mu_m = 10; n_diag_m = 0; mag_diag_m = 1;
+      n_um = 11; mag_um = 1; n_mu_m = 0; mag_mu_m = 1; n_diag_m = 0; mag_diag_m = 1;
       n_up = 12; mag_up = 1; n_mu_p = 0; mag_mu_p =  1; n_diag_p = 0; mag_diag_p = 1;
 
       infc_phi_num = 1;
@@ -1322,13 +1329,25 @@ public:
       }
       case 3: // highly star-shaped domain
       {
+//        static double r0 = 0.533, DIM( xc = 0, yc = 0, zc = 0 );
+//        static flower_shaped_domain_t circle(r0, DIM(xc, yc, zc), 0.3, -1);
+//        switch (what) {
+//          OCOMP( case VAL: return circle.phi  (DIM(x,y,z)) );
+//          XCOMP( case DDX: return circle.phi_x(DIM(x,y,z)) );
+//          YCOMP( case DDY: return circle.phi_y(DIM(x,y,z)) );
+//          ZCOMP( case DDZ: return circle.phi_z(DIM(x,y,z)) );
+//        }
         static double r0 = 0.533, DIM( xc = 0, yc = 0, zc = 0 );
-        static flower_shaped_domain_t circle(r0, DIM(xc, yc, zc), 0.3, -1);
+        static double N = 1;
+        static double n[] = { 5.0};
+        static double b[] = { .3/r0 };
+        static double t[] = { 0.0};
+        static radial_shaped_domain_t shape(r0, DIM(xc, yc, zc), -1, N, n, b, t);
         switch (what) {
-          OCOMP( case VAL: return circle.phi  (DIM(x,y,z)) );
-          XCOMP( case DDX: return circle.phi_x(DIM(x,y,z)) );
-          YCOMP( case DDY: return circle.phi_y(DIM(x,y,z)) );
-          ZCOMP( case DDZ: return circle.phi_z(DIM(x,y,z)) );
+          OCOMP( case VAL: return MIN(0.2, shape.phi  (DIM(x,y,z))) );
+          XCOMP( case DDX: return shape.phi_x(DIM(x,y,z)) );
+          YCOMP( case DDY: return shape.phi_y(DIM(x,y,z)) );
+          ZCOMP( case DDZ: return shape.phi_z(DIM(x,y,z)) );
         }
       }
       case 4: // assymetric curvy domain
@@ -1936,6 +1955,7 @@ int main (int argc, char* argv[])
               solver.set_jump_sub_scheme(jc_sub_scheme);
               solver.set_use_sc_scheme(sc_scheme);
               solver.set_integration_order(integration_order);
+              solver.set_lip(lip);
 
               //            if (use_phi_cf) solver.set_phi_cf(phi_cf);
 
@@ -2085,10 +2105,17 @@ int main (int argc, char* argv[])
                 }
               }
 
-              solver.solve(sol);
+              if (use_nonzero_guess) sample_cf_on_nodes(p4est, nodes, u_cf, sol);
+              solver.solve(sol, use_nonzero_guess);
 
               Vec bdry_phi_eff = solver.get_boundary_phi_eff();
               Vec infc_phi_eff = solver.get_interface_phi_eff();
+
+              if (reinit_level_set)
+              {
+                if (bdry_phi_eff != NULL) ls.reinitialize_1st_order_time_2nd_order_space(bdry_phi_eff, 20);
+                if (infc_phi_eff != NULL) ls.reinitialize_1st_order_time_2nd_order_space(infc_phi_eff, 20);
+              }
 
               Vec mask_m  = solver.get_mask_m();
               Vec mask_p  = solver.get_mask_p();
@@ -2538,7 +2565,7 @@ int main (int argc, char* argv[])
               //----------------------------------------------------------------------------------------------
               // calculate extrapolation error
               //----------------------------------------------------------------------------------------------
-              double band = 3.0;
+              double band = extension_band_check;
 
               // copy solution into a new Vec
               Vec sol_m_ex; double *sol_m_ex_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &sol_m_ex); CHKERRXX(ierr);
@@ -2565,17 +2592,34 @@ int main (int argc, char* argv[])
                 bc = solver.get_bc(0);
               }
 
+              ls.set_verbose_mode(0);
               switch (extend_solution)
               {
                 case 1:
-                  ls.extend_Over_Interface_TVD(phi_m, sol_m_ex, 50, 2, NULL, mask_m, bc); CHKERRXX(ierr);
-                  ls.extend_Over_Interface_TVD(phi_p, sol_p_ex, 50, 2, NULL, mask_p, bc); CHKERRXX(ierr);
+                  ls.extend_Over_Interface_TVD(phi_m, sol_m_ex, extension_iterations, 2, use_nonzero_guess, extension_band_extend*dxyz_max, extension_tol, NULL, mask_m, bc); CHKERRXX(ierr);
+                  ls.extend_Over_Interface_TVD(phi_p, sol_p_ex, extension_iterations, 2, use_nonzero_guess, extension_band_extend*dxyz_max, extension_tol, NULL, mask_p, bc); CHKERRXX(ierr);
                   break;
                 case 2:
-                  ls.extend_Over_Interface_TVD_Full(phi_m, sol_m_ex, 50, 2, NULL, mask_m, bc); CHKERRXX(ierr);
-                  ls.extend_Over_Interface_TVD_Full(phi_p, sol_p_ex, 50, 2, NULL, mask_p, bc); CHKERRXX(ierr);
+                  ls.extend_Over_Interface_TVD_Full(phi_m, sol_m_ex, extension_iterations, 2, extension_tol, -extension_band_compute*dxyz_max,  extension_band_extend*dxyz_max,  extension_band_check*dxyz_max, NULL, mask_m, bc, use_nonzero_guess); CHKERRXX(ierr);
+//                  ls.extend_Over_Interface_TVD_Full(phi_p, sol_p_ex, extension_iterations, 2, extension_band_extend*dxyz_max, extension_tol, -extension_band_compute*dxyz_max, NULL, mask_p, bc, use_nonzero_guess); CHKERRXX(ierr);
                   break;
               }
+
+              vec_and_ptr_dim_t sol_m_d(p4est, nodes);
+              vec_and_ptr_array_t sol_m_dd(3*(P4EST_DIM-1), p4est, nodes);
+
+//              ls.extend_Over_Interface_TVD_Full(phi_m, sol_m_ex, extension_iterations, 2,
+//                                                extension_band_extend*dxyz_max, extension_tol, -extension_band_compute*dxyz_max,
+//                                                NULL, mask_m, bc,
+//                                                0, sol_m_d.vec, sol_m_dd.vec.data()); CHKERRXX(ierr);
+
+//              ls.extend_Over_Interface_TVD_Full(phi_m, sol_m_ex, extension_iterations, 2,
+//                                                extension_band_extend*dxyz_max, extension_tol, -extension_band_compute*dxyz_max,
+//                                                NULL, mask_m, bc,
+//                                                1, sol_m_d.vec, sol_m_dd.vec.data()); CHKERRXX(ierr);
+
+              sol_m_d.destroy();
+              sol_m_dd.destroy();
 
               // calculate error
               ierr = VecGetArray(sol_m_ex, &sol_m_ex_ptr); CHKERRXX(ierr);

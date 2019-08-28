@@ -88,10 +88,10 @@ DEFINE_PARAMETER(pl, int, num_shifts_x_dir, 1, "Number of grid shifts in the x-d
 DEFINE_PARAMETER(pl, int, num_shifts_y_dir, 1, "Number of grid shifts in the y-direction");
 DEFINE_PARAMETER(pl, int, num_shifts_z_dir, 1, "Number of grid shifts in the z-direction");
 #else
-DEFINE_PARAMETER(pl, int, lmin, 6, "Min level of the tree");
-DEFINE_PARAMETER(pl, int, lmax, 6, "Max level of the tree");
+DEFINE_PARAMETER(pl, int, lmin, 7, "Min level of the tree");
+DEFINE_PARAMETER(pl, int, lmax, 7, "Max level of the tree");
 
-DEFINE_PARAMETER(pl, int, num_splits,           4, "Number of recursive splits");
+DEFINE_PARAMETER(pl, int, num_splits,           1, "Number of recursive splits");
 DEFINE_PARAMETER(pl, int, num_splits_per_split, 1, "Number of additional resolutions");
 
 DEFINE_PARAMETER(pl, int, num_shifts_x, 1, "Number of grid shifts in the x-direction");
@@ -104,11 +104,11 @@ DEFINE_PARAMETER(pl, double, lip, 1.5, "");
 //-------------------------------------
 // solver parameters
 //-------------------------------------
-DEFINE_PARAMETER(pl, bool, use_points_on_interface,   1, "");
+DEFINE_PARAMETER(pl, bool, use_points_on_interface,   0, "");
 DEFINE_PARAMETER(pl, int,  update_c0_robin,           0, "");
 DEFINE_PARAMETER(pl, bool, use_superconvergent_robin, 0, "");
 
-DEFINE_PARAMETER(pl, int,    pin_every_n_iterations, 1000, "");
+DEFINE_PARAMETER(pl, int,    pin_every_n_iterations, 100, "");
 DEFINE_PARAMETER(pl, int,    max_iterations,    100, "");
 DEFINE_PARAMETER(pl, double, bc_tolerance,      1.e-11, "");
 
@@ -133,13 +133,13 @@ DEFINE_PARAMETER(pl, int, n_c1, 0, "Test solution for C1");
 DEFINE_PARAMETER(pl, int, n_c2, 0, "Test solution for C2");
 DEFINE_PARAMETER(pl, int, n_c3, 0, "Test solution for C3");
 DEFINE_PARAMETER(pl, int, n_vn, 1, "Test solution for vn");
-DEFINE_PARAMETER(pl, int, n_guess, 3, "Guess for C0");
+DEFINE_PARAMETER(pl, int, n_guess, 0, "Guess for C0");
 
 DEFINE_PARAMETER(pl, BoundaryConditionType, wc_type_thermal,     DIRICHLET, "Wall conditions type for temperature");
 DEFINE_PARAMETER(pl, BoundaryConditionType, wc_type_composition, DIRICHLET, "Wall conditions type for concentrations");
 
-DEFINE_PARAMETER(pl, BoundaryConditionType, bc_type_thermal,     DIRICHLET, "Boundary conditions type for temperature");
-DEFINE_PARAMETER(pl, BoundaryConditionType, bc_type_composition, DIRICHLET, "Boundary conditions type for concentrations");
+DEFINE_PARAMETER(pl, BoundaryConditionType, bc_type_thermal,     NEUMANN, "Boundary conditions type for temperature");
+DEFINE_PARAMETER(pl, BoundaryConditionType, bc_type_composition, NEUMANN, "Boundary conditions type for concentrations");
 
 //-------------------------------------
 // alloy parameters
@@ -229,7 +229,7 @@ void set_alloy_parameters()
       thermal_cond_s  = 6.07e-1; // W.cm-1.K-1
 
       num_comps = 1;
-      solute_diff_0    = 1.e-3;
+      solute_diff_0    = 1.e-4;
       liquidus_slope_0 = -357;
       initial_conc_0   = 0.4;
       part_coeff_0     = 0.86;
@@ -1054,11 +1054,9 @@ public:
     {
       case DIRICHLET: return (*c_cf)(DIM(x,y,z));
       case NEUMANN:
-        j = closest_seed(DIM(x,y,z));
-
-        XCODE(n[0] = seed_all_phi_x[j](DIM(x,y,z)));
-        YCODE(n[1] = seed_all_phi_y[j](DIM(x,y,z)));
-        ZCODE(n[2] = seed_all_phi_z[j](DIM(x,y,z)));
+        XCODE(n[0] = contr_phi_x_cf(DIM(x,y,z)));
+        YCODE(n[1] = contr_phi_y_cf(DIM(x,y,z)));
+        ZCODE(n[2] = contr_phi_z_cf(DIM(x,y,z)));
 
         norm = sqrt(SUMD(n[0]*n[0], n[1]*n[1], n[2]*n[2]))+EPS;
 
@@ -1379,11 +1377,11 @@ int main (int argc, char* argv[])
                                                  bc_type_composition };
 
     /* set boundary conditions */
-    my_p4est_poisson_nodes_multialloy_t solver_all_in_one(&ngbd_n);
+    my_p4est_poisson_nodes_multialloy_t solver_all_in_one(&ngbd_n, num_comps);
 
     solver_all_in_one.set_front(front_phi.vec, front_phi_dd.vec, front_normal.vec, front_curvature.vec);
 
-    solver_all_in_one.set_number_of_components(num_comps);
+//    solver_all_in_one.set_number_of_components(num_comps);
     solver_all_in_one.set_composition_parameters(solute_diag_all, solute_diff_all, part_coeff_all);
     solver_all_in_one.set_thermal_parameters(latent_heat,
                                              density_l*heat_capacity_l/dt, thermal_cond_l,
@@ -1414,6 +1412,7 @@ int main (int argc, char* argv[])
 
     solver_all_in_one.set_c0_guess(c0_guess);
     solver_all_in_one.set_vn(vn_cf);
+    solver_all_in_one.set_verbose_mode(1);
 
     vec_and_ptr_t sol_tl(p4est, nodes);
     vec_and_ptr_t sol_ts(p4est, nodes);
@@ -1446,8 +1445,9 @@ int main (int argc, char* argv[])
 
 
     double bc_error_max = 0;
-    solver_all_in_one.solve(sol_tl.vec, sol_ts.vec, sol_c_all, sol_c0d.vec, bc_error.vec, bc_error_max, false, &pdes_it, &error_it);
+    solver_all_in_one.solve(sol_tl.vec, sol_ts.vec, sol_c_all, sol_c0d.vec, bc_error.vec, bc_error_max, true, &pdes_it, &error_it);
 
+    std::cout << "here\n";
 
     /* check the error */
 

@@ -97,11 +97,13 @@ class my_p4est_level_set_t {
   bool use_neumann_for_contact_angle;
   int contact_angle_extension;
 
+  bool verbose;
+
 public:
   my_p4est_level_set_t(my_p4est_node_neighbors_t *ngbd_ )
     : myb(ngbd_->myb), p4est(ngbd_->p4est), nodes(ngbd_->nodes), ghost(ngbd_->ghost), ngbd(ngbd_),
       interpolation_on_interface(quadratic_non_oscillatory),
-      use_one_sided_derivatives(false), use_neumann_for_contact_angle(true), contact_angle_extension(0)
+      use_one_sided_derivatives(false), use_neumann_for_contact_angle(true), contact_angle_extension(0), verbose(false)
   {}
 
   inline void update(my_p4est_node_neighbors_t *ngbd_) {
@@ -176,10 +178,16 @@ public:
   void extend_from_interface_to_whole_domain( Vec phi_petsc, Vec q_petsc, Vec q_extended_petsc, int band_to_extend=INT_MAX) const;
 
   /* extend a quantity over the interface with the TVD algorithm */
-  void extend_Over_Interface_TVD(Vec phi, Vec q, int iterations=20, int order=2, Vec normal[P4EST_DIM] = NULL, Vec mask = NULL, boundary_conditions_t *bc = NULL) const;
+  void extend_Over_Interface_TVD(Vec phi, Vec q, int iterations=20, int order=2,
+                                 double tol=0.0, double band_use=-DBL_MAX, double band_extend=DBL_MAX, double band_check=DBL_MAX,
+                                 Vec normal[P4EST_DIM]=NULL, Vec mask=NULL, boundary_conditions_t *bc=NULL,
+                                 bool use_nonzero_guess=false, Vec q_n=NULL, Vec q_nn=NULL) const;
 
   /* extend a quantity over the interface with the TVD algorithm (all derivatives are extended, not just q_n and q_nn) */
-  void extend_Over_Interface_TVD_Full(Vec phi, Vec q, int iterations = 20, int order = 2, Vec normal[P4EST_DIM] = NULL, Vec mask = NULL, boundary_conditions_t *bc = NULL) const;
+  void extend_Over_Interface_TVD_Full(Vec phi, Vec q, int iterations=20, int order=2,
+                                      double tol=0.0, double band_use=-DBL_MAX, double band_extend=DBL_MAX, double band_check=DBL_MAX,
+                                      Vec normal[P4EST_DIM]=NULL, Vec mask=NULL, boundary_conditions_t *bc=NULL,
+                                      bool use_nonzero_guess=false, Vec *q_d=NULL, Vec *q_dd=NULL) const;
 
   void extend_Over_Interface_TVD_not_parallel(Vec phi, Vec q, int iterations=20, int order=2) const;
 
@@ -231,6 +239,8 @@ public:
     ierr = VecDestroy(q); CHKERRXX(ierr);
     q = tmp;
   }
+
+  inline void set_verbose_mode(bool value) { verbose = value; }
 };
 
 #endif // MY_P4EST_LEVELSET_H

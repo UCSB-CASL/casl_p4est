@@ -90,6 +90,16 @@ private:
   vector<vec_and_ptr_t>     front_velo_norm_;
 
   //--------------------------------------------------
+  // Lagrangian Multipliers (for speeding up)
+  //--------------------------------------------------
+  /* temperature */
+  vec_and_ptr_t psi_tl_;
+  vec_and_ptr_t psi_ts_;
+
+  /* concentrations */
+  vec_and_ptr_array_t psi_cl_;
+
+  //--------------------------------------------------
   // Geometry on the auxiliary grid
   //--------------------------------------------------
   vec_and_ptr_t       history_front_phi_;

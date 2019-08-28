@@ -208,6 +208,25 @@ public:
     }
   }
 
+  inline const quad_neighbor_nodes_of_node_t* get_neighbors_pointer(p4est_locidx_t n) const {
+    return &neighbors[n];
+    if (is_initialized) {
+#ifdef CASL_THROWS
+      if (is_qnnn_valid[n])
+        return &neighbors[n];
+      else {
+        std::ostringstream oss;
+        oss << "[ERROR]: The neighborhood information for the node with idx " << n << " on processor " << p4est->mpirank << " is invalid.";
+        throw std::invalid_argument(oss.str().c_str());
+      }
+#else
+      return &neighbors[n];
+#endif
+    } else {
+      throw std::invalid_argument("Neighborhoods are not initialized");
+    }
+  }
+
   inline void get_neighbors(p4est_locidx_t n, quad_neighbor_nodes_of_node_t& qnnn) const {
     if (is_initialized) {
 #ifdef CASL_THROWS

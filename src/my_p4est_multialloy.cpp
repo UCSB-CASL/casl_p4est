@@ -43,6 +43,8 @@ my_p4est_multialloy_t::my_p4est_multialloy_t(int num_comps, int num_time_layers)
   tl_.resize(num_time_layers_);
   cl_.resize(num_time_layers_, vec_and_ptr_array_t(num_comps_));
 
+  psi_cl_.resize(num_comps_);
+
   front_velo_.resize(num_time_layers_);
   front_velo_norm_.resize(num_time_layers_);
 
@@ -147,6 +149,10 @@ my_p4est_multialloy_t::~my_p4est_multialloy_t()
   }
 
   cl0_grad_.destroy();
+
+  psi_tl_.destroy();
+  psi_ts_.destroy();
+  psi_cl_.destroy();
 
   //--------------------------------------------------
   // Geometry on the auxiliary grid
@@ -299,6 +305,17 @@ void my_p4est_multialloy_t::initialize(MPI_Comm mpi_comm, double xyz_min[], doub
   dendrite_number_.create(front_phi_.vec);
   dendrite_tip_.create(front_phi_.vec);
   bc_error_.create(front_phi_.vec);
+
+  psi_tl_.create(front_phi_.vec);
+  psi_ts_.create(front_phi_.vec);
+  psi_cl_.create(front_phi_.vec);
+
+  VecSetGhost(psi_tl_.vec, 0.);
+  VecSetGhost(psi_ts_.vec, 0.);
+  for (i = 0; i < num_comps_; ++i)
+  {
+    VecSetGhost(psi_cl_.vec[i], 0.);
+  }
 
   //--------------------------------------------------
   // Geometry on the auxiliary grid
@@ -541,7 +558,7 @@ void my_p4est_multialloy_t::update_grid()
   sl.set_phi_interpolation(quadratic_non_oscillatory_continuous_v2);
   sl.set_velo_interpolation(quadratic_non_oscillatory_continuous_v2);
 
-  if (num_time_layers_ == 2) sl.update_p4est(front_velo_[0].vec, dt_[0], front_phi_.vec);
+  if (num_time_layers_ == 2) sl.update_p4est(front_velo_[0].vec, dt_[0], front_phi_.vec, NULL, contr_phi_.vec);
   else   sl.update_p4est(front_velo_[1].vec, front_velo_[0].vec, dt_[1], dt_[0], front_phi_.vec);
 
 
@@ -603,10 +620,16 @@ void my_p4est_multialloy_t::update_grid()
 
   tl_[0].destroy();
   tl_[0].create(front_phi_.vec);
+  VecCopyGhost(tl_[1].vec, tl_[0].vec);
   ts_[0].destroy();
   ts_[0].create(front_phi_.vec);
+  VecCopyGhost(ts_[1].vec, ts_[0].vec);
   cl_[0].destroy();
   cl_[0].create(front_phi_.vec);
+  for (i = 0; i < num_comps_; ++i)
+  {
+    VecCopyGhost(cl_[1].vec[i], cl_[0].vec[i]);
+  }
   front_velo_[0].destroy();
   front_velo_[0].create(front_phi_dd_.vec);
   front_velo_norm_[0].destroy();
@@ -642,6 +665,27 @@ void my_p4est_multialloy_t::update_grid()
     seed_map_.destroy();
     seed_map_.set(tmp.vec);
   }
+
+  vec_and_ptr_t psi_tl_tmp(front_phi_.vec);
+  interp.set_input(psi_tl_.vec, linear);
+  interp.interpolate(psi_tl_tmp.vec);
+  psi_tl_.destroy();
+  psi_tl_.set(psi_tl_tmp.vec);
+
+  vec_and_ptr_t psi_ts_tmp(front_phi_.vec);
+  interp.set_input(psi_ts_.vec, linear);
+  interp.interpolate(psi_ts_tmp.vec);
+  psi_ts_.destroy();
+  psi_ts_.set(psi_ts_tmp.vec);
+
+  vec_and_ptr_array_t psi_cl_tmp(num_comps_, front_phi_.vec);
+  for (i = 0; i < num_comps_; ++i)
+  {
+    interp.set_input(psi_cl_.vec[i], linear);
+    interp.interpolate(psi_cl_tmp.vec[i]);
+  }
+  psi_cl_.destroy();
+  psi_cl_.set(psi_cl_tmp.vec.data());
 
   p4est_destroy      (p4est_); p4est_ = p4est_np1;
   p4est_ghost_destroy(ghost_); ghost_ = ghost_np1;
@@ -874,11 +918,11 @@ int my_p4est_multialloy_t::one_step()
   vector<double> conc_diag(num_comps_, time_coeffs[0]/dt_[0]);
 
   // solve coupled system of equations
-  my_p4est_poisson_nodes_multialloy_t solver_all_in_one(ngbd_);
+  my_p4est_poisson_nodes_multialloy_t solver_all_in_one(ngbd_, num_comps_);
 
   solver_all_in_one.set_front(front_phi_.vec, front_phi_dd_.vec, front_normal_.vec, front_curvature_.vec);
 
-  solver_all_in_one.set_number_of_components(num_comps_);
+//  solver_all_in_one.set_number_of_components(num_comps_);
   solver_all_in_one.set_composition_parameters(conc_diag.data(), solute_diff_.data(), part_coeff_.data());
   solver_all_in_one.set_thermal_parameters(latent_heat_,
                                            density_l_*heat_capacity_l_*time_coeffs[0]/dt_[0], thermal_cond_l_,
@@ -921,7 +965,10 @@ int my_p4est_multialloy_t::one_step()
 
   double bc_error_max = 0;
 
-  int one_step_iterations = solver_all_in_one.solve(tl_[0].vec, ts_[0].vec, cl_[0].vec.data(), cl0_grad_.vec, bc_error_.vec, bc_error_max, 0);
+//  solver_all_in_one.set_verbose_mode(1);
+
+  int one_step_iterations = solver_all_in_one.solve(tl_[0].vec, ts_[0].vec, cl_[0].vec.data(), cl0_grad_.vec, bc_error_.vec, bc_error_max, 1,
+      NULL, NULL, psi_tl_.vec, psi_ts_.vec, psi_cl_.vec.data());
 
   // compute velocity
   compute_velocity();

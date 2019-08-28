@@ -34,7 +34,7 @@ class my_p4est_poisson_nodes_multialloy_t
   my_p4est_poisson_nodes_multialloy_t& operator=(const my_p4est_poisson_nodes_t& other);
 
 public:
-  my_p4est_poisson_nodes_multialloy_t(my_p4est_node_neighbors_t *node_neighbors);
+  my_p4est_poisson_nodes_multialloy_t(my_p4est_node_neighbors_t *node_neighbors, int num_comps);
   ~my_p4est_poisson_nodes_multialloy_t();
 private:
 
@@ -56,10 +56,14 @@ private:
   vec_and_ptr_t contr_phi_;
   vec_and_ptr_t front_phi_;
   vec_and_ptr_t front_curvature_;
+  vec_and_ptr_t solid_phi_;
+  vec_and_ptr_t liquid_phi_;
 
   vec_and_ptr_dim_t contr_phi_dd_;
   vec_and_ptr_dim_t front_phi_dd_;
   vec_and_ptr_dim_t front_normal_;
+  vec_and_ptr_dim_t solid_normal_;
+  vec_and_ptr_dim_t liquid_normal_;
 
   bool contr_phi_dd_owned_;
   bool front_phi_dd_owned_, front_normal_owned_, front_curvature_owned_;
@@ -125,26 +129,9 @@ private:
   vector<CF_DIM *>  wall_bc_value_conc_;
 
 public:
-  inline void set_number_of_components(int num)
-  {
-    num_comps_ = num;
-
-    rhs_c_      .resize(num_comps_);
-    c_          .resize(num_comps_);
-    c_dd_       .resize(num_comps_);
-    psi_c_      .resize(num_comps_);
-    psi_c_dd_   .resize(num_comps_);
-    solver_conc_.resize(num_comps_, NULL);
-
-    conc_diag_          .resize(num_comps_, 1);
-    conc_diff_          .resize(num_comps_, 1);
-    part_coeff_         .resize(num_comps_, .5);
-    front_conc_flux_    .resize(num_comps_, NULL);
-    wall_bc_type_conc_  .resize(num_comps_, NULL);
-    wall_bc_value_conc_ .resize(num_comps_, NULL);
-    contr_bc_type_conc_ .resize(num_comps_, NEUMANN);
-    contr_bc_value_conc_.resize(num_comps_, NULL);
-  }
+//  inline void set_number_of_components(int num)
+//  {
+//  }
 
   inline void set_composition_parameters(double conc_diag[], double conc_diff[], double part_coeff[])
   {
@@ -256,23 +243,28 @@ private:
   vector<my_p4est_poisson_nodes_mls_t *> solver_conc_;
 
   // solution
-  vector<vec_and_ptr_t>     c_;
-  vector<vec_and_ptr_dim_t> c_dd_;
+  vector<vec_and_ptr_t>       c_;
+  vector<vec_and_ptr_dim_t>   c_d_;
+  vector<vec_and_ptr_array_t> c_dd_;
 
   vec_and_ptr_t tl_;
   vec_and_ptr_t ts_;
-  vec_and_ptr_dim_t tl_dd_;
-  vec_and_ptr_dim_t ts_dd_;
+  vec_and_ptr_dim_t tl_d_;
+  vec_and_ptr_dim_t ts_d_;
+  vec_and_ptr_array_t tl_dd_;
+  vec_and_ptr_array_t ts_dd_;
 
   vec_and_ptr_t c0_gamma_;
   vec_and_ptr_t c0n_gamma_;
 
   // lagrangian multipliers
   vector<vec_and_ptr_t>     psi_c_;
-  vector<vec_and_ptr_dim_t> psi_c_dd_;
+  vector<vec_and_ptr_dim_t> psi_c_d_;
 
-  vec_and_ptr_t     psi_t_;
-  vec_and_ptr_dim_t psi_t_dd_;
+  vec_and_ptr_t     psi_tl_;
+  vec_and_ptr_t     psi_ts_;
+  vec_and_ptr_dim_t psi_tl_d_;
+  vec_and_ptr_dim_t psi_ts_d_;
 
   // velocity related quatities
   vec_and_ptr_t c0n_;
@@ -310,7 +302,9 @@ private:
 
 public:
   my_p4est_poisson_nodes_mls_t* get_solver_temp() { return solver_temp_; }
-  int solve(Vec tl, Vec ts, Vec c[], Vec c0d[], Vec bc_error, double &bc_error_max, bool use_non_zero_guess = false, std::vector<double> *num_pdes = NULL, std::vector<double> *error = NULL);
+  int solve(Vec tl, Vec ts, Vec c[], Vec c0d[], Vec bc_error, double &bc_error_max, bool use_non_zero_guess = false,
+            std::vector<double> *num_pdes = NULL, std::vector<double> *error = NULL,
+            Vec psi_tl=NULL, Vec psi_ts=NULL, Vec psi_c[]=NULL);
 
 //#ifdef P4_TO_P8
 //  CF_3* get_vn() { return &vn_from_c0_; }
@@ -354,16 +348,23 @@ private:
   bool   use_superconvergent_jump_; // not used atm
   bool   use_points_on_interface_;
   bool   zero_negative_velocity_;
-  bool   use_non_zero_guess_;
+  bool   poisson_use_nonzero_guess_;
   bool   flatten_front_values_;
   bool   always_use_centroid_;
+  bool   extension_use_nonzero_guess_;
+  bool   verbose_;
 
   double err_eps_;
   double min_volume_;
   double volume_thresh_;
+  double extension_band_use_;
+  double extension_band_check_;
+  double extension_band_extend_;
+  double extension_tol_;
 
   int    num_extend_iterations_;
   int    cube_refinement_;
+  int    integration_order_;
 
   enum var_scheme_t
   {
@@ -379,6 +380,7 @@ private:
 public:
   inline void set_pin_every_n_iterations    (int          value) { pin_every_n_iterations_    = value; }
   inline void set_cube_refinement           (int          value) { cube_refinement_           = value; }
+  inline void set_integration_order         (int          value) { integration_order_         = value; }
   inline void set_update_c0_robin           (int          value) { update_c0_robin_           = value; }
   inline void set_use_superconvergent_robin (bool         value) { use_superconvergent_robin_ = value; }
   inline void set_use_superconvergent_jump  (bool         value) { use_superconvergent_jump_  = value; }
@@ -386,6 +388,7 @@ public:
   inline void set_zero_negative_velocity    (bool         value) { zero_negative_velocity_    = value; }
   inline void set_flatten_front_values      (bool         value) { flatten_front_values_      = value; }
   inline void set_scheme                    (var_scheme_t value) { var_scheme_                = value; }
+  inline void set_verbose_mode              (bool         value) { verbose_                   = value; }
 
   inline void set_tolerance(double bc_tolerance, int max_iterations = 10)
   {
