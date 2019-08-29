@@ -237,7 +237,13 @@ struct quad_neighbor_nodes_of_node_t {
 #endif
   }
 
-  p4est_locidx_t neighbor_m00() const;
+  inline p4est_locidx_t neighbor_m00() const
+  {
+    if(d_m00_p0==0) return node_m00_pm;
+    if(d_m00_m0==0) return node_m00_mm;
+    else return -1;
+  //  else            throw std::invalid_argument("No neighbor in m00 direction \n");
+  }
   p4est_locidx_t neighbor_p00() const;
   p4est_locidx_t neighbor_0m0() const;
   p4est_locidx_t neighbor_0p0() const;
@@ -343,6 +349,49 @@ struct quad_neighbor_nodes_of_node_t {
     return f_ptr[node_000]*(1-dist/h) + f_ptr[node_nei]*dist/h + 0.5*dist*(dist-h)*MINMOD(f_dd_ptr[dim][node_000], f_dd_ptr[dim][node_nei]);
   }
 
+  // inlined duplicates
+
+  inline double inl_f_m00_linear( const double *f ) const
+  {
+//    PetscErrorCode ierr = PetscLogFlops(2.5); CHKERRXX(ierr); // 50% propability
+//    int i = 0;
+    if(d_m00_p0==0) return f[node_m00_pm];
+    if(d_m00_m0==0) return f[node_m00_mm];
+    else          return(f[node_m00_mm]*d_m00_p0 + f[node_m00_pm]*d_m00_m0)/ (d_m00_m0+d_m00_p0);
+  }
+  inline double inl_f_p00_linear( const double *f ) const
+  {
+//    PetscErrorCode ierr = PetscLogFlops(2.5); CHKERRXX(ierr); // 50% propability
+    if(d_p00_p0==0) return f[node_p00_pm];
+    if(d_p00_m0==0) return f[node_p00_mm];
+    else          return(f[node_p00_mm]*d_p00_p0 + f[node_p00_pm]*d_p00_m0)/ (d_p00_m0+d_p00_p0);
+  }
+  inline double inl_f_0m0_linear( const double *f ) const
+  {
+//    PetscErrorCode ierr = PetscLogFlops(2.5); CHKERRXX(ierr); // 50% propability
+    if(d_0m0_m0==0) return f[node_0m0_mm];
+    if(d_0m0_p0==0) return f[node_0m0_pm];
+    else          return(f[node_0m0_pm]*d_0m0_m0 + f[node_0m0_mm]*d_0m0_p0)/ (d_0m0_m0+d_0m0_p0);
+  }
+  inline double inl_f_0p0_linear( const double *f ) const
+  {
+//    PetscErrorCode ierr = PetscLogFlops(2.5); CHKERRXX(ierr); // 50% propability
+    if(d_0p0_m0==0) return f[node_0p0_mm];
+    if(d_0p0_p0==0) return f[node_0p0_pm];
+    else          return(f[node_0p0_pm]*d_0p0_m0 + f[node_0p0_mm]*d_0p0_p0)/ (d_0p0_m0+d_0p0_p0);
+  }
+#ifdef P4_TO_P8
+  double f_00m_linear( const double *f ) const;
+  double f_00p_linear( const double *f ) const;
+#endif
 };
+
+inline double f_m00_linear(const quad_neighbor_nodes_of_node_t* qnnn, const double *f )
+{
+  //      PetscErrorCode ierr = PetscLogFlops(2.5); CHKERRXX(ierr); // 50% propability
+  if(qnnn->d_m00_p0==0) return f[qnnn->node_m00_pm];
+  if(qnnn->d_m00_m0==0) return f[qnnn->node_m00_mm];
+  else          return(f[qnnn->node_m00_mm]*qnnn->d_m00_p0 + f[qnnn->node_m00_pm]*qnnn->d_m00_m0)/ (qnnn->d_m00_m0+qnnn->d_m00_p0);
+}
 
 #endif /* !MY_P4EST_QUAD_NEIGHBOR_NODES_OF_NODE_H */

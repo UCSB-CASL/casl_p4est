@@ -80,8 +80,8 @@ DEFINE_PARAMETER(pl, double, zmax, 1, "Box zmax");
 DEFINE_PARAMETER(pl, int, lmin, 5, "Min level of the tree");
 DEFINE_PARAMETER(pl, int, lmax, 5, "Max level of the tree");
 #else
-DEFINE_PARAMETER(pl, int, lmin, 6, "Min level of the tree");
-DEFINE_PARAMETER(pl, int, lmax, 9, "Max level of the tree");
+DEFINE_PARAMETER(pl, int, lmin, 5, "Min level of the tree");
+DEFINE_PARAMETER(pl, int, lmax, 11, "Max level of the tree");
 #endif
 
 DEFINE_PARAMETER(pl, double, lip, 1.75, "");
@@ -89,22 +89,22 @@ DEFINE_PARAMETER(pl, double, lip, 1.75, "");
 //-------------------------------------
 // solver parameters
 //-------------------------------------
-DEFINE_PARAMETER(pl, bool, use_points_on_interface,   false, "");
-DEFINE_PARAMETER(pl, bool, use_superconvergent_robin, false, "");
+DEFINE_PARAMETER(pl, bool, use_points_on_interface,   1, "");
+DEFINE_PARAMETER(pl, bool, use_superconvergent_robin, 1, "");
 
-DEFINE_PARAMETER(pl, int,    update_c0_robin, 0, "Solve for c0 using Robin BC: 0 - never, 1 - once, 2 - always");
+DEFINE_PARAMETER(pl, int,    update_c0_robin, 1, "Solve for c0 using Robin BC: 0 - never, 1 - once, 2 - always");
 DEFINE_PARAMETER(pl, int,    num_time_layers, 2, "");
 DEFINE_PARAMETER(pl, int,    pin_every_n_iterations, 20, "");
 DEFINE_PARAMETER(pl, int,    max_iterations,   10, "");
-DEFINE_PARAMETER(pl, int,    front_smoothing,   3, "");
-DEFINE_PARAMETER(pl, double, bc_tolerance,      1.e-12, "");
+DEFINE_PARAMETER(pl, int,    front_smoothing,   0, "");
+DEFINE_PARAMETER(pl, double, bc_tolerance,      1.e-5, "");
 DEFINE_PARAMETER(pl, double, cfl_number, 0.3, "");
 DEFINE_PARAMETER(pl, double, phi_thresh, 0.1, "");
 
 //-------------------------------------
 // output parameters
 //-------------------------------------
-DEFINE_PARAMETER(pl, int,  save_every_n_iteration,  1, "");
+DEFINE_PARAMETER(pl, int,  save_every_n_iteration,  100, "");
 DEFINE_PARAMETER(pl, bool, save_characteristics,    1, "");
 DEFINE_PARAMETER(pl, bool, save_dendrites,          0, "");
 DEFINE_PARAMETER(pl, bool, save_history,            1, "");
@@ -123,8 +123,8 @@ DEFINE_PARAMETER(pl, double, dendrite_min_length,       0.05, "");
 DEFINE_PARAMETER(pl, bool,   concentration_neumann, 1, "");
 DEFINE_PARAMETER(pl, int,    max_total_iterations,  INT_MAX, "");
 DEFINE_PARAMETER(pl, double, time_limit,            DBL_MAX, "");
-DEFINE_PARAMETER(pl, double, termination_length,    1.8, "");
-DEFINE_PARAMETER(pl, double, init_perturb,          0.000, "");
+DEFINE_PARAMETER(pl, double, termination_length,    0.5, "");
+DEFINE_PARAMETER(pl, double, init_perturb,          1.e-5, "");
 DEFINE_PARAMETER(pl, bool,   enforce_planar_front,  0,"");
 
 DEFINE_PARAMETER(pl, double, box_size, 5.e-2, "equivalent width (in x) of the box in cm");
@@ -145,9 +145,9 @@ int num_comps = 1; // Number of components used
 
 DEFINE_PARAMETER(pl, double, volumetric_heat,  0, "Volumetric heat generation, J/cm^3");
 DEFINE_PARAMETER(pl, double, cooling_velocity, 0.01, "Cooling velocity, cm/s");
-DEFINE_PARAMETER(pl, double, temp_gradient,    600, "Temperature gradient, K/cm");
+DEFINE_PARAMETER(pl, double, temp_gradient,    1600, "Temperature gradient, K/cm");
 
-DEFINE_PARAMETER(pl, int, smoothstep_order, 5, "Time for volumetric heat to fully switch on, s");
+DEFINE_PARAMETER(pl, int,    smoothstep_order, 5, "Time for volumetric heat to fully switch on, s");
 DEFINE_PARAMETER(pl, double, volumetric_heat_tau, 0, "Time for volumetric heat to fully switch on, s");
 DEFINE_PARAMETER(pl, double, cooling_velocity_tau, 5.e-2, "Time for cooling velocity to fully switch on, s");
 
@@ -163,7 +163,7 @@ DEFINE_PARAMETER(pl, double, thermal_cond_s, 6.07e-1, "Thermal conductivity of s
 DEFINE_PARAMETER(pl, double, latent_heat, 2350, "Latent heat of fusion, J.cm-3");
 DEFINE_PARAMETER(pl, double, melting_temp, 1728, "Pure-substance melting point for linearized slope, K");
 
-DEFINE_PARAMETER(pl, bool, linearized_liquidus, 1, "Use linearized liquidus surface or true one");
+DEFINE_PARAMETER(pl, bool,   linearized_liquidus, 1, "Use linearized liquidus surface or true one");
 
 DEFINE_PARAMETER(pl, double, liquidus_slope_0, -357, "Slope of linearized liqiudus w.r.t component no. 0, K^-1");
 DEFINE_PARAMETER(pl, double, liquidus_slope_1, -357, "Slope of linearized liqiudus w.r.t component no. 1, K^-1");
@@ -248,7 +248,7 @@ void set_alloy_parameters()
       part_coeff_0     = 0.86;
       part_coeff_1     = 0.86;
 
-      eps_c = 1.e-3/melting_temp;
+      eps_c = 5.e-7/melting_temp;
       eps_v = 0;
       eps_a = 0.0;
       break;
@@ -280,7 +280,7 @@ void set_alloy_parameters()
       part_coeff_2     = 0.86;
       part_coeff_3     = 0.86;
 
-      eps_c = 0.1;
+      eps_c = 5.e-6/melting_temp;
       eps_v = 0;
       eps_a = 0.0;
       break;
@@ -463,6 +463,7 @@ public:
     switch (geometry)
     {
       case 0: return -1;
+//      case 0: return 0.025 - sqrt(SQR(x-0.25) + SQR(y-0.5));
       default: throw;
     }
   }
@@ -495,7 +496,7 @@ public:
     {
       case 0:
         if (ABS(y-ymax)<EPS) return +(temp_gradient);
-        if (ABS(y-ymin)<EPS) return -(temp_gradient + 0*cooling_velocity*latent_heat/thermal_cond_s * smoothstep(smoothstep_order, (t+EPS)/(cooling_velocity_tau+EPS)));
+        if (ABS(y-ymin)<EPS) return -(temp_gradient + cooling_velocity*latent_heat/thermal_cond_s * smoothstep(smoothstep_order, (t+EPS)/(cooling_velocity_tau+EPS)));
         return 0;
       default: throw;
     }
@@ -849,7 +850,7 @@ int main (int argc, char* argv[])
 
   // set boundary conditions
   std::vector<BoundaryConditionType> bc_conc_type(num_comps, concentration_neumann ? NEUMANN : DIRICHLET);
-  mas.set_container_conditions_thermal(NEUMANN, wall_bc_value_temp);
+  mas.set_container_conditions_thermal(NEUMANN, zero_cf);
   mas.set_container_conditions_composition(bc_conc_type.data(), wall_bc_value_conc_all);
 
   mas.set_wall_conditions_thermal(wall_bc_type_temp, wall_bc_value_temp);
@@ -858,11 +859,11 @@ int main (int argc, char* argv[])
   // set time steps
   double dt = cfl_number*MIN(DIM(dx,dy,dz))/cooling_velocity;
 
-  dt = 1.0e-3;
+//  dt = 1.0e-3;
 
   mas.set_dt(dt);
   mas.set_dt_limits(0.0*dt, 10.*dt);
-  mas.set_dt_limits(dt, dt);
+  mas.set_dt_limits(0.*dt, dt);
 
   // set initial conditions
   mas.set_temperature(tl.vec, ts.vec);
@@ -884,6 +885,8 @@ int main (int argc, char* argv[])
 
   mas.set_dendrite_cut_off_fraction(dendrite_cut_off_fraction);
   mas.set_dendrite_min_length      (dendrite_min_length);
+
+  mas.save_VTK(0);
 
   vec_and_ptr_t ones(front_phi.vec);
   VecSetGhost(ones.vec, 1.);

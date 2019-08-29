@@ -97,11 +97,13 @@ class my_p4est_level_set_t {
   bool use_neumann_for_contact_angle;
   int contact_angle_extension;
 
+  bool verbose;
+
 public:
   my_p4est_level_set_t(my_p4est_node_neighbors_t *ngbd_ )
     : myb(ngbd_->myb), p4est(ngbd_->p4est), nodes(ngbd_->nodes), ghost(ngbd_->ghost), ngbd(ngbd_),
       interpolation_on_interface(quadratic_non_oscillatory),
-      use_one_sided_derivatives(false), use_neumann_for_contact_angle(true), contact_angle_extension(0)
+      use_one_sided_derivatives(false), use_neumann_for_contact_angle(true), contact_angle_extension(0), verbose(false)
   {}
 
   inline void update(my_p4est_node_neighbors_t *ngbd_) {
@@ -176,12 +178,16 @@ public:
   void extend_from_interface_to_whole_domain( Vec phi_petsc, Vec q_petsc, Vec q_extended_petsc, int band_to_extend=INT_MAX) const;
 
   /* extend a quantity over the interface with the TVD algorithm */
-  void extend_Over_Interface_TVD(Vec phi, Vec q, int iterations=20, int order=2, Vec normal[P4EST_DIM] = NULL) const;
+  void extend_Over_Interface_TVD(Vec phi, Vec q, int iterations=20, int order=2,
+                                 double tol=0.0, double band_use=-DBL_MAX, double band_extend=DBL_MAX, double band_check=DBL_MAX,
+                                 Vec normal[P4EST_DIM]=NULL, Vec mask=NULL, boundary_conditions_t *bc=NULL,
+                                 bool use_nonzero_guess=false, Vec q_n=NULL, Vec q_nn=NULL) const;
 
-  /* extend a quantity over the interface with the TVD algorithm using mask */
-  void extend_Over_Interface_TVD(Vec phi, Vec mask, Vec q, int iterations=20, int order=2) const;
-
-//  void extend_Over_Interface_TVD(Vec phi, Vec q, my_p4est_poisson_nodes_t *solver, int iterations=20, int order=2, Vec normal[P4EST_DIM] = NULL) const;
+  /* extend a quantity over the interface with the TVD algorithm (all derivatives are extended, not just q_n and q_nn) */
+  void extend_Over_Interface_TVD_Full(Vec phi, Vec q, int iterations=20, int order=2,
+                                      double tol=0.0, double band_use=-DBL_MAX, double band_extend=DBL_MAX, double band_check=DBL_MAX,
+                                      Vec normal[P4EST_DIM]=NULL, Vec mask=NULL, boundary_conditions_t *bc=NULL,
+                                      bool use_nonzero_guess=false, Vec *q_d=NULL, Vec *q_dd=NULL) const;
 
   void extend_Over_Interface_TVD_not_parallel(Vec phi, Vec q, int iterations=20, int order=2) const;
 
@@ -207,10 +213,6 @@ public:
                                                               #endif
                                                                 ) const;
   void extend_from_interface_to_whole_domain_TVD( Vec phi, Vec q_interface, Vec q, int iterations=20) const;
-
-  void extend_Over_Interface_Iterative(Vec phi_petsc, Vec phi_smooth_petsc, Vec mask_petsc, Vec q_petsc, int iterations = 20, int order = 2, int band_to_extend = INT_MAX) const;
-
-  void extend_Over_Interface_TVD_full(Vec phi, Vec mask, Vec q, int iterations = 20, int order = 2, my_p4est_poisson_nodes_t *solver = NULL) const;
 
   void enforce_contact_angle(Vec phi_wall, Vec phi_intf, Vec cos_angle, int iterations=20, Vec normal[] = NULL) const;
   void enforce_contact_angle2(Vec phi, Vec q, Vec cos_angle, int iterations=20, int order=2, Vec normal[] = NULL) const;
@@ -238,25 +240,7 @@ public:
     q = tmp;
   }
 
-  void extend_from_interface_to_whole_domain_TVD( Vec phi, Vec mask, Vec qi, Vec q, int iterations ) const;
-
-  inline void extend_from_interface_to_whole_domain_TVD_in_place_mask(Vec phi, Vec mask, Vec &q, Vec parent=NULL, int iterations=20) const
-  {
-    PetscErrorCode ierr;
-    Vec tmp;
-
-    if (parent == NULL) {
-      ierr = VecCreateGhostNodes(p4est, nodes, &tmp); CHKERRXX(ierr);
-    } else {
-      ierr = VecDuplicate(parent, &tmp); CHKERRXX(ierr);
-    }
-
-    extend_from_interface_to_whole_domain_TVD(phi, mask, q, tmp, iterations);
-
-    ierr = VecDestroy(q); CHKERRXX(ierr);
-    q = tmp;
-  }
-
+  inline void set_verbose_mode(bool value) { verbose = value; }
 };
 
 #endif // MY_P4EST_LEVELSET_H
