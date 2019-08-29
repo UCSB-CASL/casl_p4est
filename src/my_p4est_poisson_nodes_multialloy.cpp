@@ -447,6 +447,7 @@ int my_p4est_poisson_nodes_multialloy_t::solve(Vec tl, Vec ts, Vec c[], Vec c0d[
   if (psi_tl == NULL) psi_tl_.destroy();
   if (psi_ts == NULL) psi_ts_.destroy();
   psi_tl_d_.destroy();
+  psi_ts_d_.destroy();
 
   for (int i = 0; i < num_comps_; ++i)
   {

@@ -3107,6 +3107,21 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
 
   ierr = VecDestroy(tmp); CHKERRXX(ierr);
 
+  if (normal != NULL)
+  {
+    ierr = VecRestoreArray(normal[0], &nx); CHKERRXX(ierr);
+    ierr = VecRestoreArray(normal[1], &ny); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    ierr = VecRestoreArray(normal[2], &nz); CHKERRXX(ierr);
+#endif
+  } else {
+    delete[] nx;
+    delete[] ny;
+#ifdef P4_TO_P8
+    delete[] nz;
+#endif
+  }
+
   ierr = PetscLogEventEnd(log_my_p4est_level_set_extend_over_interface_TVD, phi, q, 0, 0); CHKERRXX(ierr);
 }
 
@@ -3134,7 +3149,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
 
   if (band_use > 0) band_use = -band_use;
 
-  int num_iters_min = 6;
+  int num_iters_min = 10;
 
   Vec b_qn_well_defined;  double *b_qn_well_defined_p;
   Vec b_qnn_well_defined; double *b_qnn_well_defined_p;
@@ -4093,17 +4108,17 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
   if (order == 2) { ierr = VecDestroy(b_qnn_well_defined); CHKERRXX(ierr); }
 
   /* extrapolate q */
-  Vec Qxx; double *Qxx_p; ierr = VecCreateGhostNodes(p4est, nodes, &Qxx); CHKERRXX(ierr);
-  Vec Qyy; double *Qyy_p; ierr = VecCreateGhostNodes(p4est, nodes, &Qyy); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  Vec Qzz; double *Qzz_p; ierr = VecCreateGhostNodes(p4est, nodes, &Qzz); CHKERRXX(ierr);
-#endif
+//  Vec Qxx; double *Qxx_p; ierr = VecCreateGhostNodes(p4est, nodes, &Qxx); CHKERRXX(ierr);
+//  Vec Qyy; double *Qyy_p; ierr = VecCreateGhostNodes(p4est, nodes, &Qyy); CHKERRXX(ierr);
+//#ifdef P4_TO_P8
+//  Vec Qzz; double *Qzz_p; ierr = VecCreateGhostNodes(p4est, nodes, &Qzz); CHKERRXX(ierr);
+//#endif
 
-  VecSetGhost(Qxx, 0.);
-  VecSetGhost(Qyy, 0.);
-#ifdef P4_TO_P8
-  VecSetGhost(Qzz, 0.);
-#endif
+//  VecSetGhost(Qxx, 0.);
+//  VecSetGhost(Qyy, 0.);
+//#ifdef P4_TO_P8
+//  VecSetGhost(Qzz, 0.);
+//#endif
 
   if (order >= 1)
   {
@@ -4130,11 +4145,11 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
 //#else
 //      ngbd->second_derivatives_central(q, Qxx, Qyy);
 //#endif
-      ierr = VecGetArray(Qxx, &qxx_p); CHKERRXX(ierr);
-      ierr = VecGetArray(Qyy, &qyy_p); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-      ierr = VecGetArray(Qzz, &qzz_p); CHKERRXX(ierr);
-#endif
+//      ierr = VecGetArray(Qxx, &qxx_p); CHKERRXX(ierr);
+//      ierr = VecGetArray(Qyy, &qyy_p); CHKERRXX(ierr);
+//#ifdef P4_TO_P8
+//      ierr = VecGetArray(Qzz, &qzz_p); CHKERRXX(ierr);
+//#endif
     } else {
       ierr = VecGetArray(qxx, &qxx_p); CHKERRXX(ierr);
       ierr = VecGetArray(qyy, &qyy_p); CHKERRXX(ierr);
@@ -4175,33 +4190,36 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
 #endif
 
           /* second order derivatives */
-          double qxx_m00 = qnnn.inl_f_m00_linear(qxx_p);
-          double qxx_p00 = qnnn.inl_f_p00_linear(qxx_p);
-          double qyy_0m0 = qnnn.inl_f_0m0_linear(qyy_p);
-          double qyy_0p0 = qnnn.inl_f_0p0_linear(qyy_p);
+          if (order == 2)
+          {
+            double qxx_m00 = qnnn.inl_f_m00_linear(qxx_p);
+            double qxx_p00 = qnnn.inl_f_p00_linear(qxx_p);
+            double qyy_0m0 = qnnn.inl_f_0m0_linear(qyy_p);
+            double qyy_0p0 = qnnn.inl_f_0p0_linear(qyy_p);
 #ifdef P4_TO_P8
-          double qzz_00m = qnnn.inl_f_00m_linear(qzz_p);
-          double qzz_00p = qnnn.inl_f_00p_linear(qzz_p);
+            double qzz_00m = qnnn.inl_f_00m_linear(qzz_p);
+            double qzz_00p = qnnn.inl_f_00p_linear(qzz_p);
 #endif
 
-          /* minmod operation */
-          qxx_m00 = qxx_p[n]*qxx_m00<0 ? 0 : (fabs(qxx_p[n])<fabs(qxx_m00) ? qxx_p[n] : qxx_m00);
-          qxx_p00 = qxx_p[n]*qxx_p00<0 ? 0 : (fabs(qxx_p[n])<fabs(qxx_p00) ? qxx_p[n] : qxx_p00);
-          qyy_0m0 = qyy_p[n]*qyy_0m0<0 ? 0 : (fabs(qyy_p[n])<fabs(qyy_0m0) ? qyy_p[n] : qyy_0m0);
-          qyy_0p0 = qyy_p[n]*qyy_0p0<0 ? 0 : (fabs(qyy_p[n])<fabs(qyy_0p0) ? qyy_p[n] : qyy_0p0);
+            /* minmod operation */
+            qxx_m00 = qxx_p[n]*qxx_m00<0 ? 0 : (fabs(qxx_p[n])<fabs(qxx_m00) ? qxx_p[n] : qxx_m00);
+            qxx_p00 = qxx_p[n]*qxx_p00<0 ? 0 : (fabs(qxx_p[n])<fabs(qxx_p00) ? qxx_p[n] : qxx_p00);
+            qyy_0m0 = qyy_p[n]*qyy_0m0<0 ? 0 : (fabs(qyy_p[n])<fabs(qyy_0m0) ? qyy_p[n] : qyy_0m0);
+            qyy_0p0 = qyy_p[n]*qyy_0p0<0 ? 0 : (fabs(qyy_p[n])<fabs(qyy_0p0) ? qyy_p[n] : qyy_0p0);
 #ifdef P4_TO_P8
-          qzz_00m = qzz_p[n]*qzz_00m<0 ? 0 : (fabs(qzz_p[n])<fabs(qzz_00m) ? qzz_p[n] : qzz_00m);
-          qzz_00p = qzz_p[n]*qzz_00p<0 ? 0 : (fabs(qzz_p[n])<fabs(qzz_00p) ? qzz_p[n] : qzz_00p);
+            qzz_00m = qzz_p[n]*qzz_00m<0 ? 0 : (fabs(qzz_p[n])<fabs(qzz_00m) ? qzz_p[n] : qzz_00m);
+            qzz_00p = qzz_p[n]*qzz_00p<0 ? 0 : (fabs(qzz_p[n])<fabs(qzz_00p) ? qzz_p[n] : qzz_00p);
 #endif
 
-          if(nx[n]<0) Qx -= .5*qnnn.d_p00*qxx_p00;
-          else        Qx += .5*qnnn.d_m00*qxx_m00;
-          if(ny[n]<0) Qy -= .5*qnnn.d_0p0*qyy_0p0;
-          else        Qy += .5*qnnn.d_0m0*qyy_0m0;
+            if(nx[n]<0) Qx -= .5*qnnn.d_p00*qxx_p00;
+            else        Qx += .5*qnnn.d_m00*qxx_m00;
+            if(ny[n]<0) Qy -= .5*qnnn.d_0p0*qyy_0p0;
+            else        Qy += .5*qnnn.d_0m0*qyy_0m0;
 #ifdef P4_TO_P8
-          if(nz[n]<0) Qz -= .5*qnnn.d_00p*qzz_00p;
-          else        Qz += .5*qnnn.d_00m*qzz_00m;
+            if(nz[n]<0) Qz -= .5*qnnn.d_00p*qzz_00p;
+            else        Qz += .5*qnnn.d_00m*qzz_00m;
 #endif
+          }
           double change_loc = dt* SUMD( nx[n]*Qx, ny[n]*Qy,nz[n]*Qz )
                               - (order >= 1 ? dt* SUMD(nx[n]*qx_p[n], ny[n]*qy_p[n], nz[n]*qz_p[n]) : 0);
           if (phi_p[n] < band_check)
@@ -4226,11 +4244,11 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
 
     if (order != 2)
     {
-      ierr = VecRestoreArray(Qxx, &qxx_p); CHKERRXX(ierr);
-      ierr = VecRestoreArray(Qyy, &qyy_p); CHKERRXX(ierr);
-  #ifdef P4_TO_P8
-      ierr = VecRestoreArray(Qzz, &qzz_p); CHKERRXX(ierr);
-  #endif
+//      ierr = VecRestoreArray(Qxx, &qxx_p); CHKERRXX(ierr);
+//      ierr = VecRestoreArray(Qyy, &qyy_p); CHKERRXX(ierr);
+//  #ifdef P4_TO_P8
+//      ierr = VecRestoreArray(Qzz, &qzz_p); CHKERRXX(ierr);
+//  #endif
     } else {
       ierr = VecRestoreArray(qxx, &qxx_p); CHKERRXX(ierr);
       ierr = VecRestoreArray(qyy, &qyy_p); CHKERRXX(ierr);
@@ -4293,11 +4311,11 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
     ierr = VecRestoreArray(mask, &mask_p); CHKERRXX(ierr);
   }
 
-  ierr = VecDestroy(Qxx); CHKERRXX(ierr);
-  ierr = VecDestroy(Qyy); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  ierr = VecDestroy(Qzz); CHKERRXX(ierr);
-#endif
+//  ierr = VecDestroy(Qxx); CHKERRXX(ierr);
+//  ierr = VecDestroy(Qyy); CHKERRXX(ierr);
+//#ifdef P4_TO_P8
+//  ierr = VecDestroy(Qzz); CHKERRXX(ierr);
+//#endif
 
   if (normal != NULL)
   {

@@ -145,9 +145,9 @@ int num_comps = 1; // Number of components used
 
 DEFINE_PARAMETER(pl, double, volumetric_heat,  0, "Volumetric heat generation, J/cm^3");
 DEFINE_PARAMETER(pl, double, cooling_velocity, 0.01, "Cooling velocity, cm/s");
-DEFINE_PARAMETER(pl, double, temp_gradient,    1200, "Temperature gradient, K/cm");
+DEFINE_PARAMETER(pl, double, temp_gradient,    1600, "Temperature gradient, K/cm");
 
-DEFINE_PARAMETER(pl, int, smoothstep_order, 5, "Time for volumetric heat to fully switch on, s");
+DEFINE_PARAMETER(pl, int,    smoothstep_order, 5, "Time for volumetric heat to fully switch on, s");
 DEFINE_PARAMETER(pl, double, volumetric_heat_tau, 0, "Time for volumetric heat to fully switch on, s");
 DEFINE_PARAMETER(pl, double, cooling_velocity_tau, 5.e-2, "Time for cooling velocity to fully switch on, s");
 
@@ -163,7 +163,7 @@ DEFINE_PARAMETER(pl, double, thermal_cond_s, 6.07e-1, "Thermal conductivity of s
 DEFINE_PARAMETER(pl, double, latent_heat, 2350, "Latent heat of fusion, J.cm-3");
 DEFINE_PARAMETER(pl, double, melting_temp, 1728, "Pure-substance melting point for linearized slope, K");
 
-DEFINE_PARAMETER(pl, bool, linearized_liquidus, 1, "Use linearized liquidus surface or true one");
+DEFINE_PARAMETER(pl, bool,   linearized_liquidus, 1, "Use linearized liquidus surface or true one");
 
 DEFINE_PARAMETER(pl, double, liquidus_slope_0, -357, "Slope of linearized liqiudus w.r.t component no. 0, K^-1");
 DEFINE_PARAMETER(pl, double, liquidus_slope_1, -357, "Slope of linearized liqiudus w.r.t component no. 1, K^-1");
@@ -248,7 +248,7 @@ void set_alloy_parameters()
       part_coeff_0     = 0.86;
       part_coeff_1     = 0.86;
 
-      eps_c = 2.e-7/melting_temp;
+      eps_c = 5.e-7/melting_temp;
       eps_v = 0;
       eps_a = 0.0;
       break;
