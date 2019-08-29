@@ -298,19 +298,25 @@ public:
 
   {
       // Generates a "fake dendrite" via superposition of ellipses
-      double LS = 0.0;
+      double LSFs[19];
+      double LS;
 
       // Initialize variables
-      double rx = 1.0, yc = 0.0, xc_0 = 1.65, xc_inc = 1.65, xc;
-      double ry[19] = {4.0 , 2.0 , 5.0 , 1.0 , 2.0 , 3.0 , 4.0 , 4.0 , 2.0 , 5.0 , 1.0 , 2.0 , 3.0 , 2.0 , 4.0 , 2.0 , 5.0 , 1.0 , 2.0 };
+      double rx = 1.0, yc = 0.0, xc_0 = 0.0, xc_inc = 1.65, xc;
+      double ry[19] ={4.0 , 2.0 , 5.0 , 1.0 , 2.0 , 3.0 , 4.0 , 4.5 , 2.0 , 5.0 , 1.0 , 2.5 , 2.5 , 2.0 , 4.0 , 2.0 , 5.0 , 2.5 , 2.0};
 
       int no_ellipses = 19;
 
       // Get the intersection points of the ellipses (computed in MATLAB)
       double xint_upper[19];
-      double xint_lower[19] ={xmin , 2.5866 , 3.9925 , 5.9387 , 7.3134 , 9.0018 , 10.6713 , 12.3750 , 14.1366 , 15.5425 , 17.4887 , 18.8634 , 20.5518 , 22.3482 , 23.8134 , 25.6866 , 27.0925 , 29.0387 , 30.4134};
+      double xint_lower[19] ={0.0 , 0.9366 , 2.3425 , 4.2887 , 5.6634 , 7.3518 , 9.0213 , 10.7023 , 12.4985 , 13.8925 , 15.8387 , 17.1925 , 18.9750 , 20.6673 , 22.1634 , 24.0366 , 25.4425 , 27.3366 , 28.9173};
+
+
+
 
       for (int i = 0; i<no_ellipses;i++){
+          xc = xc_0 + i*xc_inc;
+
           // Get the upper bounds:
           if(i == no_ellipses-1){
               xint_upper[i] = xmax;
@@ -318,26 +324,30 @@ public:
           else{
               xint_upper[i] = xint_lower[i+1];
           }
-          xc = xc_0 + i*xc_inc;
-          // Now, evaluate the LSF within the appropriate bounds:
+
+          // Now, evaluate the LSF for each "dendrite"
           double perturb;
           double rx_p;
           double ry_p;
-          if (i == 0) xint_lower[i] = xc_0 - rx;
+          perturb = 1.0 ;//- 0.025*fabs(sin(10.0*PI*(x - xc)*(y - yc)));
+          rx_p = perturb*rx;
+          ry_p = perturb*ry[i];
 
-          if ((xint_lower[i] - EPS<= x) && (x< xint_upper[i] + EPS)){
-              perturb = 1.0; //- 0.025*fabs(sin(2.0*PI*(x - xc)*(y - yc)));
-              rx_p = perturb*rx;
-              ry_p = perturb*ry[i];
-              LS = 1 - sqrt(SQR((x - xc)/rx_p) + SQR((y - yc)/ry_p));
-          }
+          LSFs[i] = 1 - sqrt(SQR((x - xc)/rx_p) + SQR((y - yc)/ry_p));
 
-          // Account for gap before first "dendrite"
-          if (x <= xc_0 - rx - EPS){
-              LS = 1 - sqrt(SQR((x - xc)/rx) + SQR((y - yc)/ry[1]));
-          }
       }
 
+      double LS_min = 2000.00;
+      bool point_set = 0;
+      for (int i = 0; i<no_ellipses; i++){
+          if ((fabs(LSFs[i]) <= fabs(LS_min))) LS_min = LSFs[i];
+
+          if ((x>= xint_lower[i] -EPS) && (x<= xint_upper[i]+EPS) && (y<= yc + ry[i])){
+              LS = LSFs[i];
+              point_set = 1;
+            }
+        }
+      if(point_set ==0){LS = LS_min;}
       return LS;
 
       /*// Generates flower shaped domain:
@@ -378,7 +388,7 @@ public:
      return LS; // <-- corresponds to a superposition of two ellipses
     */
 
-    //return 1.0 - sqrt(SQR(x - 12.0)/16.0 + SQR(y)/SQR(0.25)); // <-- corresponds to a thin ellipse
+    //return 1.0 - sqrt(SQR(x - 12.0)/SQR(8.0) + SQR(y - 8.0)/SQR(0.25)); // <-- corresponds to a thin ellipse
     //return r0 - sqrt(SQR(x-(xmax+xmin)/4) + SQR(y-(ymax+ymin)/2));// <-- corresponds to a sphere
   }
 } level_set;
@@ -513,7 +523,7 @@ struct external_force_v_t : CF_2
 {
   double operator()(double, double) const
   {
-    return 0;
+    return 0.0;
   }
 };
 
@@ -1004,7 +1014,7 @@ int main (int argc, char* argv[])
   }
   else
   {
-    lmin                    = cmd.get<int>("lmin", 6);
+    lmin                    = cmd.get<int>("lmin", 3);
     lmax                    = cmd.get<int>("lmax", 7);
     threshold_split_cell    = cmd.get<double>("thresh", 0.1);
     ntree_x                 = cmd.get<int>("nx", 8);
@@ -1023,6 +1033,7 @@ int main (int argc, char* argv[])
     const double dxmin      = MAX((xmax-xmin)/(double)ntree_x, (ymax-ymin)/(double)ntree_y) / (1<<lmax);
 #endif
     uniform_band           /= dxmin;
+    //uniform_band = 64.0;
     uniform_band            = cmd.get<double>("uniform_band", uniform_band);
     sl_order                = cmd.get<int>("sl_order", 2);
     cfl                     = cmd.get<double>("cfl", 1.0);
@@ -1096,8 +1107,11 @@ int main (int argc, char* argv[])
     ierr = VecCreateGhostNodes(p4est_n, nodes_n, &phi); CHKERRXX(ierr);
     sample_cf_on_nodes(p4est_n, nodes_n, level_set, phi);
     my_p4est_level_set_t lsn(ngbd_n);
-    lsn.reinitialize_1st_order_time_2nd_order_space(phi);
+    lsn.reinitialize_1st_order_time_2nd_order_space(phi,100);
     lsn.perturb_level_set_function(phi, EPS);
+
+
+
 
 #ifdef P4_TO_P8
     CF_3 *vnm1[P4EST_DIM] = { &initial_velocity_unm1, &initial_velocity_vnm1, &initial_velocity_wnm1 };
@@ -1107,8 +1121,78 @@ int main (int argc, char* argv[])
     CF_2 *vn  [P4EST_DIM] = { &initial_velocity_un  , &initial_velocity_vn   };
 #endif
 
+
+
+    // [ELYCE DEBUGGING:] Print out the initial grid and LSF:---------------------------
+    char grid_out_dir[PATH_MAX];
+    sprintf(grid_out_dir, "%s/grid_info/grid", export_dir.c_str(), P4EST_DIM, Re, lmin, lmax);
+
+    double *phi_ptr;
+    ierr = VecGetArray(phi,&phi_ptr); CHKERRXX(ierr); // Gets the part of the array which is on this processor so we can write it out
+
+    my_p4est_vtk_write_all(p4est_n,nodes_n,ghost_n,P4EST_TRUE,P4EST_TRUE,
+                           1,0,grid_out_dir,
+                           VTK_POINT_DATA,"phi",phi_ptr);
+    ierr = VecRestoreArray(phi,&phi_ptr); CHKERRXX(ierr); // Restore the local phi array
+
+
+    // array is restored in next block of code
+    // ----------------------------------------------------------------------------------
+    // [Elyce:] Now refine the grid again based on the reinitialized phi:-----------------------------------
+    //ref = new my_p4est_navier_stokes_t::
+/*
+    ierr = PetscPrintf(mpi.comm(),"\n (1) Creating the new splitting criteria tag... \n");
+    splitting_criteria_tag_t reinit_refine(lmin,lmax,1.5);
+    bool is_grid_changed;
+    ierr = PetscPrintf(mpi.comm(),"\n (2) Now beginning the refinement ... \n");
+    is_grid_changed = reinit_refine.refine_and_coarsen(p4est_n, nodes_n, phi_ptr);
+    ierr = PetscPrintf(mpi.comm(),"Grid changed = %d",is_grid_changed);
+
+    ierr = PetscPrintf(mpi.comm(),"\n (3) Gets past the general refinement process in main \n");
+
+    ierr = VecRestoreArray(phi,&phi_ptr); CHKERRXX(ierr); // Restore the local phi array
+
+
+    if (is_grid_changed){
+
+        p4est_nodes_destroy(nodes_n);
+        p4est_ghost_destroy(ghost_n);
+
+        ghost_n = my_p4est_ghost_new(p4est_n, P4EST_CONNECT_FULL);
+        my_p4est_ghost_expand(p4est_n, ghost_n);
+
+        nodes_n = my_p4est_nodes_new(p4est_n, ghost_n);
+        hierarchy_n = new my_p4est_hierarchy_t(p4est_n, ghost_n, brick);
+        ngbd_n = new my_p4est_node_neighbors_t(hierarchy_n, nodes_n);
+        ngbd_c = new my_p4est_cell_neighbors_t(hierarchy_n);
+        faces_n = new my_p4est_faces_t(p4est_n, ghost_n, brick, ngbd_c);
+        ierr = PetscPrintf(mpi.comm(),"\n new ghosts, nodes, neighbors,faces now created from the changed grid \n");
+
+        // Now, we need to sample phi on the grid again:
+        ierr = VecCreateGhostNodes(p4est_n, nodes_n, &phi); CHKERRXX(ierr);
+        sample_cf_on_nodes(p4est_n, nodes_n, level_set, phi);
+
+
+        // [ELYCE DEBUGGING:] Print out the initial grid and LSF:---------------------------
+        char grid_out_dir1[PATH_MAX];
+        sprintf(grid_out_dir1, "%s/grid_info/grid_new", export_dir.c_str(), P4EST_DIM, Re, lmin, lmax);
+
+        double *phi_ptr;
+        ierr = VecGetArray(phi,&phi_ptr); CHKERRXX(ierr); // Gets the part of the array which is on this processor so we can write it out
+
+        my_p4est_vtk_write_all(p4est_n,nodes_n,ghost_n,P4EST_TRUE,P4EST_TRUE,
+                               1,0,grid_out_dir1,
+                               VTK_POINT_DATA,"phi",phi_ptr);
+        ierr = VecRestoreArray(phi,&phi_ptr); CHKERRXX(ierr); // Restore the local phi array
+    }
+*/
+
+    //-----------------------------------------------------------------------------------------------------
+    //ierr = PetscPrintf(mpi.comm(),"\n Beginning the creation of the navier stokes object ... \n");
     ns = new my_p4est_navier_stokes_t(ngbd_nm1, ngbd_n, faces_n);
+    //ierr = PetscPrintf(mpi.comm(), "\n (4) Gets past creating the new navier stokes object");
     ns->set_phi(phi);
+    //ierr = PetscPrintf(mpi.comm(),"\n (5) Gets past setting phi on the navier stokes object \n");   // next guess is that navier stokes expects nm1 and n grid to be the same (?) need to reinit both?
     if(is_smoke)
     {
       Vec smoke;
@@ -1193,6 +1277,7 @@ int main (int argc, char* argv[])
   my_p4est_poisson_cells_t* cell_solver = NULL;
   my_p4est_poisson_faces_t* face_solver = NULL;
 
+  //ierr = PetscPrintf(mpi.comm(),"Gets to just before the main time loop \n");
   while(tn+0.01*dt<tstart+duration)
   {
     if(get_timing)

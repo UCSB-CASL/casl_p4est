@@ -1475,6 +1475,11 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
             {
               if(!is_matrix_ready[dir])
               {
+                  if (faces->q2f(qp_idx, dir_p) == NO_VELOCITY){
+                     std::cout<< "(x, y) = ("<<xyz[0] << ", "<< xyz[1]<<") \n"<<std::endl;
+
+                    };
+
                 P4EST_ASSERT(faces->q2f(qp_idx, dir_p)!=NO_VELOCITY);
                 p4est_gloidx_t f_tmp_g = f%2==0 ? face_global_number(faces->q2f(qm_idx, dir_m), dir)
                                                 : face_global_number(faces->q2f(qp_idx, dir_p), dir);
@@ -2366,6 +2371,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
 #endif
           break;
         default:
+          std::cout<<"\n Interface BC Type is: "<< bc[dir].interfaceType(xyz)<< " at ( "<< xyz[0]<< ", "<<xyz[1]<< ")"<<std::endl;
           throw std::invalid_argument("[CASL_ERROR]: my_p4est_poisson_faces_t: unknown boundary condition type. Issue on interface");
         }
         break;
