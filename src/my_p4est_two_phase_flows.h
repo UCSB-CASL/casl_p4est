@@ -36,6 +36,11 @@ typedef std::map<p4est_locidx_t, p4est_locidx_t> computational_to_fine_node_t;
 using std::set;
 
 typedef enum {
+  PSEUDO_TIME = 426624,
+  EXPLICIT_ITERATIVE
+} extrapolation_technique;
+
+typedef enum {
   OMEGA_MINUS = 2789,
   OMEGA_PLUS
 } domain_side;
@@ -147,7 +152,7 @@ private:
   // scalar fields
   Vec fine_phi, fine_curvature, jump_hodge, jump_normal_flux_hodge, mass_flux, nonconstant_surface_tension;
   // vector fields
-  Vec normal[P4EST_DIM], fine_phi_xxyyzz[P4EST_DIM], grad_surface_tension[P4EST_DIM];
+  Vec fine_normal[P4EST_DIM], fine_phi_xxyyzz[P4EST_DIM], grad_surface_tension[P4EST_DIM];
   // tensor/matrix fields
   Vec jump_mu_grad_v[P4EST_DIM][P4EST_DIM];
   // -----------------------------------------------------------------------
@@ -557,11 +562,7 @@ private:
   void compute_curvature();
   void normalize_normals();
 
-#ifdef P4_TO_P8
   PetscErrorCode inline delete_and_nullify_fine_node_vector_if_needed(Vec& vv)
-#else
-  PetscErrorCode inline delete_and_nullify_fine_node_vector_if_needed(Vec& vv)
-#endif
   {
     PetscErrorCode ierr = 0;
     if(vv != NULL && !vectorIsWellSetForNodes(vv, fine_nodes_n, fine_p4est_n->mpicomm))
@@ -572,11 +573,7 @@ private:
     return ierr;
   }
 
-#ifdef P4_TO_P8
   PetscErrorCode inline delete_and_nullify_p4est_n_node_vector_if_needed(Vec& vv)
-#else
-  PetscErrorCode inline delete_and_nullify_p4est_n_node_vector_if_needed(Vec& vv)
-#endif
   {
     PetscErrorCode ierr = 0;
     if(vv != NULL && !vectorIsWellSetForNodes(vv, nodes_n, p4est_n->mpicomm))
@@ -587,11 +584,7 @@ private:
     return ierr;
   }
 
-#ifdef P4_TO_P8
   PetscErrorCode inline delete_and_nullify_p4est_nm1_node_vector_if_needed(Vec& vv)
-#else
-  PetscErrorCode inline delete_and_nullify_p4est_nm1_node_vector_if_needed(Vec& vv)
-#endif
   {
     PetscErrorCode ierr = 0;
     if(vv != NULL && !vectorIsWellSetForNodes(vv, nodes_nm1, p4est_nm1->mpicomm))
@@ -602,11 +595,7 @@ private:
     return ierr;
   }
 
-#ifdef P4_TO_P8
   PetscErrorCode inline delete_and_nullify_vector_if_needed(Vec& vv)
-#else
-  PetscErrorCode inline delete_and_nullify_vector_if_needed(Vec& vv)
-#endif
   {
     PetscErrorCode ierr = 0;
     if(vv != NULL){
@@ -614,12 +603,7 @@ private:
     return ierr;
   }
 
-
-#ifdef P4_TO_P8
   PetscErrorCode inline create_fine_node_vector_if_needed(Vec& vv)
-#else
-  PetscErrorCode inline create_fine_node_vector_if_needed(Vec& vv)
-#endif
   {
     PetscErrorCode ierr = delete_and_nullify_fine_node_vector_if_needed(vv); CHKERRXX(ierr);
     if(vv == NULL)
@@ -629,11 +613,7 @@ private:
     return ierr;
   }
 
-#ifdef P4_TO_P8
   PetscErrorCode inline create_p4est_n_node_vector_if_needed(Vec& vv)
-#else
-  PetscErrorCode inline create_p4est_n_node_vector_if_needed(Vec& vv)
-#endif
   {
     PetscErrorCode ierr = delete_and_nullify_p4est_n_node_vector_if_needed(vv); CHKERRXX(ierr);
     if(vv == NULL)
@@ -643,11 +623,7 @@ private:
     return ierr;
   }
 
-#ifdef P4_TO_P8
   PetscErrorCode inline create_p4est_nm1_node_vector_if_needed(Vec& vv)
-#else
-  PetscErrorCode inline create_p4est_nm1_node_vector_if_needed(Vec& vv)
-#endif
   {
     PetscErrorCode ierr = delete_and_nullify_p4est_nm1_node_vector_if_needed(vv); CHKERRXX(ierr);
     if(vv == NULL)
@@ -822,10 +798,17 @@ private:
                                                                double* vnp1_minus_p[P4EST_DIM], double* vnp1_plus_p[P4EST_DIM],
                                                                double* normal_derivative_of_vnp1_minus_p[P4EST_DIM], double* normal_derivative_of_vnp1_plus_p[P4EST_DIM]);
 
-  void solve_velocity_extrapolation_local(const p4est_locidx_t& local_face_idx, const unsigned char& dir, const my_p4est_interpolation_nodes_t& interp_normal,
-                                          const double* jump_mu_grad_vdir_p[P4EST_DIM], const double* fine_phi_p, const double *fine_phi_xxyyzz_p[P4EST_DIM],
-                                          double* vnp1_minus_p[P4EST_DIM], double* vnp1_plus_p[P4EST_DIM],
-                                          double* normal_derivative_of_vnp1_minus_p[P4EST_DIM], double* normal_derivative_of_vnp1_plus_p[P4EST_DIM]);
+  void solve_velocity_extrapolation_local_explicit_iterative(const p4est_locidx_t& local_face_idx, const unsigned char& dir, const my_p4est_interpolation_nodes_t& interp_normal,
+                                                             const double* jump_mu_grad_vdir_p[P4EST_DIM], const double* fine_phi_p, const double *fine_phi_xxyyzz_p[P4EST_DIM],
+                                                             double* vnp1_minus_p[P4EST_DIM], double* vnp1_plus_p[P4EST_DIM],
+                                                             double* normal_derivative_of_vnp1_minus_p[P4EST_DIM], double* normal_derivative_of_vnp1_plus_p[P4EST_DIM]);
+
+  void solve_velocity_extrapolation_local_pseudo_time(const p4est_locidx_t& local_face_idx, const unsigned char& dir, const my_p4est_interpolation_nodes_t& interp_normal,
+                                                      const double* jump_mu_grad_vdir_p[P4EST_DIM], const double* fine_phi_p, const double *fine_phi_xxyyzz_p[P4EST_DIM],
+                                                      double* vnp1_minus_p[P4EST_DIM], double* vnp1_plus_p[P4EST_DIM],
+                                                      double* normal_derivative_of_vnp1_minus_p[P4EST_DIM], double* normal_derivative_of_vnp1_plus_p[P4EST_DIM]);
+
+  void interpolate_linearly_from_fine_nodes_to_coarse_nodes(const Vec& vv_fine, Vec& vv_coarse);
 
 public:
   my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t *ngbd_nm1, my_p4est_node_neighbors_t *ngbd_n, my_p4est_faces_t *faces, my_p4est_node_neighbors_t *fine_ngbd_n);
@@ -859,15 +842,15 @@ public:
 
   inline double get_dt() { return dt_n; }
   inline p4est_t* get_p4est() { return p4est_n; }
-  inline p4est_nodes_t* get_nodes() { return nodes_n; }
-  inline p4est_nodes_t* get_fine_nodes() { return fine_nodes_n; }
-  inline p4est_ghost_t* get_ghost() { return ghost_n; }
+//  inline p4est_nodes_t* get_nodes() { return nodes_n; }
+//  inline p4est_nodes_t* get_fine_nodes() { return fine_nodes_n; }
+//  inline p4est_ghost_t* get_ghost() { return ghost_n; }
   inline Vec get_hodge() { return hodge; }
-  inline Vec* get_normals() { return normal; }
-  inline Vec* get_vnp1_nodes_omega_minus() { return vnp1_nodes_omega_minus; }
-  inline Vec* get_vnp1_nodes_omega_plus() { return vnp1_nodes_omega_plus; }
-  inline Vec get_curvature() { return fine_curvature; }
-  inline my_p4est_interpolation_nodes_t* get_interp_phi() { return interp_phi; }
+//  inline Vec* get_normals() { return fine_normal; }
+//  inline Vec* get_vnp1_nodes_omega_minus() { return vnp1_nodes_omega_minus; }
+//  inline Vec* get_vnp1_nodes_omega_plus() { return vnp1_nodes_omega_plus; }
+//  inline Vec get_curvature() { return fine_curvature; }
+//  inline my_p4est_interpolation_nodes_t* get_interp_phi() { return interp_phi; }
 
   void compute_jump_mu_grad_v();
   void compute_jumps_hodge();
@@ -881,9 +864,9 @@ public:
   }
   void solve_projection(my_p4est_xgfm_cells_t* &cell_poisson_jump_solver, const bool activate_xgfm, const KSPType ksp = KSPCG, const PCType pc = PCHYPRE);
 
-//  void set_sign_of_phi_faces();
-  void extrapolate_velocities_across_interface_in_finest_computational_cells_Aslam_PDE(const unsigned int& n_iteration = 5);
+  void extrapolate_velocities_across_interface_in_finest_computational_cells_Aslam_PDE(const extrapolation_technique& extrapolation_method = EXPLICIT_ITERATIVE, const unsigned int& n_iteration = 10);
   void compute_velocity_at_nodes();
+  void save_vtk(const char* name, const bool& export_fine_grid = false);
 
 
 };

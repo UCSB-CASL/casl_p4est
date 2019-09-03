@@ -659,8 +659,8 @@ int main (int argc, char* argv[])
 //      iter_hodge++;
 //    }
 //    ierr = VecDestroy(hodge_old); CHKERRXX(ierr);
-      two_phase_flow_solver->extrapolate_velocities_across_interface_in_finest_computational_cells_Aslam_PDE(10);
-//      two_phase_flow_solver->set_sign_of_phi_faces();
+      two_phase_flow_solver->extrapolate_velocities_across_interface_in_finest_computational_cells_Aslam_PDE(PSEUDO_TIME, 10);
+//      two_phase_flow_solver->extrapolate_velocities_across_interface_in_finest_computational_cells_Aslam_PDE(EXPLICIT_ITERATIVE, 10);
     two_phase_flow_solver->compute_velocity_at_nodes();
 //    ns->compute_pressure();
 
@@ -691,50 +691,7 @@ int main (int argc, char* argv[])
 
 
 
-
-  const double *hodge_p;
-  const double *v_nodes_omega_plus_p[P4EST_DIM], *v_nodes_omega_minus_p[P4EST_DIM];
-  ierr = VecGetArrayRead(two_phase_flow_solver->get_hodge(), &hodge_p); CHKERRXX(ierr);
-  for (unsigned short dir = 0; dir < P4EST_DIM; ++dir) {
-    ierr = VecGetArrayRead(two_phase_flow_solver->get_vnp1_nodes_omega_minus()[dir], &v_nodes_omega_minus_p[dir]); CHKERRXX(ierr);
-    ierr = VecGetArrayRead(two_phase_flow_solver->get_vnp1_nodes_omega_plus()[dir], &v_nodes_omega_plus_p[dir]); CHKERRXX(ierr);
-  }
-  my_p4est_vtk_write_all(p4est_n, nodes_n, ghost_n,
-                         P4EST_TRUE, P4EST_TRUE,
-                         4, /* number of VTK_POINT_DATA */
-                         1, /* number of VTK_CELL_DATA  */
-                         (export_dir+"/coarse").c_str(),
-                         VTK_POINT_DATA, "vn_x_plus", v_nodes_omega_plus_p[0],
-                         VTK_POINT_DATA, "vn_y_plus", v_nodes_omega_plus_p[1],
-                         VTK_POINT_DATA, "vn_x_minus", v_nodes_omega_minus_p[0],
-                         VTK_POINT_DATA, "vn_y_minus", v_nodes_omega_minus_p[1],
-      VTK_CELL_DATA, "hodge", hodge_p);
-  ierr = VecRestoreArrayRead(two_phase_flow_solver->get_hodge(), &hodge_p); CHKERRXX(ierr);
-  for (unsigned short dir = 0; dir < P4EST_DIM; ++dir) {
-    ierr = VecRestoreArrayRead(two_phase_flow_solver->get_vnp1_nodes_omega_minus()[dir], &v_nodes_omega_minus_p[dir]); CHKERRXX(ierr);
-    ierr = VecRestoreArrayRead(two_phase_flow_solver->get_vnp1_nodes_omega_plus()[dir], &v_nodes_omega_plus_p[dir]); CHKERRXX(ierr);
-  }
-
-  const double* fine_phi_p, *fine_curvature_p, *fine_normal[P4EST_DIM];
-  for (unsigned short dir = 0; dir < P4EST_DIM; ++dir) {
-    ierr = VecGetArrayRead(two_phase_flow_solver->get_normals()[dir], &fine_normal[dir]); CHKERRXX(ierr);
-  }
-  ierr = VecGetArrayRead(two_phase_flow_solver->get_curvature(), &fine_curvature_p); CHKERRXX(ierr);
-  ierr = VecGetArrayRead(fine_phi, &fine_phi_p); CHKERRXX(ierr);
-  my_p4est_vtk_write_all(p4est_fine, nodes_fine, ghost_fine,
-                         P4EST_TRUE, P4EST_TRUE,
-                         4, /* number of VTK_POINT_DATA */
-                         0, /* number of VTK_CELL_DATA  */
-                         (export_dir+"/fine").c_str(),
-                         VTK_POINT_DATA, "phi", fine_phi_p,
-                         VTK_POINT_DATA, "curvature", fine_curvature_p,
-                         VTK_POINT_DATA, "nx", fine_normal[0],
-      VTK_POINT_DATA, "ny", fine_normal[1]);
-  ierr = VecRestoreArrayRead(fine_phi, &fine_phi_p); CHKERRXX(ierr);
-  ierr = VecRestoreArrayRead(two_phase_flow_solver->get_curvature(), &fine_curvature_p); CHKERRXX(ierr);
-  for (unsigned short dir = 0; dir < P4EST_DIM; ++dir) {
-    ierr = VecRestoreArrayRead(two_phase_flow_solver->get_normals()[dir], &fine_normal[dir]); CHKERRXX(ierr);
-  }
+    two_phase_flow_solver->save_vtk((export_dir+"/illustration").c_str());
 
 
   delete two_phase_flow_solver;
