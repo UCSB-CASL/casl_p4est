@@ -936,7 +936,11 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
           case FINITE_VOLUME:
           {
             if (finite_volumes_initialized_) fv = bdry_fvs_->at(bdry_node_to_fv_[n]);
-            else construct_finite_volume(fv, n, p4est_, nodes_, bdry_phi_cf_, bdry_.opn, integration_order_, cube_refinement_, 1, phi_perturbation_);
+            else
+            {
+              interpolators_prepare(n);
+              construct_finite_volume(fv, n, p4est_, nodes_, bdry_phi_cf_, bdry_.opn, integration_order_, cube_refinement_, 1, phi_perturbation_);
+            }
 
             double face_area_max = 0;
 
@@ -950,7 +954,11 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
           case IMMERSED_INTERFACE:
           {
             if (finite_volumes_initialized_) fv = infc_fvs_->at(infc_node_to_fv_[n]);
-            else construct_finite_volume(fv, n, p4est_, nodes_, infc_phi_cf_, infc_.opn, integration_order_, cube_refinement_, 1, phi_perturbation_);
+            else
+            {
+              interpolators_prepare(n);
+              construct_finite_volume(fv, n, p4est_, nodes_, infc_phi_cf_, infc_.opn, integration_order_, cube_refinement_, 1, phi_perturbation_);
+            }
 
             double face_area_max_m = 0;
             double face_area_max_p = 0;

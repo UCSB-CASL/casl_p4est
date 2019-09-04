@@ -351,7 +351,8 @@ public:
 
   inline void add_boundary (mls_opn_t opn, Vec phi, Vec* phi_dd, BoundaryConditionType bc_type, CF_DIM &bc_value, CF_DIM &bc_coeff)
   {
-    add_boundary(opn, phi, DIM(phi_dd[0], phi_dd[1], phi_dd[2]), bc_type, bc_value, bc_coeff);
+    if (phi_dd != NULL) add_boundary(opn, phi, DIM(phi_dd[0], phi_dd[1], phi_dd[2]), bc_type, bc_value, bc_coeff);
+    else                add_boundary(opn, phi, DIM(NULL,      NULL,      NULL),      bc_type, bc_value, bc_coeff);
   }
 
   inline void add_interface(mls_opn_t opn, Vec phi, DIM(Vec phi_xx, Vec phi_yy, Vec phi_zz), CF_DIM &jc_value, CF_DIM &jc_flux)
