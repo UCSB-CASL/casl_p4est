@@ -52,6 +52,8 @@
 
 using namespace std;
 
+extern PetscLogEvent log_my_p4est_poisson_nodes_multialloy_solve;
+
 parameter_list_t pl;
 
 //-------------------------------------
@@ -104,7 +106,7 @@ DEFINE_PARAMETER(pl, double, phi_thresh, 0.1, "");
 //-------------------------------------
 // output parameters
 //-------------------------------------
-DEFINE_PARAMETER(pl, int,  save_every_n_iteration,  100, "");
+DEFINE_PARAMETER(pl, int,  save_every_n_iteration,  1, "");
 DEFINE_PARAMETER(pl, bool, save_characteristics,    1, "");
 DEFINE_PARAMETER(pl, bool, save_dendrites,          0, "");
 DEFINE_PARAMETER(pl, bool, save_history,            1, "");
@@ -121,7 +123,7 @@ DEFINE_PARAMETER(pl, double, dendrite_min_length,       0.05, "");
 
 // problem parameters
 DEFINE_PARAMETER(pl, bool,   concentration_neumann, 1, "");
-DEFINE_PARAMETER(pl, int,    max_total_iterations,  INT_MAX, "");
+DEFINE_PARAMETER(pl, int,    max_total_iterations,  10, "");
 DEFINE_PARAMETER(pl, double, time_limit,            DBL_MAX, "");
 DEFINE_PARAMETER(pl, double, termination_length,    0.5, "");
 DEFINE_PARAMETER(pl, double, init_perturb,          1.e-5, "");
@@ -967,6 +969,10 @@ int main (int argc, char* argv[])
       front_phi.vec = mas.get_front_phi();
       contr_phi.vec = mas.get_contr_phi();
       vn.vec        = mas.get_normal_velocity();
+
+      PetscEventPerfInfo info;
+      PetscLogEventGetPerfInfo(0,log_my_p4est_poisson_nodes_multialloy_solve, &info);
+      std::cout << p4est->mpirank << ": " << info.count << ": " << info.time << "\n";
 
       // compute level-set of liquid region
       vec_and_ptr_t phi_liquid(front_phi.vec);

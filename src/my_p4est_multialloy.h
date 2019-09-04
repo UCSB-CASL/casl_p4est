@@ -386,6 +386,7 @@ public:
   void compute_dt();
   void update_grid();
   void update_grid_eno();
+  void update_grid_history();
   int  one_step();
   void save_VTK(int iter);
   void save_VTK_solid(int iter);

@@ -103,7 +103,7 @@ my_p4est_poisson_nodes_multialloy_t::my_p4est_poisson_nodes_multialloy_t(my_p4es
   }
 
   cube_refinement_ = 1;
-  integration_order_ = 2;
+  integration_order_ = 1;
 
   second_derivatives_owned_  = false;
   use_superconvergent_robin_ = false;
@@ -435,7 +435,7 @@ int my_p4est_poisson_nodes_multialloy_t::solve(Vec tl, Vec ts, Vec c[], Vec c0d[
 
   if (psi_ts != NULL)
   {
-    ls.set_verbose_mode(verbose_);
+    ls.set_show_convergence(verbose_);
     ls.extend_Over_Interface_TVD_Full(solid_phi_.vec, psi_ts_.vec, num_extend_iterations_, 1,
                                       extension_tol_, extension_band_use_, extension_band_extend_, extension_band_check_,
                                       solid_normal_.vec, NULL, NULL,
@@ -693,7 +693,7 @@ void my_p4est_poisson_nodes_multialloy_t::solve_t()
   sol.destroy();
 
   my_p4est_level_set_t ls(node_neighbors_);
-  ls.set_verbose_mode(verbose_);
+  ls.set_show_convergence(verbose_);
   ls.extend_Over_Interface_TVD_Full(liquid_phi_.vec, tl_.vec, num_extend_iterations_, 2,
                                     extension_tol_, extension_band_use_, extension_band_extend_, extension_band_check_,
                                     liquid_normal_.vec, NULL, NULL,
@@ -780,7 +780,7 @@ void my_p4est_poisson_nodes_multialloy_t::solve_psi_t()
   int mpiret = MPI_Allreduce(MPI_IN_PLACE, &psi_tl_max, 1, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
 
   my_p4est_level_set_t ls(node_neighbors_);
-  ls.set_verbose_mode(verbose_);
+  ls.set_show_convergence(verbose_);
   ls.extend_Over_Interface_TVD_Full(liquid_phi_.vec, psi_tl_.vec, num_extend_iterations_, 1,
                                     extension_tol_*psi_tl_max, extension_band_use_, extension_band_extend_, extension_band_check_,
                                     liquid_normal_.vec, NULL, NULL,
@@ -819,7 +819,7 @@ void my_p4est_poisson_nodes_multialloy_t::solve_c0()
   solver_conc_leading_->solve(c_[0].vec, poisson_use_nonzero_guess_);
 
   my_p4est_level_set_t ls(node_neighbors_);
-  ls.set_verbose_mode(verbose_);
+  ls.set_show_convergence(verbose_);
   ls.set_interpolation_on_interface(quadratic_non_oscillatory_continuous_v2);
 
   boundary_conditions_t *bc = use_points_on_interface_ ? solver_conc_leading_->get_bc(0) : NULL;
@@ -946,7 +946,7 @@ void my_p4est_poisson_nodes_multialloy_t::solve_psi_c0()
   int mpiret = MPI_Allreduce(MPI_IN_PLACE, &psi_max, 1, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
 
   my_p4est_level_set_t ls(node_neighbors_);
-  ls.set_verbose_mode(verbose_);
+  ls.set_show_convergence(verbose_);
   ls.set_interpolation_on_interface(quadratic_non_oscillatory_continuous_v2);
 
   boundary_conditions_t *bc = use_points_on_interface_ ? solver_conc_leading_->get_bc(0) : NULL;
@@ -978,7 +978,7 @@ void my_p4est_poisson_nodes_multialloy_t::solve_c(int start, int num)
   }
 
   my_p4est_level_set_t ls(node_neighbors_);
-  ls.set_verbose_mode(verbose_);
+  ls.set_show_convergence(verbose_);
   ls.set_interpolation_on_interface(quadratic_non_oscillatory_continuous_v2);
 
   for (int i = start; i < start+num; ++i)
@@ -1020,7 +1020,7 @@ void my_p4est_poisson_nodes_multialloy_t::solve_psi_c(int start, int num)
   }
 
   my_p4est_level_set_t ls(node_neighbors_);
-  ls.set_verbose_mode(verbose_);
+  ls.set_show_convergence(verbose_);
   ls.set_interpolation_on_interface(quadratic_non_oscillatory_continuous_v2);
   for (int i = start; i < start+num; ++i)
   {
