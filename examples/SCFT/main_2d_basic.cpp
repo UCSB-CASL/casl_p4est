@@ -123,7 +123,7 @@ DEFINE_PARAMETER(pl, bool,   smooth_pressure, true, "");
 // problem setup
 //-------------------------------------
 DEFINE_PARAMETER(pl, int, num_geometry, 0, "");
-DEFINE_PARAMETER(pl, int, num_surface_tension, 1, "");
+DEFINE_PARAMETER(pl, int, num_surface_tension, 0, "");
 DEFINE_PARAMETER(pl, int, num_seed, 0, "");
 
 int num_surfaces = 4;

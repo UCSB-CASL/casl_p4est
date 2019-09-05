@@ -65,11 +65,9 @@ class my_p4est_scft_t
   CF_DIM *gamma_air;
 
   /* Robin coefficients */
-  std::vector<Vec> bc_coeffs_a;
-  std::vector<Vec> bc_coeffs_b;
-
-  std::vector<CF_DIM *> bc_coeffs_a_cf;
-  std::vector<CF_DIM *> bc_coeffs_b_cf;
+  std::vector< std::vector<double> > pw_bc_values;
+  std::vector< std::vector<double> > pw_bc_coeffs_a;
+  std::vector< std::vector<double> > pw_bc_coeffs_b;
 
   /* partition function and energy */
   double Q;
@@ -134,6 +132,7 @@ public:
   my_p4est_scft_t(my_p4est_node_neighbors_t *ngbd, int ns);
   ~my_p4est_scft_t();
 
+  void set_lambda(double value) { lambda = value; }
   void set_polymer(double f, double XN);
   void add_boundary(Vec phi, mls_opn_t acn, CF_DIM &surf_energy_A, CF_DIM &surf_energy_B);
 //  void set_potentials(Vec in_mu_m,  Vec in_mu_p)  { mu_m  = in_mu_m;  mu_p  = in_mu_p;  }

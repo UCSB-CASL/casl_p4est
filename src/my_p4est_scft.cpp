@@ -128,12 +128,6 @@ my_p4est_scft_t::~my_p4est_scft_t()
   if (force_p != NULL) { ierr = VecDestroy(force_p);  CHKERRXX(ierr); }
   if (force_m != NULL) { ierr = VecDestroy(force_m);  CHKERRXX(ierr); }
 
-  for (int i = 0; i < bc_coeffs_a.size(); i++) { ierr = VecDestroy(bc_coeffs_a.at(i));   CHKERRXX(ierr); }
-  for (int i = 0; i < bc_coeffs_b.size(); i++) { ierr = VecDestroy(bc_coeffs_b.at(i));   CHKERRXX(ierr); }
-
-  for (short i = 0; i < bc_coeffs_a_cf.size(); ++i) { delete bc_coeffs_a_cf[i]; }
-  for (short i = 0; i < bc_coeffs_b_cf.size(); ++i) { delete bc_coeffs_b_cf[i]; }
-
   if (rhs != NULL) { ierr = VecDestroy(rhs); CHKERRXX(ierr); }
   if (q_tmp != NULL) { ierr = VecDestroy(q_tmp); CHKERRXX(ierr); }
   if (integrating_vec != NULL) { ierr = VecDestroy(integrating_vec); CHKERRXX(ierr); }
@@ -205,151 +199,36 @@ void my_p4est_scft_t::add_boundary(Vec phi, mls_opn_t acn, CF_DIM &surf_energy_A
   num_surfaces++;
 }
 
-void my_p4est_scft_t::initialize_bc_simple()
-{
-  // fill out Vec'
-  double *bc_coeff_a_ptr;
-  double *bc_coeff_b_ptr;
-
-//  my_p4est_level_set_t ls(ngbd);
-  double xyz[P4EST_DIM];
-
-  for (int i = 0; i < num_surfaces; ++i)
-  {
-    ierr = VecGetArray(bc_coeffs_a[i],  &bc_coeff_a_ptr); CHKERRXX(ierr);
-    ierr = VecGetArray(bc_coeffs_b[i],  &bc_coeff_b_ptr); CHKERRXX(ierr);
-
-    foreach_node(n, nodes)
-    {
-      node_xyz_fr_n(n, p4est, nodes, xyz);
-      bc_coeff_a_ptr[n] = gamma_a[i]->value(xyz)*scalling;
-      bc_coeff_b_ptr[n] = gamma_b[i]->value(xyz)*scalling;
-    }
-
-    ierr = VecRestoreArray(bc_coeffs_a[i],  &bc_coeff_a_ptr); CHKERRXX(ierr);
-    ierr = VecRestoreArray(bc_coeffs_b[i],  &bc_coeff_b_ptr); CHKERRXX(ierr);
-
-//    ls.extend_Over_Interface_TVD(phi_smooth, bc_coeffs_a[i]);
-//    ls.extend_Over_Interface_TVD(phi_smooth, bc_coeffs_b[i]);
-  }
-
-  /* calculate addition to energy from surface tensions */
-  energy_singular_part = 0;
-
-  solver_a.set_new_submat_robin(true);
-  solver_b.set_new_submat_robin(true);
-}
-
-void my_p4est_scft_t::initialize_bc_smart(bool adaptive)
-{
-  // fill out Vec's
-  ierr = VecGhostUpdateBegin(mu_m, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecGhostUpdateEnd  (mu_m, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-  my_p4est_level_set_t ls(ngbd);
-  if (adaptive)
-  ls.extend_Over_Interface_TVD_Full(phi_smooth, mu_m, 20, 2, 0, DBL_MAX, DBL_MAX, DBL_MAX, NULL, mask);
-
-  double xyz[P4EST_DIM];
-
-  double *mu_m_ptr;
-
-  double *bc_coeff_a_ptr;
-  double *bc_coeff_b_ptr;
-
-  Vec mu_m_tmp;
-
-  ierr = VecDuplicate(mu_m, &mu_m_tmp); CHKERRXX(ierr);
-
-  // loop through all surfaces
-  Vec integrand;
-  ierr = VecDuplicate(mu_m, &integrand); CHKERRXX(ierr);
-
-  double *integrand_ptr;
-
-  energy_singular_part = 0;
-
-  my_p4est_integration_mls_t integration(p4est, nodes);
-  integration.set_phi(phi, action, color);
-
-  for (int i = 0; i < num_surfaces; ++i)
-  {
-    // make mu_m flat in the normal direction
-    if (adaptive)
-      ls.extend_from_interface_to_whole_domain_TVD(phi[i], mu_m, mu_m_tmp);
-    else
-      VecSetGhost(mu_m_tmp, 0);
-
-    ierr = VecGetArray(mu_m_tmp, &mu_m_ptr); CHKERRXX(ierr);
-    ierr = VecGetArray(integrand, &integrand_ptr); CHKERRXX(ierr);
-
-    ierr = VecGetArray(bc_coeffs_a[i],  &bc_coeff_a_ptr); CHKERRXX(ierr);
-    ierr = VecGetArray(bc_coeffs_b[i],  &bc_coeff_b_ptr); CHKERRXX(ierr);
-
-    foreach_node(n, nodes)
-    {
-      node_xyz_fr_n(n, p4est, nodes, xyz);
-      // TODO: project points onto interface?
-
-      bc_coeff_a_ptr[n] = (gamma_a[i]->value(xyz)-gamma_b[i]->value(xyz))*(-mu_m_ptr[n]/XN+0.5)*scalling;
-      bc_coeff_b_ptr[n] = (gamma_a[i]->value(xyz)-gamma_b[i]->value(xyz))*(-mu_m_ptr[n]/XN-0.5)*scalling;
-
-      integrand_ptr[n] = 0.5*(gamma_a[i]->value(xyz)+gamma_b[i]->value(xyz))
-          + (gamma_a[i]->value(xyz)-gamma_b[i]->value(xyz))*mu_m_ptr[n]/XN;
-      integrand_ptr[n] *= scalling;
-    }
-
-    ierr = VecRestoreArray(bc_coeffs_a[i],  &bc_coeff_a_ptr); CHKERRXX(ierr);
-    ierr = VecRestoreArray(bc_coeffs_b[i],  &bc_coeff_b_ptr); CHKERRXX(ierr);
-
-//    ls.extend_Over_Interface_TVD(phi_smooth, bc_coeffs_a[i]);
-//    ls.extend_Over_Interface_TVD(phi_smooth, bc_coeffs_b[i]);
-
-    ierr = VecRestoreArray(mu_m_tmp, &mu_m_ptr); CHKERRXX(ierr);
-    ierr = VecRestoreArray(integrand, &integrand_ptr); CHKERRXX(ierr);
-
-    /* calculate addition to energy from surface tensions */
-    energy_singular_part += integration.integrate_over_interface(i, integrand);
-  }
-
-  energy_singular_part /= volume;
-
-  ierr = VecDestroy(integrand); CHKERRXX(ierr);
-
-  solver_a.set_new_submat_robin(true);
-  solver_b.set_new_submat_robin(true);
-}
-
 void my_p4est_scft_t::initialize_solvers()
 {
-  for (int i = 0; i < bc_coeffs_a.size(); i++) { ierr = VecDestroy(bc_coeffs_a[i]); CHKERRXX(ierr); }
-  for (int i = 0; i < bc_coeffs_b.size(); i++) { ierr = VecDestroy(bc_coeffs_b[i]); CHKERRXX(ierr); }
+//  for (int i = 0; i < bc_coeffs_a.size(); i++) { ierr = VecDestroy(bc_coeffs_a[i]); CHKERRXX(ierr); }
+//  for (int i = 0; i < bc_coeffs_b.size(); i++) { ierr = VecDestroy(bc_coeffs_b[i]); CHKERRXX(ierr); }
 
-  bc_coeffs_a.resize(num_surfaces, NULL);
-  bc_coeffs_b.resize(num_surfaces, NULL);
+//  bc_coeffs_a.resize(num_surfaces, NULL);
+//  bc_coeffs_b.resize(num_surfaces, NULL);
 
-  for (int i = 0; i < num_surfaces; i++) { ierr = VecCreateGhostNodes(p4est, nodes, &bc_coeffs_a[i]); CHKERRXX(ierr); }
-  for (int i = 0; i < num_surfaces; i++) { ierr = VecCreateGhostNodes(p4est, nodes, &bc_coeffs_b[i]); CHKERRXX(ierr); }
+//  for (int i = 0; i < num_surfaces; i++) { ierr = VecCreateGhostNodes(p4est, nodes, &bc_coeffs_a[i]); CHKERRXX(ierr); }
+//  for (int i = 0; i < num_surfaces; i++) { ierr = VecCreateGhostNodes(p4est, nodes, &bc_coeffs_b[i]); CHKERRXX(ierr); }
 
-  for (short i = 0; i < bc_coeffs_a_cf.size(); ++i) { delete bc_coeffs_a_cf[i]; }
-  for (short i = 0; i < bc_coeffs_b_cf.size(); ++i) { delete bc_coeffs_b_cf[i]; }
+//  for (short i = 0; i < bc_coeffs_a_cf.size(); ++i) { delete bc_coeffs_a_cf[i]; }
+//  for (short i = 0; i < bc_coeffs_b_cf.size(); ++i) { delete bc_coeffs_b_cf[i]; }
 
-  bc_coeffs_a_cf.resize(num_surfaces, NULL);
-  bc_coeffs_b_cf.resize(num_surfaces, NULL);
+//  bc_coeffs_a_cf.resize(num_surfaces, NULL);
+//  bc_coeffs_b_cf.resize(num_surfaces, NULL);
 
-  for (short idx_surf = 0; idx_surf < num_surfaces; ++idx_surf)
-  {
-    bc_coeffs_a_cf[idx_surf] = new my_p4est_interpolation_nodes_t(ngbd);
-    bc_coeffs_b_cf[idx_surf] = new my_p4est_interpolation_nodes_t(ngbd);
+//  for (short idx_surf = 0; idx_surf < num_surfaces; ++idx_surf)
+//  {
+//    bc_coeffs_a_cf[idx_surf] = new my_p4est_interpolation_nodes_t(ngbd);
+//    bc_coeffs_b_cf[idx_surf] = new my_p4est_interpolation_nodes_t(ngbd);
 
-    ((my_p4est_interpolation_nodes_t *) bc_coeffs_a_cf[idx_surf])->set_input(bc_coeffs_a[idx_surf], linear);
-    ((my_p4est_interpolation_nodes_t *) bc_coeffs_b_cf[idx_surf])->set_input(bc_coeffs_b[idx_surf], linear);
-  }
+//    ((my_p4est_interpolation_nodes_t *) bc_coeffs_a_cf[idx_surf])->set_input(bc_coeffs_a[idx_surf], linear);
+//    ((my_p4est_interpolation_nodes_t *) bc_coeffs_b_cf[idx_surf])->set_input(bc_coeffs_b[idx_surf], linear);
+//  }
 
   // chain propogator a
   for (int i = 0; i < num_surfaces; ++i)
   {
-    solver_a.add_boundary(action[i], phi[i], NULL, ROBIN, zero_cf, *bc_coeffs_a_cf[i]);
+    solver_a.add_boundary(action[i], phi[i], NULL, ROBIN, zero_cf, zero_cf);
   }
 
   solver_a.set_mu(scalling*scalling);
@@ -364,7 +243,7 @@ void my_p4est_scft_t::initialize_solvers()
   // chain propogator b
   for (int i = 0; i < num_surfaces; ++i)
   {
-    solver_b.add_boundary(action[i], phi[i], NULL, ROBIN, zero_cf, *bc_coeffs_b_cf[i]);
+    solver_b.add_boundary(action[i], phi[i], NULL, ROBIN, zero_cf, zero_cf);
   }
 
   solver_b.set_mu(scalling*scalling);
@@ -389,7 +268,92 @@ void my_p4est_scft_t::initialize_solvers()
   volume = integrate_over_domain_fast(ones);
   ierr = VecDestroy(ones); CHKERRXX(ierr);
 
+  pw_bc_values.resize(num_surfaces);
+  pw_bc_coeffs_a.resize(num_surfaces);
+  pw_bc_coeffs_b.resize(num_surfaces);
+
+  for (int i = 0; i < num_surfaces; ++i)
+  {
+    pw_bc_values[i].resize(solver_a.pw_bc_num_value_pts(i), 0.);
+    pw_bc_coeffs_a[i].resize(solver_a.pw_bc_num_robin_pts(i), 0.);
+    pw_bc_coeffs_b[i].resize(solver_a.pw_bc_num_robin_pts(i), 0.);
+
+    solver_a.set_bc(i, ROBIN, pw_bc_values[i], pw_bc_values[i], pw_bc_coeffs_a[i]);
+    solver_b.set_bc(i, ROBIN, pw_bc_values[i], pw_bc_values[i], pw_bc_coeffs_b[i]);
+  }
+
   ierr = PetscPrintf(p4est->mpicomm, "new volume %e\n", volume); CHKERRXX(ierr);
+}
+
+void my_p4est_scft_t::initialize_bc_simple()
+{
+  double xyz[P4EST_DIM];
+  energy_singular_part = 0;
+
+  for (int i = 0; i < num_surfaces; ++i) // loop through all surfaces
+  {
+    for (int j = 0; j < solver_a.pw_bc_num_robin_pts(i); ++j)
+    {
+      // compute robin coefficients
+      solver_a.pw_bc_xyz_robin_pt(i, j, xyz);
+
+      pw_bc_coeffs_a[i][j] = gamma_a[i]->value(xyz)*scalling;
+      pw_bc_coeffs_b[i][j] = gamma_b[i]->value(xyz)*scalling;
+    }
+  }
+
+  // let solvers know that bc's have been updated
+  solver_a.set_new_submat_robin(true);
+  solver_b.set_new_submat_robin(true);
+}
+
+void my_p4est_scft_t::initialize_bc_smart(bool adaptive)
+{
+  // create interpolation of mu_m
+  CF_DIM *mu_cf = &zero_cf;
+
+  my_p4est_interpolation_nodes_t interp(ngbd);
+  if (adaptive)
+  {
+    ierr = VecGhostUpdateBegin(mu_m, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd  (mu_m, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+    my_p4est_level_set_t ls(ngbd);
+    ls.extend_Over_Interface_TVD_Full(phi_smooth, mu_m, 20, 2, 0, DBL_MAX, DBL_MAX, DBL_MAX, NULL, mask);
+
+    interp.set_input(mu_m, linear);
+    mu_cf = &interp;
+  }
+
+  double xyz[P4EST_DIM];
+  energy_singular_part = 0;
+
+  for (int i = 0; i < num_surfaces; ++i) // loop through all surfaces
+  {
+    boundary_conditions_t *bc = solver_a.get_bc(i);
+    for (int j = 0; j < solver_a.pw_bc_num_robin_pts(i); ++j)
+    {
+      // compute robin coefficients
+      solver_a.pw_bc_xyz_robin_pt(i, j, xyz);
+      double mu_m_val = interp.value(xyz);
+      pw_bc_coeffs_a[i][j] = (gamma_a[i]->value(xyz)-gamma_b[i]->value(xyz))*(-mu_m_val/XN+0.5)*scalling;
+      pw_bc_coeffs_b[i][j] = (gamma_a[i]->value(xyz)-gamma_b[i]->value(xyz))*(-mu_m_val/XN-0.5)*scalling;
+
+      // calculate addition to energy from surface tensions
+      solver_a.pw_bc_xyz_value_pt(i, j, xyz);
+      double pw_integrand = 0.5*(gamma_a[i]->value(xyz)+gamma_b[i]->value(xyz))
+                            +   (gamma_a[i]->value(xyz)-gamma_b[i]->value(xyz))*interp.value(xyz)/XN;
+      energy_singular_part += bc->areas[j]*pw_integrand;
+    }
+  }
+
+  int mpiret = MPI_Allreduce(MPI_IN_PLACE, &energy_singular_part, 1, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+
+  energy_singular_part *= scalling;
+  energy_singular_part /= volume;
+
+  solver_a.set_new_submat_robin(true);
+  solver_b.set_new_submat_robin(true);
 }
 
 void my_p4est_scft_t::solve_for_propogators()
@@ -1257,8 +1221,8 @@ void my_p4est_scft_t::compute_energy_shape_derivative(int phi_idx, Vec velo)
   ierr = VecGetArray(qb[0],                 &qb_ptr                 ); CHKERRXX(ierr);
   ierr = VecGetArray(rho_a,                 &rho_a_ptr              ); CHKERRXX(ierr);
   ierr = VecGetArray(rho_b,                 &rho_b_ptr              ); CHKERRXX(ierr);
-  ierr = VecGetArray(bc_coeffs_a[phi_idx],  &bc_coeffs_a_ptr        ); CHKERRXX(ierr);
-  ierr = VecGetArray(bc_coeffs_b[phi_idx],  &bc_coeffs_b_ptr        ); CHKERRXX(ierr);
+//  ierr = VecGetArray(bc_coeffs_a[phi_idx],  &bc_coeffs_a_ptr        ); CHKERRXX(ierr);
+//  ierr = VecGetArray(bc_coeffs_b[phi_idx],  &bc_coeffs_b_ptr        ); CHKERRXX(ierr);
 //  ierr = VecGetArray(kappa[phi_idx],        &kappa_ptr              ); CHKERRXX(ierr);
   ierr = VecGetArray(mu_m,                  &mu_m_ptr               ); CHKERRXX(ierr);
   ierr = VecGetArray(mu_p,                  &mu_p_ptr               ); CHKERRXX(ierr);
@@ -1324,8 +1288,8 @@ void my_p4est_scft_t::compute_energy_shape_derivative(int phi_idx, Vec velo)
   ierr = VecRestoreArray(qb[0],                 &qb_ptr                 ); CHKERRXX(ierr);
   ierr = VecRestoreArray(rho_a,                 &rho_a_ptr              ); CHKERRXX(ierr);
   ierr = VecRestoreArray(rho_b,                 &rho_b_ptr              ); CHKERRXX(ierr);
-  ierr = VecRestoreArray(bc_coeffs_a[phi_idx],  &bc_coeffs_a_ptr        ); CHKERRXX(ierr);
-  ierr = VecRestoreArray(bc_coeffs_b[phi_idx],  &bc_coeffs_b_ptr        ); CHKERRXX(ierr);
+//  ierr = VecRestoreArray(bc_coeffs_a[phi_idx],  &bc_coeffs_a_ptr        ); CHKERRXX(ierr);
+//  ierr = VecRestoreArray(bc_coeffs_b[phi_idx],  &bc_coeffs_b_ptr        ); CHKERRXX(ierr);
 //  ierr = VecRestoreArray(kappa[phi_idx],        &kappa_ptr              ); CHKERRXX(ierr);
   ierr = VecRestoreArray(mu_m,                  &mu_m_ptr               ); CHKERRXX(ierr);
   ierr = VecRestoreArray(mu_p,                  &mu_p_ptr               ); CHKERRXX(ierr);
