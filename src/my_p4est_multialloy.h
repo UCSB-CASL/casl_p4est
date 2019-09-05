@@ -338,7 +338,9 @@ public:
   inline p4est_t*       get_p4est() { return p4est_; }
   inline p4est_nodes_t* get_nodes() { return nodes_; }
   inline p4est_ghost_t* get_ghost() { return ghost_; }
+  inline my_p4est_hierarchy_t* get_hierarchy() {return hierarchy_;}
   inline my_p4est_node_neighbors_t* get_ngbd()  { return ngbd_; }
+  inline my_p4est_brick_t          get_brick() {return brick_;}
 
   inline Vec  get_contr_phi()    { return front_phi_.vec; }
   inline Vec  get_front_phi()    { return front_phi_.vec; }

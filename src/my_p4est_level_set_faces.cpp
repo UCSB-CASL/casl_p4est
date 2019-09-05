@@ -52,7 +52,8 @@ void my_p4est_level_set_faces_t::extend_Over_Interface( Vec phi, Vec q, Boundary
 
   /* first compute the derivatives of phi */
   Vec phi_x;
-  ierr = VecDuplicate(phi, &phi_x); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodes(p4est,nodes,&phi_x); CHKERRXX(ierr);// Elyce debug : why is this done for phi_y and interface_value but NOT for phi_x in the original code?
+//  ierr = VecDuplicate(phi, &phi_x); CHKERRXX(ierr); // Elyce debug: commented this one out instead and replaced it with the above ^^ -- Run this by Raphael before committing
   double *phi_x_p;
   ierr = VecGetArray(phi_x, &phi_x_p); CHKERRXX(ierr);
   Vec phi_y;
@@ -346,9 +347,10 @@ void my_p4est_level_set_faces_t::extend_Over_Interface( Vec phi, Vec q, Boundary
   }
 
   ierr = VecRestoreArrayRead(face_is_well_defined, &face_is_well_defined_p); CHKERRXX(ierr);
-
   ierr = VecDestroy(phi_x); CHKERRXX(ierr);
+
   ierr = VecDestroy(phi_y); CHKERRXX(ierr);
+
 #ifdef P4_TO_P8
   ierr = VecDestroy(phi_z); CHKERRXX(ierr);
 #endif

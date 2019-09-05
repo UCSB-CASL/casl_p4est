@@ -406,6 +406,7 @@ void my_p4est_level_set_cells_t::extend_Over_Interface( Vec phi, Vec q, Boundary
   /* first compute the derivatives of phi */
   Vec phi_x;
   ierr = VecDuplicate(phi, &phi_x); CHKERRXX(ierr);
+  //ierr = VecCreateGhostNodes(p4est, nodes, &phi_x); CHKERRXX(ierr); // ELYCE: Replaced the above commented out statement with this .... saw the same issue in level_set_faces : extend_over_Interface
   double *phi_x_p;
   ierr = VecGetArray(phi_x, &phi_x_p); CHKERRXX(ierr);
   Vec phi_y;

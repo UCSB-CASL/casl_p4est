@@ -1188,11 +1188,9 @@ int main (int argc, char* argv[])
 */
 
     //-----------------------------------------------------------------------------------------------------
-    //ierr = PetscPrintf(mpi.comm(),"\n Beginning the creation of the navier stokes object ... \n");
     ns = new my_p4est_navier_stokes_t(ngbd_nm1, ngbd_n, faces_n);
-    //ierr = PetscPrintf(mpi.comm(), "\n (4) Gets past creating the new navier stokes object");
     ns->set_phi(phi);
-    //ierr = PetscPrintf(mpi.comm(),"\n (5) Gets past setting phi on the navier stokes object \n");   // next guess is that navier stokes expects nm1 and n grid to be the same (?) need to reinit both?
+
     if(is_smoke)
     {
       Vec smoke;
@@ -1317,6 +1315,7 @@ int main (int argc, char* argv[])
       save_data_idx = ((int) floor(tn/dt_save_data));
       ns->save_state(out_dir, tn, n_states);
     }
+    //-----------------------------------------------------------------------------------------
 
     Vec hodge_old;
     Vec hodge_new;
@@ -1379,6 +1378,8 @@ int main (int argc, char* argv[])
       ierr = PetscPrintf(mpi.comm(), "hodge iteration #%d, error = %e\n", iter_hodge, corr_hodge); CHKERRXX(ierr);
       iter_hodge++;
     }
+    //-----------------------------------------------------------------------------------------
+
     ierr = VecDestroy(hodge_old); CHKERRXX(ierr);
     if(get_timing)
       substep_watch.start("");
