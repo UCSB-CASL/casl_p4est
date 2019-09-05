@@ -29,13 +29,12 @@
 #include <src/my_p8est_log_wrappers.h>
 #include <src/my_p8est_node_neighbors.h>
 #include <src/my_p8est_level_set.h>
-#include <src/my_p8est_poisson_nodes_mls_sc.h>
+#include <src/my_p8est_poisson_nodes_mls.h>
 #include <src/my_p8est_interpolation_nodes.h>
 #include <src/my_p8est_integration_mls.h>
 #include <src/mls_integration/vtk/simplex3_mls_l_vtk.h>
 #include <src/my_p8est_scft.h>
 #include <src/my_p8est_shapes.h>
-#include <src/my_p8est_tools_mls.h>
 #else
 #include <p4est_bits.h>
 #include <p4est_extended.h>
@@ -47,75 +46,88 @@
 #include <src/my_p4est_log_wrappers.h>
 #include <src/my_p4est_node_neighbors.h>
 #include <src/my_p4est_level_set.h>
-#include <src/my_p4est_poisson_nodes_mls_sc.h>
+#include <src/my_p4est_poisson_nodes_mls.h>
 #include <src/my_p4est_interpolation_nodes.h>
 #include <src/my_p4est_integration_mls.h>
 #include <src/mls_integration/vtk/simplex2_mls_l_vtk.h>
 #include <src/my_p4est_scft.h>
 #include <src/my_p4est_shapes.h>
-#include <src/my_p4est_tools_mls.h>
 #endif
 
 #include <src/petsc_compatibility.h>
 #include <src/Parser.h>
+#include <src/parameter_list.h>
 
 #undef MIN
 #undef MAX
-
-#define CMD_OPTIONS for (short option_action = 0; option_action < 2; ++option_action)
-#define ADD_OPTION(cmd, var, description) option_action == 0 ? cmd.add_option(#var, description) : (void) (var = cmd.get(#var, var));
-#define PARSE_OPTIONS(cmd, argc, argv) if (option_action == 0) cmd.parse(argc, argv);
 using namespace std;
 
 // comptational domain
+parameter_list_t pl;
 
-double xmin = -4;
-double ymin = -4;
-double zmin = -4;
+//-------------------------------------
+// computational domain parameters
+//-------------------------------------
+DEFINE_PARAMETER(pl, int, px, 0, "Periodicity in the x-direction (0/1)");
+DEFINE_PARAMETER(pl, int, py, 0, "Periodicity in the y-direction (0/1)");
+DEFINE_PARAMETER(pl, int, pz, 0, "Periodicity in the z-direction (0/1)");
 
-double xmax = 4;
-double ymax = 4;
-double zmax = 4;
+DEFINE_PARAMETER(pl, int, nx, 1, "Number of trees in the x-direction");
+DEFINE_PARAMETER(pl, int, ny, 1, "Number of trees in the y-direction");
+DEFINE_PARAMETER(pl, int, nz, 1, "Number of trees in the z-direction");
 
-bool px = 0;
-bool py = 0;
-bool pz = 0;
+DEFINE_PARAMETER(pl, double, xmin, -4, "Box xmin");
+DEFINE_PARAMETER(pl, double, ymin, -4, "Box ymin");
+DEFINE_PARAMETER(pl, double, zmin, -4, "Box zmin");
 
-int nx = 1;
-int ny = 1;
-int nz = 1;
+DEFINE_PARAMETER(pl, double, xmax, 4, "Box xmax");
+DEFINE_PARAMETER(pl, double, ymax, 4, "Box ymax");
+DEFINE_PARAMETER(pl, double, zmax, 4, "Box zmax");
 
-// grid parameters
+//-------------------------------------
+// refinement parameters
+//-------------------------------------
 #ifdef P4_TO_P8
-int lmin = 4;
-int lmax = 4;
+DEFINE_PARAMETER(pl, int, lmin, 5, "Min level of the tree");
+DEFINE_PARAMETER(pl, int, lmax, 5, "Max level of the tree");
 #else
-int lmin = 5;
-int lmax = 7;
+DEFINE_PARAMETER(pl, int, lmin, 7, "Min level of the tree");
+DEFINE_PARAMETER(pl, int, lmax, 7, "Max level of the tree");
 #endif
-double lip = 1.5;
 
-int steps_back = 3;
+DEFINE_PARAMETER(pl, double, lip, 1.75, "");
 
+DEFINE_PARAMETER(pl, double, steps_back, 3, "");
+
+//-------------------------------------
 // output parameters
-bool save_vtk = 0;
-int save_every_dn = 10;
+//-------------------------------------
+DEFINE_PARAMETER(pl, bool, save_vtk, 1, "");
+DEFINE_PARAMETER(pl, int,  save_every_dn, 10, "");
 
+//-------------------------------------
 // polymer parameters
-double XN = 20.;
-double f = 0.3;
-int ns = 50+1;
+//-------------------------------------
+DEFINE_PARAMETER(pl, double, XN, 20, "Interaction strength between A and B blocks");
+DEFINE_PARAMETER(pl, double, f, .5,  "Fraction of A block in the polymer chain");
+DEFINE_PARAMETER(pl, double, ns, 51, "Discretization of the polymer chain");
 
-int max_iterations = 20;
-double tol = 1.0e-5;
-bool smooth_pressure = true;
+//-------------------------------------
+// solver parameters
+//-------------------------------------
+DEFINE_PARAMETER(pl, int,    max_iterations, 1001, "");
+DEFINE_PARAMETER(pl, double, tol, 1.0e-2, "");
+DEFINE_PARAMETER(pl, bool,   smooth_pressure, true, "");
 
-int num_geometry = 0;
-int num_surface_tension = 1;
-int num_seed = 0;
+//-------------------------------------
+// problem setup
+//-------------------------------------
+DEFINE_PARAMETER(pl, int, num_geometry, 0, "");
+DEFINE_PARAMETER(pl, int, num_surface_tension, 1, "");
+DEFINE_PARAMETER(pl, int, num_seed, 0, "");
 
 int num_surfaces = 4;
-std::vector<action_t> action(num_surfaces, INTERSECTION);
+std::vector<mls_opn_t> action(num_surfaces, MLS_INTERSECTION);
 
 /* geometry of interfaces */
 
@@ -394,6 +406,14 @@ int main (int argc, char* argv[])
   mpi_environment_t mpi;
   mpi.init(argc, argv);
 
+  cmdParser cmd;
+
+  pl.initialize_parser(cmd);
+  cmd.parse(argc, argv);
+  pl.get_all(cmd);
+
+  if (mpi.rank() == 0) pl.print_all();
+
   // create an output directory
   const char* out_dir = getenv("OUT_DIR");
   if (!out_dir)
@@ -409,43 +429,6 @@ int main (int argc, char* argv[])
   if(ret_sys < 0)
     throw std::invalid_argument("my_p4est_bialloy_t::save_vtk could not create directory");
 
-
-  cmdParser cmd;
-  CMD_OPTIONS
-  {
-    ADD_OPTION(cmd, nx, "number of trees in x-dimension");
-    ADD_OPTION(cmd, ny, "number of trees in y-dimension");
-#ifdef P4_TO_P8
-    ADD_OPTION(cmd, nz, "number of trees in z-dimension");
-#endif
-
-    ADD_OPTION(cmd, px, "periodicity in x-dimension 0/1");
-    ADD_OPTION(cmd, py, "periodicity in y-dimension 0/1");
-#ifdef P4_TO_P8
-    ADD_OPTION(cmd, pz, "periodicity in z-dimension 0/1");
-#endif
-
-    ADD_OPTION(cmd, xmin, "xmin"); ADD_OPTION(cmd, xmax, "xmax");
-    ADD_OPTION(cmd, ymin, "ymin"); ADD_OPTION(cmd, ymax, "ymax");
-#ifdef P4_TO_P8
-    ADD_OPTION(cmd, zmin, "zmin"); ADD_OPTION(cmd, zmax, "zmax");
-#endif
-
-    ADD_OPTION(cmd, lmin, "min level of trees");
-    ADD_OPTION(cmd, lmax, "max level of trees");
-    ADD_OPTION(cmd, lip,  "Lipschitz constant");
-
-    ADD_OPTION(cmd, steps_back,  "steps_back");
-
-    ADD_OPTION(cmd, save_vtk,  "save_vtk");
-
-    ADD_OPTION(cmd, XN, "Florry-Higgins parameter");
-    ADD_OPTION(cmd, f,  "Fraction of polymer A");
-    ADD_OPTION(cmd, ns, "Number of steps along the polymer chain");
-
-    PARSE_OPTIONS(cmd, argc, argv);
-  }
-
 #ifdef P4_TO_P8
   double xyz_min[] = { xmin, ymin, zmin };
   double xyz_max[] = { xmax, ymax, zmax };
@@ -459,9 +442,9 @@ int main (int argc, char* argv[])
 #endif
 
 
-  std::vector<CF_2 *> phi_all_cf(4);
-  std::vector<CF_2 *> gamma_a_cf(4);
-  std::vector<CF_2 *> gamma_b_cf(4);
+  std::vector<CF_DIM *> phi_all_cf(4);
+  std::vector<CF_DIM *> gamma_a_cf(4);
+  std::vector<CF_DIM *> gamma_b_cf(4);
 
   phi_all_cf[0] = &phi_00_cf;
   phi_all_cf[1] = &phi_01_cf;
@@ -481,7 +464,7 @@ int main (int argc, char* argv[])
   parStopWatch w;
   w.start("total time");
 
-  level_set_tot_t phi_eff_cf(&phi_all_cf, &action, NULL);
+  mls_eff_cf_t phi_eff_cf(phi_all_cf, action);
 
   /* create the p4est */
   my_p4est_brick_t brick;
@@ -502,7 +485,7 @@ int main (int argc, char* argv[])
   my_p4est_node_neighbors_t *ngbd = new my_p4est_node_neighbors_t(hierarchy,nodes);
   ngbd->init_neighbors();
 
-  my_p4est_scft_t scft(ngbd);
+  my_p4est_scft_t scft(ngbd, ns);
 
   /* create and initialize geometry */
   std::vector<Vec> phi(num_surfaces);
@@ -513,15 +496,13 @@ int main (int argc, char* argv[])
   {
     ierr = VecCreateGhostNodes(p4est, nodes, &phi[i]); CHKERRXX(ierr);
     sample_cf_on_nodes(p4est, nodes, *phi_all_cf[i], phi[i]);
-    ls.reinitialize_1st_order_time_2nd_order_space(phi[i]);
+    ls.reinitialize_2nd_order(phi[i]);
   }
 
-  scft.set_geometry(phi, action);
-
-//  for (short i = 0; i < num_surfaces; i++)
-//  {
-//    ierr = VecDestroy(phi[i]); CHKERRXX(ierr);
-//  }
+  for (int i = 0; i < num_surfaces; ++i)
+  {
+    scft.add_boundary(phi[i], action[i], *gamma_a_cf[i], *gamma_b_cf[i]);
+  }
 
   /* initialize potentials */
   Vec mu_m = scft.get_mu_m();
@@ -538,19 +519,23 @@ int main (int argc, char* argv[])
   set_ghosted_vec(rho_b, 1.-f);
 
   /* create and initialize surface tension fields */
-  scft.set_geometry(phi, action);
-  scft.set_polymer(f, XN, ns);
-  scft.set_surface_tensions(gamma_a_cf, gamma_b_cf, gamma_air_cf);
+//  scft.set_geometry(phi, action);
+  scft.set_polymer(f, XN);
 
-  scft.initialize_linear_system();
+  scft.initialize_solvers();
   scft.initialize_bc_simple();
 
   int iteration = 0;
   while (iteration < max_iterations)
   {
+    parStopWatch time_iter;
+    time_iter.start();
+
     scft.solve_for_propogators();
     scft.calculate_densities();
     scft.update_potentials();
+
+    time_iter.stop();
 
     if (scft.get_exchange_force() < tol)
     {
@@ -560,12 +545,10 @@ int main (int argc, char* argv[])
         scft.smooth_singularity_in_pressure_field();
         smooth_pressure = false;
       }
-      scft.recompute_matrices();
-//      scft.initialize_linear_system();
       ierr = PetscPrintf(mpi.comm(), "Robin coefficients have been adjusted\n"); CHKERRXX(ierr);
     }
 
-    ierr = PetscPrintf(mpi.comm(), "Energy: %e; Pressure: %e; Exchange: %e\n", scft.get_energy(), scft.get_pressure_force(), scft.get_exchange_force()); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "Iteration no. %d; Energy: %e; Pressure: %e; Exchange: %e; Time: %e\n", iteration, scft.get_energy(), scft.get_pressure_force(), scft.get_exchange_force(), time_iter.get_duration()); CHKERRXX(ierr);
     if (save_vtk && iteration%save_every_dn == 0)
     {
       scft.save_VTK(iteration/save_every_dn);

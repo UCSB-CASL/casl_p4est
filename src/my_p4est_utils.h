@@ -1684,6 +1684,10 @@ public:
     ts = MPI_Wtime();
   }
 
+  void start(){
+    ts = MPI_Wtime();
+  }
+
   void stop(){
     tf = MPI_Wtime();
   }
@@ -1756,6 +1760,10 @@ public:
       PetscFPrintf(comm_, f_, " %.5lf secs. on process %d [Note: only showing root's timings]\n\n", elap, mpirank);
     }
     return elap;
+  }
+
+  double get_duration(){
+    return tf - ts;
   }
 };
 
@@ -2092,7 +2100,7 @@ inline double smooth_min(double a, double b, double e)
 
 inline double smooth_min2(double a, double b, double e)
 {
-  return .5*(a+b-(sqrt(SQR(a-b)+e*e)-e/sqrt(SQR(a-b)+e)));
+  return .5*(a+b-(sqrt(SQR(a-b)+e*e)-e*e/sqrt(SQR(a-b)+e*e)));
 }
 
 
