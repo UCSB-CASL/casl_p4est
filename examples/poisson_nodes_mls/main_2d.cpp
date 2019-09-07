@@ -54,6 +54,7 @@
 #include <src/my_p4est_semi_lagrangian.h>
 #include <src/my_p4est_macros.h>
 #include <src/my_p4est_shapes.h>
+#include <src/my_p4est_general_poisson_nodes_mls_solver.h>
 #include <src/mls_integration/vtk/simplex2_mls_l_vtk.h>
 #include <src/mls_integration/vtk/simplex2_mls_q_vtk.h>
 #endif
@@ -273,7 +274,7 @@ DEFINE_PARAMETER(pl, bool, save_matrix_ascii,  0, "Save the matrix in ASCII MATL
 DEFINE_PARAMETER(pl, bool, save_matrix_binary, 0, "Save the matrix in BINARY MATLAB format");
 DEFINE_PARAMETER(pl, bool, save_convergence,   0, "Save convergence results");
 
-DEFINE_PARAMETER(pl, int, n_example, 16, "Predefined example");
+DEFINE_PARAMETER(pl, int, n_example, 9, "Predefined example");
 
 void set_example(int n_example)
 {
@@ -456,8 +457,8 @@ void set_example(int n_example)
 
     case 9: // shperical interface
 
-      n_um = 11; mag_um = 1; n_mu_m = 0; mag_mu_m = 5; n_diag_m = 0; mag_diag_m = 1;
-      n_up = 12; mag_up = 1; n_mu_p = 0; mag_mu_p = 1; n_diag_p = 0; mag_diag_p = 1;
+      n_um = 11; mag_um = 1; n_mu_m = 0; mag_mu_m = 5; n_diag_m = 1; mag_diag_m = 1;
+      n_up = 12; mag_up = 1; n_mu_p = 0; mag_mu_p = 1; n_diag_p = 1; mag_diag_p = 1;
 
       infc_phi_num = 1;
       bdry_phi_num = 0;
@@ -1224,7 +1225,7 @@ class rhs_m_cf_t: public CF_DIM
 {
 public:
   double operator()(DIM(double x, double y, double z)) const {
-    return diag_m_cf(DIM(x,y,z))*u_m_cf(DIM(x,y,z))
+    return diag_m_cf(DIM(x,y,z))*sinh(u_m_cf(DIM(x,y,z)))
         - mu_m_cf(DIM(x,y,z))*ul_m_cf(DIM(x,y,z))
         - SUMD(mux_m_cf(DIM(x,y,z))*ux_m_cf(DIM(x,y,z)),
                muy_m_cf(DIM(x,y,z))*uy_m_cf(DIM(x,y,z)),
@@ -1236,7 +1237,7 @@ class rhs_p_cf_t: public CF_DIM
 {
 public:
   double operator()(DIM(double x, double y, double z)) const {
-    return diag_p_cf(DIM(x,y,z))*u_p_cf(DIM(x,y,z))
+    return diag_p_cf(DIM(x,y,z))*sinh(u_p_cf(DIM(x,y,z)))
         - mu_p_cf(DIM(x,y,z))*ul_p_cf(DIM(x,y,z))
         - SUMD(mux_p_cf(DIM(x,y,z))*ux_p_cf(DIM(x,y,z)),
                muy_p_cf(DIM(x,y,z))*uy_p_cf(DIM(x,y,z)),
@@ -2161,8 +2162,8 @@ int main (int argc, char* argv[])
               Vec sol; double *sol_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &sol); CHKERRXX(ierr);
               Vec sol2; ierr = VecCreateGhostNodes(p4est, nodes, &sol2); CHKERRXX(ierr);
 
-              my_p4est_poisson_nodes_mls_t solver(&ngbd_n);
-
+              //my_p4est_poisson_nodes_mls_t solver(&ngbd_n);
+              my_p4est_general_poisson_nodes_mls_solver_t solver(&ngbd_n);
               solver.set_use_centroid_always(use_centroid_always);
               solver.set_store_finite_volumes(store_finite_volumes);
               solver.set_jump_scheme(jc_scheme);
@@ -2317,7 +2318,8 @@ int main (int argc, char* argv[])
                 }
               }
 
-              solver.solve(sol);
+              //solver.solve(sol);
+              solver.solve_nonlinear(sol,1e-8,50,true);
 
               Vec bdry_phi_eff = solver.get_boundary_phi_eff();
               Vec infc_phi_eff = solver.get_interface_phi_eff();

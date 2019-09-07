@@ -33,7 +33,7 @@ class my_p4est_poisson_nodes_mls_t
     PetscInt n;
     mat_entry_t(PetscInt n=0, double val=0) : n(n), val(val) {}
   };
-
+protected:
   PetscErrorCode ierr;
 
   // p4est objects
