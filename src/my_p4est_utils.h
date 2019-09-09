@@ -1765,6 +1765,10 @@ public:
   double get_duration(){
     return tf - ts;
   }
+
+  double get_duration_current(){
+    return MPI_Wtime() - ts;
+  }
 };
 
 /*!
@@ -2087,6 +2091,17 @@ public:
 };
 
 static zero_cf_t zero_cf;
+
+class cf_const_t : public CF_DIM
+{
+  double value;
+public:
+  cf_const_t(double value=0) : value(value) {}
+  double operator()(DIM(double, double, double)) const
+  {
+    return value;
+  }
+};
 
 inline double smooth_max(double a, double b, double e)
 {

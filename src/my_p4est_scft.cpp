@@ -287,73 +287,82 @@ void my_p4est_scft_t::initialize_solvers()
 
 void my_p4est_scft_t::initialize_bc_simple()
 {
-  double xyz[P4EST_DIM];
-  energy_singular_part = 0;
-
-  for (int i = 0; i < num_surfaces; ++i) // loop through all surfaces
+  if (num_surfaces > 0)
   {
-    for (int j = 0; j < solver_a.pw_bc_num_robin_pts(i); ++j)
+    double xyz[P4EST_DIM];
+    energy_singular_part = 0;
+
+    for (int i = 0; i < num_surfaces; ++i) // loop through all surfaces
     {
-      // compute robin coefficients
-      solver_a.pw_bc_xyz_robin_pt(i, j, xyz);
+      for (int j = 0; j < solver_a.pw_bc_num_robin_pts(i); ++j)
+      {
+        // compute robin coefficients
+        solver_a.pw_bc_xyz_robin_pt(i, j, xyz);
 
-      pw_bc_coeffs_a[i][j] = gamma_a[i]->value(xyz)*scalling;
-      pw_bc_coeffs_b[i][j] = gamma_b[i]->value(xyz)*scalling;
+        pw_bc_coeffs_a[i][j] = gamma_a[i]->value(xyz)*scalling;
+        pw_bc_coeffs_b[i][j] = gamma_b[i]->value(xyz)*scalling;
+      }
     }
-  }
 
-  // let solvers know that bc's have been updated
-  solver_a.set_new_submat_robin(true);
-  solver_b.set_new_submat_robin(true);
+    // let solvers know that bc's have been updated
+    solver_a.set_new_submat_robin(true);
+    solver_b.set_new_submat_robin(true);
+  }
 }
 
 void my_p4est_scft_t::initialize_bc_smart(bool adaptive)
 {
-  // create interpolation of mu_m
-  CF_DIM *mu_cf = &zero_cf;
-
-  my_p4est_interpolation_nodes_t interp(ngbd);
-  if (adaptive)
+  if (num_surfaces > 0)
   {
-    ierr = VecGhostUpdateBegin(mu_m, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateEnd  (mu_m, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    // create interpolation of mu_m
+    CF_DIM *mu_cf = &zero_cf;
 
-    my_p4est_level_set_t ls(ngbd);
-    ls.extend_Over_Interface_TVD_Full(phi_smooth, mu_m, 20, 2, 0, DBL_MAX, DBL_MAX, DBL_MAX, NULL, mask);
-
-    interp.set_input(mu_m, linear);
-    mu_cf = &interp;
-  }
-
-  double xyz[P4EST_DIM];
-  energy_singular_part = 0;
-
-  for (int i = 0; i < num_surfaces; ++i) // loop through all surfaces
-  {
-    boundary_conditions_t *bc = solver_a.get_bc(i);
-    for (int j = 0; j < solver_a.pw_bc_num_robin_pts(i); ++j)
+    my_p4est_interpolation_nodes_t interp(ngbd);
+    if (adaptive)
     {
-      // compute robin coefficients
-      solver_a.pw_bc_xyz_robin_pt(i, j, xyz);
-      double mu_m_val = interp.value(xyz);
-      pw_bc_coeffs_a[i][j] = (gamma_a[i]->value(xyz)-gamma_b[i]->value(xyz))*(-mu_m_val/XN+0.5)*scalling;
-      pw_bc_coeffs_b[i][j] = (gamma_a[i]->value(xyz)-gamma_b[i]->value(xyz))*(-mu_m_val/XN-0.5)*scalling;
+      ierr = VecGhostUpdateBegin(mu_m, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+      ierr = VecGhostUpdateEnd  (mu_m, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-      // calculate addition to energy from surface tensions
-      solver_a.pw_bc_xyz_value_pt(i, j, xyz);
-      double pw_integrand = 0.5*(gamma_a[i]->value(xyz)+gamma_b[i]->value(xyz))
-                            +   (gamma_a[i]->value(xyz)-gamma_b[i]->value(xyz))*interp.value(xyz)/XN;
-      energy_singular_part += bc->areas[j]*pw_integrand;
+      if (phi_smooth != NULL)
+      {
+        my_p4est_level_set_t ls(ngbd);
+        ls.extend_Over_Interface_TVD_Full(phi_smooth, mu_m, 20, 2, 0, DBL_MAX, DBL_MAX, DBL_MAX, NULL, mask);
+      }
+
+      interp.set_input(mu_m, linear);
+      mu_cf = &interp;
     }
+
+    double xyz[P4EST_DIM];
+    energy_singular_part = 0;
+
+    for (int i = 0; i < num_surfaces; ++i) // loop through all surfaces
+    {
+      boundary_conditions_t *bc = solver_a.get_bc(i);
+      for (int j = 0; j < solver_a.pw_bc_num_robin_pts(i); ++j)
+      {
+        // compute robin coefficients
+        solver_a.pw_bc_xyz_robin_pt(i, j, xyz);
+        double mu_m_val = mu_cf->value(xyz);
+        pw_bc_coeffs_a[i][j] = (gamma_a[i]->value(xyz)-gamma_b[i]->value(xyz))*(-mu_m_val/XN+0.5)*scalling;
+        pw_bc_coeffs_b[i][j] = (gamma_a[i]->value(xyz)-gamma_b[i]->value(xyz))*(-mu_m_val/XN-0.5)*scalling;
+
+        // calculate addition to energy from surface tensions
+        solver_a.pw_bc_xyz_value_pt(i, j, xyz);
+        double pw_integrand = 0.5*(gamma_a[i]->value(xyz)+gamma_b[i]->value(xyz))
+                              +   (gamma_a[i]->value(xyz)-gamma_b[i]->value(xyz))*mu_cf->value(xyz)/XN;
+        energy_singular_part += bc->areas[j]*pw_integrand;
+      }
+    }
+
+    int mpiret = MPI_Allreduce(MPI_IN_PLACE, &energy_singular_part, 1, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+
+    energy_singular_part *= scalling;
+    energy_singular_part /= volume;
+
+    solver_a.set_new_submat_robin(true);
+    solver_b.set_new_submat_robin(true);
   }
-
-  int mpiret = MPI_Allreduce(MPI_IN_PLACE, &energy_singular_part, 1, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-
-  energy_singular_part *= scalling;
-  energy_singular_part /= volume;
-
-  solver_a.set_new_submat_robin(true);
-  solver_b.set_new_submat_robin(true);
 }
 
 void my_p4est_scft_t::solve_for_propogators()
@@ -671,6 +680,14 @@ void my_p4est_scft_t::save_VTK(int compt)
 
   double *phi_p, *rho_a_p, *rho_b_p, *mu_p_p, *mu_m_p, *mask_p;
 
+  bool no_phi = 0;
+  if (phi_smooth == NULL)
+  {
+    ierr = VecDuplicate(mu_m, &phi_smooth); CHKERRXX(ierr);
+    VecSetGhost(phi_smooth, -1);
+    no_phi = 1;
+  }
+
 //  ierr = VecGetArray(phi->at(0), &phi_p); CHKERRXX(ierr);
 //  ierr = VecGetArray(qf[ns-1], &rho_a_p); CHKERRXX(ierr);
 //  ierr = VecGetArray(qb[0], &rho_b_p); CHKERRXX(ierr);
@@ -728,6 +745,12 @@ void my_p4est_scft_t::save_VTK(int compt)
   ierr = VecRestoreArray(mu_m, &mu_m_p); CHKERRXX(ierr);
   ierr = VecRestoreArray(mu_p, &mu_p_p); CHKERRXX(ierr);
   ierr = VecRestoreArray(mask, &mask_p); CHKERRXX(ierr);
+
+  if (no_phi)
+  {
+    ierr = VecDestroy(phi_smooth); CHKERRXX(ierr);
+    phi_smooth = NULL;
+  }
 
   PetscPrintf(p4est->mpicomm, "VTK saved in %s\n", oss.str().c_str());
 }
@@ -920,174 +943,177 @@ void my_p4est_scft_t::assemble_integrating_vec()
    * and calculation of volume fraction for each node
    */
 
-  // domain
-  std::vector<double *> phi_ptr(num_surfaces, NULL);
-
-  for (unsigned short i = 0; i < num_surfaces; i++)
+  if (phi_smooth != NULL)
   {
-    ierr = VecGetArray(phi[i], &phi_ptr[i]); CHKERRXX(ierr);
-  }
+    // domain
+    std::vector<double *> phi_ptr(num_surfaces, NULL);
 
-  double *phi_eff_ptr;
-  ierr = VecGetArray(phi_smooth, &phi_eff_ptr); CHKERRXX(ierr);
-
-  // data for refined cells
-  unsigned short fv_size_x = 0;
-  unsigned short fv_size_y = 0;
-#ifdef P4_TO_P8
-  unsigned short fv_size_z = 0;
-#endif
-
-  double fv_xmin, fv_xmax;
-  double fv_ymin, fv_ymax;
-#ifdef P4_TO_P8
-  double fv_zmin, fv_zmax;
-#endif
-
-  double xyz_C[P4EST_DIM];
-
-  bool neighbors_exist[num_neighbors_cube];
-  p4est_locidx_t neighbors[num_neighbors_cube];
-
-  // interpolations
-  my_p4est_interpolation_nodes_local_t phi_interp_local(ngbd);
-
-  for(p4est_locidx_t n=0; n < nodes->num_owned_indeps; n++) // loop over nodes
-  {
-    // sample level-set function at cube nodes and check if crossed
-    bool is_crossed = false;
-
-    ngbd->get_all_neighbors(n, neighbors, neighbors_exist);
-
-    for (unsigned short phi_idx = 0; phi_idx < num_surfaces; ++phi_idx)
+    for (unsigned short i = 0; i < num_surfaces; i++)
     {
-      bool is_one_positive = false;
-      bool is_one_negative = false;
-
-      for (unsigned short i = 0; i < num_neighbors_cube_; ++i)
-        if (neighbors_exist[i])
-        {
-          is_one_positive = is_one_positive || phi_ptr[phi_idx][neighbors[i]] > 0;
-          is_one_negative = is_one_negative || phi_ptr[phi_idx][neighbors[i]] < 0;
-        }
-
-      is_crossed = is_crossed || (is_one_negative && is_one_positive);
+      ierr = VecGetArray(phi[i], &phi_ptr[i]); CHKERRXX(ierr);
     }
 
-    if (!is_crossed && phi_eff_ptr[n] > 0.)
-    {
-      int_vec_ptr[n] = 0;
-    }
-    else if (is_crossed)
-    {
-      p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
+    double *phi_eff_ptr;
+    ierr = VecGetArray(phi_smooth, &phi_eff_ptr); CHKERRXX(ierr);
 
-      node_xyz_fr_n(n, p4est, nodes, xyz_C);
-      double x_C  = xyz_C[0];
-      double y_C  = xyz_C[1];
-  #ifdef P4_TO_P8
-      double z_C  = xyz_C[2];
-  #endif
-
-      phi_interp_local.initialize(n);
-
-      // determine dimensions of cube
-      fv_size_x = 0;
-      fv_size_y = 0;
-  #ifdef P4_TO_P8
-      fv_size_z = 0;
-  #endif
-      if(!is_node_xmWall(p4est, ni)) {fv_size_x += cube_refinement; fv_xmin = x_C-0.5*dxyz[0];} else {fv_xmin = x_C;}
-      if(!is_node_xpWall(p4est, ni)) {fv_size_x += cube_refinement; fv_xmax = x_C+0.5*dxyz[0];} else {fv_xmax = x_C;}
-
-      if(!is_node_ymWall(p4est, ni)) {fv_size_y += cube_refinement; fv_ymin = y_C-0.5*dxyz[1];} else {fv_ymin = y_C;}
-      if(!is_node_ypWall(p4est, ni)) {fv_size_y += cube_refinement; fv_ymax = y_C+0.5*dxyz[1];} else {fv_ymax = y_C;}
-  #ifdef P4_TO_P8
-      if(!is_node_zmWall(p4est, ni)) {fv_size_z += cube_refinement; fv_zmin = z_C-0.5*dxyz[2];} else {fv_zmin = z_C;}
-      if(!is_node_zpWall(p4est, ni)) {fv_size_z += cube_refinement; fv_zmax = z_C+0.5*dxyz[2];} else {fv_zmax = z_C;}
-  #endif
-
-      if (cube_refinement == 0)
-      {
-        fv_size_x = 1;
-        fv_size_y = 1;
-  #ifdef P4_TO_P8
-        fv_size_z = 1;
-  #endif
-      }
-      // Reconstruct geometry
+    // data for refined cells
+    unsigned short fv_size_x = 0;
+    unsigned short fv_size_y = 0;
 #ifdef P4_TO_P8
-      double cube_xyz_min[] = { fv_xmin, fv_ymin, fv_zmin };
-      double cube_xyz_max[] = { fv_xmax, fv_ymax, fv_zmax };
-      int  cube_mnk[] = { fv_size_x, fv_size_y, fv_size_z };
-      cube3_mls_t cube(cube_xyz_min, cube_xyz_max, cube_mnk, integration_order);
-#else
-      double cube_xyz_min[] = { fv_xmin, fv_ymin };
-      double cube_xyz_max[] = { fv_xmax, fv_ymax };
-      int  cube_mnk[] = { fv_size_x, fv_size_y };
-      cube2_mls_t cube(cube_xyz_min, cube_xyz_max, cube_mnk, integration_order);
+    unsigned short fv_size_z = 0;
 #endif
 
-      // get points at which values of level-set functions are needed
-      std::vector<double> x_grid; cube.get_x_coord(x_grid);
-      std::vector<double> y_grid; cube.get_y_coord(y_grid);
+    double fv_xmin, fv_xmax;
+    double fv_ymin, fv_ymax;
 #ifdef P4_TO_P8
-      std::vector<double> z_grid; cube.get_z_coord(z_grid);
+    double fv_zmin, fv_zmax;
 #endif
-      unsigned int points_total = x_grid.size();
 
-      std::vector<double> phi_cube(num_surfaces*points_total, -1);
+    double xyz_C[P4EST_DIM];
 
-      // compute values of level-set functions at needed points
+    bool neighbors_exist[num_neighbors_cube];
+    p4est_locidx_t neighbors[num_neighbors_cube];
+
+    // interpolations
+    my_p4est_interpolation_nodes_local_t phi_interp_local(ngbd);
+
+    for(p4est_locidx_t n=0; n < nodes->num_owned_indeps; n++) // loop over nodes
+    {
+      // sample level-set function at cube nodes and check if crossed
+      bool is_crossed = false;
+
+      ngbd->get_all_neighbors(n, neighbors, neighbors_exist);
+
       for (unsigned short phi_idx = 0; phi_idx < num_surfaces; ++phi_idx)
       {
-        phi_interp_local.set_input(phi_ptr[phi_idx], linear);
+        bool is_one_positive = false;
+        bool is_one_negative = false;
 
-        for (unsigned int i = 0; i < points_total; ++i)
-        {
+        for (unsigned short i = 0; i < num_neighbors_cube_; ++i)
+          if (neighbors_exist[i])
+          {
+            is_one_positive = is_one_positive || phi_ptr[phi_idx][neighbors[i]] > 0;
+            is_one_negative = is_one_negative || phi_ptr[phi_idx][neighbors[i]] < 0;
+          }
+
+        is_crossed = is_crossed || (is_one_negative && is_one_positive);
+      }
+
+      if (!is_crossed && phi_eff_ptr[n] > 0.)
+      {
+        int_vec_ptr[n] = 0;
+      }
+      else if (is_crossed)
+      {
+        p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
+
+        node_xyz_fr_n(n, p4est, nodes, xyz_C);
+        double x_C  = xyz_C[0];
+        double y_C  = xyz_C[1];
 #ifdef P4_TO_P8
-          phi_cube[phi_idx*points_total + i] = phi_interp_local(x_grid[i], y_grid[i], z_grid[i]);
-#else
-          phi_cube[phi_idx*points_total + i] = phi_interp_local(x_grid[i], y_grid[i]);
+        double z_C  = xyz_C[2];
+#endif
+
+        phi_interp_local.initialize(n);
+
+        // determine dimensions of cube
+        fv_size_x = 0;
+        fv_size_y = 0;
+#ifdef P4_TO_P8
+        fv_size_z = 0;
+#endif
+        if(!is_node_xmWall(p4est, ni)) {fv_size_x += cube_refinement; fv_xmin = x_C-0.5*dxyz[0];} else {fv_xmin = x_C;}
+        if(!is_node_xpWall(p4est, ni)) {fv_size_x += cube_refinement; fv_xmax = x_C+0.5*dxyz[0];} else {fv_xmax = x_C;}
+
+        if(!is_node_ymWall(p4est, ni)) {fv_size_y += cube_refinement; fv_ymin = y_C-0.5*dxyz[1];} else {fv_ymin = y_C;}
+        if(!is_node_ypWall(p4est, ni)) {fv_size_y += cube_refinement; fv_ymax = y_C+0.5*dxyz[1];} else {fv_ymax = y_C;}
+#ifdef P4_TO_P8
+        if(!is_node_zmWall(p4est, ni)) {fv_size_z += cube_refinement; fv_zmin = z_C-0.5*dxyz[2];} else {fv_zmin = z_C;}
+        if(!is_node_zpWall(p4est, ni)) {fv_size_z += cube_refinement; fv_zmax = z_C+0.5*dxyz[2];} else {fv_zmax = z_C;}
+#endif
+
+        if (cube_refinement == 0)
+        {
+          fv_size_x = 1;
+          fv_size_y = 1;
+#ifdef P4_TO_P8
+          fv_size_z = 1;
 #endif
         }
-      }
-
-      // reconstruct geometry
-      reconstruct_cube(cube, phi_cube, action, color);
-
-      // get quadrature points
-      std::vector<double> cube_dom_w;
-      std::vector<double> cube_dom_x;
-      std::vector<double> cube_dom_y;
+        // Reconstruct geometry
 #ifdef P4_TO_P8
-      std::vector<double> cube_dom_z;
-#endif
-
-#ifdef P4_TO_P8
-      cube.quadrature_over_domain(cube_dom_w, cube_dom_x, cube_dom_y, cube_dom_z);
+        double cube_xyz_min[] = { fv_xmin, fv_ymin, fv_zmin };
+        double cube_xyz_max[] = { fv_xmax, fv_ymax, fv_zmax };
+        int  cube_mnk[] = { fv_size_x, fv_size_y, fv_size_z };
+        cube3_mls_t cube(cube_xyz_min, cube_xyz_max, cube_mnk, integration_order);
 #else
-      cube.quadrature_over_domain(cube_dom_w, cube_dom_x, cube_dom_y);
+        double cube_xyz_min[] = { fv_xmin, fv_ymin };
+        double cube_xyz_max[] = { fv_xmax, fv_ymax };
+        int  cube_mnk[] = { fv_size_x, fv_size_y };
+        cube2_mls_t cube(cube_xyz_min, cube_xyz_max, cube_mnk, integration_order);
 #endif
 
-      // compute cut-cell volume
-      double volume_cut_cell = 0.;
+        // get points at which values of level-set functions are needed
+        std::vector<double> x_grid; cube.get_x_coord(x_grid);
+        std::vector<double> y_grid; cube.get_y_coord(y_grid);
+#ifdef P4_TO_P8
+        std::vector<double> z_grid; cube.get_z_coord(z_grid);
+#endif
+        unsigned int points_total = x_grid.size();
 
-      for (unsigned int i = 0; i < cube_dom_w.size(); ++i)
-      {
-        volume_cut_cell += cube_dom_w[i];
+        std::vector<double> phi_cube(num_surfaces*points_total, -1);
+
+        // compute values of level-set functions at needed points
+        for (unsigned short phi_idx = 0; phi_idx < num_surfaces; ++phi_idx)
+        {
+          phi_interp_local.set_input(phi_ptr[phi_idx], linear);
+
+          for (unsigned int i = 0; i < points_total; ++i)
+          {
+#ifdef P4_TO_P8
+            phi_cube[phi_idx*points_total + i] = phi_interp_local(x_grid[i], y_grid[i], z_grid[i]);
+#else
+            phi_cube[phi_idx*points_total + i] = phi_interp_local(x_grid[i], y_grid[i]);
+#endif
+          }
+        }
+
+        // reconstruct geometry
+        reconstruct_cube(cube, phi_cube, action, color);
+
+        // get quadrature points
+        std::vector<double> cube_dom_w;
+        std::vector<double> cube_dom_x;
+        std::vector<double> cube_dom_y;
+#ifdef P4_TO_P8
+        std::vector<double> cube_dom_z;
+#endif
+
+#ifdef P4_TO_P8
+        cube.quadrature_over_domain(cube_dom_w, cube_dom_x, cube_dom_y, cube_dom_z);
+#else
+        cube.quadrature_over_domain(cube_dom_w, cube_dom_x, cube_dom_y);
+#endif
+
+        // compute cut-cell volume
+        double volume_cut_cell = 0.;
+
+        for (unsigned int i = 0; i < cube_dom_w.size(); ++i)
+        {
+          volume_cut_cell += cube_dom_w[i];
+        }
+
+        int_vec_ptr[n] = volume_cut_cell;
       }
 
-      int_vec_ptr[n] = volume_cut_cell;
     }
 
-  }
+    ierr = VecRestoreArray(phi_smooth, &phi_eff_ptr); CHKERRXX(ierr);
 
-  ierr = VecRestoreArray(phi_smooth, &phi_eff_ptr); CHKERRXX(ierr);
-
-  for (unsigned short i = 0; i < num_surfaces; i++)
-  {
-    ierr = VecRestoreArray(phi[i], &phi_ptr[i]); CHKERRXX(ierr);
+    for (unsigned short i = 0; i < num_surfaces; i++)
+    {
+      ierr = VecRestoreArray(phi[i], &phi_ptr[i]); CHKERRXX(ierr);
+    }
   }
 
   ierr = VecRestoreArray(integrating_vec, &int_vec_ptr); CHKERRXX(ierr);
@@ -1191,13 +1217,16 @@ void my_p4est_scft_t::sync_and_extend()
   ierr = VecGhostUpdateEnd  (mu_p, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
   // extend over smoothed interface
-  my_p4est_level_set_t ls(ngbd);
-  ls.extend_Over_Interface_TVD_Full(phi_smooth, qf[ns-1], 20, 2, 0, DBL_MAX, DBL_MAX, DBL_MAX, NULL, mask);
-  ls.extend_Over_Interface_TVD_Full(phi_smooth, qb[0], 20, 2, 0, DBL_MAX, DBL_MAX, DBL_MAX, NULL, mask);
-  ls.extend_Over_Interface_TVD_Full(phi_smooth, rho_a, 20, 2, 0, DBL_MAX, DBL_MAX, DBL_MAX, NULL, mask);
-  ls.extend_Over_Interface_TVD_Full(phi_smooth, rho_b, 20, 2, 0, DBL_MAX, DBL_MAX, DBL_MAX, NULL, mask);
-  ls.extend_Over_Interface_TVD_Full(phi_smooth, mu_m, 20, 2, 0, DBL_MAX, DBL_MAX, DBL_MAX, NULL, mask);
-  ls.extend_Over_Interface_TVD_Full(phi_smooth, mu_p, 20, 2, 0, DBL_MAX, DBL_MAX, DBL_MAX, NULL, mask);
+  if (phi_smooth != NULL)
+  {
+    my_p4est_level_set_t ls(ngbd);
+    ls.extend_Over_Interface_TVD_Full(phi_smooth, qf[ns-1], 20, 2, 0, DBL_MAX, DBL_MAX, DBL_MAX, NULL, mask);
+    ls.extend_Over_Interface_TVD_Full(phi_smooth, qb[0], 20, 2, 0, DBL_MAX, DBL_MAX, DBL_MAX, NULL, mask);
+    ls.extend_Over_Interface_TVD_Full(phi_smooth, rho_a, 20, 2, 0, DBL_MAX, DBL_MAX, DBL_MAX, NULL, mask);
+    ls.extend_Over_Interface_TVD_Full(phi_smooth, rho_b, 20, 2, 0, DBL_MAX, DBL_MAX, DBL_MAX, NULL, mask);
+    ls.extend_Over_Interface_TVD_Full(phi_smooth, mu_m, 20, 2, 0, DBL_MAX, DBL_MAX, DBL_MAX, NULL, mask);
+    ls.extend_Over_Interface_TVD_Full(phi_smooth, mu_p, 20, 2, 0, DBL_MAX, DBL_MAX, DBL_MAX, NULL, mask);
+  }
 }
 
 void my_p4est_scft_t::compute_energy_shape_derivative(int phi_idx, Vec velo)
