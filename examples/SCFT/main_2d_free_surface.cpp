@@ -872,7 +872,6 @@ int main (int argc, char* argv[])
       double s_min = MIN(MIN(s_p00, s_m00), MIN(s_0p0, s_0m0));
   #endif
 
-      /* choose CFL = 0.8 ... just for fun! */
       dt_local = MIN(dt_local, cfl*fabs(s_min/velo_ptr[n]));
       vmax = MAX(vmax, fabs(velo_ptr[n]));
     }

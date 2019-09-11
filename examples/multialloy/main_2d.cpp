@@ -52,6 +52,8 @@
 
 using namespace std;
 
+extern PetscLogEvent log_my_p4est_poisson_nodes_multialloy_solve;
+
 parameter_list_t pl;
 
 //-------------------------------------
@@ -81,7 +83,7 @@ DEFINE_PARAMETER(pl, int, lmin, 5, "Min level of the tree");
 DEFINE_PARAMETER(pl, int, lmax, 5, "Max level of the tree");
 #else
 DEFINE_PARAMETER(pl, int, lmin, 5, "Min level of the tree");
-DEFINE_PARAMETER(pl, int, lmax, 10, "Max level of the tree");
+DEFINE_PARAMETER(pl, int, lmax, 11, "Max level of the tree");
 #endif
 
 DEFINE_PARAMETER(pl, double, lip, 1.75, "");
@@ -89,8 +91,8 @@ DEFINE_PARAMETER(pl, double, lip, 1.75, "");
 //-------------------------------------
 // solver parameters
 //-------------------------------------
-DEFINE_PARAMETER(pl, bool, use_points_on_interface,   false, "");
-DEFINE_PARAMETER(pl, bool, use_superconvergent_robin, false, "");
+DEFINE_PARAMETER(pl, bool, use_points_on_interface,   1, "");
+DEFINE_PARAMETER(pl, bool, use_superconvergent_robin, 1, "");
 
 DEFINE_PARAMETER(pl, int,    update_c0_robin, 1, "Solve for c0 using Robin BC: 0 - never, 1 - once, 2 - always");
 DEFINE_PARAMETER(pl, int,    num_time_layers, 2, "");
@@ -104,7 +106,7 @@ DEFINE_PARAMETER(pl, double, phi_thresh, 0.1, "");
 //-------------------------------------
 // output parameters
 //-------------------------------------
-DEFINE_PARAMETER(pl, int,  save_every_n_iteration,100, "");
+DEFINE_PARAMETER(pl, int,  save_every_n_iteration,  1, "");
 DEFINE_PARAMETER(pl, bool, save_characteristics,    1, "");
 DEFINE_PARAMETER(pl, bool, save_dendrites,          0, "");
 DEFINE_PARAMETER(pl, bool, save_history,            1, "");
@@ -121,9 +123,9 @@ DEFINE_PARAMETER(pl, double, dendrite_min_length,       0.05, "");
 
 // problem parameters
 DEFINE_PARAMETER(pl, bool,   concentration_neumann, 1, "");
-DEFINE_PARAMETER(pl, int,    max_total_iterations,  INT_MAX, "");
+DEFINE_PARAMETER(pl, int,    max_total_iterations,  10, "");
 DEFINE_PARAMETER(pl, double, time_limit,            DBL_MAX, "");
-DEFINE_PARAMETER(pl, double, termination_length,    1.8, "");
+DEFINE_PARAMETER(pl, double, termination_length,    0.5, "");
 DEFINE_PARAMETER(pl, double, init_perturb,          1.e-5, "");
 DEFINE_PARAMETER(pl, bool,   enforce_planar_front,  0,"");
 
@@ -145,9 +147,9 @@ int num_comps = 1; // Number of components used
 
 DEFINE_PARAMETER(pl, double, volumetric_heat,  0, "Volumetric heat generation, J/cm^3");
 DEFINE_PARAMETER(pl, double, cooling_velocity, 0.01, "Cooling velocity, cm/s");
-DEFINE_PARAMETER(pl, double, temp_gradient,    1200, "Temperature gradient, K/cm");
+DEFINE_PARAMETER(pl, double, temp_gradient,    1600, "Temperature gradient, K/cm");
 
-DEFINE_PARAMETER(pl, int, smoothstep_order, 5, "Time for volumetric heat to fully switch on, s");
+DEFINE_PARAMETER(pl, int,    smoothstep_order, 5, "Time for volumetric heat to fully switch on, s");
 DEFINE_PARAMETER(pl, double, volumetric_heat_tau, 0, "Time for volumetric heat to fully switch on, s");
 DEFINE_PARAMETER(pl, double, cooling_velocity_tau, 5.e-2, "Time for cooling velocity to fully switch on, s");
 
@@ -163,7 +165,7 @@ DEFINE_PARAMETER(pl, double, thermal_cond_s, 6.07e-1, "Thermal conductivity of s
 DEFINE_PARAMETER(pl, double, latent_heat, 2350, "Latent heat of fusion, J.cm-3");
 DEFINE_PARAMETER(pl, double, melting_temp, 1728, "Pure-substance melting point for linearized slope, K");
 
-DEFINE_PARAMETER(pl, bool, linearized_liquidus, 1, "Use linearized liquidus surface or true one");
+DEFINE_PARAMETER(pl, bool,   linearized_liquidus, 1, "Use linearized liquidus surface or true one");
 
 DEFINE_PARAMETER(pl, double, liquidus_slope_0, -357, "Slope of linearized liqiudus w.r.t component no. 0, K^-1");
 DEFINE_PARAMETER(pl, double, liquidus_slope_1, -357, "Slope of linearized liqiudus w.r.t component no. 1, K^-1");
@@ -189,7 +191,7 @@ DEFINE_PARAMETER(pl, double, eps_c, 0, ""); /* curvature undercooling coefficien
 DEFINE_PARAMETER(pl, double, eps_v, 0, ""); /* kinetic undercooling coefficient           - s.K.cm-1     */
 DEFINE_PARAMETER(pl, double, eps_a, 0, ""); /* anisotropy coefficient                                    */
 
-DEFINE_PARAMETER(pl, int, alloy, 7, "0: Ni -  0.4at%Cu bi-alloy, "
+DEFINE_PARAMETER(pl, int, alloy, 1, "0: Ni -  0.4at%Cu bi-alloy, "
                                     "1: Ni -  0.3at%Cu -  0.1at%Cu tri-alloy, "
                                     "2: Co - 10.7at%W  -  9.4at%Al tri-alloy, "
                                     "3: Co -  9.4at%Al - 10.7at%W  tri-alloy, "
@@ -248,7 +250,7 @@ void set_alloy_parameters()
       part_coeff_0     = 0.86;
       part_coeff_1     = 0.86;
 
-      eps_c = 5.e-6/melting_temp;
+      eps_c = 5.e-7/melting_temp;
       eps_v = 0;
       eps_a = 0.0;
       break;
@@ -463,6 +465,7 @@ public:
     switch (geometry)
     {
       case 0: return -1;
+//      case 0: return 0.025 - sqrt(SQR(x-0.25) + SQR(y-0.5));
       default: throw;
     }
   }
@@ -849,7 +852,7 @@ int main (int argc, char* argv[])
 
   // set boundary conditions
   std::vector<BoundaryConditionType> bc_conc_type(num_comps, concentration_neumann ? NEUMANN : DIRICHLET);
-  mas.set_container_conditions_thermal(NEUMANN, wall_bc_value_temp);
+  mas.set_container_conditions_thermal(NEUMANN, zero_cf);
   mas.set_container_conditions_composition(bc_conc_type.data(), wall_bc_value_conc_all);
 
   mas.set_wall_conditions_thermal(wall_bc_type_temp, wall_bc_value_temp);
@@ -884,6 +887,8 @@ int main (int argc, char* argv[])
 
   mas.set_dendrite_cut_off_fraction(dendrite_cut_off_fraction);
   mas.set_dendrite_min_length      (dendrite_min_length);
+
+  mas.save_VTK(0);
 
   vec_and_ptr_t ones(front_phi.vec);
   VecSetGhost(ones.vec, 1.);
@@ -964,6 +969,10 @@ int main (int argc, char* argv[])
       front_phi.vec = mas.get_front_phi();
       contr_phi.vec = mas.get_contr_phi();
       vn.vec        = mas.get_normal_velocity();
+
+      PetscEventPerfInfo info;
+      PetscLogEventGetPerfInfo(0,log_my_p4est_poisson_nodes_multialloy_solve, &info);
+      std::cout << p4est->mpirank << ": " << info.count << ": " << info.time << "\n";
 
       // compute level-set of liquid region
       vec_and_ptr_t phi_liquid(front_phi.vec);

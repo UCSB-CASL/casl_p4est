@@ -97,7 +97,7 @@ public:
    * \param phi_xx  the derivatives of the level set function. This is a pointer to an array of dimension P4EST_DIM
    * \note you need to update ngbd_n and hierarchy yourself !
    */
-  void update_p4est(Vec *v, double dt, Vec &phi, Vec *phi_xx=NULL);
+  void update_p4est(Vec *v, double dt, Vec &phi, Vec *phi_xx=NULL, Vec phi_add_refine = NULL);
 
   /*!
    * \brief update a p4est from tn to tnp1, using a semi-Lagrangian scheme with BDF along the characteristic.

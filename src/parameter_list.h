@@ -148,7 +148,7 @@ public:
 #define CAT(A,B) ICAT(A,B)
 
 #define DEFINE_PARAMETER(list, type, var, value, description) type var = value; add_to_list CAT(adding_,var) (list, var, #var, description)
-#define ADD_TO_LIST(list, var, description) add_to_list CAT(adding_,var) (list, var, #var, description)
+#define ADD_TO_LIST(list, var, description) static add_to_list CAT(adding_,var) (list, var, #var, description)
 
 
 #endif // PARAMETER_LIST_H

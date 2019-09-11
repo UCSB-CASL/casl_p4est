@@ -62,7 +62,10 @@ protected:
   Mat     submat_main_;
   Vec     submat_diag_;
   double *submat_diag_ptr;
+  Vec     submat_diag_ghost_;
+  double *submat_diag_ghost_ptr;
   Mat     submat_jump_;
+  Mat     submat_jump_ghost_;
   Mat     submat_robin_sc_;
   Vec     submat_robin_sym_;
   double *submat_robin_sym_ptr;
@@ -351,7 +354,8 @@ public:
 
   inline void add_boundary (mls_opn_t opn, Vec phi, Vec* phi_dd, BoundaryConditionType bc_type, CF_DIM &bc_value, CF_DIM &bc_coeff)
   {
-    add_boundary(opn, phi, DIM(phi_dd[0], phi_dd[1], phi_dd[2]), bc_type, bc_value, bc_coeff);
+    if (phi_dd != NULL) add_boundary(opn, phi, DIM(phi_dd[0], phi_dd[1], phi_dd[2]), bc_type, bc_value, bc_coeff);
+    else                add_boundary(opn, phi, DIM(NULL,      NULL,      NULL),      bc_type, bc_value, bc_coeff);
   }
 
   inline void add_interface(mls_opn_t opn, Vec phi, DIM(Vec phi_xx, Vec phi_yy, Vec phi_zz), CF_DIM &jc_value, CF_DIM &jc_flux)
@@ -519,6 +523,8 @@ public:
   inline bool get_matrix_has_nullspace() { return matrix_has_nullspace_; }
 
   inline Mat get_matrix() { return A_; }
+
+  inline boundary_conditions_t* get_bc(int phi_idx) { return &bc_[phi_idx]; }
 
   // finite volumes
   inline void get_boundary_finite_volumes(vector< my_p4est_finite_volume_t > *&bdry_fvs, vector<int> *&bdry_node_to_fv)

@@ -26,8 +26,12 @@ extern PetscLogEvent log_my_p4est_multialloy_one_step;
 extern PetscLogEvent log_my_p4est_multialloy_compute_dt;
 extern PetscLogEvent log_my_p4est_multialloy_compute_geometric_properties;
 extern PetscLogEvent log_my_p4est_multialloy_compute_velocity;
+extern PetscLogEvent log_my_p4est_multialloy_compute_solid;
 extern PetscLogEvent log_my_p4est_multialloy_update_grid;
+extern PetscLogEvent log_my_p4est_multialloy_update_grid_history;
 extern PetscLogEvent log_my_p4est_multialloy_save_vtk;
+extern PetscLogEvent log_my_p4est_multialloy_update_grid_transfer_data;
+extern PetscLogEvent log_my_p4est_multialloy_update_grid_regularize_front;
 #endif
 #ifndef CASL_LOG_FLOPS
 #undef PetscLogFlops
@@ -42,6 +46,8 @@ my_p4est_multialloy_t::my_p4est_multialloy_t(int num_comps, int num_time_layers)
   ts_.resize(num_time_layers_);
   tl_.resize(num_time_layers_);
   cl_.resize(num_time_layers_, vec_and_ptr_array_t(num_comps_));
+
+  psi_cl_.resize(num_comps_);
 
   front_velo_.resize(num_time_layers_);
   front_velo_norm_.resize(num_time_layers_);
@@ -147,6 +153,10 @@ my_p4est_multialloy_t::~my_p4est_multialloy_t()
   }
 
   cl0_grad_.destroy();
+
+  psi_tl_.destroy();
+  psi_ts_.destroy();
+  psi_cl_.destroy();
 
   //--------------------------------------------------
   // Geometry on the auxiliary grid
@@ -300,6 +310,17 @@ void my_p4est_multialloy_t::initialize(MPI_Comm mpi_comm, double xyz_min[], doub
   dendrite_tip_.create(front_phi_.vec);
   bc_error_.create(front_phi_.vec);
 
+  psi_tl_.create(front_phi_.vec);
+  psi_ts_.create(front_phi_.vec);
+  psi_cl_.create(front_phi_.vec);
+
+  VecSetGhost(psi_tl_.vec, 0.);
+  VecSetGhost(psi_ts_.vec, 0.);
+  for (i = 0; i < num_comps_; ++i)
+  {
+    VecSetGhost(psi_cl_.vec[i], 0.);
+  }
+
   //--------------------------------------------------
   // Geometry on the auxiliary grid
   //--------------------------------------------------
@@ -335,7 +356,7 @@ void my_p4est_multialloy_t::compute_geometric_properties_front()
   // flatten curvature values
   my_p4est_level_set_t ls(ngbd_);
   ls.set_interpolation_on_interface(quadratic_non_oscillatory_continuous_v2);
-  ls.extend_from_interface_to_whole_domain_TVD_in_place(front_phi_.vec, front_curvature_.vec, front_phi_.vec);
+  ls.extend_from_interface_to_whole_domain_TVD_in_place(front_phi_.vec, front_curvature_.vec, front_phi_.vec, 20);
 
   front_curvature_.get_array();
 
@@ -439,17 +460,12 @@ void my_p4est_multialloy_t::compute_velocity()
   front_velo_tmp     .restore_array();
   front_velo_norm_tmp.restore_array();
 
-//  front_velo_np1_.destroy();
-//  front_velo_np1_.create(front_phi_dd_.vec);
-
-//  front_velo_norm_np1_.destroy();
-//  front_velo_norm_np1_.create(front_phi_.vec);
-
+  ls.extend_from_interface_to_whole_domain_TVD(front_phi_.vec, front_velo_norm_tmp.vec, front_velo_norm_[0].vec);
   foreach_dimension(dim)
   {
-    ls.extend_from_interface_to_whole_domain_TVD(front_phi_.vec, front_velo_tmp.vec[dim], front_velo_[0].vec[dim]);
+    VecPointwiseMultGhost(front_velo_[0].vec[dim], front_velo_norm_[0].vec, front_normal_.vec[dim]);
+//    ls.extend_from_interface_to_whole_domain_TVD(front_phi_.vec, front_velo_tmp.vec[dim], front_velo_[0].vec[dim]);
   }
-  ls.extend_from_interface_to_whole_domain_TVD(front_phi_.vec, front_velo_norm_tmp.vec, front_velo_norm_[0].vec);
 
   c_interface.destroy();
   front_velo_norm_tmp.destroy();
@@ -541,15 +557,15 @@ void my_p4est_multialloy_t::update_grid()
   sl.set_phi_interpolation(quadratic_non_oscillatory_continuous_v2);
   sl.set_velo_interpolation(quadratic_non_oscillatory_continuous_v2);
 
-  if (num_time_layers_ == 2) sl.update_p4est(front_velo_[0].vec, dt_[0], front_phi_.vec);
+  if (num_time_layers_ == 2) sl.update_p4est(front_velo_[0].vec, dt_[0], front_phi_.vec, NULL, contr_phi_.vec);
   else   sl.update_p4est(front_velo_[1].vec, front_velo_[0].vec, dt_[1], dt_[0], front_phi_.vec);
 
 
   /* interpolate the quantities onto the new grid */
   // also shit n+1 -> n
-  // note: n+1 fields are allocated but not initialized
 
   PetscPrintf(p4est_->mpicomm, "Transfering data between grids...\n");
+  ierr = PetscLogEventBegin(log_my_p4est_multialloy_update_grid_transfer_data, 0, 0, 0, 0); CHKERRXX(ierr);
   my_p4est_interpolation_nodes_t interp(ngbd_);
 
   double xyz[P4EST_DIM];
@@ -603,10 +619,16 @@ void my_p4est_multialloy_t::update_grid()
 
   tl_[0].destroy();
   tl_[0].create(front_phi_.vec);
+  VecCopyGhost(tl_[1].vec, tl_[0].vec);
   ts_[0].destroy();
   ts_[0].create(front_phi_.vec);
+  VecCopyGhost(ts_[1].vec, ts_[0].vec);
   cl_[0].destroy();
   cl_[0].create(front_phi_.vec);
+  for (i = 0; i < num_comps_; ++i)
+  {
+    VecCopyGhost(cl_[1].vec[i], cl_[0].vec[i]);
+  }
   front_velo_[0].destroy();
   front_velo_[0].create(front_phi_dd_.vec);
   front_velo_norm_[0].destroy();
@@ -643,17 +665,41 @@ void my_p4est_multialloy_t::update_grid()
     seed_map_.set(tmp.vec);
   }
 
+  vec_and_ptr_t psi_tl_tmp(front_phi_.vec);
+  interp.set_input(psi_tl_.vec, linear);
+  interp.interpolate(psi_tl_tmp.vec);
+  psi_tl_.destroy();
+  psi_tl_.set(psi_tl_tmp.vec);
+
+  vec_and_ptr_t psi_ts_tmp(front_phi_.vec);
+  interp.set_input(psi_ts_.vec, linear);
+  interp.interpolate(psi_ts_tmp.vec);
+  psi_ts_.destroy();
+  psi_ts_.set(psi_ts_tmp.vec);
+
+  vec_and_ptr_array_t psi_cl_tmp(num_comps_, front_phi_.vec);
+  for (i = 0; i < num_comps_; ++i)
+  {
+    interp.set_input(psi_cl_.vec[i], linear);
+    interp.interpolate(psi_cl_tmp.vec[i]);
+  }
+  psi_cl_.destroy();
+  psi_cl_.set(psi_cl_tmp.vec.data());
+
   p4est_destroy      (p4est_); p4est_ = p4est_np1;
   p4est_ghost_destroy(ghost_); ghost_ = ghost_np1;
   p4est_nodes_destroy(nodes_); nodes_ = nodes_np1;
   hierarchy_->update(p4est_, ghost_);
   ngbd_->update(hierarchy_, nodes_);
 
+  ierr = PetscLogEventEnd(log_my_p4est_multialloy_update_grid_transfer_data, 0, 0, 0, 0); CHKERRXX(ierr);
+
   regularize_front();
 
   /* reinitialize phi */
   my_p4est_level_set_t ls_new(ngbd_);
-  ls_new.reinitialize_1st_order_time_2nd_order_space(front_phi_.vec);
+//  ls_new.reinitialize_1st_order_time_2nd_order_space(front_phi_.vec, 20);
+  ls_new.reinitialize_2nd_order(front_phi_.vec, 30);
 
   if (num_seeds_ > 1)
   {
@@ -665,120 +711,123 @@ void my_p4est_multialloy_t::update_grid()
   compute_geometric_properties_contr();
 
   /* refine history_p4est_ */
-  if (1)
+  update_grid_history();
+
+  PetscPrintf(p4est_->mpicomm, "Done \n");
+  ierr = PetscLogEventEnd(log_my_p4est_multialloy_update_grid, 0, 0, 0, 0); CHKERRXX(ierr);
+}
+
+void my_p4est_multialloy_t::update_grid_history()
+{
+  ierr = PetscLogEventBegin(log_my_p4est_multialloy_update_grid_history, 0, 0, 0, 0); CHKERRXX(ierr);
+  PetscPrintf(p4est_->mpicomm, "Refining auxiliary p4est for storing data...\n");
+
+  Vec tmp = history_front_phi_.vec;
+  history_front_phi_.vec = history_front_phi_nm1_.vec;
+  history_front_phi_nm1_.vec = tmp;
+
+  p4est_t       *history_p4est_np1 = p4est_copy(history_p4est_, P4EST_FALSE);
+  p4est_ghost_t *history_ghost_np1 = my_p4est_ghost_new(history_p4est_np1, P4EST_CONNECT_FULL);
+  p4est_nodes_t *history_nodes_np1 = my_p4est_nodes_new(history_p4est_np1, history_ghost_np1);
+
+  splitting_criteria_t* sp_old = (splitting_criteria_t*)history_ngbd_->p4est->user_pointer;
+
+  vec_and_ptr_t front_phi_np1(history_p4est_np1, history_nodes_np1);
+
+  bool is_grid_changing = true;
+  int  counter          = 0;
+
+  while (is_grid_changing)
   {
-    PetscPrintf(p4est_->mpicomm, "Refining auxiliary p4est for storing data...\n");
+    // interpolate from a coarse grid to a fine one
+    front_phi_np1.get_array();
 
-    Vec tmp = history_front_phi_.vec;
-    history_front_phi_.vec = history_front_phi_nm1_.vec;
-    history_front_phi_nm1_.vec = tmp;
-
-    p4est_t       *history_p4est_np1 = p4est_copy(history_p4est_, P4EST_FALSE);
-    p4est_ghost_t *history_ghost_np1 = my_p4est_ghost_new(history_p4est_np1, P4EST_CONNECT_FULL);
-    p4est_nodes_t *history_nodes_np1 = my_p4est_nodes_new(history_p4est_np1, history_ghost_np1);
-
-    splitting_criteria_t* sp_old = (splitting_criteria_t*)history_ngbd_->p4est->user_pointer;
-
-    vec_and_ptr_t front_phi_np1(history_p4est_np1, history_nodes_np1);
-
-    bool is_grid_changing = true;
-    int  counter          = 0;
-
-    while (is_grid_changing)
-    {
-      // interpolate from a coarse grid to a fine one
-      front_phi_np1.get_array();
-
-      my_p4est_interpolation_nodes_t interp(ngbd_);
-
-      double xyz[P4EST_DIM];
-      foreach_node(n, history_nodes_np1)
-      {
-        node_xyz_fr_n(n, history_p4est_np1, history_nodes_np1, xyz);
-        interp.add_point(n, xyz);
-      }
-
-      interp.set_input(front_phi_.vec, linear);
-      interp.interpolate(front_phi_np1.ptr);
-
-      splitting_criteria_tag_t sp(sp_old->min_lvl, sp_old->max_lvl, sp_old->lip);
-      is_grid_changing = sp.refine(history_p4est_np1, history_nodes_np1, front_phi_np1.ptr);
-
-      front_phi_np1.restore_array();
-
-      if (is_grid_changing)
-      {
-        my_p4est_partition(history_p4est_np1, P4EST_TRUE, NULL);
-
-        // reset nodes, ghost, and phi
-        p4est_ghost_destroy(history_ghost_np1); history_ghost_np1 = my_p4est_ghost_new(history_p4est_np1, P4EST_CONNECT_FULL);
-        p4est_nodes_destroy(history_nodes_np1); history_nodes_np1 = my_p4est_nodes_new(history_p4est_np1, history_ghost_np1);
-
-        front_phi_np1.destroy();
-        front_phi_np1.create(history_p4est_np1, history_nodes_np1);
-      }
-
-      counter++;
-    }
-
-    history_p4est_np1->user_pointer = (void*) sp_old;
-
-    history_front_phi_.destroy();
-    history_front_phi_.set(front_phi_np1.vec);
-
-    // transfer variables to the new grid
-    my_p4est_interpolation_nodes_t history_interp(history_ngbd_);
+    my_p4est_interpolation_nodes_t interp(ngbd_);
 
     double xyz[P4EST_DIM];
     foreach_node(n, history_nodes_np1)
     {
       node_xyz_fr_n(n, history_p4est_np1, history_nodes_np1, xyz);
-      history_interp.add_point(n, xyz);
+      interp.add_point(n, xyz);
     }
 
-    vec_and_ptr_t tf_tmp(history_front_phi_.vec);
-    history_interp.set_input(history_tf_.vec, interpolation_between_grids_);
-    history_interp.interpolate(tf_tmp.vec);
-    history_tf_.destroy();
-    history_tf_.set(tf_tmp.vec);
+    interp.set_input(front_phi_.vec, linear);
+    interp.interpolate(front_phi_np1.ptr);
 
-    vec_and_ptr_array_t cs_tmp(num_comps_, history_front_phi_.vec);
-    for (int i = 0; i < num_comps_; ++i)
+    splitting_criteria_tag_t sp(sp_old->min_lvl, sp_old->max_lvl, sp_old->lip);
+    is_grid_changing = sp.refine(history_p4est_np1, history_nodes_np1, front_phi_np1.ptr);
+
+    front_phi_np1.restore_array();
+
+    if (is_grid_changing)
     {
-      history_interp.set_input(history_cs_.vec[i], interpolation_between_grids_);
-      history_interp.interpolate(cs_tmp.vec[i]);
+      my_p4est_partition(history_p4est_np1, P4EST_TRUE, NULL);
+
+      // reset nodes, ghost, and phi
+      p4est_ghost_destroy(history_ghost_np1); history_ghost_np1 = my_p4est_ghost_new(history_p4est_np1, P4EST_CONNECT_FULL);
+      p4est_nodes_destroy(history_nodes_np1); history_nodes_np1 = my_p4est_nodes_new(history_p4est_np1, history_ghost_np1);
+
+      front_phi_np1.destroy();
+      front_phi_np1.create(history_p4est_np1, history_nodes_np1);
     }
-    history_cs_.destroy();
-    history_cs_.set(cs_tmp.vec.data());
 
-    vec_and_ptr_t curv_tmp(history_front_phi_.vec);
-    history_interp.set_input(history_front_curvature_.vec, interpolation_between_grids_);
-    history_interp.interpolate(curv_tmp.vec);
-    history_front_curvature_.destroy();
-    history_front_curvature_.set(curv_tmp.vec);
-
-    vec_and_ptr_t velo_tmp(history_front_phi_.vec);
-    history_interp.set_input(history_front_velo_norm_.vec, interpolation_between_grids_);
-    history_interp.interpolate(velo_tmp.vec);
-    history_front_velo_norm_.destroy();
-    history_front_velo_norm_.set(velo_tmp.vec);
-
-    vec_and_ptr_t phi_nm1_tmp(history_front_phi_.vec);
-    history_interp.set_input(history_front_phi_nm1_.vec, interpolation_between_grids_);
-    history_interp.interpolate(phi_nm1_tmp.vec);
-    history_front_phi_nm1_.destroy();
-    history_front_phi_nm1_.set(phi_nm1_tmp.vec);
-
-    p4est_destroy(history_p4est_);       history_p4est_ = history_p4est_np1;
-    p4est_ghost_destroy(history_ghost_); history_ghost_ = history_ghost_np1;
-    p4est_nodes_destroy(history_nodes_); history_nodes_ = history_nodes_np1;
-    history_hierarchy_->update(history_p4est_, history_ghost_);
-    history_ngbd_->update(history_hierarchy_, history_nodes_);
+    counter++;
   }
 
-  PetscPrintf(p4est_->mpicomm, "Done \n");
+  history_p4est_np1->user_pointer = (void*) sp_old;
 
-  ierr = PetscLogEventEnd(log_my_p4est_multialloy_update_grid, 0, 0, 0, 0); CHKERRXX(ierr);
+  history_front_phi_.destroy();
+  history_front_phi_.set(front_phi_np1.vec);
+
+  // transfer variables to the new grid
+  my_p4est_interpolation_nodes_t history_interp(history_ngbd_);
+
+  double xyz[P4EST_DIM];
+  foreach_node(n, history_nodes_np1)
+  {
+    node_xyz_fr_n(n, history_p4est_np1, history_nodes_np1, xyz);
+    history_interp.add_point(n, xyz);
+  }
+
+  vec_and_ptr_t tf_tmp(history_front_phi_.vec);
+  history_interp.set_input(history_tf_.vec, interpolation_between_grids_);
+  history_interp.interpolate(tf_tmp.vec);
+  history_tf_.destroy();
+  history_tf_.set(tf_tmp.vec);
+
+  vec_and_ptr_array_t cs_tmp(num_comps_, history_front_phi_.vec);
+  for (int i = 0; i < num_comps_; ++i)
+  {
+    history_interp.set_input(history_cs_.vec[i], interpolation_between_grids_);
+    history_interp.interpolate(cs_tmp.vec[i]);
+  }
+  history_cs_.destroy();
+  history_cs_.set(cs_tmp.vec.data());
+
+  vec_and_ptr_t curv_tmp(history_front_phi_.vec);
+  history_interp.set_input(history_front_curvature_.vec, interpolation_between_grids_);
+  history_interp.interpolate(curv_tmp.vec);
+  history_front_curvature_.destroy();
+  history_front_curvature_.set(curv_tmp.vec);
+
+  vec_and_ptr_t velo_tmp(history_front_phi_.vec);
+  history_interp.set_input(history_front_velo_norm_.vec, interpolation_between_grids_);
+  history_interp.interpolate(velo_tmp.vec);
+  history_front_velo_norm_.destroy();
+  history_front_velo_norm_.set(velo_tmp.vec);
+
+  vec_and_ptr_t phi_nm1_tmp(history_front_phi_.vec);
+  history_interp.set_input(history_front_phi_nm1_.vec, interpolation_between_grids_);
+  history_interp.interpolate(phi_nm1_tmp.vec);
+  history_front_phi_nm1_.destroy();
+  history_front_phi_nm1_.set(phi_nm1_tmp.vec);
+
+  p4est_destroy(history_p4est_);       history_p4est_ = history_p4est_np1;
+  p4est_ghost_destroy(history_ghost_); history_ghost_ = history_ghost_np1;
+  p4est_nodes_destroy(history_nodes_); history_nodes_ = history_nodes_np1;
+  history_hierarchy_->update(history_p4est_, history_ghost_);
+  history_ngbd_->update(history_hierarchy_, history_nodes_);
+  ierr = PetscLogEventEnd(log_my_p4est_multialloy_update_grid_history, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
 int my_p4est_multialloy_t::one_step()
@@ -874,11 +923,11 @@ int my_p4est_multialloy_t::one_step()
   vector<double> conc_diag(num_comps_, time_coeffs[0]/dt_[0]);
 
   // solve coupled system of equations
-  my_p4est_poisson_nodes_multialloy_t solver_all_in_one(ngbd_);
+  my_p4est_poisson_nodes_multialloy_t solver_all_in_one(ngbd_, num_comps_);
 
   solver_all_in_one.set_front(front_phi_.vec, front_phi_dd_.vec, front_normal_.vec, front_curvature_.vec);
 
-  solver_all_in_one.set_number_of_components(num_comps_);
+//  solver_all_in_one.set_number_of_components(num_comps_);
   solver_all_in_one.set_composition_parameters(conc_diag.data(), solute_diff_.data(), part_coeff_.data());
   solver_all_in_one.set_thermal_parameters(latent_heat_,
                                            density_l_*heat_capacity_l_*time_coeffs[0]/dt_[0], thermal_cond_l_,
@@ -921,7 +970,10 @@ int my_p4est_multialloy_t::one_step()
 
   double bc_error_max = 0;
 
-  int one_step_iterations = solver_all_in_one.solve(tl_[0].vec, ts_[0].vec, cl_[0].vec.data(), cl0_grad_.vec, bc_error_.vec, bc_error_max, 0);
+//  solver_all_in_one.set_verbose_mode(1);
+
+  int one_step_iterations = solver_all_in_one.solve(tl_[0].vec, ts_[0].vec, cl_[0].vec.data(), cl0_grad_.vec, bc_error_.vec, bc_error_max, 1,
+      NULL, NULL, psi_tl_.vec, psi_ts_.vec, psi_cl_.vec.data());
 
   // compute velocity
   compute_velocity();
@@ -1377,6 +1429,7 @@ void my_p4est_multialloy_t::sample_along_line(const double xyz0[], const double 
 
 void my_p4est_multialloy_t::regularize_front()
 {
+  ierr = PetscLogEventBegin(log_my_p4est_multialloy_update_grid_regularize_front, 0, 0, 0, 0); CHKERRXX(ierr);
   /* remove problem geometries */
   PetscPrintf(p4est_->mpicomm, "Removing problem geometries...\n");
 
@@ -1627,10 +1680,12 @@ void my_p4est_multialloy_t::regularize_front()
   } else {
     front_phi_.set(front_phi_cur.vec);
   }
+  ierr = PetscLogEventEnd(log_my_p4est_multialloy_update_grid_regularize_front, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
 void my_p4est_multialloy_t::compute_solid()
 {
+  ierr = PetscLogEventBegin(log_my_p4est_multialloy_compute_solid, 0, 0, 0, 0); CHKERRXX(ierr);
   // get new values for nodes that just solidified
   history_front_phi_    .get_array();
   history_front_phi_nm1_.get_array();
@@ -1714,4 +1769,5 @@ void my_p4est_multialloy_t::compute_solid()
   ls.extend_Over_Interface_TVD(history_front_phi_.vec, history_front_curvature_.vec,  5, 1);
   ls.extend_Over_Interface_TVD(history_front_phi_.vec, history_front_velo_norm_.vec,  5, 1);
   VecScaleGhost(history_front_phi_.vec, -1.);
+  ierr = PetscLogEventEnd(log_my_p4est_multialloy_compute_solid, 0, 0, 0, 0); CHKERRXX(ierr);
 }
