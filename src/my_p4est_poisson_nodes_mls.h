@@ -62,7 +62,10 @@ class my_p4est_poisson_nodes_mls_t
   Mat     submat_main_;
   Vec     submat_diag_;
   double *submat_diag_ptr;
+  Vec     submat_diag_ghost_;
+  double *submat_diag_ghost_ptr;
   Mat     submat_jump_;
+  Mat     submat_jump_ghost_;
   Mat     submat_robin_sc_;
   Vec     submat_robin_sym_;
   double *submat_robin_sym_ptr;

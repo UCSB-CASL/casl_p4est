@@ -281,7 +281,7 @@ DEFINE_PARAMETER(pl, bool, save_matrix_ascii,  0, "Save the matrix in ASCII MATL
 DEFINE_PARAMETER(pl, bool, save_matrix_binary, 0, "Save the matrix in BINARY MATLAB format");
 DEFINE_PARAMETER(pl, bool, save_convergence,   0, "Save convergence results");
 
-DEFINE_PARAMETER(pl, int, n_example, 1, "Predefined example");
+DEFINE_PARAMETER(pl, int, n_example, 10, "Predefined example");
 
 void set_example(int n_example)
 {
@@ -464,8 +464,8 @@ void set_example(int n_example)
 
     case 9: // shperical interface
 
-      n_um = 11; mag_um = 1; n_mu_m = 0; mag_mu_m = 5; n_diag_m = 0; mag_diag_m = 1;
-      n_up = 12; mag_up = 1; n_mu_p = 0; mag_mu_p = 1; n_diag_p = 0; mag_diag_p = 1;
+      n_um = 11; mag_um = 1; n_mu_m = 0; mag_mu_m = 5; n_diag_m = 1; mag_diag_m = 1;
+      n_up = 12; mag_up = 1; n_mu_p = 0; mag_mu_p = 1; n_diag_p = 1; mag_diag_p = 1;
 
       infc_phi_num = 1;
       bdry_phi_num = 0;
@@ -486,8 +486,8 @@ void set_example(int n_example)
 
 //      n_um = 14; mag_um = 1; n_mu_m = 0; mag_mu_m = 1; n_diag_m = 0; mag_diag_m = 1;
 //      n_up = 14; mag_up = 2; n_mu_p = 0; mag_mu_p = 1; n_diag_p = 0; mag_diag_p = 1;
-      n_um = 11; mag_um = 1; n_mu_m = 1; mag_mu_m = 5; n_diag_m = 0; mag_diag_m = 1;
-      n_up = 12; mag_up = 1; n_mu_p = 0; mag_mu_p = 1; n_diag_p = 0; mag_diag_p = 1;
+      n_um = 11; mag_um = 1; n_mu_m = 1; mag_mu_m = 5; n_diag_m = 1; mag_diag_m = 1;
+      n_up = 12; mag_up = 1; n_mu_p = 0; mag_mu_p = 1; n_diag_p = 1; mag_diag_p = 1;
 
       infc_phi_num = 1;
       bdry_phi_num = 0;
