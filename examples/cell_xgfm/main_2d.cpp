@@ -92,7 +92,7 @@ bool use_second_order_theta_ = false;
 bool get_integral = false;
 bool print_summary = false;
 
-int test_number_ = 5;
+int test_number_ = 6;
 /* run the program with the flag -help to know more about the various tests */
 
 bool track_residuals_and_corrections = false;

@@ -38,11 +38,11 @@ public:
 
   using my_p4est_interpolation_t::set_input;
 #ifdef P4_TO_P8
-  void set_input(Vec F, Vec phi, const BoundaryConditions3D *bc) {set_input(&F, phi, bc, 1); }
   void set_input(Vec *F, Vec phi, const BoundaryConditions3D *bc, unsigned int n_vecs_);
+  inline void set_input(Vec F, Vec phi, const BoundaryConditions3D *bc) { set_input(&F, phi, bc, 1); }
 #else
-  void set_input(Vec F, Vec phi, const BoundaryConditions2D *bc) {set_input(&F, phi, bc, 1); }
   void set_input(Vec *F, Vec phi, const BoundaryConditions2D *bc, unsigned int n_vecs_);
+  inline void set_input(Vec F, Vec phi, const BoundaryConditions2D *bc) { set_input(&F, phi, bc, 1); }
 #endif
 
   // definition of abstract interpolation methods

@@ -26,7 +26,7 @@ void my_p4est_interpolation_faces_t::set_input(Vec *F, int dir, unsigned int n_v
 void my_p4est_interpolation_faces_t::set_input(Vec *F, int dir, unsigned int n_vecs_, int order, Vec face_is_well_defined, BoundaryConditions2D *bc)
 #endif
 {
-  set_input(F, n_vecs_);
+  set_input(F, n_vecs_, 1);
   this->face_is_well_defined = face_is_well_defined;
   this->dir = dir;
   this->bc = bc;
@@ -79,6 +79,8 @@ void my_p4est_interpolation_faces_t::interpolate(const p4est_quadrant_t &quad, c
   PetscErrorCode ierr;
 
   unsigned int n_functions = n_vecs();
+  P4EST_ASSERT(n_functions > 0);
+  P4EST_ASSERT(bs_f == 1); // not implemented for bs_f > 1 yet
 
   if(bc!=NULL && bc->wallType(xyz)==DIRICHLET &&
      (((fabs(xyz[0]-xyz_min[0])<EPS*tree_dimension[0] || fabs(xyz[0]-xyz_max[0])<EPS*tree_dimension[0]) && (!is_periodic(p4est, dir::x)))
