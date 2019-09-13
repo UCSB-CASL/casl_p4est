@@ -34,21 +34,37 @@ typedef struct {
   p4est_locidx_t node_idx;
 } node_interpolation_weight;
 
-typedef struct
+typedef struct node_interpolator
 {
+  node_interpolator() : is_set(false) {}
+  bool is_set;
   std::vector<node_interpolation_weight> elements;
-  double interpolate(const double* node_sampled_field) const
+  double interpolate(const double* node_sampled_field, const unsigned int& block_size, const unsigned int& component) const
   {
+    P4EST_ASSERT((component < block_size) && (block_size > 0));
     P4EST_ASSERT(elements.size()>0);
-    double value = elements[0].weight*node_sampled_field[elements[0].node_idx];
+    double value = elements[0].weight*node_sampled_field[block_size*elements[0].node_idx+component];
     for (size_t k = 1; k < elements.size(); ++k)
-      value += elements[k].weight*node_sampled_field[elements[k].node_idx];
+      value += elements[k].weight*node_sampled_field[block_size*elements[k].node_idx+component];
+#ifdef CASL_LOG_FLOPS
+    PetscErrorCode ierr = PetscLogFlops(2*interpolator.elements.size()-1); CHKERRXX(ierr);
+#endif
     return value;
   }
-  double interpolate_dxx(const double* node_sample_field, const my_p4est_node_neighbors_t& neighbors) const;
-  double interpolate_dyy(const double* node_sample_field, const my_p4est_node_neighbors_t& neighbors) const;
+  double interpolate_dd (unsigned char der, const double* node_sample_field, const my_p4est_node_neighbors_t& neighbors, const unsigned int& block_size, const unsigned int& component) const;
+  inline double interpolate_dxx(const double* node_sample_field, const my_p4est_node_neighbors_t& neighbors, const unsigned int& block_size, const unsigned int& component) const
+  {
+    return interpolate_dd(dir::x, node_sample_field, neighbors, block_size, component);
+  }
+  inline double interpolate_dyy(const double* node_sample_field, const my_p4est_node_neighbors_t& neighbors, const unsigned int& block_size, const unsigned int& component) const
+  {
+    return interpolate_dd(dir::y, node_sample_field, neighbors, block_size, component);
+  }
 #ifdef P4_TO_P8
-  double interpolate_dzz(const double* node_sample_field, const my_p4est_node_neighbors_t& neighbors) const;
+  inline double interpolate_dzz(const double* node_sample_field, const my_p4est_node_neighbors_t& neighbors, const unsigned int& block_size, const unsigned int& component) const
+  {
+    return interpolate_dd(dir::z, node_sample_field, neighbors, block_size, component);
+  }
 #endif
 } node_interpolator;
 
@@ -87,6 +103,24 @@ struct quad_neighbor_nodes_of_node_t {
   double d_00p_0m; double d_00p_0p;
 #endif
 
+  node_interpolator interpolator_m00;
+  node_interpolator interpolator_p00;
+  node_interpolator interpolator_0m0;
+  node_interpolator interpolator_0p0;
+#ifdef P4_TO_P8
+  node_interpolator interpolator_00m;
+  node_interpolator interpolator_00p;
+#endif
+
+  void  set_linear_interpolator_m00();
+  void  set_linear_interpolator_p00();
+  void  set_linear_interpolator_0m0();
+  void  set_linear_interpolator_0p0();
+#ifdef P4_TO_P8
+  void  set_linear_interpolator_00m();
+  void  set_linear_interpolator_00p();
+#endif
+
   inline double central_derivative(const double& fp, const double& f0, const double& fm, const double& dp, const double& dm) const
   {
 #ifdef CASL_LOG_FLOPS
@@ -119,469 +153,180 @@ struct quad_neighbor_nodes_of_node_t {
     return ((fp-f0)/dp + (fm-f0)/dm)*2./(dp+dm);
   }
 
-  inline double f_m00_linear( const double *f ) const
+  inline double f_m00_linear( const double *f, const unsigned int &block_size=1, const unsigned int &component=0) const
   {
-    double result;
-    f_m00_linear(&f, &result, 1);
-    return result;
+    P4EST_ASSERT((component < block_size) && (block_size > 0));
+    P4EST_ASSERT(interpolator_m00.is_set);
+    return interpolator_m00.interpolate(f, block_size, component);
   }
-  inline double f_p00_linear( const double *f ) const
+
+  inline double f_p00_linear( const double *f, const unsigned int &block_size=1, const unsigned int &component=0) const
   {
-    double result;
-    f_p00_linear(&f, &result, 1);
-    return result;
+    P4EST_ASSERT((component < block_size) && (block_size > 0));
+    P4EST_ASSERT(interpolator_p00.is_set);
+    return interpolator_p00.interpolate(f, block_size, component);
   }
-  inline double f_0m0_linear( const double *f ) const
+
+  inline double f_0m0_linear( const double *f, const unsigned int &block_size=1, const unsigned int &component=0) const
   {
-    double result;
-    f_0m0_linear(&f, &result, 1);
-    return result;
+    P4EST_ASSERT((component < block_size) && (block_size > 0));
+    P4EST_ASSERT(interpolator_0m0.is_set);
+    return interpolator_0m0.interpolate(f, block_size, component);
   }
-  inline double f_0p0_linear( const double *f ) const
+
+  inline double f_0p0_linear( const double *f, const unsigned int& block_size=1, const unsigned int &component=0) const
   {
-    double result;
-    f_0p0_linear(&f, &result, 1);
-    return result;
+    P4EST_ASSERT((component < block_size) && (block_size > 0));
+    P4EST_ASSERT(interpolator_0p0.is_set);
+    return interpolator_0p0.interpolate(f, block_size, component);
   }
 #ifdef P4_TO_P8
-  inline double f_00m_linear( const double *f ) const
-  {
-    double result;
-    f_00m_linear(&f, &result, 1);
-    return result;
-  }
-  inline double f_00p_linear( const double *f ) const
-  {
-    double result;
-    f_00p_linear(&f, &result, 1);
-    return result;
-  }
+  inline double f_00m_linear( const double *f, const unsigned int& block_size=1, const unsigned int& component=0 ) const;
+  inline double f_00p_linear( const double *f, const unsigned int& block_size=1, const unsigned int& component=0 ) const;
 #endif
 
-  void f_m00_linear( const double *f[], double results[], const unsigned int& n_fields ) const;
-  void f_p00_linear( const double *f[], double results[], const unsigned int& n_fields ) const;
-  void f_0m0_linear( const double *f[], double results[], const unsigned int& n_fields ) const;
-  void f_0p0_linear( const double *f[], double results[], const unsigned int& n_fields ) const;
-#ifdef P4_TO_P8
-  void f_00m_linear( const double *f[], const unsigned int& n_fields ) const;
-  void f_00p_linear( const double *f[], const unsigned int& n_fields ) const;
-#endif
 
-  void  linear_interpolator_m00( node_interpolator& interpolator) const;
-  void  linear_interpolator_p00( node_interpolator& interpolator) const;
-  void  linear_interpolator_0m0( node_interpolator& interpolator) const;
-  void  linear_interpolator_0p0( node_interpolator& interpolator) const;
-#ifdef P4_TO_P8
-  void  linear_interpolator_00m( node_interpolator& interpolator) const;
-  void  linear_interpolator_00p( node_interpolator& interpolator) const;
-#endif
 
-  inline void ngbd_with_quadratic_interpolation( const double *f,
+  void ngbd_with_quadratic_interpolation( const double *f,
                                           double& f_000,
                                           double& f_m00, double& f_p00,
-                                          double& f_0m0, double& f_0p0
-                                        #ifdef P4_TO_P8
-                                          ,double& f_00m, double& f_00p
-                                        #endif
-                                          ) const
-  {
-    ngbd_with_quadratic_interpolation(&f, &f_000, &f_m00, &f_p00, &f_0m0, &f_0p0,
-                                  #ifdef P4_TO_P8
-                                      &f_00m, &f_00p,
-                                  #endif
-                                      1);
-  }
-  void ngbd_with_quadratic_interpolation( const double *f[], double f_000[], double f_m00[], double f_p00[], double f_0m0[], double f_0p0[],
-                                        #ifdef P4_TO_P8
-                                          double f_00m[], double f_00p[],
-                                        #endif
-                                          const unsigned int& n_fields) const;
-  void ngbd_with_quadratic_interpolation( const double *f, double& f_000, double& f_m00, double& f_p00, double& f_0m0, double& f_0p0,
+                                          double& f_0m0, double& f_0p0,
                                         #ifdef P4_TO_P8
                                           double& f_00m, double& f_00p,
                                         #endif
-                                          const node_interpolator& interp_m00, const node_interpolator& interp_p00,
-                                          const node_interpolator& interp_0m0, const node_interpolator& interp_0p0
-                                        #ifdef P4_TO_P8
-                                          , const node_interpolator& interp_00m, const node_interpolator& interp_00p
-                                        #endif
-                                          ) const;
+                                          const unsigned int& block_size=1, const unsigned int& component=0) const;
 
-  inline void x_ngbd_with_quadratic_interpolation( const double *f, double& f_m00, double& f_000, double& f_p00) const
-  {
-    x_ngbd_with_quadratic_interpolation(&f, &f_m00, &f_000, &f_p00, 1);
-  }
-  void x_ngbd_with_quadratic_interpolation( const double *f[], double f_m00[], double f_000[], double f_p00[], const unsigned int& n_fields) const;
-  void x_ngbd_with_quadratic_interpolation( const double *f, double& f_m00, double& f_000, double& f_p00,
-                                            const node_interpolator& interp_m00, const node_interpolator& interp_p00,
-                                            const node_interpolator& interp_0m0, const node_interpolator& interp_0p0) const;
-
-  inline void y_ngbd_with_quadratic_interpolation( const double *f, double& f_0m0, double& f_000, double& f_0p0) const
-  {
-    y_ngbd_with_quadratic_interpolation(&f, &f_0m0, &f_000, &f_0p0, 1);
-  }
-  void y_ngbd_with_quadratic_interpolation( const double *f[], double f_0m0[], double f_000[], double f_0p0[], const unsigned int& n_fields) const;
-  void y_ngbd_with_quadratic_interpolation( const double *f, double& f_0m0, double& f_000, double& f_0p0,
-                                            const node_interpolator& interp_m00, const node_interpolator& interp_p00,
-                                            const node_interpolator& interp_0m0, const node_interpolator& interp_0p0) const;
-
+  void x_ngbd_with_quadratic_interpolation( const double *f, double& f_m00, double& f_000, double& f_p00, const unsigned int& block_size=1, const unsigned int& component=0 ) const;
+  void y_ngbd_with_quadratic_interpolation( const double *f, double& f_0m0, double& f_000, double& f_0p0, const unsigned int& block_size=1, const unsigned int& component=0 ) const;
 #ifdef P4_TO_P8
-  void z_ngbd_with_quadratic_interpolation( const double *f, double& f_00m, double& f_000, double& f_00p) const;
-  void z_ngbd_with_quadratic_interpolation( const double *f[], double f_00m[], double f_000[], double f_00p[], const unsigned int& n_fields) const;
-  void z_ngbd_with_quadratic_interpolation( const double *f, double& f_00m, double& f_000, double& f_00p,
-                                            const node_interpolator& interp_m00, const node_interpolator& interp_p00,
-                                            const node_interpolator& interp_0m0, const node_interpolator& interp_0p0,
-                                            const node_interpolator& interp_00m, const node_interpolator& interp_00p) const;
+  void z_ngbd_with_quadratic_interpolation( const double *f, double& f_00m, double& f_000, double& f_00p, const unsigned int& block_size=1, const unsigned int& component=0 ) const;
 #endif
 
-  inline double dx_central ( const double *f ) const
-  {
-    double result;
-    dx_central(&f, &result, 1);
-    return result;
-  }
-  inline double dy_central ( const double *f ) const
-  {
-    double result;
-    dy_central(&f, &result, 1);
-    return result;
-  }
+  double dx_central ( const double *f, const unsigned int& block_size=1, const unsigned int& component=0 ) const;
+  double dy_central ( const double *f, const unsigned int& block_size=1, const unsigned int& component=0 ) const;
 #ifdef P4_TO_P8
-  inline double dz_central ( const double *f ) const
-  {
-    double result;
-    dz_central(&f, &result, 1);
-    return result;
-  }
+  double dz_central ( const double *f, const unsigned int& block_size=1, const unsigned int& component=0 ) const;
 #endif
-  void dx_central (const double *f[], double results[], const unsigned int& n_fields) const;
-  double dx_central (const double *f, const node_interpolator& interp_m00, const node_interpolator& interp_p00,
-                     const node_interpolator& interp_0m0, const node_interpolator& interp_0p0) const;
-  void dy_central (const double *f[], double results[], const unsigned int& n_fields) const;
-  double dy_central (const double *f, const node_interpolator& interp_m00, const node_interpolator& interp_p00,
-                     const node_interpolator& interp_0m0, const node_interpolator& interp_0p0) const;
+
+  inline double d_central (const unsigned short& der, const double *f, const unsigned int& block_size=1, const unsigned int& component=0 ) const
+  {
 #ifdef P4_TO_P8
-  void dz_central (const double *f[], double results[], const unsigned int& n_fields) const;
-  double dz_central (const double *f, const node_interpolator& interp_m00, const node_interpolator& interp_p00,
-                     const node_interpolator& interp_0m0, const node_interpolator& interp_0p0,
-                     const node_interpolator& interp_00m, const node_interpolator& interp_00p) const;
-  void grad(const double *f, double& df_dx, double& df_dy, double& df_dz,
-            const node_interpolator& interp_m00, const node_interpolator& interp_p00,
-            const node_interpolator& interp_0m0, const node_interpolator& interp_0p0,
-            const node_interpolator& interp_00m, const node_interpolator& interp_00p) const;
+    return ((der == dir::x)? dx_central(f, block_size, component) : ((der == dir::y)? dy_central(f, block_size, component) : dz_central(f, block_size, component)));
 #else
-  void grad(const double *f, double& df_dx, double& df_dy,
-            const node_interpolator& interp_m00, const node_interpolator& interp_p00,
-            const node_interpolator& interp_0m0, const node_interpolator& interp_0p0) const;
+    return ((der == dir::x)? dx_central(f, block_size, component) : dy_central(f, block_size, component));
 #endif
+  }
 
-  inline double d_central (const unsigned short& der, const double *f) const
-  {
 #ifdef P4_TO_P8
-    return ((der == dir::x)? dx_central(f) : ((der == dir::y)? dy_central(f) : dz_central(f)));
+  void gradient( const double* f, double& fx , double& fy , double& fz, const unsigned int& block_size=1, const unsigned int& component=0 ) const;
 #else
-    return ((der == dir::x)? dx_central(f) : dy_central(f));
+  void gradient( const double* f, double& fx , double& fy, const unsigned int& block_size=1, const unsigned int& component=0 ) const;
 #endif
-  }
 
+  double dx_forward_linear (const double *f, const unsigned int& block_size=1, const unsigned int& component=0 ) const;
+  double dx_backward_linear (const double *f, const unsigned int& block_size=1, const unsigned int& component=0 ) const;
+  double dy_forward_linear (const double *f, const unsigned int& block_size=1, const unsigned int& component=0 ) const;
+  double dy_backward_linear (const double *f, const unsigned int& block_size=1, const unsigned int& component=0 ) const;
 #ifdef P4_TO_P8
-  void gradient( const double* f, double& fx , double& fy , double& fz  ) const
+  double dz_forward_linear (const double *f, const unsigned int& block_size=1, const unsigned int& component=0 ) const;
+  double dz_backward_linear (const double *f, const unsigned int& block_size=1, const unsigned int& component=0 ) const;
+#endif
+
+  inline double d_forward_linear(const unsigned short& der, const double *f, const unsigned int& block_size=1, const unsigned int& component=0) const
   {
-    gradient(&f, &fx, &fy, &fz, 1);
-  }
-  void gradient( const double* f[], double fx[], double fy[], double fz[], const unsigned int& n_fields) const;
+#ifdef P4_TO_P8
+    return ((der == dir::x)? dx_forward_linear(f, block_size, component) : ((der == dir::y)? dy_forward_linear(f, block_size, component) : dz_forward_linear(f, block_size, component)));
 #else
-  void gradient( const double* f, double& fx , double& fy  ) const
-  {
-    gradient(&f, &fx, &fy, 1);
-  }
-  void gradient( const double* f[], double fx[], double fy[], const unsigned int& n_fields) const;
+    return ((der == dir::x)? dx_forward_linear(f, block_size, component) : dy_forward_linear(f, block_size, component));
 #endif
-  void gradient( const double* f[], double grad_f[][P4EST_DIM], const unsigned int& n_fields) const;
-
-  inline double dx_forward_linear ( const double *f ) const
-  {
-    double result;
-    dx_forward_linear(&f, &result, 1);
-    return result;
   }
-  void dx_forward_linear (const double *f[], double results[], const unsigned int& n_fields) const;
-  double dx_forward_linear (const double *f, const node_interpolator& interp_p00) const;
-
-  inline double dx_backward_linear( const double *f ) const
-  {
-    double result;
-    dx_backward_linear(&f, &result, 1);
-    return result;
-  }
-  void dx_backward_linear (const double *f[], double results[], const unsigned int& n_fields) const;
-  double dx_backward_linear (const double *f, const node_interpolator& interp_m00) const;
-
-  inline double dy_forward_linear ( const double *f ) const
-  {
-    double result;
-    dy_forward_linear(&f, &result, 1);
-    return result;
-  }
-  void dy_forward_linear (const double *f[], double results[], const unsigned int& n_fields) const;
-  double dy_forward_linear (const double *f, const node_interpolator& interp_0p0) const;
-
-  inline double dy_backward_linear( const double *f ) const
-  {
-    double result;
-    dy_backward_linear(&f, &result, 1);
-    return result;
-  }
-  void dy_backward_linear (const double *f[], double results[], const unsigned int& n_fields) const;
-  double dy_backward_linear (const double *f, const node_interpolator& interp_0m0) const;
-
-#ifdef P4_TO_P8
-  inline double dz_forward_linear ( const double *f ) const
-  {
-    double result;
-    dz_forward_linear (&f, &result, 1);
-    return result;
-  }
-  void dz_forward_linear (const double *f[], double results[], const unsigned int& n_fields) const;
-  double dz_forward_linear (const double *f, const node_interpolator& interp_00p) const;
-
-  inline double dz_backward_linear( const double *f ) const
-  {
-    double result;
-    dz_backward_linear (&f, &result, 1);
-    return result;
-  }
-  void dz_backward_linear (const double *f[], double results[], const unsigned int& n_fields) const;
-  double dz_backward_linear (const double *f, const node_interpolator& interp_00m) const;
-
-#endif
-  inline double d_forward_linear(const unsigned short& der, const double *f) const
+  inline double d_backward_linear(const unsigned short& der, const double *f, const unsigned int& block_size=1, const unsigned int& component=0) const
   {
 #ifdef P4_TO_P8
-    return ((der == dir::x)? dx_forward_linear(f) : ((der == dir::y)? dy_forward_linear(f) : dz_forward_linear(f)));
+    return ((der == dir::x)? dx_backward_linear(f, block_size, component) : ((der == dir::y)? dy_backward_linear(f, block_size, component) : dz_backward_linear(f, block_size, component)));
 #else
-    return ((der == dir::x)? dx_forward_linear(f) : dy_forward_linear(f));
-#endif
-  }
-  inline double d_backward_linear(const unsigned short& der, const double *f) const
-  {
-#ifdef P4_TO_P8
-    return ((der == dir::x)? dx_backward_linear(f) : ((der == dir::y)? dy_backward_linear(f) : dz_backward_linear(f)));
-#else
-    return ((der == dir::x)? dx_backward_linear(f) : dy_backward_linear(f));
+    return ((der == dir::x)? dx_backward_linear(f, block_size, component) : dy_backward_linear(f, block_size, component));
 #endif
   }
 
-
-  double dx_backward_quadratic( const double *f, const my_p4est_node_neighbors_t& neighbors ) const
-  {
-    double result;
-    dx_backward_quadratic(&f, neighbors, &result, 1);
-    return result;
-  }
-  void dx_backward_quadratic( const double *f[], const my_p4est_node_neighbors_t& neighbors, double results[], const unsigned int& n_fields) const;
-  double dx_backward_quadratic(const double *f, const my_p4est_node_neighbors_t &neighbors,
-                               const node_interpolator &interp_m00, const node_interpolator &interp_p00,
-                               const node_interpolator &interp_0m0, const node_interpolator &interp_0p0) const;
-  double dx_forward_quadratic ( const double *f, const my_p4est_node_neighbors_t& neighbors ) const
-  {
-    double result;
-    dx_forward_quadratic(&f, neighbors, &result, 1);
-    return result;
-  }
-  void dx_forward_quadratic( const double *f[], const my_p4est_node_neighbors_t& neighbors, double results[], const unsigned int& n_fields) const;
-  double dx_forward_quadratic(const double *f, const my_p4est_node_neighbors_t &neighbors,
-                              const node_interpolator &interp_m00, const node_interpolator &interp_p00,
-                              const node_interpolator &interp_0m0, const node_interpolator &interp_0p0) const;
-  double dy_forward_quadratic ( const double *f, const my_p4est_node_neighbors_t& neighbors ) const
-  {
-    double result;
-    dy_forward_quadratic(&f, neighbors, &result, 1);
-    return result;
-  }
-  void dy_forward_quadratic( const double *f[], const my_p4est_node_neighbors_t& neighbors, double results[], const unsigned int& n_fields) const;
-  double dy_forward_quadratic(const double *f, const my_p4est_node_neighbors_t &neighbors,
-                              const node_interpolator &interp_m00, const node_interpolator &interp_p00,
-                              const node_interpolator &interp_0m0, const node_interpolator &interp_0p0) const;
-  double dy_backward_quadratic( const double *f, const my_p4est_node_neighbors_t& neighbors ) const
-  {
-    double result;
-    dy_backward_quadratic(&f, neighbors, &result, 1);
-    return result;
-  }
-  void dy_backward_quadratic( const double *f[], const my_p4est_node_neighbors_t& neighbors, double results[], const unsigned int& n_fields) const;
-  double dy_backward_quadratic(const double *f, const my_p4est_node_neighbors_t &neighbors,
-                              const node_interpolator &interp_m00, const node_interpolator &interp_p00,
-                              const node_interpolator &interp_0m0, const node_interpolator &interp_0p0) const;
+  double dx_backward_quadratic( const double *f, const double& fxx_m00, const unsigned int& bs, const unsigned int& comp) const;
+  double dx_forward_quadratic( const double *f, const double& fxx_p00, const unsigned int& bs, const unsigned int& comp) const;
+  double dy_backward_quadratic( const double *f, const double& fyy_0m0, const unsigned int& bs, const unsigned int& comp) const;
+  double dy_forward_quadratic( const double *f, const double& fyy_0p0, const unsigned int& bs, const unsigned int& comp) const;
 #ifdef P4_TO_P8
-  double dz_forward_quadratic ( const double *f, const my_p4est_node_neighbors_t& neighbors ) const;
-  double dz_backward_quadratic( const double *f, const my_p4est_node_neighbors_t& neighbors ) const;
+  double dz_backward_quadratic( const double *f, const double& fzz_00m, const unsigned int& bs, const unsigned int& comp) const;
+  double dz_forward_quadratic( const double *f, const double& fzz_00p, const unsigned int& bs, const unsigned int& comp) const;
 #endif
-  inline double d_forward_quadratic(const unsigned short& der, const double *f, const my_p4est_node_neighbors_t& neighbors ) const
+  double dx_backward_quadratic(const double *f, const my_p4est_node_neighbors_t &neighbors, const unsigned int& block_size=1, const unsigned int& component=0) const;
+  double dx_forward_quadratic ( const double *f, const my_p4est_node_neighbors_t& neighbors, const unsigned int& block_size=1, const unsigned int& component=0) const;
+  double dy_backward_quadratic( const double *f, const my_p4est_node_neighbors_t& neighbors, const unsigned int& block_size=1, const unsigned int& component=0) const;
+  double dy_forward_quadratic ( const double *f, const my_p4est_node_neighbors_t& neighbors, const unsigned int& block_size=1, const unsigned int& component=0) const;
+#ifdef P4_TO_P8
+  double dz_backward_quadratic( const double *f, const my_p4est_node_neighbors_t& neighbors, const unsigned int& block_size=1, const unsigned int& component=0 ) const;
+  double dz_forward_quadratic ( const double *f, const my_p4est_node_neighbors_t& neighbors, const unsigned int& block_size=1, const unsigned int& component=0 ) const;
+#endif
+  inline double d_backward_quadratic(const unsigned short& der, const double *f, const my_p4est_node_neighbors_t& neighbors, const unsigned int& block_size=1, const unsigned int& component=0) const
   {
 #ifdef P4_TO_P8
-    return ((der == dir::x)? dx_forward_quadratic(f, neighbors) : ((der == dir::y)? dy_forward_quadratic(f, neighbors) : dz_forward_quadratic(f, neighbors)));
+    return ((der == dir::x)? dx_backward_quadratic(f, neighbors, block_size, component) : ((der == dir::y)? dy_backward_quadratic(f, neighbors, block_size, component) : dz_backward_quadratic(f, neighbors, block_size, component)));
 #else
-    return ((der == dir::x)? dx_forward_quadratic(f, neighbors) : dy_forward_quadratic(f, neighbors));
+    return ((der == dir::x)? dx_backward_quadratic(f, neighbors, block_size, component) : dy_backward_quadratic(f, neighbors, block_size, component));
 #endif
   }
-  inline double d_backward_quadratic(const unsigned short& der, const double *f, const my_p4est_node_neighbors_t& neighbors ) const
+  inline double d_forward_quadratic(const unsigned short& der, const double *f, const my_p4est_node_neighbors_t& neighbors, const unsigned int& block_size=1, const unsigned int& component=0) const
   {
 #ifdef P4_TO_P8
-    return ((der == dir::x)? dx_backward_quadratic(f, neighbors) : ((der == dir::y)? dy_backward_quadratic(f, neighbors) : dz_backward_quadratic(f, neighbors)));
+    return ((der == dir::x)? dx_forward_quadratic(f, neighbors, block_size, component) : ((der == dir::y)? dy_forward_quadratic(f, neighbors, block_size, component) : dz_forward_quadratic(f, neighbors, block_size, component)));
 #else
-    return ((der == dir::x)? dx_backward_quadratic(f, neighbors) : dy_backward_quadratic(f, neighbors));
+    return ((der == dir::x)? dx_forward_quadratic(f, neighbors, block_size, component) : dy_forward_quadratic(f, neighbors, block_size, component));
 #endif
   }
 
-  double dx_forward_quadratic ( const double *f, const double *fxx ) const
-  {
-    double result;
-    dx_forward_quadratic (&f, &fxx, &result, 1);
-    return result;
-  }
-  void dx_forward_quadratic ( const double *f[], const double *fxx[], double results[], const unsigned int& n_fields ) const;
-  double dx_forward_quadratic(const double *f, const double* fxx,
-                              const node_interpolator &interp_m00, const node_interpolator &interp_p00,
-                              const node_interpolator &interp_0m0, const node_interpolator &interp_0p0) const;
-
-  double dx_backward_quadratic( const double *f, const double *fxx ) const
-  {
-    double result;
-    dx_backward_quadratic (&f, &fxx, &result, 1);
-    return result;
-  }
-  void dx_backward_quadratic ( const double *f[], const double *fxx[], double results[], const unsigned int& n_fields ) const;
-  double dx_backward_quadratic(const double *f, const double* fxx,
-                               const node_interpolator &interp_m00, const node_interpolator &interp_p00,
-                               const node_interpolator &interp_0m0, const node_interpolator &interp_0p0) const;
-  double dy_forward_quadratic ( const double *f, const double *fyy ) const
-  {
-    double result;
-    dy_forward_quadratic (&f, &fyy, &result, 1);
-    return result;
-  }
-  void dy_forward_quadratic ( const double *f[], const double *fyy[], double results[], const unsigned int& n_fields ) const;
-  double dy_forward_quadratic(const double *f, const double* fyy,
-                              const node_interpolator &interp_m00, const node_interpolator &interp_p00,
-                              const node_interpolator &interp_0m0, const node_interpolator &interp_0p0) const;
-  double dy_backward_quadratic( const double *f, const double *fyy ) const
-  {
-    double result;
-    dy_backward_quadratic (&f, &fyy, &result, 1);
-    return result;
-  }
-  void dy_backward_quadratic ( const double *f[], const double *fyy[], double results[], const unsigned int& n_fields ) const;
-  double dy_backward_quadratic(const double *f, const double* fyy,
-                               const node_interpolator &interp_m00, const node_interpolator &interp_p00,
-                               const node_interpolator &interp_0m0, const node_interpolator &interp_0p0) const;
+  double dx_backward_quadratic( const double *f, const double *fxx, const unsigned int& block_size=1, const unsigned int& component=0 ) const;
+  double dx_forward_quadratic ( const double *f, const double *fxx, const unsigned int& block_size=1, const unsigned int& component=0 ) const;
+  double dy_backward_quadratic( const double *f, const double *fyy, const unsigned int& block_size=1, const unsigned int& component=0 ) const;
+  double dy_forward_quadratic ( const double *f, const double *fyy, const unsigned int& block_size=1, const unsigned int& component=0 ) const;
 #ifdef P4_TO_P8
-  double dz_forward_quadratic ( const double *f, const double *fzz ) const
-  {
-    double result;
-    dz_forward_quadratic (&f, &fyy, &result, 1);
-    return result;
-  }
-  void dz_forward_quadratic ( const double *f[], const double *fzz[], double results[], const unsigned int& n_fields ) const;
-  double dz_forward_quadratic(const double *f, const double* fzz,
-                              const node_interpolator &interp_m00, const node_interpolator &interp_p00,
-                              const node_interpolator &interp_0m0, const node_interpolator &interp_0p0) const;
-  double dz_backward_quadratic( const double *f, const double *fzz ) const
-  {
-    double result;
-    dz_backward_quadratic (&f, &fyy, &result, 1);
-    return result;
-  }
-  void dz_backward_quadratic ( const double *f[], const double *fzz[], double results[], const unsigned int& n_fields ) const;
-  double dz_backward_quadratic(const double *f, const double* fzz,
-                               const node_interpolator &interp_m00, const node_interpolator &interp_p00,
-                               const node_interpolator &interp_0m0, const node_interpolator &interp_0p0) const;
+  double dz_backward_quadratic( const double *f, const double *fzz, const unsigned int& block_size=1, const unsigned int& component=0 ) const;
+  double dz_forward_quadratic ( const double *f, const double *fzz, const unsigned int& block_size=1, const unsigned int& component=0 ) const;
 #endif
-  inline double d_forward_quadratic(const unsigned short& der, const double *f, const double *fderder) const
+  inline double d_backward_quadratic(const unsigned short& der, const double *f, const double *fderder, const unsigned int& block_size=1, const unsigned int& component=0 ) const
   {
 #ifdef P4_TO_P8
-    return ((der == dir::x)? dx_forward_quadratic(f, fderder) : ((der == dir::y)? dy_forward_quadratic(f, fderder) : dz_forward_quadratic(f, fderder)));
+    return ((der == dir::x)? dx_backward_quadratic(f, fderder, block_size, component) : ((der == dir::y)? dy_backward_quadratic(f, fderder, block_size, component) : dz_backward_quadratic(f, fderder, block_size, component)));
 #else
-    return ((der == dir::x)? dx_forward_quadratic(f, fderder) : dy_forward_quadratic(f, fderder));
+    return ((der == dir::x)? dx_backward_quadratic(f, fderder, block_size, component) : dy_backward_quadratic(f, fderder, block_size, component));
 #endif
   }
-  inline double d_backward_quadratic(const unsigned short& der, const double *f, const double *fderder) const
+  inline double d_forward_quadratic(const unsigned short& der, const double *f, const double *fderder, const unsigned int& block_size=1, const unsigned int& component=0) const
   {
 #ifdef P4_TO_P8
-    return ((der == dir::x)? dx_backward_quadratic(f, fderder) : ((der == dir::y)? dy_backward_quadratic(f, fderder) : dz_backward_quadratic(f, fderder)));
+    return ((der == dir::x)? dx_forward_quadratic(f, fderder, block_size, component) : ((der == dir::y)? dy_forward_quadratic(f, fderder, block_size, component) : dz_forward_quadratic(f, fderder, block_size, component)));
 #else
-    return ((der == dir::x)? dx_backward_quadratic(f, fderder) : dy_backward_quadratic(f, fderder));
+    return ((der == dir::x)? dx_forward_quadratic(f, fderder, block_size, component) : dy_forward_quadratic(f, fderder, block_size, component));
 #endif
   }
 
   /* second-order derivatives */
-  inline double dxx_central( const double *f ) const
-  {
-    double result;
-    dxx_central(&f, &result, 1);
-    return result;
-  }
-  void dxx_central( const double *f[], double results[], const unsigned int& n_fields ) const;
-  double dxx_central( const double *f, const node_interpolator& interp_m00, const node_interpolator& interp_p00, const node_interpolator& interp_0m0, const node_interpolator& interp_0p0) const;
-
-  double dyy_central( const double *f ) const
-  {
-    double result;
-    dyy_central(&f, &result, 1);
-    return result;
-  }
-  void dyy_central( const double *f[], double results[], const unsigned int& n_fields ) const;
-  double dyy_central( const double *f, const node_interpolator& interp_m00, const node_interpolator& interp_p00, const node_interpolator& interp_0m0, const node_interpolator& interp_0p0) const;
+  double dxx_central( const double *f, const unsigned int& block_size=1, const unsigned int& component=0 ) const;
+  double dyy_central( const double *f, const unsigned int& block_size=1, const unsigned int& component=0 ) const;
 #ifdef P4_TO_P8
-  double dzz_central( const double *f ) const
-  {
-    double result;
-    dzz_central(&f, &result, 1);
-    return result;
-  }
-  void dzz_central( const double *f[], double results[], const unsigned int& n_fields ) const;
-  double dzz_central( const double *f, const node_interpolator& interp_m00, const node_interpolator& interp_p00, const node_interpolator& interp_0m0, const node_interpolator& interp_0p0) const;
+  double dzz_central( const double *f, const unsigned int& block_size=1, const unsigned int& component=0 ) const;
 #endif
-  inline double dd_central (const unsigned short& der, const double *f) const
+  inline double dd_central (const unsigned short& der, const double *f, const unsigned int& block_size=1, const unsigned int& component=0 ) const
   {
 #ifdef P4_TO_P8
-    return ((der == dir::x)? dxx_central(f) : ((der == dir::y)? dyy_central(f) : dzz_central(f)));
+    return ((der == dir::x)? dxx_central(f, block_size, component) : ((der == dir::y)? dyy_central(f, block_size, component) : dzz_central(f, block_size, component)));
 #else
-    return ((der == dir::x)? dxx_central(f) : dyy_central(f));
+    return ((der == dir::x)? dxx_central(f, block_size, component) : dyy_central(f, block_size, component));
 #endif
   }
 
 #ifdef P4_TO_P8
-  inline void laplace ( const double* f, double& fxx, double& fyy, double& fzz ) const
-  {
-    laplace(&f, &fxx, &fyy, &fzz, 1);
-  }
-  void laplace ( const double* f[], double fxx[], double fyy[], double fzz[], const unsigned int& n_fields) const;
-  void laplace( const double *f, double &fxx, double &fyy,
-                const node_interpolator& interp_m00, const node_interpolator& interp_p00,
-                const node_interpolator& interp_0m0, const node_interpolator& interp_0p0,
-                const node_interpolator& interp_00m, const node_interpolator& interp_00p) const;
+  inline void laplace ( const double* f, double& fxx, double& fyy, double& fzz, const unsigned int& block_size=1, const unsigned int& component=0 ) const;
 #else
-  inline void laplace ( const double* f, double& fxx, double& fyy ) const
-  {
-    laplace(&f, &fxx, &fyy, 1);
-  }
-  void laplace ( const double* f[], double fxx[], double fyy[], const unsigned int& n_fields) const;
-  void laplace( const double *f, double &fxx, double &fyy,
-                const node_interpolator& interp_m00, const node_interpolator& interp_p00,
-                const node_interpolator& interp_0m0, const node_interpolator& interp_0p0) const;
+  inline void laplace ( const double* f, double& fxx, double& fyy, const unsigned int& block_size=1, const unsigned int& component=0 ) const;
 #endif
-
-  // the following are no longer needed, given the capabilities of node_interpolator
-
-//  double dxx_central_on_m00(const double *f, const my_p4est_node_neighbors_t& neighbors) const;
-//  double dxx_central_on_p00(const double *f, const my_p4est_node_neighbors_t& neighbors) const;
-//  double dyy_central_on_0m0(const double *f, const my_p4est_node_neighbors_t& neighbors) const;
-//  double dyy_central_on_0p0(const double *f, const my_p4est_node_neighbors_t& neighbors) const;
-//#ifdef P4_TO_P8
-//  double dzz_central_on_00m(const double *f, const my_p4est_node_neighbors_t& neighbors) const;
-//  double dzz_central_on_00p(const double *f, const my_p4est_node_neighbors_t& neighbors) const;
-//#endif
 
   void print_debug(FILE* pFile) const
   {

@@ -394,7 +394,12 @@ bool index_of_node(const p4est_quadrant_t *n, p4est_nodes_t* nodes, p4est_locidx
  * \param [in]    n_results number of functions to be interpolated
  */
 void linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *xyz_global, double *results, const unsigned int n_results);
-double linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *xyz_global);
+inline double linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *xyz_global)
+{
+  double result;
+  linear_interpolation(p4est, tree_id, quad, F, xyz_global, &result, 1);
+  return result;
+}
 
 /*!
  * \brief quadratic_non_oscillatory_interpolation performs non-oscilatory quadratic interpolation for a point
@@ -411,7 +416,12 @@ double linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const 
  * \param [in]    n_results number of functions to be interpolated
  */
 void quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results);
-double quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global);
+inline double quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global)
+{
+  double result;
+  quadratic_non_oscillatory_interpolation(p4est, tree_id, quad, F, Fdd, xyz_global, &result, 1);
+  return result;
+}
 /*!
  * \brief quadratic_interpolation performs quadratic interpolation for a point
  * \param [in]    p4est the forest
@@ -427,29 +437,28 @@ double quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topid
  * \param [in]    n_results number of functions to be interpolated
  */
 void quadratic_interpolation(const p4est_t* p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results);
-double quadratic_interpolation(const p4est_t* p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global);
+inline double quadratic_interpolation(const p4est_t* p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global)
+{
+  double result;
+  quadratic_interpolation(p4est, tree_id, quad, F, Fdd, xyz_global, &result, 1);
+  return result;
+}
 
 p4est_bool_t nodes_are_equal(int mpi_size, p4est_nodes_t* nodes_1, p4est_nodes_t* nodes_2);
+
+p4est_bool_t ghosts_are_equal(p4est_ghost_t* ghost_1, p4est_ghost_t* ghost_2);
 
 PetscErrorCode VecGetLocalAndGhostSizes(Vec& v, PetscInt& local_size, PetscInt& ghosted_size);
 
 /*!
  * \brief vectorIsWellSetForNodes
- * (collective in debug mode)
  * \param v
  * \param nodes
  * \param mpicomm
+ * \param block_size
  * \return
  */
-bool vectorIsWellSetForNodes(Vec& v, const p4est_nodes_t* nodes, const MPI_Comm& mpicomm);
-
-/*!
- * \brief VecCreateGhostNodes Creates a ghosted PETSc parallel vector on the nodes based on p4est node ordering
- * \param p4est [in]  the forest
- * \param nodes [in]  the nodes numbering data structure
- * \param v     [out] PETSc vector type
- */
-PetscErrorCode VecCreateGhostNodes(const p4est_t *p4est, p4est_nodes_t *nodes, Vec* v);
+bool vectorIsWellSetForNodes(Vec& v, const p4est_nodes_t* nodes, const MPI_Comm& mpicomm, const unsigned int &block_size);
 
 /*!
  * \brief VecCreateGhostNodesBlock Creates a ghosted block PETSc parallel vector on the nodes
@@ -457,36 +466,40 @@ PetscErrorCode VecCreateGhostNodes(const p4est_t *p4est, p4est_nodes_t *nodes, V
  * \param nodes      [in]  the nodes object
  * \param block_size [in]  block size of the vector
  * \param v          [out] PETSc vector
- * \return
+ * \return a PetscErrorCode to be checked against using CHKERRXX()
  */
-PetscErrorCode VecCreateGhostNodesBlock(const p4est_t *p4est, p4est_nodes_t *nodes, PetscInt block_size, Vec* v);
-
-p4est_bool_t ghosts_are_equal(p4est_ghost_t* ghost_1, p4est_ghost_t* ghost_2);
+PetscErrorCode VecCreateGhostNodesBlock(const p4est_t *p4est, const p4est_nodes_t *nodes, const PetscInt & block_size, Vec* v);
+inline PetscErrorCode VecCreateGhostNodes(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec* v)
+{
+  return VecCreateGhostNodesBlock(p4est, nodes, 1, v);
+}
 
 /*!
- * \brief VecCreateGhostNodes Creates a ghosted PETSc parallel vector on the cells
- * \param p4est [in]  the forest
- * \param ghost [in]  the ghost cells
- * \param v     [out] PETSc vector type
- */
-PetscErrorCode VecCreateGhostCells(const p4est_t *p4est, p4est_ghost_t *ghost, Vec* v);
-
-/*!
- * \brief VecCreateCellsNoGhost Creates a PETSc parallel vector on the cells
- * \param p4est [in]  the forest
- * \param v     [out] PETSc vector type
- */
-PetscErrorCode VecCreateCellsNoGhost(const p4est_t *p4est, Vec* v);
-
-/*!
- * \brief VecCreateGhostNodesBlock Creates a ghosted block PETSc parallel vector
+ * \brief VecCreateGhostNodesBlock Creates a ghosted block PETSc parallel vector on the cells
  * \param p4est      [in]  p4est object
  * \param ghost      [in]  the ghost cells
  * \param block_size [in]  block size of the vector
  * \param v          [out] PETSc vector
- * \return
+ * \return a PetscErrorCode to be checked against using CHKERRXX()
  */
-PetscErrorCode VecCreateGhostCellsBlock(const p4est_t *p4est, p4est_ghost_t *ghost, PetscInt block_size, Vec* v);
+PetscErrorCode VecCreateGhostCellsBlock(const p4est_t *p4est, const p4est_ghost_t *ghost, const PetscInt & block_size, Vec* v);
+inline PetscErrorCode VecCreateGhostCells(const p4est_t *p4est, const p4est_ghost_t *ghost, Vec* v)
+{
+  return VecCreateGhostCellsBlock(p4est, ghost, 1, v);
+}
+
+/*!
+ * \brief VecCreateCellsBlockNoGhost Creates a non-ghosted block PETSc parallel vector on the cells
+ * \param p4est       [in]  the forest
+ * \param block_size  [in]  block size of the vector
+ * \param v           [out] PETSc vector type
+ * \return a PetscErrorCode to be checked against using CHKERRXX()
+ */
+PetscErrorCode VecCreateCellsBlockNoGhost(const p4est_t *p4est, const PetscInt &block_size, Vec* v);
+inline PetscErrorCode VecCreateCellsNoGhost(const p4est_t *p4est, Vec* v)
+{
+  return VecCreateCellsBlockNoGhost(p4est, 1, v);
+}
 
 /*!
  * \brief VecScatterCreateChangeLayout Create a VecScatter context useful for changing the parallel layout of a vector
@@ -1135,6 +1148,15 @@ void compute_normals(const quad_neighbor_nodes_of_node_t& qnnn, double *phi, dou
  * \param [out] normals   array of size P4EST_DIM of PETSc vectors to store the normal in the entire doamin
  */
 void compute_normals(const my_p4est_node_neighbors_t& neighbors, Vec phi, Vec normals[P4EST_DIM]);
+
+/*!
+ * \brief compute_normals computes the (scaled) normal to the surface for the entire grid
+ * \param [in]  neighbors the neighborhood information
+ * \param [in]  phi       PETSc vector of the levelset function
+ * \param [out] normals   P4EST_DIM-blocked PETSc vectors to store the normal in the entire doamin
+ */
+void compute_normals(const my_p4est_node_neighbors_t& neighbors, Vec phi, Vec normals);
+
 
 /*!
  * \brief interface_length_in_one_quadrant

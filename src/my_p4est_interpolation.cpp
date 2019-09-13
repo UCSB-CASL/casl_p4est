@@ -82,7 +82,7 @@ void my_p4est_interpolation_t::set_input(Vec *F, unsigned int n_vecs_) {
   Fi.resize(n_vecs_);
   for (unsigned int k = 0; k < n_vecs_; ++k)
     Fi[k] = F[k];
-  send_buffer.clear(); // this is important in case of input reset when reusing the same node-interpolator at the same points, otherwise the buffer just keeps accumulating and communications bigger and bigger
+  send_buffer.clear(); // this is important in case of input reset when reusing the same node-interpolator at the same points, otherwise the buffer just keeps accumulating and communications get bigger and bigger
 }
 
 

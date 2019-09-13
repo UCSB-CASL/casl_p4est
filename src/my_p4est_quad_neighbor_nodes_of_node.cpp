@@ -34,802 +34,407 @@ extern PetscLogEvent log_quad_neighbor_nodes_of_node_t_dyy_central_0p0;
 #define PetscLogFlops(n) 0
 #endif
 
-double node_interpolator::interpolate_dxx(const double *node_sample_field, const my_p4est_node_neighbors_t &neighbors) const
+inline double node_interpolator::interpolate_dd( const unsigned char der, const double *node_sample_field, const my_p4est_node_neighbors_t &neighbors, const unsigned int &bs, const unsigned int &comp) const
 {
+  P4EST_ASSERT(der < P4EST_DIM);
+  P4EST_ASSERT((comp < bs) && (bs > 0));
   P4EST_ASSERT(elements.size()>0);
-  double value = elements[0].weight*(neighbors.get_neighbors(elements[0].node_idx).dxx_central(node_sample_field));
+  double value = elements[0].weight*(neighbors.get_neighbors(elements[0].node_idx).dd_central(der, node_sample_field, bs, comp));
   for (size_t k = 1; k < elements.size(); ++k)
-    value += elements[k].weight*(neighbors.get_neighbors(elements[k].node_idx).dxx_central(node_sample_field));
-  return value;
-}
-double node_interpolator::interpolate_dyy(const double *node_sample_field, const my_p4est_node_neighbors_t &neighbors) const
-{
-  P4EST_ASSERT(elements.size()>0);
-  double value = elements[0].weight*(neighbors.get_neighbors(elements[0].node_idx).dyy_central(node_sample_field));
-  for (size_t k = 1; k < elements.size(); ++k)
-    value += elements[k].weight*(neighbors.get_neighbors(elements[k].node_idx).dyy_central(node_sample_field));
+    value += elements[k].weight*(neighbors.get_neighbors(elements[k].node_idx).dd_central(der, node_sample_field, bs, comp));
   return value;
 }
 
-void quad_neighbor_nodes_of_node_t::f_m00_linear( const double *f[], double results[], const unsigned int& n_fields ) const
+void quad_neighbor_nodes_of_node_t::set_linear_interpolator_m00( )
 {
-  P4EST_ASSERT(n_fields>0);
-  node_interpolator interpolator;
-  linear_interpolator_m00(interpolator);
-  for (unsigned int k = 0; k < n_fields; ++k)
-  {
-    results[k] = interpolator.interpolate(f[k]);
-#ifdef CASL_LOG_FLOPS
-    PetscErrorCode ierr = PetscLogFlops(2*interpolator.elements.size()-1); CHKERRXX(ierr);
-#endif
-  }
-}
-
-void quad_neighbor_nodes_of_node_t::f_p00_linear( const double *f[], double results[], const unsigned int& n_fields ) const
-{
-  P4EST_ASSERT(n_fields>0);
-  node_interpolator interpolator;
-  linear_interpolator_p00(interpolator);
-  for (unsigned int k = 0; k < n_fields; ++k)
-  {
-    results[k] = interpolator.interpolate(f[k]);
-#ifdef CASL_LOG_FLOPS
-    PetscErrorCode ierr = PetscLogFlops(2*interpolator.elements.size()-1); CHKERRXX(ierr);
-#endif
-  }
-}
-
-void quad_neighbor_nodes_of_node_t::f_0m0_linear( const double *f[], double results[], const unsigned int& n_fields ) const
-{
-  P4EST_ASSERT(n_fields>0);
-  node_interpolator interpolator;
-  linear_interpolator_0m0(interpolator);
-  for (unsigned int k = 0; k < n_fields; ++k)
-  {
-    results[k] = interpolator.interpolate(f[k]);
-#ifdef CASL_LOG_FLOPS
-    PetscErrorCode ierr = PetscLogFlops(2*interpolator.elements.size()-1); CHKERRXX(ierr);
-#endif
-  }
-}
-
-void quad_neighbor_nodes_of_node_t::f_0p0_linear( const double *f[], double results[], const unsigned int& n_fields ) const
-{
-  P4EST_ASSERT(n_fields>0);
-  node_interpolator interpolator;
-  linear_interpolator_0p0(interpolator);
-  for (unsigned int k = 0; k < n_fields; ++k)
-  {
-    results[k] = interpolator.interpolate(f[k]);
-#ifdef CASL_LOG_FLOPS
-    PetscErrorCode ierr = PetscLogFlops(2*interpolator.elements.size()-1); CHKERRXX(ierr);
-#endif
-  }
-}
-
-void quad_neighbor_nodes_of_node_t::linear_interpolator_m00(node_interpolator& interpolator) const
-{
+  if(interpolator_m00.is_set)
+    return;
   if(d_m00_p0==0)
   {
-    interpolator.elements.resize(1);
-    interpolator.elements[0].node_idx  = node_m00_pm;
-    interpolator.elements[0].weight    = 1.0;
+    interpolator_m00.elements.resize(1);
+    interpolator_m00.elements[0].node_idx  = node_m00_pm;
+    interpolator_m00.elements[0].weight    = 1.0;
 #ifdef CASL_LOG_FLOPS
     PetscErrorCode ierr = PetscLogFlops(2); CHKERRXX(ierr);
 #endif
-    return;
   }
   else if(d_m00_m0==0)
   {
-    interpolator.elements.resize(1);
-    interpolator.elements[0].node_idx  = node_m00_mm;
-    interpolator.elements[0].weight    = 1.0;
+    interpolator_m00.elements.resize(1);
+    interpolator_m00.elements[0].node_idx  = node_m00_mm;
+    interpolator_m00.elements[0].weight    = 1.0;
 #ifdef CASL_LOG_FLOPS
     PetscErrorCode ierr = PetscLogFlops(2); CHKERRXX(ierr);
 #endif
-    return;
   }
   else
   {
-    interpolator.elements.resize(2);
-    interpolator.elements[0].node_idx  = node_m00_mm;
-    interpolator.elements[0].weight    = d_m00_p0/(d_m00_m0+d_m00_p0);
-    interpolator.elements[1].node_idx  = node_m00_pm;
-    interpolator.elements[1].weight    = 1.0-interpolator.elements[0].weight;
+    interpolator_m00.elements.resize(2);
+    interpolator_m00.elements[0].node_idx  = node_m00_mm;
+    interpolator_m00.elements[0].weight    = d_m00_p0/(d_m00_m0+d_m00_p0);
+    interpolator_m00.elements[1].node_idx  = node_m00_pm;
+    interpolator_m00.elements[1].weight    = 1.0-interpolator_m00.elements[0].weight;
 #ifdef CASL_LOG_FLOPS
     PetscErrorCode ierr = PetscLogFlops(5); CHKERRXX(ierr);
 #endif
-    return;
   }
+  interpolator_m00.is_set = true;
+  return;
 }
 
-void quad_neighbor_nodes_of_node_t::linear_interpolator_p00(node_interpolator& interpolator) const
+void quad_neighbor_nodes_of_node_t::set_linear_interpolator_p00( )
 {
+  if(interpolator_p00.is_set)
+    return;
   if(d_p00_p0==0)
   {
-    interpolator.elements.resize(1);
-    interpolator.elements[0].node_idx  = node_p00_pm;
-    interpolator.elements[0].weight    = 1.0;
+    interpolator_p00.elements.resize(1);
+    interpolator_p00.elements[0].node_idx  = node_p00_pm;
+    interpolator_p00.elements[0].weight    = 1.0;
 #ifdef CASL_LOG_FLOPS
     PetscErrorCode ierr = PetscLogFlops(2); CHKERRXX(ierr);
 #endif
-    return;
   }
   else if(d_p00_m0==0)
   {
-    interpolator.elements.resize(1);
-    interpolator.elements[0].node_idx  = node_p00_mm;
-    interpolator.elements[0].weight    = 1.0;
+    interpolator_p00.elements.resize(1);
+    interpolator_p00.elements[0].node_idx  = node_p00_mm;
+    interpolator_p00.elements[0].weight    = 1.0;
 #ifdef CASL_LOG_FLOPS
     PetscErrorCode ierr = PetscLogFlops(2); CHKERRXX(ierr);
 #endif
-    return;
   }
   else
   {
-    interpolator.elements.resize(2);
-    interpolator.elements[0].node_idx  = node_p00_mm;
-    interpolator.elements[0].weight    = d_p00_p0/(d_p00_m0+d_p00_p0);
-    interpolator.elements[1].node_idx  = node_p00_pm;
-    interpolator.elements[1].weight    = 1.0-interpolator.elements[0].weight;
+    interpolator_p00.elements.resize(2);
+    interpolator_p00.elements[0].node_idx  = node_p00_mm;
+    interpolator_p00.elements[0].weight    = d_p00_p0/(d_p00_m0+d_p00_p0);
+    interpolator_p00.elements[1].node_idx  = node_p00_pm;
+    interpolator_p00.elements[1].weight    = 1.0-interpolator_p00.elements[0].weight;
 #ifdef CASL_LOG_FLOPS
     PetscErrorCode ierr = PetscLogFlops(5); CHKERRXX(ierr);
 #endif
-    return;
   }
+  interpolator_p00.is_set = true;
+  return;
 }
 
-void quad_neighbor_nodes_of_node_t::linear_interpolator_0m0(node_interpolator& interpolator) const
+void quad_neighbor_nodes_of_node_t::set_linear_interpolator_0m0( )
 {
+  if(interpolator_0m0.is_set)
+    return;
   if(d_0m0_m0==0)
   {
-    interpolator.elements.resize(1);
-    interpolator.elements[0].node_idx  = node_0m0_mm;
-    interpolator.elements[0].weight    = 1.0;
+    interpolator_0m0.elements.resize(1);
+    interpolator_0m0.elements[0].node_idx  = node_0m0_mm;
+    interpolator_0m0.elements[0].weight    = 1.0;
 #ifdef CASL_LOG_FLOPS
     PetscErrorCode ierr = PetscLogFlops(2); CHKERRXX(ierr);
 #endif
-    return;
   }
   else if(d_0m0_p0==0)
   {
-    interpolator.elements.resize(1);
-    interpolator.elements[0].node_idx  = node_0m0_pm;
-    interpolator.elements[0].weight    = 1.0;
+    interpolator_0m0.elements.resize(1);
+    interpolator_0m0.elements[0].node_idx  = node_0m0_pm;
+    interpolator_0m0.elements[0].weight    = 1.0;
 #ifdef CASL_LOG_FLOPS
     PetscErrorCode ierr = PetscLogFlops(2); CHKERRXX(ierr);
 #endif
-    return;
   }
   else
   {
-    interpolator.elements.resize(2);
-    interpolator.elements[0].node_idx  = node_0m0_pm;
-    interpolator.elements[0].weight    = d_0m0_m0/(d_0m0_m0+d_0m0_p0);
-    interpolator.elements[1].node_idx  = node_0m0_mm;
-    interpolator.elements[1].weight    = 1.0-interpolator.elements[0].weight;
+    interpolator_0m0.elements.resize(2);
+    interpolator_0m0.elements[0].node_idx  = node_0m0_pm;
+    interpolator_0m0.elements[0].weight    = d_0m0_m0/(d_0m0_m0+d_0m0_p0);
+    interpolator_0m0.elements[1].node_idx  = node_0m0_mm;
+    interpolator_0m0.elements[1].weight    = 1.0-interpolator_0m0.elements[0].weight;
 #ifdef CASL_LOG_FLOPS
     PetscErrorCode ierr = PetscLogFlops(5); CHKERRXX(ierr);
 #endif
-    return;
   }
+  interpolator_0m0.is_set = true;
+  return;
 }
 
-void quad_neighbor_nodes_of_node_t::linear_interpolator_0p0(node_interpolator& interpolator) const
+void quad_neighbor_nodes_of_node_t::set_linear_interpolator_0p0( )
 {
+  if(interpolator_0p0.is_set)
+    return;
   if(d_0p0_m0==0)
   {
-    interpolator.elements.resize(1);
-    interpolator.elements[0].node_idx  = node_0p0_mm;
-    interpolator.elements[0].weight    = 1.0;
+    interpolator_0p0.elements.resize(1);
+    interpolator_0p0.elements[0].node_idx  = node_0p0_mm;
+    interpolator_0p0.elements[0].weight    = 1.0;
 #ifdef CASL_LOG_FLOPS
     PetscErrorCode ierr = PetscLogFlops(2); CHKERRXX(ierr);
 #endif
-    return;
   }
   else if(d_0p0_p0==0)
   {
-    interpolator.elements.resize(1);
-    interpolator.elements[0].node_idx  = node_0p0_pm;
-    interpolator.elements[0].weight    = 1.0;
+    interpolator_0p0.elements.resize(1);
+    interpolator_0p0.elements[0].node_idx  = node_0p0_pm;
+    interpolator_0p0.elements[0].weight    = 1.0;
 #ifdef CASL_LOG_FLOPS
     PetscErrorCode ierr = PetscLogFlops(2); CHKERRXX(ierr);
 #endif
-    return;
   }
   else
   {
-    interpolator.elements.resize(2);
-    interpolator.elements[0].node_idx  = node_0p0_pm;
-    interpolator.elements[0].weight    = d_0p0_m0/(d_0p0_m0+d_0p0_p0);
-    interpolator.elements[1].node_idx  = node_0p0_mm;
-    interpolator.elements[1].weight    = 1.0-interpolator.elements[0].weight;
+    interpolator_0p0.elements.resize(2);
+    interpolator_0p0.elements[0].node_idx  = node_0p0_pm;
+    interpolator_0p0.elements[0].weight    = d_0p0_m0/(d_0p0_m0+d_0p0_p0);
+    interpolator_0p0.elements[1].node_idx  = node_0p0_mm;
+    interpolator_0p0.elements[1].weight    = 1.0-interpolator_0p0.elements[0].weight;
 #ifdef CASL_LOG_FLOPS
     PetscErrorCode ierr = PetscLogFlops(5); CHKERRXX(ierr);
 #endif
-    return;
   }
+  interpolator_0p0.is_set = true;
+  return;
 }
 
-void quad_neighbor_nodes_of_node_t::ngbd_with_quadratic_interpolation(const double *f,
-                                                                      double &f_000, double &f_m00, double &f_p00, double &f_0m0, double &f_0p0,
-                                                                      const node_interpolator &interp_m00, const node_interpolator &interp_p00,
-                                                                      const node_interpolator &interp_0m0, const node_interpolator &interp_0p0) const
+void quad_neighbor_nodes_of_node_t::ngbd_with_quadratic_interpolation( const double *f,
+                                                                       double& f_000, double& f_m00, double& f_p00, double& f_0m0, double& f_0p0,
+                                                                       const unsigned int& bs, const unsigned int& comp) const
 {
-  f_000 = f[node_000];
+  P4EST_ASSERT((comp < bs) && (bs > 0));
+  P4EST_ASSERT(interpolator_m00.is_set && interpolator_p00.is_set && interpolator_0m0.is_set && interpolator_0p0.is_set);
+  f_000 = f[bs*node_000+comp];
+  f_m00 = interpolator_m00.interpolate(f, bs, comp);
+  f_p00 = interpolator_p00.interpolate(f, bs, comp);
+  f_0m0 = interpolator_0m0.interpolate(f, bs, comp);
+  f_0p0 = interpolator_0p0.interpolate(f, bs, comp);
 
   double fyy=0; if(d_p00_m0*d_p00_p0!=0 || d_m00_m0*d_m00_p0!=0) fyy = central_second_derivative(f_0p0, f_000, f_0m0, d_0p0, d_0m0);
   double fxx=0; if(d_0m0_m0*d_0m0_p0!=0 || d_0p0_m0*d_0p0_p0!=0) fxx = central_second_derivative(f_p00, f_000, f_m00, d_p00, d_m00);
 
-  f_m00 = interp_m00.interpolate(f) - 0.5*d_m00_m0*d_m00_p0*fyy;
-  f_p00 = interp_p00.interpolate(f) - 0.5*d_p00_m0*d_p00_p0*fyy;
-  f_0m0 = interp_0m0.interpolate(f) - 0.5*d_0m0_m0*d_0m0_p0*fxx;
-  f_0p0 = interp_0p0.interpolate(f) - 0.5*d_0p0_m0*d_0p0_p0*fxx;
+  f_m00 -= 0.5*d_m00_m0*d_m00_p0*fyy;
+  f_p00 -= 0.5*d_p00_m0*d_p00_p0*fyy;
+  f_0m0 -= 0.5*d_0m0_m0*d_0m0_p0*fxx;
+  f_0p0 -= 0.5*d_0p0_m0*d_0p0_p0*fxx;
 #ifdef CASL_LOG_FLOPS
-    PetscErrorCode ierr = PetscLogFlops(12); CHKERRXX(ierr);
+  PetscErrorCode ierr = PetscLogFlops(12); CHKERRXX(ierr);
 #endif
 }
 
 void quad_neighbor_nodes_of_node_t::x_ngbd_with_quadratic_interpolation( const double *f,
                                                                          double& f_m00, double& f_000, double& f_p00,
-                                                                         const node_interpolator& interp_m00, const node_interpolator& interp_p00,
-                                                                         const node_interpolator& interp_0m0, const node_interpolator& interp_0p0) const
+                                                                         const unsigned int& bs, const unsigned int& comp) const
 {
-  f_000 = f[node_000];
+  P4EST_ASSERT((comp < bs) && (bs > 0));
+  P4EST_ASSERT(interpolator_m00.is_set && interpolator_p00.is_set && interpolator_0m0.is_set && interpolator_0p0.is_set);
+  f_000 = f[bs*node_000+comp];
 
   double fyy=0;
   if(d_p00_m0*d_p00_p0!=0 || d_m00_m0*d_m00_p0!=0)
   {
-    double f_0m0 = interp_0m0.interpolate(f);
-    double f_0p0 = interp_0p0.interpolate(f);
+    double f_0m0 = interpolator_0m0.interpolate(f, bs, comp);
+    double f_0p0 = interpolator_0p0.interpolate(f, bs, comp);
     fyy = central_second_derivative(f_0p0, f_000, f_0m0, d_0p0, d_0m0);
   }
-  f_m00 = interp_m00.interpolate(f) - 0.5*d_m00_m0*d_m00_p0*fyy;
-  f_p00 = interp_p00.interpolate(f) - 0.5*d_p00_m0*d_p00_p0*fyy;
+  f_m00 = interpolator_m00.interpolate(f, bs, comp) - 0.5*d_m00_m0*d_m00_p0*fyy;
+  f_p00 = interpolator_p00.interpolate(f, bs, comp) - 0.5*d_p00_m0*d_p00_p0*fyy;
 #ifdef CASL_LOG_FLOPS
   PetscErrorCode ierr = PetscLogFlops(6); CHKERRXX(ierr);
 #endif
 }
 
-void quad_neighbor_nodes_of_node_t::y_ngbd_with_quadratic_interpolation( const double *f, double& f_0m0, double& f_000, double& f_0p0,
-                                                                         const node_interpolator& interp_m00, const node_interpolator& interp_p00,
-                                                                         const node_interpolator& interp_0m0, const node_interpolator& interp_0p0) const
+void quad_neighbor_nodes_of_node_t::y_ngbd_with_quadratic_interpolation( const double *f,
+                                                                         double& f_0m0, double& f_000, double& f_0p0,
+                                                                         const unsigned int& bs, const unsigned int& comp) const
 {
-  f_000 = f[node_000];
+  P4EST_ASSERT((comp < bs) && (bs > 0));
+  P4EST_ASSERT(interpolator_m00.is_set && interpolator_p00.is_set && interpolator_0m0.is_set && interpolator_0p0.is_set);
+  f_000 = f[bs*node_000+comp];
 
   double fxx=0;
   if(d_0m0_m0*d_0m0_p0!=0 || d_0p0_m0*d_0p0_p0!=0)
   {
-    double f_m00 = interp_m00.interpolate(f);
-    double f_p00 = interp_p00.interpolate(f);
+    double f_m00 = interpolator_m00.interpolate(f, bs, comp);
+    double f_p00 = interpolator_p00.interpolate(f, bs, comp);
     fxx = central_second_derivative(f_p00, f_000, f_m00, d_p00, d_m00);
   }
-  f_0m0 = interp_0m0.interpolate(f) - 0.5*d_m00_m0*d_m00_p0*fxx;
-  f_0p0 = interp_0p0.interpolate(f) - 0.5*d_p00_m0*d_p00_p0*fxx;
+  f_0m0 = interpolator_0m0.interpolate(f, bs, comp) - 0.5*d_m00_m0*d_m00_p0*fxx;
+  f_0p0 = interpolator_0p0.interpolate(f, bs, comp) - 0.5*d_p00_m0*d_p00_p0*fxx;
 #ifdef CASL_LOG_FLOPS
   PetscErrorCode ierr = PetscLogFlops(6); CHKERRXX(ierr);
 #endif
 }
 
-double quad_neighbor_nodes_of_node_t::dx_central ( const double *f, const node_interpolator& interp_m00, const node_interpolator& interp_p00, const node_interpolator& interp_0m0, const node_interpolator& interp_0p0) const
+double quad_neighbor_nodes_of_node_t::dx_central ( const double *f, const unsigned int& bs, const unsigned int& comp) const
 {
   double f_m00,f_000,f_p00;
-  x_ngbd_with_quadratic_interpolation(f, f_m00, f_000, f_p00, interp_m00, interp_p00, interp_0m0, interp_0p0);
+  x_ngbd_with_quadratic_interpolation(f, f_m00, f_000, f_p00, bs, comp);
   return  central_derivative(f_p00, f_000, f_m00, d_p00, d_m00);
 }
 
-double quad_neighbor_nodes_of_node_t::dx_forward_linear ( const double *f, const node_interpolator& interp_p00) const
-{
-  return  forward_derivative(interp_p00.interpolate(f), f[node_000], d_p00);
-}
-
-double quad_neighbor_nodes_of_node_t::dx_backward_linear ( const double *f, const node_interpolator& interp_m00) const
-{
-  return  backward_derivative(f[node_000], interp_m00.interpolate(f), d_m00);
-}
-
-double quad_neighbor_nodes_of_node_t::dy_forward_linear ( const double *f, const node_interpolator& interp_0p0) const
-{
-  return  forward_derivative(interp_0p0.interpolate(f), f[node_000], d_0p0);
-}
-
-double quad_neighbor_nodes_of_node_t::dy_backward_linear ( const double *f, const node_interpolator& interp_0m0) const
-{
-  return  backward_derivative(f[node_000], interp_0m0.interpolate(f), d_0m0);
-}
-
-double quad_neighbor_nodes_of_node_t::dy_central ( const double *f, const node_interpolator& interp_m00, const node_interpolator& interp_p00, const node_interpolator& interp_0m0, const node_interpolator& interp_0p0) const
+double quad_neighbor_nodes_of_node_t::dy_central ( const double *f, const unsigned int& bs, const unsigned int& comp) const
 {
   double f_0m0,f_000,f_0p0;
-  y_ngbd_with_quadratic_interpolation(f, f_0m0, f_000, f_0p0, interp_m00, interp_p00, interp_0m0, interp_0p0);
+  y_ngbd_with_quadratic_interpolation(f, f_0m0, f_000, f_0p0, bs, comp);
   return  central_derivative(f_0p0, f_000, f_0m0, d_0p0, d_0m0);
 }
 
-double quad_neighbor_nodes_of_node_t::dxx_central( const double *f,
-                                                   const node_interpolator& interp_m00, const node_interpolator& interp_p00,
-                                                   const node_interpolator& interp_0m0, const node_interpolator& interp_0p0) const
+void quad_neighbor_nodes_of_node_t::gradient( const double *f, double &fx, double &fy, const unsigned int& bs, const unsigned int& comp) const
+{
+  double f_000, f_m00, f_p00, f_0m0, f_0p0;
+  ngbd_with_quadratic_interpolation(f, f_000, f_m00, f_p00, f_0m0, f_0p0, bs, comp);
+  fx = central_derivative(f_p00, f_000, f_m00, d_p00, d_m00);
+  fy = central_derivative(f_0p0, f_000, f_0m0, d_0p0, d_0m0);
+}
+
+double quad_neighbor_nodes_of_node_t::dx_forward_linear ( const double *f, const unsigned int& bs, const unsigned int& comp) const
+{
+  P4EST_ASSERT((comp < bs) && (bs > 0));
+  P4EST_ASSERT(interpolator_p00.is_set);
+  return  forward_derivative(interpolator_p00.interpolate(f, bs, comp), f[bs*node_000+comp], d_p00);
+}
+
+double quad_neighbor_nodes_of_node_t::dx_backward_linear ( const double *f, const unsigned int& bs, const unsigned int& comp) const
+{
+  P4EST_ASSERT((comp < bs) && (bs > 0));
+  P4EST_ASSERT(interpolator_m00.is_set);
+  return  backward_derivative(f[bs*node_000+comp], interpolator_m00.interpolate(f, bs, comp), d_m00);
+}
+
+double quad_neighbor_nodes_of_node_t::dy_forward_linear ( const double *f, const unsigned int& bs, const unsigned int& comp) const
+{
+  P4EST_ASSERT((comp < bs) && (bs > 0));
+  P4EST_ASSERT(interpolator_0p0.is_set);
+  return  forward_derivative(interpolator_0p0.interpolate(f, bs, comp), f[bs*node_000+comp], d_0p0);
+}
+
+double quad_neighbor_nodes_of_node_t::dy_backward_linear ( const double *f, const unsigned int& bs, const unsigned int& comp) const
+{
+  P4EST_ASSERT((comp < bs) && (bs > 0));
+  P4EST_ASSERT(interpolator_0m0.is_set);
+  return  backward_derivative(f[bs*node_000+comp], interpolator_0m0.interpolate(f, bs, comp), d_0m0);
+}
+
+inline double quad_neighbor_nodes_of_node_t::dx_backward_quadratic( const double *f, const double& fxx_m00,
+                                                                    const unsigned int& bs, const unsigned int& comp) const
 {
   double f_m00,f_000,f_p00;
-  x_ngbd_with_quadratic_interpolation(f, f_m00, f_000, f_p00, interp_m00, interp_p00, interp_0m0, interp_0p0);
+  x_ngbd_with_quadratic_interpolation(f, f_m00, f_000, f_p00, bs, comp);
+  double fxx_000 = central_second_derivative(f_p00, f_000, f_m00, d_p00, d_m00);
+  return (backward_derivative(f_000, f_m00, d_m00) + 0.5*d_m00*MINMOD(fxx_000,fxx_m00));
+}
+
+double quad_neighbor_nodes_of_node_t::dx_backward_quadratic( const double *f, const my_p4est_node_neighbors_t &neighbors,
+                                                             const unsigned int& bs, const unsigned int& comp) const
+{
+  P4EST_ASSERT((comp < bs) && (bs > 0));
+  P4EST_ASSERT(interpolator_m00.is_set);
+  double fxx_m00 = interpolator_m00.interpolate_dxx(f, neighbors, bs, comp);
+  return dx_backward_quadratic(f, fxx_m00, bs, comp);
+}
+
+double quad_neighbor_nodes_of_node_t::dx_backward_quadratic( const double *f, const double *fxx, const unsigned int& bs, const unsigned int& comp) const
+{
+  P4EST_ASSERT((comp < bs) && (bs > 0));
+  P4EST_ASSERT(interpolator_m00.is_set);
+  double fxx_m00 = interpolator_m00.interpolate(fxx, bs, comp);
+  return dx_backward_quadratic(f, fxx_m00, bs, comp);
+}
+
+inline double quad_neighbor_nodes_of_node_t::dx_forward_quadratic( const double *f, const double& fxx_p00,
+                                                                   const unsigned int& bs, const unsigned int& comp) const
+{
+  double f_m00,f_000,f_p00;
+  x_ngbd_with_quadratic_interpolation(f, f_m00, f_000, f_p00, bs, comp);
+  double fxx_000 = central_second_derivative(f_p00, f_000, f_m00, d_p00, d_m00);
+  return (forward_derivative(f_p00, f_000, d_p00) - 0.5*d_p00*MINMOD(fxx_000,fxx_p00));
+}
+
+double quad_neighbor_nodes_of_node_t::dx_forward_quadratic( const double *f, const my_p4est_node_neighbors_t &neighbors,
+                                                            const unsigned int& bs, const unsigned int& comp) const
+{
+  P4EST_ASSERT((comp < bs) && (bs > 0));
+  P4EST_ASSERT(interpolator_p00.is_set);
+  double fxx_p00 = interpolator_p00.interpolate_dxx(f, neighbors, bs, comp);
+  return dx_forward_quadratic(f, fxx_p00, bs, comp);
+}
+
+double quad_neighbor_nodes_of_node_t::dx_forward_quadratic ( const double *f, const double *fxx, const unsigned int& bs, const unsigned int& comp ) const
+{
+  P4EST_ASSERT((comp < bs) && (bs > 0));
+  P4EST_ASSERT(interpolator_p00.is_set);
+  double fxx_p00 = interpolator_p00.interpolate(fxx, bs, comp);
+  return dx_forward_quadratic(f, fxx_p00, bs, comp);
+}
+
+inline double quad_neighbor_nodes_of_node_t::dy_backward_quadratic( const double *f, const double& fyy_0m0,
+                                                                    const unsigned int& bs, const unsigned int& comp) const
+{
+  double f_0m0,f_000,f_0p0;
+  y_ngbd_with_quadratic_interpolation(f, f_0m0, f_000, f_0p0, bs, comp);
+  double fyy_000 = central_second_derivative(f_0p0, f_000, f_0m0, d_0p0, d_0m0);
+  return (backward_derivative(f_000, f_0m0, d_0m0) + 0.5*d_0m0*MINMOD(fyy_000,fyy_0m0));
+}
+
+double quad_neighbor_nodes_of_node_t::dy_backward_quadratic( const double *f, const my_p4est_node_neighbors_t &neighbors,
+                                                             const unsigned int& bs, const unsigned int& comp) const
+{
+  P4EST_ASSERT((comp < bs) && (bs > 0));
+  P4EST_ASSERT(interpolator_0m0.is_set);
+  double fyy_0m0 = interpolator_0m0.interpolate_dyy(f, neighbors, bs, comp);
+  return dy_backward_quadratic(f, fyy_0m0, bs, comp);
+}
+
+double quad_neighbor_nodes_of_node_t::dy_backward_quadratic( const double *f, const double *fyy, const unsigned int& bs, const unsigned int& comp ) const
+{
+  P4EST_ASSERT((comp < bs) && (bs > 0));
+  P4EST_ASSERT(interpolator_0m0.is_set);
+  double fyy_0m0 = interpolator_0m0.interpolate(fyy, bs, comp);
+  return dy_backward_quadratic(f, fyy_0m0, bs, comp);
+}
+
+inline double quad_neighbor_nodes_of_node_t::dy_forward_quadratic( const double *f, const double& fyy_0p0,
+                                                                   const unsigned int& bs, const unsigned int& comp) const
+{
+  double f_0m0,f_000,f_0p0;
+  y_ngbd_with_quadratic_interpolation(f, f_0m0, f_000, f_0p0, bs, comp);
+  double fyy_000 = central_second_derivative(f_0p0, f_000, f_0m0, d_0p0, d_0m0);
+  return (forward_derivative(f_0p0, f_000, d_0p0) - 0.5*d_0p0*MINMOD(fyy_000,fyy_0p0));
+}
+
+double quad_neighbor_nodes_of_node_t::dy_forward_quadratic( const double *f, const my_p4est_node_neighbors_t &neighbors,
+                                                            const unsigned int& bs, const unsigned int& comp) const
+{
+  P4EST_ASSERT((comp < bs) && (bs > 0));
+  P4EST_ASSERT(interpolator_0p0.is_set);
+  double fyy_0p0 = interpolator_0p0.interpolate_dyy(f, neighbors, bs, comp);
+  return dy_forward_quadratic(f, fyy_0p0, bs, comp);
+}
+double quad_neighbor_nodes_of_node_t::dy_forward_quadratic ( const double *f, const double *fyy, const unsigned int& bs, const unsigned int& comp ) const
+{
+  P4EST_ASSERT((comp < bs) && (bs > 0));
+  P4EST_ASSERT(interpolator_0p0.is_set);
+  double fyy_0p0 = interpolator_0p0.interpolate(fyy, bs, comp);
+  return dy_forward_quadratic(f, fyy_0p0, bs, comp);
+}
+
+double quad_neighbor_nodes_of_node_t::dxx_central( const double *f, const unsigned int& bs, const unsigned int& comp) const
+{
+  double f_m00,f_000,f_p00;
+  x_ngbd_with_quadratic_interpolation(f, f_m00, f_000, f_p00, bs, comp);
   return central_second_derivative(f_p00, f_000, f_m00, d_p00, d_m00);
 }
 
-double quad_neighbor_nodes_of_node_t::dyy_central( const double *f,
-                                                   const node_interpolator& interp_m00, const node_interpolator& interp_p00,
-                                                   const node_interpolator& interp_0m0, const node_interpolator& interp_0p0) const
+double quad_neighbor_nodes_of_node_t::dyy_central( const double *f, const unsigned int& bs, const unsigned int& comp) const
 {
   double f_0m0,f_000,f_0p0;
-  y_ngbd_with_quadratic_interpolation(f, f_0m0, f_000, f_0p0, interp_m00, interp_p00, interp_0m0, interp_0p0);
+  y_ngbd_with_quadratic_interpolation(f, f_0m0, f_000, f_0p0, bs, comp);
   return central_second_derivative(f_0p0, f_000, f_0m0, d_0p0, d_0m0);
 }
 
-void quad_neighbor_nodes_of_node_t::laplace( const double *f,
-                                             double &fxx, double &fyy,
-                                             const node_interpolator& interp_m00, const node_interpolator& interp_p00,
-                                             const node_interpolator& interp_0m0, const node_interpolator& interp_0p0) const
+void quad_neighbor_nodes_of_node_t::laplace( const double *f, double &fxx, double &fyy, const unsigned int& bs, const unsigned int& comp) const
 {
 
   double f_000, f_m00, f_p00, f_0m0, f_0p0;
-  ngbd_with_quadratic_interpolation(f, f_000, f_m00, f_p00, f_0m0, f_0p0, interp_m00, interp_p00, interp_0m0, interp_0p0);
+  ngbd_with_quadratic_interpolation(f, f_000, f_m00, f_p00, f_0m0, f_0p0, bs, comp);
   fxx = central_second_derivative(f_p00, f_000, f_m00, d_p00, d_m00);
   fyy = central_second_derivative(f_0p0, f_000, f_0m0, d_0p0, d_0m0);
-}
-
-void quad_neighbor_nodes_of_node_t::grad(const double *f, double &df_dx, double &df_dy,
-                                         const node_interpolator &interp_m00, const node_interpolator &interp_p00,
-                                         const node_interpolator &interp_0m0, const node_interpolator &interp_0p0) const
-{
-  double f_000, f_m00, f_p00, f_0m0, f_0p0;
-  ngbd_with_quadratic_interpolation(f, f_000, f_m00, f_p00, f_0m0, f_0p0, interp_m00, interp_p00, interp_0m0, interp_0p0);
-  df_dx = central_derivative(f_p00, f_000, f_m00, d_p00, d_m00);
-  df_dy = central_derivative(f_0p0, f_000, f_0m0, d_0p0, d_0m0);
-}
-
-double quad_neighbor_nodes_of_node_t::dx_backward_quadratic(const double *f, const my_p4est_node_neighbors_t &neighbors,
-                                                            const node_interpolator &interp_m00, const node_interpolator &interp_p00,
-                                                            const node_interpolator &interp_0m0, const node_interpolator &interp_0p0) const
-{
-  double f_m00,f_000,f_p00;
-  x_ngbd_with_quadratic_interpolation(f, f_m00, f_000, f_p00, interp_m00, interp_p00, interp_0m0, interp_0p0);
-
-  double fxx_000 = central_second_derivative(f_p00, f_000, f_m00, d_p00, d_m00);
-  double fxx_m00 = interp_m00.interpolate_dxx(f, neighbors);
-  return (backward_derivative(f_000, f_m00, d_m00) + 0.5*d_m00*MINMOD(fxx_000,fxx_m00));
-}
-
-double quad_neighbor_nodes_of_node_t::dx_backward_quadratic(const double *f, const double *fxx,
-                                                            const node_interpolator &interp_m00, const node_interpolator &interp_p00,
-                                                            const node_interpolator &interp_0m0, const node_interpolator &interp_0p0) const
-{
-  double f_m00,f_000,f_p00;
-  x_ngbd_with_quadratic_interpolation(f, f_m00, f_000, f_p00, interp_m00, interp_p00, interp_0m0, interp_0p0);
-
-  double fxx_000 = central_second_derivative(f_p00, f_000, f_m00, d_p00, d_m00);
-  double fxx_m00 = interp_m00.interpolate(fxx);
-  return (backward_derivative(f_000, f_m00, d_m00) + 0.5*d_m00*MINMOD(fxx_000,fxx_m00));
-}
-
-double quad_neighbor_nodes_of_node_t::dx_forward_quadratic(const double *f, const my_p4est_node_neighbors_t &neighbors,
-                                                           const node_interpolator &interp_m00, const node_interpolator &interp_p00,
-                                                           const node_interpolator &interp_0m0, const node_interpolator &interp_0p0) const
-{
-  double f_m00,f_000,f_p00;
-  x_ngbd_with_quadratic_interpolation(f, f_m00, f_000, f_p00, interp_m00, interp_p00, interp_0m0, interp_0p0);
-
-  double fxx_000 = central_second_derivative(f_p00, f_000, f_m00, d_p00, d_m00);
-  double fxx_p00 = interp_p00.interpolate_dxx(f, neighbors);
-  return (forward_derivative(f_p00, f_000, d_p00) - 0.5*d_m00*MINMOD(fxx_000,fxx_p00));
-}
-
-double quad_neighbor_nodes_of_node_t::dx_forward_quadratic(const double *f, const double* fxx,
-                                                           const node_interpolator &interp_m00, const node_interpolator &interp_p00,
-                                                           const node_interpolator &interp_0m0, const node_interpolator &interp_0p0) const
-{
-  double f_m00,f_000,f_p00;
-  x_ngbd_with_quadratic_interpolation(f, f_m00, f_000, f_p00, interp_m00, interp_p00, interp_0m0, interp_0p0);
-
-  double fxx_000 = central_second_derivative(f_p00, f_000, f_m00, d_p00, d_m00);
-  double fxx_p00 = interp_p00.interpolate(fxx);
-  return (forward_derivative(f_p00, f_000, d_p00) - 0.5*d_m00*MINMOD(fxx_000,fxx_p00));
-}
-
-double quad_neighbor_nodes_of_node_t::dy_backward_quadratic(const double *f, const my_p4est_node_neighbors_t &neighbors,
-                                                            const node_interpolator &interp_m00, const node_interpolator &interp_p00,
-                                                            const node_interpolator &interp_0m0, const node_interpolator &interp_0p0) const
-{
-  double f_0m0,f_000,f_0p0;
-  y_ngbd_with_quadratic_interpolation(f, f_0m0, f_000, f_0p0, interp_m00, interp_p00, interp_0m0, interp_0p0);
-
-  double fyy_000 = central_second_derivative(f_0p0, f_000, f_0m0, d_0p0, d_0m0);
-  double fyy_0m0 = interp_0m0.interpolate_dyy(f, neighbors);
-  return (backward_derivative(f_000, f_0m0, d_0m0) + 0.5*d_0m0*MINMOD(fyy_000,fyy_0m0));
-}
-
-double quad_neighbor_nodes_of_node_t::dy_backward_quadratic(const double *f, const double *fyy,
-                                                            const node_interpolator &interp_m00, const node_interpolator &interp_p00,
-                                                            const node_interpolator &interp_0m0, const node_interpolator &interp_0p0) const
-{
-  double f_0m0,f_000,f_0p0;
-  y_ngbd_with_quadratic_interpolation(f, f_0m0, f_000, f_0p0, interp_m00, interp_p00, interp_0m0, interp_0p0);
-
-  double fyy_000 = central_second_derivative(f_0p0, f_000, f_0m0, d_0p0, d_0m0);
-  double fyy_0m0 = interp_0m0.interpolate(fyy);
-  return (backward_derivative(f_000, f_0m0, d_0m0) + 0.5*d_0m0*MINMOD(fyy_000,fyy_0m0));
-}
-
-double quad_neighbor_nodes_of_node_t::dy_forward_quadratic(const double *f, const my_p4est_node_neighbors_t &neighbors,
-                                                           const node_interpolator &interp_m00, const node_interpolator &interp_p00,
-                                                           const node_interpolator &interp_0m0, const node_interpolator &interp_0p0) const
-{
-
-  double f_0m0,f_000,f_0p0;
-  y_ngbd_with_quadratic_interpolation(f, f_0m0, f_000, f_0p0, interp_m00, interp_p00, interp_0m0, interp_0p0);
-
-  double fyy_000 = central_second_derivative(f_0p0, f_000, f_0m0, d_0p0, d_0m0);
-  double fyy_0p0 = interp_0p0.interpolate_dyy(f, neighbors);
-  return (forward_derivative(f_0p0, f_000, d_0p0) - 0.5*d_0p0*MINMOD(fyy_000,fyy_0p0));
-}
-
-double quad_neighbor_nodes_of_node_t::dy_forward_quadratic(const double *f, const double *fyy,
-                                                           const node_interpolator &interp_m00, const node_interpolator &interp_p00,
-                                                           const node_interpolator &interp_0m0, const node_interpolator &interp_0p0) const
-{
-
-  double f_0m0,f_000,f_0p0;
-  y_ngbd_with_quadratic_interpolation(f, f_0m0, f_000, f_0p0, interp_m00, interp_p00, interp_0m0, interp_0p0);
-
-  double fyy_000 = central_second_derivative(f_0p0, f_000, f_0m0, d_0p0, d_0m0);
-  double fyy_0p0 = interp_0p0.interpolate(fyy);
-  return (forward_derivative(f_0p0, f_000, d_0p0) - 0.5*d_0p0*MINMOD(fyy_000,fyy_0p0));
-}
-
-void quad_neighbor_nodes_of_node_t::ngbd_with_quadratic_interpolation(const double *f[], double f_000[],
-                                                                      double f_m00[], double f_p00[],
-                                                                      double f_0m0[], double f_0p0[],
-                                                                      const unsigned int& n_fields) const
-{
-  P4EST_ASSERT(n_fields>0);
-  PetscErrorCode ierr;
-  P4EST_ASSERT(n_fields > 0);
-  ierr = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_ngbd_with_quad_interp, 0, 0, 0, 0); CHKERRXX(ierr);
-
-  node_interpolator interpolator_m00, interpolator_p00, interpolator_0m0, interpolator_0p0;
-  linear_interpolator_m00(interpolator_m00);
-  linear_interpolator_p00(interpolator_p00);
-  linear_interpolator_0m0(interpolator_0m0);
-  linear_interpolator_0p0(interpolator_0p0);
-
-  for (unsigned int k = 0; k < n_fields; ++k)
-    ngbd_with_quadratic_interpolation(f[k], f_000[k], f_m00[k], f_p00[k], f_0m0[k], f_0p0[k], interpolator_m00, interpolator_p00, interpolator_0m0, interpolator_0p0);
-
-  ierr = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_ngbd_with_quad_interp, 0, 0, 0, 0); CHKERRXX(ierr);
-}
-
-void quad_neighbor_nodes_of_node_t::x_ngbd_with_quadratic_interpolation(const double *f[],
-                                                                        double f_m00[], double f_000[], double f_p00[], const unsigned int& n_fields) const
-{
-  P4EST_ASSERT(n_fields > 0);
-  PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_x_ngbd_with_quad_interp, 0, 0, 0, 0); CHKERRXX(ierr);
-
-  node_interpolator interpolator_m00, interpolator_p00, interpolator_0m0, interpolator_0p0;
-  linear_interpolator_m00(interpolator_m00);
-  linear_interpolator_p00(interpolator_p00);
-  linear_interpolator_0m0(interpolator_0m0);
-  linear_interpolator_0p0(interpolator_0p0);
-
-  for (unsigned int k = 0; k < n_fields; ++k)
-    x_ngbd_with_quadratic_interpolation(f[k], f_m00[k], f_000[k], f_p00[k], interpolator_m00, interpolator_p00, interpolator_0m0, interpolator_0p0);
-
-  ierr = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_x_ngbd_with_quad_interp, 0, 0, 0, 0); CHKERRXX(ierr);
-}
-
-void quad_neighbor_nodes_of_node_t::y_ngbd_with_quadratic_interpolation(const double *f[],
-                                                                        double f_0m0[], double f_000[], double f_0p0[], const unsigned int& n_fields) const
-{
-  P4EST_ASSERT(n_fields > 0);
-  PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_y_ngbd_with_quad_interp, 0, 0, 0, 0); CHKERRXX(ierr);
-
-  node_interpolator interpolator_m00, interpolator_p00, interpolator_0m0, interpolator_0p0;
-  linear_interpolator_m00(interpolator_m00);
-  linear_interpolator_p00(interpolator_p00);
-  linear_interpolator_0m0(interpolator_0m0);
-  linear_interpolator_0p0(interpolator_0p0);
-
-  for (unsigned int k = 0; k < n_fields; ++k)
-    y_ngbd_with_quadratic_interpolation(f[k], f_0m0[k], f_000[k], f_0p0[k], interpolator_m00, interpolator_p00, interpolator_0m0, interpolator_0p0);
-
-  ierr = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_y_ngbd_with_quad_interp, 0, 0, 0, 0); CHKERRXX(ierr);
-}
-
-void quad_neighbor_nodes_of_node_t::dx_central ( const double *f[], double results[], const unsigned int& n_fields) const
-{
-  P4EST_ASSERT(n_fields > 0);
-  PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_dx_central, 0, 0, 0, 0); CHKERRXX(ierr);
-  node_interpolator interpolator_m00, interpolator_p00, interpolator_0m0, interpolator_0p0;
-  linear_interpolator_m00(interpolator_m00);
-  linear_interpolator_p00(interpolator_p00);
-  linear_interpolator_0m0(interpolator_0m0);
-  linear_interpolator_0p0(interpolator_0p0);
-
-  for (unsigned int k = 0; k < n_fields; ++k)
-    results[k] = dx_central(f[k], interpolator_m00, interpolator_p00, interpolator_0m0, interpolator_0p0);
-  ierr = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_dx_central, 0, 0, 0, 0); CHKERRXX(ierr);
-}
-
-void quad_neighbor_nodes_of_node_t::dy_central ( const double *f[], double results[], const unsigned int& n_fields ) const
-{
-  P4EST_ASSERT(n_fields > 0);
-  PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_dy_central, 0, 0, 0, 0); CHKERRXX(ierr);
-  node_interpolator interpolator_m00, interpolator_p00, interpolator_0m0, interpolator_0p0;
-  linear_interpolator_m00(interpolator_m00);
-  linear_interpolator_p00(interpolator_p00);
-  linear_interpolator_0m0(interpolator_0m0);
-  linear_interpolator_0p0(interpolator_0p0);
-
-  for (unsigned int k = 0; k < n_fields; ++k)
-    results[k] = dy_central(f[k], interpolator_m00, interpolator_p00, interpolator_0m0, interpolator_0p0);
-  ierr = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_dy_central, 0, 0, 0, 0); CHKERRXX(ierr);
-}
-
-void quad_neighbor_nodes_of_node_t::gradient(const double *f[], double fx[], double fy[], const unsigned int& n_fields) const
-{
-  P4EST_ASSERT(n_fields>0);
-  PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_gradient, 0, 0, 0, 0); CHKERRXX(ierr);
-  node_interpolator interpolator_m00, interpolator_p00, interpolator_0m0, interpolator_0p0;
-  linear_interpolator_m00(interpolator_m00);
-  linear_interpolator_p00(interpolator_p00);
-  linear_interpolator_0m0(interpolator_0m0);
-  linear_interpolator_0p0(interpolator_0p0);
-  for (unsigned int k = 0; k < n_fields; ++k)
-    grad(f[k], fx[k], fy[k], interpolator_m00, interpolator_p00, interpolator_0m0, interpolator_0p0);
-
-  ierr = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_gradient, 0, 0, 0, 0); CHKERRXX(ierr);
-}
-
-void quad_neighbor_nodes_of_node_t::gradient(const double *f[], double grad_f[][P4EST_DIM], const unsigned int& n_fields) const
-{
-  P4EST_ASSERT(n_fields>0);
-  PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_gradient, 0, 0, 0, 0); CHKERRXX(ierr);
-  node_interpolator interpolator_m00, interpolator_p00, interpolator_0m0, interpolator_0p0;
-  linear_interpolator_m00(interpolator_m00);
-  linear_interpolator_p00(interpolator_p00);
-  linear_interpolator_0m0(interpolator_0m0);
-  linear_interpolator_0p0(interpolator_0p0);
-  for (unsigned int k = 0; k < n_fields; ++k)
-    grad(f[k], grad_f[k][0], grad_f[k][1], interpolator_m00, interpolator_p00, interpolator_0m0, interpolator_0p0);
-
-  ierr = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_gradient, 0, 0, 0, 0); CHKERRXX(ierr);
-}
-
-void quad_neighbor_nodes_of_node_t::dx_forward_linear ( const double *f[], double results[], const unsigned int& n_fields ) const
-{
-  P4EST_ASSERT(n_fields > 0);
-  PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_dx_forward_linear, 0, 0, 0, 0); CHKERRXX(ierr);
-  node_interpolator interpolator_p00;
-  linear_interpolator_p00(interpolator_p00);
-
-  for (unsigned int k = 0; k < n_fields; ++k)
-    results[k] = dx_forward_linear(f[k], interpolator_p00);
-  ierr = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_dx_forward_linear, 0, 0, 0, 0); CHKERRXX(ierr);
-}
-
-void quad_neighbor_nodes_of_node_t::dx_backward_linear( const double *f[], double results[], const unsigned int& n_fields ) const
-{
-  P4EST_ASSERT(n_fields > 0);
-  PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_dx_backward_linear, 0, 0, 0, 0); CHKERRXX(ierr);
-  node_interpolator interpolator_m00;
-  linear_interpolator_m00(interpolator_m00);
-
-  for (unsigned int k = 0; k < n_fields; ++k)
-    results[k] = dx_backward_linear(f[k], interpolator_m00);
-  ierr = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_dx_backward_linear, 0, 0, 0, 0); CHKERRXX(ierr);
-}
-
-void quad_neighbor_nodes_of_node_t::dy_forward_linear ( const double *f[], double results[], const unsigned int& n_fields ) const
-{
-  P4EST_ASSERT(n_fields > 0);
-  PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_dy_forward_linear, 0, 0, 0, 0); CHKERRXX(ierr);
-  node_interpolator interpolator_0p0;
-  linear_interpolator_0p0(interpolator_0p0);
-
-  for (unsigned int k = 0; k < n_fields; ++k)
-    results[k] = dy_forward_linear(f[k], interpolator_0p0);
-  ierr = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_dy_forward_linear, 0, 0, 0, 0); CHKERRXX(ierr);
-}
-
-void quad_neighbor_nodes_of_node_t::dy_backward_linear( const double *f[], double results[], const unsigned int& n_fields ) const
-{
-  P4EST_ASSERT(n_fields > 0);
-  PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_dy_backward_linear, 0, 0, 0, 0); CHKERRXX(ierr);
-  node_interpolator interpolator_0m0;
-  linear_interpolator_0m0(interpolator_0m0);
-
-  for (unsigned int k = 0; k < n_fields; ++k)
-    results[k] = dy_backward_linear(f[k], interpolator_0m0);
-  ierr = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_dy_backward_linear, 0, 0, 0, 0); CHKERRXX(ierr);
-}
-
-void quad_neighbor_nodes_of_node_t::dx_backward_quadratic(const double *f[], const my_p4est_node_neighbors_t &neighbors, double results[], const unsigned int& n_fields) const
-{
-  P4EST_ASSERT(n_fields > 0);
-  PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_dx_backward_quadratic, 0, 0, 0, 0); CHKERRXX(ierr);
-  node_interpolator interpolator_m00, interpolator_p00, interpolator_0m0, interpolator_0p0;
-  linear_interpolator_m00(interpolator_m00);
-  linear_interpolator_p00(interpolator_p00);
-  linear_interpolator_0m0(interpolator_0m0);
-  linear_interpolator_0p0(interpolator_0p0);
-
-  for (unsigned int k = 0; k < n_fields; ++k)
-    results[k] = dx_backward_quadratic(f[k], neighbors, interpolator_m00, interpolator_p00, interpolator_0m0, interpolator_0p0);
-  ierr = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_dx_backward_quadratic, 0, 0, 0, 0); CHKERRXX(ierr);
-}
-
-void quad_neighbor_nodes_of_node_t::dx_forward_quadratic(const double *f[], const my_p4est_node_neighbors_t &neighbors, double results[], const unsigned int& n_fields) const
-{
-  P4EST_ASSERT(n_fields > 0);
-  PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_dx_forward_quadratic, 0, 0, 0, 0); CHKERRXX(ierr);
-  node_interpolator interpolator_m00, interpolator_p00, interpolator_0m0, interpolator_0p0;
-  linear_interpolator_m00(interpolator_m00);
-  linear_interpolator_p00(interpolator_p00);
-  linear_interpolator_0m0(interpolator_0m0);
-  linear_interpolator_0p0(interpolator_0p0);
-
-  for (unsigned int k = 0; k < n_fields; ++k)
-    results[k] = dx_forward_quadratic(f[k], neighbors, interpolator_m00, interpolator_p00, interpolator_0m0, interpolator_0p0);
-  ierr = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_dx_forward_quadratic, 0, 0, 0, 0); CHKERRXX(ierr);
-}
-
-void quad_neighbor_nodes_of_node_t::dy_backward_quadratic(const double *f[], const my_p4est_node_neighbors_t &neighbors, double results[], const unsigned int& n_fields) const
-{
-  P4EST_ASSERT(n_fields > 0);
-  PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_dy_backward_quadratic, 0, 0, 0, 0); CHKERRXX(ierr);
-  node_interpolator interpolator_m00, interpolator_p00, interpolator_0m0, interpolator_0p0;
-  linear_interpolator_m00(interpolator_m00);
-  linear_interpolator_p00(interpolator_p00);
-  linear_interpolator_0m0(interpolator_0m0);
-  linear_interpolator_0p0(interpolator_0p0);
-
-  for (unsigned int k = 0; k < n_fields; ++k)
-    results[k] = dy_backward_quadratic(f[k], neighbors, interpolator_m00, interpolator_p00, interpolator_0m0, interpolator_0p0);
-  ierr = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_dy_backward_quadratic, 0, 0, 0, 0); CHKERRXX(ierr);
-}
-
-void quad_neighbor_nodes_of_node_t::dy_forward_quadratic(const double *f[], const my_p4est_node_neighbors_t &neighbors, double results[], const unsigned int& n_fields) const
-{
-  P4EST_ASSERT(n_fields > 0);
-  PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_dy_forward_quadratic, 0, 0, 0, 0); CHKERRXX(ierr);
-  node_interpolator interpolator_m00, interpolator_p00, interpolator_0m0, interpolator_0p0;
-  linear_interpolator_m00(interpolator_m00);
-  linear_interpolator_p00(interpolator_p00);
-  linear_interpolator_0m0(interpolator_0m0);
-  linear_interpolator_0p0(interpolator_0p0);
-
-  for (unsigned int k = 0; k < n_fields; ++k)
-    results[k] = dy_forward_quadratic(f[k], neighbors, interpolator_m00, interpolator_p00, interpolator_0m0, interpolator_0p0);
-  ierr = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_dy_forward_quadratic, 0, 0, 0, 0); CHKERRXX(ierr);
-}
-
-void quad_neighbor_nodes_of_node_t::dx_backward_quadratic(const double *f[], const double *fxx[], double results[], const unsigned int& n_fields) const
-{
-  P4EST_ASSERT(n_fields > 0);
-  PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_dx_backward_quadratic, 0, 0, 0, 0); CHKERRXX(ierr);
-  node_interpolator interpolator_m00, interpolator_p00, interpolator_0m0, interpolator_0p0;
-  linear_interpolator_m00(interpolator_m00);
-  linear_interpolator_p00(interpolator_p00);
-  linear_interpolator_0m0(interpolator_0m0);
-  linear_interpolator_0p0(interpolator_0p0);
-
-  for (unsigned int k = 0; k < n_fields; ++k)
-    results[k] = dx_backward_quadratic(f[k], fxx[k], interpolator_m00, interpolator_p00, interpolator_0m0, interpolator_0p0);
-  ierr = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_dx_backward_quadratic, 0, 0, 0, 0); CHKERRXX(ierr);
-}
-
-void quad_neighbor_nodes_of_node_t::dx_forward_quadratic(const double *f[], const double *fxx[], double results[], const unsigned int& n_fields) const
-{
-  P4EST_ASSERT(n_fields > 0);
-  PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_dx_forward_quadratic, 0, 0, 0, 0); CHKERRXX(ierr);
-  node_interpolator interpolator_m00, interpolator_p00, interpolator_0m0, interpolator_0p0;
-  linear_interpolator_m00(interpolator_m00);
-  linear_interpolator_p00(interpolator_p00);
-  linear_interpolator_0m0(interpolator_0m0);
-  linear_interpolator_0p0(interpolator_0p0);
-
-  for (unsigned int k = 0; k < n_fields; ++k)
-    results[k] = dx_forward_quadratic(f[k], fxx[k], interpolator_m00, interpolator_p00, interpolator_0m0, interpolator_0p0);
-  ierr = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_dx_forward_quadratic, 0, 0, 0, 0); CHKERRXX(ierr);
-}
-
-void quad_neighbor_nodes_of_node_t::dy_backward_quadratic(const double *f[], const double *fyy[], double results[], const unsigned int& n_fields) const
-{
-  P4EST_ASSERT(n_fields > 0);
-  PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_dy_backward_quadratic, 0, 0, 0, 0); CHKERRXX(ierr);
-  node_interpolator interpolator_m00, interpolator_p00, interpolator_0m0, interpolator_0p0;
-  linear_interpolator_m00(interpolator_m00);
-  linear_interpolator_p00(interpolator_p00);
-  linear_interpolator_0m0(interpolator_0m0);
-  linear_interpolator_0p0(interpolator_0p0);
-
-  for (unsigned int k = 0; k < n_fields; ++k)
-    results[k] = dy_backward_quadratic(f[k], fyy[k], interpolator_m00, interpolator_p00, interpolator_0m0, interpolator_0p0);
-  ierr = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_dy_backward_quadratic, 0, 0, 0, 0); CHKERRXX(ierr);
-}
-
-void quad_neighbor_nodes_of_node_t::dy_forward_quadratic(const double *f[], const double *fyy[], double results[], const unsigned int& n_fields) const
-{
-  P4EST_ASSERT(n_fields > 0);
-  PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_dy_forward_quadratic, 0, 0, 0, 0); CHKERRXX(ierr);
-  node_interpolator interpolator_m00, interpolator_p00, interpolator_0m0, interpolator_0p0;
-  linear_interpolator_m00(interpolator_m00);
-  linear_interpolator_p00(interpolator_p00);
-  linear_interpolator_0m0(interpolator_0m0);
-  linear_interpolator_0p0(interpolator_0p0);
-
-  for (unsigned int k = 0; k < n_fields; ++k)
-    results[k] = dy_forward_quadratic(f[k], fyy[k], interpolator_m00, interpolator_p00, interpolator_0m0, interpolator_0p0);
-  ierr = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_dy_forward_quadratic, 0, 0, 0, 0); CHKERRXX(ierr);
-}
-
-void quad_neighbor_nodes_of_node_t::dxx_central( const double *f[], double results[], const unsigned int& n_fields) const
-{
-  P4EST_ASSERT(n_fields > 0);
-  PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_dxx_central, 0, 0, 0, 0); CHKERRXX(ierr);
-  node_interpolator interpolator_m00, interpolator_p00, interpolator_0m0, interpolator_0p0;
-  linear_interpolator_m00(interpolator_m00);
-  linear_interpolator_p00(interpolator_p00);
-  linear_interpolator_0m0(interpolator_0m0);
-  linear_interpolator_0p0(interpolator_0p0);
-  for (unsigned int k = 0; k < n_fields; ++k)
-    results[k] = dxx_central(f[k], interpolator_m00, interpolator_p00, interpolator_0m0, interpolator_0p0);
-  ierr = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_dxx_central, 0, 0, 0, 0); CHKERRXX(ierr);
-}
-
-void quad_neighbor_nodes_of_node_t::dyy_central( const double *f[], double results[], const unsigned int& n_fields) const
-{
-  P4EST_ASSERT(n_fields > 0);
-  PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_dyy_central, 0, 0, 0, 0); CHKERRXX(ierr);
-  node_interpolator interpolator_m00, interpolator_p00, interpolator_0m0, interpolator_0p0;
-  linear_interpolator_m00(interpolator_m00);
-  linear_interpolator_p00(interpolator_p00);
-  linear_interpolator_0m0(interpolator_0m0);
-  linear_interpolator_0p0(interpolator_0p0);
-  for (unsigned int k = 0; k < n_fields; ++k)
-    results[k] = dyy_central(f[k], interpolator_m00, interpolator_p00, interpolator_0m0, interpolator_0p0);
-  ierr = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_dyy_central, 0, 0, 0, 0); CHKERRXX(ierr);
-}
-
-void quad_neighbor_nodes_of_node_t::laplace(const double *f[], double fxx[], double fyy[], const unsigned int& n_fields) const
-{
-  P4EST_ASSERT(n_fields > 0);
-  PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_laplace, 0, 0, 0, 0); CHKERRXX(ierr);
-  node_interpolator interpolator_m00, interpolator_p00, interpolator_0m0, interpolator_0p0;
-  linear_interpolator_m00(interpolator_m00);
-  linear_interpolator_p00(interpolator_p00);
-  linear_interpolator_0m0(interpolator_0m0);
-  linear_interpolator_0p0(interpolator_0p0);
-  for (unsigned int k = 0; k < n_fields; ++k)
-    laplace(f[k], fxx[k], fyy[k], interpolator_m00, interpolator_p00, interpolator_0m0, interpolator_0p0);
-  ierr = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_laplace, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
 

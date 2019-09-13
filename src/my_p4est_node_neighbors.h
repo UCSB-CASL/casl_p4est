@@ -286,78 +286,149 @@ public:
   void find_neighbor_cell_of_node( p4est_locidx_t n, char i, char j, p4est_locidx_t& quad_idx, p4est_topidx_t& nb_tree_idx ) const;
 #endif
 
-  /*!
-   * \brief dxx_central compute dxx_central on all nodes and update the ghosts
-   * \param [in]  f   PETSc vector to compute the derivaties on
-   * \param [out] fxx PETSc vector to store the results in. A check is done to ensure they have the same size
-   */
-  void dxx_central(const Vec f, Vec fxx) const;
 
   /*!
-   * \brief dyy_central compute dyy_central on all nodes and update the ghosts
-   * \param [in]  f   PETSc vector to compute the derivaties on
-   * \param [out] fyy PETSc vector to store the results in. A check is done to ensure they have the same size
+   * \brief dd_central computes the second derivatives along cartesian direction der on all nodes and update the ghosts
+   * \param [in]  f       (ghosted) PETSc vector(s) to compute the derivatives on must be of appropriate node-sampling size and cannot be block-structured.
+   * \param [out] fdd     (ghosted) PETSc vector(s) to store the appropriate second derivatives in. A check is done to ensure they have the same size.
+   * \param [in]  n_vecs  number of vectors in the arrays f and fdd
+   * \param [in]  der     cartesian direction along which the second derivatives must be calculated (dir::x, dir::y or dir::z)
    */
-  void dyy_central(const Vec f, Vec fyy) const;
+  void dd_central(const Vec f[], Vec fdd[], const unsigned int& n_vecs, const unsigned char& der) const;
+  inline void dd_central(const Vec f, Vec fdd, const unsigned char& der) const
+  {
+    dd_central(&f, &fdd, 1, der);
+  }
+  inline void dxx_central(const Vec f, Vec fxx) const
+  {
+    dd_central(f, fxx, dir::x);
+  }
+  inline void dyy_central(const Vec f, Vec fyy) const
+  {
+    dd_central(f, fyy, dir::y);
+  }
 
 #ifdef P4_TO_P8
-  /*!
-   * \brief dzz_central compute dzz_central on all nodes and update the ghosts
-   * \param [in]  f   PETSc vector to compute the derivaties on
-   * \param [out] fzz PETSc vector to store the results in. A check is done to ensure they have the same size
-   */
-  void dzz_central(const Vec f, Vec fzz) const;
+  inline void dzz_central(const Vec f, Vec fzz) const
+  {
+    dd_central(f, fzz, dir::z);
+  }
 #endif
 
   /*!
-   * \brief second_derivatives_central computes both dxx_central and dyy_central at all
-   * points. Theoretically this should have a better chance at hiding communications
-   * than above calls combined.
-   * \param [in]  f   PETSc vector to compute the derivaties on
-   * \param [out] fdd PETSc _BLOCK_ vector to store dxx adn dyy results in.
-   * A check is done to ensure it has the same size as f and block size = P4EST_DIM
+   * \brief second_derivatives_central computes dxx_central, dyy_central (and dzz_central, in 3D) at all points.
+   * Theoretically this should have a better chance at hiding communications than above calls combined. The field(s)
+   * f may be a multi-component block-structured vector, in which case, all second derivatives of all components of f
+   * are calculated within this function!
+   * \param [in]  f       PETSc vector(s) to compute the second derivatives on (can be of block size bs_f >= 1)
+   * \param [out] fdd     PETSc vector(s) to store second derivatives results in, must be of block size bs_f*P4EST_DIM.
+   * \param [in]  n_vecs  number of vectors to handle
+   * \param [in]  bs_f    block size of the vectors in f (default is 1)
    */
-  void second_derivatives_central(const Vec f, Vec fdd) const;
+  void second_derivatives_central(const Vec f[], Vec fdd[], const unsigned int& n_vecs, const unsigned int &bs_f=1) const;
+  inline void second_derivatives_central(const Vec f, Vec fdd, const unsigned int &bs_f=1) const
+  {
+    second_derivatives_central(&f, &fdd, 1, bs_f);
+  }
 
   /*!
-   * \brief second_derivatives_central computes dxx, dyy, and dzz central at all
-   * points. Similar to the function above except it use two regular vector in
-   * place of a single blocked vector. Easier to use but more expensive in terms
-   * of MPI. Also note that fxx, fyy, and fzz cannot be obtained via VecDuplicate as
-   * this would share the same VecScatter object and avoid simaltanous update.
+   * \brief second_derivatives_central computes dxx, dyy, and dzz central at all points. Similar to the function above
+   * except it use two/three regular vector in place of a single blocked vector. Easier to use but more expensive in terms
+   * of MPI. Also note that fxx, fyy, and fzz cannot be obtained via VecDuplicate as this would share the same VecScatter
+   * object and avoid simultanous update.
    *
-   * \param [in]  f   PETSc vector to compute the derivaties on
-   * \param [out] fxx PETSc vector to store the results in. A check is done to ensure they have the same size as f
-   * \param [out] fyy PETSc vector to store the results in. A check is done to ensure they have the same size as f
-   * \param [out] fzz PETSc vector to store the results in. A check is done to ensure they have the same size as f (only inn 3D)
+   * Note that vectors f, fxx, fyy and fzz can all be of blocksize bs >=1 but have to be of the same size! If bs > 1, the
+   * derivatives of all the components of f are calculated within this function.
+   * \param [in]  f       PETSc vector(s) to compute the derivatives on, of block size bs
+   * \param [out] fxx     PETSc vector(s) to store the xx-derivative(s) results in. A check is done to ensure they have the same size as f
+   * \param [out] fyy     PETSc vector(s) to store the yy-derivative(s) results in. A check is done to ensure they have the same size as f
+   * \param [out] fzz     PETSc vector(s) to store the zz-derivative(s) results in. A check is done to ensure they have the same size as f (only in 3D)
+   * \param [in]  n_vecs  number of vectors to handle
+   * \param [in]  bs      block size of the vectors in f, fxx, fyy and fzz (default is 1)
    */
 #ifdef P4_TO_P8
-  void second_derivatives_central(const Vec f, Vec fxx, Vec fyy, Vec fzz) const { second_derivatives_central(&f, &fxx, &fyy, &fzz, 1); }
-  void second_derivatives_central(const Vec f[], Vec fxx[], Vec fyy[], Vec fzz[], unsigned int n_vecs) const;
+  void second_derivatives_central(const Vec f[], Vec fxx[], Vec fyy[], Vec fzz[], const unsigned int& n_vecs, const unsigned int &bs=1) const;
+  inline void second_derivatives_central(const Vec f, Vec fxx, Vec fyy, Vec fzz, const unsigned int &bs=1) const { second_derivatives_central(&f, &fxx, &fyy, &fzz, 1, bs); }
 #else
-  void second_derivatives_central(const Vec f, Vec fxx, Vec fyy) const { second_derivatives_central(&f, &fxx, &fyy, 1); }
-  void second_derivatives_central(const Vec f[], Vec fxx[], Vec fyy[], unsigned int n_vecs) const;
+  void second_derivatives_central(const Vec f[], Vec fxx[], Vec fyy[], const unsigned int& n_vecs, const unsigned int &bs=1) const;
+  inline void second_derivatives_central(const Vec f, Vec fxx, Vec fyy, const unsigned int &bs=1) const { second_derivatives_central(&f, &fxx, &fyy, 1, bs); }
 #endif
 
   /*!
    * \brief second_derivatives_central computes the second derivative
-   * \param [in]  f   PETSc vector to compute the derivaties on
-   * \param [out] fxx array of size P4EST_DIM of PETSc vectors to store all results in.
+   * \param [in]  f       PETSc vector(s) to compute the derivaties on
+   * \param [out] fxx     array of array(s) of size P4EST_DIM of PETSc vectors to store all results in.
+   * \param [in]  n_vecs  number of vectors to handle
+   * \param [in]  bs      block size of the vectors in f, fxx, fyy and fzz (default is 1)
    */
-  inline void second_derivatives_central(const Vec f, Vec fxx[P4EST_DIM]) {
+  inline void second_derivatives_central(const Vec f[], Vec *fxx[P4EST_DIM], const unsigned int &n_vecs, const unsigned int &bs = 1) {
 #ifdef P4_TO_P8
-    second_derivatives_central(f, fxx[0], fxx[1], fxx[2]);
+    second_derivatives_central(f, fxx[0], fxx[1], fxx[2], n_vecs, bs);
 #else
-    second_derivatives_central(f, fxx[0], fxx[1]);
+    second_derivatives_central(f, fxx[0], fxx[1], n_vecs, bs);
+#endif
+  }
+  inline void second_derivatives_central(const Vec f, Vec fxx[P4EST_DIM], const unsigned int &bs = 1)
+  {
+#ifdef P4_TO_P8
+    second_derivatives_central(&f, &fxx[0], &fxx[1], &fxx[2], 1, bs);
+#else
+    second_derivatives_central(&f, &fxx[0], &fxx[1], 1, bs);
 #endif
   }
 
   /*!
-   * \brief first_derivatives_central computes the first derivatives using central difference
-   * \param [in]  f   PETSc vector storing the
-   * \param [out] fx  array of size P4EST_DIM of PETSc vectors to store
+   * \brief first_derivatives_central computes dx_central, dy_central (and dz_central, in 3D) at all points.
+   * Theoretically this should have a better chance at hiding communications than above calls combined. The field(s)
+   * f may be a multi-component block-structured vector, in which case, all second derivatives of all components of f
+   * are calculated within this function!
+   * \param [in]  f       PETSc vector(s) to compute the first derivatives on (can be of block size bs_f >= 1)
+   * \param [out] fd      PETSc vector(s) to store first derivatives results in, must be of block size bs_f*P4EST_DIM.
+   * \param [in]  n_vecs  number of vectors to handle
+   * \param [in]  bs_f    block size of the vectors in f (default is 1)
    */
-  void first_derivatives_central(const Vec f, Vec fx[P4EST_DIM]) const;
+  void first_derivatives_central(const Vec f[], Vec fd[], const unsigned int& n_vecs, const unsigned int &bs_f=1) const;
+  inline void first_derivatives_central(const Vec f, Vec fdd, const unsigned int &bs_f=1) const
+  {
+    first_derivatives_central(&f, &fdd, 1, bs_f);
+  }
+
+  /*!
+   * \brief first_derivatives_central computes the first derivatives using central difference
+   *
+   * Note that vectors in f, fx, fy, fz can all be of blocksize bs >=1 but have to be of the same size! If bs > 1, the
+   * derivatives of all the components of f are calculated within this function.
+   * \param [in]  f       PETSc vector(s) to compute the derivatives on, of block size bs
+   * \param [out] fx      PETSc vector(s) to store the x-derivative(s) results in. A check is done to ensure they have the same size as f
+   * \param [out] fy      PETSc vector(s) to store the y-derivative(s) results in. A check is done to ensure they have the same size as f
+   * \param [out] fz      PETSc vector(s) to store the z-derivative(s) results in. A check is done to ensure they have the same size as f (only in 3D)
+   * \param [in]  n_vecs  number of vectors to handle
+   * \param [in]  bs      block size of the vectors in f, fx, fy and fz (default is 1)
+   */
+#ifdef P4_TO_P8
+  void first_derivatives_central(const Vec f[], Vec fx[], Vec fy[], Vec fz[], const unsigned int& n_vecs, const unsigned int &bs=1) const;
+  inline void first_derivatives_central(const Vec f, Vec fx, Vec fy, Vec fz, const unsigned int &bs=1) const { second_derivatives_central(&f, &fx, &fy, &fz, 1, bs); }
+#else
+  void first_derivatives_central(const Vec f[], Vec fx[], Vec fy[], const unsigned int& n_vecs, const unsigned int &bs=1) const;
+  inline void first_derivatives_central(const Vec f, Vec fx, Vec fy, const unsigned int &bs=1) const { second_derivatives_central(&f, &fx, &fy, 1, bs); }
+#endif
+
+  inline void first_derivatives_central(const Vec f[], Vec *fxyz[P4EST_DIM], const unsigned int &n_vecs, const unsigned int &bs=1) const
+  {
+#ifdef P4_TO_P8
+    first_derivatives_central(f, fxyz[0], fxyz[1], fxyz[2], n_vecs, bs);
+#else
+    first_derivatives_central(f, fxyz[0], fxyz[1], n_vecs, bs);
+#endif
+  }
+  inline void first_derivatives_central(const Vec f, Vec fxyz[P4EST_DIM], const unsigned int &bs=1) const
+  {
+#ifdef P4_TO_P8
+    first_derivatives_central(f, fxyz[0], fxyz[1], fxyz[2], bs);
+#else
+    first_derivatives_central(f, fxyz[0], fxyz[1], bs);
+#endif
+  }
 
   size_t memory_estimate() const
   {
@@ -373,10 +444,19 @@ public:
 
 private:
 #ifdef P4_TO_P8
-  void second_derivatives_central_using_block(const Vec f, Vec fxx, Vec fyy, Vec fzz) const;
+  void second_derivatives_central_using_block(const Vec f[], Vec fxx[], Vec fyy[], Vec fzz[], const unsigned int& n_vecs, const unsigned int &bs = 1) const;
+  inline void second_derivatives_central_using_block(const Vec f, Vec fxx, Vec fyy, Vec fzz, const unsigned int &bs = 1) const
+  {
+    second_derivatives_central_using_block(&f, &fxx, &fyy, &fzz, 1, bs);
+  }
 #else
-  void second_derivatives_central_using_block(const Vec f, Vec fxx, Vec fyy) const;
+  void second_derivatives_central_using_block(const Vec f[], Vec fxx[], Vec fyy[], const unsigned int& n_vecs, const unsigned int &bs = 1) const;
+  inline void second_derivatives_central_using_block(const Vec f, Vec fxx, Vec fyy, const unsigned int &bs = 1) const
+  {
+    second_derivatives_central_using_block(&f, &fxx, &fyy, 1, bs);
+  }
 #endif
+
 };
 
 #endif /* !MY_P4EST_NODE_NEIGHBORS_H */

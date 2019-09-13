@@ -112,6 +112,9 @@ void my_p4est_hierarchy_t::construct_tree() {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_hierarchy_t, 0, 0, 0, 0); CHKERRXX(ierr);
 
+  local_inner_quadrant_index.resize(0);
+  local_layer_quadrant_index.resize(0);
+
   size_t mirror_idx = 0;
   const p4est_quadrant_t* mirror = NULL;
   if(ghost!=NULL && mirror_idx < ghost->mirrors.elem_count)
@@ -124,7 +127,9 @@ void my_p4est_hierarchy_t::construct_tree() {
     for( size_t q=0; q<tree->quadrants.elem_count; ++q)
     {
       const p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, q);
-      if((ghost!=NULL) && (mirror!=NULL) && p4est_quadrant_is_equal_piggy(quad, mirror)) // mirrors and quadrant are stored using the same convention, parse both simultaneously for efficiency
+      // mirrors and quadrant are stored using the same convention, parse both simultaneously for efficiency,
+      // but do not use p4est_quadrant_is_equal_piggy(), since the p.piggy3 member is not filled for regular quadrants but only for ghosts and mirrors
+      if((ghost!=NULL) && (mirror!=NULL) && p4est_quadrant_is_equal(quad, mirror) && (mirror->p.piggy3.which_tree == tree_idx))
       {
         local_layer_quadrant_index.push_back(q+tree->quadrants_offset);
         if(mirror_idx < ghost->mirrors.elem_count)
@@ -141,6 +146,7 @@ void my_p4est_hierarchy_t::construct_tree() {
       trees[tree_idx][ind].owner_rank = p4est->mpirank;
     }
   }
+
   P4EST_ASSERT((ghost == NULL) || (mirror_idx == ghost->mirrors.elem_count));
   P4EST_ASSERT(local_inner_quadrant_index.size()+local_layer_quadrant_index.size() == ((size_t) p4est->local_num_quadrants));
 

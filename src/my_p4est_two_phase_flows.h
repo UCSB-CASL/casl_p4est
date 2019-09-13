@@ -150,21 +150,23 @@ private:
   // ----- FIELDS SAMPLED AT NODES OF THE INTERFACE-CAPTURING GRID -----
   // -------------------------------------------------------------------
   // scalar fields
-  Vec fine_phi, fine_curvature, jump_hodge, jump_normal_flux_hodge, mass_flux, nonconstant_surface_tension;
-  // vector fields
-  Vec fine_normal[P4EST_DIM], fine_phi_xxyyzz[P4EST_DIM], grad_surface_tension[P4EST_DIM];
-  // tensor/matrix fields
-  Vec jump_mu_grad_v[P4EST_DIM][P4EST_DIM];
+  Vec fine_phi, fine_curvature, fine_jump_hodge, fine_jump_normal_flux_hodge, fine_mass_flux, fine_variable_surface_tension;
+  // vector fields, P4EST_DIM-block-structured
+  Vec fine_normal, fine_phi_xxyyzz, fine_grad_surface_tension;
+  // tensor/matrix fields, (P4EST_DIM*P4EST_DIM)-block-structured
+  // fine_jump_mu_grad_v_p[P4EST_DIM*P4EST_DIM*i+P4EST_DIM*dir+der] is the jump in mu \dfrac{\partial u_{dir}}{\partial x_{der}}, evaluated at local node i of fine_p4est_n
+  Vec fine_jump_mu_grad_v;
   // -----------------------------------------------------------------------
   // ----- FIELDS SAMPLED AT NODES OF THE COMPUTATIONAL GRID AT TIME N -----
   // -----------------------------------------------------------------------
   // scalar fields
   Vec vorticity;
-  // vector fields
-  Vec vnp1_nodes_omega_minus[P4EST_DIM],  vnp1_nodes_omega_plus[P4EST_DIM];
-  Vec vn_nodes_omega_minus[P4EST_DIM],    vn_nodes_omega_plus[P4EST_DIM];
-  // tensor/matrix fields
-  Vec vn_nodes_omega_minus_xxyyzz[P4EST_DIM][P4EST_DIM], vn_nodes_omega_plus_xxyyzz[P4EST_DIM][P4EST_DIM];
+  // vector fields, P4EST_DIM-block-structured
+  Vec vnp1_nodes_omega_minus,  vnp1_nodes_omega_plus;
+  Vec vn_nodes_omega_minus,    vn_nodes_omega_plus;
+  // tensor/matrix fields, (P4EST_DIM*P4EST_DIM)-block-structured
+  // vn_nodes_omega_minus_xxyyzz_p[P4EST_DIM*P4EST_DIM*i+P4EST_DIM*dir+der] is the second derivative of u^{n, -}_{dir} with respect to cartesian direction x_{der}, evaluated at local node i of p4est_n
+  Vec vn_nodes_omega_minus_xxyyzz, vn_nodes_omega_plus_xxyyzz;
   // ------------------------------------------------------------------------------
   // ----- FIELDS SAMPLED AT CELL CENTERS OF THE COMPUTATIONAL GRID AT TIME N -----
   // ------------------------------------------------------------------------------
@@ -174,14 +176,15 @@ private:
   // ----- FIELDS SAMPLED AT FACE CENTERS OF THE COMPUTATIONAL GRID AT TIME N -----
   // ------------------------------------------------------------------------------
   // vector fields
-  Vec dxyz_hodge[P4EST_DIM], vstar[P4EST_DIM], vnp1_minus[P4EST_DIM], vnp1_plus[P4EST_DIM]; //, sign_of_phi_face[P4EST_DIM];
+  Vec dxyz_hodge[P4EST_DIM], vstar[P4EST_DIM], vnp1_minus[P4EST_DIM], vnp1_plus[P4EST_DIM];
   // -------------------------------------------------------------------------
   // ----- FIELDS SAMPLED AT NODES OF THE COMPUTATIONAL GRID AT TIME NM1 -----
   // -------------------------------------------------------------------------
-  // vector fields
-  Vec vnm1_nodes_omega_minus[P4EST_DIM],  vnm1_nodes_omega_plus[P4EST_DIM];
-  // tensor/matrix fields
-  Vec vnm1_nodes_omega_minus_xxyyzz[P4EST_DIM][P4EST_DIM], vnm1_nodes_omega_plus_xxyyzz[P4EST_DIM][P4EST_DIM];
+  // vector fields, P4EST_DIM-block-structured
+  Vec vnm1_nodes_omega_minus,  vnm1_nodes_omega_plus;
+  // tensor/matrix fields, (P4EST_DIM*P4EST_DIM)-block-structured
+  // vnm1_nodes_omega_minus_xxyyzz_p[P4EST_DIM*P4EST_DIM*i+P4EST_DIM*dir+der] is the second derivative of u^{n-1, -}_{dir} with respect to cartesian direction x_{der}, evaluated at local node i of p4est_nm1
+  Vec vnm1_nodes_omega_minus_xxyyzz, vnm1_nodes_omega_plus_xxyyzz;
 
   // semi-lagrangian backtraced points for faces (needed in viscosity step's setup, needs to be done only once)
   // no need to destroy these, not dynamically allocated...
@@ -539,22 +542,23 @@ private:
   inline double BDF_beta() const {return ((sl_order ==1) ? 0.0: -dt_n/(dt_n+dt_nm1)); }
 
   void get_velocity_seen_from_cell(neighbor_value& neighbor_velocity, const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const int& face_dir,
-                                   const double *vstar_p, const double *fine_phi_p, const double *fine_phi_dirdir_p, const double *jump_mu_grad_v_p);
+                                   const double *vstar_p, const double *fine_phi_p, const double *fine_phi_xxyyzz_p, const double *fine_jump_mu_grad_v_p);
 
-  double compute_divergence(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, const double *vstar_p[], const double *fine_phi_p, const double *phi_xxyyzz_p[P4EST_DIM], const double *jump_mu_grad_v_p[]);
+  double compute_divergence(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, const double *vstar_p[], const double *fine_phi_p, const double *fine_phi_xxyyzz_p, const double *fine_jump_mu_grad_v_p);
 
-  double div_mu_grad_u_dir(const p4est_locidx_t& face_idx, const unsigned char& dir, const bool& face_is_in_omega_minus, const p4est_locidx_t & fine_idx_of_face, const double *vn_dir_p, const double *jump_mu_grad_vdir_p[P4EST_DIM], const double *fine_phi_p, const double *phi_xxyyzz_p[P4EST_DIM]);
+  double div_mu_grad_u_dir(const p4est_locidx_t& face_idx, const unsigned char& dir, const bool& face_is_in_omega_minus, const p4est_locidx_t & fine_idx_of_face,
+                           const double *vn_dir_p, const double *fine_jump_mu_grad_vdir_p[P4EST_DIM], const double *fine_phi_p, const double *fine_phi_xxyyzz_p[P4EST_DIM]);
 #ifdef P4_TO_P8
   Voronoi3D compute_voronoi_cell(const p4est_locidx_t& face_idx, const unsigned char& dir,
                                  const bool& face_is_in_omega_minus, const p4est_locidx_t & fine_idx_of_face,
                                  const double* fine_phi_p, const double *fine_phi_xxyyzz_p[P4EST_DIM],
-                                 const double* vn_dir_p, const double* jump_mu_grad_vdir_p[P4EST_DIM],
+                                 const double* vn_dir_p, const double* fine_jump_mu_grad_vdir_p[P4EST_DIM],
                                  bool& xgfm_treatment_required, double xgfm_fluxes[P4EST_DIM]);
 #else
   Voronoi2D compute_voronoi_cell(const p4est_locidx_t& face_idx, const unsigned char& dir,
                                  const bool& face_is_in_omega_minus, const p4est_locidx_t & fine_idx_of_face,
                                  const double* fine_phi_p, const double *fine_phi_xxyyzz_p[P4EST_DIM],
-                                 const double* vn_dir_p, const double* jump_mu_grad_vdir_p[P4EST_DIM],
+                                 const double* vn_dir_p, const double* fine_jump_mu_grad_vdir_p[P4EST_DIM],
                                  bool& xgfm_treatment_required, double xgfm_fluxes[P4EST_DIM]);
 #endif
 
@@ -562,107 +566,65 @@ private:
   void compute_curvature();
   void normalize_normals();
 
-  PetscErrorCode inline delete_and_nullify_fine_node_vector_if_needed(Vec& vv)
-  {
-    PetscErrorCode ierr = 0;
-    if(vv != NULL && !vectorIsWellSetForNodes(vv, fine_nodes_n, fine_p4est_n->mpicomm))
-    {
-      ierr = VecDestroy(vv); CHKERRQ(ierr);
-      vv = NULL;
-    }
-    return ierr;
-  }
-
-  PetscErrorCode inline delete_and_nullify_p4est_n_node_vector_if_needed(Vec& vv)
-  {
-    PetscErrorCode ierr = 0;
-    if(vv != NULL && !vectorIsWellSetForNodes(vv, nodes_n, p4est_n->mpicomm))
-    {
-      ierr = VecDestroy(vv); CHKERRQ(ierr);
-      vv = NULL;
-    }
-    return ierr;
-  }
-
-  PetscErrorCode inline delete_and_nullify_p4est_nm1_node_vector_if_needed(Vec& vv)
-  {
-    PetscErrorCode ierr = 0;
-    if(vv != NULL && !vectorIsWellSetForNodes(vv, nodes_nm1, p4est_nm1->mpicomm))
-    {
-      ierr = VecDestroy(vv); CHKERRQ(ierr);
-      vv = NULL;
-    }
-    return ierr;
-  }
-
-  PetscErrorCode inline delete_and_nullify_vector_if_needed(Vec& vv)
+  PetscErrorCode inline delete_and_nullify_vector(Vec& vv)
   {
     PetscErrorCode ierr = 0;
     if(vv != NULL){
-      ierr = VecDestroy(vv); CHKERRQ(ierr); vv = NULL;}
-    return ierr;
-  }
-
-  PetscErrorCode inline create_fine_node_vector_if_needed(Vec& vv)
-  {
-    PetscErrorCode ierr = delete_and_nullify_fine_node_vector_if_needed(vv); CHKERRXX(ierr);
-    if(vv == NULL)
-    {
-      ierr = VecCreateGhostNodes(fine_p4est_n, fine_nodes_n, &vv); CHKERRQ(ierr);
+      ierr = VecDestroy(vv); CHKERRQ(ierr);
+      vv = NULL;
     }
     return ierr;
   }
 
-  PetscErrorCode inline create_p4est_n_node_vector_if_needed(Vec& vv)
+  PetscErrorCode inline create_node_vector_if_needed(Vec& vv, const p4est_t* forest, const p4est_nodes_t* nodes, const unsigned int &block_size=1)
   {
-    PetscErrorCode ierr = delete_and_nullify_p4est_n_node_vector_if_needed(vv); CHKERRXX(ierr);
-    if(vv == NULL)
-    {
-      ierr = VecCreateGhostNodes(p4est_n, nodes_n, &vv); CHKERRQ(ierr);
+    PetscErrorCode ierr = 0;
+    // destroy and nullify the vector if it is not correctly set
+    if(vv != NULL && !vectorIsWellSetForNodes(vv, nodes, forest->mpicomm, block_size)){
+      ierr = VecDestroy(vv); CHKERRQ(ierr);
+      vv = NULL;
     }
-    return ierr;
-  }
-
-  PetscErrorCode inline create_p4est_nm1_node_vector_if_needed(Vec& vv)
-  {
-    PetscErrorCode ierr = delete_and_nullify_p4est_nm1_node_vector_if_needed(vv); CHKERRXX(ierr);
-    if(vv == NULL)
-    {
-      ierr = VecCreateGhostNodes(p4est_nm1, nodes_nm1, &vv); CHKERRQ(ierr);
+    if(vv == NULL){
+      ierr = VecCreateGhostNodesBlock(forest, nodes, block_size, &vv); CHKERRQ(ierr);
     }
     return ierr;
   }
 
   void inline compute_gradient_and_second_derivatives(const p4est_locidx_t& fine_node_idx, const quad_neighbor_nodes_of_node_t *qnnn,
-                                                      const double* fine_phi_p, double *fine_grad_phi_p[P4EST_DIM],
-                                                      double *fine_phi_xxyyzz_p[P4EST_DIM])
+                                                      const double* fine_phi_p, double *fine_grad_phi_p, double *fine_phi_xxyyzz_p)
   {
-    for (unsigned char der = 0; der < P4EST_DIM; ++der) {
-      fine_grad_phi_p[der][fine_node_idx] = qnnn->d_central(der, fine_phi_p);
-      if(fine_phi_xxyyzz_p != NULL)
-        fine_phi_xxyyzz_p[der][fine_node_idx] = qnnn->dd_central(der, fine_phi_p);
-    }
+    qnnn->gradient(fine_phi_p, fine_grad_phi_p[P4EST_DIM*fine_node_idx+0], fine_grad_phi_p[P4EST_DIM*fine_node_idx+1]
+    #ifdef P4_TO_P8
+        , fine_grad_phi_p[P4EST_DIM*fine_node_idx+2]
+    #endif
+        );
+    if(fine_phi_xxyyzz_p!=NULL)
+      qnnn->laplace(fine_phi_p, fine_phi_xxyyzz_p[P4EST_DIM*fine_node_idx+0], fine_phi_xxyyzz_p[P4EST_DIM*fine_node_idx+1]
+    #ifdef P4_TO_P8
+          , fine_phi_xxyyzz_p[P4EST_DIM*fine_node_idx+2]
+    #endif
+          );
   }
 
   void inline compute_local_curvature(const p4est_locidx_t& fine_node_idx, const quad_neighbor_nodes_of_node_t *qnnn,
-                                const double* fine_phi_p, const double *fine_phi_xxyyzz_p[P4EST_DIM],
-                                const double *grad_phi_p[P4EST_DIM], double *fine_curvature_p)
+                                const double* fine_phi_p, const double *fine_phi_xxyyzz_p,
+                                const double *fine_grad_phi_p, double *fine_curvature_p)
   {
     // compute first derivatives
-    double dx = grad_phi_p[0][fine_node_idx];
-    double dy = grad_phi_p[1][fine_node_idx];
+    double dx = fine_grad_phi_p[P4EST_DIM*fine_node_idx+0];
+    double dy = fine_grad_phi_p[P4EST_DIM*fine_node_idx+1];
 #ifdef P4_TO_P8
-    double dz = grad_phi_p[2][fine_node_idx];
+    double dz = fine_grad_phi_p[P4EST_DIM*fine_node_idx+2];
 #endif
 
     // compute second derivatives
-    double dxx = ((fine_phi_xxyyzz_p[0]!=NULL)? fine_phi_xxyyzz_p[0][fine_node_idx] : qnnn->dxx_central(fine_phi_p));
-    double dyy = ((fine_phi_xxyyzz_p[1]!=NULL)? fine_phi_xxyyzz_p[1][fine_node_idx] : qnnn->dyy_central(fine_phi_p));
-    double dxy = qnnn->dy_central(grad_phi_p[0]);
+    double dxx = ((fine_phi_xxyyzz_p!=NULL)? fine_phi_xxyyzz_p[P4EST_DIM*fine_node_idx+0] : qnnn->dxx_central(fine_phi_p));
+    double dyy = ((fine_phi_xxyyzz_p!=NULL)? fine_phi_xxyyzz_p[P4EST_DIM*fine_node_idx+1] : qnnn->dyy_central(fine_phi_p));
+    double dxy = qnnn->dy_central(fine_grad_phi_p, P4EST_DIM, 0);
 #ifdef P4_TO_P8
-    double dzz = ((fine_phi_xxyyzz_p[2]!=NULL)? fine_phi_xxyyzz_p[2][fine_node_idx] : qnnn->dzz_central(fine_phi_p));
-    double dxz = qnnn->dz_central(grad_phi_p[0]); // d/dz{d/dx}
-    double dyz = qnnn->dz_central(grad_phi_p[1]); // d/dz{d/dy}
+    double dzz = ((fine_phi_xxyyzz_p!=NULL)? fine_phi_xxyyzz_p[P4EST_DIM*fine_node_idx+2] : qnnn->dzz_central(fine_phi_p));
+    double dxz = qnnn->dz_central(fine_grad_phi_p, P4EST_DIM, 0); // d/dz{d/dx}
+    double dyz = qnnn->dz_central(fine_grad_phi_p, P4EST_DIM, 1); // d/dz{d/dy}
     double norm_of_grad = sqrt(SQR(dx) + SQR(dy) + SQR(dz));
 #else
     double norm_of_grad = sqrt(SQR(dx) + SQR(dy));
@@ -679,55 +641,55 @@ private:
   }
 
   void inline compute_local_jump_mu_grad_v_elements(const p4est_locidx_t& fine_node_idx, const quad_neighbor_nodes_of_node_t *qnnn,
-                                                    const double *vn_nodes_underlined_p[P4EST_DIM], const double* normal_p[P4EST_DIM],
-                                                    const double* mass_flux_p, const double *mass_flux_times_normal_p[P4EST_DIM],
-                                                    const double *nonconstant_surface_tension_p, const double *fine_curvature_p,
-                                                    double* jump_mu_grad_v_p[P4EST_DIM][P4EST_DIM]) const
+                                                    const double *vn_nodes_underlined_p[P4EST_DIM], const double* fine_normal_p[P4EST_DIM],
+                                                    const double *fine_mass_flux_p, const double *fine_mass_flux_times_normal_p[P4EST_DIM],
+                                                    const double *fine_variable_surface_tension_p, const double *fine_curvature_p,
+                                                    double* fine_jump_mu_grad_v_p[P4EST_DIM][P4EST_DIM]) const
   {
-    const double overlined_mu = overlined_viscosity();
-    double grad_underlined_u[P4EST_DIM][P4EST_DIM];
-    double grad_mass_flux_times_normal[P4EST_DIM][P4EST_DIM];
-    double n_[P4EST_DIM];
-    double grad_mass_flux[P4EST_DIM];
-    double grad_surface_tension[P4EST_DIM];
-    for (unsigned char i = 0; i < P4EST_DIM; ++i) {
-      for (unsigned char  j = 0; j < P4EST_DIM; ++j) {
-        grad_underlined_u[i][j]                 = qnnn->d_central(j, vn_nodes_underlined_p[i]);
-        if(mass_flux_p!=NULL)
-        {
-          P4EST_ASSERT(mass_flux_times_normal_p[i]!=NULL);
-          grad_mass_flux_times_normal[i][j]     = qnnn->d_central(j, mass_flux_times_normal_p[i]);
-        }
-      }
-      n_[i]                                     = normal_p[i][fine_node_idx];
-      if(mass_flux_p!=NULL)
-        grad_mass_flux[i]                       = qnnn->d_central(i, mass_flux_p);
-      if(nonconstant_surface_tension_p!=NULL)
-        grad_surface_tension[i]                 = qnnn->d_central(i, nonconstant_surface_tension_p);
-    }
-    // jump in div(u) is implicitly assumed to be 0.0! (only term)
-    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
-      for (unsigned char der = 0; der < P4EST_DIM; ++der) {
-        jump_mu_grad_v_p[dir][der][fine_node_idx] = 0.0;
-        if(mass_flux_p!=NULL)
-          jump_mu_grad_v_p[dir][der][fine_node_idx]   -= overlined_mu*n_[dir]*n_[der]*fine_curvature_p[fine_node_idx]*mass_flux_p[fine_node_idx]*inverse_mass_density_jump();
-        for (unsigned char k = 0; k < P4EST_DIM; ++k) {
-          if(mass_flux_p!=NULL)
-            jump_mu_grad_v_p[dir][der][fine_node_idx] += overlined_mu*(((k==der)?1.0:0.0) - n_[der]*n_[k])*grad_mass_flux_times_normal[dir][k]*inverse_mass_density_jump();
-          jump_mu_grad_v_p[dir][der][fine_node_idx]   += viscosity_jump()*(((k==der)?1.0:0.0) - n_[der]*n_[k])*grad_underlined_u[dir][k];
-          if(nonconstant_surface_tension_p!=NULL)
-            jump_mu_grad_v_p[dir][der][fine_node_idx] += (((k==dir)?1.0:0.0) - n_[dir]*n_[k])*grad_surface_tension[k]*n_[der];
-          if(mass_flux_p!=NULL)
-            jump_mu_grad_v_p[dir][der][fine_node_idx] -= overlined_mu*n_[der]*(((dir==k)?1.0:0.0) - n_[dir]*n_[k])*grad_mass_flux[k]*inverse_mass_density_jump();
-          for (unsigned char r = 0; r < P4EST_DIM; ++r)
-          {
-            jump_mu_grad_v_p[dir][der][fine_node_idx] -= viscosity_jump()*n_[der]*(((dir==k)?1.0:0.0)-n_[dir]*n_[k])*grad_underlined_u[r][k]*n_[r];
-            jump_mu_grad_v_p[dir][der][fine_node_idx] += viscosity_jump()*n_[dir]*n_[der]*n_[k]*n_[r]*grad_underlined_u[k][r];
-          }
-        }
-        jump_mu_grad_v_p[dir][der][fine_node_idx] = 0.0;
-      }
-    }
+//    const double overlined_mu = overlined_viscosity();
+//    double grad_underlined_u[P4EST_DIM][P4EST_DIM];
+//    double grad_mass_flux_times_normal[P4EST_DIM][P4EST_DIM];
+//    double local_normal[P4EST_DIM];
+//    double grad_mass_flux[P4EST_DIM];
+//    double grad_surface_tension[P4EST_DIM];
+//    for (unsigned char i = 0; i < P4EST_DIM; ++i) {
+//      for (unsigned char  j = 0; j < P4EST_DIM; ++j) {
+//        grad_underlined_u[i][j]                 = qnnn->d_central(j, vn_nodes_underlined_p[i]);
+//        if(mass_flux_p!=NULL)
+//        {
+//          P4EST_ASSERT(mass_flux_times_normal_p[i]!=NULL);
+//          grad_mass_flux_times_normal[i][j]     = qnnn->d_central(j, mass_flux_times_normal_p[i]);
+//        }
+//      }
+//      local_normal[i]                                     = normal_p[i][fine_node_idx];
+//      if(mass_flux_p!=NULL)
+//        grad_mass_flux[i]                       = qnnn->d_central(i, mass_flux_p);
+//      if(variable_surface_tension_p!=NULL)
+//        grad_surface_tension[i]                 = qnnn->d_central(i, variable_surface_tension_p);
+//    }
+//    // jump in div(u) is implicitly assumed to be 0.0! (only term)
+//    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
+//      for (unsigned char der = 0; der < P4EST_DIM; ++der) {
+//        jump_mu_grad_v_p[dir][der][fine_node_idx] = 0.0;
+//        if(mass_flux_p!=NULL)
+//          jump_mu_grad_v_p[dir][der][fine_node_idx]   -= overlined_mu*local_normal[dir]*local_normal[der]*fine_curvature_p[fine_node_idx]*mass_flux_p[fine_node_idx]*inverse_mass_density_jump();
+//        for (unsigned char k = 0; k < P4EST_DIM; ++k) {
+//          if(mass_flux_p!=NULL)
+//            jump_mu_grad_v_p[dir][der][fine_node_idx] += overlined_mu*(((k==der)?1.0:0.0) - local_normal[der]*local_normal[k])*grad_mass_flux_times_normal[dir][k]*inverse_mass_density_jump();
+//          jump_mu_grad_v_p[dir][der][fine_node_idx]   += viscosity_jump()*(((k==der)?1.0:0.0) - local_normal[der]*local_normal[k])*grad_underlined_u[dir][k];
+//          if(variable_surface_tension_p!=NULL)
+//            jump_mu_grad_v_p[dir][der][fine_node_idx] += (((k==dir)?1.0:0.0) - local_normal[dir]*local_normal[k])*grad_surface_tension[k]*local_normal[der];
+//          if(mass_flux_p!=NULL)
+//            jump_mu_grad_v_p[dir][der][fine_node_idx] -= overlined_mu*local_normal[der]*(((dir==k)?1.0:0.0) - local_normal[dir]*local_normal[k])*grad_mass_flux[k]*inverse_mass_density_jump();
+//          for (unsigned char r = 0; r < P4EST_DIM; ++r)
+//          {
+//            jump_mu_grad_v_p[dir][der][fine_node_idx] -= viscosity_jump()*local_normal[der]*(((dir==k)?1.0:0.0)-local_normal[dir]*local_normal[k])*grad_underlined_u[r][k]*local_normal[r];
+//            jump_mu_grad_v_p[dir][der][fine_node_idx] += viscosity_jump()*local_normal[dir]*local_normal[der]*local_normal[k]*local_normal[r]*grad_underlined_u[k][r];
+//          }
+//        }
+//        jump_mu_grad_v_p[dir][der][fine_node_idx] = 0.0;
+//      }
+//    }
   }
 
   inline double mass_density_jump() const { return (rho_plus - rho_minus);}
@@ -751,20 +713,20 @@ private:
                                       const p4est_locidx_t& face_idx, const bool& face_is_in_omega_minus, const p4est_locidx_t& fine_idx_of_face, const uniform_face_ngbd* face_neighbors,
                                       const double *fine_phi_p, const double *fine_phi_xxyyzz_p[P4EST_DIM],
                                       const unsigned char &der, const unsigned char &dir,
-                                      const double *vn_dir_minus_p, const double *vn_dir_plus_p, const double *jump_mu_grad_vdir_p[P4EST_DIM],
+                                      const double *vn_dir_minus_p, const double *vn_dir_plus_p, const double *fine_jump_mu_grad_vdir_p[P4EST_DIM],
                                       const p4est_quadrant& qm, const p4est_quadrant& qp,
-                                      const double* mass_flux_p = NULL, const double* normal_dir_p = NULL);
+                                      const double *fine_mass_flux_p = NULL, const double *fine_normal_dir_p = NULL);
   /*
    * qm and qp must be defined and have their p.piggy3 filled!
    */
   void get_velocity_seen_from_face(neighbor_value& neighbor_velocity, const p4est_locidx_t& face_idx, const p4est_locidx_t& neighbor_face_idx,
                                    const double *fine_phi_p, const double *fine_phi_xxyyzz_p[P4EST_DIM],
                                    const unsigned char &der, const unsigned char &dir,
-                                   const double *vn_dir_minus_p, const double *vn_dir_plus_p, const double *jump_mu_grad_vdir_p[P4EST_DIM],
-                                   const double* mass_flux_p = NULL, const double* normal_dir_p = NULL);
+                                   const double *vn_dir_minus_p, const double *vn_dir_plus_p, const double *fine_jump_mu_grad_vdir_p[P4EST_DIM],
+                                   const double *fine_mass_flux_p = NULL, const double *fine_normal_dir_p = NULL);
 
 
-  inline void add_faces_to_set_and_clear_vector_of_quad(const  p4est_locidx_t& center_face_idx, const unsigned char& dir, set<p4est_locidx_t>& set_of_faces, vector<p4est_quadrant_t>& quad_ngbd) const
+  inline void add_faces_to_set_and_clear_vector_of_quad(const p4est_locidx_t& center_face_idx, const unsigned char& dir, set<p4est_locidx_t>& set_of_faces, vector<p4est_quadrant_t>& quad_ngbd) const
   {
     for (size_t k = 0; k < quad_ngbd.size(); ++k) {
       p4est_locidx_t f_tmp = faces_n->q2f(quad_ngbd[k].p.piggy3.local_num, 2*dir);
@@ -794,19 +756,19 @@ private:
   }
 
   void initialize_normal_derivative_of_velocity_on_faces_local(const p4est_locidx_t& local_face_idx, const unsigned char& dir, const my_p4est_interpolation_nodes_t& interp_normal,
-                                                               const double* jump_mu_grad_vdir_p[P4EST_DIM], const double* fine_phi_p, const double *fine_phi_xxyyzz_p[P4EST_DIM],
-                                                               double* vnp1_minus_p[P4EST_DIM], double* vnp1_plus_p[P4EST_DIM],
-                                                               double* normal_derivative_of_vnp1_minus_p[P4EST_DIM], double* normal_derivative_of_vnp1_plus_p[P4EST_DIM]);
+                                                               const double *fine_jump_mu_grad_vdir_p[P4EST_DIM], const double* fine_phi_p, const double *fine_phi_xxyyzz_p[P4EST_DIM],
+                                                               double *vnp1_minus_p[P4EST_DIM], double *vnp1_plus_p[P4EST_DIM],
+                                                               double *normal_derivative_of_vnp1_minus_p[P4EST_DIM], double *normal_derivative_of_vnp1_plus_p[P4EST_DIM]);
 
   void solve_velocity_extrapolation_local_explicit_iterative(const p4est_locidx_t& local_face_idx, const unsigned char& dir, const my_p4est_interpolation_nodes_t& interp_normal,
-                                                             const double* jump_mu_grad_vdir_p[P4EST_DIM], const double* fine_phi_p, const double *fine_phi_xxyyzz_p[P4EST_DIM],
-                                                             double* vnp1_minus_p[P4EST_DIM], double* vnp1_plus_p[P4EST_DIM],
-                                                             double* normal_derivative_of_vnp1_minus_p[P4EST_DIM], double* normal_derivative_of_vnp1_plus_p[P4EST_DIM]);
+                                                             const double *fine_jump_mu_grad_vdir_p[P4EST_DIM], const double* fine_phi_p, const double *fine_phi_xxyyzz_p[P4EST_DIM],
+                                                             double *vnp1_minus_p[P4EST_DIM], double *vnp1_plus_p[P4EST_DIM],
+                                                             double *normal_derivative_of_vnp1_minus_p[P4EST_DIM], double *normal_derivative_of_vnp1_plus_p[P4EST_DIM]);
 
   void solve_velocity_extrapolation_local_pseudo_time(const p4est_locidx_t& local_face_idx, const unsigned char& dir, const my_p4est_interpolation_nodes_t& interp_normal,
-                                                      const double* jump_mu_grad_vdir_p[P4EST_DIM], const double* fine_phi_p, const double *fine_phi_xxyyzz_p[P4EST_DIM],
-                                                      double* vnp1_minus_p[P4EST_DIM], double* vnp1_plus_p[P4EST_DIM],
-                                                      double* normal_derivative_of_vnp1_minus_p[P4EST_DIM], double* normal_derivative_of_vnp1_plus_p[P4EST_DIM]);
+                                                      const double *fine_jump_mu_grad_vdir_p[P4EST_DIM], const double *fine_phi_p, const double *fine_phi_xxyyzz_p[P4EST_DIM],
+                                                      double *vnp1_minus_p[P4EST_DIM], double *vnp1_plus_p[P4EST_DIM],
+                                                      double *normal_derivative_of_vnp1_minus_p[P4EST_DIM], double *normal_derivative_of_vnp1_plus_p[P4EST_DIM]);
 
   void interpolate_linearly_from_fine_nodes_to_coarse_nodes(const Vec& vv_fine, Vec& vv_coarse);
 
@@ -832,6 +794,7 @@ public:
 #else
   void set_velocities(CF_2* vnm1_omega_minus[P4EST_DIM], CF_2* vn_omega_minus[P4EST_DIM], CF_2* vnm1_omega_plus[P4EST_DIM], CF_2* vn_omega_plus[P4EST_DIM]);
 #endif
+  void compute_second_derivatives_of_n_and_nm1_velocities();
   void set_semi_lagrangian_order(int sl_);
   void set_uniform_bands(double uniform_band_minus_, double uniform_band_plus_);
   void set_uniform_band(double uniform_band_) {set_uniform_bands(uniform_band_, uniform_band_);}

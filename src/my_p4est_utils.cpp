@@ -137,13 +137,6 @@ lookup_in_ghost_nodes:
   return false;
 }
 
-double linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *xyz_global)
-{
-  double result;
-  linear_interpolation(p4est, tree_id, quad, F, xyz_global, &result, 1);
-  return result;
-}
-
 void linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *xyz_global, double* results, unsigned int n_results)
 {
   P4EST_ASSERT(n_results > 0);
@@ -218,13 +211,6 @@ void linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4
   }
 
   ierr = PetscLogFlops(39); CHKERRXX(ierr); // number of flops in this event
-}
-
-double quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global)
-{
-  double result;
-  quadratic_non_oscillatory_interpolation(p4est, tree_id, quad, F, Fdd, xyz_global, &result, 1);
-  return result;
 }
 
 void quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results)
@@ -314,13 +300,6 @@ void quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topidx_
   }
 
   ierr = PetscLogFlops(45); CHKERRXX(ierr); // number of flops in this event
-}
-
-double quadratic_interpolation(const p4est_t* p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global)
-{
-  double result;
-  quadratic_interpolation(p4est, tree_id, quad, F, Fdd, xyz_global, &result, 1);
-  return result;
 }
 
 void quadratic_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results)
@@ -543,84 +522,6 @@ return_time:
   return result;
 }
 
-PetscErrorCode VecGetLocalAndGhostSizes(Vec& v, PetscInt& local_size, PetscInt& ghosted_size)
-{
-  PetscErrorCode ierr = 0;
-  Vec v_loc;
-  ierr = VecGetLocalSize(v, &local_size); CHKERRQ(ierr);
-  ierr = VecGhostGetLocalForm(v, &v_loc); CHKERRQ(ierr);
-  ierr = VecGetSize(v_loc, &ghosted_size); CHKERRQ(ierr);
-  ierr = VecGhostRestoreLocalForm(v, &v_loc); CHKERRQ(ierr);
-  return ierr;
-}
-
-bool vectorIsWellSetForNodes(Vec& v, const p4est_nodes_t* nodes, const MPI_Comm& mpicomm)
-{
-  P4EST_ASSERT(v!=NULL);
-  PetscInt local_size, ghosted_size;
-  VecGetLocalAndGhostSizes(v, local_size, ghosted_size);
-  int my_test = (local_size==nodes->num_owned_indeps && ghosted_size!=(PetscInt)nodes->indep_nodes.elem_count)?1:0;
-#ifdef DEBUG
-  int mpiret = MPI_Allreduce(MPI_IN_PLACE, &my_test, 1, MPI_INT, MPI_LAND, mpicomm); SC_CHECK_MPI(mpiret);
-#endif
-  return my_test;
-}
-
-PetscErrorCode VecCreateGhostNodes(const p4est_t *p4est, p4est_nodes_t *nodes, Vec* v)
-{
-  PetscErrorCode ierr = 0;
-  p4est_locidx_t num_local = nodes->num_owned_indeps;
-
-  std::vector<PetscInt> ghost_nodes(nodes->indep_nodes.elem_count - num_local, 0);
-  std::vector<PetscInt> global_offset_sum(p4est->mpisize + 1, 0);
-
-  // Calculate the global number of points
-  for (int r = 0; r<p4est->mpisize; ++r)
-    global_offset_sum[r+1] = global_offset_sum[r] + (PetscInt)nodes->global_owned_indeps[r];
-
-  PetscInt num_global = global_offset_sum[p4est->mpisize];
-
-  for (size_t i = 0; i<ghost_nodes.size(); ++i)
-  {
-    p4est_indep_t* ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i+num_local);
-    ghost_nodes[i] = (PetscInt)ni->p.piggy3.local_num + global_offset_sum[nodes->nonlocal_ranks[i]];
-  }
-
-  ierr = VecCreateGhost(p4est->mpicomm, num_local, num_global,
-                        ghost_nodes.size(), (const PetscInt*)&ghost_nodes[0], v); CHKERRQ(ierr);
-  ierr = VecSetFromOptions(*v); CHKERRQ(ierr);
-
-  return ierr;
-}
-
-PetscErrorCode VecCreateGhostNodesBlock(const p4est_t *p4est, p4est_nodes_t *nodes, PetscInt block_size, Vec* v)
-{
-  PetscErrorCode ierr = 0;
-  p4est_locidx_t num_local = nodes->num_owned_indeps;
-
-  std::vector<PetscInt> ghost_nodes(nodes->indep_nodes.elem_count - num_local, 0);
-  std::vector<PetscInt> global_offset_sum(p4est->mpisize + 1, 0);
-
-  // Calculate the global number of points
-  for (int r = 0; r<p4est->mpisize; ++r)
-    global_offset_sum[r+1] = global_offset_sum[r] + (PetscInt)nodes->global_owned_indeps[r];
-
-  PetscInt num_global = global_offset_sum[p4est->mpisize];
-
-  for (size_t i = 0; i<ghost_nodes.size(); ++i)
-  {
-    p4est_indep_t* ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i+num_local);
-    ghost_nodes[i] = (PetscInt)ni->p.piggy3.local_num + global_offset_sum[nodes->nonlocal_ranks[i]];
-  }
-
-  ierr = VecCreateGhostBlock(p4est->mpicomm,
-                             block_size, num_local*block_size, num_global*block_size,
-                             ghost_nodes.size(), (const PetscInt*)&ghost_nodes[0], v); CHKERRQ(ierr);
-  ierr = VecSetFromOptions(*v); CHKERRQ(ierr);
-
-  return ierr;
-}
-
 p4est_bool_t ghosts_are_equal(p4est_ghost_t* ghost_1, p4est_ghost_t* ghost_2)
 {
   if(ghost_1 == ghost_2)
@@ -657,10 +558,72 @@ return_time:
   return result;
 }
 
-PetscErrorCode VecCreateGhostCells(const p4est_t *p4est, p4est_ghost_t *ghost, Vec* v)
+PetscErrorCode VecGetLocalAndGhostSizes(Vec& v, PetscInt& local_size, PetscInt& ghosted_size)
+{
+  PetscErrorCode ierr = 0;
+  Vec v_loc;
+  ierr = VecGetLocalSize(v, &local_size); CHKERRQ(ierr);
+  ierr = VecGhostGetLocalForm(v, &v_loc); CHKERRQ(ierr);
+  ierr = VecGetSize(v_loc, &ghosted_size); CHKERRQ(ierr);
+  ierr = VecGhostRestoreLocalForm(v, &v_loc); CHKERRQ(ierr);
+  return ierr;
+}
+
+bool vectorIsWellSetForNodes(Vec& v, const p4est_nodes_t* nodes, const MPI_Comm& mpicomm, const unsigned int& blocksize)
+{
+  P4EST_ASSERT(v!=NULL);
+  P4EST_ASSERT(blocksize>0);
+  PetscInt local_size, ghosted_size;
+  VecGetLocalAndGhostSizes(v, local_size, ghosted_size);
+  int my_test = (local_size==((PetscInt)(blocksize*nodes->num_owned_indeps)) && ghosted_size!=((PetscInt)(blocksize*nodes->indep_nodes.elem_count)))?1:0;
+  int mpiret = MPI_Allreduce(MPI_IN_PLACE, &my_test, 1, MPI_INT, MPI_LAND, mpicomm); SC_CHECK_MPI(mpiret);
+  return my_test;
+}
+
+PetscErrorCode VecCreateGhostNodesBlock(const p4est_t *p4est, const p4est_nodes_t *nodes, const PetscInt & block_size, Vec* v)
+{
+  PetscErrorCode ierr = 0;
+  p4est_locidx_t num_local = nodes->num_owned_indeps;
+  P4EST_ASSERT(block_size > 0);
+
+  std::vector<PetscInt> ghost_nodes(nodes->indep_nodes.elem_count - num_local, 0);
+  std::vector<PetscInt> global_offset_sum(p4est->mpisize + 1, 0);
+
+  // Calculate the global number of points
+  for (int r = 0; r<p4est->mpisize; ++r)
+    global_offset_sum[r+1] = global_offset_sum[r] + (PetscInt)nodes->global_owned_indeps[r];
+
+  PetscInt num_global = global_offset_sum[p4est->mpisize];
+
+  for (size_t i = 0; i<ghost_nodes.size(); ++i)
+  {
+    /*
+    p4est_indep_t* ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i+num_local);
+     * [RAPHAEL:] substituted this latter line of code by the following to enforce and ensure const attribute in 'nodes' argument...
+     */
+    SC_ASSERT(((size_t) (i+num_local))<nodes->indep_nodes.elem_count);
+    const p4est_indep_t* ni = (const p4est_indep_t*) (nodes->indep_nodes.array + (((size_t) (i+num_local))*nodes->indep_nodes.elem_size));
+
+    ghost_nodes[i] = (PetscInt)ni->p.piggy3.local_num + global_offset_sum[nodes->nonlocal_ranks[i]];
+  }
+
+  if(block_size > 1){
+    ierr = VecCreateGhostBlock(p4est->mpicomm, block_size, num_local*block_size, num_global*block_size,
+                               ghost_nodes.size(), (const PetscInt*)&ghost_nodes[0], v); CHKERRQ(ierr);
+  } else{
+    ierr = VecCreateGhost(p4est->mpicomm, num_local, num_global,
+                          ghost_nodes.size(), (const PetscInt*)&ghost_nodes[0], v); CHKERRQ(ierr);
+  }
+  ierr = VecSetFromOptions(*v); CHKERRQ(ierr);
+
+  return ierr;
+}
+
+PetscErrorCode VecCreateGhostCellsBlock(const p4est_t *p4est, const p4est_ghost_t *ghost, const PetscInt & block_size, Vec* v)
 {
   PetscErrorCode ierr = 0;
   p4est_locidx_t num_local = p4est->local_num_quadrants;
+  P4EST_ASSERT(block_size > 0);
 
   std::vector<PetscInt> ghost_cells(ghost->ghosts.elem_count, 0);
   PetscInt num_global = p4est->global_num_quadrants;
@@ -668,49 +631,40 @@ PetscErrorCode VecCreateGhostCells(const p4est_t *p4est, p4est_ghost_t *ghost, V
   for (int r = 0; r<p4est->mpisize; ++r)
     for (p4est_locidx_t q = ghost->proc_offsets[r]; q < ghost->proc_offsets[r+1]; ++q)
     {
+      /*
       const p4est_quadrant_t* quad = (const p4est_quadrant_t*)sc_array_index(&ghost->ghosts, q);
+       * [RAPHAEL:] substituted this latter line of code by the following to enforce and ensure const attribute in 'nodes' argument...
+       */
+      SC_ASSERT(((size_t) q)<ghost->ghosts.elem_count);
+      const p4est_quadrant_t* quad = (const p4est_quadrant_t*) (ghost->ghosts.array + ((size_t) q)*ghost->ghosts.elem_size);
+
       ghost_cells[q] = (PetscInt)quad->p.piggy3.local_num + (PetscInt)p4est->global_first_quadrant[r];
     }
 
-  ierr = VecCreateGhost(p4est->mpicomm,
-                        num_local, num_global,
-                        ghost_cells.size(), (const PetscInt*)&ghost_cells[0], v); CHKERRQ(ierr);
-  ierr = VecSetFromOptions(*v); CHKERRQ(ierr);
-
-  return ierr;
-}
-
-PetscErrorCode VecCreateCellsNoGhost(const p4est_t *p4est, Vec* v)
-{
-  PetscErrorCode ierr = 0;
-  p4est_locidx_t num_local = p4est->local_num_quadrants;
-
-  PetscInt num_global = p4est->global_num_quadrants;
-
-  ierr = VecCreateMPI(p4est->mpicomm, num_local, num_global, v); CHKERRQ(ierr);
-  ierr = VecSetFromOptions(*v); CHKERRQ(ierr);
-
-  return ierr;
-}
-
-PetscErrorCode VecCreateGhostCellsBlock(const p4est_t *p4est, p4est_ghost_t *ghost, PetscInt block_size, Vec* v)
-{
-  PetscErrorCode ierr = 0;
-  p4est_locidx_t num_local = p4est->local_num_quadrants;
-
-  std::vector<PetscInt> ghost_cells(ghost->ghosts.elem_count, 0);
-  PetscInt num_global = p4est->global_num_quadrants;
-
-  for (int r = 0; r<p4est->mpisize; ++r)
-    for (p4est_locidx_t q = ghost->proc_offsets[r]; q < ghost->proc_offsets[r+1]; ++q)
-    {
-      const p4est_quadrant_t* quad = (const p4est_quadrant_t*)sc_array_index(&ghost->ghosts, q);
-      ghost_cells[q] = (PetscInt)quad->p.piggy3.local_num + (PetscInt)p4est->global_first_quadrant[r];
-    }
-
-  ierr = VecCreateGhostBlock(p4est->mpicomm,
-                             block_size, num_local*block_size, num_global*block_size,
+  if(block_size > 1){
+    ierr = VecCreateGhostBlock(p4est->mpicomm, block_size, num_local*block_size, num_global*block_size,
                              ghost_cells.size(), (const PetscInt*)&ghost_cells[0], v); CHKERRQ(ierr);
+  } else {
+    ierr = VecCreateGhost(p4est->mpicomm, num_local, num_global,
+                          ghost_cells.size(), (const PetscInt*)&ghost_cells[0], v); CHKERRQ(ierr);
+  }
+  ierr = VecSetFromOptions(*v); CHKERRQ(ierr);
+
+  return ierr;
+}
+
+PetscErrorCode VecCreateCellsBlockNoGhost(const p4est_t *p4est, const PetscInt &block_size, Vec* v)
+{
+  PetscErrorCode ierr = 0;
+  p4est_locidx_t num_local = p4est->local_num_quadrants;
+  P4EST_ASSERT(block_size > 0);
+
+  PetscInt num_global = p4est->global_num_quadrants;
+
+  ierr = VecCreateMPI(p4est->mpicomm, num_local*block_size, num_global*block_size, v); CHKERRQ(ierr);
+  if(block_size > 1){
+    ierr = VecSetBlockSize(*v, block_size); CHKERRQ(ierr);
+  }
   ierr = VecSetFromOptions(*v); CHKERRQ(ierr);
 
   return ierr;
@@ -1389,7 +1343,7 @@ void compute_normals(const quad_neighbor_nodes_of_node_t &qnnn, double *phi, dou
     foreach_dimension(dim) normals[dim] /= abs;
 }
 
-void compute_normals(const my_p4est_node_neighbors_t &neighbors, Vec phi, Vec normals[])
+void compute_normals(const my_p4est_node_neighbors_t &neighbors, Vec phi, Vec normals)
 {
 #ifdef CASL_THROWS
   if(!normals)
@@ -1397,24 +1351,20 @@ void compute_normals(const my_p4est_node_neighbors_t &neighbors, Vec phi, Vec no
 #endif
 
   neighbors.first_derivatives_central(phi, normals);
-  double *normals_p[P4EST_DIM];
-  foreach_dimension(dim) VecGetArray(normals[dim], &normals_p[dim]);
+  double *normals_p;
+  PetscErrorCode ierr = VecGetArray(normals, &normals_p); CHKERRXX(ierr);
 
   foreach_node(n, neighbors.get_nodes()) {
-#ifdef P4_TO_P8
-    double abs = sqrt(SQR(normals_p[0][n]) + SQR(normals_p[1][n]) + SQR(normals_p[2][n]));
-#else
-    double abs = sqrt(SQR(normals_p[0][n]) + SQR(normals_p[1][n]));
-#endif
-
-    if (abs < EPS) {
-      foreach_dimension(dim) normals_p[dim][n] = 0;
-    } else {
-      foreach_dimension(dim) normals_p[dim][n] /= abs;
+    double abs = 0.0;
+    foreach_dimension(dim) abs += SQR(normals_p[P4EST_DIM*n+dim]);
+    abs = sqrt(abs);
+    if(abs < EPS){
+      foreach_dimension(dim) normals_p[P4EST_DIM*n+dim] = 0.0;
+    } else{
+      foreach_dimension(dim) normals_p[P4EST_DIM*n+dim] /= abs;
     }
   }
-
-  foreach_dimension(dim) VecRestoreArray(normals[dim], &normals_p[dim]);
+  ierr = VecRestoreArray(normals, &normals_p); CHKERRXX(ierr);
 }
 
 double interface_length_in_one_quadrant(const p4est_t *p4est, const p4est_nodes_t *nodes, const p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi)

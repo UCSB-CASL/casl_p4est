@@ -109,8 +109,6 @@ public:
   my_p4est_hierarchy_t( p4est_t *p4est_, p4est_ghost_t *ghost_, my_p4est_brick_t *myb_)
     : p4est(p4est_), ghost(ghost_), myb(myb_), trees(p4est->connectivity->num_trees)
   {
-    local_inner_quadrant_index.resize(0);
-    local_inner_quadrant_index.resize(0);
     for( size_t tr=0; tr<trees.size(); tr++)
     {
       HierarchyCell root =

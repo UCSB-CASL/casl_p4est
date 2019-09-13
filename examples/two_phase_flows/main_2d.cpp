@@ -691,7 +691,7 @@ int main (int argc, char* argv[])
 
 
 
-    two_phase_flow_solver->save_vtk((export_dir+"/illustration").c_str());
+    two_phase_flow_solver->save_vtk((export_dir+"/illustration").c_str(), true);
 
 
   delete two_phase_flow_solver;

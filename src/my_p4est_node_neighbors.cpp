@@ -17,12 +17,11 @@
 #define PetscLogEventEnd(e, o1, o2, o3, o4) 0
 #else
 extern PetscLogEvent log_my_p4est_node_neighbors_t;
-extern PetscLogEvent log_my_p4est_node_neighbors_t_dxx_central;
-extern PetscLogEvent log_my_p4est_node_neighbors_t_dyy_central;
-extern PetscLogEvent log_my_p4est_node_neighbors_t_dzz_central;
-extern PetscLogEvent log_my_p4est_node_neighbors_t_1st_derivatives_central;
-extern PetscLogEvent log_my_p4est_node_neighbors_t_2nd_derivatives_central;
+extern PetscLogEvent log_my_p4est_node_neighbors_t_dd_central;
 extern PetscLogEvent log_my_p4est_node_neighbors_t_2nd_derivatives_central_block;
+extern PetscLogEvent log_my_p4est_node_neighbors_t_2nd_derivatives_central;
+extern PetscLogEvent log_my_p4est_node_neighbors_t_1st_derivatives_central_block;
+extern PetscLogEvent log_my_p4est_node_neighbors_t_1st_derivatives_central;
 #endif
 #ifndef CASL_LOG_FLOPS
 #undef PetscLogFlops
@@ -664,8 +663,8 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
 #endif
 #ifdef CASL_THROWS
     if (quad_min_idx == NOT_A_VALID_QUADRANT)
-        throw std::runtime_error("[ERROR]: could not find a neighboring cell in the p00 direction when correcting for wall in m00 direction."
-                                 " This is either a bug in 'my_p4est_hierarchy_t' or that the entire p4est is a single cell!");
+      throw std::runtime_error("[ERROR]: could not find a neighboring cell in the p00 direction when correcting for wall in m00 direction."
+                               " This is either a bug in 'my_p4est_hierarchy_t' or that the entire p4est is a single cell!");
 #endif
     const bool di = 1;
     const bool dj = cj != 1;
@@ -767,8 +766,8 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
 #endif
 #ifdef CASL_THROWS
     if (quad_min_idx == NOT_A_VALID_QUADRANT)
-        throw std::runtime_error("[ERROR]: could not find a neighboring cell in the m00 direction when correcting for wall in p00 direction."
-                                 " This is either a bug in 'my_p4est_hierarchy_t' or that the entire p4est is a single cell!");
+      throw std::runtime_error("[ERROR]: could not find a neighboring cell in the m00 direction when correcting for wall in p00 direction."
+                               " This is either a bug in 'my_p4est_hierarchy_t' or that the entire p4est is a single cell!");
 #endif
 
     const bool di = 0;
@@ -872,8 +871,8 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
 
 #ifdef CASL_THROWS
     if (quad_min_idx == NOT_A_VALID_QUADRANT)
-        throw std::runtime_error("[ERROR]: could not find a neighboring cell in the 0p0 direction when correcting for wall in 0m0 direction."
-                                 " This is either a bug in 'my_p4est_hierarchy_t' or that the entire p4est is a single cell!");
+      throw std::runtime_error("[ERROR]: could not find a neighboring cell in the 0p0 direction when correcting for wall in 0m0 direction."
+                               " This is either a bug in 'my_p4est_hierarchy_t' or that the entire p4est is a single cell!");
 #endif
 
     const bool di = ci != 1;
@@ -977,8 +976,8 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
 
 #ifdef CASL_THROWS
     if (quad_min_idx == NOT_A_VALID_QUADRANT)
-        throw std::runtime_error("[ERROR]: could not find a neighboring cell in the 0m0 direction when correcting for wall in 0p0 direction."
-                                 " This is either a bug in 'my_p4est_hierarchy_t' or that the entire p4est is a single cell!");
+      throw std::runtime_error("[ERROR]: could not find a neighboring cell in the 0m0 direction when correcting for wall in 0p0 direction."
+                               " This is either a bug in 'my_p4est_hierarchy_t' or that the entire p4est is a single cell!");
 #endif
 
     const bool di = ci != 1;
@@ -1066,8 +1065,8 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
 
 #ifdef CASL_THROWS
     if (quad_min_idx == NOT_A_VALID_QUADRANT)
-        throw std::runtime_error("[ERROR]: could not find a neighboring cell in the 00p direction when correcting for wall in 00m direction."
-                                 " This is either a bug in 'my_p4est_hierarchy_t' or that the entire p4est is a single cell!");
+      throw std::runtime_error("[ERROR]: could not find a neighboring cell in the 00p direction when correcting for wall in 00m direction."
+                               " This is either a bug in 'my_p4est_hierarchy_t' or that the entire p4est is a single cell!");
 #endif
 
     const bool di = ci != 1;
@@ -1138,8 +1137,8 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
 
 #ifdef CASL_THROWS
     if (quad_min_idx == NOT_A_VALID_QUADRANT)
-        throw std::runtime_error("[ERROR]: could not find a neighboring cell in the 00m direction when correcting for wall in 00p direction."
-                                 " This is either a bug in 'my_p4est_hierarchy_t' or that the entire p4est is a single cell!");
+      throw std::runtime_error("[ERROR]: could not find a neighboring cell in the 00m direction when correcting for wall in 00p direction."
+                               " This is either a bug in 'my_p4est_hierarchy_t' or that the entire p4est is a single cell!");
 #endif
 
     const bool di = ci != 1;
@@ -1186,6 +1185,15 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
       qnnn.d_00p_0m = ((fabs(qnnn.d_00p_0m + (ymax-ymin)) > (tree_ymax-tree_ymin)*((double) P4EST_QUADRANT_LEN(P4EST_MAXLEVEL))/((double) P4EST_ROOT_LEN))? (qnnn.d_00p_0m + (ymax-ymin)) : 0.0);
     qnnn.d_00p_0p = ((fabs((tree_ymax-tree_ymin)*qh - qnnn.d_00p_0m) > (tree_ymax-tree_ymin)*((double) P4EST_QUADRANT_LEN(P4EST_MAXLEVEL))/((double) P4EST_ROOT_LEN))? ((tree_ymax-tree_ymin)*qh - qnnn.d_00p_0m): 0.0);
   }
+#endif
+
+  qnnn.set_linear_interpolator_m00();
+  qnnn.set_linear_interpolator_p00();
+  qnnn.set_linear_interpolator_0m0();
+  qnnn.set_linear_interpolator_0p0();
+#ifdef P4_TO_P8
+  qnnn.set_linear_interpolator_00m();
+  qnnn.set_linear_interpolator_00p();
 #endif
 
   return false;
@@ -1583,7 +1591,7 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_locidx_t n, ch
     ind = hierarchy->trees[nb_tree_idx][ind].child + 4*ck + 2*cj + ci;
   }
 
-  quad = hierarchy->trees[nb_tree_idx][ind].quad;  
+  quad = hierarchy->trees[nb_tree_idx][ind].quad;
 }
 
 #else
@@ -1678,350 +1686,237 @@ void my_p4est_node_neighbors_t::find_neighbor_cell_of_node( p4est_locidx_t n, ch
 }
 #endif
 
-void my_p4est_node_neighbors_t::dxx_central(const Vec f, Vec fxx) const
+void my_p4est_node_neighbors_t::dd_central(const Vec f[], Vec fdd[], const unsigned int& n_vecs, const unsigned char& der) const
 {
   PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_my_p4est_node_neighbors_t_dxx_central, f, fxx, 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventBegin(log_my_p4est_node_neighbors_t_dd_central, f, fdd, 0, 0); CHKERRXX(ierr);
+  P4EST_ASSERT(n_vecs > 0);
 #ifdef CASL_THROWS
   {
-    Vec f_l, fxx_l;
-    PetscInt f_size, fxx_size;
+    Vec f_l, fdd_l;
+    PetscInt f_size, fdd_size;
 
-    // Get local form
-    ierr = VecGhostGetLocalForm(f,   &f_l  ); CHKERRXX(ierr);
-    ierr = VecGhostGetLocalForm(fxx, &fxx_l); CHKERRXX(ierr);
 
-    // Get sizes
-    ierr = VecGetSize(f_l,   &f_size);   CHKERRXX(ierr);
-    ierr = VecGetSize(fxx_l, &fxx_size); CHKERRXX(ierr);
+    for (unsigned int k = 0; k < n_vecs; ++k) {
+      // Get local form
+      ierr = VecGhostGetLocalForm(f[k],   &f_l  );  CHKERRXX(ierr);
+      ierr = VecGhostGetLocalForm(fdd[k], &fdd_l);  CHKERRXX(ierr);
 
-    if (f_size != fxx_size){
-      std::ostringstream oss;
-      oss << "[ERROR]: Vectors must be of same size when computing derivatives"
-          << " f_size = " << f_size << " fxx_size = " << fxx_size << std::endl;
+      // Get sizes
+      ierr = VecGetSize(f_l,   &f_size);            CHKERRXX(ierr);
+      ierr = VecGetSize(fdd_l, &fdd_size);          CHKERRXX(ierr);
 
-      throw std::invalid_argument(oss.str());
+      if (f_size != fdd_size){
+        std::ostringstream oss;
+        oss << "[ERROR]: Vectors must be of same size when computing derivatives"
+            << " f_size = " << f_size << " fdd_size = " << fdd_size << std::endl;
+
+        throw std::invalid_argument(oss.str());
+      }
+      if(f_size != ((PetscInt)nodes->indep_nodes.elem_count))
+      {
+        std::ostringstream oss;
+        oss << "[ERROR]: the local size of the ghosted vectors must be equald to the number of grid nodes (including ghosts)"
+            << " f_size = " << f_size << " nodes->indep_nodes.elem_count = " << ((PetscInt)nodes->indep_nodes.elem_count) << std::endl;
+
+        throw std::invalid_argument(oss.str());
+      }
+
+      // Restore local form
+      ierr = VecGhostRestoreLocalForm(f[k],   &f_l  ); CHKERRXX(ierr);
+      ierr = VecGhostRestoreLocalForm(fdd[k], &fdd_l); CHKERRXX(ierr);
     }
-
-    // Restore local form
-    ierr = VecGhostRestoreLocalForm(f,   &f_l  ); CHKERRXX(ierr);
-    ierr = VecGhostRestoreLocalForm(fxx, &fxx_l); CHKERRXX(ierr);
   }
 #endif
 
   // get access to the iternal data
-  double *f_p, *fxx_p;
-  ierr = VecGetArray(f,   &f_p  ); CHKERRXX(ierr);
-  ierr = VecGetArray(fxx, &fxx_p); CHKERRXX(ierr);
+  double *f_p[n_vecs], *fdd_p[n_vecs];
+  for (unsigned int k = 0; k < n_vecs; ++k) {
+    ierr = VecGetArray(f[k],   &f_p[k]  ); CHKERRXX(ierr);
+    ierr = VecGetArray(fdd[k], &fdd_p[k]); CHKERRXX(ierr);
+  }
 
   if (is_initialized){
     // compute the derivatives on the boundary nodes
     for (size_t i=0; i<layer_nodes.size(); i++)
-      fxx_p[layer_nodes[i]] = neighbors[layer_nodes[i]].dxx_central(f_p);
+      for (unsigned int k = 0; k < n_vecs; ++k)
+        fdd_p[k][layer_nodes[i]] = neighbors[layer_nodes[i]].dd_central(der, f_p[k]);
 
     // start updating the ghost values
-    ierr = VecGhostUpdateBegin(fxx, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    for (unsigned int k = 0; k < n_vecs; ++k)
+      ierr = VecGhostUpdateBegin(fdd[k], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
     // compute the derivaties for all internal nodes
     for (size_t i=0; i<local_nodes.size(); i++)
-      fxx_p[local_nodes[i]] = neighbors[local_nodes[i]].dxx_central(f_p);
+      for (unsigned int k = 0; k < n_vecs; ++k)
+        fdd_p[k][local_nodes[i]] = neighbors[local_nodes[i]].dd_central(der, f_p[k]);
   } else {
     quad_neighbor_nodes_of_node_t qnnn;
 
     // compute the derivatives on the boundary nodes
     for (size_t i=0; i<layer_nodes.size(); i++){
       get_neighbors(layer_nodes[i], qnnn);
-      fxx_p[layer_nodes[i]] = qnnn.dxx_central(f_p);
+      for (unsigned int k = 0; k < n_vecs; ++k)
+        fdd_p[k][layer_nodes[i]] = qnnn.dd_central(der, f_p[k]);
     }
 
     // start updating the ghost values
-    ierr = VecGhostUpdateBegin(fxx, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    for (unsigned int k = 0; k < n_vecs; ++k)
+      ierr = VecGhostUpdateBegin(fdd[k], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
     // compute the derivaties for all internal nodes
     for (size_t i=0; i<local_nodes.size(); i++){
       get_neighbors(local_nodes[i], qnnn);
-      fxx_p[local_nodes[i]] = qnnn.dxx_central(f_p);
+      for (unsigned int k = 0; k < n_vecs; ++k)
+        fdd_p[k][local_nodes[i]] = qnnn.dd_central(der, f_p[k]);
     }
   }
 
   // restore internal data
-  ierr = VecRestoreArray(f,   &f_p  ); CHKERRXX(ierr);
-  ierr = VecRestoreArray(fxx, &fxx_p); CHKERRXX(ierr);
+  for (unsigned int k = 0; k < n_vecs; ++k){
+    ierr = VecRestoreArray(f[k],   &f_p[k]  ); CHKERRXX(ierr);
+    ierr = VecRestoreArray(fdd[k], &fdd_p[k]); CHKERRXX(ierr);
+  }
 
   // finish the ghost update process to ensure all values are updated
-  ierr = VecGhostUpdateEnd(fxx, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  for (unsigned int k = 0; k < n_vecs; ++k)
+    ierr = VecGhostUpdateEnd(fdd[k], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-  ierr = PetscLogEventEnd(log_my_p4est_node_neighbors_t_dxx_central, f, fxx, 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd(log_my_p4est_node_neighbors_t_dd_central, f, fdd, 0, 0); CHKERRXX(ierr);
 }
 
-void my_p4est_node_neighbors_t::dyy_central(const Vec f, Vec fyy) const
-{
-  PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_my_p4est_node_neighbors_t_dyy_central, f, fyy, 0, 0); CHKERRXX(ierr);
-#ifdef CASL_THROWS
-  {
-    Vec f_l, fyy_l;
-    PetscInt f_size, fyy_size;
-
-    // Get local form
-    ierr = VecGhostGetLocalForm(f,   &f_l  ); CHKERRXX(ierr);
-    ierr = VecGhostGetLocalForm(fyy, &fyy_l); CHKERRXX(ierr);
-
-    // Get sizes
-    ierr = VecGetSize(f_l,   &f_size);   CHKERRXX(ierr);
-    ierr = VecGetSize(fyy_l, &fyy_size); CHKERRXX(ierr);
-
-    if (f_size != fyy_size){
-      std::ostringstream oss;
-      oss << "[ERROR]: Vectors must be of same size when computing derivatives"
-          << " f_size = " << f_size << " fyy_size = " << fyy_size << std::endl;
-
-      throw std::invalid_argument(oss.str());
-    }
-
-    // Restore local form
-    ierr = VecGhostRestoreLocalForm(f,   &f_l  ); CHKERRXX(ierr);
-    ierr = VecGhostRestoreLocalForm(fyy, &fyy_l); CHKERRXX(ierr);
-  }
-#endif
-
-  // get access to the iternal data
-  double *f_p, *fyy_p;
-  ierr = VecGetArray(f,   &f_p  ); CHKERRXX(ierr);
-  ierr = VecGetArray(fyy, &fyy_p); CHKERRXX(ierr);
-
-  if(is_initialized){
-    // compute the derivatives on the boundary nodes
-    for (size_t i=0; i<layer_nodes.size(); i++)
-      fyy_p[layer_nodes[i]] = neighbors[layer_nodes[i]].dyy_central(f_p);
-
-    // start updating the ghost values
-    ierr = VecGhostUpdateBegin(fyy, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-    // compute the derivaties for all internal nodes
-    for (size_t i=0; i<local_nodes.size(); i++)
-      fyy_p[local_nodes[i]] = neighbors[local_nodes[i]].dyy_central(f_p);
-
-  } else {
-    quad_neighbor_nodes_of_node_t qnnn;
-
-    // compute the derivatives on the boundary nodes
-    for (size_t i=0; i<layer_nodes.size(); i++){
-      get_neighbors(layer_nodes[i], qnnn);
-      fyy_p[layer_nodes[i]] = qnnn.dyy_central(f_p);
-    }
-
-    // start updating the ghost values
-    ierr = VecGhostUpdateBegin(fyy, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-    // compute the derivaties for all internal nodes
-    for (size_t i=0; i<local_nodes.size(); i++){
-      get_neighbors(local_nodes[i], qnnn);
-      fyy_p[local_nodes[i]] = qnnn.dyy_central(f_p);
-    }
-  }
-
-  // restore internal data
-  ierr = VecRestoreArray(f,   &f_p  ); CHKERRXX(ierr);
-  ierr = VecRestoreArray(fyy, &fyy_p); CHKERRXX(ierr);
-
-  // finish the ghost update process to ensure all values are updated
-  ierr = VecGhostUpdateEnd(fyy, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-  ierr = PetscLogEventEnd(log_my_p4est_node_neighbors_t_dyy_central, f, fyy, 0, 0); CHKERRXX(ierr);
-}
-
-#ifdef P4_TO_P8
-void my_p4est_node_neighbors_t::dzz_central(const Vec f, Vec fzz) const
-{
-  PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_my_p4est_node_neighbors_t_dzz_central, f, fzz, 0, 0); CHKERRXX(ierr);
-#ifdef CASL_THROWS
-  {
-    Vec f_l, fzz_l;
-    PetscInt f_size, fzz_size;
-
-    // Get local form
-    ierr = VecGhostGetLocalForm(f,   &f_l  ); CHKERRXX(ierr);
-    ierr = VecGhostGetLocalForm(fzz, &fzz_l); CHKERRXX(ierr);
-
-    // Get sizes
-    ierr = VecGetSize(f_l,   &f_size);   CHKERRXX(ierr);
-    ierr = VecGetSize(fzz_l, &fzz_size); CHKERRXX(ierr);
-
-    if (f_size != fzz_size){
-      std::ostringstream oss;
-      oss << "[ERROR]: Vectors must be of same size when computing derivatives"
-          << " f_size = " << f_size << " fzz_size = " << fzz_size << std::endl;
-
-      throw std::invalid_argument(oss.str());
-    }
-
-    // Restore local form
-    ierr = VecGhostRestoreLocalForm(f,   &f_l  ); CHKERRXX(ierr);
-    ierr = VecGhostRestoreLocalForm(fzz, &fzz_l); CHKERRXX(ierr);
-  }
-#endif
-
-  // get access to the iternal data
-  double *f_p, *fzz_p;
-  ierr = VecGetArray(f,   &f_p  ); CHKERRXX(ierr);
-  ierr = VecGetArray(fzz, &fzz_p); CHKERRXX(ierr);
-
-  if (is_initialized){
-  // compute the derivatives on the boundary nodes
-  for (size_t i=0; i<layer_nodes.size(); i++)
-    fzz_p[layer_nodes[i]] = neighbors[layer_nodes[i]].dzz_central(f_p);
-
-  // start updating the ghost values
-  ierr = VecGhostUpdateBegin(fzz, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-  // compute the derivaties for all internal nodes
-  for (size_t i=0; i<local_nodes.size(); i++)
-    fzz_p[local_nodes[i]] = neighbors[local_nodes[i]].dzz_central(f_p);
-
-  } else {
-    quad_neighbor_nodes_of_node_t qnnn;
-
-    // compute the derivatives on the boundary nodes
-    for (size_t i=0; i<layer_nodes.size(); i++){
-      get_neighbors(layer_nodes[i], qnnn);
-      fzz_p[layer_nodes[i]] = qnnn.dzz_central(f_p);
-    }
-
-    // start updating the ghost values
-    ierr = VecGhostUpdateBegin(fzz, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-    // compute the derivaties for all internal nodes
-    for (size_t i=0; i<local_nodes.size(); i++){
-      get_neighbors(local_nodes[i], qnnn);
-      fzz_p[local_nodes[i]] = qnnn.dzz_central(f_p);
-    }
-  }
-
-  // restore internal data
-  ierr = VecRestoreArray(f,   &f_p  ); CHKERRXX(ierr);
-  ierr = VecRestoreArray(fzz, &fzz_p); CHKERRXX(ierr);
-
-  // finish the ghost update process to ensure all values are updated
-  ierr = VecGhostUpdateEnd(fzz, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-  ierr = PetscLogEventEnd(log_my_p4est_node_neighbors_t_dzz_central, f, fzz, 0, 0); CHKERRXX(ierr);
-}
-#endif
-
-void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f, Vec fdd) const
+void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f[], Vec fdd[], const unsigned int& n_vecs, const unsigned int& bs_f) const
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_node_neighbors_t_2nd_derivatives_central_block, f, fdd, 0, 0); CHKERRXX(ierr);
-
 #ifdef CASL_THROWS
   {
     Vec f_l, fdd_l;
     PetscInt f_size, fdd_size, block_size;
 
-    // Get local form
-    ierr = VecGhostGetLocalForm(f,   &f_l  ); CHKERRXX(ierr);
-    ierr = VecGhostGetLocalForm(fdd, &fdd_l); CHKERRXX(ierr);
+    for (unsigned int k = 0; k < n_vecs; ++k) {
+      // Get local form
+      ierr = VecGhostGetLocalForm(f[k],   &f_l  );  CHKERRXX(ierr);
+      ierr = VecGhostGetLocalForm(fdd[k], &fdd_l);  CHKERRXX(ierr);
 
-    // Get sizes
-    ierr = VecGetSize(f_l,   &f_size);        CHKERRXX(ierr);
-    ierr = VecGetSize(fdd_l, &fdd_size);      CHKERRXX(ierr);
-    ierr = VecGetBlockSize(fdd, &block_size); CHKERRXX(ierr);
+      // Get sizes
+      ierr = VecGetSize(f_l,   &f_size);            CHKERRXX(ierr);
+      ierr = VecGetSize(fdd_l, &fdd_size);          CHKERRXX(ierr);
+      ierr = VecGetBlockSize(f[k], &block_size);    CHKERRXX(ierr);
 
-    if (f_size*block_size != fdd_size){
-      std::ostringstream oss;
-      oss << "[ERROR]: Vectors must be of same size when computing derivatives"
-          << " f_size = " << f_size << " fdd_size = " << fdd_size << std::endl;
+      if (block_size != ((PetscInt) bs_f)){
+        std::ostringstream oss;
+        oss << "[ERROR]: the block size of a vector in f does not match the given block size bs_f"
+            << " block_size = " << block_size << " bs_f = " << bs_f << std::endl;
 
-      throw std::invalid_argument(oss.str());
+        throw std::invalid_argument(oss.str());
+      }
+
+      if (f_size*P4EST_DIM != fdd_size){
+        std::ostringstream oss;
+        oss << "[ERROR]: The vectors of derivatives must be P4EST_DIM times larger than the differentiated fields"
+            << " P4EST_DIM*f_size = " << P4EST_DIM*f_size << " fdd_size = " << fdd_size << std::endl;
+
+        throw std::invalid_argument(oss.str());
+      }
+
+      // Restore local form
+      ierr = VecGhostRestoreLocalForm(f[k],   &f_l  ); CHKERRXX(ierr);
+      ierr = VecGhostRestoreLocalForm(fdd[k], &fdd_l); CHKERRXX(ierr);
     }
-
-    if (P4EST_DIM != block_size){
-      std::ostringstream oss;
-      oss << "[ERROR]: output vector 'fdd' must be a block vector os block size "
-          << P4EST_DIM << " but block_size = " << block_size << std::endl;
-
-      throw std::invalid_argument(oss.str());
-    }
-
-    // Restore local form
-    ierr = VecGhostRestoreLocalForm(f,   &f_l  ); CHKERRXX(ierr);
-    ierr = VecGhostRestoreLocalForm(fdd, &fdd_l); CHKERRXX(ierr);
   }
 #endif
 
+  P4EST_ASSERT(bs_f > 0);
   // get access to the iternal data
-  double *f_p, *fdd_p;
-  ierr = VecGetArray(f,   &f_p  ); CHKERRXX(ierr);
-  ierr = VecGetArray(fdd, &fdd_p); CHKERRXX(ierr);
+  double *f_p[n_vecs], *fdd_p[n_vecs];
+  for (unsigned int k = 0; k < n_vecs; ++k) {
+    ierr = VecGetArray(f[k],   &f_p[k]  ); CHKERRXX(ierr);
+    ierr = VecGetArray(fdd[k], &fdd_p[k]); CHKERRXX(ierr);
+  }
 
   if (is_initialized){
     // compute the derivatives on the boundary nodes
     for (size_t i=0; i<layer_nodes.size(); i++){
-      fdd_p[P4EST_DIM*layer_nodes[i] + 0] = neighbors[layer_nodes[i]].dxx_central(f_p); // fxx
-      fdd_p[P4EST_DIM*layer_nodes[i] + 1] = neighbors[layer_nodes[i]].dyy_central(f_p); // fyy
-  #ifdef P4_TO_P8
-      fdd_p[P4EST_DIM*layer_nodes[i] + 2] = neighbors[layer_nodes[i]].dzz_central(f_p); // fzz
-  #endif
+      p4est_locidx_t node_idx = layer_nodes[i];
+      const quad_neighbor_nodes_of_node_t& qnnn = neighbors[node_idx];
+      for (unsigned int k = 0; k < n_vecs; ++k) {
+        for (unsigned int comp = 0; comp < bs_f; ++comp) {
+          for (unsigned char der = 0; der < P4EST_DIM; ++der) {
+            fdd_p[k][P4EST_DIM*(bs_f*node_idx+comp) + der] = qnnn.dd_central(der, f_p[k], bs_f, comp); // second derivative of the comp_th field in f[k] along cartesian direction der
+          }
+        }
+      }
     }
 
     // start updating the ghost values
-    ierr = VecGhostUpdateBegin(fdd, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    for (unsigned int k = 0; k < n_vecs; ++k) {
+      ierr = VecGhostUpdateBegin(fdd[k], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    }
 
     // compute the derivaties for all internal nodes
     for (size_t i=0; i<local_nodes.size(); i++){
-      fdd_p[P4EST_DIM*local_nodes[i] + 0] = neighbors[local_nodes[i]].dxx_central(f_p); // fxx
-      fdd_p[P4EST_DIM*local_nodes[i] + 1] = neighbors[local_nodes[i]].dyy_central(f_p); // fyy
-  #ifdef P4_TO_P8
-      fdd_p[P4EST_DIM*local_nodes[i] + 2] = neighbors[local_nodes[i]].dzz_central(f_p); // fzz
-  #endif
+      p4est_locidx_t node_idx = local_nodes[i];
+      const quad_neighbor_nodes_of_node_t& qnnn = neighbors[node_idx];
+      for (unsigned int k = 0; k < n_vecs; ++k) {
+        for (unsigned int comp = 0; comp < bs_f; ++comp) {
+          for (unsigned char der = 0; der < P4EST_DIM; ++der) {
+            fdd_p[k][P4EST_DIM*(bs_f*node_idx+comp) + der] = qnnn.dd_central(der, f_p[k], bs_f, comp); // second derivative of the comp_th field in f[k] along cartesian direction der
+          }
+        }
+      }
     }
-
   } else {
     quad_neighbor_nodes_of_node_t qnnn;
 
     // compute the derivatives on the boundary nodes
     for (size_t i=0; i<layer_nodes.size(); i++){
-      get_neighbors(layer_nodes[i], qnnn);
-
-      fdd_p[P4EST_DIM*layer_nodes[i] + 0] = qnnn.dxx_central(f_p); // fxx
-      fdd_p[P4EST_DIM*layer_nodes[i] + 1] = qnnn.dyy_central(f_p); // fyy
-  #ifdef P4_TO_P8
-      fdd_p[P4EST_DIM*layer_nodes[i] + 2] = qnnn.dzz_central(f_p); // fzz
-  #endif
+      p4est_locidx_t node_idx = layer_nodes[i];
+      get_neighbors(node_idx, qnnn);
+      for (unsigned int k = 0; k < n_vecs; ++k) {
+        for (unsigned int comp = 0; comp < bs_f; ++comp) {
+          for (unsigned char der = 0; der < P4EST_DIM; ++der) {
+            fdd_p[k][P4EST_DIM*(bs_f*node_idx+comp) + der] = qnnn.dd_central(der, f_p[k], bs_f, comp); // second derivative of the comp_th field in f[k] along cartesian direction der
+          }
+        }
+      }
     }
 
     // start updating the ghost values
-    ierr = VecGhostUpdateBegin(fdd, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    for (unsigned int k = 0; k < n_vecs; ++k) {
+      ierr = VecGhostUpdateBegin(fdd[k], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    }
 
     // compute the derivaties for all internal nodes
     for (size_t i=0; i<local_nodes.size(); i++){
-      get_neighbors(local_nodes[i], qnnn);
-
-      fdd_p[P4EST_DIM*local_nodes[i] + 0] = qnnn.dxx_central(f_p); // fxx
-      fdd_p[P4EST_DIM*local_nodes[i] + 1] = qnnn.dyy_central(f_p); // fyy
-  #ifdef P4_TO_P8
-      fdd_p[P4EST_DIM*local_nodes[i] + 2] = qnnn.dzz_central(f_p); // fzz
-  #endif
+      p4est_locidx_t node_idx = local_nodes[i];
+      get_neighbors(node_idx, qnnn);
+      for (unsigned int k = 0; k < n_vecs; ++k) {
+        for (unsigned int comp = 0; comp < bs_f; ++comp) {
+          for (unsigned char der = 0; der < P4EST_DIM; ++der) {
+            fdd_p[k][P4EST_DIM*(bs_f*node_idx+comp) + der] = qnnn.dd_central(der, f_p[k], bs_f, comp); // second derivative of the comp_th field in f[k] along cartesian direction der
+          }
+        }
+      }
     }
-
   }
 
-  // restore internal data
-  ierr = VecRestoreArray(f,   &f_p  ); CHKERRXX(ierr);
-  ierr = VecRestoreArray(fdd, &fdd_p); CHKERRXX(ierr);
-
-  // finish the ghost update process to ensure all values are updated
-  ierr = VecGhostUpdateEnd(fdd, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  for (unsigned int k = 0; k < n_vecs; ++k) {
+    // restore internal data
+    ierr = VecRestoreArray(f[k],   &f_p[k]  ); CHKERRXX(ierr);
+    // finish the ghost update process to ensure all values are updated
+    ierr = VecGhostUpdateEnd(fdd[k], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    // restore internal data
+    ierr = VecRestoreArray(fdd[k], &fdd_p[k]); CHKERRXX(ierr);
+  }
 
   ierr = PetscLogEventEnd(log_my_p4est_node_neighbors_t_2nd_derivatives_central_block, f, fdd, 0, 0); CHKERRXX(ierr);
 }
 
 #ifdef P4_TO_P8
-void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f[], Vec fxx[], Vec fyy[], Vec fzz[], unsigned int n_vecs) const
+void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f[], Vec fxx[], Vec fyy[], Vec fzz[], const unsigned int& n_vecs, const unsigned int& bs) const
 #else
-void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f[], Vec fxx[], Vec fyy[], unsigned int n_vecs) const
+void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f[], Vec fxx[], Vec fyy[], const unsigned int& n_vecs, const unsigned int& bs) const
 #endif
 {
   PetscErrorCode ierr;
@@ -2031,10 +1926,10 @@ void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f[], Vec fx
 #ifdef CASL_THROWS
   {
     Vec f_l, fxx_l, fyy_l;
-    PetscInt f_size, fxx_size, fyy_size;
+    PetscInt f_size, fxx_size, fyy_size, bs_f, bs_xx, bs_yy;
 #ifdef P4_TO_P8
     Vec fzz_l;
-    PetscInt fzz_size;
+    PetscInt fzz_size, bs_zz;
 #endif
 
     for (unsigned int k = 0; k < n_vecs; ++k) {
@@ -2052,6 +1947,13 @@ void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f[], Vec fx
       ierr = VecGetSize(fyy_l, &fyy_size); CHKERRXX(ierr);
 #ifdef P4_TO_P8
       ierr = VecGetSize(fzz_l, &fzz_size); CHKERRXX(ierr);
+#endif
+      // Get block sizes
+      ierr = VecGetBlockSize(f_l,   &bs_f);   CHKERRXX(ierr);
+      ierr = VecGetBlockSize(fxx_l, &bs_xx); CHKERRXX(ierr);
+      ierr = VecGetBlockSize(fyy_l, &bs_yy); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+      ierr = VecGetBlockSize(fzz_l, &bs_zz); CHKERRXX(ierr);
 #endif
 
       if (f_size != fxx_size){
@@ -2080,6 +1982,36 @@ void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f[], Vec fx
       }
 #endif
 
+      if (((PetscInt) bs) != bs_f){
+        std::ostringstream oss;
+        oss << "[ERROR]: the block size of a vector in f does not match the given block size bs"
+            << " bs_f = " << bs_f << " bs = " << bs << std::endl;
+        throw std::invalid_argument(oss.str());
+      }
+
+      if (((PetscInt) bs) != bs_xx){
+        std::ostringstream oss;
+        oss << "[ERROR]: the block size of a vector in fxx does not match the given block size bs"
+            << " bs_xx = " << bs_xx << " bs = " << bs << std::endl;
+        throw std::invalid_argument(oss.str());
+      }
+
+      if (((PetscInt) bs) != bs_yy){
+        std::ostringstream oss;
+        oss << "[ERROR]: the block size of a vector in fyy does not match the given block size bs"
+            << " bs_yy = " << bs_f << " bs = " << bs << std::endl;
+        throw std::invalid_argument(oss.str());
+      }
+
+#ifdef P4_TO_P8
+      if (((PetscInt) bs) != bs_zz){
+        std::ostringstream oss;
+        oss << "[ERROR]: the block size of a vector in fzz does not match the given block size bs"
+            << " bs_zz = " << bs_f << " bs = " << bs << std::endl;
+        throw std::invalid_argument(oss.str());
+      }
+#endif
+
       // Restore local form
       ierr = VecGhostRestoreLocalForm(f[k],   &f_l  ); CHKERRXX(ierr);
       ierr = VecGhostRestoreLocalForm(fxx[k], &fxx_l); CHKERRXX(ierr);
@@ -2090,15 +2022,16 @@ void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f[], Vec fx
     }
   }
 #endif
+  P4EST_ASSERT(bs > 0);
 
 #ifdef DXX_USE_BLOCKS
 #ifdef P4_TO_P8
-  second_derivatives_central_using_block(f, fxx, fyy, fzz);
+  second_derivatives_central_using_block(f, fxx, fyy, fzz, n_vecs, bs);
 #else
-  second_derivatives_central_using_block(f, fxx, fyy);
+  second_derivatives_central_using_block(f, fxx, fyy, n_vecs, bs);
 #endif
 #else // !DXX_USE_BLOCKS
-  // get access to the iternal data
+  // get access to the internal data
   double *f_p[n_vecs], *fxx_p[n_vecs], *fyy_p[n_vecs];
 #ifdef P4_TO_P8
   double *fzz_p[n_vecs];
@@ -2107,18 +2040,20 @@ void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f[], Vec fx
     ierr = VecGetArray(f[k],   &f_p[k]  ); CHKERRXX(ierr);
     ierr = VecGetArray(fxx[k], &fxx_p[k]); CHKERRXX(ierr);
     ierr = VecGetArray(fyy[k], &fyy_p[k]); CHKERRXX(ierr);
-  #ifdef P4_TO_P8
+#ifdef P4_TO_P8
     ierr = VecGetArray(fzz[k], &fzz_p[k]); CHKERRXX(ierr);
-  #endif
+#endif
   }
 
   if (is_initialized){
     // compute the derivatives on the boundary nodes -- fxx
     for (size_t i=0; i<layer_nodes.size(); i++)
     {
-      const quad_neighbor_nodes_of_node_t& qnnn = neighbors[layer_nodes[i]];
+      p4est_locidx_t node_idx = layer_nodes[i];
+      const quad_neighbor_nodes_of_node_t& qnnn = neighbors[node_idx];
       for (unsigned int k = 0; k < n_vecs; ++k)
-        fxx_p[k][layer_nodes[i]] = qnnn.dxx_central(f_p[k]);
+        for (unsigned int comp = 0; comp < bs; ++comp)
+          fxx_p[k][bs*node_idx+comp] = qnnn.dxx_central(f_p[k], bs, comp);
     }
     // start updating the ghost values
     for (unsigned int k = 0; k < n_vecs; ++k)
@@ -2127,52 +2062,61 @@ void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f[], Vec fx
     // compute the derivatives on the boundary nodes -- fyy
     for (size_t i=0; i<layer_nodes.size(); i++)
     {
-      const quad_neighbor_nodes_of_node_t& qnnn = neighbors[layer_nodes[i]];
+      p4est_locidx_t node_idx = layer_nodes[i];
+      const quad_neighbor_nodes_of_node_t& qnnn = neighbors[node_idx];
       for (unsigned int k = 0; k < n_vecs; ++k)
-        fyy_p[k][layer_nodes[i]] = qnnn.dyy_central(f_p[k]);
+        for (unsigned int comp = 0; comp < bs; ++comp)
+          fyy_p[k][bs*node_idx+comp] = qnnn.dyy_central(f_p[k], bs, comp);
     }
     // start updating the ghost values
     for (unsigned int k = 0; k < n_vecs; ++k)
       ierr = VecGhostUpdateBegin(fyy[k], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-  #ifdef P4_TO_P8
+#ifdef P4_TO_P8
     // compute the derivatives on the boundary nodes -- fzz
     for (size_t i=0; i<layer_nodes.size(); i++)
     {
-      const quad_neighbor_nodes_of_node_t& qnnn = neighbors[layer_nodes[i]];
+      p4est_locidx_t node_idx = layer_nodes[i];
+      const quad_neighbor_nodes_of_node_t& qnnn = neighbors[node_idx];
       for (unsigned int k = 0; k < n_vecs; ++k)
-        fzz_p[k][layer_nodes[i]] = qnnn.dzz_central(f_p[k]);
+        for (unsigned int comp = 0; comp < bs; ++comp)
+          fzz_p[k][bs*node_idx+comp] = qnnn.dzz_central(f_p[k], bs, comp);
     }
     // start updating the ghost values
     for (unsigned int k = 0; k < n_vecs; ++k)
       ierr = VecGhostUpdateBegin(fzz[k], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  #endif
+#endif
 
     // compute the derivaties for all internal nodes
     for (size_t i=0; i<local_nodes.size(); i++){
-      const quad_neighbor_nodes_of_node_t& qnnn = neighbors[local_nodes[i]];
-      for (unsigned int k = 0; k < n_vecs; ++k) {
-        fxx_p[k][local_nodes[i]] = qnnn.dxx_central(f_p[k]);
-        fyy_p[k][local_nodes[i]] = qnnn.dyy_central(f_p[k]);
+      p4est_locidx_t node_idx = local_nodes[i];
+      const quad_neighbor_nodes_of_node_t& qnnn = neighbors[node_idx];
+      for (unsigned int k = 0; k < n_vecs; ++k){
+        for (unsigned int comp = 0; comp < bs; ++comp){
+          fxx_p[k][bs*node_idx+comp] = qnnn.dxx_central(f_p[k], bs, comp);
+          fyy_p[k][bs*node_idx+comp] = qnnn.dyy_central(f_p[k], bs, comp);
 #ifdef P4_TO_P8
-        fzz_p[k][local_nodes[i]] = qnnn.dzz_central(f_p[k]);
+          fzz_p[k][bs*node_idx+comp] = qnnn.dzz_central(f_p[k], bs, comp);
 #endif
+        }
       }
     }
-
   } else {
 
     quad_neighbor_nodes_of_node_t qnnn;
 
     // compute the derivatives on the boundary nodes -- fxx
     for (size_t i=0; i<layer_nodes.size(); i++){
-      get_neighbors(layer_nodes[i], qnnn);
-      for (unsigned int k = 0; k < n_vecs; ++k) {
-        fxx_p[k][layer_nodes[i]] = qnnn.dxx_central(f_p[k]);
-        fyy_p[k][layer_nodes[i]] = qnnn.dyy_central(f_p[k]);
+      p4est_locidx_t node_idx = layer_nodes[i];
+      get_neighbors(node_idx, qnnn);
+      for (unsigned int k = 0; k < n_vecs; ++k){
+        for (unsigned int comp = 0; comp < bs; ++comp){
+          fxx_p[k][bs*node_idx+comp] = qnnn.dxx_central(f_p[k], bs, comp);
+          fyy_p[k][bs*node_idx+comp] = qnnn.dyy_central(f_p[k], bs, comp);
 #ifdef P4_TO_P8
-        fzz_p[k][layer_nodes[i]] = qnnn.dzz_central(f_p[k]);
+          fzz_p[k][bs*node_idx+comp] = qnnn.dzz_central(f_p[k], bs, comp);
 #endif
+        }
       }
     }
     // start updating the ghost values
@@ -2186,13 +2130,16 @@ void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f[], Vec fx
 
     // compute the derivaties for all internal nodes
     for (size_t i=0; i<local_nodes.size(); i++){
-      get_neighbors(local_nodes[i], qnnn);
-      for (unsigned int k = 0; k < n_vecs; ++k) {
-        fxx_p[k][local_nodes[i]] = qnnn.dxx_central(f_p[k]);
-        fyy_p[k][local_nodes[i]] = qnnn.dyy_central(f_p[k]);
+      p4est_locidx_t node_idx = local_nodes[i];
+      get_neighbors(node_idx, qnnn);
+      for (unsigned int k = 0; k < n_vecs; ++k){
+        for (unsigned int comp = 0; comp < bs; ++comp){
+          fxx_p[k][bs*node_idx+comp] = qnnn.dxx_central(f_p[k], bs, comp);
+          fyy_p[k][bs*node_idx+comp] = qnnn.dyy_central(f_p[k], bs, comp);
 #ifdef P4_TO_P8
-        fzz_p[k][local_nodes[i]] = qnnn.dzz_central(f_p[k]);
+          fzz_p[k][bs*node_idx+comp] = qnnn.dzz_central(f_p[k], bs, comp);
 #endif
+        }
       }
     }
   }
@@ -2209,9 +2156,9 @@ void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f[], Vec fx
 
     ierr = VecRestoreArray(fxx[k], &fxx_p[k]); CHKERRXX(ierr);
     ierr = VecRestoreArray(fyy[k], &fyy_p[k]); CHKERRXX(ierr);
-  #ifdef P4_TO_P8
+#ifdef P4_TO_P8
     ierr = VecRestoreArray(fzz[k], &fzz_p[k]); CHKERRXX(ierr);
-  #endif
+#endif
   }
 #endif // !DXX_USE_BLOCKS
 
@@ -2219,7 +2166,140 @@ void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f[], Vec fx
   ierr = PetscLogEventEnd(log_my_p4est_node_neighbors_t_2nd_derivatives_central, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
-void my_p4est_node_neighbors_t::first_derivatives_central(const Vec f, Vec fx[P4EST_DIM]) const
+void my_p4est_node_neighbors_t::first_derivatives_central(const Vec f[], Vec fd[], const unsigned int& n_vecs, const unsigned int& bs_f) const
+{
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_node_neighbors_t_1st_derivatives_central_block, f, fd, 0, 0); CHKERRXX(ierr);
+#ifdef CASL_THROWS
+  {
+    Vec f_l, fd_l;
+    PetscInt f_size, fd_size, block_size;
+
+    for (unsigned int k = 0; k < n_vecs; ++k) {
+      // Get local form
+      ierr = VecGhostGetLocalForm(f[k],   &f_l  );  CHKERRXX(ierr);
+      ierr = VecGhostGetLocalForm(fd[k],  &fd_l);  CHKERRXX(ierr);
+
+      // Get sizes
+      ierr = VecGetSize(f_l,        &f_size);            CHKERRXX(ierr);
+      ierr = VecGetSize(fd_l,       &fd_size);          CHKERRXX(ierr);
+      ierr = VecGetBlockSize(f[k],  &block_size);    CHKERRXX(ierr);
+
+      if (block_size != ((PetscInt) bs_f)){
+        std::ostringstream oss;
+        oss << "[ERROR]: the block size of a vector in f does not match the given block size bs_f"
+            << " block_size = " << block_size << " bs_f = " << bs_f << std::endl;
+
+        throw std::invalid_argument(oss.str());
+      }
+
+      if (f_size*P4EST_DIM != fd_size){
+        std::ostringstream oss;
+        oss << "[ERROR]: The vectors of derivatives must be P4EST_DIM times larger than the differentiated fields"
+            << " P4EST_DIM*f_size = " << P4EST_DIM*f_size << " fd_size = " << fd_size << std::endl;
+
+        throw std::invalid_argument(oss.str());
+      }
+
+      // Restore local form
+      ierr = VecGhostRestoreLocalForm(f[k],   &f_l  ); CHKERRXX(ierr);
+      ierr = VecGhostRestoreLocalForm(fd[k],  &fd_l); CHKERRXX(ierr);
+    }
+  }
+#endif
+
+  P4EST_ASSERT(bs_f > 0);
+  // get access to the iternal data
+  double *f_p[n_vecs], *fd_p[n_vecs];
+  for (unsigned int k = 0; k < n_vecs; ++k) {
+    ierr = VecGetArray(f[k],  &f_p[k]  ); CHKERRXX(ierr);
+    ierr = VecGetArray(fd[k], &fd_p[k]); CHKERRXX(ierr);
+  }
+
+  if (is_initialized){
+    // compute the derivatives on the boundary nodes
+    for (size_t i=0; i<layer_nodes.size(); i++){
+      p4est_locidx_t node_idx = layer_nodes[i];
+      const quad_neighbor_nodes_of_node_t& qnnn = neighbors[node_idx];
+      for (unsigned int k = 0; k < n_vecs; ++k) {
+        for (unsigned int comp = 0; comp < bs_f; ++comp) {
+          for (unsigned char der = 0; der < P4EST_DIM; ++der) {
+            fd_p[k][P4EST_DIM*(bs_f*node_idx+comp) + der] = qnnn.d_central(der, f_p[k], bs_f, comp); // first derivative of the comp_th field in f[k] along cartesian direction der
+          }
+        }
+      }
+    }
+
+    // start updating the ghost values
+    for (unsigned int k = 0; k < n_vecs; ++k) {
+      ierr = VecGhostUpdateBegin(fd[k], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    }
+
+    // compute the derivaties for all internal nodes
+    for (size_t i=0; i<local_nodes.size(); i++){
+      p4est_locidx_t node_idx = local_nodes[i];
+      const quad_neighbor_nodes_of_node_t& qnnn = neighbors[node_idx];
+      for (unsigned int k = 0; k < n_vecs; ++k) {
+        for (unsigned int comp = 0; comp < bs_f; ++comp) {
+          for (unsigned char der = 0; der < P4EST_DIM; ++der) {
+            fd_p[k][P4EST_DIM*(bs_f*node_idx+comp) + der] = qnnn.d_central(der, f_p[k], bs_f, comp); // first derivative of the comp_th field in f[k] along cartesian direction der
+          }
+        }
+      }
+    }
+  } else {
+    quad_neighbor_nodes_of_node_t qnnn;
+
+    // compute the derivatives on the boundary nodes
+    for (size_t i=0; i<layer_nodes.size(); i++){
+      p4est_locidx_t node_idx = layer_nodes[i];
+      get_neighbors(node_idx, qnnn);
+      for (unsigned int k = 0; k < n_vecs; ++k) {
+        for (unsigned int comp = 0; comp < bs_f; ++comp) {
+          for (unsigned char der = 0; der < P4EST_DIM; ++der) {
+            fd_p[k][P4EST_DIM*(bs_f*node_idx+comp) + der] = qnnn.d_central(der, f_p[k], bs_f, comp); // first derivative of the comp_th field in f[k] along cartesian direction der
+          }
+        }
+      }
+    }
+
+    // start updating the ghost values
+    for (unsigned int k = 0; k < n_vecs; ++k) {
+      ierr = VecGhostUpdateBegin(fd[k], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    }
+
+    // compute the derivaties for all internal nodes
+    for (size_t i=0; i<local_nodes.size(); i++){
+      p4est_locidx_t node_idx = local_nodes[i];
+      get_neighbors(node_idx, qnnn);
+      for (unsigned int k = 0; k < n_vecs; ++k) {
+        for (unsigned int comp = 0; comp < bs_f; ++comp) {
+          for (unsigned char der = 0; der < P4EST_DIM; ++der) {
+            fd_p[k][P4EST_DIM*(bs_f*node_idx+comp) + der] = qnnn.d_central(der, f_p[k], bs_f, comp); // first derivative of the comp_th field in f[k] along cartesian direction der
+          }
+        }
+      }
+    }
+  }
+
+  for (unsigned int k = 0; k < n_vecs; ++k) {
+    // restore internal data
+    ierr = VecRestoreArray(f[k],   &f_p[k]  ); CHKERRXX(ierr);
+    // finish the ghost update process to ensure all values are updated
+    ierr = VecGhostUpdateEnd(fd[k], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    // restore internal data
+    ierr = VecRestoreArray(fd[k], &fd_p[k]); CHKERRXX(ierr);
+  }
+
+  ierr = PetscLogEventEnd(log_my_p4est_node_neighbors_t_2nd_derivatives_central_block, f, fdd, 0, 0); CHKERRXX(ierr);
+}
+
+
+#ifdef P4_TO_P8
+void my_p4est_node_neighbors_t::first_derivatives_central(const Vec f[], Vec fx[], Vec fy[], Vec fz[], const unsigned int& n_vecs, const unsigned int& bs) const
+#else
+void my_p4est_node_neighbors_t::first_derivatives_central(const Vec f[], Vec fx[], Vec fy[], const unsigned int& n_vecs, const unsigned int& bs) const
+#endif
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_node_neighbors_t_1st_derivatives_central, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -2227,114 +2307,233 @@ void my_p4est_node_neighbors_t::first_derivatives_central(const Vec f, Vec fx[P4
 
 #ifdef CASL_THROWS
   {
-    Vec f_l, fx_l[P4EST_DIM];
-    PetscInt f_size, fx_size[P4EST_DIM];
+    Vec f_l, fx_l, fy_l;
+    PetscInt f_size, fx_size, fy_size, bs_f, bs_x, bs_y;
+#ifdef P4_TO_P8
+    Vec fz_l;
+    PetscInt fz_size, bs_z;
+#endif
 
-    // Get local form
-    ierr = VecGhostGetLocalForm(f, &f_l); CHKERRXX(ierr);
-    ierr = VecGetSize(f_l, &f_size);   CHKERRXX(ierr);
-    for (short i=0; i<P4EST_DIM; i++){
-      ierr = VecGhostGetLocalForm(fx[i], &fx_l[i]); CHKERRXX(ierr);
-      ierr = VecGetSize(fx_l[i], &fx_size[i]); CHKERRXX(ierr);
+    for (unsigned int k = 0; k < n_vecs; ++k) {
+      // Get local form
+      ierr = VecGhostGetLocalForm(f[k],   &f_l  ); CHKERRXX(ierr);
+      ierr = VecGhostGetLocalForm(fx[k], &fx_l); CHKERRXX(ierr);
+      ierr = VecGhostGetLocalForm(fy[k], &fy_l); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+      ierr = VecGhostGetLocalForm(fz[k], &fz_l); CHKERRXX(ierr);
+#endif
 
-      if (f_size != fx_size[i]){
+      // Get sizes
+      ierr = VecGetSize(f_l,   &f_size);   CHKERRXX(ierr);
+      ierr = VecGetSize(fx_l, &fx_size); CHKERRXX(ierr);
+      ierr = VecGetSize(fy_l, &fy_size); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+      ierr = VecGetSize(fz_l, &fz_size); CHKERRXX(ierr);
+#endif
+      // Get block sizes
+      ierr = VecGetBlockSize(f_l,   &bs_f);   CHKERRXX(ierr);
+      ierr = VecGetBlockSize(fx_l, &bs_x); CHKERRXX(ierr);
+      ierr = VecGetBlockSize(fy_l, &bs_y); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+      ierr = VecGetBlockSize(fz_l, &bs_z); CHKERRXX(ierr);
+#endif
+
+      if (f_size != fx_size){
         std::ostringstream oss;
         oss << "[ERROR]: Vectors must be of same size when computing derivatives"
-            << " f_size = " << f_size << " fx_size[" << i << "] = " << fx_size[i] << std::endl;
+            << " f_size = " << f_size << " fx_size = " << fx_size << std::endl;
 
         throw std::invalid_argument(oss.str());
       }
-    }
 
-    // Restore local form
-    ierr = VecGhostRestoreLocalForm(f, &f_l); CHKERRXX(ierr);
-    for (short i=0; i<P4EST_DIM; i++)
-      ierr = VecGhostRestoreLocalForm(fx[i], &fx_l[i]); CHKERRXX(ierr);
-  }
+      if (f_size != fy_size){
+        std::ostringstream oss;
+        oss << "[ERROR]: Vectors must be of same size when computing derivatives"
+            << " f_size = " << f_size << " fy_size = " << fy_size << std::endl;
+
+        throw std::invalid_argument(oss.str());
+      }
+
+#ifdef P4_TO_P8
+      if (f_size != fz_size){
+        std::ostringstream oss;
+        oss << "[ERROR]: Vectors must be of same size when computing derivatives"
+            << " f_size = " << f_size << " fz_size = " << fz_size << std::endl;
+
+        throw std::invalid_argument(oss.str());
+      }
 #endif
 
+      if (((PetscInt) bs) != bs_f){
+        std::ostringstream oss;
+        oss << "[ERROR]: the block size of a vector in f does not match the given block size bs"
+            << " bs_f = " << bs_f << " bs = " << bs << std::endl;
+        throw std::invalid_argument(oss.str());
+      }
+
+      if (((PetscInt) bs) != bs_x){
+        std::ostringstream oss;
+        oss << "[ERROR]: the block size of a vector in fx does not match the given block size bs"
+            << " bs_x = " << bs_x << " bs = " << bs << std::endl;
+        throw std::invalid_argument(oss.str());
+      }
+
+      if (((PetscInt) bs) != bs_y){
+        std::ostringstream oss;
+        oss << "[ERROR]: the block size of a vector in fy does not match the given block size bs"
+            << " bs_y = " << bs_f << " bs = " << bs << std::endl;
+        throw std::invalid_argument(oss.str());
+      }
+
+#ifdef P4_TO_P8
+      if (((PetscInt) bs) != bs_z){
+        std::ostringstream oss;
+        oss << "[ERROR]: the block size of a vector in fz does not match the given block size bs"
+            << " bs_z = " << bs_f << " bs = " << bs << std::endl;
+        throw std::invalid_argument(oss.str());
+      }
+#endif
+
+      // Restore local form
+      ierr = VecGhostRestoreLocalForm(f[k],   &f_l  ); CHKERRXX(ierr);
+      ierr = VecGhostRestoreLocalForm(fx[k], &fx_l); CHKERRXX(ierr);
+      ierr = VecGhostRestoreLocalForm(fy[k], &fy_l); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+      ierr = VecGhostRestoreLocalForm(fz[k], &fz_l); CHKERRXX(ierr);
+#endif
+    }
+  }
+#endif
+  P4EST_ASSERT(bs > 0);
+
   // get access to the iternal data
-  double *f_p, *fx_p[P4EST_DIM];
-  ierr = VecGetArray(f,&f_p); CHKERRXX(ierr);
-  foreach_dimension(dim) {
-    ierr = VecGetArray(fx[dim], &fx_p[dim]); CHKERRXX(ierr);
+  double *f_p[n_vecs], *fx_p[n_vecs], *fy_p[n_vecs];
+#ifdef P4_TO_P8
+  double *fz_p[n_vecs];
+#endif
+  for (unsigned int k = 0; k < n_vecs; ++k) {
+    ierr = VecGetArray(f[k],   &f_p[k]  ); CHKERRXX(ierr);
+    ierr = VecGetArray(fx[k], &fx_p[k]); CHKERRXX(ierr);
+    ierr = VecGetArray(fy[k], &fy_p[k]); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    ierr = VecGetArray(fz[k], &fz_p[k]); CHKERRXX(ierr);
+#endif
   }
 
   if (is_initialized){
     // compute the derivatives on the boundary nodes -- fx
     for (size_t i=0; i<layer_nodes.size(); i++)
-      fx_p[0][layer_nodes[i]] = neighbors[layer_nodes[i]].dx_central(f_p);
-
+    {
+      p4est_locidx_t node_idx = layer_nodes[i];
+      const quad_neighbor_nodes_of_node_t& qnnn = neighbors[node_idx];
+      for (unsigned int k = 0; k < n_vecs; ++k)
+        for (unsigned int comp = 0; comp < bs; ++comp)
+          fx_p[k][bs*node_idx+comp] = qnnn.dx_central(f_p[k], bs, comp);
+    }
     // start updating the ghost values
-    ierr = VecGhostUpdateBegin(fx[0], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    for (unsigned int k = 0; k < n_vecs; ++k)
+      ierr = VecGhostUpdateBegin(fx[k], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
     // compute the derivatives on the boundary nodes -- fy
     for (size_t i=0; i<layer_nodes.size(); i++)
-      fx_p[1][layer_nodes[i]] = neighbors[layer_nodes[i]].dy_central(f_p);
-
+    {
+      p4est_locidx_t node_idx = layer_nodes[i];
+      const quad_neighbor_nodes_of_node_t& qnnn = neighbors[node_idx];
+      for (unsigned int k = 0; k < n_vecs; ++k)
+        for (unsigned int comp = 0; comp < bs; ++comp)
+          fy_p[k][bs*node_idx+comp] = qnnn.dy_central(f_p[k], bs, comp);
+    }
     // start updating the ghost values
-    ierr = VecGhostUpdateBegin(fx[1], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    for (unsigned int k = 0; k < n_vecs; ++k)
+      ierr = VecGhostUpdateBegin(fy[k], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-  #ifdef P4_TO_P8
+#ifdef P4_TO_P8
     // compute the derivatives on the boundary nodes -- fz
     for (size_t i=0; i<layer_nodes.size(); i++)
-      fx_p[2][layer_nodes[i]] = neighbors[layer_nodes[i]].dz_central(f_p);
-
+    {
+      p4est_locidx_t node_idx = layer_nodes[i];
+      const quad_neighbor_nodes_of_node_t& qnnn = neighbors[node_idx];
+      for (unsigned int k = 0; k < n_vecs; ++k)
+        for (unsigned int comp = 0; comp < bs; ++comp)
+          fz_p[k][bs*node_idx+comp] = qnnn.dz_central(f_p[k], bs, comp);
+    }
     // start updating the ghost values
-    ierr = VecGhostUpdateBegin(fx[2], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  #endif
+    for (unsigned int k = 0; k < n_vecs; ++k)
+      ierr = VecGhostUpdateBegin(fz[k], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+#endif
 
     // compute the derivaties for all internal nodes
     for (size_t i=0; i<local_nodes.size(); i++){
-      fx_p[0][local_nodes[i]] = neighbors[local_nodes[i]].dx_central(f_p);
-      fx_p[1][local_nodes[i]] = neighbors[local_nodes[i]].dy_central(f_p);
-  #ifdef P4_TO_P8
-      fx_p[2][local_nodes[i]] = neighbors[local_nodes[i]].dz_central(f_p);
-  #endif
+      p4est_locidx_t node_idx = local_nodes[i];
+      const quad_neighbor_nodes_of_node_t& qnnn = neighbors[node_idx];
+      for (unsigned int k = 0; k < n_vecs; ++k){
+        for (unsigned int comp = 0; comp < bs; ++comp){
+          fx_p[k][bs*node_idx+comp] = qnnn.dx_central(f_p[k], bs, comp);
+          fy_p[k][bs*node_idx+comp] = qnnn.dy_central(f_p[k], bs, comp);
+#ifdef P4_TO_P8
+          fz_p[k][bs*node_idx+comp] = qnnn.dz_central(f_p[k], bs, comp);
+#endif
+        }
+      }
     }
-
-    foreach_dimension(dim) {
-      ierr = VecGhostUpdateEnd(fx[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    }
-
   } else {
 
     quad_neighbor_nodes_of_node_t qnnn;
 
-    // compute the derivatives on the boundary nodes
+    // compute the derivatives on the boundary nodes -- fxx
     for (size_t i=0; i<layer_nodes.size(); i++){
-      get_neighbors(layer_nodes[i], qnnn);
-      fx_p[0][layer_nodes[i]] = qnnn.dx_central(f_p);
-      fx_p[1][layer_nodes[i]] = qnnn.dy_central(f_p);
+      p4est_locidx_t node_idx = layer_nodes[i];
+      get_neighbors(node_idx, qnnn);
+      for (unsigned int k = 0; k < n_vecs; ++k){
+        for (unsigned int comp = 0; comp < bs; ++comp){
+          fx_p[k][bs*node_idx+comp] = qnnn.dx_central(f_p[k], bs, comp);
+          fy_p[k][bs*node_idx+comp] = qnnn.dy_central(f_p[k], bs, comp);
 #ifdef P4_TO_P8
-      fx_p[2][layer_nodes[i]] = qnnn.dz_central(f_p);
+          fz_p[k][bs*node_idx+comp] = qnnn.dz_central(f_p[k], bs, comp);
 #endif
+        }
+      }
     }
     // start updating the ghost values
-    foreach_dimension(dim)
-      ierr = VecGhostUpdateBegin(fx[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    for (unsigned int k = 0; k < n_vecs; ++k) {
+      ierr = VecGhostUpdateBegin(fx[k], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+      ierr = VecGhostUpdateBegin(fy[k], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+      ierr = VecGhostUpdateBegin(fz[k], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+#endif
+    }
 
     // compute the derivaties for all internal nodes
     for (size_t i=0; i<local_nodes.size(); i++){
-      get_neighbors(local_nodes[i], qnnn);
-
-      fx_p[0][local_nodes[i]] = qnnn.dx_central(f_p);
-      fx_p[1][local_nodes[i]] = qnnn.dy_central(f_p);
-  #ifdef P4_TO_P8
-      fx_p[2][local_nodes[i]] = qnnn.dz_central(f_p);
-  #endif
-    }
-
-    // finish updating the ghost values
-    foreach_dimension(dim) {
-      ierr = VecGhostUpdateEnd(fx[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+      p4est_locidx_t node_idx = local_nodes[i];
+      get_neighbors(node_idx, qnnn);
+      for (unsigned int k = 0; k < n_vecs; ++k){
+        for (unsigned int comp = 0; comp < bs; ++comp){
+          fx_p[k][bs*node_idx+comp] = qnnn.dx_central(f_p[k], bs, comp);
+          fy_p[k][bs*node_idx+comp] = qnnn.dy_central(f_p[k], bs, comp);
+#ifdef P4_TO_P8
+          fz_p[k][bs*node_idx+comp] = qnnn.dz_central(f_p[k], bs, comp);
+#endif
+        }
+      }
     }
   }
 
   // restore internal data
-  ierr = VecRestoreArray(f,  &f_p  ); CHKERRXX(ierr);
-  foreach_dimension(dim) {
-    ierr = VecRestoreArray(fx[dim], &fx_p[dim]); CHKERRXX(ierr);
+  for (unsigned int k = 0; k < n_vecs; ++k) {
+    ierr = VecRestoreArray(f[k],   &f_p[k]  ); CHKERRXX(ierr);
+    // finish the ghost update process to ensure all values are updated
+    ierr = VecGhostUpdateEnd(fy[k], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd(fx[k], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    ierr = VecGhostUpdateEnd(fz[k], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+#endif
+
+    ierr = VecRestoreArray(fx[k], &fx_p[k]); CHKERRXX(ierr);
+    ierr = VecRestoreArray(fy[k], &fy_p[k]); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    ierr = VecRestoreArray(fz[k], &fz_p[k]); CHKERRXX(ierr);
+#endif
   }
 
   IPMLogRegionEnd("1st_derivatives");
@@ -2342,46 +2541,58 @@ void my_p4est_node_neighbors_t::first_derivatives_central(const Vec f, Vec fx[P4
 }
 
 #ifdef P4_TO_P8
-void my_p4est_node_neighbors_t::second_derivatives_central_using_block(const Vec f, Vec fxx, Vec fyy, Vec fzz) const
+void my_p4est_node_neighbors_t::second_derivatives_central_using_block(const Vec f[], Vec fxx[], Vec fyy[], Vec fzz[], const unsigned int& n_vecs, const unsigned int &bs) const
 #else
-void my_p4est_node_neighbors_t::second_derivatives_central_using_block(const Vec f, Vec fxx, Vec fyy) const
+void my_p4est_node_neighbors_t::second_derivatives_central_using_block(const Vec f[], Vec fxx[], Vec fyy[], const unsigned int& n_vecs, const unsigned int &bs) const
 #endif
 {
   // create temporary block vector
   PetscErrorCode ierr;
-  Vec fdd;
-  ierr = VecCreateGhostNodesBlock(p4est, nodes, P4EST_DIM, &fdd); CHKERRXX(ierr);
+  Vec fdd[n_vecs];
+  for (unsigned int k = 0; k < n_vecs; ++k) {
+    ierr = VecCreateGhostNodesBlock(p4est, nodes, bs*P4EST_DIM, &fdd[k]); CHKERRXX(ierr);
+  }
 
   // compute derivatives using block vector
-  second_derivatives_central(f, fdd);
+  second_derivatives_central(f, fdd, n_vecs, bs);
 
   // copy data back into original vectors
-  double *fdd_p, *fxx_p, *fyy_p;
-  ierr = VecGetArray(fdd, &fdd_p); CHKERRXX(ierr);
-  ierr = VecGetArray(fxx, &fxx_p); CHKERRXX(ierr);
-  ierr = VecGetArray(fyy, &fyy_p); CHKERRXX(ierr);
+  double *fdd_p[n_vecs], *fxx_p[n_vecs], *fyy_p[n_vecs];
 #ifdef P4_TO_P8
-  double *fzz_p;
-  ierr = VecGetArray(fzz, &fzz_p); CHKERRXX(ierr);
+  double *fzz_p[n_vecs];
 #endif
-
-  // compute the derivatives on the boundary nodes
-  for (size_t i=0; i<nodes->indep_nodes.elem_count; i++){
-    fxx_p[i] = fdd_p[P4EST_DIM*i + 0];
-    fyy_p[i] = fdd_p[P4EST_DIM*i + 1];
+  for (unsigned int k = 0; k < n_vecs; ++k) {
+    ierr = VecGetArray(fdd[k], &fdd_p[k]); CHKERRXX(ierr);
+    ierr = VecGetArray(fxx[k], &fxx_p[k]); CHKERRXX(ierr);
+    ierr = VecGetArray(fyy[k], &fyy_p[k]); CHKERRXX(ierr);
 #ifdef P4_TO_P8
-    fzz_p[i] = fdd_p[P4EST_DIM*i + 2];
+    double *fzz_p[n_vecs];
+    ierr = VecGetArray(fzz[k], &fzz_p[k]); CHKERRXX(ierr);
 #endif
   }
 
-  // restore internal data
-  ierr = VecRestoreArray(fdd, &fdd_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(fxx, &fxx_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(fyy, &fyy_p); CHKERRXX(ierr);
+  // compute the derivatives on the boundary nodes
+  for (size_t i=0; i<nodes->indep_nodes.elem_count; i++){
+    for (unsigned int k = 0; k < n_vecs; ++k) {
+      for (unsigned int comp = 0; comp < bs; ++comp) {
+        fxx_p[k][bs*i+comp] = fdd_p[k][P4EST_DIM*(bs*i+comp) + 0];
+        fyy_p[k][bs*i+comp] = fdd_p[k][P4EST_DIM*(bs*i+comp) + 1];
 #ifdef P4_TO_P8
-  ierr = VecRestoreArray(fzz, &fzz_p); CHKERRXX(ierr);
+        fzz_p[k][bs*i+comp] = fdd_p[k][P4EST_DIM*(bs*i+comp) + 2];
 #endif
+      }
+    }
+  }
 
-  // destroy temporary variable
-  ierr = VecDestroy(fdd); CHKERRXX(ierr);
+  // restore internal data
+  for (unsigned int k = 0; k < n_vecs; ++k) {
+    ierr = VecRestoreArray(fdd[k], &fdd_p[k]); CHKERRXX(ierr);
+    ierr = VecRestoreArray(fxx[k], &fxx_p[k]); CHKERRXX(ierr);
+    ierr = VecRestoreArray(fyy[k], &fyy_p[k]); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    double *fzz_p[n_vecs];
+    ierr = VecRestoreArray(fzz[k], &fzz_p[k]); CHKERRXX(ierr);
+#endif
+    ierr = VecDestroy(fdd[k]); CHKERRXX(ierr);
+  }
 }
