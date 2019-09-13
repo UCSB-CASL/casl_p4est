@@ -29,19 +29,23 @@ using std::vector;
 class my_p4est_general_poisson_nodes_mls_solver_t: public my_p4est_poisson_nodes_mls_t
 {
 double        kappa_sqr;
+protected:
+Vec rhs_original_copy;
+Vec diag_m_original_copy;
+Vec diag_p_original_copy;
+Vec diag_m_copy;
+Vec diag_p_copy;
+Vec sinh_soln;
+Vec soln_ghost;
+Vec A_0_soln;
+Vec A_0_sinh_soln;
+Vec A_k_sinh_soln;
 my_p4est_general_poisson_nodes_mls_solver_t(const my_p4est_general_poisson_nodes_mls_solver_t& other);
 my_p4est_general_poisson_nodes_mls_solver_t& operator=(const my_p4est_general_poisson_nodes_mls_solver_t& other);
 public :
 my_p4est_general_poisson_nodes_mls_solver_t(const my_p4est_node_neighbors_t *ngbd);
 ~my_p4est_general_poisson_nodes_mls_solver_t();
-void          get_linear_diagonal_terms(Vec& pristine_diagonal_terms, double value_to_be_subtracted);
-void          clean_matrix_diagonal(const Vec& pristine_diagonal_terms);
-void          get_residual_and_set_as_rhs(const Vec& psi_hat_);
-void          get_residual_and_set_as_rhs_v1(const Vec& psi_hat_);
-void          get_rhs_and_add_plus(Vec& rhs_plus, Vec& add_plus);
-void          solve_singular_part();
-int           solve_nonlinear(Vec psi_hat, double upper_bound_residual, int it_max, bool validation_flag);
-void          make_sure_is_node_sampled(Vec &vector);
+int           solve_nonlinear_v1(Vec psi_hat, double upper_bound_residual, int it_max, bool validation_flag);
 
 private :
 PetscErrorCode ierr;

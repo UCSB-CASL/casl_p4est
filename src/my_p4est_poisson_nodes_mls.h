@@ -27,6 +27,7 @@ using std::vector;
 class my_p4est_poisson_nodes_mls_t
 {
   const int phi_idx_wall_shift_ = 10;
+ protected:
   struct mat_entry_t
   {
     double val;

@@ -8191,20 +8191,20 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_regional( Vec phi, Vec mask
     double norm = sqrt(nx[n]*nx[n] + ny[n]*ny[n]);
 #endif
 
-		if(norm>EPS)
-		{
-			nx[n] /= norm;
-			ny[n] /= norm;
+        if(norm>EPS)
+        {
+            nx[n] /= norm;
+            ny[n] /= norm;
 #ifdef P4_TO_P8
-			nz[n] /= norm;
+            nz[n] /= norm;
 #endif
-		}
-		else
-		{
-			nx[n] = 0;
-			ny[n] = 0;
+        }
+        else
+        {
+            nx[n] = 0;
+            ny[n] = 0;
 #ifdef P4_TO_P8
-			nz[n] = 0;
+            nz[n] = 0;
 #endif
                 }
   }

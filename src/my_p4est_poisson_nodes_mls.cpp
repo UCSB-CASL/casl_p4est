@@ -1562,7 +1562,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
     ierr = VecPointwiseMult(rhs_jump_, rhs_jump_, submat_diag_ghost_);
     ierr = VecAXPY(rhs_, 1., rhs_jump_);
 
-    ierr = VecDestroy(rhs_jump_); CHKERRXX(ierr);
+    //ierr = VecDestroy(rhs_jump_); CHKERRXX(ierr);
 
     ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_mls_correct_rhs_jump, 0, 0, 0, 0); CHKERRXX(ierr);
   }
