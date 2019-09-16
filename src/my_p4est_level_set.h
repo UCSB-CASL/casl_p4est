@@ -192,12 +192,12 @@ public:
   void extend_from_interface_to_whole_domain_TVD_one_iteration( const std::vector<int>& map, double *phi_p,
                                                                 std::vector<double>& nx, std::vector<double>& ny,
                                                               #ifdef P4_TO_P8
-                                                              std::vector<double>& nz,
+                                                                std::vector<double>& nz,
                                                               #endif
                                                                 double *q_out_p,
                                                                 double *q_p, double *qxx_p, double *qyy_p,
                                                               #ifdef P4_TO_P8
-                                                              double *qzz_p,
+                                                                double *qzz_p,
                                                               #endif
                                                                 std::vector<double>& qi_m00, std::vector<double>& qi_p00,
                                                                 std::vector<double>& qi_0m0, std::vector<double>& qi_0p0,
@@ -205,13 +205,12 @@ public:
                                                                 std::vector<double>& qi_00m, std::vector<double>& qi_00p,
                                                               #endif
                                                                 std::vector<double>& s_m00, std::vector<double>& s_p00,
-                                                                std::vector<double>& s_0m0, std::vector<double>& s_0p0
+                                                                std::vector<double>& s_0m0, std::vector<double>& s_0p0,
                                                               #ifdef P4_TO_P8
-                                                                , std::vector<double>& s_00m, std::vector<double>& s_00p
+                                                                std::vector<double>& s_00m, std::vector<double>& s_00p
                                                               #endif
-                                                                ) const;
-  void extend_from_interface_to_whole_domain_TVD( Vec phi, Vec q_interface, Vec q, int iterations=20) const;
-  void extend_from_interface_to_whole_domain_TVD_1st_order_time( Vec phi, Vec q_interface, Vec q, int iterations=20) const;
+                                                                std::vector<bool>& inside_mask) const;
+  void extend_from_interface_to_whole_domain_TVD( Vec phi, Vec q_interface, Vec q, int iterations=20, Vec mask=NULL, double band_zero=2, double band_smooth=10) const;
 
   void enforce_contact_angle(Vec phi_wall, Vec phi_intf, Vec cos_angle, int iterations=20, Vec normal[] = NULL) const;
   void enforce_contact_angle2(Vec phi, Vec q, Vec cos_angle, int iterations=20, int order=2, Vec normal[] = NULL) const;
@@ -219,7 +218,7 @@ public:
 
   double advect_in_normal_direction_with_contact_angle(const Vec vn, const Vec surf_tns, const Vec cos_angle, const Vec phi_wall, Vec phi, double dt);
 
-  inline void extend_from_interface_to_whole_domain_TVD_in_place(Vec phi, Vec &q, Vec parent=NULL, int iterations=20) const
+  inline void extend_from_interface_to_whole_domain_TVD_in_place(Vec phi, Vec &q, Vec parent=NULL, int iterations=20, Vec mask=NULL) const
   {
     PetscErrorCode ierr;
     Vec tmp;
@@ -230,7 +229,7 @@ public:
       ierr = VecDuplicate(parent, &tmp); CHKERRXX(ierr);
     }
 
-    extend_from_interface_to_whole_domain_TVD(phi, q, tmp, iterations);
+    extend_from_interface_to_whole_domain_TVD(phi, q, tmp, iterations, mask);
 
     ierr = VecDestroy(q); CHKERRXX(ierr);
     q = tmp;
