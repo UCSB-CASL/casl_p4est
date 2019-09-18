@@ -52,8 +52,6 @@
 
 using namespace std;
 
-extern PetscLogEvent log_my_p4est_poisson_nodes_multialloy_solve;
-
 parameter_list_t pl;
 
 //-------------------------------------
@@ -83,7 +81,7 @@ DEFINE_PARAMETER(pl, int, lmin, 5, "Min level of the tree");
 DEFINE_PARAMETER(pl, int, lmax, 5, "Max level of the tree");
 #else
 DEFINE_PARAMETER(pl, int, lmin, 5, "Min level of the tree");
-DEFINE_PARAMETER(pl, int, lmax, 11, "Max level of the tree");
+DEFINE_PARAMETER(pl, int, lmax, 10, "Max level of the tree");
 #endif
 
 DEFINE_PARAMETER(pl, double, lip, 1.75, "");
@@ -94,21 +92,22 @@ DEFINE_PARAMETER(pl, double, lip, 1.75, "");
 DEFINE_PARAMETER(pl, bool, use_points_on_interface,   1, "");
 DEFINE_PARAMETER(pl, bool, use_superconvergent_robin, 1, "");
 
-DEFINE_PARAMETER(pl, int,    update_c0_robin, 1, "Solve for c0 using Robin BC: 0 - never, 1 - once, 2 - always");
+DEFINE_PARAMETER(pl, int,    update_c0_robin, 0, "Solve for c0 using Robin BC: 0 - never, 1 - once, 2 - always");
 DEFINE_PARAMETER(pl, int,    num_time_layers, 2, "");
 DEFINE_PARAMETER(pl, int,    pin_every_n_iterations, 20, "");
 DEFINE_PARAMETER(pl, int,    max_iterations,   10, "");
 DEFINE_PARAMETER(pl, int,    front_smoothing,   0, "");
 DEFINE_PARAMETER(pl, double, bc_tolerance,      1.e-5, "");
-DEFINE_PARAMETER(pl, double, cfl_number, 0.3, "");
+DEFINE_PARAMETER(pl, double, cfl_number, 0.15, "");
 DEFINE_PARAMETER(pl, double, phi_thresh, 0.1, "");
 
 //-------------------------------------
 // output parameters
 //-------------------------------------
-DEFINE_PARAMETER(pl, int,  save_every_n_iteration,  1, "");
+DEFINE_PARAMETER(pl, int,  save_every_n_iteration,  10, "");
 DEFINE_PARAMETER(pl, bool, save_characteristics,    1, "");
 DEFINE_PARAMETER(pl, bool, save_dendrites,          0, "");
+DEFINE_PARAMETER(pl, bool, save_timings,            1, "");
 DEFINE_PARAMETER(pl, bool, save_history,            1, "");
 DEFINE_PARAMETER(pl, bool, save_params,             1, "");
 DEFINE_PARAMETER(pl, bool, save_vtk,                1, "");
@@ -123,7 +122,7 @@ DEFINE_PARAMETER(pl, double, dendrite_min_length,       0.05, "");
 
 // problem parameters
 DEFINE_PARAMETER(pl, bool,   concentration_neumann, 1, "");
-DEFINE_PARAMETER(pl, int,    max_total_iterations,  10, "");
+DEFINE_PARAMETER(pl, int,    max_total_iterations,  1000000000, "");
 DEFINE_PARAMETER(pl, double, time_limit,            DBL_MAX, "");
 DEFINE_PARAMETER(pl, double, termination_length,    0.5, "");
 DEFINE_PARAMETER(pl, double, init_perturb,          1.e-5, "");
@@ -147,7 +146,7 @@ int num_comps = 1; // Number of components used
 
 DEFINE_PARAMETER(pl, double, volumetric_heat,  0, "Volumetric heat generation, J/cm^3");
 DEFINE_PARAMETER(pl, double, cooling_velocity, 0.01, "Cooling velocity, cm/s");
-DEFINE_PARAMETER(pl, double, temp_gradient,    1600, "Temperature gradient, K/cm");
+DEFINE_PARAMETER(pl, double, temp_gradient,    500, "Temperature gradient, K/cm");
 
 DEFINE_PARAMETER(pl, int,    smoothstep_order, 5, "Time for volumetric heat to fully switch on, s");
 DEFINE_PARAMETER(pl, double, volumetric_heat_tau, 0, "Time for volumetric heat to fully switch on, s");
@@ -250,7 +249,7 @@ void set_alloy_parameters()
       part_coeff_0     = 0.86;
       part_coeff_1     = 0.86;
 
-      eps_c = 5.e-7/melting_temp;
+      eps_c = 1.e-5/melting_temp;
       eps_v = 0;
       eps_a = 0.0;
       break;
@@ -282,7 +281,7 @@ void set_alloy_parameters()
       part_coeff_2     = 0.86;
       part_coeff_3     = 0.86;
 
-      eps_c = 5.e-6/melting_temp;
+      eps_c = 0.e-6/melting_temp;
       eps_v = 0;
       eps_a = 0.0;
       break;
@@ -686,9 +685,6 @@ int main (int argc, char* argv[])
   if (mpi.rank() == 0) pl.print_all();
 
   // prepare stuff for output
-  FILE *fich;
-  char name[10000];
-
   const char *out_dir = getenv("OUT_DIR");
   if (!out_dir) out_dir = ".";
   else
@@ -700,10 +696,14 @@ int main (int argc, char* argv[])
       throw std::invalid_argument("could not create OUT_DIR directory");
   }
 
-  if (mpi.rank() == 0 && save_characteristics)
-  {
-    sprintf(name, "%s/characteristics.dat", out_dir);
+  FILE *fich;
+  char name[10000];
+  char name_timings[10000];
+  sprintf(name, "%s/characteristics.dat", out_dir);
+  sprintf(name_timings, "%s/timings.dat", out_dir);
 
+  if (save_characteristics)
+  {
     ierr = PetscFOpen(mpi.comm(), name, "w", &fich); CHKERRXX(ierr);
     ierr = PetscFPrintf(mpi.comm(), fich, "time "
                                           "average_interface_velocity "
@@ -915,6 +915,10 @@ int main (int argc, char* argv[])
   int    vtk_idx        = 0;
   int    mpiret;
 
+  std::vector<bool>   logevent;
+  std::vector<double> old_time;
+  std::vector<int>    old_count;
+
   while (keep_going)
   {
     // check for time limit
@@ -970,9 +974,6 @@ int main (int argc, char* argv[])
       contr_phi.vec = mas.get_contr_phi();
       vn.vec        = mas.get_normal_velocity();
 
-      PetscEventPerfInfo info;
-      PetscLogEventGetPerfInfo(0,log_my_p4est_poisson_nodes_multialloy_solve, &info);
-      std::cout << p4est->mpirank << ": " << info.count << ": " << info.time << "\n";
 
       // compute level-set of liquid region
       vec_and_ptr_t phi_liquid(front_phi.vec);
@@ -1019,6 +1020,54 @@ int main (int argc, char* argv[])
     // advance front to t_{n+1}
     mas.compute_dt();
     mas.update_grid();
+
+    if (save_timings && save_now)
+    {
+      PetscStageLog stageLog;
+      PetscLogGetStageLog(&stageLog);
+
+      PetscEventPerfInfo *eventInfo      = stageLog->stageInfo[0].eventLog->eventInfo;
+      PetscInt            localNumEvents = stageLog->stageInfo[0].eventLog->numEvents;
+
+      if (vtk_idx == 0)
+      {
+        ierr = PetscFOpen(mpi.comm(), name_timings, "w", &fich); CHKERRXX(ierr);
+
+        logevent.resize(localNumEvents, false);
+        old_time.resize(localNumEvents, 0);
+        old_count.resize(localNumEvents, 0);
+
+        PetscFPrintf(mpi.comm(), fich, "iteration ");
+        for (PetscInt event = 0; event < localNumEvents; ++event)
+        {
+          if (eventInfo[event].count > 0)
+          {
+            PetscFPrintf(mpi.comm(), fich, "%s count ", stageLog->eventLog->eventInfo[event].name);
+            logevent[event] = true;
+          }
+        }
+        PetscFPrintf(mpi.comm(), fich, "\n");
+
+        ierr = PetscFClose(mpi.comm(), fich); CHKERRXX(ierr);
+      }
+
+      ierr = PetscFOpen(mpi.comm(), name_timings, "a", &fich); CHKERRXX(ierr);
+
+      PetscFPrintf(mpi.comm(), fich, "%d ", iteration);
+      for (PetscInt event = 0; event < localNumEvents; ++event)
+      {
+        if (logevent[event])
+        {
+          PetscFPrintf(mpi.comm(), fich, "%e %d ", eventInfo[event].time-old_time[event], eventInfo[event].count-old_count[event] );
+          old_time[event]  = eventInfo[event].time;
+          old_count[event] = eventInfo[event].count;
+        }
+      }
+      PetscFPrintf(mpi.comm(), fich, "\n");
+
+      ierr = PetscFClose(mpi.comm(), fich); CHKERRXX(ierr);
+      ierr = PetscPrintf(mpi.comm(), "saved timings in %s\n", name_timings); CHKERRXX(ierr);
+    }
 
     iteration++;
 

@@ -5168,10 +5168,12 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD_one_iterati
 }
 
 
-void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD(Vec phi, Vec qi, Vec q, int iterations, Vec mask, double band_zero, double band_smooth) const
+void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD(Vec phi, Vec qi, Vec q, int iterations, Vec mask, double band_zero, double band_smooth, double (*cf)(p4est_locidx_t, int, double)) const
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_level_set_extend_from_interface_TVD, phi, qi, q, 0); CHKERRXX(ierr);
+
+  if (mask != NULL && cf != NULL) throw std::invalid_argument("No mask and cf simultaneously at the moment");
 
   /* init the neighborhood information if needed */
   /* NOTE: from now on the neighbors will be initialized ... do we want to clear them
@@ -5474,18 +5476,24 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD(Vec phi, Ve
   const std::vector<p4est_locidx_t>& layer_nodes = ngbd->layer_nodes;
   const std::vector<p4est_locidx_t>& local_nodes = ngbd->local_nodes;
 
-  if (mask == NULL)
+  if (cf == NULL)
   {
-    for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
-      q_p[n] = fabs(phi_p[n])<1.5*dl ? qi_p[n] : 0;
-  } else {
-    double *mask_p;
-    ierr = VecGetArray(mask, &mask_p); CHKERRXX(ierr);
-    for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+    if (mask == NULL)
     {
-      q_p[n] = MAX(mask_p[n], fabs(phi_p[n]))<1.5*dl ? qi_p[n] : 0;
+      for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+        q_p[n] = fabs(phi_p[n])<1.5*dl ? qi_p[n] : 0;
+    } else {
+      double *mask_p;
+      ierr = VecGetArray(mask, &mask_p); CHKERRXX(ierr);
+      for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+      {
+        q_p[n] = MAX(mask_p[n], fabs(phi_p[n]))<1.5*dl ? qi_p[n] : 0;
+      }
+      ierr = VecRestoreArray(mask, &mask_p); CHKERRXX(ierr);
     }
-    ierr = VecRestoreArray(mask, &mask_p); CHKERRXX(ierr);
+  } else {
+    for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+      q_p[n] = 0;
   }
 
   // first initialize the quantities at the interface (instead of doing it each time in the loop ...)
@@ -5792,8 +5800,9 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD(Vec phi, Ve
                        , z
                  #endif
                      };
-        interp_m00.add_point(n, xyz);
-        s_m00[n] = dist;
+      if (cf == NULL) interp_m00.add_point(n, xyz);
+      else qi_m00[n] = (*cf)(n, dir::f_m00, dist);
+      s_m00[n] = dist;
     }
     else
     {
@@ -5811,7 +5820,8 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD(Vec phi, Ve
                        , z
                  #endif
                      };
-        interp_p00.add_point(n, xyz);
+        if (cf == NULL) interp_p00.add_point(n, xyz);
+        else qi_p00[n] = (*cf)(n, dir::f_p00, dist);
         s_p00[n] = dist;
     }
     else
@@ -5829,7 +5839,8 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD(Vec phi, Ve
                        , z
                  #endif
                      };
-        interp_0m0.add_point(n, xyz);
+        if (cf == NULL) interp_0m0.add_point(n, xyz);
+        else qi_0m0[n] = (*cf)(n, dir::f_0m0, dist);
         s_0m0[n] = dist;
     }
     else
@@ -5849,7 +5860,8 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD(Vec phi, Ve
                  #endif
                      };
 
-        interp_0p0.add_point(n, xyz);
+        if (cf == NULL) interp_0p0.add_point(n, xyz);
+        else qi_0p0[n] = (*cf)(n, dir::f_0p0, dist);
         s_0p0[n] = dist;
     }
     else
@@ -5866,7 +5878,8 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD(Vec phi, Ve
       dist = MAX(dist,EPS);
       double xyz[] = { x, y, z-dist };
 
-        interp_00m.add_point(n, xyz);
+        if (cf == NULL) interp_00m.add_point(n, xyz);
+        else qi_00m[n] = (*cf)(n, dir::f_00m, dist);
         s_00m[n] = dist;
     }
     else
@@ -5882,7 +5895,8 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD(Vec phi, Ve
       dist = MAX(dist,EPS);
       double xyz[] = { x, y, z+dist };
 
-        interp_00p.add_point(n, xyz);
+        if (cf == NULL) interp_00p.add_point(n, xyz);
+        else qi_00p[n] = (*cf)(n, dir::f_00p, dist);
         s_00p[n] = dist;
     }
     else
@@ -5893,14 +5907,17 @@ void my_p4est_level_set_t::extend_from_interface_to_whole_domain_TVD(Vec phi, Ve
 #endif
   }
 
-  interp_m00.interpolate(qi_m00.data());
-  interp_p00.interpolate(qi_p00.data());
-  interp_0m0.interpolate(qi_0m0.data());
-  interp_0p0.interpolate(qi_0p0.data());
+  if (cf == NULL)
+  {
+    interp_m00.interpolate(qi_m00.data());
+    interp_p00.interpolate(qi_p00.data());
+    interp_0m0.interpolate(qi_0m0.data());
+    interp_0p0.interpolate(qi_0p0.data());
 #ifdef P4_TO_P8
-  interp_00m.interpolate(qi_00m.data());
-  interp_00p.interpolate(qi_00p.data());
+    interp_00m.interpolate(qi_00m.data());
+    interp_00p.interpolate(qi_00p.data());
 #endif
+  }
 
   if (mask != NULL)
   {

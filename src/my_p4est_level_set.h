@@ -210,7 +210,7 @@ public:
                                                                 std::vector<double>& s_00m, std::vector<double>& s_00p
                                                               #endif
                                                                 std::vector<bool>& inside_mask) const;
-  void extend_from_interface_to_whole_domain_TVD( Vec phi, Vec q_interface, Vec q, int iterations=20, Vec mask=NULL, double band_zero=2, double band_smooth=10) const;
+  void extend_from_interface_to_whole_domain_TVD(Vec phi, Vec q_interface, Vec q, int iterations=20, Vec mask=NULL, double band_zero=2, double band_smooth=10, double (*cf)(p4est_locidx_t, int, double)=NULL) const;
 
   void enforce_contact_angle(Vec phi_wall, Vec phi_intf, Vec cos_angle, int iterations=20, Vec normal[] = NULL) const;
   void enforce_contact_angle2(Vec phi, Vec q, Vec cos_angle, int iterations=20, int order=2, Vec normal[] = NULL) const;

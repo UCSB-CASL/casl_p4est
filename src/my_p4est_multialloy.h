@@ -192,6 +192,29 @@ private:
   double         dt_max_;
   double         front_velo_norm_max_;
 
+  static my_p4est_node_neighbors_t *v_ngbd;
+  static double *v_c_p, **v_c_d_p, **v_c_dd_p, **v_normal_p;
+  static double v_factor;
+
+  void set_velo_interpolation(my_p4est_node_neighbors_t *ngbd, double *c_p, double **c_d_p, double **c_dd_p, double **normal_p, double factor)
+  {
+    v_ngbd     = ngbd;
+    v_c_p      = c_p;
+    v_c_d_p    = c_d_p;
+    v_c_dd_p   = c_dd_p;
+    v_normal_p = normal_p;
+    v_factor   = factor;
+  }
+
+  static double velo(p4est_locidx_t n, int dir, double dist)
+  {
+    const quad_neighbor_nodes_of_node_t &qnnn = (*v_ngbd)[n];
+    return -v_factor*
+        ( qnnn.interpolate_in_dir(dir, dist, v_c_d_p[0])*qnnn.interpolate_in_dir(dir, dist, v_normal_p[0])
+        + qnnn.interpolate_in_dir(dir, dist, v_c_d_p[1])*qnnn.interpolate_in_dir(dir, dist, v_normal_p[1]))
+        / MAX(qnnn.interpolate_in_dir(dir, dist, v_c_p, v_c_dd_p), 1e-7);
+  };
+
 
 public:
   my_p4est_multialloy_t(int num_comps, int num_time_layers);

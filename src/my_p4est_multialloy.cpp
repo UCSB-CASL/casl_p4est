@@ -38,6 +38,10 @@ extern PetscLogEvent log_my_p4est_multialloy_update_grid_regularize_front;
 #define PetscLogFlops(n) 0
 #endif
 
+my_p4est_node_neighbors_t *my_p4est_multialloy_t::v_ngbd;
+double *my_p4est_multialloy_t::v_c_p, **my_p4est_multialloy_t::v_c_d_p, **my_p4est_multialloy_t::v_c_dd_p, **my_p4est_multialloy_t::v_normal_p;
+double my_p4est_multialloy_t::v_factor;
+
 my_p4est_multialloy_t::my_p4est_multialloy_t(int num_comps, int num_time_layers)
 {
   num_comps_       = num_comps;
@@ -358,17 +362,17 @@ void my_p4est_multialloy_t::compute_geometric_properties_front()
   ls.set_interpolation_on_interface(quadratic_non_oscillatory_continuous_v2);
   ls.extend_from_interface_to_whole_domain_TVD_in_place(front_phi_.vec, front_curvature_.vec, front_phi_.vec, 20);
 
-  front_curvature_.get_array();
+//  front_curvature_.get_array();
 
-  double kappa_max = 1./dxyz_min_;
+//  double kappa_max = 1./dxyz_min_;
 
-  foreach_node(n, nodes_)
-  {
-    if      (front_curvature_.ptr[n] > kappa_max) front_curvature_.ptr[n] = kappa_max;
-    else if (front_curvature_.ptr[n] <-kappa_max) front_curvature_.ptr[n] =-kappa_max;
-  }
+//  foreach_node(n, nodes_)
+//  {
+//    if      (front_curvature_.ptr[n] > kappa_max) front_curvature_.ptr[n] = kappa_max;
+//    else if (front_curvature_.ptr[n] <-kappa_max) front_curvature_.ptr[n] =-kappa_max;
+//  }
 
-  front_curvature_.restore_array();
+//  front_curvature_.restore_array();
 
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_compute_geometric_properties, 0, 0, 0, 0); CHKERRXX(ierr);
 }
@@ -392,75 +396,95 @@ void my_p4est_multialloy_t::compute_velocity()
   ierr = PetscLogEventBegin(log_my_p4est_multialloy_compute_velocity, 0, 0, 0, 0); CHKERRXX(ierr);
 
   // TODO: implement a smarter extend from interface
+  vec_and_ptr_dim_t c0_dd(front_normal_.vec);
+
+  ngbd_->second_derivatives_central(cl_[0].vec[0], c0_dd.vec);
 
   // flattened interface concentration
   vec_and_ptr_t c_interface(front_phi_.vec);
 
   my_p4est_level_set_t ls(ngbd_);
   ls.set_interpolation_on_interface(quadratic_non_oscillatory_continuous_v2);
-  ls.extend_from_interface_to_whole_domain_TVD(front_phi_.vec, cl_[0].vec[0], c_interface.vec);
+//  ls.extend_from_interface_to_whole_domain_TVD(front_phi_.vec, cl_[0].vec[0], c_interface.vec);
 
   vec_and_ptr_dim_t front_velo_tmp(front_phi_dd_.vec);
   vec_and_ptr_t     front_velo_norm_tmp(front_phi_.vec);
 
-  cl_[0]             .get_array();
-  cl0_grad_          .get_array();
-  front_normal_      .get_array();
-  c_interface        .get_array();
-  front_velo_tmp     .get_array();
-  front_velo_norm_tmp.get_array();
+  cl_[0]       .get_array();
+  cl0_grad_    .get_array();
+  front_normal_.get_array();
+  c0_dd        .get_array();
 
-  double xyz[P4EST_DIM];
+  set_velo_interpolation(ngbd_, cl_[0].ptr[0], cl0_grad_.ptr, c0_dd.ptr, front_normal_.ptr, solute_diff_[0]/(1.-part_coeff_[0]));
+  ls.extend_from_interface_to_whole_domain_TVD(front_phi_.vec, front_velo_norm_tmp.vec, front_velo_norm_[0].vec, 20, NULL, 0, 0, &velo);
 
-  quad_neighbor_nodes_of_node_t qnnn;
-  for(size_t i=0; i<ngbd_->get_layer_size(); ++i)
-  {
-    p4est_locidx_t n = ngbd_->get_layer_node(i);
-//    qnnn = ngbd_->get_neighbors(n);
+  cl_[0]       .restore_array();
+  cl0_grad_    .restore_array();
+  front_normal_.restore_array();
+  c0_dd        .restore_array();
 
-    XCODE( front_velo_tmp.ptr[0][n] = -cl0_grad_.ptr[0][n]*solute_diff_[0] / (1.-part_coeff_[0]) / MAX(c_interface.ptr[n], 1e-7) );
-    YCODE( front_velo_tmp.ptr[1][n] = -cl0_grad_.ptr[1][n]*solute_diff_[0] / (1.-part_coeff_[0]) / MAX(c_interface.ptr[n], 1e-7) );
-    ZCODE( front_velo_tmp.ptr[2][n] = -cl0_grad_.ptr[2][n]*solute_diff_[0] / (1.-part_coeff_[0]) / MAX(c_interface.ptr[n], 1e-7) );
+  c0_dd.destroy();
 
-    front_velo_norm_tmp.ptr[n] = SUMD(front_velo_tmp.ptr[0][n]*front_normal_.ptr[0][n],
-                                      front_velo_tmp.ptr[1][n]*front_normal_.ptr[1][n],
-                                      front_velo_tmp.ptr[2][n]*front_normal_.ptr[2][n]);
-  }
 
-  ierr = VecGhostUpdateBegin(front_velo_norm_tmp.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  foreach_dimension(dim)
-  {
-    ierr = VecGhostUpdateBegin(front_velo_tmp.vec[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  }
+//  cl_[0]             .get_array();
+//  cl0_grad_          .get_array();
+//  front_normal_      .get_array();
+//  c_interface        .get_array();
+//  front_velo_tmp     .get_array();
+//  front_velo_norm_tmp.get_array();
 
-  for(size_t i=0; i<ngbd_->get_local_size(); ++i)
-  {
-    p4est_locidx_t n = ngbd_->get_local_node(i);
-    //    qnnn = ngbd_->get_neighbors(n);
+//  double xyz[P4EST_DIM];
 
-    XCODE( front_velo_tmp.ptr[0][n] = -cl0_grad_.ptr[0][n]*solute_diff_[0] / (1.-part_coeff_[0]) / MAX(c_interface.ptr[n], 1e-7) );
-    YCODE( front_velo_tmp.ptr[1][n] = -cl0_grad_.ptr[1][n]*solute_diff_[0] / (1.-part_coeff_[0]) / MAX(c_interface.ptr[n], 1e-7) );
-    ZCODE( front_velo_tmp.ptr[2][n] = -cl0_grad_.ptr[2][n]*solute_diff_[0] / (1.-part_coeff_[0]) / MAX(c_interface.ptr[n], 1e-7) );
+//  quad_neighbor_nodes_of_node_t qnnn;
+//  for(size_t i=0; i<ngbd_->get_layer_size(); ++i)
+//  {
+//    p4est_locidx_t n = ngbd_->get_layer_node(i);
+////    qnnn = ngbd_->get_neighbors(n);
 
-    front_velo_norm_tmp.ptr[n] = SUMD(front_velo_tmp.ptr[0][n]*front_normal_.ptr[0][n],
-                                      front_velo_tmp.ptr[1][n]*front_normal_.ptr[1][n],
-                                      front_velo_tmp.ptr[2][n]*front_normal_.ptr[2][n]);
-  }
+//    XCODE( front_velo_tmp.ptr[0][n] = -cl0_grad_.ptr[0][n]*solute_diff_[0] / (1.-part_coeff_[0]) / MAX(c_interface.ptr[n], 1e-7) );
+//    YCODE( front_velo_tmp.ptr[1][n] = -cl0_grad_.ptr[1][n]*solute_diff_[0] / (1.-part_coeff_[0]) / MAX(c_interface.ptr[n], 1e-7) );
+//    ZCODE( front_velo_tmp.ptr[2][n] = -cl0_grad_.ptr[2][n]*solute_diff_[0] / (1.-part_coeff_[0]) / MAX(c_interface.ptr[n], 1e-7) );
 
-  ierr = VecGhostUpdateEnd(front_velo_norm_tmp.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  foreach_dimension(dim)
-  {
-    ierr = VecGhostUpdateEnd(front_velo_tmp.vec[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  }
+//    front_velo_norm_tmp.ptr[n] = SUMD(front_velo_tmp.ptr[0][n]*front_normal_.ptr[0][n],
+//                                      front_velo_tmp.ptr[1][n]*front_normal_.ptr[1][n],
+//                                      front_velo_tmp.ptr[2][n]*front_normal_.ptr[2][n]);
+//  }
 
-  cl_[0]             .restore_array();
-  cl0_grad_          .restore_array();
-  front_normal_      .restore_array();
-  c_interface        .restore_array();
-  front_velo_tmp     .restore_array();
-  front_velo_norm_tmp.restore_array();
+//  ierr = VecGhostUpdateBegin(front_velo_norm_tmp.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//  foreach_dimension(dim)
+//  {
+//    ierr = VecGhostUpdateBegin(front_velo_tmp.vec[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//  }
 
-  ls.extend_from_interface_to_whole_domain_TVD(front_phi_.vec, front_velo_norm_tmp.vec, front_velo_norm_[0].vec);
+//  for(size_t i=0; i<ngbd_->get_local_size(); ++i)
+//  {
+//    p4est_locidx_t n = ngbd_->get_local_node(i);
+//    //    qnnn = ngbd_->get_neighbors(n);
+
+//    XCODE( front_velo_tmp.ptr[0][n] = -cl0_grad_.ptr[0][n]*solute_diff_[0] / (1.-part_coeff_[0]) / MAX(c_interface.ptr[n], 1e-7) );
+//    YCODE( front_velo_tmp.ptr[1][n] = -cl0_grad_.ptr[1][n]*solute_diff_[0] / (1.-part_coeff_[0]) / MAX(c_interface.ptr[n], 1e-7) );
+//    ZCODE( front_velo_tmp.ptr[2][n] = -cl0_grad_.ptr[2][n]*solute_diff_[0] / (1.-part_coeff_[0]) / MAX(c_interface.ptr[n], 1e-7) );
+
+//    front_velo_norm_tmp.ptr[n] = SUMD(front_velo_tmp.ptr[0][n]*front_normal_.ptr[0][n],
+//                                      front_velo_tmp.ptr[1][n]*front_normal_.ptr[1][n],
+//                                      front_velo_tmp.ptr[2][n]*front_normal_.ptr[2][n]);
+//  }
+
+//  ierr = VecGhostUpdateEnd(front_velo_norm_tmp.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//  foreach_dimension(dim)
+//  {
+//    ierr = VecGhostUpdateEnd(front_velo_tmp.vec[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//  }
+
+//  cl_[0]             .restore_array();
+//  cl0_grad_          .restore_array();
+//  front_normal_      .restore_array();
+//  c_interface        .restore_array();
+//  front_velo_tmp     .restore_array();
+//  front_velo_norm_tmp.restore_array();
+
+//  ls.extend_from_interface_to_whole_domain_TVD(front_phi_.vec, front_velo_norm_tmp.vec, front_velo_norm_[0].vec);
+
   foreach_dimension(dim)
   {
     VecPointwiseMultGhost(front_velo_[0].vec[dim], front_velo_norm_[0].vec, front_normal_.vec[dim]);

@@ -328,7 +328,7 @@ struct quad_neighbor_nodes_of_node_t {
   {
     p4est_locidx_t node_nei = neighbor(dir);
     double         h   = distance(dir);
-    if (node_nei == -1) throw std::domain_error("interpolate_in_dir doesn't not support non-uniform grids yet\n");
+    if (node_nei == -1) throw std::domain_error("interpolate_in_dir does not support non-uniform grids yet\n");
     return f_ptr[node_000]*(1-dist/h) + f_ptr[node_nei]*dist/h;
   }
 
@@ -336,7 +336,7 @@ struct quad_neighbor_nodes_of_node_t {
   {
     p4est_locidx_t node_nei = neighbor(dir);
     double         h   = distance(dir);
-    if (node_nei == -1) throw std::domain_error("interpolate_in_dir doesn't not support non-uniform grids yet\n");
+    if (node_nei == -1) throw std::domain_error("interpolate_in_dir doesn not support non-uniform grids yet\n");
     return f_ptr[node_000]*(1-dist/h) + f_ptr[node_nei]*dist/h + 0.5*dist*(dist-h)*MINMOD(f_dd_ptr[node_000], f_dd_ptr[node_nei]);
   }
 
@@ -345,7 +345,7 @@ struct quad_neighbor_nodes_of_node_t {
     p4est_locidx_t node_nei = neighbor(dir);
     double         h   = distance(dir);
     int            dim = dir / 2;
-    if (node_nei == -1) throw std::domain_error("interpolate_in_dir doesn't not support non-uniform grids yet\n");
+    if (node_nei == -1) throw std::domain_error("interpolate_in_dir does not support non-uniform grids yet\n");
     return f_ptr[node_000]*(1-dist/h) + f_ptr[node_nei]*dist/h + 0.5*dist*(dist-h)*MINMOD(f_dd_ptr[dim][node_000], f_dd_ptr[dim][node_nei]);
   }
 
