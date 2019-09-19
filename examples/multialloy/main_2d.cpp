@@ -98,8 +98,10 @@ DEFINE_PARAMETER(pl, int,    pin_every_n_iterations, 20, "");
 DEFINE_PARAMETER(pl, int,    max_iterations,   10, "");
 DEFINE_PARAMETER(pl, int,    front_smoothing,   0, "");
 DEFINE_PARAMETER(pl, double, bc_tolerance,      1.e-5, "");
-DEFINE_PARAMETER(pl, double, cfl_number, 0.15, "");
+DEFINE_PARAMETER(pl, double, cfl_number, 0.25, "");
 DEFINE_PARAMETER(pl, double, phi_thresh, 0.1, "");
+DEFINE_PARAMETER(pl, double, curvature_smoothing, 0.35, "");
+DEFINE_PARAMETER(pl, int,    curvature_smoothing_steps, 10, "");
 
 //-------------------------------------
 // output parameters
@@ -427,7 +429,7 @@ public:
   {
     switch (geometry)
     {
-//      case 0: return MIN(-(y - 0.1), sqrt(SQR(x-0.5) + SQR(y-0.05))-0.025);
+//      case 0: return MAX(-(y - 0.1), -(sqrt(SQR(x-0.25) + SQR(y-0.5))-0.025));
       case 0: return -(y - 0.1);
       default: throw;
     }
@@ -879,6 +881,7 @@ int main (int argc, char* argv[])
   mas.set_cfl                      (cfl_number);
   mas.set_phi_thresh               (phi_thresh);
   mas.set_front_smoothing          (front_smoothing);
+  mas.set_curvature_smoothing      (curvature_smoothing, curvature_smoothing_steps);
 
   mas.set_use_superconvergent_robin(use_superconvergent_robin);
   mas.set_use_points_on_interface  (use_points_on_interface);

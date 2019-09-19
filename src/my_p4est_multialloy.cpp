@@ -118,6 +118,8 @@ my_p4est_multialloy_t::my_p4est_multialloy_t(int num_comps, int num_time_layers)
   dendrite_min_length_       = .05;
 
   front_smoothing_ = 0;
+  curvature_smoothing_ = 0;
+  curvature_smoothing_steps_ = 0;
 
   connectivity_ = NULL;
   p4est_ = NULL;
@@ -138,6 +140,7 @@ my_p4est_multialloy_t::~my_p4est_multialloy_t()
   contr_phi_.destroy();
   front_phi_.destroy();
   front_curvature_.destroy();
+  front_curvature_filtered_.destroy();
 
   contr_phi_dd_.destroy();
   front_phi_dd_.destroy();
@@ -281,6 +284,8 @@ void my_p4est_multialloy_t::initialize(MPI_Comm mpi_comm, double xyz_min[], doub
 
   dxyz_close_interface_ = 1.2*dxyz_max_;
 
+  // front_phi_ and front_phi_dd_ are templates for all other vectors
+
   // allocate memory for physical fields
   //--------------------------------------------------
   // Geometry
@@ -288,6 +293,7 @@ void my_p4est_multialloy_t::initialize(MPI_Comm mpi_comm, double xyz_min[], doub
   front_phi_.create(p4est_, nodes_);
   front_phi_dd_.create(p4est_, nodes_);
   front_curvature_.create(front_phi_.vec);
+  front_curvature_filtered_.create(front_phi_.vec);
   front_normal_.create(front_phi_dd_.vec);
 
   contr_phi_.create(p4est_, nodes_);
@@ -373,6 +379,8 @@ void my_p4est_multialloy_t::compute_geometric_properties_front()
 //  }
 
 //  front_curvature_.restore_array();
+
+  if (curvature_smoothing_ != 0.0 && curvature_smoothing_steps_ > 0) compute_filtered_curvature();
 
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_compute_geometric_properties, 0, 0, 0, 0); CHKERRXX(ierr);
 }
@@ -603,6 +611,8 @@ void my_p4est_multialloy_t::update_grid()
   front_phi_dd_.create(p4est_np1, nodes_np1);
   front_curvature_.destroy();
   front_curvature_.create(front_phi_.vec);
+  front_curvature_filtered_.destroy();
+  front_curvature_filtered_.create(front_phi_.vec);
   front_normal_.destroy();
   front_normal_.create(front_phi_dd_.vec);
 
@@ -949,9 +959,10 @@ int my_p4est_multialloy_t::one_step()
   // solve coupled system of equations
   my_p4est_poisson_nodes_multialloy_t solver_all_in_one(ngbd_, num_comps_);
 
-  solver_all_in_one.set_front(front_phi_.vec, front_phi_dd_.vec, front_normal_.vec, front_curvature_.vec);
+  Vec curvature_to_use = (curvature_smoothing_ != 0.0 && curvature_smoothing_steps_ > 0) ? front_curvature_filtered_.vec : front_curvature_.vec;
 
-//  solver_all_in_one.set_number_of_components(num_comps_);
+  solver_all_in_one.set_front(front_phi_.vec, front_phi_dd_.vec, front_normal_.vec, curvature_to_use);
+
   solver_all_in_one.set_composition_parameters(conc_diag.data(), solute_diff_.data(), part_coeff_.data());
   solver_all_in_one.set_thermal_parameters(latent_heat_,
                                            density_l_*heat_capacity_l_*time_coeffs[0]/dt_[0], thermal_cond_l_,
@@ -1082,6 +1093,7 @@ void my_p4est_multialloy_t::save_VTK(int iter)
   bc_error_          .get_array(); point_data.push_back(bc_error_.ptr);           point_data_names.push_back("bc_error");
   dendrite_number_   .get_array(); point_data.push_back(dendrite_number_.ptr);    point_data_names.push_back("dendrite_number");
   dendrite_tip_      .get_array(); point_data.push_back(dendrite_tip_.ptr);       point_data_names.push_back("dendrite_tip");
+  front_curvature_filtered_.get_array(); point_data.push_back(front_curvature_filtered_.ptr);    point_data_names.push_back("kappa_filt");
 
   VecScaleGhost(front_velo_norm_[0].vec, 1./scaling_);
 
@@ -1112,6 +1124,7 @@ void my_p4est_multialloy_t::save_VTK(int iter)
   bc_error_          .restore_array();
   dendrite_number_   .restore_array();
   dendrite_tip_      .restore_array();
+  front_curvature_filtered_.restore_array();
 
   PetscPrintf(p4est_->mpicomm, "VTK saved in %s\n", name);
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_save_vtk, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -1794,4 +1807,35 @@ void my_p4est_multialloy_t::compute_solid()
   ls.extend_Over_Interface_TVD(history_front_phi_.vec, history_front_velo_norm_.vec,  5, 1);
   VecScaleGhost(history_front_phi_.vec, -1.);
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_compute_solid, 0, 0, 0, 0); CHKERRXX(ierr);
+}
+
+void my_p4est_multialloy_t::compute_filtered_curvature()
+{
+  double smoothing = SQR(curvature_smoothing_*diag_);
+
+  my_p4est_interpolation_nodes_t interp(ngbd_);
+  interp.set_input(front_phi_.vec, linear);
+  VecCopyGhost(front_phi_.vec, front_curvature_filtered_.vec);
+
+  my_p4est_poisson_nodes_mls_t solver(ngbd_);
+
+  solver.set_mu(smoothing/double(curvature_smoothing_steps_));
+  solver.set_diag(1.);
+  solver.set_rhs(front_curvature_filtered_.vec);
+//  solver.set_wc(neumann_cf, zero_cf);
+  solver.set_wc(dirichlet_cf, interp);
+
+  for (int i = 0; i < curvature_smoothing_steps_; ++i)
+  {
+    solver.solve(front_curvature_filtered_.vec, true);
+  }
+
+  VecAXPBYGhost(front_curvature_filtered_.vec, -1., 1., front_phi_.vec);
+  VecScaleGhost(front_curvature_filtered_.vec, 1./smoothing);
+
+  my_p4est_level_set_t ls(ngbd_);
+  ls.set_interpolation_on_interface(linear);
+
+  ls.extend_from_interface_to_whole_domain_TVD_in_place(front_phi_.vec, front_curvature_filtered_.vec, front_phi_.vec);
+
 }

@@ -52,45 +52,6 @@ class my_p4est_level_set_t {
                                               #endif
                                                 const double *pn, double *pnp1);
 
-
-#ifdef P4_TO_P8
-  class zero_cf_t : public CF_3
-  {
-  public:
-    double operator()(double, double, double) const
-    {
-      return 0;
-    }
-  } zero_cf;
-
-  class bc_wall_type_t : public WallBC3D
-  {
-  public:
-    BoundaryConditionType operator()( double x, double y, double z ) const
-    {
-      return NEUMANN;
-    }
-  } bc_wall_type;
-#else
-  class zero_cf_t : public CF_2
-  {
-  public:
-    double operator()(double, double) const
-    {
-      return 0;
-    }
-  } zero_cf;
-
-  class bc_wall_type_t : public WallBC2D
-  {
-  public:
-    BoundaryConditionType operator()( double x, double y ) const
-    {
-      return NEUMANN;
-    }
-  } bc_wall_type;
-#endif
-
   // auxiliary flags and options
   interpolation_method interpolation_on_interface;
   bool                 use_neumann_for_contact_angle;

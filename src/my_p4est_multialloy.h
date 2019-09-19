@@ -67,6 +67,7 @@ private:
   vec_and_ptr_t contr_phi_;
   vec_and_ptr_t front_phi_;
   vec_and_ptr_t front_curvature_;
+  vec_and_ptr_t front_curvature_filtered_;
 
   vec_and_ptr_dim_t contr_phi_dd_;
   vec_and_ptr_dim_t front_phi_dd_;
@@ -164,6 +165,8 @@ private:
   double bc_tolerance_;
   double phi_thresh_;
   double cfl_number_;
+  double curvature_smoothing_;
+  double curvature_smoothing_steps_;
 
   bool use_superconvergent_robin_;
   bool use_points_on_interface_;
@@ -392,6 +395,9 @@ public:
   inline void set_pin_every_n_iterations   (int value)    { pin_every_n_iterations_    = value; }
   inline void set_max_iterations           (int value)    { max_iterations_            = value; }
   inline void set_front_smoothing          (int value)    { front_smoothing_           = value; }
+  inline void set_curvature_smoothing      (double value,
+                                            int    steps) { curvature_smoothing_       = value;
+                                                            curvature_smoothing_steps_ = steps; }
 
   inline void set_phi_thresh               (double value) { phi_thresh_                = value; }
   inline void set_bc_tolerance             (double value) { bc_tolerance_              = value; }
@@ -403,6 +409,7 @@ public:
   void regularize_front();
   void compute_geometric_properties_front();
   void compute_geometric_properties_contr();
+  void compute_filtered_curvature();
   void compute_velocity();
   void compute_solid();
 

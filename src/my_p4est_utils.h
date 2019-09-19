@@ -2088,9 +2088,34 @@ public:
   {
     return 0;
   }
-};
+} static zero_cf;
 
-static zero_cf_t zero_cf;
+class dirichlet_cf_t : public WallBCDIM
+{
+public:
+  BoundaryConditionType operator()(DIM(double, double, double)) const
+  {
+    return DIRICHLET;
+  }
+} static dirichlet_cf;
+
+class neumann_cf_t : public WallBCDIM
+{
+public:
+  BoundaryConditionType operator()(DIM(double, double, double)) const
+  {
+    return NEUMANN;
+  }
+} static neumann_cf;
+
+class robin_cf_t : public WallBCDIM
+{
+public:
+  BoundaryConditionType operator()(DIM(double, double, double)) const
+  {
+    return ROBIN;
+  }
+} static robin_cf;
 
 class cf_const_t : public CF_DIM
 {

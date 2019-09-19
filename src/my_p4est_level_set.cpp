@@ -7459,7 +7459,7 @@ double my_p4est_level_set_t::advect_in_normal_direction_with_contact_angle(const
   solver.set_diag(1./dt);
   solver.set_rhs(rhs);
 
-  solver.set_wc(bc_wall_type, zero_cf);
+  solver.set_wc(neumann_cf, zero_cf);
 
   solver.solve(phi, true);
 
