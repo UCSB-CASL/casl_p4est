@@ -166,11 +166,11 @@ public:
                                                                 std::vector<double>& qi_00m, std::vector<double>& qi_00p,
                                                               #endif
                                                                 std::vector<double>& s_m00, std::vector<double>& s_p00,
-                                                                std::vector<double>& s_0m0, std::vector<double>& s_0p0,
+                                                                std::vector<double>& s_0m0, std::vector<double>& s_0p0
                                                               #ifdef P4_TO_P8
-                                                                std::vector<double>& s_00m, std::vector<double>& s_00p
+                                                                , std::vector<double>& s_00m, std::vector<double>& s_00p
                                                               #endif
-                                                                std::vector<bool>& inside_mask) const;
+                                                                ) const;
   void extend_from_interface_to_whole_domain_TVD(Vec phi, Vec q_interface, Vec q, int iterations=20, Vec mask=NULL, double band_zero=2, double band_smooth=10, double (*cf)(p4est_locidx_t, int, double)=NULL) const;
 
   void enforce_contact_angle(Vec phi_wall, Vec phi_intf, Vec cos_angle, int iterations=20, Vec normal[] = NULL) const;
