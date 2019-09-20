@@ -55,4 +55,3 @@ public:
   static FILE*        timing_file;
   static FILE*        error_file;
 };
-#endif // end of MY_P4EST_GENERAL_POISSON_NODES_MLS_SOLVER_H

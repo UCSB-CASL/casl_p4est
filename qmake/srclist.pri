@@ -112,6 +112,7 @@ HEADERS += \
 SOURCES += \
 #  $$PARCASL/src/my_p4est_bialloy.cpp \
 #  $$PARCASL/src/my_p4est_biofilm.cpp \
+  $$PARCASL/src/my_p4est_biomolecules.cpp \
   $$PARCASL/src/my_p4est_cell_neighbors.cpp \
   $$PARCASL/src/my_p4est_general_poisson_nodes_mls_solver.cpp \
 #  $$PARCASL/src/my_p4est_epitaxy.cpp \
@@ -163,7 +164,6 @@ HEADERS += \
 #  $$PARCASL/src/my_p8est_biofilm.h \
   $$PARCASL/src/my_p8est_cell_neighbors.h \
 #  $$PARCASL/src/my_p8est_epitaxy.h \
-  $$PARCASL/src/my_p4est_general_poisson_nodes_mls_solver.h \
   $$PARCASL/src/my_p8est_faces.h \
   $$PARCASL/src/my_p8est_hierarchy.h \
   $$PARCASL/src/my_p8est_integration_mls.h \

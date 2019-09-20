@@ -6,19 +6,33 @@
 #include <boost/algorithm/string.hpp>
 
 // p4est
+#include <p4est_bits.h>
+#include <p4est_extended.h>
 #include <src/my_p4est_utils.h>
 #include <src/my_p4est_vtk.h>
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_tools.h>
 #include <src/my_p4est_refine_coarsen.h>
-#include <src/my_p4est_poisson_jump_nodes_extended.h>
+#include <src/my_p4est_log_wrappers.h>
+#include <src/my_p4est_node_neighbors.h>
 #include <src/my_p4est_level_set.h>
+#include <src/my_p4est_poisson_nodes_mls.h>
+#include <src/my_p4est_poisson_jump_nodes_voronoi.h>
+#include <src/my_p4est_interpolation_nodes.h>
+#include <src/my_p4est_integration_mls.h>
+#include <src/my_p4est_semi_lagrangian.h>
+#include <src/my_p4est_macros.h>
+#include <src/my_p4est_shapes.h>
+#include <src/my_p4est_save_load.h>
+#include <src/my_p4est_general_poisson_nodes_mls_solver.h>
+#include <src/mls_integration/vtk/simplex2_mls_l_vtk.h>
+#include <src/mls_integration/vtk/simplex2_mls_q_vtk.h>
+
+#include <src/my_p4est_biomolecules.h>
+#include <src/my_p4est_poisson_jump_nodes_extended.h>
 #include <src/petsc_compatibility.h>
 #include <src/Parser.h>
 #include <src/casl_math.h>
-
-#include <src/my_p4est_biomolecules.h>
-
 using namespace std;
 
 template<typename T> inline T my_conversion(const string&);
@@ -94,11 +108,11 @@ int main(int argc, char *argv[]) {
     cmd.add_option("input-dir",     "folder in which the pqr files are located");
     cmd.add_option("pqr",           "name(s) of the pqr file(s) (syntax: '-pqr name0,name1,name2...)");
 #ifdef P4_TO_P8
-    cmd.add_option("centroid",      "centroid(s) coordinates of the molecule(s), domain [0, 1]X[0, 1]X[0, 1] (syntax: '-pqr x0,y0,z0,x1,y1,z1,x2,y2,z2,...)");
-    cmd.add_option("rotangle",      "rotation angle(s) of the molecule(s) (syntax: '-pqr angle00,angle01,angle02,angle10,angle11,angle12,angle20,angle21,angle22,...)");
+    cmd.add_option("centroid",      "centroid(s) coordinates of the molecule(s), domain [0, 1]X[0, 1]X[0, 1] (syntax: '-centroid x0,y0,z0,x1,y1,z1,x2,y2,z2,...)");
+    cmd.add_option("rotangle",      "rotation angle(s) of the molecule(s) (syntax: '-rotangle angle00,angle01,angle02,angle10,angle11,angle12,angle20,angle21,angle22,...)");
 #else
-    cmd.add_option("centroid",      "centroid(s) coordinates of the molecule(s), domain [0, 1]X[0, 1] (syntax: '-pqr x0,y0,x1,y1,x2,y2,...)");
-    cmd.add_option("rotangle",      "rotation angle(s) of the molecule(s) (syntax: '-pqr angle0,angle1,angle2,...)");
+    cmd.add_option("centroid",      "centroid(s) coordinates of the molecule(s), domain [0, 1]X[0, 1] (syntax: '-centroid x0,y0,x1,y1,x2,y2,...)");
+    cmd.add_option("rotangle",      "rotation angle(s) of the molecule(s) (syntax: '-rotangle angle0,angle1,angle2,...)");
 #endif
     cmd.add_option("boxsize",       "relative side length of the biggest bounding box to the min domain dimension (0 < boxsize < 1)");
     // grid construction and problem accuracy
@@ -109,17 +123,17 @@ int main(int argc, char *argv[]) {
     cmd.add_option("rp",            "probe radius (in Angstrom, >= 0.0)");
     cmd.add_option("OOA",           "order of accuracy (1 or 2)");
     cmd.add_option("surfgen",       "Method for surface generation (0: brute force, 1: list reduction, 2: list reduction with exact calculation of distances)");
-//    cmd.add_option("validation",    "flag activating the validation of the nonlinear solver (1 or 'yes' or 'true' to activate that feature)");
-//    // physical and solver parameters
-//    cmd.add_option("eps_mol",       "relative permittivity of the molecule (>=1.0, default is 2.0)");
-//    cmd.add_option("eps_elec",      "relative permittivity of the electrolyte (>=1.0, default is 80.0)");
-//    cmd.add_option("ion",           "ion charge in the symmetrical electrolyte (integer > 0, default is 1)");
-//    cmd.add_option("temperature",   "absolute temperature in K (>0.0, default is 300.0)");
-//    cmd.add_option("n0",            "far-field ion concentration in the electrolyte in mol/L (>0.0, default is 0.01)");
-//    cmd.add_option("rtol",          "tolerance on the 2-norm of the residual for the nonlinear solver (>0.0, default is 1e-8)");
-//    cmd.add_option("niter",         "number of Newton iterations for the nonlinear solver (>0, default is 1000)");
-//    cmd.add_option("linear",        "flag activating the linearization of the P-B problem (1 or 'yes' or 'true' to activate that feature, niter and rtol are irrelevant when this is activated)");
-    // exportation of results and/or timing
+    cmd.add_option("validation",    "flag activating the validation of the nonlinear solver (1 or 'yes' or 'true' to activate that feature)");
+    // physical and solver parameters
+    cmd.add_option("eps_mol",       "relative permittivity of the molecule (>=1.0, default is 2.0)");
+    cmd.add_option("eps_elec",      "relative permittivity of the electrolyte (>=1.0, default is 80.0)");
+    cmd.add_option("ion",           "ion charge in the symmetrical electrolyte (integer > 0, default is 1)");
+    cmd.add_option("temperature",   "absolute temperature in K (>0.0, default is 300.0)");
+    cmd.add_option("n0",            "far-field ion concentration in the electrolyte in mol/L (>0.0, default is 0.01)");
+    cmd.add_option("rtol",          "tolerance on the 2-norm of the residual for the nonlinear solver (>0.0, default is 1e-8)");
+    cmd.add_option("niter",         "number of Newton iterations for the nonlinear solver (>0, default is 1000)");
+    cmd.add_option("linear",        "flag activating the linearization of the P-B problem (1 or 'yes' or 'true' to activate that feature, niter and rtol are irrelevant when this is activated)");
+    //  exportation of results and/or timing
     cmd.add_option("output-dir",    "folder to save the results in");
     cmd.add_option("subvtk",        "flag activating the exportation of the grid after intermediary steps (1 or 'yes' or 'true' to deactivate that feature)");
     cmd.add_option("vtk",           "name of the vtk file(s) in the output-dir (no exportation of vtk file if 'null').");
@@ -171,18 +185,18 @@ int main(int argc, char *argv[]) {
     const int surf_gen                        = cmd.get<int>("surfgen", 1);
     const double probe_radius                 = cmd.get<double>("rp", 1.4);
     const int order_of_accuracy               = cmd.get<int>("OOA", 2);
-//    const string validation_string            = cmd.get<string>("validation", "no");
-//    const bool validation_flag                = (boost::iequals("1", validation_string) || boost::iequals("yes", validation_string) || boost::iequals("true", validation_string));
-//    // physical and solver parameters
-//    const double eps_mol                      = cmd.get<double>("eps_mol", 2.0);
-//    const double eps_elec                     = cmd.get<double>("eps_elec", 80.0);
-//    const int ion_charge                      = cmd.get<int>("ion", 1);
-//    const double temperature                  = cmd.get<double>("temperature", 300.0);
-//    const double far_field_ion_concentration  = cmd.get<double>("n0", 0.01);
-//    const double rtol                         = cmd.get<double>("rtol", 1e-8);
-//    const int niter_max                       = cmd.get<int>("niter", 1000);
-//    const string linearization_string         = cmd.get<string>("linear", "yes");
-//    const bool linearization_flag             = (boost::iequals("1", linearization_string) || boost::iequals("yes", linearization_string) || boost::iequals("true", linearization_string));
+    const string validation_string            = cmd.get<string>("validation", "no");
+    const bool validation_flag                = true;//(boost::iequals("1", validation_string) || boost::iequals("yes", validation_string) || boost::iequals("true", validation_string));
+    // physical and solver parameters
+    const double eps_mol                      = cmd.get<double>("eps_mol", 2.0);
+    const double eps_elec                     = cmd.get<double>("eps_elec", 80.0);
+    const int ion_charge                      = cmd.get<int>("ion", 1);
+    const double temperature                  = cmd.get<double>("temperature", 300.0);
+    const double far_field_ion_concentration  = cmd.get<double>("n0", 0.01);
+    const double rtol                         = cmd.get<double>("rtol", 1e-8);
+    const int niter_max                       = cmd.get<int>("niter", 1000);
+    const string linearization_string         = cmd.get<string>("linear", "yes");
+    const bool linearization_flag             = (boost::iequals("1", linearization_string) || boost::iequals("yes", linearization_string) || boost::iequals("true", linearization_string));
 
 
     // exportation folder and files
@@ -191,7 +205,7 @@ int main(int argc, char *argv[]) {
     string subvtk                             = cmd.get<string>("subvtk", "yes");
     const bool subvtk_flag                    = (boost::iequals("1", subvtk) || boost::iequals("yes", subvtk) || boost::iequals("true", subvtk));
     const string vtk_name                     = cmd.get<string>("vtk", "illustration");
-//    const string vtk_name = vtk + "_" + to_string(lmin) + "_" + to_string(lmax);
+    //const string vtk_name = vtk + "_" + to_string(lmin) + "_" + to_string(lmax);
     /* create the exportation folder if it does not exist yet */
     output_folder += ((output_folder[output_folder.size()-1] == '/')?"":"/");
     /* open/create the log file if needed */
@@ -267,44 +281,46 @@ int main(int argc, char *argv[]) {
     my_biomol.expand_ghost();
 
 
-//    my_p4est_biomolecules_solver_t solver(&my_biomol);
-//    solver.set_relative_permittivities(eps_mol, eps_elec);
-//    solver.set_ion_charge(ion_charge);
-//    solver.set_temperature_in_kelvin(temperature);
-//    solver.set_molar_concentration_of_electrolyte_in_mol_per_liter(far_field_ion_concentration);
+    my_p4est_biomolecules_solver_t solver(&my_biomol);
+    solver.set_relative_permittivities(eps_mol, eps_elec);
+    solver.set_ion_charge(ion_charge);
+    solver.set_temperature_in_kelvin(temperature);
+    solver.set_molar_concentration_of_electrolyte_in_mol_per_liter(far_field_ion_concentration);
 ////    solver.set_debye_length_in_angstrom(10.0*sqrt(10)/*/my_biomol.angstrom_to_domain*/); // if used alone, ion charge = 1, temperature = 300K and far_field_ion_density is calculated accordingly
 
-//    solver.solve_nonlinear(rtol, ((linearization_flag)?1:niter_max), validation_flag);
-//    solver.get_solvation_free_energy(validation_flag);
+    solver.solve_nonlinear(rtol, ((linearization_flag)?1:niter_max), validation_flag);
+    //solver.get_solvation_free_energy(validation_flag);
 
-//    Vec psi             = solver.get_psi(10.0, validation_flag);
-//    Vec psi_star = NULL, psi_naught = NULL, psi_bar = NULL, psi_hat = NULL, validation_error = NULL, residual_on_grid = NULL;
-//    solver.return_all_psi_vectors(psi_star, psi_naught, psi_bar, psi_hat, validation_flag);
+    //Vec psi             = solver.get_psi(10.0, validation_flag);
+    Vec psi_star = NULL, psi_naught = NULL, psi_bar = NULL, psi_hat = NULL, validation_error = NULL;//, residual_on_grid = NULL;
+    solver.return_all_psi_vectors(psi_star, psi_naught, psi_bar, psi_hat, validation_flag);
 //    if(validation_flag)
 //      residual_on_grid = solver.return_residual();
     Vec phi               = my_biomol.return_phi_vector();
     p4est_nodes_t* nodes  = my_biomol.return_nodes();
     p4est_ghost_t* ghost  = my_biomol.return_ghost();
-
     if(!boost::iequals(nullstr, vtk_name))
     {
-      double *phi_p = NULL;
-//      , *psi_star_p = NULL, *psi_naught_p = NULL, *psi_bar_p = NULL, *psi_hat_p = NULL, *psi_p = NULL, *validation_error_p = NULL, *residual_on_grid_p = NULL;
-//      if(!validation_flag)
-//      {
-//        ierr = VecGetArray(psi_star, &psi_star_p); CHKERRXX(ierr);
-//        ierr = VecGetArray(psi_naught, &psi_naught_p); CHKERRXX(ierr);
-//        ierr = VecGetArray(psi_bar, &psi_bar_p); CHKERRXX(ierr);
-//        ierr = VecGetArray(psi, &psi_p); CHKERRXX(ierr);
-//      }
-//      else
-//      {
-//        validation_error = solver.return_validation_error();
-//        ierr = VecGetArray(validation_error, &validation_error_p); CHKERRXX(ierr);
-//        ierr = VecGetArray(residual_on_grid, &residual_on_grid_p); CHKERRXX(ierr);
-//      }
+
+      double *phi_p = NULL, *psi_star_p = NULL, *psi_naught_p = NULL, *psi_bar_p = NULL, *psi_hat_p = NULL, *psi_p = NULL, *validation_error_p = NULL;//, *residual_on_grid_p = NULL;
+      if(!validation_flag)
+      {
+        ierr = VecGetArray(psi_star, &psi_star_p); CHKERRXX(ierr);
+        ierr = VecGetArray(psi_naught, &psi_naught_p); CHKERRXX(ierr);
+
+        ierr = VecGetArray(psi_bar, &psi_bar_p); CHKERRXX(ierr);
+        //ierr = VecGetArray(psi, &psi_p); CHKERRXX(ierr);
+      }
+      else
+      {
+        validation_error = solver.return_validation_error();
+
+        ierr = VecGetArray(validation_error, &validation_error_p); CHKERRXX(ierr);
+        //ierr = VecGetArray(residual_on_grid, &residual_on_grid_p); CHKERRXX(ierr);
+      }
       ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
-//      ierr = VecGetArray(psi_hat, &psi_hat_p); CHKERRXX(ierr);
+      ierr = VecGetArray(psi_hat, &psi_hat_p); CHKERRXX(ierr);
+
 
       string vtk_file = output_folder + vtk_name;
 
@@ -313,54 +329,62 @@ int main(int argc, char *argv[]) {
                              1, 0, vtk_file.c_str(),
                              VTK_POINT_DATA, "phi", phi_p);
 
-//      if(validation_flag)
-//        my_p4est_vtk_write_all(p4est, nodes, ghost,
-//                               P4EST_TRUE, P4EST_TRUE,
-//                               4, 0, vtk_file.c_str(),
-//                               VTK_POINT_DATA, "phi", phi_p,
-//                               VTK_POINT_DATA, "psi_hat", psi_hat_p,
-//                               VTK_POINT_DATA, "error", validation_error_p,
-//                               VTK_POINT_DATA, "residual", residual_on_grid_p);
-//      else
-//        my_p4est_vtk_write_all(p4est, nodes, ghost,
-//                               P4EST_TRUE, P4EST_TRUE,
-//                               6, 0, vtk_file.c_str(),
-//                               VTK_POINT_DATA, "phi", phi_p,
-//                               VTK_POINT_DATA, "psi_star", psi_star_p,
-//                               VTK_POINT_DATA, "psi_0", psi_naught_p,
-//                               VTK_POINT_DATA, "psi_bar", psi_bar_p,
-//                               VTK_POINT_DATA, "psi_hat", psi_hat_p,
-//                               VTK_POINT_DATA, "psi", psi_p);
-//      ierr = VecRestoreArray(psi_hat, &psi_hat_p); psi_hat_p = NULL; CHKERRXX(ierr);
+      if(validation_flag)
+      {
+
+        my_p4est_vtk_write_all(p4est, nodes, ghost,
+                               P4EST_TRUE, P4EST_TRUE,
+                               3, 0, vtk_file.c_str(),
+                               VTK_POINT_DATA, "phi", phi_p,
+                               VTK_POINT_DATA, "psi_hat", psi_hat_p,
+                               VTK_POINT_DATA, "error", validation_error_p);
+
+      }
+      else
+      {
+
+        my_p4est_vtk_write_all(p4est, nodes, ghost,
+                               P4EST_TRUE, P4EST_TRUE,
+                               5, 0, vtk_file.c_str(),
+                               VTK_POINT_DATA, "phi", phi_p,
+                               VTK_POINT_DATA, "psi_star", psi_star_p,
+                               VTK_POINT_DATA, "psi_0", psi_naught_p,
+                               VTK_POINT_DATA, "psi_bar", psi_bar_p,
+                               VTK_POINT_DATA, "psi_hat", psi_hat_p);
+
+      }
+
+      ierr = VecRestoreArray(psi_hat, &psi_hat_p); psi_hat_p = NULL; CHKERRXX(ierr);
       ierr = VecRestoreArray(phi, &phi_p); phi_p = NULL; CHKERRXX(ierr);
-//      if(!validation_flag)
-//      {
-//        ierr = VecRestoreArray(psi, &psi_p); psi_p = NULL; CHKERRXX(ierr);
-//        ierr = VecRestoreArray(psi_bar, &psi_bar_p); psi_bar_p = NULL; CHKERRXX(ierr);
-//        ierr = VecRestoreArray(psi_naught, &psi_naught_p); psi_naught_p = NULL; CHKERRXX(ierr);
-//        ierr = VecRestoreArray(psi_star, &psi_star_p); psi_star_p = NULL; CHKERRXX(ierr);
-//      }
-//      else
-//      {
-//        ierr = VecRestoreArray(validation_error, &validation_error_p); validation_error_p = NULL; CHKERRXX(ierr);
-//        ierr = VecRestoreArray(residual_on_grid, &residual_on_grid_p); residual_on_grid_p = NULL; CHKERRXX(ierr);
-//      }
+      if(!validation_flag)
+      {
+        //ierr = VecRestoreArray(psi, &psi_p); psi_p = NULL; CHKERRXX(ierr);
+        ierr = VecRestoreArray(psi_bar, &psi_bar_p); psi_bar_p = NULL; CHKERRXX(ierr);
+        ierr = VecRestoreArray(psi_naught, &psi_naught_p); psi_naught_p = NULL; CHKERRXX(ierr);
+        ierr = VecRestoreArray(psi_star, &psi_star_p); psi_star_p = NULL; CHKERRXX(ierr);
+      }
+      else
+      {
+        ierr = VecRestoreArray(validation_error, &validation_error_p); validation_error_p = NULL; CHKERRXX(ierr);
+        //ierr = VecRestoreArray(residual_on_grid, &residual_on_grid_p); residual_on_grid_p = NULL; CHKERRXX(ierr);
+      }
     }
+
     /* release memory */
     ierr = VecDestroy(phi); phi = NULL; CHKERRXX(ierr);
-//    ierr = VecDestroy(psi_hat); psi_hat = NULL; CHKERRXX(ierr);
-//    if(!validation_flag)
-//    {
-//      ierr = VecDestroy(psi_star); psi_star = NULL; CHKERRXX(ierr);
-//      ierr = VecDestroy(psi_naught); psi_naught = NULL; CHKERRXX(ierr);
-//      ierr = VecDestroy(psi_bar); psi_bar = NULL; CHKERRXX(ierr);
-//      ierr = VecDestroy(psi); psi = NULL; CHKERRXX(ierr);
-//    }
-//    else
-//    {
-//      ierr = VecDestroy(validation_error); validation_error = NULL; CHKERRXX(ierr);
-//      ierr = VecDestroy(residual_on_grid); residual_on_grid = NULL; CHKERRXX(ierr);
-//    }
+    ierr = VecDestroy(psi_hat); psi_hat = NULL; CHKERRXX(ierr);
+    if(!validation_flag)
+    {
+      ierr = VecDestroy(psi_star); psi_star = NULL; CHKERRXX(ierr);
+      ierr = VecDestroy(psi_naught); psi_naught = NULL; CHKERRXX(ierr);
+      ierr = VecDestroy(psi_bar); psi_bar = NULL; CHKERRXX(ierr);
+      //ierr = VecDestroy(psi); psi = NULL; CHKERRXX(ierr);
+    }
+    else
+    {
+      ierr = VecDestroy(validation_error); validation_error = NULL; CHKERRXX(ierr);
+    //  ierr = VecDestroy(residual_on_grid); residual_on_grid = NULL; CHKERRXX(ierr);
+    }
 
     p4est_nodes_destroy (nodes);
     p4est_ghost_destroy (ghost);

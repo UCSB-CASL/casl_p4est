@@ -21,6 +21,7 @@
 #include <src/my_p4est_cell_neighbors.h>
 #include <src/my_p4est_poisson_nodes.h>
 #include <src/my_p4est_poisson_jump_nodes_voronoi.h>
+#include <src/my_p4est_general_poisson_nodes_mls_solver.h>
 #include <src/my_p4est_poisson_nodes_mls.h>
 #include <p4est_extended.h>
 #endif
@@ -1210,13 +1211,15 @@ class my_p4est_biomolecules_solver_t{
   PetscErrorCode ierr;
 
   my_p4est_cell_neighbors_t*              cell_neighbors = NULL;
-  my_p4est_poisson_jump_nodes_voronoi_t*  jump_solver = NULL;
+  //my_p4est_poisson_jump_nodes_voronoi_t*  jump_solver = NULL;
+  my_p4est_general_poisson_nodes_mls_solver_t* jump_solver= NULL;
   my_p4est_poisson_nodes_t*               node_solver = NULL;
 
   Vec           psi_star, psi_naught, psi_bar, validation_error;
   bool          psi_star_psi_naught_and_psi_bar_are_set;
   Vec           psi_hat;
   bool          psi_hat_is_set;
+  //Vec eps_grad_n_psi_hat_jump, DIM(eps_grad_n_psi_hat_jump_xx_,eps_grad_n_psi_hat_jump_yy_,eps_grad_n_psi_hat_jump_zz_);
 
   inline bool   is_molecular_permittivity_set() const {return (mol_rel_permittivity > 1.0-EPS);}
   inline bool   is_electrolyte_permittivity_set() const {return (elec_rel_permittivity > 1.0-EPS);}
@@ -1257,7 +1260,7 @@ class my_p4est_biomolecules_solver_t{
     }
     return psi_star_value;
   }
-
+  void          return_psi_hat(Vec& psi_hat_out);
   void          return_psi_star_psi_naught_and_psi_bar(Vec& psi_star_out, Vec& psi_naught_out, Vec& psi_bar_out);
   void          calculate_jumps_in_normal_gradient(Vec& eps_grad_n_psi_hat_jump, bool validation_flag);
   void          get_rhs_and_add_plus(Vec& rhs_plus, Vec& add_plus);
@@ -1324,7 +1327,7 @@ public:
   int           solve_nonlinear(double upper_bound_residual = 1e-8, int it_max = 10000, bool validation_flag = false);
   void          get_solvation_free_energy(bool validation_flag = false);
   Vec           get_psi(double max_absolute_psi = DBL_MAX, bool validation_flag = false);
-  Vec           return_psi_hat();
+
   Vec           return_validation_error();
   Vec           return_residual();
   void          return_all_psi_vectors(Vec& psi_star_out, Vec& psi_naught_out, Vec& psi_bar_out, Vec& psi_hat_out, bool validation_flag = false);

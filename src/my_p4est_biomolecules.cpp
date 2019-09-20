@@ -1,15 +1,49 @@
 #include "my_p4est_biomolecules.h"
 
 #ifdef P4_TO_P8
+#include <p8est_bits.h>
+#include <p8est_extended.h>
+#include <src/my_p8est_utils.h>
 #include <src/my_p8est_vtk.h>
+#include <src/my_p8est_nodes.h>
+#include <src/my_p8est_tools.h>
+#include <src/my_p8est_refine_coarsen.h>
 #include <src/my_p8est_log_wrappers.h>
-#include <src/my_p8est_poisson_nodes.h>
+#include <src/my_p8est_node_neighbors.h>
+#include <src/my_p8est_level_set.h>
+#include <src/my_p8est_poisson_nodes_mls.h>
+#include <src/my_p8est_interpolation_nodes.h>
+#include <src/my_p8est_integration_mls.h>
+#include <src/my_p8est_semi_lagrangian.h>
+#include <src/my_p8est_macros.h>
+#include <src/my_p8est_shapes.h>
+#include <src/my_p8est_save_load.h>
+#include <src/my_p8est_general_poisson_nodes_mls_solver.h>
+#include <src/mls_integration/vtk/simplex3_mls_l_vtk.h>
+#include <src/mls_integration/vtk/simplex3_mls_q_vtk.h>
 #include <src/my_p8est_poisson_jump_nodes_voronoi.h>
 #else
+#include <p4est_bits.h>
+#include <p4est_extended.h>
+#include <src/my_p4est_utils.h>
 #include <src/my_p4est_vtk.h>
+#include <src/my_p4est_nodes.h>
+#include <src/my_p4est_tools.h>
+#include <src/my_p4est_refine_coarsen.h>
 #include <src/my_p4est_log_wrappers.h>
-#include <src/my_p4est_poisson_nodes.h>
+#include <src/my_p4est_node_neighbors.h>
+#include <src/my_p4est_level_set.h>
+#include <src/my_p4est_poisson_nodes_mls.h>
 #include <src/my_p4est_poisson_jump_nodes_voronoi.h>
+#include <src/my_p4est_interpolation_nodes.h>
+#include <src/my_p4est_integration_mls.h>
+#include <src/my_p4est_semi_lagrangian.h>
+#include <src/my_p4est_macros.h>
+#include <src/my_p4est_shapes.h>
+#include <src/my_p4est_save_load.h>
+#include <src/my_p4est_general_poisson_nodes_mls_solver.h>
+#include <src/mls_integration/vtk/simplex2_mls_l_vtk.h>
+#include <src/mls_integration/vtk/simplex2_mls_q_vtk.h>
 #endif
 
 #include <fstream>
@@ -18,10 +52,433 @@
 #include <src/matrix.h>
 #include <algorithm>
 #include <sys/stat.h>
+#include <src/Parser.h>
+#include <src/parameter_list.h>
 //#include <boost/algorithm/string.hpp>
 
 using namespace std;
 
+const int bdry_phi_max_num = 1;
+const int infc_phi_max_num = 1;
+
+parameter_list_t pl;
+
+//-------------------------------------
+// computational domain parameters
+//-------------------------------------
+DEFINE_PARAMETER(pl, int, px, 0, "Periodicity in the x-direction (0/1)");
+DEFINE_PARAMETER(pl, int, py, 0, "Periodicity in the y-direction (0/1)");
+DEFINE_PARAMETER(pl, int, pz, 0, "Periodicity in the z-direction (0/1)");
+
+DEFINE_PARAMETER(pl, int, nx, 1, "Number of trees in the x-direction");
+DEFINE_PARAMETER(pl, int, ny, 1, "Number of trees in the y-direction");
+DEFINE_PARAMETER(pl, int, nz, 1, "Number of trees in the z-direction");
+
+DEFINE_PARAMETER(pl, double, xmin, -1, "Box xmin");
+DEFINE_PARAMETER(pl, double, ymin, -1, "Box ymin");
+DEFINE_PARAMETER(pl, double, zmin, -1, "Box zmin");
+
+DEFINE_PARAMETER(pl, double, xmax,  1, "Box xmax");
+DEFINE_PARAMETER(pl, double, ymax,  1, "Box ymax");
+DEFINE_PARAMETER(pl, double, zmax,  1, "Box zmax");
+
+//-------------------------------------
+// refinement parameters
+//-------------------------------------
+#ifdef P4_TO_P8
+DEFINE_PARAMETER(pl, int, lmin, 5, "Min level of the tree");
+DEFINE_PARAMETER(pl, int, lmax, 7, "Max level of the tree");
+
+DEFINE_PARAMETER(pl, int, num_splits,           4, "Number of recursive splits");
+DEFINE_PARAMETER(pl, int, num_splits_per_split, 1, "Number of additional resolutions");
+
+DEFINE_PARAMETER(pl, int, num_shifts_x_dir, 1, "Number of grid shifts in the x-direction");
+DEFINE_PARAMETER(pl, int, num_shifts_y_dir, 1, "Number of grid shifts in the y-direction");
+DEFINE_PARAMETER(pl, int, num_shifts_z_dir, 1, "Number of grid shifts in the z-direction");
+#else
+DEFINE_PARAMETER(pl, int, lmin, 4, "Min level of the tree");
+DEFINE_PARAMETER(pl, int, lmax, 5, "Max level of the tree");
+
+DEFINE_PARAMETER(pl, int, num_splits,           5, "Number of recursive splits");
+DEFINE_PARAMETER(pl, int, num_splits_per_split, 1, "Number of additional resolutions");
+
+DEFINE_PARAMETER(pl, int, num_shifts_x_dir, 1, "Number of grid shifts in the x-direction");
+DEFINE_PARAMETER(pl, int, num_shifts_y_dir, 1, "Number of grid shifts in the y-direction");
+DEFINE_PARAMETER(pl, int, num_shifts_z_dir, 1, "Number of grid shifts in the z-direction");
+#endif
+
+DEFINE_PARAMETER(pl, int, iter_start, 0, "Skip n first iterations");
+DEFINE_PARAMETER(pl, double, lip, 2, "Lipschitz constant");
+
+DEFINE_PARAMETER(pl, bool, refine_strict,  1, "Refines every cell starting from the coarsest case if yes");
+DEFINE_PARAMETER(pl, bool, refine_rand,    0, "Add randomness into adaptive grid");
+DEFINE_PARAMETER(pl, bool, balance_grid,   1, "Enforce 1:2 ratio for adaptive grid");
+DEFINE_PARAMETER(pl, bool, coarse_outside, 0, "Use the coarsest possible grid outside the domain (0/1)");
+DEFINE_PARAMETER(pl, int,  expand_ghost,   0, "Number of ghost layer expansions");
+
+//-------------------------------------
+// test solutions
+//-------------------------------------
+
+DEFINE_PARAMETER(pl, int, n_um, 0, "");
+DEFINE_PARAMETER(pl, int, n_up, 0, "");
+
+DEFINE_PARAMETER(pl, double, mag_um, 1, "");
+DEFINE_PARAMETER(pl, double, mag_up, 1, "");
+
+DEFINE_PARAMETER(pl, int, n_mu_m, 0, "");
+DEFINE_PARAMETER(pl, int, n_mu_p, 0, "");
+
+DEFINE_PARAMETER(pl, double, mag_mu_m, 1, "");
+DEFINE_PARAMETER(pl, double, mag_mu_p, 1, "");
+
+DEFINE_PARAMETER(pl, double, mu_iter_num, 1, "");
+DEFINE_PARAMETER(pl, double, mag_mu_m_min, 1, "");
+DEFINE_PARAMETER(pl, double, mag_mu_m_max, 1, "");
+
+DEFINE_PARAMETER(pl, int, n_diag_m, 0, "");
+DEFINE_PARAMETER(pl, int, n_diag_p, 0, "");
+
+DEFINE_PARAMETER(pl, double, mag_diag_m, 1, "");
+DEFINE_PARAMETER(pl, double, mag_diag_p, 1, "");
+
+DEFINE_PARAMETER(pl, int, bc_wtype, DIRICHLET, "Type of boundary conditions on the walls");
+
+// boundary geometry
+DEFINE_PARAMETER(pl, int, bdry_phi_num, 0, "Domain geometry");
+DEFINE_PARAMETER(pl, int, infc_phi_num, 0, "Domain geometry");
+
+DEFINE_PARAMETER(pl, bool, bdry_present_00, 0, "Domain geometry");
+DEFINE_PARAMETER(pl, bool, bdry_present_01, 0, "Domain geometry");
+DEFINE_PARAMETER(pl, bool, bdry_present_02, 0, "Domain geometry");
+DEFINE_PARAMETER(pl, bool, bdry_present_03, 0, "Domain geometry");
+
+DEFINE_PARAMETER(pl, int, bdry_geom_00, 0, "Domain geometry");
+DEFINE_PARAMETER(pl, int, bdry_geom_01, 0, "Domain geometry");
+DEFINE_PARAMETER(pl, int, bdry_geom_02, 0, "Domain geometry");
+DEFINE_PARAMETER(pl, int, bdry_geom_03, 0, "Domain geometry");
+
+DEFINE_PARAMETER(pl, int, bdry_opn_00, MLS_INTERSECTION, "Domain geometry");
+DEFINE_PARAMETER(pl, int, bdry_opn_01, MLS_INTERSECTION, "Domain geometry");
+DEFINE_PARAMETER(pl, int, bdry_opn_02, MLS_INTERSECTION, "Domain geometry");
+DEFINE_PARAMETER(pl, int, bdry_opn_03, MLS_INTERSECTION, "Domain geometry");
+
+DEFINE_PARAMETER(pl, int, bc_coeff_00, 0, "Domain geometry");
+DEFINE_PARAMETER(pl, int, bc_coeff_01, 0, "Domain geometry");
+DEFINE_PARAMETER(pl, int, bc_coeff_02, 0, "Domain geometry");
+DEFINE_PARAMETER(pl, int, bc_coeff_03, 0, "Domain geometry");
+
+DEFINE_PARAMETER(pl, double, bc_coeff_00_mag, 1, "Domain geometry");
+DEFINE_PARAMETER(pl, double, bc_coeff_01_mag, 1, "Domain geometry");
+DEFINE_PARAMETER(pl, double, bc_coeff_02_mag, 1, "Domain geometry");
+DEFINE_PARAMETER(pl, double, bc_coeff_03_mag, 1, "Domain geometry");
+
+DEFINE_PARAMETER(pl, int, bc_type_00, DIRICHLET, "Type of boundary conditions on the domain boundary");
+DEFINE_PARAMETER(pl, int, bc_type_01, DIRICHLET, "Type of boundary conditions on the domain boundary");
+DEFINE_PARAMETER(pl, int, bc_type_02, DIRICHLET, "Type of boundary conditions on the domain boundary");
+DEFINE_PARAMETER(pl, int, bc_type_03, DIRICHLET, "Type of boundary conditions on the domain boundary");
+
+// interface geometry
+DEFINE_PARAMETER(pl, bool, infc_present_00, 0, "Domain geometry");
+DEFINE_PARAMETER(pl, bool, infc_present_01, 0, "Domain geometry");
+DEFINE_PARAMETER(pl, bool, infc_present_02, 0, "Domain geometry");
+DEFINE_PARAMETER(pl, bool, infc_present_03, 0, "Domain geometry");
+
+DEFINE_PARAMETER(pl, int, infc_geom_00, 0, "Domain geometry");
+DEFINE_PARAMETER(pl, int, infc_geom_01, 0, "Domain geometry");
+DEFINE_PARAMETER(pl, int, infc_geom_02, 0, "Domain geometry");
+DEFINE_PARAMETER(pl, int, infc_geom_03, 0, "Domain geometry");
+
+DEFINE_PARAMETER(pl, int, infc_opn_00, MLS_INTERSECTION, "Domain geometry");
+DEFINE_PARAMETER(pl, int, infc_opn_01, MLS_INTERSECTION, "Domain geometry");
+DEFINE_PARAMETER(pl, int, infc_opn_02, MLS_INTERSECTION, "Domain geometry");
+DEFINE_PARAMETER(pl, int, infc_opn_03, MLS_INTERSECTION, "Domain geometry");
+
+DEFINE_PARAMETER(pl, int, jc_value_00, 0, "0 - automatic, others - hardcoded");
+DEFINE_PARAMETER(pl, int, jc_value_01, 0, "0 - automatic, others - hardcoded");
+DEFINE_PARAMETER(pl, int, jc_value_02, 0, "0 - automatic, others - hardcoded");
+DEFINE_PARAMETER(pl, int, jc_value_03, 0, "0 - automatic, others - hardcoded");
+
+DEFINE_PARAMETER(pl, int, jc_flux_00, 0, "0 - automatic, others - hardcoded");
+DEFINE_PARAMETER(pl, int, jc_flux_01, 0, "0 - automatic, others - hardcoded");
+DEFINE_PARAMETER(pl, int, jc_flux_02, 0, "0 - automatic, others - hardcoded");
+DEFINE_PARAMETER(pl, int, jc_flux_03, 0, "0 - automatic, others - hardcoded");
+
+//DEFINE_PARAMETER(pl, int, bc_itype, ROBIN, "");
+
+//-------------------------------------
+// solver parameters
+//-------------------------------------
+DEFINE_PARAMETER(pl, int,  jc_scheme,         0, "Discretization scheme for interface conditions (0 - FVM, 1 - FDM)");
+DEFINE_PARAMETER(pl, int,  jc_sub_scheme,     0, "Interpolation subscheme for interface conditions (0 - from slow region, 1 - from fast region, 2 - based on nodes availability)");
+DEFINE_PARAMETER(pl, int,  integration_order, 2, "Select integration order (1 - linear, 2 - quadratic)");
+DEFINE_PARAMETER(pl, bool, sc_scheme,         1, "Use super-convergent scheme");
+
+// for symmetric scheme:
+DEFINE_PARAMETER(pl, bool, taylor_correction,      1, "Use Taylor correction to approximate Robin term (symmetric scheme)");
+DEFINE_PARAMETER(pl, bool, kink_special_treatment, 1, "Use the special treatment for kinks (symmetric scheme)");
+
+// for superconvergent scheme:
+DEFINE_PARAMETER(pl, bool, try_remove_hanging_cells, 0, "Ask solver to eliminate hanging cells");
+
+DEFINE_PARAMETER(pl, bool, store_finite_volumes,   1, "");
+DEFINE_PARAMETER(pl, bool, apply_bc_pointwise,     1, "");
+DEFINE_PARAMETER(pl, bool, use_centroid_always,    1, "");
+DEFINE_PARAMETER(pl, bool, sample_bc_node_by_node, 0, "");
+
+//-------------------------------------
+// level-set representation parameters
+//-------------------------------------
+DEFINE_PARAMETER(pl, bool, use_phi_cf,       0, "Use analytical level-set functions");
+DEFINE_PARAMETER(pl, bool, reinit_level_set, 1, "Reinitialize level-set function");
+
+// artificial perturbation of level-set values
+DEFINE_PARAMETER(pl, int,    dom_perturb,     0,   "Artificially pertub level-set functions (0 - no perturbation, 1 - smooth, 2 - noisy)");
+DEFINE_PARAMETER(pl, double, dom_perturb_mag, 0.1, "Magnitude of level-set perturbations");
+DEFINE_PARAMETER(pl, double, dom_perturb_pow, 2,   "Order of level-set perturbation (e.g. 2 for h^2 perturbations)");
+
+DEFINE_PARAMETER(pl, int,    ifc_perturb,     0,   "Artificially pertub level-set functions (0 - no perturbation, 1 - smooth, 2 - noisy)");
+DEFINE_PARAMETER(pl, double, ifc_perturb_mag, 0.1e-6, "Magnitude of level-set perturbations");
+DEFINE_PARAMETER(pl, double, ifc_perturb_pow, 2,   "Order of level-set perturbation (e.g. 2 for h^2 perturbations)");
+
+//-------------------------------------
+// convergence study parameters
+//-------------------------------------
+DEFINE_PARAMETER(pl, int,    compute_cond_num,       0, "Estimate L1-norm condition number");
+DEFINE_PARAMETER(pl, int,    extend_solution,        2, "Extend solution after solving: 0 - no extension, 1 - extend using normal derivatives, 2 - extend using all derivatives");
+DEFINE_PARAMETER(pl, double, mask_thresh,            0, "Mask threshold for excluding points in convergence study");
+DEFINE_PARAMETER(pl, bool,   compute_grad_between,   0, "Computes gradient between points if yes");
+DEFINE_PARAMETER(pl, bool,   scale_errors,           0, "Scale errors by max solution/gradient value");
+DEFINE_PARAMETER(pl, bool,   use_nonzero_guess,      0, "");
+DEFINE_PARAMETER(pl, double, extension_band_extend,  6, "");
+DEFINE_PARAMETER(pl, double, extension_band_compute, 6, "");
+DEFINE_PARAMETER(pl, double, extension_band_check,   6, "");
+DEFINE_PARAMETER(pl, double, extension_tol,          -1.e-10, "");
+DEFINE_PARAMETER(pl, int,    extension_iterations,   100, "");
+
+
+//-------------------------------------
+// output
+//-------------------------------------
+DEFINE_PARAMETER(pl, bool, save_vtk,           1, "Save the p4est in vtk format");
+DEFINE_PARAMETER(pl, bool, save_params,        0, "Save list of entered parameters");
+DEFINE_PARAMETER(pl, bool, save_domain,        0, "Save the reconstruction of an irregular domain (works only in serial!)");
+DEFINE_PARAMETER(pl, bool, save_matrix_ascii,  0, "Save the matrix in ASCII MATLAB format");
+DEFINE_PARAMETER(pl, bool, save_matrix_binary, 0, "Save the matrix in BINARY MATLAB format");
+DEFINE_PARAMETER(pl, bool, save_convergence,   0, "Save convergence results");
+
+// DOMAIN GEOMETRY
+class bdry_phi_cf_t: public CF_DIM {
+public:
+  int *n; // geometry number
+  cf_value_type_t what;
+  bdry_phi_cf_t(cf_value_type_t what, int &n) : what(what), n(&n) {}
+  double operator()(DIM(double x, double y, double z)) const {
+    switch (*n) {
+      case 0: // no boundaries
+        break;
+      case 1: // circle/sphere interior
+      {
+        static const double r0 = 0.911, DIM(xc = 0, yc = 0, zc = 0);
+        static flower_shaped_domain_t circle(r0, DIM(xc, yc, zc));
+        switch (what) {
+          OCOMP( case VAL: return circle.phi  (DIM(x,y,z)) );
+          XCOMP( case DDX: return circle.phi_x(DIM(x,y,z)) );
+          YCOMP( case DDY: return circle.phi_y(DIM(x,y,z)) );
+          ZCOMP( case DDZ: return circle.phi_z(DIM(x,y,z)) );
+        }
+      } break;
+      case 2: // circle/sphere exterior
+      {
+        static double r0 = 0.311, DIM(xc = 0, yc = 0, zc = 0);
+        static flower_shaped_domain_t circle(r0, DIM(xc, yc, zc), 0, -1);
+        switch (what) {
+          OCOMP( case VAL: return circle.phi  (DIM(x,y,z)) );
+          XCOMP( case DDX: return circle.phi_x(DIM(x,y,z)) );
+          YCOMP( case DDY: return circle.phi_y(DIM(x,y,z)) );
+          ZCOMP( case DDZ: return circle.phi_z(DIM(x,y,z)) );
+        }
+      } break;
+      case 3: // annular/shell region
+      {
+        static double r0_in = 0.151, DIM(xc_in = 0, yc_in = 0, zc_in = 0);
+        static double r0_ex = 0.911, DIM(xc_ex = 0, yc_ex = 0, zc_ex = 0);
+        static flower_shaped_domain_t circle_in(r0_in, DIM(xc_in, yc_in, zc_in), 0, -1);
+        static flower_shaped_domain_t circle_ex(r0_ex, DIM(xc_ex, yc_ex, zc_ex), 0,  1);
+        switch (what) {
+          OCOMP( case VAL: return (circle_in.phi(DIM(x,y,z)) > circle_ex.phi(DIM(x,y,z))) ? circle_in.phi  (DIM(x,y,z)) : circle_ex.phi  (DIM(x,y,z)); );
+          XCOMP( case DDX: return (circle_in.phi(DIM(x,y,z)) > circle_ex.phi(DIM(x,y,z))) ? circle_in.phi_x(DIM(x,y,z)) : circle_ex.phi_x(DIM(x,y,z)); );
+          YCOMP( case DDY: return (circle_in.phi(DIM(x,y,z)) > circle_ex.phi(DIM(x,y,z))) ? circle_in.phi_y(DIM(x,y,z)) : circle_ex.phi_y(DIM(x,y,z)); );
+          ZCOMP( case DDZ: return (circle_in.phi(DIM(x,y,z)) > circle_ex.phi(DIM(x,y,z))) ? circle_in.phi_z(DIM(x,y,z)) : circle_ex.phi_z(DIM(x,y,z)); );
+        }
+      } break;
+      case 4: // moderately star-shaped domain
+      {
+        static double r0 = 0.611, DIM(xc = 0, yc = 0, zc = 0), deform = 0.15;
+        static flower_shaped_domain_t circle(r0, DIM(xc, yc, zc), deform);
+        switch (what) {
+          OCOMP( case VAL: return circle.phi  (DIM(x,y,z)) );
+          XCOMP( case DDX: return circle.phi_x(DIM(x,y,z)) );
+          YCOMP( case DDY: return circle.phi_y(DIM(x,y,z)) );
+          ZCOMP( case DDZ: return circle.phi_z(DIM(x,y,z)) );
+        }
+      } break;
+      case 5: // highly start-shaped domain
+      {
+        static double r0 = 0.611, DIM(xc = 0, yc = 0, zc = 0), deform = 0.3;
+        static flower_shaped_domain_t circle(r0, DIM(xc, yc, zc), deform);
+        switch (what) {
+          OCOMP( case VAL: return circle.phi  (DIM(x,y,z)) );
+          XCOMP( case DDX: return circle.phi_x(DIM(x,y,z)) );
+          YCOMP( case DDY: return circle.phi_y(DIM(x,y,z)) );
+          ZCOMP( case DDZ: return circle.phi_z(DIM(x,y,z)) );
+        }
+      }
+      case 6: // unioun of two spheres: 1st sphere
+      case 7: // unioun of two spheres: 2nd sphere
+      {
+#ifdef P4_TO_P8
+        static double r0 = 0.71, xc0 = 0.22, yc0 = 0.17, zc0 = 0.21;
+        static double r1 = 0.63, xc1 =-0.19, yc1 =-0.19, zc1 =-0.23;
+#else
+        static double r0 = 0.77, xc0 = 0.13, yc0 = 0.21;
+        static double r1 = 0.49, xc1 =-0.33, yc1 =-0.37;
+#endif
+        static flower_shaped_domain_t circle0(r0, DIM(xc0, yc0, zc0));
+        static flower_shaped_domain_t circle1(r1, DIM(xc1, yc1, zc1));
+
+        flower_shaped_domain_t *shape_ptr = (*n) == 6 ? &circle0 : &circle1;
+
+        switch (what) {
+          OCOMP( case VAL: return shape_ptr->phi  (DIM(x,y,z)) );
+          XCOMP( case DDX: return shape_ptr->phi_x(DIM(x,y,z)) );
+          YCOMP( case DDY: return shape_ptr->phi_y(DIM(x,y,z)) );
+          ZCOMP( case DDZ: return shape_ptr->phi_z(DIM(x,y,z)) );
+        }
+      } break;
+      case 8: // difference of two spheres: 1st shpere
+      case 9: // difference of two spheres: 2nd shpere
+      {
+#ifdef P4_TO_P8
+        static double r0 = 0.86, xc0 = 0.08, yc0 = 0.11, zc0 = 0.03;
+        static double r1 = 0.83, xc1 =-0.51, yc1 =-0.46, zc1 =-0.63;
+#else
+        static double r0 = 0.84, xc0 = 0.03, yc0 = 0.04;
+        static double r1 = 0.63, xc1 =-0.42, yc1 =-0.37;
+#endif
+        static flower_shaped_domain_t circle0(r0, DIM(xc0, yc0, zc0), 0,  1);
+        static flower_shaped_domain_t circle1(r1, DIM(xc1, yc1, zc1), 0, -1);
+
+        flower_shaped_domain_t *shape_ptr = (*n) == 8 ? &circle0 : &circle1;
+
+        switch (what) {
+          OCOMP( case VAL: return shape_ptr->phi  (DIM(x,y,z)) );
+          XCOMP( case DDX: return shape_ptr->phi_x(DIM(x,y,z)) );
+          YCOMP( case DDY: return shape_ptr->phi_y(DIM(x,y,z)) );
+          ZCOMP( case DDZ: return shape_ptr->phi_z(DIM(x,y,z)) );
+        }
+
+      } break;
+      case 10: // three star-shaped domains: 1st domain
+      case 11: // three star-shaped domains: 2nd domain
+      case 12: // three star-shaped domains: 3rd domain
+      {
+#ifdef P4_TO_P8
+        static double r0 = 0.73, xc0 = 0.13, yc0 = 0.16, zc0 = 0.19, nx0 = 1.0, ny0 = 1.0, nz0 = 1.0, theta0 = 0.3*PI, beta0 = 0.08, inside0 = 1;
+        static double r1 = 0.66, xc1 =-0.21, yc1 =-0.23, zc1 =-0.17, nx1 = 1.0, ny1 = 1.0, nz1 = 1.0, theta1 =-0.3*PI, beta1 =-0.08, inside1 = 1;
+        static double r2 = 0.59, xc2 = 0.45, yc2 =-0.53, zc2 = 0.03, nx2 =-1.0, ny2 = 1.0, nz2 = 0.0, theta2 =-0.2*PI, beta2 =-0.08, inside2 =-1;
+
+        static flower_shaped_domain_t shape0(r0, xc0, yc0, zc0, beta0, inside0, nx0, ny0, nz0, theta0);
+        static flower_shaped_domain_t shape1(r1, xc1, yc1, zc1, beta1, inside1, nx1, ny1, nz1, theta1);
+        static flower_shaped_domain_t shape2(r2, xc2, yc2, zc2, beta2, inside2, nx2, ny2, nz2, theta2);
+#else
+        static double r0 = 0.73, xc0 = 0.13, yc0 = 0.16, theta0 = 0.1*PI, beta0 = 0.08, inside0 = 1;
+        static double r1 = 0.66, xc1 =-0.14, yc1 =-0.21, theta1 =-0.2*PI, beta1 =-0.08, inside1 = 1;
+        static double r2 = 0.59, xc2 = 0.45, yc2 =-0.53, theta2 = 0.2*PI, beta2 =-0.08, inside2 =-1;
+
+        static flower_shaped_domain_t shape0(r0, xc0, yc0, beta0, inside0, theta0);
+        static flower_shaped_domain_t shape1(r1, xc1, yc1, beta1, inside1, theta1);
+        static flower_shaped_domain_t shape2(r2, xc2, yc2, beta2, inside2, theta2);
+#endif
+
+        flower_shaped_domain_t *shape_ptr;
+        switch (*n){
+          case 10: shape_ptr = &shape0; break;
+          case 11: shape_ptr = &shape1; break;
+          case 12: shape_ptr = &shape2; break;
+        }
+
+        switch (what) {
+          OCOMP( case VAL: return shape_ptr->phi  (DIM(x,y,z)) );
+          XCOMP( case DDX: return shape_ptr->phi_x(DIM(x,y,z)) );
+          YCOMP( case DDY: return shape_ptr->phi_y(DIM(x,y,z)) );
+          ZCOMP( case DDZ: return shape_ptr->phi_z(DIM(x,y,z)) );
+        }
+      } break;
+      case 13: // triangle/tetrahedron: 1st plane
+      case 14: // triangle/tetrahedron: 2nd plane
+      case 15: // triangle/tetrahedron: 3rd plane
+#ifdef P4_TO_P8
+      case 16: // triangle/tetrahedron: 4th plane
+#endif
+      {
+#ifdef P4_TO_P8
+        static double x0 =-0.86, y0 =-0.87, z0 =-0.83;
+        static double x1 = 0.88, y1 =-0.52, z1 = 0.63;
+        static double x2 = 0.67, y2 = 0.82, z2 =-0.87;
+        static double x3 =-0.78, y3 = 0.73, z3 = 0.85;
+
+        static half_space_t plane0; plane0.set_params_points(x0, y0, z0, x2, y2, z2, x1, y1, z1);
+        static half_space_t plane1; plane1.set_params_points(x1, y1, z1, x2, y2, z2, x3, y3, z3);
+        static half_space_t plane2; plane2.set_params_points(x0, y0, z0, x3, y3, z3, x2, y2, z2);
+        static half_space_t plane3; plane3.set_params_points(x0, y0, z0, x1, y1, z1, x3, y3, z3);
+#else
+        static double x2 = 0.74, y2 =-0.86;
+        static double x1 =-0.83, y1 =-0.11;
+        static double x0 = 0.37, y0 = 0.87;
+
+        static half_space_t plane0; plane0.set_params_points(x0, y0, x2, y2);
+        static half_space_t plane1; plane1.set_params_points(x2, y2, x1, y1);
+        static half_space_t plane2; plane2.set_params_points(x1, y1, x0, y0);
+#endif
+
+        half_space_t *shape_ptr;
+        switch (*n) {
+          case 13: shape_ptr = &plane0; break;
+          case 14: shape_ptr = &plane1; break;
+          case 15: shape_ptr = &plane2; break;
+#ifdef P4_TO_P8
+          case 16: shape_ptr = &plane3; break;
+#endif
+        }
+
+        switch (what) {
+          OCOMP( case VAL: return shape_ptr->phi  (DIM(x,y,z)) );
+          XCOMP( case DDX: return shape_ptr->phi_x(DIM(x,y,z)) );
+          YCOMP( case DDY: return shape_ptr->phi_y(DIM(x,y,z)) );
+          ZCOMP( case DDZ: return shape_ptr->phi_z(DIM(x,y,z)) );
+        }
+      } break;
+    }
+
+    // default value
+    switch (what) {
+      OCOMP( case VAL: return -1 );
+      XCOMP( case DDX: return  0 );
+      YCOMP( case DDY: return  0 );
+      ZCOMP( case DDZ: return  0 );
+    }
+  }
+};
+
+bdry_phi_cf_t bdry_phi_cf_all  [] = { bdry_phi_cf_t(VAL, bdry_geom_00) };
+
+bdry_phi_cf_t bdry_phi_x_cf_all[] = { bdry_phi_cf_t(DDX, bdry_geom_00) };
+
+bdry_phi_cf_t bdry_phi_y_cf_all[] = { bdry_phi_cf_t(DDY, bdry_geom_00) };
+#ifdef P4_TO_P8
+bdry_phi_cf_t bdry_phi_z_cf_all[] = { bdry_phi_cf_t(DDZ, bdry_geom_00) };
+#endif
 // initialize all static variables
 const string Atom::ATOM = "ATOM  ";
 p4est_connectivity_t* my_p4est_biomolecules_t::molecule::domain_connectivity = NULL;
@@ -4263,7 +4720,8 @@ my_p4est_biomolecules_solver_t::my_p4est_biomolecules_solver_t(const my_p4est_bi
   // create the cell neighbors
   cell_neighbors  = new my_p4est_cell_neighbors_t(biomolecules->hierarchy);
   // create the solvers
-  jump_solver     = new my_p4est_poisson_jump_nodes_voronoi_t(biomolecules->neighbors, cell_neighbors);
+  //jump_solver     = new my_p4est_poisson_jump_nodes_voronoi_t(biomolecules->neighbors, cell_neighbors);
+  jump_solver     = new my_p4est_general_poisson_nodes_mls_solver_t(biomolecules->neighbors);
   node_solver     = new my_p4est_poisson_nodes_t(biomolecules->neighbors);
 }
 void    my_p4est_biomolecules_solver_t::set_molecular_relative_permittivity(double epsilon_molecule)
@@ -4454,17 +4912,18 @@ void    my_p4est_biomolecules_solver_t::return_psi_star_psi_naught_and_psi_bar(V
   psi_bar_out     = psi_bar; psi_bar = NULL;
   psi_star_psi_naught_and_psi_bar_are_set = false;
 }
-Vec     my_p4est_biomolecules_solver_t::return_psi_hat()
+void     my_p4est_biomolecules_solver_t::return_psi_hat(Vec &psi_hat_out)
 {
 #ifdef CASL_THROWS
   int local_error = psi_hat == NULL;
   string message = "my_p4est_biomolecules_solver_t::return_psi_hat(): the psi_hat vector is NULL, it can't be returned...";
   biomolecules->err_manager.check_my_local_error(local_error, message);
 #endif
-  Vec psi_hat_to_return = psi_hat;
-  psi_hat = NULL;
+  psi_hat_out=psi_hat; psi_hat=NULL;
+//  Vec psi_hat_to_return = psi_hat;
+//  //psi_hat = NULL;
   psi_hat_is_set = false;
-  return psi_hat_to_return;
+//  return psi_hat_to_return;
 }
 Vec my_p4est_biomolecules_solver_t::return_validation_error()
 {
@@ -4477,27 +4936,27 @@ Vec my_p4est_biomolecules_solver_t::return_validation_error()
   validation_error = NULL; // the new owner takes the responsibility of destroying the vector
   return validation_error_to_return;
 }
-Vec my_p4est_biomolecules_solver_t::return_residual()
-{
-#ifdef CASL_THROWS
-  int local_error = jump_solver->rhs == NULL;
-  string message = "my_p4est_biomolecules_solver_t::return_residual(): the rhs of the jump solver (aka as the residual) vector is NULL \nIt can't be interpolated and returned...";
-  biomolecules->err_manager.check_my_local_error(local_error, message);
-#endif
-  Vec residual_on_grid = NULL;
-  make_sure_is_node_sampled(residual_on_grid);
-  Vec sol_voro_saved    = jump_solver->sol_voro;
-  jump_solver->sol_voro = jump_solver->rhs;
-  jump_solver->interpolate_solution_from_voronoi_to_tree(residual_on_grid);
-  jump_solver->rhs      = jump_solver->sol_voro;
-  jump_solver->sol_voro = sol_voro_saved;
-  return residual_on_grid;
-}
+//Vec my_p4est_biomolecules_solver_t::return_residual()
+//{
+//#ifdef CASL_THROWS
+//  int local_error = jump_solver->rhs == NULL;
+//  string message = "my_p4est_biomolecules_solver_t::return_residual(): the rhs of the jump solver (aka as the residual) vector is NULL \nIt can't be interpolated and returned...";
+//  biomolecules->err_manager.check_my_local_error(local_error, message);
+//#endif
+//  Vec residual_on_grid = NULL;
+//  make_sure_is_node_sampled(residual_on_grid);
+//  Vec sol_voro_saved    = jump_solver->sol_voro;
+//  jump_solver->sol_voro = jump_solver->rhs;
+//  jump_solver->interpolate_solution_from_voronoi_to_tree(residual_on_grid);
+//  jump_solver->rhs      = jump_solver->sol_voro;
+//  jump_solver->sol_voro = sol_voro_saved;
+//  return residual_on_grid;
+//}
 void    my_p4est_biomolecules_solver_t::return_all_psi_vectors(Vec &psi_star_out, Vec &psi_naught_out, Vec &psi_bar_out, Vec &psi_hat_out, bool validation_flag)
 {
   if(!validation_flag)
     return_psi_star_psi_naught_and_psi_bar(psi_star_out, psi_naught_out, psi_bar_out);
-  psi_hat_out = return_psi_hat();
+  return_psi_hat(psi_hat_out);
 }
 
 void    my_p4est_biomolecules_solver_t::make_sure_is_node_sampled(Vec &vector)
@@ -4935,8 +5394,16 @@ int     my_p4est_biomolecules_solver_t::solve_nonlinear(double upper_bound_resid
   Vec node_sampled_zero = NULL;
   make_sure_is_node_sampled(node_sampled_zero);
   // Create vector for the jump condition in normal gradient
-  Vec eps_grad_n_psi_hat_jump = NULL;
+  // Vec eps_grad_n_psi_hat_jump = NULL;
+
+  Vec eps_grad_n_psi_hat_jump= NULL;
+  Vec eps_grad_n_psi_hat_jump_xx_= NULL;
+  Vec eps_grad_n_psi_hat_jump_yy_= NULL;
+
   make_sure_is_node_sampled(eps_grad_n_psi_hat_jump);
+  make_sure_is_node_sampled(eps_grad_n_psi_hat_jump_xx_);
+  make_sure_is_node_sampled(eps_grad_n_psi_hat_jump_yy_);
+
   // Create vectors for the diagonal term in the outer domain
   Vec add_plus = NULL;
   make_sure_is_node_sampled(add_plus);
@@ -4951,6 +5418,10 @@ int     my_p4est_biomolecules_solver_t::solve_nonlinear(double upper_bound_resid
 
   // Initialization:
   calculate_jumps_in_normal_gradient(eps_grad_n_psi_hat_jump, validation_flag);
+  biomolecules->neighbors->second_derivatives_central(eps_grad_n_psi_hat_jump, DIM(eps_grad_n_psi_hat_jump_xx_,eps_grad_n_psi_hat_jump_yy_,eps_grad_n_psi_hat_jump_zz_));
+  my_p4est_interpolation_nodes_t eps_grad_n_psi_hat_jump_interp_(biomolecules->neighbors);
+  eps_grad_n_psi_hat_jump_interp_.set_input(eps_grad_n_psi_hat_jump, DIM(eps_grad_n_psi_hat_jump_xx_,eps_grad_n_psi_hat_jump_yy_,eps_grad_n_psi_hat_jump_zz_),quadratic_non_oscillatory_continuous_v2);
+
   double *node_sampled_zero_p = NULL, *add_plus_p = NULL, *rhs_plus_p = NULL, *rhs_minus_p = NULL;
   ierr = VecGetArray(node_sampled_zero, &node_sampled_zero_p); CHKERRXX(ierr);
   ierr = VecGetArray(add_plus, &add_plus_p); CHKERRXX(ierr);
@@ -4996,150 +5467,228 @@ int     my_p4est_biomolecules_solver_t::solve_nonlinear(double upper_bound_resid
     rhs_minus = node_sampled_zero;
     rhs_plus  = node_sampled_zero;
   }
+  jump_solver->set_use_centroid_always(use_centroid_always);
+  jump_solver->set_store_finite_volumes(store_finite_volumes);
+  jump_solver->set_jump_scheme(jc_scheme);
+  jump_solver->set_jump_sub_scheme(jc_sub_scheme);
+  jump_solver->set_use_sc_scheme(sc_scheme);
+  jump_solver->set_integration_order(integration_order);
 
-  dirichlet_bc.setWallTypes(dirichlet_bc_wall_type);
-  if(validation_flag)
-    dirichlet_bc.setWallValues(validation_function);
-  else
-    dirichlet_bc.setWallValues(homogeneous_dirichlet_bc_wall_value);
-  jump_solver->set_bc(dirichlet_bc);
+  //solver.set_lip(10.5);
+
+  jump_solver->set_lip(lip);
+
+  Vec bdry_phi_vec_all[bdry_phi_max_num];
+  Vec infc_phi_vec_all[infc_phi_max_num];
+
+  //parameters for solver
+  //n_um = 10; mag_um = 1; n_mu_m = 0; mag_mu_m = 80; n_diag_m = 1; mag_diag_m = 0;
+  //n_up = 12; mag_up = 1; n_mu_p = 0; mag_mu_p = 2; n_diag_p = 1; mag_diag_p = 1;
+
+  infc_phi_num = 1;
+  bdry_phi_num = 0;
+
+  infc_present_00 = 1; infc_geom_00 = 1; infc_opn_00 = MLS_INT;
+
+  bdry_present_00 = 0;
+
+  bool *bdry_present_all[] = { &bdry_present_00};
+
+  int *bdry_geom_all[] = { &bdry_geom_00};
+
+  int *bdry_opn_all[] = { &bdry_opn_00 };
+
+  int *bc_coeff_all[] = { &bc_coeff_00 };
+
+  double *bc_coeff_all_mag[] = { &bc_coeff_00_mag };
+
+  int *bc_type_all[] = { &bc_type_00 };
+
+  bool *infc_present_all[] = { &infc_present_00};
+
+  int *infc_geom_all[] = { &infc_geom_00};
+
+  int *infc_opn_all[] = { &infc_opn_00};
+
+  int *jc_value_all[] = { &jc_value_00};
+
+  int *jc_flux_all[] = { &jc_flux_00};
+
+
+  for (int i = 0; i < infc_phi_max_num; ++i)
+    if (*infc_present_all[i] == true)
+    {
+        jump_solver->add_interface((mls_opn_t) *infc_opn_all[i], biomolecules->phi, DIM(NULL, NULL, NULL), zero_cf, eps_grad_n_psi_hat_jump_interp_);
+    }
+
+//  dirichlet_bc.setWallTypes(dirichlet_bc_wall_type);
+//  if(validation_flag)
+//    dirichlet_bc.setWallValues(validation_function);
+//  else
+//    dirichlet_bc.setWallValues(homogeneous_dirichlet_bc_wall_value);
+//  jump_solver->set_bc(dirichlet_bc);
   jump_solver->set_mu(mol_rel_permittivity, elec_rel_permittivity);
-  jump_solver->set_phi(biomolecules->phi);
-  jump_solver->set_u_jump(node_sampled_zero);
-  jump_solver->set_mu_grad_u_jump(eps_grad_n_psi_hat_jump);
-  jump_solver->set_diagonals(node_sampled_zero, add_plus);
+  class bc_wall_type_t : public WallBCDIM
+  {
+  public:
+    BoundaryConditionType operator()(DIM(double, double, double)) const
+    {
+      return (BoundaryConditionType) bc_wtype;
+    }
+  } bc_wall_type;
+  jump_solver->set_wc(bc_wall_type, zero_cf);
+  jump_solver->set_rhs(rhs_minus,rhs_plus);
+  jump_solver->set_diag(node_sampled_zero,add_plus);
+  jump_solver->set_use_taylor_correction(taylor_correction);
+  jump_solver->set_kink_treatment(kink_special_treatment);
   jump_solver->set_rhs(rhs_minus, rhs_plus);
+  make_sure_is_node_sampled(psi_hat);
   if(solve_subtimer != NULL)
   {
     solve_subtimer->stop(); solve_subtimer->read_duration();
-    string timer_msg = "Solving iteration " + to_string(iter+1) + " (== linear equation)";
+    string timer_msg = "Solving nonlinear iterations ";
     solve_subtimer->start(timer_msg);
   }
-  jump_solver->solve(NULL, false, KSPBCGS, PCHYPRE, false, false);
-  Vec psi_hat_on_voronoi = NULL;
-  Vec pristine_diagonal_terms = NULL;
-  double two_norm_of_residual_voro = DBL_MAX;
-  iter++;
-  if(it_max > 1)
+  jump_solver->solve_nonlinear(psi_hat,upper_bound_residual,it_max,true);
+  string timer_msg = "End of nonlinear iterations ";
+
+  if(solve_subtimer != NULL)
   {
-    ierr = VecDuplicate(jump_solver->sol_voro, &psi_hat_on_voronoi); CHKERRXX(ierr);
-    ierr = VecCopy(jump_solver->sol_voro, psi_hat_on_voronoi); CHKERRXX(ierr);
-    ierr = VecGhostUpdateBegin(psi_hat_on_voronoi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateEnd  (psi_hat_on_voronoi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  }
-  else
-    psi_hat_on_voronoi = jump_solver->sol_voro;
-  get_linear_diagonal_terms(pristine_diagonal_terms);
-  clean_matrix_diagonal(pristine_diagonal_terms);
-  get_residual_at_voronoi_points_and_set_as_rhs(psi_hat_on_voronoi);
-  ierr = VecNorm(jump_solver->rhs, NORM_2, &two_norm_of_residual_voro); CHKERRXX(ierr);
-  if(biomolecules->log_file != NULL)
-  {
-    if(solve_subtimer != NULL)
-    {
-      solve_subtimer->stop(); solve_subtimer->read_duration();
-    }
-    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file,
-                        "2-norm of the residual after iteration %d: %g \n", iter, two_norm_of_residual_voro); CHKERRXX(ierr);
-  }
-
-  double *psi_hat_on_voronoi_p = NULL;
-  const double *psi_hat_on_voronoi_read_only_p = NULL, *delta_psi_hat_on_voronoi_read_only_p = NULL;
-  if(iter < it_max && solve_subtimer != NULL)
-  {
-    string timer_msg = "Solving nonlinear iterations";
-    solve_subtimer->start(timer_msg);
-  }
-  while (iter < it_max && two_norm_of_residual_voro > upper_bound_residual)
-  {
-    // add the appropriate diagonal terms to the pristine linear version
-    ierr = VecGetArrayRead(psi_hat_on_voronoi, &psi_hat_on_voronoi_read_only_p); CHKERRXX(ierr);
-    for(unsigned int n=0; n<jump_solver->num_local_voro; ++n)
-    {
-      PetscInt global_n_idx = n+jump_solver->voro_global_offset[biomolecules->p4est->mpirank];
-#ifdef P4_TO_P8
-      Point3 pc = jump_solver->voro_seeds[n];
-#else
-      Point2 pc = jump_solver->voro_seeds[n];
-#endif
-      if( (ABS(pc.x-jump_solver->xyz_min[0])<EPS || ABS(pc.x-jump_solver->xyz_max[0])<EPS ||
-           ABS(pc.y-jump_solver->xyz_min[1])<EPS || ABS(pc.y-jump_solver->xyz_max[1])<EPS
-     #ifdef P4_TO_P8
-           || ABS(pc.z-jump_solver->xyz_min[2])<EPS || ABS(pc.z-jump_solver->xyz_max[2])<EPS
-           ) && jump_solver->bc->wallType(pc.x,pc.y, pc.z)==DIRICHLET)
-#else
-           ) && jump_solver->bc->wallType(pc.x,pc.y)==DIRICHLET)
-#endif
-        continue;
-
-#ifdef P4_TO_P8
-      Voronoi3D voro;
-#else
-      Voronoi2D voro;
-#endif
-      jump_solver->compute_voronoi_cell(n, voro);
-
-#ifdef P4_TO_P8
-      const vector<ngbd3Dseed> *points;
-#else
-      const vector<Point2> *partition;
-      const vector<ngbd2Dseed> *points;
-      voro.get_partition(partition);
-#endif
-      voro.get_neighbor_seeds(points);
-
-#ifdef P4_TO_P8
-      double phi_n = jump_solver->interp_phi(pc.x, pc.y, pc.z);
-#else
-      double phi_n = jump_solver->interp_phi(pc.x, pc.y);
-#endif
-      double add_n = 0.0;
-
-      if(phi_n>0)
-        add_n = inverse_square_debye_length_in_domain*cosh(psi_hat_on_voronoi_read_only_p[n]);
-
-#ifndef P4_TO_P8
-      voro.compute_volume();
-#endif
-      double volume = voro.get_volume();
-      ierr = MatSetValue(jump_solver->A, global_n_idx, global_n_idx, volume*add_n, ADD_VALUES); CHKERRXX(ierr);
-
-    }
-    ierr = VecRestoreArrayRead(psi_hat_on_voronoi, &psi_hat_on_voronoi_read_only_p); psi_hat_on_voronoi_read_only_p = NULL; CHKERRXX(ierr);
-
-    /* assemble the matrix */
-    ierr = MatAssemblyBegin(jump_solver->A, MAT_FINAL_ASSEMBLY); CHKERRXX(ierr);
-    ierr = MatAssemblyEnd  (jump_solver->A, MAT_FINAL_ASSEMBLY);   CHKERRXX(ierr);
-
-    ierr = KSPSolve(jump_solver->ksp, jump_solver->rhs, jump_solver->sol_voro); CHKERRXX(ierr);
-    ierr = VecGhostUpdateBegin(jump_solver->sol_voro, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateEnd  (jump_solver->sol_voro, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-    ierr = VecGetArray(psi_hat_on_voronoi, &psi_hat_on_voronoi_p); CHKERRXX(ierr);
-    ierr = VecGetArrayRead(jump_solver->sol_voro, &delta_psi_hat_on_voronoi_read_only_p); CHKERRXX(ierr);
-    for(unsigned int n=0; n<jump_solver->num_local_voro; ++n)
-      psi_hat_on_voronoi_p[n] += delta_psi_hat_on_voronoi_read_only_p[n];
-    ierr = VecRestoreArrayRead(jump_solver->sol_voro, &delta_psi_hat_on_voronoi_read_only_p); delta_psi_hat_on_voronoi_read_only_p = NULL; CHKERRXX(ierr);
-    ierr = VecRestoreArray(psi_hat_on_voronoi, &psi_hat_on_voronoi_p); psi_hat_on_voronoi_p = NULL; CHKERRXX(ierr);
-    ierr = VecGhostUpdateBegin(psi_hat_on_voronoi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    clean_matrix_diagonal(pristine_diagonal_terms);
-    ierr = VecGhostUpdateEnd  (psi_hat_on_voronoi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-    get_residual_at_voronoi_points_and_set_as_rhs(psi_hat_on_voronoi);
-    ierr = VecNorm(jump_solver->rhs, NORM_2, &two_norm_of_residual_voro); CHKERRXX(ierr);
-    iter++;
-    if(biomolecules->log_file != NULL){
-      ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file,
-                          "2-norm of the residual after iteration %d: %g \n", iter, two_norm_of_residual_voro); CHKERRXX(ierr);}
-  }
-  if(biomolecules->log_file != NULL && it_max > 1){
-    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file,
-                        "Non-linear Poisson-Boltzmann equation solved after %d iterations of Newton's method\n", iter); CHKERRXX(ierr);}
-
-  // free allocated memory
-  if(solve_subtimer != NULL){
     solve_subtimer->stop(); solve_subtimer->read_duration();
-    solve_subtimer->start("Cleaning memory and interpolating the solution back to the quad/oc-tree grid");}
+    string timer_msg = "End of nonlinear iterations ";
+    solve_subtimer->stop();
+  }
+//  if(solve_subtimer != NULL)
+//  {
+//    solve_subtimer->stop(); solve_subtimer->read_duration();
+//    string timer_msg = "Solving iteration " + to_string(iter+1) + " (== linear equation)";
+//    solve_subtimer->start(timer_msg);
+//  }
+//  jump_solver->solve(NULL, false, KSPBCGS, PCHYPRE, false, false);
+//  Vec psi_hat_on_voronoi = NULL;
+//  Vec pristine_diagonal_terms = NULL;
+//  double two_norm_of_residual_voro = DBL_MAX;
+//  iter++;
+//  if(it_max > 1)
+//  {
+//    ierr = VecDuplicate(jump_solver->sol_voro, &psi_hat_on_voronoi); CHKERRXX(ierr);
+//    ierr = VecCopy(jump_solver->sol_voro, psi_hat_on_voronoi); CHKERRXX(ierr);
+//    ierr = VecGhostUpdateBegin(psi_hat_on_voronoi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//    ierr = VecGhostUpdateEnd  (psi_hat_on_voronoi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//  }
+//  else
+//    psi_hat_on_voronoi = jump_solver->sol_voro;
+//  get_linear_diagonal_terms(pristine_diagonal_terms);
+//  clean_matrix_diagonal(pristine_diagonal_terms);
+//  get_residual_at_voronoi_points_and_set_as_rhs(psi_hat_on_voronoi);
+//  ierr = VecNorm(jump_solver->rhs, NORM_2, &two_norm_of_residual_voro); CHKERRXX(ierr);
+//  if(biomolecules->log_file != NULL)
+//  {
+//    if(solve_subtimer != NULL)
+//    {
+//      solve_subtimer->stop(); solve_subtimer->read_duration();
+//    }
+//    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file,
+//                        "2-norm of the residual after iteration %d: %g \n", iter, two_norm_of_residual_voro); CHKERRXX(ierr);
+//  }
+
+//  double *psi_hat_on_voronoi_p = NULL;
+//  const double *psi_hat_on_voronoi_read_only_p = NULL, *delta_psi_hat_on_voronoi_read_only_p = NULL;
+//  if(iter < it_max && solve_subtimer != NULL)
+//  {
+//    string timer_msg = "Solving nonlinear iterations";
+//    solve_subtimer->start(timer_msg);
+//  }
+//  while (iter < it_max && two_norm_of_residual_voro > upper_bound_residual)
+//  {
+//    // add the appropriate diagonal terms to the pristine linear version
+//    ierr = VecGetArrayRead(psi_hat_on_voronoi, &psi_hat_on_voronoi_read_only_p); CHKERRXX(ierr);
+//    for(unsigned int n=0; n<jump_solver->num_local_voro; ++n)
+//    {
+//      PetscInt global_n_idx = n+jump_solver->voro_global_offset[biomolecules->p4est->mpirank];
+//#ifdef P4_TO_P8
+//      Point3 pc = jump_solver->voro_seeds[n];
+//#else
+//      Point2 pc = jump_solver->voro_seeds[n];
+//#endif
+//      if( (ABS(pc.x-jump_solver->xyz_min[0])<EPS || ABS(pc.x-jump_solver->xyz_max[0])<EPS ||
+//           ABS(pc.y-jump_solver->xyz_min[1])<EPS || ABS(pc.y-jump_solver->xyz_max[1])<EPS
+//     #ifdef P4_TO_P8
+//           || ABS(pc.z-jump_solver->xyz_min[2])<EPS || ABS(pc.z-jump_solver->xyz_max[2])<EPS
+//           ) && jump_solver->bc->wallType(pc.x,pc.y, pc.z)==DIRICHLET)
+//#else
+//           ) && jump_solver->bc->wallType(pc.x,pc.y)==DIRICHLET)
+//#endif
+//        continue;
+
+//#ifdef P4_TO_P8
+//      Voronoi3D voro;
+//#else
+//      Voronoi2D voro;
+//#endif
+//      jump_solver->compute_voronoi_cell(n, voro);
+
+//#ifdef P4_TO_P8
+//      const vector<ngbd3Dseed> *points;
+//#else
+//      const vector<Point2> *partition;
+//      const vector<ngbd2Dseed> *points;
+//      voro.get_partition(partition);
+//#endif
+//      voro.get_neighbor_seeds(points);
+
+//#ifdef P4_TO_P8
+//      double phi_n = jump_solver->interp_phi(pc.x, pc.y, pc.z);
+//#else
+//      double phi_n = jump_solver->interp_phi(pc.x, pc.y);
+//#endif
+//      double add_n = 0.0;
+
+//      if(phi_n>0)
+//        add_n = inverse_square_debye_length_in_domain*cosh(psi_hat_on_voronoi_read_only_p[n]);
+
+//#ifndef P4_TO_P8
+//      voro.compute_volume();
+//#endif
+//      double volume = voro.get_volume();
+//      ierr = MatSetValue(jump_solver->A, global_n_idx, global_n_idx, volume*add_n, ADD_VALUES); CHKERRXX(ierr);
+
+//    }
+//    ierr = VecRestoreArrayRead(psi_hat_on_voronoi, &psi_hat_on_voronoi_read_only_p); psi_hat_on_voronoi_read_only_p = NULL; CHKERRXX(ierr);
+
+//    /* assemble the matrix */
+//    ierr = MatAssemblyBegin(jump_solver->A, MAT_FINAL_ASSEMBLY); CHKERRXX(ierr);
+//    ierr = MatAssemblyEnd  (jump_solver->A, MAT_FINAL_ASSEMBLY);   CHKERRXX(ierr);
+
+//    ierr = KSPSolve(jump_solver->ksp, jump_solver->rhs, jump_solver->sol_voro); CHKERRXX(ierr);
+//    ierr = VecGhostUpdateBegin(jump_solver->sol_voro, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//    ierr = VecGhostUpdateEnd  (jump_solver->sol_voro, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+//    ierr = VecGetArray(psi_hat_on_voronoi, &psi_hat_on_voronoi_p); CHKERRXX(ierr);
+//    ierr = VecGetArrayRead(jump_solver->sol_voro, &delta_psi_hat_on_voronoi_read_only_p); CHKERRXX(ierr);
+//    for(unsigned int n=0; n<jump_solver->num_local_voro; ++n)
+//      psi_hat_on_voronoi_p[n] += delta_psi_hat_on_voronoi_read_only_p[n];
+//    ierr = VecRestoreArrayRead(jump_solver->sol_voro, &delta_psi_hat_on_voronoi_read_only_p); delta_psi_hat_on_voronoi_read_only_p = NULL; CHKERRXX(ierr);
+//    ierr = VecRestoreArray(psi_hat_on_voronoi, &psi_hat_on_voronoi_p); psi_hat_on_voronoi_p = NULL; CHKERRXX(ierr);
+//    ierr = VecGhostUpdateBegin(psi_hat_on_voronoi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//    clean_matrix_diagonal(pristine_diagonal_terms);
+//    ierr = VecGhostUpdateEnd  (psi_hat_on_voronoi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+//    get_residual_at_voronoi_points_and_set_as_rhs(psi_hat_on_voronoi);
+//    ierr = VecNorm(jump_solver->rhs, NORM_2, &two_norm_of_residual_voro); CHKERRXX(ierr);
+//    iter++;
+//    if(biomolecules->log_file != NULL){
+//      ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file,
+//                          "2-norm of the residual after iteration %d: %g \n", iter, two_norm_of_residual_voro); CHKERRXX(ierr);}
+//  }
+//  if(biomolecules->log_file != NULL && it_max > 1){
+//    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file,
+//                        "Non-linear Poisson-Boltzmann equation solved after %d iterations of Newton's method\n", iter); CHKERRXX(ierr);}
+
+//  // free allocated memory
+//  if(solve_subtimer != NULL){
+//    solve_subtimer->stop(); solve_subtimer->read_duration();
+//    solve_subtimer->start("Cleaning memory and interpolating the solution back to the quad/oc-tree grid");}
   if(validation_flag)
   {
     ierr = VecDestroy(rhs_plus); rhs_plus = NULL; CHKERRXX(ierr);
@@ -5147,36 +5696,42 @@ int     my_p4est_biomolecules_solver_t::solve_nonlinear(double upper_bound_resid
   }
   ierr = VecDestroy(add_plus); add_plus = NULL; CHKERRXX(ierr);
   ierr = VecDestroy(eps_grad_n_psi_hat_jump); eps_grad_n_psi_hat_jump = NULL; CHKERRXX(ierr);
+  ierr = VecDestroy(eps_grad_n_psi_hat_jump_xx_);
+  ierr = VecDestroy(eps_grad_n_psi_hat_jump_yy_);
   ierr = VecDestroy(node_sampled_zero); node_sampled_zero = NULL; CHKERRXX(ierr);
 
-  // Create the vector for the general solution psi_hat (if needed)
-  make_sure_is_node_sampled(psi_hat);
-  // We deactivated the destruction of the solution for the purpose of the nonlinear solver
-  // so destroy it before setting the actual solution on sol_voro for interpolation purposes
-  if((jump_solver->sol_voro != NULL) && (it_max > 1)){
-    ierr = VecDestroy(jump_solver->sol_voro); jump_solver->sol_voro = NULL; CHKERRXX(ierr);}
-  jump_solver->sol_voro = psi_hat_on_voronoi; // that one will be destroyed at the solver destruction
-  jump_solver->interpolate_solution_from_voronoi_to_tree(psi_hat);
+//  // Create the vector for the general solution psi_hat (if needed)
+//  make_sure_is_node_sampled(psi_hat);
+//  // We deactivated the destruction of the solution for the purpose of the nonlinear solver
+//  // so destroy it before setting the actual solution on sol_voro for interpolation purposes
+//  if((jump_solver->sol_voro != NULL) && (it_max > 1)){
+//    ierr = VecDestroy(jump_solver->sol_voro); jump_solver->sol_voro = NULL; CHKERRXX(ierr);}
+//  jump_solver->sol_voro = psi_hat_on_voronoi; // that one will be destroyed at the solver destruction
+//  jump_solver->interpolate_solution_from_voronoi_to_tree(psi_hat);
 
-  if(pristine_diagonal_terms != NULL){
-    ierr = VecDestroy(pristine_diagonal_terms); pristine_diagonal_terms = NULL; CHKERRXX(ierr);}
-  if(solve_subtimer != NULL){
-    solve_subtimer->stop(); solve_subtimer->read_duration();}
+//  if(pristine_diagonal_terms != NULL){
+//    ierr = VecDestroy(pristine_diagonal_terms); pristine_diagonal_terms = NULL; CHKERRXX(ierr);}
+//  if(solve_subtimer != NULL){
+//    solve_subtimer->stop(); solve_subtimer->read_duration();}
+
   if(validation_flag)
   {
     if(solve_subtimer != NULL){
       solve_subtimer->start("VALIDATION: evaluating the norms");}
-    double max_error_voro = -DBL_MAX, max_error = -DBL_MAX, loc_error, error_2_norm, error_1_norm;
+    double max_error = -DBL_MAX, loc_error, error_2_norm, error_1_norm;
     const double *psi_hat_read_only_p = NULL;
     Vec negative_ones = NULL, absolute_error_1_norm = NULL, absolute_error_2_norm = NULL;
     make_sure_is_node_sampled(negative_ones);
     make_sure_is_node_sampled(absolute_error_1_norm);
     make_sure_is_node_sampled(absolute_error_2_norm);
+
     double *absolute_error_1_norm_p = NULL, *absolute_error_2_norm_p = NULL, *negative_ones_p = NULL;
     ierr = VecGetArrayRead(psi_hat, &psi_hat_read_only_p); CHKERRXX(ierr);
     ierr = VecGetArray(absolute_error_1_norm, &absolute_error_1_norm_p); CHKERRXX(ierr);
     ierr = VecGetArray(absolute_error_2_norm, &absolute_error_2_norm_p); CHKERRXX(ierr);
+
     ierr = VecGetArray(negative_ones, &negative_ones_p); CHKERRXX(ierr);
+
     for (p4est_locidx_t k = 0; k < biomolecules->nodes->num_owned_indeps; ++k) {
       node_xyz_fr_n(k, biomolecules->p4est, biomolecules->nodes, xyz);
       loc_error = fabs(psi_hat_read_only_p[k] - validation_function(xyz[0], xyz[1]
@@ -5195,44 +5750,45 @@ int     my_p4est_biomolecules_solver_t::solve_nonlinear(double upper_bound_resid
     ierr = VecGhostUpdateBegin(absolute_error_2_norm, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecRestoreArray(absolute_error_1_norm, &absolute_error_1_norm_p); absolute_error_1_norm_p = NULL; CHKERRXX(ierr);
     ierr = VecGhostUpdateBegin(absolute_error_1_norm, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGetArrayRead(psi_hat_on_voronoi, &psi_hat_on_voronoi_read_only_p); CHKERRXX(ierr);
-    double error_1_norm_voro = 0.0, error_2_norm_voro = 0.0;
-    for(unsigned int n=0; n<jump_solver->num_local_voro; ++n)
-    {
-#ifdef P4_TO_P8
-      Point3 pc = jump_solver->voro_seeds[n];
-      Voronoi3D voro;
-#else
-      Point2 pc = jump_solver->voro_seeds[n];
-      Voronoi2D voro;
-#endif
-      jump_solver->compute_voronoi_cell(n, voro);
-#ifndef P4_TO_P8
-      voro.compute_volume();
-#endif
-      double voro_volume = voro.get_volume();
-      loc_error           = fabs(psi_hat_on_voronoi_read_only_p[n] - validation_function(pc.x,pc.y
-                                                                                   #ifdef P4_TO_P8
-                                                                                         , pc.z
-                                                                                   #endif
-                                                                                         ));
-      error_1_norm_voro   += loc_error*voro_volume;
-      error_2_norm_voro   += SQR(loc_error)*voro_volume;
-      max_error_voro      = MAX(max_error_voro, loc_error);
-    }
-    ierr = VecRestoreArrayRead(psi_hat_on_voronoi, &psi_hat_on_voronoi_read_only_p); psi_hat_on_voronoi_read_only_p = NULL; CHKERRXX(ierr);
+//    ierr = VecGetArrayRead(psi_hat_on_voronoi, &psi_hat_on_voronoi_read_only_p); CHKERRXX(ierr);
+//    double error_1_norm_voro = 0.0, error_2_norm_voro = 0.0;
+//    for(unsigned int n=0; n<jump_solver->num_local_voro; ++n)
+//    {
+//#ifdef P4_TO_P8
+//      Point3 pc = jump_solver->voro_seeds[n];
+//      Voronoi3D voro;
+//#else
+//      Point2 pc = jump_solver->voro_seeds[n];
+//      Voronoi2D voro;
+//#endif
+//      jump_solver->compute_voronoi_cell(n, voro);
+//#ifndef P4_TO_P8
+//      voro.compute_volume();
+//#endif
+//      double voro_volume = voro.get_volume();
+//      loc_error           = fabs(psi_hat_on_voronoi_read_only_p[n] - validation_function(pc.x,pc.y
+//                                                                                   #ifdef P4_TO_P8
+//                                                                                         , pc.z
+//                                                                                   #endif
+//                                                                                         ));
+//      error_1_norm_voro   += loc_error*voro_volume;
+//      error_2_norm_voro   += SQR(loc_error)*voro_volume;
+//      max_error_voro      = MAX(max_error_voro, loc_error);
+//    }
+//    ierr = VecRestoreArrayRead(psi_hat_on_voronoi, &psi_hat_on_voronoi_read_only_p); psi_hat_on_voronoi_read_only_p = NULL; CHKERRXX(ierr);
     ierr = VecRestoreArrayRead(psi_hat, &psi_hat_read_only_p); psi_hat_read_only_p = NULL; CHKERRXX(ierr);
     int mpiret = MPI_Allreduce(MPI_IN_PLACE, &max_error, 1, MPI_DOUBLE, MPI_MAX, biomolecules->p4est->mpicomm); SC_CHECK_MPI(mpiret);
-    mpiret = MPI_Allreduce(MPI_IN_PLACE, &max_error_voro, 1, MPI_DOUBLE, MPI_MAX, biomolecules->p4est->mpicomm); SC_CHECK_MPI(mpiret);
+    //mpiret = MPI_Allreduce(MPI_IN_PLACE, &max_error_voro, 1, MPI_DOUBLE, MPI_MAX, biomolecules->p4est->mpicomm); SC_CHECK_MPI(mpiret);
     double domain_volume = biomolecules->domain_dim.at(0)*biomolecules->domain_dim.at(1)
     #ifdef P4_TO_P8
         *biomolecules->domain_dim.at(2)
     #endif
         ;
-    mpiret = MPI_Allreduce(MPI_IN_PLACE, &error_1_norm_voro, 1, MPI_DOUBLE, MPI_SUM, biomolecules->p4est->mpicomm); SC_CHECK_MPI(mpiret);
-    error_1_norm_voro /= domain_volume;
-    mpiret = MPI_Allreduce(MPI_IN_PLACE, &error_2_norm_voro, 1, MPI_DOUBLE, MPI_SUM, biomolecules->p4est->mpicomm); SC_CHECK_MPI(mpiret);
-    error_2_norm_voro = sqrt(error_2_norm_voro/domain_volume);
+
+//    mpiret = MPI_Allreduce(MPI_IN_PLACE, &error_1_norm_voro, 1, MPI_DOUBLE, MPI_SUM, biomolecules->p4est->mpicomm); SC_CHECK_MPI(mpiret);
+//    error_1_norm_voro /= domain_volume;
+//    mpiret = MPI_Allreduce(MPI_IN_PLACE, &error_2_norm_voro, 1, MPI_DOUBLE, MPI_SUM, biomolecules->p4est->mpicomm); SC_CHECK_MPI(mpiret);
+//    error_2_norm_voro = sqrt(error_2_norm_voro/domain_volume);
     ierr = VecGhostUpdateEnd(negative_ones, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecGhostUpdateEnd(absolute_error_1_norm, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     error_1_norm = integrate_over_negative_domain(biomolecules->p4est, biomolecules->nodes, negative_ones, absolute_error_1_norm)/domain_volume;
@@ -5251,16 +5807,17 @@ int     my_p4est_biomolecules_solver_t::solve_nonlinear(double upper_bound_resid
                           "Error in 2-norm for a %d/%d grid = %g \n", biomolecules->parameters.min_level(), biomolecules->parameters.max_level(), error_2_norm); CHKERRXX(ierr);
       ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file,
                           "Error in infinity norm for a %d/%d grid = %g \n", biomolecules->parameters.min_level(), biomolecules->parameters.max_level(), max_error); CHKERRXX(ierr);
-      ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file,
-                          "Error in 1-norm, on the voronoi mesh, for a %d/%d grid = %g \n", biomolecules->parameters.min_level(), biomolecules->parameters.max_level(), error_1_norm_voro); CHKERRXX(ierr);
-      ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file,
-                          "Error in 2-norm, on the voronoi mesh, for a %d/%d grid = %g \n", biomolecules->parameters.min_level(), biomolecules->parameters.max_level(), error_2_norm_voro); CHKERRXX(ierr);
-      ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file,
-                          "Error in infinity norm, at voronoi points, for a %d/%d grid = %g \n", biomolecules->parameters.min_level(), biomolecules->parameters.max_level(), max_error_voro); CHKERRXX(ierr);
+//      ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file,
+//                          "Error in 1-norm, on the voronoi mesh, for a %d/%d grid = %g \n", biomolecules->parameters.min_level(), biomolecules->parameters.max_level(), error_1_norm_voro); CHKERRXX(ierr);
+//      ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file,
+//                          "Error in 2-norm, on the voronoi mesh, for a %d/%d grid = %g \n", biomolecules->parameters.min_level(), biomolecules->parameters.max_level(), error_2_norm_voro); CHKERRXX(ierr);
+//      ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file,
+//                          "Error in infinity norm, at voronoi points, for a %d/%d grid = %g \n", biomolecules->parameters.min_level(), biomolecules->parameters.max_level(), max_error_voro); CHKERRXX(ierr);
 //      ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file,"Saving voronoi mesh...\n"); CHKERRXX(ierr);
 //      jump_solver->print_voronoi_VTK("/home/egan/workspace/projects/biomol/output/validation/voronoi");
-    }
+   }
   }
+
   if(solve_subtimer != NULL){
     delete solve_subtimer; solve_subtimer = NULL;}
 
@@ -5456,272 +6013,272 @@ void my_p4est_biomolecules_solver_t::get_solvation_free_energy(bool validation_f
 #endif
 }
 
-void my_p4est_biomolecules_solver_t::get_residual_at_voronoi_points_and_set_as_rhs(const Vec& psi_hat_on_voronoi)
-{
-  P4EST_ASSERT(psi_hat_on_voronoi != NULL && jump_solver->rhs != NULL);
-  ierr = MatMult(jump_solver->A, psi_hat_on_voronoi, jump_solver->rhs); CHKERRXX(ierr);
-  double *residual_voro_p = NULL;
-  const double *psi_hat_on_voro_read_only_p = NULL;
-  ierr = VecGetArray(jump_solver->rhs, &residual_voro_p); CHKERRXX(ierr);
-  ierr = VecGetArrayRead(psi_hat_on_voronoi, &psi_hat_on_voro_read_only_p); CHKERRXX(ierr);
-  const double inverse_square_debye_length_in_domain = SQR(1.0/get_debye_length_in_domain());
-  for (unsigned int n = 0; n < jump_solver->num_local_voro; ++n)
-  {
-#ifdef P4_TO_P8
-    Point3 pc = jump_solver->voro_seeds[n];
-#else
-    Point2 pc = jump_solver->voro_seeds[n];
-#endif
-    if( (ABS(pc.x-jump_solver->xyz_min[0])<EPS || ABS(pc.x-jump_solver->xyz_max[0])<EPS ||
-         ABS(pc.y-jump_solver->xyz_min[1])<EPS || ABS(pc.y-jump_solver->xyz_max[1])<EPS
-     #ifdef P4_TO_P8
-         || ABS(pc.z-jump_solver->xyz_min[2])<EPS || ABS(pc.z-jump_solver->xyz_max[2])<EPS
-         ) && jump_solver->bc->wallType(pc.x,pc.y, pc.z)==DIRICHLET)
-#else
-         ) && jump_solver->bc->wallType(pc.x,pc.y)==DIRICHLET)
-#endif
-    {
-#ifdef P4_TO_P8
-      residual_voro_p[n] = -residual_voro_p[n] + jump_solver->bc->wallValue(pc.x, pc.y, pc.z);
-#else
-      residual_voro_p[n] = -residual_voro_p[n] + jump_solver->bc->wallValue(pc.x, pc.y);
-#endif
-      continue;
-    }
-#ifdef P4_TO_P8
-    Voronoi3D voro;
-#else
-    Voronoi2D voro;
-#endif
-    jump_solver->compute_voronoi_cell(n, voro);
+//void my_p4est_biomolecules_solver_t::get_residual_at_voronoi_points_and_set_as_rhs(const Vec& psi_hat_on_voronoi)
+//{
+//  P4EST_ASSERT(psi_hat_on_voronoi != NULL && jump_solver->rhs != NULL);
+//  ierr = MatMult(jump_solver->A, psi_hat_on_voronoi, jump_solver->rhs); CHKERRXX(ierr);
+//  double *residual_voro_p = NULL;
+//  const double *psi_hat_on_voro_read_only_p = NULL;
+//  ierr = VecGetArray(jump_solver->rhs, &residual_voro_p); CHKERRXX(ierr);
+//  ierr = VecGetArrayRead(psi_hat_on_voronoi, &psi_hat_on_voro_read_only_p); CHKERRXX(ierr);
+//  const double inverse_square_debye_length_in_domain = SQR(1.0/get_debye_length_in_domain());
+//  for (unsigned int n = 0; n < jump_solver->num_local_voro; ++n)
+//  {
+//#ifdef P4_TO_P8
+//    Point3 pc = jump_solver->voro_seeds[n];
+//#else
+//    Point2 pc = jump_solver->voro_seeds[n];
+//#endif
+//    if( (ABS(pc.x-jump_solver->xyz_min[0])<EPS || ABS(pc.x-jump_solver->xyz_max[0])<EPS ||
+//         ABS(pc.y-jump_solver->xyz_min[1])<EPS || ABS(pc.y-jump_solver->xyz_max[1])<EPS
+//     #ifdef P4_TO_P8
+//         || ABS(pc.z-jump_solver->xyz_min[2])<EPS || ABS(pc.z-jump_solver->xyz_max[2])<EPS
+//         ) && jump_solver->bc->wallType(pc.x,pc.y, pc.z)==DIRICHLET)
+//#else
+//         ) && jump_solver->bc->wallType(pc.x,pc.y)==DIRICHLET)
+//#endif
+//    {
+//#ifdef P4_TO_P8
+//      residual_voro_p[n] = -residual_voro_p[n] + jump_solver->bc->wallValue(pc.x, pc.y, pc.z);
+//#else
+//      residual_voro_p[n] = -residual_voro_p[n] + jump_solver->bc->wallValue(pc.x, pc.y);
+//#endif
+//      continue;
+//    }
+//#ifdef P4_TO_P8
+//    Voronoi3D voro;
+//#else
+//    Voronoi2D voro;
+//#endif
+//    jump_solver->compute_voronoi_cell(n, voro);
 
-#ifdef P4_TO_P8
-    const vector<ngbd3Dseed> *points;
-#else
-    const vector<Point2> *partition;
-    const vector<ngbd2Dseed> *points;
-    voro.get_partition(partition);
-#endif
-    voro.get_neighbor_seeds(points);
+//#ifdef P4_TO_P8
+//    const vector<ngbd3Dseed> *points;
+//#else
+//    const vector<Point2> *partition;
+//    const vector<ngbd2Dseed> *points;
+//    voro.get_partition(partition);
+//#endif
+//    voro.get_neighbor_seeds(points);
 
-    double mu_n, add_n, rhs_n;
-#ifdef P4_TO_P8
-    double phi_n = jump_solver->interp_phi(pc.x, pc.y, pc.z);
-#else
-    double phi_n = jump_solver->interp_phi(pc.x, pc.y);
-#endif
-    if(phi_n<0)
-    {
-#ifdef P4_TO_P8
-      rhs_n = jump_solver->rhs_m(pc.x, pc.y, pc.z);
-#else
-      rhs_n = jump_solver->rhs_m(pc.x, pc.y);
-#endif
-      mu_n  = mol_rel_permittivity;
-      add_n = 0.0;
-    }
-    else
-    {
-#ifdef P4_TO_P8
-      rhs_n = jump_solver->rhs_p(pc.x, pc.y, pc.z);
-#else
-      rhs_n = jump_solver->rhs_p(pc.x, pc.y);
-#endif
-      mu_n  = elec_rel_permittivity;
-      add_n = inverse_square_debye_length_in_domain*sinh(psi_hat_on_voro_read_only_p[n]);
-    }
+//    double mu_n, add_n, rhs_n;
+//#ifdef P4_TO_P8
+//    double phi_n = jump_solver->interp_phi(pc.x, pc.y, pc.z);
+//#else
+//    double phi_n = jump_solver->interp_phi(pc.x, pc.y);
+//#endif
+//    if(phi_n<0)
+//    {
+//#ifdef P4_TO_P8
+//      rhs_n = jump_solver->rhs_m(pc.x, pc.y, pc.z);
+//#else
+//      rhs_n = jump_solver->rhs_m(pc.x, pc.y);
+//#endif
+//      mu_n  = mol_rel_permittivity;
+//      add_n = 0.0;
+//    }
+//    else
+//    {
+//#ifdef P4_TO_P8
+//      rhs_n = jump_solver->rhs_p(pc.x, pc.y, pc.z);
+//#else
+//      rhs_n = jump_solver->rhs_p(pc.x, pc.y);
+//#endif
+//      mu_n  = elec_rel_permittivity;
+//      add_n = inverse_square_debye_length_in_domain*sinh(psi_hat_on_voro_read_only_p[n]);
+//    }
 
-#ifndef P4_TO_P8
-    voro.compute_volume();
-#endif
-    double volume = voro.get_volume();
+//#ifndef P4_TO_P8
+//    voro.compute_volume();
+//#endif
+//    double volume = voro.get_volume();
 
-    residual_voro_p[n] = rhs_n*volume-residual_voro_p[n] -add_n*volume;
+//    residual_voro_p[n] = rhs_n*volume-residual_voro_p[n] -add_n*volume;
 
-    for(unsigned int l=0; l<points->size(); ++l)
-    {
-#ifdef P4_TO_P8
-      double s = (*points)[l].s;
-#else
-      int k = (l+partition->size()-1) % partition->size();
-      double s = ((*partition)[k]-(*partition)[l]).norm_L2();
-#endif
+//    for(unsigned int l=0; l<points->size(); ++l)
+//    {
+//#ifdef P4_TO_P8
+//      double s = (*points)[l].s;
+//#else
+//      int k = (l+partition->size()-1) % partition->size();
+//      double s = ((*partition)[k]-(*partition)[l]).norm_L2();
+//#endif
 
-      if((*points)[l].n>=0)
-      {
-        /* regular point */
-#ifdef P4_TO_P8
-        Point3 pl = (*points)[l].p;
-        double phi_l = jump_solver->interp_phi(pl.x, pl.y, pl.z);
-#else
-        Point2 pl = (*points)[l].p;
-        double phi_l = jump_solver->interp_phi(pl.x, pl.y);
-#endif
-        double mu_l;
+//      if((*points)[l].n>=0)
+//      {
+//        /* regular point */
+//#ifdef P4_TO_P8
+//        Point3 pl = (*points)[l].p;
+//        double phi_l = jump_solver->interp_phi(pl.x, pl.y, pl.z);
+//#else
+//        Point2 pl = (*points)[l].p;
+//        double phi_l = jump_solver->interp_phi(pl.x, pl.y);
+//#endif
+//        double mu_l;
 
-        if(phi_l<0) mu_l = mol_rel_permittivity;
-        else        mu_l = elec_rel_permittivity;
+//        if(phi_l<0) mu_l = mol_rel_permittivity;
+//        else        mu_l = elec_rel_permittivity;
 
-        double mu_harmonic = 2*mu_n*mu_l/(mu_n + mu_l);
+//        double mu_harmonic = 2*mu_n*mu_l/(mu_n + mu_l);
 
-        if(phi_n*phi_l<0)
-        {
-#ifdef P4_TO_P8
-          Point3 p_ln = (pc+pl)/2;
-#else
-          Point2 p_ln = (pc+pl)/2;
-#endif
+//        if(phi_n*phi_l<0)
+//        {
+//#ifdef P4_TO_P8
+//          Point3 p_ln = (pc+pl)/2;
+//#else
+//          Point2 p_ln = (pc+pl)/2;
+//#endif
 
-#ifdef P4_TO_P8
-          residual_voro_p[n] -= mu_harmonic/mu_l * s/2 * (*jump_solver->mu_grad_u_jump)(p_ln.x, p_ln.y, p_ln.z);
-#else
-          residual_voro_p[n] -= mu_harmonic/mu_l * s/2 * (*jump_solver->mu_grad_u_jump)(p_ln.x, p_ln.y);
-#endif
-        }
-      }
-    }
-  }
-  ierr = VecRestoreArrayRead(psi_hat_on_voronoi, &psi_hat_on_voro_read_only_p); psi_hat_on_voro_read_only_p = NULL; CHKERRXX(ierr);
-  ierr = VecRestoreArray(jump_solver->rhs, &residual_voro_p); residual_voro_p = NULL; CHKERRXX(ierr);
-  ierr = VecGhostUpdateBegin(jump_solver->rhs, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecGhostUpdateEnd(jump_solver->rhs, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-}
-void my_p4est_biomolecules_solver_t::get_linear_diagonal_terms(Vec& pristine_diagonal_terms)
-{
-  if(pristine_diagonal_terms == NULL)
-  {
-    ierr = VecDuplicate(jump_solver->sol_voro, &pristine_diagonal_terms); CHKERRXX(ierr);
-  }
-  ierr = MatGetDiagonal(jump_solver->A, pristine_diagonal_terms); CHKERRXX(ierr);
-  double *pristine_diagonal_terms_p = NULL;
-  ierr = VecGetArray(pristine_diagonal_terms, &pristine_diagonal_terms_p); CHKERRXX(ierr);
-  const double inverse_square_debye_length_in_domain = SQR(1.0/get_debye_length_in_domain());
-  for (unsigned int n = 0; n < jump_solver->num_local_voro; ++n)
-  {
-#ifdef P4_TO_P8
-    Point3 pc = jump_solver->voro_seeds[n];
-#else
-    Point2 pc = jump_solver->voro_seeds[n];
-#endif
-    if( (ABS(pc.x-jump_solver->xyz_min[0])<EPS || ABS(pc.x-jump_solver->xyz_max[0])<EPS ||
-         ABS(pc.y-jump_solver->xyz_min[1])<EPS || ABS(pc.y-jump_solver->xyz_max[1])<EPS
-     #ifdef P4_TO_P8
-         || ABS(pc.z-jump_solver->xyz_min[2])<EPS || ABS(pc.z-jump_solver->xyz_max[2])<EPS
-         ) && jump_solver->bc->wallType(pc.x,pc.y, pc.z)==DIRICHLET)
-#else
-         ) && jump_solver->bc->wallType(pc.x,pc.y)==DIRICHLET)
-#endif
-      continue;
+//#ifdef P4_TO_P8
+//          residual_voro_p[n] -= mu_harmonic/mu_l * s/2 * (*jump_solver->mu_grad_u_jump)(p_ln.x, p_ln.y, p_ln.z);
+//#else
+//          residual_voro_p[n] -= mu_harmonic/mu_l * s/2 * (*jump_solver->mu_grad_u_jump)(p_ln.x, p_ln.y);
+//#endif
+//        }
+//      }
+//    }
+//  }
+//  ierr = VecRestoreArrayRead(psi_hat_on_voronoi, &psi_hat_on_voro_read_only_p); psi_hat_on_voro_read_only_p = NULL; CHKERRXX(ierr);
+//  ierr = VecRestoreArray(jump_solver->rhs, &residual_voro_p); residual_voro_p = NULL; CHKERRXX(ierr);
+//  ierr = VecGhostUpdateBegin(jump_solver->rhs, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//  ierr = VecGhostUpdateEnd(jump_solver->rhs, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//}
+//void my_p4est_biomolecules_solver_t::get_linear_diagonal_terms(Vec& pristine_diagonal_terms)
+//{
+//  if(pristine_diagonal_terms == NULL)
+//  {
+//    ierr = VecDuplicate(jump_solver->sol_voro, &pristine_diagonal_terms); CHKERRXX(ierr);
+//  }
+//  ierr = MatGetDiagonal(jump_solver->A, pristine_diagonal_terms); CHKERRXX(ierr);
+//  double *pristine_diagonal_terms_p = NULL;
+//  ierr = VecGetArray(pristine_diagonal_terms, &pristine_diagonal_terms_p); CHKERRXX(ierr);
+//  const double inverse_square_debye_length_in_domain = SQR(1.0/get_debye_length_in_domain());
+//  for (unsigned int n = 0; n < jump_solver->num_local_voro; ++n)
+//  {
+//#ifdef P4_TO_P8
+//    Point3 pc = jump_solver->voro_seeds[n];
+//#else
+//    Point2 pc = jump_solver->voro_seeds[n];
+//#endif
+//    if( (ABS(pc.x-jump_solver->xyz_min[0])<EPS || ABS(pc.x-jump_solver->xyz_max[0])<EPS ||
+//         ABS(pc.y-jump_solver->xyz_min[1])<EPS || ABS(pc.y-jump_solver->xyz_max[1])<EPS
+//     #ifdef P4_TO_P8
+//         || ABS(pc.z-jump_solver->xyz_min[2])<EPS || ABS(pc.z-jump_solver->xyz_max[2])<EPS
+//         ) && jump_solver->bc->wallType(pc.x,pc.y, pc.z)==DIRICHLET)
+//#else
+//         ) && jump_solver->bc->wallType(pc.x,pc.y)==DIRICHLET)
+//#endif
+//      continue;
 
-#ifdef P4_TO_P8
-    Voronoi3D voro;
-#else
-    Voronoi2D voro;
-#endif
-    jump_solver->compute_voronoi_cell(n, voro);
+//#ifdef P4_TO_P8
+//    Voronoi3D voro;
+//#else
+//    Voronoi2D voro;
+//#endif
+//    jump_solver->compute_voronoi_cell(n, voro);
 
-#ifdef P4_TO_P8
-    const vector<ngbd3Dseed> *points;
-#else
-    const vector<Point2> *partition;
-    const vector<ngbd2Dseed> *points;
-    voro.get_partition(partition);
-#endif
-    voro.get_neighbor_seeds(points);
+//#ifdef P4_TO_P8
+//    const vector<ngbd3Dseed> *points;
+//#else
+//    const vector<Point2> *partition;
+//    const vector<ngbd2Dseed> *points;
+//    voro.get_partition(partition);
+//#endif
+//    voro.get_neighbor_seeds(points);
 
-    double add_n;
-#ifdef P4_TO_P8
-    double phi_n = jump_solver->interp_phi(pc.x, pc.y, pc.z);
-#else
-    double phi_n = jump_solver->interp_phi(pc.x, pc.y);
-#endif
-    if(phi_n<0)
-      add_n = 0.0;
-    else
-      add_n = inverse_square_debye_length_in_domain;
+//    double add_n;
+//#ifdef P4_TO_P8
+//    double phi_n = jump_solver->interp_phi(pc.x, pc.y, pc.z);
+//#else
+//    double phi_n = jump_solver->interp_phi(pc.x, pc.y);
+//#endif
+//    if(phi_n<0)
+//      add_n = 0.0;
+//    else
+//      add_n = inverse_square_debye_length_in_domain;
 
-#ifndef P4_TO_P8
-    voro.compute_volume();
-#endif
-    double volume = voro.get_volume();
+//#ifndef P4_TO_P8
+//    voro.compute_volume();
+//#endif
+//    double volume = voro.get_volume();
 
-    pristine_diagonal_terms_p[n] -= add_n*volume;
-  }
-  ierr = VecRestoreArray(pristine_diagonal_terms, &pristine_diagonal_terms_p); pristine_diagonal_terms_p = NULL; CHKERRXX(ierr);
-  ierr = VecGhostUpdateBegin(pristine_diagonal_terms, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecGhostUpdateEnd(pristine_diagonal_terms, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-}
+//    pristine_diagonal_terms_p[n] -= add_n*volume;
+//  }
+//  ierr = VecRestoreArray(pristine_diagonal_terms, &pristine_diagonal_terms_p); pristine_diagonal_terms_p = NULL; CHKERRXX(ierr);
+//  ierr = VecGhostUpdateBegin(pristine_diagonal_terms, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//  ierr = VecGhostUpdateEnd(pristine_diagonal_terms, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//}
 
-void my_p4est_biomolecules_solver_t::clean_matrix_diagonal(const Vec& pristine_diagonal)
-{
-  P4EST_ASSERT(pristine_diagonal != NULL);
-  const double *pristine_diagonal_read_only_p = NULL;
-  ierr = VecGetArrayRead(pristine_diagonal, &pristine_diagonal_read_only_p); CHKERRXX(ierr);
-  /* fill the matrix with the values */
-  for(unsigned int n=0; n<jump_solver->num_local_voro; ++n)
-  {
-    PetscInt global_n_idx = n+jump_solver->voro_global_offset[biomolecules->p4est->mpirank];
-    ierr = MatSetValue(jump_solver->A, global_n_idx, global_n_idx, pristine_diagonal_read_only_p[n], INSERT_VALUES); CHKERRXX(ierr);
-  }
+//void my_p4est_biomolecules_solver_t::clean_matrix_diagonal(const Vec& pristine_diagonal)
+//{
+//  P4EST_ASSERT(pristine_diagonal != NULL);
+//  const double *pristine_diagonal_read_only_p = NULL;
+//  ierr = VecGetArrayRead(pristine_diagonal, &pristine_diagonal_read_only_p); CHKERRXX(ierr);
+//  /* fill the matrix with the values */
+//  for(unsigned int n=0; n<jump_solver->num_local_voro; ++n)
+//  {
+//    PetscInt global_n_idx = n+jump_solver->voro_global_offset[biomolecules->p4est->mpirank];
+//    ierr = MatSetValue(jump_solver->A, global_n_idx, global_n_idx, pristine_diagonal_read_only_p[n], INSERT_VALUES); CHKERRXX(ierr);
+//  }
 
-  /* assemble the matrix */
-  ierr = MatAssemblyBegin(jump_solver->A, MAT_FINAL_ASSEMBLY); CHKERRXX(ierr);
-  ierr = MatAssemblyEnd  (jump_solver->A, MAT_FINAL_ASSEMBLY);   CHKERRXX(ierr);
-  ierr = VecRestoreArrayRead(pristine_diagonal, &pristine_diagonal_read_only_p); pristine_diagonal_read_only_p = NULL; CHKERRXX(ierr);
-}
+//  /* assemble the matrix */
+//  ierr = MatAssemblyBegin(jump_solver->A, MAT_FINAL_ASSEMBLY); CHKERRXX(ierr);
+//  ierr = MatAssemblyEnd  (jump_solver->A, MAT_FINAL_ASSEMBLY);   CHKERRXX(ierr);
+//  ierr = VecRestoreArrayRead(pristine_diagonal, &pristine_diagonal_read_only_p); pristine_diagonal_read_only_p = NULL; CHKERRXX(ierr);
+//}
 
-Vec my_p4est_biomolecules_solver_t::get_psi(double max_absolute_psi, bool validation_flag)
-{
-  if(validation_flag)
-    return NULL; // irrelevant
-  if(biomolecules->phi == NULL)
-  {
-#ifdef CASL_THROWS
-    string err_msg = "my_p4est_biomolecules_solver_t::get_psi(), the phi vector is not set, psi cannot be constructed... \n";
-    biomolecules->err_manager.print_message_and_abort(err_msg, 297792);
-#else
-    MPI_Abort(biomolecules->p4est->mpicomm, 297792);
-#endif
-  }
-  if(!psi_star_psi_naught_and_psi_bar_are_set)
-  {
-#ifdef CASL_THROWS
-    // print a warning
-    string message  = "my_p4est_biomolecules_solver_t::get_psi(), psi_bar and/or psi_star not set yet, they will be computed and created... \n";
-    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->error_file, message.c_str()); CHKERRXX(ierr);
-#endif
-    solve_singular_part(); // default number of iterations
-  }
-  if(!psi_hat_is_set)
-  {
-#ifdef CASL_THROWS
-    // print a warning
-    string message  = "my_p4est_biomolecules_solver_t::get_psi(), psi_hat is not set yet, it will be computed using the linear equation ... \n";
-    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->error_file, message.c_str()); CHKERRXX(ierr);
-#endif
-    solve_linear();
-  }
-  P4EST_ASSERT(max_absolute_psi > 0.0);
-  Vec psi = NULL;
-  make_sure_is_node_sampled(psi);
-  const double *psi_bar_read_only_p = NULL, *psi_hat_read_only_p = NULL, *phi_read_only_p = NULL;
-  double* psi_p = NULL;
-  ierr = VecGetArrayRead(psi_bar, &psi_bar_read_only_p); CHKERRXX(ierr);
-  ierr = VecGetArrayRead(psi_hat, &psi_hat_read_only_p); CHKERRXX(ierr);
-  ierr = VecGetArrayRead(biomolecules->phi, &phi_read_only_p); CHKERRXX(ierr);
-  ierr = VecGetArray(psi, &psi_p); CHKERRXX(ierr);
-  for (size_t k = 0; k < biomolecules->nodes->indep_nodes.elem_count; ++k) {
-    if(phi_read_only_p[k] < EPS && !ISINF(psi_bar_read_only_p[k]))
-      psi_p[k]  = psi_hat_read_only_p[k] + ((fabs(psi_bar_read_only_p[k]) < max_absolute_psi)? psi_bar_read_only_p[k]: (SIGN(psi_bar_read_only_p[k])*max_absolute_psi));
-    else
-      psi_p[k]  = psi_hat_read_only_p[k];
-  }
-  ierr = VecRestoreArray(psi, &psi_p); psi_p = NULL; CHKERRXX(ierr);
-  ierr = VecRestoreArrayRead(biomolecules->phi, &phi_read_only_p); phi_read_only_p = NULL; CHKERRXX(ierr);
-  ierr = VecRestoreArrayRead(psi_hat, &psi_hat_read_only_p);  psi_hat_read_only_p = NULL; CHKERRXX(ierr);
-  ierr = VecRestoreArrayRead(psi_bar, &psi_bar_read_only_p); psi_bar_read_only_p = NULL; CHKERRXX(ierr);
-  return psi;
-}
+//Vec my_p4est_biomolecules_solver_t::get_psi(double max_absolute_psi, bool validation_flag)
+//{
+//  if(validation_flag)
+//    return NULL; // irrelevant
+//  if(biomolecules->phi == NULL)
+//  {
+//#ifdef CASL_THROWS
+//    string err_msg = "my_p4est_biomolecules_solver_t::get_psi(), the phi vector is not set, psi cannot be constructed... \n";
+//    biomolecules->err_manager.print_message_and_abort(err_msg, 297792);
+//#else
+//    MPI_Abort(biomolecules->p4est->mpicomm, 297792);
+//#endif
+//  }
+//  if(!psi_star_psi_naught_and_psi_bar_are_set)
+//  {
+//#ifdef CASL_THROWS
+//    // print a warning
+//    string message  = "my_p4est_biomolecules_solver_t::get_psi(), psi_bar and/or psi_star not set yet, they will be computed and created... \n";
+//    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->error_file, message.c_str()); CHKERRXX(ierr);
+//#endif
+//    solve_singular_part(); // default number of iterations
+//  }
+//  if(!psi_hat_is_set)
+//  {
+//#ifdef CASL_THROWS
+//    // print a warning
+//    string message  = "my_p4est_biomolecules_solver_t::get_psi(), psi_hat is not set yet, it will be computed using the linear equation ... \n";
+//    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->error_file, message.c_str()); CHKERRXX(ierr);
+//#endif
+//    solve_linear();
+//  }
+//  P4EST_ASSERT(max_absolute_psi > 0.0);
+//  Vec psi = NULL;
+//  make_sure_is_node_sampled(psi);
+//  const double *psi_bar_read_only_p = NULL, *psi_hat_read_only_p = NULL, *phi_read_only_p = NULL;
+//  double* psi_p = NULL;
+//  ierr = VecGetArrayRead(psi_bar, &psi_bar_read_only_p); CHKERRXX(ierr);
+//  ierr = VecGetArrayRead(psi_hat, &psi_hat_read_only_p); CHKERRXX(ierr);
+//  ierr = VecGetArrayRead(biomolecules->phi, &phi_read_only_p); CHKERRXX(ierr);
+//  ierr = VecGetArray(psi, &psi_p); CHKERRXX(ierr);
+//  for (size_t k = 0; k < biomolecules->nodes->indep_nodes.elem_count; ++k) {
+//    if(phi_read_only_p[k] < EPS && !ISINF(psi_bar_read_only_p[k]))
+//      psi_p[k]  = psi_hat_read_only_p[k] + ((fabs(psi_bar_read_only_p[k]) < max_absolute_psi)? psi_bar_read_only_p[k]: (SIGN(psi_bar_read_only_p[k])*max_absolute_psi));
+//    else
+//      psi_p[k]  = psi_hat_read_only_p[k];
+//  }
+//  ierr = VecRestoreArray(psi, &psi_p); psi_p = NULL; CHKERRXX(ierr);
+//  ierr = VecRestoreArrayRead(biomolecules->phi, &phi_read_only_p); phi_read_only_p = NULL; CHKERRXX(ierr);
+//  ierr = VecRestoreArrayRead(psi_hat, &psi_hat_read_only_p);  psi_hat_read_only_p = NULL; CHKERRXX(ierr);
+//  ierr = VecRestoreArrayRead(psi_bar, &psi_bar_read_only_p); psi_bar_read_only_p = NULL; CHKERRXX(ierr);
+//  return psi;
+//}
 
 my_p4est_biomolecules_solver_t::~my_p4est_biomolecules_solver_t()
 {

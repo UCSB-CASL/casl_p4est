@@ -61,7 +61,7 @@ my_p4est_general_poisson_nodes_mls_solver_t::~my_p4est_general_poisson_nodes_mls
 FILE* my_p4est_general_poisson_nodes_mls_solver_t::log_file     = NULL;
 FILE* my_p4est_general_poisson_nodes_mls_solver_t::timing_file  = NULL;
 FILE* my_p4est_general_poisson_nodes_mls_solver_t::error_file   = NULL;
-int     my_p4est_general_poisson_nodes_mls_solver_t::solve_nonlinear_v1(Vec soln,double upper_bound_residual, int it_max, bool validation_flag)
+int     my_p4est_general_poisson_nodes_mls_solver_t::solve_nonlinear(Vec soln,double upper_bound_residual, int it_max, bool validation_flag)
 {
     parStopWatch *log_timer = NULL, *solve_subtimer = NULL;
 
