@@ -109,6 +109,7 @@ private:
   vec_and_ptr_t       history_front_velo_norm_;
   vec_and_ptr_t       history_tf_; // temperature at which alloy solidified
   vec_and_ptr_array_t history_cs_; // composition of solidified region
+  vec_and_ptr_t       history_seed_; // seed tag
 
   //--------------------------------------------------
   // physical parameters
@@ -265,6 +266,18 @@ public:
       eps_v_[i] = eps_v[i];
       eps_c_[i] = eps_c[i];
     }
+
+    my_p4est_interpolation_nodes_t interp(ngbd_);
+
+    double xyz[P4EST_DIM];
+    foreach_node(n, history_nodes_)
+    {
+      node_xyz_fr_n(n, history_p4est_, history_nodes_, xyz);
+      interp.add_point(n, xyz);
+    }
+
+    interp.set_input(seed_map_.vec, linear);
+    interp.interpolate(history_seed_.vec);
   }
 
   inline void set_container_conditions_thermal(BoundaryConditionType bc_type, CF_DIM &bc_value)
@@ -317,7 +330,7 @@ public:
       interp.add_point(n, xyz);
     }
 
-    interp.set_input(ts_[0].vec, interpolation_between_grids_);
+    interp.set_input(ts_[0].vec, linear);
     interp.interpolate(history_tf_.vec);
   }
 
@@ -342,7 +355,7 @@ public:
 
     for (j = 0; j < num_comps_; ++j)
     {
-      interp.set_input(cs[j], interpolation_between_grids_);
+      interp.set_input(cs[j], linear);
       interp.interpolate(history_cs_.vec[j]);
     }
   }

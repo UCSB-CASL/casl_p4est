@@ -98,10 +98,10 @@ DEFINE_PARAMETER(pl, int,    pin_every_n_iterations, 20, "");
 DEFINE_PARAMETER(pl, int,    max_iterations,   10, "");
 DEFINE_PARAMETER(pl, int,    front_smoothing,   0, "");
 DEFINE_PARAMETER(pl, double, bc_tolerance,      1.e-5, "");
-DEFINE_PARAMETER(pl, double, cfl_number, 0.25, "");
+DEFINE_PARAMETER(pl, double, cfl_number, 0.15, "");
 DEFINE_PARAMETER(pl, double, phi_thresh, 0.1, "");
-DEFINE_PARAMETER(pl, double, curvature_smoothing, 0.35, "");
-DEFINE_PARAMETER(pl, int,    curvature_smoothing_steps, 10, "");
+DEFINE_PARAMETER(pl, double, curvature_smoothing, 0.0, "");
+DEFINE_PARAMETER(pl, int,    curvature_smoothing_steps, 0, "");
 
 //-------------------------------------
 // output parameters
@@ -251,9 +251,9 @@ void set_alloy_parameters()
       part_coeff_0     = 0.86;
       part_coeff_1     = 0.86;
 
-      eps_c = 1.e-5/melting_temp;
+      eps_c = 7.e-6/melting_temp;
       eps_v = 0;
-      eps_a = 0.0;
+      eps_a = 0.05;
       break;
     case 7:// Ni - 0.3at%Cu - 0.1at%Cu
       density_l       = 8.88e-3; // kg.cm-3
@@ -443,7 +443,7 @@ public:
   {
     switch (geometry)
     {
-      case 0: return 0;
+      case 0: return fabs(x-0.25) - 0.1 < 0 ? 0 : 1;
       default: throw;
     }
   }
@@ -453,7 +453,22 @@ int num_seeds()
 {
   switch (geometry)
   {
-    case 0: return 1;
+    case 0: return 2;
+    default: throw;
+  }
+}
+
+int theta0(int seed)
+{
+  switch (geometry)
+  {
+    case 0:
+      switch (seed)
+      {
+        case 0: return -PI/6.;
+        case 1: return PI/6.;
+        default: throw;
+      }
     default: throw;
   }
 }
@@ -629,7 +644,9 @@ public:
 
 class eps_c_cf_t : public CF_DIM
 {
+  double theta0;
 public:
+  eps_c_cf_t(double theta0 = 0) : theta0(theta0) {}
   double operator()(DIM(double nx, double ny, double nz)) const
   {
 #ifdef P4_TO_P8
@@ -637,14 +654,16 @@ public:
     return eps_c*(1.0-4.0*eps_a*((pow(nx, 4.) + pow(ny, 4.) + pow(nz, 4.))/pow(norm, 4.) - 0.75));
 #else
     double theta = atan2(ny, nx);
-    return eps_c*(1.-15.*eps_a*cos(4.*(theta)));
+    return eps_c*(1.-15.*eps_a*cos(4.*(theta-theta0)))/(1.+15.*eps_a);
 #endif
   }
 };
 
 class eps_v_cf_t : public CF_DIM
 {
+  double theta0;
 public:
+  eps_v_cf_t(double theta0 = 0) : theta0(theta0) {}
   double operator()(DIM(double nx, double ny, double nz)) const
   {
 #ifdef P4_TO_P8
@@ -652,7 +671,7 @@ public:
     return eps_v*(1.0-4.0*eps_a*((pow(nx, 4.) + pow(ny, 4.) + pow(nz, 4.))/pow(norm, 4.) - 0.75));
 #else
     double theta = atan2(ny, nx);
-    return eps_v*(1.-15.*eps_a*cos(4.*(theta)));
+    return eps_v*(1.-15.*eps_a*cos(4.*(theta-theta0)))/(1.+15.*eps_a);
 #endif
   }
 };
@@ -842,8 +861,17 @@ int main (int argc, char* argv[])
                              density_l, heat_capacity_l, thermal_cond_l,
                              density_s, heat_capacity_s, thermal_cond_s);
 
-  eps_c_cf_t eps_c_cf; std::vector<CF_DIM *> eps_c_all(num_seeds(), &eps_c_cf);
-  eps_v_cf_t eps_v_cf; std::vector<CF_DIM *> eps_v_all(num_seeds(), &eps_v_cf);
+  std::vector<CF_DIM *> eps_c_all(num_seeds(), NULL);
+  std::vector<CF_DIM *> eps_v_all(num_seeds(), NULL);
+
+  for (int i = 0; i < num_seeds(); ++i)
+  {
+    eps_c_all[i] = new eps_c_cf_t(theta0(i));
+    eps_v_all[i] = new eps_v_cf_t(theta0(i));
+  }
+
+//  eps_c_cf_t eps_c_cf; std::vector<CF_DIM *> eps_c_all(num_seeds(), &eps_c_cf);
+//  eps_v_cf_t eps_v_cf; std::vector<CF_DIM *> eps_v_all(num_seeds(), &eps_v_cf);
 
   mas.set_undercoolings(num_seeds(), seed_map.vec, eps_v_all.data(), eps_c_all.data());
 
