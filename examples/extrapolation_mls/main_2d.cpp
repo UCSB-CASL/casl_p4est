@@ -93,8 +93,8 @@ DEFINE_PARAMETER(pl, int, num_shifts_x_dir, 1, "Number of grid shifts in the x-d
 DEFINE_PARAMETER(pl, int, num_shifts_y_dir, 1, "Number of grid shifts in the y-direction");
 DEFINE_PARAMETER(pl, int, num_shifts_z_dir, 1, "Number of grid shifts in the z-direction");
 #else
-DEFINE_PARAMETER(pl, int, lmin, 8, "Min level of the tree");
-DEFINE_PARAMETER(pl, int, lmax, 11, "Max level of the tree");
+DEFINE_PARAMETER(pl, int, lmin, 9, "Min level of the tree");
+DEFINE_PARAMETER(pl, int, lmax, 9, "Max level of the tree");
 
 DEFINE_PARAMETER(pl, int, num_splits,           1, "Number of recursive splits");
 DEFINE_PARAMETER(pl, int, num_splits_per_split, 1, "Number of additional resolutions");
@@ -105,7 +105,7 @@ DEFINE_PARAMETER(pl, int, num_shifts_z_dir, 1, "Number of grid shifts in the z-d
 #endif
 
 DEFINE_PARAMETER(pl, int, iter_start, 0, "Skip n first iterations");
-DEFINE_PARAMETER(pl, double, lip, 2, "Lipschitz constant");
+DEFINE_PARAMETER(pl, double, lip, 10, "Lipschitz constant");
 
 DEFINE_PARAMETER(pl, bool, refine_strict,  0, "Refines every cell starting from the coarsest case if yes");
 DEFINE_PARAMETER(pl, bool, refine_rand,    0, "Add randomness into adaptive grid");
@@ -140,7 +140,7 @@ DEFINE_PARAMETER(pl, int, bdry_opn_03, MLS_INTERSECTION, "Domain geometry");
 //-------------------------------------
 // level-set representation parameters
 //-------------------------------------
-DEFINE_PARAMETER(pl, bool, reinit_level_set, 0, "Reinitialize level-set function");
+DEFINE_PARAMETER(pl, bool, reinit_level_set, 1, "Reinitialize level-set function");
 
 // artificial perturbation of level-set values
 DEFINE_PARAMETER(pl, int,    dom_perturb,     0,   "Artificially pertub level-set functions (0 - no perturbation, 1 - smooth, 2 - noisy)");
@@ -150,13 +150,13 @@ DEFINE_PARAMETER(pl, double, dom_perturb_pow, 2,   "Order of level-set perturbat
 //-------------------------------------
 // convergence study parameters
 //-------------------------------------
-DEFINE_PARAMETER(pl, int,    extend_solution,        2, "Extend solution after solving: 0 - no extension, 1 - extend using normal derivatives, 2 - extend using all derivatives");
+DEFINE_PARAMETER(pl, int,    extend_solution,        1, "Extend solution after solving: 0 - no extension, 1 - extend using normal derivatives, 2 - extend using all derivatives");
 DEFINE_PARAMETER(pl, bool,   use_nonzero_guess,      0, "");
-DEFINE_PARAMETER(pl, double, extension_band_extend,  6, "");
-DEFINE_PARAMETER(pl, double, extension_band_compute, 8, "");
-DEFINE_PARAMETER(pl, double, extension_band_check,   4, "");
-DEFINE_PARAMETER(pl, double, extension_tol,          -1.e-10, "");
-DEFINE_PARAMETER(pl, int,    extension_iterations,   50, "");
+DEFINE_PARAMETER(pl, double, extension_band_extend,  6000, "");
+DEFINE_PARAMETER(pl, double, extension_band_compute, 80, "");
+DEFINE_PARAMETER(pl, double, extension_band_check,   5, "");
+DEFINE_PARAMETER(pl, double, extension_tol,          -1.e-16, "");
+DEFINE_PARAMETER(pl, int,    extension_iterations,   200, "");
 
 
 //-------------------------------------
@@ -166,7 +166,7 @@ DEFINE_PARAMETER(pl, bool, save_vtk,           1, "Save the p4est in vtk format"
 DEFINE_PARAMETER(pl, bool, save_params,        0, "Save list of entered parameters");
 DEFINE_PARAMETER(pl, bool, save_convergence,   0, "Save convergence results");
 
-DEFINE_PARAMETER(pl, int, n_example, 1, "Predefined example");
+DEFINE_PARAMETER(pl, int, n_example, 3, "Predefined example");
 
 void set_example(int n_example)
 {
@@ -562,7 +562,7 @@ public:
       case 4: // moderately star-shaped domain
       {
         static double r0 = 0.611, DIM(xc = 0, yc = 0, zc = 0), deform = 0.15;
-        static flower_shaped_domain_t circle(r0, DIM(xc, yc, zc), deform);
+        static flower_shaped_domain_t circle(r0, DIM(xc, yc, zc), deform, -1);
         switch (what) {
           OCOMP( case VAL: return circle.phi  (DIM(x,y,z)) );
           XCOMP( case DDX: return circle.phi_x(DIM(x,y,z)) );
@@ -956,6 +956,7 @@ int main (int argc, char* argv[])
               ngbd_n.init_neighbors();
 
               my_p4est_level_set_t ls(&ngbd_n);
+              ls.set_show_convergence(1);
 
               double dxyz[P4EST_DIM];
               dxyz_min(p4est, dxyz);
@@ -1003,7 +1004,9 @@ int main (int argc, char* argv[])
 
               if (reinit_level_set)
               {
-                ls.reinitialize_1st_order_time_2nd_order_space(phi_eff.vec, 20);
+//                ls.reinitialize_1st_order_time_2nd_order_space(phi_eff.vec, 100);
+//                ls.reinitialize_1st_order(phi_eff.vec, 50);
+                ls.reinitialize_2nd_order(phi_eff.vec, 100);
               }
 
               vec_and_ptr_t sol(p4est, nodes);
@@ -1016,8 +1019,8 @@ int main (int argc, char* argv[])
 
               double band = extension_band_check;
 
+              ls.set_use_two_step_extrapolation(0);
               // extend
-              ls.set_verbose_mode(0);
               switch (extend_solution)
               {
                 case 1:
@@ -1027,6 +1030,9 @@ int main (int argc, char* argv[])
                   ls.extend_Over_Interface_TVD_Full(phi_eff.vec, sol_ex.vec, extension_iterations, 2, extension_tol, -extension_band_compute*dxyz_max, extension_band_extend*dxyz_max, extension_band_check*dxyz_max, NULL, NULL, NULL, use_nonzero_guess); CHKERRXX(ierr);
                   break;
               }
+
+//              ls.extend_from_interface_to_whole_domain_TVD_1st_order_time(phi_eff.vec, sol.vec, sol_ex.vec, 200);
+//              ls.extend_from_interface_to_whole_domain_TVD(phi_eff.vec, sol.vec, sol_ex.vec, 200);
 
               vec_and_ptr_dim_t sol_ex_d(p4est, nodes);
               vec_and_ptr_array_t sol_ex_dd(3*(P4EST_DIM-1), p4est, nodes);

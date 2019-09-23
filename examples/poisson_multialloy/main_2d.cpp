@@ -88,10 +88,10 @@ DEFINE_PARAMETER(pl, int, num_shifts_x_dir, 1, "Number of grid shifts in the x-d
 DEFINE_PARAMETER(pl, int, num_shifts_y_dir, 1, "Number of grid shifts in the y-direction");
 DEFINE_PARAMETER(pl, int, num_shifts_z_dir, 1, "Number of grid shifts in the z-direction");
 #else
-DEFINE_PARAMETER(pl, int, lmin, 7, "Min level of the tree");
-DEFINE_PARAMETER(pl, int, lmax, 10, "Max level of the tree");
+DEFINE_PARAMETER(pl, int, lmin, 5, "Min level of the tree");
+DEFINE_PARAMETER(pl, int, lmax, 5, "Max level of the tree");
 
-DEFINE_PARAMETER(pl, int, num_splits,           1, "Number of recursive splits");
+DEFINE_PARAMETER(pl, int, num_splits,           5, "Number of recursive splits");
 DEFINE_PARAMETER(pl, int, num_splits_per_split, 1, "Number of additional resolutions");
 
 DEFINE_PARAMETER(pl, int, num_shifts_x, 1, "Number of grid shifts in the x-direction");
@@ -1446,10 +1446,10 @@ int main (int argc, char* argv[])
 
     double bc_error_max = 0;
     solver_all_in_one.solve(sol_tl.vec, sol_ts.vec, sol_c_all, sol_c0d.vec, bc_error.vec, bc_error_max, true, &pdes_it, &error_it);
-    while (1)
-    {
-      solver_all_in_one.solve(sol_tl.vec, sol_ts.vec, sol_c_all, sol_c0d.vec, bc_error.vec, bc_error_max, 0, &pdes_it, &error_it);
-    }
+//    while (1)
+//    {
+//      solver_all_in_one.solve(sol_tl.vec, sol_ts.vec, sol_c_all, sol_c0d.vec, bc_error.vec, bc_error_max, 0, &pdes_it, &error_it);
+//    }
 
     std::cout << "here\n";
 

@@ -81,7 +81,7 @@ DEFINE_PARAMETER(pl, int, lmin, 5, "Min level of the tree");
 DEFINE_PARAMETER(pl, int, lmax, 5, "Max level of the tree");
 #else
 DEFINE_PARAMETER(pl, int, lmin, 5, "Min level of the tree");
-DEFINE_PARAMETER(pl, int, lmax, 11, "Max level of the tree");
+DEFINE_PARAMETER(pl, int, lmax, 10, "Max level of the tree");
 #endif
 
 DEFINE_PARAMETER(pl, double, lip, 1.75, "");
@@ -92,21 +92,24 @@ DEFINE_PARAMETER(pl, double, lip, 1.75, "");
 DEFINE_PARAMETER(pl, bool, use_points_on_interface,   1, "");
 DEFINE_PARAMETER(pl, bool, use_superconvergent_robin, 1, "");
 
-DEFINE_PARAMETER(pl, int,    update_c0_robin, 1, "Solve for c0 using Robin BC: 0 - never, 1 - once, 2 - always");
+DEFINE_PARAMETER(pl, int,    update_c0_robin, 0, "Solve for c0 using Robin BC: 0 - never, 1 - once, 2 - always");
 DEFINE_PARAMETER(pl, int,    num_time_layers, 2, "");
 DEFINE_PARAMETER(pl, int,    pin_every_n_iterations, 20, "");
 DEFINE_PARAMETER(pl, int,    max_iterations,   10, "");
 DEFINE_PARAMETER(pl, int,    front_smoothing,   0, "");
 DEFINE_PARAMETER(pl, double, bc_tolerance,      1.e-5, "");
-DEFINE_PARAMETER(pl, double, cfl_number, 0.3, "");
+DEFINE_PARAMETER(pl, double, cfl_number, 0.15, "");
 DEFINE_PARAMETER(pl, double, phi_thresh, 0.1, "");
+DEFINE_PARAMETER(pl, double, curvature_smoothing, 0.0, "");
+DEFINE_PARAMETER(pl, int,    curvature_smoothing_steps, 0, "");
 
 //-------------------------------------
 // output parameters
 //-------------------------------------
-DEFINE_PARAMETER(pl, int,  save_every_n_iteration,  100, "");
+DEFINE_PARAMETER(pl, int,  save_every_n_iteration,  10, "");
 DEFINE_PARAMETER(pl, bool, save_characteristics,    1, "");
 DEFINE_PARAMETER(pl, bool, save_dendrites,          0, "");
+DEFINE_PARAMETER(pl, bool, save_timings,            1, "");
 DEFINE_PARAMETER(pl, bool, save_history,            1, "");
 DEFINE_PARAMETER(pl, bool, save_params,             1, "");
 DEFINE_PARAMETER(pl, bool, save_vtk,                1, "");
@@ -121,7 +124,7 @@ DEFINE_PARAMETER(pl, double, dendrite_min_length,       0.05, "");
 
 // problem parameters
 DEFINE_PARAMETER(pl, bool,   concentration_neumann, 1, "");
-DEFINE_PARAMETER(pl, int,    max_total_iterations,  INT_MAX, "");
+DEFINE_PARAMETER(pl, int,    max_total_iterations,  1000000000, "");
 DEFINE_PARAMETER(pl, double, time_limit,            DBL_MAX, "");
 DEFINE_PARAMETER(pl, double, termination_length,    0.5, "");
 DEFINE_PARAMETER(pl, double, init_perturb,          1.e-5, "");
@@ -145,7 +148,7 @@ int num_comps = 1; // Number of components used
 
 DEFINE_PARAMETER(pl, double, volumetric_heat,  0, "Volumetric heat generation, J/cm^3");
 DEFINE_PARAMETER(pl, double, cooling_velocity, 0.01, "Cooling velocity, cm/s");
-DEFINE_PARAMETER(pl, double, temp_gradient,    1600, "Temperature gradient, K/cm");
+DEFINE_PARAMETER(pl, double, temp_gradient,    500, "Temperature gradient, K/cm");
 
 DEFINE_PARAMETER(pl, int,    smoothstep_order, 5, "Time for volumetric heat to fully switch on, s");
 DEFINE_PARAMETER(pl, double, volumetric_heat_tau, 0, "Time for volumetric heat to fully switch on, s");
@@ -248,9 +251,9 @@ void set_alloy_parameters()
       part_coeff_0     = 0.86;
       part_coeff_1     = 0.86;
 
-      eps_c = 5.e-7/melting_temp;
+      eps_c = 7.e-6/melting_temp;
       eps_v = 0;
-      eps_a = 0.0;
+      eps_a = 0.05;
       break;
     case 7:// Ni - 0.3at%Cu - 0.1at%Cu
       density_l       = 8.88e-3; // kg.cm-3
@@ -280,7 +283,7 @@ void set_alloy_parameters()
       part_coeff_2     = 0.86;
       part_coeff_3     = 0.86;
 
-      eps_c = 5.e-6/melting_temp;
+      eps_c = 0.e-6/melting_temp;
       eps_v = 0;
       eps_a = 0.0;
       break;
@@ -426,7 +429,7 @@ public:
   {
     switch (geometry)
     {
-//      case 0: return MIN(-(y - 0.1), sqrt(SQR(x-0.5) + SQR(y-0.05))-0.025);
+//      case 0: return MAX(-(y - 0.1), -(sqrt(SQR(x-0.25) + SQR(y-0.5))-0.025));
       case 0: return -(y - 0.1);
       default: throw;
     }
@@ -440,7 +443,7 @@ public:
   {
     switch (geometry)
     {
-      case 0: return 0;
+      case 0: return fabs(x-0.25) - 0.1 < 0 ? 0 : 1;
       default: throw;
     }
   }
@@ -450,7 +453,22 @@ int num_seeds()
 {
   switch (geometry)
   {
-    case 0: return 1;
+    case 0: return 2;
+    default: throw;
+  }
+}
+
+int theta0(int seed)
+{
+  switch (geometry)
+  {
+    case 0:
+      switch (seed)
+      {
+        case 0: return -PI/6.;
+        case 1: return PI/6.;
+        default: throw;
+      }
     default: throw;
   }
 }
@@ -626,7 +644,9 @@ public:
 
 class eps_c_cf_t : public CF_DIM
 {
+  double theta0;
 public:
+  eps_c_cf_t(double theta0 = 0) : theta0(theta0) {}
   double operator()(DIM(double nx, double ny, double nz)) const
   {
 #ifdef P4_TO_P8
@@ -634,14 +654,16 @@ public:
     return eps_c*(1.0-4.0*eps_a*((pow(nx, 4.) + pow(ny, 4.) + pow(nz, 4.))/pow(norm, 4.) - 0.75));
 #else
     double theta = atan2(ny, nx);
-    return eps_c*(1.-15.*eps_a*cos(4.*(theta)));
+    return eps_c*(1.-15.*eps_a*cos(4.*(theta-theta0)))/(1.+15.*eps_a);
 #endif
   }
 };
 
 class eps_v_cf_t : public CF_DIM
 {
+  double theta0;
 public:
+  eps_v_cf_t(double theta0 = 0) : theta0(theta0) {}
   double operator()(DIM(double nx, double ny, double nz)) const
   {
 #ifdef P4_TO_P8
@@ -649,7 +671,7 @@ public:
     return eps_v*(1.0-4.0*eps_a*((pow(nx, 4.) + pow(ny, 4.) + pow(nz, 4.))/pow(norm, 4.) - 0.75));
 #else
     double theta = atan2(ny, nx);
-    return eps_v*(1.-15.*eps_a*cos(4.*(theta)));
+    return eps_v*(1.-15.*eps_a*cos(4.*(theta-theta0)))/(1.+15.*eps_a);
 #endif
   }
 };
@@ -684,9 +706,6 @@ int main (int argc, char* argv[])
   if (mpi.rank() == 0) pl.print_all();
 
   // prepare stuff for output
-  FILE *fich;
-  char name[10000];
-
   const char *out_dir = getenv("OUT_DIR");
   if (!out_dir) out_dir = ".";
   else
@@ -698,10 +717,14 @@ int main (int argc, char* argv[])
       throw std::invalid_argument("could not create OUT_DIR directory");
   }
 
-  if (mpi.rank() == 0 && save_characteristics)
-  {
-    sprintf(name, "%s/characteristics.dat", out_dir);
+  FILE *fich;
+  char name[10000];
+  char name_timings[10000];
+  sprintf(name, "%s/characteristics.dat", out_dir);
+  sprintf(name_timings, "%s/timings.dat", out_dir);
 
+  if (save_characteristics)
+  {
     ierr = PetscFOpen(mpi.comm(), name, "w", &fich); CHKERRXX(ierr);
     ierr = PetscFPrintf(mpi.comm(), fich, "time "
                                           "average_interface_velocity "
@@ -838,8 +861,17 @@ int main (int argc, char* argv[])
                              density_l, heat_capacity_l, thermal_cond_l,
                              density_s, heat_capacity_s, thermal_cond_s);
 
-  eps_c_cf_t eps_c_cf; std::vector<CF_DIM *> eps_c_all(num_seeds(), &eps_c_cf);
-  eps_v_cf_t eps_v_cf; std::vector<CF_DIM *> eps_v_all(num_seeds(), &eps_v_cf);
+  std::vector<CF_DIM *> eps_c_all(num_seeds(), NULL);
+  std::vector<CF_DIM *> eps_v_all(num_seeds(), NULL);
+
+  for (int i = 0; i < num_seeds(); ++i)
+  {
+    eps_c_all[i] = new eps_c_cf_t(theta0(i));
+    eps_v_all[i] = new eps_v_cf_t(theta0(i));
+  }
+
+//  eps_c_cf_t eps_c_cf; std::vector<CF_DIM *> eps_c_all(num_seeds(), &eps_c_cf);
+//  eps_v_cf_t eps_v_cf; std::vector<CF_DIM *> eps_v_all(num_seeds(), &eps_v_cf);
 
   mas.set_undercoolings(num_seeds(), seed_map.vec, eps_v_all.data(), eps_c_all.data());
 
@@ -877,6 +909,7 @@ int main (int argc, char* argv[])
   mas.set_cfl                      (cfl_number);
   mas.set_phi_thresh               (phi_thresh);
   mas.set_front_smoothing          (front_smoothing);
+  mas.set_curvature_smoothing      (curvature_smoothing, curvature_smoothing_steps);
 
   mas.set_use_superconvergent_robin(use_superconvergent_robin);
   mas.set_use_points_on_interface  (use_points_on_interface);
@@ -912,6 +945,10 @@ int main (int argc, char* argv[])
   int    sub_iterations = 0;
   int    vtk_idx        = 0;
   int    mpiret;
+
+  std::vector<bool>   logevent;
+  std::vector<double> old_time;
+  std::vector<int>    old_count;
 
   while (keep_going)
   {
@@ -968,6 +1005,7 @@ int main (int argc, char* argv[])
       contr_phi.vec = mas.get_contr_phi();
       vn.vec        = mas.get_normal_velocity();
 
+
       // compute level-set of liquid region
       vec_and_ptr_t phi_liquid(front_phi.vec);
       VecPointwiseMaxGhost(phi_liquid.vec, contr_phi.vec, front_phi.vec);
@@ -1013,6 +1051,54 @@ int main (int argc, char* argv[])
     // advance front to t_{n+1}
     mas.compute_dt();
     mas.update_grid();
+
+    if (save_timings && save_now)
+    {
+      PetscStageLog stageLog;
+      PetscLogGetStageLog(&stageLog);
+
+      PetscEventPerfInfo *eventInfo      = stageLog->stageInfo[0].eventLog->eventInfo;
+      PetscInt            localNumEvents = stageLog->stageInfo[0].eventLog->numEvents;
+
+      if (vtk_idx == 0)
+      {
+        ierr = PetscFOpen(mpi.comm(), name_timings, "w", &fich); CHKERRXX(ierr);
+
+        logevent.resize(localNumEvents, false);
+        old_time.resize(localNumEvents, 0);
+        old_count.resize(localNumEvents, 0);
+
+        PetscFPrintf(mpi.comm(), fich, "iteration ");
+        for (PetscInt event = 0; event < localNumEvents; ++event)
+        {
+          if (eventInfo[event].count > 0)
+          {
+            PetscFPrintf(mpi.comm(), fich, "%s count ", stageLog->eventLog->eventInfo[event].name);
+            logevent[event] = true;
+          }
+        }
+        PetscFPrintf(mpi.comm(), fich, "\n");
+
+        ierr = PetscFClose(mpi.comm(), fich); CHKERRXX(ierr);
+      }
+
+      ierr = PetscFOpen(mpi.comm(), name_timings, "a", &fich); CHKERRXX(ierr);
+
+      PetscFPrintf(mpi.comm(), fich, "%d ", iteration);
+      for (PetscInt event = 0; event < localNumEvents; ++event)
+      {
+        if (logevent[event])
+        {
+          PetscFPrintf(mpi.comm(), fich, "%e %d ", eventInfo[event].time-old_time[event], eventInfo[event].count-old_count[event] );
+          old_time[event]  = eventInfo[event].time;
+          old_count[event] = eventInfo[event].count;
+        }
+      }
+      PetscFPrintf(mpi.comm(), fich, "\n");
+
+      ierr = PetscFClose(mpi.comm(), fich); CHKERRXX(ierr);
+      ierr = PetscPrintf(mpi.comm(), "saved timings in %s\n", name_timings); CHKERRXX(ierr);
+    }
 
     iteration++;
 

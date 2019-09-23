@@ -202,7 +202,11 @@ PetscLogEvent log_my_p4est_multialloy_one_step;
 PetscLogEvent log_my_p4est_multialloy_compute_dt;
 PetscLogEvent log_my_p4est_multialloy_compute_geometric_properties;
 PetscLogEvent log_my_p4est_multialloy_compute_velocity;
+PetscLogEvent log_my_p4est_multialloy_compute_solid;
 PetscLogEvent log_my_p4est_multialloy_update_grid;
+PetscLogEvent log_my_p4est_multialloy_update_grid_history;
+PetscLogEvent log_my_p4est_multialloy_update_grid_transfer_data;
+PetscLogEvent log_my_p4est_multialloy_update_grid_regularize_front;
 PetscLogEvent log_my_p4est_multialloy_save_vtk;
 
 // biofilm
@@ -396,12 +400,16 @@ void register_petsc_logs()
   ierr = PetscLogEventRegister("my_p4est_poisson_nodes_mls::compute_diagonal_scaling          ", 0, &log_my_p4est_poisson_nodes_mls_compute_diagonal_scaling         ); CHKERRXX(ierr);
 
   // multialloy
-  ierr = PetscLogEventRegister("my_p4est_multialloy::one_step                    ", 0, &log_my_p4est_multialloy_one_step                    ); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("my_p4est_multialloy::compute_dt                  ", 0, &log_my_p4est_multialloy_compute_dt                  ); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("my_p4est_multialloy::compute_geometric_properties", 0, &log_my_p4est_multialloy_compute_geometric_properties); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("my_p4est_multialloy::compute_velocity            ", 0, &log_my_p4est_multialloy_compute_velocity            ); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("my_p4est_multialloy::update_grid                 ", 0, &log_my_p4est_multialloy_update_grid                 ); CHKERRXX(ierr);
-  ierr = PetscLogEventRegister("my_p4est_multialloy::save_vtk                    ", 0, &log_my_p4est_multialloy_save_vtk                    ); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_multialloy::one_step                     ", 0, &log_my_p4est_multialloy_one_step                    ); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_multialloy::compute_dt                   ", 0, &log_my_p4est_multialloy_compute_dt                  ); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_multialloy::compute_geometric_properties ", 0, &log_my_p4est_multialloy_compute_geometric_properties); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_multialloy::compute_velocity             ", 0, &log_my_p4est_multialloy_compute_velocity            ); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_multialloy::compute_solid                ", 0, &log_my_p4est_multialloy_compute_solid               ); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_multialloy::update_grid                  ", 0, &log_my_p4est_multialloy_update_grid                 ); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_multialloy::update_grid::history         ", 0, &log_my_p4est_multialloy_update_grid_history         ); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_multialloy::update_grid::transfer_data   ", 0, &log_my_p4est_multialloy_update_grid_transfer_data   ); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_multialloy::update_grid::regularize_front", 0, &log_my_p4est_multialloy_update_grid_regularize_front); CHKERRXX(ierr);
+  ierr = PetscLogEventRegister("my_p4est_multialloy::save_vtk                     ", 0, &log_my_p4est_multialloy_save_vtk                    ); CHKERRXX(ierr);
 
   // poisson multialloy
   ierr = PetscLogEventRegister("my_p4est_poisson_nodes_multialloy::initialize_solvers", 0, &log_my_p4est_poisson_nodes_multialloy_initialize_solvers); CHKERRXX(ierr);

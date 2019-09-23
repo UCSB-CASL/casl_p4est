@@ -1836,6 +1836,10 @@ public:
     ts = MPI_Wtime();
   }
 
+  void start(){
+    ts = MPI_Wtime();
+  }
+
   void stop(){
     tf = MPI_Wtime();
   }
@@ -1908,6 +1912,14 @@ public:
       PetscFPrintf(comm_, f_, " %.5lf secs. on process %d [Note: only showing root's timings]\n\n", elap, mpirank);
     }
     return elap;
+  }
+
+  double get_duration(){
+    return tf - ts;
+  }
+
+  double get_duration_current(){
+    return MPI_Wtime() - ts;
   }
 };
 
@@ -2228,9 +2240,45 @@ public:
   {
     return 0;
   }
-};
+} static zero_cf;
 
-static zero_cf_t zero_cf;
+class dirichlet_cf_t : public WallBCDIM
+{
+public:
+  BoundaryConditionType operator()(DIM(double, double, double)) const
+  {
+    return DIRICHLET;
+  }
+} static dirichlet_cf;
+
+class neumann_cf_t : public WallBCDIM
+{
+public:
+  BoundaryConditionType operator()(DIM(double, double, double)) const
+  {
+    return NEUMANN;
+  }
+} static neumann_cf;
+
+class robin_cf_t : public WallBCDIM
+{
+public:
+  BoundaryConditionType operator()(DIM(double, double, double)) const
+  {
+    return ROBIN;
+  }
+} static robin_cf;
+
+class cf_const_t : public CF_DIM
+{
+  double value;
+public:
+  cf_const_t(double value=0) : value(value) {}
+  double operator()(DIM(double, double, double)) const
+  {
+    return value;
+  }
+};
 
 inline double smooth_max(double a, double b, double e)
 {
@@ -2244,7 +2292,7 @@ inline double smooth_min(double a, double b, double e)
 
 inline double smooth_min2(double a, double b, double e)
 {
-  return .5*(a+b-(sqrt(SQR(a-b)+e*e)-e/sqrt(SQR(a-b)+e)));
+  return .5*(a+b-(sqrt(SQR(a-b)+e*e)-e*e/sqrt(SQR(a-b)+e*e)));
 }
 
 

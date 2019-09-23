@@ -462,13 +462,13 @@ double quad_neighbor_nodes_of_node_t::dx_central_on_0p0(const double *f, const m
 }
 
 
-//p4est_locidx_t quad_neighbor_nodes_of_node_t::neighbor_m00() const
-//{
-//  if(d_m00_p0==0) return node_m00_pm;
-//  if(d_m00_m0==0) return node_m00_mm;
-//  else return -1;
-////  else            throw std::invalid_argument("No neighbor in m00 direction \n");
-//}
+p4est_locidx_t quad_neighbor_nodes_of_node_t::neighbor_m00() const
+{
+  if(d_m00_p0==0) return node_m00_pm;
+  if(d_m00_m0==0) return node_m00_mm;
+  else return -1;
+//  else            throw std::invalid_argument("No neighbor in m00 direction \n");
+}
 
 p4est_locidx_t quad_neighbor_nodes_of_node_t::neighbor_p00() const
 {

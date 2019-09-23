@@ -32,7 +32,6 @@
 #include <src/my_p8est_interpolation_nodes.h>
 #include <src/my_p8est_integration_mls.h>
 #include <src/my_p8est_shapes.h>
-#include <src/my_p8est_tools_mls.h>
 #include <src/my_p8est_macros.h>
 #include <src/my_p8est_semi_lagrangian.h>
 #include <src/my_p8est_scft.h>
@@ -50,7 +49,6 @@
 #include <src/my_p4est_interpolation_nodes.h>
 #include <src/my_p4est_integration_mls.h>
 #include <src/my_p4est_shapes.h>
-#include <src/my_p4est_tools_mls.h>
 #include <src/my_p4est_macros.h>
 #include <src/my_p4est_semi_lagrangian.h>
 #include <src/my_p4est_scft.h>
@@ -58,11 +56,13 @@
 
 #include <src/petsc_compatibility.h>
 #include <src/Parser.h>
+#include <src/parameter_list.h>
 
 #undef MIN
 #undef MAX
 
 using namespace std;
+parameter_list_t pl;
 
 /* TODO:
  * + saving run parameters
@@ -77,118 +77,118 @@ using namespace std;
  */
 
 // comptational domain
-M_PARSER_DEFINE2(double, xmin, -1, "xmin")
-M_PARSER_DEFINE2(double, ymin, -1, "ymin")
-M_PARSER_DEFINE2(double, zmin, -1, "zmin")
-M_PARSER_DEFINE2(double, xmax,  1, "xmax")
-M_PARSER_DEFINE2(double, ymax,  1, "ymax")
-M_PARSER_DEFINE2(double, zmax,  1, "zmax")
+static double xmin = -1; ADD_TO_LIST(pl, xmin, "xmin");
+static double ymin = -1; ADD_TO_LIST(pl, ymin, "ymin");
+static double zmin = -1; ADD_TO_LIST(pl, zmin, "zmin");
+static double xmax =  1; ADD_TO_LIST(pl, xmax, "xmax");
+static double ymax =  1; ADD_TO_LIST(pl, ymax, "ymax");
+static double zmax =  1; ADD_TO_LIST(pl, zmax, "zmax");
 
-M_PARSER_DEFINE2(bool, px, 0, "periodicity in x-dimension 0/1")
-M_PARSER_DEFINE2(bool, py, 0, "periodicity in y-dimension 0/1")
-M_PARSER_DEFINE2(bool, pz, 0, "periodicity in z-dimension 0/1")
+static bool px = 1; ADD_TO_LIST(pl, px, "periodicity in x-dimension 0/1");
+static bool py = 0; ADD_TO_LIST(pl, py, "periodicity in y-dimension 0/1");
+static bool pz = 0; ADD_TO_LIST(pl, pz, "periodicity in z-dimension 0/1");
 
-M_PARSER_DEFINE2(int, nx, 1, "number of trees in x-dimension")
-M_PARSER_DEFINE2(int, ny, 1, "number of trees in y-dimension")
-M_PARSER_DEFINE2(int, nz, 1, "number of trees in z-dimension")
+static int nx = 1; ADD_TO_LIST(pl, nx, "number of trees in x-dimension");
+static int ny = 1; ADD_TO_LIST(pl, ny, "number of trees in y-dimension");
+static int nz = 1; ADD_TO_LIST(pl, nz, "number of trees in z-dimension");
 
 // grid parameters
 #ifdef P4_TO_P8
-M_PARSER_DEFINE2(int, lmin, 8, "min level of trees")
-M_PARSER_DEFINE2(int, lmax, 8, "max level of trees")
+static int lmin = 8; ADD_TO_LIST(pl, lmin, "min level of trees");
+static int lmax = 8; ADD_TO_LIST(pl, lmax, "max level of trees");
 #else
-M_PARSER_DEFINE2(int, lmin, 7, "min level of trees")
-M_PARSER_DEFINE2(int, lmax, 7, "max level of trees")
+static int lmin = 7; ADD_TO_LIST(pl, lmin, "min level of trees");
+static int lmax = 7; ADD_TO_LIST(pl, lmax, "max level of trees");
 #endif
-M_PARSER_DEFINE2(double, lip, 1.5, "Lipschitz constant")
-M_PARSER_DEFINE2(bool, refine_only_inside, 1, "Refine only inside")
+static double lip = 1.5; ADD_TO_LIST(pl, lip, "Lipschitz constant");
+static bool refine_only_inside = 1; ADD_TO_LIST(pl, refine_only_inside, "Refine only inside");
 
 
 // advection parameters
-M_PARSER_DEFINE2(double, cfl,                     0.1, "CFL number")
-M_PARSER_DEFINE2(bool,   use_neumann,             1,    "Impose contact angle use Neumann BC 0/1")
-M_PARSER_DEFINE2(bool,   compute_exact,           0,    "Compute exact final shape (only for pure-curvature) 0/1")
-M_PARSER_DEFINE2(bool,   reinit_at_start,         1,    "Reinitialze level-set function at the start 0/1)")
-M_PARSER_DEFINE2(int,    contact_angle_extension, 0,    "Method for extending level-set function into wall: 0 - constant angle, 1 - , 2 - special")
-M_PARSER_DEFINE2(int,    volume_corrections,      2,    "Number of volume correction after each move")
-M_PARSER_DEFINE2(int,    max_iterations,          1000, "Maximum number of advection steps")
-M_PARSER_DEFINE2(int,    tolerance,               1.0e-8, "Stopping criteria")
+static double cfl                     = 0.5;    ADD_TO_LIST(pl, cfl, "CFL number");
+static bool   use_neumann             = 1;      ADD_TO_LIST(pl, use_neumann, "Impose contact angle use Neumann BC 0/1");
+static bool   compute_exact           = 0;      ADD_TO_LIST(pl, compute_exact, "Compute exact final shape (only for pure-curvature) 0/1");
+static bool   rerefine_at_start       = 1;      ADD_TO_LIST(pl, rerefine_at_start, "Reinitialze level-set function at the start 0/1)");
+static int    contact_angle_extension = 3;      ADD_TO_LIST(pl, contact_angle_extension, "Method for extending level-set function into wall: 0 - constant angle = 1 -  = 2 - special");
+static int    volume_corrections      = 2;      ADD_TO_LIST(pl, volume_corrections, "Number of volume correction after each move");
+static int    max_iterations          = 10000;   ADD_TO_LIST(pl, max_iterations, "Maximum number of advection steps");
+static double tolerance               = 1.0e-8; ADD_TO_LIST(pl, tolerance, "Stopping criteria");
 
-interpolation_method interpolation_between_grids = quadratic_non_oscillatory_continuous_v2;
+static interpolation_method interpolation_between_grids = quadratic_non_oscillatory_continuous_v2;
 
 // scft parameters
-M_PARSER_DEFINE2(bool,   use_scft,            1,     "Turn on/off SCFT 0/1")
-M_PARSER_DEFINE2(bool,   smooth_pressure,     1,     "Smooth pressure after first BC adjustment 0/1")
-M_PARSER_DEFINE2(int,    max_scft_iterations, 250,   "Maximum SCFT iterations")
-M_PARSER_DEFINE2(int,    bc_adjust_min,       5,     "Minimun SCFT steps between adjusting BC")
-M_PARSER_DEFINE2(double, scft_tol,            1.e-3, "Tolerance for SCFT")
-M_PARSER_DEFINE2(double, scft_bc_tol,         1.e-2, "Tolerance for adjusting BC")
+static bool   use_scft            = 1;     ADD_TO_LIST(pl, use_scft           , "Turn on/off SCFT 0/1");
+static bool   smooth_pressure     = 1;     ADD_TO_LIST(pl, smooth_pressure    , "Smooth pressure after first BC adjustment 0/1");
+static int    max_scft_iterations = 250;   ADD_TO_LIST(pl, max_scft_iterations, "Maximum SCFT iterations");
+static int    bc_adjust_min       = 5;     ADD_TO_LIST(pl, bc_adjust_min      , "Minimun SCFT steps between adjusting BC");
+static double scft_tol            = 1.e-3; ADD_TO_LIST(pl, scft_tol           , "Tolerance for SCFT");
+static double scft_bc_tol         = 1.e-2; ADD_TO_LIST(pl, scft_bc_tol        , "Tolerance for adjusting BC");
 
 // polymer
-M_PARSER_DEFINE2(double, box_size, 10, "Box size in units of Rg")
-M_PARSER_DEFINE2(double, f,        0.3, "Fraction of polymer A")
-M_PARSER_DEFINE2(double, XN,       20,  "Flory-Higgins interaction parameter")
-M_PARSER_DEFINE2(int,    ns,       40,  "Discretization of polymer chain")
+static double box_size = 5; ADD_TO_LIST(pl, box_size, "Box size in units of Rg");
+static double f        = .5; ADD_TO_LIST(pl, f       , "Fraction of polymer A");
+static double XN       = 20; ADD_TO_LIST(pl, XN      , "Flory-Higgins interaction parameter");
+static int    ns       = 40; ADD_TO_LIST(pl, ns      , "Discretization of polymer chain");
 
 // output parameters
-M_PARSER_DEFINE2(bool, save_vtk,        1, "")
-M_PARSER_DEFINE2(bool, save_parameters, 1, "")
-M_PARSER_DEFINE2(bool, save_data,       1, "")
-M_PARSER_DEFINE2(int,  save_every_dn,   1, "") // for vtk
+static bool save_vtk        = 1; ADD_TO_LIST(pl, save_vtk       , "");
+static bool save_parameters = 1; ADD_TO_LIST(pl, save_parameters, "");
+static bool save_data       = 1; ADD_TO_LIST(pl, save_data      , "");
+static int  save_every_dn   = 1; ADD_TO_LIST(pl, save_every_dn  , ""); // for vtk
 
 // problem setting
-M_PARSER_DEFINE2(int, num_polymer_geometry, 0, "Initial polymer shape: 0 - drop, 1 - film, 2 - combination")
-M_PARSER_DEFINE2(int, num_wall_geometry,    2, "Wall geometry: 0 - no wall, 1 - wall, 2 - well")
-M_PARSER_DEFINE2(int, num_wall_pattern,     0, "Wall chemical pattern: 0 - no pattern")
-M_PARSER_DEFINE2(int, num_seed,             3, "Seed: 0 - zero, 1 - random, 2 - horizontal stripes, 3 - vertical stripes, 4 - dots")
-M_PARSER_DEFINE2(int, num_example,          0, "Number of predefined example")
+static int num_polymer_geometry = 0; ADD_TO_LIST(pl, num_polymer_geometry, "Initial polymer shape: 0 - drop = 1 - film = 2 - combination");
+static int num_wall_geometry    = 1; ADD_TO_LIST(pl, num_wall_geometry   , "Wall geometry: 0 - no wall = 1 - wall = 2 - well");
+static int num_wall_pattern     = 0; ADD_TO_LIST(pl, num_wall_pattern    , "Wall chemical pattern: 0 - no pattern");
+static int num_seed             = 2; ADD_TO_LIST(pl, num_seed            , "Seed: 0 - zero = 1 - random = 2 - horizontal stripes = 3 - vertical stripes = 4 - dots");
+static int num_example          = 0; ADD_TO_LIST(pl, num_example         , "Number of predefined example");
 
 // surface energies
-M_PARSER_DEFINE2(int, wall_energy_type, 1, "Method for setting wall surface energy: 0 - explicitly (i.e. convert XN to angles), 1 - through contact angles (i.e. convert angles to XN)")
+static int wall_energy_type = 1; ADD_TO_LIST(pl, wall_energy_type, "Method for setting wall surface energy: 0 - explicitly (i.e. convert XN to angles) = 1 - through contact angles (i.e. convert angles to XN)");
 
-M_PARSER_DEFINE2(double, XN_air_avg, 1, "Polymer-air surface energy strength: average")
-M_PARSER_DEFINE2(double, XN_air_del, -0.5, "Polymer-air surface energy strength: difference")
+static double XN_air_avg = 5;    ADD_TO_LIST(pl, XN_air_avg, "Polymer-air surface energy strength: average");
+static double XN_air_del = -0.5; ADD_TO_LIST(pl, XN_air_del, "Polymer-air surface energy strength: difference");
 
-M_PARSER_DEFINE2(double, angle_A_min, 45,  "Minimum contact angle for A-block")
-M_PARSER_DEFINE2(double, angle_A_max, 45,  "Maximum contact angle for A-block")
-M_PARSER_DEFINE2(double, angle_B_min, 45, "Minimum contact angle for B-block")
-M_PARSER_DEFINE2(double, angle_B_max, 45, "Maximum contact angle for B-block")
+static double angle_A_min = 90; ADD_TO_LIST(pl, angle_A_min, "Minimum contact angle for A-block");
+static double angle_A_max = 90; ADD_TO_LIST(pl, angle_A_max, "Maximum contact angle for A-block");
+static double angle_B_min = 90; ADD_TO_LIST(pl, angle_B_min, "Minimum contact angle for B-block");
+static double angle_B_max = 90; ADD_TO_LIST(pl, angle_B_max, "Maximum contact angle for B-block");
 
-M_PARSER_DEFINE2(double, XN_wall_A_min, 5, "Minimum Polymer-wall interaction strength for A-block")
-M_PARSER_DEFINE2(double, XN_wall_A_max, 5, "Maximum Polymer-wall interaction strength for A-block")
-M_PARSER_DEFINE2(double, XN_wall_B_min, 8, "Minimum Polymer-wall interaction strength for B-block")
-M_PARSER_DEFINE2(double, XN_wall_B_max, 8, "Maximum Polymer-wall interaction strength for B-block")
+static double XN_wall_A_min = 5; ADD_TO_LIST(pl, XN_wall_A_min, "Minimum Polymer-wall interaction strength for A-block");
+static double XN_wall_A_max = 5; ADD_TO_LIST(pl, XN_wall_A_max, "Maximum Polymer-wall interaction strength for A-block");
+static double XN_wall_B_min = 8; ADD_TO_LIST(pl, XN_wall_B_min, "Minimum Polymer-wall interaction strength for B-block");
+static double XN_wall_B_max = 8; ADD_TO_LIST(pl, XN_wall_B_max, "Maximum Polymer-wall interaction strength for B-block");
 
 // geometry parameters
-M_PARSER_DEFINE2(double, drop_r,      0.711, "")
-M_PARSER_DEFINE2(double, drop_x,      .0079, "")
-M_PARSER_DEFINE2(double, drop_y,      -.5013, "")
-M_PARSER_DEFINE2(double, drop_z,      .0, "")
-M_PARSER_DEFINE2(double, drop_r0,     0.6, "")
-M_PARSER_DEFINE2(double, drop_k,      5, "")
-M_PARSER_DEFINE2(double, drop_deform, 0.0, "")
+static double drop_r      = 0.611;  ADD_TO_LIST(pl, drop_r     , "");
+static double drop_x      = .0079;  ADD_TO_LIST(pl, drop_x     , "");
+static double drop_y      = -.013; ADD_TO_LIST(pl, drop_y     , "");
+static double drop_z      = .0;     ADD_TO_LIST(pl, drop_z     , "");
+static double drop_r0     = 0.4;    ADD_TO_LIST(pl, drop_r0    , "");
+static double drop_k      = 5;      ADD_TO_LIST(pl, drop_k     , "");
+static double drop_deform = 0.0;    ADD_TO_LIST(pl, drop_deform, "");
 
-M_PARSER_DEFINE2(double, film_eps, -1.0, "") // curvature
-M_PARSER_DEFINE2(double, film_nx,  0, "")
-M_PARSER_DEFINE2(double, film_ny,  1, "")
-M_PARSER_DEFINE2(double, film_nz,  0, "")
-M_PARSER_DEFINE2(double, film_x,   .0, "")
-M_PARSER_DEFINE2(double, film_y,   .0, "")
-M_PARSER_DEFINE2(double, film_z,   .0, "")
+static double film_eps = -0.0; ADD_TO_LIST(pl, film_eps, ""); // curvature
+static double film_nx  = 0;    ADD_TO_LIST(pl, film_nx , "");
+static double film_ny  = 1;    ADD_TO_LIST(pl, film_ny , "");
+static double film_nz  = 0;    ADD_TO_LIST(pl, film_nz , "");
+static double film_x   = .0;   ADD_TO_LIST(pl, film_x  , "");
+static double film_y   = .3;   ADD_TO_LIST(pl, film_y  , "");
+static double film_z   = .0;   ADD_TO_LIST(pl, film_z  , "");
 
-M_PARSER_DEFINE2(double, wall_eps, -0.5, "") // curvature
-M_PARSER_DEFINE2(double, wall_nx,  -0, "")
-M_PARSER_DEFINE2(double, wall_ny,  -1, "")
-M_PARSER_DEFINE2(double, wall_nz,  -0, "")
-M_PARSER_DEFINE2(double, wall_x,   .0, "")
-M_PARSER_DEFINE2(double, wall_y,   -.3+0.01, "")
-M_PARSER_DEFINE2(double, wall_z,   .0, "")
+static double wall_eps = -0.01; ADD_TO_LIST(pl, wall_eps, ""); // curvature
+static double wall_nx  = -0;   ADD_TO_LIST(pl, wall_nx , "");
+static double wall_ny  = -1;   ADD_TO_LIST(pl, wall_ny , "");
+static double wall_nz  = -0;   ADD_TO_LIST(pl, wall_nz , "");
+static double wall_x   = .0;   ADD_TO_LIST(pl, wall_x  , "");
+static double wall_y   = -.29; ADD_TO_LIST(pl, wall_y  , "");
+static double wall_z   = .0;   ADD_TO_LIST(pl, wall_z  , "");
 
-M_PARSER_DEFINE2(double, well_x, 0.00, "Well geometry: center")
-M_PARSER_DEFINE2(double, well_z, 0.0053, "Well geometry: position")
-M_PARSER_DEFINE2(double, well_h, .50, "Well geometry: depth")
-M_PARSER_DEFINE2(double, well_w, 0.77, "Well geometry: width")
-M_PARSER_DEFINE2(double, well_r, 0.10, "Well geometry: corner smoothing")
+static double well_x = 0.00;   ADD_TO_LIST(pl, well_x, "Well geometry: center");
+static double well_z = 0.0053; ADD_TO_LIST(pl, well_z, "Well geometry: position");
+static double well_h = .50;    ADD_TO_LIST(pl, well_h, "Well geometry: depth");
+static double well_w = 0.77;   ADD_TO_LIST(pl, well_w, "Well geometry: width");
+static double well_r = 0.10;   ADD_TO_LIST(pl, well_r, "Well geometry: corner smoothing");
 
 void set_wall_surface_energies()
 {
@@ -228,7 +228,7 @@ void set_parameters()
 class gamma_Aa_cf_t : public CF_DIM
 {
 public:
-  double operator()(double x, double y P8C(double z)) const
+  double operator()(DIM(double x, double y, double z)) const
   {
     return sqrt(XN_air_avg+XN_air_del);
   }
@@ -237,7 +237,7 @@ public:
 class gamma_Ba_cf_t : public CF_DIM
 {
 public:
-  double operator()(double x, double y P8C(double z)) const
+  double operator()(DIM(double x, double y, double z)) const
   {
     return sqrt(XN_air_avg-XN_air_del);
   }
@@ -246,7 +246,7 @@ public:
 class gamma_Aw_cf_t : public CF_DIM
 {
 public:
-  double operator()(double x, double y P8C(double z)) const
+  double operator()(DIM(double x, double y, double z)) const
   {
     switch (num_wall_pattern)
     {
@@ -259,7 +259,7 @@ public:
 class gamma_Bw_cf_t : public CF_DIM
 {
 public:
-  double operator()(double x, double y P8C(double z)) const
+  double operator()(DIM(double x, double y, double z)) const
   {
     switch (num_wall_pattern)
     {
@@ -272,7 +272,7 @@ public:
 class gamma_aw_cf_t : public CF_DIM
 {
 public:
-  double operator()(double x, double y P8C(double z)) const
+  double operator()(DIM(double x, double y, double z)) const
   {
     return 0;
   }
@@ -283,7 +283,7 @@ public:
 class phi_wall_cf_t : public CF_DIM
 {
 public:
-  double operator()(double x, double y P8C(double z)) const
+  double operator()(DIM(double x, double y, double z)) const
   {
     switch (num_wall_geometry)
     {
@@ -316,10 +316,10 @@ public:
   }
 } phi_wall_cf;
 
-class phi_intf_cf_t : public CF_DIM
+class phi_infc_cf_t : public CF_DIM
 {
 public:
-  double operator()(double x, double y P8C(double z)) const
+  double operator()(DIM(double x, double y, double z)) const
   {
     switch (num_polymer_geometry)
     {
@@ -349,7 +349,7 @@ public:
       default: throw std::invalid_argument("Error: Invalid geometry number\n");
     }
   }
-} phi_intf_cf;
+} phi_infc_cf;
 
 inline double lam_bulk_period()
 {
@@ -359,7 +359,7 @@ inline double lam_bulk_period()
 class mu_cf_t : public CF_DIM
 {
 public:
-  double operator()(double x, double y P8C(double z) ) const
+  double operator()(DIM(double x, double y, double z) ) const
   {
     switch (num_seed)
     {
@@ -391,9 +391,9 @@ public:
 class phi_eff_cf_t : public CF_DIM
 {
 public:
-  double operator()(double x, double y P8C(double z) ) const
+  double operator()(DIM(double x, double y, double z) ) const
   {
-    return MIN( MAX(phi_intf_cf(x, y P8C(z)), phi_wall_cf(x, y P8C(z))), fabs(phi_wall_cf(x, y P8C(z))) );
+    return MIN( MAX(phi_infc_cf(DIM(x,y,z)), phi_wall_cf(DIM(x,y,z))), fabs(phi_wall_cf(DIM(x,y,z))) );
   }
 } phi_eff_cf;
 
@@ -415,70 +415,95 @@ inline void interpolate_between_grids(my_p4est_interpolation_nodes_t &interp, p4
   vec = tmp;
 }
 
-void write_parameters(MPI_Comm mpicomm, const std::string &output);
-void parse_cmd(int argc, char* argv[]);
-
 PetscErrorCode ierr;
-
 int main (int argc, char* argv[])
 {
   /* initialize MPI */
   mpi_environment_t mpi;
   mpi.init(argc, argv);
+  srand(mpi.rank());
 
-  /* create an output directory */
+  /* parse command line arguments for parameters */
+  cmdParser cmd;
+  pl.initialize_parser(cmd);
+//  cmd.show_help();
+  cmd.parse(argc, argv);
+//  geometry = cmd.get("geometry", geometry);
+//  set_geometry();
+  pl.get_all(cmd);
+//  if (mpi.rank() == 0) pl.print_all();
+
+  set_wall_surface_energies();
+
+  /* prepare output directories */
   const char* out_dir = getenv("OUT_DIR");
-  if (!out_dir)
+  if (mpi.rank() == 0 && (save_vtk || save_parameters || save_data))
   {
-    ierr = PetscPrintf(mpi.comm(), "You need to set the environment variable OUT_DIR to save visuals\n");
-    return -1;
+    if (!out_dir)
+    {
+      ierr = PetscPrintf(mpi.comm(), "You need to set the environment variable OUT_DIR to save visuals\n");
+      return -1;
+    }
+    std::ostringstream command;
+    command << "mkdir -p " << out_dir;
+    int ret_sys = system(command.str().c_str());
+    if (ret_sys < 0) throw std::invalid_argument("Could not create a directory");
   }
 
-  std::ostringstream command;
-  command << "mkdir -p " << out_dir << "/vtu";
-  int ret_sys = system(command.str().c_str());
-  if(ret_sys < 0)
-    throw std::invalid_argument("Could not create directory");
+  if (mpi.rank() == 0 && save_vtk)
+  {
+    std::ostringstream command;
+    command << "mkdir -p " << out_dir << "/vtu";
+    int ret_sys = system(command.str().c_str());
+    if (ret_sys < 0) throw std::invalid_argument("Could not create a directory");
+  }
 
-  char name[10000];
-  char data_out[1024];
+  if (mpi.rank() == 0 && save_parameters) {
+    std::ostringstream file;
+    file << out_dir << "/parameters.dat";
+    pl.save_all(file.str().c_str());
+  }
 
-  sprintf(name, "%s/parameters.dat", out_dir);
-  sprintf(data_out, "%s/data.dat", out_dir);
+  FILE *file_conv;
+  char file_conv_name[10000];
+  if (save_data)
+  {
+    sprintf(file_conv_name, "%s/data.dat", out_dir);
 
-  FILE *data_out_file;
+    ierr = PetscFOpen(mpi.comm(), file_conv_name, "w", &file_conv); CHKERRXX(ierr);
+    ierr = PetscFPrintf(mpi.comm(), file_conv, "iteration "
+                                               "total_time "
+                                               "iteration_time "
+                                               "energy "
+                                               "pressure_force "
+                                               "exchange_force "
+                                               "bc_adjusted\n"); CHKERRXX(ierr);
+//    ierr = PetscFClose(mpi.comm(), file_conv); CHKERRXX(ierr);
+  }
 
-  ierr = PetscFOpen(mpi.comm(), data_out, "w", &data_out_file); CHKERRXX(ierr);
-
-
-  parse_cmd(argc, argv);
-  write_parameters(mpi.comm(), name);
-
-  double scalling = 1./box_size;
-
-#ifdef P4_TO_P8
-  double xyz_min[] = { xmin, ymin, zmin };
-  double xyz_max[] = { xmax, ymax, zmax };
-  int nb_trees[] = { nx, ny, nz };
-  int periodic[] = { px, py, pz };
-#else
-  double xyz_min[] = { xmin, ymin };
-  double xyz_max[] = { xmax, ymax };
-  int nb_trees[] = { nx, ny };
-  int periodic[] = { px, py };
-#endif
+  /* start a timer */
+  parStopWatch w;
+  w.start("total time");
 
   /* create the p4est */
-  my_p4est_brick_t brick;
+  double xyz_min[]  = { DIM(xmin, ymin, zmin) };
+  double xyz_max[]  = { DIM(xmax, ymax, zmax) };
+  int    nb_trees[] = { DIM(nx, ny, nz) };
+  int    periodic[] = { DIM(px, py, pz) };
 
+  my_p4est_brick_t      brick;
   p4est_connectivity_t *connectivity = my_p4est_brick_new(nb_trees, xyz_min, xyz_max, &brick, periodic);
-  p4est_t *p4est = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
+  p4est_t              *p4est        = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
 
   splitting_criteria_cf_t data(lmin, lmax, &phi_eff_cf, lip);
+  data.set_refine_only_inside(true);
 
   p4est->user_pointer = (void*)(&data);
-  my_p4est_refine(p4est, P4EST_TRUE, refine_inside_levelset_cf, NULL);
-  my_p4est_partition(p4est, P4EST_FALSE, NULL);
+  for (int i = 0; i < lmax; ++i)
+  {
+    my_p4est_refine(p4est, P4EST_FALSE, refine_levelset_cf, NULL);
+    my_p4est_partition(p4est, P4EST_FALSE, NULL);
+  }
 
   p4est_ghost_t *ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
   p4est_nodes_t *nodes = my_p4est_nodes_new(p4est, ghost);
@@ -487,54 +512,58 @@ int main (int argc, char* argv[])
   my_p4est_node_neighbors_t *ngbd = new my_p4est_node_neighbors_t(hierarchy,nodes);
   ngbd->init_neighbors();
 
-  double dxyz[P4EST_DIM], h, diag;
-  get_dxyz_min(p4est, dxyz, h, diag);
-
-  /* initialize geometry */
-  Vec phi_intf; ierr = VecCreateGhostNodes(p4est, nodes, &phi_intf); CHKERRXX(ierr);
-  Vec phi_wall; ierr = VecCreateGhostNodes(p4est, nodes, &phi_wall); CHKERRXX(ierr);
-
-  sample_cf_on_nodes(p4est, nodes, phi_intf_cf, phi_intf);
-  sample_cf_on_nodes(p4est, nodes, phi_wall_cf, phi_wall);
-
   /* reinitialize and refine-coarsen agan */
-  if (reinit_at_start)
+  if (rerefine_at_start)
   {
     my_p4est_level_set_t ls(ngbd);
 
-    ls.reinitialize_1st_order_time_2nd_order_space(phi_intf);
-    ls.reinitialize_1st_order_time_2nd_order_space(phi_wall);
+    Vec phi_wall;
+    Vec phi_infc;
+    ierr = VecCreateGhostNodes(p4est, nodes, &phi_wall); CHKERRXX(ierr);
+    ierr = VecCreateGhostNodes(p4est, nodes, &phi_infc); CHKERRXX(ierr);
+    sample_cf_on_nodes(p4est, nodes, phi_wall_cf, phi_wall);
+    sample_cf_on_nodes(p4est, nodes, phi_infc_cf, phi_infc);
+    ls.reinitialize_1st_order(phi_wall, 100);
+    ls.reinitialize_1st_order(phi_infc, 100);
+
+    Vec phi_eff;
+    ierr = VecDuplicate(phi_wall, &phi_eff); CHKERRXX(ierr);
+
+    double *phi_wall_ptr; ierr = VecGetArray(phi_wall, &phi_wall_ptr); CHKERRXX(ierr);
+    double *phi_infc_ptr; ierr = VecGetArray(phi_infc, &phi_infc_ptr); CHKERRXX(ierr);
+    double *phi_eff_ptr;  ierr = VecGetArray(phi_eff,  &phi_eff_ptr); CHKERRXX(ierr);
+
+    foreach_node(n, nodes)
+    {
+      phi_eff_ptr[n] = MIN( MAX(phi_wall_ptr[n], phi_infc_ptr[n]), ABS(phi_wall_ptr[n]));
+    }
+
+    ierr = VecRestoreArray(phi_wall, &phi_wall_ptr); CHKERRXX(ierr);
+    ierr = VecRestoreArray(phi_infc, &phi_infc_ptr); CHKERRXX(ierr);
+    ierr = VecRestoreArray(phi_eff,  &phi_eff_ptr); CHKERRXX(ierr);
+
+    ierr = VecDestroy(phi_wall); CHKERRXX(ierr);
+    ierr = VecDestroy(phi_infc); CHKERRXX(ierr);
+
+    p4est_t       *p4est_np1 = p4est_copy(p4est, P4EST_FALSE);
+    p4est_ghost_t *ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
+    p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
+
+    Vec phi_eff_np1;
+    ierr = VecDuplicate(phi_eff, &phi_eff_np1); CHKERRXX(ierr);
+    VecCopyGhost(phi_eff, phi_eff_np1);
 
     bool is_grid_changing = true;
-    while (is_grid_changing) {
-
-      std::vector<Vec> phi(2);
-      std::vector<action_t> acn(2, INTERSECTION);
-      std::vector<int> acn_int(2, 0);
-      std::vector<int> clr(2);
-      std::vector<bool> refine_always(2);
-
-      phi[0] = phi_intf; clr[0] = 0; refine_always[0] = false;
-      phi[1] = phi_wall; clr[1] = 1; refine_always[1] = true;
-
-      Vec phi_eff;
+    while (is_grid_changing)
+    {
       double *phi_eff_ptr;
-
-      ierr = VecDuplicate(phi_intf, &phi_eff); CHKERRXX(ierr);
-      compute_phi_eff(nodes, &phi, &acn_int, &refine_always, phi_eff);
-      ierr = VecGetArray(phi_eff, &phi_eff_ptr); CHKERRXX(ierr);
+      ierr = VecGetArray(phi_eff_np1, &phi_eff_ptr); CHKERRXX(ierr);
 
       splitting_criteria_tag_t sp(lmin, lmax, lip);
       sp.set_refine_only_inside(refine_only_inside);
-
-      p4est_t *p4est_np1 = p4est_copy(p4est, P4EST_FALSE);
-      p4est_ghost_t *ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
-      p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
-
       is_grid_changing = sp.refine_and_coarsen(p4est_np1, nodes_np1, phi_eff_ptr);
 
-      ierr = VecRestoreArray(phi_eff, &phi_eff_ptr); CHKERRXX(ierr);
-      ierr = VecDestroy(phi_eff); CHKERRXX(ierr);
+      ierr = VecRestoreArray(phi_eff_np1, &phi_eff_ptr); CHKERRXX(ierr);
 
       if (is_grid_changing)
       {
@@ -555,32 +584,45 @@ int main (int argc, char* argv[])
           interp.add_point(n, xyz);
         }
 
-        interpolate_between_grids(interp, p4est_np1, nodes_np1, phi_wall, NULL, interpolation_between_grids);
-        interpolate_between_grids(interp, p4est_np1, nodes_np1, phi_intf, NULL, interpolation_between_grids);
+        ierr = VecDestroy(phi_eff_np1); CHKERRXX(ierr);
+        ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &phi_eff_np1); CHKERRXX(ierr);
 
-        // delete old p4est
-        p4est_destroy(p4est);       p4est = p4est_np1;
-        p4est_ghost_destroy(ghost); ghost = ghost_np1;
-        p4est_nodes_destroy(nodes); nodes = nodes_np1;
-        hierarchy->update(p4est, ghost);
-        ngbd->update(hierarchy, nodes);
+        interp.set_input(phi_eff, linear);
+        interp.interpolate(phi_eff_np1);
+
       }
     }
 
-    sample_cf_on_nodes(p4est, nodes, phi_intf_cf, phi_intf);
-    sample_cf_on_nodes(p4est, nodes, phi_wall_cf, phi_wall);
+    ierr = VecDestroy(phi_eff); CHKERRXX(ierr);
+    ierr = VecDestroy(phi_eff_np1); CHKERRXX(ierr);
 
-    my_p4est_level_set_t ls_new(ngbd);
-
-    ls_new.reinitialize_1st_order_time_2nd_order_space(phi_intf);
-    ls_new.reinitialize_1st_order_time_2nd_order_space(phi_wall);
+    // delete old p4est
+    p4est_destroy(p4est);       p4est = p4est_np1;
+    p4est_ghost_destroy(ghost); ghost = ghost_np1;
+    p4est_nodes_destroy(nodes); nodes = nodes_np1;
+    hierarchy->update(p4est, ghost);
+    ngbd->update(hierarchy, nodes);
   }
 
-  /* initialize potentials */
-  Vec mu_m; ierr = VecDuplicate(phi_intf, &mu_m); CHKERRXX(ierr);
-  Vec mu_p; ierr = VecDuplicate(phi_intf, &mu_p); CHKERRXX(ierr);
+  double dxyz[P4EST_DIM], h, diag;
+  get_dxyz_min(p4est, dxyz, h, diag);
 
-  sample_cf_on_nodes(p4est, nodes, mu_cf, mu_m);
+  /* initialize geometry */
+  Vec phi_infc; ierr = VecCreateGhostNodes(p4est, nodes, &phi_infc); CHKERRXX(ierr);
+  Vec phi_wall; ierr = VecCreateGhostNodes(p4est, nodes, &phi_wall); CHKERRXX(ierr);
+
+  sample_cf_on_nodes(p4est, nodes, phi_infc_cf, phi_infc);
+  sample_cf_on_nodes(p4est, nodes, phi_wall_cf, phi_wall);
+
+  my_p4est_level_set_t ls(ngbd);
+  ls.reinitialize_2nd_order(phi_infc);
+  ls.reinitialize_2nd_order(phi_wall);
+
+  /* initialize potentials */
+  Vec mu_m; ierr = VecDuplicate(phi_infc, &mu_m); CHKERRXX(ierr);
+  Vec mu_p; ierr = VecDuplicate(phi_infc, &mu_p); CHKERRXX(ierr);
+
+  sample_cf_on_nodes(p4est, nodes, mu_cf,   mu_m);
   VecSetGhost(mu_p, 0);
 
   /* compute initial volume for volume-loss corrections */
@@ -588,10 +630,10 @@ int main (int argc, char* argv[])
 
   {
     std::vector<Vec> phi(2);
-    std::vector<action_t> acn(2, INTERSECTION);
+    std::vector<mls_opn_t> acn(2, MLS_INTERSECTION);
     std::vector<int> clr(2);
 
-    phi[0] = phi_intf; clr[0] = 0;
+    phi[0] = phi_infc; clr[0] = 0;
     phi[1] = phi_wall; clr[1] = 1;
 
     my_p4est_integration_mls_t integration(p4est, nodes);
@@ -604,11 +646,11 @@ int main (int argc, char* argv[])
   double elev = 0;
   if (compute_exact)
   {
-    double g_Aw = gamma_Aw_cf(0,0 P8C(0));
-    double g_Bw = gamma_Bw_cf(0,0 P8C(0));
-    double g_Aa = gamma_Aa_cf(0,0 P8C(0));
-    double g_Ba = gamma_Ba_cf(0,0 P8C(0));
-    double g_aw = gamma_aw_cf(0,0 P8C(0));
+    double g_Aw = gamma_Aw_cf(DIM(0,0,0));
+    double g_Bw = gamma_Bw_cf(DIM(0,0,0));
+    double g_Aa = gamma_Aa_cf(DIM(0,0,0));
+    double g_Ba = gamma_Ba_cf(DIM(0,0,0));
+    double g_aw = gamma_aw_cf(DIM(0,0,0));
 
     double theta = acos( (.5*(g_Aw+g_Bw) - g_aw) / (.5*(g_Aa+g_Ba) ) );
 
@@ -640,13 +682,14 @@ int main (int argc, char* argv[])
   int iteration = 0;
   while (iteration < max_iterations)
   {
+
     std::vector<Vec> phi(2);
-    std::vector<action_t> acn(2, INTERSECTION);
+    std::vector<mls_opn_t> acn(2, MLS_INTERSECTION);
     std::vector<int> acn_int(2, 0);
     std::vector<int> clr(2);
     std::vector<bool> refine_always(2);
 
-    phi[0] = phi_intf; clr[0] = 0; refine_always[0] = false;
+    phi[0] = phi_infc; clr[0] = 0; refine_always[0] = false;
     phi[1] = phi_wall; clr[1] = 1; refine_always[1] = true;
 
     my_p4est_integration_mls_t integration(p4est, nodes);
@@ -655,6 +698,12 @@ int main (int argc, char* argv[])
     my_p4est_level_set_t ls(ngbd);
     ls.set_interpolation_on_interface(quadratic_non_oscillatory_continuous_v2);
 
+    Vec phi_eff;
+    ierr = VecDuplicate(phi_infc, &phi_eff); CHKERRXX(ierr);
+
+    VecPointwiseMaxGhost(phi_eff, phi_infc, phi_wall);
+    ls.reinitialize_2nd_order(phi_eff);
+
     /* normal and curvature */
     Vec normal[P4EST_DIM];
     Vec kappa;
@@ -662,27 +711,94 @@ int main (int argc, char* argv[])
     foreach_dimension(dim) { ierr = VecCreateGhostNodes(p4est, nodes, &normal[dim]); CHKERRXX(ierr); }
     ierr = VecCreateGhostNodes(p4est, nodes, &kappa); CHKERRXX(ierr);
 
-    compute_normals_and_mean_curvature(*ngbd, phi_intf, normal, kappa);
+    compute_normals_and_mean_curvature(*ngbd, phi_infc, normal, kappa);
 
-    Vec kappa_tmp;
-    ierr = VecDuplicate(kappa, &kappa_tmp); CHKERRXX(ierr);
+//    double *kappa_ptr;
+//    double *phi_wall_ptr;
+//    double *phi_infc_ptr;
 
-    ls.extend_from_interface_to_whole_domain_TVD(phi_intf, kappa, kappa_tmp);
+//    ierr = VecGetArray(kappa, &kappa_ptr); CHKERRXX(ierr);
+//    ierr = VecGetArray(phi_wall, &phi_wall_ptr); CHKERRXX(ierr);
+//    ierr = VecGetArray(phi_infc, &phi_infc_ptr); CHKERRXX(ierr);
 
-    ierr = VecDestroy(kappa); CHKERRXX(ierr);
-    kappa = kappa_tmp;
+//    foreach_node(n, nodes)
+//    {
+//      double dist = MAX(phi_wall_ptr[n], fabs(phi_infc_ptr[n]));
+
+//      kappa_ptr[n] *= 1.-smoothstep(1, (dist/diag - 10.)/20.);
+//    }
+
+//    ierr = VecRestoreArray(kappa, &kappa_ptr); CHKERRXX(ierr);
+//    ierr = VecRestoreArray(phi_wall, &phi_wall_ptr); CHKERRXX(ierr);
+//    ierr = VecRestoreArray(phi_infc, &phi_infc_ptr); CHKERRXX(ierr);
+
+    /* vector field for extrapolation tangentially to the interface */
+    // compute normal to the wall
+    Vec normal_wall[P4EST_DIM];
+    foreach_dimension(dim) { ierr = VecDuplicate(normal[dim], &normal_wall[dim]); CHKERRXX(ierr); }
+
+    compute_normals(*ngbd, phi_wall, normal_wall);
+
+    // deform normal field
+    double band_deform = 1.5*diag;
+    double band_smooth = 7.0*diag;
+
+    double *normal_ptr[P4EST_DIM];
+    double *normal_wall_ptr[P4EST_DIM];
+    double *phi_infc_ptr;
+
+    ierr = VecGetArray(phi_infc, &phi_infc_ptr); CHKERRXX(ierr);
+    foreach_dimension(dim)
+    {
+      ierr = VecGetArray(normal[dim], &normal_ptr[dim]); CHKERRXX(ierr);
+      ierr = VecGetArray(normal_wall[dim], &normal_wall_ptr[dim]); CHKERRXX(ierr);
+    }
+
+    foreach_node(n, nodes)
+    {
+      double dot_product = normal_ptr[0][n]*normal_wall_ptr[0][n] +
+                           normal_ptr[1][n]*normal_wall_ptr[1][n];
+
+      normal_wall_ptr[0][n] -= (1.-smoothstep(1, (fabs(phi_infc_ptr[n]) - band_deform)/band_smooth))*dot_product*normal_ptr[0][n];
+      normal_wall_ptr[1][n] -= (1.-smoothstep(1, (fabs(phi_infc_ptr[n]) - band_deform)/band_smooth))*dot_product*normal_ptr[1][n];
+
+      double norm = sqrt(SQR(normal_wall_ptr[0][n]) + SQR(normal_wall_ptr[1][n]));
+
+      normal_wall_ptr[0][n] /= norm;
+      normal_wall_ptr[1][n] /= norm;
+    }
+
+    ierr = VecRestoreArray(phi_infc, &phi_infc_ptr); CHKERRXX(ierr);
+    foreach_dimension(dim)
+    {
+      ierr = VecRestoreArray(normal[dim], &normal_ptr[dim]); CHKERRXX(ierr);
+      ierr = VecRestoreArray(normal_wall[dim], &normal_wall_ptr[dim]); CHKERRXX(ierr);
+    }
+
+    // extension tangentially to the interface
+//    VecShiftGhost(phi_wall,  1.5*diag);
+//    ls.extend_Over_Interface_TVD_Full(phi_wall, kappa, 50, 0, 0, DBL_MAX, DBL_MAX, DBL_MAX, normal_wall);
+//    VecShiftGhost(phi_wall, -1.5*diag);
+
+    ls.set_interpolation_on_interface(linear);
+    ls.extend_from_interface_to_whole_domain_TVD_in_place(phi_infc, kappa, phi_infc, 20, phi_wall);
+    ls.set_interpolation_on_interface(quadratic_non_oscillatory_continuous_v2);
+
 
     /* get density field and non-curvature velocity */
     Vec velo;
-    ierr = VecDuplicate(phi_intf, &velo); CHKERRXX(ierr);
+    ierr = VecDuplicate(phi_infc, &velo); CHKERRXX(ierr);
 
     if (use_scft)
     {
-      my_p4est_scft_t scft(ngbd);
+      my_p4est_scft_t scft(ngbd, ns);
 
-      scft.set_scalling(scalling);
-      scft.set_polymer(f, XN, ns);
-      scft.set_geometry(phi, acn);
+      /* set geometry */
+      scft.add_boundary(phi_infc, MLS_INTERSECTION, gamma_Aa_cf, gamma_Ba_cf);
+      scft.add_boundary(phi_wall, MLS_INTERSECTION, gamma_Aw_cf, gamma_Bw_cf);
+
+      scft.set_scalling(1./box_size);
+      scft.set_polymer(f, XN);
 
       /* initialize potentials */
       Vec mu_m_tmp = scft.get_mu_m();
@@ -691,23 +807,17 @@ int main (int argc, char* argv[])
       VecCopyGhost(mu_m, mu_m_tmp);
       VecCopyGhost(mu_p, mu_p_tmp);
 
-      std::vector<CF_DIM *> gamma_a_cf(2, NULL);
-      std::vector<CF_DIM *> gamma_b_cf(2, NULL);
-
-      gamma_a_cf[0] = &gamma_Aa_cf; gamma_a_cf[1] = &gamma_Aw_cf;
-      gamma_b_cf[0] = &gamma_Ba_cf; gamma_b_cf[1] = &gamma_Bw_cf;
-
-      scft.set_surface_tensions(gamma_a_cf, gamma_b_cf, gamma_aw_cf);
-
-      scft.initialize_linear_system();
-
+      /* initialize diffusion solvers for propagators */
+      scft.initialize_solvers();
       scft.initialize_bc_smart(iteration != 0);
 
-      int scft_iteration = 0;
-      double scft_error = 2.*scft_tol;
-      int bc_iters = 0;
+      /* main loop for solving SCFT equations */
+      int    scft_iteration = 0;
+      int    bc_iters       = 0;
+      double scft_error     = 2.*scft_tol+1.;
       while (scft_iteration < max_scft_iterations && scft_error > scft_tol || scft_iteration < bc_adjust_min+1)
       {
+        // do an SCFT step
         scft.solve_for_propogators();
         scft.calculate_densities();
         scft.update_potentials();
@@ -720,8 +830,6 @@ int main (int argc, char* argv[])
             scft.smooth_singularity_in_pressure_field();
             smooth_pressure = false;
           }
-          scft.recompute_matrices();
-//          scft.initialize_linear_system();
           ierr = PetscPrintf(mpi.comm(), "Robin coefficients have been adjusted\n"); CHKERRXX(ierr);
           bc_iters = 0;
         }
@@ -736,10 +844,9 @@ int main (int argc, char* argv[])
       energy = scft.get_energy();
 
       scft.sync_and_extend();
-
       scft.compute_energy_shape_derivative(0, velo);
 
-      ls.extend_from_interface_to_whole_domain_TVD_in_place_mask(phi_intf, phi_wall, velo, phi_intf);
+      ls.extend_from_interface_to_whole_domain_TVD_in_place(phi_infc, velo, phi_infc, 20, phi_wall);
 
       VecScaleGhost(velo, -1);
 
@@ -756,11 +863,12 @@ int main (int argc, char* argv[])
       Vec mu_wall;
       Vec mu_intf;
 
-      ierr = VecDuplicate(phi_intf, &mu_wall); CHKERRXX(ierr);
-      ierr = VecDuplicate(phi_intf, &mu_intf); CHKERRXX(ierr);
+      ierr = VecDuplicate(phi_infc, &mu_wall); CHKERRXX(ierr);
+      ierr = VecDuplicate(phi_infc, &mu_intf); CHKERRXX(ierr);
 
-      ls.extend_from_interface_to_whole_domain_TVD(phi_wall, mu_m, mu_wall, 20);
-      ls.extend_from_interface_to_whole_domain_TVD(phi_intf, mu_m, mu_intf, 20);
+//      ls.extend_Over_Interface_TVD_Full(phi_eff, mu_m, 20, 2);
+//      ls.extend_Over_Interface_TVD_Full(phi_wall, mu_m, 20, 2, 0, DBL_MAX, DBL_MAX, DBL_MAX, normal_wall);
+//      ls.extend_from_interface_to_whole_domain_TVD_in_place(phi_infc, mu_m, phi_infc, 20, phi_wall);
 
 //      energy  = .5*(gamma_Aa+gamma_Ba)*integration.measure_of_interface(0) + .5*(gamma_Aa-gamma_Ba)*integration.integrate_over_interface(0, mu_intf);
 //      energy += .5*(gamma_Aw+gamma_Bw)*integration.measure_of_interface(1) + .5*(gamma_Aw-gamma_Bw)*integration.integrate_over_interface(1, mu_wall);
@@ -773,8 +881,8 @@ int main (int argc, char* argv[])
     Vec surf_tns;
     Vec cos_angle;
 
-    ierr = VecDuplicate(phi_intf, &surf_tns); CHKERRXX(ierr);
-    ierr = VecDuplicate(phi_intf, &cos_angle); CHKERRXX(ierr);
+    ierr = VecDuplicate(phi_infc, &surf_tns); CHKERRXX(ierr);
+    ierr = VecDuplicate(phi_infc, &cos_angle); CHKERRXX(ierr);
 
     double *mu_ptr;
     double *surf_tns_ptr;
@@ -783,6 +891,8 @@ int main (int argc, char* argv[])
     ierr = VecGetArray(mu_m, &mu_ptr); CHKERRXX(ierr);
     ierr = VecGetArray(surf_tns, &surf_tns_ptr); CHKERRXX(ierr);
     ierr = VecGetArray(cos_angle, &cos_angle_ptr); CHKERRXX(ierr);
+
+    double scalling = 1./box_size;
 
     double xyz[P4EST_DIM];
     foreach_node(n, nodes)
@@ -803,31 +913,33 @@ int main (int argc, char* argv[])
     ierr = VecRestoreArray(surf_tns, &surf_tns_ptr); CHKERRXX(ierr);
     ierr = VecRestoreArray(cos_angle, &cos_angle_ptr); CHKERRXX(ierr);
 
+    ls.extend_Over_Interface_TVD_Full(phi_wall, cos_angle, 20, 0, 0, DBL_MAX, DBL_MAX, DBL_MAX, normal_wall);
+    ls.extend_from_interface_to_whole_domain_TVD_in_place(phi_infc, cos_angle, phi_infc, 20, phi_wall);
+
     // average velocity
     Vec velo_full;
     Vec surf_tns_d[P4EST_DIM];
     Vec tmp;
 
-    ierr = VecDuplicate(phi_intf, &velo_full); CHKERRXX(ierr);
-    ierr = VecDuplicate(phi_intf, &tmp); CHKERRXX(ierr);
+    ierr = VecDuplicate(phi_infc, &velo_full); CHKERRXX(ierr);
+    ierr = VecDuplicate(phi_infc, &tmp); CHKERRXX(ierr);
     foreach_dimension(dim) { ierr = VecDuplicate(normal[dim], &surf_tns_d[dim]); CHKERRXX(ierr); }
 
-    ls.extend_from_interface_to_whole_domain_TVD(phi_intf, surf_tns, tmp);
+    ls.extend_from_interface_to_whole_domain_TVD(phi_infc, surf_tns, tmp);
     VecPointwiseMultGhost(velo_full, kappa, tmp);
 
     ngbd->first_derivatives_central(surf_tns, surf_tns_d);
     foreach_dimension(dim)
     {
       VecPointwiseMultGhost(surf_tns_d[dim], surf_tns_d[dim], normal[dim]);
-      ls.extend_from_interface_to_whole_domain_TVD(phi_intf, surf_tns_d[dim], tmp);
+      ls.extend_from_interface_to_whole_domain_TVD(phi_infc, surf_tns_d[dim], tmp);
       VecAXPBYGhost(velo_full, 1, 1, tmp);
     }
 
     VecScaleGhost(velo_full, -1);
     VecAXPBYGhost(velo_full, 1, 1, velo);
 
-//    ls.extend_from_interface_to_whole_domain_TVD_in_place(phi_intf, velo_full, phi_intf);
-    ls.extend_from_interface_to_whole_domain_TVD_in_place_mask(phi_intf, phi_wall, velo_full, phi_intf);
+    ls.extend_from_interface_to_whole_domain_TVD_in_place(phi_infc, velo_full, phi_infc, 20, phi_wall);
 
     double vn_avg = integration.integrate_over_interface(0, velo_full)/integration.measure_of_interface(0);
 
@@ -836,13 +948,8 @@ int main (int argc, char* argv[])
 
     VecShiftGhost(velo, -vn_avg);
     VecShiftGhost(velo_full, -vn_avg);
-//    VecSetGhost(vn, 0);
 
-//    ls.extend_from_interface_to_whole_domain_TVD_in_place(phi_intf, velo, phi_intf);
-    ls.extend_from_interface_to_whole_domain_TVD_in_place_mask(phi_intf, phi_wall, velo, phi_intf);
-//    VecScaleGhost(phi_wall, -1.);
-//    ls.extend_Over_Interface_TVD(phi_wall, velo, 10, 1);
-//    VecScaleGhost(phi_wall, -1.);
+    ls.extend_from_interface_to_whole_domain_TVD_in_place(phi_infc, velo, phi_infc, 20, phi_wall);
 
     /* compute time step dt */
     double dt_local = DBL_MAX;
@@ -872,7 +979,6 @@ int main (int argc, char* argv[])
       double s_min = MIN(MIN(s_p00, s_m00), MIN(s_0p0, s_0m0));
   #endif
 
-      /* choose CFL = 0.8 ... just for fun! */
       dt_local = MIN(dt_local, cfl*fabs(s_min/velo_ptr[n]));
       vmax = MAX(vmax, fabs(velo_ptr[n]));
     }
@@ -882,17 +988,19 @@ int main (int argc, char* argv[])
     MPI_Allreduce(&dt_local, &dt, 1, MPI_DOUBLE, MPI_MIN, p4est->mpicomm);
     MPI_Allreduce(MPI_IN_PLACE, &vmax, 1, MPI_DOUBLE, MPI_MIN, p4est->mpicomm);
 
+//    VecSetGhost(cos_angle, 0);
+
 
 //    Vec surf_tns_tmp;
-//    ierr = VecDuplicate(phi_intf, &surf_tns_tmp); CHKERRXX(ierr);
-//    ls.extend_from_interface_to_whole_domain_TVD(phi_intf, surf_tns, surf_tns_tmp, 20);
+//    ierr = VecDuplicate(phi_infc, &surf_tns_tmp); CHKERRXX(ierr);
+//    ls.extend_from_interface_to_whole_domain_TVD(phi_infc, surf_tns, surf_tns_tmp, 20);
 //    ierr = VecDestroy(surf_tns); CHKERRXX(ierr);
 //    surf_tns = surf_tns_tmp;
 
     double energy_change_predicted;
 
     Vec integrand;
-    ierr = VecDuplicate(phi_intf, &integrand); CHKERRXX(ierr);
+    ierr = VecDuplicate(phi_infc, &integrand); CHKERRXX(ierr);
 
     VecPointwiseMultGhost(integrand, velo_full, velo_full); CHKERRXX(ierr);
 
@@ -902,7 +1010,7 @@ int main (int argc, char* argv[])
 
     if (save_data && iteration%save_every_dn == 0)
     {
-      ierr = PetscFPrintf(mpi.comm(), data_out_file, "%d %e %e %e %e %e\n", (int) round(iteration/save_every_dn), dt, energy, energy-energy_old, energy_change_predicted, vmax); CHKERRXX(ierr);
+      ierr = PetscFPrintf(mpi.comm(), file_conv, "%d %e %e %e %e %e\n", (int) round(iteration/save_every_dn), dt, energy, energy-energy_old, energy_change_predicted, vmax); CHKERRXX(ierr);
     }
 
     ierr = PetscPrintf(mpi.comm(), "Avg velo: %e, Time step: %e\n", vn_avg, dt);
@@ -914,12 +1022,12 @@ int main (int argc, char* argv[])
     {
       // Effective phi
       Vec phi_eff;
-      ierr = VecDuplicate(phi_intf, &phi_eff); CHKERRXX(ierr);
-      compute_phi_eff(nodes, &phi, &acn_int, NULL, phi_eff);
+      ierr = VecDuplicate(phi_infc, &phi_eff); CHKERRXX(ierr);
+      compute_phi_eff(phi_eff, nodes, phi, acn);
 
       // compute reference solution
       Vec phi_exact;
-      ierr = VecDuplicate(phi_intf, &phi_exact); CHKERRXX(ierr);
+      ierr = VecDuplicate(phi_infc, &phi_exact); CHKERRXX(ierr);
       VecSetGhost(phi_exact, -1);
 
       if (compute_exact)
@@ -1030,7 +1138,7 @@ int main (int argc, char* argv[])
 
       double *phi_ptr;
       double *phi_wall_ptr;
-      double *phi_intf_ptr;
+      double *phi_infc_ptr;
       double *phi_exact_ptr;
       double *kappa_ptr;
       double *surf_tns_ptr;
@@ -1038,10 +1146,13 @@ int main (int argc, char* argv[])
       double *mu_p_ptr;
       double *velo_ptr;
       double *velo_full_ptr;
+      double *cos_ptr;
+      double *nx;
+      double *ny;
 
       ierr = VecGetArray(phi_eff, &phi_ptr); CHKERRXX(ierr);
       ierr = VecGetArray(phi_wall, &phi_wall_ptr); CHKERRXX(ierr);
-      ierr = VecGetArray(phi_intf, &phi_intf_ptr); CHKERRXX(ierr);
+      ierr = VecGetArray(phi_infc, &phi_infc_ptr); CHKERRXX(ierr);
       ierr = VecGetArray(phi_exact, &phi_exact_ptr); CHKERRXX(ierr);
       ierr = VecGetArray(kappa, &kappa_ptr); CHKERRXX(ierr);
       ierr = VecGetArray(surf_tns, &surf_tns_ptr); CHKERRXX(ierr);
@@ -1049,13 +1160,16 @@ int main (int argc, char* argv[])
       ierr = VecGetArray(mu_p, &mu_p_ptr); CHKERRXX(ierr);
       ierr = VecGetArray(velo, &velo_ptr); CHKERRXX(ierr);
       ierr = VecGetArray(velo_full, &velo_full_ptr); CHKERRXX(ierr);
+      ierr = VecGetArray(cos_angle, &cos_ptr); CHKERRXX(ierr);
+      ierr = VecGetArray(normal_wall[0], &nx); CHKERRXX(ierr);
+      ierr = VecGetArray(normal_wall[1], &ny); CHKERRXX(ierr);
 
       my_p4est_vtk_write_all(p4est, nodes, ghost,
                              P4EST_TRUE, P4EST_TRUE,
-                             10, 1, oss.str().c_str(),
+                             13, 1, oss.str().c_str(),
                              VTK_POINT_DATA, "phi", phi_ptr,
                              VTK_POINT_DATA, "phi_wall", phi_wall_ptr,
-                             VTK_POINT_DATA, "phi_intf", phi_intf_ptr,
+                             VTK_POINT_DATA, "phi_infc", phi_infc_ptr,
                              VTK_POINT_DATA, "phi_exact", phi_exact_ptr,
                              VTK_POINT_DATA, "kappa", kappa_ptr,
                              VTK_POINT_DATA, "surf_tns", surf_tns_ptr,
@@ -1063,11 +1177,14 @@ int main (int argc, char* argv[])
                              VTK_POINT_DATA, "mu_p", mu_p_ptr,
                              VTK_POINT_DATA, "velo", velo_ptr,
                              VTK_POINT_DATA, "velo_full", velo_full_ptr,
+                             VTK_POINT_DATA, "cos", cos_ptr,
+                             VTK_POINT_DATA, "nx", nx,
+                             VTK_POINT_DATA, "ny", ny,
                              VTK_CELL_DATA , "leaf_level", l_p);
 
       ierr = VecRestoreArray(phi_eff, &phi_ptr); CHKERRXX(ierr);
       ierr = VecRestoreArray(phi_wall, &phi_wall_ptr); CHKERRXX(ierr);
-      ierr = VecRestoreArray(phi_intf, &phi_intf_ptr); CHKERRXX(ierr);
+      ierr = VecRestoreArray(phi_infc, &phi_infc_ptr); CHKERRXX(ierr);
       ierr = VecRestoreArray(phi_exact, &phi_exact_ptr); CHKERRXX(ierr);
       ierr = VecRestoreArray(kappa, &kappa_ptr); CHKERRXX(ierr);
       ierr = VecRestoreArray(surf_tns, &surf_tns_ptr); CHKERRXX(ierr);
@@ -1075,6 +1192,9 @@ int main (int argc, char* argv[])
       ierr = VecRestoreArray(mu_p, &mu_p_ptr); CHKERRXX(ierr);
       ierr = VecRestoreArray(velo, &velo_ptr); CHKERRXX(ierr);
       ierr = VecRestoreArray(velo_full, &velo_full_ptr); CHKERRXX(ierr);
+      ierr = VecRestoreArray(cos_angle, &cos_ptr); CHKERRXX(ierr);
+      ierr = VecRestoreArray(normal_wall[0], &nx); CHKERRXX(ierr);
+      ierr = VecRestoreArray(normal_wall[1], &ny); CHKERRXX(ierr);
 
       ierr = VecRestoreArray(leaf_level, &l_p); CHKERRXX(ierr);
       ierr = VecDestroy(leaf_level); CHKERRXX(ierr);
@@ -1088,59 +1208,123 @@ int main (int argc, char* argv[])
     /* advect interface and impose contact angle */
     ls.set_use_neumann_for_contact_angle(use_neumann);
     ls.set_contact_angle_extension(contact_angle_extension);
-    ls.advect_in_normal_direction_with_contact_angle(velo, surf_tns, cos_angle, phi_wall, phi_intf, dt);
 
-    ls.reinitialize_1st_order_time_2nd_order_space(phi_intf, 50);
+    int splits = 1;
+    for (int i = 0; i < splits; ++i)
+    {
+      ls.advect_in_normal_direction_with_contact_angle(velo, surf_tns, cos_angle, phi_wall, phi_infc, dt/double(splits));
+
+      // cut off tails
+      double *phi_wall_ptr;
+      double *phi_infc_ptr;
+
+      ierr = VecGetArray(phi_wall, &phi_wall_ptr); CHKERRXX(ierr);
+      ierr = VecGetArray(phi_infc, &phi_infc_ptr); CHKERRXX(ierr);
+
+      foreach_node(n, nodes)
+      {
+        double transition = smoothstep(1, (phi_wall_ptr[n]/diag - 10.)/20.);
+//        phi_infc_ptr[n] = smooth_max(phi_infc_ptr[n], phi_wall_ptr[n] - 12.*diag, 4.*diag);
+        phi_infc_ptr[n] = (1.-transition)*phi_infc_ptr[n] + transition*MAX(phi_infc_ptr[n], phi_wall_ptr[n] - 10.*diag);
+      }
+
+      ierr = VecRestoreArray(phi_wall, &phi_wall_ptr); CHKERRXX(ierr);
+      ierr = VecRestoreArray(phi_infc, &phi_infc_ptr); CHKERRXX(ierr);
+
+      ls.reinitialize_2nd_order(phi_infc);
+      /* correct for volume loss */
+      for (short i = 0; i < volume_corrections; ++i)
+      {
+        double volume_cur = integration.measure_of_domain();
+        double intf_len   = integration.measure_of_interface(0);
+        double correction = (volume_cur-volume)/intf_len;
+
+        VecShiftGhost(phi_infc, correction);
+
+        double volume_cur2 = integration.measure_of_domain();
+
+        PetscPrintf(mpi.comm(), "Volume loss: %e, after correction: %e\n", (volume_cur-volume)/volume, (volume_cur2-volume)/volume);
+      }
+    }
 
     ierr = VecDestroy(velo); CHKERRXX(ierr);
     ierr = VecDestroy(surf_tns); CHKERRXX(ierr);
     ierr = VecDestroy(cos_angle); CHKERRXX(ierr);
     ierr = VecDestroy(velo_full); CHKERRXX(ierr);
 
-    /* correct for volume loss */
-    for (short i = 0; i < volume_corrections; ++i)
-    {
-      double volume_cur = integration.measure_of_domain();
-      double intf_len   = integration.measure_of_interface(0);
-      double correction = (volume_cur-volume)/intf_len;
-
-      VecShiftGhost(phi_intf, correction);
-
-      double volume_cur2 = integration.measure_of_domain();
-
-      PetscPrintf(mpi.comm(), "Volume loss: %e, after correction: %e\n", (volume_cur-volume)/volume, (volume_cur2-volume)/volume);
-    }
 
     /* refine and coarsen grid */
     {
       Vec phi_eff;
-      double *phi_eff_ptr;
+      ierr = VecDuplicate(phi_wall, &phi_eff); CHKERRXX(ierr);
 
-      ierr = VecDuplicate(phi_intf, &phi_eff); CHKERRXX(ierr);
-      compute_phi_eff(nodes, &phi, &acn_int, &refine_always, phi_eff);
-      ierr = VecGetArray(phi_eff, &phi_eff_ptr); CHKERRXX(ierr);
+      double *phi_wall_ptr; ierr = VecGetArray(phi_wall, &phi_wall_ptr); CHKERRXX(ierr);
+      double *phi_infc_ptr; ierr = VecGetArray(phi_infc, &phi_infc_ptr); CHKERRXX(ierr);
+      double *phi_eff_ptr;  ierr = VecGetArray(phi_eff,  &phi_eff_ptr); CHKERRXX(ierr);
 
-      splitting_criteria_tag_t sp(lmin, lmax, lip);
-      sp.set_refine_only_inside(refine_only_inside);
+      foreach_node(n, nodes)
+      {
+        phi_eff_ptr[n] = MIN( MAX(phi_wall_ptr[n], phi_infc_ptr[n]), ABS(phi_wall_ptr[n]));
+      }
 
-      p4est_t *p4est_np1 = p4est_copy(p4est, P4EST_FALSE);
+      ierr = VecRestoreArray(phi_wall, &phi_wall_ptr); CHKERRXX(ierr);
+      ierr = VecRestoreArray(phi_infc, &phi_infc_ptr); CHKERRXX(ierr);
+      ierr = VecRestoreArray(phi_eff,  &phi_eff_ptr); CHKERRXX(ierr);
+
+      p4est_t       *p4est_np1 = p4est_copy(p4est, P4EST_FALSE);
       p4est_ghost_t *ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
       p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
 
-      bool is_grid_changing = sp.refine_and_coarsen(p4est_np1, nodes_np1, phi_eff_ptr);
+      Vec phi_eff_np1;
+      ierr = VecDuplicate(phi_eff, &phi_eff_np1); CHKERRXX(ierr);
+      VecCopyGhost(phi_eff, phi_eff_np1);
 
-      ierr = VecRestoreArray(phi_eff, &phi_eff_ptr); CHKERRXX(ierr);
-      ierr = VecDestroy(phi_eff); CHKERRXX(ierr);
-
-      if (is_grid_changing)
+      bool is_grid_changing = true;
+      bool grid_changed = false;
+      while (is_grid_changing)
       {
-        // repartition p4est
-        my_p4est_partition(p4est_np1, P4EST_TRUE, NULL);
+        double *phi_eff_ptr;
+        ierr = VecGetArray(phi_eff_np1, &phi_eff_ptr); CHKERRXX(ierr);
 
-        // reset nodes, ghost, and phi
-        p4est_ghost_destroy(ghost_np1); ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
-        p4est_nodes_destroy(nodes_np1); nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
+        splitting_criteria_tag_t sp(lmin, lmax, lip);
+        sp.set_refine_only_inside(refine_only_inside);
+        is_grid_changing = sp.refine_and_coarsen(p4est_np1, nodes_np1, phi_eff_ptr);
 
+        ierr = VecRestoreArray(phi_eff_np1, &phi_eff_ptr); CHKERRXX(ierr);
+
+        if (is_grid_changing)
+        {
+          grid_changed = true;
+          // repartition p4est
+          my_p4est_partition(p4est_np1, P4EST_TRUE, NULL);
+
+          // reset nodes, ghost, and phi
+          p4est_ghost_destroy(ghost_np1); ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
+          p4est_nodes_destroy(nodes_np1); nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
+
+          // interpolate data between grids
+          my_p4est_interpolation_nodes_t interp(ngbd);
+
+          double xyz[P4EST_DIM];
+          foreach_node(n, nodes_np1)
+          {
+            node_xyz_fr_n(n, p4est_np1, nodes_np1, xyz);
+            interp.add_point(n, xyz);
+          }
+
+          ierr = VecDestroy(phi_eff_np1); CHKERRXX(ierr);
+          ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &phi_eff_np1); CHKERRXX(ierr);
+
+          interp.set_input(phi_eff, linear);
+          interp.interpolate(phi_eff_np1);
+        }
+      }
+
+      ierr = VecDestroy(phi_eff); CHKERRXX(ierr);
+      ierr = VecDestroy(phi_eff_np1); CHKERRXX(ierr);
+
+      if (grid_changed)
+      {
         // interpolate data between grids
         my_p4est_interpolation_nodes_t interp(ngbd);
 
@@ -1152,29 +1336,84 @@ int main (int argc, char* argv[])
         }
 
         interpolate_between_grids(interp, p4est_np1, nodes_np1, phi_wall, NULL, interpolation_between_grids);
-        interpolate_between_grids(interp, p4est_np1, nodes_np1, phi_intf, NULL, interpolation_between_grids);
-        interpolate_between_grids(interp, p4est_np1, nodes_np1, mu_m, phi_intf, interpolation_between_grids);
-        interpolate_between_grids(interp, p4est_np1, nodes_np1, mu_p, phi_intf, interpolation_between_grids);
-
-        // delete old p4est
-        p4est_destroy(p4est);       p4est = p4est_np1;
-        p4est_ghost_destroy(ghost); ghost = ghost_np1;
-        p4est_nodes_destroy(nodes); nodes = nodes_np1;
-        hierarchy->update(p4est, ghost);
-        ngbd->update(hierarchy, nodes);
+        interpolate_between_grids(interp, p4est_np1, nodes_np1, phi_infc, NULL, interpolation_between_grids);
+        interpolate_between_grids(interp, p4est_np1, nodes_np1, mu_m, phi_infc, interpolation_between_grids);
+        interpolate_between_grids(interp, p4est_np1, nodes_np1, mu_p, phi_infc, interpolation_between_grids);
       }
+
+      // delete old p4est
+      p4est_destroy(p4est);       p4est = p4est_np1;
+      p4est_ghost_destroy(ghost); ghost = ghost_np1;
+      p4est_nodes_destroy(nodes); nodes = nodes_np1;
+      hierarchy->update(p4est, ghost);
+      ngbd->update(hierarchy, nodes);
     }
+//    {
+//      Vec phi_eff;
+//      double *phi_eff_ptr;
+
+//      ierr = VecDuplicate(phi_infc, &phi_eff); CHKERRXX(ierr);
+//      compute_phi_eff(phi_eff, nodes, phi, acn);
+//      ierr = VecGetArray(phi_eff, &phi_eff_ptr); CHKERRXX(ierr);
+
+//      splitting_criteria_tag_t sp(lmin, lmax, lip);
+//      sp.set_refine_only_inside(refine_only_inside);
+
+//      p4est_t *p4est_np1 = p4est_copy(p4est, P4EST_FALSE);
+//      p4est_ghost_t *ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
+//      p4est_nodes_t *nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
+
+//      bool is_grid_changing = sp.refine_and_coarsen(p4est_np1, nodes_np1, phi_eff_ptr);
+
+//      ierr = VecRestoreArray(phi_eff, &phi_eff_ptr); CHKERRXX(ierr);
+//      ierr = VecDestroy(phi_eff); CHKERRXX(ierr);
+
+//      if (is_grid_changing)
+//      {
+//        // repartition p4est
+//        my_p4est_partition(p4est_np1, P4EST_TRUE, NULL);
+
+//        // reset nodes, ghost, and phi
+//        p4est_ghost_destroy(ghost_np1); ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
+//        p4est_nodes_destroy(nodes_np1); nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
+
+//        // interpolate data between grids
+//        my_p4est_interpolation_nodes_t interp(ngbd);
+
+//        double xyz[P4EST_DIM];
+//        foreach_node(n, nodes_np1)
+//        {
+//          node_xyz_fr_n(n, p4est_np1, nodes_np1, xyz);
+//          interp.add_point(n, xyz);
+//        }
+
+//        interpolate_between_grids(interp, p4est_np1, nodes_np1, phi_wall, NULL, interpolation_between_grids);
+//        interpolate_between_grids(interp, p4est_np1, nodes_np1, phi_infc, NULL, interpolation_between_grids);
+//        interpolate_between_grids(interp, p4est_np1, nodes_np1, mu_m, phi_infc, interpolation_between_grids);
+//        interpolate_between_grids(interp, p4est_np1, nodes_np1, mu_p, phi_infc, interpolation_between_grids);
+
+//        // delete old p4est
+//        p4est_destroy(p4est);       p4est = p4est_np1;
+//        p4est_ghost_destroy(ghost); ghost = ghost_np1;
+//        p4est_nodes_destroy(nodes); nodes = nodes_np1;
+//        hierarchy->update(p4est, ghost);
+//        ngbd->update(hierarchy, nodes);
+//      }
+//    }
     iteration++;
 
     foreach_dimension(dim)
     {
+      ierr = VecDestroy(normal_wall[dim]); CHKERRXX(ierr);
       ierr = VecDestroy(normal[dim]); CHKERRXX(ierr);
     }
 
     ierr = VecDestroy(kappa); CHKERRXX(ierr);
+
+    ierr = VecDestroy(phi_eff); CHKERRXX(ierr);
   }
 
-  ierr = VecDestroy(phi_intf); CHKERRXX(ierr);
+  ierr = VecDestroy(phi_infc); CHKERRXX(ierr);
   ierr = VecDestroy(phi_wall); CHKERRXX(ierr);
 
   delete ngbd;
@@ -1184,261 +1423,7 @@ int main (int argc, char* argv[])
   p4est_destroy      (p4est);
   my_p4est_brick_destroy(connectivity, &brick);
 
-
-  ierr = PetscFClose(mpi.comm(), data_out_file); CHKERRXX(ierr);
+  ierr = PetscFClose(mpi.comm(), file_conv); CHKERRXX(ierr);
 
   return 0;
-}
-
-
-
-void parse_cmd(int argc, char *argv[])
-{
-  /* parse command line arguments */
-  cmdParser cmd;
-  M_PARSER_START
-  {
-    M_PARSER_ADD_OPTION(cmd, int, num_example, 0, "Number of predefined example")
-
-    M_PARSER_STAGE_1 { set_parameters(); }
-
-    // comptational domain
-    M_PARSER_ADD_OPTION(cmd, double, xmin, -1, "xmin")
-    M_PARSER_ADD_OPTION(cmd, double, ymin, -1, "ymin")
-    M_PARSER_ADD_OPTION(cmd, double, zmin, -1, "zmin")
-    M_PARSER_ADD_OPTION(cmd, double, xmax,  1, "xmax")
-    M_PARSER_ADD_OPTION(cmd, double, ymax,  1, "ymax")
-    M_PARSER_ADD_OPTION(cmd, double, zmax,  1, "zmax")
-
-    M_PARSER_ADD_OPTION(cmd, bool, px, 0, "periodicity in x-dimension 0/1")
-    M_PARSER_ADD_OPTION(cmd, bool, py, 0, "periodicity in y-dimension 0/1")
-    M_PARSER_ADD_OPTION(cmd, bool, pz, 0, "periodicity in z-dimension 0/1")
-
-    M_PARSER_ADD_OPTION(cmd, int, nx, 1, "number of trees in x-dimension")
-    M_PARSER_ADD_OPTION(cmd, int, ny, 1, "number of trees in y-dimension")
-    M_PARSER_ADD_OPTION(cmd, int, nz, 1, "number of trees in z-dimension")
-
-    // grid parameters
-    #ifdef P4_TO_P8
-    M_PARSER_ADD_OPTION(cmd, int, lmin, 8, "min level of trees")
-    M_PARSER_ADD_OPTION(cmd, int, lmax, 8, "max level of trees")
-    #else
-    M_PARSER_ADD_OPTION(cmd, int, lmin, 8, "min level of trees")
-    M_PARSER_ADD_OPTION(cmd, int, lmax, 8, "max level of trees")
-    #endif
-    M_PARSER_ADD_OPTION(cmd, double, lip, 1.5, "Lipschitz constant")
-
-    // advection parameters
-    M_PARSER_ADD_OPTION(cmd, double, cfl,                     0.15, "CFL number")
-    M_PARSER_ADD_OPTION(cmd, bool,   use_neumann,             1,    "Impose contact angle use Neumann BC 0/1")
-    M_PARSER_ADD_OPTION(cmd, bool,   compute_exact,           0,    "Compute exact final shape (only for pure-curvature) 0/1")
-    M_PARSER_ADD_OPTION(cmd, bool,   reinit_at_start,         1,    "Reinitialze level-set function at the start 0/1)")
-    M_PARSER_ADD_OPTION(cmd, int,    contact_angle_extension, 2,    "Method for extending level-set function into wall: 0 - constant angle, 1 - , 2 - special")
-    M_PARSER_ADD_OPTION(cmd, int,    volume_corrections,      2,    "Number of volume correction after each move")
-    M_PARSER_ADD_OPTION(cmd, int,    max_iterations,          1000, "Maximum number of advection steps")
-
-    // scft parameters
-    M_PARSER_ADD_OPTION(cmd, bool,   use_scft,            0,     "Turn on/off SCFT 0/1")
-    M_PARSER_ADD_OPTION(cmd, bool,   smooth_pressure,     1,     "Smooth pressure after first BC adjustment 0/1")
-    M_PARSER_ADD_OPTION(cmd, int,    max_scft_iterations, 500,   "Maximum SCFT iterations")
-    M_PARSER_ADD_OPTION(cmd, int,    bc_adjust_min,       5,     "Minimun SCFT steps between adjusting BC")
-    M_PARSER_ADD_OPTION(cmd, double, scft_tol,            1.e-3, "Tolerance for SCFT")
-    M_PARSER_ADD_OPTION(cmd, double, scft_bc_tol,         1.e-2, "Tolerance for adjusting BC")
-
-    // polymer
-    M_PARSER_ADD_OPTION(cmd, double, box_size, 10, "Box size in units of Rg")
-    M_PARSER_ADD_OPTION(cmd, double, f,        0.5, "Fraction of polymer A")
-    M_PARSER_ADD_OPTION(cmd, double, XN,       20,  "Flory-Higgins interaction parameter")
-    M_PARSER_ADD_OPTION(cmd, int,    ns,       40,  "Discretization of polymer chain")
-
-    // output parameters
-    M_PARSER_ADD_OPTION(cmd, bool, save_vtk,        1, "")
-    M_PARSER_ADD_OPTION(cmd, bool, save_parameters, 1, "")
-    M_PARSER_ADD_OPTION(cmd, bool, save_data,       1, "")
-    M_PARSER_ADD_OPTION(cmd, int,  save_every_dn,   1, "") // for vtk
-
-    // problem setting
-    M_PARSER_ADD_OPTION(cmd, int, num_polymer_geometry, 0, "Initial polymer shape: 0 - drop, 1 - film, 2 - combination")
-    M_PARSER_ADD_OPTION(cmd, int, num_wall_geometry,    0, "Wall geometry: 0 - no wall, 1 - wall, 2 - well")
-    M_PARSER_ADD_OPTION(cmd, int, num_wall_pattern,     0, "Wall chemical pattern: 0 - no pattern")
-    M_PARSER_ADD_OPTION(cmd, int, num_seed,             2, "Seed: 0 - zero, 1 - random, 2 - horizontal stripes, 3 - vertical stripes, 4 - dots")
-
-    // surface energies
-    M_PARSER_ADD_OPTION(cmd, int, wall_energy_type, 1, "Method for setting wall surface energy: 0 - explicitly (i.e. convert XN to angles), 1 - through contact angles (i.e. convert angles to XN)")
-
-    M_PARSER_ADD_OPTION(cmd, double, XN_air_avg, 20, "Polymer-air surface energy strength: average")
-    M_PARSER_ADD_OPTION(cmd, double, XN_air_del, 15, "Polymer-air surface energy strength: difference")
-
-    M_PARSER_ADD_OPTION(cmd, double, angle_A_min, 30,  "Minimum contact angle for A-block")
-    M_PARSER_ADD_OPTION(cmd, double, angle_A_max, 30,  "Maximum contact angle for A-block")
-    M_PARSER_ADD_OPTION(cmd, double, angle_B_min, 100, "Minimum contact angle for B-block")
-    M_PARSER_ADD_OPTION(cmd, double, angle_B_max, 100, "Maximum contact angle for B-block")
-
-    M_PARSER_ADD_OPTION(cmd, double, XN_wall_A_min, 5, "Minimum Polymer-wall interaction strength for A-block")
-    M_PARSER_ADD_OPTION(cmd, double, XN_wall_A_max, 5, "Maximum Polymer-wall interaction strength for A-block")
-    M_PARSER_ADD_OPTION(cmd, double, XN_wall_B_min, 8, "Minimum Polymer-wall interaction strength for B-block")
-    M_PARSER_ADD_OPTION(cmd, double, XN_wall_B_max, 8, "Maximum Polymer-wall interaction strength for B-block")
-
-    // geometry parameters
-    M_PARSER_ADD_OPTION(cmd, double, drop_r,      0.5, "")
-    M_PARSER_ADD_OPTION(cmd, double, drop_x,      .0, "")
-    M_PARSER_ADD_OPTION(cmd, double, drop_y,      .0, "")
-    M_PARSER_ADD_OPTION(cmd, double, drop_z,      .0, "")
-    M_PARSER_ADD_OPTION(cmd, double, drop_r0,     0.6, "")
-    M_PARSER_ADD_OPTION(cmd, double, drop_k,      10, "")
-    M_PARSER_ADD_OPTION(cmd, double, drop_deform, 0.2, "")
-
-    M_PARSER_ADD_OPTION(cmd, double, film_eps, -1.0, "") // curvature
-    M_PARSER_ADD_OPTION(cmd, double, film_nx,  0, "")
-    M_PARSER_ADD_OPTION(cmd, double, film_ny,  1, "")
-    M_PARSER_ADD_OPTION(cmd, double, film_nz,  0, "")
-    M_PARSER_ADD_OPTION(cmd, double, film_x,   .0, "")
-    M_PARSER_ADD_OPTION(cmd, double, film_y,   .0, "")
-    M_PARSER_ADD_OPTION(cmd, double, film_z,   .0, "")
-
-    M_PARSER_ADD_OPTION(cmd, double, wall_eps, -.5, "") // curvature
-    M_PARSER_ADD_OPTION(cmd, double, wall_nx,  -0, "")
-    M_PARSER_ADD_OPTION(cmd, double, wall_ny,  -1, "")
-    M_PARSER_ADD_OPTION(cmd, double, wall_nz,  -0, "")
-    M_PARSER_ADD_OPTION(cmd, double, wall_x,   .0, "")
-    M_PARSER_ADD_OPTION(cmd, double, wall_y,   -.5+0.01, "")
-    M_PARSER_ADD_OPTION(cmd, double, wall_z,   .0, "")
-
-    M_PARSER_ADD_OPTION(cmd, double, well_x, 0.00, "Well geometry: center")
-    M_PARSER_ADD_OPTION(cmd, double, well_z, 0.53, "Well geometry: position")
-    M_PARSER_ADD_OPTION(cmd, double, well_h, 1.00, "Well geometry: depth")
-    M_PARSER_ADD_OPTION(cmd, double, well_w, 0.77, "Well geometry: width")
-    M_PARSER_ADD_OPTION(cmd, double, well_r, 0.10, "Well geometry: corner smoothing")
-
-    M_PARSER_PARSE(cmd, argc, argv);
-  }
-
-  set_wall_surface_energies();
-}
-
-void write_parameters(MPI_Comm mpicomm, const std::string &output)
-{
-  /* save parameters */
-  FILE *fich;
-  ierr = PetscFOpen(mpicomm, output.c_str(), "w", &fich); CHKERRXX(ierr);
-
-  // comptational domain
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, xmin, -1, "xmin");
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, ymin, -1, "ymin");
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, zmin, -1, "zmin");
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, xmax,  1, "xmax");
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, ymax,  1, "ymax");
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, zmax,  1, "zmax");
-  PetscFPrintf(mpicomm, fich, "\n");
-
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, bool, px, 0, "periodicity in x-dimension 0/1");
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, bool, py, 0, "periodicity in y-dimension 0/1");
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, bool, pz, 0, "periodicity in z-dimension 0/1");
-  PetscFPrintf(mpicomm, fich, "\n");
-
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, int, nx, 1, "number of trees in x-dimension");
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, int, ny, 1, "number of trees in y-dimension");
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, int, nz, 1, "number of trees in z-dimension");
-  PetscFPrintf(mpicomm, fich, "\n");
-
-  // grid parameters
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, int, lmin, 8, "min level of trees");
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, int, lmax, 8, "max level of trees");
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, lip, 1.5, "Lipschitz constant");
-  PetscFPrintf(mpicomm, fich, "\n");
-
-  // advection parameters
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, cfl,                     0.15, "CFL number")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, bool,   use_neumann,             1,    "Impose contact angle use Neumann BC 0/1")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, bool,   compute_exact,           0,    "Compute exact final shape (only for pure-curvature) 0/1")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, bool,   reinit_at_start,         1,    "Reinitialze level-set function at the start 0/1)")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, int,    contact_angle_extension, 2,    "Method for extending level-set function into wall: 0 - constant angle, 1 - , 2 - special")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, int,    volume_corrections,      2,    "Number of volume correction after each move")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, int,    max_iterations,          1000, "Maximum number of advection steps")
-  PetscFPrintf(mpicomm, fich, "\n");
-
-  // scft parameters
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, bool,   use_scft,            0,     "Turn on/off SCFT 0/1")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, bool,   smooth_pressure,     1,     "Smooth pressure after first BC adjustment 0/1")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, int,    max_scft_iterations, 500,   "Maximum SCFT iterations")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, int,    bc_adjust_min,       5,     "Minimun SCFT steps between adjusting BC")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, scft_tol,            1.e-3, "Tolerance for SCFT")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, scft_bc_tol,         1.e-2, "Tolerance for adjusting BC")
-  PetscFPrintf(mpicomm, fich, "\n");
-
-  // polymer
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, box_size, 10, "Box size in units of Rg")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, f,        0.5, "Fraction of polymer A")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, XN,       20,  "Flory-Higgins interaction parameter")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, int,    ns,       40,  "Discretization of polymer chain")
-  PetscFPrintf(mpicomm, fich, "\n");
-
-  // output parameters
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, bool, save_vtk,        1, "")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, bool, save_parameters, 1, "")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, bool, save_data,       1, "")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, int,  save_every_dn,   1, "") // for vtk
-  PetscFPrintf(mpicomm, fich, "\n");
-
-  // problem setting
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, int, num_polymer_geometry, 0, "Initial polymer shape: 0 - drop, 1 - film, 2 - combination")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, int, num_wall_geometry,    0, "Wall geometry: 0 - no wall, 1 - wall, 2 - well")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, int, num_wall_pattern,     0, "Wall chemical pattern: 0 - no pattern")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, int, num_seed,             2, "Seed: 0 - zero, 1 - random, 2 - horizontal stripes, 3 - vertical stripes, 4 - dots")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, int, num_example,          0, "Number of predefined example")
-      PetscFPrintf(mpicomm, fich, "\n");
-
-  // surface energies
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, int, wall_energy_type, 1, "Method for setting wall surface energy: 0 - explicitly (i.e. convert XN to angles), 1 - through contact angles (i.e. convert angles to XN)")
-
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, XN_air_avg, 20, "Polymer-air surface energy strength: average")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, XN_air_del, 15, "Polymer-air surface energy strength: difference")
-
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, angle_A_min, 30,  "Minimum contact angle for A-block")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, angle_A_max, 30,  "Maximum contact angle for A-block")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, angle_B_min, 100, "Minimum contact angle for B-block")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, angle_B_max, 100, "Maximum contact angle for B-block")
-
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, XN_wall_A_min, 5, "Minimum Polymer-wall interaction strength for A-block")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, XN_wall_A_max, 5, "Maximum Polymer-wall interaction strength for A-block")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, XN_wall_B_min, 8, "Minimum Polymer-wall interaction strength for B-block")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, XN_wall_B_max, 8, "Maximum Polymer-wall interaction strength for B-block")
-      PetscFPrintf(mpicomm, fich, "\n");
-
-  // geometry parameters
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, drop_r,      0.5, "")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, drop_x,      .0, "")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, drop_y,      .0, "")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, drop_z,      .0, "")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, drop_r0,     0.6, "")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, drop_k,      10, "")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, drop_deform, 0.2, "")
-      PetscFPrintf(mpicomm, fich, "\n");
-
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, film_eps, -1.0, "") // curvature
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, film_nx,  0, "")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, film_ny,  1, "")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, film_nz,  0, "")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, film_x,   .0, "")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, film_y,   .0, "")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, film_z,   .0, "")
-      PetscFPrintf(mpicomm, fich, "\n");
-
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, wall_eps, -.5, "") // curvature
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, wall_nx,  -0, "")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, wall_ny,  -1, "")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, wall_nz,  -0, "")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, wall_x,   .0, "")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, wall_y,   -.5+0.01, "")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, wall_z,   .0, "")
-      PetscFPrintf(mpicomm, fich, "\n");
-
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, well_x, 0.00, "Well geometry: center")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, well_z, 0.53, "Well geometry: position")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, well_h, 1.00, "Well geometry: depth")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, well_w, 0.77, "Well geometry: width")
-  M_PARSER_WRITE_VARIABLE(mpicomm, fich, double, well_r, 0.10, "Well geometry: corner smoothing")
-      PetscFPrintf(mpicomm, fich, "\n");
-
-  ierr = PetscFClose(mpicomm, fich); CHKERRXX(ierr);
 }

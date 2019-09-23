@@ -95,8 +95,7 @@ HEADERS += \
   $$PARCASL/src/my_p4est_poisson_nodes_multialloy.h \
   $$PARCASL/src/my_p4est_quad_neighbor_nodes_of_node.h \
   $$PARCASL/src/my_p4est_refine_coarsen.h \
-  $$PARCASL/src/my_p4est_save_load.h \
-#  $$PARCASL/src/my_p4est_scft.h \
+  $$PARCASL/src/my_p4est_scft.h \
   $$PARCASL/src/my_p4est_semi_lagrangian.h \
   $$PARCASL/src/my_p4est_solve_lsqr.h \
   $$PARCASL/src/my_p4est_trajectory_of_point.h \
@@ -138,7 +137,7 @@ SOURCES += \
   $$PARCASL/src/my_p4est_quad_neighbor_nodes_of_node.cpp \
   $$PARCASL/src/my_p4est_refine_coarsen.cpp \
   $$PARCASL/src/my_p4est_save_load.cpp \
-#  $$PARCASL/src/my_p4est_scft.cpp \
+  $$PARCASL/src/my_p4est_scft.cpp \
   $$PARCASL/src/my_p4est_semi_lagrangian.cpp \
   $$PARCASL/src/my_p4est_solve_lsqr.cpp \
   $$PARCASL/src/my_p4est_trajectory_of_point.cpp \

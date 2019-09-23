@@ -237,13 +237,7 @@ struct quad_neighbor_nodes_of_node_t {
 #endif
   }
 
-  inline p4est_locidx_t neighbor_m00() const
-  {
-    if(d_m00_p0==0) return node_m00_pm;
-    if(d_m00_m0==0) return node_m00_mm;
-    else return -1;
-  //  else            throw std::invalid_argument("No neighbor in m00 direction \n");
-  }
+  p4est_locidx_t neighbor_m00() const;
   p4est_locidx_t neighbor_p00() const;
   p4est_locidx_t neighbor_0m0() const;
   p4est_locidx_t neighbor_0p0() const;
@@ -328,7 +322,7 @@ struct quad_neighbor_nodes_of_node_t {
   {
     p4est_locidx_t node_nei = neighbor(dir);
     double         h   = distance(dir);
-    if (node_nei == -1) throw std::domain_error("interpolate_in_dir doesn't not support non-uniform grids yet\n");
+    if (node_nei == -1) throw std::domain_error("interpolate_in_dir does not support non-uniform grids yet\n");
     return f_ptr[node_000]*(1-dist/h) + f_ptr[node_nei]*dist/h;
   }
 
@@ -336,7 +330,7 @@ struct quad_neighbor_nodes_of_node_t {
   {
     p4est_locidx_t node_nei = neighbor(dir);
     double         h   = distance(dir);
-    if (node_nei == -1) throw std::domain_error("interpolate_in_dir doesn't not support non-uniform grids yet\n");
+    if (node_nei == -1) throw std::domain_error("interpolate_in_dir doesn not support non-uniform grids yet\n");
     return f_ptr[node_000]*(1-dist/h) + f_ptr[node_nei]*dist/h + 0.5*dist*(dist-h)*MINMOD(f_dd_ptr[node_000], f_dd_ptr[node_nei]);
   }
 
@@ -345,16 +339,59 @@ struct quad_neighbor_nodes_of_node_t {
     p4est_locidx_t node_nei = neighbor(dir);
     double         h   = distance(dir);
     int            dim = dir / 2;
-    if (node_nei == -1) throw std::domain_error("interpolate_in_dir doesn't not support non-uniform grids yet\n");
+    if (node_nei == -1) throw std::domain_error("interpolate_in_dir does not support non-uniform grids yet\n");
     return f_ptr[node_000]*(1-dist/h) + f_ptr[node_nei]*dist/h + 0.5*dist*(dist-h)*MINMOD(f_dd_ptr[dim][node_000], f_dd_ptr[dim][node_nei]);
   }
 
   // inlined duplicates
 
+#ifdef P4_TO_P8
+  inline double inl_f_m00_linear(const double* f) const{
+//      PetscErrorCode ierr = PetscLogFlops(17); CHKERRXX(ierr);
+      return (f[node_m00_mm]*d_m00_p0*d_m00_0p +
+              f[node_m00_mp]*d_m00_p0*d_m00_0m +
+              f[node_m00_pm]*d_m00_m0*d_m00_0p +
+              f[node_m00_pp]*d_m00_m0*d_m00_0m )/(d_m00_m0 + d_m00_p0)/(d_m00_0m + d_m00_0p);
+  }
+  inline double inl_f_p00_linear(const double* f) const{
+//      PetscErrorCode ierr = PetscLogFlops(17); CHKERRXX(ierr);
+      return (f[node_p00_mm]*d_p00_p0*d_p00_0p +
+              f[node_p00_mp]*d_p00_p0*d_p00_0m +
+              f[node_p00_pm]*d_p00_m0*d_p00_0p +
+              f[node_p00_pp]*d_p00_m0*d_p00_0m )/(d_p00_m0 + d_p00_p0)/(d_p00_0m + d_p00_0p);
+  }
+  inline double inl_f_0m0_linear(const double* f) const{
+//      PetscErrorCode ierr = PetscLogFlops(17); CHKERRXX(ierr);
+      return (f[node_0m0_mm]*d_0m0_p0*d_0m0_0p +
+              f[node_0m0_mp]*d_0m0_p0*d_0m0_0m +
+              f[node_0m0_pm]*d_0m0_m0*d_0m0_0p +
+              f[node_0m0_pp]*d_0m0_m0*d_0m0_0m )/(d_0m0_m0 + d_0m0_p0)/(d_0m0_0m + d_0m0_0p);
+  }
+  inline double inl_f_0p0_linear(const double* f) const{
+//      PetscErrorCode ierr = PetscLogFlops(17); CHKERRXX(ierr);
+      return (f[node_0p0_mm]*d_0p0_p0*d_0p0_0p +
+              f[node_0p0_mp]*d_0p0_p0*d_0p0_0m +
+              f[node_0p0_pm]*d_0p0_m0*d_0p0_0p +
+              f[node_0p0_pp]*d_0p0_m0*d_0p0_0m )/(d_0p0_m0 + d_0p0_p0)/(d_0p0_0m + d_0p0_0p);
+  }
+  inline double inl_f_00m_linear(const double* f) const{
+//      PetscErrorCode ierr = PetscLogFlops(17); CHKERRXX(ierr);
+      return (f[node_00m_mm]*d_00m_p0*d_00m_0p +
+              f[node_00m_mp]*d_00m_p0*d_00m_0m +
+              f[node_00m_pm]*d_00m_m0*d_00m_0p +
+              f[node_00m_pp]*d_00m_m0*d_00m_0m )/(d_00m_m0 + d_00m_p0)/(d_00m_0m + d_00m_0p);
+  }
+  inline double inl_f_00p_linear(const double* f) const{
+//      PetscErrorCode ierr = PetscLogFlops(17); CHKERRXX(ierr);
+      return (f[node_00p_mm]*d_00p_p0*d_00p_0p +
+              f[node_00p_mp]*d_00p_p0*d_00p_0m +
+              f[node_00p_pm]*d_00p_m0*d_00p_0p +
+              f[node_00p_pp]*d_00p_m0*d_00p_0m )/(d_00p_m0 + d_00p_p0)/(d_00p_0m + d_00p_0p);
+  }
+#else
   inline double inl_f_m00_linear( const double *f ) const
   {
 //    PetscErrorCode ierr = PetscLogFlops(2.5); CHKERRXX(ierr); // 50% propability
-//    int i = 0;
     if(d_m00_p0==0) return f[node_m00_pm];
     if(d_m00_m0==0) return f[node_m00_mm];
     else          return(f[node_m00_mm]*d_m00_p0 + f[node_m00_pm]*d_m00_m0)/ (d_m00_m0+d_m00_p0);
@@ -380,18 +417,7 @@ struct quad_neighbor_nodes_of_node_t {
     if(d_0p0_p0==0) return f[node_0p0_pm];
     else          return(f[node_0p0_pm]*d_0p0_m0 + f[node_0p0_mm]*d_0p0_p0)/ (d_0p0_m0+d_0p0_p0);
   }
-#ifdef P4_TO_P8
-  double f_00m_linear( const double *f ) const;
-  double f_00p_linear( const double *f ) const;
 #endif
 };
-
-inline double f_m00_linear(const quad_neighbor_nodes_of_node_t* qnnn, const double *f )
-{
-  //      PetscErrorCode ierr = PetscLogFlops(2.5); CHKERRXX(ierr); // 50% propability
-  if(qnnn->d_m00_p0==0) return f[qnnn->node_m00_pm];
-  if(qnnn->d_m00_m0==0) return f[qnnn->node_m00_mm];
-  else          return(f[qnnn->node_m00_mm]*qnnn->d_m00_p0 + f[qnnn->node_m00_pm]*qnnn->d_m00_m0)/ (qnnn->d_m00_m0+qnnn->d_m00_p0);
-}
 
 #endif /* !MY_P4EST_QUAD_NEIGHBOR_NODES_OF_NODE_H */

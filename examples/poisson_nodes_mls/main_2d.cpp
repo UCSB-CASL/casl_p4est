@@ -110,10 +110,10 @@ DEFINE_PARAMETER(pl, int, num_shifts_x_dir, 1, "Number of grid shifts in the x-d
 DEFINE_PARAMETER(pl, int, num_shifts_y_dir, 1, "Number of grid shifts in the y-direction");
 DEFINE_PARAMETER(pl, int, num_shifts_z_dir, 1, "Number of grid shifts in the z-direction");
 #else
-DEFINE_PARAMETER(pl, int, lmin, 11, "Min level of the tree");
-DEFINE_PARAMETER(pl, int, lmax, 11, "Max level of the tree");
+DEFINE_PARAMETER(pl, int, lmin, 5, "Min level of the tree");
+DEFINE_PARAMETER(pl, int, lmax, 5, "Max level of the tree");
 
-DEFINE_PARAMETER(pl, int, num_splits,           1, "Number of recursive splits");
+DEFINE_PARAMETER(pl, int, num_splits,           5, "Number of recursive splits");
 DEFINE_PARAMETER(pl, int, num_splits_per_split, 1, "Number of additional resolutions");
 
 DEFINE_PARAMETER(pl, int, num_shifts_x_dir, 1, "Number of grid shifts in the x-direction");
@@ -281,7 +281,7 @@ DEFINE_PARAMETER(pl, bool, save_matrix_ascii,  0, "Save the matrix in ASCII MATL
 DEFINE_PARAMETER(pl, bool, save_matrix_binary, 0, "Save the matrix in BINARY MATLAB format");
 DEFINE_PARAMETER(pl, bool, save_convergence,   0, "Save convergence results");
 
-DEFINE_PARAMETER(pl, int, n_example, 8, "Predefined example");
+DEFINE_PARAMETER(pl, int, n_example, 10, "Predefined example");
 
 void set_example(int n_example)
 {
@@ -308,8 +308,8 @@ void set_example(int n_example)
       break;
     case 1: // sphere interior
 
-      n_um = 0; mag_um = 1; n_mu_m = 0; mag_mu_m = 1; n_diag_m = 0; mag_diag_m = 1;
-      n_up = 0; mag_up = 1; n_mu_p = 0; mag_mu_p = 1; n_diag_p = 0; mag_diag_p = 1;
+      n_um = 0; mag_um = 1; n_mu_m = 0; mag_mu_m = 1; n_diag_m = 1; mag_diag_m = 1;
+      n_up = 0; mag_up = 1; n_mu_p = 0; mag_mu_p = 1; n_diag_p = 1; mag_diag_p = 1;
 
       infc_phi_num = 0;
       bdry_phi_num = 1;
@@ -464,8 +464,8 @@ void set_example(int n_example)
 
     case 9: // shperical interface
 
-      n_um = 11; mag_um = 1; n_mu_m = 0; mag_mu_m = 5; n_diag_m = 0; mag_diag_m = 1;
-      n_up = 12; mag_up = 1; n_mu_p = 0; mag_mu_p = 1; n_diag_p = 0; mag_diag_p = 1;
+      n_um = 11; mag_um = 1; n_mu_m = 0; mag_mu_m = 5; n_diag_m = 1; mag_diag_m = 1;
+      n_up = 12; mag_up = 1; n_mu_p = 0; mag_mu_p = 1; n_diag_p = 1; mag_diag_p = 1;
 
       infc_phi_num = 1;
       bdry_phi_num = 0;
@@ -486,8 +486,8 @@ void set_example(int n_example)
 
 //      n_um = 14; mag_um = 1; n_mu_m = 0; mag_mu_m = 1; n_diag_m = 0; mag_diag_m = 1;
 //      n_up = 14; mag_up = 2; n_mu_p = 0; mag_mu_p = 1; n_diag_p = 0; mag_diag_p = 1;
-      n_um = 11; mag_um = 1; n_mu_m = 1; mag_mu_m = 5; n_diag_m = 0; mag_diag_m = 1;
-      n_up = 12; mag_up = 1; n_mu_p = 0; mag_mu_p = 1; n_diag_p = 0; mag_diag_p = 1;
+      n_um = 11; mag_um = 1; n_mu_m = 1; mag_mu_m = 5; n_diag_m = 1; mag_diag_m = 1;
+      n_up = 12; mag_up = 1; n_mu_p = 0; mag_mu_p = 1; n_diag_p = 1; mag_diag_p = 1;
 
       infc_phi_num = 1;
       bdry_phi_num = 0;
@@ -998,7 +998,7 @@ class rhs_m_cf_t: public CF_DIM
 {
 public:
   double operator()(DIM(double x, double y, double z)) const {
-    return diag_m_cf(DIM(x,y,z))*u_m_cf(DIM(x,y,z))
+    return diag_m_cf(DIM(x,y,z))*(u_m_cf(DIM(x,y,z)))
         - mu_m_cf(DIM(x,y,z))*ul_m_cf(DIM(x,y,z))
         - SUMD(mux_m_cf(DIM(x,y,z))*ux_m_cf(DIM(x,y,z)),
                muy_m_cf(DIM(x,y,z))*uy_m_cf(DIM(x,y,z)),
@@ -1010,7 +1010,7 @@ class rhs_p_cf_t: public CF_DIM
 {
 public:
   double operator()(DIM(double x, double y, double z)) const {
-    return diag_p_cf(DIM(x,y,z))*u_p_cf(DIM(x,y,z))
+    return diag_p_cf(DIM(x,y,z))*(u_p_cf(DIM(x,y,z)))
         - mu_p_cf(DIM(x,y,z))*ul_p_cf(DIM(x,y,z))
         - SUMD(mux_p_cf(DIM(x,y,z))*ux_p_cf(DIM(x,y,z)),
                muy_p_cf(DIM(x,y,z))*uy_p_cf(DIM(x,y,z)),
@@ -2592,12 +2592,12 @@ int main (int argc, char* argv[])
                 bc = solver.get_bc(0);
               }
 
-              ls.set_verbose_mode(0);
+              ls.set_show_convergence(0);
               switch (extend_solution)
               {
                 case 1:
-                  ls.extend_Over_Interface_TVD(phi_m, sol_m_ex, extension_iterations, 2, use_nonzero_guess, extension_band_extend*dxyz_max, extension_tol, NULL, mask_m, bc); CHKERRXX(ierr);
-                  ls.extend_Over_Interface_TVD(phi_p, sol_p_ex, extension_iterations, 2, use_nonzero_guess, extension_band_extend*dxyz_max, extension_tol, NULL, mask_p, bc); CHKERRXX(ierr);
+//                  ls.extend_Over_Interface_TVD(phi_m, sol_m_ex, extension_iterations, 2, use_nonzero_guess, extension_band_extend*dxyz_max, extension_tol, NULL, mask_m, bc); CHKERRXX(ierr);
+//                  ls.extend_Over_Interface_TVD(phi_p, sol_p_ex, extension_iterations, 2, use_nonzero_guess, extension_band_extend*dxyz_max, extension_tol, NULL, mask_p, bc); CHKERRXX(ierr);
                   break;
                 case 2:
                   ls.extend_Over_Interface_TVD_Full(phi_m, sol_m_ex, extension_iterations, 2, extension_tol, -extension_band_compute*dxyz_max,  extension_band_extend*dxyz_max,  extension_band_check*dxyz_max, NULL, mask_m, bc, use_nonzero_guess); CHKERRXX(ierr);
