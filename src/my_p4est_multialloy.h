@@ -67,6 +67,7 @@ private:
   vec_and_ptr_t contr_phi_;
   vec_and_ptr_t front_phi_;
   vec_and_ptr_t front_curvature_;
+  vec_and_ptr_t front_curvature_filtered_;
 
   vec_and_ptr_dim_t contr_phi_dd_;
   vec_and_ptr_dim_t front_phi_dd_;
@@ -108,6 +109,7 @@ private:
   vec_and_ptr_t       history_front_velo_norm_;
   vec_and_ptr_t       history_tf_; // temperature at which alloy solidified
   vec_and_ptr_array_t history_cs_; // composition of solidified region
+  vec_and_ptr_t       history_seed_; // seed tag
 
   //--------------------------------------------------
   // physical parameters
@@ -164,6 +166,8 @@ private:
   double bc_tolerance_;
   double phi_thresh_;
   double cfl_number_;
+  double curvature_smoothing_;
+  double curvature_smoothing_steps_;
 
   bool use_superconvergent_robin_;
   bool use_points_on_interface_;
@@ -191,6 +195,29 @@ private:
   double         dt_min_;
   double         dt_max_;
   double         front_velo_norm_max_;
+
+  static my_p4est_node_neighbors_t *v_ngbd;
+  static double *v_c_p, **v_c_d_p, **v_c_dd_p, **v_normal_p;
+  static double v_factor;
+
+  void set_velo_interpolation(my_p4est_node_neighbors_t *ngbd, double *c_p, double **c_d_p, double **c_dd_p, double **normal_p, double factor)
+  {
+    v_ngbd     = ngbd;
+    v_c_p      = c_p;
+    v_c_d_p    = c_d_p;
+    v_c_dd_p   = c_dd_p;
+    v_normal_p = normal_p;
+    v_factor   = factor;
+  }
+
+  static double velo(p4est_locidx_t n, int dir, double dist)
+  {
+    const quad_neighbor_nodes_of_node_t &qnnn = (*v_ngbd)[n];
+    return -v_factor*
+        ( qnnn.interpolate_in_dir(dir, dist, v_c_d_p[0])*qnnn.interpolate_in_dir(dir, dist, v_normal_p[0])
+        + qnnn.interpolate_in_dir(dir, dist, v_c_d_p[1])*qnnn.interpolate_in_dir(dir, dist, v_normal_p[1]))
+        / MAX(qnnn.interpolate_in_dir(dir, dist, v_c_p, v_c_dd_p), 1e-7);
+  };
 
 
 public:
@@ -239,6 +266,18 @@ public:
       eps_v_[i] = eps_v[i];
       eps_c_[i] = eps_c[i];
     }
+
+    my_p4est_interpolation_nodes_t interp(ngbd_);
+
+    double xyz[P4EST_DIM];
+    foreach_node(n, history_nodes_)
+    {
+      node_xyz_fr_n(n, history_p4est_, history_nodes_, xyz);
+      interp.add_point(n, xyz);
+    }
+
+    interp.set_input(seed_map_.vec, linear);
+    interp.interpolate(history_seed_.vec);
   }
 
   inline void set_container_conditions_thermal(BoundaryConditionType bc_type, CF_DIM &bc_value)
@@ -291,7 +330,7 @@ public:
       interp.add_point(n, xyz);
     }
 
-    interp.set_input(ts_[0].vec, interpolation_between_grids_);
+    interp.set_input(ts_[0].vec, linear);
     interp.interpolate(history_tf_.vec);
   }
 
@@ -316,7 +355,7 @@ public:
 
     for (j = 0; j < num_comps_; ++j)
     {
-      interp.set_input(cs[j], interpolation_between_grids_);
+      interp.set_input(cs[j], linear);
       interp.interpolate(history_cs_.vec[j]);
     }
   }
@@ -369,6 +408,9 @@ public:
   inline void set_pin_every_n_iterations   (int value)    { pin_every_n_iterations_    = value; }
   inline void set_max_iterations           (int value)    { max_iterations_            = value; }
   inline void set_front_smoothing          (int value)    { front_smoothing_           = value; }
+  inline void set_curvature_smoothing      (double value,
+                                            int    steps) { curvature_smoothing_       = value;
+                                                            curvature_smoothing_steps_ = steps; }
 
   inline void set_phi_thresh               (double value) { phi_thresh_                = value; }
   inline void set_bc_tolerance             (double value) { bc_tolerance_              = value; }
@@ -380,6 +422,7 @@ public:
   void regularize_front();
   void compute_geometric_properties_front();
   void compute_geometric_properties_contr();
+  void compute_filtered_curvature();
   void compute_velocity();
   void compute_solid();
 

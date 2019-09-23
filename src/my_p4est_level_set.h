@@ -65,45 +65,6 @@ class my_p4est_level_set_t {
                                               #endif
                                                 const double *pn, double *pnp1);
 
-
-#ifdef P4_TO_P8
-  class zero_cf_t : public CF_3
-  {
-  public:
-    double operator()(double, double, double) const
-    {
-      return 0;
-    }
-  } zero_cf;
-
-  class bc_wall_type_t : public WallBC3D
-  {
-  public:
-    BoundaryConditionType operator()( double x, double y, double z ) const
-    {
-      return NEUMANN;
-    }
-  } bc_wall_type;
-#else
-  class zero_cf_t : public CF_2
-  {
-  public:
-    double operator()(double, double) const
-    {
-      return 0;
-    }
-  } zero_cf;
-
-  class bc_wall_type_t : public WallBC2D
-  {
-  public:
-    BoundaryConditionType operator()( double x, double y ) const
-    {
-      return NEUMANN;
-    }
-  } bc_wall_type;
-#endif
-
   // auxiliary flags and options
   interpolation_method interpolation_on_interface;
   bool                 use_neumann_for_contact_angle;
@@ -209,12 +170,12 @@ public:
   void extend_from_interface_to_whole_domain_TVD_one_iteration( const std::vector<int>& map, double *phi_p,
                                                                 std::vector<double>& nx, std::vector<double>& ny,
                                                               #ifdef P4_TO_P8
-                                                              std::vector<double>& nz,
+                                                                std::vector<double>& nz,
                                                               #endif
                                                                 double *q_out_p,
                                                                 double *q_p, double *qxx_p, double *qyy_p,
                                                               #ifdef P4_TO_P8
-                                                              double *qzz_p,
+                                                                double *qzz_p,
                                                               #endif
                                                                 std::vector<double>& qi_m00, std::vector<double>& qi_p00,
                                                                 std::vector<double>& qi_0m0, std::vector<double>& qi_0p0,
@@ -227,8 +188,7 @@ public:
                                                                 , std::vector<double>& s_00m, std::vector<double>& s_00p
                                                               #endif
                                                                 ) const;
-  void extend_from_interface_to_whole_domain_TVD( Vec phi, Vec q_interface, Vec q, int iterations=20) const;
-  void extend_from_interface_to_whole_domain_TVD_1st_order_time( Vec phi, Vec q_interface, Vec q, int iterations=20) const;
+  void extend_from_interface_to_whole_domain_TVD(Vec phi, Vec q_interface, Vec q, int iterations=20, Vec mask=NULL, double band_zero=2, double band_smooth=10, double (*cf)(p4est_locidx_t, int, double)=NULL) const;
 
   void enforce_contact_angle(Vec phi_wall, Vec phi_intf, Vec cos_angle, int iterations=20, Vec normal[] = NULL) const;
   void enforce_contact_angle2(Vec phi, Vec q, Vec cos_angle, int iterations=20, int order=2, Vec normal[] = NULL) const;
@@ -236,7 +196,7 @@ public:
 
   double advect_in_normal_direction_with_contact_angle(const Vec vn, const Vec surf_tns, const Vec cos_angle, const Vec phi_wall, Vec phi, double dt);
 
-  inline void extend_from_interface_to_whole_domain_TVD_in_place(Vec phi, Vec &q, Vec parent=NULL, int iterations=20) const
+  inline void extend_from_interface_to_whole_domain_TVD_in_place(Vec phi, Vec &q, Vec parent=NULL, int iterations=20, Vec mask=NULL) const
   {
     PetscErrorCode ierr;
     Vec tmp;
@@ -247,7 +207,7 @@ public:
       ierr = VecDuplicate(parent, &tmp); CHKERRXX(ierr);
     }
 
-    extend_from_interface_to_whole_domain_TVD(phi, q, tmp, iterations);
+    extend_from_interface_to_whole_domain_TVD(phi, q, tmp, iterations, mask);
 
     ierr = VecDestroy(q); CHKERRXX(ierr);
     q = tmp;

@@ -38,6 +38,10 @@ extern PetscLogEvent log_my_p4est_multialloy_update_grid_regularize_front;
 #define PetscLogFlops(n) 0
 #endif
 
+my_p4est_node_neighbors_t *my_p4est_multialloy_t::v_ngbd;
+double *my_p4est_multialloy_t::v_c_p, **my_p4est_multialloy_t::v_c_d_p, **my_p4est_multialloy_t::v_c_dd_p, **my_p4est_multialloy_t::v_normal_p;
+double my_p4est_multialloy_t::v_factor;
+
 my_p4est_multialloy_t::my_p4est_multialloy_t(int num_comps, int num_time_layers)
 {
   num_comps_       = num_comps;
@@ -114,6 +118,8 @@ my_p4est_multialloy_t::my_p4est_multialloy_t(int num_comps, int num_time_layers)
   dendrite_min_length_       = .05;
 
   front_smoothing_ = 0;
+  curvature_smoothing_ = 0;
+  curvature_smoothing_steps_ = 0;
 
   connectivity_ = NULL;
   p4est_ = NULL;
@@ -134,6 +140,7 @@ my_p4est_multialloy_t::~my_p4est_multialloy_t()
   contr_phi_.destroy();
   front_phi_.destroy();
   front_curvature_.destroy();
+  front_curvature_filtered_.destroy();
 
   contr_phi_dd_.destroy();
   front_phi_dd_.destroy();
@@ -167,6 +174,7 @@ my_p4est_multialloy_t::~my_p4est_multialloy_t()
   history_front_velo_norm_.destroy();
   history_tf_.destroy();
   history_cs_.destroy();
+  history_seed_.destroy();
 
   seed_map_.destroy();
 
@@ -277,6 +285,8 @@ void my_p4est_multialloy_t::initialize(MPI_Comm mpi_comm, double xyz_min[], doub
 
   dxyz_close_interface_ = 1.2*dxyz_max_;
 
+  // front_phi_ and front_phi_dd_ are templates for all other vectors
+
   // allocate memory for physical fields
   //--------------------------------------------------
   // Geometry
@@ -284,6 +294,7 @@ void my_p4est_multialloy_t::initialize(MPI_Comm mpi_comm, double xyz_min[], doub
   front_phi_.create(p4est_, nodes_);
   front_phi_dd_.create(p4est_, nodes_);
   front_curvature_.create(front_phi_.vec);
+  front_curvature_filtered_.create(front_phi_.vec);
   front_normal_.create(front_phi_dd_.vec);
 
   contr_phi_.create(p4est_, nodes_);
@@ -331,6 +342,7 @@ void my_p4est_multialloy_t::initialize(MPI_Comm mpi_comm, double xyz_min[], doub
 
   history_tf_.create(history_front_phi_.vec);
   history_cs_.create(history_front_phi_.vec);
+  history_seed_.create(history_front_phi_.vec);
 
 }
 
@@ -358,17 +370,19 @@ void my_p4est_multialloy_t::compute_geometric_properties_front()
   ls.set_interpolation_on_interface(quadratic_non_oscillatory_continuous_v2);
   ls.extend_from_interface_to_whole_domain_TVD_in_place(front_phi_.vec, front_curvature_.vec, front_phi_.vec, 20);
 
-  front_curvature_.get_array();
+//  front_curvature_.get_array();
 
-  double kappa_max = 1./dxyz_min_;
+//  double kappa_max = 1./dxyz_min_;
 
-  foreach_node(n, nodes_)
-  {
-    if      (front_curvature_.ptr[n] > kappa_max) front_curvature_.ptr[n] = kappa_max;
-    else if (front_curvature_.ptr[n] <-kappa_max) front_curvature_.ptr[n] =-kappa_max;
-  }
+//  foreach_node(n, nodes_)
+//  {
+//    if      (front_curvature_.ptr[n] > kappa_max) front_curvature_.ptr[n] = kappa_max;
+//    else if (front_curvature_.ptr[n] <-kappa_max) front_curvature_.ptr[n] =-kappa_max;
+//  }
 
-  front_curvature_.restore_array();
+//  front_curvature_.restore_array();
+
+  if (curvature_smoothing_ != 0.0 && curvature_smoothing_steps_ > 0) compute_filtered_curvature();
 
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_compute_geometric_properties, 0, 0, 0, 0); CHKERRXX(ierr);
 }
@@ -392,75 +406,95 @@ void my_p4est_multialloy_t::compute_velocity()
   ierr = PetscLogEventBegin(log_my_p4est_multialloy_compute_velocity, 0, 0, 0, 0); CHKERRXX(ierr);
 
   // TODO: implement a smarter extend from interface
+  vec_and_ptr_dim_t c0_dd(front_normal_.vec);
+
+  ngbd_->second_derivatives_central(cl_[0].vec[0], c0_dd.vec);
 
   // flattened interface concentration
   vec_and_ptr_t c_interface(front_phi_.vec);
 
   my_p4est_level_set_t ls(ngbd_);
   ls.set_interpolation_on_interface(quadratic_non_oscillatory_continuous_v2);
-  ls.extend_from_interface_to_whole_domain_TVD(front_phi_.vec, cl_[0].vec[0], c_interface.vec);
+//  ls.extend_from_interface_to_whole_domain_TVD(front_phi_.vec, cl_[0].vec[0], c_interface.vec);
 
   vec_and_ptr_dim_t front_velo_tmp(front_phi_dd_.vec);
   vec_and_ptr_t     front_velo_norm_tmp(front_phi_.vec);
 
-  cl_[0]             .get_array();
-  cl0_grad_          .get_array();
-  front_normal_      .get_array();
-  c_interface        .get_array();
-  front_velo_tmp     .get_array();
-  front_velo_norm_tmp.get_array();
+  cl_[0]       .get_array();
+  cl0_grad_    .get_array();
+  front_normal_.get_array();
+  c0_dd        .get_array();
 
-  double xyz[P4EST_DIM];
+  set_velo_interpolation(ngbd_, cl_[0].ptr[0], cl0_grad_.ptr, c0_dd.ptr, front_normal_.ptr, solute_diff_[0]/(1.-part_coeff_[0]));
+  ls.extend_from_interface_to_whole_domain_TVD(front_phi_.vec, front_velo_norm_tmp.vec, front_velo_norm_[0].vec, 20, NULL, 0, 0, &velo);
 
-  quad_neighbor_nodes_of_node_t qnnn;
-  for(size_t i=0; i<ngbd_->get_layer_size(); ++i)
-  {
-    p4est_locidx_t n = ngbd_->get_layer_node(i);
-//    qnnn = ngbd_->get_neighbors(n);
+  cl_[0]       .restore_array();
+  cl0_grad_    .restore_array();
+  front_normal_.restore_array();
+  c0_dd        .restore_array();
 
-    XCODE( front_velo_tmp.ptr[0][n] = -cl0_grad_.ptr[0][n]*solute_diff_[0] / (1.-part_coeff_[0]) / MAX(c_interface.ptr[n], 1e-7) );
-    YCODE( front_velo_tmp.ptr[1][n] = -cl0_grad_.ptr[1][n]*solute_diff_[0] / (1.-part_coeff_[0]) / MAX(c_interface.ptr[n], 1e-7) );
-    ZCODE( front_velo_tmp.ptr[2][n] = -cl0_grad_.ptr[2][n]*solute_diff_[0] / (1.-part_coeff_[0]) / MAX(c_interface.ptr[n], 1e-7) );
+  c0_dd.destroy();
 
-    front_velo_norm_tmp.ptr[n] = SUMD(front_velo_tmp.ptr[0][n]*front_normal_.ptr[0][n],
-                                      front_velo_tmp.ptr[1][n]*front_normal_.ptr[1][n],
-                                      front_velo_tmp.ptr[2][n]*front_normal_.ptr[2][n]);
-  }
 
-  ierr = VecGhostUpdateBegin(front_velo_norm_tmp.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  foreach_dimension(dim)
-  {
-    ierr = VecGhostUpdateBegin(front_velo_tmp.vec[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  }
+//  cl_[0]             .get_array();
+//  cl0_grad_          .get_array();
+//  front_normal_      .get_array();
+//  c_interface        .get_array();
+//  front_velo_tmp     .get_array();
+//  front_velo_norm_tmp.get_array();
 
-  for(size_t i=0; i<ngbd_->get_local_size(); ++i)
-  {
-    p4est_locidx_t n = ngbd_->get_local_node(i);
-    //    qnnn = ngbd_->get_neighbors(n);
+//  double xyz[P4EST_DIM];
 
-    XCODE( front_velo_tmp.ptr[0][n] = -cl0_grad_.ptr[0][n]*solute_diff_[0] / (1.-part_coeff_[0]) / MAX(c_interface.ptr[n], 1e-7) );
-    YCODE( front_velo_tmp.ptr[1][n] = -cl0_grad_.ptr[1][n]*solute_diff_[0] / (1.-part_coeff_[0]) / MAX(c_interface.ptr[n], 1e-7) );
-    ZCODE( front_velo_tmp.ptr[2][n] = -cl0_grad_.ptr[2][n]*solute_diff_[0] / (1.-part_coeff_[0]) / MAX(c_interface.ptr[n], 1e-7) );
+//  quad_neighbor_nodes_of_node_t qnnn;
+//  for(size_t i=0; i<ngbd_->get_layer_size(); ++i)
+//  {
+//    p4est_locidx_t n = ngbd_->get_layer_node(i);
+////    qnnn = ngbd_->get_neighbors(n);
 
-    front_velo_norm_tmp.ptr[n] = SUMD(front_velo_tmp.ptr[0][n]*front_normal_.ptr[0][n],
-                                      front_velo_tmp.ptr[1][n]*front_normal_.ptr[1][n],
-                                      front_velo_tmp.ptr[2][n]*front_normal_.ptr[2][n]);
-  }
+//    XCODE( front_velo_tmp.ptr[0][n] = -cl0_grad_.ptr[0][n]*solute_diff_[0] / (1.-part_coeff_[0]) / MAX(c_interface.ptr[n], 1e-7) );
+//    YCODE( front_velo_tmp.ptr[1][n] = -cl0_grad_.ptr[1][n]*solute_diff_[0] / (1.-part_coeff_[0]) / MAX(c_interface.ptr[n], 1e-7) );
+//    ZCODE( front_velo_tmp.ptr[2][n] = -cl0_grad_.ptr[2][n]*solute_diff_[0] / (1.-part_coeff_[0]) / MAX(c_interface.ptr[n], 1e-7) );
 
-  ierr = VecGhostUpdateEnd(front_velo_norm_tmp.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  foreach_dimension(dim)
-  {
-    ierr = VecGhostUpdateEnd(front_velo_tmp.vec[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  }
+//    front_velo_norm_tmp.ptr[n] = SUMD(front_velo_tmp.ptr[0][n]*front_normal_.ptr[0][n],
+//                                      front_velo_tmp.ptr[1][n]*front_normal_.ptr[1][n],
+//                                      front_velo_tmp.ptr[2][n]*front_normal_.ptr[2][n]);
+//  }
 
-  cl_[0]             .restore_array();
-  cl0_grad_          .restore_array();
-  front_normal_      .restore_array();
-  c_interface        .restore_array();
-  front_velo_tmp     .restore_array();
-  front_velo_norm_tmp.restore_array();
+//  ierr = VecGhostUpdateBegin(front_velo_norm_tmp.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//  foreach_dimension(dim)
+//  {
+//    ierr = VecGhostUpdateBegin(front_velo_tmp.vec[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//  }
 
-  ls.extend_from_interface_to_whole_domain_TVD(front_phi_.vec, front_velo_norm_tmp.vec, front_velo_norm_[0].vec);
+//  for(size_t i=0; i<ngbd_->get_local_size(); ++i)
+//  {
+//    p4est_locidx_t n = ngbd_->get_local_node(i);
+//    //    qnnn = ngbd_->get_neighbors(n);
+
+//    XCODE( front_velo_tmp.ptr[0][n] = -cl0_grad_.ptr[0][n]*solute_diff_[0] / (1.-part_coeff_[0]) / MAX(c_interface.ptr[n], 1e-7) );
+//    YCODE( front_velo_tmp.ptr[1][n] = -cl0_grad_.ptr[1][n]*solute_diff_[0] / (1.-part_coeff_[0]) / MAX(c_interface.ptr[n], 1e-7) );
+//    ZCODE( front_velo_tmp.ptr[2][n] = -cl0_grad_.ptr[2][n]*solute_diff_[0] / (1.-part_coeff_[0]) / MAX(c_interface.ptr[n], 1e-7) );
+
+//    front_velo_norm_tmp.ptr[n] = SUMD(front_velo_tmp.ptr[0][n]*front_normal_.ptr[0][n],
+//                                      front_velo_tmp.ptr[1][n]*front_normal_.ptr[1][n],
+//                                      front_velo_tmp.ptr[2][n]*front_normal_.ptr[2][n]);
+//  }
+
+//  ierr = VecGhostUpdateEnd(front_velo_norm_tmp.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//  foreach_dimension(dim)
+//  {
+//    ierr = VecGhostUpdateEnd(front_velo_tmp.vec[dim], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+//  }
+
+//  cl_[0]             .restore_array();
+//  cl0_grad_          .restore_array();
+//  front_normal_      .restore_array();
+//  c_interface        .restore_array();
+//  front_velo_tmp     .restore_array();
+//  front_velo_norm_tmp.restore_array();
+
+//  ls.extend_from_interface_to_whole_domain_TVD(front_phi_.vec, front_velo_norm_tmp.vec, front_velo_norm_[0].vec);
+
   foreach_dimension(dim)
   {
     VecPointwiseMultGhost(front_velo_[0].vec[dim], front_velo_norm_[0].vec, front_normal_.vec[dim]);
@@ -579,6 +613,8 @@ void my_p4est_multialloy_t::update_grid()
   front_phi_dd_.create(p4est_np1, nodes_np1);
   front_curvature_.destroy();
   front_curvature_.create(front_phi_.vec);
+  front_curvature_filtered_.destroy();
+  front_curvature_filtered_.create(front_phi_.vec);
   front_normal_.destroy();
   front_normal_.create(front_phi_dd_.vec);
 
@@ -703,7 +739,12 @@ void my_p4est_multialloy_t::update_grid()
 
   if (num_seeds_ > 1)
   {
-    ls_new.extend_Over_Interface_TVD(front_phi_.vec, seed_map_.vec, 10, 0);
+    VecScaleGhost(front_phi_.vec, -1.);
+    ls_new.extend_Over_Interface_TVD_Full(front_phi_.vec, seed_map_.vec, 20, 0);
+    seed_map_.get_array();
+    foreach_node(n, nodes_) seed_map_.ptr[n] = round(seed_map_.ptr[n]);
+    seed_map_.restore_array();
+    VecScaleGhost(front_phi_.vec, -1.);
   }
 
   /* second derivatives, normals, curvature, angles */
@@ -790,7 +831,7 @@ void my_p4est_multialloy_t::update_grid_history()
   }
 
   vec_and_ptr_t tf_tmp(history_front_phi_.vec);
-  history_interp.set_input(history_tf_.vec, interpolation_between_grids_);
+  history_interp.set_input(history_tf_.vec, linear);
   history_interp.interpolate(tf_tmp.vec);
   history_tf_.destroy();
   history_tf_.set(tf_tmp.vec);
@@ -798,29 +839,35 @@ void my_p4est_multialloy_t::update_grid_history()
   vec_and_ptr_array_t cs_tmp(num_comps_, history_front_phi_.vec);
   for (int i = 0; i < num_comps_; ++i)
   {
-    history_interp.set_input(history_cs_.vec[i], interpolation_between_grids_);
+    history_interp.set_input(history_cs_.vec[i], linear);
     history_interp.interpolate(cs_tmp.vec[i]);
   }
   history_cs_.destroy();
   history_cs_.set(cs_tmp.vec.data());
 
   vec_and_ptr_t curv_tmp(history_front_phi_.vec);
-  history_interp.set_input(history_front_curvature_.vec, interpolation_between_grids_);
+  history_interp.set_input(history_front_curvature_.vec, linear);
   history_interp.interpolate(curv_tmp.vec);
   history_front_curvature_.destroy();
   history_front_curvature_.set(curv_tmp.vec);
 
   vec_and_ptr_t velo_tmp(history_front_phi_.vec);
-  history_interp.set_input(history_front_velo_norm_.vec, interpolation_between_grids_);
+  history_interp.set_input(history_front_velo_norm_.vec, linear);
   history_interp.interpolate(velo_tmp.vec);
   history_front_velo_norm_.destroy();
   history_front_velo_norm_.set(velo_tmp.vec);
 
   vec_and_ptr_t phi_nm1_tmp(history_front_phi_.vec);
-  history_interp.set_input(history_front_phi_nm1_.vec, interpolation_between_grids_);
+  history_interp.set_input(history_front_phi_nm1_.vec, linear);
   history_interp.interpolate(phi_nm1_tmp.vec);
   history_front_phi_nm1_.destroy();
   history_front_phi_nm1_.set(phi_nm1_tmp.vec);
+
+  vec_and_ptr_t seed_tmp(history_front_phi_.vec);
+  history_interp.set_input(history_seed_.vec, linear);
+  history_interp.interpolate(seed_tmp.vec);
+  history_seed_.destroy();
+  history_seed_.set(seed_tmp.vec);
 
   p4est_destroy(history_p4est_);       history_p4est_ = history_p4est_np1;
   p4est_ghost_destroy(history_ghost_); history_ghost_ = history_ghost_np1;
@@ -925,9 +972,10 @@ int my_p4est_multialloy_t::one_step()
   // solve coupled system of equations
   my_p4est_poisson_nodes_multialloy_t solver_all_in_one(ngbd_, num_comps_);
 
-  solver_all_in_one.set_front(front_phi_.vec, front_phi_dd_.vec, front_normal_.vec, front_curvature_.vec);
+  Vec curvature_to_use = (curvature_smoothing_ != 0.0 && curvature_smoothing_steps_ > 0) ? front_curvature_filtered_.vec : front_curvature_.vec;
 
-//  solver_all_in_one.set_number_of_components(num_comps_);
+  solver_all_in_one.set_front(front_phi_.vec, front_phi_dd_.vec, front_normal_.vec, curvature_to_use);
+
   solver_all_in_one.set_composition_parameters(conc_diag.data(), solute_diff_.data(), part_coeff_.data());
   solver_all_in_one.set_thermal_parameters(latent_heat_,
                                            density_l_*heat_capacity_l_*time_coeffs[0]/dt_[0], thermal_cond_l_,
@@ -1053,11 +1101,13 @@ void my_p4est_multialloy_t::save_VTK(int iter)
     point_data.push_back(cl_[0].ptr[i]); point_data_names.push_back(name + numstr);
   }
 
-  front_velo_norm_[0].get_array(); point_data.push_back(front_velo_norm_[0].ptr); point_data_names.push_back("vn");
-  front_curvature_   .get_array(); point_data.push_back(front_curvature_.ptr);    point_data_names.push_back("kappa");
-  bc_error_          .get_array(); point_data.push_back(bc_error_.ptr);           point_data_names.push_back("bc_error");
-  dendrite_number_   .get_array(); point_data.push_back(dendrite_number_.ptr);    point_data_names.push_back("dendrite_number");
-  dendrite_tip_      .get_array(); point_data.push_back(dendrite_tip_.ptr);       point_data_names.push_back("dendrite_tip");
+  front_velo_norm_[0]      .get_array(); point_data.push_back(front_velo_norm_[0].ptr);       point_data_names.push_back("vn");
+  front_curvature_         .get_array(); point_data.push_back(front_curvature_.ptr);          point_data_names.push_back("kappa");
+  bc_error_                .get_array(); point_data.push_back(bc_error_.ptr);                 point_data_names.push_back("bc_error");
+  dendrite_number_         .get_array(); point_data.push_back(dendrite_number_.ptr);          point_data_names.push_back("dendrite_number");
+  dendrite_tip_            .get_array(); point_data.push_back(dendrite_tip_.ptr);             point_data_names.push_back("dendrite_tip");
+  front_curvature_filtered_.get_array(); point_data.push_back(front_curvature_filtered_.ptr); point_data_names.push_back("kappa_filt");
+  seed_map_                .get_array(); point_data.push_back(seed_map_.ptr);                 point_data_names.push_back("seed_num");
 
   VecScaleGhost(front_velo_norm_[0].vec, 1./scaling_);
 
@@ -1083,11 +1133,13 @@ void my_p4est_multialloy_t::save_VTK(int iter)
   ts_[0].restore_array();
   cl_[0].restore_array();
 
-  front_velo_norm_[0].restore_array();
-  front_curvature_   .restore_array();
-  bc_error_          .restore_array();
-  dendrite_number_   .restore_array();
-  dendrite_tip_      .restore_array();
+  front_velo_norm_[0]      .restore_array();
+  front_curvature_         .restore_array();
+  bc_error_                .restore_array();
+  dendrite_number_         .restore_array();
+  dendrite_tip_            .restore_array();
+  front_curvature_filtered_.restore_array();
+  seed_map_                .restore_array();
 
   PetscPrintf(p4est_->mpicomm, "VTK saved in %s\n", name);
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_save_vtk, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -1145,6 +1197,7 @@ void my_p4est_multialloy_t::save_VTK_solid(int iter)
   history_front_phi_      .get_array(); point_data.push_back(history_front_phi_.ptr);       point_data_names.push_back("phi");
   history_front_curvature_.get_array(); point_data.push_back(history_front_curvature_.ptr); point_data_names.push_back("kappa");
   history_front_velo_norm_.get_array(); point_data.push_back(history_front_velo_norm_.ptr); point_data_names.push_back("vn");
+  history_seed_           .get_array(); point_data.push_back(history_seed_.ptr);            point_data_names.push_back("seed");
   history_tf_             .get_array(); point_data.push_back(history_tf_.ptr);              point_data_names.push_back("tf");
   history_cs_             .get_array();
   for (int i = 0; i < num_comps_; ++i)
@@ -1173,6 +1226,7 @@ void my_p4est_multialloy_t::save_VTK_solid(int iter)
   history_front_velo_norm_.restore_array();
   history_tf_             .restore_array();
   history_cs_             .restore_array();
+  history_seed_           .restore_array();
 
   PetscPrintf(history_p4est_->mpicomm, "VTK saved in %s\n", name);
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_save_vtk, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -1723,6 +1777,8 @@ void my_p4est_multialloy_t::compute_solid()
   interp.set_input(front_curvature_.vec,    linear); interp.interpolate(history_front_curvature_.vec);
   interp.set_input(front_velo_norm_[0].vec, linear); interp.interpolate(history_front_velo_norm_.vec);
 
+  interp.set_input(seed_map_.vec, linear); interp.interpolate(history_seed_.vec);
+
   cl_old.get_array();
   cl_new.get_array();
   tl_old.get_array();
@@ -1768,6 +1824,38 @@ void my_p4est_multialloy_t::compute_solid()
   ls.extend_Over_Interface_TVD(history_front_phi_.vec, history_tf_.vec,  5, 1);
   ls.extend_Over_Interface_TVD(history_front_phi_.vec, history_front_curvature_.vec,  5, 1);
   ls.extend_Over_Interface_TVD(history_front_phi_.vec, history_front_velo_norm_.vec,  5, 1);
+  ls.extend_Over_Interface_TVD(history_front_phi_.vec, history_seed_.vec,  5, 0);
   VecScaleGhost(history_front_phi_.vec, -1.);
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_compute_solid, 0, 0, 0, 0); CHKERRXX(ierr);
+}
+
+void my_p4est_multialloy_t::compute_filtered_curvature()
+{
+  double smoothing = SQR(curvature_smoothing_*diag_);
+
+  my_p4est_interpolation_nodes_t interp(ngbd_);
+  interp.set_input(front_phi_.vec, linear);
+  VecCopyGhost(front_phi_.vec, front_curvature_filtered_.vec);
+
+  my_p4est_poisson_nodes_mls_t solver(ngbd_);
+
+  solver.set_mu(smoothing/double(curvature_smoothing_steps_));
+  solver.set_diag(1.);
+  solver.set_rhs(front_curvature_filtered_.vec);
+//  solver.set_wc(neumann_cf, zero_cf);
+  solver.set_wc(dirichlet_cf, interp);
+
+  for (int i = 0; i < curvature_smoothing_steps_; ++i)
+  {
+    solver.solve(front_curvature_filtered_.vec, true);
+  }
+
+  VecAXPBYGhost(front_curvature_filtered_.vec, -1., 1., front_phi_.vec);
+  VecScaleGhost(front_curvature_filtered_.vec, 1./smoothing);
+
+  my_p4est_level_set_t ls(ngbd_);
+  ls.set_interpolation_on_interface(linear);
+
+  ls.extend_from_interface_to_whole_domain_TVD_in_place(front_phi_.vec, front_curvature_filtered_.vec, front_phi_.vec);
+
 }
