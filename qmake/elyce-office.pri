@@ -44,7 +44,7 @@ MPI_INCLUDES = $$MPI_DIR/include
 MPI_LIBS = -Wl,-rpath,$$MPI_DIR/lib -L$$MPI_DIR/lib -lmpi -lmpicxx
 
 # Boost
-BOOST_INCLUDES = /home/elyce/workspace/libraries/boost
+BOOST_INCLUDES = /home/elyce/workspace/source_libraries/boost_1_70_0
 
 QMAKE_CC=mpicc.mpich
 QMAKE_CXX=mpicxx.mpich
