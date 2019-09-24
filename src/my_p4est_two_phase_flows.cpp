@@ -632,50 +632,33 @@ void my_p4est_two_phase_flows_t::solve_projection(my_p4est_xgfm_cells_t* &cell_p
 void my_p4est_two_phase_flows_t::compute_jump_mu_grad_v()
 {
   PetscErrorCode ierr;
-  Vec fine_mass_flux_times_normal[P4EST_DIM];
-  Vec grad_underlined_velocity_nodes[P4EST_DIM][P4EST_DIM];
+  Vec fine_mass_flux_times_normal = NULL;
+  Vec grad_underlined_velocity_nodes;
   if(fine_mass_flux!=NULL)
   {
-    double* fine_mass_flux_times_normal_p[P4EST_DIM];
-    const double *fine_normal_p[P4EST_DIM], *fine_mass_flux_p;
+    double* fine_mass_flux_times_normal_p;
+    const double *fine_normal_p, *fine_mass_flux_p;
     ierr = VecGetArrayRead(fine_mass_flux, &fine_mass_flux_p); CHKERRXX(ierr);
-    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
-      ierr = VecCreateGhostNodes(fine_p4est_n, fine_nodes_n, &fine_mass_flux_times_normal[dir]); CHKERRXX(ierr);
-      ierr = VecGetArrayRead(fine_normal[dir], &fine_normal_p[dir]); CHKERRXX(ierr);
-      ierr = VecGetArray(fine_mass_flux_times_normal[dir], &fine_mass_flux_times_normal_p[dir]); CHKERRXX(ierr);
-    }
+    ierr = create_node_vector_if_needed(fine_mass_flux_times_normal, fine_p4est_n, fine_nodes_n, P4EST_DIM); CHKERRXX(ierr);
+    ierr = VecGetArrayRead(fine_normal, &fine_normal_p); CHKERRXX(ierr);
+    ierr = VecGetArray(fine_mass_flux_times_normal, &fine_mass_flux_times_normal_p); CHKERRXX(ierr);
     for (size_t k = 0; k < fine_nodes_n->indep_nodes.elem_count; ++k)
       for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-        fine_mass_flux_times_normal_p[dir][k] = fine_mass_flux_p[k]*fine_normal_p[dir][k];
-    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
-      ierr = VecRestoreArrayRead(fine_normal[dir], &fine_normal_p[dir]); CHKERRXX(ierr);
-      ierr = VecRestoreArray(fine_mass_flux_times_normal[dir], &fine_mass_flux_times_normal_p[dir]); CHKERRXX(ierr);
-    }
-  }
-  else
-  {
-    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-    {
-      fine_mass_flux_times_normal[dir] = NULL;
-//      for (unsigned char der = 0; der < P4EST_DIM; ++der) {
-//        ierr = VecCreateGhostNodes(p4est_n, nodes_n, &); CHKERRXX(ierr);
-
-//      }
-    }
-
+        fine_mass_flux_times_normal_p[P4EST_DIM*k+dir] = fine_mass_flux_p[k]*fine_normal_p[P4EST_DIM*k+dir];
+    ierr = VecRestoreArrayRead(fine_normal, &fine_normal_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(fine_mass_flux_times_normal, &fine_mass_flux_times_normal_p); CHKERRXX(ierr);
   }
 
   const double *fine_curvature_p;
-  const double *fine_normal_p[P4EST_DIM];
-  const double *vn_nodes_underlined_p[P4EST_DIM];
-  const double *fine_mass_flux_p, *fine_variable_surface_tension_p, *fine_mass_flux_times_normal_p[P4EST_DIM];
-  double* fine_jump_mu_grad_v_p[P4EST_DIM][P4EST_DIM];
+  const double *fine_normal_p;
+  const double *vn_nodes_underlined_p;
+  const double *fine_mass_flux_p, *fine_variable_surface_tension_p;
+  const double *fine_mass_flux_times_normal_p = NULL;
+  double* fine_jump_mu_grad_v_p;
   const quad_neighbor_nodes_of_node_t* qnnn;
 
-  if(fine_mass_flux!=NULL)
-  {
-    ierr = VecGetArrayRead(fine_mass_flux, &fine_mass_flux_p); CHKERRXX(ierr);
-  }
+  if(fine_mass_flux!=NULL){
+    ierr = VecGetArrayRead(fine_mass_flux, &fine_mass_flux_p); CHKERRXX(ierr); }
   else
     fine_mass_flux_p = NULL;
   if(fine_variable_surface_tension!=NULL){
@@ -683,22 +666,13 @@ void my_p4est_two_phase_flows_t::compute_jump_mu_grad_v()
   else
     fine_variable_surface_tension_p = NULL;
   ierr = VecGetArrayRead(fine_curvature, &fine_curvature_p); CHKERRXX(ierr);
-  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
-    for (unsigned char der = 0; der < P4EST_DIM; ++der) {
-      ierr = create_fine_node_vector_if_needed(fine_jump_mu_grad_v[dir][der]);
-      ierr = VecGetArray(fine_jump_mu_grad_v[dir][der], &fine_jump_mu_grad_v_p[dir][der]); CHKERRXX(ierr);
-    }
-    ierr = VecGetArrayRead(fine_normal[dir], &fine_normal_p[dir]); CHKERRXX(ierr);
-    ierr = VecGetArrayRead(((underlined_side(velocity_field) == OMEGA_PLUS)? vn_nodes_omega_plus[dir] : vn_nodes_omega_minus[dir]), &vn_nodes_underlined_p[dir]); CHKERRXX(ierr);
-    if(fine_mass_flux!=NULL)
-    {
-      ierr = VecGetArrayRead(fine_mass_flux_times_normal[dir], &fine_mass_flux_times_normal_p[dir]); CHKERRXX(ierr);
-    }
-    else
-    {
-      fine_mass_flux_times_normal_p[dir] = NULL;
-    }
-  }
+  ierr = create_node_vector_if_needed(fine_jump_mu_grad_v, fine_p4est_n, fine_nodes_n, P4EST_DIM*P4EST_DIM); CHKERRXX(ierr);
+  ierr = VecGetArray(fine_jump_mu_grad_v, &fine_jump_mu_grad_v_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(fine_normal, &fine_normal_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(((underlined_side(velocity_field) == OMEGA_PLUS)? vn_nodes_omega_plus : vn_nodes_omega_minus), &vn_nodes_underlined_p); CHKERRXX(ierr);
+  if(fine_mass_flux!=NULL){
+    ierr = VecGetArrayRead(fine_mass_flux_times_normal, &fine_mass_flux_times_normal_p); CHKERRXX(ierr); }
+
   for (unsigned int kk = 0; kk < fine_ngbd_n->get_layer_size(); ++kk) {
     p4est_locidx_t fine_node_idx = fine_ngbd_n->get_layer_node(kk);
     fine_ngbd_n->get_neighbors(fine_node_idx, qnnn);
@@ -708,11 +682,7 @@ void my_p4est_two_phase_flows_t::compute_jump_mu_grad_v()
                                           fine_variable_surface_tension_p, fine_curvature_p,
                                           fine_jump_mu_grad_v_p);
   }
-  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
-    for (unsigned char der = 0; der < P4EST_DIM; ++der) {
-      ierr = VecGhostUpdateBegin(fine_jump_mu_grad_v[dir][der], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    }
-  }
+  ierr = VecGhostUpdateBegin(fine_jump_mu_grad_v, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   for (unsigned int kk = 0; kk < fine_ngbd_n->get_local_size(); ++kk) {
     p4est_locidx_t fine_node_idx = fine_ngbd_n->get_local_node(kk);
     fine_ngbd_n->get_neighbors(fine_node_idx, qnnn);
@@ -722,53 +692,39 @@ void my_p4est_two_phase_flows_t::compute_jump_mu_grad_v()
                                           fine_variable_surface_tension_p, fine_curvature_p,
                                           fine_jump_mu_grad_v_p);
   }
-  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
-    for (unsigned char der = 0; der < P4EST_DIM; ++der) {
-      ierr = VecGhostUpdateEnd(fine_jump_mu_grad_v[dir][der], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    }
-  }
+  ierr = VecGhostUpdateEnd(fine_jump_mu_grad_v, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
   if(fine_mass_flux!=NULL)
   {
-    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
-      ierr = VecRestoreArrayRead(fine_mass_flux_times_normal[dir], &fine_mass_flux_times_normal_p[dir]); CHKERRXX(ierr);
-      ierr = VecDestroy(fine_mass_flux_times_normal[dir]); CHKERRXX(ierr);
-    }
+    ierr = VecRestoreArrayRead(fine_mass_flux_times_normal, &fine_mass_flux_times_normal_p); CHKERRXX(ierr);
+    ierr = VecDestroy(fine_mass_flux_times_normal); CHKERRXX(ierr);
     ierr = VecRestoreArrayRead(fine_mass_flux, &fine_mass_flux_p); CHKERRXX(ierr);
   }
-  if(fine_variable_surface_tension!=NULL)
-  {
-    ierr = VecRestoreArrayRead(fine_variable_surface_tension, &fine_variable_surface_tension_p); CHKERRXX(ierr);
-  }
+  if(fine_variable_surface_tension!=NULL){
+    ierr = VecRestoreArrayRead(fine_variable_surface_tension, &fine_variable_surface_tension_p); CHKERRXX(ierr); }
   ierr = VecRestoreArrayRead(fine_curvature, &fine_curvature_p); CHKERRXX(ierr);
-  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
-    for (unsigned char der = 0; der < P4EST_DIM; ++der) {
-      ierr = VecRestoreArray(fine_jump_mu_grad_v[dir][der], &fine_jump_mu_grad_v_p[dir][der]); CHKERRXX(ierr);
-    }
-    ierr = VecRestoreArrayRead(fine_normal[dir], &fine_normal_p[dir]); CHKERRXX(ierr);
-    ierr = VecRestoreArrayRead(((underlined_side(velocity_field) == OMEGA_PLUS)? vn_nodes_omega_plus[dir]:vn_nodes_omega_minus[dir]), &vn_nodes_underlined_p[dir]); CHKERRXX(ierr);
-  }
+
+  ierr = VecRestoreArray(fine_jump_mu_grad_v, &fine_jump_mu_grad_v_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(fine_normal, &fine_normal_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(((underlined_side(velocity_field) == OMEGA_PLUS)? vn_nodes_omega_plus:vn_nodes_omega_minus), &vn_nodes_underlined_p); CHKERRXX(ierr);
 }
 
 void my_p4est_two_phase_flows_t::compute_jumps_hodge()
 {
   PetscErrorCode ierr;
-  ierr = create_fine_node_vector_if_needed(fine_jump_hodge);                   CHKERRXX(ierr);
-  ierr = create_fine_node_vector_if_needed(fine_jump_normal_flux_hodge);       CHKERRXX(ierr);
+  ierr = create_node_vector_if_needed(fine_jump_hodge, fine_p4est_n, fine_nodes_n);                   CHKERRXX(ierr);
+  ierr = create_node_vector_if_needed(fine_jump_normal_flux_hodge, fine_p4est_n, fine_nodes_n);       CHKERRXX(ierr);
 
   const double *fine_curvature_p;
-  const double *fine_phi_p;
   double *fine_jump_hodge_p, *fine_jump_normal_flux_hodge_p;
-  ierr = VecGetArray(fine_jump_hodge, &fine_jump_hodge_p);                          CHKERRXX(ierr);
-  ierr = VecGetArray(fine_jump_normal_flux_hodge, &fine_jump_normal_flux_hodge_p);  CHKERRXX(ierr);
-  ierr = VecGetArrayRead(fine_curvature, &fine_curvature_p);              CHKERRXX(ierr);
-  ierr = VecGetArrayRead(fine_phi, &fine_phi_p);              CHKERRXX(ierr);
+  ierr = VecGetArray(fine_jump_hodge, &fine_jump_hodge_p);                              CHKERRXX(ierr);
+  ierr = VecGetArray(fine_jump_normal_flux_hodge, &fine_jump_normal_flux_hodge_p);      CHKERRXX(ierr);
+  ierr = VecGetArrayRead(fine_curvature, &fine_curvature_p);                            CHKERRXX(ierr);
   for (unsigned int k = 0; k < fine_nodes_n->indep_nodes.elem_count; ++k) {
     fine_jump_hodge_p[k] = surface_tension*fine_curvature_p[k]*dt_n/(BDF_alpha());
     fine_jump_normal_flux_hodge_p[k] = 0.0;
   }
-  ierr = VecRestoreArrayRead(fine_curvature, &fine_curvature_p);              CHKERRXX(ierr);
-  ierr = VecRestoreArrayRead(fine_phi, &fine_phi_p);              CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(fine_curvature, &fine_curvature_p);                        CHKERRXX(ierr);
   ierr = VecRestoreArray(fine_jump_hodge, &fine_jump_hodge_p);                          CHKERRXX(ierr);
   ierr = VecRestoreArray(fine_jump_normal_flux_hodge, &fine_jump_normal_flux_hodge_p);  CHKERRXX(ierr);
 }

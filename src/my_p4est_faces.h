@@ -236,9 +236,9 @@ public:
   void rel_xyz_face_fr_node(const p4est_locidx_t& f_idx, const unsigned char& dir, double* xyz_rel, const double* xyz_node, const p4est_indep_t* node, const my_p4est_brick_t* brick,  __int64_t* logical_qcoord_diff) const;
 
 #ifdef P4_TO_P8
-  void point_fr_f(p4est_locidx_t f_idx, int dir, Point3& point) const
+  inline void point_fr_f(p4est_locidx_t f_idx, int dir, Point3 &point) const
 #else
-  void point_fr_f(p4est_locidx_t f_idx, int dir, Point2& point) const
+  inline void point_fr_f(p4est_locidx_t f_idx, int dir, Point2 &point) const
 #endif
   {
     double xyz_face[P4EST_DIM];

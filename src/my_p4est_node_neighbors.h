@@ -407,10 +407,10 @@ public:
    */
 #ifdef P4_TO_P8
   void first_derivatives_central(const Vec f[], Vec fx[], Vec fy[], Vec fz[], const unsigned int& n_vecs, const unsigned int &bs=1) const;
-  inline void first_derivatives_central(const Vec f, Vec fx, Vec fy, Vec fz, const unsigned int &bs=1) const { second_derivatives_central(&f, &fx, &fy, &fz, 1, bs); }
+  inline void first_derivatives_central(const Vec f, Vec fx, Vec fy, Vec fz, const unsigned int &bs=1) const { first_derivatives_central(&f, &fx, &fy, &fz, 1, bs); }
 #else
   void first_derivatives_central(const Vec f[], Vec fx[], Vec fy[], const unsigned int& n_vecs, const unsigned int &bs=1) const;
-  inline void first_derivatives_central(const Vec f, Vec fx, Vec fy, const unsigned int &bs=1) const { second_derivatives_central(&f, &fx, &fy, 1, bs); }
+  inline void first_derivatives_central(const Vec f, Vec fx, Vec fy, const unsigned int &bs=1) const { first_derivatives_central(&f, &fx, &fy, 1, bs); }
 #endif
 
   inline void first_derivatives_central(const Vec f[], Vec *fxyz[P4EST_DIM], const unsigned int &n_vecs, const unsigned int &bs=1) const

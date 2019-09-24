@@ -1,12 +1,12 @@
 #ifndef CASL_VORONOI3D_H
 #define CASL_VORONOI3D_H
-
 #include <float.h>
 #include <fstream>
 #include <vector>
 
-#include <src/my_p4est_utils.h>
-#include <src/my_p4est_faces.h>
+// We are in 3D (you, idiot!), so include p8est headers immediately
+#include <src/my_p8est_utils.h>
+#include <src/my_p8est_faces.h>
 #include <src/casl_math.h>
 #include <src/point3.h>
 

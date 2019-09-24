@@ -44,7 +44,7 @@
 
 // forward declaration
 class my_p4est_node_neighbors_t;
-struct quad_neighbor_nodes_of_node_t;
+class quad_neighbor_nodes_of_node_t;
 
 namespace dir {
 /* vertices directions */

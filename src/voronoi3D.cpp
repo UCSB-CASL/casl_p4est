@@ -1,6 +1,5 @@
 #include "voronoi3D.h"
 #include <vector>
-
 #include <algorithm>
 
 void Voronoi3D::set_cell(vector<ngbd3Dseed> &neighbors, double volume )
