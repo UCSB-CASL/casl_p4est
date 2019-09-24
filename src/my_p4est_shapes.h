@@ -804,7 +804,7 @@ public:
         for (int i = 0; i < N; ++i)
         {
           perturb_0 +=  beta[i]*cos(n[i]*(t - theta[i]));
-          perturb_1 += -beta[i]*sin(n[i]*(t - theta[i]))*n[i];
+          perturb_1 +=  beta[i]*sin(n[i]*(t - theta[i]))*n[i];
         }
 
         double phi_x = inside*( X/r - r0*perturb_0*p*pow(r2/r,p-2.)*X*Z*Z/pow(r, 4.) - r0*Y/r2/r2*perturb_1*pow(r2/r,p)  );
