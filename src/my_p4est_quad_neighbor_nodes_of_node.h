@@ -914,38 +914,38 @@ public:
   inline double f_m00_linear(const double *f) const
   {
     double result;
-    f_m00_linear(&f, &result, 1, 1);
+    f_m00_linear_bs_one(&f, &result, 1);
     return result;
   }
   inline double f_p00_linear(const double *f) const
   {
     double result;
-    f_p00_linear(&f, &result, 1, 1);
+    f_p00_linear_bs_one(&f, &result, 1);
     return result;
   }
   inline double f_0m0_linear(const double *f) const
   {
     double result;
-    f_0m0_linear(&f, &result, 1, 1);
+    f_0m0_linear_bs_one(&f, &result, 1);
     return result;
   }
   inline double f_0p0_linear(const double *f) const
   {
     double result;
-    f_0p0_linear(&f, &result, 1, 1);
+    f_0p0_linear_bs_one(&f, &result, 1);
     return result;
   }
 #ifdef P4_TO_P8
   inline double f_00m_linear(const double *f) const
   {
     double result;
-    f_00m_linear(&f, &result, 1, 1);
+    f_00m_linear_bs_one(&f, &result, 1);
     return result;
   }
   inline double f_00p_linear(const double *f) const
   {
     double result;
-    f_00p_linear(&f, &result, 1, 1);
+    f_00p_linear_bs_one(&f, &result, 1);
     return result;
   }
 #endif
