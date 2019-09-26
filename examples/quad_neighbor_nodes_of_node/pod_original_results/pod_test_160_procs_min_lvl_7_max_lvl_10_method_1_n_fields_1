@@ -1,0 +1,29 @@
+ -------------------== CASL Options Database ==------------------- 
+ List of entered options:
+
+  -lmax 10
+  -lmin 7
+  -method 1
+  -n_fields 1
+ ----------------------------------------------------------------- 
+total time spent (including initialization of neighbors) ... 
+initializing the node neighbors ... 
+initializing the node neighbors ... done in 
+ 0.12805 secs. on process 0 [Note: only showing root's timings]
+
+calculating gradient and second derivatives ... 
+calculating gradient and second derivatives ... done in 
+ 0.04460 secs. on process 0 [Note: only showing root's timings]
+
+total time spent (including initialization of neighbors) ... done in 
+ 0.17275 secs. on process 0 [Note: only showing root's timings]
+
+
+Errors in infinity norm disregarding wall nodes: 
+
+The errors in gradient are: 
+0.000196416  0.00447626  0.00315302  
+
+The errors in second derivatives are: 
+0.140385  0.351152  0.437567  
+

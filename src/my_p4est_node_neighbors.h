@@ -66,7 +66,8 @@ class my_p4est_node_neighbors_t {
   bool is_initialized;
   bool periodic[P4EST_DIM];
 
-  bool construct_neighbors(p4est_locidx_t n, quad_neighbor_nodes_of_node_t& qnnn) const;
+  bool construct_neighbors(p4est_locidx_t n, quad_neighbor_nodes_of_node_t& qnnn/*, const bool &set_and_store_linear_interpolators=false, const bool &set_and_store_second_derivatives_operators=false,
+                           const bool &set_and_store_gradient_operator=false, const bool &set_and_store_quadratic_interpolators=false*/) const;
 
 public:
   my_p4est_node_neighbors_t( my_p4est_hierarchy_t *hierarchy_, p4est_nodes_t *nodes_)
@@ -155,10 +156,13 @@ public:
    * This consumes a lot of memory, and it can improve the time performances of the code if repetitive
    * access to the neighbors information is required.
    */
-  void init_neighbors();
+  void init_neighbors(/*const bool &set_and_store_linear_interpolators=false, const bool &set_and_store_second_derivatives_operators=false,
+                      const bool &set_and_store_gradient_operator=false, const bool &set_and_store_quadratic_interpolators=false*/);
   void clear_neighbors();
-  void update(my_p4est_hierarchy_t *hierarchy_, p4est_nodes_t *nodes_);
-  void update(p4est_t* p4est, p4est_ghost_t* ghost, p4est_nodes_t* nodes);
+  void update(my_p4est_hierarchy_t *hierarchy_, p4est_nodes_t *nodes_/*, const bool &set_and_store_linear_interpolators=false, const bool &set_and_store_second_derivatives_operators=false,
+              const bool &set_and_store_gradient_operator=false, const bool &set_and_store_quadratic_interpolators=false*/);
+  void update(p4est_t* p4est, p4est_ghost_t* ghost, p4est_nodes_t* nodes/*, const bool &set_and_store_linear_interpolators=false, const bool &set_and_store_second_derivatives_operators=false,
+              const bool &set_and_store_gradient_operator=false, const bool &set_and_store_quadratic_interpolators=false*/);
   
   inline const quad_neighbor_nodes_of_node_t& operator[]( p4est_locidx_t n ) const {
 #ifdef CASL_THROWS
@@ -178,7 +182,8 @@ public:
 #endif
   }
 
-  inline quad_neighbor_nodes_of_node_t get_neighbors(p4est_locidx_t n) const {
+  inline quad_neighbor_nodes_of_node_t get_neighbors(p4est_locidx_t n/*, const bool &set_and_store_linear_interpolators=false, const bool &set_and_store_second_derivatives_operators=false,
+                                                     const bool &set_and_store_gradient_operator=false, const bool &set_and_store_quadratic_interpolators=false*/) const {
     if (is_initialized) {
 #ifdef CASL_THROWS
       if (is_qnnn_valid[n])
@@ -193,7 +198,8 @@ public:
 #endif
     } else {
       quad_neighbor_nodes_of_node_t qnnn;
-      bool err = construct_neighbors(n, qnnn);
+      bool err = construct_neighbors(n, qnnn/*, set_and_store_linear_interpolators, set_and_store_second_derivatives_operators,
+                                     set_and_store_gradient_operator, set_and_store_quadratic_interpolators*/);
       if (err){
         std::ostringstream oss;
         oss << "[ERROR]: Could not construct neighborhood information for the node with idx " << n << " on processor " << p4est->mpirank;
@@ -203,7 +209,8 @@ public:
     }
   }
 
-  inline void get_neighbors(p4est_locidx_t n, quad_neighbor_nodes_of_node_t& qnnn) const {
+  inline void get_neighbors(p4est_locidx_t n, quad_neighbor_nodes_of_node_t& qnnn/*, const bool &set_and_store_linear_interpolators=false, const bool &set_and_store_second_derivatives_operators=false,
+                            const bool &set_and_store_gradient_operator=false, const bool &set_and_store_quadratic_interpolators=false*/) const {
     if (is_initialized) {
 #ifdef CASL_THROWS
       if (is_qnnn_valid[n])
@@ -219,14 +226,16 @@ public:
     }
     else {
 #ifdef CASL_THROWS
-      bool err = construct_neighbors(n, qnnn);
+      bool err = construct_neighbors(n, qnnn/*, set_and_store_linear_interpolators, set_and_store_second_derivatives_operators,
+                                     set_and_store_gradient_operator, set_and_store_quadratic_interpolators*/);
       if (err){
         std::ostringstream oss;
         oss << "[ERROR]: Could not construct neighborhood information for the node with idx " << n << " on processor " << p4est->mpirank;
         throw std::invalid_argument(oss.str().c_str());
       }
 #else
-      construct_neighbors(n, qnnn);
+      construct_neighbors(n, qnnn/*, set_and_store_linear_interpolators, set_and_store_second_derivatives_operators,
+                          set_and_store_gradient_operator, set_and_store_quadratic_interpolators*/);
 #endif
     }
   }

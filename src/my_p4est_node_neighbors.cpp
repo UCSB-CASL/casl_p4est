@@ -28,7 +28,8 @@ extern PetscLogEvent log_my_p4est_node_neighbors_t_1st_derivatives_central;
 #define PetscLogFlops(n) 0
 #endif
 
-void my_p4est_node_neighbors_t::init_neighbors()
+void my_p4est_node_neighbors_t::init_neighbors(/*const bool &set_and_store_linear_interpolators, const bool &set_and_store_second_derivatives_operators,
+                                               const bool &set_and_store_gradient_operator, const bool &set_and_store_quadratic_interpolators*/)
 {
   if (is_initialized) return;
 
@@ -46,9 +47,9 @@ void my_p4est_node_neighbors_t::init_neighbors()
    */
   for ( size_t n = 0; n < nodes->indep_nodes.elem_count; n++) {
 #ifdef CASL_THROWS
-    is_qnnn_valid[n] = !construct_neighbors(n, neighbors[n]);
+    is_qnnn_valid[n] = !construct_neighbors(n, neighbors[n]/*, set_and_store_linear_interpolators, set_and_store_second_derivatives_operators, set_and_store_gradient_operator, set_and_store_quadratic_interpolators*/);
 #else
-    construct_neighbors(n, neighbors[n]);
+    construct_neighbors(n, neighbors[n]/*, set_and_store_linear_interpolators, set_and_store_second_derivatives_operators, set_and_store_gradient_operator, set_and_store_quadratic_interpolators*/);
 #endif
   }
 
@@ -63,7 +64,8 @@ void my_p4est_node_neighbors_t::clear_neighbors()
   is_initialized = false;
 }
 
-void my_p4est_node_neighbors_t::update(my_p4est_hierarchy_t *hierarchy_, p4est_nodes_t *nodes_)
+void my_p4est_node_neighbors_t::update(my_p4est_hierarchy_t *hierarchy_, p4est_nodes_t *nodes_/*, const bool &set_and_store_linear_interpolators, const bool &set_and_store_second_derivatives_operators,
+                                       const bool &set_and_store_gradient_operator, const bool &set_and_store_quadratic_interpolators*/)
 {
   hierarchy = hierarchy_;
   p4est = hierarchy_->p4est;
@@ -72,7 +74,7 @@ void my_p4est_node_neighbors_t::update(my_p4est_hierarchy_t *hierarchy_, p4est_n
 
   if (is_initialized){
     clear_neighbors();
-    init_neighbors();
+    init_neighbors(/*set_and_store_linear_interpolators, set_and_store_second_derivatives_operators, set_and_store_gradient_operator, set_and_store_quadratic_interpolators*/);
   }
 
   layer_nodes.clear();
@@ -87,7 +89,8 @@ void my_p4est_node_neighbors_t::update(my_p4est_hierarchy_t *hierarchy_, p4est_n
   }
 }
 
-void my_p4est_node_neighbors_t::update(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes)
+void my_p4est_node_neighbors_t::update(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes/*, const bool &set_and_store_linear_interpolators, const bool &set_and_store_second_derivatives_operators,
+                                       const bool &set_and_store_gradient_operator, const bool &set_and_store_quadratic_interpolators*/)
 {
   hierarchy->update(p4est, ghost);
 
@@ -97,7 +100,7 @@ void my_p4est_node_neighbors_t::update(p4est_t *p4est, p4est_ghost_t *ghost, p4e
 
   if (is_initialized){
     clear_neighbors();
-    init_neighbors();
+    init_neighbors(/*set_and_store_linear_interpolators, set_and_store_second_derivatives_operators, set_and_store_gradient_operator, set_and_store_quadratic_interpolators*/);
   }
 
   layer_nodes.clear();
@@ -112,7 +115,8 @@ void my_p4est_node_neighbors_t::update(p4est_t *p4est, p4est_ghost_t *ghost, p4e
   }
 }
 
-bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neighbor_nodes_of_node_t &qnnn) const
+bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neighbor_nodes_of_node_t &qnnn/*, const bool &set_and_store_linear_interpolators, const bool &set_and_store_second_derivatives_operators,
+                                                    const bool &set_and_store_gradient_operator, const bool &set_and_store_quadratic_interpolators*/) const
 {
   p4est_connectivity_t *connectivity = p4est->connectivity;
   p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,n);
@@ -1207,6 +1211,17 @@ bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neigh
   qnnn.inverse_d_max = MAX(qnnn.inverse_d_max, qnnn.d_00p_0m, qnnn.d_00p_0p);
 #endif
   qnnn.inverse_d_max = 1.0/qnnn.inverse_d_max;
+
+  /*
+  if(set_and_store_linear_interpolators)
+    qnnn.set_and_store_linear_interpolators();
+  if(set_and_store_second_derivatives_operators)
+    qnnn.set_and_store_second_derivative_operators();
+  if(set_and_store_gradient_operator)
+    qnnn.set_and_store_gradient_operator();
+  if(set_and_store_quadratic_interpolators)
+    qnnn.set_and_store_quadratic_interpolators();
+  */
 
   return false;
 }

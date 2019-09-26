@@ -36,9 +36,9 @@ double node_linear_combination::calculate_dd( const unsigned char der, const dou
 }
 
 #ifdef P4_TO_P8
-void quad_neighbor_nodes_of_node_t::correct_naive_second_derivatives(const double *naive_Dxx, const double *naive_Dyy, const double *naive_Dzz,  double *Dxx, double *Dyy, double *Dzz, const unsigned int &n_values) const
+void quad_neighbor_nodes_of_node_t::correct_naive_second_derivatives(double *Dxx, double *Dyy, double *Dzz, const unsigned int &n_values) const
 #else
-void quad_neighbor_nodes_of_node_t::correct_naive_second_derivatives(const double *naive_Dxx, const double *naive_Dyy,                           double *Dxx, double *Dyy,              const unsigned int &n_values) const
+void quad_neighbor_nodes_of_node_t::correct_naive_second_derivatives(double *Dxx, double *Dyy,              const unsigned int &n_values) const
 #endif
 {
   const double m12 = d_m00_m0*d_m00_p0/d_m00/(d_p00+d_m00) + d_p00_m0*d_p00_p0/d_p00/(d_p00+d_m00) ; // 9 flops
@@ -68,11 +68,9 @@ void quad_neighbor_nodes_of_node_t::correct_naive_second_derivatives(const doubl
       const bool m31_non_zero = !check_if_zero(m31);
       const bool m32_non_zero = !check_if_zero(m32);
       for (unsigned int k = 0; k < n_values; ++k) {
-        Dxx[k] = naive_Dxx[k];
-        Dyy[k] = naive_Dyy[k];
+        // Dxx unchanged
         if(m21_non_zero)
           Dyy[k] -= m21*Dxx[k];
-        Dzz[k] = naive_Dzz[k];
         if(m31_non_zero)
           Dzz[k] -= m31*Dxx[k];
         if(m32_non_zero)
@@ -87,12 +85,11 @@ void quad_neighbor_nodes_of_node_t::correct_naive_second_derivatives(const doubl
       const bool m21_non_zero = !check_if_zero(m21);
       const bool m31_non_zero = !check_if_zero(m31);
       for (unsigned int k = 0; k < n_values; ++k) {
-        Dxx[k] = naive_Dxx[k];
-        Dzz[k] = naive_Dzz[k];
+        // Dxx unchanged
         if(m31_non_zero)
           Dzz[k] -= m31*Dxx[k];
         // m23 is non-zero, otherwise the if statement above would have been entered
-        Dyy[k] = naive_Dyy[k] - m23*Dzz[k];
+        Dyy[k] -= m23*Dzz[k];
         if(m21_non_zero)
           Dyy[k] -= m21*Dxx[k];
       }
@@ -108,9 +105,11 @@ void quad_neighbor_nodes_of_node_t::correct_naive_second_derivatives(const doubl
       const double m21_is_zero = check_if_zero(m21);
       const double m31_is_zero = check_if_zero(m31);
       for (unsigned int k = 0; k < n_values; ++k) {
-        Dxx[k] = naive_Dxx[k];
-        Dyy[k] = ((m21_is_zero? naive_Dyy[k] : (naive_Dyy[k]-m21*Dxx[k])) - m23*(m31_is_zero? naive_Dzz[k] : (naive_Dzz[k]-m31*Dxx[k])))*idet;
-        Dzz[k] = ((m31_is_zero? naive_Dzz[k] : (naive_Dzz[k]-m31*Dxx[k])) - m32*(m21_is_zero? naive_Dyy[k] : (naive_Dyy[k]-m21*Dxx[k])))*idet;
+        // Dxx unchanged
+        const double naive_Dyy = Dyy[k];
+        const double naive_Dzz = Dzz[k];
+        Dyy[k] = ((m21_is_zero? naive_Dyy : (naive_Dyy-m21*Dxx[k])) - m23*(m31_is_zero? naive_Dzz : (naive_Dzz-m31*Dxx[k])))*idet;
+        Dzz[k] = ((m31_is_zero? naive_Dzz : (naive_Dzz-m31*Dxx[k])) - m32*(m21_is_zero? naive_Dyy : (naive_Dyy-m21*Dxx[k])))*idet;
       }
 #ifdef CASL_LOG_FLOPS
       ierr_flops = PetscLogFlops(17*n_values); CHKERRXX(ierr_flops); // (upper bound)
@@ -123,15 +122,13 @@ void quad_neighbor_nodes_of_node_t::correct_naive_second_derivatives(const doubl
     P4EST_ASSERT(check_if_zero(m13) || check_if_zero(m31));
     if(check_if_zero(m13))
     {
-      const bool m12_non_zero= !check_if_zero(m12);
-      const bool m31_non_zero= !check_if_zero(m31);
-      const bool m32_non_zero= !check_if_zero(m32);
+      const bool m12_non_zero = !check_if_zero(m12);
+      const bool m31_non_zero = !check_if_zero(m31);
+      const bool m32_non_zero = !check_if_zero(m32);
       for (unsigned int k = 0; k < n_values; ++k) {
-        Dyy[k] = naive_Dyy[k];
-        Dxx[k] = naive_Dxx[k];
+        // Dyy unchanged
         if(m12_non_zero)
           Dxx[k] -= m12*Dyy[k];
-        Dzz[k] = naive_Dzz[k];
         if(m31_non_zero)
           Dzz[k] -= m31*Dxx[k];
         if(m32_non_zero)
@@ -143,15 +140,14 @@ void quad_neighbor_nodes_of_node_t::correct_naive_second_derivatives(const doubl
     }
     else if (check_if_zero(m31))
     {
-      const bool m12_non_zero= !check_if_zero(m12);
-      const bool m32_non_zero= !check_if_zero(m32);
+      const bool m12_non_zero = !check_if_zero(m12);
+      const bool m32_non_zero = !check_if_zero(m32);
       for (unsigned int k = 0; k < n_values; ++k) {
-        Dyy[k] = naive_Dyy[k];
-        Dzz[k] = naive_Dzz[k];
+        // Dyy unchanged
         if(m32_non_zero)
           Dzz[k] -= m32*Dyy[k];
         // m13 is non-zero, otherwise the if statement above would have been entered
-        Dxx[k] = naive_Dxx[k] - m13*Dzz[k];
+        Dxx[k] -= m13*Dzz[k];
         if(m12_non_zero)
           Dxx[k] -= m12*Dyy[k];
       }
@@ -167,9 +163,11 @@ void quad_neighbor_nodes_of_node_t::correct_naive_second_derivatives(const doubl
       const bool m12_is_zero = check_if_zero(m12);
       const bool m32_is_zero = check_if_zero(m32);
       for (unsigned int k = 0; k < n_values; ++k) {
-        Dyy[k] = naive_Dyy[k];
-        Dxx[k] = ((m12_is_zero? naive_Dxx[k] : (naive_Dxx[k]-m12*Dyy[k])) - m13*(m32_is_zero? naive_Dzz[k] : (naive_Dzz[k]-m32*Dyy[k])))*idet;
-        Dzz [k]= ((m32_is_zero? naive_Dzz[k] : (naive_Dzz[k]-m32*Dyy[k])) - m31*(m12_is_zero? naive_Dxx[k] : (naive_Dxx[k]-m12*Dyy[k])))*idet;
+        // Dyy unchanged
+        const double naive_Dxx = Dxx[k];
+        const double naive_Dzz = Dzz[k];
+        Dxx[k] = ((m12_is_zero? naive_Dxx : (naive_Dxx-m12*Dyy[k])) - m13*(m32_is_zero? naive_Dzz : (naive_Dzz-m32*Dyy[k])))*idet;
+        Dzz[k] = ((m32_is_zero? naive_Dzz : (naive_Dzz-m32*Dyy[k])) - m31*(m12_is_zero? naive_Dxx : (naive_Dxx-m12*Dyy[k])))*idet;
       }
 #ifdef CASL_LOG_FLOPS
       ierr_flops = PetscLogFlops(17*n_values); CHKERRXX(ierr_flops); // (upper bound)
@@ -186,11 +184,9 @@ void quad_neighbor_nodes_of_node_t::correct_naive_second_derivatives(const doubl
       const bool m21_non_zero= !check_if_zero(m21);
       const bool m23_non_zero= !check_if_zero(m23);
       for (unsigned int k = 0; k < n_values; ++k) {
-        Dzz[k] = naive_Dzz[k];
-        Dxx[k] = naive_Dxx[k];
+        // Dzz unchanged
         if(m13_non_zero)
           Dxx[k] -= m13*Dzz[k];
-        Dyy[k] = naive_Dyy[k];
         if(m21_non_zero)
           Dyy[k] -= m21*Dxx[k];
         if(m23_non_zero)
@@ -205,12 +201,11 @@ void quad_neighbor_nodes_of_node_t::correct_naive_second_derivatives(const doubl
       const bool m13_non_zero= !check_if_zero(m13);
       const bool m23_non_zero= !check_if_zero(m23);
       for (unsigned int k = 0; k < n_values; ++k) {
-        Dzz[k] = naive_Dzz[k];
-        Dyy[k] = naive_Dyy[k];
+        // Dzz unchanged
         if(m23_non_zero)
           Dyy[k] -= m23*Dzz[k];
         // m12 is non-zero, otherwise the if statement above would have been entered
-        Dxx[k] = naive_Dxx[k] - m12*Dyy[k];
+        Dxx[k] -= m12*Dyy[k];
         if(m13_non_zero)
           Dxx[k] -= m13*Dzz[k];
       }
@@ -226,9 +221,11 @@ void quad_neighbor_nodes_of_node_t::correct_naive_second_derivatives(const doubl
       const bool m13_is_zero = check_if_zero(m13);
       const bool m23_is_zero = check_if_zero(m23);
       for (unsigned int k = 0; k < n_values; ++k) {
-        Dzz[k] = naive_Dzz[k];
-        Dxx[k] = ((m13_is_zero? naive_Dxx[k] : (naive_Dxx[k]-m13*Dzz[k])) - m12*(m23_is_zero? naive_Dyy[k] : (naive_Dyy[k]-m23*Dzz[k])))*idet;
-        Dzz[k] = ((m23_is_zero? naive_Dyy[k] : (naive_Dyy[k]-m23*Dzz[k])) - m21*(m13_is_zero? naive_Dxx[k] : (naive_Dxx[k]-m13*Dzz[k])))*idet;
+        // Dzz unchanged
+        const double naive_Dxx = Dxx[k];
+        const double naive_Dyy = Dyy[k];
+        Dxx[k] = ((m13_is_zero? naive_Dxx : (naive_Dxx-m13*Dzz[k])) - m12*(m23_is_zero? naive_Dyy : (naive_Dyy-m23*Dzz[k])))*idet;
+        Dyy[k] = ((m23_is_zero? naive_Dyy : (naive_Dyy-m23*Dzz[k])) - m21*(m13_is_zero? naive_Dxx : (naive_Dxx-m13*Dzz[k])))*idet;
       }
 #ifdef CASL_LOG_FLOPS
       ierr_flops = PetscLogFlops(6*n_vales); CHKERRXX(ierr_flops); // (upper bound)
@@ -241,9 +238,12 @@ void quad_neighbor_nodes_of_node_t::correct_naive_second_derivatives(const doubl
     std::cerr << "quad_neighbor_nodes_of_node_t::correct_naive_second_derivatives(): basic alignment hypothesis have been invalidated, statement D, this really sucks!" << std::endl;
     const double idet = 1.0/(1.0 + m12*m23*m31 + m13*m21*m32 - m12*m21 - m13*m31 - m23*m32); // 13 flops
     for (unsigned int k = 0; k < n_values; ++k) {
-      Dxx[k] = (naive_Dxx[k]*(idet*(1.0-m23*m32)) + naive_Dyy[k]*(idet*(m32*m13-m12)) + naive_Dzz[k]*(idet*(m12*m23-m13))); // 14 flops, counted only if double
-      Dyy[k] = (naive_Dxx[k]*(idet*(m31*m23-m21)) + naive_Dyy[k]*(idet*(1.0-m31*m13)) + naive_Dzz[k]*(idet*(m21*m13-m23))); // 14 flops, counted only if double
-      Dzz[k] = (naive_Dxx[k]*(idet*(m21*m32-m31)) + naive_Dyy[k]*(idet*(m31*m12-m32)) + naive_Dzz[k]*(idet*(1.0-m21*m12))); // 14 flops, counted only if double
+      const double naive_Dxx = Dxx[k];
+      const double naive_Dyy = Dyy[k];
+      const double naive_Dzz = Dzz[k];
+      Dxx[k] = (naive_Dxx*(idet*(1.0-m23*m32)) + naive_Dyy*(idet*(m32*m13-m12)) + naive_Dzz*(idet*(m12*m23-m13))); // 14 flops, counted only if double
+      Dyy[k] = (naive_Dxx*(idet*(m31*m23-m21)) + naive_Dyy*(idet*(1.0-m31*m13)) + naive_Dzz*(idet*(m21*m13-m23))); // 14 flops, counted only if double
+      Dzz[k] = (naive_Dxx*(idet*(m21*m32-m31)) + naive_Dyy*(idet*(m31*m12-m32)) + naive_Dzz*(idet*(1.0-m21*m12))); // 14 flops, counted only if double
     }
 #ifdef CASL_LOG_FLOPS
     ierr_flops = PetscLogFlops(13+42*n_values); CHKERRXX(ierr_flops);
@@ -259,15 +259,10 @@ void quad_neighbor_nodes_of_node_t::correct_naive_second_derivatives(const doubl
   P4EST_ASSERT(check_if_zero(m12) || check_if_zero(m21));
   if(check_if_zero(m12))
   {
-    const bool m21_is_zero = check_if_zero(m21);
-    for (unsigned int k = 0; k < n_values; ++k) {
-      Dxx[k] = naive_Dxx[k];
-      if(m21_is_zero)
-        Dyy[k] = naive_Dyy[k];
-      else {
-        Dyy[k] = naive_Dyy[k] - m21*naive_Dxx[k];
-      }
-    }
+    // Dxx unchanged
+    if(!check_if_zero(m21))
+      for (unsigned int k = 0; k < n_values; ++k)
+        Dyy[k] -= m21*Dxx[k];
 #ifdef CASL_LOG_FLOPS
     if(!m21_is_zero){
       ierr_flops = PetscLogFlops(2*n_values); CHKERRXX(ierr_flops); }
@@ -275,10 +270,9 @@ void quad_neighbor_nodes_of_node_t::correct_naive_second_derivatives(const doubl
   }
   else if (check_if_zero(m21))
   {
-    for (unsigned int k = 0; k < n_values; ++k) {
-      Dyy[k] = naive_Dyy[k];
-      Dxx[k] = naive_Dxx[k] - m12*naive_Dyy[k]; // m12 is necessarily not 0.0, otherwise the above statement would have been activated
-    }
+    // Dyy unchanged
+    for (unsigned int k = 0; k < n_values; ++k)
+      Dxx[k] -= m12*Dyy[k]; // m12 is necessarily not 0.0, otherwise the above statement would have been activated
 #ifdef CASL_LOG_FLOPS
     ierr_flops = PetscLogFlops(2*n_values); CHKERRXX(ierr_flops);
 #endif
@@ -289,15 +283,163 @@ void quad_neighbor_nodes_of_node_t::correct_naive_second_derivatives(const doubl
     std::cerr << "quad_neighbor_nodes_of_node_t::correct_naive_second_derivatives(): basic alignment hypothesis have been invalidated, statement A (2D), this really sucks!" << std::endl;
     const double idet = 1.0/(1.0 - m12*m21); // 3 flops
     for (unsigned int k = 0; k < n_values; ++k) {
-      Dxx[k] = naive_Dxx[k]*idet - naive_Dyy[k]*(m12*idet);// 4 flops
-      Dyy[k] = naive_Dyy[k]*idet - naive_Dxx[k]*(m21*idet);// 4 flops
+      const double naive_Dxx = Dxx[k];
+      const double naive_Dyy = Dyy[k];
+      Dxx[k] = naive_Dxx*idet - naive_Dyy*(m12*idet);// 4 flops
+      Dyy[k] = naive_Dyy*idet - naive_Dxx*(m21*idet);// 4 flops
     }
 #ifdef CASL_LOG_FLOPS
     ierr_flops = PetscLogFlops(3+8*n_values); CHKERRXX(ierr_flops);
 #endif
   }
 #endif
+  return;
 }
+
+/*
+#ifdef P4_TO_P8
+void quad_neighbor_nodes_of_node_t::correct_naive_second_derivatives(node_linear_combination &Dxx, node_linear_combination &Dyy, node_linear_combination &Dzz) const
+#else
+void quad_neighbor_nodes_of_node_t::correct_naive_second_derivatives(node_linear_combination &Dxx, node_linear_combination &Dyy) const
+#endif
+{
+  const double m12 = d_m00_m0*d_m00_p0/d_m00/(d_p00+d_m00) + d_p00_m0*d_p00_p0/d_p00/(d_p00+d_m00) ; // 9 flops
+#ifdef P4_TO_P8
+  const double m13 = d_m00_0m*d_m00_0p/d_m00/(d_p00+d_m00) + d_p00_0m*d_p00_0p/d_p00/(d_p00+d_m00) ; // 9 flops
+#endif
+  const double m21 = d_0m0_m0*d_0m0_p0/d_0m0/(d_0p0+d_0m0) + d_0p0_m0*d_0p0_p0/d_0p0/(d_0p0+d_0m0) ; // 9 flops
+#ifdef P4_TO_P8
+  const double m23 = d_0m0_0m*d_0m0_0p/d_0m0/(d_0p0+d_0m0) + d_0p0_0m*d_0p0_0p/d_0p0/(d_0p0+d_0m0) ; // 9 flops
+  const double m31 = d_00m_m0*d_00m_p0/d_00m/(d_00p+d_00m) + d_00p_m0*d_00p_p0/d_00p/(d_00p+d_00m) ; // 9 flops
+  const double m32 = d_00m_0m*d_00m_0p/d_00m/(d_00p+d_00m) + d_00p_0m*d_00p_0p/d_00p/(d_00p+d_00m) ; // 9 flops
+#ifdef CASL_LOG_FLOPS
+  PetscErrorCode ierr_flops = PetscLogFlops(54); CHKERRXX(ierr_flops);
+#endif
+  // naive_Dfxx = 1.0*fxx + m12*fyy + m13*fzz
+  // naive_Dfyy = m21*fxx + 1.0*fyy + m23*fzz
+  // naive_Dfzz = m31*fxx + m32*fyy + 1.0*fzz
+  // either (m12 and m13) are 0.0 or (m21 and m23) are 0.0 or (m31 and m32) are 0.0
+  P4EST_ASSERT((check_if_zero(m12) && check_if_zero(m13)) || (check_if_zero(m21) && check_if_zero(m23)) || (check_if_zero(m31) && check_if_zero(m32)));
+  if (check_if_zero(m12) && check_if_zero(m13))
+  {
+    // now, either m23 or m32 or both must 0.0
+    P4EST_ASSERT(check_if_zero(m23) || check_if_zero(m32));
+    if(check_if_zero(m23))
+    {
+      // Dxx unchanged
+      if(!check_if_zero(m21))
+        Dyy.add_terms(Dxx, -m21);
+      if(!check_if_zero(m31))
+        Dzz.add_terms(Dxx, -m31);
+      if(!check_if_zero(m32))
+        Dzz.add_terms(Dyy, -m32);
+    }
+    else if (check_if_zero(m32))
+    {
+      // Dxx unchanged
+      if(!check_if_zero(m31))
+        Dzz.add_terms(Dxx, -m31);
+      // m23 is non-zero, otherwise the if statement above would have been entered
+      Dyy.add_terms(Dzz, -m23);
+      if(!check_if_zero(m21))
+        Dyy.add_terms(Dxx, -m21);
+    }
+    else
+    {
+      // this is supposed to NEVER happen, would need additional copy of operators, might be too expensive and should never happen anyways
+      throw std::runtime_error("quad_neighbor_nodes_of_node_t::correct_naive_second_derivatives(): basic alignment hypothesis have been invalidated, statement a (operator construction).");
+    }
+  }
+  else if (check_if_zero(m21) && check_if_zero(m23))
+  {
+    // now, either m13 or m31 or both must 0.0
+    P4EST_ASSERT(check_if_zero(m13) || check_if_zero(m31));
+    if(check_if_zero(m13))
+    {
+      // Dyy unchanged
+      if(!check_if_zero(m12))
+        Dxx.add_terms(Dyy, -m12);
+      if(!check_if_zero(m31))
+        Dzz.add_terms(Dxx, -m31);
+      if(!check_if_zero(m32))
+        Dzz.add_terms(Dyy, -m32);
+    }
+    else if (check_if_zero(m31))
+    {
+      // Dyy unchanged
+      if(!check_if_zero(m32))
+        Dzz.add_terms(Dyy, -m32);
+      // m13 is non-zero, otherwise the if statement above would have been entered
+      Dxx.add_terms(Dzz, -m13);
+      if(!check_if_zero(m12))
+        Dxx.add_terms(Dyy, -m12);
+    }
+    else
+    {
+      // this is supposed to NEVER happen, would need additional copy of operators, might be too expensive and should never happen anyways
+      throw std::runtime_error("quad_neighbor_nodes_of_node_t::correct_naive_second_derivatives(): basic alignment hypothesis have been invalidated, statement b (operator construction).");
+    }
+  }
+  else if (check_if_zero(m31) && check_if_zero(m32))
+  {
+    // now, either m12 or m21 or both must 0.0
+    P4EST_ASSERT(check_if_zero(m12) || check_if_zero(m21));
+    if(check_if_zero(m12))
+    {
+      // Dzz unchanged
+      if(!check_if_zero(m13))
+        Dxx.add_terms(Dzz, -m13);
+      if(!check_if_zero(m21))
+        Dyy.add_terms(Dxx, -m21);
+      if(!check_if_zero(m23))
+        Dyy.add_terms(Dzz, -m23);
+    }
+    else if (check_if_zero(m21))
+    {
+      // Dzz unchanged
+      if(!check_if_zero(m23))
+        Dyy.add_terms(Dzz, -m23);
+      // m12 is non-zero, otherwise the if statement above would have been entered
+      Dxx.add_terms(Dyy, -m12);
+      if(!check_if_zero(m13))
+        Dxx.add_terms(Dzz, -m13);
+    }
+    else
+    {
+      // this is supposed to NEVER happen, would need additional copy of operators, might be too expensive and should never happen anyways
+      throw std::runtime_error("quad_neighbor_nodes_of_node_t::correct_naive_second_derivatives(): basic alignment hypothesis have been invalidated, statement c (operator construction).");
+    }
+  }
+  else
+  {
+    // this is supposed to NEVER happen, would need additional copy of operators, might be too expensive and should never happen anyways
+    throw std::runtime_error("quad_neighbor_nodes_of_node_t::correct_naive_second_derivatives(): basic alignment hypothesis have been invalidated, statement D, this really sucks! (operator construction).");
+  }
+#else
+  // naive_Dfxx = 1.0*fxx + m12*fyy
+  // naive_Dfyy = m21*fxx + 1.0*fyy
+  // either m12 or m21 MUST be 0
+  P4EST_ASSERT(check_if_zero(m12) || check_if_zero(m21));
+  if(check_if_zero(m12))
+  {
+    // Dxx unchanged
+    if(!check_if_zero(m21))
+      Dyy.add_terms(Dxx, -m21);
+  }
+  else if (check_if_zero(m21))
+  {
+    // Dyy unchanged
+    Dxx.add_terms(Dyy, -m12); // m12 is necessarily not 0.0, otherwise the above statement would have been activated
+  }
+  else
+  {
+    // this is supposed to NEVER happen, would need additional copy of operators, might be too expensive and should never happen anyways
+    throw std::runtime_error("quad_neighbor_nodes_of_node_t::correct_naive_second_derivatives(): basic alignment hypothesis have been invalidated, statement A (2D), this really sucks! (operator construction).");
+  }
+#endif
+  return;
+}
+*/
 
 void quad_neighbor_nodes_of_node_t::x_ngbd_with_quadratic_interpolation(const double *f[], double *f_m00, double *f_000, double *f_p00, const unsigned int &n_arrays, const unsigned int &bs) const
 {
@@ -305,6 +447,20 @@ void quad_neighbor_nodes_of_node_t::x_ngbd_with_quadratic_interpolation(const do
 #ifdef CASL_LOG_TINY_EVENTS
   PetscErrorCode ierr_log_event = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_x_ngbd_with_quadratic_interpolation, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
 #endif
+  /*
+  if(quadratic_interpolators_are_set)
+  {
+    const unsigned int bs_node_000 = bs*node_000;
+    for (unsigned int k = 0; k < n_arrays; ++k){
+      const unsigned int kbs = k*bs;
+      for (unsigned int comp = 0; comp < bs; ++comp)
+        f_000[kbs+comp] = f[k][bs_node_000+comp];
+    }
+    quadratic_interpolator[dir::f_m00].calculate(f, f_m00, n_arrays, bs);
+    quadratic_interpolator[dir::f_p00].calculate(f, f_p00, n_arrays, bs);
+    return;
+  }
+  */
   if((check_if_zero(d_m00_m0*inverse_d_max) || check_if_zero(d_m00_p0*inverse_d_max)) && (check_if_zero(d_p00_m0*inverse_d_max) || check_if_zero(d_p00_p0*inverse_d_max))
    #ifdef P4_TO_P8
      && (check_if_zero(d_m00_0m*inverse_d_max) || check_if_zero(d_m00_0p*inverse_d_max)) && (check_if_zero(d_p00_0m*inverse_d_max) || check_if_zero(d_p00_0p*inverse_d_max))
@@ -344,6 +500,16 @@ void quad_neighbor_nodes_of_node_t::x_ngbd_with_quadratic_interpolation_bs_one(c
 #ifdef CASL_LOG_TINY_EVENTS
   PetscErrorCode ierr_log_event = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_x_ngbd_with_quadratic_interpolation, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
 #endif
+  /*
+  if(quadratic_interpolators_are_set)
+  {
+    for (unsigned int k = 0; k < n_arrays; ++k)
+      f_000[k] = f[k][node_000];
+    quadratic_interpolator[dir::f_m00].calculate_bs_one(f, f_m00, n_arrays);
+    quadratic_interpolator[dir::f_p00].calculate_bs_one(f, f_p00, n_arrays);
+    return;
+  }
+  */
   if((check_if_zero(d_m00_m0*inverse_d_max) || check_if_zero(d_m00_p0*inverse_d_max)) && (check_if_zero(d_p00_m0*inverse_d_max) || check_if_zero(d_p00_p0*inverse_d_max))
    #ifdef P4_TO_P8
      && (check_if_zero(d_m00_0m*inverse_d_max) || check_if_zero(d_m00_0p*inverse_d_max)) && (check_if_zero(d_p00_0m*inverse_d_max) || check_if_zero(d_p00_0p*inverse_d_max))
@@ -379,6 +545,20 @@ void quad_neighbor_nodes_of_node_t::y_ngbd_with_quadratic_interpolation(const do
 #ifdef CASL_LOG_TINY_EVENTS
   PetscErrorCode ierr_log_event = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_y_ngbd_with_quadratic_interpolation, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
 #endif
+  /*
+  if(quadratic_interpolators_are_set)
+  {
+    const unsigned int bs_node_000 = bs*node_000;
+    for (unsigned int k = 0; k < n_arrays; ++k){
+      const unsigned int kbs = k*bs;
+      for (unsigned int comp = 0; comp < bs; ++comp)
+        f_000[kbs+comp] = f[k][bs_node_000+comp];
+    }
+    quadratic_interpolator[dir::f_0m0].calculate(f, f_0m0, n_arrays, bs);
+    quadratic_interpolator[dir::f_0p0].calculate(f, f_0p0, n_arrays, bs);
+    return;
+  }
+  */
   if((check_if_zero(d_0m0_m0*inverse_d_max) || check_if_zero(d_0m0_p0*inverse_d_max)) && (check_if_zero(d_0p0_m0*inverse_d_max) || check_if_zero(d_0p0_p0*inverse_d_max))
    #ifdef P4_TO_P8
      && (check_if_zero(d_0m0_0m*inverse_d_max) || check_if_zero(d_0m0_0p*inverse_d_max)) && (check_if_zero(d_0p0_0m*inverse_d_max) || check_if_zero(d_0p0_0p*inverse_d_max))
@@ -418,6 +598,16 @@ void quad_neighbor_nodes_of_node_t::y_ngbd_with_quadratic_interpolation_bs_one(c
 #ifdef CASL_LOG_TINY_EVENTS
   PetscErrorCode ierr_log_event = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_y_ngbd_with_quadratic_interpolation, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
 #endif
+  /*
+  if(quadratic_interpolators_are_set)
+  {
+    for (unsigned int k = 0; k < n_arrays; ++k)
+      f_000[k] = f[k][node_000];
+    quadratic_interpolator[dir::f_0m0].calculate_bs_one(f, f_0m0, n_arrays);
+    quadratic_interpolator[dir::f_0p0].calculate_bs_one(f, f_0p0, n_arrays);
+    return;
+  }
+  */
   if((check_if_zero(d_0m0_m0*inverse_d_max) || check_if_zero(d_0m0_p0*inverse_d_max)) && (check_if_zero(d_0p0_m0*inverse_d_max) || check_if_zero(d_0p0_p0*inverse_d_max))
    #ifdef P4_TO_P8
      && (check_if_zero(d_0m0_0m*inverse_d_max) || check_if_zero(d_0m0_0p*inverse_d_max)) && (check_if_zero(d_0p0_0m*inverse_d_max) || check_if_zero(d_0p0_0p*inverse_d_max))
@@ -454,6 +644,20 @@ void quad_neighbor_nodes_of_node_t::z_ngbd_with_quadratic_interpolation(const do
 #ifdef CASL_LOG_TINY_EVENTS
   PetscErrorCode ierr_log_event = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_z_ngbd_with_quadratic_interpolation, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
 #endif
+  /*
+  if(quadratic_interpolators_are_set)
+  {
+    const unsigned int bs_node_000 = bs*node_000;
+    for (unsigned int k = 0; k < n_arrays; ++k){
+      const unsigned int kbs = k*bs;
+      for (unsigned int comp = 0; comp < bs; ++comp)
+        f_000[kbs+comp] = f[k][bs_node_000+comp];
+    }
+    quadratic_interpolator[dir::f_00m].calculate(f, f_00m, n_arrays, bs);
+    quadratic_interpolator[dir::f_00p].calculate(f, f_00p, n_arrays, bs);
+    return;
+  }
+  */
   if((check_if_zero(d_00m_m0*inverse_d_max) || check_if_zero(d_00m_p0*inverse_d_max)) && (check_if_zero(d_00p_m0*inverse_d_max) || check_if_zero(d_00p_p0*inverse_d_max))
      && (check_if_zero(d_00m_0m*inverse_d_max) || check_if_zero(d_00m_0p*inverse_d_max)) && (check_if_zero(d_00p_0m*inverse_d_max) || check_if_zero(d_00p_0p*inverse_d_max))
      )
@@ -483,6 +687,16 @@ void quad_neighbor_nodes_of_node_t::z_ngbd_with_quadratic_interpolation_bs_one(c
 #ifdef CASL_LOG_TINY_EVENTS
   PetscErrorCode ierr_log_event = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_z_ngbd_with_quadratic_interpolation, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
 #endif
+  /*
+  if(quadratic_interpolators_are_set)
+  {
+    for (unsigned int k = 0; k < n_arrays; ++k)
+      f_000[k] = f[k][node_000];
+    quadratic_interpolator[dir::f_00m].calculate_bs_one(f, f_00m, n_arrays);
+    quadratic_interpolator[dir::f_00p].calculate_bs_one(f, f_00p, n_arrays);
+    return;
+  }
+  */
   if((check_if_zero(d_00m_m0*inverse_d_max) || check_if_zero(d_00m_p0*inverse_d_max)) && (check_if_zero(d_00p_m0*inverse_d_max) || check_if_zero(d_00p_p0*inverse_d_max))
      && (check_if_zero(d_00m_0m*inverse_d_max) || check_if_zero(d_00m_0p*inverse_d_max)) && (check_if_zero(d_00p_0m*inverse_d_max) || check_if_zero(d_00p_0p*inverse_d_max))
      )
@@ -573,8 +787,63 @@ void quad_neighbor_nodes_of_node_t::correct_naive_first_derivatives(const double
   return;
 }
 
+/*
+#ifdef P4_TO_P8
+void quad_neighbor_nodes_of_node_t::correct_naive_first_derivatives(node_linear_combination &Dx, node_linear_combination &Dy, node_linear_combination &Dz, const node_linear_combination &Dxx, const node_linear_combination &Dyy, const node_linear_combination &Dzz) const
+#else
+void quad_neighbor_nodes_of_node_t::correct_naive_first_derivatives(node_linear_combination &Dx, node_linear_combination &Dy,                              const node_linear_combination &Dxx, const node_linear_combination &Dyy) const
+#endif
+{
+  double yy_correction_weight_to_naive_Dx, xx_correction_weight_to_naive_Dy;
+#ifdef P4_TO_P8
+  double zz_correction_weight_to_naive_Dx, zz_correction_weight_to_naive_Dy;
+  double xx_correction_weight_to_naive_Dz, yy_correction_weight_to_naive_Dz;
+#endif
+  // correct them if needed
+  bool second_derivatives_needed = false;
+  const bool Dx_needs_yy_correction = naive_dx_needs_yy_correction(yy_correction_weight_to_naive_Dx); second_derivatives_needed = second_derivatives_needed || Dx_needs_yy_correction;
+#ifdef P4_TO_P8
+  const bool Dx_needs_zz_correction = naive_dx_needs_zz_correction(zz_correction_weight_to_naive_Dx); second_derivatives_needed = second_derivatives_needed || Dx_needs_zz_correction;
+#endif
+  const bool Dy_needs_xx_correction = naive_dy_needs_xx_correction(xx_correction_weight_to_naive_Dy); second_derivatives_needed = second_derivatives_needed || Dy_needs_xx_correction;
+#ifdef P4_TO_P8
+  const bool Dy_needs_zz_correction = naive_dy_needs_zz_correction(zz_correction_weight_to_naive_Dy); second_derivatives_needed = second_derivatives_needed || Dy_needs_zz_correction;
+  const bool Dz_needs_xx_correction = naive_dz_needs_xx_correction(xx_correction_weight_to_naive_Dz); second_derivatives_needed = second_derivatives_needed || Dz_needs_xx_correction;
+  const bool Dz_needs_yy_correction = naive_dz_needs_yy_correction(yy_correction_weight_to_naive_Dz); second_derivatives_needed = second_derivatives_needed || Dz_needs_yy_correction;
+#endif
+
+  if(second_derivatives_needed)
+  {
+    if(Dx_needs_yy_correction)
+      Dx.add_terms(Dyy, -yy_correction_weight_to_naive_Dx);
+#ifdef P4_TO_P8
+    if(Dx_needs_zz_correction)
+      Dx.add_terms(Dzz, -zz_correction_weight_to_naive_Dx);
+#endif
+    if(Dy_needs_xx_correction)
+      Dy.add_terms(Dxx, -xx_correction_weight_to_naive_Dy);
+#ifdef P4_TO_P8
+    if(Dy_needs_zz_correction)
+      Dy.add_terms(Dzz, -zz_correction_weight_to_naive_Dy);
+    if(Dz_needs_xx_correction)
+      Dz.add_terms(Dxx, -xx_correction_weight_to_naive_Dz);
+    if(Dz_needs_yy_correction)
+      Dz.add_terms(Dyy, -yy_correction_weight_to_naive_Dz);
+#endif
+  }
+  return;
+}
+*/
+
 void quad_neighbor_nodes_of_node_t::dx_central(const double *f[], double *fx, const unsigned int &n_arrays, const unsigned int &bs) const
 {
+  /*
+  if(gradient_operator_is_set)
+  {
+    gradient_operator[0].calculate(f, fx, n_arrays, bs);
+    return;
+  }
+  */
   const unsigned int n_arrays_bs = n_arrays*bs;
   double f_000[n_arrays_bs], f_p00[n_arrays_bs], f_m00[n_arrays_bs];
   if(bs>1){
@@ -632,6 +901,13 @@ void quad_neighbor_nodes_of_node_t::dx_central(const double *f[], double *fx, co
 
 void quad_neighbor_nodes_of_node_t::dy_central(const double *f[], double *fy, const unsigned int &n_arrays, const unsigned int &bs) const
 {
+  /*
+  if(gradient_operator_is_set)
+  {
+    gradient_operator[1].calculate(f, fy, n_arrays, bs);
+    return;
+  }
+  */
   const unsigned int n_arrays_bs = n_arrays*bs;
   double f_000[n_arrays_bs], f_0p0[n_arrays_bs], f_0m0[n_arrays_bs];
   if(bs>1){
@@ -690,6 +966,13 @@ void quad_neighbor_nodes_of_node_t::dy_central(const double *f[], double *fy, co
 #ifdef P4_TO_P8
 void quad_neighbor_nodes_of_node_t::dz_central(const double *f[], double *fz, const unsigned int &n_arrays, const unsigned int &bs) const
 {
+  /*
+  if(gradient_operator_is_set)
+  {
+    gradient_operator[2].calculate(f, fz, n_arrays, bs);
+    return;
+  }
+  */
   const unsigned int n_arrays_bs = n_arrays*bs;
   double f_000[n_arrays_bs], f_00p[n_arrays_bs], f_00m[n_arrays_bs];
   if(bs>1){
@@ -749,12 +1032,20 @@ double quad_neighbor_nodes_of_node_t::dx_backward_quadratic(const double *f, con
   double f_000, f_m00, f_p00;
   x_ngbd_with_quadratic_interpolation(f, f_m00, f_000, f_p00);
   const double f_xx_000 = central_second_derivative(f_p00, f_000, f_m00, d_p00, d_m00);
+  double f_xx_m00;
+  /*
+  if(linear_interpolators_are_set)
+    f_xx_m00 = linear_interpolator[dir::f_m00].calculate_dd(dir::x, f, neighbors);
+  else
+  {*/
+    node_linear_combination lin_m00(1<<(P4EST_DIM-1));
 #ifdef P4_TO_P8
-  node_linear_combination lin_m00 = linear_interpolator(node_m00_mm, node_m00_pm, node_m00_mp, node_m00_pp, d_m00_m0, d_m00_p0, d_m00_0m, d_m00_0p);
+    get_linear_interpolator(lin_m00, node_m00_mm, node_m00_pm, node_m00_mp, node_m00_pp, d_m00_m0, d_m00_p0, d_m00_0m, d_m00_0p);
 #else
-  node_linear_combination lin_m00 = linear_interpolator(node_m00_mm, node_m00_pm,                           d_m00_m0, d_m00_p0);
+    get_linear_interpolator(lin_m00, node_m00_mm, node_m00_pm,                           d_m00_m0, d_m00_p0);
 #endif
-  double f_xx_m00 = lin_m00.calculate_dd(dir::x, f, neighbors);
+    f_xx_m00 = lin_m00.calculate_dd(dir::x, f, neighbors);
+  /*}*/
   return d_backward_quadratic(f_000, f_m00, d_m00, f_xx_000, f_xx_m00);
 }
 double quad_neighbor_nodes_of_node_t::dx_forward_quadratic(const double *f, const my_p4est_node_neighbors_t &neighbors) const
@@ -762,12 +1053,20 @@ double quad_neighbor_nodes_of_node_t::dx_forward_quadratic(const double *f, cons
   double f_000, f_m00, f_p00;
   x_ngbd_with_quadratic_interpolation(f, f_m00, f_000, f_p00);
   const double f_xx_000 = central_second_derivative(f_p00, f_000, f_m00, d_p00, d_m00);
+  double f_xx_p00;
+  /*
+  if(linear_interpolators_are_set)
+    f_xx_p00 = linear_interpolator[dir::f_p00].calculate_dd(dir::x, f, neighbors);
+  else
+  {*/
+    node_linear_combination lin_p00(1<<(P4EST_DIM-1));
 #ifdef P4_TO_P8
-  node_linear_combination lin_p00 = linear_interpolator(node_p00_mm, node_p00_pm, node_p00_mp, node_p00_pp, d_p00_m0, d_p00_p0, d_p00_0m, d_p00_0p);
+    get_linear_interpolator(lin_p00, node_p00_mm, node_p00_pm, node_p00_mp, node_p00_pp, d_p00_m0, d_p00_p0, d_p00_0m, d_p00_0p);
 #else
-  node_linear_combination lin_p00 = linear_interpolator(node_p00_mm, node_p00_pm,                           d_p00_m0, d_p00_p0);
+    get_linear_interpolator(lin_p00, node_p00_mm, node_p00_pm,                           d_p00_m0, d_p00_p0);
 #endif
-  double f_xx_p00 = lin_p00.calculate_dd(dir::x, f, neighbors);
+    f_xx_p00 = lin_p00.calculate_dd(dir::x, f, neighbors);
+  /*}*/
   return d_forward_quadratic(f_p00, f_000, d_p00, f_xx_000, f_xx_p00);
 }
 double quad_neighbor_nodes_of_node_t::dy_backward_quadratic(const double *f, const my_p4est_node_neighbors_t &neighbors) const
@@ -775,12 +1074,20 @@ double quad_neighbor_nodes_of_node_t::dy_backward_quadratic(const double *f, con
   double f_000, f_0m0, f_0p0;
   y_ngbd_with_quadratic_interpolation(f, f_0m0, f_000, f_0p0);
   const double f_yy_000 = central_second_derivative(f_0p0, f_000, f_0m0, d_0p0, d_0m0);
+  double f_yy_0m0;
+  /*
+  if(linear_interpolators_are_set)
+    linear_interpolator[dir::f_0m0].calculate_dd(dir::y, f, neighbors);
+  else
+  {*/
+    node_linear_combination lin_0m0(1<<(P4EST_DIM-1));
 #ifdef P4_TO_P8
-  node_linear_combination lin_0m0 = linear_interpolator(node_0m0_mm, node_0m0_pm, node_0m0_mp, node_0m0_pp, d_0m0_m0, d_0m0_p0, d_0m0_0m, d_0m0_0p);
+    get_linear_interpolator(lin_0m0, node_0m0_mm, node_0m0_pm, node_0m0_mp, node_0m0_pp, d_0m0_m0, d_0m0_p0, d_0m0_0m, d_0m0_0p);
 #else
-  node_linear_combination lin_0m0 = linear_interpolator(node_0m0_mm, node_0m0_pm,                           d_0m0_m0, d_0m0_p0);
+    get_linear_interpolator(lin_0m0, node_0m0_mm, node_0m0_pm,                           d_0m0_m0, d_0m0_p0);
 #endif
-  double f_yy_0m0 = lin_0m0.calculate_dd(dir::y, f, neighbors);
+    f_yy_0m0 = lin_0m0.calculate_dd(dir::y, f, neighbors);
+  /*}*/
   return d_backward_quadratic(f_000, f_0m0, d_0m0, f_yy_000, f_yy_0m0);
 }
 double quad_neighbor_nodes_of_node_t::dy_forward_quadratic(const double *f, const my_p4est_node_neighbors_t &neighbors) const
@@ -788,12 +1095,20 @@ double quad_neighbor_nodes_of_node_t::dy_forward_quadratic(const double *f, cons
   double f_000, f_0m0, f_0p0;
   y_ngbd_with_quadratic_interpolation(f, f_0m0, f_000, f_0p0);
   const double f_yy_000 = central_second_derivative(f_0p0, f_000, f_0m0, d_0p0, d_0m0);
+  double f_yy_0p0;
+  /*
+  if(linear_interpolators_are_set)
+    linear_interpolator[dir::f_0p0].calculate_dd(dir::y, f, neighbors);
+  else
+  {*/
+    node_linear_combination lin_0p0(1<<(P4EST_DIM-1));
 #ifdef P4_TO_P8
-  node_linear_combination lin_0p0 = linear_interpolator(node_0p0_mm, node_0p0_pm, node_0p0_mp, node_0p0_pp, d_0p0_m0, d_0p0_p0, d_0p0_0m, d_0p0_0p);
+    get_linear_interpolator(lin_0p0, node_0p0_mm, node_0p0_pm, node_0p0_mp, node_0p0_pp, d_0p0_m0, d_0p0_p0, d_0p0_0m, d_0p0_0p);
 #else
-  node_linear_combination lin_0p0 = linear_interpolator(node_0p0_mm, node_0p0_pm,                           d_0p0_m0, d_0p0_p0);
+    get_linear_interpolator(lin_0p0, node_0p0_mm, node_0p0_pm,                           d_0p0_m0, d_0p0_p0);
 #endif
-  double f_yy_0p0 = lin_0p0.calculate_dd(dir::y, f, neighbors);
+    f_yy_0p0 = lin_0p0.calculate_dd(dir::y, f, neighbors);
+  /*}*/
   return d_forward_quadratic(f_0p0, f_000, d_0p0, f_yy_000, f_yy_0p0);
 }
 #ifdef P4_TO_P8
@@ -802,12 +1117,16 @@ double quad_neighbor_nodes_of_node_t::dz_backward_quadratic(const double *f, con
   double f_000, f_00m, f_00p;
   z_ngbd_with_quadratic_interpolation(f, f_00m, f_000, f_00p);
   const double f_zz_000 = central_second_derivative(f_00p, f_000, f_00m, d_00p, d_00m);
-#ifdef P4_TO_P8
-  node_linear_combination lin_00m = linear_interpolator(node_00m_mm, node_00m_pm, node_00m_mp, node_00m_pp, d_00m_m0, d_00m_p0, d_00m_0m, d_00m_0p);
-#else
-  node_linear_combination lin_00m = linear_interpolator(node_00m_mm, node_00m_pm,                           d_00m_m0, d_00m_p0);
-#endif
-  double f_zz_00m = lin_00m.calculate_dd(dir::z, f, neighbors);
+  double f_zz_00m;
+  /*
+  if(linear_interpolators_are_set)
+    linear_interpolator[dir::f_00m].calculate_dd(dir::z, f, neighbors);
+  else
+  {*/
+    node_linear_combination lin_00m(1<<(P4EST_DIM-1));
+    get_linear_interpolator(lin_00m, node_00m_mm, node_00m_pm, node_00m_mp, node_00m_pp, d_00m_m0, d_00m_p0, d_00m_0m, d_00m_0p);
+    f_zz_00m = lin_00m.calculate_dd(dir::z, f, neighbors);
+  /*}*/
   return d_backward_quadratic(f_000, f_00m, d_00m, f_zz_000, f_zz_00m);
 }
 double quad_neighbor_nodes_of_node_t::dz_forward_quadratic(const double *f, const my_p4est_node_neighbors_t &neighbors) const
@@ -815,12 +1134,16 @@ double quad_neighbor_nodes_of_node_t::dz_forward_quadratic(const double *f, cons
   double f_000, f_00m, f_00p;
   z_ngbd_with_quadratic_interpolation(f, f_00m, f_000, f_00p);
   const double f_zz_000 = central_second_derivative(f_00p, f_000, f_00m, d_00p, d_00m);
-#ifdef P4_TO_P8
-  node_linear_combination lin_00p = linear_interpolator(node_00p_mm, node_00p_pm, node_00p_mp, node_00p_pp, d_00p_m0, d_00p_p0, d_00p_0m, d_00p_0p);
-#else
-  node_linear_combination lin_00p = linear_interpolator(node_00p_mm, node_00p_pm,                           d_00p_m0, d_00p_p0);
-#endif
-  double f_zz_00p = lin_00p.calculate_dd(dir::z, f, neighbors);
+  double f_zz_00p;
+  /*
+  if(linear_interpolators_are_set)
+    linear_interpolator[dir::f_00p].calculate_dd(dir::z, f, neighbors);
+  else
+  {*/
+    node_linear_combination lin_00p(1<<(P4EST_DIM-1));
+    get_linear_interpolator(lin_00p, node_00p_mm, node_00p_pm, node_00p_mp, node_00p_pp, d_00p_m0, d_00p_p0, d_00p_0m, d_00p_0p);
+    f_zz_00p = lin_00p.calculate_dd(dir::z, f, neighbors);
+  /*}*/
   return d_forward_quadratic(f_00p, f_000, d_00p, f_zz_000, f_zz_00p);
 }
 #endif

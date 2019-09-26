@@ -321,6 +321,7 @@ int main (int argc, char* argv[]){
     int lmax_original = cmd.get<int>("lmax", 6);
     int ntree             = cmd.get<int>("ntree", 2);
     unsigned int n_fields = cmd.get<unsigned int>("n_fields", P4EST_DIM);
+
     srand(seed);
 
     // sphere of random center in [r, 2-r]^P4EST_DIM or random radius in [r/2, r]
