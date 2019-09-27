@@ -50,7 +50,7 @@
 using namespace std;
 
 // Examples to run:
-int example_ = 0;  // 0 - Ice cube melting in water, 1 - Frank sphere
+int example_ = 2;  // 0 - Ice cube melting in water, 1 - Frank sphere, 2 - water solidifying around cooled cylinder
 
 int method_ = 0; // 0 - Backward Euler, 1 - Crank Nicholson
 
@@ -59,6 +59,10 @@ int method_ = 0; // 0 - Backward Euler, 1 - Crank Nicholson
 // ---------------------------------------
 double xmin; double xmax;
 double ymin; double ymax;
+
+int nx, ny;
+int px, py;
+double box_size; // equivalent width (in x) in meters
 
 // For frank sphere:
 double s0;
@@ -69,29 +73,66 @@ double r0;
 double Twall;
 double Tinterface;
 
+// For solidifying ice problem:
+double r_cyl;
+double T_cyl;
+
 void set_geometry(){
   switch(example_){
-    case 0:
-      xmin = -0.2; xmax = 0.2;
-      ymin = -0.2; ymax = 0.2;
-      r0 = 0.04;
-      Twall = 0.0; Tinterface = -0.5; // 298, 273
-      s0 = 1.65; T_inf = -0.5;
+    case 0: // Ice cube melting
+      xmin = 0.0; xmax = 1.0;
+      ymin = 0.0; ymax = 1.0;
+
+      nx = 1;
+      ny = 1;
+
+      px = 0;
+      py = 1;
+
+      box_size = 0.1;// Equivalent width [in meters]
+      r0 = 0.10; // 0.25
+      Twall = 298.0; Tinterface = 273.0;
+
       break;
 
-    case 1:
+    case 1: // Frank sphere
       xmin = -5.0; xmax = 5.0;
       ymin = -5.0; ymax = 5.0;
+      box_size = 1.0;
+      nx = 1;
+      ny = 1;
+      px = 0; py = 0;
 
       s0 = 1.65;
       T_inf = -0.5;
+      Twall = -0.5;
+      Tinterface = 0.0;
+      break;
+
+    case 2: // Ice layer growing around a constant temperature cooled cylinder
+      xmin = 0.0; xmax = 1.0;
+      ymin = 0.0; ymax = 1.0;
+
+      nx = 1;
+      ny = 1;
+
+      px = 0;
+      py = 1;
+
+      box_size = 0.1;// Equivalent width [in meters]
+      r0 = 0.125; // 0.25
+      r_cyl = 0.10;
+      Twall = 298.0; Tinterface = 273.0;
+      T_cyl = 273.0 - 70.0;
+      // NOTE: TO DO: WILL NEED TO HAVE REFINEMENT CRITERIA AROUND BOTH INTERFACES(?) ... maybe not
+
       break;
     }
 }
 // ---------------------------------------
 // Grid refinement:
 // ---------------------------------------
-int lmin = 5;
+int lmin = 4;
 int lmax = 8;
 // ---------------------------------------
 // Time-stepping:
@@ -108,17 +149,23 @@ double tBC;
 void simulation_time_info(){
   switch(example_){
     case 0:
-      tfinal = 10.0;
-      delta_t = 1.e-2;
-      dt_max_allowed = 1.e-2;
+      tfinal = 3.6e3; // corresponds to 1 hour -- 3600 seconds
+      delta_t = 1.e-1;
+      dt_max_allowed = 1.e2;
       tn = 0.0;
-      tBC = 5.0;
+
       break;
     case 1:
-      tfinal = 1.3;
+      tfinal = 1.5;
       delta_t = 0.01;
       dt_max_allowed = 0.01;
       tn = 1.0;
+      break;
+    case 2:
+      tfinal = 3.6e3;
+      delta_t = 1.e-1;
+      dt_max_allowed = 1.e1;
+      tn = 0.0;
 
     }
 }
@@ -138,6 +185,11 @@ void set_diffusivities(){
       alpha_s = 1.0;
       alpha_l = 1.0;
       break;
+
+    case 2:
+      alpha_s = (1.1820e-6); //ice - [m^2]/s
+      alpha_l = (1.4547e-7); //water- [m^2]/s
+      break;
     }
 }
 
@@ -152,8 +204,8 @@ void set_conductivities(){
     case 0:
        k_s = 2.22; // W/[m*K]
        k_l = 0.608; // W/[m*K]
-       L = 1.0;//334.e3;
-       rho_l = 1000.0;
+       L = 334.e3;  // J/kg
+       rho_l = 1000.0; // kg/m^3
       break;
     case 1:
       k_s = 1.0;
@@ -161,21 +213,34 @@ void set_conductivities(){
       L = 1.0;
       rho_l = 1.0;
       break;
+
+    case 2:
+      k_s = 2.22; // W/[m*K]
+      k_l = 0.608; // W/[m*K]
+      L = 334.e3;  // J/kg
+      rho_l = 1000.0; // kg/m^3
+      break;
     }
 }
 // ---------------------------------------
 // Other parameters:
 // ---------------------------------------
-double cfl = 0.1;
-double v_int_max_allowed = 500.0;
+double cfl = 0.5;
+double v_int_max_allowed = 250.0;
 
 bool move_interface_with_v_external = false;
 
-bool do_advection = false;
+bool do_advection = true;
 
 bool output_information = true;
 
-bool save_temperature_derivative_fields = true;
+bool check_temperature_values = true;
+
+bool check_derivative_values = true;
+
+bool check_interfacial_velocity = true;
+
+bool save_temperature_derivative_fields = false;
 
 
 // Begin defining classes for necessary functions and boundary conditions...
@@ -276,8 +341,9 @@ public:
   double operator() (DIM(double x, double y, double z)) const
   {
     switch (example_){
-      case 0: return r0 - sqrt(SQR(x) + SQR(y));
+      case 0: return r0 - sqrt(SQR(x - (xmax/2.0)) + SQR(y - (ymax/2.0)));
       case 1: return 1.65 - sqrt(SQR(x) + SQR(y));
+      case 2: return r0 - sqrt(SQR(x - (xmax/2.0)) + SQR(y - (ymax/2.0)));
       default: throw std::invalid_argument("You must choose an example type\n");
       }
 
@@ -288,7 +354,11 @@ struct MINI_LEVEL_SET : CF_DIM {
 public:
   double operator() (DIM(double x, double y, double z)) const
   {
-    return 0.15 - sqrt(SQR(x) + SQR(y));
+    switch(example_){
+      case 0: throw std::invalid_argument("This option may not be used for the particular example being called");
+      case 1: throw std::invalid_argument("This option may not be used for the particular example being called");
+      case 2: return r_cyl - sqrt(SQR(x - (xmax/2.0)) + SQR(y - (ymax/2.0)));
+      }
   }
 } mini_level_set;
 
@@ -297,7 +367,7 @@ public:
 // --------------------------------------------------------------------------------------------------------------
 struct u_advance : CF_DIM
 { double operator() (double x, double y) const{
-  return 0.5;
+  return 4.e-2;
   }
 
 } u_adv;
@@ -320,21 +390,30 @@ void interface_bc(){ //-- Call this function before setting interface bc in solv
       break;
     case 1:
       interface_bc_type_temp = DIRICHLET;
+      break;
+    case 2:
+      interface_bc_type_temp = DIRICHLET;
+
+    }
+}
+
+BoundaryConditionType inner_interface_bc_type_temp;
+void inner_interface_bc(){ //-- Call this function before setting interface bc in solver to get the interface bc type depending on the example
+  switch(example_){
+    case 0: throw std::invalid_argument("This option may not be used for the particular example being called");
+    case 1: throw std::invalid_argument("This option may not be used for the particular example being called");
+    case 2:
+      inner_interface_bc_type_temp = DIRICHLET;
+      break;
+
     }
 }
 
 class BC_interface_value: public CF_DIM{
 public:
   double operator()(double x, double y) const
-  { switch (example_){
-      case 0 : return Tinterface;
-
-      case 1:
-/*        double r = sqrt(SQR(x) + SQR(y));
-        double sval = s(r, tn +dt);
-        return frank_sphere_solution_t(sval)*/
-        return 0.0;
-      }
+  {
+    return Tinterface;
   }
 }bc_interface_val;
 
@@ -344,9 +423,25 @@ public:
   { switch(example_){
       case 0: return 1.0;
       case 1: return 1.0; // maybe this should be 0?
+      case 2: return 1.0;
       }
   }
 }bc_interface_coeff;
+
+class BC_interface_value_inner: public CF_DIM{
+public:
+  double operator()(double x, double y) const
+  {
+    return T_cyl;
+  }
+}bc_interface_val_inner;
+
+class BC_interface_coeff_inner: public CF_DIM{
+public:
+  double operator()(double x, double y) const
+  { return 1.0;
+  }
+}bc_interface_coeff_inner;
 
 
 // --------------------------------------------------------------------------------------------------------------
@@ -360,6 +455,7 @@ public:
     switch(example_){
       case 0: return DIRICHLET;
       case 1: return DIRICHLET;
+      case 2: return DIRICHLET;
       }
   }
 } wall_bc_type_temp;
@@ -369,29 +465,14 @@ class WALL_BC_VALUE_TEMP: public CF_DIM
 public:
   double operator()(DIM(double x, double y, double z)) const
   {
-
-
     if ((fabs(y-ymax)<EPS) || (fabs(y-ymin)<EPS) || (fabs(x-xmin)<EPS) || (fabs(x-xmax)<EPS)){
         if (level_set(DIM(x,y,z)) < EPS){
-            switch(example_){
-              case 0:
-                //if (tn<tBC){return Tinterface + (Twall - Tinterface)*(tn/tBC);}
-                //else return Twall;
-                return Twall;
-
-              case 1: return -0.5; // NEED TO FIND USING ANALYTICAL SOLUTION OF FRANK SPHERE
-              }
+            return Twall;
           }
         else{
-            switch(example_){
-              case 0: return Tinterface;
-              case 1: return 0.0;
-              }
+            return Tinterface;
             }
       }
-//    if ((fabs(y) < EPS) && (fabs(x) < EPS)){ // Center of domain -- inside solid domain
-//      return 273.0;
-//    }
   }
 } wall_bc_value_temp;
 
@@ -404,6 +485,8 @@ public:
   double operator() (DIM(double x, double y, double z)) const
   {
     double m;
+    double r;
+    double sval;
     if (level_set(DIM(x,y,z)) > EPS){
 
         switch(example_){
@@ -411,21 +494,26 @@ public:
             //m = (Twall - Tinterface)/(level_set(DIM(xmin,ymin,z)));
             return Tinterface; //+ m*level_set(DIM(x,y,z));
           case 1:
-            double r = sqrt(SQR(x) + SQR(y));
-            double sval = s(r,tn);
+            r = sqrt(SQR(x) + SQR(y));
+            sval = s(r,tn);
             return frank_sphere_solution_t(sval); //CALCULATE WHAT IT SHOULD BE?
+          case 2:
+            return Tinterface;
+
           }
       }
     else{
         switch(example_){
           case 0:
-            //m = (Twall - Tinterface)/(level_set(DIM(xmin,ymin,z)));
-            //return Tinterface+ m*level_set(DIM(x,y,z));
-            return Twall;
+            m = (Twall - Tinterface)/(level_set(DIM(xmin,ymin,z)));
+            return Tinterface + m*level_set(DIM(x,y,z));
           case 1:
-            double r = sqrt(SQR(x) + SQR(y));
-            double sval = s(r,tn);
+            r = sqrt(SQR(x) + SQR(y));
+            sval = s(r,tn);
             return frank_sphere_solution_t(sval);
+          case 2:
+            m = (Twall - Tinterface)/(level_set(DIM(xmin,ymin,z)));
+            return Tinterface + m*level_set(DIM(x,y,z));
           }
       }
   }
@@ -454,14 +542,18 @@ class INITIAL_CONDITION_TEMP_SOLID: public CF_DIM
 public:
   double operator() (DIM(double x, double y, double z)) const
   {
+    double r;
+    double sval;
     switch(example_){
       case 0:
         return Tinterface;
 
       case 1:
-        double r = sqrt(SQR(x) + SQR(y));
-        double sval = s(r,tn);
+        r = sqrt(SQR(x) + SQR(y));
+         sval = s(r,tn);
         return frank_sphere_solution_t(sval);
+      case 2:
+        return Tinterface;
       }
   }
 }IC_temp_solid;
@@ -469,44 +561,270 @@ public:
 // --------------------------------------------------------------------------------------------------------------
 // Function for checking the temperature values during the solution process
 // --------------------------------------------------------------------------------------------------------------
-vector <double> check_T_values(vec_and_ptr_t phi, vec_and_ptr_t T, p4est_nodes* nodes) {
+void check_T_values(vec_and_ptr_t phi, vec_and_ptr_t T, p4est_nodes* nodes, p4est_t* p4est, int example, vec_and_ptr_t phi_cyl) {
+  T.get_array();
+  phi.get_array();
+  if (example_ == 2) phi_cyl.get_array();
 
-  vector <double> T_values;
+  double avg_T = 0.0;
+  double max_T = 0.;
+  double min_T = 1.e10;
+  double min_mag_T = 1.e10;
 
-  double t_norm = 0.0;
+  int pts_avg = 0;
 
-  int pts = 0;
+  bool in_domain;
 
-  double t_max = 0.0;
+  // Make sure phi_cyl is defined if we are running an example where it is required:
+  if(example_ ==2 && phi_cyl.ptr == NULL){
+      throw std::invalid_argument("You must provide a phi_cylinder vector to run example 2 \n");
+    }
 
-  double t_min_signed = 1000.00;
+  // Loop over each node, check if node is in the subdomain we are considering. If so, compute average,max, and min values for the domain
+  foreach_local_node(n,nodes){
 
-  double t_min = 1000.0;
+    // Check if the node is in the domain we are checking:
+    if (example_ ==2 ){
+        phi.ptr[n] < EPS && phi_cyl.ptr[n] < EPS ? in_domain = true : in_domain = false;
+      }
+    else{
+        phi.ptr[n] < EPS ? in_domain = true : in_domain = false;
+      }
+    // Compute required values:
+    if (in_domain){
+      avg_T+=T.ptr[n];
+      pts_avg ++;
 
-  phi.get_array(); T.get_array();
+      max_T = max(max_T,T.ptr[n]);
+      min_T = min(min_T,T.ptr[n]);
 
-  foreach_node(n,nodes){
-    if(phi.ptr[n]<EPS){
-        pts++;
-        t_norm +=SQR(T.ptr[n]);
-        t_max = max(t_max,fabs(T.ptr[n]));
-        t_min = min(t_min,fabs(T.ptr[n]));
-        t_min_signed = min(t_min_signed,T.ptr[n]);
+      min_mag_T = min(min_mag_T,fabs(T.ptr[n]));
       }
   }
 
-  phi.restore_array();
+  // Use MPI_Allreduce to get the values on a global scale, not just on one process:
+  double global_avg_T = 0.0;
+  double global_max_T = 0.;
+  double global_min_T = 1.e10;
+  double global_min_mag_T = 1.e10;
+
+  int global_pts_avg = 0;
+
+  MPI_Allreduce(&avg_T,&global_avg_T,1,MPI_DOUBLE,MPI_SUM,p4est->mpicomm);
+  MPI_Allreduce(&pts_avg,&global_pts_avg,1,MPI_INT,MPI_SUM,p4est->mpicomm);
+
+  global_avg_T/=global_pts_avg;
+
+  MPI_Allreduce(&max_T,&global_max_T,1,MPI_DOUBLE,MPI_MAX,p4est->mpicomm);
+  MPI_Allreduce(&min_T,&global_min_T,1,MPI_DOUBLE,MPI_MIN,p4est->mpicomm);
+  MPI_Allreduce(&min_mag_T,&global_min_mag_T,1,MPI_DOUBLE,MPI_MIN,p4est->mpicomm);
+
+  PetscPrintf(p4est->mpicomm,"\n");
+  PetscPrintf(p4est->mpicomm,"Average temperature: %0.2f \n",global_avg_T);
+  PetscPrintf(p4est->mpicomm,"Maximum temperature: %0.2f \n",global_max_T);
+  PetscPrintf(p4est->mpicomm,"Minimum temperature: %0.2f \n",global_min_T);
+  PetscPrintf(p4est->mpicomm,"Minimum temperature magnitude: %0.2f \n",global_min_mag_T);
+
   T.restore_array();
-  t_norm = sqrt(t_norm/pts);
-
-  T_values.push_back(t_norm);
-  T_values.push_back(t_max);
-  T_values.push_back(t_min);
-  T_values.push_back(t_min_signed);
-
-  return T_values;
+  phi.restore_array();
+  if(example_ ==2) phi_cyl.restore_array();
 
 }
+
+void check_T_d_values(vec_and_ptr_t phi, vec_and_ptr_dim_t dT, p4est_nodes* nodes, p4est_t* p4est, bool get_location){
+  dT.get_array();
+  phi.get_array();
+
+  foreach_dimension(d){
+    double avg_dT = 0.0;
+    double max_dT = 0.;
+    double min_dT = 1.e10;
+    double min_mag_dT = 1.e10;
+
+    int pts_avg = 0;
+
+    foreach_local_node(n,nodes){
+      avg_dT+=dT.ptr[d][n];
+      pts_avg ++;
+
+      max_dT = max(max_dT,dT.ptr[d][n]);
+      min_dT = min(min_dT,dT.ptr[d][n]);
+
+      min_mag_dT = min(min_mag_dT,fabs(dT.ptr[d][n]));
+    }
+    double global_avg_dT = 0.0;
+    double global_max_dT = 0.;
+    double global_min_dT = 1.e10;
+    double global_min_mag_dT = 1.e10;
+
+    int global_pts_avg = 0;
+
+    MPI_Allreduce(&avg_dT,&global_avg_dT,1,MPI_DOUBLE,MPI_SUM,p4est->mpicomm);
+    MPI_Allreduce(&pts_avg,&global_pts_avg,1,MPI_INT,MPI_SUM,p4est->mpicomm);
+
+    global_avg_dT/=global_pts_avg;
+
+    MPI_Allreduce(&max_dT,&global_max_dT,1,MPI_DOUBLE,MPI_MAX,p4est->mpicomm);
+    MPI_Allreduce(&min_dT,&global_min_dT,1,MPI_DOUBLE,MPI_MIN,p4est->mpicomm);
+    MPI_Allreduce(&min_mag_dT,&global_min_mag_dT,1,MPI_DOUBLE,MPI_MIN,p4est->mpicomm);
+
+    PetscPrintf(p4est->mpicomm,"\n");
+    if(d==0) PetscPrintf(p4est->mpicomm,"In x direction: \n{\n");
+    else PetscPrintf(p4est->mpicomm,"In y direction: \n{\n");
+
+    PetscPrintf(p4est->mpicomm,"Average: %0.2f \n",global_avg_dT);
+    PetscPrintf(p4est->mpicomm,"Maximum: %0.2f \n",global_max_dT);
+    PetscPrintf(p4est->mpicomm,"Minimum: %0.2f \n",global_min_dT);
+    PetscPrintf(p4est->mpicomm,"Minimum magnitude: %0.2f \n",global_min_mag_dT);
+
+    // See what the location is of the min and max values:
+    if (get_location){
+        double xyz_min[P4EST_DIM];
+        double xyz_max[P4EST_DIM];
+        double rmin;
+        double rmax;
+        foreach_local_node(n,nodes){
+          if ((dT.ptr[d][n] <= global_max_dT + EPS) && (dT.ptr[d][n] >= global_max_dT - EPS)){
+              node_xyz_fr_n(n,p4est,nodes,xyz_max);
+              rmax = sqrt(SQR(xyz_max[0]) + SQR(xyz_max[1]));
+              PetscPrintf(p4est->mpicomm,"Maximum value occurs at (%0.2f, %0.2f), on r = %0.2f \n",xyz_max[0],xyz_max[1],rmax);
+
+            }
+
+          if ((dT.ptr[d][n] <= global_min_dT + EPS) && (dT.ptr[d][n] >= global_min_dT - EPS)){
+              node_xyz_fr_n(n,p4est,nodes,xyz_min);
+              rmin = sqrt(SQR(xyz_min[0]) + SQR(xyz_min[1]));
+
+              PetscPrintf(p4est->mpicomm,"Minimum value occurs at (%0.2f, %0.2f), on r = %0.2f \n",xyz_min[0],xyz_min[1],rmin);
+
+            }
+        }}
+
+
+
+}
+  dT.restore_array();
+  phi.restore_array();
+}
+
+void check_vel_values(vec_and_ptr_t phi, vec_and_ptr_dim_t vel, p4est_nodes* nodes, p4est_t* p4est, bool get_location,double dxyz_close_to_interface){
+  vel.get_array();
+  phi.get_array();
+
+  // Check directional info:
+  foreach_dimension(d){
+    double avg_vel = 0.0;
+    double max_vel = 0.;
+    double min_vel = 1.e10;
+    double min_mag_vel = 1.e10;
+
+    int pts_avg = 0;
+
+    foreach_local_node(n,nodes){
+      if(fabs(phi.ptr[n]) < dxyz_close_to_interface){
+        avg_vel+=vel.ptr[d][n];
+        pts_avg ++;
+
+        max_vel = max(max_vel,vel.ptr[d][n]);
+        min_vel = min(min_vel,vel.ptr[d][n]);
+
+        min_mag_vel = min(min_mag_vel,fabs(vel.ptr[d][n]));
+      }
+    }
+    double global_avg_vel = 0.0;
+    double global_max_vel = 0.;
+    double global_min_vel = 1.e10;
+    double global_min_mag_vel = 1.e10;
+
+    int global_pts_avg = 0;
+
+    MPI_Allreduce(&avg_vel,&global_avg_vel,1,MPI_DOUBLE,MPI_SUM,p4est->mpicomm);
+    MPI_Allreduce(&pts_avg,&global_pts_avg,1,MPI_INT,MPI_SUM,p4est->mpicomm);
+
+    global_avg_vel/=global_pts_avg;
+
+    MPI_Allreduce(&max_vel,&global_max_vel,1,MPI_DOUBLE,MPI_MAX,p4est->mpicomm);
+    MPI_Allreduce(&min_vel,&global_min_vel,1,MPI_DOUBLE,MPI_MIN,p4est->mpicomm);
+    MPI_Allreduce(&min_mag_vel,&global_min_mag_vel,1,MPI_DOUBLE,MPI_MIN,p4est->mpicomm);
+
+    PetscPrintf(p4est->mpicomm,"\n");
+    if(d==0) PetscPrintf(p4est->mpicomm,"In x direction: \n{\n");
+    else PetscPrintf(p4est->mpicomm,"In y direction: \n{\n");
+
+    PetscPrintf(p4est->mpicomm,"Average: %0.2e \n",global_avg_vel);
+    PetscPrintf(p4est->mpicomm,"Maximum: %0.2e \n",global_max_vel);
+    PetscPrintf(p4est->mpicomm,"Minimum: %0.2e \n",global_min_vel);
+    PetscPrintf(p4est->mpicomm,"Minimum magnitude: %0.2e \n",global_min_mag_vel);
+
+    // See what the location is of the min and max values:
+    if (get_location){
+        double xyz_min[P4EST_DIM];
+        double xyz_max[P4EST_DIM];
+        double rmin;
+        double rmax;
+        foreach_local_node(n,nodes){
+          if ((vel.ptr[d][n] <= global_max_vel + EPS) && (vel.ptr[d][n] >= global_max_vel - EPS)){
+              node_xyz_fr_n(n,p4est,nodes,xyz_max);
+              rmax = sqrt(SQR(xyz_max[0]) + SQR(xyz_max[1]));
+              PetscPrintf(p4est->mpicomm,"Maximum value occurs at (%0.2f, %0.2f), on r = %0.2f \n",xyz_max[0],xyz_max[1],rmax);
+
+            }
+
+          if ((vel.ptr[d][n] <= global_min_vel + EPS) && (vel.ptr[d][n] >= global_min_vel - EPS)){
+              node_xyz_fr_n(n,p4est,nodes,xyz_min);
+              rmin = sqrt(SQR(xyz_min[0]) + SQR(xyz_min[1]));
+
+              PetscPrintf(p4est->mpicomm,"Minimum value occurs at (%0.2f, %0.2f), on r = %0.2f \n",xyz_min[0],xyz_min[1],rmin);
+
+            }
+        }}
+
+
+
+}
+
+  // Now check the norms:
+  double avg_vel = 0.0;
+  double max_vel = 0.;
+  double min_vel = 1.e10;
+
+  int pts_avg = 0;
+
+  foreach_local_node(n,nodes){
+    if(fabs(phi.ptr[n])<dxyz_close_to_interface){
+      double local_vel = sqrt(SQR(vel.ptr[0][n]) + SQR(vel.ptr[1][n]));
+      avg_vel+=local_vel;
+      pts_avg ++;
+
+      max_vel = max(max_vel,local_vel);
+      min_vel = min(min_vel,local_vel);
+    }
+  }
+
+  double global_avg_vel = 0.0;
+  double global_max_vel = 0.;
+  double global_min_vel = 1.e10;
+
+  int global_pts_avg = 0;
+
+  MPI_Allreduce(&avg_vel,&global_avg_vel,1,MPI_DOUBLE,MPI_SUM,p4est->mpicomm);
+  MPI_Allreduce(&pts_avg,&global_pts_avg,1,MPI_INT,MPI_SUM,p4est->mpicomm);
+
+  global_avg_vel/=global_pts_avg;
+
+  MPI_Allreduce(&max_vel,&global_max_vel,1,MPI_DOUBLE,MPI_MAX,p4est->mpicomm);
+  MPI_Allreduce(&min_vel,&global_min_vel,1,MPI_DOUBLE,MPI_MIN,p4est->mpicomm);
+
+  PetscPrintf(p4est->mpicomm,"2 norm info: \n{\n");
+
+  PetscPrintf(p4est->mpicomm,"Average: %0.2e \n",global_avg_vel);
+  PetscPrintf(p4est->mpicomm,"Maximum: %0.2e \n",global_max_vel);
+  PetscPrintf(p4est->mpicomm,"Minimum: %0.2e \n",global_min_vel);
+
+  vel.restore_array();
+  phi.restore_array();
+}
+
 
 // --------------------------------------------------------------------------------------------------------------
 // Function for checking the error in the Frank sphere solution:
@@ -623,7 +941,8 @@ int main(int argc, char** argv) {
   parStopWatch w;
   w.start("Running example: multialloy_with_fluids");
 
-  // -----------------------------------------------
+
+ // -----------------------------------------------
   // Set up grid structure and partition:
   // -----------------------------------------------
   // p4est variables
@@ -640,13 +959,15 @@ int main(int argc, char** argv) {
 
   // domain size information
   set_geometry();
-  const int n_xyz[]      = { 1,  1,  0};
+  const int n_xyz[]      = { nx,  ny,  0};
   const double xyz_min[] = {xmin, ymin, 0};
   const double xyz_max[] = {xmax,  ymax,  0};
-  const int periodic[]   = { 0,  0,  0};
+  const int periodic[]   = { px,  py,  0};
 
   // Get the simulation time info (it is example dependent):
   simulation_time_info();
+
+
 
   // -----------------------------------------------
   // Set properties for the Poisson node problem:
@@ -659,6 +980,27 @@ int main(int argc, char** argv) {
   set_conductivities();
 
   interface_bc();
+
+  // -----------------------------------------------
+  // Scale the problem appropriately:
+  // -----------------------------------------------
+  double scaling = 1.0/box_size;
+  rho_l/=(scaling*scaling*scaling);
+  k_s/=scaling;
+  k_l/=scaling;
+  L/=(scaling*scaling*scaling);
+
+  alpha_l*=(scaling*scaling);
+  alpha_s*=(scaling*scaling);
+  PetscPrintf(mpi.comm(),"\n -------------------------------------------\n");
+  PetscPrintf(mpi.comm(),"Scaling is : %0.2e \n",scaling);
+  PetscPrintf(mpi.comm(),"\n Properties once scaled: \n");
+  PetscPrintf(mpi.comm(),"kl = %0.2e \n",k_l);
+  PetscPrintf(mpi.comm(),"ks = %0.2e \n",k_s);
+  PetscPrintf(mpi.comm(),"alpha_l = %0.2e \n",alpha_l);
+  PetscPrintf(mpi.comm(),"alpha_s = %0.2e \n",alpha_s);
+  PetscPrintf(mpi.comm(),"rho_l = %0.2e \n",rho_l);
+  PetscPrintf(mpi.comm(),"L = %0.2e \n",L);
 
 
   // -----------------------------------------------
@@ -698,12 +1040,20 @@ int main(int argc, char** argv) {
   phi.create(p4est,nodes);
   sample_cf_on_nodes(p4est,nodes,level_set,phi.vec);
 
-  // LSF for solid domain:
+  // LSF for solid domain: -- This will be assigned within the loop as the negative of phi
   vec_and_ptr_t phi_solid;
+
+  // LSF for the inner cylinder, if applicable (example 2):
+  vec_and_ptr_t phi_cylinder;
+  if(example_ == 2){
+      phi_cylinder.create(phi.vec);
+      sample_cf_on_nodes(p4est,nodes,mini_level_set,phi_cylinder.vec);
+    }
 
   // 2nd derivatives of LSF's
   vec_and_ptr_dim_t phi_dd;
   vec_and_ptr_dim_t phi_solid_dd;
+  vec_and_ptr_dim_t phi_cylinder_dd;
 
   // -----------------------------------------------
   // Initialize the Velocity field:
@@ -729,7 +1079,7 @@ int main(int argc, char** argv) {
   // Vectors for T_liquid:
   vec_and_ptr_t T_l_n;
   T_l_n.create(p4est,nodes);
-  sample_cf_on_nodes(p4est,nodes,IC_temp_liquid,T_l_n.vec); // Sample this just so that we can save the initial temperature distribution
+  sample_cf_on_nodes(p4est,nodes,IC_temp,T_l_n.vec); // Sample this just so that we can save the initial temperature distribution
   vec_and_ptr_t rhs_Tl;
 
   // Vectors for T_solid:
@@ -806,7 +1156,6 @@ int main(int argc, char** argv) {
   dt = delta_t;
 
   for (tn;tn<tfinal; tn+=dt, tstep++){
-//      if (tstep > 5) break; // E: TIMESTEP BREAK
       PetscPrintf(mpi.comm(),"\n -------------------------------------------\n");
       ierr = PetscPrintf(mpi.comm(),"Iteration %d , Time: %0.3f \n ------------------------------------------- \n",tstep,tn);
       ierr = PetscPrintf(mpi.comm(),"\n Previous interfacial velocity (max norm) is %0.2f \n",global_max_v_norm);
@@ -822,9 +1171,9 @@ int main(int argc, char** argv) {
 
 
       double min_volume_ = MULTD(dxyz_smallest[0], dxyz_smallest[1], dxyz_smallest[2]);
-      double extension_band_use_    = 16.*pow(min_volume_, 1./ double(P4EST_DIM)); //8
-      double extension_band_extend_ = 32.*pow(min_volume_, 1./ double(P4EST_DIM)); //10
-      double extension_band_check_  = 12.*pow(min_volume_, 1./ double(P4EST_DIM)); // 6
+      double extension_band_use_    = 8.*pow(min_volume_, 1./ double(P4EST_DIM)); //8
+      double extension_band_extend_ = 10.*pow(min_volume_, 1./ double(P4EST_DIM)); //10
+      double extension_band_check_  = 6.*pow(min_volume_, 1./ double(P4EST_DIM)); // 6
 
 
       PetscPrintf(mpi.comm(),"\n ");
@@ -852,47 +1201,22 @@ int main(int argc, char** argv) {
       VecCopyGhost(phi.vec,phi_solid.vec);
       VecScaleGhost(phi.vec,-1.0);
 
-      vector <double> T_values;
+      if(check_temperature_values){
+        // Check Temperature values:
+        PetscPrintf(mpi.comm(),"\n Checking temperature values before field extension: \n [ ");
+        PetscPrintf(mpi.comm(),"\nIn fluid domain: ");
+        check_T_values(phi,T_l_n,nodes,p4est, example_,phi_cylinder);
+        PetscPrintf(mpi.comm(),"\nIn solid domain: ");
+        check_T_values(phi_solid,T_s_n,nodes,p4est,example_,phi_cylinder);
+        PetscPrintf(mpi.comm()," ] \n");
+        }
 
-      if (output_information){
-        T_values = check_T_values(phi,T_l_n,nodes);
-
-        MPI_Barrier(mpi.comm());
-        for (int i=0; i<4; i++){
-            mpi_ret = MPI_Allreduce(MPI_IN_PLACE,&T_values[i],1,MPI_DOUBLE,MPI_MAX,mpi.comm());
-            SC_CHECK_MPI(mpi_ret);
-          }
-
-
-        PetscPrintf(mpi.comm(),"\n");
-        PetscPrintf(mpi.comm(),"Before extending ----------:");
-        PetscPrintf(mpi.comm(),"\n");
-
-        PetscPrintf(mpi.comm(),"Tl data: \n");
-        PetscPrintf(mpi.comm(),"norm : %0.2f \n",T_values[0]);
-        PetscPrintf(mpi.comm(),"max magnitude: %0.2f \n",T_values[1]);
-        PetscPrintf(mpi.comm(),"min magnitude: %0.2f \n",T_values[2]);
-        PetscPrintf(mpi.comm(),"min value: %0.2f \n",T_values[3]);
-
-        T_values = check_T_values(phi_solid,T_s_n,nodes);
-        MPI_Barrier(mpi.comm());
-        for (int i=0; i<4; i++){
-            mpi_ret = MPI_Allreduce(MPI_IN_PLACE,&T_values[i],1,MPI_DOUBLE,MPI_MAX,mpi.comm());
-            SC_CHECK_MPI(mpi_ret);
-          }
-
-        PetscPrintf(mpi.comm(),"Ts data: \n");
-        PetscPrintf(mpi.comm(),"norm : %0.2f \n",T_values[0]);
-        PetscPrintf(mpi.comm(),"max magnitude: %0.2f \n",T_values[1]);
-        PetscPrintf(mpi.comm(),"min magnitude: %0.2f \n",T_values[2]);
-        PetscPrintf(mpi.comm(),"min value: %0.2f \n",T_values[3]);
-
-    }
       // --------------------------------------------------------------------------------------------------------------
       // Save before extension to compare with after extension data:
       // Get derivatives of the temperature fields for saving and for computing the jump up ahead:
+      /*
+
       T_l_d.create(p4est,nodes); T_s_d.create(T_l_d.vec);
-      PetscPrintf(mpi.comm(),"fields created \n");
 
       ngbd->first_derivatives_central(T_l_n.vec,T_l_d.vec);
       ngbd->first_derivatives_central(T_s_n.vec,T_s_d.vec);
@@ -950,6 +1274,7 @@ int main(int argc, char** argv) {
 
       T_l_d.destroy();
       T_s_d.destroy();
+      */
       //-------------------------------------------
 
       // Get second derivatives of both LSFs:
@@ -967,14 +1292,11 @@ int main(int argc, char** argv) {
       compute_normals(*ngbd,phi_solid.vec,solid_normals.vec);
 
       // Extend Temperature Fields across the interface:
-      ls.extend_Over_Interface_TVD_Full(phi.vec, T_l_n.vec, 50, 2, 1.e-9, extension_band_use_, extension_band_extend_, extension_band_check_, liquid_normals.vec, NULL, NULL, false, NULL, NULL);
+      ls.extend_Over_Interface_TVD_Full(phi.vec, T_l_n.vec, 50, 1, 1.e-9, extension_band_use_, extension_band_extend_, extension_band_check_, liquid_normals.vec, NULL, NULL, false, NULL, NULL);
 
-      ls.extend_Over_Interface_TVD_Full(phi_solid.vec, T_s_n.vec, 50, 2, 1.e-9, extension_band_use_, extension_band_extend_, extension_band_check_, solid_normals.vec, NULL, NULL, false, NULL, NULL);
-
+      ls.extend_Over_Interface_TVD_Full(phi_solid.vec, T_s_n.vec, 50, 1, 1.e-9, extension_band_use_, extension_band_extend_, extension_band_check_, solid_normals.vec, NULL, NULL, false, NULL, NULL);
 
       // Delete data for normals since it is no longer needed:
-      //liquid_normals.destroy();
-      //solid_normals.destroy();
       T_l_d.destroy();
       T_s_d.destroy();
       T_l_dd.destroy();
@@ -983,36 +1305,14 @@ int main(int argc, char** argv) {
       solid_normals.destroy();
 
 
-      if (output_information) {
-        PetscPrintf(mpi.comm(),"\n");
-        PetscPrintf(mpi.comm(),"After extending ----------:");
-        PetscPrintf(mpi.comm(),"\n");
-
-        T_values = check_T_values(phi,T_l_n,nodes);
-        MPI_Barrier(mpi.comm());
-        for (int i=0; i<4; i++){
-            mpi_ret = MPI_Allreduce(MPI_IN_PLACE,&T_values[i],1,MPI_DOUBLE,MPI_MAX,mpi.comm());
-            SC_CHECK_MPI(mpi_ret);
-          }
-        PetscPrintf(mpi.comm(),"Tl data: \n");
-        PetscPrintf(mpi.comm(),"norm : %0.2f \n",T_values[0]);
-        PetscPrintf(mpi.comm(),"max magnitude: %0.2f \n",T_values[1]);
-        PetscPrintf(mpi.comm(),"min magnitude: %0.2f \n",T_values[2]);
-        PetscPrintf(mpi.comm(),"min value: %0.2f \n",T_values[3]);
-
-        T_values = check_T_values(phi_solid,T_s_n,nodes);
-        MPI_Barrier(mpi.comm());
-        MPI_Barrier(mpi.comm());
-        for (int i=0; i<4; i++){
-            mpi_ret = MPI_Allreduce(MPI_IN_PLACE,&T_values[i],1,MPI_DOUBLE,MPI_MAX,mpi.comm());
-            SC_CHECK_MPI(mpi_ret);
-          }
-
-        PetscPrintf(mpi.comm(),"Ts data: \n");
-        PetscPrintf(mpi.comm(),"norm : %0.2f \n",T_values[0]);
-        PetscPrintf(mpi.comm(),"max magnitude: %0.2f \n",T_values[1]);
-        PetscPrintf(mpi.comm(),"min magnitude: %0.2f \n",T_values[2]);
-        PetscPrintf(mpi.comm(),"min value: %0.2f \n",T_values[3]);
+      if (check_temperature_values){
+        // Check Temperature values:
+        PetscPrintf(mpi.comm(),"\n Checking temperature values after field extension: \n [ ");
+        PetscPrintf(mpi.comm(),"\nIn fluid domain: ");
+        check_T_values(phi,T_l_n,nodes,p4est,example_,phi_cylinder);
+        PetscPrintf(mpi.comm(),"\nIn solid domain: ");
+        check_T_values(phi_solid,T_s_n,nodes,p4est,example_,phi_cylinder);
+        PetscPrintf(mpi.comm()," ] \n");
         }
 
 
@@ -1024,89 +1324,14 @@ int main(int argc, char** argv) {
       ngbd->first_derivatives_central(T_s_n.vec,T_s_d.vec);
 
 
-      if(output_information){
-        // Get arrays:
-        T_l_d.get_array();
-        T_s_d.get_array();
-        phi.get_array();
-
-        double T_l_d_x = 0.0;
-        double T_l_d_y = 0.0;
-
-        double T_s_d_x = 0.0;
-        double T_s_d_y = 0.0;
-
-        double max_Tl_deriv = 0.0;
-        double max_Ts_deriv = 0.0;
-
-        int pts_T = 0;
-
-        foreach_local_node(n,nodes){
-          if (fabs(phi.ptr[n]) < dxyz_close_to_interface){
-            pts_T++;
-            T_l_d_x += T_l_d.ptr[0][n];
-            T_l_d_y += T_l_d.ptr[1][n];
-
-            T_s_d_x += T_s_d.ptr[0][n];
-            T_s_d_y += T_s_d.ptr[1][n];
-
-            max_Tl_deriv = max(max_Tl_deriv,fabs(T_l_d.ptr[0][n]));
-            max_Tl_deriv = max(max_Tl_deriv,fabs(T_l_d.ptr[1][n]));
-            max_Ts_deriv = max(max_Ts_deriv,fabs(T_s_d.ptr[0][n]));
-            max_Ts_deriv = max(max_Ts_deriv,fabs(T_s_d.ptr[1][n]));
-            }
-        }
-
-        // Restore arrays:
-        phi.restore_array();
-        T_l_d.restore_array();
-        T_s_d.restore_array();
-
-
-        MPI_Barrier(mpi.comm());
-        mpi_ret = MPI_Allreduce(MPI_IN_PLACE,&pts_T,1,MPI_INT,MPI_SUM,mpi.comm());
-        SC_CHECK_MPI(mpi_ret);
-
-        mpi_ret = MPI_Allreduce(MPI_IN_PLACE,&T_l_d_x,1,MPI_DOUBLE,MPI_SUM,mpi.comm());
-        SC_CHECK_MPI(mpi_ret);
-
-        MPI_Barrier(mpi.comm());
-        mpi_ret = MPI_Allreduce(MPI_IN_PLACE,&T_l_d_y,1,MPI_DOUBLE,MPI_SUM,mpi.comm());
-        SC_CHECK_MPI(mpi_ret);
-
-        MPI_Barrier(mpi.comm());
-        mpi_ret = MPI_Allreduce(MPI_IN_PLACE,&T_s_d_x,1,MPI_DOUBLE,MPI_SUM,mpi.comm());
-        SC_CHECK_MPI(mpi_ret);
-
-        MPI_Barrier(mpi.comm());
-        mpi_ret = MPI_Allreduce(MPI_IN_PLACE,&T_s_d_y,1,MPI_DOUBLE,MPI_SUM,mpi.comm());
-        SC_CHECK_MPI(mpi_ret);
-
-        T_l_d_x/=pts_T;
-        T_l_d_y/=pts_T;
-
-        T_s_d_x/=pts_T;
-        T_s_d_y/=pts_T;
-
-        MPI_Barrier(mpi.comm());
-        mpi_ret = MPI_Allreduce(MPI_IN_PLACE,&max_Tl_deriv,1,MPI_DOUBLE,MPI_MAX,mpi.comm());
-        SC_CHECK_MPI(mpi_ret);
-
-        MPI_Barrier(mpi.comm());
-        mpi_ret = MPI_Allreduce(MPI_IN_PLACE,&max_Ts_deriv,1,MPI_DOUBLE,MPI_MAX,mpi.comm());
-        SC_CHECK_MPI(mpi_ret);
-
-        PetscPrintf(mpi.comm(),"\n Number of nodes in region: %d", pts_T);
-
-        PetscPrintf(mpi.comm(),"\n dT/dx l avg: %0.2f", T_l_d_x);
-        PetscPrintf(mpi.comm(),"\n dT/dy l avg: %0.2f \n", T_l_d_y);
-
-        PetscPrintf(mpi.comm(),"\n dT/dx s avg: %0.2f", T_s_d_x);
-        PetscPrintf(mpi.comm(),"\n dT/dy s avg: %0.2f \n", T_s_d_y);
-
-        PetscPrintf(mpi.comm(),"\n Max Tl derivative: %0.2f", max_Tl_deriv);
-        PetscPrintf(mpi.comm(),"\n Max Ts derivatve : %0.2f \n", max_Ts_deriv);
-
+      if (check_derivative_values){
+          // Check Temperature derivative values:
+          PetscPrintf(mpi.comm(),"\n Checking temperature derivative values after field extension: \n [ ");
+          PetscPrintf(mpi.comm(),"\nIn fluid domain: ");
+          check_T_d_values(phi,T_l_d,nodes,p4est,0);
+          PetscPrintf(mpi.comm(),"\nIn solid domain: ");
+          check_T_d_values(phi_solid,T_s_d,nodes,p4est,0);
+          PetscPrintf(mpi.comm()," ] \n");
         }
 
       // --------------------------------------------------------------------------------------------------------------
@@ -1123,12 +1348,52 @@ int main(int argc, char** argv) {
           phi.get_array();
           T_l_n.get_array();
           T_s_n.get_array();
+
+          // Scale the velocity back to what the physical problem would be:
+          foreach_dimension(d){
+            VecScaleGhost(v_interface.vec[d],1./scaling);
+          }
+
+
           v_interface.get_array();
+
 
           if(save_temperature_derivative_fields){
               T_l_d.get_array(); T_s_d.get_array();
 
 
+              if(example_ ==2){
+                  PetscPrintf(mpi.comm(),"Gets into where we should print phi_cyl \n");
+                  phi_cylinder.get_array();
+                  // Write out the data:
+                  my_p4est_vtk_write_all(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,
+                                                    10,0,outdir,
+                                                    VTK_POINT_DATA,"phi",phi.ptr,
+                                                    VTK_POINT_DATA,"phi_cyl",phi_cylinder.ptr,
+                                                    VTK_POINT_DATA,"vx",v_interface.ptr[0],
+                                                    VTK_POINT_DATA,"vy",v_interface.ptr[1],
+                                                    VTK_POINT_DATA,"Tl",T_l_n.ptr,
+                                                    VTK_POINT_DATA,"Ts",T_s_n.ptr,
+                                                    VTK_POINT_DATA,"dTl_dx",T_l_d.ptr[0],
+                                                    VTK_POINT_DATA,"dTl_dy",T_l_d.ptr[1],
+                                                    VTK_POINT_DATA,"dTs_dx",T_s_d.ptr[0],
+                                                    VTK_POINT_DATA,"dTs_dy",T_s_d.ptr[1]);
+                  phi_cylinder.restore_array();
+                }
+              else{
+                  // Write out the data:
+                  my_p4est_vtk_write_all(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,
+                                                    9,0,outdir,
+                                                    VTK_POINT_DATA,"phi",phi.ptr,
+                                                    VTK_POINT_DATA,"vx",v_interface.ptr[0],
+                                                    VTK_POINT_DATA,"vy",v_interface.ptr[1],
+                                                    VTK_POINT_DATA,"Tl",T_l_n.ptr,
+                                                    VTK_POINT_DATA,"Ts",T_s_n.ptr,
+                                                    VTK_POINT_DATA,"dTl_dx",T_l_d.ptr[0],
+                                                    VTK_POINT_DATA,"dTl_dy",T_l_d.ptr[1],
+                                                    VTK_POINT_DATA,"dTs_dx",T_s_d.ptr[0],
+                                                    VTK_POINT_DATA,"dTs_dy",T_s_d.ptr[1]);
+                }
               // Write out the data:
               my_p4est_vtk_write_all(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,
                                                 9,0,outdir,
@@ -1145,15 +1410,29 @@ int main(int argc, char** argv) {
               T_l_d.restore_array(); T_s_d.restore_array();
             }
           else{
-              // Write out the data:
-              my_p4est_vtk_write_all(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,
-                                                5,0,outdir,
-                                                VTK_POINT_DATA,"phi",phi.ptr,
-                                                VTK_POINT_DATA,"vx",v_interface.ptr[0],
-                                                VTK_POINT_DATA,"vy",v_interface.ptr[1],
-                                                VTK_POINT_DATA,"Tl",T_l_n.ptr,
-                                                VTK_POINT_DATA,"Ts",T_s_n.ptr);
-
+              if (example_ ==2){
+                  phi_cylinder.get_array();
+                  // Write out the data:
+                  my_p4est_vtk_write_all(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,
+                                                    6,0,outdir,
+                                                    VTK_POINT_DATA,"phi",phi.ptr,
+                                                    VTK_POINT_DATA,"phi_cyl",phi_cylinder.ptr,
+                                                    VTK_POINT_DATA,"vx",v_interface.ptr[0],
+                                                    VTK_POINT_DATA,"vy",v_interface.ptr[1],
+                                                    VTK_POINT_DATA,"Tl",T_l_n.ptr,
+                                                    VTK_POINT_DATA,"Ts",T_s_n.ptr);
+                  phi_cylinder.restore_array();
+                }
+              else{
+                  // Write out the data:
+                  my_p4est_vtk_write_all(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,
+                                                    5,0,outdir,
+                                                    VTK_POINT_DATA,"phi",phi.ptr,
+                                                    VTK_POINT_DATA,"vx",v_interface.ptr[0],
+                                                    VTK_POINT_DATA,"vy",v_interface.ptr[1],
+                                                    VTK_POINT_DATA,"Tl",T_l_n.ptr,
+                                                    VTK_POINT_DATA,"Ts",T_s_n.ptr);
+                }
 
             }
 
@@ -1161,6 +1440,11 @@ int main(int argc, char** argv) {
           T_l_n.restore_array();
           T_s_n.restore_array();
           v_interface.restore_array();
+
+          // Scale the velocity back to computational problem values:
+          foreach_dimension(d){
+            VecScaleGhost(v_interface.vec[d],scaling);
+          }
 
 
         }
@@ -1177,7 +1461,6 @@ int main(int argc, char** argv) {
       T_l_d.get_array();
       T_s_d.get_array();
 
-
       // First, compute jump in the layer nodes:
       quad_neighbor_nodes_of_node_t qnnn;
       for(size_t i=0; i<ngbd->get_layer_size();i++){
@@ -1187,8 +1470,16 @@ int main(int argc, char** argv) {
         jump.ptr[0][n] = (k_s*T_s_d.ptr[0][n] -k_l*T_l_d.ptr[0][n])/(L*rho_l);
         jump.ptr[1][n] = (k_s*T_s_d.ptr[1][n] -k_l*T_l_d.ptr[1][n])/(L*rho_l);
 
-        }
+//        if (jump.ptr[0][n] > 0.1){
+//          printf("dT/dx is %f \n",T_l_d.ptr[0][n]);
+//          printf("L is %f \n",L);
+//          printf("rho_l is %f \n",rho_l);
+//          printf("scaling is %f \n",scaling);
+//          printf("Jump x computed  is %f \n",jump.ptr[0][n]);
+//          }
 
+
+        }
       // Begin updating the ghost values of the layer nodes:
       foreach_dimension(d){
         VecGhostUpdateBegin(jump.vec[d],INSERT_VALUES,SCATTER_FORWARD);
@@ -1198,8 +1489,8 @@ int main(int argc, char** argv) {
       for(size_t i = 0; i<ngbd->get_local_size();i++){
           p4est_locidx_t n = ngbd->get_local_node(i);
           //ngbd->get_neighbors(n,qnnn);
-          jump.ptr[0][n] = k_s*T_s_d.ptr[0][n] -k_l*T_l_d.ptr[0][n];
-          jump.ptr[1][n] = k_s*T_s_d.ptr[1][n] -k_l*T_l_d.ptr[1][n];
+          jump.ptr[0][n] = (k_s*T_s_d.ptr[0][n] -k_l*T_l_d.ptr[0][n])/(L*rho_l);
+          jump.ptr[1][n] = (k_s*T_s_d.ptr[1][n] -k_l*T_l_d.ptr[1][n])/(L*rho_l);
         }
 
       // Finish updating the ghost values of the layer nodes:
@@ -1207,90 +1498,56 @@ int main(int argc, char** argv) {
         VecGhostUpdateEnd(jump.vec[d],INSERT_VALUES,SCATTER_FORWARD);
       }
 
+      for(size_t i=0; i<ngbd->get_layer_size();i++){
+        p4est_locidx_t n = ngbd->get_layer_node(i);
+        //ngbd->get_neighbors(n,qnnn);
+//        if (jump.ptr[0][n] > 0.5){
+//          printf("Jump x updated  is %f \n",jump.ptr[0][n]);
+//          }
+
+
+        }
+
+
       jump.restore_array();
+
       T_l_d.restore_array();
       T_s_d.restore_array();
 
       // -----------------------
 
-      // Check the values of jump computed (before extended to whole domain): ---
-      if (output_information){
-        jump.get_array();
-        phi.get_array();
-        double avg_vint_x = 0.0;
-        double avg_vint_y = 0.0;
+//      // Check the values of jump computed (before extended to whole domain): ---
+      // Check Temperature values:
+      PetscPrintf(mpi.comm(),"\n Checking jump values before extended to whole domain: \n [ ");
+      PetscPrintf(mpi.comm(),"\nIn fluid domain: ");
+      check_vel_values(phi,jump,nodes,p4est,0,dxyz_close_to_interface);
+      PetscPrintf(mpi.comm()," ] \n");
 
-        double max_v_x = 0.0;
-        double max_v_y = 0.0;
+/*
 
-        double avg_norm = 0.0;
+      // Save the jump values to see what's going on:
+      if (tstep % save ==0){
+          out_idx++;
+          sprintf(outdir,"/home/elyce/workspace/projects/multialloy_with_fluids/solidif_with_fluids_output/snapshot_%d_jump",out_idx);
+          // -----------------------------------------------
+          // Get local array to write initial LSF and velocity fields to vtk:
+          // -----------------------------------------------
 
-        int pts_1 = 0;
-        max_v_norm = 0.0;
+          phi.get_array();
+          jump.get_array();
 
-        foreach_local_node(n,nodes){
-          if (fabs(phi.ptr[n]) < dxyz_close_to_interface){
-              pts_1++;
-              avg_vint_x += jump.ptr[0][n];
-              avg_vint_y += jump.ptr[0][n];
-
-              max_v_x = max(max_v_x,fabs(jump.ptr[0][n]));
-              max_v_y = max(max_v_y,fabs(jump.ptr[0][n]));
-
-              avg_norm+= sqrt(SQR(jump.ptr[0][n]) + SQR(jump.ptr[1][n]));
-              max_v_norm = max(max_v_norm,sqrt(SQR(jump.ptr[0][n]) + SQR(jump.ptr[1][n])));
-
-            }
-
-        }
+          // Write out the data:
+          my_p4est_vtk_write_all(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,
+                                            3,0,outdir,
+                                            VTK_POINT_DATA,"phi",phi.ptr,
+                                            VTK_POINT_DATA,"jump_x",jump.ptr[0],
+                                            VTK_POINT_DATA,"jump_y",jump.ptr[1]);
 
         phi.restore_array();
         jump.restore_array();
-
-        MPI_Barrier(mpi.comm());
-
-        mpi_ret = MPI_Allreduce(MPI_IN_PLACE,&pts_1,1,MPI_INT,MPI_SUM,mpi.comm());
-        SC_CHECK_MPI(mpi_ret);
-
-        mpi_ret = MPI_Allreduce(MPI_IN_PLACE,&avg_vint_x,1,MPI_DOUBLE,MPI_SUM,mpi.comm());
-        SC_CHECK_MPI(mpi_ret);
-
-        mpi_ret = MPI_Allreduce(MPI_IN_PLACE,&avg_vint_y,1,MPI_DOUBLE,MPI_SUM,mpi.comm());
-        SC_CHECK_MPI(mpi_ret);
-
-        mpi_ret = MPI_Allreduce(MPI_IN_PLACE,&max_v_x,1,MPI_DOUBLE,MPI_MAX,mpi.comm());
-        SC_CHECK_MPI(mpi_ret);
-
-        mpi_ret = MPI_Allreduce(MPI_IN_PLACE,&max_v_y,1,MPI_DOUBLE,MPI_MAX,mpi.comm());
-        SC_CHECK_MPI(mpi_ret);
-
-        mpi_ret = MPI_Allreduce(MPI_IN_PLACE,&avg_norm,1,MPI_DOUBLE,MPI_SUM,mpi.comm());
-        SC_CHECK_MPI(mpi_ret);
-
-
-        avg_vint_x/=pts_1;
-        avg_vint_y/=pts_1;
-
-        avg_norm/=pts_1;
-
-        PetscPrintf(mpi.comm(),"\n Number of nodes in region: %d", pts_1);
-
-        PetscPrintf(mpi.comm(),"\n Before extending interfacial velocity: \n");
-        PetscPrintf(mpi.comm(),"\n jump vx avg: %0.2f", avg_vint_x);
-        PetscPrintf(mpi.comm(),"\n jump vy avg: %0.2f \n", avg_vint_y);
-        PetscPrintf(mpi.comm(),"\n max vx: %0.2f", max_v_x);
-        PetscPrintf(mpi.comm(),"\n max vy: %0.2f \n", max_v_y);
-
-        PetscPrintf(mpi.comm(),"\n avg norm: %0.2f \n", avg_norm);
-
-        global_max_v_norm = 0.0;
-
-        int mpi_ret = MPI_Allreduce(&max_v_norm,&global_max_v_norm,1,MPI_DOUBLE,MPI_MAX,mpi.comm());
-        SC_CHECK_MPI(mpi_ret);
-
-        PetscPrintf(mpi.comm(),"\n max v norm: %0.2f \n \n", global_max_v_norm);
-
         }
+*/
+
       // ------
 
       // Extend the interfacial velocity to the whole domain for advection of the LSF:
@@ -1300,73 +1557,36 @@ int main(int argc, char** argv) {
          ls.extend_from_interface_to_whole_domain_TVD(phi.vec,jump.vec[d],v_interface.vec[d],20);
       }
 
-      // Check the values of v_interface after extended to whole domain: ---
 
-      if (output_information){
-        PetscPrintf(mpi.comm(),"After extension of interfacial velocity: \n");
-        v_interface.get_array();
-        phi.get_array();
-        double avg_vint_x = 0.0;
-        double avg_vint_y = 0.0;
-        double max_v_x = 0.0;
-        double max_v_y = 0.0;
-        double avg_norm = 0.0;
+      // Check the values of jump computed (before extended to whole domain): ---
+      // Check velocity values:
+      PetscPrintf(mpi.comm(),"\n Checking jump values after extended to whole domain: \n [ ");
+      PetscPrintf(mpi.comm(),"\nIn fluid domain: ");
+      check_vel_values(phi,v_interface,nodes,p4est,0,dxyz_close_to_interface);
+      PetscPrintf(mpi.comm()," ] \n");
+/*
+      if (tstep % save ==0){
+          out_idx++;
+          sprintf(outdir,"/home/elyce/workspace/projects/multialloy_with_fluids/solidif_with_fluids_output/snapshot_%d_v_int",out_idx);
+          // -----------------------------------------------
+          // Get local array to write initial LSF and velocity fields to vtk:
+          // -----------------------------------------------
 
-        int pts_1 = 0;
+          phi.get_array();
+          v_interface.get_array();
 
-        foreach_local_node(n,nodes){
-          if (fabs(phi.ptr[n]) < dxyz_close_to_interface){
-              pts_1++;
-              avg_vint_x += v_interface.ptr[0][n];
-              avg_vint_y += v_interface.ptr[0][n];
-
-              max_v_x = max(max_v_x,fabs(v_interface.ptr[0][n]));
-              max_v_y = max(max_v_y,fabs(v_interface.ptr[0][n]));
-
-              avg_norm+= sqrt(SQR(v_interface.ptr[0][n]) + SQR(v_interface.ptr[1][n]));
-
-            }
-
-        }
+          // Write out the data:
+          my_p4est_vtk_write_all(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,
+                                            3,0,outdir,
+                                            VTK_POINT_DATA,"phi",phi.ptr,
+                                            VTK_POINT_DATA,"vx",v_interface.ptr[0],
+                                            VTK_POINT_DATA,"vy",v_interface.ptr[1]);
 
         phi.restore_array();
         v_interface.restore_array();
-
-        avg_vint_x/=pts_1;
-        avg_vint_y/=pts_1;
-        avg_norm/=pts_1;
-
-        MPI_Barrier(mpi.comm());
-
-        mpi_ret = MPI_Allreduce(MPI_IN_PLACE,&pts_1,1,MPI_INT,MPI_SUM,mpi.comm());
-        SC_CHECK_MPI(mpi_ret);
-
-        mpi_ret = MPI_Allreduce(MPI_IN_PLACE,&avg_vint_x,1,MPI_DOUBLE,MPI_SUM,mpi.comm());
-        SC_CHECK_MPI(mpi_ret);
-
-        mpi_ret = MPI_Allreduce(MPI_IN_PLACE,&avg_vint_y,1,MPI_DOUBLE,MPI_SUM,mpi.comm());
-        SC_CHECK_MPI(mpi_ret);
-
-        mpi_ret = MPI_Allreduce(MPI_IN_PLACE,&max_v_x,1,MPI_DOUBLE,MPI_MAX,mpi.comm());
-        SC_CHECK_MPI(mpi_ret);
-
-        mpi_ret = MPI_Allreduce(MPI_IN_PLACE,&max_v_y,1,MPI_DOUBLE,MPI_MAX,mpi.comm());
-        SC_CHECK_MPI(mpi_ret);
-
-        mpi_ret = MPI_Allreduce(MPI_IN_PLACE,&avg_norm,1,MPI_DOUBLE,MPI_SUM,mpi.comm());
-        SC_CHECK_MPI(mpi_ret);
-
-
-        avg_vint_x/=pts_1;
-        avg_vint_y/=pts_1;
-
-        avg_norm/=pts_1;
-
-        PetscPrintf(mpi.comm(),"\n Number of nodes in region: %d", pts_1);
-
         }
-      // ------
 
+*/
       // Destroy values once no longer needed:
       T_l_d.destroy();
       T_s_d.destroy();
@@ -1395,14 +1615,15 @@ int main(int argc, char** argv) {
       int mpi_ret = MPI_Allreduce(&max_v_norm,&global_max_v_norm,1,MPI_DOUBLE,MPI_MAX,mpi.comm());
       SC_CHECK_MPI(mpi_ret);
 
-      PetscPrintf(mpi.comm(),"\n max v norm: %0.2f \n \n", global_max_v_norm);
+      PetscPrintf(mpi.comm(),"\n \n \n Computed interfacial velocity and timestep: \n {");
+      PetscPrintf(mpi.comm(),"\n Max v norm: %0.2e \n", global_max_v_norm);
 
       // Compute new timestep:
       dt = cfl*min(dxyz_smallest[0],dxyz_smallest[1])/min(global_max_v_norm,1.0);
       dt = min(dt,dt_max_allowed);
 
-      ierr = PetscPrintf(mpi.comm(),"Timestep : %0.3e \n ------------------------------------------- \n",dt);
-      ierr = PetscPrintf(mpi.comm(),"dxyz close to interface : %0.3e \n ------------------------------------------- \n",dxyz_close_to_interface);
+      ierr = PetscPrintf(mpi.comm(),"Computed timestep: %0.3e \n",dt);
+      ierr = PetscPrintf(mpi.comm(),"dxyz close to interface : %0.3e \n } \n \n  ",dxyz_close_to_interface);
 
       // --------------------------------------------------------------------------------------------------------------
       // Store old grid values, and then recreate the Temperature vectors to hold the data on the new interpolated grid
@@ -1434,7 +1655,10 @@ int main(int argc, char** argv) {
           sl.update_p4est(vel_n.vec,dt,phi.vec);
         }
       else{
-          sl.update_p4est(v_interface.vec,dt,phi.vec);
+          // for example 2, refine around both LSFs. Otherwise, refine around just the one
+          example_ == 2 ? sl.update_p4est(v_interface.vec,dt,phi.vec,phi_dd.vec,phi_cylinder.vec): sl.update_p4est(v_interface.vec,dt,phi.vec,phi_dd.vec);
+
+
         }
 
       // --------------------------------------------------------------------------------------------------------------
@@ -1485,38 +1709,16 @@ int main(int argc, char** argv) {
       T_s_old.destroy();
       v_interface_old.destroy();
 
-      if (output_information) {
-        PetscPrintf(mpi.comm(),"\n");
-        PetscPrintf(mpi.comm(),"After interpolating onto new grid ----------:");
-        PetscPrintf(mpi.comm(),"\n");
 
-        T_values = check_T_values(phi,T_l_n,nodes_np1);
-        MPI_Barrier(mpi.comm());
-        for (int i=0; i<4; i++){
-            mpi_ret = MPI_Allreduce(MPI_IN_PLACE,&T_values[i],1,MPI_DOUBLE,MPI_MAX,mpi.comm());
-            SC_CHECK_MPI(mpi_ret);
-          }
-        PetscPrintf(mpi.comm(),"Tl data: \n");
-        PetscPrintf(mpi.comm(),"norm : %0.2f \n",T_values[0]);
-        PetscPrintf(mpi.comm(),"max magnitude: %0.2f \n",T_values[1]);
-        PetscPrintf(mpi.comm(),"min magnitude: %0.2f \n",T_values[2]);
-        PetscPrintf(mpi.comm(),"min value: %0.2f \n",T_values[3]);
-
-        T_values = check_T_values(phi_solid,T_s_n,nodes_np1);
-        MPI_Barrier(mpi.comm());
-        MPI_Barrier(mpi.comm());
-        for (int i=0; i<4; i++){
-            mpi_ret = MPI_Allreduce(MPI_IN_PLACE,&T_values[i],1,MPI_DOUBLE,MPI_MAX,mpi.comm());
-            SC_CHECK_MPI(mpi_ret);
-          }
-
-        PetscPrintf(mpi.comm(),"Ts data: \n");
-        PetscPrintf(mpi.comm(),"norm : %0.2f \n",T_values[0]);
-        PetscPrintf(mpi.comm(),"max magnitude: %0.2f \n",T_values[1]);
-        PetscPrintf(mpi.comm(),"min magnitude: %0.2f \n",T_values[2]);
-        PetscPrintf(mpi.comm(),"min value: %0.2f \n",T_values[3]);
+      if (check_temperature_values){
+        // Check Temperature values:
+        PetscPrintf(mpi.comm(),"\n Checking temperature values after interpolating onto new grid: \n [ ");
+        PetscPrintf(mpi.comm(),"\nIn fluid domain: ");
+        check_T_values(phi,T_l_n,nodes,p4est,example_,phi_cylinder);
+        PetscPrintf(mpi.comm(),"\nIn solid domain: ");
+        check_T_values(phi_solid,T_s_n,nodes,p4est,example_,phi_cylinder);
+        PetscPrintf(mpi.comm()," ] \n");
         }
-
       // --------------------------------------------------------------------------------------------------------------
       // Delete the old grid and reinitialize phi:
       // --------------------------------------------------------------------------------------------------------------
@@ -1544,11 +1746,32 @@ int main(int argc, char** argv) {
       // Poisson Problem at Nodes: Setup and solve a Poisson problem on both the liquid and solidified subdomains
       // --------------------------------------------------------------------------------------------------------------
 
+      // Get most updated derivatives of the LSF's (on current grid):
+      phi_solid_dd.destroy();
+      phi_solid_dd.create(p4est,nodes);
+      ngbd->second_derivatives_central(phi_solid.vec,phi_solid_dd.vec);
+
+      phi_dd.destroy();
+      phi_dd.create(p4est,nodes);
+      ngbd->second_derivatives_central(phi_solid.vec,phi_solid_dd.vec);
+
+
+      if(example_ ==2){
+          phi_cylinder.destroy();
+          phi_cylinder.create(p4est,nodes);
+          sample_cf_on_nodes(p4est,nodes,mini_level_set,phi_cylinder.vec);
+
+          phi_cylinder_dd.destroy();
+          phi_cylinder_dd.create(p4est,nodes);
+          ngbd->second_derivatives_central(phi_cylinder.vec,phi_cylinder_dd.vec);
+        }
+
       // Get derivative of the external velocity field: (for the semi-lagrangian backtrace, if we are doing advection as well)
       vec_and_ptr_t T_l_backtrace(p4est,nodes);
 
       if (do_advection){
         vec_and_ptr_dim_t v_n_dd[P4EST_DIM];
+
         foreach_dimension(d){
           v_n_dd[d].create(p4est,nodes);
           ngbd->second_derivatives_central(vel_n.vec[d],v_n_dd[d].vec); // computes derivatives of the dth component of the velocity
@@ -1579,13 +1802,6 @@ int main(int argc, char** argv) {
         PetscPrintf(mpi.comm(),"\n");
         PetscPrintf(mpi.comm(),"After Doing Backtrace: ----------");
         PetscPrintf(mpi.comm(),"\n");
-
-        vector <double> T_values = check_T_values(phi,T_l_backtrace,nodes);
-        PetscPrintf(mpi.comm(),"T backtrace data: \n");
-        PetscPrintf(mpi.comm(),"norm : %0.2f \n",T_values[0]);
-        PetscPrintf(mpi.comm(),"max magnitude: %0.2f \n",T_values[1]);
-        PetscPrintf(mpi.comm(),"min magnitude: %0.2f \n",T_values[2]);
-        PetscPrintf(mpi.comm(),"min value: %0.2f \n",T_values[3]);
 
       } // end of do_advection if statement
 
@@ -1620,7 +1836,7 @@ int main(int argc, char** argv) {
             break;
 
 
-          case 1: //(Crank Nicholson)
+          case 1: //(Crank Nicholson)-- NOT VALIDATED
              rhs_Tl.ptr[n] = (2.0/dt)*T_l_n.ptr[n] + (XCODE(T_l_dd.ptr[0][n]) + YCODE(T_l_dd.ptr[1][n]));
              rhs_Ts.ptr[n] = (2.0/dt)*T_s_n.ptr[n] + (XCODE(T_s_dd.ptr[0][n]) + YCODE(T_s_dd.ptr[1][n]));
 
@@ -1645,8 +1861,11 @@ int main(int argc, char** argv) {
       solver_Tl = new my_p4est_poisson_nodes_mls_t(ngbd);
       solver_Ts = new my_p4est_poisson_nodes_mls_t(ngbd);
 
-      solver_Tl->add_boundary(MLS_INTERSECTION,phi.vec,phi_dd.vec[0],phi_dd.vec[1],DIRICHLET,bc_interface_val,bc_interface_coeff);
-      solver_Ts->add_boundary(MLS_INTERSECTION,phi_solid.vec,phi_solid_dd.vec[0],phi_solid_dd.vec[1],DIRICHLET,bc_interface_val,bc_interface_coeff);
+      solver_Tl->add_boundary(MLS_INTERSECTION,phi.vec,phi_dd.vec[0],phi_dd.vec[1],interface_bc_type_temp,bc_interface_val,bc_interface_coeff);
+      solver_Ts->add_boundary(MLS_INTERSECTION,phi_solid.vec,phi_solid_dd.vec[0],phi_solid_dd.vec[1],interface_bc_type_temp,bc_interface_val,bc_interface_coeff);
+      if(example_ == 2){
+        solver_Ts->add_boundary(MLS_INTERSECTION,phi_cylinder.vec,phi_cylinder_dd.vec[0],phi_cylinder_dd.vec[1],inner_interface_bc_type_temp,bc_interface_val_inner,bc_interface_coeff_inner);
+        }
 
       // Set diagonal and diffusivity:
       switch(method_){
@@ -1695,7 +1914,6 @@ int main(int argc, char** argv) {
       solver_Tl->solve(T_l_np1.vec);
       solver_Ts->solve(T_s_np1.vec);
 
-      PetscPrintf(mpi.comm(),"Solves system \n");
       // Destroy the T_n values now and update them with the solution for the next timestep:
       T_l_n.destroy(); T_s_n.destroy();
       T_l_n.create(p4est,nodes); T_s_n.create(T_l_n.vec);
@@ -1703,38 +1921,17 @@ int main(int argc, char** argv) {
       VecCopyGhost(T_l_np1.vec,T_l_n.vec);
       VecCopyGhost(T_s_np1.vec,T_s_n.vec);
 
-      if (output_information){
-        PetscPrintf(mpi.comm(),"\n");
-        PetscPrintf(mpi.comm(),"After Getting Solution: ----------");
-        PetscPrintf(mpi.comm(),"\n");
 
-        T_values = check_T_values(phi,T_l_n,nodes);
-        MPI_Barrier(mpi.comm());
-        MPI_Barrier(mpi.comm());
-        for (int i=0; i<4; i++){
-            mpi_ret = MPI_Allreduce(MPI_IN_PLACE,&T_values[i],1,MPI_DOUBLE,MPI_MAX,mpi.comm());
-            SC_CHECK_MPI(mpi_ret);
-          }
-        PetscPrintf(mpi.comm(),"Tl data: \n");
-        PetscPrintf(mpi.comm(),"norm : %0.2f \n",T_values[0]);
-        PetscPrintf(mpi.comm(),"max magnitude: %0.2f \n",T_values[1]);
-        PetscPrintf(mpi.comm(),"min magnitude: %0.2f \n",T_values[2]);
-        PetscPrintf(mpi.comm(),"min value: %0.2f \n",T_values[3]);
+      if (check_temperature_values){
+        // Check Temperature values:
+        PetscPrintf(mpi.comm(),"\n Checking temperature values after acquiring solution: \n [ ");
+        PetscPrintf(mpi.comm(),"\n In fluid domain: ");
+        check_T_values(phi,T_l_n,nodes,p4est,example_,phi_cylinder);
+        PetscPrintf(mpi.comm(),"\n In solid domain: ");
+        check_T_values(phi_solid,T_s_n,nodes,p4est,example_,phi_cylinder);
+        PetscPrintf(mpi.comm()," ] \n");
+        }
 
-        T_values = check_T_values(phi_solid,T_s_n,nodes);
-        MPI_Barrier(mpi.comm());
-        MPI_Barrier(mpi.comm());
-        for (int i=0; i<4; i++){
-            mpi_ret = MPI_Allreduce(MPI_IN_PLACE,&T_values[i],1,MPI_DOUBLE,MPI_MAX,mpi.comm());
-            SC_CHECK_MPI(mpi_ret);
-          }
-
-        PetscPrintf(mpi.comm(),"Ts data: \n");
-        PetscPrintf(mpi.comm(),"norm : %0.2f \n",T_values[0]);
-        PetscPrintf(mpi.comm(),"max magnitude: %0.2f \n",T_values[1]);
-        PetscPrintf(mpi.comm(),"min magnitude: %0.2f \n",T_values[2]);
-        PetscPrintf(mpi.comm(),"min value: %0.2f \n",T_values[3]);
-      }
 
       // Check error on the Frank sphere, if relevant:
       if(example_ == 1){
