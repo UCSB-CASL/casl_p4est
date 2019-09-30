@@ -416,7 +416,7 @@ void one_dimensional_uniform_grid::remap(Vec vector_on_olg_grid, Vec vector_on_c
 #ifdef DEBUG
   PetscInt size_on_old_grid, size_on_current_grid;
   ierr = VecGetSize(vector_on_olg_grid, &size_on_old_grid); CHKERRXX(ierr);
-  ierr = VecGetSize(vector_on_current_grid, &size_on_curent_grid); CHKERRXX(ierr);
+  ierr = VecGetSize(vector_on_current_grid, &size_on_current_grid); CHKERRXX(ierr);
   ierr = (size_on_old_grid != size_on_current_grid); CHKERRXX(ierr);
   ierr = (n_global != size_on_current_grid); CHKERRXX(ierr);
 #endif
