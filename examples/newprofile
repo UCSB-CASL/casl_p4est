@@ -52,7 +52,11 @@ else
   if [[ -e $name ]]; then
     cd $name
     if [[ ! -e $name.pro ]]; then
-      create_pro $name
+      if [ $name ==  get_started_with_petsc ]; then
+        cp -pr get_started_with_petsc.qt_pro_file_example $name.pro
+      else
+        create_pro $name
+      fi
     else
       echo "ERROR: Profile '$name.pro' already exists. Please choose another name."
       exit 1
