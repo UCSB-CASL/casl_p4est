@@ -78,21 +78,32 @@ PetscErrorCode vec_create_on_one_dimensional_grid(const one_dimensional_uniform_
 PetscErrorCode sample_vector_on_grid(Vec v, const one_dimensional_uniform_grid &grid, cont_function &sampling_function)
 {
   PetscErrorCode ierr;
-  PetscInt n_local_with_ghosts;
-  Vec v_ghost_local_form; // nothing created here, we just want an accessor to local data, this is nothing but pointer(s)
+  // PROPER WAY TO DO IT, ACCORDING TO THE DOCUMENTATION
+//  PetscInt n_local_with_ghosts;
+//  Vec v_ghost_local_form; // nothing created here, we just want an accessor to local data, this is nothing but pointer(s)
+//  double *local_ghosted_array;
+//  // get access to the local, ghosted vector
+//  ierr = VecGhostGetLocalForm(v, &v_ghost_local_form); CHKERRQ(ierr);
+//  ierr = VecGetSize(v_ghost_local_form, &n_local_with_ghosts); CHKERRQ(ierr);
+//  ierr = n_local_with_ghosts != grid.number_of_locally_owned_nodes() + grid.number_of_ghost_nodes(); CHKERRQ(ierr);
+//  ierr = VecGetArray(v_ghost_local_form, &local_ghosted_array); CHKERRQ(ierr);
+//  // fill the local data array with the provided function
+//  for (PetscInt idx = 0; idx < grid.number_of_locally_owned_nodes(); ++idx)
+//    local_ghosted_array[idx] = sampling_function(grid.get_x_of_node(idx));
+//  for (PetscInt ghost_idx = 0; ghost_idx < grid.number_of_ghost_nodes(); ++ghost_idx)
+//    local_ghosted_array[grid.number_of_locally_owned_nodes()+ghost_idx] = sampling_function(grid.get_x_of_node(grid.local_idx_of_ghost_node(ghost_idx)));
+//  ierr = VecRestoreArray(v_ghost_local_form, &local_ghosted_array); CHKERRQ(ierr);
+//  ierr = VecGhostRestoreLocalForm(v, &v_ghost_local_form); CHKERRQ(ierr);
+
+  // ACTUALLY WHAT WE DO:
   double *local_ghosted_array;
-  // get access to the local, ghosted vector
-  ierr = VecGhostGetLocalForm(v, &v_ghost_local_form); CHKERRQ(ierr);
-  ierr = VecGetSize(v_ghost_local_form, &n_local_with_ghosts); CHKERRQ(ierr);
-  ierr = n_local_with_ghosts != grid.number_of_locally_owned_nodes() + grid.number_of_ghost_nodes(); CHKERRQ(ierr);
-  ierr = VecGetArray(v_ghost_local_form, &local_ghosted_array); CHKERRQ(ierr);
-  // fill the local data array with the provided function
+  ierr = VecGetArray(v, &local_ghosted_array); CHKERRXX(ierr);
   for (PetscInt idx = 0; idx < grid.number_of_locally_owned_nodes(); ++idx)
     local_ghosted_array[idx] = sampling_function(grid.get_x_of_node(idx));
   for (PetscInt ghost_idx = 0; ghost_idx < grid.number_of_ghost_nodes(); ++ghost_idx)
     local_ghosted_array[grid.number_of_locally_owned_nodes()+ghost_idx] = sampling_function(grid.get_x_of_node(grid.local_idx_of_ghost_node(ghost_idx)));
-  ierr = VecRestoreArray(v_ghost_local_form, &local_ghosted_array); CHKERRQ(ierr);
-  ierr = VecGhostRestoreLocalForm(v, &v_ghost_local_form); CHKERRQ(ierr);
+  ierr = VecRestoreArray(v, &local_ghosted_array); CHKERRXX(ierr);
+
   return  ierr;
 }
 
