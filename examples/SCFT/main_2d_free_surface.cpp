@@ -97,8 +97,8 @@ static int nz = 1; ADD_TO_LIST(pl, nz, "number of trees in z-dimension");
 static int lmin = 8; ADD_TO_LIST(pl, lmin, "min level of trees");
 static int lmax = 8; ADD_TO_LIST(pl, lmax, "max level of trees");
 #else
-static int lmin = 7; ADD_TO_LIST(pl, lmin, "min level of trees");
-static int lmax = 7; ADD_TO_LIST(pl, lmax, "max level of trees");
+static int lmin = 8; ADD_TO_LIST(pl, lmin, "min level of trees");
+static int lmax = 8; ADD_TO_LIST(pl, lmax, "max level of trees");
 #endif
 static double lip = 1.5; ADD_TO_LIST(pl, lip, "Lipschitz constant");
 static bool refine_only_inside = 1; ADD_TO_LIST(pl, refine_only_inside, "Refine only inside");
@@ -109,7 +109,7 @@ static double cfl                     = 0.5;    ADD_TO_LIST(pl, cfl, "CFL number
 static bool   use_neumann             = 1;      ADD_TO_LIST(pl, use_neumann, "Impose contact angle use Neumann BC 0/1");
 static bool   compute_exact           = 0;      ADD_TO_LIST(pl, compute_exact, "Compute exact final shape (only for pure-curvature) 0/1");
 static bool   rerefine_at_start       = 1;      ADD_TO_LIST(pl, rerefine_at_start, "Reinitialze level-set function at the start 0/1)");
-static int    contact_angle_extension = 3;      ADD_TO_LIST(pl, contact_angle_extension, "Method for extending level-set function into wall: 0 - constant angle = 1 -  = 2 - special");
+static int    contact_angle_extension = 0;      ADD_TO_LIST(pl, contact_angle_extension, "Method for extending level-set function into wall: 0 - constant angle = 1 -  = 2 - special");
 static int    volume_corrections      = 2;      ADD_TO_LIST(pl, volume_corrections, "Number of volume correction after each move");
 static int    max_iterations          = 10000;   ADD_TO_LIST(pl, max_iterations, "Maximum number of advection steps");
 static double tolerance               = 1.0e-8; ADD_TO_LIST(pl, tolerance, "Stopping criteria");
@@ -119,13 +119,13 @@ static interpolation_method interpolation_between_grids = quadratic_non_oscillat
 // scft parameters
 static bool   use_scft            = 1;     ADD_TO_LIST(pl, use_scft           , "Turn on/off SCFT 0/1");
 static bool   smooth_pressure     = 1;     ADD_TO_LIST(pl, smooth_pressure    , "Smooth pressure after first BC adjustment 0/1");
-static int    max_scft_iterations = 250;   ADD_TO_LIST(pl, max_scft_iterations, "Maximum SCFT iterations");
+static int    max_scft_iterations = 300;   ADD_TO_LIST(pl, max_scft_iterations, "Maximum SCFT iterations");
 static int    bc_adjust_min       = 5;     ADD_TO_LIST(pl, bc_adjust_min      , "Minimun SCFT steps between adjusting BC");
-static double scft_tol            = 1.e-3; ADD_TO_LIST(pl, scft_tol           , "Tolerance for SCFT");
-static double scft_bc_tol         = 1.e-2; ADD_TO_LIST(pl, scft_bc_tol        , "Tolerance for adjusting BC");
+static double scft_tol            = 4.e-3; ADD_TO_LIST(pl, scft_tol           , "Tolerance for SCFT");
+static double scft_bc_tol         = 4.e-2; ADD_TO_LIST(pl, scft_bc_tol        , "Tolerance for adjusting BC");
 
 // polymer
-static double box_size = 5; ADD_TO_LIST(pl, box_size, "Box size in units of Rg");
+static double box_size = 10; ADD_TO_LIST(pl, box_size, "Box size in units of Rg");
 static double f        = .5; ADD_TO_LIST(pl, f       , "Fraction of polymer A");
 static double XN       = 20; ADD_TO_LIST(pl, XN      , "Flory-Higgins interaction parameter");
 static int    ns       = 40; ADD_TO_LIST(pl, ns      , "Discretization of polymer chain");
@@ -137,17 +137,17 @@ static bool save_data       = 1; ADD_TO_LIST(pl, save_data      , "");
 static int  save_every_dn   = 1; ADD_TO_LIST(pl, save_every_dn  , ""); // for vtk
 
 // problem setting
-static int num_polymer_geometry = 0; ADD_TO_LIST(pl, num_polymer_geometry, "Initial polymer shape: 0 - drop = 1 - film = 2 - combination");
+static int num_polymer_geometry = 1; ADD_TO_LIST(pl, num_polymer_geometry, "Initial polymer shape: 0 - drop = 1 - film = 2 - combination");
 static int num_wall_geometry    = 1; ADD_TO_LIST(pl, num_wall_geometry   , "Wall geometry: 0 - no wall = 1 - wall = 2 - well");
 static int num_wall_pattern     = 0; ADD_TO_LIST(pl, num_wall_pattern    , "Wall chemical pattern: 0 - no pattern");
-static int num_seed             = 2; ADD_TO_LIST(pl, num_seed            , "Seed: 0 - zero = 1 - random = 2 - horizontal stripes = 3 - vertical stripes = 4 - dots");
+static int num_seed             = 3; ADD_TO_LIST(pl, num_seed            , "Seed: 0 - zero = 1 - random = 2 - horizontal stripes = 3 - vertical stripes = 4 - dots");
 static int num_example          = 0; ADD_TO_LIST(pl, num_example         , "Number of predefined example");
 
 // surface energies
 static int wall_energy_type = 1; ADD_TO_LIST(pl, wall_energy_type, "Method for setting wall surface energy: 0 - explicitly (i.e. convert XN to angles) = 1 - through contact angles (i.e. convert angles to XN)");
 
 static double XN_air_avg = 5;    ADD_TO_LIST(pl, XN_air_avg, "Polymer-air surface energy strength: average");
-static double XN_air_del = -0.5; ADD_TO_LIST(pl, XN_air_del, "Polymer-air surface energy strength: difference");
+static double XN_air_del = 0; ADD_TO_LIST(pl, XN_air_del, "Polymer-air surface energy strength: difference");
 
 static double angle_A_min = 90; ADD_TO_LIST(pl, angle_A_min, "Minimum contact angle for A-block");
 static double angle_A_max = 90; ADD_TO_LIST(pl, angle_A_max, "Maximum contact angle for A-block");
@@ -173,15 +173,16 @@ static double film_nx  = 0;    ADD_TO_LIST(pl, film_nx , "");
 static double film_ny  = 1;    ADD_TO_LIST(pl, film_ny , "");
 static double film_nz  = 0;    ADD_TO_LIST(pl, film_nz , "");
 static double film_x   = .0;   ADD_TO_LIST(pl, film_x  , "");
-static double film_y   = .3;   ADD_TO_LIST(pl, film_y  , "");
+static double film_y   = .0;   ADD_TO_LIST(pl, film_y  , "");
 static double film_z   = .0;   ADD_TO_LIST(pl, film_z  , "");
+static double film_perturb   = .1;   ADD_TO_LIST(pl, film_perturb  , "");
 
-static double wall_eps = -0.01; ADD_TO_LIST(pl, wall_eps, ""); // curvature
+static double wall_eps = -0.0; ADD_TO_LIST(pl, wall_eps, ""); // curvature
 static double wall_nx  = -0;   ADD_TO_LIST(pl, wall_nx , "");
 static double wall_ny  = -1;   ADD_TO_LIST(pl, wall_ny , "");
 static double wall_nz  = -0;   ADD_TO_LIST(pl, wall_nz , "");
 static double wall_x   = .0;   ADD_TO_LIST(pl, wall_x  , "");
-static double wall_y   = -.29; ADD_TO_LIST(pl, wall_y  , "");
+static double wall_y   = -.2; ADD_TO_LIST(pl, wall_y  , "");
 static double wall_z   = .0;   ADD_TO_LIST(pl, wall_z  , "");
 
 static double well_x = 0.00;   ADD_TO_LIST(pl, well_x, "Well geometry: center");
@@ -344,7 +345,7 @@ public:
                   #ifdef P4_TO_P8
                     + SQR((z-film_z)*film_eps - film_nz / norm)
                   #endif
-                      ) + 1. );
+                      ) + 1. ) + film_perturb*cos(PI*x*(lmax-2));
       }
       default: throw std::invalid_argument("Error: Invalid geometry number\n");
     }
