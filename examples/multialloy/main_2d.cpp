@@ -62,14 +62,14 @@ DEFINE_PARAMETER(pl, int, py, 0, "Periodicity in the y-direction (0/1)");
 DEFINE_PARAMETER(pl, int, pz, 0, "Periodicity in the z-direction (0/1)");
 
 DEFINE_PARAMETER(pl, int, nx, 1, "Number of trees in the x-direction");
-DEFINE_PARAMETER(pl, int, ny, 2, "Number of trees in the y-direction");
+DEFINE_PARAMETER(pl, int, ny, 1, "Number of trees in the y-direction");
 DEFINE_PARAMETER(pl, int, nz, 1, "Number of trees in the z-direction");
 
 DEFINE_PARAMETER(pl, double, xmin, 0, "Box xmin");
 DEFINE_PARAMETER(pl, double, ymin, 0, "Box ymin");
 DEFINE_PARAMETER(pl, double, zmin, 0, "Box zmin");
 
-DEFINE_PARAMETER(pl, double, xmax, 0.5, "Box xmax");
+DEFINE_PARAMETER(pl, double, xmax, 1, "Box xmax");
 DEFINE_PARAMETER(pl, double, ymax, 1, "Box ymax");
 DEFINE_PARAMETER(pl, double, zmax, 1, "Box zmax");
 
@@ -84,7 +84,7 @@ DEFINE_PARAMETER(pl, int, lmin, 5, "Min level of the tree");
 DEFINE_PARAMETER(pl, int, lmax, 10, "Max level of the tree");
 #endif
 
-DEFINE_PARAMETER(pl, double, lip, 1.75, "");
+DEFINE_PARAMETER(pl, double, lip, 2, "");
 
 //-------------------------------------
 // solver parameters
@@ -92,13 +92,13 @@ DEFINE_PARAMETER(pl, double, lip, 1.75, "");
 DEFINE_PARAMETER(pl, bool, use_points_on_interface,   1, "");
 DEFINE_PARAMETER(pl, bool, use_superconvergent_robin, 1, "");
 
-DEFINE_PARAMETER(pl, int,    update_c0_robin, 0, "Solve for c0 using Robin BC: 0 - never, 1 - once, 2 - always");
+DEFINE_PARAMETER(pl, int,    update_c0_robin, 1, "Solve for c0 using Robin BC: 0 - never, 1 - once, 2 - always");
 DEFINE_PARAMETER(pl, int,    num_time_layers, 2, "");
 DEFINE_PARAMETER(pl, int,    pin_every_n_iterations, 20, "");
 DEFINE_PARAMETER(pl, int,    max_iterations,   10, "");
 DEFINE_PARAMETER(pl, int,    front_smoothing,   0, "");
-DEFINE_PARAMETER(pl, double, bc_tolerance,      1.e-5, "");
-DEFINE_PARAMETER(pl, double, cfl_number, 0.15, "");
+DEFINE_PARAMETER(pl, double, bc_tolerance,      1.e-12, "");
+DEFINE_PARAMETER(pl, double, cfl_number, 0.25, "");
 DEFINE_PARAMETER(pl, double, phi_thresh, 0.1, "");
 DEFINE_PARAMETER(pl, double, curvature_smoothing, 0.0, "");
 DEFINE_PARAMETER(pl, int,    curvature_smoothing_steps, 0, "");
@@ -106,7 +106,7 @@ DEFINE_PARAMETER(pl, int,    curvature_smoothing_steps, 0, "");
 //-------------------------------------
 // output parameters
 //-------------------------------------
-DEFINE_PARAMETER(pl, int,  save_every_n_iteration,  10, "");
+DEFINE_PARAMETER(pl, int,  save_every_n_iteration,  100, "");
 DEFINE_PARAMETER(pl, bool, save_characteristics,    1, "");
 DEFINE_PARAMETER(pl, bool, save_dendrites,          0, "");
 DEFINE_PARAMETER(pl, bool, save_timings,            1, "");
@@ -126,19 +126,13 @@ DEFINE_PARAMETER(pl, double, dendrite_min_length,       0.05, "");
 DEFINE_PARAMETER(pl, bool,   concentration_neumann, 1, "");
 DEFINE_PARAMETER(pl, int,    max_total_iterations,  1000000000, "");
 DEFINE_PARAMETER(pl, double, time_limit,            DBL_MAX, "");
-DEFINE_PARAMETER(pl, double, termination_length,    0.5, "");
-DEFINE_PARAMETER(pl, double, init_perturb,          1.e-5, "");
+DEFINE_PARAMETER(pl, double, termination_length,    0.99, "");
+DEFINE_PARAMETER(pl, double, init_perturb,          1.e-3, "");
 DEFINE_PARAMETER(pl, bool,   enforce_planar_front,  0,"");
 
-DEFINE_PARAMETER(pl, double, box_size, 5.e-2, "equivalent width (in x) of the box in cm");
+DEFINE_PARAMETER(pl, double, box_size, 4.e-2, "equivalent width (in x) of the box in cm");
 
 double scaling = 1./box_size;
-
-DEFINE_PARAMETER(pl, int, geometry, 0, "0 - directional solidification,"
-                                       "1 - growth of a circular seed in a circular container,"
-                                       "2 - radial directional solidification in,"
-                                       "3 - radial directional solidification out,"
-                                       "4 - 10 seeds in a periodic domain");
 
 //-------------------------------------
 // alloy parameters
@@ -146,13 +140,12 @@ DEFINE_PARAMETER(pl, int, geometry, 0, "0 - directional solidification,"
 const int num_comps_max = 4; // Number of maximum components allowed
 int num_comps = 1; // Number of components used
 
-DEFINE_PARAMETER(pl, double, volumetric_heat,  0, "Volumetric heat generation, J/cm^3");
+//DEFINE_PARAMETER(pl, double, volumetric_heat,  0, "Volumetric heat generation, J/cm^3");
 DEFINE_PARAMETER(pl, double, cooling_velocity, 0.01, "Cooling velocity, cm/s");
-DEFINE_PARAMETER(pl, double, temp_gradient,    500, "Temperature gradient, K/cm");
+DEFINE_PARAMETER(pl, double, temp_gradient,    200, "Temperature gradient, K/cm");
 
-DEFINE_PARAMETER(pl, int,    smoothstep_order, 5, "Time for volumetric heat to fully switch on, s");
-DEFINE_PARAMETER(pl, double, volumetric_heat_tau, 0, "Time for volumetric heat to fully switch on, s");
-DEFINE_PARAMETER(pl, double, cooling_velocity_tau, 5.e-2, "Time for cooling velocity to fully switch on, s");
+DEFINE_PARAMETER(pl, int,    smoothstep_order, 5, "Smoothness of cooling/heating ");
+DEFINE_PARAMETER(pl, double, starting_time, 0.e-3, "Time for cooling/heating to fully switch on, s");
 
 DEFINE_PARAMETER(pl, double, density_l, 8.88e-3, "Density of liq. alloy, kg.cm-3");
 DEFINE_PARAMETER(pl, double, density_s, 8.88e-3, "Density of sol. alloy, kg.cm-3");
@@ -178,10 +171,10 @@ DEFINE_PARAMETER(pl, double, part_coeff_1, 0.86, ""); /* partition coefficient *
 DEFINE_PARAMETER(pl, double, part_coeff_2, 0.86, ""); /* partition coefficient */
 DEFINE_PARAMETER(pl, double, part_coeff_3, 0.86, ""); /* partition coefficient */
 
-DEFINE_PARAMETER(pl, double, initial_conc_0, 0.4, "");   // initial concentration                      - at frac.     */
-DEFINE_PARAMETER(pl, double, initial_conc_1, 0.4, "");   // initial concentration                      - at frac.     */
-DEFINE_PARAMETER(pl, double, initial_conc_2, 0.4, "");   // initial concentration                      - at frac.     */
-DEFINE_PARAMETER(pl, double, initial_conc_3, 0.4, "");   // initial concentration                      - at frac.     */
+DEFINE_PARAMETER(pl, double, initial_conc_0, 0.4, "");   // initial concentration
+DEFINE_PARAMETER(pl, double, initial_conc_1, 0.4, "");   // initial concentration
+DEFINE_PARAMETER(pl, double, initial_conc_2, 0.4, "");   // initial concentration
+DEFINE_PARAMETER(pl, double, initial_conc_3, 0.4, "");   // initial concentration
 
 DEFINE_PARAMETER(pl, double, solute_diff_0, 1.0e-5, "");   /* liquid concentration diffusion coefficient - cm2.s-1      */
 DEFINE_PARAMETER(pl, double, solute_diff_1, 1.0e-5, "");   /* liquid concentration diffusion coefficient - cm2.s-1      */
@@ -191,15 +184,27 @@ DEFINE_PARAMETER(pl, double, solute_diff_3, 1.0e-5, "");   /* liquid concentrati
 DEFINE_PARAMETER(pl, double, eps_c, 0, ""); /* curvature undercooling coefficient         - cm.K         */
 DEFINE_PARAMETER(pl, double, eps_v, 0, ""); /* kinetic undercooling coefficient           - s.K.cm-1     */
 DEFINE_PARAMETER(pl, double, eps_a, 0, ""); /* anisotropy coefficient                                    */
+DEFINE_PARAMETER(pl, double, symmetry, 4, ""); // symmetric of crystals
 
-DEFINE_PARAMETER(pl, int, alloy, 1, "0: Ni -  0.4at%Cu bi-alloy, "
-                                    "1: Ni -  0.3at%Cu -  0.1at%Cu tri-alloy, "
+DEFINE_PARAMETER(pl, int, alloy, 2, "0: Ni -  0.4at%Cu bi-alloy, "
+                                    "1: Ni -  0.2at%Cu -  0.2at%Cu tri-alloy, "
                                     "2: Co - 10.7at%W  -  9.4at%Al tri-alloy, "
                                     "3: Co -  9.4at%Al - 10.7at%W  tri-alloy, "
                                     "4: Ni - 15.2wt%Al -  5.8wt%Ta tri-alloy, "
                                     "5: Ni -  5.8wt%Ta - 15.2wt%Al tri-alloy, "
                                     "6: a made-up tetra-alloy, "
                                     "7: a made-up penta-alloy");
+
+DEFINE_PARAMETER(pl, int, geometry, 6, "0 - directional solidification,"
+                                       "1 - growth of a spherical seed in a spherical container,"
+                                       "2 - growth of a spherical film in a spherical container,"
+                                       "3 - radial directional solidification in,"
+                                       "4 - radial directional solidification out,"
+                                       "5 - three spherical seeds,"
+                                       "6 - planar front and three spherical seeds");
+
+DEFINE_PARAMETER(pl, int, seed_type, 1, "0 - aligned,"
+                                        "1 - misaligned");
 
 double* liquidus_slope_all[] = { &liquidus_slope_0,
                                  &liquidus_slope_1,
@@ -215,23 +220,160 @@ void set_alloy_parameters()
       density_s       = 8.88e-3; // kg.cm-3
       heat_capacity_l = 0.46e3;  // J.kg-1.K-1
       heat_capacity_s = 0.46e3;  // J.kg-1.K-1
-      melting_temp    = 1728;    // K
-      latent_heat     = 2350;    // J.cm-3
       thermal_cond_l  = 6.07e-1; // W.cm-1.K-1
       thermal_cond_s  = 6.07e-1; // W.cm-1.K-1
+      melting_temp    = 1728;    // K
+      latent_heat     = 2350;    // J.cm-3
 
       num_comps = 1;
-      solute_diff_0    = 1.e-5;
-      liquidus_slope_0 = -357;
-      initial_conc_0   = 0.4;
-      part_coeff_0     = 0.86;
+
+      solute_diff_0    = 1.e-5;  // cm2.s-1 - concentration diffusion coefficient
+      liquidus_slope_0 = -357;   // K / at frac. - liquidous slope
+      initial_conc_0   = 0.4;    // at frac.
+      part_coeff_0     = 0.86;   // partition coefficient
 
       eps_c = 0;
       eps_v = 0;
       eps_a = 0.05;
-
+      symmetry = 4;
       break;
-    case 1:// Ni - 0.3at%Cu - 0.1at%Cu
+
+    case 1: // Ni - 0.2at%Cu - 0.2at%Cu
+      density_l       = 8.88e-3; // kg.cm-3
+      density_s       = 8.88e-3; // kg.cm-3
+      heat_capacity_l = 0.46e3;  // J.kg-1.K-1
+      heat_capacity_s = 0.46e3;  // J.kg-1.K-1
+      thermal_cond_l  = 6.07e-1; // W.cm-1.K-1
+      thermal_cond_s  = 6.07e-1; // W.cm-1.K-1
+      melting_temp    = 1728;    // K
+      latent_heat     = 2350;    // J.cm-3
+
+      num_comps = 2;
+
+      solute_diff_0    = 1.e-5;  // cm2.s-1 - concentration diffusion coefficient
+      solute_diff_1    = 5.e-5;  // cm2.s-1 - concentration diffusion coefficient
+      liquidus_slope_0 = -357;   // K / at frac. - liquidous slope
+      liquidus_slope_1 = -357;   // K / at frac. - liquidous slope
+      initial_conc_0   = 0.2;    // at frac.
+      initial_conc_1   = 0.2;    // at frac.
+      part_coeff_0     = 0.86;   // partition coefficient
+      part_coeff_1     = 0.86;   // partition coefficient
+
+      eps_c = 4.e-5/melting_temp;
+      eps_v = 0.0;
+      eps_a = 0.00;
+      symmetry = 4;
+      break;
+
+    case 2: // Co - 10.7at%W - 9.4at%Al (more realistic since D_W < D_Al)
+      density_l       = 9.2392e-3; // kg.cm-3
+      density_s       = 9.2392e-3; // kg.cm-3
+      heat_capacity_l = 356;       // J.kg-1.K-1
+      heat_capacity_s = 356;       // J.kg-1.K-1
+      thermal_cond_l  = 1.3;       // W.cm-1.K-1
+      thermal_cond_s  = 1.3;       // W.cm-1.K-1
+      melting_temp    = 1996;      // K
+      latent_heat     = 2588.7;    // J.cm-3
+
+      num_comps = 2;
+
+      solute_diff_0    = 1e-5;     // cm2.s-1 - concentration diffusion coefficient
+      solute_diff_1    = 5e-5;     // cm2.s-1 - concentration diffusion coefficient
+      liquidus_slope_0 =-874;      // K / at frac. - liquidous slope
+      liquidus_slope_1 =-1378;     // K / at frac. - liquidous slope
+      initial_conc_0   = 0.107;    // at frac.
+      initial_conc_1   = 0.094;    // at frac.
+      part_coeff_0     = 0.848;    // partition coefficient
+      part_coeff_1     = 0.848;    // partition coefficient
+
+      eps_c = 3e-5/melting_temp;
+      eps_v = 0*2.27e-2;
+      eps_a = 0.05;
+      symmetry = 4;
+      break;
+
+    case 3: // Co - 9.4at%Al - 10.7at%W
+      density_l       = 9.2392e-3; // kg.cm-3
+      density_s       = 9.2392e-3; // kg.cm-3
+      heat_capacity_l = 356;       // J.kg-1.K-1
+      heat_capacity_s = 356;       // J.kg-1.K-1
+      thermal_cond_l  = 1.3;       // W.cm-1.K-1
+      thermal_cond_s  = 1.3;       // W.cm-1.K-1
+      melting_temp    = 1996;      // K
+      latent_heat     = 2588.7;    // J.cm-3
+
+      num_comps = 2;
+
+      solute_diff_0    = 1e-5;     // cm2.s-1 - concentration diffusion coefficient
+      solute_diff_1    = 5e-5;     // cm2.s-1 - concentration diffusion coefficient
+      liquidus_slope_0 =-1378;     // K / at frac. - liquidous slope
+      liquidus_slope_1 =-874;      // K / at frac. - liquidous slope
+      initial_conc_0   = 0.094;    // at frac.
+      initial_conc_1   = 0.107;    // at frac.
+      part_coeff_0     = 0.848;    // partition coefficient
+      part_coeff_1     = 0.848;    // partition coefficient
+
+      eps_c = 0*2.7207e-5;
+      eps_v = 0*2.27e-2;
+      eps_a = 0.05;
+      symmetry = 4;
+      break;
+
+    case 4: // Ni - 15.2wt%Al - 5.8wt%Ta
+      density_l       = 7.365e-3; // kg.cm-3
+      density_s       = 7.365e-3; // kg.cm-3
+      heat_capacity_l = 660;      // J.kg-1.K-1
+      heat_capacity_s = 660;      // J.kg-1.K-1
+      thermal_cond_l  = 0.8;      // W.cm-1.K-1
+      thermal_cond_s  = 0.8;      // W.cm-1.K-1
+      melting_temp    = 1754;     // K
+      latent_heat     = 2136;     // J.cm-3
+
+      num_comps = 2;
+
+      solute_diff_0    = 5e-5;    // cm2.s-1 - concentration diffusion coefficient
+      solute_diff_1    = 5e-5;    // cm2.s-1 - concentration diffusion coefficient
+      liquidus_slope_0 =-255;     // K / wt frac. - liquidous slope
+      liquidus_slope_1 =-517;     // K / wt frac. - liquidous slope
+      initial_conc_0   = 0.152;   // wt frac.
+      initial_conc_1   = 0.058;   // wt frac.
+      part_coeff_0     = 0.48;    // partition coefficient
+      part_coeff_1     = 0.54;    // partition coefficient
+
+      eps_c = 0*2.7207e-5;
+      eps_v = 0*2.27e-2;
+      eps_a = 0.05;
+      symmetry = 4;
+      break;
+
+    case 5: // Ni - 5.8wt%Ta - 15.2wt%Al
+      density_l       = 7.365e-3; // kg.cm-3
+      density_s       = 7.365e-3; // kg.cm-3
+      heat_capacity_l = 660;      // J.kg-1.K-1
+      heat_capacity_s = 660;      // J.kg-1.K-1
+      thermal_cond_l  = 0.8;      // W.cm-1.K-1
+      thermal_cond_s  = 0.8;      // W.cm-1.K-1
+      melting_temp    = 1754;     // K
+      latent_heat     = 2136;     // J.cm-3
+
+      num_comps = 2;
+
+      solute_diff_0    = 5e-5;    // cm2.s-1 - concentration diffusion coefficient
+      solute_diff_1    = 5e-5;    // cm2.s-1 - concentration diffusion coefficient
+      liquidus_slope_0 =-517;     // K / wt frac. - liquidous slope
+      liquidus_slope_1 =-255;     // K / wt frac. - liquidous slope
+      initial_conc_0   = 0.058;   // wt frac.
+      initial_conc_1   = 0.152;   // wt frac.
+      part_coeff_0     = 0.54;    // partition coefficient
+      part_coeff_1     = 0.48;    // partition coefficient
+
+      eps_c = 0*2.7207e-5;
+      eps_v = 0*2.27e-2;
+      eps_a = 0.05;
+      symmetry = 4;
+      break;
+
+    case 6: // A made-up tetra-alloy based on Ni - 0.4at%Cu
       density_l       = 8.88e-3; // kg.cm-3
       density_s       = 8.88e-3; // kg.cm-3
       heat_capacity_l = 0.46e3;  // J.kg-1.K-1
@@ -241,21 +383,27 @@ void set_alloy_parameters()
       thermal_cond_l  = 6.07e-1; // W.cm-1.K-1
       thermal_cond_s  = 6.07e-1; // W.cm-1.K-1
 
-      num_comps = 2;
+      num_comps = 3;
       solute_diff_0    = 1.e-5;
-      solute_diff_1    = 5.e-5;
-      liquidus_slope_0 = -357;
-      liquidus_slope_1 = -357;
-      initial_conc_0   = 0.2;
-      initial_conc_1   = 0.2;
-      part_coeff_0     = 0.86;
-      part_coeff_1     = 0.86;
+      solute_diff_1    = 2.e-5;
+      solute_diff_2    = 4.e-5;
+      liquidus_slope_0 = -300;
+      liquidus_slope_1 = -500;
+      liquidus_slope_2 = -400;
+      initial_conc_0   = 0.1;
+      initial_conc_1   = 0.1;
+      initial_conc_2   = 0.1;
+      part_coeff_0     = 0.85;
+      part_coeff_1     = 0.75;
+      part_coeff_2     = 0.90;
 
-      eps_c = 7.e-6/melting_temp;
+      eps_c = 0.e-6/melting_temp;
       eps_v = 0;
-      eps_a = 0.05;
+      eps_a = 0.0;
+      symmetry = 4;
       break;
-    case 7:// Ni - 0.3at%Cu - 0.1at%Cu
+
+    case 7: // A made-up penta-alloy based on Ni - 0.4at%Cu
       density_l       = 8.88e-3; // kg.cm-3
       density_s       = 8.88e-3; // kg.cm-3
       heat_capacity_l = 0.46e3;  // J.kg-1.K-1
@@ -270,22 +418,23 @@ void set_alloy_parameters()
       solute_diff_1    = 2.e-5;
       solute_diff_2    = 4.e-5;
       solute_diff_3    = 8.e-5;
-      liquidus_slope_0 = -357;
-      liquidus_slope_1 = -357;
-      liquidus_slope_2 = -357;
-      liquidus_slope_3 = -357;
+      liquidus_slope_0 = -300;
+      liquidus_slope_1 = -500;
+      liquidus_slope_2 = -400;
+      liquidus_slope_3 = -600;
       initial_conc_0   = 0.1;
       initial_conc_1   = 0.1;
       initial_conc_2   = 0.1;
       initial_conc_3   = 0.1;
-      part_coeff_0     = 0.86;
-      part_coeff_1     = 0.86;
-      part_coeff_2     = 0.86;
-      part_coeff_3     = 0.86;
+      part_coeff_0     = 0.85;
+      part_coeff_1     = 0.75;
+      part_coeff_2     = 0.90;
+      part_coeff_3     = 0.80;
 
       eps_c = 0.e-6/melting_temp;
       eps_v = 0;
       eps_a = 0.0;
+      symmetry = 4;
       break;
     default:
       throw std::invalid_argument("Undefined alloy\n");
@@ -413,14 +562,21 @@ double liquidus_slope(int which_comp, double *c)
                 +0.001531 * pow(c[0],0) * 3. * pow(c[1],2);
           default: throw std::invalid_argument("\n");
         }
-      case 4: throw std::invalid_argument("Real liquidus surfaces is not available for this alloy\n");
-      case 5: throw std::invalid_argument("Real liquidus surfaces is not available for this alloy\n");
-      case 6: throw std::invalid_argument("Real liquidus surfaces is not available for this alloy\n");
-      case 7: throw std::invalid_argument("Real liquidus surfaces is not available for this alloy\n");
+      case 4: throw std::invalid_argument("Real liquidus surfaces is not available for this alloy, use linearized instead\n");
+      case 5: throw std::invalid_argument("Real liquidus surfaces is not available for this alloy, use linearized instead\n");
+      case 6: throw std::invalid_argument("Real liquidus surfaces is not available for this alloy, use linearized instead\n");
+      case 7: throw std::invalid_argument("Real liquidus surfaces is not available for this alloy, use linearized instead\n");
       default: throw std::invalid_argument("Invalid liquidus surface\n");
     }
   }
 }
+
+double front_location = 0.02;
+double seed_radius = 0.005;
+double container_radius_inner = 0.1;
+double container_radius_outer = 0.4;
+double seeds_dist = 0.1;
+double seeds_rot  = PI/12;
 
 class front_phi_cf_t : public CF_DIM
 {
@@ -429,12 +585,53 @@ public:
   {
     switch (geometry)
     {
-//      case 0: return MAX(-(y - 0.1), -(sqrt(SQR(x-0.25) + SQR(y-0.5))-0.025));
-      case 0: return -(y - 0.1);
+      case 0: return -(y - front_location);
+      case 1: return -(sqrt(SQR(x-.5*(xmin+xmax)) + SQR(y-.5*(ymin+ymax)))-seed_radius);
+      case 2: return  (sqrt(SQR(x-.5*(xmin+xmax)) + SQR(y-.5*(ymin+ymax)))-(container_radius_outer-front_location));
+      case 3: return  (sqrt(SQR(x-.5*(xmin+xmax)) + SQR(y-.5*(ymin+ymax)))-(container_radius_outer-front_location));
+      case 4: return -(sqrt(SQR(x-.5*(xmin+xmax)) + SQR(y-.5*(ymin+ymax)))-(container_radius_inner+front_location));
+      case 5:
+      {
+        double dist0 = sqrt(SQR(x-(.5*(xmin+xmax)+seeds_dist*cos(2.*PI/3.*0. + seeds_rot))) + SQR(y-(.5*(ymin+ymax)+seeds_dist*sin(2.*PI/3.*0. + seeds_rot))));
+        double dist1 = sqrt(SQR(x-(.5*(xmin+xmax)+seeds_dist*cos(2.*PI/3.*1. + seeds_rot))) + SQR(y-(.5*(ymin+ymax)+seeds_dist*sin(2.*PI/3.*1. + seeds_rot))));
+        double dist2 = sqrt(SQR(x-(.5*(xmin+xmax)+seeds_dist*cos(2.*PI/3.*2. + seeds_rot))) + SQR(y-(.5*(ymin+ymax)+seeds_dist*sin(2.*PI/3.*2. + seeds_rot))));
+
+        return seed_radius - MIN(dist0, dist1, dist2);
+      }
+      case 6:
+      {
+        double front = -(y - front_location);
+        double dist0 = sqrt(SQR(x-(.5*(xmin+xmax)+seeds_dist*cos(2.*PI/3.*0. + seeds_rot))) + SQR(y-(.5*(ymin+ymax)+seeds_dist*sin(2.*PI/3.*0. + seeds_rot))));
+        double dist1 = sqrt(SQR(x-(.5*(xmin+xmax)+seeds_dist*cos(2.*PI/3.*1. + seeds_rot))) + SQR(y-(.5*(ymin+ymax)+seeds_dist*sin(2.*PI/3.*1. + seeds_rot))));
+        double dist2 = sqrt(SQR(x-(.5*(xmin+xmax)+seeds_dist*cos(2.*PI/3.*2. + seeds_rot))) + SQR(y-(.5*(ymin+ymax)+seeds_dist*sin(2.*PI/3.*2. + seeds_rot))));
+
+        return MAX(front, seed_radius - MIN(dist0, dist1, dist2));
+      }
       default: throw;
     }
   }
 } front_phi_cf;
+
+class contr_phi_cf_t : public CF_DIM
+{
+public:
+  double operator()(DIM(double x, double y, double z)) const
+  {
+    switch (geometry)
+    {
+      case 0: return -1;
+      case 1: return  (sqrt(SQR(x-.5*(xmin+xmax)) + SQR(y-.5*(ymin+ymax)))-(container_radius_outer));
+      case 2: return  (sqrt(SQR(x-.5*(xmin+xmax)) + SQR(y-.5*(ymin+ymax)))-(container_radius_outer));
+      case 3: return  MAX( (sqrt(SQR(x-.5*(xmin+xmax)) + SQR(y-.5*(ymin+ymax)))-(container_radius_outer)),
+                          -(sqrt(SQR(x-.5*(xmin+xmax)) + SQR(y-.5*(ymin+ymax)))-(container_radius_inner)) );
+      case 4: return  MAX( (sqrt(SQR(x-.5*(xmin+xmax)) + SQR(y-.5*(ymin+ymax)))-(container_radius_outer)),
+                          -(sqrt(SQR(x-.5*(xmin+xmax)) + SQR(y-.5*(ymin+ymax)))-(container_radius_inner)) );
+      case 5: return -1;
+      case 6: return -1;
+      default: throw;
+    }
+  }
+} contr_phi_cf;
 
 class seed_number_cf_t : public CF_DIM
 {
@@ -443,7 +640,33 @@ public:
   {
     switch (geometry)
     {
-      case 0: return fabs(x-0.25) - 0.1 < 0 ? 0 : 1;
+      case 0: return x < .5*(xmin+xmax) ? 0 : 1;
+      case 1: return 0;
+      case 2: return 0;
+      case 3: return 0;
+      case 4: return 0;
+      case 5:
+      {
+        double dist0 = sqrt(SQR(x-(.5*(xmin+xmax)+seeds_dist*cos(2.*PI/3.*0. + seeds_rot))) + SQR(y-(.5*(ymin+ymax)+seeds_dist*sin(2.*PI/3.*0. + seeds_rot))));
+        double dist1 = sqrt(SQR(x-(.5*(xmin+xmax)+seeds_dist*cos(2.*PI/3.*1. + seeds_rot))) + SQR(y-(.5*(ymin+ymax)+seeds_dist*sin(2.*PI/3.*1. + seeds_rot))));
+        double dist2 = sqrt(SQR(x-(.5*(xmin+xmax)+seeds_dist*cos(2.*PI/3.*2. + seeds_rot))) + SQR(y-(.5*(ymin+ymax)+seeds_dist*sin(2.*PI/3.*2. + seeds_rot))));
+
+        if (dist0 <= MIN(dist1, dist2)) return 0;
+        if (dist1 <= MIN(dist0, dist2)) return 1;
+        return 2;
+      }
+      case 6:
+      {
+        double front = fabs(y - front_location);
+        double dist0 = sqrt(SQR(x-(.5*(xmin+xmax)+seeds_dist*cos(2.*PI/3.*0. + seeds_rot))) + SQR(y-(.5*(ymin+ymax)+seeds_dist*sin(2.*PI/3.*0. + seeds_rot))));
+        double dist1 = sqrt(SQR(x-(.5*(xmin+xmax)+seeds_dist*cos(2.*PI/3.*1. + seeds_rot))) + SQR(y-(.5*(ymin+ymax)+seeds_dist*sin(2.*PI/3.*1. + seeds_rot))));
+        double dist2 = sqrt(SQR(x-(.5*(xmin+xmax)+seeds_dist*cos(2.*PI/3.*2. + seeds_rot))) + SQR(y-(.5*(ymin+ymax)+seeds_dist*sin(2.*PI/3.*2. + seeds_rot))));
+
+        if (dist0 <= MIN(dist1, dist2, front)) return 0;
+        if (dist1 <= MIN(dist2, dist0, front)) return 1;
+        if (dist2 <= MIN(dist0, dist1, front)) return 2;
+        return 3;
+      }
       default: throw;
     }
   }
@@ -454,38 +677,57 @@ int num_seeds()
   switch (geometry)
   {
     case 0: return 2;
+    case 1: return 1;
+    case 2: return 1;
+    case 3: return 1;
+    case 4: return 1;
+    case 5: return 3;
+    case 6: return 4;
     default: throw;
   }
 }
 
-int theta0(int seed)
-{
-  switch (geometry)
-  {
-    case 0:
-      switch (seed)
-      {
-        case 0: return -PI/6.;
-        case 1: return PI/6.;
-        default: throw;
-      }
-    default: throw;
-  }
-}
+double seed_direction = PI/6.;
 
-class contr_phi_cf_t : public CF_DIM
+double theta0(int seed)
 {
-public:
-  double operator()(DIM(double x, double y, double z)) const
+  if (seed_type == 0) return seed_direction;
+  else
   {
     switch (geometry)
     {
-      case 0: return -1;
-//      case 0: return 0.025 - sqrt(SQR(x-0.25) + SQR(y-0.5));
+      case 0:
+        switch (seed)
+        {
+          case 0: return -PI/6.;
+          case 1: return PI/6.;
+          default: throw;
+        }
+      case 1: return seed_direction;
+      case 2: return seed_direction;
+      case 3: return seed_direction;
+      case 4: return seed_direction;
+      case 5:
+        switch (seed)
+        {
+          case 0: return -PI/7.;
+          case 1: return PI/6.;
+          case 2: return -PI/5.;
+          default: throw;
+        }
+      case 6:
+        switch (seed)
+        {
+          case 0: return -PI/7.;
+          case 1: return PI/6.;
+          case 2: return -PI/5.;
+          case 3: return 0.;
+          default: throw;
+        }
       default: throw;
     }
   }
-} contr_phi_cf;
+}
 
 class phi_eff_cf_t : public CF_DIM
 {
@@ -514,7 +756,16 @@ public:
     {
       case 0:
         if (ABS(y-ymax)<EPS) return +(temp_gradient);
-        if (ABS(y-ymin)<EPS) return -(temp_gradient + cooling_velocity*latent_heat/thermal_cond_s * smoothstep(smoothstep_order, (t+EPS)/(cooling_velocity_tau+EPS)));
+        if (ABS(y-ymin)<EPS) return -(temp_gradient + cooling_velocity*latent_heat/thermal_cond_s * smoothstep(smoothstep_order, (t+EPS)/(starting_time+EPS)));
+        return 0;
+      case 1: return 0;
+      case 2: return 0;
+      case 3: return 0;
+      case 4: return 0;
+      case 5: return 0;
+      case 6:
+        if (ABS(y-ymax)<EPS) return +(temp_gradient);
+        if (ABS(y-ymin)<EPS) return -(temp_gradient + cooling_velocity*latent_heat/thermal_cond_s * smoothstep(smoothstep_order, (t+EPS)/(starting_time+EPS)));
         return 0;
       default: throw;
     }
@@ -545,6 +796,55 @@ public:
     return concentration_neumann ? 0 : *c;
   }
 };
+
+class contr_bc_value_temp_t : public CF_DIM
+{
+public:
+  double operator()(DIM(double x, double y, double z)) const
+  {
+    switch (geometry)
+    {
+      case 0: return 0;
+      case 1: return -seed_radius/container_radius_outer*cooling_velocity*latent_heat*smoothstep(smoothstep_order, (t+EPS)/(starting_time+EPS));
+      case 2: return -(container_radius_outer-front_location)/container_radius_outer*cooling_velocity*latent_heat*smoothstep(smoothstep_order, (t+EPS)/(starting_time+EPS));
+      case 3:
+      {
+        double r = sqrt(SQR(x-.5*(xmin+xmax)) + SQR(y-.5*(ymin+ymax)));
+
+        if (r > .5*(container_radius_inner+container_radius_outer))
+        {
+          return -thermal_cond_s*temp_gradient
+              -(container_radius_outer-front_location)/container_radius_outer*cooling_velocity*latent_heat*smoothstep(smoothstep_order, (t+EPS)/(starting_time+EPS));
+        }
+        else
+        {
+          return  thermal_cond_s*temp_gradient*container_radius_outer/container_radius_inner;
+        }
+
+        return 0;
+      }
+      case 4:
+      {
+        double r = sqrt(SQR(x-.5*(xmin+xmax)) + SQR(y-.5*(ymin+ymax)));
+
+        if (r > .5*(container_radius_inner+container_radius_outer))
+        {
+          return  thermal_cond_l*temp_gradient
+              -(container_radius_inner+front_location)/container_radius_outer*cooling_velocity*latent_heat*smoothstep(smoothstep_order, (t+EPS)/(starting_time+EPS));;
+        }
+        else
+        {
+          return -thermal_cond_l*temp_gradient*container_radius_outer/container_radius_inner;
+        }
+
+        return 0;
+      }
+      case 5: return 0;
+      case 6: return 0;
+      default: throw;
+    }
+  }
+} contr_bc_value_temp;
 
 wall_bc_value_conc_t wall_bc_value_conc_0(initial_conc_0);
 wall_bc_value_conc_t wall_bc_value_conc_1(initial_conc_1);
@@ -609,8 +909,13 @@ public:
     for (int i = 0; i < num_comps; ++i) c[i] = (*cl_cf_all[i])(DIM(x,y,z));
     switch (geometry)
     {
-      case 0:
-      return -front_phi_cf(DIM(x,y,z))*temp_gradient + liquidus_value(c.data()) + melting_temp;
+      case 0: return melting_temp + liquidus_value(c.data()) - front_phi_cf(DIM(x,y,z))*temp_gradient;
+      case 1: return melting_temp + liquidus_value(c.data());
+      case 2: return melting_temp + liquidus_value(c.data());
+      case 3: return melting_temp + liquidus_value(c.data()) - container_radius_outer*temp_gradient*log(MAX(0.001, 1.+front_phi_cf(DIM(x,y,z))/(container_radius_outer-front_location)));
+      case 4: return melting_temp + liquidus_value(c.data()) + container_radius_outer*temp_gradient*log(MAX(0.001, 1.-front_phi_cf(DIM(x,y,z))/(container_radius_inner+front_location)));
+      case 5: return melting_temp + liquidus_value(c.data());
+      case 6: return melting_temp + liquidus_value(c.data()) + (y-front_location)*temp_gradient;
       default: throw;
     }
   }
@@ -626,8 +931,13 @@ public:
     for (int i = 0; i < num_comps; ++i) c[i] = (*cl_cf_all[i])(DIM(x,y,z));
     switch (geometry)
     {
-      case 0:
-      return -front_phi_cf(DIM(x,y,z))*temp_gradient + liquidus_value(c.data()) + melting_temp;
+      case 0: return melting_temp + liquidus_value(c.data()) - front_phi_cf(DIM(x,y,z))*temp_gradient;
+      case 1: return melting_temp + liquidus_value(c.data());
+      case 2: return melting_temp + liquidus_value(c.data());
+      case 3: return melting_temp + liquidus_value(c.data()) - container_radius_outer*temp_gradient*log(MAX(0.001, 1.+front_phi_cf(DIM(x,y,z))/(container_radius_outer-front_location)))*thermal_cond_l/thermal_cond_s;
+      case 4: return melting_temp + liquidus_value(c.data()) + container_radius_outer*temp_gradient*log(MAX(0.001, 1.-front_phi_cf(DIM(x,y,z))/(container_radius_inner+front_location)))*thermal_cond_l/thermal_cond_s;
+      case 5: return melting_temp + liquidus_value(c.data());
+      case 6: return melting_temp + liquidus_value(c.data()) + (y-front_location)*temp_gradient;
       default: throw;
     }
   }
@@ -654,7 +964,7 @@ public:
     return eps_c*(1.0-4.0*eps_a*((pow(nx, 4.) + pow(ny, 4.) + pow(nz, 4.))/pow(norm, 4.) - 0.75));
 #else
     double theta = atan2(ny, nx);
-    return eps_c*(1.-15.*eps_a*cos(4.*(theta-theta0)))/(1.+15.*eps_a);
+    return eps_c*(1.-15.*eps_a*cos(symmetry*(theta-theta0)))/(1.+15.*eps_a);
 #endif
   }
 };
@@ -671,7 +981,7 @@ public:
     return eps_v*(1.0-4.0*eps_a*((pow(nx, 4.) + pow(ny, 4.) + pow(nz, 4.))/pow(norm, 4.) - 0.75));
 #else
     double theta = atan2(ny, nx);
-    return eps_v*(1.-15.*eps_a*cos(4.*(theta-theta0)))/(1.+15.*eps_a);
+    return eps_v*(1.-15.*eps_a*cos(symmetry*(theta-theta0)))/(1.+15.*eps_a);
 #endif
   }
 };
@@ -681,7 +991,8 @@ class volumetric_heat_cf_t : public CF_DIM
 public:
   double operator()(DIM(double x, double y, double z)) const
   {
-    return volumetric_heat * smoothstep(smoothstep_order, (t+EPS)/(volumetric_heat_tau+EPS));
+    if (geometry == 5) return -cooling_velocity*latent_heat*2.*PI*seed_radius/(xmax-xmin)/(ymax-ymin)/box_size*smoothstep(smoothstep_order, (t+EPS)/(starting_time+EPS));
+    else return 0;
   }
 } volumetric_heat_cf;
 
@@ -777,7 +1088,7 @@ int main (int argc, char* argv[])
   solute_diff_2 *= (scaling*scaling);
   solute_diff_3 *= (scaling*scaling);
 
-  volumetric_heat  /= (scaling*scaling*scaling);
+//  volumetric_heat  /= (scaling*scaling*scaling);
   temp_gradient    /= scaling;
   cooling_velocity *= scaling;
 
@@ -882,20 +1193,26 @@ int main (int argc, char* argv[])
 
   // set boundary conditions
   std::vector<BoundaryConditionType> bc_conc_type(num_comps, concentration_neumann ? NEUMANN : DIRICHLET);
-  mas.set_container_conditions_thermal(NEUMANN, zero_cf);
+  mas.set_container_conditions_thermal(NEUMANN, contr_bc_value_temp);
   mas.set_container_conditions_composition(bc_conc_type.data(), wall_bc_value_conc_all);
 
   mas.set_wall_conditions_thermal(wall_bc_type_temp, wall_bc_value_temp);
   mas.set_wall_conditions_composition(wall_bc_type_conc_all, wall_bc_value_conc_all);
+
+  mas.set_volumetric_heat(volumetric_heat_cf);
 
   // set time steps
   double dt = cfl_number*MIN(DIM(dx,dy,dz))/cooling_velocity;
 
 //  dt = 1.0e-3;
 
-  mas.set_dt(dt);
-  mas.set_dt_limits(0.0*dt, 10.*dt);
-  mas.set_dt_limits(0.*dt, dt);
+  double dt_curv = 0.000005*sqrt(dx*dx*dx)/MAX(eps_c, 1.e-20);
+
+  mas.set_dt(MIN(dt, dt_curv));
+  mas.set_dt_limits(0, MIN(dt_curv, 100.*dt));
+//  mas.set_dt(dt);
+//  mas.set_dt_limits(0.0*dt, 10.*dt);
+//  mas.set_dt_limits(0.*dt, dt);
 
   // set initial conditions
   mas.set_temperature(tl.vec, ts.vec);

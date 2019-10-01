@@ -417,6 +417,7 @@ public:
   inline void set_cfl                      (double value) { cfl_number_                = value; }
   inline void set_dendrite_cut_off_fraction(double value) { dendrite_cut_off_fraction_ = value; }
   inline void set_dendrite_min_length      (double value) { dendrite_min_length_       = value; }
+  inline void set_volumetric_heat          (CF_DIM &value) { vol_heat_gen_              =&value; }
 
 
   void regularize_front();
