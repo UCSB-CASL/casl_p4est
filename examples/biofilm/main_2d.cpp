@@ -914,18 +914,6 @@ public:
   double operator()(double c) const { return A/(Kc+c) - A*c/pow(Kc+c, 2.); }
 } fc_cf;
 
-#ifdef P4_TO_P8
-class zero_cf_t : public CF_3 {
-public:
-  double operator()(double, double, double) const { return 0; }
-} zero_cf;
-#else
-class zero_cf_t : public CF_2{
-public:
-  double operator()(double, double) const { return 0; }
-} zero_cf;
-#endif
-
 int main (int argc, char* argv[])
 {
   PetscErrorCode ierr;
