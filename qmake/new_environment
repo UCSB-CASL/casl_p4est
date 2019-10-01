@@ -207,11 +207,11 @@ else
       echo "${MPI_DIR}/include and/or ${MPI_DIR}/lib is/are not valid directories: fix MPI_DIR."
       exit 1
     fi
-    if [[ ! -z "${CC}" ]]; then
+    if [[ -z "${CC}" ]]; then
       echo "You need to define your desired mpi c compiler with environment variable CC is defining MPI_DIR: fix that."
       exit 1
     fi
-    if [[ ! -z "${CXX}" ]]; then
+    if [[ -z "${CXX}" ]]; then
       echo "You need to define your desired mpi c++ compiler with environment variable CXX is defining MPI_DIR: fix that."
       exit 1
     fi

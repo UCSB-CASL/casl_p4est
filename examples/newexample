@@ -1,52 +1,12 @@
 #!/usr/bin/env bash
 
-# Use this script to create a bare minimum example 
-# 
-# Usage:
-#   ./newexample name
-#
+# creates a bare minimum example
+# (In the following, EOF works as a delimiter for the text that needs to be copied as is to the .pro file)
 
-# creates a .pro file 
-function create_pro() {
-cat > $1/$1.pro << EOF
-# --------------------------------------------------------------
-# This is a qmake script for generating makefiles. Please read
-# this short comment before changing this file. 
-#
-# Following build systems are supported:
-#   * macx (default)
-#   * linux
-#   * stampede
-#
-# To use either of these systems, you can pass in the correct
-# value to qmake, e.g. to build for stamepde system:
-#   qmake example.pro CONFIG+="stampede"
-#
-# You can also modify the CONFIG variable below, but remember
-# that doing so will prevent you from using the same script on
-# different systems.
-#
-#   *** PLEASE DO NOT ADD YOUR CONFIG SCRIPT TO REPOSITORY ***
-#
-# --------------------------------------------------------------
-CONFIG += 2d
-include(../../qmake/libparcasl.pri)
-
-2d {
-  TARGET   = $1_2d
-  SOURCES += main_2d.cpp
-} 3d {
-  TARGET   = $1_3d
-  SOURCES += main_3d.cpp
-}
-
-EOF
-}
-
-# creates a sample main_2d.cpp and main_3d.cpp
+# creates a bare minimum main_2d.cpp and main_3d.cpp
 function create_main() {
 cat > $1/main_2d.cpp << EOF
-/* 
+/*
  * Title: $1
  * Description:
  * Author: $(git config user.name)
@@ -79,7 +39,7 @@ cat > $1/main_2d.cpp << EOF
 using namespace std;
 
 int main(int argc, char** argv) {
-  
+
   // prepare parallel enviroment
   mpi_environment_t mpi;
   mpi.init(argc, argv);
@@ -156,18 +116,58 @@ cat > $1/main_3d.cpp << EOF
 EOF
 }
 
-if [[ "$#" -ne 1 ]]; then
-    echo "useage: ./$(basename "$0") example"
+
+help="-- Use this script to a new example along with a .pro file --
+
+usage:
+    ./$(basename "$0") example_name
+  to be executed in the $(dirname "$PWD")/example directory
+
+where:
+    example_name is the name of the example whose creation is desired. The example folder will be
+    created and dummy main files will be created as well. If the example folder already exists, the
+    script will abort.
+
+The user needs to have defined the following environment variable
+    CASL_P4EST_USER:  environment specifier
+as it is required to create the corresponding qmake .pro file.
+
+If not defined yet, define it by executing
+export CASL_P4EST_USER=basename of the specific .pri file in $(dirname "$PWD")/qmake that defines
+                       the specific build environment of your machine (specific paths to external
+                       libaries, specific compilers, etc.). If it does not exist yet, create it
+                       by executing ./new_environment in $(dirname "$PWD")/qmake .
+"
+
+if [ "$#" -ne 1 ] || [ "$1" == "-h" ] || [ "$1" == "-help" ]; then
+    echo "$help"
+    exit 1;
 else
   name=$1
 
   # create a new example only if one does not exist with the same name
-  if [[ ! -e $name ]]; then
-    mkdir $name
-    create_pro $name
-    create_main $name
+  if [ ! -e $name ] || ([ -e $name ] && [ ! -f $name/$name.pro ]) || ([ -e $name ] && [ ! -f $name/main* ]); then
+    if [ ! -e $name ]; then
+      echo "Creating directory ./$name"
+      mkdir $name
+    fi
+    if [ -e ${name} ] && [ ! -f ${name}/${name}.pro ]; then
+      echo "Creating the .pro file."
+      (./newprofile $name)
+      status=$?
+      if [[ $status -eq 1 ]]; then
+        echo "There was an issue when creating the .pro file."
+        exit 1;
+      fi
+    fi
+    if [ -e $name ] && [ ! -f $name/main* ]; then
+      echo "No existing main file: creating dummy 2d and 3d main files."
+      create_main $name
+    fi
   else
     echo "ERROR: Example '$name' already exists. Please choose another name."
     exit 1
-  fi  
+  fi
 fi
+
+
