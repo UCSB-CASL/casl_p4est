@@ -1,7 +1,8 @@
 SOURCES += \
   $$PARCASL/src/Parser.cpp \
   one_dimensional_uniform_grid.cpp \
-  my_petsc_utils.cpp
+  my_petsc_utils.cpp \
+  main.cpp
 
 HEADERS += \
   $$PARCASL/src/Parser.h \

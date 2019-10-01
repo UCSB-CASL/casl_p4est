@@ -1,5 +1,0 @@
-include(paths_and_compilers.pri)
-include(configuration.pri)
-include(src_list.pri)
-TARGET   = get_started_with_petsc
-SOURCES += main.cpp

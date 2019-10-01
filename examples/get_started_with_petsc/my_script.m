@@ -1,10 +1,16 @@
 clear all; close all; clc;
-% change the two following paths accordingly to your machine's to use the
-% script: the first path must point to your local installation of petss,
-% the second path must point to the folder where the results of the
-% executable have been exported
-petsc_root = '/home/regan/libraries/petsc';
-output_folder = '/home/regan/workspace/parbuild/release/get_started_with_petsc';
+% set the two following environment variables accordingly to your machine's
+% and run's exportation paths before using the script: the first path must
+% point to your local installation of petsc, the second path must point to
+% the folder where the results of the executable have been exported
+petsc_root = getenv('PETSC_DIR');
+if isempty(petsc_root)
+    error("you need to defined the environement variable PETSC_DIR before running this script");
+end
+output_folder = getenv('OUTPUT_FOLDER');
+if isempty(output_folder)
+    error("you need to defined the environement variable OUTPUT_FOLDER before running this script");
+end
 addpath(convertStringsToChars(strcat(petsc_root, '/share/petsc/matlab')))
 filename = convertStringsToChars(strcat(output_folder, '/coordinates.mat'));
 coordinates = PetscBinaryRead(filename);
