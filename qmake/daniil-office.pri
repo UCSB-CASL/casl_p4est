@@ -8,8 +8,8 @@ PETSC_DIR_RLS = /home/dbochkov/Software/PETSc/petsc-3.9.2/build-release
 
 PETSC_INCLUDES_RELEASE = $$PETSC_DIR_RLS/include
 PETSC_INCLUDES_DEBUG   = $$PETSC_DIR_DBG/include
-PETSC_LIBS_RELEASE = -L$$PETSC_DIR_RLS/lib -lpetsc
-PETSC_LIBS_DEBUG   = -L$$PETSC_DIR_DBG/lib -lpetsc
+PETSC_LIBS_RELEASE = -Wl,-rpath,$$PETSC_DIR_RLS/lib -L$$PETSC_DIR_RLS/lib -lpetsc
+PETSC_LIBS_DEBUG   = -Wl,-rpath,$$PETSC_DIR_DBG/lib -L$$PETSC_DIR_DBG/lib -lpetsc
 
 # p4est
 P4EST_DIR_DBG = /home/dbochkov/Software/p4est/p4est-1.1/build-release
@@ -26,8 +26,8 @@ VORO_DIR_RLS = /home/dbochkov/Software/Voro++/voro++-0.4.6/build-release
 
 VORO_INCLUDES_RELEASE = $$VORO_DIR_RLS/include/voro++
 VORO_INCLUDES_DEBUG   = $$VORO_DIR_DBG/include/voro++
-VORO_LIBS_RELEASE     = -L$$VORO_DIR_RLS/lib -lvoro++
-VORO_LIBS_DEBUG       = -L$$VORO_DIR_DBG/lib -lvoro++
+VORO_LIBS_RELEASE     = -Wl,-rpath,$$VORO_DIR_RLS/lib -L$$VORO_DIR_RLS/lib -lvoro++
+VORO_LIBS_DEBUG       = -Wl,-rpath,$$VORO_DIR_DBG/lib -L$$VORO_DIR_DBG/lib -lvoro++
 
 # matlab (for computing condition numbers, it's ok not to provide)
 MATLAB_DIR = /usr/local/MATLAB/R2018a/

@@ -3,7 +3,7 @@
 
 #include <petsc.h>
 #include <vector>
-#include <my_mpi_world.h>
+#include "my_mpi_world.h"
 
 typedef struct ghost_node{
   ghost_node(PetscInt array_idx_=0, PetscInt local_idx_=0) : array_idx(array_idx_), local_idx(local_idx_) {}

@@ -1,11 +1,11 @@
 SOURCES += \
   $$PARCASL/src/Parser.cpp \
-  one_dimensional_uniform_grid.cpp \
-  my_petsc_utils.cpp \
-  main.cpp
+  $$PWD/one_dimensional_uniform_grid.cpp \
+  $$PWD/my_petsc_utils.cpp \
+  $$PWD/main.cpp
 
 HEADERS += \
   $$PARCASL/src/Parser.h \
-  my_mpi_world.h \
-  one_dimensional_uniform_grid.h \
-  my_petsc_utils.h
+  $$PWD/my_mpi_world.h \
+  $$PWD/one_dimensional_uniform_grid.h \
+  $$PWD/my_petsc_utils.h
