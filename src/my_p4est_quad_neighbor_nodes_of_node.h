@@ -82,6 +82,15 @@ struct quad_neighbor_nodes_of_node_t {
                                         #endif
                                           ) const;
 
+  inline void ngbd_with_quadratic_interpolation( const double *f, double& f_000,double f_nei[]) const
+  {
+#ifdef P4_TO_P8
+    ngbd_with_quadratic_interpolation(f, f_000, f_nei[dir::f_m00], f_nei[dir::f_p00], f_nei[dir::f_0m0], f_nei[dir::f_0p0], f_nei[dir::f_00m], f_nei[dir::f_00p]);
+#else
+    ngbd_with_quadratic_interpolation(f, f_000, f_nei[dir::f_m00], f_nei[dir::f_p00], f_nei[dir::f_0m0], f_nei[dir::f_0p0]);
+#endif
+  }
+
   void x_ngbd_with_quadratic_interpolation( const double *f,
                                             double& f_m00, double& f_000, double& f_p00) const;
 
@@ -148,6 +157,10 @@ struct quad_neighbor_nodes_of_node_t {
   double dxx_central_on_p00(const double *f, const my_p4est_node_neighbors_t& neighbors) const;
   double dyy_central_on_0m0(const double *f, const my_p4est_node_neighbors_t& neighbors) const;
   double dyy_central_on_0p0(const double *f, const my_p4est_node_neighbors_t& neighbors) const;
+  double dy_central_on_m00(const double *f, const my_p4est_node_neighbors_t& neighbors) const;
+  double dy_central_on_p00(const double *f, const my_p4est_node_neighbors_t& neighbors) const;
+  double dx_central_on_0m0(const double *f, const my_p4est_node_neighbors_t& neighbors) const;
+  double dx_central_on_0p0(const double *f, const my_p4est_node_neighbors_t& neighbors) const;
 #ifdef P4_TO_P8
   double dzz_central_on_00m(const double *f, const my_p4est_node_neighbors_t& neighbors) const;
   double dzz_central_on_00p(const double *f, const my_p4est_node_neighbors_t& neighbors) const;
@@ -223,6 +236,188 @@ struct quad_neighbor_nodes_of_node_t {
     fprintf(pFile,"d_m00 : %f\nd_p00 : %f\nd_0m0 : %f\nd_0p0 : %f\n",d_m00,d_p00,d_0m0,d_0p0);
 #endif
   }
+
+  p4est_locidx_t neighbor_m00() const;
+  p4est_locidx_t neighbor_p00() const;
+  p4est_locidx_t neighbor_0m0() const;
+  p4est_locidx_t neighbor_0p0() const;
+#ifdef P4_TO_P8
+  p4est_locidx_t neighbor_00m() const;
+  p4est_locidx_t neighbor_00p() const;
+#endif
+
+  inline p4est_locidx_t neighbor(int dir) const
+  {
+    switch (dir)
+    {
+      case dir::f_m00: return neighbor_m00();
+      case dir::f_p00: return neighbor_p00();
+      case dir::f_0m0: return neighbor_0m0();
+      case dir::f_0p0: return neighbor_0p0();
+#ifdef P4_TO_P8
+      case dir::f_00m: return neighbor_00m();
+      case dir::f_00p: return neighbor_00p();
+#endif
+      default: throw std::invalid_argument("Invalid direction\n");
+    }
+  }
+
+  inline double distance(int dir) const
+  {
+    switch (dir)
+    {
+      case dir::f_m00: return d_m00;
+      case dir::f_p00: return d_p00;
+      case dir::f_0m0: return d_0m0;
+      case dir::f_0p0: return d_0p0;
+#ifdef P4_TO_P8
+      case dir::f_00m: return d_00m;
+      case dir::f_00p: return d_00p;
+#endif
+      default: throw std::invalid_argument("Invalid direction\n");
+    }
+  }
+
+  inline bool is_stencil_in_negative_domain(double *phi_p) const
+  {
+    return phi_p[this->node_000]<-EPS &&
+    #ifdef P4_TO_P8
+        ( phi_p[this->node_m00_mm]<-EPS || fabs(this->d_m00_p0)<EPS || fabs(this->d_m00_0p)<EPS) &&
+        ( phi_p[this->node_m00_mp]<-EPS || fabs(this->d_m00_p0)<EPS || fabs(this->d_m00_0m)<EPS) &&
+        ( phi_p[this->node_m00_pm]<-EPS || fabs(this->d_m00_m0)<EPS || fabs(this->d_m00_0p)<EPS) &&
+        ( phi_p[this->node_m00_pp]<-EPS || fabs(this->d_m00_m0)<EPS || fabs(this->d_m00_0m)<EPS) &&
+        ( phi_p[this->node_p00_mm]<-EPS || fabs(this->d_p00_p0)<EPS || fabs(this->d_p00_0p)<EPS) &&
+        ( phi_p[this->node_p00_mp]<-EPS || fabs(this->d_p00_p0)<EPS || fabs(this->d_p00_0m)<EPS) &&
+        ( phi_p[this->node_p00_pm]<-EPS || fabs(this->d_p00_m0)<EPS || fabs(this->d_p00_0p)<EPS) &&
+        ( phi_p[this->node_p00_pp]<-EPS || fabs(this->d_p00_m0)<EPS || fabs(this->d_p00_0m)<EPS) &&
+        ( phi_p[this->node_0m0_mm]<-EPS || fabs(this->d_0m0_p0)<EPS || fabs(this->d_0m0_0p)<EPS) &&
+        ( phi_p[this->node_0m0_mp]<-EPS || fabs(this->d_0m0_p0)<EPS || fabs(this->d_0m0_0m)<EPS) &&
+        ( phi_p[this->node_0m0_pm]<-EPS || fabs(this->d_0m0_m0)<EPS || fabs(this->d_0m0_0p)<EPS) &&
+        ( phi_p[this->node_0m0_pp]<-EPS || fabs(this->d_0m0_m0)<EPS || fabs(this->d_0m0_0m)<EPS) &&
+        ( phi_p[this->node_0p0_mm]<-EPS || fabs(this->d_0p0_p0)<EPS || fabs(this->d_0p0_0p)<EPS) &&
+        ( phi_p[this->node_0p0_mp]<-EPS || fabs(this->d_0p0_p0)<EPS || fabs(this->d_0p0_0m)<EPS) &&
+        ( phi_p[this->node_0p0_pm]<-EPS || fabs(this->d_0p0_m0)<EPS || fabs(this->d_0p0_0p)<EPS) &&
+        ( phi_p[this->node_0p0_pp]<-EPS || fabs(this->d_0p0_m0)<EPS || fabs(this->d_0p0_0m)<EPS) &&
+        ( phi_p[this->node_00m_mm]<-EPS || fabs(this->d_00m_p0)<EPS || fabs(this->d_00m_0p)<EPS) &&
+        ( phi_p[this->node_00m_mp]<-EPS || fabs(this->d_00m_p0)<EPS || fabs(this->d_00m_0m)<EPS) &&
+        ( phi_p[this->node_00m_pm]<-EPS || fabs(this->d_00m_m0)<EPS || fabs(this->d_00m_0p)<EPS) &&
+        ( phi_p[this->node_00m_pp]<-EPS || fabs(this->d_00m_m0)<EPS || fabs(this->d_00m_0m)<EPS) &&
+        ( phi_p[this->node_00p_mm]<-EPS || fabs(this->d_00p_p0)<EPS || fabs(this->d_00p_0p)<EPS) &&
+        ( phi_p[this->node_00p_mp]<-EPS || fabs(this->d_00p_p0)<EPS || fabs(this->d_00p_0m)<EPS) &&
+        ( phi_p[this->node_00p_pm]<-EPS || fabs(this->d_00p_m0)<EPS || fabs(this->d_00p_0p)<EPS) &&
+        ( phi_p[this->node_00p_pp]<-EPS || fabs(this->d_00p_m0)<EPS || fabs(this->d_00p_0m)<EPS);
+    #else
+        ( phi_p[this->node_m00_mm]<-EPS || fabs(this->d_m00_p0)<EPS) &&
+        ( phi_p[this->node_m00_pm]<-EPS || fabs(this->d_m00_m0)<EPS) &&
+        ( phi_p[this->node_p00_mm]<-EPS || fabs(this->d_p00_p0)<EPS) &&
+        ( phi_p[this->node_p00_pm]<-EPS || fabs(this->d_p00_m0)<EPS) &&
+        ( phi_p[this->node_0m0_mm]<-EPS || fabs(this->d_0m0_p0)<EPS) &&
+        ( phi_p[this->node_0m0_pm]<-EPS || fabs(this->d_0m0_m0)<EPS) &&
+        ( phi_p[this->node_0p0_mm]<-EPS || fabs(this->d_0p0_p0)<EPS) &&
+        ( phi_p[this->node_0p0_pm]<-EPS || fabs(this->d_0p0_m0)<EPS);
+#endif
+  }
+
+  inline double interpolate_in_dir(int dir, double dist, double *f_ptr) const
+  {
+    p4est_locidx_t node_nei = neighbor(dir);
+    double         h   = distance(dir);
+    if (node_nei == -1) throw std::domain_error("interpolate_in_dir does not support non-uniform grids yet\n");
+    return f_ptr[node_000]*(1-dist/h) + f_ptr[node_nei]*dist/h;
+  }
+
+  inline double interpolate_in_dir(int dir, double dist, double *f_ptr, double *f_dd_ptr) const
+  {
+    p4est_locidx_t node_nei = neighbor(dir);
+    double         h   = distance(dir);
+    if (node_nei == -1) throw std::domain_error("interpolate_in_dir doesn not support non-uniform grids yet\n");
+    return f_ptr[node_000]*(1-dist/h) + f_ptr[node_nei]*dist/h + 0.5*dist*(dist-h)*MINMOD(f_dd_ptr[node_000], f_dd_ptr[node_nei]);
+  }
+
+  inline double interpolate_in_dir(int dir, double dist, double *f_ptr, double *f_dd_ptr[]) const
+  {
+    p4est_locidx_t node_nei = neighbor(dir);
+    double         h   = distance(dir);
+    int            dim = dir / 2;
+    if (node_nei == -1) throw std::domain_error("interpolate_in_dir does not support non-uniform grids yet\n");
+    return f_ptr[node_000]*(1-dist/h) + f_ptr[node_nei]*dist/h + 0.5*dist*(dist-h)*MINMOD(f_dd_ptr[dim][node_000], f_dd_ptr[dim][node_nei]);
+  }
+
+  // inlined duplicates
+
+#ifdef P4_TO_P8
+  inline double inl_f_m00_linear(const double* f) const{
+//      PetscErrorCode ierr = PetscLogFlops(17); CHKERRXX(ierr);
+      return (f[node_m00_mm]*d_m00_p0*d_m00_0p +
+              f[node_m00_mp]*d_m00_p0*d_m00_0m +
+              f[node_m00_pm]*d_m00_m0*d_m00_0p +
+              f[node_m00_pp]*d_m00_m0*d_m00_0m )/(d_m00_m0 + d_m00_p0)/(d_m00_0m + d_m00_0p);
+  }
+  inline double inl_f_p00_linear(const double* f) const{
+//      PetscErrorCode ierr = PetscLogFlops(17); CHKERRXX(ierr);
+      return (f[node_p00_mm]*d_p00_p0*d_p00_0p +
+              f[node_p00_mp]*d_p00_p0*d_p00_0m +
+              f[node_p00_pm]*d_p00_m0*d_p00_0p +
+              f[node_p00_pp]*d_p00_m0*d_p00_0m )/(d_p00_m0 + d_p00_p0)/(d_p00_0m + d_p00_0p);
+  }
+  inline double inl_f_0m0_linear(const double* f) const{
+//      PetscErrorCode ierr = PetscLogFlops(17); CHKERRXX(ierr);
+      return (f[node_0m0_mm]*d_0m0_p0*d_0m0_0p +
+              f[node_0m0_mp]*d_0m0_p0*d_0m0_0m +
+              f[node_0m0_pm]*d_0m0_m0*d_0m0_0p +
+              f[node_0m0_pp]*d_0m0_m0*d_0m0_0m )/(d_0m0_m0 + d_0m0_p0)/(d_0m0_0m + d_0m0_0p);
+  }
+  inline double inl_f_0p0_linear(const double* f) const{
+//      PetscErrorCode ierr = PetscLogFlops(17); CHKERRXX(ierr);
+      return (f[node_0p0_mm]*d_0p0_p0*d_0p0_0p +
+              f[node_0p0_mp]*d_0p0_p0*d_0p0_0m +
+              f[node_0p0_pm]*d_0p0_m0*d_0p0_0p +
+              f[node_0p0_pp]*d_0p0_m0*d_0p0_0m )/(d_0p0_m0 + d_0p0_p0)/(d_0p0_0m + d_0p0_0p);
+  }
+  inline double inl_f_00m_linear(const double* f) const{
+//      PetscErrorCode ierr = PetscLogFlops(17); CHKERRXX(ierr);
+      return (f[node_00m_mm]*d_00m_p0*d_00m_0p +
+              f[node_00m_mp]*d_00m_p0*d_00m_0m +
+              f[node_00m_pm]*d_00m_m0*d_00m_0p +
+              f[node_00m_pp]*d_00m_m0*d_00m_0m )/(d_00m_m0 + d_00m_p0)/(d_00m_0m + d_00m_0p);
+  }
+  inline double inl_f_00p_linear(const double* f) const{
+//      PetscErrorCode ierr = PetscLogFlops(17); CHKERRXX(ierr);
+      return (f[node_00p_mm]*d_00p_p0*d_00p_0p +
+              f[node_00p_mp]*d_00p_p0*d_00p_0m +
+              f[node_00p_pm]*d_00p_m0*d_00p_0p +
+              f[node_00p_pp]*d_00p_m0*d_00p_0m )/(d_00p_m0 + d_00p_p0)/(d_00p_0m + d_00p_0p);
+  }
+#else
+  inline double inl_f_m00_linear( const double *f ) const
+  {
+//    PetscErrorCode ierr = PetscLogFlops(2.5); CHKERRXX(ierr); // 50% propability
+    if(d_m00_p0==0) return f[node_m00_pm];
+    if(d_m00_m0==0) return f[node_m00_mm];
+    else          return(f[node_m00_mm]*d_m00_p0 + f[node_m00_pm]*d_m00_m0)/ (d_m00_m0+d_m00_p0);
+  }
+  inline double inl_f_p00_linear( const double *f ) const
+  {
+//    PetscErrorCode ierr = PetscLogFlops(2.5); CHKERRXX(ierr); // 50% propability
+    if(d_p00_p0==0) return f[node_p00_pm];
+    if(d_p00_m0==0) return f[node_p00_mm];
+    else          return(f[node_p00_mm]*d_p00_p0 + f[node_p00_pm]*d_p00_m0)/ (d_p00_m0+d_p00_p0);
+  }
+  inline double inl_f_0m0_linear( const double *f ) const
+  {
+//    PetscErrorCode ierr = PetscLogFlops(2.5); CHKERRXX(ierr); // 50% propability
+    if(d_0m0_m0==0) return f[node_0m0_mm];
+    if(d_0m0_p0==0) return f[node_0m0_pm];
+    else          return(f[node_0m0_pm]*d_0m0_m0 + f[node_0m0_mm]*d_0m0_p0)/ (d_0m0_m0+d_0m0_p0);
+  }
+  inline double inl_f_0p0_linear( const double *f ) const
+  {
+//    PetscErrorCode ierr = PetscLogFlops(2.5); CHKERRXX(ierr); // 50% propability
+    if(d_0p0_m0==0) return f[node_0p0_mm];
+    if(d_0p0_p0==0) return f[node_0p0_pm];
+    else          return(f[node_0p0_pm]*d_0p0_m0 + f[node_0p0_mm]*d_0p0_p0)/ (d_0p0_m0+d_0p0_p0);
+  }
+#endif
 };
 
 #endif /* !MY_P4EST_QUAD_NEIGHBOR_NODES_OF_NODE_H */

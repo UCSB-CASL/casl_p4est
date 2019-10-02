@@ -108,6 +108,45 @@ inline double SUPERBEE( double a, double b )
   }
 }
 
+
+inline double KOREN( double a, double b )
+{
+  if(a*b<=0) return 0;
+  else
+  {
+    double theta = b/a;
+    if(theta<0.4) return 2.*b;
+    if(theta<4.0) return (2*a+b)/3.;
+    else          return 2.*a;
+  }
+}
+
+
+inline double MC( double a, double b )
+{
+  if(a*b<=0) return 0;
+  else
+  {
+//    double theta = b/a;
+//    if(theta<1./3.) return 2.*b;
+//    if(theta<3.0) return (a+b)/2.;
+//    else          return 2.*a;
+
+    if (3.*fabs(b) < fabs(a)) return 2.*b;
+    if (fabs(b) < 3.*fabs(a)) return (a+b)/2.;
+    else                      return 2.*a;
+  }
+}
+
+
+inline double MC2( double a, double b )
+{
+  return (a+b)/2.;
+  if(a*b<=0) return 0;
+  else return (a+b)/2.;
+}
+
+
 template <typename T>
 inline const T& MIN(const T& val1, const T& val2)
 {

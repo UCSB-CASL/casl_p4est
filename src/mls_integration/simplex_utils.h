@@ -1,0 +1,5 @@
+#ifndef SIMPLEX_UTILS_H
+#define SIMPLEX_UTILS_H
+enum loc_t {INS, OUT, FCE, LNE, PNT};
+enum action_t { CUBE_MLS_INTERSECTION = 0, CUBE_MLS_ADDITION = 1, CUBE_MLS_COLORATION = 2 };
+#endif

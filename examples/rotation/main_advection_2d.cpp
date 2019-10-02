@@ -16,6 +16,7 @@
 
 #include <src/Parser.h>
 #include <src/casl_math.h>
+#include <string.h>
 
 #ifndef GIT_COMMIT_HASH_SHORT
 #define GIT_COMMIT_HASH_SHORT "unknown"
@@ -191,6 +192,8 @@ int main(int argc, char ** argv)
   cmd.add_option("nx", "number of trees in x direction");
   cmd.add_option("ny", "number of trees in y direction");
   cmd.add_option("nz", "number of trees in z direction");
+  cmd.add_option("dt_save", "time interval for saving vtk");
+  cmd.add_option("save_hierarchy", "export hierarchy");
 
   cmd.parse(argc, argv);
   cmd.print();
@@ -199,11 +202,13 @@ int main(int argc, char ** argv)
   int ny = cmd.get("ny", 1);
   int nz = cmd.get("nz", 1);
 
-  int lmin = cmd.get("lmin", 0);
-  int lmax = cmd.get("lmax", 5);
+  int lmin = cmd.get("lmin", 2);
+  int lmax = cmd.get("lmax", 12);
   int nb_splits = cmd.get("nb_splits", 1);
   double tf = cmd.get("tf", 1);
-  bool save_vtk = cmd.get("save_vtk", 0);
+  bool save_vtk = cmd.get("save_vtk", 1);
+  bool save_hierarchy = cmd.get("save_hierarchy", 1);
+  double dt_save = cmd.get("dt_save", 0.1);
 
   my_p4est_brick_t brick;
   p4est_connectivity_t *connectivity;
@@ -222,7 +227,12 @@ int main(int argc, char ** argv)
 #if defined(STAMPEDE) || defined(COMET)
     char *out_dir;
     out_dir = getenv("OUT_DIR");
+#else
+  char out_dir[] = OUTPUT_DIR;
 #endif
+
+  system((std::string("mkdir -p ")+out_dir+std::string("/vtu")).c_str());
+  system((std::string("mkdir -p ")+out_dir+std::string("/hierarchy")).c_str());
 
   for(int repeat=0; repeat<nb_splits; ++repeat)
   {
@@ -256,6 +266,7 @@ int main(int argc, char ** argv)
     }
     double dt = 5*dxyz_min;
     double dtn = dt;
+    int save_every_n = round(dt_save/dt);
 
 #ifdef P4_TO_P8
     const CF_3 *velo[] = {&u0, &v0, &w0};
@@ -267,37 +278,31 @@ int main(int argc, char ** argv)
 
     if(save_vtk)
     {
-#if defined(STAMPEDE) || defined(COMET)
 #ifdef P4_TO_P8
       sprintf(name, "%s/vtu/step_vortex_%dx%dx%d_%d-%d_%05d", out_dir, nx, ny, nz, lmin, lmax+repeat, iter);
 #else
       sprintf(name, "%s/vtu/step_vortex_%dx%d_%d-%d_%05d", out_dir, nx, ny, lmin, lmax+repeat, iter);
 #endif
-#else
-#ifdef P4_TO_P8
-      sprintf(name, "/home/guittet/code/Output/p4est_test/advection/3d_%05d", iter);
-#else
-      sprintf(name, "/home/guittet/code/Output/p4est_test/advection/2d_%05d", iter);
-#endif
-#endif
       save_VTK(p4est, ghost, nodes, phi, name);
     }
 
     double tn = 0;
-#if defined(STAMPEDE) || defined(COMET)
 #ifdef P4_TO_P8
     sprintf(name, "%s/vtu/vortex_%dx%dx%d_%d-%d_0", out_dir, nx, ny, nz, lmin, lmax+repeat);
 #else
     sprintf(name, "%s/vtu/vortex_%dx%d_%d-%d_0", out_dir, nx, ny, lmin, lmax+repeat);
 #endif
-#else
-#ifdef P4_TO_P8
-    sprintf(name, "/home/guittet/code/Output/p4est_test/advection/vortex_%dx%dx%d_%d-%d_0", nx, ny, nz, lmin, lmax+repeat);
-#else
-    sprintf(name, "/home/guittet/code/Output/p4est_test/advection/vortex_%dx%d_%d-%d_0", nx, ny, lmin, lmax+repeat);
-#endif
-#endif
     save_VTK(p4est, ghost, nodes, phi, name);
+
+    if (save_hierarchy)
+    {
+#ifdef P4_TO_P8
+      sprintf(name, "%s/hierarchy/vortex_%dx%dx%d_%d-%d_0", out_dir, nx, ny, nz, lmin, lmax+repeat);
+#else
+      sprintf(name, "%s/hierarchy/vortex_%dx%d_%d-%d_0", out_dir, nx, ny, lmin, lmax+repeat);
+#endif
+      hierarchy->write_vtk(name);
+    }
 
     iter ++;
 
@@ -322,20 +327,12 @@ int main(int argc, char ** argv)
       my_p4est_level_set_t ls(ngbd_n);
       ls.reinitialize_1st_order_time_2nd_order_space(phi,40);
 
-      if(save_vtk)
+      if(save_vtk && (iter%save_every_n == 0))
       {
-#if defined(STAMPEDE) || defined(COMET)
 #ifdef P4_TO_P8
-        sprintf(name, "%s/vtu/step_vortex_%dx%dx%d_%d-%d_%05d", out_dir, nx, ny, nz, lmin, lmax+repeat, iter);
+        sprintf(name, "%s/vtu/step_vortex_%dx%dx%d_%d-%d_%05d", out_dir, nx, ny, nz, lmin, lmax+repeat, iter/save_every_n);
 #else
-        sprintf(name, "%s/vtu/step_vortex_%dx%d_%d-%d_%05d", out_dir, nx, ny, lmin, lmax+repeat, iter);
-#endif
-#else
-#ifdef P4_TO_P8
-        sprintf(name, "/home/guittet/code/Output/p4est_test/advection/3d_%05d", iter);
-#else
-        sprintf(name, "/home/guittet/code/Output/p4est_test/advection/2d_%05d", iter);
-#endif
+        sprintf(name, "%s/vtu/step_vortex_%dx%d_%d-%d_%05d", out_dir, nx, ny, lmin, lmax+repeat, iter/save_every_n);
 #endif
         save_VTK(p4est, ghost, nodes, phi, name);
       }
@@ -353,20 +350,22 @@ int main(int argc, char ** argv)
     velo[2] = &w1;
 #endif
 
-#if defined(STAMPEDE) || defined(COMET)
 #ifdef P4_TO_P8
     sprintf(name, "%s/vtu/vortex_%dx%dx%d_%d-%d_1", out_dir, nx, ny, nz, lmin, lmax+repeat);
 #else
     sprintf(name, "%s/vtu/vortex_%dx%d_%d-%d_1", out_dir, nx, ny, lmin, lmax+repeat);
 #endif
-#else
-#ifdef P4_TO_P8
-    sprintf(name, "/home/guittet/code/Output/p4est_test/advection/vortex_%dx%dx%d_%d-%d_1", nx, ny, nz, lmin, lmax+repeat);
-#else
-    sprintf(name, "/home/guittet/code/Output/p4est_test/advection/vortex_%dx%d_%d-%d_1", nx, ny, lmin, lmax+repeat);
-#endif
-#endif
     save_VTK(p4est, ghost, nodes, phi, name);
+
+    if (save_hierarchy)
+    {
+#ifdef P4_TO_P8
+      sprintf(name, "%s/hierarchy/vortex_%dx%dx%d_%d-%d_1", out_dir, nx, ny, nz, lmin, lmax+repeat);
+#else
+      sprintf(name, "%s/hierarchy/vortex_%dx%d_%d-%d_1", out_dir, nx, ny, lmin, lmax+repeat);
+#endif
+      hierarchy->write_vtk(name);
+    }
 
     dtn = dt;
 
@@ -391,22 +390,24 @@ int main(int argc, char ** argv)
       my_p4est_level_set_t ls(ngbd_n);
       ls.reinitialize_1st_order_time_2nd_order_space(phi,40);
 
-      if(save_vtk)
+      if(save_vtk && (iter%save_every_n == 0))
       {
-#if defined(STAMPEDE) || defined(COMET)
 #ifdef P4_TO_P8
-        sprintf(name, "%s/vtu/step_vortex_%dx%dx%d_%d-%d_%05d", out_dir, nx, ny, nz, lmin, lmax+repeat, iter);
+        sprintf(name, "%s/vtu/step_vortex_%dx%dx%d_%d-%d_%05d", out_dir, nx, ny, nz, lmin, lmax+repeat, iter/save_every_n);
 #else
-        sprintf(name, "%s/vtu/step_vortex_%dx%d_%d-%d_%05d", out_dir, nx, ny, lmin, lmax+repeat, iter);
-#endif
-#else
-#ifdef P4_TO_P8
-        sprintf(name, "/home/guittet/code/Output/p4est_test/advection/3d_%05d", iter);
-#else
-        sprintf(name, "/home/guittet/code/Output/p4est_test/advection/2d_%05d", iter);
-#endif
+        sprintf(name, "%s/vtu/step_vortex_%dx%d_%d-%d_%05d", out_dir, nx, ny, lmin, lmax+repeat, iter/save_every_n);
 #endif
         save_VTK(p4est, ghost, nodes, phi, name);
+
+//        if (save_hierarchy)
+//        {
+//#ifdef P4_TO_P8
+//          sprintf(name, "%s/hierarchy/step_vortex_%dx%dx%d_%d-%d_%05d", out_dir, nx, ny, nz, lmin, lmax+repeat, iter/save_every_n);
+//#else
+//          sprintf(name, "%s/hierarchy/step_vortex_%dx%d_%d-%d_%05d", out_dir, nx, ny, lmin, lmax+repeat, iter/save_every_n);
+//#endif
+//          hierarchy->write_vtk(name);
+//        }
       }
 
       tn -= dtn;
@@ -414,18 +415,10 @@ int main(int argc, char ** argv)
       iter++;
     }
 
-#if defined(STAMPEDE) || defined(COMET)
 #ifdef P4_TO_P8
     sprintf(name, "%s/vtu/vortex_%dx%dx%d_%d-%d_2", out_dir, nx, ny, nz, lmin, lmax+repeat);
 #else
     sprintf(name, "%s/vtu/vortex_%dx%d_%d-%d_2", out_dir, nx, ny, lmin, lmax+repeat);
-#endif
-#else
-#ifdef P4_TO_P8
-    sprintf(name, "/home/guittet/code/Output/p4est_test/advection/vortex_%dx%dx%d_%d-%d_2", nx, ny, nz, lmin, lmax+repeat);
-#else
-    sprintf(name, "/home/guittet/code/Output/p4est_test/advection/vortex_%dx%d_%d-%d_2", nx, ny, lmin, lmax+repeat);
-#endif
 #endif
     save_VTK(p4est, ghost, nodes, phi, name);
 

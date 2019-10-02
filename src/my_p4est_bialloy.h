@@ -96,6 +96,19 @@ private:
   bool matrices_are_constructed;
   Vec rhs;
 
+  int dt_method;
+
+  double velocity_tol;
+
+  double cfl_number;
+
+  double phi_thresh;
+
+  bool zero_negative_velocity;
+  bool use_fd_scheme_for_temperature;
+  bool use_more_points_for_extension;
+  int order_of_extension;
+
 public:
 
   my_p4est_bialloy_t(my_p4est_node_neighbors_t *ngbd);
@@ -152,6 +165,12 @@ public:
   inline double get_max_interface_velocity() { return vgamma_max; }
 
   void set_dt( double dt );
+
+  void set_dt_method    (int val)    {dt_method     = val;}
+  void set_velocity_tol (double val) {velocity_tol  = val;}
+  void set_cfl          (double val) {cfl_number    = val;}
+  void set_phi_thresh   (double val) {phi_thresh    = val;}
+  void set_zero_negative_velocity (bool val) {zero_negative_velocity = val;}
 
   void compute_normal_and_curvature();
 

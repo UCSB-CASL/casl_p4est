@@ -33,11 +33,13 @@ public:
 class my_p4est_node_neighbors_t {
   friend class my_p4est_poisson_nodes_t;
   friend class my_p4est_poisson_cells_t;
+  friend class my_p4est_poisson_nodes_voronoi_t;
   friend class my_p4est_poisson_jump_nodes_voronoi_t;
   friend class my_p4est_poisson_jump_voronoi_block_t;
   friend class my_p4est_poisson_jump_nodes_extended_t;
   friend class my_p4est_interpolation_t;
   friend class my_p4est_interpolation_nodes_t;
+  friend class my_p4est_interpolation_nodes_local_t;
   friend class my_p4est_interpolation_cells_t;
   friend class my_p4est_interpolation_faces_t;
   friend class my_p4est_level_set_t;
@@ -45,9 +47,19 @@ class my_p4est_node_neighbors_t {
   friend class my_p4est_level_set_faces_t;
   friend class my_p4est_semi_lagrangian_t;
   friend class my_p4est_bialloy_t;
+  friend class my_p4est_multialloy_t;
   friend class my_p4est_navier_stokes_t;
   friend class my_p4est_epitaxy_t;
   friend class my_p4est_electroporation_solve_t;
+  friend class my_p4est_poisson_nodes_multialloy_t;
+  friend class my_p4est_poisson_nodes_mls_sc_t;
+  friend class my_p4est_poisson_nodes_mls_t;
+  friend class my_p4est_poisson_jump_nodes_mls_sc_t;
+  friend class my_p4est_interpolation_nodes_local_t;
+  friend class my_p4est_integration_mls_t;
+  friend class my_p4est_scft_t;
+  friend class my_p4est_biofilm_t;
+
   /**
      * Initialize the QuadNeighborNodeOfNode information
      */
@@ -325,6 +337,21 @@ public:
    * \param [out] fx  array of size P4EST_DIM of PETSc vectors to store
    */
   void first_derivatives_central(const Vec f, Vec fx[P4EST_DIM]) const;
+
+#ifdef P4_TO_P8
+  inline void first_derivatives_central(const Vec f, Vec fx, Vec fy, Vec fz) const {
+#else
+  inline void first_derivatives_central(const Vec f, Vec fx, Vec fy) const {
+#endif
+#ifdef P4_TO_P8
+    Vec fd[] = { fx, fy, fz };
+#else
+    Vec fd[] = { fx, fy };
+#endif
+    first_derivatives_central(f, fd);
+  }
+
+  void get_all_neighbors(const p4est_locidx_t n, p4est_locidx_t *neighbors, bool *neighbor_exists) const;
 
 private:
 #ifdef P4_TO_P8
