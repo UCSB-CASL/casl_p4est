@@ -118,6 +118,21 @@ public:
   double advect_in_normal_direction(const Vec vn, Vec phi, double dt, Vec phi_xx = NULL, Vec phi_yy = NULL, Vec phi_zz = NULL);
 #else
   double advect_in_normal_direction(const Vec vn, Vec phi, double dt, Vec phi_xx = NULL, Vec phi_yy = NULL);
+#endif
+
+  /*!
+   * \brief advect_in_normal_direction advects the level-set function in the normal direction using Godunov's scheme
+   * (was it an attempt to have second order accurate advection? seems like it not entirely correct. Daniil)
+   * \param vn     [in]      velocity in the normal direction (Vec)
+   * \param vn_np1 [in]      velocity in the normal direction (Vec) at time n+1
+   * \param phi    [in, out] level-set function
+   * \param phi_xx [in]      dxx derivative of level-set function. will be computed if set to NULL
+   * \param phi_yy [in]      dyy derivative of level-set function. will be computed if set to NULL
+   * \return dt
+   */
+#ifdef P4_TO_P8
+  double advect_in_normal_direction(const Vec vn, const Vec vn_np1, Vec phi, double dt, Vec phi_xx = NULL, Vec phi_yy = NULL, Vec phi_zz = NULL);
+#else
   double advect_in_normal_direction(const Vec vn, const Vec vn_np1, Vec phi, double dt, Vec phi_xx = NULL, Vec phi_yy = NULL);
 #endif
 

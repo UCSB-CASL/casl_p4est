@@ -1404,7 +1404,7 @@ double my_p4est_level_set_t::advect_in_normal_direction(const Vec vn, Vec phi, d
 }
 
 #ifdef P4_TO_P8
-double my_p4est_level_set_t::advect_in_normal_direction(const Vec vn, Vec phi, double dt_max, Vec phi_xx, Vec phi_yy, Vec phi_zz)
+double my_p4est_level_set_t::advect_in_normal_direction(const Vec vn, const Vec vn_np1, Vec phi, double dt, Vec phi_xx, Vec phi_yy, Vec phi_zz)
 #else
 double my_p4est_level_set_t::advect_in_normal_direction(const Vec vn, const Vec vn_np1, Vec phi, double dt, Vec phi_xx, Vec phi_yy)
 #endif
@@ -1513,7 +1513,7 @@ double my_p4est_level_set_t::advect_in_normal_direction(const Vec vn, const Vec 
   /* restore arrays */
   ierr = VecRestoreArray(phi,     &phi_p);    CHKERRXX(ierr);
   ierr = VecRestoreArray(vn,      &vn_p);     CHKERRXX(ierr);
-  ierr = VecRestoreArray(vn,      &vn_np1_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(vn_np1,  &vn_np1_p); CHKERRXX(ierr);
   ierr = VecRestoreArray(p1,      &p1_p);     CHKERRXX(ierr);
   ierr = VecRestoreArray(p2,      &p2_p);     CHKERRXX(ierr);
   ierr = VecRestoreArray(phi_xx_, &phi_xx_p); CHKERRXX(ierr);
