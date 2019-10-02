@@ -237,7 +237,7 @@ void trajectory_from_np1_to_nm1( p4est_t *p4est_n, p4est_nodes_t *nodes_n,
 #endif
   else
     interp_n.set_input(vn, quadratic, P4EST_DIM);
-  interp_n.interpolate(data_star_nm1, P4EST_DIM);
+  interp_n.interpolate(data_star_n, P4EST_DIM);
   interp_nm1.clear();
   interp_n  .clear();
 

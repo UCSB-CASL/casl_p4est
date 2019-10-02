@@ -151,7 +151,7 @@ struct exact_level_set_t
   {
     switch(test_number)
     {
-      case 0: return rad(x,y,z) - t - r_star(x,y,z); // NOTE: This is NOT a signed distance function for any t
+      case 0: return t + r_star(x,y,z) - rad(x,y,z); // NOTE: This is NOT a signed distance function for any t
       case 1: throw std::invalid_argument("There is no available analytical solution for this test.");
       default: throw std::invalid_argument("Please choose a valid test.");
     }
@@ -337,7 +337,7 @@ struct star : public CF_2
   unsigned short n;
 
 public:
-  star(double r0_input=0.75, double alpha_input=0.2, unsigned short n_input=7)
+  star(double r0_input=1.0, double alpha_input=0.25, unsigned short n_input=7)
   {
     r0    = r0_input;
     alpha = alpha_input;
@@ -361,7 +361,7 @@ struct exact_level_set_t
   {
     switch(test_number)
     {
-      case 0: return rad(x,y) - t - r_star(x,y); // NOTE: This is NOT a signed distance function for any t
+      case 0: return t + r_star(x,y) - rad(x,y); // NOTE: This is NOT a signed distance function for any t
       case 1: throw std::invalid_argument("There is no available analytical solution for this test.");
       default: throw std::invalid_argument("Please choose a valid test.");
     }
@@ -494,39 +494,38 @@ struct initial_Gamma_n_t : public CF_2
 
 int main(int argc, char** argv) {
   
-// prepare parallel enviroment
+  // Prepare parallel enviroment
   mpi_environment_t mpi;
   mpi.init(argc, argv);
 
-// stopwatch
+  // Stopwatch
   parStopWatch w;
   w.start("Running example: surfactant");
 
-// test number
+  // Test number
   test_number = 0;
 
-// save flags
+  // Save flags
   const bool save_vtk = true;
-  const double vtk_dt = 1.0;
 
-// domain parameters
-  const double xmin = -2.0;
-  const double xmax =  2.0;
-  const double ymin = -2.0;
-  const double ymax =  2.0;
+  // Domain parameters
+  const double xmin = -PI;
+  const double xmax =  PI;
+  const double ymin = -PI;
+  const double ymax =  PI;
 #ifdef P4_TO_P8
-  const double zmin = -2.0;
-  const double zmax =  2.0;
+  const double zmin = -PI;
+  const double zmax =  PI;
 #endif
 
-// number of trees in the forest
+  // Number of trees in the forest
   const int nx = 1;
   const int ny = 1;
 #ifdef P4_TO_P8
   const int nz = 1;
 #endif
 
-// refinement levels
+  // Refinement levels
   const int lmin = 3;
   const int lmax = 8;
 #ifdef P4_TO_P8
@@ -535,10 +534,17 @@ int main(int argc, char** argv) {
   dmin = MIN((xmax-xmin),(ymax-ymin))/pow(2,lmax);
 #endif
 
-// Time
-  dt = dmin;
+  // Time
+  double CFL = 1.0;
+  double u_max = 1.0;
+  switch(test_number)
+  {
+    case 0:  u_max = 1.0; break;
+    default: throw std::invalid_argument("Please choose a valid test.");
+  }
+  dt = CFL*dmin/u_max;
 
-// domain size information
+  // Domain size information
 #ifdef P4_TO_P8
   const int n_xyz      [P4EST_DIM] = {nx, ny, nz};
   const double xyz_min [P4EST_DIM] = {xmin, ymin, zmin};
@@ -551,19 +557,19 @@ int main(int argc, char** argv) {
   const int periodic   [P4EST_DIM] = {0, 0};
 #endif
 
-// band parameters
+  // Band parameters
   double band_width = 4.0;
 
-// define brick from geometry of the problem
-  my_p4est_brick_t*     brick = new my_p4est_brick_t;
-  p4est_connectivity_t* conn  = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, brick, periodic);
+  // Define brick from geometry of the problem
+  my_p4est_brick_t brick;
+  p4est_connectivity_t* conn  = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick, periodic);
 
-// declare level-set functions
+  // Declare level-set functions
   level_set_t* ls_n   = new level_set_t(0.0);
   level_set_t* ls_nm1 = new level_set_t(-dt);
 
-// create solver and set data
-  my_p4est_surfactant_t* surf = new my_p4est_surfactant_t(mpi, brick, conn, lmin, lmax, ls_n, ls_nm1, true, band_width);
+  // Create solver and set data
+  my_p4est_surfactant_t* surf = new my_p4est_surfactant_t(mpi, &brick, conn, lmin, lmax, ls_n, NULL, false, band_width, CFL, 1.2);
 
 #ifdef P4_TO_P8
   CF_3 *vnm1[P4EST_DIM] = { &initial_u_nm1, &initial_v_nm1, &initial_w_nm1 };
@@ -577,12 +583,7 @@ int main(int argc, char** argv) {
   surf->set_Gamma(&initial_Gamma_nm1, &initial_Gamma_n);
   surf->set_no_surface_diffusion(true);
 
-  surf->compute_one_step_Gamma();
-
-//  surf->advect_interface_one_step();
-//  surf->advect_interface_one_step_TEST();
-
-// print vtk data
+  // Print vtk data
   char out_dir[1024], vtk_path[1024], vtk_name[1024];
   string export_dir = "/home/temprano/Output/p4est_surfactant/tests";
   string test_name;
@@ -593,7 +594,7 @@ int main(int argc, char** argv) {
     default: throw std::invalid_argument("Please choose a valid test.");
   }
   sprintf(out_dir, "%s/%dd/%s/%d_%d", export_dir.c_str(), (int)P4EST_DIM, test_name.c_str(), lmin, lmax);
-  sprintf(vtk_path, "%s/vtu", out_dir);
+  sprintf(vtk_path, "%s/vtu",  out_dir);
 
   if(create_directory(out_dir, mpi.rank(), mpi.comm()))
   {
@@ -615,22 +616,59 @@ int main(int argc, char** argv) {
 #endif
   }
 
+  // Time evolution
+  double tf = 1.0;
+  int iter = 0;
   if(save_vtk)
   {
-    sprintf(vtk_name, "%s/snapshot_%d", vtk_path, ((int) floor(tn/vtk_dt)));
+    sprintf(vtk_name, "%s/snapshot_%d", vtk_path, iter);
     surf->save_vtk(vtk_name);
   }
 
-// stop and print timer
-  w.stop();
-  std::cout << w.read_duration() << std::endl;
+  while(tn+0.01*dt < tf)
+  {
+    if(iter>0)
+    {
+      surf->update_from_tn_to_tnp1(vn);
+      dt = surf->get_dt_n();
 
-// destroy the classes
+      if(tn+dt>tf)
+      {
+        dt = tf-tn;
+        surf->set_dt_n(dt);
+      }
+
+      if(save_vtk)
+      {
+        sprintf(vtk_name, "%s/snapshot_%d", vtk_path, iter);
+        surf->save_vtk(vtk_name);
+      }
+    }
+
+    surf->advect_interface_one_step();
+    surf->compute_one_step_Gamma();
+
+    tn+=dt;
+    iter++;
+
+    PetscErrorCode ierr;
+    ierr = PetscPrintf(mpi.comm(), "Iteration #%04d:  tn = %.5e,  "
+                                   "percent done = %.1f%%,  "
+                                   "number of leaves = %d\n",
+                       iter, tn, 100*tn/tf, surf->get_p4est_n()->global_num_quadrants);
+    CHKERRXX(ierr);
+  }
+
+  // Stop and print timer
+  w.stop();
+  w.print_duration();
+
+  // Destroy the dynamically allocated classes
   delete surf;
   delete ls_n;
   delete ls_nm1;
-  my_p4est_brick_destroy(conn, brick);
+  my_p4est_brick_destroy(conn, &brick);
 
-// finish
+  // Finish
   return 0;
 }

@@ -32,35 +32,37 @@ class my_p4est_surfactant_t
 protected:
 
 #ifdef P4_TO_P8
-  class band: public CF_3
+  class band
 #else
-  class band: public CF_2
+  class band
 #endif
   {
   private:
     my_p4est_surfactant_t* _prnt;
   public:
     double band_width;
-    band(my_p4est_surfactant_t* obj, double b_width) : _prnt(obj), band_width(b_width) {lip=1.2;}
-#ifdef P4_TO_P8
-    double operator()( double x, double y, double z ) const;
-#else
-    double operator()( double x, double y ) const;
-#endif
+    band(my_p4est_surfactant_t* obj, double b_width) : _prnt(obj), band_width(b_width)
+    {
+      if(band_width<3.0)
+        throw std::invalid_argument("my_p4est_surfactant::band: The width of the band must be of at least 3 cell sizes.");
+    }
+    inline double band_fn( const double& phi_val ) const { return fabs(phi_val) - 0.5*band_width*(_prnt->dxyz_max); }
   };
 
   class splitting_criteria_surfactant_t : public splitting_criteria_tag_t
   {
   private:
     my_p4est_surfactant_t* _prnt;
-    void tag_quadrant(p4est_t *p4est, p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, my_p4est_interpolation_nodes_t &phi, band* band_p);
+    void tag_quadrant(p4est_t *p4est, p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, p4est_nodes_t *nodes, const double *phi_p);
+    //void tag_quadrant(p4est_t *p4est, p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, my_p4est_interpolation_nodes_t &phi, band* band_p);
   public:
     splitting_criteria_surfactant_t(my_p4est_surfactant_t* obj, int min_lvl, int max_lvl, double lip)
       : splitting_criteria_tag_t(min_lvl, max_lvl, lip), _prnt(obj) {}
-    bool refine_and_coarsen(p4est_t* p4est, my_p4est_node_neighbors_t *ngbd_n, Vec phi);
+    //bool refine_and_coarsen(p4est_t* p4est, my_p4est_node_neighbors_t *ngbd_n, Vec phi);
+    bool refine_and_coarsen(p4est_t* p4est, p4est_nodes_t* nodes, Vec phi);
   };
 
-  PetscErrorCode ierr;
+//  PetscErrorCode ierr;
 
   my_p4est_brick_t *brick;
   p4est_connectivity_t *conn;
@@ -77,37 +79,33 @@ protected:
   my_p4est_hierarchy_t *hierarchy_n;
   my_p4est_node_neighbors_t *ngbd_n;
 
-  p4est_t *p4est_np1;
-  p4est_ghost_t *ghost_np1;
-  p4est_nodes_t *nodes_np1;
-  my_p4est_hierarchy_t *hierarchy_np1;
-  my_p4est_node_neighbors_t *ngbd_np1;
-
-  splitting_criteria_cf_and_uniform_band_t* ref_data;
-
   bool NO_SURFACE_DIFFUSION;
 
   double dxyz[P4EST_DIM];
-  double dxyz_min, dxyz_max;
+  double dxyz_min, dxyz_max, dxyz_diag;
   double xyz_min[P4EST_DIM];
   double xyz_max[P4EST_DIM];
   double convert_to_xyz[P4EST_DIM];
+  double uniform_padding;
+  splitting_criteria_surfactant_t *ref_data;
 
   double dt_n;
   double dt_nm1;
-  double n_times_dt;
-  bool   dt_updated;
+  double CFL;
 
   Vec phi;
   Vec phi_band;
   band phi_band_gen;
 
-  Vec normal_n  [P4EST_DIM];
+  Vec normal[P4EST_DIM];
+  Vec kappa;
+  double max_abs_kappa;
 
   Vec vn_nodes  [P4EST_DIM];
   Vec vnm1_nodes[P4EST_DIM];
   Vec vn_s_nodes  [P4EST_DIM];
   Vec vnm1_s_nodes[P4EST_DIM];
+  double max_L2_norm_u;
 
   Vec str_n;
   Vec str_nm1;
@@ -121,8 +119,6 @@ protected:
   Vec Gamma_n;
   Vec Gamma_nm1;
 
-    my_p4est_interpolation_nodes_t *interp_phi;
-
   // semi-lagrangian backtraced points for nodes (needed in the discretization of the advection terms, needs to be done only once)
   // no need to destroy these, not dynamically allocated...
   std::vector<double> xyz_dep_n[P4EST_DIM];
@@ -131,21 +127,32 @@ protected:
   std::vector<double> xyz_dep_s_n[P4EST_DIM];
   std::vector<double> xyz_dep_s_nm1[P4EST_DIM]; // used only if sl_order == 2
 
-  bool is_in_domain(const double xyz_[]) const;
   void update_phi_band_vector();
+#ifdef P4_TO_P8
+  void enforce_refinement_p4est_n(CF_3 *ls);
+#else
+  void enforce_refinement_p4est_n(CF_2 *ls);
+#endif
 
 public:
-  my_p4est_surfactant_t(my_p4est_node_neighbors_t *ngbd_nm1, my_p4est_node_neighbors_t *ngbd_n, const double& band_width=4.0);
 #ifdef P4_TO_P8
-  my_p4est_surfactant_t(const mpi_environment_t& mpi, my_p4est_brick_t *brick_input, p8est_connectivity *conn_input,
-                          const int& lmin, const int& lmax, CF_3 *ls_n, CF_3 *ls_nm1=NULL, const bool& with_reinit=true, const double& band_width=5.0);
+  my_p4est_surfactant_t(const mpi_environment_t& mpi,
+                        my_p4est_brick_t *brick_input, p8est_connectivity *conn_input,
+                        const int& lmin, const int& lmax,
+                        CF_3 *ls_n, CF_3 *ls_nm1=NULL, const bool& is_ls_n_sdf=false,
+                        const double& band_width=5.0,
+                        const double& CFL_input=1.0,
+                        const double& uniform_padding_input=2.0);
 #else
-  my_p4est_surfactant_t(const mpi_environment_t& mpi, my_p4est_brick_t *brick_input, p4est_connectivity *conn_input,
-                          const int& lmin, const int& lmax, CF_2 *ls_n, CF_2 *ls_nm1=NULL, const bool& with_reinit=true, const double& band_width=5.0);
+  my_p4est_surfactant_t(const mpi_environment_t& mpi,
+                        my_p4est_brick_t *brick_input, p4est_connectivity *conn_input,
+                        const int& lmin, const int& lmax,
+                        CF_2 *ls_n, CF_2 *ls_nm1=NULL, const bool& is_ls_n_sdf=false,
+                        const double& band_width=5.0,
+                        const double& CFL_input=1.0,
+                        const double& uniform_padding_input=2.0);
 #endif
   ~my_p4est_surfactant_t();
-
-  void set_grid_nm1(CF_2 *ls_nm1, const bool& is_ls_reinit=true);
 
   void set_no_surface_diffusion(const bool &flag);
 
@@ -157,7 +164,8 @@ public:
   void set_phi(CF_2 *level_set, const bool& do_reinit=true);
 #endif    
 
-  void compute_initial_normals_from_phi();
+  void compute_normal();
+  void compute_curvature();
 
   void compute_normal_np1();
 
@@ -173,11 +181,14 @@ public:
   void set_velocities(CF_2 **vnm1, CF_2 **vn);
 #endif
 
+  double compute_adapted_dt_n();
+
 #ifdef P4_TO_P8
   void compute_extended_velocities(CF_3 *ls_nm1, CF_3 *ls_n=NULL, const bool& do_reinit_nm1=true, const bool& do_reinit_n=true);
 #else
   void compute_extended_velocities(CF_2 *ls_nm1, CF_2 *ls_n=NULL, const bool& do_reinit_nm1=true, const bool& do_reinit_n=true);
 #endif
+
 
 #ifdef P4_TO_P8
   void compute_stretching_term_nm1(CF_3 *ls_nm1);
@@ -187,17 +198,25 @@ public:
   void compute_stretching_term_n(CF_2 *ls_n=NULL);
 #endif
 
-  void compute_second_derivatives_for_interface_advection(Vec *dd_phi, Vec **dd_vn_nodes, Vec **dd_vnm1_nodes);
-  void compute_second_derivatives_for_interface_advection(Vec *dd_phi);
-
-  void advect_interface_one_step(bool second_order_SL = true);
-  void advect_interface_one_step_TEST(bool second_order_SL = true);
+  void advect_interface_one_step();
 
   void compute_one_step_Gamma();
 
-  inline double get_dt_n() { return dt_n; }
+#ifdef P4_TO_P8
+  void update_from_tn_to_tnp1(CF_3 **vnp1);
+#else
+  void update_from_tn_to_tnp1(CF_2 **vnp1);
+#endif
 
+  inline double get_dt_n() { return dt_n; }
   inline double get_dt_nm1() { return dt_nm1; }
+
+  inline p4est_t* get_p4est_n() { return p4est_n; }
+  inline p4est_t* get_p4est_nm1() { return p4est_nm1; }
+
+  inline Vec get_Gamma_nm1() { return Gamma_np1; }
+  inline Vec get_Gamma_n() { return Gamma_n; }
+  inline Vec get_Gamma_np1() { return Gamma_np1; }
 
   void set_dt(const double& dt_nm1, const double& dt_n);
 
@@ -206,6 +225,7 @@ public:
   void save_vtk(const char* name);
 
   // TO-DO:
+  //   - compute str_n on the fly and don't extend, it will be extended in rhs anyway
   //   - higher-order interpolation when computing rhs
   //   - eliminate double calculation of second derivatives
   //   - optimized interface advection (no sl class)
