@@ -50,7 +50,7 @@
 using namespace std;
 
 // Examples to run:
-int example_ = 0;  // 0 - Ice cube melting in water, 1 - Frank sphere, 2 - water solidifying around cooled cylinder
+int example_ = 2;  // 0 - Ice cube melting in water, 1 - Frank sphere, 2 - water solidifying around cooled cylinder
 
 int method_ = 0; // 0 - Backward Euler, 1 - Crank Nicholson
 
@@ -72,6 +72,7 @@ double T_inf;
 double r0;
 double Twall;
 double Tinterface;
+double back_wall_flux;
 
 // For solidifying ice problem:
 double r_cyl;
@@ -120,10 +121,11 @@ void set_geometry(){
       py = 1;
 
       box_size = 0.1;// Equivalent width [in meters]
-      r0 = 0.125; // 0.25
+      r0 = 0.15; // 0.25
       r_cyl = 0.10;
       Twall = 298.0; Tinterface = 273.0;
       T_cyl = 273.0 - 70.0;
+      back_wall_flux = 0.0;
       // NOTE: TO DO: WILL NEED TO HAVE REFINEMENT CRITERIA AROUND BOTH INTERFACES(?) ... maybe not
 
       break;
@@ -133,7 +135,7 @@ void set_geometry(){
 // Grid refinement:
 // ---------------------------------------
 int lmin = 4;
-int lmax = 6;
+int lmax = 7;
 // ---------------------------------------
 // Time-stepping:
 // ---------------------------------------
@@ -144,8 +146,6 @@ bool keep_going = true;
 
 double tn;
 double dt;
-
-double tBC;
 
 void simulation_time_info(){
   switch(example_){
@@ -486,6 +486,41 @@ public:
   { return 1.0;
   }
 }bc_interface_coeff_inner;
+// -----
+// Wall functions
+// -----
+struct XLOWER_WALL : CF_DIM {
+public:
+  double operator() (DIM(double x, double y, double z)) const
+  {
+    return (fabs(x - xmin) < EPS);
+  }
+} xlower_wall;
+
+struct XUPPER_WALL : CF_DIM {
+public:
+  double operator() (DIM(double x, double y, double z)) const
+  {
+    return (fabs(x - xmax) < EPS);
+  }
+} xupper_wall;
+
+struct YLOWER_WALL : CF_DIM {
+public:
+  double operator() (DIM(double x, double y, double z)) const
+  {
+    return (fabs(y - ymin) < EPS);
+  }
+} ylower_wall;
+
+struct YUPPER_WALL : CF_DIM {
+public:
+  double operator() (DIM(double x, double y, double z)) const
+  {
+    return (fabs(y - ymax) < EPS);
+  }
+} yupper_wall;
+
 
 // --------------------------------------------------------------------------------------------------------------
 // WALL TEMPERATURE BOUNDARY CONDITION
@@ -496,9 +531,16 @@ public:
   BoundaryConditionType operator()(DIM(double x, double y, double z )) const
   {
     switch(example_){
-      case 0: return DIRICHLET;
-      case 1: return DIRICHLET;
-      case 2: return DIRICHLET;
+      case 0: return DIRICHLET; // ice cube melting
+      case 1: return DIRICHLET; // frank sphere
+      case 2: // water solidifying around a cylinder
+        if (xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z))){
+            return DIRICHLET;
+          }
+        else if (yupper_wall(DIM(x,y,z))){
+            return DIRICHLET;
+          }
+        //return DIRICHLET; // water solidifying around a cylinder
       }
   }
 } wall_bc_type_temp;
@@ -508,13 +550,40 @@ class WALL_BC_VALUE_TEMP: public CF_DIM
 public:
   double operator()(DIM(double x, double y, double z)) const
   {
-    if ((fabs(y-ymax)<EPS) || (fabs(y-ymin)<EPS) || (fabs(x-xmin)<EPS) || (fabs(x-xmax)<EPS)){
-        if (level_set(DIM(x,y,z)) < EPS){
+    switch(example_){
+      case 0:
+        if (xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z))){
+            if (level_set(DIM(x,y,z)) < EPS){
+                return Twall;
+              }
+            else{
+                return Tinterface;
+                }
+          }
+        break;
+      case 1:
+        if (xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z))){
+            if (level_set(DIM(x,y,z)) < EPS){
+                return Twall;
+              }
+            else{
+                return Tinterface;
+                }
+          }
+        break;
+      case 2:
+        if (xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z))){
+            if (level_set(DIM(x,y,z)) < EPS){
+                return Twall;
+              }
+            else{
+                return Tinterface;
+                }
+          }
+        else if(yupper_wall(DIM(x,y,z))){ // Neumann condition on back wall
             return Twall;
           }
-        else{
-            return Tinterface;
-            }
+        break;
       }
   }
 } wall_bc_value_temp;
@@ -743,9 +812,6 @@ void check_T_d_values(vec_and_ptr_t phi, vec_and_ptr_dim_t dT, p4est_nodes* node
 
             }
         }}
-
-
-
 }
   dT.restore_array();
   phi.restore_array();
@@ -1103,7 +1169,120 @@ void do_backtrace(vec_and_ptr_t T_l,vec_and_ptr_t T_l_backtrace,vec_and_ptr_dim_
   v_dd->destroy();
 }
 
-void interpolate_values_onto_new_grid(){}
+void interpolate_values_onto_new_grid(vec_and_ptr_t T_l, vec_and_ptr_t T_l_new,
+                                      vec_and_ptr_t T_s, vec_and_ptr_t T_s_new,
+                                      vec_and_ptr_dim_t v_interface,vec_and_ptr_dim_t v_interface_new,
+                                      vec_and_ptr_dim_t v_external,vec_and_ptr_dim_t v_external_new,
+                                      vec_and_ptr_t smoke, vec_and_ptr_t smoke_new,
+                                      p4est_nodes_t *nodes_new_grid, p4est_t *p4est_new,
+                                      my_p4est_node_neighbors_t *ngbd_old_grid,interpolation_method interp_method){
+  // Need neighbors of old grid to create interpolation object
+  // Need nodes of new grid to get the points that we must interpolate to
+
+  my_p4est_interpolation_nodes_t interp_nodes(ngbd_old_grid);
+
+  // Grab points on the new grid that we want to interpolate to:
+  double xyz[P4EST_DIM];
+  foreach_node(n,nodes_new_grid){
+    node_xyz_fr_n(n,p4est_new,nodes_new_grid,xyz);
+    interp_nodes.add_point(n,xyz);
+  }
+  // Interpolate temperature fields:
+  interp_nodes.set_input(T_l.vec,interp_method); interp_nodes.interpolate(T_l_new.vec);
+  interp_nodes.set_input(T_s.vec,interp_method); interp_nodes.interpolate(T_s_new.vec);
+
+  // Interpolate velocity fields:
+  foreach_dimension(d){
+    interp_nodes.set_input(v_interface.vec[d],interp_method); interp_nodes.interpolate(v_interface_new.vec[d]);
+    interp_nodes.set_input(v_external.vec[d],interp_method); interp_nodes.interpolate(v_external_new.vec[d]);
+  }
+
+  // Interpolate smoke (if applicable):
+  if(solve_smoke){
+      interp_nodes.set_input(smoke.vec,interp_method); interp_nodes.interpolate(smoke_new.vec);
+    }
+}
+
+
+void compute_interfacial_velocity(vec_and_ptr_dim_t T_l_d, vec_and_ptr_dim_t T_s_d, vec_and_ptr_dim_t jump, vec_and_ptr_dim_t v_interface, vec_and_ptr_t phi, my_p4est_node_neighbors_t *ngbd){
+
+  // Get arrays:
+  jump.get_array();
+  T_l_d.get_array();
+  T_s_d.get_array();
+
+  // First, compute jump in the layer nodes:
+  for(size_t i=0; i<ngbd->get_layer_size();i++){
+    p4est_locidx_t n = ngbd->get_layer_node(i);
+
+    jump.ptr[0][n] = (k_s*T_s_d.ptr[0][n] -k_l*T_l_d.ptr[0][n])/(L*rho_l);
+    jump.ptr[1][n] = (k_s*T_s_d.ptr[1][n] -k_l*T_l_d.ptr[1][n])/(L*rho_l);
+   }
+
+  // Begin updating the ghost values of the layer nodes:
+  foreach_dimension(d){
+    VecGhostUpdateBegin(jump.vec[d],INSERT_VALUES,SCATTER_FORWARD);
+  }
+
+  // Compute the jump in the local nodes:
+  for(size_t i = 0; i<ngbd->get_local_size();i++){
+      p4est_locidx_t n = ngbd->get_local_node(i);
+      //ngbd->get_neighbors(n,qnnn);
+      jump.ptr[0][n] = (k_s*T_s_d.ptr[0][n] -k_l*T_l_d.ptr[0][n])/(L*rho_l);
+      jump.ptr[1][n] = (k_s*T_s_d.ptr[1][n] -k_l*T_l_d.ptr[1][n])/(L*rho_l);
+    }
+
+  // Finish updating the ghost values of the layer nodes:
+  foreach_dimension(d){
+    VecGhostUpdateEnd(jump.vec[d],INSERT_VALUES,SCATTER_FORWARD);
+  }
+
+  // Restore arrays:
+  jump.restore_array();
+  T_l_d.restore_array();
+  T_s_d.restore_array();
+
+  my_p4est_level_set_t ls(ngbd);
+  // Extend the interfacial velocity to the whole domain for advection of the LSF:
+  foreach_dimension(d){
+     ls.extend_from_interface_to_whole_domain_TVD(phi.vec,jump.vec[d],v_interface.vec[d],20);
+  }
+
+
+}
+
+void compute_timestep(vec_and_ptr_dim_t v_interface, vec_and_ptr_t phi, double dxyz_close_to_interface, double dxyz_smallest[P4EST_DIM],p4est_nodes_t *nodes, p4est_t *p4est){
+
+  // Check the values of v_interface locally:
+  v_interface.get_array();
+  phi.get_array();
+  double max_v_norm = 0.0;
+  foreach_local_node(n,nodes){
+    if (fabs(phi.ptr[n]) < dxyz_close_to_interface){
+        max_v_norm = max(max_v_norm,sqrt(SQR(v_interface.ptr[0][n]) + SQR(v_interface.ptr[1][n])));
+      }
+  }
+  v_interface.restore_array();
+  phi.restore_array();
+
+  // Get the maximum v norm across all the processors:
+  MPI_Barrier(p4est->mpicomm);
+  double global_max_v_norm = 0.0;
+  int mpi_ret = MPI_Allreduce(&max_v_norm,&global_max_v_norm,1,MPI_DOUBLE,MPI_MAX,p4est->mpicomm);
+  SC_CHECK_MPI(mpi_ret);
+  PetscPrintf(p4est->mpicomm,"\n \n \n Computed interfacial velocity and timestep: \n {");
+  PetscPrintf(p4est->mpicomm,"\n Max v norm: %0.2e \n", global_max_v_norm);
+
+  // Compute new timestep:
+  dt = cfl*min(dxyz_smallest[0],dxyz_smallest[1])/min(global_max_v_norm,1.0);
+  dt = min(dt,dt_max_allowed);
+
+  // Report computed timestep and minimum grid size:
+  PetscPrintf(p4est->mpicomm,"Computed timestep: %0.3e \n",dt);
+  PetscPrintf(p4est->mpicomm,"dxyz close to interface : %0.3e \n } \n \n  ",dxyz_close_to_interface);
+
+
+}
 // --------------------------------------------------------------------------------------------------------------
 // BEGIN MAIN OPERATION:
 // --------------------------------------------------------------------------------------------------------------
@@ -1235,6 +1414,8 @@ int main(int argc, char** argv) {
   // Initialize the Velocity field:
   // -----------------------------------------------
   vec_and_ptr_dim_t vel_n(p4est,nodes);
+  vec_and_ptr_dim_t vel_new;
+
   const CF_DIM *vel_cf[P4EST_DIM] = {&u_adv, &v_adv};
 
   if (move_interface_with_v_external || do_advection){
@@ -1244,7 +1425,7 @@ int main(int argc, char** argv) {
     }
 
   vec_and_ptr_dim_t v_interface(p4est,nodes);
-  vec_and_ptr_dim_t v_interface_old;
+  vec_and_ptr_dim_t v_interface_new;
   for (int dir = 0; dir<P4EST_DIM;dir++){
       sample_cf_on_nodes(p4est,nodes,zero_cf,v_interface.vec[dir]);
     }
@@ -1268,8 +1449,8 @@ int main(int argc, char** argv) {
   vec_and_ptr_t rhs_Ts;
 
   // Vectors to hold T values on old grid (for interpolation purposes)
-  vec_and_ptr_t T_l_old;
-  vec_and_ptr_t T_s_old;
+  vec_and_ptr_t T_l_new;
+  vec_and_ptr_t T_s_new;
 
   // Vectors to hold first derivatives of T
   vec_and_ptr_dim_t T_l_d;
@@ -1290,6 +1471,7 @@ int main(int argc, char** argv) {
 
   // vectors to hold smoke solution:
   vec_and_ptr_t smoke;
+  vec_and_ptr_t smoke_new;
   vec_and_ptr_t smoke_np1;
 
   if (solve_smoke){
@@ -1301,6 +1483,18 @@ int main(int argc, char** argv) {
 
   vec_and_ptr_t smoke_backtrace;
   vec_and_ptr_t rhs_smoke;
+
+  // -----------------------------------------------
+  // Initialize variables for extension bands across interface and etc:
+  // -----------------------------------------------
+  double dxyz_smallest[P4EST_DIM];
+  double dxyz_close_to_interface;
+
+  double min_volume_;
+  double extension_band_use_;
+  double extension_band_extend_;
+  double extension_band_check_;
+
   // -----------------------------------------------
   // Initialize the output file for vtk:
   // -----------------------------------------------
@@ -1349,6 +1543,11 @@ int main(int argc, char** argv) {
   for (tn;tn<tfinal; tn+=dt, tstep++){
       if (!keep_going) break;
       //if(tstep>1) break; // TIMESTEP BREAK
+
+      // --------------------------------------------------------------------------------------------------------------
+      // Print iteration information:
+      // --------------------------------------------------------------------------------------------------------------
+
       PetscPrintf(mpi.comm(),"\n -------------------------------------------\n");
       ierr = PetscPrintf(mpi.comm(),"Iteration %d , Time: %0.3f \n ------------------------------------------- \n",tstep,tn);
       ierr = PetscPrintf(mpi.comm(),"\n Previous interfacial velocity (max norm) is %0.2f \n",global_max_v_norm);
@@ -1356,23 +1555,14 @@ int main(int argc, char** argv) {
       // --------------------------------------------------------------------------------------------------------------
       // Define some variables needed to specify how to extend across the interface:
       // --------------------------------------------------------------------------------------------------------------
-      double dxyz_smallest[P4EST_DIM];
+      // Get smallest grid size:
       dxyz_min(p4est,dxyz_smallest);
 
-      double dxyz_close_to_interface = 1.0*max(dxyz_smallest[0],dxyz_smallest[1]);
-      double min_volume_ = MULTD(dxyz_smallest[0], dxyz_smallest[1], dxyz_smallest[2]);
-      double extension_band_use_    = 8.*pow(min_volume_, 1./ double(P4EST_DIM)); //8
-      double extension_band_extend_ = 10.*pow(min_volume_, 1./ double(P4EST_DIM)); //10
-      double extension_band_check_  = 6.*pow(min_volume_, 1./ double(P4EST_DIM)); // 6
-
-
-//      PetscPrintf(mpi.comm(),"\n ");
-//      PetscPrintf(mpi.comm(),"dxyz_close_interface: %0.2f \n",dxyz_close_to_interface);
-
-//      PetscPrintf(mpi.comm(),"Band use: %0.2f \n",extension_band_use_);
-//      PetscPrintf(mpi.comm(),"Band extend: %0.2f \n",extension_band_extend_);
-//      PetscPrintf(mpi.comm(),"Band check : %0.2f \n",extension_band_check_);
-//      PetscPrintf(mpi.comm(),"\n ");
+      dxyz_close_to_interface = 1.0*max(dxyz_smallest[0],dxyz_smallest[1]);
+      min_volume_ = MULTD(dxyz_smallest[0], dxyz_smallest[1], dxyz_smallest[2]);
+      extension_band_use_    = 8.*pow(min_volume_, 1./ double(P4EST_DIM)); //8
+      extension_band_extend_ = 10.*pow(min_volume_, 1./ double(P4EST_DIM)); //10
+      extension_band_check_  = 6.*pow(min_volume_, 1./ double(P4EST_DIM)); // 6
 
       // Perturb the LSF on the first iteration
       my_p4est_level_set_t ls(ngbd);
@@ -1420,6 +1610,9 @@ int main(int argc, char** argv) {
 
       ls.extend_Over_Interface_TVD_Full(phi_solid.vec, T_s_n.vec, 50, 1, 1.e-9, extension_band_use_, extension_band_extend_, extension_band_check_, solid_normals.vec, NULL, NULL, false, NULL, NULL);
 
+      // Extend the fluid velocity and fluid pressure across the interface:
+      // [ INSERT NS STUFF HERE]
+
 
       // For the case where we have a second interface:
       if(example_ == 2){
@@ -1430,10 +1623,6 @@ int main(int argc, char** argv) {
         }
 
       // Delete data for normals since it is no longer needed:
-      T_l_d.destroy();
-      T_s_d.destroy();
-      T_l_dd.destroy();
-      T_s_dd.destroy();
       liquid_normals.destroy();
       solid_normals.destroy();
 
@@ -1447,12 +1636,12 @@ int main(int argc, char** argv) {
         PetscPrintf(mpi.comm()," ] \n");
         }
 
-
-      // Get derivatives of the temperature fields for saving and for computing the jump up ahead:
+      // --------------------------------------------------------------------------------------------------------------
+      // Get derivatives of the temperature fields for saving to visualize and for computing the jump up ahead:
+      // --------------------------------------------------------------------------------------------------------------
       T_l_d.create(p4est,nodes); T_s_d.create(T_l_d.vec);
       ngbd->first_derivatives_central(T_l_n.vec,T_l_d.vec);
       ngbd->first_derivatives_central(T_s_n.vec,T_s_d.vec);
-
 
       if (check_derivative_values){
           // Check Temperature derivative values:
@@ -1612,51 +1801,11 @@ int main(int argc, char** argv) {
       // Create vector to hold the jump values:
       vec_and_ptr_dim_t jump;
       jump.create(p4est,nodes);
-
-      // Get arrays:
-      jump.get_array();
-      T_l_d.get_array();
-      T_s_d.get_array();
-
-      // First, compute jump in the layer nodes:
-      quad_neighbor_nodes_of_node_t qnnn;
-      for(size_t i=0; i<ngbd->get_layer_size();i++){
-        p4est_locidx_t n = ngbd->get_layer_node(i);
-        //ngbd->get_neighbors(n,qnnn);
-
-        jump.ptr[0][n] = (k_s*T_s_d.ptr[0][n] -k_l*T_l_d.ptr[0][n])/(L*rho_l);
-        jump.ptr[1][n] = (k_s*T_s_d.ptr[1][n] -k_l*T_l_d.ptr[1][n])/(L*rho_l);
-       }
-
-      // Begin updating the ghost values of the layer nodes:
-      foreach_dimension(d){
-        VecGhostUpdateBegin(jump.vec[d],INSERT_VALUES,SCATTER_FORWARD);
-      }
-
-      // Compute the jump in the local nodes:
-      for(size_t i = 0; i<ngbd->get_local_size();i++){
-          p4est_locidx_t n = ngbd->get_local_node(i);
-          //ngbd->get_neighbors(n,qnnn);
-          jump.ptr[0][n] = (k_s*T_s_d.ptr[0][n] -k_l*T_l_d.ptr[0][n])/(L*rho_l);
-          jump.ptr[1][n] = (k_s*T_s_d.ptr[1][n] -k_l*T_l_d.ptr[1][n])/(L*rho_l);
-        }
-
-      // Finish updating the ghost values of the layer nodes:
-      foreach_dimension(d){
-        VecGhostUpdateEnd(jump.vec[d],INSERT_VALUES,SCATTER_FORWARD);
-      }
-
-      // Restore arrays:
-      jump.restore_array();
-      T_l_d.restore_array();
-      T_s_d.restore_array();
-
-      // Extend the interfacial velocity to the whole domain for advection of the LSF:
       v_interface.destroy();
       v_interface.create(p4est,nodes);
-      foreach_dimension(d){
-         ls.extend_from_interface_to_whole_domain_TVD(phi.vec,jump.vec[d],v_interface.vec[d],20);
-      }
+
+      // Call the compute_velocity_function:
+      compute_interfacial_velocity(T_l_d,T_s_d,jump,v_interface,phi,ngbd);
 
       // Destroy values once no longer needed:
       T_l_d.destroy();
@@ -1666,53 +1815,7 @@ int main(int argc, char** argv) {
       // --------------------------------------------------------------------------------------------------------------
       // Compute the timestep -- determined by velocity at the interface:
       // --------------------------------------------------------------------------------------------------------------
-      // Check the values of v_interface locally:
-      v_interface.get_array();
-      phi.get_array();
-      max_v_norm = 0.0;
-      foreach_local_node(n,nodes){
-        if (fabs(phi.ptr[n]) < dxyz_close_to_interface){
-            max_v_norm = max(max_v_norm,sqrt(SQR(v_interface.ptr[0][n]) + SQR(v_interface.ptr[1][n])));
-          }
-      }
-      v_interface.restore_array();
-      phi.restore_array();
-
-      // Get the maximum v norm across all the processors:
-      MPI_Barrier(mpi.comm());
-      global_max_v_norm = 0.0;
-      int mpi_ret = MPI_Allreduce(&max_v_norm,&global_max_v_norm,1,MPI_DOUBLE,MPI_MAX,mpi.comm());
-      SC_CHECK_MPI(mpi_ret);
-      PetscPrintf(mpi.comm(),"\n \n \n Computed interfacial velocity and timestep: \n {");
-      PetscPrintf(mpi.comm(),"\n Max v norm: %0.2e \n", global_max_v_norm);
-
-      // Compute new timestep:
-      dt = cfl*min(dxyz_smallest[0],dxyz_smallest[1])/min(global_max_v_norm,1.0);
-      dt = min(dt,dt_max_allowed);
-
-      // Report computed timestep and minimum grid size:
-      ierr = PetscPrintf(mpi.comm(),"Computed timestep: %0.3e \n",dt);
-      ierr = PetscPrintf(mpi.comm(),"dxyz close to interface : %0.3e \n } \n \n  ",dxyz_close_to_interface);
-
-      // --------------------------------------------------------------------------------------------------------------
-      // Store old grid values, and then recreate the Temperature vectors to hold the data on the new interpolated grid
-      // --------------------------------------------------------------------------------------------------------------
-      // Create objects to store values on the old grid before we advect the interface and update the grid:
-      T_l_old.create(p4est,nodes);
-      T_s_old.create(T_l_old.vec);
-      v_interface_old.create(p4est,nodes);
-
-      // Copy current values to the old grid objects:
-      VecCopyGhost(T_l_n.vec,T_l_old.vec);
-      VecCopyGhost(T_s_n.vec,T_s_old.vec);
-      foreach_dimension(d){
-        VecCopyGhost(v_interface.vec[d],v_interface_old.vec[d]);
-      }
-
-      if (solve_smoke){
-          smoke_old.create(p4est,nodes);
-          VecCopyGhost(smoke.vec,smoke_old.vec);
-        }
+      compute_timestep(v_interface, phi, dxyz_close_to_interface, dxyz_smallest,nodes,p4est);
 
       // --------------------------------------------------------------------------------------------------------------
       // Advance the LSF:
@@ -1726,71 +1829,60 @@ int main(int argc, char** argv) {
       my_p4est_semi_lagrangian_t sl(&p4est_np1, &nodes_np1, &ghost_np1, ngbd); // is this really the correct way to do this?
 
       // Advect the LSF and update the grid under the v_interface field:
-      if (move_interface_with_v_external){
-          sl.update_p4est(vel_n.vec,dt,phi.vec);
-        }
-      else{
-          // for example 2, refine around both LSFs. Otherwise, refine around just the one
-          example_ == 2 ? sl.update_p4est(v_interface.vec,dt,phi.vec,phi_dd.vec,phi_cylinder.vec): sl.update_p4est(v_interface.vec,dt,phi.vec,phi_dd.vec);
-        }
+      example_ == 2 ? // for example 2, refine around both LSFs. Otherwise, refine around just the one
+            sl.update_p4est(v_interface.vec,dt,phi.vec,phi_dd.vec,phi_cylinder.vec):
+            sl.update_p4est(v_interface.vec,dt,phi.vec,phi_dd.vec);
 
       // --------------------------------------------------------------------------------------------------------------
       // Interpolate Values onto New Grid:
       // -------------------------------------------------------------------------------------------------------------
-      // Update the velocity field onto the new grid:
-      if (move_interface_with_v_external || do_advection){
-          // Right now we just sample on the new grid, since the velocity field is externally prescribed
-        vel_n.destroy();
-        vel_n.create(p4est_np1,nodes_np1);
-        for (int dir=0;dir<P4EST_DIM;dir++){
-            sample_cf_on_nodes(p4est_np1,nodes_np1,*vel_cf[dir],vel_n.vec[dir]);
-          }
+      // Create vectors to hold new values:
+      T_l_new.create(p4est_np1,nodes_np1);
+      T_s_new.create(T_l_new.vec);
+
+      v_interface_new.create(p4est_np1,nodes_np1);
+      vel_new.create(v_interface_new.vec);
+
+      vec_and_ptr_t smoke_new;
+      if (solve_smoke){
+          smoke_new.create(T_l_new.vec);
         }
 
-      // Interpolate the Temperature values onto the new grid for the next timestep:-------------
-      interp_nodes_l = new my_p4est_interpolation_nodes_t(ngbd);
-      interp_nodes_s = new my_p4est_interpolation_nodes_t(ngbd);
+      // Interpolate things to the new grid:
+      interpolate_values_onto_new_grid(T_l_n,T_l_new,
+                                       T_s_n, T_s_new,
+                                       v_interface, v_interface_new,
+                                       vel_n, vel_new,
+                                       smoke, smoke_new,
+                                       nodes_np1, p4est_np1,
+                                       ngbd, interp_bw_grids);
 
-      interp_nodes_vint = new my_p4est_interpolation_nodes_t(ngbd);
 
-      // Grab the points on the new grid that we want to interpolate to:
-      double xyz[P4EST_DIM];
-      foreach_node(n,nodes_np1){
-          node_xyz_fr_n(n,p4est_np1,nodes_np1,xyz);
-          interp_nodes_l->add_point(n,xyz);
-          interp_nodes_s->add_point(n,xyz);
-          interp_nodes_vint->add_point(n,xyz);
-      }
+      // Copy new data over:
+      // Transfer new values to the original objects:
+      T_l_n.destroy(); T_s_n.destroy();
 
-      // Destroy the T_l_n objects and recreate them on the new grid so they can hold the interpolated values from the old grid:
-      T_l_n.destroy();
-      T_s_n.destroy();
-      v_interface.destroy();
+      T_l_n.create(p4est_np1,nodes_np1); T_s_n.create(T_l_n.vec);
 
-      T_l_n.create(p4est_np1,nodes_np1);
-      T_s_n.create(T_l_n.vec);
-      v_interface.create(p4est_np1,nodes_np1);
+      v_interface.destroy(); vel_n.destroy();
+      v_interface.create(p4est_np1,nodes_np1); vel_n.create(v_interface.vec);
 
-      // Perform the interpolation of temperature values:
-      interp_nodes_l->set_input(T_l_old.vec, interp_bw_grids); interp_nodes_l->interpolate(T_l_n.vec);
-      interp_nodes_s->set_input(T_s_old.vec, interp_bw_grids); interp_nodes_s->interpolate(T_s_n.vec);
+      if(solve_smoke) {smoke.destroy(); smoke.create(T_l_n.vec);}
 
-      // Do interpolation of v_interface values:
+      VecCopyGhost(T_l_new.vec,T_l_n.vec);
+      VecCopyGhost(T_s_new.vec,T_s_n.vec);
+      if (solve_smoke) VecCopyGhost(smoke_new.vec,smoke.vec);
+
       foreach_dimension(d){
-        interp_nodes_vint->set_input(v_interface_old.vec[d],interp_bw_grids);interp_nodes_vint->interpolate(v_interface.vec[d]);
+        VecCopyGhost(v_interface_new.vec[d],v_interface.vec[d]);
+        VecCopyGhost(vel_new.vec[d],vel_n.vec[d]);
       }
-      if(solve_smoke){
-          smoke.destroy();
-          smoke.create(p4est_np1,nodes_np1);
-          interp_nodes_vint->set_input(smoke_old.vec,interp_bw_grids); interp_nodes_vint->interpolate(smoke.vec);
-          smoke_old.destroy();
-        }
 
-      // Destroy values stored at old grid, since they are no longer needed:
-      T_l_old.destroy();
-      T_s_old.destroy();
-      v_interface_old.destroy();
+      // Delete the "new value" objects until the next timestep:
+      T_l_new.destroy(); T_s_new.destroy();
+      v_interface_new.destroy(); vel_new.destroy();
 
+      // Check values after interpolation:
       if (check_temperature_values){
         // Check Temperature values:
         PetscPrintf(mpi.comm(),"\n Checking temperature values after interpolating onto new grid: \n [ ");
@@ -1824,9 +1916,98 @@ int main(int argc, char** argv) {
       VecScaleGhost(phi.vec,-1.0);
 
       // --------------------------------------------------------------------------------------------------------------
+      // Navier-Stokes Problem: Setup and solve a NS problem in the liquid subdomain
+      // --------------------------------------------------------------------------------------------------------------
+
+
+
+
+      // --------------------------------------------------------------------------------------------------------------
+      // Compute the normal and curvature of the interface -- curvature is used in some of the interfacial boundary condition(s)
+      // --------------------------------------------------------------------------------------------------------------
+      if (example_ !=1){// compute this stuff, otherwise, don't bother
+        }
+
+      double deriv_norm;
+      vec_and_ptr_dim_t normal;
+      vec_and_ptr_t curvature;
+
+      // Get derivatives of phi:
+      vec_and_ptr_dim_t phi_d;
+      phi_d.create(p4est,nodes);
+      ngbd->first_derivatives_central(phi.vec,phi_d.vec);
+
+      // Get arrays needed:
+      normal.get_array();
+      curvature.get_array();
+      phi_d.get_array();
+
+      // First, compute the normal on the layer nodes:
+      for(size_t i = 0; i<ngbd->get_layer_size(); i++){
+          p4est_locidx_t n = ngbd->get_layer_node(i);
+
+          deriv_norm = sqrt(SQR(phi_d.ptr[0][n]) + SQR(phi_d.ptr[1][n]));
+
+          foreach_dimension(d){
+            if (deriv_norm<EPS)deriv_norm = EPS;
+
+            normal.ptr[d][n] = phi_d.ptr[d][n]/deriv_norm;;
+          }
+        }
+
+      // Begin update:
+      foreach_dimension(d){
+        VecGhostUpdateBegin(normal.vec[d],INSERT_VALUES,SCATTER_FORWARD);
+      }
+      // Compute the normal on the local nodes:
+      for(size_t i = 0; i<ngbd->get_local_size(); i++){
+          p4est_locidx_t n = ngbd->get_local_node(i);
+          deriv_norm = sqrt(SQR(phi_d.ptr[0][n]) + SQR(phi_d.ptr[1][n]));
+
+          foreach_dimension(d){
+            if (deriv_norm<EPS)deriv_norm = EPS;
+
+            normal.ptr[d][n] = phi_d.ptr[d][n]/deriv_norm;;
+          }
+
+        }
+
+      // End ghost update:
+      foreach_dimension(d){
+        VecGhostUpdateEnd(normal.vec[d],INSERT_VALUES,SCATTER_FORWARD);
+      }
+      // Compute curvature on layer nodes:
+      for(size_t i = 0; i<ngbd->get_layer_size(); i++){
+          p4est_locidx_t n = ngbd->get_layer_node(i);
+
+
+
+        }
+
+      // Begin ghost update:
+      VecGhostUpdateBegin(curvature.vec,INSERT_VALUES,SCATTER_FORWARD);
+
+      // Compute curvature on local nodes:
+      for(size_t i = 0; i<ngbd->get_local_size(); i++){
+          p4est_locidx_t n = ngbd->get_local_node(i);
+
+        }
+
+      // End ghost update:
+      VecGhostUpdateEnd(curvature.vec,INSERT_VALUES,SCATTER_FORWARD);
+
+
+      // Restore arrays needed:
+      curvature.restore_array();
+      normal.restore_array();
+      phi_d.restore_array();
+
+
+
+      // --------------------------------------------------------------------------------------------------------------
       // Poisson Problem at Nodes: Setup and solve a Poisson problem on both the liquid and solidified subdomains
       // --------------------------------------------------------------------------------------------------------------
-      // Get most updated derivatives of the LSF's (on current grid):
+      // Get most updated derivatives of the LSF's (on current grid) -- Solver uses these:
       // ------------------------------------------------------------
       phi_solid_dd.destroy();
       phi_solid_dd.create(p4est,nodes);
