@@ -165,10 +165,11 @@ class my_p4est_xgfm_cells_t
   p4est_nodes_t *fine_nodes;
   p4est_ghost_t *fine_ghost;
   const my_p4est_node_neighbors_t *fine_node_ngbd;
-  Vec phi, jump_u, normals[P4EST_DIM], phi_second_der[P4EST_DIM];
+  Vec phi, jump_u;
+  Vec normals, phi_xxyyzz; // P4EST_DIM blocked, not owned by the solver
   bool phi_has_been_set, normals_have_been_set, mus_have_been_set, jumps_have_been_set, second_derivatives_of_phi_are_set;
   Vec corrected_rhs; // constructed and owned by solver, hence destroyed at destruction
-  Vec jump_mu_grad_u[P4EST_DIM]; // constructed and owned by solver, hence destroyed at destruction
+  Vec jump_mu_grad_u; // P4EST_DIM-blocked constructed and owned by solver, hence destroyed at destruction
   Vec extension_cell_values, extension_on_fine_nodes; // constructed and owned by solver, hence destroyed at destruction
 
 #ifdef P4_TO_P8
@@ -536,14 +537,14 @@ class my_p4est_xgfm_cells_t
 
   void correct_jump_mu_grad_u();
 
-  void set_jump_mu_grad_u_for_nodes(const std::vector<p4est_locidx_t>& list_of_node_indices, double *jump_mu_grad_u_p[P4EST_DIM], const double *jump_normal_flux_read_p, const double *normals_read_p[P4EST_DIM], const double *jump_u_read_p);
+  void set_jump_mu_grad_u_for_nodes(const std::vector<p4est_locidx_t>& list_of_node_indices, double *jump_mu_grad_u_p, const double *jump_normal_flux_read_p, const double *normals_p, const double *jump_u_read_p);
 
   bool interface_neighbor_is_found(const p4est_locidx_t& quad_idx, const int& dir, interface_neighbor& int_nb);
   interface_neighbor get_interface_neighbor(const p4est_locidx_t& quad_idx, const int& dir,
                                             const p4est_locidx_t& tmp_quad_idx,
                                             const p4est_locidx_t& quad_fine_node_idx,
                                             const p4est_locidx_t& tmp_fine_node_idx,
-                                            const double *phi_read_p, const double *phi_dd_read_p[P4EST_DIM]);
+                                            const double *phi_read_p, const double *phi_xxyyzz_read_p);
 
   void update_interface_values(Vec new_cell_extension, const double *solution_read_p, const double *extension_on_fine_nodes_read_p);
   void cell_TVD_extension_of_interface_values(Vec new_cell_extension, const double& threshold, const uint& niter_max);
@@ -551,16 +552,13 @@ public:
 
   /* ! VERY IMPORTANT ! QUALITY OF THE GRID, LAYER OF FINE CELLS, and so on... */
 
-  my_p4est_xgfm_cells_t(const my_p4est_cell_neighbors_t *ngbd_c, const my_p4est_node_neighbors_t *ngbd_n, const my_p4est_node_neighbors_t *fine_ls, const bool activate_x_ = true);
+  my_p4est_xgfm_cells_t(const my_p4est_cell_neighbors_t *ngbd_c, const my_p4est_node_neighbors_t *ngbd_n, const my_p4est_node_neighbors_t *fine_ngbd_n, const bool activate_x_ = true);
   ~my_p4est_xgfm_cells_t();
 
-#ifdef P4_TO_P8
-  void set_phi(Vec phi_on_fine_mesh, Vec phi_xx_on_fine_mesh = NULL, Vec phi_yy_on_fine_mesh = NULL, Vec phi_zz_on_fine_mesh = NULL);
-#else
-  void set_phi(Vec phi_on_fine_mesh, Vec phi_xx_on_fine_mesh = NULL, Vec phi_yy_on_fine_mesh = NULL);
-#endif
+  void set_phi(Vec phi_on_fine_mesh, Vec phi_xxyyzz_on_fine_mesh = NULL);
 
-  void set_normals(Vec normals[]);
+  void set_normals(Vec normals_block);
+
   void set_jumps(Vec jump_u, Vec jump_normal_flux);
 
 #ifdef P4_TO_P8
@@ -617,8 +615,7 @@ public:
     if(extension_cell_values == NULL)
     {
 #ifdef CASL_THROWS
-      for (short dim = 0; dim < P4EST_DIM; ++dim)
-        my_error = my_error || (jump_mu_grad_u[dim] == NULL);
+      my_error = my_error || (jump_mu_grad_u == NULL);
       if(my_error)
         throw std::invalid_argument("my_p4est_xgfm_cells_t::get_extended_interface_values(Vec&, Vec&): the extended interface values cannot be calculated if the jumps in mu*grad_u have been returned to the used beforehand.");
 #endif
@@ -641,15 +638,12 @@ public:
     extension_on_fine_nodes = NULL; // will be handled by the new owner (hopefully :-P)...
   }
 
-  void get_jump_mu_grad_u(Vec to_return[P4EST_DIM])
+  void get_jump_mu_grad_u(Vec& to_return)
   {
     if(activate_x && !solution_is_set)
       solve();
-    for (short dim = 0; dim < P4EST_DIM; ++dim)
-    {
-      to_return[dim]      = jump_mu_grad_u[dim];
-      jump_mu_grad_u[dim] = NULL; // will be handled by the new owner (hopefully :-P)...
-    }
+    to_return           = jump_mu_grad_u;
+    jump_mu_grad_u      = NULL; // will be handled by the new owner (hopefully :-P)...
   };
 
   int get_number_of_corrections() const {return numbers_of_ksp_iterations.size()-1; }
@@ -657,7 +651,7 @@ public:
   std::vector<double> get_max_corrections() const {return max_corrections; }
   std::vector<double> get_relative_residuals() const {return relative_residuals; }
 
-  void get_flux_components_and_subtract_them_from_velocities(Vec flux[P4EST_DIM], my_p4est_faces_t *faces, Vec vstar[P4EST_DIM] = NULL, Vec vnp1[P4EST_DIM] = NULL);
+  void get_flux_components_and_subtract_them_from_velocities(Vec flux[P4EST_DIM], my_p4est_faces_t *faces, Vec vstar[P4EST_DIM] = NULL, Vec vnp1_minus[P4EST_DIM] = NULL, Vec vnp1_plus[P4EST_DIM] = NULL);
   void get_flux_components(Vec flux[P4EST_DIM], my_p4est_faces_t* faces)
   {
     get_flux_components_and_subtract_them_from_velocities(flux, faces);

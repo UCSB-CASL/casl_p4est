@@ -31,6 +31,7 @@ protected:
   p4est_ghost_t *ghost;
   const my_p4est_brick_t *myb;
   vector<Vec> Fi;
+  unsigned int bs_f; // block_size of the fields to interpolate
 
   double xyz_min[P4EST_DIM], xyz_max[P4EST_DIM];
   PetscErrorCode ierr;
@@ -87,6 +88,9 @@ protected:
   // rule of three -- disable copy ctr and assignment if not useful
   my_p4est_interpolation_t(const my_p4est_interpolation_t& other);
   my_p4est_interpolation_t& operator=(const my_p4est_interpolation_t& other);
+
+  void set_input(Vec *F, unsigned int n_vecs_, const unsigned int &block_size_f);
+  inline void set_input(Vec& F, const unsigned int &block_size_f=1) {set_input(&F, 1, block_size_f);}
 public:
   my_p4est_interpolation_t(const my_p4est_node_neighbors_t* neighbors);
   ~my_p4est_interpolation_t();
@@ -96,25 +100,26 @@ public:
    */
   void clear();
 
-
-  void set_input(Vec *F, unsigned int n_vecs_);
-  void set_input(Vec& F) {set_input(&F, 1);}
-
   void add_point(p4est_locidx_t locidx, const double *xyz);
 
-  // interpolation methods
-  void interpolate(Vec Fo)
-  {
-    vector<Vec> Fos(1, Fo);
-    interpolate(Fos);
-  }
-  void interpolate(vector<Vec>& Fo) {interpolate(Fo.data(), Fo.size());}
-  void interpolate(Vec * Fos, unsigned int n_outputs);
-  void interpolate(double *Fo)
-  {
-    interpolate(&Fo, 1);
-  }
+  // interpolation methods and inline wrappers
   void interpolate(double * const *Fo, unsigned int n_functions);
+  inline void interpolate(double *Fo) { interpolate(&Fo, 1); }
+
+  inline void interpolate(Vec *Fos, unsigned int n_outputs)
+  {
+    P4EST_ASSERT(n_outputs > 0);
+    double *Fo_p[n_outputs];
+    for (unsigned int k = 0; k < n_outputs; ++k) {
+      ierr = VecGetArray(Fos[k], &Fo_p[k]); CHKERRXX(ierr);
+    }
+    interpolate(Fo_p, n_outputs);
+    for (unsigned int k = 0; k < n_outputs; ++k) {
+      ierr = VecRestoreArray(Fos[k], &Fo_p[k]); CHKERRXX(ierr);
+    }
+  }
+  inline void interpolate(Vec Fo){ interpolate(&Fo, 1); }
+  inline void interpolate(vector<Vec>& Fo) {interpolate(Fo.data(), Fo.size());}
 
 #ifdef P4_TO_P8
   virtual void operator()(double x, double y, double z, double* results) const = 0;
@@ -152,10 +157,14 @@ public:
 #endif
   }
 
+  // fully abstract function, needs to be defined in all child classes
+  // the array results must be of size bs_f*n_vecs(),
+  // on output, results[bs_f*k+comp] = interpolated value of the comp_th copmonent of the kth field
   virtual void interpolate(const p4est_quadrant_t &quad, const double *xyz, double* results) const = 0;
   inline double interpolate(const p4est_quadrant_t &quad, const double *xyz)
   {
-    P4EST_ASSERT(Fi.size() == 1);
+    P4EST_ASSERT(n_vecs() == 1);
+    P4EST_ASSERT(bs_f == 1);
     double to_return;
     interpolate(quad, xyz, &to_return);
     return to_return;

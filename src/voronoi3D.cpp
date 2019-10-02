@@ -1,6 +1,5 @@
 #include "voronoi3D.h"
 #include <vector>
-
 #include <algorithm>
 
 void Voronoi3D::set_cell(vector<ngbd3Dseed> &neighbors, double volume )
@@ -16,9 +15,24 @@ void Voronoi3D::push( int n, Point3 &pt, const bool* periodicity, const double* 
   for(unsigned int m=0; m<nb_seeds.size(); m++)
     if(nb_seeds[m].n == n)
       return;
-  /* note: technically wrong if one wants to add TWO WALL_parallel_to_face points, but that can happen only
-   * if the grid is VERY coarse in theory, so I do not check for it... [Raphael] */
+  add_point(n, pt, periodicity, xyz_min, xyz_max);
+}
 
+void Voronoi3D::assemble_from_set_of_faces(const unsigned char& dir, const std::set<p4est_locidx_t>& set_of_faces, const my_p4est_faces_t* faces, const bool* periodicity, const double* xyz_min, const double* xyz_max)
+{
+  nb_seeds.clear();
+  int n;
+  Point3 pt;
+  for (std::set<p4est_locidx_t>::const_iterator got_it= set_of_faces.begin(); got_it != set_of_faces.end(); ++got_it) {
+    n = *got_it;
+    P4EST_ASSERT((n>=0) && (n < (faces->num_local[dir] + faces->num_ghost[dir])) && (n != idx_center_seed));
+    faces->point_fr_f(*got_it, dir, pt);
+    add_point(n, pt, periodicity, xyz_min, xyz_max); // no need to check for duplicates by definition of std::set
+  }
+}
+
+void Voronoi3D::add_point(int n, Point3 &pt, const bool* periodicity, const double* xyz_min, const double* xyz_max)
+{
   ngbd3Dseed ngbd_seed;
   ngbd_seed.n = n;
   ngbd_seed.p = pt;
