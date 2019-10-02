@@ -1,10 +1,71 @@
 #!/usr/bin/env bash
 
-# creates a bare minimum example
+# creates a .pro file
 # (In the following, EOF works as a delimiter for the text that needs to be copied as is to the .pro file)
+function create_pro() {
+cat > $1.pro << EOF
+# --------------------------------------------------------------
+# This is a qmake script for generating makefiles. Please read
+# this short comment before changing this file.
+#
+# The build environment (specific paths to external libraries,
+# compilers, etc.) needs to be fully determined in
+# $(dirname "$PWD")/qmake/${CASL_P4EST_USER}.pri
+#
+# Some additional configuration settings can be defined here below
+# with
+#     CONFIG += "options"
+# Available options are: (2d or 3d), (debug or release), log, profile, ...
+# Regarding the (2d or 3d) and/or (debug or release) options, it is
+# advised to configure separate build directories in the Qt configuration
+# settings to avoid mismatch of incompatible and/or inconsistent object
+# files...
+#
+# Otherwise, one can pass in the desired value to qmake, e.g. to create a
+# Makefile for building with release and 2d:
+#   qmake example.pro CONFIG+="2d release"
+#
+#   *** PLEASE DO NOT ADD CONFIG SCRIPTS TO THE REPOSITORY ***
+#
+# --------------------------------------------------------------
+
+CASL_P4EST = $2
+
+TARGET   = $1
+
+CONFIG += # this(these) one(s) is(are) for the user to set!
+
+include(\$\$CASL_P4EST/qmake/${CASL_P4EST_USER}.pri) # file containing paths to external libraries (PETSc, p4est, voro++, boost, matlab, mpi)
+include(\$\$CASL_P4EST/qmake/common.pri) # linking libraries and setting common for all project parameters
+include(\$\$CASL_P4EST/examples/$1/$1.pri) # list of files for this particular project
+
+EOF
+}
+
+# creates a .pri file
+# (In the following, EOF works as a delimiter for the text that needs to be copied as is to the .pri file)
+function create_pri() {
+cat > $1.pri << EOF
+
+CONFIG(2d, 2d|3d): {
+  SOURCES += main_2d.cpp
+}
+
+CONFIG(3d, 2d|3d): {
+  SOURCES += main_3d.cpp
+}
+
+include(../../qmake/libparcasl.pri)
+
+EOF
+}
+
+
+# creates a bare minimum example
+# (In the following, EOF works as a delimiter for the text that needs to be copied as is to the main file)
 
 # creates a bare minimum main_2d.cpp and main_3d.cpp
-function create_main() {
+function create_dummy_main() {
 cat > $1/main_2d.cpp << EOF
 /*
  * Title: $1
@@ -116,17 +177,18 @@ cat > $1/main_3d.cpp << EOF
 EOF
 }
 
-
-help="-- Use this script to a new example along with a .pro file --
+help="-- Use this script to a new example and/or a new .pro file --
 
 usage:
     ./$(basename "$0") example_name
   to be executed in the $(dirname "$PWD")/example directory
 
 where:
-    example_name is the name of the example whose creation is desired. The example folder will be
-    created and dummy main files will be created as well. If the example folder already exists, the
-    script will abort.
+    example_name is the name of the example whose creation/configuration is desired. If it does not
+    exist, the example folder will be created, generic configuration files will be added and dummy
+    main files will be created as well. If the example folder already exists, the script will create
+    and add any missing configuration file(s) and it will create dummy main files if no main file is
+    to be found in the existing directory.
 
 The user needs to have defined the following environment variable
     CASL_P4EST_USER:  environment specifier
@@ -146,26 +208,49 @@ else
   name=$1
 
   # create a new example only if one does not exist with the same name
-  if [ ! -e $name ] || ([ -e $name ] && [ ! -f $name/$name.pro ]) || ([ -e $name ] && [ ! -f $name/main* ]); then
-    if [ ! -e $name ]; then
-      echo "Creating directory ./$name"
-      mkdir $name
+  if [ ! -e ${name} ] || { [ -e ${name} ] && [ ! -f ${name}/${name}.pro ]; } || { [ -e ${name} ] && [ ! "$(ls ${name}/main*.cpp 2>/dev/null)" ] ; }; then
+    if [ ! -e ${name} ]; then
+      echo "Creating directory ./${name}"
+      mkdir ${name}
     fi
     if [ -e ${name} ] && [ ! -f ${name}/${name}.pro ]; then
-      echo "Creating the .pro file."
-      (./newprofile $name)
-      status=$?
-      if [[ $status -eq 1 ]]; then
-        echo "There was an issue when creating the .pro file."
-        exit 1;
+      # we will need to create the .pro file, so we will need CASL_P4EST_USER to be defined
+      CASL_P4EST_DIR="$(dirname "$PWD")"
+      if [ ! -d ${CASL_P4EST_DIR} ]; then
+        echo "The parent directory is not valid: are you sure you are running the script in the example folder of the casl_p4est repository?"
+        exit 1
       fi
+      if [ -z ${CASL_P4EST_USER} ]; then
+        echo "ERROR: The environment variable CASL_P4EST_USER is undefined."
+        echo "CASL_P4EST_USER needs to be defined and to refer to the basename of an environment-specific file in ${CASL_P4EST_DIR}/qmake."
+        exit 1
+      elif [ ! -d ${CASL_P4EST_DIR}/qmake ]; then
+        echo "ERROR: the qmake directory ${CASL_P4EST_DIR}/qmake cannot be found..."
+        echo "Are you sure CASL_P4EST_DIR=${CASL_P4EST_DIR} is correct?"
+        exit 1
+      elif [ ! -f ${CASL_P4EST_DIR}/qmake/${CASL_P4EST_USER}.pri ]; then
+        echo "ERROR: the environment-specific file ${CASL_P4EST_DIR}/qmake/${CASL_P4EST_USER}.pri does not exist."
+        echo "Please create it by executing ./new_environment in ${CASL_P4EST_DIR}/qmake, first."
+        exit 1
+      fi
+
+      echo "Creating the .pro file."
+      cd $name
+      create_pro $name $CASL_P4EST_DIR
+
+      if [ ! -e $name.pri ]; then
+        create_pri $name
+      else
+        echo "The source list '$name.pri' already exists: please check if it is valid."
+      fi
+      cd ../
     fi
-    if [ -e $name ] && [ ! -f $name/main* ]; then
+    if { [ -e ${name} ] && [ ! "$(ls ${name}/main*.cpp 2>/dev/null)" ] ;  }; then
       echo "No existing main file: creating dummy 2d and 3d main files."
-      create_main $name
+      create_dummy_main ${name}
     fi
   else
-    echo "ERROR: Example '$name' already exists. Please choose another name."
+    echo "ERROR: Example '${name}' already exists and is already fully configured. Please go ahead or choose another name."
     exit 1
   fi
 fi
