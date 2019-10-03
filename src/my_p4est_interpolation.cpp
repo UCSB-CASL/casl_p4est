@@ -50,7 +50,6 @@ my_p4est_interpolation_t::my_p4est_interpolation_t(const my_p4est_node_neighbors
     xyz_min[i] = v2c[3*t2v[P4EST_CHILDREN*first_tree + first_vertex] + i];
     xyz_max[i] = v2c[3*t2v[P4EST_CHILDREN*last_tree  + last_vertex ] + i];
   }
-  bs_f  = 0;
 }
 
 
@@ -68,8 +67,6 @@ void my_p4est_interpolation_t::clear()
   mpiret = MPI_Waitall(query_req.size(), &query_req[0], MPI_STATUSES_IGNORE); SC_CHECK_MPI(mpiret);
   mpiret = MPI_Waitall(reply_req.size(), &reply_req[0], MPI_STATUSES_IGNORE); SC_CHECK_MPI(mpiret);
 
-  /* reinitialize bs_f */
-  bs_f = 0;
   /* clear the buffers */
   input_buffer.clear();
   local_buffer.clear();
@@ -80,23 +77,12 @@ void my_p4est_interpolation_t::clear()
 }
 
 
-void my_p4est_interpolation_t::set_input(Vec *F, unsigned int n_vecs_, const unsigned int &block_size_f) {
-  // before setting a new input, we need to make sure that any previous interpolation has fully completed,
-  // otherwise the programe may crash
-  if(query_req.size() > 0){
-    mpiret = MPI_Waitall(query_req.size(), &query_req[0], MPI_STATUSES_IGNORE); SC_CHECK_MPI(mpiret); }
-  if(reply_req.size() > 0){
-    mpiret = MPI_Waitall(reply_req.size(), &reply_req[0], MPI_STATUSES_IGNORE); SC_CHECK_MPI(mpiret); }
-  query_req.clear();
-  reply_req.clear();
-  send_buffer.clear(); // this is important in case of input reset when reusing the same node-interpolator at the same points, otherwise the buffer just keeps accumulating and communications get bigger and bigger
-  // reset the input(s)
+void my_p4est_interpolation_t::set_input(Vec *F, unsigned int n_vecs_) {
   P4EST_ASSERT(n_vecs_ > 0);
-  P4EST_ASSERT(block_size_f>0);
   Fi.resize(n_vecs_);
   for (unsigned int k = 0; k < n_vecs_; ++k)
     Fi[k] = F[k];
-  bs_f = block_size_f;
+  send_buffer.clear(); // this is important in case of input reset when reusing the same node-interpolator at the same points, otherwise the buffer just keeps accumulating and communications bigger and bigger
 }
 
 
@@ -150,11 +136,25 @@ void my_p4est_interpolation_t::add_point(p4est_locidx_t locidx, const double *xy
   }
 }
 
+
+void my_p4est_interpolation_t::interpolate(Vec* Fo, unsigned int n_outputs)
+{
+  P4EST_ASSERT(n_outputs > 0);
+  double *Fo_p[n_outputs];
+  for (unsigned int k = 0; k < n_outputs; ++k) {
+    ierr = VecGetArray(Fo[k], &Fo_p[k]); CHKERRXX(ierr);
+  }
+  interpolate(Fo_p, n_outputs);
+  for (unsigned int k = 0; k < n_outputs; ++k) {
+    ierr = VecRestoreArray(Fo[k], &Fo_p[k]); CHKERRXX(ierr);
+  }
+}
+
+
 void my_p4est_interpolation_t::interpolate(double * const *Fo_p, unsigned int n_functions) {
   ierr = PetscLogEventBegin(log_my_p4est_interpolation_interpolate, 0, 0, 0, 0); CHKERRXX(ierr);
 
   P4EST_ASSERT(n_functions == n_vecs());
-  P4EST_ASSERT(bs_f > 0);
 
   IPMLogRegionBegin("all_reduce");
   ierr = PetscLogEventBegin(log_my_p4est_interpolation_all_reduce, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -207,11 +207,10 @@ void my_p4est_interpolation_t::interpolate(double * const *Fo_p, unsigned int n_
       const p4est_quadrant_t &quad = local_buffer[it];
 
       p4est_locidx_t node_idx = input->node_idx[it];
-      double results[bs_f*n_functions];
+      double results[n_functions];
       interpolate(quad, xyz, results);
       for (unsigned int k = 0; k < n_functions; ++k)
-        for (unsigned int comp = 0; comp < bs_f; ++comp)
-          Fo_p[k][bs_f*node_idx+comp] = results[bs_f*k+comp];
+        Fo_p[k][node_idx] = results[k];
       it++;
 
       IPMLogRegionEnd("process_local");
@@ -266,7 +265,6 @@ void my_p4est_interpolation_t::process_incoming_query(MPI_Status& status, Interp
   // receive incoming queries about points and send back the interpolated result
   int vec_size;
   mpiret = MPI_Get_count(&status, MPI_DOUBLE, &vec_size); SC_CHECK_MPI(mpiret);
-  P4EST_ASSERT((vec_size%P4EST_DIM)==0);
   std::vector<double> xyz(vec_size);
   
   // log information
@@ -281,7 +279,6 @@ void my_p4est_interpolation_t::process_incoming_query(MPI_Status& status, Interp
   double xyz_tmp[P4EST_DIM];
 
   std::vector<remote_buffer_t>& buff = send_buffer[status.MPI_SOURCE];
-  P4EST_ASSERT(buff.size() == 0);
 
   for (int i = 0; i<vec_size; i += P4EST_DIM) {
     // clip to bounding box
@@ -306,14 +303,12 @@ void my_p4est_interpolation_t::process_incoming_query(MPI_Status& status, Interp
      */
     if (rank_found == p4est->mpirank)
     {
-      double results[bs_f*n_vecs()];
+      double results[n_vecs()];
       interpolate(best_match, xyz_tmp, results);
       remote_data.input_buffer_idx = i / P4EST_DIM;
       for (unsigned int k = 0; k < n_vecs(); ++k) {
-        for (unsigned int comp = 0; comp < bs_f; ++comp) {
-          remote_data.value = results[bs_f*k+comp];
-          buff.push_back(remote_data);
-        }
+        remote_data.value = results[k];
+        buff.push_back(remote_data);
       }
     } else if (rank_found == -1) {
       /* this cannot happen as it means the source processor made a mistake in
@@ -326,7 +321,7 @@ void my_p4est_interpolation_t::process_incoming_query(MPI_Status& status, Interp
 
   // we are done, lets send the buffer back
   MPI_Request req;
-  mpiret = MPI_Isend(buff.data(), buff.size()*sizeof(remote_buffer_t), MPI_BYTE, status.MPI_SOURCE, reply_tag, p4est->mpicomm, &req); SC_CHECK_MPI(mpiret);
+  mpiret = MPI_Isend(&buff[0], buff.size()*sizeof(remote_buffer_t), MPI_BYTE, status.MPI_SOURCE, reply_tag, p4est->mpicomm, &req); SC_CHECK_MPI(mpiret);
   reply_req.push_back(req);
 }
 
@@ -346,19 +341,14 @@ void my_p4est_interpolation_t::process_incoming_reply(MPI_Status& status, double
   const input_buffer_t& input = input_buffer[status.MPI_SOURCE];
 
   unsigned int n_functions = n_vecs();
-  P4EST_ASSERT(reply_buffer.size()%(n_functions*bs_f) == 0);
+  P4EST_ASSERT(reply_buffer.size()%n_functions == 0);
 
-  for (size_t i = 0; i<reply_buffer.size()/(n_functions*bs_f); i++) {
-    p4est_locidx_t node_idx = input.node_idx[reply_buffer[n_functions*bs_f*i+0*bs_f+0].input_buffer_idx];
-    for (unsigned int comp = 0; comp < bs_f; ++comp){
-      P4EST_ASSERT(node_idx == input.node_idx[reply_buffer[n_functions*bs_f*i+0*bs_f+comp].input_buffer_idx]);
-      Fo_p[0][bs_f*node_idx+comp] = reply_buffer[n_functions*bs_f*i+0*bs_f+comp].value;
-    }
+  for (size_t i = 0; i<reply_buffer.size()/n_functions; i++) {
+    p4est_locidx_t node_idx = input.node_idx[reply_buffer[i*n_functions+0].input_buffer_idx];
+    Fo_p[0][node_idx] = reply_buffer[i*n_functions+0].value;
     for (unsigned int k = 1; k < n_functions; ++k){
-      for (unsigned int comp = 0; comp < bs_f; ++comp) {
-        P4EST_ASSERT(node_idx == input.node_idx[reply_buffer[n_functions*bs_f*i+0*bs_f+comp].input_buffer_idx]);
-        Fo_p[k][bs_f*node_idx+comp] = reply_buffer[n_functions*bs_f*i+0*bs_f+comp].value;
-      }
+      P4EST_ASSERT(node_idx == input.node_idx[reply_buffer[i*n_functions+k].input_buffer_idx]);
+      Fo_p[k][node_idx] = reply_buffer[i*n_functions+k].value;
     }
   }
 }

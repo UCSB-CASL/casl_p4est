@@ -610,7 +610,7 @@ int main (int argc, char* argv[])
 #ifdef P4_TO_P8
   const std::string extra_info = "\
       This program provides a general setup for simulating the flow past a static sphere. \n\
-      The domain is [0, 32]x[-8, 8]x[-8, 8]. A static sphere is centered at (8,0,0). \n\
+      The domain is [0, 32]x[0, 8]x[0, 8]. A static sphere is centered at (8,0,0). \n\
       The radius of the sphere is 1.0. The far-flow condition is (u,v,w)=(1,0,0).\n\
       If activated by the user, smoke (passive scalar) is released into the domain from \n\
       the inlet wall x = 0 by a constant unit source located at x = 0 and sqrt(y*y+z*z)<0.4. \n\
@@ -623,12 +623,12 @@ int main (int argc, char* argv[])
       pressure and homogeneous Dirichlet for velocity components) \n\
       By the definition of the above parameters and the Reynolds numbers, the Navier-Stokes \n\
       solver is invoked with nondimensional inputs \n\
-      rho = 1.0, mu = 2.0/Re, body force per unit mass {0.0, 0.0, 0.0}. \n\
+      rho = 1.0, mu = 1.0/Re, body force per unit mass {0.0, 0.0, 0.0}. \n\
       Developer: Raphael Egan (raphaelegan@ucsb.edu) based on a general main file from Arthur Guittet";
 #else
   const std::string extra_info = "\
       This program provides a general setup for simulating the flow past a static cylinder. \n\
-      The domain is [0, 32]x[-8, 8]. A static cylinder/sphere is centered at (8,0). \n\
+      The domain is [0, 32]x[0, 8]. A static cylinder/sphere is centered at (8,0). \n\
       The radius of the cylinder is 0.5. The far-flow condition is (u,v)=(1,0).\n\
       If activated by the user, smoke (passive scalar) is released into the domain from \n\
       the inlet wall x = 0 by a constant unit source located at x = 0 and -0.5<y<0.5. \n\

@@ -118,225 +118,6 @@ inline bool is_tree_zpWall(p4est_t* p4est, p4est_topidx_t tr)
 }
 #endif
 
-void
-my_p4est_vtk_write_all_wrapper (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
-                                int write_rank, int write_tree,
-                                int num_point_scalars, int num_point_vectors_by_component, int num_point_vectors_block,
-                                int num_cell_scalars, int num_cell_vectors_by_component, int num_cell_vectors_block,
-                                const char *filename, va_list ap)
-{
-  PetscErrorCode ierr;
-  int                 retval;
-  int                 i;
-  int                 all_p_scalar, all_p_vector_block, all_p_vector_by_component;
-  int                 all_c_scalar, all_c_vector_block, all_c_vector_by_component;
-  int                 cell_scalar_strlen, point_scalar_strlen;
-  int                 cell_vector_block_strlen, point_vector_block_strlen, cell_vector_by_component_strlen, point_vector_by_component_strlen;
-  char                cell_scalars[BUFSIZ], cell_vectors_block[BUFSIZ], cell_vectors_by_component[BUFSIZ];
-  char                point_scalars[BUFSIZ], point_vectors_block[BUFSIZ], point_vectors_by_component[BUFSIZ];
-  const char         *tmp_ptr;
-  const char        **cell_scalar_names,    **cell_vector_by_component_names,   **cell_vector_block_names;
-  const char        **point_scalar_names,   **point_vector_by_component_names,  **point_vector_block_names;
-  const double      **point_scalar_values,  **point_vector_values_block,        **point_vector_values_by_component[P4EST_DIM];
-  const double      **cell_scalar_values,   **cell_vector_values_block,         **cell_vector_values_by_component[P4EST_DIM];
-  int                 vtk_type;
-
-  P4EST_ASSERT (num_point_scalars >= 0 && num_point_vectors_by_component >= 0 && num_point_vectors_block >= 0 &&
-                num_cell_scalars  >= 0 && num_cell_vectors_by_component >=0   && num_cell_vectors_block >= 0);
-
-  // logging
-  ierr = PetscLogEventBegin(log_my_p4est_vtk_write_all, 0, 0, 0, 0); CHKERRV(ierr);
-
-  /* Allocate memory for the data and their names */
-  point_scalar_values                             = P4EST_ALLOC(const double * , num_point_scalars);
-  point_vector_values_block                       = P4EST_ALLOC(const double * , num_point_vectors_block);
-  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-    point_vector_values_by_component[dir]         = P4EST_ALLOC(const double * , num_point_vectors_by_component);
-  cell_scalar_values                              = P4EST_ALLOC(const double * , num_cell_scalars);
-  cell_vector_values_block                        = P4EST_ALLOC(const double * , num_cell_vectors_block);
-  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-    cell_vector_values_by_component[dir]          = P4EST_ALLOC(const double * , num_cell_vectors_by_component);
-
-  cell_scalar_names                               = P4EST_ALLOC (const char *, num_cell_scalars);
-  cell_vector_by_component_names                  = P4EST_ALLOC (const char *, num_cell_vectors_by_component);
-  cell_vector_block_names                         = P4EST_ALLOC (const char *, num_cell_vectors_block);
-  point_scalar_names                              = P4EST_ALLOC (const char *, num_point_scalars);
-  point_vector_by_component_names                 = P4EST_ALLOC (const char *, num_point_vectors_by_component);
-  point_vector_block_names                        = P4EST_ALLOC (const char *, num_point_vectors_block);
-
-  all_c_scalar = all_c_vector_block = all_c_vector_by_component = 0;
-  all_p_scalar = all_p_vector_block = all_p_vector_by_component = 0;
-  cell_scalar_strlen = cell_vector_block_strlen = cell_vector_by_component_strlen = 0;
-  point_scalar_strlen = point_vector_block_strlen = point_vector_by_component_strlen = 0;
-  cell_scalars[0] = cell_vectors_block[0] = cell_vectors_by_component[0] = '\0';
-  point_scalars[0] = point_vectors_block[0] = point_vectors_by_component[0] = '\0';
-  for (i = 0;
-       i < (num_point_scalars+num_point_vectors_block+num_point_vectors_by_component+
-            num_cell_scalars+num_cell_vectors_block+num_cell_vectors_by_component);
-       ++i)
-  {
-    /* first get the type */
-    vtk_type = va_arg(ap, int);
-
-    switch (vtk_type) {
-    case VTK_POINT_DATA:
-    {
-      tmp_ptr = point_scalar_names[all_p_scalar] = va_arg(ap, const char*);
-      retval = snprintf (point_scalars + point_scalar_strlen, BUFSIZ - point_scalar_strlen,
-                         "%s%s", (all_p_scalar == 0) ? "" : ", ", tmp_ptr);
-      SC_CHECK_ABORT (retval > 0,
-                      P4EST_STRING "_vtk: Error collecting point scalars");
-      point_scalar_strlen += retval;
-
-      /* now get the values */
-      point_scalar_values[all_p_scalar] = va_arg(ap, double*);
-
-      all_p_scalar++;
-      break;
-    }
-    case VTK_NODE_VECTOR_BLOCK:
-    {
-      tmp_ptr = point_vector_block_names[all_p_vector_block] = va_arg(ap, const char*);
-      retval = snprintf (point_vectors_block + point_vector_block_strlen, BUFSIZ - point_vector_block_strlen,
-                         "%s%s", (all_p_vector_block == 0) ? "" : ", ", tmp_ptr);
-      SC_CHECK_ABORT (retval > 0,
-                      P4EST_STRING "_vtk: Error collecting point block-structured vectors");
-      point_vector_block_strlen += retval;
-
-      /* now get the values */
-      point_vector_values_block[all_p_vector_block]   = va_arg(ap, double*);
-
-      all_p_vector_block++;
-      break;
-    }
-    case VTK_NODE_VECTOR_BY_COMPONENTS:
-    {
-      tmp_ptr = point_vector_by_component_names[all_p_vector_by_component] = va_arg(ap, const char*);
-      retval = snprintf (point_vectors_by_component + point_vector_by_component_strlen, BUFSIZ - point_vector_by_component_strlen,
-                         "%s%s", (all_p_vector_by_component == 0) ? "" : ", ", tmp_ptr);
-      SC_CHECK_ABORT (retval > 0,
-                      P4EST_STRING "_vtk: Error collecting point vectors given by components");
-      point_vector_by_component_strlen += retval;
-
-      /* now get the values */
-      for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-        point_vector_values_by_component[dir][all_p_vector_by_component]   = va_arg(ap, double*);
-
-      all_p_vector_by_component++;
-      break;
-    }
-    case VTK_CELL_DATA:
-    {
-      tmp_ptr = cell_scalar_names[all_c_scalar] = va_arg(ap, const char*);
-      retval = snprintf (cell_scalars + cell_scalar_strlen, BUFSIZ - cell_scalar_strlen,
-                         "%s%s", (all_c_scalar == 0) ? "" : ", ", tmp_ptr);
-      SC_CHECK_ABORT (retval > 0,
-                      P4EST_STRING "_vtk: Error collecting cell scalars");
-      cell_scalar_strlen += retval;
-
-      /* now get the values */
-      cell_scalar_values[all_c_scalar] = va_arg(ap, double*);
-
-      all_c_scalar++;
-      break;
-    }
-    case VTK_CELL_VECTOR_BLOCK:
-    {
-      tmp_ptr = cell_vector_block_names[all_c_vector_block] = va_arg(ap, const char*);
-      retval = snprintf (cell_vectors_block + cell_vector_block_strlen, BUFSIZ - cell_vector_block_strlen,
-                         "%s%s", (all_c_vector_block == 0) ? "" : ", ", tmp_ptr);
-      SC_CHECK_ABORT (retval > 0,
-                      P4EST_STRING "_vtk: Error collecting cell block-structured vectors");
-      cell_vector_block_strlen += retval;
-
-      /* now get the values */
-      cell_vector_values_block[all_c_vector_block]   = va_arg(ap, double*);
-
-      all_c_vector_block++;
-      break;
-    }
-    case VTK_CELL_VECTOR_BY_COMPONENTS:
-    {
-      tmp_ptr = cell_vector_by_component_names[all_c_vector_by_component] = va_arg(ap, const char*);
-      retval = snprintf (cell_vectors_by_component + cell_vector_by_component_strlen, BUFSIZ - cell_vector_by_component_strlen,
-                         "%s%s", (all_c_vector_by_component == 0) ? "" : ", ", tmp_ptr);
-      SC_CHECK_ABORT (retval > 0,
-                      P4EST_STRING "_vtk: Error collecting cell vectors given by components");
-      cell_vector_by_component_strlen += retval;
-
-      /* now get the values */
-      for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-        cell_vector_values_by_component[dir][all_c_vector_by_component]   = va_arg(ap, double*);
-
-      all_c_vector_by_component++;
-      break;
-    }
-    default:
-      SC_CHECK_ABORT (0, P4EST_STRING "_vtk: unknown vtk data type");
-      break;
-    }
-  }
-
-
-  retval = my_p4est_vtk_write_header (p4est, nodes, ghost, filename);
-  SC_CHECK_ABORT (!retval, P4EST_STRING "_vtk: Error writing header");
-
-  /* now write the actual data */
-
-  retval = my_p4est_vtk_write_node_data( p4est, nodes, ghost, filename,
-                                         num_point_scalars, num_point_vectors_block, num_point_vectors_by_component,
-                                         point_scalars, point_vectors_block, point_vectors_by_component,
-                                         point_scalar_names, point_vector_block_names, point_vector_by_component_names,
-                                         point_scalar_values, point_vector_values_block, point_vector_values_by_component);
-  SC_CHECK_ABORT (!retval,
-                  P4EST_STRING "_vtk: Error writing point scalars");
-
-  retval = my_p4est_vtk_write_cell_data( p4est, ghost, write_rank, write_tree, filename,
-                                         num_cell_scalars, num_cell_vectors_block, num_cell_vectors_by_component,
-                                         cell_scalars, cell_vectors_block, cell_vectors_by_component,
-                                         cell_scalar_names, cell_vector_block_names, cell_vector_by_component_names,
-                                         cell_scalar_values, cell_vector_values_block, cell_vector_values_by_component);
-  SC_CHECK_ABORT (!retval,
-                  P4EST_STRING "_vtk: Error writing cell scalars");
-
-
-  retval = my_p4est_vtk_write_footer (p4est, filename);
-  SC_CHECK_ABORT (!retval, P4EST_STRING "_vtk: Error writing footer");
-
-  P4EST_FREE(point_scalar_values);
-  P4EST_FREE(point_vector_values_block);
-  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-    P4EST_FREE(point_vector_values_by_component[dir]);
-  P4EST_FREE(cell_scalar_values);
-  P4EST_FREE(cell_vector_values_block);
-  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-    P4EST_FREE(cell_vector_values_by_component[dir]);
-  P4EST_FREE(cell_scalar_names);
-  P4EST_FREE(cell_vector_by_component_names);
-  P4EST_FREE(cell_vector_block_names);
-  P4EST_FREE(point_scalar_names);
-  P4EST_FREE(point_vector_by_component_names);
-  P4EST_FREE(point_vector_block_names);
-
-  ierr = PetscLogEventEnd(log_my_p4est_vtk_write_all, 0, 0, 0, 0); CHKERRV(ierr);
-}
-
-void
-my_p4est_vtk_write_all_general(p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
-                               int write_rank, int write_tree,
-                               int num_point_scalars, int num_point_vectors_by_component, int num_point_vectors_block,
-                               int num_cell_scalars, int num_cell_vectors_by_component, int num_cell_vectors_block,
-                               const char *filename, ...)
-{
-  va_list ap;
-  va_start(ap, filename);
-  my_p4est_vtk_write_all_wrapper(p4est, nodes, ghost,
-                                 write_rank, write_tree,
-                                 num_point_scalars, num_point_vectors_by_component, num_point_vectors_block,
-                                 num_cell_scalars, num_cell_vectors_by_component, num_cell_vectors_block,
-                                 filename, ap);
-  va_end(ap);
-}
 
 void
 my_p4est_vtk_write_all (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
@@ -344,14 +125,89 @@ my_p4est_vtk_write_all (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t *gh
                         int num_point_scalars, int num_cell_scalars,
                         const char *filename, ...)
 {
-  va_list ap;
-  va_start(ap, filename);
-  my_p4est_vtk_write_all_wrapper(p4est, nodes, ghost,
-                                 write_rank, write_tree,
-                                 num_point_scalars, 0, 0,
-                                 num_cell_scalars, 0, 0,
-                                 filename, ap);
-  va_end(ap);
+  PetscErrorCode ierr;
+  int                 retval;
+  int                 i, all_p, all_c;
+  int                 cell_scalar_strlen, point_scalar_strlen;
+  char                cell_scalars[BUFSIZ], point_scalars[BUFSIZ];
+  const char         *cell_name, *point_name, **cell_names, **point_names;
+  const double       **cell_values, **point_values;
+  int            vtk_type;
+  va_list             ap;
+
+  P4EST_ASSERT (num_cell_scalars >= 0  && num_point_scalars >= 0 );
+
+  // logging
+  ierr = PetscLogEventBegin(log_my_p4est_vtk_write_all, 0, 0, 0, 0); CHKERRV(ierr);
+
+  /* Allocate memory for the data and their names */
+  cell_values  = P4EST_ALLOC(const double * , num_cell_scalars);
+  point_values = P4EST_ALLOC(const double * , num_point_scalars);
+  cell_names   = P4EST_ALLOC (const char *, num_cell_scalars);
+  point_names  = P4EST_ALLOC (const char *, num_point_scalars);
+
+  va_start (ap, filename);
+  all_c = all_p = 0;
+  cell_scalar_strlen = point_scalar_strlen = 0;
+  cell_scalars[0] = point_scalars[0] = '\0';
+  for (i = 0; i < num_point_scalars+num_cell_scalars; ++i) {
+    /* first get the type */
+    vtk_type = va_arg(ap, int);
+
+    if (vtk_type == VTK_POINT_DATA){
+      point_name = point_names[all_p] = va_arg(ap, const char*);
+      retval = snprintf (point_scalars + point_scalar_strlen, BUFSIZ - point_scalar_strlen,
+                         "%s%s", all_p == 0 ? "" : ", ", point_name);
+      SC_CHECK_ABORT (retval > 0,
+                      P4EST_STRING "_vtk: Error collecting point scalars");
+      point_scalar_strlen += retval;
+
+      /* now get the values */
+      point_values[all_p] = va_arg(ap, double*);
+
+      all_p++;
+    } else if (vtk_type == VTK_CELL_DATA){
+      cell_name = cell_names[all_c] = va_arg(ap, const char*);
+      retval = snprintf (cell_scalars + cell_scalar_strlen, BUFSIZ - cell_scalar_strlen,
+                         "%s%s", all_c == 0 ? "" : ", ", cell_name);
+      SC_CHECK_ABORT (retval > 0,
+                      P4EST_STRING "_vtk: Error collecting point scalars");
+      cell_scalar_strlen += retval;
+
+      /* get the values */
+      cell_values[all_c] = va_arg(ap, double*);
+      all_c++;
+    }
+  }
+
+  va_end (ap);
+
+
+  retval = my_p4est_vtk_write_header (p4est, nodes, ghost, filename);
+  SC_CHECK_ABORT (!retval, P4EST_STRING "_vtk: Error writing header");
+
+  /* now write the actual data */
+
+  retval = my_p4est_vtk_write_point_scalar (p4est, nodes, ghost, filename,
+                                            num_point_scalars, point_scalars, point_names, point_values);
+  SC_CHECK_ABORT (!retval,
+                  P4EST_STRING "_vtk: Error writing point scalars");
+
+  retval = my_p4est_vtk_write_cell_scalar (p4est, ghost, write_rank, write_tree, filename,
+                                           num_cell_scalars, cell_scalars, cell_names, cell_values);
+  SC_CHECK_ABORT (!retval,
+                  P4EST_STRING "_vtk: Error writing cell scalars");
+
+
+  retval = my_p4est_vtk_write_footer (p4est, filename);
+  SC_CHECK_ABORT (!retval, P4EST_STRING "_vtk: Error writing footer");
+
+  P4EST_FREE (cell_values);
+  P4EST_FREE (point_values);
+  P4EST_FREE (cell_names);
+  P4EST_FREE (point_names);
+
+  ierr = PetscLogEventEnd(log_my_p4est_vtk_write_all, 0, 0, 0, 0); CHKERRV(ierr);
 }
 
 int
@@ -999,11 +855,9 @@ my_p4est_vtk_write_header (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t 
 }
 
 int
-my_p4est_vtk_write_node_data (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost, const char *filename,
-                              const int num_scalar, const int num_vector_block, const int num_vector_by_component,
-                              const char* list_name_scalar, const char* list_name_vector_block, const char* list_name_vector_by_component,
-                              const char **scalar_names, const char **vector_block_names, const char **vector_by_component_names,
-                              const double **scalar_values, const double **vector_block_values, const double **vector_by_component_values[P4EST_DIM])
+my_p4est_vtk_write_point_scalar (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
+                                 const char *filename,
+                                 const int num, const char* list_name, const char **scalar_names, const double **values)
 {
   const int           mpirank = p4est->mpirank;
   int                 retval;
@@ -1015,8 +869,7 @@ my_p4est_vtk_write_node_data (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost
   char                vtufilename[BUFSIZ];
   FILE               *vtufile;
   P4EST_ASSERT(nodes != NULL);
-  P4EST_ASSERT((num_scalar >= 0) && (num_vector_block >= 0) && (num_vector_by_component >= 0));
-//  P4EST_ASSERT(ghost != NULL); [Raphael]: I don't see why ghost should be != NULL, I think all the code here below is safe-guarded regarding ghost == NULL...
+  P4EST_ASSERT(ghost != NULL);
 
   p4est_locidx_t NCells = p4est->local_num_quadrants;
   if (ghost != NULL) NCells += ghost->ghosts.elem_count;
@@ -1175,22 +1028,15 @@ my_p4est_vtk_write_node_data (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost
 
   /* Point Data */
   fprintf (vtufile, "      <PointData");
-  if (scalar_values != NULL)
-    fprintf (vtufile, " Scalars=\"%s\"", list_name_scalar);
-  if ((num_vector_block + num_vector_by_component) > 0)
-  {
-    if(num_vector_block > 0)
-      fprintf (vtufile, " Vectors=\"%s, %s\"", list_name_vector_block, list_name_vector_by_component);
-    else
-      fprintf (vtufile, " Vectors=\"%s\"", list_name_vector_by_component);
-  }
+  if (values != NULL)
+    fprintf (vtufile, " Scalars=\"%s\"", list_name);
   fprintf (vtufile, ">\n");
 
   int i;
 #ifndef P4EST_VTK_ASCII
   float_data = P4EST_ALLOC (P4EST_VTK_FLOAT_TYPE, Ntotal);
 #endif
-  for (i=0; i<num_scalar; ++i){
+  for (i=0; i<num; ++i){
     /* write point position data */
     fprintf (vtufile, "        <DataArray type=\"%s\" Name=\"%s\""
                       " format=\"%s\">\n",
@@ -1199,26 +1045,26 @@ my_p4est_vtk_write_node_data (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost
 #ifdef P4EST_VTK_ASCII
     for (il = 0; il < Ntotal - num_extra; ++il) {
 #ifdef P4EST_VTK_DOUBLES
-      fprintf (vtufile, "     %24.16e\n", scalar_values[i][il]);
+      fprintf (vtufile, "     %24.16e\n", values[i][il]);
 #else
-      fprintf (vtufile, "          %16.8e\n", scalar_values[i][il]);
+      fprintf (vtufile, "          %16.8e\n", values[i][il]);
 #endif
     }
 
     for (il = 0; il < num_extra; ++il) {
 #ifdef P4EST_VTK_DOUBLES
-      fprintf (vtufile, "     %24.16e\n", scalar_values[i][node_extra_map[il]]);
+      fprintf (vtufile, "     %24.16e\n", values[i][node_extra_map[il]]);
 #else
-      fprintf (vtufile, "          %16.8e\n", scalar_values[i][node_extra_map[il]]);
+      fprintf (vtufile, "          %16.8e\n", values[i][node_extra_map[il]]);
 #endif
     }
 #else
 
     // copy data
     for (il = 0; il < Ntotal - num_extra; il++)
-      float_data[il] = (P4EST_VTK_FLOAT_TYPE) scalar_values[i][il];
+      float_data[il] = (P4EST_VTK_FLOAT_TYPE) values[i][il];
     for (il = 0; il < num_extra; il++)
-      float_data[il+nodes->indep_nodes.elem_count] = (P4EST_VTK_FLOAT_TYPE) scalar_values[i][node_extra_map[il]];
+      float_data[il+nodes->indep_nodes.elem_count] = (P4EST_VTK_FLOAT_TYPE) values[i][node_extra_map[il]];
 
     fprintf (vtufile, "          ");
     /* TODO: Don't allocate the full size of the array, only allocate
@@ -1232,7 +1078,7 @@ my_p4est_vtk_write_node_data (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost
 
 
     if (retval) {
-      P4EST_LERROR (P4EST_STRING "_vtk: Error encoding scalar points\n");
+      P4EST_LERROR (P4EST_STRING "_vtk: Error encoding points\n");
       fclose (vtufile);
       return -1;
     }
@@ -1249,155 +1095,10 @@ my_p4est_vtk_write_node_data (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost
     }
   }
 
-  // done with scalar fields, let's do vectors
-#ifndef P4EST_VTK_ASCII
-  P4EST_FREE (float_data);
-  float_data = P4EST_ALLOC (P4EST_VTK_FLOAT_TYPE, 3*Ntotal);
-#endif
-
-  for (i=0; i<num_vector_block+num_vector_by_component; ++i){
-    /* write point position data */
-    if(i<num_vector_block)
-      fprintf (vtufile, "        <DataArray type=\"%s\" Name=\"%s\" NumberOfComponents=\"%d\""
-                        " format=\"%s\">\n",
-               P4EST_VTK_FLOAT_NAME, vector_block_names[i], 3, P4EST_VTK_FORMAT_STRING); // number of exported components set to be 3 by force to enable all vector visualizing features in paraview even in 2D
-    else
-      fprintf (vtufile, "        <DataArray type=\"%s\" Name=\"%s\" NumberOfComponents=\"%d\""
-                        " format=\"%s\">\n",
-               P4EST_VTK_FLOAT_NAME, vector_by_component_names[i-num_vector_block], 3, P4EST_VTK_FORMAT_STRING); // number of exported components set to be 3 by force to enable all vector visualizing features in paraview even in 2D
-
-#ifdef P4EST_VTK_ASCII
-    for (il = 0; il < Ntotal - num_extra; ++il) {
-      if(i<num_vector_block)
-      {
-#ifdef P4EST_VTK_DOUBLES
-#ifdef P4_TO_P8
-        fprintf (vtufile, "     %24.16e %24.16e %24.16e\n", vector_block_values[i][P4EST_DIM*il+0], vector_block_values[i][P4EST_DIM*il+1], vector_block_values[i][P4EST_DIM*il+2]);
-#else
-        fprintf (vtufile, "     %24.16e %24.16e %24.16e\n", vector_block_values[i][P4EST_DIM*il+0], vector_block_values[i][P4EST_DIM*il+1], 0.0);
-#endif
-#else
-#ifdef P4_TO_P8
-        fprintf (vtufile, "     %16.8e %16.8e %16.8e\n", vector_block_values[i][P4EST_DIM*il+0], vector_block_values[i][P4EST_DIM*il+1], vector_block_values[i][P4EST_DIM*il+2]);
-#else
-        fprintf (vtufile, "     %16.8e %16.8e %16.8e\n", vector_block_values[i][P4EST_DIM*il+0], vector_block_values[i][P4EST_DIM*il+1], 0.0);
-#endif
-#endif
-      }
-      else
-      {
-#ifdef P4EST_VTK_DOUBLES
-#ifdef P4_TO_P8
-        fprintf (vtufile, "     %24.16e %24.16e %24.16e\n", vector_by_component_names[0][i-num_vector_block][il], vector_by_component_names[1][i-num_vector_block][il], vector_by_component_names[2][i-num_vector_block][il]);
-#else
-        fprintf (vtufile, "     %24.16e %24.16e %24.16e\n", vector_by_component_names[0][i-num_vector_block][il], vector_by_component_names[1][i-num_vector_block][il], 0.0);
-#endif
-#else
-#ifdef P4_TO_P8
-        fprintf (vtufile, "     %16.8e %16.8e %16.8e\n", vector_by_component_names[0][i-num_vector_block][il], vector_by_component_names[1][i-num_vector_block][il], vector_by_component_names[2][i-num_vector_block][il]);
-#else
-        fprintf (vtufile, "     %16.8e %16.8e %16.8e\n", vector_by_component_names[0][i-num_vector_block][il], vector_by_component_names[1][i-num_vector_block][il], 0.0);
-#endif
-#endif
-      }
-    }
-
-    for (il = 0; il < num_extra; ++il) {
-      if(i<num_vector_block)
-      {
-#ifdef P4EST_VTK_DOUBLES
-#ifdef P4_TO_P8
-        fprintf (vtufile, "     %24.16e %24.16e %24.16e\n", vector_block_values[i][P4EST_DIM*node_extra_map[il]+0], vector_block_values[i][P4EST_DIM*node_extra_map[il]+1], vector_block_values[i][P4EST_DIM*node_extra_map[il]+2]);
-#else
-        fprintf (vtufile, "     %24.16e %24.16e %24.16e\n", vector_block_values[i][P4EST_DIM*node_extra_map[il]+0], vector_block_values[i][P4EST_DIM*node_extra_map[il]+1], 0.0);
-#endif
-#else
-#ifdef P4_TO_P8
-        fprintf (vtufile, "     %16.8e %16.8e %16.8e\n", vector_block_values[i][P4EST_DIM*node_extra_map[il]+0], vector_block_values[i][P4EST_DIM*node_extra_map[il]+1], vector_block_values[i][P4EST_DIM*node_extra_map[il]+2]);
-#else
-        fprintf (vtufile, "     %16.8e %16.8e %16.8e\n", vector_block_values[i][P4EST_DIM*node_extra_map[il]+0], vector_block_values[i][P4EST_DIM*node_extra_map[il]+1], 0.0);
-#endif
-#endif
-      }
-      else
-      {
-#ifdef P4EST_VTK_DOUBLES
-#ifdef P4_TO_P8
-        fprintf (vtufile, "     %24.16e %24.16e %24.16e\n", vector_by_component_names[0][i-num_vector_block][node_extra_map[il]], vector_by_component_names[1][i-num_vector_block][node_extra_map[il]], vector_by_component_names[2][i-num_vector_block][node_extra_map[il]]);
-#else
-        fprintf (vtufile, "     %24.16e %24.16e %24.16e\n", vector_by_component_names[0][i-num_vector_block][node_extra_map[il]], vector_by_component_names[1][i-num_vector_block][node_extra_map[il]], 0.0);
-#endif
-#else
-#ifdef P4_TO_P8
-        fprintf (vtufile, "     %16.8e %16.8e %16.8e\n", vector_by_component_names[0][i-num_vector_block][node_extra_map[il]], vector_by_component_names[1][i-num_vector_block][node_extra_map[il]], vector_by_component_names[2][i-num_vector_block][node_extra_map[il]]);
-#else
-        fprintf (vtufile, "     %16.8e %16.8e %16.8e\n", vector_by_component_names[0][i-num_vector_block][node_extra_map[il]], vector_by_component_names[1][i-num_vector_block][node_extra_map[il]], 0.0);
-#endif
-#endif
-      }
-    }
-#else
-
-    // copy data
-    for (il = 0; il < Ntotal - num_extra; il++)
-    {
-      for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-      {
-        if(i < num_vector_block)
-          float_data[3*il+dir] = (P4EST_VTK_FLOAT_TYPE) vector_block_values[i][P4EST_DIM*il+dir];
-        else
-          float_data[3*il+dir] = (P4EST_VTK_FLOAT_TYPE) vector_by_component_values[dir][i-num_vector_block][il];
-      }
-#ifndef P4_TO_P8
-      float_data[3*il+2] = (P4EST_VTK_FLOAT_TYPE) 0.0;
-#endif
-    }
-    for (il = 0; il < num_extra; il++)
-    {
-      for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-      {
-        if(i < num_vector_block)
-          float_data[3*il+dir] = (P4EST_VTK_FLOAT_TYPE) vector_block_values[i][P4EST_DIM*node_extra_map[il]+dir];
-        else
-          float_data[3*il+dir] = (P4EST_VTK_FLOAT_TYPE) vector_by_component_values[dir][i-num_vector_block][node_extra_map[il]];
-      }
-#ifndef P4_TO_P8
-      float_data[3*il+2] = (P4EST_VTK_FLOAT_TYPE) 0.0;
-#endif
-    }
-
-    fprintf (vtufile, "          ");
-    /* TODO: Don't allocate the full size of the array, only allocate
-     * the chunk that will be passed to zlib and do this a chunk
-     * at a time.
-     */
-
-    retval = my_p4est_vtk_write_binary (vtufile, (char *) float_data,
-                                        sizeof (*float_data) * (3*Ntotal));
-    fprintf (vtufile, "\n");
-
-
-    if (retval) {
-      P4EST_LERROR (P4EST_STRING "_vtk: Error encoding vector points\n");
-      fclose (vtufile);
-      return -1;
-    }
-
-
-#endif
-
-    fprintf (vtufile, "        </DataArray>\n");
-
-    if (ferror (vtufile)) {
-      P4EST_LERROR (P4EST_STRING "_vtk: Error writing point vector\n");
-      fclose (vtufile);
-      return -1;
-    }
-  }
 
   fprintf (vtufile, "      </PointData>\n");
   if (fclose (vtufile)) {
-    P4EST_LERROR (P4EST_STRING "_vtk: Error closing point data\n");
+    P4EST_LERROR (P4EST_STRING "_vtk: Error closing point scalar\n");
     return -1;
   }
   vtufile = NULL;
@@ -1419,18 +1120,10 @@ my_p4est_vtk_write_node_data (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost
       return -1;
     }
 
-    fprintf (pvtufile, "    <PPointData Scalars=\"%s\"", list_name_scalar);
-    if ((num_vector_block + num_vector_by_component) > 0)
-    {
-      if(num_vector_block > 0)
-        fprintf (pvtufile, " Vectors=\"%s, %s\"", list_name_vector_block, list_name_vector_by_component);
-      else
-        fprintf (pvtufile, " Vectors=\"%s\"", list_name_vector_by_component);
-    }
-    fprintf (pvtufile, ">\n");
+    fprintf (pvtufile, "    <PPointData Scalars=\"%s\">\n",list_name);
 
     int i;
-    for (i=0; i<num_scalar; ++i){
+    for (i=0; i<num; ++i){
       fprintf (pvtufile, "      <PDataArray type=\"%s\" Name=\"%s\""
                          " format=\"%s\"/>\n",
                P4EST_VTK_FLOAT_NAME, scalar_names[i], P4EST_VTK_FORMAT_STRING);
@@ -1443,30 +1136,11 @@ my_p4est_vtk_write_node_data (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost
       }
     }
 
-    for (i=0; i<num_vector_block+num_vector_by_component; ++i){
-      if(i < num_vector_block)
-        fprintf (pvtufile, "      <PDataArray type=\"%s\" Name=\"%s\" NumberOfComponents=\"%d\""
-                           " format=\"%s\"/>\n",
-                 P4EST_VTK_FLOAT_NAME, vector_block_names[i], 3, P4EST_VTK_FORMAT_STRING);
-      else
-        fprintf (pvtufile, "      <PDataArray type=\"%s\" Name=\"%s\" NumberOfComponents=\"%d\""
-                           " format=\"%s\"/>\n",
-                 P4EST_VTK_FLOAT_NAME, vector_by_component_names[i-num_vector_block], 3, P4EST_VTK_FORMAT_STRING);
-
-      if (ferror (pvtufile)) {
-        P4EST_LERROR (P4EST_STRING
-                      "_vtk: Error writing parallel point vector\n");
-        fclose (pvtufile);
-        return -1;
-      }
-    }
-
-
     fprintf (pvtufile, "    </PPointData>\n");
 
     if (fclose (pvtufile)) {
       P4EST_LERROR (P4EST_STRING
-                    "_vtk: Error closing parallel point data\n");
+                    "_vtk: Error closing parallel point scalar\n");
       return -1;
     }
   }
@@ -1475,12 +1149,10 @@ my_p4est_vtk_write_node_data (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost
 }
 
 int
-my_p4est_vtk_write_cell_data (p4est_t * p4est, p4est_ghost_t *ghost,
-                              int write_rank, int write_tree, const char *filename,
-                              const int num_scalar, const int num_vector_block, const int num_vector_by_component,
-                              const char* list_name_scalar, const char* list_name_vector_block, const char* list_name_vector_by_component,
-                              const char **scalar_names, const char **vector_block_names, const char **vector_by_component_names,
-                              const double **scalar_values, const double **vector_block_values, const double **vector_by_component_values[P4EST_DIM])
+my_p4est_vtk_write_cell_scalar (p4est_t * p4est, p4est_ghost_t *ghost,
+                                int write_rank, int write_tree,
+                                const char *filename,
+                                const int num, const char* list_name, const char **scalar_names, const double **values)
 {
   const int           mpirank = p4est->mpirank;
   p4est_locidx_t Ncells = p4est->local_num_quadrants;
@@ -1525,15 +1197,8 @@ my_p4est_vtk_write_cell_data (p4est_t * p4est, p4est_ghost_t *ghost,
 
   /* Cell Data */
   fprintf (vtufile, "      <CellData");
-  if (scalar_values != NULL)
-    fprintf (vtufile, " Scalars=\"%s%s\"", rank_tree_name, list_name_scalar);
-  if ((num_vector_block + num_vector_by_component) > 0)
-  {
-    if(num_vector_block > 0)
-      fprintf (vtufile, " Vectors=\"%s, %s\"", list_name_vector_block, list_name_vector_by_component);
-    else
-      fprintf (vtufile, " Vectors=\"%s\"", list_name_vector_by_component);
-  }
+  if (values != NULL)
+    fprintf (vtufile, " Scalars=\"%s%s\"", rank_tree_name, list_name);
   fprintf (vtufile, ">\n");
 
 #ifndef P4EST_VTK_ASCII
@@ -1656,9 +1321,9 @@ my_p4est_vtk_write_cell_data (p4est_t * p4est, p4est_ghost_t *ghost,
 
   int i;
 #ifndef P4EST_VTK_ASCII
-  float_data = num_scalar >0 ? P4EST_ALLOC (P4EST_VTK_FLOAT_TYPE, Ncells):NULL;
+  float_data = num >0 ? P4EST_ALLOC (P4EST_VTK_FLOAT_TYPE, Ncells):NULL;
 #endif
-  for (i=0; i<num_scalar; ++i){
+  for (i=0; i<num; ++i){
     /* write cell-center position data */
     fprintf (vtufile, "        <DataArray type=\"%s\" Name=\"%s\""
                       " format=\"%s\">\n",
@@ -1674,7 +1339,7 @@ my_p4est_vtk_write_cell_data (p4est_t * p4est, p4est_ghost_t *ghost,
     }
 #else
     for (il = 0; il < Ncells; ++il) {
-      float_data[il] = (P4EST_VTK_FLOAT_TYPE) scalar_values[i][il];
+      float_data[il] = (P4EST_VTK_FLOAT_TYPE) values[i][il];
     }
 
     fprintf (vtufile, "          ");
@@ -1686,7 +1351,7 @@ my_p4est_vtk_write_cell_data (p4est_t * p4est, p4est_ghost_t *ghost,
                                         sizeof (*float_data) * Ncells);
     fprintf (vtufile, "\n");
     if (retval) {
-      P4EST_LERROR (P4EST_STRING "_vtk: Error encoding scalar cell\n");
+      P4EST_LERROR (P4EST_STRING "_vtk: Error encoding points\n");
       fclose (vtufile);
       return -1;
     }
@@ -1700,98 +1365,10 @@ my_p4est_vtk_write_cell_data (p4est_t * p4est, p4est_ghost_t *ghost,
     }
   }
 
-  // done with scalar fields, let's do vectors
-#ifndef P4EST_VTK_ASCII
-  if(num_scalar > 0)
-    P4EST_FREE (float_data);
-  float_data = (num_vector_block+num_vector_by_component) >0 ? P4EST_ALLOC (P4EST_VTK_FLOAT_TYPE, 3*Ncells):NULL;
-#endif
-
-  for (i=0; i<num_vector_block+num_vector_by_component; ++i){
-    /* write cell-center position data */
-    if(i < num_vector_block)
-      fprintf (vtufile, "        <DataArray type=\"%s\" Name=\"%s\" NumberOfComponents=\"%d\""
-                        " format=\"%s\">\n",
-               P4EST_VTK_FLOAT_NAME, vector_block_names[i], 3, P4EST_VTK_FORMAT_STRING); // number of exported components set to be 3 by force to enable all vector visualizing features in paraview even in 2D
-    else
-      fprintf (vtufile, "        <DataArray type=\"%s\" Name=\"%s\" NumberOfComponents=\"%d\""
-                        " format=\"%s\">\n",
-               P4EST_VTK_FLOAT_NAME, vector_by_component_names[i-num_vector_block], 3, P4EST_VTK_FORMAT_STRING); // number of exported components set to be 3 by force to enable all vector visualizing features in paraview even in 2D
-
-#ifdef P4EST_VTK_ASCII
-    for (il = 0; il < Ncells; ++il) {
-#ifdef P4EST_VTK_DOUBLES
-#ifdef P4_TO_P8
-        fprintf (vtufile, "     %24.16e %24.16e %24.16e\n", vector_block_values[i][P4EST_DIM*il+0], vector_block_values[i][P4EST_DIM*il+1], vector_block_values[i][P4EST_DIM*il+2]);
-#else
-        fprintf (vtufile, "     %24.16e %24.16e %24.16e\n", vector_block_values[i][P4EST_DIM*il+0], vector_block_values[i][P4EST_DIM*il+1], 0.0);
-#endif
-#else
-#ifdef P4_TO_P8
-        fprintf (vtufile, "     %16.8e %16.8e %16.8e\n", vector_block_values[i][P4EST_DIM*il+0], vector_block_values[i][P4EST_DIM*il+1], vector_block_values[i][P4EST_DIM*il+2]);
-#else
-        fprintf (vtufile, "     %16.8e %16.8e %16.8e\n", vector_block_values[i][P4EST_DIM*il+0], vector_block_values[i][P4EST_DIM*il+1], 0.0);
-#endif
-#endif
-      }
-      else
-      {
-#ifdef P4EST_VTK_DOUBLES
-#ifdef P4_TO_P8
-        fprintf (vtufile, "     %24.16e %24.16e %24.16e\n", vector_by_component_names[0][i-num_vector_block][il], vector_by_component_names[1][i-num_vector_block][il], vector_by_component_names[2][i-num_vector_block][il]);
-#else
-        fprintf (vtufile, "     %24.16e %24.16e %24.16e\n", vector_by_component_names[0][i-num_vector_block][il], vector_by_component_names[1][i-num_vector_block][il], 0.0);
-#endif
-#else
-#ifdef P4_TO_P8
-        fprintf (vtufile, "     %16.8e %16.8e %16.8e\n", vector_by_component_names[0][i-num_vector_block][il], vector_by_component_names[1][i-num_vector_block][il], vector_by_component_names[2][i-num_vector_block][il]);
-#else
-        fprintf (vtufile, "     %16.8e %16.8e %16.8e\n", vector_by_component_names[0][i-num_vector_block][il], vector_by_component_names[1][i-num_vector_block][il], 0.0);
-#endif
-#endif
-    }
-#else
-    for (il = 0; il < Ncells; ++il) {
-      for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-      {
-        if(i < num_vector_block)
-          float_data[3*il+dir] = (P4EST_VTK_FLOAT_TYPE) vector_block_values[i][P4EST_DIM*il+dir];
-        else
-          float_data[3*il+dir] = (P4EST_VTK_FLOAT_TYPE) vector_by_component_values[dir][i-num_vector_block][il];
-      }
-#ifndef P4_TO_P8
-      float_data[3*il+2] = (P4EST_VTK_FLOAT_TYPE) 0.0;
-#endif
-    }
-
-    fprintf (vtufile, "          ");
-    /* TODO: Don't allocate the full size of the array, only allocate
-     * the chunk that will be passed to zlib and do this a chunk
-     * at a time.
-     */
-    retval = my_p4est_vtk_write_binary (vtufile, (char *) float_data,
-                                        sizeof (*float_data) * (3 * Ncells));
-    fprintf (vtufile, "\n");
-    if (retval) {
-      P4EST_LERROR (P4EST_STRING "_vtk: Error encoding vector cells\n");
-      fclose (vtufile);
-      return -1;
-    }
-#endif
-    fprintf (vtufile, "        </DataArray>\n");
-
-    if (ferror (vtufile)) {
-      P4EST_LERROR (P4EST_STRING "_vtk: Error writing cell vector\n");
-      fclose (vtufile);
-      return -1;
-    }
-  }
-
-
   fprintf (vtufile, "      </CellData>\n");
 
   if (fclose (vtufile)) {
-    P4EST_LERROR (P4EST_STRING "_vtk: Error closing cell data\n");
+    P4EST_LERROR (P4EST_STRING "_vtk: Error closing cell scalar\n");
     return -1;
   }
   vtufile = NULL;
@@ -1811,15 +1388,7 @@ my_p4est_vtk_write_cell_data (p4est_t * p4est, p4est_ghost_t *ghost,
       return -1;
     }
 
-    fprintf (pvtufile, "    <PCellData Scalars=\"%s%s\"", rank_tree_name, list_name_scalar);
-    if ((num_vector_block + num_vector_by_component) > 0)
-    {
-      if(num_vector_block > 0)
-        fprintf (pvtufile, " Vectors=\"%s, %s\"", list_name_vector_block, list_name_vector_by_component);
-      else
-        fprintf (pvtufile, " Vectors=\"%s\"", list_name_vector_by_component);
-    }
-    fprintf (pvtufile, ">\n");
+    fprintf (pvtufile, "    <PCellData Scalars=\"%s%s\">\n",rank_tree_name, list_name);
 
     if (write_rank) {
       fprintf (pvtufile, "      "
@@ -1832,32 +1401,14 @@ my_p4est_vtk_write_cell_data (p4est_t * p4est, p4est_ghost_t *ghost,
                P4EST_VTK_LOCIDX, P4EST_VTK_FORMAT_STRING);
     }
     int i;
-    for (i=0; i<num_scalar; ++i){
+    for (i=0; i<num; ++i){
       fprintf (pvtufile, "      <PDataArray type=\"%s\" Name=\"%s\""
                          " format=\"%s\"/>\n",
                P4EST_VTK_FLOAT_NAME, scalar_names[i], P4EST_VTK_FORMAT_STRING);
 
       if (ferror (pvtufile)) {
         P4EST_LERROR (P4EST_STRING
-                      "_vtk: Error writing parallel cell scalar\n");
-        fclose (pvtufile);
-        return -1;
-      }
-    }
-
-    for (i=0; i<num_vector_block+num_vector_by_component; ++i){
-      if(i < num_vector_block)
-        fprintf (pvtufile, "      <PDataArray type=\"%s\" Name=\"%s\" NumberOfComponents=\"%d\""
-                           " format=\"%s\"/>\n",
-                 P4EST_VTK_FLOAT_NAME, vector_block_names[i], 3, P4EST_VTK_FORMAT_STRING);
-      else
-        fprintf (pvtufile, "      <PDataArray type=\"%s\" Name=\"%s\" NumberOfComponents=\"%d\""
-                           " format=\"%s\"/>\n",
-                 P4EST_VTK_FLOAT_NAME, vector_by_component_names[i-num_vector_block], 3, P4EST_VTK_FORMAT_STRING);
-
-      if (ferror (pvtufile)) {
-        P4EST_LERROR (P4EST_STRING
-                      "_vtk: Error writing parallel cell vector\n");
+                      "_vtk: Error writing parallel point scalar\n");
         fclose (pvtufile);
         return -1;
       }
@@ -1867,7 +1418,7 @@ my_p4est_vtk_write_cell_data (p4est_t * p4est, p4est_ghost_t *ghost,
 
     if (fclose (pvtufile)) {
       P4EST_LERROR (P4EST_STRING
-                    "_vtk: Error closing parallel cell data\n");
+                    "_vtk: Error closing parallel point scalar\n");
       return -1;
     }
   }

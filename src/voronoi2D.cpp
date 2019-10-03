@@ -50,19 +50,6 @@ void Voronoi2D::set_neighbors_and_partition(vector<ngbd2Dseed>& neighbors_, vect
   this->volume = volume_;
 }
 
-void Voronoi2D::reorder_neighbors_and_partition_from_faces_to_counterclock_cycle()
-{
-  P4EST_ASSERT((nb_seeds.size() == UNIFORM_2D_NB_NEIGHBORS) && (partition.size() == UNIFORM_2D_NB_NEIGHBORS));
-  unsigned int face_order_to_counterclock_cycle_order[UNIFORM_2D_NB_NEIGHBORS] = {2,0,3,1};
-  for (unsigned char i = 0; i < UNIFORM_2D_NB_NEIGHBORS-1; ++i)
-    while (i!=face_order_to_counterclock_cycle_order[i]) {
-      unsigned char tmp = face_order_to_counterclock_cycle_order[i];
-      std::swap(nb_seeds[i], nb_seeds[tmp]);
-      std::swap(partition[i], partition[tmp]);
-      std::swap(face_order_to_counterclock_cycle_order[i], face_order_to_counterclock_cycle_order[tmp]);
-    }
-}
-
 void Voronoi2D::set_level_set_values(const CF_2 &ls )
 {
   phi_c = ls(center_seed.x, center_seed.y);
@@ -82,25 +69,9 @@ void Voronoi2D::push( int n, double x, double y, const bool* periodicity, const 
   for(unsigned int m=0; m<nb_seeds.size(); m++)
     if(nb_seeds[m].n == n)
       return;
-  add_point(n, x, y, periodicity, xyz_min, xyz_max);
-}
+  /* note: technically wrong if one wants to add TWO WALL_parallel_to_face points, but that can happen only
+   * if the grid is VERY coarse in theory, so I do not check for it... [Raphael] */
 
-void Voronoi2D::assemble_from_set_of_faces(const unsigned char& dir, const std::set<p4est_locidx_t>& set_of_faces, const my_p4est_faces_t* faces, const bool* periodicity, const double* xyz_min, const double* xyz_max)
-{
-  nb_seeds.clear();
-  int n;
-  double xyz[2];
-  for (std::set<p4est_locidx_t>::const_iterator got_it= set_of_faces.begin(); got_it != set_of_faces.end(); ++got_it) {
-    n = *got_it;
-    P4EST_ASSERT((n>=0) && (n < (faces->num_local[dir] + faces->num_ghost[dir])));
-    faces->xyz_fr_f(*got_it, dir, xyz);
-    add_point(n, xyz[0], xyz[1], periodicity, xyz_min, xyz_max); // no need to check for duplicates by definition of std::set
-  }
-}
-
-
-void Voronoi2D::add_point( int n, double x, double y, const bool* periodicity, const double* xyz_min, const double* xyz_max)
-{
   ngbd2Dseed p;
   p.n     = n;
   p.p.x   = x;

@@ -89,15 +89,8 @@ class my_p4est_hierarchy_t {
   my_p4est_brick_t *myb;
   std::vector< std::vector<HierarchyCell> > trees;
 
-  std::vector< p4est_locidx_t > local_inner_quadrant_index;
-  std::vector< p4est_locidx_t > local_layer_quadrant_index;
-
   void split(int tree_idx, int ind );
   int update_tree( int tree_idx, const p4est_quadrant_t *quad );
-  /*!
-   * \brief construct_tree: constructs the local trees and fills the list of indices for local quadrants that are
-   * either ghost for (an)other process(es) in local_layer_quadrant_index or owned locally only in local_inner_quadrant_index
-   */
   void construct_tree();
 #ifdef P4_TO_P8
   void find_quadrant_containing_point(const int* tr_xyz_orig, Point3& s, int& rank, p4est_quadrant_t &best_match, std::vector<p4est_quadrant_t> &remote_matches) const;
@@ -128,34 +121,14 @@ public:
 
   inline const HierarchyCell* get_cell(p4est_topidx_t tr, p4est_locidx_t q) const {return &trees[tr][q];}
   int find_smallest_quadrant_containing_point(double *xyz, p4est_quadrant_t &best_match, std::vector<p4est_quadrant_t> &remote_matches) const;
-  p4est_locidx_t quad_idx_of_quad(const p4est_quadrant_t* quad, const p4est_topidx_t& tree_idx) const;
   void update(p4est_t *p4est_, p4est_ghost_t *ghost_);
-
-  inline size_t get_layer_size() const { return local_layer_quadrant_index.size(); }
-  inline size_t get_local_size() const { return local_inner_quadrant_index.size(); }
-  inline p4est_locidx_t get_layer_quadrant(const size_t& i) const {
-#ifdef CASL_THROWS
-    return local_layer_quadrant_index.at(i);
-#endif
-    return local_layer_quadrant_index[i];
-  }
-  inline p4est_locidx_t get_local_quadrant(const size_t& i) const {
-#ifdef CASL_THROWS
-    return local_inner_quadrant_index.at(i);
-#endif
-    return local_inner_quadrant_index[i];
-  }
-
   void write_vtk(const char* filename) const;
 
-  size_t memory_estimate() const
+  unsigned long int memory_estimate() const
   {
-    size_t memory = 0;
+    unsigned long int memory = 0;
     for (size_t tree_idx = 0; tree_idx < trees.size(); ++tree_idx)
       memory += (trees[tree_idx].size())*sizeof (HierarchyCell);
-    memory += (local_inner_quadrant_index.size())*sizeof (p4est_locidx_t);
-    memory += (local_layer_quadrant_index.size())*sizeof (p4est_locidx_t);
-
     return memory;
   }
 };

@@ -36,6 +36,7 @@ class my_p4est_node_neighbors_t {
   friend class my_p4est_poisson_jump_nodes_voronoi_t;
   friend class my_p4est_poisson_jump_voronoi_block_t;
   friend class my_p4est_poisson_jump_nodes_extended_t;
+  friend class my_p4est_xgfm_cells_t;
   friend class my_p4est_interpolation_t;
   friend class my_p4est_interpolation_nodes_t;
   friend class my_p4est_interpolation_cells_t;
@@ -47,8 +48,6 @@ class my_p4est_node_neighbors_t {
   friend class my_p4est_bialloy_t;
   friend class my_p4est_navier_stokes_t;
   friend class my_p4est_epitaxy_t;
-  friend class my_p4est_two_phase_flows_t;
-  friend class my_p4est_xgfm_cells_t;
   friend class my_p4est_surfactant_t;
 
   /**
@@ -65,19 +64,14 @@ class my_p4est_node_neighbors_t {
   std::vector<p4est_locidx_t> layer_nodes;
   std::vector<p4est_locidx_t> local_nodes;  
   bool is_initialized;
-  bool periodic[P4EST_DIM];
 
-  bool construct_neighbors(p4est_locidx_t n, quad_neighbor_nodes_of_node_t& qnnn/*, const bool &set_and_store_linear_interpolators=false, const bool &set_and_store_second_derivatives_operators=false,
-                           const bool &set_and_store_gradient_operator=false, const bool &set_and_store_quadratic_interpolators=false*/) const;
+  bool construct_neighbors(p4est_locidx_t n, quad_neighbor_nodes_of_node_t& qnnn) const;
 
 public:
   my_p4est_node_neighbors_t( my_p4est_hierarchy_t *hierarchy_, p4est_nodes_t *nodes_)
     : hierarchy(hierarchy_), p4est(hierarchy_->p4est), ghost(hierarchy_->ghost), nodes(nodes_), myb(hierarchy_->myb)
   {
     is_initialized = false;
-
-    for (unsigned char dd = 0; dd < P4EST_DIM; ++dd)
-      periodic[dd] = is_periodic(p4est, dd);
 
     /* compute the layer and local nodes.
      * layer_nodes: This is a list of indices for nodes in the local range on this
@@ -157,13 +151,10 @@ public:
    * This consumes a lot of memory, and it can improve the time performances of the code if repetitive
    * access to the neighbors information is required.
    */
-  void init_neighbors(/*const bool &set_and_store_linear_interpolators=false, const bool &set_and_store_second_derivatives_operators=false,
-                      const bool &set_and_store_gradient_operator=false, const bool &set_and_store_quadratic_interpolators=false*/);
+  void init_neighbors();
   void clear_neighbors();
-  void update(my_p4est_hierarchy_t *hierarchy_, p4est_nodes_t *nodes_/*, const bool &set_and_store_linear_interpolators=false, const bool &set_and_store_second_derivatives_operators=false,
-              const bool &set_and_store_gradient_operator=false, const bool &set_and_store_quadratic_interpolators=false*/);
-  void update(p4est_t* p4est, p4est_ghost_t* ghost, p4est_nodes_t* nodes/*, const bool &set_and_store_linear_interpolators=false, const bool &set_and_store_second_derivatives_operators=false,
-              const bool &set_and_store_gradient_operator=false, const bool &set_and_store_quadratic_interpolators=false*/);
+  void update(my_p4est_hierarchy_t *hierarchy_, p4est_nodes_t *nodes_);
+  void update(p4est_t* p4est, p4est_ghost_t* ghost, p4est_nodes_t* nodes);
   
   inline const quad_neighbor_nodes_of_node_t& operator[]( p4est_locidx_t n ) const {
 #ifdef CASL_THROWS
@@ -183,8 +174,7 @@ public:
 #endif
   }
 
-  inline quad_neighbor_nodes_of_node_t get_neighbors(p4est_locidx_t n/*, const bool &set_and_store_linear_interpolators=false, const bool &set_and_store_second_derivatives_operators=false,
-                                                     const bool &set_and_store_gradient_operator=false, const bool &set_and_store_quadratic_interpolators=false*/) const {
+  inline quad_neighbor_nodes_of_node_t get_neighbors(p4est_locidx_t n) const {
     if (is_initialized) {
 #ifdef CASL_THROWS
       if (is_qnnn_valid[n])
@@ -199,8 +189,7 @@ public:
 #endif
     } else {
       quad_neighbor_nodes_of_node_t qnnn;
-      bool err = construct_neighbors(n, qnnn/*, set_and_store_linear_interpolators, set_and_store_second_derivatives_operators,
-                                     set_and_store_gradient_operator, set_and_store_quadratic_interpolators*/);
+      bool err = construct_neighbors(n, qnnn);
       if (err){
         std::ostringstream oss;
         oss << "[ERROR]: Could not construct neighborhood information for the node with idx " << n << " on processor " << p4est->mpirank;
@@ -210,8 +199,7 @@ public:
     }
   }
 
-  inline void get_neighbors(p4est_locidx_t n, quad_neighbor_nodes_of_node_t& qnnn/*, const bool &set_and_store_linear_interpolators=false, const bool &set_and_store_second_derivatives_operators=false,
-                            const bool &set_and_store_gradient_operator=false, const bool &set_and_store_quadratic_interpolators=false*/) const {
+  inline void get_neighbors(p4est_locidx_t n, quad_neighbor_nodes_of_node_t& qnnn) const {
     if (is_initialized) {
 #ifdef CASL_THROWS
       if (is_qnnn_valid[n])
@@ -227,42 +215,15 @@ public:
     }
     else {
 #ifdef CASL_THROWS
-      bool err = construct_neighbors(n, qnnn/*, set_and_store_linear_interpolators, set_and_store_second_derivatives_operators,
-                                     set_and_store_gradient_operator, set_and_store_quadratic_interpolators*/);
+      bool err = construct_neighbors(n, qnnn);
       if (err){
         std::ostringstream oss;
         oss << "[ERROR]: Could not construct neighborhood information for the node with idx " << n << " on processor " << p4est->mpirank;
         throw std::invalid_argument(oss.str().c_str());
       }
 #else
-      construct_neighbors(n, qnnn/*, set_and_store_linear_interpolators, set_and_store_second_derivatives_operators,
-                          set_and_store_gradient_operator, set_and_store_quadratic_interpolators*/);
+      construct_neighbors(n, qnnn);
 #endif
-    }
-  }
-
-  void inline get_neighbors(p4est_locidx_t n, const quad_neighbor_nodes_of_node_t*& qnnn) const {
-    if (is_initialized) {
-#ifdef CASL_THROWS
-      if (is_qnnn_valid[n])
-        qnnn = &neighbors[n];
-      else {
-        std::ostringstream oss;
-        oss << "[ERROR]: const quad_neighbor_nodes_of_node_t* get_neighbors(p4est_locidx_t n): the neighborhood information for the node with idx " << n << " on processor " << p4est->mpirank << " is invalid.";
-        throw std::invalid_argument(oss.str().c_str());
-        qnnn = NULL;
-      }
-#else
-      qnnn = &neighbors[n];
-#endif
-    }
-    else {
-#ifdef CASL_THROWS
-      std::ostringstream oss;
-      oss << "const quad_neighbor_nodes_of_node_t* get_neighbors(p4est_locidx_t n): cannot be used with uninitialized neighbors; on processor " << p4est->mpirank;
-      throw std::runtime_error(oss.str().c_str());
-#endif
-      qnnn = NULL;
     }
   }
 
@@ -296,177 +257,96 @@ public:
   void find_neighbor_cell_of_node( p4est_locidx_t n, char i, char j, p4est_locidx_t& quad_idx, p4est_topidx_t& nb_tree_idx ) const;
 #endif
 
+  /*!
+   * \brief dxx_central compute dxx_central on all nodes and update the ghosts
+   * \param [in]  f   PETSc vector to compute the derivaties on
+   * \param [out] fxx PETSc vector to store the results in. A check is done to ensure they have the same size
+   */
+  void dxx_central(const Vec f, Vec fxx) const;
 
   /*!
-   * \brief dd_central computes the second derivatives along cartesian direction der on all nodes and update the ghosts
-   * \param [in]  f       (ghosted) PETSc vector(s) to compute the derivatives on must be of appropriate node-sampling size and cannot be block-structured.
-   * \param [out] fdd     (ghosted) PETSc vector(s) to store the appropriate second derivatives in. A check is done to ensure they have the same size.
-   * \param [in]  n_vecs  number of vectors in the arrays f and fdd
-   * \param [in]  der     cartesian direction along which the second derivatives must be calculated (dir::x, dir::y or dir::z)
+   * \brief dyy_central compute dyy_central on all nodes and update the ghosts
+   * \param [in]  f   PETSc vector to compute the derivaties on
+   * \param [out] fyy PETSc vector to store the results in. A check is done to ensure they have the same size
    */
-  void dd_central(const Vec f[], Vec fdd[], const unsigned int& n_vecs, const unsigned char& der) const;
-  inline void dd_central(const Vec f, Vec fdd, const unsigned char& der) const
-  {
-    dd_central(&f, &fdd, 1, der);
-  }
-  inline void dxx_central(const Vec f, Vec fxx) const
-  {
-    dd_central(f, fxx, dir::x);
-  }
-  inline void dyy_central(const Vec f, Vec fyy) const
-  {
-    dd_central(f, fyy, dir::y);
-  }
+  void dyy_central(const Vec f, Vec fyy) const;
 
 #ifdef P4_TO_P8
-  inline void dzz_central(const Vec f, Vec fzz) const
-  {
-    dd_central(f, fzz, dir::z);
-  }
+  /*!
+   * \brief dzz_central compute dzz_central on all nodes and update the ghosts
+   * \param [in]  f   PETSc vector to compute the derivaties on
+   * \param [out] fzz PETSc vector to store the results in. A check is done to ensure they have the same size
+   */
+  void dzz_central(const Vec f, Vec fzz) const;
 #endif
 
   /*!
-   * \brief second_derivatives_central computes dxx_central, dyy_central (and dzz_central, in 3D) at all points.
-   * Theoretically this should have a better chance at hiding communications than above calls combined. The field(s)
-   * f may be a multi-component block-structured vector, in which case, all second derivatives of all components of f
-   * are calculated within this function!
-   * \param [in]  f       PETSc vector(s) to compute the second derivatives on (can be of block size bs_f >= 1)
-   * \param [out] fdd     PETSc vector(s) to store second derivatives results in, must be of block size bs_f*P4EST_DIM.
-   * \param [in]  n_vecs  number of vectors to handle
-   * \param [in]  bs_f    block size of the vectors in f (default is 1)
+   * \brief second_derivatives_central computes both dxx_central and dyy_central at all
+   * points. Theoretically this should have a better chance at hiding communications
+   * than above calls combined.
+   * \param [in]  f   PETSc vector to compute the derivaties on
+   * \param [out] fdd PETSc _BLOCK_ vector to store dxx adn dyy results in.
+   * A check is done to ensure it has the same size as f and block size = P4EST_DIM
    */
-  void second_derivatives_central(const Vec f[], Vec fdd[], const unsigned int& n_vecs, const unsigned int &bs_f=1) const;
-  inline void second_derivatives_central(const Vec f, Vec fdd, const unsigned int &bs_f=1) const
-  {
-    second_derivatives_central(&f, &fdd, 1, bs_f);
-  }
+  void second_derivatives_central(const Vec f, Vec fdd) const;
 
   /*!
-   * \brief second_derivatives_central computes dxx, dyy, and dzz central at all points. Similar to the function above
-   * except it use two/three regular vector in place of a single blocked vector. Easier to use but more expensive in terms
-   * of MPI. Also note that fxx, fyy, and fzz cannot be obtained via VecDuplicate as this would share the same VecScatter
-   * object and avoid simultanous update.
+   * \brief second_derivatives_central computes dxx, dyy, and dzz central at all
+   * points. Similar to the function above except it use two regular vector in
+   * place of a single blocked vector. Easier to use but more expensive in terms
+   * of MPI. Also note that fxx, fyy, and fzz cannot be obtained via VecDuplicate as
+   * this would share the same VecScatter object and avoid simaltanous update.
    *
-   * Note that vectors f, fxx, fyy and fzz can all be of blocksize bs >=1 but have to be of the same size! If bs > 1, the
-   * derivatives of all the components of f are calculated within this function.
-   * \param [in]  f       PETSc vector(s) to compute the derivatives on, of block size bs
-   * \param [out] fxx     PETSc vector(s) to store the xx-derivative(s) results in. A check is done to ensure they have the same size as f
-   * \param [out] fyy     PETSc vector(s) to store the yy-derivative(s) results in. A check is done to ensure they have the same size as f
-   * \param [out] fzz     PETSc vector(s) to store the zz-derivative(s) results in. A check is done to ensure they have the same size as f (only in 3D)
-   * \param [in]  n_vecs  number of vectors to handle
-   * \param [in]  bs      block size of the vectors in f, fxx, fyy and fzz (default is 1)
+   * \param [in]  f   PETSc vector to compute the derivaties on
+   * \param [out] fxx PETSc vector to store the results in. A check is done to ensure they have the same size as f
+   * \param [out] fyy PETSc vector to store the results in. A check is done to ensure they have the same size as f
+   * \param [out] fzz PETSc vector to store the results in. A check is done to ensure they have the same size as f (only inn 3D)
    */
 #ifdef P4_TO_P8
-  void second_derivatives_central(const Vec f[], Vec fxx[], Vec fyy[], Vec fzz[], const unsigned int& n_vecs, const unsigned int &bs=1) const;
-  inline void second_derivatives_central(const Vec f, Vec fxx, Vec fyy, Vec fzz, const unsigned int &bs=1) const { second_derivatives_central(&f, &fxx, &fyy, &fzz, 1, bs); }
+  void second_derivatives_central(const Vec f, Vec fxx, Vec fyy, Vec fzz) const { second_derivatives_central(&f, &fxx, &fyy, &fzz, 1); }
+  void second_derivatives_central(const Vec f[], Vec fxx[], Vec fyy[], Vec fzz[], unsigned int n_vecs) const;
 #else
-  void second_derivatives_central(const Vec f[], Vec fxx[], Vec fyy[], const unsigned int& n_vecs, const unsigned int &bs=1) const;
-  inline void second_derivatives_central(const Vec f, Vec fxx, Vec fyy, const unsigned int &bs=1) const { second_derivatives_central(&f, &fxx, &fyy, 1, bs); }
+  void second_derivatives_central(const Vec f, Vec fxx, Vec fyy) const { second_derivatives_central(&f, &fxx, &fyy, 1); }
+  void second_derivatives_central(const Vec f[], Vec fxx[], Vec fyy[], unsigned int n_vecs) const;
 #endif
 
   /*!
    * \brief second_derivatives_central computes the second derivative
-   * \param [in]  f       PETSc vector(s) to compute the derivaties on
-   * \param [out] fxx     array of array(s) of size P4EST_DIM of PETSc vectors to store all results in.
-   * \param [in]  n_vecs  number of vectors to handle
-   * \param [in]  bs      block size of the vectors in f, fxx, fyy and fzz (default is 1)
+   * \param [in]  f   PETSc vector to compute the derivaties on
+   * \param [out] fxx array of size P4EST_DIM of PETSc vectors to store all results in.
    */
-  inline void second_derivatives_central(const Vec f[], Vec *fxx[P4EST_DIM], const unsigned int &n_vecs, const unsigned int &bs = 1) {
+  inline void second_derivatives_central(const Vec f, Vec fxx[P4EST_DIM]) {
 #ifdef P4_TO_P8
-    second_derivatives_central(f, fxx[0], fxx[1], fxx[2], n_vecs, bs);
+    second_derivatives_central(f, fxx[0], fxx[1], fxx[2]);
 #else
-    second_derivatives_central(f, fxx[0], fxx[1], n_vecs, bs);
+    second_derivatives_central(f, fxx[0], fxx[1]);
 #endif
-  }
-  inline void second_derivatives_central(const Vec f, Vec fxx[P4EST_DIM], const unsigned int &bs = 1)
-  {
-#ifdef P4_TO_P8
-    second_derivatives_central(&f, &fxx[0], &fxx[1], &fxx[2], 1, bs);
-#else
-    second_derivatives_central(&f, &fxx[0], &fxx[1], 1, bs);
-#endif
-  }
-
-  /*!
-   * \brief first_derivatives_central computes dx_central, dy_central (and dz_central, in 3D) at all points.
-   * Theoretically this should have a better chance at hiding communications than above calls combined. The field(s)
-   * f may be a multi-component block-structured vector, in which case, all second derivatives of all components of f
-   * are calculated within this function!
-   * \param [in]  f       PETSc vector(s) to compute the first derivatives on (can be of block size bs_f >= 1)
-   * \param [out] fd      PETSc vector(s) to store first derivatives results in, must be of block size bs_f*P4EST_DIM.
-   * \param [in]  n_vecs  number of vectors to handle
-   * \param [in]  bs_f    block size of the vectors in f (default is 1)
-   */
-  void first_derivatives_central(const Vec f[], Vec fd[], const unsigned int& n_vecs, const unsigned int &bs_f=1) const;
-  inline void first_derivatives_central(const Vec f, Vec fdd, const unsigned int &bs_f=1) const
-  {
-    first_derivatives_central(&f, &fdd, 1, bs_f);
   }
 
   /*!
    * \brief first_derivatives_central computes the first derivatives using central difference
-   *
-   * Note that vectors in f, fx, fy, fz can all be of blocksize bs >=1 but have to be of the same size! If bs > 1, the
-   * derivatives of all the components of f are calculated within this function.
-   * \param [in]  f       PETSc vector(s) to compute the derivatives on, of block size bs
-   * \param [out] fx      PETSc vector(s) to store the x-derivative(s) results in. A check is done to ensure they have the same size as f
-   * \param [out] fy      PETSc vector(s) to store the y-derivative(s) results in. A check is done to ensure they have the same size as f
-   * \param [out] fz      PETSc vector(s) to store the z-derivative(s) results in. A check is done to ensure they have the same size as f (only in 3D)
-   * \param [in]  n_vecs  number of vectors to handle
-   * \param [in]  bs      block size of the vectors in f, fx, fy and fz (default is 1)
+   * \param [in]  f   PETSc vector storing the
+   * \param [out] fx  array of size P4EST_DIM of PETSc vectors to store
    */
-#ifdef P4_TO_P8
-  void first_derivatives_central(const Vec f[], Vec fx[], Vec fy[], Vec fz[], const unsigned int& n_vecs, const unsigned int &bs=1) const;
-  inline void first_derivatives_central(const Vec f, Vec fx, Vec fy, Vec fz, const unsigned int &bs=1) const { first_derivatives_central(&f, &fx, &fy, &fz, 1, bs); }
-#else
-  void first_derivatives_central(const Vec f[], Vec fx[], Vec fy[], const unsigned int& n_vecs, const unsigned int &bs=1) const;
-  inline void first_derivatives_central(const Vec f, Vec fx, Vec fy, const unsigned int &bs=1) const { first_derivatives_central(&f, &fx, &fy, 1, bs); }
-#endif
+  void first_derivatives_central(const Vec f, Vec fx[P4EST_DIM]) const;
 
-  inline void first_derivatives_central(const Vec f[], Vec *fxyz[P4EST_DIM], const unsigned int &n_vecs, const unsigned int &bs=1) const
+  unsigned long int memory_estimate() const
   {
-#ifdef P4_TO_P8
-    first_derivatives_central(f, fxyz[0], fxyz[1], fxyz[2], n_vecs, bs);
-#else
-    first_derivatives_central(f, fxyz[0], fxyz[1], n_vecs, bs);
-#endif
-  }
-  inline void first_derivatives_central(const Vec f, Vec fxyz[P4EST_DIM], const unsigned int &bs=1) const
-  {
-#ifdef P4_TO_P8
-    first_derivatives_central(f, fxyz[0], fxyz[1], fxyz[2], bs);
-#else
-    first_derivatives_central(f, fxyz[0], fxyz[1], bs);
-#endif
-  }
-
-  size_t memory_estimate() const
-  {
-    size_t memory = 0;
+    unsigned long int memory = 0;
     memory += neighbors.size()*sizeof (quad_neighbor_nodes_of_node_t);
     memory += is_qnnn_valid.size()*sizeof (bool);
     memory += layer_nodes.size()*sizeof (p4est_locidx_t);
     memory += local_nodes.size()*sizeof (p4est_locidx_t);
     memory += sizeof (is_initialized);
-    memory += P4EST_DIM*sizeof (bool); // periodic
     return memory;
   }
 
 private:
 #ifdef P4_TO_P8
-  void second_derivatives_central_using_block(const Vec f[], Vec fxx[], Vec fyy[], Vec fzz[], const unsigned int& n_vecs, const unsigned int &bs = 1) const;
-  inline void second_derivatives_central_using_block(const Vec f, Vec fxx, Vec fyy, Vec fzz, const unsigned int &bs = 1) const
-  {
-    second_derivatives_central_using_block(&f, &fxx, &fyy, &fzz, 1, bs);
-  }
+  void second_derivatives_central_using_block(const Vec f, Vec fxx, Vec fyy, Vec fzz) const;
 #else
-  void second_derivatives_central_using_block(const Vec f[], Vec fxx[], Vec fyy[], const unsigned int& n_vecs, const unsigned int &bs = 1) const;
-  inline void second_derivatives_central_using_block(const Vec f, Vec fxx, Vec fyy, const unsigned int &bs = 1) const
-  {
-    second_derivatives_central_using_block(&f, &fxx, &fyy, 1, bs);
-  }
+  void second_derivatives_central_using_block(const Vec f, Vec fxx, Vec fyy) const;
 #endif
-
 };
 
 #endif /* !MY_P4EST_NODE_NEIGHBORS_H */

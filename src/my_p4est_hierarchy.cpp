@@ -83,43 +83,12 @@ int my_p4est_hierarchy_t::update_tree( int tree_idx, const p4est_quadrant_t *qua
   return ind;
 }
 
-p4est_locidx_t my_p4est_hierarchy_t::quad_idx_of_quad(const p4est_quadrant_t* quad, const p4est_topidx_t& tree_idx) const
-{
-  int ind = 0;
-  while( trees[tree_idx][ind].level != quad->level )
-  {
-    p4est_qcoord_t size = P4EST_QUADRANT_LEN(trees[tree_idx][ind].level) / 2;
-    bool i = ( quad->x >= trees[tree_idx][ind].imin + size );
-    bool j = ( quad->y >= trees[tree_idx][ind].jmin + size );
-#ifdef P4_TO_P8
-    bool k = ( quad->z >= trees[tree_idx][ind].kmin + size );
-    ind = trees[tree_idx][ind].child + 4*k + 2*j + i;
-#else
-    ind = trees[tree_idx][ind].child + 2*j + i;
-#endif
-  }
-  P4EST_ASSERT(trees[tree_idx][ind].child == CELL_LEAF);
-#ifdef P4_TO_P8
-  P4EST_ASSERT((quad->x==trees[tree_idx][ind].imin) && (quad->y==trees[tree_idx][ind].jmin) && (quad->z==trees[tree_idx][ind].kmin));
-#else
-  P4EST_ASSERT((quad->x==trees[tree_idx][ind].imin) && (quad->y==trees[tree_idx][ind].jmin));
-#endif
-  return trees[tree_idx][ind].quad;
-}
-
 void my_p4est_hierarchy_t::construct_tree() {
 
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_hierarchy_t, 0, 0, 0, 0); CHKERRXX(ierr);
 
-  local_inner_quadrant_index.resize(0);
-  local_layer_quadrant_index.resize(0);
-
-  size_t mirror_idx = 0;
-  const p4est_quadrant_t* mirror = NULL;
-  if(ghost!=NULL && mirror_idx < ghost->mirrors.elem_count)
-    mirror = p4est_quadrant_array_index(&ghost->mirrors, mirror_idx++);
-  /* loop on the local quadrants */
+  /* loop on the quadrants */
   for( p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx)
   {
     p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
@@ -127,16 +96,6 @@ void my_p4est_hierarchy_t::construct_tree() {
     for( size_t q=0; q<tree->quadrants.elem_count; ++q)
     {
       const p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, q);
-      // mirrors and quadrant are stored using the same convention, parse both simultaneously for efficiency,
-      // but do not use p4est_quadrant_is_equal_piggy(), since the p.piggy3 member is not filled for regular quadrants but only for ghosts and mirrors
-      if((ghost!=NULL) && (mirror!=NULL) && p4est_quadrant_is_equal(quad, mirror) && (mirror->p.piggy3.which_tree == tree_idx))
-      {
-        local_layer_quadrant_index.push_back(q+tree->quadrants_offset);
-        if(mirror_idx < ghost->mirrors.elem_count)
-          mirror = p4est_quadrant_array_index(&ghost->mirrors, mirror_idx++);
-      }
-      else
-        local_inner_quadrant_index.push_back(q+tree->quadrants_offset);
       int ind = update_tree(tree_idx, quad);
 
       /* the cell corresponding to the quadrant has been found, associate it to the quadrant */
@@ -146,9 +105,6 @@ void my_p4est_hierarchy_t::construct_tree() {
       trees[tree_idx][ind].owner_rank = p4est->mpirank;
     }
   }
-
-  P4EST_ASSERT((ghost == NULL) || (mirror_idx == ghost->mirrors.elem_count));
-  P4EST_ASSERT(local_inner_quadrant_index.size()+local_layer_quadrant_index.size() == ((size_t) p4est->local_num_quadrants));
 
   /* loop on the ghosts
    * We do this by looping over ghosts from each processor separately

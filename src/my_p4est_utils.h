@@ -25,26 +25,9 @@
 #include <sstream>
 #include <vector>
 
-#if SIZE_MAX == UCHAR_MAX
-   #define my_MPI_SIZE_T MPI_UNSIGNED_CHAR
-#elif SIZE_MAX == USHRT_MAX
-   #define my_MPI_SIZE_T MPI_UNSIGNED_SHORT
-#elif SIZE_MAX == UINT_MAX
-   #define my_MPI_SIZE_T MPI_UNSIGNED
-#elif SIZE_MAX == ULONG_MAX
-   #define my_MPI_SIZE_T MPI_UNSIGNED_LONG
-#elif SIZE_MAX == ULLONG_MAX
-   #define my_MPI_SIZE_T MPI_UNSIGNED_LONG_LONG
-#else
-   #error "unknown SIZE_MAX"
-#endif
-
-
-
-
 // forward declaration
 class my_p4est_node_neighbors_t;
-class quad_neighbor_nodes_of_node_t;
+struct quad_neighbor_nodes_of_node_t;
 
 namespace dir {
 /* vertices directions */
@@ -101,7 +84,6 @@ class CF_2
 public:
   double lip, t;
   virtual double operator()(double x, double y) const=0 ;
-  double operator()(double *xyz) const {return this->operator()(xyz[0], xyz[1]); }
   virtual ~CF_2() {}
 };
 
@@ -110,7 +92,6 @@ class CF_3
 public:
   double lip, t;
   virtual double operator()(double x, double y,double z) const=0 ;
-  double operator()(double *xyz) const {return this->operator()(xyz[0], xyz[1], xyz[2]); }
   virtual ~CF_3() {}
 };
 
@@ -124,12 +105,6 @@ enum {
   INTERFACE = -7,
   WALL_parallel_to_face = -8 // to allow for Dirichlet wall boundary conditions on the face_solver even with rectangular grids
 };
-
-inline int WALL_idx(unsigned char oriented_cart_dir)
-{
-  P4EST_ASSERT(oriented_cart_dir < P4EST_FACES);
-  return (-1-((int) oriented_cart_dir));
-}
 
 typedef enum {
   DIRICHLET,
@@ -395,12 +370,7 @@ bool index_of_node(const p4est_quadrant_t *n, p4est_nodes_t* nodes, p4est_locidx
  * \param [in]    n_results number of functions to be interpolated
  */
 void linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *xyz_global, double *results, const unsigned int n_results);
-inline double linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *xyz_global)
-{
-  double result;
-  linear_interpolation(p4est, tree_id, quad, F, xyz_global, &result, 1);
-  return result;
-}
+double linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *xyz_global);
 
 /*!
  * \brief quadratic_non_oscillatory_interpolation performs non-oscilatory quadratic interpolation for a point
@@ -417,12 +387,7 @@ inline double linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id,
  * \param [in]    n_results number of functions to be interpolated
  */
 void quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results);
-inline double quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global)
-{
-  double result;
-  quadratic_non_oscillatory_interpolation(p4est, tree_id, quad, F, Fdd, xyz_global, &result, 1);
-  return result;
-}
+double quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global);
 /*!
  * \brief quadratic_interpolation performs quadratic interpolation for a point
  * \param [in]    p4est the forest
@@ -438,28 +403,17 @@ inline double quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4es
  * \param [in]    n_results number of functions to be interpolated
  */
 void quadratic_interpolation(const p4est_t* p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results);
-inline double quadratic_interpolation(const p4est_t* p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global)
-{
-  double result;
-  quadratic_interpolation(p4est, tree_id, quad, F, Fdd, xyz_global, &result, 1);
-  return result;
-}
+double quadratic_interpolation(const p4est_t* p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global);
 
 p4est_bool_t nodes_are_equal(int mpi_size, p4est_nodes_t* nodes_1, p4est_nodes_t* nodes_2);
 
-p4est_bool_t ghosts_are_equal(p4est_ghost_t* ghost_1, p4est_ghost_t* ghost_2);
-
-PetscErrorCode VecGetLocalAndGhostSizes(Vec& v, PetscInt& local_size, PetscInt& ghosted_size);
-
 /*!
- * \brief vectorIsWellSetForNodes
- * \param v
- * \param nodes
- * \param mpicomm
- * \param block_size
- * \return
+ * \brief VecCreateGhostNodes Creates a ghosted PETSc parallel vector on the nodes based on p4est node ordering
+ * \param p4est [in]  the forest
+ * \param nodes [in]  the nodes numbering data structure
+ * \param v     [out] PETSc vector type
  */
-bool vectorIsWellSetForNodes(Vec& v, const p4est_nodes_t* nodes, const MPI_Comm& mpicomm, const unsigned int &block_size);
+PetscErrorCode VecCreateGhostNodes(const p4est_t *p4est, p4est_nodes_t *nodes, Vec* v);
 
 /*!
  * \brief VecCreateGhostNodesBlock Creates a ghosted block PETSc parallel vector on the nodes
@@ -467,40 +421,36 @@ bool vectorIsWellSetForNodes(Vec& v, const p4est_nodes_t* nodes, const MPI_Comm&
  * \param nodes      [in]  the nodes object
  * \param block_size [in]  block size of the vector
  * \param v          [out] PETSc vector
- * \return a PetscErrorCode to be checked against using CHKERRXX()
+ * \return
  */
-PetscErrorCode VecCreateGhostNodesBlock(const p4est_t *p4est, const p4est_nodes_t *nodes, const PetscInt & block_size, Vec* v);
-inline PetscErrorCode VecCreateGhostNodes(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec* v)
-{
-  return VecCreateGhostNodesBlock(p4est, nodes, 1, v);
-}
+PetscErrorCode VecCreateGhostNodesBlock(const p4est_t *p4est, p4est_nodes_t *nodes, PetscInt block_size, Vec* v);
+
+p4est_bool_t ghosts_are_equal(p4est_ghost_t* ghost_1, p4est_ghost_t* ghost_2);
 
 /*!
- * \brief VecCreateGhostNodesBlock Creates a ghosted block PETSc parallel vector on the cells
+ * \brief VecCreateGhostNodes Creates a ghosted PETSc parallel vector on the cells
+ * \param p4est [in]  the forest
+ * \param ghost [in]  the ghost cells
+ * \param v     [out] PETSc vector type
+ */
+PetscErrorCode VecCreateGhostCells(const p4est_t *p4est, p4est_ghost_t *ghost, Vec* v);
+
+/*!
+ * \brief VecCreateCellsNoGhost Creates a PETSc parallel vector on the cells
+ * \param p4est [in]  the forest
+ * \param v     [out] PETSc vector type
+ */
+PetscErrorCode VecCreateCellsNoGhost(const p4est_t *p4est, Vec* v);
+
+/*!
+ * \brief VecCreateGhostNodesBlock Creates a ghosted block PETSc parallel vector
  * \param p4est      [in]  p4est object
  * \param ghost      [in]  the ghost cells
  * \param block_size [in]  block size of the vector
  * \param v          [out] PETSc vector
- * \return a PetscErrorCode to be checked against using CHKERRXX()
+ * \return
  */
-PetscErrorCode VecCreateGhostCellsBlock(const p4est_t *p4est, const p4est_ghost_t *ghost, const PetscInt & block_size, Vec* v);
-inline PetscErrorCode VecCreateGhostCells(const p4est_t *p4est, const p4est_ghost_t *ghost, Vec* v)
-{
-  return VecCreateGhostCellsBlock(p4est, ghost, 1, v);
-}
-
-/*!
- * \brief VecCreateCellsBlockNoGhost Creates a non-ghosted block PETSc parallel vector on the cells
- * \param p4est       [in]  the forest
- * \param block_size  [in]  block size of the vector
- * \param v           [out] PETSc vector type
- * \return a PetscErrorCode to be checked against using CHKERRXX()
- */
-PetscErrorCode VecCreateCellsBlockNoGhost(const p4est_t *p4est, const PetscInt &block_size, Vec* v);
-inline PetscErrorCode VecCreateCellsNoGhost(const p4est_t *p4est, Vec* v)
-{
-  return VecCreateCellsBlockNoGhost(p4est, 1, v);
-}
+PetscErrorCode VecCreateGhostCellsBlock(const p4est_t *p4est, p4est_ghost_t *ghost, PetscInt block_size, Vec* v);
 
 /*!
  * \brief VecScatterCreateChangeLayout Create a VecScatter context useful for changing the parallel layout of a vector
@@ -1151,15 +1101,6 @@ void compute_normals(const quad_neighbor_nodes_of_node_t& qnnn, double *phi, dou
 void compute_normals(const my_p4est_node_neighbors_t& neighbors, Vec phi, Vec normals[P4EST_DIM]);
 
 /*!
- * \brief compute_normals computes the (scaled) normal to the surface for the entire grid
- * \param [in]  neighbors the neighborhood information
- * \param [in]  phi       PETSc vector of the levelset function
- * \param [out] normals   P4EST_DIM-blocked PETSc vectors to store the normal in the entire doamin
- */
-void compute_normals(const my_p4est_node_neighbors_t& neighbors, Vec phi, Vec normals);
-
-
-/*!
  * \brief interface_length_in_one_quadrant
  */
 double interface_length_in_one_quadrant(const p4est_t *p4est, const p4est_nodes_t *nodes, const p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi);
@@ -1234,17 +1175,9 @@ bool is_node_zpWall(const p4est_t *p4est, const p4est_indep_t *ni);
  * \param p4est [in] p4est
  * \param ni    [in] pointer to the node structure
  * \return true if the point is on the domain boundary and p4est is _NOT_ periodic
+ * \note: periodicity is not implemented
  */
 bool is_node_Wall  (const p4est_t *p4est, const p4est_indep_t *ni);
-
-/*!
- * \brief is_node_Wall checks if a node is on the oriented domain boundary pointed by oriented_dir
- * \param p4est         [in] p4est
- * \param ni            [in] pointer to the node structure
- * \param oriented_dir  [in] oriented direction (dir::f_m00, dir::f_p00, etc.)
- * \return true if the point is on the domain boundary and p4est is _NOT_ periodic
- */
-bool is_node_Wall(const p4est_t *p4est, const p4est_indep_t *ni, const unsigned char oriented_dir);
 
 /*!
  * \brief is_quad_xmWall checks if a quad is on x^- domain boundary
@@ -1260,6 +1193,7 @@ bool is_quad_xmWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quad
  * \param p4est [in] p4est
  * \param qi    [in] pointer to the quadrant
  * \return true if the quad is on the right domain boundary and p4est is _NOT_ periodic
+ * \note: periodicity is not implemented
  */
 bool is_quad_xpWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi);
 
@@ -1268,6 +1202,7 @@ bool is_quad_xpWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quad
  * \param p4est [in] p4est
  * \param qi    [in] pointer to the quadrant
  * \return true if the quad is on the bottom domain boundary and p4est is _NOT_ periodic
+ * \note: periodicity is not implemented
  */
 bool is_quad_ymWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi);
 
@@ -1276,6 +1211,7 @@ bool is_quad_ymWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quad
  * \param p4est [in] p4est
  * \param qi    [in] pointer to the quadrant
  * \return true if the quad is on the top domain boundary and p4est is _NOT_ periodic
+ * \note: periodicity is not implemented
  */
 bool is_quad_ypWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi);
 
@@ -1284,6 +1220,7 @@ bool is_quad_ypWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quad
  * \param p4est [in] p4est
  * \param qi    [in] pointer to the quadrant
  * \return true if the quad is on the back domain boundary and p4est is _NOT_ periodic
+ * \note: periodicity is not implemented
  */
 bool is_quad_zmWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi);
 
@@ -1292,6 +1229,7 @@ bool is_quad_zmWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quad
  * \param p4est [in] p4est
  * \param qi    [in] pointer to the quadrant
  * \return true if the quad is on the front domain boundary and p4est is _NOT_ periodic
+ * \note: periodicity is not implemented
  */
 bool is_quad_zpWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi);
 
@@ -1301,6 +1239,7 @@ bool is_quad_zpWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quad
  * \param qi    [in] pointer to the quadrant
  * \param dir   [in] the direction to check, dir::f_m00, dir::f_p00, dir::f_0m0 ...
  * \return true if the quad is on the domain boundary in the direction dir and p4est is _NOT_ periodic
+ * \note: periodicity is not implemented
  */
 bool is_quad_Wall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi, int dir);
 
@@ -1309,6 +1248,7 @@ bool is_quad_Wall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadra
  * \param p4est [in] p4est
  * \param qi    [in] pointer to the quadrant
  * \return true if the quad is on the domain boundary and p4est is _NOT_ periodic
+ * \note: periodicity is not implemented
  */
 bool is_quad_Wall  (const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi);
 
