@@ -127,8 +127,8 @@ int  integration_order     = 1; // order of geometric recpnstruction for computi
 // output parameters
 bool   save_data  = 1; // save scalar characteristics (time elapsed, biofilm volume, surface area, etc)
 bool   save_vtk   = 1; // save spatial data
-int    save_type  = 2; // 0 - every dn iterations, 1 - every dl of growth, 2 - every dt of time
-int    save_every_dn = 10;
+int    save_type  = 0; // 0 - every dn iterations, 1 - every dl of growth, 2 - every dt of time
+int    save_every_dn = 1;
 double save_every_dl = 0.01;
 double save_every_dt = 0.5;
 

@@ -144,8 +144,8 @@ public:
    * \param phi_xx  the derivatives of the level set function to be advected. This is a pointer to an array of dimension P4EST_DIM
    * \note you need to update ngbd_n and hierarchy yourself !
    */
-  void update_p4est(Vec *v, double dt, std::vector<Vec> &phi, std::vector<action_t> &action, int phi_idx, Vec *phi_xx=NULL);
-  void update_p4est(Vec *vnm1, Vec *vn, double dt_nm1, double dt_n, std::vector<Vec> &phi, std::vector<action_t> &action, int phi_idx, Vec *phi_xx=NULL);
+  void update_p4est(Vec *v, double dt, std::vector<Vec> &phi, std::vector<mls_opn_t> &action, int phi_idx, Vec *phi_xx=NULL);
+  void update_p4est(Vec *vnm1, Vec *vn, double dt_nm1, double dt_n, std::vector<Vec> &phi, std::vector<mls_opn_t> &action, int phi_idx, Vec *phi_xx=NULL);
 
   void set_ngbd_phi(my_p4est_node_neighbors_t *ngbd_phi) { this->ngbd_phi = ngbd_phi; }
 

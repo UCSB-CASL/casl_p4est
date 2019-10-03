@@ -1144,7 +1144,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, std::vector<Vec
   ierr = PetscLogEventEnd(log_my_p4est_semi_lagrangian_update_p4est_1st_order, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
-void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, std::vector<Vec> &phi, std::vector<action_t> &action, int phi_idx, Vec *phi_xx)
+void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, std::vector<Vec> &phi, std::vector<mls_opn_t> &action, int phi_idx, Vec *phi_xx)
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_semi_lagrangian_update_p4est_multiple_phi, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -1323,7 +1323,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, std::vector<Vec
   ierr = PetscLogEventEnd(log_my_p4est_semi_lagrangian_update_p4est_multiple_phi, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
-void my_p4est_semi_lagrangian_t::update_p4est(Vec *vnm1, Vec *vn, double dt_nm1, double dt_n, std::vector<Vec> &phi, std::vector<action_t> &action, int phi_idx, Vec *phi_xx)
+void my_p4est_semi_lagrangian_t::update_p4est(Vec *vnm1, Vec *vn, double dt_nm1, double dt_n, std::vector<Vec> &phi, std::vector<mls_opn_t> &action, int phi_idx, Vec *phi_xx)
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_semi_lagrangian_update_p4est_multiple_phi, 0, 0, 0, 0); CHKERRXX(ierr);

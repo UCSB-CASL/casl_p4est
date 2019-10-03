@@ -373,7 +373,8 @@ public:
 
   inline void add_interface(mls_opn_t opn, Vec phi, Vec* phi_dd, CF_DIM &jc_value, CF_DIM &jc_flux)
   {
-    add_interface(opn, phi, DIM(phi_dd[0], phi_dd[1], phi_dd[2]), jc_value, jc_flux);
+    if (phi_dd != NULL) add_interface(opn, phi, DIM(phi_dd[0], phi_dd[1], phi_dd[2]), jc_value, jc_flux);
+    else                add_interface(opn, phi, DIM(NULL,      NULL,      NULL),      jc_value, jc_flux);
   }
 
   inline void set_boundary_phi_eff (Vec phi_eff) { bdry_.phi_eff = phi_eff; bdry_.calculate_phi_eff(); }
