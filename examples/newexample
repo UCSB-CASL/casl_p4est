@@ -180,7 +180,7 @@ EOF
 help="-- Use this script to a new example and/or a new .pro file --
 
 usage:
-    ./$(basename "$0") example_name
+    ./$(basename "$0") example_name [pro_file_destination]
   to be executed in the $(dirname "$PWD")/example directory
 
 where:
@@ -189,6 +189,10 @@ where:
     main files will be created as well. If the example folder already exists, the script will create
     and add any missing configuration file(s) and it will create dummy main files if no main file is
     to be found in the existing directory.
+
+    pro_file_destination is the name of the directory where a new .pro file will be placed. If the
+    directory does not exist, it will be created. If not provided, a new .pro file will be created
+    in the example folder (i.e, examples/example_name/)
 
 The user needs to have defined the following environment variable
     CASL_P4EST_USER:  environment specifier
@@ -206,15 +210,9 @@ if { [ "$#" -ne 1 ] && [ "$#" -ne 2 ]; } || [ "$1" == "-h" ] || [ "$1" == "-help
     exit 1;
 else
   name=$1
+
   if [ "$#" -eq 2 ]; then
     pro_dir=$2
-    if [ ! -e ${pro_dir} ]; then
-      echo "Creating directory ${pro_dir}"
-      mkdir -p ${pro_dir}
-      if [ ! -e ${pro_dir} ]; then
-        exit 1;
-      fi
-    fi
   else
     pro_dir=$1
   fi
@@ -224,6 +222,13 @@ else
     if [ ! -e ${name} ]; then
       echo "Creating directory ./${name}"
       mkdir ${name}
+    fi
+    if [ ! -e ${pro_dir} ]; then
+      echo "Creating directory ${pro_dir}"
+      mkdir -p ${pro_dir}
+      if [ ! -e ${pro_dir} ]; then
+        exit 1;
+      fi
     fi
     if [ -e ${name} ] && [ ! -f ${pro_dir}/${name}.pro ]; then
       # we will need to create the .pro file, so we will need CASL_P4EST_USER to be defined
