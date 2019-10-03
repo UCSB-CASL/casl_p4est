@@ -10,6 +10,7 @@
 #include <src/my_p8est_cell_neighbors.h>
 #include <src/my_p8est_poisson_nodes.h>
 #include <src/my_p8est_poisson_jump_nodes_voronoi.h>
+#include <src/my_p8est_general_poisson_nodes_mls_solver.h>
 #include <src/my_p8est_poisson_nodes_mls.h>
 #include <p8est_extended.h>
 #else
@@ -405,6 +406,7 @@ inline istream& operator >> (istream& is, Atom& atom) {
   is >> ignore[4] ;
 #endif
   is >> atom.q >> atom.r;
+
   return is;
 }
 
@@ -1225,7 +1227,7 @@ class my_p4est_biomolecules_solver_t{
   inline bool   is_electrolyte_permittivity_set() const {return (elec_rel_permittivity > 1.0-EPS);}
   inline bool   are_permittivities_set() const {return (is_electrolyte_permittivity_set() && is_molecular_permittivity_set());}
   inline bool   is_temperature_set() const { return (temperature > EPS);}
-  inline bool   is_far_field_ion_density_set() const { return (far_field_ion_density > EPS);}
+  inline bool   is_far_field_ion_density_set() const { return (far_field_ion_density > EPS || far_field_ion_density==0.0);}
   inline bool   is_ion_charge_set() const { return (ion_charge > 0);}
   inline bool   are_all_debye_parameters_set() const {return (is_temperature_set() && is_far_field_ion_density_set() && is_ion_charge_set());}
   inline double length_scale_in_meter() const {return (1.0/(meter_to_angstrom*biomolecules->angstrom_to_domain));}
@@ -1311,13 +1313,14 @@ public:
   void          set_temperature_in_kelvin(double temperature_in_K = 300.0);
   inline void   set_temperature_in_celsius(double temperature_in_C) { set_temperature_in_kelvin(temperature_in_C+273.15);}
   void          set_far_field_ion_density(double n_0);
-  inline void   set_molar_concentration_of_electrolyte_in_mol_per_liter(double conc) { set_far_field_ion_density(1000.0*avogadro_number*conc);}
+  //inline void   set_molar_concentration_of_electrolyte_in_mol_per_liter(double conc) { set_far_field_ion_density(1000.0*avogadro_number*conc);}
+  inline void   set_molar_concentration_of_electrolyte_in_mol_per_liter(double conc) { set_far_field_ion_density(avogadro_number*conc/1000);}
   void          set_ion_charge(int z = 1);
-  void          set_debye_length_in_meters(double debye_length_in_m);
-  inline void   set_debye_length_in_angstrom(double debye_length_in_A) {set_debye_length_in_meters(debye_length_in_A/meter_to_angstrom);}
-  double        get_debye_length_in_meters() const;
-  inline double get_debye_length_in_angstrom() const {return meter_to_angstrom*get_debye_length_in_meters();}
-  inline double get_debye_length_in_domain() const {return ((biomolecules->angstrom_to_domain)*get_debye_length_in_angstrom());}
+  void          set_inverse_debye_length_in_meters_inverse(double inverse_debye_length_in_m_inverse);
+  inline void   set_inverse_debye_length_in_angstrom_inverse(double inverse_debye_length_in_A_inverse) {set_inverse_debye_length_in_meters_inverse(inverse_debye_length_in_A_inverse*meter_to_angstrom);}
+  double        get_inverse_debye_length_in_meters_inverse() const;
+  inline double get_inverse_debye_length_in_angstrom_inverse() const {return get_inverse_debye_length_in_meters_inverse()/meter_to_angstrom;}
+  inline double get_inverse_debye_length_in_domain() const {return (get_inverse_debye_length_in_angstrom_inverse()/(biomolecules->angstrom_to_domain));}
   inline double get_temperature_in_kelvin() const {return temperature;}
   inline double get_temperature_in_celsius() const {return (get_temperature_in_kelvin() - 273.15);}
   inline double get_far_field_ion_density() const {return far_field_ion_density;}

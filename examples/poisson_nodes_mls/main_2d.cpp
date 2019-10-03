@@ -103,8 +103,8 @@ DEFINE_PARAMETER(pl, double, zmax,  1, "Box zmax");
 // refinement parameters
 //-------------------------------------
 #ifdef P4_TO_P8
-DEFINE_PARAMETER(pl, int, lmin, 5, "Min level of the tree");
-DEFINE_PARAMETER(pl, int, lmax, 7, "Max level of the tree");
+DEFINE_PARAMETER(pl, int, lmin, 3, "Min level of the tree");
+DEFINE_PARAMETER(pl, int, lmax, 4, "Max level of the tree");
 
 DEFINE_PARAMETER(pl, int, num_splits,           4, "Number of recursive splits");
 DEFINE_PARAMETER(pl, int, num_splits_per_split, 1, "Number of additional resolutions");
@@ -127,7 +127,7 @@ DEFINE_PARAMETER(pl, int, num_shifts_z_dir, 1, "Number of grid shifts in the z-d
 DEFINE_PARAMETER(pl, int, iter_start, 0, "Skip n first iterations");
 DEFINE_PARAMETER(pl, double, lip, 2, "Lipschitz constant");
 
-DEFINE_PARAMETER(pl, bool, refine_strict,  1, "Refines every cell starting from the coarsest case if yes");
+DEFINE_PARAMETER(pl, bool, refine_strict,  0, "Refines every cell starting from the coarsest case if yes");
 DEFINE_PARAMETER(pl, bool, refine_rand,    0, "Add randomness into adaptive grid");
 DEFINE_PARAMETER(pl, bool, balance_grid,   1, "Enforce 1:2 ratio for adaptive grid");
 DEFINE_PARAMETER(pl, bool, coarse_outside, 0, "Use the coarsest possible grid outside the domain (0/1)");
@@ -228,7 +228,7 @@ DEFINE_PARAMETER(pl, int, jc_flux_03, 0, "0 - automatic, others - hardcoded");
 //-------------------------------------
 DEFINE_PARAMETER(pl, int,  jc_scheme,         0, "Discretization scheme for interface conditions (0 - FVM, 1 - FDM)");
 DEFINE_PARAMETER(pl, int,  jc_sub_scheme,     0, "Interpolation subscheme for interface conditions (0 - from slow region, 1 - from fast region, 2 - based on nodes availability)");
-DEFINE_PARAMETER(pl, int,  integration_order, 2, "Select integration order (1 - linear, 2 - quadratic)");
+DEFINE_PARAMETER(pl, int,  integration_order, 1, "Select integration order (1 - linear, 2 - quadratic)");
 DEFINE_PARAMETER(pl, bool, sc_scheme,         1, "Use super-convergent scheme");
 
 // for symmetric scheme:
@@ -284,7 +284,7 @@ DEFINE_PARAMETER(pl, bool, save_matrix_ascii,  0, "Save the matrix in ASCII MATL
 DEFINE_PARAMETER(pl, bool, save_matrix_binary, 0, "Save the matrix in BINARY MATLAB format");
 DEFINE_PARAMETER(pl, bool, save_convergence,   0, "Save convergence results");
 
-DEFINE_PARAMETER(pl, int, n_example, 9, "Predefined example");
+DEFINE_PARAMETER(pl, int, n_example, 14, "Predefined example");
 
 void set_example(int n_example)
 {
@@ -486,15 +486,13 @@ void set_example(int n_example)
       break;
 
     case 10: // moderately star-shaped interface
-      //n_um = 14; mag_um = 1; n_mu_m = 0; mag_mu_m = 1; n_diag_m = 0; mag_diag_m = 1;
-      //n_up = 14; mag_up = 2; n_mu_p = 0; mag_mu_p = 1; n_diag_p = 0; mag_diag_p = 1;
-      //n_um = 11; mag_um = 1; n_mu_m = 1; mag_mu_m = 5; n_diag_m = 1; mag_diag_m = 1;
-      //n_up = 12; mag_up = 1; n_mu_p = 0; mag_mu_p = 1; n_diag_p = 1; mag_diag_p = 1;
+      n_um = 10; mag_um = 1; n_mu_m = 0; mag_mu_m = 80; n_diag_m = 1; mag_diag_m = 0;
+      n_up = 12; mag_up = 1; n_mu_p = 0; mag_mu_p = 2; n_diag_p = 1; mag_diag_p = 1;
 
       infc_phi_num = 1;
       bdry_phi_num = 0;
 
-      infc_present_00 = 1; infc_geom_00 = 3; infc_opn_00 = MLS_INT;
+      infc_present_00 = 1; infc_geom_00 = 2; infc_opn_00 = MLS_INT;
       infc_present_01 = 0; infc_geom_01 = 0; infc_opn_01 = MLS_INT;
       infc_present_02 = 0; infc_geom_02 = 0; infc_opn_02 = MLS_INT;
       infc_present_03 = 0; infc_geom_03 = 0; infc_opn_03 = MLS_INT;
@@ -507,9 +505,6 @@ void set_example(int n_example)
       break;
 
     case 11: // highly star-shaped interface
-
-
-      //n_um = 11; mag_um = 1; n_mu_m = 1; mag_mu_m =  5; n_diag_m = 0; mag_diag_m = 1;
 
       n_um = 11; mag_um = 1; n_mu_m = 0; mag_mu_m = 1; n_diag_m = 0; mag_diag_m = 1;
 
@@ -576,14 +571,14 @@ void set_example(int n_example)
 
   case 14: // shperical interface - case 4 from voronoi jump solver3D
 
-     n_um = 17; mag_um = 1; n_mu_m = 8; mag_mu_m = 1; n_diag_m = 0; mag_diag_m = 1;
-     n_up = 18; mag_up = 1; n_mu_p = 7; mag_mu_p = 1; n_diag_p = 0; mag_diag_p = 1;
+     n_um = 17; mag_um = 1; n_mu_m = 8; mag_mu_m = 1; n_diag_m = 1; mag_diag_m = 0;
+     n_up = 18; mag_up = 1; n_mu_p = 7; mag_mu_p = 1; n_diag_p = 1; mag_diag_p = 1;
 
 
       infc_phi_num = 1;
       bdry_phi_num = 0;
 
-      infc_present_00 = 1; infc_geom_00 = 3; infc_opn_00 = MLS_INT;
+      infc_present_00 = 1; infc_geom_00 = 2; infc_opn_00 = MLS_INT;
       infc_present_01 = 0; infc_geom_01 = 0; infc_opn_01 = MLS_INT;
       infc_present_02 = 0; infc_geom_02 = 0; infc_opn_02 = MLS_INT;
       infc_present_03 = 0; infc_geom_03 = 0; infc_opn_03 = MLS_INT;
@@ -603,7 +598,7 @@ void set_example(int n_example)
       infc_phi_num = 1;
       bdry_phi_num = 0;
 
-      infc_present_00 = 1; infc_geom_00 = 3; infc_opn_00 = MLS_INT;
+      infc_present_00 = 1; infc_geom_00 = 2; infc_opn_00 = MLS_INT;
       infc_present_01 = 0; infc_geom_01 = 0; infc_opn_01 = MLS_INT;
       infc_present_02 = 0; infc_geom_02 = 0; infc_opn_02 = MLS_INT;
       infc_present_03 = 0; infc_geom_03 = 0; infc_opn_03 = MLS_INT;

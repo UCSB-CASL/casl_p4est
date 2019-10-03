@@ -6,6 +6,31 @@
 #include <boost/algorithm/string.hpp>
 
 // p4est
+#ifdef P4_TO_P8
+#include <p8est_bits.h>
+#include <p8est_extended.h>
+#include <src/my_p8est_utils.h>
+#include <src/my_p8est_vtk.h>
+#include <src/my_p8est_nodes.h>
+#include <src/my_p8est_tools.h>
+#include <src/my_p8est_refine_coarsen.h>
+#include <src/my_p8est_log_wrappers.h>
+#include <src/my_p8est_node_neighbors.h>
+#include <src/my_p8est_level_set.h>
+#include <src/my_p8est_poisson_nodes_mls.h>
+#include <src/my_p8est_interpolation_nodes.h>
+#include <src/my_p8est_integration_mls.h>
+#include <src/my_p8est_semi_lagrangian.h>
+#include <src/my_p8est_macros.h>
+#include <src/my_p8est_shapes.h>
+#include <src/my_p8est_save_load.h>
+#include <src/my_p8est_general_poisson_nodes_mls_solver.h>
+#include <src/mls_integration/vtk/simplex3_mls_l_vtk.h>
+#include <src/mls_integration/vtk/simplex3_mls_q_vtk.h>
+
+#include <src/my_p8est_biomolecules.h>
+#include <src/my_p8est_poisson_jump_nodes_extended.h>
+#else
 #include <p4est_bits.h>
 #include <p4est_extended.h>
 #include <src/my_p4est_utils.h>
@@ -30,6 +55,7 @@
 
 #include <src/my_p4est_biomolecules.h>
 #include <src/my_p4est_poisson_jump_nodes_extended.h>
+#endif
 #include <src/petsc_compatibility.h>
 #include <src/Parser.h>
 #include <src/casl_math.h>
@@ -152,8 +178,8 @@ int main(int argc, char *argv[]) {
     string stderr_str = "stderr";
     // molecule(s)
     const string input_folder                 = cmd.get<string> ("input-dir", "/home/rochi/LabCode/casl_p4est/examples/biomol/mols");
-//    const string pqr_input                    = cmd.get<string>("pqr", "single_sphere."); // for validation, irrelevant for now
-    const string pqr_input                    = cmd.get<string>("pqr", "3J6D."); // in 2D, for the illustrative planar molecule in the paper
+    const string pqr_input                    = cmd.get<string>("pqr", "single_sphere."); // for validation, irrelevant for now
+//    const string pqr_input                    = cmd.get<string>("pqr", "3J6D."); // in 2D, for the illustrative planar molecule in the paper
 //    const string pqr_input                    = cmd.get<string>("pqr", "/3J3Q/pqr/3j3q-bundle."); // in 3D, for the graphical abstract of the paper
     const vector<string>* pqr = NULL;
     if(!boost::iequals(nullstr,pqr_input))
@@ -180,19 +206,19 @@ int main(int argc, char *argv[]) {
     // grid construction
     const int ntree_per_dim                   = cmd.get<int>("ntree_dim", 1);
     const int lmin                            = cmd.get<int>("lmin", 5);
-    const int lmax                            = cmd.get<int>("lmax", 10);
+    const int lmax                            = cmd.get<int>("lmax", 8);
     const double lip                          = cmd.get<double>("lip", 1.2);
     const int surf_gen                        = cmd.get<int>("surfgen", 1);
-    const double probe_radius                 = cmd.get<double>("rp", 1.4);
+    const double probe_radius                 = cmd.get<double>("rp", 0.02);
     const int order_of_accuracy               = cmd.get<int>("OOA", 2);
     const string validation_string            = cmd.get<string>("validation", "no");
-    const bool validation_flag                = true;//(boost::iequals("1", validation_string) || boost::iequals("yes", validation_string) || boost::iequals("true", validation_string));
+    const bool validation_flag                = false;//(boost::iequals("1", validation_string) || boost::iequals("yes", validation_string) || boost::iequals("true", validation_string));
     // physical and solver parameters
-    const double eps_mol                      = cmd.get<double>("eps_mol", 2.0);
+    const double eps_mol                      = cmd.get<double>("eps_mol", 1.0);
     const double eps_elec                     = cmd.get<double>("eps_elec", 80.0);
     const int ion_charge                      = cmd.get<int>("ion", 1);
-    const double temperature                  = cmd.get<double>("temperature", 300.0);
-    const double far_field_ion_concentration  = cmd.get<double>("n0", 0.01);
+    const double temperature                  = cmd.get<double>("temperature", 298.0);
+    const double far_field_ion_concentration  = cmd.get<double>("n0", 0.001);
     const double rtol                         = cmd.get<double>("rtol", 1e-8);
     const int niter_max                       = cmd.get<int>("niter", 1000);
     const string linearization_string         = cmd.get<string>("linear", "yes");
@@ -289,8 +315,9 @@ int main(int argc, char *argv[]) {
 ////    solver.set_debye_length_in_angstrom(10.0*sqrt(10)/*/my_biomol.angstrom_to_domain*/); // if used alone, ion charge = 1, temperature = 300K and far_field_ion_density is calculated accordingly
 
     solver.solve_nonlinear(rtol, ((linearization_flag)?1:niter_max), validation_flag);
-    //solver.get_solvation_free_energy(validation_flag);
-
+#ifdef P4_TO_P8
+    solver.get_solvation_free_energy(validation_flag);
+#endif
     //Vec psi             = solver.get_psi(10.0, validation_flag);
     Vec psi_star = NULL, psi_naught = NULL, psi_bar = NULL, psi_hat = NULL, validation_error = NULL;//, residual_on_grid = NULL;
     solver.return_all_psi_vectors(psi_star, psi_naught, psi_bar, psi_hat, validation_flag);

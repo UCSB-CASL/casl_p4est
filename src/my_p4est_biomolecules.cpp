@@ -2505,6 +2505,7 @@ my_p4est_biomolecules_t::my_p4est_biomolecules_t(p4est_t* p4est_, mpi_environmen
     }
     print_summary();
   }
+
   if(timer != NULL)
   {
     timer->stop(); timer->read_duration();
@@ -4783,10 +4784,11 @@ void    my_p4est_biomolecules_solver_t::set_temperature_in_kelvin(double tempera
 void    my_p4est_biomolecules_solver_t::set_far_field_ion_density(double n_0)
 {
 #ifdef CASL_THROWS
-  int local_error = (n_0 < EPS);
-  string error_message = "my_p4est_biomolecules_solver_t::set_far_field_ion_density(...): the value of the far-field ion density must be strictly positive.";
-  biomolecules->err_manager.check_my_local_error(local_error, error_message);
-  if(is_far_field_ion_density_set() && n_0 > EPS && fabs(far_field_ion_density - n_0) > EPS*far_field_ion_density)
+  //int local_error = (n_0 < EPS);
+  //string error_message = "my_p4est_biomolecules_solver_t::set_far_field_ion_density(...): the value of the far-field ion density must be strictly positive.";
+  //biomolecules->err_manager.check_my_local_error(local_error, error_message);
+//  if(is_far_field_ion_density_set() && n_0 > EPS && fabs(far_field_ion_density - n_0) > EPS*far_field_ion_density)
+  if(is_far_field_ion_density_set())
   {
     // print a warning
     string message = "my_p4est_biomolecules_solver_t::set_far_field_ion_density(...): the far-field ion density was already set, it will be reset...\n";
@@ -4814,18 +4816,18 @@ void    my_p4est_biomolecules_solver_t::set_ion_charge(int z)
   psi_star_psi_naught_and_psi_bar_are_set = psi_hat_is_set = !(ion_charge != z);
   ion_charge = z;
 }
-void    my_p4est_biomolecules_solver_t::set_debye_length_in_meters(double debye_length_in_m)
+void    my_p4est_biomolecules_solver_t::set_inverse_debye_length_in_meters_inverse(double inverse_debye_length_in_m_inverse)
 {
-#ifdef CASL_THROWS
-  int local_error = (debye_length_in_m < EPS);
-  string error_message = "my_p4est_biomolecules_solver_t::set_debye_length_in_meters(...): the value of the debye length must be strictly positive.";
-  biomolecules->err_manager.check_my_local_error(local_error, error_message);
-#endif
+//#ifdef CASL_THROWS
+//  int local_error = (debye_length_in_m < EPS);
+//  string error_message = "my_p4est_biomolecules_solver_t::set_debye_length_in_meters(...): the value of the debye length must be strictly positive.";
+//  biomolecules->err_manager.check_my_local_error(local_error, error_message);
+//#endif
   // if all three parameters are set, it's either consistent or not. If not, abort
   if(are_all_debye_parameters_set())
   {
     // Either it's the correct value,
-    if(fabs(get_debye_length_in_meters() - debye_length_in_m) < EPS*get_debye_length_in_meters())
+    if(fabs(get_inverse_debye_length_in_meters_inverse() - inverse_debye_length_in_m_inverse) < EPS*get_inverse_debye_length_in_meters_inverse())
       return; // nothing to be done
     // or the user is dumb and we should teach him
 #ifdef CASL_THROWS
@@ -4839,19 +4841,21 @@ void    my_p4est_biomolecules_solver_t::set_debye_length_in_meters(double debye_
   if(is_ion_charge_set() && is_temperature_set() && !is_far_field_ion_density_set())
   {
     // temperature and ion charge are set, the far-field ion density is not, let's calculate it
-    set_far_field_ion_density(eps_0*kB*temperature/(2.0*SQR(((double) ion_charge)*electron*debye_length_in_m)));
+    set_far_field_ion_density(eps_0*kB*temperature*inverse_debye_length_in_m_inverse/(2.0*SQR(((double) ion_charge)*electron)));
+    std::cout << "setting far field ion density based on other values \n";
     return;
   }
   if(is_ion_charge_set() && !is_temperature_set() && is_far_field_ion_density_set())
   {
     // far-field ion density and ion charge are set, temperature is not, let's calculate it
-    set_temperature_in_kelvin(2.0*far_field_ion_density*SQR(debye_length_in_m*((double) ion_charge)*electron)/(eps_0*kB));
+    set_temperature_in_kelvin(2.0*far_field_ion_density*SQR((1/inverse_debye_length_in_m_inverse)*((double) ion_charge)*electron)/(eps_0*kB));
+    std::cout << "setting temperature based on other values \n";
     return;
   }
   if(!is_ion_charge_set() && is_temperature_set() && is_far_field_ion_density_set())
   {
     // ion charge might be freely set
-    double my_z = sqrt(eps_0*kB*temperature/(2.0*far_field_ion_density*SQR(debye_length_in_m*electron)));
+    double my_z = sqrt(eps_0*kB*temperature/(2.0*far_field_ion_density*SQR((1/inverse_debye_length_in_m_inverse)*electron)));
     // but it's supposed to be an integer, so let's check that
     if(fabs(my_z - round(my_z)) < EPS*my_z)
       set_ion_charge((int) round(my_z));
@@ -4864,6 +4868,7 @@ void    my_p4est_biomolecules_solver_t::set_debye_length_in_meters(double debye_
       MPI_Abort(biomolecules->p4est->mpicomm, 95788759);
 #endif
     }
+    std::cout << "setting ion charge based on other values \n";
     return;
   }
   // if none or only one of the three parameters is set, we have one more degree of freedom, and we can set arbitrary values
@@ -4874,24 +4879,28 @@ void    my_p4est_biomolecules_solver_t::set_debye_length_in_meters(double debye_
     // one or two of the parameters are set, now
     // if only one (the ion charge), the next pass will set the temperature and the far-field ion density will be calculated
     // if two (the ion charge and either the temperature or the far-field density), the next pass will set the remaining one
-    set_debye_length_in_meters(debye_length_in_m);
+    set_inverse_debye_length_in_meters_inverse(inverse_debye_length_in_m_inverse);
+    std::cout << "setting ion charge and then inverse_debye_length \n";
   }
   else
   {
     // the ion charge only is set, set the temperature to 300 K (default value) and that's it
     set_temperature_in_kelvin();
-    set_debye_length_in_meters(debye_length_in_m);
+    set_inverse_debye_length_in_meters_inverse(inverse_debye_length_in_m_inverse);
+   std::cout << "setting temperature and then inverse_debye_length \n";
   }
   return;
 }
-double  my_p4est_biomolecules_solver_t::get_debye_length_in_meters() const
+double  my_p4est_biomolecules_solver_t::get_inverse_debye_length_in_meters_inverse() const
 {
-  if(are_all_debye_parameters_set())
-    return sqrt(eps_0*kB*temperature/(2.0*far_field_ion_density*SQR(((double) ion_charge)*electron)));
+  if(are_all_debye_parameters_set()){
+    //return sqrt(eps_0*kB*temperature/(2.0*far_field_ion_density*SQR(((double) ion_charge)*electron)));
+    return sqrt((2.0*far_field_ion_density*SQR(((double) ion_charge)*electron))/(eps_0*kB*temperature));
+  }
   else
   {
 #ifdef CASL_THROWS
-    string err_msg = "my_p4est_biomolecules_solver_t::get_debye_length_in_meters(): not all debye parameters are set, the debye length cannot be calculated: abort...";
+    string err_msg = "my_p4est_biomolecules_solver_t::get_inverse_debye_length_in_meters_inverse(): not all debye parameters are set, the debye length cannot be calculated: abort...";
     biomolecules->err_manager.print_message_and_abort(err_msg, 95755759);
 #else
     MPI_Abort(biomolecules->p4est->mpicomm, 95755759);
@@ -5338,7 +5347,7 @@ int     my_p4est_biomolecules_solver_t::solve_nonlinear(double upper_bound_resid
     ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "The ionic charge is %d \n", ion_charge); CHKERRXX(ierr);
     ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "The far-field electrolyte density is %g m^{-3} \n", far_field_ion_density); CHKERRXX(ierr);
     ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "The temperature is %g K \n", temperature); CHKERRXX(ierr);
-    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "The debye length %g A, %g m, or %g in domain units\n", get_debye_length_in_angstrom(), get_debye_length_in_meters(), get_debye_length_in_domain()); CHKERRXX(ierr);
+    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "The iverse debye length %g A^(-1), %g m^(-1), or %g in domain units\n", (get_inverse_debye_length_in_angstrom_inverse()), (get_inverse_debye_length_in_meters_inverse()), get_inverse_debye_length_in_domain()); CHKERRXX(ierr);
     ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "\n"); CHKERRXX(ierr);
     if(biomolecules->timing_file != NULL)
     {
@@ -5399,10 +5408,16 @@ int     my_p4est_biomolecules_solver_t::solve_nonlinear(double upper_bound_resid
   Vec eps_grad_n_psi_hat_jump= NULL;
   Vec eps_grad_n_psi_hat_jump_xx_= NULL;
   Vec eps_grad_n_psi_hat_jump_yy_= NULL;
+#ifdef P4_TO_P8
+  Vec eps_grad_n_psi_hat_jump_zz_= NULL;
+#endif
 
   make_sure_is_node_sampled(eps_grad_n_psi_hat_jump);
   make_sure_is_node_sampled(eps_grad_n_psi_hat_jump_xx_);
   make_sure_is_node_sampled(eps_grad_n_psi_hat_jump_yy_);
+#ifdef P4_TO_P8
+  make_sure_is_node_sampled(eps_grad_n_psi_hat_jump_zz_);
+#endif
 
   // Create vectors for the diagonal term in the outer domain
   Vec add_plus = NULL;
@@ -5430,7 +5445,7 @@ int     my_p4est_biomolecules_solver_t::solve_nonlinear(double upper_bound_resid
     ierr = VecGetArray(rhs_minus, &rhs_minus_p); CHKERRXX(ierr);
     ierr = VecGetArray(rhs_plus, &rhs_plus_p); CHKERRXX(ierr);
   }
-  const double inverse_square_debye_length_in_domain = SQR(1.0/get_debye_length_in_domain());
+  const double inverse_square_debye_length_in_domain = SQR(get_inverse_debye_length_in_domain());
   double xyz[P4EST_DIM], lap_of_val_sol, val_sol;
   for (size_t k = 0; k < biomolecules->nodes->indep_nodes.elem_count; ++k) {
     node_sampled_zero_p[k]  = 0.0;
@@ -5536,7 +5551,7 @@ int     my_p4est_biomolecules_solver_t::solve_nonlinear(double upper_bound_resid
       return (BoundaryConditionType) bc_wtype;
     }
   } bc_wall_type;
-  jump_solver->set_wc(bc_wall_type, zero_cf);
+  jump_solver->set_wc(bc_wall_type, validation_function);
   jump_solver->set_rhs(rhs_minus,rhs_plus);
   jump_solver->set_diag(node_sampled_zero,add_plus);
   jump_solver->set_use_taylor_correction(taylor_correction);
@@ -5886,6 +5901,7 @@ void my_p4est_biomolecules_solver_t::get_solvation_free_energy(bool validation_f
 
 
   // contribution from the electrolyte
+  //std::cout << "Starting calculation of contribution of electrolyte \n";
   Vec integrand = NULL, psi_hat_plus_psi_naught = NULL;
   make_sure_is_node_sampled(integrand);
   make_sure_is_node_sampled(psi_hat_plus_psi_naught);
@@ -5899,7 +5915,8 @@ void my_p4est_biomolecules_solver_t::get_solvation_free_energy(bool validation_f
   for (size_t k = 0; k < biomolecules->nodes->indep_nodes.elem_count; ++k) {
     if(phi_p[k] > 0.0)
     {
-      integrand_p[k] = kB*temperature*far_field_ion_density*(psi_hat_read_only_p[k]*sinh(psi_hat_read_only_p[k])-2.0*(cosh(psi_hat_read_only_p[k]) - 1.0)); // relevant value
+      //integrand_p[k] = kB*temperature*far_field_ion_density*(psi_hat_read_only_p[k]*sinh(psi_hat_read_only_p[k])-2.0*(cosh(psi_hat_read_only_p[k]) - 1.0)); // relevant value
+      integrand_p[k] = kB*temperature*far_field_ion_density*(psi_hat_read_only_p[k]*psi_hat_read_only_p[k]*2); // relevant value
       psi_hat_plus_psi_naught_p[k] = 0.0; // irrelevant value
     }
     else
@@ -5916,13 +5933,14 @@ void my_p4est_biomolecules_solver_t::get_solvation_free_energy(bool validation_f
   ierr = VecRestoreArray(integrand, &integrand_p); integrand_p = NULL; CHKERRXX(ierr);
   biomolecules->ls->extend_Over_Interface_TVD(biomolecules->phi, integrand, 20, 2); // 20 for the number of iterations, default parameter
   solvation_free_energy = integrate_over_negative_domain(biomolecules->p4est, biomolecules->nodes, biomolecules->phi, integrand)*(pow(length_scale_in_meter(), 3.0));
-
+  //std::cout << "contribution of electrolyte ::  " << solvation_free_energy<< "\n";
   Vec phi_ghost_loc = NULL;
   ierr = VecGhostGetLocalForm(biomolecules->phi, &phi_ghost_loc); CHKERRXX(ierr);
   ierr = VecScale(phi_ghost_loc, -1.0); CHKERRXX(ierr); // reverse the levelset function to get back to original state
   ierr = VecGhostRestoreLocalForm(biomolecules->phi, &phi_ghost_loc); phi_ghost_loc = NULL; CHKERRXX(ierr);
 
   // contributions from singular point charges
+  //std::cout << "line 5939 ok \n";
   double integral_contribution_from_singular_charges = 0.0;
 
   my_p4est_interpolation_nodes_t interpolate_psi_hat_plus_psi_naught(biomolecules->neighbors);
@@ -5934,6 +5952,7 @@ void my_p4est_biomolecules_solver_t::get_solvation_free_energy(bool validation_f
     const my_p4est_biomolecules_t::molecule& mol = biomolecules->bio_molecules.at(mol_idx);
     total_nb_charged_atoms += mol.get_number_of_charged_atoms();
   }
+  //std::cout << "total number of charged atoms ::  " << total_nb_charged_atoms<< "\n";
   int proc_has_atom_if_rank_below = MIN(total_nb_charged_atoms, biomolecules->p4est->mpisize);
 
   int first_charged_atom_idx          = MIN(biomolecules->p4est->mpirank*total_nb_charged_atoms/proc_has_atom_if_rank_below, total_nb_charged_atoms);
@@ -5945,7 +5964,7 @@ void my_p4est_biomolecules_solver_t::get_solvation_free_energy(bool validation_f
   int global_charged_atom_idx;
   p4est_locidx_t local_idx = 0;
   double xyz_atom[3];
-
+  //std::cout << "first charged atom idx  ::  " << first_charged_atom_idx << "\n";
   if(first_charged_atom_idx < total_nb_charged_atoms)
   {
     for (int mol_idx = 0; mol_idx < biomolecules->nmol(); ++mol_idx)
@@ -5972,19 +5991,35 @@ void my_p4est_biomolecules_solver_t::get_solvation_free_energy(bool validation_f
   }
   interpolate_psi_hat_plus_psi_naught.interpolate(point_values_of_psi_hat_plus_psi_naught.data());
   local_idx = 0;
+  //std::cout << "first charged atom idx  ::  " << first_charged_atom_idx << "\n";
+  //resetting charged_atom_idx_offset
+  charged_atom_idx_offset         = 0;
   if(first_charged_atom_idx < total_nb_charged_atoms)
   {
     for (int mol_idx = 0; mol_idx < biomolecules->nmol(); ++mol_idx)
     {
+      //std::cout << "line 5994 ok \n";
+      //std::cout << "mol_idx ::  " << mol_idx << "\n";
+      //std::cout << "biomolecules->nmol() ::  " << biomolecules->nmol() << "\n";
       const my_p4est_biomolecules_t::molecule& mol = biomolecules->bio_molecules.at(mol_idx);
+      //std::cout << "charged_atom_idx offset ::  " << charged_atom_idx_offset<< "\n";
+      //std::cout << "number of charged atoms of mol ::  " << mol.get_number_of_charged_atoms() << "\n";
+      //std::cout << "first_charged_atom_idx ::  " << first_charged_atom_idx << "\n";
+      //std::cout << "idx_of_charged_atom_after_last ::  " << idx_of_charged_atom_after_last<< "\n";
       if((charged_atom_idx_offset + mol.get_number_of_charged_atoms() >= first_charged_atom_idx) && (charged_atom_idx_offset < idx_of_charged_atom_after_last))
       {
+          //std::cout << "number of charged atoms ::  " << mol.get_number_of_charged_atoms() << "\n";
         for (int charged_atom_idx = 0; charged_atom_idx < mol.get_number_of_charged_atoms(); ++charged_atom_idx)
         {
+            //std::cout << "line 6002 ok \n";
+            //std::cout << "charged_atom_idx ::  " << charged_atom_idx << "\n";
+            //std::cout << "number of charged atoms ::  " << mol.get_number_of_charged_atoms() << "\n";
           global_charged_atom_idx = charged_atom_idx_offset + charged_atom_idx;
+          //std::cout << "global_charged_atom_idx ::  " << global_charged_atom_idx<< "\n";
           if((first_charged_atom_idx <= global_charged_atom_idx) && (global_charged_atom_idx < idx_of_charged_atom_after_last))
           {
             const Atom* a = mol.get_charged_atom(charged_atom_idx);
+            //std::cout << "line 5999 is ok\n";
             integral_contribution_from_singular_charges += (0.5*a->q*kB*temperature/((double) ion_charge))*(point_values_of_psi_hat_plus_psi_naught.at(local_idx++));
             P4EST_ASSERT(local_idx <= nb_atoms_for_me);
           }
@@ -5995,7 +6030,7 @@ void my_p4est_biomolecules_solver_t::get_solvation_free_energy(bool validation_f
   }
 
   int mpiret = MPI_Allreduce(MPI_IN_PLACE, &integral_contribution_from_singular_charges, 1, MPI_DOUBLE, MPI_SUM, biomolecules->p4est->mpicomm); SC_CHECK_MPI(mpiret);
-
+  //std::cout << "integral_contribution_from_singular_charges ::  " << integral_contribution_from_singular_charges<< "\n";
   solvation_free_energy += integral_contribution_from_singular_charges;
 
   ierr = VecDestroy(integrand); integrand = NULL; CHKERRXX(ierr);
@@ -6003,7 +6038,7 @@ void my_p4est_biomolecules_solver_t::get_solvation_free_energy(bool validation_f
 
   if(biomolecules->log_file != NULL)
   {
-    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "The value of the solvation free energy is %g J, that is %g kJ/mol \n", solvation_free_energy, solvation_free_energy*avogadro_number*0.001); CHKERRXX(ierr);
+    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "The value of the solvation free energy is %g J, that is %g kcal/mol \n", solvation_free_energy, solvation_free_energy*avogadro_number*0.000239006); CHKERRXX(ierr);
     if(biomolecules->timing_file != NULL)
     {
       log_timer->stop(); log_timer->read_duration();

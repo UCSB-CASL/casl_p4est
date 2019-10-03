@@ -169,8 +169,7 @@ int     my_p4est_general_poisson_nodes_mls_solver_t::solve_nonlinear(Vec soln,do
 
             if (infc_phi_eff_000 < 0)
                     {
-
-                        diag_m_copy_ptr[n]= diag_m_original_copy_ptr[n]*cosh(soln_ptr[n]);
+                       diag_m_copy_ptr[n]= diag_m_original_copy_ptr[n]*cosh(soln_ptr[n]);
                         diag_p_copy_ptr[n]= diag_p_original_copy_ptr[n]*cosh(soln_ghost_ptr[n]);
                         sinh_soln_ptr[n]= sinh(soln_ptr[n]);
                     }
@@ -229,7 +228,8 @@ int     my_p4est_general_poisson_nodes_mls_solver_t::solve_nonlinear(Vec soln,do
         invert_linear_system(del_soln, use_nonzero_guess, update_ghost, ksp_type, pc_type);
         iter++;
         ierr = VecNorm(del_soln, NORM_2, &residual_of_del_soln_norm); CHKERRXX(ierr);
-        cout<<"residual of del_soln-> "<< residual_of_del_soln_norm<< "\n";
+        cout<<"residual of del_soln-> "<< residual_of_del_soln_norm<< "\n" <<"iter -> "<< iter<< "\n";
+        ierr = PetscPrintf(p4est_->mpicomm, "line 232 ok "); CHKERRXX(ierr);
         ierr= VecAXPY(soln,1,del_soln);CHKERRXX(ierr);
         ierr = VecCopy(rhs_original_copy,rhs_); CHKERRXX(ierr);
     }
