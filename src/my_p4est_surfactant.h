@@ -214,9 +214,23 @@ public:
   inline p4est_t* get_p4est_n() { return p4est_n; }
   inline p4est_t* get_p4est_nm1() { return p4est_nm1; }
 
+  inline p4est_nodes_t* get_nodes_n() { return nodes_n; }
+  inline p4est_nodes_t* get_nodes_nm1() { return nodes_nm1; }
+
+  inline p4est_ghost_t* get_ghost_n() { return ghost_n; }
+  inline p4est_ghost_t* get_ghost_nm1() { return ghost_nm1; }
+
+  inline my_p4est_node_neighbors_t* get_ngbd_n() { return ngbd_n; }
+  inline my_p4est_node_neighbors_t* get_ngbd_nm1() { return ngbd_nm1; }
+
+  inline Vec get_phi() { return phi; }
+  inline Vec get_phi_band() { return phi_band; }
   inline Vec get_Gamma_nm1() { return Gamma_np1; }
   inline Vec get_Gamma_n() { return Gamma_n; }
   inline Vec get_Gamma_np1() { return Gamma_np1; }
+
+  inline double get_integrated_Gamma() { return integrate_over_interface(p4est_n, nodes_n, phi, Gamma_n); }
+  inline double get_average_Gamma() { return get_integrated_Gamma()/interface_length(p4est_n, nodes_n, phi); }
 
   void set_dt(const double& dt_nm1, const double& dt_n);
 

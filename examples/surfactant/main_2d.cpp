@@ -23,6 +23,7 @@
 #include <src/my_p4est_vtk.h>
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_tools.h>
+#include <src/my_p4est_level_set.h>
 #include <src/my_p4est_refine_coarsen.h>
 #include <src/my_p4est_log_wrappers.h>
 #include <src/my_p4est_node_neighbors.h>
@@ -33,6 +34,7 @@
 #include <src/my_p8est_vtk.h>
 #include <src/my_p8est_nodes.h>
 #include <src/my_p8est_tools.h>
+#include <src/my_p8est_level_set.h>
 #include <src/my_p8est_refine_coarsen.h>
 #include <src/my_p8est_log_wrappers.h>
 #include <src/my_p8est_node_neighbors.h>
@@ -68,12 +70,12 @@ double tn   = 0.0; // Time. We choose the origin at t=0 following the convention
 #ifdef P4_TO_P8
 
 /*------------------------------------------------------------------------------------------------------------------------------------*/
-/*------------------------------------------------------------- 3D -------------------------------------------------------------------*/
+/*-------------------------------------------------------- 3D FUNCTIONS --------------------------------------------------------------*/
 /*------------------------------------------------------------------------------------------------------------------------------------*/
 
 /*
- * NOTE: In 3D, we follow the ISO convention used in physics for spherical coordinates, i.e. phi in [0,2*pi) is the azimuthal angle and
- *       theta in [0, pi] is the polar angle.
+ * [NOTE:] In 3D, we follow the ISO convention used in physics for spherical coordinates, i.e. phi in [0,2*pi) is the azimuthal angle
+ *         and theta in [0, pi] is the polar angle.
  */
 
 struct r_from_xyz : public CF_3
@@ -308,7 +310,7 @@ struct initial_Gamma_n_t : public CF_3
 #else
 
 /*------------------------------------------------------------------------------------------------------------------------------------*/
-/*------------------------------------------------------------- 2D -------------------------------------------------------------------*/
+/*-------------------------------------------------------- 2D FUNCTIONS --------------------------------------------------------------*/
 /*------------------------------------------------------------------------------------------------------------------------------------*/
 
 struct r_from_xyz : public CF_2
@@ -489,6 +491,109 @@ struct initial_Gamma_n_t : public CF_2
 #endif
 
 /*------------------------------------------------------------------------------------------------------------------------------------*/
+/*------------------------------------------------------ UTILITY FUNCTIONS -----------------------------------------------------------*/
+/*------------------------------------------------------------------------------------------------------------------------------------*/
+
+
+void compute_and_save_errors(my_p4est_surfactant_t* solver, char name[])
+{
+  PetscErrorCode ierr;
+  Vec Gamma_ex_tmp = NULL, Gamma_ex = NULL, phi_ex = NULL;
+  ierr = VecCreateGhostNodes(solver->get_p4est_n(), solver->get_nodes_n(), &Gamma_ex_tmp); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodes(solver->get_p4est_n(), solver->get_nodes_n(), &phi_ex); CHKERRXX(ierr);
+  double *Gamma_ex_p, *phi_ex_p;
+  ierr = VecGetArray(Gamma_ex_tmp, &Gamma_ex_p);
+  ierr = VecGetArray(phi_ex, &phi_ex_p);
+  for(size_t n=0; n<solver->get_nodes_n()->indep_nodes.elem_count; ++n)
+  {
+    double xyz_tmp[P4EST_DIM];
+    node_xyz_fr_n(n, solver->get_p4est_n(), solver->get_nodes_n(), xyz_tmp);
+    Gamma_ex_p[n] = exact_Gamma(xyz_tmp[0],
+                                xyz_tmp[1],
+#ifdef P4_TO_P8
+                                xyz_tmp[2],
+#endif
+                                tn         );
+    phi_ex_p[n] = exact_ls(xyz_tmp[0],
+                           xyz_tmp[1],
+#ifdef P4_TO_P8
+                           xyz_tmp[2],
+#endif
+                           tn         );
+  }
+  ierr = VecRestoreArray(Gamma_ex_tmp, &Gamma_ex_p);
+  ierr = VecRestoreArray(phi_ex, &phi_ex_p);
+
+  my_p4est_level_set_t ls(solver->get_ngbd_n());
+  ls.reinitialize_2nd_order(phi_ex);
+  ls.perturb_level_set_function(phi_ex, EPS*dmin);
+  ierr = VecCreateGhostNodes(solver->get_p4est_n(), solver->get_nodes_n(), &Gamma_ex); CHKERRXX(ierr);
+  ls.extend_from_interface_to_whole_domain_TVD(phi_ex, Gamma_ex_tmp, Gamma_ex);
+
+  Vec err_Gamma = NULL, err_phi = NULL;
+  ierr = VecCreateGhostNodes(solver->get_p4est_n(), solver->get_nodes_n(), &err_Gamma); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodes(solver->get_p4est_n(), solver->get_nodes_n(), &err_phi); CHKERRXX(ierr);
+  double *err_Gamma_p, *err_phi_p;
+  ierr = VecGetArray(err_Gamma, &err_Gamma_p);
+  ierr = VecGetArray(err_phi, &err_phi_p);
+  const double* Gamma_exact_p;
+  const double* Gamma_num_p;
+  const double* phi_exact_p;
+  const double* phi_num_p;
+  ierr = VecGetArrayRead(Gamma_ex, &Gamma_exact_p);
+  ierr = VecGetArrayRead(solver->get_Gamma_n(), &Gamma_num_p);
+  ierr = VecGetArrayRead(phi_ex, &phi_exact_p);
+  ierr = VecGetArrayRead(solver->get_phi(), &phi_num_p);
+  for(size_t n=0; n<solver->get_nodes_n()->indep_nodes.elem_count; ++n)
+  {
+    err_Gamma_p[n] = Gamma_exact_p[n] - Gamma_num_p[n];
+    err_phi_p[n] = phi_exact_p[n] - phi_num_p[n];
+  }
+  ierr = VecRestoreArray(err_Gamma, &err_Gamma_p);
+  ierr = VecRestoreArray(err_phi, &err_phi_p);
+  ierr = VecRestoreArrayRead(Gamma_ex, &Gamma_exact_p);
+  ierr = VecRestoreArrayRead(solver->get_Gamma_n(), &Gamma_num_p);
+  ierr = VecRestoreArrayRead(phi_ex, &phi_exact_p);
+  ierr = VecRestoreArrayRead(solver->get_phi(), &phi_num_p);
+
+  unsigned short count_node_scalars = 0;
+  ierr = VecGetArrayRead(Gamma_ex, &Gamma_exact_p);                ++count_node_scalars;
+  ierr = VecGetArrayRead(solver->get_Gamma_n(), &Gamma_num_p);     ++count_node_scalars;
+  ierr = VecGetArrayRead(phi_ex, &phi_exact_p);                    ++count_node_scalars;
+  ierr = VecGetArrayRead(solver->get_phi(), &phi_num_p);           ++count_node_scalars;
+  const double* error_phi_p;
+  const double* error_Gamma_p;
+  const double* phi_band_num_p;
+  ierr = VecGetArrayRead(err_phi, &error_phi_p);               ++count_node_scalars;
+  ierr = VecGetArrayRead(err_Gamma, &error_Gamma_p);           ++count_node_scalars;
+  ierr = VecGetArrayRead(solver->get_phi_band(), &phi_band_num_p); ++count_node_scalars;
+  my_p4est_vtk_write_all_general(solver->get_p4est_n(), solver->get_nodes_n(), solver->get_ghost_n(),
+                                 P4EST_TRUE, P4EST_TRUE,
+                                 count_node_scalars, // number of VTK_NODE_SCALAR
+                                 0,                  // number of VTK_NODE_VECTOR_BY_COMPONENTS
+                                 0,                  // number of VTK_NODE_VECTOR_BLOCK
+                                 0,                  // number of VTK_CELL_SCALAR
+                                 0,                  // number of VTK_CELL_VECTOR_BY_COMPONENTS
+                                 0,                  // number of VTK_CELL_VECTOR_BLOCK
+                                 name,
+                                 VTK_NODE_SCALAR, "phi_exact",    phi_exact_p,
+                                 VTK_NODE_SCALAR, "phi_num",      phi_num_p,
+                                 VTK_NODE_SCALAR, "phi_band_num", phi_band_num_p,
+                                 VTK_NODE_SCALAR, "err_phi",      error_phi_p,
+                                 VTK_NODE_SCALAR, "Gamma_exact",  Gamma_exact_p,
+                                 VTK_NODE_SCALAR, "Gamma_num",    Gamma_num_p,
+                                 VTK_NODE_SCALAR, "err_Gamma",    error_Gamma_p);
+  ierr = VecRestoreArrayRead(Gamma_ex, &Gamma_exact_p);
+  ierr = VecRestoreArrayRead(solver->get_Gamma_n(), &Gamma_num_p);
+  ierr = VecRestoreArrayRead(phi_ex, &phi_exact_p);
+  ierr = VecRestoreArrayRead(solver->get_phi(), &phi_num_p);
+  ierr = VecRestoreArrayRead(err_phi, &error_phi_p);
+  ierr = VecRestoreArrayRead(err_Gamma, &error_Gamma_p);
+  ierr = VecRestoreArrayRead(solver->get_phi_band(), &phi_band_num_p);
+}
+
+
+/*------------------------------------------------------------------------------------------------------------------------------------*/
 /*-------------------------------------------------------- MAIN FUNCTION -------------------------------------------------------------*/
 /*------------------------------------------------------------------------------------------------------------------------------------*/
 
@@ -507,6 +612,7 @@ int main(int argc, char** argv) {
 
   // Save flags
   const bool save_vtk = true;
+  const bool save_errors_vtk = true;
 
   // Domain parameters
   const double xmin = -PI;
@@ -584,7 +690,7 @@ int main(int argc, char** argv) {
   surf->set_no_surface_diffusion(true);
 
   // Print vtk data
-  char out_dir[1024], vtk_path[1024], vtk_name[1024];
+  char out_dir[1024], vtk_path[1024], vtk_name[1024], vtk_error_name[1024];
   string export_dir = "/home/temprano/Output/p4est_surfactant/tests";
   string test_name;
   switch(test_number)
@@ -619,30 +725,35 @@ int main(int argc, char** argv) {
   // Time evolution
   double tf = 1.0;
   int iter = 0;
+  PetscErrorCode ierr;
+  ierr = PetscPrintf(mpi.comm(), "\nIteration #%04d:  tn = %.5e,  "
+                                 "percent done = %.1f%%,  "
+                                 "integral of Gamma = %.6e,  "
+                                 "number of leaves = %d\n",
+                     iter,
+                     tn,
+                     100.0*tn/tf,
+                     surf->get_integrated_Gamma(),
+                     surf->get_p4est_n()->global_num_quadrants); CHKERRXX(ierr);
   if(save_vtk)
   {
     sprintf(vtk_name, "%s/snapshot_%d", vtk_path, iter);
     surf->save_vtk(vtk_name);
+    ierr = PetscPrintf(mpi.comm(), "  -> Saving result vtk files in %s...\n",vtk_name); CHKERRXX(ierr);
+  }
+  if(save_errors_vtk)
+  {
+    sprintf(vtk_error_name, "%s/error_snapshot_%d", vtk_path, iter);
+    compute_and_save_errors(surf, vtk_error_name);
+    ierr = PetscPrintf(mpi.comm(), "  -> Saving errors vtk files in %s...\n", vtk_error_name); CHKERRXX(ierr);
   }
 
   while(tn+0.01*dt < tf)
   {
-    if(iter>0)
+    if(tn+dt>tf)
     {
-      surf->update_from_tn_to_tnp1(vn);
-      dt = surf->get_dt_n();
-
-      if(tn+dt>tf)
-      {
-        dt = tf-tn;
-        surf->set_dt_n(dt);
-      }
-
-      if(save_vtk)
-      {
-        sprintf(vtk_name, "%s/snapshot_%d", vtk_path, iter);
-        surf->save_vtk(vtk_name);
-      }
+      dt = tf-tn;
+      surf->set_dt_n(dt);
     }
 
     surf->advect_interface_one_step();
@@ -651,23 +762,41 @@ int main(int argc, char** argv) {
     tn+=dt;
     iter++;
 
-    PetscErrorCode ierr;
-    ierr = PetscPrintf(mpi.comm(), "Iteration #%04d:  tn = %.5e,  "
+    surf->update_from_tn_to_tnp1(vn);
+    dt = surf->get_dt_n();
+    ierr = PetscPrintf(mpi.comm(), "\nIteration #%04d:  tn = %.5e,  "
                                    "percent done = %.1f%%,  "
+                                   "integral of Gamma = %.6e,  "
                                    "number of leaves = %d\n",
-                       iter, tn, 100*tn/tf, surf->get_p4est_n()->global_num_quadrants);
-    CHKERRXX(ierr);
+                       iter,
+                       tn,
+                       100.0*tn/tf,
+                       surf->get_integrated_Gamma(),
+                       surf->get_p4est_n()->global_num_quadrants); CHKERRXX(ierr);
+    if(save_vtk)
+    {
+      sprintf(vtk_name, "%s/snapshot_%d", vtk_path, iter);
+      surf->save_vtk(vtk_name);
+      ierr = PetscPrintf(mpi.comm(), "  -> Saving result vtk files in %s...\n",vtk_name); CHKERRXX(ierr);
+    }
+    if(save_errors_vtk)
+    {
+      sprintf(vtk_error_name, "%s/error_snapshot_%d", vtk_path, iter);
+      compute_and_save_errors(surf, vtk_error_name);
+      ierr = PetscPrintf(mpi.comm(), "  -> Saving errors vtk files in %s...\n", vtk_error_name); CHKERRXX(ierr);
+    }
   }
-
-  // Stop and print timer
-  w.stop();
-  w.print_duration();
 
   // Destroy the dynamically allocated classes
   delete surf;
   delete ls_n;
   delete ls_nm1;
   my_p4est_brick_destroy(conn, &brick);
+
+  // Stop and print timer
+  w.stop();
+  ierr = PetscPrintf(mpi.comm(),"\n"); CHKERRXX(ierr);
+  w.print_duration();
 
   // Finish
   return 0;

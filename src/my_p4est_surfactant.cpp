@@ -107,7 +107,6 @@ void my_p4est_surfactant_t::splitting_criteria_surfactant_t::tag_quadrant(p4est_
 }
 
 
-
 bool my_p4est_surfactant_t::splitting_criteria_surfactant_t::refine_and_coarsen(p4est_t* p4est, p4est_nodes_t* nodes, Vec phi)
 {
   const double *phi_p;
@@ -1116,7 +1115,7 @@ void my_p4est_surfactant_t::compute_one_step_Gamma()
   interp_outputs_nm1.resize(0);
   interp_nm1.clear();
 
-  // interpolation happened only for local nodes, so we need to update the ghost layer:
+  // Interpolation happened only for local nodes, so we need to update the ghost layer:
   ierr = VecGhostUpdateBegin(Gamma_dep_n,   INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecGhostUpdateBegin(Gamma_dep_nm1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecGhostUpdateBegin(str_dep_n,     INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -1126,7 +1125,7 @@ void my_p4est_surfactant_t::compute_one_step_Gamma()
   ierr = VecGhostUpdateEnd(str_dep_n,     INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecGhostUpdateEnd(str_dep_nm1,   INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-  // compute the right-hand side of the linear system of equations from data at departure points:
+  // Compute the right-hand side of the linear system of equations from data at departure points:
   double alpha = (2*dt_n + dt_nm1)/(dt_n+dt_nm1);
   double beta  = -dt_n/(dt_n+dt_nm1);
   double eta   = (dt_nm1+dt_n)/dt_nm1;
@@ -1145,20 +1144,11 @@ void my_p4est_surfactant_t::compute_one_step_Gamma()
 
   double *rhs_temp_p;
   ierr = VecGetArray(rhs_Gamma_temp, &rhs_temp_p); CHKERRXX(ierr);
-  for(size_t i=0; i<ngbd_n->get_layer_size(); ++i)
+  for(size_t n=0; n<nodes_n->indep_nodes.elem_count; ++n)
   {
-    p4est_locidx_t n = ngbd_n->get_layer_node(i);
     rhs_temp_p[n]    = Gamma_dep_n_p[n]  *( (alpha/dt_n) - (beta/dt_nm1) - eta *(str_dep_n_p[n])   ) +
                        Gamma_dep_nm1_p[n]*(                (beta/dt_nm1) - zeta*(str_dep_nm1_p[n]) );
   }
-  ierr = VecGhostUpdateBegin(rhs_Gamma_temp, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  for(size_t i=0; i<ngbd_n->get_local_size(); ++i)
-  {
-    p4est_locidx_t n = ngbd_n->get_local_node(i);
-    rhs_temp_p[n]    = Gamma_dep_n_p[n]  *( (alpha/dt_n) - (beta/dt_nm1) - eta *(str_dep_n_p[n])   ) +
-                       Gamma_dep_nm1_p[n]*(                (beta/dt_nm1) - zeta*(str_dep_nm1_p[n]) );
-  }
-  ierr = VecGhostUpdateEnd  (rhs_Gamma_temp, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecRestoreArray(rhs_Gamma_temp, &rhs_temp_p); CHKERRXX(ierr);
 
   ierr = VecRestoreArrayRead(Gamma_dep_nm1 , &Gamma_dep_nm1_p ); CHKERRXX(ierr);
@@ -1166,15 +1156,15 @@ void my_p4est_surfactant_t::compute_one_step_Gamma()
   ierr = VecRestoreArrayRead(str_dep_nm1   , &str_dep_nm1_p   ); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(str_dep_n     , &str_dep_n_p     ); CHKERRXX(ierr);
 
-  // constant extension of the right-hand side:
+  // Constant extension of the right-hand side:
   my_p4est_level_set_t ls(ngbd_n);
   ls.extend_from_interface_to_whole_domain_TVD(phi, rhs_Gamma_temp, rhs_Gamma);
 
-  // solve for Gamma at t_np1 (at the t_n grid!)
+  // Solve for Gamma at t_np1 (at the t_n grid!)
   ierr = VecCreateGhostNodes(p4est_n, nodes_n, &Gamma_np1); CHKERRXX(ierr);
   if(NO_SURFACE_DIFFUSION)
   {
-    // with no diffusion, multiply rhs by dt_n/alpha and copy it to Gamma_np1:
+    // With no surface diffusion, multiply rhs by dt_n/alpha and copy it to Gamma_np1:
     Vec from_loc, to_loc;
     ierr = VecGhostGetLocalForm(rhs_Gamma, &from_loc);     CHKERRXX(ierr);
     ierr = VecGhostGetLocalForm(Gamma_np1, &to_loc);       CHKERRXX(ierr);
@@ -1306,7 +1296,7 @@ void my_p4est_surfactant_t::update_from_tn_to_tnp1(CF_2 **vnp1)
   for(unsigned short dir = 0; dir < P4EST_DIM; ++dir) { ierr = VecDestroy(dd_Gamma_np1[dir]); CHKERRXX(ierr); }
 
   // Destroy Gamma_np1
-//  ierr = VecDestroy(Gamma_np1); CHKERRXX(ierr);
+  ierr = VecDestroy(Gamma_np1); CHKERRXX(ierr);
 
   for (unsigned short dir=0; dir<P4EST_DIM; ++dir)
   {
@@ -1365,13 +1355,6 @@ void my_p4est_surfactant_t::update_from_tn_to_tnp1(CF_2 **vnp1)
   ierr = VecDestroy(phi); CHKERRXX(ierr);
   phi = phi_np1;
 
-//  ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &phi); CHKERRXX(ierr);
-//  ierr = VecGhostGetLocalForm(phi_np1, &from_loc);        CHKERRXX(ierr);
-//  ierr = VecGhostGetLocalForm(phi, &to_loc);              CHKERRXX(ierr);
-//  ierr = VecCopy(from_loc, to_loc);
-//  ierr = VecGhostRestoreLocalForm(phi_np1, &from_loc);    CHKERRXX(ierr);
-//  ierr = VecGhostRestoreLocalForm(phi, &to_loc);          CHKERRXX(ierr);
-
   // Slide Grid_nm1 <- Grid_n
   p4est_destroy(p4est_nm1);
   p4est_nm1 = p4est_n;
@@ -1426,26 +1409,6 @@ void my_p4est_surfactant_t::update_from_tn_to_tnp1(CF_2 **vnp1)
   // Update time steps
   dt_nm1 = dt_n;
   dt_n = compute_adapted_dt_n();
-
-  //TEMPORARY-------------------------------------------------------------------------
-
-//  const double *phi_p;
-//  ierr = VecGetArrayRead(phi_np1  , &phi_p  );       CHKERRXX(ierr);
-
-//  char vtk_name[1024];
-//  sprintf(vtk_name, "/home/temprano/Output/p4est_surfactant/tests/2d/advection_expansion/3_8/vtu/iter_%d", iter);
-
-//  my_p4est_vtk_write_all(p4est_np1, nodes_np1, ghost_np1,
-//                         P4EST_TRUE, P4EST_TRUE,
-//                         1, /* number of VTK_POINT_DATA (nodes) */
-//                         0, /* number of VTK_CELL_DATA  (cells) */
-//                         vtk_name,
-//                         VTK_POINT_DATA, "phi"     , phi_p);
-
-//  ierr = VecRestoreArrayRead(phi  , &phi_p  );       CHKERRXX(ierr);
-
-  //TEMPORARY-------------------------------------------------------------------------------------
-
 }
 
 
@@ -1467,64 +1430,76 @@ void my_p4est_surfactant_t::save_vtk(const char* name)
   // Create PETSc error flag
   PetscErrorCode ierr;
 
-  unsigned short count_nodes = 0;
+  // Keep count of the number of fields (scalars and vectors) that will be exported
+  unsigned short count_node_scalars = 0;
+  unsigned short count_node_vectors = 0;
 
-  const double *phi_p;
-  const double *phi_band_p;
-  const double *kappa_p;
-  const double *Gamma_n_p;
-  const double *str_n_p;
-  ierr = VecGetArrayRead(phi  , &phi_p  );       CHKERRXX(ierr); ++count_nodes;
-  ierr = VecGetArrayRead(phi_band, &phi_band_p); CHKERRXX(ierr); ++count_nodes;
-  ierr = VecGetArrayRead(kappa, &kappa_p);       CHKERRXX(ierr); ++count_nodes;
-  ierr = VecGetArrayRead(Gamma_n , &Gamma_n_p);  CHKERRXX(ierr); ++count_nodes;
-  ierr = VecGetArrayRead(str_n , &str_n_p);      CHKERRXX(ierr); ++count_nodes;
+  // Declare pointers to scalar fields
+  const double *phi_p;      ++count_node_scalars;
+  const double *phi_band_p; ++count_node_scalars;
+  const double *kappa_p;    ++count_node_scalars;
+  const double *Gamma_n_p;  ++count_node_scalars;
+  const double *str_n_p;    ++count_node_scalars;
+  ierr = VecGetArrayRead(phi,      &phi_p  );    CHKERRXX(ierr);
+  ierr = VecGetArrayRead(phi_band, &phi_band_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(kappa,    &kappa_p);    CHKERRXX(ierr);
+  ierr = VecGetArrayRead(Gamma_n,  &Gamma_n_p);  CHKERRXX(ierr);
+  ierr = VecGetArrayRead(str_n,    &str_n_p);    CHKERRXX(ierr);
 
-  const double *vn_p[P4EST_DIM];
-  const double *vn_s_p[P4EST_DIM];
-  const double *normal_p[P4EST_DIM];
+  // Declare pointers to vector fields
+  const double *vn_p[P4EST_DIM];     ++count_node_vectors;
+  const double *vn_s_p[P4EST_DIM];   ++count_node_vectors;
+  const double *normal_p[P4EST_DIM]; ++count_node_vectors;
   for(unsigned short dir=0; dir<P4EST_DIM; ++dir)
   {
-    ierr = VecGetArrayRead(vn_nodes[dir],   &vn_p[dir]);   CHKERRXX(ierr); ++count_nodes;
-    ierr = VecGetArrayRead(vn_s_nodes[dir], &vn_s_p[dir]); CHKERRXX(ierr); ++count_nodes;
-    ierr = VecGetArrayRead(normal[dir],   &normal_p[dir]); CHKERRXX(ierr); ++count_nodes;
+    ierr = VecGetArrayRead(vn_nodes[dir],   &vn_p[dir]);     CHKERRXX(ierr);
+    ierr = VecGetArrayRead(vn_s_nodes[dir], &vn_s_p[dir]);   CHKERRXX(ierr);
+    ierr = VecGetArrayRead(normal[dir],     &normal_p[dir]); CHKERRXX(ierr);
   }
 
-  my_p4est_vtk_write_all(p4est_n, nodes_n, ghost_n,
-                         P4EST_TRUE, P4EST_TRUE,
-                         count_nodes, /* number of VTK_POINT_DATA (nodes) */
-                         0, /* number of VTK_CELL_DATA  (cells) */
-                         name,
-                         VTK_POINT_DATA, "phi"     , phi_p,
-                         VTK_POINT_DATA, "phi_band", phi_band_p,
-                         VTK_POINT_DATA, "Gamma"   , Gamma_n_p,
-                         VTK_POINT_DATA, "kappa"   , kappa_p,
-                         VTK_POINT_DATA, "n_x", normal_p[0],
-                         VTK_POINT_DATA, "n_y", normal_p[1],
+  // Export in vtk format
+  my_p4est_vtk_write_all_general(p4est_n, nodes_n, ghost_n,
+                                 P4EST_TRUE, P4EST_TRUE,
+                                 count_node_scalars, // number of VTK_NODE_SCALAR
+                                 count_node_vectors, // number of VTK_NODE_VECTOR_BY_COMPONENTS
+                                 0,                  // number of VTK_NODE_VECTOR_BLOCK
+                                 0,                  // number of VTK_CELL_SCALAR
+                                 0,                  // number of VTK_CELL_VECTOR_BY_COMPONENTS
+                                 0,                  // number of VTK_CELL_VECTOR_BLOCK
+                                 name,
+                                 VTK_NODE_SCALAR, "phi",      phi_p,
+                                 VTK_NODE_SCALAR, "phi_band", phi_band_p,
+                                 VTK_NODE_SCALAR, "Gamma"   , Gamma_n_p,
+                                 VTK_NODE_SCALAR, "kappa"   , kappa_p,
+                                 VTK_NODE_VECTOR_BY_COMPONENTS, "n", normal_p[0],
+                                                                     normal_p[1],
 #ifdef P4_TO_P8
-                         VTK_POINT_DATA, "n_z", normal_p[2],
+                                                                     normal_p[2],
 #endif
-                         VTK_POINT_DATA, "v_x", vn_p[0],
-                         VTK_POINT_DATA, "v_y", vn_p[1],
+                                 VTK_NODE_VECTOR_BY_COMPONENTS, "v", vn_p[0],
+                                                                     vn_p[1],
 #ifdef P4_TO_P8
-                         VTK_POINT_DATA, "v_z", vn_p[2],
+                                                                     vn_p[2],
 #endif
-                         VTK_POINT_DATA, "vs_x", vn_s_p[0],
-                         VTK_POINT_DATA, "vs_y", vn_s_p[1],
+                                 VTK_NODE_VECTOR_BY_COMPONENTS, "vs", vn_s_p[0],
+                                                                      vn_s_p[1],
 #ifdef P4_TO_P8
-                         VTK_POINT_DATA, "vs_z", vn_s_p[2],
+                                                                      vn_s_p[2],
 #endif
-                         VTK_POINT_DATA, "str", str_n_p);
+                                 VTK_NODE_SCALAR, "str", str_n_p);
 
-  ierr = VecRestoreArrayRead(phi  , &phi_p  );       CHKERRXX(ierr);
+  // Restore pointers to scalar fields
+  ierr = VecRestoreArrayRead(phi,      &phi_p  );    CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(phi_band, &phi_band_p); CHKERRXX(ierr);
-  ierr = VecRestoreArrayRead(kappa, &kappa_p);       CHKERRXX(ierr);
-  ierr = VecRestoreArrayRead(Gamma_n , &Gamma_n_p);  CHKERRXX(ierr);
-  ierr = VecRestoreArrayRead(str_n , &str_n_p);      CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(kappa,    &kappa_p);    CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(Gamma_n,  &Gamma_n_p);  CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(str_n,    &str_n_p);    CHKERRXX(ierr);
+
+  // Restore pointers to vector fields
   for(unsigned short dir=0; dir<P4EST_DIM; ++dir)
   {
     ierr = VecRestoreArrayRead(vn_nodes[dir],   &vn_p[dir]);     CHKERRXX(ierr);
     ierr = VecRestoreArrayRead(vn_s_nodes[dir], &vn_s_p[dir]);   CHKERRXX(ierr);
-    ierr = VecRestoreArrayRead(normal[dir],   &normal_p[dir]); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(normal[dir],     &normal_p[dir]); CHKERRXX(ierr);
   }
 }
