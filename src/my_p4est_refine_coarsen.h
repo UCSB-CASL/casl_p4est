@@ -51,6 +51,7 @@ struct splitting_criteria_cf_t : splitting_criteria_t {
 #else
   CF_2 *phi;
 #endif
+  bool refine_only_inside;
 #ifdef P4_TO_P8
   splitting_criteria_cf_t(int min_lvl, int max_lvl, CF_3 *phi, double lip=1.2)
 #else
@@ -60,6 +61,7 @@ struct splitting_criteria_cf_t : splitting_criteria_t {
   {
     this->phi = phi;
   }
+  void set_refine_only_inside(bool val) { refine_only_inside = val; }
 };
 
 struct splitting_criteria_thresh_t : splitting_criteria_t {
@@ -121,14 +123,18 @@ protected:
 	static int  coarsen_fn(p4est_t* p4est, p4est_topidx_t which_tree, p4est_quadrant_t** quad);
 	
   void tag_quadrant(p4est_t* p4est, p4est_quadrant_t* quad, p4est_topidx_t which_tree, const double* f);
+  void tag_quadrant_inside(p4est_t* p4est, p4est_quadrant_t* quad, p4est_topidx_t which_tree, const double* f);
+  bool refine_only_inside;
 public:
   splitting_criteria_tag_t(int min_lvl, int max_lvl, double lip=1.2)
-    : splitting_criteria_t(min_lvl, max_lvl, lip)
+    : splitting_criteria_t(min_lvl, max_lvl, lip), refine_only_inside(false)
   {
   }
 
   bool refine_and_coarsen(p4est_t* p4est, const p4est_nodes_t* nodes, const double* phi);
   bool refine(p4est_t* p4est, const p4est_nodes_t* nodes, const double* phi);
+
+  void set_refine_only_inside(bool val) { refine_only_inside = val; }
 };
 
 struct splitting_criteria_grad_t: public splitting_criteria_t {
@@ -267,5 +273,15 @@ refine_grad_cf(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad
  */
 p4est_bool_t
 coarsen_grad_cf(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **quad);
+
+/*!
+ * \brief coarsen_down_to_lmax a dumb coarsening down to lmax
+ * \param p4est
+ * \param which_tree
+ * \param quad
+ * \return
+ */
+p4est_bool_t
+coarsen_down_to_lmax (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad);
 
 #endif // REFINE_COARSEN_H

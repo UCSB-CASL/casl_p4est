@@ -33,11 +33,11 @@
  * Date Created: 09-26-2019
  */
 
-#include <my_mpi_world.h>
+#include "my_mpi_world.h"
 #include <petsc.h>
 #include <src/Parser.h>
-#include <my_petsc_utils.h>
-#include <one_dimensional_uniform_grid.h>
+#include "my_petsc_utils.h"
+#include "one_dimensional_uniform_grid.h"
 #include <math.h>
 
 #define SQR(a) (a*a)

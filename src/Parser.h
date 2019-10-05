@@ -87,6 +87,7 @@ public:
      * \param [in] f file stream (default value is stdout)
      */
     void print(FILE *f = stdout);
+    void show_help();
 };
 
 #endif // PARSER_H

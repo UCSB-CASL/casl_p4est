@@ -20,6 +20,8 @@ extern PetscLogEvent log_quad_neighbor_nodes_of_node_t_dxx_central_m00;
 extern PetscLogEvent log_quad_neighbor_nodes_of_node_t_dxx_central_p00;
 extern PetscLogEvent log_quad_neighbor_nodes_of_node_t_dyy_central_0m0;
 extern PetscLogEvent log_quad_neighbor_nodes_of_node_t_dyy_central_0p0;
+extern PetscLogEvent log_quad_neighbor_nodes_of_node_t_gradient;
+extern PetscLogEvent log_quad_neighbor_nodes_of_node_t_laplace;
 #endif
 #ifndef CASL_LOG_FLOPS
 #undef  PetscLogFlops
@@ -392,4 +394,102 @@ double quad_neighbor_nodes_of_node_t::dyy_central_on_0p0(const double *f, const 
   ierr = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_dyy_central_0p0, 0, 0, 0, 0); CHKERRXX(ierr);
 
   return (fyy_0p0_mm*d_0p0_p0 + fyy_0p0_pm*d_0p0_m0)/(d_0p0_m0+d_0p0_p0);
+}
+
+
+
+
+
+double quad_neighbor_nodes_of_node_t::dy_central_on_m00(const double *f, const my_p4est_node_neighbors_t &neighbors) const
+{
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_dxx_central_m00, 0, 0, 0, 0); CHKERRXX(ierr);
+
+  // FIXME: These kind of operations would be expensive if neighbors is not initialized!
+  double fy_m00_mm = 0, fy_m00_pm = 0;
+  if (d_m00_p0 != 0) { fy_m00_mm = neighbors.get_neighbors(node_m00_mm).dy_central(f); }
+  if (d_m00_m0 != 0) { fy_m00_pm = neighbors.get_neighbors(node_m00_pm).dy_central(f); }
+
+  ierr = PetscLogFlops(5); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_dxx_central_m00, 0, 0, 0, 0); CHKERRXX(ierr);
+
+  return (fy_m00_mm*d_m00_p0 + fy_m00_pm*d_m00_m0)/(d_m00_m0+d_m00_p0);
+}
+
+double quad_neighbor_nodes_of_node_t::dy_central_on_p00(const double *f, const my_p4est_node_neighbors_t &neighbors) const
+{
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_dxx_central_p00, 0, 0, 0, 0); CHKERRXX(ierr);
+
+  double fy_p00_mm = 0, fy_p00_pm = 0;
+  if (d_p00_p0 != 0) { fy_p00_mm = neighbors.get_neighbors(node_p00_mm).dy_central(f); }
+  if (d_p00_m0 != 0) { fy_p00_pm = neighbors.get_neighbors(node_p00_pm).dy_central(f); }
+
+  ierr = PetscLogFlops(5); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_dxx_central_p00, 0, 0, 0, 0); CHKERRXX(ierr);
+
+  return (fy_p00_mm*d_p00_p0 + fy_p00_pm*d_p00_m0)/(d_p00_m0+d_p00_p0);
+}
+
+double quad_neighbor_nodes_of_node_t::dx_central_on_0m0(const double *f, const my_p4est_node_neighbors_t &neighbors) const
+{
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_dyy_central_0m0, 0, 0, 0, 0); CHKERRXX(ierr);
+
+  double fx_0m0_mm = 0, fx_0m0_pm = 0;
+  if (d_0m0_p0 != 0) { fx_0m0_mm = neighbors.get_neighbors(node_0m0_mm).dx_central(f); }
+  if (d_0m0_m0 != 0) { fx_0m0_pm = neighbors.get_neighbors(node_0m0_pm).dx_central(f); }
+
+  ierr = PetscLogFlops(5); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_dyy_central_0m0, 0, 0, 0, 0); CHKERRXX(ierr);
+
+  return (fx_0m0_mm*d_0m0_p0 + fx_0m0_pm*d_0m0_m0)/(d_0m0_m0+d_0m0_p0);
+}
+
+double quad_neighbor_nodes_of_node_t::dx_central_on_0p0(const double *f, const my_p4est_node_neighbors_t &neighbors) const
+{
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_dyy_central_0p0, 0, 0, 0, 0); CHKERRXX(ierr);
+
+  double fx_0p0_mm = 0, fx_0p0_pm = 0;
+  if (d_0p0_p0 != 0) { fx_0p0_mm = neighbors.get_neighbors(node_0p0_mm).dx_central(f); }
+  if (d_0p0_m0 != 0) { fx_0p0_pm = neighbors.get_neighbors(node_0p0_pm).dx_central(f); }
+
+  ierr = PetscLogFlops(5); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_dyy_central_0p0, 0, 0, 0, 0); CHKERRXX(ierr);
+
+  return (fx_0p0_mm*d_0p0_p0 + fx_0p0_pm*d_0p0_m0)/(d_0p0_m0+d_0p0_p0);
+}
+
+
+p4est_locidx_t quad_neighbor_nodes_of_node_t::neighbor_m00() const
+{
+  if(d_m00_p0==0) return node_m00_pm;
+  if(d_m00_m0==0) return node_m00_mm;
+  else return -1;
+//  else            throw std::invalid_argument("No neighbor in m00 direction \n");
+}
+
+p4est_locidx_t quad_neighbor_nodes_of_node_t::neighbor_p00() const
+{
+  if(d_p00_p0==0) return node_p00_pm;
+  if(d_p00_m0==0) return node_p00_mm;
+  else return -1;
+//    else            throw std::invalid_argument("No neighbor in p00 direction \n");
+}
+
+p4est_locidx_t quad_neighbor_nodes_of_node_t::neighbor_0m0() const
+{
+  if(d_0m0_m0==0) return node_0m0_mm;
+  if(d_0m0_p0==0) return node_0m0_pm;
+  else return -1;
+//    else            throw std::invalid_argument("No neighbor in 0m0 direction \n");
+}
+
+p4est_locidx_t quad_neighbor_nodes_of_node_t::neighbor_0p0() const
+{
+  if(d_0p0_m0==0) return node_0p0_mm;
+  if(d_0p0_p0==0) return node_0p0_pm;
+  else return -1;
+//    else            throw std::invalid_argument("No neighbor in 0p0 direction \n");
 }

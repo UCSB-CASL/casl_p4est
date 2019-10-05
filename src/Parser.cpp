@@ -64,6 +64,17 @@ void cmdParser::print(FILE *f){
   PetscPrintf(MPI_COMM_WORLD, " ----------------------------------------------------------------- \n");    
 }
 
+void cmdParser::show_help(){
+  PetscPrintf(MPI_COMM_WORLD, "\n\n");
+  PetscPrintf(MPI_COMM_WORLD, " -------------------== CASL Options Database ==------------------- \n\n");
+  PetscPrintf(MPI_COMM_WORLD, " List of available options:\n\n");
+  for (std::map<std::string, std::string>::const_iterator it = options.begin(); it != options.end(); ++it)
+  {
+    PetscPrintf(MPI_COMM_WORLD, "  -%s: %s\n", it->first.c_str(), it->second.c_str());
+  }
+  PetscPrintf(MPI_COMM_WORLD, " ----------------------------------------------------------------- \n\n");
+}
+
 bool cmdParser::contains(const std::string& key)
 {
   return (buffer.find(key) != buffer.end());

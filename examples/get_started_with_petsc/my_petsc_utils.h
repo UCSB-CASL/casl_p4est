@@ -2,7 +2,7 @@
 #define MY_PETSC_UTILS_H
 
 #include <petsc.h>
-#include <one_dimensional_uniform_grid.h>
+#include "one_dimensional_uniform_grid.h"
 
 /*!
  * Exhaustive comments to be found for the functions here below in the cpp file, alongside their definitions

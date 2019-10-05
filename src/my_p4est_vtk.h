@@ -32,6 +32,8 @@
 #include <p4est_bits.h>
 #endif
 
+#include <vector>
+
 
 /********************************************************************
  *                          IMPORTANT NOTE                          *
@@ -170,6 +172,11 @@ int                 my_p4est_vtk_write_footer (p4est_t * p4est,
                                                const char *filename);
 
 void my_p4est_vtk_write_ghost_layer(p4est_t *p4est, p4est_ghost_t *ghost);
+
+void my_p4est_vtk_write_all_vector_form (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
+                                         int write_rank, int write_tree, const char *filename,
+                                         std::vector<double *> point_data, std::vector<std::string> point_data_names,
+                                         std::vector<double *> cell_data,  std::vector<std::string> cell_data_names);
 
 SC_EXTERN_C_END;
 

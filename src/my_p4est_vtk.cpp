@@ -1610,3 +1610,91 @@ void my_p4est_vtk_write_ghost_layer(p4est_t *p4est, p4est_ghost_t *ghost)
   P4EST_FREE(x);
   P4EST_FREE(y);
 }
+
+
+void
+my_p4est_vtk_write_all_vector_form (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
+                                    int write_rank, int write_tree, const char *filename,
+                                    std::vector<double *> point_data, std::vector<std::string> point_data_names,
+                                    std::vector<double *> cell_data,  std::vector<std::string> cell_data_names)
+{
+  PetscErrorCode ierr;
+  int                 retval;
+  int                 i, all_p, all_c;
+  int                 cell_scalar_strlen, point_scalar_strlen;
+  char                cell_scalars[BUFSIZ], point_scalars[BUFSIZ];
+  const char         *cell_name, *point_name, **cell_names, **point_names;
+  const double       **cell_values, **point_values;
+  int            vtk_type;
+  va_list             ap;
+
+  int num_point_scalars = point_data.size();
+  int num_cell_scalars  = cell_data.size();
+
+  P4EST_ASSERT (num_cell_scalars >= 0  && num_point_scalars >= 0 );
+
+  // logging
+  ierr = PetscLogEventBegin(log_my_p4est_vtk_write_all, 0, 0, 0, 0); CHKERRV(ierr);
+
+  /* Allocate memory for the data and their names */
+  cell_values  = P4EST_ALLOC(const double * , num_cell_scalars);
+  point_values = P4EST_ALLOC(const double * , num_point_scalars);
+  cell_names   = P4EST_ALLOC (const char *, num_cell_scalars);
+  point_names  = P4EST_ALLOC (const char *, num_point_scalars);
+
+  cell_scalar_strlen = point_scalar_strlen = 0;
+  cell_scalars[0] = point_scalars[0] = '\0';
+
+  for (i = 0; i < num_point_scalars; ++i)
+  {
+    point_name = point_names[i] = point_data_names[i].c_str();
+    retval = snprintf (point_scalars + point_scalar_strlen, BUFSIZ - point_scalar_strlen,
+                       "%s%s", i == 0 ? "" : ", ", point_name);
+    SC_CHECK_ABORT (retval > 0,
+                    P4EST_STRING "_vtk: Error collecting point scalars");
+    point_scalar_strlen += retval;
+
+    /* now get the values */
+    point_values[i] = point_data[i];
+  }
+
+  for (i = 0; i < num_cell_scalars; ++i)
+  {
+    cell_name = cell_names[i] = cell_data_names[i].c_str();
+    retval = snprintf (cell_scalars + cell_scalar_strlen, BUFSIZ - cell_scalar_strlen,
+                       "%s%s", i == 0 ? "" : ", ", cell_name);
+    SC_CHECK_ABORT (retval > 0,
+                    P4EST_STRING "_vtk: Error collecting point scalars");
+    cell_scalar_strlen += retval;
+
+    /* get the values */
+    cell_values[i] = cell_data[i];
+  }
+
+
+  retval = my_p4est_vtk_write_header (p4est, nodes, ghost, filename);
+  SC_CHECK_ABORT (!retval, P4EST_STRING "_vtk: Error writing header");
+
+  /* now write the actual data */
+
+  retval = my_p4est_vtk_write_point_scalar (p4est, nodes, ghost, filename,
+                                            num_point_scalars, point_scalars, point_names, point_values);
+  SC_CHECK_ABORT (!retval,
+                  P4EST_STRING "_vtk: Error writing point scalars");
+
+  retval = my_p4est_vtk_write_cell_scalar (p4est, ghost, write_rank, write_tree, filename,
+                                           num_cell_scalars, cell_scalars, cell_names, cell_values);
+  SC_CHECK_ABORT (!retval,
+                  P4EST_STRING "_vtk: Error writing cell scalars");
+
+
+  retval = my_p4est_vtk_write_footer (p4est, filename);
+  SC_CHECK_ABORT (!retval, P4EST_STRING "_vtk: Error writing footer");
+
+  P4EST_FREE (cell_values);
+  P4EST_FREE (point_values);
+  P4EST_FREE (cell_names);
+  P4EST_FREE (point_names);
+
+  ierr = PetscLogEventEnd(log_my_p4est_vtk_write_all, 0, 0, 0, 0); CHKERRV(ierr);
+}

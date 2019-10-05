@@ -48,14 +48,14 @@ function create_pri() {
 cat > $1.pri << EOF
 
 CONFIG(2d, 2d|3d): {
-  SOURCES += main_2d.cpp
+  SOURCES += \$\$PWD/main_2d.cpp
 }
 
 CONFIG(3d, 2d|3d): {
-  SOURCES += main_3d.cpp
+  SOURCES += \$\$PWD/main_3d.cpp
 }
 
-include(../../qmake/libparcasl.pri)
+include(\$\$PWD/../../qmake/libparcasl.pri)
 
 EOF
 }
@@ -180,7 +180,7 @@ EOF
 help="-- Use this script to a new example and/or a new .pro file --
 
 usage:
-    ./$(basename "$0") example_name
+    ./$(basename "$0") example_name [pro_file_destination]
   to be executed in the $(dirname "$PWD")/example directory
 
 where:
@@ -189,6 +189,10 @@ where:
     main files will be created as well. If the example folder already exists, the script will create
     and add any missing configuration file(s) and it will create dummy main files if no main file is
     to be found in the existing directory.
+
+    pro_file_destination is the name of the directory where a new .pro file will be placed. If the
+    directory does not exist, it will be created. If not provided, a new .pro file will be created
+    in the example folder (i.e, examples/example_name/)
 
 The user needs to have defined the following environment variable
     CASL_P4EST_USER:  environment specifier
@@ -201,19 +205,32 @@ export CASL_P4EST_USER=basename of the specific .pri file in $(dirname "$PWD")/q
                        by executing ./new_environment in $(dirname "$PWD")/qmake .
 "
 
-if [ "$#" -ne 1 ] || [ "$1" == "-h" ] || [ "$1" == "-help" ]; then
+if { [ "$#" -ne 1 ] && [ "$#" -ne 2 ]; } || [ "$1" == "-h" ] || [ "$1" == "-help" ]; then
     echo "$help"
     exit 1;
 else
   name=$1
 
+  if [ "$#" -eq 2 ]; then
+    pro_dir=$2
+  else
+    pro_dir=$1
+  fi
+
   # create a new example only if one does not exist with the same name
-  if [ ! -e ${name} ] || { [ -e ${name} ] && [ ! -f ${name}/${name}.pro ]; } || { [ -e ${name} ] && [ ! "$(ls ${name}/main*.cpp 2>/dev/null)" ] ; }; then
+  if [ ! -e ${name} ] || { [ -e ${name} ] && [ ! -f ${pro_dir}/${name}.pro ]; } || { [ -e ${name} ] && [ ! "$(ls ${name}/main*.cpp 2>/dev/null)" ] ; }; then
     if [ ! -e ${name} ]; then
       echo "Creating directory ./${name}"
       mkdir ${name}
     fi
-    if [ -e ${name} ] && [ ! -f ${name}/${name}.pro ]; then
+    if [ ! -e ${pro_dir} ]; then
+      echo "Creating directory ${pro_dir}"
+      mkdir -p ${pro_dir}
+      if [ ! -e ${pro_dir} ]; then
+        exit 1;
+      fi
+    fi
+    if [ -e ${name} ] && [ ! -f ${pro_dir}/${name}.pro ]; then
       # we will need to create the .pro file, so we will need CASL_P4EST_USER to be defined
       CASL_P4EST_DIR="$(dirname "$PWD")"
       if [ ! -d ${CASL_P4EST_DIR} ]; then
@@ -235,9 +252,11 @@ else
       fi
 
       echo "Creating the .pro file."
-      cd $name
+      cd $pro_dir
       create_pro $name $CASL_P4EST_DIR
+      cd ${CASL_P4EST_DIR}/examples/
 
+      cd $name
       if [ ! -e $name.pri ]; then
         create_pri $name
       else

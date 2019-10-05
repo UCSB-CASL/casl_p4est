@@ -107,6 +107,9 @@ public:
 #endif
 
   virtual double interpolate(const p4est_quadrant_t &quad, const double *xyz) const = 0;
+
+  void add_point_local(p4est_locidx_t locidx, const double *xyz);
+  void interpolate_local(double *Fo_p);
 };
 
 #endif /* MY_P4EST_INTERPOLATION */
