@@ -53,7 +53,7 @@ public:
   void operator()(double x, double y, double* results) const;
 #endif
 
-  void interpolate(const p4est_quadrant_t &quad, const double *xyz, double* results) const;
+  void interpolate(const p4est_quadrant_t &quad, const double *xyz, double* results, const unsigned int &comp) const;
 };
 
 #endif /* MY_P4EST_INTERPOLATION_CELLS_H */

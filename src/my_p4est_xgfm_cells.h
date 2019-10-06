@@ -166,10 +166,10 @@ class my_p4est_xgfm_cells_t
   p4est_ghost_t *fine_ghost;
   const my_p4est_node_neighbors_t *fine_node_ngbd;
   Vec phi, jump_u;
-  Vec normals, phi_xxyyzz; // P4EST_DIM blocked, not owned by the solver
+  Vec normals, phi_xxyyzz; // P4EST_DIM block-structured, not owned by the solver
   bool phi_has_been_set, normals_have_been_set, mus_have_been_set, jumps_have_been_set, second_derivatives_of_phi_are_set;
   Vec corrected_rhs; // constructed and owned by solver, hence destroyed at destruction
-  Vec jump_mu_grad_u; // P4EST_DIM-blocked constructed and owned by solver, hence destroyed at destruction
+  Vec jump_mu_grad_u; // P4EST_DIM block-structured constructed and owned by solver, hence destroyed at destruction
   Vec extension_cell_values, extension_on_fine_nodes; // constructed and owned by solver, hence destroyed at destruction
 
 #ifdef P4_TO_P8

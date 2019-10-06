@@ -45,7 +45,7 @@ SOURCES += \
   $$PARCASL/src/my_p4est_semi_lagrangian.cpp \
   $$PARCASL/src/my_p4est_solve_lsqr.cpp \
   $$PARCASL/src/my_p4est_trajectory_of_point.cpp \
-#  $$PARCASL/src/my_p4est_two_phase_flows.cpp \
+  $$PARCASL/src/my_p4est_two_phase_flows.cpp \
   $$PARCASL/src/my_p4est_utils.cpp \
 #  $$PARCASL/src/my_p4est_epitaxy.cpp \
   $$PARCASL/src/my_p4est_log_wrappers.c \

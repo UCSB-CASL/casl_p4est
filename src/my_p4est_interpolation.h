@@ -82,8 +82,8 @@ protected:
   inline unsigned int n_vecs() const { return Fi.size(); }
 
   // methods  
-  void process_incoming_query(MPI_Status& status, InterpolatingFunctionLogEntry& entry);
-  void process_incoming_reply(MPI_Status& status, double * const* Fo_p);
+  void process_incoming_query(MPI_Status& status, InterpolatingFunctionLogEntry& entry, const unsigned int &comp);
+  void process_incoming_reply(MPI_Status& status, double * const* Fo_p, const unsigned int &comp);
 
   // rule of three -- disable copy ctr and assignment if not useful
   my_p4est_interpolation_t(const my_p4est_interpolation_t& other);
@@ -95,6 +95,8 @@ public:
   my_p4est_interpolation_t(const my_p4est_node_neighbors_t* neighbors);
   ~my_p4est_interpolation_t();
 
+  const static unsigned int ALL_COMPONENTS=UINT_MAX;
+
   /*!
    * \brief clear the points buffered for interpolation. Call this method to re-use an instantiation.
    */
@@ -103,23 +105,31 @@ public:
   void add_point(p4est_locidx_t locidx, const double *xyz);
 
   // interpolation methods and inline wrappers
-  void interpolate(double * const *Fo, unsigned int n_functions);
-  inline void interpolate(double *Fo) { interpolate(&Fo, 1); }
+  void interpolate(double * const *Fo, unsigned int n_functions, const unsigned int &comp=ALL_COMPONENTS);
+  inline void interpolate(double *Fo, const unsigned int &comp=ALL_COMPONENTS) { interpolate(&Fo, 1, comp); }
 
+  // the following 3 functions do not allow to interpolate one specific component only
+  // Why? Because we would need to know whether the output vectors Fo have the same block
+  // as the inputs or not and, if not, in which component of the ouput to store the results
+  // This could become a serious hot mess... For instance: let's say you want to interpolate
+  // one of the components of a P4EST_DIM-block-structured node-sampled velocity vector field
+  // to a non-block-structured vector corresponding to a face-sampling vector, the extension
+  // of the following function would be fairly confusing...
+  // So we leave the following functions for interpolations from all components to all components
+  // (the best way to proceed in a case like the example above, would be to call the above
+  // function(s) immediately with the local array(s) of the destination vectors)
   inline void interpolate(Vec *Fos, unsigned int n_outputs)
   {
     P4EST_ASSERT(n_outputs > 0);
     double *Fo_p[n_outputs];
     for (unsigned int k = 0; k < n_outputs; ++k) {
-      ierr = VecGetArray(Fos[k], &Fo_p[k]); CHKERRXX(ierr);
-    }
-    interpolate(Fo_p, n_outputs);
+      ierr = VecGetArray(Fos[k], &Fo_p[k]); CHKERRXX(ierr); }
+    interpolate(Fo_p, n_outputs, ALL_COMPONENTS);
     for (unsigned int k = 0; k < n_outputs; ++k) {
-      ierr = VecRestoreArray(Fos[k], &Fo_p[k]); CHKERRXX(ierr);
-    }
+      ierr = VecRestoreArray(Fos[k], &Fo_p[k]); CHKERRXX(ierr); }
   }
   inline void interpolate(Vec Fo){ interpolate(&Fo, 1); }
-  inline void interpolate(vector<Vec>& Fo) {interpolate(Fo.data(), Fo.size());}
+  inline void interpolate(vector<Vec>& Fo) { interpolate(Fo.data(), Fo.size()); }
 
 #ifdef P4_TO_P8
   virtual void operator()(double x, double y, double z, double* results) const = 0;
@@ -160,13 +170,13 @@ public:
   // fully abstract function, needs to be defined in all child classes
   // the array results must be of size bs_f*n_vecs(),
   // on output, results[bs_f*k+comp] = interpolated value of the comp_th copmonent of the kth field
-  virtual void interpolate(const p4est_quadrant_t &quad, const double *xyz, double* results) const = 0;
-  inline double interpolate(const p4est_quadrant_t &quad, const double *xyz)
+  virtual void interpolate(const p4est_quadrant_t &quad, const double *xyz, double* results, const unsigned int &comp) const = 0;
+  inline double interpolate(const p4est_quadrant_t &quad, const double *xyz, const unsigned int &comp)
   {
     P4EST_ASSERT(n_vecs() == 1);
     P4EST_ASSERT(bs_f == 1);
     double to_return;
-    interpolate(quad, xyz, &to_return);
+    interpolate(quad, xyz, &to_return, comp);
     return to_return;
   }
 };

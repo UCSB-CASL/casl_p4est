@@ -66,7 +66,7 @@ void my_p4est_interpolation_faces_t::operator ()(double x, double y, double *res
 //  if(rank_found!=-1)
   if(rank_found == p4est->mpirank)
   {
-    interpolate(best_match, xyz, results);
+    interpolate(best_match, xyz, results, 1); // last argument is dummy
     return;
   }
 
@@ -74,7 +74,7 @@ void my_p4est_interpolation_faces_t::operator ()(double x, double y, double *res
 }
 
 
-void my_p4est_interpolation_faces_t::interpolate(const p4est_quadrant_t &quad, const double *xyz, double *results) const
+void my_p4est_interpolation_faces_t::interpolate(const p4est_quadrant_t &quad, const double *xyz, double *results, const unsigned int &) const
 {
   PetscErrorCode ierr;
 
