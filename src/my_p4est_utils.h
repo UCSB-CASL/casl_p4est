@@ -27,7 +27,7 @@
 
 // forward declaration
 class my_p4est_node_neighbors_t;
-struct quad_neighbor_nodes_of_node_t;
+class quad_neighbor_nodes_of_node_t;
 
 #define COMMA ,
 #define P4(a) a
@@ -1675,6 +1675,8 @@ public:
   } stopwatch_timing;
 
 private:
+  PetscErrorCode ierr;
+  int mpiret;
   double ts, tf;
   MPI_Comm comm_;
   int mpirank;
@@ -1683,6 +1685,41 @@ private:
   stopwatch_timing timing_;
   std::vector<double> t;
   FILE *f_;
+
+  void gather_and_print_info(const double &elap, const bool &print_stats_only)
+  {
+    ierr = PetscFPrintf(comm_, f_, "%s ... done in \n", msg_.c_str()); CHKERRXX(ierr);
+    if (timing_ == all_timings){
+      mpiret = MPI_Gather(&elap, 1, MPI_DOUBLE, &t[0], 1, MPI_DOUBLE, 0, comm_); SC_CHECK_MPI(mpiret);
+      double tmax, tmin, tavg, tdev;
+      tmax = tmin = elap;
+      tavg = tdev = 0;
+      if (mpirank == 0){
+        if(!print_stats_only) {
+          ierr = PetscFPrintf(comm_, f_, "t = ["); CHKERRXX(ierr);
+        for (size_t i=0; i<t.size()-1; i++) {
+          ierr = PetscFPrintf(comm_, f_, "%.5lf, ", t[i]); CHKERRXX(ierr); }
+        ierr = PetscFPrintf(comm_, f_, "%.5lf];\n", t.back()); CHKERRXX(ierr);
+        }
+
+        for (size_t i=0; i<t.size(); i++){
+          tavg += t[i];
+          tmax = MAX(tmax, t[i]);
+          tmin = MIN(tmin, t[i]);
+        }
+        tavg /= mpisize;
+
+        for (size_t i=0; i<t.size(); i++){
+          tdev += (t[i]-tavg)*(t[i]-tavg);
+        }
+        tdev = sqrt(tdev/mpisize);
+      }
+
+      ierr = PetscFPrintf(comm_, f_, " t_max = %.5lf (s), t_max/t_min = %.2lf, t_avg = %.5lf (s), t_dev/t_avg = %% %2.1lf, t_dev/(t_max-t_min) = %% %2.1lf\n\n", tmax, tmax/tmin, tavg, tdev/tavg*100, tdev/(tmax-tmin)*100); CHKERRXX(ierr);
+    } else {
+      ierr = PetscFPrintf(comm_, f_, " %.5lf secs. on process %d [Note: only showing root's timings]\n\n", elap, mpirank); CHKERRXX(ierr); }
+    return;
+  }
 
 public:
 
@@ -1696,7 +1733,7 @@ public:
 
   void start(const std::string& msg){
     msg_ = msg;
-    PetscFPrintf(comm_, f_, "%s ... \n", msg.c_str());
+    ierr = PetscFPrintf(comm_, f_, "%s ... \n", msg.c_str()); CHKERRXX(ierr);
     ts = MPI_Wtime();
   }
 
@@ -1708,73 +1745,15 @@ public:
     tf = MPI_Wtime();
   }
 
-  double read_duration(){
+  double read_duration(const bool &print_stats_only=false){
     double elap = tf - ts;
-
-    PetscPrintf(comm_, "%s ... done in \n", msg_.c_str());
-    if (timing_ == all_timings){
-      MPI_Gather(&elap, 1, MPI_DOUBLE, &t[0], 1, MPI_DOUBLE, 0, comm_);
-      double tmax, tmin, tavg, tdev;
-      tmax = tmin = elap;
-      tavg = tdev = 0;
-      if (mpirank == 0){
-        PetscFPrintf(comm_, f_, "t = [");
-        for (size_t i=0; i<t.size()-1; i++)
-          PetscFPrintf(comm_, f_, "%.5lf, ", t[i]);
-        PetscFPrintf(comm_, f_, "%.5lf];\n", t.back());
-
-        for (size_t i=0; i<t.size(); i++){
-          tavg += t[i];
-          tmax = MAX(tmax, t[i]);
-          tmin = MIN(tmin, t[i]);
-        }
-        tavg /= mpisize;
-
-        for (size_t i=0; i<t.size(); i++){
-          tdev += (t[i]-tavg)*(t[i]-tavg);
-        }
-        tdev = sqrt(tdev/mpisize);
-      }
-
-      PetscFPrintf(comm_, f_, " t_max = %.5lf (s), t_max/t_min = %.2lf, t_avg = %.5lf (s), t_dev/t_avg = %% %2.1lf, t_dev/(t_max-t_min) = %% %2.1lf\n\n", tmax, tmax/tmin, tavg, tdev/tavg*100, tdev/(tmax-tmin)*100);
-    } else {
-      PetscFPrintf(comm_, f_, " %.5lf secs. on process %d [Note: only showing root's timings]\n\n", elap, mpirank);
-    }
+    gather_and_print_info(elap, print_stats_only);
     return elap;
   }
 
-  double read_duration_current(){
+  double read_duration_current(const bool &print_stats_only=false){
     double elap = MPI_Wtime() - ts;
-
-    PetscPrintf(comm_, "%s ... done in \n", msg_.c_str());
-    if (timing_ == all_timings){
-      MPI_Gather(&elap, 1, MPI_DOUBLE, &t[0], 1, MPI_DOUBLE, 0, comm_);
-      double tmax, tmin, tavg, tdev;
-      tmax = tmin = elap;
-      tavg = tdev = 0;
-      if (mpirank == 0){
-        PetscFPrintf(comm_, f_, "t = [");
-        for (size_t i=0; i<t.size()-1; i++)
-          PetscFPrintf(comm_, f_, "%.5lf, ", t[i]);
-        PetscFPrintf(comm_, f_, "%.5lf];\n", t.back());
-
-        for (size_t i=0; i<t.size(); i++){
-          tavg += t[i];
-          tmax = MAX(tmax, t[i]);
-          tmin = MIN(tmin, t[i]);
-        }
-        tavg /= mpisize;
-
-        for (size_t i=0; i<t.size(); i++){
-          tdev += (t[i]-tavg)*(t[i]-tavg);
-        }
-        tdev = sqrt(tdev/mpisize);
-      }
-
-      PetscFPrintf(comm_, f_, " t_max = %.5lf (s), t_max/t_min = %.2lf, t_avg = %.5lf (s), t_dev/t_avg = %% %2.1lf, t_dev/(t_max-t_min) = %% %2.1lf\n\n", tmax, tmax/tmin, tavg, tdev/tavg*100, tdev/(tmax-tmin)*100);
-    } else {
-      PetscFPrintf(comm_, f_, " %.5lf secs. on process %d [Note: only showing root's timings]\n\n", elap, mpirank);
-    }
+    gather_and_print_info(elap, print_stats_only);
     return elap;
   }
 

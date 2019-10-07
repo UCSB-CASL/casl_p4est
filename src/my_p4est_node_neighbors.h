@@ -31,22 +31,31 @@ public:
 };
 
 class my_p4est_node_neighbors_t {
-  friend class my_p4est_poisson_nodes_t;
-  friend class my_p4est_poisson_cells_t;
-  friend class my_p4est_poisson_jump_nodes_voronoi_t;
-  friend class my_p4est_poisson_jump_voronoi_block_t;
-  friend class my_p4est_poisson_jump_nodes_extended_t;
-  friend class my_p4est_interpolation_t;
-  friend class my_p4est_interpolation_nodes_t;
+  friend class my_p4est_bialloy_t;
+  friend class my_p4est_biofilm_t;
+  friend class my_p4est_electroporation_t;
+  friend class my_p4est_epitaxy_t;
+  friend class my_p4est_integration_mls_t;
   friend class my_p4est_interpolation_cells_t;
   friend class my_p4est_interpolation_faces_t;
-  friend class my_p4est_level_set_t;
+  friend class my_p4est_interpolation_nodes_t;
+  friend class my_p4est_interpolation_nodes_local_t;
+  friend class my_p4est_interpolation_t;
   friend class my_p4est_level_set_cells_t;
   friend class my_p4est_level_set_faces_t;
-  friend class my_p4est_semi_lagrangian_t;
-  friend class my_p4est_bialloy_t;
+  friend class my_p4est_level_set_t;
+  friend class my_p4est_multialloy_t;
   friend class my_p4est_navier_stokes_t;
-  friend class my_p4est_epitaxy_t;
+  friend class my_p4est_poisson_cells_t;
+  friend class my_p4est_poisson_jump_nodes_extended_t;
+  friend class my_p4est_poisson_jump_nodes_voronoi_t;
+  friend class my_p4est_poisson_jump_voronoi_block_t;
+  friend class my_p4est_poisson_nodes_mls_sc_t;
+  friend class my_p4est_poisson_nodes_mls_t;
+  friend class my_p4est_poisson_nodes_multialloy_t;
+  friend class my_p4est_poisson_nodes_t;
+  friend class my_p4est_scft_t;
+  friend class my_p4est_semi_lagrangian_t;
   friend class my_p4est_two_phase_flows_t;
   friend class my_p4est_xgfm_cells_t;
 
@@ -438,6 +447,8 @@ public:
     first_derivatives_central(f, fxyz[0], fxyz[1], bs);
 #endif
   }
+
+  void get_all_neighbors(const p4est_locidx_t n, p4est_locidx_t *neighbors, bool *neighbor_exists) const;
 
   size_t memory_estimate() const
   {

@@ -57,7 +57,7 @@ struct splitting_criteria_cf_t : splitting_criteria_t {
 #else
   splitting_criteria_cf_t(int min_lvl, int max_lvl, CF_2 *phi, double lip=1.2)
 #endif
-    : splitting_criteria_t(min_lvl, max_lvl, lip)
+    : splitting_criteria_t(min_lvl, max_lvl, lip), refine_only_inside(false)
   {
     this->phi = phi;
   }
