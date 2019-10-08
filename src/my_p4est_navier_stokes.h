@@ -466,6 +466,14 @@ public:
   void set_dt(double dt_n);
 
   /*!
+   * \brief Allows you to set the grid for the solver yourself in each timestep -- in the case that the grid is handled externally from the navier stokes class, rather than internally
+   * \param ngbd_nm1 [in]
+   * \param ngbd [in]
+   * \param faces [in]
+   */
+  void set_grids(my_p4est_node_neighbors_t *ngbd_nm1, my_p4est_node_neighbors_t *ngbd, my_p4est_faces_t *faces);
+
+  /*!
    * \brief computes the next time step based on the desired cfl condition, but _locally_, i.e.,
    * for each quadrant in the domain, the local velocity magnitude is calculated and a local maximum
    * time step is estimated based on that local velocity magnitude and the quadrant size. Then, the

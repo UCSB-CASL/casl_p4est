@@ -577,9 +577,14 @@ void my_p4est_navier_stokes_t::set_velocities(Vec *vnm1_nodes, Vec *vn_nodes)
     if(this->vn_nodes[dir]!=NULL){
       ierr = VecDestroy(this->vn_nodes[dir]); CHKERRXX(ierr); }
     this->vn_nodes[dir]   = vn_nodes[dir];
+
+    // [ELYCE MODIFICATION: CHECK THIS TO MAKE SURE IT'S OKAY -- DOESN'T WORK, WILL REQUIRE FURTHER INVESTIGATION]
+    //if(sl_order == 2)
     if(this->vnm1_nodes[dir]!=NULL){
       ierr = VecDestroy(this->vnm1_nodes[dir]); CHKERRXX(ierr); }
     this->vnm1_nodes[dir] = vnm1_nodes[dir];
+
+
     if(this->vnp1_nodes[dir]!=NULL){
       ierr = VecDestroy(this->vnp1_nodes[dir]); CHKERRXX(ierr); }
     ierr = VecDuplicate(vn_nodes[dir], &vnp1_nodes [dir]); CHKERRXX(ierr);
@@ -608,7 +613,11 @@ void my_p4est_navier_stokes_t::set_velocities(Vec *vnm1_nodes, Vec *vn_nodes)
   ngbd_nm1->second_derivatives_central(vnm1_nodes, second_derivatives_vnm1_nodes[0], second_derivatives_vnm1_nodes[1], second_derivatives_vnm1_nodes[2], P4EST_DIM);
 #else
   ngbd_n->second_derivatives_central(vn_nodes, second_derivatives_vn_nodes[0], second_derivatives_vn_nodes[1], P4EST_DIM);
-  ngbd_nm1->second_derivatives_central(vnm1_nodes, second_derivatives_vnm1_nodes[0], second_derivatives_vnm1_nodes[1], P4EST_DIM);
+
+  // [ELYCE MODIFICATION: CHECK THIS TO MAKE SURE IT'S OKAY -- DOESN'T WORK, WILL REQUIRE FURTHER INVESTIGATION]
+  //if (sl_order == 2)
+    ngbd_nm1->second_derivatives_central(vnm1_nodes, second_derivatives_vnm1_nodes[0], second_derivatives_vnm1_nodes[1], P4EST_DIM);
+
 #endif
 
   if(this->vorticity!=NULL){
@@ -1173,6 +1182,7 @@ void my_p4est_navier_stokes_t::solve_viscosity(my_p4est_poisson_faces_t* &face_p
         quadratic);
     interp_n.interpolate(vn_faces.data());
 
+
     /* assemble the right-hand-side */
     ierr = VecDuplicate(vstar[dir], &rhs[dir]); CHKERRXX(ierr);
 
@@ -1227,6 +1237,7 @@ void my_p4est_navier_stokes_t::solve_viscosity(my_p4est_poisson_faces_t* &face_p
   face_poisson_solver->set_mu(mu);
   face_poisson_solver->set_diagonal(alpha * rho/dt_n);
   face_poisson_solver->set_rhs(rhs);
+
   face_poisson_solver->solve(vstar, use_initial_guess, ksp, pc);
 
   for(int dir=0; dir<P4EST_DIM; ++dir)
@@ -1533,6 +1544,31 @@ void my_p4est_navier_stokes_t::set_dt(double dt_n)
 {
   this->dt_n = dt_n;
   dt_updated = true;
+}
+
+
+void my_p4est_navier_stokes_t::set_grids(my_p4est_node_neighbors_t *ngbd_nm1_, my_p4est_node_neighbors_t *ngbd_n_, my_p4est_faces_t *faces){
+  // Overall grid properties:
+  brick = ngbd_n_->myb;
+  conn = ngbd_n_->p4est->connectivity;
+
+  // The nm1 grid:
+  p4est_nm1 = ngbd_nm1_->p4est;
+  ghost_nm1 = ngbd_nm1_->ghost;
+  nodes_nm1 = ngbd_nm1_->nodes;
+  hierarchy_nm1 = ngbd_nm1_->hierarchy;
+  ngbd_nm1 = ngbd_nm1_;
+
+  // The n grid:
+  p4est_n = ngbd_n_->p4est;
+  ghost_n = ngbd_n_->ghost;
+  nodes_n = ngbd_n_->nodes;
+  hierarchy_n = ngbd_n_->hierarchy;
+  ngbd_n = ngbd_n_;
+
+  // Cell and face info:
+  ngbd_c = faces->ngbd_c;
+  faces_n = faces;
 }
 
 

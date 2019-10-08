@@ -946,7 +946,6 @@ void my_p4est_poisson_faces_t::clip_voro_cell_by_interface(p4est_locidx_t f_idx,
   {
     double x = faces->x_fr_f(f_idx, dir);
     double y = faces->y_fr_f(f_idx, dir);
-
     double phi_c = interp_phi(x,y);
     voro_tmp.set_level_set_values(phi_values, phi_c);
     voro_tmp.clip_interface();
@@ -1032,6 +1031,7 @@ void my_p4est_poisson_faces_t::preallocate_matrix(int dir)
         clip_voro_cell_by_interface(f_idx, dir);
       } catch (std::exception e) {
         // [FIXME]: I found this issue but I have other urgent things to do for now... Raphael
+        std::cout<<"Face index is : "<<f_idx<< " in direction "<<dir << " , x = "<<faces->x_fr_f(f_idx,dir) <<", y = "<< faces->y_fr_f(f_idx,dir) << " on process "<<p4est->mpirank<<std::endl;
         throw std::runtime_error("Error when clipping voronoi cell in 2D... consider using an aspect ratio closer to 1");
       }
 #endif
@@ -1476,6 +1476,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
               if(!is_matrix_ready[dir])
               {
                   if (faces->q2f(qp_idx, dir_p) == NO_VELOCITY){
+
                      std::cout<< "(x, y) = ("<<xyz[0] << ", "<< xyz[1]<<") \n"<<std::endl;
 
                     };
