@@ -2213,6 +2213,56 @@ struct vec_and_ptr_array_t
   }
 };
 
+// ELYCE MODIFICATION: TRYING SOMETHING -- MAKE SIMILAR OBJECT AS DANIIL
+struct vec_and_ptr_cells_t
+{
+  static PetscErrorCode ierr;
+
+  Vec     vec;
+  double *ptr;
+
+  vec_and_ptr_cells_t() : vec(NULL), ptr(NULL) {}
+
+  vec_and_ptr_cells_t(Vec parent) : vec(NULL), ptr(NULL) { create(parent); }
+
+  vec_and_ptr_cells_t(p4est_t *p4est, p4est_ghost_t *ghost) : vec(NULL), ptr(NULL) { create(p4est, ghost); }
+
+  inline void create(Vec parent)
+  {
+    ierr = VecDuplicate(parent, &vec); CHKERRXX(ierr);
+  }
+
+  inline void create(p4est_t *p4est, p4est_ghost_t *ghost)
+  {
+    ierr = VecCreateGhostCells(p4est, ghost, &vec); CHKERRXX(ierr);
+  }
+
+  inline void destroy()
+  {
+    if (vec != NULL) { ierr = VecDestroy(vec); CHKERRXX(ierr); }
+  }
+
+  inline void get_array()
+  {
+    ierr = VecGetArray(vec, &ptr); CHKERRXX(ierr);
+  }
+
+  inline void restore_array()
+  {
+    ierr = VecRestoreArray(vec, &ptr); CHKERRXX(ierr);
+  }
+
+  inline void set(Vec input)
+  {
+    vec = input;
+  }
+};
+
+
+
+
+
+
 void compute_normals_and_mean_curvature(const my_p4est_node_neighbors_t &neighbors, const Vec phi, Vec normals[], Vec kappa);
 
 void save_vector(const char *filename, const std::vector<double> &data, std::ios_base::openmode mode = std::ios_base::out, char delim = ',');

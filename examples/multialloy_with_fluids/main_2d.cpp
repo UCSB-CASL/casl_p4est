@@ -24,6 +24,7 @@
 #include <src/my_p4est_poisson_nodes_mls.h>
 #include <src/my_p4est_poisson_nodes.h>
 #include <src/my_p4est_interpolation_nodes.h>
+#include <src/my_p4est_navier_stokes.h>
 
 
 
@@ -54,7 +55,7 @@ int example_ = 2;  // 0 - Ice cube melting in water, 1 - Frank sphere, 2 - water
 
 int method_ = 0; // 0 - Backward Euler, 1 - Crank Nicholson
 
-bool elyce_laptop = true;
+bool elyce_laptop = false; // Set to true if working on laptop --> changes the output path
 // ---------------------------------------
 // Define geometry:
 // ---------------------------------------
@@ -78,6 +79,9 @@ double back_wall_flux;
 // For solidifying ice problem:
 double r_cyl;
 double T_cyl;
+
+// For surface tension:
+double sigma;
 
 void set_geometry(){
   switch(example_){
@@ -127,6 +131,9 @@ void set_geometry(){
       Twall = 298.0; Tinterface = 273.0;
       T_cyl = 273.0 - 70.0;
       back_wall_flux = 0.0;
+
+      sigma = 1.e-2;
+
       // NOTE: TO DO: WILL NEED TO HAVE REFINEMENT CRITERIA AROUND BOTH INTERFACES(?) ... maybe not
 
       break;
@@ -136,7 +143,7 @@ void set_geometry(){
 // Grid refinement:
 // ---------------------------------------
 int lmin = 4;
-int lmax = 7;
+int lmax = 8;
 // ---------------------------------------
 // Time-stepping:
 // ---------------------------------------
@@ -224,6 +231,40 @@ void set_conductivities(){
       break;
     }
 }
+
+
+//-----------------------------------------
+// Properties to set if you are solving NS
+// ----------------------------------------
+double pressure_prescribed_flux;
+double pressure_prescribed_value;
+double u0;
+double v0;
+double outflow_u;
+double outflow_v;
+double mu_l;
+void set_NS_info(){
+  pressure_prescribed_flux = 0.0; // For the Neumann condition on the two x walls and lower y wall
+  pressure_prescribed_value = 0.0; // For the Dirichlet condition on the back y wall
+
+  switch(example_){
+    case 0: throw std::invalid_argument("NS isnt setup for this example");
+    case 1:
+      u0 = 1.0; v0 = 0.0; mu_l = 1.0;
+      break;
+    case 2:
+      u0 = 4.e-4;
+      v0 = 0.0;
+      mu_l = 8.9e-4;  // Viscosity of water , [Pa s]
+      break;
+    }
+
+
+  outflow_u = 0.0;
+  outflow_v = 0.0;
+
+}
+
 // ---------------------------------------
 // Other parameters:
 // ---------------------------------------
@@ -232,24 +273,24 @@ double v_int_max_allowed = 250.0;
 
 bool move_interface_with_v_external = false;
 
-bool do_advection = true;
+bool do_advection = true; // Whether or not you want to include advection
 
-bool output_information = true;
+bool check_temperature_values = true; // Whether or not you want to print out temperature value averages during various steps of the solution process -- for debugging
 
-bool check_temperature_values = true;
+bool check_derivative_values = true;// Whether or not you want to print out temperature derivative value averages during various steps of the solution process -- for debugging
 
-bool check_derivative_values = true;
+bool check_interfacial_velocity = true; // Whether or not you want to print out interfacial velocity value averages during various steps of the solution process -- for debugging
 
-bool check_interfacial_velocity = true;
+bool save_temperature_derivative_fields = false; // saving temperature derivative fields to vtk or not
 
-bool save_temperature_derivative_fields = false;
+bool solve_smoke = true; // Whether or not you want to solve for smoke
 
-bool solve_smoke = true;
+bool solve_navier_stokes = true;
 
 
 // Begin defining classes for necessary functions and boundary conditions...
 // --------------------------------------------------------------------------------------------------------------
-// Frank sphere functions
+// Frank sphere functions -- Functions necessary for evaluating the analytical solution of the Frank sphere problem, to validate results for example 1
 // --------------------------------------------------------------------------------------------------------------
 double s(double r, double t){
   //std::cout<<"Time being used to compute s is: " << t << "\n"<< std::endl;
@@ -336,7 +377,7 @@ double frank_sphere_solution_t(double s){
 }
 
 // --------------------------------------------------------------------------------------------------------------
-// LEVEL SET FUNCTION:
+// LEVEL SET FUNCTIONS:
 // --------------------------------------------------------------------------------------------------------------
 struct LEVEL_SET : CF_DIM {
 public:
@@ -352,6 +393,7 @@ public:
   }
 } level_set;
 
+// This one is for the inner cylinder in example 2
 struct MINI_LEVEL_SET : CF_DIM {
 public:
   double operator() (DIM(double x, double y, double z)) const
@@ -364,25 +406,9 @@ public:
   }
 } mini_level_set;
 
-// --------------------------------------------------------------------------------------------------------------
-// PRESCRIBED VELOCITY FIELD AT WHICH THE INTERFACE ADVANCES:
-// --------------------------------------------------------------------------------------------------------------
-struct u_advance : CF_DIM
-{ double operator() (double x, double y) const{
-  return 4.e-2;
-  }
-
-} u_adv;
-
-struct v_advance: CF_DIM{
-  double operator()(double x, double y) const
-  {
-    return 0.0;
-  }
-} v_adv;
 
 // --------------------------------------------------------------------------------------------------------------
-// SMOKE BC and IC's -- if passing smoke, a passive scalar
+// SMOKE BC and IC's -- if you want to pass smoke, a passive scalar, through the domain
 // --------------------------------------------------------------------------------------------------------------
 class bc_smoke_type: public WallBCDIM
 {
@@ -455,12 +481,34 @@ void inner_interface_bc(){ //-- Call this function before setting interface bc i
 }
 
 class BC_interface_value: public CF_DIM{
+private:
+  // Have interpolation objects for case with surface tension included in boundary condition: can interpolate the curvature in a timestep to the interface points while applying the boundary condition
+  my_p4est_interpolation_nodes_t kappa_interp;
+  my_p4est_interpolation_nodes_t nx_interp;
+  my_p4est_interpolation_nodes_t ny_interp;
+
 public:
+  BC_interface_value(my_p4est_node_neighbors_t *ngbd, vec_and_ptr_dim_t normal, vec_and_ptr_t kappa): kappa_interp(ngbd), nx_interp(ngbd), ny_interp(ngbd)
+  {
+    // Set the curvature and normal inputs to be interpolated when the BC object is constructed:
+    kappa_interp.set_input(kappa.vec,linear);
+    nx_interp.set_input(normal.vec[0],linear);
+    ny_interp.set_input(normal.vec[1],linear);
+  }
   double operator()(double x, double y) const
   {
-    return Tinterface;
+    switch(example_){
+      case 0: // Ice cube melting, with surface tension -- NOT VALIDATED YET
+         return Tinterface + (1.*sigma)*kappa_interp(x,y);
+      case 1: // Frank sphere case, no surface tension
+         return Tinterface;
+      case 2: // Ice solidifying around a cylinder, with surface tension -- MAY ADD COMPLEXITY TO THIS LATER ON
+        return Tinterface + (1.*sigma)*kappa_interp(x,y);
+
+      }
+
   }
-}bc_interface_val;
+};
 
 class BC_interface_coeff: public CF_DIM{
 public:
@@ -487,9 +535,10 @@ public:
   { return 1.0;
   }
 }bc_interface_coeff_inner;
-// -----
-// Wall functions
-// -----
+
+// --------------------------------------------------------------------------------------------------------------
+// Wall functions -- these evaluate to true or false depending on if the location is on the wall --  they just add coding simplicity
+// --------------------------------------------------------------------------------------------------------------
 struct XLOWER_WALL : CF_DIM {
 public:
   double operator() (DIM(double x, double y, double z)) const
@@ -671,8 +720,293 @@ public:
   }
 }IC_temp_solid;
 
+
 // --------------------------------------------------------------------------------------------------------------
-// Function for checking the temperature values during the solution process
+// Prescribed external velocity fields -- These may serve as initial conditions for the Navier - Stokes solution process, OR a constant externally imposed field to advect the temperature by in the fluid domain
+// --------------------------------------------------------------------------------------------------------------
+struct u_advance : CF_DIM
+{ double operator() (double x, double y) const{
+  return 4.e-2;
+  }
+
+} u_adv;
+
+struct v_advance: CF_DIM{
+  double operator()(double x, double y) const
+  {
+    return 0.0;
+  }
+} v_adv;
+
+
+// --------------------------------------------------------------------------------------------------------------
+// VELOCITY BOUNDARY CONDITION -- for velocity vector = (u,v,w)
+// --------------------------------------------------------------------------------------------------------------
+// Wall boundary conditions on u:
+
+class WALL_BC_TYPE_VELOCITY_U: public WallBCDIM
+{
+public:
+  BoundaryConditionType operator()(DIM(double x, double y, double z )) const
+  {
+    switch(example_){
+      case 0:
+        throw std::invalid_argument("Navier Stokes solution is not compatible with this example, please choose another \n"); // ice cube melting
+
+      case 1:
+      case 2: // water solidifying around a cylinder
+        if (xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z))){
+            return DIRICHLET; // no slip on these three walls
+          }
+        else if (yupper_wall(DIM(x,y,z))){
+            return NEUMANN; // presribed outflow
+          }
+      }
+  }
+} wall_bc_type_velocity_u;
+
+class WALL_BC_VALUE_VELOCITY_U: public CF_DIM
+{
+public:
+  double operator()(DIM(double x, double y, double z)) const
+  {
+    switch(example_){
+      case 0:
+        throw std::invalid_argument("Navier Stokes solution is not compatible with this example, please choose another \n");
+      case 1:
+      case 2:
+        if (xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z))){
+            return u0; //No slip on all walls but back y wall
+          }
+
+        else if(yupper_wall(DIM(x,y,z))){ // Homogenous Dirichlet condition on back wall
+            return outflow_u;
+          }
+        break;
+      }
+  }
+} wall_bc_value_velocity_u;
+
+// Wall boundary conditions on v:
+
+class WALL_BC_TYPE_VELOCITY_V: public WallBCDIM
+{
+public:
+  BoundaryConditionType operator()(DIM(double x, double y, double z )) const
+  {
+    switch(example_){
+      case 0:
+        throw std::invalid_argument("Navier Stokes solution is not compatible with this example, please choose another \n"); // ice cube melting
+
+      case 1:
+      case 2: // water solidifying around a cylinder
+        if (xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z))){
+            return DIRICHLET; // no slip on these three walls
+          }
+        else if (yupper_wall(DIM(x,y,z))){
+            return NEUMANN; // presribed outflow
+          }
+      }
+  }
+} wall_bc_type_velocity_v;
+
+class WALL_BC_VALUE_VELOCITY_V: public CF_DIM
+{
+public:
+  double operator()(DIM(double x, double y, double z)) const
+  {
+    switch(example_){
+      case 0:
+        throw std::invalid_argument("Navier Stokes solution is not compatible with this example, please choose another \n");
+      case 1:
+      case 2:
+        if (xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z))){
+            return v0; //No slip on all walls but back y wall
+          }
+
+        else if(yupper_wall(DIM(x,y,z))){ // Homogenous Dirichlet condition on back wall
+            return outflow_v;
+          }
+        break;
+      }
+  }
+} wall_bc_value_velocity_v;
+
+// --------------------------------------------------------------------------------------------------------------
+// VELOCITY INTERFACIAL CONDITION -- for velocity vector = (u,v,w)
+// --------------------------------------------------------------------------------------------------------------
+// Interfacial condition for the u component:
+BoundaryConditionType interface_bc_type_velocity_u;
+void interface_bc_velocity_u(){ //-- Call this function before setting interface bc in solver to get the interface bc type depending on the example
+  switch(example_){
+    case 0: throw std::invalid_argument("Navier Stokes is not set up properly for this example \n");
+    case 1:
+    case 2:
+      interface_bc_type_velocity_u = DIRICHLET;
+      break;
+
+    }
+}
+
+// Interfacial condition for the u component:
+class BC_interface_value_velocity_u: public CF_DIM{
+private:
+  my_p4est_interpolation_nodes_t v_interface_interp;
+
+public:
+  BC_interface_value_velocity_u(my_p4est_node_neighbors_t *ngbd,vec_and_ptr_dim_t v_interface): v_interface_interp(ngbd){
+    // Set up the interpolation of the interfacial velocity x component:
+    v_interface_interp.set_input(v_interface.vec[0],linear);
+  }
+  double operator()(double x, double y) const
+  {
+    switch(example_){
+      case 0: throw std::invalid_argument("Navier Stokes is not set up properly for this example \n");
+      case 1:
+      case 2: // Ice solidifying around a cylinder
+        return v_interface_interp(x,y); // No slip on the interface  -- Thus is equal to the x component of the interfacial velocity
+
+      }
+
+  }
+};
+
+
+BoundaryConditionType interface_bc_type_velocity_v;
+void interface_bc_velocity_v(){ //-- Call this function before setting interface bc in solver to get the interface bc type depending on the example
+  switch(example_){
+    case 0: throw std::invalid_argument("Navier Stokes is not set up properly for this example \n");
+    case 1:
+    case 2:
+      interface_bc_type_velocity_v = DIRICHLET;
+      break;
+    }
+}
+
+class BC_interface_value_velocity_v: public CF_DIM{
+private:
+  my_p4est_interpolation_nodes_t v_interface_interp;
+
+public:
+  BC_interface_value_velocity_v(my_p4est_node_neighbors_t *ngbd,vec_and_ptr_dim_t v_interface): v_interface_interp(ngbd){
+    // Set up the interpolation of the interfacial velocity for the y component:
+    v_interface_interp.set_input(v_interface.vec[1],linear);
+  }
+  double operator()(double x, double y) const
+  {
+    switch(example_){
+      case 0: throw std::invalid_argument("Navier Stokes is not set up properly for this example \n");
+      case 1:
+      case 2: // Ice solidifying around a cylinder
+        return v_interface_interp(x,y); // No slip on the interface  -- Thus is equal to the x component of the interfacial velocity
+
+      }
+
+  }
+};
+// --------------------------------------------------------------------------------------------------------------
+// VELOCITY INITIAL CONDITION -- for velocity vector = (u,v,w)
+// --------------------------------------------------------------------------------------------------------------
+struct u_initial : CF_DIM
+{ double operator() (double x, double y) const{
+  return u0;
+  }
+
+} u_initial;
+
+struct v_initial: CF_DIM{
+  double operator()(double x, double y) const
+  {
+    return v0;
+  }
+} v_initial;
+
+// --------------------------------------------------------------------------------------------------------------
+// PRESSURE BOUNDARY CONDITION
+// --------------------------------------------------------------------------------------------------------------
+class WALL_BC_TYPE_PRESSURE: public WallBCDIM
+{
+public:
+  BoundaryConditionType operator()(DIM(double x, double y, double z )) const
+  {
+    switch(example_){
+      case 0: throw std::invalid_argument("Navier Stokes solution is not compatible with this example, please choose another \n"); // ice cube melting
+
+
+      case 1: // waterfall to next value
+      case 2: // water solidifying around a cylinder
+        if (xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z))){
+            return NEUMANN;
+          }
+        else if (yupper_wall(DIM(x,y,z))){
+            return DIRICHLET;
+          }
+      }
+  }
+} wall_bc_type_pressure;
+
+class WALL_BC_VALUE_PRESSURE: public CF_DIM
+{
+public:
+  double operator()(DIM(double x, double y, double z)) const
+  {
+    switch(example_){
+      case 0:
+        throw std::invalid_argument("Navier Stokes solution is not compatible with this example, please choose another \n");
+      case 1:
+      case 2:
+        if (xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z))){
+            return pressure_prescribed_flux; // Neumann BC in pressure on all walls but back y wall
+          }
+
+        else if(yupper_wall(DIM(x,y,z))){ // Homogenous Dirichlet condition on back wall
+            return pressure_prescribed_value;
+          }
+        break;
+      }
+  }
+} wall_bc_value_pressure;
+
+// --------------------------------------------------------------------------------------------------------------
+// PRESSURE INTERFACIAL CONDITION
+// --------------------------------------------------------------------------------------------------------------
+BoundaryConditionType interface_bc_type_pressure;
+void interface_bc_pressure(){ //-- Call this function before setting interface bc in solver to get the interface bc type depending on the example
+  switch(example_){
+    case 0: throw std::invalid_argument("Navier Stokes is not set up properly for this example \n");
+    case 1:
+      interface_bc_type_velocity_v = NEUMANN;
+      break;
+    case 2:
+      interface_bc_type_velocity_v = NEUMANN;
+      break;
+    }
+}
+
+class BC_interface_value_pressure: public CF_DIM{
+public:
+
+  double operator()(double x, double y) const
+  {
+    switch(example_){
+      case 0: throw std::invalid_argument("Navier Stokes is not set up properly for this example \n");
+      case 1: return 0.0; // Homogeneous Neumann pressure on interface
+
+      case 2: // Ice solidifying around a cylinder
+        return 0.0; // Homogeneous Neumann pressure on interface
+      }
+  }
+}interface_bc_value_pressure;
+
+
+
+// --------------------------------------------------------------------------------------------------------------
+// PRESSURE INITIAL CONDITION -- Not needed
+// --------------------------------------------------------------------------------------------------------------
+
+
+// --------------------------------------------------------------------------------------------------------------
+// Functions for checking the values of interest during the solution process
 // --------------------------------------------------------------------------------------------------------------
 void check_T_values(vec_and_ptr_t phi, vec_and_ptr_t T, p4est_nodes* nodes, p4est_t* p4est, int example, vec_and_ptr_t phi_cyl) {
   T.get_array();
@@ -1249,6 +1583,10 @@ void compute_interfacial_velocity(vec_and_ptr_dim_t T_l_d, vec_and_ptr_dim_t T_s
      ls.extend_from_interface_to_whole_domain_TVD(phi.vec,jump.vec[d],v_interface.vec[d],20);
   }
 
+//  foreach_dimension(d){
+//      VecScaleGhost(v_interface.vec[d],0.0);
+//  }
+
 
 }
 
@@ -1284,6 +1622,47 @@ void compute_timestep(vec_and_ptr_dim_t v_interface, vec_and_ptr_t phi, double d
 
 
 }
+
+void compute_curvature(vec_and_ptr_t phi,vec_and_ptr_dim_t normal,vec_and_ptr_t curvature, my_p4est_node_neighbors_t *ngbd,my_p4est_level_set_t LS){
+  vec_and_ptr_t curvature_tmp(curvature.vec);
+
+  // Get arrays needed:
+  curvature_tmp.get_array();
+  normal.get_array();
+  // Define the qnnn object to help compute the derivatives of the normal:
+  quad_neighbor_nodes_of_node_t qnnn;
+
+  // Compute curvature on layer nodes:
+  for(size_t i = 0; i<ngbd->get_layer_size(); i++){
+      p4est_locidx_t n = ngbd->get_layer_node(i);
+      ngbd->get_neighbors(n,qnnn);
+      curvature_tmp.ptr[n] = qnnn.dx_central(normal.ptr[0]) + qnnn.dy_central(normal.ptr[1]);
+    }
+
+  // Begin ghost update:
+  VecGhostUpdateBegin(curvature_tmp.vec,INSERT_VALUES,SCATTER_FORWARD);
+
+  // Compute curvature on local nodes:
+  for(size_t i = 0; i<ngbd->get_local_size(); i++){
+      p4est_locidx_t n = ngbd->get_local_node(i);
+      ngbd->get_neighbors(n,qnnn);
+      curvature_tmp.ptr[n] = qnnn.dx_central(normal.ptr[0]) + qnnn.dy_central(normal.ptr[1]);
+    }
+
+  // End ghost update:
+  VecGhostUpdateEnd(curvature_tmp.vec,INSERT_VALUES,SCATTER_FORWARD);
+
+  // Restore arrays needed:
+  curvature_tmp.restore_array();
+  normal.restore_array();
+  //phi_d.restore_array();
+
+  // Now go ahead and extend the curvature values to the whole domain -- Will be used to apply the pointwise Dirichlet condition, dependent on curvature
+  LS.extend_from_interface_to_whole_domain_TVD(phi.vec,curvature_tmp.vec,curvature.vec,20);
+
+
+}
+
 // --------------------------------------------------------------------------------------------------------------
 // BEGIN MAIN OPERATION:
 // --------------------------------------------------------------------------------------------------------------
@@ -1313,6 +1692,7 @@ int main(int argc, char** argv) {
   p4est_nodes_t         *nodes_np1;
   p4est_ghost_t         *ghost_np1;
 
+
   // domain size information
   set_geometry();
   const int n_xyz[]      = { nx,  ny,  0};
@@ -1336,9 +1716,22 @@ int main(int argc, char** argv) {
   interface_bc();
 
   // -----------------------------------------------
+  // Set properties for the Navier - Stokes problem (if applicable):
+  // -----------------------------------------------
+  if(solve_navier_stokes){
+      set_NS_info();
+      interface_bc_pressure();
+      interface_bc_velocity_u();
+      interface_bc_velocity_v();
+
+    }
+
+  // -----------------------------------------------
   // Scale the problem appropriately:
   // -----------------------------------------------
   double scaling = 1.0/box_size;
+
+  double rho_physical = rho_l;
   rho_l/=(scaling*scaling*scaling);
   k_s/=scaling;
   k_l/=scaling;
@@ -1346,6 +1739,35 @@ int main(int argc, char** argv) {
 
   alpha_l*=(scaling*scaling);
   alpha_s*=(scaling*scaling);
+
+  //double v_NS_scaling; // Scaling that velocity fields need to be scaled by
+  //double P_NS_scaling; // Scaling that pressure needs to be scaled by
+  if(solve_navier_stokes){
+    double Re;
+    double physical_r0 = r0/scaling;
+    Re = rho_physical*u0*physical_r0/mu_l;
+    PetscPrintf(mpi.comm(),"Reynolds number for this case is: %0.2f \n"
+                           "Physical r0 = %0.4f \n"
+                           "Physical mu = %0.3e \n"
+                           "Physical u0 = %0.3e \n"
+                           "Physical rho = %0.3e \n",Re,physical_r0,mu_l,u0,rho_physical);
+
+    mu_l/=(scaling); // Scale the viscosity depending on the domain
+    u0*=scaling;             // Scale the initial velocity
+    v0*=scaling;
+    pressure_prescribed_value/=(scaling*scaling); // Scale the pressure BC prescribed value and flux
+    pressure_prescribed_flux/=(scaling*scaling*scaling);
+
+    Re = rho_l*u0*r0/mu_l;
+    PetscPrintf(mpi.comm(),"Reynolds number for this case is: %0.2f \n"
+                           "Computational r0 = %0.4f \n"
+                           "Computational mu = %0.3e \n"
+                           "Computational u0 = %0.3e \n"
+                           "Computational rho = %0.3e \n",Re,r0,mu_l,u0,rho_l);
+
+    PetscPrintf(mpi.comm(),"u initial is %0.3e, v initial is %0.3e \n",u0,v0);
+    // Note: NS values will need to be scaled back to their physical values for saving, and then can be rescaled back to what is appropriate for the computational domain
+    }
 
   PetscPrintf(mpi.comm(),"\n -------------------------------------------\n");
   PetscPrintf(mpi.comm(),"Scaling is : %0.2e \n",scaling);
@@ -1366,17 +1788,22 @@ int main(int argc, char** argv) {
   p4est = my_p4est_new(mpi.comm(), conn, 0, NULL, NULL); // same as Daniil
 
   // refine based on distance to a level-set
-  splitting_criteria_cf_t sp(lmin, lmax, &level_set,1.75);
+  splitting_criteria_cf_t sp(lmin, lmax, &level_set,1.9);
+  p4est->user_pointer = &sp;
 
-  p4est->user_pointer = &sp;                                    // save the pointer to the forst splitting criteria
+
+                                  // save the pointer to the forst splitting criteria
   my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL); // refine the grid according to the splitting criteria
 
 
   // partition the forest
-  my_p4est_partition(p4est, P4EST_TRUE, NULL);                  // partition the forest but allow for coarsening --> Daniil does not allow (use P4EST_FALSE)
+  my_p4est_partition(p4est, P4EST_FALSE, NULL);                  // partition the forest, do not allow for coarsening --> Daniil does not allow (use P4EST_FALSE)
 
   // create ghost layer
   ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL); // same
+
+  // Expand ghost layer -- FOR NAVIER STOKES:
+  my_p4est_ghost_expand(p4est,ghost);
 
   // create node structure
   nodes = my_p4est_nodes_new(p4est, ghost); //same
@@ -1486,6 +1913,13 @@ int main(int argc, char** argv) {
   vec_and_ptr_t rhs_smoke;
 
   // -----------------------------------------------
+  // Initialize the Velocity field (if solving Navier-Stokes):
+  // -----------------------------------------------
+  vec_and_ptr_dim_t v_n;
+  vec_and_ptr_dim_t v_n_old_grid;
+
+
+  // -----------------------------------------------
   // Initialize variables for extension bands across interface and etc:
   // -----------------------------------------------
   double dxyz_smallest[P4EST_DIM];
@@ -1518,7 +1952,7 @@ int main(int argc, char** argv) {
     }
 
   // -----------------------------------------------
-  // Initialize the needed solvers
+  // Initialize the needed solvers for the Temperature problem
   // -----------------------------------------------
   my_p4est_poisson_nodes_mls_t *solver_Tl;  // will solve poisson problem for Temperature in liquid domains
   my_p4est_poisson_nodes_mls_t *solver_Ts;  // will solve poisson problem for Temperature in solid domain
@@ -1529,6 +1963,14 @@ int main(int argc, char** argv) {
   my_p4est_interpolation_nodes_t  *interp_nodes_l;
   my_p4est_interpolation_nodes_t  *interp_nodes_s;
   my_p4est_interpolation_nodes_t *interp_nodes_vint;
+
+  // -----------------------------------------------
+  // Initialize the needed solvers for the Navier-Stokes problem
+  // -----------------------------------------------
+  my_p4est_navier_stokes_t* ns;
+  my_p4est_poisson_cells_t* cell_solver;
+  my_p4est_poisson_faces_t* face_solver;
+
   // -----------------------------------------------
   // Initialize variables for keeping track of interface velocity
   //------------------------------------------------
@@ -1543,7 +1985,7 @@ int main(int argc, char** argv) {
 
   for (tn;tn<tfinal; tn+=dt, tstep++){
       if (!keep_going) break;
-      //if(tstep>1) break; // TIMESTEP BREAK
+      //if(tstep>=1) break; // TIMESTEP BREAK
 
       // --------------------------------------------------------------------------------------------------------------
       // Print iteration information:
@@ -1613,6 +2055,12 @@ int main(int argc, char** argv) {
 
       // Extend the fluid velocity and fluid pressure across the interface:
       // [ INSERT NS STUFF HERE]
+      if(solve_navier_stokes && (tstep>=1)){
+          foreach_dimension(d){
+                      ls.extend_Over_Interface_TVD_Full(phi.vec,v_n.vec[d],50,1,1.e-9,extension_band_use_,extension_band_extend_,extension_band_check_,liquid_normals.vec,NULL,NULL,false,NULL,NULL);
+          }
+
+        }
 
 
       // For the case where we have a second interface:
@@ -1825,15 +2273,30 @@ int main(int argc, char** argv) {
       // Make a copy of the grid objects for the next timestep:
       p4est_np1 = p4est_copy(p4est,P4EST_FALSE); // copy the grid but not the data
       ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
+
+      // Expand the ghost layer for navier stokes:
+      my_p4est_ghost_expand(p4est_np1,ghost_np1);
       nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
 
       // Create the semi-lagrangian object and do the advection:
-      my_p4est_semi_lagrangian_t sl(&p4est_np1, &nodes_np1, &ghost_np1, ngbd); // is this really the correct way to do this?
+      my_p4est_semi_lagrangian_t sl(&p4est_np1, &nodes_np1, &ghost_np1, ngbd);
 
       // Advect the LSF and update the grid under the v_interface field:
       example_ == 2 ? // for example 2, refine around both LSFs. Otherwise, refine around just the one
             sl.update_p4est(v_interface.vec,dt,phi.vec,phi_dd.vec,phi_cylinder.vec):
             sl.update_p4est(v_interface.vec,dt,phi.vec,phi_dd.vec);
+
+
+      // Get the new neighbors:
+      my_p4est_hierarchy_t *hierarchy_np1 = new my_p4est_hierarchy_t(p4est_np1,ghost_np1,&brick);
+      my_p4est_node_neighbors_t *ngbd_np1 = new my_p4est_node_neighbors_t(hierarchy_np1,nodes_np1);
+      ngbd_np1->init_neighbors();
+
+      // Reinitialize the LSF on the new grid:
+
+      my_p4est_level_set_t ls_new(ngbd_np1);
+      ls_new.reinitialize_1st_order_time_2nd_order_space(phi.vec, 100);
+      ls_new.perturb_level_set_function(phi.vec,EPS);
 
       // --------------------------------------------------------------------------------------------------------------
       // Interpolate Values onto New Grid:
@@ -1894,21 +2357,280 @@ int main(int argc, char** argv) {
         check_T_values(phi_solid,T_s_n,nodes,p4est,example_,phi_cylinder);
         PetscPrintf(mpi.comm()," ] \n");
         }
+
       // --------------------------------------------------------------------------------------------------------------
-      // Delete the old grid and reinitialize phi:
+      // Navier-Stokes Problem: Setup and solve a NS problem in the liquid subdomain
       // --------------------------------------------------------------------------------------------------------------
+      // For the first timestep, sample the initial condition on the new grid:
+      if (tstep<1){
+          v_n.destroy();
+          v_n.create(p4est_np1,nodes_np1);
+
+          const CF_DIM *v_init_cf[P4EST_DIM] = {&u_initial, &v_initial};
+          foreach_dimension(d){
+            sample_cf_on_nodes(p4est_np1,nodes_np1,*v_init_cf[d],v_n.vec[d]);
+          }
+
+          v_n_old_grid.destroy(); v_n_old_grid.create(p4est,nodes);
+          foreach_dimension(d){
+            sample_cf_on_nodes(p4est,nodes,*v_init_cf[d],v_n_old_grid.vec[d]);
+          }
+        }
+
+      // If not the new timestep, use the previous solution as the initial condition:
+      // Interpolate this onto the new grid: -- Note that we provide v on the old grid as nm1
+      //-- this is not actually used by the solver since we are only doing solution order 1, but it is required to initialize the solver (At least for now)
+      if (tstep>=1){
+          v_n_old_grid.destroy();
+          v_n_old_grid.create(p4est,nodes);
+          foreach_dimension(d){
+            VecCopyGhost(v_n.vec[d],v_n_old_grid.vec[d]);
+          }
+          v_n.destroy();
+          v_n.create(p4est_np1,nodes_np1);
+
+          my_p4est_interpolation_nodes_t interp_v_NS(ngbd);
+
+          double xyz[P4EST_DIM];
+          foreach_node(n,nodes_np1){
+            node_xyz_fr_n(n,p4est_np1,nodes_np1,xyz);
+            interp_v_NS.add_point(n,xyz);
+          }
+
+          foreach_dimension(d){
+            interp_v_NS.set_input(v_n_old_grid.vec[d],interp_bw_grids);
+            interp_v_NS.interpolate(v_n.vec[d]);
+          }
+        }
+
+      // Get the cell neighbors:
+      my_p4est_cell_neighbors_t *ngbd_c = new my_p4est_cell_neighbors_t(hierarchy_np1);
+      // Create the faces:
+      my_p4est_faces_t *faces_np1 = new my_p4est_faces_t(p4est_np1,ghost_np1,&brick,ngbd_c);
+
+      // First, initialize the Navier-Stokes solver with the grid:
+      ns = new my_p4est_navier_stokes_t(ngbd,ngbd_np1,faces_np1);
+
+      // Set the LSF:
+      ns->set_phi(phi.vec);
+
+      // Set the parameters for the NS solver:
+      ns->set_parameters(mu_l,rho_l,1,NULL,NULL,NULL);
+
+      // Set the nth velocity:
+      ns->set_velocities(v_n_old_grid.vec,v_n.vec);
+
+      // Set the timestep:
+      ns->set_dt(dt);
+
+      // Call the appropriate functions to setup the interfacial boundary conditions :
+      interface_bc_velocity_u(); interface_bc_velocity_v();
+
+      // Now setup the bc interface objects -- must be initialized with the neighbors and computed interfacial velocity of the moving solid front
+      BC_interface_value_velocity_u bc_interface_value_u(ngbd_np1,v_interface);
+      BC_interface_value_velocity_v bc_interface_value_v(ngbd_np1,v_interface);
+
+      // Initialize the BC objects:
+      BoundaryConditions2D bc_velocity[P4EST_DIM];
+      BoundaryConditions2D bc_pressure;
+
+      // Set the interfacial boundary conditions for velocity:
+      bc_velocity[0].setInterfaceType(interface_bc_type_velocity_u);
+      bc_velocity[1].setInterfaceType(interface_bc_type_velocity_v);
+
+      bc_velocity[0].setInterfaceValue(bc_interface_value_u);
+      bc_velocity[1].setInterfaceValue(bc_interface_value_v);
+
+      // Set the wall boundary conditions for velocity:
+      bc_velocity[0].setWallTypes(wall_bc_type_velocity_u); bc_velocity[1].setWallTypes(wall_bc_type_velocity_v);
+      bc_velocity[0].setWallValues(wall_bc_value_velocity_u); bc_velocity[1].setWallValues(wall_bc_value_velocity_v);
+
+      // Set the interfacial boundary conditions for pressure:
+      interface_bc_pressure();
+      bc_pressure.setInterfaceType(interface_bc_type_pressure);
+      bc_pressure.setInterfaceValue(interface_bc_value_pressure);
+
+      // Set the wall boundary conditions for pressure:
+      bc_pressure.setWallTypes(wall_bc_type_pressure); bc_pressure.setWallValues(wall_bc_value_pressure);
+
+
+      // Set the boundary conditions:
+      ns->set_bc(bc_velocity,&bc_pressure);
+
+      // set_external_forces
+
+      // Create the cell and face solvers:
+      cell_solver = NULL;
+      face_solver = NULL;
+
+      // Get hodge and begin iterating on hodge error
+      vec_and_ptr_cells_t hodge_old;
+      vec_and_ptr_cells_t hodge_new;
+
+      hodge_old.create(p4est_np1,ghost_np1);
+      hodge_new.create(p4est_np1,ghost_np1);
+
+      bool keep_iterating_hodge = true;
+      double hodge_tolerance = 1.e-3;
+      int hodge_max_it = 20;
+
+      int hodge_iteration = 0;
+      PetscPrintf(mpi.comm(),"\n\nBeginning Navier-Stokes solution process \n");
+
+      // Save result from Navier Stokes
+      // Write out the data:
+      PetscPrintf(mpi.comm(),"Writing the fluids grid output data: \n");
+      sprintf(outdir,"/home/elyce/workspace/projects/multialloy_with_fluids/solidif_with_fluids_output/snapshot_NS_grid_%d",out_idx);
+
+      phi.get_array();
+      my_p4est_vtk_write_all(p4est_np1,nodes_np1,ghost_np1,P4EST_TRUE,P4EST_TRUE,
+                                        1,0,outdir,
+                                        VTK_POINT_DATA,"phi",phi.ptr);
+
+      phi.restore_array();
+
+
+      while(keep_iterating_hodge){
+          double hodge_error = - 10.0;
+          double hodge_global_error = -10.0;
+          // Grab the old hodge variable before we go through the solution process:  Note: Have to copy it , because the hodge vector itself will be changed by the navier stokes solver
+          hodge_new.set(ns->get_hodge());
+          VecCopy(hodge_new.vec,hodge_old.vec);
+          // ------------------------------------
+          // Do NS Solution process:
+          // ------------------------------------
+          // Viscosity step:
+          PCType pc_face = PCSOR;
+
+          ns->solve_viscosity(face_solver,(face_solver!=NULL),KSPBCGS,pc_face);
+
+          // Projection step:
+          KSPType cell_solver_type = KSPBCGS;
+          PCType pc_cell = PCSOR;
+
+          ns->solve_projection(cell_solver,(cell_solver!=NULL),cell_solver_type,pc_cell);
+
+
+          // -------------------------------------------------------------
+          // Check the error on hodge:
+          // -------------------------------------------------------------
+          // Get the current hodge:
+          hodge_new.set(ns->get_hodge());
+
+          // Create interpolation object to interpolate phi to the quadrant location:
+          my_p4est_interpolation_nodes_t *interp_phi = ns->get_interp_phi();
+
+          // Get hodge arrays:
+          hodge_old.get_array();
+          hodge_new.get_array();
+
+          // Loop over each quadrant in each tree, check the error in hodge
+
+          foreach_tree(tr,p4est_np1){
+            p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est_np1->trees,tr);
+            foreach_local_quad(q,tree){
+
+              // Get xyz location of the quad center so we can interpolate phi there and check which domain we are in:
+              double xyz[P4EST_DIM];
+              quad_xyz_fr_q(q,tr,p4est_np1,ghost_np1,xyz);
+
+              // Get phi value at the quadrant:
+              double phi_val = (*interp_phi)(xyz[0],xyz[1]);
+
+              // Evaluate the hodge error:
+              if(phi_val < 0){
+                  hodge_error = max(hodge_error,fabs(hodge_old.ptr[q] - hodge_new.ptr[q]));
+                }
+            }
+          }
+          // Restore hodge arrays:
+          hodge_old.restore_array();
+          hodge_new.restore_array();
+
+          // Get the global hodge error:
+          int mpi_err = MPI_Allreduce(&hodge_error,&hodge_global_error,1,MPI_DOUBLE,MPI_MAX,mpi.comm()); SC_CHECK_MPI(mpi_err);
+          PetscPrintf(mpi.comm(),"Hodge iteration : %d, hodge error: %0.3e \n",hodge_iteration,hodge_global_error);
+
+          if((hodge_global_error < hodge_tolerance) || hodge_iteration>=hodge_max_it) keep_iterating_hodge = false;
+          hodge_iteration++;
+        }
+
+      // Compute velocity at the nodes
+      ns->compute_velocity_at_nodes();
+
+      // Compute the pressure -- NOTE : MIGHT NEED TO INITIALIZE PRESSURE AT CELLS, IN THE ORDER IM SAVING THE INFORMATION
+      ns->compute_pressure();
+      // Check the L2 norm of u to make sure nothing is blowing up
+
+      double NS_norm = ns->get_max_L2_norm_u();
+      PetscPrintf(mpi.comm(),"\n max NS velocity norm is %0.3e \n",NS_norm);
+      if(ns->get_max_L2_norm_u()>100.0){
+          std::cerr<<"The simulation blew up \n"<<std::endl;
+        }
+
+      vec_and_ptr_t press(p4est_np1,nodes_np1);
+
+      v_n.set(ns->get_velocity_np1());
+
+      press.set(ns->get_pressure());
+
+      sprintf(outdir,"/home/elyce/workspace/projects/multialloy_with_fluids/solidif_with_fluids_output/snapshot_NS_%d",out_idx);
+      // Scale the velocities before saving:
+      foreach_dimension(d){
+        VecScaleGhost(v_interface.vec[d],1./scaling);
+        VecScaleGhost(v_n.vec[d],1./scaling);
+
+      }
+
+      // Scale the pressure before saving:
+      VecScaleGhost(press.vec,scaling);
+
+      // Save result from Navier Stokes
+      // Write out the data:
+      PetscPrintf(mpi.comm(),"Writing the fluids output data: \n");
+      phi.get_array();
+      v_interface.get_array();
+      v_n.get_array();
+      press.get_array();
+      my_p4est_vtk_write_all(p4est_np1,nodes_np1,ghost_np1,P4EST_TRUE,P4EST_TRUE,
+                                        6,0,outdir,
+                                        VTK_POINT_DATA,"phi",phi.ptr,
+                                        VTK_POINT_DATA,"v_interface_x",v_interface.ptr[0],
+                                        VTK_POINT_DATA,"v_interface_y",v_interface.ptr[1],
+                                        VTK_POINT_DATA,"v_NS_x",v_n.ptr[0],
+                                        VTK_POINT_DATA,"v_NS_y",v_n.ptr[1],
+                                        VTK_POINT_DATA,"P",press.ptr);
+
+      phi.restore_array();
+      v_interface.restore_array();
+      v_n.restore_array();
+      press.restore_array();
+
+      // Scale back the velocities after saving:
+      foreach_dimension(d){
+        VecScaleGhost(v_interface.vec[d],scaling);
+        VecScaleGhost(v_n.vec[d],scaling);
+      }
+
+      // Scale back the pressure after saving:
+      VecScaleGhost(press.vec,1./scaling);
+
+      // --------------------------------------------------------------------------------------------------------------
+      // Delete the old grid:
+      // --------------------------------------------------------------------------------------------------------------
+
       // Delete the old grid and update with the new one:
       p4est_destroy(p4est); p4est = p4est_np1;
       p4est_ghost_destroy(ghost); ghost = ghost_np1;
       p4est_nodes_destroy(nodes); nodes = nodes_np1;
 
+      // Expand the ghost layer if needed (for Navier Stokes)
+      //my_p4est_ghost_expand(p4est,ghost);
+
       delete hierarchy; hierarchy = new my_p4est_hierarchy_t(p4est,ghost,&brick);
       delete ngbd; ngbd = new my_p4est_node_neighbors_t(hierarchy, nodes);
-      ngbd->init_neighbors();
 
-      // Create level set object and reinitialize it:
-      my_p4est_level_set_t ls_new(ngbd);
-      ls_new.reinitialize_1st_order_time_2nd_order_space(phi.vec, 100);
+      ngbd->init_neighbors();
 
       // Get the new solid LSF:
       phi_solid.destroy();
@@ -1918,19 +2640,9 @@ int main(int argc, char** argv) {
       VecScaleGhost(phi.vec,-1.0);
 
       // --------------------------------------------------------------------------------------------------------------
-      // Navier-Stokes Problem: Setup and solve a NS problem in the liquid subdomain
-      // --------------------------------------------------------------------------------------------------------------
-
-
-
-
-      // --------------------------------------------------------------------------------------------------------------
       // Compute the normal and curvature of the interface -- curvature is used in some of the interfacial boundary condition(s)
       // --------------------------------------------------------------------------------------------------------------
-      if (example_ !=1){// compute this stuff, otherwise, don't bother
-        }
 
-      double deriv_norm;
       vec_and_ptr_dim_t normal;
       vec_and_ptr_t curvature_tmp; // This one will hold computed curvature
       vec_and_ptr_t curvature;  // This one will hold curvature extended from interface to whole domain
@@ -1939,95 +2651,11 @@ int main(int argc, char** argv) {
       curvature_tmp.create(p4est,nodes);
       curvature.create(curvature_tmp.vec);
 
-      // Get derivatives of phi:
-      vec_and_ptr_dim_t phi_d;
-      phi_d.create(p4est,nodes);
-      ngbd->first_derivatives_central(phi.vec,phi_d.vec);
+      // Compute normals on the interface:
+      compute_normals(*ngbd,phi.vec,normal.vec);
 
-      // Get arrays needed:
-      normal.get_array();
-      curvature_tmp.get_array();
-      phi_d.get_array();
-
-      // First, compute the normal on the layer nodes:
-      for(size_t i = 0; i<ngbd->get_layer_size(); i++){
-          p4est_locidx_t n = ngbd->get_layer_node(i);
-
-          deriv_norm = sqrt(SQR(phi_d.ptr[0][n]) + SQR(phi_d.ptr[1][n]));
-
-          foreach_dimension(d){
-            if (deriv_norm<EPS)deriv_norm = EPS;
-
-            normal.ptr[d][n] = phi_d.ptr[d][n]/deriv_norm;;
-          }
-        }
-
-      // Begin update:
-      foreach_dimension(d){
-        VecGhostUpdateBegin(normal.vec[d],INSERT_VALUES,SCATTER_FORWARD);
-      }
-
-      // Compute the normal on the local nodes:
-      for(size_t i = 0; i<ngbd->get_local_size(); i++){
-          p4est_locidx_t n = ngbd->get_local_node(i);
-          deriv_norm = sqrt(SQR(phi_d.ptr[0][n]) + SQR(phi_d.ptr[1][n]));
-
-          foreach_dimension(d){
-            if (deriv_norm<EPS)deriv_norm = EPS;
-
-            normal.ptr[d][n] = phi_d.ptr[d][n]/deriv_norm;;
-          }
-
-        }
-      PetscPrintf(mpi.comm(),"Computed normal on local nodes \n");
-
-
-      // End ghost update:
-      foreach_dimension(d){
-        VecGhostUpdateEnd(normal.vec[d],INSERT_VALUES,SCATTER_FORWARD);
-      }
-      PetscPrintf(mpi.comm(),"Finished ghost update \n");
-
-      // Define the qnnn object to help compute the derivatives of the normal:
-      quad_neighbor_nodes_of_node_t qnnn;
-
-      // Compute curvature on layer nodes:
-      for(size_t i = 0; i<ngbd->get_layer_size(); i++){
-          p4est_locidx_t n = ngbd->get_layer_node(i);
-          ngbd->get_neighbors(n,qnnn);
-          curvature_tmp.ptr[n] = qnnn.dx_central(normal.ptr[0]) + qnnn.dy_central(normal.ptr[1]);
-        }
-      PetscPrintf(mpi.comm(),"Computed curvature on layer nodes \n");
-
-
-      // Begin ghost update:
-      VecGhostUpdateBegin(curvature_tmp.vec,INSERT_VALUES,SCATTER_FORWARD);
-      PetscPrintf(mpi.comm(),"Begin curvature ghost update \n");
-
-
-      // Compute curvature on local nodes:
-      for(size_t i = 0; i<ngbd->get_local_size(); i++){
-          p4est_locidx_t n = ngbd->get_local_node(i);
-          ngbd->get_neighbors(n,qnnn);
-          curvature_tmp.ptr[n] = qnnn.dx_central(normal.ptr[0]) + qnnn.dy_central(normal.ptr[1]);
-        }
-
-      PetscPrintf(mpi.comm(),"Computed curvature on local nodes \n");
-
-      // End ghost update:
-      VecGhostUpdateEnd(curvature_tmp.vec,INSERT_VALUES,SCATTER_FORWARD);
-
-      PetscPrintf(mpi.comm(),"Finished curvature ghost update \n");
-
-      // Restore arrays needed:
-      curvature_tmp.restore_array();
-      normal.restore_array();
-      phi_d.restore_array();
-
-
-      // Now go ahead and extend the curvature values to the whole domain
-      //ls.extend_from_interface_to_whole_domain_TVD(phi.vec,curvature_tmp.vec,curvature.vec,20);
-      ls.extend_from_interface_to_whole_domain_TVD(phi.vec,curvature_tmp.vec,curvature.vec);
+      // Compute curvature on the interface:
+      compute_curvature(phi,normal,curvature,ngbd,ls_new);
 
       // --------------------------------------------------------------------------------------------------------------
       // Poisson Problem at Nodes: Setup and solve a Poisson problem on both the liquid and solidified subdomains
@@ -2092,6 +2720,10 @@ int main(int argc, char** argv) {
       solver_Tl = new my_p4est_poisson_nodes_mls_t(ngbd);
       solver_Ts = new my_p4est_poisson_nodes_mls_t(ngbd);
       solver_smoke = new my_p4est_poisson_nodes_mls_t(ngbd);
+
+      BC_interface_value bc_interface_val(ngbd,normal,curvature);
+      //bc_interface_val(1.0,2.0);
+
 
       solver_Tl->add_boundary(MLS_INTERSECTION,phi.vec,phi_dd.vec[0],phi_dd.vec[1],interface_bc_type_temp,bc_interface_val,bc_interface_coeff);
       solver_Ts->add_boundary(MLS_INTERSECTION,phi_solid.vec,phi_solid_dd.vec[0],phi_solid_dd.vec[1],interface_bc_type_temp,bc_interface_val,bc_interface_coeff);
