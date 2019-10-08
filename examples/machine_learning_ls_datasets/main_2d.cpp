@@ -41,7 +41,7 @@ struct circle: CF_2
 	 * Non-signed distance function evaluation at a point.
 	 * @param x Point x-coordinate.
 	 * @param y Point y-coordinate.
-	 * @return 0 if point lies on circunference, > 0 if inside circle, < 0 if outside.
+	 * @return 0 if point lies on circunference, < 0 if inside circle, > 0 if outside.
 	 */
 	double operator()( double x, double y ) const override
 	{
@@ -61,10 +61,11 @@ const std::string COLUMN_NAMES[] = {
 		"(i-1,j+1)", "(i,j+1)", "(i+1,j+1)", "(i-1,j)", "(i,j)", "(i+1,j)", "(i-1,j-1)", "(i,j-1)", "(i+1,j-1)",
 		"h*kappa", "h"
 };
+const int NUM_COLUMNS = 11;
 const int NUM_SAMPLES = 1u << 10u;					// Number of samples for each circle radius for any grid resolution.
 const int N_CIRCLES = 60;							// Number of circles for a given radius per grid resolution.
 const int MIN_D = 0,								// Min and max dimension values.
-		MAX_D = 1;
+		  MAX_D = 1;
 
 /*!
  * Generate and save training datasets with a very large number or rows and 9+1+1 columns containing the renitialized phi
@@ -83,7 +84,7 @@ int main (int argc, char* argv[])
 		mpi_environment_t mpi{};
 		mpi.init( argc, argv );
 
-		int numberOfIterations = 20;											// Change it to 5, 10, 15, 20.
+		int numberOfIterations = 5;												// Change it to 5, 10, 15, 20.
 		for( int resolution = 16; resolution <= 512; resolution += 8 )			// From 16x16 to 512x512 grid resolutions.
 			saveReinitializedDataset( resolution, numberOfIterations, mpi );
 	}
@@ -111,8 +112,8 @@ void saveReinitializedDataset( int nGridPoints, int iter, const mpi_environment_
 		p4est_connectivity_t *connectivity;							// Create the connectivity object.  Our domain is [0,1]^2, and we want a cartesian grid.
 		my_p4est_brick_t brick;
 		int n_xyz[] = {nGridPoints, nGridPoints, nGridPoints};		// Number of root cells in the macromesh along x, y, z
-		double xyz_min[] = {-h, -h, -h};							// Coordinates of the lower-left-back point: We want to skip first column and row.
-		double xyz_max[] = {1, 1, 1};								// Coordinates of the front-right-top point.
+		double xyz_min[] = {MIN_D - h, MIN_D - h, MIN_D - h};		// Coordinates of the lower-left-back point: We want to skip first column and row.
+		double xyz_max[] = {MAX_D, MAX_D, MAX_D};					// Coordinates of the front-right-top point.
 		int periodic[] = {0, 0, 0};									// Whether the domain is periodic or not.
 
 		connectivity = my_p4est_brick_new( n_xyz, xyz_min, xyz_max, &brick, periodic );
@@ -135,11 +136,11 @@ void saveReinitializedDataset( int nGridPoints, int iter, const mpi_environment_
 
 		///////////////////////////////////////// Generating the datasets //////////////////////////////////////////////
 
-		parStopWatch w;
+		parStopWatch watch;
 
 		printf( ">> Beginning to generate dataset for %i circles, %i grid points, and h = %f, in a [0,1]x[0,1] domain\n", N_CIRCLES, nGridPoints, h );
 		std::string fileName = DATA_PATH + "iter" + std::to_string( iter ) + "/reinitDataset_m" + std::to_string( nGridPoints ) +  ".csv";
-		w.start();
+		watch.start();
 
 		// TODO: Open file in write mode.  Write header row.
 
@@ -199,15 +200,67 @@ void saveReinitializedDataset( int nGridPoints, int iter, const mpi_environment_
 					Grid[i][j] = phi_p[n];	// Stores information in transposed format (i.e. ith row contains all y values for same x).
 				}
 
-				/////// Process grid points' along the circular level set for which we want to compute curvature ///////
-				std::set<std::tuple<int, int>> points = PointsOnCurves::getPointsAlongCircle( c, r, h );
-
 				ierr = VecRestoreArray( phi, &phi_p ); CHKERRXX( ierr );
 
 				// Finally, delete PETSc Vecs by calling 'VecDestroy' function.
 				ierr = VecDestroy( phi ); CHKERRXX( ierr );
+
+				/////// Process grid points' along the circular level set for which we want to compute curvature ///////
+				std::set<std::tuple<int, int>> points = PointsOnCurves::getPointsAlongCircle( c, r, h );
+
+				for( const auto& p : points )
+					std::cout << std::get<0>( p ) << ", " << std::get<1>( p ) << "; " << std::endl;
+
+				for( const auto& p : points )
+				{
+					int i = std::get<0>( p ),							// Returned indices.
+						j = std::get<1>( p );
+					int subgrid[9][P4EST_DIM] = {						// The nine grid points including the point of interest right in the middle.
+							{i - 1, j + 1}, {i, j + 1}, {i + 1, j + 1},
+							{i - 1,     j}, {i,     j}, {i + 1,     j},
+							{i - 1, j - 1}, {i, j - 1}, {i + 1, j - 1}
+					};
+
+					std::vector<double> dataPve( NUM_COLUMNS, 0 ),		// Phi, h and h*kappa results in positive and negative form.
+										dataNve( NUM_COLUMNS, 0 );
+
+					int s;
+					for( s = 0; s < 9; s++ )							// Collect phi(x) for each of the 9 grid points.
+					{
+						const int* q = &subgrid[s][0];
+						if( q[0] < 0 || q[0] >= nGridPoints || q[1] < 0 || q[1] >= nGridPoints )
+							throw std::out_of_range( "Grid point out of range: (" + std::to_string( q[0] ) + ", " + std::to_string( q[1] ) + ")" );
+
+						dataPve[s] = Grid[q[0]][q[1]];					// Store both positive and negative phi values.
+						dataNve[s] = -dataPve[s];
+					}
+
+					dataPve[s] = hkappa;								// Second to last column holds h*\kappa.
+					dataNve[s] = -hkappa;
+					s++;
+					dataPve[s] = h;										// Last column holds spatial scale h.
+					dataNve[s] = h;
+					samples.push_back( dataPve );						// Build nx(9+1+1) matrix of phi, h*kappa, and h values.
+					samples.push_back( dataNve );
+				}
 			}
+
+			// We have generated at least NUM_SAMPLES samples for circles of the same given radius.
+			// This increases the number of samples for very small circles by multiplicity but varying their centers.
+			// Now remove any excess.
+			// TODO: Write function to randomly sample.
+//			if( samples.size() > NUM_SAMPLES )
+//				samples = datasample( samples, NUM_SAMPLES, "Replace", false );		// Sample randomly.
+
+			nc++;
+
+			if( nc % 10 == 0 )
+				printf( "   %i circle groups evaluated after %f secs.\n", nc, watch.get_duration_current() );
+
+			// TODO: Write to file the samples content.
 		}
+
+		printf( "<< Finished generating %i circles in %f secs.\n", nc - 1, watch.get_duration_current() );
 
 		//////////////////////////////// Destroy the p4est and its connectivity structure //////////////////////////////
 
@@ -216,8 +269,7 @@ void saveReinitializedDataset( int nGridPoints, int iter, const mpi_environment_
 		p4est_destroy( p4est );
 		p4est_connectivity_destroy( connectivity );
 
-		w.stop();
-		w.read_duration();
+		watch.stop();
 	}
 	catch( const std::exception &e )
 	{
