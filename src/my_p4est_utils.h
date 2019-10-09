@@ -1733,7 +1733,8 @@ public:
 
   void start(const std::string& msg){
     msg_ = msg;
-    ierr = PetscFPrintf(comm_, f_, "%s ... \n", msg.c_str()); CHKERRXX(ierr);
+    if(msg_.length() > 0){
+      ierr = PetscFPrintf(comm_, f_, "%s ... \n", msg.c_str()); CHKERRXX(ierr); }
     ts = MPI_Wtime();
   }
 

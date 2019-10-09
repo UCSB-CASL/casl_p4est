@@ -6,7 +6,7 @@ void cmdParser::add_option(const std::string& key, const std::string& descriptio
   options.insert(std::make_pair(key, description));
 }
 
-void cmdParser::parse(int argc, char* argv[])
+void cmdParser::parse(int argc, char* argv[], const std::string &extra_info)
 {
   for (int n=1; n<argc; n++){
     std::string key, val;
@@ -41,6 +41,12 @@ void cmdParser::parse(int argc, char* argv[])
   print();
 
   if (contains("help")){
+    if(!extra_info.empty())
+    {
+      PetscPrintf(MPI_COMM_WORLD, "\n\n");
+    PetscPrintf(MPI_COMM_WORLD, " -----------== EXTRA INFORMATION FROM THE DEVELOPER ==------------ \n\n");
+      PetscPrintf(MPI_COMM_WORLD, extra_info.c_str());
+    }
     PetscPrintf(MPI_COMM_WORLD, "\n\n");
     PetscPrintf(MPI_COMM_WORLD, " -------------------== CASL Options Database ==------------------- \n\n");
     PetscPrintf(MPI_COMM_WORLD, " List of available options:\n\n");
@@ -49,7 +55,6 @@ void cmdParser::parse(int argc, char* argv[])
       PetscPrintf(MPI_COMM_WORLD, "  -%s: %s\n", it->first.c_str(), it->second.c_str());
     }
     PetscPrintf(MPI_COMM_WORLD, " ----------------------------------------------------------------- \n\n");
-
     exit(EXIT_SUCCESS);
   }
 }
@@ -64,16 +69,6 @@ void cmdParser::print(FILE *f){
   PetscPrintf(MPI_COMM_WORLD, " ----------------------------------------------------------------- \n");    
 }
 
-void cmdParser::show_help(){
-  PetscPrintf(MPI_COMM_WORLD, "\n\n");
-  PetscPrintf(MPI_COMM_WORLD, " -------------------== CASL Options Database ==------------------- \n\n");
-  PetscPrintf(MPI_COMM_WORLD, " List of available options:\n\n");
-  for (std::map<std::string, std::string>::const_iterator it = options.begin(); it != options.end(); ++it)
-  {
-    PetscPrintf(MPI_COMM_WORLD, "  -%s: %s\n", it->first.c_str(), it->second.c_str());
-  }
-  PetscPrintf(MPI_COMM_WORLD, " ----------------------------------------------------------------- \n\n");
-}
 
 bool cmdParser::contains(const std::string& key)
 {
