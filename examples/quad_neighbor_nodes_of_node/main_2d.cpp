@@ -740,15 +740,13 @@ int main (int argc, char* argv[]){
                                                         field_, dx_, dy_,      ddxx_, ddyy_); CHKERRXX(ierr);
 #endif
     if(!timing_off)
-      timer.start("");
+      timer.start();
 
-    P4EST_QUADRANT_LEN(0);
     ngbd_n.init_neighbors();
-
     if(!timing_off){
       timer.stop();
       time_spent_on_ngbd_initialization += timer.get_duration();
-      timer.start("");
+      timer.start();
     }
     switch (method) {
     case 0:
