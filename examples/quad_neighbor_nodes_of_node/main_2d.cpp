@@ -33,6 +33,30 @@
 
 using namespace std;
 
+const static std::string main_description = "\
+ In this example, we test and illustrate the calculation of first and second derivatives of node-\n\
+ sampled fields. We calculate the gradient and second derivatives (along all cartesian directions)\n\
+ of nfields scalar fields, on nsplits grids that are finer and finer. The maximum pointwise errors\n\
+ are evaluated for all inner nodes (i.e. excluding wall nodes) and the orders of convergence are\n\
+ estimated and successively shown (if nsplits > 1). \n\
+ The code's performance is assessed with built-in timers to compare various methods for evaluating \n\
+ the derivatives. The available methods are:\n\
+ - method 0: calculating the first and second derivatives of the nfields scalar fields sequentially,\n\
+            one after another; \n\
+ - method 1: calculating the first and second derivatives of the nfields scalar fields simultaneously\n\
+            (calculating geometry-related information, only once); \n\
+ - method 2: calculating the first and second derivatives of the nfields scalar fields simultaneously,\n\
+            using block-structured parallel vectors to optimize parallel communications (calculating \n\
+            geometry-related information, only once). \n\
+ The three different methods should produce the EXACT same results regarding the orders of convergence.\n\
+ (This example contains and illustrates performance facts pertaining to the optimization of procedures \n\
+ related to data transfer between successive grids in grid-update procedures, with quadratic interpola-\n\
+ tion.) \n\
+ Example of application of interest: when interpolating (several) node-sampled data fields from one\n\
+ grid to another with quadratic interpolation, the second derivatives of all fields are required for\n\
+ all the fields\n\
+ Developer: Raphael Egan (raphaelegan@ucsb.edu), October 2019.\n";
+
 
 #ifdef P4_TO_P8
 class test_function : public CF_3 {
@@ -562,7 +586,6 @@ public:
 #endif
 
 int main (int argc, char* argv[]){
-
   mpi_environment_t mpi;
   mpi.init(argc, argv);
 
@@ -572,33 +595,26 @@ int main (int argc, char* argv[]){
   PetscErrorCode      ierr;
 
   cmdParser cmd;
-  cmd.add_option("seed",        "seed for random number generator (default is 163)");
+  cmd.add_option("seed",        "seed for random number generator (default is 279, don't ask why :-p)");
   cmd.add_option("ntrees",      "number of trees per dimensions (default is 2)");
   cmd.add_option("lmin",        "min level of the trees for the first grid to consider (default is 4)");
   cmd.add_option("lmax",        "max level of the trees for the first grid to consider (default is 6)");
-  cmd.add_option("nsplits",      "number of grid splittings for accuracy check (default is 1, accuracy is checked only if >1)");
-  cmd.add_option("method",      "(default is 0)\n     0==calculating the derivatives, one field after another;\n     1==calculating the derivatives, all fields at once;\n     2==storing data by block, calculating all at once as well.");
+  cmd.add_option("nsplits",     "number of grid splittings for accuracy check\n\
+           (default is 1, accuracy is checked only if >1)");
+  cmd.add_option("method",      "default is 0, available values are\n\
+            0::calculating the derivatives, one field after another;\n\
+            1::calculating the derivatives, all fields at once;\n\
+            2::storing data by block, calculating all at once as well.");
   cmd.add_option("timing_off",  "disables timing if present");
-  cmd.add_option("fields",      "number of fields to calculate first and second derivatives of (default is number of dimensions P4EST_DIM)");
-  std::string main_description = "\
-      In this example, we test and illustrate the calculation of first and second derivatives of node-\n\
-      sampled fields. We calculate the gradient and second derivatives (along all cartesian directions)\n\
-      of nfields scalar fields, on nsplits grids that are finer and finer. The maximum pointwise errors\n\
-      are evaluated for all inner nodes (i.e. excluding wall nodes) and the orders of convergence are\n\
-      estimated and successively shown (if nsplits > 1). \n\
-      The code's performance is assessed with built-in timers to compare various methods for evaluating \n\
-      the derivatives. The available methods are:\n\
-      - method 0: calculating the first and second derivatives of the nfields scalar fields sequentially, one after another; \n\
-      - method 1: calculating the first and second derivatives of the nfields scalar fields simultaneously (calculating geometry-related information, only once); \n\
-      - method 2: calculating the first and second derivatives of the nfields scalar fields simultaneously, using block-structured parallel vectors to optimize parallel communications (calculating geometry-related information, only once). \n\
-      The three different methods should produce the EXACT same results regarding the orders of convergence.\n\
-      (This example contains and illustrates performance facts pertaining to the optimization of procedures related to \n\
-      data transfer between successive grids in grid-update procedures, with quadratic interpolation.) \n\
-      (Example of application of interest: when interpolating (several) node-sampled data fields from \n\
-      one grid to another with quadratic interpolation, the second derivatives of all fields are required \n\
-      for all the fields)\n\
-      Developer: Raphael Egan (raphaelegan@ucsb.edu), October 2019";
-  cmd.parse(argc, argv, main_description);
+  cmd.add_option("fields",      "number of fields to calculate first and second derivatives of\n\
+           (default is number of dimensions, i.e., P4EST_DIM)");
+  cmd.add_option("vtk_folder",  "exportation directory for vtk files if vtk exportation is activated\n\
+                          (default is the directory where the program is run from: './')");
+  cmd.add_option("vtk",         "exports the (final) grid and hierarchy in vtk format, if present.");
+
+
+  if(cmd.parse(argc, argv, main_description))
+    return 0;
 
   // read user's input parameters
   const unsigned int method = cmd.get<unsigned int>("method", 0);
@@ -854,6 +870,17 @@ int main (int argc, char* argv[]){
         std::cout << std::endl;
       }
       std::cout << std::endl;
+    }
+
+    if(ss==nsplits-1 && cmd.contains("vtk"))
+    {
+      const string vtk_folder = cmd.get<string>("vtk_folder", "./");
+      string grid_filename = vtk_folder+"p4est_grid";
+      my_p4est_vtk_write_all(p4est, nodes, ghost,
+                             P4EST_TRUE, P4EST_TRUE,
+                             0, 0, grid_filename.c_str());
+      string hierarchy_filename = vtk_folder+"hierarchy";
+      hierarchy.write_vtk(hierarchy_filename.c_str());
     }
   }
 
