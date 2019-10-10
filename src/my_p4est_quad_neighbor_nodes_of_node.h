@@ -1827,7 +1827,6 @@ public:
   }
   */
 
-
   inline double f_m00_linear(const double *f) const
   {
     double result;
@@ -1892,6 +1891,69 @@ public:
     return;
   }
 
+  inline void laplace(const double *f[], double *serialized_fxxyyzz, const unsigned int &n_arrays) const
+  {
+    double fxx[n_arrays], fyy[n_arrays];
+#ifdef P4_TO_P8
+    double fzz[n_arrays];
+    laplace(f, fxx, fyy, fzz, n_arrays);
+#else
+    laplace(f, fxx, fyy, n_arrays);
+#endif
+    for (unsigned int k = 0; k < n_arrays; ++k) {
+      const unsigned int l_offset = P4EST_DIM*k;
+      serialized_fxxyyzz[l_offset+0] = fxx[k];
+      serialized_fxxyyzz[l_offset+1] = fyy[k];
+#ifdef P4_TO_P8
+      serialized_fxxyyzz[l_offset+2] = fzz[k];
+#endif
+    }
+    return;
+  }
+
+#ifdef P4_TO_P8
+  inline void laplace_insert_in_vectors(const double *f[], double *fxx[], double *fyy[], double *fzz[], const unsigned int &n_arrays) const
+#else
+  inline void laplace_insert_in_vectors(const double *f[], double *fxx[], double *fyy[],                const unsigned int &n_arrays) const
+#endif
+  {
+    double fxx_serial[n_arrays], fyy_serial[n_arrays];
+#ifdef P4_TO_P8
+    double fzz_serial[n_arrays];
+    laplace(f, fxx_serial, fyy_serial, fzz_serial,  n_arrays);
+#else
+    laplace(f, fxx_serial, fyy_serial,              n_arrays);
+#endif
+    for (unsigned int k = 0; k < n_arrays; ++k) {
+      fxx[k][node_000] = fxx_serial[k];
+      fyy[k][node_000] = fyy_serial[k];
+#ifdef P4_TO_P8
+      fzz[k][node_000] = fzz_serial[k];
+#endif
+    }
+    return;
+  }
+
+  inline void laplace_insert_in_block_vectors(const double *f[], double *fxxyyzz[], const unsigned int &n_arrays) const
+  {
+    double fxx_serial[n_arrays], fyy_serial[n_arrays];
+#ifdef P4_TO_P8
+    double fzz_serial[n_arrays];
+    laplace(f, fxx_serial, fyy_serial, fzz_serial,  n_arrays);
+#else
+    laplace(f, fxx_serial, fyy_serial,              n_arrays);
+#endif
+    for (unsigned int k = 0; k < n_arrays; ++k) {
+      const unsigned int l_offset = P4EST_DIM*node_000;
+      fxxyyzz[k][l_offset]    = fxx_serial[k];
+      fxxyyzz[k][l_offset+1]  = fyy_serial[k];
+#ifdef P4_TO_P8
+      fxxyyzz[k][l_offset+2]  = fzz_serial[k];
+#endif
+    }
+    return;
+  }
+
   inline void laplace_all_components(const double *f[], double *serialized_fxxyyzz, const unsigned int &n_arrays, const unsigned int &bs) const
   {
     P4EST_ASSERT(bs>1); // the elementary functions for bs==1 use less flops (straightfward indices) --> functions have been duplicated for efficiency
@@ -1918,50 +1980,10 @@ public:
     return;
   }
 
-  inline void laplace(const double *f[], double *serialized_fxxyyzz, const unsigned int &n_arrays) const
-  {
-    double fxx[n_arrays], fyy[n_arrays];
 #ifdef P4_TO_P8
-    double fzz[n_arrays];
-    laplace(f, fxx, fyy, fzz, n_arrays);
+  inline void laplace_all_components_insert_in_vectors(const double *f[], double *fxx[], double *fyy[], double *fzz[], const unsigned int &n_arrays, const unsigned int &bs) const
 #else
-    laplace(f, fxx, fyy, n_arrays);
-#endif
-    for (unsigned int k = 0; k < n_arrays; ++k) {
-      const unsigned int l_offset = P4EST_DIM*k;
-      serialized_fxxyyzz[l_offset+0] = fxx[k];
-      serialized_fxxyyzz[l_offset+1] = fyy[k];
-#ifdef P4_TO_P8
-      serialized_fxxyyzz[l_offset+2] = fzz[k];
-#endif
-    }
-    return;
-  }
-
-  inline void laplace_component(const double *f[], double *serialized_fxxyyzz, const unsigned int &n_arrays, const unsigned int &bs, const unsigned int &comp) const
-  {
-    double fxx[n_arrays], fyy[n_arrays];
-#ifdef P4_TO_P8
-    double fzz[n_arrays];
-    laplace_component(f, fxx, fyy, fzz, n_arrays, bs, comp);
-#else
-    laplace_component(f, fxx, fyy, n_arrays, bs, comp);
-#endif
-    for (unsigned int k = 0; k < n_arrays; ++k) {
-      const unsigned int l_offset = P4EST_DIM*k;
-      serialized_fxxyyzz[l_offset+0] = fxx[k];
-      serialized_fxxyyzz[l_offset+1] = fyy[k];
-#ifdef P4_TO_P8
-      serialized_fxxyyzz[l_offset+2] = fzz[k];
-#endif
-    }
-    return;
-  }
-
-#ifdef P4_TO_P8
-  inline void laplace_all_components(const double *f[], double *fxx[], double *fyy[], double *fzz[], const unsigned int &n_arrays, const unsigned int &bs) const
-#else
-  inline void laplace_all_components(const double *f[], double *fxx[], double *fyy[],                const unsigned int &n_arrays, const unsigned int &bs) const
+  inline void laplace_all_components_insert_in_vectors(const double *f[], double *fxx[], double *fyy[],                const unsigned int &n_arrays, const unsigned int &bs) const
 #endif
   {
     P4EST_ASSERT(bs>1);
@@ -1988,30 +2010,8 @@ public:
     }
     return;
   }
-#ifdef P4_TO_P8
-  inline void laplace(const double *f[], double *fxx[], double *fyy[], double *fzz[], const unsigned int &n_arrays) const
-#else
-  inline void laplace(const double *f[], double *fxx[], double *fyy[],                const unsigned int &n_arrays) const
-#endif
-  {
-    double fxx_serial[n_arrays], fyy_serial[n_arrays];
-#ifdef P4_TO_P8
-    double fzz_serial[n_arrays];
-    laplace(f, fxx_serial, fyy_serial, fzz_serial,  n_arrays);
-#else
-    laplace(f, fxx_serial, fyy_serial,              n_arrays);
-#endif
-    for (unsigned int k = 0; k < n_arrays; ++k) {
-      fxx[k][node_000] = fxx_serial[k];
-      fyy[k][node_000] = fyy_serial[k];
-#ifdef P4_TO_P8
-      fzz[k][node_000] = fzz_serial[k];
-#endif
-    }
-    return;
-  }
 
-  inline void laplace_all_components(const double *f[], double *fxxyyzz[], const unsigned int &n_arrays, const unsigned int &bs) const
+  inline void laplace_all_components_insert_in_block_vectors(const double *f[], double *fxxyyzz[], const unsigned int &n_arrays, const unsigned int &bs) const
   {
     P4EST_ASSERT(bs>1);
     const unsigned int n_arrays_bs =n_arrays*bs;
@@ -2037,26 +2037,26 @@ public:
     }
     return;
   }
-  inline void laplace(const double *f[], double *fxxyyzz[], const unsigned int &n_arrays) const
+
+  inline void laplace_component(const double *f[], double *serialized_fxxyyzz, const unsigned int &n_arrays, const unsigned int &bs, const unsigned int &comp) const
   {
-    double fxx_serial[n_arrays], fyy_serial[n_arrays];
+    double fxx[n_arrays], fyy[n_arrays];
 #ifdef P4_TO_P8
-    double fzz_serial[n_arrays];
-    laplace(f, fxx_serial, fyy_serial, fzz_serial,  n_arrays);
+    double fzz[n_arrays];
+    laplace_component(f, fxx, fyy, fzz, n_arrays, bs, comp);
 #else
-    laplace(f, fxx_serial, fyy_serial,              n_arrays);
+    laplace_component(f, fxx, fyy, n_arrays, bs, comp);
 #endif
     for (unsigned int k = 0; k < n_arrays; ++k) {
-      const unsigned int l_offset = P4EST_DIM*node_000;
-      fxxyyzz[k][l_offset]    = fxx_serial[k];
-      fxxyyzz[k][l_offset+1]  = fyy_serial[k];
+      const unsigned int l_offset = P4EST_DIM*k;
+      serialized_fxxyyzz[l_offset+0] = fxx[k];
+      serialized_fxxyyzz[l_offset+1] = fyy[k];
 #ifdef P4_TO_P8
-      fxxyyzz[k][l_offset+2]  = fzz_serial[k];
+      serialized_fxxyyzz[l_offset+2] = fzz[k];
 #endif
     }
     return;
   }
-
 
   inline void ngbd_with_quadratic_interpolation(const double *f, double &f_000, double &f_m00, double &f_p00, double &f_0m0, double &f_0p0
                                               #ifdef P4_TO_P8
@@ -2097,7 +2097,15 @@ public:
     dxx_central(&f, &fxx, 1);
     return fxx;
   }
-  inline void dxx_central_all_components(const double *f[], double *fxx[], const unsigned int &n_arrays, const unsigned int &bs) const
+  inline void dxx_central_insert_in_vectors(const double *f[], double *fxx[], const unsigned int &n_arrays) const
+  {
+    double fxx_serial[n_arrays];
+    dxx_central(f, fxx_serial, n_arrays);
+    for (unsigned int k = 0; k < n_arrays; ++k)
+      fxx[k][node_000] = fxx_serial[k];
+    return;
+  }
+  inline void dxx_central_all_components_insert_in_vectors(const double *f[], double *fxx[], const unsigned int &n_arrays, const unsigned int &bs) const
   {
     P4EST_ASSERT(bs>1);
     double fxx_serial[n_arrays*bs];
@@ -2111,21 +2119,21 @@ public:
     }
     return;
   }
-  inline void dxx_central(const double *f[], double *fxx[], const unsigned int &n_arrays) const
-  {
-    double fxx_serial[n_arrays];
-    dxx_central(f, fxx_serial, n_arrays);
-    for (unsigned int k = 0; k < n_arrays; ++k)
-      fxx[k][node_000] = fxx_serial[k];
-    return;
-  }
   double dyy_central(const double *f) const
   {
     double fyy;
     dyy_central(&f, &fyy, 1);
     return fyy;
   }
-  inline void dyy_central_all_components(const double *f[], double *fyy[], const unsigned int &n_arrays, const unsigned int &bs) const
+  inline void dyy_central_insert_in_vectors(const double *f[], double *fyy[], const unsigned int &n_arrays) const
+  {
+    double fyy_serial[n_arrays];
+    dyy_central(f, fyy_serial, n_arrays);
+    for (unsigned int k = 0; k < n_arrays; ++k)
+      fyy[k][node_000] = fyy_serial[k];
+    return;
+  }
+  inline void dyy_central_all_components_insert_in_vectors(const double *f[], double *fyy[], const unsigned int &n_arrays, const unsigned int &bs) const
   {
     P4EST_ASSERT(bs>1);
     double fyy_serial[n_arrays*bs];
@@ -2139,14 +2147,6 @@ public:
     }
     return;
   }
-  inline void dyy_central(const double *f[], double *fyy[], const unsigned int &n_arrays) const
-  {
-    double fyy_serial[n_arrays];
-    dyy_central(f, fyy_serial, n_arrays);
-    for (unsigned int k = 0; k < n_arrays; ++k)
-      fyy[k][node_000] = fyy_serial[k];
-    return;
-  }
 #ifdef P4_TO_P8
   double dzz_central(const double *f) const
   {
@@ -2154,7 +2154,15 @@ public:
     dzz_central(&f, &fzz, 1);
     return fzz;
   }
-  inline void dzz_central_all_components(const double *f[], double *fzz[], const unsigned int &n_arrays, const unsigned int &bs) const
+  inline void dzz_central_insert_in_vectors(const double *f[], double *fzz[], const unsigned int &n_arrays) const
+  {
+    double fzz_serial[n_arrays];
+    dzz_central(f, fzz_serial, n_arrays);
+    for (unsigned int k = 0; k < n_arrays; ++k)
+      fzz[k][node_000] = fzz_serial[k];
+    return;
+  }
+  inline void dzz_central_all_components_insert_in_vectors(const double *f[], double *fzz[], const unsigned int &n_arrays, const unsigned int &bs) const
   {
     P4EST_ASSERT(bs>1);
     double fzz_serial[n_arrays*bs];
@@ -2168,14 +2176,6 @@ public:
     }
     return;
   }
-  inline void dzz_central(const double *f[], double *fzz[], const unsigned int &n_arrays) const
-  {
-    double fzz_serial[n_arrays];
-    dzz_central(f, fzz_serial, n_arrays);
-    for (unsigned int k = 0; k < n_arrays; ++k)
-      fzz[k][node_000] = fzz_serial[k];
-    return;
-  }
 #endif
   inline double dd_central(const unsigned short &der, const double *f) const
   {
@@ -2183,7 +2183,17 @@ public:
     dd_central(der, &f, &fdd, 1);
     return fdd;
   }
+
   // first-derivatives-related procedures
+  inline void gradient(const double *f, double fxyx[P4EST_DIM]) const
+  {
+#ifdef P4_TO_P8
+    gradient(&f, &fxyx[0], &fxyx[1], &fxyx[2],  1);
+#else
+    gradient(&f, &fxyx[0], &fxyx[1],            1);
+#endif
+    return;
+  }
 #ifdef P4_TO_P8
   inline void gradient(const double *f, double &fx, double &fy, double &fz) const
 #else
@@ -2197,39 +2207,30 @@ public:
 #endif
     return;
   }
-#ifdef P4_TO_P8
-  inline void gradient_all_components(const double *f[], double *fx[], double *fy[], double *fz[], const unsigned int &n_arrays, const unsigned int &bs) const
-#else
-  inline void gradient_all_components(const double *f[], double *fx[], double *fy[],               const unsigned int &n_arrays, const unsigned int &bs) const
-#endif
+  inline void gradient_all_components(const double *f, double *fxyz, const unsigned int &bs) const
   {
     P4EST_ASSERT(bs>1);
-    const unsigned int n_arrays_bs = n_arrays*bs;
-    double fx_serial[n_arrays_bs], fy_serial[n_arrays_bs];
+    double fx_serial[bs], fy_serial[bs];
 #ifdef P4_TO_P8
-    double fz_serial[n_arrays_bs];
-    gradient_all_components(f, fx_serial, fy_serial, fz_serial,  n_arrays, bs);
+    double fz_serial[bs];
+    gradient_all_components(&f, fx_serial, fy_serial, fz_serial,  1, bs);
 #else
-    gradient_all_components(f, fx_serial, fy_serial,             n_arrays, bs);
+    gradient_all_components(&f, fx_serial, fy_serial,             1, bs);
 #endif
-    const unsigned int l_offset = bs*node_000;
-    for (unsigned int k = 0; k < n_arrays; ++k) {
-      for (unsigned int comp = 0; comp < bs; ++comp) {
-        const unsigned int l_index = l_offset+comp;
-        const unsigned int r_index = k*bs+comp;
-        fx[k][l_index] = fx_serial[r_index];
-        fy[k][l_index] = fy_serial[r_index];
+    for (unsigned int comp = 0; comp < bs; ++comp) {
+      const unsigned int comp_dim = comp*P4EST_DIM;
+      fxyz[comp_dim+0] = fx_serial[comp];
+      fxyz[comp_dim+1] = fy_serial[comp];
 #ifdef P4_TO_P8
-        fz[k][l_index] = fz_serial[r_index];
+      fxyz[comp_dim+2] = fz_serial[comp];
 #endif
-      }
     }
     return;
   }
 #ifdef P4_TO_P8
-  inline void gradient(const double *f[], double *fx[], double *fy[], double *fz[], const unsigned int &n_arrays) const
+  inline void gradient_insert_in_vectors(const double *f[], double *fx[], double *fy[], double *fz[], const unsigned int &n_arrays) const
 #else
-  inline void gradient(const double *f[], double *fx[], double *fy[],               const unsigned int &n_arrays) const
+  inline void gradient_insert_in_vectors(const double *f[], double *fx[], double *fy[],               const unsigned int &n_arrays) const
 #endif
   {
     double fx_serial[n_arrays], fy_serial[n_arrays];
@@ -2248,7 +2249,57 @@ public:
     }
     return;
   }
-  inline void gradient_all_components(const double *f[], double *fxyz[], const unsigned int &n_arrays, const unsigned int &bs) const
+  inline void gradient_insert_in_block_vectors(const double *f[], double *fxyz[], const unsigned int &n_arrays) const
+  {
+    double fx_serial[n_arrays], fy_serial[n_arrays];
+#ifdef P4_TO_P8
+    double fz_serial[n_arrays];
+    gradient(f, fx_serial, fy_serial, fz_serial,  n_arrays);
+#else
+    gradient(f, fx_serial, fy_serial,             n_arrays);
+#endif
+    for (unsigned int k = 0; k < n_arrays; ++k) {
+      const unsigned int l_offset = P4EST_DIM*node_000;
+      fxyz[k][l_offset]    = fx_serial[k];
+      fxyz[k][l_offset+1]  = fy_serial[k];
+#ifdef P4_TO_P8
+      fxyz[k][l_offset+2]  = fz_serial[k];
+#endif
+    }
+    return;
+  }
+
+#ifdef P4_TO_P8
+  inline void gradient_all_components_insert_in_vectors(const double *f[], double *fx[], double *fy[], double *fz[], const unsigned int &n_arrays, const unsigned int &bs) const
+#else
+  inline void gradient_all_components_insert_in_vectors(const double *f[], double *fx[], double *fy[],               const unsigned int &n_arrays, const unsigned int &bs) const
+#endif
+  {
+    P4EST_ASSERT(bs>1);
+    const unsigned int n_arrays_bs = n_arrays*bs;
+    double fx_serial[n_arrays_bs], fy_serial[n_arrays_bs];
+#ifdef P4_TO_P8
+    double fz_serial[n_arrays_bs];
+    gradient_all_components(f, fx_serial, fy_serial, fz_serial,  n_arrays, bs);
+#else
+    gradient_all_components(f, fx_serial, fy_serial,             n_arrays, bs);
+#endif
+    const unsigned int l_offset = bs*node_000;
+    for (unsigned int k = 0; k < n_arrays; ++k) {
+      const unsigned int kbs = k*bs;
+      for (unsigned int comp = 0; comp < bs; ++comp) {
+        const unsigned int l_index = l_offset+comp;
+        const unsigned int r_index = kbs+comp;
+        fx[k][l_index] = fx_serial[r_index];
+        fy[k][l_index] = fy_serial[r_index];
+#ifdef P4_TO_P8
+        fz[k][l_index] = fz_serial[r_index];
+#endif
+      }
+    }
+    return;
+  }
+  inline void gradient_all_components_insert_in_block_vectors(const double *f[], double *fxyz[], const unsigned int &n_arrays, const unsigned int &bs) const
   {
     P4EST_ASSERT(bs>1);
     const unsigned int n_arrays_bs = n_arrays*bs;
@@ -2274,25 +2325,6 @@ public:
     }
     return;
   }
-  inline void gradient(const double *f[], double *fxyz[], const unsigned int &n_arrays) const
-  {
-    double fx_serial[n_arrays], fy_serial[n_arrays];
-#ifdef P4_TO_P8
-    double fz_serial[n_arrays];
-    gradient(f, fx_serial, fy_serial, fz_serial,  n_arrays);
-#else
-    gradient(f, fx_serial, fy_serial,             n_arrays);
-#endif
-    for (unsigned int k = 0; k < n_arrays; ++k) {
-      const unsigned int l_offset = P4EST_DIM*node_000;
-      fxyz[k][l_offset]    = fx_serial[k];
-      fxyz[k][l_offset+1]  = fy_serial[k];
-#ifdef P4_TO_P8
-      fxyz[k][l_offset+2]  = fz_serial[k];
-#endif
-    }
-    return;
-  }
 
   /* first derivatives */
   inline double dx_central(const double *f) const
@@ -2301,7 +2333,7 @@ public:
     dx_central(&f, &fx, 1);
     return fx;
   }
-  inline void dx_central(const double *f[], double *fx[], const unsigned int &n_arrays) const
+  inline void dx_central_insert_in_vectors(const double *f[], double *fx[], const unsigned int &n_arrays) const
   {
     double fx_serial[n_arrays];
     dx_central(f, fx_serial, n_arrays);
@@ -2315,15 +2347,7 @@ public:
     dx_central_component(&f, &fx, 1, bs, comp);
     return fx;
   }
-  inline void dx_central_component(const double *f[], double *fx[], const unsigned int &n_arrays, const unsigned int &bs, const unsigned int &comp) const
-  {
-    double fx_serial[n_arrays];
-    dx_central_component(f, fx_serial, n_arrays, bs, comp);
-    for (unsigned int k = 0; k < n_arrays; ++k)
-      fx[k][node_000] = fx_serial[k];
-    return;
-  }
-  inline void dx_central_all_components(const double *f[], double *fx[], const unsigned int &n_arrays, const unsigned int &bs) const
+  inline void dx_central_all_components_insert_in_vectors(const double *f[], double *fx[], const unsigned int &n_arrays, const unsigned int &bs) const
   {
     P4EST_ASSERT(bs>1);
     double fx_serial[n_arrays*bs];
@@ -2343,7 +2367,7 @@ public:
     dy_central(&f, &fy, 1);
     return fy;
   }
-  inline void dy_central(const double *f[], double *fy[], const unsigned int &n_arrays) const
+  inline void dy_central_insert_in_vectors(const double *f[], double *fy[], const unsigned int &n_arrays) const
   {
     double fy_serial[n_arrays];
     dy_central(f, fy_serial, n_arrays);
@@ -2357,15 +2381,7 @@ public:
     dy_central_component(&f, &fy, 1, bs, comp);
     return fy;
   }
-  inline void dy_central_component(const double *f[], double *fy[], const unsigned int &n_arrays, const unsigned int &bs, const unsigned int &comp) const
-  {
-    double fy_serial[n_arrays];
-    dy_central_component(f, fy_serial, n_arrays, bs, comp);
-    for (unsigned int k = 0; k < n_arrays; ++k)
-      fy[k][node_000] = fy_serial[k];
-    return;
-  }
-  inline void dy_central_all_components(const double *f[], double *fy[], const unsigned int &n_arrays, const unsigned int &bs) const
+  inline void dy_central_all_components_insert_in_vectors(const double *f[], double *fy[], const unsigned int &n_arrays, const unsigned int &bs) const
   {
     P4EST_ASSERT(bs>1);
     double fy_serial[n_arrays*bs];
@@ -2386,7 +2402,7 @@ public:
     dz_central(&f, &fz, 1);
     return fz;
   }
-  inline void dz_central(const double *f[], double *fz[], const unsigned int &n_arrays) const
+  inline void dz_central_insert_in_vectors(const double *f[], double *fz[], const unsigned int &n_arrays) const
   {
     double fz_serial[n_arrays];
     dz_central(f, fz_serial, n_arrays);
@@ -2400,15 +2416,7 @@ public:
     dz_central_component(&f, &fz, 1, bs, comp);
     return fz;
   }
-  inline void dz_central_component(const double *f[], double *fz[], const unsigned int &n_arrays, const unsigned int &bs, const unsigned int &comp) const
-  {
-    double fz_serial[n_arrays];
-    dz_central_component(f, fz_serial, n_arrays, bs, comp);
-    for (unsigned int k = 0; k < n_arrays; ++k)
-      fz[k][node_000] = fz_serial[k];
-    return;
-  }
-  inline void dz_central_all_components(const double *f[], double *fz[], const unsigned int &n_arrays, const unsigned int &bs) const
+  inline void dz_central_all_components_insert_in_vectors(const double *f[], double *fz[], const unsigned int &n_arrays, const unsigned int &bs) const
   {
     P4EST_ASSERT(bs>1);
     double fz_serial[n_arrays*bs];
