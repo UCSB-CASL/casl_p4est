@@ -152,7 +152,7 @@ private:
   // scalar fields
   Vec fine_phi, fine_curvature, fine_jump_hodge, fine_jump_normal_flux_hodge, fine_mass_flux, fine_variable_surface_tension;
   // vector fields, P4EST_DIM-block-structured
-  Vec fine_normal, fine_phi_xxyyzz, fine_grad_surface_tension;
+  Vec fine_normal, fine_phi_xxyyzz;
   // tensor/matrix fields, (P4EST_DIM*P4EST_DIM)-block-structured
   // fine_jump_mu_grad_v_p[P4EST_DIM*P4EST_DIM*i+P4EST_DIM*dir+der] is the jump in mu \dfrac{\partial u_{dir}}{\partial x_{der}}, evaluated at local node i of fine_p4est_n
   Vec fine_jump_mu_grad_v;
@@ -649,61 +649,59 @@ private:
       fine_curvature_p[fine_node_idx] = 0.0; // nothing better to suggest for now, sorry
   }
 
-  void inline compute_local_jump_mu_grad_v_elements(const p4est_locidx_t& fine_node_idx, const quad_neighbor_nodes_of_node_t *qnnn,
-                                                    const double *vn_nodes_underlined_p, const double* fine_normal_p,
-                                                    const double *fine_mass_flux_p, const double *fine_mass_flux_times_normal_p,
+  void inline compute_local_jump_mu_grad_v_elements(const p4est_locidx_t& fine_node_idx, const quad_neighbor_nodes_of_node_t *fine_qnnn,
+                                                    const my_p4est_interpolation_nodes_t &interp_grad_underlined_vn_nodes,
+                                                    const double* fine_normal_p, const double *fine_mass_flux_p, const double *fine_mass_flux_times_normal_p,
                                                     const double *fine_variable_surface_tension_p, const double *fine_curvature_p,
                                                     double* fine_jump_mu_grad_v_p) const
   {
+    const double overlined_mu = overlined_viscosity();
+    double grad_underlined_u[P4EST_DIM*P4EST_DIM];            // grad_underlined_u[P4EST_DIM*i+der] = partical derivative of component i of underlined u along direction der
+    double grad_mass_flux_times_normal[P4EST_DIM*P4EST_DIM];  // grad_mass_flux_times_normal[P4EST_DIM*i+der] = partical derivative of component i of grad_mass_flux_times_normal along direction der
+    double grad_mass_flux[P4EST_DIM];
+    double grad_surface_tension[P4EST_DIM];
+    double xyz_fine_node[P4EST_DIM]; node_xyz_fr_n(fine_node_idx, fine_p4est_n, fine_nodes_n, xyz_fine_node);
+    interp_grad_underlined_vn_nodes(xyz_fine_node, grad_underlined_u);
+    if(fine_mass_flux_p!=NULL){
+      fine_qnnn->gradient(fine_mass_flux_p, grad_mass_flux);
+      P4EST_ASSERT(fine_mass_flux_times_normal_p!=NULL);
+      fine_qnnn->gradient_all_components(fine_mass_flux_times_normal_p, grad_mass_flux_times_normal, P4EST_DIM);
+    }
+    if(fine_variable_surface_tension_p!=NULL)
+      fine_qnnn->gradient(fine_variable_surface_tension_p, grad_surface_tension);
+
+    // jump in div(u) is implicitly assumed to be 0.0! (only assumption)
+    p4est_locidx_t dim_dim_fine_node_idx  = P4EST_DIM*P4EST_DIM*fine_node_idx;
+    p4est_locidx_t dim_fine_node_idx      = P4EST_DIM*fine_node_idx;
     for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
+      const unsigned char dim_dir = P4EST_DIM*dir;
       for (unsigned char der = 0; der < P4EST_DIM; ++der) {
-        fine_jump_mu_grad_v_p[P4EST_DIM*P4EST_DIM*fine_node_idx+P4EST_DIM*dir+der] =0.0;
+        fine_jump_mu_grad_v_p[dim_dim_fine_node_idx+dim_dir+der] = 0.0;
+        if(fine_mass_flux_p!=NULL)
+          fine_jump_mu_grad_v_p[dim_dim_fine_node_idx+dim_dir+der] -=
+              overlined_mu*fine_normal_p[dim_fine_node_idx+dir]*fine_normal_p[dim_fine_node_idx+der]*fine_curvature_p[fine_node_idx]*fine_mass_flux_p[fine_node_idx]*inverse_mass_density_jump();
+        for (unsigned char k = 0; k < P4EST_DIM; ++k) {
+          if(fine_mass_flux_p!=NULL)
+            fine_jump_mu_grad_v_p[dim_dim_fine_node_idx+dim_dir+der] +=
+                overlined_mu*(((k==der)?1.0:0.0) - fine_normal_p[dim_fine_node_idx+der]*fine_normal_p[dim_fine_node_idx+k])*grad_mass_flux_times_normal[dim_dir+k]*inverse_mass_density_jump();
+          fine_jump_mu_grad_v_p[dim_dim_fine_node_idx+dim_dir+der] +=
+              viscosity_jump()*(((k==der)?1.0:0.0) - fine_normal_p[dim_fine_node_idx+der]*fine_normal_p[dim_fine_node_idx+k])*grad_underlined_u[dim_dir+k];
+          if(fine_variable_surface_tension_p!=NULL)
+            fine_jump_mu_grad_v_p[dim_dim_fine_node_idx+dim_dir+der] +=
+                (((k==dir)?1.0:0.0) - fine_normal_p[dim_fine_node_idx+der]*fine_normal_p[dim_fine_node_idx+k])*grad_surface_tension[k]*fine_normal_p[dim_fine_node_idx+der];
+          if(fine_mass_flux_p!=NULL)
+            fine_jump_mu_grad_v_p[dim_dim_fine_node_idx+dim_dir+der] -=
+                overlined_mu*fine_normal_p[dim_fine_node_idx+der]*(((dir==k)?1.0:0.0) - fine_normal_p[dim_fine_node_idx+der]*fine_normal_p[dim_fine_node_idx+k])*grad_mass_flux[k]*inverse_mass_density_jump();
+          for (unsigned char r = 0; r < P4EST_DIM; ++r)
+          {
+            fine_jump_mu_grad_v_p[dim_dim_fine_node_idx+dim_dir+der] -=
+                viscosity_jump()*fine_normal_p[dim_fine_node_idx+der]*(((dir==k)?1.0:0.0) - fine_normal_p[dim_fine_node_idx+der]*fine_normal_p[dim_fine_node_idx+k])*grad_underlined_u[P4EST_DIM*r+k]*fine_normal_p[dim_fine_node_idx+r];
+            fine_jump_mu_grad_v_p[dim_dim_fine_node_idx+dim_dir+der] +=
+                viscosity_jump()*fine_normal_p[dim_fine_node_idx+dir]*fine_normal_p[dim_fine_node_idx+der]*fine_normal_p[dim_fine_node_idx+k]*fine_normal_p[dim_fine_node_idx+r]*grad_underlined_u[P4EST_DIM*k+r];
+          }
+        }
       }
     }
-//    const double overlined_mu = overlined_viscosity();
-//    double grad_underlined_u[P4EST_DIM][P4EST_DIM];
-//    double grad_mass_flux_times_normal[P4EST_DIM][P4EST_DIM];
-//    double local_normal[P4EST_DIM];
-//    double grad_mass_flux[P4EST_DIM];
-//    double grad_surface_tension[P4EST_DIM];
-//    for (unsigned char i = 0; i < P4EST_DIM; ++i) {
-//      for (unsigned char  j = 0; j < P4EST_DIM; ++j) {
-//        grad_underlined_u[i][j]                 = qnnn->d_central(j, vn_nodes_underlined_p[i]);
-//        if(mass_flux_p!=NULL)
-//        {
-//          P4EST_ASSERT(mass_flux_times_normal_p[i]!=NULL);
-//          grad_mass_flux_times_normal[i][j]     = qnnn->d_central(j, mass_flux_times_normal_p[i]);
-//        }
-//      }
-//      local_normal[i]                                     = normal_p[i][fine_node_idx];
-//      if(mass_flux_p!=NULL)
-//        grad_mass_flux[i]                       = qnnn->d_central(i, mass_flux_p);
-//      if(variable_surface_tension_p!=NULL)
-//        grad_surface_tension[i]                 = qnnn->d_central(i, variable_surface_tension_p);
-//    }
-//    // jump in div(u) is implicitly assumed to be 0.0! (only term)
-//    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
-//      for (unsigned char der = 0; der < P4EST_DIM; ++der) {
-//        jump_mu_grad_v_p[dir][der][fine_node_idx] = 0.0;
-//        if(mass_flux_p!=NULL)
-//          jump_mu_grad_v_p[dir][der][fine_node_idx]   -= overlined_mu*local_normal[dir]*local_normal[der]*fine_curvature_p[fine_node_idx]*mass_flux_p[fine_node_idx]*inverse_mass_density_jump();
-//        for (unsigned char k = 0; k < P4EST_DIM; ++k) {
-//          if(mass_flux_p!=NULL)
-//            jump_mu_grad_v_p[dir][der][fine_node_idx] += overlined_mu*(((k==der)?1.0:0.0) - local_normal[der]*local_normal[k])*grad_mass_flux_times_normal[dir][k]*inverse_mass_density_jump();
-//          jump_mu_grad_v_p[dir][der][fine_node_idx]   += viscosity_jump()*(((k==der)?1.0:0.0) - local_normal[der]*local_normal[k])*grad_underlined_u[dir][k];
-//          if(variable_surface_tension_p!=NULL)
-//            jump_mu_grad_v_p[dir][der][fine_node_idx] += (((k==dir)?1.0:0.0) - local_normal[dir]*local_normal[k])*grad_surface_tension[k]*local_normal[der];
-//          if(mass_flux_p!=NULL)
-//            jump_mu_grad_v_p[dir][der][fine_node_idx] -= overlined_mu*local_normal[der]*(((dir==k)?1.0:0.0) - local_normal[dir]*local_normal[k])*grad_mass_flux[k]*inverse_mass_density_jump();
-//          for (unsigned char r = 0; r < P4EST_DIM; ++r)
-//          {
-//            jump_mu_grad_v_p[dir][der][fine_node_idx] -= viscosity_jump()*local_normal[der]*(((dir==k)?1.0:0.0)-local_normal[dir]*local_normal[k])*grad_underlined_u[r][k]*local_normal[r];
-//            jump_mu_grad_v_p[dir][der][fine_node_idx] += viscosity_jump()*local_normal[dir]*local_normal[der]*local_normal[k]*local_normal[r]*grad_underlined_u[k][r];
-//          }
-//        }
-//        jump_mu_grad_v_p[dir][der][fine_node_idx] = 0.0;
-//      }
-//    }
   }
 
   inline double mass_density_jump() const { return (rho_plus - rho_minus);}

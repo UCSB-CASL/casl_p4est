@@ -397,7 +397,7 @@ int main (int argc, char* argv[])
 
 
   PetscErrorCode ierr;
-  const double rho_m  = 1.0;
+  const double rho_m  = 1000.0;
   const double rho_p  = 1.0;
   const double mu_m   = 0.001;
   const double mu_p   = 0.00001;

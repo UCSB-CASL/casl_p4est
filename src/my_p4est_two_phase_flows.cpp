@@ -88,7 +88,6 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t
   // vector fields
   fine_normal                   = NULL;
   fine_phi_xxyyzz               = NULL;
-  fine_grad_surface_tension     = NULL;
   // tensor/matrix fields
   fine_jump_mu_grad_v           = NULL;
   // -----------------------------------------------------------------------
@@ -630,7 +629,6 @@ void my_p4est_two_phase_flows_t::compute_jump_mu_grad_v()
 {
   PetscErrorCode ierr;
   Vec fine_mass_flux_times_normal = NULL;
-  Vec grad_underlined_velocity_nodes;
   if(fine_mass_flux!=NULL)
   {
     double* fine_mass_flux_times_normal_p;
@@ -645,28 +643,27 @@ void my_p4est_two_phase_flows_t::compute_jump_mu_grad_v()
     ierr = VecRestoreArrayRead(fine_normal, &fine_normal_p); CHKERRXX(ierr);
     ierr = VecRestoreArray(fine_mass_flux_times_normal, &fine_mass_flux_times_normal_p); CHKERRXX(ierr);
   }
+  Vec grad_underlined_vn_nodes = NULL;
+  ierr = create_node_vector_if_needed(grad_underlined_vn_nodes, p4est_n, nodes_n, P4EST_DIM*P4EST_DIM);
+  ngbd_n->first_derivatives_central(((underlined_side(velocity_field) == OMEGA_PLUS)? vn_nodes_omega_plus : vn_nodes_omega_minus), grad_underlined_vn_nodes, P4EST_DIM);
+  my_p4est_interpolation_nodes_t interp_grad_underlined_vn_nodes(ngbd_n);
+  interp_grad_underlined_vn_nodes.set_input(grad_underlined_vn_nodes, linear, P4EST_DIM*P4EST_DIM);
 
   const double *fine_curvature_p;
   const double *fine_normal_p;
-  const double *vn_nodes_underlined_p;
-  const double *fine_mass_flux_p, *fine_variable_surface_tension_p;
+  const double *fine_mass_flux_p = NULL, *fine_variable_surface_tension_p = NULL;
   const double *fine_mass_flux_times_normal_p = NULL;
   double* fine_jump_mu_grad_v_p;
   const quad_neighbor_nodes_of_node_t* qnnn;
 
   if(fine_mass_flux!=NULL){
     ierr = VecGetArrayRead(fine_mass_flux, &fine_mass_flux_p); CHKERRXX(ierr); }
-  else
-    fine_mass_flux_p = NULL;
   if(fine_variable_surface_tension!=NULL){
     ierr = VecGetArrayRead(fine_variable_surface_tension, &fine_variable_surface_tension_p); CHKERRXX(ierr); }
-  else
-    fine_variable_surface_tension_p = NULL;
   ierr = VecGetArrayRead(fine_curvature, &fine_curvature_p); CHKERRXX(ierr);
   ierr = create_node_vector_if_needed(fine_jump_mu_grad_v, fine_p4est_n, fine_nodes_n, P4EST_DIM*P4EST_DIM); CHKERRXX(ierr);
   ierr = VecGetArray(fine_jump_mu_grad_v, &fine_jump_mu_grad_v_p); CHKERRXX(ierr);
   ierr = VecGetArrayRead(fine_normal, &fine_normal_p); CHKERRXX(ierr);
-  ierr = VecGetArrayRead(((underlined_side(velocity_field) == OMEGA_PLUS)? vn_nodes_omega_plus : vn_nodes_omega_minus), &vn_nodes_underlined_p); CHKERRXX(ierr);
   if(fine_mass_flux!=NULL){
     ierr = VecGetArrayRead(fine_mass_flux_times_normal, &fine_mass_flux_times_normal_p); CHKERRXX(ierr); }
 
@@ -674,7 +671,7 @@ void my_p4est_two_phase_flows_t::compute_jump_mu_grad_v()
     p4est_locidx_t fine_node_idx = fine_ngbd_n->get_layer_node(kk);
     fine_ngbd_n->get_neighbors(fine_node_idx, qnnn);
     compute_local_jump_mu_grad_v_elements(fine_node_idx, qnnn,
-                                          vn_nodes_underlined_p, fine_normal_p,
+                                          interp_grad_underlined_vn_nodes, fine_normal_p,
                                           fine_mass_flux_p, fine_mass_flux_times_normal_p,
                                           fine_variable_surface_tension_p, fine_curvature_p,
                                           fine_jump_mu_grad_v_p);
@@ -684,7 +681,7 @@ void my_p4est_two_phase_flows_t::compute_jump_mu_grad_v()
     p4est_locidx_t fine_node_idx = fine_ngbd_n->get_local_node(kk);
     fine_ngbd_n->get_neighbors(fine_node_idx, qnnn);
     compute_local_jump_mu_grad_v_elements(fine_node_idx, qnnn,
-                                          vn_nodes_underlined_p, fine_normal_p,
+                                          interp_grad_underlined_vn_nodes, fine_normal_p,
                                           fine_mass_flux_p, fine_mass_flux_times_normal_p,
                                           fine_variable_surface_tension_p, fine_curvature_p,
                                           fine_jump_mu_grad_v_p);
@@ -699,11 +696,12 @@ void my_p4est_two_phase_flows_t::compute_jump_mu_grad_v()
   }
   if(fine_variable_surface_tension!=NULL){
     ierr = VecRestoreArrayRead(fine_variable_surface_tension, &fine_variable_surface_tension_p); CHKERRXX(ierr); }
-  ierr = VecRestoreArrayRead(fine_curvature, &fine_curvature_p); CHKERRXX(ierr);
 
+  ierr = VecRestoreArrayRead(fine_curvature, &fine_curvature_p); CHKERRXX(ierr);
   ierr = VecRestoreArray(fine_jump_mu_grad_v, &fine_jump_mu_grad_v_p); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(fine_normal, &fine_normal_p); CHKERRXX(ierr);
-  ierr = VecRestoreArrayRead(((underlined_side(velocity_field) == OMEGA_PLUS)? vn_nodes_omega_plus:vn_nodes_omega_minus), &vn_nodes_underlined_p); CHKERRXX(ierr);
+
+  ierr = VecDestroy(grad_underlined_vn_nodes); CHKERRXX(ierr);
 }
 
 void my_p4est_two_phase_flows_t::compute_jumps_hodge()
@@ -1958,6 +1956,25 @@ void my_p4est_two_phase_flows_t::save_vtk(const char* name, const bool& export_f
 
   if(export_fine_grid)
   {
+    Vec fine_jump_mu_grad_v_comp[P4EST_DIM];
+    double *fine_jump_mu_grad_v_comp_p[P4EST_DIM];
+    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
+      fine_jump_mu_grad_v_comp[dir] = NULL;
+      ierr = create_node_vector_if_needed(fine_jump_mu_grad_v_comp[dir], fine_p4est_n, fine_nodes_n, P4EST_DIM); CHKERRXX(ierr);
+      ierr = VecGetArray(fine_jump_mu_grad_v_comp[dir], &fine_jump_mu_grad_v_comp_p[dir]); CHKERRXX(ierr);
+    }
+    const double *fine_jump_mu_grad_v_p;
+    ierr = VecGetArrayRead(fine_jump_mu_grad_v, &fine_jump_mu_grad_v_p); CHKERRXX(ierr);
+    for (size_t k = 0; k < fine_nodes_n->indep_nodes.elem_count; ++k) {
+      for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
+        for (unsigned char der = 0; der < P4EST_DIM; ++der) {
+          fine_jump_mu_grad_v_comp_p[dir][P4EST_DIM*k+der] = fine_jump_mu_grad_v_p[P4EST_DIM*P4EST_DIM*k+P4EST_DIM*dir+der];
+        }
+      }
+    }
+    ierr = VecRestoreArrayRead(fine_jump_mu_grad_v, &fine_jump_mu_grad_v_p); CHKERRXX(ierr);
+
+
     std::string vtk_fine_name(name);
     my_p4est_interpolation_nodes_t interp_normal(fine_ngbd_n);
     const double* fine_phi_p, *fine_curvature_p, *fine_normal_p;
@@ -1968,17 +1985,28 @@ void my_p4est_two_phase_flows_t::save_vtk(const char* name, const bool& export_f
                                    P4EST_FALSE, P4EST_FALSE,
                                    2, /* number of VTK_POINT_DATA */
                                    0, /* number of VTK_POINT_DATA_VECTOR_BY_COMPONENTS */
-                                   1, /* number of VTK_POINT_DATA_VECTOR_BLOCK */
+                                   1+P4EST_DIM, /* number of VTK_POINT_DATA_VECTOR_BLOCK */
                                    0, /* number of VTK_CELL_DATA */
                                    0, /* number of VTK_CELL_DATA_VECTOR_BY_COMPONENTS */
                                    0, /* number of VTK_CELL_DATA_VECTOR_BLOCK */
                                    (vtk_fine_name + "_fine").c_str(),
                                    VTK_POINT_DATA, "phi", fine_phi_p,
                                    VTK_POINT_DATA, "curvature", fine_curvature_p,
-                                   VTK_NODE_VECTOR_BLOCK, "normal", fine_normal_p);
+                                   VTK_NODE_VECTOR_BLOCK, "normal", fine_normal_p,
+                                   VTK_NODE_VECTOR_BLOCK, "jump mu grad u", fine_jump_mu_grad_v_comp_p[0],
+                                   VTK_NODE_VECTOR_BLOCK, "jump mu grad v", fine_jump_mu_grad_v_comp_p[1]
+    #ifdef P4_TO_P8
+        , VTK_NODE_VECTOR_BLOCK, "jump mu grad w", fine_jump_mu_grad_v_comp_p[2]
+    #endif
+        );
     ierr = VecRestoreArrayRead(fine_phi, &fine_phi_p); CHKERRXX(ierr);
     ierr = VecRestoreArrayRead(fine_curvature, &fine_curvature_p); CHKERRXX(ierr);
     ierr = VecRestoreArrayRead(fine_normal, &fine_normal_p); CHKERRXX(ierr);
+    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
+      ierr = VecRestoreArray(fine_jump_mu_grad_v_comp[dir], &fine_jump_mu_grad_v_comp_p[dir]); CHKERRXX(ierr);
+      ierr = VecDestroy(fine_jump_mu_grad_v_comp[dir]); CHKERRXX(ierr);
+      fine_jump_mu_grad_v_comp[dir] = NULL;
+    }
   }
 }
 
