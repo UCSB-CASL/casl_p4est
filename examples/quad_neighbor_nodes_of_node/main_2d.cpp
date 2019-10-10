@@ -309,17 +309,17 @@ PetscErrorCode create_vectors_and_sample_functions_on_nodes(const unsigned int &
   return ierr;
 }
 
-void evaluate_max_error_on_inner_nodes(const unsigned int &method,const p4est_t *p4est, p4est_nodes_t *nodes, const test_function *cf_field[], const unsigned int &nfields,
-                                       Vec &grad_field_block, Vec &second_derivatives_field_block,
-                                       Vec dx_[], Vec dy_[],
-                                       #ifdef P4_TO_P8
-                                       Vec dz_[],
-                                       #endif
-                                       Vec ddxx_[], Vec ddyy_[],
-                                       #ifdef P4_TO_P8
-                                       Vec ddzz_[],
-                                       #endif
-                                       double err_gradient[][P4EST_DIM], double err_second_derivatives[][P4EST_DIM])
+void evaluate_max_error_on_nodes(const unsigned int &method,const p4est_t *p4est, p4est_nodes_t *nodes, const test_function *cf_field[], const unsigned int &nfields,
+                                 Vec &grad_field_block, Vec &second_derivatives_field_block,
+                                 Vec dx_[], Vec dy_[],
+                                 #ifdef P4_TO_P8
+                                 Vec dz_[],
+                                 #endif
+                                 Vec ddxx_[], Vec ddyy_[],
+                                 #ifdef P4_TO_P8
+                                 Vec ddzz_[],
+                                 #endif
+                                 double err_gradient[][P4EST_DIM], double err_second_derivatives[][P4EST_DIM])
 {
   PetscErrorCode ierr;
   const double *grad_field_block_p, *second_derivatives_field_block_p;
@@ -352,9 +352,6 @@ void evaluate_max_error_on_inner_nodes(const unsigned int &method,const p4est_t 
 
   for (p4est_locidx_t i=0; i<nodes->num_owned_indeps; ++i)
   {
-    p4est_indep_t* node = (p4est_indep_t*) sc_array_index(&nodes->indep_nodes, i);
-    if(is_node_Wall(p4est, node))
-      continue;
     double xyz [P4EST_DIM];
     node_xyz_fr_n(i, p4est, nodes, xyz);
     if(method!=2)
@@ -847,17 +844,17 @@ int main (int argc, char* argv[]){
         }
 
 #ifdef P4_TO_P8
-    evaluate_max_error_on_inner_nodes(method, p4est, nodes, cf_field, nfields,
-                                      grad_field_block, second_derivatives_field_block,
-                                      dx_, dy_, dz_, ddxx_, ddyy_, ddzz_,
-                                      err_gradient_step, err_second_derivatives_step);
+    evaluate_max_error_on_nodes(method, p4est, nodes, cf_field, nfields,
+                                grad_field_block, second_derivatives_field_block,
+                                dx_, dy_, dz_, ddxx_, ddyy_, ddzz_,
+                                err_gradient_step, err_second_derivatives_step);
     ierr = destroy_vectors_if_needed(nfields, field_block, grad_field_block, second_derivatives_field_block,
                                      field_, dx_, dy_, dz_, ddxx_, ddyy_, ddzz_); CHKERRXX(ierr);
 #else
-    evaluate_max_error_on_inner_nodes(method, p4est, nodes, cf_field, nfields,
-                                      grad_field_block, second_derivatives_field_block,
-                                      dx_, dy_,      ddxx_, ddyy_,
-                                      err_gradient_step, err_second_derivatives_step);
+    evaluate_max_error_on_nodes(method, p4est, nodes, cf_field, nfields,
+                                grad_field_block, second_derivatives_field_block,
+                                dx_, dy_,      ddxx_, ddyy_,
+                                err_gradient_step, err_second_derivatives_step);
     ierr = destroy_vectors_if_needed(nfields, field_block, grad_field_block, second_derivatives_field_block,
                                      field_, dx_, dy_,      ddxx_, ddyy_); CHKERRXX(ierr);
 #endif

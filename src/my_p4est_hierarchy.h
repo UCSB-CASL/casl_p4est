@@ -289,9 +289,9 @@ class my_p4est_hierarchy_t {
    * \param [in]    tr_xyz_orig     arrays of cartesian indices of the tree suspected to own the point of interest
    * \param [inout] s               the point of interest with coordinates scaled relatively to the tree, i.e. in [0, P4EST_ROOT_LEN]
    *                                (can also be slightly negative or slightly past P4EST_ROOT_LEN, the appropriate tree will be found then)
-   * \param [inout] rank            on return, rank of the processor owning the local quadrant, if it is found; unchanged if not found.
-   * \param [inout] best_match      on return, copy of the local quadrant if found, unchanged otherwise. (The p.piggy3 member is filled)
-   * \param [inout] remote_matches  on return, if a quadrant was not found locally, this vector is filled with theoretical candidate quadrants
+   * \param [out] rank              on return, rank of the processor owning the local quadrant, if it is found; unchanged if not found.
+   * \param [out] best_match        on return, copy of the local quadrant if found, unchanged otherwise. (The p.piggy3 member is filled)
+   * \param [out] remote_matches    on return, if a quadrant was not found locally, this vector is filled with theoretical candidate quadrants
    *                                of finest theoretical level of refinement, with their p.piggy1 members filled (i.e. owner rank and tree
    *                                index).
    */
@@ -338,7 +338,7 @@ public:
    * \param [in]    xyz             Cartesian coordinates of the point of interest (array of P4EST_DIM doubles)
    *                                xyz needs to be in the domain: the point is wrapped within the domain if domain
    *                                periodicity allows that.
-   * \param [inout] best_match      p4est_quadrant_t containing the point of interest on output. This argument must exist
+   * \param [out] best_match        p4est_quadrant_t containing the point of interest on output. This argument must exist
    *                                beforehand, its member variables are wiped out at initiation stage of the function.
    *                                If found, the appropriate p4est_quadrant in p4est or ghost, is copied into best_match
    *                                and the p.piggy3 structure of best_match is also filled so that
@@ -351,10 +351,10 @@ public:
    *                                    if the quadrant belongs to the ghost layer;
    *                                --> check if the returned value == mpirank to know if you are in the first or second case
    *                                If not found, best_match is left blank, as the result of P4EST_QUADRANT_INIT(&best_match)
-   * \param [inout] remote_matches  If a p4est_quadrant was not found locally, this vector is filled with candidate quadrants
+   * \param [out] remote_matches    If a p4est_quadrant was not found locally, this vector is filled with candidate quadrants
    *                                of finest theoretical level of refinement, with their p.piggy1 members filled (i.e. owner
    *                                rank and tree index). This is relevant if the value returned by the function is -1.
-   * [NOTE 1]: this function assumes that all building bricks in the macromesh description have the same size along (i.e. no
+   * [NOTE 1]: this function assumes that all building bricks in the macromesh description have the same size (i.e. no
    *           contraction/stretching, every building brick is identical).
    * [THROWS]: in DEBUG, this function throws an std::runtime_error exception if the procedure runs into an internal
    *           inconsistency (if it found a remote, space-filling HierarchyCell that is not marked NOT_A_P4EST_QUADRANT)

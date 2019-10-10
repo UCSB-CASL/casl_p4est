@@ -76,6 +76,8 @@ void my_p4est_node_neighbors_t::update_all_but_hierarchy(p4est_t *p4est_, p4est_
   p4est = p4est_;
   ghost = ghost_;
   nodes = nodes_;
+  for (unsigned char dd = 0; dd < P4EST_DIM; ++dd)
+    periodic[dd] = is_periodic(p4est_, dd);
 
   if (is_initialized){
     clear_neighbors();
