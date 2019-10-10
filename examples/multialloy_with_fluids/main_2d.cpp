@@ -2661,6 +2661,9 @@ int main(int argc, char** argv) {
             VecScaleGhost(v_n.vec[d],1./scaling);
 
           }
+          // Restore hodge arrays:
+          hodge_old.restore_array();
+          hodge_new.restore_array();
 
           // Scale the pressure before saving:
           VecScaleGhost(press.vec,scaling);
@@ -2722,6 +2725,20 @@ int main(int argc, char** argv) {
       // --------------------------------------------------------------------------------------------------------------
       // Compute the normal and curvature of the interface -- curvature is used in some of the interfacial boundary condition(s)
       // --------------------------------------------------------------------------------------------------------------
+
+      vec_and_ptr_dim_t normal;
+      vec_and_ptr_t curvature_tmp; // This one will hold computed curvature
+      vec_and_ptr_t curvature;  // This one will hold curvature extended from interface to whole domain
+
+      normal.create(p4est,nodes);
+      curvature_tmp.create(p4est,nodes);
+      curvature.create(curvature_tmp.vec);
+
+      // Compute normals on the interface:
+      compute_normals(*ngbd,phi.vec,normal.vec);
+
+      // Compute curvature on the interface:
+      compute_curvature(phi,normal,curvature,ngbd,ls_new);
 
       vec_and_ptr_dim_t normal;
       vec_and_ptr_t curvature_tmp; // This one will hold computed curvature
