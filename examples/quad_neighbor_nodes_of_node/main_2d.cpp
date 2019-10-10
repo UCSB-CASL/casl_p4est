@@ -159,7 +159,6 @@ void create_initial_grid_ghost_and_nodes(const mpi_environment_t &mpi, p4est_con
   // creation and refinement of the p4est structure is not the purpose of this illustrative example
   // create the forest
   forest = my_p4est_new(mpi.comm(), conn, 0, NULL, NULL);
-  // we will create
   // sphere of random center in [r, 2-r]^P4EST_DIM or random radius in [r/2, r]
   const double r = 0.3;
 #ifdef P4_TO_P8
@@ -389,8 +388,9 @@ void evaluate_max_error_on_inner_nodes(const unsigned int &method,const p4est_t 
       }
     }
   }
-  int mpiret  = MPI_Allreduce(MPI_IN_PLACE, err_gradient,           nfields*P4EST_DIM,  MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-  mpiret      = MPI_Allreduce(MPI_IN_PLACE, err_second_derivatives, nfields*P4EST_DIM,  MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+  int mpiret;
+  mpiret = MPI_Allreduce(MPI_IN_PLACE, err_gradient,           nfields*P4EST_DIM,  MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+  mpiret = MPI_Allreduce(MPI_IN_PLACE, err_second_derivatives, nfields*P4EST_DIM,  MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
 
   if(method==2){
     ierr = VecRestoreArrayRead(grad_field_block, &grad_field_block_p); CHKERRXX(ierr);
@@ -609,7 +609,7 @@ int main (int argc, char* argv[]){
   cmd.add_option("fields",      "number of fields to calculate first and second derivatives of\n\
            (default is number of dimensions, i.e., P4EST_DIM)");
   cmd.add_option("vtk_folder",  "exportation directory for vtk files if vtk exportation is activated\n\
-                          (default is the directory where the program is run from: './')");
+           (default is the directory where the program is run from, i.e., './')");
   cmd.add_option("vtk",         "exports the (final) grid and hierarchy in vtk format, if present.");
 
 
@@ -630,10 +630,40 @@ int main (int argc, char* argv[]){
   if(method > 2)
     throw std::invalid_argument("main: unknown desired method");
   if(nsplits == 0 || ntrees <= 0 || nfields == 0)
-    throw std::invalid_argument("main: requires a strictly positive number for number of nsplits, number of trees per dimension and number of scalar fields");
+    throw std::invalid_argument("main: requires a strictly positive number for 'nsplits', 'ntrees' and 'fields'");
   if(lmax < lmin)
     throw std::invalid_argument("main: requires lmax >= lmin");
-
+  /* [A note about throwing exceptions in a parallel framework]
+   * Using exceptions (invalid_argument or others) is a fairly standard
+   * procedure to handle non-standard code execution in object-oriented
+   * programming. The idea is that the exception is "thrown" by the
+   * current function back to the calling environment, i.e., up the next
+   * level in the call stack, where it is either "caught" (via a try{}
+   * catch{} block) or it will keep ascending up the call stack.
+   * If the exception is never caught, std::terminate will finally be
+   * invoked, causing the program to exit abnormally (usually printing
+   * the exception's "what()" message though, which gives the user some
+   * insight about what went wrong).
+   *
+   * While such a behavior for uncaught exception might be acceptable
+   * in case of a serial application, things may get nastier in parallel.
+   * Indeed if only one process throws an exception that is not caught,
+   * it will cause that specific MPI process to stop, for sure, but it
+   * will not notify the other processes in the MPI_COMM_WORLD. Therefore,
+   * this may cause an MPI deadlock (other MPI processes desperately
+   * waiting for the one interrupted MPI process to reach out to them,
+   * indefinitely), without information about the problem being necessa-
+   * rily shown to the user, making debugging hard if not impossible.
+   *
+   * In the above input checks, every single MPI process checks for the
+   * exact same statements so that either all or none of them will throw,
+   * which prevents such a deadlock situation.
+   * Otherwise, if the desired COLLECTIVE behavior is to put an end to
+   * ALL MPI processes when finding a critical error on a single MPI
+   * process (but possibly not on others), it is advised to call some
+   * collective termination like
+   * MPI_Abort, PetscAbortErrorHandler or sc_abort, for instance.
+   * [end of note] */
 
   // initialize the random number generator
   srand(seed);
@@ -641,7 +671,7 @@ int main (int argc, char* argv[]){
   // create a timer
   parStopWatch timer;
 
-  // create the test function(s)
+  // create the test function(s), with random parameters
   const test_function *cf_field[nfields];
   for (unsigned int k = 0; k < nfields; ++k) {
 #ifdef P4_TO_P8
@@ -702,11 +732,11 @@ int main (int argc, char* argv[]){
   // at node i are
   //    grad_field_block_p[nfields*P4EST_DIM*i+P4EST_DIM*k+dir]
   //    second_derivatives_field_block_p[nfields*P4EST_DIM*i+P4EST_DIM*k+dir]
-  // where field_block_p, grad_field_block_p, second_derivatives_field_block_p are the local array
+  // where field_block_p, grad_field_block_p, second_derivatives_field_block_p are the local arrays
   // of the corresponding parallel vectors
 
   // The relevant tasks are here below:
-  // total time spent on node neighbor initialization and the actual calculation of derivatives
+  // We track the total time spent on node neighbor initialization and on the actual calculation of derivatives
   double time_spent_on_ngbd_initialization  = 0.0;
   double time_spent_on_derivative           = 0.0;
   // relevant error measures on former grid (--> '_m1') and on the current grid
@@ -755,8 +785,8 @@ int main (int argc, char* argv[]){
        * one after another. Every time the following functions are called, the purely
        * grid-related (i.e. not field-dependent) calculations are executed.
        * When nfields is large, these redundant grid-related calculations can become
-       * a significant (possibly much more than 50%) amount of the total execution time
-       * for this specific task, especially on large 3D grids.
+       * a significant amount of the total execution time for this specific task
+       * (possibly much more than 50%), especially on large 3D grids.
        */
       for (unsigned int k = 0; k < nfields; ++k) {
 #ifdef P4_TO_P8
@@ -793,7 +823,7 @@ int main (int argc, char* argv[]){
        * a multitude of standard parallel vectors. This approach has the advantage of gathering
        * all relevant, similar data together and to encapsulate them. In particular, one needs
        * less communication calls to synchronize ghost data, and those data are packed in a
-       * rather optimal way, leveraging better performance(s) when using several computer nodes.
+       * rather optimal way, leveraging better performance when using several computer nodes.
        */
       ngbd_n.first_derivatives_central(field_block, grad_field_block, nfields);
       ngbd_n.second_derivatives_central(field_block, second_derivatives_field_block, nfields);

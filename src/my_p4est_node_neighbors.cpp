@@ -28,8 +28,9 @@ extern PetscLogEvent log_my_p4est_node_neighbors_t_1st_derivatives_central;
 #define PetscLogFlops(n) 0
 #endif
 
-void my_p4est_node_neighbors_t::init_neighbors(/*const bool &set_and_store_linear_interpolators, const bool &set_and_store_second_derivatives_operators,
-                                               const bool &set_and_store_gradient_operator, const bool &set_and_store_quadratic_interpolators*/)
+/*void my_p4est_node_neighbors_t::init_neighbors(const bool &set_and_store_linear_interpolators, const bool &set_and_store_second_derivatives_operators,
+                                               const bool &set_and_store_gradient_operator, const bool &set_and_store_quadratic_interpolators)*/
+void my_p4est_node_neighbors_t::init_neighbors()
 {
   if (is_initialized) return;
 
@@ -47,9 +48,11 @@ void my_p4est_node_neighbors_t::init_neighbors(/*const bool &set_and_store_linea
    */
   for ( size_t n = 0; n < nodes->indep_nodes.elem_count; n++) {
 #ifdef CASL_THROWS
-    is_qnnn_valid[n] = !construct_neighbors(n, neighbors[n]/*, set_and_store_linear_interpolators, set_and_store_second_derivatives_operators, set_and_store_gradient_operator, set_and_store_quadratic_interpolators*/);
+    is_qnnn_valid[n] = !construct_neighbors(n, neighbors[n]);
+    /* is_qnnn_valid[n] = !construct_neighbors(n, neighbors[n], set_and_store_linear_interpolators, set_and_store_second_derivatives_operators, set_and_store_gradient_operator, set_and_store_quadratic_interpolators);*/
 #else
-    construct_neighbors(n, neighbors[n]/*, set_and_store_linear_interpolators, set_and_store_second_derivatives_operators, set_and_store_gradient_operator, set_and_store_quadratic_interpolators*/);
+    construct_neighbors(n, neighbors[n]);
+    /* construct_neighbors(n, neighbors[n], set_and_store_linear_interpolators, set_and_store_second_derivatives_operators, set_and_store_gradient_operator, set_and_store_quadratic_interpolators);*/
 #endif
   }
 
@@ -60,63 +63,53 @@ void my_p4est_node_neighbors_t::init_neighbors(/*const bool &set_and_store_linea
 void my_p4est_node_neighbors_t::clear_neighbors()
 {
   neighbors.clear();
+#ifdef CASL_THROWS
   is_qnnn_valid.clear();
+#endif
   is_initialized = false;
 }
 
-void my_p4est_node_neighbors_t::update(my_p4est_hierarchy_t *hierarchy_, p4est_nodes_t *nodes_/*, const bool &set_and_store_linear_interpolators, const bool &set_and_store_second_derivatives_operators,
-                                       const bool &set_and_store_gradient_operator, const bool &set_and_store_quadratic_interpolators*/)
+/*void my_p4est_node_neighbors_t::update_all_but_hierarchy(p4est_t *p4est_, p4est_ghost_t *ghost_, p4est_nodes_t *nodes_, const bool &set_and_store_linear_interpolators, const bool &set_and_store_second_derivatives_operators,
+                                                                                                const bool &set_and_store_gradient_operator, const bool &set_and_store_quadratic_interpolators)*/
+void my_p4est_node_neighbors_t::update_all_but_hierarchy(p4est_t *p4est_, p4est_ghost_t *ghost_, p4est_nodes_t *nodes_)
 {
-  hierarchy = hierarchy_;
-  p4est = hierarchy_->p4est;
-  ghost = hierarchy_->ghost;
+  p4est = p4est_;
+  ghost = ghost_;
   nodes = nodes_;
 
   if (is_initialized){
     clear_neighbors();
-    init_neighbors(/*set_and_store_linear_interpolators, set_and_store_second_derivatives_operators, set_and_store_gradient_operator, set_and_store_quadratic_interpolators*/);
+    init_neighbors();
+    /*init_neighbors(set_and_store_linear_interpolators, set_and_store_second_derivatives_operators, set_and_store_gradient_operator, set_and_store_quadratic_interpolators);*/
   }
 
   layer_nodes.clear();
   local_nodes.clear();
 
-  layer_nodes.reserve(nodes->num_owned_shared);
-  local_nodes.reserve(nodes->num_owned_indeps - nodes->num_owned_shared);
-
-  for (p4est_locidx_t i=0; i<nodes->num_owned_indeps; ++i){
-    p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i + nodes->offset_owned_indeps);
-    ni->pad8 == 0 ? local_nodes.push_back(i) : layer_nodes.push_back(i);
-  }
+  set_layer_and_local_nodes();
 }
 
-void my_p4est_node_neighbors_t::update(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes/*, const bool &set_and_store_linear_interpolators, const bool &set_and_store_second_derivatives_operators,
-                                       const bool &set_and_store_gradient_operator, const bool &set_and_store_quadratic_interpolators*/)
+/*void my_p4est_node_neighbors_t::update(my_p4est_hierarchy_t *hierarchy_, p4est_nodes_t *nodes_, const bool &set_and_store_linear_interpolators, const bool &set_and_store_second_derivatives_operators,
+                                       const bool &set_and_store_gradient_operator, const bool &set_and_store_quadratic_interpolators)*/
+void my_p4est_node_neighbors_t::update(my_p4est_hierarchy_t *hierarchy_, p4est_nodes_t *nodes_)
 {
-  hierarchy->update(p4est, ghost);
-
-  this->p4est = p4est;
-  this->ghost = ghost;
-  this->nodes = nodes;
-
-  if (is_initialized){
-    clear_neighbors();
-    init_neighbors(/*set_and_store_linear_interpolators, set_and_store_second_derivatives_operators, set_and_store_gradient_operator, set_and_store_quadratic_interpolators*/);
-  }
-
-  layer_nodes.clear();
-  local_nodes.clear();
-
-  layer_nodes.reserve(nodes->num_owned_shared);
-  local_nodes.reserve(nodes->num_owned_indeps - nodes->num_owned_shared);
-
-  for (p4est_locidx_t i=0; i<nodes->num_owned_indeps; ++i){
-    p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i + nodes->offset_owned_indeps);
-    ni->pad8 == 0 ? local_nodes.push_back(i) : layer_nodes.push_back(i);
-  }
+  hierarchy = hierarchy_;
+  update_all_but_hierarchy(hierarchy_->p4est, hierarchy_->ghost, nodes_);
+  /*update_all_but_hierarchy(p4est_, ghost_, nodes_, set_and_store_linear_interpolators, set_and_store_second_derivatives_operators, set_and_store_gradient_operator, set_and_store_quadratic_interpolators);*/
 }
 
-bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neighbor_nodes_of_node_t &qnnn/*, const bool &set_and_store_linear_interpolators, const bool &set_and_store_second_derivatives_operators,
-                                                    const bool &set_and_store_gradient_operator, const bool &set_and_store_quadratic_interpolators*/) const
+/*void my_p4est_node_neighbors_t::update(p4est_t *p4est_, p4est_ghost_t *ghost_, p4est_nodes_t *nodes_, const bool &set_and_store_linear_interpolators, const bool &set_and_store_second_derivatives_operators,
+                                       const bool &set_and_store_gradient_operator, const bool &set_and_store_quadratic_interpolators)*/
+void my_p4est_node_neighbors_t::update(p4est_t *p4est_, p4est_ghost_t *ghost_, p4est_nodes_t *nodes_)
+{
+  hierarchy->update(p4est_, ghost_);
+  update_all_but_hierarchy(p4est_, ghost_, nodes_);
+  /*update_all_but_hierarchy(p4est_, ghost_, nodes_, set_and_store_linear_interpolators, set_and_store_second_derivatives_operators, set_and_store_gradient_operator, set_and_store_quadratic_interpolators);*/
+}
+
+/*bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neighbor_nodes_of_node_t &qnnn, const bool &set_and_store_linear_interpolators, const bool &set_and_store_second_derivatives_operators,
+                                                    const bool &set_and_store_gradient_operator, const bool &set_and_store_quadratic_interpolators) const*/
+bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neighbor_nodes_of_node_t &qnnn) const
 {
   p4est_connectivity_t *connectivity = p4est->connectivity;
   p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,n);

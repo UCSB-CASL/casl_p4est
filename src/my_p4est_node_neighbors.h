@@ -69,49 +69,70 @@ class my_p4est_node_neighbors_t {
   p4est_nodes_t *nodes;
   my_p4est_brick_t *myb;
   std::vector< quad_neighbor_nodes_of_node_t > neighbors;
+#ifdef CASL_THROWS
   std::vector<bool> is_qnnn_valid;
+#endif
   std::vector<p4est_locidx_t> layer_nodes;
   std::vector<p4est_locidx_t> local_nodes;  
   bool is_initialized;
   bool periodic[P4EST_DIM];
 
-  bool construct_neighbors(p4est_locidx_t n, quad_neighbor_nodes_of_node_t& qnnn/*, const bool &set_and_store_linear_interpolators=false, const bool &set_and_store_second_derivatives_operators=false,
-                           const bool &set_and_store_gradient_operator=false, const bool &set_and_store_quadratic_interpolators=false*/) const;
+  bool construct_neighbors(p4est_locidx_t n, quad_neighbor_nodes_of_node_t& qnnn) const;
+  /* bool construct_neighbors(p4est_locidx_t n, quad_neighbor_nodes_of_node_t& qnnn, const bool &set_and_store_linear_interpolators=false, const bool &set_and_store_second_derivatives_operators=false,
+                           const bool &set_and_store_gradient_operator=false, const bool &set_and_store_quadratic_interpolators=false) const;*/
 
-public:
-  my_p4est_node_neighbors_t( my_p4est_hierarchy_t *hierarchy_, p4est_nodes_t *nodes_)
-    : hierarchy(hierarchy_), p4est(hierarchy_->p4est), ghost(hierarchy_->ghost), nodes(nodes_), myb(hierarchy_->myb)
+  /*!
+   * \brief update_all_but_hierarchy: inner private function to be called by the two different
+   * public 'update' functions. This one updates the member variables p4est, ghost, and
+   * nodes. It also clears and reconstructs the list of layer and local nodes.
+   * If the node neighbors were previously initialized, this routine clears and reconstructs
+   * them, as well as their validity flags.
+   * \param [in] p4est_ the new p4est structure;
+   * \param [in] ghost_ the new ghost later;
+   * \param [in] nodes_ the new node structure.
+   */
+  void update_all_but_hierarchy(p4est_t* p4est_, p4est_ghost_t* ghost_, p4est_nodes_t* nodes_);
+  /* void update_all_but_hierarchy(p4est_t* p4est_, p4est_ghost_t* ghost_, p4est_nodes_t* nodes_, const bool &set_and_store_linear_interpolators=false, const bool &set_and_store_second_derivatives_operators=false,
+                                            const bool &set_and_store_gradient_operator=false, const bool &set_and_store_quadratic_interpolators=false); */
+
+  inline void set_layer_and_local_nodes()
   {
-    is_initialized = false;
-
-    for (unsigned char dd = 0; dd < P4EST_DIM; ++dd)
-      periodic[dd] = is_periodic(p4est, dd);
-
     /* compute the layer and local nodes.
-     * layer_nodes: This is a list of indices for nodes in the local range on this
-     * processor (i.e. 0<= i < nodes->num_owned_indeps) that are taged as ghost
-     * on at least another processor
-     * local_nodes: This is a list of indices for nodes in the local range on this
+     * layer_nodes: this is the list of indices for nodes in the local range on this
+     * processor (i.e. indices i such that 0 <= i < nodes->num_owned_indeps) but that
+     * are tagged as ghost on at least one other processor
+     * local_nodes: this is the list of indices for nodes in the local range on this
      * processor that are not included in the layer_nodes
      *
-     * With this subdivision, ANY computation on the local nodes should be decomposed
-     * into four stages:
+     * With this subdivision, ANY computation on the local nodes that needs to be
+     * synchronized should be decomposed into four stages:
      * 1) do computation on the layer nodes
-     * 2) call VecGhostUpdateBegin so that each processor begins sending messages
+     * 2) call VecGhostUpdateBegin so that each processor begins sending (non-blocking) messages
      * 3) do computation on the local nodes
      * 4) call VecGhostUpdateEnd to finish the update process
      *
      * This will effectively hide the communication steps 2,4 with the computation
      * step 3
      */
-
     layer_nodes.reserve(nodes->num_owned_shared);
     local_nodes.reserve(nodes->num_owned_indeps - nodes->num_owned_shared);
 
     for (p4est_locidx_t i=0; i<nodes->num_owned_indeps; ++i){
       p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i + nodes->offset_owned_indeps);
       ni->pad8 == 0 ? local_nodes.push_back(i) : layer_nodes.push_back(i);
+      // ni->pad8 is the number of remote process(es) that list ni as one of their ghost nodes
+      // Therefore ni is purely local if ni->pad8 is not 0, otherwise it is a node layer
     }
+  }
+
+public:
+  my_p4est_node_neighbors_t( my_p4est_hierarchy_t *hierarchy_, p4est_nodes_t *nodes_)
+    : hierarchy(hierarchy_), p4est(hierarchy_->p4est), ghost(hierarchy_->ghost), nodes(nodes_), myb(hierarchy_->myb)
+  {
+    is_initialized = false;
+    for (unsigned char dd = 0; dd < P4EST_DIM; ++dd)
+      periodic[dd] = is_periodic(p4est, dd);
+    set_layer_and_local_nodes();
   }
 
   /*!
@@ -165,13 +186,18 @@ public:
    * This consumes a lot of memory, and it can improve the time performances of the code if repetitive
    * access to the neighbors information is required.
    */
-  void init_neighbors(/*const bool &set_and_store_linear_interpolators=false, const bool &set_and_store_second_derivatives_operators=false,
-                      const bool &set_and_store_gradient_operator=false, const bool &set_and_store_quadratic_interpolators=false*/);
+  void init_neighbors();
+  /* void init_neighbors(const bool &set_and_store_linear_interpolators=false, const bool &set_and_store_second_derivatives_operators=false,
+                      const bool &set_and_store_gradient_operator=false, const bool &set_and_store_quadratic_interpolators=false); */
   void clear_neighbors();
-  void update(my_p4est_hierarchy_t *hierarchy_, p4est_nodes_t *nodes_/*, const bool &set_and_store_linear_interpolators=false, const bool &set_and_store_second_derivatives_operators=false,
-              const bool &set_and_store_gradient_operator=false, const bool &set_and_store_quadratic_interpolators=false*/);
-  void update(p4est_t* p4est, p4est_ghost_t* ghost, p4est_nodes_t* nodes/*, const bool &set_and_store_linear_interpolators=false, const bool &set_and_store_second_derivatives_operators=false,
-              const bool &set_and_store_gradient_operator=false, const bool &set_and_store_quadratic_interpolators=false*/);
+  void update(my_p4est_hierarchy_t *hierarchy_, p4est_nodes_t *nodes_);
+  void update(p4est_t* p4est_, p4est_ghost_t* ghost_, p4est_nodes_t* nodes_);
+  /*
+  void update(my_p4est_hierarchy_t *hierarchy_, p4est_nodes_t *nodes_, const bool &set_and_store_linear_interpolators=false, const bool &set_and_store_second_derivatives_operators=false,
+              const bool &set_and_store_gradient_operator=false, const bool &set_and_store_quadratic_interpolators=false);
+  void update(p4est_t* p4est_, p4est_ghost_t* ghost_, p4est_nodes_t* nodes_, const bool &set_and_store_linear_interpolators=false, const bool &set_and_store_second_derivatives_operators=false,
+              const bool &set_and_store_gradient_operator=false, const bool &set_and_store_quadratic_interpolators=false);
+  */
   
   inline const quad_neighbor_nodes_of_node_t& operator[]( p4est_locidx_t n ) const {
 #ifdef CASL_THROWS
@@ -191,8 +217,10 @@ public:
 #endif
   }
 
-  inline quad_neighbor_nodes_of_node_t get_neighbors(p4est_locidx_t n/*, const bool &set_and_store_linear_interpolators=false, const bool &set_and_store_second_derivatives_operators=false,
-                                                     const bool &set_and_store_gradient_operator=false, const bool &set_and_store_quadratic_interpolators=false*/) const {
+  /*inline quad_neighbor_nodes_of_node_t get_neighbors(p4est_locidx_t n, const bool &set_and_store_linear_interpolators=false, const bool &set_and_store_second_derivatives_operators=false,
+                                                     const bool &set_and_store_gradient_operator=false, const bool &set_and_store_quadratic_interpolators=false)*/
+  inline quad_neighbor_nodes_of_node_t get_neighbors(p4est_locidx_t n) const
+  {
     if (is_initialized) {
 #ifdef CASL_THROWS
       if (is_qnnn_valid[n])
@@ -207,8 +235,10 @@ public:
 #endif
     } else {
       quad_neighbor_nodes_of_node_t qnnn;
-      bool err = construct_neighbors(n, qnnn/*, set_and_store_linear_interpolators, set_and_store_second_derivatives_operators,
-                                     set_and_store_gradient_operator, set_and_store_quadratic_interpolators*/);
+      bool err = construct_neighbors(n, qnnn);
+
+      /*bool err = construct_neighbors(n, qnnn, set_and_store_linear_interpolators, set_and_store_second_derivatives_operators,
+                                     set_and_store_gradient_operator, set_and_store_quadratic_interpolators);*/
       if (err){
         std::ostringstream oss;
         oss << "[ERROR]: Could not construct neighborhood information for the node with idx " << n << " on processor " << p4est->mpirank;
@@ -218,8 +248,10 @@ public:
     }
   }
 
-  inline void get_neighbors(p4est_locidx_t n, quad_neighbor_nodes_of_node_t& qnnn/*, const bool &set_and_store_linear_interpolators=false, const bool &set_and_store_second_derivatives_operators=false,
-                            const bool &set_and_store_gradient_operator=false, const bool &set_and_store_quadratic_interpolators=false*/) const {
+  /*inline void get_neighbors(p4est_locidx_t n, quad_neighbor_nodes_of_node_t& qnnn, const bool &set_and_store_linear_interpolators=false, const bool &set_and_store_second_derivatives_operators=false,
+                            const bool &set_and_store_gradient_operator=false, const bool &set_and_store_quadratic_interpolators=false) const */
+  inline void get_neighbors(p4est_locidx_t n, quad_neighbor_nodes_of_node_t& qnnn) const
+  {
     if (is_initialized) {
 #ifdef CASL_THROWS
       if (is_qnnn_valid[n])
@@ -243,8 +275,10 @@ public:
         throw std::invalid_argument(oss.str().c_str());
       }
 #else
-      construct_neighbors(n, qnnn/*, set_and_store_linear_interpolators, set_and_store_second_derivatives_operators,
-                          set_and_store_gradient_operator, set_and_store_quadratic_interpolators*/);
+      construct_neighbors(n, qnnn);
+      /* construct_neighbors(n, qnnn, set_and_store_linear_interpolators, set_and_store_second_derivatives_operators,
+                          set_and_store_gradient_operator, set_and_store_quadratic_interpolators);*/
+
 #endif
     }
   }
@@ -450,11 +484,13 @@ public:
 
   void get_all_neighbors(const p4est_locidx_t n, p4est_locidx_t *neighbors, bool *neighbor_exists) const;
 
-  size_t memory_estimate() const
+  inline size_t memory_estimate() const
   {
     size_t memory = 0;
     memory += neighbors.size()*sizeof (quad_neighbor_nodes_of_node_t);
+#ifdef CASL_THROWS
     memory += is_qnnn_valid.size()*sizeof (bool);
+#endif
     memory += layer_nodes.size()*sizeof (p4est_locidx_t);
     memory += local_nodes.size()*sizeof (p4est_locidx_t);
     memory += sizeof (is_initialized);
