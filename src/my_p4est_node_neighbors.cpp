@@ -2775,6 +2775,15 @@ void my_p4est_node_neighbors_t::get_all_neighbors(const p4est_locidx_t n, p4est_
   find_neighbor_cell_of_node(n, +1, -1, quad_pmm_idx, tree_pmm_idx); //nei_quads[dir::v_pmm] = quad_pmm_idx;
   find_neighbor_cell_of_node(n, +1, +1, quad_ppm_idx, tree_ppm_idx); //nei_quads[dir::v_ppm] = quad_ppm_idx;
 #endif
+//  P4EST_ASSERT(quad_mmm_idx!=NOT_A_P4EST_QUADRANT);
+//  P4EST_ASSERT(quad_mpm_idx!=NOT_A_P4EST_QUADRANT);
+//  P4EST_ASSERT(quad_pmm_idx!=NOT_A_P4EST_QUADRANT);
+//  P4EST_ASSERT(quad_ppm_idx!=NOT_A_P4EST_QUADRANT);
+//  P4EST_ASSERT(quad_mmp_idx!=NOT_A_P4EST_QUADRANT);
+//  P4EST_ASSERT(quad_mpp_idx!=NOT_A_P4EST_QUADRANT);
+//  P4EST_ASSERT(quad_pmp_idx!=NOT_A_P4EST_QUADRANT);
+//  P4EST_ASSERT(quad_ppp_idx!=NOT_A_P4EST_QUADRANT);
+
 
   // find neighboring nodes
 #ifdef P4_TO_P8

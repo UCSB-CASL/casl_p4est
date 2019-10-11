@@ -202,7 +202,7 @@ int main(int argc, char *argv[]) {
     if(!boost::iequals(nullstr, list_of_angles))
       angles                                  = read_from_list<double>(list_of_angles);
 
-    const double rel_side_length_biggest_box  = cmd.get<double>("boxsize", 0.5);
+    const double rel_side_length_biggest_box  = cmd.get<double>("boxsize", 0.3);
     // grid construction
     const int ntree_per_dim                   = cmd.get<int>("ntree_dim", 1);
     const int lmin                            = cmd.get<int>("lmin", 5);
@@ -215,11 +215,11 @@ int main(int argc, char *argv[]) {
     const bool validation_flag                = false;//(boost::iequals("1", validation_string) || boost::iequals("yes", validation_string) || boost::iequals("true", validation_string));
     // physical and solver parameters
     const double eps_mol                      = cmd.get<double>("eps_mol", 1.0);
-    const double eps_elec                     = cmd.get<double>("eps_elec", 80.0);
+    const double eps_elec                     = cmd.get<double>("eps_elec", 78.54);
     const int ion_charge                      = cmd.get<int>("ion", 1);
-    const double temperature                  = cmd.get<double>("temperature", 298.0);
-    const double far_field_ion_concentration  = cmd.get<double>("n0", 0.001);
-    const double rtol                         = cmd.get<double>("rtol", 1e-8);
+    const double temperature                  = cmd.get<double>("temperature", 298.15);
+    const double far_field_ion_concentration  = cmd.get<double>("n0", 0.000);
+    const double rtol                         = cmd.get<double>("rtol", 1e-11);
     const int niter_max                       = cmd.get<int>("niter", 1000);
     const string linearization_string         = cmd.get<string>("linear", "yes");
     const bool linearization_flag             = (boost::iequals("1", linearization_string) || boost::iequals("yes", linearization_string) || boost::iequals("true", linearization_string));
@@ -335,7 +335,7 @@ int main(int argc, char *argv[]) {
         ierr = VecGetArray(psi_star, &psi_star_p); CHKERRXX(ierr);
         ierr = VecGetArray(psi_naught, &psi_naught_p); CHKERRXX(ierr);
 
-        ierr = VecGetArray(psi_bar, &psi_bar_p); CHKERRXX(ierr);
+        ierr = VecGetArray(psi_bar, &psi_bar_p); CHKERRXX(ierr);        
         //ierr = VecGetArray(psi, &psi_p); CHKERRXX(ierr);
       }
       else

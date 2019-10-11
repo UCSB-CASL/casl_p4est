@@ -948,7 +948,7 @@ private:
   int                       total_nb_atoms;           // self-explanatory
   int                       index_of_biggest_mol;     // self-explanatory
   double                    box_size_of_biggest_mol;  // self-explanatory
-  double                    angstrom_to_domain;       // angstrom-to-domain conversion factor
+public : double                    angstrom_to_domain;       // angstrom-to-domain conversion factor
   biomol_grid_parameters    parameters;
   // what will be buit
   map<p4est_locidx_t, reduced_list_ptr> old_reduced_lists;  // used for the list reduction method (only)
@@ -1196,7 +1196,7 @@ class my_p4est_biomolecules_solver_t{
     linearPB,
     nonlinearPB
   } solver_type;
-
+public:
   double        mol_rel_permittivity;                     // relative permittivity of the molecule
   double        elec_rel_permittivity;                    // relative permittivity of the electrolyte
   double        temperature;                              // the temperature (in K)
@@ -1204,6 +1204,7 @@ class my_p4est_biomolecules_solver_t{
   int           ion_charge;                               // 'z' for a z:z symmetrical electrolyte, >=1
   double        solvation_free_energy;                    // the holy grail
   // physical constant
+public:
   const double  eps_0             = 8.854187817*1e-12;    // = 1/(mu_0*c^2), exact value, vacuum permittivity in F/m
   const double  kB                = 1.38064853*1e-23;     // (rounded-up) Boltzmann constant in J/K
   const double  electron          = 1.6021766209*1e-19;   // elementary electric charge in C
@@ -1215,7 +1216,19 @@ class my_p4est_biomolecules_solver_t{
   my_p4est_cell_neighbors_t*              cell_neighbors = NULL;
   //my_p4est_poisson_jump_nodes_voronoi_t*  jump_solver = NULL;
   my_p4est_general_poisson_nodes_mls_solver_t* jump_solver= NULL;
+  my_p4est_general_poisson_nodes_mls_solver_t* jump_solver1= NULL;
   my_p4est_poisson_nodes_t*               node_solver = NULL;
+
+  enum discretization_scheme_t
+  {
+    UNDEFINED,
+    NO_DISCRETIZATION,
+    WALL_DIRICHLET,
+    WALL_NEUMANN,
+    FINITE_DIFFERENCE,
+    FINITE_VOLUME,
+    IMMERSED_INTERFACE,
+  };
 
   Vec           psi_star, psi_naught, psi_bar, validation_error;
   bool          psi_star_psi_naught_and_psi_bar_are_set;
@@ -1249,6 +1262,7 @@ class my_p4est_biomolecules_solver_t{
       for (int charged_atom_idx = 0; charged_atom_idx < mol.get_number_of_charged_atoms(); ++charged_atom_idx)
       {
         const Atom* a = mol.get_charged_atom(charged_atom_idx);
+//        std::cout << sqrt(SQR(x - a->x) + SQR(y - a->y) + SQR(z - a->z))/biomolecules->angstrom_to_domain << std::endl;
 #ifdef P4_TO_P8
         psi_star_value += (a->q*SQR(electron)*((double) ion_charge))/
             (length_scale_in_meter()*4.0*PI*eps_0*mol_rel_permittivity*kB*temperature*sqrt(SQR(x - a->x) + SQR(y - a->y) + SQR(z - a->z))); // constant = 0
@@ -1256,12 +1270,41 @@ class my_p4est_biomolecules_solver_t{
         // there is no real 2D equivalent in terms of electrostatics,
         // in the 2d case, let's consider q a linear (partial) charge density,
         // q is considered to be in electron per nanometer (TOTALLY arbitrary)...
-        psi_star_value -= (a->q*0.1*meter_to_angstrom*SQR(electron)*((double) ion_charge)*log(sqrt(SQR(x - a->x) + SQR(y - a->y))))/(2.0*PI*eps_0*mol_rel_permittivity*kB*temperature); // constant = 0
+        // psi_star_value += (a->q*0.1*meter_to_angstrom*SQR(electron)*((double) ion_charge)*log(sqrt(SQR(x - a->x) + SQR(y - a->y))))/(2.0*PI*eps_0*mol_rel_permittivity*kB*temperature); // constant = 0
 #endif
       }
     }
     return psi_star_value;
   }
+  double        non_dimensional_coulomb_in_elec(double x, double y
+                                             #ifdef P4_TO_P8
+                                               , double z
+                                             #endif
+                                               )
+  {
+    double psi_star_value = 0;
+    for (int mol_idx = 0; mol_idx < biomolecules->nmol(); ++mol_idx)
+    {
+      const my_p4est_biomolecules_t::molecule& mol = biomolecules->bio_molecules.at(mol_idx);
+      for (int charged_atom_idx = 0; charged_atom_idx < mol.get_number_of_charged_atoms(); ++charged_atom_idx)
+      {
+        const Atom* a = mol.get_charged_atom(charged_atom_idx);
+#ifdef P4_TO_P8
+       psi_star_value += ((a->q*SQR(electron)*((double) ion_charge))/
+            (length_scale_in_meter()*4.0*PI*eps_0*kB*temperature*2*biomolecules->angstrom_to_domain))*(-1/elec_rel_permittivity);
+        //std::cout << "psi_star correction = "<< psi_star_value <<"\n";
+#else
+        // there is no real 2D equivalent in terms of electrostatics,
+        // in the 2d case, let's consider q a linear (partial) charge density,
+        // q is considered to be in electron per nanometer (TOTALLY arbitrary)...
+        //psi_star_value -= (a->q*0.1*meter_to_angstrom*SQR(electron)*((double) ion_charge)*log(sqrt(SQR(x - a->x) + SQR(y - a->y))))/(2.0*PI*eps_0*elec_rel_permittivity*kB*temperature); // constant = 0
+
+#endif
+      }
+    }
+    return psi_star_value;
+  }
+
   void          return_psi_hat(Vec& psi_hat_out);
   void          return_psi_star_psi_naught_and_psi_bar(Vec& psi_star_out, Vec& psi_naught_out, Vec& psi_bar_out);
   void          calculate_jumps_in_normal_gradient(Vec& eps_grad_n_psi_hat_jump, bool validation_flag);
@@ -1283,6 +1326,25 @@ class my_p4est_biomolecules_solver_t{
                   #endif
                       ) const { return 0.0; }
   } homogeneous_dirichlet_bc_wall_value;
+
+  struct far_field_boundary_cond:
+    #ifdef P4_TO_P8
+      CF_3
+    #else
+      CF_2
+    #endif
+  {
+     my_p4est_biomolecules_solver_t*  biomol_solver;
+    far_field_boundary_cond( my_p4est_biomolecules_solver_t* biomol_solver):biomol_solver(biomol_solver){}
+    double operator()(double x, double y
+                  #ifdef P4_TO_P8
+                      , double z
+                  #endif
+                      ) const
+    {
+        return (biomol_solver->non_dimensional_coulomb_in_mol(DIM(x,y,z)))*biomol_solver->mol_rel_permittivity/biomol_solver->elec_rel_permittivity /*+ biomol_solver->non_dimensional_coulomb_in_elec(DIM(x,y,z))*/;
+    }
+  };
 
   struct:
     #ifdef P4_TO_P8
