@@ -11,6 +11,8 @@
 #include <src/my_p4est_interpolation.h>
 #endif
 
+// Elyce: Class is used to interpolate data sampled at cell centers to the nodes
+
 class my_p4est_interpolation_cells_t : public my_p4est_interpolation_t
 {
 private:

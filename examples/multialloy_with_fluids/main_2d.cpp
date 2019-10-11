@@ -55,7 +55,7 @@ int example_ = 1;  // 0 - Ice cube melting in water, 1 - Frank sphere, 2 - water
 
 int method_ = 0; // 0 - Backward Euler, 1 - Crank Nicholson
 
-bool elyce_laptop = true; // Set to true if working on laptop --> changes the output path
+bool elyce_laptop = false; // Set to true if working on laptop --> changes the output path
 // ---------------------------------------
 // Define geometry:
 // ---------------------------------------
@@ -102,12 +102,12 @@ void set_geometry(){
       break;
 
     case 1: // Frank sphere
-      xmin = -5.0; xmax = 5.0;
+      xmin = -10.0; xmax = 10.0; //5.0;
       ymin = -5.0; ymax = 5.0;
       box_size = 1.0;
-      nx = 1;
+      nx = 2;
       ny = 1;
-      px = 0; py = 0;
+      px = 0; py = 1;
 
 
       s0 = 1.65;
@@ -246,6 +246,7 @@ double v0;
 double outflow_u;
 double outflow_v;
 double mu_l;
+double hodge_percentage_of_max_u;
 void set_NS_info(){
   pressure_prescribed_flux = 0.0; // For the Neumann condition on the two x walls and lower y wall
   pressure_prescribed_value = 0.0; // For the Dirichlet condition on the back y wall
@@ -265,6 +266,8 @@ void set_NS_info(){
 
   outflow_u = 0.0;
   outflow_v = 0.0;
+
+  hodge_percentage_of_max_u = 1.e-2;
 
 }
 
@@ -290,7 +293,7 @@ bool solve_smoke = true; // Whether or not you want to solve for smoke
 
 bool solve_navier_stokes = true;
 
-bool force_interfacial_velocity_to_zero = true;
+bool force_interfacial_velocity_to_zero = false;
 // Begin defining classes for necessary functions and boundary conditions...
 // --------------------------------------------------------------------------------------------------------------
 // Frank sphere functions -- Functions necessary for evaluating the analytical solution of the Frank sphere problem, to validate results for example 1
@@ -867,7 +870,7 @@ public:
       case 0: throw std::invalid_argument("Navier Stokes is not set up properly for this example \n");
       case 1:
       case 2: // Ice solidifying around a cylinder
-        return 0.0; //v_interface_interp(x,y); // No slip on the interface  -- Thus is equal to the x component of the interfacial velocity
+        return v_interface_interp(x,y); // No slip on the interface  -- Thus is equal to the x component of the interfacial velocity
 
       }
 
@@ -901,7 +904,7 @@ public:
       case 0: throw std::invalid_argument("Navier Stokes is not set up properly for this example \n");
       case 1:
       case 2: // Ice solidifying around a cylinder
-        return 0.0; //v_interface_interp(x,y); // No slip on the interface  -- Thus is equal to the x component of the interfacial velocity
+        return v_interface_interp(x,y); // No slip on the interface  -- Thus is equal to the x component of the interfacial velocity
 
       }
 
@@ -1732,6 +1735,7 @@ int main(int argc, char** argv) {
       interface_bc_velocity_v();
 
     }
+  double NS_norm; // for checking the maximum velocity norm of the navier-stokes solution
 
   // -----------------------------------------------
   // Scale the problem appropriately:
@@ -1773,6 +1777,13 @@ int main(int argc, char** argv) {
                            "Computational rho = %0.3e \n",Re,r0,mu_l,u0,rho_l);
 
     PetscPrintf(mpi.comm(),"u initial is %0.3e, v initial is %0.3e \n",u0,v0);
+
+
+    // Change Reynolds number to something higher:
+
+    Re = 6.34;
+    mu_l = 2*rho_l*u0/Re;
+    PetscPrintf(mpi.comm(),"New mu is set to be %0.2f for a Reynolds of %0.2f",mu_l,Re);
     // Note: NS values will need to be scaled back to their physical values for saving, and then can be rescaled back to what is appropriate for the computational domain
     }
 
@@ -1795,7 +1806,9 @@ int main(int argc, char** argv) {
   p4est = my_p4est_new(mpi.comm(), conn, 0, NULL, NULL); // same as Daniil
 
   // refine based on distance to a level-set
-  splitting_criteria_cf_t sp(lmin, lmax, &level_set,lip);
+  //splitting_criteria_cf_t sp(lmin, lmax, &level_set,lip);
+
+  splitting_criteria_cf_and_uniform_band_t sp(lmin,lmax,&level_set,4.0);
   p4est->user_pointer = &sp;
 
 
@@ -2284,6 +2297,7 @@ int main(int argc, char** argv) {
       // Advance the LSF:
       // --------------------------------------------------------------------------------------------------------------
       // Make a copy of the grid objects for the next timestep:
+
       p4est_np1 = p4est_copy(p4est,P4EST_FALSE); // copy the grid but not the data
       ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
 
@@ -2305,15 +2319,25 @@ int main(int argc, char** argv) {
       my_p4est_node_neighbors_t *ngbd_np1 = new my_p4est_node_neighbors_t(hierarchy_np1,nodes_np1);
       ngbd_np1->init_neighbors();
 
+      // FOR FUTURE NOTICE :: functions that exist are: ngbd->update() and hierarchy->update()
+      PetscPrintf(mpi.comm(),"Grid has been advected \n");
+
       // Reinitialize the LSF on the new grid:
 
       my_p4est_level_set_t ls_new(ngbd_np1);
+      PetscPrintf(mpi.comm(),"New ls object created \n");
+
       ls_new.reinitialize_1st_order_time_2nd_order_space(phi.vec, 100);
+      PetscPrintf(mpi.comm(),"Reinitialized \n");
+
       ls_new.perturb_level_set_function(phi.vec,EPS);
+      PetscPrintf(mpi.comm(),"Perturbed \n");
+
 
       // --------------------------------------------------------------------------------------------------------------
       // Interpolate Values onto New Grid:
       // -------------------------------------------------------------------------------------------------------------
+      PetscPrintf(mpi.comm(),"Beginning interpolation onto new grid: \n ");
       // Create vectors to hold new values:
       T_l_new.create(p4est_np1,nodes_np1);
       T_s_new.create(T_l_new.vec);
@@ -2439,6 +2463,7 @@ int main(int argc, char** argv) {
           // Create the faces:
           my_p4est_faces_t *faces_np1 = new my_p4est_faces_t(p4est_np1,ghost_np1,&brick,ngbd_c);
 
+          PetscPrintf(mpi.comm(),"Beginning NS setup \n");
           // First, initialize the Navier-Stokes solver with the grid:
           ns = new my_p4est_navier_stokes_t(ngbd,ngbd_np1,faces_np1);
 
@@ -2502,40 +2527,11 @@ int main(int argc, char** argv) {
           hodge_old.create(p4est_np1,ghost_np1);
           hodge_new.create(p4est_np1,ghost_np1);
 
-          if(tstep>0){
-              my_p4est_interpolation_cells_t interp_hodge(ngbd_c,ngbd);
-
-              foreach_tree(tr,p4est_np1){
-                  p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est_np1->trees,tr);
-                  foreach_local_quad(q,tree){
-
-                    // Get xyz location of the quad center so we can interpolate phi there and check which domain we are in:
-                    double xyz[P4EST_DIM];
-                    quad_xyz_fr_q(q,tr,p4est_np1,ghost_np1,xyz);
-
-                    interp_hodge.add_point_local(q,xyz);
-
-                  }
-              }
-
-              interp_hodge.set_input(hodge_old_grid.vec);
-              interp_hodge.interpolate(hodge_new.vec);
-
-          }
-
-          VecView(hodge_new.vec,PETSC_VIEWER_STDOUT_(mpi.comm()));
-          PetscPrintf(mpi.comm(),"Finishes interpolating hodge from previous timestep \n");
-          //Vec hodge_to_set;
-          //VecCopyGhost(hodge_new.vec,hodge_to_set);
-          ns->set_hodge(hodge_new.vec);
-          PetscPrintf(mpi.comm(),"Sets the interpolated hodge as the initial hodge on the new grid \n");
-
-
-          hodge_old_grid.destroy();
-          hodge_old_grid.create(p4est_np1,ghost_np1);
-
           bool keep_iterating_hodge = true;
-          double hodge_tolerance = 1.e-3;
+          double hodge_tolerance;
+          if (tstep<1) hodge_tolerance = u0*hodge_percentage_of_max_u;
+          else hodge_tolerance = NS_norm*hodge_percentage_of_max_u;
+
           int hodge_max_it = 100;
 
           int hodge_iteration = 0;
@@ -2554,12 +2550,6 @@ int main(int argc, char** argv) {
 
           phi.restore_array();
 
-
-          // For timesteps after the first, use the last value of hodge as the one on the new grid:
-          if (tstep>0){
-              ns->set_hodge(hodge_new.vec);
-          }
-
           while(keep_iterating_hodge){
               double hodge_error = - 10.0;
               double hodge_global_error = -10.0;
@@ -2567,9 +2557,6 @@ int main(int argc, char** argv) {
               hodge_new.set(ns->get_hodge());
 
               VecCopy(hodge_new.vec,hodge_old.vec);
-              //PetscPrintf(mpi.comm()," \n \n \n Hodge old : \n ");
-              //VecView(hodge_old.vec,PETSC_VIEWER_STDOUT_(mpi.comm()));
-              //PetscPrintf(mpi.comm()," \n \n ");
 
               // ------------------------------------
               // Do NS Solution process:
@@ -2590,31 +2577,37 @@ int main(int argc, char** argv) {
               // Check the error on hodge:
               // -------------------------------------------------------------
               // Get the current hodge:
+
               hodge_new.set(ns->get_hodge());
 
               // Create interpolation object to interpolate phi to the quadrant location:
               my_p4est_interpolation_nodes_t *interp_phi = ns->get_interp_phi();
+
+              int size;
+              VecGetSize(hodge_new.vec,&size);
+
 
               // Get hodge arrays:
               hodge_old.get_array();
               hodge_new.get_array();
 
               // Loop over each quadrant in each tree, check the error in hodge
-
               foreach_tree(tr,p4est_np1){
                 p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est_np1->trees,tr);
+
                 foreach_local_quad(q,tree){
+                  // Get the global index of the quadrant:
+                  p4est_locidx_t quad_idx = tree->quadrants_offset + q;
 
                   // Get xyz location of the quad center so we can interpolate phi there and check which domain we are in:
                   double xyz[P4EST_DIM];
-                  quad_xyz_fr_q(q,tr,p4est_np1,ghost_np1,xyz);
 
-                  // Get phi value at the quadrant:
+                  quad_xyz_fr_q(quad_idx,tr,p4est_np1,ghost_np1,xyz);
+
                   double phi_val = (*interp_phi)(xyz[0],xyz[1]);
-
                   // Evaluate the hodge error:
                   if(phi_val < 0){
-                      hodge_error = max(hodge_error,fabs(hodge_old.ptr[q] - hodge_new.ptr[q]));
+                      hodge_error = max(hodge_error,fabs(hodge_old.ptr[quad_idx] - hodge_new.ptr[quad_idx]));
                     }
                 }
               }
@@ -2637,7 +2630,7 @@ int main(int argc, char** argv) {
           ns->compute_pressure();
           // Check the L2 norm of u to make sure nothing is blowing up
 
-          double NS_norm = ns->get_max_L2_norm_u();
+          NS_norm = ns->get_max_L2_norm_u();
           PetscPrintf(mpi.comm(),"\n max NS velocity norm is %0.3e \n",NS_norm);
           if(ns->get_max_L2_norm_u()>100.0){
               std::cerr<<"The simulation blew up \n"<<std::endl;
@@ -2648,9 +2641,6 @@ int main(int argc, char** argv) {
           v_n.set(ns->get_velocity_np1());
 
           press.set(ns->get_pressure());
-
-          // Save this hodge value to pass to the next timestep:
-          VecCopyGhost(hodge_new.vec,hodge_old_grid.vec);
 
           if(elyce_laptop) sprintf(outdir,"/Users/elyce/workspace/projects/multialloy_with_fluids/output/snapshot_NS_%d",out_idx);
           else sprintf(outdir,"/home/elyce/workspace/projects/multialloy_with_fluids/solidif_with_fluids_output/snapshot_NS_%d",out_idx);
@@ -2682,7 +2672,9 @@ int main(int argc, char** argv) {
                                             VTK_POINT_DATA,"v_interface_y",v_interface.ptr[1],
                                             VTK_POINT_DATA,"v_NS_x",v_n.ptr[0],
                                             VTK_POINT_DATA,"v_NS_y",v_n.ptr[1],
-                                            VTK_POINT_DATA,"P",press.ptr);
+                                            VTK_POINT_DATA,"P",press.ptr
+                                 );
+
 
           phi.restore_array();
           v_interface.restore_array();
@@ -2701,19 +2693,19 @@ int main(int argc, char** argv) {
       // --------------------------------------------------------------------------------------------------------------
       // Delete the old grid:
       // --------------------------------------------------------------------------------------------------------------
-
       // Delete the old grid and update with the new one:
       p4est_destroy(p4est); p4est = p4est_np1;
       p4est_ghost_destroy(ghost); ghost = ghost_np1;
       p4est_nodes_destroy(nodes); nodes = nodes_np1;
 
-      // Expand the ghost layer if needed (for Navier Stokes)
+      // Expand the ghost layer if needed (for Navier Stokes) (? IS THIS NEEDED HERE ...?) dont think you should expand ghost layer after getting new nodes
       //my_p4est_ghost_expand(p4est,ghost);
 
-      delete hierarchy; hierarchy = new my_p4est_hierarchy_t(p4est,ghost,&brick);
-      delete ngbd; ngbd = new my_p4est_node_neighbors_t(hierarchy, nodes);
+      // Temporary to see if i can figure out where the new grid creation has gone wrong:
+      delete hierarchy; hierarchy = hierarchy_np1; //new my_p4est_hierarchy_t(p4est,ghost,&brick);
+      delete ngbd; ngbd = ngbd_np1; //new my_p4est_node_neighbors_t(hierarchy, nodes);
 
-      ngbd->init_neighbors();
+      //ngbd->init_neighbors();
 
       // Get the new solid LSF:
       phi_solid.destroy();
@@ -2725,20 +2717,6 @@ int main(int argc, char** argv) {
       // --------------------------------------------------------------------------------------------------------------
       // Compute the normal and curvature of the interface -- curvature is used in some of the interfacial boundary condition(s)
       // --------------------------------------------------------------------------------------------------------------
-
-      vec_and_ptr_dim_t normal;
-      vec_and_ptr_t curvature_tmp; // This one will hold computed curvature
-      vec_and_ptr_t curvature;  // This one will hold curvature extended from interface to whole domain
-
-      normal.create(p4est,nodes);
-      curvature_tmp.create(p4est,nodes);
-      curvature.create(curvature_tmp.vec);
-
-      // Compute normals on the interface:
-      compute_normals(*ngbd,phi.vec,normal.vec);
-
-      // Compute curvature on the interface:
-      compute_curvature(phi,normal,curvature,ngbd,ls_new);
 
       vec_and_ptr_dim_t normal;
       vec_and_ptr_t curvature_tmp; // This one will hold computed curvature
