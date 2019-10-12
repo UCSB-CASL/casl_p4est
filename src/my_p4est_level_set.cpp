@@ -4061,20 +4061,20 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
             double qzzd_dot_n = 0;
 #endif
 
-            qxxd_dot_n += nx[n]*(nx[n]>0 ? (qxx_p[n] - qnnn.inl_f_m00_linear(qxx_p)) / qnnn.d_m00 : (qnnn.inl_f_p00_linear(qxx_p) - qxx_p[n]) / qnnn.d_p00);
-            qxxd_dot_n += ny[n]*(ny[n]>0 ? (qxx_p[n] - qnnn.inl_f_0m0_linear(qxx_p)) / qnnn.d_0m0 : (qnnn.inl_f_0p0_linear(qxx_p) - qxx_p[n]) / qnnn.d_0p0);
+            qxxd_dot_n += nx[n]*(nx[n]>0 ? (qxx_p[n] - qnnn.f_m00_linear(qxx_p)) / qnnn.d_m00 : (qnnn.f_p00_linear(qxx_p) - qxx_p[n]) / qnnn.d_p00);
+            qxxd_dot_n += ny[n]*(ny[n]>0 ? (qxx_p[n] - qnnn.f_0m0_linear(qxx_p)) / qnnn.d_0m0 : (qnnn.f_0p0_linear(qxx_p) - qxx_p[n]) / qnnn.d_0p0);
 #ifdef P4_TO_P8
-            qxxd_dot_n += nz[n]*(nz[n]>0 ? (qxx_p[n] - qnnn.inl_f_00m_linear(qxx_p)) / qnnn.d_00m : (qnnn.inl_f_00p_linear(qxx_p) - qxx_p[n]) / qnnn.d_00p);
+            qxxd_dot_n += nz[n]*(nz[n]>0 ? (qxx_p[n] - qnnn.f_00m_linear(qxx_p)) / qnnn.d_00m : (qnnn.f_00p_linear(qxx_p) - qxx_p[n]) / qnnn.d_00p);
 #endif
 
-            qyyd_dot_n += nx[n]*(nx[n]>0 ? (qyy_p[n] - qnnn.inl_f_m00_linear(qyy_p)) / qnnn.d_m00 : (qnnn.inl_f_p00_linear(qyy_p) - qyy_p[n]) / qnnn.d_p00);
-            qyyd_dot_n += ny[n]*(ny[n]>0 ? (qyy_p[n] - qnnn.inl_f_0m0_linear(qyy_p)) / qnnn.d_0m0 : (qnnn.inl_f_0p0_linear(qyy_p) - qyy_p[n]) / qnnn.d_0p0);
+            qyyd_dot_n += nx[n]*(nx[n]>0 ? (qyy_p[n] - qnnn.f_m00_linear(qyy_p)) / qnnn.d_m00 : (qnnn.f_p00_linear(qyy_p) - qyy_p[n]) / qnnn.d_p00);
+            qyyd_dot_n += ny[n]*(ny[n]>0 ? (qyy_p[n] - qnnn.f_0m0_linear(qyy_p)) / qnnn.d_0m0 : (qnnn.f_0p0_linear(qyy_p) - qyy_p[n]) / qnnn.d_0p0);
 #ifdef P4_TO_P8
-            qyyd_dot_n += nz[n]*(nz[n]>0 ? (qyy_p[n] - qnnn.inl_f_00m_linear(qyy_p)) / qnnn.d_00m : (qnnn.inl_f_00p_linear(qyy_p) - qyy_p[n]) / qnnn.d_00p);
+            qyyd_dot_n += nz[n]*(nz[n]>0 ? (qyy_p[n] - qnnn.f_00m_linear(qyy_p)) / qnnn.d_00m : (qnnn.f_00p_linear(qyy_p) - qyy_p[n]) / qnnn.d_00p);
 
-            qzzd_dot_n += nx[n]*(nx[n]>0 ? (qzz_p[n] - qnnn.inl_f_m00_linear(qzz_p)) / qnnn.d_m00 : (qnnn.inl_f_p00_linear(qzz_p) - qzz_p[n]) / qnnn.d_p00);
-            qzzd_dot_n += ny[n]*(ny[n]>0 ? (qzz_p[n] - qnnn.inl_f_0m0_linear(qzz_p)) / qnnn.d_0m0 : (qnnn.inl_f_0p0_linear(qzz_p) - qzz_p[n]) / qnnn.d_0p0);
-            qzzd_dot_n += nz[n]*(nz[n]>0 ? (qzz_p[n] - qnnn.inl_f_00m_linear(qzz_p)) / qnnn.d_00m : (qnnn.inl_f_00p_linear(qzz_p) - qzz_p[n]) / qnnn.d_00p);
+            qzzd_dot_n += nx[n]*(nx[n]>0 ? (qzz_p[n] - qnnn.f_m00_linear(qzz_p)) / qnnn.d_m00 : (qnnn.f_p00_linear(qzz_p) - qzz_p[n]) / qnnn.d_p00);
+            qzzd_dot_n += ny[n]*(ny[n]>0 ? (qzz_p[n] - qnnn.f_0m0_linear(qzz_p)) / qnnn.d_0m0 : (qnnn.f_0p0_linear(qzz_p) - qzz_p[n]) / qnnn.d_0p0);
+            qzzd_dot_n += nz[n]*(nz[n]>0 ? (qzz_p[n] - qnnn.f_00m_linear(qzz_p)) / qnnn.d_00m : (qnnn.f_00p_linear(qzz_p) - qzz_p[n]) / qnnn.d_00p);
 #endif
             qxxd_dot_n *= dt;
             qyyd_dot_n *= dt;
@@ -4117,18 +4117,18 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
             double qzxd_dot_n = 0;
 #endif
 
-            qxyd_dot_n += nx[n]*(nx[n]>0 ? (qxy_p[n] - qnnn.inl_f_m00_linear(qxy_p)) / qnnn.d_m00 : (qnnn.inl_f_p00_linear(qxy_p) - qxy_p[n]) / qnnn.d_p00);
-            qxyd_dot_n += ny[n]*(ny[n]>0 ? (qxy_p[n] - qnnn.inl_f_0m0_linear(qxy_p)) / qnnn.d_0m0 : (qnnn.inl_f_0p0_linear(qxy_p) - qxy_p[n]) / qnnn.d_0p0);
+            qxyd_dot_n += nx[n]*(nx[n]>0 ? (qxy_p[n] - qnnn.f_m00_linear(qxy_p)) / qnnn.d_m00 : (qnnn.f_p00_linear(qxy_p) - qxy_p[n]) / qnnn.d_p00);
+            qxyd_dot_n += ny[n]*(ny[n]>0 ? (qxy_p[n] - qnnn.f_0m0_linear(qxy_p)) / qnnn.d_0m0 : (qnnn.f_0p0_linear(qxy_p) - qxy_p[n]) / qnnn.d_0p0);
 #ifdef P4_TO_P8
-            qxyd_dot_n += nz[n]*(nz[n]>0 ? (qxy_p[n] - qnnn.inl_f_00m_linear(qxy_p)) / qnnn.d_00m : (qnnn.inl_f_00p_linear(qxy_p) - qxy_p[n]) / qnnn.d_00p);
+            qxyd_dot_n += nz[n]*(nz[n]>0 ? (qxy_p[n] - qnnn.f_00m_linear(qxy_p)) / qnnn.d_00m : (qnnn.f_00p_linear(qxy_p) - qxy_p[n]) / qnnn.d_00p);
 
-            qyzd_dot_n += nx[n]*(nx[n]>0 ? (qyz_p[n] - qnnn.inl_f_m00_linear(qyz_p)) / qnnn.d_m00 : (qnnn.inl_f_p00_linear(qyz_p) - qyz_p[n]) / qnnn.d_p00);
-            qyzd_dot_n += ny[n]*(ny[n]>0 ? (qyz_p[n] - qnnn.inl_f_0m0_linear(qyz_p)) / qnnn.d_0m0 : (qnnn.inl_f_0p0_linear(qyz_p) - qyz_p[n]) / qnnn.d_0p0);
-            qyzd_dot_n += nz[n]*(nz[n]>0 ? (qyz_p[n] - qnnn.inl_f_00m_linear(qyz_p)) / qnnn.d_00m : (qnnn.inl_f_00p_linear(qyz_p) - qyz_p[n]) / qnnn.d_00p);
+            qyzd_dot_n += nx[n]*(nx[n]>0 ? (qyz_p[n] - qnnn.f_m00_linear(qyz_p)) / qnnn.d_m00 : (qnnn.f_p00_linear(qyz_p) - qyz_p[n]) / qnnn.d_p00);
+            qyzd_dot_n += ny[n]*(ny[n]>0 ? (qyz_p[n] - qnnn.f_0m0_linear(qyz_p)) / qnnn.d_0m0 : (qnnn.f_0p0_linear(qyz_p) - qyz_p[n]) / qnnn.d_0p0);
+            qyzd_dot_n += nz[n]*(nz[n]>0 ? (qyz_p[n] - qnnn.f_00m_linear(qyz_p)) / qnnn.d_00m : (qnnn.f_00p_linear(qyz_p) - qyz_p[n]) / qnnn.d_00p);
 
-            qzxd_dot_n += nx[n]*(nx[n]>0 ? (qzx_p[n] - qnnn.inl_f_m00_linear(qzx_p)) / qnnn.d_m00 : (qnnn.inl_f_p00_linear(qzx_p) - qzx_p[n]) / qnnn.d_p00);
-            qzxd_dot_n += ny[n]*(ny[n]>0 ? (qzx_p[n] - qnnn.inl_f_0m0_linear(qzx_p)) / qnnn.d_0m0 : (qnnn.inl_f_0p0_linear(qzx_p) - qzx_p[n]) / qnnn.d_0p0);
-            qzxd_dot_n += nz[n]*(nz[n]>0 ? (qzx_p[n] - qnnn.inl_f_00m_linear(qzx_p)) / qnnn.d_00m : (qnnn.inl_f_00p_linear(qzx_p) - qzx_p[n]) / qnnn.d_00p);
+            qzxd_dot_n += nx[n]*(nx[n]>0 ? (qzx_p[n] - qnnn.f_m00_linear(qzx_p)) / qnnn.d_m00 : (qnnn.f_p00_linear(qzx_p) - qzx_p[n]) / qnnn.d_p00);
+            qzxd_dot_n += ny[n]*(ny[n]>0 ? (qzx_p[n] - qnnn.f_0m0_linear(qzx_p)) / qnnn.d_0m0 : (qnnn.f_0p0_linear(qzx_p) - qzx_p[n]) / qnnn.d_0p0);
+            qzxd_dot_n += nz[n]*(nz[n]>0 ? (qzx_p[n] - qnnn.f_00m_linear(qzx_p)) / qnnn.d_00m : (qnnn.f_00p_linear(qzx_p) - qzx_p[n]) / qnnn.d_00p);
 #endif
 
             qxyd_dot_n *= dt;
@@ -4323,20 +4323,20 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
             double qzd_dot_n = 0;
 #endif
 
-            qxd_dot_n += nx[n]*((nx[n]>0 ? (qx_p[n] - qnnn.inl_f_m00_linear(qx_p)) / qnnn.d_m00 : (qnnn.inl_f_p00_linear(qx_p) - qx_p[n]) / qnnn.d_p00) - (order == 2 ? qxx_p[n] : 0));
-            qxd_dot_n += ny[n]*((ny[n]>0 ? (qx_p[n] - qnnn.inl_f_0m0_linear(qx_p)) / qnnn.d_0m0 : (qnnn.inl_f_0p0_linear(qx_p) - qx_p[n]) / qnnn.d_0p0) - (order == 2 ? qxy_p[n] : 0));
+            qxd_dot_n += nx[n]*((nx[n]>0 ? (qx_p[n] - qnnn.f_m00_linear(qx_p)) / qnnn.d_m00 : (qnnn.f_p00_linear(qx_p) - qx_p[n]) / qnnn.d_p00) - (order == 2 ? qxx_p[n] : 0));
+            qxd_dot_n += ny[n]*((ny[n]>0 ? (qx_p[n] - qnnn.f_0m0_linear(qx_p)) / qnnn.d_0m0 : (qnnn.f_0p0_linear(qx_p) - qx_p[n]) / qnnn.d_0p0) - (order == 2 ? qxy_p[n] : 0));
 #ifdef P4_TO_P8
-            qxd_dot_n += nz[n]*((nz[n]>0 ? (qx_p[n] - qnnn.inl_f_00m_linear(qx_p)) / qnnn.d_00m : (qnnn.inl_f_00p_linear(qx_p) - qx_p[n]) / qnnn.d_00p) - (order == 2 ? qzx_p[n] : 0));
+            qxd_dot_n += nz[n]*((nz[n]>0 ? (qx_p[n] - qnnn.f_00m_linear(qx_p)) / qnnn.d_00m : (qnnn.f_00p_linear(qx_p) - qx_p[n]) / qnnn.d_00p) - (order == 2 ? qzx_p[n] : 0));
 #endif
 
-            qyd_dot_n += nx[n]*((nx[n]>0 ? (qy_p[n] - qnnn.inl_f_m00_linear(qy_p)) / qnnn.d_m00 : (qnnn.inl_f_p00_linear(qy_p) - qy_p[n]) / qnnn.d_p00) - (order == 2 ? qxy_p[n] : 0));
-            qyd_dot_n += ny[n]*((ny[n]>0 ? (qy_p[n] - qnnn.inl_f_0m0_linear(qy_p)) / qnnn.d_0m0 : (qnnn.inl_f_0p0_linear(qy_p) - qy_p[n]) / qnnn.d_0p0) - (order == 2 ? qyy_p[n] : 0));
+            qyd_dot_n += nx[n]*((nx[n]>0 ? (qy_p[n] - qnnn.f_m00_linear(qy_p)) / qnnn.d_m00 : (qnnn.f_p00_linear(qy_p) - qy_p[n]) / qnnn.d_p00) - (order == 2 ? qxy_p[n] : 0));
+            qyd_dot_n += ny[n]*((ny[n]>0 ? (qy_p[n] - qnnn.f_0m0_linear(qy_p)) / qnnn.d_0m0 : (qnnn.f_0p0_linear(qy_p) - qy_p[n]) / qnnn.d_0p0) - (order == 2 ? qyy_p[n] : 0));
 #ifdef P4_TO_P8
-            qyd_dot_n += nz[n]*((nz[n]>0 ? (qy_p[n] - qnnn.inl_f_00m_linear(qy_p)) / qnnn.d_00m : (qnnn.inl_f_00p_linear(qy_p) - qy_p[n]) / qnnn.d_00p) - (order == 2 ? qyz_p[n] : 0));
+            qyd_dot_n += nz[n]*((nz[n]>0 ? (qy_p[n] - qnnn.f_00m_linear(qy_p)) / qnnn.d_00m : (qnnn.f_00p_linear(qy_p) - qy_p[n]) / qnnn.d_00p) - (order == 2 ? qyz_p[n] : 0));
 
-            qzd_dot_n += nx[n]*((nx[n]>0 ? (qz_p[n] - qnnn.inl_f_m00_linear(qz_p)) / qnnn.d_m00 : (qnnn.inl_f_p00_linear(qz_p) - qz_p[n]) / qnnn.d_p00) - (order == 2 ? qzx_p[n] : 0));
-            qzd_dot_n += ny[n]*((ny[n]>0 ? (qz_p[n] - qnnn.inl_f_0m0_linear(qz_p)) / qnnn.d_0m0 : (qnnn.inl_f_0p0_linear(qz_p) - qz_p[n]) / qnnn.d_0p0) - (order == 2 ? qyz_p[n] : 0));
-            qzd_dot_n += nz[n]*((nz[n]>0 ? (qz_p[n] - qnnn.inl_f_00m_linear(qz_p)) / qnnn.d_00m : (qnnn.inl_f_00p_linear(qz_p) - qz_p[n]) / qnnn.d_00p) - (order == 2 ? qzz_p[n] : 0));
+            qzd_dot_n += nx[n]*((nx[n]>0 ? (qz_p[n] - qnnn.f_m00_linear(qz_p)) / qnnn.d_m00 : (qnnn.f_p00_linear(qz_p) - qz_p[n]) / qnnn.d_p00) - (order == 2 ? qzx_p[n] : 0));
+            qzd_dot_n += ny[n]*((ny[n]>0 ? (qz_p[n] - qnnn.f_0m0_linear(qz_p)) / qnnn.d_0m0 : (qnnn.f_0p0_linear(qz_p) - qz_p[n]) / qnnn.d_0p0) - (order == 2 ? qyz_p[n] : 0));
+            qzd_dot_n += nz[n]*((nz[n]>0 ? (qz_p[n] - qnnn.f_00m_linear(qz_p)) / qnnn.d_00m : (qnnn.f_00p_linear(qz_p) - qz_p[n]) / qnnn.d_00p) - (order == 2 ? qzz_p[n] : 0));
 #endif
 
             qxd_dot_n *= dt;
@@ -4519,25 +4519,25 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
 #endif
 
           /* first order one sided derivatives */
-          double Qx = nx[n]>0 ? (q_p[n] - qnnn.inl_f_m00_linear(q_p)) / qnnn.d_m00
-                              :-(q_p[n] - qnnn.inl_f_p00_linear(q_p)) / qnnn.d_p00;
-          double Qy = ny[n]>0 ? (q_p[n] - qnnn.inl_f_0m0_linear(q_p)) / qnnn.d_0m0
-                              :-(q_p[n] - qnnn.inl_f_0p0_linear(q_p)) / qnnn.d_0p0;
+          double Qx = nx[n]>0 ? (q_p[n] - qnnn.f_m00_linear(q_p)) / qnnn.d_m00
+                              :-(q_p[n] - qnnn.f_p00_linear(q_p)) / qnnn.d_p00;
+          double Qy = ny[n]>0 ? (q_p[n] - qnnn.f_0m0_linear(q_p)) / qnnn.d_0m0
+                              :-(q_p[n] - qnnn.f_0p0_linear(q_p)) / qnnn.d_0p0;
 #ifdef P4_TO_P8
-          double Qz = nz[n]>0 ? (q_p[n] - qnnn.inl_f_00m_linear(q_p)) / qnnn.d_00m
-                              :-(q_p[n] - qnnn.inl_f_00p_linear(q_p)) / qnnn.d_00p;
+          double Qz = nz[n]>0 ? (q_p[n] - qnnn.f_00m_linear(q_p)) / qnnn.d_00m
+                              :-(q_p[n] - qnnn.f_00p_linear(q_p)) / qnnn.d_00p;
 #endif
 
           /* second order derivatives */
           if (order == 2)
           {
-            double qxx_m00 = qnnn.inl_f_m00_linear(qxx_p);
-            double qxx_p00 = qnnn.inl_f_p00_linear(qxx_p);
-            double qyy_0m0 = qnnn.inl_f_0m0_linear(qyy_p);
-            double qyy_0p0 = qnnn.inl_f_0p0_linear(qyy_p);
+            double qxx_m00 = qnnn.f_m00_linear(qxx_p);
+            double qxx_p00 = qnnn.f_p00_linear(qxx_p);
+            double qyy_0m0 = qnnn.f_0m0_linear(qyy_p);
+            double qyy_0p0 = qnnn.f_0p0_linear(qyy_p);
 #ifdef P4_TO_P8
-            double qzz_00m = qnnn.inl_f_00m_linear(qzz_p);
-            double qzz_00p = qnnn.inl_f_00p_linear(qzz_p);
+            double qzz_00m = qnnn.f_00m_linear(qzz_p);
+            double qzz_00p = qnnn.f_00p_linear(qzz_p);
 #endif
 
             /* minmod operation */

@@ -4,30 +4,7 @@
  * Short description: example project to illustrate the use of Petsc (vectors, matrices, index sets and
  * re-mapping)
  * --------------------------------------------------------------------------------------------------------
- * Exhaustive description: this example illustrates fundamental Petsc functions and features. We consider a
- * one-dimensional domain discretized with nnodes_per_proc grid nodes per process, uniformly spaced. The domain
- * can be either periodic or not. If not periodic, the domain is [xmin, xmax[, otherwise it is [xmin, xmax].
- * The grid node of global index j_glo = 0, 1, ...,  nprocs*nnodes_per_proc-1 is located at
- * x = xmin + ((double) j_glo)*(xmax-xmin)/((double) (nprocs*nnodes_per_proc-1)), in absence of periodicity
- * x = xmin + ((double) j_glo)*(xmax-xmin)/((double) (nprocs*nnodes_per_proc)),   in presence of periodicity
- *
- * This example first shows how to fill a Petsc Vector with appropriate values, including ghost values.
- *
- * Then a relevant explicit calculation is executed (calculation of second derivatives using standard finite
- * difference formula). This step illustrates the methodology used to hide communications as much as possible:
- * the relevant explicit calculations are done for layer nodes first (nodes locally owned but that are ghost
- * nodes for other processes), non-blocking communications are then initiated, then the relevant calculations
- * are executed for all the inner nodes before the communications are completed.
- *
- * Then, this example program calculates the first derivatives of a node-sampled field using compact finite
- * differences with a user-defined order of accuracy chosen between 4 or 6 (see Journal of Computational
- * Physics, Volume 103, Issue 1, November 1992, Pages 16-42). This step involves the resolution of a linear
- * system of equations, which requires the definition of a (sparse) matrix and the use of a built-in Petsc
- * iterative solver.
- *
- * Finally, we randomly redistribute the grid nodes: the grid changes from an equal number of nodes per process
- * to an unbalanced number of grid nodes per process. A relevant Petsc vector is then re-distributed (or
- * "re-scattered") to math the new grid partition.
+ * Exhaustive description: see main_description here below
  *
  * Author: Raphael Egan
  * Date Created: 09-26-2019
@@ -39,6 +16,32 @@
 #include "my_petsc_utils.h"
 #include "one_dimensional_uniform_grid.h"
 #include <math.h>
+
+const static std::string main_description = "\
+ This example illustrates fundamental Petsc functions and features. We consider a one-dimensional domain\n\
+ discretized with nnodes_per_proc grid nodes per process, uniformly spaced. The domain can be either\n\
+ periodic or not. If not periodic, the domain is [xmin, xmax[, otherwise it is [xmin, xmax].\n\
+ The grid node of global index j_glo = 0, 1, ...,  nprocs*nnodes_per_proc-1 is located at\n\
+    x = xmin + ((double) j_glo)*(xmax-xmin)/((double) (nprocs*nnodes_per_proc-1)), in absence of periodicity\n\
+    x = xmin + ((double) j_glo)*(xmax-xmin)/((double) (nprocs*nnodes_per_proc)),   in presence of periodicity\n\
+\n\
+ This example first shows how to fill a Petsc Vector with appropriate values, including ghost values.\n\
+ Then a relevant explicit calculation is executed (calculation of second derivatives using standard finite\n\
+ difference formula). This step illustrates the methodology used to hide communications as much as possible:\n\
+ the relevant explicit calculations are done for layer nodes first (nodes locally owned but that are ghost\n\
+ nodes for other processes), non-blocking communications are then initiated, then the relevant calculations\n\
+ are executed for all the inner nodes before the communications are completed.\n\
+\n\
+ Then, this example program calculates the first derivatives of a node-sampled field using compact finite\n\
+ differences with a user-defined order of accuracy chosen between 4 or 6 (see Journal of Computational\n\
+ Physics, Volume 103, Issue 1, November 1992, Pages 16-42). This step involves the resolution of a linear\n\
+ system of equations, which requires the definition of a (sparse) matrix and the use of a built-in Petsc\n\
+ iterative solver.\n\
+\n\
+ Finally, we randomly redistribute the grid nodes: the grid changes from an equal number of nodes per process\n\
+ to an unbalanced number of grid nodes per process. A relevant Petsc vector is then re-distributed (or\n\
+ \"re-scattered\") to match the new grid partition.\n\
+ Developer: Raphael Egan (raphaelegan@ucsb.edu), October 2019.\n";
 
 #define SQR(a) (a*a)
 
@@ -69,14 +72,16 @@ int main(int argc, char** argv) {
     // create the argument parser and define the parameters that the user can set
     // (This is not a purely illustrative class, it is the casl_p4est's parser)
     cmdParser cmd;
-    cmd.add_option("nnodes_proc",   "number of grid nodes per processor, a strict minimum of twice the number of ghost nodes is required (default is 128)");
+    cmd.add_option("nnodes_proc",   "number of grid nodes per processor, a strict minimum of twice\n\
+                the number of ghost nodes is required (default is 128)");
     cmd.add_option("xmin",          "left boundary of the one-dimensional domain (default is 0.0)");
     cmd.add_option("xmax",          "right boundary of the one-dimensional domain (default is 1.0)");
     cmd.add_option("periodic",      "consider periodic boundary conditions if present");
     cmd.add_option("OOA",           "desired order of accuracy, 4 or 6 (defaukt is 4)");
     cmd.add_option("output_folder", "desired folder for outputs (defaukt is '.')");
     // read the user's input
-    cmd.parse(argc, argv);
+    if(cmd.parse(argc, argv, main_description))
+       return 0;
     // now read and check the user-provided parameters or set default values
     const unsigned int nnodes_per_proc  = cmd.get<unsigned int>("nnodes_proc", 128);
     const double xmin                   = cmd.get<double>("xmin", 0.0);
