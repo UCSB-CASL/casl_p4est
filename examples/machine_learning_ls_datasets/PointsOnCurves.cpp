@@ -48,8 +48,9 @@ std::set<std::tuple<int, int>> PointsOnCurves::getPointsAlongCircle( double cons
 	}
 
 	// Then, collect grid points by the circumference.
-	std::set<std::tuple<int, int>> gridPoints;			// Resulting grid coordinates are now based on the lower left corner of a cell.
-	for( auto cell : cells )
+	std::set<std::tuple<int, int>> gridPoints;				// Resulting grid coordinates are now based on the lower left corner of a cell.
+	std::map<std::tuple<int, int>, bool> visitedCorners;	// Avoid revisiting cell corners.
+	for( auto& cell : cells )
 	{
 		// Consider cells whose grid points lie at opposite directions from the interface.
 		// 3 -- 2
@@ -60,38 +61,39 @@ std::set<std::tuple<int, int>> PointsOnCurves::getPointsAlongCircle( double cons
 				std::make_tuple( std::get<0>( cell ) + 1, std::get<1>( cell ) ),
 				std::make_tuple( std::get<0>( cell ) + 1, std::get<1>( cell ) + 1 ),
 				std::make_tuple( std::get<0>( cell ), std::get<1>( cell ) + 1 )};
-		std::vector<std::tuple<int, int> const*> inside, outside;		// Bookkeeping corners inside and outside circumference.
-		int totalCorners = 0;
 		for( auto& corner : corners)
 		{
+			if( visitedCorners.find( corner ) != visitedCorners.end() )		// Check we haven't visited this corner (from a different cell)
+				continue;													// because corner (values) are shared among cells.
+			visitedCorners[corner] = true;
+
 			double dx = std::get<0>( corner ) * h - c[0],
 				   dy = std::get<1>( corner ) * h - c[1];
 			double distSquare = SQR( dx ) + SQR( dy );
-			if( distSquare < SQR( r ) )					// Corner inside?
+			double cornerVal = distSquare - SQR( r );						// Where the corner is located with respect to circumference.
+			if( cornerVal == 0 )
 			{
-				inside.push_back( &corner );
-				totalCorners++;
+				gridPoints.insert( corner );
+				continue;
 			}
-			else
+
+			int directions[4][2] = {{+1, 0}, {-1, 0}, {0, +1}, {0, -1}};	// Check out four directions with respect to current corner.
+			for( auto& dir : directions )
 			{
-				if( distSquare > SQR( r ) )				// Corner outside?
+				int const* direction = &dir[0];
+				int neighborX = std::get<0>( corner ) + direction[0],		// x and y value of neighboring grid point.
+					neighborY = std::get<1>( corner ) + direction[1];
+				dx = neighborX * h - c[0];
+				dy = neighborY * h - c[1];
+				distSquare = SQR( dx ) + SQR( dy );
+				double neighborVal = distSquare - SQR( r );					// Where the neighbor is located with respect to circumference.
+				if( neighborVal * cornerVal < 0 )
 				{
-					outside.push_back( &corner );
-					totalCorners++;
+					gridPoints.insert( corner );							// Interface intersects edge going from corner to neighbor grid point.
+					break;
 				}
-				else
-					gridPoints.insert( corner );	// Corner exactly on curve.
 			}
 		}
-
-		if( totalCorners == inside.size() || totalCorners == outside.size() )
-			continue;									// All valid corners lie either inside or outside: skip them.
-
-		// Add corners that turned out being at opposite sides of the curve.
-		for( auto cornerPtr : inside )
-			gridPoints.insert( *cornerPtr );
-		for( auto cornerPtr : outside )
-			gridPoints.insert( *cornerPtr );
 	}
 
 	return gridPoints;

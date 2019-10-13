@@ -6,6 +6,7 @@
 #define MACHINE_LEARNING_LS_DATASETS_POINTSONCURVES_H
 
 #include <set>
+#include <map>
 #include <tuple>
 #include <vector>
 #include <iostream>
