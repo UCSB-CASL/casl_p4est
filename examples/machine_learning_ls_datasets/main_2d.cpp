@@ -70,6 +70,7 @@ const int NUM_SAMPLES = 1u << 10u;					// Number of samples for each circle radi
 const int N_CIRCLES = 60;							// Number of circles for a given radius per grid resolution.
 const int MIN_D = 0,								// Min and max dimension values.
 		  MAX_D = 1;
+const double MAX_PHI_VAL = 1000.0;					// Allows to check if a phi value goes beyond a limit.
 
 /*!
  * Generate and save training datasets with a very large number or rows and 9+1+1 columns containing the renitialized phi
@@ -88,7 +89,7 @@ int main ( int argc, char* argv[] )
 		mpi_environment_t mpi{};
 		mpi.init( argc, argv );
 
-		int numberOfIterations = 20;											// Change it to 5, 10, 15, 20.
+		int numberOfIterations = 10;											// Change it to 5, 10, 15, 20.
 		for( int resolution = 16; resolution <= 512; resolution += 8 )			// From 16x16 to 512x512 grid resolutions.
 			saveReinitializedDataset( resolution, numberOfIterations, mpi );
 	}
@@ -157,7 +158,7 @@ void saveReinitializedDataset( int nGridPoints, int iter, const mpi_environment_
 	headerStream << "\"" << COLUMN_NAMES[NUM_COLUMNS - 1] << "\"";
 	outputFile << headerStream.str() << std::endl;
 
-	outputFile.precision( 15 );							// Precision for floating point numbers.
+	outputFile.precision( 10 );							// Precision for floating point numbers.
 
 	int nc = 0;											// Keeps track of number of circles whose dataset has been generated.
 	double minRadius = 2.0 * ( h + 0.000001 * ranged_rand( 0, 1 ) );
@@ -167,8 +168,13 @@ void saveReinitializedDataset( int nGridPoints, int iter, const mpi_environment_
 	for( int i = 0; i < N_CIRCLES; i++ )
 		spread[i] = static_cast<double>( i ) / ( N_CIRCLES - 1.0 );		// Uniform distribution from 0 to 1, with N_CIRCLES steps, inclusive, to spread distances.
 
-	auto Grid = new double*[nGridPoints];								// Allocate space for regular grid of re-initialized phi values.
-	for( size_t i = 0; i < nGridPoints; i++ ) Grid[i] = new double[nGridPoints];
+	std::vector<std::vector<double>> CopyGrid( nGridPoints );			// Allocate space for regular grid of re-initialized phi values.
+	for( int i = 0; i < nGridPoints; i++ )
+		CopyGrid[i].resize( nGridPoints );
+
+	// Create PETSc vector to hold phi values.
+	Vec phi;
+	ierr = VecCreateGhostNodes( p4est, nodes, &phi ); CHKERRXX( ierr );
 
 	while( nc < N_CIRCLES )
 	{
@@ -182,12 +188,7 @@ void saveReinitializedDataset( int nGridPoints, int iter, const mpi_environment_
 			circle circ( c[0], c[1], r );								// Non-signed distance function with circular interface.
 
 			/////// Generate phi values ///////
-			Vec phi;
-			ierr = VecCreateGhostNodes( p4est, nodes, &phi ); CHKERRXX( ierr );
-			double *phi_p;
-
-			auto nodeCoordsIdxs = new int*[nodes->indep_nodes.elem_count];			// Allocate nodes' grid index coords.
-			for( size_t i = 0; i < nodes->indep_nodes.elem_count; i++ ) nodeCoordsIdxs[i] = new int[P4EST_DIM];
+			double* phi_p;
 
 			ierr = VecGetArray( phi, &phi_p ); CHKERRXX( ierr );
 			for( size_t i = 0; i < nodes->indep_nodes.elem_count; i++ )
@@ -195,8 +196,6 @@ void saveReinitializedDataset( int nGridPoints, int iter, const mpi_environment_
 				double nodeCoords[P4EST_DIM];										// Nodes' coordinates in XY space.
 				node_xyz_fr_n( i, p4est, nodes, nodeCoords );
 				phi_p[i] = circ( nodeCoords[0], nodeCoords[1] );
-				nodeCoordsIdxs[i][0] = static_cast<int>( nodeCoords[0] / h );		// Indices from -1 to (nGridPoints - 1)
-				nodeCoordsIdxs[i][1] = static_cast<int>( nodeCoords[1] / h );		// in both x- and y- directions.
 			}
 
 			ierr = VecRestoreArray( phi, &phi_p ); CHKERRXX( ierr );
@@ -205,29 +204,29 @@ void saveReinitializedDataset( int nGridPoints, int iter, const mpi_environment_
 			my_p4est_level_set_t ls( &node_neighbors );
 			ls.reinitialize_2nd_order( phi, iter );
 
-			ierr = VecGetArray( phi, &phi_p ); CHKERRXX( ierr );				// Get reinitialized values.
+			const double* phi_ptr;
+			ierr = VecGetArrayRead( phi, &phi_ptr ); CHKERRXX( ierr );			// Get reinitialized values.
 
 			// Create a regular grid (i.e. matrix) of reinitialized values.  Notice that we skip negative indices since we
 			// needed to "shift" the interface one cell up and to the right so that the number of grid points along x and y
 			// would be even (and odd cells).  Thus, there's a center cell whose midpoint coincides with [0.5, 0.5].
+			int totalGridPoints = 0;
 			for( size_t n = 0; n < nodes->indep_nodes.elem_count; n++ )
 			{
-				int i = nodeCoordsIdxs[n][0],
-					j = nodeCoordsIdxs[n][1];
+				double nodeCoords[P4EST_DIM];									// Nodes' coordinates in XY space.
+				node_xyz_fr_n( n, p4est, nodes, nodeCoords );
+				int i = static_cast<int>( nodeCoords[0] / h ),					// Indices from -1 to (nGridPoints - 1)
+					j = static_cast<int>( nodeCoords[1] / h );					// in both x- and y- directions.
 				if( i < 0 || j < 0 )
 					continue;
 
-				Grid[i][j] = phi_p[n];	// Stores information in transposed format (i.e. ith row contains all y values for same x).
+				CopyGrid[i][j] = phi_ptr[n];	// Stores information in transposed format (i.e. ith row contains all y values for same x).
+				assert( fabs( CopyGrid[i][j] ) < MAX_PHI_VAL );					// Make sure we are not getting garbage values.
+				totalGridPoints++;
 			}
+			assert( totalGridPoints == SQR( nGridPoints ) );					// Expect nGridPoints^2 grid points.
 
-			ierr = VecRestoreArray( phi, &phi_p ); CHKERRXX( ierr );
-
-			// Finally, delete PETSc Vecs by calling 'VecDestroy' function.
-			ierr = VecDestroy( phi ); CHKERRXX( ierr );
-
-			// Deallocate node indices.
-			for( size_t i = 0; i < nodes->indep_nodes.elem_count; i++ ) delete[] nodeCoordsIdxs[i];
-			delete[] nodeCoordsIdxs;
+			ierr = VecRestoreArrayRead( phi, &phi_ptr ); CHKERRXX( ierr );
 
 			/////// Process grid points' along the circular level set for which we want to compute curvature ///////
 			std::set<std::tuple<int, int>> points = PointsOnCurves::getPointsAlongCircle( c, r, h );
@@ -249,11 +248,12 @@ void saveReinitializedDataset( int nGridPoints, int iter, const mpi_environment_
 				for( s = 0; s < 9; s++ )							// Collect phi(x) for each of the 9 grid points.
 				{
 					const int* q = &subgrid[s][0];
-					if( q[0] < 0 || q[0] >= nGridPoints || q[1] < 0 || q[1] >= nGridPoints )
-						throw std::out_of_range( "Grid point out of range: (" + std::to_string( q[0] ) + ", " + std::to_string( q[1] ) + ")" );
+					assert( q[0] >= 0 && q[0] < nGridPoints && q[1] >= 0 && q[1] < nGridPoints );
 
-					dataPve[s] = Grid[q[0]][q[1]];					// Store both positive and negative phi values.
+					dataPve[s] = CopyGrid[q[0]][q[1]];				// Store both positive and negative phi values.
 					dataNve[s] = -dataPve[s];
+
+					assert( fabs( dataPve[s] ) < MAX_PHI_VAL && fabs( dataNve[s] ) < MAX_PHI_VAL );
 				}
 
 				dataPve[s] = hkappa;								// Second to last column holds h*\kappa.
@@ -292,8 +292,8 @@ void saveReinitializedDataset( int nGridPoints, int iter, const mpi_environment_
 
 	printf( "<< Finished generating %i circles in %f secs.\n", nc, watch.get_duration_current() );
 
-	for( int i = 0; i < nGridPoints; i++ ) delete[] Grid[i];		// Free regular grid memory.
-	delete[] Grid;
+	// Finally, delete PETSc Vecs by calling 'VecDestroy' function.
+	ierr = VecDestroy( phi ); CHKERRXX( ierr );
 
 	////////////////////////////////// Destroy the p4est and its connectivity structure ////////////////////////////////
 
