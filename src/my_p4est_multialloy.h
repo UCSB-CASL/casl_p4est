@@ -167,7 +167,7 @@ private:
   double phi_thresh_;
   double cfl_number_;
   double curvature_smoothing_;
-  double curvature_smoothing_steps_;
+  int    curvature_smoothing_steps_;
 
   bool use_superconvergent_robin_;
   bool use_points_on_interface_;
@@ -217,7 +217,7 @@ private:
         ( qnnn.interpolate_in_dir(dir, dist, v_c_d_p[0])*qnnn.interpolate_in_dir(dir, dist, v_normal_p[0])
         + qnnn.interpolate_in_dir(dir, dist, v_c_d_p[1])*qnnn.interpolate_in_dir(dir, dist, v_normal_p[1]))
         / MAX(qnnn.interpolate_in_dir(dir, dist, v_c_p, v_c_dd_p), 1e-7);
-  };
+  }
 
 
 public:

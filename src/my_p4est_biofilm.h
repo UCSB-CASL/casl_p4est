@@ -139,6 +139,9 @@ private:
   int integration_order_;
   int extend_iterations_;
 
+  double curvature_smoothing_;
+  double curvature_smoothing_steps_;
+
   interpolation_method interpolation_between_grids_;
 
 public:
@@ -244,6 +247,7 @@ public:
   void compute_geometric_properties();
   void compute_velocity_from_concentration();
   void compute_velocity_from_pressure();
+  void compute_filtered_curvature();
 
   void solve_concentration();
   void solve_pressure();
@@ -254,6 +258,8 @@ public:
   void save_VTK(int iter);
 
   void compute_concentration_global();
+
+  inline void set_curvature_smoothing (double value, int steps) { curvature_smoothing_ = value; curvature_smoothing_steps_ = steps; }
 
 };
 

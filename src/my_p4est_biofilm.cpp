@@ -221,20 +221,25 @@ void my_p4est_biofilm_t::compute_geometric_properties()
 
   kappa_ = kappa_tmp;
 
-  // truncate extremely high curvature values
-  double kappa_rez_max = 1./dxyz_min_;
+//  // truncate extremely high curvature values
+//  double kappa_rez_max = 1./dxyz_min_;
 
-  double *kappa_ptr;
+//  double *kappa_ptr;
 
-  ierr = VecGetArray(kappa_, &kappa_ptr); CHKERRXX(ierr);
+//  ierr = VecGetArray(kappa_, &kappa_ptr); CHKERRXX(ierr);
 
-  foreach_node(n, nodes_)
+//  foreach_node(n, nodes_)
+//  {
+//    if      (kappa_ptr[n] > kappa_rez_max) kappa_ptr[n] = kappa_rez_max;
+//    else if (kappa_ptr[n] <-kappa_rez_max) kappa_ptr[n] =-kappa_rez_max;
+//  }
+
+//  ierr = VecRestoreArray(kappa_, &kappa_ptr); CHKERRXX(ierr);
+
+  if (curvature_smoothing_ > 0)
   {
-    if      (kappa_ptr[n] > kappa_rez_max) kappa_ptr[n] = kappa_rez_max;
-    else if (kappa_ptr[n] <-kappa_rez_max) kappa_ptr[n] =-kappa_rez_max;
+    compute_filtered_curvature();
   }
-
-  ierr = VecRestoreArray(kappa_, &kappa_ptr); CHKERRXX(ierr);
 
   ierr = PetscLogEventEnd(log_my_p4est_biofilm_compute_geometric_properties, 0, 0, 0, 0); CHKERRXX(ierr);
 }
@@ -1521,4 +1526,34 @@ void my_p4est_biofilm_t::compute_concentration_global()
   ierr = VecRestoreArray(phi_biof_, &phi_biof_ptr); CHKERRXX(ierr);
   ierr = VecRestoreArray(phi_agar_, &phi_agar_ptr); CHKERRXX(ierr);
   ierr = VecRestoreArray(phi_free_, &phi_free_ptr); CHKERRXX(ierr);
+}
+
+void my_p4est_biofilm_t::compute_filtered_curvature()
+{
+  double smoothing = SQR(curvature_smoothing_*diag_);
+
+  my_p4est_interpolation_nodes_t interp(ngbd_);
+  interp.set_input(phi_biof_, linear);
+  VecCopyGhost(phi_biof_, kappa_);
+
+  my_p4est_poisson_nodes_mls_t solver(ngbd_);
+
+  solver.set_mu(smoothing/double(curvature_smoothing_steps_));
+  solver.set_diag(1.);
+  solver.set_rhs(kappa_);
+//  solver.set_wc(neumann_cf, zero_cf);
+  solver.set_wc(dirichlet_cf, interp);
+
+  for (int i = 0; i < curvature_smoothing_steps_; ++i)
+  {
+    solver.solve(kappa_, true);
+  }
+
+  VecAXPBYGhost(kappa_, -1., 1., phi_biof_);
+  VecScaleGhost(kappa_, 1./smoothing);
+
+  my_p4est_level_set_t ls(ngbd_);
+  ls.set_interpolation_on_interface(linear);
+
+  ls.extend_from_interface_to_whole_domain_TVD_in_place(phi_biof_, kappa_, phi_biof_);
 }

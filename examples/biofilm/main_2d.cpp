@@ -124,6 +124,9 @@ bool use_sc_scheme         = 1; // for finite volume schemes (jump, neumann, rob
 bool use_taylor_correction = 1; // for symmetric scheme for robin bc, irrelevant here actually
 int  integration_order     = 1; // order of geometric recpnstruction for computing domain and boundary integrals: 1 - linear, 2 - quadratic
 
+double curvature_smoothing = 10;
+int    curvature_smoothing_steps = 10;
+
 // output parameters
 bool   save_data  = 1; // save scalar characteristics (time elapsed, biofilm volume, surface area, etc)
 bool   save_vtk   = 1; // save spatial data
@@ -1199,6 +1202,7 @@ int main (int argc, char* argv[])
   biofilm_solver.set_use_sc_scheme(use_sc_scheme);
   biofilm_solver.set_use_taylor_correction(use_taylor_correction);
   biofilm_solver.set_integration_order(integration_order);
+  biofilm_solver.set_curvature_smoothing(curvature_smoothing, curvature_smoothing_steps);
 
   // initial geometry and concentrations
   biofilm_solver.set_phi(phi_free, phi_agar);
