@@ -5564,7 +5564,7 @@ int     my_p4est_biomolecules_solver_t::solve_nonlinear(double upper_bound_resid
   jump_solver->set_jump_sub_scheme(jc_sub_scheme);
   jump_solver->set_use_sc_scheme(sc_scheme);
   jump_solver->set_integration_order(integration_order);
-
+  jump_solver->set_cube_refinement(1);
   //solver.set_lip(10.5);
 
   jump_solver->set_lip(lip);

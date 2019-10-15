@@ -410,6 +410,16 @@ inline istream& operator >> (istream& is, Atom& atom) {
   return is;
 }
 
+
+inline ostream& operator << (ostream& os, Atom& atom) {
+  os << "(x = " << atom.x << ", y = " << atom.y;
+#ifdef P4_TO_P8
+  os << ", z = " << atom.z;
+#endif
+  os << "; q = " << atom.q << ", r = " << atom.r << ")";
+  return os;
+}
+
 inline bool operator >>(string& line, Atom& atom)
 {
   string word = line.substr(0, 6); // first word in structured line
@@ -424,19 +434,10 @@ inline bool operator >>(string& line, Atom& atom)
 #endif
     atom.q = stod(line.substr(54, 8));
     atom.r = stod(line.substr(62, 8));
+    std::cout << atom << std::endl;
     return true;
   }
 }
-
-
-inline ostream& operator << (ostream& os, Atom& atom) {
-  os << "(x = " << atom.x << ", y = " << atom.y;
-#ifdef P4_TO_P8
-  os << ", z = " << atom.z;
-#endif
-  os << "; q = " << atom.q << ", r = " << atom.r << ")";
-  return os;
-}    
 
 struct sorted_atom
 {
@@ -1342,7 +1343,7 @@ public:
                   #endif
                       ) const
     {
-        return (biomol_solver->non_dimensional_coulomb_in_mol(DIM(x,y,z)))*biomol_solver->mol_rel_permittivity/biomol_solver->elec_rel_permittivity /*+ biomol_solver->non_dimensional_coulomb_in_elec(DIM(x,y,z))*/;
+        return 0.0;//(biomol_solver->non_dimensional_coulomb_in_mol(DIM(x,y,z)))*biomol_solver->mol_rel_permittivity/biomol_solver->elec_rel_permittivity /*+ biomol_solver->non_dimensional_coulomb_in_elec(DIM(x,y,z))*/;
     }
   };
 
@@ -1376,7 +1377,7 @@ public:
   inline void   set_temperature_in_celsius(double temperature_in_C) { set_temperature_in_kelvin(temperature_in_C+273.15);}
   void          set_far_field_ion_density(double n_0);
   //inline void   set_molar_concentration_of_electrolyte_in_mol_per_liter(double conc) { set_far_field_ion_density(1000.0*avogadro_number*conc);}
-  inline void   set_molar_concentration_of_electrolyte_in_mol_per_liter(double conc) { set_far_field_ion_density(avogadro_number*conc/1000);}
+  inline void   set_molar_concentration_of_electrolyte_in_mol_per_liter(double conc) { set_far_field_ion_density(avogadro_number*conc*1000);}
   void          set_ion_charge(int z = 1);
   void          set_inverse_debye_length_in_meters_inverse(double inverse_debye_length_in_m_inverse);
   inline void   set_inverse_debye_length_in_angstrom_inverse(double inverse_debye_length_in_A_inverse) {set_inverse_debye_length_in_meters_inverse(inverse_debye_length_in_A_inverse*meter_to_angstrom);}
