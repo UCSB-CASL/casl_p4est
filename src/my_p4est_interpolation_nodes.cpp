@@ -413,14 +413,19 @@ void my_p4est_interpolation_nodes_t::interpolate(const p4est_quadrant_t &quad, c
     if(method==quadratic) {
       quadratic_interpolation(p4est, quad.p.piggy3.which_tree, quad, f, fdd, xyz_p, results, nelem_per_node);
       return;
-    else if (method==quadratic_non_oscillatory)
+    }
+    else if (method==quadratic_non_oscillatory) {
       quadratic_non_oscillatory_interpolation(p4est, quad.p.piggy3.which_tree, quad, f, fdd, xyz_p, results, nelem_per_node);
       return;
     }
-    else if (method==quadratic_non_oscillatory_continuous_v1)
-      return quadratic_non_oscillatory_continuous_v1_interpolation(p4est, quad.p.piggy3.which_tree, quad, f, fdd, xyz_p);
-    else if (method==quadratic_non_oscillatory_continuous_v2)
-      return quadratic_non_oscillatory_continuous_v2_interpolation(p4est, quad.p.piggy3.which_tree, quad, f, fdd, xyz_p);
+    else if (method==quadratic_non_oscillatory_continuous_v1){
+      quadratic_non_oscillatory_continuous_v1_interpolation(p4est, quad.p.piggy3.which_tree, quad, f, fdd, xyz_p, results, nelem_per_node);
+      return;
+    }
+    else if (method==quadratic_non_oscillatory_continuous_v2){
+      quadratic_non_oscillatory_continuous_v2_interpolation(p4est, quad.p.piggy3.which_tree, quad, f, fdd, xyz_p, results, nelem_per_node);
+      return;
+    }
   }
 
   for (unsigned int k = 0; k < n_functions; ++k) {

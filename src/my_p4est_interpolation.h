@@ -173,12 +173,12 @@ public:
   // the array results must be of size bs_f*n_vecs(),
   // on output, results[bs_f*k+comp] = interpolated value of the comp_th component of the kth field
   virtual void interpolate(const p4est_quadrant_t &quad, const double *xyz, double* results, const unsigned int &comp) const = 0;
-  inline double interpolate(const p4est_quadrant_t &quad, const double *xyz, const unsigned int &comp)
+  inline double interpolate(const p4est_quadrant_t &quad, const double *xyz)
   {
     P4EST_ASSERT(n_vecs() == 1);
     P4EST_ASSERT(bs_f == 1);
     double to_return;
-    interpolate(quad, xyz, &to_return, comp);
+    interpolate(quad, xyz, &to_return, 0);
     return to_return;
   }
   void add_point_local(p4est_locidx_t locidx, const double *xyz);

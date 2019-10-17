@@ -368,19 +368,12 @@ void my_p4est_interpolation_t::process_incoming_reply(MPI_Status& status, double
 void my_p4est_interpolation_t::add_point_local(p4est_locidx_t locidx, const double *xyz)
 {
   // first clip the coordinates
-  double xyz_clip [] =
-  {
-    xyz[0], xyz[1]
-  #ifdef P4_TO_P8
-    , xyz[2]
-  #endif
-  };
+  double xyz_clip [P4EST_DIM];
+  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+    xyz_clip[dir] = xyz[dir];
 
   // clip to bounding box
-  for (short i=0; i<P4EST_DIM; i++){
-    if (xyz_clip[i] > xyz_max[i]) xyz_clip[i] = is_periodic(p4est,i) ? xyz_clip[i]-(xyz_max[i]-xyz_min[i]) : xyz_max[i];
-    if (xyz_clip[i] < xyz_min[i]) xyz_clip[i] = is_periodic(p4est,i) ? xyz_clip[i]+(xyz_max[i]-xyz_min[i]) : xyz_min[i];
-  }
+  clip_in_domain(xyz_clip, xyz_min, xyz_max, periodic);
 
   p4est_quadrant_t best_match;
 
