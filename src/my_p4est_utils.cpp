@@ -411,7 +411,7 @@ void quadratic_non_oscillatory_continuous_v1_interpolation(const p4est_t *p4est,
 
     results[k] = 0.0;
     for (unsigned char j = 0; j < P4EST_CHILDREN; ++j)
-      results[k] += F[j]*w_xyz[j];
+      results[k] += F[k*P4EST_CHILDREN+j]*w_xyz[j];
 
 #ifdef P4_TO_P8
     results[k] -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1] + sz*sz*d_00p*d_00m*fdd[2]);
@@ -509,22 +509,22 @@ void quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_t *p4est,
     i = 0;
     fdd_m = 0;
     fdd_p = 0;
-    jm = 0; jp = 1; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
-    jm = 2; jp = 3; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
+    jm = 0; jp = 1; fdd_m += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
+    jm = 2; jp = 3; fdd_m += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
 #ifdef P4_TO_P8
-    jm = 4; jp = 5; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
-    jm = 6; jp = 7; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
+    jm = 4; jp = 5; fdd_m += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
+    jm = 6; jp = 7; fdd_m += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
 #endif
     fdd[i] = MINMOD(fdd_m, fdd_p);
 
     i = 1;
     fdd_m = 0;
     fdd_p = 0;
-    jm = 0; jp = 2; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
-    jm = 1; jp = 3; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
+    jm = 0; jp = 2; fdd_m += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
+    jm = 1; jp = 3; fdd_m += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
 #ifdef P4_TO_P8
-    jm = 4; jp = 6; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
-    jm = 5; jp = 7; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
+    jm = 4; jp = 6; fdd_m += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
+    jm = 5; jp = 7; fdd_m += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
 #endif
     fdd[i] = MINMOD(fdd_m, fdd_p);
 
@@ -532,16 +532,16 @@ void quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_t *p4est,
     i = 2;
     fdd_m = 0;
     fdd_p = 0;
-    jm = 0; jp = 4; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
-    jm = 1; jp = 5; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
-    jm = 2; jp = 6; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
-    jm = 3; jp = 7; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
+    jm = 0; jp = 4; fdd_m += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
+    jm = 1; jp = 5; fdd_m += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
+    jm = 2; jp = 6; fdd_m += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
+    jm = 3; jp = 7; fdd_m += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
     fdd[i] = MINMOD(fdd_m, fdd_p);
 #endif
 
     results[k] = 0.0;
     for (unsigned char j = 0; j < P4EST_CHILDREN; ++j)
-      results[k] += F[j]*w_xyz[j];
+      results[k] += F[k*P4EST_CHILDREN+j]*w_xyz[j];
 
 #ifdef P4_TO_P8
     results[k] -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1] + sz*sz*d_00p*d_00m*fdd[2]);

@@ -138,6 +138,7 @@ public:
   inline double operator()(double x, double y, double z) const
   {
     P4EST_ASSERT(Fi.size() == 1);
+    P4EST_ASSERT(bs_f == 1);
     double to_return;
     this->operator()(x, y, z, &to_return);
     return to_return;
@@ -147,6 +148,7 @@ public:
   inline double operator()(double x, double y) const
   {
     P4EST_ASSERT(Fi.size() == 1);
+    P4EST_ASSERT(bs_f == 1);
     double to_return;
     this->operator()(x, y, &to_return);
     return to_return;
