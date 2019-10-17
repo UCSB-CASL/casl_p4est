@@ -36,27 +36,34 @@
 using namespace std;
 
 const static std::string main_description = "\
- In this example, we test and illustrate the calculation of first and second derivatives of node-\n\
-// sampled fields. We calculate the gradient and second derivatives (along all cartesian directions)\n\
-// of nfields scalar fields, on nsplits grids that are finer and finer. The maximum pointwise errors\n\
-// are evaluated for all inner nodes (i.e. excluding wall nodes) and the orders of convergence are\n\
-// estimated and successively shown (if nsplits > 1). \n\
-// The code's performance is assessed with built-in timers to compare various methods for evaluating \n\
-// the derivatives. The available methods are:\n\
-// - method 0: calculating the first and second derivatives of the nfields scalar fields sequentially,\n\
-//            one after another; \n\
-// - method 1: calculating the first and second derivatives of the nfields scalar fields simultaneously\n\
-//            (calculating geometry-related information, only once); \n\
-// - method 2: calculating the first and second derivatives of the nfields scalar fields simultaneously,\n\
-//            using block-structured parallel vectors to optimize parallel communications (calculating \n\
-//            geometry-related information, only once). \n\
-// The three different methods should produce the EXACT same results regarding the orders of convergence.\n\
-// (This example contains and illustrates performance facts pertaining to the optimization of procedures \n\
-// related to data transfer between successive grids in grid-update procedures, with quadratic interpola-\n\
-// tion.) \n\
-// Example of application of interest: when interpolating (several) node-sampled data fields from one\n\
-// grid to another with quadratic interpolation, the second derivatives of all fields are required for\n\
-// all the fields\n\
+ In this example, we test and illustrate the interpolation of node-sampled fields form one grid to another.\n\
+ We define nfields scalar fields on the nodes of the origin grid and this discretized set of data is then \n\
+ interpolated onto a(nother) destination grid.\n\
+ The user can choose among 5 differents types of interpolation techniques:\n\
+ - technique 0: bi-/tri-linear interpolation\n\
+ - technique 1: bi-/tri-quadratic interpolation\n\
+ - technique 2: bi-/tri-quadratic interpolation with minmod slope limiters (hence not continuous)\n\
+ - technique 3: Daniil's first continuous version of technique 2 here above (minmod on edges then interpolated)\n\
+ - technique 4: Daniil's second continuous version of technique 2 here above (weight averages on faces then minmod)\n\
+ The maximum pointwise errors are then evaluated for all nodes of the destination grid and the orders of \n\
+ convergence are estimated and successively shown (if nsplits > 1). \n\
+ The code's performance is assessed with the built-in timer to compare various methods for interpolating \n\
+ the fields. The available methods are:\n\
+ - method 0: storing the results in standard vectors of blocksize 1 and calculating the interpolation results\n\
+             sequentially, one after another; \n\
+ - method 1: storing the results in standard vectors of blocksize 1 but calculating the interpolation results\n\
+             simultaneously (calculating geometry-related information, only once); \n\
+ - method 2: storing the results in block-structured vectors of blocksize nfields and calculating the interpolation\n\
+             results simultaneously (calculating geometry-related information, only once); \n\
+ The three different methods should produce the EXACT same results regarding the orders of convergence.\n\
+ (This example contains and illustrates performance facts pertaining to the optimization of procedures \n\
+ related to data transfer between successive grids in grid-update steps)\n\
+ Example of application of interest: when interpolating (several) node-sampled data fields from one\n\
+ grid to another.\n\
+ ---------------------------  IMPORTANT NOTE REGARDING ORDERS OF CONVERGENCE   ------------------------------------\n\n\
+ The displayed orders of convergence do make sense only if there is a significant number of nodes in the\n\
+ destination grid that are *NOT* in the origin grid. Otherwise, any interpolation technique is theoretically *exact*!\n\n\
+ ------------------------  END OF IMPORTANT NOTE REGARDING ORDERS OF CONVERGENCE   ---------------------------------\n\n\
  Developer: Raphael Egan (raphaelegan@ucsb.edu), October 2019.\n";
 
 #ifdef P4_TO_P8
@@ -336,25 +343,34 @@ int main (int argc, char* argv[]){
   PetscErrorCode      ierr;
 
   cmdParser cmd;
-  cmd.add_option("seed",      "seed for random number generator (default is 279, totally arbitrarily chosen :-p)");
-  cmd.add_option("ntrees",    "number of trees per Cartesian dimensions (default is 2)");
-  cmd.add_option("lmin_from", "min level of the trees in the origin grid (i.e. before interpolation), defaut is 4");
-  cmd.add_option("lmax_from", "max level of the trees in the origin grid (i.e. before interpolation), defaut is 6");
-  cmd.add_option("lmin_to",   "min level of the trees in the destination grid (i.e. after interpolation), defaut is 5");
-  cmd.add_option("lmax_to",   "max level of the trees in the destination grid (i.e. after interpolation), defaut is 8");
-  cmd.add_option("nsplits",   "number of grid splittings for the origin grid (for accuracy check)\n\           (default is 3, accuracy is checked only if > 1)");
-  cmd.add_option("method",      "default is 0, available values are\n\
+  cmd.add_option("seed",          "seed for random number generator (default is 279, totally arbitrarily chosen :-p)");
+  cmd.add_option("ntrees",        "number of trees per Cartesian dimensions (default is 2)");
+  cmd.add_option("lmin_from",     "min level of the trees in the origin grid (i.e. before interpolation), defaut is 4");
+  cmd.add_option("lmax_from",     "max level of the trees in the origin grid (i.e. before interpolation), defaut is 6");
+  cmd.add_option("lmin_to",       "min level of the trees in the destination grid (i.e. after interpolation), defaut is 5");
+  cmd.add_option("lmax_to",       "max level of the trees in the destination grid (i.e. after interpolation), defaut is 8");
+  cmd.add_option("nsplits",       "number of grid splittings for the origin grid (for accuracy check)\n\
+           (default is 3, accuracy is checked only if > 1)");
+  cmd.add_option("method",        "default is 0, available options are\n\
             0::store the fields separately and interpolate one after another;\n\
             1::store the fields separately and interpolate all at once;\n\
             2::store the fields contiguously in block-structured vectors and interpolate all at once.");
+  cmd.add_option("interpolation", "default is 0, available options are\n\
+            0::bi-/tri-linear interpolation;\n\
+            1::bi-/tri-quadratic interpolation;\n\
+            2::bi-/tri-quadratic interpolation with minmod slope limiters\n\
+            3::Daniil's first continuous version of interpolation 2 (minmod on edges then interpolated)\n\
+            4::Daniil's second continuous version of interpolation 2 (weight-averages on faces then minmod).");
   cmd.add_option("timing_off",  "disables timing if present");
-  cmd.add_option("fields",      "number of node-sampled fields to interpolate between grids\n\           (default is number of dimensions, i.e., P4EST_DIM)");
+  cmd.add_option("fields",      "number of node-sampled fields to interpolate between grids\n\
+           (default is number of dimensions, i.e., P4EST_DIM)");
 
   if(cmd.parse(argc, argv, main_description))
     return 0;
 
   // read user's input parameters
   const unsigned int method   = cmd.get<unsigned int>("method", 0);
+  const unsigned int interpn  = cmd.get<unsigned int>("interpolation", 0);
   unsigned int seed           = cmd.get<unsigned int>("seed", 279);
   bool timing_off             = cmd.contains("timing_off");
   unsigned int lmin_from      = cmd.get<unsigned int>("lmin_from", 4);
@@ -365,6 +381,8 @@ int main (int argc, char* argv[]){
   int ntrees                  = cmd.get<unsigned int>("ntrees", 2);
   const unsigned int nfields  = cmd.get<unsigned int>("fields", P4EST_DIM);
 
+  interpolation_method chosen_interpolation;
+
   // check for valid inputs
   if(method > 2)
     throw std::invalid_argument("main: unknown desired method");
@@ -374,6 +392,26 @@ int main (int argc, char* argv[]){
     throw std::invalid_argument("main: requires lmax_from >= lmin_from");
   if(lmax_to < lmin_to)
     throw std::invalid_argument("main: requires lmax_to >= lmin_to");
+  switch (interpn) {
+  case 0:
+    chosen_interpolation = linear;
+    break;
+  case 1:
+    chosen_interpolation = quadratic;
+    break;
+  case 2:
+    chosen_interpolation = quadratic_non_oscillatory;
+    break;
+  case 3:
+    chosen_interpolation = quadratic_non_oscillatory_continuous_v1;
+    break;
+  case 4:
+    chosen_interpolation = quadratic_non_oscillatory_continuous_v2;
+    break;
+  default:
+    throw std::invalid_argument("main: unknown interpolation technique");
+    break;
+  }
 
   // initialize the random number generator
   srand(seed);
@@ -471,27 +509,56 @@ int main (int argc, char* argv[]){
     results_block = NULL;
     for (unsigned int k = 0; k < nfields; ++k)
       results_[k] = NULL;
+    if(method == 0 || method == 1)
+      for (unsigned int k = 0; k < nfields; ++k) {
+        ierr = VecCreateGhostNodes(p4est_to, nodes_to, &results_[k]); CHKERRXX(ierr); }
+    else {
+      ierr = VecCreateGhostNodesBlock(p4est_to, nodes_to, nfields, &results_block); CHKERRXX(ierr); }
+
     if(!timing_off)
       timer.start();
     switch (method) {
     case 0:
       for (unsigned int k = 0; k < nfields; ++k) {
 #ifdef P4_TO_P8
-        node_interpolator.set_input(field_[k], field_xx[k], field_yy[k], field_zz[k], quadratic);
+        node_interpolator.set_input(field_[k], field_xx[k], field_yy[k], field_zz[k], chosen_interpolation);
 #else
-        node_interpolator.set_input(field_[k], field_xx[k], field_yy[k], quadratic);
+        node_interpolator.set_input(field_[k], field_xx[k], field_yy[k], chosen_interpolation);
 #endif
         // add the points of the destination grid to the input buffer
         if(k == 0)
-          for (p4est_locidx_t i=0; i<nodes_to->indep_nodes.elem_count; ++i)
+          for (size_t i=0; i<nodes_to->indep_nodes.elem_count; ++i)
           {
             double xyz_node[P4EST_DIM];
             node_xyz_fr_n(i, p4est_to, nodes_to, xyz_node);
             node_interpolator.add_point(i, xyz_node);
           }
-        ierr = VecCreateGhostNodes(p4est_to, nodes_to, &results_[k]); CHKERRXX(ierr);
         node_interpolator.interpolate(results_[k]);
       }
+      break;
+    case 1:
+#ifdef P4_TO_P8
+      node_interpolator.set_input(field_, field_xx, field_yy, field_zz, chosen_interpolation, nfields);
+#else
+      node_interpolator.set_input(field_, field_xx, field_yy, chosen_interpolation, nfields);
+#endif
+      for (size_t i=0; i<nodes_to->indep_nodes.elem_count; ++i)
+      {
+        double xyz_node[P4EST_DIM];
+        node_xyz_fr_n(i, p4est_to, nodes_to, xyz_node);
+        node_interpolator.add_point(i, xyz_node);
+      }
+      node_interpolator.interpolate(results_, nfields);
+      break;
+    case 2:
+      node_interpolator.set_input(field_block, field_block_xxyyzz, chosen_interpolation, nfields);
+      for (size_t i=0; i<nodes_to->indep_nodes.elem_count; ++i)
+      {
+        double xyz_node[P4EST_DIM];
+        node_xyz_fr_n(i, p4est_to, nodes_to, xyz_node);
+        node_interpolator.add_point(i, xyz_node);
+      }
+      node_interpolator.interpolate(results_block);
       break;
     default:
       throw std::invalid_argument("main: unknown desired method");

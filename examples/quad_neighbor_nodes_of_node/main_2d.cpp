@@ -37,8 +37,8 @@ const static std::string main_description = "\
  In this example, we test and illustrate the calculation of first and second derivatives of node-\n\
  sampled fields. We calculate the gradient and second derivatives (along all cartesian directions)\n\
  of nfields scalar fields, on nsplits grids that are finer and finer. The maximum pointwise errors\n\
- are evaluated for all inner nodes (i.e. excluding wall nodes) and the orders of convergence are\n\
- estimated and successively shown (if nsplits > 1). \n\
+ are evaluated for all nodes and the orders of convergence are estimated and successively shown (if\n\
+ nsplits > 1). \n\
  The code's performance is assessed with built-in timers to compare various methods for evaluating \n\
  the derivatives. The available methods are:\n\
  - method 0: calculating the first and second derivatives of the nfields scalar fields sequentially,\n\
@@ -50,8 +50,7 @@ const static std::string main_description = "\
             geometry-related information, only once). \n\
  The three different methods should produce the EXACT same results regarding the orders of convergence.\n\
  (This example contains and illustrates performance facts pertaining to the optimization of procedures \n\
- related to data transfer between successive grids in grid-update procedures, with quadratic interpola-\n\
- tion.) \n\
+ related to data transfer between successive grids in grid-update steps, with quadratic interpolation.) \n\
  Example of application of interest: when interpolating (several) node-sampled data fields from one\n\
  grid to another with quadratic interpolation, the second derivatives of all fields are required for\n\
  all the fields\n\
