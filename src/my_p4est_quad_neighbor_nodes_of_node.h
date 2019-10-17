@@ -2207,6 +2207,30 @@ public:
 #endif
     return;
   }
+  inline void gradient_all_components(const double *f[], double *fxyz[], const unsigned int &n_vecs, const unsigned int &bs) const
+  {
+    P4EST_ASSERT(bs>1);
+    const unsigned bsnvecs = bs*n_vecs;
+    double fx_serial[bsnvecs], fy_serial[bsnvecs];
+#ifdef P4_TO_P8
+    double fz_serial[bsnvecs];
+    gradient_all_components(f, fx_serial, fy_serial, fz_serial,  n_vecs, bs);
+#else
+    gradient_all_components(f, fx_serial, fy_serial,             n_vecs, bs);
+#endif
+    for (unsigned int k = 0; k < n_vecs; ++k) {
+      const unsigned int bsk = bs*k;
+      for (unsigned int comp = 0; comp < bs; ++comp) {
+        const unsigned int comp_dim = comp*P4EST_DIM;
+        fxyz[k][comp_dim+0] = fx_serial[bsk+comp];
+        fxyz[k][comp_dim+1] = fy_serial[bsk+comp];
+#ifdef P4_TO_P8
+        fxyz[k][comp_dim+2] = fz_serial[bsk+comp];
+#endif
+      }
+    }
+    return;
+  }
   inline void gradient_all_components(const double *f, double *fxyz, const unsigned int &bs) const
   {
     P4EST_ASSERT(bs>1);

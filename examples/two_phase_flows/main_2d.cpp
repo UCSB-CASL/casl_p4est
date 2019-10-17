@@ -319,7 +319,7 @@ int main (int argc, char* argv[])
 
   const double hodge_tolerance          = cmd.get<double>("hodge_tol", 1e-3);
   const unsigned int niter_hodge_max    = cmd.get<unsigned int>("niter_hodge", 10);
-  const double duration                 = cmd.get<double>("duration", 200.0);
+  const double duration                 = cmd.get<double>("duration", 0.2);
 #if defined(POD_CLUSTER)
   const string export_dir               = cmd.get<string>("export_folder", "/home/regan/two_phase_flow");
 #elif defined(STAMPEDE)
@@ -438,7 +438,7 @@ int main (int argc, char* argv[])
 
   lmin                    = cmd.get<int>("lmin", 4);
   lmax                    = cmd.get<int>("lmax", 6);
-  threshold_split_cell    = cmd.get<double>("thresh", 0.05);
+  threshold_split_cell    = cmd.get<double>("thresh", 1.00);
   n_tree_xyz[0]           = cmd.get<int>("nx", 1);
   n_tree_xyz[1]           = cmd.get<int>("ny", 1);
 #ifdef P4_TO_P8
@@ -554,12 +554,12 @@ int main (int argc, char* argv[])
   two_phase_flow_solver->set_bc(bc_v, &bc_p);
   two_phase_flow_solver->set_external_forces(external_forces);
 
-//#ifdef P4_TO_P8
-//  ierr = PetscPrintf(mpi.comm(), "Parameters : Re = %g, mu = %g, rho = %g, grid is %dx%dx%d\n", Re, mu, rho, ntree_x, ntree_y, ntree_z); CHKERRXX(ierr);
-//#else
-//  ierr = PetscPrintf(mpi.comm(), "Parameters : Re = %g, mu = %g, rho = %g, grid is %dx%d\n", Re, mu, rho, ntree_x, ntree_y); CHKERRXX(ierr);
-//#endif
-//  ierr = PetscPrintf(mpi.comm(), "cfl = %g, uniform_band = %g\n", cfl, uniform_band);
+  //#ifdef P4_TO_P8
+  //  ierr = PetscPrintf(mpi.comm(), "Parameters : Re = %g, mu = %g, rho = %g, grid is %dx%dx%d\n", Re, mu, rho, ntree_x, ntree_y, ntree_z); CHKERRXX(ierr);
+  //#else
+  //  ierr = PetscPrintf(mpi.comm(), "Parameters : Re = %g, mu = %g, rho = %g, grid is %dx%d\n", Re, mu, rho, ntree_x, ntree_y); CHKERRXX(ierr);
+  //#endif
+  //  ierr = PetscPrintf(mpi.comm(), "cfl = %g, uniform_band = %g\n", cfl, uniform_band);
 
   char out_dir[PATH_MAX], vtk_path[PATH_MAX], vtk_name[PATH_MAX];
   sprintf(out_dir, "%s/%dD/lmin_%d_lmax_%d", export_dir.c_str(), P4EST_DIM, lmin, lmax);
@@ -594,104 +594,41 @@ int main (int argc, char* argv[])
 
   double tn = tstart;
 
-//  while(tn+0.01*dt<tstart+duration)
-//  {
-//    if(iter>0)
-//    {
-////      if(use_adapted_dt)
-////        two_phase_flow_solver->compute_adapted_dt();
-////      else
-////        two_phase_flow_solver->compute_dt();
-//      dt = two_phase_flow_solver->get_dt();
+  while(tn+0.01*dt<tstart+duration)
+  {
+    if(iter>0)
+    {
+      two_phase_flow_solver->compute_dt();
+      dt = two_phase_flow_solver->get_dt();
+      two_phase_flow_solver->update_from_tn_to_tnp1();
+    }
 
-//      if(tn+dt>tstart+duration)
-//      {
-//        dt = tstart+duration-tn;
-//        two_phase_flow_solver->set_dt(dt);
-//      }
-//      if(save_vtk && dt > vtk_dt)
-//      {
-//        dt = vtk_dt; // so that we don't miss snapshots...
-//        two_phase_flow_solver->set_dt(dt);
-//      }
-//    }
-////    if(save_state && ((int) floor(tn/dt_save_data)) != save_data_idx)
-////    {
-////      save_data_idx = ((int) floor(tn/dt_save_data));
-////      ns->save_state(out_dir, tn, n_states);
-////    }
+    std::cout << "compute jumps iter : " << iter << std::endl;
 
-    Vec hodge_old;
-    Vec hodge_new;
-    ierr = VecCreateSeq(PETSC_COMM_SELF, two_phase_flow_solver->get_p4est()->local_num_quadrants, &hodge_old); CHKERRXX(ierr);
-    double corr_hodge = 1.0;
-    unsigned int iter_hodge = 0;
-//    while(iter_hodge<niter_hodge_max && corr_hodge>hodge_tolerance)
-//    {
-      hodge_new = two_phase_flow_solver->get_hodge();
-      ierr = VecCopy(hodge_new, hodge_old); CHKERRXX(ierr);
+    two_phase_flow_solver->compute_jump_mu_grad_v();
+    two_phase_flow_solver->compute_jumps_hodge();
+    std::cout << "viscosity step, iter : " << iter << std::endl;
+    two_phase_flow_solver->solve_viscosity_explicit();
+    std::cout << "projection step iter : " << iter << std::endl;
+    two_phase_flow_solver->solve_projection(true);
 
-      two_phase_flow_solver->compute_jump_mu_grad_v();
-      two_phase_flow_solver->compute_jumps_hodge();
-      two_phase_flow_solver->solve_viscosity_explicit();
-      two_phase_flow_solver->solve_projection(true);
-
-//      hodge_new = two_phase_flow_solver->get_hodge();
-//      const double *ho; ierr = VecGetArrayRead(hodge_old, &ho); CHKERRXX(ierr);
-//      const double *hn; ierr = VecGetArrayRead(hodge_new, &hn); CHKERRXX(ierr);
-//      corr_hodge = 0.0;
-//      p4est_t *p4est = two_phase_flow_solver->get_p4est();
-//      my_p4est_interpolation_nodes_t *interp_phi = two_phase_flow_solver->get_interp_phi();
-//      for(p4est_topidx_t tree_idx=p4est->first_local_tree; tree_idx<=p4est->last_local_tree; ++tree_idx)
-//      {
-//        p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
-//        for(size_t q=0; q<tree->quadrants.elem_count; ++q)
-//        {
-//          p4est_locidx_t quad_idx = tree->quadrants_offset+q;
-//          corr_hodge = max(corr_hodge, fabs(ho[quad_idx]-hn[quad_idx]));
-//        }
-//      }
-//      int mpiret = MPI_Allreduce(MPI_IN_PLACE, &corr_hodge, 1, MPI_DOUBLE, MPI_MAX, mpi.comm()); SC_CHECK_MPI(mpiret);
-//      ierr = VecRestoreArrayRead(hodge_old, &ho); CHKERRXX(ierr);
-//      ierr = VecRestoreArrayRead(hodge_new, &hn); CHKERRXX(ierr);
-
-//      ierr = PetscPrintf(mpi.comm(), "hodge iteration #%d, error = %e\n", iter_hodge, corr_hodge); CHKERRXX(ierr);
-//      iter_hodge++;
-//    }
-//    ierr = VecDestroy(hodge_old); CHKERRXX(ierr);
-      two_phase_flow_solver->extrapolate_velocities_across_interface_in_finest_computational_cells_Aslam_PDE(PSEUDO_TIME, 10);
-//      two_phase_flow_solver->extrapolate_velocities_across_interface_in_finest_computational_cells_Aslam_PDE(EXPLICIT_ITERATIVE, 10);
+    two_phase_flow_solver->extrapolate_velocities_across_interface_in_finest_computational_cells_Aslam_PDE(PSEUDO_TIME, 10);
+    //      two_phase_flow_solver->extrapolate_velocities_across_interface_in_finest_computational_cells_Aslam_PDE(EXPLICIT_ITERATIVE, 10);
     two_phase_flow_solver->compute_velocity_at_nodes();
-//    ns->compute_pressure();
 
-//    tn += dt;
+    two_phase_flow_solver->save_vtk((export_dir+"/illustration_"+std::to_string(iter)).c_str(), true);
 
-//    ierr = PetscPrintf(mpi.comm(), "Iteration #%04d : tn = %.5e, percent done : %.1f%%, \t max_L2_norm_u = %.5e, \t number of leaves = %d\n", iter, tn, 100*(tn-tstart)/duration, ns->get_max_L2_norm_u(), ns->get_p4est()->global_num_quadrants); CHKERRXX(ierr);
 
-//    if(ns->get_max_L2_norm_u()>200.0)
-//    {
-//      if(save_vtk)
-//      {
-//        sprintf(vtk_name, "%s/snapshot_%d", vtk_path, export_vtk+1);
-//        ns->save_vtk(vtk_name);
-//      }
-//      std::cerr << "The simulation blew up..." << std::endl;
-//      break;
-//    }
+    tn += dt;
 
-//    if(save_vtk && ((int) floor(tn/vtk_dt)) != export_vtk)
-//    {
-//      export_vtk = ((int) floor(tn/vtk_dt));
-//      sprintf(vtk_name, "%s/snapshot_%d", vtk_path, export_vtk);
-//      ns->save_vtk(vtk_name);
-//    }
-
-//    iter++;
-//  }
+    ierr = PetscPrintf(mpi.comm(), "Iteration #%04d : tn = %.5e, percent done : %.1f%%, \t max_L2_norm_u = %.5e, \t number of leaves = %d\n",
+                       iter, tn, 100*(tn-tstart)/duration, two_phase_flow_solver->get_max_velocity(), two_phase_flow_solver->get_p4est()->global_num_quadrants); CHKERRXX(ierr);
 
 
 
-    two_phase_flow_solver->save_vtk((export_dir+"/illustration").c_str(), true);
+    iter++;
+  }
+
 
 
   delete two_phase_flow_solver;

@@ -49,8 +49,9 @@ my_p4est_interpolation_t::my_p4est_interpolation_t(const my_p4est_node_neighbors
 
   for (short i=0; i<P4EST_DIM; i++)
   {
-    xyz_min[i] = v2c[3*t2v[P4EST_CHILDREN*first_tree + first_vertex] + i];
-    xyz_max[i] = v2c[3*t2v[P4EST_CHILDREN*last_tree  + last_vertex ] + i];
+    xyz_min[i]  = v2c[3*t2v[P4EST_CHILDREN*first_tree + first_vertex] + i];
+    xyz_max[i]  = v2c[3*t2v[P4EST_CHILDREN*last_tree  + last_vertex ] + i];
+    periodic[i] = is_periodic(p4est, i);
   }
   bs_f  = 0;
 }
@@ -100,25 +101,17 @@ void my_p4est_interpolation_t::set_input(Vec *F, unsigned int n_vecs_, const uns
 void my_p4est_interpolation_t::add_point(p4est_locidx_t locidx, const double *xyz)
 {
   // first clip the coordinates
-  double xyz_clip [] =
-  {
-    xyz[0], xyz[1]
-  #ifdef P4_TO_P8
-    , xyz[2]
-  #endif
-  };
-  
-  // clip to bounding box
-  for (short i=0; i<P4EST_DIM; i++){
-    if (xyz_clip[i] > xyz_max[i]) xyz_clip[i] = is_periodic(p4est,i) ? xyz_clip[i]-(xyz_max[i]-xyz_min[i]) : xyz_max[i];
-    if (xyz_clip[i] < xyz_min[i]) xyz_clip[i] = is_periodic(p4est,i) ? xyz_clip[i]+(xyz_max[i]-xyz_min[i]) : xyz_min[i];
-  }
+  double xyz_clip [P4EST_DIM];
+  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+    xyz_clip[dir] = xyz[dir];
+  clip_in_domain(xyz_clip, xyz_min, xyz_max, periodic);
   
   p4est_quadrant_t best_match;
 
   // find the quadrant -- Note point may become slightly purturbed after this call
   std::vector<p4est_quadrant_t> remote_matches;
   int rank_found = ngbd_n->hierarchy->find_smallest_quadrant_containing_point(xyz_clip, best_match, remote_matches);
+
   
   /* check who is going to own the quadrant.
    * we add the point to the local buffer if it is locally owned
@@ -195,6 +188,9 @@ void my_p4est_interpolation_t::interpolate(double * const *Fo_p, unsigned int n_
   const input_buffer_t* input = &input_buffer[p4est->mpirank];
   MPI_Status status;
 
+  const unsigned int nelements = ((comp==ALL_COMPONENTS) && (bs_f > 1))? bs_f*n_functions : n_functions ;
+  double results[nelements]; // serialized_results
+
   while (!done) {
     // interpolate local points
     if (it < end) {
@@ -205,14 +201,12 @@ void my_p4est_interpolation_t::interpolate(double * const *Fo_p, unsigned int n_
       const p4est_quadrant_t &quad = local_buffer[it];
 
       p4est_locidx_t node_idx = input->node_idx[it];
-      const unsigned int nelements = ((comp==ALL_COMPONENTS) && (bs_f > 1))? bs_f*n_functions : n_functions ;
-      double results[nelements]; // serialized_results
       interpolate(quad, xyz, results, comp);
       //de-serialize
       if((comp==ALL_COMPONENTS) && (bs_f > 1))
         for (unsigned int k = 0; k < n_functions; ++k)
-          for (unsigned int comp = 0; comp < bs_f; ++comp)
-            Fo_p[k][bs_f*node_idx+comp] = results[bs_f*k+comp];
+          for (unsigned int cc = 0; cc < bs_f; ++cc)
+            Fo_p[k][bs_f*node_idx+cc] = results[bs_f*k+cc];
       else
         for (unsigned int k = 0; k < n_functions; ++k)
           Fo_p[k][node_idx] = results[k];
@@ -288,12 +282,11 @@ void my_p4est_interpolation_t::process_incoming_query(MPI_Status& status, Interp
 
   for (int i = 0; i<vec_size; i += P4EST_DIM) {
     // clip to bounding box
-    for (short j = 0; j<P4EST_DIM; j++){
-      xyz_tmp[j] = xyz[i+j];
-      xyz_clip[j] = xyz[i+j];
-      if (xyz[i+j] > xyz_max[j]) xyz_clip[j] = is_periodic(p4est,j) ? xyz_clip[j]-(xyz_max[j]-xyz_min[j]) : xyz_max[j];
-      if (xyz[i+j] < xyz_min[j]) xyz_clip[j] = is_periodic(p4est,j) ? xyz_clip[j]+(xyz_max[j]-xyz_min[j]) : xyz_min[j];
+    for (unsigned char dir = 0; dir<P4EST_DIM; dir++){
+      xyz_tmp[dir] = xyz[i+dir];
+      xyz_clip[dir] = xyz[i+dir];
     }
+    clip_in_domain(xyz_clip, xyz_min, xyz_max, periodic);
 
     p4est_quadrant_t best_match;
     std::vector<p4est_quadrant_t> remote_matches;
@@ -315,8 +308,8 @@ void my_p4est_interpolation_t::process_incoming_query(MPI_Status& status, Interp
       remote_data.input_buffer_idx = i / P4EST_DIM;
       if((comp==ALL_COMPONENTS) && (bs_f > 1))
         for (unsigned int k = 0; k < nfunctions; ++k)
-          for (unsigned int comp = 0; comp < bs_f; ++comp) {
-            remote_data.value = results[bs_f*k+comp];
+          for (unsigned int cc = 0; cc < bs_f; ++cc) {
+            remote_data.value = results[bs_f*k+cc];
             buff.push_back(remote_data);
           }
       else
@@ -359,9 +352,9 @@ void my_p4est_interpolation_t::process_incoming_reply(MPI_Status& status, double
     p4est_locidx_t node_idx = input.node_idx[reply_buffer[nelements_per_point*i].input_buffer_idx];
     if((comp==ALL_COMPONENTS) && (bs_f > 1))
       for (unsigned int k = 0; k < nfunctions; ++k){
-        for (unsigned int comp = 0; comp < bs_f; ++comp) {
-          P4EST_ASSERT(node_idx == input.node_idx[reply_buffer[nfunctions*bs_f*i+k*bs_f+comp].input_buffer_idx]);
-          Fo_p[k][bs_f*node_idx+comp] = reply_buffer[nfunctions*bs_f*i+k*bs_f+comp].value;
+        for (unsigned int cc = 0; cc < bs_f; ++cc) {
+          P4EST_ASSERT(node_idx == input.node_idx[reply_buffer[nfunctions*bs_f*i+k*bs_f+cc].input_buffer_idx]);
+          Fo_p[k][bs_f*node_idx+cc] = reply_buffer[nfunctions*bs_f*i+k*bs_f+cc].value;
         }
       }
     else

@@ -1329,6 +1329,31 @@ inline bool is_periodic(const p4est_t *p4est, int dir)
            p4est->connectivity->tree_to_face[tfindex] == face);
 }
 
+inline void clip_in_domain(double xyz[P4EST_DIM], const double xyz_min[P4EST_DIM], const double xyz_max[P4EST_DIM], const bool periodic[P4EST_DIM])
+{
+  for(unsigned char dir=0; dir<P4EST_DIM; ++dir)
+    if((xyz[dir]<xyz_min[dir]) || (xyz[dir]>xyz_max[dir]))
+    {
+      if(periodic[dir])
+        xyz[dir] = xyz[dir] - floor((xyz[dir]-xyz_min[dir])/(xyz_max[dir]-xyz_min[dir]))*(xyz_max[dir]-xyz_min[dir]);
+      else
+        xyz[dir] = MAX(xyz_min[dir], MIN(xyz_max[dir], xyz[dir]));
+    }
+}
+
+inline void clip_in_domain(double xyz[P4EST_DIM], const p4est_t* p4est)
+{
+  double xyz_min[P4EST_DIM], xyz_max[P4EST_DIM];
+  bool periodic[P4EST_DIM];
+  for(unsigned char dir=0; dir<P4EST_DIM; ++dir)
+  {
+    xyz_min[dir]  = p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[0]+dir];
+    xyz_max[dir]  = p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*p4est->connectivity->num_trees - 1] + dir];
+    periodic[dir] = is_periodic(p4est, dir);
+  }
+  clip_in_domain(xyz, xyz_min, xyz_max, periodic);
+}
+
 /*!
  * \brief find the owner rank of a ghost quadrant
  * \param ghost the ghost structure

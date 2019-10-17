@@ -54,10 +54,10 @@ void my_p4est_interpolation_nodes_t::set_input(Vec *F, Vec *Fxxyyzz_block_, Vec 
     for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
       Fxxyyzz[dir].resize(n_vecs_);
     for (unsigned int k = 0; k < Fi.size(); ++k) {
-      Fxxyyzz[0][k] = Fxx_[k];
-      Fxxyyzz[1][k] = Fyy_[k];
+      P4EST_ASSERT(Fxx_[k]!=NULL); Fxxyyzz[0][k] = Fxx_[k];
+      P4EST_ASSERT(Fyy_[k]!=NULL); Fxxyyzz[1][k] = Fyy_[k];
 #ifdef P4_TO_P8
-      Fxxyyzz[2][k] = Fzz_[k];
+      P4EST_ASSERT(Fzz_[k]!=NULL); Fxxyyzz[2][k] = Fzz_[k];
 #endif
     }
     Fxxyyzz_block.resize(0);
@@ -67,8 +67,9 @@ void my_p4est_interpolation_nodes_t::set_input(Vec *F, Vec *Fxxyyzz_block_, Vec 
     Fxxyyzz_block.resize(n_vecs_);
     for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
       Fxxyyzz[dir].resize(0);
-    for (unsigned int k = 0; k < Fi.size(); ++k)
-      Fxxyyzz_block[k] = Fxxyyzz_block_[k];
+    for (unsigned int k = 0; k < Fi.size(); ++k){
+      P4EST_ASSERT(Fxxyyzz_block_[k]); Fxxyyzz_block[k] = Fxxyyzz_block_[k];
+    }
   }
   this->method = method;
 }
@@ -284,17 +285,20 @@ void my_p4est_interpolation_nodes_t::interpolate(const p4est_quadrant_t &quad, c
   for (unsigned int k = 0; k < n_functions; ++k) {
     ierr = VecGetArrayRead(Fi[k], &Fi_p[k]); CHKERRXX(ierr); }
   const unsigned int nelem_per_node = (comp==ALL_COMPONENTS && bs_f > 1) ? bs_f*n_functions: n_functions;
-  double f[P4EST_CHILDREN*nelem_per_node]; // f[j*n_functions*bs_f+k*bs_f+comp] = value of the compth component of the kth block vector at node j
+  double f[nelem_per_node*P4EST_CHILDREN]; // f[k*bs_f*P4EST_CHILDREN+cc*P4EST_CHILDREN+j] = value of the ccth component of the kth block vector at node j
 
   for (short i = 0; i<P4EST_CHILDREN; i++) {
     p4est_locidx_t node_idx = nodes->local_nodes[quad_idx*P4EST_CHILDREN + i];
-    if(comp==ALL_COMPONENTS && bs_f > 1)
+    if (bs_f==1)
       for (unsigned int k = 0; k < n_functions; ++k)
-        for (unsigned int comp = 0; comp < bs_f; ++comp)
-          f[i*n_functions*bs_f+k*bs_f+comp] = Fi_p[k][bs_f*node_idx+comp];
+        f[k*n_functions+i] = Fi_p[k][node_idx];
+    else if (comp==ALL_COMPONENTS)
+      for (unsigned int k = 0; k < n_functions; ++k)
+        for (unsigned int cc = 0; cc < bs_f; ++cc)
+          f[k*bs_f*P4EST_CHILDREN+cc*P4EST_CHILDREN+i] = Fi_p[k][bs_f*node_idx+cc];
     else
       for (unsigned int k = 0; k < n_functions; ++k)
-        f[i*n_functions+k] = Fi_p[k][bs_f*node_idx+comp];
+        f[k*n_functions+i] = Fi_p[k][bs_f*node_idx+comp];
   }
 
   /* enforce periodicity if necessary */
@@ -305,19 +309,19 @@ void my_p4est_interpolation_nodes_t::interpolate(const p4est_quadrant_t &quad, c
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
     xyz_p[dir] = xyz[dir];
-    if     (is_periodic(p4est,dir) && xyz[dir]-xyz_q[dir]>(xyz_max[dir]-xyz_min[dir])/2) xyz_p[dir] -= xyz_max[dir]-xyz_min[dir];
-    else if(is_periodic(p4est,dir) && xyz_q[dir]-xyz[dir]>(xyz_max[dir]-xyz_min[dir])/2) xyz_p[dir] += xyz_max[dir]-xyz_min[dir];
+    if     (periodic[dir] && xyz[dir]-xyz_q[dir]>(xyz_max[dir]-xyz_min[dir])/2) xyz_p[dir] -= xyz_max[dir]-xyz_min[dir];
+    else if(periodic[dir] && xyz_q[dir]-xyz[dir]>(xyz_max[dir]-xyz_min[dir])/2) xyz_p[dir] += xyz_max[dir]-xyz_min[dir];
   }
 
   /* compute derivatives */
   if (method == quadratic || method == quadratic_non_oscillatory)
   {
-    double fdd[P4EST_CHILDREN*nelem_per_node*P4EST_DIM];
+    double fdd[nelem_per_node*P4EST_CHILDREN*P4EST_DIM];
     // description of the above data structure:
     // if (comp==ALL_COMPONENTS && bs_f > 1)
-    //   fdd[j*n_functions*bs_f*P4EST_DIM+k*bs_f*P4EST_DIM+comp*P4EST_DIM+dir] = value of second derivative along direction dir of the compth component of the kth block vector at node j
+    //   fdd[k*bs_f*P4EST_CHILDREN*P4EST_DIM+cc*P4EST_CHILDREN*P4EST_DIM+j*P4EST_DIM+dir] = value of second derivative along direction dir of the ccth component of the kth block vector at node j
     // else
-    //   fdd[j*n_functions*P4EST_DIM+k*P4EST_DIM+dir] = value of second derivative along direction dir of the component of interest of the kth block vector at node j
+    //   fdd[k*P4EST_CHILDREN*P4EST_DIM+j*P4EST_DIM+dir] = value of second derivative along direction dir of the (component of interest of the) kth (block) vector at node j
 
     bool use_precomputed_block_derivatives = (Fxxyyzz_block.size() == n_functions);
     bool use_precomputed_derivatives_by_components = !use_precomputed_block_derivatives;
@@ -343,15 +347,19 @@ void my_p4est_interpolation_nodes_t::interpolate(const p4est_quadrant_t &quad, c
     if (use_precomputed_derivatives_by_components || use_precomputed_block_derivatives) {
       for (short j = 0; j<P4EST_CHILDREN; j++) {
         p4est_locidx_t node_idx = nodes->local_nodes[quad_idx*P4EST_CHILDREN + j];
-        if(comp==ALL_COMPONENTS && bs_f > 1)
+        if(bs_f==1)
           for (unsigned int k = 0; k < n_functions; ++k)
-            for (unsigned int comp = 0; comp < bs_f; ++comp)
+            for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+              fdd[k*P4EST_CHILDREN*P4EST_DIM+j*P4EST_DIM+dir] = use_precomputed_derivatives_by_components ? Fxxyyzz_p[dir][k][node_idx] : Fxxyyzz_block_p[k][node_idx*P4EST_DIM+dir];
+        else if (comp==ALL_COMPONENTS)
+          for (unsigned int k = 0; k < n_functions; ++k)
+            for (unsigned int cc = 0; cc < bs_f; ++cc)
               for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-                fdd[j*n_functions*bs_f*P4EST_DIM+k*bs_f*P4EST_DIM+comp*P4EST_DIM+dir] = use_precomputed_derivatives_by_components ? Fxxyyzz_p[dir][k][bs_f*node_idx+comp] : Fxxyyzz_block_p[k][node_idx*bs_f*P4EST_DIM+comp*P4EST_DIM+dir];
+                fdd[k*bs_f*P4EST_CHILDREN*P4EST_DIM+cc*P4EST_CHILDREN*P4EST_DIM+j*P4EST_DIM+dir] = use_precomputed_derivatives_by_components ? Fxxyyzz_p[dir][k][bs_f*node_idx+cc] : Fxxyyzz_block_p[k][node_idx*bs_f*P4EST_DIM+cc*P4EST_DIM+dir];
         else
           for (unsigned int k = 0; k < n_functions; ++k)
             for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-              fdd[j*n_functions*P4EST_DIM+k*P4EST_DIM+dir] = use_precomputed_derivatives_by_components ? Fxxyyzz_p[dir][k][bs_f*node_idx+comp] : Fxxyyzz_block_p[k][node_idx*bs_f*P4EST_DIM+comp*P4EST_DIM+dir];
+              fdd[k*P4EST_CHILDREN*P4EST_DIM+j*P4EST_DIM+dir] = use_precomputed_derivatives_by_components ? Fxxyyzz_p[dir][k][bs_f*node_idx+comp] : Fxxyyzz_block_p[k][node_idx*bs_f*P4EST_DIM+comp*P4EST_DIM+dir];
       }
       // restore arrays and release memory
       for (unsigned int k = 0; k < n_functions; ++k) {
@@ -371,17 +379,27 @@ void my_p4est_interpolation_nodes_t::interpolate(const p4est_quadrant_t &quad, c
       if(use_precomputed_block_derivatives)
         P4EST_FREE(Fxxyyzz_block_p);
     }
-    else{
+    else {
+      double tmp[nelem_per_node*P4EST_DIM];
       quad_neighbor_nodes_of_node_t qnnn;
       for (short j = 0; j<P4EST_CHILDREN; j++){
         p4est_locidx_t node_idx = nodes->local_nodes[quad_idx*P4EST_CHILDREN + j];
         ngbd_n->get_neighbors(node_idx, qnnn);
-        if(bs_f == 1)
-          qnnn.laplace(Fi_p, (fdd+j*n_functions*P4EST_DIM), n_functions) ;
-        else if (bs_f > 1 && comp!=ALL_COMPONENTS)
-          qnnn.laplace_component(Fi_p, (fdd+j*n_functions*P4EST_DIM), n_functions, bs_f, comp);
+        if(bs_f == 1 || (comp < bs_f && bs_f > 1))
+        {
+          (bs_f==1)? qnnn.laplace(Fi_p, tmp, n_functions) : qnnn.laplace_component(Fi_p, tmp, n_functions, bs_f, comp);
+          for (unsigned int k = 0; k < n_functions; ++k)
+            for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+              fdd[k*P4EST_CHILDREN*P4EST_DIM+j*P4EST_DIM+dir] = tmp[k*P4EST_DIM+dir];
+        }
         else
-          qnnn.laplace_all_components(Fi_p, (fdd+j*n_functions*bs_f*P4EST_DIM), n_functions, bs_f);
+        {
+          qnnn.laplace_all_components(Fi_p, tmp, n_functions, bs_f);
+          for (unsigned int k = 0; k < n_functions; ++k)
+            for (unsigned cc = 0; cc < bs_f; ++cc)
+              for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+                fdd[k*bs_f*P4EST_CHILDREN*P4EST_DIM+cc*P4EST_CHILDREN*P4EST_DIM+j*P4EST_DIM+dir] = tmp[k*bs_f*P4EST_DIM+cc*P4EST_DIM+dir];
+        }
       }
     }
     for (unsigned int k = 0; k < n_functions; ++k) {

@@ -482,6 +482,7 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(double *xyz, p
     find_quadrant_containing_point(tr_xyz_orig, s, rank, best_match, remote_matches);
   }
 
+
 #ifdef CASL_LOG_TINY_EVENTS
   ierr = PetscLogEventEnd(log_my_p4est_hierarchy_t_find_smallest_quad, 0, 0, 0, 0); CHKERRXX(ierr);
 #endif
@@ -540,6 +541,7 @@ void my_p4est_hierarchy_t::find_quadrant_containing_point(const int* tr_xyz_orig
   if      (s.z < 0)                      { s.z += (double)P4EST_ROOT_LEN; tr_xyz[2] = tr_xyz_orig[2] - 1; }
   else if (s.z > (double)P4EST_ROOT_LEN) { s.z -= (double)P4EST_ROOT_LEN; tr_xyz[2] = tr_xyz_orig[2] + 1; }
 #endif
+
 
 
 #ifdef P4_TO_P8

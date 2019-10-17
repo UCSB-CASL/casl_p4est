@@ -1,8 +1,10 @@
 #ifdef P4_TO_P8
+#include "my_p8est_level_set.h"
 #include "my_p8est_two_phase_flows.h"
 #include "my_p8est_trajectory_of_point.h"
 #include "my_p8est_vtk.h"
 #else
+#include "my_p4est_level_set.h"
 #include "my_p4est_two_phase_flows.h"
 #include "my_p4est_trajectory_of_point.h"
 #include "my_p4est_vtk.h"
@@ -18,7 +20,178 @@ extern PetscLogEvent log_my_p4est_two_phase_flows_viscosity;
 extern PetscLogEvent log_my_p4est_two_phase_flows_projection;
 extern PetscLogEvent log_my_p4est_two_phase_compute_voronoi_cell;
 extern PetscLogEvent log_my_p4est_two_phase_trajectory_of_all_faces;
+extern PetscLogEvent log_my_p4est_two_phase_advect_interface;
+extern PetscLogEvent log_my_p4est_two_phase_advect_update;
 #endif
+
+void my_p4est_two_phase_flows_t::splitting_criteria_computational_grid_two_phase_t::
+tag_quadrant(p4est_t *p4est_np1, p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, p4est_nodes_t* nodes_np1,
+             const double *phi_np1_p, const double *vorticities_np1_p)
+{
+  p4est_tree_t *tree = p4est_tree_array_index(p4est_np1->trees, tree_idx);
+  p4est_quadrant_t *quad = p4est_quadrant_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
+
+  if (quad->level < min_lvl)
+    quad->p.user_int = REFINE_QUADRANT;
+  else if (quad->level > max_lvl)
+    quad->p.user_int = COARSEN_QUADRANT;
+  else
+  {
+    double inv_quad_scal = 1.0/((double) (1<<quad->level));
+    const double quad_diag          = owner->tree_diag*inv_quad_scal;
+#ifdef P4_TO_P8
+    const double quad_dxyz_max      = MAX(owner->convert_to_xyz[0], owner->convert_to_xyz[1], owner->convert_to_xyz[2])*inv_quad_scal;
+    const double smallest_dxyz_max  = MAX(owner->dxyz_min[0], owner->dxyz_min[1], owner->dxyz_min[2]);
+#else
+    const double quad_dxyz_max      = MAX(owner->convert_to_xyz[0], owner->convert_to_xyz[1])*inv_quad_scal;
+    const double smallest_dxyz_max  = MAX(owner->dxyz_min[0], owner->dxyz_min[1]);
+#endif
+
+    bool coarsen = (quad->level > min_lvl);
+    if(coarsen)
+    {
+      bool cor_vort = true;
+      bool cor_band = true;
+      bool cor_intf = true;
+      p4est_locidx_t node_idx;
+
+      for (unsigned short k = 0; coarsen && (k < P4EST_CHILDREN); ++k) {
+        node_idx    = nodes_np1->local_nodes[P4EST_CHILDREN*quad_idx+k];
+        if(phi_np1_p[node_idx] > 0.0){
+          cor_vort  = cor_vort && (fabs(vorticities_np1_p[2*node_idx+1]) *2.0*quad_dxyz_max/owner->max_L2_norm_u_plus <= owner->threshold_split_cell);
+          cor_band  = cor_band && (fabs(phi_np1_p[node_idx]) >= owner->uniform_band_plus*smallest_dxyz_max);
+        }
+        else{
+          cor_vort  = cor_vort && (fabs(vorticities_np1_p[2*node_idx])   *2.0*quad_dxyz_max/owner->max_L2_norm_u_minus <= owner->threshold_split_cell);
+          cor_band  = cor_band && (fabs(phi_np1_p[node_idx]) >= owner->uniform_band_minus*smallest_dxyz_max);
+        }
+        cor_intf    = cor_intf && (fabs(phi_np1_p[node_idx]) >= lip*2.0*quad_diag);
+        coarsen     = (cor_vort && cor_band && cor_intf);
+      }
+    }
+
+
+    bool refine = (quad->level < max_lvl);
+    if(refine)
+    {
+      bool ref_vort     = false;
+      bool ref_band     = false;
+      bool ref_intf     = false;
+      p4est_locidx_t node_idx;
+      bool node_found;
+      // check possibly finer points
+      const p4est_qcoord_t mid_qh = P4EST_QUADRANT_LEN (quad->level+1);
+#ifdef P4_TO_P8
+      for(unsigned short k=0; k<3; ++k)
+#endif
+        for(unsigned short j=0; j<3; ++j)
+          for(unsigned short i=0; i<3; ++i)
+          {
+#ifdef P4_TO_P8
+            if ((k==1)&&(j==1)&&(i==1))
+#else
+            if ((j==1)&&(i==1))
+#endif
+              continue;
+#ifdef P4_TO_P8
+            if (((k==0)||(k==2)) && ((j==0)||(j==2)) && ((i==0)||(i==2)))
+#else
+            if (((j==0)||(j==2)) && ((i==0)||(i==2)))
+#endif
+            {
+              node_found=true;
+#ifdef P4_TO_P8
+              node_idx = nodes_np1->local_nodes[P4EST_CHILDREN*quad_idx+4*(k/2)+2*(j/2)+(i/2)];
+#else
+              node_idx = nodes_np1->local_nodes[P4EST_CHILDREN*quad_idx+2*(j/2)+(i/2)];
+#endif
+            }
+            else
+            {
+              p4est_quadrant_t r, c;
+              r.level = P4EST_MAXLEVEL;
+              r.x = quad->x + i*mid_qh;
+              r.y = quad->y + j*mid_qh;
+#ifdef P4_TO_P8
+              r.z = quad->z + k*mid_qh;
+#endif
+              P4EST_ASSERT (p4est_quadrant_is_node (&r, 0));
+              p4est_node_canonicalize(p4est_np1, tree_idx, &r, &c);
+              node_found = index_of_node(&c, nodes_np1, node_idx);
+            }
+            if(node_found)
+            {
+              P4EST_ASSERT(node_idx < ((p4est_locidx_t) nodes_np1->indep_nodes.elem_count));
+              if(phi_np1_p[node_idx] > 0.0) {
+                ref_vort  = ref_vort || (fabs(vorticities_np1_p[2*node_idx+1])*quad_dxyz_max/owner->max_L2_norm_u_plus > owner->threshold_split_cell);
+                ref_band  = ref_band || (fabs(phi_np1_p[node_idx]) < owner->uniform_band_plus*smallest_dxyz_max);
+              } else {
+                ref_vort  = ref_vort || (fabs(vorticities_np1_p[2*node_idx])  *quad_dxyz_max/owner->max_L2_norm_u_minus > owner->threshold_split_cell);
+                ref_band  = ref_band || (fabs(phi_np1_p[node_idx]) < owner->uniform_band_minus*smallest_dxyz_max);
+              }
+              ref_intf    = ref_intf || fabs(phi_np1_p[node_idx]) < lip*quad_diag;
+              refine      = (ref_vort || ref_band || ref_intf);
+              if(refine)
+                goto end_of_function;
+            }
+          }
+    }
+end_of_function:
+
+    if (refine)
+      quad->p.user_int = REFINE_QUADRANT;
+    else if (coarsen)
+      quad->p.user_int = COARSEN_QUADRANT;
+    else
+      quad->p.user_int = SKIP_QUADRANT;
+  }
+}
+
+
+bool my_p4est_two_phase_flows_t::splitting_criteria_computational_grid_two_phase_t::
+refine_and_coarsen(p4est_t* p4est_np1, p4est_nodes_t* nodes_np1,
+                   Vec phi_np1, Vec vorticities_np1)
+{
+  const double *phi_np1_p, *vorticities_np1_p;
+  PetscErrorCode ierr;
+  ierr = VecGetArrayRead(phi_np1, &phi_np1_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(vorticities_np1, &vorticities_np1_p); CHKERRXX(ierr);
+
+  /* tag the quadrants that need to be refined or coarsened */
+  for (p4est_topidx_t tree_idx = p4est_np1->first_local_tree; tree_idx <= p4est_np1->last_local_tree; ++tree_idx) {
+    p4est_tree_t* tree = p4est_tree_array_index(p4est_np1->trees, tree_idx);
+    for (size_t q = 0; q < tree->quadrants.elem_count; ++q) {
+      p4est_locidx_t quad_idx  = q + tree->quadrants_offset;
+      tag_quadrant(p4est_np1, quad_idx, tree_idx, nodes_np1, phi_np1_p, vorticities_np1_p);
+    }
+  }
+
+  my_p4est_coarsen(p4est_np1,       P4EST_FALSE, splitting_criteria_computational_grid_two_phase_t::coarsen_fn, splitting_criteria_computational_grid_two_phase_t::init_fn);
+  my_p4est_refine (p4est_np1,       P4EST_FALSE, splitting_criteria_computational_grid_two_phase_t::refine_fn,  splitting_criteria_computational_grid_two_phase_t::init_fn);
+
+  int is_grid_changed = false;
+  for (p4est_topidx_t tree_idx = p4est_np1->first_local_tree; tree_idx <= p4est_np1->last_local_tree; ++tree_idx) {
+    p4est_tree_t* tree = p4est_tree_array_index(p4est_np1->trees, tree_idx);
+    for (size_t q = 0; q < tree->quadrants.elem_count; ++q) {
+      p4est_quadrant_t *quad = p4est_quadrant_array_index(&tree->quadrants, q);
+      if (quad->p.user_int == NEW_QUADRANT) {
+        is_grid_changed = true;
+        goto function_end;
+      }
+    }
+  }
+
+function_end:
+  int mpiret = MPI_Allreduce(MPI_IN_PLACE, &is_grid_changed, 1, MPI_INT, MPI_LOR, p4est_np1->mpicomm); SC_CHECK_MPI(mpiret);
+
+  ierr = VecRestoreArrayRead(phi_np1, &phi_np1_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(vorticities_np1, &vorticities_np1_p); CHKERRXX(ierr);
+
+  return is_grid_changed;
+}
+
+
+
 
 my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t *ngbd_nm1, my_p4est_node_neighbors_t *ngbd_n, my_p4est_faces_t *faces, my_p4est_node_neighbors_t *fine_ngbd_n)
   : brick(ngbd_n->myb), conn(ngbd_n->p4est->connectivity),
@@ -39,7 +212,8 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t
   threshold_split_cell = 0.04;
   cfl = 1.0;
   dt_updated = false;
-  max_L2_norm_u = 0;
+  max_L2_norm_u_minus = 0;
+  max_L2_norm_u_plus = 0;
 
   sl_order = 2;
 
@@ -54,15 +228,19 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t
 
   splitting_criteria_t *data = (splitting_criteria_t*)p4est_n->user_pointer;
 
+  tree_diag = 0.0;
   for (int dir=0; dir<P4EST_DIM; dir++)
   {
-    xyz_min[dir] = v2c[3*t2v[P4EST_CHILDREN*first_tree + first_vertex] + dir];
-    xyz_max[dir] = v2c[3*t2v[P4EST_CHILDREN*last_tree  + last_vertex ] + dir];
+    xyz_min[dir]  = v2c[3*t2v[P4EST_CHILDREN*first_tree + first_vertex] + dir];
+    xyz_max[dir]  = v2c[3*t2v[P4EST_CHILDREN*last_tree  + last_vertex ] + dir];
+    periodic[dir] = is_periodic(p4est_n, dir);
 
     double xyz_tmp = v2c[3*t2v[P4EST_CHILDREN*first_tree + last_vertex] + dir];
     dxyz_min[dir] = (xyz_tmp-xyz_min[dir]) / (1<<data->max_lvl);
     convert_to_xyz[dir] = xyz_tmp-xyz_min[dir];
+    tree_diag += SQR(convert_to_xyz[dir]);
   }
+  tree_diag = sqrt(tree_diag);
 
 #ifdef P4_TO_P8
   dt_nm1 = dt_n = .5 * MIN(dxyz_min[0], dxyz_min[1], dxyz_min[2]);
@@ -94,15 +272,17 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t
   // ----- FIELDS SAMPLED AT NODES OF THE COMPUTATIONAL GRID AT TIME N -----
   // -----------------------------------------------------------------------
   // scalar fields
-  vorticity                     = NULL;
+  vorticities                   = NULL;
   // vector fields
   vnp1_nodes_omega_minus        = NULL;
   vnp1_nodes_omega_plus         = NULL;
+  interface_velocity_np1        = NULL;
   vn_nodes_omega_minus          = NULL;
   vn_nodes_omega_plus           = NULL;
   // tensor/matrix fields
   vn_nodes_omega_minus_xxyyzz   = NULL;
   vn_nodes_omega_plus_xxyyzz    = NULL;
+  interface_velocity_np1_xxyyzz = NULL;
   // ------------------------------------------------------------------------------
   // ----- FIELDS SAMPLED AT CELL CENTERS OF THE COMPUTATIONAL GRID AT TIME N -----
   // ------------------------------------------------------------------------------
@@ -114,7 +294,6 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t
   ierr = VecGhostGetLocalForm(hodge, &vec_loc); CHKERRXX(ierr);
   ierr = VecSet(vec_loc, 0); CHKERRXX(ierr);
   ierr = VecGhostRestoreLocalForm(hodge, &vec_loc); CHKERRXX(ierr);
-  ierr = VecDuplicate(hodge, &pressure); CHKERRXX(ierr);
   // ------------------------------------------------------------------------------
   // ----- FIELDS SAMPLED AT FACE CENTERS OF THE COMPUTATIONAL GRID AT TIME N -----
   // ------------------------------------------------------------------------------
@@ -134,9 +313,11 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t
   // vector fields
   vnm1_nodes_omega_minus        = NULL;
   vnm1_nodes_omega_plus         = NULL;
+  interface_velocity_n          = NULL;
   // tensor/matrix fields
   vnm1_nodes_omega_minus_xxyyzz = NULL;
   vnm1_nodes_omega_plus_xxyyzz  = NULL;
+  interface_velocity_n_xxyyzz   = NULL;
 
   // clear backtracing points and computational-to-fine-grid maps
   for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
@@ -153,7 +334,7 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t
 
   ngbd_n->init_neighbors();
   ngbd_nm1->init_neighbors();
-  interp_phi = new my_p4est_interpolation_nodes_t(fine_ngbd_n);
+  interp_phi = NULL;
   if(!faces_n->finest_faces_neighborhoods_have_been_set())
     faces_n->set_finest_face_neighborhoods();
 }
@@ -165,9 +346,9 @@ double my_p4est_two_phase_flows_t::wall_bc_value_hodge_t::operator ()(double x, 
 #endif
 {  
 #ifdef P4_TO_P8
-  return _prnt->bc_pressure->wallValue(x,y,z) * _prnt->dt_n / (_prnt->BDF_alpha());
+  return _parent->bc_pressure->wallValue(x,y,z) * _parent->dt_n / (_parent->BDF_alpha());
 #else
-  return _prnt->bc_pressure->wallValue(x,y) * _prnt->dt_n / (_prnt->BDF_alpha());
+  return _parent->bc_pressure->wallValue(x,y) * _parent->dt_n / (_parent->BDF_alpha());
 #endif
 }
 
@@ -208,20 +389,23 @@ my_p4est_two_phase_flows_t::~my_p4est_two_phase_flows_t()
   if(fine_phi_xxyyzz != NULL)                 { ierr = VecDestroy(fine_phi_xxyyzz);                 CHKERRXX(ierr); }
   if(fine_jump_mu_grad_v!=NULL)               { ierr = VecDestroy(fine_jump_mu_grad_v);             CHKERRXX(ierr); }
   // node-sampled fields on the computational grids n and nm1
-  if(vorticity!=NULL)                         { ierr = VecDestroy(vorticity);                       CHKERRXX(ierr); }
+  if(vorticities!=NULL)                       { ierr = VecDestroy(vorticities);                     CHKERRXX(ierr); }
   if(vnm1_nodes_omega_minus!=NULL)            { ierr = VecDestroy(vnm1_nodes_omega_minus);          CHKERRXX(ierr); }
   if(vnm1_nodes_omega_plus!=NULL)             { ierr = VecDestroy(vnm1_nodes_omega_plus);           CHKERRXX(ierr); }
   if(vn_nodes_omega_minus!=NULL)              { ierr = VecDestroy(vn_nodes_omega_minus);            CHKERRXX(ierr); }
   if(vn_nodes_omega_plus!=NULL)               { ierr = VecDestroy(vn_nodes_omega_plus);             CHKERRXX(ierr); }
   if(vnp1_nodes_omega_minus!=NULL)            { ierr = VecDestroy(vnp1_nodes_omega_minus);          CHKERRXX(ierr); }
   if(vnp1_nodes_omega_plus!=NULL)             { ierr = VecDestroy(vnp1_nodes_omega_plus);           CHKERRXX(ierr); }
+  if(interface_velocity_np1!=NULL)            { ierr = VecDestroy(interface_velocity_np1);          CHKERRXX(ierr); }
+  if(interface_velocity_np1_xxyyzz!=NULL)     { ierr = VecDestroy(interface_velocity_np1_xxyyzz);   CHKERRXX(ierr); }
+  if(interface_velocity_n!=NULL)              { ierr = VecDestroy(interface_velocity_n);            CHKERRXX(ierr); }
+  if(interface_velocity_n_xxyyzz!=NULL)       { ierr = VecDestroy(interface_velocity_n_xxyyzz);     CHKERRXX(ierr); }
   if(vnm1_nodes_omega_minus_xxyyzz!=NULL)     { ierr = VecDestroy(vnm1_nodes_omega_minus_xxyyzz);   CHKERRXX(ierr); }
   if(vnm1_nodes_omega_plus_xxyyzz!=NULL)      { ierr = VecDestroy(vnm1_nodes_omega_plus_xxyyzz);    CHKERRXX(ierr); }
   if(vn_nodes_omega_minus_xxyyzz!=NULL)       { ierr = VecDestroy(vn_nodes_omega_minus_xxyyzz);     CHKERRXX(ierr); }
   if(vn_nodes_omega_plus_xxyyzz!=NULL)        { ierr = VecDestroy(vn_nodes_omega_plus_xxyyzz);      CHKERRXX(ierr); }
   // cell-sampled fields, computational grid n
   if(hodge!=NULL)                             { ierr = VecDestroy(hodge);                           CHKERRXX(ierr); }
-  if(pressure!=NULL)                          { ierr = VecDestroy(pressure);                        CHKERRXX(ierr); }
   // face-sampled fields, computational grid n
   for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
     if(dxyz_hodge[dir]!=NULL)                 { ierr = VecDestroy(dxyz_hodge[dir]);                 CHKERRXX(ierr); }
@@ -257,6 +441,19 @@ my_p4est_two_phase_flows_t::~my_p4est_two_phase_flows_t()
   delete ngbd_c;
 
   my_p4est_brick_destroy(conn, brick);
+}
+
+void my_p4est_two_phase_flows_t::compute_dt(const double &min_value_for_umax)
+{
+  dt_nm1 = dt_n;
+  double max_L2_norm_u = MAX(max_L2_norm_u_minus, min_value_for_umax);
+#ifdef P4_TO_P8
+  dt_n = MIN(1/min_value_for_umax, 1/max_L2_norm_u) * cfl * MIN(dxyz_min[0], dxyz_min[1], dxyz_min[2]);
+#else
+  dt_n = MIN(1/min_value_for_umax, 1/max_L2_norm_u) * cfl * MIN(dxyz_min[0], dxyz_min[1]);
+#endif
+
+  dt_updated = true;
 }
 
 void my_p4est_two_phase_flows_t::set_dynamic_viscosities(double mu_omega_minus, double mu_omega_plus)
@@ -300,9 +497,12 @@ void my_p4est_two_phase_flows_t::set_cfl(double cfl_)
 void my_p4est_two_phase_flows_t::set_phi(Vec fine_phi_, bool set_second_derivatives)
 {
   PetscErrorCode ierr;
-  if(this->fine_phi!=NULL){   ierr = VecDestroy(this->fine_phi);  CHKERRXX(ierr); }
-  this->fine_phi = fine_phi_;
+  if(fine_phi!=NULL){   ierr = VecDestroy(fine_phi);  CHKERRXX(ierr); }
+  fine_phi = fine_phi_;
   compute_normals_curvature_and_second_derivatives(set_second_derivatives);
+  if(interp_phi!=NULL)
+    delete  interp_phi;
+  interp_phi = new my_p4est_interpolation_nodes_t(fine_ngbd_n);
   if(set_second_derivatives)
     interp_phi->set_input(fine_phi, fine_phi_xxyyzz, quadratic_non_oscillatory);
   else
@@ -351,20 +551,24 @@ void my_p4est_two_phase_flows_t::set_velocities(CF_2* vnm1_omega_minus[P4EST_DIM
   compute_second_derivatives_of_n_and_nm1_velocities();
 }
 
-void my_p4est_two_phase_flows_t::compute_second_derivatives_of_n_and_nm1_velocities()
+void my_p4est_two_phase_flows_t::compute_second_derivatives_of_n_velocities()
 {
   PetscErrorCode ierr;
-  ierr = create_node_vector_if_needed(vnm1_nodes_omega_minus_xxyyzz, p4est_nm1, nodes_nm1, P4EST_DIM*P4EST_DIM);  CHKERRXX(ierr);
-  ierr = create_node_vector_if_needed(vnm1_nodes_omega_plus_xxyyzz, p4est_nm1, nodes_nm1, P4EST_DIM*P4EST_DIM);   CHKERRXX(ierr);
   ierr = create_node_vector_if_needed(vn_nodes_omega_minus_xxyyzz, p4est_n, nodes_n, P4EST_DIM*P4EST_DIM);        CHKERRXX(ierr);
   ierr = create_node_vector_if_needed(vn_nodes_omega_plus_xxyyzz, p4est_n, nodes_n, P4EST_DIM*P4EST_DIM);         CHKERRXX(ierr);
 
   Vec fields_to_differentiate[2] = {vn_nodes_omega_minus, vn_nodes_omega_plus};
   Vec second_derivatives[2] = {vn_nodes_omega_minus_xxyyzz, vn_nodes_omega_plus_xxyyzz};
   ngbd_n->second_derivatives_central(fields_to_differentiate, second_derivatives, 2, P4EST_DIM);
+}
+void my_p4est_two_phase_flows_t::compute_second_derivatives_of_nm1_velocities()
+{
+  PetscErrorCode ierr;
+  ierr = create_node_vector_if_needed(vnm1_nodes_omega_minus_xxyyzz, p4est_nm1, nodes_nm1, P4EST_DIM*P4EST_DIM);  CHKERRXX(ierr);
+  ierr = create_node_vector_if_needed(vnm1_nodes_omega_plus_xxyyzz, p4est_nm1, nodes_nm1, P4EST_DIM*P4EST_DIM);   CHKERRXX(ierr);
 
-  fields_to_differentiate[0] = vnm1_nodes_omega_minus; fields_to_differentiate[1] = vnm1_nodes_omega_plus;
-  second_derivatives[0] = vnm1_nodes_omega_minus_xxyyzz; second_derivatives[1] = vnm1_nodes_omega_plus_xxyyzz;
+  Vec fields_to_differentiate[2] = {vnm1_nodes_omega_minus, vnm1_nodes_omega_plus};
+  Vec second_derivatives[2] = {vnm1_nodes_omega_minus_xxyyzz, vnm1_nodes_omega_plus_xxyyzz};
   ngbd_nm1->second_derivatives_central(fields_to_differentiate, second_derivatives, 2, P4EST_DIM);
 }
 
@@ -374,14 +578,10 @@ void my_p4est_two_phase_flows_t::compute_normals_curvature_and_second_derivative
   // make sure normals are properly allocated
   // same for second derivatives if desired
   create_node_vector_if_needed(fine_normal, fine_p4est_n, fine_nodes_n, P4EST_DIM);
-  if(set_second_derivatives)
-  {
-    ierr = create_node_vector_if_needed(fine_phi_xxyyzz, fine_p4est_n, fine_nodes_n, P4EST_DIM); CHKERRXX(ierr);
-  }
-  else
-  {
-    ierr = delete_and_nullify_vector(fine_phi_xxyyzz); CHKERRXX(ierr);
-  }
+  if(set_second_derivatives){
+    ierr = create_node_vector_if_needed(fine_phi_xxyyzz, fine_p4est_n, fine_nodes_n, P4EST_DIM); CHKERRXX(ierr); }
+  else{
+    ierr = delete_and_nullify_vector(fine_phi_xxyyzz); CHKERRXX(ierr); }
   // get the normals now, and the second derivatives, if desired
   // get the pointers
   double *fine_normal_p, *fine_phi_xxyyzz_p;
@@ -389,7 +589,7 @@ void my_p4est_two_phase_flows_t::compute_normals_curvature_and_second_derivative
   ierr = VecGetArrayRead(fine_phi, &fine_phi_read_p); CHKERRXX(ierr);
   ierr = VecGetArray(fine_normal, &fine_normal_p); CHKERRXX(ierr);
   if(set_second_derivatives){
-    ierr = VecGetArray(fine_phi_xxyyzz, &fine_phi_xxyyzz_p); CHKERRXX(ierr);}
+    ierr = VecGetArray(fine_phi_xxyyzz, &fine_phi_xxyyzz_p); CHKERRXX(ierr); }
   else
     fine_phi_xxyyzz_p = NULL;
 
@@ -415,7 +615,7 @@ void my_p4est_two_phase_flows_t::compute_normals_curvature_and_second_derivative
   ierr = VecRestoreArrayRead(fine_phi, &fine_phi_read_p); CHKERRXX(ierr);
   ierr = VecRestoreArray(fine_normal, &fine_normal_p); CHKERRXX(ierr);
   if(set_second_derivatives){
-    ierr = VecRestoreArray(fine_phi_xxyyzz, &fine_phi_xxyyzz_p); CHKERRXX(ierr);}
+    ierr = VecRestoreArray(fine_phi_xxyyzz, &fine_phi_xxyyzz_p); CHKERRXX(ierr); }
   compute_curvature();
   normalize_normals();
 }
@@ -710,15 +910,43 @@ void my_p4est_two_phase_flows_t::compute_jumps_hodge()
   ierr = create_node_vector_if_needed(fine_jump_hodge, fine_p4est_n, fine_nodes_n);                   CHKERRXX(ierr);
   ierr = create_node_vector_if_needed(fine_jump_normal_flux_hodge, fine_p4est_n, fine_nodes_n);       CHKERRXX(ierr);
 
+
+  Vec grad_vn_nodes_minus = NULL;
+  Vec grad_vn_nodes_plus  = NULL;
+  ierr = create_node_vector_if_needed(grad_vn_nodes_minus,  p4est_n, nodes_n, P4EST_DIM*P4EST_DIM);
+  ierr = create_node_vector_if_needed(grad_vn_nodes_plus,   p4est_n, nodes_n, P4EST_DIM*P4EST_DIM);
+  Vec inputs[2] = {vn_nodes_omega_minus, vn_nodes_omega_plus};
+  Vec outputs[2] = {grad_vn_nodes_minus, grad_vn_nodes_plus};
+  ngbd_n->first_derivatives_central(inputs, outputs, 2, P4EST_DIM);
+  my_p4est_interpolation_nodes_t interp_grad_underlined_vn_nodes(ngbd_n);
+  interp_grad_underlined_vn_nodes.set_input(outputs, linear, 2, P4EST_DIM*P4EST_DIM);
+  double local_grad_v[2*P4EST_DIM*P4EST_DIM];
+
+  double xyz_node[P4EST_DIM];
   const double *fine_curvature_p;
+  const double *fine_normal_p;
+  const double *fine_mass_flux_p = NULL;
   double *fine_jump_hodge_p, *fine_jump_normal_flux_hodge_p;
   ierr = VecGetArray(fine_jump_hodge, &fine_jump_hodge_p);                              CHKERRXX(ierr);
   ierr = VecGetArray(fine_jump_normal_flux_hodge, &fine_jump_normal_flux_hodge_p);      CHKERRXX(ierr);
   ierr = VecGetArrayRead(fine_curvature, &fine_curvature_p);                            CHKERRXX(ierr);
+  ierr = VecGetArrayRead(fine_normal, &fine_normal_p);                                  CHKERRXX(ierr);
+  if(fine_mass_flux!=NULL){
+    ierr = VecGetArrayRead(fine_mass_flux, &fine_mass_flux_p);                          CHKERRXX(ierr); }
   for (unsigned int k = 0; k < fine_nodes_n->indep_nodes.elem_count; ++k) {
-    fine_jump_hodge_p[k] = surface_tension*fine_curvature_p[k]*dt_n/(BDF_alpha());
+    node_xyz_fr_n(k, fine_p4est_n, fine_nodes_n, xyz_node);
+    interp_grad_underlined_vn_nodes(xyz_node, local_grad_v);
+    double jump_two_mu_nEn = 0.0;
+    size_t position = P4EST_DIM*k;
+    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+      for (unsigned char der = 0; der < P4EST_DIM; ++der)
+        jump_two_mu_nEn += 2.0*fine_normal_p[position+der]*(mu_plus*local_grad_v[P4EST_DIM*P4EST_DIM+P4EST_DIM*dir+der]-mu_minus*local_grad_v[P4EST_DIM*dir+der])*fine_normal_p[position+dir];
+    fine_jump_hodge_p[k] = (-surface_tension*fine_curvature_p[k] + jump_two_mu_nEn - ((fine_mass_flux_p!=NULL)? (SQR(fine_mass_flux_p[k])*jump_inverse_mass_density()): 0.0))*dt_n/(BDF_alpha());
     fine_jump_normal_flux_hodge_p[k] = 0.0;
   }
+  if(fine_mass_flux_p!=NULL){
+    ierr = VecRestoreArrayRead(fine_mass_flux, &fine_mass_flux_p);                      CHKERRXX(ierr); }
+  ierr = VecRestoreArrayRead(fine_normal, &fine_normal_p);                              CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(fine_curvature, &fine_curvature_p);                        CHKERRXX(ierr);
   ierr = VecRestoreArray(fine_jump_hodge, &fine_jump_hodge_p);                          CHKERRXX(ierr);
   ierr = VecRestoreArray(fine_jump_normal_flux_hodge, &fine_jump_normal_flux_hodge_p);  CHKERRXX(ierr);
@@ -737,6 +965,7 @@ void my_p4est_two_phase_flows_t::solve_viscosity_explicit()
   ierr = VecGetArrayRead(fine_phi, &fine_phi_p); CHKERRXX(ierr);
 
   /* construct the right hand side */
+
   if(!semi_lagrangian_backtrace_is_done)
   {
     trajectory_from_all_faces_two_phases(p4est_n, faces_n, ngbd_nm1, ngbd_n, fine_phi_p,
@@ -747,6 +976,7 @@ void my_p4est_two_phase_flows_t::solve_viscosity_explicit()
                                          dt_nm1, dt_n, xyz_n, ((sl_order ==2)? xyz_nm1 : NULL));
     semi_lagrangian_backtrace_is_done = true;
   }
+
   const double *fine_phi_xxyyzz_p = NULL;
   const double *fine_jump_mu_grad_v_p = NULL;
   ierr = VecGetArrayRead(fine_jump_mu_grad_v, &fine_jump_mu_grad_v_p); CHKERRXX(ierr);
@@ -1224,7 +1454,7 @@ void my_p4est_two_phase_flows_t::sharp_derivative_of_face_field(sharp_derivative
       theta = ((phi_face>0.0)? (1.0-theta):theta);
       theta = ((theta < EPS)?0.0:MIN(theta, 1.0));
       jump_flux_comp_across = (1.0-theta)*fine_jump_mu_grad_vdir_p[P4EST_DIM*P4EST_DIM*fine_idx_of_face+P4EST_DIM*dir+(der/2)] + theta*fine_jump_mu_grad_vdir_p[P4EST_DIM*P4EST_DIM*fine_intermediary_node+P4EST_DIM*dir+(der/2)];
-      jump_v_dir            = ((fine_mass_flux_p == NULL)? 0.0 : (((1.0-theta)*fine_mass_flux_p[fine_idx_of_face]*fine_normal_dir_p[fine_idx_of_face] + theta*fine_mass_flux_p[fine_intermediary_node]*fine_normal_dir_p[fine_intermediary_node])*inverse_mass_density_jump()));
+      jump_v_dir            = ((fine_mass_flux_p == NULL)? 0.0 : (((1.0-theta)*fine_mass_flux_p[fine_idx_of_face]*fine_normal_dir_p[fine_idx_of_face] + theta*fine_mass_flux_p[fine_intermediary_node]*fine_normal_dir_p[fine_intermediary_node])*jump_inverse_mass_density()));
       theta *= 0.5;
     }
     else
@@ -1237,7 +1467,7 @@ void my_p4est_two_phase_flows_t::sharp_derivative_of_face_field(sharp_derivative
       theta = ((phi_intermediary>0.0)? (1.0-theta):theta);
       theta = ((theta < EPS)?0.0:MIN(theta, 1.0));
       jump_flux_comp_across = (1.0-theta)*fine_jump_mu_grad_vdir_p[P4EST_DIM*P4EST_DIM*fine_intermediary_node+P4EST_DIM*dir+(der/2)] + theta*fine_jump_mu_grad_vdir_p[P4EST_DIM*P4EST_DIM*fine_idx_of_other_face+P4EST_DIM*dir+(der/2)];
-      jump_v_dir            = ((fine_mass_flux_p == NULL)? 0.0 : (((1.0-theta)*fine_mass_flux_p[fine_intermediary_node]*fine_normal_dir_p[fine_intermediary_node] + theta*fine_mass_flux_p[fine_idx_of_other_face]*fine_normal_dir_p[fine_idx_of_other_face])*inverse_mass_density_jump()));
+      jump_v_dir            = ((fine_mass_flux_p == NULL)? 0.0 : (((1.0-theta)*fine_mass_flux_p[fine_intermediary_node]*fine_normal_dir_p[fine_intermediary_node] + theta*fine_mass_flux_p[fine_idx_of_other_face]*fine_normal_dir_p[fine_idx_of_other_face])*jump_inverse_mass_density()));
       theta = 0.5*(1.0+theta);
     }
     P4EST_ASSERT((theta >=0.0) && (theta <=1.0));
@@ -1323,7 +1553,7 @@ void my_p4est_two_phase_flows_t::get_velocity_seen_from_face(neighbor_value &nei
       theta = ((phi_face>0.0)? (1.0-theta):theta);
       theta = ((theta < EPS)?0.0:MIN(theta, 1.0));
       jump_flux_comp_across = (1.0-theta)*fine_jump_mu_grad_vdir_p[P4EST_DIM*P4EST_DIM*fine_idx_of_face+P4EST_DIM*dir+(der/2)] + theta*fine_jump_mu_grad_vdir_p[P4EST_DIM*P4EST_DIM*fine_intermediary_node+P4EST_DIM*dir+(der/2)];
-      jump_v_dir            = ((fine_mass_flux_p == NULL)? 0.0 : (((1.0-theta)*fine_mass_flux_p[fine_idx_of_face]*fine_normal_dir_p[fine_idx_of_face] + theta*fine_mass_flux_p[fine_intermediary_node]*fine_normal_dir_p[fine_intermediary_node])*inverse_mass_density_jump()));
+      jump_v_dir            = ((fine_mass_flux_p == NULL)? 0.0 : (((1.0-theta)*fine_mass_flux_p[fine_idx_of_face]*fine_normal_dir_p[fine_idx_of_face] + theta*fine_mass_flux_p[fine_intermediary_node]*fine_normal_dir_p[fine_intermediary_node])*jump_inverse_mass_density()));
       theta *= 0.5;
     }
     else
@@ -1336,7 +1566,7 @@ void my_p4est_two_phase_flows_t::get_velocity_seen_from_face(neighbor_value &nei
       theta = ((phi_intermediary>0.0)? (1.0-theta):theta);
       theta = ((theta < EPS)?0.0:MIN(theta, 1.0));
       jump_flux_comp_across = (1.0-theta)*fine_jump_mu_grad_vdir_p[P4EST_DIM*P4EST_DIM*fine_intermediary_node+P4EST_DIM*dir+(der/2)] + theta*fine_jump_mu_grad_vdir_p[P4EST_DIM*P4EST_DIM*fine_idx_of_face+P4EST_DIM*dir+(der/2)];
-      jump_v_dir            = ((fine_mass_flux_p == NULL)? 0.0 : (((1.0-theta)*fine_mass_flux_p[fine_intermediary_node]*fine_normal_dir_p[fine_intermediary_node] + theta*fine_mass_flux_p[fine_idx_of_other_face]*fine_normal_dir_p[fine_idx_of_other_face])*inverse_mass_density_jump()));
+      jump_v_dir            = ((fine_mass_flux_p == NULL)? 0.0 : (((1.0-theta)*fine_mass_flux_p[fine_intermediary_node]*fine_normal_dir_p[fine_intermediary_node] + theta*fine_mass_flux_p[fine_idx_of_other_face]*fine_normal_dir_p[fine_idx_of_other_face])*jump_inverse_mass_density()));
       theta = 0.5*(1.0+theta);
     }
     P4EST_ASSERT((theta >=0.0) && (theta <=1.0));
@@ -1373,6 +1603,8 @@ void my_p4est_two_phase_flows_t::compute_velocity_at_nodes()
   ierr = VecGetArray(vnp1_nodes_omega_minus, &v_nodes_omega_minus_p);   CHKERRXX(ierr);
   ierr = VecGetArray(vnp1_nodes_omega_plus, &v_nodes_omega_plus_p);     CHKERRXX(ierr);
 
+  max_L2_norm_u_minus = max_L2_norm_u_plus = 0.0;
+
   for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
     ierr = VecGetArrayRead(vnp1_plus[dir], &vnp1_plus_p[dir]); CHKERRXX(ierr);
     ierr = VecGetArrayRead(vnp1_minus[dir], &vnp1_minus_p[dir]); CHKERRXX(ierr);
@@ -1402,9 +1634,8 @@ void my_p4est_two_phase_flows_t::compute_velocity_at_nodes()
     ierr = VecRestoreArrayRead(vnp1_plus[dir], &vnp1_plus_p[dir]);    CHKERRXX(ierr);
     ierr = VecRestoreArrayRead(vnp1_minus[dir], &vnp1_minus_p[dir]);  CHKERRXX(ierr);
   }
-
-  //  compute_vorticity();
-  //  compute_max_L2_norm_u();
+  create_node_vector_if_needed(vorticities, p4est_n, nodes_n, 2);
+  compute_vorticities();
 }
 
 void my_p4est_two_phase_flows_t::interpolate_velocity_at_node(const p4est_locidx_t &node_idx, double *v_nodes_omega_plus_p, double *v_nodes_omega_minus_p,
@@ -1423,13 +1654,16 @@ void my_p4est_two_phase_flows_t::interpolate_velocity_at_node(const p4est_locidx
 
   vector<bool> velocity_component_is_set(2*P4EST_DIM, false); // P4EST_DIM for minus components + P4EST_DIM for plus components
 
+  double mag_v_minus = 0.0;
+  double mag_v_plus = 0.0;
+
   if(bc_v!=NULL && is_node_Wall(p4est_n, node))
     for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
       if(bc_v[dir].wallType(xyz)==DIRICHLET)
       {
-        v_nodes_omega_minus_p[P4EST_DIM*node_idx+dir] = bc_v[dir].wallValue(xyz);
+        v_nodes_omega_minus_p[P4EST_DIM*node_idx+dir] = bc_v[dir].wallValue(xyz); mag_v_minus += SQR(v_nodes_omega_minus_p[P4EST_DIM*node_idx+dir]);
         velocity_component_is_set[dir]                = true;
-        v_nodes_omega_plus_p[P4EST_DIM*node_idx+dir]  = bc_v[dir].wallValue(xyz);
+        v_nodes_omega_plus_p[P4EST_DIM*node_idx+dir]  = bc_v[dir].wallValue(xyz); mag_v_plus += SQR(v_nodes_omega_plus_p[P4EST_DIM*node_idx+dir]);
         velocity_component_is_set[P4EST_DIM+dir]      = true;
       }
 
@@ -1506,6 +1740,7 @@ void my_p4est_two_phase_flows_t::interpolate_velocity_at_node(const p4est_locidx
 
       const double *face_field_to_interpolate = ((sign == 0)? vnp1_minus_p[dir]: vnp1_plus_p[dir]);
       double *result_field = ((sign == 0)? v_nodes_omega_minus_p: v_nodes_omega_plus_p);
+      double &mag_v = ((sign == 0)? mag_v_minus: mag_v_plus);
 
       matrix_t        A_lsqr;
       vector<double>  rhs_lsqr;
@@ -1532,7 +1767,8 @@ void my_p4est_two_phase_flows_t::interpolate_velocity_at_node(const p4est_locidx
       }
       if(row_idx == 0)
       {
-        result_field[P4EST_DIM*node_idx+dir] = /*-36.0; */ NAN /*threshold_dbl_max*/; // absurd value for undefined interpolated field (e.g. vn_minus far in omega plus --> no well-defined neighbor to be found so move on)
+        result_field[P4EST_DIM*node_idx+dir] = NAN; // absurd value for undefined interpolated field (e.g. vn_minus far in omega plus --> no well-defined neighbor to be found so move on)
+        mag_v = NAN;
         continue;
       }
 
@@ -1545,7 +1781,7 @@ void my_p4est_two_phase_flows_t::interpolate_velocity_at_node(const p4est_locidx
           continue;
 
         double xyz_t[P4EST_DIM];
-        __int64_t logical_qcoord_diff[P4EST_DIM];
+        int64_t logical_qcoord_diff[P4EST_DIM];
         faces_n->rel_xyz_face_fr_node(neighbor_face, dir, xyz_t, xyz, node, brick, logical_qcoord_diff);
 
         for(unsigned char i=0; i<P4EST_DIM; ++i)
@@ -1588,8 +1824,78 @@ void my_p4est_two_phase_flows_t::interpolate_velocity_at_node(const p4est_locidx
 #else
       result_field[P4EST_DIM*node_idx+dir] = solve_lsqr_system(A_lsqr, rhs_lsqr, nb[0].size(), nb[1].size(), 2);
 #endif
+      if (!ISNAN(mag_v))
+        mag_v += SQR(result_field[P4EST_DIM*node_idx+dir]);
     }
   }
+  if (!ISNAN(mag_v_minus))
+    max_L2_norm_u_minus = MAX(max_L2_norm_u_minus,  mag_v_minus);
+  if (!ISNAN(mag_v_plus))
+    max_L2_norm_u_plus  = MAX(max_L2_norm_u_plus,   mag_v_plus);
+}
+
+void my_p4est_two_phase_flows_t::compute_vorticities()
+{
+  PetscErrorCode ierr;
+
+  const quad_neighbor_nodes_of_node_t *qnnn;
+
+  const double *vnp1_minus_p, *vnp1_plus_p;
+  ierr = VecGetArrayRead(vnp1_nodes_omega_minus,  &vnp1_minus_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(vnp1_nodes_omega_plus,   &vnp1_plus_p); CHKERRXX(ierr);
+  const double *inputs[2] = {vnp1_minus_p, vnp1_plus_p};
+
+  double *vorticities_p;
+  ierr = VecGetArray(vorticities, &vorticities_p); CHKERRXX(ierr);
+  double vel_grad_minus[P4EST_DIM*P4EST_DIM], vel_grad_plus[P4EST_DIM*P4EST_DIM];
+  double *outputs[2] = {vel_grad_minus, vel_grad_plus};
+
+  for(size_t i=0; i<ngbd_n->get_layer_size(); ++i)
+  {
+    p4est_locidx_t n    = ngbd_n->get_layer_node(i);
+    p4est_locidx_t twon = 2*n;
+    ngbd_n->get_neighbors(n, qnnn);
+    qnnn->gradient_all_components(inputs, outputs, 2, P4EST_DIM);
+#ifdef P4_TO_P8
+    double vx_plus        = vel_grad_plus[P4EST_DIM*dir::z+dir::y]  - vel_grad_plus[P4EST_DIM*dir::y+dir::z];
+    double vx_minus       = vel_grad_minus[P4EST_DIM*dir::z+dir::y] - vel_grad_minus[P4EST_DIM*dir::y+dir::z];
+    double vy_plus        = vel_grad_plus[P4EST_DIM*dir::x+dir::z]  - vel_grad_plus[P4EST_DIM*dir::z+dir::x];
+    double vy_minus       = vel_grad_minus[P4EST_DIM*dir::x+dir::z] - vel_grad_minus[P4EST_DIM*dir::z+dir::x];
+    double vz_plus        = vel_grad_plus[P4EST_DIM*dir::y+dir::x]  - vel_grad_plus[P4EST_DIM*dir::x+dir::y];
+    double vz_minus       = vel_grad_minus[P4EST_DIM*dir::y+dir::x] - vel_grad_minus[P4EST_DIM*dir::x+dir::y];
+    vorticities_p[twon]   = sqrt(SQR(vx_minus) + SQR(vy_minus) + SQR(vz_minus));
+    vorticities_p[twon+1] = sqrt(SQR(vx_plus) + SQR(vy_plus) + SQR(vz_plus));
+#else
+    vorticities_p[twon]   = vel_grad_minus[P4EST_DIM*dir::y+dir::x] - vel_grad_minus[P4EST_DIM*dir::x+dir::y];
+    vorticities_p[twon+1] = vel_grad_plus[P4EST_DIM*dir::y+dir::x]  - vel_grad_plus[P4EST_DIM*dir::x+dir::y];
+#endif
+  }
+  ierr = VecGhostUpdateBegin(vorticities, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  for(size_t i=0; i<ngbd_n->get_local_size(); ++i)
+  {
+    p4est_locidx_t n = ngbd_n->get_local_node(i);
+    p4est_locidx_t twon = 2*n;
+    ngbd_n->get_neighbors(n, qnnn);
+    qnnn->gradient_all_components(inputs, outputs, 2, P4EST_DIM);
+#ifdef P4_TO_P8
+    double vx_plus        = vel_grad_plus[P4EST_DIM*dir::z+dir::y]  - vel_grad_plus[P4EST_DIM*dir::y+dir::z];
+    double vx_minus       = vel_grad_minus[P4EST_DIM*dir::z+dir::y] - vel_grad_minus[P4EST_DIM*dir::y+dir::z];
+    double vy_plus        = vel_grad_plus[P4EST_DIM*dir::x+dir::z]  - vel_grad_plus[P4EST_DIM*dir::z+dir::x];
+    double vy_minus       = vel_grad_minus[P4EST_DIM*dir::x+dir::z] - vel_grad_minus[P4EST_DIM*dir::z+dir::x];
+    double vz_plus        = vel_grad_plus[P4EST_DIM*dir::y+dir::x]  - vel_grad_plus[P4EST_DIM*dir::x+dir::y];
+    double vz_minus       = vel_grad_minus[P4EST_DIM*dir::y+dir::x] - vel_grad_minus[P4EST_DIM*dir::x+dir::y];
+    vorticities_p[twon]   = sqrt(SQR(vx_minus) + SQR(vy_minus) + SQR(vz_minus));
+    vorticities_p[twon+1] = sqrt(SQR(vx_plus) + SQR(vy_plus) + SQR(vz_plus));
+#else
+    vorticities_p[twon]   = vel_grad_minus[P4EST_DIM*dir::y+dir::x] - vel_grad_minus[P4EST_DIM*dir::x+dir::y];
+    vorticities_p[twon+1] = vel_grad_plus[P4EST_DIM*dir::y+dir::x]  - vel_grad_plus[P4EST_DIM*dir::x+dir::y];
+#endif
+  }
+  ierr = VecGhostUpdateEnd(vorticities, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+  ierr = VecRestoreArray(vorticities, &vorticities_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(vnp1_nodes_omega_plus,   &vnp1_plus_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(vnp1_nodes_omega_minus,  &vnp1_minus_p); CHKERRXX(ierr);
 }
 
 void my_p4est_two_phase_flows_t::extrapolate_velocities_across_interface_in_finest_computational_cells_Aslam_PDE(const extrapolation_technique& extrapolation_method, const unsigned int& n_iterations)
@@ -2059,7 +2365,6 @@ void my_p4est_two_phase_flows_t::trajectory_from_all_faces_two_phases(p4est_t *p
   }
   interp_np1_omega_minus.interpolate(vnp1.data());
   interp_np1_omega_plus.interpolate(vnp1.data());
-
   /* find xyz_star */
   my_p4est_interpolation_nodes_t interp_nm1_omega_minus(ngbd_nm1), interp_nm1_omega_plus(ngbd_nm1);
   my_p4est_interpolation_nodes_t interp_n_omega_minus  (ngbd_n  ), interp_n_omega_plus  (ngbd_n  );
@@ -2068,12 +2373,8 @@ void my_p4est_two_phase_flows_t::trajectory_from_all_faces_two_phases(p4est_t *p
   for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
     for (p4est_locidx_t f_idx = 0; f_idx < faces_n->num_local[dir]; ++f_idx) {
       for (unsigned char comp = 0; comp < P4EST_DIM; ++comp)
-      {
         xyz_star[comp] = xyz_np1[P4EST_DIM*serialized_offset+P4EST_DIM*f_idx+comp] - 0.5*dt_n*vnp1[P4EST_DIM*serialized_offset+P4EST_DIM*f_idx+comp];
-        if      (is_periodic(p4est_n,comp) && xyz_star[comp]<xyz_min[comp]) xyz_star[comp] += xyz_max[comp]-xyz_min[comp];
-        else if (is_periodic(p4est_n,comp) && xyz_star[comp]>xyz_max[comp]) xyz_star[comp] -= xyz_max[comp]-xyz_min[comp];
-        else                                                                xyz_star[comp] = MAX(xyz_min[comp], MIN(xyz_max[comp], xyz_star[comp]));
-      }
+      clip_in_domain(xyz_star, xyz_min, xyz_max, periodic);
       if(from_omega_minus[serialized_offset+f_idx])
       {
         interp_nm1_omega_minus.add_point(serialized_offset+f_idx, xyz_star);
@@ -2120,12 +2421,8 @@ void my_p4est_two_phase_flows_t::trajectory_from_all_faces_two_phases(p4est_t *p
     xyz_n[dir].resize(P4EST_DIM*faces_n->num_local[dir]);
     for (p4est_locidx_t f_idx = 0; f_idx < faces_n->num_local[dir]; ++f_idx) {
       for (unsigned char comp = 0; comp < P4EST_DIM; ++comp)
-      {
         xyz_n[dir][P4EST_DIM*f_idx+comp] = xyz_np1[P4EST_DIM*serialized_offset+P4EST_DIM*f_idx+comp] - dt_n*((1.0+.5*dt_n/dt_nm1)*vn_star[P4EST_DIM*serialized_offset+P4EST_DIM*f_idx+comp] - .5*(dt_n/dt_nm1)*vnm1_star[P4EST_DIM*serialized_offset+P4EST_DIM*f_idx+comp]);
-        if      (is_periodic(p4est_n,comp) && xyz_n[dir][P4EST_DIM*f_idx+comp]<xyz_min[comp]) xyz_n[dir][P4EST_DIM*f_idx+comp] += xyz_max[comp]-xyz_min[comp];
-        else if (is_periodic(p4est_n,comp) && xyz_n[dir][P4EST_DIM*f_idx+comp]>xyz_max[comp]) xyz_n[dir][P4EST_DIM*f_idx+comp] -= xyz_max[comp]-xyz_min[comp];
-        else                                                                                  xyz_n[dir][P4EST_DIM*f_idx+comp] = MAX(xyz_min[comp], MIN(xyz_max[comp], xyz_n[dir][P4EST_DIM*f_idx+comp]));
-      }
+      clip_in_domain(&xyz_n[dir][P4EST_DIM*f_idx], xyz_min, xyz_max, periodic);
     }
     serialized_offset += faces_n->num_local[dir];
   }
@@ -2206,5 +2503,641 @@ void my_p4est_two_phase_flows_t::trajectory_from_all_faces_two_phases(p4est_t *p
   }
 
   ierr = PetscLogEventEnd(log_my_p4est_two_phase_trajectory_of_all_faces, 0, 0, 0, 0); CHKERRXX(ierr);
+}
+
+void my_p4est_two_phase_flows_t::set_interface_velocity()
+{
+  PetscErrorCode ierr;
+  ierr = create_node_vector_if_needed(interface_velocity_np1, p4est_n, nodes_n, P4EST_DIM); CHKERRXX(ierr);
+  double *interface_velocity_np1_p          = NULL;
+  const double *underlined_fluid_velocity_p = NULL;
+  const double *overlined_fluid_velocity_p  = NULL;
+  const double *fine_mass_flux_p            = NULL;
+  const double *fine_normal_p               = NULL;
+  ierr = VecGetArray(interface_velocity_np1, &interface_velocity_np1_p); CHKERRXX(ierr);
+  const domain_side u_side = underlined_side(velocity_field);
+  const domain_side o_side = (u_side==OMEGA_MINUS)? OMEGA_PLUS : OMEGA_MINUS;
+  ierr = VecGetArrayRead((u_side==OMEGA_PLUS? vnp1_nodes_omega_plus  : vnp1_nodes_omega_minus),  &underlined_fluid_velocity_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead((u_side==OMEGA_PLUS? vnp1_nodes_omega_minus : vnp1_nodes_omega_plus),   &overlined_fluid_velocity_p); CHKERRXX(ierr);
+  if(fine_mass_flux!=NULL){
+    ierr = VecGetArrayRead(fine_mass_flux, &fine_mass_flux_p); CHKERRXX(ierr);
+    ierr = VecGetArrayRead(fine_normal, &fine_normal_p); CHKERRXX(ierr);
+  }
+  for (size_t k = 0; k < ngbd_n->get_layer_size(); ++k) {
+    p4est_locidx_t n = ngbd_n->get_layer_node(k);
+    p4est_locidx_t fine_node_idx;
+    size_t position = P4EST_DIM*n;
+    bool u_side_is_good = true;
+    for (unsigned char dir = 0; u_side_is_good && (dir < P4EST_DIM); ++dir)
+      u_side_is_good = !ISNAN(underlined_fluid_velocity_p[position+dir]);
+    domain_side side_to_choose = u_side_is_good? u_side : o_side;
+#ifdef DEBUG
+    bool side_to_choose_is_good = true;
+    for (unsigned char dir = 0; side_to_choose_is_good && (dir < P4EST_DIM); ++dir)
+      side_to_choose_is_good = !ISNAN((side_to_choose==u_side)? underlined_fluid_velocity_p[position+dir] : overlined_fluid_velocity_p[position+dir]);
+    P4EST_ASSERT(side_to_choose_is_good);
+#endif
+    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+      interface_velocity_np1_p[position+dir] = (side_to_choose==u_side? underlined_fluid_velocity_p[position+dir] : overlined_fluid_velocity_p[position+dir]);
+    if(fine_mass_flux!=NULL && get_fine_node_idx_node(n, fine_node_idx))
+    {
+      size_t fine_position = P4EST_DIM*fine_node_idx;
+      for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+        interface_velocity_np1_p[position+dir] -= (fine_mass_flux_p[fine_position+dir]*fine_normal_p[fine_position+dir]/(side_to_choose==OMEGA_MINUS?rho_minus:rho_plus));
+    }
+  }
+  ierr = VecGhostUpdateBegin(interface_velocity_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  for (size_t k = 0; k < ngbd_n->get_local_size(); ++k) {
+    p4est_locidx_t n = ngbd_n->get_local_node(k);
+    p4est_locidx_t fine_node_idx;
+    size_t position = P4EST_DIM*n;
+    bool u_side_is_good = true;
+    for (unsigned char dir = 0; u_side_is_good && (dir < P4EST_DIM); ++dir)
+      u_side_is_good = !ISNAN(underlined_fluid_velocity_p[position+dir]);
+    domain_side side_to_choose = u_side_is_good? u_side : o_side;
+#ifdef DEBUG
+    bool side_to_choose_is_good = true;
+    for (unsigned char dir = 0; side_to_choose_is_good && (dir < P4EST_DIM); ++dir)
+      side_to_choose_is_good = !ISNAN((side_to_choose==u_side)? underlined_fluid_velocity_p[position+dir] : overlined_fluid_velocity_p[position+dir]);
+    P4EST_ASSERT(side_to_choose_is_good);
+#endif
+    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+      interface_velocity_np1_p[position+dir] = (side_to_choose==u_side? underlined_fluid_velocity_p[position+dir] : overlined_fluid_velocity_p[position+dir]);
+    if(fine_mass_flux!=NULL && get_fine_node_idx_node(n, fine_node_idx))
+    {
+      size_t fine_position = P4EST_DIM*fine_node_idx;
+      for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+        interface_velocity_np1_p[position+dir] -= (fine_mass_flux_p[fine_position+dir]*fine_normal_p[fine_position+dir]/(side_to_choose==OMEGA_MINUS?rho_minus:rho_plus));
+    }
+  }
+  ierr = VecGhostUpdateEnd(interface_velocity_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  my_p4est_level_set_t ls(ngbd_n);
+
+  ierr = create_node_vector_if_needed(interface_velocity_np1_xxyyzz, p4est_n, nodes_n, P4EST_DIM*P4EST_DIM); CHKERRXX(ierr);
+  ngbd_n->second_derivatives_central(interface_velocity_np1, interface_velocity_np1_xxyyzz, P4EST_DIM);
+
+  if(fine_mass_flux!=NULL){
+    ierr = VecRestoreArrayRead(fine_normal, &fine_normal_p); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(fine_mass_flux, &fine_mass_flux_p); CHKERRXX(ierr);
+  }
+  ierr = VecRestoreArrayRead((u_side==OMEGA_PLUS? vnp1_nodes_omega_plus  : vnp1_nodes_omega_minus),  &underlined_fluid_velocity_p);  CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead((u_side==OMEGA_PLUS? vnp1_nodes_omega_minus : vnp1_nodes_omega_plus),   &overlined_fluid_velocity_p);   CHKERRXX(ierr);
+  ierr = VecRestoreArray(interface_velocity_np1, &interface_velocity_np1_p); CHKERRXX(ierr);
+}
+
+void my_p4est_two_phase_flows_t::advect_interface(p4est_t *fine_p4est_np1, p4est_nodes_t *fine_nodes_np1, Vec fine_phi_np1,
+                                                  p4est_nodes_t *known_nodes, Vec known_phi_np1)
+{
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_two_phase_advect_interface, 0, 0, 0, 0); CHKERRXX(ierr);
+  P4EST_ASSERT(known_nodes!=NULL);
+
+  my_p4est_interpolation_nodes_t interp_n(ngbd_nm1); // yes, it's normal: we are in the process of advancing time...
+  my_p4est_interpolation_nodes_t interp_np1(ngbd_n); // yes, it's normal: we are in the process of advancing time...
+
+  std::vector<double> v_tmp_n;
+  std::vector<double> v_tmp_np1;
+  std::vector<size_t> already_known(0);
+  p4est_locidx_t origin_local_idx;
+  const p4est_quadrant_t *node = NULL;
+  const double *known_phi_np1_p = NULL;
+  double *fine_phi_np1_p = NULL;
+  if(known_phi_np1!=NULL)
+  {
+    ierr = VecGetArrayRead(known_phi_np1, &known_phi_np1_p); CHKERRXX(ierr);
+    ierr = VecGetArray(fine_phi_np1, &fine_phi_np1_p); CHKERRXX(ierr);
+  }
+
+  /* find the velocity field at time np1 */
+  size_t to_compute = 0;
+  for (size_t n=0; n < fine_nodes_np1->indep_nodes.elem_count; ++n)
+  {
+    if(known_phi_np1!=NULL)
+    {
+      node = ((const p4est_quadrant_t*) sc_array_index(&fine_nodes_np1->indep_nodes, n));
+      P4EST_ASSERT (p4est_quadrant_is_node (node, 1));
+    }
+    if((node != NULL) && index_of_node(node, known_nodes, origin_local_idx))
+    {
+      fine_phi_np1_p[n] = known_phi_np1_p[origin_local_idx];
+      already_known.push_back(n);
+    }
+    else
+    {
+      double xyz[P4EST_DIM];
+      node_xyz_fr_n(n, fine_p4est_np1, fine_nodes_np1, xyz);
+      interp_np1.add_point(to_compute++, xyz);
+    }
+  }
+  P4EST_ASSERT(to_compute+already_known.size() == fine_nodes_np1->indep_nodes.elem_count);
+
+  v_tmp_np1.resize(P4EST_DIM*to_compute);
+  interp_np1.set_input(interface_velocity_np1, interface_velocity_np1_xxyyzz, quadratic, P4EST_DIM);
+  interp_np1.interpolate(v_tmp_np1.data());
+  interp_np1.clear();
+
+  /* now find x_star */
+  size_t known_idx = 0;
+  to_compute = 0;
+  for (size_t n=0; n < fine_nodes_np1->indep_nodes.elem_count; ++n)
+  {
+    if((known_phi_np1!=NULL) && (n == already_known[known_idx]))
+    {
+      known_idx++;
+      continue;
+    }
+    double xyz_star[P4EST_DIM];
+    node_xyz_fr_n(n, fine_p4est_np1, fine_nodes_np1, xyz_star);
+    size_t position = P4EST_DIM*to_compute;
+    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+      xyz_star[dir] -= .5*dt_n*v_tmp_np1[position+dir];
+    clip_in_domain(xyz_star, xyz_min, xyz_max, periodic);
+
+    interp_np1. add_point(to_compute, xyz_star);
+    interp_n.   add_point(to_compute, xyz_star);
+    to_compute++;
+  }
+  P4EST_ASSERT(to_compute+known_idx == fine_nodes_np1->indep_nodes.elem_count);
+
+  /* interpolate vnm1 */
+  v_tmp_n.resize(P4EST_DIM*to_compute);
+  interp_n.set_input(interface_velocity_n, interface_velocity_n_xxyyzz, quadratic, P4EST_DIM);
+  interp_n.interpolate(v_tmp_n.data());
+  interp_n.clear();
+  interp_np1.set_input(interface_velocity_np1, interface_velocity_np1_xxyyzz, quadratic, P4EST_DIM);
+  interp_np1.interpolate(v_tmp_np1.data());
+  interp_np1.clear();
+
+  /* finally, find the backtracing value */
+  /* find the departure node via backtracing */
+  double v_star[P4EST_DIM];
+  known_idx = 0;
+  to_compute = 0;
+  for (size_t n=0; n < fine_nodes_np1->indep_nodes.elem_count; ++n)
+  {
+    if((known_phi_np1!=NULL) && (n == already_known[known_idx]))
+    {
+      known_idx++;
+      continue;
+    }
+    size_t position = P4EST_DIM*to_compute;
+    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir){
+      v_star[dir] = (1.0 + 0.5*dt_n/dt_nm1)*v_tmp_np1[position+dir] - 0.5*dt_n/dt_nm1*v_tmp_n[position+dir];
+
+    }
+
+    double xyz_d[P4EST_DIM]; node_xyz_fr_n(n, fine_p4est_np1, fine_nodes_np1, xyz_d);
+    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+      xyz_d[dir] -= dt_n*v_star[dir];
+    clip_in_domain(xyz_d, xyz_min, xyz_max, periodic);
+
+    interp_phi->add_point(n, xyz_d);
+    to_compute++;
+  }
+  P4EST_ASSERT(to_compute+known_idx == fine_nodes_np1->indep_nodes.elem_count);
+
+  interp_phi->interpolate(fine_phi_np1);
+  interp_phi->clear(); // to clear the buffers
+  // reset inputs
+  if(fine_phi_xxyyzz!=NULL)
+    interp_phi->set_input(fine_phi, fine_phi_xxyyzz, quadratic_non_oscillatory);
+  else
+    interp_phi->set_input(fine_phi, linear);
+
+  ierr = PetscLogEventEnd(log_my_p4est_two_phase_advect_interface, 0, 0, 0, 0); CHKERRXX(ierr);
+}
+
+void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1()
+{
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_two_phase_advect_update, 0, 0, 0, 0); CHKERRXX(ierr);
+
+  if(!dt_updated)
+    compute_dt();
+  dt_updated = false;
+
+  set_interface_velocity();
+  if(interface_velocity_n == NULL && interface_velocity_n_xxyyzz == NULL)
+  {
+    ierr = create_node_vector_if_needed(interface_velocity_n, p4est_nm1, nodes_nm1, P4EST_DIM);
+    ierr = create_node_vector_if_needed(interface_velocity_n_xxyyzz, p4est_nm1, nodes_nm1, P4EST_DIM*P4EST_DIM);
+    Vec loc_interface_velocity_n, loc_interface_velocity_n_xxyyzz;
+    ierr = VecGhostGetLocalForm(interface_velocity_n, &loc_interface_velocity_n); CHKERRXX(ierr);
+    ierr = VecGhostGetLocalForm(interface_velocity_n_xxyyzz, &loc_interface_velocity_n_xxyyzz); CHKERRXX(ierr);
+    ierr = VecSet(loc_interface_velocity_n, 0.0); CHKERRXX(ierr);
+    ierr = VecSet(loc_interface_velocity_n_xxyyzz, 0.0); CHKERRXX(ierr);
+    ierr = VecGhostRestoreLocalForm(interface_velocity_n_xxyyzz, &loc_interface_velocity_n_xxyyzz); CHKERRXX(ierr);
+    ierr = VecGhostRestoreLocalForm(interface_velocity_n, &loc_interface_velocity_n); CHKERRXX(ierr);
+  }
+
+  // find the np1 computational grid
+  splitting_criteria_computational_grid_two_phase_t criterion_computational_grid(this);
+  // if max_lvl==min_lvl, the computational grid is uniform and we don't have to worry about adapting it, so define
+  bool iterative_grid_update_converged = (criterion_computational_grid.max_lvl == criterion_computational_grid.min_lvl);
+  /* initialize the new forest */
+  p4est_t *p4est_np1                  = iterative_grid_update_converged? p4est_n : p4est_copy(p4est_n, P4EST_FALSE); // no need to copy if no need to refine/coarsen, otherwise very efficient copy
+  p4est_np1->connectivity             = p4est_n->connectivity; // connectivity is not duplicated by p4est_copy, the pointer (i.e. the memory-address) of connectivity seems to be copied from my understanding of the source file of p4est_copy, but I feel this is a bit safer [Raphael Egan]
+  p4est_nodes_t *nodes_np1            = nodes_n;
+  p4est_ghost_t *ghost_np1            = ghost_n;
+  my_p4est_hierarchy_t *hierarchy_np1 = hierarchy_n;
+  my_p4est_node_neighbors_t *ngbd_np1 = ngbd_n;
+  Vec vorticities_np1                 = vorticities;
+  Vec phi_np1                         = NULL; // we don't know it yet, we'll need to advect it
+  my_p4est_interpolation_nodes_t interp_nodes(ngbd_n);
+  unsigned int iter=0;
+  while(!iterative_grid_update_converged)
+  {
+    p4est_nodes_t *previous_nodes_np1 = nodes_np1;
+    Vec previous_phi_np1              = phi_np1;
+    Vec previous_vorticities_np1      = vorticities_np1;
+    /* ---   FIND THE NEXT ADAPTIVE GRID   --- */
+    /* For the very first iteration of the grid-update procedure, p4est_np1 is a
+     * simple pure copy of p4est_n, so no node creation nor data interpolation is
+     * required. Hence the "if(iter>0)..." statements */
+
+    if(iter > 0)
+    {
+      // maybe no longer properly balanced so partition...
+      my_p4est_partition(p4est_np1, P4EST_FALSE, NULL);
+      // get nodes_np1
+      nodes_np1 = my_p4est_nodes_new(p4est_np1, NULL);
+    }
+    // reset phi_np1
+    phi_np1 = NULL;
+    ierr = create_node_vector_if_needed(phi_np1, p4est_np1, nodes_np1); CHKERRXX(ierr);
+    P4EST_ASSERT(((iter > 0) && (previous_phi_np1 != NULL))  || ((iter == 0) && (previous_phi_np1 == NULL)));
+    // advect phi
+    advect_interface(p4est_np1, nodes_np1, phi_np1,
+                     previous_nodes_np1, previous_phi_np1); // limit the workload: use what you already know if you know it!
+
+    // get vorticity_np1
+    if(iter > 0){
+      // reset vorticity_np1 if needed
+      vorticities_np1 = NULL;
+      ierr = create_node_vector_if_needed(vorticities_np1, p4est_np1, nodes_np1, 2); CHKERRXX(ierr);
+      const double *previous_vorticities_np1_p;
+      double *vorticities_np1_p;
+      ierr = VecGetArrayRead(previous_vorticities_np1, &previous_vorticities_np1_p); CHKERRXX(ierr);
+      ierr = VecGetArray(vorticities_np1, &vorticities_np1_p); CHKERRXX(ierr);
+
+      interp_nodes.clear();
+      for(size_t n=0; n < nodes_np1->indep_nodes.elem_count; ++n)
+      {
+        const p4est_quadrant_t *node = ((const p4est_quadrant_t*) sc_array_index(&nodes_np1->indep_nodes, n));
+        P4EST_ASSERT (p4est_quadrant_is_node (node, 1));
+        p4est_locidx_t origin_idx;
+        if(index_of_node(node, previous_nodes_np1, origin_idx))
+          for (unsigned char k = 0; k < 2; ++k)
+            vorticities_np1_p[2*n+k] = previous_vorticities_np1_p[2*origin_idx+k];
+        else
+        {
+          double xyz[P4EST_DIM];
+          node_xyz_fr_n(n, p4est_np1, nodes_np1, xyz);
+          interp_nodes.add_point(n, xyz);
+        }
+      }
+      interp_nodes.set_input(vorticities, linear, 2);
+      interp_nodes.interpolate(vorticities_np1);
+
+      ierr = VecRestoreArrayRead(previous_vorticities_np1, &previous_vorticities_np1_p); CHKERRXX(ierr);
+      ierr = VecRestoreArray(vorticities_np1, &vorticities_np1_p); CHKERRXX(ierr);
+    }
+
+
+//    {
+//      PetscErrorCode ierr;
+//      const double *phi_coarse_p = NULL;
+//      const double *vorticities_p;
+//      ierr = VecGetArrayRead(phi_np1, &phi_coarse_p); CHKERRXX(ierr);
+//      ierr = VecGetArrayRead(vorticities_np1, &vorticities_p); CHKERRXX(ierr);
+
+//      my_p4est_vtk_write_all_general(p4est_np1, nodes_np1, NULL,
+//                                     P4EST_FALSE, P4EST_FALSE,
+//                                     1, /* number of VTK_POINT_DATA */
+//                                     0, /* number of VTK_POINT_DATA_VECTOR_BY_COMPONENTS */
+//                                     1, /* number of VTK_POINT_DATA_VECTOR_BLOCK */
+//                                     0, /* number of VTK_CELL_DATA */
+//                                     0, /* number of VTK_CELL_DATA_VECTOR_BY_COMPONENTS */
+//                                     0, /* number of VTK_CELL_DATA_VECTOR_BLOCK */
+//                                     ("/home/regan/workspace/projects/two_phase_flow/before_update" + std::to_string(iter)).c_str(),
+//                                     VTK_NODE_SCALAR, "phi_np1" , phi_coarse_p,
+//                                     VTK_NODE_VECTOR_BLOCK, "vorticities" , vorticities_p);
+//      ierr = VecRestoreArrayRead(phi_np1, &phi_coarse_p); CHKERRXX(ierr);
+//      ierr = VecRestoreArrayRead(vorticities_np1, &vorticities_p); CHKERRXX(ierr);
+//    }
+
+    // update the grid
+    iterative_grid_update_converged = !criterion_computational_grid.refine_and_coarsen(p4est_np1, nodes_np1, phi_np1, vorticities_np1);
+    iter++;
+
+    if(previous_phi_np1!=NULL){
+      ierr = delete_and_nullify_vector(previous_phi_np1); CHKERRXX(ierr); }
+    if(previous_nodes_np1!=nodes_n)
+      p4est_nodes_destroy(previous_nodes_np1);
+    if(previous_vorticities_np1!=vorticities){
+      ierr = delete_and_nullify_vector(previous_vorticities_np1); CHKERRXX(ierr); }
+
+    if(iter > ((unsigned int) 2+criterion_computational_grid.max_lvl-criterion_computational_grid.min_lvl)) // increase the rhs by one to account for the very first step that used to be out of the loop, [Raphael]
+    {
+      ierr = PetscPrintf(p4est_n->mpicomm, "ooops ... the grid update did not converge\n"); CHKERRXX(ierr);
+      break;
+    }
+  }
+
+  if(vorticities_np1!=vorticities){
+    ierr = delete_and_nullify_vector(vorticities_np1); CHKERRXX(ierr); }
+  // we do not need the vorticities anymore
+  ierr = delete_and_nullify_vector(vorticities); CHKERRXX(ierr);
+
+  // Save what we already know from the advection of the levelset (in case we know anything) in
+  // order to limit workload later on, regarding the adaptation for the interface-capturing grid
+  p4est_nodes_t *fine_nodes_np1 = nodes_np1;
+  Vec fine_phi_np1              = phi_np1; phi_np1 = NULL;
+
+  // Finalize the computational grid np1 (if needed):
+  if(p4est_np1!=p4est_n)
+  {
+    // Balance the grid and repartition
+    p4est_balance(p4est_np1, P4EST_CONNECT_FULL, NULL);
+    my_p4est_partition(p4est_np1, P4EST_FALSE, NULL);
+    /* Get the ghost cells at time np1, */
+    ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
+    my_p4est_ghost_expand(p4est_np1, ghost_np1);
+    nodes_np1 = my_p4est_nodes_new(p4est_np1, ghost_np1);
+    hierarchy_np1 = new my_p4est_hierarchy_t(p4est_np1, ghost_np1, brick);
+    ngbd_np1 = new my_p4est_node_neighbors_t(hierarchy_np1, nodes_np1);
+    ngbd_np1->init_neighbors();
+  }
+  // we are done with the computational grid
+
+  // now, find the np1 interface-capturing grid
+  splitting_criteria_t* data_fine = (splitting_criteria_t*) fine_p4est_n->user_pointer;
+  splitting_criteria_tag_t criterion_fine_grid(data_fine);
+  P4EST_ASSERT(criterion_fine_grid.max_lvl > criterion_computational_grid.max_lvl);
+  P4EST_ASSERT(criterion_fine_grid.max_lvl > criterion_fine_grid.min_lvl);
+  /* initialize the new forest */
+  // if p4est_np1 has changed, we start the procedure from p4est_np1, we'll coarsen as much as possible and refine as needed but we keep always things local
+  // if not, fine_p4est_n is still valid and is a better initial guess
+  p4est_t *fine_p4est_np1                   = (p4est_np1!=p4est_n)? p4est_copy(p4est_np1, P4EST_FALSE) : p4est_copy(fine_p4est_n, P4EST_FALSE);
+  fine_p4est_np1->connectivity              = fine_p4est_n->connectivity; // connectivity is not duplicated by p4est_copy, the pointer (i.e. the memory-address) of connectivity seems to be copied from my understanding of the source file of p4est_copy, but I feel this is a bit safer [Raphael Egan]
+  // fine_nodes_np1 and fine_phi_np1 have been initialized here above (to shortcut workload in advection in the following loop, if possible)
+  iter=0;
+  iterative_grid_update_converged = false;
+  while(!iterative_grid_update_converged)
+  {
+    p4est_nodes_t *previous_fine_nodes_np1  = fine_nodes_np1;
+    Vec previous_fine_phi_np1               = fine_phi_np1;
+    /* ---   FIND THE NEXT ADAPTIVE GRID   --- */
+    /* For the very first iteration of the grid-update procedure, fine_p4est_np1 is a
+     * simple pure copy of p4est_n_np1, so no node creation nor data interpolation is
+     * required. Hence the "if(iter>0)..." statements */
+    // We never partition this one, to make ensure locality of interface-capturing data...
+    // get fine_nodes_np1
+    // reset fine_nodes_np1 if needed
+    fine_nodes_np1 = my_p4est_nodes_new(fine_p4est_np1, NULL);
+    // reset fine_phi_np1
+    fine_phi_np1 = NULL;
+    create_node_vector_if_needed(fine_phi_np1, fine_p4est_np1, fine_nodes_np1);
+    advect_interface(fine_p4est_np1, fine_nodes_np1, fine_phi_np1,
+                     previous_fine_nodes_np1, previous_fine_phi_np1); // limit the workload: use what you already know!
+    const double *fine_phi_np1_read_p=NULL;
+
+    ierr = VecGetArrayRead(fine_phi_np1, &fine_phi_np1_read_p); CHKERRXX(ierr);
+//    {
+//      my_p4est_vtk_write_all_general(fine_p4est_np1, fine_nodes_np1, NULL,
+//                                     P4EST_FALSE, P4EST_FALSE,
+//                                     1, /* number of VTK_POINT_DATA */
+//                                     0, /* number of VTK_POINT_DATA_VECTOR_BY_COMPONENTS */
+//                                     0, /* number of VTK_POINT_DATA_VECTOR_BLOCK */
+//                                     0, /* number of VTK_CELL_DATA */
+//                                     0, /* number of VTK_CELL_DATA_VECTOR_BY_COMPONENTS */
+//                                     0, /* number of VTK_CELL_DATA_VECTOR_BLOCK */
+//                                     ("/home/regan/workspace/projects/two_phase_flow/before_fine_update" + std::to_string(iter)).c_str(),
+//                                     VTK_NODE_SCALAR, "phi_np1" , fine_phi_np1_read_p);
+//    }
+    // update the grid
+    iterative_grid_update_converged = !criterion_fine_grid.refine_and_coarsen(fine_p4est_np1, fine_nodes_np1, fine_phi_np1_read_p);
+    ierr = VecRestoreArrayRead(fine_phi_np1, &fine_phi_np1_read_p); CHKERRXX(ierr);
+    iter++;
+
+    ierr = delete_and_nullify_vector(previous_fine_phi_np1); CHKERRXX(ierr);
+    if(previous_fine_nodes_np1!=nodes_n)
+      p4est_nodes_destroy(previous_fine_nodes_np1);
+
+    if(iter > ((unsigned int) 2+criterion_fine_grid.max_lvl-criterion_fine_grid.min_lvl))
+    {
+      ierr = PetscPrintf(p4est_n->mpicomm, "ooops ... the grid update did not converge for the fine grid\n"); CHKERRXX(ierr);
+      break;
+    }
+  }
+
+  p4est_nodes_t *previous_fine_nodes_np1  = fine_nodes_np1;
+  Vec previous_fine_phi_np1               = fine_phi_np1;
+  p4est_ghost_t *fine_ghost_np1 = my_p4est_ghost_new(fine_p4est_np1, P4EST_CONNECT_FULL);
+  my_p4est_ghost_expand(fine_p4est_np1, fine_ghost_np1);
+  fine_nodes_np1 = my_p4est_nodes_new(fine_p4est_np1, fine_ghost_np1);
+  // reset fine_phi_np1
+  fine_phi_np1 = NULL;
+  create_node_vector_if_needed(fine_phi_np1, fine_p4est_np1, fine_nodes_np1);
+  my_p4est_hierarchy_t* fine_hierarchy_np1 = new my_p4est_hierarchy_t(fine_p4est_np1, fine_ghost_np1, brick);
+  my_p4est_node_neighbors_t *fine_ngbd_np1 = new my_p4est_node_neighbors_t(fine_hierarchy_np1, fine_nodes_np1);
+  fine_ngbd_np1->init_neighbors();
+
+  if(!iterative_grid_update_converged)
+  {
+    // this should never happen, but in case it does, we need to advect once more
+    // to ensure that every node's levelset value is well-defined...
+    // that every final local node is known already, so here we are
+    advect_interface(fine_p4est_np1, fine_nodes_np1, fine_phi_np1,
+                     previous_fine_nodes_np1, previous_fine_phi_np1); // limit the workload: use what you already know!
+  }
+  else
+  {
+    const double *previous_fine_phi_np1_p;
+    double *fine_phi_np1_p;
+    ierr = VecGetArrayRead(previous_fine_phi_np1, &previous_fine_phi_np1_p); CHKERRXX(ierr);
+    ierr = VecGetArray(fine_phi_np1, &fine_phi_np1_p); CHKERRXX(ierr);
+    for (size_t k = 0; k < fine_ngbd_np1->get_layer_size(); ++k) {
+      p4est_locidx_t n = fine_ngbd_np1->get_layer_node(k);
+  #ifdef DEBUG
+      const p4est_quadrant_t *node = ((const p4est_quadrant_t*) sc_array_index(&fine_nodes_np1->indep_nodes, n));
+      P4EST_ASSERT (p4est_quadrant_is_node (node, 1));
+      p4est_locidx_t origin_idx;
+      P4EST_ASSERT(index_of_node(node, previous_fine_nodes_np1, origin_idx)); // force the abort, since the implementation assumption is wrong --> the developer has more work to do here
+      P4EST_ASSERT(origin_idx == n);
+  #endif
+      fine_phi_np1_p[n] = previous_fine_phi_np1_p[n];
+    }
+    ierr = VecGhostUpdateBegin(fine_phi_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    for (size_t k = 0; k < fine_ngbd_np1->get_local_size(); ++k) {
+      p4est_locidx_t n = fine_ngbd_np1->get_local_node(k);
+  #ifdef DEBUG
+      const p4est_quadrant_t *node = ((const p4est_quadrant_t*) sc_array_index(&fine_nodes_np1->indep_nodes, n));
+      P4EST_ASSERT (p4est_quadrant_is_node (node, 1));
+      p4est_locidx_t origin_idx;
+      P4EST_ASSERT(index_of_node(node, previous_fine_nodes_np1, origin_idx)); // force the abort, since the implementation assumption is wrong --> the developer has more work to do here
+      P4EST_ASSERT(origin_idx == n);
+  #endif
+      fine_phi_np1_p[n] = previous_fine_phi_np1_p[n];
+    }
+    ierr = VecGhostUpdateEnd(fine_phi_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecRestoreArray(fine_phi_np1, &fine_phi_np1_p); CHKERRXX(ierr);
+    ierr = VecRestoreArrayRead(previous_fine_phi_np1, &previous_fine_phi_np1_p); CHKERRXX(ierr);
+  }
+  my_p4est_level_set_t ls(fine_ngbd_np1);
+  ls.reinitialize_2nd_order(fine_phi_np1, 20);
+  // Now, you for sure no longer need the "previous_*"
+  if(previous_fine_nodes_np1!=nodes_n)
+    p4est_nodes_destroy(previous_fine_nodes_np1);
+  ierr = delete_and_nullify_vector(previous_fine_phi_np1); CHKERRXX(ierr);
+  // you have your new grids, now transfer your data!
+
+
+  /* slide relevant fiels and grids in time: nm1 data are disregarded, n data becomes nm1 data and np1 data become n data...
+   * In particular, if grid_is_unchanged is false, the np1 grid is different than grid at time n, we need to
+   * re-construct its faces and cell-neighbors and the solvers we have used will need to be destroyed... */
+  // we can finally slide phi, current phi is no longer needed (IF different than phi_np1)...
+  p4est_destroy(fine_p4est_n);        fine_p4est_n      = fine_p4est_np1;
+  p4est_ghost_destroy(fine_ghost_n);  fine_ghost_n      = fine_ghost_np1;
+  p4est_nodes_destroy(fine_nodes_n);  fine_nodes_n      = fine_nodes_np1;
+  delete  fine_hierarchy_n;           fine_hierarchy_n  = fine_hierarchy_np1;
+  delete  fine_ngbd_n;                fine_ngbd_n       = fine_ngbd_np1;
+  ierr = VecDestroy(fine_phi);        CHKERRXX(ierr);   fine_phi = NULL;
+  ierr = VecDestroy(fine_curvature);  CHKERRXX(ierr);   fine_curvature = NULL;
+  ierr = VecDestroy(fine_normal);     CHKERRXX(ierr);   fine_normal = NULL;
+  const bool set_second_derivatives = (fine_phi_xxyyzz != NULL);
+  if(set_second_derivatives){
+    ierr = VecDestroy(fine_phi_xxyyzz); CHKERRXX(ierr); fine_phi_xxyyzz = NULL; }
+  set_phi(fine_phi_np1, set_second_derivatives);
+  ierr = VecDestroy(fine_jump_hodge);                 CHKERRXX(ierr); fine_jump_hodge = NULL;
+  ierr = VecDestroy(fine_jump_normal_flux_hodge);     CHKERRXX(ierr); fine_jump_normal_flux_hodge = NULL;
+  ierr = VecDestroy(fine_jump_mu_grad_v);             CHKERRXX(ierr); fine_jump_mu_grad_v = NULL;
+  if(fine_mass_flux!=NULL){
+    ierr = VecDestroy(fine_mass_flux);                CHKERRXX(ierr); fine_mass_flux = NULL; }
+  if(fine_variable_surface_tension!=NULL){
+    ierr = VecDestroy(fine_variable_surface_tension); CHKERRXX(ierr); fine_variable_surface_tension = NULL; }
+  // on computational grid at time nm1, just "slide" fields and grids in discrete time
+  if(p4est_nm1!=p4est_n)
+    p4est_destroy(p4est_nm1);
+  if(ghost_nm1!=ghost_n)
+    p4est_ghost_destroy(ghost_nm1);
+  if(nodes_nm1!=nodes_n)
+    p4est_nodes_destroy(nodes_nm1);
+  if(hierarchy_nm1!=hierarchy_n)
+    delete hierarchy_nm1;
+  if(ngbd_nm1!=ngbd_n)
+    delete ngbd_nm1;
+  p4est_nm1     = p4est_n;
+  ghost_nm1     = ghost_n;
+  nodes_nm1     = nodes_n;
+  hierarchy_nm1 = hierarchy_n;
+  ngbd_nm1      = ngbd_n;
+  ierr = VecDestroy(vnm1_nodes_omega_minus); CHKERRXX(ierr); vnm1_nodes_omega_minus = vn_nodes_omega_minus;
+  ierr = VecDestroy(vnm1_nodes_omega_plus);  CHKERRXX(ierr); vnm1_nodes_omega_plus  = vn_nodes_omega_plus;
+  if(vnm1_nodes_omega_minus_xxyyzz!=NULL){
+    ierr = VecDestroy(vnm1_nodes_omega_minus_xxyyzz); CHKERRXX(ierr); }
+  if(vnm1_nodes_omega_plus_xxyyzz!=NULL){
+    ierr = VecDestroy(vnm1_nodes_omega_plus_xxyyzz); CHKERRXX(ierr); }
+  if(interface_velocity_n!=NULL){
+    ierr = VecDestroy(interface_velocity_n); CHKERRXX(ierr); }
+  if(interface_velocity_n_xxyyzz!=NULL){
+    ierr = VecDestroy(interface_velocity_n_xxyyzz); CHKERRXX(ierr); }
+  vnm1_nodes_omega_minus_xxyyzz = vn_nodes_omega_minus_xxyyzz;
+  vnm1_nodes_omega_plus_xxyyzz = vn_nodes_omega_plus_xxyyzz;
+  interface_velocity_n        = interface_velocity_np1;
+  interface_velocity_n_xxyyzz = interface_velocity_np1_xxyyzz;
+  // on computational grid at time n, we will need to interpolate things...
+  // we will need to interpolate for vnp1 to vn (and then we'll take their derivatives)
+  vn_nodes_omega_minus        = NULL; vn_nodes_omega_plus         = NULL;
+  vn_nodes_omega_minus_xxyyzz = NULL; vn_nodes_omega_plus_xxyyzz  = NULL;
+  ierr = create_node_vector_if_needed(vn_nodes_omega_minus, p4est_np1, nodes_np1, P4EST_DIM);
+  ierr = create_node_vector_if_needed(vn_nodes_omega_plus, p4est_np1, nodes_np1, P4EST_DIM);
+  ierr = create_node_vector_if_needed(vn_nodes_omega_minus_xxyyzz, p4est_np1, nodes_np1, P4EST_DIM*P4EST_DIM);
+  ierr = create_node_vector_if_needed(vn_nodes_omega_plus_xxyyzz, p4est_np1, nodes_np1, P4EST_DIM*P4EST_DIM);
+  interp_nodes.clear();
+  for (size_t k = 0; k < nodes_np1->indep_nodes.elem_count; ++k) {
+    double xyz[P4EST_DIM];
+    node_xyz_fr_n(k, p4est_np1,nodes_np1, xyz);
+    interp_nodes.add_point(k, xyz);
+  }
+  Vec inputs[2] = {vnp1_nodes_omega_minus, vnp1_nodes_omega_plus};
+  Vec outputs[2] = {vn_nodes_omega_minus, vn_nodes_omega_plus};
+  Vec outputs_xxyyzz[2] = {vn_nodes_omega_minus_xxyyzz, vn_nodes_omega_plus_xxyyzz};
+  interp_nodes.set_input(inputs, linear, 2, P4EST_DIM);
+  interp_nodes.interpolate(outputs, 2);
+  ngbd_np1->second_derivatives_central(outputs, outputs_xxyyzz, 2, P4EST_DIM);
+  ierr = VecDestroy(vnp1_nodes_omega_minus);  CHKERRXX(ierr); vnp1_nodes_omega_minus = NULL;
+  ierr = VecDestroy(vnp1_nodes_omega_plus);   CHKERRXX(ierr); vnp1_nodes_omega_plus = NULL;
+  interface_velocity_np1        = NULL;
+  interface_velocity_np1_xxyyzz = NULL;
+
+  ierr = VecDestroy(hodge); CHKERRXX(ierr); hodge = NULL;
+  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
+    ierr = VecDestroy(dxyz_hodge[dir]); CHKERRXX(ierr); dxyz_hodge[dir] = NULL;
+    ierr = VecDestroy(vstar[dir]);      CHKERRXX(ierr); vstar[dir] = NULL;
+    ierr = VecDestroy(vnp1_minus[dir]); CHKERRXX(ierr); vnp1_minus[dir] = NULL;
+    ierr = VecDestroy(vnp1_plus[dir]);  CHKERRXX(ierr); vnp1_plus[dir] = NULL;
+  }
+  if(p4est_np1!=p4est_n || ghost_np1!=ghost_n || hierarchy_np1!=hierarchy_n){
+    if(hierarchy_np1!=hierarchy_n)
+    {
+      delete  ngbd_c;
+      ngbd_c = new my_p4est_cell_neighbors_t(hierarchy_np1);
+    }
+    delete  faces_n;
+    faces_n = new my_p4est_faces_t(p4est_np1, ghost_np1, brick, ngbd_c, true);
+  }
+  p4est_n     = p4est_np1;
+  ghost_n     = ghost_np1;
+  nodes_n     = nodes_np1;
+  hierarchy_n = hierarchy_np1;
+  ngbd_n      = ngbd_np1;
+
+  // clear grid-related buffers, flags and backtrace semi-lagrangian points
+  semi_lagrangian_backtrace_is_done = false;
+  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
+    xyz_n[dir].clear();
+    xyz_nm1[dir].clear();
+    face_to_fine_node[dir].clear();
+    face_to_fine_node_maps_are_set[dir] = false;
+  }
+  cell_to_fine_node.clear(); cell_to_fine_node_map_is_set = false;
+  node_to_fine_node.clear(); node_to_fine_node_map_is_set = false;
+
+
+  semi_lagrangian_backtrace_is_done = false;
+  ierr = PetscLogEventEnd(log_my_p4est_two_phase_advect_update, 0, 0, 0, 0); CHKERRXX(ierr);
+
+
+//  {
+//    PetscErrorCode ierr;
+//    Vec phi_coarse = NULL;
+//    interpolate_linearly_from_fine_nodes_to_coarse_nodes(fine_phi, phi_coarse);
+//    const double *phi_coarse_p = NULL;
+//    const double *v_nodes_omega_plus_p, *v_nodes_omega_minus_p;
+//    ierr = VecGetArrayRead(phi_coarse, &phi_coarse_p); CHKERRXX(ierr);
+//    ierr = VecGetArrayRead(vn_nodes_omega_minus, &v_nodes_omega_minus_p); CHKERRXX(ierr);
+//    ierr = VecGetArrayRead(vn_nodes_omega_plus, &v_nodes_omega_plus_p); CHKERRXX(ierr);
+
+//    my_p4est_vtk_write_all_general(p4est_n, nodes_n, ghost_n,
+//                                   P4EST_TRUE, P4EST_TRUE,
+//                                   1, /* number of VTK_POINT_DATA */
+//                                   0, /* number of VTK_POINT_DATA_VECTOR_BY_COMPONENTS */
+//                                   2, /* number of VTK_POINT_DATA_VECTOR_BLOCK */
+//                                   0, /* number of VTK_CELL_DATA */
+//                                   0, /* number of VTK_CELL_DATA_VECTOR_BY_COMPONENTS */
+//                                   0, /* number of VTK_CELL_DATA_VECTOR_BLOCK */
+//                                   "/home/regan/workspace/projects/two_phase_flow/after_update",
+//                                   VTK_NODE_VECTOR_BLOCK, "vn_plus" , v_nodes_omega_plus_p,
+//                                   VTK_NODE_VECTOR_BLOCK, "vn_minus", v_nodes_omega_minus_p,
+//                                   VTK_POINT_DATA, "phi", phi_coarse_p);
+//    ierr = VecRestoreArrayRead(phi_coarse, &phi_coarse_p); CHKERRXX(ierr);
+//    ierr = VecRestoreArrayRead(vn_nodes_omega_minus, &v_nodes_omega_minus_p); CHKERRXX(ierr);
+//    ierr = VecRestoreArrayRead(vn_nodes_omega_plus, &v_nodes_omega_plus_p); CHKERRXX(ierr);
+//    ierr = VecDestroy(phi_coarse); CHKERRXX(ierr);
+//  }
+
+
+  return;
 }
 

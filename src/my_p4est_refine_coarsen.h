@@ -119,9 +119,8 @@ public:
       }
     }
   }
-
-  inline p4est_bool_t& operator[](p4est_locidx_t q) {return markers[q];}
-  inline const p4est_bool_t& operator[](p4est_locidx_t q) const {return markers[q];}
+  inline p4est_bool_t& operator[](p4est_locidx_t q) { return markers[q]; }
+  inline const p4est_bool_t& operator[](p4est_locidx_t q) const { return markers[q]; }
 };
 
 class splitting_criteria_tag_t: public splitting_criteria_t {
@@ -134,6 +133,10 @@ protected:
 public:
   splitting_criteria_tag_t(int min_lvl, int max_lvl, double lip=1.2)
     : splitting_criteria_t(min_lvl, max_lvl, lip)
+  {
+  }
+  splitting_criteria_tag_t(const splitting_criteria_t* splitting_criteria_)
+    : splitting_criteria_t(*splitting_criteria_)
   {
   }
 

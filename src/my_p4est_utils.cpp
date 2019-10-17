@@ -289,7 +289,7 @@ void quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topidx_
     results[k] = 0.0;
     for (short j = 0; j < P4EST_CHILDREN; ++j) {
       for (short i = 0; i<P4EST_DIM; i++)
-        fdd[i] = ((j == 0)? Fdd[k*P4EST_CHILDREN*P4EST_DIM+j*P4EST_DIM + i] : MINMOD(fdd[i], Fdd[k*P4EST_CHILDREN*P4EST_DIM+j*P4EST_DIM + i]));
+        fdd[i] = ((j == 0)? Fdd[k*P4EST_CHILDREN*P4EST_DIM+j*P4EST_DIM+i] : MINMOD(fdd[i], Fdd[k*P4EST_CHILDREN*P4EST_DIM+j*P4EST_DIM + i]));
       results[k] += F[k*P4EST_CHILDREN+j]*w_xyz[j];
     }
 #ifdef P4_TO_P8

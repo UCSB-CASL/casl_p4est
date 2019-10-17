@@ -34,6 +34,7 @@ protected:
   unsigned int bs_f; // block_size of the fields to interpolate
 
   double xyz_min[P4EST_DIM], xyz_max[P4EST_DIM];
+  bool periodic[P4EST_DIM];
   PetscErrorCode ierr;
   int mpiret;
 
@@ -124,6 +125,7 @@ public:
     double *Fo_p[n_outputs];
     for (unsigned int k = 0; k < n_outputs; ++k) {
       ierr = VecGetArray(Fos[k], &Fo_p[k]); CHKERRXX(ierr); }
+
     interpolate(Fo_p, n_outputs, ALL_COMPONENTS);
     for (unsigned int k = 0; k < n_outputs; ++k) {
       ierr = VecRestoreArray(Fos[k], &Fo_p[k]); CHKERRXX(ierr); }
