@@ -120,6 +120,22 @@ void matrix_t::mtm_product(matrix_t& M )
     }
 }
 
+void matrix_t::mtm_product(matrix_t& M, vector<double>& W)
+{
+  M.resize(num_cols(),num_cols());
+  for( int i=0; i<n; i++ )
+    for( int j=i; j<n; j++ )
+    {
+      double sum=0;
+      for( int k=0; k<m; k++ )
+        sum += values[k*n + i]*values[k*n + j]*W[k];
+      M.values[i*n+j] = sum;
+      if(i!=j)
+        M.values[j*n+i] = sum;
+    }
+}
+
+
 double matrix_t::scale_by_maxabs(vector<double> x[], unsigned int n_vectors)
 {
 #ifdef CASL_THROWS
