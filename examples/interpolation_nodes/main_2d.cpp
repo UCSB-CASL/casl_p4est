@@ -37,61 +37,55 @@ const static std::string main_description =
     "my_p4est_interpolation_nodes_t class. Specifically, we perform interpolation at points located\n"
     "displace*(smallest diagonal) away from grid nodes in the direction defined by vector (nx, ny, nz).\n"
     "One can choose between performing interpolation on the fly (that is, treating the interpolation\n"
-    "object as a CF_2/CF_3 object) or using buffering of the points."
+    "object as a CF_2/CF_3 object) or using buffering of the points. The latter metod is always safe\n"
+    "while the former might fail if one of the processes tries to interpolate in the region owned by\n"
+    "another one. Moreover, even if one wants to use on-the-fly interpolation in the local+ghost region\n"
+    "but using a quadratic interpolation, then precomputed second derivatives have to be provided to\n"
+    "ensure success of interpolation. \n"
     "Developer: Daniil Bochkov (dbochkov@ucsb.edu), October 2019.\n";
 
-int    lmin = 4;
-int    lmax = 4;
-int    num_ghost_layers = 1;
-double lip  = 1.5;
 
-int num_splits = 6;
-
-int test_function = 0; // 0 - sin(x)*cos(y)
-int order         = 4; // 1 - linear, 2 - quadratic, 3 - quadratic non-oscillatory, 4 - quadratic non-oscillatory continuous (ver. 1), 5 - quadratic non-oscillatory continuous (ver. 2)
-
-bool on_the_fly = true;
-bool use_precomputed_derivatives = true;
-
-double nx       = 1;
-double ny       = 1;
-double nz       = 1;
-double displace = 0.1;
-
+// test functions to interpolate
 #ifdef P4_TO_P8
-struct: CF_3 {
+struct f_cf_t: CF_3 {
+  int test_function;
+  f_cf_t (double test_function) : test_function(test_function) {}
   double operator()(double x, double y, double z) const {
     switch (test_function)
     {
       case 0: return sin(x)*cos(y)*exp(z);
+      default: throw std::invalid_argument("Invalid test function number");
     }
   }
-} f_cf;
+};
 #else
-struct: CF_2 {
+struct f_cf_t: CF_2 {
+  int test_function;
+  f_cf_t (double test_function) : test_function(test_function) {}
   double operator()(double x, double y) const {
     switch (test_function)
     {
       case 0: return sin(x)*cos(y);
+      default: throw std::invalid_argument("Invalid test function number");
     }
   }
-} f_cf;
+};
 #endif
 
+// level-set function for refinement
 #ifdef P4_TO_P8
-struct: CF_3 {
+struct phi_cf_t: CF_3 {
   double operator()(double x, double y, double z) const {
     return 0.5 - sqrt(SQR(x) + SQR(y) + SQR(z));
   }
 } phi_cf;
 #else
-struct: CF_2 {
+struct phi_cf_t : CF_2 {
   double operator()(double x, double y) const {
     return 0.5 - sqrt(SQR(x) + SQR(y));
   }
 } phi_cf;
 #endif
-
 
 int main(int argc, char** argv)
 {
@@ -101,40 +95,62 @@ int main(int argc, char** argv)
   mpi_environment_t mpi;
   mpi.init(argc, argv);
 
-  // get command line parameters
+  // command line parser
   cmdParser cmd;
-  cmd.add_option("lmin","");
-  cmd.add_option("lmax","");
-  cmd.add_option("num_ghost_layers","");
-  cmd.add_option("lip","");
-  cmd.add_option("num_splits","");
-  cmd.add_option("test_function","");
-  cmd.add_option("order","");
-  cmd.add_option("on_the_fly","");
-  cmd.add_option("use_precomputed_derivatives","");
-  cmd.add_option("nx","");
-  cmd.add_option("ny","");
-  cmd.add_option("nz","");
-  cmd.add_option("displace","");
 
-  if(cmd.parse(argc, argv, main_description))
-    return 0;
+  // ---------------------------------------------------------
+  // define parameters
+  // ---------------------------------------------------------
+  // grid parameters
+  int    lmin        = 4;   cmd.add_option("lmin"       , "Min level of refinement (default: 4)");
+  int    lmax        = 4;   cmd.add_option("lmax"       , "Max level of refinement (default: 4)");
+  double lip         = 1.5; cmd.add_option("lip"        , "Lipschitz constant (default: 1.5)");
+  int    num_splits  = 3;   cmd.add_option("num_splits" , "Number of successive refinements (default: 3)");
 
-  // read user's input parameters
-  lmin = cmd.get("lmin", lmin);
-  lmax = cmd.get("lmax", lmax);
-  num_ghost_layers = cmd.get("num_ghost_layers", num_ghost_layers);
-  lip = cmd.get("lip", lip);
-  num_splits = cmd.get("num_splits", num_splits);
+  // problem set-up (points of iterpolation and function to interpolate)
+  double displace      = 0.1; cmd.add_option("displace"     , "Relative (in diagonals) distance between grid nodes and interpolation points (default: 0.1)");
+  double nx            = 1;   cmd.add_option("nx"           , "The x-component of displacement vector");
+  double ny            = 1;   cmd.add_option("ny"           , "The y-component of displacement vector");
+  double nz            = 1;   cmd.add_option("nz"           , "The z-component of displacement vector");
+  int    test_function = 0;   cmd.add_option("test_function", "Test funciton to interpolate (default: 0):\n"
+                                                              "    0 - sin(x)*cos(y)*exp(z)\n"
+                                                              "    1 - ... (to be added)");
+
+  // method set-up
+  bool precompute_derivatives = 1; cmd.add_option("precompute_derivatives", "Precompute second derivatives (1) or let interpolation function try to compute (0) (default: 1)");
+  int  num_ghost_layers       = 1; cmd.add_option("num_ghost_layers"      , "Number of ghost layers (default: 1)");
+  bool on_the_fly             = 1; cmd.add_option("on_the_fly"            , "Perform interpolation \"on-the-fly\" (1) or use buffering of points (0) (default: 1)");
+  int  order                  = 1; cmd.add_option("order"                 , "Order of interpolation (default: 1): \n"
+                                                                            "    1 - linear,\n"
+                                                                            "    2 - quadratic,\n"
+                                                                            "    3 - quadratic non-oscillatory,\n"
+                                                                            "    4 - quadratic non-oscillatory continuous (ver. 1),\n"
+                                                                            "    5 - quadratic non-oscillatory continuous (ver. 2)");
+
+  // ---------------------------------------------------------
+  // get values from command line
+  // ---------------------------------------------------------
+  if (cmd.parse(argc, argv, main_description)) return 0;
+
+  lmin        = cmd.get("lmin"      , lmin      );
+  lmax        = cmd.get("lmax"      , lmax      );
+  lip         = cmd.get("lip"       , lip       );
+  num_splits  = cmd.get("num_splits", num_splits);
+
   test_function = cmd.get("test_function", test_function);
-  order = cmd.get("order", order);
-  on_the_fly = cmd.get("on_the_fly", on_the_fly);
-  use_precomputed_derivatives = cmd.get("use_precomputed_derivatives", use_precomputed_derivatives);
-  nx = cmd.get("nx", nx);
-  ny = cmd.get("ny", ny);
-  nz = cmd.get("nz", nz);
-  displace = cmd.get("displace", displace);
+  displace      = cmd.get("displace"     , displace     );
+  nx            = cmd.get("nx"           , nx           );
+  ny            = cmd.get("ny"           , ny           );
+  nz            = cmd.get("nz"           , nz           );
 
+  precompute_derivatives = cmd.get("precompute_derivatives", precompute_derivatives);
+  num_ghost_layers       = cmd.get("num_ghost_layers"      , num_ghost_layers      );
+  on_the_fly             = cmd.get("on_the_fly"            , on_the_fly            );
+  order                  = cmd.get("order"                 , order                 );
+
+  // ---------------------------------------------------------
+  // some auxiliary preparations
+  // ---------------------------------------------------------
   // make sure (nx, ny, nz) is a unit vector
 #ifdef P4_TO_P8
   double norm = sqrt(SQR(nx) + SQR(ny) + SQR(nz));
@@ -147,6 +163,9 @@ int main(int argc, char** argv)
   ny /= norm;
 #endif
 
+  // create analytical function that will be used for interpolation tests
+  f_cf_t f_cf(test_function);
+
   // stopwatch
   parStopWatch w;
   w.start("Running example: interpolation_nodes");
@@ -155,6 +174,9 @@ int main(int argc, char** argv)
   double error_max_old = 0;
   double error_max_cur = 0;
 
+  // ---------------------------------------------------------
+  // loop through all grid resolutions
+  // ---------------------------------------------------------
   for (int iter = 0; iter < num_splits; ++iter)
   {
     // ---------------------------------------------------------
@@ -251,7 +273,7 @@ int main(int argc, char** argv)
     // ---------------------------------------------------------
     // set input for interpolation
     // ---------------------------------------------------------
-    if (use_precomputed_derivatives)
+    if (precompute_derivatives)
     {
 #ifdef P4_TO_P8
       ngbd.second_derivatives_central(f, fxx, fyy, fzz);
@@ -294,7 +316,7 @@ int main(int argc, char** argv)
     // perform interpolation
     // ---------------------------------------------------------
     double xyz[P4EST_DIM];
-    if (on_the_fly)
+    if (on_the_fly) // on-the-fly method: treat interpolation object "interp" as a CF_2/CF_3 function
     {
       // get access to f_interp's data
       ierr = VecGetArray(f_interp, &f_interp_ptr); CHKERRXX(ierr);
@@ -323,7 +345,7 @@ int main(int argc, char** argv)
       // restore access to f_interp's data
       ierr = VecRestoreArray(f_interp, &f_interp_ptr); CHKERRXX(ierr);
     }
-    else
+    else // using buffering of points: first we buffer all points where interpolation is needed then we interpolate everything at once
     {
       // loop through all local nodes
       foreach_local_node(n, nodes)
