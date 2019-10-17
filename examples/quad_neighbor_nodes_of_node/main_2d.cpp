@@ -188,7 +188,7 @@ void create_initial_grid_ghost_and_nodes(const mpi_environment_t &mpi, p4est_con
 void refine_my_grid(p4est_t* &forest, p4est_ghost_t* &ghosts, p4est_nodes_t* &nodes)
 {
   if(forest==NULL)
-    throw std::invalid_argument("refine_every_cell: needs a valid p4est structure to start with");
+    throw std::invalid_argument("refine_my_grid: needs a valid p4est structure to start with");
   // refine every cell once more
   my_p4est_refine(forest, P4EST_FALSE, refine_every_cell, NULL);
   // partition the forest
@@ -597,7 +597,7 @@ int main (int argc, char* argv[]){
   cmd.add_option("lmin",        "min level of the trees for the first grid to consider (default is 4)");
   cmd.add_option("lmax",        "max level of the trees for the first grid to consider (default is 6)");
   cmd.add_option("nsplits",     "number of grid splittings for accuracy check\n\
-           (default is 1, accuracy is checked only if >1)");
+           (default is 3, accuracy is checked only if >1)");
   cmd.add_option("method",      "default is 0, available values are\n\
             0::calculating the derivatives, one field after another;\n\
             1::calculating the derivatives, all fields at once;\n\
@@ -608,7 +608,6 @@ int main (int argc, char* argv[]){
   cmd.add_option("vtk_folder",  "exportation directory for vtk files if vtk exportation is activated\n\
            (default is the directory where the program is run from, i.e., './')");
   cmd.add_option("vtk",         "exports the (final) grid and hierarchy in vtk format, if present.");
-
 
   if(cmd.parse(argc, argv, main_description))
     return 0;
