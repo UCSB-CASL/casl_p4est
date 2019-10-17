@@ -2207,30 +2207,6 @@ public:
 #endif
     return;
   }
-  inline void gradient_all_components(const double *f[], double *fxyz[], const unsigned int &n_vecs, const unsigned int &bs) const
-  {
-    P4EST_ASSERT(bs>1);
-    const unsigned bsnvecs = bs*n_vecs;
-    double fx_serial[bsnvecs], fy_serial[bsnvecs];
-#ifdef P4_TO_P8
-    double fz_serial[bsnvecs];
-    gradient_all_components(f, fx_serial, fy_serial, fz_serial,  n_vecs, bs);
-#else
-    gradient_all_components(f, fx_serial, fy_serial,             n_vecs, bs);
-#endif
-    for (unsigned int k = 0; k < n_vecs; ++k) {
-      const unsigned int bsk = bs*k;
-      for (unsigned int comp = 0; comp < bs; ++comp) {
-        const unsigned int comp_dim = comp*P4EST_DIM;
-        fxyz[k][comp_dim+0] = fx_serial[bsk+comp];
-        fxyz[k][comp_dim+1] = fy_serial[bsk+comp];
-#ifdef P4_TO_P8
-        fxyz[k][comp_dim+2] = fz_serial[bsk+comp];
-#endif
-      }
-    }
-    return;
-  }
   inline void gradient_all_components(const double *f, double *fxyz, const unsigned int &bs) const
   {
     P4EST_ASSERT(bs>1);
@@ -2673,6 +2649,183 @@ public:
     fprintf(pFile,"d_m00 : %f\nd_p00 : %f\nd_0m0 : %f\nd_0p0 : %f\n",d_m00,d_p00,d_0m0,d_0p0);
 #endif
   }
+
+
+  inline p4est_locidx_t neighbor_m00() const
+  {
+#ifdef P4_TO_P8
+    if      (check_if_zero(d_m00_m0) && check_if_zero(d_m00_0m)) return node_m00_mm;
+    else if (check_if_zero(d_m00_p0) && check_if_zero(d_m00_0m)) return node_m00_pm;
+    else if (check_if_zero(d_m00_m0) && check_if_zero(d_m00_0p)) return node_m00_mp;
+    else if (check_if_zero(d_m00_p0) && check_if_zero(d_m00_0p)) return node_m00_pp;
+#else
+    if(check_if_zero(d_m00_p0))
+      return node_m00_pm;
+    else if(check_if_zero(d_m00_m0))
+      return node_m00_mm;
+#endif
+    else return -1;
+    //  else            throw std::invalid_argument("No neighbor in m00 direction \n");
+  }
+  inline p4est_locidx_t neighbor_p00() const
+  {
+#ifdef P4_TO_P8
+    if      (check_if_zero(d_p00_m0) && check_if_zero(d_p00_0m)) return node_p00_mm;
+    else if (check_if_zero(d_p00_p0) && check_if_zero(d_p00_0m)) return node_p00_pm;
+    else if (check_if_zero(d_p00_m0) && check_if_zero(d_p00_0p)) return node_p00_mp;
+    else if (check_if_zero(d_p00_p0) && check_if_zero(d_p00_0p)) return node_p00_pp;
+#else
+    if(check_if_zero(d_p00_p0)) return node_p00_pm;
+    else if(check_if_zero(d_p00_m0)) return node_p00_mm;
+#endif
+    else return -1;
+    //    else            throw std::invalid_argument("No neighbor in p00 direction \n");
+  }
+  inline p4est_locidx_t neighbor_0m0() const
+  {
+#ifdef P4_TO_P8
+    if      (check_if_zero(d_0m0_m0) && check_if_zero(d_0m0_0m)) return node_0m0_mm;
+    else if (check_if_zero(d_0m0_p0) && check_if_zero(d_0m0_0m)) return node_0m0_pm;
+    else if (check_if_zero(d_0m0_m0) && check_if_zero(d_0m0_0p)) return node_0m0_mp;
+    else if (check_if_zero(d_0m0_p0) && check_if_zero(d_0m0_0p)) return node_0m0_pp;
+#else
+    if(check_if_zero(d_0m0_m0)) return node_0m0_mm;
+    else if(check_if_zero(d_0m0_p0)) return node_0m0_pm;
+#endif
+    else return -1;
+    //    else            throw std::invalid_argument("No neighbor in 0m0 direction \n");
+  }
+  inline p4est_locidx_t neighbor_0p0() const
+  {
+#ifdef P4_TO_P8
+    if      (check_if_zero(d_0p0_m0) && check_if_zero(d_0p0_0m)) return node_0p0_mm;
+    else if (check_if_zero(d_0p0_p0) && check_if_zero(d_0p0_0m)) return node_0p0_pm;
+    else if (check_if_zero(d_0p0_m0) && check_if_zero(d_0p0_0p)) return node_0p0_mp;
+    else if (check_if_zero(d_0p0_p0) && check_if_zero(d_0p0_0p)) return node_0p0_pp;
+#else
+    if(check_if_zero(d_0p0_m0)) return node_0p0_mm;
+    else if(check_if_zero(d_0p0_p0)) return node_0p0_pm;
+#endif
+    else return -1;
+    //    else            throw std::invalid_argument("No neighbor in 0p0 direction \n");
+  }
+#ifdef P4_TO_P8
+  inline p4est_locidx_t neighbor_00m() const
+  {
+    if      (check_if_zero(d_00m_m0) && check_if_zero(d_00m_0m)) return node_00m_mm;
+    else if (check_if_zero(d_00m_p0) && check_if_zero(d_00m_0m)) return node_00m_pm;
+    else if (check_if_zero(d_00m_m0) && check_if_zero(d_00m_0p)) return node_00m_mp;
+    else if (check_if_zero(d_00m_p0) && check_if_zero(d_00m_0p)) return node_00m_pp;
+    else return -1;
+    //  else throw std::invalid_argument("No neighbor in m00 direction \n");
+  }
+  inline p4est_locidx_t neighbor_00p() const
+  {
+    if      (check_if_zero(d_00p_m0) && check_if_zero(d_00p_0m)) return node_00p_mm;
+    else if (check_if_zero(d_00p_p0) && check_if_zero(d_00p_0m)) return node_00p_pm;
+    else if (check_if_zero(d_00p_m0) && check_if_zero(d_00p_0p)) return node_00p_mp;
+    else if (check_if_zero(d_00p_p0) && check_if_zero(d_00p_0p)) return node_00p_pp;
+    else return -1;
+    //  else throw std::invalid_argument("No neighbor in m00 direction \n");
+  }
+#endif
+
+  inline p4est_locidx_t neighbor(int dir) const
+  {
+    switch (dir)
+    {
+    case dir::f_m00: return neighbor_m00();
+    case dir::f_p00: return neighbor_p00();
+    case dir::f_0m0: return neighbor_0m0();
+    case dir::f_0p0: return neighbor_0p0();
+#ifdef P4_TO_P8
+    case dir::f_00m: return neighbor_00m();
+    case dir::f_00p: return neighbor_00p();
+#endif
+    default: throw std::invalid_argument("Invalid direction\n");
+    }
+  }
+  inline double distance(int dir) const
+  {
+    switch (dir)
+    {
+    case dir::f_m00: return d_m00;
+    case dir::f_p00: return d_p00;
+    case dir::f_0m0: return d_0m0;
+    case dir::f_0p0: return d_0p0;
+#ifdef P4_TO_P8
+    case dir::f_00m: return d_00m;
+    case dir::f_00p: return d_00p;
+#endif
+    default: throw std::invalid_argument("Invalid direction\n");
+    }
+  }
+
+  inline bool is_stencil_in_negative_domain(double *phi_p) const
+  {
+    return phi_p[this->node_000]<-EPS &&
+    #ifdef P4_TO_P8
+        ( phi_p[this->node_m00_mm]<-EPS || fabs(this->d_m00_p0)<EPS || fabs(this->d_m00_0p)<EPS) &&
+        ( phi_p[this->node_m00_mp]<-EPS || fabs(this->d_m00_p0)<EPS || fabs(this->d_m00_0m)<EPS) &&
+        ( phi_p[this->node_m00_pm]<-EPS || fabs(this->d_m00_m0)<EPS || fabs(this->d_m00_0p)<EPS) &&
+        ( phi_p[this->node_m00_pp]<-EPS || fabs(this->d_m00_m0)<EPS || fabs(this->d_m00_0m)<EPS) &&
+        ( phi_p[this->node_p00_mm]<-EPS || fabs(this->d_p00_p0)<EPS || fabs(this->d_p00_0p)<EPS) &&
+        ( phi_p[this->node_p00_mp]<-EPS || fabs(this->d_p00_p0)<EPS || fabs(this->d_p00_0m)<EPS) &&
+        ( phi_p[this->node_p00_pm]<-EPS || fabs(this->d_p00_m0)<EPS || fabs(this->d_p00_0p)<EPS) &&
+        ( phi_p[this->node_p00_pp]<-EPS || fabs(this->d_p00_m0)<EPS || fabs(this->d_p00_0m)<EPS) &&
+        ( phi_p[this->node_0m0_mm]<-EPS || fabs(this->d_0m0_p0)<EPS || fabs(this->d_0m0_0p)<EPS) &&
+        ( phi_p[this->node_0m0_mp]<-EPS || fabs(this->d_0m0_p0)<EPS || fabs(this->d_0m0_0m)<EPS) &&
+        ( phi_p[this->node_0m0_pm]<-EPS || fabs(this->d_0m0_m0)<EPS || fabs(this->d_0m0_0p)<EPS) &&
+        ( phi_p[this->node_0m0_pp]<-EPS || fabs(this->d_0m0_m0)<EPS || fabs(this->d_0m0_0m)<EPS) &&
+        ( phi_p[this->node_0p0_mm]<-EPS || fabs(this->d_0p0_p0)<EPS || fabs(this->d_0p0_0p)<EPS) &&
+        ( phi_p[this->node_0p0_mp]<-EPS || fabs(this->d_0p0_p0)<EPS || fabs(this->d_0p0_0m)<EPS) &&
+        ( phi_p[this->node_0p0_pm]<-EPS || fabs(this->d_0p0_m0)<EPS || fabs(this->d_0p0_0p)<EPS) &&
+        ( phi_p[this->node_0p0_pp]<-EPS || fabs(this->d_0p0_m0)<EPS || fabs(this->d_0p0_0m)<EPS) &&
+        ( phi_p[this->node_00m_mm]<-EPS || fabs(this->d_00m_p0)<EPS || fabs(this->d_00m_0p)<EPS) &&
+        ( phi_p[this->node_00m_mp]<-EPS || fabs(this->d_00m_p0)<EPS || fabs(this->d_00m_0m)<EPS) &&
+        ( phi_p[this->node_00m_pm]<-EPS || fabs(this->d_00m_m0)<EPS || fabs(this->d_00m_0p)<EPS) &&
+        ( phi_p[this->node_00m_pp]<-EPS || fabs(this->d_00m_m0)<EPS || fabs(this->d_00m_0m)<EPS) &&
+        ( phi_p[this->node_00p_mm]<-EPS || fabs(this->d_00p_p0)<EPS || fabs(this->d_00p_0p)<EPS) &&
+        ( phi_p[this->node_00p_mp]<-EPS || fabs(this->d_00p_p0)<EPS || fabs(this->d_00p_0m)<EPS) &&
+        ( phi_p[this->node_00p_pm]<-EPS || fabs(this->d_00p_m0)<EPS || fabs(this->d_00p_0p)<EPS) &&
+        ( phi_p[this->node_00p_pp]<-EPS || fabs(this->d_00p_m0)<EPS || fabs(this->d_00p_0m)<EPS);
+#else
+        ( phi_p[this->node_m00_mm]<-EPS || fabs(this->d_m00_p0)<EPS) &&
+        ( phi_p[this->node_m00_pm]<-EPS || fabs(this->d_m00_m0)<EPS) &&
+        ( phi_p[this->node_p00_mm]<-EPS || fabs(this->d_p00_p0)<EPS) &&
+        ( phi_p[this->node_p00_pm]<-EPS || fabs(this->d_p00_m0)<EPS) &&
+        ( phi_p[this->node_0m0_mm]<-EPS || fabs(this->d_0m0_p0)<EPS) &&
+        ( phi_p[this->node_0m0_pm]<-EPS || fabs(this->d_0m0_m0)<EPS) &&
+        ( phi_p[this->node_0p0_mm]<-EPS || fabs(this->d_0p0_p0)<EPS) &&
+        ( phi_p[this->node_0p0_pm]<-EPS || fabs(this->d_0p0_m0)<EPS);
+#endif
+  }
+
+  inline double interpolate_in_dir(int dir, double dist, double *f_ptr) const
+  {
+    p4est_locidx_t node_nei = neighbor(dir);
+    double         h   = distance(dir);
+    if (node_nei == -1) throw std::domain_error("interpolate_in_dir does not support non-uniform grids yet\n");
+    return f_ptr[node_000]*(1-dist/h) + f_ptr[node_nei]*dist/h;
+  }
+
+  inline double interpolate_in_dir(int dir, double dist, double *f_ptr, double *f_dd_ptr) const
+  {
+    p4est_locidx_t node_nei = neighbor(dir);
+    double         h   = distance(dir);
+    if (node_nei == -1) throw std::domain_error("interpolate_in_dir doesn not support non-uniform grids yet\n");
+    return f_ptr[node_000]*(1-dist/h) + f_ptr[node_nei]*dist/h + 0.5*dist*(dist-h)*MINMOD(f_dd_ptr[node_000], f_dd_ptr[node_nei]);
+  }
+
+  inline double interpolate_in_dir(int dir, double dist, double *f_ptr, double *f_dd_ptr[]) const
+  {
+    p4est_locidx_t node_nei = neighbor(dir);
+    double         h   = distance(dir);
+    int            dim = dir / 2;
+    if (node_nei == -1) throw std::domain_error("interpolate_in_dir does not support non-uniform grids yet\n");
+    return f_ptr[node_000]*(1-dist/h) + f_ptr[node_nei]*dist/h + 0.5*dist*(dist-h)*MINMOD(f_dd_ptr[dim][node_000], f_dd_ptr[dim][node_nei]);
+  }
+
 };
 
 #endif /* !MY_P4EST_QUAD_NEIGHBOR_NODES_OF_NODE_H */

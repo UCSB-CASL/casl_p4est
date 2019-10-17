@@ -51,25 +51,17 @@ struct splitting_criteria_cf_t : splitting_criteria_t {
 #else
   CF_2 *phi;
 #endif
+  bool refine_only_inside;
 #ifdef P4_TO_P8
   splitting_criteria_cf_t(int min_lvl, int max_lvl, CF_3 *phi, double lip=1.2)
 #else
   splitting_criteria_cf_t(int min_lvl, int max_lvl, CF_2 *phi, double lip=1.2)
 #endif
-    : splitting_criteria_t(min_lvl, max_lvl, lip)
+    : splitting_criteria_t(min_lvl, max_lvl, lip), refine_only_inside(false)
   {
     this->phi = phi;
   }
-};
-
-struct splitting_criteria_cf_and_uniform_band_t : splitting_criteria_cf_t {
-  const double uniform_band;
-#ifdef P4_TO_P8
-  splitting_criteria_cf_and_uniform_band_t(int min_lvl, int max_lvl, CF_3 *phi_, double uniform_band_, double lip=1.2)
-#else
-  splitting_criteria_cf_and_uniform_band_t(int min_lvl, int max_lvl, CF_2 *phi_, double uniform_band_, double lip=1.2)
-#endif
-    : splitting_criteria_cf_t (min_lvl, max_lvl, phi_, lip), uniform_band(uniform_band_) { }
+  void set_refine_only_inside(bool val) { refine_only_inside = val; }
 };
 
 struct splitting_criteria_thresh_t : splitting_criteria_t {
@@ -119,8 +111,9 @@ public:
       }
     }
   }
-  inline p4est_bool_t& operator[](p4est_locidx_t q) { return markers[q]; }
-  inline const p4est_bool_t& operator[](p4est_locidx_t q) const { return markers[q]; }
+
+  inline p4est_bool_t& operator[](p4est_locidx_t q) {return markers[q];}
+  inline const p4est_bool_t& operator[](p4est_locidx_t q) const {return markers[q];}
 };
 
 class splitting_criteria_tag_t: public splitting_criteria_t {
@@ -129,19 +122,36 @@ protected:
 	static int  refine_fn (p4est_t* p4est, p4est_topidx_t which_tree, p4est_quadrant_t*  quad);
 	static int  coarsen_fn(p4est_t* p4est, p4est_topidx_t which_tree, p4est_quadrant_t** quad);
 	
-  void tag_quadrant(p4est_t* p4est, p4est_quadrant_t* quad, p4est_topidx_t which_tree, const double* f, bool finest_in_negative_flag);
+  void tag_quadrant(p4est_t* p4est, p4est_quadrant_t* quad, p4est_topidx_t which_tree, const double* f);
+  void tag_quadrant_inside(p4est_t* p4est, p4est_quadrant_t* quad, p4est_topidx_t which_tree, const double* f);
+  bool refine_only_inside;
 public:
   splitting_criteria_tag_t(int min_lvl, int max_lvl, double lip=1.2)
-    : splitting_criteria_t(min_lvl, max_lvl, lip)
-  {
-  }
-  splitting_criteria_tag_t(const splitting_criteria_t* splitting_criteria_)
-    : splitting_criteria_t(*splitting_criteria_)
+    : splitting_criteria_t(min_lvl, max_lvl, lip), refine_only_inside(false)
   {
   }
 
-  bool refine_and_coarsen(p4est_t* p4est, const p4est_nodes_t* nodes, const double* phi, bool finest_in_negative_flag = false);
-  bool refine(p4est_t* p4est, const p4est_nodes_t* nodes, const double* phi, bool finest_in_negative_flag = false);
+  bool refine_and_coarsen(p4est_t* p4est, const p4est_nodes_t* nodes, const double* phi);
+  bool refine(p4est_t* p4est, const p4est_nodes_t* nodes, const double* phi);
+
+  void set_refine_only_inside(bool val) { refine_only_inside = val; }
+};
+
+struct splitting_criteria_grad_t: public splitting_criteria_t {
+#ifdef P4_TO_P8
+  CF_3* cf;
+#else
+  CF_2* cf;
+#endif
+  double fmax, tol;
+#ifdef P4_TO_P8
+
+  splitting_criteria_grad_t(int min_lvl, int max_lvl, CF_3* cf, double fmax, double tol = 1e-2)
+#else
+  splitting_criteria_grad_t(int min_lvl, int max_lvl, CF_2* cf, double fmax, double tol = 1e-2)
+#endif
+  : splitting_criteria_t(min_lvl, max_lvl), cf(cf), fmax(fmax), tol(tol)
+  {}
 };
 
 /*!
@@ -153,9 +163,6 @@ public:
  */
 p4est_bool_t
 refine_levelset_cf (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad);
-
-p4est_bool_t
-refine_levelset_cf_and_uniform_band (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad);
 
 /*!
  * \brief coarsen_levelset coarsen based on distance of a cf function
@@ -246,5 +253,35 @@ refine_marked_quadrants(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadran
  */
 p4est_bool_t
 coarsen_marked_quadrants(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **quad);
+
+/*!
+ * \brief refine_grad_cf refinement based on gradient indicator
+ * \param p4est
+ * \param which_tree
+ * \param quad
+ * \return
+ */
+p4est_bool_t
+refine_grad_cf(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad);
+
+/*!
+ * \brief coarsen_grad_cf coarsening based on gradient indicator
+ * \param p4est
+ * \param which_tree
+ * \param quad
+ * \return
+ */
+p4est_bool_t
+coarsen_grad_cf(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **quad);
+
+/*!
+ * \brief coarsen_down_to_lmax a dumb coarsening down to lmax
+ * \param p4est
+ * \param which_tree
+ * \param quad
+ * \return
+ */
+p4est_bool_t
+coarsen_down_to_lmax (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad);
 
 #endif // REFINE_COARSEN_H

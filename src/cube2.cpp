@@ -76,11 +76,40 @@ double Cube2::integrate_Over_Interface( const QuadValue& f, const QuadValue& lev
   {
     Point2 p0=p00; double f0=f00; double phi0=phi00;
     Point2 p2=p11; double f2=f11; double phi2=phi11;
-
     // triangle (P0,P1,P2) with values (F0,F1,F2), (Phi0,Phi1,Phi2)
     Point2   p1 = (n==0) ?   p01 :   p10;
     double   f1 = (n==0) ?   f01 :   f10;
     double phi1 = (n==0) ? phi01 : phi10;
+
+    if (0)
+    {
+      Point2 p_00(0.5*(x0+x1),0.5*(y0+y1));
+      double f_00 = 0.25*(f00+f01+f10+f11);
+      double l_00 = 0.25*(phi00+phi01+phi10+phi11);
+
+      Point2 p_mm(x0,y0); double f_mm = f00; double l_mm = phi00;
+      Point2 p_pm(x1,y0); double f_pm = f10; double l_pm = phi10;
+      Point2 p_mp(x0,y1); double f_mp = f01; double l_mp = phi01;
+      Point2 p_pp(x1,y1); double f_pp = f11; double l_pp = phi11;
+      switch (n) {
+      case 0:
+        p0    = p_00; p1  = p_mm; p2  = p_pm;
+        f0    = f_00; f1  = f_mm; f2  = f_pm;
+        phi0  = l_00; phi1= l_mm; phi2= l_pm; break;
+      case 1:
+        p0    = p_00; p1  = p_pm; p2  = p_pp;
+        f0    = f_00; f1  = f_pm; f2  = f_pp;
+        phi0  = l_00; phi1= l_pm; phi2= l_pp; break;
+      case 2:
+        p0    = p_00; p1  = p_pp; p2  = p_mp;
+        f0    = f_00; f1  = f_pp; f2  = f_mp;
+        phi0  = l_00; phi1= l_pp; phi2= l_mp; break;
+      case 3:
+        p0    = p_00; p1  = p_mp; p2  = p_mm;
+        f0    = f_00; f1  = f_mp; f2  = f_mm;
+        phi0  = l_00; phi1= l_mp; phi2= l_mm; break;
+      }
+    }
 
     // simple cases
     if(phi0<=0 && phi1<=0 && phi2<=0) continue;
@@ -116,6 +145,73 @@ double Cube2::integrate_Over_Interface( const QuadValue& f, const QuadValue& lev
     double length_of_line_segment = (p_btw_02 - p_btw_01).norm_L2();
 
     sum += length_of_line_segment * (f_btw_02 + f_btw_01)/2.;
+
+    PetscErrorCode ierr = PetscLogFlops(30); CHKERRXX(ierr);
+  }
+
+  return sum;
+}
+
+
+double Cube2::integrate_Over_Interface(const CF_2& f, const QuadValue& level_set_values ) const
+{
+  double sum=0;
+
+  Point2 p00(x0,y0); double f00 = 0; double phi00 = level_set_values.val00;
+  Point2 p01(x0,y1); double f01 = 0; double phi01 = level_set_values.val01;
+  Point2 p10(x1,y0); double f10 = 0; double phi10 = level_set_values.val10;
+  Point2 p11(x1,y1); double f11 = 0; double phi11 = level_set_values.val11;
+
+  // simple cases
+  if(phi00<=0 && phi01<=0 && phi10<=0 && phi11<=0) return 0;
+  if(phi00>=0 && phi01>=0 && phi10>=0 && phi11>=0) return 0;
+
+  // iteration on each simplex in the Kuhn triangulation
+  for(int n=0;n<2;n++)
+  {
+    Point2 p0=p00; double f0=f00; double phi0=phi00;
+    Point2 p2=p11; double f2=f11; double phi2=phi11;
+
+    // triangle (P0,P1,P2) with values (F0,F1,F2), (Phi0,Phi1,Phi2)
+    Point2   p1 = (n==0) ?   p01 :   p10;
+    double   f1 = (n==0) ?   f01 :   f10;
+    double phi1 = (n==0) ? phi01 : phi10;
+
+    // simple cases
+    if(phi0<=0 && phi1<=0 && phi2<=0) continue;
+    if(phi0>=0 && phi1>=0 && phi2>=0) continue;
+
+    //
+    int number_of_negatives = 0;
+
+    if(phi0<0) number_of_negatives++;
+    if(phi1<0) number_of_negatives++;
+    if(phi2<0) number_of_negatives++;
+
+#ifdef CASL_THROWS
+    if(number_of_negatives!=1 && number_of_negatives!=2) throw std::runtime_error("[CASL_ERROR]: Wrong configuration.");
+#endif
+
+    if(number_of_negatives==2)
+    {
+      phi0*=-1;
+      phi1*=-1;
+      phi2*=-1;
+    }
+
+    // sorting for simplication into one case
+    if(phi0>0 && phi1<0) swap(phi0,phi1,f0,f1,p0,p1);
+    if(phi0>0 && phi2<0) swap(phi0,phi2,f0,f2,p0,p2);
+    if(phi1>0 && phi2<0) swap(phi1,phi2,f1,f2,p1,p2);
+
+    // type : (-++)
+    Point2 p_btw_01 = interpol_p(p0,phi0,p1,phi1); Point2 p_btw_02 = interpol_p(p0,phi0,p2,phi2);
+
+    double length_of_line_segment = (p_btw_02 - p_btw_01).norm_L2();
+
+//    sum += length_of_line_segment * 0.5*(f(p_btw_01.x,p_btw_01.y)+f(p_btw_02.x,p_btw_02.y));
+    sum += length_of_line_segment * f(0.5*(p_btw_01.x+p_btw_02.x),0.5*(p_btw_01.y+p_btw_02.y));
+
 
     PetscErrorCode ierr = PetscLogFlops(30); CHKERRXX(ierr);
   }

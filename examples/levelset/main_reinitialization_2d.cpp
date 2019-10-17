@@ -106,7 +106,7 @@ int main (int argc, char* argv[]){
 
     /* initialize the neighbor nodes structure */
     my_p4est_hierarchy_t hierarchy(p4est, ghost, &brick);
-    my_p4est_node_neighbors_t node_neighbors(&hierarchy, nodes);
+    my_p4est_node_neighbors_t node_neighbors(&hierarchy,nodes);
 
     Vec phi;
     ierr = VecCreateGhostNodes(p4est, nodes, &phi); CHKERRXX(ierr);
@@ -136,7 +136,6 @@ int main (int argc, char* argv[]){
                            P4EST_TRUE, P4EST_TRUE,
                            1, 0, oss.str().c_str(),
                            VTK_POINT_DATA, "phi", phi_p);
-
     my_p4est_vtk_write_ghost_layer(p4est, ghost);
     ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
 
@@ -145,12 +144,11 @@ int main (int argc, char* argv[]){
 
     /* destroy the p4est and its connectivity structure */
     p4est_nodes_destroy (nodes);
-
     p4est_ghost_destroy(ghost);
     p4est_destroy (p4est);
-    my_p4est_brick_destroy(connectivity, &brick);
+    p4est_connectivity_destroy (connectivity);
 
-    w.stop(); w.print_duration();
+    w.stop(); w.read_duration();
   } catch (const std::exception& e) {
     cerr << e.what() << endl;
   }
