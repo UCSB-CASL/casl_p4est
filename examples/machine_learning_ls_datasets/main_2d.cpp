@@ -11,7 +11,6 @@
 
 // casl_p4est
 #include <src/my_p4est_utils.h>
-#include <src/my_p4est_vtk.h>
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_tools.h>
 #include <src/my_p4est_refine_coarsen.h>
@@ -25,6 +24,7 @@
 #include <random>
 #include <iterator>
 #include <fstream>
+#include <cassert>
 #include "PointsOnCurves.h"
 
 /*!
@@ -89,7 +89,7 @@ int main ( int argc, char* argv[] )
 		mpi_environment_t mpi{};
 		mpi.init( argc, argv );
 
-		int numberOfIterations = 10;											// Change it to 5, 10, 15, 20.
+		int numberOfIterations = 20;											// Change it to 5, 10, 15, 20.
 		for( int resolution = 16; resolution <= 512; resolution += 8 )			// From 16x16 to 512x512 grid resolutions.
 			saveReinitializedDataset( resolution, numberOfIterations, mpi );
 	}
