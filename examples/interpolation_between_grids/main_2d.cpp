@@ -2,8 +2,8 @@
  * Title: interpolation_between_grids
  * Description: testing new features added to the my_p4est_interpolation_nodes_t class
  * added features: block-structured vectors, possibility to interpolate several fields at once
- * Author: Raphael Egan
- * Date Created/revised: 10-16-2019
+ * Author: Raphael Egan (raphaelegan@ucsb.edu)
+ * Date Created/latest revision: 10-16-2019
  */
 
 #ifndef P4_TO_P8
@@ -133,6 +133,8 @@ public:
   double operator ()(double x, double y) const
 #endif
   {
+    // totally arbitrary defined, I let my brain wander around the most random association of functions that
+    // I could find: feel free to change it if you want to!
 #ifdef P4_TO_P8
     return tanh(log(1 + fabs(aa) + SQR(x-bb*y)) + 1.0/(1.0+exp(-SQR(bb*y))) - cos(cc*(z-aa*x) + SQR(x-bb*y)))*(atan(aa*x-cc*z)/(1 + SQR(sin(aa*x-bb*y))));
 #else
@@ -232,7 +234,7 @@ PetscErrorCode destroy_vectors_if_needed(const unsigned int &nfields,
   return ierr;
 }
 
-PetscErrorCode create_vectors_and_sample_functions_on_nodes(const unsigned int &method,
+PetscErrorCode create_vectors_and_sample_functions_on_nodes(const unsigned int &method, const bool &precompute_derivatives,
                                                             p4est_t *p4est, p4est_nodes_t *nodes, const my_p4est_node_neighbors_t *ngbd,
                                                             const my_test_function *cf_field[], const unsigned int &nfields,
                                                             Vec &field_block, Vec &second_derivatives_field_block,
@@ -253,7 +255,8 @@ PetscErrorCode create_vectors_and_sample_functions_on_nodes(const unsigned int &
   if(method==2)
   {
     ierr = VecCreateGhostNodesBlock(p4est, nodes, nfields,           &field_block);                    CHKERRQ(ierr);
-    ierr = VecCreateGhostNodesBlock(p4est, nodes, nfields*P4EST_DIM, &second_derivatives_field_block); CHKERRQ(ierr);
+    if(precompute_derivatives){
+      ierr = VecCreateGhostNodesBlock(p4est, nodes, nfields*P4EST_DIM, &second_derivatives_field_block); CHKERRQ(ierr); }
     double *field_block_p;
     ierr = VecGetArray(field_block, &field_block_p); CHKERRXX(ierr);
     for (size_t i = 0; i<nodes->indep_nodes.elem_count; ++i) {
@@ -267,25 +270,31 @@ PetscErrorCode create_vectors_and_sample_functions_on_nodes(const unsigned int &
 #endif
     }
     ierr = VecRestoreArray(field_block, &field_block_p); CHKERRXX(ierr);
-    ngbd->second_derivatives_central(field_block, second_derivatives_field_block, nfields);
+    if(precompute_derivatives)
+      ngbd->second_derivatives_central(field_block, second_derivatives_field_block, nfields);
   }
   else
   {
     for (unsigned int k = 0; k < nfields; ++k) {
       ierr = VecCreateGhostNodes(p4est, nodes, &field_[k]); CHKERRQ(ierr);
-      ierr = VecCreateGhostNodes(p4est, nodes, &ddxx_[k]);  CHKERRQ(ierr);
-      ierr = VecCreateGhostNodes(p4est, nodes, &ddyy_[k]);  CHKERRQ(ierr);
+      if(precompute_derivatives){
+        ierr = VecCreateGhostNodes(p4est, nodes, &ddxx_[k]);  CHKERRQ(ierr);
+        ierr = VecCreateGhostNodes(p4est, nodes, &ddyy_[k]);  CHKERRQ(ierr);
 #ifdef P4_TO_P8
-      ierr = VecCreateGhostNodes(p4est, nodes, &ddzz_[k]);  CHKERRQ(ierr);
+        ierr = VecCreateGhostNodes(p4est, nodes, &ddzz_[k]);  CHKERRQ(ierr);
 #endif
+      }
     }
     for (unsigned int k = 0; k < nfields; ++k)
       sample_cf_on_nodes(p4est, nodes, *cf_field[k], field_[k]);
+    if(precompute_derivatives)
+    {
 #ifdef P4_TO_P8
-    ngbd->second_derivatives_central(field_, ddxx_, ddyy_, ddzz_, nfields);
+      ngbd->second_derivatives_central(field_, ddxx_, ddyy_, ddzz_, nfields);
 #else
-    ngbd->second_derivatives_central(field_, ddxx_, ddyy_, nfields);
+      ngbd->second_derivatives_central(field_, ddxx_, ddyy_, nfields);
 #endif
+    }
   }
   return ierr;
 }
@@ -300,12 +309,10 @@ void evaluate_max_error_on_destination_grid(const unsigned int &method,
   const double *results_p[nfields];
 
   if(method==2){
-    ierr = VecGetArrayRead(results_block, &results_block_p); CHKERRXX(ierr);
-  }
+    ierr = VecGetArrayRead(results_block, &results_block_p); CHKERRXX(ierr); }
   else
     for (unsigned char k = 0; k < nfields; ++k) {
-      ierr = VecGetArrayRead(results_[k], &results_p[k]); CHKERRXX(ierr);
-    }
+      ierr = VecGetArrayRead(results_[k], &results_p[k]); CHKERRXX(ierr); }
   for (unsigned int k = 0; k < nfields; ++k)
     max_err[k] = 0.0;
 
@@ -343,43 +350,45 @@ int main (int argc, char* argv[]){
   PetscErrorCode      ierr;
 
   cmdParser cmd;
-  cmd.add_option("seed",          "seed for random number generator (default is 279, totally arbitrarily chosen :-p)");
-  cmd.add_option("ntrees",        "number of trees per Cartesian dimensions (default is 2)");
-  cmd.add_option("lmin_from",     "min level of the trees in the origin grid (i.e. before interpolation), defaut is 4");
-  cmd.add_option("lmax_from",     "max level of the trees in the origin grid (i.e. before interpolation), defaut is 6");
-  cmd.add_option("lmin_to",       "min level of the trees in the destination grid (i.e. after interpolation), defaut is 5");
-  cmd.add_option("lmax_to",       "max level of the trees in the destination grid (i.e. after interpolation), defaut is 8");
-  cmd.add_option("nsplits",       "number of grid splittings for the origin grid (for accuracy check)\n\
+  cmd.add_option("seed",                      "seed for random number generator (default is 279, totally arbitrarily chosen :-p)");
+  cmd.add_option("ntrees",                    "number of trees per Cartesian dimensions (default is 2)");
+  cmd.add_option("lmin_from",                 "min level of the trees in the origin grid (i.e. before interpolation), defaut is 4");
+  cmd.add_option("lmax_from",                 "max level of the trees in the origin grid (i.e. before interpolation), defaut is 6");
+  cmd.add_option("lmin_to",                   "min level of the trees in the destination grid (i.e. after interpolation), defaut is 5");
+  cmd.add_option("no_precompute_derivatives", "deactivates the precalculation of second derivatives, if present.");
+  cmd.add_option("lmax_to",                   "max level of the trees in the destination grid (i.e. after interpolation), defaut is 8");
+  cmd.add_option("nsplits",                   "number of grid splittings for the origin grid (for accuracy check)\n\
            (default is 3, accuracy is checked only if > 1)");
-  cmd.add_option("method",        "default is 0, available options are\n\
+  cmd.add_option("method",                    "default is 0, available options are\n\
             0::store the fields separately and interpolate one after another;\n\
             1::store the fields separately and interpolate all at once;\n\
             2::store the fields contiguously in block-structured vectors and interpolate all at once.");
-  cmd.add_option("interpolation", "default is 0, available options are\n\
+  cmd.add_option("interpolation",             "default is 0, available options are\n\
             0::bi-/tri-linear interpolation;\n\
             1::bi-/tri-quadratic interpolation;\n\
             2::bi-/tri-quadratic interpolation with minmod slope limiters\n\
             3::Daniil's first continuous version of interpolation 2 (minmod on edges then interpolated)\n\
             4::Daniil's second continuous version of interpolation 2 (weight-averages on faces then minmod).");
-  cmd.add_option("timing_off",  "disables timing if present");
-  cmd.add_option("fields",      "number of node-sampled fields to interpolate between grids\n\
+  cmd.add_option("timing_off",                "disables timing if present");
+  cmd.add_option("fields",                    "number of node-sampled fields to interpolate between grids\n\
            (default is number of dimensions, i.e., P4EST_DIM)");
 
   if(cmd.parse(argc, argv, main_description))
     return 0;
 
   // read user's input parameters
-  const unsigned int method   = cmd.get<unsigned int>("method", 0);
-  const unsigned int interpn  = cmd.get<unsigned int>("interpolation", 0);
-  unsigned int seed           = cmd.get<unsigned int>("seed", 279);
-  bool timing_off             = cmd.contains("timing_off");
-  unsigned int lmin_from      = cmd.get<unsigned int>("lmin_from", 4);
-  unsigned int lmax_from      = cmd.get<unsigned int>("lmax_from", 6);
-  unsigned int lmin_to        = cmd.get<unsigned int>("lmin_to", 5);
-  unsigned int lmax_to        = cmd.get<unsigned int>("lmax_to", 8);
-  unsigned int nsplits        = cmd.get<unsigned int>("nsplits", 3);
-  int ntrees                  = cmd.get<unsigned int>("ntrees", 2);
-  const unsigned int nfields  = cmd.get<unsigned int>("fields", P4EST_DIM);
+  const unsigned int method         = cmd.get<unsigned int>("method", 0);
+  const unsigned int interpn        = cmd.get<unsigned int>("interpolation", 0);
+  unsigned int seed                 = cmd.get<unsigned int>("seed", 279);
+  bool timing_off                   = cmd.contains("timing_off");
+  unsigned int lmin_from            = cmd.get<unsigned int>("lmin_from", 4);
+  unsigned int lmax_from            = cmd.get<unsigned int>("lmax_from", 6);
+  unsigned int lmin_to              = cmd.get<unsigned int>("lmin_to", 5);
+  unsigned int lmax_to              = cmd.get<unsigned int>("lmax_to", 8);
+  unsigned int nsplits              = cmd.get<unsigned int>("nsplits", 3);
+  int ntrees                        = cmd.get<unsigned int>("ntrees", 2);
+  const unsigned int nfields        = cmd.get<unsigned int>("fields", P4EST_DIM);
+  const bool precompute_derivatives = !cmd.contains("no_precompute_derivatives");
 
   interpolation_method chosen_interpolation;
 
@@ -490,11 +499,13 @@ int main (int argc, char* argv[]){
     // provided by the user but if they are required anyways for the interpolation procedure
     // of interest, the interpolator object needs to be able to calculate them on-the-fly
     // hence, it needs to know about the node_neighbors
-    // let's create and initialize it
+    // let's create it:
     my_p4est_node_neighbors_t ngbd_from(&hierarchy_from, nodes_from);
-    ngbd_from.init_neighbors();
+    // and initialize it:
+    ngbd_from.init_neighbors(); // (this is not mandatory, but it can only help regarding performance given how much we'll neeed the node neighbors)
 
-    ierr = create_vectors_and_sample_functions_on_nodes(method, p4est_from, nodes_from, &ngbd_from, cf_field, nfields,
+    ierr = create_vectors_and_sample_functions_on_nodes(method, precompute_derivatives,
+                                                        p4est_from, nodes_from, &ngbd_from, cf_field, nfields,
                                                         field_block, field_block_xxyyzz,
                                                         field_, field_xx, field_yy
                                                     #ifdef P4_TO_P8
@@ -504,7 +515,7 @@ int main (int argc, char* argv[]){
 
     // now let's create the node interpolator tool
     my_p4est_interpolation_nodes_t node_interpolator(&ngbd_from);
-    // let's initialize results
+    // let's initialize the results
     Vec results_[nfields], results_block;
     results_block = NULL;
     for (unsigned int k = 0; k < nfields; ++k)
@@ -520,11 +531,16 @@ int main (int argc, char* argv[]){
     switch (method) {
     case 0:
       for (unsigned int k = 0; k < nfields; ++k) {
+        if(precompute_derivatives)
+        {
 #ifdef P4_TO_P8
         node_interpolator.set_input(field_[k], field_xx[k], field_yy[k], field_zz[k], chosen_interpolation);
 #else
         node_interpolator.set_input(field_[k], field_xx[k], field_yy[k], chosen_interpolation);
 #endif
+        }
+        else
+          node_interpolator.set_input(field_[k], chosen_interpolation);
         // add the points of the destination grid to the input buffer
         if(k == 0)
           for (size_t i=0; i<nodes_to->indep_nodes.elem_count; ++i)
@@ -537,11 +553,17 @@ int main (int argc, char* argv[]){
       }
       break;
     case 1:
+      if(precompute_derivatives)
+      {
 #ifdef P4_TO_P8
-      node_interpolator.set_input(field_, field_xx, field_yy, field_zz, chosen_interpolation, nfields);
+        node_interpolator.set_input(field_, field_xx, field_yy, field_zz, chosen_interpolation, nfields);
 #else
-      node_interpolator.set_input(field_, field_xx, field_yy, chosen_interpolation, nfields);
+        node_interpolator.set_input(field_, field_xx, field_yy, chosen_interpolation, nfields);
 #endif
+      }
+      else
+        node_interpolator.set_input(field_, chosen_interpolation, nfields);
+
       for (size_t i=0; i<nodes_to->indep_nodes.elem_count; ++i)
       {
         double xyz_node[P4EST_DIM];
@@ -551,7 +573,10 @@ int main (int argc, char* argv[]){
       node_interpolator.interpolate(results_, nfields);
       break;
     case 2:
-      node_interpolator.set_input(field_block, field_block_xxyyzz, chosen_interpolation, nfields);
+      if(precompute_derivatives)
+        node_interpolator.set_input(field_block, field_block_xxyyzz, chosen_interpolation, nfields);
+      else
+        node_interpolator.set_input(field_block, chosen_interpolation, nfields);
       for (size_t i=0; i<nodes_to->indep_nodes.elem_count; ++i)
       {
         double xyz_node[P4EST_DIM];
