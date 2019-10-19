@@ -329,11 +329,13 @@ void my_p4est_interpolation_nodes_t::interpolate(const p4est_quadrant_t &quad, c
   quad_xyz_fr_q(quad_idx, quad.p.piggy3.which_tree, p4est, ghost, xyz_q);
 
   double xyz_p[P4EST_DIM];
-  for(int dir=0; dir<P4EST_DIM; ++dir)
-  {
+  // NOTE: the following is NOT a standard "clip_in_domain": we bring the point back in, *only if periodicity allows it*!
+  // If the domain is not periodic but one queries values out of the domain anyways, we use the standard interpolant built
+  // on the closest smallest quadrant in the domain and use it as a way to "extrapolate" the results out of the domain
+  for(unsigned char dir=0; dir<P4EST_DIM; ++dir){
     xyz_p[dir] = xyz[dir];
-    if     (periodic[dir] && xyz[dir]-xyz_q[dir]>(xyz_max[dir]-xyz_min[dir])/2) xyz_p[dir] -= xyz_max[dir]-xyz_min[dir];
-    else if(periodic[dir] && xyz_q[dir]-xyz[dir]>(xyz_max[dir]-xyz_min[dir])/2) xyz_p[dir] += xyz_max[dir]-xyz_min[dir];
+    if(periodic[dir] && ((xyz_p[dir]<xyz_min[dir]) || (xyz_p[dir]>xyz_max[dir])))
+      xyz_p[dir] = xyz_p[dir] - floor((xyz_p[dir]-xyz_min[dir])/(xyz_max[dir]-xyz_min[dir]))*(xyz_max[dir]-xyz_min[dir]);
   }
 
   /* compute derivatives */

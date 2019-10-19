@@ -502,7 +502,8 @@ int main (int argc, char* argv[]){
     // let's create it:
     my_p4est_node_neighbors_t ngbd_from(&hierarchy_from, nodes_from);
     // and initialize it:
-    ngbd_from.init_neighbors(); // (this is not mandatory, but it can only help regarding performance given how much we'll neeed the node neighbors)
+    if(precompute_derivatives)
+      ngbd_from.init_neighbors(); // (this is not mandatory, but it can only help regarding performance given how much we'll neeed the node neighbors)
 
     ierr = create_vectors_and_sample_functions_on_nodes(method, precompute_derivatives,
                                                         p4est_from, nodes_from, &ngbd_from, cf_field, nfields,
