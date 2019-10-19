@@ -29,6 +29,7 @@
 
 #include <src/Parser.h>
 #include <src/casl_math.h>
+#include <src/parameter_list.h>
 
 using namespace std;
 
@@ -45,31 +46,58 @@ const static std::string main_description =
     "Developer: Daniil Bochkov (dbochkov@ucsb.edu), October 2019.\n";
 
 
+// ---------------------------------------------------------
+// define parameters
+// ---------------------------------------------------------
+param_list_t pl;
+
+// grid parameters
+param_t<int>    lmin       (pl, 4,   "lmin",       "Min level of refinement (default: 4)");
+param_t<int>    lmax       (pl, 4,   "lmax",       "Max level of refinement (default: 4)");
+param_t<double> lip        (pl, 1.5, "lip",        "Lipschitz constant (default: 1.5)");
+param_t<int>    num_splits (pl, 3,   "num_splits", "Number of successive refinements (default: 3)");
+
+// problem set-up (points of iterpolation and function to interpolate)
+param_t<int>    test_function (pl, 0,   "test_function", "Test funciton to interpolate (default: 0):\n"
+                                                         "    0 - sin(x)*cos(y)*exp(z)\n"
+                                                         "    1 - ... (to be added)");
+param_t<double> displace      (pl, 0.1, "displace"     , "Relative (in diagonals) distance between grid nodes and interpolation points (default: 0.1)");
+param_t<double> nx            (pl, 1,   "nx"           , "The x-component of displacement vector");
+param_t<double> ny            (pl, 1,   "ny"           , "The y-component of displacement vector");
+param_t<double> nz            (pl, 1,   "nz"           , "The z-component of displacement vector");
+
+// method set-up
+param_t<bool> precompute_derivatives (pl, 1, "precompute_derivatives", "Precompute second derivatives (1) or let interpolation function try to compute (0) (default: 1)");
+param_t<int>  num_ghost_layers       (pl, 1, "num_ghost_layers"      , "Number of ghost layers (default: 1)");
+param_t<bool> on_the_fly             (pl, 1, "on_the_fly"            , "Perform interpolation \"on-the-fly\" (1) or use buffering of points (0) (default: 1)");
+param_t<int>  order                  (pl, 1, "order"                 , "Order of interpolation (default: 1): \n"
+                                                                       "    1 - linear,\n"
+                                                                       "    2 - quadratic,\n"
+                                                                       "    3 - quadratic non-oscillatory,\n"
+                                                                       "    4 - quadratic non-oscillatory continuous (ver. 1),\n"
+                                                                       "    5 - quadratic non-oscillatory continuous (ver. 2)");
+
 // test functions to interpolate
 #ifdef P4_TO_P8
 struct f_cf_t: CF_3 {
-  int test_function;
-  f_cf_t (double test_function) : test_function(test_function) {}
   double operator()(double x, double y, double z) const {
-    switch (test_function)
+    switch (test_function())
     {
       case 0: return sin(x)*cos(y)*exp(z);
       default: throw std::invalid_argument("Invalid test function number");
     }
   }
-};
+} f_cf;
 #else
 struct f_cf_t: CF_2 {
-  int test_function;
-  f_cf_t (double test_function) : test_function(test_function) {}
   double operator()(double x, double y) const {
-    switch (test_function)
+    switch (test_function())
     {
       case 0: return sin(x)*cos(y);
       default: throw std::invalid_argument("Invalid test function number");
     }
   }
-};
+} f_cf;
 #endif
 
 // level-set function for refinement
@@ -95,76 +123,26 @@ int main(int argc, char** argv)
   mpi_environment_t mpi;
   mpi.init(argc, argv);
 
-  // command line parser
+  // get parameter values from command line
   cmdParser cmd;
-
-  // ---------------------------------------------------------
-  // define parameters
-  // ---------------------------------------------------------
-  // grid parameters
-  int    lmin        = 4;   cmd.add_option("lmin"       , "Min level of refinement (default: 4)");
-  int    lmax        = 4;   cmd.add_option("lmax"       , "Max level of refinement (default: 4)");
-  double lip         = 1.5; cmd.add_option("lip"        , "Lipschitz constant (default: 1.5)");
-  int    num_splits  = 3;   cmd.add_option("num_splits" , "Number of successive refinements (default: 3)");
-
-  // problem set-up (points of iterpolation and function to interpolate)
-  double displace      = 0.1; cmd.add_option("displace"     , "Relative (in diagonals) distance between grid nodes and interpolation points (default: 0.1)");
-  double nx            = 1;   cmd.add_option("nx"           , "The x-component of displacement vector");
-  double ny            = 1;   cmd.add_option("ny"           , "The y-component of displacement vector");
-  double nz            = 1;   cmd.add_option("nz"           , "The z-component of displacement vector");
-  int    test_function = 0;   cmd.add_option("test_function", "Test funciton to interpolate (default: 0):\n"
-                                                              "    0 - sin(x)*cos(y)*exp(z)\n"
-                                                              "    1 - ... (to be added)");
-
-  // method set-up
-  bool precompute_derivatives = 1; cmd.add_option("precompute_derivatives", "Precompute second derivatives (1) or let interpolation function try to compute (0) (default: 1)");
-  int  num_ghost_layers       = 1; cmd.add_option("num_ghost_layers"      , "Number of ghost layers (default: 1)");
-  bool on_the_fly             = 1; cmd.add_option("on_the_fly"            , "Perform interpolation \"on-the-fly\" (1) or use buffering of points (0) (default: 1)");
-  int  order                  = 1; cmd.add_option("order"                 , "Order of interpolation (default: 1): \n"
-                                                                            "    1 - linear,\n"
-                                                                            "    2 - quadratic,\n"
-                                                                            "    3 - quadratic non-oscillatory,\n"
-                                                                            "    4 - quadratic non-oscillatory continuous (ver. 1),\n"
-                                                                            "    5 - quadratic non-oscillatory continuous (ver. 2)");
-
-  // ---------------------------------------------------------
-  // get values from command line
-  // ---------------------------------------------------------
+  pl.initialize_parser(cmd);
   if (cmd.parse(argc, argv, main_description)) return 0;
-
-  lmin        = cmd.get("lmin"      , lmin      );
-  lmax        = cmd.get("lmax"      , lmax      );
-  lip         = cmd.get("lip"       , lip       );
-  num_splits  = cmd.get("num_splits", num_splits);
-
-  test_function = cmd.get("test_function", test_function);
-  displace      = cmd.get("displace"     , displace     );
-  nx            = cmd.get("nx"           , nx           );
-  ny            = cmd.get("ny"           , ny           );
-  nz            = cmd.get("nz"           , nz           );
-
-  precompute_derivatives = cmd.get("precompute_derivatives", precompute_derivatives);
-  num_ghost_layers       = cmd.get("num_ghost_layers"      , num_ghost_layers      );
-  on_the_fly             = cmd.get("on_the_fly"            , on_the_fly            );
-  order                  = cmd.get("order"                 , order                 );
+  pl.set_from_cmd_all(cmd);
 
   // ---------------------------------------------------------
   // some auxiliary preparations
   // ---------------------------------------------------------
   // make sure (nx, ny, nz) is a unit vector
 #ifdef P4_TO_P8
-  double norm = sqrt(SQR(nx) + SQR(ny) + SQR(nz));
-  nx /= norm;
-  ny /= norm;
-  nz /= norm;
+  double norm = sqrt(SQR(nx.val) + SQR(ny.val) + SQR(nz.val));
+  nx.val /= norm;
+  ny.val /= norm;
+  nz.val /= norm;
 #else
-  double norm = sqrt(SQR(nx) + SQR(ny));
-  nx /= norm;
-  ny /= norm;
+  double norm = sqrt(SQR(nx.val) + SQR(ny.val));
+  nx.val /= norm;
+  ny.val /= norm;
 #endif
-
-  // create analytical function that will be used for interpolation tests
-  f_cf_t f_cf(test_function);
 
   // stopwatch
   parStopWatch w;
@@ -177,7 +155,7 @@ int main(int argc, char** argv)
   // ---------------------------------------------------------
   // loop through all grid resolutions
   // ---------------------------------------------------------
-  for (int iter = 0; iter < num_splits; ++iter)
+  for (int iter = 0; iter < num_splits(); ++iter)
   {
     // ---------------------------------------------------------
     // create grid
@@ -200,7 +178,7 @@ int main(int argc, char** argv)
     p4est = my_p4est_new(mpi.comm(), conn, 0, NULL, NULL);
 
     // refine based on distance to a level-set
-    splitting_criteria_cf_t sp(lmin+iter, lmax+iter, &phi_cf, lip);
+    splitting_criteria_cf_t sp(lmin()+iter, lmax()+iter, &phi_cf, lip());
     p4est->user_pointer = &sp;
     my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
 
@@ -208,7 +186,7 @@ int main(int argc, char** argv)
     my_p4est_partition(p4est, P4EST_TRUE, NULL);
 
     // create ghost layer
-    for (int i = 0; i < num_ghost_layers; ++i)
+    for (int i = 0; i < num_ghost_layers(); ++i)
     {
       if (i==0) ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
       else      my_p4est_ghost_expand(p4est, ghost);
@@ -273,11 +251,11 @@ int main(int argc, char** argv)
     // ---------------------------------------------------------
     // set input for interpolation
     // ---------------------------------------------------------
-    if (precompute_derivatives)
+    if (precompute_derivatives())
     {
 #ifdef P4_TO_P8
       ngbd.second_derivatives_central(f, fxx, fyy, fzz);
-      switch (order)
+      switch (order())
       {
         case 1: interp.set_input(f, linear); break;
         case 2: interp.set_input(f, fxx, fyy, fzz, quadratic); break;
@@ -288,7 +266,7 @@ int main(int argc, char** argv)
       }
 #else
       ngbd.second_derivatives_central(f, fxx, fyy);
-      switch (order)
+      switch (order())
       {
         case 1: interp.set_input(f, linear); break;
         case 2: interp.set_input(f, fxx, fyy, quadratic); break;
@@ -301,7 +279,7 @@ int main(int argc, char** argv)
     }
     else
     {
-      switch (order)
+      switch (order())
       {
         case 1: interp.set_input(f, linear); break;
         case 2: interp.set_input(f, quadratic); break;
@@ -316,7 +294,7 @@ int main(int argc, char** argv)
     // perform interpolation
     // ---------------------------------------------------------
     double xyz[P4EST_DIM];
-    if (on_the_fly) // on-the-fly method: treat interpolation object "interp" as a CF_2/CF_3 function
+    if (on_the_fly()) // on-the-fly method: treat interpolation object "interp" as a CF_2/CF_3 function
     {
       // get access to f_interp's data
       ierr = VecGetArray(f_interp, &f_interp_ptr); CHKERRXX(ierr);
@@ -328,10 +306,10 @@ int main(int argc, char** argv)
         node_xyz_fr_n(n, p4est, nodes, xyz);
 
         // find coordinates of the point where interpolation is needed
-        xyz[0] += displace*nx*diag_min; xyz[0] = MAX(xyz[0], xyz_min[0]); xyz[0] = MIN(xyz[0], xyz_max[0]);
-        xyz[1] += displace*ny*diag_min; xyz[1] = MAX(xyz[1], xyz_min[1]); xyz[1] = MIN(xyz[1], xyz_max[1]);
+        xyz[0] += displace()*nx()*diag_min; xyz[0] = MAX(xyz[0], xyz_min[0]); xyz[0] = MIN(xyz[0], xyz_max[0]);
+        xyz[1] += displace()*ny()*diag_min; xyz[1] = MAX(xyz[1], xyz_min[1]); xyz[1] = MIN(xyz[1], xyz_max[1]);
 #ifdef P4_TO_P8
-        xyz[2] += displace*nz*diag_min; xyz[2] = MAX(xyz[2], xyz_min[2]); xyz[2] = MIN(xyz[2], xyz_max[2]);
+        xyz[2] += displace()*nz()*diag_min; xyz[2] = MAX(xyz[2], xyz_min[2]); xyz[2] = MIN(xyz[2], xyz_max[2]);
 #endif
 
         // interpolate
@@ -354,10 +332,10 @@ int main(int argc, char** argv)
         node_xyz_fr_n(n, p4est, nodes, xyz);
 
         // find coordinates of the point where interpolation is needed
-        xyz[0] += displace*nx*diag_min; xyz[0] = MAX(xyz[0], xyz_min[0]); xyz[0] = MIN(xyz[0], xyz_max[0]);
-        xyz[1] += displace*ny*diag_min; xyz[1] = MAX(xyz[1], xyz_min[1]); xyz[1] = MIN(xyz[1], xyz_max[1]);
+        xyz[0] += displace()*nx()*diag_min; xyz[0] = MAX(xyz[0], xyz_min[0]); xyz[0] = MIN(xyz[0], xyz_max[0]);
+        xyz[1] += displace()*ny()*diag_min; xyz[1] = MAX(xyz[1], xyz_min[1]); xyz[1] = MIN(xyz[1], xyz_max[1]);
 #ifdef P4_TO_P8
-        xyz[2] += displace*nz*diag_min; xyz[2] = MAX(xyz[2], xyz_min[2]); xyz[2] = MIN(xyz[2], xyz_max[2]);
+        xyz[2] += displace()*nz()*diag_min; xyz[2] = MAX(xyz[2], xyz_min[2]); xyz[2] = MIN(xyz[2], xyz_max[2]);
 #endif
 
         // add coordinates into interpolation buffer
@@ -386,10 +364,10 @@ int main(int argc, char** argv)
       node_xyz_fr_n(n, p4est, nodes, xyz);
 
       // find coordinates of the point where interpolation was performed
-      xyz[0] += displace*nx*diag_min; xyz[0] = MAX(xyz[0], xyz_min[0]); xyz[0] = MIN(xyz[0], xyz_max[0]);
-      xyz[1] += displace*ny*diag_min; xyz[1] = MAX(xyz[1], xyz_min[1]); xyz[1] = MIN(xyz[1], xyz_max[1]);
+      xyz[0] += displace()*nx()*diag_min; xyz[0] = MAX(xyz[0], xyz_min[0]); xyz[0] = MIN(xyz[0], xyz_max[0]);
+      xyz[1] += displace()*ny()*diag_min; xyz[1] = MAX(xyz[1], xyz_min[1]); xyz[1] = MIN(xyz[1], xyz_max[1]);
 #ifdef P4_TO_P8
-      xyz[2] += displace*nz*diag_min; xyz[2] = MAX(xyz[2], xyz_min[2]); xyz[2] = MIN(xyz[2], xyz_max[2]);
+      xyz[2] += displace()*nz()*diag_min; xyz[2] = MAX(xyz[2], xyz_min[2]); xyz[2] = MIN(xyz[2], xyz_max[2]);
 #endif
 
       // get exact value and compute error
@@ -409,7 +387,7 @@ int main(int argc, char** argv)
     ierr = VecRestoreArray(error,    &error_ptr);    CHKERRXX(ierr);
 
     // print out max error
-    ierr = PetscPrintf(mpi.comm(), "Grid levels: %2d / %2d, max interpolation error: %e, order: %1.3g\n", lmin+iter, lmax+iter, error_max_cur, log(error_max_old/error_max_cur)/log(2)); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "Grid levels: %2d / %2d, max interpolation error: %e, order: %1.3g\n", lmin()+iter, lmax()+iter, error_max_cur, log(error_max_old/error_max_cur)/log(2)); CHKERRXX(ierr);
 
     // ---------------------------------------------------------
     // save the grid and data into vtk
