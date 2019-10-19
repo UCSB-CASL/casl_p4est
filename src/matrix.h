@@ -58,6 +58,7 @@ public:
   double scale_by_maxabs(vector<double> x[], unsigned int n_vectors);
 
   void mtm_product(matrix_t& m );
+  void mtm_product(matrix_t& m, vector<double>& w);
 
 
   /*!

@@ -136,10 +136,10 @@ void my_p4est_interpolation_t::add_point_general(const p4est_locidx_t &node_idx_
   }
 }
 
-void my_p4est_interpolation_t::interpolate(double * const *Fo_p, const unsigned int &n_outputs, const unsigned int &comp) {
+void my_p4est_interpolation_t::interpolate(double * const *Fo_p, const unsigned int &comp) {
   ierr = PetscLogEventBegin(log_my_p4est_interpolation_interpolate, 0, 0, 0, 0); CHKERRXX(ierr);
 
-  P4EST_ASSERT(n_outputs == n_vecs());
+  const unsigned int n_outputs = n_vecs();
   P4EST_ASSERT(bs_f > 0);
   P4EST_ASSERT((comp==ALL_COMPONENTS) || (comp < bs_f));
 

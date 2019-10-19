@@ -40,7 +40,7 @@ using std::vector;
  *    sometimes less convenient (since it requires buffering, etc.)
  *
  * See the description of
- *  void interpolate(double * const *Fo, unsigned int n_functions, const unsigned int &comp=ALL_COMPONENTS);
+ *  void interpolate(double * const *Fo, const unsigned int &comp=ALL_COMPONENTS);
  * for mode details about the usage as in 2) here above.
  * Code revision and comments by Raphael Egan (raphaelegan@ucsb.edu), October 18, 2019.
  */
@@ -241,7 +241,6 @@ public:
    */
   inline void add_point_local(const p4est_locidx_t &node_idx_on_output, const double *xyz) { add_point_general(node_idx_on_output, xyz, true); };
 
-  // interpolation methods and inline wrappers
   /*!
    * \brief interpolate executes the desired interpolation for all points that have been added to the input
    * buffers, based on the given input fields.
@@ -259,14 +258,20 @@ public:
    *      in the appropriate output
    * \param [inout] Fo:         constant array of pointers to double array(s) (may be local array(s) of Petsc vectors,
    *                            but not mandatorily) in which results need to be inserted
-   * \param [in]    n_outputs:  number of pointers in the above array Fo: this MUST be equal to the number of
-   *                            input fields, i.e. n_vecs(), for consistency (a P4EST_ASSERT checks it)
    * \param [in]    comp:       component of the (possibly block-structured) Petsc parallel vector(s) to be interpolated
    *                            all components are considered if set to ALL_COMPONENTS
+   * \note Fo MUST (and is assumed to) contain n_vecs() elements, for consistency with the given inputs
+   * \note about the insertion of the results in elements of Fo:
+   * if ((comp==ALL_COMPONENTS) && (bs_f > 1))
+   *    --> all bs_f components of the kth input field for the node buffered with associated index "node_idx_on_output"
+   *        (when using 'add_point()') are inserted in
+   *        {Fo[k][bs_f*node_idx_on_output], Fo[k][bs_f*node_idx_on_output+1], ..., Fo[k][bs_f*node_idx_on_output+bs_f-1]}
+   * if (bs_f == 1) or if (comp < bs_f)
+   *    --> the only desired component of the kth input field for the node buffered with associated index "node_idx_on_output"
+   *        (when using 'add_point()') is inserted in Fo[k][node_idx_on_output]
    */
-  void interpolate(double * const *Fo, const unsigned int &n_outputs, const unsigned int &comp=ALL_COMPONENTS);
-  inline void interpolate(double * const *Fo, const unsigned int &comp=ALL_COMPONENTS) { interpolate(Fo, n_vecs(), comp); }
-  inline void interpolate(double *Fo, const unsigned int &comp=ALL_COMPONENTS) { interpolate(&Fo, n_vecs(), comp); }
+  void interpolate(double * const *Fo, const unsigned int &comp=ALL_COMPONENTS);
+  inline void interpolate(double *Fo, const unsigned int &comp=ALL_COMPONENTS) { P4EST_ASSERT(n_vecs()==1); interpolate(&Fo, comp); }
 
   /*!
    * \brief interpolate does the same task as the above method, except that it is specifically for Petsc parallel vector(s)
@@ -279,24 +284,25 @@ public:
    * face-sampling vectors, the extension of the following function to handle such cases would be fairly confusing!
    * So we leave the following functions for interpolations from all components to all components only
    * (the best way to proceed in a case like the example given here above, would be to call the above function(s)
-   * immediately with the local array(s) of the destination vectors and the appropriate indices given when passing points
-   * with "add_point")
+   * immediately with the local array(s) of the destination vectors and the appropriate indices given when passing
+   * points with "add_point")
    * \param [inout] Fos:    array of Petsc Parallel vector(s) in which results need to be inserted
-   * \param [in] n_outputs: number of Petsc Parallel vector(s) in the above array.
+   * \note Fos is assumed to contain n_vecs() elements, for consistency with the given inputs
+   * \note about the insertion of the results in elements of Fos:
    */
-  inline void interpolate(Vec *Fos, const unsigned int &n_outputs)
+  inline void interpolate(Vec *Fos)
   {
-    P4EST_ASSERT(n_outputs > 0);
+    const unsigned int n_outputs = n_vecs();
     double *Fo_p[n_outputs];
     for (unsigned int k = 0; k < n_outputs; ++k) {
       ierr = VecGetArray(Fos[k], &Fo_p[k]); CHKERRXX(ierr); }
 
-    interpolate(Fo_p, n_outputs, ALL_COMPONENTS);
+    interpolate(Fo_p, ALL_COMPONENTS);
     for (unsigned int k = 0; k < n_outputs; ++k) {
       ierr = VecRestoreArray(Fos[k], &Fo_p[k]); CHKERRXX(ierr); }
   }
-  inline void interpolate(Vec Fo){ interpolate(&Fo, 1); }
-  inline void interpolate(vector<Vec>& Fo) { interpolate(Fo.data(), Fo.size()); }
+  inline void interpolate(Vec Fo){ P4EST_ASSERT(n_vecs()==1); interpolate(&Fo); }
+  inline void interpolate(vector<Vec>& Fo) { P4EST_ASSERT(n_vecs()==Fo.size()); interpolate(Fo.data()); }
 
   /*!
    * \brief operator () standard direct operator to interpolate value at any point that is locally owned.
