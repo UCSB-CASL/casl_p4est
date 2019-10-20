@@ -70,7 +70,7 @@ const int NUM_SAMPLES = 1u << 10u;					// Number of samples for each circle radi
 const int N_CIRCLES = 60;							// Number of circles for a given radius per grid resolution.
 const int MIN_D = 0,								// Min and max dimension values.
 		  MAX_D = 1;
-const double MAX_PHI_VAL = 1000.0;					// Allows to check if a phi value goes beyond a limit.
+//const double MAX_PHI_VAL = 10.0;					// Allows to check if a phi value goes beyond a limit.
 
 /*!
  * Generate and save training datasets with a very large number or rows and 9+1+1 columns containing the renitialized phi
@@ -107,17 +107,18 @@ void saveReinitializedDataset( int nGridPoints, int iter, const mpi_environment_
 	double h = 1. / ( nGridPoints - 1. );						// Spatial step size in both x and y directions.
 
 	////////////////////////////////////////// Setting up the p4est structs ////////////////////////////////////////
+	// TODO: see index_of_node.
 
 	p4est_t *p4est;
 	p4est_nodes_t *nodes;
 	PetscErrorCode ierr;
 
-	p4est_connectivity_t *connectivity;							// Create the connectivity object.  Our domain is [0,1]^2, and we want a cartesian grid.
+	p4est_connectivity_t *connectivity;									// Create the connectivity object.  Our domain is [0,1]^2, and we want a cartesian grid.
 	my_p4est_brick_t brick;
-	int n_xyz[] = {nGridPoints, nGridPoints, nGridPoints};		// Number of root cells in the macromesh along x, y, z
-	double xyz_min[] = {MIN_D - h, MIN_D - h, MIN_D - h};		// Coordinates of the lower-left-back point: We want to skip first column and row.
-	double xyz_max[] = {MAX_D, MAX_D, MAX_D};					// Coordinates of the front-right-top point.
-	int periodic[] = {0, 0, 0};									// Whether the domain is periodic or not.
+	int n_xyz[] = {nGridPoints - 1, nGridPoints - 1, nGridPoints - 1};	// Number of root cells in the macromesh along x, y, z
+	double xyz_min[] = {MIN_D, MIN_D, MIN_D};							// Coordinates of the lower-left-back point.
+	double xyz_max[] = {MAX_D, MAX_D, MAX_D};							// Coordinates of the front-right-top point.
+	int periodic[] = {0, 0, 0};											// Whether the domain is periodic or not.
 
 	connectivity = my_p4est_brick_new( n_xyz, xyz_min, xyz_max, &brick, periodic );
 
@@ -170,7 +171,7 @@ void saveReinitializedDataset( int nGridPoints, int iter, const mpi_environment_
 
 	std::vector<std::vector<double>> CopyGrid( nGridPoints );			// Allocate space for regular grid of re-initialized phi values.
 	for( int i = 0; i < nGridPoints; i++ )
-		CopyGrid[i].resize( nGridPoints );
+		CopyGrid[i].resize( nGridPoints, 0 );
 
 	// Create PETSc vector to hold phi values.
 	Vec phi;
@@ -213,18 +214,15 @@ void saveReinitializedDataset( int nGridPoints, int iter, const mpi_environment_
 			int totalGridPoints = 0;
 			for( size_t n = 0; n < nodes->indep_nodes.elem_count; n++ )
 			{
-				double nodeCoords[P4EST_DIM];									// Nodes' coordinates in XY space.
+				double nodeCoords[P4EST_DIM];										// Nodes' coordinates in XY space.
 				node_xyz_fr_n( n, p4est, nodes, nodeCoords );
-				int i = static_cast<int>( nodeCoords[0] / h ),					// Indices from -1 to (nGridPoints - 1)
-					j = static_cast<int>( nodeCoords[1] / h );					// in both x- and y- directions.
-				if( i < 0 || j < 0 )
-					continue;
+				int i = static_cast<int>( round( nodeCoords[0] * ( nGridPoints - 1 ) ) ),		// Indices from 0 to (nGridPoints - 1)
+					j = static_cast<int>( round( nodeCoords[1] * ( nGridPoints - 1 ) ) );		// in both x- and y- directions.
 
 				CopyGrid[i][j] = phi_ptr[n];	// Stores information in transposed format (i.e. ith row contains all y values for same x).
-				assert( fabs( CopyGrid[i][j] ) < MAX_PHI_VAL );					// Make sure we are not getting garbage values.
+//				assert( fabs( CopyGrid[i][j] ) > 0 && fabs( CopyGrid[i][j] ) < MAX_PHI_VAL );	// Make sure we are not getting garbage values.
 				totalGridPoints++;
 			}
-			assert( totalGridPoints == SQR( nGridPoints ) );					// Expect nGridPoints^2 grid points.
 
 			ierr = VecRestoreArrayRead( phi, &phi_ptr ); CHKERRXX( ierr );
 
@@ -253,7 +251,7 @@ void saveReinitializedDataset( int nGridPoints, int iter, const mpi_environment_
 					dataPve[s] = CopyGrid[q[0]][q[1]];				// Store both positive and negative phi values.
 					dataNve[s] = -dataPve[s];
 
-					assert( fabs( dataPve[s] ) < MAX_PHI_VAL && fabs( dataNve[s] ) < MAX_PHI_VAL );
+//					assert( fabs( dataPve[s] ) > 0 && fabs( dataPve[s] ) < MAX_PHI_VAL && fabs( dataNve[s] ) > 0 && fabs( dataNve[s] ) < MAX_PHI_VAL );
 				}
 
 				dataPve[s] = hkappa;								// Second to last column holds h*\kappa.
