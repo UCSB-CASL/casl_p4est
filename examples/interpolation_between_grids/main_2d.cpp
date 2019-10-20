@@ -571,7 +571,7 @@ int main (int argc, char* argv[]){
         node_xyz_fr_n(i, p4est_to, nodes_to, xyz_node);
         node_interpolator.add_point(i, xyz_node);
       }
-      node_interpolator.interpolate(results_, nfields);
+      node_interpolator.interpolate(results_);
       break;
     case 2:
       if(precompute_derivatives)
