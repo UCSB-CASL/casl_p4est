@@ -1875,7 +1875,7 @@ bool my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set, boo
   if(!grid_is_unchanged)
   {
     interp_nodes.set_input(vnp1_nodes, quadratic, P4EST_DIM);
-    interp_nodes.interpolate(vn_nodes, P4EST_DIM); CHKERRXX(ierr);
+    interp_nodes.interpolate(vn_nodes); CHKERRXX(ierr);
   }
   for (short dir = 0; dir < P4EST_DIM; ++dir) {
     if(!grid_is_unchanged){

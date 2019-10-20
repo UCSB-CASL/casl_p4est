@@ -3064,7 +3064,7 @@ void my_p4est_two_phase_flows_t::update_from_tn_to_tnp1()
   Vec outputs[2] = {vn_nodes_omega_minus, vn_nodes_omega_plus};
   Vec outputs_xxyyzz[2] = {vn_nodes_omega_minus_xxyyzz, vn_nodes_omega_plus_xxyyzz};
   interp_nodes.set_input(inputs, linear, 2, P4EST_DIM);
-  interp_nodes.interpolate(outputs, 2);
+  interp_nodes.interpolate(outputs);
   ngbd_np1->second_derivatives_central(outputs, outputs_xxyyzz, 2, P4EST_DIM);
   ierr = VecDestroy(vnp1_nodes_omega_minus);  CHKERRXX(ierr); vnp1_nodes_omega_minus = NULL;
   ierr = VecDestroy(vnp1_nodes_omega_plus);   CHKERRXX(ierr); vnp1_nodes_omega_plus = NULL;
