@@ -25,14 +25,21 @@
 #endif
 
 #include <src/casl_math.h>
+#include <chrono>
 
+/*!
+ * To run in multiple cores: mpiexec -np 4 ./machine_learning_ls_datasets
+ * @param argc
+ * @param argv
+ * @return
+ */
 int main( int argc, char** argv )
 {
 	// Prepare parallel enviroment.
 	mpi_environment_t mpi{};
 	mpi.init( argc, argv );
 
-	// Stopwatch
+	// Stopwatch.
 	parStopWatch w;
 	w.start( "Running example: curvature" );
 
@@ -44,14 +51,14 @@ int main( int argc, char** argv )
 	my_p4est_brick_t brick;
 
 	// Domain size information
-	const int N_CELLS = 128;					// We need this number of cells per dimension, and the number of grid points = N_CELLS + 1.
-	const double MIN_D = 0;						// Min and max value for any dimension.
+	const int N_GRID_POINTS = 128;					// We need this number of cells per dimension, and the number of grid points = N_CELLS + 1.
+	const double MIN_D = 0;							// Min and max value for any dimension.
 	const double MAX_D = 1.0;
-	const double H = 1. / ( N_CELLS - 1. );		// Spatial step size.
-	const int ITER = 20;						// Number of iterations for level set reinitialization.
+	const double H = 1. / ( N_GRID_POINTS - 1. );	// Spatial step size.
+	const int ITER = 20;							// Number of iterations for level set reinitialization.
 
-	const int n_xyz[] = { N_CELLS, N_CELLS,  N_CELLS };
-	const double xyz_min[] = { MIN_D - H, MIN_D - H, MIN_D - H };
+	const int n_xyz[] = { N_GRID_POINTS - 1, N_GRID_POINTS - 1,  N_GRID_POINTS - 1 };
+	const double xyz_min[] = { MIN_D, MIN_D, MIN_D };
 	const double xyz_max[] = { MAX_D, MAX_D, MAX_D };
 	const int periodic[] = { 0, 0, 0 };
 	conn = my_p4est_brick_new( n_xyz, xyz_min, xyz_max, &brick, periodic );
@@ -117,7 +124,7 @@ int main( int argc, char** argv )
 	double c[2] = {0.5 + ranged_rand( -H/2.0, +H/2.0 ),			// Center coords are randomly chosen around the center of the grid.
 				   0.5 + ranged_rand( -H/2.0, +H/2.0 )};
 	double r = 0.5 - 2.0 * H;
-	circle interface( c[0], c[1], r );							// Non-signed distance function with circular interface.
+	circle interface( c[0], c[1], r );							// Non signed distance function with circular interface.
 	sample_cf_on_nodes( p4est, nodes, interface, phi );
 
 	sprintf( filename, "before_%d", P4EST_DIM );
@@ -131,7 +138,10 @@ int main( int argc, char** argv )
 	ls.reinitialize_2nd_order( phi, ITER );
 
 	// Compute normals (returns scaled normal).
+	auto t1 = std::chrono::high_resolution_clock::now();
 	compute_normals( neighbors, phi, normal );
+	auto t2 = std::chrono::high_resolution_clock::now();
+	auto normalDuration = std::chrono::duration_cast<std::chrono::microseconds>( t2 - t1 );
 
 	sprintf( filename, "after_%d", P4EST_DIM );
 	my_p4est_vtk_write_all( p4est, nodes, ghost,
@@ -141,20 +151,24 @@ int main( int argc, char** argv )
 
 
 	// Compute curvature using div(normal) expression (normal MUST be scaled).
+	t1 = std::chrono::high_resolution_clock::now();
 	compute_mean_curvature( neighbors, normal, kappa );
+	t2 = std::chrono::high_resolution_clock::now();
+	auto kappaDuration = std::chrono::duration_cast<std::chrono::microseconds>( t2 - t1 );
 
 	if( mpi.rank() == 0 )
 	{
-		PetscPrintf( mpi.comm(), "Done %d\n", 1 );
-		PetscPrintf( mpi.comm(), "\n" );
+		PetscPrintf( mpi.comm(), "No. of Grid Points: %i\n", nodes->indep_nodes.elem_count );
+		PetscPrintf( mpi.comm(), "   Normal duration: %lu micro secs.\n", normalDuration );
+		PetscPrintf( mpi.comm(), "    Kappa duration: %lu micro secs.\n", kappaDuration );
 	}
 
-	// destroy vectors
+	// Destroy vectors
 	VecDestroy( phi );
 	VecDestroy( kappa );
 	foreach_dimension( dim ) VecDestroy( normal[dim] );
 
-	// destroy the structures
+	// Destroy the structures
 	p4est_nodes_destroy( nodes );
 	p4est_ghost_destroy( ghost );
 	p4est_destroy( p4est );
