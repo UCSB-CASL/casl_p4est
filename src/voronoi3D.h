@@ -12,6 +12,11 @@
 
 #include <voro++.hh>
 
+#ifdef Voronoi_DIM
+#undef Voronoi_DIM
+#endif
+#define Voronoi_DIM Voronoi3D
+
 using std::vector;
 
 struct VoroNgbd {

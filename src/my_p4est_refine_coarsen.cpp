@@ -538,13 +538,13 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
 
     if(finest_in_negative_flag)
       for (short i = 0; i < P4EST_CHILDREN; i++) {
-        refine  = refine  || (f[i] <= 0.5*lip*d && quad->level < max_lvl);
-        coarsen = coarsen && (f[i] >= 1.0*lip*d && quad->level > min_lvl);
+        refine  = refine  || ((quad->level < max_lvl) && ((f[i] <= 0.5*lip*d) || ((i==0)? false: ((f[i] > 0.0 && f[0] <= 0.0) || (f[i] <= 0.0 && f[0] > 0.0)))));
+        coarsen = coarsen && (quad->level > min_lvl) && (f[i] >= 1.0*lip*d) && ((i==0)? true: ((f[i] > 0.0 && f[0] > 0.0) || (f[i] <= 0.0 && f[0] <= 0.0)));
       }
     else
       for (short i = 0; i < P4EST_CHILDREN; i++) {
-        refine  = refine  || (fabs(f[i]) <= 0.5*lip*d && quad->level < max_lvl);
-        coarsen = coarsen && (fabs(f[i]) >= 1.0*lip*d && quad->level > min_lvl);
+        refine  = refine  || ((quad->level < max_lvl) && ((fabs(f[i]) <= 0.5*lip*d) || ((i==0)? false: ((f[i] > 0.0 && f[0] <= 0.0) || (f[i] <= 0.0 && f[0] > 0.0)))));
+        coarsen = coarsen && (quad->level > min_lvl) && (fabs(f[i]) >= 1.0*lip*d) && ((i==0)? true: ((f[i] > 0.0 && f[0] > 0.0) || (f[i] <= 0.0 && f[0] <= 0.0)));
       }
 
     if (refine)

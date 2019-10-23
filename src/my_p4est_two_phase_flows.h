@@ -78,22 +78,14 @@ private:
     bool refine_and_coarsen(p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, Vec phi_coarse_np1, Vec vorticities);
   };
 
-#ifdef P4_TO_P8
-  class wall_bc_value_hodge_t : public CF_3 {
-#else
-  class wall_bc_value_hodge_t : public CF_2 {
-#endif
+
+  class wall_bc_value_hodge_t : public CF_DIM {
   private:
     my_p4est_two_phase_flows_t* _parent;
   public:
     wall_bc_value_hodge_t(my_p4est_two_phase_flows_t* obj) : _parent(obj) {}
-#ifdef P4_TO_P8
-    double operator()(double x, double y, double z) const;
-    double operator()(const double *xyz) const {return this->operator()(xyz[0], xyz[1], xyz[2]);}
-#else
-    double operator()(double x, double y) const;
-    double operator()(const double *xyz) const {return this->operator()(xyz[0], xyz[1]);}
-#endif
+    double operator()(DIM(double x, double y, double z)) const;
+    double operator()(const double *xyz) const {return this->operator()(DIM(xyz[0], xyz[1], xyz[2]));}
   };
 
   my_p4est_brick_t *brick;
@@ -125,7 +117,7 @@ private:
   double rho_plus, rho_minus;
   double dt_n;
   double dt_nm1;
-  double max_L2_norm_u_minus, max_L2_norm_u_plus;
+  double max_L2_norm_u[2]; // 0:: minus, 1::plus
   double uniform_band_minus, uniform_band_plus;
   double threshold_split_cell;
   double cfl;
@@ -136,23 +128,13 @@ private:
   double threshold_dbl_max;
   const double threshold_norm_of_n = 1.0e-6;
 
-#ifdef P4_TO_P8
-  BoundaryConditions3D *bc_pressure;
-  BoundaryConditions3D bc_hodge;
-  BoundaryConditions3D *bc_v;
-#else
-  BoundaryConditions2D *bc_pressure;
-  BoundaryConditions2D bc_hodge;
-  BoundaryConditions2D *bc_v;
-#endif
+  BoundaryConditionsDIM *bc_pressure;
+  BoundaryConditionsDIM bc_hodge;
+  BoundaryConditionsDIM *bc_v;
 
   wall_bc_value_hodge_t wall_bc_value_hodge;
 
-#ifdef P4_TO_P8
-  CF_3 *external_forces[P4EST_DIM];
-#else
-  CF_2 *external_forces[P4EST_DIM];
-#endif
+  CF_DIM *external_forces[P4EST_DIM];
   my_p4est_interpolation_nodes_t *interp_phi;
 
   // -------------------------------------------------------------------
@@ -308,16 +290,12 @@ private:
       r.level = P4EST_MAXLEVEL;
       r.x = coarse_quad->x + P4EST_QUADRANT_LEN(coarse_quad->level+1);
       r.y = coarse_quad->y + P4EST_QUADRANT_LEN(coarse_quad->level+1);
-#ifdef P4_TO_P8
-      r.z = coarse_quad->z + P4EST_QUADRANT_LEN(coarse_quad->level+1);
-#endif
+      ONLY3D(r.z = coarse_quad->z + P4EST_QUADRANT_LEN(coarse_quad->level+1));
       P4EST_ASSERT (p4est_quadrant_is_node (&r, 1));
       // theoretically no need to canonicalize here, the quad center will always be INSIDE a tree
       // --> check for it in debug!
       P4EST_ASSERT((r.x!=0) && (r.x!=P4EST_ROOT_LEN) && (r.y!=0) && (r.y!=P4EST_ROOT_LEN));
-#ifdef P4_TO_P8
-      P4EST_ASSERT((r.z!=0) && (r.z!=P4EST_ROOT_LEN));
-#endif
+      ONLY3D(P4EST_ASSERT((r.z!=0) && (r.z!=P4EST_ROOT_LEN)));
       r.p.which_tree = tree_idx;
       bool to_return = index_of_node(&r, fine_nodes_n, fine_center_idx);
       if(to_return)
@@ -326,19 +304,13 @@ private:
     }
   };
 
-  inline bool get_fine_node_idx_of_logical_vertex(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const char& vx, const char& vy,
-                                                #ifdef P4_TO_P8
-                                                  const char& vz,
-                                                #endif
-                                                  p4est_locidx_t& fine_vertex_idx,  const p4est_quadrant_t* coarse_quad)
+  inline bool get_fine_node_idx_of_logical_vertex(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, DIM(const char& vx, const char& vy, const char& vz), p4est_locidx_t& fine_vertex_idx,  const p4est_quadrant_t* coarse_quad)
   {
     unsigned char sum_v = abs(vx) + abs(vy);
     P4EST_ASSERT(vx==-1 || vx==0 || vx==1);
     P4EST_ASSERT(vy==-1 || vy==0 || vy==1);
-#ifdef P4_TO_P8
-    P4EST_ASSERT(vz==-1 || vz==0 || vz==1);
-    sum_v += abs(vz);
-#endif
+    ONLY3D(P4EST_ASSERT(vz==-1 || vz==0 || vz==1));
+    ONLY3D(sum_v += abs(vz));
     P4EST_ASSERT(sum_v <= P4EST_DIM);
     // looking for saved shortcuts first
     const bool is_center  = (sum_v == 0);
@@ -387,11 +359,7 @@ private:
 #endif
     if (is_corner)
     {
-#ifdef P4_TO_P8
-      char local_node_idx = (vx+1)/2+(vy+1)+2*(vz+1);
-#else
-      char local_node_idx = (vx+1)/2+(vy+1);
-#endif
+      char local_node_idx = (vx+1)/2+(vy+1) ONLY3D(+2*(vz+1));
       P4EST_ASSERT((local_node_idx >= 0) && (local_node_idx < P4EST_CHILDREN));
       node_idx = nodes_n->local_nodes[P4EST_CHILDREN*quad_idx+local_node_idx];
       computational_to_fine_node_t::const_iterator got_it = node_to_fine_node.find(node_idx);
@@ -419,16 +387,10 @@ private:
     r.level = P4EST_MAXLEVEL;
     r.x = coarse_quad->x + (vx+1)*P4EST_QUADRANT_LEN(coarse_quad->level+1);
     r.y = coarse_quad->y + (vy+1)*P4EST_QUADRANT_LEN(coarse_quad->level+1);
-#ifdef P4_TO_P8
-    r.z = coarse_quad->z + (vz+1)*P4EST_QUADRANT_LEN(coarse_quad->level+1);
-#endif
+    ONLY3D(r.z = coarse_quad->z + (vz+1)*P4EST_QUADRANT_LEN(coarse_quad->level+1));
     r.p.which_tree = tree_idx;
     P4EST_ASSERT (p4est_quadrant_is_node (&r, 0));
-    if((r.x == 0) || (r.x == P4EST_ROOT_LEN) || (r.y == 0) || (r.y == P4EST_ROOT_LEN)
-   #ifdef P4_TO_P8
-       || (r.z == 0) || (r.z == P4EST_ROOT_LEN)
-   #endif
-       )
+    if((r.x == 0) || (r.x == P4EST_ROOT_LEN) || (r.y == 0) || (r.y == P4EST_ROOT_LEN) ONLY3D(|| (r.z == 0) || (r.z == P4EST_ROOT_LEN)))
     {
       p4est_quadrant_t n;
       p4est_node_canonicalize(fine_p4est_n, tree_idx, &r, &n);
@@ -472,9 +434,7 @@ private:
     // theoretically no need to canonicalize here, the point should already be INSIDE
     // a tree
     P4EST_ASSERT((r.x!=P4EST_ROOT_LEN) && (r.y!=P4EST_ROOT_LEN));
-#ifdef P4_TO_P8
-    P4EST_ASSERT(r.z!=P4EST_ROOT_LEN);
-#endif
+    ONLY3D(P4EST_ASSERT(r.z!=P4EST_ROOT_LEN));
     bool to_return = index_of_node(&r, fine_nodes_n, fine_vertex_idx);
     if(to_return)
       node_to_fine_node[node_idx] = fine_vertex_idx;
@@ -507,10 +467,7 @@ private:
       }
       if(coarse_quad->level < (((splitting_criteria_t*) p4est_n->user_pointer)->max_lvl))
         return false;
-      return get_fine_node_idx_of_logical_vertex(quad_idx, tree_idx, ((loc_face_dir/2==dir::x)? ((loc_face_dir%2)? 1:-1):0), ((loc_face_dir/2==dir::y)? ((loc_face_dir%2)? 1:-1):0),
-                                           #ifdef P4_TO_P8
-                                                 ((loc_face_dir/2==dir::z)? ((loc_face_dir%2)? 1:-1):0),
-                                           #endif
+      return get_fine_node_idx_of_logical_vertex(quad_idx, tree_idx, DIM(((loc_face_dir/2==dir::x)? ((loc_face_dir%2)? 1:-1):0), ((loc_face_dir/2==dir::y)? ((loc_face_dir%2)? 1:-1):0), ((loc_face_dir/2==dir::z)? ((loc_face_dir%2)? 1:-1):0)),
                                                  fine_face_idx, coarse_quad);
     }
   }
@@ -591,19 +548,12 @@ private:
 
   double div_mu_grad_u_dir(const p4est_locidx_t& face_idx, const unsigned char& dir, const bool& face_is_in_omega_minus, const p4est_locidx_t & fine_idx_of_face,
                            const double *vn_dir_p, const double *fine_jump_mu_grad_vdir_p, const double *fine_phi_p, const double *fine_phi_xxyyzz_p);
-#ifdef P4_TO_P8
-  Voronoi3D compute_voronoi_cell(const p4est_locidx_t &face_idx, const unsigned char &dir,
-                                 const bool &face_is_in_omega_minus, const p4est_locidx_t &fine_idx_of_face,
-                                 const double *fine_phi_p, const double *fine_phi_xxyyzz_p,
-                                 const double *vn_dir_p, const double *fine_jump_mu_grad_vdir_p,
-                                 bool &xgfm_treatment_required, double xgfm_fluxes[P4EST_DIM]);
-#else
-  Voronoi2D compute_voronoi_cell(const p4est_locidx_t &face_idx, const unsigned char &dir,
-                                 const bool &face_is_in_omega_minus, const p4est_locidx_t &fine_idx_of_face,
-                                 const double *fine_phi_p, const double *fine_phi_xxyyzz_p,
-                                 const double *vn_dir_p, const double *fine_jump_mu_grad_vdir_p,
-                                 bool &xgfm_treatment_required, double xgfm_fluxes[P4EST_DIM]);
-#endif
+
+  Voronoi_DIM compute_voronoi_cell(const p4est_locidx_t &face_idx, const unsigned char &dir,
+                                   const bool &face_is_in_omega_minus, const p4est_locidx_t &fine_idx_of_face,
+                                   const double *fine_phi_p, const double *fine_phi_xxyyzz_p,
+                                   const double *vn_dir_p, const double *fine_jump_mu_grad_vdir_p,
+                                   bool &xgfm_treatment_required, double xgfm_fluxes[P4EST_DIM]);
 
   void compute_normals_curvature_and_second_derivatives(const bool& set_second_derivatives);
   void compute_curvature();
@@ -804,15 +754,21 @@ private:
                                                                double *vnp1_minus_p[P4EST_DIM], double *vnp1_plus_p[P4EST_DIM],
                                                                double *normal_derivative_of_vnp1_minus_p[P4EST_DIM], double *normal_derivative_of_vnp1_plus_p[P4EST_DIM]);
 
+  void extrapolate_normal_derivatives_of_face_velocity_local_explicit_iterative(const p4est_locidx_t &local_face_idx, const unsigned char &dir, const my_p4est_interpolation_nodes_t &interp_normal, const double *fine_phi_p,
+                                                                                double *normal_derivative_of_vnp1_minus_p[P4EST_DIM], double *normal_derivative_of_vnp1_plus_p[P4EST_DIM]);
+
   void solve_velocity_extrapolation_local_explicit_iterative(const p4est_locidx_t &local_face_idx, const unsigned char &dir, const my_p4est_interpolation_nodes_t &interp_normal,
                                                              const double *fine_jump_mu_grad_vdir_p, const double *fine_phi_p, const double *fine_phi_xxyyzz_p,
-                                                             double *vnp1_minus_p[P4EST_DIM], double *vnp1_plus_p[P4EST_DIM],
-                                                             double *normal_derivative_of_vnp1_minus_p[P4EST_DIM], double *normal_derivative_of_vnp1_plus_p[P4EST_DIM]);
+                                                             const double *normal_derivative_of_vnp1_minus_p[P4EST_DIM], const double *normal_derivative_of_vnp1_plus_p[P4EST_DIM],
+                                                             double *vnp1_minus_p[P4EST_DIM], double *vnp1_plus_p[P4EST_DIM]);
+
+  void extrapolate_normal_derivatives_of_face_velocity_local_pseudo_time(const p4est_locidx_t &local_face_idx, const unsigned char &dir, const my_p4est_interpolation_nodes_t &interp_normal, const double *fine_phi_p,
+                                                                         double *normal_derivative_of_vnp1_minus_p[P4EST_DIM], double *normal_derivative_of_vnp1_plus_p[P4EST_DIM]);
 
   void solve_velocity_extrapolation_local_pseudo_time(const p4est_locidx_t &local_face_idx, const unsigned char &dir, const my_p4est_interpolation_nodes_t &interp_normal,
                                                       const double *fine_jump_mu_grad_vdir_p, const double *fine_phi_p, const double *fine_phi_xxyyzz_p,
-                                                      double *vnp1_minus_p[P4EST_DIM], double *vnp1_plus_p[P4EST_DIM],
-                                                      double *normal_derivative_of_vnp1_minus_p[P4EST_DIM], double *normal_derivative_of_vnp1_plus_p[P4EST_DIM]);
+                                                      const double *normal_derivative_of_vnp1_minus_p[P4EST_DIM], const double *normal_derivative_of_vnp1_plus_p[P4EST_DIM],
+                                                      double *vnp1_minus_p[P4EST_DIM], double *vnp1_plus_p[P4EST_DIM]);
 
   void interpolate_linearly_from_fine_nodes_to_coarse_nodes(const Vec& vv_fine, Vec& vv_coarse);
 
@@ -833,29 +789,33 @@ private:
 
   void set_interface_velocity();
 
+  inline bool no_wall_in_face_neighborhood(const uniform_face_ngbd *face_neighbors)
+  {
+    bool to_return = true;
+    for (unsigned char dir = 0; dir < P4EST_FACES; ++dir)
+      to_return = to_return && (face_neighbors->neighbor_face_idx[dir] >=0);
+    return to_return;
+  }
+
+  void extend_vector_field_from_interface_to_whole_domain();
+
 public:
   my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t *ngbd_nm1, my_p4est_node_neighbors_t *ngbd_n, my_p4est_faces_t *faces, my_p4est_node_neighbors_t *fine_ngbd_n);
   ~my_p4est_two_phase_flows_t();
 
   void compute_dt(const double &min_value_for_u_max=1.0);
-#ifdef P4_TO_P8
-  void set_bc(BoundaryConditions3D *bc_v, BoundaryConditions3D *bc_p);
-  void set_external_forces(CF_3 **external_forces_);
-#else
-  void set_bc(BoundaryConditions2D *bc_v, BoundaryConditions2D *bc_p);
-  void set_external_forces(CF_2 *external_forces_[P4EST_DIM]);
-#endif
+  void set_bc(BoundaryConditionsDIM *bc_v, BoundaryConditionsDIM *bc_p);
+  void set_external_forces(CF_DIM *external_forces_[P4EST_DIM]);
 
   void set_dynamic_viscosities(double mu_omega_minus, double mu_omega_plus);
   void set_surface_tension(double surface_tension_);
   void set_densities(double rho_omega_minus, double rho_omega_plus);
 
   void set_phi(Vec fine_phi_, bool set_second_derivatives = false);
-#ifdef P4_TO_P8
-  void set_velocities(CF_3* vnm1_omega_minus[P4EST_DIM], CF_3* vn_omega_minus[P4EST_DIM], CF_3* vnm1_omega_plus[P4EST_DIM], CF_3* vn_omega_plus[P4EST_DIM]);
-#else
-  void set_velocities(CF_2* vnm1_omega_minus[P4EST_DIM], CF_2* vn_omega_minus[P4EST_DIM], CF_2* vnm1_omega_plus[P4EST_DIM], CF_2* vn_omega_plus[P4EST_DIM]);
-#endif
+  void set_node_velocities(CF_DIM* vnm1_omega_minus[P4EST_DIM], CF_DIM* vn_omega_minus[P4EST_DIM], CF_DIM* vnm1_omega_plus[P4EST_DIM], CF_DIM* vn_omega_plus[P4EST_DIM]);
+  void set_face_velocities_np1(CF_DIM* vnp1_omega_minus[P4EST_DIM], CF_DIM* vnp1_omega_plus[P4EST_DIM]);
+  void set_jump_mu_grad_v(CF_DIM* jump_mu_grad_v_op[P4EST_DIM][P4EST_DIM]);
+//  void set_node_vorticities(CF_DIM* vorticity_minus, CF_DIM* vorticity_plus);
   void compute_second_derivatives_of_n_velocities();
   void compute_second_derivatives_of_nm1_velocities();
   inline void compute_second_derivatives_of_n_and_nm1_velocities()
@@ -872,6 +832,7 @@ public:
   inline void set_dt(double dt_n_) {dt_n = dt_n_; }
 
   inline double get_dt() { return dt_n; }
+  inline double get_dtnm1() { return dt_nm1; }
   inline p4est_t* get_p4est() { return p4est_n; }
   //  inline p4est_nodes_t* get_nodes() { return nodes_n; }
   //  inline p4est_nodes_t* get_fine_nodes() { return fine_nodes_n; }
@@ -897,10 +858,10 @@ public:
 
   void extrapolate_velocities_across_interface_in_finest_computational_cells_Aslam_PDE(const extrapolation_technique& extrapolation_method = EXPLICIT_ITERATIVE, const unsigned int& n_iteration = 10);
   void compute_velocity_at_nodes();
-  void save_vtk(const char* name, const bool& export_fine_grid = false);
-  void update_from_tn_to_tnp1();
+  void save_vtk(const char* name, const bool& export_fine_grid = false, const char* name_fine = NULL);
+  void update_from_tn_to_tnp1(const unsigned int &nnn);
 
-  inline double get_max_velocity() const { return MAX(max_L2_norm_u_minus, max_L2_norm_u_plus); }
+  inline double get_max_velocity() const { return MAX(max_L2_norm_u[0], max_L2_norm_u[1]); }
 
 };
 

@@ -1,10 +1,3 @@
-
-/*
- * The navier stokes solver applied to the flow past a static sphere
- *
- * run the program with the -help flag to see the available options
- */
-
 // System
 #include <mpi.h>
 #include <stdexcept>
@@ -273,9 +266,7 @@ int main (int argc, char* argv[])
   mpi_environment_t mpi;
   mpi.init(argc, argv);
 
-  cmdParser cmd;
-  cmd.add_option("restart", "if defined, this restarts the simulation from a saved state on disk (the value must be a valid path to a directory in which the solver state was saved)");
-  // computational grid parameters
+  cmdParser cmd;// computational grid parameters
   cmd.add_option("lmin", "min level of the trees, default is 2");
   cmd.add_option("lmax", "max level of the trees, default is 5");
   cmd.add_option("thresh", "the threshold used for the refinement criteria, default is 0.1");
@@ -290,17 +281,7 @@ int main (int argc, char* argv[])
   // method-related parameters
   cmd.add_option("sl_order", "the order for the semi lagrangian, either 1 (stable) or 2 (accurate), default is 2");
   cmd.add_option("cfl", "dt = cfl * dx/vmax, default is 1.");
-  cmd.add_option("hodge_tol", "numerical tolerance on the Hodge variable, at all time steps, default is 1e-3");
-  cmd.add_option("niter_hodge", "max number of iterations for convergence of the Hodge variable, at all time steps, default is 10");
-  cmd.add_option("pc_cell", "preconditioner for cell-solver: jacobi, sor or hypre, default is sor.");
-  cmd.add_option("cell_solver", "Krylov solver used for cell-poisson problem, i.e. hodge variable: cg or bicgstab, default is bicgstab.");
-  cmd.add_option("pc_face", "preconditioner for face-solver: jacobi, sor or hypre, default is sor.");
   // output-control parameters
-  cmd.add_option("export_folder", "exportation_folder");
-  cmd.add_option("save_vtk", "activates exportation of results in vtk format");
-  cmd.add_option("vtk_dt", "export vtk files every vtk_dt time lapse (REQUIRED if save_vtk is activated)");
-  cmd.add_option("save_state_dt", "if defined, this activates the 'save-state' feature. The solver state is saved every save_state_dt time steps in backup_ subfolders.");
-  cmd.add_option("save_nstates", "determines how many solver states must be memorized in backup_ folders (default is 1).");
 
   string extra_info = "";
   cmd.parse(argc, argv, extra_info);
@@ -317,18 +298,8 @@ int main (int argc, char* argv[])
   double threshold_split_cell, uniform_band_m, uniform_band_p, cfl;
   int n_tree_xyz [P4EST_DIM];
 
-  const double hodge_tolerance          = cmd.get<double>("hodge_tol", 1e-3);
-  const unsigned int niter_hodge_max    = cmd.get<unsigned int>("niter_hodge", 10);
   const double duration                 = cmd.get<double>("duration", 0.2);
-#if defined(POD_CLUSTER)
-  const string export_dir               = cmd.get<string>("export_folder", "/home/regan/two_phase_flow");
-#elif defined(STAMPEDE)
-  const string export_dir               = cmd.get<string>("export_folder", "/work/04965/tg842642/stampede2/two_phase_flow");
-#elif defined(LAPTOP)
-  const string export_dir               = cmd.get<string>("export_folder", "/home/raphael/workspace/projects/two_phase_flow");
-#else
-  const string export_dir               = cmd.get<string>("export_folder", "/home/regan/workspace/projects/two_phase_flow");
-#endif
+  const string export_dir               = "/home/regan/workspace/projects/two_phase_flow";
   const bool save_vtk                   = cmd.contains("save_vtk");
   double vtk_dt                         = -1.0;
   if(save_vtk)
@@ -347,54 +318,6 @@ int main (int argc, char* argv[])
       throw std::invalid_argument("main_two_phase_flow_2d.cpp: the value of vtk_dt must be strictly positive.");
 #endif
   }
-  const bool save_state                 = cmd.contains("save_state_dt"); double dt_save_data = -1.0;
-  const unsigned int n_states           = cmd.get<unsigned int>("save_nstates", 1);
-  if(save_state)
-  {
-    dt_save_data                        = cmd.get<double>("save_state_dt", -1.0);
-    if(dt_save_data < 0.0)
-#ifdef P4_TO_P8
-      throw std::invalid_argument("main_two_phase_flow_3d.cpp: the value of save_state_dt must be strictly positive.");
-#else
-      throw std::invalid_argument("main_two_phase_flow_2d.cpp: the value of save_state_dt must be strictly positive.");
-#endif
-  }
-  const bool use_adapted_dt             = cmd.contains("adapted_dt");
-
-  const string des_pc_cell              = cmd.get<string>("pc_cell", "hypre");
-  const string des_solver_cell          = cmd.get<string>("cell_solver", "cg");
-  const string des_pc_face              = cmd.get<string>("pc_face", "sor");
-  KSPType cell_solver_type;
-  PCType pc_cell, pc_face;
-  if (des_pc_cell.compare("sor")==0)
-    pc_cell = PCSOR;
-  else if (des_pc_cell.compare("jacobi'")==0)
-    pc_cell = PCJACOBI;
-  else
-  {
-    if(des_pc_cell.compare("hypre")!=0 && !mpi.rank())
-      std::cerr << "The desired preconditioner for the cell-solver was either not allowed or not correctly understood. HYPRE is used instead" << std::endl;
-    pc_cell = PCHYPRE;
-  }
-  if(des_solver_cell.compare("bicgstab")==0)
-    cell_solver_type = KSPBCGS;
-  else
-  {
-    if(des_solver_cell.compare("cg")!=0 && !mpi.rank())
-      std::cerr << "The desired Krylov solver for the cell-solver was either not allowed or not correctly understood. CG is used instead" << std::endl;
-    cell_solver_type = KSPCG;
-  }
-  if (des_pc_face.compare("hypre")==0)
-    pc_face = PCHYPRE;
-  else if (des_pc_face.compare("jacobi'")==0)
-    pc_face = PCJACOBI;
-  else
-  {
-    if(des_pc_face.compare("sor")!=0 && !mpi.rank())
-      std::cerr << "The desired preconditioner for the face-solver was either not allowed or not correctly understood. Successive over-relaxation is used instead" << std::endl;
-    pc_face = PCSOR;
-  }
-
 
   PetscErrorCode ierr;
   const double rho_m  = 1000.0;
@@ -554,13 +477,6 @@ int main (int argc, char* argv[])
   two_phase_flow_solver->set_bc(bc_v, &bc_p);
   two_phase_flow_solver->set_external_forces(external_forces);
 
-  //#ifdef P4_TO_P8
-  //  ierr = PetscPrintf(mpi.comm(), "Parameters : Re = %g, mu = %g, rho = %g, grid is %dx%dx%d\n", Re, mu, rho, ntree_x, ntree_y, ntree_z); CHKERRXX(ierr);
-  //#else
-  //  ierr = PetscPrintf(mpi.comm(), "Parameters : Re = %g, mu = %g, rho = %g, grid is %dx%d\n", Re, mu, rho, ntree_x, ntree_y); CHKERRXX(ierr);
-  //#endif
-  //  ierr = PetscPrintf(mpi.comm(), "cfl = %g, uniform_band = %g\n", cfl, uniform_band);
-
   char out_dir[PATH_MAX], vtk_path[PATH_MAX], vtk_name[PATH_MAX];
   sprintf(out_dir, "%s/%dD/lmin_%d_lmax_%d", export_dir.c_str(), P4EST_DIM, lmin, lmax);
   sprintf(vtk_path, "%s/vtu", out_dir);
@@ -589,9 +505,6 @@ int main (int argc, char* argv[])
   }
 
   int iter = 0;
-  int export_vtk = -1;
-  int save_data_idx = (int) floor(tstart/dt_save_data); // so that we don't save the very first one which was either already read from file, or the known initial condition...
-
   double tn = tstart;
 
   while(tn+0.01*dt<tstart+duration)
@@ -603,13 +516,9 @@ int main (int argc, char* argv[])
       two_phase_flow_solver->update_from_tn_to_tnp1();
     }
 
-    std::cout << "compute jumps iter : " << iter << std::endl;
-
     two_phase_flow_solver->compute_jump_mu_grad_v();
     two_phase_flow_solver->compute_jumps_hodge();
-    std::cout << "viscosity step, iter : " << iter << std::endl;
     two_phase_flow_solver->solve_viscosity_explicit();
-    std::cout << "projection step iter : " << iter << std::endl;
     two_phase_flow_solver->solve_projection(true);
 
     two_phase_flow_solver->extrapolate_velocities_across_interface_in_finest_computational_cells_Aslam_PDE(PSEUDO_TIME, 10);

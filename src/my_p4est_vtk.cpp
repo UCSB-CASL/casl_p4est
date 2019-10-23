@@ -1357,12 +1357,12 @@ my_p4est_vtk_write_node_data (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost
       for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
       {
         if(i < num_vector_block)
-          float_data[3*il+dir] = (P4EST_VTK_FLOAT_TYPE) vector_block_values[i][P4EST_DIM*node_extra_map[il]+dir];
+          float_data[3*(il+nodes->indep_nodes.elem_count)+dir] = (P4EST_VTK_FLOAT_TYPE) vector_block_values[i][P4EST_DIM*node_extra_map[il]+dir];
         else
-          float_data[3*il+dir] = (P4EST_VTK_FLOAT_TYPE) vector_by_component_values[dir][i-num_vector_block][node_extra_map[il]];
+          float_data[3*(il+nodes->indep_nodes.elem_count)+dir] = (P4EST_VTK_FLOAT_TYPE) vector_by_component_values[dir][i-num_vector_block][node_extra_map[il]];
       }
 #ifndef P4_TO_P8
-      float_data[3*il+2] = (P4EST_VTK_FLOAT_TYPE) 0.0;
+      float_data[3*(il+nodes->indep_nodes.elem_count)+2] = (P4EST_VTK_FLOAT_TYPE) 0.0;
 #endif
     }
 

@@ -101,40 +101,43 @@ lookup_in_ghost_nodes:
   P4EST_ASSERT((p4est_quadrant_compare_piggy(node_l, n) > 0) || (p4est_quadrant_compare_piggy(node_u, n) < 0));
   idx_l   = nodes->num_owned_indeps;
   idx_u   = nodes->indep_nodes.elem_count-1;
-  node_l  = (const p4est_indep_t*) sc_array_index(&nodes->indep_nodes, idx_l);
-  node_u  = (const p4est_indep_t*) sc_array_index(&nodes->indep_nodes, idx_u);
-  while((p4est_quadrant_compare_piggy(node_l, n) <= 0) && (p4est_quadrant_compare_piggy(node_u, n) >= 0))
+  if(idx_l <= idx_u) // do this only if there are ghost nodes!
   {
-    if(!p4est_quadrant_compare_piggy(node_l, n))
+    node_l  = (const p4est_indep_t*) sc_array_index(&nodes->indep_nodes, idx_l);
+    node_u  = (const p4est_indep_t*) sc_array_index(&nodes->indep_nodes, idx_u);
+    while((p4est_quadrant_compare_piggy(node_l, n) <= 0) && (p4est_quadrant_compare_piggy(node_u, n) >= 0))
     {
-      idx = idx_l;
-      return true;
-    }
-    if(!p4est_quadrant_compare_piggy(node_u, n))
-    {
-      idx = idx_u;
-      return true;
-    }
-    if(idx_u-idx_l == 1)
-      break;
-    idx_m   = (idx_l + idx_u)/2;
-    node_m  = (const p4est_indep_t*) sc_array_index(&nodes->indep_nodes, idx_m);
-    P4EST_ASSERT((p4est_quadrant_compare_piggy(node_l, node_m) <= 0) && (p4est_quadrant_compare_piggy(node_u, node_m) >= 0));
-    if(p4est_quadrant_compare_piggy(node_m, n) <0)
-    {
-      idx_l   = idx_m;
-      node_l  = node_m;
-    }
-    else if (p4est_quadrant_compare_piggy(node_m, n) >0)
-    {
-      idx_u   = idx_m;
-      node_u  = node_m;
-    }
-    else
-    {
-      P4EST_ASSERT(!p4est_quadrant_compare_piggy(node_m, n));
-      idx = idx_m;
-      return true;
+      if(!p4est_quadrant_compare_piggy(node_l, n))
+      {
+        idx = idx_l;
+        return true;
+      }
+      if(!p4est_quadrant_compare_piggy(node_u, n))
+      {
+        idx = idx_u;
+        return true;
+      }
+      if(idx_u-idx_l == 1)
+        break;
+      idx_m   = (idx_l + idx_u)/2;
+      node_m  = (const p4est_indep_t*) sc_array_index(&nodes->indep_nodes, idx_m);
+      P4EST_ASSERT((p4est_quadrant_compare_piggy(node_l, node_m) <= 0) && (p4est_quadrant_compare_piggy(node_u, node_m) >= 0));
+      if(p4est_quadrant_compare_piggy(node_m, n) <0)
+      {
+        idx_l   = idx_m;
+        node_l  = node_m;
+      }
+      else if (p4est_quadrant_compare_piggy(node_m, n) >0)
+      {
+        idx_u   = idx_m;
+        node_u  = node_m;
+      }
+      else
+      {
+        P4EST_ASSERT(!p4est_quadrant_compare_piggy(node_m, n));
+        idx = idx_m;
+        return true;
+      }
     }
   }
   return false;

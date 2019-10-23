@@ -91,16 +91,9 @@ static const int VTK_CELL_VECTOR_BLOCK = 5;
  *                                VTK_NODE_SCALAR, "phi", phi_p,
  *                                VTK_NODE_SCALAR, "temperature", phi_coarse_p,
  *                                VTK_NODE_VECTOR_BLOCK, "normal", normal_block_p,
- *                                VTK_NODE_VECTOR_BY_COMPONENTS, "velocity" , velocity_p[0], velocity_p[1],
- *                                #ifdef P4_TO_P8
- *                                    velocity_p[2],
- *                                #endif
+ *                                VTK_NODE_VECTOR_BY_COMPONENTS, "velocity" , DIM(velocity_p[0], velocity_p[1], velocity_p[2]),
  *                                VTK_CELL_SCALAR, "pressure", pressure_p,
- *                                VTK_CELL_VECTOR_BY_COMPONENTS, "grad_hodge", grad_hodge_p[0], grad_hodge_p[1]
- *                                #ifdef P4_TO_P8
- *                                    , grad_hodge_p[2]
- *                                #endif
- *                                );
+ *                                VTK_CELL_VECTOR_BY_COMPONENTS, "grad_hodge", DIM(grad_hodge_p[0], grad_hodge_p[1], grad_hodge_p[2]));
  * </end of example/>
  *
  * <\beginning of notes\>

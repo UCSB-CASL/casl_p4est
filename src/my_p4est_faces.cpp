@@ -50,10 +50,10 @@ void my_p4est_faces_t::init_faces(bool initialize_neighborhoods_of_fine_faces)
 
   int mpiret;
 
-  for(unsigned short d=0; d<P4EST_FACES; ++d)
+  for(unsigned char d=0; d<P4EST_FACES; ++d)
     q2f_[d].resize(p4est->local_num_quadrants + ghost->ghosts.elem_count, NO_VELOCITY);
 
-  for(unsigned short d=0; d<P4EST_DIM; ++d)
+  for(unsigned char d=0; d<P4EST_DIM; ++d)
   {
     num_local[d] = 0;
     num_ghost[d] = 0;
@@ -97,11 +97,7 @@ void my_p4est_faces_t::init_faces(bool initialize_neighborhoods_of_fine_faces)
         else
         {
           ngbd.resize(0);
-      #ifdef P4_TO_P8
-          ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, ((face_dir/2==dir::x)?((face_dir%2==1)?+1:-1):0), ((face_dir/2==dir::y)?((face_dir%2==1)?+1:-1):0), ((face_dir/2==dir::z)?((face_dir%2==1)?+1:-1):0));
-      #else
-          ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, ((face_dir/2==dir::x)?((face_dir%2==1)?+1:-1):0), ((face_dir/2==dir::y)?((face_dir%2==1)?+1:-1):0));
-      #endif
+          ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, DIM(((face_dir/2==dir::x)?((face_dir%2==1)?+1:-1):0), ((face_dir/2==dir::y)?((face_dir%2==1)?+1:-1):0), ((face_dir/2==dir::z)?((face_dir%2==1)?+1:-1):0)));
           if(ngbd.size()==1)
           {
             P4EST_ASSERT(ngbd[0].level<=quad->level);
@@ -128,7 +124,7 @@ void my_p4est_faces_t::init_faces(bool initialize_neighborhoods_of_fine_faces)
 
   /* synchronize number of owned faces with the rest of the processes */
   vector<bool> face_has_already_been_visited[P4EST_DIM];
-  for(unsigned short d=0; d<P4EST_DIM; ++d)
+  for(unsigned char d=0; d<P4EST_DIM; ++d)
   {
     global_owned_indeps[d].resize(p4est->mpisize);
     global_owned_indeps[d][p4est->mpirank] = num_local[d];
@@ -350,11 +346,7 @@ void my_p4est_faces_t::init_faces(bool initialize_neighborhoods_of_fine_faces)
         else
         {
           ngbd.resize(0);
-#ifdef P4_TO_P8
-          ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, ((face_dir/2==dir::x)? ((face_dir%2==1)?+1:-1):0), ((face_dir/2==dir::y)? ((face_dir%2==1)?+1:-1):0), ((face_dir/2==dir::z)? ((face_dir%2==1)?+1:-1):0));
-#else
-          ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, ((face_dir/2==dir::x)? ((face_dir%2==1)?+1:-1):0), ((face_dir/2==dir::y)? ((face_dir%2==1)?+1:-1):0));
-#endif
+          ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, DIM(((face_dir/2==dir::x)? ((face_dir%2==1)?+1:-1):0), ((face_dir/2==dir::y)? ((face_dir%2==1)?+1:-1):0), ((face_dir/2==dir::z)? ((face_dir%2==1)?+1:-1):0)));
           if((ngbd.size()==0 || ngbd.size()==1) && buff_recv_comm2[n].local_num[face_dir]!=NO_VELOCITY)
           {
             if(ngbd.size()==0 || q2f_[((face_dir%2==0)?(face_dir+1):(face_dir-1))][ngbd[0].p.piggy3.local_num]==NO_VELOCITY)
@@ -374,7 +366,7 @@ void my_p4est_faces_t::init_faces(bool initialize_neighborhoods_of_fine_faces)
 
   /* now construct the velocity to quadrant link and complete the list of entirely local faces */
   int local_idx[P4EST_DIM];
-  for(unsigned short d=0; d<P4EST_DIM; ++d)
+  for(unsigned char d=0; d<P4EST_DIM; ++d)
   {
     f2q_[d].resize(num_local[d] + num_ghost[d]);
     local_inner_face_index[d].resize(num_local[d]-local_layer_face_index[d].size());
@@ -386,7 +378,7 @@ void my_p4est_faces_t::init_faces(bool initialize_neighborhoods_of_fine_faces)
     for(size_t q=0; q<tree->quadrants.elem_count; ++q)
     {
       p4est_locidx_t quad_idx = q+tree->quadrants_offset;
-      for(unsigned short face_dir=0; face_dir<P4EST_FACES; face_dir++)
+      for(unsigned char face_dir=0; face_dir<P4EST_FACES; face_dir++)
       {
         if(q2f_[face_dir][quad_idx] != NO_VELOCITY)
         {
@@ -405,7 +397,7 @@ void my_p4est_faces_t::init_faces(bool initialize_neighborhoods_of_fine_faces)
     }
   }
 #ifdef P4EST_DEBUG
-  for (unsigned short dir = 0; dir < P4EST_DIM; ++dir)
+  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
     P4EST_ASSERT(local_idx[dir] == num_local[dir]-((int) local_layer_face_index[dir].size()));
 #endif
 
@@ -413,7 +405,7 @@ void my_p4est_faces_t::init_faces(bool initialize_neighborhoods_of_fine_faces)
   {
     const p4est_quadrant_t* ghost_quad = p4est_quadrant_array_index(&ghost->ghosts, q);
     p4est_locidx_t quad_idx = q+p4est->local_num_quadrants;
-    for(unsigned short face_dir=0; face_dir<P4EST_FACES; face_dir++)
+    for(unsigned char face_dir=0; face_dir<P4EST_FACES; face_dir++)
     {
       if(q2f_[face_dir][quad_idx] != NO_VELOCITY && f2q_[face_dir/2][q2f_[face_dir][quad_idx]].quad_idx == -1) // we do not overwrite f2q if already well-defined (i.e. not -1) to give precedence of local quadrants over ghosts
       {
@@ -441,7 +433,7 @@ void my_p4est_faces_t::init_faces(bool initialize_neighborhoods_of_fine_faces)
 
 
 void my_p4est_faces_t::find_fine_face_neighbors_and_store_it(const p4est_topidx_t& tree_idx, const p4est_locidx_t& quad_idx, p4est_tree_t*tree,
-                                                             const unsigned short& face_dir, const p4est_locidx_t& local_face_idx)
+                                                             const unsigned char& face_dir, const p4est_locidx_t& local_face_idx)
 {
   P4EST_ASSERT((quad_idx >=0) && (quad_idx <p4est->local_num_quadrants + ((p4est_locidx_t)ghost->ghosts.elem_count)));
   P4EST_ASSERT(local_face_idx == q2f_[face_dir][quad_idx]);
@@ -458,7 +450,7 @@ void my_p4est_faces_t::find_fine_face_neighbors_and_store_it(const p4est_topidx_
     uniform_face_ngbd face_neighborhood;
     // ok, find neighboring faces, now
     bool add_to_map = true;
-    for (unsigned short cart_dir = 0; add_to_map && (cart_dir < P4EST_FACES); ++cart_dir)
+    for (unsigned char cart_dir = 0; add_to_map && (cart_dir < P4EST_FACES); ++cart_dir)
       add_to_map = add_to_map && found_finest_face_neighbor(quad, quad_idx, tree_idx, local_face_idx, face_dir/2, cart_dir, face_neighborhood.neighbor_face_idx[cart_dir]);
     if(add_to_map)
       uniform_face_neighbors[face_dir/2][local_face_idx] = face_neighborhood;
@@ -467,7 +459,7 @@ void my_p4est_faces_t::find_fine_face_neighbors_and_store_it(const p4est_topidx_
 
 
 //void my_p4est_faces_t::find_fine_face_neighbors_and_store_it(const p4est_topidx_t& tree_idx, const p4est_locidx_t& quad_idx, p4est_tree_t*tree,
-//                                                             const unsigned short& face_dir, const p4est_locidx_t& local_face_idx)
+//                                                             const unsigned char& face_dir, const p4est_locidx_t& local_face_idx)
 //{
 //  P4EST_ASSERT((quad_idx >=0) && (quad_idx <p4est->local_num_quadrants + ((p4est_locidx_t)ghost->ghosts.elem_count)));
 //  P4EST_ASSERT(local_face_idx == q2f_[face_dir][quad_idx]);
@@ -488,7 +480,7 @@ void my_p4est_faces_t::find_fine_face_neighbors_and_store_it(const p4est_topidx_
 //    // ok, find neighboring faces, now
 //    bool do_not_add_to_map = false;
 //    // in dual face_direction, first: use same quad
-//    unsigned short dual_face_dir = ((face_dir%2==1)?(face_dir-1):(face_dir+1));
+//    unsigned char dual_face_dir = ((face_dir%2==1)?(face_dir-1):(face_dir+1));
 //    P4EST_ASSERT(q2f_[dual_face_dir][quad_idx] != NO_VELOCITY);
 //    face_neighborhood.neighbor_face_idx[dual_face_dir] = q2f_[dual_face_dir][quad_idx];
 //    // in face_dir, second: use sharing quad
@@ -510,7 +502,7 @@ void my_p4est_faces_t::find_fine_face_neighbors_and_store_it(const p4est_topidx_
 //        do_not_add_to_map = true;
 //    }
 
-//    for (unsigned short cart_dir = 0; !do_not_add_to_map && (cart_dir < P4EST_FACES); ++cart_dir) {
+//    for (unsigned char cart_dir = 0; !do_not_add_to_map && (cart_dir < P4EST_FACES); ++cart_dir) {
 //      if((cart_dir == face_dir) || (cart_dir == dual_face_dir))
 //        continue;
 //      if(is_quad_Wall(p4est, tree_idx, quad, cart_dir))
@@ -555,7 +547,7 @@ void my_p4est_faces_t::set_finest_face_neighborhoods()
     for(size_t q=0; q<tree->quadrants.elem_count; ++q)
     {
       p4est_locidx_t quad_idx = q+tree->quadrants_offset;
-      for(unsigned short face_dir=0; face_dir<P4EST_FACES; face_dir++)
+      for(unsigned char face_dir=0; face_dir<P4EST_FACES; face_dir++)
       {
         if(q2f_[face_dir][quad_idx] != NO_VELOCITY)
         {

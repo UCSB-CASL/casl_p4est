@@ -11,6 +11,11 @@
 #include <src/casl_math.h>
 #include <src/point2.h>
 
+#ifdef Voronoi_DIM
+#undef Voronoi_DIM
+#endif
+#define Voronoi_DIM Voronoi2D
+
 using std::vector;
 
 struct ngbd2Dseed
