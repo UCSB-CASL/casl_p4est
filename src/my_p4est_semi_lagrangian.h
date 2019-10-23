@@ -100,6 +100,12 @@ public:
    */
   void update_p4est(Vec *v, double dt, Vec &phi, Vec *phi_xx=NULL, Vec phi_add_refine = NULL);
 
+  /*
+  void update_p4est(Vec *v, double dt, Vec &phi, Vec *phi_xx = NULL,
+                    Vec *fields = NULL, int num_fields = 0, const double* criteria = NULL,
+                    compare_option_t* compare_opn = NULL, compare_diagonal_option_t* diag_opn = NULL,
+                    Vec phi_add_refine =NULL);
+  */
   /*!
    * \brief update a p4est from tn to tnp1, using a semi-Lagrangian scheme with BDF along the characteristic.
    *   The forest at time n is copied, and is then refined, coarsened and balance iteratively until convergence.

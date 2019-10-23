@@ -731,6 +731,177 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *
   ierr = PetscLogEventEnd(log_my_p4est_semi_lagrangian_update_p4est_1st_order, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
+// ELYCE TRYING SOMETHING:---------------------------
+/*
+void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *phi_xx, Vec *fields, const int num_fields, const double* criteria, compare_option_t* compare_opn, compare_diagonal_option_t* diag_opn, Vec phi_add_refine)
+{
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_semi_lagrangian_update_p4est_1st_order, 0, 0, 0, 0); CHKERRXX(ierr);
+
+  // compute vx_xx, vx_yy
+  Vec *vxx[P4EST_DIM];
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    vxx[dir] = new Vec[P4EST_DIM];
+    if(dir==0)
+    {
+      for(int dd=0; dd<P4EST_DIM; ++dd)
+      {
+        ierr = VecCreateGhostNodes(ngbd_n->p4est, ngbd_n->nodes, &vxx[dir][dd]); CHKERRXX(ierr);
+      }
+    }
+    else
+    {
+      for(int dd=0; dd<P4EST_DIM; ++dd)
+      {
+        ierr = VecDuplicate(vxx[0][dd], &vxx[dir][dd]); CHKERRXX(ierr);
+      }
+    }
+#ifdef P4_TO_P8
+    ngbd_n->second_derivatives_central(v[dir], vxx[dir][0], vxx[dir][1], vxx[dir][2]);
+#else
+    ngbd_n->second_derivatives_central(v[dir], vxx[dir][0], vxx[dir][1]);
+#endif
+  }
+
+  // compute phi_xx and phi_yy
+  bool local_derivatives = false;
+  if (phi_xx == NULL)
+  {
+    phi_xx = new Vec[P4EST_DIM];
+    for(int dir=0; dir<P4EST_DIM; ++dir)
+    {
+//      ierr = VecDuplicate(vxx[0][dir], &phi_xx[dir]); CHKERRXX(ierr);
+//      if (dir == 0)
+//      {
+        ierr = VecCreateGhostNodes(ngbd_phi->p4est, ngbd_phi->nodes, &phi_xx[dir]); CHKERRXX(ierr);
+//      } else {
+//        ierr = VecDuplicate(phi_xx[0], &phi_xx[dir]); CHKERRXX(ierr);
+//      }
+    }
+
+#ifdef P4_TO_P8
+    ngbd_phi->second_derivatives_central(phi, phi_xx[0], phi_xx[1], phi_xx[2]);
+#else
+    ngbd_phi->second_derivatives_central(phi, phi_xx[0], phi_xx[1]);
+#endif
+    local_derivatives = true;
+  }
+
+  // save the old splitting criteria information
+//  splitting_criteria_t* sp_old = (splitting_criteria_t*)ngbd_n->p4est->user_pointer;
+  splitting_criteria_t* sp_old = (splitting_criteria_t*)p4est->user_pointer;
+
+
+
+  Vec phi_np1;
+  ierr = VecCreateGhostNodes(p4est, nodes, &phi_np1); CHKERRXX(ierr);
+
+  bool is_grid_changing = true;
+
+  int counter = 0;
+  while (is_grid_changing) {
+    ierr = PetscLogEventBegin(log_my_p4est_semi_lagrangian_grid_gen_iter[counter], 0, 0, 0, 0); CHKERRXX(ierr);
+
+    // advect from np1 to n to enable refinement
+    double* phi_np1_p;
+    ierr = VecGetArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
+
+
+    advect_from_n_to_np1(dt, v, vxx, phi, phi_xx, phi_np1_p);
+
+    Vec phi_np1_eff;
+    double *phi_np1_eff_p = phi_np1_p;
+
+    if (phi_add_refine != NULL)
+    {
+      ierr = VecDuplicate(phi_np1, &phi_np1_eff);
+      my_p4est_interpolation_nodes_t interp(ngbd_phi);
+      for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+      {
+        double xyz[P4EST_DIM];
+        node_xyz_fr_n(n, p4est, nodes, xyz);
+        interp.add_point(n, xyz);
+      }
+      interp.set_input(phi_add_refine, phi_interpolation);
+      interp.interpolate(phi_np1_eff);
+
+      ierr = VecGetArray(phi_np1_eff, &phi_np1_eff_p); CHKERRXX(ierr);
+      for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+      {
+        phi_np1_eff_p[n] = MIN(fabs(phi_np1_eff_p[n]), fabs(phi_np1_p[n]));
+      }
+    }
+
+    // Get fields:
+    double *fields_p[num_fields];
+    for (unsigned short n = 0; n<num_fields; n++){
+        ierr = VecGetArray(fields[n],&fields_p[n]); CHKERRXX(ierr);
+      }
+
+    splitting_criteria_tag_t sp(sp_old->min_lvl, sp_old->max_lvl, sp_old->lip);
+    //is_grid_changing = sp.refine_and_coarsen(p4est, nodes, phi_np1_eff_p);
+
+    //is_grid_changing = sp.refine_and_coarsen(p4est,nodes,phi_np1_eff_p,num_fields,fields_p,criteria,compare_opn,diag_opn);
+
+    //sp.refine_and_coarsen(p4est, nodes,phi_np1_eff_p,num_fields,)
+    ierr = VecRestoreArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
+    if (phi_add_refine != NULL)
+    {
+      ierr = VecRestoreArray(phi_np1_eff, &phi_np1_eff_p); CHKERRXX(ierr);
+      ierr = VecDestroy(phi_np1_eff); CHKERRXX(ierr);
+    }
+
+    // Restore fields
+    for (unsigned short n = 0; n<num_fields; n++){
+        ierr = VecRestoreArray(fields[n],&fields_p[n]); CHKERRXX(ierr);
+      }
+    if (is_grid_changing) {
+      PetscPrintf(p4est->mpicomm, "Grid changed\n");
+      my_p4est_partition(p4est, P4EST_TRUE, NULL);
+
+      // reset nodes, ghost, and phi
+      p4est_ghost_destroy(ghost); ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
+      p4est_nodes_destroy(nodes); nodes = my_p4est_nodes_new(p4est, ghost);
+
+      ierr = VecDestroy(phi_np1); CHKERRXX(ierr);
+      ierr = VecCreateGhostNodes(p4est, nodes, &phi_np1); CHKERRXX(ierr);
+    }
+
+    ierr = PetscLogEventEnd(log_my_p4est_semi_lagrangian_grid_gen_iter[counter], 0, 0, 0, 0); CHKERRXX(ierr);
+    counter++;
+  }
+
+  p4est->user_pointer = (void*) sp_old;
+  *p_p4est = p4est;
+  *p_nodes = nodes;
+  *p_ghost = ghost;
+
+  ierr = VecDestroy(phi); CHKERRXX(ierr);
+  phi = phi_np1;
+
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    for(int dd=0; dd<P4EST_DIM; ++dd)
+    {
+      ierr = VecDestroy(vxx[dir][dd]); CHKERRXX(ierr);
+    }
+    delete[] vxx[dir];
+  }
+
+  if (local_derivatives)
+  {
+    for(int dir=0; dir<P4EST_DIM; ++dir)
+    {
+      ierr = VecDestroy(phi_xx[dir]); CHKERRXX(ierr);
+    }
+    delete[] phi_xx;
+  }
+
+  ierr = PetscLogEventEnd(log_my_p4est_semi_lagrangian_update_p4est_1st_order, 0, 0, 0, 0); CHKERRXX(ierr);
+}
+*/
+// END: ELYCE TRYING SOMETHING ----------------
 
 void my_p4est_semi_lagrangian_t::update_p4est(Vec *vnm1, Vec *vn, double dt_nm1, double dt_n, Vec &phi, Vec *phi_xx)
 {

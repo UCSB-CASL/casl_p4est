@@ -7,6 +7,7 @@
 #include <src/my_p8est_log_wrappers.h>
 #include <p8est.h>
 #else
+//#include <src/my_p4est_utils.h>
 #include <src/my_p4est_tools.h>
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_log_wrappers.h>
@@ -17,7 +18,7 @@
 #include <vector>
 #include <stdexcept>
 
-#define SKIP_QUADRANT		 0
+#define SKIP_QUADRANT	 0
 #define REFINE_QUADRANT  1
 #define COARSEN_QUADRANT 2
 #define NEW_QUADRANT     3
@@ -30,6 +31,11 @@ typedef int p4est_bool_t;
 // forward declaration
 class CF_3;
 class CF_2;
+
+// Define options for one of the refinement tools:
+// Elyce trying something: // for use in refine and coarsen
+enum compare_option_t {LESS_THAN = 0, GREATER_THAN = 1};
+enum compare_diagonal_option_t {DIVIDE_BY=0, MULTIPLY_BY = 1, ABSOLUTE = 2};
 
 struct splitting_criteria_t {
   splitting_criteria_t(int min_lvl = 0, int max_lvl = 0, double lip = 1.2)
@@ -134,6 +140,9 @@ protected:
 
   void tag_quadrant(p4est_t* p4est, p4est_quadrant_t* quad, p4est_topidx_t which_tree, const double* f);
   void tag_quadrant_inside(p4est_t* p4est, p4est_quadrant_t* quad, p4est_topidx_t which_tree, const double* f);
+  // ELYCE TRYING SOMETHING:
+  void tag_quadrant(p4est_t *p4est, p4est_quadrant_t *quad, p4est_topidx_t tree_idx, p4est_locidx_t quad_idx,p4est_nodes_t *nodes, const double* phi_p, const int num_fields,const double* fields_p,std::vector<double> criteria, std::vector<compare_option_t> compare_opn,std::vector<compare_diagonal_option_t> diag_opn);
+
   bool refine_only_inside;
 public:
   splitting_criteria_tag_t(int min_lvl, int max_lvl, double lip=1.2)
@@ -142,6 +151,11 @@ public:
   }
 
   bool refine_and_coarsen(p4est_t* p4est, const p4est_nodes_t* nodes, const double* phi);
+  // ELYCE TRYING SOMETHING:
+  bool refine_and_coarsen(p4est_t* p4est, p4est_nodes_t* nodes, const double *phi_p,
+                          const int num_fields, const double* fields_p, std::vector<double> criteria,
+                          std::vector<compare_option_t> compare_opn, std::vector<compare_diagonal_option_t> diag_opn);
+
   bool refine(p4est_t* p4est, const p4est_nodes_t* nodes, const double* phi);
 
   void set_refine_only_inside(bool val) { refine_only_inside = val; }
