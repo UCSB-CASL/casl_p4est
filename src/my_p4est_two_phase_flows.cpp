@@ -2298,6 +2298,7 @@ void my_p4est_two_phase_flows_t::extrapolate_normal_derivatives_of_face_velocity
   double xyz_face[P4EST_DIM], local_normal[P4EST_DIM];
   faces_n->xyz_fr_f(local_face_idx, dir, xyz_face);
   interp_normal(xyz_face, local_normal);
+  double mag_normal = 0.0;
   double lhs_normal_derivative_field    = 0.0;
   double rhs_normal_derivative_field    = 0.0;
   // if the face is in omega minus, we extend the + field and the normal is reverted
@@ -2313,10 +2314,15 @@ void my_p4est_two_phase_flows_t::extrapolate_normal_derivatives_of_face_velocity
     P4EST_ASSERT((neighbor_face_idx >=0) && (neighbor_face_idx < faces_n->num_local[dir] + faces_n->num_ghost[dir]));
     // normal derivatives: always on the grid!
     P4EST_ASSERT(fabs(normal_derivative_of_field_p[neighbor_face_idx]) < threshold_dbl_max);
+    mag_normal += SQR(signed_normal_component);
     lhs_normal_derivative_field  += fabs(signed_normal_component)/dxyz_min[der];
     rhs_normal_derivative_field  += fabs(signed_normal_component)*normal_derivative_of_field_p[neighbor_face_idx]/dxyz_min[der];
   }
-  normal_derivative_of_field_p[local_face_idx] = rhs_normal_derivative_field/lhs_normal_derivative_field;
+  mag_normal = sqrt(mag_normal);
+  if(mag_normal > 0.1)
+    normal_derivative_of_field_p[local_face_idx] = rhs_normal_derivative_field/lhs_normal_derivative_field;
+  else
+    normal_derivative_of_field_p[local_face_idx] = 0.0;
 }
 
 void my_p4est_two_phase_flows_t::solve_velocity_extrapolation_local_explicit_iterative(const p4est_locidx_t &local_face_idx, const unsigned char &dir, const my_p4est_interpolation_nodes_t &interp_normal,
@@ -2328,6 +2334,8 @@ void my_p4est_two_phase_flows_t::solve_velocity_extrapolation_local_explicit_ite
   double xyz_face[P4EST_DIM], local_normal[P4EST_DIM];
   faces_n->xyz_fr_f(local_face_idx, dir, xyz_face);
   interp_normal(xyz_face, local_normal);
+  double mag_normal = 0.0;
+  double avg_neighbors = 0.0;
   double lhs_field                      = 0.0;
   double rhs_field                      = 0.0;
   bool too_close_flag                   = false;
@@ -2339,6 +2347,7 @@ void my_p4est_two_phase_flows_t::solve_velocity_extrapolation_local_explicit_ite
   {
     double signed_normal_component          = (face_is_in_omega_minus?-1.0:+1.0)*local_normal[der];
     const unsigned char local_oriented_der  = ((signed_normal_component > 0.0)? 2*der:2*der+1);
+    mag_normal += SQR(signed_normal_component);
     p4est_locidx_t neighbor_face_idx;
     if(!faces_n->found_finest_face_neighbor(local_face_idx, dir, local_oriented_der, neighbor_face_idx))
     {
@@ -2359,13 +2368,18 @@ void my_p4est_two_phase_flows_t::solve_velocity_extrapolation_local_explicit_ite
       P4EST_ASSERT(fabs(neighbor_velocity.value) < threshold_dbl_max);
       lhs_field                  += fabs(signed_normal_component)/neighbor_velocity.distance;
       rhs_field                  += fabs(signed_normal_component)*neighbor_velocity.value/neighbor_velocity.distance;
+      avg_neighbors              =+ neighbor_velocity.value/((double) P4EST_DIM);
     }
   }
   if(!too_close_flag)
   {
+    mag_normal = sqrt(mag_normal);
     P4EST_ASSERT(fabs(field_p[local_face_idx]) < threshold_dbl_max);
     rhs_field                   += normal_derivative_of_field_p[local_face_idx];
-    field_p[local_face_idx]      = rhs_field/lhs_field;
+    if(mag_normal > 0.1)
+      field_p[local_face_idx]      = rhs_field/lhs_field;
+    else
+      field_p[local_face_idx]      = avg_neighbors;
     P4EST_ASSERT(!isnan(field_p[local_face_idx]) && (fabs(field_p[local_face_idx]) < threshold_dbl_max));
   }
 }
