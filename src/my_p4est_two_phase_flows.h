@@ -63,6 +63,7 @@ typedef struct
   bool xgfm;
 } sharp_derivative;
 
+
 class my_p4est_two_phase_flows_t
 {
 private:
@@ -351,15 +352,15 @@ private:
         return false;
     }
 #ifdef P4_TO_P8
-    // TO BE IMPLEMENTED
-    if(is_edge)
-    {
-      throw std::invalid_argument("you have a bit more work in 3D, here...");
-    }
+//    // TO BE IMPLEMENTED
+//    if(is_edge)
+//    {
+//      throw std::invalid_argument("you have a bit more work in 3D, here...");
+//    }
 #endif
     if (is_corner)
     {
-      char local_node_idx = (vx+1)/2+(vy+1) ONLY3D(+2*(vz+1));
+      char local_node_idx = SUMD((vx+1)/2, (vy+1), 2*(vz+1));
       P4EST_ASSERT((local_node_idx >= 0) && (local_node_idx < P4EST_CHILDREN));
       node_idx = nodes_n->local_nodes[P4EST_CHILDREN*quad_idx+local_node_idx];
       computational_to_fine_node_t::const_iterator got_it = node_to_fine_node.find(node_idx);
@@ -385,12 +386,12 @@ private:
     p4est_quadrant_t *tmp_ptr;
     p4est_quadrant_t r;
     r.level = P4EST_MAXLEVEL;
-    r.x = coarse_quad->x + (vx+1)*P4EST_QUADRANT_LEN(coarse_quad->level+1);
-    r.y = coarse_quad->y + (vy+1)*P4EST_QUADRANT_LEN(coarse_quad->level+1);
-    ONLY3D(r.z = coarse_quad->z + (vz+1)*P4EST_QUADRANT_LEN(coarse_quad->level+1));
+    XCODE(r.x = coarse_quad->x + (vx+1)*P4EST_QUADRANT_LEN(coarse_quad->level+1));
+    YCODE(r.y = coarse_quad->y + (vy+1)*P4EST_QUADRANT_LEN(coarse_quad->level+1));
+    ZCODE(r.z = coarse_quad->z + (vz+1)*P4EST_QUADRANT_LEN(coarse_quad->level+1));
     r.p.which_tree = tree_idx;
     P4EST_ASSERT (p4est_quadrant_is_node (&r, 0));
-    if((r.x == 0) || (r.x == P4EST_ROOT_LEN) || (r.y == 0) || (r.y == P4EST_ROOT_LEN) ONLY3D(|| (r.z == 0) || (r.z == P4EST_ROOT_LEN)))
+    if(ORD((r.x == 0) || (r.x == P4EST_ROOT_LEN), (r.y == 0) || (r.y == P4EST_ROOT_LEN), (r.z == 0) || (r.z == P4EST_ROOT_LEN)))
     {
       p4est_quadrant_t n;
       p4est_node_canonicalize(fine_p4est_n, tree_idx, &r, &n);
@@ -405,10 +406,10 @@ private:
       face_to_fine_node[local_face_dir/2][face_idx] = fine_vertex_idx;
 #ifdef P4_TO_P8
     // TO BE IMPLEMENTED
-    if(to_return && is_edge)
-    {
-      throw std::invalid_argument("you have a bit more work in 3D, here...");
-    }
+//    if(to_return && is_edge)
+//    {
+//      throw std::invalid_argument("you have a bit more work in 3D, here...");
+//    }
 #endif
     if(to_return && is_corner)
       node_to_fine_node[node_idx] = fine_vertex_idx;
@@ -429,12 +430,11 @@ private:
       return false;
     // core of the routine here below
     p4est_quadrant_t r;
-    r = *((p4est_quadrant*) sc_array_index(&nodes_n->indep_nodes, node_idx));
+    r = *((p4est_quadrant_t*) sc_array_index(&nodes_n->indep_nodes, node_idx));
     P4EST_ASSERT (p4est_quadrant_is_node (&r, 0));
     // theoretically no need to canonicalize here, the point should already be INSIDE
     // a tree
-    P4EST_ASSERT((r.x!=P4EST_ROOT_LEN) && (r.y!=P4EST_ROOT_LEN));
-    ONLY3D(P4EST_ASSERT(r.z!=P4EST_ROOT_LEN));
+    P4EST_ASSERT(ANDD(r.x!=P4EST_ROOT_LEN, r.y!=P4EST_ROOT_LEN, r.z!=P4EST_ROOT_LEN));
     bool to_return = index_of_node(&r, fine_nodes_n, fine_vertex_idx);
     if(to_return)
       node_to_fine_node[node_idx] = fine_vertex_idx;
@@ -621,8 +621,8 @@ private:
       double dyz = qnnn->dz_central_component(fine_grad_phi_p, P4EST_DIM, dir::y); // d/dz{d/dy}
 #endif
 #ifdef P4_TO_P8
-      fine_curvature_p[fine_node_idx] = ((dyy+dzz)*SQR(dx) + (dxx+dzz)*SQR(dy) + (dxx+dyy)*SQR(dz) - 2*
-                                         (dx*dy*dxy + dx*dz*dxz + dy*dz*dyz)) / (norm_of_grad*norm_of_grad*norm_of_grad);
+      fine_curvature_p[fine_node_idx] = ((dxxyyzz[1]+dxxyyzz[2])*SQR(dx) + (dxxyyzz[0]+dxxyyzz[2])*SQR(dy) + (dxxyyzz[0]+dxxyyzz[1])*SQR(dz) -
+          2*(dx*dy*dxy + dx*dz*dxz + dy*dz*dyz)) / (norm_of_grad*norm_of_grad*norm_of_grad);
 #else
       fine_curvature_p[fine_node_idx] = (dxxyyzz[1]*SQR(dx) + dxxyyzz[0]*SQR(dy) - 2*dx*dy*dxy) / (norm_of_grad*norm_of_grad*norm_of_grad);
 #endif
@@ -708,7 +708,7 @@ private:
                                       const double *fine_phi_p, const double *fine_phi_xxyyzz_p,
                                       const unsigned char &der, const unsigned char &dir,
                                       const double *vn_dir_minus_p, const double *vn_dir_plus_p, const double *fine_jump_mu_grad_vdir_p,
-                                      const p4est_quadrant &qm, const p4est_quadrant &qp,
+                                      const p4est_quadrant_t &qm, const p4est_quadrant_t &qp,
                                       const double *fine_mass_flux_p = NULL, const double *fine_normal_dir_p = NULL);
   /*
    * qm and qp must be defined and have their p.piggy3 filled!
@@ -834,15 +834,21 @@ public:
   inline double get_dt() { return dt_n; }
   inline double get_dtnm1() { return dt_nm1; }
   inline p4est_t* get_p4est() { return p4est_n; }
-  //  inline p4est_nodes_t* get_nodes() { return nodes_n; }
+//  inline p4est_nodes_t* get_nodes() { return nodes_n; }
+
   //  inline p4est_nodes_t* get_fine_nodes() { return fine_nodes_n; }
   //  inline p4est_ghost_t* get_ghost() { return ghost_n; }
   inline Vec get_hodge() { return hodge; }
   //  inline Vec* get_normals() { return fine_normal; }
-  //  inline Vec* get_vnp1_nodes_omega_minus() { return vnp1_nodes_omega_minus; }
-  //  inline Vec* get_vnp1_nodes_omega_plus() { return vnp1_nodes_omega_plus; }
+  inline p4est_t* get_p4est_n() const { return p4est_n; }
+  inline Vec get_vnp1_nodes_omega_minus() const { return vnp1_nodes_omega_minus; }
+  inline Vec get_vnp1_nodes_omega_plus() const { return vnp1_nodes_omega_plus; }
+  inline my_p4est_node_neighbors_t* get_ngbd_n() const { return ngbd_n; }
+  inline my_p4est_interpolation_nodes_t* get_interp_phi() const { return interp_phi; }
+  inline p4est_nodes_t* get_nodes_n() const { return nodes_n; }
+  inline p4est_ghost_t* get_ghost_n() const { return ghost_n; }
+  inline double get_diag_min() const { return tree_diag/((double) (1<<(((splitting_criteria_t*)p4est_n->user_pointer)->max_lvl))); }
   //  inline Vec get_curvature() { return fine_curvature; }
-  //  inline my_p4est_interpolation_nodes_t* get_interp_phi() { return interp_phi; }
 
   void compute_jump_mu_grad_v();
   void compute_jumps_hodge();
@@ -856,7 +862,7 @@ public:
   }
   void solve_projection(my_p4est_xgfm_cells_t* &cell_poisson_jump_solver, const bool activate_xgfm, const KSPType ksp = KSPCG, const PCType pc = PCHYPRE);
 
-  void extrapolate_velocities_across_interface_in_finest_computational_cells_Aslam_PDE(const extrapolation_technique& extrapolation_method = EXPLICIT_ITERATIVE, const unsigned int& n_iteration = 10);
+  void extrapolate_velocities_across_interface_in_finest_computational_cells_Aslam_PDE(const extrapolation_technique& extrapolation_method = PSEUDO_TIME, const unsigned int& n_iteration = 10);
   void compute_velocity_at_nodes();
   void save_vtk(const char* name, const bool& export_fine_grid = false, const char* name_fine = NULL);
   void update_from_tn_to_tnp1(const unsigned int &nnn);

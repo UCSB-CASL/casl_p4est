@@ -50,10 +50,10 @@ public:
   {
     switch (test_case) {
     case 0:
-      return r0 - sqrt(SQR(x-(xmax+xmin)/2) + SQR(y-(ymax+ymin)/2) ONLY3D(+ SQR(z-(zmax+zmin)/2)) );
+      return r0 - sqrt(SUMD(SQR(x-(xmax+xmin)/2), SQR(y-(ymax+ymin)/2), SQR(z-(zmax+zmin)/2)));
       break;
     case 1:
-      return r0 - sqrt(SQR(x-(xmax+xmin)/2) + SQR(y-(0.75*ymax+0.25*ymin)) ONLY3D(+ SQR(z-(zmax+zmin)/2)) );
+      return r0 - sqrt(SUMD(SQR(x-(xmax+xmin)/2), SQR(y-(0.75*ymax+0.25*ymin)), SQR(z-(zmax+zmin)/2)));
     default:
       throw std::runtime_error("LEVEL_SET: unknown case");
       break;
@@ -86,7 +86,7 @@ public:
       return 1.0;
       break;
     case 1:
-      return ((t_<time_reverse)?-1.0:+1.0)*SQR(sin(M_PI*x))*sin(2.0*M_PI*y)ONLY3D(*-2.0*sin(2.0*M_PI*z));
+      return ((t_<time_reverse)?-1.0:+1.0)*MULTD(SQR(sin(M_PI*x)), sin(2.0*M_PI*y), -2.0*sin(2.0*M_PI*z));
       break;
     default:
       throw std::runtime_error("prescribed_velocity_u_t: unknown case");
@@ -100,7 +100,7 @@ public:
       return 0.0;
       break;
     case 1:
-      return ((t_<time_reverse)?-1.0:+1.0)*M_PI*sin(2.0*M_PI*x)*sin(2.0*M_PI*y)ONLY3D(*-2.0*sin(2.0*M_PI*z));
+      return ((t_<time_reverse)?-1.0:+1.0)*MULTD(M_PI*sin(2.0*M_PI*x), sin(2.0*M_PI*y), -2.0*sin(2.0*M_PI*z));
       break;
     default:
       throw std::runtime_error("prescribed_velocity_u_t: unknown case");
@@ -114,7 +114,7 @@ public:
       return 0.0;
       break;
     case 1:
-      return ((t_<time_reverse)?-1.0:+1.0)*SQR(sin(M_PI*x))*2.0*M_PI*cos(2.0*M_PI*y)ONLY3D(*-2.0*sin(2.0*M_PI*z));
+      return ((t_<time_reverse)?-1.0:+1.0)*MULTD(SQR(sin(M_PI*x)), 2.0*M_PI*cos(2.0*M_PI*y), -2.0*sin(2.0*M_PI*z));
       break;
     default:
       throw std::runtime_error("prescribed_velocity_u_t: unknown case");
@@ -150,7 +150,7 @@ public:
       return 0.0;
       break;
     case 1:
-      return ((t_<time_reverse)?+1.0:-1.0)*SQR(sin(M_PI*y))*sin(2.0*M_PI*x)ONLY3D(*-1.0*sin(2.0*M_PI*z));
+      return ((t_<time_reverse)?+1.0:-1.0)*MULTD(SQR(sin(2.0*M_PI*x), sin(M_PI*y)), -1.0*sin(2.0*M_PI*z));
       break;
     default:
       throw std::runtime_error("prescribed_velocity_v_t: unknown case");
@@ -164,7 +164,7 @@ public:
       return 0.0;
       break;
     case 1:
-      return ((t_<time_reverse)?-1.0:+1.0)*SQR(sin(M_PI*y))*2.0*M_PI*cos(2.0*M_PI*x)ONLY3D(*-1.0*sin(2.0*M_PI*z));
+      return ((t_<time_reverse)?+1.0:-1.0)*MULTD(2.0*M_PI*cos(2.0*M_PI*x), SQR(sin(M_PI*y)), -1.0*sin(2.0*M_PI*z));
       break;
     default:
       throw std::runtime_error("prescribed_velocity_u_t: unknown case");
@@ -178,7 +178,7 @@ public:
       return 0.0;
       break;
     case 1:
-      return ((t_<time_reverse)?+1.0:-1.0)*M_PI*sin(2.0*M_PI*y)*sin(2.0*M_PI*x)ONLY3D(*-1.0*sin(2.0*M_PI*z));
+      return ((t_<time_reverse)?+1.0:-1.0)*MULTD(sin(2.0*M_PI*x), M_PI*sin(2.0*M_PI*y), -1.0*sin(2.0*M_PI*z));
       break;
     default:
       throw std::runtime_error("prescribed_velocity_u_t: unknown case");
@@ -193,7 +193,7 @@ public:
       return 0.0;
       break;
     case 1:
-      return ((t_<time_reverse)?+1.0:-1.0)*SQR(sin(M_PI*y))*sin(2.0*M_PI*x)*-1.0*2.0*M_PI*cos(2.0*M_PI*z);
+      return ((t_<time_reverse)?+1.0:-1.0)*sin(2.0*M_PI*x)*SQR(sin(M_PI*y))*-1.0*2.0*M_PI*cos(2.0*M_PI*z);
       break;
     default:
       throw std::runtime_error("prescribed_velocity_u_t: unknown case");
@@ -215,7 +215,7 @@ public:
       return 0.0;
       break;
     case 1:
-      return ((t_<time_reverse)?-1.0:+1.0)*SQR(sin(M_PI*z))*sin(2.0*M_PI*x)*sin(2.0*M_PI*y);
+      return ((t_<time_reverse)?-1.0:+1.0)*sin(2.0*M_PI*x)*sin(2.0*M_PI*y)*SQR(sin(M_PI*z));
       break;
     default:
       throw std::runtime_error("prescribed_velocity_w_t: unknown case");
@@ -229,7 +229,7 @@ public:
       return 0.0;
       break;
     case 1:
-      return ((t_<time_reverse)?-1.0:+1.0)*SQR(sin(M_PI*z))*2.0*M_PI*cos(2.0*M_PI*x)*sin(2.0*M_PI*y);
+      return ((t_<time_reverse)?-1.0:+1.0)*2.0*M_PI*cos(2.0*M_PI*x)*sin(2.0*M_PI*y)*SQR(sin(M_PI*z));
       break;
     default:
       throw std::runtime_error("prescribed_velocity_u_t: unknown case");
@@ -243,7 +243,7 @@ public:
       return 0.0;
       break;
     case 1:
-      return ((t_<time_reverse)?-1.0:+1.0)*SQR(sin(M_PI*z))*sin(2.0*M_PI*x)*2.0*M_PI*cos(2.0*M_PI*y);
+      return ((t_<time_reverse)?-1.0:+1.0)*sin(2.0*M_PI*x)*2.0*M_PI*cos(2.0*M_PI*y)*SQR(sin(M_PI*z));
       break;
     default:
       throw std::runtime_error("prescribed_velocity_u_t: unknown case");
@@ -257,7 +257,7 @@ public:
       return 0.0;
       break;
     case 1:
-      return ((t_<time_reverse)?-1.0:+1.0)*M_PI*sin(2.0*M_PI*z)*sin(2.0*M_PI*x)*sin(2.0*M_PI*y);
+      return ((t_<time_reverse)?-1.0:+1.0)*sin(2.0*M_PI*x)*sin(2.0*M_PI*y)*M_PI*sin(2.0*M_PI*z);
       break;
     default:
       throw std::runtime_error("prescribed_velocity_u_t: unknown case");
@@ -360,6 +360,83 @@ struct zero_force_component_t : CF_DIM {
   }
 } zero_force_component_t;
 
+void get_extrapolation_error_in_band(const my_p4est_two_phase_flows_t* two_phase_flow_solver, prescribed_velocity_component_t* prescribed_velocity[P4EST_DIM],
+                                     double extrapolation_error_v_minus[P4EST_DIM], double extrapolation_error_v_plus[P4EST_DIM])
+{
+  const p4est_nodes_t *nodes_n = two_phase_flow_solver->get_nodes_n();
+  const my_p4est_interpolation_nodes_t *interp_phi = two_phase_flow_solver->get_interp_phi();
+  for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+    extrapolation_error_v_minus[dim]  = 0.0;
+    extrapolation_error_v_plus[dim]   = 0.0;
+  }
+  Vec vnp1_nodes_minus  = two_phase_flow_solver->get_vnp1_nodes_omega_minus();
+  Vec vnp1_nodes_plus   = two_phase_flow_solver->get_vnp1_nodes_omega_plus();
+  const double *vnp1_nodes_minus_p, *vnp1_nodes_plus_p;
+  PetscErrorCode ierr;
+  ierr = VecGetArrayRead(vnp1_nodes_minus,  &vnp1_nodes_minus_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(vnp1_nodes_plus,   &vnp1_nodes_plus_p); CHKERRXX(ierr);
+
+
+//  Vec error_x, error_y;
+//  ierr = VecCreateGhostNodes(two_phase_flow_solver->get_p4est_n(), two_phase_flow_solver->get_nodes_n(), &error_x); CHKERRXX(ierr);
+//  ierr = VecCreateGhostNodes(two_phase_flow_solver->get_p4est_n(), two_phase_flow_solver->get_nodes_n(), &error_y); CHKERRXX(ierr);
+//  double *err_x_p, *err_y_p;
+//  ierr = VecGetArray(error_x, &err_x_p); CHKERRXX(ierr);
+//  ierr = VecGetArray(error_y, &err_y_p); CHKERRXX(ierr);
+
+  double xyz_node[P4EST_DIM];
+  for (p4est_locidx_t n = 0; n < nodes_n->num_owned_indeps; ++n) {
+    node_xyz_fr_n(n, two_phase_flow_solver->get_p4est_n(), nodes_n, xyz_node);
+    if(fabs((*interp_phi)(xyz_node)) < 2.0*two_phase_flow_solver->get_diag_min())
+    {
+      if((*interp_phi)(xyz_node) <= 0.0)
+        for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
+        {
+          extrapolation_error_v_plus[dim] = MAX(extrapolation_error_v_plus[dim], fabs((*prescribed_velocity[dim])(xyz_node) - vnp1_nodes_plus_p[P4EST_DIM*n+dim]));
+//          if(dim ==0)
+//            err_x_p[n] = fabs((*prescribed_velocity[dim])(xyz_node) - vnp1_nodes_plus_p[P4EST_DIM*n+dim]);
+//          else
+//            err_y_p[n] = fabs((*prescribed_velocity[dim])(xyz_node) - vnp1_nodes_plus_p[P4EST_DIM*n+dim]);
+        }
+      else
+        for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
+        {
+          extrapolation_error_v_minus[dim] = MAX(extrapolation_error_v_minus[dim], fabs((*prescribed_velocity[dim])(xyz_node) - vnp1_nodes_minus_p[P4EST_DIM*n+dim]));
+//          if(dim ==0)
+//            err_x_p[n] = fabs((*prescribed_velocity[dim])(xyz_node) - vnp1_nodes_plus_p[P4EST_DIM*n+dim]);
+//          else
+//            err_y_p[n] = fabs((*prescribed_velocity[dim])(xyz_node) - vnp1_nodes_plus_p[P4EST_DIM*n+dim]);
+        }
+    }
+//    else
+//    {
+//      err_x_p[n] = 0.0;
+//      err_y_p[n] = 0.0;
+//    }
+  }
+
+//  my_p4est_vtk_write_all(two_phase_flow_solver->get_p4est_n(), two_phase_flow_solver->get_nodes_n(), two_phase_flow_solver->get_ghost_n(),
+//                         P4EST_TRUE, P4EST_FALSE,
+//                         2, 0,
+//                         "/home/regan/workspace/projects/two_phase_flow/sharp_advection_2d/error_extrap",
+//                         VTK_NODE_SCALAR, "error_x", err_x_p,
+//                         VTK_NODE_SCALAR, "error_y", err_y_p);
+
+//  ierr = VecRestoreArray(error_x, &err_x_p); CHKERRXX(ierr);
+//  ierr = VecRestoreArray(error_y, &err_y_p); CHKERRXX(ierr);
+//  ierr = VecDestroy(error_x); CHKERRXX(ierr);
+//  ierr = VecDestroy(error_y); CHKERRXX(ierr);
+
+  ierr = VecRestoreArrayRead(vnp1_nodes_minus,  &vnp1_nodes_minus_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(vnp1_nodes_plus,   &vnp1_nodes_plus_p); CHKERRXX(ierr);
+
+  int mpiret;
+  mpiret = MPI_Allreduce(MPI_IN_PLACE, extrapolation_error_v_minus, 2, MPI_DOUBLE, MPI_MAX, two_phase_flow_solver->get_p4est_n()->mpicomm); SC_CHECK_MPI(mpiret);
+  mpiret = MPI_Allreduce(MPI_IN_PLACE, extrapolation_error_v_plus,  2, MPI_DOUBLE, MPI_MAX, two_phase_flow_solver->get_p4est_n()->mpicomm); SC_CHECK_MPI(mpiret);
+  return;
+}
+
+
 int main (int argc, char* argv[])
 {
   mpi_environment_t mpi;
@@ -392,11 +469,15 @@ int main (int argc, char* argv[])
   int n_tree_xyz [P4EST_DIM];
 
   const double duration                 = cmd.get<double>("duration", 2.0);
-  const string export_dir               = "/home/regan/workspace/projects/two_phase_flow/sharp_advection";
+#ifdef P4_TO_P8
+  const string export_dir               = "/home/regan/workspace/projects/two_phase_flow/sharp_advection_3d";
+#else
+  const string export_dir               = "/home/regan/workspace/projects/two_phase_flow/sharp_advection_2d";
+#endif
   PetscErrorCode ierr;
   const double rho_m  = 1000.0;
   const double rho_p  = 1.0;
-  const double mu_m   = 0.0001;
+  const double mu_m   = 0.01;
   const double mu_p   = 0.00001;
   const double surface_tension = 0.0073;
   const double xyz_min [P4EST_DIM] = {DIM(xmin, ymin, zmin)};
@@ -425,7 +506,7 @@ int main (int argc, char* argv[])
   bc_p.setWallTypes(bc_wall_type_p); bc_p.setWallValues(bc_wall_value_p);
 
   lmin                    = cmd.get<int>("lmin", 6);
-  lmax                    = cmd.get<int>("lmax", 8);
+  lmax                    = cmd.get<int>("lmax", 9);
   threshold_split_cell    = cmd.get<double>("thresh", 1.00);
   n_tree_xyz[0]           = cmd.get<int>("nx", 1);
   n_tree_xyz[1]           = cmd.get<int>("ny", 1);
@@ -539,6 +620,15 @@ int main (int argc, char* argv[])
   two_phase_flow_solver->set_bc(bc_v, &bc_p);
 
   int iter = 0;
+  int iter_export = -1;
+  const double dt_export = 0.02;
+
+  double extrapolation_error_v_minus[P4EST_DIM], extrapolation_error_v_plus[P4EST_DIM];
+  double max_extrapolation_error_v_minus[P4EST_DIM], max_extrapolation_error_v_plus[P4EST_DIM];
+  for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+    max_extrapolation_error_v_minus[dim]  = 0.0;
+    max_extrapolation_error_v_plus[dim]   = 0.0;
+  }
 
   while(tn+0.01*dt_n<tstart+duration)
   {
@@ -571,11 +661,16 @@ int main (int argc, char* argv[])
 //    std::cout << "step D" << std::endl;
 
 
-//    two_phase_flow_solver->extrapolate_velocities_across_interface_in_finest_computational_cells_Aslam_PDE(PSEUDO_TIME, 20);
-    two_phase_flow_solver->extrapolate_velocities_across_interface_in_finest_computational_cells_Aslam_PDE(EXPLICIT_ITERATIVE, 10);
+    two_phase_flow_solver->extrapolate_velocities_across_interface_in_finest_computational_cells_Aslam_PDE(PSEUDO_TIME, 20);
+//    two_phase_flow_solver->extrapolate_velocities_across_interface_in_finest_computational_cells_Aslam_PDE(EXPLICIT_ITERATIVE, 10);
     two_phase_flow_solver->compute_velocity_at_nodes();
 
-    two_phase_flow_solver->save_vtk((export_dir+"/illustration_"+std::to_string(iter)).c_str(), true, (export_dir+"/illustration_fine_"+std::to_string(iter)).c_str());
+    if(((int)floor((tn+dt_n)/dt_export)) != iter_export)
+    {
+      iter_export = ((int)floor((tn+dt_n)/dt_export));
+      two_phase_flow_solver->save_vtk((export_dir+"/illustration_"+std::to_string(iter_export)).c_str(), true, (export_dir+"/illustration_fine_"+std::to_string(iter_export)).c_str());
+    }
+
 
     tn += dt_n;
 
@@ -583,10 +678,24 @@ int main (int argc, char* argv[])
                        iter, tn, 100*(tn-tstart)/duration, two_phase_flow_solver->get_max_velocity(), two_phase_flow_solver->get_p4est()->global_num_quadrants); CHKERRXX(ierr);
 
 
+    get_extrapolation_error_in_band(two_phase_flow_solver, prescribed_velocity_field_n, extrapolation_error_v_minus, extrapolation_error_v_plus);
+
+
+    for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+      max_extrapolation_error_v_minus[dim]  = MAX(max_extrapolation_error_v_minus[dim], extrapolation_error_v_minus[dim]);
+      max_extrapolation_error_v_plus[dim]   = MAX(max_extrapolation_error_v_plus[dim], extrapolation_error_v_plus[dim]);
+    }
 
     iter++;
-//    if(iter==2)
+//    if(iter==1)
 //      break;
+  }
+
+
+  if(mpi.rank() ==0)
+  {
+    std::cout << "max extrapolation_error_v_minus = " << max_extrapolation_error_v_minus[0] << " " << max_extrapolation_error_v_minus[1] << std::endl;
+    std::cout << "max extrapolation_error_v_plus  = " << max_extrapolation_error_v_plus[0] << " " << max_extrapolation_error_v_plus[1] << std::endl;
   }
 
   for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
