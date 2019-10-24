@@ -176,7 +176,7 @@ int main(int argc, char** argv) {
     case 0: /*------ DO NOTHING ----------------------------------------------------------------------------------------*/
     {
       // Partition, create ghosts, create nodes
-      my_p4est_partition(p4est, P4EST_TRUE, NULL);
+      my_p4est_partition(p4est, P4EST_FALSE, NULL);
       ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
       nodes = my_p4est_nodes_new(p4est, ghost);
 
@@ -201,7 +201,7 @@ int main(int argc, char** argv) {
         my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
 
         // Partition, create ghosts, create nodes
-        my_p4est_partition(p4est, P4EST_TRUE, NULL);
+        my_p4est_partition(p4est, P4EST_FALSE, NULL);
         ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
         nodes = my_p4est_nodes_new(p4est, ghost);
 
@@ -218,7 +218,7 @@ int main(int argc, char** argv) {
           my_p4est_refine(p4est, P4EST_FALSE, refine_levelset_cf, NULL);
 
           // Partition at each iteration
-          my_p4est_partition(p4est, P4EST_TRUE, NULL);
+          my_p4est_partition(p4est, P4EST_FALSE, NULL);
 
           // Create ghosts and nodes
           if(iter>0){ p4est_nodes_destroy(nodes); p4est_ghost_destroy(ghost); }
@@ -240,7 +240,7 @@ int main(int argc, char** argv) {
     case 2: /*------ TAGGING QUADRANTS ---------------------------------------------------------------------------------*/
     {
       // Partition, create ghosts, create nodes
-      my_p4est_partition(p4est, P4EST_TRUE, NULL);
+      my_p4est_partition(p4est, P4EST_FALSE, NULL);
       ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
       nodes = my_p4est_nodes_new(p4est, ghost);
 
@@ -270,7 +270,7 @@ int main(int argc, char** argv) {
         if(grid_is_changing)
         {
           // Partition, create ghosts, create nodes
-          my_p4est_partition(p4est, P4EST_TRUE, NULL);
+          my_p4est_partition(p4est, P4EST_FALSE, NULL);
           p4est_ghost_destroy(ghost); ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
           p4est_nodes_destroy(nodes); nodes = my_p4est_nodes_new(p4est, ghost);
 
