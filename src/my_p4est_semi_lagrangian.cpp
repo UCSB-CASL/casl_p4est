@@ -342,7 +342,7 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt_nm1, double dt_n
 #else
   interp_n.set_input(vn, xx_vn_derivatives, yy_vn_derivatives, zz_vn_derivatives, quadratic, P4EST_DIM);
 #endif
-  interp_n.interpolate(interp_output, P4EST_DIM);
+  interp_n.interpolate(interp_output);
   interp_n.clear();
 
   /* now find x_star */
@@ -367,7 +367,7 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt_nm1, double dt_n
 #else
   interp_nm1.set_input(vnm1, xx_vnm1_derivatives, yy_vnm1_derivatives, zz_vnm1_derivatives, quadratic, P4EST_DIM);
 #endif
-  interp_nm1.interpolate(interp_output, P4EST_DIM);
+  interp_nm1.interpolate(interp_output);
   interp_nm1.clear();
   for (unsigned short dir = 0; dir < P4EST_DIM; ++dir)
     interp_output[dir] = v_tmp_n[dir].data();
@@ -376,7 +376,7 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt_nm1, double dt_n
 #else
   interp_n.set_input(vn, xx_vn_derivatives, yy_vn_derivatives, zz_vn_derivatives, quadratic, P4EST_DIM);
 #endif
-  interp_n.interpolate(interp_output, P4EST_DIM);
+  interp_n.interpolate(interp_output);
   interp_n.clear();
 
   /* finally, find the backtracing value */

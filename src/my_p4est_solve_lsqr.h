@@ -13,6 +13,7 @@ using std::vector;
  * \param p the right hand side
  * \param nb_x the number of points in the x direction
  * \param nb_y the number of points in the y direction
+ * \param nb_z the number of points in the z direction
  * \param order the desired order of interpolation, 0 - constant, 1 - linear, 2 - quadratic
  * \return
  */

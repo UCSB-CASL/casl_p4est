@@ -103,7 +103,7 @@ void trajectory_from_np1_to_n( p4est_t *p4est, p4est_nodes_t *nodes,
 #endif
   else
     interp.set_input(v, quadratic, P4EST_DIM);
-  interp.interpolate(data_star, P4EST_DIM);
+  interp.interpolate(data_star);
 
   /* find the departure points */
   for (short dir = 0; dir < P4EST_DIM; ++dir)
@@ -216,7 +216,7 @@ void trajectory_from_np1_to_nm1( p4est_t *p4est_n, p4est_nodes_t *nodes_n,
 #endif
   else
     interp_nm1.set_input(vnm1, quadratic, P4EST_DIM);
-  interp_nm1.interpolate(data_star_nm1, P4EST_DIM);
+  interp_nm1.interpolate(data_star_nm1);
   if(use_second_derivatives_vn)
 #ifdef P4_TO_P8
     interp_n.set_input(vn, second_derivatives_vn[0], second_derivatives_vn[1], second_derivatives_vn[2], quadratic, P4EST_DIM);
@@ -225,7 +225,7 @@ void trajectory_from_np1_to_nm1( p4est_t *p4est_n, p4est_nodes_t *nodes_n,
 #endif
   else
     interp_n.set_input(vn, quadratic, P4EST_DIM);
-  interp_n.interpolate(data_star_nm1, P4EST_DIM);
+  interp_n.interpolate(data_star_nm1);
   interp_nm1.clear();
   interp_n  .clear();
 
@@ -291,7 +291,7 @@ void trajectory_from_np1_to_nm1( p4est_t *p4est_n, p4est_nodes_t *nodes_n,
 #endif
   else
     interp_nm1.set_input(vnm1, quadratic, P4EST_DIM);
-  interp_nm1.interpolate(data_star_nm1, P4EST_DIM);
+  interp_nm1.interpolate(data_star_nm1);
   if(use_second_derivatives_vn)
 #ifdef P4_TO_P8
     interp_n.set_input(vn, second_derivatives_vn[0], second_derivatives_vn[1], second_derivatives_vn[2], quadratic, P4EST_DIM);
@@ -300,7 +300,7 @@ void trajectory_from_np1_to_nm1( p4est_t *p4est_n, p4est_nodes_t *nodes_n,
 #endif
   else
     interp_n.set_input(vn, quadratic, P4EST_DIM);
-  interp_n.interpolate(data_star_n, P4EST_DIM);
+  interp_n.interpolate(data_star_n);
   interp_nm1.clear();
   interp_n  .clear();
 
@@ -479,7 +479,7 @@ void trajectory_from_np1_bunch_of_points( p4est_t *p4est_n,
 #endif
   else
     interp_np1.set_input(vn, quadratic, P4EST_DIM);
-  interp_np1.interpolate(data, P4EST_DIM);
+  interp_np1.interpolate(data);
 
 
   /* find xyz_star */
@@ -531,7 +531,7 @@ void trajectory_from_np1_bunch_of_points( p4est_t *p4est_n,
 #endif
   else
     interp_nm1.set_input(vnm1, quadratic, P4EST_DIM);
-  interp_nm1.interpolate(data_star_nm1, P4EST_DIM);
+  interp_nm1.interpolate(data_star_nm1);
   if(use_second_derivatives_vn)
 #ifdef P4_TO_P8
     interp_n.set_input(vn, second_derivatives_vn[0], second_derivatives_vn[1], second_derivatives_vn[2], quadratic, P4EST_DIM);
@@ -540,7 +540,7 @@ void trajectory_from_np1_bunch_of_points( p4est_t *p4est_n,
 #endif
   else
     interp_n.set_input(vn, quadratic, P4EST_DIM);
-  interp_n.interpolate(data_star_n, P4EST_DIM);
+  interp_n.interpolate(data_star_n);
   interp_nm1.clear();
   interp_n  .clear();
 
@@ -607,7 +607,7 @@ void trajectory_from_np1_bunch_of_points( p4est_t *p4est_n,
 #endif
     else
       interp_nm1.set_input(vnm1, quadratic, P4EST_DIM);
-    interp_nm1.interpolate(data_star_nm1, P4EST_DIM);
+    interp_nm1.interpolate(data_star_nm1);
     if(use_second_derivatives_vn)
 #ifdef P4_TO_P8
       interp_n.set_input(vn, second_derivatives_vn[0], second_derivatives_vn[1], second_derivatives_vn[2], quadratic, P4EST_DIM);
@@ -616,7 +616,7 @@ void trajectory_from_np1_bunch_of_points( p4est_t *p4est_n,
 #endif
     else
       interp_n.set_input(vn, quadratic, P4EST_DIM);
-    interp_n.interpolate(data_star_n, P4EST_DIM);
+    interp_n.interpolate(data_star_n);
     interp_nm1.clear();
     interp_n  .clear();
 
