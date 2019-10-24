@@ -16,6 +16,7 @@
 #include <set>
 #include <time.h>
 #include <stdio.h>
+#include <random>
 
 // p4est Library
 #ifdef P4_TO_P8
@@ -52,6 +53,7 @@
 #include <src/my_p4est_scft.h>
 #include <src/my_p4est_shapes.h>
 #include <src/my_p4est_macros.h>
+#include <src/my_p4est_semi_lagrangian.h>
 #endif
 
 #include <src/petsc_compatibility.h>
@@ -88,7 +90,7 @@ static bool pz = 1; ADD_TO_LIST(pl, pz, "Periodicity in the z-direction (0/1)");
 // refinement parameters
 //-------------------------------------
 static int lmin = 7; ADD_TO_LIST(pl, lmin, "Min level of the tree");
-static int lmax = 7; ADD_TO_LIST(pl, lmax, "Max level of the tree");
+static int lmax = 10; ADD_TO_LIST(pl, lmax, "Max level of the tree");
 static int lip  = 2; ADD_TO_LIST(pl, lip, "Refinement transition");
 
 //-------------------------------------
@@ -122,7 +124,7 @@ static int    bc_iters_min       = 5;       ADD_TO_LIST(pl, bc_iters_min, "Minim
 // problem setup
 //-------------------------------------
 static double box_size            = 1; ADD_TO_LIST(pl, box_size, "Scalling of computational box");
-static int    geometry            = 0; ADD_TO_LIST(pl, geometry, "Problem geometry: \n"
+static int    geometry            = 9; ADD_TO_LIST(pl, geometry, "Problem geometry: \n"
                                                           "    0 - rectangular periodic box \n"
                                                           "    1 - rectangular box with neutral walls\n"
                                                           "    2 - circle/sphere\n"
@@ -130,7 +132,9 @@ static int    geometry            = 0; ADD_TO_LIST(pl, geometry, "Problem geomet
                                                           "    4 - periodic film\n"
                                                           "    5 - droplet on a substrate\n"
                                                           "    6 - union of two spheres\n"
-                                                          "    7 - difference of two spheres");
+                                                          "    7 - difference of two spheres \n"
+                                                          "    8 - rectangular periodic box with particles \n"
+                                                          "    9 - same as case 8, but different method used");
 static int    seed                = 0; ADD_TO_LIST(pl, seed, "Seed type: \n"
                                                       "    0 - random\n"
                                                       "    1 - horizontal stripes\n"
@@ -332,7 +336,7 @@ int main (int argc, char* argv[])
   }
 
   /* create SCFT solver */
-  my_p4est_scft_t scft(ngbd, ns);
+  my_p4est_scft_t scft(ngbd, ns); // scft is an OBJECT of class my_p4est_scft_t
 
   /* initialize geometry */
   std::vector<Vec> phi(num_surfaces);
@@ -644,5 +648,202 @@ void set_geometry()
 
       break;
     }
+
+    case 8: // periodic rectangular box
+    {
+      box_size = 4;
+      xmin = ymin = zmin = -1;
+      xmax = ymax = zmax =  1;
+      nx = ny = nz = 1;
+      px = py = pz = 0;
+
+      num_surfaces = 9;
+
+      // substrate = block copoymer melt
+      class subsrate_t : public CF_DIM {
+      public:
+        double operator()(DIM(double x, double y, double z)) const {
+          return -(y + 0.777);
+        }
+      } static subsrate;
+
+      // add nanoparticles to BCP melt
+      class particle_t : public CF_DIM {
+      public:
+        double x_rand;
+        double y_rand;
+        particle_t(double x, double y) {
+        x_rand = x;
+        y_rand = y;
+        }
+        double operator()(DIM(double x, double y, double z)) const
+        {
+          // need minus here -> see Notizblatt why
+          return -(sqrt(SQR(x-(x_rand)) + SQR(y-(y_rand))) - .03);
+        }
+      };
+      static particle_t particle(0,0);
+      static particle_t particle2(0,0.3);
+      static particle_t particle3(-0.5,-0.1);
+      static particle_t particle4(0.8,0.1);
+      static particle_t particle5(-0.75,0.3);
+      static particle_t particle6(0.89,-0.4);
+      static particle_t particle7(0.9,0.9);
+      static particle_t particle8(-0.2,-0.85);
+      static particle_t particle9(-0.89,0.9);
+
+
+      class substrate_gamma_a_t : public CF_DIM {
+      public:
+        double operator()(DIM(double x, double y, double z)) const {
+          return (surface_energy_avg + .5*surface_energy_diff*cos(3.*PI*x));
+        }
+      } static substrate_gamma_a;
+
+      class substrate_gamma_b_t : public CF_DIM {
+      public:
+        double operator()(DIM(double x, double y, double z)) const {
+          return (surface_energy_avg - .5*surface_energy_diff*cos(3.*PI*x));
+        }
+      } static substrate_gamma_b;
+
+      static cf_const_t particle_gamma_a(surface_energy_avg + .5*surface_energy_diff);
+      static cf_const_t particle_gamma_b(surface_energy_avg - .5*surface_energy_diff);
+
+//      action.push_back(MLS_INTERSECTION);
+//      phi_all_cf.push_back(&subsrate);
+//      gamma_a_cf.push_back(&substrate_gamma_a);
+//      gamma_b_cf.push_back(&substrate_gamma_b);
+
+      action.push_back(MLS_INTERSECTION);
+      phi_all_cf.push_back(&particle);
+      gamma_a_cf.push_back(&particle_gamma_a);
+      gamma_b_cf.push_back(&particle_gamma_b);
+
+      action.push_back(MLS_INTERSECTION);
+      phi_all_cf.push_back(&particle2);
+      gamma_a_cf.push_back(&particle_gamma_a);
+      gamma_b_cf.push_back(&particle_gamma_b);
+
+      action.push_back(MLS_INTERSECTION);
+      phi_all_cf.push_back(&particle3);
+      gamma_a_cf.push_back(&particle_gamma_a);
+      gamma_b_cf.push_back(&particle_gamma_b);
+
+      action.push_back(MLS_INTERSECTION);
+      phi_all_cf.push_back(&particle4);
+      gamma_a_cf.push_back(&particle_gamma_a);
+      gamma_b_cf.push_back(&particle_gamma_b);
+
+      action.push_back(MLS_INTERSECTION);
+      phi_all_cf.push_back(&particle5);
+      gamma_a_cf.push_back(&particle_gamma_a);
+      gamma_b_cf.push_back(&particle_gamma_b);
+
+      action.push_back(MLS_INTERSECTION);
+      phi_all_cf.push_back(&particle6);
+      gamma_a_cf.push_back(&particle_gamma_a);
+      gamma_b_cf.push_back(&particle_gamma_b);
+
+      action.push_back(MLS_INTERSECTION);
+      phi_all_cf.push_back(&particle7);
+      gamma_a_cf.push_back(&particle_gamma_a);
+      gamma_b_cf.push_back(&particle_gamma_b);
+
+      action.push_back(MLS_INTERSECTION);
+      phi_all_cf.push_back(&particle8);
+      gamma_a_cf.push_back(&particle_gamma_a);
+      gamma_b_cf.push_back(&particle_gamma_b);
+
+      action.push_back(MLS_INTERSECTION);
+      phi_all_cf.push_back(&particle9);
+      gamma_a_cf.push_back(&particle_gamma_a);
+      gamma_b_cf.push_back(&particle_gamma_b);
+
+      break;
+    }
+
+
+  case 9: // periodic rectangular box
+  {
+      box_size = 4;
+      xmin = ymin = zmin = -1;
+      xmax = ymax = zmax =  1;
+      nx = ny = nz = 1;
+      px = py = pz = 0;
+
+      num_surfaces = 1;
+
+      // substrate = block copoymer melt
+      class subsrate_t : public CF_DIM {
+      public:
+        double operator()(DIM(double x, double y, double z)) const {
+          return -(y + 0.777);
+        }
+      } static subsrate;
+
+      // add nanoparticles to BCP melt
+      class particle_t : public CF_DIM {
+      public:
+
+        double operator()(DIM(double x, double y, double z)) const
+        {
+         double phi_p1 = -(sqrt(SQR(x-(0.0)) + SQR(y-(0.0))) - .03);
+         double phi_p2 = -(sqrt(SQR(x-(0.5)) + SQR(y-(0.5))) - .03);
+         double phi_p3 = -(sqrt(SQR(x-(-0.5)) + SQR(y-(-0.5))) - .03);
+         double phi_p4 = -(sqrt(SQR(x-(-0.75)) + SQR(y-(0.3))) - .03);
+         double phi_p5 = -(sqrt(SQR(x-(-0.2)) + SQR(y-(-0.85))) - .03);
+         double phi_p6 = -(sqrt(SQR(x-(-0.89)) + SQR(y-(0.9))) - .03);
+
+         double current_max;
+         std::vector<double> all_phi;
+
+         all_phi.push_back(phi_p1);
+         all_phi.push_back(phi_p2);
+         all_phi.push_back(phi_p3);
+         all_phi.push_back(phi_p4);
+         all_phi.push_back(phi_p5);
+         all_phi.push_back(phi_p6);
+
+         for(int i = 0; i<all_phi.size(); i++){
+           if (i==0){
+             current_max = all_phi[0];
+           }
+           else current_max = max(current_max, all_phi[i]);
+         }
+
+         return current_max;
+        }
+      } static particle;
+
+      class substrate_gamma_a_t : public CF_DIM {
+      public:
+        double operator()(DIM(double x, double y, double z)) const {
+          return (surface_energy_avg + .5*surface_energy_diff*cos(3.*PI*x));
+        }
+      } static substrate_gamma_a;
+
+      class substrate_gamma_b_t : public CF_DIM {
+      public:
+        double operator()(DIM(double x, double y, double z)) const {
+          return (surface_energy_avg - .5*surface_energy_diff*cos(3.*PI*x));
+        }
+      } static substrate_gamma_b;
+
+      static cf_const_t particle_gamma_a(surface_energy_avg + .5*surface_energy_diff);
+      static cf_const_t particle_gamma_b(surface_energy_avg - .5*surface_energy_diff);
+
+//      action.push_back(MLS_INTERSECTION);
+//      phi_all_cf.push_back(&subsrate);
+//      gamma_a_cf.push_back(&substrate_gamma_a);
+//      gamma_b_cf.push_back(&substrate_gamma_b);
+
+      action.push_back(MLS_INTERSECTION);
+      phi_all_cf.push_back(&particle);
+      gamma_a_cf.push_back(&particle_gamma_a);
+      gamma_b_cf.push_back(&particle_gamma_b);
+
+    break;
+  }
   }
 }
