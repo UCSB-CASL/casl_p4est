@@ -6,11 +6,15 @@
 #include <p8est.h>
 #include <p8est_nodes.h>
 #include <p8est_ghost.h>
+#include <p8est_bits.h>
+#include <src/my_p8est_nodes.h>
 #include <src/my_p8est_refine_coarsen.h>
 #else
 #include <p4est.h>
 #include <p4est_nodes.h>
 #include <p4est_ghost.h>
+#include <p4est_bits.h>
+#include <src/my_p4est_nodes.h>
 #include <src/my_p4est_refine_coarsen.h>
 #endif
 #include <src/petsc_logging.h>
@@ -25,9 +29,26 @@
 #include <vector>
 #include <fstream>
 
+#if SIZE_MAX == UCHAR_MAX
+   #define my_MPI_SIZE_T MPI_UNSIGNED_CHAR
+#elif SIZE_MAX == USHRT_MAX
+   #define my_MPI_SIZE_T MPI_UNSIGNED_SHORT
+#elif SIZE_MAX == UINT_MAX
+   #define my_MPI_SIZE_T MPI_UNSIGNED
+#elif SIZE_MAX == ULONG_MAX
+   #define my_MPI_SIZE_T MPI_UNSIGNED_LONG
+#elif SIZE_MAX == ULLONG_MAX
+   #define my_MPI_SIZE_T MPI_UNSIGNED_LONG_LONG
+#else
+   #error "unknown SIZE_MAX"
+#endif
+
+
+
+
 // forward declaration
 class my_p4est_node_neighbors_t;
-struct quad_neighbor_nodes_of_node_t;
+class quad_neighbor_nodes_of_node_t;
 
 #define COMMA ,
 #define P4(a) a
@@ -322,6 +343,7 @@ const unsigned short t2c[P4EST_CHILDREN][t2c_num_pts] = { { nn_000, nn_m00, nn_0
                                                           { nn_000, nn_p00, nn_0p0 } };
 #endif
 
+
 enum interpolation_method{
   linear,
   quadratic,
@@ -345,6 +367,7 @@ public:
   double lip, t;
   double value(double *xyz) const {return this->operator ()(xyz[0], xyz[1]);}
   virtual double operator()(double x, double y) const=0 ;
+  double operator()(double *xyz) const {return this->operator()(xyz[0], xyz[1]); }
   virtual ~CF_2() {}
 };
 
@@ -353,7 +376,8 @@ class CF_3
 public:
   double lip, t;
   double value(double *xyz) const {return this->operator ()(xyz[0], xyz[1], xyz[2]);}
-  virtual double operator()(double x, double y, double z) const=0 ;
+  virtual double operator()(double x, double y,double z) const=0 ;
+  double operator()(double *xyz) const {return this->operator()(xyz[0], xyz[1], xyz[2]); }
   virtual ~CF_3() {}
 };
 
@@ -373,6 +397,12 @@ enum {
   INTERFACE = -7,
   WALL_parallel_to_face = -8 // to allow for Dirichlet wall boundary conditions on the face_solver even with rectangular grids
 };
+
+inline int WALL_idx(unsigned char oriented_cart_dir)
+{
+  P4EST_ASSERT(oriented_cart_dir < P4EST_FACES);
+  return (-1-((int) oriented_cart_dir));
+}
 
 typedef enum {
   DIRICHLET,
@@ -398,6 +428,7 @@ class WallBC2D
 public:
   virtual BoundaryConditionType operator()( double x, double y ) const=0 ;
   double value(double *xyz) const {return this->operator ()(xyz[0], xyz[1]);}
+  virtual ~WallBC2D() = 0;
 };
 
 class WallBC3D
@@ -405,6 +436,7 @@ class WallBC3D
 public:
   virtual BoundaryConditionType operator()( double x, double y, double z ) const=0 ;
   double value(double *xyz) const {return this->operator ()(xyz[0], xyz[1], xyz[2]);}
+  virtual ~WallBC3D() = 0;
 };
 
 #ifdef P4_TO_P8
@@ -494,10 +526,7 @@ public:
     return wallType(xyz_[0], xyz_[1]);
   }
 
-  inline BoundaryConditionType interfaceType() const
-  {
-    return InterfaceType_;
-  }
+  inline BoundaryConditionType interfaceType() const{ return InterfaceType_;}
 
   inline BoundaryConditionType interfaceType(const double* xyz) const
   {
@@ -526,6 +555,10 @@ public:
 #endif
     return p_InterfaceValue->operator ()(x,y);
   }
+  inline double  interfaceValue(double xyz_[]) const
+  {
+    return interfaceValue(xyz_[0], xyz_[1]);
+  }
 
   inline double robinCoef(double x, double y) const
   {
@@ -535,38 +568,11 @@ public:
     return p_RobinCoef->operator ()(x,y);
   }
 
-  // using double *xyz
-  inline BoundaryConditionType wallType( double *xyz ) const
+  inline double robinCoef( double *xyz_) const
   {
-#ifdef CASL_THROWS
-    if(WallType_ == NULL) throw std::invalid_argument("[CASL_ERROR]: The type of boundary conditions has not been set on the walls.");
-#endif
-    return (*WallType_)(xyz[0],xyz[1]);
+    return robinCoef(xyz_[0], xyz_[1]);
   }
 
-  inline double wallValue( double *xyz) const
-  {
-#ifdef CASL_THROWS
-    if(p_WallValue == NULL) throw std::invalid_argument("[CASL_ERROR]: The value of the boundary conditions has not been set on the walls.");
-#endif
-    return p_WallValue->operator ()(xyz[0],xyz[1]);
-  }
-
-  inline double interfaceValue( double *xyz) const
-  {
-#ifdef CASL_THROWS
-    if(p_InterfaceValue == NULL) throw std::invalid_argument("[CASL_ERROR]: The value of the boundary conditions has not been set on the interface.");
-#endif
-    return p_InterfaceValue->operator ()(xyz[0],xyz[1]);
-  }
-
-  inline double robinCoef( double *xyz) const
-  {
-#ifdef CASL_THROWS
-    if(p_RobinCoef == NULL) throw std::invalid_argument("[CASL_ERROR]: The value of the Robin coef has not been set on the interface.");
-#endif
-    return p_RobinCoef->operator ()(xyz[0],xyz[1]);
-  }
 };
 
 class BoundaryConditions3D
@@ -678,6 +684,11 @@ public:
     return p_InterfaceValue->operator ()(x,y,z);
   }
 
+  inline double  interfaceValue(double xyz_[]) const
+  {
+    return interfaceValue(xyz_[0], xyz_[1], xyz_[2]);
+  }
+
   inline double robinCoef(double x, double y, double z) const
   {
 #ifdef CASL_THROWS
@@ -686,37 +697,9 @@ public:
     return p_RobinCoef->operator ()(x,y,z);
   }
 
-  // using double *xyz
-  inline BoundaryConditionType wallType( double *xyz ) const
+  inline double robinCoef(double xyz_[]) const
   {
-#ifdef CASL_THROWS
-    if(WallType_ == NULL) throw std::invalid_argument("[CASL_ERROR]: The type of boundary conditions has not been set on the walls.");
-#endif
-    return (*WallType_)(xyz[0],xyz[1],xyz[2]);
-  }
-
-  inline double wallValue(double *xyz) const
-  {
-#ifdef CASL_THROWS
-    if(p_WallValue == NULL) throw std::invalid_argument("[CASL_ERROR]: The value of the boundary conditions has not been set on the walls.");
-#endif
-    return p_WallValue->operator ()(xyz[0],xyz[1],xyz[2]);
-  }
-
-  inline double interfaceValue(double *xyz) const
-  {
-#ifdef CASL_THROWS
-    if(p_InterfaceValue == NULL) throw std::invalid_argument("[CASL_ERROR]: The value of the boundary conditions has not been set on the interface.");
-#endif
-    return p_InterfaceValue->operator ()(xyz[0],xyz[1],xyz[2]);
-  }
-
-  inline double robinCoef( double *xyz) const
-  {
-#ifdef CASL_THROWS
-    if(p_RobinCoef == NULL) throw std::invalid_argument("[CASL_ERROR]: The value of the Robin coef has not been set on the interface.");
-#endif
-    return p_RobinCoef->operator ()(xyz[0],xyz[1],xyz[2]);
+    return robinCoef(xyz_[0], xyz_[1], xyz_[2]);
   }
 };
 
@@ -738,13 +721,18 @@ bool index_of_node(const p4est_quadrant_t *n, p4est_nodes_t* nodes, p4est_locidx
  * \param [in]    tree_id the current tree that owns the quadrant
  * \param [in]    quad the current quarant
  * \param [in]    F a simple C-style array of size n_results*P4EST_CHILDREN, containing the values of the n_vecs function(s) at the vertices of the quadrant. __MUST__ be z-ordered
- *                F[k*P4EST_CHILDREN+i] = value of the kth function at quadrant's node i (in z-order), 0 <= i < P4EST_CHILDREN, 0 <= k < n_results
+ *                F[k*P4EST_CHILDREN+i] = value of he kth function at quadrant's node i (in z-order), 0 <= i < P4EST_CHILDREN, 0 <= k < n_results
  * \param [in]    xyz_global global coordinates of the point
  * \param [inout] simple C-style array of size n_results containing the results of the quadratic_interpolation of the n_results different functions at the node of interest (located at xyz_global)
  * \param [in]    n_results number of functions to be interpolated
  */
 void linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *xyz_global, double *results, const unsigned int n_results);
-double linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *xyz_global);
+inline double linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *xyz_global)
+{
+  double result;
+  linear_interpolation(p4est, tree_id, quad, F, xyz_global, &result, 1);
+  return result;
+}
 
 /*!
  * \brief quadratic_non_oscillatory_interpolation performs non-oscilatory quadratic interpolation for a point
@@ -761,11 +749,29 @@ double linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const 
  * \param [in]    n_results number of functions to be interpolated
  */
 void quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results);
-double quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global);
+inline double quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global)
+{
+  double result;
+  quadratic_non_oscillatory_interpolation(p4est, tree_id, quad, F, Fdd, xyz_global, &result, 1);
+  return result;
+}
+
 void quadratic_non_oscillatory_continuous_v1_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results);
-double quadratic_non_oscillatory_continuous_v1_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global);
+inline double quadratic_non_oscillatory_continuous_v1_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global)
+{
+  double result;
+  quadratic_non_oscillatory_continuous_v1_interpolation(p4est, tree_id, quad, F, Fdd, xyz_global, &result, 1);
+  return result;
+}
+
 void quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results);
-double quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global);
+inline double quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global)
+{
+  double result;
+  quadratic_non_oscillatory_continuous_v2_interpolation(p4est, tree_id, quad, F, Fdd, xyz_global, &result, 1);
+  return result;
+}
+
 
 /*!
  * \brief quadratic_interpolation performs quadratic interpolation for a point
@@ -782,17 +788,36 @@ double quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_t *p4es
  * \param [in]    n_results number of functions to be interpolated
  */
 void quadratic_interpolation(const p4est_t* p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results);
-double quadratic_interpolation(const p4est_t* p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global);
+inline double quadratic_interpolation(const p4est_t* p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global)
+{
+  double result;
+  quadratic_interpolation(p4est, tree_id, quad, F, Fdd, xyz_global, &result, 1);
+  return result;
+}
 
 p4est_bool_t nodes_are_equal(int mpi_size, p4est_nodes_t* nodes_1, p4est_nodes_t* nodes_2);
 
+p4est_bool_t ghosts_are_equal(p4est_ghost_t* ghost_1, p4est_ghost_t* ghost_2);
+
+PetscErrorCode VecGetLocalAndGhostSizes(Vec& v, PetscInt& local_size, PetscInt& ghosted_size);
+
 /*!
- * \brief VecCreateGhostNodes Creates a ghosted PETSc parallel vector on the nodes based on p4est node ordering
- * \param p4est [in]  the forest
- * \param nodes [in]  the nodes numbering data structure
- * \param v     [out] PETSc vector type
+ * \brief VecGhostCopy  copy a ghosted vector, i.e. dst <- src
+ * \param src [in]  the source vector
+ * \param dst [out] the destination vector
+ * \return error code
  */
-PetscErrorCode VecCreateGhostNodes(const p4est_t *p4est, p4est_nodes_t *nodes, Vec* v);
+PetscErrorCode VecGhostCopy(Vec src, Vec dst);
+
+/*!
+ * \brief vectorIsWellSetForNodes
+ * \param v
+ * \param nodes
+ * \param mpicomm
+ * \param block_size
+ * \return
+ */
+bool vectorIsWellSetForNodes(Vec& v, const p4est_nodes_t* nodes, const MPI_Comm& mpicomm, const unsigned int &block_size);
 
 /*!
  * \brief VecCreateGhostNodesBlock Creates a ghosted block PETSc parallel vector on the nodes
@@ -800,36 +825,48 @@ PetscErrorCode VecCreateGhostNodes(const p4est_t *p4est, p4est_nodes_t *nodes, V
  * \param nodes      [in]  the nodes object
  * \param block_size [in]  block size of the vector
  * \param v          [out] PETSc vector
- * \return
+ * \return a PetscErrorCode to be checked against using CHKERRXX()
  */
-PetscErrorCode VecCreateGhostNodesBlock(const p4est_t *p4est, p4est_nodes_t *nodes, PetscInt block_size, Vec* v);
-
-p4est_bool_t ghosts_are_equal(p4est_ghost_t* ghost_1, p4est_ghost_t* ghost_2);
+PetscErrorCode VecCreateGhostNodesBlock(const p4est_t *p4est, const p4est_nodes_t *nodes, const PetscInt & block_size, Vec* v);
+inline PetscErrorCode VecCreateGhostNodes(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec* v)
+{
+  return VecCreateGhostNodesBlock(p4est, nodes, 1, v);
+}
 
 /*!
- * \brief VecCreateGhostNodes Creates a ghosted PETSc parallel vector on the cells
- * \param p4est [in]  the forest
- * \param ghost [in]  the ghost cells
- * \param v     [out] PETSc vector type
+ * \brief VecGhostSet Sets a ghost vector to a value
+ * \param x [in,out]  the vector
+ * \param v [in]      the value to set
+ * \return error code
  */
-PetscErrorCode VecCreateGhostCells(const p4est_t *p4est, p4est_ghost_t *ghost, Vec* v);
+PetscErrorCode VecGhostSet(Vec x, double v);
 
 /*!
- * \brief VecCreateCellsNoGhost Creates a PETSc parallel vector on the cells
- * \param p4est [in]  the forest
- * \param v     [out] PETSc vector type
- */
-PetscErrorCode VecCreateCellsNoGhost(const p4est_t *p4est, Vec* v);
-
-/*!
- * \brief VecCreateGhostNodesBlock Creates a ghosted block PETSc parallel vector
+ * \brief VecCreateGhostNodesBlock Creates a ghosted block PETSc parallel vector on the cells
  * \param p4est      [in]  p4est object
  * \param ghost      [in]  the ghost cells
  * \param block_size [in]  block size of the vector
  * \param v          [out] PETSc vector
- * \return
+ * \return a PetscErrorCode to be checked against using CHKERRXX()
  */
-PetscErrorCode VecCreateGhostCellsBlock(const p4est_t *p4est, p4est_ghost_t *ghost, PetscInt block_size, Vec* v);
+PetscErrorCode VecCreateGhostCellsBlock(const p4est_t *p4est, const p4est_ghost_t *ghost, const PetscInt & block_size, Vec* v);
+inline PetscErrorCode VecCreateGhostCells(const p4est_t *p4est, const p4est_ghost_t *ghost, Vec* v)
+{
+  return VecCreateGhostCellsBlock(p4est, ghost, 1, v);
+}
+
+/*!
+ * \brief VecCreateCellsBlockNoGhost Creates a non-ghosted block PETSc parallel vector on the cells
+ * \param p4est       [in]  the forest
+ * \param block_size  [in]  block size of the vector
+ * \param v           [out] PETSc vector type
+ * \return a PetscErrorCode to be checked against using CHKERRXX()
+ */
+PetscErrorCode VecCreateCellsBlockNoGhost(const p4est_t *p4est, const PetscInt &block_size, Vec* v);
+inline PetscErrorCode VecCreateCellsNoGhost(const p4est_t *p4est, Vec* v)
+{
+  return VecCreateCellsBlockNoGhost(p4est, 1, v);
+}
 
 /*!
  * \brief VecScatterCreateChangeLayout Create a VecScatter context useful for changing the parallel layout of a vector
@@ -1483,6 +1520,15 @@ void compute_normals(const quad_neighbor_nodes_of_node_t& qnnn, double *phi, dou
 void compute_normals(const my_p4est_node_neighbors_t& neighbors, Vec phi, Vec normals[P4EST_DIM]);
 
 /*!
+ * \brief compute_normals computes the (scaled) normal to the surface for the entire grid
+ * \param [in]  neighbors the neighborhood information
+ * \param [in]  phi       PETSc vector of the levelset function
+ * \param [out] normals   P4EST_DIM-blocked PETSc vectors to store the normal in the entire doamin
+ */
+void compute_normals(const my_p4est_node_neighbors_t& neighbors, Vec phi, Vec normals);
+
+
+/*!
  * \brief interface_length_in_one_quadrant
  */
 double interface_length_in_one_quadrant(const p4est_t *p4est, const p4est_nodes_t *nodes, const p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi);
@@ -1557,7 +1603,6 @@ bool is_node_zpWall(const p4est_t *p4est, const p4est_indep_t *ni);
  * \param p4est [in] p4est
  * \param ni    [in] pointer to the node structure
  * \return true if the point is on the domain boundary and p4est is _NOT_ periodic
- * \note: periodicity is not implemented
  */
 bool is_node_Wall  (const p4est_t *p4est, const p4est_indep_t *ni);
 
@@ -1569,6 +1614,15 @@ bool is_node_Wall  (const p4est_t *p4est, const p4est_indep_t *ni);
  * \note: periodicity is not implemented
  */
 bool is_node_Wall  (const p4est_t *p4est, const p4est_indep_t *ni, bool is_wall[]);
+
+/*!
+ * \brief is_node_Wall checks if a node is on the oriented domain boundary pointed by oriented_dir
+ * \param p4est         [in] p4est
+ * \param ni            [in] pointer to the node structure
+ * \param oriented_dir  [in] oriented direction (dir::f_m00, dir::f_p00, etc.)
+ * \return true if the point is on the domain boundary and p4est is _NOT_ periodic
+ */
+bool is_node_Wall(const p4est_t *p4est, const p4est_indep_t *ni, const unsigned char oriented_dir);
 
 /*!
  * \brief is_quad_xmWall checks if a quad is on x^- domain boundary
@@ -1584,7 +1638,6 @@ bool is_quad_xmWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quad
  * \param p4est [in] p4est
  * \param qi    [in] pointer to the quadrant
  * \return true if the quad is on the right domain boundary and p4est is _NOT_ periodic
- * \note: periodicity is not implemented
  */
 bool is_quad_xpWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi);
 
@@ -1593,7 +1646,6 @@ bool is_quad_xpWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quad
  * \param p4est [in] p4est
  * \param qi    [in] pointer to the quadrant
  * \return true if the quad is on the bottom domain boundary and p4est is _NOT_ periodic
- * \note: periodicity is not implemented
  */
 bool is_quad_ymWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi);
 
@@ -1602,7 +1654,6 @@ bool is_quad_ymWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quad
  * \param p4est [in] p4est
  * \param qi    [in] pointer to the quadrant
  * \return true if the quad is on the top domain boundary and p4est is _NOT_ periodic
- * \note: periodicity is not implemented
  */
 bool is_quad_ypWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi);
 
@@ -1611,7 +1662,6 @@ bool is_quad_ypWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quad
  * \param p4est [in] p4est
  * \param qi    [in] pointer to the quadrant
  * \return true if the quad is on the back domain boundary and p4est is _NOT_ periodic
- * \note: periodicity is not implemented
  */
 bool is_quad_zmWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi);
 
@@ -1620,7 +1670,6 @@ bool is_quad_zmWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quad
  * \param p4est [in] p4est
  * \param qi    [in] pointer to the quadrant
  * \return true if the quad is on the front domain boundary and p4est is _NOT_ periodic
- * \note: periodicity is not implemented
  */
 bool is_quad_zpWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi);
 
@@ -1630,7 +1679,6 @@ bool is_quad_zpWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quad
  * \param qi    [in] pointer to the quadrant
  * \param dir   [in] the direction to check, dir::f_m00, dir::f_p00, dir::f_0m0 ...
  * \return true if the quad is on the domain boundary in the direction dir and p4est is _NOT_ periodic
- * \note: periodicity is not implemented
  */
 bool is_quad_Wall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi, int dir);
 
@@ -1639,7 +1687,6 @@ bool is_quad_Wall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadra
  * \param p4est [in] p4est
  * \param qi    [in] pointer to the quadrant
  * \return true if the quad is on the domain boundary and p4est is _NOT_ periodic
- * \note: periodicity is not implemented
  */
 bool is_quad_Wall  (const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi);
 
@@ -1661,18 +1708,29 @@ inline bool is_periodic(const p4est_t *p4est, int dir)
            p4est->connectivity->tree_to_face[tfindex] == face);
 }
 
-/*!
- * \brief is_periodic checks if the forest is periodic in any direction
- * \param p4est [in] the forest
- * \return true if the forest is periodic, false otherwise
- */
-inline bool is_periodic(const p4est_t *p4est)
+inline void clip_in_domain(double xyz[P4EST_DIM], const double xyz_min[P4EST_DIM], const double xyz_max[P4EST_DIM], const bool periodic[P4EST_DIM])
 {
-#ifdef P4_TO_P8
-  return is_periodic(p4est, 0) || is_periodic(p4est, 1) || is_periodic(p4est, 2);
-#else
-  return is_periodic(p4est, 0) || is_periodic(p4est, 1);
-#endif
+  for(unsigned char dir=0; dir<P4EST_DIM; ++dir)
+    if((xyz[dir]<xyz_min[dir]) || (xyz[dir]>xyz_max[dir]))
+    {
+      if(periodic[dir])
+        xyz[dir] = xyz[dir] - floor((xyz[dir]-xyz_min[dir])/(xyz_max[dir]-xyz_min[dir]))*(xyz_max[dir]-xyz_min[dir]);
+      else
+        xyz[dir] = MAX(xyz_min[dir], MIN(xyz_max[dir], xyz[dir]));
+    }
+}
+
+inline void clip_in_domain(double xyz[P4EST_DIM], const p4est_t* p4est)
+{
+  double xyz_min[P4EST_DIM], xyz_max[P4EST_DIM];
+  bool periodic[P4EST_DIM];
+  for(unsigned char dir=0; dir<P4EST_DIM; ++dir)
+  {
+    xyz_min[dir]  = p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[0]+dir];
+    xyz_max[dir]  = p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*p4est->connectivity->num_trees - 1] + dir];
+    periodic[dir] = is_periodic(p4est, dir);
+  }
+  clip_in_domain(xyz, xyz_min, xyz_max, periodic);
 }
 
 /*!
@@ -1811,6 +1869,8 @@ public:
   } stopwatch_timing;
 
 private:
+  PetscErrorCode ierr;
+  int mpiret;
   double ts, tf;
   MPI_Comm comm_;
   int mpirank;
@@ -1819,6 +1879,41 @@ private:
   stopwatch_timing timing_;
   std::vector<double> t;
   FILE *f_;
+
+  void gather_and_print_info(const double &elap, const bool &print_stats_only)
+  {
+    ierr = PetscFPrintf(comm_, f_, "%s ... done in \n", msg_.c_str()); CHKERRXX(ierr);
+    if (timing_ == all_timings){
+      mpiret = MPI_Gather(&elap, 1, MPI_DOUBLE, &t[0], 1, MPI_DOUBLE, 0, comm_); SC_CHECK_MPI(mpiret);
+      double tmax, tmin, tavg, tdev;
+      tmax = tmin = elap;
+      tavg = tdev = 0;
+      if (mpirank == 0){
+        if(!print_stats_only) {
+          ierr = PetscFPrintf(comm_, f_, "t = ["); CHKERRXX(ierr);
+        for (size_t i=0; i<t.size()-1; i++) {
+          ierr = PetscFPrintf(comm_, f_, "%.5lf, ", t[i]); CHKERRXX(ierr); }
+        ierr = PetscFPrintf(comm_, f_, "%.5lf];\n", t.back()); CHKERRXX(ierr);
+        }
+
+        for (size_t i=0; i<t.size(); i++){
+          tavg += t[i];
+          tmax = MAX(tmax, t[i]);
+          tmin = MIN(tmin, t[i]);
+        }
+        tavg /= mpisize;
+
+        for (size_t i=0; i<t.size(); i++){
+          tdev += (t[i]-tavg)*(t[i]-tavg);
+        }
+        tdev = sqrt(tdev/mpisize);
+      }
+
+      ierr = PetscFPrintf(comm_, f_, " t_max = %.5lf (s), t_max/t_min = %.2lf, t_avg = %.5lf (s), t_dev/t_avg = %% %2.1lf, t_dev/(t_max-t_min) = %% %2.1lf\n\n", tmax, tmax/tmin, tavg, tdev/tavg*100, tdev/(tmax-tmin)*100); CHKERRXX(ierr);
+    } else {
+      ierr = PetscFPrintf(comm_, f_, " %.5lf secs. on process %d [Note: only showing root's timings]\n\n", elap, mpirank); CHKERRXX(ierr); }
+    return;
+  }
 
 public:
 
@@ -1832,7 +1927,8 @@ public:
 
   void start(const std::string& msg){
     msg_ = msg;
-    PetscFPrintf(comm_, f_, "%s ... \n", msg.c_str());
+    if(msg_.length() > 0)
+      PetscFPrintf(comm_, f_, "%s ... \n", msg.c_str());
     ts = MPI_Wtime();
   }
 
@@ -1844,73 +1940,15 @@ public:
     tf = MPI_Wtime();
   }
 
-  double read_duration(){
+  double read_duration(const bool &print_stats_only=false){
     double elap = tf - ts;
-
-    PetscPrintf(comm_, "%s ... done in \n", msg_.c_str());
-    if (timing_ == all_timings){
-      MPI_Gather(&elap, 1, MPI_DOUBLE, &t[0], 1, MPI_DOUBLE, 0, comm_);
-      double tmax, tmin, tavg, tdev;
-      tmax = tmin = elap;
-      tavg = tdev = 0;
-      if (mpirank == 0){
-        PetscFPrintf(comm_, f_, "t = [");
-        for (size_t i=0; i<t.size()-1; i++)
-          PetscFPrintf(comm_, f_, "%.5lf, ", t[i]);
-        PetscFPrintf(comm_, f_, "%.5lf];\n", t.back());
-
-        for (size_t i=0; i<t.size(); i++){
-          tavg += t[i];
-          tmax = MAX(tmax, t[i]);
-          tmin = MIN(tmin, t[i]);
-        }
-        tavg /= mpisize;
-
-        for (size_t i=0; i<t.size(); i++){
-          tdev += (t[i]-tavg)*(t[i]-tavg);
-        }
-        tdev = sqrt(tdev/mpisize);
-      }
-
-      PetscFPrintf(comm_, f_, " t_max = %.5lf (s), t_max/t_min = %.2lf, t_avg = %.5lf (s), t_dev/t_avg = %% %2.1lf, t_dev/(t_max-t_min) = %% %2.1lf\n\n", tmax, tmax/tmin, tavg, tdev/tavg*100, tdev/(tmax-tmin)*100);
-    } else {
-      PetscFPrintf(comm_, f_, " %.5lf secs. on process %d [Note: only showing root's timings]\n\n", elap, mpirank);
-    }
+    gather_and_print_info(elap, print_stats_only);
     return elap;
   }
 
-  double read_duration_current(){
+  double read_duration_current(const bool &print_stats_only=false){
     double elap = MPI_Wtime() - ts;
-
-    PetscPrintf(comm_, "%s ... done in \n", msg_.c_str());
-    if (timing_ == all_timings){
-      MPI_Gather(&elap, 1, MPI_DOUBLE, &t[0], 1, MPI_DOUBLE, 0, comm_);
-      double tmax, tmin, tavg, tdev;
-      tmax = tmin = elap;
-      tavg = tdev = 0;
-      if (mpirank == 0){
-        PetscFPrintf(comm_, f_, "t = [");
-        for (size_t i=0; i<t.size()-1; i++)
-          PetscFPrintf(comm_, f_, "%.5lf, ", t[i]);
-        PetscFPrintf(comm_, f_, "%.5lf];\n", t.back());
-
-        for (size_t i=0; i<t.size(); i++){
-          tavg += t[i];
-          tmax = MAX(tmax, t[i]);
-          tmin = MIN(tmin, t[i]);
-        }
-        tavg /= mpisize;
-
-        for (size_t i=0; i<t.size(); i++){
-          tdev += (t[i]-tavg)*(t[i]-tavg);
-        }
-        tdev = sqrt(tdev/mpisize);
-      }
-
-      PetscFPrintf(comm_, f_, " t_max = %.5lf (s), t_max/t_min = %.2lf, t_avg = %.5lf (s), t_dev/t_avg = %% %2.1lf, t_dev/(t_max-t_min) = %% %2.1lf\n\n", tmax, tmax/tmin, tavg, tdev/tavg*100, tdev/(tmax-tmin)*100);
-    } else {
-      PetscFPrintf(comm_, f_, " %.5lf secs. on process %d [Note: only showing root's timings]\n\n", elap, mpirank);
-    }
+    gather_and_print_info(elap, print_stats_only);
     return elap;
   }
 
@@ -2212,56 +2250,6 @@ struct vec_and_ptr_array_t
     }
   }
 };
-
-// ELYCE MODIFICATION: TRYING SOMETHING -- MAKE SIMILAR OBJECT AS DANIIL
-struct vec_and_ptr_cells_t
-{
-  static PetscErrorCode ierr;
-
-  Vec     vec;
-  double *ptr;
-
-  vec_and_ptr_cells_t() : vec(NULL), ptr(NULL) {}
-
-  vec_and_ptr_cells_t(Vec parent) : vec(NULL), ptr(NULL) { create(parent); }
-
-  vec_and_ptr_cells_t(p4est_t *p4est, p4est_ghost_t *ghost) : vec(NULL), ptr(NULL) { create(p4est, ghost); }
-
-  inline void create(Vec parent)
-  {
-    ierr = VecDuplicate(parent, &vec); CHKERRXX(ierr);
-  }
-
-  inline void create(p4est_t *p4est, p4est_ghost_t *ghost)
-  {
-    ierr = VecCreateGhostCells(p4est, ghost, &vec); CHKERRXX(ierr);
-  }
-
-  inline void destroy()
-  {
-    if (vec != NULL) { ierr = VecDestroy(vec); CHKERRXX(ierr); }
-  }
-
-  inline void get_array()
-  {
-    ierr = VecGetArray(vec, &ptr); CHKERRXX(ierr);
-  }
-
-  inline void restore_array()
-  {
-    ierr = VecRestoreArray(vec, &ptr); CHKERRXX(ierr);
-  }
-
-  inline void set(Vec input)
-  {
-    vec = input;
-  }
-};
-
-
-
-
-
 
 void compute_normals_and_mean_curvature(const my_p4est_node_neighbors_t &neighbors, const Vec phi, Vec normals[], Vec kappa);
 
@@ -3014,3 +3002,5 @@ double smoothstep(int N, double x);
 
 void variable_step_BDF_implicit(const int order, std::vector<double> &dt, std::vector<double> &coeffs);
 #endif // UTILS_H
+
+

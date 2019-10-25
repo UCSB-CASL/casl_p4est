@@ -28,7 +28,6 @@
 #include <stack>
 #include <algorithm>
 
-
 // logging variables -- defined in src/petsc_logging.cpp
 #ifndef CASL_LOG_TINY_EVENTS
 #undef PetscLogEventBegin
@@ -44,6 +43,9 @@
 #endif
 
 std::vector<InterpolatingFunctionLogEntry> InterpolatingFunctionLogger::entries;
+
+WallBC2D::~WallBC2D() {};
+WallBC3D::~WallBC3D() {};
 
 bool index_of_node(const p4est_quadrant_t *n, p4est_nodes_t* nodes, p4est_locidx_t& idx)
 {
@@ -138,13 +140,6 @@ lookup_in_ghost_nodes:
   return false;
 }
 
-double linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *xyz_global)
-{
-  double result;
-  linear_interpolation(p4est, tree_id, quad, F, xyz_global, &result, 1);
-  return result;
-}
-
 void linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *xyz_global, double* results, unsigned int n_results)
 {
   P4EST_ASSERT(n_results > 0);
@@ -219,13 +214,7 @@ void linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4
   }
 
   ierr = PetscLogFlops(39); CHKERRXX(ierr); // number of flops in this event
-}
-
-double quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global)
-{
-  double result;
-  quadratic_non_oscillatory_interpolation(p4est, tree_id, quad, F, Fdd, xyz_global, &result, 1);
-  return result;
+  return;
 }
 
 void quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results)
@@ -304,7 +293,7 @@ void quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topidx_
     results[k] = 0.0;
     for (short j = 0; j < P4EST_CHILDREN; ++j) {
       for (short i = 0; i<P4EST_DIM; i++)
-        fdd[i] = ((j == 0)? Fdd[k*P4EST_CHILDREN*P4EST_DIM+j*P4EST_DIM + i] : MINMOD(fdd[i], Fdd[k*P4EST_CHILDREN*P4EST_DIM+j*P4EST_DIM + i]));
+        fdd[i] = ((j == 0)? Fdd[k*P4EST_CHILDREN*P4EST_DIM+j*P4EST_DIM+i] : MINMOD(fdd[i], Fdd[k*P4EST_CHILDREN*P4EST_DIM+j*P4EST_DIM + i]));
       results[k] += F[k*P4EST_CHILDREN+j]*w_xyz[j];
     }
 #ifdef P4_TO_P8
@@ -315,6 +304,7 @@ void quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topidx_
   }
 
   ierr = PetscLogFlops(45); CHKERRXX(ierr); // number of flops in this event
+  return;
 }
 
 void quadratic_non_oscillatory_continuous_v1_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results)
@@ -382,68 +372,59 @@ void quadratic_non_oscillatory_continuous_v1_interpolation(const p4est_t *p4est,
   };
 #endif
 
-// First alternative scheme: first, minmod on every edge, then weight-average
+  // First alternative scheme: first, minmod on every edge, then weight-average
   double fdd[P4EST_DIM];
-  double sx = (tree_xmax-tree_xmin)*qh;
-  double sy = (tree_ymax-tree_ymin)*qh;
+  unsigned int i, jm, jp;
+  const double sx = (tree_xmax-tree_xmin)*qh;
+  const double sy = (tree_ymax-tree_ymin)*qh;
 #ifdef P4_TO_P8
-  double sz = (tree_zmax-tree_zmin)*qh;
+  const double sz = (tree_zmax-tree_zmin)*qh;
+#endif
+  for (unsigned int k = 0; k < n_results; ++k) {
+    // set your fdd
+    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+      fdd[dir] = 0.0;
+
+    i = 0;
+    jm = 0; jp = 1; fdd[i] += MINMOD(Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i], Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
+    jm = 2; jp = 3; fdd[i] += MINMOD(Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i], Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
+#ifdef P4_TO_P8
+    jm = 4; jp = 5; fdd[i] += MINMOD(Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i], Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
+    jm = 6; jp = 7; fdd[i] += MINMOD(Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i], Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
 #endif
 
+    i = 1;
+    jm = 0; jp = 2; fdd[i] += MINMOD(Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i], Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
+    jm = 1; jp = 3; fdd[i] += MINMOD(Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i], Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
+#ifdef P4_TO_P8
+    jm = 4; jp = 6; fdd[i] += MINMOD(Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i], Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
+    jm = 5; jp = 7; fdd[i] += MINMOD(Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i], Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
+#endif
 
-  for (unsigned int k = 0; k < n_results; ++k) {
+#ifdef P4_TO_P8
+    i = 2;
+    jm = 0; jp = 4; fdd[i] += MINMOD(Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i], Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
+    jm = 1; jp = 5; fdd[i] += MINMOD(Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i], Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
+    jm = 2; jp = 6; fdd[i] += MINMOD(Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i], Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
+    jm = 3; jp = 7; fdd[i] += MINMOD(Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i], Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
+#endif
+
     results[k] = 0.0;
-    for (short j = 0; j<P4EST_CHILDREN; j++){
-
-        for (short i = 0; i<P4EST_DIM; i++)
-         fdd[i] = 0;
-
-        int i, jm, jp;
-
-        i = 0;
-        jm = 0; jp = 1; fdd[i] += MINMOD(Fdd[jm*P4EST_DIM + i], Fdd[jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
-        jm = 2; jp = 3; fdd[i] += MINMOD(Fdd[jm*P4EST_DIM + i], Fdd[jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
-       #ifdef P4_TO_P8
-        jm = 4; jp = 5; fdd[i] += MINMOD(Fdd[jm*P4EST_DIM + i], Fdd[jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
-        jm = 6; jp = 7; fdd[i] += MINMOD(Fdd[jm*P4EST_DIM + i], Fdd[jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
-       #endif
-
-        i = 1;
-        jm = 0; jp = 2; fdd[i] += MINMOD(Fdd[jm*P4EST_DIM + i], Fdd[jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
-        jm = 1; jp = 3; fdd[i] += MINMOD(Fdd[jm*P4EST_DIM + i], Fdd[jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
-       #ifdef P4_TO_P8
-        jm = 4; jp = 6; fdd[i] += MINMOD(Fdd[jm*P4EST_DIM + i], Fdd[jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
-        jm = 5; jp = 7; fdd[i] += MINMOD(Fdd[jm*P4EST_DIM + i], Fdd[jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
-       #endif
-
-       #ifdef P4_TO_P8
-        i = 2;
-        jm = 0; jp = 4; fdd[i] += MINMOD(Fdd[jm*P4EST_DIM + i], Fdd[jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
-        jm = 1; jp = 5; fdd[i] += MINMOD(Fdd[jm*P4EST_DIM + i], Fdd[jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
-        jm = 2; jp = 6; fdd[i] += MINMOD(Fdd[jm*P4EST_DIM + i], Fdd[jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
-        jm = 3; jp = 7; fdd[i] += MINMOD(Fdd[jm*P4EST_DIM + i], Fdd[jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
-       #endif
-
-        results[k] += F[k*P4EST_CHILDREN+j]*w_xyz[j];
-    }
+    for (unsigned char j = 0; j < P4EST_CHILDREN; ++j)
+      results[k] += F[k*P4EST_CHILDREN+j]*w_xyz[j];
 
 #ifdef P4_TO_P8
     results[k] -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1] + sz*sz*d_00p*d_00m*fdd[2]);
 #else
     results[k] -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1]);
 #endif
+
+
   }
 
   ierr = PetscLogFlops(45); CHKERRXX(ierr); // number of flops in this event
+  return;
 }
-
-double quadratic_non_oscillatory_continuous_v1_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global)
-{
-    double result;
-    quadratic_non_oscillatory_continuous_v1_interpolation(p4est, tree_id, quad, F, Fdd, xyz_global, &result, 1);
-    return result;
-}
-
 
 void quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results)
 {
@@ -510,84 +491,70 @@ void quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_t *p4est,
   };
 #endif
 
-  // First alternative scheme: first, minmod on every edge, then weight-average
-    double fdd[P4EST_DIM];
-    double sx = (tree_xmax-tree_xmin)*qh;
-    double sy = (tree_ymax-tree_ymin)*qh;
-  #ifdef P4_TO_P8
-    double sz = (tree_zmax-tree_zmin)*qh;
-  #endif
+
+  // Second alternative scheme: first, weight-average in perpendicular plane, then minmod
+  double fdd[P4EST_DIM];
+  unsigned int i, jm, jp;
+  const double sx = (tree_xmax-tree_xmin)*qh;
+  const double sy = (tree_ymax-tree_ymin)*qh;
+#ifdef P4_TO_P8
+  const double sz = (tree_zmax-tree_zmin)*qh;
+#endif
+  double fdd_m, fdd_p;
+  for (unsigned int k = 0; k < n_results; ++k) {
+    // set your fdd
+    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+      fdd[dir] = 0.0;
+
+    i = 0;
+    fdd_m = 0;
+    fdd_p = 0;
+    jm = 0; jp = 1; fdd_m += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
+    jm = 2; jp = 3; fdd_m += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
+#ifdef P4_TO_P8
+    jm = 4; jp = 5; fdd_m += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
+    jm = 6; jp = 7; fdd_m += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
+#endif
+    fdd[i] = MINMOD(fdd_m, fdd_p);
+
+    i = 1;
+    fdd_m = 0;
+    fdd_p = 0;
+    jm = 0; jp = 2; fdd_m += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
+    jm = 1; jp = 3; fdd_m += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
+#ifdef P4_TO_P8
+    jm = 4; jp = 6; fdd_m += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
+    jm = 5; jp = 7; fdd_m += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
+#endif
+    fdd[i] = MINMOD(fdd_m, fdd_p);
+
+#ifdef P4_TO_P8
+    i = 2;
+    fdd_m = 0;
+    fdd_p = 0;
+    jm = 0; jp = 4; fdd_m += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
+    jm = 1; jp = 5; fdd_m += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
+    jm = 2; jp = 6; fdd_m += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
+    jm = 3; jp = 7; fdd_m += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
+    fdd[i] = MINMOD(fdd_m, fdd_p);
+#endif
+
+    results[k] = 0.0;
+    for (unsigned char j = 0; j < P4EST_CHILDREN; ++j)
+      results[k] += F[k*P4EST_CHILDREN+j]*w_xyz[j];
+
+#ifdef P4_TO_P8
+    results[k] -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1] + sz*sz*d_00p*d_00m*fdd[2]);
+#else
+    results[k] -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1]);
+#endif
 
 
-    for (unsigned int k = 0; k < n_results; ++k) {
-      results[k] = 0.0;
-      for (short j = 0; j<P4EST_CHILDREN; j++){
-
-          for (short i = 0; i<P4EST_DIM; i++)
-           fdd[i] = 0;
-
-          int i, jm, jp;
-          double fdd_m, fdd_p;
-          i = 0;
-          fdd_m = 0;
-          fdd_p = 0;
-          jm = 0; jp = 1; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
-          jm = 2; jp = 3; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
-        #ifdef P4_TO_P8
-          jm = 4; jp = 5; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
-          jm = 6; jp = 7; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
-        #endif
-          fdd[i] = MINMOD(fdd_m, fdd_p);
-
-          i = 1;
-          fdd_m = 0;
-          fdd_p = 0;
-          jm = 0; jp = 2; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
-          jm = 1; jp = 3; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
-        #ifdef P4_TO_P8
-          jm = 4; jp = 6; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
-          jm = 5; jp = 7; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
-        #endif
-          fdd[i] = MINMOD(fdd_m, fdd_p);
-
-        #ifdef P4_TO_P8
-          i = 2;
-          fdd_m = 0;
-          fdd_p = 0;
-          jm = 0; jp = 4; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
-          jm = 1; jp = 5; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
-          jm = 2; jp = 6; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
-          jm = 3; jp = 7; fdd_m += Fdd[jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
-          fdd[i] = MINMOD(fdd_m, fdd_p);
-        #endif
-
-
-          results[k] += F[k*P4EST_CHILDREN+j]*w_xyz[j];
-      }
-
-  #ifdef P4_TO_P8
-      results[k] -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1] + sz*sz*d_00p*d_00m*fdd[2]);
-  #else
-      results[k] -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1]);
-  #endif
-    }
-    ierr = PetscLogFlops(45); CHKERRXX(ierr); // number of flops in this event
   }
-
-double quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global)
-{
-    double result;
-    quadratic_non_oscillatory_continuous_v2_interpolation(p4est, tree_id, quad, F, Fdd, xyz_global, &result, 1);
-    return result;
+  ierr = PetscLogFlops(45); CHKERRXX(ierr); // number of flops in this event
+  return;
 }
 
-
-double quadratic_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global)
-{
-  double result;
-  quadratic_interpolation(p4est, tree_id, quad, F, Fdd, xyz_global, &result, 1);
-  return result;
-}
 
 void quadratic_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results)
 {
@@ -668,10 +635,10 @@ void quadratic_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const
 
 
   double fdd[P4EST_DIM];
-  double sx = (tree_xmax-tree_xmin)*qh;
-  double sy = (tree_ymax-tree_ymin)*qh;
+  const double sx = (tree_xmax-tree_xmin)*qh;
+  const double sy = (tree_ymax-tree_ymin)*qh;
 #ifdef P4_TO_P8
-  double sz = (tree_zmax-tree_zmin)*qh;
+  const double sz = (tree_zmax-tree_zmin)*qh;
 #endif
   for (unsigned int k = 0; k < n_results; ++k)
   {
@@ -691,6 +658,7 @@ void quadratic_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const
 
   ierr = PetscLogFlops(45); CHKERRXX(ierr); // number of flops in this event
 }
+
 void write_comm_stats(const p4est_t *p4est, const p4est_ghost_t *ghost, const p4est_nodes_t *nodes, const char *partition_name, const char *topology_name, const char *neighbors_name)
 {
   FILE *file;
@@ -808,61 +776,6 @@ return_time:
   return result;
 }
 
-PetscErrorCode VecCreateGhostNodes(const p4est_t *p4est, p4est_nodes_t *nodes, Vec* v)
-{
-  PetscErrorCode ierr = 0;
-  p4est_locidx_t num_local = nodes->num_owned_indeps;
-
-  std::vector<PetscInt> ghost_nodes(nodes->indep_nodes.elem_count - num_local, 0);
-  std::vector<PetscInt> global_offset_sum(p4est->mpisize + 1, 0);
-
-  // Calculate the global number of points
-  for (int r = 0; r<p4est->mpisize; ++r)
-    global_offset_sum[r+1] = global_offset_sum[r] + (PetscInt)nodes->global_owned_indeps[r];
-
-  PetscInt num_global = global_offset_sum[p4est->mpisize];
-
-  for (size_t i = 0; i<ghost_nodes.size(); ++i)
-  {
-    p4est_indep_t* ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i+num_local);
-    ghost_nodes[i] = (PetscInt)ni->p.piggy3.local_num + global_offset_sum[nodes->nonlocal_ranks[i]];
-  }
-
-  ierr = VecCreateGhost(p4est->mpicomm, num_local, num_global,
-                        ghost_nodes.size(), (const PetscInt*)&ghost_nodes[0], v); CHKERRQ(ierr);
-  ierr = VecSetFromOptions(*v); CHKERRQ(ierr);
-
-  return ierr;
-}
-
-PetscErrorCode VecCreateGhostNodesBlock(const p4est_t *p4est, p4est_nodes_t *nodes, PetscInt block_size, Vec* v)
-{
-  PetscErrorCode ierr = 0;
-  p4est_locidx_t num_local = nodes->num_owned_indeps;
-
-  std::vector<PetscInt> ghost_nodes(nodes->indep_nodes.elem_count - num_local, 0);
-  std::vector<PetscInt> global_offset_sum(p4est->mpisize + 1, 0);
-
-  // Calculate the global number of points
-  for (int r = 0; r<p4est->mpisize; ++r)
-    global_offset_sum[r+1] = global_offset_sum[r] + (PetscInt)nodes->global_owned_indeps[r];
-
-  PetscInt num_global = global_offset_sum[p4est->mpisize];
-
-  for (size_t i = 0; i<ghost_nodes.size(); ++i)
-  {
-    p4est_indep_t* ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i+num_local);
-    ghost_nodes[i] = (PetscInt)ni->p.piggy3.local_num + global_offset_sum[nodes->nonlocal_ranks[i]];
-  }
-
-  ierr = VecCreateGhostBlock(p4est->mpicomm,
-                             block_size, num_local*block_size, num_global*block_size,
-                             ghost_nodes.size(), (const PetscInt*)&ghost_nodes[0], v); CHKERRQ(ierr);
-  ierr = VecSetFromOptions(*v); CHKERRQ(ierr);
-
-  return ierr;
-}
-
 p4est_bool_t ghosts_are_equal(p4est_ghost_t* ghost_1, p4est_ghost_t* ghost_2)
 {
   if(ghost_1 == ghost_2)
@@ -899,10 +812,98 @@ return_time:
   return result;
 }
 
-PetscErrorCode VecCreateGhostCells(const p4est_t *p4est, p4est_ghost_t *ghost, Vec* v)
+PetscErrorCode VecGetLocalAndGhostSizes(Vec& v, PetscInt& local_size, PetscInt& ghosted_size)
+{
+  PetscErrorCode ierr = 0;
+  Vec v_loc;
+  ierr = VecGetLocalSize(v, &local_size); CHKERRQ(ierr);
+  ierr = VecGhostGetLocalForm(v, &v_loc); CHKERRQ(ierr);
+  ierr = VecGetSize(v_loc, &ghosted_size); CHKERRQ(ierr);
+  ierr = VecGhostRestoreLocalForm(v, &v_loc); CHKERRQ(ierr);
+  return ierr;
+}
+
+bool vectorIsWellSetForNodes(Vec& v, const p4est_nodes_t* nodes, const MPI_Comm& mpicomm, const unsigned int& blocksize)
+{
+  P4EST_ASSERT(v!=NULL);
+  P4EST_ASSERT(blocksize>0);
+  PetscInt local_size, ghosted_size;
+  VecGetLocalAndGhostSizes(v, local_size, ghosted_size);
+  int my_test = (local_size==((PetscInt)(blocksize*nodes->num_owned_indeps)) && ghosted_size!=((PetscInt)(blocksize*nodes->indep_nodes.elem_count)))?1:0;
+  int mpiret = MPI_Allreduce(MPI_IN_PLACE, &my_test, 1, MPI_INT, MPI_LAND, mpicomm); SC_CHECK_MPI(mpiret);
+  return my_test;
+}
+
+PetscErrorCode VecCreateGhostNodesBlock(const p4est_t *p4est, const p4est_nodes_t *nodes, const PetscInt & block_size, Vec* v)
+{
+  PetscErrorCode ierr = 0;
+  p4est_locidx_t num_local = nodes->num_owned_indeps;
+  P4EST_ASSERT(block_size > 0);
+
+  std::vector<PetscInt> ghost_nodes(nodes->indep_nodes.elem_count - num_local, 0);
+  std::vector<PetscInt> global_offset_sum(p4est->mpisize + 1, 0);
+
+  // Calculate the global number of points
+  for (int r = 0; r<p4est->mpisize; ++r)
+    global_offset_sum[r+1] = global_offset_sum[r] + (PetscInt)nodes->global_owned_indeps[r];
+
+  PetscInt num_global = global_offset_sum[p4est->mpisize];
+
+  for (size_t i = 0; i<ghost_nodes.size(); ++i)
+  {
+    /*
+    p4est_indep_t* ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i+num_local);
+     * [RAPHAEL:] substituted this latter line of code by the following to enforce and ensure const attribute in 'nodes' argument...
+     */
+    SC_ASSERT(((size_t) (i+num_local))<nodes->indep_nodes.elem_count);
+    const p4est_indep_t* ni = (const p4est_indep_t*) (nodes->indep_nodes.array + (((size_t) (i+num_local))*nodes->indep_nodes.elem_size));
+
+    ghost_nodes[i] = (PetscInt)ni->p.piggy3.local_num + global_offset_sum[nodes->nonlocal_ranks[i]];
+  }
+
+  if(block_size > 1){
+    ierr = VecCreateGhostBlock(p4est->mpicomm, block_size, num_local*block_size, num_global*block_size,
+                               ghost_nodes.size(), (const PetscInt*)&ghost_nodes[0], v); CHKERRQ(ierr);
+  } else{
+    ierr = VecCreateGhost(p4est->mpicomm, num_local, num_global,
+                          ghost_nodes.size(), (const PetscInt*)&ghost_nodes[0], v); CHKERRQ(ierr);
+  }
+  ierr = VecSetFromOptions(*v); CHKERRQ(ierr);
+
+  return ierr;
+}
+
+PetscErrorCode VecGhostCopy(Vec src, Vec dst)
+{
+  PetscErrorCode ierr;
+
+  Vec src_l, dst_l;
+  ierr = VecGhostGetLocalForm(src, &src_l); CHKERRQ(ierr);
+  ierr = VecGhostGetLocalForm(dst, &dst_l); CHKERRQ(ierr);
+  ierr = VecCopy(src_l, dst_l); CHKERRQ(ierr);
+  ierr = VecGhostRestoreLocalForm(src, &src_l); CHKERRQ(ierr);
+  ierr = VecGhostRestoreLocalForm(dst, &dst_l); CHKERRQ(ierr);
+
+  return 0;
+}
+
+PetscErrorCode VecGhostSet(Vec x, double v)
+{
+  PetscErrorCode ierr;
+  Vec x_l;
+
+  ierr = VecGhostGetLocalForm(x, &x_l); CHKERRQ(ierr);
+  ierr = VecSet(x, v); CHKERRQ(ierr);
+  ierr = VecGhostRestoreLocalForm(x, &x_l); CHKERRQ(ierr);
+
+  return 0;
+}
+
+PetscErrorCode VecCreateGhostCellsBlock(const p4est_t *p4est, const p4est_ghost_t *ghost, const PetscInt & block_size, Vec* v)
 {
   PetscErrorCode ierr = 0;
   p4est_locidx_t num_local = p4est->local_num_quadrants;
+  P4EST_ASSERT(block_size > 0);
 
   std::vector<PetscInt> ghost_cells(ghost->ghosts.elem_count, 0);
   PetscInt num_global = p4est->global_num_quadrants;
@@ -910,49 +911,40 @@ PetscErrorCode VecCreateGhostCells(const p4est_t *p4est, p4est_ghost_t *ghost, V
   for (int r = 0; r<p4est->mpisize; ++r)
     for (p4est_locidx_t q = ghost->proc_offsets[r]; q < ghost->proc_offsets[r+1]; ++q)
     {
+      /*
       const p4est_quadrant_t* quad = (const p4est_quadrant_t*)sc_array_index(&ghost->ghosts, q);
+       * [RAPHAEL:] substituted this latter line of code by the following to enforce and ensure const attribute in 'nodes' argument...
+       */
+      SC_ASSERT(((size_t) q)<ghost->ghosts.elem_count);
+      const p4est_quadrant_t* quad = (const p4est_quadrant_t*) (ghost->ghosts.array + ((size_t) q)*ghost->ghosts.elem_size);
+
       ghost_cells[q] = (PetscInt)quad->p.piggy3.local_num + (PetscInt)p4est->global_first_quadrant[r];
     }
 
-  ierr = VecCreateGhost(p4est->mpicomm,
-                        num_local, num_global,
-                        ghost_cells.size(), (const PetscInt*)&ghost_cells[0], v); CHKERRQ(ierr);
-  ierr = VecSetFromOptions(*v); CHKERRQ(ierr);
-
-  return ierr;
-}
-
-PetscErrorCode VecCreateCellsNoGhost(const p4est_t *p4est, Vec* v)
-{
-  PetscErrorCode ierr = 0;
-  p4est_locidx_t num_local = p4est->local_num_quadrants;
-
-  PetscInt num_global = p4est->global_num_quadrants;
-
-  ierr = VecCreateMPI(p4est->mpicomm, num_local, num_global, v); CHKERRQ(ierr);
-  ierr = VecSetFromOptions(*v); CHKERRQ(ierr);
-
-  return ierr;
-}
-
-PetscErrorCode VecCreateGhostCellsBlock(const p4est_t *p4est, p4est_ghost_t *ghost, PetscInt block_size, Vec* v)
-{
-  PetscErrorCode ierr = 0;
-  p4est_locidx_t num_local = p4est->local_num_quadrants;
-
-  std::vector<PetscInt> ghost_cells(ghost->ghosts.elem_count, 0);
-  PetscInt num_global = p4est->global_num_quadrants;
-
-  for (int r = 0; r<p4est->mpisize; ++r)
-    for (p4est_locidx_t q = ghost->proc_offsets[r]; q < ghost->proc_offsets[r+1]; ++q)
-    {
-      const p4est_quadrant_t* quad = (const p4est_quadrant_t*)sc_array_index(&ghost->ghosts, q);
-      ghost_cells[q] = (PetscInt)quad->p.piggy3.local_num + (PetscInt)p4est->global_first_quadrant[r];
-    }
-
-  ierr = VecCreateGhostBlock(p4est->mpicomm,
-                             block_size, num_local*block_size, num_global*block_size,
+  if(block_size > 1){
+    ierr = VecCreateGhostBlock(p4est->mpicomm, block_size, num_local*block_size, num_global*block_size,
                              ghost_cells.size(), (const PetscInt*)&ghost_cells[0], v); CHKERRQ(ierr);
+  } else {
+    ierr = VecCreateGhost(p4est->mpicomm, num_local, num_global,
+                          ghost_cells.size(), (const PetscInt*)&ghost_cells[0], v); CHKERRQ(ierr);
+  }
+  ierr = VecSetFromOptions(*v); CHKERRQ(ierr);
+
+  return ierr;
+}
+
+PetscErrorCode VecCreateCellsBlockNoGhost(const p4est_t *p4est, const PetscInt &block_size, Vec* v)
+{
+  PetscErrorCode ierr = 0;
+  p4est_locidx_t num_local = p4est->local_num_quadrants;
+  P4EST_ASSERT(block_size > 0);
+
+  PetscInt num_global = p4est->global_num_quadrants;
+
+  ierr = VecCreateMPI(p4est->mpicomm, num_local*block_size, num_global*block_size, v); CHKERRQ(ierr);
+  if(block_size > 1){
+    ierr = VecSetBlockSize(*v, block_size); CHKERRQ(ierr);
+  }
   ierr = VecSetFromOptions(*v); CHKERRQ(ierr);
 
   return ierr;
@@ -1017,7 +1009,6 @@ PetscErrorCode VecGhostChangeLayoutEnd(VecScatter ctx, Vec from, Vec to)
 
   return ierr;
 }
-
 
 bool is_folder(const char* path)
 {
@@ -1156,6 +1147,8 @@ int delete_directory(const char* root_path, int mpi_rank, MPI_Comm comm, bool no
   }
   return return_;
 }
+
+
 
 void dxyz_min(const p4est_t *p4est, double *dxyz)
 {
@@ -1700,6 +1693,30 @@ void compute_normals(const my_p4est_node_neighbors_t &neighbors, Vec phi, Vec no
   foreach_dimension(dim) VecRestoreArray(normals[dim], &normals_p[dim]);
 }
 
+void compute_normals(const my_p4est_node_neighbors_t &neighbors, Vec phi, Vec normals)
+{
+#ifdef CASL_THROWS
+  if(!normals)
+    throw std::invalid_argument("normals array cannot be NULL.");
+#endif
+
+  neighbors.first_derivatives_central(phi, normals);
+  double *normals_p;
+  PetscErrorCode ierr = VecGetArray(normals, &normals_p); CHKERRXX(ierr);
+
+  foreach_node(n, neighbors.get_nodes()) {
+    double abs = 0.0;
+    foreach_dimension(dim) abs += SQR(normals_p[P4EST_DIM*n+dim]);
+    abs = sqrt(abs);
+    if(abs < EPS){
+      foreach_dimension(dim) normals_p[P4EST_DIM*n+dim] = 0.0;
+    } else{
+      foreach_dimension(dim) normals_p[P4EST_DIM*n+dim] /= abs;
+    }
+  }
+  ierr = VecRestoreArray(normals, &normals_p); CHKERRXX(ierr);
+}
+
 double interface_length_in_one_quadrant(const p4est_t *p4est, const p4est_nodes_t *nodes, const p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi)
 {
 #ifdef P4_TO_P8
@@ -1893,6 +1910,23 @@ bool is_node_Wall(const p4est_t *p4est, const p4est_indep_t *ni, bool is_wall[])
   is_wall[dir::f_00p] = is_node_zpWall(p4est, ni); is_any = is_any || is_wall[dir::f_00p];
 #endif
   return is_any;
+}
+
+bool is_node_Wall(const p4est_t *p4est, const p4est_indep_t *ni, const unsigned char oriented_dir)
+{
+  switch(oriented_dir)
+  {
+  case dir::f_m00: return is_node_xmWall(p4est, ni);
+  case dir::f_p00: return is_node_xpWall(p4est, ni);
+  case dir::f_0m0: return is_node_ymWall(p4est, ni);
+  case dir::f_0p0: return is_node_ypWall(p4est, ni);
+#ifdef P4_TO_P8
+  case dir::f_00m: return is_node_zmWall(p4est, ni);
+  case dir::f_00p: return is_node_zpWall(p4est, ni);
+#endif
+  default:
+    throw std::invalid_argument("[CASL_ERROR]: is_node_wall: unknown direction.");
+  }
 }
 
 bool is_quad_xmWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi)
@@ -2432,6 +2466,7 @@ std::istream& operator>> (std::istream& is, BoundaryConditionType& type)
 
   return is;
 }
+
 
 #ifdef P4_TO_P8
 double quadrant_interp_t::operator()(double x, double y, double z) const
@@ -3182,9 +3217,6 @@ double interface_point_cartesian_t::interpolate(const my_p4est_node_neighbors_t 
 PetscErrorCode vec_and_ptr_t::ierr;
 PetscErrorCode vec_and_ptr_dim_t::ierr;
 PetscErrorCode vec_and_ptr_array_t::ierr;
-// ELYCE MODIFICATION: CHECK THIS
-PetscErrorCode vec_and_ptr_cells_t::ierr;
-
 
 // Generalized smoothstep
 

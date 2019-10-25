@@ -11,8 +11,6 @@
 #include <src/my_p4est_interpolation.h>
 #endif
 
-// Elyce: Class is used to interpolate data sampled at cell centers to the nodes
-
 class my_p4est_interpolation_cells_t : public my_p4est_interpolation_t
 {
 private:
@@ -40,11 +38,11 @@ public:
 
   using my_p4est_interpolation_t::set_input;
 #ifdef P4_TO_P8
-  void set_input(Vec F, Vec phi, const BoundaryConditions3D *bc) {set_input(&F, phi, bc, 1); }
   void set_input(Vec *F, Vec phi, const BoundaryConditions3D *bc, unsigned int n_vecs_);
+  inline void set_input(Vec F, Vec phi, const BoundaryConditions3D *bc) { set_input(&F, phi, bc, 1); }
 #else
-  void set_input(Vec F, Vec phi, const BoundaryConditions2D *bc) {set_input(&F, phi, bc, 1); }
   void set_input(Vec *F, Vec phi, const BoundaryConditions2D *bc, unsigned int n_vecs_);
+  inline void set_input(Vec F, Vec phi, const BoundaryConditions2D *bc) { set_input(&F, phi, bc, 1); }
 #endif
 
   // definition of abstract interpolation methods
@@ -55,7 +53,7 @@ public:
   void operator()(double x, double y, double* results) const;
 #endif
 
-  void interpolate(const p4est_quadrant_t &quad, const double *xyz, double* results) const;
+  void interpolate(const p4est_quadrant_t &quad, const double *xyz, double* results, const unsigned int &comp) const;
 };
 
 #endif /* MY_P4EST_INTERPOLATION_CELLS_H */
