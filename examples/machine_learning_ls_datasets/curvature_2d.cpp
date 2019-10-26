@@ -51,11 +51,11 @@ int main( int argc, char** argv )
 	my_p4est_brick_t brick;
 
 	// Domain size information
-	const int N_GRID_POINTS = 128;					// We need this number of cells per dimension, and the number of grid points = N_CELLS + 1.
+	const int N_GRID_POINTS = 120;					// We need this number of cells per dimension, and the number of grid points = N_CELLS + 1.
 	const double MIN_D = 0;							// Min and max value for any dimension.
 	const double MAX_D = 1.0;
 	const double H = 1. / ( N_GRID_POINTS - 1. );	// Spatial step size.
-	const int ITER = 20;							// Number of iterations for level set reinitialization.
+	const int ITER = 5;								// Number of iterations for level set reinitialization.
 
 	const int n_xyz[] = { N_GRID_POINTS - 1, N_GRID_POINTS - 1,  N_GRID_POINTS - 1 };
 	const double xyz_min[] = { MIN_D, MIN_D, MIN_D };
@@ -123,7 +123,7 @@ int main( int argc, char** argv )
 	// Collect phi values.
 	double c[2] = {0.5 + ranged_rand( -H/2.0, +H/2.0 ),			// Center coords are randomly chosen around the center of the grid.
 				   0.5 + ranged_rand( -H/2.0, +H/2.0 )};
-	double r = 0.5 - 2.0 * H;
+	double r = 0.35 / 2.0;
 	circle interface( c[0], c[1], r );							// Non signed distance function with circular interface.
 	sample_cf_on_nodes( p4est, nodes, interface, phi );
 
@@ -134,13 +134,16 @@ int main( int argc, char** argv )
 							VTK_POINT_DATA, "phi", phi_p );
 
 	// Reinitialize.
+	auto t1 = std::chrono::high_resolution_clock::now();
 	my_p4est_level_set_t ls( &neighbors );
 	ls.reinitialize_2nd_order( phi, ITER );
+	auto t2 = std::chrono::high_resolution_clock::now();
+	auto reinitDuration = std::chrono::duration_cast<std::chrono::milliseconds>( t2 - t1 );
 
 	// Compute normals (returns scaled normal).
-	auto t1 = std::chrono::high_resolution_clock::now();
+	t1 = std::chrono::high_resolution_clock::now();
 	compute_normals( neighbors, phi, normal );
-	auto t2 = std::chrono::high_resolution_clock::now();
+	t2 = std::chrono::high_resolution_clock::now();
 	auto normalDuration = std::chrono::duration_cast<std::chrono::microseconds>( t2 - t1 );
 
 	sprintf( filename, "after_%d", P4EST_DIM );
@@ -159,8 +162,9 @@ int main( int argc, char** argv )
 	if( mpi.rank() == 0 )
 	{
 		PetscPrintf( mpi.comm(), "No. of Grid Points: %i\n", nodes->indep_nodes.elem_count );
-		PetscPrintf( mpi.comm(), "   Normal duration: %lu micro secs.\n", normalDuration );
-		PetscPrintf( mpi.comm(), "    Kappa duration: %lu micro secs.\n", kappaDuration );
+		PetscPrintf( mpi.comm(), "   Reinit duration: %lu ms.\n", reinitDuration );
+		PetscPrintf( mpi.comm(), "   Normal duration: %lu \u03BCs.\n", normalDuration );
+		PetscPrintf( mpi.comm(), "    Kappa duration: %lu \u03BCs.\n", kappaDuration );
 	}
 
 	// Destroy vectors

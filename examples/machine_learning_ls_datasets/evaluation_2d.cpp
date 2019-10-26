@@ -192,9 +192,7 @@ void saveEvaluationReinitializedDataset( int nGridPoints, int iter, const mpi_en
 	const double* phi_ptr;
 	ierr = VecGetArrayRead( phi, &phi_ptr ); CHKERRXX( ierr );			// Get reinitialized values.
 
-	// Create a regular grid (i.e. matrix) of reinitialized values.  Notice that we skip negative indices since we
-	// needed to "shift" the interface one cell up and to the right so that the number of grid points along x and y
-	// would be even (and odd cells).  Thus, there's a center cell whose midpoint coincides with [0.5, 0.5].
+	// Create a regular grid (i.e. matrix) of reinitialized values.
 	int totalGridPoints = 0;
 	for( size_t n = 0; n < nodes->indep_nodes.elem_count; n++ )
 	{
