@@ -1,5 +1,5 @@
 /*
- * Title: machine_learning_ls_datasets
+ * Title: machine_learning
  * Description: Create datasets for training a neural network on a non-signed distance function with circular level set.
  * Author: Luis Ángel (임 영민)
  * Date Created: 10-05-2019
