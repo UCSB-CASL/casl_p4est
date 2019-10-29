@@ -3215,6 +3215,8 @@ double interface_point_cartesian_t::interpolate(const my_p4est_node_neighbors_t 
 }
 
 PetscErrorCode vec_and_ptr_t::ierr;
+PetscErrorCode vec_and_ptr_cells_t::ierr;
+
 PetscErrorCode vec_and_ptr_dim_t::ierr;
 PetscErrorCode vec_and_ptr_array_t::ierr;
 

@@ -2083,6 +2083,50 @@ struct vec_and_ptr_t
   }
 };
 
+struct vec_and_ptr_cells_t
+{
+  static PetscErrorCode ierr;
+
+  Vec     vec;
+  double *ptr;
+
+  vec_and_ptr_cells_t() : vec(NULL), ptr(NULL) {}
+
+  vec_and_ptr_cells_t(Vec parent) : vec(NULL), ptr(NULL) { create(parent); }
+
+  vec_and_ptr_cells_t(p4est_t *p4est, p4est_ghost_t *ghost) : vec(NULL), ptr(NULL) { create(p4est, ghost); }
+
+  inline void create(Vec parent)
+  {
+    ierr = VecDuplicate(parent, &vec); CHKERRXX(ierr);
+  }
+
+  inline void create(p4est_t *p4est, p4est_ghost_t *ghost)
+  {
+    ierr = VecCreateGhostCells(p4est, ghost, &vec); CHKERRXX(ierr);
+  }
+
+  inline void destroy()
+  {
+    if (vec != NULL) { ierr = VecDestroy(vec); CHKERRXX(ierr); }
+  }
+
+  inline void get_array()
+  {
+    ierr = VecGetArray(vec, &ptr); CHKERRXX(ierr);
+  }
+
+  inline void restore_array()
+  {
+    ierr = VecRestoreArray(vec, &ptr); CHKERRXX(ierr);
+  }
+
+  inline void set(Vec input)
+  {
+    vec = input;
+  }
+};
+
 
 struct vec_and_ptr_dim_t
 {

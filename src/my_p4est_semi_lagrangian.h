@@ -100,12 +100,28 @@ public:
    */
   void update_p4est(Vec *v, double dt, Vec &phi, Vec *phi_xx=NULL, Vec phi_add_refine = NULL);
 
-  /*
-  void update_p4est(Vec *v, double dt, Vec &phi, Vec *phi_xx = NULL,
-                    Vec *fields = NULL, int num_fields = 0, const double* criteria = NULL,
-                    compare_option_t* compare_opn = NULL, compare_diagonal_option_t* diag_opn = NULL,
-                    Vec phi_add_refine =NULL);
-  */
+  /*!
+   * \brief update a p4est from tn to tnp1, using a semi-Lagrangian scheme with Euler along the characteristic.
+   *   The forest at time n is copied, and is then refined, coarsened and balance iteratively until convergence.
+   *   This function gives you the option to refine not only around provided LSF(s), but also around additional scalar fields.
+   *   Such fields may be provided either as an array of PETSc vectors with blocksize 1, or as a single PETSc block vector. The user must
+   *   specify which type of input they are providing.
+   *   Additionally, refine and coarsen criteria must be provided for each additional scalar field being provided, in a format that is described below.
+   * \param v              [in]     the velocity field. This is a pointer to an array of dimension P4EST_DIM.
+   * \param dt             [in]     the time step
+   * \param phi            [inout]  the level set function
+   * \param phi_xx         [in]     the derivatives of the level set function. This is a pointer to an array of dimension P4EST_DIM
+   * \param phi_add_refine [in]     an additional level set function you may provide to refine around, but not advect
+   * \param num_fields     [in]     number of scalar fields are being provided to refine/coarsen around, not including LSF(s)
+   * \param use_block      [in]     a boolean specifying whether the provided scalar fields are in block vector format or an array of vectors. True --> block vector, false --> array of vectors
+   * \param fields         [in]
+   * \param fields_block   [in]
+   * \param criteria       [in]
+   * \param compare_opn    [in]
+   * \param diag_opn       [in]
+   * \note you need to update ngbd_n and hierarchy yourself !
+   */
+  void update_p4est(Vec *v, double dt, Vec &phi, Vec *phi_xx, Vec phi_add_refine, const int num_fields, bool use_block, Vec *fields, Vec fields_block, std::vector<double> criteria, std::vector<compare_option_t> compare_opn, std::vector<compare_diagonal_option_t> diag_opn);
   /*!
    * \brief update a p4est from tn to tnp1, using a semi-Lagrangian scheme with BDF along the characteristic.
    *   The forest at time n is copied, and is then refined, coarsened and balance iteratively until convergence.

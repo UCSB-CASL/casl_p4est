@@ -141,7 +141,7 @@ protected:
   void tag_quadrant(p4est_t* p4est, p4est_quadrant_t* quad, p4est_topidx_t which_tree, const double* f);
   void tag_quadrant_inside(p4est_t* p4est, p4est_quadrant_t* quad, p4est_topidx_t which_tree, const double* f);
   // ELYCE TRYING SOMETHING:
-  void tag_quadrant(p4est_t *p4est, p4est_quadrant_t *quad, p4est_topidx_t tree_idx, p4est_locidx_t quad_idx,p4est_nodes_t *nodes, const double* phi_p, const int num_fields,const double* fields_p,std::vector<double> criteria, std::vector<compare_option_t> compare_opn,std::vector<compare_diagonal_option_t> diag_opn);
+  void tag_quadrant(p4est_t *p4est, p4est_quadrant_t *quad, p4est_topidx_t tree_idx, p4est_locidx_t quad_idx,p4est_nodes_t *nodes, const double* phi_p, const int num_fields,bool use_block, const double** fields,const double* fields_block,std::vector<double> criteria, std::vector<compare_option_t> compare_opn,std::vector<compare_diagonal_option_t> diag_opn);
 
   bool refine_only_inside;
 public:
@@ -152,8 +152,37 @@ public:
 
   bool refine_and_coarsen(p4est_t* p4est, const p4est_nodes_t* nodes, const double* phi);
   // ELYCE TRYING SOMETHING:
+
+  bool refine_and_coarsen(p4est_t* p4est, p4est_nodes_t* nodes, Vec phi, const int num_fields, bool use_block, Vec* fields,Vec fields_block, std::vector<double> criteria, std::vector<compare_option_t> compare_opn, std::vector<compare_diagonal_option_t> diag_opn);
+  /*!
+   * \brief refine_and_coarsen
+   * \param p4est         [in] the grid you want to refine and coarsen
+   * \param nodes         [in] nodes of the grid
+   * \param phi_p         [in] The LSF (or effective LSF) that we want to refine and coarsen around
+   * \param num_fields    [in] number of fields to refine and coarsen by
+   * \param use_block     [in] boolean describing whether to use a PETSc block vector to access fields to refine by, or not.
+   *                        True = use user provided double pointer to PETSc block vector with block size = num_fields.
+   *                        False = use std::vector of double pointers for num_fields number of PETSc Vectors
+   * \param fields        [in] a standard vector of double pointers which point to the fields we want to refine by
+   * \param fields_block  [in] a double pointer to a PETSc block vector of fields to refine by
+   * \param criteria      [in] a std::vector of criteria to coarsen and refine by --> the order of the criteria list should be as follows:
+   *                       criteria = {criteria_coarsen_field_1, criteria_refine_field_1, ....., criteria_coarsen_field_n,
+   *                       criteria_refine_field_n}, for n = 1, ..., num_fields
+   * \param compare_opn    [in] a std::vector of comparison options to refine and coarsen by, with same ordering as criteria above (see below for more information)
+   * \param diag_opn       [in] a std::vector of diagonal comparison options to refine and coarsen by, with same ordering as criteria above (see below for more information)
+   *
+   * MORE INFORMATION FROM THE DEVELOPER:
+   * info about compare_opn
+   * info about diag_opn
+   *
+   * Developer: Elyce Bayat, ebayat@ucsb.edu
+   * Last modified: 10/28/19
+   * WARNING: This function has not yet been fully validated in 2d
+   * WARNING: This function has not yet been validated in 3d
+   * \return
+   */
   bool refine_and_coarsen(p4est_t* p4est, p4est_nodes_t* nodes, const double *phi_p,
-                          const int num_fields, const double* fields_p, std::vector<double> criteria,
+                          const int num_fields, bool use_block, const double** fields, const double* fields_block, std::vector<double> criteria,
                           std::vector<compare_option_t> compare_opn, std::vector<compare_diagonal_option_t> diag_opn);
 
   bool refine(p4est_t* p4est, const p4est_nodes_t* nodes, const double* phi);

@@ -2357,7 +2357,7 @@ int main(int argc, char** argv) {
 
       // Advect the LSF and update the grid under the v_interface field:
       example_ == 2 ? // for example 2, refine around both LSFs. Otherwise, refine around just the one
-            sl.update_p4est(v_interface.vec,dt,phi.vec,phi_dd.vec,phi_cylinder.vec):
+            sl.update_p4est(v_interface.vec,dt,phi.vec,phi_dd.vec,NULL):
             sl.update_p4est(v_interface.vec,dt,phi.vec,phi_dd.vec);
 
 
@@ -2408,6 +2408,7 @@ int main(int argc, char** argv) {
                                        ngbd, interp_bw_grids);
 
 
+      PetscPrintf(mpi.comm(),"Succeeds in interpolating fields onto the new grid \n");
 
       // Copy new data over:
       // Transfer new values to the original objects:
@@ -3087,6 +3088,7 @@ int main(int argc, char** argv) {
       // Setup the solvers:
       // ------------------------------------------------------------
       // Now, set up the solver(s):
+      PetscPrintf(mpi.comm(),"Setting up Poisson problem \n");
       solver_Tl = new my_p4est_poisson_nodes_mls_t(ngbd_np1);
       solver_Ts = new my_p4est_poisson_nodes_mls_t(ngbd_np1);
       solver_smoke = new my_p4est_poisson_nodes_mls_t(ngbd_np1);
@@ -3143,8 +3145,12 @@ int main(int argc, char** argv) {
       T_s_np1.create(T_l_np1.vec);
 
       // Solve the system:
+      PetscPrintf(mpi.comm(),"Calling to solve \n");
+
       solver_Tl->solve(T_l_np1.vec);
       solver_Ts->solve(T_s_np1.vec);
+      PetscPrintf(mpi.comm(),"Solves Poisson \n");
+
 
       // Destroy the T_n values now and update them with the solution for the next timestep:
       T_l_n.destroy(); T_s_n.destroy();

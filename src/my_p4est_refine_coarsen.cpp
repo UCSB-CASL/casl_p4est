@@ -626,7 +626,9 @@ void splitting_criteria_tag_t::tag_quadrant_inside(p4est_t *p4est, p4est_quadran
 
 // ELYCE TRYING SOMETHING --------:
 
-void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *quad, p4est_topidx_t tree_idx, p4est_locidx_t quad_idx,p4est_nodes_t *nodes, const double* phi_p, const int num_fields,const double* fields_p, std::vector<double> criteria, std::vector<compare_option_t> compare_opn, std::vector<compare_diagonal_option_t> diag_opn){
+void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *quad, p4est_topidx_t tree_idx, p4est_locidx_t quad_idx,p4est_nodes_t *nodes, const double* phi_p, const int num_fields,bool use_block, const double** fields,const double* fields_block, std::vector<double> criteria, std::vector<compare_option_t> compare_opn, std::vector<compare_diagonal_option_t> diag_opn){
+
+  // WARNING: This function has not yet been validated in 3d
 
   // Option lists are provided in the following format:
   // opn = {coarsen_field_1, refine_field_1, coarsen_field_2, refine_field_2, ......, coarsen_field_n, refine_field_n}, where n = num_fields
@@ -697,9 +699,6 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
             if(coarsen_possible) coarsen = coarsen && (fabs(phi_p[node_idx]) >= 1.0*lip*d);
             if (refine_possible) refine = refine || (fabs(phi_p[node_idx]) <= 0.5*lip*d);
 
-//            PetscPrintf(p4est->mpicomm,"Child %d of %d, quadrant %d: \n ",i,P4EST_CHILDREN,quad_idx);
-//            PetscPrintf(p4est->mpicomm,"\n LSF value is: %0.3e \n Refine is %s \n Coarsen is %s \n ",phi_p[node_idx],refine? "true":"false", coarsen? "true" : "false");
-
             // Loop over the number of fields we are taking into consideration: (if still possible to refine or coarsen)
             if(coarsen || refine_possible){
                 // One of the above statements must be true to proceed because:
@@ -717,9 +716,17 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
                         goto end_of_function;
                       }
                     // Get the value of the field and store it as a double -- so we don't keep accessing the vector over and over
-                    //field_val = fields_p[n][node_idx];
-                    field_val = fields_p[num_fields*node_idx + n];
-//                    PetscPrintf(p4est->mpicomm,"Field value index accessed is : (%d * %d + %d) = %d \n",num_fields,node_idx,n,num_fields*node_idx + n);
+                    // Need to get it either from a block vector ptr, or from a vector of PETSc vector ptrs, depending on what the user has specified and provided
+
+                    if(use_block){
+                        // Get the field value from the block vector ptr
+                        field_val = fields_block[num_fields*node_idx + n];
+                      }
+                    else{
+                        // Get the field value from the std::vector of PETSc vector ptrs
+                        field_val = fields[n][node_idx];
+                      }
+
                     if(coarsen) criteria_coarsen = criteria[2*n];
                     if(refine_possible) criteria_refine = criteria[2*n + 1];
 
@@ -912,7 +919,52 @@ function_end:
 }
 // ELYCE TRYING SOMETHING -------:
 
-bool splitting_criteria_tag_t::refine_and_coarsen(p4est_t* p4est, p4est_nodes_t* nodes, const double *phi_p, const int num_fields, const double* fields_p, std::vector<double> criteria, std::vector<compare_option_t> compare_opn, std::vector<compare_diagonal_option_t> diag_opn){
+bool splitting_criteria_tag_t::refine_and_coarsen(p4est_t* p4est, p4est_nodes_t* nodes, Vec phi, const int num_fields, bool use_block, Vec *fields,Vec fields_block, std::vector<double> criteria, std::vector<compare_option_t> compare_opn, std::vector<compare_diagonal_option_t> diag_opn){
+  PetscErrorCode ierr;
+  bool is_grid_changed;
+
+  const double* phi_p;
+  const double* fields_p[num_fields];
+  const double* fields_block_p;
+
+  // Get appropriate arrays -- phi, and either PETSc block vector of fields, or vector of PETSC Vector fields
+  // Also -- check our assumptions, make sure everything is provided correctly
+  ierr = VecGetArrayRead(phi,&phi_p);
+  if(use_block){
+      ierr = VecGetArrayRead(fields_block,&fields_block_p); CHKERRXX(ierr);
+
+      // Make sure other option is set to NULL, since at this point we assume we are using block -- if other option isn't NULL, will get an error when we call the next refine and coarsen function, because the object type of fields won't be a vector of doubles anymore
+      for(int i =0; i<num_fields; i++){
+          fields[i] == NULL;
+        }
+  }// end of "if use block /else" statement -- if portion
+  else{
+      for (unsigned int i = 0; i<num_fields; i++){
+          ierr = VecGetArrayRead(fields[i],&fields_p[i]);
+        }
+      P4EST_ASSERT(fields_block == NULL); // if we are using list of fields, then block fields should be set to NULL, otherwise will get an error when we call the next refine and coarsen function bc of a datatype mismatch
+    } // end of "if use block /else" statement -- else portion
+
+
+  // Call inner function which uses the pointers:
+  is_grid_changed = refine_and_coarsen(p4est,nodes,phi_p,num_fields,use_block,fields_p,fields_block_p,criteria,compare_opn,diag_opn);
+
+
+  // Restore appropriate arrays:
+  ierr = VecRestoreArrayRead(phi,&phi_p);
+  if(use_block){
+      ierr = VecRestoreArrayRead(fields_block,&fields_block_p);CHKERRXX(ierr);
+    }
+  else{
+      for (unsigned int i = 0; i<num_fields; i++){
+          ierr = VecRestoreArrayRead(fields[i],&fields_p[i]);
+        }
+    }
+  return is_grid_changed;
+}
+
+bool splitting_criteria_tag_t::refine_and_coarsen(p4est_t* p4est, p4est_nodes_t* nodes, const double *phi_p, const int num_fields, bool use_block, const double** fields,const double* fields_block, std::vector<double> criteria, std::vector<compare_option_t> compare_opn, std::vector<compare_diagonal_option_t> diag_opn){
+  // WARNING: This function has not yet been validated in 3d
 
   // Option lists are provided in the following format:
   // opn = {coarsen_field_1, refine_field_1, coarsen_field_2, refine_field_2, ......, coarsen_field_n, refine_field_n}, where n = num_fields
@@ -928,7 +980,18 @@ bool splitting_criteria_tag_t::refine_and_coarsen(p4est_t* p4est, p4est_nodes_t*
   // - 1 --> multiply criteria by diag
   // - 2 --> Neither, compare values
 
+  //compare_opn_array = compare_opn.data(); // access the array , technically points to the first element in the array, so compare_opn_array = compare_opn[0], compare_opn_array[1] = compare_opn[1]
 
+  // Assert that provided vectors are the appropriate lengths:
+  P4EST_ASSERT(2*num_fields == criteria.size());
+  P4EST_ASSERT(2*num_fields == compare_opn.size());
+  P4EST_ASSERT(2*num_fields == diag_opn.size());
+
+  if(use_block){
+    }
+  else {
+      //P4EST_ASSERT(num_fields == fields.size());
+    }
 
   // First, loop over all the quadrants and tag them for possible refinement/coarsening
   foreach_tree(tr,p4est){
@@ -938,7 +1001,7 @@ bool splitting_criteria_tag_t::refine_and_coarsen(p4est_t* p4est, p4est_nodes_t*
       p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants,q);
       p4est_locidx_t quad_idx = q + tree->quadrants_offset;
 
-      tag_quadrant(p4est,quad,tr,quad_idx,nodes,phi_p,num_fields,fields_p,criteria,compare_opn,diag_opn);
+      tag_quadrant(p4est,quad,tr,quad_idx,nodes,phi_p,num_fields,use_block,fields,fields_block,criteria,compare_opn,diag_opn);
     }
   }
 
