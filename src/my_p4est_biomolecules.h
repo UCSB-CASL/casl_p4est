@@ -9,7 +9,6 @@
 #include <src/my_p8est_level_set.h>
 #include <src/my_p8est_cell_neighbors.h>
 #include <src/my_p8est_poisson_nodes.h>
-#include <src/my_p8est_poisson_jump_nodes_voronoi.h>
 #include <src/my_p8est_general_poisson_nodes_mls_solver.h>
 #include <src/my_p8est_poisson_nodes_mls.h>
 #include <p8est_extended.h>
@@ -21,7 +20,6 @@
 #include <src/my_p4est_level_set.h>
 #include <src/my_p4est_cell_neighbors.h>
 #include <src/my_p4est_poisson_nodes.h>
-#include <src/my_p4est_poisson_jump_nodes_voronoi.h>
 #include <src/my_p4est_general_poisson_nodes_mls_solver.h>
 #include <src/my_p4est_poisson_nodes_mls.h>
 #include <p4est_extended.h>
@@ -33,212 +31,6 @@
 #include <map>
 #include <algorithm>
 #include <numeric>
-
-static const double domain_side_length = 1.0;
-
-// for validating my solver
-static const double xyz_c_val[P4EST_DIM] = {0.5*domain_side_length, 0.5*domain_side_length
-                                            #ifdef P4_TO_P8
-                                            , 0.5*domain_side_length
-                                            #endif
-                                           };
-static const double mag_val     = 1.0;
-static const double radius_val  = domain_side_length*0.4;
-static const double alpha_val   = -0.2/domain_side_length;
-static const double beta_val    = -M_PI/domain_side_length;
-static const double gamma_val   = 0.4/domain_side_length;
-
-
-static struct:
-  #ifdef P4_TO_P8
-  CF_3
-  #else
-  CF_2
-  #endif
-{
-    #ifdef P4_TO_P8
-    double operator()(double x, double y, double z) const
-{
-    return (mag_val*SQR(radius_val)/(SQR(radius_val)+SQR(x-xyz_c_val[0])+SQR(y-xyz_c_val[1])+SQR(z-xyz_c_val[2])));
-}
-double x_derivative(double x, double y, double z) const
-{
-  return (-2.0*mag_val*SQR(radius_val)*(x-xyz_c_val[0])/(SQR(SQR(radius_val)+SQR(x-xyz_c_val[0])+SQR(y-xyz_c_val[1])+SQR(z-xyz_c_val[2]))));
-}
-double xx_derivative(double x, double y, double z) const
-{
-  return (+2.0*mag_val*SQR(radius_val)*(3.0*SQR(x-xyz_c_val[0]) - SQR(y - xyz_c_val[1]) - SQR(z - xyz_c_val[2]) - SQR(radius_val))/(pow(SQR(radius_val)+SQR(x-xyz_c_val[0])+SQR(y-xyz_c_val[1])+SQR(z-xyz_c_val[2]), 3.0)));
-}
-double y_derivative(double x, double y, double z) const
-{
-  return (-2.0*mag_val*SQR(radius_val)*(y-xyz_c_val[1])/(SQR(SQR(radius_val)+SQR(x-xyz_c_val[0])+SQR(y-xyz_c_val[1])+SQR(z-xyz_c_val[2]))));
-}
-double yy_derivative(double x, double y, double z) const
-{
-  return (+2.0*mag_val*SQR(radius_val)*(3.0*SQR(y-xyz_c_val[1]) - SQR(x - xyz_c_val[0]) - SQR(z - xyz_c_val[2]) - SQR(radius_val))/(pow(SQR(radius_val)+SQR(x-xyz_c_val[0])+SQR(y-xyz_c_val[1])+SQR(z-xyz_c_val[2]), 3.0)));
-}
-double z_derivative(double x, double y, double z) const
-{
-  return (-2.0*mag_val*SQR(radius_val)*(z-xyz_c_val[2])/(SQR(SQR(radius_val)+SQR(x-xyz_c_val[0])+SQR(y-xyz_c_val[1])+SQR(z-xyz_c_val[2]))));
-}
-double zz_derivative(double x, double y, double z) const
-{
-  return (+2.0*mag_val*SQR(radius_val)*(3.0*SQR(z-xyz_c_val[2]) - SQR(x - xyz_c_val[0]) - SQR(y - xyz_c_val[1]) - SQR(radius_val))/(pow(SQR(radius_val)+SQR(x-xyz_c_val[0])+SQR(y-xyz_c_val[1])+SQR(z-xyz_c_val[2]), 3.0)));
-}
-#else
-    double operator()(double x, double y) const
-{
-    return (mag_val*SQR(radius_val)/(SQR(radius_val)+SQR(x-xyz_c_val[0])+SQR(y-xyz_c_val[1])));
-}
-double x_derivative(double x, double y) const
-{
-  return (-2.0*mag_val*SQR(radius_val)*(x-xyz_c_val[0])/(SQR(SQR(radius_val)+SQR(x-xyz_c_val[0])+SQR(y-xyz_c_val[1]))));
-}
-double xx_derivative(double x, double y) const
-{
-  return (+2.0*mag_val*SQR(radius_val)*(3.0*SQR(x-xyz_c_val[0]) - SQR(y - xyz_c_val[1]) - SQR(radius_val))/(pow(SQR(radius_val)+SQR(x-xyz_c_val[0])+SQR(y-xyz_c_val[1]), 3.0)));
-}
-double y_derivative(double x, double y) const
-{
-  return (-2.0*mag_val*SQR(radius_val)*(y-xyz_c_val[1])/(SQR(SQR(radius_val)+SQR(x-xyz_c_val[0])+SQR(y-xyz_c_val[1]))));
-}
-double yy_derivative(double x, double y) const
-{
-  return (+2.0*mag_val*SQR(radius_val)*(3.0*SQR(y-xyz_c_val[1]) - SQR(x - xyz_c_val[0]) - SQR(radius_val))/(pow(SQR(radius_val)+SQR(x-xyz_c_val[0])+SQR(y-xyz_c_val[1]), 3.0)));
-}
-#endif
-} first_term;
-
-static struct:
-  #ifdef P4_TO_P8
-  CF_3
-  #else
-  CF_2
-  #endif
-{
-    #ifdef P4_TO_P8
-    double operator()(double x, double y, double z) const
-{
-    return (atan(alpha_val*(x-xyz_c_val[0])+beta_val*(y-xyz_c_val[1])+gamma_val*(z-xyz_c_val[2])));
-}
-double x_derivative(double x, double y, double z) const
-{
-  return (alpha_val/(1.0 + SQR(alpha_val*(x-xyz_c_val[0])+beta_val*(y-xyz_c_val[1])+gamma_val*(z-xyz_c_val[2]))));
-}
-double xx_derivative(double x, double y, double z) const
-{
-  return (-2.0*SQR(alpha_val)*(alpha_val*(x-xyz_c_val[0])+beta_val*(y-xyz_c_val[1])+gamma_val*(z-xyz_c_val[2]))/(SQR(1.0 + SQR(alpha_val*(x-xyz_c_val[0])+beta_val*(y-xyz_c_val[1])+gamma_val*(z-xyz_c_val[2])))));
-}
-double y_derivative(double x, double y, double z) const
-{
-  return (beta_val/(1.0 + SQR(alpha_val*(x-xyz_c_val[0])+beta_val*(y-xyz_c_val[1])+gamma_val*(z-xyz_c_val[2]))));
-}
-double yy_derivative(double x, double y, double z) const
-{
-  return (-2.0*SQR(beta_val)*(alpha_val*(x-xyz_c_val[0])+beta_val*(y-xyz_c_val[1])+gamma_val*(z-xyz_c_val[2]))/(SQR(1.0 + SQR(alpha_val*(x-xyz_c_val[0])+beta_val*(y-xyz_c_val[1])+gamma_val*(z-xyz_c_val[2])))));
-}
-double z_derivative(double x, double y, double z) const
-{
-  return (gamma_val/(1.0 + SQR(alpha_val*(x-xyz_c_val[0])+beta_val*(y-xyz_c_val[1])+gamma_val*(z-xyz_c_val[2]))));
-}
-double zz_derivative(double x, double y, double z) const
-{
-  return (-2.0*SQR(gamma_val)*(alpha_val*(x-xyz_c_val[0])+beta_val*(y-xyz_c_val[1])+gamma_val*(z-xyz_c_val[2]))/(SQR(1.0 + SQR(alpha_val*(x-xyz_c_val[0])+beta_val*(y-xyz_c_val[1])+gamma_val*(z-xyz_c_val[2])))));
-}
-
-#else
-    double operator()(double x, double y) const
-{
-    return (atan(alpha_val*(x-xyz_c_val[0])+beta_val*(y-xyz_c_val[1])));
-}
-double x_derivative(double x, double y) const
-{
-  return (alpha_val/(1.0 + SQR(alpha_val*(x-xyz_c_val[0])+beta_val*(y-xyz_c_val[1]))));
-}
-double xx_derivative(double x, double y) const
-{
-  return (-2.0*SQR(alpha_val)*(alpha_val*(x-xyz_c_val[0])+beta_val*(y-xyz_c_val[1]))/(SQR(1.0 + SQR(alpha_val*(x-xyz_c_val[0])+beta_val*(y-xyz_c_val[1])))));
-}
-double y_derivative(double x, double y) const
-{
-  return (beta_val/(1.0 + SQR(alpha_val*(x-xyz_c_val[0])+beta_val*(y-xyz_c_val[1]))));
-}
-double yy_derivative(double x, double y) const
-{
-  return (-2.0*SQR(beta_val)*(alpha_val*(x-xyz_c_val[0])+beta_val*(y-xyz_c_val[1]))/(SQR(1.0 + SQR(alpha_val*(x-xyz_c_val[0])+beta_val*(y-xyz_c_val[1])))));
-}
-#endif
-} second_factor;
-
-static struct:
-  #ifdef P4_TO_P8
-  CF_3
-  #else
-  CF_2
-  #endif
-{
-    #ifdef P4_TO_P8
-    double operator()(double x, double y, double z) const
-{
-    return (first_term(x, y, z)*(1.0 + second_factor(x, y, z)));
-    }
-    double x_derivative(double x, double y, double z) const
-{
-    return (first_term.x_derivative(x, y, z)*(1.0 + second_factor(x, y, z)) + first_term(x, y, z)*second_factor.x_derivative(x, y, z));
-    }
-    double xx_derivative(double x, double y, double z) const
-{
-    return (first_term.xx_derivative(x, y, z)*(1.0 + second_factor(x, y, z)) + 2.0*first_term.x_derivative(x, y, z)*second_factor.x_derivative(x, y, z) +  first_term(x, y, z)*second_factor.xx_derivative(x, y, z));
-    }
-    double y_derivative(double x, double y, double z) const
-{
-    return (first_term.y_derivative(x, y, z)*(1.0 + second_factor(x, y, z)) + first_term(x, y, z)*second_factor.y_derivative(x, y, z));
-    }
-    double yy_derivative(double x, double y, double z) const
-{
-    return (first_term.yy_derivative(x, y, z)*(1.0 + second_factor(x, y, z)) + 2.0*first_term.y_derivative(x, y, z)*second_factor.y_derivative(x, y, z) +  first_term(x, y, z)*second_factor.yy_derivative(x, y, z));
-    }
-    double z_derivative(double x, double y, double z) const
-{
-    return (first_term.z_derivative(x, y, z)*(1.0 + second_factor(x, y, z)) + first_term(x, y, z)*second_factor.z_derivative(x, y, z));
-    }
-    double zz_derivative(double x, double y, double z) const
-{
-    return (first_term.zz_derivative(x, y, z)*(1.0 + second_factor(x, y, z)) + 2.0*first_term.z_derivative(x, y, z)*second_factor.z_derivative(x, y, z) +  first_term(x, y, z)*second_factor.zz_derivative(x, y, z));
-    }
-    double   laplacian(double x, double y, double z)
-{
-    return (xx_derivative(x, y, z) + yy_derivative(x, y, z) + zz_derivative(x, y, z));
-    }
-    #else
-    double operator()(double x, double y) const
-{
-    return (first_term(x, y)*(1.0 + second_factor(x, y)));
-    }
-    double x_derivative(double x, double y) const
-{
-    return (first_term.x_derivative(x, y)*(1.0 + second_factor(x, y)) + first_term(x, y)*second_factor.x_derivative(x, y));
-    }
-    double xx_derivative(double x, double y) const
-{
-    return (first_term.xx_derivative(x, y)*(1.0 + second_factor(x, y)) + 2.0*first_term.x_derivative(x, y)*second_factor.x_derivative(x, y) +  first_term(x, y)*second_factor.xx_derivative(x, y));
-    }
-    double y_derivative(double x, double y) const
-{
-    return (first_term.y_derivative(x, y)*(1.0 + second_factor(x, y)) + first_term(x, y)*second_factor.y_derivative(x, y));
-    }
-    double yy_derivative(double x, double y) const
-{
-    return (first_term.yy_derivative(x, y)*(1.0 + second_factor(x, y)) + 2.0*first_term.y_derivative(x, y)*second_factor.y_derivative(x, y) +  first_term(x, y)*second_factor.yy_derivative(x, y));
-    }
-    double   laplacian(double x, double y)
-{
-    return (xx_derivative(x, y) + yy_derivative(x, y));
-    }
-    #endif
-    } validation_function;
-
-
 
 using namespace std;
 #if (__cplusplus < 201103L) // for the dumbass outdated compilers
@@ -265,131 +57,101 @@ void iota(ForwardIterator first, ForwardIterator last, T value)
 //
 //   Raphael Egan
 //   2017 Spring, Summer, Fall, CASL, UCSB
+//   Rochishnu Chowdhury, Raphael Egan
+//   2019 Fall, CASL, UCSB
 //
 //---------------------------------------------------------------------
 
 
 /*!
  * \brief The Atom struct contains
- * the geometrical coordinates x, y, z of the atom center;
+ * the geometrical coordinates xc, yc, zc of the atom center;
  * its electric charge q;
- * and the atom van der Waals radius r.
+ * and the atom van der Waals radius r_vdw.
  */
 struct Atom {
-#ifdef P4_TO_P8
-  double x, y, z, q, r;
-#else
-  double x, y, q, r;
-#endif
+  double DIM(xc, yc, zc), q, r_vdw;
   static const string ATOM;
-  inline double dist_to_vdW_surface(const double& xp, const double& yp
-                                  #ifdef P4_TO_P8
-                                    , const double& zp
-                                  #endif
-                                    ) const
+  inline double dist_to_vdW_surface(DIM(const double& x, const double& y, const double& z)) const
   {
-    return r - sqrt(SQR(xp-x) + SQR(yp-y)
-                #ifdef P4_TO_P8
-                    + SQR(zp-z)
-                #endif
-                    );
+    return r_vdw - sqrt(SUMD(SQR(x-xc), SQR(y-yc), SQR(z-zc)));
   }
   inline double dist_to_vdW_surface(const double* xyz) const
   {
-    return dist_to_vdW_surface(xyz[0], xyz[1]
-    #ifdef P4_TO_P8
-        , xyz[2]
-    #endif
-        );
+    return dist_to_vdW_surface(DIM(xyz[0], xyz[1], xyz[2]));
   }
   inline double dist_to_vdW_surface(const vector<double> xyz) const
   {
     P4EST_ASSERT(xyz.size() == P4EST_DIM);
-    return dist_to_vdW_surface(&xyz.at(0));
+    return dist_to_vdW_surface(DIM(xyz[0], xyz[1], xyz[2]));
   }
-  double max_phi_vdW_in_quad(double* xyz_c, double* dxdydz, double* xyzM = NULL) const
+  /*!
+   * \brief max_phi_vdW_in_quad
+   * \param xyz_quad_c
+   * \param dxyz
+   * \param xyzM
+   * \return
+   */
+  double max_phi_vdW_in_quad(const double *xyz_quad_c, double* dxyz, double* xyzM = NULL) const
   {
-    if((fabs(x - xyz_c[0]) <= 0.5*dxdydz[0])
-       && (fabs(y - xyz_c[1]) <= 0.5*dxdydz[1])
-   #ifdef P4_TO_P8
-       && (fabs(z - xyz_c[2]) <= 0.5*dxdydz[2])
-   #endif
-       ) // the cell cointains the atom center
+    if(ANDD((fabs(xc - xyz_quad_c[0]) <= 0.5*dxyz[0]), (fabs(yc - xyz_quad_c[1]) <= 0.5*dxyz[1]), (fabs(zc - xyz_quad_c[2]) <= 0.5*dxyz[2]))) // the cell cointains the atom center, max is r_vdw
     {
       if(xyzM != NULL)
       {
-        xyzM[0] = x;
-        xyzM[1] = y;
+        xyzM[0] = xc;
+        xyzM[1] = yc;
 #ifdef P4_TO_P8
-        xyzM[2] = z;
+        xyzM[2] = zc;
 #endif
       }
-      return r;
+      return r_vdw;
     }
-    int ioff = (x > xyz_c[0]+0.5*dxdydz[0])? 1: (x < xyz_c[0]-0.5*dxdydz[0])? -1: 0;
-    int joff = (y > xyz_c[1]+0.5*dxdydz[1])? 1: (y < xyz_c[1]-0.5*dxdydz[1])? -1: 0;
+    char ioff = (xc > xyz_quad_c[0]+0.5*dxyz[0])? 1: (xc < xyz_quad_c[0]-0.5*dxyz[0])? -1: 0;
+    char joff = (yc > xyz_quad_c[1]+0.5*dxyz[1])? 1: (yc < xyz_quad_c[1]-0.5*dxyz[1])? -1: 0;
 #ifdef P4_TO_P8
-    int koff = (z > xyz_c[2]+0.5*dxdydz[2])? 1: (z < xyz_c[2]-0.5*dxdydz[2])? -1: 0;
+    char koff = (zc > xyz_quad_c[2]+0.5*dxyz[2])? 1: (zc < xyz_quad_c[2]-0.5*dxyz[2])? -1: 0;
 #endif
     if (xyzM != NULL)
     {
-      xyzM[0] = (ioff!=0)?(xyz_c[0]+ioff*0.5*dxdydz[0]):x;
-      xyzM[1] = (joff!=0)?(xyz_c[1]+joff*0.5*dxdydz[1]):y;
+      xyzM[0] = (ioff!=0)?(xyz_quad_c[0]+ioff*0.5*dxyz[0]):xc;
+      xyzM[1] = (joff!=0)?(xyz_quad_c[1]+joff*0.5*dxyz[1]):yc;
 #ifdef P4_TO_P8
-      xyzM[2] = (koff!=0)?(xyz_c[2]+koff*0.5*dxdydz[2]):z;
+      xyzM[2] = (koff!=0)?(xyz_quad_c[2]+koff*0.5*dxyz[2]):zc;
 #endif
     }
-    return r - sqrt(SQR(ioff*(x - (xyz_c[0]+ioff*0.5*dxdydz[0])))
-        + SQR(joff*(y - (xyz_c[1]+joff*0.5*dxdydz[1])))
-    #ifdef P4_TO_P8
-        + SQR(koff*(z - (xyz_c[2]+koff*0.5*dxdydz[2])))
-    #endif
-        );
+    return r_vdw - sqrt(SUMD(((ioff!=0)? SQR(xc - (xyz_quad_c[0]+((double)ioff)*0.5*dxyz[0])): 0.0), ((joff!=0)? SQR(yc - (xyz_quad_c[1]+((double)joff)*0.5*dxyz[1])): 0.0), ((koff!=0)? SQR(zc - (xyz_quad_c[2]+((double)koff)*0.5*dxyz[2])): 0.0)));
   }
 };
 
 // following comparisons used for surface construction only, q is irrelevant
 inline bool operator ==(const Atom& lhs, const Atom& rhs)
 {
-  return
-      ((fabs(rhs.x - lhs.x) > EPS*MAX(MAX(EPS, fabs(lhs.x)), fabs(rhs.x)))?
-         false : (
-           (fabs(rhs.y - lhs.y) > EPS*MAX(MAX(EPS, fabs(lhs.y)), fabs(rhs.y)))?
-             false : (
-             #ifdef P4_TO_P8
-               fabs(rhs.z - lhs.z) > EPS*MAX(MAX(EPS, fabs(lhs.z)), fabs(rhs.z))?
-                 false:(
-                 #endif
-                   (fabs(rhs.r - lhs.r) > EPS*MAX(MAX(EPS, fabs(lhs.r)), fabs(rhs.r))?
-                      false:true
-                    #ifdef P4_TO_P8
-                      )
-                 #endif
-                   )
-                 )
-             )
-         );
+  if (fabs(rhs.xc - lhs.xc) > EPS*MAX(MAX(EPS, fabs(lhs.xc)), fabs(rhs.xc)))
+    return false;
+  if (fabs(rhs.yc - lhs.yc) > EPS*MAX(MAX(EPS, fabs(lhs.yc)), fabs(rhs.yc)))
+    return false;
+#ifdef P4_TO_P8
+  if (fabs(rhs.zc - lhs.zc) > EPS*MAX(MAX(EPS, fabs(lhs.zc)), fabs(rhs.zc)))
+    return false;
+#endif
+  if (fabs(rhs.r_vdw - lhs.r_vdw) > EPS*MAX(MAX(EPS, fabs(lhs.r_vdw)), fabs(rhs.r_vdw)))
+    return false;
+  return true;
 }
 inline bool operator !=(const Atom& lhs, const Atom& rhs) {return !(lhs==rhs);}
 inline bool operator <(const Atom& lhs, const Atom& rhs)
 {
-  return
-      ((fabs(rhs.x - lhs.x) > EPS*MAX(MAX(EPS, fabs(lhs.x)), fabs(rhs.x)))?
-         (lhs.x < rhs.x) : (
-           (fabs(rhs.y - lhs.y) > EPS*MAX(MAX(EPS, fabs(lhs.y)), fabs(rhs.y)))?
-             (lhs.y < rhs.y) :(
-             #ifdef P4_TO_P8
-               (fabs(rhs.z - lhs.z) > EPS*MAX(MAX(EPS, fabs(lhs.z)), fabs(rhs.z)))?
-                 (lhs.z < rhs.z) :(
-                 #endif
-                   (fabs(rhs.r - lhs.r) > EPS*MAX(MAX(EPS, fabs(lhs.r)), fabs(rhs.r)))?
-                     (lhs.r < rhs.r) : true
-                   #ifdef P4_TO_P8
-                     )
-               #endif
-                 )
-             )
-         );
+  if (fabs(rhs.xc - lhs.xc) > EPS*MAX(MAX(EPS, fabs(lhs.xc)), fabs(rhs.xc)))
+    return (lhs.xc < rhs.xc);
+  if (fabs(rhs.yc - lhs.yc) > EPS*MAX(MAX(EPS, fabs(lhs.yc)), fabs(rhs.yc)))
+    return (lhs.yc < rhs.yc);
+#ifdef P4_TO_P8
+  if (fabs(rhs.zc - lhs.zc) > EPS*MAX(MAX(EPS, fabs(lhs.zc)), fabs(rhs.zc)))
+    return (lhs.zc < rhs.zc);
+#endif
+  if (fabs(rhs.r_vdw - lhs.r_vdw) > EPS*MAX(MAX(EPS, fabs(lhs.r_vdw)), fabs(rhs.r_vdw)))
+    return (lhs.r_vdw < rhs.r_vdw);
+  return true;
 }
 
 inline istream& operator >> (istream& is, Atom& atom) {
@@ -399,24 +161,24 @@ inline istream& operator >> (istream& is, Atom& atom) {
   string ignore [5];
 #endif
   for (int i=0; i<4; i++) is >> ignore[i];
-  is >> atom.x >> atom.y ;
+  is >> atom.xc >> atom.yc ;
 #ifdef P4_TO_P8
-  is >> atom.z ;
+  is >> atom.zc ;
 #else
   is >> ignore[4] ;
 #endif
-  is >> atom.q >> atom.r;
+  is >> atom.q >> atom.r_vdw;
 
   return is;
 }
 
 
 inline ostream& operator << (ostream& os, Atom& atom) {
-  os << "(x = " << atom.x << ", y = " << atom.y;
+  os << "(x = " << atom.xc << ", y = " << atom.yc;
 #ifdef P4_TO_P8
-  os << ", z = " << atom.z;
+  os << ", z = " << atom.zc;
 #endif
-  os << "; q = " << atom.q << ", r = " << atom.r << ")";
+  os << "; q = " << atom.q << ", r = " << atom.r_vdw << ")";
   return os;
 }
 
@@ -427,13 +189,13 @@ inline bool operator >>(string& line, Atom& atom)
     return false;
   else
   {
-    atom.x = stod(line.substr(30, 8));
-    atom.y = stod(line.substr(38, 8));
+    atom.xc = stod(line.substr(30, 8));
+    atom.yc = stod(line.substr(38, 8));
 #ifdef P4_TO_P8
-    atom.z = stod(line.substr(46, 8));
+    atom.zc = stod(line.substr(46, 8));
 #endif
     atom.q = stod(line.substr(54, 8));
-    atom.r = stod(line.substr(62, 8));
+    atom.r_vdw = stod(line.substr(62, 8));
     std::cout << atom << std::endl;
     return true;
   }
@@ -1215,7 +977,6 @@ public:
   PetscErrorCode ierr;
 
   my_p4est_cell_neighbors_t*              cell_neighbors = NULL;
-  //my_p4est_poisson_jump_nodes_voronoi_t*  jump_solver = NULL;
   my_p4est_general_poisson_nodes_mls_solver_t* jump_solver= NULL;
   my_p4est_general_poisson_nodes_mls_solver_t* jump_solver1= NULL;
   my_p4est_poisson_nodes_t*               node_solver = NULL;
@@ -1266,7 +1027,7 @@ public:
 //        std::cout << sqrt(SQR(x - a->x) + SQR(y - a->y) + SQR(z - a->z))/biomolecules->angstrom_to_domain << std::endl;
 #ifdef P4_TO_P8
         psi_star_value += (a->q*SQR(electron)*((double) ion_charge))/
-            (length_scale_in_meter()*4.0*PI*eps_0*mol_rel_permittivity*kB*temperature*sqrt(SQR(x - a->x) + SQR(y - a->y) + SQR(z - a->z))); // constant = 0
+            (length_scale_in_meter()*4.0*PI*eps_0*mol_rel_permittivity*kB*temperature*sqrt(SQR(x - a->xc) + SQR(y - a->yc) + SQR(z - a->zc))); // constant = 0
 #else
         // there is no real 2D equivalent in terms of electrostatics,
         // in the 2d case, let's consider q a linear (partial) charge density,
@@ -1308,9 +1069,8 @@ public:
 
   void          return_psi_hat(Vec& psi_hat_out);
   void          return_psi_star_psi_naught_and_psi_bar(Vec& psi_star_out, Vec& psi_naught_out, Vec& psi_bar_out);
-  void          calculate_jumps_in_normal_gradient(Vec& eps_grad_n_psi_hat_jump, bool validation_flag);
+  void          calculate_jumps_in_normal_gradient(Vec& eps_grad_n_psi_hat_jump);
   void          get_rhs_and_add_plus(Vec& rhs_plus, Vec& add_plus);
-  void          get_residual_at_voronoi_points_and_set_as_rhs(const Vec& psi_hat_on_voronoi);
   void          get_linear_diagonal_terms(Vec& pristine_diagonal_terms);
   void          clean_matrix_diagonal(const Vec& pristine_diagonal_terms);
 
@@ -1389,14 +1149,14 @@ public:
   inline double get_far_field_ion_density() const {return far_field_ion_density;}
   inline int    get_ion_charge() const {return ion_charge;}
 
-  void          solve_linear(int n_iter_psi_bar_extension = 20) {(void) solve_nonlinear(1e-8, 1, n_iter_psi_bar_extension);} // equivalent to ONE iteration of the nonlinear solver
-  int           solve_nonlinear(double upper_bound_residual = 1e-8, int it_max = 10000, bool validation_flag = false);
-  void          get_solvation_free_energy(bool validation_flag = false);
-  Vec           get_psi(double max_absolute_psi = DBL_MAX, bool validation_flag = false);
+  void          solve_linear(int n_iter_psi_bar_extension = 20) {(void) solve_nonlinear(1e-8, 1);} // equivalent to ONE iteration of the nonlinear solver
+  int           solve_nonlinear(double upper_bound_residual = 1e-8, int it_max = 10000);
+  void          get_solvation_free_energy();
+  Vec           get_psi(double max_absolute_psi = DBL_MAX);
 
   Vec           return_validation_error();
   Vec           return_residual();
-  void          return_all_psi_vectors(Vec& psi_star_out, Vec& psi_naught_out, Vec& psi_bar_out, Vec& psi_hat_out, bool validation_flag = false);
+  void          return_all_psi_vectors(Vec& psi_star_out, Vec& psi_naught_out, Vec& psi_bar_out, Vec& psi_hat_out);
   ~my_p4est_biomolecules_solver_t();
 };
 
