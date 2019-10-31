@@ -110,10 +110,10 @@ DEFINE_PARAMETER(pl, int, num_shifts_x_dir, 1, "Number of grid shifts in the x-d
 DEFINE_PARAMETER(pl, int, num_shifts_y_dir, 1, "Number of grid shifts in the y-direction");
 DEFINE_PARAMETER(pl, int, num_shifts_z_dir, 1, "Number of grid shifts in the z-direction");
 #else
-DEFINE_PARAMETER(pl, int, lmin, 5, "Min level of the tree");
-DEFINE_PARAMETER(pl, int, lmax, 5, "Max level of the tree");
+DEFINE_PARAMETER(pl, int, lmin, 10, "Min level of the tree");
+DEFINE_PARAMETER(pl, int, lmax, 20, "Max level of the tree");
 
-DEFINE_PARAMETER(pl, int, num_splits,           5, "Number of recursive splits");
+DEFINE_PARAMETER(pl, int, num_splits,           1, "Number of recursive splits");
 DEFINE_PARAMETER(pl, int, num_splits_per_split, 1, "Number of additional resolutions");
 
 DEFINE_PARAMETER(pl, int, num_shifts_x_dir, 1, "Number of grid shifts in the x-direction");
@@ -122,7 +122,7 @@ DEFINE_PARAMETER(pl, int, num_shifts_z_dir, 1, "Number of grid shifts in the z-d
 #endif
 
 DEFINE_PARAMETER(pl, int, iter_start, 0, "Skip n first iterations");
-DEFINE_PARAMETER(pl, double, lip, 2, "Lipschitz constant");
+DEFINE_PARAMETER(pl, double, lip, 2.0, "Lipschitz constant");
 
 DEFINE_PARAMETER(pl, bool, refine_strict,  0, "Refines every cell starting from the coarsest case if yes");
 DEFINE_PARAMETER(pl, bool, refine_rand,    0, "Add randomness into adaptive grid");
@@ -264,7 +264,7 @@ DEFINE_PARAMETER(pl, double, mask_thresh,            0, "Mask threshold for excl
 DEFINE_PARAMETER(pl, bool,   compute_grad_between,   0, "Computes gradient between points if yes");
 DEFINE_PARAMETER(pl, bool,   scale_errors,           0, "Scale errors by max solution/gradient value");
 DEFINE_PARAMETER(pl, bool,   use_nonzero_guess,      0, "");
-DEFINE_PARAMETER(pl, double, extension_band_extend,  6, "");
+DEFINE_PARAMETER(pl, double, extension_band_extend,  60, "");
 DEFINE_PARAMETER(pl, double, extension_band_compute, 6, "");
 DEFINE_PARAMETER(pl, double, extension_band_check,   6, "");
 DEFINE_PARAMETER(pl, double, extension_tol,          -1.e-10, "");
@@ -281,7 +281,7 @@ DEFINE_PARAMETER(pl, bool, save_matrix_ascii,  0, "Save the matrix in ASCII MATL
 DEFINE_PARAMETER(pl, bool, save_matrix_binary, 0, "Save the matrix in BINARY MATLAB format");
 DEFINE_PARAMETER(pl, bool, save_convergence,   0, "Save convergence results");
 
-DEFINE_PARAMETER(pl, int, n_example, 10, "Predefined example");
+DEFINE_PARAMETER(pl, int, n_example, 14, "Predefined example");
 
 void set_example(int n_example)
 {
@@ -557,6 +557,28 @@ void set_example(int n_example)
       bdry_phi_num = 0;
 
       infc_present_00 = 1; infc_geom_00 = 1; infc_opn_00 = MLS_INT;
+      infc_present_01 = 0; infc_geom_01 = 0; infc_opn_01 = MLS_INT;
+      infc_present_02 = 0; infc_geom_02 = 0; infc_opn_02 = MLS_INT;
+      infc_present_03 = 0; infc_geom_03 = 0; infc_opn_03 = MLS_INT;
+
+      bdry_present_00 = 0;
+      bdry_present_01 = 0;
+      bdry_present_02 = 0;
+      bdry_present_03 = 0;
+
+      break;
+
+    case 14: // clusters of particles
+
+      n_um = 14; mag_um = 0; n_mu_m = 0; mag_mu_m = 10; n_diag_m = 0; mag_diag_m = 1;
+      n_up = 14; mag_up = 0; n_mu_p = 0; mag_mu_p = 1; n_diag_p = 0; mag_diag_p = 1;
+//      n_um = 11; mag_um = 1; n_mu_m = 0; mag_mu_m = 5; n_diag_m = 1; mag_diag_m = 1;
+//      n_up = 12; mag_up = 1; n_mu_p = 0; mag_mu_p = 1; n_diag_p = 1; mag_diag_p = 1;
+
+      infc_phi_num = 1;
+      bdry_phi_num = 0;
+
+      infc_present_00 = 1; infc_geom_00 = 5; infc_opn_00 = MLS_INT;
       infc_present_01 = 0; infc_geom_01 = 0; infc_opn_01 = MLS_INT;
       infc_present_02 = 0; infc_geom_02 = 0; infc_opn_02 = MLS_INT;
       infc_present_03 = 0; infc_geom_03 = 0; infc_opn_03 = MLS_INT;
@@ -998,6 +1020,29 @@ class rhs_m_cf_t: public CF_DIM
 {
 public:
   double operator()(DIM(double x, double y, double z)) const {
+    int num_particles = 68;
+    static double X[] = { 0.294320, 0.292603, 0.296621, 0.301392, 0.293268, 0.289541, 0.290527, 0.295213, 0.300884, 0.935243, 0.936367, 0.937713, 0.927721, 0.926407, 0.939303, 0.926755, 0.936908, 0.934454, 0.160228, 0.164293, 0.173756, 0.168733, 0.170695, 0.160737, 0.725447, 0.740474, 0.736547, 0.723810, 0.742820, 0.728138, 0.728254, 0.052907, 0.034801, 0.048034, 0.038434, 0.037001, 0.048676, -0.182697, -0.180690, -0.171622, -0.177232, -0.182553, -0.169332, 0.082096, 0.070903, 0.086667, 0.089332, -0.416502, -0.435866, -0.428412, 0.367410, 0.364188, 0.357943, 0.354170, 0.355478, 0.356304, 0.368282, 0.370185, 0.352045, -0.187080, -0.177875, -0.177947, -0.193546, -0.190933, -0.184008, -0.192313, -0.190761 };
+    static double Y[] = { -0.731980, -0.722570, -0.730048, -0.723932, -0.730192, -0.732616, -0.736414, -0.726113, -0.733236, 0.156877, 0.165333, 0.161907, 0.160662, 0.164860, 0.170991, 0.162948, 0.160965, 0.162162, -0.743358, -0.747939, -0.744021, -0.761421, -0.747981, -0.760843, 0.889409, 0.893693, 0.884784, 0.875899, 0.874970, 0.878376, 0.880038, -0.344586, -0.356601, -0.350902, -0.350375, -0.361473, -0.344655, 0.433937, 0.449481, 0.442325, 0.435290, 0.446933, 0.440621, 0.665721, 0.669204, 0.652859, 0.668903, -0.873554, -0.873537, -0.875426, -0.528637, -0.533808, -0.522965, -0.530541, -0.527060, -0.525395, -0.530008, -0.524812, -0.519527, 0.207027, 0.213721, 0.216082, 0.211842, 0.205428, 0.210547, 0.214133, 0.223399 };
+    static double Z[] = { 0.659896, 0.661595, 0.663882, 0.657828, 0.649222, 0.652738, 0.653999, 0.659133, 0.653780, 0.372778, 0.384505, 0.385340, 0.380446, 0.368198, 0.382526, 0.371762, 0.380080, 0.384611, -0.914150, -0.903361, -0.909046, -0.906778, -0.895898, -0.911101, 0.374524, 0.375398, 0.361166, 0.362541, 0.358814, 0.365019, 0.371807, 0.791016, 0.796822, 0.802796, 0.799813, 0.796510, 0.794363, -0.891243, -0.892697, -0.877118, -0.878855, -0.889057, -0.888704, -0.798652, -0.802171, -0.795067, -0.810748, -0.205157, -0.209997, -0.210105, 0.781060, 0.793624, 0.788213, 0.798592, 0.787955, 0.789437, 0.780380, 0.798013, 0.791062, 0.333318, 0.343816, 0.343286, 0.346698, 0.340582, 0.334128, 0.335550, 0.348634 };
+    static double R[] = { 0.000948, 0.000196, 0.000553, 0.000374, 0.000798, 0.000755, 0.000341, 0.000792, 0.000857, 0.000462, 0.000946, 0.000114, 0.000653, 0.000243, 0.000443, 0.000482, 0.000713, 0.000448, 0.000329, 0.000792, 0.000264, 0.000999, 0.000389, 0.000209, 0.000966, 0.000453, 0.000708, 0.000367, 0.000306, 0.000857, 0.000451, 0.000660, 0.000834, 0.000961, 0.000546, 0.000859, 0.000590, 0.000642, 0.000499, 0.000714, 0.000706, 0.000927, 0.000652, 0.000309, 0.000229, 0.000256, 0.000778, 0.000168, 0.000167, 0.000329, 0.000239, 0.000271, 0.000682, 0.000809, 0.000107, 0.000985, 0.000107, 0.000830, 0.000198, 0.000928, 0.000126, 0.000647, 0.000749, 0.000170, 0.000752, 0.000925, 0.000728 };
+    static double n[] = { 5, 2, 3, 3, 3, 4, 3, 5, 4, 4, 3, 3, 4, 2, 3, 5, 3, 6, 6, 3, 4, 5, 4, 6, 3, 3, 4, 3, 4, 4, 6, 4, 4, 4, 5, 6, 3, 5, 4, 3, 6, 5, 6, 6, 3, 4, 4, 2, 6, 4, 6, 3, 3, 5, 4, 2, 5, 5, 4, 2, 3, 4, 6, 3, 3, 4, 4 };
+    static double b[] = { 0.177428, 0.120466, 0.195375, 0.161709, 0.193548, 0.088156, 0.140005, 0.121836, 0.078646, 0.026599, 0.129853, 0.111576, 0.059185, 0.009826, 0.141560, 0.025398, 0.179751, 0.011111, 0.052804, 0.015578, 0.186352, 0.001466, 0.025428, 0.199829, 0.064583, 0.004282, 0.036598, 0.044844, 0.191154, 0.026387, 0.069948, 0.184134, 0.079140, 0.175580, 0.119999, 0.104759, 0.018488, 0.191264, 0.107538, 0.162207, 0.108419, 0.139933, 0.197255, 0.018026, 0.189876, 0.009732, 0.189929, 0.038622, 0.040327, 0.067637, 0.004636, 0.072883, 0.097692, 0.035313, 0.166186, 0.004988, 0.133467, 0.145549, 0.011507, 0.121431, 0.001767, 0.130215, 0.088286, 0.122096, 0.030592, 0.029170, 0.195173 };
+    static double t[] = { 3.779031, 0.575194, 5.983689, 1.178485, 6.112317, 2.266495, 6.140219, 0.884964, 1.588758, 1.152778, 2.585702, 3.069164, 4.986538, 3.613796, 2.988958, 3.380732, 0.252419, 2.899990, 4.507911, 3.753404, 6.101247, 4.162976, 0.952773, 0.814897, 5.719127, 5.779404, 0.871440, 0.309913, 1.616747, 5.913726, 2.499319, 2.412480, 4.794653, 1.000997, 5.330543, 2.104655, 3.979605, 0.196232, 3.958288, 4.889946, 2.765306, 0.682710, 0.524252, 3.925875, 1.973639, 5.337312, 0.506358, 4.772787, 4.357852, 4.422504, 1.018504, 2.058938, 4.725618, 0.726723, 5.450653, 3.471888, 5.475823, 6.126808, 3.886958, 1.730282, 0.076936, 6.002824, 4.366932, 0.951230, 3.986605, 1.284015, 5.881409 };
+    static double q[] = { 1.0, 1.0, 1.0, 1.0, -1.0, -1.0, -1.0, -1.0, -1.0, 1.0, 1.0, 1.0, -1.0, -1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, 1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, 1.0, -1.0, 1.0, -1.0, -1.0, 1.0, 1.0, -1.0, 1.0, 1.0, 1.0, -1.0, -1.0, -1.0, 1.0, -1.0, 1.0, 1.0, -1.0, -1.0, 1.0, 1.0, 1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0 };
+    static radial_shaped_domain_t shape;
+    double min_dist = DBL_MAX;
+    int idx = -1;
+    for (int i = 0; i < num_particles; ++i)
+    {
+      shape.set_params(R[i], DIM(X[i], Y[i], Z[i]), 1, 1, &n[i], &b[i], &t[i]);
+      double current = shape.phi(DIM(x,y,z));
+      if ((current) < (min_dist))
+      {
+        idx = i;
+        min_dist = current;
+      }
+    }
+    return 1.e5*q[idx];
     return diag_m_cf(DIM(x,y,z))*(u_m_cf(DIM(x,y,z)))
         - mu_m_cf(DIM(x,y,z))*ul_m_cf(DIM(x,y,z))
         - SUMD(mux_m_cf(DIM(x,y,z))*ux_m_cf(DIM(x,y,z)),
@@ -1010,6 +1055,7 @@ class rhs_p_cf_t: public CF_DIM
 {
 public:
   double operator()(DIM(double x, double y, double z)) const {
+    return 0;
     return diag_p_cf(DIM(x,y,z))*(u_p_cf(DIM(x,y,z)))
         - mu_p_cf(DIM(x,y,z))*ul_p_cf(DIM(x,y,z))
         - SUMD(mux_p_cf(DIM(x,y,z))*ux_p_cf(DIM(x,y,z)),
@@ -1084,10 +1130,10 @@ public:
         static const double r0 = 0.911, DIM(xc = 0, yc = 0, zc = 0);
         static flower_shaped_domain_t circle(r0, DIM(xc, yc, zc));
         switch (what) {
-          OCOMP( case VAL: return circle.phi  (DIM(x,y,z)) );
-          XCOMP( case DDX: return circle.phi_x(DIM(x,y,z)) );
-          YCOMP( case DDY: return circle.phi_y(DIM(x,y,z)) );
-          ZCOMP( case DDZ: return circle.phi_z(DIM(x,y,z)) );
+          _CODE( case VAL: return circle.phi  (DIM(x,y,z)) );
+          XCODE( case DDX: return circle.phi_x(DIM(x,y,z)) );
+          YCODE( case DDY: return circle.phi_y(DIM(x,y,z)) );
+          ZCODE( case DDZ: return circle.phi_z(DIM(x,y,z)) );
         }
       } break;
       case 2: // circle/sphere exterior
@@ -1095,10 +1141,10 @@ public:
         static double r0 = 0.311, DIM(xc = 0, yc = 0, zc = 0);
         static flower_shaped_domain_t circle(r0, DIM(xc, yc, zc), 0, -1);
         switch (what) {
-          OCOMP( case VAL: return circle.phi  (DIM(x,y,z)) );
-          XCOMP( case DDX: return circle.phi_x(DIM(x,y,z)) );
-          YCOMP( case DDY: return circle.phi_y(DIM(x,y,z)) );
-          ZCOMP( case DDZ: return circle.phi_z(DIM(x,y,z)) );
+          _CODE( case VAL: return circle.phi  (DIM(x,y,z)) );
+          XCODE( case DDX: return circle.phi_x(DIM(x,y,z)) );
+          YCODE( case DDY: return circle.phi_y(DIM(x,y,z)) );
+          ZCODE( case DDZ: return circle.phi_z(DIM(x,y,z)) );
         }
       } break;
       case 3: // annular/shell region
@@ -1108,10 +1154,10 @@ public:
         static flower_shaped_domain_t circle_in(r0_in, DIM(xc_in, yc_in, zc_in), 0, -1);
         static flower_shaped_domain_t circle_ex(r0_ex, DIM(xc_ex, yc_ex, zc_ex), 0,  1);
         switch (what) {
-          OCOMP( case VAL: return (circle_in.phi(DIM(x,y,z)) > circle_ex.phi(DIM(x,y,z))) ? circle_in.phi  (DIM(x,y,z)) : circle_ex.phi  (DIM(x,y,z)); );
-          XCOMP( case DDX: return (circle_in.phi(DIM(x,y,z)) > circle_ex.phi(DIM(x,y,z))) ? circle_in.phi_x(DIM(x,y,z)) : circle_ex.phi_x(DIM(x,y,z)); );
-          YCOMP( case DDY: return (circle_in.phi(DIM(x,y,z)) > circle_ex.phi(DIM(x,y,z))) ? circle_in.phi_y(DIM(x,y,z)) : circle_ex.phi_y(DIM(x,y,z)); );
-          ZCOMP( case DDZ: return (circle_in.phi(DIM(x,y,z)) > circle_ex.phi(DIM(x,y,z))) ? circle_in.phi_z(DIM(x,y,z)) : circle_ex.phi_z(DIM(x,y,z)); );
+          _CODE( case VAL: return (circle_in.phi(DIM(x,y,z)) > circle_ex.phi(DIM(x,y,z))) ? circle_in.phi  (DIM(x,y,z)) : circle_ex.phi  (DIM(x,y,z)); );
+          XCODE( case DDX: return (circle_in.phi(DIM(x,y,z)) > circle_ex.phi(DIM(x,y,z))) ? circle_in.phi_x(DIM(x,y,z)) : circle_ex.phi_x(DIM(x,y,z)); );
+          YCODE( case DDY: return (circle_in.phi(DIM(x,y,z)) > circle_ex.phi(DIM(x,y,z))) ? circle_in.phi_y(DIM(x,y,z)) : circle_ex.phi_y(DIM(x,y,z)); );
+          ZCODE( case DDZ: return (circle_in.phi(DIM(x,y,z)) > circle_ex.phi(DIM(x,y,z))) ? circle_in.phi_z(DIM(x,y,z)) : circle_ex.phi_z(DIM(x,y,z)); );
         }
       } break;
       case 4: // moderately star-shaped domain
@@ -1119,10 +1165,10 @@ public:
         static double r0 = 0.611, DIM(xc = 0, yc = 0, zc = 0), deform = 0.15;
         static flower_shaped_domain_t circle(r0, DIM(xc, yc, zc), deform);
         switch (what) {
-          OCOMP( case VAL: return circle.phi  (DIM(x,y,z)) );
-          XCOMP( case DDX: return circle.phi_x(DIM(x,y,z)) );
-          YCOMP( case DDY: return circle.phi_y(DIM(x,y,z)) );
-          ZCOMP( case DDZ: return circle.phi_z(DIM(x,y,z)) );
+          _CODE( case VAL: return circle.phi  (DIM(x,y,z)) );
+          XCODE( case DDX: return circle.phi_x(DIM(x,y,z)) );
+          YCODE( case DDY: return circle.phi_y(DIM(x,y,z)) );
+          ZCODE( case DDZ: return circle.phi_z(DIM(x,y,z)) );
         }
       } break;
       case 5: // highly start-shaped domain
@@ -1130,10 +1176,10 @@ public:
         static double r0 = 0.611, DIM(xc = 0, yc = 0, zc = 0), deform = 0.3;
         static flower_shaped_domain_t circle(r0, DIM(xc, yc, zc), deform);
         switch (what) {
-          OCOMP( case VAL: return circle.phi  (DIM(x,y,z)) );
-          XCOMP( case DDX: return circle.phi_x(DIM(x,y,z)) );
-          YCOMP( case DDY: return circle.phi_y(DIM(x,y,z)) );
-          ZCOMP( case DDZ: return circle.phi_z(DIM(x,y,z)) );
+          _CODE( case VAL: return circle.phi  (DIM(x,y,z)) );
+          XCODE( case DDX: return circle.phi_x(DIM(x,y,z)) );
+          YCODE( case DDY: return circle.phi_y(DIM(x,y,z)) );
+          ZCODE( case DDZ: return circle.phi_z(DIM(x,y,z)) );
         }
       }
       case 6: // unioun of two spheres: 1st sphere
@@ -1152,10 +1198,10 @@ public:
         flower_shaped_domain_t *shape_ptr = (*n) == 6 ? &circle0 : &circle1;
 
         switch (what) {
-          OCOMP( case VAL: return shape_ptr->phi  (DIM(x,y,z)) );
-          XCOMP( case DDX: return shape_ptr->phi_x(DIM(x,y,z)) );
-          YCOMP( case DDY: return shape_ptr->phi_y(DIM(x,y,z)) );
-          ZCOMP( case DDZ: return shape_ptr->phi_z(DIM(x,y,z)) );
+          _CODE( case VAL: return shape_ptr->phi  (DIM(x,y,z)) );
+          XCODE( case DDX: return shape_ptr->phi_x(DIM(x,y,z)) );
+          YCODE( case DDY: return shape_ptr->phi_y(DIM(x,y,z)) );
+          ZCODE( case DDZ: return shape_ptr->phi_z(DIM(x,y,z)) );
         }
       } break;
       case 8: // difference of two spheres: 1st shpere
@@ -1174,10 +1220,10 @@ public:
         flower_shaped_domain_t *shape_ptr = (*n) == 8 ? &circle0 : &circle1;
 
         switch (what) {
-          OCOMP( case VAL: return shape_ptr->phi  (DIM(x,y,z)) );
-          XCOMP( case DDX: return shape_ptr->phi_x(DIM(x,y,z)) );
-          YCOMP( case DDY: return shape_ptr->phi_y(DIM(x,y,z)) );
-          ZCOMP( case DDZ: return shape_ptr->phi_z(DIM(x,y,z)) );
+          _CODE( case VAL: return shape_ptr->phi  (DIM(x,y,z)) );
+          XCODE( case DDX: return shape_ptr->phi_x(DIM(x,y,z)) );
+          YCODE( case DDY: return shape_ptr->phi_y(DIM(x,y,z)) );
+          ZCODE( case DDZ: return shape_ptr->phi_z(DIM(x,y,z)) );
         }
 
       } break;
@@ -1211,10 +1257,10 @@ public:
         }
 
         switch (what) {
-          OCOMP( case VAL: return shape_ptr->phi  (DIM(x,y,z)) );
-          XCOMP( case DDX: return shape_ptr->phi_x(DIM(x,y,z)) );
-          YCOMP( case DDY: return shape_ptr->phi_y(DIM(x,y,z)) );
-          ZCOMP( case DDZ: return shape_ptr->phi_z(DIM(x,y,z)) );
+          _CODE( case VAL: return shape_ptr->phi  (DIM(x,y,z)) );
+          XCODE( case DDX: return shape_ptr->phi_x(DIM(x,y,z)) );
+          YCODE( case DDY: return shape_ptr->phi_y(DIM(x,y,z)) );
+          ZCODE( case DDZ: return shape_ptr->phi_z(DIM(x,y,z)) );
         }
       } break;
       case 13: // triangle/tetrahedron: 1st plane
@@ -1255,20 +1301,20 @@ public:
         }
 
         switch (what) {
-          OCOMP( case VAL: return shape_ptr->phi  (DIM(x,y,z)) );
-          XCOMP( case DDX: return shape_ptr->phi_x(DIM(x,y,z)) );
-          YCOMP( case DDY: return shape_ptr->phi_y(DIM(x,y,z)) );
-          ZCOMP( case DDZ: return shape_ptr->phi_z(DIM(x,y,z)) );
+          _CODE( case VAL: return shape_ptr->phi  (DIM(x,y,z)) );
+          XCODE( case DDX: return shape_ptr->phi_x(DIM(x,y,z)) );
+          YCODE( case DDY: return shape_ptr->phi_y(DIM(x,y,z)) );
+          ZCODE( case DDZ: return shape_ptr->phi_z(DIM(x,y,z)) );
         }
       } break;
     }
 
     // default value
     switch (what) {
-      OCOMP( case VAL: return -1 );
-      XCOMP( case DDX: return  0 );
-      YCOMP( case DDY: return  0 );
-      ZCOMP( case DDZ: return  0 );
+      _CODE( case VAL: return -1 );
+      XCODE( case DDX: return  0 );
+      YCODE( case DDY: return  0 );
+      ZCODE( case DDZ: return  0 );
     }
   }
 };
@@ -1306,14 +1352,14 @@ public:
         return -1;
       case 1: // sphere
       {
-        static double r0 = 0.5;
+        static double r0 = 0.005;
         static double DIM( xc = 0, yc = 0, zc = 0 );
         static flower_shaped_domain_t circle(r0, DIM(xc, yc, zc), 0, -1);
         switch (what) {
-          OCOMP( case VAL: return circle.phi  (DIM(x,y,z)) );
-          XCOMP( case DDX: return circle.phi_x(DIM(x,y,z)) );
-          YCOMP( case DDY: return circle.phi_y(DIM(x,y,z)) );
-          ZCOMP( case DDZ: return circle.phi_z(DIM(x,y,z)) );
+          _CODE( case VAL: return circle.phi  (DIM(x,y,z)) );
+          XCODE( case DDX: return circle.phi_x(DIM(x,y,z)) );
+          YCODE( case DDY: return circle.phi_y(DIM(x,y,z)) );
+          ZCODE( case DDZ: return circle.phi_z(DIM(x,y,z)) );
         }
       }
       case 2: // moderately star-shaped domain
@@ -1321,10 +1367,10 @@ public:
         static double r0 = 0.533, DIM( xc = 0, yc = 0, zc = 0 );
         static flower_shaped_domain_t circle(r0, DIM(xc, yc, zc), 0.15, -1);
         switch (what) {
-          OCOMP( case VAL: return circle.phi  (DIM(x,y,z)) );
-          XCOMP( case DDX: return circle.phi_x(DIM(x,y,z)) );
-          YCOMP( case DDY: return circle.phi_y(DIM(x,y,z)) );
-          ZCOMP( case DDZ: return circle.phi_z(DIM(x,y,z)) );
+          _CODE( case VAL: return circle.phi  (DIM(x,y,z)) );
+          XCODE( case DDX: return circle.phi_x(DIM(x,y,z)) );
+          YCODE( case DDY: return circle.phi_y(DIM(x,y,z)) );
+          ZCODE( case DDZ: return circle.phi_z(DIM(x,y,z)) );
         }
       }
       case 3: // highly star-shaped domain
@@ -1332,10 +1378,10 @@ public:
 //        static double r0 = 0.533, DIM( xc = 0, yc = 0, zc = 0 );
 //        static flower_shaped_domain_t circle(r0, DIM(xc, yc, zc), 0.3, -1);
 //        switch (what) {
-//          OCOMP( case VAL: return circle.phi  (DIM(x,y,z)) );
-//          XCOMP( case DDX: return circle.phi_x(DIM(x,y,z)) );
-//          YCOMP( case DDY: return circle.phi_y(DIM(x,y,z)) );
-//          ZCOMP( case DDZ: return circle.phi_z(DIM(x,y,z)) );
+//          _CODE( case VAL: return circle.phi  (DIM(x,y,z)) );
+//          XCODE( case DDX: return circle.phi_x(DIM(x,y,z)) );
+//          YCODE( case DDY: return circle.phi_y(DIM(x,y,z)) );
+//          ZCODE( case DDZ: return circle.phi_z(DIM(x,y,z)) );
 //        }
         static double r0 = 0.533, DIM( xc = 0, yc = 0, zc = 0 );
         static double N = 1;
@@ -1344,10 +1390,10 @@ public:
         static double t[] = { 0.0};
         static radial_shaped_domain_t shape(r0, DIM(xc, yc, zc), -1, N, n, b, t);
         switch (what) {
-          OCOMP( case VAL: return MIN(0.2, shape.phi  (DIM(x,y,z))) );
-          XCOMP( case DDX: return shape.phi_x(DIM(x,y,z)) );
-          YCOMP( case DDY: return shape.phi_y(DIM(x,y,z)) );
-          ZCOMP( case DDZ: return shape.phi_z(DIM(x,y,z)) );
+          _CODE( case VAL: return MIN(0.2, shape.phi  (DIM(x,y,z))) );
+          XCODE( case DDX: return shape.phi_x(DIM(x,y,z)) );
+          YCODE( case DDY: return shape.phi_y(DIM(x,y,z)) );
+          ZCODE( case DDZ: return shape.phi_z(DIM(x,y,z)) );
         }
       }
       case 4: // assymetric curvy domain
@@ -1359,10 +1405,57 @@ public:
         static double t[] = { 0.0, 0.5, 1.8 };
         static radial_shaped_domain_t shape(r0, DIM(xc, yc, zc), 1, N, n, b, t);
         switch (what) {
-          OCOMP( case VAL: return shape.phi  (DIM(x,y,z)) );
-          XCOMP( case DDX: return shape.phi_x(DIM(x,y,z)) );
-          YCOMP( case DDY: return shape.phi_y(DIM(x,y,z)) );
-          ZCOMP( case DDZ: return shape.phi_z(DIM(x,y,z)) );
+          _CODE( case VAL: return shape.phi  (DIM(x,y,z)) );
+          XCODE( case DDX: return shape.phi_x(DIM(x,y,z)) );
+          YCODE( case DDY: return shape.phi_y(DIM(x,y,z)) );
+          ZCODE( case DDZ: return shape.phi_z(DIM(x,y,z)) );
+        }
+      }
+      case 5: // clusters of stars
+      {
+        int num_particles = 68;
+        static double X[] = { 0.294320, 0.292603, 0.296621, 0.301392, 0.293268, 0.289541, 0.290527, 0.295213, 0.300884, 0.935243, 0.936367, 0.937713, 0.927721, 0.926407, 0.939303, 0.926755, 0.936908, 0.934454, 0.160228, 0.164293, 0.173756, 0.168733, 0.170695, 0.160737, 0.725447, 0.740474, 0.736547, 0.723810, 0.742820, 0.728138, 0.728254, 0.052907, 0.034801, 0.048034, 0.038434, 0.037001, 0.048676, -0.182697, -0.180690, -0.171622, -0.177232, -0.182553, -0.169332, 0.082096, 0.070903, 0.086667, 0.089332, -0.416502, -0.435866, -0.428412, 0.367410, 0.364188, 0.357943, 0.354170, 0.355478, 0.356304, 0.368282, 0.370185, 0.352045, -0.187080, -0.177875, -0.177947, -0.193546, -0.190933, -0.184008, -0.192313, -0.190761 };
+        static double Y[] = { -0.731980, -0.722570, -0.730048, -0.723932, -0.730192, -0.732616, -0.736414, -0.726113, -0.733236, 0.156877, 0.165333, 0.161907, 0.160662, 0.164860, 0.170991, 0.162948, 0.160965, 0.162162, -0.743358, -0.747939, -0.744021, -0.761421, -0.747981, -0.760843, 0.889409, 0.893693, 0.884784, 0.875899, 0.874970, 0.878376, 0.880038, -0.344586, -0.356601, -0.350902, -0.350375, -0.361473, -0.344655, 0.433937, 0.449481, 0.442325, 0.435290, 0.446933, 0.440621, 0.665721, 0.669204, 0.652859, 0.668903, -0.873554, -0.873537, -0.875426, -0.528637, -0.533808, -0.522965, -0.530541, -0.527060, -0.525395, -0.530008, -0.524812, -0.519527, 0.207027, 0.213721, 0.216082, 0.211842, 0.205428, 0.210547, 0.214133, 0.223399 };
+        static double Z[] = { 0.659896, 0.661595, 0.663882, 0.657828, 0.649222, 0.652738, 0.653999, 0.659133, 0.653780, 0.372778, 0.384505, 0.385340, 0.380446, 0.368198, 0.382526, 0.371762, 0.380080, 0.384611, -0.914150, -0.903361, -0.909046, -0.906778, -0.895898, -0.911101, 0.374524, 0.375398, 0.361166, 0.362541, 0.358814, 0.365019, 0.371807, 0.791016, 0.796822, 0.802796, 0.799813, 0.796510, 0.794363, -0.891243, -0.892697, -0.877118, -0.878855, -0.889057, -0.888704, -0.798652, -0.802171, -0.795067, -0.810748, -0.205157, -0.209997, -0.210105, 0.781060, 0.793624, 0.788213, 0.798592, 0.787955, 0.789437, 0.780380, 0.798013, 0.791062, 0.333318, 0.343816, 0.343286, 0.346698, 0.340582, 0.334128, 0.335550, 0.348634 };
+        static double R[] = { 0.000948, 0.000196, 0.000553, 0.000374, 0.000798, 0.000755, 0.000341, 0.000792, 0.000857, 0.000462, 0.000946, 0.000114, 0.000653, 0.000243, 0.000443, 0.000482, 0.000713, 0.000448, 0.000329, 0.000792, 0.000264, 0.000999, 0.000389, 0.000209, 0.000966, 0.000453, 0.000708, 0.000367, 0.000306, 0.000857, 0.000451, 0.000660, 0.000834, 0.000961, 0.000546, 0.000859, 0.000590, 0.000642, 0.000499, 0.000714, 0.000706, 0.000927, 0.000652, 0.000309, 0.000229, 0.000256, 0.000778, 0.000168, 0.000167, 0.000329, 0.000239, 0.000271, 0.000682, 0.000809, 0.000107, 0.000985, 0.000107, 0.000830, 0.000198, 0.000928, 0.000126, 0.000647, 0.000749, 0.000170, 0.000752, 0.000925, 0.000728 };
+        static double n[] = { 5, 2, 3, 3, 3, 4, 3, 5, 4, 4, 3, 3, 4, 2, 3, 5, 3, 6, 6, 3, 4, 5, 4, 6, 3, 3, 4, 3, 4, 4, 6, 4, 4, 4, 5, 6, 3, 5, 4, 3, 6, 5, 6, 6, 3, 4, 4, 2, 6, 4, 6, 3, 3, 5, 4, 2, 5, 5, 4, 2, 3, 4, 6, 3, 3, 4, 4 };
+        static double b[] = { 0.177428, 0.120466, 0.195375, 0.161709, 0.193548, 0.088156, 0.140005, 0.121836, 0.078646, 0.026599, 0.129853, 0.111576, 0.059185, 0.009826, 0.141560, 0.025398, 0.179751, 0.011111, 0.052804, 0.015578, 0.186352, 0.001466, 0.025428, 0.199829, 0.064583, 0.004282, 0.036598, 0.044844, 0.191154, 0.026387, 0.069948, 0.184134, 0.079140, 0.175580, 0.119999, 0.104759, 0.018488, 0.191264, 0.107538, 0.162207, 0.108419, 0.139933, 0.197255, 0.018026, 0.189876, 0.009732, 0.189929, 0.038622, 0.040327, 0.067637, 0.004636, 0.072883, 0.097692, 0.035313, 0.166186, 0.004988, 0.133467, 0.145549, 0.011507, 0.121431, 0.001767, 0.130215, 0.088286, 0.122096, 0.030592, 0.029170, 0.195173 };
+        static double t[] = { 3.779031, 0.575194, 5.983689, 1.178485, 6.112317, 2.266495, 6.140219, 0.884964, 1.588758, 1.152778, 2.585702, 3.069164, 4.986538, 3.613796, 2.988958, 3.380732, 0.252419, 2.899990, 4.507911, 3.753404, 6.101247, 4.162976, 0.952773, 0.814897, 5.719127, 5.779404, 0.871440, 0.309913, 1.616747, 5.913726, 2.499319, 2.412480, 4.794653, 1.000997, 5.330543, 2.104655, 3.979605, 0.196232, 3.958288, 4.889946, 2.765306, 0.682710, 0.524252, 3.925875, 1.973639, 5.337312, 0.506358, 4.772787, 4.357852, 4.422504, 1.018504, 2.058938, 4.725618, 0.726723, 5.450653, 3.471888, 5.475823, 6.126808, 3.886958, 1.730282, 0.076936, 6.002824, 4.366932, 0.951230, 3.986605, 1.284015, 5.881409 };
+        static radial_shaped_domain_t shape;
+        double min_dist = DBL_MAX;
+        int idx = -1;
+        for (int i = 0; i < num_particles; ++i)
+        {
+          shape.set_params(R[i], DIM(X[i], Y[i], Z[i]), 1, 1, &n[i], &b[i], &t[i]);
+          double current = shape.phi(DIM(x,y,z));
+          if ((current) < (min_dist))
+          {
+            idx = i;
+            min_dist = current;
+          }
+        }
+
+        shape.set_params(R[idx], DIM(X[idx], Y[idx], Z[idx]), 1, 1, &n[idx], &b[idx], &t[idx]);
+        switch (what) {
+          _CODE( case VAL: return shape.phi  (DIM(x,y,z)) );
+          XCODE( case DDX: return shape.phi_x(DIM(x,y,z)) );
+          YCODE( case DDY: return shape.phi_y(DIM(x,y,z)) );
+          ZCODE( case DDZ: return shape.phi_z(DIM(x,y,z)) );
+        }
+      }
+      case 6: // highly wavy circle
+      {
+        static double r0 = 0.483, DIM( xc = 0, yc = 0, zc = 0 );
+        static double N = 3;
+        static double n[] = { 6., 100.0, 10000.0 };
+        static double b[] = { 0.2, .015, .00015, };
+        static double t[] = { 0.0, 0.0, 0.0 };
+        static radial_shaped_domain_t shape(r0, DIM(xc, yc, zc), 1, N, n, b, t);
+        switch (what) {
+          _CODE( case VAL: return shape.phi  (DIM(x,y,z)) );
+          XCODE( case DDX: return shape.phi_x(DIM(x,y,z)) );
+          YCODE( case DDY: return shape.phi_y(DIM(x,y,z)) );
+          ZCODE( case DDZ: return shape.phi_z(DIM(x,y,z)) );
         }
       }
     }
@@ -1817,8 +1910,12 @@ int main (int argc, char* argv[])
               } else {
                 splitting_criteria_cf_t data_tmp(lmin+iter, lmax+iter, &phi_eff_cf, lip);
                 p4est->user_pointer = (void*)(&data_tmp);
-                my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
-                my_p4est_partition(p4est, P4EST_FALSE, NULL);
+
+                for (int i = 0; i < lmax+iter; ++i)
+                {
+                  my_p4est_refine(p4est, P4EST_FALSE, refine_levelset_cf, NULL);
+                  my_p4est_partition(p4est, P4EST_FALSE, NULL);
+                }
               }
 
               splitting_criteria_cf_t data(lmin+iter, lmax+iter, &phi_eff_cf, lip);
