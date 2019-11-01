@@ -685,19 +685,27 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
       // Initialize booleans which will track if any refinement or coarsening is allowed -- which is different than possible
       // Only one refinement condition must be true to tag the cell for refining
       // All coarsening conditions must be true to tag the cell for coarsening
-      bool coarsen = true;
+      bool coarsen = false;
       bool refine = false;
+
+      // Initialize booleans to check if the LSF changes sign within the quadrant --> if not all pos and not all neg, tag for refinement
+      bool all_pos = true;
+      bool all_neg = true;
 
       if(refine_possible || coarsen_possible){
         // Initialize holder for node index in question
         p4est_locidx_t node_idx;
+
         // Now, loop over the children of the quadrant: -- will check criteria of each field at each node child of the quadrant in question
         for(unsigned short i=0; i<P4EST_CHILDREN; i++){
             node_idx = nodes->local_nodes[P4EST_CHILDREN*quad_idx + i];
 
             // First, check conditions on the LSF: -- If LSF won't allow for coarsening, there is no point in checking for more coarsening conditions
-            if(coarsen_possible) coarsen = coarsen && (fabs(phi_p[node_idx]) >= 1.0*lip*d);
+            if(coarsen_possible) coarsen = coarsen && (fabs(phi_p[node_idx]) >= 1.0*lip*d); // at this point, coarsen is a more restrictive flag than coarsen_possible
             if (refine_possible) refine = refine || (fabs(phi_p[node_idx]) <= 0.5*lip*d);
+
+            all_pos = all_pos && (phi_p[node_idx]>0);
+            all_neg = all_neg && (phi_p[node_idx]<0);
 
             // Loop over the number of fields we are taking into consideration: (if still possible to refine or coarsen)
             if(coarsen || refine_possible){
@@ -764,7 +772,6 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
                               switch(compare_opn[2*n]){
                                 case GREATER_THAN:
                                   coarsen = coarsen && (fabs(field_val) > criteria_coarsen);
-//                                  PetscPrintf(p4est->mpicomm,"Coarsen: Criteria is %0.3e, Field val is %0.3e, coarsen is %s \n",criteria_coarsen,fabs(field_val),coarsen?"true":"false");
 
                                   break;
                                 case LESS_THAN:
@@ -822,7 +829,6 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
                                   }
                                 case LESS_THAN:{
                                   refine = refine || (fabs(field_val) < criteria_refine);
-//                                  PetscPrintf(p4est->mpicomm,"Refine: Criteria is %0.3e, Field val is %0.3e, refine is %s \n",criteria_refine,fabs(field_val),refine?"true":"false");
                                   break;
                                   }
                                 default:{
@@ -836,6 +842,10 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
                   } // End of loop over n fields
               } // End if(coarsen OR refine_possible)
           } // End of loop over quadrant children
+
+        if(refine_possible && (!all_pos && !all_neg)){
+            refine = true;
+          }
         } // End of refine possible OR coarsen possible
 
 end_of_function:
@@ -942,7 +952,7 @@ bool splitting_criteria_tag_t::refine_and_coarsen(p4est_t* p4est, p4est_nodes_t*
       for (unsigned int i = 0; i<num_fields; i++){
           ierr = VecGetArrayRead(fields[i],&fields_p[i]);
         }
-      P4EST_ASSERT(fields_block == NULL); // if we are using list of fields, then block fields should be set to NULL, otherwise will get an error when we call the next refine and coarsen function bc of a datatype mismatch
+      //P4EST_ASSERT(fields_block == NULL); // if we are using list of fields, then block fields should be set to NULL, otherwise will get an error when we call the next refine and coarsen function bc of a datatype mismatch
     } // end of "if use block /else" statement -- else portion
 
 

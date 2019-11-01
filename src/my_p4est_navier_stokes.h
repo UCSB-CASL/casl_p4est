@@ -402,6 +402,8 @@ public:
   inline Vec get_hodge() { return hodge; }
 
   inline Vec get_smoke() { return smoke; }
+
+  inline Vec get_vorticity(){return vorticity;}
   inline bool get_refine_with_smoke() { return refine_with_smoke; }
   inline double get_smoke_threshold() { return smoke_thresh; }
 

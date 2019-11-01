@@ -176,7 +176,7 @@ void simulation_time_info(){
     case 2:
       tfinal = 3.6e3;
       delta_t = 1.e-2;
-      dt_max_allowed = 1.e1;;
+      dt_max_allowed = 1.e-1;;
       tn = 0.0;
 
     }
@@ -248,11 +248,13 @@ double outflow_v;
 double mu_l;
 double hodge_percentage_of_max_u;
 double uniform_band;
+double dt_NS;
 void set_NS_info(){
   pressure_prescribed_flux = 0.0; // For the Neumann condition on the two x walls and lower y wall
   pressure_prescribed_value = 0.0; // For the Dirichlet condition on the back y wall
 
   uniform_band = 4.0;
+  dt_NS = 1.e-2; // initial dt for NS
   switch(example_){
     case 0: throw std::invalid_argument("NS isnt setup for this example");
     case 1:
@@ -291,7 +293,7 @@ bool check_interfacial_velocity = true; // Whether or not you want to print out 
 
 bool save_temperature_derivative_fields = false; // saving temperature derivative fields to vtk or not
 
-bool solve_smoke = false; // Whether or not you want to solve for smoke
+bool solve_smoke = true; // Whether or not you want to solve for smoke
 
 bool solve_navier_stokes = true;
 bool let_NS_refine = false;
@@ -1048,11 +1050,6 @@ public:
 
 
 // --------------------------------------------------------------------------------------------------------------
-// PRESSURE INITIAL CONDITION -- Not needed
-// --------------------------------------------------------------------------------------------------------------
-
-
-// --------------------------------------------------------------------------------------------------------------
 // Functions for checking the values of interest during the solution process
 // --------------------------------------------------------------------------------------------------------------
 void check_T_values(vec_and_ptr_t phi, vec_and_ptr_t T, p4est_nodes* nodes, p4est_t* p4est, int example, vec_and_ptr_t phi_cyl) {
@@ -1556,12 +1553,44 @@ void interpolate_values_onto_new_grid(vec_and_ptr_t T_l, vec_and_ptr_t T_l_new,
                                       vec_and_ptr_dim_t v_interface,vec_and_ptr_dim_t v_interface_new,
                                       vec_and_ptr_dim_t v_external,vec_and_ptr_dim_t v_external_new,
                                       vec_and_ptr_t smoke, vec_and_ptr_t smoke_new,
-                                      p4est_nodes_t *nodes_new_grid, p4est_t *p4est_new,
+                                      p4est_nodes_t *nodes_new_grid, p4est_t *p4est_new, p4est_nodes_t *nodes_old_grid, p4est_t *p4est_old,
                                       my_p4est_node_neighbors_t *ngbd_old_grid,interpolation_method interp_method){
   // Need neighbors of old grid to create interpolation object
   // Need nodes of new grid to get the points that we must interpolate to
 
   my_p4est_interpolation_nodes_t interp_nodes(ngbd_old_grid);
+
+  // Create an array of the vectors for faster interpolation -- interpolate all fields at once:
+  int num_fields;
+  if(solve_smoke) num_fields = 7;
+  else num_fields = 6;
+
+  Vec all_fields_old[num_fields];
+  Vec all_fields_new[num_fields];
+
+  PetscErrorCode ierr;
+  for(unsigned int k = 0; k<num_fields; k++){
+      ierr = VecCreateGhostNodes(p4est_old, nodes_old_grid, &all_fields_old[k]); CHKERRXX(ierr);
+      ierr = VecCreateGhostNodes(p4est_new,nodes_new_grid,&all_fields_new[k]); CHKERRXX(ierr);
+    }
+  // Set existing vectors as elements of the array of vectors:
+  all_fields_old[0] = T_l.vec;
+  all_fields_old[1] = T_s.vec;
+  all_fields_old[2] = v_interface.vec[0];
+  all_fields_old[3] = v_interface.vec[1];
+  all_fields_old[4] = v_external.vec[0];
+  all_fields_old[5] = v_external.vec[1];
+  if(solve_smoke) all_fields_old[6] = smoke.vec;
+
+  all_fields_new[0] = T_l_new.vec;
+  all_fields_new[1] = T_s_new.vec;
+  all_fields_new[2] = v_interface_new.vec[0];
+  all_fields_new[3] = v_interface_new.vec[1];
+  all_fields_new[4] = v_external_new.vec[0];
+  all_fields_new[5] = v_external_new.vec[1];
+  if(solve_smoke) all_fields_new[6] = smoke_new.vec;
+
+  interp_nodes.set_input(all_fields_old,interp_method,num_fields);
 
   // Grab points on the new grid that we want to interpolate to:
   double xyz[P4EST_DIM];
@@ -1569,21 +1598,10 @@ void interpolate_values_onto_new_grid(vec_and_ptr_t T_l, vec_and_ptr_t T_l_new,
     node_xyz_fr_n(n,p4est_new,nodes_new_grid,xyz);
     interp_nodes.add_point(n,xyz);
   }
-  // Interpolate temperature fields:
-  interp_nodes.set_input(T_l.vec,interp_method); interp_nodes.interpolate(T_l_new.vec);
-  interp_nodes.set_input(T_s.vec,interp_method); interp_nodes.interpolate(T_s_new.vec);
 
-  // Interpolate velocity fields:
-  foreach_dimension(d){
-    interp_nodes.set_input(v_interface.vec[d],interp_method); interp_nodes.interpolate(v_interface_new.vec[d]);
-    interp_nodes.set_input(v_external.vec[d],interp_method); interp_nodes.interpolate(v_external_new.vec[d]);
-  }
+  interp_nodes.interpolate(all_fields_new);
 
-  // Interpolate smoke (if applicable):
-  if(solve_smoke){
-      interp_nodes.set_input(smoke.vec,interp_method); interp_nodes.interpolate(smoke_new.vec);
-    }
-}
+} // end of interpolate_values_onto_new_grid
 
 
 void compute_interfacial_velocity(vec_and_ptr_dim_t T_l_d, vec_and_ptr_dim_t T_s_d, vec_and_ptr_dim_t jump, vec_and_ptr_dim_t v_interface, vec_and_ptr_t phi, my_p4est_node_neighbors_t *ngbd){
@@ -1665,7 +1683,10 @@ void compute_timestep(vec_and_ptr_dim_t v_interface, vec_and_ptr_t phi, double d
 
   // Compute new timestep:
   dt = cfl*min(dxyz_smallest[0],dxyz_smallest[1])/min(global_max_v_norm,1.0);
+  PetscPrintf(p4est->mpicomm,"Computed timestep: %0.3e \n",dt);
+
   dt = min(dt,dt_max_allowed);
+  PetscPrintf(p4est->mpicomm,"Computed timestep: %0.3e \n",dt);
 
   // Report computed timestep and minimum grid size:
   PetscPrintf(p4est->mpicomm,"Computed timestep: %0.3e \n",dt);
@@ -1711,6 +1732,109 @@ void compute_curvature(vec_and_ptr_t phi,vec_and_ptr_dim_t normal,vec_and_ptr_t 
   LS.extend_from_interface_to_whole_domain_TVD(phi.vec,curvature_tmp.vec,curvature.vec,20);
 
 }
+// --------------------------------------------------------------------------------------------------------------
+// FUNCTIONS FOR SAVING:
+// --------------------------------------------------------------------------------------------------------------
+void save_everything(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,vec_and_ptr_t phi, vec_and_ptr_t phi_2, vec_and_ptr_t Tl,vec_and_ptr_t Ts,vec_and_ptr_dim_t v_int,vec_and_ptr_dim_t v_NS, vec_and_ptr_t press, vec_and_ptr_t vorticity, vec_and_ptr_t smoke,double scaling, char* filename){
+// Things we want to save:
+/*
+ *LSF
+ * LSF2 for ex 2
+ * Tl
+ * Ts
+ * v_interface
+ * v NS
+ * pressure
+ * vorticity
+ * smoke
+ * */
+
+  // First, need to scale the fields appropriately:
+
+  // Scale velocities:
+  foreach_dimension(d){
+    VecScaleGhost(v_int.vec[d],1./scaling);
+    VecScaleGhost(v_NS.vec[d],1./scaling);
+  }
+
+  // Scale pressure:
+  VecScaleGhost(press.vec,scaling);
+
+  // Get arrays:
+  phi.get_array();
+  if(example_ == 2) phi_2.get_array();
+
+  Tl.get_array(); Ts.get_array();
+
+  v_int.get_array(); v_NS.get_array();
+
+  press.get_array(); vorticity.get_array();
+
+  if(solve_smoke) smoke.get_array();
+
+
+  // Save data:
+  std::vector<std::string> point_names;
+  std::vector<double*> point_data;
+  int num_point_data;
+
+  if(example_ == 2 && solve_smoke){
+      point_names = {"phi","phi_cyl","T_l","T_s","v_interface_x","v_interface_y","u","v","vorticity","smoke"};
+      point_data = {phi.ptr, phi_2.ptr,Tl.ptr, Ts.ptr,v_int.ptr[0],v_int.ptr[1],v_NS.ptr[0],v_NS.ptr[1],vorticity.ptr,smoke.ptr};
+      num_point_data = 10;
+    }
+  else if (example_ == 2 && !solve_smoke) {
+      point_names = {"phi","phi_cyl","T_l","T_s","v_interface_x","v_interface_y","u","v","vorticity"};
+      point_data = {phi.ptr, phi_2.ptr,Tl.ptr, Ts.ptr,v_int.ptr[0],v_int.ptr[1],v_NS.ptr[0],v_NS.ptr[1],vorticity.ptr};
+      num_point_data = 9;
+
+    }
+  else if (example_ !=2 && solve_smoke){
+      point_names = {"phi","T_l","T_s","v_interface_x","v_interface_y","u","v","vorticity","smoke"};
+      point_data = {phi.ptr, Tl.ptr, Ts.ptr,v_int.ptr[0],v_int.ptr[1],v_NS.ptr[0],v_NS.ptr[1],vorticity.ptr,smoke.ptr};
+      num_point_data = 9;
+
+    }
+  else{
+      point_names = {"phi","T_l","T_s","v_interface_x","v_interface_y","u","v","vorticity"};
+      point_data = {phi.ptr, Tl.ptr, Ts.ptr,v_int.ptr[0],v_int.ptr[1],v_NS.ptr[0],v_NS.ptr[1],vorticity.ptr};
+      num_point_data = 8;
+
+    }
+
+  std::vector<std::string> cell_names = {"pressure"};
+  std::vector<double*> cell_data = {press.ptr};
+  int num_cell_data = 1;
+
+  my_p4est_vtk_write_all_vector_form(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,filename,point_data,point_names,cell_data,cell_names);
+
+
+  // Restore arrays:
+
+  phi.restore_array();
+  if(example_ == 2) phi_2.restore_array();
+
+  Tl.restore_array(); Ts.restore_array();
+
+  v_int.restore_array(); v_NS.restore_array();
+
+  press.restore_array(); vorticity.restore_array();
+
+  if(solve_smoke) smoke.restore_array();
+  // Scale things back:
+  foreach_dimension(d){
+    VecScaleGhost(v_int.vec[d],scaling);
+    VecScaleGhost(v_NS.vec[d],scaling);
+  }
+
+  // Scale pressure:
+  VecScaleGhost(press.vec,1./scaling);
+
+
+
+
+}
+
 
 // --------------------------------------------------------------------------------------------------------------
 // BEGIN MAIN OPERATION:
@@ -1993,6 +2117,9 @@ int main(int argc, char** argv) {
   vec_and_ptr_cells_t hodge_new;
   vec_and_ptr_cells_t hodge_old_grid;
 
+  vec_and_ptr_t vorticity;
+  vec_and_ptr_t press;
+
 
   // -----------------------------------------------
   // Initialize variables for extension bands across interface and etc:
@@ -2061,7 +2188,7 @@ int main(int argc, char** argv) {
 
   for (tn;tn<tfinal; tn+=dt, tstep++){
       if (!keep_going) break;
-      //if(tstep>=1) break; // TIMESTEP BREAK
+//      if(tstep>=1) break; // TIMESTEP BREAK
 
       // --------------------------------------------------------------------------------------------------------------
       // Print iteration information:
@@ -2136,7 +2263,6 @@ int main(int argc, char** argv) {
           }
         }
 
-
       // For the case where we have a second interface:
       if(example_ == 2){
           cyl_normals.create(p4est,nodes);
@@ -2179,6 +2305,13 @@ int main(int argc, char** argv) {
       // --------------------------------------------------------------------------------------------------------------
       // SAVING DATA: Save data every specified amout of timesteps: -- Do this after values are extended across interface to make visualization nicer
       // --------------------------------------------------------------------------------------------------------------
+
+      if(tstep>0){
+      char output[1000];
+      sprintf(output,"/home/elyce/workspace/projects/multialloy_with_fluids/solidif_with_fluids_output/snapshot_full_%d",tstep);
+      save_everything(p4est,nodes,ghost,phi,phi_cylinder,T_l_n,T_s_n,v_interface,v_n,press,vorticity,smoke,scaling,output);
+        }
+      /*
 
       if (tstep % save ==0){
           out_idx++;
@@ -2315,6 +2448,7 @@ int main(int argc, char** argv) {
             VecScaleGhost(v_interface.vec[d],scaling);
           }
         }
+      */
 
       // Enforce that the interfacial velocity is within a reasonable range specified by the user:
       P4EST_ASSERT(global_max_v_norm<v_int_max_allowed);
@@ -2341,6 +2475,19 @@ int main(int argc, char** argv) {
       // --------------------------------------------------------------------------------------------------------------
       compute_timestep(v_interface, phi, dxyz_close_to_interface, dxyz_smallest,nodes,p4est); // this function modifies the variable dt
 
+
+      if(solve_navier_stokes){
+          // Take into consideration the Navier - Stokes timestep:
+          //Take into account the NS timestep: -- probably better to do this with the max NS norm and CFL in the main file, not internally in NS
+
+          PetscPrintf(mpi.comm(),"\nComputed timesteps: \n"
+                                 "Stefan: %0.3e \n"
+                                 "Navier Stokes: %0.3e \n"
+                                 "Official : %0.3e \n \n",dt,dt_NS,min(dt,dt_NS));
+          //dt = min(dt,dt_NS);
+
+
+        }
       // --------------------------------------------------------------------------------------------------------------
       // Advance the LSF:
       // --------------------------------------------------------------------------------------------------------------
@@ -2355,11 +2502,61 @@ int main(int argc, char** argv) {
       // Create the semi-lagrangian object and do the advection:
       my_p4est_semi_lagrangian_t sl(&p4est_np1, &nodes_np1, &ghost_np1, ngbd);
 
-      // Advect the LSF and update the grid under the v_interface field:
-      example_ == 2 ? // for example 2, refine around both LSFs. Otherwise, refine around just the one
-            sl.update_p4est(v_interface.vec,dt,phi.vec,phi_dd.vec,NULL):
-            sl.update_p4est(v_interface.vec,dt,phi.vec,phi_dd.vec);
+      // Build refinement criteria for Navier - Stokes problem:
 
+      if(tstep == 0){
+          vorticity.create(p4est,nodes);
+          sample_cf_on_nodes(p4est,nodes,zero_cf,vorticity.vec);
+          NS_norm = max(u0,v0);
+        }
+      //VecView(vorticity.vec,PETSC_VIEWER_STDOUT_WORLD);
+      std::vector<compare_option_t> compare_opn;
+      std::vector<compare_diagonal_option_t> diag_opn;
+      std::vector<double> criteria;
+      const int num_fields = 1;
+      bool use_block = false;
+      bool expand_ghost_layer = true;
+      double threshold = 0.1;
+
+      Vec fields_[num_fields];
+      if(solve_navier_stokes){
+          fields_[0] = vorticity.vec;
+          //fields_[1] = phi.vec; // Will use this for a uniform band criteria
+
+          // Coarsening instructions: (for vorticity)
+          compare_opn.push_back(LESS_THAN);
+          diag_opn.push_back(DIVIDE_BY);
+          criteria.push_back(threshold*NS_norm/2.);
+
+          // Refining instructions: (for vorticity)
+          compare_opn.push_back(GREATER_THAN);
+          diag_opn.push_back(DIVIDE_BY);
+          criteria.push_back(threshold*NS_norm);
+
+          //VecView(vorticity.vec,PETSC_VIEWER_STDOUT_WORLD);
+
+
+//          // Coarsening instructions: (for uniform band around interface)
+//          compare_opn.push_back(GREATER_THAN);
+//          diag_opn.push_back(ABSOLUTE);
+//          criteria.push_back(uniform_band*dxyz_close_to_interface);
+
+//          // Refining instructions: (for uniform band around interface)
+//          compare_opn.push_back(LESS_THAN);
+//          diag_opn.push_back(ABSOLUTE);
+//          criteria.push_back(uniform_band*NS_norm);
+        }
+
+
+      // Advect the LSF and update the grid under the v_interface field:
+      if(solve_navier_stokes){
+          sl.update_p4est(v_interface.vec, dt, phi.vec, phi_dd.vec, phi_cylinder.vec,num_fields ,use_block ,fields_ ,NULL,criteria,compare_opn,diag_opn,expand_ghost_layer);
+        }
+      else{
+          example_ == 2 ? // for example 2, refine around both LSFs. Otherwise, refine around just the one
+                sl.update_p4est(v_interface.vec,dt,phi.vec,phi_dd.vec,NULL):
+                sl.update_p4est(v_interface.vec,dt,phi.vec,phi_dd.vec);
+        }
 
       // Get the new neighbors:
       my_p4est_hierarchy_t *hierarchy_np1 = new my_p4est_hierarchy_t(p4est_np1,ghost_np1,&brick);
@@ -2369,29 +2566,34 @@ int main(int argc, char** argv) {
       ngbd_np1->init_neighbors();
 
       // FOR FUTURE NOTICE :: functions that exist are: ngbd->update() and hierarchy->update() --> Look at how Daniil does it
-      PetscPrintf(mpi.comm(),"Grid has been advected \n");
 
       // Reinitialize the LSF on the new grid:
       my_p4est_level_set_t ls_new(ngbd_np1);
-      PetscPrintf(mpi.comm(),"New ls object created \n");
 
-      ls_new.reinitialize_1st_order_time_2nd_order_space(phi.vec, 100);
-      PetscPrintf(mpi.comm(),"Reinitialized \n");
+      ls_new.reinitialize_1st_order_time_2nd_order_space(phi.vec, 50);
 
       ls_new.perturb_level_set_function(phi.vec,EPS);
-      PetscPrintf(mpi.comm(),"Perturbed \n");
 
 
       // --------------------------------------------------------------------------------------------------------------
       // Interpolate Values onto New Grid:
       // -------------------------------------------------------------------------------------------------------------
-      PetscPrintf(mpi.comm(),"Beginning interpolation onto new grid after LSF is advected: \n ");
       // Create vectors to hold new values:
       T_l_new.create(p4est_np1,nodes_np1);
       T_s_new.create(T_l_new.vec);
 
       v_interface_new.create(p4est_np1,nodes_np1);
       vel_new.create(v_interface_new.vec);
+
+
+      v_n_old_grid.destroy();
+      v_n_old_grid.create(p4est,nodes);
+      foreach_dimension(d){
+        ierr = VecCopyGhost(v_n.vec[d],v_n_old_grid.vec[d]);
+      }
+
+      v_n.destroy();
+      v_n.create(p4est_np1,nodes_np1);
 
       vec_and_ptr_t smoke_new;
       if (solve_smoke){
@@ -2402,13 +2604,17 @@ int main(int argc, char** argv) {
       interpolate_values_onto_new_grid(T_l_n,T_l_new,
                                        T_s_n, T_s_new,
                                        v_interface, v_interface_new,
-                                       vel_n, vel_new,
+                                       v_n_old_grid, v_n,
                                        smoke, smoke_new,
-                                       nodes_np1, p4est_np1,
+                                       nodes_np1, p4est_np1, nodes,p4est,
                                        ngbd, interp_bw_grids);
-
-
-      PetscPrintf(mpi.comm(),"Succeeds in interpolating fields onto the new grid \n");
+//      interpolate_values_onto_new_grid(T_l_n,T_l_new,
+//                                       T_s_n, T_s_new,
+//                                       v_interface, v_interface_new,
+//                                       vel_n, vel_new,
+//                                       smoke, smoke_new,
+//                                       nodes_np1, p4est_np1, nodes,p4est,
+//                                       ngbd, interp_bw_grids);
 
       // Copy new data over:
       // Transfer new values to the original objects:
@@ -2457,551 +2663,6 @@ int main(int argc, char** argv) {
 //        check_T_values(phi_solid,T_s_n,nodes,p4est,example_,phi_cylinder);
 //        PetscPrintf(mpi.comm()," ] \n");
         }
-
-      // --------------------------------------------------------------------------------------------------------------
-      // Navier-Stokes Problem: Setup and solve a NS problem in the liquid subdomain
-      // --------------------------------------------------------------------------------------------------------------
-      /*
-      if (solve_navier_stokes){
-          PetscPrintf(mpi.comm(),"Beginning the Navier Stokes setup \n \n");
-          // For the first timestep, sample the initial condition on the new grid:
-          if (tstep<1){
-              v_n.destroy();
-              v_n.create(p4est_np1,nodes_np1);
-
-              const CF_DIM *v_init_cf[P4EST_DIM] = {&u_initial, &v_initial};
-              foreach_dimension(d){
-                sample_cf_on_nodes(p4est_np1,nodes_np1,*v_init_cf[d],v_n.vec[d]);
-              }
-
-              v_n_old_grid.destroy(); v_n_old_grid.create(p4est,nodes);
-              foreach_dimension(d){
-                sample_cf_on_nodes(p4est,nodes,*v_init_cf[d],v_n_old_grid.vec[d]);
-              }
-            }
-
-          // If not the new timestep, use the previous solution as the initial condition:
-          // Interpolate this onto the new grid: -- Note that we provide v on the old grid as nm1
-          //-- this is not actually used by the solver since we are only doing solution order 1, but it is required to initialize the solver (At least for now)
-          if (tstep>=1){
-              PetscPrintf(mpi.comm(),"Begin interpolating the old NS velocity field onto the new grid \n");
-              //v_n_old_grid.destroy();
-              PetscPrintf(mpi.comm(),"1: \n");
-
-
-              v_n_old_grid.create(p4est,nodes);
-              foreach_dimension(d){
-                VecCopyGhost(v_n.vec[d],v_n_old_grid.vec[d]);
-              }
-              PetscPrintf(mpi.comm(),"2: \n");
-              v_n.destroy();
-              PetscPrintf(mpi.comm(),"3: \n");
-
-              v_n.create(p4est_np1,nodes_np1);
-
-              my_p4est_interpolation_nodes_t interp_v_NS(ngbd);
-
-              double xyz[P4EST_DIM];
-              foreach_node(n,nodes_np1){
-                node_xyz_fr_n(n,p4est_np1,nodes_np1,xyz);
-                interp_v_NS.add_point(n,xyz);
-              }
-
-              foreach_dimension(d){
-                interp_v_NS.set_input(v_n_old_grid.vec[d],interp_bw_grids);
-                interp_v_NS.interpolate(v_n.vec[d]);
-              }
-            }
-
-          // Get the cell neighbors:
-          //my_p4est_cell_neighbors_t *ngbd_c_old_grid = new my_p4est_cell_neighbors_t(hierarchy);
-          my_p4est_cell_neighbors_t *ngbd_c = new my_p4est_cell_neighbors_t(hierarchy_np1);
-          // Create the faces:
-          my_p4est_faces_t *faces_np1 = new my_p4est_faces_t(p4est_np1,ghost_np1,&brick,ngbd_c);
-
-          PetscPrintf(mpi.comm(),"Beginning NS setup \n");
-          // First, initialize the Navier-Stokes solver with the grid:
-          ns = new my_p4est_navier_stokes_t(ngbd,ngbd_np1,faces_np1);
-
-          // Set the LSF:
-          ns->set_phi(phi.vec);
-
-          // Set the parameters for the NS solver:
-          ns->set_parameters(mu_l,rho_l,1,uniform_band,NULL,cfl);
-
-          // Set the nth velocity:
-          ns->set_velocities(v_n_old_grid.vec,v_n.vec);
-
-          // Set the timestep:
-          ns->set_dt(dt);
-
-          // Call the appropriate functions to setup the interfacial boundary conditions :
-          interface_bc_velocity_u(); interface_bc_velocity_v();
-
-          // Now setup the bc interface objects -- must be initialized with the neighbors and computed interfacial velocity of the moving solid front
-          BC_interface_value_velocity_u bc_interface_value_u(ngbd_np1,v_interface);
-          BC_interface_value_velocity_v bc_interface_value_v(ngbd_np1,v_interface);
-
-          // Initialize the BC objects:
-          BoundaryConditions2D bc_velocity[P4EST_DIM];
-          BoundaryConditions2D bc_pressure;
-
-          // Set the interfacial boundary conditions for velocity:
-          bc_velocity[0].setInterfaceType(interface_bc_type_velocity_u);
-          bc_velocity[1].setInterfaceType(interface_bc_type_velocity_v);
-
-          bc_velocity[0].setInterfaceValue(bc_interface_value_u);
-          bc_velocity[1].setInterfaceValue(bc_interface_value_v);
-
-          // Set the wall boundary conditions for velocity:
-          bc_velocity[0].setWallTypes(wall_bc_type_velocity_u); bc_velocity[1].setWallTypes(wall_bc_type_velocity_v);
-          bc_velocity[0].setWallValues(wall_bc_value_velocity_u); bc_velocity[1].setWallValues(wall_bc_value_velocity_v);
-
-          // Set the interfacial boundary conditions for pressure:
-          interface_bc_pressure();
-          bc_pressure.setInterfaceType(interface_bc_type_pressure);
-          bc_pressure.setInterfaceValue(interface_bc_value_pressure);
-
-          // Set the wall boundary conditions for pressure:
-          bc_pressure.setWallTypes(wall_bc_type_pressure); bc_pressure.setWallValues(wall_bc_value_pressure);
-
-
-          // Set the boundary conditions:
-          ns->set_bc(bc_velocity,&bc_pressure);
-
-          // set_external_forces
-
-          // Create the cell and face solvers:
-          cell_solver = NULL;
-          face_solver = NULL;
-
-          // Get hodge and begin iterating on hodge error
-
-
-
-
-          // Write out the data:
-          PetscPrintf(mpi.comm(),"Writing the fluids grid output data before the grid update: \n");
-          if(elyce_laptop) sprintf(outdir,"/Users/elyce/workspace/projects/multialloy_with_fluids/output/snapshot_NS_grid_before_update_%d",out_idx);
-          else sprintf(outdir,"/home/elyce/workspace/projects/multialloy_with_fluids/solidif_with_fluids_output/snapshot_NS_grid_before_update_%d",out_idx);
-
-          phi.get_array();
-          v_n.get_array();
-          my_p4est_vtk_write_all(p4est_np1,nodes_np1,ghost_np1,P4EST_TRUE,P4EST_TRUE,
-                                            3,0,outdir,
-                                            VTK_POINT_DATA,"phi",phi.ptr,
-                                            VTK_POINT_DATA,"v_NS_x",v_n.ptr[0],
-                                            VTK_POINT_DATA,"v_NS_y",v_n.ptr[1]);
-
-          phi.restore_array();
-          v_n.restore_array();
-
-          PetscPrintf(mpi.comm(),"Finished writing the fluids grid output data before the grid update: \n");
-
-
-
-          // Take into consideration the Navier - Stokes timestep:
-          //ns->compute_adapted_dt();
-
-          ns->compute_dt();
-          double dt_ns = ns->get_dt();
-
-          dt = min(dt,dt_ns);
-
-          PetscPrintf(mpi.comm(),"New timestep as set by Navier-Stokes is : %0.3e \n \n",dt);
-
-          ns->set_dt(dt);
-
-          // Update the grid:
-          if (let_NS_refine){
-              // Save a ngbd_NS -- neighborhood of the previous grid -- for interpolation purposes:
-              my_p4est_node_neighbors_t *ngbd_NS = new my_p4est_node_neighbors_t(hierarchy_np1,nodes_np1);
-              ngbd_NS->init_neighbors(); // Need to check if this is really a necessary operation or not
-
-
-              // Rough thing for NS -- fix later:
-              vec_and_ptr_dim_t v_interface_old_grid(p4est_np1,nodes_np1);
-              foreach_dimension(d){
-                VecCopyGhost(v_interface.vec[d],v_interface_old_grid.vec[d]);
-              } // -- for later
-
-              NS_grid_unchanged = true; // Initialize the grid to registering as unchanged
-              NS_grid_unchanged = ns->update_from_tn_to_tnp1(NULL,false,false);
-              PetscPrintf(mpi.comm(),"Is grid changed? --> %s \n",NS_grid_unchanged? "no" : "yes");
-              if(!NS_grid_unchanged){
-                  PetscPrintf(mpi.comm(),"Updating the values onto the grid that has been refined by NS\n");
-
-                  //
-                  //p4est_destroy(p4est_np1);
-                  //p4est_ghost_destroy(ghost_np1);
-                  //p4est_nodes_destroy(nodes_np1);
-                  //delete ngbd_np1;
-
-                  //
-                  p4est_np1 = ns->get_p4est();
-                  nodes_np1 = ns->get_nodes();
-                  ghost_np1 = ns->get_ghost();
-                  ngbd_np1 = ns->get_ngbd_n();
-
-//                  ngbd = ns->get_ngbd_nm1(); // This won't work because the NS solver will have destroyed this neighborhood
-
-                  my_p4est_interpolation_nodes_t interp_vint(ngbd_NS);
-                  PetscPrintf(mpi.comm(),"Is able to create the interpolation object\n");
-
-                  int size_before;
-                  VecGetSize(v_interface.vec[0],&size_before);
-
-                  v_interface.destroy();
-                  PetscPrintf(mpi.comm(),"Destroys vinterface \n");
-                  v_interface.create(p4est_np1,nodes_np1);
-                  PetscPrintf(mpi.comm(),"Creates new vinterface \n");
-
-
-                  PetscPrintf(mpi.comm(),"Beginning interpolation of vinterface onto new NS grid \n");
-
-                  // Now, need to interpolate v_interface to the new updated grid, and reset the boundary condition again:
-
-
-                  double xyz[P4EST_DIM];
-                  foreach_local_node(n,nodes_np1){
-                    node_xyz_fr_n(n,p4est_np1,nodes_np1,xyz);
-                    //printf("Gets the node %d at point %0.2f, %0.2f \n",n,xyz[0],xyz[1]);
-                    //interp_vint.add_point(n,xyz);
-                    if (mpi.rank() ==2 ){
-//                        printf("Adding node %d, point (%0.2f, %0.2f) \n",n,xyz[0],xyz[1]);}
-                    PetscPrintf(mpi.comm(),"Adding node %d, point (%0.4f, %0.4f) \n",n,xyz[0],xyz[1]);
-                    }
-                  }
-                  foreach_dimension(d){
-                    interp_vint.set_input(v_interface_old_grid.vec[d],interp_bw_grids);
-                    interp_vint.interpolate(v_interface.vec[d]);
-
-                  }
-
-                  int size_after;
-                  VecGetSize(v_interface.vec[0],&size_after);
-
-                  PetscPrintf(mpi.comm(),"\n Size before : %d , Size after %d \n",size_before,size_after);
-
-                  //PetscPrintf(mpi.comm(),"Successfully interpolated the interfacial velocity to the new NS grid \n");
-
-                  // Now reset the boundary condition properly:
-                  //BoundaryConditions2D bc_velocity_new[P4EST_DIM];
-
-                  // Finally, update the LSF:
-                  //phi.destroy();
-
-                  // NOT SURE ABOUT THIS vvv : is this really necessary? , at least, do we really need to set it again?
-                  phi.create(p4est_np1,nodes_np1);
-                  //PetscPrintf(mpi.comm(),"Created new phi \n");
-                  phi.set(ns->get_phi());
-                  //PetscPrintf(mpi.comm(),"Set the new phi \n");
-
-
-                  // Interpolate temperature values onto the new grid: ----------------------------------
-                  PetscPrintf(mpi.comm(),"Beginning interpolation of Temperature values onto new grid: \n "); // -- update with ngbd_NS
-                  // Create vectors to hold new values:
-                  T_l_new.create(p4est_np1,nodes_np1);
-                  T_s_new.create(T_l_new.vec);
-
-                  v_interface_new.create(p4est_np1,nodes_np1);
-                  vel_new.create(v_interface_new.vec);
-
-                  vec_and_ptr_t smoke_new;
-                  if (solve_smoke){
-                      smoke_new.create(T_l_new.vec);
-                    }
-
-                  // Interpolate things to the new grid:
-                  interpolate_values_onto_new_grid(T_l_n,T_l_new,
-                                                   T_s_n, T_s_new,
-                                                   v_interface, v_interface_new,
-                                                   vel_n, vel_new,
-                                                   smoke, smoke_new,
-                                                   nodes_np1, p4est_np1,
-                                                   ngbd_NS, interp_bw_grids);
-
-
-
-                  // Copy new data over:
-                  // Transfer new values to the original objects:
-                  T_l_n.destroy(); T_s_n.destroy();
-                  T_l_n.create(p4est_np1,nodes_np1); T_s_n.create(T_l_n.vec);
-
-                  v_interface.destroy(); vel_n.destroy();
-
-                  v_interface.create(p4est_np1,nodes_np1); vel_n.create(v_interface.vec);
-
-                  if(solve_smoke) {smoke.destroy(); smoke.create(T_l_n.vec);}
-
-                  VecCopyGhost(T_l_new.vec,T_l_n.vec);
-                  VecCopyGhost(T_s_new.vec,T_s_n.vec);
-                  if (solve_smoke) VecCopyGhost(smoke_new.vec,smoke.vec);
-
-                  foreach_dimension(d){
-                    VecCopyGhost(v_interface_new.vec[d],v_interface.vec[d]);
-                    VecCopyGhost(vel_new.vec[d],vel_n.vec[d]);
-                  }
-
-                  // Delete the "new value" objects until the next timestep:
-                  T_l_new.destroy(); T_s_new.destroy();
-                  v_interface_new.destroy(); vel_new.destroy();
-
-                // ----------------------------------------
-                PetscPrintf(mpi.comm(),"Interpolated temp and smoke values to the new updated grid by NS \n");
-                int size_Tl;
-                VecGetSize(T_l_n.vec,&size_Tl);
-                PetscPrintf(mpi.comm(),"Size of T_l vector now : %d \n",size_Tl);
-
-
-
-                } // End of "if grid has changed" loop
-
-            }
-
-
-
-          // Write out the data:
-          PetscPrintf(mpi.comm(),"Writing the fluids grid output data after the grid update: \n");
-          if(elyce_laptop) sprintf(outdir,"/Users/elyce/workspace/projects/multialloy_with_fluids/output/snapshot_NS_grid_after_update_%d",out_idx);
-          else sprintf(outdir,"/home/elyce/workspace/projects/multialloy_with_fluids/solidif_with_fluids_output/snapshot_NS_grid_after_update_%d",out_idx);
-
-          phi.get_array();
-          v_n.get_array();
-          my_p4est_vtk_write_all(p4est_np1,nodes_np1,ghost_np1,P4EST_TRUE,P4EST_TRUE,
-                                            3,0,outdir,
-                                            VTK_POINT_DATA,"phi",phi.ptr,
-                                            VTK_POINT_DATA,"v_NS_x",v_n.ptr[0],
-                                            VTK_POINT_DATA,"v_NS_y",v_n.ptr[1]);
-
-          phi.restore_array();
-          v_n.restore_array();
-
-          PetscPrintf(mpi.comm(),"Finished writing the fluids grid output data after the grid update: \n");
-
-
-
-          // Reset boundary conditions in the case that they have changed:
-          BC_interface_value_velocity_u bc_interface_value_u_new(ngbd_np1,v_interface);
-          BC_interface_value_velocity_v bc_interface_value_v_new(ngbd_np1,v_interface);
-
-          bc_velocity[0].setInterfaceValue(bc_interface_value_u_new);
-          bc_velocity[1].setInterfaceValue(bc_interface_value_v_new);
-          ns->set_bc(bc_velocity,&bc_pressure);
-          // -----------------------------
-          hodge_old.destroy();
-          hodge_new.destroy();
-
-          hodge_old.create(p4est_np1,ghost_np1);
-          hodge_new.create(p4est_np1,ghost_np1);
-
-          bool keep_iterating_hodge = true;
-          double hodge_tolerance;
-          if (tstep<1) hodge_tolerance = u0*hodge_percentage_of_max_u;
-          else hodge_tolerance = NS_norm*hodge_percentage_of_max_u;
-
-          int hodge_max_it = 100;
-
-          int hodge_iteration = 0;
-          PetscPrintf(mpi.comm(),"\n\nBeginning Navier-Stokes solution process \n");
-
-          // Save result from Navier Stokes
-          // Write out the data:
-          PetscPrintf(mpi.comm(),"Writing the fluids grid output data: \n");
-          if(elyce_laptop) sprintf(outdir,"/Users/elyce/workspace/projects/multialloy_with_fluids/output/snapshot_NS_grid_%d",out_idx);
-          else sprintf(outdir,"/home/elyce/workspace/projects/multialloy_with_fluids/solidif_with_fluids_output/snapshot_NS_grid_%d",out_idx);
-
-          phi.get_array();
-          my_p4est_vtk_write_all(p4est_np1,nodes_np1,ghost_np1,P4EST_TRUE,P4EST_TRUE,
-                                            1,0,outdir,
-                                            VTK_POINT_DATA,"phi",phi.ptr);
-
-          phi.restore_array();
-
-          while(keep_iterating_hodge){
-              double hodge_error = - 10.0;
-              double hodge_global_error = -10.0;
-              // Grab the old hodge variable before we go through the solution process:  Note: Have to copy it , because the hodge vector itself will be changed by the navier stokes solver
-              hodge_new.set(ns->get_hodge());
-
-              VecCopy(hodge_new.vec,hodge_old.vec);
-
-              // ------------------------------------
-              // Do NS Solution process:
-              // ------------------------------------
-              // Viscosity step:
-              PCType pc_face = PCSOR;
-
-              ns->solve_viscosity(face_solver,(face_solver!=NULL),KSPBCGS,pc_face);
-
-              // Projection step:
-              KSPType cell_solver_type = KSPBCGS;
-              PCType pc_cell = PCSOR;
-
-              ns->solve_projection(cell_solver,(cell_solver!=NULL),cell_solver_type,pc_cell);
-
-
-              // -------------------------------------------------------------
-              // Check the error on hodge:
-              // -------------------------------------------------------------
-              // Get the current hodge:
-
-              hodge_new.set(ns->get_hodge());
-
-              // Create interpolation object to interpolate phi to the quadrant location:
-              my_p4est_interpolation_nodes_t *interp_phi = ns->get_interp_phi();
-
-              int size;
-              VecGetSize(hodge_new.vec,&size);
-
-
-              // Get hodge arrays:
-              hodge_old.get_array();
-              hodge_new.get_array();
-
-              // Loop over each quadrant in each tree, check the error in hodge
-              foreach_tree(tr,p4est_np1){
-                p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est_np1->trees,tr);
-
-                foreach_local_quad(q,tree){
-                  // Get the global index of the quadrant:
-                  p4est_locidx_t quad_idx = tree->quadrants_offset + q;
-
-                  // Get xyz location of the quad center so we can interpolate phi there and check which domain we are in:
-                  double xyz[P4EST_DIM];
-
-                  quad_xyz_fr_q(quad_idx,tr,p4est_np1,ghost_np1,xyz);
-
-                  double phi_val = (*interp_phi)(xyz[0],xyz[1]);
-                  // Evaluate the hodge error:
-                  if(phi_val < 0){
-                      hodge_error = max(hodge_error,fabs(hodge_old.ptr[quad_idx] - hodge_new.ptr[quad_idx]));
-                    }
-                }
-              }
-              // Restore hodge arrays:
-              hodge_old.restore_array();
-              hodge_new.restore_array();
-
-              // Get the global hodge error:
-              int mpi_err = MPI_Allreduce(&hodge_error,&hodge_global_error,1,MPI_DOUBLE,MPI_MAX,mpi.comm()); SC_CHECK_MPI(mpi_err);
-              PetscPrintf(mpi.comm(),"Hodge iteration : %d, hodge error: %0.3e \n",hodge_iteration,hodge_global_error);
-
-              if((hodge_global_error < hodge_tolerance) || hodge_iteration>=hodge_max_it) keep_iterating_hodge = false;
-              hodge_iteration++;
-            }
-
-          // Compute velocity at the nodes
-          ns->compute_velocity_at_nodes();
-
-          // Compute the pressure -- NOTE : MIGHT NEED TO INITIALIZE PRESSURE AT CELLS, IN THE ORDER IM SAVING THE INFORMATION
-          ns->compute_pressure();
-          // Check the L2 norm of u to make sure nothing is blowing up
-
-          NS_norm = ns->get_max_L2_norm_u();
-          PetscPrintf(mpi.comm(),"\n max NS velocity norm is %0.3e \n",NS_norm);
-          if(ns->get_max_L2_norm_u()>100.0){
-              std::cerr<<"The simulation blew up \n"<<std::endl;
-            }
-
-          vec_and_ptr_t press(p4est_np1,nodes_np1);
-
-          v_n.set(ns->get_velocity_np1());
-
-          press.set(ns->get_pressure());
-
-          if(elyce_laptop) sprintf(outdir,"/Users/elyce/workspace/projects/multialloy_with_fluids/output/snapshot_NS_%d",out_idx);
-          else sprintf(outdir,"/home/elyce/workspace/projects/multialloy_with_fluids/solidif_with_fluids_output/snapshot_NS_%d",out_idx);
-
-          // Scale the velocities before saving:
-          foreach_dimension(d){
-            VecScaleGhost(v_interface.vec[d],1./scaling);
-            VecScaleGhost(v_n.vec[d],1./scaling);
-
-          }
-          // Restore hodge arrays:
-          hodge_old.restore_array();
-          hodge_new.restore_array();
-
-          // Scale the pressure before saving:
-          VecScaleGhost(press.vec,scaling);
-
-          int phi_size, v_int_size, v_n_size, press_size;
-          VecGetSize(phi.vec,&phi_size);
-          VecGetSize(v_interface.vec[0],&v_int_size);
-          VecGetSize(v_n.vec[0],&v_n_size);
-          VecGetSize(press.vec,&press_size);
-
-          int no_nodes = nodes_np1->num_owned_indeps;
-          int global_nodes = 0;
-          MPI_Allreduce(&no_nodes,&global_nodes,1,MPI_INT,MPI_SUM,mpi.comm());
-
-          PetscPrintf(mpi.comm(),"Sizes are \n phi: %d \n v_int: %d \n v_NS: %d \n press: %d \n \n Number nodes: %d \n \n ",phi_size,v_int_size,v_n_size,press_size,global_nodes);
-
-
-          // Save result from Navier Stokes
-          // Write out the data:
-          phi.get_array();
-          v_interface.get_array();
-          v_n.get_array();
-          press.get_array();
-
-          if(elyce_laptop) sprintf(outdir,"/Users/elyce/workspace/projects/multialloy_with_fluids/output/snapshot_NS_%d",out_idx);
-          else sprintf(outdir,"/home/elyce/workspace/projects/multialloy_with_fluids/solidif_with_fluids_output/snapshot_NS_%d",out_idx);
-          PetscPrintf(mpi.comm(),"Writing the fluids output data: \n \n");
-
-          my_p4est_vtk_write_all(p4est_np1,nodes_np1,ghost_np1,P4EST_TRUE,P4EST_TRUE,
-                                            5,1,outdir,
-                                            VTK_POINT_DATA,"phi",phi.ptr,
-                                            VTK_POINT_DATA,"v_interface_x",v_interface.ptr[0],
-                                            VTK_POINT_DATA,"v_interface_y",v_interface.ptr[1],
-                                            VTK_POINT_DATA,"v_NS_x",v_n.ptr[0],
-                                            VTK_POINT_DATA,"v_NS_y",v_n.ptr[1],
-                                            VTK_CELL_DATA,"P",press.ptr);
-          PetscPrintf(mpi.comm(),"Data from the fluids step has been saved \n");
-
-          phi.restore_array();
-          v_interface.restore_array();
-          v_n.restore_array();
-          press.restore_array();
-
-          // Scale back the velocities after saving:
-          foreach_dimension(d){
-            VecScaleGhost(v_interface.vec[d],scaling);
-            VecScaleGhost(v_n.vec[d],scaling);
-          }
-
-          // Scale back the pressure after saving:
-          VecScaleGhost(press.vec,1./scaling);
-
-          PetscPrintf(mpi.comm(),"\n \n Finished solution of the Navier Stokes equations \n ");
-      } // End of "if solve navier stokes"
-
-      */
-      // --------------------------------------------------------------------------------------------------------------
-      // Delete the old grid:
-      // --------------------------------------------------------------------------------------------------------------
-      // Delete the old grid and update with the new one:
-
-//      if(solve_navier_stokes && let_NS_refine && !NS_grid_unchanged){
-//          // If we solved NS, let NS refine the grid, and the grid is changed --> then grid objects have been updated a bit differently
-//          // -- p4est, ghost, and nodes have already been deleted
-//          p4est = p4est_np1;
-//          ghost = ghost_np1;
-//          nodes = nodes_np1;
-
-//          hierarchy = hierarchy_np1;
-//          ngbd = ngbd_np1;
-//        }
-//      if(0){}
-//      else{
-//          p4est_destroy(p4est); p4est = p4est_np1;
-//          p4est_ghost_destroy(ghost); ghost = ghost_np1;
-//          p4est_nodes_destroy(nodes); nodes = nodes_np1;
-
-//          delete hierarchy; hierarchy = hierarchy_np1;
-//          delete ngbd; ngbd = ngbd_np1;
-//        }
 
       // Get the new solid LSF:
       phi_solid.destroy();
@@ -3066,7 +2727,8 @@ int main(int argc, char** argv) {
               smoke_backtrace.create(T_l_backtrace.vec);
             }
 
-          do_backtrace(T_l_n,T_l_backtrace,vel_n,smoke,smoke_backtrace,p4est_np1,nodes_np1,ngbd_np1,interp_bw_grids);
+          //do_backtrace(T_l_n,T_l_backtrace,vel_n,smoke,smoke_backtrace,p4est_np1,nodes_np1,ngbd_np1,interp_bw_grids);
+          do_backtrace(T_l_n,T_l_backtrace,v_n,smoke,smoke_backtrace,p4est_np1,nodes_np1,ngbd_np1,interp_bw_grids);
 
       } // end of do_advection if statement
 
@@ -3088,7 +2750,6 @@ int main(int argc, char** argv) {
       // Setup the solvers:
       // ------------------------------------------------------------
       // Now, set up the solver(s):
-      PetscPrintf(mpi.comm(),"Setting up Poisson problem \n");
       solver_Tl = new my_p4est_poisson_nodes_mls_t(ngbd_np1);
       solver_Ts = new my_p4est_poisson_nodes_mls_t(ngbd_np1);
       solver_smoke = new my_p4est_poisson_nodes_mls_t(ngbd_np1);
@@ -3145,12 +2806,8 @@ int main(int argc, char** argv) {
       T_s_np1.create(T_l_np1.vec);
 
       // Solve the system:
-      PetscPrintf(mpi.comm(),"Calling to solve \n");
-
       solver_Tl->solve(T_l_np1.vec);
       solver_Ts->solve(T_s_np1.vec);
-      PetscPrintf(mpi.comm(),"Solves Poisson \n");
-
 
       // Destroy the T_n values now and update them with the solution for the next timestep:
       T_l_n.destroy(); T_s_n.destroy();
@@ -3218,42 +2875,35 @@ int main(int argc, char** argv) {
       // --------------------------------------------------------------------------------------------------------------
 
       if (solve_navier_stokes){
-          PetscPrintf(mpi.comm(),"Beginning the Navier Stokes setup \n \n");
           // Interpolate velocity field onto the new grid: -- Note that we provide v on the old grid as nm1
           //-- this is not actually used by the solver since we are only doing solution order 1, but it is required to initialize the solver (At least for now)
 
-          PetscPrintf(mpi.comm(),"Copying over old grid data \n");
-          v_n_old_grid.destroy();
-          v_n_old_grid.create(p4est,nodes);
-          foreach_dimension(d){
-            VecCopyGhost(v_n.vec[d],v_n_old_grid.vec[d]);
-          }
-          v_n.destroy();
-          v_n.create(p4est_np1,nodes_np1);
+//          v_n_old_grid.destroy();
+//          v_n_old_grid.create(p4est,nodes);
+//          foreach_dimension(d){
+//            VecCopyGhost(v_n.vec[d],v_n_old_grid.vec[d]);
+//          }
+//          v_n.destroy();
+//          v_n.create(p4est_np1,nodes_np1);
 
-          my_p4est_interpolation_nodes_t interp_v_NS(ngbd);
-          PetscPrintf(mpi.comm(),"Beginning looping through nodes of new grid to gather interpolation points: \n");
-          double xyz[P4EST_DIM];
-          foreach_node(n,nodes_np1){
-            node_xyz_fr_n(n,p4est_np1,nodes_np1,xyz);
-            interp_v_NS.add_point(n,xyz);
-          }
+//          my_p4est_interpolation_nodes_t interp_v_NS(ngbd);
+//          double xyz[P4EST_DIM];
+//          foreach_node(n,nodes_np1){
+//            node_xyz_fr_n(n,p4est_np1,nodes_np1,xyz);
+//            interp_v_NS.add_point(n,xyz);
+//          }
 
-          PetscPrintf(mpi.comm(),"Beginning performing the interpolation: \n");
-          foreach_dimension(d){
-            interp_v_NS.set_input(v_n_old_grid.vec[d],interp_bw_grids);
-            interp_v_NS.interpolate(v_n.vec[d]);
-          }
+//          foreach_dimension(d){
+//            interp_v_NS.set_input(v_n_old_grid.vec[d],interp_bw_grids);
+//            interp_v_NS.interpolate(v_n.vec[d]);
+//          }
 
           // Get the cell neighbors:
-          PetscPrintf(mpi.comm(),"Getting cell neighbors: \n");
           my_p4est_cell_neighbors_t *ngbd_c = new my_p4est_cell_neighbors_t(hierarchy_np1);
 
           // Create the faces:
-          PetscPrintf(mpi.comm(),"Creating faces: \n");
           my_p4est_faces_t *faces_np1 = new my_p4est_faces_t(p4est_np1,ghost_np1,&brick,ngbd_c);
 
-          PetscPrintf(mpi.comm(),"Beginning NS solver setup \n");
           // First, initialize the Navier-Stokes solver with the grid:
           ns = new my_p4est_navier_stokes_t(ngbd,ngbd_np1,faces_np1);
 
@@ -3308,180 +2958,6 @@ int main(int argc, char** argv) {
           cell_solver = NULL;
           face_solver = NULL;
 
-
-          if(save_navier_stokes){
-              // Write out the data:
-              PetscPrintf(mpi.comm(),"Writing the fluids grid output data before the grid update: \n");
-              if(elyce_laptop) sprintf(outdir,"/Users/elyce/workspace/projects/multialloy_with_fluids/output/snapshot_NS_grid_before_update_%d",out_idx);
-              else sprintf(outdir,"/home/elyce/workspace/projects/multialloy_with_fluids/solidif_with_fluids_output/snapshot_NS_grid_before_update_%d",out_idx);
-
-              phi.get_array();
-              v_n.get_array();
-              my_p4est_vtk_write_all(p4est_np1,nodes_np1,ghost_np1,P4EST_TRUE,P4EST_TRUE,
-                                                3,0,outdir,
-                                                VTK_POINT_DATA,"phi",phi.ptr,
-                                                VTK_POINT_DATA,"v_NS_x",v_n.ptr[0],
-                                                VTK_POINT_DATA,"v_NS_y",v_n.ptr[1]);
-
-              phi.restore_array();
-              v_n.restore_array();
-
-              PetscPrintf(mpi.comm(),"Finished writing the fluids grid output data before the grid update: \n");}
-
-          // Take into consideration the Navier - Stokes timestep:
-          //ns->compute_adapted_dt();
-//          Take into account the NS timestep: -- probably better to do this with the max NS norm and CFL in the main file, not internally in NS
-//          ns->compute_dt();
-//          double dt_ns = ns->get_dt();
-
-//          dt = min(dt,dt_ns);
-
-//          PetscPrintf(mpi.comm(),"New timestep as set by Navier-Stokes is : %0.3e \n \n",dt);
-
-//          ns->set_dt(dt);
-
-          // Update the grid:
-          if (let_NS_refine){
-              // Save a ngbd_NS -- neighborhood of the previous grid -- for interpolation purposes:
-              my_p4est_node_neighbors_t *ngbd_NS = new my_p4est_node_neighbors_t(hierarchy_np1,nodes_np1);
-              ngbd_NS->init_neighbors(); // Need to check if this is really a necessary operation or not
-
-
-              // Rough thing for NS -- fix later:
-              vec_and_ptr_dim_t v_interface_old_grid(p4est_np1,nodes_np1);
-              foreach_dimension(d){
-                VecCopyGhost(v_interface.vec[d],v_interface_old_grid.vec[d]);
-              } // -- for later
-
-              NS_grid_unchanged = true; // Initialize the grid to registering as unchanged
-              NS_grid_unchanged = ns->update_from_tn_to_tnp1(NULL,false,false);
-              PetscPrintf(mpi.comm(),"Is grid changed? --> %s \n",NS_grid_unchanged? "no" : "yes");
-              if(!NS_grid_unchanged){
-                  PetscPrintf(mpi.comm(),"Updating the values onto the grid that has been refined by NS\n");
-
-                  p4est_np1 = ns->get_p4est();
-                  nodes_np1 = ns->get_nodes();
-                  ghost_np1 = ns->get_ghost();
-                  ngbd_np1 = ns->get_ngbd_n();
-
-                  my_p4est_interpolation_nodes_t interp_vint(ngbd_NS);
-                  PetscPrintf(mpi.comm(),"Interpolation object created \n");
-
-                  int size_before;
-                  VecGetSize(v_interface.vec[0],&size_before);
-
-                  v_interface.destroy();
-                  PetscPrintf(mpi.comm(),"Destroys vinterface \n");
-                  v_interface.create(p4est_np1,nodes_np1);
-                  PetscPrintf(mpi.comm(),"Creates new vinterface \n");
-
-
-                  PetscPrintf(mpi.comm(),"Beginning interpolation of vinterface onto new NS grid \n");
-                  // Need to interpolate all values onto the new grid that has been defined by NS:
-
-
-
-                  int size_after;
-                  VecGetSize(v_interface.vec[0],&size_after);
-
-                  PetscPrintf(mpi.comm(),"\n Size before : %d , Size after %d \n",size_before,size_after);
-
-                  //PetscPrintf(mpi.comm(),"Successfully interpolated the interfacial velocity to the new NS grid \n");
-
-                  // NOT SURE ABOUT THIS vvv : is this really necessary? , at least, do we really need to set it again?
-                  phi.create(p4est_np1,nodes_np1);
-                  //PetscPrintf(mpi.comm(),"Created new phi \n");
-                  phi.set(ns->get_phi());
-                  //PetscPrintf(mpi.comm(),"Set the new phi \n");
-
-                  // Interpolate temperature values onto the new grid: ----------------------------------
-                  PetscPrintf(mpi.comm(),"Beginning interpolation of Temperature values onto new grid: \n "); // -- update with ngbd_NS
-                  // Create vectors to hold new values:
-                  T_l_new.create(p4est_np1,nodes_np1);
-                  T_s_new.create(T_l_new.vec);
-
-                  v_interface_new.create(p4est_np1,nodes_np1);
-                  vel_new.create(v_interface_new.vec);
-
-                  vec_and_ptr_t smoke_new;
-                  if (solve_smoke){
-                      smoke_new.create(T_l_new.vec);
-                    }
-
-                  // Interpolate things to the new grid:
-                  interpolate_values_onto_new_grid(T_l_n,T_l_new,
-                                                   T_s_n, T_s_new,
-                                                   v_interface, v_interface_new,
-                                                   vel_n, vel_new,
-                                                   smoke, smoke_new,
-                                                   nodes_np1, p4est_np1,
-                                                   ngbd_NS, interp_bw_grids);
-
-
-
-                  // Copy new data over:
-                  // Transfer new values to the original objects:
-                  T_l_n.destroy(); T_s_n.destroy();
-                  T_l_n.create(p4est_np1,nodes_np1); T_s_n.create(T_l_n.vec);
-
-                  v_interface.destroy(); vel_n.destroy();
-
-                  v_interface.create(p4est_np1,nodes_np1); vel_n.create(v_interface.vec);
-
-                  if(solve_smoke) {smoke.destroy(); smoke.create(T_l_n.vec);}
-
-                  VecCopyGhost(T_l_new.vec,T_l_n.vec);
-                  VecCopyGhost(T_s_new.vec,T_s_n.vec);
-                  if (solve_smoke) VecCopyGhost(smoke_new.vec,smoke.vec);
-
-                  foreach_dimension(d){
-                    VecCopyGhost(v_interface_new.vec[d],v_interface.vec[d]);
-                    VecCopyGhost(vel_new.vec[d],vel_n.vec[d]);
-                  }
-
-                  // Delete the "new value" objects until the next timestep:
-                  T_l_new.destroy(); T_s_new.destroy();
-                  v_interface_new.destroy(); vel_new.destroy();
-
-                // ----------------------------------------
-                PetscPrintf(mpi.comm(),"Interpolated temp and smoke values to the new updated grid by NS \n");
-                int size_Tl;
-                VecGetSize(T_l_n.vec,&size_Tl);
-                PetscPrintf(mpi.comm(),"Size of T_l vector now : %d \n",size_Tl);
-
-                // Reset the boundary conditions: -- since we need a v_interface defined on the current grid
-                bc_interface_value_u.update(ngbd_np1,v_interface);
-                bc_interface_value_v.update(ngbd_np1,v_interface);
-
-                bc_velocity[0].setInterfaceValue(bc_interface_value_u);
-                bc_velocity[1].setInterfaceValue(bc_interface_value_v);
-                ns->set_bc(bc_velocity,&bc_pressure);
-
-                } // End of "if grid has changed" statement
-
-            } // End of "let LS refine" statement
-
-
-          if(save_navier_stokes){
-              // Write out the data:
-              PetscPrintf(mpi.comm(),"Writing the fluids grid output data after the grid update: \n");
-              if(elyce_laptop) sprintf(outdir,"/Users/elyce/workspace/projects/multialloy_with_fluids/output/snapshot_NS_grid_after_update_%d",out_idx);
-              else sprintf(outdir,"/home/elyce/workspace/projects/multialloy_with_fluids/solidif_with_fluids_output/snapshot_NS_grid_after_update_%d",out_idx);
-
-              phi.get_array();
-              v_n.get_array();
-              my_p4est_vtk_write_all(p4est_np1,nodes_np1,ghost_np1,P4EST_TRUE,P4EST_TRUE,
-                                                3,0,outdir,
-                                                VTK_POINT_DATA,"phi",phi.ptr,
-                                                VTK_POINT_DATA,"v_NS_x",v_n.ptr[0],
-                                                VTK_POINT_DATA,"v_NS_y",v_n.ptr[1]);
-
-              phi.restore_array();
-              v_n.restore_array();
-
-              PetscPrintf(mpi.comm(),"Finished writing the fluids grid output data after the grid update: \n");
-            }
-
           // -----------------------------
 
           // Get hodge and begin iterating on hodge error
@@ -3500,7 +2976,6 @@ int main(int argc, char** argv) {
           int hodge_max_it = 100;
 
           int hodge_iteration = 0;
-          PetscPrintf(mpi.comm(),"\n\n Beginning Navier-Stokes solution process \n");
 
           while(keep_iterating_hodge){
               double hodge_error = - 10.0;
@@ -3588,33 +3063,32 @@ int main(int argc, char** argv) {
             }
 
           // Get the computed values of pressure and velocity:
-          vec_and_ptr_t press(p4est_np1,nodes_np1);
+          press.destroy();
+          press.create(p4est_np1,nodes_np1);
+
+          vorticity.destroy();
+          vorticity.create(p4est_np1,nodes_np1);
 
           v_n.set(ns->get_velocity_np1());
 
+          vorticity.set(ns->get_vorticity());
+
           press.set(ns->get_pressure());
 
-          // Debugging -- check sizes of all the vectors compared to the number of nodes on the grid:
-          int phi_size, v_int_size, v_n_size, press_size;
-          VecGetSize(phi.vec,&phi_size);
-          VecGetSize(v_interface.vec[0],&v_int_size);
-          VecGetSize(v_n.vec[0],&v_n_size);
-          VecGetSize(press.vec,&press_size);
+          //Get a more appropriate dt for next timestep to consider:
 
-          int no_nodes = nodes_np1->num_owned_indeps;
-          int global_nodes = 0;
-          MPI_Allreduce(&no_nodes,&global_nodes,1,MPI_INT,MPI_SUM,mpi.comm());
-
-          PetscPrintf(mpi.comm(),"Sizes are \n phi: %d \n v_int: %d \n v_NS: %d \n press: %d \n \n Number nodes: %d \n \n ",phi_size,v_int_size,v_n_size,press_size,global_nodes);
+          ns->compute_adapted_dt(u0);
+          dt_NS = ns->get_dt();
           // ------------------
+          /*
           if (save_navier_stokes){          // Scale the velocities before saving:
               foreach_dimension(d){
                 VecScaleGhost(v_interface.vec[d],1./scaling);
                 VecScaleGhost(v_n.vec[d],1./scaling);
               }
-              // Restore hodge arrays:
-              hodge_old.restore_array();
-              hodge_new.restore_array();
+//              // Restore hodge arrays:
+//              hodge_old.restore_array();
+//              hodge_new.restore_array();
 
               // Scale the pressure before saving:
               VecScaleGhost(press.vec,scaling);
@@ -3625,18 +3099,20 @@ int main(int argc, char** argv) {
               v_interface.get_array();
               v_n.get_array();
               press.get_array();
+              vorticity.get_array();
 
               if(elyce_laptop) sprintf(outdir,"/Users/elyce/workspace/projects/multialloy_with_fluids/output/snapshot_NS_%d",out_idx);
               else sprintf(outdir,"/home/elyce/workspace/projects/multialloy_with_fluids/solidif_with_fluids_output/snapshot_NS_%d",out_idx);
               PetscPrintf(mpi.comm(),"Writing the fluids output data: \n \n");
 
               my_p4est_vtk_write_all(p4est_np1,nodes_np1,ghost_np1,P4EST_TRUE,P4EST_TRUE,
-                                                5,1,outdir,
+                                                6,1,outdir,
                                                 VTK_POINT_DATA,"phi",phi.ptr,
                                                 VTK_POINT_DATA,"v_interface_x",v_interface.ptr[0],
                                                 VTK_POINT_DATA,"v_interface_y",v_interface.ptr[1],
                                                 VTK_POINT_DATA,"v_NS_x",v_n.ptr[0],
                                                 VTK_POINT_DATA,"v_NS_y",v_n.ptr[1],
+                                                VTK_POINT_DATA,"vorticity",vorticity.ptr,
                                                 VTK_CELL_DATA,"P",press.ptr);
               PetscPrintf(mpi.comm(),"Data from the fluids step has been saved \n");
 
@@ -3644,6 +3120,7 @@ int main(int argc, char** argv) {
               v_interface.restore_array();
               v_n.restore_array();
               press.restore_array();
+              vorticity.restore_array();
 
               // Scale back the velocities after saving:
               foreach_dimension(d){
@@ -3655,9 +3132,17 @@ int main(int argc, char** argv) {
               VecScaleGhost(press.vec,1./scaling);
             }
 
-          PetscPrintf(mpi.comm(),"\n \n Finished solution of the Navier Stokes equations \n ");
-      } // End of "if solve navier stokes"
+          */
 
+
+//          char output[1000];
+//          sprintf(output,"/home/elyce/workspace/projects/multialloy_with_fluids/solidif_with_fluids_output/snapshot_full_%d",tstep);
+//          save_everything(p4est_np1,nodes_np1,ghost_np1,phi,phi_cylinder,T_l_n,T_s_n,v_interface,v_n,press,vorticity,smoke,scaling,output);
+        } // End of "if solve navier stokes"
+
+      if(solve_navier_stokes){
+
+        }
       // --------------------------------------------------------------------------------------------------------------
       // Delete the old grid:
       // --------------------------------------------------------------------------------------------------------------

@@ -547,14 +547,25 @@ int main(int argc, char** argv) {
   for(int k=0; k<num_fields; k++){
       VecCreateGhostNodes(p4est,nodes,&fields_old[k]);
     }
-  VecCopyGhost(s_1.vec,fields_old[0]);
-  VecCopyGhost(s_2.vec,fields_old[1]);
-
   for(int k=0; k<num_fields; k++){
       VecCreateGhostNodes(p4est,nodes,&fields_new[k]);
     }
-  VecCopyGhost(s_1_new.vec,fields_new[0]);
-  VecCopyGhost(s_1_new.vec,fields_new[1]);
+
+  if(refine_by_s1 && !refine_by_s2){
+      VecCopyGhost(s_1.vec,fields_old[0]);
+      VecCopyGhost(s_1_new.vec,fields_new[0]);
+    }
+  else if (refine_by_s2 && !refine_by_s1){
+      VecCopyGhost(s_2.vec,fields_old[0]);
+      VecCopyGhost(s_2_new.vec,fields_new[0]);
+    }
+  else if (refine_by_s1 && refine_by_s2){
+      VecCopyGhost(s_1.vec,fields_old[0]);
+      VecCopyGhost(s_2.vec,fields_old[1]);
+      VecCopyGhost(s_1_new.vec,fields_new[0]);
+      VecCopyGhost(s_2_new.vec,fields_new[1]);
+    }
+
   } // end of "else" for "if use block"
 
   // Make sure we added as many fields as we said we were:
@@ -670,7 +681,6 @@ int main(int argc, char** argv) {
     // Interpolate all fields onto new grid:
     double xyz[P4EST_DIM];
     interp_final.set_input(all_fields_old,quadratic_non_oscillatory_continuous_v2,4);
-    PetscPrintf(mpi.comm(),"Sets inputs \n ");
 
     foreach_node(n,nodes_np1){
       node_xyz_fr_n(n,p4est_np1,nodes_np1,xyz);
@@ -805,8 +815,7 @@ int main(int argc, char** argv) {
       my_p4est_semi_lagrangian_t sl(&p4est_np1,&nodes_np1,&ghost_np1,ngbd);
 
       // Call the update_p4est function:
-      PetscPrintf(mpi.comm(),"Calling the update_p4est function now ... \n");
-      sl.update_p4est(velocity.vec,0.2,phi_1_new.vec,phi_1_new_xx.vec,NULL,num_fields,use_block,fields_new,fields_new_block,criteria,compare_opn,diag_opn);
+      sl.update_p4est(velocity.vec,0.2,phi_1_new.vec,phi_1_new_xx.vec,NULL,num_fields,use_block,fields_new,fields_new_block,criteria,compare_opn,diag_opn,false);
 
 
       // Interpolate all other fields onto the new grid (besides phi_1_new, which has already been advected):
@@ -838,7 +847,6 @@ int main(int argc, char** argv) {
       // Interpolate all fields onto new grid:
       double xyz[P4EST_DIM];
       interp_final.set_input(all_fields_old,quadratic_non_oscillatory_continuous_v2,total_num_fields -1);
-      PetscPrintf(mpi.comm(),"Sets inputs \n ");
 
       foreach_node(n,nodes_np1){
         node_xyz_fr_n(n,p4est_np1,nodes_np1,xyz);
@@ -849,15 +857,11 @@ int main(int argc, char** argv) {
       interp_final.interpolate(all_fields_new);
       PetscPrintf(mpi.comm(),"Interpolation of all fields onto the final grid is complete \n");
 
-
       // Print out the new grid:
       update_p4est_test_no++;
 
       sprintf(file_name,"%s/update_p4est_test_%d",out_dir,update_p4est_test_no);
       save_vtk(p4est_np1,nodes_np1,ghost_np1,file_name,phi_1_new,phi_2_new,s_1_new,s_2_new);
-      //my_p4est_vtk_write_all(p4est_np1,nodes_np1,ghost_np1,P4EST_TRUE,P4EST_TRUE,0,0,file_name);
-
-
 
       p4est_nodes_destroy(nodes_np1);
       p4est_ghost_destroy(ghost_np1);

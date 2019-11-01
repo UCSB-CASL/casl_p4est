@@ -119,9 +119,10 @@ public:
    * \param criteria       [in]
    * \param compare_opn    [in]
    * \param diag_opn       [in]
+   * \param expand_ghost_layer [in]   a boolean specifying whether you want the new grid to have an expanded ghost layer
    * \note you need to update ngbd_n and hierarchy yourself !
    */
-  void update_p4est(Vec *v, double dt, Vec &phi, Vec *phi_xx, Vec phi_add_refine, const int num_fields, bool use_block, Vec *fields, Vec fields_block, std::vector<double> criteria, std::vector<compare_option_t> compare_opn, std::vector<compare_diagonal_option_t> diag_opn);
+  void update_p4est(Vec *v, double dt, Vec &phi, Vec *phi_xx, Vec phi_add_refine, const int num_fields, bool use_block, Vec *fields, Vec fields_block, std::vector<double> criteria, std::vector<compare_option_t> compare_opn, std::vector<compare_diagonal_option_t> diag_opn, bool expand_ghost_layer);
   /*!
    * \brief update a p4est from tn to tnp1, using a semi-Lagrangian scheme with BDF along the characteristic.
    *   The forest at time n is copied, and is then refined, coarsened and balance iteratively until convergence.

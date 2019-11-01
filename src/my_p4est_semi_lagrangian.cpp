@@ -16,6 +16,7 @@
 #include <mpi.h>
 #include <src/ipm_logging.h>
 #include <src/my_p4est_semi_lagrangian.h>
+#include <src/my_p4est_vtk.h>
 
 // system
 #include <iostream>
@@ -733,7 +734,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *
 
 // ELYCE TRYING SOMETHING:---------------------------
 
-void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *phi_xx, Vec phi_add_refine, const int num_fields, bool use_block, Vec *fields, Vec fields_block, std::vector<double> criteria, std::vector<compare_option_t> compare_opn, std::vector<compare_diagonal_option_t> diag_opn)
+void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *phi_xx, Vec phi_add_refine, const int num_fields, bool use_block, Vec *fields, Vec fields_block, std::vector<double> criteria, std::vector<compare_option_t> compare_opn, std::vector<compare_diagonal_option_t> diag_opn,bool expand_ghost_layer)
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_semi_lagrangian_update_p4est_1st_order, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -826,9 +827,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *
 
     if (phi_add_refine != NULL)
     {
-        printf("Gets into phi_add_refine \n");
       // Interpolate phi_add_refine onto the current grid, so we can get the effective LSF to refine/coarsen by:
-//      ierr = VecDuplicate(phi_np1, &phi_np1_eff);
       my_p4est_interpolation_nodes_t interp(ngbd_phi);
       for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
       {
@@ -836,13 +835,16 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *
         node_xyz_fr_n(n, p4est, nodes, xyz);
         interp.add_point(n, xyz);
       }
-      interp.set_input(phi_add_refine, phi_interpolation);
+      interp.set_input(phi_add_refine, quadratic_non_oscillatory_continuous_v2);
       interp.interpolate(phi_np1_eff);
 
       ierr = VecGetArray(phi_np1_eff, &phi_np1_eff_p); CHKERRXX(ierr);
       for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
       {
-        phi_np1_eff_p[n] = MIN(fabs(phi_np1_eff_p[n]), fabs(phi_np1_p[n]));
+//        phi_np1_eff_p[n] = MIN(fabs(phi_np1_eff_p[n]), fabs(phi_np1_p[n]));
+          if(fabs(phi_np1_eff_p[n]) > fabs(phi_np1_p[n])){
+              phi_np1_eff_p[n] = phi_np1_p[n];
+            }
       }
 
       ierr = VecRestoreArray(phi_np1_eff, &phi_np1_eff_p); CHKERRXX(ierr);
@@ -855,8 +857,6 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *
 
     // Interpolate the fields onto the current grid: (either block vector, or array of vectors)
     if(use_block){
-        printf("Getting into interpolation of block vector onto new grid on rank %d \n",p4est->mpirank);
-        PetscPrintf(p4est->mpicomm," Getting into interpolation of block vector onto new grid\n");
         my_p4est_interpolation_nodes_t interp_block(ngbd_phi);
         interp_block.set_input(fields_block, phi_interpolation,num_fields);
 
@@ -873,14 +873,38 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *
         my_p4est_interpolation_nodes_t interp_fields(ngbd_phi);
         interp_fields.set_input(fields, phi_interpolation,num_fields);
 
-        for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+        double xyz[P4EST_DIM];
+        for(p4est_locidx_t n=0; n<nodes->indep_nodes.elem_count; ++n)
         {
-          double xyz[P4EST_DIM];
           node_xyz_fr_n(n, p4est, nodes, xyz);
           interp_fields.add_point(n, xyz);
         }
         interp_fields.interpolate(fields_np1);
       }
+
+//    char file_name[1000];
+//    sprintf(file_name,"/home/elyce/workspace/projects/multialloy_with_fluids/solidif_with_fluids_output/NS_grit_iter_%d",counter);
+//    double* fields_p[num_fields];
+
+//    for(unsigned int k=0;k<num_fields;k++){
+//      ierr = VecGetArray(fields_np1[k],&fields_p[k]);CHKERRXX(ierr);
+//      }
+//    ierr = VecGetArray(phi_np1,&phi_np1_p);CHKERRXX(ierr);
+//    ierr = VecGetArray(phi_np1_eff,&phi_np1_eff_p);CHKERRXX(ierr);
+
+//    my_p4est_vtk_write_all(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,3,0,file_name,
+//                           VTK_POINT_DATA,"phi",phi_np1_p,
+//                           VTK_POINT_DATA,"phi_eff",phi_np1_eff_p,
+//                           VTK_POINT_DATA,"vorticity",fields_p[0]);
+
+//    for(unsigned int k=0;k<num_fields;k++){
+//      ierr = VecRestoreArray(fields_np1[k],&fields_p[k]);CHKERRXX(ierr);
+//      }
+//    ierr = VecRestoreArray(phi_np1,&phi_np1_p);CHKERRXX(ierr);
+//    ierr = VecRestoreArray(phi_np1_eff,&phi_np1_eff_p);CHKERRXX(ierr);
+
+
+    if(counter > 10){PetscPrintf(p4est->mpicomm,"Grid did not converge ... \n"); break;}
 
     // Call the refine and coarsen according to phi_effective and the provided fields:
     splitting_criteria_tag_t sp(sp_old->min_lvl, sp_old->max_lvl, sp_old->lip);
@@ -891,10 +915,11 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *
 
     if (is_grid_changing) {
       PetscPrintf(p4est->mpicomm, "Grid changed\n");
-      my_p4est_partition(p4est, P4EST_TRUE, NULL);
+      my_p4est_partition(p4est, P4EST_FALSE, NULL);
 
       // reset nodes, ghost, and phi
       p4est_ghost_destroy(ghost); ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
+      if(expand_ghost_layer) my_p4est_ghost_expand(p4est,ghost);
       p4est_nodes_destroy(nodes); nodes = my_p4est_nodes_new(p4est, ghost);
 
       ierr = VecDestroy(phi_np1); CHKERRXX(ierr);
