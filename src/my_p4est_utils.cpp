@@ -420,20 +420,9 @@ void quadratic_non_oscillatory_continuous_v1_interpolation(const p4est_t *p4est,
 #endif
   }
 
-
-  }
-
   ierr = PetscLogFlops(45); CHKERRXX(ierr); // number of flops in this event
   return;
 }
-
-void quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results)
-{
-    double result;
-    quadratic_non_oscillatory_continuous_v1_interpolation(p4est, tree_id, quad, F, Fdd, xyz_global, &result, 1);
-    return result;
-}
-
 
 void quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results)
 {
@@ -499,14 +488,6 @@ void quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_t *p4est,
     d_m00*d_0m0
   };
 #endif
-
-  // First alternative scheme: first, minmod on every edge, then weight-average
-    double fdd[P4EST_DIM];
-    double sx = (tree_xmax-tree_xmin)*qh;
-    double sy = (tree_ymax-tree_ymin)*qh;
-  #ifdef P4_TO_P8
-    double sz = (tree_zmax-tree_zmin)*qh;
-  #endif
 
   // Second alternative scheme: first, weight-average in perpendicular plane, then minmod
   double fdd[P4EST_DIM];
@@ -1163,8 +1144,6 @@ int delete_directory(const char* root_path, int mpi_rank, MPI_Comm comm, bool no
   }
   return return_;
 }
-
-
 
 void dxyz_min(const p4est_t *p4est, double *dxyz)
 {

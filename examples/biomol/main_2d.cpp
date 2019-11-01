@@ -23,7 +23,6 @@
 #include <src/my_p8est_semi_lagrangian.h>
 #include <src/my_p8est_macros.h>
 #include <src/my_p8est_shapes.h>
-#include <src/my_p8est_save_load.h>
 #include <src/my_p8est_general_poisson_nodes_mls_solver.h>
 #include <src/mls_integration/vtk/simplex3_mls_l_vtk.h>
 #include <src/mls_integration/vtk/simplex3_mls_q_vtk.h>
@@ -47,7 +46,6 @@
 #include <src/my_p4est_semi_lagrangian.h>
 #include <src/my_p4est_macros.h>
 #include <src/my_p4est_shapes.h>
-#include <src/my_p4est_save_load.h>
 #include <src/my_p4est_general_poisson_nodes_mls_solver.h>
 #include <src/mls_integration/vtk/simplex2_mls_l_vtk.h>
 #include <src/mls_integration/vtk/simplex2_mls_q_vtk.h>
@@ -238,7 +236,7 @@ int main(int argc, char *argv[]) {
       my_p4est_biomolecules_t::log_file = fopen(log_file_path.c_str(), "w");
     }
   }
-  const string timing_file                  = cmd.get<string>("timing", "stdout");
+  const string timing_file                  = cmd.get<string>("timing", null_str);
   my_p4est_biomolecules_t::timing_file = NULL;
   if(!boost::iequals(null_str, timing_file))
   {

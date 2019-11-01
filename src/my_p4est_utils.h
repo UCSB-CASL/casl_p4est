@@ -909,6 +909,7 @@ PetscErrorCode VecGhostChangeLayoutEnd(VecScatter ctx, Vec from, Vec to);
  * [throws std::runtime_error if the path cannot be accessed]
  */
 bool is_folder(const char* path);
+inline bool is_folder(const std::string &path_str) { return is_folder(path_str.c_str()); }
 
 /*!
  * \brief file_exists returns true if the path points to an existing file
@@ -917,6 +918,7 @@ bool is_folder(const char* path);
  * \return true if there exists a file corresponding to the given path
  */
 bool file_exists(const char* path);
+inline bool file_exists(const std::string &path_str) { return file_exists(path_str.c_str()); }
 
 /*!
  * \brief create_directory creates a folder indicated by the given path, permission rights: 755
@@ -928,6 +930,10 @@ bool file_exists(const char* path);
  * [the root process creates the folder, the operation is collective by MPI_Bcast on the result]
  */
 int create_directory(const char* path, int mpi_rank, MPI_Comm comm=MPI_COMM_WORLD);
+inline int create_directory(const std::string &path_str, int mpi_rank, MPI_Comm comm=MPI_COMM_WORLD)
+{
+  return create_directory(path_str.c_str(), mpi_rank, comm);
+}
 
 /*!
  * \brief delete_directory_recursive explores a directory then
@@ -944,8 +950,16 @@ int create_directory(const char* path, int mpi_rank, MPI_Comm comm=MPI_COMM_WORL
  * [throws std::invalid_argument if the root_path is NOT a directory]
  */
 int delete_directory(const char* root_path, int mpi_rank, MPI_Comm comm=MPI_COMM_WORLD, bool non_collective=false);
+inline int delete_directory(const std::string &root_path_str, int mpi_rank, MPI_Comm comm=MPI_COMM_WORLD, bool non_collective=false)
+{
+  return delete_directory(root_path_str.c_str(), mpi_rank, comm, non_collective);
+}
 
 int get_subdirectories_in(const char* root_path, std::vector<std::string>& subdirectories);
+inline int get_subdirectories_in(const std::string root_path_str, std::vector<std::string>& subdirectories)
+{
+  return get_subdirectories_in(root_path_str.c_str(), subdirectories);
+}
 
 inline double int2double_coordinate_transform(p4est_qcoord_t a){
   return static_cast<double>(a)/static_cast<double>(P4EST_ROOT_LEN);

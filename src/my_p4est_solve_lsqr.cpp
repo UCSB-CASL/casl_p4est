@@ -184,11 +184,19 @@ bool solve_cholesky(matrix_t &A, vector<double> &b, vector<double> &x)
 }
 
 
-bool invert_cholesky(matrix_t &A, matrix_t &Ai)
+
+
+#ifdef P4_TO_P8
+void solve_lsqr_system(matrix_t &A, vector<double> p[], unsigned int n_vectors, double* solutions, int nb_x, int nb_y, int nb_z, char order)
+#else
+void solve_lsqr_system(matrix_t &A, vector<double> p[], unsigned int n_vectors, double* solutions, int nb_x, int nb_y, char order)
+#endif
 {
 #ifdef CASL_THROWS
-  if(A.num_cols()!=A.num_rows() || !A.is_symmetric())
-    throw std::invalid_argument("[CASL_ERROR]: solve_cholesky: wrong input parameters");
+  if(n_vectors == 0) throw std::invalid_argument("[CASL_ERROR]: solve_lsqr_system(...): the number of rhs's must be strictly positive!");
+  for (unsigned int k = 0; k < n_vectors; ++k)
+    if( (unsigned int) A.num_rows() != p[k].size() )
+      throw std::invalid_argument("[CASL_ERROR]: solve_lsqr_system(...): the matrix and (one of) the right hand side(s) don't have the same size");
 #endif
   unsigned int m = (unsigned int) A.num_rows();
   matrix_t *M = new matrix_t();

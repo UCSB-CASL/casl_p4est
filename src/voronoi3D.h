@@ -24,106 +24,102 @@ struct VoroNgbd {
   }
 };
 
-struct Voronoi3DPoint
+struct ngbd3Dseed
 {
   /*!
-     * \brief the index of the point
+     * \brief the index of the neighbor seed
      */
   int n;
 
   /*!
-     * \brief the coordinates of the point
+     * \brief the coordinates of the neighbor seed
      */
   Point3 p;
 
   /*!
-   * \brief the surface of the face separating the center point from this neighbor
+   * \brief the surface of the face separating the center seed from this neighbor seed
    */
   double s;
 
-  void operator=(Voronoi3DPoint v)
+  /*!
+   * \brief dist distance from the center seed to this neighbor seed
+   */
+  double dist;
+
+  void operator=(ngbd3Dseed v)
   {
-    n = v.n; p = v.p; s=v.s;
+    n = v.n; p = v.p; s=v.s; dist = v.dist;
+  }
+  inline bool operator<(const ngbd3Dseed& v) const
+  {
+    return (this->dist < v.dist);
   }
 };
 
 /*!
- * \brief The Voronoi3D class construct a Voronoi partition for a point given its surrounding points.
+ * \brief The Voronoi3D class construct a Voronoi partition for a point (the seed) given its surrounding
+ * points (neighbor seeds).
  * This class also provides functions to compute the volume of the Voronoi partition around the point.
  */
 class Voronoi3D
 {
 private:
-  Point3 pc;
-  int nc;
-  vector<Voronoi3DPoint> points;
+  Point3 center_seed;
+  int idx_center_seed;
+  vector<ngbd3Dseed> nb_seeds;
   double volume;
 
 public:
   /*!
-     * \brief default constructor for the Voronoi2D class
+     * \brief default constructor for the Voronoi3D class
      */
-  Voronoi3D() { pc.x=DBL_MAX; pc.y=DBL_MAX; pc.z=DBL_MAX; }
+  Voronoi3D() { center_seed.x=DBL_MAX; center_seed.y=DBL_MAX; center_seed.z=DBL_MAX; }
 
   /*!
-     * \brief reset the voronoi partition
+     * \brief reset the Voronoi partition
      */
-  void clear();
+  void clear() { nb_seeds.resize(0); }
 
   /*!
-     * \brief get the partition after it has been built using construct_Partition
-     * \param points the list of neighbor points used to create the partition
-     * \param partition the list of vertices that define the cell around the center point
-     *
-     * The vertices of the voronoi partition associated with the point number m are m and m+1, i.e. points(m) corresponds to vertices partition(m) and partition(m+1).
+     * \brief get the partition after it has been built using construct_partition
+     * \param neighbors the list of neighbor points used to create the partition (actual direct neighbors)
      */
-  void get_Points( const vector<Voronoi3DPoint>*& points) const;
+  void get_neighbor_seeds( const vector<ngbd3Dseed>*& neighbor_seeds) const { neighbor_seeds = &this->nb_seeds; }
 
   /*!
    * \brief set the voronoi cell with precomputed values
-   * \param points the list of voronoi neighbors with their properties
-   * \param the volume of the voronoi cell
+   * \param neighbors the list of neighbor seeds with their properties
+   * \param the volume of the Voronoi cell
    */
-  void set_Points( vector<Voronoi3DPoint> &points, double volume );
+  void set_cell( vector<ngbd3Dseed> &neighbors, double volume );
 
   /*!
-     * \brief set the level-set values at the vertices of the voronoi partition
-     * \param phi_values the list of the level-set values
+     * \brief set the center seed of the partition
+     * \param center_seed_ the coordinates of the center seed
      */
-  void set_Level_Set_Values( vector<double>& phi_values );
+  void set_center_point( int idx_center_seed_, Point3 &center_seed_);
+  // overloading
+  void set_center_point( int idx_center_seed_, double x, double y, double z) { Point3 tmp(x, y, z); set_center_point(idx_center_seed_, tmp); }
 
   /*!
-     * \brief set the point at the center of the partition
-     * \param pc the coordinates of the point
+     * \brief get the center seed of the partition
+     * \param return the coordinates of the point
      */
-  void set_Center_Point( int nc, Point3 &pc);
+  inline const Point3& get_center_point() const { return center_seed; }
 
   /*!
-     * \brief set the coordinates of the point at the center of the partition
-     * \param x the first coordinate of the point
-     * \param y the second coordinate of the point
-     */
-  void set_Center_Point( int nc, double x, double y, double z);
+   * \brief add a potential neighbor seed candidate, making sure there is no repetition
+   * \param n the index of the point to add
+   * \param pt coordinates of the candidate neighbor seed to add
+   */
+  void push( int n, Point3 &pt, const bool* periodicity, const double* xyz_min, const double* xyz_max);
+  // overloading
+  void push( int n, double x, double y, double z, const bool* periodicity, const double* xyz_min, const double* xyz_max) { Point3 tmp(x, y, z); push(n, tmp, periodicity, xyz_min, xyz_max); }
 
   /*!
-     * \brief get the point at the center of the partition
-     * \param pc the coordinates of the point
+     * \brief construct the voronoi parition around point pc using the neighborhood given in nb_seeds
      */
-  inline const Point3& get_Center_Point() const { return pc; }
-
-  /*!
-     * \brief add a point to the list of collocation points, making sure there is no repetition
-     * \param n the index of the point to add
-     * \param x the first coordinate of the point to add
-     * \param y the second coordinate of the point to add
-     */
-  void push( int n, double x, double y, double z);
-  void push( int n, Point3 &pt);
-
-  /*!
-     * \brief construct the voronoi parition around point pc using the neighborhood given in "points"
-     */
-  void construct_Partition(const double *xyz_min, const double *xyz_max, const bool *periodic);
+  void construct_partition(const double *xyz_min, const double *xyz_max, const bool *periodic);
 
   inline double get_volume() const { return this->volume; }
 
@@ -132,10 +128,7 @@ public:
      * \param voro the list of voronoi partitions to save
      * \param file_name the file in which the voronoi partition is to be saved
      */
-  static void print_VTK_Format(const std::vector<Voronoi3D>& voro, const char* file_name,
-                                const double *xyz_min, const double *xyz_max, const bool *periodic, double *vn_p, double *sol_voro_p);
-
-  static void print_VTK_Format(const std::vector<Voronoi3D>& voro, const char* file_name,
+  static void print_VTK_format( const std::vector<Voronoi3D>& voro, const char* file_name,
                                 const double *xyz_min, const double *xyz_max, const bool *periodic);
 };
 

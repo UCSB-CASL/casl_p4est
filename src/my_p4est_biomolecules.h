@@ -355,12 +355,6 @@ private:
      */
     void          read(const string &pqr, const int &overlap);
     /*!
-     * \brief check_if_file: checks if the file path is a valid path toward a file.
-     * Return true if it is a file!
-     * \param file_path: self-explanatory
-     */
-    bool          check_if_file(const string& file_path) const;
-    /*!
      * \brief calculate_center_of_domain: self_explicit
      * \param domain_center[out]: pointer to domain center (an array of double[P4EST_DIM]).
      */
@@ -646,12 +640,6 @@ public :
   vector<double>      calculate_dimensions_of_root_cells(p4est_t* p4est_);
   vector<double>      calculate_domain_dimensions(p4est_t* p4est_);
   /*!
-   * \brief check_if_directory: checks if the folder path is a valid path toward a directory.
-   * An exception is thrown if it is not.
-   * \param folder_path: self-explanatory
-   */
-  void                check_if_directory(const string& folder_path) const;
-  /*!
    * \brief check_validity_of_vector_of_mol: [activated only in debug] checks if the vector of molecules and
    * other associated class member variables are valid and consistent.
    * An exception is thrown in case of inconsistency.
@@ -901,7 +889,7 @@ public:
 //        std::cout << sqrt(SQR(x - a->x) + SQR(y - a->y) + SQR(z - a->z))/biomolecules->angstrom_to_domain << std::endl;
 #ifdef P4_TO_P8
         psi_star_value += (a->q*SQR(electron)*((double) ion_charge))/
-            (length_scale_in_meter()*4.0*PI*eps_0*mol_rel_permittivity*kB*temperature*sqrt(SQR(x - a->xc) + SQR(y - a->yc) + SQR(z - a->zc))); // constant = 0
+            (length_scale_in_meter()*4.0*PI*eps_0*mol_rel_permittivity*kB*temperature*sqrt(SQR(x - a->xyz_c[0]) + SQR(y - a->xyz_c[1]) + SQR(z - a->xyz_c[2]))); // constant = 0
 #else
         // there is no real 2D equivalent in terms of electrostatics,
         // in the 2d case, let's consider q a linear (partial) charge density,

@@ -16,7 +16,6 @@
 #include <src/my_p8est_integration_mls.h>
 #include <src/my_p8est_macros.h>
 #include <src/my_p8est_shapes.h>
-#include <src/my_p8est_save_load.h>
 #include <src/my_p8est_general_poisson_nodes_mls_solver.h>
 #include <src/mls_integration/vtk/simplex3_mls_l_vtk.h>
 #include <src/mls_integration/vtk/simplex3_mls_q_vtk.h>
@@ -36,7 +35,6 @@
 #include <src/my_p4est_integration_mls.h>
 #include <src/my_p4est_macros.h>
 #include <src/my_p4est_shapes.h>
-#include <src/my_p4est_save_load.h>
 #include <src/my_p4est_general_poisson_nodes_mls_solver.h>
 #include <src/mls_integration/vtk/simplex2_mls_l_vtk.h>
 #include <src/mls_integration/vtk/simplex2_mls_q_vtk.h>
@@ -544,7 +542,7 @@ void my_p4est_biomolecules_t::molecule::read(const string &pqr, const int &overl
   // number of charged atoms read by this proc
   n_charged_atoms = 0;
 
-  while ((is_a_bundle || file_idx == 1) && check_if_file(filename)){
+  while ((is_a_bundle || file_idx == 1) && file_exists(filename)){
     // copy the path to the file (MPI_File_open requires a non-constant char*... :-B)
     char file_name[filename.size()+1];
     filename.copy(file_name, filename.size(), 0);
@@ -1892,22 +1890,6 @@ void my_p4est_biomolecules_t::SAS_creator_list_reduction::specific_refinement(p4
 #endif
 }
 
-void my_p4est_biomolecules_t::check_if_directory(const string& folder_path) const
-{
-
-  parallel_error_manager no_debug_error_manager(p4est->mpirank, p4est->mpisize, p4est->mpicomm, error_file); // we want this check to be done even in non-debug case...
-  struct stat st;
-  int err_st = stat(folder_path.c_str(), &st);
-  int local_error = (-1 == err_st || !S_ISDIR(st.st_mode));
-  string err_msg = "my_p4est_biomolecules_t::check_if_directory(const string*): invalid directory path: " + folder_path + " does not exist or is not a directory.";
-  no_debug_error_manager.check(local_error, err_msg);
-}
-bool my_p4est_biomolecules_t::molecule::check_if_file(const string& file_path) const
-{
-  struct stat st;
-  int err_st = stat(file_path.c_str(), &st);
-  return (0 == err_st && S_ISREG(st.st_mode));
-}
 void my_p4est_biomolecules_t::check_validity_of_vector_of_mol() const
 {
 #ifdef CASL_THROWS
@@ -2175,7 +2157,8 @@ my_p4est_biomolecules_t::my_p4est_biomolecules_t(p4est_t* p4est_, const double& 
     bool add_slash = false;
     if(input_folder != NULL)
     {
-      check_if_directory(*input_folder);
+      if(!is_folder(*input_folder))
+        throw std::invalid_argument("my_p4est_biomolecules_t::check_if_directory(const string*): invalid directory path: " + *input_folder + " does not exist or is not a directory."); // if it is not a directory, it is not for ALL proc --> send an exception here is alright
       add_slash = input_folder->at(input_folder->size()-1) != '/';
     }
     for (size_t k = 0; k < pqr_names->size(); ++k) {
@@ -2826,12 +2809,10 @@ double my_p4est_biomolecules_t::better_distance(const double *xyz, const int& re
 #else
             atom_k = get_atom(sorted_atoms[0].global_atom_idx, sorted_atoms[0].mol_idx);
             cc_dot_n = 0.0;
-            cc[0] = atom_k->xc - circle_center[0];
-            cc_dot_n += cc[0]*normal_vector[0];
-            cc[1] = atom_k->yc - circle_center[1];
-            cc_dot_n += cc[1]*normal_vector[1];
-            cc[2] = atom_k->zc - circle_center[2];
-            cc_dot_n += cc[2]*normal_vector[2];
+            for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
+              cc[dir] = atom_k->xyz_c[dir] - circle_center[dir];
+              cc_dot_n += cc[dir]*normal_vector[dir];
+            }
             radius_of_other_circle = sqrt(SQR(parameters.probe_radius() + atom_k->r_vdw) - SQR(cc_dot_n));
             norm_of_cc = 0.0;
             cc_dot_mu = 0.0;
@@ -3406,7 +3387,7 @@ void my_p4est_biomolecules_t::remove_internal_cavities(const bool export_cavitie
   {
     ierr = VecDestroy(inner_domain); CHKERRXX(ierr);
   }
-  ierr = VecCreateGhostNodes(neighbors->p4est, neighbors->nodes, &inner_domain); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodes(neighbors->get_p4est(), neighbors->get_nodes(), &inner_domain); CHKERRXX(ierr);
 
   is_point_in_a_bounding_box.biomol_pointer = this;
   double *inner_domain_p;
@@ -3418,8 +3399,8 @@ void my_p4est_biomolecules_t::remove_internal_cavities(const bool export_cavitie
   }
   ierr = VecGetArrayRead(phi, &phi_read_only_p); CHKERRXX(ierr);
 
-  size_t layer_size = neighbors->layer_nodes.size();
-  size_t local_size = neighbors->local_nodes.size();
+  size_t layer_size = neighbors->get_layer_size();
+  size_t local_size = neighbors->get_local_size();
   quad_neighbor_nodes_of_node_t qnnn;
   int not_converged = 1;
   while (not_converged)
@@ -3429,26 +3410,26 @@ void my_p4est_biomolecules_t::remove_internal_cavities(const bool export_cavitie
     // forward
     for (size_t layer_node_idx = 0; layer_node_idx < layer_size; ++layer_node_idx)
     {
-      p4est_locidx_t k = neighbors->layer_nodes.at(layer_node_idx);
+      p4est_locidx_t k = neighbors->get_layer_node(layer_node_idx);
       not_converged = is_point_in_outer_domain_and_updated(k, qnnn, neighbors, inner_domain_p) || not_converged;
     }
     ierr = VecGhostUpdateBegin(inner_domain, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     for (size_t local_node_idx = 0; local_node_idx < local_size; ++local_node_idx)
     {
-      p4est_locidx_t k = neighbors->local_nodes.at(local_node_idx);
+      p4est_locidx_t k = neighbors->get_local_node(local_node_idx);
       not_converged = is_point_in_outer_domain_and_updated(k, qnnn, neighbors, inner_domain_p) || not_converged;
     }
     ierr = VecGhostUpdateEnd(inner_domain, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     // backward
     for (size_t layer_node_idx = 0; layer_node_idx < layer_size; ++layer_node_idx)
     {
-      p4est_locidx_t k = neighbors->layer_nodes.at(layer_size-1-layer_node_idx);
+      p4est_locidx_t k = neighbors->get_layer_node(layer_size-1-layer_node_idx);
       not_converged = is_point_in_outer_domain_and_updated(k, qnnn, neighbors, inner_domain_p) || not_converged;
     }
     ierr = VecGhostUpdateBegin(inner_domain, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     for (size_t local_node_idx = 0; local_node_idx < local_size; ++local_node_idx)
     {
-      p4est_locidx_t k = neighbors->local_nodes.at(local_size-1-local_node_idx);
+      p4est_locidx_t k = neighbors->get_local_node(local_size-1-local_node_idx);
       not_converged = is_point_in_outer_domain_and_updated(k, qnnn, neighbors, inner_domain_p) || not_converged;
     }
     ierr = VecGhostUpdateEnd(inner_domain, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -4736,9 +4717,9 @@ void my_p4est_biomolecules_solver_t::calculate_jumps_in_normal_gradient(Vec &eps
 #endif
   double xyz[P4EST_DIM];
   double norm_of_gradient;
-  for (size_t k = 0; k < biomolecules->neighbors->layer_nodes.size(); ++k)
+  for (size_t k = 0; k < biomolecules->neighbors->get_layer_size(); ++k)
   {
-    node_idx = biomolecules->neighbors->layer_nodes.at(k);
+    node_idx = biomolecules->neighbors->get_layer_node(k);
     if(fabs(phi_read_only_p[node_idx]) <= (1.5*biomolecules->parameters.layer_thickness())) // 1.5 == safety factor
     {
       biomolecules->neighbors->get_neighbors(node_idx, qnnn);
@@ -4767,9 +4748,9 @@ void my_p4est_biomolecules_solver_t::calculate_jumps_in_normal_gradient(Vec &eps
       eps_grad_n_psi_hat_jump_p[node_idx]  = 0.0; // irrelevant far away from the interface but let's set it to 0.0
   }
   ierr = VecGhostUpdateBegin(eps_grad_n_psi_hat_jump, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  for (size_t k = 0; k < biomolecules->neighbors->local_nodes.size(); ++k)
+  for (size_t k = 0; k < biomolecules->neighbors->get_local_size(); ++k)
   {
-    node_idx = biomolecules->neighbors->local_nodes.at(k);
+    node_idx = biomolecules->neighbors->get_local_node(k);
     if(fabs(phi_read_only_p[node_idx]) <= (1.5*biomolecules->parameters.layer_thickness())) // 1.5 == safety factor
     {
       biomolecules->neighbors->get_neighbors(node_idx, qnnn);
@@ -5236,7 +5217,6 @@ void my_p4est_biomolecules_solver_t::get_solvation_free_energy()
   int charged_atom_idx_offset         = 0;
   int global_charged_atom_idx;
   p4est_locidx_t local_idx = 0;
-  double xyz_atom[3];
   //std::cout << "first charged atom idx  ::  " << first_charged_atom_idx << "\n";
   if(first_charged_atom_idx < total_nb_charged_atoms)
   {
@@ -5251,10 +5231,7 @@ void my_p4est_biomolecules_solver_t::get_solvation_free_energy()
           if((first_charged_atom_idx <= global_charged_atom_idx) && (global_charged_atom_idx < idx_of_charged_atom_after_last))
           {
             const Atom* a = mol.get_charged_atom(charged_atom_idx);
-            xyz_atom[0] = a->xc;
-            xyz_atom[1] = a->yc;
-            xyz_atom[2] = a->zc;
-            interpolate_psi_hat_plus_psi_naught.add_point(local_idx++, xyz_atom);
+            interpolate_psi_hat_plus_psi_naught.add_point(local_idx++, a->xyz_c);
             P4EST_ASSERT(local_idx <= nb_atoms_for_me);
           }
         }

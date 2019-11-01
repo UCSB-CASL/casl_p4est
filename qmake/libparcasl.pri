@@ -67,6 +67,7 @@ SOURCES += \
 CONFIG(2d, 2d|3d): {
 HEADERS += \
   $$PARCASL/src/my_p4est_biofilm.h \
+  $$PARCASL/src/my_p4est_biomolecules.h \
   $$PARCASL/src/my_p4est_cell_neighbors.h \
 #  $$PARCASL/src/my_p4est_epitaxy.h \
   $$PARCASL/src/my_p4est_faces.h \
@@ -107,6 +108,7 @@ HEADERS += \
 
 SOURCES += \
   $$PARCASL/src/my_p4est_biofilm.cpp \
+  $$PARCASL/src/my_p4est_biomolecules.cpp \
   $$PARCASL/src/my_p4est_cell_neighbors.cpp \
 #  $$PARCASL/src/my_p4est_epitaxy.cpp \
   $$PARCASL/src/my_p4est_faces.cpp \
@@ -155,6 +157,7 @@ HEADERS += \
 CONFIG(3d, 2d|3d): {
 HEADERS += \
   $$PARCASL/src/my_p8est_biofilm.h \
+  $$PARCASL/src/my_p8est_biomolecules.h \
   $$PARCASL/src/my_p8est_cell_neighbors.h \
 #  $$PARCASL/src/my_p8est_epitaxy.h \
   $$PARCASL/src/my_p8est_faces.h \
@@ -195,6 +198,7 @@ HEADERS += \
 
 SOURCES += \
   $$PARCASL/src/my_p8est_biofilm.cpp \
+  $$PARCASL/src/my_p8est_biomolecules.cpp \
   $$PARCASL/src/my_p8est_cell_neighbors.cpp \
 #  $$PARCASL/src/my_p8est_epitaxy.cpp \
   $$PARCASL/src/my_p8est_faces.cpp \
