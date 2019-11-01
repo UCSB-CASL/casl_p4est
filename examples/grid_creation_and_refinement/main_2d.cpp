@@ -41,14 +41,14 @@ using namespace std;
 
 const static std::string main_description = "\
  In this example, we illustrate and test the main procedures to create and refine a forest of Quad/Oc-trees within the \n\
- parCASL library. We focus on creating a grid from scratch, not on the update the grid from a previous one, since that \n\
- will be covered in another example. Specifically, we address the two main paradigms of grid refinement within pasCASL,\n\
- i.e. (1) refinement from a continuous function and (2) refinement from grid data via tagging each quadrant/octant. The\n\
- script first creates the relevant p4est and my_p4est objects, and then refines the grid around a circle (in 2D) or    \n\
- sphere (in 3D) that is randomly placed in the domain. It does so by following either of the two paradigms, which can  \n\
- be chosen setting the 'method' parameter.\n\
- Example of application of interest: Creation of any computational grid in the parCASL library.\n\
- Developer: Fernando Temprano-Coleto (ftempranocoleto@ucsb.edu), October 2019.\n";
+ parCASL library. We focus on creating a grid from scratch, not on updating the grid from a previous one, since that   \n\
+ will be covered in the 'grid_update' example. Specifically, we address the two main paradigms of grid refinement      \n\
+ within pasCASL, i.e. (i) refinement from a continuous function (setting 'method' as 1 or 2) and (ii) refinement from  \n\
+ grid-sampled data via tagging each quadrant/octant (setting 'method' as 3). The script first creates the relevant     \n\
+ p4est and my_p4est objects, and then refines the grid around a circle (in 2D) or sphere (in 3D) that is randomly      \n\
+ placed in the domain.                                                                                                 \n\
+ Example of application of interest: Creation of any computational grid in the parCASL library.                        \n\
+ Developer: Fernando Temprano-Coleto (ftempranocoleto@ucsb.edu), October 2019.                                         \n ";
 
 // -----------------------------------------------------------------------------------------------------------------------
 // Definition of the parameters of the example
@@ -70,10 +70,11 @@ param_t<double>       lip        (pl, 1.2,  "lip",  "Lipschitz constant (default
 // Method setup
 param_t<bool>         print_iter (pl, true, "print_iter", "Output each refinement iteration (1)\n"
                                                       "or only final grid (0) (default:1)");
-param_t<unsigned int> method     (pl, 1,    "method", "Method of grid refinement (default: 1): \n"
-                                                      "    0 - Do nothing,\n"
-                                                      "    1 - Continuous function,\n"
-                                                      "    2 - Tag quadrants");
+param_t<unsigned int> method     (pl, 1,    "method", "Method of grid refinement (default: 1): \n\
+                                                          0 - Do nothing,\n\
+                                                          1 - Continuous function: interface,\n\
+                                                          2 - Continuous function: interface and band of uniform cells,\n\
+                                                          3 - Tag quadrants: interface.");
 
 // -----------------------------------------------------------------------------------------------------------------------
 // Define auxiliary classes
@@ -187,7 +188,7 @@ int main(int argc, char** argv) {
 
       break;
     }
-    case 1: /*------ CONTINUOUS FUNCTION -------------------------------------------------------------------------------*/
+    case 1: /*------ CONTINUOUS FUNCTION: INTERFACE --------------------------------------------------------------------*/
     {
       // Declare the continuous-function refinement object
       splitting_criteria_cf_t sp(lmin.val, lmax.val, &sphere, lip.val);
@@ -237,7 +238,12 @@ int main(int argc, char** argv) {
       break;
     }
 
-    case 2: /*------ TAGGING QUADRANTS ---------------------------------------------------------------------------------*/
+    case 2: /*------ CONTINUOUS FUNCTION: INTERFACE AND UNIFORM BAND ---------------------------------------------------*/
+    {
+      throw std::invalid_argument("Not implemented yet");
+    }
+
+    case 3: /*------ TAGGING QUADRANTS: INTERFACE ----------------------------------------------------------------------*/
     {
       // Partition, create ghosts, create nodes
       my_p4est_partition(p4est, P4EST_FALSE, NULL);
