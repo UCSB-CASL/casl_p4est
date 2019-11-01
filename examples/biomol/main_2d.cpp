@@ -166,23 +166,19 @@ int main(int argc, char *argv[]) {
   cmd.add_option("SAS-timing",    "flag activating the timer of the SAS constructor (1 or 'yes' or 'true' to activate that feature)");
   cmd.add_option("SAS-subtiming", "flag activating the subtimer of the SAS constructor (1 or 'yes' or 'true' to activate that feature, activated only if SAS_timing is activated too)");
   cmd.add_option("logfile",       "log file");
-  cmd.add_option("err-log",       "error log file");
+  cmd.add_option("err-log",       "error log file (default is stderr)");
 
   cmd.parse(argc, argv);
+  // Now, read the options and/or set default parameters
 
-  // read the options and/or set default parameters
-  /* default comparison strings */
-  string nullstr = "NULL";
-  string stdout_str = "stdout";
-  string stderr_str = "stderr";
-  // molecule(s)
-  const string input_folder                 = cmd.get<string> ("input-dir", "/home/rochi/LabCode/casl_p4est/examples/biomol/mols");
-//  const string input_folder                 = cmd.get<string> ("input-dir", "/home/regan/Desktop/casl_p4est_develop/examples/biomol/mols");
-  const string pqr_input                    = cmd.get<string>("pqr", "single_sphere."); // for validation, irrelevant for now
+  // which molecule(s)
+//  const string input_folder                 = cmd.get<string> ("input-dir", "/home/rochi/LabCode/casl_p4est/examples/biomol/mols");
+  const string input_folder                 = cmd.get<string> ("input-dir", "/home/regan/Desktop/casl_p4est_develop/examples/biomol/mols");
+  const string pqr_input                    = cmd.get<string>("pqr", "single_sphere.");
   //    const string pqr_input                    = cmd.get<string>("pqr", "3J6D."); // in 2D, for the illustrative planar molecule in the paper
   //    const string pqr_input                    = cmd.get<string>("pqr", "/3J3Q/pqr/3j3q-bundle."); // in 3D, for the graphical abstract of the paper
   const vector<string>* pqr = NULL;
-  if(!boost::iequals(nullstr,pqr_input))
+  if(!boost::iequals(null_str, pqr_input))
     pqr                                     = read_from_list<string>(pqr_input);
 #ifdef P4_TO_P8
   const string list_of_centroids            = cmd.get<string>("centroid", "0.5,0.5,0.5");
@@ -193,9 +189,9 @@ int main(int argc, char *argv[]) {
 #endif
   vector<double>* centroids = NULL;
   vector<double>* angles = NULL;
-  if(!boost::iequals(nullstr, list_of_centroids))
+  if(!boost::iequals(null_str, list_of_centroids))
     centroids                               = read_from_list<double>(list_of_centroids);
-  if(!boost::iequals(nullstr, list_of_angles))
+  if(!boost::iequals(null_str, list_of_angles))
     angles                                  = read_from_list<double>(list_of_angles);
 
   const double rel_side_length_biggest_box  = cmd.get<double>("boxsize", 0.3);
@@ -207,7 +203,6 @@ int main(int argc, char *argv[]) {
   const int surf_gen                        = cmd.get<int>("surfgen", 1);
   const double probe_radius                 = cmd.get<double>("rp", 0.01);
   const int order_of_accuracy               = cmd.get<int>("OOA", 2);
-  const string validation_string            = cmd.get<string>("validation", "no");
 // physical and solver parameters
   const double eps_mol                      = cmd.get<double>("eps_mol", 1.0);
   const double eps_elec                     = cmd.get<double>("eps_elec", 78.54);
@@ -221,8 +216,8 @@ int main(int argc, char *argv[]) {
 
 
   // exportation folder and files
-  string output_folder                      = cmd.get<string>("output-dir", "/home/rochi/LabCode/results/biomol");
-//  string output_folder                      = cmd.get<string>("output-dir", "/home/regan/workspace/projects/biomol");
+//  string output_folder                      = cmd.get<string>("output-dir", "/home/rochi/LabCode/results/biomol");
+  string output_folder                      = cmd.get<string>("output-dir", "/home/regan/workspace/projects/biomol");
   mkdir(output_folder.c_str(), 0755);
   string subvtk                             = cmd.get<string>("subvtk", "yes");
   const bool subvtk_flag                    = (boost::iequals("1", subvtk) || boost::iequals("yes", subvtk) || boost::iequals("true", subvtk));
@@ -233,7 +228,7 @@ int main(int argc, char *argv[]) {
   /* open/create the log file if needed */
   const string log_file                     = cmd.get<string>("logfile", "stdout");
   my_p4est_biomolecules_t::log_file = NULL;
-  if(!boost::iequals(nullstr, log_file))
+  if(!boost::iequals(null_str, log_file))
   {
     if(boost::iequals(stdout_str, log_file))
       my_p4est_biomolecules_t::log_file = stdout;
@@ -245,7 +240,7 @@ int main(int argc, char *argv[]) {
   }
   const string timing_file                  = cmd.get<string>("timing", "stdout");
   my_p4est_biomolecules_t::timing_file = NULL;
-  if(!boost::iequals(nullstr, timing_file))
+  if(!boost::iequals(null_str, timing_file))
   {
     if(boost::iequals(stdout_str, timing_file))
       my_p4est_biomolecules_t::timing_file = stdout;
@@ -261,7 +256,7 @@ int main(int argc, char *argv[]) {
   const bool SAS_subtiming_flag             = (boost::iequals("1", SAS_subtiming) || boost::iequals("yes", SAS_subtiming) || boost::iequals("true", SAS_subtiming));
   const string errlog_file                  = cmd.get<string>("err-log", "stderr");
   my_p4est_biomolecules_t::error_file  = NULL;
-  if(!boost::iequals(nullstr, errlog_file))
+  if(!boost::iequals(null_str, errlog_file))
   {
     if(boost::iequals(stderr_str, errlog_file))
       my_p4est_biomolecules_t::error_file = stderr;
@@ -296,7 +291,7 @@ int main(int argc, char *argv[]) {
 
 
   // read the molecules and rotate them
-  my_p4est_biomolecules_t my_biomol(p4est, &mpi, pqr, &input_folder, angles, centroids, &rel_side_length_biggest_box);
+  my_p4est_biomolecules_t my_biomol(p4est, rel_side_length_biggest_box, pqr, &input_folder, angles, centroids);
 
   my_biomol.set_grid_and_surface_parameters(lmin, lmax, lip, probe_radius, order_of_accuracy);
   p4est = my_biomol.construct_SES(((surf_gen == 0)? brute_force: ((surf_gen == 1)?list_reduction:list_reduction_with_exact_phi)), SAS_timing_flag, SAS_subtiming_flag, subvtk_flag?output_folder:"null");
@@ -319,7 +314,7 @@ int main(int argc, char *argv[]) {
   Vec phi               = my_biomol.return_phi_vector();
   p4est_nodes_t* nodes  = my_biomol.return_nodes();
   p4est_ghost_t* ghost  = my_biomol.return_ghost();
-  if(!boost::iequals(nullstr, vtk_name))
+  if(!boost::iequals(null_str, vtk_name))
   {
 
     double *phi_p = NULL, *psi_star_p = NULL, *psi_naught_p = NULL, *psi_bar_p = NULL, *psi_hat_p = NULL;
@@ -371,11 +366,11 @@ int main(int argc, char *argv[]) {
   delete centroids;
   if(mpi.rank() == 0)
   {
-    if(!boost::iequals(nullstr, timing_file) && !boost::iequals(stdout_str, timing_file))
+    if(!boost::iequals(null_str, timing_file) && !boost::iequals(stdout_str, timing_file))
       fclose(my_p4est_biomolecules_t::timing_file);
-    if(!boost::iequals(nullstr, errlog_file) && !boost::iequals(stderr_str, errlog_file))
+    if(!boost::iequals(null_str, errlog_file) && !boost::iequals(stderr_str, errlog_file))
       fclose(my_p4est_biomolecules_t::error_file);
-    if(!boost::iequals(nullstr, log_file) && !boost::iequals(stdout_str, log_file))
+    if(!boost::iequals(null_str, log_file) && !boost::iequals(stdout_str, log_file))
       fclose(my_p4est_biomolecules_t::log_file);
   }
 

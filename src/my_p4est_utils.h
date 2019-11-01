@@ -257,6 +257,10 @@ const unsigned short i_idx[] = { 0, 1 };
 const unsigned short j_idx[] = { 1, 0 };
 #endif
 
+const static std::string null_str    = "NULL";
+const static std::string stdout_str  = "stdout";
+const static std::string stderr_str  = "stderr";
+
 
 //#ifdef P4_TO_P8
 //const unsigned short q2c[P4EST_CHILDREN][P4EST_CHILDREN] = { { nn_mmm, nn_0mm, nn_m0m, nn_00m,

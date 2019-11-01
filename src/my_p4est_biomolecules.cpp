@@ -477,29 +477,34 @@ bdry_phi_cf_t bdry_phi_z_cf_all[] = { bdry_phi_cf_t(DDZ, bdry_geom_00) };
 #endif
 // initialize all static variables
 const string Atom::ATOM = "ATOM  ";
-p4est_connectivity_t* my_p4est_biomolecules_t::molecule::domain_connectivity = NULL;
-mpi_environment_t* my_p4est_biomolecules_t::molecule::mpi = NULL;
-const int my_p4est_biomolecules_t::nangle_per_mol =
-    #ifdef P4_TO_P8
-    3
-    #else
-    1
-    #endif
-    ;
+#ifdef P4_TO_P8
+const int my_p4est_biomolecules_t::nangle_per_mol = 3;
+#else
+const int my_p4est_biomolecules_t::nangle_per_mol = 1;
+#endif
+
 FILE* my_p4est_biomolecules_t::log_file     = NULL;
 FILE* my_p4est_biomolecules_t::timing_file  = NULL;
-FILE* my_p4est_biomolecules_t::error_file   = NULL;
+FILE* my_p4est_biomolecules_t::error_file   = stderr;
+
 int reduced_list::nb_reduced_lists          = 0;
 
-double norm(const vector<double>& v)
+my_p4est_biomolecules_t::molecule::molecule(const my_p4est_biomolecules_t *owner, const string &pqr_, const double &angstrom_to_domain_, const double *xyz_c, double *angles, const int &overlap):
+  environment(owner),
+  scaling(angstrom_to_domain_)
 {
-  double value = 0.0;
-  for (size_t k = 0; k < v.size(); ++k)
-    value += SQR(v.at(k));
-  return sqrt(value);
+  scale_is_set = (fabs(angstrom_to_domain_-1.0)>EPS);
+  read(pqr_, overlap);
+#ifndef P4_TO_P8
+  // remove possible duplicates (one of the coordinates has been disregarded for each atom when reading the list, there might be duplicates)
+  sort(atoms.begin(), atoms.end());
+  atoms.erase(unique(atoms.begin(), atoms.end()), atoms.end());
+#endif
+  index_of_charged_atom.clear();
+  scale_rotate_and_translate(NULL, xyz_c, angles); /* conversion to domain dim has been done at reading stage, hence the NULL first argument */
 }
 
-void my_p4est_biomolecules_t::molecule::read(const string& pqr, const int overlap)
+void my_p4est_biomolecules_t::molecule::read(const string &pqr, const int &overlap)
 {
 #ifdef CASL_THROWS
   int                 my_local_error;
@@ -508,16 +513,16 @@ void my_p4est_biomolecules_t::molecule::read(const string& pqr, const int overla
   int mpiret;
   if (atoms.size() != 0)
   {
-    PetscPrintf(mpi->comm(), "------------------------------------------------ \n");
-    PetscPrintf(mpi->comm(), "---  Reinitialization of the list of atoms  ---- \n");
-    PetscPrintf(mpi->comm(), "------------------------------------------------ \n");
+    PetscPrintf(environment->p4est->mpicomm, "------------------------------------------------ \n");
+    PetscPrintf(environment->p4est->mpicomm, "---  Reinitialization of the list of atoms  ---- \n");
+    PetscPrintf(environment->p4est->mpicomm, "------------------------------------------------ \n");
     // reinitialize the list of atoms and related parameters
     atoms.clear();
   }
 #ifdef CASL_THROWS
   my_local_error = overlap < 1;
   err_msg = "bio_molecule::read(const string*, const int): require an integer >= 1 for the overlap argument. overlap <= 0 does not make sense. \n";
-  mol_err_manager.check_my_local_error(my_local_error, err_msg);
+  environment->error_manager.check(my_local_error, err_msg);
 #endif
 
   string bundle = "bundle";
@@ -545,11 +550,11 @@ void my_p4est_biomolecules_t::molecule::read(const string& pqr, const int overla
     filename.copy(file_name, filename.size(), 0);
     file_name[filename.size()] = '\0';
 
-    mpiret = MPI_File_open(mpi->comm(), &file_name[0], MPI_MODE_RDONLY, MPI_INFO_NULL, &file_handle);
+    mpiret = MPI_File_open(environment->p4est->mpicomm, &file_name[0], MPI_MODE_RDONLY, MPI_INFO_NULL, &file_handle);
 #ifdef CASL_THROWS
     my_local_error = mpiret != sc_MPI_SUCCESS;
     err_msg = "bio_molecule::read(const string*, const int): could not open file" + filename + "\n";
-    mol_err_manager.check_my_local_error(my_local_error, err_msg);
+    environment->error_manager.check(my_local_error, err_msg);
 #endif
 
     /* read relevant chunk of file, which starts at location
@@ -561,8 +566,8 @@ void my_p4est_biomolecules_t::molecule::read(const string& pqr, const int overla
     MPI_File_get_size(file_handle, &filesize);
     filesize--;  /* get rid of eof character */
     string chunk;
-    int mysize = filesize/mpi->size();
-    int rank_max = mpi->size()-1;
+    int mysize = filesize/(environment->p4est->mpisize);
+    int rank_max = environment->p4est->mpisize -1;
     if (mysize < overlap)
     {
       /* too many procs for the number of atoms in the file if this occurs.
@@ -572,27 +577,27 @@ void my_p4est_biomolecules_t::molecule::read(const string& pqr, const int overla
       if (error_file != NULL)
       {
         string warning_message = "bio_molecule::read(const string*, const int): !WARNING! the file is too small for the number of processes \nbio_molecule::read(const string*, const int): !WARNING! fewer procs will read chunks \n";
-        PetscFPrintf(mpi->comm(), error_file, warning_message.c_str());
+        PetscFPrintf(environment->p4est->mpicomm, error_file, warning_message.c_str());
       }
       /* We'll use less procs, the last ones will do nothing but wait for the final Allgather*/
 #ifdef CASL_THROWS
-      my_local_error = filesize/overlap>mpi->size();
+      my_local_error = filesize/overlap>environment->p4est->mpisize;
       err_msg = "bio_molecule::read(const string*, const int): something went wrong, a logic error occurred, inconsistent integer divisions...\n";
-      mol_err_manager.check_my_local_error(my_local_error, err_msg);
+      environment->error_manager.check(my_local_error, err_msg);
       my_local_error = filesize/overlap == 0;
       err_msg = "bio_molecule::read(const string*, const int): the file is way too small, doesn't even contain one relevant line...\n";
-      mol_err_manager.check_my_local_error(my_local_error, err_msg);
+      environment->error_manager.check(my_local_error, err_msg);
 #endif
       rank_max = filesize/overlap;
       mysize = overlap;
       MPI_Offset globalstart;
-      if(mpi->rank() <= rank_max)
-        globalstart = mysize*mpi->rank();
+      if(environment->p4est->mpirank <= rank_max)
+        globalstart = mysize*environment->p4est->mpirank;
       else
         globalstart = filesize-1;
-      MPI_Offset globalend    = (mpi->rank() < rank_max)?globalstart + mysize:filesize;
+      MPI_Offset globalend    = (environment->p4est->mpirank < rank_max)?globalstart + mysize:filesize;
       /* add overlap to the end of everyone's chunk except last proc... */
-      if (mpi->rank() < rank_max)
+      if (environment->p4est->mpirank < rank_max)
         globalend += overlap;
       mysize =  globalend - globalstart;
       /* allocate memory */
@@ -603,10 +608,10 @@ void my_p4est_biomolecules_t::molecule::read(const string& pqr, const int overla
     }
     else
     {
-      MPI_Offset globalstart  = mysize*mpi->rank();
-      MPI_Offset globalend    = (mpi->rank() != rank_max)?globalstart + mysize:filesize;
+      MPI_Offset globalstart  = mysize*environment->p4est->mpirank;
+      MPI_Offset globalend    = (environment->p4est->mpirank != rank_max)?globalstart + mysize:filesize;
       /* add overlap to the end of everyone's chunk except last proc... */
-      if (mpi->rank() != rank_max)
+      if (environment->p4est->mpirank != rank_max)
         globalend += overlap;
       mysize =  globalend - globalstart;
       /* allocate memory */
@@ -622,12 +627,12 @@ void my_p4est_biomolecules_t::molecule::read(const string& pqr, const int overla
      * (after end - overlap)
      */
     int locstart=0, locend=mysize;
-    if (mpi->rank() != 0 && mpi->rank() <= rank_max) { /* second condition needed if using fewer procs than available, useless otherwise.*/
+    if (environment->p4est->mpirank != 0 && environment->p4est->mpirank <= rank_max) { /* second condition needed if using fewer procs than available, useless otherwise.*/
       while(chunk[locstart] != '\n' && locstart < locend)
         locstart++;
       locstart++; // skip the found '\n' character
     }
-    if (mpi->rank() < rank_max) {
+    if (environment->p4est->mpirank < rank_max) {
       locend-=overlap;
       while(chunk[locend] != '\n' && locend < mysize) locend++;
     }
@@ -646,11 +651,8 @@ void my_p4est_biomolecules_t::molecule::read(const string& pqr, const int overla
       if(line >> atom)
       {
         atoms_in_chunk.push_back(atom);
-        molecule_centroid[0] += atom.xc;
-        molecule_centroid[1] += atom.yc;
-#ifdef P4_TO_P8
-        molecule_centroid[2] += atom.zc;
-#endif
+        for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+          molecule_centroid[dir] += atom.xyz_c[dir];
         largest_radius = MAX(largest_radius, atom.r_vdw);
         n_charged_atoms += (fabs(atom.q) > 0.00005)? 1:0; // the charge resolution is 0.0001 in regular pqr files
       }
@@ -662,16 +664,16 @@ void my_p4est_biomolecules_t::molecule::read(const string& pqr, const int overla
     filename = pqr + ((is_a_bundle)? to_string(file_idx):"") + ((add_extension)? extension:"");
   }
 
-  vector<int> byte_offset_in_proc(mpi->size());
-  vector<int> nb_of_bytes_in_proc(mpi->size());
-  nb_of_bytes_in_proc[mpi->rank()] = atoms_in_chunk.size()*sizeof(Atom);
-  mpiret = MPI_Allgather(MPI_IN_PLACE, 1, MPI_INT, &nb_of_bytes_in_proc[0], 1, MPI_INT, mpi->comm()); SC_CHECK_MPI(mpiret);
-  mpiret = MPI_Allreduce(MPI_IN_PLACE, &molecule_centroid[0], P4EST_DIM, MPI_DOUBLE, MPI_SUM, mpi->comm()); SC_CHECK_MPI(mpiret);
-  mpiret = MPI_Allreduce(MPI_IN_PLACE, &n_charged_atoms, 1, MPI_INT, MPI_SUM, mpi->comm()); SC_CHECK_MPI(mpiret);
-  mpiret = MPI_Allreduce(MPI_IN_PLACE, &largest_radius, 1, MPI_DOUBLE, MPI_MAX, mpi->comm()); SC_CHECK_MPI(mpiret);
+  vector<int> byte_offset_in_proc(environment->p4est->mpisize);
+  vector<int> nb_of_bytes_in_proc(environment->p4est->mpisize);
+  nb_of_bytes_in_proc[environment->p4est->mpirank] = atoms_in_chunk.size()*sizeof(Atom);
+  mpiret = MPI_Allgather(MPI_IN_PLACE, 1, MPI_INT, &nb_of_bytes_in_proc[0], 1, MPI_INT, environment->p4est->mpicomm); SC_CHECK_MPI(mpiret);
+  mpiret = MPI_Allreduce(MPI_IN_PLACE, &molecule_centroid[0], P4EST_DIM, MPI_DOUBLE, MPI_SUM, environment->p4est->mpicomm); SC_CHECK_MPI(mpiret);
+  mpiret = MPI_Allreduce(MPI_IN_PLACE, &n_charged_atoms, 1, MPI_INT, MPI_SUM, environment->p4est->mpicomm); SC_CHECK_MPI(mpiret);
+  mpiret = MPI_Allreduce(MPI_IN_PLACE, &largest_radius, 1, MPI_DOUBLE, MPI_MAX, environment->p4est->mpicomm); SC_CHECK_MPI(mpiret);
   int total_nb_of_atoms = nb_of_bytes_in_proc[0]/sizeof(Atom);
   byte_offset_in_proc[0] = 0;
-  for (int k = 1; k < mpi->size(); ++k) {
+  for (int k = 1; k < environment->p4est->mpisize; ++k) {
     total_nb_of_atoms       += nb_of_bytes_in_proc[k]/sizeof(Atom);
     byte_offset_in_proc[k]  = byte_offset_in_proc[k-1] + nb_of_bytes_in_proc[k-1];
   }
@@ -687,150 +689,34 @@ void my_p4est_biomolecules_t::molecule::read(const string& pqr, const int overla
       &nb_of_bytes_in_proc[0],
       &byte_offset_in_proc[0],
       MPI_BYTE,
-      mpi->comm()); SC_CHECK_MPI(mpiret);
+      environment->p4est->mpicomm); SC_CHECK_MPI(mpiret);
 
   return;
 }
-/*
- * if someone ever plans on using this one again: it needs additional
- * features (see the parallel version) to be compatible with other class
- * methods: read bundles, count the number of charged atoms, etc.
- *
-void my_p4est_biomolecules_t::molecule::read_serial(const string& pqr)
-{
-  if (atoms.size() != 0)
-  {
-    PetscPrintf(mpi->comm(), "------------------------------------------------ \n");
-    PetscPrintf(mpi->comm(), "---  Reinitialization of the list of atoms  ---- \n");
-    PetscPrintf(mpi->comm(), "------------------------------------------------ \n");
-    // reinitialize the list of atoms and related parameters
-    atoms.clear();
-  }
 
-  // only read on rank 0 and then broadcast the result to others
-  if (mpi->rank()== 0) {
-
-    ifstream reader(pqr.c_str());
-#ifdef CASL_THROWS // throwing is ok, root proc only...
-    if (!reader)
-    {
-      string err_msg = "bio_molecule::read_serial(const string*): could not open file" + pqr + "\n";
-      mol_err_manager.print_message_and_abort(err_msg, 147741);
-    }
-#else
-    MPI_Abort(mpi->comm(), 147741);
-#endif
-
-    for (int k = 0; k < P4EST_DIM; ++k) {
-      molecule_centroid[k] = 0.0;
-    }
-    largest_radius = -DBL_MAX;
-    // parse line by line
-    string line;
-    while(getline(reader, line)) {
-      istringstream iss(line);
-      string keyword; iss >> keyword;
-      Atom atom;
-      if (keyword == "ATOM") {
-        iss >> atom;
-        atom.x *= angstrom_to_domain;
-        molecule_centroid[0] += atom.x;
-        atom.y *= angstrom_to_domain;
-        molecule_centroid[1] += atom.y;
-  #ifdef P4_TO_P8
-        atom.z *= angstrom_to_domain;
-        molecule_centroid[2] += atom.z;
-  #endif
-        atom.r *= angstrom_to_domain;
-        largest_radius = MAX(largest_radius, atom.r);
-        atoms.push_back(atom);
-      }
-    }
-  }
-  for (int k = 0; k < P4EST_DIM; ++k) {
-    molecule_centroid[k] /= atoms.size();
-  }
-  MPI_Bcast(&molecule_centroid[0], 3, MPI_DOUBLE, 0, mpi->comm());
-  MPI_Bcast(&largest_radius, 1, MPI_DOUBLE, 0, mpi->comm());
-
-  size_t msg_size = atoms.size()*sizeof(Atom);
-  MPI_Bcast(&msg_size, 1, MPI_UNSIGNED_LONG, 0, mpi->comm());
-  if (mpi->rank() != 0)
-    atoms.resize(msg_size/sizeof(Atom));
-  MPI_Bcast(&atoms[0], msg_size, MPI_BYTE, 0, mpi->comm());
-}
-*/
-void my_p4est_biomolecules_t::molecule::calculate_center_of_domain(double* domain_center) const
-{
-  double *vertices_to_coordinates = domain_connectivity->vertices;
-  p4est_topidx_t *tree_to_vertex  = domain_connectivity->tree_to_vertex;
-
-  double xmin = vertices_to_coordinates[3*tree_to_vertex[0 + 0] + 0];
-  double xmax = vertices_to_coordinates[3*tree_to_vertex[P4EST_CHILDREN*(domain_connectivity->num_trees-1) + P4EST_CHILDREN-1] + 0];
-  domain_center[0] = 0.5*(xmin + xmax);
-  double ymin = vertices_to_coordinates[3*tree_to_vertex[0 + 0] + 1];
-  double ymax = vertices_to_coordinates[3*tree_to_vertex[P4EST_CHILDREN*(domain_connectivity->num_trees-1) + P4EST_CHILDREN-1] + 1];
-  domain_center[1] = 0.5*(ymin + ymax);
-#ifdef P4_TO_P8
-  double zmin = vertices_to_coordinates[3*tree_to_vertex[0 + 0] + 2];
-  double zmax = vertices_to_coordinates[3*tree_to_vertex[P4EST_CHILDREN*(domain_connectivity->num_trees-1) + P4EST_CHILDREN-1] + 2];
-  domain_center[2] = 0.5*(zmin + zmax);
-#endif
-}
-int my_p4est_biomolecules_t::molecule::update_connectivity(p4est_connectivity_t* conn_)
-{
-  if(domain_connectivity == NULL)
-    domain_connectivity = conn_;
-  return domain_connectivity != conn_;
-}
-int my_p4est_biomolecules_t::molecule::update_mpi(mpi_environment_t* mpi_)
-{
-  if(mpi == NULL)
-    mpi = mpi_;
-  return mpi != mpi_;
-}
-my_p4est_biomolecules_t::molecule::molecule(const string& pqr_, const double* xyz_c, double* angles, const double angstrom_to_domain_, const int overlap)
-  :
-    #ifdef CASL_THROWS
-    mol_err_manager(mpi->rank(), mpi->size(), mpi->comm(), my_p4est_biomolecules_t::error_file),
-    #endif
-    angstrom_to_domain(angstrom_to_domain_)
-{
-  scale_is_set = (fabs(angstrom_to_domain_-1.0)>EPS);
-  read(pqr_, overlap);
-#ifndef P4_TO_P8
-  // remove possible duplicates (one of the coordinates has been disregarded for each atom when reading the list, there might be duplicates)
-  sort(atoms.begin(), atoms.end());
-  atoms.erase(unique(atoms.begin(), atoms.end()), atoms.end());
-#endif
-  index_of_charged_atom.clear();
-  scale_rotate_and_translate(NULL /* conversion to domain dim has been done at reading stage */
-                             , xyz_c
-                             , angles);
-}
 double my_p4est_biomolecules_t::molecule::calculate_scaling_factor(const double cube_side_length_to_min_domain_size) const
 {
 #ifdef CASL_THROWS
   int local_error = (cube_side_length_to_min_domain_size < EPS || cube_side_length_to_min_domain_size >= 1.);
   string err_msg = "my_p4est_biomolecules_t::molecule::calculate_scaling_factor(const double) requires a value in )0, 1( as an input.";
-  mol_err_manager.check_my_local_error(local_error, err_msg);
+  environment->error_manager.check(local_error, err_msg);
 #endif
   /* calculate the minimal domain dimension */
-  double *vertices_to_coordinates = domain_connectivity->vertices;
-  p4est_topidx_t *tree_to_vertex  = domain_connectivity->tree_to_vertex;
+  double *vertices_to_coordinates = environment->p4est->connectivity->vertices;
+  p4est_topidx_t *tree_to_vertex  = environment->p4est->connectivity->tree_to_vertex;
   double xmin           = vertices_to_coordinates[3*tree_to_vertex[0 + 0] + 0];
-  double xmax           = vertices_to_coordinates[3*tree_to_vertex[P4EST_CHILDREN*(domain_connectivity->num_trees-1) + P4EST_CHILDREN-1] + 0];
+  double xmax           = vertices_to_coordinates[3*tree_to_vertex[P4EST_CHILDREN*(environment->p4est->connectivity->num_trees-1) + P4EST_CHILDREN-1] + 0];
   double domain_dim_min = xmax - xmin;
   double ymin           = vertices_to_coordinates[3*tree_to_vertex[0 + 0] + 1];
-  double ymax           = vertices_to_coordinates[3*tree_to_vertex[P4EST_CHILDREN*(domain_connectivity->num_trees-1) + P4EST_CHILDREN-1] + 1];
+  double ymax           = vertices_to_coordinates[3*tree_to_vertex[P4EST_CHILDREN*(environment->p4est->connectivity->num_trees-1) + P4EST_CHILDREN-1] + 1];
   domain_dim_min        = MIN(domain_dim_min, ymax-ymin);
 #ifdef P4_TO_P8
   double zmin           = vertices_to_coordinates[3*tree_to_vertex[0 + 0] + 2];
-  double zmax           = vertices_to_coordinates[3*tree_to_vertex[P4EST_CHILDREN*(domain_connectivity->num_trees-1) + P4EST_CHILDREN-1] + 2];
+  double zmax           = vertices_to_coordinates[3*tree_to_vertex[P4EST_CHILDREN*(environment->p4est->connectivity->num_trees-1) + P4EST_CHILDREN-1] + 2];
   domain_dim_min        = MIN(domain_dim_min, zmax - zmin);
 #endif
   // calculate the conversion factor
-  double domain_to_angstrom = 1.0/angstrom_to_domain;
+  double domain_to_angstrom = 1.0/scaling;
   double side_length_of_bounding_cube_angstrom = side_length_of_bounding_cube*domain_to_angstrom;
   return cube_side_length_to_min_domain_size*domain_dim_min/side_length_of_bounding_cube_angstrom; // new angstrom_to_domain factor
   // In real physical space, this value is in [1/ansgtrom] and is equal
@@ -841,13 +727,13 @@ void my_p4est_biomolecules_t::molecule::scale_rotate_and_translate(const double*
 #ifdef CASL_THROWS
   int local_error = (angstrom_to_domain_!= NULL && *angstrom_to_domain_ <= 0);
   string err_msg = "my_p4est_biomolecules_t::molecule::scale_rotate_and_translate(const double*, ...): the first argument must point to a strictly positive value, if non NULL.";
-  mol_err_manager.check_my_local_error(local_error, err_msg);
+  environment->error_manager.check(local_error, err_msg);
 #endif
   if(!scale_is_set && angstrom_to_domain_!= NULL)
     scale_is_set = true;
-  const double domain_to_angstrom = 1.0/angstrom_to_domain; // based on the former value, --> back to angstrom by multiplying by domain_to_angstrom
-  angstrom_to_domain = (angstrom_to_domain_!= NULL)? *angstrom_to_domain_: angstrom_to_domain; // new value
-  const double multiplicator = domain_to_angstrom*angstrom_to_domain; // appropriate scaling factor from previous domain scale to new domain scale
+  const double domain_to_angstrom = 1.0/scaling; // based on the former value, --> back to angstrom by multiplying by domain_to_angstrom
+  scaling = (angstrom_to_domain_!= NULL)? *angstrom_to_domain_: scaling; // new value
+  const double multiplicator = domain_to_angstrom*scaling; // appropriate scaling factor from previous domain scale to new domain scale
 
   vector<double>xyz_tmp; xyz_tmp.resize(P4EST_DIM);
   vector<double> rotated_xyz_tmp;
@@ -901,24 +787,17 @@ void my_p4est_biomolecules_t::molecule::scale_rotate_and_translate(const double*
     {
       index_of_charged_atom.at(charged_atoms_found++) = k;
     }
-    xyz_tmp[0] = multiplicator*(atoms[k].xc - molecule_centroid[0]);
-    xyz_tmp[1] = multiplicator*(atoms[k].yc - molecule_centroid[1]);
-#ifdef P4_TO_P8
-    xyz_tmp[2] = multiplicator*(atoms[k].zc - molecule_centroid[2]);
-#endif
+    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+      xyz_tmp[dir] = multiplicator*(atoms[k].xyz_c[dir] - molecule_centroid[dir]);
     if(angles != NULL)
       rotation_matrix.matvec(xyz_tmp, rotated_xyz_tmp);
     else
       rotated_xyz_tmp = xyz_tmp;
     atoms[k].r_vdw               *= multiplicator; // don't forget to scale the radius
-    atoms[k].xc                   = new_centroid[0] + rotated_xyz_tmp[0];
-    side_length_of_bounding_cube  = MAX(side_length_of_bounding_cube, fabs(atoms[k].xc - new_centroid[0])+atoms[k].r_vdw);
-    atoms[k].yc                   = new_centroid[1] + rotated_xyz_tmp[1];
-    side_length_of_bounding_cube  = MAX(side_length_of_bounding_cube, fabs(atoms[k].yc - new_centroid[1])+atoms[k].r_vdw);
-#ifdef P4_TO_P8
-    atoms[k].zc                   = new_centroid[2] + rotated_xyz_tmp[2];
-    side_length_of_bounding_cube  = MAX(side_length_of_bounding_cube, fabs(atoms[k].zc - new_centroid[2])+atoms[k].r_vdw);
-#endif
+    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
+      atoms[k].xyz_c[dir]           = new_centroid[dir] + rotated_xyz_tmp[dir];
+      side_length_of_bounding_cube  = MAX(side_length_of_bounding_cube, fabs(atoms[k].xyz_c[dir] - new_centroid[dir])+atoms[k].r_vdw);
+    }
   }
   if(create_list_of_charged_atoms)
     P4EST_ASSERT(charged_atoms_found == n_charged_atoms);
@@ -932,7 +811,7 @@ void my_p4est_biomolecules_t::molecule::scale_rotate_and_translate(const double*
 #ifdef CASL_THROWS
   local_error = (scale_is_set && !is_bounding_box_in_domain());
   err_msg = "my_p4est_biomolecules_t::molecule::scale_rotate_and_translate(...): the bounding box of the molecule ends up out of the computational domain.";
-  mol_err_manager.check_my_local_error(local_error, err_msg);
+  environment->error_manager.check(local_error, err_msg);
 #endif
 }
 void my_p4est_biomolecules_t::molecule::translate()
@@ -963,58 +842,40 @@ void my_p4est_biomolecules_t::molecule::reduce_to_single_atom()
   if(n_charged_atoms)
     index_of_charged_atom.at(0) = 0;
 
-  molecule_centroid[0] = atoms.at(0).xc;
-  molecule_centroid[1] = atoms.at(0).yc;
-#ifdef P4_TO_P8
-  molecule_centroid[2] = atoms.at(0).zc;
-#endif
+  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+    molecule_centroid[dir] = atoms[0].xyz_c[dir];
+
   side_length_of_bounding_cube = 2*atoms.at(0).r_vdw;
   largest_radius = atoms.at(0).r_vdw;
 }
 bool my_p4est_biomolecules_t::molecule::is_bounding_box_in_domain(const double* box_c) const
 {
-  double *vertices_to_coordinates = domain_connectivity->vertices;
-  p4est_topidx_t *tree_to_vertex  = domain_connectivity->tree_to_vertex;
-  if(!is_periodic(domain_connectivity, 0))
+  double *vertices_to_coordinates = environment->p4est->connectivity->vertices;
+  p4est_topidx_t *tree_to_vertex  = environment->p4est->connectivity->tree_to_vertex;
+  if(!is_periodic(environment->p4est->connectivity, 0))
   {
     double xmin = vertices_to_coordinates[3*tree_to_vertex[0 + 0] + 0];
-    double xmax = vertices_to_coordinates[3*tree_to_vertex[P4EST_CHILDREN*(domain_connectivity->num_trees-1) + P4EST_CHILDREN-1] + 0];
+    double xmax = vertices_to_coordinates[3*tree_to_vertex[P4EST_CHILDREN*(environment->p4est->connectivity->num_trees-1) + P4EST_CHILDREN-1] + 0];
     if(((box_c != NULL)? box_c[0]:molecule_centroid[0])+0.5*side_length_of_bounding_cube > xmax || ((box_c != NULL)? box_c[0]:molecule_centroid[0])-0.5*side_length_of_bounding_cube < xmin)
       return false;
   }
-  if(!is_periodic(domain_connectivity, 1))
+  if(!is_periodic(environment->p4est->connectivity, 1))
   {
     double ymin = vertices_to_coordinates[3*tree_to_vertex[0 + 0] + 1];
-    double ymax = vertices_to_coordinates[3*tree_to_vertex[P4EST_CHILDREN*(domain_connectivity->num_trees-1) + P4EST_CHILDREN-1] + 1];
+    double ymax = vertices_to_coordinates[3*tree_to_vertex[P4EST_CHILDREN*(environment->p4est->connectivity->num_trees-1) + P4EST_CHILDREN-1] + 1];
     if(((box_c != NULL)? box_c[1]:molecule_centroid[1])+0.5*side_length_of_bounding_cube > ymax || ((box_c != NULL)? box_c[1]:molecule_centroid[1])-0.5*side_length_of_bounding_cube < ymin)
       return false;
   }
 #ifdef P4_TO_P8
-  if(!is_periodic(domain_connectivity, 2))
+  if(!is_periodic(environment->p4est->connectivity, 2))
   {
     double zmin = vertices_to_coordinates[3*tree_to_vertex[0 + 0] + 2];
-    double zmax = vertices_to_coordinates[3*tree_to_vertex[P4EST_CHILDREN*(domain_connectivity->num_trees-1) + P4EST_CHILDREN-1] + 2];
+    double zmax = vertices_to_coordinates[3*tree_to_vertex[P4EST_CHILDREN*(environment->p4est->connectivity->num_trees-1) + P4EST_CHILDREN-1] + 2];
     if(((box_c != NULL)? box_c[2]:molecule_centroid[2])+0.5*side_length_of_bounding_cube > zmax || ((box_c != NULL)? box_c[2]:molecule_centroid[2])-0.5*side_length_of_bounding_cube < zmin)
       return false;
   }
 #endif
   return true;
-}
-double my_p4est_biomolecules_t::molecule::operator ()(const double x, const double y
-                                                      #ifdef P4_TO_P8
-                                                      , const double z
-                                                      #endif
-                                                      )const {
-  double phi = -DBL_MAX;
-  for (size_t m = 0; m < atoms.size(); m++) {
-    const Atom& a = atoms[m];
-    phi = MAX(phi, a.dist_to_vdW_surface(x, y
-                                     #ifdef P4_TO_P8
-                                         , z
-                                     #endif
-                                         ));
-  }
-  return phi;
 }
 
 p4est_bool_t my_p4est_biomolecules_t::SAS_creator::refine_for_exact_calculation_fn(p4est_t *park, p4est_topidx_t which_tree, p4est_quadrant_t *quad)
@@ -1023,8 +884,8 @@ p4est_bool_t my_p4est_biomolecules_t::SAS_creator::refine_for_exact_calculation_
   // Let's not enforce the min level when we build the SAS grid because that might lead to irrelevant
   // handling and/or communications of kinda big reduced lists of atoms for the sole purpose of refining
   // the grid up to a desired minimum level --> does not scale well! (does not scale AT ALL, actually)
-  //  int min_lvl = biomol->parameters.min_level();
-  int max_lvl = biomol->parameters.max_level();
+  //  int min_lvl = biomol->parameters.lmin();
+  int max_lvl = biomol->parameters.lmax();
   (void) which_tree;
   // see the comment above
   /*if (quad->level < min_lvl)
@@ -1034,9 +895,9 @@ p4est_bool_t my_p4est_biomolecules_t::SAS_creator::refine_for_exact_calculation_
     return P4EST_FALSE;
   else
   {
-    const double cell_diag        = biomol->parameters.root_diag()/(1<<quad->level);
+    const double cell_diag        = biomol->parameters.tree_diag()/(1<<quad->level);
     const double rp               = biomol->parameters.probe_radius();
-    const double L                = biomol->parameters.lip_cst();
+    const double L                = biomol->parameters.lip();
     const p4est_nodes_t* nodes    = biomol->nodes;
     // one MUST use the 'long' user-defined integer since p4est_locidx_t is an alias for int32_t
     // only long format ensures 32 bits, int ensures 16 bits only
@@ -1047,7 +908,7 @@ p4est_bool_t my_p4est_biomolecules_t::SAS_creator::refine_for_exact_calculation_
       p4est_locidx_t node_idx = nodes->local_nodes[P4EST_CHILDREN*former_quad_idx+k];
       P4EST_ASSERT(((size_t) node_idx < nodes->indep_nodes.elem_count));
       f[k] = biomol->phi_read_only_p[node_idx] - rp;
-      if(fabs(f[k]) < 0.5*L*cell_diag || f[k] < -biomol->parameters.root_diag())
+      if(fabs(f[k]) < 0.5*L*cell_diag || f[k] < -biomol->parameters.tree_diag())
         return P4EST_TRUE;
     }
 #ifdef P4_TO_P8
@@ -1068,8 +929,8 @@ p4est_bool_t my_p4est_biomolecules_t::SAS_creator::refine_for_reinitialization_f
   // Let's not enforce the min level when we build the SAS grid because that might lead to irrelevant
   // handling and/or communications of kinda big reduced lists of atoms for the sole purpose of refining
   // the grid up to a desired minimum level --> does not scale well! (does not scale AT ALL, actually)
-  //  int min_lvl = biomol->parameters.min_level();
-  int max_lvl = biomol->parameters.max_level();
+  //  int min_lvl = biomol->parameters.lmin();
+  int max_lvl = biomol->parameters.lmax();
   (void) which_tree;
   // see the comment above
   /*if (quad->level < min_lvl)
@@ -1079,10 +940,10 @@ p4est_bool_t my_p4est_biomolecules_t::SAS_creator::refine_for_reinitialization_f
     return P4EST_FALSE;
   else
   {
-    const double cell_diag        = biomol->parameters.root_diag()/(1<<quad->level);
+    const double cell_diag        = biomol->parameters.tree_diag()/(1<<quad->level);
     const double layer_thickness  = biomol->parameters.layer_thickness();
     const double rp               = biomol->parameters.probe_radius();
-    const double L                = biomol->parameters.lip_cst();
+    const double L                = biomol->parameters.lip();
     const p4est_nodes_t* nodes    = biomol->nodes;
     // one MUST use the 'long' user-defined integer since p4est_locidx_t is an alias for int32_t
     // only long format ensures 32 bits, int ensures 16 bits only
@@ -1119,7 +980,7 @@ void my_p4est_biomolecules_t::SAS_creator::scatter_locally(p4est_t*& park)
   double* & phi_sas_p                       = biomol->phi_p;
   p4est_nodes_t* & nodes                    = biomol->nodes;
 #ifdef CASL_THROWS
-  const par_error_manager* sas_err_manager  = &biomol->err_manager;
+  const parallel_error_manager* sas_error_manager  = &biomol->error_manager;
 #endif
   // needed for point equality check comparison: boundary points are clamped inside
   // the domain and the Morton codes are compared, two points are equivalent if Morton
@@ -1130,7 +991,7 @@ void my_p4est_biomolecules_t::SAS_creator::scatter_locally(p4est_t*& park)
     // should NEVER happen, no way to handle the problem in such a case, kill the program :-(
 #ifdef CASL_THROWS
     string sas_err_msg = "my_p4est_biomolecules_t::SAS_creator_brute_force::scatter_locally(const my_p4est_biomolecules_t*&): something weird occured, you might have memory leak here...";
-    sas_err_manager->print_message_and_abort(sas_err_msg, 123321);
+    sas_error_manager->print_message_and_abort(sas_err_msg, 123321);
 #else
     MPI_Abort(mpi_comm, 123321);
 #endif
@@ -1196,7 +1057,7 @@ void my_p4est_biomolecules_t::SAS_creator::scatter_locally(p4est_t*& park)
 #ifdef CASL_THROWS
   int sas_local_error = (coarse_idx != nodes->num_owned_indeps);
   string sas_err_msg = "\n my_p4est_biomolecules_t::SAS_creator_brute_force::scatter_locally(...) killed because of logic error \n \n";
-  sas_err_manager->check_my_local_error(sas_local_error, sas_err_msg);
+  sas_error_manager->check(sas_local_error, sas_err_msg);
 #endif
   // we don't need the coarse nodes and corresponding data any more
   ierr = VecRestoreArray(phi_sas, &phi_sas_p); CHKERRXX(ierr);
@@ -1216,7 +1077,7 @@ void my_p4est_biomolecules_t::SAS_creator::scatter_to_new_layout(p4est_t*& park,
   p4est_nodes_t* & nodes                    = biomol->nodes;
   p4est_ghost_t* & ghost                    = biomol->ghost;
 #ifdef CASL_THROWS
-  const par_error_manager* sas_err_manager  = &biomol->err_manager;
+  const parallel_error_manager* sas_error_manager  = &biomol->error_manager;
 #endif
   // scatter releveant value before calculating the new phi_sas values
   if(ghost_flag)
@@ -1227,7 +1088,7 @@ void my_p4est_biomolecules_t::SAS_creator::scatter_to_new_layout(p4est_t*& park,
 #ifdef CASL_THROWS
   int sas_local_error = nodes!= NULL;
   string sas_err_msg = "my_p4est_biomolecules_t::SAS_creator::scatter_to_new_layout(), nodes are not NULL, you have memory leak...";
-  sas_err_manager->check_my_local_error(sas_local_error, sas_err_msg);
+  sas_error_manager->check(sas_local_error, sas_err_msg);
 #endif
   nodes = my_p4est_nodes_new(park, ghost);
   // scatter the vector to the new layout
@@ -1244,7 +1105,7 @@ void my_p4est_biomolecules_t::SAS_creator::scatter_to_new_layout(p4est_t*& park,
   ierr = VecGetSize(partitioned_phi_sas, &size2); CHKERRXX(ierr);
   sas_local_error = size1 != size2;
   sas_err_msg = "my_p4est_biomolecules_t::SAS_creator::scatter_to_new_layout(), vectors do not have the same size...";
-  sas_err_manager->check_my_local_error(sas_local_error, sas_err_msg);
+  sas_error_manager->check(sas_local_error, sas_err_msg);
 #endif
   // scatter the values that we already know
   VecScatter ctx;
@@ -1291,7 +1152,7 @@ void my_p4est_biomolecules_t::SAS_creator::partition_forest_and_update_sas(p4est
   {
     sub_timer->stop();sub_timer->read_duration();
   }
-  if(biomol->global_max_level == biomol->parameters.max_level()) // final call
+  if(biomol->global_max_level == biomol->parameters.lmax()) // final call
   {
     if(sub_timer != NULL)
       sub_timer->start("        SAS_creator:ghost creation");
@@ -1368,7 +1229,7 @@ my_p4est_biomolecules_t::SAS_creator::SAS_creator(p4est_t*& park, const bool tim
   : mpi_rank(park->mpirank),
     mpi_size(park->mpisize),
     mpi_comm(park->mpicomm),
-    phi_sas_lower_bound(-1.5*((my_p4est_biomolecules_t*) (park->user_pointer))->parameters.root_diag()),
+    phi_sas_lower_bound(-1.5*((my_p4est_biomolecules_t*) (park->user_pointer))->parameters.tree_diag()),
     sas_timer((my_p4est_biomolecules_t::timing_file != NULL && timing_flag)?new parStopWatch(parStopWatch::all_timings, my_p4est_biomolecules_t::timing_file, park->mpicomm):NULL),
     sub_timer((my_p4est_biomolecules_t::timing_file != NULL && timing_flag && subtiming_flag)?new parStopWatch(parStopWatch::all_timings, my_p4est_biomolecules_t::timing_file, park->mpicomm):NULL)
 {}
@@ -1377,7 +1238,7 @@ void my_p4est_biomolecules_t::SAS_creator::construct_SAS(p4est_t *&park)
 {
   my_p4est_biomolecules_t* biomol = (my_p4est_biomolecules_t*) park->user_pointer;
   int step_idx=1;
-  for (; biomol->global_max_level < biomol->parameters.max_level(); ++step_idx)
+  for (; biomol->global_max_level < biomol->parameters.lmax(); ++step_idx)
     refine_and_partition(park, step_idx);
   if (sas_timer != NULL)
   {
@@ -1404,7 +1265,16 @@ void my_p4est_biomolecules_t::SAS_creator_brute_force::initialization_routine(p4
   my_p4est_biomolecules_t* biomol = (my_p4est_biomolecules_t*) park->user_pointer;
   biomol->nodes = my_p4est_nodes_new(park, NULL); // we don't need ghost cells here...
   ierr  = VecCreateGhostNodes(park, biomol->nodes, &biomol->phi); CHKERRXX(ierr);
-  sample_cf_on_nodes(park, biomol->nodes, *biomol, biomol->phi);
+  {
+    double *phi_p;
+    ierr = VecGetArray(biomol->phi, &phi_p); CHKERRXX(ierr);
+    for (size_t i = 0; i < biomol->nodes->indep_nodes.elem_count; ++i) {
+      double xyz[P4EST_DIM];
+      node_xyz_fr_n(i, biomol->p4est, biomol->nodes, xyz);
+      phi_p[i] = (*biomol)(xyz);
+    }
+    ierr = VecRestoreArray(biomol->phi, &phi_p); CHKERRXX(ierr);
+  }
 }
 
 int  my_p4est_biomolecules_t::SAS_creator_brute_force::weight_fn(p4est_t * park, p4est_topidx_t which_tree, p4est_quadrant_t * quadrant)
@@ -1434,7 +1304,7 @@ void my_p4est_biomolecules_t::SAS_creator_brute_force::update_phi_sas_and_quadra
   double* & phi_sas_p                       = biomol->phi_p;
   p4est_nodes_t* & nodes                    = biomol->nodes;
 #ifdef CASL_THROWS
-  const par_error_manager* sas_err_manager  = &biomol->err_manager;
+  const parallel_error_manager* sas_error_manager  = &biomol->error_manager;
 #endif
 
   ierr = VecGetArray(phi_sas, &phi_sas_p); CHKERRXX(ierr);
@@ -1468,7 +1338,7 @@ void my_p4est_biomolecules_t::SAS_creator_brute_force::update_phi_sas_and_quadra
     sum_check += nb_to_send_recv.at(k);
   int sas_local_error = sum_check != 0;
   string sas_err_msg = "\n my_p4est_biomolecules_t::SAS_creator_brute_force::update_phi_sas_and_quadrant_data(...): something went wrong when balancing the calculations.\n \n";
-  sas_err_manager->check_my_local_error(sas_local_error, sas_err_msg);
+  sas_error_manager->check(sas_local_error, sas_err_msg);
 #endif
   // coordinates buffer
   double xyz[P4EST_DIM];
@@ -1521,19 +1391,19 @@ void my_p4est_biomolecules_t::SAS_creator_brute_force::update_phi_sas_and_quadra
   // sanity checks
   sas_local_error = (my_nb_to_send_recv > 0) && (num_remaining_queries != 0);
   sas_err_msg = "\n my_p4est_biomolecules_t::SAS_creator_brute_force::update_phi_sas_and_quadrant_data(...): a proc wants to send messages but expects queries too... \n \n";
-  sas_err_manager->check_my_local_error(sas_local_error, sas_err_msg);
+  sas_error_manager->check(sas_local_error, sas_err_msg);
 
   sas_local_error = (num_remaining_queries > 0) && (my_nb_to_send_recv >= 0);
   sas_err_msg = "\n my_p4est_biomolecules_t::SAS_creator_brute_force::update_phi_sas_and_quadrant_data(...): a proc expects queries but has to send messages too \n \n";
-  sas_err_manager->check_my_local_error(sas_local_error, sas_err_msg);
+  sas_error_manager->check(sas_local_error, sas_err_msg);
 
   sas_local_error = (my_nb_to_send_recv == 0) && (num_remaining_queries != 0);
   sas_err_msg = "\n my_p4est_biomolecules_t::SAS_creator_brute_force::update_phi_sas_and_quadrant_data(...): a proc expects queries but has just the right number of values to compute... \n \n";
-  sas_err_manager->check_my_local_error(sas_local_error, sas_err_msg);
+  sas_error_manager->check(sas_local_error, sas_err_msg);
 
   sas_local_error = (num_remaining_queries == 0) && (my_nb_to_send_recv < 0);
   sas_err_msg = "\n my_p4est_biomolecules_t::SAS_creator_brute_force::update_phi_sas_and_quadrant_data(...): a proc does not expect queries but has too few values to compute...\n \n";
-  sas_err_manager->check_my_local_error(sas_local_error, sas_err_msg);
+  sas_error_manager->check(sas_local_error, sas_err_msg);
 #endif
 
   // pack the coordinates to send and send them; declare reply buffer(s)
@@ -1662,7 +1532,7 @@ void my_p4est_biomolecules_t::SAS_creator_brute_force::update_phi_sas_and_quadra
   {
 #ifdef CASL_THROWS
     sas_err_msg = "\n my_p4est_biomolecules_t::SAS_creator_brute_force::update_phi_sas_and_quadrant_data(...): the maximum number of local quadrants has been reached, the method needs to be redesigned with real quadrant data...\n \n";
-    sas_err_manager->print_message_and_abort(sas_err_msg, 11337799);
+    sas_error_manager->print_message_and_abort(sas_err_msg, 11337799);
 #else
     MPI_Abort(mpi_comm, 11337799);
 #endif
@@ -1683,160 +1553,6 @@ void my_p4est_biomolecules_t::SAS_creator_list_reduction::initialization_routine
     const molecule& mol = biomol->bio_molecules.at(k);
     min_nb_of_atom_in_mol = MIN(min_nb_of_atom_in_mol, mol.get_number_of_atoms());
   }
-  /* I wanted to make the initialization truly scalable as well,
-   * but it misbehaves sometimes and can't really figure out why...
-   * Raphael Egan */
-  //  if((biomol->global_max_level == 0) && (min_nb_of_atom_in_mol > mpi_size)) // to make true initialization scalable as well even with huge number of atoms and a few (or only 1) trees
-  //  {
-  //    vector<int> position_offset_for_proc(mpi_size);
-  //    vector<int> nb_atom_idx_in_proc(mpi_size);
-
-  //    int rank_owner = 0;
-  //    while (park->global_first_quadrant[rank_owner + 1] == park->global_first_quadrant[rank_owner])
-  //      rank_owner++;
-
-  //    for (p4est_topidx_t tt = 0; tt < park->connectivity->num_trees; ++tt) {
-  //      if(tt >= park->global_first_quadrant[rank_owner + 1])
-  //      {
-  //        rank_owner++;
-  //        while (park->global_first_quadrant[rank_owner + 1] == park->global_first_quadrant[rank_owner])
-  //          rank_owner++;
-  //      }
-  //      P4EST_ASSERT(tt >= park->global_first_quadrant[rank_owner] && tt < park->global_first_quadrant[rank_owner+1]);
-  //      if(mpi_rank == rank_owner)
-  //      {
-  //        p4est_tree_t* tree = p4est_tree_array_index(park->trees, tt);
-  //        P4EST_ASSERT(tree->quadrants.elem_count == 1);
-  //        p4est_quadrant_t* quad = p4est_quadrant_array_index(&tree->quadrants, 0);
-  //        quad->p.user_long = (mpi_size>1)? ((((long) mpi_rank) << (8*sizeof(long) - biomol->rank_encoding)) + biomol->reduced_lists.size()) : biomol->reduced_lists.size();
-  //      }
-
-  //      double  xmin_tree = park->connectivity->vertices[3*park->connectivity->tree_to_vertex[P4EST_CHILDREN*tt + 0] + 0];
-  //      double  ymin_tree = park->connectivity->vertices[3*park->connectivity->tree_to_vertex[P4EST_CHILDREN*tt + 0] + 1];
-  //#ifdef P4_TO_P8
-  //      double  zmin_tree = park->connectivity->vertices[3*park->connectivity->tree_to_vertex[P4EST_CHILDREN*tt + 0] + 2];
-  //#endif
-  //      double  dxdydz[P4EST_DIM] = {biomol->root_cells_dim.at(0)
-  //                                   , biomol->root_cells_dim.at(1)
-  //                             #ifdef P4_TO_P8
-  //                                   , biomol->root_cells_dim.at(2)
-  //                             #endif
-  //                                  };
-  //      double  xyz_c[P4EST_DIM] = {xmin_tree + 0.5*dxdydz[0]
-  //                                  , ymin_tree + 0.5*dxdydz[1]
-  //                            #ifdef P4_TO_P8
-  //                                  , zmin_tree + 0.5*dxdydz[2]
-  //                            #endif
-  //                                 };
-
-  //      double  threshold_dist = MAX(biomol->parameters.layer_thickness(), 0.25*biomol->parameters.lip_cst()*biomol->parameters.root_diag() - biomol->parameters.probe_radius());
-  //      int     global_idx_maximizing_atom = -1; // absurd initialization
-  //      double  max_phi_sas_to_vertices = -DBL_MAX;
-
-  //      vector<int> atoms_to_consider; atoms_to_consider.clear();
-  //      for (int mol_idx = 0; mol_idx < biomol->nmol(); ++mol_idx) {
-  //        const molecule& mol = biomol->bio_molecules.at(mol_idx);
-  //        const double* mol_centroid = mol.get_centroid();
-  //        const double mol_bounding_box = mol.get_side_length_of_bounding_cube();
-  //        const double xyz_box[P4EST_DIM]  = {(xyz_c[0] > mol_centroid[0]+0.5*mol_bounding_box)?mol_centroid[0]+0.5*mol_bounding_box:(xyz_c[0] < mol_centroid[0]-0.5*mol_bounding_box)?mol_centroid[0]-0.5*mol_bounding_box:xyz_c[0]
-  //                                            , (xyz_c[1] > mol_centroid[1]+0.5*mol_bounding_box)?mol_centroid[1]+0.5*mol_bounding_box:(xyz_c[1] < mol_centroid[1]-0.5*mol_bounding_box)?mol_centroid[1]-0.5*mol_bounding_box:xyz_c[1]
-  //                                    #ifdef P4_TO_P8
-  //                                            , (xyz_c[2] > mol_centroid[2]+0.5*mol_bounding_box)?mol_centroid[2]+0.5*mol_bounding_box:(xyz_c[2] < mol_centroid[2]-0.5*mol_bounding_box)?mol_centroid[2]-0.5*mol_bounding_box:xyz_c[2]
-  //                                    #endif
-  //                                           };
-  //        const double xyz_quad[P4EST_DIM] = {(xyz_box[0] > xyz_c[0]+0.5*dxdydz[0])?xyz_c[0]+0.5*dxdydz[0]:(xyz_box[0] < xyz_c[0]-0.5*dxdydz[0])?xyz_c[0]-0.5*dxdydz[0]:xyz_box[0]
-  //                                            , (xyz_box[1] > xyz_c[1]+0.5*dxdydz[1])?xyz_c[1]+0.5*dxdydz[1]:(xyz_box[1] < xyz_c[1]-0.5*dxdydz[1])?xyz_c[1]-0.5*dxdydz[1]:xyz_box[1]
-  //                                    #ifdef P4_TO_P8
-  //                                            , (xyz_box[2] > xyz_c[2]+0.5*dxdydz[2])?xyz_c[2]+0.5*dxdydz[2]:(xyz_box[2] < xyz_c[2]-0.5*dxdydz[2])?xyz_c[2]-0.5*dxdydz[2]:xyz_box[2]
-  //                                    #endif
-  //                                           };
-  //        if(sqrt(SQR(xyz_box[0]-xyz_quad[0]) + SQR(xyz_box[1]-xyz_quad[1])
-  //        #ifdef P4_TO_P8
-  //                + SQR(xyz_box[2]-xyz_quad[2])
-  //        #endif
-  //                ) <= MAX(biomol->parameters.layer_thickness(), 0.5*biomol->parameters.lip_cst()*biomol->parameters.root_diag() - biomol->parameters.probe_radius())) // there might be relevant atoms in the molecule to consider
-  //        {
-  //          int     nb_added_from_this_mol = 0;
-  //          P4EST_ASSERT(mol.get_number_of_atoms() >= mpi_size);
-  //          for (int at_idx = mol.get_number_of_atoms()*mpi_rank/mpi_size; at_idx < mol.get_number_of_atoms()*(mpi_rank+1)/mpi_size; ++at_idx) {
-  //            const Atom* a = mol.get_atom(at_idx);
-  //            double d = biomol->parameters.probe_radius() + a->max_phi_vdW_in_quad(xyz_c, dxdydz);
-  //            if(d >= -threshold_dist - EPS*biomol->parameters.probe_radius())
-  //            {
-  //              atoms_to_consider.push_back(biomol->atom_index_offset.at(mol_idx) + at_idx);
-  //              nb_added_from_this_mol++;
-  //            }
-  //            if(nb_added_from_this_mol == 0 && d >= MAX(biomol->parameters.probe_radius()-0.5*biomol->parameters.lip_cst()*biomol->parameters.root_diag(), max_phi_sas_to_vertices))
-  //            {
-  //              double phi_sas_vertex;
-  //              for (int ii = 0; ii < 2; ++ii) {
-  //                for (int jj = 0; jj < 2; ++jj) {
-  //#ifdef P4_TO_P8
-  //                  for (int kk = 0; kk < 2; ++kk) {
-  //#endif
-  //                    phi_sas_vertex = biomol->parameters.probe_radius() + a->dist_to_vdW_surface(xyz_c[0] + ((double) ii - 0.5)*dxdydz[0], xyz_c[1] + ((double) jj - 0.5)*dxdydz[1]
-  //    #ifdef P4_TO_P8
-  //                        , xyz_c[2] + ((double) kk - 0.5)*dxdydz[2]
-  //    #endif
-  //                        );
-  //                    if(phi_sas_vertex > max_phi_sas_to_vertices)
-  //                    {
-  //                      max_phi_sas_to_vertices = phi_sas_vertex;
-  //                      global_idx_maximizing_atom = biomol->atom_index_offset.at(mol_idx) + at_idx;
-  //                    }
-  //#ifdef P4_TO_P8
-  //                  }
-  //#endif
-  //                }
-  //              }
-  //            }
-  //          }
-  //          if(nb_added_from_this_mol == 0 && global_idx_maximizing_atom>=0)
-  //            atoms_to_consider.push_back(global_idx_maximizing_atom);
-  //        }
-  //      }
-
-  //      nb_atom_idx_in_proc[mpi_rank] = atoms_to_consider.size();
-  //      mpiret = MPI_Allgather(MPI_IN_PLACE, 1, MPI_INT, &nb_atom_idx_in_proc[0], 1, MPI_INT, mpi_comm); SC_CHECK_MPI(mpiret);
-
-  //      int root_reduced_list_size = 0;
-  //      for (int rank = 0; rank < mpi_size; ++rank)
-  //        root_reduced_list_size += nb_atom_idx_in_proc.at(rank);
-  //      if(mpi_rank == rank_owner)
-  //      {
-  //        reduced_list_ptr root_reduced_list_ptr(new reduced_list);
-  //        reduced_list& root_reduced_list = (*root_reduced_list_ptr);
-  //        root_reduced_list.atom_global_idx.resize(root_reduced_list_size);
-  //        biomol->reduced_lists.push_back(root_reduced_list_ptr);
-  //      }
-  //      if(root_reduced_list_size > 0)
-  //      {
-  //        int* pointer_to_root_reduced_list = (mpi_rank == rank_owner)?&((*biomol->reduced_lists.back()).atom_global_idx.at(0)):NULL;
-  //        position_offset_for_proc[0] = 0;
-  //        for (int rank = 1; rank < mpi_size; ++rank)
-  //          position_offset_for_proc[rank]  = position_offset_for_proc[rank-1] + nb_atom_idx_in_proc[rank-1];
-  //        mpiret = MPI_Gatherv(&atoms_to_consider[0],
-  //            atoms_to_consider.size(),
-  //            MPI_INT,
-  //            pointer_to_root_reduced_list,
-  //            &nb_atom_idx_in_proc[0],
-  //            &position_offset_for_proc[0],
-  //            MPI_INT,
-  //            rank_owner,
-  //            mpi_comm); SC_CHECK_MPI(mpiret);
-  //      }
-  //      else if(mpi_rank == rank_owner)
-  //        (*biomol->reduced_lists.back()).atom_global_idx.push_back(0); // no refinement of the root cell is required, any atom is good enough in that case
-  //    }
-  //  }
-  //  else
-  //  {
-  //    if(error_file != NULL)
-  //    {
-  //        // print a warning
-  //      string warning_message = "my_p4est_biomolecules_t::SAS_creator_list_reduction::initialization_routine(): THIS PART DOES NOT SCALE AND SHOULD NOT BE USED IF POSSIBLE...\n";
-  //      PetscFPrintf(mpi_comm, error_file, warning_message.c_str());
-  //    }
   for (p4est_topidx_t tt = park->first_local_tree; tt <= park->last_local_tree; ++tt) {
     p4est_tree_t* tree = p4est_tree_array_index(park->trees, tt);
     for (size_t qq = 0; qq < tree->quadrants.elem_count; ++qq) {
@@ -1845,7 +1561,6 @@ void my_p4est_biomolecules_t::SAS_creator_list_reduction::initialization_routine
       biomol->add_reduced_list(tt, quad, parent_list, get_exact_phi);
     }
   }
-  //  }
 
   P4EST_ASSERT(reduced_list::get_nb_reduced_lists() == park->local_num_quadrants);
   nodes = my_p4est_nodes_new(park, NULL); // we don't need ghost cells here...
@@ -1879,10 +1594,10 @@ void my_p4est_biomolecules_t::SAS_creator_list_reduction::update_phi_sas_and_qua
   double* & phi_sas_p                       = biomol->phi_p;
   p4est_nodes_t* & nodes                    = biomol->nodes;
 #ifdef CASL_THROWS
-  const par_error_manager* sas_err_manager  = &biomol->err_manager;
+  const parallel_error_manager* sas_error_manager  = &biomol->error_manager;
 #endif
 
-  bool last_stage = (biomol->global_max_level == biomol->parameters.max_level());
+  bool last_stage = (biomol->global_max_level == biomol->parameters.lmax());
   int min_lvl_to_consider = ((int) biomol->update_last_current_level_only)*biomol->global_max_level;
   vector<const p4est_quadrant_t*> locally_known_quadrants; locally_known_quadrants.clear();
   vector<p4est_locidx_t> local_idx_of_locally_known_quadrants; local_idx_of_locally_known_quadrants.clear();
@@ -1930,7 +1645,7 @@ void my_p4est_biomolecules_t::SAS_creator_list_reduction::update_phi_sas_and_qua
       break;
   }
   string sas_err_msg = "\n my_p4est_biomolecules_t::SAS_creator_list_reduction::update_phi_sas_and_quadrant_data(...): something went wrong when figuring out the off-proc queries.\n \n";
-  sas_err_manager->check_my_local_error(sas_local_error, sas_err_msg);
+  sas_error_manager->check(sas_local_error, sas_err_msg);
 #endif
 
   vector<int> is_a_receiver;  is_a_receiver.resize(mpi_size, 0);
@@ -1952,7 +1667,7 @@ void my_p4est_biomolecules_t::SAS_creator_list_reduction::update_phi_sas_and_qua
   mpiret = MPI_Allreduce(&num_remaining_replies, &total_num_replies, 1, MPI_INT, MPI_SUM, mpi_comm); SC_CHECK_MPI(mpiret);
   sas_local_error = (total_num_queries != total_num_replies);
   sas_err_msg = "\n my_p4est_biomolecules_t::SAS_creator_list_reduction::update_phi_sas_and_quadrant_data(...): the total numbers of expected queries and replies do not match. \n \n";
-  sas_err_manager->check_my_local_error(sas_local_error, sas_err_msg);
+  sas_error_manager->check(sas_local_error, sas_err_msg);
 #endif
 
   vector<MPI_Request> query_req; query_req.clear();
@@ -2079,7 +1794,7 @@ void my_p4est_biomolecules_t::SAS_creator_list_reduction::update_phi_sas_and_qua
       ierr = VecGetArray(phi_sas, & phi_sas_p); CHKERRXX(ierr);
       double kink_point[P4EST_DIM];
       for (short dim = 0; dim < P4EST_DIM; ++dim)
-        kink_point[dim] = 2.0*biomol->parameters.root_diag();
+        kink_point[dim] = 2.0*biomol->parameters.tree_diag();
       set<p4est_locidx_t> done_nodes; done_nodes.clear();
 
       for (p4est_topidx_t tt = park->first_local_tree; tt <= park->last_local_tree; ++tt) {
@@ -2140,7 +1855,7 @@ void my_p4est_biomolecules_t::SAS_creator_list_reduction::replace_fn(p4est_t *pa
 #ifdef CASL_THROWS
     my_p4est_biomolecules_t* biomol = (my_p4est_biomolecules_t*) park->user_pointer;
     string err_msg = "my_p4est_biomolecules_t::SAS_creator_list_reduction::replace_fn(...): invoked coarsening...";
-    biomol->err_manager.print_message_and_abort(err_msg, 22446688);
+    biomol->error_manager.print_message_and_abort(err_msg, 22446688);
 #else
     MPI_Abort(park->mpicomm, 22446688);
 #endif
@@ -2173,18 +1888,19 @@ void my_p4est_biomolecules_t::SAS_creator_list_reduction::specific_refinement(p4
   }
   int sas_local_error = (nb_new_fine_quad != (p4est_gloidx_t) biomol->reduced_lists.size());
   string sas_error_msg = "my_p4est_biomolecules_t::SAS_creator_list_reduction::specific_refinement(): something went wrong when associating reduced lists to new quadrants...";
-  biomol->err_manager.check_my_local_error(sas_local_error, sas_error_msg);
+  biomol->error_manager.check(sas_local_error, sas_error_msg);
 #endif
 }
 
 void my_p4est_biomolecules_t::check_if_directory(const string& folder_path) const
 {
-  par_error_manager no_debug_error_manager(p4est->mpirank, p4est->mpisize, p4est->mpicomm, error_file); // we want this check to be done even in non-debug case...
+
+  parallel_error_manager no_debug_error_manager(p4est->mpirank, p4est->mpisize, p4est->mpicomm, error_file); // we want this check to be done even in non-debug case...
   struct stat st;
   int err_st = stat(folder_path.c_str(), &st);
   int local_error = (-1 == err_st || !S_ISDIR(st.st_mode));
   string err_msg = "my_p4est_biomolecules_t::check_if_directory(const string*): invalid directory path: " + folder_path + " does not exist or is not a directory.";
-  no_debug_error_manager.check_my_local_error(local_error, err_msg);
+  no_debug_error_manager.check(local_error, err_msg);
 }
 bool my_p4est_biomolecules_t::molecule::check_if_file(const string& file_path) const
 {
@@ -2200,42 +1916,42 @@ void my_p4est_biomolecules_t::check_validity_of_vector_of_mol() const
   // check if there is one molecule at least
   local_error = nmol() <= 0;
   err_msg = "my_p4est_biomolecules_t:: check_validity_of_vector_of_mol(): empty list of molecules.";
-  err_manager.check_my_local_error(local_error, err_msg);
+  error_manager.check(local_error, err_msg);
 
   // are offset consistent?
   local_error = (atom_index_offset.size() != (size_t) nmol());
   err_msg = "my_p4est_biomolecules_t:: check_validity_of_vector_of_mol(): the size of the vector of offset(s) of atom indices is wrong.";
-  err_manager.check_my_local_error(local_error, err_msg);
+  error_manager.check(local_error, err_msg);
 
   local_error = (atom_index_offset.at(0) != 0);
   err_msg = "my_p4est_biomolecules_t:: check_validity_of_vector_of_mol(): the vector of offset(s) of atom indices is invalid.";
-  err_manager.check_my_local_error(local_error, err_msg);
+  error_manager.check(local_error, err_msg);
 
   for (int k = 1; k < nmol(); ++k) {
     local_error = (atom_index_offset.at(k) != atom_index_offset.at(k-1)+bio_molecules.at(k-1).get_number_of_atoms());
     err_msg = "my_p4est_biomolecules_t:: check_validity_of_vector_of_mol(): the vector of offset(s) of atom indices is invalid.";
-    err_manager.check_my_local_error(local_error, err_msg);
+    error_manager.check(local_error, err_msg);
   }
 
   // check box_size_of_biggest_mol and index_of_biggest_mol
   const molecule& biggest_mol = bio_molecules.at(index_of_biggest_mol);
   local_error = (fabs(box_size_of_biggest_mol - biggest_mol.get_side_length_of_bounding_cube()) > EPS*box_size_of_biggest_mol);
   err_msg = "my_p4est_biomolecules_t:: check_validity_of_vector_of_mol(): the biggest molecule is misidentified.";
-  err_manager.check_my_local_error(local_error, err_msg);
+  error_manager.check(local_error, err_msg);
 
   local_error = !are_all_molecules_scaled_consistently();
   err_msg = "my_p4est_biomolecules_t:: check_validity_of_vector_of_mol(): scaling is not consistent.";
-  err_manager.check_my_local_error(local_error, err_msg);
+  error_manager.check(local_error, err_msg);
 
   // check the molecules
   for (int k = 0; k < nmol(); ++k) {
     const molecule& mol_k = bio_molecules.at(k);
     local_error = !mol_k.is_bounding_box_in_domain();
     err_msg = "my_p4est_biomolecules_t:: check_validity_of_vector_of_mol(): a bounding box is not entirely in the domain";
-    err_manager.check_my_local_error(local_error, err_msg);
+    error_manager.check(local_error, err_msg);
     local_error = (mol_k.get_side_length_of_bounding_cube() > box_size_of_biggest_mol);
     err_msg = "my_p4est_biomolecules_t:: check_validity_of_vector_of_mol(): the biggest molecule is misidentified";
-    err_manager.check_my_local_error(local_error, err_msg);
+    error_manager.check(local_error, err_msg);
   }
 #endif
   return;
@@ -2245,7 +1961,7 @@ bool my_p4est_biomolecules_t::are_all_molecules_scaled_consistently() const
   bool result = nmol() > 0;
   for (int k = 0; k < nmol(); ++k) {
     const molecule& mol_k = bio_molecules.at(k);
-    result &= (mol_k.is_scaled() && fabs(angstrom_to_domain - mol_k.get_angstrom_to_domain_factor()) < EPS*angstrom_to_domain);
+    result &= (mol_k.is_scaled() && fabs(angstrom_to_domain - mol_k.get_scaling_factor()) < EPS*angstrom_to_domain);
     if(!result)
       return result;
   }
@@ -2307,7 +2023,7 @@ void my_p4est_biomolecules_t::add_single_molecule(const string& file_path, const
       string err_message = "my_p4est_biomolecules_t::add_single_molecule(...): the current vector of molecules has inconsistent scaling factors, this shouldn't happen...";
 #ifdef CASL_THROWS
       int local_error = 1;
-      err_manager.check_my_local_error(local_error, err_message);
+      error_manager.check(local_error, err_message);
 #endif
       cerr <<  err_message << endl;
       cerr << "my_p4est_biomolecules_t::add_single_molecule(...): ... rescaling the molecules (fixing a logic error)..." << endl;
@@ -2324,7 +2040,7 @@ void my_p4est_biomolecules_t::add_single_molecule(const string& file_path, const
       string err_message = "my_p4est_biomolecules_t::add_single_molecule(...): the current vector of molecules has inconsistent scaling factors, this shouldn't happen...";
 #ifdef CASL_THROWS
       int local_error = 1;
-      err_manager.check_my_local_error(local_error, err_message);
+      error_manager.check(local_error, err_message);
 #endif
       cerr <<  err_message << endl;
       cerr << "my_p4est_biomolecules_t::add_single_molecule(...): ... rescaling the molecules (fixing a logic error)..." << endl;
@@ -2333,7 +2049,7 @@ void my_p4est_biomolecules_t::add_single_molecule(const string& file_path, const
     new_scaling_factor = *angstrom_to_domain_;
   }
   const double new_angstrom_to_domain = new_scaling_factor; // need a const qualifier for the following, so just copy it...
-  molecule mol(file_path, centroid, angles, new_angstrom_to_domain);
+  molecule mol(this, file_path, new_angstrom_to_domain, centroid, angles);
 
   if(nmol() == 0) // first molecule to be added in the vector of molecules
     atom_index_offset.resize(1, 0);
@@ -2358,7 +2074,7 @@ int my_p4est_biomolecules_t::find_mol_index(const int& global_atom_index, const 
   if(local_error) // local abort since it is not a collective call
   {
     string err_msg = "my_p4est_biomolecules_t::find_mol_index(const int&): invalid global atom index, out of range: global_atom_index = " + to_string(global_atom_index) + " and total_nb_atoms = " + to_string(total_nb_atoms) +", called from proc " + to_string(p4est->mpirank) + " ...";
-    err_manager.print_message_and_abort(err_msg, 456654);
+    error_manager.print_message_and_abort(err_msg, 456654);
   }
 #endif
   // check the guess first
@@ -2392,61 +2108,36 @@ const Atom* my_p4est_biomolecules_t::get_atom(const int& global_atom_index, int&
   P4EST_ASSERT(0<= atom_index && atom_index < mol.get_number_of_atoms());
   return mol.get_atom(atom_index);
 }
-my_p4est_biomolecules_t::my_p4est_biomolecules_t(p4est_t* p4est_, mpi_environment_t* mpi_,
+my_p4est_biomolecules_t::my_p4est_biomolecules_t(p4est_t* p4est_, const double& rel_side_length_biggest_box,
                                                  const vector<string>* pqr_names, const string* input_folder,
-                                                 vector<double>* angles,
-                                                 const vector<double>* centroids,
-                                                 const double* rel_side_length_biggest_box):
+                                                 vector<double>* angles, const vector<double>* centroids):
+  parameters(p4est_),
   #ifdef CASL_THROWS
-  err_manager(p4est_->mpirank, p4est_->mpisize, p4est_->mpicomm, error_file),
+  error_manager(p4est_->mpirank, p4est_->mpisize, p4est_->mpicomm, error_file),
   #endif
   p4est(p4est_),
-  domain_dim(calculate_domain_dimensions(p4est_)),
-  root_cells_dim(calculate_dimensions_of_root_cells(p4est_)),
   rank_encoding((int) (ceil(log2(p4est_->mpisize)))),
-  max_quad_loc_idx(((ulong) 1)<<(8*sizeof(long) - (int) (ceil(log2(p4est_->mpisize))))),
-  parameters(norm(calculate_dimensions_of_root_cells(p4est_)))
+  max_quad_loc_idx(((ulong) 1)<<(8*sizeof(long) - (int) (ceil(log2(p4est_->mpisize)))))
 {
 #ifdef CASL_THROWS
+  string err_msg;
   // sanity checks
-  int local_error = mpi_== NULL;
-  string err_msg = "my_p4est_biomolecules_t::my_p4est_biomolecules_t(p4est_t*, mpi_environment_t*, ...): a valid pointer to an mpi environment is required for the second argument (none provided).";
-  err_manager.check_my_local_error(local_error, err_msg);
-
-  local_error = p4est_->mpicomm != mpi_->comm();
-  err_msg = "my_p4est_biomolecules_t::my_p4est_biomolecules_t(p4est_t*, mpi_environment_t*, ...): the mpi communicators of the p4est and the mpi environment do not match.";
-  err_manager.check_my_local_error(local_error, err_msg);
-
-  if(pqr_names == NULL && (angles != NULL || centroids != NULL || rel_side_length_biggest_box != NULL))
-    cerr << "my_p4est_biomolecules_t::my_p4est_biomolecules_t(...): angle(s), centroid(s) and/or desired scaling set, but pqr file(s) undefined "
-         << ": no molecule will be read so no rotation/translation/scaling will be applied." << endl;
+  if(pqr_names == NULL && (angles != NULL || centroids != NULL))
+    PetscFPrintf(p4est_->mpicomm, error_file, "my_p4est_biomolecules_t::my_p4est_biomolecules_t(...): angle(s) and/or centroid(s) set, but pqr file(s) undefined: \n\
+                 : no molecule will be read so no rotation/translation/scaling will be applied.");
   int nmolecules = (pqr_names != NULL)? pqr_names->size() : 0;
 
-  local_error = ((angles != NULL) && (angles->size() != (size_t) nangle_per_mol*nmolecules) && (angles->size() != (size_t) nangle_per_mol));
+  int local_error = ((angles != NULL) && (angles->size() != (size_t) nangle_per_mol*nmolecules) && (angles->size() != (size_t) nangle_per_mol));
   if(local_error)
     err_msg = "my_p4est_biomolecules_t::my_p4est_biomolecules_t(...): invalid number of rotation angles (fifth pointer argument). It should contain "+ to_string(nangle_per_mol*nmolecules) + " or " + to_string(nangle_per_mol) + " values (the same rotation for all molecules), but is of size " + to_string(angles->size()) + ".";
-  err_manager.check_my_local_error(local_error, err_msg);
+  error_manager.check(local_error, err_msg);
 
   local_error = (centroids != NULL && centroids->size() != (size_t) P4EST_DIM*nmolecules);
   err_msg = "my_p4est_biomolecules_t::my_p4est_biomolecules_t(...): the number of centroid coordinates is invalid (last pointer argument). It should contain " + to_string(P4EST_DIM*nmolecules) + " values, but is of size " + to_string(centroids->size()) + ".";
-  err_manager.check_my_local_error(local_error, err_msg);
+  error_manager.check(local_error, err_msg);
 #endif
   if(timing_file != NULL)
     timer = new parStopWatch(parStopWatch::all_timings, timing_file, p4est->mpicomm);
-
-  int update_failure = molecule::update_connectivity(p4est->connectivity);
-#ifdef CASL_THROWS
-  err_msg = "my_p4est_biomolecules_t::constructor(...), the molecule pointer to the domain connectivity (static variable) cannot be changed once it is set.";
-  err_manager.check_my_local_error(update_failure, err_msg);
-#else
-  (void) update_failure; // avoid compilation warning
-#endif
-
-  update_failure = molecule::update_mpi(mpi_);
-#ifdef CASL_THROWS
-  err_msg = "my_p4est_biomolecules_t::constructor(...), the pointer to the mpi environment (static variable) cannot be changed once set.";
-  err_manager.check_my_local_error(update_failure, err_msg);
-#endif
 
   if(timer != NULL)
     timer->start("Construct the my_p4est_biomolecules_t object (reading the molecules, scaling them, ...)");
@@ -2463,7 +2154,7 @@ my_p4est_biomolecules_t::my_p4est_biomolecules_t(p4est_t* p4est_, mpi_environmen
 #ifdef CASL_THROWS
   local_error = (reduced_list::get_nb_reduced_lists() > 0);
   err_msg = "my_p4est_biomolecules_t::constructor(...), couldn't delete all reduced lists of global atom indices, there might be memory leak(s)...";
-  err_manager.check_my_local_error(local_error, err_msg);
+  error_manager.check(local_error, err_msg);
 #endif
   nodes                     = NULL;     // we will build the nodes internally, NULL initialization
   ghost                     = NULL;     // we will build the ghost internally, NULL initialization
@@ -2496,7 +2187,7 @@ my_p4est_biomolecules_t::my_p4est_biomolecules_t(p4est_t* p4est_, mpi_environmen
     // scale the molecules and locate them
     if(rel_side_length_biggest_box != NULL)
     {
-      set_biggest_bounding_box(*rel_side_length_biggest_box);
+      set_biggest_bounding_box(rel_side_length_biggest_box);
       check_validity_of_vector_of_mol();
     }
     print_summary();
@@ -2530,7 +2221,7 @@ Vec my_p4est_biomolecules_t::return_phi_vector()
 #ifdef CASL_THROWS
   int local_error = phi == NULL;
   string message = "my_p4est_biomolecules_t::return_phi_vector(): the phi vector is NULL, it can't be returned...";
-  err_manager.check_my_local_error(local_error, message);
+  error_manager.check(local_error, message);
 #endif
   Vec phi_to_return = phi; phi = NULL;
   return phi_to_return;
@@ -2540,7 +2231,7 @@ p4est_nodes_t* my_p4est_biomolecules_t::return_nodes()
 #ifdef CASL_THROWS
   int local_error = nodes == NULL;
   string message = "my_p4est_biomolecules_t::return_nodes(): the nodes are not valid they can't be returned...";
-  err_manager.check_my_local_error(local_error, message);
+  error_manager.check(local_error, message);
 #endif
   p4est_nodes_t* nodes_to_return = nodes; nodes = NULL;
   return nodes_to_return;
@@ -2550,7 +2241,7 @@ p4est_ghost_t* my_p4est_biomolecules_t::return_ghost()
 #ifdef CASL_THROWS
   int local_error = ghost == NULL;
   string message = "my_p4est_biomolecules_t::return_ghost(): the ghosts are not valid, they can't be returned...";
-  err_manager.check_my_local_error(local_error, message);
+  error_manager.check(local_error, message);
 #endif
   p4est_ghost_t* ghost_to_return = ghost; ghost = NULL;
   return ghost_to_return;
@@ -2625,10 +2316,10 @@ void my_p4est_biomolecules_t::add_single_molecule(const string& file_path, const
 #ifdef CASL_THROWS
   int local_error = (centroid != NULL && centroid->size() != P4EST_DIM);
   string err_msg = "my_p4est_biomolecules_t::add_single_molecule(const string *, const vector<double> *, vector<double> *, const double *): vector of centroid components has invalid size.";
-  err_manager.check_my_local_error(local_error, err_msg);
+  error_manager.check(local_error, err_msg);
   local_error = (angles != NULL && angles->size() != nangle_per_mol);
   err_msg = "my_p4est_biomolecules_t::add_single_molecule(const string *, const vector<double> *, vector<double> *, const double *): vector of angles has invalid size.";
-  err_manager.check_my_local_error(local_error, err_msg);
+  error_manager.check(local_error, err_msg);
 #endif
   add_single_molecule(file_path,
                       (centroid != NULL)? &centroid->at(0): NULL,
@@ -2646,10 +2337,10 @@ void my_p4est_biomolecules_t::rescale_all_molecules(const double& new_scaling_fa
 #ifdef CASL_THROWS
   int local_error = (new_scaling_factor < 0);
   string err_msg = "my_p4est_biomolecules_t::rescale_all_molecules(const double&, const vector<double>*): the scaling factor must be strictly positive.";
-  err_manager.check_my_local_error(local_error, err_msg);
+  error_manager.check(local_error, err_msg);
   local_error = (centroids != NULL && centroids->size() != (size_t) P4EST_DIM*nmol());
   err_msg = "my_p4est_biomolecules_t::rescale_all_molecules(const double&, const vector<double>*): the vector of centroid coordinates has invalid size.";
-  err_manager.check_my_local_error(local_error, err_msg);
+  error_manager.check(local_error, err_msg);
 #endif
   angstrom_to_domain = new_scaling_factor;
   rescale_all_molecules((centroids != NULL)?(&centroids->at(0)):NULL);
@@ -2659,7 +2350,7 @@ void my_p4est_biomolecules_t::set_biggest_bounding_box(const double& biggest_cub
 #ifdef CASL_THROWS
   int local_error = (nmol()==0);
   string err_msg = "my_p4est_biomolecules_t::set_biggest_bounding_box(const double&): empty vector of molecule, impossible action.";
-  err_manager.check_my_local_error(local_error, err_msg);
+  error_manager.check(local_error, err_msg);
 #endif
   molecule& biggest_mol = bio_molecules.at(index_of_biggest_mol);
   rescale_all_molecules(biggest_mol.calculate_scaling_factor(biggest_cube_side_length_to_min_domain_size));
@@ -2686,20 +2377,20 @@ void my_p4est_biomolecules_t::set_grid_and_surface_parameters(const int &lmin, c
   int need_to_reset_p4est = (int) parameters.set_splitting_criterion(lmin, lmax, lip_);
 #ifdef CASL_THROWS
   string err_msg = "my_p4est_biomolecules_t::set_grid_and_surface_parameters(...): the splitting criterion cannot be reset.";
-  err_manager.check_my_local_error(need_to_reset_p4est, err_msg);
+  error_manager.check(need_to_reset_p4est, err_msg);
 #endif
   //probe_radius
 #ifdef CASL_THROWS
   int local_error = (!are_all_molecules_scaled_consistently());
   err_msg = "my_p4est_biomolecules_t::set_grid_and_surface_parameters(...): the probe radius cannot be (re)set if molecules are not scaled consistently.";
-  err_manager.check_my_local_error(local_error, err_msg);
+  error_manager.check(local_error, err_msg);
 #endif
   need_to_reset_p4est |= parameters.set_probe_radius(angstrom_to_domain*rp_);
   // order of accuracy (for thickess of accuracy layer)
   need_to_reset_p4est |= parameters.set_OOA(ooa_);
 #ifdef CASL_THROWS
   err_msg = "my_p4est_biomolecules_t::set_grid_and_surface_parameters(...): the order of accuracy cannot be (re)set.";
-  err_manager.check_my_local_error(need_to_reset_p4est, err_msg);
+  error_manager.check(need_to_reset_p4est, err_msg);
 #endif
   if (need_to_reset_p4est)
     p4est = reset_p4est();
@@ -2711,50 +2402,11 @@ void my_p4est_biomolecules_t::set_splitting_criterion(const int& lmin, const int
 }
 void my_p4est_biomolecules_t::set_probe_radius(const double& rp)
 {
-  set_grid_and_surface_parameters(parameters.min_level(), parameters.max_level(), parameters.lip_cst(), rp, parameters.order_of_accuracy());
+  set_grid_and_surface_parameters(parameters.lmin(), parameters.lmax(), parameters.lip(), rp, parameters.order_of_accuracy());
 }
 void my_p4est_biomolecules_t::set_order_of_accuracy(const int& ooa)
 {
-  set_grid_and_surface_parameters(parameters.min_level(), parameters.max_level(), parameters.lip_cst(), parameters.probe_radius(), ooa);
-}
-vector<double> my_p4est_biomolecules_t::calculate_dimensions_of_root_cells(p4est_t* p4est_)
-{
-  vector<double> dimensions_of_root_cells(P4EST_DIM);
-  p4est_connectivity_t* conn      = p4est_->connectivity;
-  double *vertices_to_coordinates = conn->vertices;
-  p4est_topidx_t *tree_to_vertex  = conn->tree_to_vertex;
-  // consider the first (and possibly only) tree only
-  double xmin                     = vertices_to_coordinates[3*tree_to_vertex[0 + 0] + 0];
-  double xmax                     = vertices_to_coordinates[3*tree_to_vertex[0 + P4EST_CHILDREN-1] + 0];
-  dimensions_of_root_cells.at(0)  = xmax-xmin;
-  double ymin                     = vertices_to_coordinates[3*tree_to_vertex[0 + 0] + 1];
-  double ymax                     = vertices_to_coordinates[3*tree_to_vertex[0 + P4EST_CHILDREN-1] + 1];
-  dimensions_of_root_cells.at(1)  = ymax-ymin;
-#ifdef P4_TO_P8
-  double zmin                     = vertices_to_coordinates[3*tree_to_vertex[0 + 0] + 2];
-  double zmax                     = vertices_to_coordinates[3*tree_to_vertex[0 + P4EST_CHILDREN-1] + 2];
-  dimensions_of_root_cells.at(2)  = zmax-zmin;
-#endif
-  return dimensions_of_root_cells;
-}
-vector<double> my_p4est_biomolecules_t::calculate_domain_dimensions(p4est_t* p4est_)
-{
-  vector<double> domain_dimensions(P4EST_DIM);
-  p4est_connectivity_t* conn      = p4est_->connectivity;
-  double *vertices_to_coordinates = conn->vertices;
-  p4est_topidx_t *tree_to_vertex  = conn->tree_to_vertex;
-  double xmin             = vertices_to_coordinates[3*tree_to_vertex[0 + 0] + 0];
-  double xmax             = vertices_to_coordinates[3*tree_to_vertex[P4EST_CHILDREN*(conn->num_trees-1) + P4EST_CHILDREN-1] + 0];
-  domain_dimensions.at(0) = xmax-xmin;
-  double ymin             = vertices_to_coordinates[3*tree_to_vertex[0 + 0] + 1];
-  double ymax             = vertices_to_coordinates[3*tree_to_vertex[P4EST_CHILDREN*(conn->num_trees-1) + P4EST_CHILDREN-1] + 1];
-  domain_dimensions.at(1) = ymax-ymin;
-#ifdef P4_TO_P8
-  double zmin             = vertices_to_coordinates[3*tree_to_vertex[0 + 0] + 2];
-  double zmax             = vertices_to_coordinates[3*tree_to_vertex[P4EST_CHILDREN*(conn->num_trees-1) + P4EST_CHILDREN-1] + 2];
-  domain_dimensions.at(2) = zmax-zmin;
-#endif
-  return domain_dimensions;
+  set_grid_and_surface_parameters(parameters.lmin(), parameters.lmax(), parameters.lip(), parameters.probe_radius(), ooa);
 }
 double my_p4est_biomolecules_t::get_largest_radius_of_all() const
 {
@@ -2792,24 +2444,12 @@ void my_p4est_biomolecules_t::add_reduced_list(p4est_topidx_t which_tree, p4est_
     return;
   }
 
-  double  xmin_tree = p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*which_tree + 0] + 0];
-  double  ymin_tree = p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*which_tree + 0] + 1];
-#ifdef P4_TO_P8
-  double  zmin_tree = p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*which_tree + 0] + 2];
-#endif
-  double  quad_rel_size = ((double) P4EST_QUADRANT_LEN(quad->level))/((double) P4EST_ROOT_LEN);
-  double  dxdydz[P4EST_DIM] = {root_cells_dim.at(0)*quad_rel_size
-                               , root_cells_dim.at(1)*quad_rel_size
-                             #ifdef P4_TO_P8
-                               , root_cells_dim.at(2)*quad_rel_size
-                             #endif
-                              };
-  double  xyz_c[P4EST_DIM] = {xmin_tree + root_cells_dim.at(0)*(((double) (quad->x))/((double)P4EST_ROOT_LEN)) + 0.5*dxdydz[0]
-                              , ymin_tree + root_cells_dim.at(1)*(((double) (quad->y))/((double)P4EST_ROOT_LEN)) + 0.5*dxdydz[1]
-                            #ifdef P4_TO_P8
-                              , zmin_tree + root_cells_dim.at(2)*(((double) (quad->z))/((double)P4EST_ROOT_LEN)) + 0.5*dxdydz[2]
-                            #endif
-                             };
+  const double *xyz_min_tree    = (p4est->connectivity->vertices + (3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*which_tree]));
+  const double quad_rel_size    = ((double) P4EST_QUADRANT_LEN(quad->level))/((double) P4EST_ROOT_LEN);
+  const double dxyz[P4EST_DIM]  = { DIM(parameters.tree_dim(0)*quad_rel_size, parameters.tree_dim(1)*quad_rel_size, parameters.tree_dim(2)*quad_rel_size) };
+  const double xyz_c[P4EST_DIM] = {DIM(xyz_min_tree[0] + parameters.tree_dim(0)*(((double) (quad->x))/((double)P4EST_ROOT_LEN)) + 0.5*dxyz[0],
+                                   xyz_min_tree[1] + parameters.tree_dim(1)*(((double) (quad->y))/((double)P4EST_ROOT_LEN)) + 0.5*dxyz[1],
+                                   xyz_min_tree[2] + parameters.tree_dim(2)*(((double) (quad->z))/((double)P4EST_ROOT_LEN)) + 0.5*dxyz[2]) };
   if(parent_list_ptr == NULL)
   {
     parent_list_ptr = reduced_list_ptr(new reduced_list);
@@ -2824,17 +2464,17 @@ void my_p4est_biomolecules_t::add_reduced_list(p4est_topidx_t which_tree, p4est_
                                           , (xyz_c[2] > mol_centroid[2]+0.5*mol_bounding_box)?mol_centroid[2]+0.5*mol_bounding_box:(xyz_c[2] < mol_centroid[2]-0.5*mol_bounding_box)?mol_centroid[2]-0.5*mol_bounding_box:xyz_c[2]
                                     #endif
                                          };
-      const double xyz_quad[P4EST_DIM] = {(xyz_box[0] > xyz_c[0]+0.5*dxdydz[0])?xyz_c[0]+0.5*dxdydz[0]:(xyz_box[0] < xyz_c[0]-0.5*dxdydz[0])?xyz_c[0]-0.5*dxdydz[0]:xyz_box[0]
-                                          , (xyz_box[1] > xyz_c[1]+0.5*dxdydz[1])?xyz_c[1]+0.5*dxdydz[1]:(xyz_box[1] < xyz_c[1]-0.5*dxdydz[1])?xyz_c[1]-0.5*dxdydz[1]:xyz_box[1]
+      const double xyz_quad[P4EST_DIM] = {(xyz_box[0] > xyz_c[0]+0.5*dxyz[0])?xyz_c[0]+0.5*dxyz[0]:(xyz_box[0] < xyz_c[0]-0.5*dxyz[0])?xyz_c[0]-0.5*dxyz[0]:xyz_box[0]
+                                          , (xyz_box[1] > xyz_c[1]+0.5*dxyz[1])?xyz_c[1]+0.5*dxyz[1]:(xyz_box[1] < xyz_c[1]-0.5*dxyz[1])?xyz_c[1]-0.5*dxyz[1]:xyz_box[1]
                                     #ifdef P4_TO_P8
-                                          , (xyz_box[2] > xyz_c[2]+0.5*dxdydz[2])?xyz_c[2]+0.5*dxdydz[2]:(xyz_box[2] < xyz_c[2]-0.5*dxdydz[2])?xyz_c[2]-0.5*dxdydz[2]:xyz_box[2]
+                                          , (xyz_box[2] > xyz_c[2]+0.5*dxyz[2])?xyz_c[2]+0.5*dxyz[2]:(xyz_box[2] < xyz_c[2]-0.5*dxyz[2])?xyz_c[2]-0.5*dxyz[2]:xyz_box[2]
                                     #endif
                                          };
       if(sqrt(SQR(xyz_box[0]-xyz_quad[0]) + SQR(xyz_box[1]-xyz_quad[1])
         #ifdef P4_TO_P8
               + SQR(xyz_box[2]-xyz_quad[2])
         #endif
-              ) <= MAX(parameters.layer_thickness() + (need_exact_phi? parameters.probe_radius(): 0.0), 0.5*parameters.lip_cst()*parameters.root_diag()*quad_rel_size - parameters.probe_radius())) // there might be relevant atoms in the molecule to consider
+              ) <= MAX(parameters.layer_thickness() + (need_exact_phi? parameters.probe_radius(): 0.0), 0.5*parameters.lip()*parameters.tree_diag()*quad_rel_size - parameters.probe_radius())) // there might be relevant atoms in the molecule to consider
       {
         size_t former_nb_atoms = par_list.size();
         par_list.atom_global_idx.resize(former_nb_atoms+mol.get_number_of_atoms());
@@ -2850,7 +2490,7 @@ void my_p4est_biomolecules_t::add_reduced_list(p4est_topidx_t which_tree, p4est_
     }
   }
 
-  double  threshold_dist = MAX(parameters.layer_thickness() + (need_exact_phi? parameters.probe_radius(): 0.0), 0.25*parameters.lip_cst()*parameters.root_diag()*quad_rel_size - parameters.probe_radius());
+  double  threshold_dist = MAX(parameters.layer_thickness() + (need_exact_phi? parameters.probe_radius(): 0.0), 0.25*parameters.lip()*parameters.tree_diag()*quad_rel_size - parameters.probe_radius());
   const reduced_list& parent_list = (*parent_list_ptr);
 
   int     nb_added_global_idx = 0;
@@ -2864,13 +2504,13 @@ void my_p4est_biomolecules_t::add_reduced_list(p4est_topidx_t which_tree, p4est_
   for (int k = 0; k < parent_list.size(); ++k) {
     int global_atom_idx = parent_list.atom_global_idx.at(k);
     const Atom* a = get_atom(global_atom_idx, mol_index);
-    double d = parameters.probe_radius() + a->max_phi_vdW_in_quad(xyz_c, dxdydz);
-    if(d >= -threshold_dist - EPS*parameters.probe_radius()) // -0.5*parameters.root_diag()/(1<<parameters.max_level()))
+    double d = parameters.probe_radius() + a->max_phi_vdW_in_quad(xyz_c, dxyz);
+    if(d >= -threshold_dist - EPS*parameters.probe_radius()) // -0.5*parameters.tree_diag()/(1<<parameters.lmax()))
     {
       child_list.atom_global_idx.push_back(global_atom_idx);
       nb_added_global_idx++;
     }
-    if(nb_added_global_idx == 0 && d >= MAX(parameters.probe_radius()-0.5*parameters.lip_cst()*parameters.root_diag()*quad_rel_size, max_phi_sas_to_vertices))
+    if(nb_added_global_idx == 0 && d >= MAX(parameters.probe_radius()-0.5*parameters.lip()*parameters.tree_diag()*quad_rel_size, max_phi_sas_to_vertices))
     {
       double phi_sas_vertex;
       for (int ii = 0; ii < 2; ++ii) {
@@ -2878,9 +2518,9 @@ void my_p4est_biomolecules_t::add_reduced_list(p4est_topidx_t which_tree, p4est_
 #ifdef P4_TO_P8
           for (int kk = 0; kk < 2; ++kk) {
 #endif
-            phi_sas_vertex = parameters.probe_radius() + a->dist_to_vdW_surface(xyz_c[0] + ((double) ii - 0.5)*dxdydz[0], xyz_c[1] + ((double) jj - 0.5)*dxdydz[1]
+            phi_sas_vertex = parameters.probe_radius() + a->dist_to_vdW_surface(xyz_c[0] + ((double) ii - 0.5)*dxyz[0], xyz_c[1] + ((double) jj - 0.5)*dxyz[1]
     #ifdef P4_TO_P8
-                , xyz_c[2] + ((double) kk - 0.5)*dxdydz[2]
+                , xyz_c[2] + ((double) kk - 0.5)*dxyz[2]
     #endif
                 );
             if(phi_sas_vertex > max_phi_sas_to_vertices)
@@ -2904,20 +2544,12 @@ void my_p4est_biomolecules_t::add_reduced_list(p4est_topidx_t which_tree, p4est_
   return;
 }
 
-double my_p4est_biomolecules_t::operator ()(const double x, const double y
-                                            #ifdef P4_TO_P8
-                                            , const double z
-                                            #endif
-                                            ) const
+double my_p4est_biomolecules_t::operator ()(DIM(const double &x, const double &y, const double &z)) const
 {
   double phi = -DBL_MAX;
   for (int k = 0; k < nmol(); ++k) {
     const molecule& mol_k = bio_molecules.at(k);
-    phi = MAX(phi, mol_k(x, y
-                     #ifdef P4_TO_P8
-                         , z
-                     #endif
-                         ));
+    phi = MAX(phi, mol_k(DIM(x, y, z)));
   }
   phi += parameters.probe_radius();
   return phi;
@@ -2928,7 +2560,7 @@ double my_p4est_biomolecules_t::reduced_operator(const double *xyz, const int& r
 {
   bool get_better_phi = false;
   double phi = -DBL_MAX, tmp;
-  const double zero_threshold = parameters.layer_thickness()*((parameters.order_of_accuracy()==1)? 0.01:(1.0/(1<<parameters.max_level())));
+  const double zero_threshold = parameters.layer_thickness()*((parameters.order_of_accuracy()==1)? 0.01:(1.0/(1<<parameters.lmax())));
   int mol_idx = 0;
   const Atom *atom_i = NULL;
   int reduced_index_of_atom_i = -1;
@@ -2950,19 +2582,16 @@ double my_p4est_biomolecules_t::reduced_operator(const double *xyz, const int& r
   phi += parameters.probe_radius();
   if(need_exact_value && global_max_level >= parameters.threshold_level() && 0.0 <= phi && phi <= parameters.probe_radius() + parameters.layer_thickness() + zero_threshold)
   {
-    double dist_xyz_to_c_i = sqrt(SQR(xyz[0] - atom_i->xc) + SQR(xyz[1] - atom_i->yc)
-    #ifdef P4_TO_P8
-        + SQR(xyz[2] - atom_i->zc)
-    #endif
-        );
+    double dist_xyz_to_c_i = 0.0;
+    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+      SQR(xyz[dir] - atom_i->xyz_c[dir]);
+    dist_xyz_to_c_i = sqrt(dist_xyz_to_c_i);
+
     if(dist_xyz_to_c_i > zero_threshold)
     {
       double xyz_proj_i[P4EST_DIM]; // projection on \delta B(c_i, r_p + ri)
-      xyz_proj_i[0] = xyz[0] + (xyz[0] - atom_i->xc)*phi/dist_xyz_to_c_i;
-      xyz_proj_i[1] = xyz[1] + (xyz[1] - atom_i->yc)*phi/dist_xyz_to_c_i;
-#ifdef P4_TO_P8
-      xyz_proj_i[2] = xyz[2] + (xyz[2] - atom_i->zc)*phi/dist_xyz_to_c_i;
-#endif
+      for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+        xyz_proj_i[dir] = xyz[dir] + (xyz[dir] - atom_i->xyz_c[dir])*phi/dist_xyz_to_c_i;
       tmp = -DBL_MAX;
       mol_idx = 0;
       get_better_phi = false;
@@ -2980,7 +2609,7 @@ double my_p4est_biomolecules_t::reduced_operator(const double *xyz, const int& r
     }
   }
   if(get_better_phi && !last_stage)
-    phi = -1.5*parameters.root_diag();
+    phi = -1.5*parameters.tree_diag();
 
   return phi;
 }
@@ -2990,7 +2619,7 @@ double my_p4est_biomolecules_t::better_distance(const double *xyz, const int& re
   double phi  = -DBL_MAX, tmp;
   int mol_idx = 0;
 
-  const double zero_threshold = parameters.layer_thickness()*((parameters.order_of_accuracy()==1)? 0.01:(1.0/(1<<parameters.max_level())));
+  const double zero_threshold = parameters.layer_thickness()*((parameters.order_of_accuracy()==1)? 0.01:(1.0/(1<<parameters.lmax())));
   vector<sorted_atom> sorted_atoms;
   const reduced_list& r_list = *(reduced_lists.at(reduced_list_idx));
   sorted_atoms.resize(r_list.size());
@@ -3022,7 +2651,7 @@ double my_p4est_biomolecules_t::better_distance(const double *xyz, const int& re
   double closest_graal[P4EST_DIM];
   for (short dim = 0; dim < P4EST_DIM; ++dim)
     closest_graal[dim] = DBL_MAX;
-  double distance_to_closest_graal = parameters.root_diag(); //1.5*(get_largest_radius_of_all()+parameters.probe_radius());
+  double distance_to_closest_graal = parameters.tree_diag(); //1.5*(get_largest_radius_of_all()+parameters.probe_radius());
   bool graal_point_is_valid = false;
 
   for (size_t ii = 0; ii < sorted_atoms.size(); ++ii) {
@@ -3034,20 +2663,15 @@ double my_p4est_biomolecules_t::better_distance(const double *xyz, const int& re
       continue; // might be the right atom but its irrelevant since the point is farther than parameters.layer_thickness() away from \Gamma_{\SES} in this case
     if(fabs(atom_i->dist_to_vdW_surface(xyz) + parameters.probe_radius()) > MIN(distance_to_kink, distance_to_closest_graal))
       continue;
-    double dist_xyz_to_c_i = sqrt(SQR(xyz[0] - atom_i->xc) + SQR(xyz[1] - atom_i->yc)
-    #ifdef P4_TO_P8
-        + SQR(xyz[2] - atom_i->zc)
-    #endif
-        );
+
+    double dist_xyz_to_c_i = 0.0;
+    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+      SQR(xyz[dir] - atom_i->xyz_c[dir]);
+    dist_xyz_to_c_i = sqrt(dist_xyz_to_c_i);
     double xyz_proj_i[P4EST_DIM]; // projection on \delta B(c_i, r_p + ri)
     if(dist_xyz_to_c_i > zero_threshold)
-    {
-      xyz_proj_i[0] = xyz[0] + (xyz[0] - atom_i->xc)*sorted_atoms[ii].distance_from_xyz/dist_xyz_to_c_i;
-      xyz_proj_i[1] = xyz[1] + (xyz[1] - atom_i->yc)*sorted_atoms[ii].distance_from_xyz/dist_xyz_to_c_i;
-#ifdef P4_TO_P8
-      xyz_proj_i[2] = xyz[2] + (xyz[2] - atom_i->zc)*sorted_atoms[ii].distance_from_xyz/dist_xyz_to_c_i;
-#endif
-    }
+      for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+        xyz_proj_i[dir] = xyz[dir] + (xyz[dir] - atom_i->xyz_c[dir])*sorted_atoms[ii].distance_from_xyz/dist_xyz_to_c_i;
     else
     {
       double xyz_to_kink[P4EST_DIM];
@@ -3087,24 +2711,15 @@ double my_p4est_biomolecules_t::better_distance(const double *xyz, const int& re
         atom_j = get_atom(sorted_atoms[jj].global_atom_idx, sorted_atoms[jj].mol_idx);
         if(fabs(atom_j->dist_to_vdW_surface(xyz) + parameters.probe_radius()) > MIN(distance_to_kink, distance_to_closest_graal))
           continue;
-        const double alpha = sqrt(SQR(atom_i->xc - atom_j->xc) + SQR(atom_i->yc - atom_j->yc)
-                          #ifdef P4_TO_P8
-                                  + SQR(atom_i->zc - atom_j->zc)
-                          #endif
-                                  );
+        const double alpha = sqrt(SUMD(SQR(atom_i->xyz_c[0] - atom_j->xyz_c[0]), SQR(atom_i->xyz_c[1] - atom_j->xyz_c[1]), SQR(atom_i->xyz_c[2] - atom_j->xyz_c[2])));
         const double lambda = 0.5 + 0.5*(SQR(parameters.probe_radius() + atom_j->r_vdw) - SQR(parameters.probe_radius() + atom_i->r_vdw))/SQR(alpha);
         double circle_center[P4EST_DIM];
         double normal_vector[P4EST_DIM];
-        normal_vector[0]    = (atom_j->xc - atom_i->xc)/alpha;
-        circle_center[0]    = lambda*atom_i->xc + (1.0-lambda)*atom_j->xc;
+        for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
+          normal_vector[dir]    = (atom_j->xyz_c[dir] - atom_i->xyz_c[dir])/alpha;
+          circle_center[dir]    = lambda*atom_i->xyz_c[dir] + (1.0-lambda)*atom_j->xyz_c[dir];
+        }
 
-        normal_vector[1]    = (atom_j->yc - atom_i->yc)/alpha;
-        circle_center[1]    = lambda*atom_i->yc + (1.0-lambda)*atom_j->yc;
-
-#ifdef P4_TO_P8
-        normal_vector[2]    = (atom_j->zc - atom_i->zc)/alpha;
-        circle_center[2]    = lambda*atom_i->zc + (1.0-lambda)*atom_j->zc;
-#endif
         const double circle_radius  = sqrt(0.5*(SQR(parameters.probe_radius() + atom_i->r_vdw) + SQR(parameters.probe_radius() + atom_j->r_vdw))
                                            - 0.25*SQR(alpha)
                                            - 0.25*(SQR(SQR(parameters.probe_radius() + atom_j->r_vdw) - SQR(parameters.probe_radius() + atom_i->r_vdw)))/SQR(alpha));
@@ -3301,10 +2916,10 @@ void my_p4est_biomolecules_t::build_brick()
   set<int> z_tree; z_tree.clear();
 #endif
   for (p4est_topidx_t tt = 0; tt < p4est->connectivity->num_trees; ++tt) {
-    x_tree.insert((int)((p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*0 + 0] + 0] - brick->xyz_min[0])/root_cells_dim.at(0)));
-    y_tree.insert((int)((p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*0 + 0] + 1] - brick->xyz_min[1])/root_cells_dim.at(1)));
+    x_tree.insert((int)((p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*0 + 0] + 0] - brick->xyz_min[0])/parameters.tree_dim(0)));
+    y_tree.insert((int)((p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*0 + 0] + 1] - brick->xyz_min[1])/parameters.tree_dim(1)));
 #ifdef P4_TO_P8
-    z_tree.insert((int)((p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*0 + 0] + 2] - brick->xyz_min[2])/root_cells_dim.at(2)));
+    z_tree.insert((int)((p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*0 + 0] + 2] - brick->xyz_min[2])/parameters.tree_dim(2)));
 #endif
   }
   brick->nxyztrees[0] = x_tree.size();
@@ -3317,10 +2932,10 @@ void my_p4est_biomolecules_t::build_brick()
 
   brick->nxyz_to_treeid = P4EST_ALLOC (p4est_topidx_t, p4est->connectivity->num_trees);
   for (p4est_topidx_t tt = 0; tt < p4est->connectivity->num_trees; ++tt) {
-    int i = (int)((p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*0 + 0] + 0] - brick->xyz_min[0])/root_cells_dim.at(0));
-    int j = (int)((p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*0 + 0] + 1] - brick->xyz_min[1])/root_cells_dim.at(1));
+    int i = (int)((p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*0 + 0] + 0] - brick->xyz_min[0])/parameters.tree_dim(0));
+    int j = (int)((p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*0 + 0] + 1] - brick->xyz_min[1])/parameters.tree_dim(1));
 #ifdef P4_TO_P8
-    int k = (int)((p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*0 + 0] + 2] - brick->xyz_min[2])/root_cells_dim.at(2));
+    int k = (int)((p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*0 + 0] + 2] - brick->xyz_min[2])/parameters.tree_dim(2));
     brick->nxyz_to_treeid[brick->nxyztrees[0]*brick->nxyztrees[1]*k + brick->nxyztrees[0]*j + i] = tt;
 #else
     brick->nxyz_to_treeid[brick->nxyztrees[0]*j + i] = tt;
@@ -3333,11 +2948,11 @@ void my_p4est_biomolecules_t::partition_uniformly(const bool export_cavities, co
 #ifdef CASL_THROWS
   int local_error = (p4est == NULL);
   string err_msg = "my_p4est_biomolecules_t::partition_uniformly(): this function requires a valid p4est object.";
-  err_manager.check_my_local_error(local_error, err_msg);
+  error_manager.check(local_error, err_msg);
 
   local_error = (phi != NULL && nodes == NULL);
   err_msg = "my_p4est_biomolecules_t::partition_uniformly(): this function requires valid nodes if the levelset function is defined.";
-  err_manager.check_my_local_error(local_error, err_msg);
+  error_manager.check(local_error, err_msg);
 
   if(phi != NULL)
   {
@@ -3348,7 +2963,7 @@ void my_p4est_biomolecules_t::partition_uniformly(const bool export_cavities, co
     PetscErrorCode ierr = VecGetSize(phi, &size); CHKERRXX(ierr);
     local_error = size != total_nb_nodes;
     err_msg = "my_p4est_biomolecules_t::partition_uniformly(): the size of the levelset vector is not equal to the total number of nodes.";
-    err_manager.check_my_local_error(local_error, err_msg);
+    error_manager.check(local_error, err_msg);
   }
 #endif
   my_p4est_partition(p4est, P4EST_FALSE, NULL); // do not allow for coarsening, it's the last stage...
@@ -3431,8 +3046,8 @@ int my_p4est_biomolecules_t::partition_weight_for_enforcing_min_level(p4est_t *p
 {
   (void) which_tree;
   my_p4est_biomolecules_t* biomol = (my_p4est_biomolecules_t*) park->user_pointer;
-  if(quadrant->level < biomol->parameters.min_level())
-    return (1<<(P4EST_DIM*(biomol->parameters.min_level()-quadrant->level)));
+  if(quadrant->level < biomol->parameters.lmin())
+    return (1<<(P4EST_DIM*(biomol->parameters.lmin()-quadrant->level)));
   else
     return 1;
 }
@@ -3442,11 +3057,11 @@ void my_p4est_biomolecules_t::enforce_min_level(bool export_cavities)
 #ifdef CASL_THROWS
   int local_error = (p4est == NULL);
   string err_msg = "my_p4est_biomolecules_t::enforce_min_level_and_partition_uniformly(): this function requires a valid p4est object.";
-  err_manager.check_my_local_error(local_error, err_msg);
+  error_manager.check(local_error, err_msg);
 
   local_error = (phi == NULL || nodes == NULL);
   err_msg = "my_p4est_biomolecules_t::enforce_min_level_and_partition_uniformly(): this function requires valid nodes and a valid node-sampled levelset function.";
-  err_manager.check_my_local_error(local_error, err_msg);
+  error_manager.check(local_error, err_msg);
 
   if(phi != NULL)
   {
@@ -3457,7 +3072,7 @@ void my_p4est_biomolecules_t::enforce_min_level(bool export_cavities)
     PetscErrorCode ierr = VecGetSize(phi, &size); CHKERRXX(ierr);
     local_error = size != total_nb_nodes;
     err_msg = "my_p4est_biomolecules_t::enforce_min_level_and_partition_uniformly(): the size of the node-sampled levelset function is not equal to the total number of nodes.";
-    err_manager.check_my_local_error(local_error, err_msg);
+    error_manager.check(local_error, err_msg);
   }
 #endif
   P4EST_ASSERT((export_cavities && inner_domain != NULL) || (!export_cavities && inner_domain == NULL));
@@ -3493,7 +3108,7 @@ void my_p4est_biomolecules_t::enforce_min_level(bool export_cavities)
   ierr = VecGetSize(phi, &size2); CHKERRXX(ierr);
   local_error = size1 != size2;
   err_msg = "my_p4est_biomolecules_t::enforce_min_level(): logic error, inconsistent number of points after partitioning...";
-  err_manager.check_my_local_error(local_error, err_msg);
+  error_manager.check(local_error, err_msg);
 #endif
   VecScatter ctx, ctx_inner_domain;
   IS is;
@@ -3588,7 +3203,7 @@ void my_p4est_biomolecules_t::enforce_min_level(bool export_cavities)
     p4est_tree_t* tree_k = (p4est_tree_t*) sc_array_index(p4est->trees, tree_id);
     for (size_t q = 0; q < tree_k->quadrants.elem_count; ++q) {
       p4est_quadrant_t* quad  = (p4est_quadrant_t*) sc_array_index(&tree_k->quadrants, q);
-      if(quad->level == parameters.min_level() && coarse_quad_idx != (p4est_locidx_t) quad->p.user_long)
+      if(quad->level == parameters.lmin() && coarse_quad_idx != (p4est_locidx_t) quad->p.user_long)
       {
         coarse_quad_idx = (p4est_locidx_t) quad->p.user_long;
         node_xyz_fr_n(coarse_nodes->local_nodes[P4EST_CHILDREN*coarse_quad_idx + 0], p4est, coarse_nodes, &coarse_quad_corners[0][0]);
@@ -3603,7 +3218,7 @@ void my_p4est_biomolecules_t::enforce_min_level(bool export_cavities)
         fine_idx = nodes->local_nodes[P4EST_CHILDREN*(tree_k->quadrants_offset+q) + nn];
         if(known_fine_indices.find(fine_idx) == known_fine_indices.end())
         {
-          if((int) quad->level > parameters.min_level())
+          if((int) quad->level > parameters.lmin())
           {
             if(export_cavities)
               inner_domain_p[fine_idx] = coarse_inner_domain_read_only_p[coarse_nodes->local_nodes[P4EST_CHILDREN*quad->p.user_long + nn]];
@@ -3658,7 +3273,7 @@ void my_p4est_biomolecules_t::enforce_min_level(bool export_cavities)
 #ifdef CASL_THROWS
   local_error = (known_fine_indices.size()  != nodes->indep_nodes.elem_count);
   err_msg = "my_p4est_biomolecules_t::enforce_min_level_and_partition_uniformly(): some nodes were not updated when enforcing the min level.";
-  err_manager.check_my_local_error(local_error, err_msg);
+  error_manager.check(local_error, err_msg);
 #endif
 
 
@@ -3687,7 +3302,7 @@ void my_p4est_biomolecules_t::replace_fn_min_level(p4est_t *park, p4est_topidx_t
 #ifdef CASL_THROWS
     my_p4est_biomolecules_t* biomol = (my_p4est_biomolecules_t*) park->user_pointer;
     string err_msg = "my_p4est_biomolecules_t::replace_fn_min_level(...): invoked coarsening...";
-    biomol->err_manager.print_message_and_abort(err_msg, 22446688);
+    biomol->error_manager.print_message_and_abort(err_msg, 22446688);
 #else
     MPI_Abort(park->mpicomm, 22446688);
 #endif
@@ -3704,135 +3319,10 @@ p4est_bool_t my_p4est_biomolecules_t::refine_fn_min_level(p4est_t *park, p4est_t
 {
   const my_p4est_biomolecules_t* biomol = (my_p4est_biomolecules_t*) park->user_pointer;
   (void) which_tree;
-  return ((p4est_bool_t) (quad->level < biomol->parameters.min_level()));
+  return ((p4est_bool_t) (quad->level < biomol->parameters.lmin()));
 }
 
-void my_p4est_biomolecules_t::remove_internal_cavities_poisson(const bool export_cavities)
-{
-  PetscErrorCode ierr;
-#ifdef CASL_THROWS
-  int local_error = phi == NULL;
-  string err_msg = "my_p4est_biomolecules_t::remove_internal_cavities_poisson(): this method requires a valid levelset.";
-  err_manager.check_my_local_error(local_error, err_msg);
-
-  local_error = nodes == NULL;
-  err_msg = "my_p4est_biomolecules_t::remove_internal_cavities_poisson(): this method requires valid nodes.";
-  err_manager.check_my_local_error(local_error, err_msg);
-
-  PetscInt size;
-  p4est_gloidx_t nb_total_nodes = 0;
-  for (int proc_rank = 0; proc_rank < p4est->mpisize; ++proc_rank)
-    nb_total_nodes += nodes->global_owned_indeps[proc_rank];
-  ierr = VecGetSize(phi, &size); CHKERRXX(ierr);
-  local_error = size != nb_total_nodes;
-  err_msg = "my_p4est_biomolecules_t::remove_internal_cavities_poisson(): the size of the level set vector is not equal to the total number of nodes.";
-  err_manager.check_my_local_error(local_error, err_msg);
-
-  local_error = !neighbors->is_initialized;
-  err_msg = "my_p4est_biomolecules_t::remove_internal_cavities_poisson(): the neighbors mus be initialized.";
-  err_manager.check_my_local_error(local_error, err_msg);
-#endif
-
-  if(inner_domain != NULL)
-  {
-    ierr = VecDestroy(inner_domain); CHKERRXX(ierr);
-  }
-  ierr = VecCreateGhostNodes(neighbors->p4est, neighbors->nodes, &inner_domain); CHKERRXX(ierr);
-  Vec inner_domain_ghost = NULL;
-  ierr = VecGhostGetLocalForm(inner_domain, &inner_domain_ghost); CHKERRXX(ierr);
-  ierr = VecSet(inner_domain_ghost, 0); CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(inner_domain, &inner_domain_ghost); inner_domain_ghost = NULL; CHKERRXX(ierr);
-
-  struct:
-    #ifdef P4_TO_P8
-      WallBC3D
-    #else
-      WallBC2D
-    #endif
-  {
-    BoundaryConditionType operator()(double, double
-                                 #ifdef P4_TO_P8
-                                     , double
-                                 #endif
-                                     ) const {return DIRICHLET;}
-  } bc_wall_type;
-
-  struct:
-    #ifdef P4_TO_P8
-      CF_3
-    #else
-      CF_2
-    #endif
-  {
-    double operator()(double, double
-                  #ifdef P4_TO_P8
-                      , double
-                  #endif
-                      ) const { return 10.; }
-  } bc_wall_value;
-
-  struct:
-    #ifdef P4_TO_P8
-      CF_3
-    #else
-      CF_2
-    #endif
-  {
-    double operator()(double, double
-                  #ifdef P4_TO_P8
-                      , double
-                  #endif
-                      ) const { return 0.; }
-  } bc_interface_value;
-
-#ifdef P4_TO_P8
-  BoundaryConditions3D bc;
-#else
-  BoundaryConditions2D bc;
-#endif
-  bc.setInterfaceType(DIRICHLET);
-  bc.setInterfaceValue(bc_interface_value);
-  bc.setWallTypes(bc_wall_type);
-  bc.setWallValues(bc_wall_value);
-
-  splitting_criteria_t sp(parameters.min_level(), parameters.max_level(), parameters.lip_cst());
-  void* user_pointer_saved = p4est->user_pointer;
-  p4est->user_pointer = (void*) &sp;
-
-  my_p4est_poisson_nodes_t solver(neighbors);
-
-  solver.set_bc(bc);
-  solver.set_phi(phi);
-  solver.set_rhs(inner_domain);
-  solver.set_tolerances(1e-6);
-  solver.solve(inner_domain);
-
-  // remove the cavities
-  double *inner_domain_p;
-  double *phi_p;
-  ierr = VecGetArray(inner_domain, &inner_domain_p); CHKERRXX(ierr);
-  ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
-  for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
-  {
-    inner_domain_p[i] = (phi_p[i] < 0 && fabs(inner_domain_p[i]) < EPS)? 1.0: 0.0;
-    if (inner_domain_p[i])// internal cavity
-      phi_p[i] = -phi_p[i];
-  }
-
-  ierr = VecRestoreArray(inner_domain, &inner_domain_p); CHKERRXX(ierr);
-  if(!export_cavities)
-  {
-    ierr = VecDestroy(inner_domain); inner_domain = NULL; CHKERRXX(ierr);
-  }
-  ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
-  p4est->user_pointer = user_pointer_saved;
-}
-
-double my_p4est_biomolecules_t::inner_box_identifier::operator ()(double x, double y
-                                                                  #ifdef P4_TO_P8
-                                                                  , double z
-                                                                  #endif
-                                                                  )const
+double my_p4est_biomolecules_t::inner_box_identifier::operator ()(DIM(const double &x, const double &y, const double &z))const
 {
   bool is_in_a_box = false;
   for (int mol_idx = 0; mol_idx < biomol_pointer->nmol(); ++mol_idx)
@@ -3840,12 +3330,9 @@ double my_p4est_biomolecules_t::inner_box_identifier::operator ()(double x, doub
     const molecule& mol           = biomol_pointer->bio_molecules.at(mol_idx);
     const double* mol_centroid    = mol.get_centroid();
     const double box_side_length  = mol.get_side_length_of_bounding_cube();
-    is_in_a_box = (mol_centroid[0] - 0.5*box_side_length <= x && x <= mol_centroid[0] + 0.5*box_side_length)
-        && (mol_centroid[1] - 0.5*box_side_length <= y && y <= mol_centroid[1] + 0.5*box_side_length)
-    #ifdef P4_TO_P8
-        && (mol_centroid[2] - 0.5*box_side_length <= z && z <= mol_centroid[2] + 0.5*box_side_length)
-    #endif
-        ;
+    is_in_a_box = ANDD((mol_centroid[0] - 0.5*box_side_length <= x && x <= mol_centroid[0] + 0.5*box_side_length),
+        (mol_centroid[1] - 0.5*box_side_length <= y && y <= mol_centroid[1] + 0.5*box_side_length),
+        (mol_centroid[2] - 0.5*box_side_length <= z && z <= mol_centroid[2] + 0.5*box_side_length));
     if(is_in_a_box)
       break;
   }
@@ -3889,17 +3376,17 @@ bool my_p4est_biomolecules_t::is_point_in_outer_domain_and_updated(p4est_locidx_
   return inner_domain_p[k] < 0.5;
 }
 
-void my_p4est_biomolecules_t::remove_internal_cavities_region_growing(const bool export_cavities)
+void my_p4est_biomolecules_t::remove_internal_cavities(const bool export_cavities)
 {
   PetscErrorCode ierr;
 #ifdef CASL_THROWS
   int local_error = phi == NULL;
-  string err_msg = "my_p4est_biomolecules_t::remove_internal_cavities_region_growing(): this method requires a valid levelset.";
-  err_manager.check_my_local_error(local_error, err_msg);
+  string err_msg = "my_p4est_biomolecules_t::remove_internal_cavities(): this method requires a valid levelset.";
+  error_manager.check(local_error, err_msg);
 
   local_error = nodes == NULL;
-  err_msg = "my_p4est_biomolecules_t::remove_internal_cavities_region_growing(): this method requires valid nodes.";
-  err_manager.check_my_local_error(local_error, err_msg);
+  err_msg = "my_p4est_biomolecules_t::remove_internal_cavities(): this method requires valid nodes.";
+  error_manager.check(local_error, err_msg);
 
   PetscInt size;
   p4est_gloidx_t nb_total_nodes = 0;
@@ -3907,12 +3394,12 @@ void my_p4est_biomolecules_t::remove_internal_cavities_region_growing(const bool
     nb_total_nodes += nodes->global_owned_indeps[proc_rank];
   ierr = VecGetSize(phi, &size); CHKERRXX(ierr);
   local_error = size != nb_total_nodes;
-  err_msg = "my_p4est_biomolecules_t::remove_internal_cavities_region_growing(): the size of the level set vector is not equal to the total number of nodes.";
-  err_manager.check_my_local_error(local_error, err_msg);
+  err_msg = "my_p4est_biomolecules_t::remove_internal_cavities(): the size of the level set vector is not equal to the total number of nodes.";
+  error_manager.check(local_error, err_msg);
 
   local_error = !neighbors->is_initialized;
-  err_msg = "my_p4est_biomolecules_t::remove_internal_cavities_region_growing(): the neighbors must be initialized.";
-  err_manager.check_my_local_error(local_error, err_msg);
+  err_msg = "my_p4est_biomolecules_t::remove_internal_cavities(): the neighbors must be initialized.";
+  error_manager.check(local_error, err_msg);
 #endif
 
   if(inner_domain != NULL)
@@ -3922,10 +3409,13 @@ void my_p4est_biomolecules_t::remove_internal_cavities_region_growing(const bool
   ierr = VecCreateGhostNodes(neighbors->p4est, neighbors->nodes, &inner_domain); CHKERRXX(ierr);
 
   is_point_in_a_bounding_box.biomol_pointer = this;
-  sample_cf_on_nodes(p4est, nodes, is_point_in_a_bounding_box, inner_domain);
-
-  double* inner_domain_p;
+  double *inner_domain_p;
   ierr = VecGetArray(inner_domain, &inner_domain_p); CHKERRXX(ierr);
+  for (size_t i = 0; i<nodes->indep_nodes.elem_count; ++i) {
+    double xyz[P4EST_DIM];
+    node_xyz_fr_n(i, p4est, nodes, xyz);
+    inner_domain_p[i] = is_point_in_a_bounding_box(xyz);
+  }
   ierr = VecGetArrayRead(phi, &phi_read_only_p); CHKERRXX(ierr);
 
   size_t layer_size = neighbors->layer_nodes.size();
@@ -3992,7 +3482,7 @@ p4est_t* my_p4est_biomolecules_t::construct_SES(const sas_generation_method& met
   int local_error = (nodes != NULL);
 #ifdef CASL_THROWS
   string err_msg = "my_p4est_biomolecules_t::construct_SES(...): nodes should be NULL when invoked.";
-  err_manager.check_my_local_error(local_error, err_msg);
+  error_manager.check(local_error, err_msg);
 #else
   if(local_error)
   {
@@ -4002,7 +3492,7 @@ p4est_t* my_p4est_biomolecules_t::construct_SES(const sas_generation_method& met
   local_error = (ghost != NULL);
 #ifdef CASL_THROWS
   err_msg = "my_p4est_biomolecules_t::construct_SES(...): ghost should be NULL when invoked.";
-  err_manager.check_my_local_error(local_error, err_msg);
+  error_manager.check(local_error, err_msg);
 #else
   if(local_error)
   {
@@ -4012,7 +3502,7 @@ p4est_t* my_p4est_biomolecules_t::construct_SES(const sas_generation_method& met
   local_error = phi != NULL;
 #ifdef CASL_THROWS
   err_msg = "my_p4est_biomolecules_t::construct_SES(...): phi should be NULL when invoked.";
-  err_manager.check_my_local_error(local_error, err_msg);
+  error_manager.check(local_error, err_msg);
 #else
   if(local_error)
   {
@@ -4023,7 +3513,7 @@ p4est_t* my_p4est_biomolecules_t::construct_SES(const sas_generation_method& met
   local_error = inner_domain != NULL;
 #ifdef CASL_THROWS
   err_msg = "my_p4est_biomolecules_t::construct_SES(...): innder_domain should be NULL when invoked.";
-  err_manager.check_my_local_error(local_error, err_msg);
+  error_manager.check(local_error, err_msg);
 #else
   if(local_error)
   {
@@ -4032,10 +3522,10 @@ p4est_t* my_p4est_biomolecules_t::construct_SES(const sas_generation_method& met
   }
 #endif
   update_max_level();
-  local_error = global_max_level > parameters.min_level();
+  local_error = global_max_level > parameters.lmin();
 #ifdef CASL_THROWS
   err_msg = "my_p4est_biomolecules_t::construct_SES(...): the p4est is already refined, the method assumes a coarse p4est when invoked.";
-  err_manager.check_my_local_error(local_error, err_msg);
+  error_manager.check(local_error, err_msg);
 #else
   if(local_error)
     p4est = reset_p4est();
@@ -4045,7 +3535,7 @@ p4est_t* my_p4est_biomolecules_t::construct_SES(const sas_generation_method& met
   {
 #ifdef CASL_THROWS
     err_msg = "my_p4est_biomolecules_t::construct_SES(...): we assume no user-defined data, internal management of user-defined data is not handled (yet)...";
-    err_manager.check_my_local_error(local_error, err_msg);
+    error_manager.check(local_error, err_msg);
 #else
     p4est_reset_data(p4est, 0, NULL, p4est->user_pointer);
 #endif
@@ -4058,12 +3548,12 @@ p4est_t* my_p4est_biomolecules_t::construct_SES(const sas_generation_method& met
     ierr = PetscFPrintf(p4est->mpicomm, log_file, "Construction of the grid with %d proc(s) \n", p4est->mpisize); CHKERRXX(ierr);
     ierr = PetscFPrintf(p4est->mpicomm, log_file, "------------------------------------------- \n"); CHKERRXX(ierr);
     ierr = PetscFPrintf(p4est->mpicomm, log_file, "Number of trees: %d \n", p4est->connectivity->num_trees); CHKERRXX(ierr);
-    ierr = PetscFPrintf(p4est->mpicomm, log_file, "Min level: %d \n", parameters.min_level()); CHKERRXX(ierr);
-    ierr = PetscFPrintf(p4est->mpicomm, log_file, "Max level: %d \n", parameters.max_level()); CHKERRXX(ierr);
-    ierr = PetscFPrintf(p4est->mpicomm, log_file, "Proportionality constant L: %lf \n", parameters.lip_cst()); CHKERRXX(ierr);
+    ierr = PetscFPrintf(p4est->mpicomm, log_file, "Min level: %d \n", parameters.lmin()); CHKERRXX(ierr);
+    ierr = PetscFPrintf(p4est->mpicomm, log_file, "Max level: %d \n", parameters.lmax()); CHKERRXX(ierr);
+    ierr = PetscFPrintf(p4est->mpicomm, log_file, "Proportionality constant L: %lf \n", parameters.lip()); CHKERRXX(ierr);
     ierr = PetscFPrintf(p4est->mpicomm, log_file, "Probe radius (in A): %lf \n", parameters.probe_radius()/angstrom_to_domain); CHKERRXX(ierr);
     ierr = PetscFPrintf(p4est->mpicomm, log_file, "Probe radius (in domain): %lf \n", parameters.probe_radius()); CHKERRXX(ierr);
-    ierr = PetscFPrintf(p4est->mpicomm, log_file, "Finest cell diagonal (in domain): %lf \n", parameters.root_diag()/(1<<parameters.max_level())); CHKERRXX(ierr);
+    ierr = PetscFPrintf(p4est->mpicomm, log_file, "Finest cell diagonal (in domain): %lf \n", parameters.tree_diag()/(1<<parameters.lmax())); CHKERRXX(ierr);
     if(timer != NULL && log_timer == NULL)
     {
       log_timer = new parStopWatch(parStopWatch::all_timings, log_file, p4est->mpicomm);
@@ -4095,7 +3585,7 @@ p4est_t* my_p4est_biomolecules_t::construct_SES(const sas_generation_method& met
     default:
 #ifdef CASL_THROWS
       err_msg = "my_p4est_biomolecules_t::construct_SES(const sas_generation_method& ): unknown sas generation method...";
-      err_manager.print_message_and_abort(err_msg, 265562);
+      error_manager.print_message_and_abort(err_msg, 265562);
 #else
       MPI_Abort(p4est->mpicomm, 265562);
 #endif
@@ -4125,7 +3615,7 @@ p4est_t* my_p4est_biomolecules_t::construct_SES(const sas_generation_method& met
     default:
 #ifdef CASL_THROWS
       err_msg = "my_p4est_biomolecules_t::construct_SES(const sas_generation_method& ): unknown SAS generation method...";
-      err_manager.print_message_and_abort(err_msg, 265562);
+      error_manager.print_message_and_abort(err_msg, 265562);
 #else
       MPI_Abort(p4est->mpicomm, 265562);
 #endif
@@ -4138,7 +3628,7 @@ p4est_t* my_p4est_biomolecules_t::construct_SES(const sas_generation_method& met
 #ifdef CASL_THROWS
   local_error = reduced_list::get_nb_reduced_lists() != 0;
   err_msg = "my_p4est_biomolecules_t::construct_SES(): some reduced lists have not been deleted after the creation of the SAS surface, memory leak has happened...";
-  err_manager.check_my_local_error(local_error, err_msg);
+  error_manager.check(local_error, err_msg);
 #endif
   delete sas_creator; sas_creator = NULL;
 
@@ -4187,9 +3677,9 @@ p4est_t* my_p4est_biomolecules_t::construct_SES(const sas_generation_method& met
 
   if(method_to_use != list_reduction_with_exact_phi)
   {
-    double smallest_grid_size = root_cells_dim.at(0)/(1<<parameters.max_level());
+    double smallest_grid_size = parameters.tree_dim(0)/(1<<parameters.lmax());
     for (int dim = 1; dim < P4EST_DIM; ++dim)
-      smallest_grid_size = MIN(smallest_grid_size, root_cells_dim.at(dim)/(1<<parameters.max_level()));
+      smallest_grid_size = MIN(smallest_grid_size, parameters.tree_dim(dim)/(1<<parameters.lmax()));
     double pseudo_time_step;
     int nb_it;
 
@@ -4213,7 +3703,7 @@ p4est_t* my_p4est_biomolecules_t::construct_SES(const sas_generation_method& met
     default:
 #ifdef CASL_THROWS
       err_msg = "my_p4est_biomolecules_t::construct_SES(): the order of accuracy should be either 1 or 2!!!";
-      err_manager.print_message_and_abort(err_msg, 64799746);
+      error_manager.print_message_and_abort(err_msg, 64799746);
 #else
       MPI_Abort(p4est->mpicomm, 64799746);
 #endif
@@ -4248,8 +3738,7 @@ p4est_t* my_p4est_biomolecules_t::construct_SES(const sas_generation_method& met
     timer->stop();timer->read_duration();
     timer->start("Removing cavities");
   }
-  remove_internal_cavities(region_growing, export_intermediary_results);
-  //  remove_internal_cavities(poisson, export_intermediary_results); // this is NOT ROBUST ENOUGH, SHOULD NEVER BE USED
+  remove_internal_cavities(export_intermediary_results);
 
   if(export_intermediary_results)
   {
@@ -4459,8 +3948,8 @@ void my_p4est_biomolecules_t::set_quad_weight(p4est_quadrant_t* &quad, const p4e
 p4est_bool_t my_p4est_biomolecules_t::coarsen_fn(p4est_t *park, p4est_topidx_t which_tree, p4est_quadrant_t *quad[])
 {
   const my_p4est_biomolecules_t* biomol = (my_p4est_biomolecules_t*) park->user_pointer;
-  const int min_lvl                     = biomol->parameters.min_level();
-  const int max_lvl                     = biomol->parameters.max_level();
+  const int min_lvl                     = biomol->parameters.lmin();
+  const int max_lvl                     = biomol->parameters.lmax();
   const p4est_nodes_t* nodes            = biomol->nodes;
   (void) which_tree;
 
@@ -4471,8 +3960,8 @@ p4est_bool_t my_p4est_biomolecules_t::coarsen_fn(p4est_t *park, p4est_topidx_t w
     result = P4EST_TRUE;
   else
   {
-    const double parent_cell_diag = 2.0*biomol->parameters.root_diag()/(1<<quad[0]->level);
-    const double lip              = biomol->parameters.lip_cst();
+    const double parent_cell_diag = 2.0*biomol->parameters.tree_diag()/(1<<quad[0]->level);
+    const double lip              = biomol->parameters.lip();
 
     double f[P4EST_CHILDREN];
     for (unsigned short k = 0; k < P4EST_CHILDREN; ++k) { // not exactly the same as in the paper, but equivalent!
@@ -4516,27 +4005,27 @@ bool my_p4est_biomolecules_t::coarsening_step(int& step_idx, bool export_acceler
   PetscErrorCode ierr;
   int mpiret;
 
-  if(log_file != NULL && step_idx > log2(box_size_of_biggest_mol*sqrt(P4EST_DIM)*(1<<(parameters.max_level()-1))/(parameters.lip_cst()*parameters.root_diag())))
+  if(log_file != NULL && step_idx > log2(box_size_of_biggest_mol*sqrt(P4EST_DIM)*(1<<(parameters.lmax()-1))/(parameters.lip()*parameters.tree_diag())))
   {
     ierr = PetscFPrintf(p4est->mpicomm, log_file, "More coarsening steps than expected... This is weird! \n"); CHKERRXX(ierr);
   }
   // Explanation:
   // At each iteration, we reinitialize to capture a new layer of inner cells (away from the interface) that are potential candidates for coarsening.
   // When step_idx = k, the width of that candidate layer is
-  //   dist_k = parameters.lip_cst()*(2*diag of cell of level k) = parameters.lip_cst()*(diag of root cell)*(2^(k+1-parameters.max_lvl()))
+  //   dist_k = parameters.lip()*(2*diag of cell of level k) = parameters.lip()*(diag of root cell)*(2^(k+1-parameters.max_lvl()))
   // When dist_k > diagonal of the biggest bounding box, it makes no sense to keep doing it (and it should NEVER happen actually)...
 
   Vec phi_ghost_loc;
   // Given the number of iterations used for capturing the SES accurately,
   // WE assumed that the first layer is captured too, without reinitialization...
   // [Wrong only if L is absurdly large...]
-  double already_captured_layer = parameters.lip_cst()*parameters.root_diag()/(1<<(parameters.max_level()-step_idx++));
+  double already_captured_layer = parameters.lip()*parameters.tree_diag()/(1<<(parameters.lmax()-step_idx++));
   // "remove internal cavities" == trick to accelerate the reinitialization steps
   // and avoid more than one local coarsening operation
   ierr = VecGhostGetLocalForm(phi, &phi_ghost_loc); CHKERRXX(ierr);
   ierr = VecShift(phi_ghost_loc, -already_captured_layer); CHKERRXX(ierr);
   ierr = VecGhostRestoreLocalForm(phi, &phi_ghost_loc); CHKERRXX(ierr);
-  remove_internal_cavities(region_growing, export_acceleration);
+  remove_internal_cavities(export_acceleration);
   ierr = VecGhostGetLocalForm(phi, &phi_ghost_loc); CHKERRXX(ierr);
   ierr = VecShift(phi_ghost_loc, +already_captured_layer); CHKERRXX(ierr);
   ierr = VecGhostRestoreLocalForm(phi, &phi_ghost_loc); CHKERRXX(ierr);
@@ -4603,7 +4092,7 @@ bool my_p4est_biomolecules_t::coarsening_step(int& step_idx, bool export_acceler
 #ifdef CASL_THROWS
   int local_error = (idx != nodes->num_owned_indeps);
   string err_msg = "\n my_p4est_biomolecules_t::coarsening_step(...) killed because of logic error \n \n";
-  err_manager.check_my_local_error(local_error, err_msg);
+  error_manager.check(local_error, err_msg);
 #endif
 
   ierr  = VecGetArrayRead(phi, &phi_read_only_p); CHKERRXX(ierr);
@@ -4673,12 +4162,12 @@ bool my_p4est_biomolecules_t::coarsening_step(int& step_idx, bool export_acceler
     ierr  = VecGhostUpdateEnd(inner_domain, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   }
 
-  double min_root_cell_dim = root_cells_dim.at(0);
+  double min_root_cell_dim = parameters.tree_dim(0);
   for (int k = 1; k < P4EST_DIM; ++k)
-    min_root_cell_dim = MIN(min_root_cell_dim, root_cells_dim.at(k));
-  int n_iter = ceil(1.5*parameters.lip_cst()*parameters.root_diag()/(0.5*min_root_cell_dim));
+    min_root_cell_dim = MIN(min_root_cell_dim, parameters.tree_dim(k));
+  int n_iter = ceil(1.5*parameters.lip()*parameters.tree_diag()/(0.5*min_root_cell_dim));
   // Explanation:
-  // 1) parameters.lip_cst()*diag of current cell level = theoretical step of pseudo-time until which
+  // 1) parameters.lip()*diag of current cell level = theoretical step of pseudo-time until which
   // the reinitialization equation must be further solved to capture the next layer of coarsened cells
   // (assuming the current level set function is accurate enough for all other points that are closer to the surface)
   // --> call that pseudo-time tau_end
@@ -4709,7 +4198,6 @@ my_p4est_biomolecules_solver_t::my_p4est_biomolecules_solver_t(const my_p4est_bi
   psi_naught            = NULL;
   psi_bar               = NULL;
   psi_hat               = NULL;
-  validation_error      = NULL;
   psi_star_psi_naught_and_psi_bar_are_set = psi_hat_is_set = false;
   // initialize the dirichlet_boundary_condition
   dirichlet_bc.setWallTypes(dirichlet_bc_wall_type);
@@ -4726,7 +4214,7 @@ void    my_p4est_biomolecules_solver_t::set_molecular_relative_permittivity(doub
 #ifdef CASL_THROWS
   int local_error = (epsilon_molecule < 1.0);
   string error_message = "my_p4est_biomolecules_solver_t::set_molecular_relative_permittivity(...): the value of the molecular relative permittivity must be greater than or equal to 1.0.";
-  biomolecules->err_manager.check_my_local_error(local_error, error_message);
+  biomolecules->error_manager.check(local_error, error_message);
   if(mol_rel_permittivity > 1.0-EPS && fabs(mol_rel_permittivity - epsilon_molecule) > EPS*mol_rel_permittivity)
   {
     // print a warning
@@ -4743,7 +4231,7 @@ void    my_p4est_biomolecules_solver_t::set_electrolyte_relative_permittivity(do
 #ifdef CASL_THROWS
   int local_error = (epsilon_electrolyte < 1.0);
   string error_message = "my_p4est_biomolecules_solver_t::set_electrolyte_relative_permittivity(...): the value of the electrolyte relative permittivity must be greater than or equal to 1.0.";
-  biomolecules->err_manager.check_my_local_error(local_error, error_message);
+  biomolecules->error_manager.check(local_error, error_message);
   if(elec_rel_permittivity > 1.0-EPS && fabs(elec_rel_permittivity - epsilon_electrolyte) > EPS*elec_rel_permittivity)
   {
     // print a warning
@@ -4765,8 +4253,8 @@ void    my_p4est_biomolecules_solver_t::set_temperature_in_kelvin(double tempera
 #ifdef CASL_THROWS
   int local_error = (temperature_in_K < EPS);
   string error_message = "my_p4est_biomolecules_solver_t::set_temperature_in_K(...): the value of the temperature must be strictly positive.";
-  biomolecules->err_manager.check_my_local_error(local_error, error_message);
-  if(is_temperature_set() && temperature_in_K > EPS && fabs(temperature - temperature_in_K) > EPS*temperature)
+  biomolecules->error_manager.check(local_error, error_message);
+  if(temperature_is_set() && temperature_in_K > EPS && fabs(temperature - temperature_in_K) > EPS*temperature)
   {
     // print a warning
     string message = "my_p4est_biomolecules_solver_t::set_temperature_in_kelvin(...): the temperature was already set, it will be reset...\n";
@@ -4782,9 +4270,9 @@ void    my_p4est_biomolecules_solver_t::set_far_field_ion_density(double n_0)
 #ifdef CASL_THROWS
   //int local_error = (n_0 < EPS);
   //string error_message = "my_p4est_biomolecules_solver_t::set_far_field_ion_density(...): the value of the far-field ion density must be strictly positive.";
-  //biomolecules->err_manager.check_my_local_error(local_error, error_message);
-  //  if(is_far_field_ion_density_set() && n_0 > EPS && fabs(far_field_ion_density - n_0) > EPS*far_field_ion_density)
-  if(is_far_field_ion_density_set())
+  //biomolecules->error_manager.check(local_error, error_message);
+  //  if(far_field_ion_density_is_set() && n_0 > EPS && fabs(far_field_ion_density - n_0) > EPS*far_field_ion_density)
+  if(far_field_ion_density_is_set())
   {
     // print a warning
     string message = "my_p4est_biomolecules_solver_t::set_far_field_ion_density(...): the far-field ion density was already set, it will be reset...\n";
@@ -4800,8 +4288,8 @@ void    my_p4est_biomolecules_solver_t::set_ion_charge(int z)
 #ifdef CASL_THROWS
   int local_error = (z <= 0);
   string error_message = "my_p4est_biomolecules_solver_t::set_ion_charge(...): the ion charge must be a strictly positive integer.";
-  biomolecules->err_manager.check_my_local_error(local_error, error_message);
-  if(is_ion_charge_set() && z > 0 && ion_charge != z)
+  biomolecules->error_manager.check(local_error, error_message);
+  if(ion_charge_is_set() && z > 0 && ion_charge != z)
   {
     // print a warning
     string message = "my_p4est_biomolecules_solver_t::set_ion_charge(...): the ion charge was already set, it will be reset...\n";
@@ -4817,10 +4305,10 @@ void    my_p4est_biomolecules_solver_t::set_inverse_debye_length_in_meters_inver
   //#ifdef CASL_THROWS
   //  int local_error = (debye_length_in_m < EPS);
   //  string error_message = "my_p4est_biomolecules_solver_t::set_debye_length_in_meters(...): the value of the debye length must be strictly positive.";
-  //  biomolecules->err_manager.check_my_local_error(local_error, error_message);
+  //  biomolecules->error_manager.check(local_error, error_message);
   //#endif
   // if all three parameters are set, it's either consistent or not. If not, abort
-  if(are_all_debye_parameters_set())
+  if(all_debye_parameters_are_set())
   {
     // Either it's the correct value,
     if(fabs(get_inverse_debye_length_in_meters_inverse() - inverse_debye_length_in_m_inverse) < EPS*get_inverse_debye_length_in_meters_inverse())
@@ -4828,27 +4316,27 @@ void    my_p4est_biomolecules_solver_t::set_inverse_debye_length_in_meters_inver
     // or the user is dumb and we should teach him
 #ifdef CASL_THROWS
     string err_msg = "my_p4est_biomolecules_solver_t::set_debye_length_in_meters(): the debye length is already set by the relevant parameters, it can't be set to the new value: abort...";
-    biomolecules->err_manager.print_message_and_abort(err_msg, 957759);
+    biomolecules->error_manager.print_message_and_abort(err_msg, 957759);
 #else
     MPI_Abort(biomolecules->p4est->mpicomm, 957759);
 #endif
   }
   // if only 2 of the three parameters are set, it's the "easy" case, the third one might be calculated
-  if(is_ion_charge_set() && is_temperature_set() && !is_far_field_ion_density_set())
+  if(ion_charge_is_set() && temperature_is_set() && !far_field_ion_density_is_set())
   {
     // temperature and ion charge are set, the far-field ion density is not, let's calculate it
     set_far_field_ion_density(eps_0*kB*temperature*inverse_debye_length_in_m_inverse/(2.0*SQR(((double) ion_charge)*electron)));
     std::cout << "setting far field ion density based on other values \n";
     return;
   }
-  if(is_ion_charge_set() && !is_temperature_set() && is_far_field_ion_density_set())
+  if(ion_charge_is_set() && !temperature_is_set() && far_field_ion_density_is_set())
   {
     // far-field ion density and ion charge are set, temperature is not, let's calculate it
     set_temperature_in_kelvin(2.0*far_field_ion_density*SQR((1/inverse_debye_length_in_m_inverse)*((double) ion_charge)*electron)/(eps_0*kB));
     std::cout << "setting temperature based on other values \n";
     return;
   }
-  if(!is_ion_charge_set() && is_temperature_set() && is_far_field_ion_density_set())
+  if(!ion_charge_is_set() && temperature_is_set() && far_field_ion_density_is_set())
   {
     // ion charge might be freely set
     double my_z = sqrt(eps_0*kB*temperature/(2.0*far_field_ion_density*SQR((1/inverse_debye_length_in_m_inverse)*electron)));
@@ -4859,7 +4347,7 @@ void    my_p4est_biomolecules_solver_t::set_inverse_debye_length_in_meters_inver
     {
 #ifdef CASL_THROWS
       string err_msg = "my_p4est_biomolecules_solver_t::set_debye_length_in_meters(): the calculated ion charge is not an integer, it can't be fixed: abort...";
-      biomolecules->err_manager.print_message_and_abort(err_msg, 95788759);
+      biomolecules->error_manager.print_message_and_abort(err_msg, 95788759);
 #else
       MPI_Abort(biomolecules->p4est->mpicomm, 95788759);
 #endif
@@ -4868,7 +4356,7 @@ void    my_p4est_biomolecules_solver_t::set_inverse_debye_length_in_meters_inver
     return;
   }
   // if none or only one of the three parameters is set, we have one more degree of freedom, and we can set arbitrary values
-  if(!is_ion_charge_set())
+  if(!ion_charge_is_set())
   {
     // set to default (1:1 electrolyte)
     set_ion_charge();
@@ -4889,7 +4377,7 @@ void    my_p4est_biomolecules_solver_t::set_inverse_debye_length_in_meters_inver
 }
 double  my_p4est_biomolecules_solver_t::get_inverse_debye_length_in_meters_inverse() const
 {
-  if(are_all_debye_parameters_set()){
+  if(all_debye_parameters_are_set()){
     //return sqrt(eps_0*kB*temperature/(2.0*far_field_ion_density*SQR(((double) ion_charge)*electron)));
     return sqrt((2.0*far_field_ion_density*SQR(((double) ion_charge)*electron))/(eps_0*kB*temperature));
   }
@@ -4897,7 +4385,7 @@ double  my_p4est_biomolecules_solver_t::get_inverse_debye_length_in_meters_inver
   {
 #ifdef CASL_THROWS
     string err_msg = "my_p4est_biomolecules_solver_t::get_inverse_debye_length_in_meters_inverse(): not all debye parameters are set, the debye length cannot be calculated: abort...";
-    biomolecules->err_manager.print_message_and_abort(err_msg, 95755759);
+    biomolecules->error_manager.print_message_and_abort(err_msg, 95755759);
 #else
     MPI_Abort(biomolecules->p4est->mpicomm, 95755759);
 #endif
@@ -4910,7 +4398,7 @@ void    my_p4est_biomolecules_solver_t::return_psi_star_psi_naught_and_psi_bar(V
 #ifdef CASL_THROWS
   int local_error = ((psi_bar == NULL) || (psi_star == NULL));
   string message = "my_p4est_biomolecules_solver_t::return_psi_bar_and_psi_star(): (one of) the psi_bar and psi_star vectors is (are) NULL, (it) they can't be returned...";
-  biomolecules->err_manager.check_my_local_error(local_error, message);
+  biomolecules->error_manager.check(local_error, message);
 #endif
   psi_star_out    = psi_star; psi_star = NULL;
   psi_naught_out  = psi_naught; psi_naught = NULL;
@@ -4922,7 +4410,7 @@ void     my_p4est_biomolecules_solver_t::return_psi_hat(Vec &psi_hat_out)
 #ifdef CASL_THROWS
   int local_error = psi_hat == NULL;
   string message = "my_p4est_biomolecules_solver_t::return_psi_hat(): the psi_hat vector is NULL, it can't be returned...";
-  biomolecules->err_manager.check_my_local_error(local_error, message);
+  biomolecules->error_manager.check(local_error, message);
 #endif
   psi_hat_out=psi_hat; psi_hat=NULL;
   //  Vec psi_hat_to_return = psi_hat;
@@ -4930,38 +4418,11 @@ void     my_p4est_biomolecules_solver_t::return_psi_hat(Vec &psi_hat_out)
   psi_hat_is_set = false;
   //  return psi_hat_to_return;
 }
-Vec my_p4est_biomolecules_solver_t::return_validation_error()
+
+void    my_p4est_biomolecules_solver_t::return_all_psi_vectors(Vec &psi_star_out, Vec &psi_naught_out, Vec &psi_bar_out, Vec &psi_hat_out)
 {
-#ifdef CASL_THROWS
-  int local_error = validation_error == NULL;
-  string message = "my_p4est_biomolecules_solver_t::return_validation_error(): the validation_error vector is NULL \n(constructed and defined only for validation purposes, i.e. if the validation flag is set to true when solver functions are called), it can't be returned...";
-  biomolecules->err_manager.check_my_local_error(local_error, message);
-#endif
-  Vec validation_error_to_return = validation_error;
-  validation_error = NULL; // the new owner takes the responsibility of destroying the vector
-  return validation_error_to_return;
-}
-//Vec my_p4est_biomolecules_solver_t::return_residual()
-//{
-//#ifdef CASL_THROWS
-//  int local_error = jump_solver->rhs == NULL;
-//  string message = "my_p4est_biomolecules_solver_t::return_residual(): the rhs of the jump solver (aka as the residual) vector is NULL \nIt can't be interpolated and returned...";
-//  biomolecules->err_manager.check_my_local_error(local_error, message);
-//#endif
-//  Vec residual_on_grid = NULL;
-//  make_sure_is_node_sampled(residual_on_grid);
-//  Vec sol_voro_saved    = jump_solver->sol_voro;
-//  jump_solver->sol_voro = jump_solver->rhs;
-//  jump_solver->interpolate_solution_from_voronoi_to_tree(residual_on_grid);
-//  jump_solver->rhs      = jump_solver->sol_voro;
-//  jump_solver->sol_voro = sol_voro_saved;
-//  return residual_on_grid;
-//}
-void    my_p4est_biomolecules_solver_t::return_all_psi_vectors(Vec &psi_star_out, Vec &psi_naught_out, Vec &psi_bar_out, Vec &psi_hat_out/*, bool validation_flag*/)
-{
-//  if(!validation_flag)
-    return_psi_star_psi_naught_and_psi_bar(psi_star_out, psi_naught_out, psi_bar_out);
-//  return_psi_hat(psi_hat_out);
+  return_psi_star_psi_naught_and_psi_bar(psi_star_out, psi_naught_out, psi_bar_out);
+  return_psi_hat(psi_hat_out);
 }
 
 void    my_p4est_biomolecules_solver_t::make_sure_is_node_sampled(Vec &vector)
@@ -4998,9 +4459,9 @@ void    my_p4est_biomolecules_solver_t::solve_singular_part()
   if(psi_star_psi_naught_and_psi_bar_are_set)
     return;
 #ifdef CASL_THROWS
-  int local_error = !(is_temperature_set() && is_ion_charge_set() && is_molecular_permittivity_set());
+  int local_error = !(temperature_is_set() && ion_charge_is_set() && molecular_permittivity_is_set());
   string err_msg  = "my_p4est_biomolecules_solver_t::solve_singular_part(): some parameters are not set yet, the singular problem can't be solved...";
-  biomolecules->err_manager.check_my_local_error(local_error, err_msg);
+  biomolecules->error_manager.check(local_error, err_msg);
 #endif
   // This step is somehow critical, because its solution will determine the jump conditions at the
   // interface for the (non)linear Poisson-Boltzmann solver. Those jump conditions depend on the
@@ -5083,7 +4544,7 @@ void    my_p4est_biomolecules_solver_t::solve_singular_part()
   default:
 #ifdef CASL_THROWS
     err_msg = "my_p4est_biomolecules_solver_t::solve_singular_part(), the order of accuracy should be either 1 or 2!!!";
-    biomolecules->err_manager.print_message_and_abort(err_msg, 19791);
+    biomolecules->error_manager.print_message_and_abort(err_msg, 19791);
 #else
     MPI_Abort(biomolecules->p4est->mpicomm, 19791);
 #endif
@@ -5190,10 +4651,7 @@ void    my_p4est_biomolecules_solver_t::solve_singular_part()
   //    }
 
   ////  dirichlet_bc.setWallTypes(dirichlet_bc_wall_type);
-  ////  if(validation_flag)
-  ////    dirichlet_bc.setWallValues(validation_function);
-  ////  else
-  ////    dirichlet_bc.setWallValues(homogeneous_dirichlet_bc_wall_value);
+  ////  dirichlet_bc.setWallValues(homogeneous_dirichlet_bc_wall_value);
   //  class bc_wall_type_t : public WallBCDIM
   //  {
   //  public:
@@ -5260,17 +4718,14 @@ void    my_p4est_biomolecules_solver_t::solve_singular_part()
 #endif
 }
 
-void my_p4est_biomolecules_solver_t::calculate_jumps_in_normal_gradient(Vec &eps_grad_n_psi_hat_jump/*, bool validation_flag*/)
+void my_p4est_biomolecules_solver_t::calculate_jumps_in_normal_gradient(Vec &eps_grad_n_psi_hat_jump)
 {
-  P4EST_ASSERT(eps_grad_n_psi_hat_jump != NULL && biomolecules->phi != NULL && (psi_star_psi_naught_and_psi_bar_are_set /*|| validation_flag*/));
+  P4EST_ASSERT(eps_grad_n_psi_hat_jump != NULL && biomolecules->phi != NULL && psi_star_psi_naught_and_psi_bar_are_set);
   const double *phi_read_only_p = NULL , *psi_bar_read_only_p = NULL;
   double *eps_grad_n_psi_hat_jump_p = NULL;
 
   ierr = VecGetArrayRead(biomolecules->phi, &phi_read_only_p); CHKERRXX(ierr);
-  //if(!validation_flag)
-  //{
-    ierr = VecGetArrayRead(psi_bar, &psi_bar_read_only_p); CHKERRXX(ierr);
-  //}
+  ierr = VecGetArrayRead(psi_bar, &psi_bar_read_only_p); CHKERRXX(ierr);
   ierr = VecGetArray(eps_grad_n_psi_hat_jump, &eps_grad_n_psi_hat_jump_p); CHKERRXX(ierr);
 
   quad_neighbor_nodes_of_node_t qnnn;
@@ -5300,26 +4755,7 @@ void my_p4est_biomolecules_solver_t::calculate_jumps_in_normal_gradient(Vec &eps
       n_y               /= norm_of_gradient;
       n_x               /= norm_of_gradient;
 
-//      if(validation_flag)
-//      {
-//        node_xyz_fr_n(node_idx, biomolecules->p4est, biomolecules->nodes, xyz);
-//        eps_grad_n_psi_hat_jump_p[node_idx]  = (elec_rel_permittivity-mol_rel_permittivity)*
-//            (n_x*validation_function.x_derivative(xyz[0], xyz[1]
-//    #ifdef P4_TO_P8
-//            , xyz[2]
-//    #endif
-//            ) +n_y*validation_function.y_derivative(xyz[0], xyz[1]
-//    #ifdef P4_TO_P8
-//            , xyz[2]
-//    #endif
-//            )
-//    #ifdef P4_TO_P8
-//            +n_z*validation_function.z_derivative(xyz[0], xyz[1], xyz[2])
-//    #endif
-//            );
-//      }
-//      else
-        eps_grad_n_psi_hat_jump_p[node_idx]  = mol_rel_permittivity*
+      eps_grad_n_psi_hat_jump_p[node_idx]  = mol_rel_permittivity*
             (n_x*qnnn.dx_central(psi_bar_read_only_p)
              +n_y*qnnn.dy_central(psi_bar_read_only_p)
      #ifdef P4_TO_P8
@@ -5350,25 +4786,6 @@ void my_p4est_biomolecules_solver_t::calculate_jumps_in_normal_gradient(Vec &eps
       n_y               /= norm_of_gradient;
       n_x               /= norm_of_gradient;
 
-//      if(validation_flag)
-//      {
-//        node_xyz_fr_n(node_idx, biomolecules->p4est, biomolecules->nodes, xyz);
-//        eps_grad_n_psi_hat_jump_p[node_idx]  = (elec_rel_permittivity-mol_rel_permittivity)*
-//            (n_x*validation_function.x_derivative(xyz[0], xyz[1]
-//    #ifdef P4_TO_P8
-//            , xyz[2]
-//    #endif
-//            ) +n_y*validation_function.y_derivative(xyz[0], xyz[1]
-//    #ifdef P4_TO_P8
-//            , xyz[2]
-//    #endif
-//            )
-//    #ifdef P4_TO_P8
-//            +n_z*validation_function.z_derivative(xyz[0], xyz[1], xyz[2])
-//    #endif
-//            );
-//      }
-//      else
         eps_grad_n_psi_hat_jump_p[node_idx]  = mol_rel_permittivity*
             (n_x*qnnn.dx_central(psi_bar_read_only_p)
              +n_y*qnnn.dy_central(psi_bar_read_only_p)
@@ -5383,39 +4800,32 @@ void my_p4est_biomolecules_solver_t::calculate_jumps_in_normal_gradient(Vec &eps
   ierr = VecGhostUpdateEnd(eps_grad_n_psi_hat_jump, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
   ierr = VecRestoreArray(eps_grad_n_psi_hat_jump, &eps_grad_n_psi_hat_jump_p); eps_grad_n_psi_hat_jump_p = NULL; CHKERRXX(ierr);
-//  if(!validation_flag)
-//  {
     ierr = VecRestoreArrayRead(psi_bar, &psi_bar_read_only_p); psi_bar_read_only_p = NULL; CHKERRXX(ierr);
-//  }
   ierr = VecRestoreArrayRead(biomolecules->phi, &phi_read_only_p); phi_read_only_p = NULL; CHKERRXX(ierr);
 }
 
-int     my_p4est_biomolecules_solver_t::solve_nonlinear(double upper_bound_residual, int it_max/*, bool validation_flag*/)
+int     my_p4est_biomolecules_solver_t::solve_nonlinear(double upper_bound_residual, int it_max)
 {
   int iter = 0;
-  if (psi_hat_is_set /*&& !validation_flag*/)
+  if (psi_hat_is_set)
     return iter;
 #ifdef CASL_THROWS
-  int local_error = !are_all_parameters_set();
+  int local_error = !all_parameters_are_set();
   string err_msg  = "my_p4est_biomolecules_solver_t::solve_nonlinear(...): some parameters are not set yet, the nonlinear problem can't be solved...";
-  biomolecules->err_manager.check_my_local_error(local_error, err_msg);
+  biomolecules->error_manager.check(local_error, err_msg);
   local_error     = it_max < 1;
   err_msg         = "my_p4est_biomolecules_solver_t::solve_nonlinear(...): the maximum number of iterations must be one at least!...";
-  biomolecules->err_manager.check_my_local_error(local_error, err_msg);
+  biomolecules->error_manager.check(local_error, err_msg);
   local_error     = ( (it_max > 1) && (upper_bound_residual <= 0.0));
   err_msg         = "my_p4est_biomolecules_solver_t::solve_nonlinear(...): the upper bound for the residual must be strictly positive!...";
-  biomolecules->err_manager.check_my_local_error(local_error, err_msg);
+  biomolecules->error_manager.check(local_error, err_msg);
 #endif
   parStopWatch *log_timer = NULL, *solve_subtimer = NULL;
   if(biomolecules->log_file != NULL)
   {
     ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, " \n"); CHKERRXX(ierr);
     ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "------------------------------------------------------------------------------- \n"); CHKERRXX(ierr);
-    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "Solving the Poisson-Boltzmann equation on a %d/%d grid with %d proc(s) \n", biomolecules->parameters.min_level(), biomolecules->parameters.max_level(), biomolecules->p4est->mpisize); CHKERRXX(ierr);
-//    if(validation_flag)
-//    {
-//      ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "Solving for validation!!! \n", biomolecules->parameters.min_level(), biomolecules->parameters.max_level(), biomolecules->p4est->mpisize); CHKERRXX(ierr);
-//    }
+    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "Solving the Poisson-Boltzmann equation on a %d/%d grid with %d proc(s) \n", biomolecules->parameters.lmin(), biomolecules->parameters.lmax(), biomolecules->p4est->mpisize); CHKERRXX(ierr);
     ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "------------------------------------------------------------------------------- \n"); CHKERRXX(ierr);
     ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "The ionic charge is %d \n", ion_charge); CHKERRXX(ierr);
     ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "The far-field electrolyte density is %g m^{-3} \n", far_field_ion_density); CHKERRXX(ierr);
@@ -5433,7 +4843,7 @@ int     my_p4est_biomolecules_solver_t::solve_nonlinear(double upper_bound_resid
     P4EST_ASSERT(solve_subtimer == NULL);
     solve_subtimer = new parStopWatch(parStopWatch::root_timings, biomolecules->timing_file, biomolecules->p4est->mpicomm);
   }
-  if(!psi_star_psi_naught_and_psi_bar_are_set /*&& !validation_flag*/)
+  if(!psi_star_psi_naught_and_psi_bar_are_set)
   {
     if(solve_subtimer != NULL)
       solve_subtimer->start("Solving for singular parts");
@@ -5443,7 +4853,7 @@ int     my_p4est_biomolecules_solver_t::solve_nonlinear(double upper_bound_resid
       solve_subtimer->stop(); solve_subtimer->read_duration();
     }
   }
-  P4EST_ASSERT(psi_bar != NULL /*|| validation_flag*/);
+  P4EST_ASSERT(psi_bar != NULL);
   // we'll solve the nonlinear system using Newton iterations...
   // A first approximation is calculated by solving the linearized system
   //
@@ -5495,65 +4905,23 @@ int     my_p4est_biomolecules_solver_t::solve_nonlinear(double upper_bound_resid
   Vec add_plus = NULL;
   make_sure_is_node_sampled(add_plus);
 
-  // define rhs's (nonzero only for validation purposes)
-  Vec rhs_minus = NULL, rhs_plus = NULL;
-//  if(validation_flag)
-//  {
-//    make_sure_is_node_sampled(rhs_minus);
-//    make_sure_is_node_sampled(rhs_plus);
-//  }
-
   // Initialization:
-  calculate_jumps_in_normal_gradient(eps_grad_n_psi_hat_jump/*, validation_flag*/);
+  calculate_jumps_in_normal_gradient(eps_grad_n_psi_hat_jump);
   biomolecules->neighbors->second_derivatives_central(eps_grad_n_psi_hat_jump, DIM(eps_grad_n_psi_hat_jump_xx_,eps_grad_n_psi_hat_jump_yy_,eps_grad_n_psi_hat_jump_zz_));
   my_p4est_interpolation_nodes_t eps_grad_n_psi_hat_jump_interp_(biomolecules->neighbors);
   eps_grad_n_psi_hat_jump_interp_.set_input(eps_grad_n_psi_hat_jump, DIM(eps_grad_n_psi_hat_jump_xx_,eps_grad_n_psi_hat_jump_yy_,eps_grad_n_psi_hat_jump_zz_),quadratic_non_oscillatory_continuous_v2);
 
-  double *node_sampled_zero_p = NULL, *add_plus_p = NULL, *rhs_plus_p = NULL, *rhs_minus_p = NULL;
+  double *node_sampled_zero_p = NULL, *add_plus_p = NULL;
   ierr = VecGetArray(node_sampled_zero, &node_sampled_zero_p); CHKERRXX(ierr);
   ierr = VecGetArray(add_plus, &add_plus_p); CHKERRXX(ierr);
-//  if(validation_flag)
-//  {
-//    ierr = VecGetArray(rhs_minus, &rhs_minus_p); CHKERRXX(ierr);
-//    ierr = VecGetArray(rhs_plus, &rhs_plus_p); CHKERRXX(ierr);
-//  }
   const double inverse_square_debye_length_in_domain = SQR(get_inverse_debye_length_in_domain());
-  double xyz[P4EST_DIM], lap_of_val_sol, val_sol;
   for (size_t k = 0; k < biomolecules->nodes->indep_nodes.elem_count; ++k) {
     node_sampled_zero_p[k]  = 0.0;
     add_plus_p[k]           = inverse_square_debye_length_in_domain;
-//    if(validation_flag)
-//    {
-//      node_xyz_fr_n(k, biomolecules->p4est, biomolecules->nodes, xyz);
-//      val_sol               = validation_function(xyz[0], xyz[1]
-//    #ifdef P4_TO_P8
-//          , xyz[2]
-//    #endif
-//          );
-//      lap_of_val_sol        = validation_function.laplacian(xyz[0], xyz[1]
-//    #ifdef P4_TO_P8
-//          , xyz[2]
-//    #endif
-//          );
-//      rhs_minus_p[k]        = -mol_rel_permittivity*lap_of_val_sol;
-//      if(it_max == 1)
-//        rhs_plus_p[k]       = -elec_rel_permittivity*lap_of_val_sol + inverse_square_debye_length_in_domain*val_sol;
-//      else
-//        rhs_plus_p[k]       = -elec_rel_permittivity*lap_of_val_sol + inverse_square_debye_length_in_domain*sinh(val_sol);
-//    }
   }
   ierr = VecRestoreArray(add_plus, &add_plus_p); add_plus_p = NULL; CHKERRXX(ierr);
   ierr = VecRestoreArray(node_sampled_zero, &node_sampled_zero_p); node_sampled_zero_p = NULL; CHKERRXX(ierr);
-//  if(validation_flag)
-//  {
-//    ierr = VecRestoreArray(rhs_plus, &rhs_plus_p); rhs_plus_p = NULL; CHKERRXX(ierr);
-//    ierr = VecRestoreArray(rhs_minus, &rhs_minus_p); rhs_minus_p = NULL; CHKERRXX(ierr);
-//  }
-//  else
-//  {
-    rhs_minus = node_sampled_zero;
-    rhs_plus  = node_sampled_zero;
-//  }
+
   jump_solver->set_use_centroid_always(use_centroid_always);
   jump_solver->set_store_finite_volumes(store_finite_volumes);
   jump_solver->set_jump_scheme(jc_scheme);
@@ -5609,10 +4977,7 @@ int     my_p4est_biomolecules_solver_t::solve_nonlinear(double upper_bound_resid
     }
 
   //  dirichlet_bc.setWallTypes(dirichlet_bc_wall_type);
-  //  if(validation_flag)
-  //    dirichlet_bc.setWallValues(validation_function);
-  //  else
-  //    dirichlet_bc.setWallValues(homogeneous_dirichlet_bc_wall_value);
+  //  dirichlet_bc.setWallValues(homogeneous_dirichlet_bc_wall_value);
   //  jump_solver->set_bc(dirichlet_bc);
   jump_solver->set_mu(mol_rel_permittivity, elec_rel_permittivity);
   class bc_wall_type_t : public WallBCDIM
@@ -5628,7 +4993,7 @@ int     my_p4est_biomolecules_solver_t::solve_nonlinear(double upper_bound_resid
   jump_solver->set_diag(node_sampled_zero,add_plus);
   jump_solver->set_use_taylor_correction(taylor_correction);
   jump_solver->set_kink_treatment(kink_special_treatment);
-  jump_solver->set_rhs(rhs_minus, rhs_plus);
+  jump_solver->set_rhs(node_sampled_zero, node_sampled_zero);
   make_sure_is_node_sampled(psi_hat);
   if(solve_subtimer != NULL)
   {
@@ -5645,340 +5010,81 @@ int     my_p4est_biomolecules_solver_t::solve_nonlinear(double upper_bound_resid
     string timer_msg = "End of nonlinear iterations ";
     solve_subtimer->stop();
   }
-  //  if(solve_subtimer != NULL)
-  //  {
-  //    solve_subtimer->stop(); solve_subtimer->read_duration();
-  //    string timer_msg = "Solving iteration " + to_string(iter+1) + " (== linear equation)";
-  //    solve_subtimer->start(timer_msg);
-  //  }
-  //  jump_solver->solve(NULL, false, KSPBCGS, PCHYPRE, false, false);
-  //  Vec psi_hat_on_voronoi = NULL;
-  //  Vec pristine_diagonal_terms = NULL;
-  //  double two_norm_of_residual_voro = DBL_MAX;
-  //  iter++;
-  //  if(it_max > 1)
-  //  {
-  //    ierr = VecDuplicate(jump_solver->sol_voro, &psi_hat_on_voronoi); CHKERRXX(ierr);
-  //    ierr = VecCopy(jump_solver->sol_voro, psi_hat_on_voronoi); CHKERRXX(ierr);
-  //    ierr = VecGhostUpdateBegin(psi_hat_on_voronoi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  //    ierr = VecGhostUpdateEnd  (psi_hat_on_voronoi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  //  }
-  //  else
-  //    psi_hat_on_voronoi = jump_solver->sol_voro;
-  //  get_linear_diagonal_terms(pristine_diagonal_terms);
-  //  clean_matrix_diagonal(pristine_diagonal_terms);
-  //  get_residual_at_voronoi_points_and_set_as_rhs(psi_hat_on_voronoi);
-  //  ierr = VecNorm(jump_solver->rhs, NORM_2, &two_norm_of_residual_voro); CHKERRXX(ierr);
-  //  if(biomolecules->log_file != NULL)
-  //  {
-  //    if(solve_subtimer != NULL)
-  //    {
-  //      solve_subtimer->stop(); solve_subtimer->read_duration();
-  //    }
-  //    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file,
-  //                        "2-norm of the residual after iteration %d: %g \n", iter, two_norm_of_residual_voro); CHKERRXX(ierr);
-  //  }
-
-  //  double *psi_hat_on_voronoi_p = NULL;
-  //  const double *psi_hat_on_voronoi_read_only_p = NULL, *delta_psi_hat_on_voronoi_read_only_p = NULL;
-  //  if(iter < it_max && solve_subtimer != NULL)
-  //  {
-  //    string timer_msg = "Solving nonlinear iterations";
-  //    solve_subtimer->start(timer_msg);
-  //  }
-  //  while (iter < it_max && two_norm_of_residual_voro > upper_bound_residual)
-  //  {
-  //    // add the appropriate diagonal terms to the pristine linear version
-  //    ierr = VecGetArrayRead(psi_hat_on_voronoi, &psi_hat_on_voronoi_read_only_p); CHKERRXX(ierr);
-  //    for(unsigned int n=0; n<jump_solver->num_local_voro; ++n)
-  //    {
-  //      PetscInt global_n_idx = n+jump_solver->voro_global_offset[biomolecules->p4est->mpirank];
-  //#ifdef P4_TO_P8
-  //      Point3 pc = jump_solver->voro_seeds[n];
-  //#else
-  //      Point2 pc = jump_solver->voro_seeds[n];
-  //#endif
-  //      if( (ABS(pc.x-jump_solver->xyz_min[0])<EPS || ABS(pc.x-jump_solver->xyz_max[0])<EPS ||
-  //           ABS(pc.y-jump_solver->xyz_min[1])<EPS || ABS(pc.y-jump_solver->xyz_max[1])<EPS
-  //     #ifdef P4_TO_P8
-  //           || ABS(pc.z-jump_solver->xyz_min[2])<EPS || ABS(pc.z-jump_solver->xyz_max[2])<EPS
-  //           ) && jump_solver->bc->wallType(pc.x,pc.y, pc.z)==DIRICHLET)
-  //#else
-  //           ) && jump_solver->bc->wallType(pc.x,pc.y)==DIRICHLET)
-  //#endif
-  //        continue;
-
-  //#ifdef P4_TO_P8
-  //      Voronoi3D voro;
-  //#else
-  //      Voronoi2D voro;
-  //#endif
-  //      jump_solver->compute_voronoi_cell(n, voro);
-
-  //#ifdef P4_TO_P8
-  //      const vector<ngbd3Dseed> *points;
-  //#else
-  //      const vector<Point2> *partition;
-  //      const vector<ngbd2Dseed> *points;
-  //      voro.get_partition(partition);
-  //#endif
-  //      voro.get_neighbor_seeds(points);
-
-  //#ifdef P4_TO_P8
-  //      double phi_n = jump_solver->interp_phi(pc.x, pc.y, pc.z);
-  //#else
-  //      double phi_n = jump_solver->interp_phi(pc.x, pc.y);
-  //#endif
-  //      double add_n = 0.0;
-
-  //      if(phi_n>0)
-  //        add_n = inverse_square_debye_length_in_domain*cosh(psi_hat_on_voronoi_read_only_p[n]);
-
-  //#ifndef P4_TO_P8
-  //      voro.compute_volume();
-  //#endif
-  //      double volume = voro.get_volume();
-  //      ierr = MatSetValue(jump_solver->A, global_n_idx, global_n_idx, volume*add_n, ADD_VALUES); CHKERRXX(ierr);
-
-  //    }
-  //    ierr = VecRestoreArrayRead(psi_hat_on_voronoi, &psi_hat_on_voronoi_read_only_p); psi_hat_on_voronoi_read_only_p = NULL; CHKERRXX(ierr);
-
-  //    /* assemble the matrix */
-  //    ierr = MatAssemblyBegin(jump_solver->A, MAT_FINAL_ASSEMBLY); CHKERRXX(ierr);
-  //    ierr = MatAssemblyEnd  (jump_solver->A, MAT_FINAL_ASSEMBLY);   CHKERRXX(ierr);
-
-  //    ierr = KSPSolve(jump_solver->ksp, jump_solver->rhs, jump_solver->sol_voro); CHKERRXX(ierr);
-  //    ierr = VecGhostUpdateBegin(jump_solver->sol_voro, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  //    ierr = VecGhostUpdateEnd  (jump_solver->sol_voro, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-  //    ierr = VecGetArray(psi_hat_on_voronoi, &psi_hat_on_voronoi_p); CHKERRXX(ierr);
-  //    ierr = VecGetArrayRead(jump_solver->sol_voro, &delta_psi_hat_on_voronoi_read_only_p); CHKERRXX(ierr);
-  //    for(unsigned int n=0; n<jump_solver->num_local_voro; ++n)
-  //      psi_hat_on_voronoi_p[n] += delta_psi_hat_on_voronoi_read_only_p[n];
-  //    ierr = VecRestoreArrayRead(jump_solver->sol_voro, &delta_psi_hat_on_voronoi_read_only_p); delta_psi_hat_on_voronoi_read_only_p = NULL; CHKERRXX(ierr);
-  //    ierr = VecRestoreArray(psi_hat_on_voronoi, &psi_hat_on_voronoi_p); psi_hat_on_voronoi_p = NULL; CHKERRXX(ierr);
-  //    ierr = VecGhostUpdateBegin(psi_hat_on_voronoi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  //    clean_matrix_diagonal(pristine_diagonal_terms);
-  //    ierr = VecGhostUpdateEnd  (psi_hat_on_voronoi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-  //    get_residual_at_voronoi_points_and_set_as_rhs(psi_hat_on_voronoi);
-  //    ierr = VecNorm(jump_solver->rhs, NORM_2, &two_norm_of_residual_voro); CHKERRXX(ierr);
-  //    iter++;
-  //    if(biomolecules->log_file != NULL){
-  //      ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file,
-  //                          "2-norm of the residual after iteration %d: %g \n", iter, two_norm_of_residual_voro); CHKERRXX(ierr);}
-  //  }
-  //  if(biomolecules->log_file != NULL && it_max > 1){
-  //    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file,
-  //                        "Non-linear Poisson-Boltzmann equation solved after %d iterations of Newton's method\n", iter); CHKERRXX(ierr);}
-
-  //  // free allocated memory
-  //  if(solve_subtimer != NULL){
-  //    solve_subtimer->stop(); solve_subtimer->read_duration();
-  //    solve_subtimer->start("Cleaning memory and interpolating the solution back to the quad/oc-tree grid");}
-//  if(validation_flag)
-//  {
-//    ierr = VecDestroy(rhs_plus); rhs_plus = NULL; CHKERRXX(ierr);
-//    ierr = VecDestroy(rhs_minus); rhs_minus = NULL; CHKERRXX(ierr);
-//  }
   ierr = VecDestroy(add_plus); add_plus = NULL; CHKERRXX(ierr);
   ierr = VecDestroy(eps_grad_n_psi_hat_jump); eps_grad_n_psi_hat_jump = NULL; CHKERRXX(ierr);
   ierr = VecDestroy(eps_grad_n_psi_hat_jump_xx_);
   ierr = VecDestroy(eps_grad_n_psi_hat_jump_yy_);
   ierr = VecDestroy(node_sampled_zero); node_sampled_zero = NULL; CHKERRXX(ierr);
 
-  //  // Create the vector for the general solution psi_hat (if needed)
-  //  make_sure_is_node_sampled(psi_hat);
-  //  // We deactivated the destruction of the solution for the purpose of the nonlinear solver
-  //  // so destroy it before setting the actual solution on sol_voro for interpolation purposes
-  //  if((jump_solver->sol_voro != NULL) && (it_max > 1)){
-  //    ierr = VecDestroy(jump_solver->sol_voro); jump_solver->sol_voro = NULL; CHKERRXX(ierr);}
-  //  jump_solver->sol_voro = psi_hat_on_voronoi; // that one will be destroyed at the solver destruction
-  //  jump_solver->interpolate_solution_from_voronoi_to_tree(psi_hat);
-
-  //  if(pristine_diagonal_terms != NULL){
-  //    ierr = VecDestroy(pristine_diagonal_terms); pristine_diagonal_terms = NULL; CHKERRXX(ierr);}
-  //  if(solve_subtimer != NULL){
-  //    solve_subtimer->stop(); solve_subtimer->read_duration();}
-
-//  if(validation_flag)
-//  {
-//    if(solve_subtimer != NULL){
-//      solve_subtimer->start("VALIDATION: evaluating the norms");}
-//    double max_error = -DBL_MAX, loc_error, error_2_norm, error_1_norm;
-//    const double *psi_hat_read_only_p = NULL;
-//    Vec negative_ones = NULL, absolute_error_1_norm = NULL, absolute_error_2_norm = NULL;
-//    make_sure_is_node_sampled(negative_ones);
-//    make_sure_is_node_sampled(absolute_error_1_norm);
-//    make_sure_is_node_sampled(absolute_error_2_norm);
-
-//    double *absolute_error_1_norm_p = NULL, *absolute_error_2_norm_p = NULL, *negative_ones_p = NULL;
-//    ierr = VecGetArrayRead(psi_hat, &psi_hat_read_only_p); CHKERRXX(ierr);
-//    ierr = VecGetArray(absolute_error_1_norm, &absolute_error_1_norm_p); CHKERRXX(ierr);
-//    ierr = VecGetArray(absolute_error_2_norm, &absolute_error_2_norm_p); CHKERRXX(ierr);
-
-//    ierr = VecGetArray(negative_ones, &negative_ones_p); CHKERRXX(ierr);
-
-//    for (p4est_locidx_t k = 0; k < biomolecules->nodes->num_owned_indeps; ++k) {
-//      node_xyz_fr_n(k, biomolecules->p4est, biomolecules->nodes, xyz);
-//      loc_error = fabs(psi_hat_read_only_p[k] - validation_function(xyz[0], xyz[1]
-//    #ifdef P4_TO_P8
-//          , xyz[2]
-//    #endif
-//          ));
-//      absolute_error_1_norm_p[k]  = loc_error;
-//      absolute_error_2_norm_p[k]  = SQR(loc_error);
-//      max_error                   = MAX(max_error, loc_error);
-//      negative_ones_p[k]          = -1.0;
-//    }
-//    ierr = VecRestoreArray(negative_ones, &negative_ones_p); negative_ones_p = NULL; CHKERRXX(ierr);
-//    ierr = VecGhostUpdateBegin(negative_ones, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-//    ierr = VecRestoreArray(absolute_error_2_norm, &absolute_error_2_norm_p); absolute_error_2_norm_p = NULL; CHKERRXX(ierr);
-//    ierr = VecGhostUpdateBegin(absolute_error_2_norm, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-//    ierr = VecRestoreArray(absolute_error_1_norm, &absolute_error_1_norm_p); absolute_error_1_norm_p = NULL; CHKERRXX(ierr);
-//    ierr = VecGhostUpdateBegin(absolute_error_1_norm, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-//    //    ierr = VecGetArrayRead(psi_hat_on_voronoi, &psi_hat_on_voronoi_read_only_p); CHKERRXX(ierr);
-//    //    double error_1_norm_voro = 0.0, error_2_norm_voro = 0.0;
-//    //    for(unsigned int n=0; n<jump_solver->num_local_voro; ++n)
-//    //    {
-//    //#ifdef P4_TO_P8
-//    //      Point3 pc = jump_solver->voro_seeds[n];
-//    //      Voronoi3D voro;
-//    //#else
-//    //      Point2 pc = jump_solver->voro_seeds[n];
-//    //      Voronoi2D voro;
-//    //#endif
-//    //      jump_solver->compute_voronoi_cell(n, voro);
-//    //#ifndef P4_TO_P8
-//    //      voro.compute_volume();
-//    //#endif
-//    //      double voro_volume = voro.get_volume();
-//    //      loc_error           = fabs(psi_hat_on_voronoi_read_only_p[n] - validation_function(pc.x,pc.y
-//    //                                                                                   #ifdef P4_TO_P8
-//    //                                                                                         , pc.z
-//    //                                                                                   #endif
-//    //                                                                                         ));
-//    //      error_1_norm_voro   += loc_error*voro_volume;
-//    //      error_2_norm_voro   += SQR(loc_error)*voro_volume;
-//    //      max_error_voro      = MAX(max_error_voro, loc_error);
-//    //    }
-//    //    ierr = VecRestoreArrayRead(psi_hat_on_voronoi, &psi_hat_on_voronoi_read_only_p); psi_hat_on_voronoi_read_only_p = NULL; CHKERRXX(ierr);
-//    ierr = VecRestoreArrayRead(psi_hat, &psi_hat_read_only_p); psi_hat_read_only_p = NULL; CHKERRXX(ierr);
-//    int mpiret = MPI_Allreduce(MPI_IN_PLACE, &max_error, 1, MPI_DOUBLE, MPI_MAX, biomolecules->p4est->mpicomm); SC_CHECK_MPI(mpiret);
-//    //mpiret = MPI_Allreduce(MPI_IN_PLACE, &max_error_voro, 1, MPI_DOUBLE, MPI_MAX, biomolecules->p4est->mpicomm); SC_CHECK_MPI(mpiret);
-//    double domain_volume = biomolecules->domain_dim.at(0)*biomolecules->domain_dim.at(1)
-//    #ifdef P4_TO_P8
-//        *biomolecules->domain_dim.at(2)
-//    #endif
-//        ;
-
-//    //    mpiret = MPI_Allreduce(MPI_IN_PLACE, &error_1_norm_voro, 1, MPI_DOUBLE, MPI_SUM, biomolecules->p4est->mpicomm); SC_CHECK_MPI(mpiret);
-//    //    error_1_norm_voro /= domain_volume;
-//    //    mpiret = MPI_Allreduce(MPI_IN_PLACE, &error_2_norm_voro, 1, MPI_DOUBLE, MPI_SUM, biomolecules->p4est->mpicomm); SC_CHECK_MPI(mpiret);
-//    //    error_2_norm_voro = sqrt(error_2_norm_voro/domain_volume);
-//    ierr = VecGhostUpdateEnd(negative_ones, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-//    ierr = VecGhostUpdateEnd(absolute_error_1_norm, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-//    error_1_norm = integrate_over_negative_domain(biomolecules->p4est, biomolecules->nodes, negative_ones, absolute_error_1_norm)/domain_volume;
-//    ierr = VecGhostUpdateEnd(absolute_error_2_norm, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-//    error_2_norm = sqrt(integrate_over_negative_domain(biomolecules->p4est, biomolecules->nodes, negative_ones, absolute_error_2_norm)/domain_volume);
-//    ierr = VecDestroy(negative_ones); negative_ones = NULL; CHKERRXX(ierr);
-//    validation_error = absolute_error_1_norm; // will either be returned or destructed at the solver destruction
-//    ierr = VecDestroy(absolute_error_2_norm); absolute_error_2_norm = NULL; CHKERRXX(ierr);
-
-
-
-
-//    if(biomolecules->log_file != NULL)
-//    {
-//      if(solve_subtimer != NULL){
-//        solve_subtimer->stop(); solve_subtimer->read_duration();}
-//      ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file,
-//                          "Error in 1-norm for a %d/%d grid = %g \n", biomolecules->parameters.min_level(), biomolecules->parameters.max_level(), error_1_norm); CHKERRXX(ierr);
-//      ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file,
-//                          "Error in 2-norm for a %d/%d grid = %g \n", biomolecules->parameters.min_level(), biomolecules->parameters.max_level(), error_2_norm); CHKERRXX(ierr);
-//      ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file,
-//                          "Error in infinity norm for a %d/%d grid = %g \n", biomolecules->parameters.min_level(), biomolecules->parameters.max_level(), max_error); CHKERRXX(ierr);
-//      //      ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file,
-//      //                          "Error in 1-norm, on the voronoi mesh, for a %d/%d grid = %g \n", biomolecules->parameters.min_level(), biomolecules->parameters.max_level(), error_1_norm_voro); CHKERRXX(ierr);
-//      //      ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file,
-//      //                          "Error in 2-norm, on the voronoi mesh, for a %d/%d grid = %g \n", biomolecules->parameters.min_level(), biomolecules->parameters.max_level(), error_2_norm_voro); CHKERRXX(ierr);
-//      //      ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file,
-//      //                          "Error in infinity norm, at voronoi points, for a %d/%d grid = %g \n", biomolecules->parameters.min_level(), biomolecules->parameters.max_level(), max_error_voro); CHKERRXX(ierr);
-//      //      ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file,"Saving voronoi mesh...\n"); CHKERRXX(ierr);
-//      //      jump_solver->print_voronoi_VTK("/home/egan/workspace/projects/biomol/output/validation/voronoi");
-//    }
-//  }
-//  else{
-    //checking stuff for validation (Raphael Rochi discussion on 10/7/2019)
-    double *phi_p = NULL, *psi_star_p = NULL, *psi_naught_p = NULL, *psi_bar_p = NULL, *psi_hat_p = NULL;
-    ierr = VecGetArray(biomolecules->phi, &phi_p); CHKERRXX(ierr);
-    ierr = VecGetArray(psi_star, &psi_star_p); CHKERRXX(ierr);
-    ierr = VecGetArray(psi_naught, &psi_naught_p); CHKERRXX(ierr);
-    ierr = VecGetArray(psi_bar, &psi_bar_p); CHKERRXX(ierr);
-    ierr = VecGetArray(psi_hat, &psi_hat_p); CHKERRXX(ierr);
-    Vec vec_error_psi_naught; double *vec_error_psi_naught_ptr; ierr = VecCreateGhostNodes(biomolecules->p4est, biomolecules->nodes, &vec_error_psi_naught); CHKERRXX(ierr);
-    Vec vec_error_psi_naught_plus_psi_star; double *vec_error_psi_naught_plus_psi_star_ptr; ierr = VecCreateGhostNodes(biomolecules->p4est, biomolecules->nodes, &vec_error_psi_naught_plus_psi_star); CHKERRXX(ierr);
-    ierr = VecGetArray(vec_error_psi_naught, &vec_error_psi_naught_ptr); CHKERRXX(ierr);
-    ierr = VecGetArray(vec_error_psi_naught_plus_psi_star, &vec_error_psi_naught_plus_psi_star_ptr); CHKERRXX(ierr);
-    Vec vec_error_psi_hat; double *vec_error_psi_hat_ptr; ierr = VecCreateGhostNodes(biomolecules->p4est, biomolecules->nodes, &vec_error_psi_hat); CHKERRXX(ierr);
-    ierr = VecGetArray(vec_error_psi_hat, &vec_error_psi_hat_ptr); CHKERRXX(ierr);
-    bool           neighbors_exist[num_neighbors_cube];
-    p4est_locidx_t neighbors      [num_neighbors_cube];
-    std::cout<<"line 5931"<<std::endl;
-    jump_solver->infc_.get_arrays();
-    for (p4est_locidx_t n = 0; n < biomolecules->nodes->num_owned_indeps; ++n)
+  //checking stuff for validation (Raphael Rochi discussion on 10/7/2019)
+  double *phi_p = NULL, *psi_star_p = NULL, *psi_naught_p = NULL, *psi_bar_p = NULL, *psi_hat_p = NULL;
+  ierr = VecGetArray(biomolecules->phi, &phi_p); CHKERRXX(ierr);
+  ierr = VecGetArray(psi_star, &psi_star_p); CHKERRXX(ierr);
+  ierr = VecGetArray(psi_naught, &psi_naught_p); CHKERRXX(ierr);
+  ierr = VecGetArray(psi_bar, &psi_bar_p); CHKERRXX(ierr);
+  ierr = VecGetArray(psi_hat, &psi_hat_p); CHKERRXX(ierr);
+  Vec vec_error_psi_naught; double *vec_error_psi_naught_ptr; ierr = VecCreateGhostNodes(biomolecules->p4est, biomolecules->nodes, &vec_error_psi_naught); CHKERRXX(ierr);
+  Vec vec_error_psi_naught_plus_psi_star; double *vec_error_psi_naught_plus_psi_star_ptr; ierr = VecCreateGhostNodes(biomolecules->p4est, biomolecules->nodes, &vec_error_psi_naught_plus_psi_star); CHKERRXX(ierr);
+  ierr = VecGetArray(vec_error_psi_naught, &vec_error_psi_naught_ptr); CHKERRXX(ierr);
+  ierr = VecGetArray(vec_error_psi_naught_plus_psi_star, &vec_error_psi_naught_plus_psi_star_ptr); CHKERRXX(ierr);
+  Vec vec_error_psi_hat; double *vec_error_psi_hat_ptr; ierr = VecCreateGhostNodes(biomolecules->p4est, biomolecules->nodes, &vec_error_psi_hat); CHKERRXX(ierr);
+  ierr = VecGetArray(vec_error_psi_hat, &vec_error_psi_hat_ptr); CHKERRXX(ierr);
+  bool           neighbors_exist[num_neighbors_cube];
+  p4est_locidx_t neighbors      [num_neighbors_cube];
+  std::cout<<"line 5931"<<std::endl;
+  jump_solver->infc_.get_arrays();
+  for (p4est_locidx_t n = 0; n < biomolecules->nodes->num_owned_indeps; ++n)
+  {
+    double xyz[P4EST_DIM];
+    node_xyz_fr_n(n, biomolecules->p4est, biomolecules->nodes, xyz);
+    //vec_error_psi_naught_ptr[n]= psi_naught_p[n] + (1*SQR(solver.electron)*1)/
+    //        ((1.0/(1e10*my_biomol.angstrom_to_domain))*4.0*PI*8.854187817*1e-12*eps_mol*1.38064853*1e-23*temperature*1);
+    if(phi_p[n] < 0.0)
     {
-      double xyz[P4EST_DIM];
-      node_xyz_fr_n(n, biomolecules->p4est, biomolecules->nodes, xyz);
-      //vec_error_psi_naught_ptr[n]= psi_naught_p[n] + (1*SQR(solver.electron)*1)/
-      //        ((1.0/(1e10*my_biomol.angstrom_to_domain))*4.0*PI*8.854187817*1e-12*eps_mol*1.38064853*1e-23*temperature*1);
-      if(phi_p[n] < 0.0)
-      {
-        vec_error_psi_naught_ptr[n]=fabs(psi_naught_p[n]+(1*SQR(electron)*((double)ion_charge))/
-                                         (length_scale_in_meter()*4.0*PI*eps_0*mol_rel_permittivity*kB*temperature*1*biomolecules->angstrom_to_domain));
-        vec_error_psi_hat_ptr[n]=fabs(psi_hat_p[n]+non_dimensional_coulomb_in_elec(DIM(0.0,0.0,0.0)));
-      }
-      else{
-        vec_error_psi_naught_ptr[n]=0.0;
-        vec_error_psi_hat_ptr[n]=0.0;
-      }
-      vec_error_psi_naught_plus_psi_star_ptr[n]=psi_naught_p[n]+psi_star_p[n];
+      vec_error_psi_naught_ptr[n]=fabs(psi_naught_p[n]+(1*SQR(electron)*((double)ion_charge))/
+                                       (length_scale_in_meter()*4.0*PI*eps_0*mol_rel_permittivity*kB*temperature*1*biomolecules->angstrom_to_domain));
+      vec_error_psi_hat_ptr[n]=fabs(psi_hat_p[n]+non_dimensional_coulomb_in_elec(DIM(0.0,0.0,0.0)));
     }
+    else{
+      vec_error_psi_naught_ptr[n]=0.0;
+      vec_error_psi_hat_ptr[n]=0.0;
+    }
+    vec_error_psi_naught_plus_psi_star_ptr[n]=psi_naught_p[n]+psi_star_p[n];
+  }
 
 
-    ierr = VecRestoreArray(biomolecules->phi, &phi_p); CHKERRXX(ierr);
-    ierr = VecRestoreArray(vec_error_psi_naught, &vec_error_psi_naught_ptr); CHKERRXX(ierr);
-    ierr = VecRestoreArray(vec_error_psi_naught_plus_psi_star, &vec_error_psi_naught_plus_psi_star_ptr); CHKERRXX(ierr);
+  ierr = VecRestoreArray(biomolecules->phi, &phi_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(vec_error_psi_naught, &vec_error_psi_naught_ptr); CHKERRXX(ierr);
+  ierr = VecRestoreArray(vec_error_psi_naught_plus_psi_star, &vec_error_psi_naught_plus_psi_star_ptr); CHKERRXX(ierr);
 
-    ierr = VecGhostUpdateBegin(vec_error_psi_naught, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateBegin(vec_error_psi_naught_plus_psi_star, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateBegin(vec_error_psi_naught, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateBegin(vec_error_psi_naught_plus_psi_star, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-    ierr = VecGhostUpdateEnd(vec_error_psi_naught, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateEnd(vec_error_psi_naught_plus_psi_star, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd(vec_error_psi_naught, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd(vec_error_psi_naught_plus_psi_star, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-    int mpiret;
-    double err_psi_naught_max = 0.;   ierr = VecMax(vec_error_psi_naught, NULL, &err_psi_naught_max ); CHKERRXX(ierr);   mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_psi_naught_max, 1, MPI_DOUBLE, MPI_MAX, biomolecules->p4est->mpicomm); SC_CHECK_MPI(mpiret);
+  int mpiret;
+  double err_psi_naught_max = 0.;   ierr = VecMax(vec_error_psi_naught, NULL, &err_psi_naught_max ); CHKERRXX(ierr);   mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_psi_naught_max, 1, MPI_DOUBLE, MPI_MAX, biomolecules->p4est->mpicomm); SC_CHECK_MPI(mpiret);
 
-    double err_psi_naught_plus_psi_star_max = max_over_interface(biomolecules->p4est, biomolecules->nodes, biomolecules->phi, vec_error_psi_naught_plus_psi_star); // 0.;   ierr = VecMax(vec_error_psi_naught_plus_psi_star, NULL, &err_psi_naught_plus_psi_star_max ); CHKERRXX(ierr);   mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_psi_naught_plus_psi_star_max, 1, MPI_DOUBLE, MPI_MAX, biomolecules->p4est->mpicomm); SC_CHECK_MPI(mpiret);
-    //ierr = PetscPrintf(biomolecules->p4est->mpicomm, "infinity norm of(psi_naught+ psi_star(R)) which should be zero = %3.2e  \n", err_psi_naught_max);
-    ierr = PetscPrintf(biomolecules->p4est->mpicomm, "infinity norm of(psi_naught+ psi_star) at interface which should be zero = %3.2e  \n", err_psi_naught_plus_psi_star_max);
-    ierr = VecDestroy(vec_error_psi_naught); CHKERRXX(ierr);
-    ierr = VecDestroy(vec_error_psi_naught_plus_psi_star); CHKERRXX(ierr);
+  double err_psi_naught_plus_psi_star_max = max_over_interface(biomolecules->p4est, biomolecules->nodes, biomolecules->phi, vec_error_psi_naught_plus_psi_star); // 0.;   ierr = VecMax(vec_error_psi_naught_plus_psi_star, NULL, &err_psi_naught_plus_psi_star_max ); CHKERRXX(ierr);   mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_psi_naught_plus_psi_star_max, 1, MPI_DOUBLE, MPI_MAX, biomolecules->p4est->mpicomm); SC_CHECK_MPI(mpiret);
+  //ierr = PetscPrintf(biomolecules->p4est->mpicomm, "infinity norm of(psi_naught+ psi_star(R)) which should be zero = %3.2e  \n", err_psi_naught_max);
+  ierr = PetscPrintf(biomolecules->p4est->mpicomm, "infinity norm of(psi_naught+ psi_star) at interface which should be zero = %3.2e  \n", err_psi_naught_plus_psi_star_max);
+  ierr = VecDestroy(vec_error_psi_naught); CHKERRXX(ierr);
+  ierr = VecDestroy(vec_error_psi_naught_plus_psi_star); CHKERRXX(ierr);
 
 
 
-    Vec mask_m_  = jump_solver->get_mask_m();
-    double *mask_m_ptr;
+  Vec mask_m_  = jump_solver->get_mask_m();
+  double *mask_m_ptr;
 
-    ierr = VecGetArray(mask_m_, &mask_m_ptr); CHKERRXX(ierr);
-    ierr = VecRestoreArray(mask_m_, &mask_m_ptr); CHKERRXX(ierr);
-    ierr = VecRestoreArray(vec_error_psi_hat, &vec_error_psi_hat_ptr); CHKERRXX(ierr);
-    ierr = VecGhostUpdateBegin(vec_error_psi_hat, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr = VecGhostUpdateEnd(vec_error_psi_hat, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    double err_psi_hat_max = 0.;   ierr = VecMax(vec_error_psi_hat, NULL, &err_psi_hat_max ); CHKERRXX(ierr);   mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_psi_hat_max, 1, MPI_DOUBLE, MPI_MAX, biomolecules->p4est->mpicomm); SC_CHECK_MPI(mpiret);
-    //ierr = PetscPrintf(biomolecules->p4est->mpicomm, "infinity norm of (psi_hat) in -ve domain which should be zero = %3.2e  \n", err_psi_hat_max);
-    ierr = VecDestroy(vec_error_psi_hat); CHKERRXX(ierr);
-//  }
+  ierr = VecGetArray(mask_m_, &mask_m_ptr); CHKERRXX(ierr);
+  ierr = VecRestoreArray(mask_m_, &mask_m_ptr); CHKERRXX(ierr);
+  ierr = VecRestoreArray(vec_error_psi_hat, &vec_error_psi_hat_ptr); CHKERRXX(ierr);
+  ierr = VecGhostUpdateBegin(vec_error_psi_hat, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd(vec_error_psi_hat, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  double err_psi_hat_max = 0.;   ierr = VecMax(vec_error_psi_hat, NULL, &err_psi_hat_max ); CHKERRXX(ierr);   mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_psi_hat_max, 1, MPI_DOUBLE, MPI_MAX, biomolecules->p4est->mpicomm); SC_CHECK_MPI(mpiret);
+  //ierr = PetscPrintf(biomolecules->p4est->mpicomm, "infinity norm of (psi_hat) in -ve domain which should be zero = %3.2e  \n", err_psi_hat_max);
+  ierr = VecDestroy(vec_error_psi_hat); CHKERRXX(ierr);
 
   if(solve_subtimer != NULL){
     delete solve_subtimer; solve_subtimer = NULL;}
@@ -5993,10 +5099,8 @@ int     my_p4est_biomolecules_solver_t::solve_nonlinear(double upper_bound_resid
   return iter;
 }
 
-void my_p4est_biomolecules_solver_t::get_solvation_free_energy(/*bool validation_flag*/)
+void my_p4est_biomolecules_solver_t::get_solvation_free_energy()
 {
-//  if(validation_flag)
-//    return; // irrelevant for validation purposes
 #ifndef P4_TO_P8
   // this makes sense only in 3D
 #ifdef CASL_THROWS
@@ -6006,9 +5110,9 @@ void my_p4est_biomolecules_solver_t::get_solvation_free_energy(/*bool validation
   return;
 #else
 #ifdef CASL_THROWS
-  int local_error = !are_all_parameters_set();
+  int local_error = !all_parameters_are_set();
   string err_msg  = "my_p4est_biomolecules_solver_t::get_solvation_free_energy(): some parameters are not set yet, the nonlinear problem can't be solved, the solvation free energy can't be calculated...";
-  biomolecules->err_manager.check_my_local_error(local_error, err_msg);
+  biomolecules->error_manager.check(local_error, err_msg);
 #endif
   if(!psi_star_psi_naught_and_psi_bar_are_set)
   {
@@ -6036,7 +5140,7 @@ void my_p4est_biomolecules_solver_t::get_solvation_free_energy(/*bool validation
   {
     ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, " \n"); CHKERRXX(ierr);
     ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "------------------------------------------------------------------------------- \n"); CHKERRXX(ierr);
-    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "Calculating the solvation free energy a %d/%d grid with %d proc(s) \n", biomolecules->parameters.min_level(), biomolecules->parameters.max_level(), biomolecules->p4est->mpisize); CHKERRXX(ierr);
+    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "Calculating the solvation free energy a %d/%d grid with %d proc(s) \n", biomolecules->parameters.lmin(), biomolecules->parameters.lmax(), biomolecules->p4est->mpisize); CHKERRXX(ierr);
     ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "------------------------------------------------------------------------------- \n"); CHKERRXX(ierr);
     ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "\n"); CHKERRXX(ierr);
     if(biomolecules->timing_file != NULL)
@@ -6106,7 +5210,7 @@ void my_p4est_biomolecules_solver_t::get_solvation_free_energy(/*bool validation
   default:
 #ifdef CASL_THROWS
     err_msg = "my_p4est_biomolecules_solver_t::solve_singular_part(), the order of accuracy should be either 1 or 2!!!";
-    biomolecules->err_manager.print_message_and_abort(err_msg, 19791);
+    biomolecules->error_manager.print_message_and_abort(err_msg, 19791);
 #else
     MPI_Abort(biomolecules->p4est->mpicomm, 19791);
 #endif
@@ -6228,8 +5332,6 @@ my_p4est_biomolecules_solver_t::~my_p4est_biomolecules_solver_t()
     delete node_solver; node_solver = NULL;}
   if(jump_solver != NULL){
     delete jump_solver; jump_solver = NULL;}
-  if(validation_error != NULL){
-    ierr = VecDestroy(validation_error); validation_error = NULL; CHKERRXX(ierr);}
   if(psi_star != NULL){
     ierr = VecDestroy(psi_star); psi_star = NULL; CHKERRXX(ierr);}
   if(psi_naught != NULL){

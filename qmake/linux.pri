@@ -17,15 +17,13 @@ P4EST_LIBS_DEBUG   = -Wl,-rpath,/home/regan/libraries/p4est_debug/lib -L/home/re
 
 # voro++
 VORO_INCLUDES_RELEASE = /home/regan/libraries/voro++/include/voro++
-VORO_INCLUDES_DEBUG   = $VORO_INCLUDES_RELEASE
+VORO_INCLUDES_DEBUG   = $$VORO_INCLUDES_RELEASE
 VORO_LIBS_RELEASE     = /home/regan/libraries/voro++/lib/libvoro++.a
-VORO_LIBS_DEBUG       = $VORO_LIBS_RELEASE
+VORO_LIBS_DEBUG       = $$VORO_LIBS_RELEASE
 
 # boost
-VORO_INCLUDES_RELEASE = /home/regan/libraries/voro++/include/voro++
-VORO_INCLUDES_DEBUG   = $VORO_INCLUDES_RELEASE
-VORO_LIBS_RELEASE     = /home/regan/libraries/voro++/lib/libvoro++.a
-VORO_LIBS_DEBUG       = $VORO_LIBS_RELEASE
+BOOST_INCLUDES        = /home/regan/libraries/boost/include
+BOOST_LIBS            = -Wl,-rpath,/home/regan/libraries/boost/lib -L/home/regan/libraries/boost/lib -lboost_system
 QMAKE_CC = mpicc
 QMAKE_CXX = mpicxx
 QMAKE_LINK = mpicxx

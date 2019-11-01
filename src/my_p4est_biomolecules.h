@@ -57,24 +57,25 @@ void iota(ForwardIterator first, ForwardIterator last, T value)
 //
 //   Raphael Egan
 //   2017 Spring, Summer, Fall, CASL, UCSB
-//   Rochishnu Chowdhury, Raphael Egan
-//   2019 Fall, CASL, UCSB
+//   Rochishnu Chowdhury
+//   2019 Summer and Fall, CASL, UCSB
 //
 //---------------------------------------------------------------------
 
 
 /*!
  * \brief The Atom struct contains
- * the geometrical coordinates xc, yc, zc of the atom center;
+ * the geometrical coordinates xyz_c of the atom center;
  * its electric charge q;
  * and the atom van der Waals radius r_vdw.
  */
 struct Atom {
-  double DIM(xc, yc, zc), q, r_vdw;
+  double xyz_c[P4EST_DIM];
+  double q, r_vdw;
   static const string ATOM;
   inline double dist_to_vdW_surface(DIM(const double& x, const double& y, const double& z)) const
   {
-    return r_vdw - sqrt(SUMD(SQR(x-xc), SQR(y-yc), SQR(z-zc)));
+    return r_vdw - sqrt(SUMD(SQR(x-xyz_c[0]), SQR(y-xyz_c[1]), SQR(z-xyz_c[2])));
   }
   inline double dist_to_vdW_surface(const double* xyz) const
   {
@@ -86,54 +87,38 @@ struct Atom {
     return dist_to_vdW_surface(DIM(xyz[0], xyz[1], xyz[2]));
   }
   /*!
-   * \brief max_phi_vdW_in_quad
-   * \param xyz_quad_c
-   * \param dxyz
-   * \param xyzM
-   * \return
+   * \brief max_phi_vdW_in_quad calculates the max value of r_vdw-distance_to_xyz for xyz in a given quadrant
+   * \param [in] xyz_quad_c cartesian coordinates of the center of the quadrant
+   * \param [in] dxyz side lengths of the quadrant
+   * \param [out] xyzM point in the quadrant of interest that maximizes the above function, if not NULL on input.
+   * \return the max value of r_vdw-distance_to_xyz for xyz in a given quadrant
    */
-  double max_phi_vdW_in_quad(const double *xyz_quad_c, double* dxyz, double* xyzM = NULL) const
+  double max_phi_vdW_in_quad(const double *xyz_quad_c, const double* dxyz, double* xyzM = NULL) const
   {
-    if(ANDD((fabs(xc - xyz_quad_c[0]) <= 0.5*dxyz[0]), (fabs(yc - xyz_quad_c[1]) <= 0.5*dxyz[1]), (fabs(zc - xyz_quad_c[2]) <= 0.5*dxyz[2]))) // the cell cointains the atom center, max is r_vdw
+    if(ANDD((fabs(xyz_c[0] - xyz_quad_c[0]) <= 0.5*dxyz[0]), (fabs(xyz_c[1] - xyz_quad_c[1]) <= 0.5*dxyz[1]), (fabs(xyz_c[2] - xyz_quad_c[2]) <= 0.5*dxyz[2]))) // the cell cointains the atom center, max is r_vdw
     {
       if(xyzM != NULL)
-      {
-        xyzM[0] = xc;
-        xyzM[1] = yc;
-#ifdef P4_TO_P8
-        xyzM[2] = zc;
-#endif
-      }
+        for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+          xyzM[dir] = xyz_c[dir];
       return r_vdw;
     }
-    char ioff = (xc > xyz_quad_c[0]+0.5*dxyz[0])? 1: (xc < xyz_quad_c[0]-0.5*dxyz[0])? -1: 0;
-    char joff = (yc > xyz_quad_c[1]+0.5*dxyz[1])? 1: (yc < xyz_quad_c[1]-0.5*dxyz[1])? -1: 0;
-#ifdef P4_TO_P8
-    char koff = (zc > xyz_quad_c[2]+0.5*dxyz[2])? 1: (zc < xyz_quad_c[2]-0.5*dxyz[2])? -1: 0;
-#endif
+    char ijk_off[P4EST_DIM];
+    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+      ijk_off[dir] = (xyz_c[dir] > xyz_quad_c[dir]+0.5*dxyz[dir])? 1: (xyz_c[dir] < xyz_quad_c[dir]-0.5*dxyz[dir])? -1: 0;
     if (xyzM != NULL)
-    {
-      xyzM[0] = (ioff!=0)?(xyz_quad_c[0]+ioff*0.5*dxyz[0]):xc;
-      xyzM[1] = (joff!=0)?(xyz_quad_c[1]+joff*0.5*dxyz[1]):yc;
-#ifdef P4_TO_P8
-      xyzM[2] = (koff!=0)?(xyz_quad_c[2]+koff*0.5*dxyz[2]):zc;
-#endif
-    }
-    return r_vdw - sqrt(SUMD(((ioff!=0)? SQR(xc - (xyz_quad_c[0]+((double)ioff)*0.5*dxyz[0])): 0.0), ((joff!=0)? SQR(yc - (xyz_quad_c[1]+((double)joff)*0.5*dxyz[1])): 0.0), ((koff!=0)? SQR(zc - (xyz_quad_c[2]+((double)koff)*0.5*dxyz[2])): 0.0)));
+      for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+        xyzM[dir] = (ijk_off[dir]!=0) ? (xyz_quad_c[dir]+((double) ijk_off[dir])*0.5*dxyz[dir]):xyz_c[dir];
+    return r_vdw - sqrt(SUMD(((ijk_off[0]!=0)? SQR(xyz_c[0] - (xyz_quad_c[0]+((double)ijk_off[0])*0.5*dxyz[0])): 0.0), ((ijk_off[1]!=0)? SQR(xyz_c[1] - (xyz_quad_c[1]+((double) ijk_off[1])*0.5*dxyz[1])): 0.0), ((ijk_off[2]!=0)? SQR(xyz_c[2] - (xyz_quad_c[2]+((double) ijk_off[2])*0.5*dxyz[2])): 0.0)));
   }
 };
 
-// following comparisons used for surface construction only, q is irrelevant
+#ifndef P4_TO_P8
+// following comparisons used for surface construction only in 2D, q is irrelevant
 inline bool operator ==(const Atom& lhs, const Atom& rhs)
 {
-  if (fabs(rhs.xc - lhs.xc) > EPS*MAX(MAX(EPS, fabs(lhs.xc)), fabs(rhs.xc)))
-    return false;
-  if (fabs(rhs.yc - lhs.yc) > EPS*MAX(MAX(EPS, fabs(lhs.yc)), fabs(rhs.yc)))
-    return false;
-#ifdef P4_TO_P8
-  if (fabs(rhs.zc - lhs.zc) > EPS*MAX(MAX(EPS, fabs(lhs.zc)), fabs(rhs.zc)))
-    return false;
-#endif
+  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+    if (fabs(rhs.xyz_c[dir]- lhs.xyz_c[dir]) > EPS*MAX(MAX(EPS, fabs(lhs.xyz_c[dir])), fabs(rhs.xyz_c[dir])))
+      return false;
   if (fabs(rhs.r_vdw - lhs.r_vdw) > EPS*MAX(MAX(EPS, fabs(lhs.r_vdw)), fabs(rhs.r_vdw)))
     return false;
   return true;
@@ -141,42 +126,19 @@ inline bool operator ==(const Atom& lhs, const Atom& rhs)
 inline bool operator !=(const Atom& lhs, const Atom& rhs) {return !(lhs==rhs);}
 inline bool operator <(const Atom& lhs, const Atom& rhs)
 {
-  if (fabs(rhs.xc - lhs.xc) > EPS*MAX(MAX(EPS, fabs(lhs.xc)), fabs(rhs.xc)))
-    return (lhs.xc < rhs.xc);
-  if (fabs(rhs.yc - lhs.yc) > EPS*MAX(MAX(EPS, fabs(lhs.yc)), fabs(rhs.yc)))
-    return (lhs.yc < rhs.yc);
-#ifdef P4_TO_P8
-  if (fabs(rhs.zc - lhs.zc) > EPS*MAX(MAX(EPS, fabs(lhs.zc)), fabs(rhs.zc)))
-    return (lhs.zc < rhs.zc);
-#endif
+  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+    if (fabs(rhs.xyz_c[dir]- lhs.xyz_c[dir]) > EPS*MAX(MAX(EPS, fabs(lhs.xyz_c[dir])), fabs(rhs.xyz_c[dir])))
+      return (lhs.xyz_c[dir] < rhs.xyz_c[dir]);
   if (fabs(rhs.r_vdw - lhs.r_vdw) > EPS*MAX(MAX(EPS, fabs(lhs.r_vdw)), fabs(rhs.r_vdw)))
     return (lhs.r_vdw < rhs.r_vdw);
   return true;
 }
-
-inline istream& operator >> (istream& is, Atom& atom) {
-#ifdef P4_TO_P8
-  string ignore [4];
-#else
-  string ignore [5];
 #endif
-  for (int i=0; i<4; i++) is >> ignore[i];
-  is >> atom.xc >> atom.yc ;
-#ifdef P4_TO_P8
-  is >> atom.zc ;
-#else
-  is >> ignore[4] ;
-#endif
-  is >> atom.q >> atom.r_vdw;
-
-  return is;
-}
-
 
 inline ostream& operator << (ostream& os, Atom& atom) {
-  os << "(x = " << atom.xc << ", y = " << atom.yc;
+  os << "(x = " << atom.xyz_c[0] << ", y = " << atom.xyz_c[1];
 #ifdef P4_TO_P8
-  os << ", z = " << atom.zc;
+  os << ", z = " << atom.xyz_c[2];
 #endif
   os << "; q = " << atom.q << ", r = " << atom.r_vdw << ")";
   return os;
@@ -189,14 +151,13 @@ inline bool operator >>(string& line, Atom& atom)
     return false;
   else
   {
-    atom.xc = stod(line.substr(30, 8));
-    atom.yc = stod(line.substr(38, 8));
+    atom.xyz_c[0] = stod(line.substr(30, 8));
+    atom.xyz_c[1] = stod(line.substr(38, 8));
 #ifdef P4_TO_P8
-    atom.zc = stod(line.substr(46, 8));
+    atom.xyz_c[2] = stod(line.substr(46, 8));
 #endif
     atom.q = stod(line.substr(54, 8));
     atom.r_vdw = stod(line.substr(62, 8));
-    std::cout << atom << std::endl;
     return true;
   }
 }
@@ -212,7 +173,7 @@ struct sorted_atom
 
 /*!
  * \brief The surface_generation_method enum allows a distinction between
- * the two methods used for the calculation of the SAS levelset function.
+ * the three methods used for the calculation of the SAS levelset function.
  * - brute_force method: one loops through all the atoms in the
  * list for every single grid point;
  * - list_reduction: reduced lists of atoms to consider are built
@@ -224,16 +185,15 @@ struct sorted_atom
  * the Lipschitz refinement criterion so that the computational grid
  * is correct even though the value of the level set function might be
  * inexact.
+ * - list_reduction: reduced lists of atoms to consider are built
+ * recursively as the cells are created. Reinitialization is not used to defined
+ * the SES but exact geometry procedures are invoked. (not for production purposes,
+ * developed to validate the surface construction method).
  */
 enum sas_generation_method{
   brute_force,
   list_reduction,
   list_reduction_with_exact_phi
-};
-
-enum cavity_removal_method{
-  poisson = 314159,
-  region_growing
 };
 
 class reduced_list
@@ -263,95 +223,72 @@ public:
   }
 };
 
-class biomol_grid_parameters
-{
-private:
-  bool                  is_splitting_criterion_set;
-  bool                  is_probe_radius_set;
-  bool                  is_layer_thickness_set;
-  // relevant data
-  splitting_criteria_t  sp; // min_lvl, max_lvl, lip
-  double                rp; // probe_radius
-  int                   min_level_to_capture_probe_radius;
-  int                   OOA; // order of accuracy (thickness of the accuracy layer)
-  double                accuracy_layer_thickness;
-  const double          diag_of_root_cells;
-  double                smallest_diag;
-  void set_thickness_of_accuracy_layer() {accuracy_layer_thickness = ((double) OOA)*smallest_diag;}
-  void set_smallest_diag() {smallest_diag = diag_of_root_cells/(1<<(sp.max_lvl));}
-  void change_lmax(const int& new_lmax)
-  {
-    if(new_lmax != sp.max_lvl)
-    {
-      sp.max_lvl = new_lmax;
-      set_smallest_diag();
-      set_thickness_of_accuracy_layer();
-    }
-  }
-public:
-  biomol_grid_parameters(const double& root_cell_diag_, const int& l_min = -1, const int& l_max = -1, const double& lip_ = -1., const double& rp_ = -1.0, const int& OOA_ = -1):
-    sp(l_min, l_max, lip_), diag_of_root_cells(root_cell_diag_)
-  {
-    is_splitting_criterion_set = (l_min >= 0 && l_min <= l_max && l_max <= P4EST_QMAXLEVEL && lip_ >= 1.0);
-    rp = rp_;
-    is_probe_radius_set = rp_ > 0.;
-    if(is_probe_radius_set)
-      min_level_to_capture_probe_radius = (int) ceil(log2(diag_of_root_cells/rp));
-    set_smallest_diag();
-    OOA = OOA_;
-    set_thickness_of_accuracy_layer();
-    is_layer_thickness_set = (((OOA_ == 1) || (OOA_ == 2)) && (sp.max_lvl >= 0));
-  }
-  inline int min_level() const {return sp.min_lvl;}
-  inline int max_level() const{return sp.max_lvl;}
-  inline double lip_cst() const{return sp.lip;}
-  inline int threshold_level() const{return min_level_to_capture_probe_radius;}
-  inline double probe_radius() const{return rp;}
-  inline int order_of_accuracy() const {return OOA;}
-  inline double layer_thickness() const{return accuracy_layer_thickness;}
-  inline double root_diag() const{return diag_of_root_cells;}
-
-  inline bool are_set(){return (is_splitting_criterion_set && is_probe_radius_set && is_layer_thickness_set);}
-  bool set_splitting_criterion(const int& l_min, const int& l_max, const double& lip_)
-  {
-    bool need_to_reset_the_forest = is_splitting_criterion_set && ((l_min != sp.min_lvl) || (l_max != sp.max_lvl) || (fabs(sp.lip - lip_) >= EPS*fabs(sp.lip)));
-    sp.min_lvl = l_min;
-    change_lmax(l_max);
-    sp.lip = lip_;
-    is_splitting_criterion_set = (l_min >= 0 && l_min <= l_max && l_max <= P4EST_QMAXLEVEL && lip_ >= 1.0);
-    return need_to_reset_the_forest;
-  }
-  bool set_probe_radius(const double& rp_)
-  {
-    bool need_to_reset_the_forest = is_probe_radius_set && (fabs(probe_radius() - rp_) > EPS*rp);
-    rp = rp_;
-    is_probe_radius_set = rp_ > 0.;
-    if(is_probe_radius_set)
-      min_level_to_capture_probe_radius = (int) ceil(log2(diag_of_root_cells/rp));
-    return need_to_reset_the_forest;
-  }
-  bool set_OOA(const int& OOA_)
-  {
-    bool need_to_reset_the_forest = is_layer_thickness_set && (OOA != OOA_);
-    OOA = OOA_;
-    set_thickness_of_accuracy_layer();
-    is_layer_thickness_set = (((OOA_ == 1) || (OOA_ == 2)) && (sp.max_lvl >= 0));
-    return need_to_reset_the_forest;
-  }
-};
-
 typedef shared_ptr<reduced_list>  reduced_list_ptr;
 
-class my_p4est_biomolecules_t:public
-    #ifdef P4_TO_P8
-    CF_3
-    #else
-    CF_2
-    #endif
+class my_p4est_biomolecules_t
 {
   friend class my_p4est_biomolecules_solver_t;
 private:
-  class par_error_manager
+
+  class grid_parameters
+  {
+  private:
+    inline bool is_splitting_criterion_set()        const { return (sp.min_lvl >= 0 && sp.min_lvl <= sp.max_lvl && sp.max_lvl <= P4EST_QMAXLEVEL && sp.lip >= 1.0); }
+    inline bool is_probe_radius_set()               const { return (rp > 0.); }
+    inline bool is_layer_thickness_set()            const { return (((OOA == 1) || (OOA == 2)) && (sp.max_lvl >= 0)); }
+    // relevant data
+    splitting_criteria_t  sp; // min_lvl, max_lvl, lip
+    double                rp; // probe_radius
+    int                   OOA; // order of accuracy, for the grid construction (thickness of the accuracy layer)
+    double                domain_dimensions[P4EST_DIM];
+    double                tree_dimensions[P4EST_DIM];
+  public:
+    grid_parameters(const p4est_t *forest, const int& l_min = -1, const int& l_max = -1, const double& lip_ = -1., const double& rp_ = -1.0, const int& OOA_ = -1):
+      sp(l_min, l_max, lip_), rp(rp_), OOA(OOA_)
+    {
+      const double *vertices_to_coordinates = forest->connectivity->vertices;
+      const p4est_topidx_t *tree_to_vertex  = forest->connectivity->tree_to_vertex;
+      const p4est_topidx_t num_trees        = forest->connectivity->num_trees;
+      for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+        tree_dimensions[dim]    = vertices_to_coordinates[3*tree_to_vertex[P4EST_CHILDREN*0             + P4EST_CHILDREN-1] + dim]  - vertices_to_coordinates[3*tree_to_vertex[P4EST_CHILDREN*0 + 0] + dim];
+        domain_dimensions[dim]  = vertices_to_coordinates[3*tree_to_vertex[P4EST_CHILDREN*(num_trees-1) + P4EST_CHILDREN-1] + dim]  - vertices_to_coordinates[3*tree_to_vertex[P4EST_CHILDREN*0 + 0] + dim];
+      }
+    }
+    inline int lmin()               const { return sp.min_lvl; }
+    inline int lmax()               const { return sp.max_lvl; }
+    inline double lip()             const { return sp.lip; }
+    inline int  threshold_level()   const { return ((int) ceil(log2(tree_diag()/rp))); }
+    inline double probe_radius()    const { return rp; }
+    inline int order_of_accuracy()  const { return OOA; }
+    inline double layer_thickness() const { return ((double) OOA)*tree_diag()/((double) (1<<(sp.max_lvl))); }
+    inline double tree_diag()       const { return sqrt(SUMD(SQR(tree_dimensions[0]), SQR(tree_dimensions[1]), SQR(tree_dimensions[2]))); }
+    inline bool are_set()           const { return (is_splitting_criterion_set() && is_probe_radius_set() && is_layer_thickness_set()); }
+    inline double tree_dim(const unsigned char &dir) const { return tree_dimensions[dir]; }
+
+    bool set_splitting_criterion(const int& l_min, const int& l_max, const double& lip_)
+    {
+      bool need_to_reset_the_forest = is_splitting_criterion_set() && ((l_min != sp.min_lvl) || (l_max != sp.max_lvl) || (fabs(sp.lip - lip_) >= EPS*fabs(sp.lip)));
+      sp.min_lvl  = l_min;
+      sp.max_lvl  = l_max;
+      sp.lip      = lip_;
+      return need_to_reset_the_forest;
+    }
+    bool set_probe_radius(const double& rp_)
+    {
+      bool need_to_reset_the_forest = is_probe_radius_set() && (fabs(probe_radius() - rp_) > EPS*rp);
+      rp = rp_;
+      return need_to_reset_the_forest;
+    }
+    bool set_OOA(const int& OOA_)
+    {
+      bool need_to_reset_the_forest = is_layer_thickness_set() && (OOA != OOA_);
+      OOA = OOA_;
+      return need_to_reset_the_forest;
+    }
+  } parameters;
+
+#ifdef CASL_THROWS
+  class parallel_error_manager
   {
   private:
     const int       my_rank;
@@ -359,7 +296,7 @@ private:
     const MPI_Comm  comm;
     FILE*           error_file;
   public:
-    par_error_manager(const int& rank_, const int& mpi_size_, MPI_Comm const& comm_, FILE*& err_file_):
+    parallel_error_manager(const int& rank_, const int& mpi_size_, MPI_Comm const& comm_, FILE*& err_file_):
       my_rank(rank_), mpi_size(mpi_size_), comm(comm_), error_file(err_file_)
     {
       if(err_file_ == NULL)
@@ -369,32 +306,22 @@ private:
         error_file = stderr;
       }
     }
-    void check_my_local_error(int& local_error, string& general_message) const
+    void check(int& local_error, string& general_message) const
     {
-      int             mpiret;
-      vector<int>     general_errors; general_errors.resize(mpi_size);
-      bool is_there_an_error = false;
-      mpiret = MPI_Allgather(&local_error, 1, MPI_INT, &general_errors.at(0), 1, MPI_INT, comm); SC_CHECK_MPI(mpiret);
-      for (int k = 0; k < mpi_size; ++k) {
-        is_there_an_error |= general_errors.at(k);
-        if (is_there_an_error) {
-          break;
-        }
-      }
-      if (is_there_an_error)
+      int there_is_an_error = 0;
+      int mpiret = MPI_Allreduce(&local_error, &there_is_an_error, 1, MPI_INT, MPI_LOR, comm); SC_CHECK_MPI(mpiret);
+      if (there_is_an_error)
       {
+        vector<int>     general_errors; general_errors.resize((my_rank==0)?mpi_size:0);
+        mpiret = MPI_Gather(&local_error, 1, MPI_INT, general_errors.data(), 1, MPI_INT, 0, comm); SC_CHECK_MPI(mpiret);
         if (my_rank == 0)
         {
           PetscFPrintf(comm, error_file, general_message.c_str());
-          for (int k = 0; k < mpi_size; ++k) {
-            if (general_errors.at(k)) {
-              string msg = "------ a local error came from proc " + to_string(k) + "\n";
-              PetscFPrintf(comm, error_file, msg.c_str());
-            }
-          }
+          for (int k = 0; k < mpi_size; ++k)
+            if (general_errors.at(k))
+              PetscFPrintf(comm, error_file, "------ a local error came from proc %d\n", k);
         }
-        MPI_Finalize();
-        exit(is_there_an_error);
+        MPI_Abort(comm, 36606);
       }
     }
     void print_message_and_abort(string& message, int error_code) const
@@ -402,63 +329,55 @@ private:
       fprintf(error_file, "%s", message.c_str());
       MPI_Abort(comm, error_code);
     }
-  };
-  class molecule:public
-    #ifdef P4_TO_P8
-      CF_3
-    #else
-      CF_2
-    #endif
+  } error_manager;
+#endif
+
+  class molecule
   {
   private:
-#ifdef CASL_THROWS
-    const par_error_manager       mol_err_manager;
-#endif
-    static p4est_connectivity_t*  domain_connectivity; // class pointer to the p4est domain connectivity
-    static mpi_environment_t*     mpi;                 // class pointer to the mpi environment
+    // the environement in which the molecule lives
+    const my_p4est_biomolecules_t* environment;
     // dimensional variables: need an update when angstrom_to_domain is modified
-    double        angstrom_to_domain;                 // scaling factor: distance in the domain = angstrom_to_domain*actual distance (in angstrom)
     vector<Atom>  atoms;                              // list of atoms in the molecule
-    int           n_charged_atoms;
-    vector<int>   index_of_charged_atom;
+    int           n_charged_atoms;                    // number of charged atoms
+    vector<int>   index_of_charged_atom;              // vector of indices of the charged atoms only (to evaluate the analytical function handling singularities efficiently)
 
+    double        scaling;                            // scaling factor used for this moleculte: distance in the domain = scaling*(distance in angstrom) == "molecule-specific angstrom_to_domain"
+    bool          scale_is_set;                       // true if the molecule has been scaled (activates the "check if molecule is in box" error management)
     double        molecule_centroid[P4EST_DIM];
     double        side_length_of_bounding_cube;       // self-explanatory
     double        largest_radius;
-    bool          scale_is_set;                       // true if the molecule has been scaled (activates the "check if molecule is in box" error management)
     /*!
      * \brief read: reads the pqr file (in parallel by chunks, and then allgather) and
-     * computes the molecule centroid;
+     * computes the molecule centroid on-the-fly;
      * \param pqr: path to the pqr file
      * \param overlap: max number of characters per (relevant) line in the pqr file (or any integer greater than that!)
      */
-    void                      read(const string& pqr, const int overlap);
-    /*
-    //
-    // \brief read_serial: reads the pqr file on root proc computes the molecule centroid,
-    // and broadcasts the results
-    // \param pqr: path to the pqr file
-    // ...DEPRECATED...
-    void                      read_serial(const string& pqr);
-    */
+    void          read(const string &pqr, const int &overlap);
     /*!
      * \brief check_if_file: checks if the file path is a valid path toward a file.
      * Return true if it is a file!
      * \param file_path: self-explanatory
      */
-    bool              check_if_file(const string& file_path) const;
+    bool          check_if_file(const string& file_path) const;
     /*!
      * \brief calculate_center_of_domain: self_explicit
      * \param domain_center[out]: pointer to domain center (an array of double[P4EST_DIM]).
      */
-    void                      calculate_center_of_domain(double* domain_center) const;
+    inline void   calculate_center_of_domain(double* domain_center) const
+    {
+      double *vertices_to_coordinates = environment->p4est->connectivity->vertices;
+      p4est_topidx_t *tree_to_vertex  = environment->p4est->connectivity->tree_to_vertex;
+      for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+        domain_center[dir] = 0.5*(vertices_to_coordinates[3*tree_to_vertex[0] + dir] + vertices_to_coordinates[3*tree_to_vertex[P4EST_CHILDREN*(environment->p4est->connectivity->num_trees-1) + P4EST_CHILDREN-1] + dir]);
+    }
   public:
-    // the two following functions return 0 in case of success, 1 in case of failure
-    static int                update_connectivity(p4est_connectivity_t* conn_);
-    static int                update_mpi(mpi_environment_t* mpi_);
     /*!
      * \brief molecule constructor.
-     * \param pqr_: path to the pqr file to read;
+     * \param owner: pointer to a constant my_p4est_biomolecule object (in which the current molecule lives)
+     * \param pqr_: full path to the pqr file to read;
+     * \param angstrom_to_domain_: scaling factor from angstrom to domain dimensions (default is 1,
+     * i.e. no scaling) -- The validity check is skipped in debug mode in that case);
      * \param xyz_c (optional): pointer to new_centroid (an array of double[P4EST_DIM]).
      * new_centroid = s*old_centroid if the pointer is NULL (or disregarded);
      * \param angles (optional): pointer to an array of angles (in radians) defining the rotation
@@ -467,12 +386,10 @@ private:
      * --> in 3D, the angles psi, theta_n, phi_n (three values), representing a right-handed angle
      * of rotation psi around the axis n pointed by polar and azimuthal angles theta_n and phi_n.
      * R = identity if the pointer is NULL (or disregarded);
-     * \param angstrom_to_domain_ (optional): scaling factor from angstrom to domain dimensions
-     * (default is 1, i.e. no scaling --> validity check is skipped in debug mode in that case);
      * \param overlap (optional): max number of characters per (relevant) line in the pqr file
      * (default value is 70, as observed from my own pqr files, including the '\n' characters)
      */
-    molecule(const string& pqr_, const double* xyz_c = NULL, double* angles = NULL, const double angstrom_to_domain_ = 1.0, const int overlap = 70);
+    molecule(const my_p4est_biomolecules_t *owner, const string & pqr_, const double &angstrom_to_domain_, const double *xyz_c = NULL, double *angles = NULL, const int& overlap = 70);
     /*!
      * \brief calculate_scaling_factor: calculates the angstrom_to_domain factor that would set the
      * ratio of the side length of the centroid-centered cube bounding the molecule to the minimal
@@ -481,7 +398,7 @@ private:
      * \param cube_side_length_to_min_domain_size: desired ratio (double)
      * \return the value of angstrom_to_domain scaling factor.
      */
-    double                    calculate_scaling_factor(const double cube_side_length_to_min_domain_size) const;
+    double  calculate_scaling_factor(const double cube_side_length_to_min_domain_size) const;
     /*!
      * \brief scale_rotate_and_translate: this method loops through all atoms in the molecule and scales
      * and relocates them as
@@ -501,7 +418,7 @@ private:
      * An exception is thrown in debug mode if the molecule is already scaled and if its bounding
      * box is not entirely in the domain.
      */
-    void                      scale_rotate_and_translate(const double* angstrom_to_domain_= NULL, const double* xyz_c = NULL, double* angles = NULL);
+    void    scale_rotate_and_translate(const double* angstrom_to_domain_= NULL, const double* xyz_c = NULL, double* angles = NULL);
     /*!
      * \brief translate: translates the entire molecule to the new desired centroid point
      * \param xyz_c (optional): pointer to the new desired centroid location (double[P4EST_DIM]).
@@ -510,8 +427,8 @@ private:
      * An exception is thrown in debug mode if the molecule is already scaled and if its bounding
      * box is not entirely in the domain.
      */
-    void                      translate();
-    void                      translate(const double *xyz_c);
+    void    translate();
+    void    translate(const double *xyz_c);
     /*!
      * \brief rotate: rotates the entire molecule, around its centroid, and translates it to
      * the new desired centroid point if provided.
@@ -526,7 +443,7 @@ private:
      * new bounding box is not entirely in the domain.
      * The side_length_of_bounding_cube is recalculated (on-the-fly).
      */
-    void                      rotate(double* angles, const double *xyz_c = NULL);
+    void    rotate(double* angles, const double *xyz_c = NULL);
     /*!
      * \brief scale_and_translate: modifies the value of the private angstrom_to_domain
      * variable and updates the corresponding dimensional variables that depend on that
@@ -538,11 +455,11 @@ private:
      * An exception is thrown in debug mode if the molecule is already scaled and if its bounding
      * box is not entirely in the domain.
      */
-    void                      scale_and_translate(const double* angstrom_to_domain_, const double* xyz_c = NULL);
+    void    scale_and_translate(const double* angstrom_to_domain_, const double* xyz_c = NULL);
     /*!
      * \brief reduce_to_single_atom: keeps the first atom in the list and delete all other ones
      */
-    void                      reduce_to_single_atom();
+    void    reduce_to_single_atom();
     /*!
      * \brief is_bounding_box_in_domain: checks if the bounding box of the molecule is
      * in the domain.
@@ -550,20 +467,23 @@ private:
      * if disregarded
      * \return true if the bounding box is entirely in the domain
      */
-    bool                      is_bounding_box_in_domain(const double* box_c = NULL) const;
+    bool    is_bounding_box_in_domain(const double* box_c = NULL) const;
     /*!
      * \brief operator (): calculates the signed distance to the vdW surface of the molecule
      * (negative outside, positive inside)
      * \param x,y,z: coordinates of the point where the vdW level set function is evaluated
      * \return max over all atoms of radius of atom - distance from atom center to xyz
      */
-    double                    operator()(const double x, const double y
-                                     #ifdef P4_TO_P8
-                                         , const double z
-                                     #endif
-                                         ) const;
+    inline double             operator()(DIM(const double& x, const double& y, const double& z)) const
+    {
+      double phi = -DBL_MAX;
+      for (size_t m = 0; m < atoms.size(); m++)
+        phi = MAX(phi, atoms[m].dist_to_vdW_surface(DIM(x, y, z)));
+      return phi;
+    }
+    inline double             operator()(const double *xyz) const { return this->operator()(DIM(xyz[0], xyz[1], xyz[2])); }
     inline double             get_largest_radius() const{return largest_radius;}
-    inline double             get_angstrom_to_domain_factor() const{return angstrom_to_domain;}
+    inline double             get_scaling_factor() const{return scaling;}
     inline int                get_number_of_atoms() const{return atoms.size();}
     inline int                get_number_of_charged_atoms() const{return n_charged_atoms;}
     inline const Atom*        get_atom(int k) const{return &atoms.at(k);}
@@ -694,14 +614,8 @@ private:
     {} // no dynamically allocated data, but compiler complains otherwise...
   };
 private:
-#ifdef CASL_THROWS
-  const par_error_manager   err_manager;
-#endif
-  // relevant parameters
   parStopWatch*             timer = NULL;
   p4est_t*                  p4est;
-  const vector<double>      domain_dim;
-  const vector<double>      root_cells_dim;
   const int                 rank_encoding;
   const ulong               max_quad_loc_idx;
   const string              no_vtk = "null";
@@ -711,8 +625,8 @@ private:
   int                       total_nb_atoms;           // self-explanatory
   int                       index_of_biggest_mol;     // self-explanatory
   double                    box_size_of_biggest_mol;  // self-explanatory
-public : double                    angstrom_to_domain;       // angstrom-to-domain conversion factor
-  biomol_grid_parameters    parameters;
+public :
+  double                    angstrom_to_domain;       // angstrom-to-domain conversion factor
   // what will be buit
   map<p4est_locidx_t, reduced_list_ptr> old_reduced_lists;  // used for the list reduction method (only)
   vector<reduced_list_ptr>  reduced_lists;                  // used for the list reduction method (only)
@@ -801,22 +715,12 @@ public : double                    angstrom_to_domain;       // angstrom-to-doma
   p4est_t*            reset_p4est();
   void                update_max_level();
   void                add_reduced_list(p4est_topidx_t which_tree, p4est_quadrant_t* quad, reduced_list_ptr parent_list, const bool &need_exact_phi);
-  void                remove_internal_cavities_poisson(const bool export_cavities);
   bool                is_point_in_outer_domain_and_updated(p4est_locidx_t k, quad_neighbor_nodes_of_node_t& qnnn, const my_p4est_node_neighbors_t* ngbd, double*& inner_domain_p) const;
-  void                remove_internal_cavities_region_growing(const bool export_cavities);
-  struct              inner_box_identifier : public
-    #ifdef P4_TO_P8
-      CF_3
-    #else
-      CF_2
-    #endif
+  struct              inner_box_identifier
   {
     const my_p4est_biomolecules_t* biomol_pointer;
-    double operator()(double x, double y
-                  #ifdef P4_TO_P8
-                      , double z
-                  #endif
-                      ) const ;
+    double operator()(DIM(const double &x, const double &y, const double &z)) const ;
+    inline double operator()(const double *xyz) const { return this->operator()(DIM(xyz[0], xyz[1], xyz[2])); } ;
   } is_point_in_a_bounding_box ;
 public:
   static const int    nangle_per_mol; // 3 in 3D, 1 in 2D, the values is set in the .cpp file
@@ -827,8 +731,10 @@ public:
    * \brief my_p4est_biomolecules_t: constructor. Reads molecule(s) from a list of files, rotates, translates
    * and scales them if desired.
    * \param p4est_        [required]: a valid pointer to a valid p4est_t;
-   * \param mpi_          [required]: a valid pointer to a valid mpi_environment_t
-   *                             /!\: the mpi communicator should match the mpicomm of the p4est
+   * \param rel_side_length_biggest_box [optional]: parameter representing the desired ratio of the side length
+   * of the biggest centroid-centered molecule-bounding cube to the minimal domain dimension, based on which the
+   * angstrom_to_domain scaling factor will be calculated and applied. The value must be in )0.0, 1.0(, the default
+   * is 0.5.
    * \param pqr_names     [optional]: pointer to a vector of string(s) representing either
    * 1) the full path to the molecule pqr file(s) (in such a case set input_folder to NULL) or
    * 2) the name of the file(s) to be read in the input folder;
@@ -849,24 +755,13 @@ public:
    * molecule(s) should be placed. This vector should be of size P4EST_DIM*nmol().
    * If diregarded or NULL, the (possibly scaled) centroid of the molecule is the same as read
    * from the pqr file.
-   * \param rel_side_length_biggest_box [optional]: pointer to a parameter representing the
-   * desired ratio of the side length of the biggest centroid-centered molecule-bounding cube
-   * to the minimal domain dimension, based on which the angstrom_to_domain scaling factor will
-   * be calculated and applied. The pointed value must be in )0.0, 1.0(.
-   * If disregarded or NULL, no universal scaling is applied.
    */
-  my_p4est_biomolecules_t(p4est_t* p4est_, mpi_environment_t* mpi_,
-                          const vector<string>* pqr_names = NULL, const string* input_folder = NULL,
-                          vector<double>* angles = NULL,
-                          const vector<double>* centroids = NULL,
-                          const double* rel_side_length_biggest_box = NULL);
+  my_p4est_biomolecules_t(p4est_t* p4est_, const double& rel_side_length_biggest_box = 0.5, const vector<string>* pqr_names = NULL, const string* input_folder = NULL,
+                          vector<double>* angles = NULL, const vector<double>* centroids = NULL);
   /* overloads the constructor, allows to skip the input_folder argument */
-  my_p4est_biomolecules_t(p4est_t* p4est_, mpi_environment_t* mpi_,
-                          const vector<string>* pqr_names = NULL,
-                          vector<double>* angles = NULL,
-                          const vector<double>* centroids = NULL,
-                          const double* rel_side_length_biggest_box = NULL) :
-    my_p4est_biomolecules_t(p4est_,mpi_, pqr_names, NULL, angles, centroids, rel_side_length_biggest_box){}
+  my_p4est_biomolecules_t(p4est_t* p4est_, const double& rel_side_length_biggest_box = 0.5, const vector<string>* pqr_names = NULL,
+                          vector<double>* angles = NULL, const vector<double>* centroids = NULL) :
+    my_p4est_biomolecules_t(p4est_, rel_side_length_biggest_box, pqr_names, NULL, angles, centroids){}
   /* overloading the private method for public use, enabling sanity checks */
   void                add_single_molecule(const string& file_path, const vector<double>* centroid = NULL, vector<double>* angles = NULL, const double* angstrom_to_domain = NULL);
   /*!
@@ -903,11 +798,8 @@ public:
    * \param x,y,z: coordinates of the point where the SAS level set function is evaluated
    * \return max over all atoms of probe_radius + radius of atom - distance from atom center to xyz
    */
-  double              operator()(const double x, const double y
-                               #ifdef P4_TO_P8
-                                 , const double z
-                               #endif
-                                 ) const;
+  double              operator()(DIM(const double &x, const double &y, const double &z)) const;
+  inline double       operator()(const double *xyz) const { return this->operator()(DIM(xyz[0], xyz[1], xyz[2])); }
   double              reduced_operator(const double* xyz, const int& reduced_list_idx, const bool need_exact_value, const bool last_stage) const;
   double              better_distance(const double *xyz, const int& reduced_list_idx, double* kink_point) const;
   void                build_brick();
@@ -921,25 +813,7 @@ public:
   static p4est_bool_t coarsen_fn(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad[]);
   static void         set_quad_weight(p4est_quadrant_t* &quad, const p4est_nodes_t* & nodes, const double* const& phi_fct, const double& lower_bound);
   static int          weight_for_coarsening(p4est_t * park, p4est_topidx_t which_tree, p4est_quadrant_t * quadrant);
-  void                remove_internal_cavities(const cavity_removal_method& method_to_use = region_growing, const bool export_cavities = false)
-  {
-    switch (method_to_use) {
-    case poisson:
-      remove_internal_cavities_poisson(export_cavities);
-      break;
-    case region_growing:
-      remove_internal_cavities_region_growing(export_cavities);
-      break;
-    default:
-#ifdef CASL_THROWSb
-      string err_msg = "my_p4est_biomolecules_t::remove_internal_cavities(const my_p4est_node_neighbors_t& ngbd, const cavity_removal_method& method_to_use = region_growing): unknown method...";
-      err_manager.print_message_and_abort(err_msg, 314159);
-#else
-      MPI_Abort(p4est->mpicomm, 314159);
-#endif
-      break;
-    }
-  }
+  void                remove_internal_cavities(const bool export_cavities = false);
   p4est_t*            construct_SES(const sas_generation_method& method_to_use = list_reduction, const bool SAS_timing_flag = false, const bool SAS_subtiming_flag = false, string vtk_folder = "null");
   void                expand_ghost();
   Vec                 return_phi_vector();
@@ -992,21 +866,21 @@ public:
     IMMERSED_INTERFACE,
   };
 
-  Vec           psi_star, psi_naught, psi_bar, validation_error;
+  Vec           psi_star, psi_naught, psi_bar;
   bool          psi_star_psi_naught_and_psi_bar_are_set;
   Vec           psi_hat;
   bool          psi_hat_is_set;
   //Vec eps_grad_n_psi_hat_jump, DIM(eps_grad_n_psi_hat_jump_xx_,eps_grad_n_psi_hat_jump_yy_,eps_grad_n_psi_hat_jump_zz_);
 
-  inline bool   is_molecular_permittivity_set() const {return (mol_rel_permittivity > 1.0-EPS);}
-  inline bool   is_electrolyte_permittivity_set() const {return (elec_rel_permittivity > 1.0-EPS);}
-  inline bool   are_permittivities_set() const {return (is_electrolyte_permittivity_set() && is_molecular_permittivity_set());}
-  inline bool   is_temperature_set() const { return (temperature > EPS);}
-  inline bool   is_far_field_ion_density_set() const { return (far_field_ion_density > EPS || far_field_ion_density==0.0);}
-  inline bool   is_ion_charge_set() const { return (ion_charge > 0);}
-  inline bool   are_all_debye_parameters_set() const {return (is_temperature_set() && is_far_field_ion_density_set() && is_ion_charge_set());}
+  inline bool   molecular_permittivity_is_set() const {return (mol_rel_permittivity > 1.0-EPS);}
+  inline bool   electrolyte_permittivity_is_set() const {return (elec_rel_permittivity > 1.0-EPS);}
+  inline bool   permittivities_are_set() const {return (electrolyte_permittivity_is_set() && molecular_permittivity_is_set());}
+  inline bool   temperature_is_set() const { return (temperature > EPS);}
+  inline bool   far_field_ion_density_is_set() const { return (far_field_ion_density > EPS || far_field_ion_density==0.0);}
+  inline bool   ion_charge_is_set() const { return (ion_charge > 0);}
+  inline bool   all_debye_parameters_are_set() const {return (temperature_is_set() && far_field_ion_density_is_set() && ion_charge_is_set());}
   inline double length_scale_in_meter() const {return (1.0/(meter_to_angstrom*biomolecules->angstrom_to_domain));}
-  bool          are_all_parameters_set() const {return (are_all_debye_parameters_set() && are_permittivities_set());}
+  bool          all_parameters_are_set() const {return (all_debye_parameters_are_set() && permittivities_are_set());}
   void          make_sure_is_node_sampled(Vec& vector);
   void          solve_singular_part();
 
@@ -1074,58 +948,27 @@ public:
   void          get_linear_diagonal_terms(Vec& pristine_diagonal_terms);
   void          clean_matrix_diagonal(const Vec& pristine_diagonal_terms);
 
-  struct:
-    #ifdef P4_TO_P8
-      CF_3
-    #else
-      CF_2
-    #endif
+  struct : CF_DIM
   {
-    double operator()(double, double
-                  #ifdef P4_TO_P8
-                      , double
-                  #endif
-                      ) const { return 0.0; }
+    double operator()(DIM(double, double, double)) const { return 0.0; }
   } homogeneous_dirichlet_bc_wall_value;
 
-  struct far_field_boundary_cond:
-    #ifdef P4_TO_P8
-      CF_3
-    #else
-      CF_2
-    #endif
+  struct far_field_boundary_cond : CF_DIM
   {
      my_p4est_biomolecules_solver_t*  biomol_solver;
     far_field_boundary_cond( my_p4est_biomolecules_solver_t* biomol_solver):biomol_solver(biomol_solver){}
-    double operator()(double x, double y
-                  #ifdef P4_TO_P8
-                      , double z
-                  #endif
-                      ) const
+    double operator()(DIM(double x, double y, double z)) const
     {
         return (biomol_solver->non_dimensional_coulomb_in_mol(DIM(x,y,z)))*biomol_solver->mol_rel_permittivity/biomol_solver->elec_rel_permittivity /*+ biomol_solver->non_dimensional_coulomb_in_elec(DIM(x,y,z))*/;
     }
   };
 
-  struct:
-    #ifdef P4_TO_P8
-      WallBC3D
-    #else
-      WallBC2D
-    #endif
+  struct : WallBCDIM
   {
-    BoundaryConditionType operator()(double, double
-                                 #ifdef P4_TO_P8
-                                     , double
-                                 #endif
-                                     ) const { return DIRICHLET; }
+    BoundaryConditionType operator()(DIM(double, double, double)) const { return DIRICHLET; }
   } dirichlet_bc_wall_type;
 
-#ifdef P4_TO_P8
-  BoundaryConditions3D dirichlet_bc;
-#else
-  BoundaryConditions2D dirichlet_bc;
-#endif
+  BoundaryConditionsDIM dirichlet_bc;
 
 public:
   my_p4est_biomolecules_solver_t(const my_p4est_biomolecules_t* biomolecules_);
@@ -1154,7 +997,6 @@ public:
   void          get_solvation_free_energy();
   Vec           get_psi(double max_absolute_psi = DBL_MAX);
 
-  Vec           return_validation_error();
   Vec           return_residual();
   void          return_all_psi_vectors(Vec& psi_star_out, Vec& psi_naught_out, Vec& psi_bar_out, Vec& psi_hat_out);
   ~my_p4est_biomolecules_solver_t();
