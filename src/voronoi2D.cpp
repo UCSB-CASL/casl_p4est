@@ -80,9 +80,81 @@ void Voronoi2D::push( int n, double x, double y )
   points.push_back(p);
 }
 
-void Voronoi2D::set_Center_Point( Point2 pc )
-{
-  this->pc = pc;
+  ngbd2Dseed p;
+  p.n     = n;
+  p.p.x   = x;
+  p.p.y   = y;
+  p.dist  = (p.p - center_seed).norm_L2();
+#ifdef P4_TO_P8
+  P4EST_ASSERT(p.dist>EPS*sqrt(SQR(xyz_max[0]-xyz_min[0]) + SQR(xyz_max[1]-xyz_min[1]) + SQR(xyz_max[2]-xyz_min[2])));
+#else
+  P4EST_ASSERT(((n == WALL_m00) || (n == WALL_p00) || (n == WALL_0m0) || (n == WALL_0p0)) || (p.dist>EPS*sqrt(SQR(xyz_max[0]-xyz_min[0]) + SQR(xyz_max[1]-xyz_min[1]))));
+#endif
+  p.theta = DBL_MAX;
+  nb_seeds.push_back(p);
+  if(periodicity[0] || periodicity[1]) // some periodicity ?
+  {
+    const double domain_diag = sqrt(SQR(xyz_max[0] - xyz_min[0]) + SQR(xyz_max[1] - xyz_min[1]));
+    if(periodicity[0]) // x periodic
+    {
+      // we use 0.49 instead of 0.5 to ensure everything goes fine even for a 1/1 grid
+      int x_coeff = (fabs(x-center_seed.x) > 0.49*(xyz_max[0] - xyz_min[0]))? ((x<center_seed.x)?+1:-1): 0;
+      if(x_coeff != 0)
+      {
+        ngbd2Dseed x_wrapped_neighbor;
+        x_wrapped_neighbor.n      = n;
+        x_wrapped_neighbor.p.x    = x + ((double) x_coeff)*(xyz_max[0] - xyz_min[0]);
+        x_wrapped_neighbor.p.y    = y;
+        x_wrapped_neighbor.dist   = (x_wrapped_neighbor.p - center_seed).norm_L2();
+        x_wrapped_neighbor.theta  = DBL_MAX;
+        if(x_wrapped_neighbor.dist < 0.51*domain_diag)
+          nb_seeds.push_back(x_wrapped_neighbor);
+      }
+      if(periodicity[1]) // x periodic AND y periodic
+      {
+        int y_coeff = (fabs(y-center_seed.y) > 0.49*(xyz_max[1] - xyz_min[1]))? ((y<center_seed.y)?+1:-1): 0;
+        // first add the y-wrapped if needed
+        if(y_coeff != 0)
+        {
+          ngbd2Dseed y_wrapped_neighbor;
+          y_wrapped_neighbor.n      = n;
+          y_wrapped_neighbor.p.x    = x;
+          y_wrapped_neighbor.p.y    = y + ((double) y_coeff)*(xyz_max[1] - xyz_min[1]);
+          y_wrapped_neighbor.dist   = (y_wrapped_neighbor.p - center_seed).norm_L2();
+          y_wrapped_neighbor.theta  = DBL_MAX;
+          if(y_wrapped_neighbor.dist < 0.51*domain_diag)
+            nb_seeds.push_back(y_wrapped_neighbor);
+        }
+        // then add the xy-wrapped if need
+        if(x_coeff != 0)
+        {
+          ngbd2Dseed xy_wrapped_neighbor;
+          xy_wrapped_neighbor.n     = n;
+          xy_wrapped_neighbor.p.x   = x + ((double) x_coeff)*(xyz_max[0] - xyz_min[0]);
+          xy_wrapped_neighbor.p.y   = y + ((double) y_coeff)*(xyz_max[1] - xyz_min[1]);
+          xy_wrapped_neighbor.dist  = (xy_wrapped_neighbor.p - center_seed).norm_L2();
+          xy_wrapped_neighbor.theta = DBL_MAX;
+          if(xy_wrapped_neighbor.dist < 0.51*domain_diag)
+            nb_seeds.push_back(xy_wrapped_neighbor);
+        }
+      }
+    }
+    else // only y-periodic
+    {
+      int y_coeff = (fabs(y-center_seed.y) > 0.49*(xyz_max[1] - xyz_min[1]))? ((y<center_seed.y)?+1:-1): 0;
+      if(y_coeff != 0)
+      {
+        ngbd2Dseed y_wrapped_neighbor;
+        y_wrapped_neighbor.n      = n;
+        y_wrapped_neighbor.p.x    = x;
+        y_wrapped_neighbor.p.y    = y + ((double) y_coeff)*(xyz_max[1] - xyz_min[1]);
+        y_wrapped_neighbor.dist   = (y_wrapped_neighbor.p - center_seed).norm_L2();
+        y_wrapped_neighbor.theta  = DBL_MAX;
+        if(y_wrapped_neighbor.dist < 0.51*domain_diag)
+          nb_seeds.push_back(y_wrapped_neighbor);
+      }
+    }
+  }
 }
 
 void Voronoi2D::set_Center_Point( double x, double y )
@@ -115,13 +187,27 @@ void Voronoi2D::construct_Partition()
   if(points.size()<3) throw std::runtime_error("[CASL_ERROR]: Voronoi2D: not enough points to build the voronoi partition.");
 #endif
 
-  // first find the closest point to (ic,jc)
-  int m_min = 0;
-  double d0 = (points[0].p-pc).norm_L2();
-  for(unsigned  m=1; m<points.size(); ++m)
-  {
-    double d = (points[m].p-pc).norm_L2();
-    if(d<d0)
+  // angles are not set yet so sort by increasing distance from the seed
+  std::sort(nb_seeds.begin(), nb_seeds.end());
+
+  // scale it to a domain-independent geometry (closest neighbor at distance 1.0)
+  // compute the angles with the reference point on-the-fly
+  // scaling information
+  /*  -------------- Feel free to change the following parameter to any other reasonable value ---------------      */
+  const double closest_distance = 1.0;
+  const double scaling_length = nb_seeds[0].dist/closest_distance;
+  if(!(scaling_length>0.0 && scaling_length > (nb_seeds.back()).dist*EPS))
+      std::cout << "scaling_length = " << scaling_length << std::endl;
+  P4EST_ASSERT(scaling_length>0.0 && scaling_length > (nb_seeds.back()).dist*EPS);
+  // center the seed to (0.0, 0.0)
+  Point2 center_seed_saved = center_seed; center_seed.x = 0.0; center_seed.y = 0.0;
+  double angle;
+  for (size_t m = 0; m < nb_seeds.size(); ++m) {
+    nb_seeds[m].p     = (nb_seeds[m].p - center_seed_saved)/scaling_length;
+    nb_seeds[m].dist  /= scaling_length;
+    if(m == 0)
+      angle = 0.0;
+    else
     {
       d0    = d;
       m_min = m;

@@ -468,7 +468,6 @@ void my_p4est_poisson_nodes_t::solve(Vec solution, bool use_nonzero_initial_gues
     // For purely neumann problems GMRES is more robust
     ierr = KSPSetType(ksp, KSPGMRES); CHKERRXX(ierr);
   }
-
   ierr = KSPSolve(ksp, rhs_, solution); CHKERRXX(ierr);
   if (matrix_has_nullspace) {
     ierr = MatNullSpaceDestroy(A_null);
@@ -812,7 +811,10 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix_neumann_wall_1st_or
         if( is_interface_m00) {
           double phixx_m00 = qnnn.f_m00_linear(phi_xx_p);
           double theta_m00 = interface_Location_With_Second_Order_Derivative(0., d_m00, phi_000, phi_m00, phixx_C, phixx_m00);
-          if (theta_m00<eps) theta_m00 = eps; if (theta_m00>d_m00) theta_m00 = d_m00;
+          if (theta_m00<eps)
+            theta_m00 = eps;
+          if (theta_m00>d_m00)
+            theta_m00 = d_m00;
           d_m00_m0 = d_m00_p0 = 0;
 #ifdef P4_TO_P8
           d_m00_0m = d_m00_0p = 0;
@@ -822,7 +824,10 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix_neumann_wall_1st_or
         if( is_interface_p00){
           double phixx_p00 = qnnn.f_p00_linear(phi_xx_p);
           double theta_p00 = interface_Location_With_Second_Order_Derivative(0., d_p00, phi_000, phi_p00, phixx_C, phixx_p00);
-          if (theta_p00<eps) theta_p00 = eps; if (theta_p00>d_p00) theta_p00 = d_p00;
+          if (theta_p00<eps)
+            theta_p00 = eps;
+          if (theta_p00>d_p00)
+            theta_p00 = d_p00;
           d_p00_m0 = d_p00_p0 = 0;
 #ifdef P4_TO_P8
           d_p00_0m = d_p00_0p = 0;
@@ -832,7 +837,10 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix_neumann_wall_1st_or
         if( is_interface_0m0){
           double phiyy_0m0 = qnnn.f_0m0_linear(phi_yy_p);
           double theta_0m0 = interface_Location_With_Second_Order_Derivative(0., d_0m0, phi_000, phi_0m0, phiyy_C, phiyy_0m0);
-          if (theta_0m0<eps) theta_0m0 = eps; if (theta_0m0>d_0m0) theta_0m0 = d_0m0;
+          if (theta_0m0<eps)
+            theta_0m0 = eps;
+          if (theta_0m0>d_0m0)
+            theta_0m0 = d_0m0;
           d_0m0_m0 = d_0m0_p0 = 0;
 #ifdef P4_TO_P8
           d_0m0_0m = d_0m0_0p = 0;
@@ -842,7 +850,10 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix_neumann_wall_1st_or
         if( is_interface_0p0){
           double phiyy_0p0 = qnnn.f_0p0_linear(phi_yy_p);
           double theta_0p0 = interface_Location_With_Second_Order_Derivative(0., d_0p0, phi_000, phi_0p0, phiyy_C, phiyy_0p0);
-          if (theta_0p0<eps) theta_0p0 = eps; if (theta_0p0>d_0p0) theta_0p0 = d_0p0;
+          if (theta_0p0<eps)
+            theta_0p0 = eps;
+          if (theta_0p0>d_0p0)
+            theta_0p0 = d_0p0;
           d_0p0_m0 = d_0p0_p0 = 0;
 #ifdef P4_TO_P8
           d_0p0_0m = d_0p0_0p = 0;
@@ -853,14 +864,20 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix_neumann_wall_1st_or
         if( is_interface_00m){
           double phizz_00m = qnnn.f_00m_linear(phi_zz_p);
           double theta_00m = interface_Location_With_Second_Order_Derivative(0., d_00m, phi_000, phi_00m, phizz_C, phizz_00m);
-          if (theta_00m<eps) theta_00m = eps; if (theta_00m>d_00m) theta_00m = d_00m;
+          if (theta_00m<eps)
+            theta_00m = eps;
+          if (theta_00m>d_00m)
+            theta_00m = d_00m;
           d_00m_m0 = d_00m_p0 = d_00m_0m = d_00m_0p = 0;
           d_00m = theta_00m;
         }
         if( is_interface_00p){
           double phizz_00p = qnnn.f_00p_linear(phi_zz_p);
           double theta_00p = interface_Location_With_Second_Order_Derivative(0., d_00p, phi_000, phi_00p, phizz_C, phizz_00p);
-          if (theta_00p<eps) theta_00p = eps; if (theta_00p>d_00p) theta_00p = d_00p;
+          if (theta_00p<eps)
+            theta_00p = eps;
+          if (theta_00p>d_00p)
+            theta_00p = d_00p;
           d_00p_m0 = d_00p_p0 = d_00p_0m = d_00p_0p = 0;
           d_00p = theta_00p;
         }
@@ -1499,7 +1516,10 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec_neumann_wall_1st_or
         if( is_interface_m00) {
           double phixx_m00 = qnnn.f_m00_linear(phi_xx_p);
           double theta_m00 = interface_Location_With_Second_Order_Derivative(0., d_m00, phi_000, phi_m00, phixx_C, phixx_m00);
-          if (theta_m00<eps) theta_m00 = eps; if (theta_m00>d_m00) theta_m00 = d_m00;
+          if (theta_m00<eps)
+            theta_m00 = eps;
+          if (theta_m00>d_m00)
+            theta_m00 = d_m00;
           d_m00_m0 = d_m00_p0 = 0;
 #ifdef P4_TO_P8
           d_m00_0m = d_m00_0p = 0;
@@ -1514,7 +1534,10 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec_neumann_wall_1st_or
         if( is_interface_p00){
           double phixx_p00 = qnnn.f_p00_linear(phi_xx_p);
           double theta_p00 = interface_Location_With_Second_Order_Derivative(0., d_p00, phi_000, phi_p00, phixx_C, phixx_p00);
-          if (theta_p00<eps) theta_p00 = eps; if (theta_p00>d_p00) theta_p00 = d_p00;
+          if (theta_p00<eps)
+            theta_p00 = eps;
+          if (theta_p00>d_p00)
+            theta_p00 = d_p00;
           d_p00_m0 = d_p00_p0 = 0;
 #ifdef P4_TO_P8
           d_p00_0m = d_p00_0p = 0;
@@ -1529,7 +1552,10 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec_neumann_wall_1st_or
         if( is_interface_0m0){
           double phiyy_0m0 = qnnn.f_0m0_linear(phi_yy_p);
           double theta_0m0 = interface_Location_With_Second_Order_Derivative(0., d_0m0, phi_000, phi_0m0, phiyy_C, phiyy_0m0);
-          if (theta_0m0<eps) theta_0m0 = eps; if (theta_0m0>d_0m0) theta_0m0 = d_0m0;
+          if (theta_0m0<eps)
+            theta_0m0 = eps;
+          if (theta_0m0>d_0m0)
+            theta_0m0 = d_0m0;
           d_0m0_m0 = d_0m0_p0 = 0;
 #ifdef P4_TO_P8
           d_0m0_0m = d_0m0_0p = 0;
@@ -1544,7 +1570,10 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec_neumann_wall_1st_or
         if( is_interface_0p0){
           double phiyy_0p0 = qnnn.f_0p0_linear(phi_yy_p);
           double theta_0p0 = interface_Location_With_Second_Order_Derivative(0., d_0p0, phi_000, phi_0p0, phiyy_C, phiyy_0p0);
-          if (theta_0p0<eps) theta_0p0 = eps; if (theta_0p0>d_0p0) theta_0p0 = d_0p0;
+          if (theta_0p0<eps)
+            theta_0p0 = eps;
+          if (theta_0p0>d_0p0)
+            theta_0p0 = d_0p0;
           d_0p0_m0 = d_0p0_p0 = 0;
 #ifdef P4_TO_P8
           d_0p0_0m = d_0p0_0p = 0;
@@ -1560,7 +1589,10 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec_neumann_wall_1st_or
         if( is_interface_00m){
           double phizz_00m = qnnn.f_00m_linear(phi_zz_p);
           double theta_00m = interface_Location_With_Second_Order_Derivative(0., d_00m, phi_000, phi_00m, phizz_C, phizz_00m);
-          if (theta_00m<eps) theta_00m = eps; if (theta_00m>d_00m) theta_00m = d_00m;
+          if (theta_00m<eps)
+            theta_00m = eps;
+          if (theta_00m>d_00m)
+            theta_00m = d_00m;
           d_00m_m0 = d_00m_p0 = d_00m_0m = d_00m_0p = 0;
           d_00m = theta_00m;
           val_interface_00m = bc_->interfaceValue(x_C, y_C , z_C - theta_00m);
@@ -1568,7 +1600,10 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec_neumann_wall_1st_or
         if( is_interface_00p){
           double phizz_00p = qnnn.f_00p_linear(phi_zz_p);
           double theta_00p = interface_Location_With_Second_Order_Derivative(0., d_00p, phi_000, phi_00p, phizz_C, phizz_00p);
-          if (theta_00p<eps) theta_00p = eps; if (theta_00p>d_00p) theta_00p = d_00p;
+          if (theta_00p<eps)
+            theta_00p = eps;
+          if (theta_00p>d_00p)
+            theta_00p = d_00p;
           d_00p_m0 = d_00p_p0 = d_00p_0m = d_00p_0p = 0;
           d_00p = theta_00p;
           val_interface_00p = bc_->interfaceValue(x_C, y_C , z_C + theta_00p);

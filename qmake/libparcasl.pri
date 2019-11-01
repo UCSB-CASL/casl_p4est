@@ -110,6 +110,7 @@ SOURCES += \
   $$PARCASL/src/my_p4est_cell_neighbors.cpp \
 #  $$PARCASL/src/my_p4est_epitaxy.cpp \
   $$PARCASL/src/my_p4est_faces.cpp \
+  $$PARCASL/src/my_p4est_general_poisson_nodes_mls_solver.cpp \
   $$PARCASL/src/my_p4est_hierarchy.cpp \
   $$PARCASL/src/my_p4est_integration_mls.cpp \
   $$PARCASL/src/my_p4est_interpolation.cpp \
@@ -197,6 +198,7 @@ SOURCES += \
   $$PARCASL/src/my_p8est_cell_neighbors.cpp \
 #  $$PARCASL/src/my_p8est_epitaxy.cpp \
   $$PARCASL/src/my_p8est_faces.cpp \
+  $$PARCASL/src/my_p8est_general_poisson_nodes_mls_solver.cpp \
   $$PARCASL/src/my_p8est_hierarchy.cpp \
   $$PARCASL/src/my_p8est_integration_mls.cpp \
   $$PARCASL/src/my_p8est_interpolation.cpp \

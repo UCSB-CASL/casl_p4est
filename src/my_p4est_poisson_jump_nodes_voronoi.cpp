@@ -183,13 +183,14 @@ void my_p4est_poisson_jump_nodes_voronoi_t::set_mu_grad_u_jump(Vec mu_grad_u_jum
 }
 
 
-void my_p4est_poisson_jump_nodes_voronoi_t::solve(Vec solution, bool use_nonzero_initial_guess, KSPType ksp_type, PCType pc_type)
+void my_p4est_poisson_jump_nodes_voronoi_t::solve(Vec solution, bool use_nonzero_initial_guess, KSPType ksp_type, PCType pc_type, bool destroy_solution_on_voronoi_mesh, bool interpolate_solution_back_on_tree)
 {
   ierr = PetscLogEventBegin(log_PoissonSolverNodeBasedJump_solve, A, rhs, ksp, 0); CHKERRXX(ierr);
 
 #ifdef CASL_THROWS
   if(bc == NULL) throw std::domain_error("[CASL_ERROR]: the boundary conditions have not been set.");
 
+  if(interpolate_solution_back_on_tree)
   {
     PetscInt sol_size;
     ierr = VecGetLocalSize(solution, &sol_size); CHKERRXX(ierr);
@@ -230,7 +231,7 @@ void my_p4est_poisson_jump_nodes_voronoi_t::solve(Vec solution, bool use_nonzero
 //    ierr = PetscPrintf(p4est->mpicomm, "Assembling linear system ...\n"); CHKERRXX(ierr);
     setup_linear_system();
 //    ierr = PetscPrintf(p4est->mpicomm, "Done assembling linear system.\n"); CHKERRXX(ierr);
-
+    
     is_matrix_computed = true;
     ierr = KSPSetOperators(ksp, A, A, SAME_NONZERO_PATTERN); CHKERRXX(ierr);
   } else {
@@ -281,6 +282,7 @@ void my_p4est_poisson_jump_nodes_voronoi_t::solve(Vec solution, bool use_nonzero
   }
   ierr = PCSetFromOptions(pc); CHKERRXX(ierr);
 
+
   /* set the nullspace */
 //   if (matrix_has_nullspace){
      // PETSc removed the KSPSetNullSpace in 3.6.0 ... Use MatSetNullSpace instead
@@ -293,10 +295,11 @@ void my_p4est_poisson_jump_nodes_voronoi_t::solve(Vec solution, bool use_nonzero
 //   }
 
   /* Solve the system */
-  ierr = VecDuplicate(rhs, &sol_voro); CHKERRXX(ierr);
-
-
-
+  if(sol_voro == NULL)
+  {
+    ierr = VecDuplicate(rhs, &sol_voro); CHKERRXX(ierr);
+  }
+  
 //  ierr = PetscPrintf(p4est->mpicomm, "Solving linear system ...\n"); CHKERRXX(ierr);
   ierr = PetscLogEventBegin(log_PoissonSolverNodeBasedJump_KSPSolve, ksp, rhs, sol_voro, 0); CHKERRXX(ierr);
   ierr = KSPSolve(ksp, rhs, sol_voro); CHKERRXX(ierr);
@@ -312,7 +315,8 @@ void my_p4est_poisson_jump_nodes_voronoi_t::solve(Vec solution, bool use_nonzero
   ierr = VecGhostUpdateEnd  (sol_voro, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
   /* interpolate the solution back onto the original mesh */
-  interpolate_solution_from_voronoi_to_tree(solution);
+  if(interpolate_solution_back_on_tree)
+    interpolate_solution_from_voronoi_to_tree(solution);
 
 //  static int counter = 0;
 //  if (counter == 0 || counter == 165 || counter == 166) {
@@ -412,6 +416,8 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_points()
     (*ngbd_n).get_neighbors(n).ngbd_with_quadratic_interpolation(phi_p, p_00, p_m0, p_p0, p_0m, p_0p);
     if(p_00*p_m0<=0 || p_00*p_p0<=0 || p_00*p_0m<=0 || p_00*p_0p<=0)
 #endif
+    bool already_added = false;
+    if(is_node_Wall(p4est, node)) // we add the wall nodes, NO MATTER WHAT!
     {
       double d = phi_p[n];
 #ifdef P4_TO_P8
@@ -435,6 +441,18 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_points()
 #endif
 
       for(size_t s=0; s<num_sharers; ++s)
+        send_projected_to[sharers[s]] = 1;
+
+      /* calculate the projected point */
+      double d = phi_read_only_p[n];
+#ifdef P4_TO_P8
+      Point3 dp((*ngbd_n).get_neighbors(n).dx_central(phi_read_only_p), (*ngbd_n).get_neighbors(n).dy_central(phi_read_only_p), (*ngbd_n).get_neighbors(n).dz_central(phi_read_only_p));
+#else
+      Point2 dp((*ngbd_n).get_neighbors(n).dx_central(phi_read_only_p), (*ngbd_n).get_neighbors(n).dy_central(phi_read_only_p));
+#endif
+
+      // note: if phi is somehow a signed distance, dp has no dimension
+      if(dp.norm_L2() > EPS) // no issue to calculate the projected point, so do it
       {
         buff_shared_added_points_send[sharers[s]].push_back(added_point_n);
       }
@@ -493,6 +511,33 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_points()
     if(!(p_00*p_m0<=0 || p_00*p_p0<=0 || p_00*p_0m<=0 || p_00*p_0p<=0))
 #endif
     {
+      // the point is close to the interface
+#ifdef P4_TO_P8
+      Point3 dp((*ngbd_n).get_neighbors(n).dx_central(phi_read_only_p), (*ngbd_n).get_neighbors(n).dy_central(phi_read_only_p), (*ngbd_n).get_neighbors(n).dz_central(phi_read_only_p));
+#else
+      Point2 dp((*ngbd_n).get_neighbors(n).dx_central(phi_read_only_p), (*ngbd_n).get_neighbors(n).dy_central(phi_read_only_p));
+#endif
+      if(dp.norm_L2() > EPS)
+        marked_nodes.push_back(n); // the projection can be safely calculated, so add it to the marked nodes
+      else if(!already_added)
+      {
+        // under-resolved case, the projection can't be calculated reliably (e.g. center of an under-resolved
+        // sphere), add the grid node to the seeds
+        double xn = node_x_fr_n(n, p4est, nodes);
+        double yn = node_y_fr_n(n, p4est, nodes);
+#ifdef P4_TO_P8
+        double zn = node_z_fr_n(n, p4est, nodes);
+        Point3 p(xn, yn, zn);
+#else
+        Point2 p(xn, yn);
+#endif
+        grid2voro[n].push_back(voro_seeds.size());
+        voro_seeds.push_back(p);
+      }
+    }
+    else if(!already_added)
+    {
+      // not close to the interface, so add it to the seeds
       double xn = node_x_fr_n(n, p4est, nodes);
       double yn = node_y_fr_n(n, p4est, nodes);
 #ifdef P4_TO_P8
@@ -886,7 +931,7 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_points()
         p4est_topidx_t tree_idx = quad.p.piggy3.which_tree;
         p4est_tree_t *tree = p4est_tree_array_index(p4est->trees, tree_idx);
         p4est_locidx_t quad_idx;
-        if(rank_found==p4est->mpirank) quad_idx = quad.p.piggy3.local_num + tree->quadrants_offset;
+        if(rank_found==p4est->mpirank) quad_idx = quad.p.piggy3.local_num + tree->quadrants_offset; // this can't happen, in principle
         else                           quad_idx = quad.p.piggy3.local_num + p4est->local_num_quadrants;
 
         double qx = quad_x_fr_q(quad_idx, tree_idx, p4est, ghost);
@@ -1252,6 +1297,34 @@ void my_p4est_poisson_jump_nodes_voronoi_t::setup_linear_system()
     voro.get_Points(points);
 
 #ifdef P4_TO_P8
+    unsigned int number_of_neighbors_across = 0;
+    std::vector<double> surfaces;
+    double min_surface = DBL_MAX;
+    voro.get_neighbor_seeds(neighbor_seeds);
+    double phi_center   = interp_phi(voro.get_center_point().x, voro.get_center_point().y, voro.get_center_point().z);
+    for (size_t k = 0; k < neighbor_seeds->size(); ++k) {
+      double phi_other  = interp_phi(neighbor_seeds->at(k).p.x, neighbor_seeds->at(k).p.y, neighbor_seeds->at(k).p.z);
+      if ((((phi_center<=0) && (phi_other > 0.0)) || ((phi_center>0) && (phi_other <= 0.0))) && (neighbor_seeds->at(k).s > 0.0))
+      {
+        number_of_neighbors_across++;
+        surfaces.push_back(neighbor_seeds->at(k).s);
+      }
+    }
+    std::sort(surfaces.begin(), surfaces.end());
+    if(number_of_neighbors_across >1)
+    {
+      std::cerr << "Found more than one neighbor across the interface, actually " << number_of_neighbors_across << "! (from proc " << p4est->mpirank << ")." << std::endl;
+      if(surfaces[surfaces.size()-2]/surfaces[surfaces.size()-1] > 0.1)
+      {
+        std::cerr << "surfaces = ";
+        for (size_t k = 0; k < surfaces.size(); ++k)
+          std::cerr << surfaces[k] << " ";
+        std::cerr << std::endl;
+      }
+    }
+#endif
+
+#ifdef P4_TO_P8
     double phi_n = interp_phi(pc.x, pc.y, pc.z);
 #else
     double phi_n = interp_phi(pc.x, pc.y);
@@ -1387,7 +1460,7 @@ void my_p4est_poisson_jump_nodes_voronoi_t::setup_linear_system()
   }
 
   ierr = VecRestoreArray(rhs, &rhs_p); CHKERRXX(ierr);
-
+ 
   PetscInt num_owned_global = voro_global_offset[p4est->mpisize];
   PetscInt num_owned_local  = (PetscInt) num_local_voro;
 
@@ -1967,6 +2040,17 @@ void my_p4est_poisson_jump_nodes_voronoi_t::interpolate_solution_from_voronoi_to
   PetscErrorCode ierr;
 
   ierr = PetscLogEventBegin(log_PoissonSolverNodeBasedJump_interpolate_to_tree, phi, sol_voro, solution, 0); CHKERRXX(ierr);
+
+#ifdef CASL_THROWS
+  PetscInt sol_size;
+  ierr = VecGetLocalSize(solution, &sol_size); CHKERRXX(ierr);
+  if (sol_size != nodes->num_owned_indeps){
+    std::ostringstream oss;
+    oss << "[CASL_ERROR]: solution vector must be preallocated and locally have the same size as num_owned_indeps"
+        << "solution.local_size = " << sol_size << " nodes->num_owned_indeps = " << nodes->num_owned_indeps << std::endl;
+    throw std::invalid_argument(oss.str());
+  }
+#endif
 
   double *solution_p;
   ierr = VecGetArray(solution, &solution_p); CHKERRXX(ierr);

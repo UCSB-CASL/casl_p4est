@@ -122,6 +122,20 @@ void Voronoi3D::construct_Partition(const double *xyz_min, const double *xyz_max
   double z_tmp = fabs(pc.z-xyz_min[2])<eps ? xyz_min[2]+eps : fabs(pc.z-xyz_max[2])<eps ? xyz_max[2]-eps : pc.z;
   voronoi.put(po, nc, x_tmp, y_tmp, z_tmp);
 
+  std::vector<double> point_distances(nb_seeds.size());
+  std::vector<unsigned int> index(nb_seeds.size(), 0);
+  for(unsigned int m=0; m<nb_seeds.size(); ++m)
+  {
+    point_distances.at(m) = (nb_seeds[m].p - center_seed).norm_L2();
+    index.at(m) = m;
+  }
+
+  sort(index.begin(), index.end(),
+      [&](const int& a, const int& b) {
+          return (point_distances[a] < point_distances[b]);
+      }
+  );
+
   /* add the points potentially involved in the voronoi partition */
   for(unsigned int m=0; m<points.size(); ++m)
   {
@@ -146,6 +160,9 @@ void Voronoi3D::construct_Partition(const double *xyz_min, const double *xyz_max
 
     voro_cell.neighbors(neigh);
     voro_cell.face_areas(areas);
+    double max_area = 0.0;
+    for(unsigned int n=0; n<neigh.size(); n++)
+      max_area = MAX(max_area, areas[n]);
 
     for(unsigned int n=0; n<neigh.size(); n++)
     {
@@ -192,7 +209,8 @@ void Voronoi3D::construct_Partition(const double *xyz_min, const double *xyz_max
         }
       }
 
-      final_points.push_back(new_voro_nb);
+      if(new_voro_nb.s > EPS*max_area)
+        final_nb_seeds.push_back(new_voro_nb);
     }
     points.clear();
     points = final_points;
