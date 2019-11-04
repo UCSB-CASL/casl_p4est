@@ -240,6 +240,7 @@ private:
     splitting_criteria_t  sp; // min_lvl, max_lvl, lip
     double                rp; // probe_radius
     int                   OOA; // order of accuracy, for the grid construction (thickness of the accuracy layer)
+    double                domain_center[P4EST_DIM];
     double                domain_dimensions[P4EST_DIM];
     double                tree_dimensions[P4EST_DIM];
   public:
@@ -252,6 +253,7 @@ private:
       for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
         tree_dimensions[dim]    = vertices_to_coordinates[3*tree_to_vertex[P4EST_CHILDREN*0             + P4EST_CHILDREN-1] + dim]  - vertices_to_coordinates[3*tree_to_vertex[P4EST_CHILDREN*0 + 0] + dim];
         domain_dimensions[dim]  = vertices_to_coordinates[3*tree_to_vertex[P4EST_CHILDREN*(num_trees-1) + P4EST_CHILDREN-1] + dim]  - vertices_to_coordinates[3*tree_to_vertex[P4EST_CHILDREN*0 + 0] + dim];
+        domain_center[dim]      = 0.5*(vertices_to_coordinates[3*tree_to_vertex[P4EST_CHILDREN*(num_trees-1) + P4EST_CHILDREN-1] + dim]  + vertices_to_coordinates[3*tree_to_vertex[P4EST_CHILDREN*0 + 0] + dim]);
       }
     }
     inline int lmin()               const { return sp.min_lvl; }
@@ -265,6 +267,7 @@ private:
     inline bool are_set()           const { return (is_splitting_criterion_set() && is_probe_radius_set() && is_layer_thickness_set()); }
     inline double tree_dim(const unsigned char &dir) const { return tree_dimensions[dir]; }
     inline double domain_dim(const unsigned char &dir) const { return domain_dimensions[dir]; }
+    inline const double* get_domain_center() const { return domain_center; }
 
     bool set_splitting_criterion(const int& l_min, const int& l_max, const double& lip_)
     {
@@ -287,51 +290,6 @@ private:
       return need_to_reset_the_forest;
     }
   } parameters;
-
-#ifdef CASL_THROWS
-  class parallel_error_manager
-  {
-  private:
-    const int       my_rank;
-    const int       mpi_size;
-    const MPI_Comm  comm;
-    FILE*           error_file;
-  public:
-    parallel_error_manager(const int& rank_, const int& mpi_size_, MPI_Comm const& comm_, FILE*& err_file_):
-      my_rank(rank_), mpi_size(mpi_size_), comm(comm_), error_file(err_file_)
-    {
-      if(err_file_ == NULL)
-      {
-        if(my_rank == 0)
-          fprintf(stderr, "The error file was not defined, it's set to stderr by default...\n");
-        error_file = stderr;
-      }
-    }
-    void check(int& local_error, string& general_message) const
-    {
-      int there_is_an_error = 0;
-      int mpiret = MPI_Allreduce(&local_error, &there_is_an_error, 1, MPI_INT, MPI_LOR, comm); SC_CHECK_MPI(mpiret);
-      if (there_is_an_error)
-      {
-        vector<int>     general_errors; general_errors.resize((my_rank==0)?mpi_size:0);
-        mpiret = MPI_Gather(&local_error, 1, MPI_INT, general_errors.data(), 1, MPI_INT, 0, comm); SC_CHECK_MPI(mpiret);
-        if (my_rank == 0)
-        {
-          PetscFPrintf(comm, error_file, general_message.c_str());
-          for (int k = 0; k < mpi_size; ++k)
-            if (general_errors[k])
-              PetscFPrintf(comm, error_file, "------ a local error came from proc %d\n", k);
-        }
-        MPI_Abort(comm, 36606);
-      }
-    }
-    void print_message_and_abort(string& message, int error_code) const
-    {
-      fprintf(error_file, "%s", message.c_str());
-      MPI_Abort(comm, error_code);
-    }
-  } error_manager;
-#endif
 
   class molecule
   {
@@ -396,70 +354,43 @@ private:
      * and relocates them as
      *    xyz_new = new_centroid + s*R*(xyz_old - old_centroid)
      *    new_atom_radius = s*old_atom_radius
-     * \param angstrom_to_domain_ (optional): pointer to the new scaling factor, based on which the
-     * multiplicator s is computed. s = 1 if the pointer if NULL (or disregarded);
+     * \param angstrom_to_domain_ (optional): pointer to the new scaling (angstrom to domain scale) factor.
+     * No (re)scaling is operated if the pointer is NULL (default behavior);
      * \param xyz_c (optional): pointer to new_centroid (an array of double[P4EST_DIM]).
-     * new_centroid = s*old_centroid if the pointer if NULL (or disregarded);
+     * new_centroid = (re)scaled old_centroid if the pointer if NULL (default behavior);
      * \param angles (optional): pointer to an array of angles (in radians) defining the rotation
      * matrix R.
      * --> In 2D, the right-handed rotation angle (one value).
      * --> in 3D, the angles psi, theta_n, phi_n (three values), representing a right-handed angle
      * of rotation psi around the axis n pointed by polar and azimuthal angles theta_n and phi_n.
-     * R = identity matrix if the pointer if NULL (or disregarded);
+     * R = identity matrix if the pointer if NULL (default behavior);
      * The side_length_of_bounding_cube is recalculated (on-the-fly).
-     * An exception is thrown in debug mode if the molecule is already scaled and if its bounding
-     * box is not entirely in the domain.
+     * A check is done in debug mode: if the molecule is already scaled and if its bounding
+     * box is not entirely in the domain, the execution abort.
      */
-    void    scale_rotate_and_translate(const double* angstrom_to_domain_= NULL, const double* xyz_c = NULL, double* angles = NULL);
+    void  scale_rotate_and_translate(const double* angstrom_to_domain_= NULL, const double* xyz_c = NULL, double* angles = NULL);
+    inline void rotate(double* angles, const double *xyz_c = NULL)                                  { scale_rotate_and_translate(NULL, xyz_c, angles);              }
+    inline void scale_and_translate(const double* angstrom_to_domain_, const double* xyz_c = NULL)  { scale_rotate_and_translate(angstrom_to_domain_, xyz_c, NULL); }
     /*!
      * \brief translate: translates the entire molecule to the new desired centroid point
      * \param xyz_c (optional): pointer to the new desired centroid location (double[P4EST_DIM]).
-     * If disregarded, it is the center of the computational domain
+     * If disregarded, it is set to the center of the computational domain
      * If NULL, it is the current centroid point (i.e. no effect at all)
-     * An exception is thrown in debug mode if the molecule is already scaled and if its bounding
-     * box is not entirely in the domain.
+     * A check is done in debug mode: if the molecule is already scaled and if its bounding
+     * box is not entirely in the domain, the execution abort.
      */
-    void    translate();
-    void    translate(const double *xyz_c);
-    /*!
-     * \brief rotate: rotates the entire molecule, around its centroid, and translates it to
-     * the new desired centroid point if provided.
-     * \param angles: pointer to an array of angles (in radians) defining the rotation.
-     * --> In 2D, the right-handed rotation angle (one value)
-     * --> in 3D, the angles psi, theta_n, phi_n (three values), representing a right-handed
-     * angle of rotation psi around the axis n pointed by polar and azimuthal angles theta_n
-     * and phi_n.
-     * \param xyz_c (optional): pointer to the new desired centroid location, the centroid of
-     * the molecule is unchanged if NULL or disregarded
-     * An exception is thrown in debug mode if the molecule is already scaled and if its
-     * new bounding box is not entirely in the domain.
-     * The side_length_of_bounding_cube is recalculated (on-the-fly).
-     */
-    void    rotate(double* angles, const double *xyz_c = NULL);
-    /*!
-     * \brief scale_and_translate: modifies the value of the private angstrom_to_domain
-     * variable and updates the corresponding dimensional variables that depend on that
-     * factor.
-     * \param angstrom_to_domain_ (optional): pointer to the new scaling factor, based on which the
-     * multiplicator s is computed. s = 1 if the pointer if NULL (or disregarded);
-     * \param xyz_c(optional): pointer to the new desired centroid location (an array of double[P4EST_DIM]).
-     * If disregarded or NULL, the centroid is simply multiplied by the appropriated scaling factor
-     * An exception is thrown in debug mode if the molecule is already scaled and if its bounding
-     * box is not entirely in the domain.
-     */
-    void    scale_and_translate(const double* angstrom_to_domain_, const double* xyz_c = NULL);
+    inline void translate(const double *xyz_c)  { scale_rotate_and_translate(NULL, xyz_c, NULL);          }
+    inline void translate()                     { translate(environment->parameters.get_domain_center()); }
     /*!
      * \brief reduce_to_single_atom: keeps the first atom in the list and delete all other ones
      */
-    void    reduce_to_single_atom();
+    void  reduce_to_single_atom();
     /*!
      * \brief is_bounding_box_in_domain: checks if the bounding box of the molecule is
      * in the domain.
-     * \param box_c (optional): box centroid location, current centroid of the molecule
-     * if disregarded
      * \return true if the bounding box is entirely in the domain
      */
-    bool    is_bounding_box_in_domain(const double* box_c = NULL) const;
+    bool    is_bounding_box_in_domain() const;
     /*!
      * \brief operator (): calculates the signed distance to the vdW surface of the molecule
      * (negative outside, positive inside)
@@ -473,23 +404,16 @@ private:
         phi = MAX(phi, atoms[m].dist_to_vdW_surface(DIM(x, y, z)));
       return phi;
     }
-    inline double             operator()(const double *xyz) const { return this->operator()(DIM(xyz[0], xyz[1], xyz[2])); }
-    inline double             get_largest_radius()          const { return largest_radius; }
-    inline double             get_scaling_factor()          const { return scaling.angstrom_to_domain; }
-    inline int                get_number_of_atoms()         const { return atoms.size(); }
-    inline int                get_number_of_charged_atoms() const { return n_charged_atoms; }
-    inline const Atom*        get_atom(int k)               const { return &atoms[k]; }
-    inline const Atom*        get_charged_atom(int k)       const { return &atoms[index_of_charged_atom[k]]; }
-    inline const double*      get_centroid()                const { return molecule_centroid; }
-    inline bool               is_scaled()                   const { return scaling.is_set; }
-    inline double             get_side_length_of_bounding_cube() const
-    {
-      return MAX(DIM(side_length_of_bounding_box[0], side_length_of_bounding_box[1], side_length_of_bounding_box[2]));
-    }
-    inline void               get_side_lengths_of_bounding_box(const double *&side_length) const
-    {
-      side_length = side_length_of_bounding_box;
-    }
+    inline double         operator()(const double *xyz)       const { return this->operator()(DIM(xyz[0], xyz[1], xyz[2])); }
+    inline double         get_largest_radius()                const { return largest_radius; }
+    inline double         get_scaling_factor()                const { return scaling.angstrom_to_domain; }
+    inline int            get_number_of_atoms()               const { return atoms.size(); }
+    inline int            get_number_of_charged_atoms()       const { return n_charged_atoms; }
+    inline const Atom*    get_atom(int k)                     const { return &atoms[k]; }
+    inline const Atom*    get_charged_atom(int k)             const { return &atoms[index_of_charged_atom[k]]; }
+    inline const double*  get_centroid()                      const { return molecule_centroid; }
+    inline bool           is_scaled()                         const { return scaling.is_set; }
+    inline double         get_side_length_of_bounding_cube()  const { return MAX(DIM(side_length_of_bounding_box[0], side_length_of_bounding_box[1], side_length_of_bounding_box[2])); }
     ~molecule() // delete dynamically allocated memory
     {}
   };
@@ -734,7 +658,7 @@ public :
 
   int                 find_mol_index(const int& global_atom_index, const size_t& guess) const;
   const Atom*         get_atom(const int& global_atom_index, int& guess) const;
-  p4est_t*            reset_p4est();
+  void                reset_p4est();
   void                update_max_level();
   void                add_reduced_list(p4est_topidx_t which_tree, p4est_quadrant_t* quad, reduced_list_ptr parent_list, const bool &need_exact_phi);
   bool                is_point_in_outer_domain_and_updated(p4est_locidx_t k, quad_neighbor_nodes_of_node_t& qnnn, const my_p4est_node_neighbors_t* ngbd, double*& inner_domain_p) const;
@@ -745,10 +669,10 @@ public :
     inline double operator()(const double *xyz) const { return this->operator()(DIM(xyz[0], xyz[1], xyz[2])); } ;
   } is_point_in_a_bounding_box ;
 public:
-  static const int    nangle_per_mol; // 3 in 3D, 1 in 2D, the values is set in the .cpp file
-  static FILE*        log_file;
-  static FILE*        timing_file;
-  static FILE*        error_file;
+  static const unsigned int nangle_per_mol; // 3 in 3D, 1 in 2D, the values is set in the .cpp file
+  static FILE*              log_file;
+  static FILE*              timing_file;
+  static FILE*              error_file;
   /*!
    * \brief my_p4est_biomolecules_t: constructor. Reads molecule(s) from a list of files, rotates, translates
    * and scales them if desired.

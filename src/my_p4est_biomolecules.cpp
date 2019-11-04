@@ -477,9 +477,9 @@ bdry_phi_cf_t bdry_phi_z_cf_all[] = { bdry_phi_cf_t(DDZ, bdry_geom_00) };
 // initialize all static variables
 const string Atom::ATOM = "ATOM  ";
 #ifdef P4_TO_P8
-const int my_p4est_biomolecules_t::nangle_per_mol = 3;
+const unsigned int my_p4est_biomolecules_t::nangle_per_mol = 3;
 #else
-const int my_p4est_biomolecules_t::nangle_per_mol = 1;
+const unsigned int my_p4est_biomolecules_t::nangle_per_mol = 1;
 #endif
 
 FILE* my_p4est_biomolecules_t::log_file     = NULL;
@@ -516,11 +516,7 @@ void my_p4est_biomolecules_t::molecule::read(const string &pqr, const int &overl
     // reinitialize the list of atoms and related parameters
     atoms.clear();
   }
-#ifdef CASL_THROWS
-  my_local_error = overlap < 1;
-  err_msg = "bio_molecule::read(const string*, const int): require an integer >= 1 for the overlap argument. overlap <= 0 does not make sense. \n";
-  environment->error_manager.check(my_local_error, err_msg);
-#endif
+  P4EST_ASSERT(overlap>=1); // require an integer >= 1 for the overlap argument. overlap <= 0 does not make sense
 
   string bundle = "bundle";
   string extension = ".pqr";
@@ -548,11 +544,7 @@ void my_p4est_biomolecules_t::molecule::read(const string &pqr, const int &overl
     file_name[filename.size()] = '\0';
 
     mpiret = MPI_File_open(environment->p4est->mpicomm, &file_name[0], MPI_MODE_RDONLY, MPI_INFO_NULL, &file_handle);
-#ifdef CASL_THROWS
-    my_local_error = mpiret != sc_MPI_SUCCESS;
-    err_msg = "bio_molecule::read(const string*, const int): could not open file" + filename + "\n";
-    environment->error_manager.check(my_local_error, err_msg);
-#endif
+    P4EST_ASSERT(mpiret == sc_MPI_SUCCESS);
 
     /* read relevant chunk of file, which starts at location
      * globalstart in the file and has size mysize
@@ -577,14 +569,8 @@ void my_p4est_biomolecules_t::molecule::read(const string &pqr, const int &overl
         PetscFPrintf(environment->p4est->mpicomm, error_file, warning_message.c_str());
       }
       /* We'll use less procs, the last ones will do nothing but wait for the final Allgather*/
-#ifdef CASL_THROWS
-      my_local_error = filesize/overlap>environment->p4est->mpisize;
-      err_msg = "bio_molecule::read(const string*, const int): something went wrong, a logic error occurred, inconsistent integer divisions...\n";
-      environment->error_manager.check(my_local_error, err_msg);
-      my_local_error = filesize/overlap == 0;
-      err_msg = "bio_molecule::read(const string*, const int): the file is way too small, doesn't even contain one relevant line...\n";
-      environment->error_manager.check(my_local_error, err_msg);
-#endif
+      P4EST_ASSERT(filesize/overlap <= environment->p4est->mpisize); // something went wrong, a logic error occurred, inconsistent integer divisions...
+      P4EST_ASSERT(filesize/overlap > 0); // the file is way too small, doesn't even contain one relevant line...
       rank_max = filesize/overlap;
       mysize = overlap;
       MPI_Offset globalstart;
@@ -709,7 +695,7 @@ void my_p4est_biomolecules_t::molecule::scale_rotate_and_translate(const double*
   const double scaling_factor = scaling_required? ((scaling.is_set && angstrom_to_domain_!=NULL)? (*angstrom_to_domain_)/scaling.angstrom_to_domain : *angstrom_to_domain_) : 1.0;
 
   double xyz_tmp[P4EST_DIM];
-  double rotated_xyz_tmp[P4EST_DIM] = { DIM(0.0, 0.0, 0.0) };
+  double rotated_xyz_tmp[P4EST_DIM];
   double rotation_matrix[P4EST_DIM][P4EST_DIM];
   if(angles != NULL)
   {
@@ -750,7 +736,7 @@ void my_p4est_biomolecules_t::molecule::scale_rotate_and_translate(const double*
   {
     double new_centroid[P4EST_DIM];
     for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
-      side_length_of_bounding_box[dir] = -DBL_MAX;
+      side_length_of_bounding_box[dir] = 0.0;
       new_centroid[dir] = (xyz_c == NULL)? scaling_factor*molecule_centroid[dir] : xyz_c[dir];
     }
     int charged_atoms_found = 0;
@@ -763,8 +749,7 @@ void my_p4est_biomolecules_t::molecule::scale_rotate_and_translate(const double*
         xyz_tmp[dir] = scaling_factor*(atoms[k].xyz_c[dir] - molecule_centroid[dir]);
       if(angles != NULL)
         for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-          for (unsigned char k = 0; k < P4EST_DIM; ++k)
-            rotated_xyz_tmp[dir] += rotation_matrix[dir][k]*xyz_tmp[k];
+          rotated_xyz_tmp[dir] = SUMD(rotation_matrix[dir][0]*xyz_tmp[0], rotation_matrix[dir][1]*xyz_tmp[1], rotation_matrix[dir][2]*xyz_tmp[2]);
       else
         for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
           rotated_xyz_tmp[dir] = xyz_tmp[dir];
@@ -793,55 +778,33 @@ void my_p4est_biomolecules_t::molecule::scale_rotate_and_translate(const double*
   P4EST_ASSERT(!scaling.is_set || is_bounding_box_in_domain());
 }
 
-void my_p4est_biomolecules_t::molecule::translate()
-{
-  double domain_center[P4EST_DIM];
-  environment->calculate_center_of_domain(domain_center);
-  translate(domain_center);
-}
-void my_p4est_biomolecules_t::molecule::translate(const double *xyz_c)
-{
-  scale_rotate_and_translate(NULL, xyz_c, NULL);
-}
-void my_p4est_biomolecules_t::molecule::rotate(double* angles, const double *xyz_c)
-{
-  scale_rotate_and_translate(NULL, xyz_c, angles);
-}
-void my_p4est_biomolecules_t::molecule::scale_and_translate(const double* angstrom_to_domain_, const double* xyz_c)
-{
-  scale_rotate_and_translate(angstrom_to_domain_, xyz_c, NULL);
-}
 void my_p4est_biomolecules_t::molecule::reduce_to_single_atom()
 {
-  std::vector<Atom> atoms_new;
-  atoms_new.push_back(atoms[0]);
-  atoms = atoms_new;
+  atoms.resize(1);
   n_charged_atoms = (fabs(atoms[0].q) > 0.00005)? 1 : 0;
   index_of_charged_atom.resize(n_charged_atoms);
   if(n_charged_atoms)
     index_of_charged_atom[0] = 0;
-
   for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
   {
     molecule_centroid[dir] = atoms[0].xyz_c[dir];
     side_length_of_bounding_box[dir] = 2*atoms[0].r_vdw;
   }
-
   largest_radius = atoms[0].r_vdw;
 }
-bool my_p4est_biomolecules_t::molecule::is_bounding_box_in_domain(const double* box_c) const
+bool my_p4est_biomolecules_t::molecule::is_bounding_box_in_domain() const
 {
+  bool to_return = true;
   double *vertices_to_coordinates = environment->p4est->connectivity->vertices;
   p4est_topidx_t *tree_to_vertex  = environment->p4est->connectivity->tree_to_vertex;
-  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+  for (unsigned char dir = 0; to_return && (dir < P4EST_DIM); ++dir)
     if(!is_periodic(environment->p4est->connectivity, dir))
     {
       double coord_min = vertices_to_coordinates[3*tree_to_vertex[0 + 0] + dir];
       double coord_max = vertices_to_coordinates[3*tree_to_vertex[P4EST_CHILDREN*(environment->p4est->connectivity->num_trees-1) + P4EST_CHILDREN-1] + dir];
-      if(((box_c != NULL)? box_c[dir]:molecule_centroid[dir])+0.5*side_length_of_bounding_box[dir] > coord_max || ((box_c != NULL)? box_c[dir]:molecule_centroid[dir])-0.5*side_length_of_bounding_box[dir] < coord_min)
-        return false;
+      to_return = to_return && (molecule_centroid[dir]+0.5*side_length_of_bounding_box[dir] <= coord_max) && (molecule_centroid[dir]-0.5*side_length_of_bounding_box[dir] >= coord_min);
     }
-  return true;
+  return to_return;
 }
 
 p4est_bool_t my_p4est_biomolecules_t::SAS_creator::refine_for_exact_calculation_fn(p4est_t *park, p4est_topidx_t which_tree, p4est_quadrant_t *quad)
@@ -945,23 +908,11 @@ void my_p4est_biomolecules_t::SAS_creator::scatter_locally(p4est_t*& park)
   Vec& phi_sas                              = biomol->phi;
   double* & phi_sas_p                       = biomol->phi_p;
   p4est_nodes_t* & nodes                    = biomol->nodes;
-#ifdef CASL_THROWS
-  const parallel_error_manager* sas_error_manager  = &biomol->error_manager;
-#endif
   // needed for point equality check comparison: boundary points are clamped inside
   // the domain and the Morton codes are compared, two points are equivalent if Morton
   // codes are identical after being clamped
   int clamped = 1;
-  if((phi_sas == NULL) != (nodes == NULL))
-  {
-    // should NEVER happen, no way to handle the problem in such a case, kill the program :-(
-#ifdef CASL_THROWS
-    string sas_err_msg = "my_p4est_biomolecules_t::SAS_creator_brute_force::scatter_locally(const my_p4est_biomolecules_t*&): something weird occured, you might have memory leak here...";
-    sas_error_manager->print_message_and_abort(sas_err_msg, 123321);
-#else
-    MPI_Abort(mpi_comm, 123321);
-#endif
-  }
+  P4EST_ASSERT((phi_sas !=NULL) == (nodes !=NULL));
   // ok let's work
   // initialization might be needed first
   if(phi_sas == NULL && phi_sas_p == NULL && nodes == NULL)
@@ -1020,11 +971,7 @@ void my_p4est_biomolecules_t::SAS_creator::scatter_locally(p4est_t*& park)
     }
   }
   // sanity check
-#ifdef CASL_THROWS
-  int sas_local_error = (coarse_idx != nodes->num_owned_indeps);
-  string sas_err_msg = "\n my_p4est_biomolecules_t::SAS_creator_brute_force::scatter_locally(...) killed because of logic error \n \n";
-  sas_error_manager->check(sas_local_error, sas_err_msg);
-#endif
+  P4EST_ASSERT(coarse_idx == nodes->num_owned_indeps);
   // we don't need the coarse nodes and corresponding data any more
   ierr = VecRestoreArray(phi_sas, &phi_sas_p); CHKERRXX(ierr);
   ierr = VecDestroy(phi_sas); CHKERRXX(ierr); // we no longer need this, all relevant data have been scattered
@@ -1042,20 +989,13 @@ void my_p4est_biomolecules_t::SAS_creator::scatter_to_new_layout(p4est_t*& park,
   Vec& phi_sas                              = biomol->phi;
   p4est_nodes_t* & nodes                    = biomol->nodes;
   p4est_ghost_t* & ghost                    = biomol->ghost;
-#ifdef CASL_THROWS
-  const parallel_error_manager* sas_error_manager  = &biomol->error_manager;
-#endif
   // scatter releveant value before calculating the new phi_sas values
   if(ghost_flag)
   {
     P4EST_ASSERT(ghost == NULL);
     ghost = p4est_ghost_new(park, P4EST_CONNECT_FULL);
   }
-#ifdef CASL_THROWS
-  int sas_local_error = nodes!= NULL;
-  string sas_err_msg = "my_p4est_biomolecules_t::SAS_creator::scatter_to_new_layout(), nodes are not NULL, you have memory leak...";
-  sas_error_manager->check(sas_local_error, sas_err_msg);
-#endif
+  P4EST_ASSERT(nodes==NULL);
   nodes = my_p4est_nodes_new(park, ghost);
   // scatter the vector to the new layout
   // create the new (partioned) vector of phi_sas
@@ -1069,9 +1009,7 @@ void my_p4est_biomolecules_t::SAS_creator::scatter_to_new_layout(p4est_t*& park,
   PetscInt size1, size2;
   ierr = VecGetSize(phi_sas, &size1); CHKERRXX(ierr);
   ierr = VecGetSize(partitioned_phi_sas, &size2); CHKERRXX(ierr);
-  sas_local_error = size1 != size2;
-  sas_err_msg = "my_p4est_biomolecules_t::SAS_creator::scatter_to_new_layout(), vectors do not have the same size...";
-  sas_error_manager->check(sas_local_error, sas_err_msg);
+  P4EST_ASSERT(size1==size2);
 #endif
   // scatter the values that we already know
   VecScatter ctx;
@@ -1269,9 +1207,6 @@ void my_p4est_biomolecules_t::SAS_creator_brute_force::update_phi_sas_and_quadra
   Vec& phi_sas                              = biomol->phi;
   double* & phi_sas_p                       = biomol->phi_p;
   p4est_nodes_t* & nodes                    = biomol->nodes;
-#ifdef CASL_THROWS
-  const parallel_error_manager* sas_error_manager  = &biomol->error_manager;
-#endif
 
   ierr = VecGetArray(phi_sas, &phi_sas_p); CHKERRXX(ierr);
   vector<int> nb_to_send_recv; nb_to_send_recv.resize(mpi_size, 0);
@@ -1302,9 +1237,7 @@ void my_p4est_biomolecules_t::SAS_creator_brute_force::update_phi_sas_and_quadra
   int sum_check = 0;
   for (int k = 0; k < mpi_size; ++k)
     sum_check += nb_to_send_recv[k];
-  int sas_local_error = sum_check != 0;
-  string sas_err_msg = "\n my_p4est_biomolecules_t::SAS_creator_brute_force::update_phi_sas_and_quadrant_data(...): something went wrong when balancing the calculations.\n \n";
-  sas_error_manager->check(sas_local_error, sas_err_msg);
+  P4EST_ASSERT(sum_check==0);
 #endif
   // coordinates buffer
   double xyz[P4EST_DIM];
@@ -1352,25 +1285,11 @@ void my_p4est_biomolecules_t::SAS_creator_brute_force::update_phi_sas_and_quadra
     is_a_receiver[r_data.recv_rank] = 1;
   }
   vector<int> nb_results_per_proc; nb_results_per_proc.resize(mpi_size, 1);
-  mpiret = MPI_Reduce_scatter(&is_a_receiver[0], &num_remaining_queries, &nb_results_per_proc[0], MPI_INT, MPI_SUM, mpi_comm); SC_CHECK_MPI(mpiret);
-#ifdef CASL_THROWS
-  // sanity checks
-  sas_local_error = (my_nb_to_send_recv > 0) && (num_remaining_queries != 0);
-  sas_err_msg = "\n my_p4est_biomolecules_t::SAS_creator_brute_force::update_phi_sas_and_quadrant_data(...): a proc wants to send messages but expects queries too... \n \n";
-  sas_error_manager->check(sas_local_error, sas_err_msg);
-
-  sas_local_error = (num_remaining_queries > 0) && (my_nb_to_send_recv >= 0);
-  sas_err_msg = "\n my_p4est_biomolecules_t::SAS_creator_brute_force::update_phi_sas_and_quadrant_data(...): a proc expects queries but has to send messages too \n \n";
-  sas_error_manager->check(sas_local_error, sas_err_msg);
-
-  sas_local_error = (my_nb_to_send_recv == 0) && (num_remaining_queries != 0);
-  sas_err_msg = "\n my_p4est_biomolecules_t::SAS_creator_brute_force::update_phi_sas_and_quadrant_data(...): a proc expects queries but has just the right number of values to compute... \n \n";
-  sas_error_manager->check(sas_local_error, sas_err_msg);
-
-  sas_local_error = (num_remaining_queries == 0) && (my_nb_to_send_recv < 0);
-  sas_err_msg = "\n my_p4est_biomolecules_t::SAS_creator_brute_force::update_phi_sas_and_quadrant_data(...): a proc does not expect queries but has too few values to compute...\n \n";
-  sas_error_manager->check(sas_local_error, sas_err_msg);
-#endif
+  mpiret = MPI_Reduce_scatter(is_a_receiver.data(), &num_remaining_queries, nb_results_per_proc.data(), MPI_INT, MPI_SUM, mpi_comm); SC_CHECK_MPI(mpiret);
+  P4EST_ASSERT((my_nb_to_send_recv <= 0)    || (num_remaining_queries == 0)); // a proc wants to send messages but expects queries too...
+  P4EST_ASSERT((num_remaining_queries <= 0) || (my_nb_to_send_recv < 0));     // a proc expects queries but has to send messages too
+  P4EST_ASSERT((my_nb_to_send_recv != 0)    || (num_remaining_queries == 0));   // a proc expects queries but has just the right number of values to compute...
+  P4EST_ASSERT((num_remaining_queries != 0) || (my_nb_to_send_recv >= 0));      // a proc does not expect queries but has too few values to compute...
 
   // pack the coordinates to send and send them; declare reply buffer(s)
   map<int, query_buffer> query_buffers; query_buffers.clear();
@@ -1487,15 +1406,7 @@ void my_p4est_biomolecules_t::SAS_creator_brute_force::update_phi_sas_and_quadra
       quad->p.user_long = q + tree_k->quadrants_offset;
     }
   }
-  if(mpi_size>1 && (ulong) park->local_num_quadrants > biomol->max_quad_loc_idx - 1)
-  {
-#ifdef CASL_THROWS
-    sas_err_msg = "\n my_p4est_biomolecules_t::SAS_creator_brute_force::update_phi_sas_and_quadrant_data(...): the maximum number of local quadrants has been reached, the method needs to be redesigned with real quadrant data...\n \n";
-    sas_error_manager->print_message_and_abort(sas_err_msg, 11337799);
-#else
-    MPI_Abort(mpi_comm, 11337799);
-#endif
-  }
+  P4EST_ASSERT(mpi_size == 1 || ((ulong) park->local_num_quadrants <= biomol->max_quad_loc_idx - 1)); // the maximum number of local quadrants has been reached, the method needs to be redesigned with real quadrant data...
 }
 
 void my_p4est_biomolecules_t::SAS_creator_list_reduction::initialization_routine(p4est_t *&park)
@@ -1552,9 +1463,6 @@ void my_p4est_biomolecules_t::SAS_creator_list_reduction::update_phi_sas_and_qua
   Vec& phi_sas                              = biomol->phi;
   double* & phi_sas_p                       = biomol->phi_p;
   p4est_nodes_t* & nodes                    = biomol->nodes;
-#ifdef CASL_THROWS
-  const parallel_error_manager* sas_error_manager  = &biomol->error_manager;
-#endif
 
   bool last_stage = (biomol->global_max_level == biomol->parameters.lmax());
   int min_lvl_to_consider = ((int) biomol->update_last_current_level_only)*biomol->global_max_level;
@@ -1591,20 +1499,15 @@ void my_p4est_biomolecules_t::SAS_creator_list_reduction::update_phi_sas_and_qua
   }
 
 #ifdef CASL_THROWS
-  int sas_local_error = 0;
-  for (map<int, query_buffer>::const_iterator it = query_buffers.begin(); it != query_buffers.end(); ++it)
+  p4est_bool_t check = P4EST_TRUE;;
+  for (map<int, query_buffer>::const_iterator it = query_buffers.begin(); check && (it != query_buffers.end()); ++it)
   {
-    sas_local_error |= (it->first == mpi_rank);
-    if(sas_local_error)
-      break;
+    check = check && (it->first != mpi_rank);
     const query_buffer& q_buf = it->second;
-    sas_local_error |= (q_buf.new_list_idx.size() != q_buf.off_proc_list_idx.size());
-    sas_local_error |= (q_buf.new_list_idx.size() != q_buf.local_quad_idx.size());
-    if(sas_local_error)
-      break;
+    check = check && (q_buf.new_list_idx.size() == q_buf.off_proc_list_idx.size());
+    check = check && (q_buf.new_list_idx.size() == q_buf.local_quad_idx.size());
   }
-  string sas_err_msg = "\n my_p4est_biomolecules_t::SAS_creator_list_reduction::update_phi_sas_and_quadrant_data(...): something went wrong when figuring out the off-proc queries.\n \n";
-  sas_error_manager->check(sas_local_error, sas_err_msg);
+  P4EST_ASSERT(check); // something went wrong when figuring out the off-proc queries
 #endif
 
   vector<int> is_a_receiver;  is_a_receiver.resize(mpi_size, 0);
@@ -1624,9 +1527,7 @@ void my_p4est_biomolecules_t::SAS_creator_list_reduction::update_phi_sas_and_qua
   int total_num_queries = 0, total_num_replies = 0;
   mpiret = MPI_Allreduce(&num_remaining_queries, &total_num_queries, 1, MPI_INT, MPI_SUM, mpi_comm); SC_CHECK_MPI(mpiret);
   mpiret = MPI_Allreduce(&num_remaining_replies, &total_num_replies, 1, MPI_INT, MPI_SUM, mpi_comm); SC_CHECK_MPI(mpiret);
-  sas_local_error = (total_num_queries != total_num_replies);
-  sas_err_msg = "\n my_p4est_biomolecules_t::SAS_creator_list_reduction::update_phi_sas_and_quadrant_data(...): the total numbers of expected queries and replies do not match. \n \n";
-  sas_error_manager->check(sas_local_error, sas_err_msg);
+  P4EST_ASSERT(total_num_queries == total_num_replies); // the total numbers of expected queries and replies do not match
 #endif
 
   vector<MPI_Request> query_req; query_req.clear();
@@ -1809,24 +1710,13 @@ void my_p4est_biomolecules_t::SAS_creator_list_reduction::update_phi_sas_and_qua
 void my_p4est_biomolecules_t::SAS_creator_list_reduction::replace_fn(p4est_t *park, p4est_topidx_t which_tree, int num_outgoing, p4est_quadrant_t *outgoing[], int num_incoming, p4est_quadrant_t *incoming[])
 {
   (void) num_incoming;
-  if (num_outgoing > 1) {
-    // this is coarsening, it should NEVER happend
-#ifdef CASL_THROWS
-    my_p4est_biomolecules_t* biomol = (my_p4est_biomolecules_t*) park->user_pointer;
-    string err_msg = "my_p4est_biomolecules_t::SAS_creator_list_reduction::replace_fn(...): invoked coarsening...";
-    biomol->error_manager.print_message_and_abort(err_msg, 22446688);
-#else
-    MPI_Abort(park->mpicomm, 22446688);
-#endif
-  }
-  else {
-    /* this is refinement */
-    my_p4est_biomolecules_t* biomol = (my_p4est_biomolecules_t*) park->user_pointer;
-    SAS_creator_list_reduction* this_creator = dynamic_cast<SAS_creator_list_reduction*>(biomol->sas_creator);
-    int parent_list_idx = (park->mpisize > 1)?(outgoing[0]->p.user_long & (biomol->max_quad_loc_idx -1 )) : outgoing[0]->p.user_long;
-    for (short i = 0; i < P4EST_CHILDREN; i++)
-      biomol->add_reduced_list(which_tree, incoming[i], biomol->old_reduced_lists[parent_list_idx], this_creator->get_exact_phi);
-  }
+  P4EST_ASSERT(num_outgoing<=1);
+  /* this is refinement */
+  my_p4est_biomolecules_t* biomol = (my_p4est_biomolecules_t*) park->user_pointer;
+  SAS_creator_list_reduction* this_creator = dynamic_cast<SAS_creator_list_reduction*>(biomol->sas_creator);
+  int parent_list_idx = (park->mpisize > 1)?(outgoing[0]->p.user_long & (biomol->max_quad_loc_idx -1 )) : outgoing[0]->p.user_long;
+  for (unsigned char i = 0; i < P4EST_CHILDREN; i++)
+    biomol->add_reduced_list(which_tree, incoming[i], biomol->old_reduced_lists[parent_list_idx], this_creator->get_exact_phi);
 }
 
 void my_p4est_biomolecules_t::SAS_creator_list_reduction::specific_refinement(p4est_t*& park)
@@ -1845,58 +1735,27 @@ void my_p4est_biomolecules_t::SAS_creator_list_reduction::specific_refinement(p4
     p4est_tree_t* tree = p4est_tree_array_index(park->trees, tt);
     nb_new_fine_quad += tree->quadrants_per_level[biomol->global_max_level+1];
   }
-  int sas_local_error = (nb_new_fine_quad != (p4est_gloidx_t) biomol->reduced_lists.size());
-  string sas_error_msg = "my_p4est_biomolecules_t::SAS_creator_list_reduction::specific_refinement(): something went wrong when associating reduced lists to new quadrants...";
-  biomol->error_manager.check(sas_local_error, sas_error_msg);
+  P4EST_ASSERT((nb_new_fine_quad == (p4est_gloidx_t) biomol->reduced_lists.size())); // something went wrong when associating reduced lists to new quadrants
 #endif
 }
 
 void my_p4est_biomolecules_t::check_validity_of_vector_of_mol() const
 {
-#ifdef CASL_THROWS
-  int local_error;
-  string err_msg;
-  // check if there is one molecule at least
-  local_error = nmol() <= 0;
-  err_msg = "my_p4est_biomolecules_t:: check_validity_of_vector_of_mol(): empty list of molecules.";
-  error_manager.check(local_error, err_msg);
-
-  // are offset consistent?
-  local_error = (atom_index_offset.size() != (size_t) nmol());
-  err_msg = "my_p4est_biomolecules_t:: check_validity_of_vector_of_mol(): the size of the vector of offset(s) of atom indices is wrong.";
-  error_manager.check(local_error, err_msg);
-
-  local_error = (atom_index_offset[0] != 0);
-  err_msg = "my_p4est_biomolecules_t:: check_validity_of_vector_of_mol(): the vector of offset(s) of atom indices is invalid.";
-  error_manager.check(local_error, err_msg);
-
-  for (size_t k = 1; k < nmol(); ++k) {
-    local_error = (atom_index_offset[k] != atom_index_offset[k-1]+bio_molecules[k-1].get_number_of_atoms());
-    err_msg = "my_p4est_biomolecules_t:: check_validity_of_vector_of_mol(): the vector of offset(s) of atom indices is invalid.";
-    error_manager.check(local_error, err_msg);
-  }
-
+  P4EST_ASSERT(nmol()>0);
+  P4EST_ASSERT(atom_index_offset.size() == nmol());
+  P4EST_ASSERT(atom_index_offset[0] == 0);
+  for (size_t k = 1; k < nmol(); ++k)
+    P4EST_ASSERT(atom_index_offset[k] == atom_index_offset[k-1]+bio_molecules[k-1].get_number_of_atoms());
   // check box_size_of_biggest_mol and index_of_biggest_mol
   const molecule& biggest_mol = bio_molecules[index_of_biggest_mol];
-  local_error = (fabs(box_size_of_biggest_mol - biggest_mol.get_side_length_of_bounding_cube()) > EPS*box_size_of_biggest_mol);
-  err_msg = "my_p4est_biomolecules_t:: check_validity_of_vector_of_mol(): the biggest molecule is misidentified.";
-  error_manager.check(local_error, err_msg);
-
-  local_error = !all_molecules_are_scaled_consistently();
-  err_msg = "my_p4est_biomolecules_t:: check_validity_of_vector_of_mol(): scaling is not consistent.";
-  error_manager.check(local_error, err_msg);
-
+  P4EST_ASSERT(fabs(box_size_of_biggest_mol - biggest_mol.get_side_length_of_bounding_cube()) <= EPS*box_size_of_biggest_mol);
+  P4EST_ASSERT(all_molecules_are_scaled_consistently());
   // check the molecules
   for (size_t k = 0; k < nmol(); ++k) {
     const molecule& mol_k = bio_molecules[k];
-    local_error = !mol_k.is_bounding_box_in_domain();
-    err_msg = "my_p4est_biomolecules_t:: check_validity_of_vector_of_mol(): a bounding box is not entirely in the domain";
-    error_manager.check(local_error, err_msg);
-    local_error = (mol_k.get_side_length_of_bounding_cube() > box_size_of_biggest_mol);
-    err_msg = "my_p4est_biomolecules_t:: check_validity_of_vector_of_mol(): the biggest molecule is misidentified";
-    error_manager.check(local_error, err_msg);
+    P4EST_ASSERT(mol_k.is_bounding_box_in_domain());
+    P4EST_ASSERT(mol_k.get_side_length_of_bounding_cube() <= box_size_of_biggest_mol);
   }
-#endif
   return;
 }
 bool my_p4est_biomolecules_t::all_molecules_are_scaled_consistently() const
@@ -1984,14 +1843,7 @@ void my_p4est_biomolecules_t::add_single_molecule(const string& file_path, const
 
 int my_p4est_biomolecules_t::find_mol_index(const int& global_atom_index, const size_t& guess) const
 {
-#ifdef CASL_THROWS
-  int local_error = (global_atom_index < 0 || global_atom_index >= total_nb_atoms);
-  if(local_error) // local abort since it is not a collective call
-  {
-    string err_msg = "my_p4est_biomolecules_t::find_mol_index(const int&): invalid global atom index, out of range: global_atom_index = " + to_string(global_atom_index) + " and total_nb_atoms = " + to_string(total_nb_atoms) +", called from proc " + to_string(p4est->mpirank) + " ...";
-    error_manager.print_message_and_abort(err_msg, 456654);
-  }
-#endif
+  P4EST_ASSERT(global_atom_index >= 0 && global_atom_index < total_nb_atoms);
   // check the guess first
   if(0 <= guess && guess < nmol() && atom_index_offset[guess] <= global_atom_index && global_atom_index < atom_index_offset[guess] + bio_molecules[guess].get_number_of_atoms())
     return guess;
@@ -2027,9 +1879,6 @@ my_p4est_biomolecules_t::my_p4est_biomolecules_t(p4est_t* p4est_, const double& 
                                                  const vector<string>* pqr_names, const string* input_folder,
                                                  vector<double>* angles, const vector<double>* centroids):
   parameters(p4est_),
-  #ifdef CASL_THROWS
-  error_manager(p4est_->mpirank, p4est_->mpisize, p4est_->mpicomm, error_file),
-  #endif
   p4est(p4est_),
   rank_encoding((int) (ceil(log2(p4est_->mpisize)))),
   max_quad_loc_idx(((ulong) 1)<<(8*sizeof(long) - (int) (ceil(log2(p4est_->mpisize)))))
@@ -2038,18 +1887,10 @@ my_p4est_biomolecules_t::my_p4est_biomolecules_t(p4est_t* p4est_, const double& 
   string err_msg;
   // sanity checks
   if(pqr_names == NULL && (angles != NULL || centroids != NULL))
-    PetscFPrintf(p4est_->mpicomm, error_file, "my_p4est_biomolecules_t::my_p4est_biomolecules_t(...): angle(s) and/or centroid(s) set, but pqr file(s) undefined: \n\
-                 : no molecule will be read so no rotation/translation/scaling will be applied.");
-  int nmolecules = (pqr_names != NULL)? pqr_names->size() : 0;
-
-  int local_error = ((angles != NULL) && (angles->size() != (size_t) nangle_per_mol*nmolecules) && (angles->size() != (size_t) nangle_per_mol));
-  if(local_error)
-    err_msg = "my_p4est_biomolecules_t::my_p4est_biomolecules_t(...): invalid number of rotation angles (fifth pointer argument). It should contain "+ to_string(nangle_per_mol*nmolecules) + " or " + to_string(nangle_per_mol) + " values (the same rotation for all molecules), but is of size " + to_string(angles->size()) + ".";
-  error_manager.check(local_error, err_msg);
-
-  local_error = (centroids != NULL && centroids->size() != (size_t) P4EST_DIM*nmolecules);
-  err_msg = "my_p4est_biomolecules_t::my_p4est_biomolecules_t(...): the number of centroid coordinates is invalid (last pointer argument). It should contain " + to_string(P4EST_DIM*nmolecules) + " values, but is of size " + to_string(centroids->size()) + ".";
-  error_manager.check(local_error, err_msg);
+    PetscFPrintf(p4est_->mpicomm, error_file, "my_p4est_biomolecules_t::my_p4est_biomolecules_t(...): angle(s) and/or centroid(s) set, but pqr file(s) undefined: no molecule will be read so no rotation/translation/scaling will be applied.");
+  size_t nmolecules = (pqr_names != NULL)? pqr_names->size() : 0;
+  P4EST_ASSERT((angles == NULL) || (angles->size() == nangle_per_mol*nmolecules) || (angles->size() == (size_t) nangle_per_mol));
+  P4EST_ASSERT(centroids == NULL || centroids->size() == P4EST_DIM*nmolecules);
 #endif
   if(timing_file != NULL)
     timer = new parStopWatch(parStopWatch::all_timings, timing_file, p4est->mpicomm);
@@ -2066,11 +1907,7 @@ my_p4est_biomolecules_t::my_p4est_biomolecules_t(p4est_t* p4est_, const double& 
   angstrom_to_domain      = 1.0;      // no molecule yet, so no scaling yet
 
   reduced_lists.clear(); // make sure no reduced_list exists beforehand
-#ifdef CASL_THROWS
-  local_error = (reduced_list::get_nb_reduced_lists() > 0);
-  err_msg = "my_p4est_biomolecules_t::constructor(...), couldn't delete all reduced lists of global atom indices, there might be memory leak(s)...";
-  error_manager.check(local_error, err_msg);
-#endif
+  P4EST_ASSERT(reduced_list::get_nb_reduced_lists() == 0);
   nodes                     = NULL;     // we will build the nodes internally, NULL initialization
   ghost                     = NULL;     // we will build the ghost internally, NULL initialization
   phi                       = NULL;     // we will build that one too, NULL initialization
@@ -2134,31 +1971,19 @@ Vec my_p4est_biomolecules_t::return_phi_vector()
     PetscErrorCode ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
     phi_p = NULL;
   }
-#ifdef CASL_THROWS
-  int local_error = phi == NULL;
-  string message = "my_p4est_biomolecules_t::return_phi_vector(): the phi vector is NULL, it can't be returned...";
-  error_manager.check(local_error, message);
-#endif
+  P4EST_ASSERT(phi!=NULL);
   Vec phi_to_return = phi; phi = NULL;
   return phi_to_return;
 }
 p4est_nodes_t* my_p4est_biomolecules_t::return_nodes()
 {
-#ifdef CASL_THROWS
-  int local_error = nodes == NULL;
-  string message = "my_p4est_biomolecules_t::return_nodes(): the nodes are not valid they can't be returned...";
-  error_manager.check(local_error, message);
-#endif
+  P4EST_ASSERT(nodes!=NULL);
   p4est_nodes_t* nodes_to_return = nodes; nodes = NULL;
   return nodes_to_return;
 }
 p4est_ghost_t* my_p4est_biomolecules_t::return_ghost()
 {
-#ifdef CASL_THROWS
-  int local_error = ghost == NULL;
-  string message = "my_p4est_biomolecules_t::return_ghost(): the ghosts are not valid, they can't be returned...";
-  error_manager.check(local_error, message);
-#endif
+  P4EST_ASSERT(ghost!=NULL);
   p4est_ghost_t* ghost_to_return = ghost; ghost = NULL;
   return ghost_to_return;
 }
@@ -2241,24 +2066,14 @@ void my_p4est_biomolecules_t::rescale_all_molecules(const double& new_scaling_fa
 }
 void my_p4est_biomolecules_t::rescale_all_molecules(const double& new_scaling_factor, const vector<double>* centroids)
 {
-#ifdef CASL_THROWS
-  int local_error = (new_scaling_factor < 0);
-  string err_msg = "my_p4est_biomolecules_t::rescale_all_molecules(const double&, const vector<double>*): the scaling factor must be strictly positive.";
-  error_manager.check(local_error, err_msg);
-  local_error = (centroids != NULL && centroids->size() != (size_t) P4EST_DIM*nmol());
-  err_msg = "my_p4est_biomolecules_t::rescale_all_molecules(const double&, const vector<double>*): the vector of centroid coordinates has invalid size.";
-  error_manager.check(local_error, err_msg);
-#endif
+  P4EST_ASSERT(new_scaling_factor >= 0.0);
+  P4EST_ASSERT(centroids == NULL || centroids->size() == P4EST_DIM*nmol());
   angstrom_to_domain = new_scaling_factor;
   rescale_all_molecules((centroids != NULL)?centroids->data():NULL);
 }
 void my_p4est_biomolecules_t::set_biggest_bounding_box(const double& biggest_cube_side_length_to_min_domain_size)
 {
-#ifdef CASL_THROWS
-  int local_error = (nmol()==0);
-  string err_msg = "my_p4est_biomolecules_t::set_biggest_bounding_box(const double&): empty vector of molecule, impossible action.";
-  error_manager.check(local_error, err_msg);
-#endif
+  P4EST_ASSERT(nmol()!=0);
   molecule& biggest_mol = bio_molecules[index_of_biggest_mol];
   rescale_all_molecules(biggest_mol.calculate_scaling_factor(biggest_cube_side_length_to_min_domain_size));
 }
@@ -2282,25 +2097,14 @@ void my_p4est_biomolecules_t::set_grid_and_surface_parameters(const int &lmin, c
 {
   // splitting criterion first
   int need_to_reset_p4est = (int) parameters.set_splitting_criterion(lmin, lmax, lip_);
-#ifdef CASL_THROWS
-  string err_msg = "my_p4est_biomolecules_t::set_grid_and_surface_parameters(...): the splitting criterion cannot be reset.";
-  error_manager.check(need_to_reset_p4est, err_msg);
-#endif
   //probe_radius
-#ifdef CASL_THROWS
-  int local_error = (!all_molecules_are_scaled_consistently());
-  err_msg = "my_p4est_biomolecules_t::set_grid_and_surface_parameters(...): the probe radius cannot be (re)set if molecules are not scaled consistently.";
-  error_manager.check(local_error, err_msg);
-#endif
-  need_to_reset_p4est |= parameters.set_probe_radius(angstrom_to_domain*rp_);
+  P4EST_ASSERT(all_molecules_are_scaled_consistently()); // the probe radius cannot be (re)set if molecules are not scaled consistently
+
+  need_to_reset_p4est = need_to_reset_p4est || parameters.set_probe_radius(angstrom_to_domain*rp_);
   // order of accuracy (for thickess of accuracy layer)
-  need_to_reset_p4est |= parameters.set_OOA(ooa_);
-#ifdef CASL_THROWS
-  err_msg = "my_p4est_biomolecules_t::set_grid_and_surface_parameters(...): the order of accuracy cannot be (re)set.";
-  error_manager.check(need_to_reset_p4est, err_msg);
-#endif
+  need_to_reset_p4est = need_to_reset_p4est || parameters.set_OOA(ooa_);
   if (need_to_reset_p4est)
-    p4est = reset_p4est();
+    reset_p4est();
 }
 
 void my_p4est_biomolecules_t::set_splitting_criterion(const int& lmin, const int& lmax, const double& lip_)
@@ -2325,11 +2129,12 @@ double my_p4est_biomolecules_t::get_largest_radius_of_all() const
   }
   return largest_largest_radius;
 }
-p4est_t* my_p4est_biomolecules_t::reset_p4est()
+void my_p4est_biomolecules_t::reset_p4est()
 {
   p4est_t* new_p4est = my_p4est_new(p4est->mpicomm, p4est->connectivity, 0, NULL, NULL);
   p4est_destroy(p4est);
-  return new_p4est;
+  p4est = new_p4est;
+  return;
 }
 void my_p4est_biomolecules_t::update_max_level()
 {
@@ -2840,15 +2645,9 @@ void my_p4est_biomolecules_t::build_brick()
 
 void my_p4est_biomolecules_t::partition_uniformly(const bool export_cavities, const bool build_ghost)
 {
-#ifdef CASL_THROWS
-  int local_error = (p4est == NULL);
-  string err_msg = "my_p4est_biomolecules_t::partition_uniformly(): this function requires a valid p4est object.";
-  error_manager.check(local_error, err_msg);
-
-  local_error = (phi != NULL && nodes == NULL);
-  err_msg = "my_p4est_biomolecules_t::partition_uniformly(): this function requires valid nodes if the levelset function is defined.";
-  error_manager.check(local_error, err_msg);
-
+  P4EST_ASSERT(p4est!=NULL);
+  P4EST_ASSERT(phi==NULL || nodes!=NULL); // this function requires valid nodes if the levelset function is defined
+#ifdef DEBUG
   if(phi != NULL)
   {
     p4est_gloidx_t total_nb_nodes = 0;
@@ -2856,9 +2655,7 @@ void my_p4est_biomolecules_t::partition_uniformly(const bool export_cavities, co
       total_nb_nodes += nodes->global_owned_indeps[rank];
     PetscInt size;
     PetscErrorCode ierr = VecGetSize(phi, &size); CHKERRXX(ierr);
-    local_error = size != total_nb_nodes;
-    err_msg = "my_p4est_biomolecules_t::partition_uniformly(): the size of the levelset vector is not equal to the total number of nodes.";
-    error_manager.check(local_error, err_msg);
+    P4EST_ASSERT(size == total_nb_nodes); // the size of the levelset vector is not equal to the total number of nodes
   }
 #endif
   my_p4est_partition(p4est, P4EST_FALSE, NULL); // do not allow for coarsening, it's the last stage...
@@ -2949,15 +2746,9 @@ int my_p4est_biomolecules_t::partition_weight_for_enforcing_min_level(p4est_t *p
 
 void my_p4est_biomolecules_t::enforce_min_level(bool export_cavities)
 {
-#ifdef CASL_THROWS
-  int local_error = (p4est == NULL);
-  string err_msg = "my_p4est_biomolecules_t::enforce_min_level_and_partition_uniformly(): this function requires a valid p4est object.";
-  error_manager.check(local_error, err_msg);
-
-  local_error = (phi == NULL || nodes == NULL);
-  err_msg = "my_p4est_biomolecules_t::enforce_min_level_and_partition_uniformly(): this function requires valid nodes and a valid node-sampled levelset function.";
-  error_manager.check(local_error, err_msg);
-
+  P4EST_ASSERT(p4est!=NULL);
+  P4EST_ASSERT(phi!=NULL && nodes !=NULL); // this function requires valid nodes and a valid node-sampled levelset function
+#ifdef DEBUG
   if(phi != NULL)
   {
     p4est_gloidx_t total_nb_nodes = 0;
@@ -2965,9 +2756,7 @@ void my_p4est_biomolecules_t::enforce_min_level(bool export_cavities)
       total_nb_nodes += nodes->global_owned_indeps[rank];
     PetscInt size;
     PetscErrorCode ierr = VecGetSize(phi, &size); CHKERRXX(ierr);
-    local_error = size != total_nb_nodes;
-    err_msg = "my_p4est_biomolecules_t::enforce_min_level_and_partition_uniformly(): the size of the node-sampled levelset function is not equal to the total number of nodes.";
-    error_manager.check(local_error, err_msg);
+    P4EST_ASSERT(size == total_nb_nodes);
   }
 #endif
   P4EST_ASSERT((export_cavities && inner_domain != NULL) || (!export_cavities && inner_domain == NULL));
@@ -3001,9 +2790,7 @@ void my_p4est_biomolecules_t::enforce_min_level(bool export_cavities)
   PetscInt size1, size2;
   ierr = VecGetSize(former_phi, &size1); CHKERRXX(ierr);
   ierr = VecGetSize(phi, &size2); CHKERRXX(ierr);
-  local_error = size1 != size2;
-  err_msg = "my_p4est_biomolecules_t::enforce_min_level(): logic error, inconsistent number of points after partitioning...";
-  error_manager.check(local_error, err_msg);
+  P4EST_ASSERT(size1==size2);
 #endif
   VecScatter ctx, ctx_inner_domain;
   IS is;
@@ -3165,11 +2952,7 @@ void my_p4est_biomolecules_t::enforce_min_level(bool export_cavities)
     }
   }
 
-#ifdef CASL_THROWS
-  local_error = (known_fine_indices.size()  != nodes->indep_nodes.elem_count);
-  err_msg = "my_p4est_biomolecules_t::enforce_min_level_and_partition_uniformly(): some nodes were not updated when enforcing the min level.";
-  error_manager.check(local_error, err_msg);
-#endif
+  P4EST_ASSERT(known_fine_indices.size() == nodes->indep_nodes.elem_count);
 
 
   ierr    = VecRestoreArrayRead(coarse_phi, &coarse_phi_read_only_p); coarse_phi_read_only_p = NULL; CHKERRXX(ierr);
@@ -3192,22 +2975,11 @@ void my_p4est_biomolecules_t::replace_fn_min_level(p4est_t *park, p4est_topidx_t
 {
   (void) num_incoming;
   (void) which_tree;
-  if (num_outgoing > 1) {
-    // this is coarsening, it should NEVER happend
-#ifdef CASL_THROWS
-    my_p4est_biomolecules_t* biomol = (my_p4est_biomolecules_t*) park->user_pointer;
-    string err_msg = "my_p4est_biomolecules_t::replace_fn_min_level(...): invoked coarsening...";
-    biomol->error_manager.print_message_and_abort(err_msg, 22446688);
-#else
-    MPI_Abort(park->mpicomm, 22446688);
-#endif
-  }
-  else {
-    /* this is refinement */
-    for (short i = 0; i < P4EST_CHILDREN; ++i)
-      incoming[i]->p.user_long = outgoing[0]->p.user_long;
-    // copy the local quadrant index of the original parent cell for further linear interpolation
-  }
+  P4EST_ASSERT(num_outgoing <=1); // this is coarsening, it should NEVER happend
+  /* this is refinement */
+  for (unsigned char i = 0; i < P4EST_CHILDREN; ++i)
+    incoming[i]->p.user_long = outgoing[0]->p.user_long;
+  // copy the local quadrant index of the original parent cell for further linear interpolation
 }
 
 p4est_bool_t my_p4est_biomolecules_t::refine_fn_min_level(p4est_t *park, p4est_topidx_t which_tree, p4est_quadrant_t *quad)
@@ -3274,27 +3046,16 @@ bool my_p4est_biomolecules_t::is_point_in_outer_domain_and_updated(p4est_locidx_
 void my_p4est_biomolecules_t::remove_internal_cavities(const bool export_cavities)
 {
   PetscErrorCode ierr;
-#ifdef CASL_THROWS
-  int local_error = phi == NULL;
-  string err_msg = "my_p4est_biomolecules_t::remove_internal_cavities(): this method requires a valid levelset.";
-  error_manager.check(local_error, err_msg);
-
-  local_error = nodes == NULL;
-  err_msg = "my_p4est_biomolecules_t::remove_internal_cavities(): this method requires valid nodes.";
-  error_manager.check(local_error, err_msg);
-
+  P4EST_ASSERT(phi!=NULL);
+  P4EST_ASSERT(nodes!=NULL);
+#ifdef DEBUG
   PetscInt size;
   p4est_gloidx_t nb_total_nodes = 0;
   for (int proc_rank = 0; proc_rank < p4est->mpisize; ++proc_rank)
     nb_total_nodes += nodes->global_owned_indeps[proc_rank];
   ierr = VecGetSize(phi, &size); CHKERRXX(ierr);
-  local_error = size != nb_total_nodes;
-  err_msg = "my_p4est_biomolecules_t::remove_internal_cavities(): the size of the level set vector is not equal to the total number of nodes.";
-  error_manager.check(local_error, err_msg);
-
-  local_error = !neighbors->neighbors_are_initialized();
-  err_msg = "my_p4est_biomolecules_t::remove_internal_cavities(): the neighbors must be initialized.";
-  error_manager.check(local_error, err_msg);
+  P4EST_ASSERT(size == nb_total_nodes);
+  P4EST_ASSERT(neighbors->neighbors_are_initialized()); // the neighbors must be initialized
 #endif
 
   if(inner_domain != NULL)
@@ -3374,67 +3135,21 @@ p4est_t* my_p4est_biomolecules_t::construct_SES(const sas_generation_method& met
 {
   // sanity checks
   check_validity_of_vector_of_mol();
-  int local_error = (nodes != NULL);
-#ifdef CASL_THROWS
-  string err_msg = "my_p4est_biomolecules_t::construct_SES(...): nodes should be NULL when invoked.";
-  error_manager.check(local_error, err_msg);
-#else
-  if(local_error)
-  {
-    p4est_nodes_destroy(nodes); nodes = NULL;
-  }
-#endif
-  local_error = (ghost != NULL);
-#ifdef CASL_THROWS
-  err_msg = "my_p4est_biomolecules_t::construct_SES(...): ghost should be NULL when invoked.";
-  error_manager.check(local_error, err_msg);
-#else
-  if(local_error)
-  {
-    p4est_ghost_destroy(ghost); ghost = NULL;
-  }
-#endif
-  local_error = phi != NULL;
-#ifdef CASL_THROWS
-  err_msg = "my_p4est_biomolecules_t::construct_SES(...): phi should be NULL when invoked.";
-  error_manager.check(local_error, err_msg);
-#else
-  if(local_error)
-  {
+  if(nodes!=NULL){
+    p4est_nodes_destroy(nodes); nodes = NULL; }
+  if(ghost!=NULL){
+    p4est_ghost_destroy(ghost); ghost = NULL; }
+  if(phi!=NULL){
     PetscErrorCode ierr = VecDestroy(phi); CHKERRXX(ierr);
     phi_read_only_p = NULL; phi_p = NULL; phi = NULL;
   }
-#endif
-  local_error = inner_domain != NULL;
-#ifdef CASL_THROWS
-  err_msg = "my_p4est_biomolecules_t::construct_SES(...): innder_domain should be NULL when invoked.";
-  error_manager.check(local_error, err_msg);
-#else
-  if(local_error)
-  {
-    PetscErrorCode ierr = VecDestroy(inner_domain); CHKERRXX(ierr);
-    inner_domain = NULL;
-  }
-#endif
+  if(inner_domain!=NULL){
+    PetscErrorCode ierr = VecDestroy(inner_domain); CHKERRXX(ierr); inner_domain = NULL;}
   update_max_level();
-  local_error = global_max_level > parameters.lmin();
-#ifdef CASL_THROWS
-  err_msg = "my_p4est_biomolecules_t::construct_SES(...): the p4est is already refined, the method assumes a coarse p4est when invoked.";
-  error_manager.check(local_error, err_msg);
-#else
-  if(local_error)
-    p4est = reset_p4est();
-#endif
-  local_error = p4est->data_size != 0;
-  if(local_error)
-  {
-#ifdef CASL_THROWS
-    err_msg = "my_p4est_biomolecules_t::construct_SES(...): we assume no user-defined data, internal management of user-defined data is not handled (yet)...";
-    error_manager.check(local_error, err_msg);
-#else
+  if(global_max_level > parameters.lmin()) // the p4est is already refined, the method assumes a pristine, coarse p4est when invoked
+    reset_p4est();
+  if(p4est->data_size != 0)
     p4est_reset_data(p4est, 0, NULL, p4est->user_pointer);
-#endif
-  }
 
   parStopWatch* log_timer = NULL;
   if(log_file != NULL)
@@ -3478,12 +3193,7 @@ p4est_t* my_p4est_biomolecules_t::construct_SES(const sas_generation_method& met
       need_deletion = (dynamic_cast<SAS_creator_list_reduction*>(sas_creator) == nullptr);
       break;
     default:
-#ifdef CASL_THROWS
-      err_msg = "my_p4est_biomolecules_t::construct_SES(const sas_generation_method& ): unknown sas generation method...";
-      error_manager.print_message_and_abort(err_msg, 265562);
-#else
-      MPI_Abort(p4est->mpicomm, 265562);
-#endif
+      throw std::invalid_argument("my_p4est_biomolecules_t::construct_SES(const sas_generation_method& ): unknown sas generation method...");
       break;
     }
     if(need_deletion)
@@ -3508,23 +3218,14 @@ p4est_t* my_p4est_biomolecules_t::construct_SES(const sas_generation_method& met
       sas_creator = new SAS_creator_list_reduction(p4est, true, SAS_timing_flag, SAS_subtiming_flag);
       break;
     default:
-#ifdef CASL_THROWS
-      err_msg = "my_p4est_biomolecules_t::construct_SES(const sas_generation_method& ): unknown SAS generation method...";
-      error_manager.print_message_and_abort(err_msg, 265562);
-#else
-      MPI_Abort(p4est->mpicomm, 265562);
-#endif
+      throw std::invalid_argument("my_p4est_biomolecules_t::construct_SES(const sas_generation_method& ): unknown SAS generation method...");
       break;
     }
   }
 
   // construct the sas grid and surface
   sas_creator->construct_SAS(p4est);
-#ifdef CASL_THROWS
-  local_error = reduced_list::get_nb_reduced_lists() != 0;
-  err_msg = "my_p4est_biomolecules_t::construct_SES(): some reduced lists have not been deleted after the creation of the SAS surface, memory leak has happened...";
-  error_manager.check(local_error, err_msg);
-#endif
+  P4EST_ASSERT(reduced_list::get_nb_reduced_lists() == 0); // some reduced lists have not been deleted after the creation of the SAS surface, memory leak has happened..."
   delete sas_creator; sas_creator = NULL;
 
   if(vtk_folder[vtk_folder.size()-1] == '/')
@@ -3596,12 +3297,7 @@ p4est_t* my_p4est_biomolecules_t::construct_SES(const sas_generation_method& met
       // END OF VERY IMPORTANT NOTE
       break;
     default:
-#ifdef CASL_THROWS
-      err_msg = "my_p4est_biomolecules_t::construct_SES(): the order of accuracy should be either 1 or 2!!!";
-      error_manager.print_message_and_abort(err_msg, 64799746);
-#else
-      MPI_Abort(p4est->mpicomm, 64799746);
-#endif
+      throw  std::invalid_argument("my_p4est_biomolecules_t::construct_SES(): the order of accuracy should be either 1 or 2!");
       break;
     }
   }
@@ -3984,11 +3680,7 @@ bool my_p4est_biomolecules_t::coarsening_step(int& step_idx, bool export_acceler
     }
   }
   // sanity check
-#ifdef CASL_THROWS
-  int local_error = (idx != nodes->num_owned_indeps);
-  string err_msg = "\n my_p4est_biomolecules_t::coarsening_step(...) killed because of logic error \n \n";
-  error_manager.check(local_error, err_msg);
-#endif
+  P4EST_ASSERT(idx == nodes->num_owned_indeps);
 
   ierr  = VecGetArrayRead(phi, &phi_read_only_p); CHKERRXX(ierr);
   my_p4est_partition(p4est, P4EST_TRUE, my_p4est_biomolecules_t::weight_for_coarsening);
@@ -4106,27 +3798,15 @@ my_p4est_biomolecules_solver_t::my_p4est_biomolecules_solver_t(const my_p4est_bi
 }
 void    my_p4est_biomolecules_solver_t::set_molecular_relative_permittivity(double epsilon_molecule)
 {
-#ifdef CASL_THROWS
-  int local_error = (epsilon_molecule < 1.0);
-  string error_message = "my_p4est_biomolecules_solver_t::set_molecular_relative_permittivity(...): the value of the molecular relative permittivity must be greater than or equal to 1.0.";
-  biomolecules->error_manager.check(local_error, error_message);
-  if(mol_rel_permittivity > 1.0-EPS && fabs(mol_rel_permittivity - epsilon_molecule) > EPS*mol_rel_permittivity)
-  {
-    // print a warning
-    string message = "my_p4est_biomolecules_solver_t::set_molecular_relative_permittivity(...): the molecular permittivity was already set, it will be reset...\n";
-    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->error_file, message.c_str()); CHKERRXX(ierr);
-  }
-#endif
+  P4EST_ASSERT(epsilon_molecule >= 1.0-EPS);
   // if the value is changed, psi_star, psi_bar and psi are no longer valid
   psi_star_psi_naught_and_psi_bar_are_set = psi_hat_is_set = !(fabs(mol_rel_permittivity - epsilon_molecule) > EPS*fabs(mol_rel_permittivity));
   mol_rel_permittivity  = epsilon_molecule;
 }
 void    my_p4est_biomolecules_solver_t::set_electrolyte_relative_permittivity(double epsilon_electrolyte)
 {
+  P4EST_ASSERT(epsilon_electrolyte > 1.0);
 #ifdef CASL_THROWS
-  int local_error = (epsilon_electrolyte < 1.0);
-  string error_message = "my_p4est_biomolecules_solver_t::set_electrolyte_relative_permittivity(...): the value of the electrolyte relative permittivity must be greater than or equal to 1.0.";
-  biomolecules->error_manager.check(local_error, error_message);
   if(elec_rel_permittivity > 1.0-EPS && fabs(elec_rel_permittivity - epsilon_electrolyte) > EPS*elec_rel_permittivity)
   {
     // print a warning
@@ -4145,10 +3825,8 @@ void    my_p4est_biomolecules_solver_t::set_relative_permittivities(double epsil
 }
 void    my_p4est_biomolecules_solver_t::set_temperature_in_kelvin(double temperature_in_K)
 {
+  P4EST_ASSERT(temperature_in_K > EPS); //the value of the temperature must be strictly positive
 #ifdef CASL_THROWS
-  int local_error = (temperature_in_K < EPS);
-  string error_message = "my_p4est_biomolecules_solver_t::set_temperature_in_K(...): the value of the temperature must be strictly positive.";
-  biomolecules->error_manager.check(local_error, error_message);
   if(temperature_is_set() && temperature_in_K > EPS && fabs(temperature - temperature_in_K) > EPS*temperature)
   {
     // print a warning
@@ -4180,10 +3858,8 @@ void    my_p4est_biomolecules_solver_t::set_far_field_ion_density(double n_0)
 }
 void    my_p4est_biomolecules_solver_t::set_ion_charge(int z)
 {
+  P4EST_ASSERT(z>0); // the ion charge must be a strictly positive integer
 #ifdef CASL_THROWS
-  int local_error = (z <= 0);
-  string error_message = "my_p4est_biomolecules_solver_t::set_ion_charge(...): the ion charge must be a strictly positive integer.";
-  biomolecules->error_manager.check(local_error, error_message);
   if(ion_charge_is_set() && z > 0 && ion_charge != z)
   {
     // print a warning
@@ -4209,12 +3885,7 @@ void    my_p4est_biomolecules_solver_t::set_inverse_debye_length_in_meters_inver
     if(fabs(get_inverse_debye_length_in_meters_inverse() - inverse_debye_length_in_m_inverse) < EPS*get_inverse_debye_length_in_meters_inverse())
       return; // nothing to be done
     // or the user is dumb and we should teach him
-#ifdef CASL_THROWS
-    string err_msg = "my_p4est_biomolecules_solver_t::set_debye_length_in_meters(): the debye length is already set by the relevant parameters, it can't be set to the new value: abort...";
-    biomolecules->error_manager.print_message_and_abort(err_msg, 957759);
-#else
-    MPI_Abort(biomolecules->p4est->mpicomm, 957759);
-#endif
+    P4EST_ASSERT(false); // the debye length is already set by the relevant parameters, it can't be set to the new value: abort;
   }
   // if only 2 of the three parameters are set, it's the "easy" case, the third one might be calculated
   if(ion_charge_is_set() && temperature_is_set() && !far_field_ion_density_is_set())
@@ -4236,17 +3907,8 @@ void    my_p4est_biomolecules_solver_t::set_inverse_debye_length_in_meters_inver
     // ion charge might be freely set
     double my_z = sqrt(eps_0*kB*temperature/(2.0*far_field_ion_density*SQR((1/inverse_debye_length_in_m_inverse)*electron)));
     // but it's supposed to be an integer, so let's check that
-    if(fabs(my_z - round(my_z)) < EPS*my_z)
-      set_ion_charge((int) round(my_z));
-    else
-    {
-#ifdef CASL_THROWS
-      string err_msg = "my_p4est_biomolecules_solver_t::set_debye_length_in_meters(): the calculated ion charge is not an integer, it can't be fixed: abort...";
-      biomolecules->error_manager.print_message_and_abort(err_msg, 95788759);
-#else
-      MPI_Abort(biomolecules->p4est->mpicomm, 95788759);
-#endif
-    }
+    P4EST_ASSERT(fabs(my_z - round(my_z)) < EPS*my_z);
+    set_ion_charge((int) round(my_z));
     std::cout << "setting ion charge based on other values \n";
     return;
   }
@@ -4272,29 +3934,14 @@ void    my_p4est_biomolecules_solver_t::set_inverse_debye_length_in_meters_inver
 }
 double  my_p4est_biomolecules_solver_t::get_inverse_debye_length_in_meters_inverse() const
 {
-  if(all_debye_parameters_are_set()){
-    //return sqrt(eps_0*kB*temperature/(2.0*far_field_ion_density*SQR(((double) ion_charge)*electron)));
-    return sqrt((2.0*far_field_ion_density*SQR(((double) ion_charge)*electron))/(eps_0*kB*temperature));
-  }
-  else
-  {
-#ifdef CASL_THROWS
-    string err_msg = "my_p4est_biomolecules_solver_t::get_inverse_debye_length_in_meters_inverse(): not all debye parameters are set, the debye length cannot be calculated: abort...";
-    biomolecules->error_manager.print_message_and_abort(err_msg, 95755759);
-#else
-    MPI_Abort(biomolecules->p4est->mpicomm, 95755759);
-#endif
-    return DBL_MAX;
-  }
+  P4EST_ASSERT(all_debye_parameters_are_set());
+  //return sqrt(eps_0*kB*temperature/(2.0*far_field_ion_density*SQR(((double) ion_charge)*electron)));
+  return sqrt((2.0*far_field_ion_density*SQR(((double) ion_charge)*electron))/(eps_0*kB*temperature));
 }
 
 void    my_p4est_biomolecules_solver_t::return_psi_star_psi_naught_and_psi_bar(Vec &psi_star_out, Vec &psi_naught_out, Vec &psi_bar_out)
 {
-#ifdef CASL_THROWS
-  int local_error = ((psi_bar == NULL) || (psi_star == NULL));
-  string message = "my_p4est_biomolecules_solver_t::return_psi_bar_and_psi_star(): (one of) the psi_bar and psi_star vectors is (are) NULL, (it) they can't be returned...";
-  biomolecules->error_manager.check(local_error, message);
-#endif
+  P4EST_ASSERT((psi_bar !=NULL) && (psi_star !=NULL));
   psi_star_out    = psi_star; psi_star = NULL;
   psi_naught_out  = psi_naught; psi_naught = NULL;
   psi_bar_out     = psi_bar; psi_bar = NULL;
@@ -4302,11 +3949,7 @@ void    my_p4est_biomolecules_solver_t::return_psi_star_psi_naught_and_psi_bar(V
 }
 void     my_p4est_biomolecules_solver_t::return_psi_hat(Vec &psi_hat_out)
 {
-#ifdef CASL_THROWS
-  int local_error = psi_hat == NULL;
-  string message = "my_p4est_biomolecules_solver_t::return_psi_hat(): the psi_hat vector is NULL, it can't be returned...";
-  biomolecules->error_manager.check(local_error, message);
-#endif
+  P4EST_ASSERT(psi_hat != NULL);
   psi_hat_out=psi_hat; psi_hat=NULL;
   //  Vec psi_hat_to_return = psi_hat;
   //  //psi_hat = NULL;
@@ -4353,11 +3996,7 @@ void    my_p4est_biomolecules_solver_t::solve_singular_part()
 {
   if(psi_star_psi_naught_and_psi_bar_are_set)
     return;
-#ifdef CASL_THROWS
-  int local_error = !(temperature_is_set() && ion_charge_is_set() && molecular_permittivity_is_set());
-  string err_msg  = "my_p4est_biomolecules_solver_t::solve_singular_part(): some parameters are not set yet, the singular problem can't be solved...";
-  biomolecules->error_manager.check(local_error, err_msg);
-#endif
+  P4EST_ASSERT(temperature_is_set() && ion_charge_is_set() && molecular_permittivity_is_set());
   // This step is somehow critical, because its solution will determine the jump conditions at the
   // interface for the (non)linear Poisson-Boltzmann solver. Those jump conditions depend on the
   // NORMAL DERIVATIVE of the singular solution psi_bar calculated herein.
@@ -4437,46 +4076,19 @@ void    my_p4est_biomolecules_solver_t::solve_singular_part()
                                  quadratic_non_oscillatory);
     break;
   default:
-#ifdef CASL_THROWS
-    err_msg = "my_p4est_biomolecules_solver_t::solve_singular_part(), the order of accuracy should be either 1 or 2!!!";
-    biomolecules->error_manager.print_message_and_abort(err_msg, 19791);
-#else
-    MPI_Abort(biomolecules->p4est->mpicomm, 19791);
-#endif
+    throw std::invalid_argument("my_p4est_biomolecules_solver_t::solve_singular_part(), the order of accuracy should be either 1 or 2!");
     break;
   }
 
-#ifdef P4_TO_P8
-  BoundaryConditions3D bc;
-#else
-  BoundaryConditions2D bc;
-#endif
-  struct:
-    #ifdef P4_TO_P8
-      CF_3
-    #else
-      CF_2
-    #endif
+  BoundaryConditionsDIM bc;
+  struct : CF_DIM
   {
-    double operator()(double, double
-                  #ifdef P4_TO_P8
-                      , double
-                  #endif
-                      ) const { return 0.0;}
+    double operator()(DIM(double, double, double)) const { return 0.0;}
   } bc_wall_value;
 
-  struct:
-    #ifdef P4_TO_P8
-      WallBC3D
-    #else
-      WallBC2D
-    #endif
+  struct: WallBCDIM
   {
-    BoundaryConditionType operator()(double, double
-                                 #ifdef P4_TO_P8
-                                     , double
-                                 #endif
-                                     ) const { return DIRICHLET; }
+    BoundaryConditionType operator()(DIM(double, double, double)) const { return DIRICHLET; }
   } bc_wall_type;
 
   bc.setWallTypes(bc_wall_type);
@@ -4704,17 +4316,9 @@ int     my_p4est_biomolecules_solver_t::solve_nonlinear(double upper_bound_resid
   int iter = 0;
   if (psi_hat_is_set)
     return iter;
-#ifdef CASL_THROWS
-  int local_error = !all_parameters_are_set();
-  string err_msg  = "my_p4est_biomolecules_solver_t::solve_nonlinear(...): some parameters are not set yet, the nonlinear problem can't be solved...";
-  biomolecules->error_manager.check(local_error, err_msg);
-  local_error     = it_max < 1;
-  err_msg         = "my_p4est_biomolecules_solver_t::solve_nonlinear(...): the maximum number of iterations must be one at least!...";
-  biomolecules->error_manager.check(local_error, err_msg);
-  local_error     = ( (it_max > 1) && (upper_bound_residual <= 0.0));
-  err_msg         = "my_p4est_biomolecules_solver_t::solve_nonlinear(...): the upper bound for the residual must be strictly positive!...";
-  biomolecules->error_manager.check(local_error, err_msg);
-#endif
+  P4EST_ASSERT(all_parameters_are_set());
+  P4EST_ASSERT(it_max >=1);
+  P4EST_ASSERT(it_max==1 || upper_bound_residual> 0.0);
   parStopWatch *log_timer = NULL, *solve_subtimer = NULL;
   if(biomolecules->log_file != NULL)
   {
@@ -5004,16 +4608,12 @@ void my_p4est_biomolecules_solver_t::get_solvation_free_energy()
 #endif
   return;
 #else
-#ifdef CASL_THROWS
-  int local_error = !all_parameters_are_set();
-  string err_msg  = "my_p4est_biomolecules_solver_t::get_solvation_free_energy(): some parameters are not set yet, the nonlinear problem can't be solved, the solvation free energy can't be calculated...";
-  biomolecules->error_manager.check(local_error, err_msg);
-#endif
+  P4EST_ASSERT(all_parameters_are_set());
   if(!psi_star_psi_naught_and_psi_bar_are_set)
   {
     psi_hat_is_set = false;
 #ifdef CASL_THROWS
-    err_msg  = "my_p4est_biomolecules_solver_t::get_solvation_free_energy(): the solution psi_bar for the singular parts is not known yet, it will be calculated...\n";
+    string err_msg  = "my_p4est_biomolecules_solver_t::get_solvation_free_energy(): the solution psi_bar for the singular parts is not known yet, it will be calculated...\n";
     ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->error_file, err_msg.c_str()); CHKERRXX(ierr);
 #endif
     solve_singular_part();
@@ -5022,7 +4622,7 @@ void my_p4est_biomolecules_solver_t::get_solvation_free_energy()
   if(!psi_hat_is_set)
   {
 #ifdef CASL_THROWS
-    err_msg  = "my_p4est_biomolecules_solver_t::get_solvation_free_energy(): the solution of the general nonlinear Poisson-Boltzmann equation is not known, it will be calculated...\n";
+    string err_msg  = "my_p4est_biomolecules_solver_t::get_solvation_free_energy(): the solution of the general nonlinear Poisson-Boltzmann equation is not known, it will be calculated...\n";
     ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->error_file, err_msg.c_str()); CHKERRXX(ierr);
 #endif
     solve_nonlinear(1.0e-8, 10000);
@@ -5103,12 +4703,7 @@ void my_p4est_biomolecules_solver_t::get_solvation_free_energy()
                                                   quadratic /*quadratic_non_oscillatory_continuous_v2*/);
     break;
   default:
-#ifdef CASL_THROWS
-    err_msg = "my_p4est_biomolecules_solver_t::solve_singular_part(), the order of accuracy should be either 1 or 2!!!";
-    biomolecules->error_manager.print_message_and_abort(err_msg, 19791);
-#else
-    MPI_Abort(biomolecules->p4est->mpicomm, 19791);
-#endif
+    throw std::invalid_argument("my_p4est_biomolecules_solver_t::solve_singular_part(), the order of accuracy should be either 1 or 2!");
     break;
   }
 
