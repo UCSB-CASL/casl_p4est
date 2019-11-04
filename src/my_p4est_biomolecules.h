@@ -264,6 +264,7 @@ private:
     inline double tree_diag()       const { return sqrt(SUMD(SQR(tree_dimensions[0]), SQR(tree_dimensions[1]), SQR(tree_dimensions[2]))); }
     inline bool are_set()           const { return (is_splitting_criterion_set() && is_probe_radius_set() && is_layer_thickness_set()); }
     inline double tree_dim(const unsigned char &dir) const { return tree_dimensions[dir]; }
+    inline double domain_dim(const unsigned char &dir) const { return domain_dimensions[dir]; }
 
     bool set_splitting_criterion(const int& l_min, const int& l_max, const double& lip_)
     {
@@ -318,7 +319,7 @@ private:
         {
           PetscFPrintf(comm, error_file, general_message.c_str());
           for (int k = 0; k < mpi_size; ++k)
-            if (general_errors.at(k))
+            if (general_errors[k])
               PetscFPrintf(comm, error_file, "------ a local error came from proc %d\n", k);
         }
         MPI_Abort(comm, 36606);
@@ -338,14 +339,20 @@ private:
     // the environement in which the molecule lives
     const my_p4est_biomolecules_t* environment;
     // dimensional variables: need an update when angstrom_to_domain is modified
-    vector<Atom>  atoms;                              // list of atoms in the molecule
-    int           n_charged_atoms;                    // number of charged atoms
-    vector<int>   index_of_charged_atom;              // vector of indices of the charged atoms only (to evaluate the analytical function handling singularities efficiently)
+    vector<Atom>  atoms;                                  // list of atoms in the molecule
+    int           n_charged_atoms;                        // number of charged atoms
+    vector<int>   index_of_charged_atom;                  // vector of indices of the charged atoms only (to evaluate the analytical function handling singularities efficiently)
 
-    double        scaling;                            // scaling factor used for this moleculte: distance in the domain = scaling*(distance in angstrom) == "molecule-specific angstrom_to_domain"
-    bool          scale_is_set;                       // true if the molecule has been scaled (activates the "check if molecule is in box" error management)
+    // scaling factor used for this moleculte:
+    // is_set: flag to indicate if the molecule was already scaled or not;
+    // angstrom_to_domain: "molecule-specific" angstrom_to_domain (the environement is responsible to check for consistency of such factors across all molecules)
+    struct scaling{
+      bool is_set;
+      double angstrom_to_domain;
+      scaling() : is_set(false), angstrom_to_domain(1.0) {}
+    } scaling;
     double        molecule_centroid[P4EST_DIM];
-    double        side_length_of_bounding_cube;       // self-explanatory
+    double        side_length_of_bounding_box[P4EST_DIM]; // self-explanatory
     double        largest_radius;
     /*!
      * \brief read: reads the pqr file (in parallel by chunks, and then allgather) and
@@ -354,45 +361,36 @@ private:
      * \param overlap: max number of characters per (relevant) line in the pqr file (or any integer greater than that!)
      */
     void          read(const string &pqr, const int &overlap);
-    /*!
-     * \brief calculate_center_of_domain: self_explicit
-     * \param domain_center[out]: pointer to domain center (an array of double[P4EST_DIM]).
-     */
-    inline void   calculate_center_of_domain(double* domain_center) const
-    {
-      double *vertices_to_coordinates = environment->p4est->connectivity->vertices;
-      p4est_topidx_t *tree_to_vertex  = environment->p4est->connectivity->tree_to_vertex;
-      for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-        domain_center[dir] = 0.5*(vertices_to_coordinates[3*tree_to_vertex[0] + dir] + vertices_to_coordinates[3*tree_to_vertex[P4EST_CHILDREN*(environment->p4est->connectivity->num_trees-1) + P4EST_CHILDREN-1] + dir]);
-    }
+
   public:
     /*!
      * \brief molecule constructor.
      * \param owner: pointer to a constant my_p4est_biomolecule object (in which the current molecule lives)
      * \param pqr_: full path to the pqr file to read;
-     * \param angstrom_to_domain_: scaling factor from angstrom to domain dimensions (default is 1,
-     * i.e. no scaling) -- The validity check is skipped in debug mode in that case);
-     * \param xyz_c (optional): pointer to new_centroid (an array of double[P4EST_DIM]).
-     * new_centroid = s*old_centroid if the pointer is NULL (or disregarded);
-     * \param angles (optional): pointer to an array of angles (in radians) defining the rotation
+     * \param angstrom_to_domain_ (optional): (pointer to a) scaling factor from angstrom to domain dimensions
+     * If NULL (default behavior), the molecule's scaling is not set and indetermined until specified later on...
+     * (--> a validity check is activated in debug mode if not NULL to ensure that the molecule is in the domain);
+     * \param xyz_c: pointer to new_centroid (an array of double[P4EST_DIM]).
+     * new_centroid = scaled old_centroid if that argument is NULL (default behavior) [scaling factor is 1 if scaling is not set] ;
+     * \param angles: pointer to an array of angles (in radians) defining the rotation
      * matrix R.
      * --> In 2D, the right-handed rotation angle (one value).
      * --> in 3D, the angles psi, theta_n, phi_n (three values), representing a right-handed angle
      * of rotation psi around the axis n pointed by polar and azimuthal angles theta_n and phi_n.
-     * R = identity if the pointer is NULL (or disregarded);
+     * R = identity matrix if the pointer is NULL (default behavior);
      * \param overlap (optional): max number of characters per (relevant) line in the pqr file
      * (default value is 70, as observed from my own pqr files, including the '\n' characters)
      */
-    molecule(const my_p4est_biomolecules_t *owner, const string & pqr_, const double &angstrom_to_domain_, const double *xyz_c = NULL, double *angles = NULL, const int& overlap = 70);
+    molecule(const my_p4est_biomolecules_t *owner, const string & pqr_, const double *angstrom_to_domain_ = NULL, const double *xyz_c = NULL, double *angles = NULL, const int& overlap = 70);
     /*!
      * \brief calculate_scaling_factor: calculates the angstrom_to_domain factor that would set the
-     * ratio of the side length of the centroid-centered cube bounding the molecule to the minimal
+     * ratio of the largest side length of the centroid-centered box bounding the molecule to the minimal
      * domain size equal to the desired value.
-     * The method does NOT modify the molecule, it simply calculates the angstrom_to_domain
-     * \param cube_side_length_to_min_domain_size: desired ratio (double)
+     * The method does NOT modify/scale the molecule, it simply calculates the angstrom_to_domain scaling factor
+     * \param box_max_side_length_to_min_domain_size: desired ratio (double)
      * \return the value of angstrom_to_domain scaling factor.
      */
-    double  calculate_scaling_factor(const double cube_side_length_to_min_domain_size) const;
+    double  calculate_scaling_factor(const double &box_max_side_length_to_min_domain_size) const;
     /*!
      * \brief scale_rotate_and_translate: this method loops through all atoms in the molecule and scales
      * and relocates them as
@@ -476,15 +474,22 @@ private:
       return phi;
     }
     inline double             operator()(const double *xyz) const { return this->operator()(DIM(xyz[0], xyz[1], xyz[2])); }
-    inline double             get_largest_radius() const{return largest_radius;}
-    inline double             get_scaling_factor() const{return scaling;}
-    inline int                get_number_of_atoms() const{return atoms.size();}
-    inline int                get_number_of_charged_atoms() const{return n_charged_atoms;}
-    inline const Atom*        get_atom(int k) const{return &atoms.at(k);}
-    inline const Atom*        get_charged_atom(int k) const{return &atoms.at(index_of_charged_atom.at(k));}
-    inline const double*      get_centroid() const{return molecule_centroid;}
-    inline double             get_side_length_of_bounding_cube() const{return side_length_of_bounding_cube;}
-    inline bool               is_scaled() const {return scale_is_set;}
+    inline double             get_largest_radius()          const { return largest_radius; }
+    inline double             get_scaling_factor()          const { return scaling.angstrom_to_domain; }
+    inline int                get_number_of_atoms()         const { return atoms.size(); }
+    inline int                get_number_of_charged_atoms() const { return n_charged_atoms; }
+    inline const Atom*        get_atom(int k)               const { return &atoms[k]; }
+    inline const Atom*        get_charged_atom(int k)       const { return &atoms[index_of_charged_atom[k]]; }
+    inline const double*      get_centroid()                const { return molecule_centroid; }
+    inline bool               is_scaled()                   const { return scaling.is_set; }
+    inline double             get_side_length_of_bounding_cube() const
+    {
+      return MAX(DIM(side_length_of_bounding_box[0], side_length_of_bounding_box[1], side_length_of_bounding_box[2]));
+    }
+    inline void               get_side_lengths_of_bounding_box(const double *&side_length) const
+    {
+      side_length = side_length_of_bounding_box;
+    }
     ~molecule() // delete dynamically allocated memory
     {}
   };
@@ -619,6 +624,18 @@ private:
   int                       total_nb_atoms;           // self-explanatory
   int                       index_of_biggest_mol;     // self-explanatory
   double                    box_size_of_biggest_mol;  // self-explanatory
+
+  /*!
+   * \brief calculate_center_of_domain: self_explanatory
+   * \param domain_center[out]: pointer to domain center (an array of double[P4EST_DIM]).
+   */
+  inline void   calculate_center_of_domain(double* domain_center) const
+  {
+    double *vertices_to_coordinates = p4est->connectivity->vertices;
+    p4est_topidx_t *tree_to_vertex  = p4est->connectivity->tree_to_vertex;
+    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+      domain_center[dir] = 0.5*(vertices_to_coordinates[3*tree_to_vertex[0] + dir] + vertices_to_coordinates[3*tree_to_vertex[P4EST_CHILDREN*(p4est->connectivity->num_trees-1) + P4EST_CHILDREN-1] + dir]);
+  }
 public :
   double                    angstrom_to_domain;       // angstrom-to-domain conversion factor
   // what will be buit
@@ -646,15 +663,15 @@ public :
    */
   void                check_validity_of_vector_of_mol() const;
   /*!
-   * \brief are_all_molecules_scaled_consistently: self-explanatory
+   * \brief all_molecules_are_scaled_consistently: self-explanatory
    * \return true is scaling is consistent (at least one molecule needed, of course)
    */
-  bool                are_all_molecules_scaled_consistently() const;
+  bool                all_molecules_are_scaled_consistently() const;
   /*!
-   * \brief is_no_molecule_scaled: checks if no scaling at all has been applied yet
+   * \brief no_molecule_is_scaled: checks if no scaling at all has been applied yet
    * \return true if all molecules are yet to be scaled
    */
-  bool                is_no_molecule_scaled() const;
+  bool                no_molecule_is_scaled() const;
   /*!
    * \brief get_vector_of_current_centroids: self-explanatory
    * \param current_centroids: reference of the vector of centroid coordinates to be created
@@ -671,7 +688,7 @@ public :
   void                rescale_all_molecules();
   void                rescale_all_molecules(const double* new_centroids);
   /*!
-   * \brief add_single_molecule: adds a molecule to the vector of molecules cuurently considered
+   * \brief add_single_molecule: adds a molecule to the vector of molecules currently considered
    * \param file_path: valid path to the pqr file of the molecule to be added;
    * \param centroid [optional]: pointer to the desired centroid of the molecule (double [P4EST_DIM]).
    * If diregarded or NULL, the (possibly scaled) centroid of the molecule is the same as read from
@@ -697,8 +714,25 @@ public :
    *      molecules accordingly in release mode, but a logic_error is thrown in debug mode;]
    */
   void                add_single_molecule(const string& file_path, const double* centroid = NULL, double* angles = NULL, const double* angstrom_to_domain_ = NULL);
+  inline void         add_single_molecule(const molecule& mol)
+  {
+    if(nmol() == 0) // first molecule to be added in the vector of molecules
+      atom_index_offset.resize(1, 0);
+    else
+      atom_index_offset.push_back(total_nb_atoms);
 
-  int                 find_mol_index(const int& global_atom_index, const int& guess) const;
+    bio_molecules.push_back(mol);
+    total_nb_atoms += mol.get_number_of_atoms();
+
+    if(mol.get_side_length_of_bounding_cube() > box_size_of_biggest_mol)
+    {
+      box_size_of_biggest_mol = mol.get_side_length_of_bounding_cube();
+      index_of_biggest_mol = nmol()-1;
+    }
+  }
+
+
+  int                 find_mol_index(const int& global_atom_index, const size_t& guess) const;
   const Atom*         get_atom(const int& global_atom_index, int& guess) const;
   p4est_t*            reset_p4est();
   void                update_max_level();
@@ -808,7 +842,7 @@ public:
   p4est_nodes_t*      return_nodes();
   p4est_ghost_t*      return_ghost();
   void                return_phi_vector_nodes_and_ghost(Vec& phi_out, p4est_nodes_t*& nodes_out, p4est_ghost_t*& ghost_out);
-  inline int          nmol() const {return bio_molecules.size();}
+  inline size_t       nmol() const {return bio_molecules.size();}
   inline int          natoms() const {return total_nb_atoms;}
   ~my_p4est_biomolecules_t();
 };
@@ -882,7 +916,7 @@ public:
     double psi_star_value = 0;
     for (int mol_idx = 0; mol_idx < biomolecules->nmol(); ++mol_idx)
     {
-      const my_p4est_biomolecules_t::molecule& mol = biomolecules->bio_molecules.at(mol_idx);
+      const my_p4est_biomolecules_t::molecule& mol = biomolecules->bio_molecules[mol_idx];
       for (int charged_atom_idx = 0; charged_atom_idx < mol.get_number_of_charged_atoms(); ++charged_atom_idx)
       {
         const Atom* a = mol.get_charged_atom(charged_atom_idx);
@@ -909,7 +943,7 @@ public:
     double psi_star_value = 0;
     for (int mol_idx = 0; mol_idx < biomolecules->nmol(); ++mol_idx)
     {
-      const my_p4est_biomolecules_t::molecule& mol = biomolecules->bio_molecules.at(mol_idx);
+      const my_p4est_biomolecules_t::molecule& mol = biomolecules->bio_molecules[mol_idx];
       for (int charged_atom_idx = 0; charged_atom_idx < mol.get_number_of_charged_atoms(); ++charged_atom_idx)
       {
         const Atom* a = mol.get_charged_atom(charged_atom_idx);

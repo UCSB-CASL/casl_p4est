@@ -279,6 +279,8 @@ public:
     return local_nodes[i];
   }
 
+  inline bool neighbors_are_initialized() const { return is_initialized; }
+
   /*!
    * \brief init_neighbors: initialize the buffers containing the information about the neighboring nodes
    * for every local and ghost nodes provided when instantiating the my_p4est_node_neighbors_t class. This
