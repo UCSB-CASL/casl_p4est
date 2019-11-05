@@ -274,11 +274,11 @@ int main(int argc, char *argv[]) {
 #endif
 
   // create the macro mesh connectivity
-  my_p4est_brick_t brick;
   int n_xyz []      = {ntree_per_dim, ntree_per_dim, ntree_per_dim};
   double xyz_min [] = {0, 0, 0};
   double xyz_max [] = {domain_side_length, domain_side_length, domain_side_length};
   int periodic []   = {0, 0, 0};
+  my_p4est_brick_t brick;
   p4est_connectivity_t *connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick, periodic);
 
 
@@ -289,7 +289,7 @@ int main(int argc, char *argv[]) {
 
 
   // read the molecules and rotate them
-  my_p4est_biomolecules_t my_biomol(p4est, rel_side_length_biggest_box, pqr, &input_folder, angles, centroids);
+  my_p4est_biomolecules_t my_biomol(&brick, p4est, rel_side_length_biggest_box, pqr, &input_folder, angles, centroids);
 
   my_biomol.set_grid_and_surface_parameters(lmin, lmax, lip, probe_radius, order_of_accuracy);
   p4est = my_biomol.construct_SES(((surf_gen == 0)? brute_force: ((surf_gen == 1)?list_reduction:list_reduction_with_exact_phi)), SAS_timing_flag, SAS_subtiming_flag, subvtk_flag?output_folder:"null");
