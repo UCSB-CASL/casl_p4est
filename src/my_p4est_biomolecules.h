@@ -794,6 +794,7 @@ public:
   Vec           psi_star, psi_naught, psi_bar;
   bool          psi_star_psi_naught_and_psi_bar_are_set;
   Vec           psi_hat;
+  bool          psi_star_is_set=false;
   bool          psi_hat_is_set;
   //Vec eps_grad_n_psi_hat_jump, DIM(eps_grad_n_psi_hat_jump_xx_,eps_grad_n_psi_hat_jump_yy_,eps_grad_n_psi_hat_jump_zz_);
 
@@ -837,6 +838,7 @@ public:
   void          return_psi_hat(Vec& psi_hat_out);
   void          return_psi_star_psi_naught_and_psi_bar(Vec& psi_star_out, Vec& psi_naught_out, Vec& psi_bar_out);
   void          calculate_jumps_in_normal_gradient(Vec& eps_grad_n_psi_hat_jump);
+  void          calculate_jumps_in_normal_gradient_v2(Vec& eps_grad_n_psi_hat_jump, bool validation_flag);
   void          get_rhs_and_add_plus(Vec& rhs_plus, Vec& add_plus);
   void          get_linear_diagonal_terms(Vec& pristine_diagonal_terms);
   void          clean_matrix_diagonal(const Vec& pristine_diagonal_terms);
@@ -885,10 +887,12 @@ public:
   inline double get_far_field_ion_density() const {return far_field_ion_density;}
   inline int    get_ion_charge() const {return ion_charge;}
 
-  void          solve_linear(int n_iter_psi_bar_extension = 20) {(void) solve_nonlinear(1e-8, 1);} // equivalent to ONE iteration of the nonlinear solver
-  int           solve_nonlinear(double upper_bound_residual = 1e-8, int it_max = 10000);
-  void          get_solvation_free_energy();
-  Vec           get_psi(double max_absolute_psi = DBL_MAX);
+  void          solve_linear(int n_iter_psi_bar_extension = 20) {(void) solve_nonlinear(1e-8, 1, n_iter_psi_bar_extension);} // equivalent to ONE iteration of the nonlinear solver
+  int           solve_nonlinear(double upper_bound_residual = 1e-8, int it_max = 10000, bool validation_flag = false);
+  int           solve_nonlinear_v2(double upper_bound_residual = 1e-8, int it_max = 10000, bool validation_flag = false);
+  void          get_solvation_free_energy(bool validation_flag = false);
+  void          get_solvation_free_energy_v2(bool validation_flag = false);
+  Vec           get_psi(double max_absolute_psi = DBL_MAX, bool validation_flag = false);
 
   Vec           return_residual();
   void          return_all_psi_vectors(Vec& psi_star_out, Vec& psi_naught_out, Vec& psi_bar_out, Vec& psi_hat_out);

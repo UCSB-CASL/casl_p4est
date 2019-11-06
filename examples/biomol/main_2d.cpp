@@ -296,31 +296,28 @@ int main(int argc, char *argv[]) {
   my_biomol.expand_ghost();
 
 
-  my_p4est_biomolecules_solver_t solver(&my_biomol);
-  solver.set_relative_permittivities(eps_mol, eps_elec);
-  solver.set_ion_charge(ion_charge);
-  solver.set_temperature_in_kelvin(temperature);
-  solver.set_molar_concentration_of_electrolyte_in_mol_per_liter(far_field_ion_concentration);
-  ////    solver.set_debye_length_in_angstrom(10.0*sqrt(10)/*/my_biomol.angstrom_to_domain*/); // if used alone, ion charge = 1, temperature = 300K and far_field_ion_density is calculated accordingly
+    my_p4est_biomolecules_solver_t solver(&my_biomol);
+    solver.set_relative_permittivities(eps_mol, eps_elec);
+    solver.set_ion_charge(ion_charge);
+    solver.set_temperature_in_kelvin(temperature);
+    solver.set_molar_concentration_of_electrolyte_in_mol_per_liter(far_field_ion_concentration);
+    solver.solve_nonlinear_v2(rtol, ((linearization_flag)?1:niter_max), validation_flag);
+    #ifdef P4_TO_P8
+        solver.get_solvation_free_energy_v2(validation_flag);
+    #endif
 
-  solver.solve_nonlinear(rtol, ((linearization_flag)?1:niter_max));
-#ifdef P4_TO_P8
-  solver.get_solvation_free_energy();
-#endif
-  Vec psi_star = NULL, psi_naught = NULL, psi_bar = NULL, psi_hat = NULL;
-  solver.return_all_psi_vectors(psi_star, psi_naught, psi_bar, psi_hat);
-  Vec phi               = my_biomol.return_phi_vector();
-  p4est_nodes_t* nodes  = my_biomol.return_nodes();
-  p4est_ghost_t* ghost  = my_biomol.return_ghost();
-  if(!boost::iequals(null_str, vtk_name))
-  {
+    Vec psi_hat = NULL;
+    solver.return_psi_hat(psi_hat);
 
-    double *phi_p = NULL, *psi_star_p = NULL, *psi_naught_p = NULL, *psi_bar_p = NULL, *psi_hat_p = NULL;
+    Vec phi               = my_biomol.return_phi_vector();
+    p4est_nodes_t* nodes  = my_biomol.return_nodes();
+    p4est_ghost_t* ghost  = my_biomol.return_ghost();
+    if(!boost::iequals(nullstr, vtk_name))
+    {
 
-    ierr = VecGetArray(psi_star, &psi_star_p); CHKERRXX(ierr);
-    ierr = VecGetArray(psi_naught, &psi_naught_p); CHKERRXX(ierr);
-
-    ierr = VecGetArray(psi_bar, &psi_bar_p); CHKERRXX(ierr);
+      double *phi_p = NULL,*psi_hat_p = NULL;
+      ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
+      ierr = VecGetArray(psi_hat, &psi_hat_p); CHKERRXX(ierr);
 
     ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
     ierr = VecGetArray(psi_hat, &psi_hat_p); CHKERRXX(ierr);
@@ -328,48 +325,41 @@ int main(int argc, char *argv[]) {
 
     string vtk_file = output_folder + vtk_name;
 
-    my_p4est_vtk_write_all(p4est, nodes, ghost,
-                           P4EST_TRUE, P4EST_TRUE,
-                           5, 0, vtk_file.c_str(),
-                           VTK_POINT_DATA, "phi", phi_p,
-                           VTK_POINT_DATA, "psi_star", psi_star_p,
-                           VTK_POINT_DATA, "psi_0", psi_naught_p,
-                           VTK_POINT_DATA, "psi_bar", psi_bar_p,
-                           VTK_POINT_DATA, "psi_hat", psi_hat_p);
 
-    ierr = VecRestoreArray(psi_hat, &psi_hat_p); psi_hat_p = NULL; CHKERRXX(ierr);
-    ierr = VecRestoreArray(phi, &phi_p); phi_p = NULL; CHKERRXX(ierr);
-    ierr = VecRestoreArray(psi_bar, &psi_bar_p); psi_bar_p = NULL; CHKERRXX(ierr);
-    ierr = VecRestoreArray(psi_naught, &psi_naught_p); psi_naught_p = NULL; CHKERRXX(ierr);
-    ierr = VecRestoreArray(psi_star, &psi_star_p); psi_star_p = NULL; CHKERRXX(ierr);
-  }
-
-  /* release memory */
-  ierr = VecDestroy(phi); phi = NULL; CHKERRXX(ierr);
-  ierr = VecDestroy(psi_hat); psi_hat = NULL; CHKERRXX(ierr);
-
-  ierr = VecDestroy(psi_star); psi_star = NULL; CHKERRXX(ierr);
-  ierr = VecDestroy(psi_naught); psi_naught = NULL; CHKERRXX(ierr);
-  ierr = VecDestroy(psi_bar); psi_bar = NULL; CHKERRXX(ierr);
-  //ierr = VecDestroy(psi); psi = NULL; CHKERRXX(ierr);
+        my_p4est_vtk_write_all(p4est, nodes, ghost,
+                               P4EST_TRUE, P4EST_TRUE,
+                               1, 0, vtk_file.c_str(),
+                               VTK_POINT_DATA, "psi_hat", psi_hat_p);
 
 
-  p4est_nodes_destroy (nodes);
-  p4est_ghost_destroy (ghost);
-  p4est_destroy (p4est);
-  my_p4est_brick_destroy(connectivity, &brick);
+      ierr = VecRestoreArray(psi_hat, &psi_hat_p); psi_hat_p = NULL; CHKERRXX(ierr);
+      ierr = VecRestoreArray(phi, &phi_p); phi_p = NULL; CHKERRXX(ierr);
 
-  delete pqr;
-  delete angles;
-  delete centroids;
-  if(mpi.rank() == 0)
-  {
-    if(!boost::iequals(null_str, timing_file) && !boost::iequals(stdout_str, timing_file))
-      fclose(my_p4est_biomolecules_t::timing_file);
-    if(!boost::iequals(null_str, errlog_file) && !boost::iequals(stderr_str, errlog_file))
-      fclose(my_p4est_biomolecules_t::error_file);
-    if(!boost::iequals(null_str, log_file) && !boost::iequals(stdout_str, log_file))
-      fclose(my_p4est_biomolecules_t::log_file);
+    }
+
+    /* release memory */
+    ierr = VecDestroy(phi); phi = NULL; CHKERRXX(ierr);
+    ierr = VecDestroy(psi_hat); psi_hat = NULL; CHKERRXX(ierr);
+
+    p4est_nodes_destroy (nodes);
+    p4est_ghost_destroy (ghost);
+    p4est_destroy (p4est);
+    my_p4est_brick_destroy(connectivity, &brick);
+
+    delete pqr;
+    delete angles;
+    delete centroids;
+    if(mpi.rank() == 0)
+    {
+      if(!boost::iequals(nullstr, timing_file) && !boost::iequals(stdout_str, timing_file))
+        fclose(my_p4est_biomolecules_t::timing_file);
+      if(!boost::iequals(nullstr, errlog_file) && !boost::iequals(stderr_str, errlog_file))
+        fclose(my_p4est_biomolecules_t::error_file);
+      if(!boost::iequals(nullstr, log_file) && !boost::iequals(stdout_str, log_file))
+        fclose(my_p4est_biomolecules_t::log_file);
+    }
+  } catch (const std::exception& e) {
+    cerr << e.what() << endl;
   }
 
   return 0;
