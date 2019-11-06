@@ -947,6 +947,16 @@ PetscErrorCode VecCreateCellsBlockNoGhost(const p4est_t *p4est, const PetscInt &
   return ierr;
 }
 
+PetscErrorCode VecScatterAllToSomeCreate(MPI_Comm comm, Vec origin_loc, Vec destination, const PetscInt &ndest_glo_idx, const PetscInt *dest_glo_idx, VecScatter *ctx)
+{
+  PetscErrorCode ierr;
+  IS is_from, is_to;
+  ierr    = ISCreateGeneral(comm, ndest_glo_idx, dest_glo_idx, PETSC_USE_POINTER, &is_to);    CHKERRQ(ierr);
+  ierr    = ISCreateStride(comm, ndest_glo_idx, 0, 1, &is_from);                              CHKERRQ(ierr);
+  ierr    = VecScatterCreate(origin_loc, is_from, destination, is_to, ctx);                   CHKERRQ(ierr);
+  return ierr;
+}
+
 PetscErrorCode VecScatterCreateChangeLayout(MPI_Comm comm, Vec from, Vec to, VecScatter *ctx)
 {
   PetscErrorCode ierr = 0;

@@ -3,42 +3,18 @@
 #include "my_p8est_biomolecules.h"
 #include <p8est_bits.h>
 #include <p8est_extended.h>
-#include <src/my_p8est_utils.h>
 #include <src/my_p8est_vtk.h>
 #include <src/my_p8est_nodes.h>
-#include <src/my_p8est_tools.h>
-#include <src/my_p8est_refine_coarsen.h>
 #include <src/my_p8est_log_wrappers.h>
-#include <src/my_p8est_node_neighbors.h>
-#include <src/my_p8est_level_set.h>
-#include <src/my_p8est_poisson_nodes_mls.h>
 #include <src/my_p8est_interpolation_nodes.h>
-#include <src/my_p8est_integration_mls.h>
-#include <src/my_p8est_macros.h>
-#include <src/my_p8est_shapes.h>
-#include <src/my_p8est_general_poisson_nodes_mls_solver.h>
-#include <src/mls_integration/vtk/simplex3_mls_l_vtk.h>
-#include <src/mls_integration/vtk/simplex3_mls_q_vtk.h>
 #else
 #include "my_p4est_biomolecules.h"
 #include <p4est_bits.h>
 #include <p4est_extended.h>
-#include <src/my_p4est_utils.h>
 #include <src/my_p4est_vtk.h>
 #include <src/my_p4est_nodes.h>
-#include <src/my_p4est_tools.h>
-#include <src/my_p4est_refine_coarsen.h>
 #include <src/my_p4est_log_wrappers.h>
-#include <src/my_p4est_node_neighbors.h>
-#include <src/my_p4est_level_set.h>
-#include <src/my_p4est_poisson_nodes_mls.h>
 #include <src/my_p4est_interpolation_nodes.h>
-#include <src/my_p4est_integration_mls.h>
-#include <src/my_p4est_macros.h>
-#include <src/my_p4est_shapes.h>
-#include <src/my_p4est_general_poisson_nodes_mls_solver.h>
-#include <src/mls_integration/vtk/simplex2_mls_l_vtk.h>
-#include <src/mls_integration/vtk/simplex2_mls_q_vtk.h>
 #endif
 
 #include <fstream>
@@ -262,218 +238,6 @@ DEFINE_PARAMETER(pl, bool, save_matrix_ascii,  0, "Save the matrix in ASCII MATL
 DEFINE_PARAMETER(pl, bool, save_matrix_binary, 0, "Save the matrix in BINARY MATLAB format");
 DEFINE_PARAMETER(pl, bool, save_convergence,   0, "Save convergence results");
 
-// DOMAIN GEOMETRY
-class bdry_phi_cf_t: public CF_DIM {
-public:
-  int *n; // geometry number
-  cf_value_type_t what;
-  bdry_phi_cf_t(cf_value_type_t what, int &n) : what(what), n(&n) {}
-  double operator()(DIM(double x, double y, double z)) const {
-    switch (*n) {
-    case 0: // no boundaries
-      break;
-    case 1: // circle/sphere interior
-    {
-      static const double r0 = 0.911, DIM(xc = 0, yc = 0, zc = 0);
-      static flower_shaped_domain_t circle(r0, DIM(xc, yc, zc));
-      switch (what) {
-      OCOMP( case VAL: return circle.phi  (DIM(x,y,z)) );
-      XCOMP( case DDX: return circle.phi_x(DIM(x,y,z)) );
-      YCOMP( case DDY: return circle.phi_y(DIM(x,y,z)) );
-      ZCOMP( case DDZ: return circle.phi_z(DIM(x,y,z)) );
-      }
-    } break;
-    case 2: // circle/sphere exterior
-    {
-      static double r0 = 0.311, DIM(xc = 0, yc = 0, zc = 0);
-      static flower_shaped_domain_t circle(r0, DIM(xc, yc, zc), 0, -1);
-      switch (what) {
-      OCOMP( case VAL: return circle.phi  (DIM(x,y,z)) );
-      XCOMP( case DDX: return circle.phi_x(DIM(x,y,z)) );
-      YCOMP( case DDY: return circle.phi_y(DIM(x,y,z)) );
-      ZCOMP( case DDZ: return circle.phi_z(DIM(x,y,z)) );
-      }
-    } break;
-    case 3: // annular/shell region
-    {
-      static double r0_in = 0.151, DIM(xc_in = 0, yc_in = 0, zc_in = 0);
-      static double r0_ex = 0.911, DIM(xc_ex = 0, yc_ex = 0, zc_ex = 0);
-      static flower_shaped_domain_t circle_in(r0_in, DIM(xc_in, yc_in, zc_in), 0, -1);
-      static flower_shaped_domain_t circle_ex(r0_ex, DIM(xc_ex, yc_ex, zc_ex), 0,  1);
-      switch (what) {
-      OCOMP( case VAL: return (circle_in.phi(DIM(x,y,z)) > circle_ex.phi(DIM(x,y,z))) ? circle_in.phi  (DIM(x,y,z)) : circle_ex.phi  (DIM(x,y,z)); );
-      XCOMP( case DDX: return (circle_in.phi(DIM(x,y,z)) > circle_ex.phi(DIM(x,y,z))) ? circle_in.phi_x(DIM(x,y,z)) : circle_ex.phi_x(DIM(x,y,z)); );
-      YCOMP( case DDY: return (circle_in.phi(DIM(x,y,z)) > circle_ex.phi(DIM(x,y,z))) ? circle_in.phi_y(DIM(x,y,z)) : circle_ex.phi_y(DIM(x,y,z)); );
-      ZCOMP( case DDZ: return (circle_in.phi(DIM(x,y,z)) > circle_ex.phi(DIM(x,y,z))) ? circle_in.phi_z(DIM(x,y,z)) : circle_ex.phi_z(DIM(x,y,z)); );
-      }
-    } break;
-    case 4: // moderately star-shaped domain
-    {
-      static double r0 = 0.611, DIM(xc = 0, yc = 0, zc = 0), deform = 0.15;
-      static flower_shaped_domain_t circle(r0, DIM(xc, yc, zc), deform);
-      switch (what) {
-      OCOMP( case VAL: return circle.phi  (DIM(x,y,z)) );
-      XCOMP( case DDX: return circle.phi_x(DIM(x,y,z)) );
-      YCOMP( case DDY: return circle.phi_y(DIM(x,y,z)) );
-      ZCOMP( case DDZ: return circle.phi_z(DIM(x,y,z)) );
-      }
-    } break;
-    case 5: // highly start-shaped domain
-    {
-      static double r0 = 0.611, DIM(xc = 0, yc = 0, zc = 0), deform = 0.3;
-      static flower_shaped_domain_t circle(r0, DIM(xc, yc, zc), deform);
-      switch (what) {
-      OCOMP( case VAL: return circle.phi  (DIM(x,y,z)) );
-      XCOMP( case DDX: return circle.phi_x(DIM(x,y,z)) );
-      YCOMP( case DDY: return circle.phi_y(DIM(x,y,z)) );
-      ZCOMP( case DDZ: return circle.phi_z(DIM(x,y,z)) );
-      }
-    }
-    case 6: // unioun of two spheres: 1st sphere
-    case 7: // unioun of two spheres: 2nd sphere
-    {
-#ifdef P4_TO_P8
-      static double r0 = 0.71, xc0 = 0.22, yc0 = 0.17, zc0 = 0.21;
-      static double r1 = 0.63, xc1 =-0.19, yc1 =-0.19, zc1 =-0.23;
-#else
-      static double r0 = 0.77, xc0 = 0.13, yc0 = 0.21;
-      static double r1 = 0.49, xc1 =-0.33, yc1 =-0.37;
-#endif
-      static flower_shaped_domain_t circle0(r0, DIM(xc0, yc0, zc0));
-      static flower_shaped_domain_t circle1(r1, DIM(xc1, yc1, zc1));
-
-      flower_shaped_domain_t *shape_ptr = (*n) == 6 ? &circle0 : &circle1;
-
-      switch (what) {
-      OCOMP( case VAL: return shape_ptr->phi  (DIM(x,y,z)) );
-      XCOMP( case DDX: return shape_ptr->phi_x(DIM(x,y,z)) );
-      YCOMP( case DDY: return shape_ptr->phi_y(DIM(x,y,z)) );
-      ZCOMP( case DDZ: return shape_ptr->phi_z(DIM(x,y,z)) );
-      }
-    } break;
-    case 8: // difference of two spheres: 1st shpere
-    case 9: // difference of two spheres: 2nd shpere
-    {
-#ifdef P4_TO_P8
-      static double r0 = 0.86, xc0 = 0.08, yc0 = 0.11, zc0 = 0.03;
-      static double r1 = 0.83, xc1 =-0.51, yc1 =-0.46, zc1 =-0.63;
-#else
-      static double r0 = 0.84, xc0 = 0.03, yc0 = 0.04;
-      static double r1 = 0.63, xc1 =-0.42, yc1 =-0.37;
-#endif
-      static flower_shaped_domain_t circle0(r0, DIM(xc0, yc0, zc0), 0,  1);
-      static flower_shaped_domain_t circle1(r1, DIM(xc1, yc1, zc1), 0, -1);
-
-      flower_shaped_domain_t *shape_ptr = (*n) == 8 ? &circle0 : &circle1;
-
-      switch (what) {
-      OCOMP( case VAL: return shape_ptr->phi  (DIM(x,y,z)) );
-      XCOMP( case DDX: return shape_ptr->phi_x(DIM(x,y,z)) );
-      YCOMP( case DDY: return shape_ptr->phi_y(DIM(x,y,z)) );
-      ZCOMP( case DDZ: return shape_ptr->phi_z(DIM(x,y,z)) );
-      }
-
-    } break;
-    case 10: // three star-shaped domains: 1st domain
-    case 11: // three star-shaped domains: 2nd domain
-    case 12: // three star-shaped domains: 3rd domain
-    {
-#ifdef P4_TO_P8
-      static double r0 = 0.73, xc0 = 0.13, yc0 = 0.16, zc0 = 0.19, nx0 = 1.0, ny0 = 1.0, nz0 = 1.0, theta0 = 0.3*PI, beta0 = 0.08, inside0 = 1;
-      static double r1 = 0.66, xc1 =-0.21, yc1 =-0.23, zc1 =-0.17, nx1 = 1.0, ny1 = 1.0, nz1 = 1.0, theta1 =-0.3*PI, beta1 =-0.08, inside1 = 1;
-      static double r2 = 0.59, xc2 = 0.45, yc2 =-0.53, zc2 = 0.03, nx2 =-1.0, ny2 = 1.0, nz2 = 0.0, theta2 =-0.2*PI, beta2 =-0.08, inside2 =-1;
-
-      static flower_shaped_domain_t shape0(r0, xc0, yc0, zc0, beta0, inside0, nx0, ny0, nz0, theta0);
-      static flower_shaped_domain_t shape1(r1, xc1, yc1, zc1, beta1, inside1, nx1, ny1, nz1, theta1);
-      static flower_shaped_domain_t shape2(r2, xc2, yc2, zc2, beta2, inside2, nx2, ny2, nz2, theta2);
-#else
-      static double r0 = 0.73, xc0 = 0.13, yc0 = 0.16, theta0 = 0.1*PI, beta0 = 0.08, inside0 = 1;
-      static double r1 = 0.66, xc1 =-0.14, yc1 =-0.21, theta1 =-0.2*PI, beta1 =-0.08, inside1 = 1;
-      static double r2 = 0.59, xc2 = 0.45, yc2 =-0.53, theta2 = 0.2*PI, beta2 =-0.08, inside2 =-1;
-
-      static flower_shaped_domain_t shape0(r0, xc0, yc0, beta0, inside0, theta0);
-      static flower_shaped_domain_t shape1(r1, xc1, yc1, beta1, inside1, theta1);
-      static flower_shaped_domain_t shape2(r2, xc2, yc2, beta2, inside2, theta2);
-#endif
-
-      flower_shaped_domain_t *shape_ptr;
-      switch (*n){
-      case 10: shape_ptr = &shape0; break;
-      case 11: shape_ptr = &shape1; break;
-      case 12: shape_ptr = &shape2; break;
-      }
-
-      switch (what) {
-      OCOMP( case VAL: return shape_ptr->phi  (DIM(x,y,z)) );
-      XCOMP( case DDX: return shape_ptr->phi_x(DIM(x,y,z)) );
-      YCOMP( case DDY: return shape_ptr->phi_y(DIM(x,y,z)) );
-      ZCOMP( case DDZ: return shape_ptr->phi_z(DIM(x,y,z)) );
-      }
-    } break;
-    case 13: // triangle/tetrahedron: 1st plane
-    case 14: // triangle/tetrahedron: 2nd plane
-    case 15: // triangle/tetrahedron: 3rd plane
-#ifdef P4_TO_P8
-    case 16: // triangle/tetrahedron: 4th plane
-#endif
-    {
-#ifdef P4_TO_P8
-      static double x0 =-0.86, y0 =-0.87, z0 =-0.83;
-      static double x1 = 0.88, y1 =-0.52, z1 = 0.63;
-      static double x2 = 0.67, y2 = 0.82, z2 =-0.87;
-      static double x3 =-0.78, y3 = 0.73, z3 = 0.85;
-
-      static half_space_t plane0; plane0.set_params_points(x0, y0, z0, x2, y2, z2, x1, y1, z1);
-      static half_space_t plane1; plane1.set_params_points(x1, y1, z1, x2, y2, z2, x3, y3, z3);
-      static half_space_t plane2; plane2.set_params_points(x0, y0, z0, x3, y3, z3, x2, y2, z2);
-      static half_space_t plane3; plane3.set_params_points(x0, y0, z0, x1, y1, z1, x3, y3, z3);
-#else
-      static double x2 = 0.74, y2 =-0.86;
-      static double x1 =-0.83, y1 =-0.11;
-      static double x0 = 0.37, y0 = 0.87;
-
-      static half_space_t plane0; plane0.set_params_points(x0, y0, x2, y2);
-      static half_space_t plane1; plane1.set_params_points(x2, y2, x1, y1);
-      static half_space_t plane2; plane2.set_params_points(x1, y1, x0, y0);
-#endif
-
-      half_space_t *shape_ptr;
-      switch (*n) {
-      case 13: shape_ptr = &plane0; break;
-      case 14: shape_ptr = &plane1; break;
-      case 15: shape_ptr = &plane2; break;
-#ifdef P4_TO_P8
-      case 16: shape_ptr = &plane3; break;
-#endif
-      }
-
-      switch (what) {
-      OCOMP( case VAL: return shape_ptr->phi  (DIM(x,y,z)) );
-      XCOMP( case DDX: return shape_ptr->phi_x(DIM(x,y,z)) );
-      YCOMP( case DDY: return shape_ptr->phi_y(DIM(x,y,z)) );
-      ZCOMP( case DDZ: return shape_ptr->phi_z(DIM(x,y,z)) );
-      }
-    } break;
-    }
-
-    // default value
-    switch (what) {
-    OCOMP( case VAL: return -1 );
-    XCOMP( case DDX: return  0 );
-    YCOMP( case DDY: return  0 );
-    ZCOMP( case DDZ: return  0 );
-    }
-  }
-};
-
-bdry_phi_cf_t bdry_phi_cf_all  [] = { bdry_phi_cf_t(VAL, bdry_geom_00) };
-
-bdry_phi_cf_t bdry_phi_x_cf_all[] = { bdry_phi_cf_t(DDX, bdry_geom_00) };
-
-bdry_phi_cf_t bdry_phi_y_cf_all[] = { bdry_phi_cf_t(DDY, bdry_geom_00) };
-#ifdef P4_TO_P8
-bdry_phi_cf_t bdry_phi_z_cf_all[] = { bdry_phi_cf_t(DDZ, bdry_geom_00) };
-#endif
 // initialize all static variables
 const string Atom::ATOM = "ATOM  ";
 #ifdef P4_TO_P8
@@ -770,7 +534,6 @@ void my_p4est_biomolecules_t::molecule::scale_rotate_and_translate(const double*
     largest_radius *= scaling_factor;
   }
 
-
   if(!scaling.is_set && angstrom_to_domain_!= NULL)
     scaling.is_set = true;
   if(scaling_required)
@@ -894,7 +657,7 @@ p4est_bool_t my_p4est_biomolecules_t::SAS_creator::refine_for_reinitialization_f
 
 void my_p4est_biomolecules_t::SAS_creator::determine_locally_known_values(p4est_t* &forest)
 {
-  my_p4est_biomolecules_t* biomol            = (my_p4est_biomolecules_t*) forest->user_pointer;
+  my_p4est_biomolecules_t* biomol = (my_p4est_biomolecules_t*) forest->user_pointer;
 
   // needed for point equality check comparison: boundary points are clamped inside
   // the domain and the Morton codes are compared, two points are equivalent if Morton
@@ -957,7 +720,7 @@ void my_p4est_biomolecules_t::SAS_creator::determine_locally_known_values(p4est_
   p4est_nodes_destroy(local_refined_nodes);                 // we no longer need the local_refined_nodes neither
 }
 
-void my_p4est_biomolecules_t::SAS_creator::scatter_to_new_layout(p4est_t* &forest, const bool ghost_flag)
+void my_p4est_biomolecules_t::SAS_creator::scatter_to_new_layout(p4est_t* &forest, const bool &ghost_flag)
 {
   my_p4est_biomolecules_t* biomol = (my_p4est_biomolecules_t*) forest->user_pointer;
   // scatter relevant value before calculating the new phi_sas values
@@ -971,37 +734,17 @@ void my_p4est_biomolecules_t::SAS_creator::scatter_to_new_layout(p4est_t* &fores
   // scatter the vector to the new layout
   // create the new (partioned) vector of phi_sas
   Vec partitioned_phi_sas, partitioned_phi_sas_local;
-  ierr = VecCreateGhostNodes(forest, biomol->nodes, &partitioned_phi_sas);                CHKERRXX(ierr);
-  ierr = VecGhostGetLocalForm(partitioned_phi_sas, &partitioned_phi_sas_local);           CHKERRXX(ierr);
-  ierr = VecSet(partitioned_phi_sas_local, (PetscScalar) -1.5*fabs(phi_sas_lower_bound)); CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(partitioned_phi_sas, &partitioned_phi_sas_local);       CHKERRXX(ierr);
+  ierr = VecCreateGhostNodes(forest, biomol->nodes, &partitioned_phi_sas);                                            CHKERRXX(ierr);
+  ierr = VecGhostGetLocalForm(partitioned_phi_sas, &partitioned_phi_sas_local);                                       CHKERRXX(ierr);
+  ierr = VecSet(partitioned_phi_sas_local, -1.5*fabs(phi_sas_lower_bound));                                           CHKERRXX(ierr);
+  ierr = VecGhostRestoreLocalForm(partitioned_phi_sas, &partitioned_phi_sas_local);                                   CHKERRXX(ierr);
   // initialize it to values that are below the theoretical lower bound so that apporiate
   // values will be computed...
 
-#ifdef DEBUG
-  PetscInt size1, size2;
-  ierr = VecGetSize(biomol->phi, &size1); CHKERRXX(ierr);
-  ierr = VecGetSize(partitioned_phi_sas, &size2); CHKERRXX(ierr);
-  P4EST_ASSERT(size1<=size2);
-#endif
-  // scatter the values that we already know
-  VecScatter ctx;
-  IS is_from, is_to;
-
-  PetscInt nb_indices = (PetscInt) global_indices_of_known_values.size();
-  const PetscInt* set_of_global_indices = (nb_indices > 0)? global_indices_of_known_values.data() : PETSC_NULL;
-  ierr    = ISCreateGeneral(mpi_comm, nb_indices, set_of_global_indices, PETSC_USE_POINTER, &is_to);  CHKERRXX(ierr);
-  ierr    = ISCreateStride(mpi_comm, nb_indices, 0, 1, &is_from);                                     CHKERRXX(ierr);
-  Vec phi_loc;
-  ierr    = VecGhostGetLocalForm(biomol->phi, &phi_loc); CHKERRXX(ierr);
-  ierr    = VecScatterCreate(phi_loc, is_from, partitioned_phi_sas, is_to, &ctx);                 CHKERRXX(ierr);
-  ierr    = VecScatterBegin(ctx, phi_loc, partitioned_phi_sas, INSERT_VALUES, SCATTER_FORWARD);   CHKERRXX(ierr);
-  ierr    = VecScatterEnd(ctx, phi_loc, partitioned_phi_sas, INSERT_VALUES, SCATTER_FORWARD);     CHKERRXX(ierr);
-  ierr    = VecGhostRestoreLocalForm(biomol->phi, &phi_loc); CHKERRXX(ierr);
-  ierr    = VecDestroy(biomol->phi);  CHKERRXX(ierr);
-  ierr    = VecScatterDestroy(ctx);   CHKERRXX(ierr);
-  ierr    = ISDestroy(is_to);         CHKERRXX(ierr);
-  ierr    = ISDestroy(is_from);       CHKERRXX(ierr);
+  // scatter known values:
+  ierr = VecScatterAllToSome(mpi_comm, biomol->phi, partitioned_phi_sas, global_indices_of_known_values, ghost_flag); CHKERRXX(ierr);
+  // destroy previous vector and update with new one:
+  ierr    = VecDestroy(biomol->phi);                                                                                  CHKERRXX(ierr);
   biomol->phi = partitioned_phi_sas;
 }
 
@@ -1070,13 +813,11 @@ void my_p4est_biomolecules_t::SAS_creator::ghost_creation_and_final_partitioning
   for (p4est_locidx_t k = 0; k < biomol->nodes->num_owned_indeps; ++k)
     global_indices_of_known_values[k] = my_index_offset + k;
   P4EST_ASSERT(biomol->phi_read_only_p == NULL);
-  ierr = VecGetArrayRead(biomol->phi, &biomol->phi_read_only_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(biomol->phi, &biomol->phi_read_only_p);                                      CHKERRXX(ierr);
   my_p4est_partition(forest, P4EST_TRUE, reinitialization_weight_fn); // balance calculations for next reinitialization, and allow for coarsening afterwards
-  ierr = VecRestoreArrayRead(biomol->phi, &biomol->phi_read_only_p); CHKERRXX(ierr); biomol->phi_read_only_p = NULL;
+  ierr = VecRestoreArrayRead(biomol->phi, &biomol->phi_read_only_p); biomol->phi_read_only_p = NULL;  CHKERRXX(ierr);
   p4est_nodes_destroy(biomol->nodes); biomol->nodes = NULL;
   scatter_to_new_layout(forest, true);
-  ierr = VecGhostUpdateBegin(biomol->phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecGhostUpdateEnd(biomol->phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 }
 
 void my_p4est_biomolecules_t::SAS_creator::refine_and_partition(p4est_t* &forest, const int& step_idx)
@@ -1100,9 +841,9 @@ void my_p4est_biomolecules_t::SAS_creator::refine_the_p4est(p4est_t* &forest)
 {
   my_p4est_biomolecules_t* biomol = (my_p4est_biomolecules_t*) forest->user_pointer;
   P4EST_ASSERT(biomol->phi_read_only_p == NULL);
-  ierr = VecGetArrayRead(biomol->phi, &biomol->phi_read_only_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(biomol->phi, &biomol->phi_read_only_p);                                      CHKERRXX(ierr);
   specific_refinement(forest);
-  ierr = VecRestoreArrayRead(biomol->phi, &biomol->phi_read_only_p); CHKERRXX(ierr); biomol->phi_read_only_p = NULL;
+  ierr = VecRestoreArrayRead(biomol->phi, &biomol->phi_read_only_p); biomol->phi_read_only_p = NULL;  CHKERRXX(ierr);
 }
 
 my_p4est_biomolecules_t::SAS_creator::SAS_creator(p4est_t* &forest, const bool timing_flag, const bool subtiming_flag)
@@ -1144,16 +885,16 @@ void my_p4est_biomolecules_t::SAS_creator_brute_force::initialization_routine(p4
 {
   my_p4est_biomolecules_t* biomol = (my_p4est_biomolecules_t*) forest->user_pointer;
   biomol->nodes = my_p4est_nodes_new(forest, NULL); // we don't need ghost cells yet...
-  ierr  = VecCreateGhostNodes(forest, biomol->nodes, &biomol->phi); CHKERRXX(ierr);
+  ierr  = VecCreateGhostNodes(forest, biomol->nodes, &biomol->phi);         CHKERRXX(ierr);
   {
     double *phi_p;
-    ierr = VecGetArray(biomol->phi, &phi_p); CHKERRXX(ierr);
+    ierr = VecGetArray(biomol->phi, &phi_p);                                CHKERRXX(ierr);
     for (size_t i = 0; i < biomol->nodes->indep_nodes.elem_count; ++i) {
       double xyz[P4EST_DIM];
       node_xyz_fr_n(i, biomol->p4est, biomol->nodes, xyz);
       phi_p[i] = (*biomol)(xyz);
     }
-    ierr = VecRestoreArray(biomol->phi, &phi_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(biomol->phi, &phi_p);                            CHKERRXX(ierr);
   }
 }
 
@@ -1389,11 +1130,11 @@ void my_p4est_biomolecules_t::SAS_creator_list_reduction::initialization_routine
   P4EST_ASSERT(biomol->nodes == NULL);
   P4EST_ASSERT(biomol->phi == NULL);
   biomol->nodes = my_p4est_nodes_new(forest, NULL); // we don't need ghost cells here...
-  ierr  = VecCreateGhostNodes(forest, biomol->nodes, &biomol->phi); CHKERRXX(ierr);
+  ierr  = VecCreateGhostNodes(forest, biomol->nodes, &biomol->phi);   CHKERRXX(ierr);
   Vec phi_ghost_loc;
-  ierr  = VecGhostGetLocalForm(biomol->phi, &phi_ghost_loc);      CHKERRXX(ierr);
-  ierr  = VecSet(phi_ghost_loc, -1.5*fabs(phi_sas_lower_bound));  CHKERRXX(ierr);
-  ierr  = VecGhostRestoreLocalForm(biomol->phi, &phi_ghost_loc);  CHKERRXX(ierr);
+  ierr  = VecGhostGetLocalForm(biomol->phi, &phi_ghost_loc);          CHKERRXX(ierr);
+  ierr  = VecSet(phi_ghost_loc, -1.5*fabs(phi_sas_lower_bound));      CHKERRXX(ierr);
+  ierr  = VecGhostRestoreLocalForm(biomol->phi, &phi_ghost_loc);      CHKERRXX(ierr);
 }
 
 int my_p4est_biomolecules_t::SAS_creator_list_reduction::weight_fn(p4est_t *forest, p4est_topidx_t which_tree, p4est_quadrant_t * quadrant)
@@ -1927,13 +1668,13 @@ void my_p4est_biomolecules_t::return_phi_vector_nodes_and_ghost(Vec& phi_out, p4
 my_p4est_biomolecules_t::~my_p4est_biomolecules_t()
 {
   PetscErrorCode ierr;
-  if(nodes != NULL)         { p4est_nodes_destroy(nodes);                       nodes = NULL; }
-  if(ghost != NULL)         { p4est_ghost_destroy(ghost);                       ghost = NULL; }
-  if(phi != NULL)           { ierr = VecDestroy(phi);          CHKERRXX(ierr);  phi = NULL; }
-  if(inner_domain != NULL)  { ierr = VecDestroy(inner_domain); CHKERRXX(ierr);  inner_domain = NULL; }
-  if(hierarchy != NULL)     { delete hierarchy;                                 hierarchy = NULL; }
-  if(neighbors != NULL)     { delete neighbors;                                 neighbors = NULL; }
-  if(ls != NULL)            { delete ls;                                        ls = NULL; }
+  if(nodes != NULL)         { p4est_nodes_destroy(nodes);      nodes = NULL; }
+  if(ghost != NULL)         { p4est_ghost_destroy(ghost);      ghost = NULL; }
+  if(phi != NULL)           { ierr = VecDestroy(phi);          phi = NULL;          CHKERRXX(ierr);}
+  if(inner_domain != NULL)  { ierr = VecDestroy(inner_domain); inner_domain = NULL; CHKERRXX(ierr);  }
+  if(hierarchy != NULL)     { delete hierarchy;                hierarchy = NULL; }
+  if(neighbors != NULL)     { delete neighbors;                neighbors = NULL; }
+  if(ls != NULL)            { delete ls;                       ls = NULL; }
   if(timer != NULL)
   {
     timer->stop(); timer->read_duration(true);
@@ -2510,47 +2251,18 @@ void my_p4est_biomolecules_t::partition_uniformly(const bool export_cavities, co
       for (p4est_locidx_t k = 0; k < nodes->num_owned_indeps; ++k)
         global_indices_of_known_values[k] = global_idx_offset + k;
 
-      int nb_indices = (int) nodes->num_owned_indeps;
-      const PetscInt* set_of_global_indices = (nb_indices > 0)? global_indices_of_known_values.data() : PETSC_NULL;
-
       p4est_nodes_destroy(nodes);
       nodes = my_p4est_nodes_new(p4est, ghost);
 
       Vec old_phi = phi; // no cost, those are pointers...
       PetscErrorCode ierr = VecCreateGhostNodes(p4est, nodes, &phi); CHKERRXX(ierr);
-      Vec old_inner_domain = NULL;
+      ierr = VecScatterAllToSome(p4est->mpicomm, old_phi, phi, global_indices_of_known_values, true); CHKERRXX(ierr);
       if(export_cavities && inner_domain != NULL)
       {
-        old_inner_domain = inner_domain;
+        Vec old_inner_domain = inner_domain;
         ierr = VecCreateGhostNodes(p4est, nodes, &inner_domain); CHKERRXX(ierr);
+        ierr = VecScatterAllToSome(p4est->mpicomm, old_inner_domain, inner_domain, global_indices_of_known_values, true); CHKERRXX(ierr);
       }
-
-      IS is;
-      ierr    = ISCreateGeneral(p4est->mpicomm, nb_indices, set_of_global_indices, PETSC_USE_POINTER, &is); CHKERRXX(ierr);
-      VecScatter ctx, ctx_inner_domain;
-      ierr    = VecScatterCreate(old_phi, is, phi, is, &ctx); CHKERRXX(ierr);
-      if(export_cavities && inner_domain != NULL){
-        ierr  = VecScatterCreate(old_inner_domain, is, inner_domain, is, &ctx_inner_domain); CHKERRXX(ierr);}
-      ierr    = VecScatterBegin(ctx, old_phi, phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-      if(export_cavities && inner_domain != NULL){
-        ierr  = VecScatterBegin(ctx_inner_domain, old_inner_domain, inner_domain, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);}
-      ierr    = VecScatterEnd(ctx, old_phi, phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-      if(export_cavities && inner_domain != NULL){
-        ierr  = VecScatterEnd(ctx_inner_domain, old_inner_domain, inner_domain, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);}
-      ierr    = VecDestroy(old_phi); CHKERRXX(ierr);
-      if(export_cavities && inner_domain != NULL){
-        ierr  = VecDestroy(old_inner_domain); CHKERRXX(ierr);}
-      ierr    = VecScatterDestroy(ctx); CHKERRXX(ierr);
-      if(export_cavities && inner_domain != NULL){
-        ierr  = VecScatterDestroy(ctx_inner_domain); CHKERRXX(ierr);}
-      ierr    = ISDestroy(is); CHKERRXX(ierr);
-
-      ierr    = VecGhostUpdateBegin(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-      if(export_cavities && inner_domain != NULL){
-        ierr  = VecGhostUpdateBegin(inner_domain, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);}
-      ierr    = VecGhostUpdateEnd(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-      if(export_cavities && inner_domain != NULL){
-        ierr  = VecGhostUpdateEnd(inner_domain, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);}
     }
     if(build_ghost && neighbors != NULL)
     {
@@ -2602,33 +2314,24 @@ void my_p4est_biomolecules_t::enforce_min_level(bool export_cavities)
   nodes = my_p4est_nodes_new(p4est, ghost);
 
   // scatter the vector(s) to the new layout
-  // store old vectors of phi (and cavities)
-  Vec former_phi, former_inner_domain;
-  former_phi = phi; phi = NULL;
-  if(export_cavities){
-    former_inner_domain = inner_domain; inner_domain = NULL;}
-
-  PetscErrorCode ierr = VecCreateGhostNodes(p4est, nodes, &phi); CHKERRXX(ierr);
-  if(export_cavities){
-    ierr = VecCreateGhostNodes(p4est, nodes, &inner_domain); CHKERRXX(ierr);}
-#ifdef CASL_THROWS
-  PetscInt size1, size2;
-  ierr = VecGetSize(former_phi, &size1); CHKERRXX(ierr);
-  ierr = VecGetSize(phi, &size2); CHKERRXX(ierr);
-  P4EST_ASSERT(size1==size2);
-#endif
-  VecScatter ctx, ctx_inner_domain;
-  IS is;
-
-  int nb_indices = (int) global_indices.size();
-  const PetscInt* index_set = (nb_indices > 0)? (const PetscInt*) &global_indices[0] : PETSC_NULL;
-  ierr    = ISCreateGeneral(p4est->mpicomm, nb_indices, index_set, PETSC_USE_POINTER, &is); CHKERRXX(ierr);
-  ierr    = VecScatterCreate(former_phi, is, phi, is, &ctx); CHKERRXX(ierr);
-  if(export_cavities){
-    ierr  = VecScatterCreate(former_inner_domain, is, inner_domain, is, &ctx_inner_domain); CHKERRXX(ierr);}
-  ierr    = VecScatterBegin(ctx, former_phi, phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  if(export_cavities){
-    ierr  = VecScatterBegin(ctx_inner_domain, former_inner_domain, inner_domain, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);}
+  // store old vectors of phi
+  PetscErrorCode ierr;
+  VecScatter ctx_phi, ctx_inner_domain;
+  Vec former_phi = phi, former_phi_loc;
+  ierr = VecCreateGhostNodes(p4est, nodes, &phi);                                                                       CHKERRXX(ierr);
+  ierr = VecGhostGetLocalForm(former_phi, &former_phi_loc);                                                             CHKERRXX(ierr);
+  ierr = VecScatterAllToSomeCreate(p4est->mpicomm, former_phi_loc, phi, global_indices, &ctx_phi);                      CHKERRXX(ierr);
+  ierr = VecScatterAllToSomeBegin(ctx_phi, former_phi_loc, phi);                                                        CHKERRXX(ierr);
+  Vec former_inner_domain, former_inner_domain_loc;
+  if(export_cavities)
+  {
+    former_inner_domain = inner_domain;
+    ierr = VecCreateGhostNodes(p4est, nodes, &inner_domain);                                                            CHKERRXX(ierr);
+    ierr = VecGhostGetLocalForm(former_inner_domain, &former_inner_domain_loc);                                         CHKERRXX(ierr);
+    ierr = VecScatterAllToSomeCreate(p4est->mpicomm, former_inner_domain_loc, phi, global_indices, &ctx_inner_domain);  CHKERRXX(ierr);
+    ierr = VecScatterAllToSomeBegin(ctx_inner_domain, former_inner_domain_loc, inner_domain);                           CHKERRXX(ierr);
+  }
+  // assign current local index to quads'p.user_long to enable easy linear interpolation hereafter
   for (p4est_topidx_t tree_id = p4est->first_local_tree; tree_id <= p4est->last_local_tree; ++tree_id) {
     p4est_tree_t* tree_k = (p4est_tree_t*) sc_array_index(p4est->trees, tree_id);
     for (size_t q = 0; q < tree_k->quadrants.elem_count; ++q) {
@@ -2636,31 +2339,29 @@ void my_p4est_biomolecules_t::enforce_min_level(bool export_cavities)
       quad->p.user_long = q + tree_k->quadrants_offset;
     }
   }
-  ierr    = VecScatterEnd(ctx, former_phi, phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr    = VecGhostUpdateBegin(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr    = VecDestroy(former_phi); CHKERRXX(ierr);
-  ierr    = VecScatterDestroy(ctx); CHKERRXX(ierr);
-  if(export_cavities)
-  {
-    ierr  = VecScatterEnd(ctx_inner_domain, former_inner_domain, inner_domain, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr  = VecGhostUpdateBegin(inner_domain, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr  = VecDestroy(former_inner_domain); former_inner_domain = NULL; CHKERRXX(ierr);
-    ierr  = VecScatterDestroy(ctx_inner_domain); CHKERRXX(ierr);
-    ierr  = VecGhostUpdateEnd(inner_domain, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecScatterAllToSomeEnd(ctx_phi, former_phi_loc, phi);                                                          CHKERRXX(ierr);
+  ierr = VecGhostRestoreLocalForm(former_phi, &former_phi_loc);                                                         CHKERRXX(ierr);
+  ierr = VecScatterDestroy(ctx_phi);                                                                                    CHKERRXX(ierr);
+  ierr = VecDestroy(former_phi);                                                                                        CHKERRXX(ierr);
+  // do the same with cavities if needed
+
+  if(export_cavities){
+    ierr = VecScatterAllToSomeEnd(ctx_inner_domain, former_inner_domain_loc, inner_domain);                             CHKERRXX(ierr);
+    ierr = VecGhostRestoreLocalForm(former_inner_domain, &former_inner_domain_loc);                                     CHKERRXX(ierr);
+    ierr = VecScatterDestroy(ctx_inner_domain);                                                                         CHKERRXX(ierr);
+    ierr = VecDestroy(former_inner_domain);                                                                             CHKERRXX(ierr);
   }
-  ierr    = VecGhostUpdateEnd(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr    = ISDestroy(is); CHKERRXX(ierr);
 
   // impose the minimum level
   p4est_nodes_t* coarse_nodes = nodes;
   Vec coarse_phi              = phi;
   const double* coarse_phi_read_only_p = NULL, * coarse_inner_domain_read_only_p = NULL;
-  ierr    = VecGetArrayRead(coarse_phi, &coarse_phi_read_only_p); CHKERRXX(ierr);
+  ierr    = VecGetArrayRead(coarse_phi, &coarse_phi_read_only_p);                                                       CHKERRXX(ierr);
   Vec coarse_inner_domain     = NULL;
   if(export_cavities)
   {
     coarse_inner_domain       = inner_domain;
-    ierr  = VecGetArrayRead(coarse_inner_domain, &coarse_inner_domain_read_only_p); CHKERRXX(ierr);
+    ierr  = VecGetArrayRead(coarse_inner_domain, &coarse_inner_domain_read_only_p);                                     CHKERRXX(ierr);
   }
   // enforce the minimum level
   p4est_refine_ext(p4est, P4EST_TRUE, -1, my_p4est_biomolecules_t::refine_fn_min_level, NULL, my_p4est_biomolecules_t::replace_fn_min_level);
@@ -2668,14 +2369,14 @@ void my_p4est_biomolecules_t::enforce_min_level(bool export_cavities)
   // create the nodes
   nodes   = my_p4est_nodes_new(p4est, ghost);
   // create the vector(s)
-  ierr    = VecCreateGhostNodes(p4est, nodes, &phi); CHKERRXX(ierr);
   double *phi_p;
-  ierr    = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
+  ierr    = VecCreateGhostNodes(p4est, nodes, &phi);                                                                    CHKERRXX(ierr);
+  ierr    = VecGetArray(phi, &phi_p);                                                                                   CHKERRXX(ierr);
   double * inner_domain_p;
   if(export_cavities)
   {
-    ierr  = VecCreateGhostNodes(p4est, nodes, &inner_domain); CHKERRXX(ierr);
-    ierr  = VecGetArray(inner_domain, &inner_domain_p); CHKERRXX(ierr);
+    ierr  = VecCreateGhostNodes(p4est, nodes, &inner_domain);                                                           CHKERRXX(ierr);
+    ierr  = VecGetArray(inner_domain, &inner_domain_p);                                                                 CHKERRXX(ierr);
   }
 
   // set the new layout of phi
@@ -2757,20 +2458,20 @@ void my_p4est_biomolecules_t::enforce_min_level(bool export_cavities)
   P4EST_ASSERT(known_fine_indices.size() == nodes->indep_nodes.elem_count);
 
 
-  ierr    = VecRestoreArrayRead(coarse_phi, &coarse_phi_read_only_p); coarse_phi_read_only_p = NULL; CHKERRXX(ierr);
-  ierr    = VecDestroy(coarse_phi); coarse_phi = NULL; CHKERRXX(ierr);
-  ierr    = VecRestoreArray(phi, &phi_p); phi_p = NULL; CHKERRXX(ierr);
+  ierr    = VecRestoreArrayRead(coarse_phi, &coarse_phi_read_only_p);                   coarse_phi_read_only_p = NULL;          CHKERRXX(ierr);
+  ierr    = VecDestroy(coarse_phi);                                                     coarse_phi = NULL;                      CHKERRXX(ierr);
+  ierr    = VecRestoreArray(phi, &phi_p);                                               phi_p = NULL;                           CHKERRXX(ierr);
   // at this stage, all points have been updated, EXCEPT the points that are located exactly at a
   // processor boundary and are T-junctions. Those points have been treated (i.e. points that belong to the side where the biggest quadrants)
-  ierr    = VecGhostUpdateBegin(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr    = VecGhostUpdateBegin(phi, INSERT_VALUES, SCATTER_FORWARD);                                                           CHKERRXX(ierr);
   p4est_nodes_destroy(coarse_nodes);
   if(export_cavities)
   {
     ierr  = VecRestoreArrayRead(coarse_inner_domain, &coarse_inner_domain_read_only_p); coarse_inner_domain_read_only_p = NULL; CHKERRXX(ierr);
-    ierr  = VecDestroy(coarse_inner_domain); coarse_inner_domain = NULL; CHKERRXX(ierr);
-    ierr  = VecRestoreArray(inner_domain, &inner_domain_p); inner_domain_p = NULL; CHKERRXX(ierr);
+    ierr  = VecDestroy(coarse_inner_domain);                                            coarse_inner_domain = NULL;             CHKERRXX(ierr);
+    ierr  = VecRestoreArray(inner_domain, &inner_domain_p);                             inner_domain_p = NULL;                  CHKERRXX(ierr);
   }
-  ierr    = VecGhostUpdateEnd(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr    = VecGhostUpdateEnd(phi, INSERT_VALUES, SCATTER_FORWARD);                                                             CHKERRXX(ierr);
 }
 
 void my_p4est_biomolecules_t::replace_fn_min_level(p4est_t *forest, p4est_topidx_t which_tree, int num_outgoing, p4est_quadrant_t *outgoing[], int num_incoming, p4est_quadrant_t *incoming[])
@@ -2795,15 +2496,13 @@ p4est_bool_t my_p4est_biomolecules_t::refine_fn_min_level(p4est_t *forest, p4est
 double my_p4est_biomolecules_t::inner_box_identifier::operator ()(DIM(const double &x, const double &y, const double &z))const
 {
   bool is_in_a_box = false;
-  for (size_t mol_idx = 0; mol_idx < biomol_pointer->nmol(); ++mol_idx)
+  for (size_t mol_idx = 0; !is_in_a_box && (mol_idx < biomol_pointer->nmol()); ++mol_idx)
   {
     const double* mol_centroid    = biomol_pointer->bio_molecules[mol_idx].get_centroid();
     const double box_side_length  = biomol_pointer->bio_molecules[mol_idx].get_side_length_of_bounding_cube();
     is_in_a_box = ANDD((mol_centroid[0] - 0.5*box_side_length <= x && x <= mol_centroid[0] + 0.5*box_side_length),
         (mol_centroid[1] - 0.5*box_side_length <= y && y <= mol_centroid[1] + 0.5*box_side_length),
         (mol_centroid[2] - 0.5*box_side_length <= z && z <= mol_centroid[2] + 0.5*box_side_length));
-    if(is_in_a_box)
-      break;
   }
   return is_in_a_box? 1.0: 0.0;
 }
@@ -2855,20 +2554,18 @@ void my_p4est_biomolecules_t::remove_internal_cavities(const bool export_cavitie
   p4est_gloidx_t nb_total_nodes = 0;
   for (int proc_rank = 0; proc_rank < p4est->mpisize; ++proc_rank)
     nb_total_nodes += nodes->global_owned_indeps[proc_rank];
-  ierr = VecGetSize(phi, &size); CHKERRXX(ierr);
+  ierr = VecGetSize(phi, &size);                                                                CHKERRXX(ierr);
   P4EST_ASSERT(size == nb_total_nodes);
   P4EST_ASSERT(neighbors->neighbors_are_initialized()); // the neighbors must be initialized
 #endif
 
-  if(inner_domain != NULL)
-  {
-    ierr = VecDestroy(inner_domain); CHKERRXX(ierr);
-  }
-  ierr = VecCreateGhostNodes(neighbors->get_p4est(), neighbors->get_nodes(), &inner_domain); CHKERRXX(ierr);
+  if(inner_domain != NULL){
+    ierr = VecDestroy(inner_domain);                                                            CHKERRXX(ierr);}
+  ierr = VecCreateGhostNodes(neighbors->get_p4est(), neighbors->get_nodes(), &inner_domain);    CHKERRXX(ierr);
 
   is_point_in_a_bounding_box.biomol_pointer = this;
   double *inner_domain_p;
-  ierr = VecGetArray(inner_domain, &inner_domain_p); CHKERRXX(ierr);
+  ierr = VecGetArray(inner_domain, &inner_domain_p);                                            CHKERRXX(ierr);
   for (size_t i = 0; i<nodes->indep_nodes.elem_count; ++i) {
     double xyz[P4EST_DIM];
     node_xyz_fr_n(i, p4est, nodes, xyz);
@@ -2876,7 +2573,7 @@ void my_p4est_biomolecules_t::remove_internal_cavities(const bool export_cavitie
   }
 
   const double *phi_read_p;
-  ierr = VecGetArrayRead(phi, &phi_read_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(phi, &phi_read_p);                                                     CHKERRXX(ierr);
   size_t layer_size = neighbors->get_layer_size();
   size_t local_size = neighbors->get_local_size();
   quad_neighbor_nodes_of_node_t qnnn;
@@ -2891,34 +2588,34 @@ void my_p4est_biomolecules_t::remove_internal_cavities(const bool export_cavitie
       p4est_locidx_t k = neighbors->get_layer_node(layer_node_idx);
       not_converged = is_point_in_outer_domain_and_updated(k, qnnn, neighbors, inner_domain_p, phi_read_p) || not_converged;
     }
-    ierr = VecGhostUpdateBegin(inner_domain, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateBegin(inner_domain, INSERT_VALUES, SCATTER_FORWARD);                 CHKERRXX(ierr);
     for (size_t local_node_idx = 0; local_node_idx < local_size; ++local_node_idx)
     {
       p4est_locidx_t k = neighbors->get_local_node(local_node_idx);
       not_converged = is_point_in_outer_domain_and_updated(k, qnnn, neighbors, inner_domain_p, phi_read_p) || not_converged;
     }
-    ierr = VecGhostUpdateEnd(inner_domain, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd(inner_domain, INSERT_VALUES, SCATTER_FORWARD);                   CHKERRXX(ierr);
     // backward
     for (size_t layer_node_idx = 0; layer_node_idx < layer_size; ++layer_node_idx)
     {
       p4est_locidx_t k = neighbors->get_layer_node(layer_size-1-layer_node_idx);
       not_converged = is_point_in_outer_domain_and_updated(k, qnnn, neighbors, inner_domain_p, phi_read_p) || not_converged;
     }
-    ierr = VecGhostUpdateBegin(inner_domain, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateBegin(inner_domain, INSERT_VALUES, SCATTER_FORWARD);                 CHKERRXX(ierr);
     for (size_t local_node_idx = 0; local_node_idx < local_size; ++local_node_idx)
     {
       p4est_locidx_t k = neighbors->get_local_node(local_size-1-local_node_idx);
       not_converged = is_point_in_outer_domain_and_updated(k, qnnn, neighbors, inner_domain_p, phi_read_p) || not_converged;
     }
-    ierr = VecGhostUpdateEnd(inner_domain, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd(inner_domain, INSERT_VALUES, SCATTER_FORWARD);                   CHKERRXX(ierr);
     int mpiret = MPI_Allreduce(MPI_IN_PLACE, &not_converged, 1, MPI_INT, MPI_LOR, p4est->mpicomm); SC_CHECK_MPI(mpiret);
   }
-  ierr = VecRestoreArrayRead(phi, &phi_read_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(phi, &phi_read_p);                                               CHKERRXX(ierr);
 
   // remove the cavities
   P4EST_ASSERT(inner_domain_p != NULL);
   double *phi_p;
-  ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
+  ierr = VecGetArray(phi, &phi_p);                                                            CHKERRXX(ierr);
   for (size_t i = 0; i<nodes->indep_nodes.elem_count; i++)
   {
     inner_domain_p[i] = (phi_p[i] <= 0 && inner_domain_p[i] > 0.5)? 1.0: 0.0;
@@ -2926,12 +2623,10 @@ void my_p4est_biomolecules_t::remove_internal_cavities(const bool export_cavitie
       phi_p[i] = -phi_p[i];
   }
 
-  ierr = VecRestoreArray(inner_domain, &inner_domain_p); CHKERRXX(ierr);
-  if(!export_cavities)
-  {
-    ierr = VecDestroy(inner_domain); inner_domain = NULL; CHKERRXX(ierr);
-  }
-  ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr); phi_p = NULL;
+  ierr = VecRestoreArray(inner_domain, &inner_domain_p);                                      CHKERRXX(ierr);
+  if(!export_cavities){
+    ierr = VecDestroy(inner_domain);                        inner_domain = NULL;              CHKERRXX(ierr); }
+  ierr = VecRestoreArray(phi, &phi_p);                      phi_p = NULL;                     CHKERRXX(ierr);
 }
 
 p4est_t* my_p4est_biomolecules_t::construct_SES(const sas_generation_method& method_to_use, const bool SAS_timing_flag, const bool SAS_subtiming_flag, string vtk_folder)
@@ -3168,7 +2863,6 @@ p4est_t* my_p4est_biomolecules_t::construct_SES(const sas_generation_method& met
 
   int nb_coarsening_steps = 0;
   while (coarsening_step(nb_coarsening_steps, export_intermediary_results))
-  {
     if(export_intermediary_results)
     {
       const double *phi_p;
@@ -3185,7 +2879,6 @@ p4est_t* my_p4est_biomolecules_t::construct_SES(const sas_generation_method& met
       ierr = VecRestoreArrayRead(inner_domain, &inner_domain_p); inner_domain_p = NULL; CHKERRXX(ierr);
       ierr = VecRestoreArrayRead(phi, &phi_p); phi_p = NULL; CHKERRXX(ierr);
     }
-  }
 
   if(timer != NULL)
   {
@@ -3266,65 +2959,55 @@ void my_p4est_biomolecules_t::expand_ghost()
   P4EST_ASSERT(p4est != NULL && nodes != NULL && ghost != NULL &&
       hierarchy != NULL && neighbors != NULL && ls != NULL &&
       phi != NULL);
-  Vec old_phi = phi, old_inner_domain = inner_domain;
-  inner_domain = NULL;
-  phi = NULL;
-  PetscInt nb_loc_values = nodes->num_owned_indeps;
-  vector<PetscInt> global_indices(nb_loc_values, 0);
+  // create the list of known global indices
+  vector<PetscInt> global_indices(nodes->num_owned_indeps, 0);
   p4est_gloidx_t node_offset = 0;
-  for (int r = 0; r < p4est->mpirank; ++r) {
+  for (int r = 0; r < p4est->mpirank; ++r)
     node_offset += nodes->global_owned_indeps[r];
-  }
-  for (p4est_locidx_t k = 0; k < nb_loc_values; ++k) {
+  for (p4est_locidx_t k = 0; k < nodes->num_owned_indeps; ++k)
     global_indices[k] = k + node_offset;
-  }
+  // expand ghost, and create new nodes
   p4est_ghost_expand(p4est, ghost);
   p4est_nodes_destroy(nodes);
   nodes   = my_p4est_nodes_new(p4est, ghost);
+
   PetscErrorCode ierr;
-  ierr    = VecCreateGhostNodes(p4est, nodes, &phi); CHKERRXX(ierr);
+  // save known fields and create new ones
+  Vec old_phi = phi, old_inner_domain = inner_domain;
+  ierr    = VecCreateGhostNodes(p4est, nodes, &phi);                                                                          CHKERRXX(ierr);
   if(old_inner_domain != NULL){
-    ierr  = VecCreateGhostNodes(p4est, nodes, &inner_domain); CHKERRXX(ierr);
-  }
+    ierr  = VecCreateGhostNodes(p4est, nodes, &inner_domain);                                                                 CHKERRXX(ierr); }
   P4EST_ASSERT(phi != NULL && ((old_inner_domain == NULL) || (old_inner_domain != NULL && inner_domain != NULL)));
   // so now, we have to rescatter the vector(s), update the hierarchy, the node neighbors, the levelset object
-  VecScatter ctx, ctx_inner_domain;
-  IS is;
-  const PetscInt* set_of_global_indices = (nb_loc_values > 0)? (const PetscInt*) &global_indices[0] : PETSC_NULL;
-  ierr    = ISCreateGeneral(p4est->mpicomm, nb_loc_values, set_of_global_indices, PETSC_USE_POINTER, &is); CHKERRXX(ierr);
-  ierr    = VecScatterCreate(old_phi, is, phi, is, &ctx); CHKERRXX(ierr);
+  VecScatter ctx_phi, ctx_inner_domain;
+  Vec old_phi_loc, old_inner_domain_loc;
+  ierr = VecGhostGetLocalForm(old_phi, &old_phi_loc);                                                                         CHKERRXX(ierr);
+  ierr = VecScatterAllToSomeCreate(p4est->mpicomm, old_phi_loc, phi, global_indices, &ctx_phi);                               CHKERRXX(ierr);
+  ierr = VecScatterAllToSomeBegin(ctx_phi, old_phi_loc, phi);                                                                 CHKERRXX(ierr);
   if(old_inner_domain != NULL){
-    ierr  = VecScatterCreate(old_inner_domain, is, inner_domain, is, &ctx_inner_domain); CHKERRXX(ierr);
-  }
-  ierr    = VecScatterBegin(ctx, old_phi, phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  if(old_inner_domain != NULL){
-    ierr  = VecScatterBegin(ctx_inner_domain, old_inner_domain, inner_domain, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostGetLocalForm(old_inner_domain, &old_inner_domain_loc);                                                     CHKERRXX(ierr);
+    ierr = VecScatterAllToSomeCreate(p4est->mpicomm, old_inner_domain_loc, inner_domain, global_indices, &ctx_inner_domain);  CHKERRXX(ierr);
+    ierr = VecScatterAllToSomeBegin(ctx_inner_domain, old_inner_domain_loc, inner_domain);                                    CHKERRXX(ierr);
   }
   // place those operations here for optimizing the execution
   hierarchy->update(p4est, ghost);
   neighbors->update(hierarchy, nodes);
   ls->update(neighbors);
   // back to scattering vector values
-  ierr    = VecScatterEnd(ctx, old_phi, phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  if(old_inner_domain != NULL){
-    ierr  = VecScatterEnd(ctx_inner_domain, old_inner_domain, inner_domain, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  }
-  ierr    = VecGhostUpdateBegin(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  if(old_inner_domain != NULL){
-    ierr  = VecGhostUpdateBegin(inner_domain, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  }
-  ierr    = VecDestroy(old_phi); CHKERRXX(ierr);
-  if(old_inner_domain != NULL){
-    ierr  = VecDestroy(old_inner_domain); CHKERRXX(ierr);
-  }
-  ierr    = VecScatterDestroy(ctx); CHKERRXX(ierr);
-  if(inner_domain != NULL){
-    ierr  = VecScatterDestroy(ctx_inner_domain); CHKERRXX(ierr);
-  }
-  ierr    = ISDestroy(is); CHKERRXX(ierr);
-  ierr    = VecGhostUpdateEnd(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  if(inner_domain != NULL){
-    ierr  = VecGhostUpdateEnd(inner_domain, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecScatterAllToSomeEnd(ctx_phi, old_phi_loc, phi);                                                                   CHKERRXX(ierr);
+  ierr = VecGhostUpdateBegin(phi, INSERT_VALUES, SCATTER_FORWARD);                                                            CHKERRXX(ierr);
+  ierr = VecGhostRestoreLocalForm(old_phi, &old_phi_loc);                                                                     CHKERRXX(ierr);
+  ierr = VecScatterDestroy(ctx_phi);                                                                                          CHKERRXX(ierr);
+  ierr = VecDestroy(old_phi);                                                                                                 CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd(phi, INSERT_VALUES, SCATTER_FORWARD);                                                              CHKERRXX(ierr);
+  if(old_inner_domain!=NULL)
+  {
+    ierr = VecScatterAllToSomeEnd(ctx_inner_domain, old_inner_domain_loc, inner_domain);                                      CHKERRXX(ierr);
+    ierr = VecGhostUpdateBegin(inner_domain, INSERT_VALUES, SCATTER_FORWARD);                                                 CHKERRXX(ierr);
+    ierr = VecGhostRestoreLocalForm(old_inner_domain, &old_inner_domain_loc);                                                 CHKERRXX(ierr);
+    ierr = VecScatterDestroy(ctx_inner_domain);                                                                               CHKERRXX(ierr);
+    ierr = VecDestroy(old_inner_domain);                                                                                      CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd(inner_domain, INSERT_VALUES, SCATTER_FORWARD);                                                   CHKERRXX(ierr);
   }
 }
 
@@ -3403,9 +3086,8 @@ bool my_p4est_biomolecules_t::coarsening_step(int& step_idx, bool export_acceler
   PetscErrorCode ierr;
   int mpiret;
 
-  if(log_file != NULL && step_idx > log2(box_size_of_biggest_mol*sqrt(P4EST_DIM)*(1<<(parameters.lmax()-1))/(parameters.lip()*parameters.tree_diag())))
-  {
-    ierr = PetscFPrintf(p4est->mpicomm, log_file, "More coarsening steps than expected... This is weird! \n"); CHKERRXX(ierr);
+  if(log_file != NULL && step_idx > log2(box_size_of_biggest_mol*sqrt(P4EST_DIM)*(1<<(parameters.lmax()-1))/(parameters.lip()*parameters.tree_diag()))){
+    ierr = PetscFPrintf(p4est->mpicomm, log_file, "More coarsening steps than expected... This is weird! \n");                                CHKERRXX(ierr);
   }
   // Explanation:
   // At each iteration, we reinitialize to capture a new layer of inner cells (away from the interface) that are potential candidates for coarsening.
@@ -3420,13 +3102,13 @@ bool my_p4est_biomolecules_t::coarsening_step(int& step_idx, bool export_acceler
   double already_captured_layer = parameters.lip()*parameters.tree_diag()/(1<<(parameters.lmax()-step_idx++));
   // "remove internal cavities" == trick to accelerate the reinitialization steps
   // and avoid more than one local coarsening operation
-  ierr = VecGhostGetLocalForm(phi, &phi_ghost_loc); CHKERRXX(ierr);
-  ierr = VecShift(phi_ghost_loc, -already_captured_layer); CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(phi, &phi_ghost_loc); CHKERRXX(ierr);
+  ierr = VecGhostGetLocalForm(phi, &phi_ghost_loc);                                                                                           CHKERRXX(ierr);
+  ierr = VecShift(phi_ghost_loc, -already_captured_layer);                                                                                    CHKERRXX(ierr);
+  ierr = VecGhostRestoreLocalForm(phi, &phi_ghost_loc);                                                                                       CHKERRXX(ierr);
   remove_internal_cavities(export_acceleration);
-  ierr = VecGhostGetLocalForm(phi, &phi_ghost_loc); CHKERRXX(ierr);
-  ierr = VecShift(phi_ghost_loc, +already_captured_layer); CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(phi, &phi_ghost_loc); CHKERRXX(ierr);
+  ierr = VecGhostGetLocalForm(phi, &phi_ghost_loc);                                                                                           CHKERRXX(ierr);
+  ierr = VecShift(phi_ghost_loc, +already_captured_layer);                                                                                    CHKERRXX(ierr);
+  ierr = VecGhostRestoreLocalForm(phi, &phi_ghost_loc);                                                                                       CHKERRXX(ierr);
   P4EST_ASSERT((export_acceleration && inner_domain != NULL) || (!export_acceleration && inner_domain == NULL));
 
   // needed for coarsening
@@ -3439,9 +3121,9 @@ bool my_p4est_biomolecules_t::coarsening_step(int& step_idx, bool export_acceler
   }
 
   p4est_locidx_t former_quad_count = p4est->local_num_quadrants;
-  ierr  = VecGetArrayRead(phi, &phi_read_only_p); CHKERRXX(ierr);
+  ierr  = VecGetArrayRead(phi, &phi_read_only_p);                                                                                             CHKERRXX(ierr);
   my_p4est_coarsen(p4est, P4EST_FALSE, my_p4est_biomolecules_t::coarsen_fn, NULL);
-  ierr = VecRestoreArrayRead(phi, &phi_read_only_p); CHKERRXX(ierr); phi_read_only_p = NULL;
+  ierr = VecRestoreArrayRead(phi, &phi_read_only_p); phi_read_only_p = NULL;                                                                  CHKERRXX(ierr);
   P4EST_ASSERT(former_quad_count >= p4est->local_num_quadrants);
   int grid_has_changed = (former_quad_count != p4est->local_num_quadrants);
   mpiret = MPI_Allreduce(MPI_IN_PLACE, &grid_has_changed, 1, MPI_INT, MPI_LOR, p4est->mpicomm); SC_CHECK_MPI(mpiret);
@@ -3458,9 +3140,8 @@ bool my_p4est_biomolecules_t::coarsening_step(int& step_idx, bool export_acceler
   nodes = my_p4est_nodes_new(p4est, NULL);
 
   int clamped = 1;
-  PetscInt nb_loc_idx = nodes->num_owned_indeps;
-  vector<PetscInt> global_idx_to_scatter_from; global_idx_to_scatter_from.resize(nb_loc_idx);
-  vector<PetscInt> global_idx_to_scatter_to; global_idx_to_scatter_to.resize(nb_loc_idx);
+  vector<PetscInt> global_idx_to_scatter_from(nodes->num_owned_indeps);
+  vector<PetscInt> global_idx_to_scatter_to(nodes->num_owned_indeps);
 
   p4est_locidx_t idx   = 0;
   p4est_indep_t *node = NULL;
@@ -3489,9 +3170,9 @@ bool my_p4est_biomolecules_t::coarsening_step(int& step_idx, bool export_acceler
   // sanity check
   P4EST_ASSERT(idx == nodes->num_owned_indeps);
 
-  ierr  = VecGetArrayRead(phi, &phi_read_only_p); CHKERRXX(ierr);
+  ierr  = VecGetArrayRead(phi, &phi_read_only_p);                                                                                             CHKERRXX(ierr);
   my_p4est_partition(p4est, P4EST_TRUE, my_p4est_biomolecules_t::weight_for_coarsening);
-  ierr  = VecRestoreArrayRead(phi, &phi_read_only_p); CHKERRXX(ierr); phi_read_only_p = NULL;
+  ierr  = VecRestoreArrayRead(phi, &phi_read_only_p); phi_read_only_p = NULL;                                                                 CHKERRXX(ierr);
   // we don't need the fine ghosts, nor the fine and locally coarse nodes (before the partition)
   p4est_ghost_destroy(ghost); ghost = NULL;
   p4est_nodes_destroy(fine_nodes); fine_nodes = NULL;
@@ -3500,66 +3181,45 @@ bool my_p4est_biomolecules_t::coarsening_step(int& step_idx, bool export_acceler
   ghost = p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
   nodes = my_p4est_nodes_new(p4est, ghost);
 
-
+  IS is_from;
+  IS is_to;
+  ierr = ISCreateGeneral(p4est->mpicomm, global_idx_to_scatter_from.size(), global_idx_to_scatter_from.data(), PETSC_USE_POINTER, &is_from);  CHKERRXX(ierr);
+  ierr = ISCreateGeneral(p4est->mpicomm, global_idx_to_scatter_to.size(), global_idx_to_scatter_to.data(), PETSC_USE_POINTER, &is_to);        CHKERRXX(ierr);
   Vec fine_phi = phi;
-  ierr = VecCreateGhostNodes(p4est, nodes, &phi); CHKERRXX(ierr);
+  VecScatter ctx_phi;
+  ierr = VecCreateGhostNodes(p4est, nodes, &phi);                                                                                             CHKERRXX(ierr);
+  ierr = VecScatterCreate(fine_phi, is_from, phi, is_to, &ctx_phi);                                                                           CHKERRXX(ierr);
+  ierr = VecScatterBegin(ctx_phi, fine_phi, phi, INSERT_VALUES, SCATTER_FORWARD);                                                             CHKERRXX(ierr);
   Vec fine_inner_domain = NULL;
+  VecScatter ctx_inner_domain;
   if(export_acceleration)
   {
     fine_inner_domain = inner_domain;
-    ierr = VecCreateGhostNodes(p4est, nodes, &inner_domain); CHKERRXX(ierr);
-  }
-
-  IS is_from;
-  IS is_to;
-  PetscInt* fine_global_indices   = (global_idx_to_scatter_from.size() != 0)? &global_idx_to_scatter_from[0] : NULL;
-  PetscInt* coarse_global_indices = (global_idx_to_scatter_to.size() != 0)? &global_idx_to_scatter_to[0] : NULL;
-  ierr    = ISCreateGeneral(p4est->mpicomm, nb_loc_idx, fine_global_indices, PETSC_USE_POINTER, &is_from); CHKERRXX(ierr);
-  ierr    = ISCreateGeneral(p4est->mpicomm, nb_loc_idx, coarse_global_indices, PETSC_USE_POINTER, &is_to); CHKERRXX(ierr);
-  VecScatter ctx, ctx_inner_domain;
-  ierr    = VecScatterCreate(fine_phi, is_from, phi, is_to, &ctx); CHKERRXX(ierr);
-  if(export_acceleration)
-  {
-    ierr  = VecScatterCreate(fine_inner_domain, is_from, inner_domain, is_to, &ctx_inner_domain); CHKERRXX(ierr);
-  }
-  ierr    = VecScatterBegin(ctx, fine_phi, phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  if(export_acceleration)
-  {
-    ierr  = VecScatterBegin(ctx_inner_domain, fine_inner_domain, inner_domain, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecCreateGhostNodes(p4est, nodes, &inner_domain);                                                                                  CHKERRXX(ierr);
+    ierr = VecScatterCreate(fine_inner_domain, is_from, inner_domain, is_to, &ctx_inner_domain);                                              CHKERRXX(ierr);
+    ierr = VecScatterBegin(ctx_inner_domain, fine_inner_domain, inner_domain, INSERT_VALUES, SCATTER_FORWARD);                                CHKERRXX(ierr);
   }
   hierarchy->update(p4est, ghost);
   neighbors->update(hierarchy, nodes);
   ls->update(neighbors);
-  ierr    = VecScatterEnd(ctx, fine_phi, phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecScatterEnd(ctx_phi, fine_phi, phi, INSERT_VALUES, SCATTER_FORWARD);                                                               CHKERRXX(ierr);
+  ierr = VecGhostUpdateBegin(phi, INSERT_VALUES, SCATTER_FORWARD);                                                                            CHKERRXX(ierr);
+  ierr = VecDestroy(fine_phi);                                                                                                                CHKERRXX(ierr);
+  ierr = VecScatterDestroy(ctx_phi);                                                                                                          CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd(phi, INSERT_VALUES, SCATTER_FORWARD);                                                                              CHKERRXX(ierr);
   if(export_acceleration)
   {
-    ierr  = VecScatterEnd(ctx_inner_domain, fine_inner_domain, inner_domain, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-    ierr  = VecDestroy(fine_inner_domain); CHKERRXX(ierr); fine_inner_domain = NULL;
+    ierr = VecScatterEnd(ctx_inner_domain, fine_inner_domain, inner_domain, INSERT_VALUES, SCATTER_FORWARD);                                  CHKERRXX(ierr);
+    ierr = VecGhostUpdateBegin(inner_domain, INSERT_VALUES, SCATTER_FORWARD);                                                                 CHKERRXX(ierr);
+    ierr = VecDestroy(fine_inner_domain);                                                                                                     CHKERRXX(ierr);
+    ierr = VecScatterDestroy(ctx_inner_domain);                                                                                               CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd(inner_domain, INSERT_VALUES, SCATTER_FORWARD);                                                                   CHKERRXX(ierr);
   }
-  ierr    = VecDestroy(fine_phi); CHKERRXX(ierr);
-  ierr    = VecGhostUpdateBegin(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  if(export_acceleration)
-  {
-    ierr  = VecGhostUpdateBegin(inner_domain, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  }
+  ierr = ISDestroy(is_from);                                                                                                                  CHKERRXX(ierr);
+  ierr = ISDestroy(is_to);                                                                                                                    CHKERRXX(ierr);
 
-  ierr    = VecScatterDestroy(ctx); CHKERRXX(ierr);
-  if(export_acceleration)
-  {
-    ierr  = VecScatterDestroy(ctx_inner_domain); CHKERRXX(ierr);
-  }
-  ierr    = ISDestroy(is_from); CHKERRXX(ierr);
-  ierr    = ISDestroy(is_to); CHKERRXX(ierr);
-  ierr    = VecGhostUpdateEnd(phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  if(export_acceleration)
-  {
-    ierr  = VecGhostUpdateEnd(inner_domain, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  }
-
-  double min_root_cell_dim = parameters.tree_dim(0);
-  for (unsigned char k = 1; k < P4EST_DIM; ++k)
-    min_root_cell_dim = MIN(min_root_cell_dim, parameters.tree_dim(k));
-  int n_iter = ceil(1.5*parameters.lip()*parameters.tree_diag()/(0.5*min_root_cell_dim));
+  const double min_root_cell_dim = MIN(DIM(parameters.tree_dim(0), parameters.tree_dim(1), parameters.tree_dim(2)));
+  const int n_iter = ceil(1.5*parameters.lip()*parameters.tree_diag()/(0.5*min_root_cell_dim));
   // Explanation:
   // 1) parameters.lip()*diag of current cell level = theoretical step of pseudo-time until which
   // the reinitialization equation must be further solved to capture the next layer of coarsened cells
@@ -3596,10 +3256,7 @@ my_p4est_biomolecules_solver_t::my_p4est_biomolecules_solver_t(const my_p4est_bi
   // initialize the dirichlet_boundary_condition
   dirichlet_bc.setWallTypes(dirichlet_bc_wall_type);
 
-  // create the cell neighbors
-  cell_neighbors  = new my_p4est_cell_neighbors_t(biomolecules->hierarchy);
   // create the solvers
-  //jump_solver     = new my_p4est_poisson_jump_nodes_voronoi_t(biomolecules->neighbors, cell_neighbors);
   jump_solver     = new my_p4est_general_poisson_nodes_mls_solver_t(biomolecules->neighbors);
   node_solver     = new my_p4est_poisson_nodes_t(biomolecules->neighbors);
 }
@@ -4632,7 +4289,5 @@ my_p4est_biomolecules_solver_t::~my_p4est_biomolecules_solver_t()
     ierr = VecDestroy(psi_naught); psi_naught = NULL; CHKERRXX(ierr);}
   if(psi_bar != NULL){
     ierr = VecDestroy(psi_bar); psi_bar = NULL; CHKERRXX(ierr);}
-  if(cell_neighbors != NULL){
-    delete cell_neighbors; cell_neighbors = NULL;}
 }
 

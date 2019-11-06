@@ -438,7 +438,7 @@ private:
     static p4est_bool_t refine_for_exact_calculation_fn(p4est_t *forest, p4est_topidx_t which_tree, p4est_quadrant_t *quad);
     static int          reinitialization_weight_fn(p4est_t *forest, p4est_topidx_t which_tree, p4est_quadrant_t * quadrant);
     void                determine_locally_known_values(p4est_t* &forest);
-    void                scatter_to_new_layout(p4est_t* &forest, const bool ghost_flag = false);
+    void                scatter_to_new_layout(p4est_t* &forest, const bool &ghost_flag = false);
     void                partition_forest_and_update_sas(p4est_t* &forest);
     void                ghost_creation_and_final_partitioning(p4est_t* &forest);
     void                refine_and_partition(p4est_t* &forest, const int& step_idx);
@@ -570,7 +570,6 @@ private:
     for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
       domain_center[dir] = 0.5*(vertices_to_coordinates[3*tree_to_vertex[0] + dir] + vertices_to_coordinates[3*tree_to_vertex[P4EST_CHILDREN*(p4est->connectivity->num_trees-1) + P4EST_CHILDREN-1] + dir]);
   }
-public :
   // private methods
   vector<double>      calculate_dimensions_of_root_cells(p4est_t* p4est_);
   vector<double>      calculate_domain_dimensions(p4est_t* p4est_);
@@ -768,7 +767,6 @@ public:
 
 class my_p4est_biomolecules_solver_t{
   const my_p4est_biomolecules_t * const biomolecules;
-
   typedef enum {
     linearPB,
     nonlinearPB
@@ -790,21 +788,8 @@ public:
 
   PetscErrorCode ierr;
 
-  my_p4est_cell_neighbors_t*              cell_neighbors = NULL;
-  my_p4est_general_poisson_nodes_mls_solver_t* jump_solver= NULL;
-  my_p4est_general_poisson_nodes_mls_solver_t* jump_solver1= NULL;
-  my_p4est_poisson_nodes_t*               node_solver = NULL;
-
-  enum discretization_scheme_t
-  {
-    UNDEFINED,
-    NO_DISCRETIZATION,
-    WALL_DIRICHLET,
-    WALL_NEUMANN,
-    FINITE_DIFFERENCE,
-    FINITE_VOLUME,
-    IMMERSED_INTERFACE,
-  };
+  my_p4est_general_poisson_nodes_mls_solver_t*  jump_solver= NULL;
+  my_p4est_poisson_nodes_t*                     node_solver = NULL;
 
   Vec           psi_star, psi_naught, psi_bar;
   bool          psi_star_psi_naught_and_psi_bar_are_set;
@@ -825,14 +810,10 @@ public:
   void          solve_singular_part();
 
   // compute singular charges' contributions
-  double        non_dimensional_coulomb_in_mol(double x, double y
-                                             #ifdef P4_TO_P8
-                                               , double z
-                                             #endif
-                                               )
+  double        non_dimensional_coulomb_in_mol(DIM(double x, double y, double z))
   {
     double psi_star_value = 0;
-    for (int mol_idx = 0; mol_idx < biomolecules->nmol(); ++mol_idx)
+    for (size_t mol_idx = 0; mol_idx < biomolecules->nmol(); ++mol_idx)
     {
       const my_p4est_biomolecules_t::molecule& mol = biomolecules->bio_molecules[mol_idx];
       for (int charged_atom_idx = 0; charged_atom_idx < mol.get_number_of_charged_atoms(); ++charged_atom_idx)
@@ -847,34 +828,6 @@ public:
         // in the 2d case, let's consider q a linear (partial) charge density,
         // q is considered to be in electron per nanometer (TOTALLY arbitrary)...
         // psi_star_value += (a->q*0.1*meter_to_angstrom*SQR(electron)*((double) ion_charge)*log(sqrt(SQR(x - a->x) + SQR(y - a->y))))/(2.0*PI*eps_0*mol_rel_permittivity*kB*temperature); // constant = 0
-#endif
-      }
-    }
-    return psi_star_value;
-  }
-  double        non_dimensional_coulomb_in_elec(double x, double y
-                                             #ifdef P4_TO_P8
-                                               , double z
-                                             #endif
-                                               )
-  {
-    double psi_star_value = 0;
-    for (int mol_idx = 0; mol_idx < biomolecules->nmol(); ++mol_idx)
-    {
-      const my_p4est_biomolecules_t::molecule& mol = biomolecules->bio_molecules[mol_idx];
-      for (int charged_atom_idx = 0; charged_atom_idx < mol.get_number_of_charged_atoms(); ++charged_atom_idx)
-      {
-        const Atom* a = mol.get_charged_atom(charged_atom_idx);
-#ifdef P4_TO_P8
-       psi_star_value += ((a->q*SQR(electron)*((double) ion_charge))/
-            (length_scale_in_meter()*4.0*PI*eps_0*kB*temperature*2*biomolecules->angstrom_to_domain))*(-1/elec_rel_permittivity);
-        //std::cout << "psi_star correction = "<< psi_star_value <<"\n";
-#else
-        // there is no real 2D equivalent in terms of electrostatics,
-        // in the 2d case, let's consider q a linear (partial) charge density,
-        // q is considered to be in electron per nanometer (TOTALLY arbitrary)...
-        //psi_star_value -= (a->q*0.1*meter_to_angstrom*SQR(electron)*((double) ion_charge)*log(sqrt(SQR(x - a->x) + SQR(y - a->y))))/(2.0*PI*eps_0*elec_rel_permittivity*kB*temperature); // constant = 0
-
 #endif
       }
     }
@@ -927,7 +880,7 @@ public:
   double        get_inverse_debye_length_in_meters_inverse() const;
   inline double get_inverse_debye_length_in_angstrom_inverse() const {return get_inverse_debye_length_in_meters_inverse()/meter_to_angstrom;}
   inline double get_inverse_debye_length_in_domain() const {return (get_inverse_debye_length_in_angstrom_inverse()/(biomolecules->angstrom_to_domain));}
-  inline double get_temperature_in_kelvin() const {return temperature;}
+  inline double get_temperature_in_kelvin() const {return temperature; }
   inline double get_temperature_in_celsius() const {return (get_temperature_in_kelvin() - 273.15);}
   inline double get_far_field_ion_density() const {return far_field_ion_density;}
   inline int    get_ion_charge() const {return ion_charge;}
