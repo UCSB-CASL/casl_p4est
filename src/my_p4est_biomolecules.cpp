@@ -3249,12 +3249,9 @@ my_p4est_biomolecules_solver_t::my_p4est_biomolecules_solver_t(const my_p4est_bi
 
   // initialize psi_star, psi_naught, psi_bar, and psi, will be created when needed
   psi_star              = NULL;
-  psi_naught            = NULL;
-  psi_bar               = NULL;
   psi_hat               = NULL;
-  psi_star_psi_naught_and_psi_bar_are_set = psi_hat_is_set = false;
-  // initialize the dirichlet_boundary_condition
-  dirichlet_bc.setWallTypes(dirichlet_bc_wall_type);
+  psi_hat_is_set = psi_star_is_set = false;
+  nb_iterations_for_setting_psi_hat = -1; // absurd initialization
 
   // create the solvers
   jump_solver     = new my_p4est_general_poisson_nodes_mls_solver_t(biomolecules->neighbors);
@@ -3264,22 +3261,23 @@ void    my_p4est_biomolecules_solver_t::set_molecular_relative_permittivity(doub
 {
   P4EST_ASSERT(epsilon_molecule >= 1.0-EPS);
   // if the value is changed, psi_star, psi_bar and psi are no longer valid
-  psi_star_psi_naught_and_psi_bar_are_set = psi_hat_is_set = !(fabs(mol_rel_permittivity - epsilon_molecule) > EPS*fabs(mol_rel_permittivity));
+  psi_star_is_set = psi_hat_is_set = !(fabs(mol_rel_permittivity - epsilon_molecule) > EPS*fabs(mol_rel_permittivity));
+  if(!psi_hat_is_set)
+    nb_iterations_for_setting_psi_hat = -1;
   mol_rel_permittivity  = epsilon_molecule;
 }
 void    my_p4est_biomolecules_solver_t::set_electrolyte_relative_permittivity(double epsilon_electrolyte)
 {
   P4EST_ASSERT(epsilon_electrolyte > 1.0);
 #ifdef CASL_THROWS
-  if(elec_rel_permittivity > 1.0-EPS && fabs(elec_rel_permittivity - epsilon_electrolyte) > EPS*elec_rel_permittivity)
-  {
-    // print a warning
-    string message = "my_p4est_biomolecules_solver_t::set_electrolyte_relative_permittivity(...): the electrolyte permittivity was already set, it will be reset...\n";
-    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->error_file, message.c_str()); CHKERRXX(ierr);
-  }
+  // print a warning
+  if(elec_rel_permittivity > 1.0-EPS && fabs(elec_rel_permittivity - epsilon_electrolyte) > EPS*elec_rel_permittivity) {
+    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->error_file, "my_p4est_biomolecules_solver_t::set_electrolyte_relative_permittivity(...): the electrolyte permittivity was already set, it will be reset...\n"); CHKERRXX(ierr); }
 #endif
   // if the value is changed, psi is no longer valid
   psi_hat_is_set = !(fabs(elec_rel_permittivity - epsilon_electrolyte) > EPS*fabs(elec_rel_permittivity));
+  if(!psi_hat_is_set)
+    nb_iterations_for_setting_psi_hat = -1;
   elec_rel_permittivity   = epsilon_electrolyte;
 }
 void    my_p4est_biomolecules_solver_t::set_relative_permittivities(double epsilon_molecule, double epsilon_electrolyte)
@@ -3291,57 +3289,46 @@ void    my_p4est_biomolecules_solver_t::set_temperature_in_kelvin(double tempera
 {
   P4EST_ASSERT(temperature_in_K > EPS); //the value of the temperature must be strictly positive
 #ifdef CASL_THROWS
-  if(temperature_is_set() && temperature_in_K > EPS && fabs(temperature - temperature_in_K) > EPS*temperature)
-  {
-    // print a warning
-    string message = "my_p4est_biomolecules_solver_t::set_temperature_in_kelvin(...): the temperature was already set, it will be reset...\n";
-    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->error_file, message.c_str()); CHKERRXX(ierr);
-  }
+  // print a warning
+  if(temperature_is_set() && temperature_in_K > EPS && fabs(temperature - temperature_in_K) > EPS*temperature) {
+    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->error_file, "my_p4est_biomolecules_solver_t::set_temperature_in_kelvin(...): the temperature was already set, it will be reset...\n"); CHKERRXX(ierr); }
 #endif
   // if the value is changed, psi_star, psi_bar and psi are no longer valid
-  psi_star_psi_naught_and_psi_bar_are_set = psi_hat_is_set = !(fabs(temperature - temperature_in_K) > EPS*fabs(temperature));
+  psi_star_is_set = psi_hat_is_set = !(fabs(temperature - temperature_in_K) > EPS*fabs(temperature));
+  if(!psi_hat_is_set)
+    nb_iterations_for_setting_psi_hat = -1;
   temperature = temperature_in_K;
 }
 void    my_p4est_biomolecules_solver_t::set_far_field_ion_density(double n_0)
 {
 #ifdef CASL_THROWS
-  //int local_error = (n_0 < EPS);
-  //string error_message = "my_p4est_biomolecules_solver_t::set_far_field_ion_density(...): the value of the far-field ion density must be strictly positive.";
-  //biomolecules->error_manager.check(local_error, error_message);
-  //  if(far_field_ion_density_is_set() && n_0 > EPS && fabs(far_field_ion_density - n_0) > EPS*far_field_ion_density)
-  if(far_field_ion_density_is_set())
-  {
-    // print a warning
-    string message = "my_p4est_biomolecules_solver_t::set_far_field_ion_density(...): the far-field ion density was already set, it will be reset...\n";
-    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->error_file, message.c_str()); CHKERRXX(ierr);
-  }
+  // print a warning
+  if(far_field_ion_density_is_set()){
+    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->error_file, "my_p4est_biomolecules_solver_t::set_far_field_ion_density(...): the far-field ion density was already set, it will be reset...\n"); CHKERRXX(ierr); }
 #endif
   // if the value is changed, psi is no longer valid
   psi_hat_is_set = !(fabs(far_field_ion_density - n_0) > EPS*fabs(far_field_ion_density));
+  if(!psi_hat_is_set)
+    nb_iterations_for_setting_psi_hat = -1;
   far_field_ion_density = n_0;
 }
 void    my_p4est_biomolecules_solver_t::set_ion_charge(int z)
 {
   P4EST_ASSERT(z>0); // the ion charge must be a strictly positive integer
 #ifdef CASL_THROWS
-  if(ion_charge_is_set() && z > 0 && ion_charge != z)
-  {
-    // print a warning
-    string message = "my_p4est_biomolecules_solver_t::set_ion_charge(...): the ion charge was already set, it will be reset...\n";
-    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->error_file, message.c_str()); CHKERRXX(ierr);
-  }
+  // print a warning
+  if(ion_charge_is_set() && z > 0 && ion_charge != z) {
+    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->error_file, "my_p4est_biomolecules_solver_t::set_ion_charge(...): the ion charge was already set, it will be reset...\n"); CHKERRXX(ierr); }
 #endif
-  // if the value is changed, psi_star, psi_bar and psi are no longer valid
-  psi_star_psi_naught_and_psi_bar_are_set = psi_hat_is_set = !(ion_charge != z);
+  // if the value is changed, psi_star and psi_hat are no longer valid
+  psi_star_is_set = psi_hat_is_set = !(ion_charge != z);
+  if(!psi_hat_is_set)
+    nb_iterations_for_setting_psi_hat = -1;
   ion_charge = z;
 }
 void    my_p4est_biomolecules_solver_t::set_inverse_debye_length_in_meters_inverse(double inverse_debye_length_in_m_inverse)
 {
-  //#ifdef CASL_THROWS
-  //  int local_error = (debye_length_in_m < EPS);
-  //  string error_message = "my_p4est_biomolecules_solver_t::set_debye_length_in_meters(...): the value of the debye length must be strictly positive.";
-  //  biomolecules->error_manager.check(local_error, error_message);
-  //#endif
+  P4EST_ASSERT(inverse_debye_length_in_m_inverse > 0.0);
   // if all three parameters are set, it's either consistent or not. If not, abort
   if(all_debye_parameters_are_set())
   {
@@ -3350,20 +3337,28 @@ void    my_p4est_biomolecules_solver_t::set_inverse_debye_length_in_meters_inver
       return; // nothing to be done
     // or the user is dumb and we should teach him
     P4EST_ASSERT(false); // the debye length is already set by the relevant parameters, it can't be set to the new value: abort;
+    MPI_Abort(biomolecules->p4est->mpicomm, 759957);
   }
+  PetscErrorCode ierr;
   // if only 2 of the three parameters are set, it's the "easy" case, the third one might be calculated
   if(ion_charge_is_set() && temperature_is_set() && !far_field_ion_density_is_set())
   {
     // temperature and ion charge are set, the far-field ion density is not, let's calculate it
     set_far_field_ion_density(eps_0*kB*temperature*inverse_debye_length_in_m_inverse/(2.0*SQR(((double) ion_charge)*electron)));
-    std::cout << "setting far field ion density based on other values \n";
+    if(biomolecules->log_file != NULL)
+    {
+      ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "setting far field ion density based on other values \n"); CHKERRXX(ierr);
+    }
     return;
   }
   if(ion_charge_is_set() && !temperature_is_set() && far_field_ion_density_is_set())
   {
     // far-field ion density and ion charge are set, temperature is not, let's calculate it
     set_temperature_in_kelvin(2.0*far_field_ion_density*SQR((1/inverse_debye_length_in_m_inverse)*((double) ion_charge)*electron)/(eps_0*kB));
-    std::cout << "setting temperature based on other values \n";
+    if(biomolecules->log_file != NULL)
+    {
+      ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "setting temperature based on other values \n"); CHKERRXX(ierr);
+    }
     return;
   }
   if(!ion_charge_is_set() && temperature_is_set() && far_field_ion_density_is_set())
@@ -3373,7 +3368,10 @@ void    my_p4est_biomolecules_solver_t::set_inverse_debye_length_in_meters_inver
     // but it's supposed to be an integer, so let's check that
     P4EST_ASSERT(fabs(my_z - round(my_z)) < EPS*my_z);
     set_ion_charge((int) round(my_z));
-    std::cout << "setting ion charge based on other values \n";
+    if(biomolecules->log_file != NULL)
+    {
+      ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "setting ion charge based on other values \n"); CHKERRXX(ierr);
+    }
     return;
   }
   // if none or only one of the three parameters is set, we have one more degree of freedom, and we can set arbitrary values
@@ -3385,59 +3383,61 @@ void    my_p4est_biomolecules_solver_t::set_inverse_debye_length_in_meters_inver
     // if only one (the ion charge), the next pass will set the temperature and the far-field ion density will be calculated
     // if two (the ion charge and either the temperature or the far-field density), the next pass will set the remaining one
     set_inverse_debye_length_in_meters_inverse(inverse_debye_length_in_m_inverse);
-    std::cout << "setting ion charge and then inverse_debye_length \n";
+    if(biomolecules->log_file != NULL)
+    {
+      ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "setting ion charge and then inverse_debye_length \n"); CHKERRXX(ierr);
+    }
   }
   else
   {
     // the ion charge only is set, set the temperature to 300 K (default value) and that's it
     set_temperature_in_kelvin();
     set_inverse_debye_length_in_meters_inverse(inverse_debye_length_in_m_inverse);
-    std::cout << "setting temperature and then inverse_debye_length \n";
+    if(biomolecules->log_file != NULL)
+    {
+      ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "setting temperature and then inverse_debye_length \n"); CHKERRXX(ierr);
+    }
   }
   return;
 }
-double  my_p4est_biomolecules_solver_t::get_inverse_debye_length_in_meters_inverse() const
+double my_p4est_biomolecules_solver_t::get_inverse_debye_length_in_meters_inverse() const
 {
   P4EST_ASSERT(all_debye_parameters_are_set());
-  //return sqrt(eps_0*kB*temperature/(2.0*far_field_ion_density*SQR(((double) ion_charge)*electron)));
   return sqrt((2.0*far_field_ion_density*SQR(((double) ion_charge)*electron))/(eps_0*kB*temperature));
 }
 
-void    my_p4est_biomolecules_solver_t::return_psi_star_psi_naught_and_psi_bar(Vec &psi_star_out, Vec &psi_naught_out, Vec &psi_bar_out)
+void my_p4est_biomolecules_solver_t::return_psi_star(Vec &psi_star_out)
 {
-  P4EST_ASSERT((psi_bar !=NULL) && (psi_star !=NULL));
+  P4EST_ASSERT(psi_star !=NULL);
   psi_star_out    = psi_star; psi_star = NULL;
-  psi_naught_out  = psi_naught; psi_naught = NULL;
-  psi_bar_out     = psi_bar; psi_bar = NULL;
-  psi_star_psi_naught_and_psi_bar_are_set = false;
-}
-void     my_p4est_biomolecules_solver_t::return_psi_hat(Vec &psi_hat_out)
-{
-  P4EST_ASSERT(psi_hat != NULL);
-  psi_hat_out=psi_hat; psi_hat=NULL;
-  //  Vec psi_hat_to_return = psi_hat;
-  //  //psi_hat = NULL;
-  psi_hat_is_set = false;
-  //  return psi_hat_to_return;
+  psi_star_is_set = false;
 }
 
-void    my_p4est_biomolecules_solver_t::return_all_psi_vectors(Vec &psi_star_out, Vec &psi_naught_out, Vec &psi_bar_out, Vec &psi_hat_out)
+void my_p4est_biomolecules_solver_t::return_psi_hat(Vec &psi_hat_out)
 {
-  return_psi_star_psi_naught_and_psi_bar(psi_star_out, psi_naught_out, psi_bar_out);
+  P4EST_ASSERT(psi_hat != NULL);
+  psi_hat_out     = psi_hat; psi_hat=NULL;
+  psi_hat_is_set  = false;
+  nb_iterations_for_setting_psi_hat = -1;
+}
+
+void my_p4est_biomolecules_solver_t::return_all_psi_vectors(Vec &psi_star_out, Vec &psi_hat_out)
+{
+  return_psi_star(psi_star_out);
   return_psi_hat(psi_hat_out);
 }
 
-void    my_p4est_biomolecules_solver_t::make_sure_is_node_sampled(Vec &vector)
+void my_p4est_biomolecules_solver_t::make_sure_is_node_sampled(Vec &vector)
 {
   if(vector != NULL)
   {
     PetscInt size_local, size_local_ghost, size_global;
     Vec vector_local_ghost = NULL;
-    ierr = VecGetSize(vector, &size_global); CHKERRXX(ierr);
-    ierr = VecGetLocalSize(vector, &size_local); CHKERRXX(ierr);
-    ierr = VecGhostGetLocalForm(vector, &vector_local_ghost); CHKERRXX(ierr);
-    ierr = VecGetSize(vector_local_ghost, &size_local_ghost); CHKERRXX(ierr);
-    ierr = VecGhostRestoreLocalForm(vector, &vector_local_ghost); vector_local_ghost = NULL; CHKERRXX(ierr);
+    ierr = VecGetSize(vector, &size_global);                                                  CHKERRXX(ierr);
+    ierr = VecGetLocalSize(vector, &size_local);                                              CHKERRXX(ierr);
+    ierr = VecGhostGetLocalForm(vector, &vector_local_ghost);                                 CHKERRXX(ierr);
+    ierr = VecGetSize(vector_local_ghost, &size_local_ghost);                                 CHKERRXX(ierr);
+    ierr = VecGhostRestoreLocalForm(vector, &vector_local_ghost);                             CHKERRXX(ierr);
     p4est_gloidx_t nb_nodes_total = 0;
     for (int rr = 0; rr < biomolecules->p4est->mpisize; ++rr)
       nb_nodes_total += biomolecules->nodes->global_owned_indeps[rr];
@@ -3447,342 +3447,21 @@ void    my_p4est_biomolecules_solver_t::make_sure_is_node_sampled(Vec &vector)
     int mpiret = MPI_Allreduce(MPI_IN_PLACE, &logic_error, 1, MPI_INT, MPI_LOR, biomolecules->p4est->mpicomm); SC_CHECK_MPI(mpiret);
     if(logic_error)
     {
-      ierr = VecDestroy(vector); CHKERRXX(ierr); vector = NULL;
-      ierr = VecCreateGhostNodes(biomolecules->p4est, biomolecules->nodes, &vector); CHKERRXX(ierr);
+      ierr = VecDestroy(vector);                                                              CHKERRXX(ierr);
+      ierr = VecCreateGhostNodes(biomolecules->p4est, biomolecules->nodes, &vector);          CHKERRXX(ierr);
     }
   }
-  else
-  {
-    ierr = VecCreateGhostNodes(biomolecules->p4est, biomolecules->nodes, &vector); CHKERRXX(ierr);
-  }
-}
-
-void    my_p4est_biomolecules_solver_t::solve_singular_part()
-{
-  if(psi_star_psi_naught_and_psi_bar_are_set)
-    return;
-  P4EST_ASSERT(temperature_is_set() && ion_charge_is_set() && molecular_permittivity_is_set());
-  // This step is somehow critical, because its solution will determine the jump conditions at the
-  // interface for the (non)linear Poisson-Boltzmann solver. Those jump conditions depend on the
-  // NORMAL DERIVATIVE of the singular solution psi_bar calculated herein.
-  // Therefore, psi_bar must be calculated with one order of accuracy higher than the desired final
-  // order of accuracy for psi, that means
-  // - order 2 for psi_bar if the desired order of psi is 1;
-  // - order 3 for psi_bar if the desired order of psi is 2.
-  // Therefore, the Dirichlet boundary condition for psi_naught should be evaluated with 2nd (resp. 3rd)
-  // order accurate interpolation, i.e. linear (resp. quadratic non-oscillatory) interpolation
-  // if the desired order of accuracy is 1 (resp. 2).
-  make_sure_is_node_sampled(psi_star);
-  make_sure_is_node_sampled(psi_naught);
-  make_sure_is_node_sampled(psi_bar);
-  // initialize the three vectors to 0.0;
-  double *psi_star_p = NULL, *psi_naught_p = NULL, *psi_bar_p = NULL;
-  ierr = VecGetArray(psi_star, &psi_star_p); CHKERRXX(ierr);
-  ierr = VecGetArray(psi_naught, &psi_naught_p); CHKERRXX(ierr);
-  ierr = VecGetArray(psi_bar, &psi_bar_p); CHKERRXX(ierr);
-  // initialize both to 0.0
-  for (size_t i = 0; i<biomolecules->nodes->indep_nodes.elem_count; ++i) {
-    psi_bar_p[i]  = 0.0;
-    psi_star_p[i] = 0.0;
-    psi_naught_p[i] = 0.0;
-  }
-  ierr = VecRestoreArray(psi_bar, &psi_bar_p); psi_bar_p = NULL; CHKERRXX(ierr);
-  ierr = VecRestoreArray(psi_naught, &psi_naught_p); psi_naught_p = NULL; CHKERRXX(ierr);
-  ierr = VecRestoreArray(psi_star, &psi_star_p); psi_star_p = NULL; CHKERRXX(ierr);
-
-  // sample the contribution of singular charges at grid nodes, but only in the inner domain(s)
-  // Note that the NEGATIVE value is sampled to make the imposition of the Dirichlet boundary condition for psi_0 easier
-  double xyz[P4EST_DIM];
-  const double* phi_read_p = NULL;
-  ierr = VecGetArray(psi_star, &psi_star_p); CHKERRXX(ierr);
-  ierr = VecGetArrayRead(biomolecules->phi, &phi_read_p); CHKERRXX(ierr);
-  // if OOA == 1 --> linear interpolation of psi_star --> need only the closest neighbors --> finest diag
-  // if OOA == 2 --> quadratic non-oscillatory interpolation of psi_star --> need also the outer neighbors of the closest neighbors
-  //             --> 2.0*finest diag (we have enforced lip >= 1.0)
-  for (size_t i = 0; i<biomolecules->nodes->indep_nodes.elem_count; ++i) {
-    // --> calculate the (negative) contribution of singular charges if the levelset function is smaller than or equal to the layer thickness
-    if(phi_read_p[i] <= 5.0*biomolecules->parameters.layer_thickness()) //1.5 == safety factor
-    {
-      node_xyz_fr_n(i, biomolecules->p4est, biomolecules->nodes, xyz);
-#ifdef P4_TO_P8
-      psi_star_p[i] = -non_dimensional_coulomb_in_mol(xyz[0], xyz[1], xyz[2]);
-#else
-      psi_star_p[i] = -non_dimensional_coulomb_in_mol(xyz[0], xyz[1]);
-#endif
-    }
-  }
-  ierr = VecRestoreArrayRead(biomolecules->phi, &phi_read_p); phi_read_p = NULL; CHKERRXX(ierr);
-  ierr = VecRestoreArray(psi_star, &psi_star_p); psi_star_p = NULL; CHKERRXX(ierr);
-
-  // solve a poisson equation to obtain the smooth part of the soluton in the inner domain, i.e. psi_0
-  // the following are needed in the (OOA == 2) case if you want results by the end of the day
-  Vec psi_star_xx = NULL, psi_star_yy = NULL;
-#ifdef P4_TO_P8
-  Vec psi_star_zz = NULL;
-#endif
-  my_p4est_interpolation_nodes_t bc_interface_value(biomolecules->neighbors);
-  switch (biomolecules->parameters.order_of_accuracy()) {
-  case 1:
-    bc_interface_value.set_input(psi_star, linear);
-    break;
-  case 2:
-    make_sure_is_node_sampled(psi_star_xx);
-    make_sure_is_node_sampled(psi_star_yy);
-#ifdef P4_TO_P8
-    make_sure_is_node_sampled(psi_star_zz);
-    biomolecules->neighbors->second_derivatives_central(psi_star, psi_star_xx, psi_star_yy, psi_star_zz);
-#else
-    biomolecules->neighbors->second_derivatives_central(psi_star, psi_star_xx, psi_star_yy);
-#endif
-    bc_interface_value.set_input(psi_star, psi_star_xx, psi_star_yy,
-                             #ifdef P4_TO_P8
-                                 psi_star_zz,
-                             #endif
-                                 quadratic_non_oscillatory);
-    break;
-  default:
-    throw std::invalid_argument("my_p4est_biomolecules_solver_t::solve_singular_part(), the order of accuracy should be either 1 or 2!");
-    break;
-  }
-
-  BoundaryConditionsDIM bc;
-  struct : CF_DIM
-  {
-    double operator()(DIM(double, double, double)) const { return 0.0;}
-  } bc_wall_value;
-
-  struct: WallBCDIM
-  {
-    BoundaryConditionType operator()(DIM(double, double, double)) const { return DIRICHLET; }
-  } bc_wall_type;
-
-  bc.setWallTypes(bc_wall_type);
-  bc.setWallValues(bc_wall_value);
-  bc.setInterfaceType(DIRICHLET);
-  bc.setInterfaceValue(bc_interface_value);
-  //    P4EST_ASSERT(node_solver != NULL);
-  node_solver->set_bc(bc);
-  node_solver->set_phi(biomolecules->phi);
-  node_solver->set_mu(1.0); // the rhs is zero, so any (constant) value is equally good
-  node_solver->set_rhs(psi_naught);
-  node_solver->solve(psi_naught);
-
-
-  //  jump_solver1->set_use_centroid_always(use_centroid_always);
-  //  jump_solver1->set_store_finite_volumes(store_finite_volumes);
-  //  jump_solver1->set_jump_scheme(jc_scheme);
-  //  jump_solver1->set_jump_sub_scheme(jc_sub_scheme);
-  //  jump_solver1->set_use_sc_scheme(sc_scheme);
-  //  jump_solver1->set_integration_order(integration_order);
-
-  //  //solver.set_lip(10.5);
-
-  //  jump_solver1->set_lip(lip);
-
-  //  Vec bdry_phi_vec_all[bdry_phi_max_num];
-  //  Vec infc_phi_vec_all[infc_phi_max_num];
-
-  //  //parameters for solver
-  //  //n_um = 10; mag_um = 1; n_mu_m = 0; mag_mu_m = 80; n_diag_m = 1; mag_diag_m = 0;
-  //  //n_up = 12; mag_up = 1; n_mu_p = 0; mag_mu_p = 2; n_diag_p = 1; mag_diag_p = 1;
-
-  //  infc_phi_num = 1;
-  //  bdry_phi_num = 0;
-
-  //  infc_present_00 = 1; infc_geom_00 = 1; infc_opn_00 = MLS_INT;
-
-  //  bdry_present_00 = 0;
-
-  //  bool *bdry_present_all[] = { &bdry_present_00};
-
-  //  int *bdry_geom_all[] = { &bdry_geom_00};
-
-  //  int *bdry_opn_all[] = { &bdry_opn_00 };
-
-  //  int *bc_coeff_all[] = { &bc_coeff_00 };
-
-  //  double *bc_coeff_all_mag[] = { &bc_coeff_00_mag };
-
-  //  int *bc_type_all[] = { &bc_type_00 };
-
-  //  bool *infc_present_all[] = { &infc_present_00};
-
-  //  int *infc_geom_all[] = { &infc_geom_00};
-
-  //  int *infc_opn_all[] = { &infc_opn_00};
-
-  //  int *jc_value_all[] = { &jc_value_00};
-
-  //  int *jc_flux_all[] = { &jc_flux_00};
-
-
-  //  for (int i = 0; i < infc_phi_max_num; ++i)
-  //    if (*infc_present_all[i] == true)
-  //    {
-  //        jump_solver1->add_interface((mls_opn_t) *infc_opn_all[i], biomolecules->phi, DIM(NULL, NULL, NULL), bc_interface_value, zero_cf);
-  //    }
-
-  ////  dirichlet_bc.setWallTypes(dirichlet_bc_wall_type);
-  ////  dirichlet_bc.setWallValues(homogeneous_dirichlet_bc_wall_value);
-  //  class bc_wall_type_t : public WallBCDIM
-  //  {
-  //  public:
-  //    BoundaryConditionType operator()(DIM(double, double, double)) const
-  //    {
-  //      return (BoundaryConditionType) bc_wtype;
-  //    }
-  //  } bc_wall_type1;
-  ////  jump_solver->set_bc(dirichlet_bc);
-  //  jump_solver1->set_mu(1.0);
-  //  jump_solver1->set_wc(bc_wall_type1, zero_cf);
-  //  jump_solver1->set_rhs(zero_vec);
-  //  jump_solver1->set_diag(zero_vec);
-  //  jump_solver1->set_use_taylor_correction(taylor_correction);
-  //  jump_solver1->set_kink_treatment(kink_special_treatment);
-  //  jump_solver1->solve(psi_naught);
-
-  // we have psi_0
-
-  // add the contribution of singular charges to obtain psi_bar = psi_0 + psi_star (contribution of singular charges)
-  // note that the value of psi_star was sampled with a negative sign above (for the calculation of the interface
-  // Dirichlet boundary condition) --> scale by "-1.0" to get back to the correct value
-  const double *psi_naught_read_only_p = NULL;
-  ierr = VecGetArray(psi_star, &psi_star_p); CHKERRXX(ierr);
-  ierr = VecGetArrayRead(psi_naught, &psi_naught_read_only_p); CHKERRXX(ierr);
-  ierr = VecGetArray(psi_bar, &psi_bar_p); CHKERRXX(ierr);
-  ierr = VecGetArrayRead(biomolecules->phi, &phi_read_p); CHKERRXX(ierr);
-  for (size_t i = 0; i<biomolecules->nodes->indep_nodes.elem_count; ++i) {
-    psi_star_p[i] *= -1.0;
-    if(phi_read_p[i] <= 5.0*biomolecules->parameters.layer_thickness() || (fabs(psi_naught_read_only_p[i]) > EPS)) // 1.5 == safety factor
-      psi_bar_p[i]  = psi_star_p[i] + psi_naught_read_only_p[i];
-    else
-      psi_bar_p[i]  = 0.0;
-  }
-  ierr = VecRestoreArrayRead(biomolecules->phi, &phi_read_p); phi_read_p = NULL; CHKERRXX(ierr);
-  ierr = VecRestoreArray(psi_bar, &psi_bar_p); psi_bar_p = NULL; CHKERRXX(ierr);
-  ierr = VecRestoreArrayRead(psi_naught, &psi_naught_read_only_p); psi_naught_read_only_p = NULL; CHKERRXX(ierr);
-  ierr = VecRestoreArray(psi_star, &psi_star_p); psi_star_p = NULL; CHKERRXX(ierr);
-
-  // Once psi_bar is calculated, it needs to be extended over the interface so that its normal gradient can
-  // be correctly calculated at the interface for imposing the jump condition on the normal gradient of
-  // psi_hat afterwards.
-  // If the normal gradient of psi_bar needs to be evaluated with order of accuracy 1 (resp. 2),
-  // psi bar must be extended over the interface with a 2nd (resp. 3rd) order accurate method.
-  // Therefore, the first (resp. and second) derivative(s) of psi_bar needs to be extended as well
-  // NOTE: it is known that the Shortley-Weller method actually leads to 3rd order accurate results close
-  // to the interface (leading in turn the superconvergence for the gradient). If psi_star is evaluated at
-  // the interface with 3rd order accuracy (second order non-oscillatory interpolation method), the gradient
-  // will be second-order accurate close to the interface and, hopefully, still second order accurate after
-  // extension of psi_bar over the interface.
-  biomolecules->ls->extend_Over_Interface_TVD(biomolecules->phi, psi_bar, 20, biomolecules->parameters.order_of_accuracy());
-  biomolecules->ls->extend_Over_Interface_TVD(biomolecules->phi, psi_naught, 20, biomolecules->parameters.order_of_accuracy()); // for Rochi's accuracy test number 2
-  // 20 iterations for the extension over the interface (dafault parameter)
-  // 2 in the last argument above no matter what is the desired order of accuracy (see comment above)
-
-  psi_star_psi_naught_and_psi_bar_are_set = true;
-  if(psi_star_xx != NULL){
-    ierr = VecDestroy(psi_star_xx); psi_star_xx = NULL;}
-  if(psi_star_yy != NULL){
-    ierr = VecDestroy(psi_star_yy); psi_star_yy = NULL;}
-#ifdef P4_TO_P8
-  if(psi_star_zz != NULL){
-    ierr = VecDestroy(psi_star_zz); psi_star_zz = NULL;}
-#endif
+  else{
+    ierr = VecCreateGhostNodes(biomolecules->p4est, biomolecules->nodes, &vector);            CHKERRXX(ierr); }
 }
 
 void my_p4est_biomolecules_solver_t::calculate_jumps_in_normal_gradient(Vec &eps_grad_n_psi_hat_jump)
 {
-  P4EST_ASSERT(eps_grad_n_psi_hat_jump != NULL && biomolecules->phi != NULL && psi_star_psi_naught_and_psi_bar_are_set);
-  const double *phi_read_p = NULL , *psi_bar_read_only_p = NULL;
-  double *eps_grad_n_psi_hat_jump_p = NULL;
-
-  ierr = VecGetArrayRead(biomolecules->phi, &phi_read_p); CHKERRXX(ierr);
-  ierr = VecGetArrayRead(psi_bar, &psi_bar_read_only_p); CHKERRXX(ierr);
-  ierr = VecGetArray(eps_grad_n_psi_hat_jump, &eps_grad_n_psi_hat_jump_p); CHKERRXX(ierr);
-
-  quad_neighbor_nodes_of_node_t qnnn;
-  p4est_locidx_t node_idx;
-  double n_x, n_y;
-#ifdef P4_TO_P8
-  double n_z;
-#endif
-  double xyz[P4EST_DIM];
-  double norm_of_gradient;
-  for (size_t k = 0; k < biomolecules->neighbors->get_layer_size(); ++k)
-  {
-    node_idx = biomolecules->neighbors->get_layer_node(k);
-    if(fabs(phi_read_p[node_idx]) <= (1.5*biomolecules->parameters.layer_thickness())) // 1.5 == safety factor
-    {
-      biomolecules->neighbors->get_neighbors(node_idx, qnnn);
-      norm_of_gradient  = 0.0;
-      n_x               = qnnn.dx_central(phi_read_p); norm_of_gradient += SQR(n_x);
-      n_y               = qnnn.dy_central(phi_read_p); norm_of_gradient += SQR(n_y);
-#ifdef P4_TO_P8
-      n_z               = qnnn.dz_central(phi_read_p); norm_of_gradient += SQR(n_z);
-#endif
-      norm_of_gradient  = MAX(sqrt(norm_of_gradient), EPS);
-#ifdef P4_TO_P8
-      n_z               /= norm_of_gradient;
-#endif
-      n_y               /= norm_of_gradient;
-      n_x               /= norm_of_gradient;
-
-      eps_grad_n_psi_hat_jump_p[node_idx]  = mol_rel_permittivity*
-          (n_x*qnnn.dx_central(psi_bar_read_only_p)
-           +n_y*qnnn.dy_central(psi_bar_read_only_p)
-     #ifdef P4_TO_P8
-           +n_z*qnnn.dz_central(psi_bar_read_only_p)
-     #endif
-           );
-    }
-    else
-      eps_grad_n_psi_hat_jump_p[node_idx]  = 0.0; // irrelevant far away from the interface but let's set it to 0.0
-  }
-  ierr = VecGhostUpdateBegin(eps_grad_n_psi_hat_jump, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  for (size_t k = 0; k < biomolecules->neighbors->get_local_size(); ++k)
-  {
-    node_idx = biomolecules->neighbors->get_local_node(k);
-    if(fabs(phi_read_p[node_idx]) <= (1.5*biomolecules->parameters.layer_thickness())) // 1.5 == safety factor
-    {
-      biomolecules->neighbors->get_neighbors(node_idx, qnnn);
-      norm_of_gradient  = 0.0;
-      n_x               = qnnn.dx_central(phi_read_p); norm_of_gradient += SQR(n_x);
-      n_y               = qnnn.dy_central(phi_read_p); norm_of_gradient += SQR(n_y);
-#ifdef P4_TO_P8
-      n_z               = qnnn.dz_central(phi_read_p); norm_of_gradient += SQR(n_z);
-#endif
-      norm_of_gradient  = MAX(sqrt(norm_of_gradient), EPS);
-#ifdef P4_TO_P8
-      n_z               /= norm_of_gradient;
-#endif
-      n_y               /= norm_of_gradient;
-      n_x               /= norm_of_gradient;
-
-      eps_grad_n_psi_hat_jump_p[node_idx]  = mol_rel_permittivity*
-          (n_x*qnnn.dx_central(psi_bar_read_only_p)
-           +n_y*qnnn.dy_central(psi_bar_read_only_p)
-     #ifdef P4_TO_P8
-           +n_z*qnnn.dz_central(psi_bar_read_only_p)
-     #endif
-           );
-    }
-    else
-      eps_grad_n_psi_hat_jump_p[node_idx]  = 0.0; // irrelevant far away from the interface but let's set it to 0.0
-  }
-  ierr = VecGhostUpdateEnd(eps_grad_n_psi_hat_jump, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-  ierr = VecRestoreArray(eps_grad_n_psi_hat_jump, &eps_grad_n_psi_hat_jump_p); eps_grad_n_psi_hat_jump_p = NULL; CHKERRXX(ierr);
-  ierr = VecRestoreArrayRead(psi_bar, &psi_bar_read_only_p); psi_bar_read_only_p = NULL; CHKERRXX(ierr);
-  ierr = VecRestoreArrayRead(biomolecules->phi, &phi_read_p); phi_read_p = NULL; CHKERRXX(ierr);
-}
-
-void my_p4est_biomolecules_solver_t::calculate_jumps_in_normal_gradient_v2(Vec &eps_grad_n_psi_hat_jump)
-{
   const double *phi_read_only_p = NULL , *psi_star_read_only_p = NULL;
   double *eps_grad_n_psi_hat_jump_p = NULL;
-  ierr = VecGetArrayRead(biomolecules->phi, &phi_read_only_p);  CHKERRXX(ierr);
-  ierr = VecGetArrayRead(psi_star, &psi_star_read_only_p);      CHKERRXX(ierr);
-  ierr = VecGetArray(eps_grad_n_psi_hat_jump, &eps_grad_n_psi_hat_jump_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(biomolecules->phi, &phi_read_only_p);              CHKERRXX(ierr);
+  ierr = VecGetArrayRead(psi_star, &psi_star_read_only_p);                  CHKERRXX(ierr);
+  ierr = VecGetArray(eps_grad_n_psi_hat_jump, &eps_grad_n_psi_hat_jump_p);  CHKERRXX(ierr);
   quad_neighbor_nodes_of_node_t qnnn;
   p4est_locidx_t node_idx;
   double n_xyz[P4EST_DIM];
@@ -3799,7 +3478,6 @@ void my_p4est_biomolecules_solver_t::calculate_jumps_in_normal_gradient_v2(Vec &
       norm_of_gradient = MAX(sqrt(SUMD(SQR(n_xyz[0]), SQR(n_xyz[1]), SQR(n_xyz[2]))), EPS);
       for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
         n_xyz[dir] /= norm_of_gradient;
-
       eps_grad_n_psi_hat_jump_p[node_idx]  = mol_rel_permittivity*SUMD(n_xyz[0]*grad_psi_star[0], n_xyz[1]*grad_psi_star[1], n_xyz[2]*grad_psi_star[2]);
     }
     else
@@ -3818,20 +3496,19 @@ void my_p4est_biomolecules_solver_t::calculate_jumps_in_normal_gradient_v2(Vec &
       norm_of_gradient = MAX(sqrt(SUMD(SQR(n_xyz[0]), SQR(n_xyz[1]), SQR(n_xyz[2]))), EPS);
       for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
         n_xyz[dir] /= norm_of_gradient;
-
       eps_grad_n_psi_hat_jump_p[node_idx]  = mol_rel_permittivity*SUMD(n_xyz[0]*grad_psi_star[0], n_xyz[1]*grad_psi_star[1], n_xyz[2]*grad_psi_star[2]);
     }
     else
       eps_grad_n_psi_hat_jump_p[node_idx]  = 0.0; // irrelevant far away from the interface but let's set it to 0.0
   }
-  ierr = VecGhostUpdateEnd(eps_grad_n_psi_hat_jump, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd(eps_grad_n_psi_hat_jump, INSERT_VALUES, SCATTER_FORWARD);  CHKERRXX(ierr);
 
-  ierr = VecRestoreArray(eps_grad_n_psi_hat_jump, &eps_grad_n_psi_hat_jump_p);  eps_grad_n_psi_hat_jump_p = NULL; CHKERRXX(ierr);
-  ierr = VecRestoreArrayRead(biomolecules->phi, &phi_read_only_p);              phi_read_only_p = NULL;           CHKERRXX(ierr);
-  ierr = VecRestoreArrayRead(psi_star, &psi_star_read_only_p);                  psi_star_read_only_p = NULL;      CHKERRXX(ierr);
+  ierr = VecRestoreArray(eps_grad_n_psi_hat_jump, &eps_grad_n_psi_hat_jump_p);        CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(biomolecules->phi, &phi_read_only_p);                    CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(psi_star, &psi_star_read_only_p);                        CHKERRXX(ierr);
 }
 
-int     my_p4est_biomolecules_solver_t::solve_nonlinear_v2(double upper_bound_residual, int it_max)
+int my_p4est_biomolecules_solver_t::solve_nonlinear(double upper_bound_residual, int it_max)
 {
   int iter = 0;
   if (psi_hat_is_set)
@@ -3842,15 +3519,17 @@ int     my_p4est_biomolecules_solver_t::solve_nonlinear_v2(double upper_bound_re
   parStopWatch *log_timer = NULL, *solve_subtimer = NULL;
   if(biomolecules->log_file != NULL)
   {
-    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, " \n"); CHKERRXX(ierr);
-    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "------------------------------------------------------------------------------- \n"); CHKERRXX(ierr);
-    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "Solving the Poisson-Boltzmann equation on a %d/%d grid with %d proc(s) \n", (int) biomolecules->parameters.lmin(), (int) biomolecules->parameters.lmax(), biomolecules->p4est->mpisize); CHKERRXX(ierr);
-    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "------------------------------------------------------------------------------- \n"); CHKERRXX(ierr);
-    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "The ionic charge is %d \n", ion_charge); CHKERRXX(ierr);
-    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "The far-field electrolyte density is %g m^{-3} \n", far_field_ion_density); CHKERRXX(ierr);
-    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "The temperature is %g K \n", temperature); CHKERRXX(ierr);
-    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "The inverse debye length %g A^{-1}, %g m^{-1}, or %g in domain units\n", (get_inverse_debye_length_in_angstrom_inverse()), (get_inverse_debye_length_in_meters_inverse()), get_inverse_debye_length_in_domain()); CHKERRXX(ierr);
-    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "\n"); CHKERRXX(ierr);
+    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, " \n");                                                                                 CHKERRXX(ierr);
+    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "------------------------------------------------------------------------------- \n");  CHKERRXX(ierr);
+    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "Solving the Poisson-Boltzmann equation on a %d/%d grid with %d proc(s) \n",
+                        (int) biomolecules->parameters.lmin(), (int) biomolecules->parameters.lmax(), biomolecules->p4est->mpisize);                                  CHKERRXX(ierr);
+    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "------------------------------------------------------------------------------- \n");  CHKERRXX(ierr);
+    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "The ionic charge is %d \n", ion_charge);                                               CHKERRXX(ierr);
+    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "The far-field electrolyte density is %g m^{-3} \n", far_field_ion_density);            CHKERRXX(ierr);
+    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "The temperature is %g K \n", temperature);                                             CHKERRXX(ierr);
+    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "The inverse debye length %g A^{-1}, %g m^{-1}, or %g in domain units\n",
+                        (get_inverse_debye_length_in_angstrom_inverse()), (get_inverse_debye_length_in_meters_inverse()), get_inverse_debye_length_in_domain());      CHKERRXX(ierr);
+    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "\n");                                                                                  CHKERRXX(ierr);
     if(biomolecules->timing_file != NULL)
     {
       log_timer = new parStopWatch(parStopWatch::all_timings, biomolecules->log_file, biomolecules->p4est->mpicomm);
@@ -3866,14 +3545,14 @@ int     my_p4est_biomolecules_solver_t::solve_nonlinear_v2(double upper_bound_re
   if(!psi_star_is_set)
   {
     if(solve_subtimer != NULL)
-      solve_subtimer->start("Solving for singular parts");
+      solve_subtimer->start("Evaluating singular parts");
     make_sure_is_node_sampled(psi_star);
     double *psi_star_p = NULL;
-    ierr = VecGetArray(psi_star, &psi_star_p); CHKERRXX(ierr);
+    ierr = VecGetArray(psi_star, &psi_star_p);                        CHKERRXX(ierr);
     // sample the contribution of singular charges at grid nodes, but only in the inner domain(s)
     double xyz[P4EST_DIM];
     const double* phi_read_only_p = NULL;
-    ierr = VecGetArrayRead(biomolecules->phi, &phi_read_only_p); CHKERRXX(ierr);
+    ierr = VecGetArrayRead(biomolecules->phi, &phi_read_only_p);      CHKERRXX(ierr);
     for (size_t i = 0; i<biomolecules->nodes->indep_nodes.elem_count; ++i) {
       if(phi_read_only_p[i] <= 5.0*biomolecules->parameters.layer_thickness()) //1.5 == safety factor
       {
@@ -3883,14 +3562,14 @@ int     my_p4est_biomolecules_solver_t::solve_nonlinear_v2(double upper_bound_re
       else
         psi_star_p[i] = 0.0;
     }
-    ierr = VecRestoreArrayRead(biomolecules->phi, &phi_read_only_p); phi_read_only_p = NULL; CHKERRXX(ierr);
-    ierr = VecRestoreArray(psi_star, &psi_star_p); psi_star_p = NULL; CHKERRXX(ierr);
-    biomolecules->ls->extend_Over_Interface_TVD(biomolecules->phi, psi_star, 20, biomolecules->parameters.order_of_accuracy());
+    ierr = VecRestoreArrayRead(biomolecules->phi, &phi_read_only_p);  CHKERRXX(ierr);
+    ierr = VecRestoreArray(psi_star, &psi_star_p);                    CHKERRXX(ierr);
+    biomolecules->ls->extend_Over_Interface_TVD(biomolecules->phi, psi_star, 20, biomolecules->parameters.order_of_accuracy()); // Technically not needed but looks like this makes things more accurate... Why? No clue!
 
-    if(solve_subtimer != NULL)
-    {
-      solve_subtimer->stop(); solve_subtimer->read_duration();
-    }
+    if(solve_subtimer != NULL){
+      solve_subtimer->stop(); solve_subtimer->read_duration(); }
+
+    psi_star_is_set = true;
   }
 
   if(solve_subtimer != NULL)
@@ -3901,32 +3580,13 @@ int     my_p4est_biomolecules_solver_t::solve_nonlinear_v2(double upper_bound_re
   // Create vector for the jump condition in normal gradient
   // Vec eps_grad_n_psi_hat_jump = NULL;
 
-  Vec eps_grad_n_psi_hat_jump= NULL;
-  Vec eps_grad_n_psi_hat_jump_xx_= NULL;
-  Vec eps_grad_n_psi_hat_jump_yy_= NULL;
-#ifdef P4_TO_P8
-  Vec eps_grad_n_psi_hat_jump_zz_= NULL;
-#endif
-
+  Vec eps_grad_n_psi_hat_jump         = NULL;
+  Vec eps_grad_n_psi_hat_jump_xxyyzz  = NULL;
+  Vec psi_star_xxyyzz                 = NULL;
   make_sure_is_node_sampled(eps_grad_n_psi_hat_jump);
-  make_sure_is_node_sampled(eps_grad_n_psi_hat_jump_xx_);
-  make_sure_is_node_sampled(eps_grad_n_psi_hat_jump_yy_);
-#ifdef P4_TO_P8
-  make_sure_is_node_sampled(eps_grad_n_psi_hat_jump_zz_);
-#endif
+  ierr = VecCreateGhostNodesBlock(biomolecules->p4est, biomolecules->nodes, P4EST_DIM, &eps_grad_n_psi_hat_jump_xxyyzz);  CHKERRXX(ierr);
+  ierr = VecCreateGhostNodesBlock(biomolecules->p4est, biomolecules->nodes, P4EST_DIM, &psi_star_xxyyzz);                 CHKERRXX(ierr);
 
-  Vec psi_star_xx= NULL;
-  Vec psi_star_yy= NULL;
-#ifdef P4_TO_P8
-  Vec psi_star_zz= NULL;
-#endif
-
-  make_sure_is_node_sampled(psi_star);
-  make_sure_is_node_sampled(psi_star_xx);
-  make_sure_is_node_sampled(psi_star_yy);
-#ifdef P4_TO_P8
-  make_sure_is_node_sampled(psi_star_zz);
-#endif
   // Create vectors for the diagonal term in the outer domain
   Vec add_plus = NULL;
   make_sure_is_node_sampled(add_plus);
@@ -3934,17 +3594,17 @@ int     my_p4est_biomolecules_solver_t::solve_nonlinear_v2(double upper_bound_re
   // define rhs's (nonzero only for validation purposes)
   Vec rhs_minus = NULL, rhs_plus = NULL;
 
-  calculate_jumps_in_normal_gradient_v2(eps_grad_n_psi_hat_jump);
-  biomolecules->neighbors->second_derivatives_central(eps_grad_n_psi_hat_jump, DIM(eps_grad_n_psi_hat_jump_xx_,eps_grad_n_psi_hat_jump_yy_,eps_grad_n_psi_hat_jump_zz_));
+  calculate_jumps_in_normal_gradient(eps_grad_n_psi_hat_jump);
+  biomolecules->neighbors->second_derivatives_central(eps_grad_n_psi_hat_jump, eps_grad_n_psi_hat_jump_xxyyzz);
   my_p4est_interpolation_nodes_t eps_grad_n_psi_hat_jump_interp_(biomolecules->neighbors);
-  eps_grad_n_psi_hat_jump_interp_.set_input(eps_grad_n_psi_hat_jump, DIM(eps_grad_n_psi_hat_jump_xx_,eps_grad_n_psi_hat_jump_yy_,eps_grad_n_psi_hat_jump_zz_),quadratic_non_oscillatory_continuous_v2);
+  eps_grad_n_psi_hat_jump_interp_.set_input(eps_grad_n_psi_hat_jump, eps_grad_n_psi_hat_jump_xxyyzz, quadratic_non_oscillatory_continuous_v2);
 
   my_p4est_interpolation_nodes_t psi_hat_jump_interp_(biomolecules->neighbors);
-  psi_hat_jump_interp_.set_input(psi_star, DIM(psi_star_xx, psi_star_yy, psi_star_zz),quadratic_non_oscillatory_continuous_v2);
+  psi_hat_jump_interp_.set_input(psi_star, psi_star_xxyyzz, quadratic_non_oscillatory_continuous_v2);
 
   double *node_sampled_zero_p = NULL, *add_plus_p = NULL;
-  ierr = VecGetArray(node_sampled_zero, &node_sampled_zero_p); CHKERRXX(ierr);
-  ierr = VecGetArray(add_plus, &add_plus_p); CHKERRXX(ierr);
+  ierr = VecGetArray(node_sampled_zero, &node_sampled_zero_p);      CHKERRXX(ierr);
+  ierr = VecGetArray(add_plus, &add_plus_p);                        CHKERRXX(ierr);
 
   const double inverse_square_debye_length_in_domain = SQR(get_inverse_debye_length_in_domain());
   for (size_t k = 0; k < biomolecules->nodes->indep_nodes.elem_count; ++k) {
@@ -3952,75 +3612,32 @@ int     my_p4est_biomolecules_solver_t::solve_nonlinear_v2(double upper_bound_re
     add_plus_p[k]           = inverse_square_debye_length_in_domain;
   }
 
-  ierr = VecRestoreArray(add_plus, &add_plus_p); add_plus_p = NULL; CHKERRXX(ierr);
-  ierr = VecRestoreArray(node_sampled_zero, &node_sampled_zero_p); node_sampled_zero_p = NULL; CHKERRXX(ierr);
+  ierr = VecRestoreArray(add_plus, &add_plus_p);                    CHKERRXX(ierr);
+  ierr = VecRestoreArray(node_sampled_zero, &node_sampled_zero_p);  CHKERRXX(ierr);
   rhs_minus = node_sampled_zero;
   rhs_plus  = node_sampled_zero;
 
-  jump_solver->set_use_centroid_always(use_centroid_always);
-  jump_solver->set_store_finite_volumes(store_finite_volumes);
-  jump_solver->set_jump_scheme(jc_scheme);
-  jump_solver->set_jump_sub_scheme(jc_sub_scheme);
-  jump_solver->set_use_sc_scheme(sc_scheme);
-  jump_solver->set_integration_order(integration_order);
+  jump_solver->set_use_centroid_always(true);
+  jump_solver->set_store_finite_volumes(true);
+  jump_solver->set_jump_scheme(0);
+  jump_solver->set_jump_sub_scheme(0);
+  jump_solver->set_use_sc_scheme(false);
+  jump_solver->set_integration_order(2);
+  jump_solver->set_lip(biomolecules->parameters.lip());
+  jump_solver->add_interface(MLS_INTERSECTION, biomolecules->phi, DIM(NULL, NULL, NULL), psi_hat_jump_interp_, eps_grad_n_psi_hat_jump_interp_);
 
-  //solver.set_lip(10.5);
-
-  jump_solver->set_lip(lip);
-
-  Vec bdry_phi_vec_all[bdry_phi_max_num];
-  Vec infc_phi_vec_all[infc_phi_max_num];
-
-  infc_phi_num = 1;
-  bdry_phi_num = 0;
-
-  infc_present_00 = 1; infc_geom_00 = 1; infc_opn_00 = MLS_INT;
-
-  bdry_present_00 = 0;
-
-  bool *bdry_present_all[] = { &bdry_present_00};
-
-  int *bdry_geom_all[] = { &bdry_geom_00};
-
-  int *bdry_opn_all[] = { &bdry_opn_00 };
-
-  int *bc_coeff_all[] = { &bc_coeff_00 };
-
-  double *bc_coeff_all_mag[] = { &bc_coeff_00_mag };
-
-  int *bc_type_all[] = { &bc_type_00 };
-
-  bool *infc_present_all[] = { &infc_present_00};
-
-  int *infc_geom_all[] = { &infc_geom_00};
-
-  int *infc_opn_all[] = { &infc_opn_00};
-
-  int *jc_value_all[] = { &jc_value_00};
-
-  int *jc_flux_all[] = { &jc_flux_00};
-
-
-  for (int i = 0; i < infc_phi_max_num; ++i)
-    if (*infc_present_all[i] == true)
-    {
-      jump_solver->add_interface((mls_opn_t) *infc_opn_all[i], biomolecules->phi, DIM(NULL, NULL, NULL), psi_hat_jump_interp_, eps_grad_n_psi_hat_jump_interp_);
-    }
 
   jump_solver->set_mu(mol_rel_permittivity, elec_rel_permittivity);
   class bc_wall_type_t : public WallBCDIM
   {
   public:
-    BoundaryConditionType operator()(DIM(double, double, double)) const
-    {
-      return (BoundaryConditionType) bc_wtype;
-    }
+    BoundaryConditionType operator()(DIM(double, double, double)) const { return DIRICHLET; }
   } bc_wall_type;
   far_field_boundary_cond far_bc(this);
   jump_solver->set_wc(bc_wall_type, far_bc);
   jump_solver->set_diag(node_sampled_zero,add_plus);
-  jump_solver->set_use_taylor_correction(taylor_correction);
-  jump_solver->set_kink_treatment(kink_special_treatment);
+  jump_solver->set_use_taylor_correction(true);
+  jump_solver->set_kink_treatment(true);
   jump_solver->set_rhs(rhs_minus, rhs_plus);
 
   make_sure_is_node_sampled(psi_hat);
@@ -4031,7 +3648,7 @@ int     my_p4est_biomolecules_solver_t::solve_nonlinear_v2(double upper_bound_re
     solve_subtimer->start(timer_msg);
   }
 
-  jump_solver->solve_nonlinear(psi_hat,upper_bound_residual,it_max,true);
+  nb_iterations_for_setting_psi_hat = jump_solver->solve_nonlinear(psi_hat, upper_bound_residual, it_max, true);
   string timer_msg = "End of nonlinear iterations ";
   if(solve_subtimer != NULL)
   {
@@ -4039,266 +3656,45 @@ int     my_p4est_biomolecules_solver_t::solve_nonlinear_v2(double upper_bound_re
     string timer_msg = "End of nonlinear iterations ";
     solve_subtimer->stop();
   }
-  ierr = VecDestroy(add_plus); add_plus = NULL; CHKERRXX(ierr);
-  ierr = VecDestroy(eps_grad_n_psi_hat_jump); eps_grad_n_psi_hat_jump = NULL; CHKERRXX(ierr);
-  ierr = VecDestroy(eps_grad_n_psi_hat_jump_xx_);
-  ierr = VecDestroy(eps_grad_n_psi_hat_jump_yy_);
-#ifdef P4_TO_P8
-  ierr = VecDestroy(eps_grad_n_psi_hat_jump_zz_);
-#endif
-  ierr = VecDestroy(node_sampled_zero); node_sampled_zero = NULL; CHKERRXX(ierr);
-  ierr = VecDestroy(psi_star_xx);
-  ierr = VecDestroy(psi_star_yy);
-#ifdef P4_TO_P8
-  ierr = VecDestroy(psi_star_zz);
-#endif
+  ierr = VecDestroy(add_plus);                        CHKERRXX(ierr);
+  ierr = VecDestroy(eps_grad_n_psi_hat_jump);         CHKERRXX(ierr);
+  ierr = VecDestroy(eps_grad_n_psi_hat_jump_xxyyzz);  CHKERRXX(ierr);
+  ierr = VecDestroy(node_sampled_zero);               CHKERRXX(ierr);
+  ierr = VecDestroy(psi_star_xxyyzz);                 CHKERRXX(ierr);
 
   if(solve_subtimer != NULL){
-    delete solve_subtimer; solve_subtimer = NULL;}
+    delete solve_subtimer; solve_subtimer = NULL; }
 
   if(log_timer != NULL)
   {
     log_timer->stop(); log_timer->read_duration();
-    delete log_timer; log_timer = NULL;
+    delete log_timer;
   }
 
   psi_hat_is_set = true;
   return iter;
 }
 
-int     my_p4est_biomolecules_solver_t::solve_nonlinear(double upper_bound_residual, int it_max)
-{
-  int iter = 0;
-  if (psi_hat_is_set)
-    return iter;
-  P4EST_ASSERT(all_parameters_are_set());
-  P4EST_ASSERT(it_max >=1);
-  P4EST_ASSERT(it_max==1 || upper_bound_residual> 0.0);
-  parStopWatch *log_timer = NULL, *solve_subtimer = NULL;
-  if(biomolecules->log_file != NULL)
-  {
-    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, " \n"); CHKERRXX(ierr);
-    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "------------------------------------------------------------------------------- \n"); CHKERRXX(ierr);
-    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "Solving the Poisson-Boltzmann equation on a %d/%d grid with %d proc(s) \n", (int) biomolecules->parameters.lmin(), (int) biomolecules->parameters.lmax(), biomolecules->p4est->mpisize); CHKERRXX(ierr);
-    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "------------------------------------------------------------------------------- \n"); CHKERRXX(ierr);
-    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "The ionic charge is %d \n", ion_charge); CHKERRXX(ierr);
-    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "The far-field electrolyte density is %g m^{-3} \n", far_field_ion_density); CHKERRXX(ierr);
-    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "The temperature is %g K \n", temperature); CHKERRXX(ierr);
-    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "The inverse debye length %g A^(-1), %g m^(-1), or %g in domain units\n", (get_inverse_debye_length_in_angstrom_inverse()), (get_inverse_debye_length_in_meters_inverse()), get_inverse_debye_length_in_domain()); CHKERRXX(ierr);
-    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "\n"); CHKERRXX(ierr);
-    if(biomolecules->timing_file != NULL)
-    {
-      log_timer = new parStopWatch(parStopWatch::all_timings, biomolecules->log_file, biomolecules->p4est->mpicomm);
-      log_timer->start("Resolution of the nonlinear Poisson-Boltzmann Equation");
-    }
-  }
-  if(biomolecules->timing_file != NULL)
-  {
-    P4EST_ASSERT(solve_subtimer == NULL);
-    solve_subtimer = new parStopWatch(parStopWatch::root_timings, biomolecules->timing_file, biomolecules->p4est->mpicomm);
-  }
-  if(!psi_star_psi_naught_and_psi_bar_are_set)
-  {
-    if(solve_subtimer != NULL)
-      solve_subtimer->start("Solving for singular parts");
-    solve_singular_part();
-    if(solve_subtimer != NULL)
-    {
-      solve_subtimer->stop(); solve_subtimer->read_duration(true);
-    }
-  }
-  P4EST_ASSERT(psi_bar != NULL);
-  // we'll solve the nonlinear system using Newton iterations...
-  // A first approximation is calculated by solving the linearized system
-  //
-  //  -div(eps*grad(psi_hat)) + (kappa^2)*psi_hat = 0.0, kappa = 0 in Omega^{-}, kappa > 0 in Omega^{+}
-  //
-  // with the jump conditions
-  // ** [psi_hat] = 0.0;
-  // ** [eps_r*normal_gradient_of_psi_hat] = mol_rel_permittivity*normal_gradient_of_psi_bar;
-  //
-  // and the boundary conditions
-  // ** psi_hat = 0.0 on the walls.
-  // That solution is stored in, say, psi_hat_n... Then, non-linear increments delta_psi_hat are successively
-  // calculated based on the best current approximation psi_hat_n. Those increments are found by solving
-  //
-  //  -div(eps*grad(delta_psi_hat)) + (kappa^2)*cosh(psi_hat_n)*delta_psi_hat = div(eps*grad(psi_hat_n)) - (kappa^2)*sinh(psi_hat_n), kappa = 0 in Omega^{-}, kappa > 0 in Omega^{+}
-  //
-  // with the jump conditions
-  // ** [delta_psi_hat] = 0.0;
-  // ** [eps_r*normal_gradient_of_delta_psi_hat] = 0.0;
-  //
-  // and the boundary conditions
-  // ** delta_psi_hat = 0.0 on the walls.
-  // then the best current approximation is updated by psi_hat_n += delta_psi_hat.
-
-  if(solve_subtimer != NULL)
-    solve_subtimer->start("Initializing the solver");
-
-  // Create a node-sampled zero vector (will be useful)
-  Vec node_sampled_zero = NULL;
-  make_sure_is_node_sampled(node_sampled_zero);
-  // Create vector for the jump condition in normal gradient
-  // Vec eps_grad_n_psi_hat_jump = NULL;
-
-  Vec eps_grad_n_psi_hat_jump= NULL;
-  Vec eps_grad_n_psi_hat_jump_xx_= NULL;
-  Vec eps_grad_n_psi_hat_jump_yy_= NULL;
-#ifdef P4_TO_P8
-  Vec eps_grad_n_psi_hat_jump_zz_= NULL;
-#endif
-
-  make_sure_is_node_sampled(eps_grad_n_psi_hat_jump);
-  make_sure_is_node_sampled(eps_grad_n_psi_hat_jump_xx_);
-  make_sure_is_node_sampled(eps_grad_n_psi_hat_jump_yy_);
-#ifdef P4_TO_P8
-  make_sure_is_node_sampled(eps_grad_n_psi_hat_jump_zz_);
-#endif
-
-  // Create vectors for the diagonal term in the outer domain
-  Vec add_plus = NULL;
-  make_sure_is_node_sampled(add_plus);
-
-  // Initialization:
-  calculate_jumps_in_normal_gradient(eps_grad_n_psi_hat_jump);
-  biomolecules->neighbors->second_derivatives_central(eps_grad_n_psi_hat_jump, DIM(eps_grad_n_psi_hat_jump_xx_,eps_grad_n_psi_hat_jump_yy_,eps_grad_n_psi_hat_jump_zz_));
-  my_p4est_interpolation_nodes_t eps_grad_n_psi_hat_jump_interp_(biomolecules->neighbors);
-  eps_grad_n_psi_hat_jump_interp_.set_input(eps_grad_n_psi_hat_jump, DIM(eps_grad_n_psi_hat_jump_xx_,eps_grad_n_psi_hat_jump_yy_,eps_grad_n_psi_hat_jump_zz_),quadratic_non_oscillatory_continuous_v2);
-
-  double *node_sampled_zero_p = NULL, *add_plus_p = NULL;
-  ierr = VecGetArray(node_sampled_zero, &node_sampled_zero_p); CHKERRXX(ierr);
-  ierr = VecGetArray(add_plus, &add_plus_p); CHKERRXX(ierr);
-  const double inverse_square_debye_length_in_domain = SQR(get_inverse_debye_length_in_domain());
-  for (size_t k = 0; k < biomolecules->nodes->indep_nodes.elem_count; ++k) {
-    node_sampled_zero_p[k]  = 0.0;
-    add_plus_p[k]           = inverse_square_debye_length_in_domain;
-  }
-  ierr = VecRestoreArray(add_plus, &add_plus_p); add_plus_p = NULL; CHKERRXX(ierr);
-  ierr = VecRestoreArray(node_sampled_zero, &node_sampled_zero_p); node_sampled_zero_p = NULL; CHKERRXX(ierr);
-
-  jump_solver->set_use_centroid_always(use_centroid_always);
-  jump_solver->set_store_finite_volumes(store_finite_volumes);
-  jump_solver->set_jump_scheme(jc_scheme);
-  jump_solver->set_jump_sub_scheme(jc_sub_scheme);
-  jump_solver->set_use_sc_scheme(sc_scheme);
-  jump_solver->set_integration_order(integration_order);
-
-  //solver.set_lip(10.5);
-
-  jump_solver->set_lip(lip);
-
-  Vec bdry_phi_vec_all[bdry_phi_max_num];
-  Vec infc_phi_vec_all[infc_phi_max_num];
-
-  //parameters for solver
-  //n_um = 10; mag_um = 1; n_mu_m = 0; mag_mu_m = 80; n_diag_m = 1; mag_diag_m = 0;
-  //n_up = 12; mag_up = 1; n_mu_p = 0; mag_mu_p = 2; n_diag_p = 1; mag_diag_p = 1;
-
-  infc_phi_num = 1;
-  bdry_phi_num = 0;
-
-  infc_present_00 = 1; infc_geom_00 = 1; infc_opn_00 = MLS_INT;
-
-  bdry_present_00 = 0;
-
-  bool *bdry_present_all[] = { &bdry_present_00};
-
-  int *bdry_geom_all[] = { &bdry_geom_00};
-
-  int *bdry_opn_all[] = { &bdry_opn_00 };
-
-  int *bc_coeff_all[] = { &bc_coeff_00 };
-
-  double *bc_coeff_all_mag[] = { &bc_coeff_00_mag };
-
-  int *bc_type_all[] = { &bc_type_00 };
-
-  bool *infc_present_all[] = { &infc_present_00};
-
-  int *infc_geom_all[] = { &infc_geom_00};
-
-  int *infc_opn_all[] = { &infc_opn_00};
-
-  int *jc_value_all[] = { &jc_value_00};
-
-  int *jc_flux_all[] = { &jc_flux_00};
-
-
-  for (int i = 0; i < infc_phi_max_num; ++i)
-    if (*infc_present_all[i] == true)
-    {
-      jump_solver->add_interface((mls_opn_t) *infc_opn_all[i], biomolecules->phi, DIM(NULL, NULL, NULL), zero_cf, eps_grad_n_psi_hat_jump_interp_);
-    }
-
-  //  dirichlet_bc.setWallTypes(dirichlet_bc_wall_type);
-  //  dirichlet_bc.setWallValues(homogeneous_dirichlet_bc_wall_value);
-  //  jump_solver->set_bc(dirichlet_bc);
-  jump_solver->set_mu(mol_rel_permittivity, elec_rel_permittivity);
-  class bc_wall_type_t : public WallBCDIM
-  {
-  public:
-    BoundaryConditionType operator()(DIM(double, double, double)) const
-    {
-      return (BoundaryConditionType) bc_wtype;
-    }
-  } bc_wall_type;
-  far_field_boundary_cond far_bc(this);
-  jump_solver->set_wc(bc_wall_type, far_bc);
-  jump_solver->set_diag(node_sampled_zero,add_plus);
-  jump_solver->set_use_taylor_correction(taylor_correction);
-  jump_solver->set_kink_treatment(kink_special_treatment);
-  jump_solver->set_rhs(node_sampled_zero, node_sampled_zero);
-  make_sure_is_node_sampled(psi_hat);
-  if(solve_subtimer != NULL)
-  {
-    solve_subtimer->stop(); solve_subtimer->read_duration(true);
-    string timer_msg = "Solving nonlinear iterations ";
-    solve_subtimer->start(timer_msg);
-  }
-  jump_solver->solve_nonlinear(psi_hat,upper_bound_residual,it_max,true);
-  string timer_msg = "End of nonlinear iterations ";
-
-  if(solve_subtimer != NULL)
-  {
-    solve_subtimer->stop(); solve_subtimer->read_duration(true);
-    string timer_msg = "End of nonlinear iterations ";
-    solve_subtimer->stop();
-  }
-  ierr = VecDestroy(add_plus); add_plus = NULL; CHKERRXX(ierr);
-  ierr = VecDestroy(eps_grad_n_psi_hat_jump); eps_grad_n_psi_hat_jump = NULL; CHKERRXX(ierr);
-  ierr = VecDestroy(eps_grad_n_psi_hat_jump_xx_);
-  ierr = VecDestroy(eps_grad_n_psi_hat_jump_yy_);
-  ierr = VecDestroy(node_sampled_zero); node_sampled_zero = NULL; CHKERRXX(ierr);
-
-  if(solve_subtimer != NULL){
-    delete solve_subtimer; solve_subtimer = NULL;}
-
-  if(log_timer != NULL)
-  {
-    log_timer->stop(); log_timer->read_duration(true);
-    delete log_timer; log_timer = NULL;
-  }
-
-  psi_hat_is_set = true;
-  return iter;
-}
-void my_p4est_biomolecules_solver_t::get_solvation_free_energy_v2()
+void my_p4est_biomolecules_solver_t::get_solvation_free_energy(const bool &nonlinear_flag)
 {
 #ifndef P4_TO_P8
   // this makes sense only in 3D
 #ifdef CASL_THROWS
-  string my_msg = "my_p4est_biomolecules_solver_t::get_solvation_free_energy(): the solvation free energy is not properly defined in 2D, forget it! \n    Returning... \n";
-  ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->error_file, my_msg.c_str()); CHKERRXX(ierr);
+  ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->error_file, "my_p4est_biomolecules_solver_t::get_solvation_free_energy(): the solvation free energy is not properly defined in 2D, forget it! \n    Returning... \n"); CHKERRXX(ierr);
 #endif
   return;
 #else
   P4EST_ASSERT(all_parameters_are_set());
-  if(!psi_hat_is_set)
+  if(!psi_hat_is_set || (psi_hat_set_for_linear_pb() && nonlinear_flag) || (psi_hat_set_for_nonlinear_pb() && !nonlinear_flag))
   {
 #ifdef CASL_THROWS
-    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->error_file, "my_p4est_biomolecules_solver_t::get_solvation_free_energy(): the solution of the general nonlinear Poisson-Boltzmann equation is not known, it will be calculated...\n"); CHKERRXX(ierr);
+    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->error_file, "my_p4est_biomolecules_solver_t::get_solvation_free_energy(): the solution of the general nonlinear Poisson-Boltzmann equation is not known or not consistent, it will be calculated...\n"); CHKERRXX(ierr);
 #endif
-    solve_nonlinear_v2(1.0e-8, 10000);
+    reset_psi_hat();
+    if(nonlinear_flag)
+      solve_nonlinear();
+    else
+      solve_linear();
   }
 
   P4EST_ASSERT((psi_star != NULL) && (psi_hat != NULL));
@@ -4306,11 +3702,12 @@ void my_p4est_biomolecules_solver_t::get_solvation_free_energy_v2()
   parStopWatch* log_timer = NULL;
   if(biomolecules->log_file != NULL)
   {
-    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, " \n"); CHKERRXX(ierr);
-    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "------------------------------------------------------------------------------- \n"); CHKERRXX(ierr);
-    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "Calculating the solvation free energy a %d/%d grid with %d proc(s) \n", (int) biomolecules->parameters.lmin(), (int) biomolecules->parameters.lmax(), biomolecules->p4est->mpisize); CHKERRXX(ierr);
-    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "------------------------------------------------------------------------------- \n"); CHKERRXX(ierr);
-    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "\n"); CHKERRXX(ierr);
+    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, " \n");                                                                                 CHKERRXX(ierr);
+    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "------------------------------------------------------------------------------- \n");  CHKERRXX(ierr);
+    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "Calculating the solvation free energy a %d/%d grid with %d proc(s) \n",
+                        (int) biomolecules->parameters.lmin(), (int) biomolecules->parameters.lmax(), biomolecules->p4est->mpisize);                                  CHKERRXX(ierr);
+    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "------------------------------------------------------------------------------- \n");  CHKERRXX(ierr);
+    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "\n");                                                                                  CHKERRXX(ierr);
     if(biomolecules->timing_file != NULL)
     {
       log_timer = new parStopWatch(parStopWatch::all_timings, biomolecules->log_file, biomolecules->p4est->mpicomm);
@@ -4319,34 +3716,34 @@ void my_p4est_biomolecules_solver_t::get_solvation_free_energy_v2()
   }
 
   // contribution from the electrolyte
-  Vec integrand = NULL, psi_hat_xx = NULL, psi_hat_yy = NULL,psi_hat_zz = NULL;
+  Vec integrand = NULL, psi_hat_xxyyzz = NULL;
   make_sure_is_node_sampled(integrand);
   double *integrand_p = NULL, *phi_p = NULL;
   const double *psi_hat_read_only_p = NULL;
-  ierr = VecGetArray(integrand, &integrand_p); CHKERRXX(ierr);
-  ierr = VecGetArrayRead(psi_hat, &psi_hat_read_only_p); CHKERRXX(ierr);
-  ierr = VecGetArray(biomolecules->phi, &phi_p); CHKERRXX(ierr);
+  ierr = VecGetArray(integrand, &integrand_p);            CHKERRXX(ierr);
+  ierr = VecGetArrayRead(psi_hat, &psi_hat_read_only_p);  CHKERRXX(ierr);
+  ierr = VecGetArray(biomolecules->phi, &phi_p);          CHKERRXX(ierr);
   for (size_t k = 0; k < biomolecules->nodes->indep_nodes.elem_count; ++k) {
     if(phi_p[k] > 0.0)
     {
-      //integrand_p[k] = kB*temperature*far_field_ion_density*(psi_hat_read_only_p[k]*sinh(psi_hat_read_only_p[k])-2.0*(cosh(psi_hat_read_only_p[k]) - 1.0)); // relevant value
-      integrand_p[k] = kB*temperature*far_field_ion_density*(psi_hat_read_only_p[k]*psi_hat_read_only_p[k]*2); // relevant value
+      if(nonlinear_flag)
+        integrand_p[k] = kB*temperature*far_field_ion_density*(psi_hat_read_only_p[k]*sinh(psi_hat_read_only_p[k])-2.0*(cosh(psi_hat_read_only_p[k]) - 1.0)); // relevant value
+      else
+        integrand_p[k] = kB*temperature*far_field_ion_density*(psi_hat_read_only_p[k]*psi_hat_read_only_p[k]*2); // relevant value
     }
     else
-    {
       integrand_p[k] = 0.0;               // needs to be extrapolated (bc of jump on the normal derivative)
-    }
     phi_p[k] *= -1.0;                     // we need to integrate over the exterior domain --> reverse the levelset
   }
-  ierr = VecRestoreArray(biomolecules->phi, &phi_p); phi_p = NULL; CHKERRXX(ierr);
-  ierr = VecRestoreArrayRead(psi_hat, &psi_hat_read_only_p); psi_hat_read_only_p = NULL; CHKERRXX(ierr);
-  ierr = VecRestoreArray(integrand, &integrand_p); integrand_p = NULL; CHKERRXX(ierr);
+  ierr = VecRestoreArray(biomolecules->phi, &phi_p);                  CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(psi_hat, &psi_hat_read_only_p);          CHKERRXX(ierr);
+  ierr = VecRestoreArray(integrand, &integrand_p);                    CHKERRXX(ierr);
   biomolecules->ls->extend_Over_Interface_TVD(biomolecules->phi, integrand, 20, 2); // 20 for the number of iterations, default parameter
   solvation_free_energy = integrate_over_negative_domain(biomolecules->p4est, biomolecules->nodes, biomolecules->phi, integrand)*(pow(length_scale_in_meter(), 3.0));
   Vec phi_ghost_loc = NULL;
-  ierr = VecGhostGetLocalForm(biomolecules->phi, &phi_ghost_loc); CHKERRXX(ierr);
-  ierr = VecScale(phi_ghost_loc, -1.0); CHKERRXX(ierr); // reverse the levelset function to get back to original state
-  ierr = VecGhostRestoreLocalForm(biomolecules->phi, &phi_ghost_loc); phi_ghost_loc = NULL; CHKERRXX(ierr);
+  ierr = VecGhostGetLocalForm(biomolecules->phi, &phi_ghost_loc);     CHKERRXX(ierr);
+  ierr = VecScale(phi_ghost_loc, -1.0);                               CHKERRXX(ierr); // reverse the levelset function to get back to original state
+  ierr = VecGhostRestoreLocalForm(biomolecules->phi, &phi_ghost_loc); CHKERRXX(ierr);
 
   // contributions from singular point charges
   double integral_contribution_from_singular_charges = 0.0;
@@ -4357,15 +3754,12 @@ void my_p4est_biomolecules_solver_t::get_solvation_free_energy_v2()
     interpolate_psi_hat.set_input(psi_hat, linear);
     break;
   case 2:
-    make_sure_is_node_sampled(psi_hat_xx);
-    make_sure_is_node_sampled(psi_hat_yy);
-    make_sure_is_node_sampled(psi_hat_zz);
-    biomolecules->neighbors->second_derivatives_central(psi_hat, psi_hat_xx, psi_hat_yy, psi_hat_zz);
-    interpolate_psi_hat.set_input(psi_hat, psi_hat_xx, psi_hat_yy, psi_hat_zz,
-                                  quadratic /*quadratic_non_oscillatory_continuous_v2*/);
+    ierr = VecCreateGhostNodesBlock(biomolecules->p4est, biomolecules->nodes, P4EST_DIM, &psi_hat_xxyyzz); CHKERRXX(ierr);
+    biomolecules->neighbors->second_derivatives_central(psi_hat, psi_hat_xxyyzz);
+    interpolate_psi_hat.set_input(psi_hat, psi_hat_xxyyzz, quadratic_non_oscillatory_continuous_v2);
     break;
   default:
-    throw  std::invalid_argument("my_p4est_biomolecules_solver_t::get_solvation_energy_v2(), the order of accuracy should be either 1 or 2!");
+    throw  std::invalid_argument("my_p4est_biomolecules_solver_t::get_solvation_energy(), the order of accuracy should be either 1 or 2!");
     break;
   }
   int total_nb_charged_atoms = 0.0;
@@ -4384,14 +3778,12 @@ void my_p4est_biomolecules_solver_t::get_solvation_free_energy_v2()
   int charged_atom_idx_offset         = 0;
   int global_charged_atom_idx;
   p4est_locidx_t local_idx = 0;
-  double xyz_atom[3];
   if(first_charged_atom_idx < total_nb_charged_atoms)
   {
     for (size_t mol_idx = 0; mol_idx < biomolecules->nmol(); ++mol_idx)
     {
       const my_p4est_biomolecules_t::molecule& mol = biomolecules->bio_molecules.at(mol_idx);
       if((charged_atom_idx_offset + mol.get_number_of_charged_atoms() >= first_charged_atom_idx) && (charged_atom_idx_offset < idx_of_charged_atom_after_last))
-      {
         for (int charged_atom_idx = 0; charged_atom_idx < mol.get_number_of_charged_atoms(); ++charged_atom_idx)
         {
           global_charged_atom_idx = charged_atom_idx_offset + charged_atom_idx;
@@ -4402,7 +3794,6 @@ void my_p4est_biomolecules_solver_t::get_solvation_free_energy_v2()
             P4EST_ASSERT(local_idx <= nb_atoms_for_me);
           }
         }
-      }
       charged_atom_idx_offset += mol.get_number_of_charged_atoms();
     }
   }
@@ -4435,12 +3826,8 @@ void my_p4est_biomolecules_solver_t::get_solvation_free_energy_v2()
   int mpiret = MPI_Allreduce(MPI_IN_PLACE, &integral_contribution_from_singular_charges, 1, MPI_DOUBLE, MPI_SUM, biomolecules->p4est->mpicomm); SC_CHECK_MPI(mpiret);
   solvation_free_energy += integral_contribution_from_singular_charges;
 
-  ierr = VecDestroy(integrand); integrand = NULL; CHKERRXX(ierr);
-  ierr = VecDestroy(psi_hat_xx); psi_hat_xx = NULL; CHKERRXX(ierr);
-  ierr = VecDestroy(psi_hat_yy); psi_hat_yy = NULL; CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  ierr = VecDestroy(psi_hat_zz); psi_hat_zz = NULL; CHKERRXX(ierr);
-#endif
+  ierr = VecDestroy(integrand);       CHKERRXX(ierr);
+  ierr = VecDestroy(psi_hat_xxyyzz);  CHKERRXX(ierr);
 
   if(biomolecules->log_file != NULL)
   {
@@ -4454,213 +3841,16 @@ void my_p4est_biomolecules_solver_t::get_solvation_free_energy_v2()
 #endif
 }
 
-void my_p4est_biomolecules_solver_t::get_solvation_free_energy()
-{
-#ifndef P4_TO_P8
-  // this makes sense only in 3D
-#ifdef CASL_THROWS
-  string my_msg = "my_p4est_biomolecules_solver_t::get_solvation_free_energy(): the solvation free energy is not properly defined in 2D, forget it! \n    Returning... \n";
-  ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->error_file, my_msg.c_str()); CHKERRXX(ierr);
-#endif
-  return;
-#else
-  P4EST_ASSERT(all_parameters_are_set());
-  if(!psi_star_psi_naught_and_psi_bar_are_set)
-  {
-    psi_hat_is_set = false;
-#ifdef CASL_THROWS
-    string err_msg  = "my_p4est_biomolecules_solver_t::get_solvation_free_energy(): the solution psi_bar for the singular parts is not known yet, it will be calculated...\n";
-    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->error_file, err_msg.c_str()); CHKERRXX(ierr);
-#endif
-    solve_singular_part();
-  }
-  P4EST_ASSERT(psi_star_psi_naught_and_psi_bar_are_set);
-  if(!psi_hat_is_set)
-  {
-#ifdef CASL_THROWS
-    string err_msg  = "my_p4est_biomolecules_solver_t::get_solvation_free_energy(): the solution of the general nonlinear Poisson-Boltzmann equation is not known, it will be calculated...\n";
-    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->error_file, err_msg.c_str()); CHKERRXX(ierr);
-#endif
-    solve_nonlinear(1.0e-8, 10000);
-  }
-  P4EST_ASSERT(psi_star_psi_naught_and_psi_bar_are_set);
-  P4EST_ASSERT((psi_star != NULL) && (psi_naught != NULL) && (psi_bar != NULL) && (psi_hat != NULL));
-
-  parStopWatch* log_timer = NULL;
-  if(biomolecules->log_file != NULL)
-  {
-    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, " \n"); CHKERRXX(ierr);
-    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "------------------------------------------------------------------------------- \n"); CHKERRXX(ierr);
-    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "Calculating the solvation free energy a %d/%d grid with %d proc(s) \n", (int) biomolecules->parameters.lmin(), (int) biomolecules->parameters.lmax(), biomolecules->p4est->mpisize); CHKERRXX(ierr);
-    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "------------------------------------------------------------------------------- \n"); CHKERRXX(ierr);
-    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "\n"); CHKERRXX(ierr);
-    if(biomolecules->timing_file != NULL)
-    {
-      log_timer = new parStopWatch(parStopWatch::all_timings, biomolecules->log_file, biomolecules->p4est->mpicomm);
-      log_timer->start("Calculating the solvation free energy");
-    }
-  }
-
-
-  // contribution from the electrolyte
-  Vec integrand = NULL, psi_hat_plus_psi_naught = NULL, psi_hat_plus_psi_naught_xx = NULL, psi_hat_plus_psi_naught_yy = NULL,psi_hat_plus_psi_naught_zz = NULL;
-  make_sure_is_node_sampled(integrand);
-  make_sure_is_node_sampled(psi_hat_plus_psi_naught);
-  double *integrand_p = NULL, *psi_hat_plus_psi_naught_p = NULL, *phi_p = NULL;
-  const double *psi_hat_read_only_p = NULL, *psi_naught_read_only_p = NULL;
-  ierr = VecGetArray(integrand, &integrand_p); CHKERRXX(ierr);
-  ierr = VecGetArray(psi_hat_plus_psi_naught, &psi_hat_plus_psi_naught_p); CHKERRXX(ierr);
-  ierr = VecGetArrayRead(psi_hat, &psi_hat_read_only_p); CHKERRXX(ierr);
-  ierr = VecGetArrayRead(psi_naught, &psi_naught_read_only_p); CHKERRXX(ierr);
-  ierr = VecGetArray(biomolecules->phi, &phi_p); CHKERRXX(ierr);
-  for (size_t k = 0; k < biomolecules->nodes->indep_nodes.elem_count; ++k) {
-    if(phi_p[k] > 0.0)
-    {
-      //integrand_p[k] = kB*temperature*far_field_ion_density*(psi_hat_read_only_p[k]*sinh(psi_hat_read_only_p[k])-2.0*(cosh(psi_hat_read_only_p[k]) - 1.0)); // relevant value
-      integrand_p[k] = kB*temperature*far_field_ion_density*(psi_hat_read_only_p[k]*psi_hat_read_only_p[k]*2); // relevant value
-      psi_hat_plus_psi_naught_p[k] = 0.0; // irrelevant value
-    }
-    else
-    {
-      integrand_p[k] = 0.0;               // needs to be extrapolated (bc of jump on the normal derivative)
-      psi_hat_plus_psi_naught_p[k] = psi_hat_read_only_p[k] + psi_naught_read_only_p[k]; // relevant value
-    }
-    phi_p[k] *= -1.0;                     // we need to integrate over the exterior domain --> reverse the levelset
-  }
-  ierr = VecRestoreArray(biomolecules->phi, &phi_p); phi_p = NULL; CHKERRXX(ierr);
-  ierr = VecRestoreArrayRead(psi_naught, &psi_naught_read_only_p); psi_naught_read_only_p = NULL; CHKERRXX(ierr);
-  ierr = VecRestoreArrayRead(psi_hat, &psi_hat_read_only_p); psi_hat_read_only_p = NULL; CHKERRXX(ierr);
-  ierr = VecRestoreArray(psi_hat_plus_psi_naught, &psi_hat_plus_psi_naught_p); psi_hat_plus_psi_naught_p = NULL; CHKERRXX(ierr);
-  ierr = VecRestoreArray(integrand, &integrand_p); integrand_p = NULL; CHKERRXX(ierr);
-  biomolecules->ls->extend_Over_Interface_TVD(biomolecules->phi, integrand, 20, 2); // 20 for the number of iterations, default parameter
-  solvation_free_energy = integrate_over_negative_domain(biomolecules->p4est, biomolecules->nodes, biomolecules->phi, integrand)*(pow(length_scale_in_meter(), 3.0));
-  std::cout << "contribution of electrolyte ::  " << solvation_free_energy<< "\n";
-  Vec phi_ghost_loc = NULL;
-  ierr = VecGhostGetLocalForm(biomolecules->phi, &phi_ghost_loc); CHKERRXX(ierr);
-  ierr = VecScale(phi_ghost_loc, -1.0); CHKERRXX(ierr); // reverse the levelset function to get back to original state
-  ierr = VecGhostRestoreLocalForm(biomolecules->phi, &phi_ghost_loc); phi_ghost_loc = NULL; CHKERRXX(ierr);
-
-  // contributions from singular point charges
-  double integral_contribution_from_singular_charges = 0.0;
-
-  my_p4est_interpolation_nodes_t interpolate_psi_hat_plus_psi_naught(biomolecules->neighbors);
-  switch (biomolecules->parameters.order_of_accuracy()) {
-  case 1:
-    interpolate_psi_hat_plus_psi_naught.set_input(psi_hat_plus_psi_naught, linear);
-    break;
-  case 2:
-    make_sure_is_node_sampled(psi_hat_plus_psi_naught_xx);
-    make_sure_is_node_sampled(psi_hat_plus_psi_naught_yy);
-    make_sure_is_node_sampled(psi_hat_plus_psi_naught_zz);
-    biomolecules->neighbors->second_derivatives_central(psi_hat_plus_psi_naught, psi_hat_plus_psi_naught_xx, psi_hat_plus_psi_naught_yy, psi_hat_plus_psi_naught_zz);
-    interpolate_psi_hat_plus_psi_naught.set_input(psi_hat_plus_psi_naught, psi_hat_plus_psi_naught_xx, psi_hat_plus_psi_naught_yy, psi_hat_plus_psi_naught_zz,
-                                                  quadratic /*quadratic_non_oscillatory_continuous_v2*/);
-    break;
-  default:
-    throw std::invalid_argument("my_p4est_biomolecules_solver_t::solve_singular_part(), the order of accuracy should be either 1 or 2!");
-    break;
-  }
-
-
-
-  int total_nb_charged_atoms = 0.0;
-  for (size_t mol_idx = 0; mol_idx < biomolecules->nmol(); ++mol_idx)
-  {
-    const my_p4est_biomolecules_t::molecule& mol = biomolecules->bio_molecules[mol_idx];
-    total_nb_charged_atoms += mol.get_number_of_charged_atoms();
-  }
-  int proc_has_atom_if_rank_below = MIN(total_nb_charged_atoms, biomolecules->p4est->mpisize);
-
-  int first_charged_atom_idx          = MIN(biomolecules->p4est->mpirank*total_nb_charged_atoms/proc_has_atom_if_rank_below, total_nb_charged_atoms);
-  int idx_of_charged_atom_after_last  = MIN((biomolecules->p4est->mpirank+1)*total_nb_charged_atoms/proc_has_atom_if_rank_below, total_nb_charged_atoms);
-  int nb_atoms_for_me                 = idx_of_charged_atom_after_last - first_charged_atom_idx;
-
-  vector<double> point_values_of_psi_hat_plus_psi_naught(nb_atoms_for_me, 0.0);
-  int charged_atom_idx_offset         = 0;
-  int global_charged_atom_idx;
-  p4est_locidx_t local_idx = 0;
-  //std::cout << "first charged atom idx  ::  " << first_charged_atom_idx << "\n";
-  if(first_charged_atom_idx < total_nb_charged_atoms)
-  {
-    for (size_t mol_idx = 0; mol_idx < biomolecules->nmol(); ++mol_idx)
-    {
-      const my_p4est_biomolecules_t::molecule& mol = biomolecules->bio_molecules[mol_idx];
-      if((charged_atom_idx_offset + mol.get_number_of_charged_atoms() >= first_charged_atom_idx) && (charged_atom_idx_offset < idx_of_charged_atom_after_last))
-      {
-        for (int charged_atom_idx = 0; charged_atom_idx < mol.get_number_of_charged_atoms(); ++charged_atom_idx)
-        {
-          global_charged_atom_idx = charged_atom_idx_offset + charged_atom_idx;
-          if((first_charged_atom_idx <= global_charged_atom_idx) && (global_charged_atom_idx < idx_of_charged_atom_after_last))
-          {
-            const Atom* a = mol.get_charged_atom(charged_atom_idx);
-            interpolate_psi_hat_plus_psi_naught.add_point(local_idx++, a->xyz_c);
-            P4EST_ASSERT(local_idx <= nb_atoms_for_me);
-          }
-        }
-      }
-      charged_atom_idx_offset += mol.get_number_of_charged_atoms();
-    }
-  }
-  interpolate_psi_hat_plus_psi_naught.interpolate(point_values_of_psi_hat_plus_psi_naught.data());
-  local_idx = 0;
-  //resetting charged_atom_idx_offset
-  charged_atom_idx_offset         = 0;
-  if(first_charged_atom_idx < total_nb_charged_atoms)
-  {
-    for (size_t mol_idx = 0; mol_idx < biomolecules->nmol(); ++mol_idx)
-    {
-      const my_p4est_biomolecules_t::molecule& mol = biomolecules->bio_molecules[mol_idx];
-      if((charged_atom_idx_offset + mol.get_number_of_charged_atoms() >= first_charged_atom_idx) && (charged_atom_idx_offset < idx_of_charged_atom_after_last))
-      {
-        for (int charged_atom_idx = 0; charged_atom_idx < mol.get_number_of_charged_atoms(); ++charged_atom_idx)
-        {
-          global_charged_atom_idx = charged_atom_idx_offset + charged_atom_idx;
-          if((first_charged_atom_idx <= global_charged_atom_idx) && (global_charged_atom_idx < idx_of_charged_atom_after_last))
-          {
-            const Atom* a = mol.get_charged_atom(charged_atom_idx);
-            integral_contribution_from_singular_charges += (0.5*a->q*kB*temperature/((double) ion_charge))*(point_values_of_psi_hat_plus_psi_naught[local_idx++]);
-            P4EST_ASSERT(local_idx <= nb_atoms_for_me);
-          }
-        }
-      }
-      charged_atom_idx_offset += mol.get_number_of_charged_atoms();
-    }
-  }
-
-  int mpiret = MPI_Allreduce(MPI_IN_PLACE, &integral_contribution_from_singular_charges, 1, MPI_DOUBLE, MPI_SUM, biomolecules->p4est->mpicomm); SC_CHECK_MPI(mpiret);
-  solvation_free_energy += integral_contribution_from_singular_charges;
-
-  ierr = VecDestroy(integrand); integrand = NULL; CHKERRXX(ierr);
-  ierr = VecDestroy(psi_hat_plus_psi_naught); psi_hat_plus_psi_naught = NULL; CHKERRXX(ierr);
-  ierr = VecDestroy(psi_hat_plus_psi_naught_xx); psi_hat_plus_psi_naught_xx = NULL; CHKERRXX(ierr);
-  ierr = VecDestroy(psi_hat_plus_psi_naught_yy); psi_hat_plus_psi_naught_yy = NULL; CHKERRXX(ierr);
-#ifdef P4_TO_P8
-  ierr = VecDestroy(psi_hat_plus_psi_naught_zz); psi_hat_plus_psi_naught_zz = NULL; CHKERRXX(ierr);
-#endif
-
-  if(biomolecules->log_file != NULL)
-  {
-    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "The value of the solvation free energy is %g J, that is %g kcal/mol \n", solvation_free_energy, solvation_free_energy*avogadro_number*0.000239006); CHKERRXX(ierr);
-    if(biomolecules->timing_file != NULL)
-    {
-      log_timer->stop(); log_timer->read_duration(true);
-      delete log_timer; log_timer = NULL;
-    }
-  }
-#endif
-}
-
 my_p4est_biomolecules_solver_t::~my_p4est_biomolecules_solver_t()
 {
   if(node_solver != NULL){
-    delete node_solver; node_solver = NULL;}
+    delete node_solver;           node_solver = NULL;}
   if(jump_solver != NULL){
-    delete jump_solver; jump_solver = NULL;}
+    delete jump_solver;           jump_solver = NULL;}
   if(psi_star != NULL){
-    ierr = VecDestroy(psi_star); psi_star = NULL; CHKERRXX(ierr);}
-  if(psi_naught != NULL){
-    ierr = VecDestroy(psi_naught); psi_naught = NULL; CHKERRXX(ierr);}
-  if(psi_bar != NULL){
-    ierr = VecDestroy(psi_bar); psi_bar = NULL; CHKERRXX(ierr);}
+    ierr = VecDestroy(psi_star);  psi_star = NULL;    CHKERRXX(ierr); }
+  if(psi_hat != NULL){
+    ierr = VecDestroy(psi_hat);   psi_hat = NULL;     CHKERRXX(ierr); }
+
 }
 

@@ -767,19 +767,13 @@ public:
 
 class my_p4est_biomolecules_solver_t{
   const my_p4est_biomolecules_t * const biomolecules;
-  typedef enum {
-    linearPB,
-    nonlinearPB
-  } solver_type;
-public:
   double        mol_rel_permittivity;                     // relative permittivity of the molecule
   double        elec_rel_permittivity;                    // relative permittivity of the electrolyte
   double        temperature;                              // the temperature (in K)
   double        far_field_ion_density;                    // the far-field ion density (in m^{-3})
   int           ion_charge;                               // 'z' for a z:z symmetrical electrolyte, >=1
   double        solvation_free_energy;                    // the holy grail
-  // physical constant
-public:
+  // physical constants
   const double  eps_0             = 8.854187817*1e-12;    // = 1/(mu_0*c^2), exact value, vacuum permittivity in F/m
   const double  kB                = 1.38064853*1e-23;     // (rounded-up) Boltzmann constant in J/K
   const double  electron          = 1.6021766209*1e-19;   // elementary electric charge in C
@@ -791,24 +785,24 @@ public:
   my_p4est_general_poisson_nodes_mls_solver_t*  jump_solver= NULL;
   my_p4est_poisson_nodes_t*                     node_solver = NULL;
 
-  Vec           psi_star, psi_naught, psi_bar;
-  bool          psi_star_psi_naught_and_psi_bar_are_set;
+  Vec           psi_star;
   Vec           psi_hat;
-  bool          psi_star_is_set=false;
+  bool          psi_star_is_set;
   bool          psi_hat_is_set;
-  //Vec eps_grad_n_psi_hat_jump, DIM(eps_grad_n_psi_hat_jump_xx_,eps_grad_n_psi_hat_jump_yy_,eps_grad_n_psi_hat_jump_zz_);
+  int           nb_iterations_for_setting_psi_hat;
 
-  inline bool   molecular_permittivity_is_set() const {return (mol_rel_permittivity > 1.0-EPS);}
-  inline bool   electrolyte_permittivity_is_set() const {return (elec_rel_permittivity > 1.0-EPS);}
-  inline bool   permittivities_are_set() const {return (electrolyte_permittivity_is_set() && molecular_permittivity_is_set());}
-  inline bool   temperature_is_set() const { return (temperature > EPS);}
-  inline bool   far_field_ion_density_is_set() const { return (far_field_ion_density > EPS || far_field_ion_density==0.0);}
-  inline bool   ion_charge_is_set() const { return (ion_charge > 0);}
-  inline bool   all_debye_parameters_are_set() const {return (temperature_is_set() && far_field_ion_density_is_set() && ion_charge_is_set());}
-  inline double length_scale_in_meter() const {return (1.0/(meter_to_angstrom*biomolecules->angstrom_to_domain));}
-  bool          all_parameters_are_set() const {return (all_debye_parameters_are_set() && permittivities_are_set());}
+  inline bool   psi_hat_set_for_linear_pb()       const { return (psi_hat_is_set && (nb_iterations_for_setting_psi_hat==1)); }
+  inline bool   psi_hat_set_for_nonlinear_pb()    const { return (psi_hat_is_set && (nb_iterations_for_setting_psi_hat>1));  }
+  inline bool   molecular_permittivity_is_set()   const { return (mol_rel_permittivity > 1.0-EPS); }
+  inline bool   electrolyte_permittivity_is_set() const { return (elec_rel_permittivity > 1.0-EPS); }
+  inline bool   permittivities_are_set()          const { return (electrolyte_permittivity_is_set() && molecular_permittivity_is_set()); }
+  inline bool   temperature_is_set()              const { return (temperature > EPS); }
+  inline bool   far_field_ion_density_is_set()    const { return (far_field_ion_density > EPS || far_field_ion_density==0.0); }
+  inline bool   ion_charge_is_set()               const { return (ion_charge > 0); }
+  inline bool   all_debye_parameters_are_set()    const { return (temperature_is_set() && far_field_ion_density_is_set() && ion_charge_is_set()); }
+  inline double length_scale_in_meter()           const { return (1.0/(meter_to_angstrom*biomolecules->angstrom_to_domain)); }
+  bool          all_parameters_are_set()          const { return (all_debye_parameters_are_set() && permittivities_are_set()); }
   void          make_sure_is_node_sampled(Vec& vector);
-  void          solve_singular_part();
 
   // compute singular charges' contributions
   double        non_dimensional_coulomb_in_mol(DIM(double x, double y, double z))
@@ -819,9 +813,8 @@ public:
       const my_p4est_biomolecules_t::molecule& mol = biomolecules->bio_molecules[mol_idx];
       for (int charged_atom_idx = 0; charged_atom_idx < mol.get_number_of_charged_atoms(); ++charged_atom_idx)
       {
-        const Atom* a = mol.get_charged_atom(charged_atom_idx);
-//        std::cout << sqrt(SQR(x - a->x) + SQR(y - a->y) + SQR(z - a->z))/biomolecules->angstrom_to_domain << std::endl;
 #ifdef P4_TO_P8
+        const Atom* a = mol.get_charged_atom(charged_atom_idx);
         psi_star_value += (a->q*SQR(electron)*((double) ion_charge))/
             (length_scale_in_meter()*4.0*PI*eps_0*mol_rel_permittivity*kB*temperature*sqrt(SUMD(SQR(x - a->xyz_c[0]), SQR(y - a->xyz_c[1]), SQR(z - a->xyz_c[2])))); // constant = 0
 #else
@@ -835,18 +828,19 @@ public:
     return psi_star_value;
   }
 
-  void          return_psi_hat(Vec& psi_hat_out);
-  void          return_psi_star_psi_naught_and_psi_bar(Vec& psi_star_out, Vec& psi_naught_out, Vec& psi_bar_out);
   void          calculate_jumps_in_normal_gradient(Vec& eps_grad_n_psi_hat_jump);
-  void          calculate_jumps_in_normal_gradient_v2(Vec& eps_grad_n_psi_hat_jump);
   void          get_rhs_and_add_plus(Vec& rhs_plus, Vec& add_plus);
   void          get_linear_diagonal_terms(Vec& pristine_diagonal_terms);
   void          clean_matrix_diagonal(const Vec& pristine_diagonal_terms);
-
-  struct : CF_DIM
+  inline void   reset_psi_hat()
   {
-    double operator()(DIM(double, double, double)) const { return 0.0; }
-  } homogeneous_dirichlet_bc_wall_value;
+    psi_hat_is_set                    = false;
+    nb_iterations_for_setting_psi_hat = -1;
+    if(psi_hat!=NULL)
+    {
+      PetscErrorCode ierr = VecDestroy(psi_hat); psi_hat = NULL; CHKERRXX(ierr);
+    }
+  }
 
   struct far_field_boundary_cond : CF_DIM
   {
@@ -857,13 +851,6 @@ public:
         return (biomol_solver->non_dimensional_coulomb_in_mol(DIM(x,y,z)))*biomol_solver->mol_rel_permittivity/biomol_solver->elec_rel_permittivity /*+ biomol_solver->non_dimensional_coulomb_in_elec(DIM(x,y,z))*/;
     }
   };
-
-  struct : WallBCDIM
-  {
-    BoundaryConditionType operator()(DIM(double, double, double)) const { return DIRICHLET; }
-  } dirichlet_bc_wall_type;
-
-  BoundaryConditionsDIM dirichlet_bc;
 
 public:
   my_p4est_biomolecules_solver_t(const my_p4est_biomolecules_t* biomolecules_);
@@ -889,13 +876,11 @@ public:
 
   void          solve_linear() {(void) solve_nonlinear(1e-8, 1);} // equivalent to ONE iteration of the nonlinear solver
   int           solve_nonlinear(double upper_bound_residual = 1e-8, int it_max = 10000);
-  int           solve_nonlinear_v2(double upper_bound_residual = 1e-8, int it_max = 10000);
-  void          get_solvation_free_energy();
-  void          get_solvation_free_energy_v2();
-  Vec           get_psi(double max_absolute_psi = DBL_MAX);
+  void          get_solvation_free_energy(const bool &nonlinear_flag);
+  void          return_all_psi_vectors(Vec& psi_star_out, Vec& psi_hat_out);
+  void          return_psi_hat(Vec& psi_hat_out);
+  void          return_psi_star(Vec& psi_star_out);
 
-  Vec           return_residual();
-  void          return_all_psi_vectors(Vec& psi_star_out, Vec& psi_naught_out, Vec& psi_bar_out, Vec& psi_hat_out);
   ~my_p4est_biomolecules_solver_t();
 };
 

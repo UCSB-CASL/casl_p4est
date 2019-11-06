@@ -301,9 +301,9 @@ int main(int argc, char *argv[]) {
   solver.set_ion_charge(ion_charge);
   solver.set_temperature_in_kelvin(temperature);
   solver.set_molar_concentration_of_electrolyte_in_mol_per_liter(far_field_ion_concentration);
-  solver.solve_nonlinear_v2(rtol, (linearization_flag)?1:niter_max);
+  solver.solve_nonlinear(rtol, (linearization_flag)?1:niter_max);
 #ifdef P4_TO_P8
-  solver.get_solvation_free_energy_v2();
+  solver.get_solvation_free_energy(!linearization_flag);
 #endif
 
   Vec psi_hat = NULL;
