@@ -823,7 +823,7 @@ public:
 //        std::cout << sqrt(SQR(x - a->x) + SQR(y - a->y) + SQR(z - a->z))/biomolecules->angstrom_to_domain << std::endl;
 #ifdef P4_TO_P8
         psi_star_value += (a->q*SQR(electron)*((double) ion_charge))/
-            (length_scale_in_meter()*4.0*PI*eps_0*mol_rel_permittivity*kB*temperature*sqrt(SQR(x - a->xyz_c[0]) + SQR(y - a->xyz_c[1]) + SQR(z - a->xyz_c[2]))); // constant = 0
+            (length_scale_in_meter()*4.0*PI*eps_0*mol_rel_permittivity*kB*temperature*sqrt(SUMD(SQR(x - a->xyz_c[0]), SQR(y - a->xyz_c[1]), SQR(z - a->xyz_c[2])))); // constant = 0
 #else
         // there is no real 2D equivalent in terms of electrostatics,
         // in the 2d case, let's consider q a linear (partial) charge density,
@@ -838,7 +838,7 @@ public:
   void          return_psi_hat(Vec& psi_hat_out);
   void          return_psi_star_psi_naught_and_psi_bar(Vec& psi_star_out, Vec& psi_naught_out, Vec& psi_bar_out);
   void          calculate_jumps_in_normal_gradient(Vec& eps_grad_n_psi_hat_jump);
-  void          calculate_jumps_in_normal_gradient_v2(Vec& eps_grad_n_psi_hat_jump, bool validation_flag);
+  void          calculate_jumps_in_normal_gradient_v2(Vec& eps_grad_n_psi_hat_jump);
   void          get_rhs_and_add_plus(Vec& rhs_plus, Vec& add_plus);
   void          get_linear_diagonal_terms(Vec& pristine_diagonal_terms);
   void          clean_matrix_diagonal(const Vec& pristine_diagonal_terms);
@@ -887,12 +887,12 @@ public:
   inline double get_far_field_ion_density() const {return far_field_ion_density;}
   inline int    get_ion_charge() const {return ion_charge;}
 
-  void          solve_linear(int n_iter_psi_bar_extension = 20) {(void) solve_nonlinear(1e-8, 1, n_iter_psi_bar_extension);} // equivalent to ONE iteration of the nonlinear solver
-  int           solve_nonlinear(double upper_bound_residual = 1e-8, int it_max = 10000, bool validation_flag = false);
-  int           solve_nonlinear_v2(double upper_bound_residual = 1e-8, int it_max = 10000, bool validation_flag = false);
-  void          get_solvation_free_energy(bool validation_flag = false);
-  void          get_solvation_free_energy_v2(bool validation_flag = false);
-  Vec           get_psi(double max_absolute_psi = DBL_MAX, bool validation_flag = false);
+  void          solve_linear() {(void) solve_nonlinear(1e-8, 1);} // equivalent to ONE iteration of the nonlinear solver
+  int           solve_nonlinear(double upper_bound_residual = 1e-8, int it_max = 10000);
+  int           solve_nonlinear_v2(double upper_bound_residual = 1e-8, int it_max = 10000);
+  void          get_solvation_free_energy();
+  void          get_solvation_free_energy_v2();
+  Vec           get_psi(double max_absolute_psi = DBL_MAX);
 
   Vec           return_residual();
   void          return_all_psi_vectors(Vec& psi_star_out, Vec& psi_naught_out, Vec& psi_bar_out, Vec& psi_hat_out);
