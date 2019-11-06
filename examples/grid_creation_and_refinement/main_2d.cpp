@@ -228,7 +228,7 @@ int main(int argc, char** argv) {
 
           // Output each iteration to vtk
           char name[1024];
-          sprintf(name, "visualization_%2d", iter);
+          sprintf(name, "visualization_%1d", iter);
           my_p4est_vtk_write_all(p4est, nodes, ghost,
                                  P4EST_TRUE, P4EST_TRUE,
                                  0, 0, name);
@@ -289,7 +289,7 @@ int main(int argc, char** argv) {
           if(print_iter.val)
           {
             char name[1024];
-            sprintf(name, "visualization_%2d", iter);
+            sprintf(name, "visualization_%1d", iter);
             ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
             my_p4est_vtk_write_all(p4est, nodes, ghost,
                                    P4EST_TRUE, P4EST_TRUE,
