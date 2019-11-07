@@ -663,6 +663,7 @@ void my_p4est_scft_t::save_VTK(int compt)
 //  ls.extend_Over_Interface_TVD(phi_smooth, mu_p);
 //  ls.extend_Over_Interface_TVD(phi_smooth, mu_m);
 
+  // name of output file
   char *out_dir;
   out_dir = getenv("OUT_DIR");
 
@@ -678,8 +679,7 @@ void my_p4est_scft_t::save_VTK(int compt)
        #endif
          "." << compt;
 
-  double *phi_p, *rho_a_p, *rho_b_p, *mu_p_p, *mu_m_p, *mask_p;
-
+  //
   bool no_phi = 0;
   if (phi_smooth == NULL)
   {
@@ -687,17 +687,6 @@ void my_p4est_scft_t::save_VTK(int compt)
     VecSetGhost(phi_smooth, -1);
     no_phi = 1;
   }
-
-//  ierr = VecGetArray(phi->at(0), &phi_p); CHKERRXX(ierr);
-//  ierr = VecGetArray(qf[ns-1], &rho_a_p); CHKERRXX(ierr);
-//  ierr = VecGetArray(qb[0], &rho_b_p); CHKERRXX(ierr);
-//  ierr = VecGetArray(phi_smooth, &phi_p); CHKERRXX(ierr);
-  ierr = VecGetArray(phi_smooth, &phi_p); CHKERRXX(ierr);
-  ierr = VecGetArray(rho_a, &rho_a_p); CHKERRXX(ierr);
-  ierr = VecGetArray(rho_b, &rho_b_p); CHKERRXX(ierr);
-  ierr = VecGetArray(mu_m, &mu_m_p); CHKERRXX(ierr);
-  ierr = VecGetArray(mu_p, &mu_p_p); CHKERRXX(ierr);
-  ierr = VecGetArray(mask, &mask_p); CHKERRXX(ierr);
 
   /* save the size of the leaves */
   Vec leaf_level;
@@ -720,7 +709,23 @@ void my_p4est_scft_t::save_VTK(int compt)
     const p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts, q);
     l_p[p4est->local_num_quadrants+q] = quad->level;
   }
+  //
 
+  // get access to data fields
+  double *phi_p, *rho_a_p, *rho_b_p, *mu_p_p, *mu_m_p, *mask_p;
+
+//  ierr = VecGetArray(phi->at(0), &phi_p); CHKERRXX(ierr);
+//  ierr = VecGetArray(qf[ns-1], &rho_a_p); CHKERRXX(ierr);
+//  ierr = VecGetArray(qb[0], &rho_b_p); CHKERRXX(ierr);
+//  ierr = VecGetArray(phi_smooth, &phi_p); CHKERRXX(ierr);
+  ierr = VecGetArray(phi_smooth, &phi_p); CHKERRXX(ierr);
+  ierr = VecGetArray(rho_a, &rho_a_p); CHKERRXX(ierr);
+  ierr = VecGetArray(rho_b, &rho_b_p); CHKERRXX(ierr);
+  ierr = VecGetArray(mu_m, &mu_m_p); CHKERRXX(ierr);
+  ierr = VecGetArray(mu_p, &mu_p_p); CHKERRXX(ierr);
+  ierr = VecGetArray(mask, &mask_p); CHKERRXX(ierr);
+
+  // write into file
   my_p4est_vtk_write_all(p4est, nodes, ghost,
                          P4EST_TRUE, P4EST_TRUE,
                          6, 1, oss.str().c_str(),
@@ -732,9 +737,7 @@ void my_p4est_scft_t::save_VTK(int compt)
                          VTK_POINT_DATA, "mask", mask_p,
                          VTK_CELL_DATA , "leaf_level", l_p);
 
-  ierr = VecRestoreArray(leaf_level, &l_p); CHKERRXX(ierr);
-  ierr = VecDestroy(leaf_level); CHKERRXX(ierr);
-
+  // restore access to data fields
 //  ierr = VecRestoreArray(phi->at(0), &phi_p); CHKERRXX(ierr);
 //  ierr = VecRestoreArray(qf[ns-1], &rho_a_p); CHKERRXX(ierr);
 //  ierr = VecRestoreArray(qb[0], &rho_b_p); CHKERRXX(ierr);
@@ -746,11 +749,16 @@ void my_p4est_scft_t::save_VTK(int compt)
   ierr = VecRestoreArray(mu_p, &mu_p_p); CHKERRXX(ierr);
   ierr = VecRestoreArray(mask, &mask_p); CHKERRXX(ierr);
 
+  //
+  ierr = VecRestoreArray(leaf_level, &l_p); CHKERRXX(ierr);
+  ierr = VecDestroy(leaf_level); CHKERRXX(ierr);
+
   if (no_phi)
   {
     ierr = VecDestroy(phi_smooth); CHKERRXX(ierr);
     phi_smooth = NULL;
   }
+  //
 
   PetscPrintf(p4est->mpicomm, "VTK saved in %s\n", oss.str().c_str());
 }
