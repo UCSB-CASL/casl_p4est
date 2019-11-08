@@ -93,7 +93,7 @@ struct Atom {
    * \param [out] xyzM point in the quadrant of interest that maximizes the above function, if not NULL on input.
    * \return the max value of r_vdw-distance_to_xyz for xyz in a given quadrant
    */
-  double max_phi_vdW_in_quad(const double *xyz_quad_c, const double* dxyz, double* xyzM = NULL) const
+  inline double max_phi_vdW_in_quad(const double *xyz_quad_c, const double* dxyz, double* xyzM = NULL) const
   {
     if(ANDD((fabs(xyz_c[0] - xyz_quad_c[0]) <= 0.5*dxyz[0]), (fabs(xyz_c[1] - xyz_quad_c[1]) <= 0.5*dxyz[1]), (fabs(xyz_c[2] - xyz_quad_c[2]) <= 0.5*dxyz[2]))) // the cell cointains the atom center, max is r_vdw
     {
@@ -270,7 +270,7 @@ private:
     inline double domain_diag()     const { return sqrt(SUMD(SQR(domain_dimensions[0]), SQR(domain_dimensions[1]), SQR(domain_dimensions[2]))); }
     inline const double* get_domain_center() const { return domain_center; }
 
-    bool set_splitting_criterion(const int& l_min, const int& l_max, const double& lip_)
+    inline bool set_splitting_criterion(const int& l_min, const int& l_max, const double& lip_)
     {
       bool need_to_reset_the_forest = is_splitting_criterion_set() && ((l_min != sp.min_lvl) || (l_max != sp.max_lvl) || (fabs(sp.lip - lip_) >= EPS*fabs(sp.lip)));
       sp.min_lvl  = l_min;
@@ -278,13 +278,13 @@ private:
       sp.lip      = lip_;
       return need_to_reset_the_forest;
     }
-    bool set_probe_radius(const double& rp_)
+    inline bool set_probe_radius(const double& rp_)
     {
       bool need_to_reset_the_forest = is_probe_radius_set() && (fabs(probe_radius() - rp_) > EPS*rp);
       rp = rp_;
       return need_to_reset_the_forest;
     }
-    bool set_OOA(const int& OOA_)
+    inline bool set_OOA(const int& OOA_)
     {
       bool need_to_reset_the_forest = is_layer_thickness_set() && (OOA != OOA_);
       OOA = OOA_;
@@ -549,7 +549,7 @@ private:
   Vec                       inner_domain;
 
   const int                 rank_encoding;
-  const ulong               max_quad_loc_idx;
+  const int64_t             max_quad_loc_idx;
   const string              no_vtk = "null";
   int8_t                    global_max_level;         // max level of refinement of the forest in the entire domain
   vector<molecule>          bio_molecules;            // the vector of molecules
@@ -659,7 +659,7 @@ private:
   {
     const my_p4est_biomolecules_t* biomol_pointer;
     double operator()(DIM(const double &x, const double &y, const double &z)) const ;
-    inline double operator()(const double *xyz) const { return this->operator()(DIM(xyz[0], xyz[1], xyz[2])); } ;
+    inline double operator()(const double *xyz) const { return this->operator()(DIM(xyz[0], xyz[1], xyz[2])); }
   } is_point_in_a_bounding_box ;
 public:
   static const unsigned int nangle_per_mol; // 3 in 3D, 1 in 2D, the values is set in the .cpp file
@@ -805,7 +805,7 @@ class my_p4est_biomolecules_solver_t{
   void          make_sure_is_node_sampled(Vec& vector);
 
   // compute singular charges' contributions
-  double        non_dimensional_coulomb_in_mol(DIM(double x, double y, double z))
+  inline double non_dimensional_coulomb_in_mol(DIM(double x, double y, double z))
   {
     double psi_star_value = 0;
     for (size_t mol_idx = 0; mol_idx < biomolecules->nmol(); ++mol_idx)

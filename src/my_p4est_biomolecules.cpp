@@ -29,215 +29,6 @@
 
 using namespace std;
 
-const int bdry_phi_max_num = 1;
-const int infc_phi_max_num = 1;
-
-parameter_list_t pl;
-
-//-------------------------------------
-// computational domain parameters
-//-------------------------------------
-DEFINE_PARAMETER(pl, int, px, 0, "Periodicity in the x-direction (0/1)");
-DEFINE_PARAMETER(pl, int, py, 0, "Periodicity in the y-direction (0/1)");
-DEFINE_PARAMETER(pl, int, pz, 0, "Periodicity in the z-direction (0/1)");
-
-DEFINE_PARAMETER(pl, int, nx, 1, "Number of trees in the x-direction");
-DEFINE_PARAMETER(pl, int, ny, 1, "Number of trees in the y-direction");
-DEFINE_PARAMETER(pl, int, nz, 1, "Number of trees in the z-direction");
-
-DEFINE_PARAMETER(pl, double, xmin, -1, "Box xmin");
-DEFINE_PARAMETER(pl, double, ymin, -1, "Box ymin");
-DEFINE_PARAMETER(pl, double, zmin, -1, "Box zmin");
-
-DEFINE_PARAMETER(pl, double, xmax,  1, "Box xmax");
-DEFINE_PARAMETER(pl, double, ymax,  1, "Box ymax");
-DEFINE_PARAMETER(pl, double, zmax,  1, "Box zmax");
-
-//-------------------------------------
-// refinement parameters
-//-------------------------------------
-#ifdef P4_TO_P8
-DEFINE_PARAMETER(pl, int, lmin, 5, "Min level of the tree");
-DEFINE_PARAMETER(pl, int, lmax, 7, "Max level of the tree");
-
-DEFINE_PARAMETER(pl, int, num_splits,           4, "Number of recursive splits");
-DEFINE_PARAMETER(pl, int, num_splits_per_split, 1, "Number of additional resolutions");
-
-DEFINE_PARAMETER(pl, int, num_shifts_x_dir, 1, "Number of grid shifts in the x-direction");
-DEFINE_PARAMETER(pl, int, num_shifts_y_dir, 1, "Number of grid shifts in the y-direction");
-DEFINE_PARAMETER(pl, int, num_shifts_z_dir, 1, "Number of grid shifts in the z-direction");
-#else
-DEFINE_PARAMETER(pl, int, lmin, 4, "Min level of the tree");
-DEFINE_PARAMETER(pl, int, lmax, 5, "Max level of the tree");
-
-DEFINE_PARAMETER(pl, int, num_splits,           5, "Number of recursive splits");
-DEFINE_PARAMETER(pl, int, num_splits_per_split, 1, "Number of additional resolutions");
-
-DEFINE_PARAMETER(pl, int, num_shifts_x_dir, 1, "Number of grid shifts in the x-direction");
-DEFINE_PARAMETER(pl, int, num_shifts_y_dir, 1, "Number of grid shifts in the y-direction");
-DEFINE_PARAMETER(pl, int, num_shifts_z_dir, 1, "Number of grid shifts in the z-direction");
-#endif
-
-DEFINE_PARAMETER(pl, int, iter_start, 0, "Skip n first iterations");
-DEFINE_PARAMETER(pl, double, lip, 2, "Lipschitz constant");
-
-DEFINE_PARAMETER(pl, bool, refine_strict,  1, "Refines every cell starting from the coarsest case if yes");
-DEFINE_PARAMETER(pl, bool, refine_rand,    0, "Add randomness into adaptive grid");
-DEFINE_PARAMETER(pl, bool, balance_grid,   1, "Enforce 1:2 ratio for adaptive grid");
-DEFINE_PARAMETER(pl, bool, coarse_outside, 0, "Use the coarsest possible grid outside the domain (0/1)");
-DEFINE_PARAMETER(pl, int,  expand_ghost,   0, "Number of ghost layer expansions");
-
-//-------------------------------------
-// test solutions
-//-------------------------------------
-
-DEFINE_PARAMETER(pl, int, n_um, 0, "");
-DEFINE_PARAMETER(pl, int, n_up, 0, "");
-
-DEFINE_PARAMETER(pl, double, mag_um, 1, "");
-DEFINE_PARAMETER(pl, double, mag_up, 1, "");
-
-DEFINE_PARAMETER(pl, int, n_mu_m, 0, "");
-DEFINE_PARAMETER(pl, int, n_mu_p, 0, "");
-
-DEFINE_PARAMETER(pl, double, mag_mu_m, 1, "");
-DEFINE_PARAMETER(pl, double, mag_mu_p, 1, "");
-
-DEFINE_PARAMETER(pl, double, mu_iter_num, 1, "");
-DEFINE_PARAMETER(pl, double, mag_mu_m_min, 1, "");
-DEFINE_PARAMETER(pl, double, mag_mu_m_max, 1, "");
-
-DEFINE_PARAMETER(pl, int, n_diag_m, 0, "");
-DEFINE_PARAMETER(pl, int, n_diag_p, 0, "");
-
-DEFINE_PARAMETER(pl, double, mag_diag_m, 1, "");
-DEFINE_PARAMETER(pl, double, mag_diag_p, 1, "");
-
-DEFINE_PARAMETER(pl, int, bc_wtype, DIRICHLET, "Type of boundary conditions on the walls");
-
-// boundary geometry
-DEFINE_PARAMETER(pl, int, bdry_phi_num, 0, "Domain geometry");
-DEFINE_PARAMETER(pl, int, infc_phi_num, 0, "Domain geometry");
-
-DEFINE_PARAMETER(pl, bool, bdry_present_00, 0, "Domain geometry");
-DEFINE_PARAMETER(pl, bool, bdry_present_01, 0, "Domain geometry");
-DEFINE_PARAMETER(pl, bool, bdry_present_02, 0, "Domain geometry");
-DEFINE_PARAMETER(pl, bool, bdry_present_03, 0, "Domain geometry");
-
-DEFINE_PARAMETER(pl, int, bdry_geom_00, 0, "Domain geometry");
-DEFINE_PARAMETER(pl, int, bdry_geom_01, 0, "Domain geometry");
-DEFINE_PARAMETER(pl, int, bdry_geom_02, 0, "Domain geometry");
-DEFINE_PARAMETER(pl, int, bdry_geom_03, 0, "Domain geometry");
-
-DEFINE_PARAMETER(pl, int, bdry_opn_00, MLS_INTERSECTION, "Domain geometry");
-DEFINE_PARAMETER(pl, int, bdry_opn_01, MLS_INTERSECTION, "Domain geometry");
-DEFINE_PARAMETER(pl, int, bdry_opn_02, MLS_INTERSECTION, "Domain geometry");
-DEFINE_PARAMETER(pl, int, bdry_opn_03, MLS_INTERSECTION, "Domain geometry");
-
-DEFINE_PARAMETER(pl, int, bc_coeff_00, 0, "Domain geometry");
-DEFINE_PARAMETER(pl, int, bc_coeff_01, 0, "Domain geometry");
-DEFINE_PARAMETER(pl, int, bc_coeff_02, 0, "Domain geometry");
-DEFINE_PARAMETER(pl, int, bc_coeff_03, 0, "Domain geometry");
-
-DEFINE_PARAMETER(pl, double, bc_coeff_00_mag, 1, "Domain geometry");
-DEFINE_PARAMETER(pl, double, bc_coeff_01_mag, 1, "Domain geometry");
-DEFINE_PARAMETER(pl, double, bc_coeff_02_mag, 1, "Domain geometry");
-DEFINE_PARAMETER(pl, double, bc_coeff_03_mag, 1, "Domain geometry");
-
-DEFINE_PARAMETER(pl, int, bc_type_00, DIRICHLET, "Type of boundary conditions on the domain boundary");
-DEFINE_PARAMETER(pl, int, bc_type_01, DIRICHLET, "Type of boundary conditions on the domain boundary");
-DEFINE_PARAMETER(pl, int, bc_type_02, DIRICHLET, "Type of boundary conditions on the domain boundary");
-DEFINE_PARAMETER(pl, int, bc_type_03, DIRICHLET, "Type of boundary conditions on the domain boundary");
-
-// interface geometry
-DEFINE_PARAMETER(pl, bool, infc_present_00, 0, "Domain geometry");
-DEFINE_PARAMETER(pl, bool, infc_present_01, 0, "Domain geometry");
-DEFINE_PARAMETER(pl, bool, infc_present_02, 0, "Domain geometry");
-DEFINE_PARAMETER(pl, bool, infc_present_03, 0, "Domain geometry");
-
-DEFINE_PARAMETER(pl, int, infc_geom_00, 0, "Domain geometry");
-DEFINE_PARAMETER(pl, int, infc_geom_01, 0, "Domain geometry");
-DEFINE_PARAMETER(pl, int, infc_geom_02, 0, "Domain geometry");
-DEFINE_PARAMETER(pl, int, infc_geom_03, 0, "Domain geometry");
-
-DEFINE_PARAMETER(pl, int, infc_opn_00, MLS_INTERSECTION, "Domain geometry");
-DEFINE_PARAMETER(pl, int, infc_opn_01, MLS_INTERSECTION, "Domain geometry");
-DEFINE_PARAMETER(pl, int, infc_opn_02, MLS_INTERSECTION, "Domain geometry");
-DEFINE_PARAMETER(pl, int, infc_opn_03, MLS_INTERSECTION, "Domain geometry");
-
-DEFINE_PARAMETER(pl, int, jc_value_00, 0, "0 - automatic, others - hardcoded");
-DEFINE_PARAMETER(pl, int, jc_value_01, 0, "0 - automatic, others - hardcoded");
-DEFINE_PARAMETER(pl, int, jc_value_02, 0, "0 - automatic, others - hardcoded");
-DEFINE_PARAMETER(pl, int, jc_value_03, 0, "0 - automatic, others - hardcoded");
-
-DEFINE_PARAMETER(pl, int, jc_flux_00, 0, "0 - automatic, others - hardcoded");
-DEFINE_PARAMETER(pl, int, jc_flux_01, 0, "0 - automatic, others - hardcoded");
-DEFINE_PARAMETER(pl, int, jc_flux_02, 0, "0 - automatic, others - hardcoded");
-DEFINE_PARAMETER(pl, int, jc_flux_03, 0, "0 - automatic, others - hardcoded");
-
-//DEFINE_PARAMETER(pl, int, bc_itype, ROBIN, "");
-
-//-------------------------------------
-// solver parameters
-//-------------------------------------
-DEFINE_PARAMETER(pl, int,  jc_scheme,         0, "Discretization scheme for interface conditions (0 - FVM, 1 - FDM)");
-DEFINE_PARAMETER(pl, int,  jc_sub_scheme,     0, "Interpolation subscheme for interface conditions (0 - from slow region, 1 - from fast region, 2 - based on nodes availability)");
-DEFINE_PARAMETER(pl, int,  integration_order, 2, "Select integration order (1 - linear, 2 - quadratic)");
-DEFINE_PARAMETER(pl, bool, sc_scheme,         0, "Use super-convergent scheme");
-
-// for symmetric scheme:
-DEFINE_PARAMETER(pl, bool, taylor_correction,      1, "Use Taylor correction to approximate Robin term (symmetric scheme)");
-DEFINE_PARAMETER(pl, bool, kink_special_treatment, 1, "Use the special treatment for kinks (symmetric scheme)");
-
-// for superconvergent scheme:
-DEFINE_PARAMETER(pl, bool, try_remove_hanging_cells, 0, "Ask solver to eliminate hanging cells");
-
-DEFINE_PARAMETER(pl, bool, store_finite_volumes,   1, "");
-DEFINE_PARAMETER(pl, bool, apply_bc_pointwise,     1, "");
-DEFINE_PARAMETER(pl, bool, use_centroid_always,    1, "");
-DEFINE_PARAMETER(pl, bool, sample_bc_node_by_node, 0, "");
-
-//-------------------------------------
-// level-set representation parameters
-//-------------------------------------
-DEFINE_PARAMETER(pl, bool, use_phi_cf,       0, "Use analytical level-set functions");
-DEFINE_PARAMETER(pl, bool, reinit_level_set, 1, "Reinitialize level-set function");
-
-// artificial perturbation of level-set values
-DEFINE_PARAMETER(pl, int,    dom_perturb,     0,   "Artificially pertub level-set functions (0 - no perturbation, 1 - smooth, 2 - noisy)");
-DEFINE_PARAMETER(pl, double, dom_perturb_mag, 0.1, "Magnitude of level-set perturbations");
-DEFINE_PARAMETER(pl, double, dom_perturb_pow, 2,   "Order of level-set perturbation (e.g. 2 for h^2 perturbations)");
-
-DEFINE_PARAMETER(pl, int,    ifc_perturb,     0,   "Artificially pertub level-set functions (0 - no perturbation, 1 - smooth, 2 - noisy)");
-DEFINE_PARAMETER(pl, double, ifc_perturb_mag, 0.1e-6, "Magnitude of level-set perturbations");
-DEFINE_PARAMETER(pl, double, ifc_perturb_pow, 2,   "Order of level-set perturbation (e.g. 2 for h^2 perturbations)");
-
-//-------------------------------------
-// convergence study parameters
-//-------------------------------------
-DEFINE_PARAMETER(pl, int,    compute_cond_num,       0, "Estimate L1-norm condition number");
-DEFINE_PARAMETER(pl, int,    extend_solution,        2, "Extend solution after solving: 0 - no extension, 1 - extend using normal derivatives, 2 - extend using all derivatives");
-DEFINE_PARAMETER(pl, double, mask_thresh,            0, "Mask threshold for excluding points in convergence study");
-DEFINE_PARAMETER(pl, bool,   compute_grad_between,   0, "Computes gradient between points if yes");
-DEFINE_PARAMETER(pl, bool,   scale_errors,           0, "Scale errors by max solution/gradient value");
-DEFINE_PARAMETER(pl, bool,   use_nonzero_guess,      0, "");
-DEFINE_PARAMETER(pl, double, extension_band_extend,  6, "");
-DEFINE_PARAMETER(pl, double, extension_band_compute, 6, "");
-DEFINE_PARAMETER(pl, double, extension_band_check,   6, "");
-DEFINE_PARAMETER(pl, double, extension_tol,          -1.e-10, "");
-DEFINE_PARAMETER(pl, int,    extension_iterations,   100, "");
-
-
-//-------------------------------------
-// output
-//-------------------------------------
-DEFINE_PARAMETER(pl, bool, save_vtk,           1, "Save the p4est in vtk format");
-DEFINE_PARAMETER(pl, bool, save_params,        0, "Save list of entered parameters");
-DEFINE_PARAMETER(pl, bool, save_domain,        0, "Save the reconstruction of an irregular domain (works only in serial!)");
-DEFINE_PARAMETER(pl, bool, save_matrix_ascii,  0, "Save the matrix in ASCII MATLAB format");
-DEFINE_PARAMETER(pl, bool, save_matrix_binary, 0, "Save the matrix in BINARY MATLAB format");
-DEFINE_PARAMETER(pl, bool, save_convergence,   0, "Save convergence results");
-
 // initialize all static variables
 const string Atom::ATOM = "ATOM  ";
 #ifdef P4_TO_P8
@@ -1107,7 +898,7 @@ void my_p4est_biomolecules_t::SAS_creator_brute_force::update_phi_sas_and_quadra
       quad->p.user_long = q + tree_k->quadrants_offset;
     }
   }
-  P4EST_ASSERT(mpi_size == 1 || ((ulong) forest->local_num_quadrants <= biomol->max_quad_loc_idx - 1)); // the maximum number of local quadrants has been reached, the method needs to be redesigned with real quadrant data...
+  P4EST_ASSERT(mpi_size == 1 || ((int64_t) forest->local_num_quadrants <= biomol->max_quad_loc_idx - 1)); // the maximum number of local quadrants has been reached, the method needs to be redesigned with real quadrant data...
   // END GHOST UPDATE
   ierr = VecGhostUpdateEnd(biomol->phi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   // END GHOST UPDATE
@@ -1172,7 +963,7 @@ void my_p4est_biomolecules_t::SAS_creator_list_reduction::update_phi_sas_and_qua
       p4est_quadrant_t* quad = p4est_quadrant_array_index(&tree->quadrants, q);
       if(quad->level < min_lvl_to_consider)
         continue;
-      int quad_rank_owner = (mpi_size > 1)? (((ulong) quad->p.user_long)) >> (8*sizeof(long) - biomol->rank_encoding) : 0;
+      int quad_rank_owner = (mpi_size > 1)? (((int64_t) quad->p.user_long)) >> (8*sizeof(long) - biomol->rank_encoding) : 0;
       if(quad_rank_owner != mpi_rank)
       {
         P4EST_ASSERT(quad_rank_owner < mpi_size);
@@ -1574,7 +1365,7 @@ my_p4est_biomolecules_t::my_p4est_biomolecules_t(my_p4est_brick_t *brick_, p4est
   brick(brick_),
   p4est(p4est_),
   rank_encoding((int) (ceil(log2(p4est_->mpisize)))),
-  max_quad_loc_idx(((ulong) 1)<<(8*sizeof(long) - (int) (ceil(log2(p4est_->mpisize)))))
+  max_quad_loc_idx(((int64_t) 1)<<(8*sizeof(long) - (int) (ceil(log2(p4est_->mpisize)))))
 {
 #ifdef DEBUG
   string err_msg;
