@@ -170,7 +170,7 @@ int main(int argc, char *argv[]) {
   // Now, read the options and/or set default parameters
 
   // which molecule(s)
-//  const string input_folder                 = cmd.get<string> ("input-dir", "/home/rochi/LabCode/casl_p4est/examples/biomol/mols");
+  //  const string input_folder                 = cmd.get<string> ("input-dir", "/home/rochi/LabCode/casl_p4est/examples/biomol/mols");
   const string input_folder                 = cmd.get<string> ("input-dir", "/home/regan/Desktop/casl_p4est_develop/examples/biomol/mols");
   const string pqr_input                    = cmd.get<string>("pqr", "single_sphere.");
   //    const string pqr_input                    = cmd.get<string>("pqr", "3J6D."); // in 2D, for the illustrative planar molecule in the paper
@@ -201,7 +201,7 @@ int main(int argc, char *argv[]) {
   const int surf_gen                        = cmd.get<int>("surfgen", 1);
   const double probe_radius                 = cmd.get<double>("rp", 0.01);
   const int order_of_accuracy               = cmd.get<int>("OOA", 2);
-// physical and solver parameters
+  // physical and solver parameters
   const double eps_mol                      = cmd.get<double>("eps_mol", 1.0);
   const double eps_elec                     = cmd.get<double>("eps_elec", 78.54);
   const int ion_charge                      = cmd.get<int>("ion", 1);
@@ -214,7 +214,7 @@ int main(int argc, char *argv[]) {
 
 
   // exportation folder and files
-//  string output_folder                      = cmd.get<string>("output-dir", "/home/rochi/LabCode/results/biomol");
+  //  string output_folder                      = cmd.get<string>("output-dir", "/home/rochi/LabCode/results/biomol");
   string output_folder                      = cmd.get<string>("output-dir", "/home/regan/workspace/projects/biomol");
   mkdir(output_folder.c_str(), 0755);
   string subvtk                             = cmd.get<string>("subvtk", "yes");
@@ -274,11 +274,11 @@ int main(int argc, char *argv[]) {
 #endif
 
   // create the macro mesh connectivity
-  my_p4est_brick_t brick;
   int n_xyz []      = {ntree_per_dim, ntree_per_dim, ntree_per_dim};
   double xyz_min [] = {0, 0, 0};
   double xyz_max [] = {domain_side_length, domain_side_length, domain_side_length};
   int periodic []   = {0, 0, 0};
+  my_p4est_brick_t brick;
   p4est_connectivity_t *connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick, periodic);
 
 
@@ -289,7 +289,7 @@ int main(int argc, char *argv[]) {
 
 
   // read the molecules and rotate them
-  my_p4est_biomolecules_t my_biomol(p4est, rel_side_length_biggest_box, pqr, &input_folder, angles, centroids);
+  my_p4est_biomolecules_t my_biomol(&brick, p4est, rel_side_length_biggest_box, pqr, &input_folder, angles, centroids);
 
   my_biomol.set_grid_and_surface_parameters(lmin, lmax, lip, probe_radius, order_of_accuracy);
   p4est = my_biomol.construct_SES(((surf_gen == 0)? brute_force: ((surf_gen == 1)?list_reduction:list_reduction_with_exact_phi)), SAS_timing_flag, SAS_subtiming_flag, subvtk_flag?output_folder:"null");
@@ -301,58 +301,41 @@ int main(int argc, char *argv[]) {
   solver.set_ion_charge(ion_charge);
   solver.set_temperature_in_kelvin(temperature);
   solver.set_molar_concentration_of_electrolyte_in_mol_per_liter(far_field_ion_concentration);
-  ////    solver.set_debye_length_in_angstrom(10.0*sqrt(10)/*/my_biomol.angstrom_to_domain*/); // if used alone, ion charge = 1, temperature = 300K and far_field_ion_density is calculated accordingly
-
-  solver.solve_nonlinear(rtol, ((linearization_flag)?1:niter_max));
+  solver.solve_nonlinear(rtol, (linearization_flag)?1:niter_max);
 #ifdef P4_TO_P8
-  solver.get_solvation_free_energy();
+  solver.get_solvation_free_energy(!linearization_flag);
 #endif
-  Vec psi_star = NULL, psi_naught = NULL, psi_bar = NULL, psi_hat = NULL;
-  solver.return_all_psi_vectors(psi_star, psi_naught, psi_bar, psi_hat);
+
+  Vec psi_hat = NULL;
+  solver.return_psi_hat(psi_hat);
+
   Vec phi               = my_biomol.return_phi_vector();
   p4est_nodes_t* nodes  = my_biomol.return_nodes();
   p4est_ghost_t* ghost  = my_biomol.return_ghost();
   if(!boost::iequals(null_str, vtk_name))
   {
 
-    double *phi_p = NULL, *psi_star_p = NULL, *psi_naught_p = NULL, *psi_bar_p = NULL, *psi_hat_p = NULL;
-
-    ierr = VecGetArray(psi_star, &psi_star_p); CHKERRXX(ierr);
-    ierr = VecGetArray(psi_naught, &psi_naught_p); CHKERRXX(ierr);
-
-    ierr = VecGetArray(psi_bar, &psi_bar_p); CHKERRXX(ierr);
-
+    double *phi_p = NULL,*psi_hat_p = NULL;
     ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
     ierr = VecGetArray(psi_hat, &psi_hat_p); CHKERRXX(ierr);
-
-
     string vtk_file = output_folder + vtk_name;
+
 
     my_p4est_vtk_write_all(p4est, nodes, ghost,
                            P4EST_TRUE, P4EST_TRUE,
-                           5, 0, vtk_file.c_str(),
-                           VTK_POINT_DATA, "phi", phi_p,
-                           VTK_POINT_DATA, "psi_star", psi_star_p,
-                           VTK_POINT_DATA, "psi_0", psi_naught_p,
-                           VTK_POINT_DATA, "psi_bar", psi_bar_p,
-                           VTK_POINT_DATA, "psi_hat", psi_hat_p);
+                           2, 0, vtk_file.c_str(),
+                           VTK_POINT_DATA, "psi_hat", psi_hat_p,
+                           VTK_POINT_DATA, "phi", phi_p);
+
 
     ierr = VecRestoreArray(psi_hat, &psi_hat_p); psi_hat_p = NULL; CHKERRXX(ierr);
     ierr = VecRestoreArray(phi, &phi_p); phi_p = NULL; CHKERRXX(ierr);
-    ierr = VecRestoreArray(psi_bar, &psi_bar_p); psi_bar_p = NULL; CHKERRXX(ierr);
-    ierr = VecRestoreArray(psi_naught, &psi_naught_p); psi_naught_p = NULL; CHKERRXX(ierr);
-    ierr = VecRestoreArray(psi_star, &psi_star_p); psi_star_p = NULL; CHKERRXX(ierr);
+
   }
 
   /* release memory */
   ierr = VecDestroy(phi); phi = NULL; CHKERRXX(ierr);
   ierr = VecDestroy(psi_hat); psi_hat = NULL; CHKERRXX(ierr);
-
-  ierr = VecDestroy(psi_star); psi_star = NULL; CHKERRXX(ierr);
-  ierr = VecDestroy(psi_naught); psi_naught = NULL; CHKERRXX(ierr);
-  ierr = VecDestroy(psi_bar); psi_bar = NULL; CHKERRXX(ierr);
-  //ierr = VecDestroy(psi); psi = NULL; CHKERRXX(ierr);
-
 
   p4est_nodes_destroy (nodes);
   p4est_ghost_destroy (ghost);
@@ -371,6 +354,5 @@ int main(int argc, char *argv[]) {
     if(!boost::iequals(null_str, log_file) && !boost::iequals(stdout_str, log_file))
       fclose(my_p4est_biomolecules_t::log_file);
   }
-
   return 0;
 }

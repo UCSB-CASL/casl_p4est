@@ -871,6 +871,64 @@ inline PetscErrorCode VecCreateCellsNoGhost(const p4est_t *p4est, Vec* v)
   return VecCreateCellsBlockNoGhost(p4est, 1, v);
 }
 
+PetscErrorCode VecScatterAllToSomeCreate(MPI_Comm comm, Vec origin_loc, Vec destination, const PetscInt &ndest_glo_idx, const PetscInt *dest_glo_idx, VecScatter *ctx);
+inline PetscErrorCode VecScatterAllToSomeCreate(MPI_Comm comm, Vec origin_loc, Vec destination, const std::vector<PetscInt>& dest_glo_idx, VecScatter *ctx)
+{
+  return VecScatterAllToSomeCreate(comm, origin_loc, destination, dest_glo_idx.size(), dest_glo_idx.data(), ctx);
+}
+inline PetscErrorCode VecScatterAllToSomeBegin(VecScatter ctx, Vec origin_loc, Vec destination)
+{
+  return VecScatterBegin(ctx, origin_loc, destination, INSERT_VALUES, SCATTER_FORWARD);
+}
+inline PetscErrorCode VecScatterAllToSomeEnd(VecScatter ctx, Vec origin_loc, Vec destination)
+{
+  return VecScatterEnd(ctx, origin_loc, destination, INSERT_VALUES, SCATTER_FORWARD);
+}
+
+/*!
+ * \brief VecScatterAllToSome scatters all local values of an origin parallel Petsc vector to some/all values of another
+ * \param comm          [in]    mpi communication group in which the vectors live
+ * \param origin        [in]    origin vector from which all values need to be scattered
+ * \param destination   [inout] destination vector in which some/all values need to be filled
+ * \param ndest_glo_idx [in]    number of elements in dest_glo_idx array (next argument)
+ * \param dest_glo_idx  [in]    array of ndest_glo_idx global indices corresponding to the destination indices mapped with
+ *                              the local values of the origin vector
+ *                              (NULL is fine if ndest_glo_idx is 0)
+ * \param sync_ghost    [in]    activates ghost updates in the destination vector after scattering if true (default is false)
+ * [DEBUG check] this routine checks that the global size of the origin is <= the global size of destination in DEBUG
+ * [DEBUG check] this routine checks that ndest_glo_idx is <= the local size of origin in DEBUG
+ * \return a Petsc error code to be checked against for success/failure
+ */
+inline PetscErrorCode VecScatterAllToSome(MPI_Comm comm, Vec origin, Vec destination, const PetscInt &ndest_glo_idx, const PetscInt *dest_glo_idx, const bool &sync_ghost = false)
+{
+  PetscErrorCode ierr;
+#ifdef DEBUG
+  PetscInt full_size_origin, full_size_destination, local_size_origin;
+  ierr = VecGetSize(origin, &full_size_origin);                                                       CHKERRQ(ierr);
+  ierr = VecGetSize(destination, &full_size_destination);                                             CHKERRQ(ierr);
+  P4EST_ASSERT(full_size_origin <= full_size_destination);
+  ierr = VecGetLocalSize(origin, &local_size_origin);                                                 CHKERRQ(ierr);
+  P4EST_ASSERT(ndest_glo_idx <= local_size_origin);
+#endif
+  VecScatter ctx;
+  Vec origin_loc;
+  ierr = VecGhostGetLocalForm(origin, &origin_loc);                                                   CHKERRQ(ierr);
+  ierr = VecScatterAllToSomeCreate(comm, origin_loc, destination, ndest_glo_idx, dest_glo_idx, &ctx); CHKERRQ(ierr);
+  ierr = VecScatterAllToSomeBegin(ctx, origin_loc, destination);                                      CHKERRQ(ierr);
+  ierr = VecScatterAllToSomeEnd(ctx, origin_loc, destination);                                        CHKERRQ(ierr);
+  ierr = VecGhostRestoreLocalForm(origin, &origin_loc);                                               CHKERRQ(ierr);
+  if(sync_ghost){
+    ierr = VecGhostUpdateBegin(destination, INSERT_VALUES, SCATTER_FORWARD);                          CHKERRQ(ierr); }
+  ierr = VecScatterDestroy(ctx);                                                                      CHKERRQ(ierr);
+  if(sync_ghost){
+    ierr = VecGhostUpdateEnd(destination, INSERT_VALUES, SCATTER_FORWARD);                            CHKERRQ(ierr); }
+  return ierr;
+}
+inline PetscErrorCode VecScatterAllToSome(MPI_Comm comm, Vec origin, Vec destination, const std::vector<PetscInt>& dest_glo_idx, const bool &sync_ghost = false)
+{
+  return VecScatterAllToSome(comm, origin, destination, dest_glo_idx.size(), dest_glo_idx.data(), sync_ghost);
+}
+
 /*!
  * \brief VecScatterCreateChangeLayout Create a VecScatter context useful for changing the parallel layout of a vector
  * \param comm  [in]  MPI_Comm to which parallel vectors belong
