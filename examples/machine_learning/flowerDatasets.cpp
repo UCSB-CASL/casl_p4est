@@ -39,9 +39,9 @@ const std::string COLUMN_NAMES[] = {
 const int NUM_COLUMNS = 11;
 
 /**
- * Class to find the theta value for the projection of a grid point onto a flower.
+ * Class to find the theta value for the projection of a grid point onto a flower using Newton-Rapson root finder.
  */
-class DistThetaFunctorNoDerivative
+class DistThetaFunctorDerivative
 {
 private:
 	double _qx;
@@ -55,14 +55,32 @@ public:
 	 * @param y: Reference point's y-coordinate.
 	 * @param flower: Flower object.
 	 */
-	DistThetaFunctorNoDerivative( const double& x, const double& y, const Flower& flower ) : _qx( x ), _qy( y ), _flower( flower )
+	DistThetaFunctorDerivative( const double& x, const double& y, const Flower& flower ) : _qx( x ), _qy( y ), _flower( flower )
 	{}
 
 	/**
 	 * Evaluate functor at angle parameter value.
 	 * @param theta: Angle parameter.
+	 * @return A pair of function evaluation and its derivative.
 	 */
-	double operator()( const double& theta )
+	std::pair<double, double> operator()( const double& theta )
+	{
+		double r = _flower.r( theta );
+		double rPrime = -_flower.getA() * _flower.getP() * sin( _flower.getP() * theta );
+		double rPrimePrime = -_flower.getA() * _flower.getP() * _flower.getP() * cos( _flower.getP() * theta );
+		double fTheta = rPrime * r + sin( theta ) * ( _qx * r - _qy * rPrime ) - cos( theta ) * ( _qx * rPrime + _qy * r );		// Function which we need the roots of.
+		double fPrimeTheta = rPrime * rPrime + rPrime * rPrimePrime
+							 + sin( theta ) * ( -_qy * rPrimePrime + 2 * _qx * rPrime + _qy * r )
+							 + cos( theta ) * ( -_qx * rPrimePrime - 2 * _qy * rPrime + _qx * r );
+		return std::make_pair( fTheta, fPrimeTheta );
+	}
+
+	/**
+	 * Given a theta angle, compute the value of the derivative of half distance square.
+	 * @param theta: Angle parameter.
+	 * @return f(theta), the function for which we look for roots.
+	 */
+	[[nodiscard]] double valueOfDerivative( const double& theta ) const
 	{
 		double r = _flower.r( theta );
 		double rPrime = -_flower.getA() * _flower.getP() * sin( _flower.getP() * theta );
@@ -71,40 +89,36 @@ public:
 };
 
 /**
- * Obtain the theta parameter value that minimizes the distance between (qx, qy) and the flower-shaped interface.
+ * Obtain the theta parameter value that minimizes the distance between (qx, qy) and the flower-shaped interface using Newton-Rapson method.
  * @param x: X-coordinate of query point.
  * @param y: Y-coordinate of query point.
- * @param flower: Flower-shaped interface reference.
+ * @param flower: Reference to flower function.
+ * @param valOfDerivative: Value of the derivative given the best theta angle (expected = 0).
  * @param initialGuess: Initial angular guess.
- * @return Best angular value.
+ * @param minimum: Minimum value for search interval.
+ * @param maximum: Maximum value for search interval.
+ * @return Angle value.
  */
-double distThetaNoDerivative( double x, double y, const Flower& flower, double initialGuess = 0 )
+double distThetaDerivative( double x, double y, const Flower& flower, double& valOfDerivative, double initialGuess = 0, double minimum= -1, double maximum = +1 )
 {
 	using namespace boost::math::tools;						// For bracket_and_solve_root.
 
-	double factor = 2;										// How big steps to take when searching.
-
-	const boost::uintmax_t maxit = 20;						// Limit to maximum iterations.
-	boost::uintmax_t it = maxit;							// Initially our chosen max iterations, but updated with actual.
-	bool isRising = true;									// If guess is too low, then try increasing guess.
-	int digits = std::numeric_limits<float>::digits;		// Maximum possible binary digits accuracy for type double.
-															// Some fraction of digits is used to control how accurate to try to make the result.
-	int getDigits = digits - 3;								// We have to have a non-zero interval at each step, so
-															// maximum accuracy is digits - 1.  But we also have to
-															// allow for inaccuracy in f( qx, qy ), otherwise the last few
-															// iterations just thrash around.
-	eps_tolerance<float> tol( getDigits );					// Set the tolerance.
-	std::pair<double, double> r = bracket_and_solve_root( DistThetaFunctorNoDerivative( x, y, flower ), initialGuess, factor, isRising, tol, it );
+	const int digits = std::numeric_limits<float>::digits;	// Maximum possible binary digits accuracy for type T.
+	int get_digits = static_cast<int>( digits * 0.75 );    	// Accuracy doubles with each step, so stop when we have
+															// just over half the digits correct.
+	const boost::uintmax_t maxit = 20;						// Maximum number of iterations.
+	boost::uintmax_t it = maxit;
+	DistThetaFunctorDerivative distThetaFunctorDerivative( x, y, flower );
+	double result = newton_raphson_iterate( distThetaFunctorDerivative, initialGuess, minimum, maximum, get_digits, it );
 
 	if( it >= maxit )
-	{
-		std::cerr << "Unable to locate solution in " << maxit << " iterations: "
-																 "Current best guess is between " << r.first << " and " << r.second << std::endl;
-	}
+		std::cerr << "Unable to locate solution in " << maxit << " iterations!" << std::endl;
 
-	return r.first + ( r.second - r.first ) / 2;      		// Midway between brackets is our result, if necessary we could
-															// return the result as an interval here.
+	valOfDerivative = distThetaFunctorDerivative.valueOfDerivative( result );
+	return result;
 }
+
+
 
 /*!
  * Generate and save a flower-shaped interface dataset with 9+1+1 columns containing the renitialized phi values.
@@ -198,6 +212,15 @@ void generateReinitializedFlowerDataset( const Flower& flower, int nGridPoints, 
 
 	paramsFile.precision( 10 );
 	paramsFile << nGridPoints << "," << h << "," << minVal << "," << flower.getA() << "," << flower.getB() << "," << flower.getP() << std::endl;
+
+	// Prepare file where to write the angle parameter for corresponding points on interface.
+	std::ofstream anglesFile;
+	std::string anglesFileName = DATA_PATH + "angles_iter" + std::to_string( iter ) + ".csv";
+	anglesFile.open( anglesFileName, std::ofstream::trunc );
+	if( !anglesFile.is_open() )
+		throw std::runtime_error( "Angles file " + anglesFileName + " couldn't be opened!" );
+
+	anglesFile << R"("theta")" << std::endl;							// Write header.
 
 	// Setting up the regular grid.
 	std::vector<std::vector<double>> CopyGrid( nGridPoints );			// Allocate space for regular grid of re-initialized phi values.
@@ -297,17 +320,22 @@ void generateReinitializedFlowerDataset( const Flower& flower, int nGridPoints, 
 		double pOnInterfaceX = px - grad[0] / gradNorm * centerPhi,			// Initial cartesian coordinates of projection of grid point on interface.
 			   pOnInterfaceY = py - grad[1] / gradNorm * centerPhi;
 
-		double thetaOnInterface = atan2( pOnInterfaceY, pOnInterfaceX );	// Initial guess for bracket-root finding method.
-//		thetaOnInterface = distThetaNoDerivative( px, py, flower, thetaOnInterface );
-//		double r = flower.r( thetaOnInterface );							// Recalculating closest point on interface.
-//		pOnInterfaceX = r * cos( thetaOnInterface );
-//		pOnInterfaceY = r * sin( thetaOnInterface );
+		double thetaOnInterface = atan2( pOnInterfaceY, pOnInterfaceX );	// Initial guess for root finding method.
+		thetaOnInterface = ( thetaOnInterface < 0 )? thetaOnInterface + 2 * M_PI : thetaOnInterface;
+		double valOfDerivative;
+		double newThetaOnInterface = distThetaDerivative( px, py, flower, valOfDerivative, thetaOnInterface, thetaOnInterface - 0.0001, thetaOnInterface + 0.0001 );
+		double r = flower.r( thetaOnInterface );							// Recalculating closest point on interface.
+		pOnInterfaceX = r * cos( newThetaOnInterface );
+		pOnInterfaceY = r * sin( newThetaOnInterface );
 
-//		std::cout << "plot([" << px << "], [" << py << "], 'bo', [" << pOnInterfaceX << "], [" << pOnInterfaceY << "], 'mo');" << std::endl;
+//		std::cout << valOfDerivative << "; plot([" << px << "], [" << py << "], 'b.', [" << pOnInterfaceX << "], [" << pOnInterfaceY << "], 'm.');" << std::endl;
 
 		double dx = px - pOnInterfaceX,							// Verify that point on interface is not far from corresponding grid point.
 			   dy = py - pOnInterfaceY;
-		assert( dx * dx + dy * dy <= h * h * 1.05 * 1.05 );
+		if( dx * dx + dy * dy <= h * h )
+			thetaOnInterface = newThetaOnInterface;				// Theta is OK.
+		else
+			std::cerr << "Minimization placed point on interface too far.  Reverting back to point on interface calculated with phi values" << std::endl;
 
 		sample[s] = h * flower.curvature( thetaOnInterface );	// Second to last column holds h*\kappa.
 		s++;
@@ -316,6 +344,9 @@ void generateReinitializedFlowerDataset( const Flower& flower, int nGridPoints, 
 
 		// Write sample point cartesian coordinates.
 		pointsFile << px << "," << py << std::endl;
+
+		// Write angle parameter for projected point on interface.
+		anglesFile << ( thetaOnInterface < 0 ? 2 * M_PI + thetaOnInterface : thetaOnInterface ) << std::endl;
 	}
 
 	// Write to file the samples content.
@@ -354,10 +385,10 @@ int main ( int argc, char* argv[] )
 		mpi.init( argc, argv );
 
 		int numberOfIterations = 5;
-		Flower flower;
+		Flower flower( 0.05, 0.15, 3 );
 
 		// Get the flower shape coordinates.
-		int nPoints = 200;
+		int nPoints = 500;
 		double delta = 2 * M_PI / ( nPoints - 1 );
 		for( int i = 0; i < nPoints; i++ )
 		{
@@ -367,7 +398,7 @@ int main ( int argc, char* argv[] )
 			std::cout << x << ", " << y << ";" << std::endl;
 		}
 
-		generateReinitializedFlowerDataset( flower, 32, numberOfIterations, mpi );
+		generateReinitializedFlowerDataset( flower, 100, numberOfIterations, mpi );
 	}
 	catch( const std::exception &e )
 	{
