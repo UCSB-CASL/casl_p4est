@@ -385,20 +385,9 @@ int main ( int argc, char* argv[] )
 		mpi.init( argc, argv );
 
 		int numberOfIterations = 5;
-		Flower flower( 0.05, 0.15, 3 );
+		Flower flower( 0.075, 0.15, 3 );
 
-		// Get the flower shape coordinates.
-		int nPoints = 500;
-		double delta = 2 * M_PI / ( nPoints - 1 );
-		for( int i = 0; i < nPoints; i++ )
-		{
-			double r = flower.r( i * delta );
-			double x = r * cos( i * delta );
-			double y = r * sin( i * delta );
-			std::cout << x << ", " << y << ";" << std::endl;
-		}
-
-		generateReinitializedFlowerDataset( flower, 100, numberOfIterations, mpi );
+		generateReinitializedFlowerDataset( flower, 70, numberOfIterations, mpi );
 	}
 	catch( const std::exception &e )
 	{

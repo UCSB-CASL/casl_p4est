@@ -7,7 +7,7 @@
 #include <iostream>
 #include <limits>
 
-const double _a = -0.4;
+const double _a = -1;
 const double _b = M_PI;
 const int _p = 8;
 
@@ -33,6 +33,30 @@ struct DistThetaFunctorNoDerivative
 		double r = _r( theta );
 		double rPrime = -_a * _p * sin( _p * theta );
 		return rPrime * r + sin( theta ) * ( qx * r - qy * rPrime ) - cos( theta ) * ( qx * rPrime + qy * r );
+	}
+
+private:
+	double qx;
+	double qy;
+};
+
+struct DistThetaFunctorDerivative
+{
+	// Finding roots of derivative of norm of parameterized flower and point (x, y).
+	DistThetaFunctorDerivative( const double& x, const double& y ) : qx( x ), qy( y )
+	{}
+
+	// Evaluate functor at angle parameter value.
+	std::pair<double, double> operator()( const double& theta )
+	{
+		double r = _r( theta );
+		double rPrime = -_a * _p * sin( _p * theta );
+		double rPrimePrime = -_a * _p * _p * cos( _p * theta );
+		double fTheta = rPrime * r + sin( theta ) * ( qx * r - qy * rPrime ) - cos( theta ) * ( qx * rPrime + qy * r );		// Function which we need the zeroes of.
+		double fPrimeTheta = rPrime * rPrime + rPrime * rPrimePrime
+				+ sin( theta ) * ( -qy * rPrimePrime + 2 * qx * rPrime + qy * r )
+				+ cos( theta ) * ( -qx * rPrimePrime - 2 * qy * rPrime + qx * r );
+		return std::make_pair( fTheta, fPrimeTheta );
 	}
 
 private:
@@ -78,18 +102,81 @@ double distThetaNoDerivative( double x, double y, double initialGuess = 0 )
 }
 
 /**
+ * Obtain the theta parameter value that minimizes the distance between (qx, qy) and the flower-shaped interface using Newton-Rapson method.
+ * @param x: X-coordinate of query point.
+ * @param y: Y-coordinate of query point.
+ * @param initialGuess: Initial angular guess.
+ * @param minimum: Minimum value for search interval.
+ * @param maximum: Maximum value for search interval.
+ * @return Angle value.
+ */
+double distThetaDerivative( double x, double y, double initialGuess = 0, double minimum= -1, double maximum = +1 )
+{
+	using namespace boost::math::tools;						// For bracket_and_solve_root.
+
+	const int digits = std::numeric_limits<double>::digits;	// Maximum possible binary digits accuracy for type T.
+	int get_digits = static_cast<int>(digits * 0.6);    	// Accuracy doubles with each step, so stop when we have
+															// just over half the digits correct.
+	const boost::uintmax_t maxit = 50;						// Maximum number of iterations.
+	boost::uintmax_t it = maxit;
+	double result = newton_raphson_iterate( DistThetaFunctorDerivative( x, y ), initialGuess, minimum, maximum, get_digits, it);
+
+	if( it >= maxit )
+		std::cerr << "Unable to locate solution in " << maxit << " iterations!" << std::endl;
+	else
+		std::cout << "Converged after " << it << " (from maximum of " << maxit << " iterations)." << std::endl;
+
+	return result;
+}
+
+/**
  * How to find the roots of a function using the Boost library.
  */
 int main( int argc, char **args )
 {
-	double q[] = {-3, 1};
+	double q[] = {1.5, 1.4};
 	try
 	{
-		double theta = distThetaNoDerivative( q[0], q[1], M_PI_4 );
+		// Find the line segment closest to query point.  This becomes the search interval.
+		int M = 10000;
+		double stepSize = 2 * M_PI / ( M - 1 );
+		int minIdx = -1;
+		double minDSquare = std::numeric_limits<double>::infinity();
+		double R[M];
+		double T[M];
+		double D2[M];
+		for( int i = 0; i < M - 1; i++ )
+		{
+			T[i] = i * stepSize;
+			R[i] = _r( T[i] );
+			double x = R[i] * cos( T[i] ),		// Coordinates of current point on interface.
+				   y = R[i] * sin( T[i] );
+			double dx = x - q[0],				// Difference between query point and point on interface.
+				   dy = y - q[1];
+			D2[i] = dx * dx + dy * dy;			// Save squared distance to query point.
+			if( D2[i] < minDSquare )			// Point on interface closest to query point.
+			{
+				minDSquare = D2[i];
+				minIdx = i;
+			}
+		}
+		R[M-1] = R[0];							// Close curve.
+		D2[M-1] = D2[0];
+		T[M-1] = 2 * M_PI;
+
+		int neighborIdx = ( minIdx - 1 < 0 )? M - 2: minIdx - 1;		// Find the other end point of closest line segment.
+		if( D2[minIdx + 1] < D2[neighborIdx] )
+			neighborIdx = minIdx + 1;
+
+		double min = std::min( T[minIdx], T[neighborIdx] );
+		double max = std::max( T[minIdx], T[neighborIdx] );
+		double theta = distThetaDerivative( q[0], q[1], ( min + max ) / 2, min, max );
 		std::cout << "Theta = " << theta << std::endl;
 		double x = _r( theta ) * cos( theta );
 		double y = _r( theta ) * sin( theta );
 		std::cout << "Point = [" << x << "], [" << y << "]" << std::endl;
+		DistThetaFunctorNoDerivative d( q[0], q[1] );
+		std::cout << d( theta ) << std::endl;
 	}
 	catch( const std::exception& e )
 	{
