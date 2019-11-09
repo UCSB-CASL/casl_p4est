@@ -185,6 +185,17 @@ p4est_bool_t
 coarsen_levelset_cf (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t **quad);
 
 /*!
+ * \brief refine_levelset_cf_and_uniform_band refine based on distance to a cf levelset and
+ *        impose a band of uniform cells around it
+ * \param p4est       [in] forest object to consider
+ * \param which_tree  [in] current tree to which the quadrant belongs
+ * \param quad        [in] pointer to the current quadrant
+ * \return                a boolean (0/1) describing if refinement is needed
+ */
+p4est_bool_t
+refine_levelset_cf_and_uniform_band (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad);
+
+/*!
  * \brief refine_levelset_cf refine based on the threshold of a continuous function
  * \param p4est       [in] forest object to consider
  * \param which_tree  [in] current tree to which the quadrant belongs

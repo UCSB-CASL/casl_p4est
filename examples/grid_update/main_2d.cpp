@@ -128,11 +128,11 @@ struct scalar_t : CF_2
 #ifdef P4_TO_P8
   double operator()(double x, double y, double z) const
   {
-    return PI + tanh( (x-0.5) + (y-0.5) + (z-0.5) - 0.5*sin(omega*(*time))) / delta );
+    return PI + tanh( ( (x-0.5) + (y-0.5) + (z-0.5) - 0.5*sin(omega*(*time)) )/ delta );
 #else
   double operator()(double x, double y) const
   {
-    return PI + tanh( ((x-0.5) + (y-0.5) - 0.5*sin(omega*(*time))) / delta );
+    return PI + tanh( ( (x-0.5) + (y-0.5) - 0.5*sin(omega*(*time)) ) / delta );
 #endif
   }
 
