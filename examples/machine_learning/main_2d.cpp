@@ -86,9 +86,9 @@ int main ( int argc, char* argv[] )
 		mpi_environment_t mpi{};
 		mpi.init( argc, argv );
 
-		int numberOfIterations = 20;											// Change it to 5, 10, 15, 20.
 		int nGridPoints = 256;
-		saveReinitializedDataset( nGridPoints, numberOfIterations, mpi );
+		for( int numberOfIterations = 10; numberOfIterations <= 20; numberOfIterations += 5 )
+			saveReinitializedDataset( nGridPoints, numberOfIterations, mpi );
 	}
 	catch( const std::exception &e )
 	{
@@ -102,7 +102,7 @@ int main ( int argc, char* argv[] )
 void saveReinitializedDataset( int nGridPoints, int iter, const mpi_environment_t& mpi )
 {
 	const double h = 1. / ( nGridPoints - 1. );											// Spatial step size in both x and y directions.
-	const int nCircles = static_cast<int>( ceil( ( nGridPoints - 8.2) / 2 ) + 1 );		// Number of circles is proportional to the grid resolution.
+	const int nCircles = static_cast<int>( ceil( ( nGridPoints - 8.2 ) / 2 ) + 1 );		// Number of circles is proportional to the grid resolution.
 	const int totalRandomness = 5;														// How many different circles of same radius we generate.
 
 	////////////////////////////////////////// Setting up the p4est structs ////////////////////////////////////////
@@ -140,12 +140,12 @@ void saveReinitializedDataset( int nGridPoints, int iter, const mpi_environment_
 
 	parStopWatch watch;
 
-	printf( ">> Beginning to generate dataset for %i circles, %i grid points, and h = %f, in a [0,1]x[0,1] domain\n", nCircles, nGridPoints, h );
+	printf( ">> Beginning to generate dataset for %i circles, %i grid points, h = %f, and %i iterations in a [0,1]x[0,1] domain\n", nCircles, nGridPoints, h, iter );
 	watch.start();
 
 	// Prepare file where to write samples.
 	std::ofstream outputFile;
-	std::string fileName = DATA_PATH + "iter" + std::to_string( iter ) + "/reinitDataset_m" + std::to_string( nGridPoints ) +  ".csv";
+	std::string fileName = DATA_PATH + "iter" + std::to_string( iter ) + "/reinitDataset_m" + std::to_string( nGridPoints ) + ".csv";
 	outputFile.open( fileName, std::ofstream::trunc );
 	if( !outputFile.is_open() )
 		throw std::runtime_error( "Output file " + fileName + " couldn't be opened!" );
@@ -160,12 +160,15 @@ void saveReinitializedDataset( int nGridPoints, int iter, const mpi_environment_
 	outputFile.precision( 15 );							// Precision for floating point numbers.
 
 	int nc = 0;											// Keeps track of number of circles whose dataset has been generated.
-	double minRadius = 1.6 * h;
-	double maxRadius = 0.5 - 2.0 * h;
-	double distance = maxRadius - minRadius;			// Circles' radii are in [1.6*h, 0.5-2h].
-	double spread[nCircles];
+	const double minRadius = 1.6 * h;					// Circles' radii are in [1.6*h, 0.5-2h].
+	const double maxRadius = 0.5 - 2.0 * h;
+	const double kappaStart = 1. / minRadius;
+	const double kappaEnd = 1. / maxRadius;
+	const double kappaDistance = kappaEnd - kappaStart;
+	const double deltaKappa = kappaDistance / ( nCircles - 1 );
+	double kappa[nCircles];
 	for( int i = 0; i < nCircles; i++ )
-		spread[i] = static_cast<double>( i ) / ( nCircles - 1.0 );		// Uniform distribution from 0 to 1, with N_CIRCLES steps, inclusive, to spread distances.
+		kappa[i] = kappaStart + i * deltaKappa ;						// Uniform distribution of curvature.
 
 	std::vector<std::vector<double>> CopyGrid( nGridPoints );			// Allocate space for regular grid of re-initialized phi values.
 	for( int i = 0; i < nGridPoints; i++ )
@@ -178,14 +181,14 @@ void saveReinitializedDataset( int nGridPoints, int iter, const mpi_environment_
 	int nSamples = 0;
 	while( nc < nCircles )
 	{
-		double r = minRadius + spread[nc] * distance;					// Circle radius to be evaluated.
+		double r = std::max( minRadius, std::min( 1. / kappa[nc], maxRadius ) );
 		std::vector<std::vector<double>> samples;
 		int randomnessCount = 0;
 		while( randomnessCount < totalRandomness )						// Generate a given number of randomly centered circles with the same radius.
 		{
 			double c[2] = {0.5 + ranged_rand( -h/2.0, +h/2.0 ),			// Center coords are randomly chosen around the center of the grid.
 						   0.5 + ranged_rand( -h/2.0, +h/2.0 )};
-			double hkappa = h / r;										// Target dimensionless curvature: h\kappa = h/r.
+			double hkappa = kappa[nc] * h;								// Target dimensionless curvature: h\kappa = h/r.
 			circle circ( c[0], c[1], r );								// Non-signed distance function with circular interface.
 
 			/////// Generate phi values ///////
