@@ -78,7 +78,7 @@ const double C[] = {0.5, 0.5};						// Center (x,y) coordinates.
  * @param iter: Number of iterations for level set reinitialization.
  * @param mpi: MPI object.
  */
-void saveEvaluationReinitializedDataset( int nGridPoints, int iter, const mpi_environment_t& mpi ) noexcept( false );
+void saveEvaluationReinitializedDataset( int nGridPoints, int iter, const mpi_environment_t& mpi );
 
 
 int main ( int argc, char* argv[] )
@@ -89,7 +89,7 @@ int main ( int argc, char* argv[] )
 		mpi.init( argc, argv );
 
 		int numberOfIterations = 5;											// Change it to 5, 10, 20, 50, 100.
-		for( int resolution = 20; resolution <= 160; resolution += 10 )
+		for( int resolution = 200; resolution <= 300; resolution += 10 )
 			saveEvaluationReinitializedDataset( resolution, numberOfIterations, mpi );
 	}
 	catch( const std::exception &e )
@@ -101,7 +101,7 @@ int main ( int argc, char* argv[] )
 }
 
 
-void saveEvaluationReinitializedDataset( int nGridPoints, int iter, const mpi_environment_t& mpi ) noexcept(false)
+void saveEvaluationReinitializedDataset( int nGridPoints, int iter, const mpi_environment_t& mpi )
 {
 	double h = 1. / ( nGridPoints - 1. );						// Spatial step size in both x and y directions.
 

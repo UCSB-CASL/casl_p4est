@@ -66,11 +66,8 @@ const std::string COLUMN_NAMES[] = {
 		"h*kappa", "h"
 };
 const int NUM_COLUMNS = 11;
-const int NUM_SAMPLES = 1u << 10u;					// Number of samples for each circle radius for any grid resolution.
-const int N_CIRCLES = 60;							// Number of circles for a given radius per grid resolution.
 const int MIN_D = 0,								// Min and max dimension values.
 		  MAX_D = 1;
-//const double MAX_PHI_VAL = 10.0;					// Allows to check if a phi value goes beyond a limit.
 
 /*!
  * Generate and save training datasets with a very large number or rows and 9+1+1 columns containing the renitialized phi
@@ -79,7 +76,7 @@ const int MIN_D = 0,								// Min and max dimension values.
  * @param iter: Number of iterations for level set reinitialization.
  * @param mpi: MPI object.
  */
-void saveReinitializedDataset( int nGridPoints, int iter, const mpi_environment_t& mpi ) noexcept( false );
+void saveReinitializedDataset( int nGridPoints, int iter, const mpi_environment_t& mpi );
 
 
 int main ( int argc, char* argv[] )
@@ -90,8 +87,8 @@ int main ( int argc, char* argv[] )
 		mpi.init( argc, argv );
 
 		int numberOfIterations = 20;											// Change it to 5, 10, 15, 20.
-		for( int resolution = 16; resolution <= 512; resolution += 8 )			// From 16x16 to 512x512 grid resolutions.
-			saveReinitializedDataset( resolution, numberOfIterations, mpi );
+		int nGridPoints = 256;
+		saveReinitializedDataset( nGridPoints, numberOfIterations, mpi );
 	}
 	catch( const std::exception &e )
 	{
@@ -102,12 +99,13 @@ int main ( int argc, char* argv[] )
 }
 
 
-void saveReinitializedDataset( int nGridPoints, int iter, const mpi_environment_t& mpi ) noexcept(false)
+void saveReinitializedDataset( int nGridPoints, int iter, const mpi_environment_t& mpi )
 {
-	double h = 1. / ( nGridPoints - 1. );						// Spatial step size in both x and y directions.
+	const double h = 1. / ( nGridPoints - 1. );											// Spatial step size in both x and y directions.
+	const int nCircles = static_cast<int>( ceil( ( nGridPoints - 8.2) / 2 ) + 1 );		// Number of circles is proportional to the grid resolution.
+	const int totalRandomness = 5;														// How many different circles of same radius we generate.
 
 	////////////////////////////////////////// Setting up the p4est structs ////////////////////////////////////////
-	// TODO: see index_of_node.
 
 	p4est_t *p4est;
 	p4est_nodes_t *nodes;
@@ -142,7 +140,7 @@ void saveReinitializedDataset( int nGridPoints, int iter, const mpi_environment_
 
 	parStopWatch watch;
 
-	printf( ">> Beginning to generate dataset for %i circles, %i grid points, and h = %f, in a [0,1]x[0,1] domain\n", N_CIRCLES, nGridPoints, h );
+	printf( ">> Beginning to generate dataset for %i circles, %i grid points, and h = %f, in a [0,1]x[0,1] domain\n", nCircles, nGridPoints, h );
 	watch.start();
 
 	// Prepare file where to write samples.
@@ -159,15 +157,15 @@ void saveReinitializedDataset( int nGridPoints, int iter, const mpi_environment_
 	headerStream << "\"" << COLUMN_NAMES[NUM_COLUMNS - 1] << "\"";
 	outputFile << headerStream.str() << std::endl;
 
-	outputFile.precision( 10 );							// Precision for floating point numbers.
+	outputFile.precision( 15 );							// Precision for floating point numbers.
 
 	int nc = 0;											// Keeps track of number of circles whose dataset has been generated.
-	double minRadius = 2.0 * ( h + 0.000001 * ranged_rand( 0, 1 ) );
+	double minRadius = 1.6 * h;
 	double maxRadius = 0.5 - 2.0 * h;
-	double distance = maxRadius - minRadius;			// Circles' radii are in [2*(h+\eps), 0.5-2h].
-	double spread[N_CIRCLES];
-	for( int i = 0; i < N_CIRCLES; i++ )
-		spread[i] = static_cast<double>( i ) / ( N_CIRCLES - 1.0 );		// Uniform distribution from 0 to 1, with N_CIRCLES steps, inclusive, to spread distances.
+	double distance = maxRadius - minRadius;			// Circles' radii are in [1.6*h, 0.5-2h].
+	double spread[nCircles];
+	for( int i = 0; i < nCircles; i++ )
+		spread[i] = static_cast<double>( i ) / ( nCircles - 1.0 );		// Uniform distribution from 0 to 1, with N_CIRCLES steps, inclusive, to spread distances.
 
 	std::vector<std::vector<double>> CopyGrid( nGridPoints );			// Allocate space for regular grid of re-initialized phi values.
 	for( int i = 0; i < nGridPoints; i++ )
@@ -177,11 +175,13 @@ void saveReinitializedDataset( int nGridPoints, int iter, const mpi_environment_
 	Vec phi;
 	ierr = VecCreateGhostNodes( p4est, nodes, &phi ); CHKERRXX( ierr );
 
-	while( nc < N_CIRCLES )
+	int nSamples = 0;
+	while( nc < nCircles )
 	{
 		double r = minRadius + spread[nc] * distance;					// Circle radius to be evaluated.
 		std::vector<std::vector<double>> samples;
-		while( samples.size() < NUM_SAMPLES )							// Generate samples until we reach at least the expected value.
+		int randomnessCount = 0;
+		while( randomnessCount < totalRandomness )						// Generate a given number of randomly centered circles with the same radius.
 		{
 			double c[2] = {0.5 + ranged_rand( -h/2.0, +h/2.0 ),			// Center coords are randomly chosen around the center of the grid.
 						   0.5 + ranged_rand( -h/2.0, +h/2.0 )};
@@ -218,7 +218,6 @@ void saveReinitializedDataset( int nGridPoints, int iter, const mpi_environment_
 					j = static_cast<int>( round( nodeCoords[1] * ( nGridPoints - 1 ) ) );		// in both x- and y- directions.
 
 				CopyGrid[i][j] = phi_ptr[n];	// Stores information in transposed format (i.e. ith row contains all y values for same x).
-//				assert( fabs( CopyGrid[i][j] ) > 0 && fabs( CopyGrid[i][j] ) < MAX_PHI_VAL );	// Make sure we are not getting garbage values.
 				totalGridPoints++;
 			}
 
@@ -248,8 +247,6 @@ void saveReinitializedDataset( int nGridPoints, int iter, const mpi_environment_
 
 					dataPve[s] = CopyGrid[q[0]][q[1]];				// Store both positive and negative phi values.
 					dataNve[s] = -dataPve[s];
-
-//					assert( fabs( dataPve[s] ) > 0 && fabs( dataPve[s] ) < MAX_PHI_VAL && fabs( dataNve[s] ) > 0 && fabs( dataNve[s] ) < MAX_PHI_VAL );
 				}
 
 				dataPve[s] = hkappa;								// Second to last column holds h*\kappa.
@@ -260,33 +257,25 @@ void saveReinitializedDataset( int nGridPoints, int iter, const mpi_environment_
 				samples.push_back( dataPve );						// Build nx(9+1+1) matrix of phi, h*kappa, and h values.
 				samples.push_back( dataNve );
 			}
+
+			randomnessCount++;
 		}
 
-		// We have generated at least NUM_SAMPLES samples for circles of the same given radius.
-		// This increases the number of samples for very small circles by multiplicity but varying their centers.
-		// Now remove any excess.
-		std::vector<std::vector<double>>* outSamplesPtr = &samples;
-		std::vector<std::vector<double>> subSamples;
-		if( samples.size() > NUM_SAMPLES )
-		{
-			std::sample( samples.begin(), samples.end(), std::back_inserter( subSamples ), NUM_SAMPLES, std::mt19937( std::random_device{}() ) );
-			outSamplesPtr = &subSamples;
-		}
-
-		// Write to file the samples content.
-		for( const std::vector<double>& row : *outSamplesPtr )
+		// Write all samples content to file.
+		for( const std::vector<double>& row : samples )
 		{
 			std::copy( row.begin(), row.end() - 1, std::ostream_iterator<double>( outputFile, "," ) );		// Inner elements.
 			outputFile << row.back() << std::endl;
 		}
 
 		nc++;
+		nSamples += samples.size();
 
 		if( nc % 10 == 0 )
 			printf( "   %i circle groups evaluated after %f secs.\n", nc, watch.get_duration_current() );
 	}
 
-	printf( "<< Finished generating %i circles in %f secs.\n", nc, watch.get_duration_current() );
+	printf( "<< Finished generating %i circles and %i samples in %f secs.\n", nc, nSamples, watch.get_duration_current() );
 
 	// Finally, delete PETSc Vecs by calling 'VecDestroy' function.
 	ierr = VecDestroy( phi ); CHKERRXX( ierr );

@@ -384,10 +384,10 @@ int main ( int argc, char* argv[] )
 		mpi_environment_t mpi{};
 		mpi.init( argc, argv );
 
-		int numberOfIterations = 10;
-		Flower flower( 0.065, 0.15, 3 );
+		int numberOfIterations = 5;
+		Flower flower( 0.05, 0.15, 3 );
 
-		generateReinitializedFlowerDataset( flower, 100, numberOfIterations, mpi );
+		generateReinitializedFlowerDataset( flower, 107, numberOfIterations, mpi );
 	}
 	catch( const std::exception &e )
 	{
