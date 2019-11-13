@@ -86,9 +86,9 @@ int main ( int argc, char* argv[] )
 		mpi_environment_t mpi{};
 		mpi.init( argc, argv );
 
-		int numberOfIterations = 20;											// Change it to 5, 10, 15, 20.
-		int nGridPoints = 256;
-		saveReinitializedDataset( nGridPoints, numberOfIterations, mpi );
+		int nGridPoints = 128;
+		for( int numberOfIterations = 5; numberOfIterations <= 20; numberOfIterations += 5 )	// Set it to 5, 10, 15, 20.
+			saveReinitializedDataset( nGridPoints, numberOfIterations, mpi );
 	}
 	catch( const std::exception &e )
 	{
@@ -140,7 +140,7 @@ void saveReinitializedDataset( int nGridPoints, int iter, const mpi_environment_
 
 	parStopWatch watch;
 
-	printf( ">> Beginning to generate dataset for %i circles, %i grid points, and h = %f, in a [0,1]x[0,1] domain\n", nCircles, nGridPoints, h );
+	printf( ">> Beginning to generate dataset for %i circles, %i grid points, %i iterations and h = %f, in a [0,1]x[0,1] domain\n", nCircles, nGridPoints, iter, h );
 	watch.start();
 
 	// Prepare file where to write samples.
