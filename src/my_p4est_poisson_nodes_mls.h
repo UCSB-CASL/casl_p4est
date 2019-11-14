@@ -27,13 +27,14 @@ using std::vector;
 class my_p4est_poisson_nodes_mls_t
 {
   const int phi_idx_wall_shift_ = 10;
+ protected:
   struct mat_entry_t
   {
     double val;
     PetscInt n;
     mat_entry_t(PetscInt n=0, double val=0) : n(n), val(val) {}
   };
-
+protected:
   PetscErrorCode ierr;
 
   // p4est objects
@@ -41,9 +42,11 @@ class my_p4est_poisson_nodes_mls_t
   p4est_nodes_t    *nodes_;
   p4est_ghost_t    *ghost_;
   my_p4est_brick_t *brick_;
+public:
   const my_p4est_node_neighbors_t *ngbd_;
 
   // grid variables
+public:
   double lip_;
   double d_min_;
   double diag_min_;
@@ -137,6 +140,7 @@ class my_p4est_poisson_nodes_mls_t
   };
 
   geometry_t bdry_;
+public:
   geometry_t infc_;
 
   // forces
@@ -229,8 +233,10 @@ class my_p4est_poisson_nodes_mls_t
   bool finite_volumes_initialized_;
   bool finite_volumes_owned_;
   std::vector<int> bdry_node_to_fv_;
+public:
   std::vector<int> infc_node_to_fv_;
   std::vector<my_p4est_finite_volume_t> *bdry_fvs_;
+public:
   std::vector<my_p4est_finite_volume_t> *infc_fvs_;
 
   // discretization type
@@ -244,7 +250,7 @@ class my_p4est_poisson_nodes_mls_t
     FINITE_VOLUME,
     IMMERSED_INTERFACE,
   };
-
+public :
   std::vector<discretization_scheme_t> node_scheme_;
 
   // interpolators
@@ -381,7 +387,7 @@ public:
   inline void set_interface_phi_eff(Vec phi_eff) { infc_.phi_eff = phi_eff; infc_.calculate_phi_eff(); }
 
   // set wall conditions
-//  inline void set_wc(const WallBCDIM &wc_type, const CF_DIM &wc_value, const CF_DIM &wc_coeff)
+  //  inline void set_wc(const WallBCDIM &wc_type, const CF_DIM &wc_value, const CF_DIM &wc_coeff)
   inline void set_wc(const WallBCDIM &wc_type, const CF_DIM &wc_value, bool new_submat_main = true)
   {
     this->wc_type_  = &wc_type;

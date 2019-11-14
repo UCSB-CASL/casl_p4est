@@ -22,14 +22,16 @@ extern PetscLogEvent log_my_p4est_node_neighbors_t_2nd_derivatives_central_block
 extern PetscLogEvent log_my_p4est_node_neighbors_t_2nd_derivatives_central;
 extern PetscLogEvent log_my_p4est_node_neighbors_t_1st_derivatives_central_block;
 extern PetscLogEvent log_my_p4est_node_neighbors_t_1st_derivatives_central;
+extern PetscLogEvent log_my_p4est_node_neighbors_t_2nd_derivatives_central_above_threshold;
 #endif
 #ifndef CASL_LOG_FLOPS
 #undef PetscLogFlops
 #define PetscLogFlops(n) 0
 #endif
 
-void my_p4est_node_neighbors_t::init_neighbors(/*const bool &set_and_store_linear_interpolators, const bool &set_and_store_second_derivatives_operators,
-                                               const bool &set_and_store_gradient_operator, const bool &set_and_store_quadratic_interpolators*/)
+/*void my_p4est_node_neighbors_t::init_neighbors(const bool &set_and_store_linear_interpolators, const bool &set_and_store_second_derivatives_operators,
+                                               const bool &set_and_store_gradient_operator, const bool &set_and_store_quadratic_interpolators)*/
+void my_p4est_node_neighbors_t::init_neighbors()
 {
   if (is_initialized) return;
 
@@ -47,9 +49,11 @@ void my_p4est_node_neighbors_t::init_neighbors(/*const bool &set_and_store_linea
    */
   for ( size_t n = 0; n < nodes->indep_nodes.elem_count; n++) {
 #ifdef CASL_THROWS
-    is_qnnn_valid[n] = !construct_neighbors(n, neighbors[n]/*, set_and_store_linear_interpolators, set_and_store_second_derivatives_operators, set_and_store_gradient_operator, set_and_store_quadratic_interpolators*/);
+    is_qnnn_valid[n] = !construct_neighbors(n, neighbors[n]);
+    /* is_qnnn_valid[n] = !construct_neighbors(n, neighbors[n], set_and_store_linear_interpolators, set_and_store_second_derivatives_operators, set_and_store_gradient_operator, set_and_store_quadratic_interpolators);*/
 #else
-    construct_neighbors(n, neighbors[n]/*, set_and_store_linear_interpolators, set_and_store_second_derivatives_operators, set_and_store_gradient_operator, set_and_store_quadratic_interpolators*/);
+    construct_neighbors(n, neighbors[n]);
+    /* construct_neighbors(n, neighbors[n], set_and_store_linear_interpolators, set_and_store_second_derivatives_operators, set_and_store_gradient_operator, set_and_store_quadratic_interpolators);*/
 #endif
   }
 
@@ -60,63 +64,55 @@ void my_p4est_node_neighbors_t::init_neighbors(/*const bool &set_and_store_linea
 void my_p4est_node_neighbors_t::clear_neighbors()
 {
   neighbors.clear();
+#ifdef CASL_THROWS
   is_qnnn_valid.clear();
+#endif
   is_initialized = false;
 }
 
-void my_p4est_node_neighbors_t::update(my_p4est_hierarchy_t *hierarchy_, p4est_nodes_t *nodes_/*, const bool &set_and_store_linear_interpolators, const bool &set_and_store_second_derivatives_operators,
-                                       const bool &set_and_store_gradient_operator, const bool &set_and_store_quadratic_interpolators*/)
+/*void my_p4est_node_neighbors_t::update_all_but_hierarchy(p4est_t *p4est_, p4est_ghost_t *ghost_, p4est_nodes_t *nodes_, const bool &set_and_store_linear_interpolators, const bool &set_and_store_second_derivatives_operators,
+                                                                                                const bool &set_and_store_gradient_operator, const bool &set_and_store_quadratic_interpolators)*/
+void my_p4est_node_neighbors_t::update_all_but_hierarchy(p4est_t *p4est_, p4est_ghost_t *ghost_, p4est_nodes_t *nodes_)
+{
+  p4est = p4est_;
+  ghost = ghost_;
+  nodes = nodes_;
+  for (unsigned char dd = 0; dd < P4EST_DIM; ++dd)
+    periodic[dd] = is_periodic(p4est_, dd);
+
+  if (is_initialized){
+    clear_neighbors();
+    init_neighbors();
+    /*init_neighbors(set_and_store_linear_interpolators, set_and_store_second_derivatives_operators, set_and_store_gradient_operator, set_and_store_quadratic_interpolators);*/
+  }
+
+  layer_nodes.clear();
+  local_nodes.clear();
+
+  set_layer_and_local_nodes();
+}
+
+/*void my_p4est_node_neighbors_t::update(my_p4est_hierarchy_t *hierarchy_, p4est_nodes_t *nodes_, const bool &set_and_store_linear_interpolators, const bool &set_and_store_second_derivatives_operators,
+                                       const bool &set_and_store_gradient_operator, const bool &set_and_store_quadratic_interpolators)*/
+void my_p4est_node_neighbors_t::update(my_p4est_hierarchy_t *hierarchy_, p4est_nodes_t *nodes_)
 {
   hierarchy = hierarchy_;
-  p4est = hierarchy_->p4est;
-  ghost = hierarchy_->ghost;
-  nodes = nodes_;
-
-  if (is_initialized){
-    clear_neighbors();
-    init_neighbors(/*set_and_store_linear_interpolators, set_and_store_second_derivatives_operators, set_and_store_gradient_operator, set_and_store_quadratic_interpolators*/);
-  }
-
-  layer_nodes.clear();
-  local_nodes.clear();
-
-  layer_nodes.reserve(nodes->num_owned_shared);
-  local_nodes.reserve(nodes->num_owned_indeps - nodes->num_owned_shared);
-
-  for (p4est_locidx_t i=0; i<nodes->num_owned_indeps; ++i){
-    p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i + nodes->offset_owned_indeps);
-    ni->pad8 == 0 ? local_nodes.push_back(i) : layer_nodes.push_back(i);
-  }
+  update_all_but_hierarchy(hierarchy_->p4est, hierarchy_->ghost, nodes_);
+  /*update_all_but_hierarchy(p4est_, ghost_, nodes_, set_and_store_linear_interpolators, set_and_store_second_derivatives_operators, set_and_store_gradient_operator, set_and_store_quadratic_interpolators);*/
 }
 
-void my_p4est_node_neighbors_t::update(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes/*, const bool &set_and_store_linear_interpolators, const bool &set_and_store_second_derivatives_operators,
-                                       const bool &set_and_store_gradient_operator, const bool &set_and_store_quadratic_interpolators*/)
+/*void my_p4est_node_neighbors_t::update(p4est_t *p4est_, p4est_ghost_t *ghost_, p4est_nodes_t *nodes_, const bool &set_and_store_linear_interpolators, const bool &set_and_store_second_derivatives_operators,
+                                       const bool &set_and_store_gradient_operator, const bool &set_and_store_quadratic_interpolators)*/
+void my_p4est_node_neighbors_t::update(p4est_t *p4est_, p4est_ghost_t *ghost_, p4est_nodes_t *nodes_)
 {
-  hierarchy->update(p4est, ghost);
-
-  this->p4est = p4est;
-  this->ghost = ghost;
-  this->nodes = nodes;
-
-  if (is_initialized){
-    clear_neighbors();
-    init_neighbors(/*set_and_store_linear_interpolators, set_and_store_second_derivatives_operators, set_and_store_gradient_operator, set_and_store_quadratic_interpolators*/);
-  }
-
-  layer_nodes.clear();
-  local_nodes.clear();
-
-  layer_nodes.reserve(nodes->num_owned_shared);
-  local_nodes.reserve(nodes->num_owned_indeps - nodes->num_owned_shared);
-
-  for (p4est_locidx_t i=0; i<nodes->num_owned_indeps; ++i){
-    p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, i + nodes->offset_owned_indeps);
-    ni->pad8 == 0 ? local_nodes.push_back(i) : layer_nodes.push_back(i);
-  }
+  hierarchy->update(p4est_, ghost_);
+  update_all_but_hierarchy(p4est_, ghost_, nodes_);
+  /*update_all_but_hierarchy(p4est_, ghost_, nodes_, set_and_store_linear_interpolators, set_and_store_second_derivatives_operators, set_and_store_gradient_operator, set_and_store_quadratic_interpolators);*/
 }
 
-bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neighbor_nodes_of_node_t &qnnn/*, const bool &set_and_store_linear_interpolators, const bool &set_and_store_second_derivatives_operators,
-                                                    const bool &set_and_store_gradient_operator, const bool &set_and_store_quadratic_interpolators*/) const
+/*bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neighbor_nodes_of_node_t &qnnn, const bool &set_and_store_linear_interpolators, const bool &set_and_store_second_derivatives_operators,
+                                                    const bool &set_and_store_gradient_operator, const bool &set_and_store_quadratic_interpolators) const*/
+bool my_p4est_node_neighbors_t::construct_neighbors(p4est_locidx_t n, quad_neighbor_nodes_of_node_t &qnnn) const
 {
   p4est_connectivity_t *connectivity = p4est->connectivity;
   p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,n);
@@ -2153,6 +2149,277 @@ void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f[], Vec fx
   ierr = PetscLogEventEnd(log_my_p4est_node_neighbors_t_2nd_derivatives_central, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
+#ifdef P4_TO_P8
+void my_p4est_node_neighbors_t::second_derivatives_central_above_threshold(const Vec f, double thr, Vec fxx, Vec fyy, Vec fzz) const
+#else
+void my_p4est_node_neighbors_t::second_derivatives_central_above_threshold(const Vec f, double thr, Vec fxx, Vec fyy) const
+#endif
+{
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_node_neighbors_t_2nd_derivatives_central_above_threshold, 0, 0, 0, 0); CHKERRXX(ierr);
+  IPMLogRegionBegin("2nd_derivatives");
+
+#ifdef CASL_THROWS
+  {
+    Vec f_l, fxx_l, fyy_l;
+    PetscInt f_size, fxx_size, fyy_size;
+#ifdef P4_TO_P8
+    Vec fzz_l;
+    PetscInt fzz_size;
+#endif
+
+    // Get local form
+    ierr = VecGhostGetLocalForm(f,   &f_l  ); CHKERRXX(ierr);
+    ierr = VecGhostGetLocalForm(fxx, &fxx_l); CHKERRXX(ierr);
+    ierr = VecGhostGetLocalForm(fyy, &fyy_l); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    ierr = VecGhostGetLocalForm(fzz, &fzz_l); CHKERRXX(ierr);
+#endif
+
+    // Get sizes
+    ierr = VecGetSize(f_l,   &f_size);   CHKERRXX(ierr);
+    ierr = VecGetSize(fxx_l, &fxx_size); CHKERRXX(ierr);
+    ierr = VecGetSize(fyy_l, &fyy_size); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    ierr = VecGetSize(fzz_l, &fzz_size); CHKERRXX(ierr);
+#endif
+
+    if (f_size != fxx_size){
+      std::ostringstream oss;
+      oss << "[ERROR]: Vectors must be of same size when computing derivatives"
+          << " f_size = " << f_size << " fxx_size = " << fxx_size << std::endl;
+
+      throw std::invalid_argument(oss.str());
+    }
+
+    if (f_size != fyy_size){
+      std::ostringstream oss;
+      oss << "[ERROR]: Vectors must be of same size when computing derivatives"
+          << " f_size = " << f_size << " fyy_size = " << fyy_size << std::endl;
+
+      throw std::invalid_argument(oss.str());
+    }
+
+#ifdef P4_TO_P8
+    if (f_size != fzz_size){
+      std::ostringstream oss;
+      oss << "[ERROR]: Vectors must be of same size whe computing derivatives"
+          << " f_size = " << f_size << " fzz_size = " << fzz_size << std::endl;
+
+      throw std::invalid_argument(oss.str());
+    }
+#endif
+
+    // Restore local form
+    ierr = VecGhostRestoreLocalForm(f,   &f_l  ); CHKERRXX(ierr);
+    ierr = VecGhostRestoreLocalForm(fxx, &fxx_l); CHKERRXX(ierr);
+    ierr = VecGhostRestoreLocalForm(fyy, &fyy_l); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    ierr = VecGhostRestoreLocalForm(fzz, &fzz_l); CHKERRXX(ierr);
+#endif
+  }
+#endif
+
+  // get access to the iternal data
+  double *f_p, *fxx_p, *fyy_p;
+  ierr = VecGetArray(f,   &f_p  ); CHKERRXX(ierr);
+  ierr = VecGetArray(fxx, &fxx_p); CHKERRXX(ierr);
+  ierr = VecGetArray(fyy, &fyy_p); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+  double *fzz_p;
+  ierr = VecGetArray(fzz, &fzz_p); CHKERRXX(ierr);
+#endif
+
+  if (is_initialized){
+    // compute the derivatives on the boundary nodes -- fxx
+    for (size_t i=0; i<layer_nodes.size(); i++)
+    {
+      const quad_neighbor_nodes_of_node_t& qnnn = neighbors.at(layer_nodes[i]);
+      if(f_p[qnnn.node_000] > thr-EPS
+         || f_p[qnnn.node_m00_mm] > thr-EPS || f_p[qnnn.node_m00_pm] > thr-EPS
+         || f_p[qnnn.node_p00_mm] > thr-EPS || f_p[qnnn.node_p00_pm] > thr-EPS
+         || f_p[qnnn.node_0m0_mm] > thr-EPS || f_p[qnnn.node_0m0_pm] > thr-EPS
+         || f_p[qnnn.node_0p0_mm] > thr-EPS || f_p[qnnn.node_0p0_pm] > thr-EPS
+   #ifdef P4_TO_P8
+         || f_p[qnnn.node_m00_mp] > thr-EPS || f_p[qnnn.node_m00_pp] > thr-EPS
+         || f_p[qnnn.node_p00_mp] > thr-EPS || f_p[qnnn.node_p00_pp] > thr-EPS
+         || f_p[qnnn.node_0m0_mp] > thr-EPS || f_p[qnnn.node_0m0_pp] > thr-EPS
+         || f_p[qnnn.node_0p0_mp] > thr-EPS || f_p[qnnn.node_0p0_pp] > thr-EPS
+         || f_p[qnnn.node_00m_mm] > thr-EPS || f_p[qnnn.node_00m_pm] > thr-EPS
+         || f_p[qnnn.node_00m_mp] > thr-EPS || f_p[qnnn.node_00m_pp] > thr-EPS
+         || f_p[qnnn.node_00p_mm] > thr-EPS || f_p[qnnn.node_00p_pm] > thr-EPS
+         || f_p[qnnn.node_00p_mp] > thr-EPS || f_p[qnnn.node_00p_pp] > thr-EPS
+   #endif
+         )
+        fxx_p[layer_nodes[i]] = qnnn.dxx_central(f_p);
+    }
+    // start updating the ghost values
+    ierr = VecGhostUpdateBegin(fxx, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+    // compute the derivatives on the boundary nodes -- fyy
+    for (size_t i=0; i<layer_nodes.size(); i++)
+    {
+      const quad_neighbor_nodes_of_node_t& qnnn = neighbors.at(layer_nodes[i]);
+      if(f_p[qnnn.node_000] > thr-EPS
+         || f_p[qnnn.node_m00_mm] > thr-EPS || f_p[qnnn.node_m00_pm] > thr-EPS
+         || f_p[qnnn.node_p00_mm] > thr-EPS || f_p[qnnn.node_p00_pm] > thr-EPS
+         || f_p[qnnn.node_0m0_mm] > thr-EPS || f_p[qnnn.node_0m0_pm] > thr-EPS
+         || f_p[qnnn.node_0p0_mm] > thr-EPS || f_p[qnnn.node_0p0_pm] > thr-EPS
+   #ifdef P4_TO_P8
+         || f_p[qnnn.node_m00_mp] > thr-EPS || f_p[qnnn.node_m00_pp] > thr-EPS
+         || f_p[qnnn.node_p00_mp] > thr-EPS || f_p[qnnn.node_p00_pp] > thr-EPS
+         || f_p[qnnn.node_0m0_mp] > thr-EPS || f_p[qnnn.node_0m0_pp] > thr-EPS
+         || f_p[qnnn.node_0p0_mp] > thr-EPS || f_p[qnnn.node_0p0_pp] > thr-EPS
+         || f_p[qnnn.node_00m_mm] > thr-EPS || f_p[qnnn.node_00m_pm] > thr-EPS
+         || f_p[qnnn.node_00m_mp] > thr-EPS || f_p[qnnn.node_00m_pp] > thr-EPS
+         || f_p[qnnn.node_00p_mm] > thr-EPS || f_p[qnnn.node_00p_pm] > thr-EPS
+         || f_p[qnnn.node_00p_mp] > thr-EPS || f_p[qnnn.node_00p_pp] > thr-EPS
+   #endif
+         )
+        fyy_p[layer_nodes[i]] = qnnn.dyy_central(f_p);
+    }
+    // start updating the ghost values
+    ierr = VecGhostUpdateBegin(fyy, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+  #ifdef P4_TO_P8
+    // compute the derivatives on the boundary nodes -- fzz
+    for (size_t i=0; i<layer_nodes.size(); i++)
+    {
+      const quad_neighbor_nodes_of_node_t& qnnn = neighbors.at(layer_nodes[i]);
+      if(f_p[qnnn.node_000] > thr-EPS
+         || f_p[qnnn.node_m00_mm] > thr-EPS || f_p[qnnn.node_m00_pm] > thr-EPS
+         || f_p[qnnn.node_p00_mm] > thr-EPS || f_p[qnnn.node_p00_pm] > thr-EPS
+         || f_p[qnnn.node_0m0_mm] > thr-EPS || f_p[qnnn.node_0m0_pm] > thr-EPS
+         || f_p[qnnn.node_0p0_mm] > thr-EPS || f_p[qnnn.node_0p0_pm] > thr-EPS
+         || f_p[qnnn.node_m00_mp] > thr-EPS || f_p[qnnn.node_m00_pp] > thr-EPS
+         || f_p[qnnn.node_p00_mp] > thr-EPS || f_p[qnnn.node_p00_pp] > thr-EPS
+         || f_p[qnnn.node_0m0_mp] > thr-EPS || f_p[qnnn.node_0m0_pp] > thr-EPS
+         || f_p[qnnn.node_0p0_mp] > thr-EPS || f_p[qnnn.node_0p0_pp] > thr-EPS
+         || f_p[qnnn.node_00m_mm] > thr-EPS || f_p[qnnn.node_00m_pm] > thr-EPS
+         || f_p[qnnn.node_00m_mp] > thr-EPS || f_p[qnnn.node_00m_pp] > thr-EPS
+         || f_p[qnnn.node_00p_mm] > thr-EPS || f_p[qnnn.node_00p_pm] > thr-EPS
+         || f_p[qnnn.node_00p_mp] > thr-EPS || f_p[qnnn.node_00p_pp] > thr-EPS
+         )
+        fzz_p[layer_nodes[i]] = qnnn.dzz_central(f_p);
+    }
+    // start updating the ghost values
+    ierr = VecGhostUpdateBegin(fzz, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  #endif
+
+    // compute the derivaties for all internal nodes
+    for (size_t i=0; i<local_nodes.size(); i++){
+      const quad_neighbor_nodes_of_node_t& qnnn = neighbors.at(local_nodes[i]);
+      if(f_p[qnnn.node_000] > thr-EPS
+         || f_p[qnnn.node_m00_mm] > thr-EPS || f_p[qnnn.node_m00_pm] > thr-EPS
+         || f_p[qnnn.node_p00_mm] > thr-EPS || f_p[qnnn.node_p00_pm] > thr-EPS
+         || f_p[qnnn.node_0m0_mm] > thr-EPS || f_p[qnnn.node_0m0_pm] > thr-EPS
+         || f_p[qnnn.node_0p0_mm] > thr-EPS || f_p[qnnn.node_0p0_pm] > thr-EPS
+   #ifdef P4_TO_P8
+         || f_p[qnnn.node_m00_mp] > thr-EPS || f_p[qnnn.node_m00_pp] > thr-EPS
+         || f_p[qnnn.node_p00_mp] > thr-EPS || f_p[qnnn.node_p00_pp] > thr-EPS
+         || f_p[qnnn.node_0m0_mp] > thr-EPS || f_p[qnnn.node_0m0_pp] > thr-EPS
+         || f_p[qnnn.node_0p0_mp] > thr-EPS || f_p[qnnn.node_0p0_pp] > thr-EPS
+         || f_p[qnnn.node_00m_mm] > thr-EPS || f_p[qnnn.node_00m_pm] > thr-EPS
+         || f_p[qnnn.node_00m_mp] > thr-EPS || f_p[qnnn.node_00m_pp] > thr-EPS
+         || f_p[qnnn.node_00p_mm] > thr-EPS || f_p[qnnn.node_00p_pm] > thr-EPS
+         || f_p[qnnn.node_00p_mp] > thr-EPS || f_p[qnnn.node_00p_pp] > thr-EPS
+   #endif
+         )
+      {
+        fxx_p[local_nodes[i]] = qnnn.dxx_central(f_p);
+        fyy_p[local_nodes[i]] = qnnn.dyy_central(f_p);
+#ifdef P4_TO_P8
+        fzz_p[local_nodes[i]] = qnnn.dzz_central(f_p);
+#endif
+      }
+    }
+
+  } else {
+
+    quad_neighbor_nodes_of_node_t qnnn;
+
+    // compute the derivatives on the boundary nodes -- fxx
+    for (size_t i=0; i<layer_nodes.size(); i++){
+      get_neighbors(layer_nodes[i], qnnn);
+      if(f_p[qnnn.node_000] > thr-EPS
+         || f_p[qnnn.node_m00_mm] > thr-EPS || f_p[qnnn.node_m00_pm] > thr-EPS
+         || f_p[qnnn.node_p00_mm] > thr-EPS || f_p[qnnn.node_p00_pm] > thr-EPS
+         || f_p[qnnn.node_0m0_mm] > thr-EPS || f_p[qnnn.node_0m0_pm] > thr-EPS
+         || f_p[qnnn.node_0p0_mm] > thr-EPS || f_p[qnnn.node_0p0_pm] > thr-EPS
+   #ifdef P4_TO_P8
+         || f_p[qnnn.node_m00_mp] > thr-EPS || f_p[qnnn.node_m00_pp] > thr-EPS
+         || f_p[qnnn.node_p00_mp] > thr-EPS || f_p[qnnn.node_p00_pp] > thr-EPS
+         || f_p[qnnn.node_0m0_mp] > thr-EPS || f_p[qnnn.node_0m0_pp] > thr-EPS
+         || f_p[qnnn.node_0p0_mp] > thr-EPS || f_p[qnnn.node_0p0_pp] > thr-EPS
+         || f_p[qnnn.node_00m_mm] > thr-EPS || f_p[qnnn.node_00m_pm] > thr-EPS
+         || f_p[qnnn.node_00m_mp] > thr-EPS || f_p[qnnn.node_00m_pp] > thr-EPS
+         || f_p[qnnn.node_00p_mm] > thr-EPS || f_p[qnnn.node_00p_pm] > thr-EPS
+         || f_p[qnnn.node_00p_mp] > thr-EPS || f_p[qnnn.node_00p_pp] > thr-EPS
+   #endif
+         )
+      {
+        fxx_p[layer_nodes[i]] = qnnn.dxx_central(f_p);
+        fyy_p[layer_nodes[i]] = qnnn.dyy_central(f_p);
+#ifdef P4_TO_P8
+        fzz_p[layer_nodes[i]] = qnnn.dzz_central(f_p);
+#endif
+      }
+    }
+    // start updating the ghost values
+    ierr = VecGhostUpdateBegin(fxx, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateBegin(fyy, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    ierr = VecGhostUpdateBegin(fzz, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+#endif
+
+    // compute the derivaties for all internal nodes
+    for (size_t i=0; i<local_nodes.size(); i++){
+      get_neighbors(local_nodes[i], qnnn);
+      if(f_p[qnnn.node_000] > thr-EPS
+         || f_p[qnnn.node_m00_mm] > thr-EPS || f_p[qnnn.node_m00_pm] > thr-EPS
+         || f_p[qnnn.node_p00_mm] > thr-EPS || f_p[qnnn.node_p00_pm] > thr-EPS
+         || f_p[qnnn.node_0m0_mm] > thr-EPS || f_p[qnnn.node_0m0_pm] > thr-EPS
+         || f_p[qnnn.node_0p0_mm] > thr-EPS || f_p[qnnn.node_0p0_pm] > thr-EPS
+   #ifdef P4_TO_P8
+         || f_p[qnnn.node_m00_mp] > thr-EPS || f_p[qnnn.node_m00_pp] > thr-EPS
+         || f_p[qnnn.node_p00_mp] > thr-EPS || f_p[qnnn.node_p00_pp] > thr-EPS
+         || f_p[qnnn.node_0m0_mp] > thr-EPS || f_p[qnnn.node_0m0_pp] > thr-EPS
+         || f_p[qnnn.node_0p0_mp] > thr-EPS || f_p[qnnn.node_0p0_pp] > thr-EPS
+         || f_p[qnnn.node_00m_mm] > thr-EPS || f_p[qnnn.node_00m_pm] > thr-EPS
+         || f_p[qnnn.node_00m_mp] > thr-EPS || f_p[qnnn.node_00m_pp] > thr-EPS
+         || f_p[qnnn.node_00p_mm] > thr-EPS || f_p[qnnn.node_00p_pm] > thr-EPS
+         || f_p[qnnn.node_00p_mp] > thr-EPS || f_p[qnnn.node_00p_pp] > thr-EPS
+   #endif
+         )
+      {
+        fxx_p[local_nodes[i]] = qnnn.dxx_central(f_p);
+        fyy_p[local_nodes[i]] = qnnn.dyy_central(f_p);
+#ifdef P4_TO_P8
+        fzz_p[local_nodes[i]] = qnnn.dzz_central(f_p);
+#endif
+      }
+    }
+  }
+
+  // restore internal data
+  ierr = VecRestoreArray(f,   &f_p  ); CHKERRXX(ierr);
+  ierr = VecRestoreArray(fxx, &fxx_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(fyy, &fyy_p); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+  ierr = VecRestoreArray(fzz, &fzz_p); CHKERRXX(ierr);
+#endif
+
+  // finish the ghost update process to ensure all values are updated
+  ierr = VecGhostUpdateEnd(fyy, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecGhostUpdateEnd(fxx, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+  ierr = VecGhostUpdateEnd(fzz, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+#endif
+
+  IPMLogRegionEnd("2nd_derivatives");
+  ierr = PetscLogEventEnd(log_my_p4est_node_neighbors_t_2nd_derivatives_central_above_threshold, 0, 0, 0, 0); CHKERRXX(ierr);
+}
+
 void my_p4est_node_neighbors_t::first_derivatives_central(const Vec f[], Vec fd[], const unsigned int& n_vecs, const unsigned int& bs_f) const
 {
   PetscErrorCode ierr;
@@ -2543,3 +2810,235 @@ void my_p4est_node_neighbors_t::second_derivatives_central_using_block(const Vec
     ierr = VecDestroy(fdd[k]); CHKERRXX(ierr);
   }
 }
+
+void my_p4est_node_neighbors_t::get_all_neighbors(const p4est_locidx_t n, p4est_locidx_t *neighbors, bool *neighbor_exists) const
+{
+  p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
+
+  // check if the node is a wall node
+  bool xm_wall = is_node_xmWall(p4est, ni);
+  bool xp_wall = is_node_xpWall(p4est, ni);
+
+  bool ym_wall = is_node_ymWall(p4est, ni);
+  bool yp_wall = is_node_ypWall(p4est, ni);
+#ifdef P4_TO_P8
+  bool zm_wall = is_node_zmWall(p4est, ni);
+  bool zp_wall = is_node_zpWall(p4est, ni);
+#endif
+
+  // count neighbors
+  for (int i = 0; i < num_neighbors_cube; i++) neighbor_exists[i] = true;
+
+  if (xm_wall)
+  {
+    int i = 0;
+    for (int j = 0; j < 3; j++)
+#ifdef P4_TO_P8
+      for (int k = 0; k < 3; k++)
+#endif
+        neighbor_exists[i + j*3 CODE3D( + k*3*3 )] = false;
+  }
+
+  if (xp_wall)
+  {
+    int i = 2;
+    for (int j = 0; j < 3; j++)
+#ifdef P4_TO_P8
+      for (int k = 0; k < 3; k++)
+#endif
+        neighbor_exists[i + j*3 CODE3D( + k*3*3 )] = false;
+  }
+
+  if (ym_wall)
+  {
+    int j = 0;
+    for (int i = 0; i < 3; i++)
+#ifdef P4_TO_P8
+      for (int k = 0; k < 3; k++)
+#endif
+        neighbor_exists[i + j*3 CODE3D( + k*3*3 )] = false;
+  }
+
+  if (yp_wall)
+  {
+    int j = 2;
+    for (int i = 0; i < 3; i++)
+#ifdef P4_TO_P8
+      for (int k = 0; k < 3; k++)
+#endif
+        neighbor_exists[i + j*3 CODE3D( + k*3*3 )] = false;
+  }
+
+#ifdef P4_TO_P8
+  if (zm_wall)
+  {
+    int k = 0;
+    for (int j = 0; j < 3; j++)
+      for (int i = 0; i < 3; i++)
+        neighbor_exists[i + j*3 + k*3*3] = false;
+  }
+
+  if (zp_wall)
+  {
+    int k = 2;
+    for (int j = 0; j < 3; j++)
+      for (int i = 0; i < 3; i++)
+        neighbor_exists[i + j*3 + k*3*3] = false;
+  }
+#endif
+
+  // find neighboring quadrants
+  p4est_locidx_t quad_mmm_idx; p4est_topidx_t tree_mmm_idx;
+  p4est_locidx_t quad_mpm_idx; p4est_topidx_t tree_mpm_idx;
+  p4est_locidx_t quad_pmm_idx; p4est_topidx_t tree_pmm_idx;
+  p4est_locidx_t quad_ppm_idx; p4est_topidx_t tree_ppm_idx;
+#ifdef P4_TO_P8
+  p4est_locidx_t quad_mmp_idx; p4est_topidx_t tree_mmp_idx;
+  p4est_locidx_t quad_mpp_idx; p4est_topidx_t tree_mpp_idx;
+  p4est_locidx_t quad_pmp_idx; p4est_topidx_t tree_pmp_idx;
+  p4est_locidx_t quad_ppp_idx; p4est_topidx_t tree_ppp_idx;
+#endif
+
+#ifdef P4_TO_P8
+  find_neighbor_cell_of_node(n, -1, -1, -1, quad_mmm_idx, tree_mmm_idx); //nei_quads[dir::v_mmm] = quad_mmm_idx;
+  find_neighbor_cell_of_node(n, -1,  1, -1, quad_mpm_idx, tree_mpm_idx); //nei_quads[dir::v_mpm] = quad_mpm_idx;
+  find_neighbor_cell_of_node(n,  1, -1, -1, quad_pmm_idx, tree_pmm_idx); //nei_quads[dir::v_pmm] = quad_pmm_idx;
+  find_neighbor_cell_of_node(n,  1,  1, -1, quad_ppm_idx, tree_ppm_idx); //nei_quads[dir::v_ppm] = quad_ppm_idx;
+  find_neighbor_cell_of_node(n, -1, -1,  1, quad_mmp_idx, tree_mmp_idx); //nei_quads[dir::v_mmp] = quad_mmp_idx;
+  find_neighbor_cell_of_node(n, -1,  1,  1, quad_mpp_idx, tree_mpp_idx); //nei_quads[dir::v_mpp] = quad_mpp_idx;
+  find_neighbor_cell_of_node(n,  1, -1,  1, quad_pmp_idx, tree_pmp_idx); //nei_quads[dir::v_pmp] = quad_pmp_idx;
+  find_neighbor_cell_of_node(n,  1,  1,  1, quad_ppp_idx, tree_ppp_idx); //nei_quads[dir::v_ppp] = quad_ppp_idx;
+#else
+  find_neighbor_cell_of_node(n, -1, -1, quad_mmm_idx, tree_mmm_idx); //nei_quads[dir::v_mmm] = quad_mmm_idx;
+  find_neighbor_cell_of_node(n, -1, +1, quad_mpm_idx, tree_mpm_idx); //nei_quads[dir::v_mpm] = quad_mpm_idx;
+  find_neighbor_cell_of_node(n, +1, -1, quad_pmm_idx, tree_pmm_idx); //nei_quads[dir::v_pmm] = quad_pmm_idx;
+  find_neighbor_cell_of_node(n, +1, +1, quad_ppm_idx, tree_ppm_idx); //nei_quads[dir::v_ppm] = quad_ppm_idx;
+#endif
+//  P4EST_ASSERT(quad_mmm_idx!=NOT_A_P4EST_QUADRANT);
+//  P4EST_ASSERT(quad_mpm_idx!=NOT_A_P4EST_QUADRANT);
+//  P4EST_ASSERT(quad_pmm_idx!=NOT_A_P4EST_QUADRANT);
+//  P4EST_ASSERT(quad_ppm_idx!=NOT_A_P4EST_QUADRANT);
+//  P4EST_ASSERT(quad_mmp_idx!=NOT_A_P4EST_QUADRANT);
+//  P4EST_ASSERT(quad_mpp_idx!=NOT_A_P4EST_QUADRANT);
+//  P4EST_ASSERT(quad_pmp_idx!=NOT_A_P4EST_QUADRANT);
+//  P4EST_ASSERT(quad_ppp_idx!=NOT_A_P4EST_QUADRANT);
+
+
+  // find neighboring nodes
+#ifdef P4_TO_P8
+  neighbors[nn_000] = n;
+
+  // m00
+  if      (quad_mmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_m00] = nodes->local_nodes[P4EST_CHILDREN*quad_mmm_idx + dir::v_mpp];
+  else if (quad_mpm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_m00] = nodes->local_nodes[P4EST_CHILDREN*quad_mpm_idx + dir::v_mmp];
+  else if (quad_mmp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_m00] = nodes->local_nodes[P4EST_CHILDREN*quad_mmp_idx + dir::v_mpm];
+  else if (quad_mpp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_m00] = nodes->local_nodes[P4EST_CHILDREN*quad_mpp_idx + dir::v_mmm];
+
+  // p00
+  if      (quad_pmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_p00] = nodes->local_nodes[P4EST_CHILDREN*quad_pmm_idx + dir::v_ppp];
+  else if (quad_ppm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_p00] = nodes->local_nodes[P4EST_CHILDREN*quad_ppm_idx + dir::v_pmp];
+  else if (quad_pmp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_p00] = nodes->local_nodes[P4EST_CHILDREN*quad_pmp_idx + dir::v_ppm];
+  else if (quad_ppp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_p00] = nodes->local_nodes[P4EST_CHILDREN*quad_ppp_idx + dir::v_pmm];
+
+  // 0m0
+  if      (quad_mmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0m0] = nodes->local_nodes[P4EST_CHILDREN*quad_mmm_idx + dir::v_pmp];
+  else if (quad_pmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0m0] = nodes->local_nodes[P4EST_CHILDREN*quad_pmm_idx + dir::v_mmp];
+  else if (quad_mmp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0m0] = nodes->local_nodes[P4EST_CHILDREN*quad_mmp_idx + dir::v_pmm];
+  else if (quad_pmp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0m0] = nodes->local_nodes[P4EST_CHILDREN*quad_pmp_idx + dir::v_mmm];
+
+  // 0p0
+  if      (quad_mpm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0p0] = nodes->local_nodes[P4EST_CHILDREN*quad_mpm_idx + dir::v_ppp];
+  else if (quad_ppm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0p0] = nodes->local_nodes[P4EST_CHILDREN*quad_ppm_idx + dir::v_mpp];
+  else if (quad_mpp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0p0] = nodes->local_nodes[P4EST_CHILDREN*quad_mpp_idx + dir::v_ppm];
+  else if (quad_ppp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0p0] = nodes->local_nodes[P4EST_CHILDREN*quad_ppp_idx + dir::v_mpm];
+
+  // 00m
+  if      (quad_mmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_00m] = nodes->local_nodes[P4EST_CHILDREN*quad_mmm_idx + dir::v_ppm];
+  else if (quad_pmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_00m] = nodes->local_nodes[P4EST_CHILDREN*quad_pmm_idx + dir::v_mpm];
+  else if (quad_mpm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_00m] = nodes->local_nodes[P4EST_CHILDREN*quad_mpm_idx + dir::v_pmm];
+  else if (quad_ppm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_00m] = nodes->local_nodes[P4EST_CHILDREN*quad_ppm_idx + dir::v_mmm];
+
+  // 00p
+  if      (quad_mmp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_00p] = nodes->local_nodes[P4EST_CHILDREN*quad_mmp_idx + dir::v_ppp];
+  else if (quad_pmp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_00p] = nodes->local_nodes[P4EST_CHILDREN*quad_pmp_idx + dir::v_mpp];
+  else if (quad_mpp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_00p] = nodes->local_nodes[P4EST_CHILDREN*quad_mpp_idx + dir::v_pmp];
+  else if (quad_ppp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_00p] = nodes->local_nodes[P4EST_CHILDREN*quad_ppp_idx + dir::v_mmp];
+
+  // 0mm
+  if      (quad_mmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0mm] = nodes->local_nodes[P4EST_CHILDREN*quad_mmm_idx + dir::v_pmm];
+  else if (quad_pmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0mm] = nodes->local_nodes[P4EST_CHILDREN*quad_pmm_idx + dir::v_mmm];
+  // 0pm
+  if      (quad_mpm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0pm] = nodes->local_nodes[P4EST_CHILDREN*quad_mpm_idx + dir::v_ppm];
+  else if (quad_ppm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0pm] = nodes->local_nodes[P4EST_CHILDREN*quad_ppm_idx + dir::v_mpm];
+  // 0mp
+  if      (quad_mmp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0mp] = nodes->local_nodes[P4EST_CHILDREN*quad_mmp_idx + dir::v_pmp];
+  else if (quad_pmp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0mp] = nodes->local_nodes[P4EST_CHILDREN*quad_pmp_idx + dir::v_mmp];
+  // 0pp
+  if      (quad_mpp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0pp] = nodes->local_nodes[P4EST_CHILDREN*quad_mpp_idx + dir::v_ppp];
+  else if (quad_ppp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0pp] = nodes->local_nodes[P4EST_CHILDREN*quad_ppp_idx + dir::v_mpp];
+
+  // m0m
+  if      (quad_mmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_m0m] = nodes->local_nodes[P4EST_CHILDREN*quad_mmm_idx + dir::v_mpm];
+  else if (quad_mpm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_m0m] = nodes->local_nodes[P4EST_CHILDREN*quad_mpm_idx + dir::v_mmm];
+  // p0m
+  if      (quad_pmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_p0m] = nodes->local_nodes[P4EST_CHILDREN*quad_pmm_idx + dir::v_ppm];
+  else if (quad_ppm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_p0m] = nodes->local_nodes[P4EST_CHILDREN*quad_ppm_idx + dir::v_pmm];
+  // m0p
+  if      (quad_mmp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_m0p] = nodes->local_nodes[P4EST_CHILDREN*quad_mmp_idx + dir::v_mpp];
+  else if (quad_mpp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_m0p] = nodes->local_nodes[P4EST_CHILDREN*quad_mpp_idx + dir::v_mmp];
+  // p0p
+  if      (quad_pmp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_p0p] = nodes->local_nodes[P4EST_CHILDREN*quad_pmp_idx + dir::v_ppp];
+  else if (quad_ppp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_p0p] = nodes->local_nodes[P4EST_CHILDREN*quad_ppp_idx + dir::v_pmp];
+
+  // mm0
+  if      (quad_mmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_mm0] = nodes->local_nodes[P4EST_CHILDREN*quad_mmm_idx + dir::v_mmp];
+  else if (quad_mmp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_mm0] = nodes->local_nodes[P4EST_CHILDREN*quad_mmp_idx + dir::v_mmm];
+  // pm0
+  if      (quad_pmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_pm0] = nodes->local_nodes[P4EST_CHILDREN*quad_pmm_idx + dir::v_pmp];
+  else if (quad_pmp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_pm0] = nodes->local_nodes[P4EST_CHILDREN*quad_pmp_idx + dir::v_pmm];
+  // mp0
+  if      (quad_mpm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_mp0] = nodes->local_nodes[P4EST_CHILDREN*quad_mpm_idx + dir::v_mpp];
+  else if (quad_mpp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_mp0] = nodes->local_nodes[P4EST_CHILDREN*quad_mpp_idx + dir::v_mpm];
+  // pp0
+  if      (quad_ppm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_pp0] = nodes->local_nodes[P4EST_CHILDREN*quad_ppm_idx + dir::v_ppp];
+  else if (quad_ppp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_pp0] = nodes->local_nodes[P4EST_CHILDREN*quad_ppp_idx + dir::v_ppm];
+
+  // mmm
+  if      (quad_mmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_mmm] = nodes->local_nodes[P4EST_CHILDREN*quad_mmm_idx + dir::v_mmm];
+  // pmm
+  if      (quad_pmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_pmm] = nodes->local_nodes[P4EST_CHILDREN*quad_pmm_idx + dir::v_pmm];
+  // mpm
+  if      (quad_mpm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_mpm] = nodes->local_nodes[P4EST_CHILDREN*quad_mpm_idx + dir::v_mpm];
+  // ppm
+  if      (quad_ppm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_ppm] = nodes->local_nodes[P4EST_CHILDREN*quad_ppm_idx + dir::v_ppm];
+
+  // mmp
+  if      (quad_mmp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_mmp] = nodes->local_nodes[P4EST_CHILDREN*quad_mmp_idx + dir::v_mmp];
+  // pmp
+  if      (quad_pmp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_pmp] = nodes->local_nodes[P4EST_CHILDREN*quad_pmp_idx + dir::v_pmp];
+  // mpp
+  if      (quad_mpp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_mpp] = nodes->local_nodes[P4EST_CHILDREN*quad_mpp_idx + dir::v_mpp];
+  // ppp
+  if      (quad_ppp_idx != NOT_A_VALID_QUADRANT) neighbors[nn_ppp] = nodes->local_nodes[P4EST_CHILDREN*quad_ppp_idx + dir::v_ppp];
+#else
+  neighbors[nn_000] = n;
+
+  if      (quad_mmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_m00] = nodes->local_nodes[P4EST_CHILDREN*quad_mmm_idx + dir::v_mpm];
+  else if (quad_mpm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_m00] = nodes->local_nodes[P4EST_CHILDREN*quad_mpm_idx + dir::v_mmm];
+
+  if      (quad_pmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_p00] = nodes->local_nodes[P4EST_CHILDREN*quad_pmm_idx + dir::v_ppm];
+  else if (quad_ppm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_p00] = nodes->local_nodes[P4EST_CHILDREN*quad_ppm_idx + dir::v_pmm];
+
+  if      (quad_mmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0m0] = nodes->local_nodes[P4EST_CHILDREN*quad_mmm_idx + dir::v_pmm];
+  else if (quad_pmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0m0] = nodes->local_nodes[P4EST_CHILDREN*quad_pmm_idx + dir::v_mmm];
+
+  if      (quad_ppm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0p0] = nodes->local_nodes[P4EST_CHILDREN*quad_ppm_idx + dir::v_mpm];
+  else if (quad_mpm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_0p0] = nodes->local_nodes[P4EST_CHILDREN*quad_mpm_idx + dir::v_ppm];
+
+  if      (quad_mmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_mm0] = nodes->local_nodes[P4EST_CHILDREN*quad_mmm_idx + dir::v_mmm];
+  if      (quad_pmm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_pm0] = nodes->local_nodes[P4EST_CHILDREN*quad_pmm_idx + dir::v_pmm];
+  if      (quad_mpm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_mp0] = nodes->local_nodes[P4EST_CHILDREN*quad_mpm_idx + dir::v_mpm];
+  if      (quad_ppm_idx != NOT_A_VALID_QUADRANT) neighbors[nn_pp0] = nodes->local_nodes[P4EST_CHILDREN*quad_ppm_idx + dir::v_ppm];
+#endif
+}
+

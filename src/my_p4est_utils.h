@@ -278,6 +278,10 @@ const unsigned short i_idx[] = { 0, 1 };
 const unsigned short j_idx[] = { 1, 0 };
 #endif
 
+const static std::string null_str    = "NULL";
+const static std::string stdout_str  = "stdout";
+const static std::string stderr_str  = "stderr";
+
 
 //#ifdef P4_TO_P8
 //const unsigned short q2c[P4EST_CHILDREN][P4EST_CHILDREN] = { { nn_mmm, nn_0mm, nn_m0m, nn_00m,
@@ -867,6 +871,64 @@ inline PetscErrorCode VecCreateCellsNoGhost(const p4est_t *p4est, Vec* v)
   return VecCreateCellsBlockNoGhost(p4est, 1, v);
 }
 
+PetscErrorCode VecScatterAllToSomeCreate(MPI_Comm comm, Vec origin_loc, Vec destination, const PetscInt &ndest_glo_idx, const PetscInt *dest_glo_idx, VecScatter *ctx);
+inline PetscErrorCode VecScatterAllToSomeCreate(MPI_Comm comm, Vec origin_loc, Vec destination, const std::vector<PetscInt>& dest_glo_idx, VecScatter *ctx)
+{
+  return VecScatterAllToSomeCreate(comm, origin_loc, destination, dest_glo_idx.size(), dest_glo_idx.data(), ctx);
+}
+inline PetscErrorCode VecScatterAllToSomeBegin(VecScatter ctx, Vec origin_loc, Vec destination)
+{
+  return VecScatterBegin(ctx, origin_loc, destination, INSERT_VALUES, SCATTER_FORWARD);
+}
+inline PetscErrorCode VecScatterAllToSomeEnd(VecScatter ctx, Vec origin_loc, Vec destination)
+{
+  return VecScatterEnd(ctx, origin_loc, destination, INSERT_VALUES, SCATTER_FORWARD);
+}
+
+/*!
+ * \brief VecScatterAllToSome scatters all local values of an origin parallel Petsc vector to some/all values of another
+ * \param comm          [in]    mpi communication group in which the vectors live
+ * \param origin        [in]    origin vector from which all values need to be scattered
+ * \param destination   [inout] destination vector in which some/all values need to be filled
+ * \param ndest_glo_idx [in]    number of elements in dest_glo_idx array (next argument)
+ * \param dest_glo_idx  [in]    array of ndest_glo_idx global indices corresponding to the destination indices mapped with
+ *                              the local values of the origin vector
+ *                              (NULL is fine if ndest_glo_idx is 0)
+ * \param sync_ghost    [in]    activates ghost updates in the destination vector after scattering if true (default is false)
+ * [DEBUG check] this routine checks that the global size of the origin is <= the global size of destination in DEBUG
+ * [DEBUG check] this routine checks that ndest_glo_idx is <= the local size of origin in DEBUG
+ * \return a Petsc error code to be checked against for success/failure
+ */
+inline PetscErrorCode VecScatterAllToSome(MPI_Comm comm, Vec origin, Vec destination, const PetscInt &ndest_glo_idx, const PetscInt *dest_glo_idx, const bool &sync_ghost = false)
+{
+  PetscErrorCode ierr;
+#ifdef DEBUG
+  PetscInt full_size_origin, full_size_destination, local_size_origin;
+  ierr = VecGetSize(origin, &full_size_origin);                                                       CHKERRQ(ierr);
+  ierr = VecGetSize(destination, &full_size_destination);                                             CHKERRQ(ierr);
+  P4EST_ASSERT(full_size_origin <= full_size_destination);
+  ierr = VecGetLocalSize(origin, &local_size_origin);                                                 CHKERRQ(ierr);
+  P4EST_ASSERT(ndest_glo_idx <= local_size_origin);
+#endif
+  VecScatter ctx;
+  Vec origin_loc;
+  ierr = VecGhostGetLocalForm(origin, &origin_loc);                                                   CHKERRQ(ierr);
+  ierr = VecScatterAllToSomeCreate(comm, origin_loc, destination, ndest_glo_idx, dest_glo_idx, &ctx); CHKERRQ(ierr);
+  ierr = VecScatterAllToSomeBegin(ctx, origin_loc, destination);                                      CHKERRQ(ierr);
+  ierr = VecScatterAllToSomeEnd(ctx, origin_loc, destination);                                        CHKERRQ(ierr);
+  ierr = VecGhostRestoreLocalForm(origin, &origin_loc);                                               CHKERRQ(ierr);
+  if(sync_ghost){
+    ierr = VecGhostUpdateBegin(destination, INSERT_VALUES, SCATTER_FORWARD);                          CHKERRQ(ierr); }
+  ierr = VecScatterDestroy(ctx);                                                                      CHKERRQ(ierr);
+  if(sync_ghost){
+    ierr = VecGhostUpdateEnd(destination, INSERT_VALUES, SCATTER_FORWARD);                            CHKERRQ(ierr); }
+  return ierr;
+}
+inline PetscErrorCode VecScatterAllToSome(MPI_Comm comm, Vec origin, Vec destination, const std::vector<PetscInt>& dest_glo_idx, const bool &sync_ghost = false)
+{
+  return VecScatterAllToSome(comm, origin, destination, dest_glo_idx.size(), dest_glo_idx.data(), sync_ghost);
+}
+
 /*!
  * \brief VecScatterCreateChangeLayout Create a VecScatter context useful for changing the parallel layout of a vector
  * \param comm  [in]  MPI_Comm to which parallel vectors belong
@@ -905,6 +967,7 @@ PetscErrorCode VecGhostChangeLayoutEnd(VecScatter ctx, Vec from, Vec to);
  * [throws std::runtime_error if the path cannot be accessed]
  */
 bool is_folder(const char* path);
+inline bool is_folder(const std::string &path_str) { return is_folder(path_str.c_str()); }
 
 /*!
  * \brief file_exists returns true if the path points to an existing file
@@ -913,6 +976,7 @@ bool is_folder(const char* path);
  * \return true if there exists a file corresponding to the given path
  */
 bool file_exists(const char* path);
+inline bool file_exists(const std::string &path_str) { return file_exists(path_str.c_str()); }
 
 /*!
  * \brief create_directory creates a folder indicated by the given path, permission rights: 755
@@ -924,6 +988,10 @@ bool file_exists(const char* path);
  * [the root process creates the folder, the operation is collective by MPI_Bcast on the result]
  */
 int create_directory(const char* path, int mpi_rank, MPI_Comm comm=MPI_COMM_WORLD);
+inline int create_directory(const std::string &path_str, int mpi_rank, MPI_Comm comm=MPI_COMM_WORLD)
+{
+  return create_directory(path_str.c_str(), mpi_rank, comm);
+}
 
 /*!
  * \brief delete_directory_recursive explores a directory then
@@ -940,8 +1008,16 @@ int create_directory(const char* path, int mpi_rank, MPI_Comm comm=MPI_COMM_WORL
  * [throws std::invalid_argument if the root_path is NOT a directory]
  */
 int delete_directory(const char* root_path, int mpi_rank, MPI_Comm comm=MPI_COMM_WORLD, bool non_collective=false);
+inline int delete_directory(const std::string &root_path_str, int mpi_rank, MPI_Comm comm=MPI_COMM_WORLD, bool non_collective=false)
+{
+  return delete_directory(root_path_str.c_str(), mpi_rank, comm, non_collective);
+}
 
 int get_subdirectories_in(const char* root_path, std::vector<std::string>& subdirectories);
+inline int get_subdirectories_in(const std::string root_path_str, std::vector<std::string>& subdirectories)
+{
+  return get_subdirectories_in(root_path_str.c_str(), subdirectories);
+}
 
 inline double int2double_coordinate_transform(p4est_qcoord_t a){
   return static_cast<double>(a)/static_cast<double>(P4EST_ROOT_LEN);
@@ -1455,6 +1531,10 @@ double area_in_negative_domain(const p4est_t *p4est, const p4est_nodes_t *nodes,
  * \brief integrate_over_interface_in_one_quadrant
  */
 double integrate_over_interface_in_one_quadrant(const p4est_t *p4est, const p4est_nodes_t *nodes, const p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi, Vec f);
+/*!
+ * \brief max_over_interface_in_one_quadrant
+ */
+double max_over_interface_in_one_quadrant(const p4est_nodes_t *nodes, p4est_locidx_t quad_idx, Vec phi, Vec f);
 
 /*!
  * \brief integrate_over_interface integrate a scalar f over the 0-contour of the level-set function phi.
@@ -1466,6 +1546,16 @@ double integrate_over_interface_in_one_quadrant(const p4est_t *p4est, const p4es
  * \return the integral of f over the contour defined by phi, i.e. \int_{phi=0} f
  */
 double integrate_over_interface(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec f);
+
+/*!
+ * \brief max_over_interface calculate the maximum value of a scalar f over the 0-contour of the level-set function phi.
+ * \param p4est the p4est
+ * \param nodes the nodes structure associated to p4est
+ * \param phi the level-set function
+ * \param f the scalar to integrate
+ * \return the integral of f over the contour defined by phi, i.e. \max_{phi=0} f
+ */
+double max_over_interface(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec f);
 
 /*!
  * \brief compute_mean_curvature computes the mean curvature using compact stencil k = -div(n)
@@ -1695,7 +1785,7 @@ bool is_quad_Wall  (const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quad
  * \param dir   [in] the direction to check, 0 (x), 1 (y) or 2 (z, only in 3D)
  * \return true if the forest is periodic in direction dir, false otherwise
  */
-inline bool is_periodic(const p4est_t *p4est, int dir)
+inline bool is_periodic(const p4est_connectivity_t *const conn, int dir)
 {
   /* check whether there is not a boundary on the left side of first tree */
   P4EST_ASSERT (0 <= dir && dir < P4EST_DIM);
@@ -1703,8 +1793,12 @@ inline bool is_periodic(const p4est_t *p4est, int dir)
   const int face = 2 * dir;
   const p4est_topidx_t tfindex = 0 * P4EST_FACES + face;
 
-  return !(p4est->connectivity->tree_to_tree[tfindex] == 0 &&
-           p4est->connectivity->tree_to_face[tfindex] == face);
+  return !(conn->tree_to_tree[tfindex] == 0 &&
+           conn->tree_to_face[tfindex] == face);
+}
+inline bool is_periodic(const p4est_t *p4est, int dir)
+{
+  return is_periodic(p4est->connectivity, dir);
 }
 
 inline void clip_in_domain(double xyz[P4EST_DIM], const double xyz_min[P4EST_DIM], const double xyz_max[P4EST_DIM], const bool periodic[P4EST_DIM])

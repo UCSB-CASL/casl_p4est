@@ -20,6 +20,9 @@ VORO_INCLUDES_DEBUG   = /usr/local/include/voro++
 VORO_LIBS_RELEASE     = /usr/local/lib/libvoro++.a
 VORO_LIBS_DEBUG       = /usr/local/lib/libvoro++.a
 
+# boost
+BOOST_INCLUDES        = /home/regan/libraries/boost/include
+BOOST_LIBS            = -Wl,-rpath,/home/regan/libraries/boost/lib -L/home/regan/libraries/boost/lib -lboost_system
 QMAKE_CC = mpicc
 QMAKE_CXX = mpicxx
 QMAKE_LINK = mpicxx

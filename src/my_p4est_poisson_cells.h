@@ -33,15 +33,8 @@ class my_p4est_poisson_cells_t
 
   my_p4est_brick_t *myb;
 
-  double mu;
-  bool is_matrix_ready, only_diag_is_modified;
-  /* control flags within the solve steps:
-   * - no matrix update required if is_matrix_ready == true
-   * - only an update for diagonal term(s) if is_matrix_ready == false but only_diag_is_modified == true
-   * - entire matrix update if both is_matrix_ready and only_diag_is_modified are false
-   */
-  bool desired_diag_locally_built;
-  bool ksp_is_set_from_options, pc_is_set_from_options; // control switches within the solve, too
+  double mu, diag_add;
+  bool is_matrix_ready;
   int matrix_has_nullspace;
 
   double dxyz_min[P4EST_DIM];
@@ -64,14 +57,12 @@ class my_p4est_poisson_cells_t
   Vec null_space;
   p4est_gloidx_t fixed_value_idx_g;
   p4est_gloidx_t fixed_value_idx_l;
-  Vec current_diag, desired_diag; // owned by solver!
-  Vec rhs, phi;
+  Vec rhs, phi, add;
   KSP ksp;
   PetscErrorCode ierr;
 
   void preallocate_matrix();
   void setup_negative_laplace_matrix();
-  void update_matrix_diag_only();
   void setup_negative_laplace_rhsvec();
 
   inline double phi_cell(p4est_locidx_t q, double *phi_ptr) const {
@@ -90,16 +81,6 @@ class my_p4est_poisson_cells_t
     return p4est->global_first_quadrant[quad_find_ghost_owner(ghost, quad_idx-p4est->local_num_quadrants)] + quad->p.piggy3.local_num;
   }
 
-  inline PetscErrorCode reset_current_diag()
-  {
-    PetscErrorCode iierr = 0;
-    if(current_diag != NULL)
-      iierr = VecDestroy(current_diag); CHKERRQ(iierr);
-    iierr = VecCreateSeq(PETSC_COMM_SELF, p4est->local_num_quadrants, &current_diag); CHKERRQ(iierr);
-    iierr = VecSet(current_diag, 0.0); CHKERRQ(iierr);
-    return iierr;
-  }
-
   // disallow copy ctr and copy assignment
   my_p4est_poisson_cells_t(const my_p4est_poisson_cells_t& other);
   my_p4est_poisson_cells_t& operator=(const my_p4est_poisson_cells_t& other);
@@ -113,50 +94,16 @@ public:
    */
   inline void set_nullspace_use_fixed_point(bool val) {this->nullspace_use_fixed_point = val;}
 
-  inline void set_phi(Vec phi)// if phi is changed, the linear system should be reset
-  {
-    this->phi      = phi;
-    is_matrix_ready = false;
-    only_diag_is_modified = false;
-  }
-  inline void set_rhs(Vec rhs)                 {this->rhs      = rhs; }
-  inline void set_diagonal(double add)
-  {
-    if(!desired_diag_locally_built)
-    {
-      ierr = VecCreateSeq(PETSC_COMM_SELF, p4est->local_num_quadrants, &desired_diag); CHKERRXX(ierr);
-      desired_diag_locally_built = true;
-    }
-    ierr = VecSet(desired_diag, add); CHKERRXX(ierr);
-    only_diag_is_modified = is_matrix_ready;
-    is_matrix_ready = false;
-  }
-  inline void set_diagonal(Vec add)
-  {
-    if(desired_diag_locally_built)
-    {
-      ierr = VecDestroy(desired_diag); CHKERRXX(ierr);
-      desired_diag_locally_built = false;
-    }
-    desired_diag = add;
-    only_diag_is_modified = is_matrix_ready;
-    is_matrix_ready = false;
-  }
+  inline void set_phi(Vec phi)                 {this->phi      = phi;}
+  inline void set_rhs(Vec rhs)                 {this->rhs      = rhs;}
+  inline void set_diagonal(double add)         {this->diag_add = add; is_matrix_ready = false;}
+  inline void set_diagonal(Vec add)            {this->add      = add; is_matrix_ready = false;}
 #ifdef P4_TO_P8
-  inline void set_bc(BoundaryConditions3D& bc) {this->bc       = &bc; is_matrix_ready = false; only_diag_is_modified = false; }
+  inline void set_bc(BoundaryConditions3D& bc) {this->bc       = &bc; is_matrix_ready = false;}
 #else
-  inline void set_bc(BoundaryConditions2D& bc) {this->bc       = &bc; is_matrix_ready = false; only_diag_is_modified = false; }
+  inline void set_bc(BoundaryConditions2D& bc) {this->bc       = &bc; is_matrix_ready = false;}
 #endif
-  inline void set_mu(double mu)
-  {
-    P4EST_ASSERT(mu > 0.0);
-    if(fabs(this->mu - mu) > EPS*MAX(this->mu, mu)) // actual modification of mu
-    {
-      is_matrix_ready = false;
-      only_diag_is_modified = false;
-    }
-    this->mu       = mu;
-  }
+  inline void set_mu(double mu)                {this->mu       = mu;  is_matrix_ready = false;}
 
   inline bool get_matrix_has_nullspace() { return matrix_has_nullspace; }
 

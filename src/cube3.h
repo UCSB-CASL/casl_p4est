@@ -18,6 +18,8 @@
 
 struct Cube3
 {
+  int num_tet;
+  bool middlecut;
 private:
   inline void swap(double &phi1, double &phi2, double &f1, double &f2, Point3 &p1, Point3 &p2) const
   {
@@ -103,5 +105,14 @@ public:
 
 
     double integrate_Over_Interface(const OctValue &f, const OctValue &level_set_values ) const;
+
+    double integrate_Over_Interface(const CF_3 &f, const OctValue &level_set_values ) const;
+
+    void set_middlecut(bool val)
+    {
+      if (val)  {middlecut = true;  num_tet = 5;}
+      else      {middlecut = false; num_tet = 6;}
+    }
+    double max_Over_Interface(const OctValue &f, const OctValue &ls_values) const;
 };
 #endif // MY_P4EST_CUBE3_H

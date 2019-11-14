@@ -1,12 +1,11 @@
 #ifndef CASL_VORONOI3D_H
 #define CASL_VORONOI3D_H
+
 #include <float.h>
 #include <fstream>
 #include <vector>
 
-// We are in 3D (you, idiot!), so include p8est headers immediately
-#include <src/my_p8est_utils.h>
-#include <src/my_p8est_faces.h>
+#include <src/my_p4est_utils.h>
 #include <src/casl_math.h>
 #include <src/point3.h>
 
@@ -75,16 +74,6 @@ private:
   vector<ngbd3Dseed> nb_seeds;
   double volume;
 
-  /*!
-   * \brief add a neighbor seed, WITHOUT making sure there is no repetition
-   * \param n the index of the point to add
-   * \param pt coordinates of the candidate neighbor seed to add
-   * \param periodicity the periodicity flag for the computational domain
-   * \param xyz_min the coordinates of the lower left corner of the computational domain
-   * \param xyz_min the coordinates of the upper right corner of the computational domain
-   */
-  void add_point( int n, Point3 &pt, const bool* periodicity, const double* xyz_min, const double* xyz_max);
-
 public:
   /*!
      * \brief default constructor for the Voronoi3D class
@@ -116,7 +105,6 @@ public:
   void set_center_point( int idx_center_seed_, Point3 &center_seed_);
   // overloading
   void set_center_point( int idx_center_seed_, double x, double y, double z) { Point3 tmp(x, y, z); set_center_point(idx_center_seed_, tmp); }
-  void set_center_point( int idx_center_seed_, const double* xyz) { set_center_point(idx_center_seed_, xyz[0], xyz[1], xyz[2]); }
 
   /*!
      * \brief get the center seed of the partition
@@ -125,18 +113,13 @@ public:
   inline const Point3& get_center_point() const { return center_seed; }
 
   /*!
-   * \brief add a potential neighbor seed candidate, after making sure there is no repetition
+   * \brief add a potential neighbor seed candidate, making sure there is no repetition
    * \param n the index of the point to add
    * \param pt coordinates of the candidate neighbor seed to add
-   * \param periodicity the periodicity flag for the computational domain
-   * \param xyz_min the coordinates of the lower left corner of the computational domain
-   * \param xyz_min the coordinates of the upper right corner of the computational domain
    */
   void push( int n, Point3 &pt, const bool* periodicity, const double* xyz_min, const double* xyz_max);
   // overloading
   void push( int n, double x, double y, double z, const bool* periodicity, const double* xyz_min, const double* xyz_max) { Point3 tmp(x, y, z); push(n, tmp, periodicity, xyz_min, xyz_max); }
-
-  void assemble_from_set_of_faces(const unsigned char& dir, const std::set<p4est_locidx_t>& set_of_faces, const my_p4est_faces_t* faces, const bool* periodicity, const double* xyz_min, const double* xyz_max);
 
   /*!
      * \brief construct the voronoi parition around point pc using the neighborhood given in nb_seeds

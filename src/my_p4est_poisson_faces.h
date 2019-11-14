@@ -101,18 +101,13 @@ class my_p4est_poisson_faces_t
     current_diag[dir] = 0.0;
   }
 
-  inline bool current_diag_is_as_desired(int dir) const
-  {
-    return ((fabs(current_diag[dir] - desired_diag[dir]) < EPS*MAX(fabs(current_diag[dir]), fabs(desired_diag[dir]))) || ((fabs(current_diag[dir] < EPS) && (fabs(desired_diag[dir]) < EPS))));
-  }
-
 public:
   my_p4est_poisson_faces_t(const my_p4est_faces_t *faces, const my_p4est_node_neighbors_t *ngbd);
   ~my_p4est_poisson_faces_t();
 
   void set_second_order_hodge_correction_on_neumann(bool flag_value){ apply_hodge_second_derivative_if_neumann = flag_value; }
 
-  void set_phi(Vec phi);// if phi is changed, the linear system should be reset...
+  void set_phi(Vec phi, const bool needs_solver_reset=true);// if phi is changed, the linear system should be reset... Except if the user knows more.
 
   void set_rhs(Vec *rhs);
 
@@ -120,11 +115,11 @@ public:
 
   void set_mu(double mu);
 
-  // if the type of bcs is changed, the linear system should be reset...
+  // if the type of bcs is changed, the linear system should be reset... Except if the user knows more (for instance if bc and face_is_well_defined are unchanged but dxyz_hodge is).
 #ifdef P4_TO_P8
-  void set_bc(const BoundaryConditions3D *bc, Vec *dxyz_hodge, Vec *face_is_well_defined);
+  void set_bc(const BoundaryConditions3D *bc, Vec *dxyz_hodge, Vec *face_is_well_defined, const bool needs_solver_reset=true);
 #else
-  void set_bc(const BoundaryConditions2D *bc, Vec *dxyz_hodge, Vec *face_is_well_defined);
+  void set_bc(const BoundaryConditions2D *bc, Vec *dxyz_hodge, Vec *face_is_well_defined, const bool needs_solver_reset=true);
 #endif
 
 

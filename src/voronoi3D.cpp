@@ -1,5 +1,6 @@
 #include "voronoi3D.h"
 #include <vector>
+
 #include <algorithm>
 
 void Voronoi3D::set_cell(vector<ngbd3Dseed> &neighbors, double volume )
@@ -13,26 +14,13 @@ void Voronoi3D::push( int n, Point3 &pt, const bool* periodicity, const double* 
   if(n == idx_center_seed)
     return;
   for(unsigned int m=0; m<nb_seeds.size(); m++)
+  {
     if(nb_seeds[m].n == n)
+    {
       return;
-  add_point(n, pt, periodicity, xyz_min, xyz_max);
-}
-
-void Voronoi3D::assemble_from_set_of_faces(const unsigned char& dir, const std::set<p4est_locidx_t>& set_of_faces, const my_p4est_faces_t* faces, const bool* periodicity, const double* xyz_min, const double* xyz_max)
-{
-  nb_seeds.clear();
-  int n;
-  Point3 pt;
-  for (std::set<p4est_locidx_t>::const_iterator got_it= set_of_faces.begin(); got_it != set_of_faces.end(); ++got_it) {
-    n = *got_it;
-    P4EST_ASSERT((n>=0) && (n < (faces->num_local[dir] + faces->num_ghost[dir])) && (n != idx_center_seed));
-    faces->point_fr_f(*got_it, dir, pt);
-    add_point(n, pt, periodicity, xyz_min, xyz_max); // no need to check for duplicates by definition of std::set
+    }
   }
-}
 
-void Voronoi3D::add_point(int n, Point3 &pt, const bool* periodicity, const double* xyz_min, const double* xyz_max)
-{
   ngbd3Dseed ngbd_seed;
   ngbd_seed.n = n;
   ngbd_seed.p = pt;
@@ -270,6 +258,20 @@ void Voronoi3D::construct_partition(const double *xyz_min, const double *xyz_max
   /* add the center point */
   voronoi.put(po, idx_center_seed, 0.0, 0.0, 0.0);
 
+  std::vector<double> point_distances(nb_seeds.size());
+  std::vector<unsigned int> index(nb_seeds.size(), 0);
+  for(unsigned int m=0; m<nb_seeds.size(); ++m)
+  {
+    point_distances.at(m) = (nb_seeds[m].p - center_seed).norm_L2();
+    index.at(m) = m;
+  }
+
+  sort(index.begin(), index.end(),
+      [&](const int& a, const int& b) {
+          return (point_distances[a] < point_distances[b]);
+      }
+  );
+
   /* add the points potentially involved in the voronoi partition */
   for(unsigned int m=0; m<nb_seeds.size(); ++m)
   {
@@ -292,6 +294,10 @@ void Voronoi3D::construct_partition(const double *xyz_min, const double *xyz_max
     volume = min_dist*min_dist*min_dist*voro_cell.volume();
     voro_cell.neighbors(neigh);
     voro_cell.face_areas(areas);
+    double max_area = 0.0;
+    for(unsigned int n=0; n<neigh.size(); n++)
+      max_area = MAX(max_area, areas[n]);
+
     for(unsigned int n=0; n<neigh.size(); n++)
     {
       ngbd3Dseed new_voro_nb;
@@ -336,7 +342,9 @@ void Voronoi3D::construct_partition(const double *xyz_min, const double *xyz_max
           }
         }
       }
-      final_nb_seeds.push_back(new_voro_nb);
+
+      if(new_voro_nb.s > EPS*max_area)
+        final_nb_seeds.push_back(new_voro_nb);
     }
     nb_seeds.clear();
     nb_seeds = final_nb_seeds;

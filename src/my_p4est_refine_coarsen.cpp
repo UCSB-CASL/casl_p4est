@@ -17,7 +17,7 @@ refine_levelset_cf (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t 
 {
   splitting_criteria_cf_t *data = (splitting_criteria_cf_t*)p4est->user_pointer;
 
-  if (quad->level < data->min_lvl)
+  if (quad->level < data->min_lvl && !data->refine_only_inside)
     return P4EST_TRUE;
   else if (quad->level >= data->max_lvl)
     return P4EST_FALSE;
@@ -90,6 +90,9 @@ refine_levelset_cf (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t 
       return P4EST_TRUE;
 #endif
 
+    if (data->refine_only_inside && f[0] <= 0 && quad->level < data->min_lvl)
+      return P4EST_TRUE;
+
     return P4EST_FALSE;
   }
 }
@@ -97,7 +100,6 @@ refine_levelset_cf (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t 
 p4est_bool_t
 refine_levelset_cf_and_uniform_band (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad)
 {
-
   splitting_criteria_cf_and_uniform_band_t *data = (splitting_criteria_cf_and_uniform_band_t*)p4est->user_pointer;
   if (quad->level < data->min_lvl)
     return P4EST_TRUE;
@@ -497,7 +499,7 @@ coarsen_marked_quadrants(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadra
   return P4EST_FALSE;
 }
 
-void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *quad, p4est_topidx_t which_tree, const double *f, bool finest_in_negative_flag){
+void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *quad, p4est_topidx_t which_tree, const double* f) {
   if (quad->level < min_lvl) {
     quad->p.user_int = REFINE_QUADRANT;
 
@@ -534,7 +536,7 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
 #endif
 
     // refinement based on distance
-    bool refine = false, coarsen = true;
+		bool refine = false, coarsen = true;
 
     if(finest_in_negative_flag)
       for (short i = 0; i < P4EST_CHILDREN; i++) {
@@ -547,12 +549,79 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
         coarsen = coarsen && (quad->level > min_lvl) && (fabs(f[i]) >= 1.0*lip*d) && ((i==0)? true: ((f[i] > 0.0 && f[0] > 0.0) || (f[i] <= 0.0 && f[0] <= 0.0)));
       }
 
-    if (refine)
-      quad->p.user_int = REFINE_QUADRANT;
-    else if (coarsen)
-      quad->p.user_int = COARSEN_QUADRANT;
-    else
-      quad->p.user_int = SKIP_QUADRANT;
+		} else if (coarsen) {
+			quad->p.user_int = COARSEN_QUADRANT;
+
+		} else { 
+			quad->p.user_int = SKIP_QUADRANT;
+
+		}		
+  }
+}
+
+void splitting_criteria_tag_t::tag_quadrant_inside(p4est_t *p4est, p4est_quadrant_t *quad, p4est_topidx_t which_tree, const double* f) {
+  if (quad->level > max_lvl) {
+    quad->p.user_int = COARSEN_QUADRANT;
+
+  } else {
+    p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*which_tree + 0];
+    p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*which_tree + P4EST_CHILDREN-1];
+
+    double tree_xmin = p4est->connectivity->vertices[3*v_m + 0];
+    double tree_ymin = p4est->connectivity->vertices[3*v_m + 1];
+#ifdef P4_TO_P8
+    double tree_zmin = p4est->connectivity->vertices[3*v_m + 2];
+#endif
+
+    double tree_xmax = p4est->connectivity->vertices[3*v_p + 0];
+    double tree_ymax = p4est->connectivity->vertices[3*v_p + 1];
+#ifdef P4_TO_P8
+    double tree_zmax = p4est->connectivity->vertices[3*v_p + 2];
+#endif
+
+    double dmin = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+    double dx = (tree_xmax-tree_xmin) * dmin;
+    double dy = (tree_ymax-tree_ymin) * dmin;
+#ifdef P4_TO_P8
+    double dz = (tree_zmax-tree_zmin) * dmin;
+#endif
+
+#ifdef P4_TO_P8
+    double d = sqrt(dx*dx + dy*dy + dz*dz);
+#else
+    double d = sqrt(dx*dx + dy*dy);
+#endif
+
+    // refinement based on distance
+                bool refine = false, coarsen = true;
+
+    for (short i = 0; i < P4EST_CHILDREN; i++) {
+//                        refine  = refine  || (fabs(f[i]) <= 0.5*lip*d && quad->level < max_lvl);
+//                        coarsen = coarsen && (fabs(f[i]) >= 1.0*lip*d && quad->level > min_lvl);
+                        refine  = refine  || (fabs(f[i]) <= 0.5*lip*d );
+                        coarsen = coarsen && (fabs(f[i]) >= 1.0*lip*d );
+                }
+
+    if (refine && quad->level >= max_lvl) refine = false;
+
+    bool one_negative = false;
+    for (short i = 0; i < P4EST_CHILDREN; i++) { one_negative = one_negative || f[i] < 0; }
+    if (quad->level < min_lvl && one_negative) { refine = true;      }
+
+    if (quad->level < min_lvl && one_negative) { refine = true;      }
+
+    if (coarsen && quad->level <= min_lvl && one_negative) coarsen = false;
+
+		if (refine) {
+			quad->p.user_int = REFINE_QUADRANT;
+
+		} else if (coarsen) {
+			quad->p.user_int = COARSEN_QUADRANT;
+
+		} else {
+			quad->p.user_int = SKIP_QUADRANT;
+
+                }
   }
 }
 
@@ -578,7 +647,7 @@ void splitting_criteria_tag_t::init_fn(p4est_t* p4est, p4est_topidx_t which_tree
   quad->p.user_int = NEW_QUADRANT;
 }
 
-bool splitting_criteria_tag_t::refine_and_coarsen(p4est_t* p4est, const p4est_nodes_t* nodes, const double *phi, bool finest_in_negative_flag) {
+bool splitting_criteria_tag_t::refine_and_coarsen(p4est_t* p4est, const p4est_nodes_t* nodes, const double *phi) {
 
   double f[P4EST_CHILDREN];
   for (p4est_topidx_t it = p4est->first_local_tree; it <= p4est->last_local_tree; ++it) {
@@ -589,7 +658,8 @@ bool splitting_criteria_tag_t::refine_and_coarsen(p4est_t* p4est, const p4est_no
 
       for (short i = 0; i<P4EST_CHILDREN; i++)
         f[i] = phi[nodes->local_nodes[qu_idx*P4EST_CHILDREN + i]];
-      tag_quadrant(p4est, quad, it, f, finest_in_negative_flag);
+      if (refine_only_inside) tag_quadrant_inside(p4est, quad, it, f);
+      else                    tag_quadrant(p4est, quad, it, f);
     }
   }
 
@@ -615,7 +685,7 @@ function_end:
 }
 
 
-bool splitting_criteria_tag_t::refine(p4est_t *p4est, const p4est_nodes_t *nodes, const double *phi, bool finest_in_negative_flag) {
+bool splitting_criteria_tag_t::refine(p4est_t* p4est, const p4est_nodes_t* nodes, const double *phi) {
 
   double f[P4EST_CHILDREN];
   for (p4est_topidx_t it = p4est->first_local_tree; it <= p4est->last_local_tree; ++it) {
@@ -626,7 +696,8 @@ bool splitting_criteria_tag_t::refine(p4est_t *p4est, const p4est_nodes_t *nodes
 
       for (short i = 0; i<P4EST_CHILDREN; i++)
         f[i] = phi[nodes->local_nodes[qu_idx*P4EST_CHILDREN + i]];
-      tag_quadrant(p4est, quad, it, f, finest_in_negative_flag);
+      if (refine_only_inside) tag_quadrant_inside(p4est, quad, it, f);
+      else                    tag_quadrant(p4est, quad, it, f);
     }
   }
 
@@ -650,3 +721,64 @@ function_end:
   return is_grid_changed;
 }
 
+p4est_bool_t
+refine_grad_cf(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad)
+{
+  (void) which_tree;
+
+  splitting_criteria_grad_t *sp = (splitting_criteria_grad_t*)p4est->user_pointer;
+  if (quad->level < sp->min_lvl)
+    return P4EST_TRUE;
+  else if (quad->level >= sp->max_lvl)
+    return P4EST_FALSE;
+  else
+  {
+#ifdef P4_TO_P8
+    CF_3& cf = *sp->cf;
+#else
+    CF_2& cf = *sp->cf;
+#endif
+
+    double x[P4EST_DIM], dx[P4EST_DIM];
+    quad_xyz(p4est, quad, x);
+    dxyz_quad(p4est, quad, dx);
+
+#ifdef P4_TO_P8
+    double fx = (cf(x[0] + 0.5*dx[0], x[1], x[2]) - cf(x[0] - 0.5*dx[0], x[1], x[2]))/dx[0];
+    double fy = (cf(x[0], x[1] + 0.5*dx[1], x[2]) - cf(x[0], x[1] - 0.5*dx[1], x[2]))/dx[1];
+    double fz = (cf(x[0], x[1], x[2] + 0.5*dx[2]) - cf(x[0], x[1], x[2] - 0.5*dx[2]))/dx[2];
+
+    return MIN(dx[0], dx[1], dx[2]) * sqrt(SQR(fx)+SQR(fy)+SQR(fz))/sp->fmax > sp->tol;
+#else
+    double f[] = {
+      cf(x[0] - 0.5*dx[0], x[1] - 0.5*dx[1]),
+      cf(x[0] + 0.5*dx[0], x[1] - 0.5*dx[1]),
+      cf(x[0] - 0.5*dx[0], x[1] + 0.5*dx[1]),
+      cf(x[0] + 0.5*dx[0], x[1] + 0.5*dx[1]),
+    };
+    double fx = 0.5*((f[1]+f[3]) - (f[0]+f[2]))/dx[0];
+    double fy = 0.5*((f[2]+f[3]) - (f[0]+f[1]))/dx[1];
+    return (MIN(dx[0], dx[1])*sqrt(SQR(fx)+SQR(fy))/sp->fmax) >= sp->tol;
+//    double diag = sqrt(dx[0]*dx[0] + dx[1]*dx[1]);
+//    double fx1 = (f[1] - f[0])/dx[0];
+//    double fy1 = (f[3] - f[2])/dx[1];
+//    double fx2 = (f[3] - f[0])/diag;
+//    double fy2 = (f[2] - f[1])/diag;
+
+//    return (MIN(dx[0], dx[1])*0.5*(sqrt(SQR(fx1)+SQR(fy1))+sqrt(SQR(fx2)+SQR(fy2)))/sp->fmax) >= sp->tol;
+#endif
+  }
+}
+
+p4est_bool_t
+coarsen_down_to_lmax (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad)
+{
+  (void) which_tree;
+
+  splitting_criteria_t *data = (splitting_criteria_t*)p4est->user_pointer;
+
+  if (quad->level > data->max_lvl)
+    return P4EST_TRUE;
+  else
+    return P4EST_FALSE;
+}
