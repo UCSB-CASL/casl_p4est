@@ -86,7 +86,7 @@ int main ( int argc, char* argv[] )
 		mpi_environment_t mpi{};
 		mpi.init( argc, argv );
 
-		int nGridPoints = 128;
+		int nGridPoints = 264;
 		for( int numberOfIterations = 5; numberOfIterations <= 20; numberOfIterations += 5 )	// Set it to 5, 10, 15, 20.
 			saveReinitializedDataset( nGridPoints, numberOfIterations, mpi );
 	}
