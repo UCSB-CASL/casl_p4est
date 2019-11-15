@@ -114,6 +114,10 @@ struct splitting_criteria_thresh_t : splitting_criteria_t {
   }
 };
 
+/*!
+ * \class splitting_criteria_random_t
+ * \brief Class for random refinement.
+ */
 struct splitting_criteria_random_t : splitting_criteria_t {
   p4est_gloidx_t max_quads, min_quads, num_quads;
   splitting_criteria_random_t(int min_lvl, int max_lvl, p4est_gloidx_t min_quads, p4est_gloidx_t max_quads)

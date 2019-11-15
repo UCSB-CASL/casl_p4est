@@ -100,7 +100,6 @@ refine_levelset_cf (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t 
 p4est_bool_t
 refine_levelset_cf_and_uniform_band (p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad)
 {
-
   splitting_criteria_cf_and_uniform_band_t *data = (splitting_criteria_cf_and_uniform_band_t*)p4est->user_pointer;
   if (quad->level < data->min_lvl)
     return P4EST_TRUE;
