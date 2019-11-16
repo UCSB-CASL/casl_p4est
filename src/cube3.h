@@ -113,5 +113,6 @@ public:
       if (val)  {middlecut = true;  num_tet = 5;}
       else      {middlecut = false; num_tet = 6;}
     }
+    double max_Over_Interface(const OctValue &f, const OctValue &ls_values) const;
 };
 #endif // MY_P4EST_CUBE3_H

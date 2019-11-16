@@ -6,11 +6,15 @@
 #include <p8est.h>
 #include <p8est_nodes.h>
 #include <p8est_ghost.h>
+#include <p8est_bits.h>
+#include <src/my_p8est_nodes.h>
 #include <src/my_p8est_refine_coarsen.h>
 #else
 #include <p4est.h>
 #include <p4est_nodes.h>
 #include <p4est_ghost.h>
+#include <p4est_bits.h>
+#include <src/my_p4est_nodes.h>
 #include <src/my_p4est_refine_coarsen.h>
 #endif
 #include <src/petsc_logging.h>
@@ -24,6 +28,23 @@
 #include <sstream>
 #include <vector>
 #include <fstream>
+
+#if SIZE_MAX == UCHAR_MAX
+   #define my_MPI_SIZE_T MPI_UNSIGNED_CHAR
+#elif SIZE_MAX == USHRT_MAX
+   #define my_MPI_SIZE_T MPI_UNSIGNED_SHORT
+#elif SIZE_MAX == UINT_MAX
+   #define my_MPI_SIZE_T MPI_UNSIGNED
+#elif SIZE_MAX == ULONG_MAX
+   #define my_MPI_SIZE_T MPI_UNSIGNED_LONG
+#elif SIZE_MAX == ULLONG_MAX
+   #define my_MPI_SIZE_T MPI_UNSIGNED_LONG_LONG
+#else
+   #error "unknown SIZE_MAX"
+#endif
+
+
+
 
 // forward declaration
 class my_p4est_node_neighbors_t;
@@ -257,6 +278,10 @@ const unsigned short i_idx[] = { 0, 1 };
 const unsigned short j_idx[] = { 1, 0 };
 #endif
 
+const static std::string null_str    = "NULL";
+const static std::string stdout_str  = "stdout";
+const static std::string stderr_str  = "stderr";
+
 
 //#ifdef P4_TO_P8
 //const unsigned short q2c[P4EST_CHILDREN][P4EST_CHILDREN] = { { nn_mmm, nn_0mm, nn_m0m, nn_00m,
@@ -322,6 +347,7 @@ const unsigned short t2c[P4EST_CHILDREN][t2c_num_pts] = { { nn_000, nn_m00, nn_0
                                                           { nn_000, nn_p00, nn_0p0 } };
 #endif
 
+
 enum interpolation_method{
   linear,
   quadratic,
@@ -345,6 +371,7 @@ public:
   double lip, t;
   double value(double *xyz) const {return this->operator ()(xyz[0], xyz[1]);}
   virtual double operator()(double x, double y) const=0 ;
+  double operator()(double *xyz) const {return this->operator()(xyz[0], xyz[1]); }
   virtual ~CF_2() {}
 };
 
@@ -353,7 +380,8 @@ class CF_3
 public:
   double lip, t;
   double value(double *xyz) const {return this->operator ()(xyz[0], xyz[1], xyz[2]);}
-  virtual double operator()(double x, double y, double z) const=0 ;
+  virtual double operator()(double x, double y,double z) const=0 ;
+  double operator()(double *xyz) const {return this->operator()(xyz[0], xyz[1], xyz[2]); }
   virtual ~CF_3() {}
 };
 
@@ -373,6 +401,12 @@ enum {
   INTERFACE = -7
 };
 
+inline int WALL_idx(unsigned char oriented_cart_dir)
+{
+  P4EST_ASSERT(oriented_cart_dir < P4EST_FACES);
+  return (-1-((int) oriented_cart_dir));
+}
+
 typedef enum {
   DIRICHLET,
   NEUMANN,
@@ -382,6 +416,13 @@ typedef enum {
   IGNORE
 } BoundaryConditionType;
 
+class mixed_interface
+{
+public:
+  virtual BoundaryConditionType mixed_type(const double xyz_[]) const=0;
+  virtual ~mixed_interface() {}
+};
+
 std::ostream& operator << (std::ostream& os, BoundaryConditionType  type);
 std::istream& operator >> (std::istream& is, BoundaryConditionType& type);
 
@@ -390,6 +431,7 @@ class WallBC2D
 public:
   virtual BoundaryConditionType operator()( double x, double y ) const=0 ;
   double value(double *xyz) const {return this->operator ()(xyz[0], xyz[1]);}
+  virtual ~WallBC2D() = 0;
 };
 
 class WallBC3D
@@ -397,6 +439,7 @@ class WallBC3D
 public:
   virtual BoundaryConditionType operator()( double x, double y, double z ) const=0 ;
   double value(double *xyz) const {return this->operator ()(xyz[0], xyz[1], xyz[2]);}
+  virtual ~WallBC3D() = 0;
 };
 
 #ifdef P4_TO_P8
@@ -407,12 +450,12 @@ public:
 #define BoundaryConditionsDIM BoundaryConditions2D
 #endif
 
-
 class BoundaryConditions2D
 {
 private:
   const WallBC2D* WallType_;
   BoundaryConditionType InterfaceType_;
+  const mixed_interface* MixedInterface;
 
   const CF_2 *p_WallValue;
   const CF_2 *p_InterfaceValue;
@@ -424,6 +467,7 @@ public:
     WallType_ = NULL;
     p_WallValue = NULL;
     InterfaceType_ = NOINTERFACE;
+    MixedInterface = NULL;
     p_InterfaceValue = NULL;
     p_RobinCoef = NULL;
   }
@@ -442,8 +486,14 @@ public:
     p_WallValue = &v;
   }
 
-  inline void setInterfaceType(BoundaryConditionType bc){
+  inline void setInterfaceType(BoundaryConditionType bc, const mixed_interface* obj_= NULL){
     InterfaceType_ = bc;
+    if(InterfaceType_ == MIXED)
+    {
+      if(obj_ == NULL)
+        throw std::invalid_argument("BoundaryConditions2D::setInterfaceType(): if the interface type is set to MIXED, a pointer to a class of abstract type mixed_interface MUST be provided as well!");
+      MixedInterface = obj_;
+    }
   }
 
   inline void setInterfaceValue(const CF_2& in){
@@ -474,7 +524,19 @@ public:
     return (*WallType_)(x,y);
   }
 
+  inline BoundaryConditionType wallType(const double xyz_[]) const
+  {
+    return wallType(xyz_[0], xyz_[1]);
+  }
+
   inline BoundaryConditionType interfaceType() const{ return InterfaceType_;}
+
+  inline BoundaryConditionType interfaceType(const double* xyz) const
+  {
+    if(InterfaceType_ != MIXED)
+      return interfaceType();
+    return MixedInterface->mixed_type(xyz);
+  }
 
   inline double wallValue(double x, double y) const
   {
@@ -484,12 +546,21 @@ public:
     return p_WallValue->operator ()(x,y);
   }
 
+  inline double wallValue(const double xyz_[]) const
+  {
+    return wallValue(xyz_[0], xyz_[1]);
+  }
+
   inline double interfaceValue(double x, double y) const
   {
 #ifdef CASL_THROWS
     if(p_InterfaceValue == NULL) throw std::invalid_argument("[CASL_ERROR]: The value of the boundary conditions has not been set on the interface.");
 #endif
     return p_InterfaceValue->operator ()(x,y);
+  }
+  inline double  interfaceValue(double xyz_[]) const
+  {
+    return interfaceValue(xyz_[0], xyz_[1]);
   }
 
   inline double robinCoef(double x, double y) const
@@ -500,38 +571,11 @@ public:
     return p_RobinCoef->operator ()(x,y);
   }
 
-  // using double *xyz
-  inline BoundaryConditionType wallType( double *xyz ) const
+  inline double robinCoef( double *xyz_) const
   {
-#ifdef CASL_THROWS
-    if(WallType_ == NULL) throw std::invalid_argument("[CASL_ERROR]: The type of boundary conditions has not been set on the walls.");
-#endif
-    return (*WallType_)(xyz[0],xyz[1]);
+    return robinCoef(xyz_[0], xyz_[1]);
   }
 
-  inline double wallValue( double *xyz) const
-  {
-#ifdef CASL_THROWS
-    if(p_WallValue == NULL) throw std::invalid_argument("[CASL_ERROR]: The value of the boundary conditions has not been set on the walls.");
-#endif
-    return p_WallValue->operator ()(xyz[0],xyz[1]);
-  }
-
-  inline double interfaceValue( double *xyz) const
-  {
-#ifdef CASL_THROWS
-    if(p_InterfaceValue == NULL) throw std::invalid_argument("[CASL_ERROR]: The value of the boundary conditions has not been set on the interface.");
-#endif
-    return p_InterfaceValue->operator ()(xyz[0],xyz[1]);
-  }
-
-  inline double robinCoef( double *xyz) const
-  {
-#ifdef CASL_THROWS
-    if(p_RobinCoef == NULL) throw std::invalid_argument("[CASL_ERROR]: The value of the Robin coef has not been set on the interface.");
-#endif
-    return p_RobinCoef->operator ()(xyz[0],xyz[1]);
-  }
 };
 
 class BoundaryConditions3D
@@ -539,6 +583,7 @@ class BoundaryConditions3D
 private:
   const WallBC3D* WallType_;
   BoundaryConditionType InterfaceType_;
+  const mixed_interface* MixedInterface;
 
   const CF_3 *p_WallValue;
   const CF_3 *p_InterfaceValue;
@@ -550,6 +595,7 @@ public:
     WallType_ = NULL;
     p_WallValue = NULL;
     InterfaceType_ = NOINTERFACE;
+    MixedInterface = NULL;
     p_InterfaceValue = NULL;
     p_RobinCoef = NULL;
   }
@@ -568,8 +614,14 @@ public:
     p_WallValue = &v;
   }
 
-  inline void setInterfaceType(BoundaryConditionType bc){
+  inline void setInterfaceType(BoundaryConditionType bc, const mixed_interface* obj_= NULL){
     InterfaceType_ = bc;
+    if(InterfaceType_ == MIXED)
+    {
+      if(obj_ == NULL)
+        throw std::invalid_argument("BoundaryConditions3D::setInterfaceType(): if the interface type is set to MIXED, a pointer to a class of abstract type mixed_interface MUST be provided as well");
+      MixedInterface = obj_;
+    }
   }
 
   inline void setInterfaceValue(const CF_3& in){
@@ -600,7 +652,19 @@ public:
     return (*WallType_)(x,y,z);
   }
 
+  inline BoundaryConditionType wallType(const double xyz_[]) const
+  {
+    return wallType(xyz_[0],xyz_[1],xyz_[2]);
+  }
+
   inline BoundaryConditionType interfaceType() const{ return InterfaceType_;}
+
+  inline BoundaryConditionType interfaceType(const double* xyz) const
+  {
+    if(InterfaceType_ != MIXED)
+      return interfaceType();
+    return MixedInterface->mixed_type(xyz);
+  }
 
   inline double wallValue(double x, double y, double z) const
   {
@@ -608,6 +672,11 @@ public:
     if(p_WallValue == NULL) throw std::invalid_argument("[CASL_ERROR]: The value of the boundary conditions has not been set on the walls.");
 #endif
     return p_WallValue->operator ()(x,y,z);
+  }
+
+  inline double wallValue(const double xyz_[]) const
+  {
+    return p_WallValue->operator ()(xyz_[0],xyz_[1],xyz_[2]);
   }
 
   inline double interfaceValue(double x, double y, double z) const
@@ -618,6 +687,11 @@ public:
     return p_InterfaceValue->operator ()(x,y,z);
   }
 
+  inline double  interfaceValue(double xyz_[]) const
+  {
+    return interfaceValue(xyz_[0], xyz_[1], xyz_[2]);
+  }
+
   inline double robinCoef(double x, double y, double z) const
   {
 #ifdef CASL_THROWS
@@ -626,71 +700,109 @@ public:
     return p_RobinCoef->operator ()(x,y,z);
   }
 
-  // using double *xyz
-  inline BoundaryConditionType wallType( double *xyz ) const
+  inline double robinCoef(double xyz_[]) const
   {
-#ifdef CASL_THROWS
-    if(WallType_ == NULL) throw std::invalid_argument("[CASL_ERROR]: The type of boundary conditions has not been set on the walls.");
-#endif
-    return (*WallType_)(xyz[0],xyz[1],xyz[2]);
-  }
-
-  inline double wallValue(double *xyz) const
-  {
-#ifdef CASL_THROWS
-    if(p_WallValue == NULL) throw std::invalid_argument("[CASL_ERROR]: The value of the boundary conditions has not been set on the walls.");
-#endif
-    return p_WallValue->operator ()(xyz[0],xyz[1],xyz[2]);
-  }
-
-  inline double interfaceValue(double *xyz) const
-  {
-#ifdef CASL_THROWS
-    if(p_InterfaceValue == NULL) throw std::invalid_argument("[CASL_ERROR]: The value of the boundary conditions has not been set on the interface.");
-#endif
-    return p_InterfaceValue->operator ()(xyz[0],xyz[1],xyz[2]);
-  }
-
-  inline double robinCoef( double *xyz) const
-  {
-#ifdef CASL_THROWS
-    if(p_RobinCoef == NULL) throw std::invalid_argument("[CASL_ERROR]: The value of the Robin coef has not been set on the interface.");
-#endif
-    return p_RobinCoef->operator ()(xyz[0],xyz[1],xyz[2]);
+    return robinCoef(xyz_[0], xyz_[1], xyz_[2]);
   }
 };
 
-double linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *xyz_global);
+/*!
+ * \brief index_of_node finds the (local) index of a node as defined within p4est, i.e. as a pest_quadrant_t structure whose level is P4EST_MAXLEVEL!
+ *        The method uses a binary search through the provided nodes: its complexity is O(log(N_nodes)).
+ *        The given node MUST MANDATORILY be canonicalized before being passed to this function to ensure consistency with the provided nodes: use
+ *        p4est_node_canonicalize beforehand!
+ * \param [in]    n node whose local index is queried!
+ * \param [in]    nodes the nodes data structure
+ * \param [inout] idx the local index of the node on output if found, undefined if not found (i.e. if the returned value is false)
+ * \return true if the queried node exists and was found in the nodes (i.e. if the idx is valid), false otherwise.
+ */
+bool index_of_node(const p4est_quadrant_t *n, p4est_nodes_t* nodes, p4est_locidx_t& idx);
 
 /*!
- * \brief non_oscilatory_quadratic_interpolation performs non-oscilatory quadratic interpolation for a point
- * \param p4est the forest
- * \param tree_id the current tree that owns the quadrant
- * \param quad the current quarant
- * \param F a simple C-style array of size 4, containing the values of the function at the vertices of the quadrant. __MUST__ be z-ordered
- * \param Fxx a simple C-style array of size 4, containing the values of the xx derivative of function at the vertices of the quadrant. does not need to be z-ordered
- * \param Fyy a simple C-style array of size 4, containing the values of the yy derivative of function at the vertices of the quadrant. does not need to be z-ordered
- * \param x_global global x-coordinate ointerface_location_with_second_order_derivativef the point
- * \param y_global global y-coordinate of the point
- * \return interpolated value
+ * \brief linear_interpolation performs linear interpolation for a point
+ * \param [in]    p4est the forest
+ * \param [in]    tree_id the current tree that owns the quadrant
+ * \param [in]    quad the current quarant
+ * \param [in]    F a simple C-style array of size n_results*P4EST_CHILDREN, containing the values of the n_vecs function(s) at the vertices of the quadrant. __MUST__ be z-ordered
+ *                F[k*P4EST_CHILDREN+i] = value of he kth function at quadrant's node i (in z-order), 0 <= i < P4EST_CHILDREN, 0 <= k < n_results
+ * \param [in]    xyz_global global coordinates of the point
+ * \param [inout] simple C-style array of size n_results containing the results of the quadratic_interpolation of the n_results different functions at the node of interest (located at xyz_global)
+ * \param [in]    n_results number of functions to be interpolated
  */
-double quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global);
-double quadratic_non_oscillatory_continuous_v1_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global);
-double quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global);
+void linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *xyz_global, double *results, const unsigned int n_results);
+inline double linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *xyz_global)
+{
+  double result;
+  linear_interpolation(p4est, tree_id, quad, F, xyz_global, &result, 1);
+  return result;
+}
+
+/*!
+ * \brief quadratic_non_oscillatory_interpolation performs non-oscilatory quadratic interpolation for a point
+ * \param [in]    p4est the forest
+ * \param [in]    tree_id the current tree that owns the quadrant
+ * \param [in]    quad the current quarant
+ * \param [in]    F a simple C-style array of size n_results*P4EST_CHILDREN, containing the values of the n_vecs function(s) at the vertices of the quadrant. __MUST__ be z-ordered
+ *                F[k*P4EST_CHILDREN+i] = value of he kth function at quadrant's node i (in z-order), 0 <= i < P4EST_CHILDREN, 0 <= k < n_results
+ * \param [in]    Fdd a simple C-style array of size n_results*P4EST_CHILDREN*P4EST_DIM, containing the values of the second derivatives of the function(s) at the vertices of the quadrant
+ *                Fdd[k*P4EST_CHILDREN*P4EST_DIM+j*P4EST_DIM+i] = value of the second derivative along dimension i, at quadrant's node j, of the kth function,
+ *                0 <= i < P4EST_DIM, 0<= j < P4EST_CHILDREN, 0 <= k < n_results
+ * \param [in]    xyz_global global coordinates of the point
+ * \param [inout] simple C-style array of size n_results containing the results of the quadratic_interpolation of the n_results different functions at the node of interest (located at xyz_global)
+ * \param [in]    n_results number of functions to be interpolated
+ */
+void quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results);
+inline double quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global)
+{
+  double result;
+  quadratic_non_oscillatory_interpolation(p4est, tree_id, quad, F, Fdd, xyz_global, &result, 1);
+  return result;
+}
+
+void quadratic_non_oscillatory_continuous_v1_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results);
+inline double quadratic_non_oscillatory_continuous_v1_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global)
+{
+  double result;
+  quadratic_non_oscillatory_continuous_v1_interpolation(p4est, tree_id, quad, F, Fdd, xyz_global, &result, 1);
+  return result;
+}
+
+void quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results);
+inline double quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global)
+{
+  double result;
+  quadratic_non_oscillatory_continuous_v2_interpolation(p4est, tree_id, quad, F, Fdd, xyz_global, &result, 1);
+  return result;
+}
+
 
 /*!
  * \brief quadratic_interpolation performs quadratic interpolation for a point
- * \param p4est the forest
- * \param tree_id the current tree that owns the quadrant
- * \param quad the current quarant
- * \param F a simple C-style array of size 4, containing the values of the function at the vertices of the quadrant. __MUST__ be z-ordered
- * \param Fxx a simple C-style array of size 4, containing the values of the xx derivative of function at the vertices of the quadrant. does not need to be z-ordered
- * \param Fyy a simple C-style array of size 4, containing the values of the yy derivative of function at the vertices of the quadrant. does not need to be z-ordered
- * \param x_global global x-coordinate of the point
- * \param y_global global y-coordinate of the point
- * \return interpolated value
+ * \param [in]    p4est the forest
+ * \param [in]    tree_id the current tree that owns the quadrant
+ * \param [in]    quad the current quarant
+ * \param [in]    F a simple C-style array of size n_results*P4EST_CHILDREN, containing the values of the n_vecs function(s) at the vertices of the quadrant. __MUST__ be z-ordered
+ *                F[k*P4EST_CHILDREN+i] = value of he kth function at quadrant's node i (in z-order), 0 <= i < P4EST_CHILDREN, 0 <= k < n_results
+ * \param [in]    Fdd a simple C-style array of size n_results*P4EST_CHILDREN*P4EST_DIM, containing the values of the second derivatives of the function(s) at the vertices of the quadrant
+ *                Fdd[k*P4EST_CHILDREN*P4EST_DIM+j*P4EST_DIM+i] = value of the second derivative along dimension i, at quadrant's node j, of the kth function,
+ *                0 <= i < P4EST_DIM, 0<= j < P4EST_CHILDREN, 0 <= k < n_results
+ * \param [in]    xyz_global global coordinates of the point
+ * \param [inout] simple C-style array of size n_results containing the results of the quadratic_interpolation of the n_results different functions at the node of interest (located at xyz_global)
+ * \param [in]    n_results number of functions to be interpolated
  */
-double quadratic_interpolation(const p4est_t* p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global);
+void quadratic_interpolation(const p4est_t* p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results);
+inline double quadratic_interpolation(const p4est_t* p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global)
+{
+  double result;
+  quadratic_interpolation(p4est, tree_id, quad, F, Fdd, xyz_global, &result, 1);
+  return result;
+}
+
+p4est_bool_t nodes_are_equal(int mpi_size, p4est_nodes_t* nodes_1, p4est_nodes_t* nodes_2);
+
+p4est_bool_t ghosts_are_equal(p4est_ghost_t* ghost_1, p4est_ghost_t* ghost_2);
+
+PetscErrorCode VecGetLocalAndGhostSizes(Vec& v, PetscInt& local_size, PetscInt& ghosted_size);
 
 /*!
  * \brief VecGhostCopy  copy a ghosted vector, i.e. dst <- src
@@ -701,12 +813,28 @@ double quadratic_interpolation(const p4est_t* p4est, p4est_topidx_t tree_id, con
 PetscErrorCode VecGhostCopy(Vec src, Vec dst);
 
 /*!
- * \brief VecCreateGhostNodes Creates a ghosted PETSc parallel vector on the nodes based on p4est node ordering
- * \param p4est [in]  the forest
- * \param nodes [in]  the nodes numbering data structure
- * \param v     [out] PETSc vector type
+ * \brief vectorIsWellSetForNodes
+ * \param v
+ * \param nodes
+ * \param mpicomm
+ * \param block_size
+ * \return
  */
-PetscErrorCode VecCreateGhostNodes(const p4est_t *p4est, p4est_nodes_t *nodes, Vec* v);
+bool vectorIsWellSetForNodes(Vec& v, const p4est_nodes_t* nodes, const MPI_Comm& mpicomm, const unsigned int &block_size);
+
+/*!
+ * \brief VecCreateGhostNodesBlock Creates a ghosted block PETSc parallel vector on the nodes
+ * \param p4est      [in]  p4est object
+ * \param nodes      [in]  the nodes object
+ * \param block_size [in]  block size of the vector
+ * \param v          [out] PETSc vector
+ * \return a PetscErrorCode to be checked against using CHKERRXX()
+ */
+PetscErrorCode VecCreateGhostNodesBlock(const p4est_t *p4est, const p4est_nodes_t *nodes, const PetscInt & block_size, Vec* v);
+inline PetscErrorCode VecCreateGhostNodes(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec* v)
+{
+  return VecCreateGhostNodesBlock(p4est, nodes, 1, v);
+}
 
 /*!
  * \brief VecGhostSet Sets a ghost vector to a value
@@ -717,32 +845,89 @@ PetscErrorCode VecCreateGhostNodes(const p4est_t *p4est, p4est_nodes_t *nodes, V
 PetscErrorCode VecGhostSet(Vec x, double v);
 
 /*!
- * \brief VecCreateGhostNodesBlock Creates a ghosted block PETSc parallel vector on the nodes
- * \param p4est      [in]  p4est object
- * \param nodes      [in]  the nodes object
- * \param block_size [in]  block size of the vector
- * \param v          [out] PETSc vector
- * \return
- */
-PetscErrorCode VecCreateGhostNodesBlock(const p4est_t *p4est, p4est_nodes_t *nodes, PetscInt block_size, Vec* v);
-
-/*!
- * \brief VecCreateGhostNodes Creates a ghosted PETSc parallel vector on the cells
- * \param p4est [in]  the forest
- * \param ghost [in]  the ghost cells
- * \param v     [out] PETSc vector type
- */
-PetscErrorCode VecCreateGhostCells(const p4est_t *p4est, p4est_ghost_t *ghost, Vec* v);
-
-/*!
- * \brief VecCreateGhostNodesBlock Creates a ghosted block PETSc parallel vector
+ * \brief VecCreateGhostNodesBlock Creates a ghosted block PETSc parallel vector on the cells
  * \param p4est      [in]  p4est object
  * \param ghost      [in]  the ghost cells
  * \param block_size [in]  block size of the vector
  * \param v          [out] PETSc vector
- * \return
+ * \return a PetscErrorCode to be checked against using CHKERRXX()
  */
-PetscErrorCode VecCreateGhostCellsBlock(const p4est_t *p4est, p4est_ghost_t *ghost, PetscInt block_size, Vec* v);
+PetscErrorCode VecCreateGhostCellsBlock(const p4est_t *p4est, const p4est_ghost_t *ghost, const PetscInt & block_size, Vec* v);
+inline PetscErrorCode VecCreateGhostCells(const p4est_t *p4est, const p4est_ghost_t *ghost, Vec* v)
+{
+  return VecCreateGhostCellsBlock(p4est, ghost, 1, v);
+}
+
+/*!
+ * \brief VecCreateCellsBlockNoGhost Creates a non-ghosted block PETSc parallel vector on the cells
+ * \param p4est       [in]  the forest
+ * \param block_size  [in]  block size of the vector
+ * \param v           [out] PETSc vector type
+ * \return a PetscErrorCode to be checked against using CHKERRXX()
+ */
+PetscErrorCode VecCreateCellsBlockNoGhost(const p4est_t *p4est, const PetscInt &block_size, Vec* v);
+inline PetscErrorCode VecCreateCellsNoGhost(const p4est_t *p4est, Vec* v)
+{
+  return VecCreateCellsBlockNoGhost(p4est, 1, v);
+}
+
+PetscErrorCode VecScatterAllToSomeCreate(MPI_Comm comm, Vec origin_loc, Vec destination, const PetscInt &ndest_glo_idx, const PetscInt *dest_glo_idx, VecScatter *ctx);
+inline PetscErrorCode VecScatterAllToSomeCreate(MPI_Comm comm, Vec origin_loc, Vec destination, const std::vector<PetscInt>& dest_glo_idx, VecScatter *ctx)
+{
+  return VecScatterAllToSomeCreate(comm, origin_loc, destination, dest_glo_idx.size(), dest_glo_idx.data(), ctx);
+}
+inline PetscErrorCode VecScatterAllToSomeBegin(VecScatter ctx, Vec origin_loc, Vec destination)
+{
+  return VecScatterBegin(ctx, origin_loc, destination, INSERT_VALUES, SCATTER_FORWARD);
+}
+inline PetscErrorCode VecScatterAllToSomeEnd(VecScatter ctx, Vec origin_loc, Vec destination)
+{
+  return VecScatterEnd(ctx, origin_loc, destination, INSERT_VALUES, SCATTER_FORWARD);
+}
+
+/*!
+ * \brief VecScatterAllToSome scatters all local values of an origin parallel Petsc vector to some/all values of another
+ * \param comm          [in]    mpi communication group in which the vectors live
+ * \param origin        [in]    origin vector from which all values need to be scattered
+ * \param destination   [inout] destination vector in which some/all values need to be filled
+ * \param ndest_glo_idx [in]    number of elements in dest_glo_idx array (next argument)
+ * \param dest_glo_idx  [in]    array of ndest_glo_idx global indices corresponding to the destination indices mapped with
+ *                              the local values of the origin vector
+ *                              (NULL is fine if ndest_glo_idx is 0)
+ * \param sync_ghost    [in]    activates ghost updates in the destination vector after scattering if true (default is false)
+ * [DEBUG check] this routine checks that the global size of the origin is <= the global size of destination in DEBUG
+ * [DEBUG check] this routine checks that ndest_glo_idx is <= the local size of origin in DEBUG
+ * \return a Petsc error code to be checked against for success/failure
+ */
+inline PetscErrorCode VecScatterAllToSome(MPI_Comm comm, Vec origin, Vec destination, const PetscInt &ndest_glo_idx, const PetscInt *dest_glo_idx, const bool &sync_ghost = false)
+{
+  PetscErrorCode ierr;
+#ifdef DEBUG
+  PetscInt full_size_origin, full_size_destination, local_size_origin;
+  ierr = VecGetSize(origin, &full_size_origin);                                                       CHKERRQ(ierr);
+  ierr = VecGetSize(destination, &full_size_destination);                                             CHKERRQ(ierr);
+  P4EST_ASSERT(full_size_origin <= full_size_destination);
+  ierr = VecGetLocalSize(origin, &local_size_origin);                                                 CHKERRQ(ierr);
+  P4EST_ASSERT(ndest_glo_idx <= local_size_origin);
+#endif
+  VecScatter ctx;
+  Vec origin_loc;
+  ierr = VecGhostGetLocalForm(origin, &origin_loc);                                                   CHKERRQ(ierr);
+  ierr = VecScatterAllToSomeCreate(comm, origin_loc, destination, ndest_glo_idx, dest_glo_idx, &ctx); CHKERRQ(ierr);
+  ierr = VecScatterAllToSomeBegin(ctx, origin_loc, destination);                                      CHKERRQ(ierr);
+  ierr = VecScatterAllToSomeEnd(ctx, origin_loc, destination);                                        CHKERRQ(ierr);
+  ierr = VecGhostRestoreLocalForm(origin, &origin_loc);                                               CHKERRQ(ierr);
+  if(sync_ghost){
+    ierr = VecGhostUpdateBegin(destination, INSERT_VALUES, SCATTER_FORWARD);                          CHKERRQ(ierr); }
+  ierr = VecScatterDestroy(ctx);                                                                      CHKERRQ(ierr);
+  if(sync_ghost){
+    ierr = VecGhostUpdateEnd(destination, INSERT_VALUES, SCATTER_FORWARD);                            CHKERRQ(ierr); }
+  return ierr;
+}
+inline PetscErrorCode VecScatterAllToSome(MPI_Comm comm, Vec origin, Vec destination, const std::vector<PetscInt>& dest_glo_idx, const bool &sync_ghost = false)
+{
+  return VecScatterAllToSome(comm, origin, destination, dest_glo_idx.size(), dest_glo_idx.data(), sync_ghost);
+}
 
 /*!
  * \brief VecScatterCreateChangeLayout Create a VecScatter context useful for changing the parallel layout of a vector
@@ -774,6 +959,65 @@ PetscErrorCode VecGhostChangeLayoutBegin(VecScatter ctx, Vec from, Vec to);
  */
 PetscErrorCode VecGhostChangeLayoutEnd(VecScatter ctx, Vec from, Vec to);
 
+/*!
+ * \brief is_folder returns true if the path points to an existing folder
+ * does not use boost nor c++17 standard to maximize portability
+ * \param path: path to be checked
+ * \return true if the path points to a folder
+ * [throws std::runtime_error if the path cannot be accessed]
+ */
+bool is_folder(const char* path);
+inline bool is_folder(const std::string &path_str) { return is_folder(path_str.c_str()); }
+
+/*!
+ * \brief file_exists returns true if the path points to an existing file
+ * does not use boost nor c++17 standard to maximize portability
+ * \param path:path to be checked
+ * \return true if there exists a file corresponding to the given path
+ */
+bool file_exists(const char* path);
+inline bool file_exists(const std::string &path_str) { return file_exists(path_str.c_str()); }
+
+/*!
+ * \brief create_directory creates a folder indicated by the given path, permission rights: 755
+ * does not use boost nor c++17 standard to maximize portability (parents are created as well)
+ * \param path: path to the folder to be created
+ * \param mpi_rank: rank of the calling process
+ * \param comm: communicator
+ * \return 0 if the creation was successful, non-0 otherwise
+ * [the root process creates the folder, the operation is collective by MPI_Bcast on the result]
+ */
+int create_directory(const char* path, int mpi_rank, MPI_Comm comm=MPI_COMM_WORLD);
+inline int create_directory(const std::string &path_str, int mpi_rank, MPI_Comm comm=MPI_COMM_WORLD)
+{
+  return create_directory(path_str.c_str(), mpi_rank, comm);
+}
+
+/*!
+ * \brief delete_directory_recursive explores a directory then
+ * - it deletes all regular files in the directrory;
+ * - it goes through subdirectories and calls the same function on them;
+ * - after recursive call returns the subdirectory is removed;
+ * does not use boost nor c++17 standard to maximize portability
+ * \param root_path: path to the root directory to be entirely deleted
+ * \param mpi_rank: rank of the calling process
+ * \param comm: communicator
+ * \param non_collective: flag skipping the (collective) steps (for recursive calls on root process)
+ * \return 0 if the deletion was successful, non-0 otherwise
+ * [the root process deletes the content, the operation is collective by MPI_Bcast on the final result]
+ * [throws std::invalid_argument if the root_path is NOT a directory]
+ */
+int delete_directory(const char* root_path, int mpi_rank, MPI_Comm comm=MPI_COMM_WORLD, bool non_collective=false);
+inline int delete_directory(const std::string &root_path_str, int mpi_rank, MPI_Comm comm=MPI_COMM_WORLD, bool non_collective=false)
+{
+  return delete_directory(root_path_str.c_str(), mpi_rank, comm, non_collective);
+}
+
+int get_subdirectories_in(const char* root_path, std::vector<std::string>& subdirectories);
+inline int get_subdirectories_in(const std::string root_path_str, std::vector<std::string>& subdirectories)
+{
+  return get_subdirectories_in(root_path_str.c_str(), subdirectories);
+}
 
 inline double int2double_coordinate_transform(p4est_qcoord_t a){
   return static_cast<double>(a)/static_cast<double>(P4EST_ROOT_LEN);
@@ -1287,6 +1531,10 @@ double area_in_negative_domain(const p4est_t *p4est, const p4est_nodes_t *nodes,
  * \brief integrate_over_interface_in_one_quadrant
  */
 double integrate_over_interface_in_one_quadrant(const p4est_t *p4est, const p4est_nodes_t *nodes, const p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi, Vec f);
+/*!
+ * \brief max_over_interface_in_one_quadrant
+ */
+double max_over_interface_in_one_quadrant(const p4est_nodes_t *nodes, p4est_locidx_t quad_idx, Vec phi, Vec f);
 
 /*!
  * \brief integrate_over_interface integrate a scalar f over the 0-contour of the level-set function phi.
@@ -1298,6 +1546,16 @@ double integrate_over_interface_in_one_quadrant(const p4est_t *p4est, const p4es
  * \return the integral of f over the contour defined by phi, i.e. \int_{phi=0} f
  */
 double integrate_over_interface(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec f);
+
+/*!
+ * \brief max_over_interface calculate the maximum value of a scalar f over the 0-contour of the level-set function phi.
+ * \param p4est the p4est
+ * \param nodes the nodes structure associated to p4est
+ * \param phi the level-set function
+ * \param f the scalar to integrate
+ * \return the integral of f over the contour defined by phi, i.e. \max_{phi=0} f
+ */
+double max_over_interface(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec f);
 
 /*!
  * \brief compute_mean_curvature computes the mean curvature using compact stencil k = -div(n)
@@ -1349,6 +1607,15 @@ void compute_normals(const quad_neighbor_nodes_of_node_t& qnnn, double *phi, dou
  * \param [out] normals   array of size P4EST_DIM of PETSc vectors to store the normal in the entire doamin
  */
 void compute_normals(const my_p4est_node_neighbors_t& neighbors, Vec phi, Vec normals[P4EST_DIM]);
+
+/*!
+ * \brief compute_normals computes the (scaled) normal to the surface for the entire grid
+ * \param [in]  neighbors the neighborhood information
+ * \param [in]  phi       PETSc vector of the levelset function
+ * \param [out] normals   P4EST_DIM-blocked PETSc vectors to store the normal in the entire doamin
+ */
+void compute_normals(const my_p4est_node_neighbors_t& neighbors, Vec phi, Vec normals);
+
 
 /*!
  * \brief interface_length_in_one_quadrant
@@ -1425,7 +1692,6 @@ bool is_node_zpWall(const p4est_t *p4est, const p4est_indep_t *ni);
  * \param p4est [in] p4est
  * \param ni    [in] pointer to the node structure
  * \return true if the point is on the domain boundary and p4est is _NOT_ periodic
- * \note: periodicity is not implemented
  */
 bool is_node_Wall  (const p4est_t *p4est, const p4est_indep_t *ni);
 
@@ -1437,6 +1703,15 @@ bool is_node_Wall  (const p4est_t *p4est, const p4est_indep_t *ni);
  * \note: periodicity is not implemented
  */
 bool is_node_Wall  (const p4est_t *p4est, const p4est_indep_t *ni, bool is_wall[]);
+
+/*!
+ * \brief is_node_Wall checks if a node is on the oriented domain boundary pointed by oriented_dir
+ * \param p4est         [in] p4est
+ * \param ni            [in] pointer to the node structure
+ * \param oriented_dir  [in] oriented direction (dir::f_m00, dir::f_p00, etc.)
+ * \return true if the point is on the domain boundary and p4est is _NOT_ periodic
+ */
+bool is_node_Wall(const p4est_t *p4est, const p4est_indep_t *ni, const unsigned char oriented_dir);
 
 /*!
  * \brief is_quad_xmWall checks if a quad is on x^- domain boundary
@@ -1452,7 +1727,6 @@ bool is_quad_xmWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quad
  * \param p4est [in] p4est
  * \param qi    [in] pointer to the quadrant
  * \return true if the quad is on the right domain boundary and p4est is _NOT_ periodic
- * \note: periodicity is not implemented
  */
 bool is_quad_xpWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi);
 
@@ -1461,7 +1735,6 @@ bool is_quad_xpWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quad
  * \param p4est [in] p4est
  * \param qi    [in] pointer to the quadrant
  * \return true if the quad is on the bottom domain boundary and p4est is _NOT_ periodic
- * \note: periodicity is not implemented
  */
 bool is_quad_ymWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi);
 
@@ -1470,7 +1743,6 @@ bool is_quad_ymWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quad
  * \param p4est [in] p4est
  * \param qi    [in] pointer to the quadrant
  * \return true if the quad is on the top domain boundary and p4est is _NOT_ periodic
- * \note: periodicity is not implemented
  */
 bool is_quad_ypWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi);
 
@@ -1479,7 +1751,6 @@ bool is_quad_ypWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quad
  * \param p4est [in] p4est
  * \param qi    [in] pointer to the quadrant
  * \return true if the quad is on the back domain boundary and p4est is _NOT_ periodic
- * \note: periodicity is not implemented
  */
 bool is_quad_zmWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi);
 
@@ -1488,7 +1759,6 @@ bool is_quad_zmWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quad
  * \param p4est [in] p4est
  * \param qi    [in] pointer to the quadrant
  * \return true if the quad is on the front domain boundary and p4est is _NOT_ periodic
- * \note: periodicity is not implemented
  */
 bool is_quad_zpWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi);
 
@@ -1498,7 +1768,6 @@ bool is_quad_zpWall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quad
  * \param qi    [in] pointer to the quadrant
  * \param dir   [in] the direction to check, dir::f_m00, dir::f_p00, dir::f_0m0 ...
  * \return true if the quad is on the domain boundary in the direction dir and p4est is _NOT_ periodic
- * \note: periodicity is not implemented
  */
 bool is_quad_Wall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi, int dir);
 
@@ -1507,7 +1776,6 @@ bool is_quad_Wall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadra
  * \param p4est [in] p4est
  * \param qi    [in] pointer to the quadrant
  * \return true if the quad is on the domain boundary and p4est is _NOT_ periodic
- * \note: periodicity is not implemented
  */
 bool is_quad_Wall  (const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi);
 
@@ -1517,7 +1785,7 @@ bool is_quad_Wall  (const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quad
  * \param dir   [in] the direction to check, 0 (x), 1 (y) or 2 (z, only in 3D)
  * \return true if the forest is periodic in direction dir, false otherwise
  */
-inline bool is_periodic(const p4est_t *p4est, int dir)
+inline bool is_periodic(const p4est_connectivity_t *const conn, int dir)
 {
   /* check whether there is not a boundary on the left side of first tree */
   P4EST_ASSERT (0 <= dir && dir < P4EST_DIM);
@@ -1525,22 +1793,37 @@ inline bool is_periodic(const p4est_t *p4est, int dir)
   const int face = 2 * dir;
   const p4est_topidx_t tfindex = 0 * P4EST_FACES + face;
 
-  return !(p4est->connectivity->tree_to_tree[tfindex] == 0 &&
-           p4est->connectivity->tree_to_face[tfindex] == face);
+  return !(conn->tree_to_tree[tfindex] == 0 &&
+           conn->tree_to_face[tfindex] == face);
+}
+inline bool is_periodic(const p4est_t *p4est, int dir)
+{
+  return is_periodic(p4est->connectivity, dir);
 }
 
-/*!
- * \brief is_periodic checks if the forest is periodic in any direction
- * \param p4est [in] the forest
- * \return true if the forest is periodic, false otherwise
- */
-inline bool is_periodic(const p4est_t *p4est)
+inline void clip_in_domain(double xyz[P4EST_DIM], const double xyz_min[P4EST_DIM], const double xyz_max[P4EST_DIM], const bool periodic[P4EST_DIM])
 {
-#ifdef P4_TO_P8
-  return is_periodic(p4est, 0) || is_periodic(p4est, 1) || is_periodic(p4est, 2);
-#else
-  return is_periodic(p4est, 0) || is_periodic(p4est, 1);
-#endif
+  for(unsigned char dir=0; dir<P4EST_DIM; ++dir)
+    if((xyz[dir]<xyz_min[dir]) || (xyz[dir]>xyz_max[dir]))
+    {
+      if(periodic[dir])
+        xyz[dir] = xyz[dir] - floor((xyz[dir]-xyz_min[dir])/(xyz_max[dir]-xyz_min[dir]))*(xyz_max[dir]-xyz_min[dir]);
+      else
+        xyz[dir] = MAX(xyz_min[dir], MIN(xyz_max[dir], xyz[dir]));
+    }
+}
+
+inline void clip_in_domain(double xyz[P4EST_DIM], const p4est_t* p4est)
+{
+  double xyz_min[P4EST_DIM], xyz_max[P4EST_DIM];
+  bool periodic[P4EST_DIM];
+  for(unsigned char dir=0; dir<P4EST_DIM; ++dir)
+  {
+    xyz_min[dir]  = p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[0]+dir];
+    xyz_max[dir]  = p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*p4est->connectivity->num_trees - 1] + dir];
+    periodic[dir] = is_periodic(p4est, dir);
+  }
+  clip_in_domain(xyz, xyz_min, xyz_max, periodic);
 }
 
 /*!
@@ -1654,7 +1937,11 @@ public:
 
     ierr = PetscInitialize(&argc, &argv, NULL, NULL); CHKERRXX(ierr);
 
+#ifdef DEBUG
+    sc_init (mpicomm, P4EST_FALSE, P4EST_FALSE, NULL, SC_LP_DEFAULT); // to allow easy debugging --> backtracks the P4EST_ASSERTs!
+#else
     sc_init (mpicomm, P4EST_FALSE, P4EST_FALSE, NULL, SC_LP_SILENT);
+#endif
     p4est_init (NULL, SC_LP_SILENT);
 #ifdef CASL_LOG_EVENTS
     register_petsc_logs();
@@ -1733,8 +2020,8 @@ public:
 
   void start(const std::string& msg){
     msg_ = msg;
-    if(msg_.length() > 0){
-      ierr = PetscFPrintf(comm_, f_, "%s ... \n", msg.c_str()); CHKERRXX(ierr); }
+    if(msg_.length() > 0)
+      PetscFPrintf(comm_, f_, "%s ... \n", msg.c_str());
     ts = MPI_Wtime();
   }
 
@@ -2808,3 +3095,5 @@ double smoothstep(int N, double x);
 
 void variable_step_BDF_implicit(const int order, std::vector<double> &dt, std::vector<double> &coeffs);
 #endif // UTILS_H
+
+

@@ -151,4 +151,131 @@ public:
 #define ADD_TO_LIST(list, var, description) static add_to_list CAT(adding_,var) (list, var, #var, description)
 
 
+/*!
+ * \brief Classes param_list_t and param_t provides the user with a fast and convenient way to define and manage parameters,
+ * TODO: add description
+ */
+class param_base_t
+{
+public:
+  param_base_t(const std::string& key, const std::string& description)
+    : key(key), description(description) {}
+  std::string key;
+  std::string description;
+  virtual void set_from_cmd(cmdParser &cmd)=0;
+  virtual std::string print_value()=0;
+};
+
+class param_list_t
+{
+public:
+  std::vector<param_base_t *> list;
+
+  void initialize_parser(cmdParser &cmd)
+  {
+    for (int i = 0; i < list.size(); ++i)
+    {
+      cmd.add_option(list[i]->key, list[i]->description);
+    }
+  }
+
+  void set_from_cmd_all(cmdParser &cmd)
+  {
+    for (int i = 0; i < list.size(); ++i)
+    {
+      list[i]->set_from_cmd(cmd);
+    }
+  }
+
+  void print_all(bool align=false)
+  {
+    int length = 0;
+
+    if (align)
+    {
+      for (int i = 0; i < list.size(); ++i)
+        if (list[i]->key.size() > length)
+          length = list[i]->key.size();
+
+
+      for (int i = 0; i < list.size(); ++i)
+      {
+        std::cout << list[i]->key << ":" << std::string(length-list[i]->key.size()+1, ' ') << list[i]->print_value() << "\n";
+      }
+    }
+    else
+    {
+      for (int i = 0; i < list.size(); ++i)
+      {
+        std::cout << list[i]->key << ": " << list[i]->print_value() << "\n";
+      }
+    }
+  }
+
+  void save_all(const char output[], bool align=false)
+  {
+    std::ofstream out(output);
+    if (out.is_open())
+    {
+      int length = 0;
+
+      if (align)
+      {
+        for (int i = 0; i < list.size(); ++i)
+          if (list[i]->key.size() > length)
+            length = list[i]->key.size();
+
+
+        for (int i = 0; i < list.size(); ++i)
+        {
+          out << list[i]->key << ":" << std::string(length-list[i]->key.size()+1, ' ') << list[i]->print_value() << "\n";
+        }
+      }
+      else
+      {
+        for (int i = 0; i < list.size(); ++i)
+        {
+          out << list[i]->key << ": " << list[i]->print_value() << "\n";
+        }
+      }
+
+      out.close();
+    }
+    else throw std::invalid_argument("Unable to open file\n");
+  }
+};
+
+template <typename T>
+class param_t : public param_base_t
+{
+public:
+  param_t(T value, const std::string& key, const std::string& description)
+    : param_base_t(key, description), val(value) {}
+
+  param_t(T value, param_list_t &list, const std::string& key, const std::string& description)
+    : param_base_t(key, description), val(value)
+  {
+    list.list.push_back(this);
+  }
+
+  param_t(param_list_t &list, T value, const std::string& key, const std::string& description)
+    : param_base_t(key, description), val(value)
+  {
+    list.list.push_back(this);
+  }
+
+  T val;
+  inline T operator()() { return val; }
+  inline void set(T value) { this->val = value; }
+  inline void get() { return val; }
+  void set_from_cmd(cmdParser &cmd) { val = cmd.get(key, val); }
+  std::string print_value()
+  {
+    std::ostringstream result;
+    result << val;
+    return result.str();
+  }
+};
+
+
 #endif // PARAMETER_LIST_H

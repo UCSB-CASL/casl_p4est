@@ -1,4 +1,3 @@
-
 /*
  * Test the cell based multi level-set p4est.
  * Intersection of two circles
@@ -35,6 +34,8 @@
 #include <src/my_p8est_semi_lagrangian.h>
 #include <src/my_p8est_macros.h>
 #include <src/my_p8est_shapes.h>
+#include <src/my_p8est_save_load.h>
+#include <src/my_p8est_general_poisson_nodes_mls_solver.h>
 #include <src/mls_integration/vtk/simplex3_mls_l_vtk.h>
 #include <src/mls_integration/vtk/simplex3_mls_q_vtk.h>
 #else
@@ -55,6 +56,8 @@
 #include <src/my_p4est_semi_lagrangian.h>
 #include <src/my_p4est_macros.h>
 #include <src/my_p4est_shapes.h>
+#include <src/my_p4est_save_load.h>
+#include <src/my_p4est_general_poisson_nodes_mls_solver.h>
 #include <src/mls_integration/vtk/simplex2_mls_l_vtk.h>
 #include <src/mls_integration/vtk/simplex2_mls_q_vtk.h>
 #endif
@@ -100,20 +103,20 @@ DEFINE_PARAMETER(pl, double, zmax,  1, "Box zmax");
 // refinement parameters
 //-------------------------------------
 #ifdef P4_TO_P8
-DEFINE_PARAMETER(pl, int, lmin, 7, "Min level of the tree");
-DEFINE_PARAMETER(pl, int, lmax, 9, "Max level of the tree");
+DEFINE_PARAMETER(pl, int, lmin, 3, "Min level of the tree");
+DEFINE_PARAMETER(pl, int, lmax, 4, "Max level of the tree");
 
-DEFINE_PARAMETER(pl, int, num_splits,           1, "Number of recursive splits");
+DEFINE_PARAMETER(pl, int, num_splits,           4, "Number of recursive splits");
 DEFINE_PARAMETER(pl, int, num_splits_per_split, 1, "Number of additional resolutions");
 
 DEFINE_PARAMETER(pl, int, num_shifts_x_dir, 1, "Number of grid shifts in the x-direction");
 DEFINE_PARAMETER(pl, int, num_shifts_y_dir, 1, "Number of grid shifts in the y-direction");
 DEFINE_PARAMETER(pl, int, num_shifts_z_dir, 1, "Number of grid shifts in the z-direction");
 #else
-DEFINE_PARAMETER(pl, int, lmin, 5, "Min level of the tree");
+DEFINE_PARAMETER(pl, int, lmin, 4, "Min level of the tree");
 DEFINE_PARAMETER(pl, int, lmax, 5, "Max level of the tree");
 
-DEFINE_PARAMETER(pl, int, num_splits,           5, "Number of recursive splits");
+DEFINE_PARAMETER(pl, int, num_splits,           1, "Number of recursive splits");
 DEFINE_PARAMETER(pl, int, num_splits_per_split, 1, "Number of additional resolutions");
 
 DEFINE_PARAMETER(pl, int, num_shifts_x_dir, 1, "Number of grid shifts in the x-direction");
@@ -122,11 +125,11 @@ DEFINE_PARAMETER(pl, int, num_shifts_z_dir, 1, "Number of grid shifts in the z-d
 #endif
 
 DEFINE_PARAMETER(pl, int, iter_start, 0, "Skip n first iterations");
-DEFINE_PARAMETER(pl, double, lip, 2, "Lipschitz constant");
+DEFINE_PARAMETER(pl, double, lip, 2.0, "Lipschitz constant");
 
 DEFINE_PARAMETER(pl, bool, refine_strict,  0, "Refines every cell starting from the coarsest case if yes");
 DEFINE_PARAMETER(pl, bool, refine_rand,    0, "Add randomness into adaptive grid");
-DEFINE_PARAMETER(pl, bool, balance_grid,   0, "Enforce 1:2 ratio for adaptive grid");
+DEFINE_PARAMETER(pl, bool, balance_grid,   1, "Enforce 1:2 ratio for adaptive grid");
 DEFINE_PARAMETER(pl, bool, coarse_outside, 0, "Use the coarsest possible grid outside the domain (0/1)");
 DEFINE_PARAMETER(pl, int,  expand_ghost,   0, "Number of ghost layer expansions");
 
@@ -225,7 +228,7 @@ DEFINE_PARAMETER(pl, int, jc_flux_03, 0, "0 - automatic, others - hardcoded");
 //-------------------------------------
 DEFINE_PARAMETER(pl, int,  jc_scheme,         0, "Discretization scheme for interface conditions (0 - FVM, 1 - FDM)");
 DEFINE_PARAMETER(pl, int,  jc_sub_scheme,     0, "Interpolation subscheme for interface conditions (0 - from slow region, 1 - from fast region, 2 - based on nodes availability)");
-DEFINE_PARAMETER(pl, int,  integration_order, 2, "Select integration order (1 - linear, 2 - quadratic)");
+DEFINE_PARAMETER(pl, int,  integration_order, 1, "Select integration order (1 - linear, 2 - quadratic)");
 DEFINE_PARAMETER(pl, bool, sc_scheme,         1, "Use super-convergent scheme");
 
 // for symmetric scheme:
@@ -264,7 +267,7 @@ DEFINE_PARAMETER(pl, double, mask_thresh,            0, "Mask threshold for excl
 DEFINE_PARAMETER(pl, bool,   compute_grad_between,   0, "Computes gradient between points if yes");
 DEFINE_PARAMETER(pl, bool,   scale_errors,           0, "Scale errors by max solution/gradient value");
 DEFINE_PARAMETER(pl, bool,   use_nonzero_guess,      0, "");
-DEFINE_PARAMETER(pl, double, extension_band_extend,  6, "");
+DEFINE_PARAMETER(pl, double, extension_band_extend,  60, "");
 DEFINE_PARAMETER(pl, double, extension_band_compute, 6, "");
 DEFINE_PARAMETER(pl, double, extension_band_check,   6, "");
 DEFINE_PARAMETER(pl, double, extension_tol,          -1.e-10, "");
@@ -339,7 +342,7 @@ void set_example(int n_example)
       infc_present_03 = 0;
 
       bdry_present_00 = 1; bdry_geom_00 = 2; bdry_opn_00 = MLS_INT; bc_coeff_00 = 0; bc_coeff_00_mag = 1; bc_type_00 = ROBIN;
-      bdry_present_01 = 0; bdry_geom_01 = 0; bdry_opn_01 = MLS_INT; bc_coeff_01 = 0; bc_coeff_01_mag = 1; bc_type_01 = ROBIN;
+      bdry_present_01 = 0; bdry_geom_00 = 0; bdry_opn_01 = MLS_INT; bc_coeff_01 = 0; bc_coeff_01_mag = 1; bc_type_01 = ROBIN;
       bdry_present_02 = 0; bdry_geom_02 = 0; bdry_opn_02 = MLS_INT; bc_coeff_02 = 0; bc_coeff_02_mag = 1; bc_type_02 = ROBIN;
       bdry_present_03 = 0; bdry_geom_03 = 0; bdry_opn_03 = MLS_INT; bc_coeff_03 = 0; bc_coeff_03_mag = 1; bc_type_03 = ROBIN;
 
@@ -464,8 +467,8 @@ void set_example(int n_example)
 
     case 9: // shperical interface
 
-      n_um = 11; mag_um = 1; n_mu_m = 0; mag_mu_m = 5; n_diag_m = 1; mag_diag_m = 1;
-      n_up = 12; mag_up = 1; n_mu_p = 0; mag_mu_p = 1; n_diag_p = 1; mag_diag_p = 1;
+      n_um = 10; mag_um = 1; n_mu_m = 0; mag_mu_m = 80; n_diag_m = 1; mag_diag_m = 0;
+      n_up = 12; mag_up = 1; n_mu_p = 0; mag_mu_p = 2; n_diag_p = 1; mag_diag_p = 1;
 
       infc_phi_num = 1;
       bdry_phi_num = 0;
@@ -483,11 +486,8 @@ void set_example(int n_example)
       break;
 
     case 10: // moderately star-shaped interface
-
-//      n_um = 14; mag_um = 1; n_mu_m = 0; mag_mu_m = 1; n_diag_m = 0; mag_diag_m = 1;
-//      n_up = 14; mag_up = 2; n_mu_p = 0; mag_mu_p = 1; n_diag_p = 0; mag_diag_p = 1;
-      n_um = 11; mag_um = 1; n_mu_m = 1; mag_mu_m = 5; n_diag_m = 1; mag_diag_m = 1;
-      n_up = 12; mag_up = 1; n_mu_p = 0; mag_mu_p = 1; n_diag_p = 1; mag_diag_p = 1;
+      n_um = 10; mag_um = 1; n_mu_m = 0; mag_mu_m = 80; n_diag_m = 1; mag_diag_m = 0;
+      n_up = 12; mag_up = 1; n_mu_p = 0; mag_mu_p = 2; n_diag_p = 1; mag_diag_p = 1;
 
       infc_phi_num = 1;
       bdry_phi_num = 0;
@@ -507,6 +507,7 @@ void set_example(int n_example)
     case 11: // highly star-shaped interface
 
       n_um = 11; mag_um = 1; n_mu_m = 0; mag_mu_m = 1; n_diag_m = 0; mag_diag_m = 1;
+
       n_up = 12; mag_up = 1; n_mu_p = 0; mag_mu_p =  1; n_diag_p = 0; mag_diag_p = 1;
 
       infc_phi_num = 1;
@@ -567,6 +568,114 @@ void set_example(int n_example)
       bdry_present_03 = 0;
 
       break;
+  case 15: // shperical interface - case 4 from voronoi jump solver3D
+    case 16: // shperical interface - case 1 from voronoi jump solver3D
+    case 17: // shperical interface - case 5 from voronoi jump solver3D
+  case 18: // shperical interface - case 3 from voronoi jump solver2D
+  case 19: // shperical interface - case 0 from voronoi jump solver3D
+    break;
+
+  case 14: // shperical interface - case 4 from voronoi jump solver3D
+
+     n_um = 17; mag_um = 1; n_mu_m = 8; mag_mu_m = 1; n_diag_m = 1; mag_diag_m = 0;
+     n_up = 18; mag_up = 1; n_mu_p = 7; mag_mu_p = 1; n_diag_p = 1; mag_diag_p = 1;
+
+
+      infc_phi_num = 1;
+      bdry_phi_num = 0;
+
+      infc_present_00 = 1; infc_geom_00 = 2; infc_opn_00 = MLS_INT;
+      infc_present_01 = 0; infc_geom_01 = 0; infc_opn_01 = MLS_INT;
+      infc_present_02 = 0; infc_geom_02 = 0; infc_opn_02 = MLS_INT;
+      infc_present_03 = 0; infc_geom_03 = 0; infc_opn_03 = MLS_INT;
+
+      bdry_present_00 = 0;
+      bdry_present_01 = 0;
+      bdry_present_02 = 0;
+      bdry_present_03 = 0;
+
+      break;
+
+    case 15: // shperical interface - case 1 from voronoi jump solver3D
+
+      n_um = 15; mag_um = 1; n_mu_m = 9; mag_mu_m = 1; n_diag_m = 0; mag_diag_m = 1;
+      n_up = 16; mag_up = 1; n_mu_p = 10; mag_mu_p = 1; n_diag_p = 0; mag_diag_p = 1;
+
+      infc_phi_num = 1;
+      bdry_phi_num = 0;
+
+      infc_present_00 = 1; infc_geom_00 = 2; infc_opn_00 = MLS_INT;
+      infc_present_01 = 0; infc_geom_01 = 0; infc_opn_01 = MLS_INT;
+      infc_present_02 = 0; infc_geom_02 = 0; infc_opn_02 = MLS_INT;
+      infc_present_03 = 0; infc_geom_03 = 0; infc_opn_03 = MLS_INT;
+
+      bdry_present_00 = 0;
+      bdry_present_01 = 0;
+      bdry_present_02 = 0;
+      bdry_present_03 = 0;
+
+      break;
+
+    case 16: // shperical interface - case 5 from voronoi jump solver3D
+
+      n_um = 14; mag_um = 1; n_mu_m = 8; mag_mu_m = 1; n_diag_m = 0; mag_diag_m = 1;
+      n_up = 14; mag_up = 1; n_mu_p = 7; mag_mu_p = 1; n_diag_p = 0; mag_diag_p = 1;
+
+      infc_phi_num = 1;
+      bdry_phi_num = 0;
+
+      infc_present_00 = 1; infc_geom_00 = 2; infc_opn_00 = MLS_INT;
+      infc_present_01 = 0; infc_geom_01 = 0; infc_opn_01 = MLS_INT;
+      infc_present_02 = 0; infc_geom_02 = 0; infc_opn_02 = MLS_INT;
+      infc_present_03 = 0; infc_geom_03 = 0; infc_opn_03 = MLS_INT;
+
+      bdry_present_00 = 0;
+      bdry_present_01 = 0;
+      bdry_present_02 = 0;
+      bdry_present_03 = 0;
+
+      break;
+
+  case 17: // shperical interface - case 3 from voronoi jump solver2D
+
+    n_um = 13; mag_um = 1; n_mu_m = 5; mag_mu_m = 1; n_diag_m = 0; mag_diag_m = 1;
+    n_up = 16; mag_up = 1; n_mu_p = 6; mag_mu_p = 1; n_diag_p = 0; mag_diag_p = 1;
+
+    infc_phi_num = 1;
+    bdry_phi_num = 0;
+
+    infc_present_00 = 1; infc_geom_00 = 3; infc_opn_00 = MLS_INT;
+    infc_present_01 = 0; infc_geom_01 = 0; infc_opn_01 = MLS_INT;
+    infc_present_02 = 0; infc_geom_02 = 0; infc_opn_02 = MLS_INT;
+    infc_present_03 = 0; infc_geom_03 = 0; infc_opn_03 = MLS_INT;
+
+    bdry_present_00 = 0;
+    bdry_present_01 = 0;
+    bdry_present_02 = 0;
+    bdry_present_03 = 0;
+
+    break;
+
+  case 18: // shperical interface - case 0 from voronoi jump solver3D
+
+    n_um = 15; mag_um = 1; n_mu_m = 0; mag_mu_m = 1; n_diag_m = 0; mag_diag_m = 1;
+    n_up = 16; mag_up = 1; n_mu_p = 0; mag_mu_p = 1; n_diag_p = 0; mag_diag_p = 1;
+
+    infc_phi_num = 1;
+    bdry_phi_num = 0;
+
+    infc_present_00 = 1; infc_geom_00 = 3; infc_opn_00 = MLS_INT;
+    infc_present_01 = 0; infc_geom_01 = 0; infc_opn_01 = MLS_INT;
+    infc_present_02 = 0; infc_geom_02 = 0; infc_opn_02 = MLS_INT;
+    infc_present_03 = 0; infc_geom_03 = 0; infc_opn_03 = MLS_INT;
+
+    bdry_present_00 = 0;
+    bdry_present_01 = 0;
+    bdry_present_02 = 0;
+    bdry_present_03 = 0;
+
+    break;
+
   }
 }
 
@@ -691,6 +800,73 @@ public:
 #endif
           }
         }
+    case 5: {
+        XCODE( double X = (x-xmin)/(xmax-xmin) );
+        YCODE( double Y = (y-ymin)/(ymax-ymin) );
+        switch (what) {
+        case VAL: return (*mag)*SQR((y-ymin)/(ymax-ymin))*log((x-0.5*(xmax+xmin))/(xmax- xmin)+2) +4;
+        case DDX: return (*mag)*SQR((y-ymin)/(ymax-ymin))*((+1)/(x-0.5*(xmax+xmin)+2*(xmax-xmin)));
+        case DDY: return (*mag)*(2.0*(y-ymin)/SQR(ymax-ymin))*log((x-0.5*(xmax+xmin))/(xmax- xmin)+2);
+        }
+       }//works
+    case 6: {
+        XCODE( double X = (x-xmin)/(xmax-xmin) );
+        YCODE( double Y = (y-ymin)/(ymax-ymin) );
+        switch (what) {
+        case VAL: return (*mag)*exp((-1)*(y-0.5*(ymin+ymax))/(ymax-ymin));
+        case DDX: return 0.0;
+        case DDY: return (*mag)*exp((-1)*(y-0.5*(ymin+ymax))/(ymax-ymin))*((-1.0)/(ymax-ymin));
+        }
+     }//works
+#ifdef P4_TO_P8
+    case 7: {
+        XCODE( double X = (x-xmin)/(xmax-xmin) );
+        YCODE( double Y = (y-ymin)/(ymax-ymin) );
+        switch (what) {
+        case VAL: return (*mag)*exp((x-0.5*(xmin+xmax))/(xmax-xmin)+(z-0.5*(zmin+zmax))/(zmax-zmin));
+        case DDX: return (*mag)*exp((x-0.5*(xmin+xmax))/(xmax-xmin)+(z-0.5*(zmin+zmax))/(zmax-zmin))*(1/(xmax-xmin));
+        case DDY: return 0.0;
+        case DDZ: return (*mag)*exp((x-0.5*(xmin+xmax))/(xmax-xmin)+(z-0.5*(zmin+zmax))/(zmax-zmin))*(1/(zmax-zmin));
+        }
+     }
+#endif
+    case 8: {
+        XCODE( double X = (x-xmin)/(xmax-xmin) );
+        YCODE( double Y = (y-ymin)/(ymax-ymin) );
+        switch (what) {
+        case VAL: return (*mag)*SQR((y-0.5*(ymin+ymax))/(ymax-ymin))+5;
+        case DDX: return 0.0;
+        case DDY: return (*mag)*(2.*(y-0.5*(ymin+ymax))/SQR(ymax-ymin));
+#ifdef P4_TO_P8
+          case DDZ: return 0.;
+#endif
+        }
+     }
+
+   case 9: {
+            XCODE( double X = (x-xmin)/(xmax-xmin) );
+            YCODE( double Y = (y-ymin)/(ymax-ymin) );
+            switch (what) {
+            case VAL: return (*mag)*SQR((y-ymin)/(ymax-ymin))*log((x-xmin)/(xmax- xmin)+2) +4;
+            case DDX: return (*mag)*SQR((y-ymin)/(ymax-ymin))*((+1.)/(x-xmin+2.*(xmax-xmin)));
+            case DDY: return (*mag)*((2*(y-ymin))/SQR(ymax-ymin))*log((x-xmin)/(xmax- xmin)+2);
+    #ifdef P4_TO_P8
+              case DDZ: return 0.0;
+    #endif
+       }
+    }
+#ifdef P4_TO_P8
+   case 10: {
+             switch (what) {
+             case VAL: return (*mag)*exp(-(z-zmin)/(zmax-zmin));
+             case DDX: return 0.0;
+             case DDY: return 0.0;
+             case DDZ: return (*mag)*exp(-(z-zmin)/(zmax-zmin))*(-1./(zmax-zmin));
+             }
+    }
+#endif
+
+
     }
   }
 };
@@ -925,37 +1101,102 @@ public:
           case LAP: return -(*mag)*2.*2.*2.*sin(2.*x)*cos(2.*y);
 #endif
         }
-      case 13: {
-          double X    = (-x+y)/3.;
-          double T5   = 16.*pow(X,5.)  - 20.*pow(X,3.) + 5.*X;
-          double T5d  = 5.*(16.*pow(X,4.) - 12.*pow(X,2.) + 1.);
-          double T5dd = 40.*X*(8.*X*X-3.);
-        switch (what) {
+
+
+    case 13: switch (what){
+            case VAL: return (*mag)*(exp((x - 0.5*(xmin+xmax))/(xmax -xmin)));
+            case DDX: return (*mag)*(exp((x - 0.5*(xmin+xmax))/(xmax -xmin)))*(1/((xmax-xmin)));
+            case DDY: return 0.0;
+            case LAP: return (*mag)*(1/(SQR(xmax-xmin)))*(exp((x - 0.5*(xmin+xmax))/(xmax -xmin)));
+            }
+
+    case 14: switch (what){
+    #ifdef P4_TO_P8
+            case VAL: return (*mag)*(cos(x/(xmax-xmin))*sin(y/(ymax-ymin)))*exp((z-zmin)/(zmax-zmin));
+            case DDX: return -(*mag)*(sin(x/(xmax-xmin))*sin(y/(ymax-ymin)))*(1/(xmax-xmin))*exp((z-zmin)/(zmax-zmin));
+            case DDY: return (*mag)*(cos(x/(xmax-xmin))*cos(y/(ymax-ymin)))*(1/(ymax-ymin))*exp((z-zmin)/(zmax-zmin));
+            case DDZ: return (*mag)*(cos(x/(xmax-xmin))*sin(y/(ymax-ymin)))*(exp((z-zmin)/(zmax-zmin))*(1/(zmax-zmin)));
+            case LAP: return (*mag)*((-1/(SQR(xmax-xmin)))+(-1/(SQR(ymax-ymin)))+1/SQR(zmax-zmin))*(cos(x/(xmax-xmin))*sin(y/(ymax-ymin))*exp((z-zmin)/(zmax-zmin)));
+    #else
+            case VAL: return (*mag)*(cos(x/(xmax-xmin))*sin(y/(ymax-ymin)));
+            case DDX: return -(*mag)*(sin(x/(xmax-xmin))*sin(y/(ymax-ymin)))*(1/(xmax-xmin));
+            case DDY: return (*mag)*(cos(x/(xmax-xmin))*cos(y/(ymax-ymin)))*(1/(ymax-ymin));
+            case LAP: return -(*mag)*((1/(SQR(xmax-xmin)))+(1/(SQR(ymax-ymin))))*(cos(x/(xmax-xmin))*sin(y/(ymax-ymin)));
+    #endif
+            }
+    #ifdef P4_TO_P8
+        case 15: switch (what){
+            case VAL: return (*mag)*exp((z-zmin)/(zmax-zmin));
+            case DDX: return 0.0;
+            case DDY: return 0.0;
+            case DDZ: return (*mag)*(exp((z-zmin)/(zmax-zmin))*(1/(zmax-zmin)));
+            case LAP: return (*mag)*(exp((z-zmin)/(zmax-zmin))*SQR(1/(zmax-zmin)));
+            }
+    #endif
+
+        case 16: switch (what){
+            case VAL: return (*mag)*(cos(x/(xmax-xmin))*sin(y/(ymax-ymin)));
+            case DDX: return -(*mag)*(sin(x/(xmax-xmin))*sin(y/(ymax-ymin)))*(1/(xmax-xmin));
+            case DDY: return (*mag)*(cos(x/(xmax-xmin))*cos(y/(ymax-ymin)))*(1/(ymax-ymin));
+    #ifdef P4_TO_P8
+            case DDZ: return 0.0;
+    #endif
+            case LAP: return -(*mag)*((1/(SQR(xmax-xmin)))+(1/(SQR(ymax-ymin))))*(cos(x/(xmax-xmin))*sin(y/(ymax-ymin)));
+            }
+    #ifdef P4_TO_P8
+        case 17: switch (what){
+            case VAL: return ((y-0.5*(ymin+ymax))/(ymax-ymin))*((z-0.5*(zmin+zmax))/(zmax-zmin))*sin(x/(xmax-xmin));
+            case DDX: return ((y-0.5*(ymin+ymax))/(ymax-ymin))*((z-0.5*(zmin+zmax))/(zmax-zmin))*cos(x/(xmax-xmin))*(1/(xmax-xmin));
+            case DDY: return ((z-0.5*(zmin+zmax))/(zmax-zmin))*sin(x/(xmax-xmin))*(1/(ymax-ymin));
+            case DDZ: return ((y-0.5*(ymin+ymax))/(ymax-ymin))*sin(x/(xmax-xmin))*(1/(zmax-zmin));
+            case LAP: return ((y-0.5*(ymin+ymax))/(ymax-ymin))*((z-0.5*(zmin+zmax))/(zmax-zmin))*sin(x/(xmax-xmin))*(-SQR(1/(xmax-xmin)));
+           }
+    #endif
+
+    #ifdef P4_TO_P8
+        case 18: switch (what){
+            case VAL: return ((x-0.5*(xmin+xmax))/(xmax-xmin))*SQR((y-0.5*(ymin+ymax))/(ymax-ymin))+pow((z-0.5*(zmin+zmax))/(zmax-zmin), 3.0);
+            case DDX: return SQR((y-0.5*(ymin+ymax))/(ymax-ymin))*(1/(xmax-xmin));
+            case DDY: return ((x-0.5*(xmin+xmax))/(xmax-xmin))*(2*(y-0.5*(ymin+ymax))/SQR(ymax-ymin));
+            case DDZ: return 3.*SQR(z-0.5*(zmin+zmax))/(pow((zmax-zmin), 3.0));
+            case LAP: return ((x-0.5*(xmin+xmax))/(xmax-xmin))*(2./SQR(ymax-ymin))+6.*(z-0.5*(zmin+zmax))/(pow((zmax-zmin), 3.0)) ;
+           }
+    #endif
+
+    case 19: {
+        double X    = (-x+y)/3.;
+        double T5   = 16.*pow(X,5.)  - 20.*pow(X,3.) + 5.*X;
+        double T5d  = 5.*(16.*pow(X,4.) - 12.*pow(X,2.) + 1.);
+        double T5dd = 40.*X*(8.*X*X-3.);
+      switch (what) {
 #ifdef P4_TO_P8
-          case VAL: return  1.+T5*log(x+y+3.)*cos(z);
-          case DDX: return  (T5/(x+y+3.) - T5d*log(x+y+3.)/3.)*cos(z);
-          case DDY: return  (T5/(x+y+3.) + T5d*log(x+y+3.)/3.)*cos(z);
-          case DDZ: return -T5*log(x+y+3.)*sin(z);
-          case LAP: return  (2.*T5dd*log(x+y+3.)/9. - 2.*T5/pow(x+y+3.,2.))*cos(z)
-                - T5*log(x+y+3.)*cos(z);
+        case VAL: return  1.+T5*log(x+y+3.)*cos(z);
+        case DDX: return  (T5/(x+y+3.) - T5d*log(x+y+3.)/3.)*cos(z);
+        case DDY: return  (T5/(x+y+3.) + T5d*log(x+y+3.)/3.)*cos(z);
+        case DDZ: return -T5*log(x+y+3.)*sin(z);
+        case LAP: return  (2.*T5dd*log(x+y+3.)/9. - 2.*T5/pow(x+y+3.,2.))*cos(z)
+              - T5*log(x+y+3.)*cos(z);
 #else
-          case VAL: return 1.+T5*log(x+y+3.);
-          case DDX: return T5/(x+y+3.) - T5d*log(x+y+3.)/3.;
-          case DDY: return T5/(x+y+3.) + T5d*log(x+y+3.)/3.;
-          case LAP: return 2.*T5dd*log(x+y+3.)/9. - 2.*T5/pow(x+y+3.,2.);
+        case VAL: return 1.+T5*log(x+y+3.);
+        case DDX: return T5/(x+y+3.) - T5d*log(x+y+3.)/3.;
+        case DDY: return T5/(x+y+3.) + T5d*log(x+y+3.)/3.;
+        case LAP: return 2.*T5dd*log(x+y+3.)/9. - 2.*T5/pow(x+y+3.,2.);
 #endif
-        }}
-      case 14: switch (what) {
-          case VAL: return (*mag);
-          case DDX: return 0;
-          case DDY: return 0;
+      }}
+
+
+
+    case 20: switch (what) {
+        case VAL: return (*mag);
+        case DDX: return 0;
+        case DDY: return 0;
 #ifdef P4_TO_P8
-          case DDZ: return 0;
+        case DDZ: return 0;
 #endif
-          case LAP: return 0;
-        }
-      default:
-        throw std::invalid_argument("Unknown test function\n");
+        case LAP: return 0;
+      }
+          default:
+            throw std::invalid_argument("Unknown test function\n");
     }
   }
 };
@@ -998,7 +1239,8 @@ class rhs_m_cf_t: public CF_DIM
 {
 public:
   double operator()(DIM(double x, double y, double z)) const {
-    return diag_m_cf(DIM(x,y,z))*(u_m_cf(DIM(x,y,z)))
+
+    return diag_m_cf(DIM(x,y,z))*sinh(u_m_cf(DIM(x,y,z)))
         - mu_m_cf(DIM(x,y,z))*ul_m_cf(DIM(x,y,z))
         - SUMD(mux_m_cf(DIM(x,y,z))*ux_m_cf(DIM(x,y,z)),
                muy_m_cf(DIM(x,y,z))*uy_m_cf(DIM(x,y,z)),
@@ -1010,7 +1252,8 @@ class rhs_p_cf_t: public CF_DIM
 {
 public:
   double operator()(DIM(double x, double y, double z)) const {
-    return diag_p_cf(DIM(x,y,z))*(u_p_cf(DIM(x,y,z)))
+
+    return diag_p_cf(DIM(x,y,z))*sinh(u_p_cf(DIM(x,y,z)))
         - mu_p_cf(DIM(x,y,z))*ul_p_cf(DIM(x,y,z))
         - SUMD(mux_p_cf(DIM(x,y,z))*ux_p_cf(DIM(x,y,z)),
                muy_p_cf(DIM(x,y,z))*uy_p_cf(DIM(x,y,z)),
@@ -1084,10 +1327,10 @@ public:
         static const double r0 = 0.911, DIM(xc = 0, yc = 0, zc = 0);
         static flower_shaped_domain_t circle(r0, DIM(xc, yc, zc));
         switch (what) {
-          OCOMP( case VAL: return circle.phi  (DIM(x,y,z)) );
-          XCOMP( case DDX: return circle.phi_x(DIM(x,y,z)) );
-          YCOMP( case DDY: return circle.phi_y(DIM(x,y,z)) );
-          ZCOMP( case DDZ: return circle.phi_z(DIM(x,y,z)) );
+          _CODE( case VAL: return circle.phi  (DIM(x,y,z)) );
+          XCODE( case DDX: return circle.phi_x(DIM(x,y,z)) );
+          YCODE( case DDY: return circle.phi_y(DIM(x,y,z)) );
+          ZCODE( case DDZ: return circle.phi_z(DIM(x,y,z)) );
         }
       } break;
       case 2: // circle/sphere exterior
@@ -1095,10 +1338,10 @@ public:
         static double r0 = 0.311, DIM(xc = 0, yc = 0, zc = 0);
         static flower_shaped_domain_t circle(r0, DIM(xc, yc, zc), 0, -1);
         switch (what) {
-          OCOMP( case VAL: return circle.phi  (DIM(x,y,z)) );
-          XCOMP( case DDX: return circle.phi_x(DIM(x,y,z)) );
-          YCOMP( case DDY: return circle.phi_y(DIM(x,y,z)) );
-          ZCOMP( case DDZ: return circle.phi_z(DIM(x,y,z)) );
+          _CODE( case VAL: return circle.phi  (DIM(x,y,z)) );
+          XCODE( case DDX: return circle.phi_x(DIM(x,y,z)) );
+          YCODE( case DDY: return circle.phi_y(DIM(x,y,z)) );
+          ZCODE( case DDZ: return circle.phi_z(DIM(x,y,z)) );
         }
       } break;
       case 3: // annular/shell region
@@ -1108,10 +1351,10 @@ public:
         static flower_shaped_domain_t circle_in(r0_in, DIM(xc_in, yc_in, zc_in), 0, -1);
         static flower_shaped_domain_t circle_ex(r0_ex, DIM(xc_ex, yc_ex, zc_ex), 0,  1);
         switch (what) {
-          OCOMP( case VAL: return (circle_in.phi(DIM(x,y,z)) > circle_ex.phi(DIM(x,y,z))) ? circle_in.phi  (DIM(x,y,z)) : circle_ex.phi  (DIM(x,y,z)); );
-          XCOMP( case DDX: return (circle_in.phi(DIM(x,y,z)) > circle_ex.phi(DIM(x,y,z))) ? circle_in.phi_x(DIM(x,y,z)) : circle_ex.phi_x(DIM(x,y,z)); );
-          YCOMP( case DDY: return (circle_in.phi(DIM(x,y,z)) > circle_ex.phi(DIM(x,y,z))) ? circle_in.phi_y(DIM(x,y,z)) : circle_ex.phi_y(DIM(x,y,z)); );
-          ZCOMP( case DDZ: return (circle_in.phi(DIM(x,y,z)) > circle_ex.phi(DIM(x,y,z))) ? circle_in.phi_z(DIM(x,y,z)) : circle_ex.phi_z(DIM(x,y,z)); );
+          _CODE( case VAL: return (circle_in.phi(DIM(x,y,z)) > circle_ex.phi(DIM(x,y,z))) ? circle_in.phi  (DIM(x,y,z)) : circle_ex.phi  (DIM(x,y,z)); );
+          XCODE( case DDX: return (circle_in.phi(DIM(x,y,z)) > circle_ex.phi(DIM(x,y,z))) ? circle_in.phi_x(DIM(x,y,z)) : circle_ex.phi_x(DIM(x,y,z)); );
+          YCODE( case DDY: return (circle_in.phi(DIM(x,y,z)) > circle_ex.phi(DIM(x,y,z))) ? circle_in.phi_y(DIM(x,y,z)) : circle_ex.phi_y(DIM(x,y,z)); );
+          ZCODE( case DDZ: return (circle_in.phi(DIM(x,y,z)) > circle_ex.phi(DIM(x,y,z))) ? circle_in.phi_z(DIM(x,y,z)) : circle_ex.phi_z(DIM(x,y,z)); );
         }
       } break;
       case 4: // moderately star-shaped domain
@@ -1119,10 +1362,10 @@ public:
         static double r0 = 0.611, DIM(xc = 0, yc = 0, zc = 0), deform = 0.15;
         static flower_shaped_domain_t circle(r0, DIM(xc, yc, zc), deform);
         switch (what) {
-          OCOMP( case VAL: return circle.phi  (DIM(x,y,z)) );
-          XCOMP( case DDX: return circle.phi_x(DIM(x,y,z)) );
-          YCOMP( case DDY: return circle.phi_y(DIM(x,y,z)) );
-          ZCOMP( case DDZ: return circle.phi_z(DIM(x,y,z)) );
+          _CODE( case VAL: return circle.phi  (DIM(x,y,z)) );
+          XCODE( case DDX: return circle.phi_x(DIM(x,y,z)) );
+          YCODE( case DDY: return circle.phi_y(DIM(x,y,z)) );
+          ZCODE( case DDZ: return circle.phi_z(DIM(x,y,z)) );
         }
       } break;
       case 5: // highly start-shaped domain
@@ -1130,10 +1373,10 @@ public:
         static double r0 = 0.611, DIM(xc = 0, yc = 0, zc = 0), deform = 0.3;
         static flower_shaped_domain_t circle(r0, DIM(xc, yc, zc), deform);
         switch (what) {
-          OCOMP( case VAL: return circle.phi  (DIM(x,y,z)) );
-          XCOMP( case DDX: return circle.phi_x(DIM(x,y,z)) );
-          YCOMP( case DDY: return circle.phi_y(DIM(x,y,z)) );
-          ZCOMP( case DDZ: return circle.phi_z(DIM(x,y,z)) );
+          _CODE( case VAL: return circle.phi  (DIM(x,y,z)) );
+          XCODE( case DDX: return circle.phi_x(DIM(x,y,z)) );
+          YCODE( case DDY: return circle.phi_y(DIM(x,y,z)) );
+          ZCODE( case DDZ: return circle.phi_z(DIM(x,y,z)) );
         }
       }
       case 6: // unioun of two spheres: 1st sphere
@@ -1152,10 +1395,10 @@ public:
         flower_shaped_domain_t *shape_ptr = (*n) == 6 ? &circle0 : &circle1;
 
         switch (what) {
-          OCOMP( case VAL: return shape_ptr->phi  (DIM(x,y,z)) );
-          XCOMP( case DDX: return shape_ptr->phi_x(DIM(x,y,z)) );
-          YCOMP( case DDY: return shape_ptr->phi_y(DIM(x,y,z)) );
-          ZCOMP( case DDZ: return shape_ptr->phi_z(DIM(x,y,z)) );
+          _CODE( case VAL: return shape_ptr->phi  (DIM(x,y,z)) );
+          XCODE( case DDX: return shape_ptr->phi_x(DIM(x,y,z)) );
+          YCODE( case DDY: return shape_ptr->phi_y(DIM(x,y,z)) );
+          ZCODE( case DDZ: return shape_ptr->phi_z(DIM(x,y,z)) );
         }
       } break;
       case 8: // difference of two spheres: 1st shpere
@@ -1174,10 +1417,10 @@ public:
         flower_shaped_domain_t *shape_ptr = (*n) == 8 ? &circle0 : &circle1;
 
         switch (what) {
-          OCOMP( case VAL: return shape_ptr->phi  (DIM(x,y,z)) );
-          XCOMP( case DDX: return shape_ptr->phi_x(DIM(x,y,z)) );
-          YCOMP( case DDY: return shape_ptr->phi_y(DIM(x,y,z)) );
-          ZCOMP( case DDZ: return shape_ptr->phi_z(DIM(x,y,z)) );
+          _CODE( case VAL: return shape_ptr->phi  (DIM(x,y,z)) );
+          XCODE( case DDX: return shape_ptr->phi_x(DIM(x,y,z)) );
+          YCODE( case DDY: return shape_ptr->phi_y(DIM(x,y,z)) );
+          ZCODE( case DDZ: return shape_ptr->phi_z(DIM(x,y,z)) );
         }
 
       } break;
@@ -1211,10 +1454,10 @@ public:
         }
 
         switch (what) {
-          OCOMP( case VAL: return shape_ptr->phi  (DIM(x,y,z)) );
-          XCOMP( case DDX: return shape_ptr->phi_x(DIM(x,y,z)) );
-          YCOMP( case DDY: return shape_ptr->phi_y(DIM(x,y,z)) );
-          ZCOMP( case DDZ: return shape_ptr->phi_z(DIM(x,y,z)) );
+          _CODE( case VAL: return shape_ptr->phi  (DIM(x,y,z)) );
+          XCODE( case DDX: return shape_ptr->phi_x(DIM(x,y,z)) );
+          YCODE( case DDY: return shape_ptr->phi_y(DIM(x,y,z)) );
+          ZCODE( case DDZ: return shape_ptr->phi_z(DIM(x,y,z)) );
         }
       } break;
       case 13: // triangle/tetrahedron: 1st plane
@@ -1255,20 +1498,20 @@ public:
         }
 
         switch (what) {
-          OCOMP( case VAL: return shape_ptr->phi  (DIM(x,y,z)) );
-          XCOMP( case DDX: return shape_ptr->phi_x(DIM(x,y,z)) );
-          YCOMP( case DDY: return shape_ptr->phi_y(DIM(x,y,z)) );
-          ZCOMP( case DDZ: return shape_ptr->phi_z(DIM(x,y,z)) );
+          _CODE( case VAL: return shape_ptr->phi  (DIM(x,y,z)) );
+          XCODE( case DDX: return shape_ptr->phi_x(DIM(x,y,z)) );
+          YCODE( case DDY: return shape_ptr->phi_y(DIM(x,y,z)) );
+          ZCODE( case DDZ: return shape_ptr->phi_z(DIM(x,y,z)) );
         }
       } break;
     }
 
     // default value
     switch (what) {
-      OCOMP( case VAL: return -1 );
-      XCOMP( case DDX: return  0 );
-      YCOMP( case DDY: return  0 );
-      ZCOMP( case DDZ: return  0 );
+      _CODE( case VAL: return -1 );
+      XCODE( case DDX: return  0 );
+      YCODE( case DDY: return  0 );
+      ZCODE( case DDZ: return  0 );
     }
   }
 };
@@ -1306,14 +1549,14 @@ public:
         return -1;
       case 1: // sphere
       {
-        static double r0 = 0.5;
+        static double r0 = 0.005;
         static double DIM( xc = 0, yc = 0, zc = 0 );
         static flower_shaped_domain_t circle(r0, DIM(xc, yc, zc), 0, -1);
         switch (what) {
-          OCOMP( case VAL: return circle.phi  (DIM(x,y,z)) );
-          XCOMP( case DDX: return circle.phi_x(DIM(x,y,z)) );
-          YCOMP( case DDY: return circle.phi_y(DIM(x,y,z)) );
-          ZCOMP( case DDZ: return circle.phi_z(DIM(x,y,z)) );
+          _CODE( case VAL: return circle.phi  (DIM(x,y,z)) );
+          XCODE( case DDX: return circle.phi_x(DIM(x,y,z)) );
+          YCODE( case DDY: return circle.phi_y(DIM(x,y,z)) );
+          ZCODE( case DDZ: return circle.phi_z(DIM(x,y,z)) );
         }
       }
       case 2: // moderately star-shaped domain
@@ -1321,10 +1564,10 @@ public:
         static double r0 = 0.533, DIM( xc = 0, yc = 0, zc = 0 );
         static flower_shaped_domain_t circle(r0, DIM(xc, yc, zc), 0.15, -1);
         switch (what) {
-          OCOMP( case VAL: return circle.phi  (DIM(x,y,z)) );
-          XCOMP( case DDX: return circle.phi_x(DIM(x,y,z)) );
-          YCOMP( case DDY: return circle.phi_y(DIM(x,y,z)) );
-          ZCOMP( case DDZ: return circle.phi_z(DIM(x,y,z)) );
+          _CODE( case VAL: return circle.phi  (DIM(x,y,z)) );
+          XCODE( case DDX: return circle.phi_x(DIM(x,y,z)) );
+          YCODE( case DDY: return circle.phi_y(DIM(x,y,z)) );
+          ZCODE( case DDZ: return circle.phi_z(DIM(x,y,z)) );
         }
       }
       case 3: // highly star-shaped domain
@@ -1332,10 +1575,10 @@ public:
 //        static double r0 = 0.533, DIM( xc = 0, yc = 0, zc = 0 );
 //        static flower_shaped_domain_t circle(r0, DIM(xc, yc, zc), 0.3, -1);
 //        switch (what) {
-//          OCOMP( case VAL: return circle.phi  (DIM(x,y,z)) );
-//          XCOMP( case DDX: return circle.phi_x(DIM(x,y,z)) );
-//          YCOMP( case DDY: return circle.phi_y(DIM(x,y,z)) );
-//          ZCOMP( case DDZ: return circle.phi_z(DIM(x,y,z)) );
+//          _CODE( case VAL: return circle.phi  (DIM(x,y,z)) );
+//          XCODE( case DDX: return circle.phi_x(DIM(x,y,z)) );
+//          YCODE( case DDY: return circle.phi_y(DIM(x,y,z)) );
+//          ZCODE( case DDZ: return circle.phi_z(DIM(x,y,z)) );
 //        }
         static double r0 = 0.533, DIM( xc = 0, yc = 0, zc = 0 );
         static double N = 1;
@@ -1344,10 +1587,10 @@ public:
         static double t[] = { 0.0};
         static radial_shaped_domain_t shape(r0, DIM(xc, yc, zc), -1, N, n, b, t);
         switch (what) {
-          OCOMP( case VAL: return MIN(0.2, shape.phi  (DIM(x,y,z))) );
-          XCOMP( case DDX: return shape.phi_x(DIM(x,y,z)) );
-          YCOMP( case DDY: return shape.phi_y(DIM(x,y,z)) );
-          ZCOMP( case DDZ: return shape.phi_z(DIM(x,y,z)) );
+          _CODE( case VAL: return MIN(0.2, shape.phi  (DIM(x,y,z))) );
+          XCODE( case DDX: return shape.phi_x(DIM(x,y,z)) );
+          YCODE( case DDY: return shape.phi_y(DIM(x,y,z)) );
+          ZCODE( case DDZ: return shape.phi_z(DIM(x,y,z)) );
         }
       }
       case 4: // assymetric curvy domain
@@ -1359,10 +1602,57 @@ public:
         static double t[] = { 0.0, 0.5, 1.8 };
         static radial_shaped_domain_t shape(r0, DIM(xc, yc, zc), 1, N, n, b, t);
         switch (what) {
-          OCOMP( case VAL: return shape.phi  (DIM(x,y,z)) );
-          XCOMP( case DDX: return shape.phi_x(DIM(x,y,z)) );
-          YCOMP( case DDY: return shape.phi_y(DIM(x,y,z)) );
-          ZCOMP( case DDZ: return shape.phi_z(DIM(x,y,z)) );
+          _CODE( case VAL: return shape.phi  (DIM(x,y,z)) );
+          XCODE( case DDX: return shape.phi_x(DIM(x,y,z)) );
+          YCODE( case DDY: return shape.phi_y(DIM(x,y,z)) );
+          ZCODE( case DDZ: return shape.phi_z(DIM(x,y,z)) );
+        }
+      }
+      case 5: // clusters of stars
+      {
+        int num_particles = 68;
+        static double X[] = { 0.294320, 0.292603, 0.296621, 0.301392, 0.293268, 0.289541, 0.290527, 0.295213, 0.300884, 0.935243, 0.936367, 0.937713, 0.927721, 0.926407, 0.939303, 0.926755, 0.936908, 0.934454, 0.160228, 0.164293, 0.173756, 0.168733, 0.170695, 0.160737, 0.725447, 0.740474, 0.736547, 0.723810, 0.742820, 0.728138, 0.728254, 0.052907, 0.034801, 0.048034, 0.038434, 0.037001, 0.048676, -0.182697, -0.180690, -0.171622, -0.177232, -0.182553, -0.169332, 0.082096, 0.070903, 0.086667, 0.089332, -0.416502, -0.435866, -0.428412, 0.367410, 0.364188, 0.357943, 0.354170, 0.355478, 0.356304, 0.368282, 0.370185, 0.352045, -0.187080, -0.177875, -0.177947, -0.193546, -0.190933, -0.184008, -0.192313, -0.190761 };
+        static double Y[] = { -0.731980, -0.722570, -0.730048, -0.723932, -0.730192, -0.732616, -0.736414, -0.726113, -0.733236, 0.156877, 0.165333, 0.161907, 0.160662, 0.164860, 0.170991, 0.162948, 0.160965, 0.162162, -0.743358, -0.747939, -0.744021, -0.761421, -0.747981, -0.760843, 0.889409, 0.893693, 0.884784, 0.875899, 0.874970, 0.878376, 0.880038, -0.344586, -0.356601, -0.350902, -0.350375, -0.361473, -0.344655, 0.433937, 0.449481, 0.442325, 0.435290, 0.446933, 0.440621, 0.665721, 0.669204, 0.652859, 0.668903, -0.873554, -0.873537, -0.875426, -0.528637, -0.533808, -0.522965, -0.530541, -0.527060, -0.525395, -0.530008, -0.524812, -0.519527, 0.207027, 0.213721, 0.216082, 0.211842, 0.205428, 0.210547, 0.214133, 0.223399 };
+        static double Z[] = { 0.659896, 0.661595, 0.663882, 0.657828, 0.649222, 0.652738, 0.653999, 0.659133, 0.653780, 0.372778, 0.384505, 0.385340, 0.380446, 0.368198, 0.382526, 0.371762, 0.380080, 0.384611, -0.914150, -0.903361, -0.909046, -0.906778, -0.895898, -0.911101, 0.374524, 0.375398, 0.361166, 0.362541, 0.358814, 0.365019, 0.371807, 0.791016, 0.796822, 0.802796, 0.799813, 0.796510, 0.794363, -0.891243, -0.892697, -0.877118, -0.878855, -0.889057, -0.888704, -0.798652, -0.802171, -0.795067, -0.810748, -0.205157, -0.209997, -0.210105, 0.781060, 0.793624, 0.788213, 0.798592, 0.787955, 0.789437, 0.780380, 0.798013, 0.791062, 0.333318, 0.343816, 0.343286, 0.346698, 0.340582, 0.334128, 0.335550, 0.348634 };
+        static double R[] = { 0.000948, 0.000196, 0.000553, 0.000374, 0.000798, 0.000755, 0.000341, 0.000792, 0.000857, 0.000462, 0.000946, 0.000114, 0.000653, 0.000243, 0.000443, 0.000482, 0.000713, 0.000448, 0.000329, 0.000792, 0.000264, 0.000999, 0.000389, 0.000209, 0.000966, 0.000453, 0.000708, 0.000367, 0.000306, 0.000857, 0.000451, 0.000660, 0.000834, 0.000961, 0.000546, 0.000859, 0.000590, 0.000642, 0.000499, 0.000714, 0.000706, 0.000927, 0.000652, 0.000309, 0.000229, 0.000256, 0.000778, 0.000168, 0.000167, 0.000329, 0.000239, 0.000271, 0.000682, 0.000809, 0.000107, 0.000985, 0.000107, 0.000830, 0.000198, 0.000928, 0.000126, 0.000647, 0.000749, 0.000170, 0.000752, 0.000925, 0.000728 };
+        static double n[] = { 5, 2, 3, 3, 3, 4, 3, 5, 4, 4, 3, 3, 4, 2, 3, 5, 3, 6, 6, 3, 4, 5, 4, 6, 3, 3, 4, 3, 4, 4, 6, 4, 4, 4, 5, 6, 3, 5, 4, 3, 6, 5, 6, 6, 3, 4, 4, 2, 6, 4, 6, 3, 3, 5, 4, 2, 5, 5, 4, 2, 3, 4, 6, 3, 3, 4, 4 };
+        static double b[] = { 0.177428, 0.120466, 0.195375, 0.161709, 0.193548, 0.088156, 0.140005, 0.121836, 0.078646, 0.026599, 0.129853, 0.111576, 0.059185, 0.009826, 0.141560, 0.025398, 0.179751, 0.011111, 0.052804, 0.015578, 0.186352, 0.001466, 0.025428, 0.199829, 0.064583, 0.004282, 0.036598, 0.044844, 0.191154, 0.026387, 0.069948, 0.184134, 0.079140, 0.175580, 0.119999, 0.104759, 0.018488, 0.191264, 0.107538, 0.162207, 0.108419, 0.139933, 0.197255, 0.018026, 0.189876, 0.009732, 0.189929, 0.038622, 0.040327, 0.067637, 0.004636, 0.072883, 0.097692, 0.035313, 0.166186, 0.004988, 0.133467, 0.145549, 0.011507, 0.121431, 0.001767, 0.130215, 0.088286, 0.122096, 0.030592, 0.029170, 0.195173 };
+        static double t[] = { 3.779031, 0.575194, 5.983689, 1.178485, 6.112317, 2.266495, 6.140219, 0.884964, 1.588758, 1.152778, 2.585702, 3.069164, 4.986538, 3.613796, 2.988958, 3.380732, 0.252419, 2.899990, 4.507911, 3.753404, 6.101247, 4.162976, 0.952773, 0.814897, 5.719127, 5.779404, 0.871440, 0.309913, 1.616747, 5.913726, 2.499319, 2.412480, 4.794653, 1.000997, 5.330543, 2.104655, 3.979605, 0.196232, 3.958288, 4.889946, 2.765306, 0.682710, 0.524252, 3.925875, 1.973639, 5.337312, 0.506358, 4.772787, 4.357852, 4.422504, 1.018504, 2.058938, 4.725618, 0.726723, 5.450653, 3.471888, 5.475823, 6.126808, 3.886958, 1.730282, 0.076936, 6.002824, 4.366932, 0.951230, 3.986605, 1.284015, 5.881409 };
+        static radial_shaped_domain_t shape;
+        double min_dist = DBL_MAX;
+        int idx = -1;
+        for (int i = 0; i < num_particles; ++i)
+        {
+          shape.set_params(R[i], DIM(X[i], Y[i], Z[i]), 1, 1, &n[i], &b[i], &t[i]);
+          double current = shape.phi(DIM(x,y,z));
+          if ((current) < (min_dist))
+          {
+            idx = i;
+            min_dist = current;
+          }
+        }
+
+        shape.set_params(R[idx], DIM(X[idx], Y[idx], Z[idx]), 1, 1, &n[idx], &b[idx], &t[idx]);
+        switch (what) {
+          _CODE( case VAL: return shape.phi  (DIM(x,y,z)) );
+          XCODE( case DDX: return shape.phi_x(DIM(x,y,z)) );
+          YCODE( case DDY: return shape.phi_y(DIM(x,y,z)) );
+          ZCODE( case DDZ: return shape.phi_z(DIM(x,y,z)) );
+        }
+      }
+      case 6: // highly wavy circle
+      {
+        static double r0 = 0.483, DIM( xc = 0, yc = 0, zc = 0 );
+        static double N = 3;
+        static double n[] = { 6., 100.0, 10000.0 };
+        static double b[] = { 0.2, .015, .00015, };
+        static double t[] = { 0.0, 0.0, 0.0 };
+        static radial_shaped_domain_t shape(r0, DIM(xc, yc, zc), 1, N, n, b, t);
+        switch (what) {
+          _CODE( case VAL: return shape.phi  (DIM(x,y,z)) );
+          XCODE( case DDX: return shape.phi_x(DIM(x,y,z)) );
+          YCODE( case DDY: return shape.phi_y(DIM(x,y,z)) );
+          ZCODE( case DDZ: return shape.phi_z(DIM(x,y,z)) );
         }
       }
     }
@@ -1817,8 +2107,12 @@ int main (int argc, char* argv[])
               } else {
                 splitting_criteria_cf_t data_tmp(lmin+iter, lmax+iter, &phi_eff_cf, lip);
                 p4est->user_pointer = (void*)(&data_tmp);
-                my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
-                my_p4est_partition(p4est, P4EST_FALSE, NULL);
+
+                for (int i = 0; i < lmax+iter; ++i)
+                {
+                  my_p4est_refine(p4est, P4EST_FALSE, refine_levelset_cf, NULL);
+                  my_p4est_partition(p4est, P4EST_FALSE, NULL);
+                }
               }
 
               splitting_criteria_cf_t data(lmin+iter, lmax+iter, &phi_eff_cf, lip);
@@ -1947,15 +2241,19 @@ int main (int argc, char* argv[])
               Vec sol; double *sol_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &sol); CHKERRXX(ierr);
               Vec sol2; ierr = VecCreateGhostNodes(p4est, nodes, &sol2); CHKERRXX(ierr);
 
-              my_p4est_poisson_nodes_mls_t solver(&ngbd_n);
-
+              //my_p4est_poisson_nodes_mls_t solver(&ngbd_n);
+              my_p4est_general_poisson_nodes_mls_solver_t solver(&ngbd_n);
               solver.set_use_centroid_always(use_centroid_always);
               solver.set_store_finite_volumes(store_finite_volumes);
               solver.set_jump_scheme(jc_scheme);
               solver.set_jump_sub_scheme(jc_sub_scheme);
               solver.set_use_sc_scheme(sc_scheme);
               solver.set_integration_order(integration_order);
+
+              //solver.set_lip(10.5);
+
               solver.set_lip(lip);
+
 
               //            if (use_phi_cf) solver.set_phi_cf(phi_cf);
 
@@ -1976,7 +2274,6 @@ int main (int argc, char* argv[])
                   else
                     solver.add_interface((mls_opn_t) *infc_opn_all[i], infc_phi_vec_all[i], DIM(NULL, NULL, NULL), jc_value_cf_all[i], jc_flux_cf_all[i]);
                 }
-
 
               solver.set_mu(mu_m, DIM(NULL, NULL, NULL),
                             mu_p, DIM(NULL, NULL, NULL));
@@ -2105,8 +2402,13 @@ int main (int argc, char* argv[])
                 }
               }
 
-              if (use_nonzero_guess) sample_cf_on_nodes(p4est, nodes, u_cf, sol);
-              solver.solve(sol, use_nonzero_guess);
+
+              //solver.solve(sol);
+              solver.solve_nonlinear(sol,1e-8,1000,true);
+
+              //if (use_nonzero_guess) sample_cf_on_nodes(p4est, nodes, u_cf, sol);
+              //solver.solve(sol, use_nonzero_guess);
+
 
               Vec bdry_phi_eff = solver.get_boundary_phi_eff();
               Vec infc_phi_eff = solver.get_interface_phi_eff();

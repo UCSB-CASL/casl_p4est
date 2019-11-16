@@ -48,9 +48,9 @@
 
 using namespace std;
 
-int lmin = 4;
-int lmax = 6;
-int nb_splits = 4;
+int lmin = 2;
+int lmax = 5;
+int nb_splits = 5;
 
 int nx = 2;
 int ny = 2;
@@ -63,16 +63,42 @@ double ymax = 4;
 double zmin = 0;
 double zmax = 3;
 
-bool save_vtk = false;
-bool save_voro = false;
-bool save_stats = false;
+bool save_vtk = true;
+bool save_voro = true;
+bool save_stats = true;
+//bool check_partition = true;
 bool check_partition = false;
+
+const int wave_number = 1;
+const double mu_value = 1;
+const double mu_ratio = 10.0;
+
+struct domain{
+  double xmin, xmax, ymin, ymax, zmin, zmax;
+  domain(const double xmin_, const double xmax_, const double ymin_, const double ymax_, const double zmin_, const double zmax_):
+    xmin(xmin_), xmax(xmax_), ymin(ymin_), ymax(ymax_), zmin(zmin_), zmax(zmax_)
+  {}
+};
+
+domain centered_ones(-1.0, 1.0, -1.0, 1.0, -1.0, 1.0);
+double tiny_value = 0.000006487;
+domain centered_tiny(-tiny_value, tiny_value, -tiny_value, tiny_value, -tiny_value, tiny_value);
+double big_value = 86463.6134;
+domain centered_big(-big_value, big_value, -big_value, big_value, -big_value, big_value);
+domain shifted(512.0, 512.0+24.0, -9.13, -9.13+24.0, 73.84, 73.84+24.0);
+
+domain omega = centered_ones;
+//domain omega = centered_tiny;
+//domain omega = centered_big;
+//domain omega = shifted;
 
 /*
  * 0 - circle
+ * 1 - flower
  */
 int level_set_type = 0;
 
+int test_number = 3;
 /*
  *  ********* 2D *********
  * 0 - u_m=1+log(r/r0), u_p=1, mu_m=mu_p=1, diag_add=0
@@ -81,12 +107,46 @@ int level_set_type = 0;
  * 3 - u_m=exp(x), u_p=cos(x)*sin(y), mu_m=y*y*ln(x+2)+4, mu_p=exp(-y)   article example 4.4
  *
  *  ********* 3D *********
- * 0 - u_m=exp(z), u_p=cos(x)*sin(y), mu_m=mu_p
- * 1 - u_m=exp(z), u_p=cos(x)*sin(y), mu_m=y*y*ln(x+2)+4, mu_p=exp(-z)   article example 4.6
- * 2 - u_m=u_p=cos(x)*sin(y)*exp(z), mu_m=mu_p, BC dirichlet
- * 3 - u_m=u_p=cos(x)*sin(y)*exp(z), mu_m=mu_p=exp(x)*ln(y+z+2), BC dirichlet
- * 4 - u_m=y*z*sin(x), u_p=x*y*y+z*z*z, mu_m=y*y+5, mu_p=exp(x+z)        article example 4.7
- * 5 - u_m=u_p=cos(x)*sin(y)*exp(z), mu_m=y*y+5, mu_p=exp(x+z)
+ * 0 - u_m=exp((z-zmin)/(zmax-zmin)), u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin)), mu_m=mu_p=1.0, BC dirichlet
+ * 1 - u_m=exp((z-zmin)/(zmax-zmin)), u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin)), mu_m=SQR((y-ymin)/(ymax-ymin))*log((x-xmin)/(xmax-xmin)+2)+4, mu_p=exp(-(z-zmin)/(zmax-zmin))   article example 4.6, BC dirichlet
+ * 2 - u_m=u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin))*exp((z-zmin)/(zmax-zmin)), mu_m=mu_p=1.45, BC dirichlet
+ * 3 - u_m=u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin))*exp((z-zmin)/(zmax-zmin)), mu_m=mu_p=exp((x-xmin)/(xmax-xmin))*ln((y-ymin)/(ymax-ymin)+(z-zmin)/(zmax-zmin)+2), BC dirichlet
+ * 4 - u_m=((y-0.5*(ymin+ymax))/(ymax-ymin))*((z-0.5*(zmin+zmax))/(zmax-zmin))*sin(x/(xmax-xmin)), u_p=((x-0.5*(xmin+xmax))/(xmax-xmin))*SQR((y-0.5*(ymin+ymax))/(ymax-ymin))+pow((z-0.5*(zmin+zmax))/(zmax-zmin), 3.0), mu_m=SQR((y-0.5*(ymin+ymax))/(ymax-ymin))+5, mu_p=exp((x-0.5*(xmin+xmax))/(xmax-xmin)+(z-0.5*(zmin+zmax))/(zmax-zmin))    article example 4.7, BC dirichlet
+ * 5 - u_m=u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin))*exp((z-zmin)/(zmax-zmin)), mu_m=SQR((y-0.5*(ymin+ymax))/(ymax-ymin))+5, mu_p=exp((x-0.5*(xmin+xmax))/(xmax-xmin)+(z-0.5*(zmin+zmax))/(zmax-zmin)), BC dirichlet
+ * 6 - u_m=exp(-SQR(sin(2.0*PI*wave_number*(x-xmin)/(xmax-xmin))))*(SQR((y-ymin)/(ymax-ymin))*atan(3.0*(z-0.5*(zmin+zmax))/(zmax-zmin))),
+ *   - u_p= 1.0-pow((x-0.5*(xmin+xmax))/(xmax-xmin), 3.0)-SQR((y-0.5*(ymin+ymax))/(ymax-ymin)) + ((z-0.5*(zmin+zmax))/(zmax-zmin))
+ *   - mu_m= 2.0+0.3*cos(2.0*PI*(x-xmin)/(xmax-xmin))
+ *   - mu_p=mu_value
+ *   - BC periodic in x, dirichlet in y, z
+ * 7 - u_m=exp(-SQR(sin(2.0*PI*wave_number*(y-ymin)/(ymax-ymin))))*(SQR((x-xmin)/(xmax-xmin))*atan(3.0*(z-0.5*(zmin+zmax))/(zmax-zmin))),
+ *   - u_p= 1.0-pow((x-0.5*(xmin+xmax))/(xmax-xmin), 3.0)-SQR((y-0.5*(ymin+ymax))/(ymax-ymin)) + ((z-0.5*(zmin+zmax))/(zmax-zmin))
+ *   - mu_m= 2.0+0.3*cos(2.0*PI*(y-ymin)/(ymax-ymin))
+ *   - mu_p=mu_value
+ *   - BC periodic in y, dirichlet in x, z
+ * 8 - u_m=exp(-SQR(sin(2.0*PI*wave_number*(z-zmin)/(zmax-zmin))))*(SQR((y-ymin)/(ymax-ymin))*atan(3.0*(x-0.5*(xmin+xmax))/(xmax-xmin))),
+ *   - u_p= 1.0-pow((x-0.5*(xmin+xmax))/(xmax-xmin), 3.0)-SQR((y-0.5*(ymin+ymax))/(ymax-ymin)) + ((z-0.5*(zmin+zmax))/(zmax-zmin))
+ *   - mu_m= 2.0+0.3*cos(2.0*PI*(z-zmin)/(zmax-zmin))
+ *   - mu_p=mu_value
+ *   - BC periodic in z, dirichlet in x, y
+ * 9 - u_m= cos(2.0*PI*wave_number*(x-xmin)/(xmax-xmin) + 2.0*PI*3.0*wave_number*(y-ymin)/(ymax-ymin))*sin(2.0*PI*wave_number*(y-ymin)/(ymax-ymin))*exp((z-0.5*(zmin+zmax))/(zmax-zmin)),
+ *   - u_p= 1.0-pow((x-0.5*(xmin+xmax))/(xmax-xmin), 3.0)-SQR((y-0.5*(ymin+ymax))/(ymax-ymin)) + ((z-0.5*(zmin+zmax))/(zmax-zmin))
+ *   - mu_m=mu_value
+ *   - mu_p=mu_value*mu_ratio
+ *   - BC periodic in x-y, dirichlet in z
+ * 10- u_m= cos(2.0*PI*wave_number*(x-xmin)/(xmax-xmin) + 2.0*PI*3.0*wave_number*(z-zmin)/(zmax-zmin))*sin(2.0*PI*wave_number*(z-zmin)/(zmax-zmin))*exp((y-0.5*(ymin+ymax))/(ymax-ymin)),
+ *   - u_p= 1.0-pow((x-0.5*(xmin+xmax))/(xmax-xmin), 3.0)-SQR((y-0.5*(ymin+ymax))/(ymax-ymin)) + ((z-0.5*(zmin+zmax))/(zmax-zmin))
+ *   - mu_m=mu_value
+ *   - mu_p=mu_value*mu_ratio
+ *   - BC periodic in x-z, dirichlet in y
+ * 11- u_m= cos(2.0*PI*wave_number*(y-ymin)/(ymax-ymin) + 2.0*PI*3.0*wave_number*(z-zmin)/(zmax-zmin))*sin(2.0*PI*wave_number*(z-zmin)/(zmax-zmin))*exp((x-0.5*(xmin+xmax))/(xmax-xmin)),
+ *   - u_p= 1.0-pow((x-0.5*(xmin+xmax))/(xmax-xmin), 3.0)-SQR((y-0.5*(ymin+ymax))/(ymax-ymin)) + ((z-0.5*(zmin+zmax))/(zmax-zmin))
+ *   - mu_m=mu_value
+ *   - mu_p=mu_value*mu_ratio
+ *   - BC periodic in y-z, dirichlet in x
+ * 12- u_m=u_p= cos(2.0*PI*wave_number*(k1*(x/(xmax-xmin)) + k2*(y/(ymax-ymin)) +k3*(z/(zmax-zmin))))*cos(2.0*PI*wave_number*(k1*(z/(zmax-zmin)) + k2*(x/(xmax-xmin)) +k3*(y/(ymax-ymin))))*cos(2.0*PI*wave_number*(k1*(y/(ymax-ymin)) + k2*(z/(zmax-zmin)) - k3*(x/(xmax-xmin))))
+ *   - mu_m=mu_value
+ *   - mu_p=mu_value*mu_ratio
+ *   - fully periodic
  */
 int test_number = 1;
 
@@ -265,7 +325,155 @@ double u_exact(double x, double y, double z)
   if(level_set(x,y,z)>0) return u_p(x,y,z);
   else                   return u_m(x,y,z);
 }
-
+//Rochi edit begin
+double u_x_m(double x, double y,double z)
+{
+    double ux;
+    switch(test_number)
+    {
+    case 0:
+      ux = 0;
+      break;
+    case 1:
+      ux = 0;
+      break;
+    case 2:
+    case 3:
+    case 5:
+      ux = -(1.0/(omega.xmax-omega.xmin))*sin(x/(omega.xmax-omega.xmin))*sin(y/(omega.ymax-omega.ymin))*exp((z-omega.zmin)/(omega.zmax-omega.zmin));
+      break;
+    case 4:
+      ux = (1.0/(omega.xmax-omega.xmin))*((y-0.5*(omega.ymin+omega.ymax))/(omega.ymax-omega.ymin))*((z-0.5*(omega.zmin+omega.zmax))/(omega.zmax-omega.zmin))*cos(x/(omega.xmax-omega.xmin));
+      break;
+    case 6:
+      ux = -(2.0*PI*((double) wave_number)/(omega.xmax - omega.xmin))*sin(2.0*2.0*PI*((double) wave_number)*(x-omega.xmin)/(omega.xmax-omega.xmin))*u_m(x,y,z);
+      break;
+    case 7:
+      ux = (2.0/(omega.xmax-omega.xmin))*((x-omega.xmin)/(omega.xmax-omega.xmin))*exp(-SQR(sin(2.0*PI*((double) wave_number)*(y-omega.ymin)/(omega.ymax-omega.ymin))))*atan(3.0*(z-0.5*(omega.zmin+omega.zmax))/(omega.zmax-omega.zmin));
+      break;
+    case 8:
+      ux = exp(-SQR(sin(2.0*PI*((double) wave_number)*(z-omega.zmin)/(omega.zmax-omega.zmin))))*SQR((y-omega.ymin)/(omega.ymax-omega.ymin))*(1.0/(1.0 + SQR(3.0*(x - 0.5*(omega.xmin + omega.xmax))/(omega.xmax - omega.xmin))))*(3.0/(omega.xmax - omega.xmin));
+      break;
+    case 9:
+      ux = -(2.0*PI*((double) wave_number)/(omega.xmax - omega.xmin))*sin(2.0*PI*((double) wave_number)*(x-omega.xmin)/(omega.xmax-omega.xmin) + 2.0*PI*3.0*((double) wave_number)*(y-omega.ymin)/(omega.ymax-omega.ymin))*sin(2.0*PI*((double) wave_number)*(y-omega.ymin)/(omega.ymax-omega.ymin))*exp((z-0.5*(omega.zmin+omega.zmax))/(omega.zmax-omega.zmin));
+      break;
+    case 10:
+      ux = -(2.0*PI*((double) wave_number)/(omega.xmax - omega.xmin))*sin(2.0*PI*((double) wave_number)*(x-omega.xmin)/(omega.xmax-omega.xmin) + 2.0*PI*3.0*((double) wave_number)*(z-omega.zmin)/(omega.zmax-omega.zmin))*sin(2.0*PI*((double) wave_number)*(z-omega.zmin)/(omega.zmax-omega.zmin))*exp((y-0.5*(omega.ymin+omega.ymax))/(omega.ymax-omega.ymin));
+      break;
+    case 11:
+      ux = (1.0/(omega.xmax - omega.xmin))*cos(2.0*PI*((double) wave_number)*(y-omega.ymin)/(omega.ymax-omega.ymin) + 2.0*PI*3.0*((double) wave_number)*(z-omega.zmin)/(omega.zmax-omega.zmin))*sin(2.0*PI*((double) wave_number)*(z-omega.zmin)/(omega.zmax-omega.zmin))*exp((x-0.5*(omega.xmin+omega.xmax))/(omega.xmax-omega.xmin));
+      break;
+    case 12:
+      ux = (2.0*PI*((double) wave_number)/(omega.xmax - omega.xmin))*(
+            -((double) k1)*sin(2.0*PI*((double) wave_number)*(((double) k1)*(x/(omega.xmax-omega.xmin)) + ((double) k2)*(y/(omega.ymax-omega.ymin)) + ((double) k3)*(z/(omega.zmax-omega.zmin))))*cos(2.0*PI*((double) wave_number)*(((double) k1)*(z/(omega.zmax-omega.zmin)) + ((double) k2)*(x/(omega.xmax-omega.xmin)) + ((double) k3)*(y/(omega.ymax-omega.ymin))))*cos(2.0*PI*((double) wave_number)*(((double) k1)*(y/(omega.ymax-omega.ymin)) + ((double) k2)*(z/(omega.zmax-omega.zmin)) + ((double) k3)*(x/(omega.xmax-omega.xmin))))
+            -((double) k2)*cos(2.0*PI*((double) wave_number)*(((double) k1)*(x/(omega.xmax-omega.xmin)) + ((double) k2)*(y/(omega.ymax-omega.ymin)) + ((double) k3)*(z/(omega.zmax-omega.zmin))))*sin(2.0*PI*((double) wave_number)*(((double) k1)*(z/(omega.zmax-omega.zmin)) + ((double) k2)*(x/(omega.xmax-omega.xmin)) + ((double) k3)*(y/(omega.ymax-omega.ymin))))*cos(2.0*PI*((double) wave_number)*(((double) k1)*(y/(omega.ymax-omega.ymin)) + ((double) k2)*(z/(omega.zmax-omega.zmin)) + ((double) k3)*(x/(omega.xmax-omega.xmin))))
+            -((double) k3)*cos(2.0*PI*((double) wave_number)*(((double) k1)*(x/(omega.xmax-omega.xmin)) + ((double) k2)*(y/(omega.ymax-omega.ymin)) + ((double) k3)*(z/(omega.zmax-omega.zmin))))*cos(2.0*PI*((double) wave_number)*(((double) k1)*(z/(omega.zmax-omega.zmin)) + ((double) k2)*(x/(omega.xmax-omega.xmin)) + ((double) k3)*(y/(omega.ymax-omega.ymin))))*sin(2.0*PI*((double) wave_number)*(((double) k1)*(y/(omega.ymax-omega.ymin)) + ((double) k2)*(z/(omega.zmax-omega.zmin)) + ((double) k3)*(x/(omega.xmax-omega.xmin)))));
+      break;
+    default:
+      throw std::invalid_argument("Choose a valid test.");
+    }
+    return ux;
+}
+double u_y_m(double x, double y,double z)
+{
+    double uy;
+    switch(test_number)
+    {
+    case 0:
+      uy = 0;
+      break;
+    case 1:
+      uy = 0;
+      break;
+    case 2:
+    case 3:
+    case 5:
+      uy =  (1.0/(omega.ymax-omega.ymin))*cos(x/(omega.xmax-omega.xmin))*cos(y/(omega.ymax-omega.ymin))*exp((z-omega.zmin)/(omega.zmax-omega.zmin));
+      break;
+    case 4:
+      uy = (1.0/(omega.ymax-omega.ymin))*((z-0.5*(omega.zmin+omega.zmax))/(omega.zmax-omega.zmin))*sin(x/(omega.xmax-omega.xmin));
+      break;
+    case 6:
+      uy = (2.0/(omega.ymax-omega.ymin))*((y-omega.ymin)/(omega.ymax-omega.ymin))*exp(-SQR(sin(2.0*PI*((double) wave_number)*(x-omega.xmin)/(omega.xmax-omega.xmin))))*atan(3.0*(z-0.5*(omega.zmin+omega.zmax))/(omega.zmax-omega.zmin));
+      break;
+    case 7:
+      uy = -(2.0*PI*((double) wave_number)/(omega.ymax - omega.ymin))*sin(2.0*2.0*PI*((double) wave_number)*(y-omega.ymin)/(omega.ymax-omega.ymin))*u_m(x,y,z);
+      break;
+    case 8:
+      uy = (2.0/(omega.ymax-omega.ymin))*((y-omega.ymin)/(omega.ymax-omega.ymin))*exp(-SQR(sin(2.0*PI*((double) wave_number)*(z-omega.zmin)/(omega.zmax-omega.zmin))))*atan(3.0*(x-0.5*(omega.xmin+omega.xmax))/(omega.xmax-omega.xmin));
+      break;
+    case 9:
+      uy = -(2.0*PI*3.0*((double) wave_number)/(omega.ymax - omega.ymin))*sin(2.0*PI*((double) wave_number)*(x-omega.xmin)/(omega.xmax-omega.xmin) + 2.0*PI*3.0*((double) wave_number)*(y-omega.ymin)/(omega.ymax-omega.ymin))*sin(2.0*PI*((double) wave_number)*(y-omega.ymin)/(omega.ymax-omega.ymin))*exp((z-0.5*(omega.zmin+omega.zmax))/(omega.zmax-omega.zmin))
+          + (2.0*PI*((double) wave_number)/(omega.ymax-omega.ymin))*cos(2.0*PI*((double) wave_number)*(x-omega.xmin)/(omega.xmax-omega.xmin) + 2.0*PI*3.0*((double) wave_number)*(y-omega.ymin)/(omega.ymax-omega.ymin))*cos(2.0*PI*((double) wave_number)*(y-omega.ymin)/(omega.ymax-omega.ymin))*exp((z-0.5*(omega.zmin+omega.zmax))/(omega.zmax-omega.zmin));
+      break;
+    case 10:
+      uy = +(1.0/(omega.ymax - omega.ymin))*cos(2.0*PI*((double) wave_number)*(x-omega.xmin)/(omega.xmax-omega.xmin) + 2.0*PI*3.0*((double) wave_number)*(z-omega.zmin)/(omega.zmax-omega.zmin))*sin(2.0*PI*((double) wave_number)*(z-omega.zmin)/(omega.zmax-omega.zmin))*exp((y-0.5*(omega.ymin+omega.ymax))/(omega.ymax-omega.ymin));
+      break;
+    case 11:
+      uy = -(2.0*PI*((double) wave_number)/(omega.ymax - omega.ymin))*sin(2.0*PI*((double) wave_number)*(y-omega.ymin)/(omega.ymax-omega.ymin) + 2.0*PI*3.0*((double) wave_number)*(z-omega.zmin)/(omega.zmax-omega.zmin))*sin(2.0*PI*((double) wave_number)*(z-omega.zmin)/(omega.zmax-omega.zmin))*exp((x-0.5*(omega.xmin+omega.xmax))/(omega.xmax-omega.xmin));
+      break;
+    case 12:
+      uy = (2.0*PI*((double) wave_number)/(omega.ymax - omega.ymin))*(
+            -((double) k2)*sin(2.0*PI*((double) wave_number)*(((double) k1)*(x/(omega.xmax-omega.xmin)) + ((double) k2)*(y/(omega.ymax-omega.ymin)) + ((double) k3)*(z/(omega.zmax-omega.zmin))))*cos(2.0*PI*((double) wave_number)*(((double) k1)*(z/(omega.zmax-omega.zmin)) + ((double) k2)*(x/(omega.xmax-omega.xmin)) + ((double) k3)*(y/(omega.ymax-omega.ymin))))*cos(2.0*PI*((double) wave_number)*(((double) k1)*(y/(omega.ymax-omega.ymin)) + ((double) k2)*(z/(omega.zmax-omega.zmin)) + ((double) k3)*(x/(omega.xmax-omega.xmin))))
+            -((double) k3)*cos(2.0*PI*((double) wave_number)*(((double) k1)*(x/(omega.xmax-omega.xmin)) + ((double) k2)*(y/(omega.ymax-omega.ymin)) + ((double) k3)*(z/(omega.zmax-omega.zmin))))*sin(2.0*PI*((double) wave_number)*(((double) k1)*(z/(omega.zmax-omega.zmin)) + ((double) k2)*(x/(omega.xmax-omega.xmin)) + ((double) k3)*(y/(omega.ymax-omega.ymin))))*cos(2.0*PI*((double) wave_number)*(((double) k1)*(y/(omega.ymax-omega.ymin)) + ((double) k2)*(z/(omega.zmax-omega.zmin)) + ((double) k3)*(x/(omega.xmax-omega.xmin))))
+            -((double) k1)*cos(2.0*PI*((double) wave_number)*(((double) k1)*(x/(omega.xmax-omega.xmin)) + ((double) k2)*(y/(omega.ymax-omega.ymin)) + ((double) k3)*(z/(omega.zmax-omega.zmin))))*cos(2.0*PI*((double) wave_number)*(((double) k1)*(z/(omega.zmax-omega.zmin)) + ((double) k2)*(x/(omega.xmax-omega.xmin)) + ((double) k3)*(y/(omega.ymax-omega.ymin))))*sin(2.0*PI*((double) wave_number)*(((double) k1)*(y/(omega.ymax-omega.ymin)) + ((double) k2)*(z/(omega.zmax-omega.zmin)) + ((double) k3)*(x/(omega.xmax-omega.xmin)))));
+      break;
+    default:
+      throw std::invalid_argument("Choose a valid test.");
+    }
+    return uy;
+}
+double u_z_m(double x, double y,double z)
+{
+    double uz;
+    switch(test_number)
+    {
+    case 0:
+      uz = exp((z-omega.zmin)/(omega.zmax - omega.zmin))*(1.0/(omega.zmax - omega.zmin));
+      break;
+    case 1:
+      uz = exp((z-omega.zmin)/(omega.zmax - omega.zmin))*(1.0/(omega.zmax - omega.zmin));
+      break;
+    case 2:
+    case 3:
+    case 5:
+      uz =  (1.0/(omega.zmax-omega.zmin))*cos(x/(omega.xmax-omega.xmin))*sin(y/(omega.ymax-omega.ymin))*exp((z-omega.zmin)/(omega.zmax-omega.zmin));
+      break;
+    case 4:
+      uz = (1.0/(omega.zmax-omega.zmin))*((y-0.5*(omega.ymin+omega.ymax))/(omega.ymax-omega.ymin))*sin(x/(omega.xmax-omega.xmin));
+      break;
+    case 6:
+      uz = exp(-SQR(sin(2.0*PI*((double) wave_number)*(x-omega.xmin)/(omega.xmax-omega.xmin))))*SQR((y-omega.ymin)/(omega.ymax-omega.ymin))*(1.0/(1.0 + SQR(3.0*(z - 0.5*(omega.zmin + omega.zmax))/(omega.zmax - omega.zmin))))*(3.0/(omega.zmax - omega.zmin));
+      break;
+    case 7:
+      uz = exp(-SQR(sin(2.0*PI*((double) wave_number)*(y-omega.ymin)/(omega.ymax-omega.ymin))))*SQR((x-omega.xmin)/(omega.xmax-omega.xmin))*(1.0/(1.0 + SQR(3.0*(z - 0.5*(omega.zmin + omega.zmax))/(omega.zmax - omega.zmin))))*(3.0/(omega.zmax - omega.zmin));
+      break;
+    case 8:
+      uz = -(2.0*PI*((double) wave_number)/(omega.zmax - omega.zmin))*sin(2.0*2.0*PI*((double) wave_number)*(z-omega.zmin)/(omega.zmax-omega.zmin))*u_m(x,y,z);
+      break;
+    case 9:
+      uz = (1.0/(omega.zmax - omega.zmin))*cos(2.0*PI*((double) wave_number)*(x-omega.xmin)/(omega.xmax-omega.xmin) + 2.0*PI*3.0*((double) wave_number)*(y-omega.ymin)/(omega.ymax-omega.ymin))*sin(2.0*PI*((double) wave_number)*(y-omega.ymin)/(omega.ymax-omega.ymin))*exp((z-0.5*(omega.zmin+omega.zmax))/(omega.zmax-omega.zmin));
+      break;
+    case 10:
+      uz = -(2.0*PI*3.0*((double) wave_number)/(omega.zmax - omega.zmin))*sin(2.0*PI*((double) wave_number)*(x-omega.xmin)/(omega.xmax-omega.xmin) + 2.0*PI*3.0*((double) wave_number)*(z-omega.zmin)/(omega.zmax-omega.zmin))*sin(2.0*PI*((double) wave_number)*(z-omega.zmin)/(omega.zmax-omega.zmin))*exp((y-0.5*(omega.ymin+omega.ymax))/(omega.ymax-omega.ymin))
+          + (2.0*PI*((double) wave_number)/(omega.zmax-omega.zmin))*cos(2.0*PI*((double) wave_number)*(x-omega.xmin)/(omega.xmax-omega.xmin) + 2.0*PI*3.0*((double) wave_number)*(z-omega.zmin)/(omega.zmax-omega.zmin))*cos(2.0*PI*((double) wave_number)*(z-omega.zmin)/(omega.zmax-omega.zmin))*exp((y-0.5*(omega.ymin+omega.ymax))/(omega.ymax-omega.ymin));
+      break;
+    case 11:
+      uz = -(2.0*PI*3.0*((double) wave_number)/(omega.zmax - omega.zmin))*sin(2.0*PI*((double) wave_number)*(y-omega.ymin)/(omega.ymax-omega.ymin) + 2.0*PI*3.0*((double) wave_number)*(z-omega.zmin)/(omega.zmax-omega.zmin))*sin(2.0*PI*((double) wave_number)*(z-omega.zmin)/(omega.zmax-omega.zmin))*exp((x-0.5*(omega.xmin+omega.xmax))/(omega.xmax-omega.xmin))
+          + (2.0*PI*((double) wave_number)/(omega.zmax-omega.zmin))*cos(2.0*PI*((double) wave_number)*(y-omega.ymin)/(omega.ymax-omega.ymin) + 2.0*PI*3.0*((double) wave_number)*(z-omega.zmin)/(omega.zmax-omega.zmin))*cos(2.0*PI*((double) wave_number)*(z-omega.zmin)/(omega.zmax-omega.zmin))*exp((x-0.5*(omega.xmin+omega.xmax))/(omega.xmax-omega.xmin));
+      break;
+    case 12:
+      uz = (2.0*PI*((double) wave_number)/(omega.zmax - omega.zmin))*(
+            -((double) k3)*sin(2.0*PI*((double) wave_number)*(((double) k1)*(x/(omega.xmax-omega.xmin)) + ((double) k2)*(y/(omega.ymax-omega.ymin)) + ((double) k3)*(z/(omega.zmax-omega.zmin))))*cos(2.0*PI*((double) wave_number)*(((double) k1)*(z/(omega.zmax-omega.zmin)) + ((double) k2)*(x/(omega.xmax-omega.xmin)) + ((double) k3)*(y/(omega.ymax-omega.ymin))))*cos(2.0*PI*((double) wave_number)*(((double) k1)*(y/(omega.ymax-omega.ymin)) + ((double) k2)*(z/(omega.zmax-omega.zmin)) + ((double) k3)*(x/(omega.xmax-omega.xmin))))
+            -((double) k1)*cos(2.0*PI*((double) wave_number)*(((double) k1)*(x/(omega.xmax-omega.xmin)) + ((double) k2)*(y/(omega.ymax-omega.ymin)) + ((double) k3)*(z/(omega.zmax-omega.zmin))))*sin(2.0*PI*((double) wave_number)*(((double) k1)*(z/(omega.zmax-omega.zmin)) + ((double) k2)*(x/(omega.xmax-omega.xmin)) + ((double) k3)*(y/(omega.ymax-omega.ymin))))*cos(2.0*PI*((double) wave_number)*(((double) k1)*(y/(omega.ymax-omega.ymin)) + ((double) k2)*(z/(omega.zmax-omega.zmin)) + ((double) k3)*(x/(omega.xmax-omega.xmin))))
+            -((double) k2)*cos(2.0*PI*((double) wave_number)*(((double) k1)*(x/(omega.xmax-omega.xmin)) + ((double) k2)*(y/(omega.ymax-omega.ymin)) + ((double) k3)*(z/(omega.zmax-omega.zmin))))*cos(2.0*PI*((double) wave_number)*(((double) k1)*(z/(omega.zmax-omega.zmin)) + ((double) k2)*(x/(omega.xmax-omega.xmin)) + ((double) k3)*(y/(omega.ymax-omega.ymin))))*sin(2.0*PI*((double) wave_number)*(((double) k1)*(y/(omega.ymax-omega.ymin)) + ((double) k2)*(z/(omega.zmax-omega.zmin)) + ((double) k3)*(x/(omega.xmax-omega.xmin)))));
+      break;
+    default:
+      throw std::invalid_argument("Choose a valid test.");
+    }
+    return uz;
+}
+/*
 double grad_u_m(double x, double y, double z)
 {
   double ux, uy, uz;
@@ -311,7 +519,118 @@ double grad_u_m(double x, double y, double z)
 
   return ux*phix + uy*phiy + uz*phiz;
 }
+*/
+double grad_u_m(double x, double y, double z)
+{
+  double ux = u_x_m(x,y,z);
+  double uy = u_y_m(x,y,z);
+  double uz = u_z_m(x,y,z);
+  double phix = phi_x(x,y,z);
+  double phiy = phi_y(x,y,z);
+  double phiz = phi_z(x,y,z);
 
+  return ux*phix + uy*phiy + uz*phiz;
+}
+double u_x_p(double x, double y,double z)
+{
+    double ux;
+    switch(test_number)
+    {
+    case 0:
+      ux = -sin(x/(omega.xmax-omega.xmin))*sin(y/(omega.ymax - omega.ymin))*(1.0/(omega.xmax - omega.xmin));
+      break;
+    case 1:
+      ux = -sin(x/(omega.xmax-omega.xmin))*sin(y/(omega.ymax - omega.ymin))*(1.0/(omega.xmax - omega.xmin));
+      break;
+    case 2:
+    case 3:
+    case 5:
+    case 12:
+        ux = u_x_m(x,y,z);
+        break;
+    case 4:
+      ux = (1.0/(omega.xmax-omega.xmin))*SQR((y-0.5*(omega.ymin+omega.ymax))/(omega.ymax-omega.ymin));
+      break;
+    case 6:
+    case 7:
+    case 8:
+    case 9:
+    case 10:
+    case 11:
+      ux = -3.0*SQR((x - 0.5*(omega.xmin + omega.xmax))/(omega.xmax - omega.xmin))*(1.0/(omega.xmax - omega.xmin));
+      break;
+    default:
+      throw std::invalid_argument("Choose a valid test.");
+    }
+    return ux;
+}
+double u_y_p(double x, double y,double z)
+{
+    double uy;
+    switch(test_number)
+    {
+    case 0:
+      uy =  cos(x/(omega.xmax-omega.xmin))*cos(y/(omega.ymax - omega.ymin))*(1.0/(omega.ymax - omega.ymin));
+      break;
+    case 1:
+      uy =  cos(x/(omega.xmax-omega.xmin))*cos(y/(omega.ymax - omega.ymin))*(1.0/(omega.ymax - omega.ymin));
+      break;
+    case 2:
+    case 3:
+    case 5:
+    case 12:
+        uy = u_y_m(x,y,z);
+        break;
+    case 4:
+      uy = (2.0/(omega.ymax-omega.ymin))*((x-0.5*(omega.xmin+omega.xmax))/(omega.xmax-omega.xmin))*((y-0.5*(omega.ymin+omega.ymax))/(omega.ymax-omega.ymin));
+      break;
+    case 6:
+    case 7:
+    case 8:
+    case 9:
+    case 10:
+    case 11:
+      uy = -2.0*((y - 0.5*(omega.ymin + omega.ymax))/(omega.ymax - omega.ymin))*(1.0/(omega.ymax - omega.ymin));
+      break;
+    default:
+      throw std::invalid_argument("Choose a valid test.");
+    }
+    return uy;
+}
+double u_z_p(double x, double y,double z)
+{
+    double uz;
+    switch(test_number)
+    {
+    case 0:
+      uz = 0;
+      break;
+    case 1:
+      uz = 0;
+      break;
+    case 2:
+    case 3:
+    case 5:
+    case 12:
+        uz = u_z_m(x,y,z);
+        break;
+    case 4:
+      uz = (3.0/(omega.zmax-omega.zmin))*SQR((z-0.5*(omega.zmin+omega.zmax))/(omega.zmax-omega.zmin));
+      break;
+    case 6:
+    case 7:
+    case 8:
+    case 9:
+    case 10:
+    case 11:
+      uz = +1.0/(omega.zmax - omega.zmin);
+      break;
+    default:
+      throw std::invalid_argument("Choose a valid test.");
+    }
+    return uz;
+}
+/*
 double grad_u_p(double x, double y, double z)
 {
   double ux, uy, uz;
@@ -357,7 +676,34 @@ double grad_u_p(double x, double y, double z)
 
   return ux*phix + uy*phiy + uz*phiz;
 }
+*/
+double grad_u_p(double x, double y, double z)
+{
+  double ux = u_x_p(x,y,z);
+  double uy = u_y_p(x,y,z);
+  double uz = u_z_p(x,y,z);
+  double phix = phi_x(x,y,z);
+  double phiy = phi_y(x,y,z);
+  double phiz = phi_z(x,y,z);
 
+  return ux*phix + uy*phiy + uz*phiz;
+}
+double u_x_exact(double x, double y, double z)
+{
+    if(level_set(x,y,z)>0) return u_x_p(x,y,z);
+    else                   return u_x_m(x,y,z);
+}
+double u_y_exact(double x, double y, double z)
+{
+    if(level_set(x,y,z)>0) return u_y_p(x,y,z);
+    else                   return u_y_m(x,y,z);
+}
+double u_z_exact(double x, double y, double z)
+{
+    if(level_set(x,y,z)>0) return u_z_p(x,y,z);
+    else                   return u_z_m(x,y,z);
+}
+//Rochi edit end
 
 class MU_GRAD_U_JUMP: public CF_3
 {
@@ -524,13 +870,84 @@ public:
     return u_p(x,y) - u_m(x,y);
   }
 } u_jump;
-
+// Rochi edit begin
 double u_exact(double x, double y)
 {
   if(level_set(x,y)>0) return u_p(x,y);
   else                 return u_m(x,y);
 }
-
+double u_x_m(double x, double y)
+{
+    double ux;
+    switch(test_number)
+    {
+    case 0:
+      ux = (x-0.5*(omega.xmin+omega.xmax))/(SQR(x-0.5*(omega.xmin+omega.xmax))+SQR(y-0.5*(omega.ymin+omega.ymax)));
+      break;
+    case 1:
+      ux = -(1.0/(omega.xmax-omega.xmin))*sin(x/(omega.xmax-omega.xmin))*sin(y/(omega.ymax-omega.ymin));
+      break;
+    case 2:
+      ux =  (1.0/(omega.xmax-omega.xmin))*cos(x/(omega.xmax-omega.xmin))*sin(y/(omega.ymax-omega.ymin));
+      break;
+    case 3:
+      ux = (1.0/(omega.xmax-omega.xmin))*exp((x-0.5*(omega.xmin+omega.xmax))/(omega.xmax-omega.xmin));
+      break;
+    case 4:
+      ux = (2.0*PI*((double) wave_number)/(omega.xmax-omega.xmin))*cos(2.0*PI*((double) wave_number)*(x-omega.xmin)/(omega.xmax-omega.xmin))*log((y-omega.ymin)/(omega.ymax-omega.ymin)+1.2);;
+      break;
+    case 5:
+      ux = exp(-SQR(sin(2.0*PI*((double) wave_number)*(x-omega.xmin)/(omega.xmax-omega.xmin))))*(SQR((y-omega.ymin)/(omega.ymax-omega.ymin))+atan(3.0*(y-0.5*(omega.ymin+omega.ymax))/(omega.ymax-omega.ymin)))*(-sin(2.0*2.0*PI*((double) wave_number)*(x-omega.xmin)/(omega.xmax-omega.xmin))*(2.0*PI*((double) wave_number)/(omega.xmax-omega.xmin)));
+      break;
+    case 6:
+      ux = (2.0*PI*((double) wave_number)/(omega.xmax-omega.xmin))*sin(2.0*2.0*PI*((double) wave_number)*(x-omega.xmin)/(omega.xmax-omega.xmin))*SQR(cos(2.0*PI*2.0*((double) wave_number)*(y-omega.ymin)/(omega.ymax-omega.ymin)));
+      break;
+    default:
+      throw std::invalid_argument("Choose a valid test.");
+    }
+    return ux;
+}
+double u_y_m(double x, double y)
+{
+    double uy;
+    switch(test_number)
+    {
+    case 0:
+      uy = (y-0.5*(omega.ymin+omega.ymax))/(SQR(x-0.5*(omega.xmin+omega.xmax))+SQR(y-0.5*(omega.ymin+omega.ymax)));
+      break;
+    case 1:
+      uy =  (1.0/(omega.ymax-omega.ymin))*cos(x/(omega.xmax-omega.xmin))*cos(y/(omega.ymax-omega.ymin));
+      break;
+    case 2:
+      uy =  (1.0/(omega.ymax-omega.ymin))*sin(x/(omega.xmax-omega.xmin))*cos(y/(omega.ymax-omega.ymin));
+      break;
+    case 3:
+      uy = 0;
+      break;
+    case 4:
+      uy = sin(2.0*PI*((double) wave_number)*(x-omega.xmin)/(omega.xmax-omega.xmin))*(1.0/(y-omega.ymin+1.2*(omega.ymax - omega.ymin)));
+      break;
+    case 5:
+      uy = exp(-SQR(sin(2.0*PI*((double) wave_number)*(x-omega.xmin)/(omega.xmax-omega.xmin))))*(2.0*(y-omega.ymin)/SQR(omega.ymax-omega.ymin) + (1.0/(1.0+SQR(3.0*(y-0.5*(omega.ymin+omega.ymax))/(omega.ymax-omega.ymin))))*(3.0/(omega.ymax-omega.ymin)));
+      break;
+    case 6:
+      uy = -(2.0*PI*2.0*((double) wave_number)/(omega.ymax-omega.ymin))*SQR(sin(2.0*PI*((double) wave_number)*(x-omega.xmin)/(omega.xmax-omega.xmin)))*sin(2.0*2.0*PI*2.0*((double) wave_number)*(y-omega.ymin)/(omega.ymax-omega.ymin));
+      break;
+    default:
+      throw std::invalid_argument("Choose a valid test.");
+    }
+    return uy;
+}
+double grad_u_m(double x, double y)
+{
+    double phix = phi_x(x,y);
+    double phiy = phi_y(x,y);
+    double ux = u_x_m(x,y);
+    double uy = u_y_m(x,y);
+    return ux*phix + uy*phiy;
+}
+//Rochi edit end
+/*
 double grad_u_m(double x, double y)
 {
   double ux, uy;
@@ -561,7 +978,78 @@ double grad_u_m(double x, double y)
 
   return ux*phix + uy*phiy;
 }
-
+*/
+//Rochi edit begin
+double u_x_p(double x, double y)
+{
+    double ux;
+    switch(test_number)
+    {
+    case 0:
+      ux = 0;
+      break;
+    case 1:
+    case 2:
+    case 4:
+    case 6:
+        ux = u_x_m(x, y);
+      break;
+    case 3:
+      ux = -(1.0/(omega.xmax-omega.xmin))*sin(x/(omega.xmax-omega.xmin))*sin(y/(omega.ymax-omega.ymin));
+      break;
+    case 5:
+      ux = -3.0*SQR((x-0.5*(omega.xmin+omega.xmax))/(omega.xmax-omega.xmin))*(1.0/(omega.xmax-omega.xmin));
+      break;
+    default:
+      throw std::invalid_argument("Choose a valid test.");
+    }
+    return ux;
+}
+double u_y_p(double x, double y)
+{
+    double uy;
+    switch(test_number)
+    {
+    case 0:
+      uy = 0;
+      break;
+    case 1:
+    case 2:
+    case 4:
+    case 6:
+        uy = u_y_m(x, y);
+      break;
+    case 3:
+      uy =  (1.0/(omega.ymax-omega.ymin))*cos(x/(omega.xmax-omega.xmin))*cos(y/(omega.ymax-omega.ymin));
+      break;
+    case 5:
+      uy = -2.0*((y-0.5*(omega.ymin+omega.ymax))/(omega.ymax-omega.ymin))*(1.0/(omega.ymax-omega.ymin));
+      break;
+    default:
+      throw std::invalid_argument("Choose a valid test.");
+    }
+    return uy;
+}
+double grad_u_p(double x, double y)
+{
+    double phix = phi_x(x,y);
+    double phiy = phi_y(x,y);
+    double ux = u_x_p(x,y);
+    double uy = u_y_p(x,y);
+    return ux*phix + uy*phiy;
+}
+double u_x_exact(double x, double y)
+{
+    if(level_set(x,y)>0) return u_x_p(x,y);
+    else                 return u_x_m(x,y);
+}
+double u_y_exact(double x, double y)
+{
+    if(level_set(x,y)>0) return u_y_p(x,y);
+    else                 return u_y_m(x,y);
+}
+//Rochi edit end
+/*
 double grad_u_p(double x, double y)
 {
   double ux, uy;
@@ -592,7 +1080,7 @@ double grad_u_p(double x, double y)
 
   return ux*phix + uy*phiy;
 }
-
+*/
 class MU_GRAD_U_JUMP: public CF_2
 {
 public:
@@ -607,7 +1095,7 @@ class BC_WALL_TYPE : public WallBC2D
 public:
   BoundaryConditionType operator() (double , double ) const
   {
-    if(test_number==2) return NEUMANN;
+    //if(test_number==2) return NEUMANN; rochi edit
     return DIRICHLET;
   }
 } bc_wall_type;
@@ -638,8 +1126,14 @@ void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4e
               int compt)
 {
   PetscErrorCode ierr;
-  char *out_dir = NULL;
-  out_dir = getenv("OUT_DIR");
+#ifdef DARKNESS
+  string output = "/home/regan/workspace/projects/PB_voronoi/visualization";
+#elif POD_CLUSTER
+  string output = "/home/rochishnu00/visualization";
+#else
+  string output = "/home/rochi/LabCode/results/cmparewithDaniil";
+#endif
+  const char *out_dir = output.c_str();
   if(out_dir==NULL)
   {
     ierr = PetscPrintf(p4est->mpicomm, "You need to set the environment variable OUT_DIR before running the code to save visuals\n"); CHKERRXX(ierr);
@@ -869,28 +1363,26 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
   //  solver.compute_voronoi_mesh();
   //  solver.setup_negative_laplace_matrix();
   //  solver.setup_negative_laplace_rhsvec();
-//  sample_cf_on_nodes(p4est, nodes, u_m, sol);
+  //  sample_cf_on_nodes(p4est, nodes, u_m, sol);
 
-  char out_path[1000];
-  char *out_dir = NULL;
-  out_dir = getenv("OUT_DIR");
-  if(out_dir==NULL)
+  char out_path[PATH_MAX];
+#ifdef DARKNESS
+  string out_dir = "/home/regan/workspace/projects/PB_voronoi";
+#elif POD_CLUSTER
+  string out_dir = "/home/rochishnu00/results";
+#else
+  string out_dir = "/home/rochi/LabCode/results";
+#endif
+  if(save_stats)
   {
-    ierr = PetscPrintf(p4est->mpicomm, "You need to set the environment variable OUT_DIR before running the code to save stats\n"); CHKERRXX(ierr);
+    sprintf(out_path, "%s/stats.dat", out_dir.c_str());
+    solver.write_stats(out_path);
   }
-  else
-  {
-    if(save_stats)
-    {
-      sprintf(out_path, "%s/stats.dat", out_dir);
-      solver.write_stats(out_path);
-    }
 
-    if(save_voro)
-    {
-      snprintf(out_path,1000, "%s/voronoi", out_dir);
-      solver.print_voronoi_VTK(out_path);
-    }
+  if(save_voro)
+  {
+    snprintf(out_path,1000, "%s/voronoi", out_dir.c_str());
+    solver.print_voronoi_VTK(out_path);
   }
 
   if(solver.get_matrix_has_nullspace())
@@ -922,8 +1414,46 @@ int main (int argc, char* argv[])
   cmd.add_option("check_partition", "1 to check if the voronoi partition is symmetric, 0 otherwise");
 #ifdef P4_TO_P8
   cmd.add_option("test", "choose a test.\n\
-                 0 - u_m=1+log(r/r0), u_p=1, mu=1\n\
-                 1 - u_m=exp(z), u_p=cos(x)*sin(y), mu_m=y*y*ln(x+2)+4, mu_p=exp(-z)   article example 4.6");
+                 0 - u_m=exp((z-zmin)/(zmax-zmin)), u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin)), mu_m=mu_p=1.0, BC dirichlet\n\
+                 1 - u_m=exp((z-zmin)/(zmax-zmin)), u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin)), mu_m=SQR((y-ymin)/(ymax-ymin))*log((x-xmin)/(xmax-xmin)+2)+4, mu_p=exp(-(z-zmin)/(zmax-zmin)) article example 4.6, BC dirichlet \n\
+                 2 - u_m=u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin))*exp((z-zmin)/(zmax-zmin)), mu_m=mu_p=1.45, BC dirichlet\n\
+                 3 - u_m=u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin))*exp((z-zmin)/(zmax-zmin)), mu_m=mu_p=exp((x-xmin)/(xmax-xmin))*ln((y-ymin)/(ymax-ymin)+(z-zmin)/(zmax-zmin)+2), BC dirichlet\n\
+                 4 - u_m=((y-0.5*(ymin+ymax))/(ymax-ymin))*((z-0.5*(zmin+zmax))/(zmax-zmin))*sin(x/(xmax-xmin)), u_p=((x-0.5*(xmin+xmax))/(xmax-xmin))*SQR((y-0.5*(ymin+ymax))/(ymax-ymin))+pow((z-0.5*(zmin+zmax))/(zmax-zmin), 3.0), mu_m=SQR((y-0.5*(ymin+ymax))/(ymax-ymin))+5, mu_p=exp((x-0.5*(xmin+xmax))/(xmax-xmin)+(z-0.5*(zmin+zmax))/(xmax-xmin))    BC dirichlet article example 4.7 \n\
+                 5 - u_m=u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin))*exp((z-zmin)/(zmax-zmin)), mu_m=SQR((y-0.5*(ymin+ymax))/(ymax-ymin))+5, mu_p=exp((x-0.5*(xmin+xmax))/(xmax-xmin)+(z-0.5*(zmin+zmax))/(zmax-zmin)) BC dirichlet \n\
+                 6 - u_m=exp(-SQR(sin(2.0*PI*wave_number*(x-xmin)/(xmax-xmin))))*(SQR((y-ymin)/(ymax-ymin))*atan(3.0*(z-0.5*(zmin+zmax))/(zmax-zmin))), \n\
+                   - u_p= 1.0-pow((x-0.5*(xmin+xmax))/(xmax-xmin), 3.0)-SQR((y-0.5*(ymin+ymax))/(ymax-ymin)) + ((z-0.5*(zmin+zmax))/(zmax-zmin)) \n\
+                   - mu_m= 2.0+0.3*cos(2.0*PI*(x-xmin)/(xmax-xmin)), \n\
+                   - mu_p=mu_value \n\
+                   - BC periodic in x, dirichlet in y, z \n\
+                 7 - u_m=exp(-SQR(sin(2.0*PI*wave_number*(y-ymin)/(ymax-ymin))))*(SQR((x-xmin)/(xmax-xmin))*atan(3.0*(z-0.5*(zmin+zmax))/(zmax-zmin))), \n\
+                   - u_p= 1.0-pow((x-0.5*(xmin+xmax))/(xmax-xmin), 3.0)-SQR((y-0.5*(ymin+ymax))/(ymax-ymin)) + ((z-0.5*(zmin+zmax))/(zmax-zmin)) \n\
+                   - mu_m= 2.0+0.3*cos(2.0*PI*(y-ymin)/(ymax-ymin)) \n\
+                   - mu_p=mu_value \n\
+                   - BC periodic in y, dirichlet in x, z \n\
+                 8 - u_m=exp(-SQR(sin(2.0*PI*wave_number*(z-zmin)/(zmax-zmin))))*(SQR((y-ymin)/(ymax-ymin))*atan(3.0*(x-0.5*(xmin+xmax))/(xmax-xmin))), \n\
+                   - u_p= 1.0-pow((x-0.5*(xmin+xmax))/(xmax-xmin), 3.0)-SQR((y-0.5*(ymin+ymax))/(ymax-ymin)) + ((z-0.5*(zmin+zmax))/(zmax-zmin)) \n\
+                   - mu_m= 2.0+0.3*cos(2.0*PI*(z-zmin)/(zmax-zmin)) \n\
+                   - mu_p=mu_value \n\
+                   - BC periodic in z, dirichlet in x, y \n\
+                 9 - u_m= cos(2.0*PI*wave_number*(x-xmin)/(xmax-xmin) + 2.0*PI*3.0*wave_number*(y-ymin)/(ymax-ymin))*sin(2.0*PI*wave_number*(y-ymin)/(ymax-ymin))*exp((z-0.5*(zmin+zmax))/(zmax-zmin)), \n\
+                   - u_p= 1.0-pow((x-0.5*(xmin+xmax))/(xmax-xmin), 3.0)-SQR((y-0.5*(ymin+ymax))/(ymax-ymin)) + ((z-0.5*(zmin+zmax))/(zmax-zmin)) \n\
+                   - mu_m=mu_value \n\
+                   - mu_p=mu_value*mu_ratio \n\
+                   - BC periodic in x-y, dirichlet in z \n\
+                 10- u_m= cos(2.0*PI*wave_number*(x-xmin)/(xmax-xmin) + 2.0*PI*3.0*wave_number*(z-zmin)/(zmax-zmin))*sin(2.0*PI*wave_number*(z-zmin)/(zmax-zmin))*exp((y-0.5*(ymin+ymax))/(ymax-ymin)), \n\
+                   - u_p= 1.0-pow((x-0.5*(xmin+xmax))/(xmax-xmin), 3.0)-SQR((y-0.5*(ymin+ymax))/(ymax-ymin)) + ((z-0.5*(zmin+zmax))/(zmax-zmin)) \n\
+                   - mu_m=mu_value \n\
+                   - mu_p=mu_value*mu_ratio \n\
+                   - BC periodic in x-z, dirichlet in y \n\
+                 11- u_m= cos(2.0*PI*wave_number*(y-ymin)/(ymax-ymin) + 2.0*PI*3.0*wave_number*(z-zmin)/(zmax-zmin))*sin(2.0*PI*wave_number*(z-zmin)/(zmax-zmin))*exp((x-0.5*(xmin+xmax))/(xmax-xmin)), \n\
+                   - u_p= 1.0-pow((x-0.5*(xmin+xmax))/(xmax-xmin), 3.0)-SQR((y-0.5*(ymin+ymax))/(ymax-ymin)) + ((z-0.5*(zmin+zmax))/(zmax-zmin)) \n\
+                   - mu_m=mu_value \n\
+                   - mu_p=mu_value*mu_ratio \n\
+                   - BC periodic in y-z, dirichlet in x \n\
+                 12- u_m=up= cos(2.0*PI*wave_number*(k1*(x/(xmax-xmin)) + k2*(y/(ymax-ymin)) +k3*(z/(zmax-zmin))))*cos(2.0*PI*wave_number*(k1*(z/(zmax-zmin)) + k2*(x/(xmax-xmin)) +k3*(y/(ymax-ymin))))*cos(2.0*PI*wave_number*(k1*(y/(ymax-ymin)) + k2*(z/(zmax-zmin)) - k3*(x/(xmax-xmin)))) \n\
+                   - mu_m=mu_value \n\
+                   - mu_p=mu_value*mu_ratio \n\
+                   - fully periodic");
 #else
   cmd.add_option("test", "choose a test.\n\
                  0 - u_m=1+log(r/r0), u_p=1, mu=1\n\
@@ -947,16 +1477,16 @@ int main (int argc, char* argv[])
   parStopWatch w;
   w.start("total time");
 
-  if(0)
-  {
-    int i = 0;
-    char hostname[256];
-    gethostname(hostname, sizeof(hostname));
-    printf("PID %d on %s ready for attach\n", getpid(), hostname);
-    fflush(stdout);
-    while (0 == i)
-      sleep(5);
-  }
+//  if(0)
+//  {
+//    int i = 0;
+//    char hostname[256];
+//    gethostname(hostname, sizeof(hostname));
+//    printf("PID %d on %s ready for attach\n", getpid(), hostname);
+//    fflush(stdout);
+//    while (0 == i)
+//      sleep(5);
+//  }
 
   p4est_connectivity_t *connectivity;
   my_p4est_brick_t brick;
@@ -971,8 +1501,11 @@ int main (int argc, char* argv[])
   p4est_nodes_t *nodes;
   p4est_ghost_t *ghost;
 
-  double err_n   = 0;
-  double err_nm1 = 0;
+  error_sample err_n, err_nm1, err_seed_n, err_seed_nm1;
+
+  error_sample err_grad_n, err_grad_nm1; // Rochi edit
+
+  int rank_max_error_seed;
 
   for(int iter=0; iter<nb_splits; ++iter)
   {
@@ -1014,7 +1547,7 @@ int main (int argc, char* argv[])
     ierr = VecCreateGhostNodes(p4est, nodes, &phi); CHKERRXX(ierr);
     sample_cf_on_nodes(p4est, nodes, level_set, phi);
     // bousouf
-//    sample_cf_on_nodes(p4est, nodes, one, phi);
+    //    sample_cf_on_nodes(p4est, nodes, one, phi);
 
     my_p4est_level_set_t ls(&ngbd_n);
     ls.perturb_level_set_function(phi, EPS);
@@ -1026,14 +1559,37 @@ int main (int argc, char* argv[])
 
     /* compute the error on the tree*/
     Vec err;
+    Vec err_grad; // Rochi edit
+
     ierr = VecDuplicate(phi, &err); CHKERRXX(ierr);
+
+    ierr = VecDuplicate(phi, &err_grad); CHKERRXX(ierr); // Rochi edit
     double *err_p, *sol_p;
+
+    double *err_grad_p; // Rochi edit
+
     ierr = VecGetArray(err, &err_p); CHKERRXX(ierr);
     ierr = VecGetArray(sol, &sol_p); CHKERRXX(ierr);
+
+    ierr = VecGetArray(err_grad, &err_grad_p); CHKERRXX(ierr); // Rochi edit
+
     err_nm1 = err_n;
-    err_n = 0;
-    double x_err=-1, y_err=-1, z_err=-1;
-    for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+
+    err_grad_nm1 = err_grad_n; // Rochi edit
+
+    err_n.error_value = 0.0;
+
+    err_grad_n.error_value = 0.0; // Rochi edit
+
+    double domain_diag = SQR(omega.xmax - omega.xmin) + SQR(omega.ymax - omega.ymin);
+#ifdef P4_TO_P8
+    domain_diag += SQR(omega.zmax - omega.zmin);
+#endif
+    domain_diag = sqrt(domain_diag);
+
+    my_p4est_node_neighbors_t *ngbd_n1= &ngbd_n; // Rochi edit
+    //for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+    for(size_t n=0; n<nodes->num_owned_indeps; ++n)
     {
       double x = node_x_fr_n(n, p4est, nodes);
       double y = node_y_fr_n(n, p4est, nodes);
@@ -1043,12 +1599,171 @@ int main (int argc, char* argv[])
 #else
       err_p[n] = fabs(u_exact(x,y) - sol_p[n]);
 #endif
-      if(err_p[n]>err_n)
+      //
+
+      // Rochi edit begin
+//      #ifdef P4_TO_P8
+//        std::cout <<"Point location x =" << x << "Point location y =" << y << "Point location z =" << z << std::endl;
+//        std::cout <<"Level Set phi =" <<level_set(x, y,z) <<std::endl;
+//      #else
+//        std::cout <<"Point location x =" << x << "Point location y =" << y << std::endl;
+//        std::cout <<"Level Set phi =" <<level_set(x, y) <<std::endl;
+//      #endif
+      //if ((fabs(level_set(x, y)) < EPS) || (fabs(omega.xmax-x) < EPS) || (fabs(x-omega.xmin) < EPS) || (fabs(omega.ymax-y) < EPS) || (fabs(y-omega.ymin) < EPS))
+      //    continue;
+      //
+      // check if close to the interface : begin Rochi edit
+      p4est_indep_t *node_1 = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
+      bool look_xm = true, look_xp = true, look_ym = true, look_yp = true;
+  #ifdef P4_TO_P8
+      bool look_zm = true, look_zp = true;
+  #endif
+      bool already_added = false;
+      if(is_node_Wall(p4est, node_1)) // we add the wall nodes, NO MATTER WHAT!
       {
-        x_err = x;
-        y_err = y;
+        look_xm = !is_node_xmWall(p4est, node_1);
+        look_xp = !is_node_xpWall(p4est, node_1);
+        look_ym = !is_node_ymWall(p4est, node_1);
+        look_yp = !is_node_ypWall(p4est, node_1);
+  #ifdef P4_TO_P8
+        look_zm = !is_node_zmWall(p4est, node_1);
+        look_zp = !is_node_zpWall(p4est, node_1);
+  #endif
+      }
+      double p_000, p_m00, p_p00, p_0m0, p_0p0;
+    #ifdef P4_TO_P8
+      double p_00m, p_00p;
+    #endif
+    const double *phi_read_only_p;
+    ierr = VecGetArrayRead(phi, &phi_read_only_p); CHKERRXX(ierr);
+
+    (*ngbd_n1).get_neighbors(n).ngbd_with_quadratic_interpolation(phi_read_only_p, p_000, p_m00, p_p00, p_0m0, p_0p0
+                                                             #ifdef P4_TO_P8
+                                                                 , p_00m, p_00p
+                                                             #endif
+                                                                 );
+    double grad_sol[P4EST_DIM];
+    ngbd_n1->init_neighbors();
+
+    if((look_xm && (p_000*p_m00<=0)) || (look_xp && (p_000*p_p00<=0))){
+       if ( (p_000*p_m00<=0) && (p_000*p_p00<=0)){    // note: need better fix: checks if the neighbors on both side of the current node are on the other side of the interface along x  - then uses u_x_exact
+            #ifdef P4_TO_P8
+            grad_sol[0]= u_x_exact(x,y,z);
+            #else
+            grad_sol[0]= u_x_exact(x,y);
+            #endif
+       }
+       else {
+       if (look_xm && (p_000*p_m00<=0))
+           grad_sol[0] = (*ngbd_n1).get_neighbors(n).dx_forward_quadratic(sol_p, *ngbd_n1);
+       else
+           grad_sol[0] = (*ngbd_n1).get_neighbors(n).dx_backward_quadratic(sol_p, *ngbd_n1);
+       }
+    }
+    else {
+        grad_sol[0] = (*ngbd_n1).get_neighbors(n).dx_central(sol_p);
+    }
+    if((look_ym && (p_000*p_0m0<=0)) || (look_yp && (p_000*p_0p0<=0))){
+        if ( (p_000*p_0m0<=0) && (p_000*p_0p0<=0)){    // note: need better fix: checks if the neighbors on both side of the current node are on the other side of the interface along y  - then uses u_y_exact
+                #ifdef P4_TO_P8
+                    grad_sol[1]= u_y_exact(x,y,z);
+                #else
+                    grad_sol[1]= u_y_exact(x,y);
+                #endif
+        }
+        else {
+       if (look_ym && (p_000*p_0m0<=0))
+           grad_sol[1] = (*ngbd_n1).get_neighbors(n).dy_forward_quadratic(sol_p, *ngbd_n1);
+       else
+           grad_sol[1] = (*ngbd_n1).get_neighbors(n).dy_backward_quadratic(sol_p, *ngbd_n1);
+       }
+    }
+    else {
+        grad_sol[1] = (*ngbd_n1).get_neighbors(n).dy_central(sol_p);
+    }
 #ifdef P4_TO_P8
-        z_err = z;
+    if((look_zm && (p_000*p_00m<=0)) || (look_zp && (p_000*p_00p<=0))){
+        if ( (p_000*p_0m0<=0) && (p_000*p_0p0<=0)){ // note: need better fix: checks if the neighbors on both side of the current node are on the other side of the interface along z  - then uses u_z_exact
+                    grad_sol[2]= u_z_exact(x,y,z);
+        }
+        else {
+       if (look_zm && (p_000*p_00m<=0))
+           grad_sol[2] = (*ngbd_n1).get_neighbors(n).dz_forward_quadratic(sol_p, *ngbd_n1);
+       else
+           grad_sol[2] = (*ngbd_n1).get_neighbors(n).dz_backward_quadratic(sol_p, *ngbd_n1);
+        }
+    }
+    else {
+        grad_sol[2] = (*ngbd_n1).get_neighbors(n).dz_central(sol_p);
+    }
+#endif
+/*
+      #ifdef P4_TO_P8
+        err_grad_p[n]= sqrt(SQR(u_x_exact(x,y,z)-grad_sol[0]) + SQR(u_y_exact(x,y,z)-grad_sol[1]) + SQR(u_z_exact(x,y,z)-grad_sol[2]));
+      #else
+        err_grad_p[n]= sqrt(SQR(u_x_exact(x,y)-grad_sol[0]) + SQR(u_y_exact(x,y)-grad_sol[1]));
+      #endif
+*/
+
+    #ifdef P4_TO_P8
+      err_grad_p[n]= MAX(ABS(u_x_exact(x,y,z)-grad_sol[0]) , ABS(u_y_exact(x,y,z)-grad_sol[1]) ,ABS( u_z_exact(x,y,z)-grad_sol[2]));
+    #else
+      err_grad_p[n]= MAX(ABS(u_x_exact(x,y)-grad_sol[0]) , ABS(u_y_exact(x,y)-grad_sol[1]));
+    #endif
+
+
+//      std::cout <<" gradient error ="<< err_grad_p[n] << std::endl;
+
+      #ifdef P4_TO_P8
+            error_sample local_grad_error(err_grad_p[n],x,y,z);
+      #else
+            error_sample local_grad_error(err_grad_p[n],x,y);
+      #endif
+
+
+      // Rochi edit end
+      if((local_error > err_n) && (fabs(level_set_value) > domain_diag*EPS))
+        err_n = local_error;
+      // Rochi edit begin
+      if((local_grad_error > err_grad_n) && (fabs(level_set_value) > domain_diag*EPS))
+        err_grad_n = local_grad_error;
+      // Rochi edit end
+    }
+    std::vector<error_sample> max_errors_on_procs(mpi.size());
+    int mpiret1 = MPI_Allgather((void*) &err_n, sizeof(error_sample), MPI_BYTE, (void *) &max_errors_on_procs[0], sizeof(error_sample), MPI_BYTE, mpi.comm()); SC_CHECK_MPI(mpiret1);
+    err_n.error_value = 0.0;
+    int rank_max_error = 0;
+
+    // Rochi edit begin
+    std::vector<error_sample> max_grad_errors_on_procs(mpi.size());
+    int mpiret2 = MPI_Allgather((void*) &err_grad_n, sizeof(error_sample), MPI_BYTE, (void *) &max_grad_errors_on_procs[0], sizeof(error_sample), MPI_BYTE, mpi.comm()); SC_CHECK_MPI(mpiret2);
+    err_grad_n.error_value = 0.0;
+    int rank_max_grad_error = 0;
+    // Rochi edit end
+
+    for (int r = 0; r < mpi.size(); ++r) {
+      if(max_errors_on_procs[r] > err_n)
+      {
+        err_n = max_errors_on_procs[r];
+        rank_max_error = r;
+      }
+      // Rochi edit begin
+      if(max_grad_errors_on_procs[r] > err_grad_n)
+      {
+        err_grad_n = max_grad_errors_on_procs[r];
+        rank_max_grad_error = r;
+      }
+      // Rochi edit end
+    }
+    PetscPrintf(p4est->mpicomm, "Iter %d\n", iter);
+#ifdef P4_TO_P8
+    PetscPrintf(p4est->mpicomm, "  -- On the grid nodes -- max_err = %g, \t order : %g. \t Max error at point %g, %g, %g, \t on proc %d, \t dist_interface = %g, \t qh = %g. \n", err_n.error_value, log(err_nm1.error_value/err_n.error_value)/log(2), err_n.error_location_x, err_n.error_location_y, err_n.error_location_z, rank_max_error, fabs(level_set(err_n.error_location_x, err_n.error_location_y, err_n.error_location_z)), MAX((xyz_max[0]-xyz_min[0])/nx, (xyz_max[1]-xyz_min[1])/ny, (xyz_max[2]-xyz_min[2])/nz)/pow(2.0,lmax+iter));
+    PetscPrintf(p4est->mpicomm, "  --  On Voronoi mesh  -- max_err = %g, \t order : %g. \t Max error at point %g, %g, %g, \t on proc %d, \t dist_interface = %g. \n", err_seed_n.error_value, log(err_seed_nm1.error_value/err_seed_n.error_value)/log(2), err_seed_n.error_location_x, err_seed_n.error_location_y, err_seed_n.error_location_z, rank_max_error_seed, fabs(level_set(err_seed_n.error_location_x, err_seed_n.error_location_y, err_seed_n.error_location_z)));
+    PetscPrintf(p4est->mpicomm, "  -- On the grid nodes -- max_err = %g, \t order : %g. \t Max error at point %g, %g, %g, \t on proc %d, \t dist_interface = %g, \t qh = %g. \n", err_grad_n.error_value, log(err_grad_nm1.error_value/err_grad_n.error_value)/log(2), err_grad_n.error_location_x, err_grad_n.error_location_y, err_grad_n.error_location_z, rank_max_grad_error, fabs(level_set(err_grad_n.error_location_x, err_grad_n.error_location_y, err_grad_n.error_location_z)), MAX((xyz_max[0]-xyz_min[0])/nx, (xyz_max[1]-xyz_min[1])/ny, (xyz_max[2]-xyz_min[2])/nz)/pow(2.0,lmax+iter));
+#else
+    PetscPrintf(p4est->mpicomm, "  -- On the grid nodes -- max_err = %g, \t order : %g. \t Max error at point %g, %g, \t on proc %d, \t dist_interface = %g, \t qh = %g. \n", err_n.error_value, log(err_nm1.error_value/err_n.error_value)/log(2), err_n.error_location_x, err_n.error_location_y, rank_max_error, fabs(level_set(err_n.error_location_x, err_n.error_location_y)), MAX((xyz_max[0]-xyz_min[0])/nx, (xyz_max[1]-xyz_min[1])/ny)/pow(2.0,lmax+iter));
+    PetscPrintf(p4est->mpicomm, "  --  On Voronoi mesh  -- max_err = %g, \t order : %g. \t Max error at point %g, %g, \t on proc %d, \t dist_interface = %g. \n", err_seed_n.error_value, log(err_seed_nm1.error_value/err_seed_n.error_value)/log(2), err_seed_n.error_location_x, err_seed_n.error_location_y, rank_max_error_seed, fabs(level_set(err_seed_n.error_location_x, err_seed_n.error_location_y)));
+    PetscPrintf(p4est->mpicomm, "  -- On the grid nodes -- max_grad_err = %g, \t order : %g. \t Max error at point %g, %g, \t on proc %d, \t dist_interface = %g, \t qh = %g. \n", err_grad_n.error_value, log(err_grad_nm1.error_value/err_grad_n.error_value)/log(2), err_grad_n.error_location_x, err_grad_n.error_location_y, rank_max_grad_error, fabs(level_set(err_grad_n.error_location_x, err_grad_n.error_location_y)), MAX((xyz_max[0]-xyz_min[0])/nx, (xyz_max[1]-xyz_min[1])/ny)/pow(2.0,lmax+iter)); // Rochi edit
 #endif
       }
       err_n = max(err_n, err_p[n]);
@@ -1061,12 +1776,16 @@ int main (int argc, char* argv[])
     ierr = VecRestoreArray(err, &err_p); CHKERRXX(ierr);
     ierr = VecRestoreArray(sol, &sol_p); CHKERRXX(ierr);
 
+    ierr = VecRestoreArray(err_grad, &err_grad_p); CHKERRXX(ierr); // Rochi edit
+
     if(save_vtk)
       save_VTK(p4est, ghost, nodes, &brick, phi, sol, err, iter);
 
     ierr = VecDestroy(phi); CHKERRXX(ierr);
     ierr = VecDestroy(sol); CHKERRXX(ierr);
     ierr = VecDestroy(err); CHKERRXX(ierr);
+
+    ierr = VecDestroy(err_grad); CHKERRXX(ierr); // Rochi edit
 
     p4est_nodes_destroy(nodes);
     p4est_ghost_destroy(ghost);

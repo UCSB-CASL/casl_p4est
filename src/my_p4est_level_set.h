@@ -28,11 +28,14 @@ class my_p4est_level_set_t {
 
 #ifdef P4_TO_P8
   void compute_derivatives( Vec phi_petsc, Vec dxx_petsc, Vec dyy_petsc, Vec dzz_petsc) const;
+  void compute_derivatives_above_threshold( Vec phi_petsc, double threshold, Vec dxx_petsc, Vec dyy_petsc, Vec dzz_petsc) const;
 #else
   void compute_derivatives( Vec phi_petsc, Vec dxx_petsc, Vec dyy_petsc) const;
+  void compute_derivatives_above_threshold( Vec phi_petsc, double threshold, Vec dxx_petsc, Vec dyy_petsc) const;
 #endif
 
   void reinitialize_One_Iteration_First_Order( std::vector<p4est_locidx_t>& map, double *p0, double *pn, double *pnp1, double limit );
+  void reinitialize_One_Iteration_First_Order_Above_Threshold( std::vector<p4est_locidx_t>& map, double *p0, double *pn, double *pnp1, double threshold, double limit );
 
   void reinitialize_One_Iteration_Second_Order( std::vector<p4est_locidx_t>& map,
                                               #ifdef P4_TO_P8
@@ -43,6 +46,16 @@ class my_p4est_level_set_t {
                                                 const double *dxx,  const double *dyy,
                                               #endif
                                                 double *p0, double *pn, double *pnp1, double limit );
+
+  void reinitialize_One_Iteration_Second_Order_Above_Threshold( std::vector<p4est_locidx_t>& map,
+                                                                 #ifdef P4_TO_P8
+                                                                   const double *dxx0, const double *dyy0, const double *dzz0,
+                                                                   const double *dxx,  const double *dyy,  const double *dzz,
+                                                                 #else
+                                                                   const double *dxx0, const double *dyy0,
+                                                                   const double *dxx,  const double *dyy,
+                                                                 #endif
+                                                                   double *p0, double *pn, double *pnp1, double threshold, double limit );
 
   void advect_in_normal_direction_one_iteration(std::vector<p4est_locidx_t>& map, const double *vn, double dt,
                                               #ifdef P4_TO_P8
@@ -84,13 +97,17 @@ public:
 
   /* 1st order in time, 2nd order in space */
   void reinitialize_1st_order_time_2nd_order_space( Vec phi_petsc, int number_of_iteration=50, double limit=DBL_MAX );
+  void reinitialize_1st_order_time_2nd_order_space_above_threshold( Vec phi_petsc, double threshold, int number_of_iteration=50, double limit=DBL_MAX );
 
   /* 1st order in time, 1st order in space */
   void reinitialize_1st_order( Vec phi_petsc, int number_of_iteration=50, double limit=DBL_MAX );
+  void reinitialize_1st_order_above_threshold( Vec phi_petsc, double threshold, int number_of_iteration=50, double limit=DBL_MAX );
 
   /* 2nd order in time, 2nd order in space */
   /* this has not be thoroughly tested ... use with caution. It's also disastrous in terms of MPI communications */
   void reinitialize_2nd_order( Vec phi_petsc, int number_of_iteration=50, double limit=DBL_MAX );
+  void reinitialize_2nd_order_above_threshold( Vec phi_petsc, double threshold, int number_of_iteration=50, double limit=DBL_MAX );
+
 
   /*!
    * \brief advect_in_normal_direction advects the level-set function in the normal direction using Godunov's scheme

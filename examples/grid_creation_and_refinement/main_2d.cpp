@@ -1,0 +1,366 @@
+/*
+ * Title: grid_creation_and_refinement
+ * Description:
+ * Author: ftc
+ * Date Created: 10-22-2019
+ */
+
+#ifndef P4_TO_P8
+#include <src/my_p4est_utils.h>
+#include <src/my_p4est_vtk.h>
+#include <src/my_p4est_nodes.h>
+#include <src/my_p4est_tools.h>
+#include <src/my_p4est_refine_coarsen.h>
+#include <src/my_p4est_log_wrappers.h>
+#include <src/my_p4est_node_neighbors.h>
+#include <src/my_p4est_macros.h>
+#else
+#include <src/my_p8est_utils.h>
+#include <src/my_p8est_vtk.h>
+#include <src/my_p8est_nodes.h>
+#include <src/my_p8est_tools.h>
+#include <src/my_p8est_refine_coarsen.h>
+#include <src/my_p8est_log_wrappers.h>
+#include <src/my_p8est_node_neighbors.h>
+#include <src/my_p8est_macros.h>
+#endif
+
+#include <iostream>
+#include <iomanip>
+#include <time.h>
+#include <src/Parser.h>
+#include <src/casl_math.h>
+#include <src/parameter_list.h>
+#include <src/petsc_compatibility.h>
+
+using namespace std;
+
+// -----------------------------------------------------------------------------------------------------------------------
+// Description of the main file
+// -----------------------------------------------------------------------------------------------------------------------
+
+const static std::string main_description = "\
+ In this example, we illustrate and test the main procedures to create and refine a forest of Quad/Oc-trees within the \n\
+ parCASL library. We focus on creating a grid from scratch, not on updating the grid from a previous one, since that   \n\
+ will be covered in the 'grid_update' example. Specifically, we address the two main paradigms of grid refinement      \n\
+ within pasCASL, i.e. (i) refinement from a continuous function (setting 'method' as 1 or 2) and (ii) refinement from  \n\
+ grid-sampled data via tagging each quadrant/octant (setting 'method' as 3). The script first creates the relevant     \n\
+ p4est and my_p4est objects, and then refines the grid around a circle (in 2D) or sphere (in 3D) that is randomly      \n\
+ placed in the domain.                                                                                                 \n\
+ Example of application of interest: Creation of any computational grid in the parCASL library.                        \n\
+ Developer: Fernando Temprano-Coleto (ftempranocoleto@ucsb.edu), October 2019.                                         \n ";
+
+// -----------------------------------------------------------------------------------------------------------------------
+// Definition of the parameters of the example
+// -----------------------------------------------------------------------------------------------------------------------
+
+// Declare the parameter list object
+param_list_t pl;
+
+// Grid parameters
+param_t<int>          nx          (pl, 2,    "nx",          "Number of trees in the x direction (default: 2)");
+param_t<int>          ny          (pl, 2,    "ny",          "Number of trees in the y direction (default: 2)");
+#ifdef P4_TO_P8
+param_t<int>          nz          (pl, 2,    "nz",          "Number of trees in the z direction (default: 2)");
+#endif
+param_t<unsigned int> lmin        (pl, 3,    "lmin",        "Min. level of refinement (default: 3)");
+param_t<unsigned int> lmax        (pl, 7,    "lmax",        "Max. level of refinement (default: 7)");
+param_t<double>       lip         (pl, 1.2,  "lip",         "Lipschitz constant (default: 1.2)");
+param_t<double>       b_width     (pl, 4.0,  "b_width",     "Bandwidth of uniform fine cells around the interface (default: 4.0)");
+
+// Method setup
+param_t<bool>         output_iter (pl, true, "output_iter", "Output each refinement iteration (1)\n"
+                                                            "or only macromesh and final grid (0) (default:1)");
+param_t<unsigned int> method      (pl, 1,    "method",      "Method of grid refinement (default: 1):\n"
+                                                            "\t0 - Do nothing (export macromesh),\n"
+                                                            "\t1 - Continuous function: distance to interface,\n"
+                                                            "\t2 - Continuous function: distance to interface and band of uniform cells,\n"
+                                                            "\t3 - Tag quadrants: interface.");
+
+// -----------------------------------------------------------------------------------------------------------------------
+// Define auxiliary classes
+// -----------------------------------------------------------------------------------------------------------------------
+
+// Random number generator
+double random_gen(const double &min=0.0, const double &max=1.0)
+{
+  return (min+(max-min)*((double) rand())/((double) RAND_MAX));
+}
+
+// Continuous signed-distance level-set function representing a circle (2D) or a sphere (3D)
+#ifdef P4_TO_P8
+struct sphere_ls : CF_3
+{
+  sphere_ls(double x0_, double y0_, double z0_, double R_): x0(x0_), y0(y0_), z0(z0_), R(R_) {}
+#else
+struct sphere_ls : CF_2
+{
+  sphere_ls(double x0_, double y0_, double R_): x0(x0_), y0(y0_), R(R_) {}
+#endif
+#ifdef P4_TO_P8
+  double operator()(double x, double y, double z) const
+  {
+    return R - sqrt(SQR(x-x0) + SQR(y-y0) + SQR(z-z0));
+#else
+  double operator()(double x, double y) const
+  {
+    return R - sqrt(SQR(x-x0) + SQR(y-y0));
+#endif
+  }
+private:
+  double x0, y0;
+#ifdef P4_TO_P8
+  double z0;
+#endif
+  double R;
+};
+
+// -----------------------------------------------------------------------------------------------------------------------
+// Main function
+// -----------------------------------------------------------------------------------------------------------------------
+
+int main(int argc, char** argv) {
+
+  // Prepare the parallel enviroment
+  mpi_environment_t mpi;
+  mpi.init(argc, argv);
+
+  // Declaration of the stopwatch object
+  parStopWatch w;
+  w.start("Running example: grid_creation_and_refinement");
+
+  // Get parameter values from the run command
+  cmdParser cmd;
+  pl.initialize_parser(cmd);
+  if (cmd.parse(argc, argv, main_description)) return 0;
+  pl.set_from_cmd_all(cmd);
+
+  // Declaration of the PETSc error flag variable
+  PetscErrorCode ierr;
+
+  // Initialize the random seed generator
+  srand(time(NULL));
+
+  // Domain size information
+#ifdef P4_TO_P8
+  const int    n_xyz[]    = {        nx(),        ny(),        nz()}; // Number of trees in each dimension from inputs
+#else
+  const int    n_xyz[]    = {        nx(),        ny(),           0}; // Number of trees in each dimension from inputs
+#endif
+  const double xyz_min[]  = {         0.0,         0.0,         0.0}; // Cartesian coordinates of the domain corner with minimum x, y, and z
+  const double xyz_max[]  = { n_xyz[0]*PI, n_xyz[1]*PI, n_xyz[2]*PI}; // Cartesian coordinates of the domain corner with maximum x, y, and z
+  const int    periodic[] = {           0,           0,           0}; // No periodicity of the tree in any dimension
+
+  // Declare continuous level-set function
+  sphere_ls sphere(random_gen(xyz_min[0], xyz_max[0]),
+                   random_gen(xyz_min[1], xyz_max[1]),
+#ifdef P4_TO_P8
+                   random_gen(xyz_min[2], xyz_max[2]),
+#endif
+                   PI/exp(1.0));
+
+  // Declaration of the *macromesh* via the brick and connectivity objects
+  my_p4est_brick_t      brick;
+  p4est_connectivity_t* conn;
+  conn = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick, periodic);
+
+  // Declaration of pointers to p4est variables
+  p4est_t*       p4est;
+  p4est_ghost_t* ghost;
+  p4est_nodes_t* nodes;
+
+  // Create the forest and partition it between processors
+  p4est = my_p4est_new(mpi.comm(), conn, 0, NULL, NULL);
+  my_p4est_partition(p4est, P4EST_FALSE, NULL);
+  /*
+   * [NOTE:] At this point in the script we have created the forest but
+   *         it is only the macromesh. You can just export the macromesh
+   *         and exit by choosing 'method=0' in the options.
+   */
+
+  // Create ghosts and nodes
+  ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
+  nodes = my_p4est_nodes_new(p4est, ghost);
+
+  // Output the grid (just macromesh since we haven't refined)
+  my_p4est_vtk_write_all(p4est, nodes, ghost,
+                         P4EST_TRUE, P4EST_TRUE,
+                         0, 0, "visualization_0");
+
+  // Grid refinement methods
+  switch(method())
+  {
+    case 0: /*------ DO NOTHING (EXPORT MACROMESH)----------------------------------------------------------------------*/
+    {
+      break;
+    }
+    case 1: /*------ CONTINUOUS FUNCTION: DISTANCE TO INTERFACE ------ or ----------------------------------------------*/
+    case 2: /*------ CONTINUOUS FUNCTION: DISTANCE TO INTERFACE AND UNIFORM BAND ---------------------------------------*/
+    {
+      // Declare the continuous-function refinement object
+      splitting_criteria_t* sp = NULL;
+      if(method()==1)
+        sp = new splitting_criteria_cf_t(lmin(), lmax(), &sphere, lip());
+      else
+        sp = new splitting_criteria_cf_and_uniform_band_t(lmin(), lmax(), &sphere, b_width(), lip());
+      /*
+       * [NOTE:] The classes 'splitting_criteria_cf_t' and
+       *         'splitting_criteria_cf_and_uniform_band_t' are both derived
+       *         from 'splitting_criteria_t'. Therefore, it is allowed for
+       *         the pointer 'sp' to point at them.
+       */
+
+      // Point the custom user_pointer of p4est to refinement object
+      p4est->user_pointer = sp;
+
+      // Refine *non-recursively* in succesive iterations
+      for(unsigned int iter=0; iter<lmax(); ++iter)
+      {
+        if(method()==1)
+          my_p4est_refine(p4est, P4EST_FALSE, refine_levelset_cf, NULL);
+        else
+          my_p4est_refine(p4est, P4EST_FALSE, refine_levelset_cf_and_uniform_band, NULL);
+
+        // Partition at each iteration
+        my_p4est_partition(p4est, P4EST_FALSE, NULL);
+
+        if(output_iter() || iter==lmax()-1)
+        {
+          // Create ghosts and nodes
+          p4est_nodes_destroy(nodes);
+          p4est_ghost_destroy(ghost);
+          ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
+          nodes = my_p4est_nodes_new(p4est, ghost);
+          /*
+           * [NOTE:] The ghosts and nodes are at this point *only* needed to output
+           *         the forest in vtk format. In general, it is not advised to
+           *         create these objects at every refinement iteration, since they
+           *         are not needed for the refinement operations and the increase
+           *         in computational cost of their creation could be non-negligible.
+           */
+
+          // Output each iteration to vtk
+          char name[1024];
+          sprintf(name, "visualization_%1d", output_iter() ? iter+1 : 1);
+          my_p4est_vtk_write_all(p4est, nodes, ghost,
+                                 P4EST_TRUE, P4EST_TRUE,
+                                 0, 0, name);
+        }
+      }
+      /*
+       * [NOTE:] The forest could also be refined *recursively*, avoiding
+       *         the use of a loop, by setting the second input of
+       *         'my_p4est_refine' to P4EST_TRUE. This however is in
+       *         general not advised, since in that case the forest is
+       *         not partitioned between processors at each refinement
+       *         iteration. This can result in an imbalance of workload
+       *         between processors, especially in situations in which
+       *         the total number of trees in the macromesh is much smaller
+       *         than the number of processors. For example, for a run on
+       *         a cluster with 4 trees in the macromesh and 1024
+       *         processors, once the macromesh is created and partitioned
+       *         only 4 processors will own cells (one tree each). If the
+       *         refinement is recursive, the newly created cells are never
+       *         redistributed betweeen processors and the whole grid will
+       *         be refined by only 4 (out of 1024 available!) processors.
+       */
+
+      // Destroy the dynamically allocated object
+      delete sp;
+
+      break;
+    }
+
+    case 3: /*------ TAGGING QUADRANTS: DISTANCE TO INTERFACE ----------------------------------------------------------*/
+    {
+      // Sample a level-set function at nodes
+      Vec phi; double *phi_p;
+      ierr = VecCreateGhostNodes(p4est, nodes, &phi); CHKERRXX(ierr);
+      sample_cf_on_nodes(p4est, nodes, sphere, phi);
+
+      // Declare the continuous-function refinement object
+      splitting_criteria_tag_t sp(lmin(), lmax(), lip());
+
+      // Point the custom user_pointer of p4est to refinement object
+      p4est->user_pointer = &sp;
+
+      bool grid_is_changing = true;
+      unsigned int iter=0;
+      while(grid_is_changing)
+      {
+        // Refine grid
+        ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
+        grid_is_changing = sp.refine(p4est, nodes, phi_p);
+        ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
+
+        if(grid_is_changing)
+        {
+          // Partition, create ghosts, create nodes
+          my_p4est_partition(p4est, P4EST_FALSE, NULL);
+          p4est_ghost_destroy(ghost); ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
+          p4est_nodes_destroy(nodes); nodes = my_p4est_nodes_new(p4est, ghost);
+
+          // Re-sample the level-set function (since the grid has changed)
+          ierr = VecDestroy(phi); CHKERRXX(ierr);
+          ierr = VecCreateGhostNodes(p4est, nodes, &phi); CHKERRXX(ierr);
+          sample_cf_on_nodes(p4est, nodes, sphere, phi);
+
+          // Output the grid and data
+          if(output_iter())
+          {
+            char name[1024];
+            sprintf(name, "visualization_%1d", iter+1);
+            ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
+            my_p4est_vtk_write_all(p4est, nodes, ghost,
+                                   P4EST_TRUE, P4EST_TRUE,
+                                   1, 0, name,
+                                   VTK_POINT_DATA, "phi", phi_p);
+            ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
+            /*
+             * [NOTE:] Since in the 'tagging' case we actually have data at grid points
+             *         available (in this case the level-set function), here we can also
+             *         output the data in the vtk files.
+             */
+          }
+
+          // Keep track of the iterations
+          iter++;
+          if(iter>lmax())
+          {
+            ierr = PetscPrintf(mpi.comm(), "[WARNING:] The grid update did not converge.");
+            break;
+          }
+        }
+
+      }
+
+      // Print the final grid if we did not print each iteration
+      if(!output_iter())
+      {
+        ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
+        my_p4est_vtk_write_all(p4est, nodes, ghost,
+                               P4EST_TRUE, P4EST_TRUE,
+                               1, 0, "visualization_1",
+                               VTK_POINT_DATA, "phi", phi_p);
+      }
+
+      // Destroy the dynamically allocated object
+      ierr = VecDestroy(phi); CHKERRXX(ierr);
+
+      break;
+    }
+
+    default: throw std::invalid_argument("Invalid refinement method");
+  }
+
+  // Destroy the dynamically allocated objects
+  p4est_nodes_destroy   (nodes);
+  p4est_ghost_destroy   (ghost);
+  p4est_destroy         (p4est);
+  my_p4est_brick_destroy(conn, &brick);
+
+  // Stop and print global timer
+  w.stop();
+  w.read_duration();
+}
+
