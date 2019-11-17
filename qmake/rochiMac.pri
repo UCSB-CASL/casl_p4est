@@ -28,6 +28,12 @@ VORO_INCLUDES_DEBUG     = $$VORO_DIR/include/voro++
 VORO_LIBS_RELEASE       = -Wl,-rpath,$$VORO_DIR/lib -L$$VORO_DIR/lib -lvoro++
 VORO_LIBS_DEBUG         = -Wl,-rpath,$$VORO_DIR/lib -L$$VORO_DIR/lib -lvoro++
 
+# matlab(for computing condition number, its optional)
+#MATLAB_DIR              = /Applications/MATLAB_R2017b.app
+
+#MATLAB_INCLUDES         = $$MATLAB_DIR/extern/include/
+#MATLAB_LIBS             = $$MATLAB_DIR/extern/bin/
+
 QMAKE_CC                = /usr/local/bin/mpicc
 QMAKE_CXX               = /usr/local/bin/mpicxx
 QMAKE_LINK              = /usr/local/bin/mpicxx

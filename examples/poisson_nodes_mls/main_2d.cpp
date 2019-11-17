@@ -70,6 +70,7 @@
 #undef MIN
 #undef MAX
 
+
 using namespace std;
 
 const int bdry_phi_max_num = 4;
@@ -110,7 +111,7 @@ DEFINE_PARAMETER(pl, int, num_shifts_x_dir, 1, "Number of grid shifts in the x-d
 DEFINE_PARAMETER(pl, int, num_shifts_y_dir, 1, "Number of grid shifts in the y-direction");
 DEFINE_PARAMETER(pl, int, num_shifts_z_dir, 1, "Number of grid shifts in the z-direction");
 #else
-DEFINE_PARAMETER(pl, int, lmin, 5, "Min level of the tree");
+DEFINE_PARAMETER(pl, int, lmin, 3, "Min level of the tree");
 DEFINE_PARAMETER(pl, int, lmax, 5, "Max level of the tree");
 
 DEFINE_PARAMETER(pl, int, num_splits,           5, "Number of recursive splits");
@@ -218,7 +219,6 @@ DEFINE_PARAMETER(pl, int, jc_flux_01, 0, "0 - automatic, others - hardcoded");
 DEFINE_PARAMETER(pl, int, jc_flux_02, 0, "0 - automatic, others - hardcoded");
 DEFINE_PARAMETER(pl, int, jc_flux_03, 0, "0 - automatic, others - hardcoded");
 
-//DEFINE_PARAMETER(pl, int, bc_itype, ROBIN, "");
 
 //-------------------------------------
 // solver parameters
@@ -226,7 +226,7 @@ DEFINE_PARAMETER(pl, int, jc_flux_03, 0, "0 - automatic, others - hardcoded");
 DEFINE_PARAMETER(pl, int,  jc_scheme,         0, "Discretization scheme for interface conditions (0 - FVM, 1 - FDM)");
 DEFINE_PARAMETER(pl, int,  jc_sub_scheme,     0, "Interpolation subscheme for interface conditions (0 - from slow region, 1 - from fast region, 2 - based on nodes availability)");
 DEFINE_PARAMETER(pl, int,  integration_order, 2, "Select integration order (1 - linear, 2 - quadratic)");
-DEFINE_PARAMETER(pl, bool, sc_scheme,         1, "Use super-convergent scheme");
+DEFINE_PARAMETER(pl, bool, sc_scheme,         0, "Use super-convergent scheme");
 
 // for symmetric scheme:
 DEFINE_PARAMETER(pl, bool, taylor_correction,      1, "Use Taylor correction to approximate Robin term (symmetric scheme)");
@@ -236,8 +236,8 @@ DEFINE_PARAMETER(pl, bool, kink_special_treatment, 1, "Use the special treatment
 DEFINE_PARAMETER(pl, bool, try_remove_hanging_cells, 0, "Ask solver to eliminate hanging cells");
 
 DEFINE_PARAMETER(pl, bool, store_finite_volumes,   1, "");
-DEFINE_PARAMETER(pl, bool, apply_bc_pointwise,     1, "");
-DEFINE_PARAMETER(pl, bool, use_centroid_always,    1, "");
+DEFINE_PARAMETER(pl, bool, apply_bc_pointwise,     0, "");
+DEFINE_PARAMETER(pl, bool, use_centroid_always,    0, "");
 DEFINE_PARAMETER(pl, bool, sample_bc_node_by_node, 0, "");
 
 //-------------------------------------
@@ -247,11 +247,11 @@ DEFINE_PARAMETER(pl, bool, use_phi_cf,       0, "Use analytical level-set functi
 DEFINE_PARAMETER(pl, bool, reinit_level_set, 1, "Reinitialize level-set function");
 
 // artificial perturbation of level-set values
-DEFINE_PARAMETER(pl, int,    dom_perturb,     0,   "Artificially pertub level-set functions (0 - no perturbation, 1 - smooth, 2 - noisy)");
+DEFINE_PARAMETER(pl, int,    dom_perturb,     1,   "Artificially pertub level-set functions (0 - no perturbation, 1 - smooth, 2 - noisy)");
 DEFINE_PARAMETER(pl, double, dom_perturb_mag, 0.1, "Magnitude of level-set perturbations");
 DEFINE_PARAMETER(pl, double, dom_perturb_pow, 2,   "Order of level-set perturbation (e.g. 2 for h^2 perturbations)");
 
-DEFINE_PARAMETER(pl, int,    ifc_perturb,     0,   "Artificially pertub level-set functions (0 - no perturbation, 1 - smooth, 2 - noisy)");
+DEFINE_PARAMETER(pl, int,    ifc_perturb,     1,   "Artificially pertub level-set functions (0 - no perturbation, 1 - smooth, 2 - noisy)");
 DEFINE_PARAMETER(pl, double, ifc_perturb_mag, 0.1e-6, "Magnitude of level-set perturbations");
 DEFINE_PARAMETER(pl, double, ifc_perturb_pow, 2,   "Order of level-set perturbation (e.g. 2 for h^2 perturbations)");
 
@@ -277,12 +277,43 @@ DEFINE_PARAMETER(pl, int,    extension_iterations,   100, "");
 DEFINE_PARAMETER(pl, bool, save_vtk,           1, "Save the p4est in vtk format");
 DEFINE_PARAMETER(pl, bool, save_params,        0, "Save list of entered parameters");
 DEFINE_PARAMETER(pl, bool, save_domain,        0, "Save the reconstruction of an irregular domain (works only in serial!)");
-DEFINE_PARAMETER(pl, bool, save_matrix_ascii,  0, "Save the matrix in ASCII MATLAB format");
-DEFINE_PARAMETER(pl, bool, save_matrix_binary, 0, "Save the matrix in BINARY MATLAB format");
-DEFINE_PARAMETER(pl, bool, save_convergence,   0, "Save convergence results");
+DEFINE_PARAMETER(pl, bool, save_matrix_ascii,  1, "Save the matrix in ASCII MATLAB format");
+DEFINE_PARAMETER(pl, bool, save_matrix_binary, 1, "Save the matrix in BINARY MATLAB format");
+DEFINE_PARAMETER(pl, bool, save_convergence,   1, "Save convergence results");
 
-DEFINE_PARAMETER(pl, int, n_example, 10, "Predefined example");
+DEFINE_PARAMETER(pl, int, n_example, 6, "Predefined example");
+// parameters to set for running an example
 
+// define the poisson problem to solve
+
+
+// specify exact solution of the problem in the in the positive and negative domain defined  in class u_pm_cf_t -> n_up and n_um
+// specify  the scalar that is to be multiplied to the exact solution defined using the previous variables -> mag_up and mag_um
+// specify mu of the problem in the in the positive and negative domain defined  in class u_pm_cf_t -> n_mu_p and n_mu_m
+// specify  the scalar that is to be multiplied to mu defined using the previous variables -> mag_mu_p and mag_mu_m
+// specify type of  diagonal term in the positive and negative domain by setting n_diag_m and n_diag_p to 0 or 1 or 2
+// specify the scalar to be multiplied to the diagonal terms -> mag_diag_p and mag_diag_m
+
+
+
+// define the domain geometry namely boundaries and interfaces
+// specify number of boundaries and interfaces -> bdry_phi_num and infc_phi_num
+// code is currently setup in a way that it can handle at max 4 boundaries and 4 interfaces and this can easily be extended further
+
+// adding boundaries
+
+// the value of "xx" in the following lines can be either 01, 02, 03 or 04 specifying the boundary  or interface number
+// bdry_present_xx -> specifies if the bdry xx exists or not depending on whether the value is 1 or 0
+// bdry_geom_xx -> defines the geometry of bdry xx defined in class bdry_phi_cf_t
+// bdry_opn_xx -> can be MLS_INT or MLS_ADD
+// As evident from the name choosing MLS_INTERSECTION will create a compound domain that is the intersection of two or more given domains
+// and MLS_ADDITION will create a compound domain that is the union of two or more given domains
+// bc_coeff_xx -> defines the type of robin boundary coefficient defined in bc_c0eff_cf_t
+// bc_coeff_xx_mag -> defines the scalar to be multiplied with the Robin boundary coefficient specified using the above mentioned parameter
+// bc_type_xx -> type of boundary coefficient DIRICHLET, NEUMANN or ROBIN defined in bc_wall_type_t
+
+
+// adding interfaces is exactly similar to adding boundaries except in all the names above "bry" is replaced with "infc"
 void set_example(int n_example)
 {
   switch (n_example)
@@ -484,8 +515,6 @@ void set_example(int n_example)
 
     case 10: // moderately star-shaped interface
 
-//      n_um = 14; mag_um = 1; n_mu_m = 0; mag_mu_m = 1; n_diag_m = 0; mag_diag_m = 1;
-//      n_up = 14; mag_up = 2; n_mu_p = 0; mag_mu_p = 1; n_diag_p = 0; mag_diag_p = 1;
       n_um = 11; mag_um = 1; n_mu_m = 1; mag_mu_m = 5; n_diag_m = 1; mag_diag_m = 1;
       n_up = 12; mag_up = 1; n_mu_p = 0; mag_mu_p = 1; n_diag_p = 1; mag_diag_p = 1;
 
@@ -1136,8 +1165,8 @@ public:
           ZCOMP( case DDZ: return circle.phi_z(DIM(x,y,z)) );
         }
       }
-      case 6: // unioun of two spheres: 1st sphere
-      case 7: // unioun of two spheres: 2nd sphere
+      case 6: // union of two spheres: 1st sphere
+      case 7: // union of two spheres: 2nd sphere
       {
 #ifdef P4_TO_P8
         static double r0 = 0.71, xc0 = 0.22, yc0 = 0.17, zc0 = 0.21;
@@ -1329,14 +1358,6 @@ public:
       }
       case 3: // highly star-shaped domain
       {
-//        static double r0 = 0.533, DIM( xc = 0, yc = 0, zc = 0 );
-//        static flower_shaped_domain_t circle(r0, DIM(xc, yc, zc), 0.3, -1);
-//        switch (what) {
-//          OCOMP( case VAL: return circle.phi  (DIM(x,y,z)) );
-//          XCOMP( case DDX: return circle.phi_x(DIM(x,y,z)) );
-//          YCOMP( case DDY: return circle.phi_y(DIM(x,y,z)) );
-//          ZCOMP( case DDZ: return circle.phi_z(DIM(x,y,z)) );
-//        }
         static double r0 = 0.533, DIM( xc = 0, yc = 0, zc = 0 );
         static double N = 1;
         static double n[] = { 5.0};
@@ -1558,7 +1579,6 @@ jc_flux_t jc_flux_cf_all[] = { jc_flux_t(jc_flux_00, DIM(&infc_phi_x_cf_all[0], 
                                jc_flux_t(jc_flux_02, DIM(&infc_phi_x_cf_all[2], &infc_phi_y_cf_all[2], &infc_phi_z_cf_all[2])),
                                jc_flux_t(jc_flux_03, DIM(&infc_phi_x_cf_all[3], &infc_phi_y_cf_all[3], &infc_phi_z_cf_all[3])) };
 
-//jc_flux_t jc_flux_cf_00( DIM(&infc_phi_x_cf_00, &infc_phi_y_cf_00, &infc_phi_z_cf_00) );
 
 class bc_wall_type_t : public WallBCDIM
 {
@@ -1659,7 +1679,7 @@ int main (int argc, char* argv[])
 
   pl.initialize_parser(cmd);
   cmd.parse(argc, argv);
-
+  //defines the example problem to be solved
   n_example = cmd.get("n_example", n_example);
   set_example(n_example);
 
@@ -1671,8 +1691,13 @@ int main (int argc, char* argv[])
     file << out_dir << "/parameters.dat";
     pl.save_all(file.str().c_str());
   }
-
+  // bdry_phi_max_num -> defines the maximum number of boundaries that exist in this example. infc_phi_max_num -> defines the maximum number of interfaces that exist in this example.
+  // The way it is implemented for now, there can be atmost 4 interfaces and 4 boundaries.
   // initialize effective level-sets
+  // To add boundaries or interfaces - objects of mls_eff_cf_t -> bdry_phi_eff_cf and infc_phi_eff_cf are created. mls_eff_cf_t is a class that inherits CF_DIM ( CF_2 or CF_3 depending on whether the problem is 2D or 3D )
+  // The above mentioned class has an add_domain() which has two arguments namely a level set function representing the boundary (that is stored in bdry_phi_cf_all[i]) and the action (which can either  be MLS_INTERSECTION OR MLS_ADDITION)
+  // As evident from the name choosing MLS_INTERSECTION will create a compound domain that is the intersection of two or more given domains and MLS_ADDITION will create a compound domain that is the union of two or more given domains
+
   for (int i = 0; i < bdry_phi_max_num; ++i)
   {
     if (*bdry_present_all[i] == true) bdry_phi_eff_cf.add_domain(bdry_phi_cf_all[i], (mls_opn_t) *bdry_opn_all[i]);
@@ -1682,7 +1707,7 @@ int main (int argc, char* argv[])
   {
     if (*infc_present_all[i] == true) infc_phi_eff_cf.add_domain(infc_phi_cf_all[i], (mls_opn_t) *infc_opn_all[i]);
   }
-
+  // num_shifts_x_dir, num_shifts_y_dir and num_shifts_z_dir are shifts in the grid. These exist to test that the problem convergence is not dependent on the shift of the grid.
   int num_shifts_total = MULTD(num_shifts_x_dir, num_shifts_y_dir, num_shifts_z_dir);
 
   int num_resolutions = ((num_splits-1)*num_splits_per_split + 1)*mu_iter_num;
@@ -1734,11 +1759,9 @@ int main (int argc, char* argv[])
   p4est_nodes_t *nodes;
   p4est_ghost_t *ghost;
 
-//  std::vector<BoundaryConditionType> bc_type(num_bdry_phi, (BoundaryConditionType)bc_itype);
-
   int iteration = -1;
   int file_idx  = -1;
-
+  // mu_iter_num is greater than 1 if the problem is to be solved for multiple mu values starting from mag_mu_m_min to mag_mu_m_max
   for(int mu_iter = 0; mu_iter < mu_iter_num; ++mu_iter)
   {
     if (mu_iter_num > 1)
@@ -1804,8 +1827,13 @@ int main (int argc, char* argv[])
 
               if (refine_strict)
               {
+                // grid refinement using continuous function
+                // declaring the splitting_criteria_cf_t object containing the information about the effective level set function
+                // the refinement criterion as discussed in the CASL tutorial is : a cell is marked for refinement if the min value of all the level set values
+                // at the vertices of the cell is less than the lipschitz constant times the length of the diagonal of the cell.
                 splitting_criteria_cf_t data_tmp(lmin, lmax, &phi_eff_cf, lip);
-                p4est->user_pointer = (void*)(&data_tmp);
+                p4est->user_pointer = (void*)(&data_tmp); // lets p4est know what refinement criteria to use
+                // Callback function (refine_levelset_cf) that must return true if a quadrant is to be refined
 
                 my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
                 my_p4est_partition(p4est, P4EST_FALSE, NULL);
@@ -1817,9 +1845,11 @@ int main (int argc, char* argv[])
               } else {
                 splitting_criteria_cf_t data_tmp(lmin+iter, lmax+iter, &phi_eff_cf, lip);
                 p4est->user_pointer = (void*)(&data_tmp);
+                //refine recursive
                 my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
                 my_p4est_partition(p4est, P4EST_FALSE, NULL);
               }
+              // macromesh has been generated at this point.
 
               splitting_criteria_cf_t data(lmin+iter, lmax+iter, &phi_eff_cf, lip);
               p4est->user_pointer = (void*)(&data);
@@ -1830,6 +1860,8 @@ int main (int argc, char* argv[])
               if (balance_grid)
               {
                 my_p4est_partition(p4est, P4EST_FALSE, NULL);
+                // Balance type (face or corner/full).
+                // Corner balance is almost never required when discretizing a PDE; just causes smoother mesh grading.
                 p4est_balance(p4est, P4EST_CONNECT_FULL, NULL);
                 my_p4est_partition(p4est, P4EST_FALSE, NULL);
               }
@@ -1847,7 +1879,6 @@ int main (int argc, char* argv[])
 
               double dxyz[P4EST_DIM];
               dxyz_min(p4est, dxyz);
-
               double dxyz_max = MAX(DIM(dxyz[0], dxyz[1], dxyz[2]));
               double diag = sqrt(SUMD(dxyz[0]*dxyz[0], dxyz[1]*dxyz[1], dxyz[2]*dxyz[2]));
 
@@ -1855,6 +1886,8 @@ int main (int argc, char* argv[])
               Vec bdry_phi_vec_all[bdry_phi_max_num];
               Vec infc_phi_vec_all[infc_phi_max_num];
 
+
+              //Perturbing domain and interface boundaries and reinitializing
               for (int i = 0; i < bdry_phi_max_num; ++i)
               {
                 if (*bdry_present_all[i] == true)
@@ -1919,6 +1952,8 @@ int main (int argc, char* argv[])
                 }
               }
 
+
+              //initializing vectors needed to setup the problem
               Vec rhs_m;
               ierr = VecCreateGhostNodes(p4est, nodes, &rhs_m); CHKERRXX(ierr);
               sample_cf_on_nodes(p4est, nodes, rhs_m_cf, rhs_m);
@@ -1945,20 +1980,23 @@ int main (int argc, char* argv[])
 
 
               Vec sol; double *sol_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &sol); CHKERRXX(ierr);
-              Vec sol2; ierr = VecCreateGhostNodes(p4est, nodes, &sol2); CHKERRXX(ierr);
 
+             //creating an object of the poisson solver which has to be setup
               my_p4est_poisson_nodes_mls_t solver(&ngbd_n);
+
+
+              // flags for the poisson solver which are to be discussed in more detail while building up the linear system
 
               solver.set_use_centroid_always(use_centroid_always);
               solver.set_store_finite_volumes(store_finite_volumes);
-              solver.set_jump_scheme(jc_scheme);
-              solver.set_jump_sub_scheme(jc_sub_scheme);
-              solver.set_use_sc_scheme(sc_scheme);
-              solver.set_integration_order(integration_order);
+              solver.set_jump_scheme(jc_scheme);                                        // not used anymore
+              solver.set_jump_sub_scheme(jc_sub_scheme);                                // determines which jump scheme to use out of Random , Bias Slow and Bias Fast as mentioned in Daniil's Paper (Bias Slow is the best - set to 0 in order to use that scheme)
+              solver.set_use_sc_scheme(sc_scheme);                                      // for superconvergence in the Robin Boundary Condition; setting sc_scheme results in the gradient to be of the same order as the solution i.e around 2 otherwise the gradient is of order 1
+              solver.set_integration_order(integration_order);                          // used in construct_finite_volume() and is normally set to 2 : controls the number of points in a cube which is (order+1)^2
               solver.set_lip(lip);
 
-              //            if (use_phi_cf) solver.set_phi_cf(phi_cf);
-
+              // HOW TO ADD BOUNDARY
+              // In the add_boundary(), creates a structure boundary_conditions_t
               for (int i = 0; i < bdry_phi_max_num; ++i)
                 if (*bdry_present_all[i] == true)
                 {
@@ -1967,7 +2005,7 @@ int main (int argc, char* argv[])
                   else
                     solver.add_boundary((mls_opn_t) *bdry_opn_all[i], bdry_phi_vec_all[i], DIM(NULL, NULL, NULL), (BoundaryConditionType) *bc_type_all[i], bc_value_cf_all[i], bc_coeff_cf_all[i]);
                 }
-
+              // adding interface is exactly similar
               for (int i = 0; i < infc_phi_max_num; ++i)
                 if (*infc_present_all[i] == true)
                 {
@@ -1996,6 +2034,8 @@ int main (int argc, char* argv[])
               vector< vector<double> > pw_jc_flx_jump_taylor(infc_phi_num);
               vector< vector<double> > pw_jc_flx_jump_integr(infc_phi_num);
 
+              // if apply_bc_pointwise is true, then the linear system is preassembled and  the quantities needed for setting up boundary conditions and interface jump conditions are set pointwise
+              // followed by a call to set_bc() and set_jc()
               if (apply_bc_pointwise)
               {
                 solver.preassemble_linear_system();
@@ -2108,6 +2148,7 @@ int main (int argc, char* argv[])
               if (use_nonzero_guess) sample_cf_on_nodes(p4est, nodes, u_cf, sol);
               solver.solve(sol, use_nonzero_guess);
 
+              // get effective level set information about the boundary and interface
               Vec bdry_phi_eff = solver.get_boundary_phi_eff();
               Vec infc_phi_eff = solver.get_interface_phi_eff();
 
@@ -2264,62 +2305,62 @@ int main (int argc, char* argv[])
               cond_num_arr.push_back(NAN);
 #endif
 
-              my_p4est_integration_mls_t integrator(p4est, nodes);
-//              integrator.set_phi(bdry_phi, dom_acn, dom_clr);
+//              my_p4est_integration_mls_t integrator(p4est, nodes);
+//// integrator.set_phi(bdry_phi, dom_acn, dom_clr);
 
-              /*
-            if (save_domain)
-            {
-              std::ostringstream oss; oss << out_dir << "/geometry";
+//            s/*
+//            if (save_domain)
+//            {
+//              std::ostringstream oss; oss << out_dir << "/geometry";
 
-#ifdef P4_TO_P8
-              vector<cube3_mls_t> cubes;
-              unsigned int n_sps = 6;
-#else
-              vector<cube2_mls_t> cubes;
-              unsigned int n_sps = 2;
-#endif
-              solver.reconstruct_domain(cubes);
+//#ifdef P4_TO_P8
+//              vector<cube3_mls_t> cubes;
+//              unsigned int n_sps = 6;
+//#else
+//              vector<cube2_mls_t> cubes;
+//              unsigned int n_sps = 2;
+//#endif
+//              solver.reconstruct_domain(cubes);
 
-              if (integration_order == 1)
-              {
-#ifdef P4_TO_P8
-                vector<simplex3_mls_l_t *> simplices;
-#else
-                vector<simplex2_mls_l_t *> simplices;
-#endif
-                for (unsigned int k = 0; k < cubes.size(); k++)
-                  for (unsigned int kk = 0; kk < cubes[k].cubes_l_.size(); kk++)
-                    if (cubes[k].cubes_l_[kk]->loc == FCE)
-                      for (unsigned int l = 0; l < n_sps; l++)
-                        simplices.push_back(&cubes[k].cubes_l_[kk]->simplex[l]);
+//              if (integration_order == 1)
+//              {
+//#ifdef P4_TO_P8
+//                vector<simplex3_mls_l_t *> simplices;
+//#else
+//                vector<simplex2_mls_l_t *> simplices;
+//#endif
+//                for (unsigned int k = 0; k < cubes.size(); k++)
+//                  for (unsigned int kk = 0; kk < cubes[k].cubes_l_.size(); kk++)
+//                    if (cubes[k].cubes_l_[kk]->loc == FCE)
+//                      for (unsigned int l = 0; l < n_sps; l++)
+//                        simplices.push_back(&cubes[k].cubes_l_[kk]->simplex[l]);
 
-#ifdef P4_TO_P8
-                simplex3_mls_l_vtk::write_simplex_geometry(simplices, oss.str(), to_string(file_idx));
-#else
-                simplex2_mls_l_vtk::write_simplex_geometry(simplices, oss.str(), to_string(file_idx));
-#endif
-              } else if (integration_order == 2) {
+//#ifdef P4_TO_P8
+//                simplex3_mls_l_vtk::write_simplex_geometry(simplices, oss.str(), to_string(file_idx));
+//#else
+//                simplex2_mls_l_vtk::write_simplex_geometry(simplices, oss.str(), to_string(file_idx));
+//#endif
+//              } else if (integration_order == 2) {
 
-#ifdef P4_TO_P8
-                vector<simplex3_mls_q_t *> simplices;
-#else
-                vector<simplex2_mls_q_t *> simplices;
-#endif
-                for (unsigned int k = 0; k < cubes.size(); k++)
-                  for (unsigned int kk = 0; kk < cubes[k].cubes_q_.size(); kk++)
-                    if (cubes[k].cubes_q_[kk]->loc == FCE)
-                      for (unsigned int l = 0; l < n_sps; l++)
-                        simplices.push_back(&cubes[k].cubes_q_[kk]->simplex[l]);
+//#ifdef P4_TO_P8
+//                vector<simplex3_mls_q_t *> simplices;
+//#else
+//                vector<simplex2_mls_q_t *> simplices;
+//#endif
+//                for (unsigned int k = 0; k < cubes.size(); k++)
+//                  for (unsigned int kk = 0; kk < cubes[k].cubes_q_.size(); kk++)
+//                    if (cubes[k].cubes_q_[kk]->loc == FCE)
+//                      for (unsigned int l = 0; l < n_sps; l++)
+//                        simplices.push_back(&cubes[k].cubes_q_[kk]->simplex[l]);
 
-#ifdef P4_TO_P8
-                simplex3_mls_q_vtk::write_simplex_geometry(simplices, oss.str(), to_string(file_idx));
-#else
-                simplex2_mls_q_vtk::write_simplex_geometry(simplices, oss.str(), to_string(file_idx));
-#endif
-              }
+//#ifdef P4_TO_P8
+//                simplex3_mls_q_vtk::write_simplex_geometry(simplices, oss.str(), to_string(file_idx));
+//#else
+//                simplex2_mls_q_vtk::write_simplex_geometry(simplices, oss.str(), to_string(file_idx));
+//#endif
+//              }
 
-            }
+//            }
             //*/
 
               Vec sol_m = sol; double *sol_m_ptr;
@@ -2449,8 +2490,6 @@ int main (int argc, char* argv[])
                   if (!is_node_Wall(p4est, ni))
                   {
                     ngbd_n.get_all_neighbors(n, neighbors, neighbors_exist);
-//                    get_all_neighbors(n, p4est, nodes, &ngbd_n, neighbors, neighbors_exist);
-                    //          for (int j = 0; j < (int)pow(3, P4EST_DIM); ++j)
                     for (int j = 1; j < (int)pow(3, P4EST_DIM); j+=2)
                     {
                       p4est_locidx_t n_nei = neighbors[j];
@@ -2702,15 +2741,15 @@ int main (int argc, char* argv[])
                 ierr = PetscPrintf(p4est->mpicomm, "Errors Neg: "); CHKERRXX(ierr);
                 ierr = PetscPrintf(p4est->mpicomm, "sol = %3.2e (%+3.2f), ", err_sl_m_max, log(error_sl_m_arr[iter-1]/error_sl_m_arr[iter])/log(2)); CHKERRXX(ierr);
                 ierr = PetscPrintf(p4est->mpicomm, "gra = %3.2e (%+3.2f), ", err_gr_m_max, log(error_gr_m_arr[iter-1]/error_gr_m_arr[iter])/log(2)); CHKERRXX(ierr);
-                ierr = PetscPrintf(p4est->mpicomm, "ext = %3.2e (%+3.2f), ", err_ex_m_max, log(error_ex_m_arr[iter-1]/error_ex_m_arr[iter])/log(2)); CHKERRXX(ierr);
-                ierr = PetscPrintf(p4est->mpicomm, "lap = %3.2e (%+3.2f). ", err_dd_m_max, log(error_dd_m_arr[iter-1]/error_dd_m_arr[iter])/log(2)); CHKERRXX(ierr);
+                //ierr = PetscPrintf(p4est->mpicomm, "ext = %3.2e (%+3.2f), ", err_ex_m_max, log(error_ex_m_arr[iter-1]/error_ex_m_arr[iter])/log(2)); CHKERRXX(ierr);
+                //ierr = PetscPrintf(p4est->mpicomm, "lap = %3.2e (%+3.2f). ", err_dd_m_max, log(error_dd_m_arr[iter-1]/error_dd_m_arr[iter])/log(2)); CHKERRXX(ierr);
                 ierr = PetscPrintf(p4est->mpicomm, "\n"); CHKERRXX(ierr);
 
                 ierr = PetscPrintf(p4est->mpicomm, "Errors Pos: "); CHKERRXX(ierr);
                 ierr = PetscPrintf(p4est->mpicomm, "sol = %3.2e (%+3.2f), ", err_sl_p_max, log(error_sl_p_arr[iter-1]/error_sl_p_arr[iter])/log(2)); CHKERRXX(ierr);
                 ierr = PetscPrintf(p4est->mpicomm, "gra = %3.2e (%+3.2f), ", err_gr_p_max, log(error_gr_p_arr[iter-1]/error_gr_p_arr[iter])/log(2)); CHKERRXX(ierr);
-                ierr = PetscPrintf(p4est->mpicomm, "ext = %3.2e (%+3.2f), ", err_ex_p_max, log(error_ex_p_arr[iter-1]/error_ex_p_arr[iter])/log(2)); CHKERRXX(ierr);
-                ierr = PetscPrintf(p4est->mpicomm, "lap = %3.2e (%+3.2f). ", err_dd_p_max, log(error_dd_p_arr[iter-1]/error_dd_p_arr[iter])/log(2)); CHKERRXX(ierr);
+                //ierr = PetscPrintf(p4est->mpicomm, "ext = %3.2e (%+3.2f), ", err_ex_p_max, log(error_ex_p_arr[iter-1]/error_ex_p_arr[iter])/log(2)); CHKERRXX(ierr);
+                //ierr = PetscPrintf(p4est->mpicomm, "lap = %3.2e (%+3.2f). ", err_dd_p_max, log(error_dd_p_arr[iter-1]/error_dd_p_arr[iter])/log(2)); CHKERRXX(ierr);
                 ierr = PetscPrintf(p4est->mpicomm, "\n"); CHKERRXX(ierr);
 
                 ierr = PetscPrintf(p4est->mpicomm, "Cond num: %e\n", cond_num_arr[iter]); CHKERRXX(ierr);
