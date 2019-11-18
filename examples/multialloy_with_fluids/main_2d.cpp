@@ -64,8 +64,8 @@ bool elyce_laptop = true; // Set to true if working on laptop --> changes the ou
 // ---------------------------------------
 // Save options:
 // ---------------------------------------
-bool save_coupled_fields = false;
-bool save_stefan = true;
+bool save_coupled_fields = true;
+bool save_stefan = false;
 bool save_navier_stokes = false;
 
 // ---------------------------------------
