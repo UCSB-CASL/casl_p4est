@@ -114,7 +114,7 @@ double Flower::r( double theta ) const
 	return _a * cos( _p * theta ) + _b;
 }
 
-std::set<std::tuple<int, int>> Flower::getPointIndicesAlongInterface( int nGridPoints, double &h, double &minVal ) const
+std::set<std::tuple<int, int>> Flower::getPointIndicesAlongInterface( unsigned nGridPoints, double &h, double &minVal ) const
 {
 	if( nGridPoints < 16 )							// Validation on number of grid points.
 	{
@@ -221,6 +221,25 @@ double Flower::getB() const
 int Flower::getP() const
 {
 	return _p;
+}
+
+void Flower::getHAndMinVal( unsigned nGridPoints, double &h, double &minVal, unsigned padding ) const
+{
+	if( nGridPoints < 16 )							// Validation on number of grid points.
+	{
+		nGridPoints = 16;
+		std::cerr << "Number of grid points is too small, it'll be set to 16" << std::endl;
+	}
+
+	if( padding < 2 )
+	{
+		padding = 2;
+		std::cerr << "Number of grid poits used for padding should be at least 2. It'll be set to 2" << std::endl;
+	}
+
+	double limitVal = std::max( abs( _a + _b ), abs( _a - _b ) );
+	h = 2 * limitVal / ( nGridPoints - 1 - 2 * padding );	// We have at least 2h as padding on each direction from the limit val of the flower.
+	minVal = -limitVal - padding * h;						// This is the lowest value we consider in the domain to create the grid.
 }
 
 

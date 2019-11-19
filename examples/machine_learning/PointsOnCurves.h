@@ -16,7 +16,7 @@
 /**
  * Flower-shaped interface centered at the origin.
  */
-class Flower: CF_2
+class Flower: public CF_2
 {
 private:
 	double _a;			// Perturbation (petal extension).
@@ -55,7 +55,7 @@ public:
 	 * @param minVal [out]: Minimum value in the active domain.
 	 * @return A set of pairs of index coordinates for grid points, where (0,0) corresponds to (minVal, minVal) in cartesian coords.
 	 */
-	[[nodiscard]] std::set<std::tuple<int, int>> getPointIndicesAlongInterface( int nGridPoints, double& h, double& minVal ) const;
+	[[nodiscard]] std::set<std::tuple<int, int>> getPointIndicesAlongInterface( unsigned nGridPoints, double& h, double& minVal ) const;
 
 	/**
 	 * Compute curvature.
@@ -63,6 +63,15 @@ public:
 	 * @return kappa.
 	 */
 	[[nodiscard]] double curvature( double theta ) const;
+
+	/**
+	 * Compute the spatial step size and the minimum value for the current flower parameters given a desired spatial resolution.
+	 * @param nGridPoints [in]: Number of uniformly distributed grid points along each dimension.
+	 * @param h [out]: Spatial step size.
+	 * @param minVal [out]: Minimum value in the active domain [minVal, -minVal]^2.
+	 * @param padding [in]: Number of uniform grid points to be used as padding for the effective coords from flower. (minimum padding is 2).
+	 */
+	void getHAndMinVal( unsigned nGridPoints, double& h, double& minVal, unsigned padding = 2 ) const;
 
 	/**
 	 * Get the 'a' perturbation flower parameter.
