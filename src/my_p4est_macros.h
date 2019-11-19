@@ -46,7 +46,9 @@
 
 // forward declaration
 class CF_3;
+class Point3;
 #define CF_DIM CF_3
+#define PointDIM Point3
 
 #else
 
@@ -72,7 +74,9 @@ class CF_3;
 #define ZFOR(a)
 // forward declaration
 class CF_2;
+class Point2;
 #define CF_DIM CF_2
+#define PointDIM Point2
 
 #endif
 
