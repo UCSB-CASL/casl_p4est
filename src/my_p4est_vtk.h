@@ -32,8 +32,6 @@
 #include <p4est_bits.h>
 #endif
 
-#include <vector>
-
 
 /********************************************************************
  *                          IMPORTANT NOTE                          *
@@ -47,6 +45,13 @@ SC_EXTERN_C_BEGIN;
 
 static const int VTK_POINT_DATA = 0;
 static const int VTK_CELL_DATA  = 1;
+
+static const int VTK_NODE_SCALAR = VTK_POINT_DATA;
+static const int VTK_CELL_SCALAR = VTK_CELL_DATA;
+static const int VTK_NODE_VECTOR_BY_COMPONENTS = 2;
+static const int VTK_NODE_VECTOR_BLOCK = 3;
+static const int VTK_CELL_VECTOR_BY_COMPONENTS = 4;
+static const int VTK_CELL_VECTOR_BLOCK = 5;
 
 #ifdef P4_TO_P8
 #define P4EST_VTK_CELL_TYPE     11      /* VTK_VOXEL */
@@ -91,127 +96,139 @@ static const int VTK_CELL_DATA  = 1;
  *                                VTK_CELL_VECTOR_BY_COMPONENTS, "grad_hodge", DIM(grad_hodge_p[0], grad_hodge_p[1], grad_hodge_p[2]));
  * </end of example/>
  *
- * This is a convenience function that will abort if there is a file error.
+ * <\beginning of notes\>
+ *  - VTK_NODE_SCALAR  is equivalent to (the former) VTK_POINT_DATA
+ *  - VTK_CELL_SCALAR   is equivalent to (the former) VTK_CELL_DATA
+ *  - calling the former (original) function my_p4est_vtk_write_all() is actually equivalent to calling this general function
+ *    with num_node_vectors_by_component = num_node_vectors_block = num_cell_vectors_by_component =  num_cell_vectors_block = 0
+ * </end of notes/>
  *
- * \param [in] p4est    The p4est to be written.
- * \param [in] geom     A p4est_geometry_t structure or NULL for identity.
- * \param [in] scale    Double value between 0 and 1 to scale each quadrant.
- * \param filename      First part of the name, see p4est_vtk_write_file.
- * \param num_cell_scalars   Number of scalar fields (CELL_DATA) to write.
- * \param num_point_scalars   Number of scalar fields (POINT_DATA) to write.
- *
- * The variable arguments need to be pairs of (fieldname, fieldvalues)
- * where the scalars come first, then the vectors.
+ * Original developper(s) unknown
+ * Second developper: Raphael Egan (extension of the original features to node- and/or cell-sampled vector fields,
+ * given either component by component or in a block-structured vector.
  */
+void                my_p4est_vtk_write_all_general(p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
+                                                   int write_rank, int write_tree,
+                                                   int num_node_scalars, int num_node_vectors_by_component, int num_node_vectors_block,
+                                                   int num_cell_scalars, int num_cell_vectors_by_component, int num_cell_vectors_block,
+                                                   const char *filename, ...);
 void                my_p4est_vtk_write_all (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
                                             int write_rank, int write_tree,
-                                            int num_point_scalars, int num_cell_scalars,
+                                            int num_node_scalars, int num_cell_scalars,
                                             const char *filename, ...);
+void                my_p4est_vtk_write_all_wrapper (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
+                                                    int write_rank, int write_tree,
+                                                    int num_node_scalars, int num_node_vectors_by_component, int num_node_vectors_block,
+                                                    int num_cell_scalars, int num_cell_vectors_by_component, int num_cell_vectors_block,
+                                                    const char *filename, va_list ap);
 
-/** This will write the header of the vtu file.
- *
- * Writing a VTK file is split into a couple of routines.
- * The allows there to be an arbitrary number of
- * fields.  The calling sequence would be something like
- *
- * \begincode
- * p4est_vtk_write_header(p4est, geom, 1., 1, 1, 0, "output");
- * p4est_vtk_write_point_scalar (...);
- * ...
- * p4est_vtk_write_footer(p4est, "output");
- * \endcode
- *
- * \param p4est     The p4est to be written.
- * \param geom      A p4est_geometry_t structure or NULL for identity.
- * \param scale     The relative length factor of the quadrants.
- *                  Use 1.0 to fit quadrants exactly, less to create gaps.
- * \param filename  The first part of the name which will have
- *                  the proc number appended to it (i.e., the
- *                  output file will be filename_procNum.vtu).
- *
- * \return          This returns 0 if no error and -1 if there is an error.
+/*!
+ * \brief my_p4est_vtk_write_header writes the headers of the "filename.pvtu" and of the "filename.vtu/%04d.vtu" files.
+ * The headers of the "filename.vtu/%04d.vtu" files includes all geometry-related information: list of nodes and their
+ * coordinates, list of cells and their corners (indexed as the latter list of nodes). Periodic conditions are exported
+ * by duplicating periodically-mapped nodes in the exportation.
+ * \param p4est           the p4est to be exported
+ * \param nodes           the corresponding node structure (can be NULL)
+ * \param ghost           the corresponding ghost layer (can be NULL)
+ * \param filename        (absolute) path of the exportation files
+ * \return                this returns 0 if no error and -1 if there is an error.
  */
 int                 my_p4est_vtk_write_header (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
                                                const char *filename);
 
-/** This will write a scalar field to the vtu file.
+
+/*!
+ * \brief my_p4est_vtk_write_node_data writes node data to the relevant exportation files
+ * \param p4est                             the p4est to be exported
+ * \param nodes                             the corresponding node structure
+ * \param ghost                             the corresponding ghost layer (can be NULL)
+ * \param filename                          (absolute) path of the exportation files
+ * \param num_scalar                        number of node-sampled scalar fields
+ * \param num_vector_block                  number of node-sampled vector fields, P4EST_DIM-block-structured
+ * \param num_vector_by_component           number of node-sampled vector fields given component by component
+ * \param list_name_scalar                  chain of characters listing the names of the node-sampled scalar fields to be exported,
+ *                                          separated by commas
+ * \param list_name_vector_block            chain of characters listing the names of the node-sampled vector fields,
+ *                                          P4EST_DIM-block-structured, to be exported, separated by commas
+ * \param list_name_vector_by_component     chain of characters listing the names of the node-sampled vector fields,
+ *                                          given component by component, to be exported, separated by commas
+ * \param scalar_names                      array of pointers to the individual chains of characters for the names of the node-sampled
+ *                                          scalar fields to be exported.
+ * \param vector_block_names                array of pointers to the individual chains of characters for the names of the node-sampled
+ *                                          vector fields, P4EST_DIM-block-structured, to be exported
+ * \param vector_by_component_names         array of pointers to the individual chains of characters for the names of the node-sampled
+ *                                          vector fields, given dimension by dimension, to be exported
+ * \param scalar_values                     array of pointers to node-sampled data corresponding to the node-sampled scalar fields to be
+ *                                          exported. scalar_values[i][il] is the value of the ith scalar field sampled at (local) node il
+ * \param vector_block_values               array of pointers to node-sampled data corresponding to the node-sampled P4EST_DIM-block-structured
+ *                                          vector fields to be exported. vector_block_values[i][P4EST_DIM*il+k] is the value of the kth component
+ *                                          of the ith vector field that is block-structured, sampled at (local) node il
+ * \param vector_by_component_values        array of P4EST_DIM arrays of pointers to node-sampled data corresponding to the node-sampled components
+ *                                          of the vector fields to be exported. vector_by_component_values[k][i][il] is the value of the kth component
+ *                                          of the ith vector field given component by component, sampled at (local) node il
+ * \return                                  this returns 0 if no error and -1 if there is an error.
  *
- * It is good practice to make sure that the scalar field also
- * exists in the comma separated string \a point_scalars passed
- * to \c p4est_vtk_write_header.
- *
- * Writing a VTK file is split into a couple of routines.
- * The allows there to be an arbitrary number of fields.
- *
- * \param p4est     The p4est to be written.
- * \param geom      A p4est_geometry_t structure or NULL for identity.
- * \param filename  The first part of the name which will have
- *                  the proc number appended to it (i.e., the
- *                  output file will be filename_procNum.vtu).
- * \param scalar_name The name of the scalar field.
- * \param values    The point values that will be written.
- *
- * \return          This returns 0 if no error and -1 if there is an error.
+ * Original developper(s) unknown
+ * Second developper: Raphael Egan (extension of the original features to node- and/or cell-sampled vector fields,
+ * given either component by component or in a block-structured vector.
  */
+int                 my_p4est_vtk_write_node_data (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost, const char *filename,
+                                                   const int num_scalar, const int num_vector_block, const int num_vector_by_component,
+                                                   const char* list_name_scalar, const char* list_name_vector_block, const char* list_name_vector_by_component,
+                                                   const char **scalar_names, const char **vector_block_names, const char **vector_by_component_names,
+                                                   const double **scalar_values, const double **vector_block_values, const double **vector_by_component_values[P4EST_DIM]);
 
-int                 my_p4est_vtk_write_point_scalar (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t* ghost,
-                                                     const char *filename,
-                                                     const int num, const char *list_name, const char **scalar_names,
-                                                     const double **values);
-/** This will write a scalar field to the vtu file.
+/*!
+ * \brief my_p4est_vtk_write_cell_data writes cell data to the relevant exportation files
+ * \param p4est                             the p4est to be exported
+ * \param ghost                             the corresponding ghost layer (can be NULL)
+ * \param write_rank                        flag controlling the exportation of cell-sampled proc's rank (the procs' ranks are/are not exported if set to P4EST_TRUE/P4EST_FALSE)
+ * \param write_tree                        flag controlling the exportation of cell-sampled tree index (the tree index is/is not exported if set to P4EST_TRUE/P4EST_FALSE)
+ * \param filename                          (absolute) path of the exportation files
+ * \param list_name_scalar                  chain of characters listing the names of the cell-sampled scalar fields to be exported,
+ *                                          separated by commas
+ * \param list_name_vector_block            chain of characters listing the names of the cell-sampled vector fields,
+ *                                          P4EST_DIM-block-structured, to be exported, separated by commas
+ * \param list_name_vector_by_component     chain of characters listing the names of the cell-sampled vector fields,
+ *                                          given component by component, to be exported, separated by commas
+ * \param scalar_names                      array of pointers to the individual chains of characters for the names of the cell-sampled
+ *                                          scalar fields to be exported.
+ * \param vector_block_names                array of pointers to the individual chains of characters for the names of the cell-sampled
+ *                                          vector fields, P4EST_DIM-block-structured, to be exported
+ * \param vector_by_component_names         array of pointers to the individual chains of characters for the names of the cell-sampled
+ *                                          vector fields, given dimension by dimension, to be exported
+ * \param scalar_values                     array of pointers to cell-sampled data corresponding to the cell-sampled scalar fields to be
+ *                                          exported. scalar_values[i][il] is the value of the ith scalar field sampled at (local) node il
+ * \param vector_block_values               array of pointers to cell-sampled data corresponding to the cell-sampled P4EST_DIM-block-structured
+ *                                          vector fields to be exported. vector_block_values[i][P4EST_DIM*il+k] is the value of the kth component
+ *                                          of the ith vector field that is block-structured, sampled at (local) node il
+ * \param vector_by_component_values        array of P4EST_DIM arrays of pointers to cell-sampled data corresponding to the cell-sampled components
+ *                                          of the vector fields to be exported. vector_by_component_values[k][i][il] is the value of the kth component
+ *                                          of the ith vector field given component by component, sampled at (local) node il
+ * \return                                  this returns 0 if no error and -1 if there is an error.
  *
- * It is good practice to make sure that the scalar field also
- * exists in the comma separated string \a point_scalars passed
- * to \c p4est_vtk_write_header.
- *
- * Writing a VTK file is split into a couple of routines.
- * The allows there to be an arbitrary number of fields.
- *
- * \param p4est     The p4est to be written.
- * \param geom      A p4est_geometry_t structure or NULL for identity.
- * \param filename  The first part of the name which will have
- *                  the proc number appended to it (i.e., the
- *                  output file will be filename_procNum.vtu).
- * \param scalar_name The name of the scalar field.
- * \param values    The point values that will be written.
- *
- * \return          This returns 0 if no error and -1 if there is an error.
+ * Original developper(s) unknown
+ * Second developper: Raphael Egan (extension of the original features to node- and/or cell-sampled vector fields,
+ * given either component by component or in a block-structured vector.
  */
-int                 my_p4est_vtk_write_cell_scalar (p4est_t * p4est, p4est_ghost_t *ghost,
-                                                    int write_rank, int write_tree,
-                                                    const char *filename, const int num,
-                                                    const char *list_name, const char **scalar_names,
-                                                    const double **values);
+int                 my_p4est_vtk_write_cell_data (p4est_t * p4est, p4est_ghost_t *ghost,
+                                                  int write_rank, int write_tree, const char *filename,
+                                                  const int num_scalar, const int num_vector_block, const int num_vector_by_component,
+                                                  const char* list_name_scalar, const char* list_name_vector_block, const char* list_name_vector_by_component,
+                                                  const char **scalar_names, const char **vector_block_names, const char **vector_by_component_names,
+                                                  const double **scalar_values, const double **vector_block_values, const double **vector_by_component_values[P4EST_DIM]);
 
-
-/** This will write the footer of the vtu file.
- *
- * Writing a VTK file is split into a couple of routines.
- * The allows there to be an arbitrary number of
- * fields.  To write out two fields the
- * calling sequence would be something like
- *
- * \begincode
- * p4est_vtk_write_header(p4est, ..., "output");
- * p4est_vtk_write_footer(p4est, "output");
- * \endcode
- *
- * \param p4est     The p4est to be written.
- * \param filename  The first part of the name which will have
- *                  the proc number appended to it (i.e., the
- *                  output file will be filename_procNum.vtu).
- *
- * \return          This returns 0 if no error and -1 if there is an error.
+/*!
+ * \brief my_p4est_vtk_write_footer writes the footers of the "filename.pvtu" and of the "filename.vtu/%04d.vtu" files.
+ * (this completes and ends the open sections of the xml-format files open for exportation)
+ * \param p4est           the p4est to be exported
+ * \param filename        (absolute) path of the exportation files
+ * \return                this returns 0 if no error and -1 if there is an error.
  */
 int                 my_p4est_vtk_write_footer (p4est_t * p4est,
                                                const char *filename);
 
 void my_p4est_vtk_write_ghost_layer(p4est_t *p4est, p4est_ghost_t *ghost);
-
-void my_p4est_vtk_write_all_vector_form (p4est_t * p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
-                                         int write_rank, int write_tree, const char *filename,
-                                         std::vector<double *> point_data, std::vector<std::string> point_data_names,
-                                         std::vector<double *> cell_data,  std::vector<std::string> cell_data_names);
 
 SC_EXTERN_C_END;
 
