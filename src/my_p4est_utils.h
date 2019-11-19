@@ -7,6 +7,7 @@
 #include <p8est_nodes.h>
 #include <p8est_ghost.h>
 #include <p8est_bits.h>
+#include <src/my_p8est_macros.h>
 #include <src/my_p8est_nodes.h>
 #include <src/my_p8est_refine_coarsen.h>
 #else
@@ -14,6 +15,7 @@
 #include <p4est_nodes.h>
 #include <p4est_ghost.h>
 #include <p4est_bits.h>
+#include <src/my_p4est_macros.h>
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_refine_coarsen.h>
 #endif
@@ -44,86 +46,9 @@
 #endif
 
 
-
-
 // forward declaration
 class my_p4est_node_neighbors_t;
 class quad_neighbor_nodes_of_node_t;
-
-#define COMMA ,
-#define P4(a) a
-
-#ifdef P4_TO_P8
-#define OCOMP(a) a
-#define XCOMP(a) a
-#define YCOMP(a) a
-#define ZCOMP(a) a
-
-#define _CODE(a) a
-#define XCODE(a) a
-#define YCODE(a) a
-#define ZCODE(a) a
-
-#define CODE2D(a)
-#define CODE3D(a) a
-
-#define EXECD(a,b,c) a; b; c;
-
-#define CODE2D(a)
-#define CODE3D(a) a
-
-#define P8(a) a
-#define P8C(a) COMMA a
-#define P8EST(a) a
-#define ONLY3D(a) a
-#define DIM(a,b,c) a COMMA b COMMA c
-
-#define  SUMD(a,b,c) ( (a) +  (b) +  (c) )
-#define MULTD(a,b,c) ( (a) *  (b) *  (c) )
-#define  ANDD(a,b,c) ( (a) && (b) && (c) )
-#define   ORD(a,b,c) ( (a) || (b) || (c) )
-
-#define CODEDIM(a,b) b
-
-#define XFOR(a) for (a)
-#define YFOR(a) for (a)
-#define ZFOR(a) for (a)
-#else
-#define OCOMP(a) a
-#define XCOMP(a) a
-#define YCOMP(a) a
-#define ZCOMP(a)
-
-#define _CODE(a) a
-#define XCODE(a) a
-#define YCODE(a) a
-#define ZCODE(a)
-
-#define CODE2D(a) a
-#define CODE3D(a)
-
-#define EXECD(a,b,c) a; b;
-
-#define CODE2D(a) a
-#define CODE3D(a)
-
-#define CODEDIM(a,b) a
-
-#define P8(a)
-#define P8C(a)
-#define P8EST(a)
-#define ONLY3D(a)
-#define DIM(a,b,c) a COMMA b
-
-#define  SUMD(a,b,c) ( (a) +  (b) )
-#define MULTD(a,b,c) ( (a) *  (b) )
-#define  ANDD(a,b,c) ( (a) && (b) )
-#define   ORD(a,b,c) ( (a) || (b) )
-
-#define XFOR(a) for (a)
-#define YFOR(a) for (a)
-#define ZFOR(a)
-#endif
 
 enum cf_value_type_t { VAL, DDX, DDY, DDZ, LAP, CUR };
 
@@ -384,12 +309,6 @@ public:
   double operator()(double *xyz) const {return this->operator()(xyz[0], xyz[1], xyz[2]); }
   virtual ~CF_3() {}
 };
-
-#ifdef P4_TO_P8
-#define CF_DIM CF_3
-#else
-#define CF_DIM CF_2
-#endif
 
 enum {
   WALL_m00 = -1,

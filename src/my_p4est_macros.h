@@ -7,6 +7,75 @@
 #include <p4est.h>
 #endif
 
+#define COMMA ,
+#define P4(a) a
+
+#define OCOMP(a) a
+#define XCOMP(a) a
+#define YCOMP(a) a
+
+#define _CODE(a) a
+#define XCODE(a) a
+#define YCODE(a) a
+
+#define XFOR(a) for (a)
+#define YFOR(a) for (a)
+
+#ifdef P4_TO_P8
+
+#define ZCOMP(a) a
+#define ZCODE(a) a
+#define CODE2D(a)
+#define CODE3D(a) a
+#define EXECD(a,b,c) a; b; c;
+
+#define P8(a) a
+#define P8C(a) COMMA a
+#define P8EST(a) a
+#define ONLY3D(a) a
+#define DIM(a,b,c) a COMMA b COMMA c
+
+#define  SUMD(a,b,c) ( (a) +  (b) +  (c) )
+#define MULTD(a,b,c) ( (a) *  (b) *  (c) )
+#define  ANDD(a,b,c) ( (a) && (b) && (c) )
+#define   ORD(a,b,c) ( (a) || (b) || (c) )
+
+#define CODEDIM(a,b) b
+
+#define ZFOR(a) for (a)
+
+// forward declaration
+class CF_3;
+#define CF_DIM CF_3
+
+#else
+
+#define ZCOMP(a)
+#define ZCODE(a)
+#define CODE2D(a) a
+#define CODE3D(a)
+#define EXECD(a,b,c) a; b;
+
+#define P8(a)
+#define P8C(a)
+#define P8EST(a)
+#define ONLY3D(a)
+#define DIM(a,b,c) a COMMA b
+
+#define  SUMD(a,b,c) ( (a) +  (b) )
+#define MULTD(a,b,c) ( (a) *  (b) )
+#define  ANDD(a,b,c) ( (a) && (b) )
+#define   ORD(a,b,c) ( (a) || (b) )
+
+#define CODEDIM(a,b) a
+
+#define ZFOR(a)
+// forward declaration
+class CF_2;
+#define CF_DIM CF_2
+
+#endif
+
 #define foreach_dimension(dim) \
   for (short dim = 0; dim<P4EST_DIM; ++dim)
 

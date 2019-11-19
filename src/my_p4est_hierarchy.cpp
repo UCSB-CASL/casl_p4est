@@ -40,10 +40,10 @@ void my_p4est_hierarchy_t::split( int tree_idx, int ind )
 
   p4est_qcoord_t size = P4EST_QUADRANT_LEN(trees[tree_idx][ind].level) / 2;
 #ifdef P4_TO_P8
-  for (int k=0; k<2; ++k)
+  for (unsigned char k=0; k<2; ++k)
 #endif
-    for (int j=0; j<2; ++j)
-      for (int i=0; i<2; ++i) {
+    for (unsigned char j=0; j<2; ++j)
+      for (unsigned char i=0; i<2; ++i) {
         HierarchyCell child =
         {
           CELL_LEAF, NOT_A_P4EST_QUADRANT,    /* child, quad */
@@ -74,13 +74,27 @@ int my_p4est_hierarchy_t::update_tree( int tree_idx, const p4est_quadrant_t *qua
 #ifdef P4_TO_P8
     bool k = ( quad->z >= trees[tree_idx][ind].kmin + size );
 #endif
-#ifdef P4_TO_P8
-    ind = trees[tree_idx][ind].child + 4*k + 2*j + i;
-#else
-    ind = trees[tree_idx][ind].child + 2*j + i;
-#endif
+    ind = trees[tree_idx][ind].child + SUMD(i, 2*j, 4*k);
   }
   return ind;
+}
+
+p4est_locidx_t my_p4est_hierarchy_t::quad_idx_of_quad(const p4est_quadrant_t* quad, const p4est_topidx_t& tree_idx) const
+{
+  int ind = 0;
+  while( trees[tree_idx][ind].level != quad->level )
+  {
+    p4est_qcoord_t size = P4EST_QUADRANT_LEN(trees[tree_idx][ind].level) / 2;
+    bool i = ( quad->x >= trees[tree_idx][ind].imin + size);
+    bool j = ( quad->y >= trees[tree_idx][ind].jmin + size);
+#ifdef P4_TO_P8
+    bool k = ( quad->z >= trees[tree_idx][ind].kmin + size);
+#endif
+    ind = trees[tree_idx][ind].child + SUMD(i, 2*j, 4*k);
+  }
+  P4EST_ASSERT(trees[tree_idx][ind].child == CELL_LEAF);
+  P4EST_ASSERT(ANDD((quad->x==trees[tree_idx][ind].imin), (quad->y==trees[tree_idx][ind].jmin), (quad->z==trees[tree_idx][ind].kmin)));
+  return trees[tree_idx][ind].quad;
 }
 
 void my_p4est_hierarchy_t::construct_tree() {
@@ -88,7 +102,14 @@ void my_p4est_hierarchy_t::construct_tree() {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_hierarchy_t, 0, 0, 0, 0); CHKERRXX(ierr);
 
-  /* loop on the quadrants */
+  local_inner_quadrant_index.resize(0);
+  local_layer_quadrant_index.resize(0);
+
+  size_t mirror_idx = 0;
+  const p4est_quadrant_t* mirror = NULL;
+  if(ghost!=NULL && mirror_idx < ghost->mirrors.elem_count)
+    mirror = p4est_quadrant_array_index(&ghost->mirrors, mirror_idx++);
+  /* loop on the local quadrants */
   for( p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx)
   {
     p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
@@ -96,6 +117,16 @@ void my_p4est_hierarchy_t::construct_tree() {
     for( size_t q=0; q<tree->quadrants.elem_count; ++q)
     {
       const p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, q);
+      // mirrors and quadrant are stored using the same convention, parse both simultaneously for efficiency,
+      // but do not use p4est_quadrant_is_equal_piggy(), since the p.piggy3 member is not filled for regular quadrants but only for ghosts and mirrors
+      if((ghost!=NULL) && (mirror!=NULL) && p4est_quadrant_is_equal(quad, mirror) && (mirror->p.piggy3.which_tree == tree_idx))
+      {
+        local_layer_quadrant_index.push_back(q+tree->quadrants_offset);
+        if(mirror_idx < ghost->mirrors.elem_count)
+          mirror = p4est_quadrant_array_index(&ghost->mirrors, mirror_idx++);
+      }
+      else
+        local_inner_quadrant_index.push_back(q+tree->quadrants_offset);
       int ind = update_tree(tree_idx, quad);
 
       /* the cell corresponding to the quadrant has been found, associate it to the quadrant */
@@ -105,6 +136,9 @@ void my_p4est_hierarchy_t::construct_tree() {
       trees[tree_idx][ind].owner_rank = p4est->mpirank;
     }
   }
+
+  P4EST_ASSERT((ghost == NULL) || (mirror_idx == ghost->mirrors.elem_count));
+  P4EST_ASSERT(local_inner_quadrant_index.size()+local_layer_quadrant_index.size() == ((size_t) p4est->local_num_quadrants));
 
   /* loop on the ghosts
    * We do this by looping over ghosts from each processor separately
@@ -134,7 +168,7 @@ void my_p4est_hierarchy_t::update(p4est_t *p4est_, p4est_ghost_t *ghost_)
 {
   p4est = p4est_;
   ghost = ghost_;
-  for (short dir = 0; dir < P4EST_DIM; ++dir)
+  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
     periodic[dir] = is_periodic(p4est, dir);
 
   trees.clear();
@@ -200,16 +234,14 @@ void my_p4est_hierarchy_t::write_vtk(const char* filename) const
       if (cell.child == CELL_LEAF){
         double h = (double) P4EST_QUADRANT_LEN(cell.level) / (double)P4EST_ROOT_LEN;
 #ifdef P4_TO_P8
-        for (short xk=0; xk<2; xk++)
+        for (unsigned char xk=0; xk<2; xk++)
 #endif
-          for (short xj=0; xj<2; xj++)
-            for (short xi=0; xi<2; xi++){
+          for (unsigned char xj=0; xj<2; xj++)
+            for (unsigned char xi=0; xi<2; xi++){
               double x = (tree_xmax-tree_xmin)*((double) cell.imin / (double)P4EST_ROOT_LEN + xi*h) + tree_xmin;
               double y = (tree_ymax-tree_ymin)*((double) cell.jmin / (double)P4EST_ROOT_LEN + xj*h) + tree_ymin;
 #ifdef P4_TO_P8
               double z = (tree_zmax-tree_zmin)*((double) cell.kmin / (double)P4EST_ROOT_LEN + xk*h) + tree_zmin;
-#endif
-#ifdef P4_TO_P8
               fprintf(vtk, "%lf %lf %lf\n", x, y, z);
 #else
               fprintf(vtk, "%lf %lf 0.0\n", x, y);
@@ -346,7 +378,8 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(const double *
 #ifdef P4_TO_P8
   double kk = (xyz_[2] - tr_xyz_orig[2]) * P4EST_ROOT_LEN;
 #endif
-  for (short dir = 0; dir < P4EST_DIM; ++dir)
+
+  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
     if(periodic[dir])
       tr_xyz_orig[dir] = tr_xyz_orig[dir]%myb->nxyztrees[dir];
 
@@ -356,18 +389,14 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(const double *
   bool is_on_face_z = (fabs(kk-floor(kk))<threshold || fabs(ceil(kk)-kk)<threshold);
 #endif
 
-  for (short i = (is_on_face_x?-1:0); i < 2; i += 2)
-    for (short j = (is_on_face_y?-1:0); j < 2; j += 2)
+  for (char i = (is_on_face_x?-1:0); i < 2; i += 2)
+    for (char j = (is_on_face_y?-1:0); j < 2; j += 2)
 #ifdef P4_TO_P8
-      for (short k = (is_on_face_z?-1:0);  k < 2; k += 2)
+      for (char k = (is_on_face_z?-1:0);  k < 2; k += 2)
 #endif
       {
         // perturb the point (note that i, j and/or k are 0 is no perturbation is required)
-#ifdef P4_TO_P8
-        Point3 s( (i==0? ii : (ii + ((double)i)*threshold)), (j==0? jj : (jj + ((double)j)*threshold)), (k==0? kk : (kk + ((double)k)*threshold)) );
-#else
-        Point2 s( (i==0? ii : (ii + ((double)i)*threshold)), (j==0? jj : (jj + ((double)j)*threshold)) );
-#endif
+        PointDIM s(DIM((i==0? ii : (ii + ((double)i)*threshold)), (j==0? jj : (jj + ((double)j)*threshold)), (k==0? kk : (kk + ((double)k)*threshold))));
         find_quadrant_containing_point(tr_xyz_orig, s, rank, best_match, remote_matches);
       }
 
@@ -378,11 +407,7 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(const double *
   return rank;
 }
 
-#ifdef P4_TO_P8
-void my_p4est_hierarchy_t::find_quadrant_containing_point(const int* tr_xyz_orig, Point3& s, int& rank, p4est_quadrant_t &best_match, std::vector<p4est_quadrant_t> &remote_matches) const
-#else
-void my_p4est_hierarchy_t::find_quadrant_containing_point(const int* tr_xyz_orig, Point2& s, int& rank, p4est_quadrant_t &best_match, std::vector<p4est_quadrant_t> &remote_matches) const
-#endif
+void my_p4est_hierarchy_t::find_quadrant_containing_point(const int* tr_xyz_orig, PointDIM& s, int& rank, p4est_quadrant_t &best_match, std::vector<p4est_quadrant_t> &remote_matches) const
 {
   const static p4est_qcoord_t qh = P4EST_QUADRANT_LEN(P4EST_QMAXLEVEL);
 
@@ -405,12 +430,7 @@ void my_p4est_hierarchy_t::find_quadrant_containing_point(const int* tr_xyz_orig
 #endif
 
 
-#ifdef P4_TO_P8
-  p4est_topidx_t tt = myb->nxyz_to_treeid[tr_xyz[0] + tr_xyz[1]*myb->nxyztrees[0]
-      + tr_xyz[2]*myb->nxyztrees[0]*myb->nxyztrees[1]];
-#else
-  p4est_topidx_t tt = myb->nxyz_to_treeid[tr_xyz[0] + tr_xyz[1]*myb->nxyztrees[0]];
-#endif
+  p4est_topidx_t tt = myb->nxyz_to_treeid[SUMD(tr_xyz[0], tr_xyz[1]*myb->nxyztrees[0], tr_xyz[2]*myb->nxyztrees[0]*myb->nxyztrees[1])];
   P4EST_ASSERT((0<=tt) && (tt < p4est->connectivity->num_trees));
 
   const std::vector<HierarchyCell>& h_tr = trees[tt];

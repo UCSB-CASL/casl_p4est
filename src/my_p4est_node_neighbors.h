@@ -23,22 +23,6 @@
 #include <sstream>
 
 /*!
- * \brief The async_computation_t class represents a type of node-calculation that
- * can be done in an asynchronous fashion. This is a virtual class, the three
- * functions 'foreach_local_node', 'ghost_update_begin', 'ghost_update_end' need to
- * be defined for any class inheriting from this one.
- * --> checkout the function my_p4est_node_neighbors_t::run_async_computation
- * for usage of interest.
- */
-class async_computation_t {
-public:
-  virtual void foreach_local_node(p4est_locidx_t n) const = 0;
-  virtual void ghost_update_begin() const = 0;
-  virtual void ghost_update_end() const = 0;
-  ~async_computation_t () {}
-};
-
-/*!
  * \brief The my_p4est_node_neighbors_t class provides the user with node neighborhood information,
  * but also with routines calculating first and second derivatives of node-sampled fields as well as
  * a distinction between layer and inner local nodes to overlap communications with the bulk local
@@ -470,19 +454,6 @@ public:
 #endif
       qnnn = NULL;
     }
-  }
-
-  /*!
-   * \brief run_async_computation runs an asynchronous computation across processors by overlapping computation and communication
-   * \param async the abstract computation that needs to be run for each local node
-   */
-  inline void run_async_computation(const async_computation_t& async) const {
-    for (size_t i=0; i<layer_nodes.size(); i++)
-      async.foreach_local_node(layer_nodes[i]);
-    async.ghost_update_begin();
-    for (size_t i=0; i<local_nodes.size(); i++)
-      async.foreach_local_node(local_nodes[i]);
-    async.ghost_update_end();
   }
 
   /*!

@@ -1167,9 +1167,7 @@ void dxyz_min(const p4est_t *p4est, double *dxyz)
   double *v = p4est->connectivity->vertices;
 
   for(int dir=0; dir<P4EST_DIM; ++dir)
-  {
     dxyz[dir] = (v[3*v_p + dir] - v[3*v_m + dir]) / (1<<data->max_lvl);
-  }
 }
 
 void get_dxyz_min(const p4est_t *p4est, double *dxyz, double &dxyz_min)
@@ -1181,35 +1179,9 @@ void get_dxyz_min(const p4est_t *p4est, double *dxyz, double &dxyz_min)
   double *v = p4est->connectivity->vertices;
 
   for(int dir=0; dir<P4EST_DIM; ++dir)
-  {
     dxyz[dir] = (v[3*v_p + dir] - v[3*v_m + dir]) / (1<<data->max_lvl);
-  }
 
-#ifdef P4_TO_P8
-  dxyz_min = MIN(dxyz[0], dxyz[1], dxyz[2]);
-#else
-  dxyz_min = MIN(dxyz[0], dxyz[1]);
-#endif
-}
-
-void get_dxyz_min(const p4est_t *p4est, double *dxyz, double &dxyz_min)
-{
-  splitting_criteria_t *data = (splitting_criteria_t*)p4est->user_pointer;
-
-  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[0 + 0];
-  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
-  double *v = p4est->connectivity->vertices;
-
-  for(int dir=0; dir<P4EST_DIM; ++dir)
-  {
-    dxyz[dir] = (v[3*v_p + dir] - v[3*v_m + dir]) / (1<<data->max_lvl);
-  }
-
-#ifdef P4_TO_P8
-  dxyz_min = MIN(dxyz[0], dxyz[1], dxyz[2]);
-#else
-  dxyz_min = MIN(dxyz[0], dxyz[1]);
-#endif
+  dxyz_min = MIN(DIM(dxyz[0], dxyz[1], dxyz[2]));
 }
 
 void get_dxyz_min(const p4est_t *p4est, double *dxyz, double &dxyz_min, double &diag_min)
@@ -1221,17 +1193,10 @@ void get_dxyz_min(const p4est_t *p4est, double *dxyz, double &dxyz_min, double &
   double *v = p4est->connectivity->vertices;
 
   for(int dir=0; dir<P4EST_DIM; ++dir)
-  {
     dxyz[dir] = (v[3*v_p + dir] - v[3*v_m + dir]) / (1<<data->max_lvl);
-  }
 
-#ifdef P4_TO_P8
-  dxyz_min = MIN(dxyz[0], dxyz[1], dxyz[2]);
-  diag_min = sqrt( SQR(dxyz[0]) + SQR(dxyz[1]) + SQR(dxyz[2]) );
-#else
-  dxyz_min = MIN(dxyz[0], dxyz[1]);
-  diag_min = sqrt( SQR(dxyz[0]) + SQR(dxyz[1]) );
-#endif
+  dxyz_min = MIN(DIM(dxyz[0], dxyz[1], dxyz[2]));
+  diag_min = sqrt(SUMD(SQR(dxyz[0]), SQR(dxyz[1]), SQR(dxyz[2])));
 }
 
 void dxyz_quad(const p4est_t *p4est, const p4est_quadrant_t *quad, double *dxyz)

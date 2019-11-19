@@ -12,7 +12,6 @@
 #include <src/my_p8est_tools.h>
 #include <src/my_p8est_refine_coarsen.h>
 #include <src/my_p8est_node_neighbors.h>
-#include <src/mls_integration/simplex3_mls_l.h>
 #else
 #include <p4est.h>
 #include <src/my_p4est_utils.h>
@@ -20,34 +19,38 @@
 #include <src/my_p4est_tools.h>
 #include <src/my_p4est_refine_coarsen.h>
 #include <src/my_p4est_node_neighbors.h>
-#include <src/mls_integration/simplex2_mls_l.h>
 #endif
 
 class my_p4est_semi_lagrangian_t
 {
-  p4est_t **p_p4est, *p4est;
-  p4est_nodes_t **p_nodes, *nodes;
-  p4est_ghost_t **p_ghost, *ghost;
+  friend class my_p4est_ns_free_surface_t;
+  friend class my_p4est_surfactant_t;
+  /*
+   * The pointer-to-pointer member variables (i.e. the 'p_***' variables here below) are required
+   * to udpate the pointer to grid data that the user passed when constructing this object.
+   * This object works on the objects pointed by p4est, nodes and ghost, it may modify them or even
+   * destroy them create new ones. We want these changes of pointer to be 'transparent' to the user,
+   * (so that they do not have to ask for a new pointer to the new grid data every time the grid changes)
+   * --> this class updates the pointers as seen and provided by the user through the 'p_***' variables!
+   * (A direct consequence is that this class does not take ownership of any such object, so it does not
+   * destroy any grid data at the destructor)
+   */
+  p4est_t                   **p_p4est, *p4est;
+  p4est_nodes_t             **p_nodes, *nodes;
+  p4est_ghost_t             **p_ghost, *ghost;
   my_p4est_node_neighbors_t *ngbd_n;
   my_p4est_node_neighbors_t *ngbd_nm1;
-  my_p4est_hierarchy_t *hierarchy;
-
   my_p4est_node_neighbors_t *ngbd_phi;
+  bool periodic[P4EST_DIM];
 
   double xyz_min[P4EST_DIM], xyz_max[P4EST_DIM];
 
-  void advect_from_n_to_np1(double dt,
-                          #ifdef P4_TO_P8
-                            const CF_3 **v,
-                          #else
-                            const CF_2 **v,
-                          #endif
+  void advect_from_n_to_np1(double dt, const CF_DIM **v,
                             Vec phi_n, Vec *phi_xx_n,
                             double *phi_np1);
 
   void advect_from_n_to_np1(double dt, Vec *v, Vec **vxx, Vec phi_n, Vec *phi_xx_n,
                             double *phi_np1);
-
 
   void advect_from_n_to_np1(double dt_nm1, double dt_n,
                             Vec *vnm1, Vec **vxx_nm1,
@@ -59,18 +62,10 @@ class my_p4est_semi_lagrangian_t
   interpolation_method phi_interpolation;
 
 public:
-  my_p4est_semi_lagrangian_t(p4est_t **p4est_np1, p4est_nodes_t **nodes_np1, p4est_ghost_t **ghost_np1, my_p4est_node_neighbors_t *ngbd_n, my_p4est_node_neighbors_t *ngbd_nm1=NULL);
+  my_p4est_semi_lagrangian_t(p4est_t **p4est_np1, p4est_nodes_t **nodes_np1,  p4est_ghost_t **ghost_np1,  my_p4est_node_neighbors_t *ngbd_n, my_p4est_node_neighbors_t *ngbd_nm1=NULL);
 
-  inline void set_velo_interpolation(interpolation_method method) { velo_interpolation = method; }
-  inline void set_phi_interpolation (interpolation_method method) { phi_interpolation  = method; }
-
-#ifdef P4_TO_P8
-  double compute_dt(const CF_3& vx, const CF_3& vy, const CF_3& vz);
-  double compute_dt(Vec vx, Vec vy, Vec vz);
-#else
-  double compute_dt(const CF_2& vx, const CF_2& vy);
-  double compute_dt(Vec vx, Vec vy);
-#endif
+  double compute_dt(DIM(const CF_DIM& vx, const CF_DIM& vy, const CF_DIM& vz));
+  double compute_dt(DIM(Vec vx, Vec vy, Vec vz));
 
   /*!
    * \brief update a p4est from tn to tnp1, using a semi-Lagrangian scheme with Euler along the characteristic.
@@ -81,11 +76,7 @@ public:
    * \param phi_xx  the derivatives of the level set function. This is a pointer to an array of dimension P4EST_DIM
    * \note you need to update ngbd_n and hierarchy yourself !
    */
-#ifdef P4_TO_P8
-  void update_p4est(const CF_3 **v, double dt, Vec &phi, Vec *phi_xx=NULL);
-#else
-  void update_p4est(const CF_2 **v, double dt, Vec &phi, Vec *phi_xx=NULL);
-#endif
+  void update_p4est(const CF_DIM **v, double dt, Vec &phi, Vec *phi_xx=NULL);
 
   /*!
    * \brief update a p4est from tn to tnp1, using a semi-Lagrangian scheme with Euler along the characteristic.

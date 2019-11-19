@@ -51,7 +51,6 @@
 #include "point2.h"
 #endif
 
-
 /*!
  * \brief The HierarchyCell struct represents ANY cell in the hierarchy, leaf or not.
  * [Comments by Raphael Egan, October 2019]
@@ -264,6 +263,17 @@ class my_p4est_hierarchy_t {
   std::vector< std::vector<HierarchyCell> > trees;
 
   /*!
+   * \brief local_inner_quadrant_index: standard vector of local quadrant indices that are not seen as ghost by
+   * any other process
+   */
+  std::vector< p4est_locidx_t > local_inner_quadrant_index;
+  /*!
+   * \brief local_layer_quadrant_index: standard vector of local quadrant indices that are seen as ghost by at
+   * least one other process
+   */
+  std::vector< p4est_locidx_t > local_layer_quadrant_index;
+
+  /*!
    * \brief split splits a HierarchyCell, adds the corresponding P4EST_CHILDREN HierarchyCell's to the same
    * relevant standard vector of HierarchyCell's
    * \param [in] tree_idx index of the tree in which the HierarchyCell needs to be split
@@ -278,9 +288,12 @@ class my_p4est_hierarchy_t {
    *          trees[tree_idx][returned value] is a HierarchyCell representation of quad
    */
   int update_tree( int tree_idx, const p4est_quadrant_t *quad );
+
   /*!
    * \brief construct_tree loops through every quadrant locally known (locally owned or ghost) and adds it to
-   * as a match requirement for the my_p4est_hierarchy object.
+   * as a match requirement for the my_p4est_hierarchy object. This also fills the list of indices for local
+   * quadrants that are either ghost for (an)other process(es) in local_layer_quadrant_index or owned locally
+   * only in local_inner_quadrant_index
    */
   void construct_tree();
 
@@ -295,11 +308,7 @@ class my_p4est_hierarchy_t {
    *                                of finest theoretical level of refinement, with their p.piggy1 members filled (i.e. owner rank and tree
    *                                index).
    */
-#ifdef P4_TO_P8
-  void find_quadrant_containing_point(const int* tr_xyz_orig, Point3& s, int& rank, p4est_quadrant_t &best_match, std::vector<p4est_quadrant_t> &remote_matches) const;
-#else
-  void find_quadrant_containing_point(const int* tr_xyz_orig, Point2& s, int& rank, p4est_quadrant_t &best_match, std::vector<p4est_quadrant_t> &remote_matches) const;
-#endif
+  void find_quadrant_containing_point(const int* tr_xyz_orig, PointDIM& s, int& rank, p4est_quadrant_t &best_match, std::vector<p4est_quadrant_t> &remote_matches) const;
   bool periodic[P4EST_DIM];
 
 public:
@@ -313,7 +322,7 @@ public:
   my_p4est_hierarchy_t( p4est_t *p4est_, p4est_ghost_t *ghost_, my_p4est_brick_t *myb_)
     : p4est(p4est_), ghost(ghost_), myb(myb_), trees(p4est->connectivity->num_trees)
   {
-    for (short dir = 0; dir < P4EST_DIM; ++dir)
+    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
       periodic[dir] = is_periodic(p4est, dir);
     for( size_t tr=0; tr<trees.size(); tr++)
     {
@@ -331,6 +340,14 @@ public:
     }
     construct_tree();
   }
+
+  /*!
+   * \brief get_cell gives read access to a constant HierarchyCell as constructed by the my_p4est_hierarchy object
+   * \param [in] tr the tree index;
+   * \param [in] q  the index of the HierarchyCell in that tree;
+   * \return a pointer to the desired (constant) HierarchyCell
+   */
+  inline const HierarchyCell* get_cell(p4est_topidx_t tr, p4est_locidx_t q) const {return &trees[tr][q];}
 
   /*!
    * \brief find_smallest_quadrant_containing_point find the smallest (leaf) quadrant containing a point of interest
@@ -365,6 +382,15 @@ public:
    *    case)
    */
   int find_smallest_quadrant_containing_point(const double *xyz, p4est_quadrant_t &best_match, std::vector<p4est_quadrant_t> &remote_matches) const;
+
+  /*!
+   * \brief quad_idx_of_quad finds the index in the hierarchy tree of a quadrant
+   * \param [in] quad     pointer to the quadrant whose local index is sought
+   * \param [in] tree_idx index of the tree in which the quadrant lives
+   * \return the index in the hierarchy tree of the HierarchyCell corresponding to the given quadrant
+   */
+  p4est_locidx_t quad_idx_of_quad(const p4est_quadrant_t* quad, const p4est_topidx_t& tree_idx) const;
+
   /*!
    * \brief update update the my_p4est_hiearchy to match the new p4est and ghost
    * \param [in] p4est_ pointer to the new p4est structure
@@ -373,11 +399,38 @@ public:
    *         is no shortcut return if unchanged pointer(s)
    */
   void update(p4est_t *p4est_, p4est_ghost_t *ghost_);
+
+  inline size_t get_layer_size() const { return local_layer_quadrant_index.size(); }
+  inline size_t get_local_size() const { return local_inner_quadrant_index.size(); }
+  inline p4est_locidx_t get_layer_quadrant(const size_t& i) const {
+#ifdef CASL_THROWS
+    return local_layer_quadrant_index.at(i);
+#endif
+    return local_layer_quadrant_index[i];
+  }
+  inline p4est_locidx_t get_local_quadrant(const size_t& i) const {
+#ifdef CASL_THROWS
+    return local_inner_quadrant_index.at(i);
+#endif
+    return local_inner_quadrant_index[i];
+  }
+
   /*!
    * \brief write_vtk exports the local hierarchy in a vtk format
    * \param [in] filename name of the desired vtk file, every processor exports such a file appending its rank to the desired name
    */
   void write_vtk(const char* filename) const;
+
+  size_t memory_estimate() const
+  {
+    size_t memory = 0;
+    for (size_t tree_idx = 0; tree_idx < trees.size(); ++tree_idx)
+      memory += (trees[tree_idx].size())*sizeof (HierarchyCell);
+    memory += (local_inner_quadrant_index.size())*sizeof (p4est_locidx_t);
+    memory += (local_layer_quadrant_index.size())*sizeof (p4est_locidx_t);
+
+    return memory;
+  }
 };
 
 #endif /* !MY_P4EST_HIERARCHY_H */
