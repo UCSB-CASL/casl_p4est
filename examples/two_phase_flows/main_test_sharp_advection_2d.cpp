@@ -58,11 +58,7 @@ public:
       return r0 - sqrt(SUMD(SQR(x-(xmax+xmin)/2), SQR(y-(ymax+ymin)/2), SQR(z-(zmax+zmin)/2)));
       break;
     case 1:
-#ifdef P4_TO_P8
-      return r0 - sqrt(SUMD(SQR(x-0.35), SQR(y-0.35), SQR(z-0.35)));
-#else
-      return r0 - sqrt(SQR(x-(xmax+xmin)/2) + SQR(y-(0.75*ymax+0.25*ymin)));
-#endif
+      return r0 - sqrt(SUMD(SQR(x-(xmax+xmin)/2), SQR(y-(0.75*ymax+0.25*ymin)), SQR(z-(zmax+zmin)/2)));
     default:
       throw std::runtime_error("LEVEL_SET: unknown case");
       break;
@@ -159,7 +155,7 @@ public:
       return 0.0;
       break;
     case 1:
-      return ((t_<time_reverse)?+1.0:-1.0)*MULTD(sin(2.0*M_PI*x), SQR(sin(M_PI*y)), -1.0*sin(2.0*M_PI*z));
+      return ((t_<time_reverse)?+1.0:-1.0)*MULTD(SQR(sin(2.0*M_PI*x), sin(M_PI*y)), -1.0*sin(2.0*M_PI*z));
       break;
     default:
       throw std::runtime_error("prescribed_velocity_v_t: unknown case");
@@ -385,6 +381,14 @@ void get_extrapolation_error_in_band(const my_p4est_two_phase_flows_t* two_phase
   ierr = VecGetArrayRead(vnp1_nodes_minus,  &vnp1_nodes_minus_p); CHKERRXX(ierr);
   ierr = VecGetArrayRead(vnp1_nodes_plus,   &vnp1_nodes_plus_p); CHKERRXX(ierr);
 
+
+//  Vec error_x, error_y;
+//  ierr = VecCreateGhostNodes(two_phase_flow_solver->get_p4est_n(), two_phase_flow_solver->get_nodes_n(), &error_x); CHKERRXX(ierr);
+//  ierr = VecCreateGhostNodes(two_phase_flow_solver->get_p4est_n(), two_phase_flow_solver->get_nodes_n(), &error_y); CHKERRXX(ierr);
+//  double *err_x_p, *err_y_p;
+//  ierr = VecGetArray(error_x, &err_x_p); CHKERRXX(ierr);
+//  ierr = VecGetArray(error_y, &err_y_p); CHKERRXX(ierr);
+
   double xyz_node[P4EST_DIM];
   for (p4est_locidx_t n = 0; n < nodes_n->num_owned_indeps; ++n) {
     node_xyz_fr_n(n, two_phase_flow_solver->get_p4est_n(), nodes_n, xyz_node);
@@ -392,19 +396,48 @@ void get_extrapolation_error_in_band(const my_p4est_two_phase_flows_t* two_phase
     {
       if((*interp_phi)(xyz_node) <= 0.0)
         for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
+        {
           extrapolation_error_v_plus[dim] = MAX(extrapolation_error_v_plus[dim], fabs((*prescribed_velocity[dim])(xyz_node) - vnp1_nodes_plus_p[P4EST_DIM*n+dim]));
+//          if(dim ==0)
+//            err_x_p[n] = fabs((*prescribed_velocity[dim])(xyz_node) - vnp1_nodes_plus_p[P4EST_DIM*n+dim]);
+//          else
+//            err_y_p[n] = fabs((*prescribed_velocity[dim])(xyz_node) - vnp1_nodes_plus_p[P4EST_DIM*n+dim]);
+        }
       else
         for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
+        {
           extrapolation_error_v_minus[dim] = MAX(extrapolation_error_v_minus[dim], fabs((*prescribed_velocity[dim])(xyz_node) - vnp1_nodes_minus_p[P4EST_DIM*n+dim]));
+//          if(dim ==0)
+//            err_x_p[n] = fabs((*prescribed_velocity[dim])(xyz_node) - vnp1_nodes_plus_p[P4EST_DIM*n+dim]);
+//          else
+//            err_y_p[n] = fabs((*prescribed_velocity[dim])(xyz_node) - vnp1_nodes_plus_p[P4EST_DIM*n+dim]);
+        }
     }
+//    else
+//    {
+//      err_x_p[n] = 0.0;
+//      err_y_p[n] = 0.0;
+//    }
   }
+
+//  my_p4est_vtk_write_all(two_phase_flow_solver->get_p4est_n(), two_phase_flow_solver->get_nodes_n(), two_phase_flow_solver->get_ghost_n(),
+//                         P4EST_TRUE, P4EST_FALSE,
+//                         2, 0,
+//                         "/home/regan/workspace/projects/two_phase_flow/sharp_advection_2d/error_extrap",
+//                         VTK_NODE_SCALAR, "error_x", err_x_p,
+//                         VTK_NODE_SCALAR, "error_y", err_y_p);
+
+//  ierr = VecRestoreArray(error_x, &err_x_p); CHKERRXX(ierr);
+//  ierr = VecRestoreArray(error_y, &err_y_p); CHKERRXX(ierr);
+//  ierr = VecDestroy(error_x); CHKERRXX(ierr);
+//  ierr = VecDestroy(error_y); CHKERRXX(ierr);
 
   ierr = VecRestoreArrayRead(vnp1_nodes_minus,  &vnp1_nodes_minus_p); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(vnp1_nodes_plus,   &vnp1_nodes_plus_p); CHKERRXX(ierr);
 
   int mpiret;
-  mpiret = MPI_Allreduce(MPI_IN_PLACE, extrapolation_error_v_minus, P4EST_DIM, MPI_DOUBLE, MPI_MAX, two_phase_flow_solver->get_p4est_n()->mpicomm); SC_CHECK_MPI(mpiret);
-  mpiret = MPI_Allreduce(MPI_IN_PLACE, extrapolation_error_v_plus,  P4EST_DIM, MPI_DOUBLE, MPI_MAX, two_phase_flow_solver->get_p4est_n()->mpicomm); SC_CHECK_MPI(mpiret);
+  mpiret = MPI_Allreduce(MPI_IN_PLACE, extrapolation_error_v_minus, 2, MPI_DOUBLE, MPI_MAX, two_phase_flow_solver->get_p4est_n()->mpicomm); SC_CHECK_MPI(mpiret);
+  mpiret = MPI_Allreduce(MPI_IN_PLACE, extrapolation_error_v_plus,  2, MPI_DOUBLE, MPI_MAX, two_phase_flow_solver->get_p4est_n()->mpicomm); SC_CHECK_MPI(mpiret);
   return;
 }
 
@@ -445,6 +478,9 @@ int main (int argc, char* argv[])
   const double duration                 = cmd.get<double>("duration", 1.4);
 #else
   const double duration                 = cmd.get<double>("duration", 2.0);
+#ifdef P4_TO_P8
+  const string export_dir               = "/home/regan/workspace/projects/two_phase_flow/sharp_advection_3d";
+#else
   const string export_dir               = "/home/regan/workspace/projects/two_phase_flow/sharp_advection_2d";
 #endif
   PetscErrorCode ierr;
@@ -478,8 +514,8 @@ int main (int argc, char* argv[])
 #endif
   bc_p.setWallTypes(bc_wall_type_p); bc_p.setWallValues(bc_wall_value_p);
 
-  lmin                    = cmd.get<int>("lmin", 4);
-  lmax                    = cmd.get<int>("lmax", 6);
+  lmin                    = cmd.get<int>("lmin", 6);
+  lmax                    = cmd.get<int>("lmax", 9);
   threshold_split_cell    = cmd.get<double>("thresh", 1.00);
   n_tree_xyz[0]           = cmd.get<int>("nx", 1);
   n_tree_xyz[1]           = cmd.get<int>("ny", 1);
@@ -667,16 +703,8 @@ int main (int argc, char* argv[])
 
   if(mpi.rank() ==0)
   {
-    std::cout << "max extrapolation_error_v_minus = " << max_extrapolation_error_v_minus[0] << " " << max_extrapolation_error_v_minus[1]
-             #ifdef P4_TO_P8
-              << " " << max_extrapolation_error_v_minus[2]
-             #endif
-              << std::endl;
-    std::cout << "max extrapolation_error_v_plus  = " << max_extrapolation_error_v_plus[0] << " " << max_extrapolation_error_v_plus[1]
-             #ifdef P4_TO_P8
-              << " " << max_extrapolation_error_v_plus[2]
-             #endif
-              << std::endl;
+    std::cout << "max extrapolation_error_v_minus = " << max_extrapolation_error_v_minus[0] << " " << max_extrapolation_error_v_minus[1] << std::endl;
+    std::cout << "max extrapolation_error_v_plus  = " << max_extrapolation_error_v_plus[0] << " " << max_extrapolation_error_v_plus[1] << std::endl;
   }
 
   for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {

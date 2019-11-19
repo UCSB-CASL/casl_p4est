@@ -1772,9 +1772,6 @@ void my_p4est_two_phase_flows_t::interpolate_velocity_at_node(const p4est_locidx
 
   double xyz[P4EST_DIM];
   node_xyz_fr_n(node_idx, p4est_n, nodes_n, xyz);
-#ifdef P4_TO_P8
-  const double phi_node = (*interp_phi)(xyz); // INTRODUCED AS A "FIX" FOR THE MURI PRESENTATION
-#endif
   p4est_indep_t *node = (p4est_indep_t*) sc_array_index(&nodes_n->indep_nodes, node_idx);
   const double min_tree_dim = MIN(DIM(convert_to_xyz[0], convert_to_xyz[1], convert_to_xyz[2]));
 
