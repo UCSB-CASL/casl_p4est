@@ -1,10 +1,13 @@
 #ifndef VORONOI2D_H
 #define VORONOI2D_H
 
+#define UNIFORM_2D_NB_NEIGHBORS 4
+
 #include <fstream>
 #include <vector>
 
 #include <src/my_p4est_utils.h>
+#include <src/my_p4est_faces.h>
 #include <src/casl_math.h>
 #include <src/point2.h>
 
@@ -62,6 +65,17 @@ private:
   double phi_c;
   double volume;
 
+  /*!
+     * \brief add a point to the list of collocation points, WITHOUT making sure there is no repetition
+     * \param n the index of the point to add
+     * \param x the first coordinate of the point to add
+     * \param y the second coordinate of the point to add
+     * \param periodicity the periodicity flag for the computational domain
+     * \param xyz_min the coordinates of the lower left corner of the computational domain
+     * \param xyz_min the coordinates of the upper right corner of the computational domain
+     */
+  void add_point( int n, double x, double y, const bool* periodicity, const double* xyz_min, const double* xyz_max);
+
 public:
   /*!
      * \brief default constructor for the Voronoi2D class
@@ -107,6 +121,8 @@ public:
      */
   void set_neighbors_and_partition( vector<ngbd2Dseed>& neighbors_, vector<Point2>& partition_, double volume_ );
 
+  void reorder_neighbors_and_partition_from_faces_to_counterclock_cycle();
+
   /*!
      * \brief set the level-set values at the vertices of the voronoi partition
      * \param ls a continuous description of the level-set function
@@ -132,6 +148,7 @@ public:
      * \param y the second coordinate of the point
      */
   void set_center_point( double x, double y );
+  inline void set_center_point(const double* xyz) {set_center_point(xyz[0], xyz[1]);}
 
   /*!
      * \brief get the point at the center of the partition
@@ -144,8 +161,13 @@ public:
      * \param n the index of the point to add
      * \param x the first coordinate of the point to add
      * \param y the second coordinate of the point to add
+     * \param periodicity the periodicity flag for the computational domain
+     * \param xyz_min the coordinates of the lower left corner of the computational domain
+     * \param xyz_min the coordinates of the upper right corner of the computational domain
      */
   void push( int n, double x, double y, const bool* periodicity, const double* xyz_min, const double* xyz_max);
+
+  void assemble_from_set_of_faces(const unsigned char& dir, const std::set<p4est_locidx_t>& set_of_faces, const my_p4est_faces_t* faces, const bool* periodicity, const double* xyz_min, const double* xyz_max);
 
   /*!
      * \brief modify the coordinates of the points to take in account the periodicity

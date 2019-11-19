@@ -467,7 +467,7 @@ int main (int argc, char* argv[])
   two_phase_flow_solver->set_vorticity_split_threshold(threshold_split_cell);
   two_phase_flow_solver->set_cfl(cfl);
 
-  two_phase_flow_solver->set_velocities(vnm1, vn, vnm1, vn);
+  two_phase_flow_solver->set_node_velocities(vnm1, vn, vnm1, vn);
 
   tstart = 0.0; // no restart so we assume we start from 0.0
   dt = 0.001;
@@ -513,7 +513,7 @@ int main (int argc, char* argv[])
     {
       two_phase_flow_solver->compute_dt();
       dt = two_phase_flow_solver->get_dt();
-      two_phase_flow_solver->update_from_tn_to_tnp1();
+      two_phase_flow_solver->update_from_tn_to_tnp1(iter);
     }
 
     two_phase_flow_solver->compute_jump_mu_grad_v();

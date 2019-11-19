@@ -19,24 +19,43 @@
 #include <src/my_p4est_node_neighbors.h>
 #endif
 
-#include <vector>
+#if __cplusplus >= 201103L
+#include <unordered_map> // if c++11 is fully supported, use unordered maps (i.e. hash tables) as they are apparently much faster
+#else
+#include <map>
+#endif
 
 using std::vector;
+#if __cplusplus >= 201103L
+using std::unordered_map;
+#else
+using std::map;
+#endif
+
 
 #define NO_VELOCITY -1
+
+typedef struct {
+  p4est_locidx_t neighbor_face_idx[P4EST_FACES]; // stored in the following order: m00, p00, 0m0, 0p0, 00m, 00p
+} uniform_face_ngbd;
+
+#if __cplusplus >= 201103L
+typedef std::unordered_map<p4est_locidx_t, uniform_face_ngbd> map_to_uniform_face_ngbd_t;
+#else
+typedef std::map<p4est_locidx_t, uniform_face_ngbd> map_to_uniform_face_ngbd_t;
+#endif
 
 class my_p4est_faces_t
 {
   friend class my_p4est_poisson_faces_t;
   friend class my_p4est_interpolation_faces_t;
-  friend class my_p4est_navier_stokes_t;
 private:
 
   typedef struct face_quad_ngbd
   {
     /* the indices of the neighbor quadrant.
      * - if the quadrant is local, store its index and the corresponding tree.
-     *   Note that it is the local index in the forest (including ghosts), and not the index in the tree.
+     *  Note that the local index is cumulative over the trees, and not the index in the tree.
      * - if the quadrant is ghost, store its local index, i.e. local_num_quadrants + ghost_index.
      *
      * If a face has two well defined neighboring quadrants, the local one is prefered over the ghost one.
@@ -59,12 +78,18 @@ private:
     int rank[P4EST_FACES];
   } faces_comm_2_t;
 
+#ifdef CASL_THROWS
+  p4est_t *p4est;
+#else
   const p4est_t *p4est;
+#endif
+  const uint8_t max_p4est_lvl;
+  double smallest_dxyz[P4EST_DIM];
   p4est_ghost_t *ghost;
   const my_p4est_brick_t *myb;
   my_p4est_cell_neighbors_t *ngbd_c;
 
-  void init_faces();
+  void init_faces(bool initialize_neighborhoods_of_fine_faces);
 
   map_to_uniform_face_ngbd_t uniform_face_neighbors[P4EST_DIM];
 
@@ -118,42 +143,51 @@ private:
 
 
 public:
+
+  inline bool finest_faces_neighborhoods_have_been_set() const {return finest_faces_neighborhoods_are_set ;}
+
   /* the remote local number of the ghost velocities
-   * ghost_local_num[P4EST_DIM]
+   * For ghost faces, face_idx>=num_local[dim], and
+   * ghost_local_num[dim][face_idx-num_local[dim]] = local index of the ghost face in the proc that owns it
    */
   vector<p4est_locidx_t> ghost_local_num[P4EST_DIM];
 
-  /* q2f[P4EST_FACES][quad_idx] */
+  /* q2f[P4EST_FACES][quad_idx]
+   * q2f_[dir][quad_idx] = local index of the face in direction dir of quadrant quad_idx
+   */
   vector<p4est_locidx_t> q2f_[P4EST_FACES];
 
-  /* f2q[P4EST_DIM][u_idx]
-   * e.g. u2q[1][12] is the quadrant whose face in the y direction has index 12
+  /* f2q_[P4EST_DIM][u_idx]
+   * f2q_[dim][face_idx].quad_idx = local index of the quadrant that owns the face (cumulative over the trees)
+   * f2q_[dim][face_idx].tree_idx = tree index of the quadrant that owns the face
+   * e.g. f2q_[1][12] is the quadrant whose face in the y direction has index 12
    */
   vector<my_p4est_faces_t::face_quad_ngbd> f2q_[P4EST_DIM];
 
   /* Store which process the ghost faces belong to.
-   * Ghost y-face #i belongs to process nonlocal_ranks[0][i]
+   * For ghost faces, face_idx>=num_local[dim], and
+   * nonlocal_ranks[dim][face_idx-num_local[dim]] = rank of the process that owns it
    */
   vector<int> nonlocal_ranks[P4EST_DIM];
 
   /* Store the number of owned faces for each rank.
-   * Process #j owns global_owned_indeps[0][j] x-faces
+   * global_owned_indeps[dim][r] = number of faces of orientation dim owned by process of rank r
    */
   vector<p4est_locidx_t> global_owned_indeps[P4EST_DIM];
 
-  /* num_local[dir] contains the number of local faces in the direction "dir" */
+  /* num_local[dim] contains the number of local faces of orientation dim */
   p4est_locidx_t num_local[P4EST_DIM];
 
-  /* num_ghost[dir] contains the number of ghost faces in the direction "dir" */
+  /* num_ghost[dim] contains the number of ghost faces of orientation dim  */
   p4est_locidx_t num_ghost[P4EST_DIM];
 
-  my_p4est_faces_t(p4est_t *p4est, p4est_ghost_t *ghost, my_p4est_brick_t *myb, my_p4est_cell_neighbors_t *ngbd_c);
+  my_p4est_faces_t(p4est_t *p4est, p4est_ghost_t *ghost, my_p4est_brick_t *myb, my_p4est_cell_neighbors_t *ngbd_c, bool initialize_neighborhoods_of_fine_faces = false);
 
   /*!
    * \brief q2f return the face of quadrant quad_idx in the direction dir
-   * \param quad_idx the quadrant index in the local p4est
+   * \param quad_idx the quadrant index in the local p4est (cumulative over the trees)
    * \param dir the direction of the face, dir::f_m00, dir::f_p00, dir::f_0m0 ...
-   * \return the index of the face of quadrant quad_idx in direction dir, return NO_VELOCITY if there is many small neighbor quadrant in the direction dir
+   * \return the local index of the face of quadrant quad_idx in direction dir, return NO_VELOCITY if there is many small neighbor quadrant in the direction dir
    */
   inline p4est_locidx_t q2f(p4est_locidx_t quad_idx, int dir) const
   {
@@ -162,14 +196,14 @@ public:
 
   /*!
    * \brief get the local index of the neighbor cell
-   * \param u_idx the index of the face
-   * \param dir the cartesian direction of the face (dir::x, dir::y or dir::z)
-   * \return the local index of the neighbor cell
+   * \param f_idx the local index of the face
+   * \param dim the cartesian direction of the face (dir::x, dir::y or dir::z)
+   * \return the local index of the neighbor cell and the index of three of that neighbor cell
    */
-  inline void f2q(p4est_locidx_t f_idx, int dir, p4est_locidx_t& quad_idx, p4est_topidx_t& tree_idx) const
+  inline void f2q(p4est_locidx_t f_idx, int dim, p4est_locidx_t& quad_idx, p4est_topidx_t& tree_idx) const
   {
-    quad_idx = f2q_[dir][f_idx].quad_idx;
-    tree_idx = f2q_[dir][f_idx].tree_idx;
+    quad_idx = f2q_[dim][f_idx].quad_idx;
+    tree_idx = f2q_[dim][f_idx].tree_idx;
   }
 
   /*!
@@ -489,7 +523,7 @@ PetscErrorCode VecCreateGhostFacesBlock(const p4est_t *p4est, const my_p4est_fac
 
 /*!
  * \brief mark the faces that are well defined, i.e. that are solved for in an implicit poisson solve with irregular interface.
- *   For Dirichlet b.c. the condition is phi(face)<0. For Neumann, the control volume of the face must be at least partially in the negative domain.
+ *   For Dirichlet b.c. the condition is phi(face)<=0. For Neumann, the control volume of the face must be at least partially in the negative domain.
  * \param p4est the forest
  * \param ngbd_n the node neighbors structure
  * \param faces the faces structure
