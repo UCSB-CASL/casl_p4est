@@ -263,7 +263,7 @@ int main (int argc, char* argv[])
 		// Setting up the flower.
 		const int N_GRID_POINTS = 129;
 		Flower flower( 0.05, 0.15, 3 );							// For flower with a=0.05: M = 129, padding = 12, N_CELLS = 1, yields 261 grid points per unit.
-		flower.getHAndMinVal( N_GRID_POINTS, h, minVal, 12 );	// For flower with a=0.075: M = 129, padding = 6, N_CELLS = 1, yields 258.777 grid points per unit.
+		flower.getHAndMinVal( N_GRID_POINTS, h, minVal, 5 );	// For flower with a=0.075: M = 129, padding = 5, N_CELLS = 1, yields 263.222 grid points per unit.
 		const int N_CELLS = 1;
 		const int MAX_LEVEL_OF_REFINEMENT = 7;
 
