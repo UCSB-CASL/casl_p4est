@@ -3037,7 +3037,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
   ngbd->init_neighbors();
 
   /* compute the normals */
-  double *nx, *ny, *nz;
+  double DIM(*nx, *ny, *nz);
 
   if (normal != NULL)
   {
@@ -3187,7 +3187,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
             double q_000 = q_p[n];
 
             double d_min = diag;
-            for (unsigned int i = 0; i < bc->num_value_pts(n); ++i)
+            for (int i = 0; i < bc->num_value_pts(n); ++i)
             {
               int idx = bc->idx_value_pt(n,i);
               interface_point_cartesian_t *pt = &bc->dirichlet_pts[idx];
@@ -3320,7 +3320,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD(Vec phi, Vec q, int iterati
             double q_000 = q_p[n];
 
             double d_min = diag;
-            for (unsigned int i = 0; i < bc->num_value_pts(n); ++i)
+            for (int i = 0; i < bc->num_value_pts(n); ++i)
             {
               int idx = bc->idx_value_pt(n,i);
               interface_point_cartesian_t *pt = &bc->dirichlet_pts[idx];
@@ -4285,7 +4285,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
   ngbd->init_neighbors();
 
   /* compute the normals */
-  double *nx, *ny, *nz;
+  double DIM(*nx, *ny, *nz);
 
   if (normal != NULL)
   {
@@ -4470,7 +4470,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
               double q_000 = q_p[n];
 
               double d_min = diag;
-              for (unsigned int i = 0; i < bc->num_value_pts(n); ++i)
+              for (int i = 0; i < bc->num_value_pts(n); ++i)
               {
                 int idx = bc->idx_value_pt(n,i);
                 interface_point_cartesian_t *pt = &bc->dirichlet_pts[idx];
@@ -4766,7 +4766,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
 //    double initial_change = 0;
 //    while (it < iterations && change > 1.e-4*initial_change || it < num_iters_min)
     double change = tol_dd+1;
-    while (it < iterations && change > tol_dd || it < num_iters_min)
+    while ((it < iterations && change > tol_dd) || it < num_iters_min)
     {
       change = 0;
       ++it;
@@ -5035,7 +5035,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
 
     int    it     = 0;
     double change = tol+1;
-    while (it < iterations && change > tol_d || it < num_iters_min)
+    while ((it < iterations && change > tol_d) || it < num_iters_min)
     {
       change = 0;
       ++it;
@@ -5226,7 +5226,7 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_Full(Vec phi, Vec q, int it
 
   int    it     = 0;
   double change = tol+1;
-  while (it < iterations && change > tol || it < num_iters_min)
+  while ((it < iterations && change > tol) || it < num_iters_min)
   {
     change = 0;
     ++it;
@@ -7887,7 +7887,7 @@ void my_p4est_level_set_t::enforce_contact_angle2(Vec phi, Vec q, Vec cos_angle,
   ierr = PetscLogEventEnd(log_my_p4est_level_set_extend_over_interface_TVD, phi, q, 0, 0); CHKERRXX(ierr);
 }
 
-double my_p4est_level_set_t::advect_in_normal_direction_with_contact_angle(const Vec vn, const Vec surf_tns, const Vec cos_angle, const Vec phi_wall, Vec phi, double dt)
+void my_p4est_level_set_t::advect_in_normal_direction_with_contact_angle(const Vec vn, const Vec surf_tns, const Vec cos_angle, const Vec phi_wall, Vec phi, double dt)
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_level_set_advect_in_normal_direction_Vec, 0, 0, 0, 0);

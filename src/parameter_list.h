@@ -88,32 +88,32 @@ public:
 
   void initialize_parser(cmdParser &cmd)
   {
-    for (int i = 0; i < dbls.ptrs.size(); ++i) cmd.add_option(dbls.keys[i], dbls.desc[i]);
-    for (int i = 0; i < ints.ptrs.size(); ++i) cmd.add_option(ints.keys[i], ints.desc[i]);
-    for (int i = 0; i < blns.ptrs.size(); ++i) cmd.add_option(blns.keys[i], blns.desc[i]);
-    for (int i = 0; i < strs.ptrs.size(); ++i) cmd.add_option(strs.keys[i], strs.desc[i]);
-    for (int i = 0; i < chrs.ptrs.size(); ++i) cmd.add_option(chrs.keys[i], chrs.desc[i]);
-    for (int i = 0; i < bcs .ptrs.size(); ++i) cmd.add_option(bcs .keys[i], bcs .desc[i]);
+    for (size_t i = 0; i < dbls.ptrs.size(); ++i) cmd.add_option(dbls.keys[i], dbls.desc[i]);
+    for (size_t i = 0; i < ints.ptrs.size(); ++i) cmd.add_option(ints.keys[i], ints.desc[i]);
+    for (size_t i = 0; i < blns.ptrs.size(); ++i) cmd.add_option(blns.keys[i], blns.desc[i]);
+    for (size_t i = 0; i < strs.ptrs.size(); ++i) cmd.add_option(strs.keys[i], strs.desc[i]);
+    for (size_t i = 0; i < chrs.ptrs.size(); ++i) cmd.add_option(chrs.keys[i], chrs.desc[i]);
+    for (size_t i = 0; i < bcs .ptrs.size(); ++i) cmd.add_option(bcs .keys[i], bcs .desc[i]);
   }
 
   void get_all(cmdParser &cmd)
   {
-    for (int i = 0; i < dbls.ptrs.size(); ++i) (*dbls.ptrs[i]) = cmd.get(dbls.keys[i], *dbls.ptrs[i]);
-    for (int i = 0; i < ints.ptrs.size(); ++i) (*ints.ptrs[i]) = cmd.get(ints.keys[i], *ints.ptrs[i]);
-    for (int i = 0; i < blns.ptrs.size(); ++i) (*blns.ptrs[i]) = cmd.get(blns.keys[i], *blns.ptrs[i]);
-    for (int i = 0; i < strs.ptrs.size(); ++i) (*strs.ptrs[i]) = cmd.get(strs.keys[i], *strs.ptrs[i]);
-    for (int i = 0; i < chrs.ptrs.size(); ++i) (*chrs.ptrs[i]) = cmd.get(chrs.keys[i], *chrs.ptrs[i]);
-    for (int i = 0; i < bcs .ptrs.size(); ++i) (*bcs .ptrs[i]) = cmd.get(bcs .keys[i], *bcs .ptrs[i]);
+    for (size_t i = 0; i < dbls.ptrs.size(); ++i) (*dbls.ptrs[i]) = cmd.get(dbls.keys[i], *dbls.ptrs[i]);
+    for (size_t i = 0; i < ints.ptrs.size(); ++i) (*ints.ptrs[i]) = cmd.get(ints.keys[i], *ints.ptrs[i]);
+    for (size_t i = 0; i < blns.ptrs.size(); ++i) (*blns.ptrs[i]) = cmd.get(blns.keys[i], *blns.ptrs[i]);
+    for (size_t i = 0; i < strs.ptrs.size(); ++i) (*strs.ptrs[i]) = cmd.get(strs.keys[i], *strs.ptrs[i]);
+    for (size_t i = 0; i < chrs.ptrs.size(); ++i) (*chrs.ptrs[i]) = cmd.get(chrs.keys[i], *chrs.ptrs[i]);
+    for (size_t i = 0; i < bcs .ptrs.size(); ++i) (*bcs .ptrs[i]) = cmd.get(bcs .keys[i], *bcs .ptrs[i]);
   }
 
   void print_all()
   {
-    for (int i = 0; i < dbls.ptrs.size(); ++i) std::cout << dbls.keys[i] << ": " << (*dbls.ptrs[i]) << std::endl;
-    for (int i = 0; i < ints.ptrs.size(); ++i) std::cout << ints.keys[i] << ": " << (*ints.ptrs[i]) << std::endl;
-    for (int i = 0; i < blns.ptrs.size(); ++i) std::cout << blns.keys[i] << ": " << (*blns.ptrs[i]) << std::endl;
-    for (int i = 0; i < strs.ptrs.size(); ++i) std::cout << strs.keys[i] << ": " << (*strs.ptrs[i]) << std::endl;
-    for (int i = 0; i < chrs.ptrs.size(); ++i) std::cout << chrs.keys[i] << ": " << (*chrs.ptrs[i]) << std::endl;
-    for (int i = 0; i < bcs .ptrs.size(); ++i) std::cout << bcs .keys[i] << ": " << (*bcs .ptrs[i]) << std::endl;
+    for (size_t i = 0; i < dbls.ptrs.size(); ++i) std::cout << dbls.keys[i] << ": " << (*dbls.ptrs[i]) << std::endl;
+    for (size_t i = 0; i < ints.ptrs.size(); ++i) std::cout << ints.keys[i] << ": " << (*ints.ptrs[i]) << std::endl;
+    for (size_t i = 0; i < blns.ptrs.size(); ++i) std::cout << blns.keys[i] << ": " << (*blns.ptrs[i]) << std::endl;
+    for (size_t i = 0; i < strs.ptrs.size(); ++i) std::cout << strs.keys[i] << ": " << (*strs.ptrs[i]) << std::endl;
+    for (size_t i = 0; i < chrs.ptrs.size(); ++i) std::cout << chrs.keys[i] << ": " << (*chrs.ptrs[i]) << std::endl;
+    for (size_t i = 0; i < bcs .ptrs.size(); ++i) std::cout << bcs .keys[i] << ": " << (*bcs .ptrs[i]) << std::endl;
   }
 
   void save_all(const char output[])
@@ -121,12 +121,12 @@ public:
     std::ofstream out(output);
     if (out.is_open())
     {
-      for (int i = 0; i < dbls.ptrs.size(); ++i) out << dbls.keys[i] << ": " << (*dbls.ptrs[i]) << std::endl;
-      for (int i = 0; i < ints.ptrs.size(); ++i) out << ints.keys[i] << ": " << (*ints.ptrs[i]) << std::endl;
-      for (int i = 0; i < blns.ptrs.size(); ++i) out << blns.keys[i] << ": " << (*blns.ptrs[i]) << std::endl;
-      for (int i = 0; i < strs.ptrs.size(); ++i) out << strs.keys[i] << ": " << (*strs.ptrs[i]) << std::endl;
-      for (int i = 0; i < chrs.ptrs.size(); ++i) out << chrs.keys[i] << ": " << (*chrs.ptrs[i]) << std::endl;
-      for (int i = 0; i < bcs .ptrs.size(); ++i) out << bcs .keys[i] << ": " << (*bcs .ptrs[i]) << std::endl;
+      for (size_t i = 0; i < dbls.ptrs.size(); ++i) out << dbls.keys[i] << ": " << (*dbls.ptrs[i]) << std::endl;
+      for (size_t i = 0; i < ints.ptrs.size(); ++i) out << ints.keys[i] << ": " << (*ints.ptrs[i]) << std::endl;
+      for (size_t i = 0; i < blns.ptrs.size(); ++i) out << blns.keys[i] << ": " << (*blns.ptrs[i]) << std::endl;
+      for (size_t i = 0; i < strs.ptrs.size(); ++i) out << strs.keys[i] << ": " << (*strs.ptrs[i]) << std::endl;
+      for (size_t i = 0; i < chrs.ptrs.size(); ++i) out << chrs.keys[i] << ": " << (*chrs.ptrs[i]) << std::endl;
+      for (size_t i = 0; i < bcs .ptrs.size(); ++i) out << bcs .keys[i] << ": " << (*bcs .ptrs[i]) << std::endl;
       out.close();
     }
     else throw std::invalid_argument("Unable to open file\n");
@@ -173,7 +173,7 @@ public:
 
   void initialize_parser(cmdParser &cmd)
   {
-    for (int i = 0; i < list.size(); ++i)
+    for (size_t i = 0; i < list.size(); ++i)
     {
       cmd.add_option(list[i]->key, list[i]->description);
     }
@@ -181,7 +181,7 @@ public:
 
   void set_from_cmd_all(cmdParser &cmd)
   {
-    for (int i = 0; i < list.size(); ++i)
+    for (size_t i = 0; i < list.size(); ++i)
     {
       list[i]->set_from_cmd(cmd);
     }
@@ -189,23 +189,23 @@ public:
 
   void print_all(bool align=false)
   {
-    int length = 0;
+    size_t length = 0;
 
     if (align)
     {
-      for (int i = 0; i < list.size(); ++i)
+      for (size_t i = 0; i < list.size(); ++i)
         if (list[i]->key.size() > length)
           length = list[i]->key.size();
 
 
-      for (int i = 0; i < list.size(); ++i)
+      for (size_t i = 0; i < list.size(); ++i)
       {
         std::cout << list[i]->key << ":" << std::string(length-list[i]->key.size()+1, ' ') << list[i]->print_value() << "\n";
       }
     }
     else
     {
-      for (int i = 0; i < list.size(); ++i)
+      for (size_t i = 0; i < list.size(); ++i)
       {
         std::cout << list[i]->key << ": " << list[i]->print_value() << "\n";
       }
@@ -217,23 +217,23 @@ public:
     std::ofstream out(output);
     if (out.is_open())
     {
-      int length = 0;
+      size_t length = 0;
 
       if (align)
       {
-        for (int i = 0; i < list.size(); ++i)
+        for (size_t i = 0; i < list.size(); ++i)
           if (list[i]->key.size() > length)
             length = list[i]->key.size();
 
 
-        for (int i = 0; i < list.size(); ++i)
+        for (size_t i = 0; i < list.size(); ++i)
         {
           out << list[i]->key << ":" << std::string(length-list[i]->key.size()+1, ' ') << list[i]->print_value() << "\n";
         }
       }
       else
       {
-        for (int i = 0; i < list.size(); ++i)
+        for (size_t i = 0; i < list.size(); ++i)
         {
           out << list[i]->key << ": " << list[i]->print_value() << "\n";
         }

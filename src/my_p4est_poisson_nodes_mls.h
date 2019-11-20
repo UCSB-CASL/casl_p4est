@@ -30,8 +30,8 @@ class my_p4est_poisson_nodes_mls_t
  protected:
   struct mat_entry_t
   {
-    double val;
     PetscInt n;
+    double val;
     mat_entry_t(PetscInt n=0, double val=0) : n(n), val(val) {}
   };
 protected:
@@ -322,7 +322,7 @@ public:
   inline int  pw_bc_idx_value_pt (int phi_idx, p4est_locidx_t n, int k) { return bc_[phi_idx].idx_value_pt(n, k); }
   inline int  pw_bc_idx_robin_pt (int phi_idx, p4est_locidx_t n, int k) { return bc_[phi_idx].idx_robin_pt(n, k); }
 
-  inline int  pw_bc_get_boundary_pt(int phi_idx, int pt_idx, interface_point_cartesian_t* &pt) { pt = &bc_[phi_idx].dirichlet_pts[pt_idx]; }
+  inline void  pw_bc_get_boundary_pt(int phi_idx, int pt_idx, interface_point_cartesian_t* &pt) { pt = &bc_[phi_idx].dirichlet_pts[pt_idx]; }
 
   inline int  pw_jc_num_integr_pts(int phi_idx) { return jc_[phi_idx].num_integr_pts(); }
   inline int  pw_jc_num_taylor_pts(int phi_idx) { return jc_[phi_idx].num_taylor_pts(); }
@@ -352,9 +352,14 @@ public:
 
     switch (bc_type)
     {
-      case NEUMANN:   there_is_neumann_   = true; break;
-      case ROBIN:     there_is_robin_     = true; break;
-      case DIRICHLET: there_is_dirichlet_ = true; break;
+    case NEUMANN:   there_is_neumann_   = true; break;
+    case ROBIN:     there_is_robin_     = true; break;
+    case DIRICHLET: there_is_dirichlet_ = true; break;
+    default:
+#ifdef CASL_THROWS
+      throw std::runtime_error("my_p4est_poisson_nodes_mls_t::add_boundary: unknonw boundary condition type, only NEUMANN, ROBIN and DIRICHLET are implemented so far.");
+#endif
+      break;
     }
   }
 

@@ -2376,12 +2376,17 @@ public:
   {
     double phi_eff = -10;
     double phi_cur = -10;
-    for (int i=0; i<phi_cf.size(); ++i)
+    for (size_t i=0; i<phi_cf.size(); ++i)
     {
       phi_cur = (*phi_cf[i])( DIM(x,y,z) );
       switch (action[i]) {
-        case MLS_INTERSECTION: if (phi_cur > phi_eff) phi_eff = phi_cur; break;
-        case MLS_ADDITION:     if (phi_cur < phi_eff) phi_eff = phi_cur; break;
+      case MLS_INTERSECTION: if (phi_cur > phi_eff) phi_eff = phi_cur; break;
+      case MLS_ADDITION:     if (phi_cur < phi_eff) phi_eff = phi_cur; break;
+      default:
+#ifdef CASL_THROWS
+        throw std::runtime_error("mls_eff_cf_t::operator(): unknown action. Only MLS_INTERSECTION and MLS_ADDITION are currently implemented.");
+#endif
+        break;
       }
     }
 
@@ -2424,8 +2429,13 @@ public:
     {
       phi_cur = (*phi_cf[i])( DIM(x,y,z) );
       switch (action[i]) {
-        case MLS_INTERSECTION: phi_eff = 0.5*(phi_eff+phi_cur+sqrt(SQR(phi_eff-phi_cur)+epsilon)); break;
-        case MLS_ADDITION:     phi_eff = 0.5*(phi_eff+phi_cur-sqrt(SQR(phi_eff-phi_cur)+epsilon)+(epsilon)/sqrt(SQR(phi_eff-phi_cur)+epsilon)); break;
+      case MLS_INTERSECTION: phi_eff = 0.5*(phi_eff+phi_cur+sqrt(SQR(phi_eff-phi_cur)+epsilon)); break;
+      case MLS_ADDITION:     phi_eff = 0.5*(phi_eff+phi_cur-sqrt(SQR(phi_eff-phi_cur)+epsilon)+(epsilon)/sqrt(SQR(phi_eff-phi_cur)+epsilon)); break;
+      default:
+#ifdef CASL_THROWS
+        throw std::runtime_error("mls_smooth_cf_t::operator(): unknown action. Only MLS_INTERSECTION and MLS_ADDITION are currently implemented.");
+#endif
+        break;
       }
     }
     return phi_eff;
@@ -2545,7 +2555,9 @@ struct interface_point_t
 
   inline double x() { return xyz[0]; }
   inline double y() { return xyz[1]; }
+#ifdef P4_TO_P8
   inline double z() { return xyz[2]; }
+#endif
   inline void get_xyz(double xyz[])
   {
     XCODE( xyz[0] = this->xyz[0] );
@@ -2621,9 +2633,9 @@ void compute_wall_normal(const int &dir, double normal[]);
 
 struct points_around_node_map_t
 {
-  int count;
   std::vector<int> size;   // N*sizeof(int)
   std::vector<int> offset; // N*sizeof(int)
+  int count;
 
   points_around_node_map_t(int num_nodes=0)
     : size(num_nodes,0), offset(num_nodes+1, 0), count(0) {}
@@ -2637,7 +2649,7 @@ struct points_around_node_map_t
   inline void compute_offsets()
   {
     offset[0] = 0;
-    for (int i=1; i<size.size(); ++i)
+    for (size_t i=1; i<size.size(); ++i)
       offset[i] = offset[i-1] + size[i-1];
   }
 };
@@ -2738,7 +2750,7 @@ struct boundary_conditions_t
 #ifdef CASL_THROWS
     else
     {
-      if (node_map[n] > dirichlet_local_map.size()-1) throw;
+      if (node_map[n] > (int) dirichlet_local_map.size()-1) throw;
     }
 
     if (type == ROBIN || type == NEUMANN) throw;
@@ -2839,7 +2851,7 @@ struct boundary_conditions_t
     }
   }
 
-  inline int idx_robin_pt(p4est_locidx_t n, int k)
+  inline int idx_robin_pt(p4est_locidx_t n, int)
   {
     if (node_map[n] == -1) throw;
 
@@ -2864,7 +2876,7 @@ struct boundary_conditions_t
     dirichlet_weights  .clear();
     dirichlet_pts      .clear();
 
-    pointwise      = NULL;
+    pointwise      = false;
     value_pw       = NULL;
     value_pw_robin = NULL;
     coeff_pw_robin = NULL;
@@ -2876,9 +2888,14 @@ struct boundary_conditions_t
 
     switch (type)
     {
-      case DIRICHLET: return (*value_pw)[dirichlet_local_map[node_map[n]][i]];
-      case NEUMANN:   return (*value_pw)[node_map[n]];
-      case ROBIN:     return (*value_pw)[node_map[n]];
+    case DIRICHLET: return (*value_pw)[dirichlet_local_map[node_map[n]][i]];
+    case NEUMANN:   return (*value_pw)[node_map[n]];
+    case ROBIN:     return (*value_pw)[node_map[n]];
+    default:
+#ifdef CASL_THROWS
+      throw std::runtime_error("boundary_conditions_t::get_value_pw: unknown boundary condition type, only DIRICHLET, NEUMANN AND ROBIN are currently implemented");
+#endif
+      break;
     }
 
   }
@@ -2889,9 +2906,14 @@ struct boundary_conditions_t
 
     switch (type)
     {
-      case DIRICHLET: throw;
-      case NEUMANN:   throw;
-      case ROBIN:     return (*value_pw_robin)[node_map[n]];
+    case DIRICHLET: throw;
+    case NEUMANN:   throw;
+    case ROBIN:     return (*value_pw_robin)[node_map[n]];
+    default:
+#ifdef CASL_THROWS
+      throw std::runtime_error("boundary_conditions_t::get_robin_pw_value: unknown boundary condition type, only DIRICHLET, NEUMANN AND ROBIN are currently implemented");
+#endif
+      break;
     }
 
   }
@@ -2902,9 +2924,14 @@ struct boundary_conditions_t
 
     switch (type)
     {
-      case DIRICHLET: throw;
-      case NEUMANN:   throw;
-      case ROBIN:     return (*coeff_pw_robin)[node_map[n]];
+    case DIRICHLET: throw;
+    case NEUMANN:   throw;
+    case ROBIN:     return (*coeff_pw_robin)[node_map[n]];
+    default:
+#ifdef CASL_THROWS
+      throw std::runtime_error("boundary_conditions_t::get_robin_pw_coeff: unknown boundary condition type, only DIRICHLET, NEUMANN AND ROBIN are currently implemented");
+#endif
+      break;
     }
   }
 

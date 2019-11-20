@@ -2966,7 +2966,7 @@ void compute_phi_eff(Vec phi_eff, p4est_nodes_t *nodes, std::vector<Vec> &phi, s
 
   std::vector<double *> phi_ptr(phi.size(), NULL);
 
-  for (int i = 0; i < phi.size(); i++) { ierr = VecGetArray(phi.at(i), &phi_ptr[i]); CHKERRXX(ierr); }
+  for (size_t i = 0; i < phi.size(); i++) { ierr = VecGetArray(phi.at(i), &phi_ptr[i]); CHKERRXX(ierr); }
 
   foreach_node(n, nodes)
   {
@@ -2987,7 +2987,7 @@ void compute_phi_eff(Vec phi_eff, p4est_nodes_t *nodes, std::vector<Vec> &phi, s
 //        if (refine_always->at(i))
 //          phi_eff_ptr[n] = MIN(phi_eff_ptr[n], fabs(phi_ptr[i][n]));
 
-  for (int i = 0; i < phi.size(); i++) { ierr = VecRestoreArray(phi.at(i), &phi_ptr[i]); CHKERRXX(ierr); }
+  for (size_t i = 0; i < phi.size(); i++) { ierr = VecRestoreArray(phi.at(i), &phi_ptr[i]); CHKERRXX(ierr); }
 }
 
 void compute_phi_eff(Vec phi_eff, p4est_nodes_t *nodes, int num_phi, ...)
@@ -2999,8 +2999,8 @@ void compute_phi_eff(Vec phi_eff, p4est_nodes_t *nodes, int num_phi, ...)
   std::vector<Vec> phi;
   std::vector<mls_opn_t> opn;
   for (int i=0; i<num_phi; ++i) {
-    Vec       P = va_arg(ap, Vec);       phi.push_back(P);
-    mls_opn_t O = va_arg(ap, mls_opn_t); opn.push_back(O);
+    Vec       P = va_arg(ap, Vec);              phi.push_back(P);
+    mls_opn_t O = (mls_opn_t) va_arg(ap, int);  opn.push_back(O);
   }
 
   va_end(ap);
@@ -3018,7 +3018,7 @@ void find_closest_interface_location(int &phi_idx, double &dist, double d, std::
   dist    = d;
   phi_idx =-1;
 
-  for (int i = 0; i < opn.size(); ++i)
+  for (size_t i = 0; i < opn.size(); ++i)
   {
     if (phi_a[i] > 0. && phi_b[i] > 0.)
     {
@@ -3038,35 +3038,40 @@ void find_closest_interface_location(int &phi_idx, double &dist, double d, std::
 
       switch (opn[i])
       {
-        case MLS_INTERSECTION:
-          if (phi_a[i] < 0.)
+      case MLS_INTERSECTION:
+        if (phi_a[i] < 0.)
+        {
+          if (dist_new < dist)
           {
-            if (dist_new < dist)
-            {
-              dist    = dist_new;
-              phi_idx = i;
-            }
-          } else {
-            dist    =  0;
+            dist    = dist_new;
+            phi_idx = i;
+          }
+        } else {
+          dist    =  0;
+          phi_idx = -1;
+        }
+        break;
+      case MLS_ADDITION:
+        if (phi_a[i] < 0.)
+        {
+          if (dist_new > dist)
+          {
+            dist    = dist_new;
+            phi_idx = i;
+          }
+        } else {
+          if (dist_new < dist)
+          {
+            dist    =  d;
             phi_idx = -1;
           }
-          break;
-        case MLS_ADDITION:
-          if (phi_a[i] < 0.)
-          {
-            if (dist_new > dist)
-            {
-              dist    = dist_new;
-              phi_idx = i;
-            }
-          } else {
-            if (dist_new < dist)
-            {
-              dist    =  d;
-              phi_idx = -1;
-            }
-          }
-          break;
+        }
+        break;
+      default:
+#ifdef CASL_THROWS
+        throw  std::runtime_error("find_closest_interface_location:: unknown MLS operation: only MLS_INTERSECTION and MLS_ADDITION implemented, currently.");
+#endif
+        break;
       }
     }
   }
@@ -3163,7 +3168,7 @@ void construct_finite_volume(my_p4est_finite_volume_t& fv, p4est_locidx_t n, p4e
 
   // compute cut-cell volume
   fv.volume = 0;
-  for (int i=0; i<qp_w.size(); ++i)
+  for (size_t i=0; i<qp_w.size(); ++i)
     fv.volume += qp_w[i];
 
   fv.volume /= pow(scale, P4EST_DIM);
@@ -3184,7 +3189,7 @@ void construct_finite_volume(my_p4est_finite_volume_t& fv, p4est_locidx_t n, p4e
       YCODE( data.centroid[1] = 0 );
       ZCODE( data.centroid[2] = 0 );
 
-      for (int i=0; i<qp_w.size(); ++i)
+      for (size_t i=0; i<qp_w.size(); ++i)
       {
         _CODE( data.area        += qp_w[i]         );
         XCODE( data.centroid[0] += qp_w[i]*qp_x[i] );
@@ -3212,11 +3217,11 @@ void construct_finite_volume(my_p4est_finite_volume_t& fv, p4est_locidx_t n, p4e
     cube.quadrature_in_dir(dir_idx, qp_w, DIM(qp_x, qp_y, qp_z));
     if (qp_w.size() > 0)
     {
-      for (int i=0; i<qp_w.size(); ++i) fv.face_area[dir_idx] += qp_w[i];
+      for (size_t i=0; i<qp_w.size(); ++i) fv.face_area[dir_idx] += qp_w[i];
 
       if (compute_centroids)
       {
-        for (int i=0; i<qp_w.size(); ++i)
+        for (size_t i=0; i<qp_w.size(); ++i)
         {
           XCODE( fv.face_centroid_x[dir_idx] += qp_w[i]*qp_x[i] );
           YCODE( fv.face_centroid_y[dir_idx] += qp_w[i]*qp_y[i] );
@@ -3319,7 +3324,7 @@ void variable_step_BDF_implicit(const int order, std::vector<double> &dt, std::v
   coeffs.assign(order+1, 0);
   std::vector<double> r(order-1, 1.);
 
-  if (dt.size() < order) throw;
+  if (dt.size() < (size_t) order) throw;
 
   switch (order)
   {
