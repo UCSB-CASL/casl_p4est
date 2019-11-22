@@ -118,6 +118,12 @@ my_p4est_poisson_nodes_mls_t::my_p4est_poisson_nodes_mls_t(const my_p4est_node_n
   dtol_   = PETSC_DEFAULT;
   itmax_  = 100;
 
+  // Tolerances for solving nonlinear equations
+  nonlinear_change_tol_ = 1.0e-12,
+  nonlinear_pde_residual_tol_= 0;
+  nonlinear_itmax_ = 10;
+  nonlinear_method_ = 0;
+
   // local to global node number mapping
   // compute global numbering of nodes
   global_node_offset_.resize(p4est_->mpisize+1, 0);
@@ -577,7 +583,7 @@ void my_p4est_poisson_nodes_mls_t::invert_linear_system(Vec solution, bool use_n
 
   if (outcome < 0)
   {
-    ierr = PetscPrintf(p4est_->mpicomm, "Warning! KSP did not converge. Setting solution to 0.\n"); CHKERRXX(ierr);
+    ierr = PetscPrintf(p4est_->mpicomm, "Warning! KSP did not converge (error code %d). Setting solution to 0.\n", outcome); CHKERRXX(ierr);
     VecSetGhost(solution, 0);
   }
 
@@ -614,7 +620,8 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
   std::vector< std::vector<mat_entry_t> > entries_main    (nm);
   std::vector< std::vector<mat_entry_t> > entries_jump    (nj);
   std::vector< std::vector<mat_entry_t> > entries_jump_ghost(na);
-  std::vector< std::vector<mat_entry_t> > entries_robin_sc(nr);
+//  std::vector< std::vector<mat_entry_t> > entries_robin_sc(nr);
+  if (assembling_robin_sc) entries_robin_sc.resize(nr);
 
   std::vector<PetscInt> d_nnz_main    (nm, 1);
   std::vector<PetscInt> o_nnz_main    (nm, 0);
@@ -1442,8 +1449,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
           {
             if (ia[n+1] > ia[n])
             {
-              PetscInt                  n_gl = petsc_gloidx_[n];
-              std::vector<mat_entry_t> *row  = &entries_robin_sc[n];
+              PetscInt n_gl = petsc_gloidx_[n];
 
               columns.clear();
               values.clear();
@@ -1497,7 +1503,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
         //{
         //  assemble_matrix(entries_robin_sc, d_nnz_robin_sc, o_nnz_robin_sc, &submat_robin_sc_);
         //}
-        //ierr = MatAXPY(A_, 1., submat_robin_sc_, SUBSET_NONZERO_PATTERN); CHKERRXX(ierr);
+//        ierr = MatAXPY(A_, 1., submat_robin_sc_, SUBSET_NONZERO_PATTERN); CHKERRXX(ierr);
 
         // variant 2: add new elements explicitly by hands taking into account that only small number of rows are affected
         std::vector<PetscInt>    columns;
@@ -1559,10 +1565,12 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
     ierr = MatMultAdd(submat_jump_, rhs_jump_, rhs_, rhs_); CHKERRXX(ierr);
 
     // contribution from linear term
-    ierr = VecPointwiseMult(rhs_jump_, rhs_jump_, submat_diag_ghost_);
-    ierr = VecAXPY(rhs_, 1., rhs_jump_);
+    Vec rhs_jump_tmp;
+    ierr = VecDuplicate(rhs_, &rhs_jump_tmp); CHKERRXX(ierr);
+    ierr = VecPointwiseMult(rhs_jump_tmp, rhs_jump_, submat_diag_ghost_); CHKERRXX(ierr);
+    ierr = VecAXPY(rhs_, 1., rhs_jump_tmp); CHKERRXX(ierr);
 
-    ierr = VecDestroy(rhs_jump_); CHKERRXX(ierr);
+    ierr = VecDestroy(rhs_jump_tmp); CHKERRXX(ierr);
 
     ierr = PetscLogEventEnd(log_my_p4est_poisson_nodes_mls_correct_rhs_jump, 0, 0, 0, 0); CHKERRXX(ierr);
   }
@@ -4692,4 +4700,265 @@ void my_p4est_poisson_nodes_mls_t::find_interface_points(p4est_locidx_t n, const
   find_closest_interface_location(phi_idx[dir::f_00m], dist[dir::f_00m], qnnn.d_00m, opn, phi_000, phi_00m, phi_zz_00m, phi_zz_00m);
   find_closest_interface_location(phi_idx[dir::f_00p], dist[dir::f_00p], qnnn.d_00p, opn, phi_000, phi_00p, phi_zz_00p, phi_zz_00p);
 #endif
+}
+
+
+int my_p4est_poisson_nodes_mls_t::solve_nonlinear(Vec sol, bool use_nonzero_guess, bool update_ghost, KSPType ksp_type, PCType pc_type)
+{
+  if (!use_nonzero_guess)
+  {
+    ierr = VecSetGhost(sol, 0.0); CHKERRXX(ierr);
+  }
+
+  Vec del_sol;
+  Vec sol_ghost;
+  Vec residual;
+
+  Vec rhs_m_current;
+  Vec rhs_p_current;
+
+  Vec diag_m_current;
+  Vec diag_p_current;
+
+  ierr = VecDuplicate(sol, &del_sol);    CHKERRXX(ierr);
+  ierr = VecDuplicate(sol, &sol_ghost);  CHKERRXX(ierr);
+  ierr = VecDuplicate(sol, &residual); CHKERRXX(ierr);
+
+  ierr = VecDuplicate(sol, &rhs_m_current); CHKERRXX(ierr);
+  ierr = VecDuplicate(sol, &rhs_p_current); CHKERRXX(ierr);
+
+  ierr = VecDuplicate(sol, &diag_m_current); CHKERRXX(ierr);
+  ierr = VecDuplicate(sol, &diag_p_current); CHKERRXX(ierr);
+
+  ierr = VecSetGhost(del_sol, 0.0); CHKERRXX(ierr);
+  ierr = VecSetGhost(sol_ghost, 0.0); CHKERRXX(ierr);
+  ierr = VecSetGhost(residual, 0.0); CHKERRXX(ierr);
+
+  // just in case
+  ierr = VecSetGhost(rhs_m_current, 0.0); CHKERRXX(ierr);
+  ierr = VecSetGhost(rhs_p_current, 0.0); CHKERRXX(ierr);
+
+  ierr = VecSetGhost(diag_m_current, 0.0); CHKERRXX(ierr);
+  ierr = VecSetGhost(diag_p_current, 0.0); CHKERRXX(ierr);
+
+  // get original equation parameters
+  Vec diag_m_original = diag_m_;
+  Vec diag_p_original = diag_p_;
+
+  Vec rhs_m_original = rhs_m_;
+  Vec rhs_p_original = rhs_p_;
+
+  // auxiliary stuff
+  double diag_m_original_value = diag_m_scalar_;
+  double diag_p_original_value = diag_p_scalar_;
+
+  double nonlinear_term_m_coeff_value = nonlinear_term_m_coeff_scalar_;
+  double nonlinear_term_p_coeff_value = nonlinear_term_p_coeff_scalar_;
+
+  // iterations
+  int    iter = 0;
+  double change_norm = DBL_MAX;
+  double pde_residual_norm = DBL_MAX;
+
+  setup_linear_system(true);
+
+  while (iter < nonlinear_itmax_ && change_norm > nonlinear_change_tol_ && pde_residual_norm > nonlinear_pde_residual_tol_)
+  {
+    // compute ghost values
+    if (there_is_jump_)
+    {
+      if (there_is_jump_mu_)
+      {
+        ierr = MatMultAdd(submat_jump_ghost_, sol, sol, sol_ghost); CHKERRXX(ierr);
+      }
+      else
+      {
+        ierr = VecCopyGhost(sol, sol_ghost); CHKERRXX(ierr);
+      }
+
+      ierr = VecAXPY(sol_ghost, -1.0, rhs_jump_); CHKERRXX(ierr);
+    }
+
+    // compute current diag and rhs.
+    ierr = VecGetArray(mask_m_, &mask_m_ptr); CHKERRXX(ierr);
+    ierr = VecGetArray(mask_p_, &mask_p_ptr); CHKERRXX(ierr);
+
+    if (var_nonlinear_term_coeff_)
+    {
+      ierr = VecGetArray(nonlinear_term_m_coeff_, &nonlinear_term_m_coeff_ptr); CHKERRXX(ierr);
+      ierr = VecGetArray(nonlinear_term_p_coeff_, &nonlinear_term_p_coeff_ptr); CHKERRXX(ierr);
+    }
+
+    double *diag_m_original_ptr;
+    double *diag_p_original_ptr;
+
+    if (var_diag_)
+    {
+      ierr = VecGetArray(diag_m_original, &diag_m_original_ptr); CHKERRXX(ierr);
+      ierr = VecGetArray(diag_p_original, &diag_p_original_ptr); CHKERRXX(ierr);
+    }
+
+    double *diag_m_current_ptr;
+    double *diag_p_current_ptr;
+
+    ierr = VecGetArray(diag_m_current, &diag_m_current_ptr); CHKERRXX(ierr);
+    ierr = VecGetArray(diag_p_current, &diag_p_current_ptr); CHKERRXX(ierr);
+
+    double *rhs_m_original_ptr;
+    double *rhs_p_original_ptr;
+
+    ierr = VecGetArray(rhs_m_original, &rhs_m_original_ptr); CHKERRXX(ierr);
+    ierr = VecGetArray(rhs_p_original, &rhs_p_original_ptr); CHKERRXX(ierr);
+
+    double *rhs_m_current_ptr;
+    double *rhs_p_current_ptr;
+
+    ierr = VecGetArray(rhs_m_current, &rhs_m_current_ptr); CHKERRXX(ierr);
+    ierr = VecGetArray(rhs_p_current, &rhs_p_current_ptr); CHKERRXX(ierr);
+
+    double *sol_ptr;
+    double *sol_ghost_ptr;
+
+    ierr = VecGetArray(sol, &sol_ptr);CHKERRXX(ierr);
+    ierr = VecGetArray(sol_ghost, &sol_ghost_ptr);CHKERRXX(ierr);
+
+    foreach_local_node(n, nodes_)
+    {
+      if (mask_m_ptr[n] < 0 || mask_p_ptr[n] < 0)
+      {
+        if (mask_m_ptr[n] < 0 && mask_p_ptr[n] < 0) throw;
+        double sol_m = mask_m_ptr[n] < 0 ? sol_ptr[n] : sol_ghost_ptr[n];
+        double sol_p = mask_p_ptr[n] < 0 ? sol_ptr[n] : sol_ghost_ptr[n];
+
+        if (var_diag_)
+        {
+          diag_m_original_value = diag_m_original_ptr[n];
+          diag_p_original_value = diag_p_original_ptr[n];
+        }
+
+        if (var_nonlinear_term_coeff_)
+        {
+          nonlinear_term_m_coeff_value = nonlinear_term_m_coeff_ptr[n];
+          nonlinear_term_p_coeff_value = nonlinear_term_p_coeff_ptr[n];
+        }
+
+        if (mask_m_ptr[n] < 0 || node_scheme_[n] == IMMERSED_INTERFACE)
+        {
+          diag_m_current_ptr[n] = diag_m_original_value + nonlinear_term_m_coeff_value*(*nonlinear_term_m_prime_)(sol_m);
+          rhs_m_current_ptr [n] = rhs_m_original_ptr[n] - nonlinear_term_m_coeff_value*((*nonlinear_term_m_)(sol_m) - (*nonlinear_term_m_prime_)(sol_m)*sol_m);
+        }
+
+        if (mask_p_ptr[n] < 0 || node_scheme_[n] == IMMERSED_INTERFACE)
+        {
+          diag_p_current_ptr[n] = diag_p_original_value + nonlinear_term_p_coeff_value*(*nonlinear_term_p_prime_)(sol_p);
+          rhs_p_current_ptr [n] = rhs_p_original_ptr[n] - nonlinear_term_p_coeff_value*((*nonlinear_term_p_)(sol_p) - (*nonlinear_term_p_prime_)(sol_p)*sol_p);
+        }
+      }
+    }
+
+    ierr = VecRestoreArray(mask_m_, &mask_m_ptr); CHKERRXX(ierr);
+    ierr = VecRestoreArray(mask_p_, &mask_p_ptr); CHKERRXX(ierr);
+
+    if (var_nonlinear_term_coeff_)
+    {
+      ierr = VecRestoreArray(nonlinear_term_m_coeff_, &nonlinear_term_m_coeff_ptr); CHKERRXX(ierr);
+      ierr = VecRestoreArray(nonlinear_term_p_coeff_, &nonlinear_term_p_coeff_ptr); CHKERRXX(ierr);
+    }
+
+    if (var_diag_)
+    {
+      ierr = VecRestoreArray(diag_m_original, &diag_m_original_ptr); CHKERRXX(ierr);
+      ierr = VecRestoreArray(diag_p_original, &diag_p_original_ptr); CHKERRXX(ierr);
+    }
+
+    ierr = VecRestoreArray(diag_m_current, &diag_m_current_ptr); CHKERRXX(ierr);
+    ierr = VecRestoreArray(diag_p_current, &diag_p_current_ptr); CHKERRXX(ierr);
+
+    ierr = VecRestoreArray(rhs_m_original, &rhs_m_original_ptr); CHKERRXX(ierr);
+    ierr = VecRestoreArray(rhs_p_original, &rhs_p_original_ptr); CHKERRXX(ierr);
+
+    ierr = VecRestoreArray(rhs_m_current, &rhs_m_current_ptr); CHKERRXX(ierr);
+    ierr = VecRestoreArray(rhs_p_current, &rhs_p_current_ptr); CHKERRXX(ierr);
+
+    ierr = VecRestoreArray(sol, &sol_ptr);CHKERRXX(ierr);
+    ierr = VecRestoreArray(sol_ghost, &sol_ghost_ptr);CHKERRXX(ierr);
+
+    set_diag(diag_m_current, diag_p_current);
+    set_rhs(rhs_m_current, rhs_p_current);
+
+    // assemble current linear system
+    setup_linear_system(true);
+
+    // compute residual of linear system
+    ierr = MatMult(A_, sol, residual);
+    ierr = VecAYPX(residual, -1.0, rhs_);
+
+    double *residual_ptr;
+
+    ierr = VecGetArray(residual, &residual_ptr); CHKERRXX(ierr);
+    ierr = VecGetArray(mask_m_,  &mask_m_ptr);   CHKERRXX(ierr);
+    ierr = VecGetArray(mask_p_,  &mask_p_ptr);   CHKERRXX(ierr);
+
+    foreach_local_node(n, nodes_)
+    {
+      if (mask_m_ptr[n] > 0 && mask_p_ptr[n] > 0) residual_ptr[n] = 0;
+    }
+
+    ierr = VecRestoreArray(residual, &residual_ptr); CHKERRXX(ierr);
+    ierr = VecRestoreArray(mask_m_,  &mask_m_ptr);   CHKERRXX(ierr);
+    ierr = VecRestoreArray(mask_p_,  &mask_p_ptr);   CHKERRXX(ierr);
+
+    // solve the linear system
+    switch (nonlinear_method_)
+    {
+      case 0:
+        VecCopyGhost(sol, del_sol);
+        invert_linear_system(sol, true, false, ksp_type, pc_type);
+        ierr = VecAXPY(del_sol, -1., sol);CHKERRXX(ierr);
+        break;
+      case 1:
+      {
+        Vec tmp = rhs_; rhs_ = residual;
+        invert_linear_system(del_sol, false, false, ksp_type, pc_type);
+        rhs_ = tmp;
+        ierr = VecAXPY(sol,  1., del_sol);CHKERRXX(ierr);
+        break;
+      }
+      default:
+        throw;
+    }
+
+    // compute norms of change and residual
+    ierr = VecNorm(residual, NORM_2, &pde_residual_norm); CHKERRXX(ierr);
+    ierr = VecNorm(del_sol,  NORM_2, &change_norm);       CHKERRXX(ierr);
+    ierr = PetscPrintf(p4est_->mpicomm, "Iteration no. %d, norm of change: %1.2e, norm of pde residual: %1.2e\n", iter, change_norm, pde_residual_norm); CHKERRXX(ierr);
+
+    iter++;
+  }
+
+  // clean up
+  ierr = VecDestroy(del_sol);   CHKERRXX(ierr);
+  ierr = VecDestroy(sol_ghost); CHKERRXX(ierr);
+  ierr = VecDestroy(residual);  CHKERRXX(ierr);
+
+  ierr = VecDestroy(rhs_m_current); CHKERRXX(ierr);
+  ierr = VecDestroy(rhs_p_current); CHKERRXX(ierr);
+
+  ierr = VecDestroy(diag_m_current); CHKERRXX(ierr);
+  ierr = VecDestroy(diag_p_current); CHKERRXX(ierr);
+
+  diag_m_ = diag_m_original;
+  diag_p_ = diag_p_original;
+
+  rhs_m_ = rhs_m_original;
+  rhs_p_ = rhs_p_original;
+
+  // update ghosts
+  if (update_ghost)
+  {
+    ierr = VecGhostUpdateBegin(sol, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd  (sol, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  }
+
+  return iter;
 }

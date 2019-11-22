@@ -29,16 +29,22 @@
 #define PetscLogEventEnd(e, o1, o2, o3, o4) 0
 #else
 extern PetscLogEvent log_my_p4est_level_set_reinit_1st_order;
+extern PetscLogEvent log_my_p4est_level_set_reinit_1st_order_above_threshold;
 extern PetscLogEvent log_my_p4est_level_set_reinit_2nd_order;
+extern PetscLogEvent log_my_p4est_level_set_reinit_2nd_order_above_threshold;
 extern PetscLogEvent log_my_p4est_level_set_reinit_1st_time_2nd_space;
+extern PetscLogEvent log_my_p4est_level_set_reinit_1st_time_2nd_space_above_threshold;
 extern PetscLogEvent log_my_p4est_level_set_reinit_2nd_time_1st_space;
 extern PetscLogEvent log_my_p4est_level_set_reinit_1_iter_1st_order;
+extern PetscLogEvent log_my_p4est_level_set_reinit_1_iter_1st_order_above_threshold;
 extern PetscLogEvent log_my_p4est_level_set_reinit_1_iter_2nd_order;
+extern PetscLogEvent log_my_p4est_level_set_reinit_1_iter_2nd_order_above_threshold;
 extern PetscLogEvent log_my_p4est_level_set_extend_over_interface;
 extern PetscLogEvent log_my_p4est_level_set_extend_over_interface_TVD;
 extern PetscLogEvent log_my_p4est_level_set_extend_from_interface;
 extern PetscLogEvent log_my_p4est_level_set_extend_from_interface_TVD;
 extern PetscLogEvent log_my_p4est_level_set_compute_derivatives;
+extern PetscLogEvent log_my_p4est_level_set_compute_derivatives_above_threshold;
 extern PetscLogEvent log_my_p4est_level_set_advect_in_normal_direction_1_iter;
 extern PetscLogEvent log_my_p4est_level_set_advect_in_normal_direction_Vec;
 extern PetscLogEvent log_my_p4est_level_set_advect_in_normal_direction_CF2;
@@ -223,6 +229,184 @@ void my_p4est_level_set_t::reinitialize_One_Iteration_First_Order( std::vector<p
       pnp1[n] = p0[n];
   }
   ierr = PetscLogEventEnd(log_my_p4est_level_set_reinit_1_iter_1st_order, 0, 0, 0, 0);
+}
+
+void my_p4est_level_set_t::reinitialize_One_Iteration_First_Order_Above_Threshold( std::vector<p4est_locidx_t>& map, double *p0, double *pn, double *pnp1, double threshold, double limit )
+{
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_level_set_reinit_1_iter_1st_order_above_threshold, 0, 0, 0, 0);
+  P4EST_ASSERT(limit > threshold);
+
+  quad_neighbor_nodes_of_node_t qnnn;
+  for( size_t n_map=0; n_map<map.size(); ++n_map)
+  {
+    p4est_locidx_t n = map[n_map];
+
+    if(fabs(p0[n]) <= EPS)
+      pnp1[n] = 0;
+    else if(p0[n] > threshold-EPS && p0[n] <= limit)
+    {
+
+      ngbd->get_neighbors(n, qnnn);
+
+      double p0_000, p0_m00, p0_p00, p0_0m0, p0_0p0 ;
+      double p_000 , p_m00 , p_p00 , p_0m0 , p_0p0  ;
+#ifdef P4_TO_P8
+      double p0_00m, p0_00p;
+      double p_00m,  p_00p ;
+#endif
+#ifdef P4_TO_P8
+      qnnn.ngbd_with_quadratic_interpolation(p0, p0_000, p0_m00, p0_p00, p0_0m0, p0_0p0, p0_00m, p0_00p);
+      qnnn.ngbd_with_quadratic_interpolation(pn, p_000 , p_m00 , p_p00 , p_0m0 , p_0p0 , p_00m , p_00p );
+#else
+      qnnn.ngbd_with_quadratic_interpolation(p0, p0_000, p0_m00, p0_p00, p0_0m0, p0_0p0);
+      qnnn.ngbd_with_quadratic_interpolation(pn, p_000 , p_m00 , p_p00 , p_0m0 , p_0p0 );
+#endif
+      double s_p00 = qnnn.d_p00; double s_m00 = qnnn.d_m00;
+      double s_0p0 = qnnn.d_0p0; double s_0m0 = qnnn.d_0m0;
+#ifdef P4_TO_P8
+      double s_00p = qnnn.d_00p; double s_00m = qnnn.d_00m;
+#endif
+
+      //---------------------------------------------------------------------
+      // check if the node is near interface
+      //---------------------------------------------------------------------
+      if (    (p0_000*p0_m00<0) || (p0_000*p0_p00<0)
+              || (p0_000*p0_0m0<0) || (p0_000*p0_0p0<0)
+        #ifdef P4_TO_P8
+              || (p0_000*p0_00m<0) || (p0_000*p0_00p<0)
+        #endif
+              )
+      {
+        if(p0_000*p0_m00<0) { s_m00 = -interface_Location(-s_m00, 0, p0_m00, p0_000); p_m00 = 0; }
+        if(p0_000*p0_p00<0) { s_p00 =  interface_Location( s_p00, 0, p0_p00, p0_000); p_p00 = 0; }
+        if(p0_000*p0_0m0<0) { s_0m0 = -interface_Location(-s_0m0, 0, p0_0m0, p0_000); p_0m0 = 0; }
+        if(p0_000*p0_0p0<0) { s_0p0 =  interface_Location( s_0p0, 0, p0_0p0, p0_000); p_0p0 = 0; }
+#ifdef P4_TO_P8
+        if(p0_000*p0_00m<0) { s_00m = -interface_Location(-s_00m, 0, p0_00m, p0_000); p_00m = 0; }
+        if(p0_000*p0_00p<0) { s_00p =  interface_Location( s_00p, 0, p0_00p, p0_000); p_00p = 0; }
+#endif
+
+        s_m00 = MAX(s_m00,EPS);
+        s_p00 = MAX(s_p00,EPS);
+        s_0m0 = MAX(s_0m0,EPS);
+        s_0p0 = MAX(s_0p0,EPS);
+#ifdef P4_TO_P8
+        s_00p = MAX(s_00p,EPS);
+        s_00m = MAX(s_00m,EPS);
+#endif
+      }
+
+      //---------------------------------------------------------------------
+      // Neumann boundary condition on the walls
+      //---------------------------------------------------------------------
+      /* first unclamp the node */
+      p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,n);
+      p4est_indep_t unclamped_node = *node;
+      p4est_node_unclamp((p4est_quadrant_t*)&unclamped_node);
+
+      /* wall in the x direction */
+      if(unclamped_node.x==0)
+      {
+        p4est_topidx_t tree_idx = node->p.piggy3.which_tree;
+        p4est_topidx_t nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_m00];
+        if(nb_tree_idx == tree_idx) { s_m00 = s_p00; p_m00 = p_p00; }
+      }
+      else if(unclamped_node.x==P4EST_ROOT_LEN)
+      {
+        p4est_topidx_t tree_idx = node->p.piggy3.which_tree;
+        p4est_topidx_t nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_p00];
+        if(nb_tree_idx == tree_idx) { s_p00 = s_m00; p_p00 = p_m00; }
+      }
+
+      /* wall in the y direction */
+      if(unclamped_node.y==0)
+      {
+        p4est_topidx_t tree_idx = node->p.piggy3.which_tree;
+        p4est_topidx_t nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_0m0];
+        if(nb_tree_idx == tree_idx) { s_0m0 = s_0p0; p_0m0 = p_0p0; }
+      }
+      else if(unclamped_node.y==P4EST_ROOT_LEN)
+      {
+        p4est_topidx_t tree_idx = node->p.piggy3.which_tree;
+        p4est_topidx_t nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_0p0];
+        if(nb_tree_idx == tree_idx) { s_0p0 = s_0m0; p_0p0 = p_0m0; }
+      }
+#ifdef P4_TO_P8
+      /* wall in the z direction */
+      if(unclamped_node.z==0)
+      {
+        p4est_topidx_t tree_idx = node->p.piggy3.which_tree;
+        p4est_topidx_t nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_00m];
+        if(nb_tree_idx == tree_idx) { s_00m = s_00p; p_00m = p_00p; }
+      }
+      else if(unclamped_node.z==P4EST_ROOT_LEN)
+      {
+        p4est_topidx_t tree_idx = node->p.piggy3.which_tree;
+        p4est_topidx_t nb_tree_idx = p4est->connectivity->tree_to_tree[P4EST_FACES*tree_idx + dir::f_00p];
+        if(nb_tree_idx == tree_idx) { s_00p = s_00m; p_00p = p_00m; }
+      }
+#endif
+      //---------------------------------------------------------------------
+      // First Order One-Sided Differecing
+      //---------------------------------------------------------------------
+      double px_p00 = (p_p00-p_000)/s_p00; double px_m00 = (p_000-p_m00)/s_m00;
+      double py_0p0 = (p_0p0-p_000)/s_0p0; double py_0m0 = (p_000-p_0m0)/s_0m0;
+#ifdef P4_TO_P8
+      double pz_00p = (p_00p-p_000)/s_00p; double pz_00m = (p_000-p_00m)/s_00m;
+#endif
+
+      double sgn = (p0_000>0) ? 1 : -1;
+
+      //---------------------------------------------------------------------
+      // Upwind Scheme
+      //---------------------------------------------------------------------
+      double dt = MIN(s_m00,s_p00);
+      dt = MIN(dt,s_0m0);
+      dt = MIN(dt,s_0p0);
+#ifdef P4_TO_P8
+      dt = MIN(dt,s_00m);
+      dt = MIN(dt,s_00p);
+#endif
+      dt = dt/2.;
+
+      if(sgn>0) {
+        if(px_p00>0) px_p00 = 0;
+        if(px_m00<0) px_m00 = 0;
+        if(py_0p0>0) py_0p0 = 0;
+        if(py_0m0<0) py_0m0 = 0;
+#ifdef P4_TO_P8
+        if(pz_00p>0) pz_00p = 0;
+        if(pz_00m<0) pz_00m = 0;
+#endif
+      } else {
+        if(px_p00<0) px_p00 = 0;
+        if(px_m00>0) px_m00 = 0;
+        if(py_0p0<0) py_0p0 = 0;
+        if(py_0m0>0) py_0m0 = 0;
+#ifdef P4_TO_P8
+        if(pz_00p<0) pz_00p = 0;
+        if(pz_00m>0) pz_00m = 0;
+#endif
+      }
+
+#ifdef P4_TO_P8
+      pnp1[n] = p_000 - dt*sgn*(sqrt( MAX(px_p00*px_p00 , px_m00*px_m00) +
+                                      MAX(py_0p0*py_0p0 , py_0m0*py_0m0) +
+                                      MAX(pz_00p*pz_00p , pz_00m*pz_00m) ) - 1.);
+#else
+      pnp1[n] = p_000 - dt*sgn*(sqrt( MAX(px_p00*px_p00 , px_m00*px_m00) +
+                                      MAX(py_0p0*py_0p0 , py_0m0*py_0m0) ) - 1.);
+#endif
+      if(p0_000*pnp1[n]<0) pnp1[n] *= -1;
+
+      ierr = PetscLogFlops(17); CHKERRXX(ierr);
+    }
+    /* else : far away from the interface and not in the band ... nothing to do */
+    else
+      pnp1[n] = p0[n];
+  }
+  ierr = PetscLogEventEnd(log_my_p4est_level_set_reinit_1_iter_1st_order_above_threshold, 0, 0, 0, 0);
 }
 
 void my_p4est_level_set_t::reinitialize_One_Iteration_Second_Order( std::vector<p4est_locidx_t>& map,
@@ -432,6 +616,200 @@ void my_p4est_level_set_t::reinitialize_One_Iteration_Second_Order( std::vector<
       pnp1[n] = p0[n];
   }
   ierr = PetscLogEventEnd(log_my_p4est_level_set_reinit_1_iter_2nd_order, 0, 0, 0, 0);
+}
+
+void my_p4est_level_set_t::reinitialize_One_Iteration_Second_Order_Above_Threshold( std::vector<p4est_locidx_t>& map,
+                                                                                       #ifdef P4_TO_P8
+                                                                                       const double *dxx0, const double *dyy0, const double *dzz0,
+                                                                                       const double *dxx,  const double *dyy,  const double *dzz,
+                                                                                       #else
+                                                                                       const double *dxx0, const double *dyy0,
+                                                                                       const double *dxx,  const double *dyy,
+                                                                                       #endif
+                                                                                       double *p0, double *pn, double *pnp1, double threshold, double limit )
+{
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_level_set_reinit_1_iter_2nd_order_above_threshold, 0, 0, 0, 0);
+  P4EST_ASSERT(limit > threshold);
+
+  quad_neighbor_nodes_of_node_t qnnn;
+  for( size_t n_map=0; n_map<map.size(); ++n_map)
+  {
+    p4est_locidx_t n = map[n_map];
+
+    if(fabs(p0[n]) < EPS) {
+      pnp1[n] = 0;
+    } else if(p0[n] > threshold-EPS && p0[n] <= limit) {
+      ngbd->get_neighbors(n, qnnn);
+
+      double p0_000, p0_m00, p0_p00, p0_0m0, p0_0p0 ;
+      double p_000 , p_m00 , p_p00 , p_0m0 , p_0p0  ;
+#ifdef P4_TO_P8
+      double p0_00m, p0_00p;
+      double p_00m,  p_00p ;
+#endif
+#ifdef P4_TO_P8
+      qnnn.ngbd_with_quadratic_interpolation(p0, p0_000, p0_m00, p0_p00, p0_0m0, p0_0p0, p0_00m, p0_00p);
+      qnnn.ngbd_with_quadratic_interpolation(pn, p_000 , p_m00 , p_p00 , p_0m0 , p_0p0 , p_00m , p_00p );
+#else
+      qnnn.ngbd_with_quadratic_interpolation(p0, p0_000, p0_m00, p0_p00, p0_0m0, p0_0p0);
+      qnnn.ngbd_with_quadratic_interpolation(pn, p_000 , p_m00 , p_p00 , p_0m0 , p_0p0 );
+#endif
+
+      double s_p00 = qnnn.d_p00; double s_m00 = qnnn.d_m00;
+      double s_0p0 = qnnn.d_0p0; double s_0m0 = qnnn.d_0m0;
+#ifdef P4_TO_P8
+      double s_00p = qnnn.d_00p; double s_00m = qnnn.d_00m;
+#endif
+
+      //---------------------------------------------------------------------
+      // Second Order derivatives
+      //---------------------------------------------------------------------
+      double pxx_000 = dxx[n];
+      double pyy_000 = dyy[n];
+#ifdef P4_TO_P8
+      double pzz_000 = dzz[n];
+#endif
+      double pxx_m00 = qnnn.f_m00_linear(dxx);
+      double pxx_p00 = qnnn.f_p00_linear(dxx);
+      double pyy_0m0 = qnnn.f_0m0_linear(dyy);
+      double pyy_0p0 = qnnn.f_0p0_linear(dyy);
+#ifdef P4_TO_P8
+      double pzz_00m = qnnn.f_00m_linear(dzz);
+      double pzz_00p = qnnn.f_00p_linear(dzz);
+#endif
+
+      //---------------------------------------------------------------------
+      // check if the node is near interface
+      //---------------------------------------------------------------------
+      if (  (p0_000*p0_m00<0) || (p0_000*p0_p00<0)
+         || (p0_000*p0_0m0<0) || (p0_000*p0_0p0<0)
+        #ifdef P4_TO_P8
+         || (p0_000*p0_00m<0) || (p0_000*p0_00p<0)
+        #endif
+         )
+      {
+        double p0xx_000 = dxx0[n];
+        double p0yy_000 = dyy0[n];
+#ifdef P4_TO_P8
+        double p0zz_000 = dzz0[n];
+#endif
+        double p0xx_m00 = qnnn.f_m00_linear(dxx0);
+        double p0xx_p00 = qnnn.f_p00_linear(dxx0);
+        double p0yy_0m0 = qnnn.f_0m0_linear(dyy0);
+        double p0yy_0p0 = qnnn.f_0p0_linear(dyy0);
+#ifdef P4_TO_P8
+        double p0zz_00m = qnnn.f_00m_linear(dzz0);
+        double p0zz_00p = qnnn.f_00p_linear(dzz0);
+#endif
+
+        if(p0_000*p0_m00<0) { s_m00 =-interface_Location_With_Second_Order_Derivative(-s_m00,   0,p0_m00,p0_000,p0xx_m00,p0xx_000); p_m00=0; }
+        if(p0_000*p0_p00<0) { s_p00 = interface_Location_With_Second_Order_Derivative(    0,s_p00,p0_000,p0_p00,p0xx_000,p0xx_p00); p_p00=0; }
+        if(p0_000*p0_0m0<0) { s_0m0 =-interface_Location_With_Second_Order_Derivative(-s_0m0,   0,p0_0m0,p0_000,p0yy_0m0,p0yy_000); p_0m0=0; }
+        if(p0_000*p0_0p0<0) { s_0p0 = interface_Location_With_Second_Order_Derivative(    0,s_0p0,p0_000,p0_0p0,p0yy_000,p0yy_0p0); p_0p0=0; }
+#ifdef P4_TO_P8
+        if(p0_000*p0_00m<0) { s_00m =-interface_Location_With_Second_Order_Derivative(-s_00m,   0,p0_00m,p0_000,p0zz_00m,p0zz_000); p_00m=0; }
+        if(p0_000*p0_00p<0) { s_00p = interface_Location_With_Second_Order_Derivative(    0,s_00p,p0_000,p0_00p,p0zz_000,p0zz_00p); p_00p=0; }
+#endif
+
+        s_m00 = MAX(s_m00,EPS);
+        s_p00 = MAX(s_p00,EPS);
+        s_0m0 = MAX(s_0m0,EPS);
+        s_0p0 = MAX(s_0p0,EPS);
+#ifdef P4_TO_P8
+        s_00m = MAX(s_00m,EPS);
+        s_00p = MAX(s_00p,EPS);
+#endif
+      }
+
+      //---------------------------------------------------------------------
+      // Neumann boundary condition on the walls
+      //---------------------------------------------------------------------
+      p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes,n);
+
+      if (is_node_xmWall(p4est, node)) { s_m00 = s_p00; p_m00=p_p00; pxx_000 = pxx_m00 = pxx_p00 = 0; }
+      if (is_node_xpWall(p4est, node)) { s_p00 = s_m00; p_p00=p_m00; pxx_000 = pxx_m00 = pxx_p00 = 0; }
+      if (is_node_ymWall(p4est, node)) { s_0m0 = s_0p0; p_0m0=p_0p0; pyy_000 = pyy_0m0 = pyy_0p0 = 0; }
+      if (is_node_ypWall(p4est, node)) { s_0p0 = s_0m0; p_0p0=p_0m0; pyy_000 = pyy_0m0 = pyy_0p0 = 0; }
+#ifdef P4_TO_P8
+      if (is_node_zmWall(p4est, node)) { s_00m = s_00p; p_00m=p_00p; pzz_000 = pzz_00m = pzz_00p = 0; }
+      if (is_node_zpWall(p4est, node)) { s_00p = s_00m; p_00p=p_00m; pzz_000 = pzz_00m = pzz_00p = 0; }
+#endif
+
+      //---------------------------------------------------------------------
+      // First Order One-Sided Differecing
+      //---------------------------------------------------------------------
+      double px_p00 = (p_p00-p_000)/s_p00; double px_m00 = (p_000-p_m00)/s_m00;
+      double py_0p0 = (p_0p0-p_000)/s_0p0; double py_0m0 = (p_000-p_0m0)/s_0m0;
+#ifdef P4_TO_P8
+      double pz_00p = (p_00p-p_000)/s_00p; double pz_00m = (p_000-p_00m)/s_00m;
+#endif
+
+      //---------------------------------------------------------------------
+      // Second Order One-Sided Differencing
+      //---------------------------------------------------------------------
+      pxx_m00 = MINMOD(pxx_m00,pxx_000);   px_m00 += 0.5*s_m00*(pxx_m00);
+      pxx_p00 = MINMOD(pxx_p00,pxx_000);   px_p00 -= 0.5*s_p00*(pxx_p00);
+      pyy_0m0 = MINMOD(pyy_0m0,pyy_000);   py_0m0 += 0.5*s_0m0*(pyy_0m0);
+      pyy_0p0 = MINMOD(pyy_0p0,pyy_000);   py_0p0 -= 0.5*s_0p0*(pyy_0p0);
+#ifdef P4_TO_P8
+      pzz_00m = MINMOD(pzz_00m,pzz_000);   pz_00m += 0.5*s_00m*(pzz_00m);
+      pzz_00p = MINMOD(pzz_00p,pzz_000);   pz_00p -= 0.5*s_00p*(pzz_00p);
+#endif
+
+      double sgn = (p0_000>0) ? 1 : -1;
+
+      //---------------------------------------------------------------------
+      // Upwind Scheme
+      //---------------------------------------------------------------------
+      double dt = MIN(s_m00,s_p00);
+      dt = MIN(dt,s_0m0);
+      dt = MIN(dt,s_0p0);
+#ifdef P4_TO_P8
+      dt = MIN(dt,s_00m);
+      dt = MIN(dt,s_00p);
+      dt /= 3.0;
+#else
+      dt /= 2.0;
+#endif
+
+      if(sgn>0) {
+        if(px_p00>0) px_p00 = 0;
+        if(px_m00<0) px_m00 = 0;
+        if(py_0p0>0) py_0p0 = 0;
+        if(py_0m0<0) py_0m0 = 0;
+#ifdef P4_TO_P8
+        if(pz_00p>0) pz_00p = 0;
+        if(pz_00m<0) pz_00m = 0;
+#endif
+      } else {
+        if(px_p00<0) px_p00 = 0;
+        if(px_m00>0) px_m00 = 0;
+        if(py_0p0<0) py_0p0 = 0;
+        if(py_0m0>0) py_0m0 = 0;
+#ifdef P4_TO_P8
+        if(pz_00p<0) pz_00p = 0;
+        if(pz_00m>0) pz_00m = 0;
+#endif
+      }
+
+#ifdef P4_TO_P8
+      pnp1[n] = p_000 - dt*sgn*(sqrt( MAX(px_p00*px_p00 , px_m00*px_m00) +
+                                      MAX(py_0p0*py_0p0 , py_0m0*py_0m0) +
+                                      MAX(pz_00p*pz_00p , pz_00m*pz_00m) ) - 1.);
+#else
+      pnp1[n] = p_000 - dt*sgn*(sqrt( MAX(px_p00*px_p00 , px_m00*px_m00) +
+                                      MAX(py_0p0*py_0p0 , py_0m0*py_0m0) ) - 1.);
+#endif
+      if(p0_000*pnp1[n]<0) pnp1[n] *= -1;
+
+      ierr = PetscLogFlops(30); CHKERRXX(ierr);
+    }
+    /* else : in negative domain and far away the band ... nothing to do */
+    else
+      pnp1[n] = p0[n];
+  }
+  ierr = PetscLogEventEnd(log_my_p4est_level_set_reinit_1_iter_2nd_order_above_threshold, 0, 0, 0, 0);
 }
 
 void my_p4est_level_set_t::advect_in_normal_direction_one_iteration(std::vector<p4est_locidx_t> &map, const double* vn, double dt,
@@ -649,6 +1027,54 @@ void my_p4est_level_set_t::reinitialize_1st_order( Vec phi_petsc, int number_of_
   ierr = PetscLogEventEnd(log_my_p4est_level_set_reinit_1st_order, phi_petsc, 0, 0, 0); CHKERRXX(ierr);
 }
 
+void my_p4est_level_set_t::reinitialize_1st_order_above_threshold( Vec phi_petsc, double threshold, int number_of_iteration, double limit )
+{
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_level_set_reinit_1st_order_above_threshold, phi_petsc, 0, 0, 0); CHKERRXX(ierr);
+
+  double *p0 = (double*) malloc(nodes->indep_nodes.elem_count * sizeof(double));
+
+  Vec p1_petsc;
+  double *p1, *phi;
+  ierr = VecDuplicate(phi_petsc, &p1_petsc); CHKERRXX(ierr);
+  ierr = VecGetArray(p1_petsc, &p1); CHKERRXX(ierr);
+  ierr = VecGetArray(phi_petsc, &phi); CHKERRXX(ierr);
+
+  for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+    p0[n] = phi[n];
+
+  IPMLogRegionBegin("reinit_1st_1st");
+  for(int i=0; i<number_of_iteration; i++)
+  {
+
+    /* 1) processes the layer nodes */
+    ierr = VecGetArray(phi_petsc, &phi); CHKERRXX(ierr);
+    reinitialize_One_Iteration_First_Order_Above_Threshold( ngbd->layer_nodes, p0, phi, p1, threshold, limit);
+
+    /* 2) initiate the communication for the ghost layer */
+    ierr = VecGhostUpdateBegin(p1_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+    /* 3) process the local nodes */
+    reinitialize_One_Iteration_First_Order_Above_Threshold( ngbd->local_nodes, p0, phi, p1, threshold, limit);
+
+    /* 4) finish receiving the ghost layer */
+    ierr = VecGhostUpdateEnd(p1_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+    /* 5) Copy data into phi */
+    for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+      phi[n] = p1[n];
+  }
+  IPMLogRegionEnd("reinit_1st_1st");
+
+  /* restore arrays and destroy uneeded petsc objects */
+  ierr = VecRestoreArray(phi_petsc, &phi); CHKERRXX(ierr);
+  ierr = VecRestoreArray(p1_petsc, &p1); CHKERRXX(ierr);
+  ierr = VecDestroy(p1_petsc); CHKERRXX(ierr);
+
+  free(p0);
+
+  ierr = PetscLogEventEnd(log_my_p4est_level_set_reinit_1st_order_above_threshold, phi_petsc, 0, 0, 0); CHKERRXX(ierr);
+}
 
 void my_p4est_level_set_t::reinitialize_2nd_order( Vec phi_petsc, int number_of_iteration, double limit )
 {
@@ -849,6 +1275,184 @@ void my_p4est_level_set_t::reinitialize_2nd_order( Vec phi_petsc, int number_of_
   ierr = PetscLogEventEnd(log_my_p4est_level_set_reinit_2nd_order, phi_petsc, 0, 0, 0); CHKERRXX(ierr);
 }
 
+void my_p4est_level_set_t::reinitialize_2nd_order_above_threshold( Vec phi_petsc, double threshold, int number_of_iteration, double limit )
+{
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_level_set_reinit_2nd_order_above_threshold, phi_petsc, 0, 0, 0); CHKERRXX(ierr);
+  Vec p1_petsc, p2_petsc;
+  double *p1, *p2, *phi;
+  ierr = VecCreateGhostNodes(p4est, nodes, &p1_petsc); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodes(p4est, nodes, &p2_petsc); CHKERRXX(ierr);
+  ierr = VecGetArray(p1_petsc,  &p1);  CHKERRXX(ierr);
+  ierr = VecGetArray(p2_petsc,  &p2);  CHKERRXX(ierr);
+  ierr = VecGetArray(phi_petsc, &phi); CHKERRXX(ierr);
+
+  double *p0 = (double*) malloc(nodes->indep_nodes.elem_count * sizeof(double));
+  for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+    p0[n] = phi[n];
+
+  Vec dxx0_petsc, dyy0_petsc;
+  double *dxx0, *dyy0;
+  ierr = VecCreateGhostNodes(p4est, nodes, &dxx0_petsc); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodes(p4est, nodes, &dyy0_petsc); CHKERRXX(ierr);
+
+  Vec dxx_petsc, dyy_petsc;
+  double *dxx, *dyy;
+  ierr = VecCreateGhostNodes(p4est, nodes, &dxx_petsc); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodes(p4est, nodes, &dyy_petsc); CHKERRXX(ierr);
+
+#ifdef P4_TO_P8
+  Vec dzz_petsc, dzz0_petsc;
+  double *dzz, *dzz0;
+  ierr = VecCreateGhostNodes(p4est, nodes, &dzz_petsc ); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodes(p4est, nodes, &dzz0_petsc); CHKERRXX(ierr);
+#endif
+
+#ifdef P4_TO_P8
+  compute_derivatives_above_threshold(phi_petsc, threshold, dxx0_petsc, dyy0_petsc, dzz0_petsc);
+#else
+  compute_derivatives_above_threshold(phi_petsc, threshold, dxx0_petsc, dyy0_petsc);
+#endif
+
+  ierr = VecGetArray(dxx0_petsc, &dxx0); CHKERRXX(ierr);
+  ierr = VecGetArray(dyy0_petsc, &dyy0); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+  ierr = VecGetArray(dzz0_petsc, &dzz0); CHKERRXX(ierr);
+#endif
+
+  for(int i=0; i<number_of_iteration; i++)
+  {
+
+    /***** Step 1 of RK2: phi -> p1 *****/
+    /* compute derivatives */
+#ifdef P4_TO_P8
+    compute_derivatives_above_threshold(phi_petsc, threshold, dxx_petsc, dyy_petsc, dzz_petsc);
+#else
+    compute_derivatives_above_threshold(phi_petsc, threshold, dxx_petsc, dyy_petsc);
+#endif
+
+    ierr = VecGetArray(dxx_petsc, &dxx); CHKERRXX(ierr);
+    ierr = VecGetArray(dyy_petsc, &dyy); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    ierr = VecGetArray(dzz_petsc, &dzz); CHKERRXX(ierr);
+#endif
+
+    IPMLogRegionBegin("reinit_2nd_2nd");
+    /* 1) Preocess layer nodes */
+    reinitialize_One_Iteration_Second_Order_Above_Threshold(ngbd->layer_nodes,
+                                                           #ifdef P4_TO_P8
+                                                               dxx0, dyy0, dzz0,
+                                                               dxx,  dyy,  dzz,
+                                                           #else
+                                                               dxx0, dyy0,
+                                                               dxx,  dyy,
+                                                           #endif
+                                                               p0, phi, p1, threshold, limit);
+
+    /* 2) Begin update process for p1 */
+    ierr = VecGhostUpdateBegin(p1_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+    /* 3) Preocess local nodes */
+    reinitialize_One_Iteration_Second_Order_Above_Threshold(ngbd->local_nodes,
+                                                           #ifdef P4_TO_P8
+                                                               dxx0, dyy0, dzz0,
+                                                               dxx,  dyy,  dzz,
+                                                           #else
+                                                               dxx0, dyy0,
+                                                               dxx,  dyy,
+                                                           #endif
+                                                               p0, phi, p1, threshold, limit);
+
+    /* 4) End update process for p1 */
+    ierr = VecGhostUpdateEnd(p1_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    IPMLogRegionEnd("reinit_2nd_2nd");
+
+    ierr = VecRestoreArray(dxx_petsc, &dxx); CHKERRXX(ierr);
+    ierr = VecRestoreArray(dyy_petsc, &dyy); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    ierr = VecRestoreArray(dzz_petsc, &dzz); CHKERRXX(ierr);
+#endif
+
+    /* recompute derivatives */
+#ifdef P4_TO_P8
+    compute_derivatives_above_threshold(p1_petsc, threshold, dxx_petsc, dyy_petsc, dzz_petsc);
+#else
+    compute_derivatives_above_threshold(p1_petsc, threshold, dxx_petsc, dyy_petsc);
+#endif
+
+    ierr = VecGetArray(dxx_petsc, &dxx); CHKERRXX(ierr);
+    ierr = VecGetArray(dyy_petsc, &dyy); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    ierr = VecGetArray(dzz_petsc, &dzz); CHKERRXX(ierr);
+#endif
+
+    /***** Step 2 of RK2: p1 -> p2 *****/
+
+    IPMLogRegionBegin("reinit_2nd_2nd");
+    /* 1) Preocess layer nodes */
+    reinitialize_One_Iteration_Second_Order_Above_Threshold(ngbd->layer_nodes,
+                                                           #ifdef P4_TO_P8
+                                                               dxx0, dyy0, dzz0,
+                                                               dxx,  dyy,  dzz,
+                                                           #else
+                                                               dxx0, dyy0,
+                                                               dxx,  dyy,
+                                                           #endif
+                                                               p0, p1, p2, threshold, limit);
+
+    /* 2) Begin update process for p2 */
+    ierr = VecGhostUpdateBegin(p2_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+    /* 3) Preocess local nodes */
+    reinitialize_One_Iteration_Second_Order_Above_Threshold(ngbd->local_nodes,
+                                                           #ifdef P4_TO_P8
+                                                               dxx0, dyy0, dzz0,
+                                                               dxx,  dyy,  dzz,
+                                                           #else
+                                                               dxx0, dyy0,
+                                                               dxx,  dyy,
+                                                           #endif
+                                                               p0, p1, p2, threshold, limit);
+
+    /* 4) End update process for p2 */
+    ierr = VecGhostUpdateEnd(p2_petsc, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    IPMLogRegionEnd("reinit_2nd_2nd");
+
+    ierr = VecRestoreArray(dxx_petsc, &dxx); CHKERRXX(ierr);
+    ierr = VecRestoreArray(dyy_petsc, &dyy); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    ierr = VecRestoreArray(dzz_petsc, &dzz); CHKERRXX(ierr);
+#endif
+
+    /* update phi */
+    for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+      phi[n] = .5 * (phi[n] + p2[n]);
+  }
+
+  /* restore arrays and destroy uneeded petsc objects */
+  ierr = VecRestoreArray(dxx0_petsc, &dxx0); CHKERRXX(ierr);
+  ierr = VecRestoreArray(dyy0_petsc, &dyy0); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+  ierr = VecRestoreArray(dzz0_petsc, &dzz0); CHKERRXX(ierr);
+#endif
+  ierr = VecRestoreArray(p1_petsc,   &p1);   CHKERRXX(ierr);
+  ierr = VecRestoreArray(p2_petsc,   &p2);   CHKERRXX(ierr);
+  ierr = VecRestoreArray(phi_petsc,  &phi);  CHKERRXX(ierr);
+
+  ierr = VecDestroy(dxx0_petsc); CHKERRXX(ierr);
+  ierr = VecDestroy(dyy0_petsc); CHKERRXX(ierr);
+  ierr = VecDestroy(dxx_petsc);  CHKERRXX(ierr);
+  ierr = VecDestroy(dyy_petsc);  CHKERRXX(ierr);
+#ifdef P4_TO_P8
+  ierr = VecDestroy(dzz0_petsc); CHKERRXX(ierr);
+  ierr = VecDestroy(dzz_petsc ); CHKERRXX(ierr);
+#endif
+  ierr = VecDestroy(p1_petsc);   CHKERRXX(ierr);
+  ierr = VecDestroy(p2_petsc);   CHKERRXX(ierr);
+
+  free(p0);
+  ierr = PetscLogEventEnd(log_my_p4est_level_set_reinit_2nd_order_above_threshold, phi_petsc, 0, 0, 0); CHKERRXX(ierr);
+}
 
 void my_p4est_level_set_t::perturb_level_set_function( Vec phi_petsc, double epsilon )
 {
@@ -1088,6 +1692,137 @@ void my_p4est_level_set_t::reinitialize_1st_order_time_2nd_order_space( Vec phi,
   ierr = PetscLogEventEnd(log_my_p4est_level_set_reinit_1st_time_2nd_space, phi, 0, 0, 0); CHKERRXX(ierr);
 }
 
+void my_p4est_level_set_t::reinitialize_1st_order_time_2nd_order_space_above_threshold( Vec phi, double threshold, int number_of_iteration, double limit)
+{
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_level_set_reinit_1st_time_2nd_space_above_threshold, phi, 0, 0, 0); CHKERRXX(ierr);
+
+  Vec p1;
+  double *p1_p, *phi_p;
+  ierr = VecCreateGhostNodes(p4est, nodes, &p1); CHKERRXX(ierr);
+
+  Vec p1_loc;
+  ierr = VecGhostGetLocalForm(p1, &p1_loc); CHKERRXX(ierr);
+  ierr = VecGetArray(p1_loc,  &p1_p);  CHKERRXX(ierr);
+
+  Vec phi_loc;
+  ierr = VecGhostGetLocalForm(phi, &phi_loc); CHKERRXX(ierr);
+  ierr = VecGetArray(phi_loc, &phi_p); CHKERRXX(ierr);
+
+  double *p0 = (double*) malloc(nodes->indep_nodes.elem_count * sizeof(double));
+  memcpy(p0, phi_p, nodes->indep_nodes.elem_count*sizeof(double));
+
+  Vec dxx0, dyy0;
+  double *dxx0_p, *dyy0_p;
+  ierr = VecCreateGhostNodes(p4est, nodes, &dxx0); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodes(p4est, nodes, &dyy0); CHKERRXX(ierr);
+
+  Vec dxx, dyy;
+  double *dxx_p, *dyy_p;
+  ierr = VecCreateGhostNodes(p4est, nodes, &dxx); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodes(p4est, nodes, &dyy); CHKERRXX(ierr);
+
+#ifdef P4_TO_P8
+  Vec dzz, dzz0;
+  double *dzz_p, *dzz0_p;
+  ierr = VecCreateGhostNodes(p4est, nodes, &dzz0); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodes(p4est, nodes, &dzz ); CHKERRXX(ierr);
+#endif
+
+#ifdef P4_TO_P8
+  compute_derivatives_above_threshold(phi, threshold, dxx0, dyy0, dzz0);
+#else
+  compute_derivatives_above_threshold(phi, threshold, dxx0, dyy0);
+#endif
+
+  ierr = VecGetArray(dxx0, &dxx0_p); CHKERRXX(ierr);
+  ierr = VecGetArray(dyy0, &dyy0_p); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+  ierr = VecGetArray(dzz0, &dzz0_p); CHKERRXX(ierr);
+#endif
+
+  for(int i=0; i<number_of_iteration; i++)
+  {
+    /* compute derivatives */
+#ifdef P4_TO_P8
+    compute_derivatives_above_threshold(phi, threshold, dxx, dyy, dzz);
+#else
+    compute_derivatives_above_threshold(phi, threshold, dxx, dyy);
+#endif
+
+    ierr = VecGetArray(dxx, &dxx_p); CHKERRXX(ierr);
+    ierr = VecGetArray(dyy, &dyy_p); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    ierr = VecGetArray(dzz, &dzz_p); CHKERRXX(ierr);
+#endif
+
+    IPMLogRegionBegin("reinit_1st_2nd");
+    /* 1) Preocess layer nodes */
+    reinitialize_One_Iteration_Second_Order_Above_Threshold( ngbd->layer_nodes,
+                                                            #ifdef P4_TO_P8
+                                                                dxx0_p, dyy0_p, dzz0_p,
+                                                                dxx_p,  dyy_p,  dzz_p,
+                                                            #else
+                                                                dxx0_p, dyy0_p,
+                                                                dxx_p,  dyy_p,
+                                                            #endif
+                                                                p0, phi_p, p1_p, threshold, limit);
+
+    /* 2) Begin update process for p1 */
+    ierr = VecGhostUpdateBegin(p1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+    /* 3) Preocess local nodes */
+    reinitialize_One_Iteration_Second_Order_Above_Threshold( ngbd->local_nodes,
+                                                            #ifdef P4_TO_P8
+                                                                dxx0_p, dyy0_p, dzz0_p,
+                                                                dxx_p,  dyy_p,  dzz_p,
+                                                            #else
+                                                                dxx0_p, dyy0_p,
+                                                                dxx_p,  dyy_p,
+                                                            #endif
+                                                                p0, phi_p, p1_p, threshold, limit);
+
+    /* 4) End update process for p1 */
+    ierr = VecGhostUpdateEnd(p1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    IPMLogRegionEnd("reinit_1st_2nd");
+
+    ierr = VecRestoreArray(dxx, &dxx_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(dyy, &dyy_p); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    ierr = VecRestoreArray(dzz, &dzz_p); CHKERRXX(ierr);
+#endif
+
+    /* update phi */
+    memcpy(phi_p, p1_p, nodes->indep_nodes.elem_count*sizeof(double));
+  }
+
+  /* restore arrays and destroy uneeded petsc objects */
+  ierr = VecRestoreArray(dxx0, &dxx0_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(dyy0, &dyy0_p); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+  ierr = VecRestoreArray(dzz0, &dzz0_p); CHKERRXX(ierr);
+#endif
+
+  ierr = VecGhostRestoreLocalForm(phi, &phi_loc); CHKERRXX(ierr);
+  ierr = VecRestoreArray(phi_loc, &phi_p); CHKERRXX(ierr);
+
+  ierr = VecGhostRestoreLocalForm(p1, &p1_loc); CHKERRXX(ierr);
+  ierr = VecRestoreArray(p1_loc, &p1_p); CHKERRXX(ierr);
+
+  ierr = VecDestroy(dxx0); CHKERRXX(ierr);
+  ierr = VecDestroy(dyy0); CHKERRXX(ierr);
+  ierr = VecDestroy(dxx);  CHKERRXX(ierr);
+  ierr = VecDestroy(dyy);  CHKERRXX(ierr);
+#ifdef P4_TO_P8
+  ierr = VecDestroy(dzz0); CHKERRXX(ierr);
+  ierr = VecDestroy(dzz ); CHKERRXX(ierr);
+#endif
+  ierr = VecDestroy(p1);   CHKERRXX(ierr);
+
+  free(p0);
+  ierr = PetscLogEventEnd(log_my_p4est_level_set_reinit_1st_time_2nd_space_above_threshold, phi, 0, 0, 0); CHKERRXX(ierr);
+}
+
 #ifdef P4_TO_P8
 void my_p4est_level_set_t::compute_derivatives( Vec phi_petsc, Vec dxx_petsc, Vec dyy_petsc, Vec dzz_petsc) const
 #else
@@ -1104,6 +1839,24 @@ void my_p4est_level_set_t::compute_derivatives( Vec phi_petsc, Vec dxx_petsc, Ve
 #endif
 
   ierr = PetscLogEventEnd(log_my_p4est_level_set_compute_derivatives, 0, 0, 0, 0); CHKERRXX(ierr);
+}
+
+#ifdef P4_TO_P8
+void my_p4est_level_set_t::compute_derivatives_above_threshold( Vec phi_petsc, double threshold, Vec dxx_petsc, Vec dyy_petsc, Vec dzz_petsc) const
+#else
+void my_p4est_level_set_t::compute_derivatives_above_threshold(Vec phi_petsc, double threshold, Vec dxx_petsc, Vec dyy_petsc) const
+#endif
+{
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_level_set_compute_derivatives_above_threshold, 0, 0, 0, 0); CHKERRXX(ierr);
+
+#ifdef P4_TO_P8
+  ngbd->second_derivatives_central_above_threshold(phi_petsc, threshold, dxx_petsc, dyy_petsc, dzz_petsc);
+#else
+  ngbd->second_derivatives_central_above_threshold(phi_petsc, threshold, dxx_petsc, dyy_petsc);
+#endif
+
+  ierr = PetscLogEventEnd(log_my_p4est_level_set_compute_derivatives_above_threshold, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
 #ifdef P4_TO_P8
@@ -7286,20 +8039,20 @@ void my_p4est_level_set_t::extend_Over_Interface_TVD_regional( Vec phi, Vec mask
     double norm = sqrt(nx[n]*nx[n] + ny[n]*ny[n]);
 #endif
 
-		if(norm>EPS)
-		{
-			nx[n] /= norm;
-			ny[n] /= norm;
+        if(norm>EPS)
+        {
+            nx[n] /= norm;
+            ny[n] /= norm;
 #ifdef P4_TO_P8
-			nz[n] /= norm;
+            nz[n] /= norm;
 #endif
-		}
-		else
-		{
-			nx[n] = 0;
-			ny[n] = 0;
+        }
+        else
+        {
+            nx[n] = 0;
+            ny[n] = 0;
 #ifdef P4_TO_P8
-			nz[n] = 0;
+            nz[n] = 0;
 #endif
                 }
   }

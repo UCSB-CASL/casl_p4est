@@ -218,3 +218,65 @@ double Cube2::integrate_Over_Interface(const CF_2& f, const QuadValue& level_set
 
   return sum;
 }
+
+double Cube2::max_Over_Interface( const QuadValue& f, const QuadValue& level_set_values ) const
+{
+  double max = -DBL_MAX;
+
+  Point2 p00(x0,y0); double f00 = f.val00; double phi00 = level_set_values.val00;
+  Point2 p01(x0,y1); double f01 = f.val01; double phi01 = level_set_values.val01;
+  Point2 p10(x1,y0); double f10 = f.val10; double phi10 = level_set_values.val10;
+  Point2 p11(x1,y1); double f11 = f.val11; double phi11 = level_set_values.val11;
+
+  // simple cases
+  if(phi00<=0 && phi01<=0 && phi10<=0 && phi11<=0) return -DBL_MAX;
+  if(phi00>=0 && phi01>=0 && phi10>=0 && phi11>=0) return -DBL_MAX;
+
+  // iteration on each simplex in the Kuhn triangulation
+  for(int n=0;n<2;n++)
+  {
+    Point2 p0=p00; double f0=f00; double phi0=phi00;
+    Point2 p2=p11; double f2=f11; double phi2=phi11;
+
+    // triangle (P0,P1,P2) with values (F0,F1,F2), (Phi0,Phi1,Phi2)
+    Point2   p1 = (n==0) ?   p01 :   p10;
+    double   f1 = (n==0) ?   f01 :   f10;
+    double phi1 = (n==0) ? phi01 : phi10;
+
+    // simple cases
+    if(phi0<=0 && phi1<=0 && phi2<=0) continue;
+    if(phi0>=0 && phi1>=0 && phi2>=0) continue;
+
+    //
+    int number_of_negatives = 0;
+
+    if(phi0<0) number_of_negatives++;
+    if(phi1<0) number_of_negatives++;
+    if(phi2<0) number_of_negatives++;
+
+#ifdef CASL_THROWS
+    if(number_of_negatives!=1 && number_of_negatives!=2) throw std::runtime_error("[CASL_ERROR]: Wrong configuration.");
+#endif
+
+    if(number_of_negatives==2)
+    {
+      phi0*=-1;
+      phi1*=-1;
+      phi2*=-1;
+    }
+
+    // sorting for simplication into one case
+    if(phi0>0 && phi1<0) swap(phi0,phi1,f0,f1,p0,p1);
+    if(phi0>0 && phi2<0) swap(phi0,phi2,f0,f2,p0,p2);
+    if(phi1>0 && phi2<0) swap(phi1,phi2,f1,f2,p1,p2);
+
+    // type : (-++)
+    double f_btw_01 = interpol_f(f0,phi0,f1,phi1); double f_btw_02 = interpol_f(f0,phi0,f2,phi2);
+
+    max = MAX(max, MAX(f_btw_02, f_btw_01));
+
+    PetscErrorCode ierr = PetscLogFlops(30); CHKERRXX(ierr);
+  }
+
+  return max;
+}

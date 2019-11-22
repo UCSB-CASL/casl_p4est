@@ -52,8 +52,8 @@ const static std::string main_description =
 param_list_t pl;
 
 // grid parameters
-param_t<int>    lmin       (pl, 4,   "lmin",       "Min level of refinement (default: 4)");
-param_t<int>    lmax       (pl, 4,   "lmax",       "Max level of refinement (default: 4)");
+param_t<int>    lmin       (pl, 5,   "lmin",       "Min level of refinement (default: 4)");
+param_t<int>    lmax       (pl, 5,   "lmax",       "Max level of refinement (default: 4)");
 param_t<double> lip        (pl, 1.5, "lip",        "Lipschitz constant (default: 1.5)");
 param_t<int>    num_splits (pl, 3,   "num_splits", "Number of successive refinements (default: 3)");
 

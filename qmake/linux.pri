@@ -2,6 +2,7 @@
 # Common settings for projects using generic linux builds
 # --------------------------------------------------------------
 
+CONFIG(raphael) {
 # PETSc
 PETSC_INCLUDES_RELEASE = /usr/local/include
 PETSC_INCLUDES_DEBUG   = /usr/local/include
@@ -20,9 +21,36 @@ VORO_INCLUDES_DEBUG   = /usr/local/include/voro++
 VORO_LIBS_RELEASE     = /usr/local/lib/libvoro++.a
 VORO_LIBS_DEBUG       = /usr/local/lib/libvoro++.a
 
+# boost
+BOOST_INCLUDES        = /home/regan/libraries/boost/include
+BOOST_LIBS            = -Wl,-rpath,/home/regan/libraries/boost/lib -L/home/regan/libraries/boost/lib -lboost_system
 QMAKE_CC = mpicc
 QMAKE_CXX = mpicxx
 QMAKE_LINK = mpicxx
+}
+else {
+# PETSc
+PETSC_INCLUDES_RELEASE = /home/rochi/libraries/petsc_release/include
+PETSC_INCLUDES_DEBUG   = /home/rochi/libraries/petsc_debug/include
+PETSC_LIBS_RELEASE = -Wl,-rpath,/home/rochi/libraries/petsc_release/lib -L/home/rochi/libraries/petsc_release/lib -lpetsc
+PETSC_LIBS_DEBUG   = -Wl,-rpath,/home/rochi/libraries/petsc_debug/lib -L/home/rochi/libraries/petsc_debug/lib -lpetsc
+
+# p4est
+P4EST_INCLUDES_RELEASE = /home/rochi/libraries/p4est_release/include
+P4EST_INCLUDES_DEBUG   = /home/rochi/libraries/p4est_debug/include
+P4EST_LIBS_RELEASE = -Wl,-rpath,/home/rochi/libraries/p4est_release/lib -L/home/rochi/libraries/p4est_release/lib -lp4est -lsc
+P4EST_LIBS_DEBUG   = -Wl,-rpath,/home/rochi/libraries/p4est_debug/lib -L/home/rochi/libraries/p4est_debug/lib -lp4est -lsc
+
+# voro++
+VORO_INCLUDES_RELEASE = /usr/local/include/voro++
+VORO_INCLUDES_DEBUG   = /usr/local/include/voro++
+VORO_LIBS_RELEASE     = /usr/local/lib/libvoro++.a
+VORO_LIBS_DEBUG       = /usr/local/lib/libvoro++.a
+
+QMAKE_CC = /usr/local/bin/mpicc
+QMAKE_CXX = /usr/local/bin/mpicxx
+QMAKE_LINK = /usr/local/bin/mpicxx
+}
 
 include(common.pri)
 
