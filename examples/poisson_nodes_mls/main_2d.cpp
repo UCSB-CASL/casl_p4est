@@ -281,7 +281,7 @@ DEFINE_PARAMETER(pl, bool, save_matrix_ascii,  1, "Save the matrix in ASCII MATL
 DEFINE_PARAMETER(pl, bool, save_matrix_binary, 1, "Save the matrix in BINARY MATLAB format");
 DEFINE_PARAMETER(pl, bool, save_convergence,   1, "Save convergence results");
 
-DEFINE_PARAMETER(pl, int, n_example, 6, "Predefined example");
+DEFINE_PARAMETER(pl, int, n_example, 12, "Predefined example");
 // parameters to set for running an example
 
 // define the poisson problem to solve
@@ -515,8 +515,8 @@ void set_example(int n_example)
 
     case 10: // moderately star-shaped interface
 
-      n_um = 11; mag_um = 1; n_mu_m = 1; mag_mu_m = 5; n_diag_m = 1; mag_diag_m = 1;
-      n_up = 12; mag_up = 1; n_mu_p = 0; mag_mu_p = 1; n_diag_p = 1; mag_diag_p = 1;
+      n_um = 11; mag_um = 1; n_mu_m = 1; mag_mu_m = 5; n_diag_m = 0; mag_diag_m = 1;
+      n_up = 12; mag_up = 1; n_mu_p = 0; mag_mu_p = 1; n_diag_p = 0; mag_diag_p = 1;
 
       infc_phi_num = 1;
       bdry_phi_num = 0;
@@ -558,10 +558,10 @@ void set_example(int n_example)
       n_um = 11; mag_um = 1; n_mu_m = 1; mag_mu_m = 10; n_diag_m = 0; mag_diag_m = 1;
       n_up = 12; mag_up = 1; n_mu_p = 0; mag_mu_p =  1; n_diag_p = 0; mag_diag_p = 1;
 
-      infc_phi_num = 1;
+      infc_phi_num = 0;
       bdry_phi_num = 1;
 
-      infc_present_00 = 1; infc_geom_00 = 4; infc_opn_00 = MLS_INT;
+      infc_present_00 = 0; infc_geom_00 = 4; infc_opn_00 = MLS_INT;
       infc_present_01 = 0; infc_geom_01 = 0; infc_opn_01 = MLS_INT;
       infc_present_02 = 0; infc_geom_02 = 0; infc_opn_02 = MLS_INT;
       infc_present_03 = 0; infc_geom_03 = 0; infc_opn_03 = MLS_INT;
