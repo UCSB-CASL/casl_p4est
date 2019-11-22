@@ -561,54 +561,40 @@ void quadratic_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const
   P4EST_ASSERT(n_results > 0);
   PetscErrorCode ierr;
 
-  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + 0];
-  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + P4EST_CHILDREN-1];
+  p4est_topidx_t v_mm = p4est->connectivity->tree_to_vertex[0*P4EST_CHILDREN + 0];
+  p4est_topidx_t v_pp = p4est->connectivity->tree_to_vertex[(p4est->trees->elem_count-1)*P4EST_CHILDREN + P4EST_CHILDREN-1];
+  p4est_topidx_t v_m  = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + 0];
+  p4est_topidx_t v_p  = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + P4EST_CHILDREN-1];
 
-  double tree_xmin = p4est->connectivity->vertices[3*v_m + 0];
-  double tree_xmax = p4est->connectivity->vertices[3*v_p + 0];
-  double tree_ymin = p4est->connectivity->vertices[3*v_m + 1];
-  double tree_ymax = p4est->connectivity->vertices[3*v_p + 1];
-#ifdef P4_TO_P8
-  double tree_zmin = p4est->connectivity->vertices[3*v_m + 2];
-  double tree_zmax = p4est->connectivity->vertices[3*v_p + 2];
-#endif
+  const double* domain_xyz_min  = (p4est->connectivity->vertices+3*v_mm);
+  const double* domain_xyz_max  = (p4est->connectivity->vertices+3*v_pp);
+  const double* tree_xyz_min    = (p4est->connectivity->vertices+3*v_m);
+  const double* tree_xyz_max    = (p4est->connectivity->vertices+3*v_p);
 
-  double x = (xyz_global[0] - tree_xmin)/(tree_xmax-tree_xmin);
-  double y = (xyz_global[1] - tree_ymin)/(tree_ymax-tree_ymin);
-#ifdef P4_TO_P8
-  double z = (xyz_global[2] - tree_zmin)/(tree_zmax-tree_zmin);
-#endif
+  const double qh   = (double)P4EST_QUADRANT_LEN(quad.level) / (double)(P4EST_ROOT_LEN);
+  double qxyz_min[P4EST_DIM] = {DIM(quad_x_fr_i(&quad), quad_y_fr_j(&quad), quad_z_fr_k(&quad))};
 
-  double qh   = (double)P4EST_QUADRANT_LEN(quad.level) / (double)(P4EST_ROOT_LEN);
-  double qxmin = quad_x_fr_i(&quad);
-  double qymin = quad_y_fr_j(&quad);
-#ifdef P4_TO_P8
-  double qzmin = quad_z_fr_k(&quad);
-#endif
-
-#ifdef CASL_THROWS
-  if(x<qxmin-qh/10 || x>qxmin+qh+qh/10 || y<qymin-qh/10 || y>qymin+qh+qh/10)
-  {
-    std::cout << x << ", " << qxmin << ", " << qxmin+qh << std::endl;
-    std::cout << y << ", " << qymin << ", " << qymin+qh << std::endl;
-    std::cout << y-qymin << std::endl;
-    throw std::invalid_argument("quadratic_interpolation: the point is not inside the quadrant.");
+  double xyz[P4EST_DIM];
+  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
+    xyz[dir] = xyz_global[dir];
+    if(is_periodic(p4est, dir))
+      while (fabs(xyz[dir] - (tree_xyz_min[dir] + (tree_xyz_max[dir]-tree_xyz_min[dir])*qxyz_min[dir])) >= (0.5+((double)P4EST_QUADRANT_LEN(P4EST_MAXLEVEL))/((double) P4EST_ROOT_LEN))*(domain_xyz_max[dir] - domain_xyz_min[dir]))
+        xyz[dir] = xyz[dir] + ((xyz[dir] > (tree_xyz_min[dir] + (tree_xyz_max[dir]-tree_xyz_min[dir])*qxyz_min[dir]))? -1.0: +1.0)*(domain_xyz_max[dir]-domain_xyz_min[dir]);
+    xyz[dir] = (xyz[dir] - tree_xyz_min[dir])/(tree_xyz_max[dir] - tree_xyz_min[dir]);
   }
-#endif
 
-  x = (x-qxmin) / qh;
-  y = (y-qymin) / qh;
-#ifdef P4_TO_P8
-  z = (z-qzmin) / qh;
-#endif
+  P4EST_ASSERT(ANDD(xyz[0]>=qxyz_min[0]-qh/10 && xyz[0]<=qxyz_min[0]+qh+qh/10, xyz[1]>=qxyz_min[1]-qh/10 && xyz[1]<=qxyz_min[1]+qh+qh/10, xyz[2]>=qxyz_min[2]-qh/10 && xyz[2]<=qxyz_min[2]+qh+qh/10));
 
-  double d_m00 = x;
-  double d_p00 = 1-x;
-  double d_0m0 = y;
-  double d_0p0 = 1-y;
+  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+    xyz[dir] = (xyz[dir]-qxyz_min[dir])/qh;
+
+  double d_m00 = xyz[0];
+  double d_p00 = 1-xyz[0];
+  double d_0m0 = xyz[1];
+  double d_0p0 = 1-xyz[1];
 #ifdef P4_TO_P8
-  double d_00m = z;
-  double d_00p = 1-z;
+  double d_00m = xyz[2];
+  double d_00p = 1-xyz[2];
 #endif
 
 #ifdef P4_TO_P8
@@ -635,11 +621,7 @@ void quadratic_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const
 
 
   double fdd[P4EST_DIM];
-  const double sx = (tree_xmax-tree_xmin)*qh;
-  const double sy = (tree_ymax-tree_ymin)*qh;
-#ifdef P4_TO_P8
-  const double sz = (tree_zmax-tree_zmin)*qh;
-#endif
+  const double sxyz[P4EST_DIM] = {DIM((tree_xyz_max[0] - tree_xyz_min[0])*qh, (tree_xyz_max[1] - tree_xyz_min[1])*qh, (tree_xyz_max[2] - tree_xyz_min[2])*qh)};
   for (unsigned int k = 0; k < n_results; ++k)
   {
     results[k] = 0.0;
@@ -649,11 +631,7 @@ void quadratic_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const
         fdd[i] = ((j == 0)? 0.0 : fdd[i]) +Fdd[k*P4EST_CHILDREN*P4EST_DIM+j*P4EST_DIM + i] * w_xyz[j];
       results[k] += F[k*P4EST_CHILDREN+j]*w_xyz[j];
     }
-#ifdef P4_TO_P8
-    results[k] -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1] + sz*sz*d_00p*d_00m*fdd[2]);
-#else
-    results[k] -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1]);
-#endif
+    results[k] -= 0.5*SUMD(sxyz[0]*sxyz[0]*d_p00*d_m00*fdd[0], sxyz[1]*sxyz[1]*d_0p0*d_0m0*fdd[1], sxyz[2]*sxyz[2]*d_00p*d_00m*fdd[2]);
   }
 
   ierr = PetscLogFlops(45); CHKERRXX(ierr); // number of flops in this event
