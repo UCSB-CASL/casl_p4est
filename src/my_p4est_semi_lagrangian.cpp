@@ -882,28 +882,6 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *
         interp_fields.interpolate(fields_np1);
       }
 
-//    char file_name[1000];
-//    sprintf(file_name,"/home/elyce/workspace/projects/multialloy_with_fluids/solidif_with_fluids_output/NS_grit_iter_%d",counter);
-//    double* fields_p[num_fields];
-
-//    for(unsigned int k=0;k<num_fields;k++){
-//      ierr = VecGetArray(fields_np1[k],&fields_p[k]);CHKERRXX(ierr);
-//      }
-//    ierr = VecGetArray(phi_np1,&phi_np1_p);CHKERRXX(ierr);
-//    ierr = VecGetArray(phi_np1_eff,&phi_np1_eff_p);CHKERRXX(ierr);
-
-//    my_p4est_vtk_write_all(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,3,0,file_name,
-//                           VTK_POINT_DATA,"phi",phi_np1_p,
-//                           VTK_POINT_DATA,"phi_eff",phi_np1_eff_p,
-//                           VTK_POINT_DATA,"vorticity",fields_p[0]);
-
-//    for(unsigned int k=0;k<num_fields;k++){
-//      ierr = VecRestoreArray(fields_np1[k],&fields_p[k]);CHKERRXX(ierr);
-//      }
-//    ierr = VecRestoreArray(phi_np1,&phi_np1_p);CHKERRXX(ierr);
-//    ierr = VecRestoreArray(phi_np1_eff,&phi_np1_eff_p);CHKERRXX(ierr);
-
-
     if(counter > 10){PetscPrintf(p4est->mpicomm,"Grid did not converge ... \n"); break;}
 
     // Call the refine and coarsen according to phi_effective and the provided fields:
@@ -968,6 +946,15 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *
     delete[] phi_xx;
   }
 
+  // Destroy the np1 fields now that they are no longer in use: // CHECK THAT THIS WORKS FINE -- DIDNT HAVE IT BEFORE BUT NOT DESTROYING WILL CAUSE MEMORY LEAK
+  if(use_block){
+      ierr = VecDestroy(fields_block_np1);CHKERRXX(ierr);
+    }
+  else{
+      for(unsigned int k=0; k<num_fields; k++){
+          ierr = VecDestroy(fields_np1[k]); CHKERRXX(ierr);
+        }
+    }
   ierr = PetscLogEventEnd(log_my_p4est_semi_lagrangian_update_p4est_1st_order, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
