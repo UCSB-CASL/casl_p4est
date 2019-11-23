@@ -117,7 +117,7 @@ double cfl_number       = 0.25; //
 // solving non-linear diffusion equation
 int    iteration_scheme = 1;     // iterative scheme : 0 - simple fixed-point, 1 - linearized fixed-point (a.k.a. Newton)
 int    max_iterations   = 10;    // max iterations
-double tolerance        = 1.e-8; // tolerance
+double tolerance        = 1.e-10; // tolerance
 
 // general poisson solver parameters
 bool use_sc_scheme         = 1; // for finite volume schemes (jump, neumann, robin): 0 - simple scheme, 1 - superconvergent (second-order accurate gradients)
@@ -1251,10 +1251,10 @@ int main (int argc, char* argv[])
 
   while(keep_going)
   {
-    if (steady_state && iteration == 0)
-    {
-      biofilm_solver.solve_concentration();
-    }
+//    if (steady_state && iteration == 0)
+//    {
+//    }
+    biofilm_solver.solve_concentration();
 
     ierr = PetscPrintf(mpi.comm(), "Solving for pressure\n"); CHKERRXX(ierr);
     biofilm_solver.solve_pressure();
@@ -1375,10 +1375,8 @@ int main (int argc, char* argv[])
     }
 
     tn += biofilm_solver.get_dt();
-
     biofilm_solver.update_grid();
-
-    biofilm_solver.solve_concentration();
+//    biofilm_solver.solve_concentration();
 
     iteration++;
   }

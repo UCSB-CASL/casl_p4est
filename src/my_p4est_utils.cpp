@@ -208,11 +208,6 @@ void linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4
     results[k] = 0.0;
     for (short j = 0; j<P4EST_CHILDREN; j++)
       results[k] += + F[P4EST_CHILDREN*k+j]*w_xyz[j];
-#ifdef P4_TO_P8
-    results[k] /= qh*qh*qh;
-#else
-    results[k] /= qh*qh;
-#endif
   }
 
   ierr = PetscLogFlops(39); CHKERRXX(ierr); // number of flops in this event
@@ -304,6 +299,7 @@ void quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topidx_
 
 void quadratic_non_oscillatory_continuous_v1_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results)
 {
+  P4EST_ASSERT(n_results > 0);
   PetscErrorCode ierr;
 
   p4est_topidx_t v_mm = p4est->connectivity->tree_to_vertex[0*P4EST_CHILDREN + 0];
@@ -414,6 +410,7 @@ void quadratic_non_oscillatory_continuous_v1_interpolation(const p4est_t *p4est,
 
 void quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results)
 {
+  P4EST_ASSERT(n_results > 0);
   PetscErrorCode ierr;
 
   p4est_topidx_t v_mm = p4est->connectivity->tree_to_vertex[0*P4EST_CHILDREN + 0];

@@ -293,16 +293,20 @@ void my_p4est_biofilm_t::solve_concentration()
   }
 
   // compute diffusivities, diagonal term, right-hand sides and guess
+  double *phi_biof_ptr;
   double *phi_free_ptr;
   double *phi_agar_ptr;
 
+  ierr = VecGetArray(phi_biof_, &phi_biof_ptr); CHKERRXX(ierr);
   ierr = VecGetArray(phi_free_, &phi_free_ptr); CHKERRXX(ierr);
   ierr = VecGetArray(phi_agar_, &phi_agar_ptr); CHKERRXX(ierr);
 
+  double *C_ptr;
   double *Ca0_ptr, *Ca1_ptr;
   double *Cb0_ptr, *Cb1_ptr;
   double *Cf0_ptr, *Cf1_ptr;
 
+  ierr = VecGetArray(C_,   &C_ptr);   CHKERRXX(ierr);
   ierr = VecGetArray(Ca0_, &Ca0_ptr); CHKERRXX(ierr);
   ierr = VecGetArray(Cb0_, &Cb0_ptr); CHKERRXX(ierr);
   ierr = VecGetArray(Cf0_, &Cf0_ptr); CHKERRXX(ierr);
@@ -323,9 +327,6 @@ void my_p4est_biofilm_t::solve_concentration()
   Vec rhs_tmp_m; double *rhs_tmp_m_ptr; ierr = VecDuplicate(phi_free_, &rhs_tmp_m); CHKERRXX(ierr);
   Vec rhs_tmp_p; double *rhs_tmp_p_ptr; ierr = VecDuplicate(phi_free_, &rhs_tmp_p); CHKERRXX(ierr);
 
-  Vec Cm_tmp; double *Cm_tmp_ptr; ierr = VecDuplicate(phi_free_, &Cm_tmp); CHKERRXX(ierr);
-  Vec Cp_tmp; double *Cp_tmp_ptr; ierr = VecDuplicate(phi_free_, &Cp_tmp); CHKERRXX(ierr);
-
   ierr = VecGetArray(mu_m, &mu_m_ptr); CHKERRXX(ierr);
   ierr = VecGetArray(mu_p, &mu_p_ptr); CHKERRXX(ierr);
 
@@ -334,9 +335,6 @@ void my_p4est_biofilm_t::solve_concentration()
 
   ierr = VecGetArray(rhs_tmp_m, &rhs_tmp_m_ptr); CHKERRXX(ierr);
   ierr = VecGetArray(rhs_tmp_p, &rhs_tmp_p_ptr); CHKERRXX(ierr);
-
-  ierr = VecGetArray(Cm_tmp, &Cm_tmp_ptr); CHKERRXX(ierr);
-  ierr = VecGetArray(Cp_tmp, &Cp_tmp_ptr); CHKERRXX(ierr);
 
   foreach_node(n, nodes_)
   {
@@ -349,8 +347,15 @@ void my_p4est_biofilm_t::solve_concentration()
     diag_p_ptr[n] = a0;
 
     // guess
-    Cm_tmp_ptr[n] = Cb0_ptr[n];
-    Cp_tmp_ptr[n] = phi_free_ptr[n] > phi_agar_ptr[n] ? Cf0_ptr[n] : Ca0_ptr[n];
+    if (phi_biof_ptr[n] < 0)
+    {
+      C_ptr[n] = Cb0_ptr[n];
+    }
+    else
+    {
+      if (phi_agar_ptr[n] > phi_free_ptr[n]) C_ptr[n] = Ca0_ptr[n];
+      else C_ptr[n] = Cf0_ptr[n];
+    }
   }
 
   // additions to rhs due to time discretization
@@ -392,12 +397,11 @@ void my_p4est_biofilm_t::solve_concentration()
   ierr = VecRestoreArray(rhs_tmp_m, &rhs_tmp_m_ptr); CHKERRXX(ierr);
   ierr = VecRestoreArray(rhs_tmp_p, &rhs_tmp_p_ptr); CHKERRXX(ierr);
 
-  ierr = VecRestoreArray(Cm_tmp, &Cm_tmp_ptr);       CHKERRXX(ierr);
-  ierr = VecRestoreArray(Cp_tmp, &Cp_tmp_ptr);       CHKERRXX(ierr);
-
+  ierr = VecRestoreArray(phi_biof_, &phi_biof_ptr);  CHKERRXX(ierr);
   ierr = VecRestoreArray(phi_free_, &phi_free_ptr);  CHKERRXX(ierr);
   ierr = VecRestoreArray(phi_agar_, &phi_agar_ptr);  CHKERRXX(ierr);
 
+  ierr = VecRestoreArray(C_,   &C_ptr);              CHKERRXX(ierr);
   ierr = VecRestoreArray(Ca0_, &Ca0_ptr);            CHKERRXX(ierr);
   ierr = VecRestoreArray(Cb0_, &Cb0_ptr);            CHKERRXX(ierr);
   ierr = VecRestoreArray(Cf0_, &Cf0_ptr);            CHKERRXX(ierr);
@@ -415,48 +419,26 @@ void my_p4est_biofilm_t::solve_concentration()
   poisson_solver.set_jump_scheme(0);
   poisson_solver.set_use_sc_scheme(use_sc_scheme_);
   poisson_solver.set_integration_order(integration_order_);
-
   poisson_solver.set_mu(mu_m, mu_p);
-
   poisson_solver.set_wc(*bc_wall_type_, *bc_wall_value_);
-
-  //  std::vector<Vec>      phi_jump;
-  //  std::vector<Vec>      phi_neum;
-  //  std::vector<action_t> action(1, INTERSECTION);
-  //  std::vector<int>      color(1, 0);
-  //#ifdef P4_TO_P8
-  //  std::vector< CF_3* > zero_cf_array(1, &zero_cf);
-  //#else
-  //  std::vector< CF_2* > zero_cf_array(1, &zero_cf);
-  //#endif
-//  std::vector< BoundaryConditionType > bc_neum(1, NEUMANN);
-//  poisson_solver.set_jump_conditions(zero_cf, zero_cf_array);
-//  poisson_solver.set_bc_interface_type(bc_neum);
-//  poisson_solver.set_bc_interface_coeff(zero_cf_array);
-//  poisson_solver.set_bc_interface_value(zero_cf_array);
+  poisson_solver.set_rhs(rhs_tmp_m, rhs_tmp_p);
 
   if (Da_ == 0 && Df_ == 0)
   {
-//    phi_neum.push_back(phi_biof_);
-//    poisson_solver.set_geometry(1, &action, &color, &phi_neum);
-    poisson_solver.add_boundary(MLS_INTERSECTION, phi_biof_, NULL, NEUMANN, zero_cf, zero_cf);
-  } else if (Da_ == 0) {
-//    phi_neum.push_back(phi_agar_);
-//    phi_jump.push_back(phi_free_);
-//    poisson_solver.set_geometry(1, &action, &color, &phi_neum);
-//    poisson_solver.set_immersed_interface(1, &action, &color, &phi_jump);
-    poisson_solver.add_boundary(MLS_INTERSECTION, phi_agar_, NULL, NEUMANN, zero_cf, zero_cf);
+    poisson_solver.add_boundary (MLS_INTERSECTION, phi_biof_, NULL, NEUMANN, zero_cf, zero_cf);
+  }
+  else if (Da_ == 0)
+  {
+    poisson_solver.add_boundary (MLS_INTERSECTION, phi_agar_, NULL, NEUMANN, zero_cf, zero_cf);
     poisson_solver.add_interface(MLS_INTERSECTION, phi_free_, NULL, zero_cf, zero_cf);
-  } else if (Df_ == 0) {
-//    phi_neum.push_back(phi_free_);
-//    phi_jump.push_back(phi_agar_);
-//    poisson_solver.set_geometry(1, &action, &color, &phi_neum);
-//    poisson_solver.set_immersed_interface(1, &action, &color, &phi_jump);
-    poisson_solver.add_boundary(MLS_INTERSECTION, phi_free_, NULL, NEUMANN, zero_cf, zero_cf);
+  }
+  else if (Df_ == 0)
+  {
+    poisson_solver.add_boundary (MLS_INTERSECTION, phi_free_, NULL, NEUMANN, zero_cf, zero_cf);
     poisson_solver.add_interface(MLS_INTERSECTION, phi_agar_, NULL, zero_cf, zero_cf);
-  } else {
-//    phi_jump.push_back(phi_biof_);
-//    poisson_solver.set_immersed_interface(1, &action, &color, &phi_jump);
+  }
+  else
+  {
     poisson_solver.add_interface(MLS_INTERSECTION, phi_biof_, NULL, zero_cf, zero_cf);
   }
 
@@ -465,151 +447,65 @@ void my_p4est_biofilm_t::solve_concentration()
   poisson_solver.set_kink_treatment(1);
   poisson_solver.set_enfornce_diag_scaling(1);
 
-  Vec rhs_m; double *rhs_m_ptr; ierr = VecDuplicate(phi_free_, &rhs_m); CHKERRXX(ierr);
-  Vec rhs_p; double *rhs_p_ptr; ierr = VecDuplicate(phi_free_, &rhs_p); CHKERRXX(ierr);
+  poisson_solver.set_nonlinear_term(1., *f_cf_, *fc_cf_);
+  poisson_solver.set_solve_nonlinear_parameters(1, max_iterations_, tolerance_, 0);
+  poisson_solver.solve_nonlinear(C_, true, true);
 
-  Vec Cm_old; double *Cm_old_ptr; ierr = VecDuplicate(phi_free_, &Cm_old); CHKERRXX(ierr);
-  Vec Cp_old; double *Cp_old_ptr; ierr = VecDuplicate(phi_free_, &Cp_old); CHKERRXX(ierr);
-
-  double error_m = 1.;
-  double error_p = 1.;
-
-  int iteration = 0;
-
-  my_p4est_level_set_t ls(ngbd_);
-
-  while ((error_m > tolerance_ || error_p > tolerance_) && iteration < max_iterations_)
-  {
-    // adjust right-hand side and diagonal term
-    ierr = VecGetArray(rhs_m, &rhs_m_ptr); CHKERRXX(ierr);
-    ierr = VecGetArray(rhs_p, &rhs_p_ptr); CHKERRXX(ierr);
-
-    ierr = VecGetArray(rhs_tmp_m, &rhs_tmp_m_ptr); CHKERRXX(ierr);
-    ierr = VecGetArray(rhs_tmp_p, &rhs_tmp_p_ptr); CHKERRXX(ierr);
-
-    ierr = VecGetArray(Cm_tmp, &Cm_tmp_ptr); CHKERRXX(ierr);
-
-    switch (iteration_scheme_)
-    {
-      case 0:
-        {
-          foreach_node(n, nodes_)
-          {
-            rhs_m_ptr[n] = rhs_tmp_m_ptr[n] - ((*f_cf_)(Cm_tmp_ptr[n]));
-            rhs_p_ptr[n] = rhs_tmp_p_ptr[n];
-          }
-
-          poisson_solver.set_diag(diag_m, diag_p);
-          break;
-        }
-      case 1:
-        {
-          ierr = VecGetArray(diag_m, &diag_m_ptr); CHKERRXX(ierr);
-          ierr = VecGetArray(diag_p, &diag_p_ptr); CHKERRXX(ierr);
-
-          foreach_node(n, nodes_)
-          {
-            rhs_m_ptr[n] = rhs_tmp_m_ptr[n] - ((*f_cf_)(Cm_tmp_ptr[n]) - Cm_tmp_ptr[n]*(*fc_cf_)(Cm_tmp_ptr[n]));
-            rhs_p_ptr[n] = rhs_tmp_p_ptr[n];
-
-            diag_m_ptr[n] = a0 + (*fc_cf_)(Cm_tmp_ptr[n]);
-            diag_p_ptr[n] = a0;
-          }
-
-          ierr = VecRestoreArray(diag_m, &diag_m_ptr); CHKERRXX(ierr);
-          ierr = VecRestoreArray(diag_p, &diag_p_ptr); CHKERRXX(ierr);
-
-          poisson_solver.set_diag(diag_m, diag_p);
-
-          break;
-        }
-    }
-
-    ierr = VecRestoreArray(rhs_m, &rhs_m_ptr); CHKERRXX(ierr);
-    ierr = VecRestoreArray(rhs_p, &rhs_p_ptr); CHKERRXX(ierr);
-
-    ierr = VecRestoreArray(rhs_tmp_m, &rhs_tmp_m_ptr); CHKERRXX(ierr);
-    ierr = VecRestoreArray(rhs_tmp_p, &rhs_tmp_p_ptr); CHKERRXX(ierr);
-
-    ierr = VecRestoreArray(Cm_tmp, &Cm_tmp_ptr); CHKERRXX(ierr);
-
-    // solve
-    Vec tmp;
-
-    tmp = Cm_old; Cm_old = Cm_tmp; Cm_tmp = tmp;
-    tmp = Cp_old; Cp_old = Cp_tmp; Cp_tmp = tmp;
-
-    poisson_solver.set_rhs(rhs_m, rhs_p);
-    poisson_solver.solve(Cm_tmp, true);
-
-    copy_ghosted_vec(Cm_tmp, Cp_tmp);
-    ls.extend_Over_Interface_TVD_Full(phi_biof_, Cm_tmp, extend_iterations_, 2);
-
-    // compute error
-    double *phi_biof_ptr;
-    ierr = VecGetArray(phi_biof_, &phi_biof_ptr); CHKERRXX(ierr);
-
-    ierr = VecGetArray(Cm_tmp, &Cm_tmp_ptr); CHKERRXX(ierr);
-    ierr = VecGetArray(Cp_tmp, &Cp_tmp_ptr); CHKERRXX(ierr);
-
-    ierr = VecGetArray(Cm_old, &Cm_old_ptr); CHKERRXX(ierr);
-    ierr = VecGetArray(Cp_old, &Cp_old_ptr); CHKERRXX(ierr);
-
-    error_m = 0;
-    error_p = 0;
-
-    foreach_node(n, nodes_)
-    {
-      if (phi_biof_ptr[n] < 0) { error_m = MAX(error_m, fabs(Cm_tmp_ptr[n] - Cm_old_ptr[n])); }
-      if (phi_biof_ptr[n] > 0) { error_p = MAX(error_p, fabs(Cp_tmp_ptr[n] - Cp_old_ptr[n])); }
-    }
-
-    ierr = VecRestoreArray(Cm_tmp, &Cm_tmp_ptr); CHKERRXX(ierr);
-    ierr = VecRestoreArray(Cp_tmp, &Cp_tmp_ptr); CHKERRXX(ierr);
-
-    ierr = VecRestoreArray(Cm_old, &Cm_old_ptr); CHKERRXX(ierr);
-    ierr = VecRestoreArray(Cp_old, &Cp_old_ptr); CHKERRXX(ierr);
-
-
-    ierr = VecRestoreArray(phi_biof_, &phi_biof_ptr); CHKERRXX(ierr);
-
-    int mpiret;
-
-    mpiret = MPI_Allreduce(MPI_IN_PLACE, &error_m, 1, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
-    mpiret = MPI_Allreduce(MPI_IN_PLACE, &error_p, 1, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
-
-    PetscPrintf(p4est_->mpicomm, "iteration #%d, errors = %e, %e\n", iteration, error_m, error_p);
-    iteration++;
-  }
-
-  invert_phi(nodes_, phi_biof_);
-  ls.extend_Over_Interface_TVD_Full(phi_biof_, Cp_tmp, extend_iterations_, 2);
-  invert_phi(nodes_, phi_biof_);
-
+  // update fields with new values
   Vec tmp;
-
   tmp = Ca0_; Ca0_ = Ca1_; Ca1_ = tmp;
   tmp = Cb0_; Cb0_ = Cb1_; Cb1_ = tmp;
   tmp = Cf0_; Cf0_ = Cf1_; Cf1_ = tmp;
 
-  copy_ghosted_vec(Cm_tmp, Cb0_);
-  copy_ghosted_vec(Cp_tmp, Ca0_);
-  copy_ghosted_vec(Cp_tmp, Cf0_);
+  ierr = VecGetArray(C_, &C_ptr); CHKERRXX(ierr);
+  ierr = VecGetArray(Ca0_, &Ca0_ptr); CHKERRXX(ierr);
+  ierr = VecGetArray(Cb0_, &Cb0_ptr); CHKERRXX(ierr);
+  ierr = VecGetArray(Cf0_, &Cf0_ptr); CHKERRXX(ierr);
+  ierr = VecGetArray(Ca1_, &Ca1_ptr); CHKERRXX(ierr);
+  ierr = VecGetArray(Cb1_, &Cb1_ptr); CHKERRXX(ierr);
+  ierr = VecGetArray(Cf1_, &Cf1_ptr); CHKERRXX(ierr);
 
-  ierr = VecDestroy(rhs_m);     CHKERRXX(ierr);
-  ierr = VecDestroy(rhs_p);     CHKERRXX(ierr);
-  ierr = VecDestroy(Cm_old);    CHKERRXX(ierr);
-  ierr = VecDestroy(Cp_old);    CHKERRXX(ierr);
+  ierr = VecGetArray(phi_biof_, &phi_biof_ptr); CHKERRXX(ierr);
+  ierr = VecGetArray(phi_agar_, &phi_agar_ptr); CHKERRXX(ierr);
+  ierr = VecGetArray(phi_free_, &phi_free_ptr); CHKERRXX(ierr);
+
+  foreach_node(n, nodes_)
+  {
+    Cb0_ptr[n] = phi_biof_ptr[n] < 0 ? C_ptr[n] : Cb1_ptr[n];
+    Ca0_ptr[n] = phi_agar_ptr[n] > 0 ? C_ptr[n] : Ca1_ptr[n];
+    Cf0_ptr[n] = phi_free_ptr[n] > 0 ? C_ptr[n] : Cf1_ptr[n];
+  }
+
+  ierr = VecRestoreArray(C_, &C_ptr); CHKERRXX(ierr);
+  ierr = VecRestoreArray(Ca0_, &Ca0_ptr); CHKERRXX(ierr);
+  ierr = VecRestoreArray(Cb0_, &Cb0_ptr); CHKERRXX(ierr);
+  ierr = VecRestoreArray(Cf0_, &Cf0_ptr); CHKERRXX(ierr);
+  ierr = VecRestoreArray(Ca1_, &Ca1_ptr); CHKERRXX(ierr);
+  ierr = VecRestoreArray(Cb1_, &Cb1_ptr); CHKERRXX(ierr);
+  ierr = VecRestoreArray(Cf1_, &Cf1_ptr); CHKERRXX(ierr);
+
+  ierr = VecRestoreArray(phi_biof_, &phi_biof_ptr); CHKERRXX(ierr);
+  ierr = VecRestoreArray(phi_agar_, &phi_agar_ptr); CHKERRXX(ierr);
+  ierr = VecRestoreArray(phi_free_, &phi_free_ptr); CHKERRXX(ierr);
+
+  // extend fields
+  VecScaleGhost(phi_agar_, -1.);
+  VecScaleGhost(phi_free_, -1.);
+
+  my_p4est_level_set_t ls(ngbd_);
+  ls.extend_Over_Interface_TVD_Full(phi_biof_, Cb0_, extend_iterations_, 2);
+  ls.extend_Over_Interface_TVD_Full(phi_agar_, Ca0_, extend_iterations_, 2);
+  ls.extend_Over_Interface_TVD_Full(phi_free_, Cf0_, extend_iterations_, 2);
+
+  VecScaleGhost(phi_agar_, -1.);
+  VecScaleGhost(phi_free_, -1.);
+
   ierr = VecDestroy(mu_m);      CHKERRXX(ierr);
   ierr = VecDestroy(mu_p);      CHKERRXX(ierr);
   ierr = VecDestroy(diag_m);    CHKERRXX(ierr);
   ierr = VecDestroy(diag_p);    CHKERRXX(ierr);
   ierr = VecDestroy(rhs_tmp_m); CHKERRXX(ierr);
   ierr = VecDestroy(rhs_tmp_p); CHKERRXX(ierr);
-  ierr = VecDestroy(Cm_tmp);    CHKERRXX(ierr);
-  ierr = VecDestroy(Cp_tmp);    CHKERRXX(ierr);
-
-  compute_concentration_global();
 
   ierr = PetscLogEventEnd(log_my_p4est_biofilm_solve_concentration, 0, 0, 0, 0); CHKERRXX(ierr);
 }
