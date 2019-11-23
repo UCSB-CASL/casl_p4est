@@ -273,7 +273,7 @@ param_t<double> ifc_perturb_pow (pl, 2, "ifc_perturb_pow", "Order of level-set p
 //-------------------------------------
 // convergence study parameters
 //-------------------------------------
-param_t<int>    compute_cond_num       (pl, 0, "compute_cond_num", "Estimate L1-norm condition number");
+param_t<bool>    compute_cond_num       (pl, 0, "compute_cond_num", "Estimate L1-norm condition number");
 param_t<int>    extend_solution        (pl, 0, "extend_solution", "Extend solution after solving: 0 - no extension (pl, 1 - extend using normal derivatives (pl, 2 - extend using all derivatives");
 param_t<double> mask_thresh            (pl, 0, "mask_thresh", "Mask threshold for excluding points in convergence study");
 param_t<bool>   compute_grad_between   (pl, 0, "compute_grad_between", "Computes gradient between points if yes");
@@ -296,7 +296,7 @@ param_t<bool> save_matrix_ascii  (pl, 0, "save_matrix_ascii", "Save the matrix i
 param_t<bool> save_matrix_binary (pl, 0, "save_matrix_binary", "Save the matrix in BINARY MATLAB format");
 param_t<bool> save_convergence   (pl, 0, "save_convergence", "Save convergence results");
 
-param_t<int> n_example (pl, 25, "n_example", "Predefined example:\n"
+param_t<int> n_example (pl, 24, "n_example", "Predefined example:\n"
                                              "0 - no interfaces, no boudaries\n"
                                              "1 - sphere interior\n"
                                              "2 - sphere exterior\n"
@@ -2327,19 +2327,19 @@ int main (int argc, char* argv[])
   vector<double> cond_num_arr;
 
   // Start up a MATLAB Engine to calculate condidition number
-#ifdef MATLAB_PROVIDED
-  Engine *mengine = NULL;
-  if (mpi.rank() == 0 && compute_cond_num())
-  {
-    mengine = engOpen("matlab -nodisplay -nojvm");
-    if (mengine == NULL) throw std::runtime_error("Cannot start a MATLAB Engine session.\n");
-  }
-#else
-  if (compute_cond_num)
-  {
-    ierr = PetscPrintf(mpi.comm(), "[Warning]: MATLAB is either not provided or found. Condition numbers will not be computed. \n");
-  }
-#endif
+//#ifdef MATLAB_PROVIDED
+//  Engine *mengine = NULL;
+//  if (mpi.rank() == 0 && compute_cond_num())
+//  {
+//    mengine = engOpen("matlab -nodisplay -nojvm");
+//    if (mengine == NULL) throw std::runtime_error("Cannot start a MATLAB Engine session.\n");
+//  }
+//#else
+//  if (compute_cond_num)
+//  {
+//    ierr = PetscPrintf(mpi.comm(), "[Warning]: MATLAB is either not provided or found. Condition numbers will not be computed. \n");
+//  }
+//#endif
 
 
   parStopWatch w;
