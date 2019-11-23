@@ -578,8 +578,6 @@ void my_p4est_navier_stokes_t::set_velocities(Vec *vnm1_nodes, Vec *vn_nodes)
       ierr = VecDestroy(this->vn_nodes[dir]); CHKERRXX(ierr); }
     this->vn_nodes[dir]   = vn_nodes[dir];
 
-    // [ELYCE MODIFICATION: CHECK THIS TO MAKE SURE IT'S OKAY -- DOESN'T WORK, WILL REQUIRE FURTHER INVESTIGATION]
-    //if(sl_order == 2)
     if(this->vnm1_nodes[dir]!=NULL){
       ierr = VecDestroy(this->vnm1_nodes[dir]); CHKERRXX(ierr); }
     this->vnm1_nodes[dir] = vnm1_nodes[dir];

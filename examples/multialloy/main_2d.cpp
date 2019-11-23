@@ -952,6 +952,10 @@ int main (int argc, char* argv[])
 
   while (keep_going)
   {
+
+      PetscLogDouble mem;
+      PetscMemoryGetCurrentUsage(&mem);
+      PetscPrintf(mpi.comm(),"Memory usage is %g \n",mem);
     // check for time limit
     if (tn + mas.get_dt() > time_limit)
     {
