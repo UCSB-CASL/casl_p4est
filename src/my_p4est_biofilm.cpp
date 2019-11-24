@@ -447,7 +447,8 @@ void my_p4est_biofilm_t::solve_concentration()
   poisson_solver.set_kink_treatment(1);
   poisson_solver.set_enfornce_diag_scaling(1);
 
-  poisson_solver.set_nonlinear_term(1., *f_cf_, *fc_cf_);
+  poisson_solver.set_nonlinear_term(1., *f_cf_, *fc_cf_,
+                                    0., zero_f, zero_f);
   poisson_solver.set_solve_nonlinear_parameters(1, max_iterations_, tolerance_, 0);
   poisson_solver.solve_nonlinear(C_, true, true);
 
@@ -457,7 +458,7 @@ void my_p4est_biofilm_t::solve_concentration()
   tmp = Cb0_; Cb0_ = Cb1_; Cb1_ = tmp;
   tmp = Cf0_; Cf0_ = Cf1_; Cf1_ = tmp;
 
-  ierr = VecGetArray(C_, &C_ptr); CHKERRXX(ierr);
+  ierr = VecGetArray(C_,   &C_ptr);   CHKERRXX(ierr);
   ierr = VecGetArray(Ca0_, &Ca0_ptr); CHKERRXX(ierr);
   ierr = VecGetArray(Cb0_, &Cb0_ptr); CHKERRXX(ierr);
   ierr = VecGetArray(Cf0_, &Cf0_ptr); CHKERRXX(ierr);
@@ -472,11 +473,11 @@ void my_p4est_biofilm_t::solve_concentration()
   foreach_node(n, nodes_)
   {
     Cb0_ptr[n] = phi_biof_ptr[n] < 0 ? C_ptr[n] : Cb1_ptr[n];
-    Ca0_ptr[n] = phi_agar_ptr[n] > 0 ? C_ptr[n] : Ca1_ptr[n];
-    Cf0_ptr[n] = phi_free_ptr[n] > 0 ? C_ptr[n] : Cf1_ptr[n];
+    if (Da_ != 0) Ca0_ptr[n] = phi_agar_ptr[n] > 0 ? C_ptr[n] : Ca1_ptr[n];
+    if (Df_ != 0) Cf0_ptr[n] = phi_free_ptr[n] > 0 ? C_ptr[n] : Cf1_ptr[n];
   }
 
-  ierr = VecRestoreArray(C_, &C_ptr); CHKERRXX(ierr);
+  ierr = VecRestoreArray(C_,   &C_ptr);   CHKERRXX(ierr);
   ierr = VecRestoreArray(Ca0_, &Ca0_ptr); CHKERRXX(ierr);
   ierr = VecRestoreArray(Cb0_, &Cb0_ptr); CHKERRXX(ierr);
   ierr = VecRestoreArray(Cf0_, &Cf0_ptr); CHKERRXX(ierr);

@@ -32,25 +32,14 @@ class my_p4est_biofilm_t
 private:
   PetscErrorCode ierr;
 
-#ifdef P4_TO_P8
-  class zero_cf_t : public CF_3
+  class zero_f_t : public CF_1
   {
   public:
-    double operator()(double, double, double) const
+    double operator()(double) const
     {
       return 0;
     }
-  } zero_cf;
-#else
-  class zero_cf_t : public CF_2
-  {
-  public:
-    double operator()(double, double) const
-    {
-      return 0;
-    }
-  } zero_cf;
-#endif
+  } zero_f;
 
   /* grid */
   my_p4est_brick_t            *brick_;
