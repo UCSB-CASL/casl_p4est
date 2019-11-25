@@ -53,77 +53,42 @@ static int nx = 1; ADD_TO_LIST(pl, nx, "Number of trees in the x-direction");
 static int ny = 1; ADD_TO_LIST(pl, ny, "Number of trees in the y-direction");
 static int nz = 1; ADD_TO_LIST(pl, nz, "Number of trees in the z-direction");
 
-static bool px = 1; ADD_TO_LIST(pl, px, "Periodicity in the x-direction (0/1)");
-static bool py = 1; ADD_TO_LIST(pl, py, "Periodicity in the y-direction (0/1)");
-static bool pz = 1; ADD_TO_LIST(pl, pz, "Periodicity in the z-direction (0/1)");
+static bool px = 0; ADD_TO_LIST(pl, px, "Periodicity in the x-direction (0/1)");
+static bool py = 0; ADD_TO_LIST(pl, py, "Periodicity in the y-direction (0/1)");
+static bool pz = 0; ADD_TO_LIST(pl, pz, "Periodicity in the z-direction (0/1)");
 
 //-------------------------------------
 // refinement parameters
 //-------------------------------------
-static int lmin = 7;  ADD_TO_LIST(pl, lmin, "Min level of the tree");
-static int lmax = 10; ADD_TO_LIST(pl, lmax, "Max level of the tree");
-static int lip  = 2;  ADD_TO_LIST(pl, lip, "Refinement transition");
+static int lmin = 6; ADD_TO_LIST(pl, lmin, "Min level of the tree");
+static int lmax = 8; ADD_TO_LIST(pl, lmax, "Max level of the tree");
+static int lip  = 2; ADD_TO_LIST(pl, lip, "Refinement transition");
 
 //-------------------------------------
 // output parameters
 //-------------------------------------
-static bool save_vtk              = 1;  ADD_TO_LIST(pl, save_vtk, "Save vtk files (0/1)");
-static int  save_vtk_freq         = 10; ADD_TO_LIST(pl, save_vtk_freq, "Frequency of saving vtk files");
-static bool save_convergence      = 1;  ADD_TO_LIST(pl, save_convergence, "Save SCFT convergence into a file (0/1)");
-static int  save_convergence_freq = 1;  ADD_TO_LIST(pl, save_convergence_freq, "Frequency of saving convergence");
-static bool save_parameters       = 1;  ADD_TO_LIST(pl, save_parameters, "Save parameters into a file (0/1)");
+static bool save_energy      = 1;  ADD_TO_LIST(pl, save_energy, "Save effective energy into a file");
 
 //-------------------------------------
 // polymer parameters
 //-------------------------------------
-static double XN =  20; ADD_TO_LIST(pl, XN, "Interaction strength between A and B blocks");
-static double f  = .5;  ADD_TO_LIST(pl, f, "Fraction of A block in the polymer chain");
-static double ns =  51; ADD_TO_LIST(pl, ns, "Discretization of the polymer chain");
+static double XN      = 20;  ADD_TO_LIST(pl, XN, "Interaction strength between A and B blocks");
+static double gamma_a = 1.5; ADD_TO_LIST(pl, gamma_a, "Surface tension of A block");
+static double gamma_b = 0.5; ADD_TO_LIST(pl, gamma_b, "Surface tension of B block");
 
 //-------------------------------------
-// solver parameters
-//-------------------------------------
-static double scft_tol           = 1.0e-10; ADD_TO_LIST(pl, scft_tol, "SCFT convergence criterion");
-static int    max_iterations     = 1001;    ADD_TO_LIST(pl, max_iterations, "Total SCFT steps");
-static bool   smooth_pressure    = 1;       ADD_TO_LIST(pl, smooth_pressure, "Restart pressure field after the first adjustment of BCs");
-static bool   rerefine_at_start  = 1;       ADD_TO_LIST(pl, rerefine_at_start, "Re-refine gridin the beginning using a signed distance function");
-static bool   refine_only_inside = 1;       ADD_TO_LIST(pl, refine_only_inside, "Do not refine outside (0/1)");
-static double bc_tol             = 1.0e-2;  ADD_TO_LIST(pl, bc_tol, "Tolerance for adjusting boundary conditions");
-static int    bc_iters_min       = 5;       ADD_TO_LIST(pl, bc_iters_min, "Minimum iterations before adjusting BCs");
-
-//-------------------------------------
-// problem setup
-//-------------------------------------
-static double box_size            = 1; ADD_TO_LIST(pl, box_size, "Scalling of computational box");
-static int    geometry            = 0; ADD_TO_LIST(pl, geometry, "Problem geometry: \n"
-                                                          "    0 - rectangular periodic box with particles \n"
-                                                          "    1 - same as case 8, but different method used");
-
-// static double surface_energy_avg  = 0; ADD_TO_LIST(pl, surface_energy_avg, "Average strength of surface energy");
-// static double surface_energy_diff = 0; ADD_TO_LIST(pl, surface_energy_diff, "Difference in surface energy strengths of A and B blocks");
-
-//-------------------------------------
-// geometry
-//-------------------------------------
-static int num_surfaces = 1;
-static std::vector<mls_opn_t> action;
-static std::vector<CF_DIM *>  phi_all_cf; //'numerical field' (= level set function at every grid point)
-
-
 // number of particles
-int np = 3;
+//-------------------------------------
+int np = 5;
 
 
-void set_geometry();
-
-
+// constructs the 'analytical field'
 class construct_level_set : public CF_DIM
 {
 private:
   vector<double> xc;
   vector<double> yc;
   vector<double> R;
-
 
 public:
   construct_level_set(vector<double> xc_, vector<double> yc_, vector<double> R_){
@@ -140,7 +105,7 @@ public:
   double operator()(DIM(double x, double y, double z)) const
   {
     vector<double> phi_particles(np);
-    double current_max;
+    double current_max = 0;
 
     for(int j = 0; j < np; ++j){
       phi_particles[j] =  -(sqrt(SQR(x-(xc[j])) + SQR(y-(yc[j]))) - R[j]);
@@ -158,6 +123,68 @@ public:
 };
 
 
+class get_particle_number : public CF_DIM
+{
+private:
+  vector<double> xc;
+  vector<double> yc;
+  vector<double> R;
+
+public:
+  get_particle_number(vector<double> xc_, vector<double> yc_, vector<double> R_){
+    xc.resize(np); // to make sure that the vectors xc, yc and R are of size np
+    yc.resize(np);
+    R.resize(np);
+    for(int i = 0; i < np; ++i){
+      xc[i] = xc_[i];
+      yc[i] = yc_[i];
+      R[i] = R_[i];
+    }
+  }
+
+  double operator()(DIM(double x, double y, double z)) const
+  {
+    vector<double> phi_particles(np);
+    int particle_num;
+
+    for(int j = 0; j < np; ++j){
+      phi_particles[j] =  -(sqrt(SQR(x-(xc[j])) + SQR(y-(yc[j]))) - R[j]);
+    }
+
+    for(int k = 0; k < np; k++){
+      if (k == 0){
+        particle_num = 0;
+      }
+      else {
+        if(phi_particles[particle_num] < phi_particles[k]){
+          particle_num = k;
+        }
+      }
+    }
+
+    return particle_num;
+  }
+};
+
+
+class get_mu_minus : public CF_DIM {
+public:
+  double operator()(DIM(double x, double y, double z)) const
+  {
+    return 0.5*XN*sin(x+y);
+  }
+};
+
+
+class get_gamma_effective : public CF_DIM {
+public:
+  double operator()(DIM(double x, double y, double z)) const
+  {
+    return (0.5*(gamma_a+gamma_b) + (gamma_b-gamma_a)*(0.5*XN*sin(x+y))/XN);
+  }
+};
+
+
 int main(int argc, char** argv)
 {
   // prepare parallel enviroment
@@ -168,10 +195,6 @@ int main(int argc, char** argv)
   cmdParser cmd;
   pl.initialize_parser(cmd);
   cmd.parse(argc, argv);
-
-
- // geometry = cmd.get("geometry", geometry);
- // set_geometry();
   pl.get_all(cmd);
 
 
@@ -181,22 +204,42 @@ int main(int argc, char** argv)
 
 
   // ---------------------------------------------------------
-  // create the p4est
+  // create the p4est for the initial position of the particles
   // ---------------------------------------------------------
   double xyz_min[]  = { DIM(xmin, ymin, zmin) };
   double xyz_max[]  = { DIM(xmax, ymax, zmax) };
   int    nb_trees[] = { DIM(nx, ny, nz) };
   int    periodic[] = { DIM(px, py, pz) };
 
-  mls_eff_cf_t phi_eff_cf(phi_all_cf, action);
+  vector<double> xc(np);
+  vector<double> yc(np);
+  vector<double> radius(np, 0.15); // radius of particles
+
+  // create the initial position of particles
+  for (int i=0; i<np; ++i)
+  {
+    xc[i] = ((double)rand()/RAND_MAX)*(xmax - xmin) + xmin;
+    yc[i] = ((double)rand()/RAND_MAX)*(ymax - ymin) + ymin;
+  }
+
+  // create particle_level_set for initial position
+  construct_level_set particles(xc, yc, radius); //returns a double (=the max of n level-set functions for n particles)
+
+  // create get_particle_num for or initial position (creates a field, that shows number of closet particle)
+  get_particle_number particlenumber(xc, yc, radius);
+
+  // create the mu_minus field for initial position
+  get_mu_minus mu_minus;
+
+  // create the gamma_effective field for initial position
+  get_gamma_effective gamma_effective;
 
   my_p4est_brick_t      brick;
   p4est_connectivity_t *connectivity = my_p4est_brick_new(nb_trees, xyz_min, xyz_max, &brick, periodic);
   p4est_t              *p4est        = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
 
-  splitting_criteria_cf_t data(lmin, lmax, &phi_eff_cf, lip);
+  splitting_criteria_cf_t data(lmin, lmax, &particles, lip);
   data.set_refine_only_inside(true);
-
   p4est->user_pointer = (void*)(&data);
   for (int i = 0; i < lmax; ++i)
   {
@@ -207,76 +250,190 @@ int main(int argc, char** argv)
   p4est_ghost_t *ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
   p4est_nodes_t *nodes = my_p4est_nodes_new(p4est, ghost);
 
-  my_p4est_hierarchy_t *hierarchy = new my_p4est_hierarchy_t(p4est,ghost, &brick);
-  my_p4est_node_neighbors_t *ngbd = new my_p4est_node_neighbors_t(hierarchy,nodes);
-  ngbd->init_neighbors();
-
-
-
-  // ---------------------------------------------------------
-  // add particles
-  // ---------------------------------------------------------
-  vector<double> xc_init(np);
-  vector<double> yc_init(np);
-  vector<double> xc(np);
-  vector<double> yc(np);
-  vector<double> radius(np, 0.3); // radius of particles
-
   Vec particles_level_set; //'analytical field' (= level set function of every particle at time steps t_0 to t_max)
+  Vec particle_number;
+  Vec mu_minus_field;
+  Vec gamma_effective_field;
+
+  ierr = VecCreateGhostNodes(p4est, nodes, &particles_level_set); CHKERRXX(ierr);
+  sample_cf_on_nodes(p4est, nodes, particles, particles_level_set);
+
+  ierr = VecCreateGhostNodes(p4est, nodes, &particle_number); CHKERRXX(ierr);
+  sample_cf_on_nodes(p4est, nodes, particlenumber, particle_number);
+
+  ierr = VecCreateGhostNodes(p4est, nodes, &mu_minus_field); CHKERRXX(ierr);
+  sample_cf_on_nodes(p4est, nodes, mu_minus, mu_minus_field);
+
+  ierr = VecCreateGhostNodes(p4est, nodes, &gamma_effective_field); CHKERRXX(ierr);
+  sample_cf_on_nodes(p4est, nodes, gamma_effective, gamma_effective_field);
+
+  // calculate the energy (only for effective surface tension)
+  double energy_eff = integrate_over_interface(p4est, nodes, particles_level_set, gamma_effective_field);
 
 
-  xc_init = {0, 1, -1.5};
-  yc_init = {0, -1, -0.5};
+//  my_p4est_hierarchy_t *hierarchy = new my_p4est_hierarchy_t(p4est,ghost, &brick);
+//  my_p4est_node_neighbors_t *ngbd = new my_p4est_node_neighbors_t(hierarchy,nodes);
+//  ngbd->init_neighbors();
 
 
-//  for (int i=0; i<np; ++i)
-//  {
-//    srand (time(NULL));
+  // ---------------------------------------------------------
+  // write particle_level_set into file for initial position
+  // ---------------------------------------------------------
+  int step = 0;
+  const char *out_dir = getenv("OUT_DIR");
+  if (!out_dir) out_dir = ".";
+  else
+  {
+    std::ostringstream command;
+    command << "mkdir -p " << out_dir;
+    int ret_sys = system(command.str().c_str());
+    if (ret_sys<0) throw std::invalid_argument("could not create OUT_DIR directory");
+  }
 
-//    xc_init[i] = ((double)rand()/RAND_MAX)*(xmax - xmin) + xmin;
-//    yc_init[i] = ((double)rand()/RAND_MAX)*(ymax - ymin) + ymin;
-//  }
+  std::ostringstream oss;
+  oss << out_dir
+      << "/vtu/scft_"
+      << p4est->mpisize
+      << "_" << step;
 
+  FILE *file_energy;
+  char file_energy_name[1000];
+  if (save_energy)
+  {
+    sprintf(file_energy_name, "%s/convergence.dat", out_dir);
+
+    ierr = PetscFOpen(mpi.comm(), file_energy_name, "w", &file_energy); CHKERRXX(ierr);
+    ierr = PetscFPrintf(mpi.comm(), file_energy, "effective energy\n"); CHKERRXX(ierr);
+    ierr = PetscFClose(mpi.comm(), file_energy); CHKERRXX(ierr);
+  }
+
+  double *particles_level_set_p;
+  double *particle_number_p;
+  double *mu_minus_p;
+  double *gamma_effective_p;
+
+  ierr = VecGetArray(particles_level_set, &particles_level_set_p); CHKERRXX(ierr);
+  ierr = VecGetArray(particle_number, &particle_number_p); CHKERRXX(ierr);
+  ierr = VecGetArray(mu_minus_field, &mu_minus_p); CHKERRXX(ierr);
+  ierr = VecGetArray(gamma_effective_field, &gamma_effective_p); CHKERRXX(ierr);
+
+  my_p4est_vtk_write_all(p4est, nodes, ghost,
+                         P4EST_TRUE, P4EST_TRUE,
+                         4, 0, oss.str().c_str(),
+                         VTK_POINT_DATA, "phi", particles_level_set_p,
+                         VTK_POINT_DATA, "particle_number", particle_number_p,
+                         VTK_POINT_DATA, "mu_minus", mu_minus_p,
+                         VTK_POINT_DATA, "gamma_effective", gamma_effective_p);
+
+  ierr = VecRestoreArray(particles_level_set, &particles_level_set_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(particle_number, &particle_number_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(mu_minus_field, &mu_minus_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(gamma_effective_field, &gamma_effective_p); CHKERRXX(ierr);
+
+  // destroy particle_level_set
+  ierr = VecDestroy(particles_level_set); CHKERRXX(ierr);
+  ierr = VecDestroy(particle_number); CHKERRXX(ierr);
+  ierr = VecDestroy(mu_minus_field); CHKERRXX(ierr);
+  ierr = VecDestroy(gamma_effective_field); CHKERRXX(ierr);
+
+
+  // ---------------------------------------------------------
+  // add velocity of particles
+  // ---------------------------------------------------------
 
   double t = 0;
   double t_max = 1;
-  double delta_t = 0.1;
-  int step = 0;
+  double delta_t = 0.0;
+  double energy_eff_t;
+
   while (t < t_max)
   {
-    // initial position of particles
-    if(t == 0)
-    {
-      for(int k = 0; k < np; ++k)
-      {
-        xc[k] = xc_init[k];
-        yc[k] = yc_init[k];
-      }
-    }
-    else
-    {
-      // calculate velocity
-      vector<double> vx (np, 0.5);
-      vector<double> vy (np, 0.5);
+    // ---------------------------------------------------------
+    // calculate velocity
+    // ---------------------------------------------------------
 
-      // move particles and create new levelset
-      for (int j = 0; j < np; ++j)
-      {
-        xc[j] = xc[j] + vx[j]*delta_t;
-        yc[j] = yc[j] + vy[j]*delta_t;
-      }
+    // diagonal particle movement
+//    vector<double> vx (np, 0.5);
+//    vector<double> vy (np, 0.5);
+
+    // random particle velocity
+    vector<double> vx(np);
+    vector<double> vy(np);
+    for (int j = 0; j < np; ++j)
+    {
+      vx[j] = 2.*((double)rand()/RAND_MAX)-1.;
+      vy[j] = 2.*((double)rand()/RAND_MAX)-1.;
     }
 
+    // find the maximum velocity
+    double vx_max;
+    double vy_max;
+    double v_max;
+
+    for(int i = 0; i < np; ++i){
+      if(i == 0){
+        vx_max = vx[0];
+        vy_max = vy[0];
+      }
+      else{
+        if(vx_max < vx[i]){
+          vx_max = vx[i];
+        }
+        if(vy_max < vy[i]){
+          vy_max = vy[i];
+        }
+      }
+    }
+    v_max = max(vx_max, vy_max);
+
+    // move particles and create new levelset
+    for (int j = 0; j < np; ++j)
+    {
+      xc[j] = xc[j] - vx[j]*delta_t;
+      yc[j] = yc[j] - vy[j]*delta_t;
+    }
 
     // create particle_level_set and sample
-    construct_level_set particles(xc, yc, radius); //returns a double (=the max of n level-set functions for n particles)
-//    phi_all_cf.push_back(&particles);
+    construct_level_set particles_t(xc, yc, radius);
+
+    // create get_particle_num (creates a field, that shows number of closet particle)
+    get_particle_number particlenumber_t(xc, yc, radius);
+
+    // create the mu_minus field
+    get_mu_minus mu_minus_t;
+
+    // create the gamma_effective field
+    get_gamma_effective gamma_effective_t;
+
+    my_p4est_brick_t      brick;
+    p4est_connectivity_t *connectivity = my_p4est_brick_new(nb_trees, xyz_min, xyz_max, &brick, periodic);
+    p4est_t              *p4est        = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
+
+    splitting_criteria_cf_t data(lmin, lmax, &particles_t, lip);
+    data.set_refine_only_inside(true);
+    p4est->user_pointer = (void*)(&data);
+
+    // set P4EST_TRUE, because interface is moving (need to refine and partition the grid)
+    my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
+    my_p4est_partition(p4est, P4EST_TRUE, NULL);
+
+    p4est_ghost_t *ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
+    p4est_nodes_t *nodes = my_p4est_nodes_new(p4est, ghost);
 
     ierr = VecCreateGhostNodes(p4est, nodes, &particles_level_set); CHKERRXX(ierr);
-//    for (short i = 0; i < num_surfaces; i++)
-//    {
-    sample_cf_on_nodes(p4est, nodes, particles, particles_level_set);
-//    }
+    sample_cf_on_nodes(p4est, nodes, particles_t, particles_level_set);
+
+    ierr = VecCreateGhostNodes(p4est, nodes, &particle_number); CHKERRXX(ierr);
+    sample_cf_on_nodes(p4est, nodes, particlenumber_t, particle_number);
+
+    ierr = VecCreateGhostNodes(p4est, nodes, &mu_minus_field); CHKERRXX(ierr);
+    sample_cf_on_nodes(p4est, nodes, mu_minus_t, mu_minus_field);
+
+    ierr = VecCreateGhostNodes(p4est, nodes, &gamma_effective_field); CHKERRXX(ierr);
+    sample_cf_on_nodes(p4est, nodes, gamma_effective_t, gamma_effective_field);
+
+    // calculate the energy (only for effective surface tension)
+    energy_eff_t = integrate_over_interface(p4est, nodes, particles_level_set, gamma_effective_field);
 
 
     // write particle_level_set into file
@@ -294,27 +451,75 @@ int main(int argc, char** argv)
     oss << out_dir
         << "/vtu/scft_"
         << p4est->mpisize
-        << "_" << step;
+        << "_" << step+1;
 
     double *particles_level_set_p;
+    double *particle_number_p;
+    double *mu_minus_p;
+    double *gamma_effective_p;
 
     ierr = VecGetArray(particles_level_set, &particles_level_set_p); CHKERRXX(ierr);
+    ierr = VecGetArray(particle_number, &particle_number_p); CHKERRXX(ierr);
+    ierr = VecGetArray(mu_minus_field, &mu_minus_p); CHKERRXX(ierr);
+    ierr = VecGetArray(gamma_effective_field, &gamma_effective_p); CHKERRXX(ierr);
+
 
     my_p4est_vtk_write_all(p4est, nodes, ghost,
                            P4EST_TRUE, P4EST_TRUE,
-                           1, 0, oss.str().c_str(),
-                           VTK_POINT_DATA, "phi", particles_level_set_p);
+                           4, 0, oss.str().c_str(),
+                           VTK_POINT_DATA, "phi", particles_level_set_p,
+                           VTK_POINT_DATA, "particle_number", particle_number_p,
+                           VTK_POINT_DATA, "mu_minus", mu_minus_p,
+                           VTK_POINT_DATA, "gamma_effective", gamma_effective_p);
 
     ierr = VecRestoreArray(particles_level_set, &particles_level_set_p); CHKERRXX(ierr);
-
+    ierr = VecRestoreArray(particle_number, &particle_number_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(mu_minus_field, &mu_minus_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(gamma_effective_field, &gamma_effective_p); CHKERRXX(ierr);
 
     // destroy particle_level_set
     ierr = VecDestroy(particles_level_set); CHKERRXX(ierr);
+    ierr = VecDestroy(particle_number); CHKERRXX(ierr);
+    ierr = VecDestroy(mu_minus_field); CHKERRXX(ierr);
+    ierr = VecDestroy(gamma_effective_field); CHKERRXX(ierr);
+
+    // write data to disk
+    if (save_energy)
+    {
+      ierr = PetscFOpen(mpi.comm(), file_energy_name, "a", &file_energy); CHKERRXX(ierr);
+      PetscFPrintf(mpi.comm(), file_energy, "%d %f\n", step, energy_eff_t);
+      ierr = PetscFClose(mpi.comm(), file_energy); CHKERRXX(ierr);
+    }
+
+    double dxyz[P4EST_DIM]; // dimensions of the smallest quadrants
+    double dxyz_min;        // minimum side length of the smallest quadrants
+    double diag_min;        // diagonal length of the smallest quadrants
+    get_dxyz_min(p4est, dxyz, dxyz_min, diag_min);
 
 
+    ierr = PetscPrintf(mpi.comm(), "The maximum velocity is: v_max=%g\n", v_max); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "The smallest grid diagonal is: diag_min=%g\n", diag_min); CHKERRXX(ierr);
+
+
+    double CFL = 0.5;
+    delta_t = diag_min*CFL/(v_max);
     t+=delta_t;
+
     step++;
+    ierr = PetscPrintf(mpi.comm(), "iteration number=%d\n", step); CHKERRXX(ierr);
+
+    // CRITERION FOR SAFETY
+    if(step == 100)
+    {
+      t = 1.1;
+    }
+
+    p4est_nodes_destroy (nodes);
+    p4est_ghost_destroy(ghost);
+    p4est_destroy (p4est);
+    my_p4est_brick_destroy(connectivity, &brick);
   }
+
 
 
 
@@ -461,11 +666,8 @@ int main(int argc, char** argv)
   // ---------------------------------------------------------
   // clean-up memory
   // ---------------------------------------------------------
-
-
-
-  delete ngbd;
-  delete hierarchy;
+//  delete ngbd;
+//  delete hierarchy;
   p4est_nodes_destroy (nodes);
   p4est_ghost_destroy(ghost);
   p4est_destroy (p4est);
