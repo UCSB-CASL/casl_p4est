@@ -5,6 +5,7 @@
  * Date Created: 11-27-2019
  */
 
+//#define P4_TO_P8
 
 #ifndef P4_TO_P8
 #include <src/my_p4est_utils.h>
@@ -75,7 +76,7 @@ DEFINE_PARAMETER(pl,int,method_,1,"Timestepping method. 1 = Backward Euler, 2= C
 DEFINE_PARAMETER(pl,int,lmin,4,"Minimum level of refinement (default: 4)");
 DEFINE_PARAMETER(pl,int,lmax,4,"Maximum level of refinement (default: 6)");
 DEFINE_PARAMETER(pl,double,lip,1.5,"Lipschitz constant (default: 1.5)");
-DEFINE_PARAMETER(pl,int,num_splits,0,"Number of splits -- used for convergence analysis (default: 0)");
+DEFINE_PARAMETER(pl,int,num_splits,4,"Number of splits -- used for convergence analysis (default: 0)");
 
 // Problem geometry:
 DEFINE_PARAMETER(pl,double,xmin,0.0,"");
@@ -139,13 +140,15 @@ double Tmax_allowed = 300.;
 void set_geometry(){
   switch(example_){
   case FRANK_SPHERE:
-         xmin = -5.0; ymin = -5.0; CODE2D(zmin = 0.0); CODE3D(zmin = 0.0);
-         xmax = 5.0; ymax = 5.0; CODE2D(zmax = 0.0); CODE3D(zmax = 1.0);
+         CODE2D(xmin = -5.0;ymin = -5.0; zmin = 0.0;
+                xmax = 5.0; ymax = 5.0; zmax = 0.0;)
+         CODE3D(xmin = -5.0;ymin = -5.0; zmin = -5.0;
+                xmax = 5.0; ymax = 5.0; zmax = 5.0;)
 
          nx = 1; ny = 1; CODE2D(nz = 0); CODE3D(nz = 1);
          px = 0; py = 0; pz = 0;
 
-         s0 = 1.56;
+         s0 = 1.5621;
          T_inf = -0.5;
 
          Tinterface = 0.0;
@@ -377,7 +380,7 @@ public:
     ny_interp.set_input(normal.vec[1],linear);
     CODE3D(nz_interp.set_input(normal.vec[2],linear));
   }
-  double operator()(double x, double y) const
+  double operator()(DIM(double x, double y,double z)) const
   {
     // Initialize necessary variables for different cases -- r and sval are used to evaluate frank sphere analytical solution
     double r;
@@ -507,7 +510,7 @@ public:
 // --------------------------------------------------------------------------------------------------------------
 // Functions for checking the values of interest during the solution process
 // --------------------------------------------------------------------------------------------------------------
-void check_T_values(vec_and_ptr_t phi, vec_and_ptr_t T, p4est_nodes* nodes, p4est_t* p4est) {
+void check_T_values(vec_and_ptr_t phi, vec_and_ptr_t T, p4est_nodes_t* nodes, p4est_t* p4est) {
   T.get_array();
   phi.get_array();
 
@@ -564,7 +567,7 @@ void check_T_values(vec_and_ptr_t phi, vec_and_ptr_t T, p4est_nodes* nodes, p4es
   phi.restore_array();
 }
 
-void check_T_d_values(vec_and_ptr_t phi, vec_and_ptr_dim_t dT, p4est_nodes* nodes, p4est_t* p4est, bool get_location){
+void check_T_d_values(vec_and_ptr_t phi, vec_and_ptr_dim_t dT, p4est_nodes_t* nodes, p4est_t* p4est, bool get_location){
   dT.get_array();
   phi.get_array();
 
@@ -637,7 +640,7 @@ void check_T_d_values(vec_and_ptr_t phi, vec_and_ptr_dim_t dT, p4est_nodes* node
   phi.restore_array();
 }
 
-void check_vel_values(vec_and_ptr_t phi, vec_and_ptr_dim_t vel, p4est_nodes* nodes, p4est_t* p4est, bool get_location,double dxyz_close_to_interface){
+void check_vel_values(vec_and_ptr_t phi, vec_and_ptr_dim_t vel, p4est_nodes_t* nodes, p4est_t* p4est, bool get_location,double dxyz_close_to_interface){
   vel.get_array();
   phi.get_array();
 
@@ -1749,8 +1752,8 @@ int main(int argc, char** argv) {
           BC_interface_value bc_interface_val(ngbd_np1,normal,curvature);
 
           // Add the appropriate interfaces and interfacial boundary conditions:
-          solver_Tl->add_boundary(MLS_INTERSECTION,phi.vec,phi_dd.vec[0],phi_dd.vec[1],interface_bc_type_temp,bc_interface_val,bc_interface_coeff);
-          solver_Ts->add_boundary(MLS_INTERSECTION,phi_solid.vec,phi_solid_dd.vec[0],phi_solid_dd.vec[1],interface_bc_type_temp,bc_interface_val,bc_interface_coeff);
+          solver_Tl->add_boundary(MLS_INTERSECTION,phi.vec,DIM(phi_dd.vec[0],phi_dd.vec[1],phi_dd.vec[2]),interface_bc_type_temp,bc_interface_val,bc_interface_coeff);
+          solver_Ts->add_boundary(MLS_INTERSECTION,phi_solid.vec,DIM(phi_solid_dd.vec[0],phi_solid_dd.vec[1],phi_solid_dd.vec[2]),interface_bc_type_temp,bc_interface_val,bc_interface_coeff);
 
 
           // Set diagonal for Tl:
@@ -1774,9 +1777,9 @@ int main(int argc, char** argv) {
           solver_Ts->set_rhs(rhs_Ts.vec);
 
           // Set some other solver properties:
-          solver_Tl->set_integration_order(1);
-          solver_Tl->set_use_sc_scheme(0);
-          solver_Tl->set_cube_refinement(cube_refinement);
+          solver_Tl->set_integration_order(1); // For Dirichlet/Neumann/Robin
+          solver_Tl->set_use_sc_scheme(0); // For Neumann/Robin
+          solver_Tl->set_cube_refinement(cube_refinement); // For Neumann/Robin
           solver_Tl->set_store_finite_volumes(0);
 
           solver_Ts->set_integration_order(1);
@@ -1798,12 +1801,10 @@ int main(int argc, char** argv) {
 
           // Solve the system:
           solver_Tl->solve(T_l_np1.vec);
-          PetscPrintf(mpi.comm(),"Solved Tl \n");
-          MPI_Barrier(mpi.comm());
+          if(print_checkpoints) PetscPrintf(mpi.comm(),"Solved Tl \n");
 
           solver_Ts->solve(T_s_np1.vec);
-          PetscPrintf(mpi.comm(),"Solved Ts \n");
-          MPI_Barrier(mpi.comm());
+          if(print_checkpoints) PetscPrintf(mpi.comm(),"Solved Ts \n");
 
           // Destroy the T_n values now and update them with the solution for the next timestep:
           T_l_n.destroy(); T_s_n.destroy();
