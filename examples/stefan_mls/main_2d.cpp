@@ -73,10 +73,10 @@ bool print_checkpoints = true;
 DEFINE_PARAMETER(pl,int,method_,1,"Timestepping method. 1 = Backward Euler, 2= Crank-Nicholson. (default: 1)");
 
 // Grid parameters
-DEFINE_PARAMETER(pl,int,lmin,4,"Minimum level of refinement (default: 4)");
-DEFINE_PARAMETER(pl,int,lmax,4,"Maximum level of refinement (default: 6)");
+DEFINE_PARAMETER(pl,int,lmin,5,"Minimum level of refinement (default: 4)");
+DEFINE_PARAMETER(pl,int,lmax,7,"Maximum level of refinement (default: 6)");
 DEFINE_PARAMETER(pl,double,lip,1.5,"Lipschitz constant (default: 1.5)");
-DEFINE_PARAMETER(pl,int,num_splits,4,"Number of splits -- used for convergence analysis (default: 0)");
+DEFINE_PARAMETER(pl,int,num_splits,0,"Number of splits -- used for convergence analysis (default: 0)");
 
 // Problem geometry:
 DEFINE_PARAMETER(pl,double,xmin,0.0,"");
@@ -101,7 +101,7 @@ DEFINE_PARAMETER(pl,double,tstart,0.0,"Simulation start time (default: 0.0)");
 DEFINE_PARAMETER(pl,double,tfinal,1.0,"Simulation end time (default: 1.0)");
 
 // Solution stability:
-DEFINE_PARAMETER(pl,double,cfl,0.5,"CFL number to enforce for timestepping (default: 0.5)");
+DEFINE_PARAMETER(pl,double,cfl,0.5,"CFL number to enforce for timestepping (default: 0.25)");
 DEFINE_PARAMETER(pl,double,v_interface_max_allowed,500.0,"Maximum interfacial velocity allowed -- will abort if interface value exceeds this (default: 500.0");
 DEFINE_PARAMETER(pl,double,dt_max_allowed,1.0,"Maximum allowable timestep -- if timestep exceeds this, it will be set to this value instead (default 1.0)");
 
@@ -148,7 +148,8 @@ void set_geometry(){
          nx = 1; ny = 1; CODE2D(nz = 0); CODE3D(nz = 1);
          px = 0; py = 0; pz = 0;
 
-         s0 = 1.5621;
+         CODE2D(s0 = 1.5621;)
+         CODE3D(s0 = 2.0760;)
          T_inf = -0.5;
 
          Tinterface = 0.0;
@@ -179,7 +180,7 @@ void simulation_time_info(){
       tfinal = 1.3;
 
       delta_t = 0.01;
-      dt_max_allowed = 0.1;
+      dt_max_allowed = 0.05;
 
       break;
     case ICE_MELT:
@@ -236,8 +237,6 @@ bool check_derivative_values = false;// Whether or not you want to print out tem
 bool check_interfacial_velocity = true; // Whether or not you want to print out interfacial velocity value averages during various steps of the solution process -- for debugging
 
 bool save_temperature_derivative_fields = false; // saving temperature derivative fields to vtk or not
-
-bool force_interfacial_velocity_to_zero = true;
 
 // Begin defining classes for necessary functions and boundary conditions...
 // --------------------------------------------------------------------------------------------------------------
@@ -310,8 +309,10 @@ double E1(double x)
 
 
 double F(double s){
+
   double z = SQR(s)/4.0;
-  return E1(z);
+  CODE2D(return E1(z);)
+  CODE3D(return (1./s)*exp(-1.*z) - 0.5*sqrt(PI)*erfc(0.5*s));
 }
 
 double dF(double s){
@@ -336,7 +337,7 @@ public:
   {
      switch (example_){
       case FRANK_SPHERE:
-        return s0 - sqrt(SQR(x) + SQR(y));
+        return s0 - sqrt(SQR(x) + SQR(y) CODE3D(+ SQR(z)));
 
       case ICE_MELT:
         break;
@@ -444,6 +445,21 @@ public:
   }
 } yupper_wall;
 
+struct ZLOWER_WALL : CF_DIM {
+public:
+  double operator() (DIM(double x, double y, double z)) const
+  {
+    CODE3D(return (fabs(z - zmin) < EPS));
+  }
+} zlower_wall;
+
+struct ZUPPER_WALL : CF_DIM {
+public:
+  double operator() (DIM(double x, double y, double z)) const
+  {
+    CODE3D(return (fabs(z - zmax) < EPS));
+  }
+} zupper_wall;
 // --------------------------------------------------------------------------------------------------------------
 // Wall temperature boundary conditions
 // --------------------------------------------------------------------------------------------------------------
@@ -467,9 +483,12 @@ public:
   {
     switch(example_){
       case FRANK_SPHERE:{
-        if (xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z))){
+        if (xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)) CODE3D(|| zlower_wall(DIM(x,y,z)) || zupper_wall(DIM(x,y,z)))){
             if (level_set(DIM(x,y,z)) < EPS){
-                return Twall;
+                //return Twall;
+                double r = sqrt(SQR(x) + SQR(y) CODE3D(+ SQR(z)));
+                double sval = s(r,tn+dt);
+                return frank_sphere_solution_t(sval);
               }
             else{
                 return Tinterface;
@@ -497,7 +516,7 @@ public:
     double Tsloped;
     switch(example_){
     case FRANK_SPHERE:{
-        r = sqrt(SQR(x) + SQR(y));
+        r = sqrt(SQR(x) + SQR(y) CODE3D(+ SQR(z)));
         sval = s(r,tn);
         return frank_sphere_solution_t(sval);
 //        if(r>=s0)return frank_sphere_solution_t(sval);
@@ -793,7 +812,7 @@ void check_frank_sphere_error(vec_and_ptr_t T_l, vec_and_ptr_t T_s, vec_and_ptr_
   foreach_local_node(n,nodes){
     node_xyz_fr_n(n,p4est,nodes,xyz);
 
-    r = sqrt(SQR(xyz[0]) + SQR(xyz[1]));
+    r = sqrt(SQR(xyz[0]) + SQR(xyz[1]) CODE3D(+ SQR(xyz[2])));
     s = r/sqrt(tn+dt);
 
     double phi_exact = s0*sqrt(tn+dt) - r;
@@ -807,7 +826,7 @@ void check_frank_sphere_error(vec_and_ptr_t T_l, vec_and_ptr_t T_s, vec_and_ptr_
       Linf_phi = max(Linf_phi,phi_error); // CHECK THIS -- NOT ENTIRELY SURE THIS IS CORRECT
 
       // Errors on v_int:
-      vel = sqrt(SQR(v_interface.ptr[0][n])+ SQR(v_interface.ptr[1][n]));
+      vel = sqrt(SQR(v_interface.ptr[0][n])+ SQR(v_interface.ptr[1][n]) CODE3D(+ SQR(v_interface.ptr[2][n])));
       v_int_error = fabs(vel - v_exact);
       Linf_v_int = max(Linf_v_int,v_int_error);
       }
@@ -835,13 +854,13 @@ void check_frank_sphere_error(vec_and_ptr_t T_l, vec_and_ptr_t T_s, vec_and_ptr_
 
   // Print Errors to application output:
   PetscPrintf(p4est->mpicomm,"\n----------------\n Errors on frank sphere: \n --------------- \n");
-  PetscPrintf(p4est->mpicomm,"dxyz close to interface: %0.2f \n",dxyz_close_to_interface);
+  PetscPrintf(p4est->mpicomm,"dxyz close to interface: %0.3e \n",dxyz_close_to_interface);
 
   int num_nodes = nodes->indep_nodes.elem_count;
   PetscPrintf(p4est->mpicomm,"Number of grid points used: %d \n \n", num_nodes);
 
 
-  PetscPrintf(p4est->mpicomm," Linf on phi: %0.4f \n Linf on T_l: %0.4f \n Linf on T_s: %0.4f \n Linf on v_int: %0.4f \n", global_Linf_errors[0],global_Linf_errors[1],global_Linf_errors[2],global_Linf_errors[3]);
+  PetscPrintf(p4est->mpicomm," Linf on phi: %0.3e \n Linf on T_l: %0.3e \n Linf on T_s: %0.3e \n Linf on v_int: %0.3e \n", global_Linf_errors[0],global_Linf_errors[1],global_Linf_errors[2],global_Linf_errors[3]);
 
   // Print errors to file:
   ierr = PetscFOpen(p4est->mpicomm,name,"a",&fich);CHKERRXX(ierr);
@@ -1117,7 +1136,7 @@ void compute_curvature(vec_and_ptr_t phi,vec_and_ptr_dim_t normal,vec_and_ptr_t 
 // --------------------------------------------------------------------------------------------------------------
 // FUNCTION FOR SAVING INFO:
 // --------------------------------------------------------------------------------------------------------------
-void save_stefan_fields(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,vec_and_ptr_t phi,vec_and_ptr_t Tl,vec_and_ptr_t Ts,vec_and_ptr_dim_t v_int, vec_and_ptr_t T_error, char* filename ){
+void save_stefan_fields(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,vec_and_ptr_t phi,vec_and_ptr_t Tl,vec_and_ptr_t Ts,vec_and_ptr_dim_t v_int, vec_and_ptr_t T_error, vec_and_ptr_t T_ana, char* filename ){
   // Things we want to save:
   /*
    * LSF
@@ -1139,13 +1158,14 @@ void save_stefan_fields(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *gho
     Tl.get_array(); Ts.get_array();
     v_int.get_array();
     T_error.get_array();
+    T_ana.get_array();
 
     // Save data:
     std::vector<std::string> point_names;
     std::vector<double*> point_data;
 
-    point_names = {"phi","Tl","Ts","v_int_x","v_int_y","T_error" ,ZCODE("v_int_z")};
-    point_data = {phi.ptr,Tl.ptr,Ts.ptr,v_int.ptr[0],v_int.ptr[1],T_error.ptr,ZCODE(v_int.ptr[2])};
+    point_names = {"phi","Tl","Ts","v_int_x","v_int_y","T_error" ,"T_analytical",ZCODE("v_int_z")};
+    point_data = {phi.ptr,Tl.ptr,Ts.ptr,v_int.ptr[0],v_int.ptr[1],T_error.ptr,T_ana.ptr,ZCODE(v_int.ptr[2])};
     std::vector<std::string> cell_names;
     std::vector<double*> cell_data;
 
@@ -1158,6 +1178,7 @@ void save_stefan_fields(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *gho
     Tl.restore_array(); Ts.restore_array();
     v_int.restore_array();
     T_error.restore_array();
+    T_ana.restore_array();
 
     // Scale things back:
     foreach_dimension(d){
@@ -1375,7 +1396,9 @@ int main(int argc, char** argv) {
           throw std::invalid_argument("You need to set the environment variable OUT_DIR_VTK to save vtk files\n");
       }
 
-      sprintf(name,"%s/frank_sphere_error_lmin_%d_lmax_%d_method_%d.dat",outdir_err,lmin+grid_res_iter,lmax + grid_res_iter,method_);
+      CODE2D(sprintf(name,"%s/frank_sphere_error_2d_lmin_%d_lmax_%d_method_%d.dat",outdir_err,lmin+grid_res_iter,lmax + grid_res_iter,method_);)
+      CODE3D(sprintf(name,"%s/frank_sphere_error_3d_lmin_%d_lmax_%d_method_%d.dat",outdir_err,lmin+grid_res_iter,lmax + grid_res_iter,method_);)
+
       ierr = PetscFOpen(mpi.comm(),name,"w",&fich); CHKERRXX(ierr);
       ierr = PetscFPrintf(mpi.comm(),fich,"time " "timestep " "iteration " "phi_error " "T_l_error " "T_s_error " "v_int_error " "number_of_nodes" "min_grid_size \n");CHKERRXX(ierr);
       ierr = PetscFClose(mpi.comm(),fich); CHKERRXX(ierr);
@@ -1442,7 +1465,7 @@ int main(int argc, char** argv) {
           }
 
         // --------------------------------------------------------------------------------------------------------------
-        // Extend Fields Across Interface:
+        // STEP 1.1: Extend Fields Across Interface:
         // --------------------------------------------------------------------------------------------------------------
         // Define LSF for the solid domain (as just the negative of the liquid one):
 
@@ -1532,21 +1555,9 @@ int main(int argc, char** argv) {
           char output[1000];
           out_idx++;
           sprintf(output,"%s/snapshot%d",outdir_vtk,out_idx);
-          save_stefan_fields(p4est,nodes,ghost,phi,T_l_n,T_s_n,v_interface,T_error,output);
+          save_stefan_fields(p4est,nodes,ghost,phi,T_l_n,T_s_n,v_interface,T_error,T_ana,output);
           T_ana.destroy();
           T_error.destroy();
-
-  /*
-          sprintf(output,"%s/snapshot_analytical%d",outdir_vtk,out_idx);
-          vec_and_ptr_t T_ana;
-          T_ana.create(p4est,nodes);
-          sample_cf_on_nodes(p4est,nodes,IC_temp,T_ana.vec);
-          T_ana.get_array();
-          my_p4est_vtk_write_all(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,1,0,output,
-                                 VTK_POINT_DATA,"T_analytical",T_ana.ptr);
-          T_ana.restore_array();
-  */
-
 
           if(print_checkpoints) PetscPrintf(mpi.comm(),"Successfully saved to vtk \n");
           }
@@ -1555,7 +1566,7 @@ int main(int argc, char** argv) {
         PetscMemoryGetCurrentUsage(&mem3);
 
         // --------------------------------------------------------------------------------------------------------------
-        // Compute the jump in flux across the interface to use to advance the LSF (if solving Stefan:
+        // STEP 1.2: Compute the jump in flux across the interface to use to advance the LSF:
         // --------------------------------------------------------------------------------------------------------------
         // Get the first derivatives to compute the jump
         T_l_d.create(p4est,nodes); T_s_d.create(T_l_d.vec);
@@ -1594,7 +1605,7 @@ int main(int argc, char** argv) {
         PetscLogDouble mem5;
         PetscMemoryGetCurrentUsage(&mem5);
         // --------------------------------------------------------------------------------------------------------------
-        // Advance the LSF/Update the grid :
+        // STEP 2.1/STEP 2.2: Advance the LSF/Update the grid :
         // --------------------------------------------------------------------------------------------------------------
         // We advect the LSF and update the grid according to the LSF
 
@@ -1629,8 +1640,10 @@ int main(int argc, char** argv) {
 
         PetscLogDouble mem6;
         PetscMemoryGetCurrentUsage(&mem6);
+        // --------------------------------------------------------------------------------------------------------------
+        // STEP 2.3: Reinitialize the LSF on the new grid
+        // --------------------------------------------------------------------------------------------------------------
 
-        // Reinitialize the LSF on the new grid: -- NOT SURE IF WE NEED TO DO THIS EVERY TIME IF JUST NS AND NOTHING ELSE
         my_p4est_level_set_t ls_new(ngbd_np1);
         ls_new.reinitialize_1st_order_time_2nd_order_space(phi.vec, 50);
         ls_new.perturb_level_set_function(phi.vec,EPS);
@@ -1638,7 +1651,7 @@ int main(int argc, char** argv) {
         PetscLogDouble mem7;
         PetscMemoryGetCurrentUsage(&mem7);
         // --------------------------------------------------------------------------------------------------------------
-        // Interpolate Values onto New Grid:
+        // STEP 2.4: Interpolate Values onto New Grid:
         // -------------------------------------------------------------------------------------------------------------
         // Create vectors to hold new values:
 
@@ -1706,7 +1719,7 @@ int main(int argc, char** argv) {
         PetscLogDouble mem9;
         PetscMemoryGetCurrentUsage(&mem9);
         // --------------------------------------------------------------------------------------------------------------
-        // Poisson Problem at Nodes: Setup and solve a Poisson problem on both the liquid and solidified subdomains
+        // STEP 3: Poisson Problem at Nodes: Setup and solve a Poisson problem on both the liquid and solidified subdomains
         // --------------------------------------------------------------------------------------------------------------
         // Get most updated derivatives of the LSF's (on current grid) -- Solver uses these:
         // ------------------------------------------------------------
@@ -1731,7 +1744,7 @@ int main(int argc, char** argv) {
             }
 
           // ------------------------------------------------------------
-          // Setup RHS:
+          // STEP 3.1: Setup RHS:
           // ------------------------------------------------------------
           // Create arrays to hold the RHS:
           rhs_Tl.create(p4est_np1,nodes_np1);
@@ -1743,7 +1756,7 @@ int main(int argc, char** argv) {
                     p4est_np1,nodes_np1,ngbd_np1);
 
           // ------------------------------------------------------------
-          // Setup the solvers:
+          // STEP 3.1(cont.):Setup the solvers:
           // ------------------------------------------------------------
           // Now, set up the solver(s):
           solver_Tl = new my_p4est_poisson_nodes_mls_t(ngbd_np1);
@@ -1787,9 +1800,13 @@ int main(int argc, char** argv) {
           solver_Ts->set_cube_refinement(cube_refinement);
           solver_Ts->set_store_finite_volumes(0);
 
-          // Set the wall BC and RHS:
+          // Set the wall BC:
           solver_Tl ->set_wc(wall_bc_type_temp,wall_bc_value_temp);
           solver_Ts ->set_wc(wall_bc_type_temp,wall_bc_value_temp);
+
+          // ---------------------------------------------------------------------------
+          // STEP 3.2: Get the solution to your Poisson equation!
+          // ---------------------------------------------------------------------------
 
           // Preassemble the linear system
           solver_Tl->preassemble_linear_system();
