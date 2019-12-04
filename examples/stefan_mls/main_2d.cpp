@@ -73,10 +73,10 @@ bool print_checkpoints = true;
 DEFINE_PARAMETER(pl,int,method_,1,"Timestepping method. 1 = Backward Euler, 2= Crank-Nicholson. (default: 1)");
 
 // Grid parameters
-DEFINE_PARAMETER(pl,int,lmin,4,"Minimum level of refinement (default: 4)");
-DEFINE_PARAMETER(pl,int,lmax,4,"Maximum level of refinement (default: 6)");
+DEFINE_PARAMETER(pl,int,lmin,5,"Minimum level of refinement (default: 4)");
+DEFINE_PARAMETER(pl,int,lmax,7,"Maximum level of refinement (default: 6)");
 DEFINE_PARAMETER(pl,double,lip,1.5,"Lipschitz constant (default: 1.5)");
-DEFINE_PARAMETER(pl,int,num_splits,4,"Number of splits -- used for convergence analysis (default: 0)");
+DEFINE_PARAMETER(pl,int,num_splits,0,"Number of splits -- used for convergence analysis (default: 0)");
 
 // Problem geometry:
 DEFINE_PARAMETER(pl,double,xmin,0.0,"");
@@ -105,6 +105,8 @@ DEFINE_PARAMETER(pl,double,cfl,0.5,"CFL number to enforce for timestepping (defa
 DEFINE_PARAMETER(pl,double,v_interface_max_allowed,500.0,"Maximum interfacial velocity allowed -- will abort if interface value exceeds this (default: 500.0");
 DEFINE_PARAMETER(pl,double,dt_max_allowed,1.0,"Maximum allowable timestep -- if timestep exceeds this, it will be set to this value instead (default 1.0)");
 
+// For debugging:
+DEFINE_PARAMETER(pl,bool,check_memory_usage,0,"Boolean on whether you want to check your memory usage or not (default is 0)");
 // ---------------------------------------
 // Auxiliary global variables:
 // ---------------------------------------
@@ -124,16 +126,13 @@ double r0;
 double Twall;
 double Tinterface;
 double back_wall_temp_flux;
+double Tice_init;
 
 // For keeping track of interfacial velocity:
 double v_interface_max_norm;
 
-
 // For surface tension: (used to apply some interfacial BC's in temperature)
 double sigma;
-
-double Tmax_allowed = 300.;
-
 // -----------------------------------------
 // Auxiliary functions for initializing the problem:
 // -----------------------------------------
@@ -142,25 +141,45 @@ void set_geometry(){
   case FRANK_SPHERE:
          CODE2D(xmin = -5.0;ymin = -5.0; zmin = 0.0;
                 xmax = 5.0; ymax = 5.0; zmax = 0.0;)
-         CODE3D(xmin = -5.0;ymin = -5.0; zmin = -5.0;
-                xmax = 5.0; ymax = 5.0; zmax = 5.0;)
+         CODE3D(xmin = -3.0;ymin = -3.0; zmin = -3.0;
+                xmax = 3.0; ymax = 3.0; zmax = 3.0;)
 
          nx = 1; ny = 1; CODE2D(nz = 0); CODE3D(nz = 1);
          px = 0; py = 0; pz = 0;
 
-         s0 = 1.5621;
-         T_inf = -0.5;
+         CODE2D(s0 = 0.6286;) // 1.5621
+         CODE3D(s0 = 0.5653;) // 2.0760
+         CODE2D(T_inf = -0.2); // -0.5
+         CODE3D(T_inf = -0.1);
 
          Tinterface = 0.0;
          Twall = T_inf;
+         scaling = 1.;
 
       break;
   case ICE_MELT:
+      CODE2D(xmin = -1.5; ymin = -1.5; zmin = 0.0;
+             xmax = 1.5; ymax = 1.5; zmax = 0.0);
+       CODE3D(xmin = -1.5; ymin = -1.5; zmin = -1.5;
+       xmax = 1.5; ymax = 1.5; zmax = 1.5);
+       nx = 1; ny = 1; CODE2D(nz = 0); CODE3D(nz = 1);
+       px = 0; py = 0; pz = 0;
+
+      // Scaling -> phyiscal_length_scale*scaling = computational_length_scale.
+      // Scaling has units of 1/L where L is the physical length scale
+      // Scaling = computational size/physical size
+      double r_physical = 0.05; // 2 cm --> 0.02 m
+      scaling = 1.5/0.15;
+      r0 = r_physical*scaling; // Computational radius -- not physical size
+
+      Tice_init = 255.0; // [K] initial temp of ice out of freezer
+      Tinterface = 273.0; // [K] -- freezing temp of water
+      Twall = 355.0; // [K] -- a bit under boiling temp of water
       break;
 
     }
 
-  scaling = 1./box_size;
+  //scaling = 1./box_size;
 }
 
 
@@ -179,10 +198,14 @@ void simulation_time_info(){
       tfinal = 1.3;
 
       delta_t = 0.01;
-      dt_max_allowed = 0.1;
+      dt_max_allowed = 0.05;
 
       break;
     case ICE_MELT:
+      tstart = 0.0;
+      tfinal = 50.0;
+      delta_t = 1.0e-3;
+      dt_max_allowed = 1.0e-1;
       break;
     }
   tn = tstart;
@@ -200,6 +223,8 @@ void set_diffusivities(){
       alpha_l = 1.0;
       break;
     case ICE_MELT:
+      alpha_s = (1.1820e-6); //ice - [m^2]/s
+      alpha_l = (1.4547e-7); //water- [m^2]/s
       break;
     }
 }
@@ -220,6 +245,11 @@ void set_conductivities(){
       break;
 
     case ICE_MELT:
+      k_s = 0.2;//2.2; // W/[m*K]
+      k_l = 0.65; // W/[m*K]
+      L = 334.e3; //J/kg
+      rho_l = 1000.0; // kg/m^3
+      sigma = 30.e-1;//30.e-3 // J/m^2 // surface tension of water
       break;
 
     }
@@ -231,14 +261,6 @@ void set_conductivities(){
 
 bool check_temperature_values = false; // Whether or not you want to print out temperature value averages during various steps of the solution process -- for debugging
 
-bool check_derivative_values = false;// Whether or not you want to print out temperature derivative value averages during various steps of the solution process -- for debugging
-
-bool check_interfacial_velocity = true; // Whether or not you want to print out interfacial velocity value averages during various steps of the solution process -- for debugging
-
-bool save_temperature_derivative_fields = false; // saving temperature derivative fields to vtk or not
-
-bool force_interfacial_velocity_to_zero = true;
-
 // Begin defining classes for necessary functions and boundary conditions...
 // --------------------------------------------------------------------------------------------------------------
 // Auxiliary Frank sphere functions -- Functions necessary for evaluating the analytical solution of the Frank sphere problem, to validate results for example 1
@@ -248,7 +270,7 @@ double s(double r, double t){
   return r/sqrt(t);
 }
 
-// Error function : taken from existing code in examples/stefan/main_2d.cpp
+// Exponential integral function : taken from existing code in examples/stefan/main_2d.cpp
 double E1(double x)
 {
   const double EULER=0.5772156649;
@@ -310,8 +332,10 @@ double E1(double x)
 
 
 double F(double s){
+
   double z = SQR(s)/4.0;
-  return E1(z);
+  CODE2D(return E1(z);)
+  CODE3D(return (1./s)*exp(-1.*z) - 0.5*sqrt(PI)*erfc(0.5*s));
 }
 
 double dF(double s){
@@ -336,10 +360,10 @@ public:
   {
      switch (example_){
       case FRANK_SPHERE:
-        return s0 - sqrt(SQR(x) + SQR(y));
+        return s0 - sqrt(SQR(x) + SQR(y) CODE3D(+ SQR(z)));
 
       case ICE_MELT:
-        break;
+         return r0 - sqrt(SQR(x) + SQR(y) CODE3D(+ SQR(z)));
 
       default: throw std::invalid_argument("You must choose an example type\n");
       }
@@ -359,6 +383,7 @@ void interface_bc(){
       break;
     case ICE_MELT:
       interface_bc_type_temp = DIRICHLET;
+      break;
     }
 }
 
@@ -382,18 +407,12 @@ public:
   }
   double operator()(DIM(double x, double y,double z)) const
   {
-    // Initialize necessary variables for different cases -- r and sval are used to evaluate frank sphere analytical solution
-    double r;
-    double sval;
-
     switch(example_){
       case FRANK_SPHERE: // Frank sphere case, no surface tension
         return Tinterface;
-//        r = sqrt(SQR(x) + SQR(y) CODE3D( + SQR(z)));
-//        sval = s(r,tn+dt);
-//        return frank_sphere_solution_t(sval);
-    case ICE_MELT:
-        break;
+    case ICE_MELT: // Water case, has surface tension effects
+        //return Tinterface;
+        return Tinterface*(1. + sigma*kappa_interp(DIM(x,y,z))/L);
       }
   }
 };
@@ -403,7 +422,7 @@ public:
   double operator()(DIM(double x, double y,double z)) const
   { switch(example_){
       case FRANK_SPHERE: return 1.0;
-      case ICE_MELT: break;
+      case ICE_MELT: return 1.0;
       }
   }
 }bc_interface_coeff;
@@ -444,6 +463,21 @@ public:
   }
 } yupper_wall;
 
+struct ZLOWER_WALL : CF_DIM {
+public:
+  double operator() (DIM(double x, double y, double z)) const
+  {
+    CODE3D(return (fabs(z - zmin) < EPS));
+  }
+} zlower_wall;
+
+struct ZUPPER_WALL : CF_DIM {
+public:
+  double operator() (DIM(double x, double y, double z)) const
+  {
+    CODE3D(return (fabs(z - zmax) < EPS));
+  }
+} zupper_wall;
 // --------------------------------------------------------------------------------------------------------------
 // Wall temperature boundary conditions
 // --------------------------------------------------------------------------------------------------------------
@@ -454,7 +488,7 @@ public:
   {
     switch(example_){
       case FRANK_SPHERE: return DIRICHLET;
-      case ICE_MELT: break;
+      case ICE_MELT: return DIRICHLET;
       default: break;
       }
   }
@@ -467,9 +501,12 @@ public:
   {
     switch(example_){
       case FRANK_SPHERE:{
-        if (xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z))){
+        if (xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)) CODE3D(|| zlower_wall(DIM(x,y,z)) || zupper_wall(DIM(x,y,z)))){
             if (level_set(DIM(x,y,z)) < EPS){
-                return Twall;
+                //return Twall;
+                double r = sqrt(SQR(x) + SQR(y) CODE3D(+ SQR(z)));
+                double sval = s(r,tn+dt);
+                return frank_sphere_solution_t(sval);
               }
             else{
                 return Tinterface;
@@ -477,16 +514,27 @@ public:
           }
         break;
        }
-    case ICE_MELT: break;
+    case ICE_MELT: {
+        if (xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)) CODE3D(|| zlower_wall(DIM(x,y,z)) || zupper_wall(DIM(x,y,z)))){
+            if (level_set(DIM(x,y,z)) < EPS){
+                return Twall;
+              }
+            else{
+                return Tinterface;
+              }
+          } // end of "if on wall"
+        break;
+    }// end of ICE_MELT case
+
     default: break;
-}
+    } // end of switch case
   }
 } wall_bc_value_temp;
 
 // --------------------------------------------------------------------------------------------------------------
 // TEMPERATURE INITIAL CONDITION/ANALYTICAL SOLUTION -- can be used for both
 // --------------------------------------------------------------------------------------------------------------
-class TEMP_ANALYTICAL_IN_TIME: public CF_DIM
+class TEMP_ANALYTICAL_IN_TIME: public CF_DIM // This class is used as the initial condition, and for frank sphere is also used to check error
 {
 public:
   double operator() (DIM(double x, double y, double z)) const
@@ -497,15 +545,29 @@ public:
     double Tsloped;
     switch(example_){
     case FRANK_SPHERE:{
-        r = sqrt(SQR(x) + SQR(y));
+        r = sqrt(SQR(x) + SQR(y) CODE3D(+ SQR(z)));
         sval = s(r,tn);
         return frank_sphere_solution_t(sval);
-//        if(r>=s0)return frank_sphere_solution_t(sval);
-//        else return 0.0;
         }
+    case ICE_MELT:{
+        r = sqrt(SQR(x) + SQR(y) CODE3D(+ SQR(z)));
+        m = (Twall - Tinterface)/(level_set(DIM(xmax,ymax,zmax)) - r0);
+        if (level_set(DIM(x,y,z))<0){
+            //return Tinterface + m*level_set(DIM(x,y,z));
+            return Twall;
+        }
+        else{
+            //return Tinterface;
+            return Tice_init;
+        }
+
+    }
+
     }
   }
 }temp_current_time;
+
+
 
 // --------------------------------------------------------------------------------------------------------------
 // Functions for checking the values of interest during the solution process
@@ -563,6 +625,7 @@ void check_T_values(vec_and_ptr_t phi, vec_and_ptr_t T, p4est_nodes_t* nodes, p4
   PetscPrintf(p4est->mpicomm,"Minimum temperature: %0.2f \n",global_min_T);
   PetscPrintf(p4est->mpicomm,"Minimum temperature magnitude: %0.2f \n",global_min_mag_T);
 
+//  if(global_max_T>400. || global_min_T<100.0) SC_ABORT("temp values are geting unreasonable");
   T.restore_array();
   phi.restore_array();
 }
@@ -793,7 +856,7 @@ void check_frank_sphere_error(vec_and_ptr_t T_l, vec_and_ptr_t T_s, vec_and_ptr_
   foreach_local_node(n,nodes){
     node_xyz_fr_n(n,p4est,nodes,xyz);
 
-    r = sqrt(SQR(xyz[0]) + SQR(xyz[1]));
+    r = sqrt(SQR(xyz[0]) + SQR(xyz[1]) CODE3D(+ SQR(xyz[2])));
     s = r/sqrt(tn+dt);
 
     double phi_exact = s0*sqrt(tn+dt) - r;
@@ -807,7 +870,7 @@ void check_frank_sphere_error(vec_and_ptr_t T_l, vec_and_ptr_t T_s, vec_and_ptr_
       Linf_phi = max(Linf_phi,phi_error); // CHECK THIS -- NOT ENTIRELY SURE THIS IS CORRECT
 
       // Errors on v_int:
-      vel = sqrt(SQR(v_interface.ptr[0][n])+ SQR(v_interface.ptr[1][n]));
+      vel = sqrt(SQR(v_interface.ptr[0][n])+ SQR(v_interface.ptr[1][n]) CODE3D(+ SQR(v_interface.ptr[2][n])));
       v_int_error = fabs(vel - v_exact);
       Linf_v_int = max(Linf_v_int,v_int_error);
       }
@@ -835,13 +898,13 @@ void check_frank_sphere_error(vec_and_ptr_t T_l, vec_and_ptr_t T_s, vec_and_ptr_
 
   // Print Errors to application output:
   PetscPrintf(p4est->mpicomm,"\n----------------\n Errors on frank sphere: \n --------------- \n");
-  PetscPrintf(p4est->mpicomm,"dxyz close to interface: %0.2f \n",dxyz_close_to_interface);
+  PetscPrintf(p4est->mpicomm,"dxyz close to interface: %0.3e \n",dxyz_close_to_interface);
 
   int num_nodes = nodes->indep_nodes.elem_count;
   PetscPrintf(p4est->mpicomm,"Number of grid points used: %d \n \n", num_nodes);
 
 
-  PetscPrintf(p4est->mpicomm," Linf on phi: %0.4f \n Linf on T_l: %0.4f \n Linf on T_s: %0.4f \n Linf on v_int: %0.4f \n", global_Linf_errors[0],global_Linf_errors[1],global_Linf_errors[2],global_Linf_errors[3]);
+  PetscPrintf(p4est->mpicomm," Linf on phi: %0.3e \n Linf on T_l: %0.3e \n Linf on T_s: %0.3e \n Linf on v_int: %0.3e \n", global_Linf_errors[0],global_Linf_errors[1],global_Linf_errors[2],global_Linf_errors[3]);
 
   // Print errors to file:
   ierr = PetscFOpen(p4est->mpicomm,name,"a",&fich);CHKERRXX(ierr);
@@ -874,10 +937,11 @@ bool check_ice_melted(vec_and_ptr_t phi, double time, p4est_nodes_t* nodes,p4est
   // Get the global outcome:
   int mpi_check;
 
-  MPI_Allreduce(&still_solid_present,&global_still_solid_present,1,MPI_INT,MPI_LOR,p4est->mpicomm);
+  mpi_check = MPI_Allreduce(&still_solid_present,&global_still_solid_present,1,MPI_INT,MPI_LOR,p4est->mpicomm);
 
 
   SC_CHECK_MPI(mpi_check);
+  MPI_Barrier(p4est->mpicomm);
   if (!global_still_solid_present){ // If no more solid, then ice has melted
       PetscPrintf(p4est->mpicomm,"\n \n Ice has entirely melted as of t = %0.3e \n \n ",time);
     }
@@ -1057,12 +1121,14 @@ void compute_timestep(vec_and_ptr_dim_t v_interface, vec_and_ptr_t phi, double d
   SC_CHECK_MPI(mpi_ret);
   PetscPrintf(p4est->mpicomm,"\n \n \n Computed interfacial velocity and timestep: \n {");
   PetscPrintf(p4est->mpicomm,"\n Max v norm: %0.2e \n", global_max_vnorm);
+  PetscPrintf(p4est->mpicomm,"\n Physically, this corresponds to: %0.2e \n",global_max_vnorm/scaling);
 
   // Compute new timestep:
   dt = cfl*min(dxyz_smallest[0],dxyz_smallest[1])/min(global_max_vnorm,1.0);
   PetscPrintf(p4est->mpicomm,"Computed timestep: %0.3e \n",dt);
 
   dt = min(dt,dt_max_allowed);
+  //dt = min(dt,cfl*min(dxyz_smallest[0],dxyz_smallest[1]));
 
   // Report computed timestep and minimum grid size:
   PetscPrintf(p4est->mpicomm,"Used timestep: %0.3e \n",dt);
@@ -1117,7 +1183,7 @@ void compute_curvature(vec_and_ptr_t phi,vec_and_ptr_dim_t normal,vec_and_ptr_t 
 // --------------------------------------------------------------------------------------------------------------
 // FUNCTION FOR SAVING INFO:
 // --------------------------------------------------------------------------------------------------------------
-void save_stefan_fields(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,vec_and_ptr_t phi,vec_and_ptr_t Tl,vec_and_ptr_t Ts,vec_and_ptr_dim_t v_int, vec_and_ptr_t T_error, char* filename ){
+void save_stefan_fields(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,vec_and_ptr_t phi,vec_and_ptr_t Tl,vec_and_ptr_t Ts,vec_and_ptr_dim_t v_int, vec_and_ptr_t T_error, vec_and_ptr_t T_ana, char* filename ){
   // Things we want to save:
   /*
    * LSF
@@ -1138,14 +1204,25 @@ void save_stefan_fields(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *gho
     phi.get_array();
     Tl.get_array(); Ts.get_array();
     v_int.get_array();
-    T_error.get_array();
+    if(example_ == FRANK_SPHERE){
+        T_error.get_array();
+        T_ana.get_array();
+    }
+
 
     // Save data:
     std::vector<std::string> point_names;
     std::vector<double*> point_data;
 
-    point_names = {"phi","Tl","Ts","v_int_x","v_int_y","T_error" ,ZCODE("v_int_z")};
-    point_data = {phi.ptr,Tl.ptr,Ts.ptr,v_int.ptr[0],v_int.ptr[1],T_error.ptr,ZCODE(v_int.ptr[2])};
+    if(example_ == FRANK_SPHERE){
+        point_names = {"phi","Tl","Ts","v_int_x","v_int_y","T_error" ,"T_analytical",ZCODE("v_int_z")};
+        point_data = {phi.ptr,Tl.ptr,Ts.ptr,v_int.ptr[0],v_int.ptr[1],T_error.ptr,T_ana.ptr,ZCODE(v_int.ptr[2])};
+    }
+    else{
+        point_names = {"phi","Tl","Ts","v_int_x","v_int_y",ZCODE("v_int_z")};
+        point_data = {phi.ptr,Tl.ptr,Ts.ptr,v_int.ptr[0],v_int.ptr[1],ZCODE(v_int.ptr[2])};
+    }
+
     std::vector<std::string> cell_names;
     std::vector<double*> cell_data;
 
@@ -1157,7 +1234,11 @@ void save_stefan_fields(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *gho
     phi.restore_array();
     Tl.restore_array(); Ts.restore_array();
     v_int.restore_array();
-    T_error.restore_array();
+    if(example_ == FRANK_SPHERE){
+        T_error.restore_array();
+        T_ana.restore_array();
+    }
+
 
     // Scale things back:
     foreach_dimension(d){
@@ -1241,6 +1322,15 @@ int main(int argc, char** argv) {
 
     alpha_l*=(scaling*scaling);
     alpha_s*=(scaling*scaling);
+
+    PetscPrintf(mpi.comm(),"Scaled values are: "
+                           "ks = %0.3g \n"
+                           "kl = %0.3g \n"
+                           "alpha_s = %0.3g \n"
+                           "alpha_l = %0.3g \n"
+                           "L = %0.3g \n"
+                           "rho_l = %0.3g \n",k_s,k_l,alpha_s,alpha_l,L,rho_l
+                );
 
     // -----------------------------------------------
     // Create the grid:
@@ -1366,7 +1456,7 @@ int main(int argc, char** argv) {
     // -----------------------------------------------
     // Initialize file to output error and convergence information:
     // -----------------------------------------------
-    // (1) For checking error for Frank Sphere analytical solution:
+    // For checking error for Frank Sphere analytical solution:
     FILE *fich;
     char name[1000];
     if (example_ == FRANK_SPHERE){
@@ -1375,21 +1465,33 @@ int main(int argc, char** argv) {
           throw std::invalid_argument("You need to set the environment variable OUT_DIR_VTK to save vtk files\n");
       }
 
-      sprintf(name,"%s/frank_sphere_error_lmin_%d_lmax_%d_method_%d.dat",outdir_err,lmin+grid_res_iter,lmax + grid_res_iter,method_);
+      CODE2D(sprintf(name,"%s/frank_sphere_error_2d_lmin_%d_lmax_%d_method_%d.dat",outdir_err,lmin+grid_res_iter,lmax + grid_res_iter,method_);)
+      CODE3D(sprintf(name,"%s/frank_sphere_error_3d_lmin_%d_lmax_%d_method_%d.dat",outdir_err,lmin+grid_res_iter,lmax + grid_res_iter,method_);)
+
       ierr = PetscFOpen(mpi.comm(),name,"w",&fich); CHKERRXX(ierr);
       ierr = PetscFPrintf(mpi.comm(),fich,"time " "timestep " "iteration " "phi_error " "T_l_error " "T_s_error " "v_int_error " "number_of_nodes" "min_grid_size \n");CHKERRXX(ierr);
       ierr = PetscFClose(mpi.comm(),fich); CHKERRXX(ierr);
       }
 
-  //  // (3) For checking memory usage
-  //  FILE *fich_mem;
-  //  char name_mem[1000];
-  //  sprintf(name_mem,"/home/elyce/workspace/projects/multialloy_with_fluids/memory_usage_stefan_%d_NS_%d_lmin_%d_lmax_%d.dat",solve_stefan,solve_navier_stokes,lmin,lmax);
+    // For checking memory usage
+    FILE *fich_mem;
+    char name_mem[1000];
+    if(check_memory_usage){
+        const char* outdir_mem = getenv("OUT_DIR_MEM");
+        if(!outdir_mem && check_memory_usage){
+            throw std::invalid_argument("You need to set the environment variable OUT_DIR_MEM to save memory usage files\n");
+        }
 
-  //  ierr = PetscFOpen(mpi.comm(),name_mem,"w",&fich_mem); CHKERRXX(ierr);
 
-  //  ierr = PetscFPrintf(mpi.comm(),fich_mem,"time " "timestep " "iteration " "mem1 mem2 mem3 mem4 mem5 mem6 mem7 mem8 mem9 mem10 mem11 mem12 mem13 \n");CHKERRXX(ierr);
-  //  ierr = PetscFClose(mpi.comm(),fich_mem); CHKERRXX(ierr);
+          CODE2D(sprintf(name_mem,"%s/memory_usage_stefan_2d_lmin_%d_lmax_%d.dat",outdir_mem,lmin,lmax));
+          CODE3D(sprintf(name_mem,"%s/memory_usage_stefan_3d_lmin_%d_lmax_%d.dat",outdir_mem,lmin,lmax));
+
+          ierr = PetscFOpen(mpi.comm(),name_mem,"w",&fich_mem); CHKERRXX(ierr);
+
+          ierr = PetscFPrintf(mpi.comm(),fich_mem,"time " "timestep " "iteration " "check1 check2 check3 check4 check5 check6 check7 check8 check9 check10 check11 check12 check13 check14 \n");CHKERRXX(ierr);
+          ierr = PetscFClose(mpi.comm(),fich_mem); CHKERRXX(ierr);
+    }
+
 
     // -----------------------------------------------
     // Initialize the needed solvers for the Temperature problem
@@ -1408,10 +1510,10 @@ int main(int argc, char** argv) {
         tstep++;
         if (!keep_going) break;
 
-
         // Get current memory usage:
         PetscLogDouble mem1;
-        PetscMemoryGetCurrentUsage(&mem1);
+        if(check_memory_usage) PetscMemoryGetCurrentUsage(&mem1);
+
 
         // --------------------------------------------------------------------------------------------------------------
         // Print iteration information:
@@ -1419,8 +1521,6 @@ int main(int argc, char** argv) {
 
         PetscPrintf(mpi.comm(),"\n -------------------------------------------\n");
         ierr = PetscPrintf(mpi.comm(),"Iteration %d , Time: %0.3g , Timestep: %0.3e, Percent Done : %0.2f % \n ------------------------------------------- \n",tstep,tn,dt,((tn-tstart)/(tfinal - tstart))*100.0);
-
-        //ierr = PetscPrintf(mpi.comm(),"\n Previous interfacial velocity (max norm) is %0.3e \n",v_interface_max_norm);
 
         // --------------------------------------------------------------------------------------------------------------
         // Define variables needed to specify how to extend across the interface:
@@ -1430,9 +1530,11 @@ int main(int argc, char** argv) {
 
         dxyz_close_to_interface = 1.0*max(dxyz_smallest[0],dxyz_smallest[1]);
         min_volume_ = MULTD(dxyz_smallest[0], dxyz_smallest[1], dxyz_smallest[2]);
-        extension_band_use_    = 8.*pow(min_volume_, 1./ double(P4EST_DIM)); //8
-        extension_band_extend_ = 10.*pow(min_volume_, 1./ double(P4EST_DIM)); //10
-        extension_band_check_  = 6.*pow(min_volume_, 1./ double(P4EST_DIM)); // 6
+
+        // Extension band inputs : set to be some multiple of the smallest lengthscale on the grid
+        extension_band_use_    = 16.*pow(min_volume_, 1./ double(P4EST_DIM)); //8
+        extension_band_extend_ = 20.*pow(min_volume_, 1./ double(P4EST_DIM)); //10
+        extension_band_check_  = 12.*pow(min_volume_, 1./ double(P4EST_DIM)); // 6
 
 
         // If first iteration, perturb the LSF(s):
@@ -1442,7 +1544,7 @@ int main(int argc, char** argv) {
           }
 
         // --------------------------------------------------------------------------------------------------------------
-        // Extend Fields Across Interface:
+        // STEP 1.1: Extend Fields Across Interface:
         // --------------------------------------------------------------------------------------------------------------
         // Define LSF for the solid domain (as just the negative of the liquid one):
 
@@ -1497,65 +1599,62 @@ int main(int argc, char** argv) {
           }
 
         PetscLogDouble mem2;
-        PetscMemoryGetCurrentUsage(&mem2);
+        if(check_memory_usage) PetscMemoryGetCurrentUsage(&mem2);
         // --------------------------------------------------------------------------------------------------------------
         // SAVING DATA: Save data every specified amout of timesteps: -- Do this after values are extended across interface (rather than before) to make visualization nicer
         // --------------------------------------------------------------------------------------------------------------
         if(save_vtk && (tstep%save_every_iter ==0)){
           if(print_checkpoints) PetscPrintf(mpi.comm(),"Preparing to save vtk ... \n");
 
-          // Evaluate the error:
+          // Prepare filename:
+          char output[1000];
+          out_idx++;
+          sprintf(output,"%s/snapshot%d",outdir_vtk,out_idx);
+
+          // Evaluate the error for visualization (in Frank Sphere Case):
           vec_and_ptr_t T_ana;
           vec_and_ptr_t T_error;
 
 
-          T_ana.create(p4est,nodes);
-          T_error.create(p4est,nodes);
-          sample_cf_on_nodes(p4est,nodes,temp_current_time,T_ana.vec);
+          if(example_ == FRANK_SPHERE){
+              T_ana.create(p4est,nodes);
+              T_error.create(p4est,nodes);
+              sample_cf_on_nodes(p4est,nodes,temp_current_time,T_ana.vec);
 
-          T_error.get_array();T_ana.get_array();T_l_n.get_array();T_s_n.get_array();phi.get_array();
-          foreach_node(n,nodes){
-            if(phi.ptr[n]<=0.){
-              T_error.ptr[n] = fabs(T_l_n.ptr[n] - T_ana.ptr[n]);
-              }
-            else{
-                T_error.ptr[n] = fabs(T_s_n.ptr[n] - T_ana.ptr[n]);
-              }
+              T_error.get_array();T_ana.get_array();T_l_n.get_array();T_s_n.get_array();phi.get_array();
+              foreach_node(n,nodes){
+                if(phi.ptr[n]<=0.){
+                  T_error.ptr[n] = fabs(T_l_n.ptr[n] - T_ana.ptr[n]);
+                  }
+                else{
+                    T_error.ptr[n] = fabs(T_s_n.ptr[n] - T_ana.ptr[n]);
+                  }
 
+              }
+              T_error.restore_array();
+              T_ana.restore_array();
+              T_l_n.restore_array();
+              T_s_n.restore_array();
+              phi.restore_array();
+
+
+              save_stefan_fields(p4est,nodes,ghost,phi,T_l_n,T_s_n,v_interface,T_error,T_ana,output);
+              T_ana.destroy();
+              T_error.destroy();
           }
-          T_error.restore_array();
-          T_ana.restore_array();
-          T_l_n.restore_array();
-          T_s_n.restore_array();
-          phi.restore_array();
-
-          char output[1000];
-          out_idx++;
-          sprintf(output,"%s/snapshot%d",outdir_vtk,out_idx);
-          save_stefan_fields(p4est,nodes,ghost,phi,T_l_n,T_s_n,v_interface,T_error,output);
-          T_ana.destroy();
-          T_error.destroy();
-
-  /*
-          sprintf(output,"%s/snapshot_analytical%d",outdir_vtk,out_idx);
-          vec_and_ptr_t T_ana;
-          T_ana.create(p4est,nodes);
-          sample_cf_on_nodes(p4est,nodes,IC_temp,T_ana.vec);
-          T_ana.get_array();
-          my_p4est_vtk_write_all(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,1,0,output,
-                                 VTK_POINT_DATA,"T_analytical",T_ana.ptr);
-          T_ana.restore_array();
-  */
+          else{
+              save_stefan_fields(p4est,nodes,ghost,phi,T_l_n,T_s_n,v_interface,T_error,T_ana,output);
+          }
 
 
           if(print_checkpoints) PetscPrintf(mpi.comm(),"Successfully saved to vtk \n");
           }
 
         PetscLogDouble mem3;
-        PetscMemoryGetCurrentUsage(&mem3);
+        if(check_memory_usage) PetscMemoryGetCurrentUsage(&mem3);
 
         // --------------------------------------------------------------------------------------------------------------
-        // Compute the jump in flux across the interface to use to advance the LSF (if solving Stefan:
+        // STEP 1.2: Compute the jump in flux across the interface to use to advance the LSF:
         // --------------------------------------------------------------------------------------------------------------
         // Get the first derivatives to compute the jump
         T_l_d.create(p4est,nodes); T_s_d.create(T_l_d.vec);
@@ -1578,7 +1677,7 @@ int main(int argc, char** argv) {
 
 
         PetscLogDouble mem4;
-        PetscMemoryGetCurrentUsage(&mem4);
+        if(check_memory_usage) PetscMemoryGetCurrentUsage(&mem4);
         // --------------------------------------------------------------------------------------------------------------
         // Compute the timestep -- determined by velocity at the interface:
         // --------------------------------------------------------------------------------------------------------------
@@ -1591,10 +1690,11 @@ int main(int argc, char** argv) {
             dt = tfinal - tn;
           }
         if(print_checkpoints) PetscPrintf(mpi.comm(),"Timestep successfully computed \n");
+
         PetscLogDouble mem5;
-        PetscMemoryGetCurrentUsage(&mem5);
+        if(check_memory_usage) PetscMemoryGetCurrentUsage(&mem5);
         // --------------------------------------------------------------------------------------------------------------
-        // Advance the LSF/Update the grid :
+        // STEP 2.1/STEP 2.2: Advance the LSF/Update the grid :
         // --------------------------------------------------------------------------------------------------------------
         // We advect the LSF and update the grid according to the LSF
 
@@ -1628,17 +1728,19 @@ int main(int argc, char** argv) {
         if(print_checkpoints) PetscPrintf(mpi.comm(),"LSF advected and grid update successful \n");
 
         PetscLogDouble mem6;
-        PetscMemoryGetCurrentUsage(&mem6);
+        if(check_memory_usage) PetscMemoryGetCurrentUsage(&mem6);
+        // --------------------------------------------------------------------------------------------------------------
+        // STEP 2.3: Reinitialize the LSF on the new grid
+        // --------------------------------------------------------------------------------------------------------------
 
-        // Reinitialize the LSF on the new grid: -- NOT SURE IF WE NEED TO DO THIS EVERY TIME IF JUST NS AND NOTHING ELSE
         my_p4est_level_set_t ls_new(ngbd_np1);
         ls_new.reinitialize_1st_order_time_2nd_order_space(phi.vec, 50);
         ls_new.perturb_level_set_function(phi.vec,EPS);
 
         PetscLogDouble mem7;
-        PetscMemoryGetCurrentUsage(&mem7);
+        if(check_memory_usage) PetscMemoryGetCurrentUsage(&mem7);
         // --------------------------------------------------------------------------------------------------------------
-        // Interpolate Values onto New Grid:
+        // STEP 2.4: Interpolate Values onto New Grid:
         // -------------------------------------------------------------------------------------------------------------
         // Create vectors to hold new values:
 
@@ -1682,7 +1784,7 @@ int main(int argc, char** argv) {
         VecScaleGhost(phi_solid.vec,-1.0);
 
         PetscLogDouble mem8;
-        PetscMemoryGetCurrentUsage(&mem8);
+        if(check_memory_usage) PetscMemoryGetCurrentUsage(&mem8);
         // --------------------------------------------------------------------------------------------------------------
         // Compute the normal and curvature of the interface -- curvature is used in some of the interfacial boundary condition(s) on temperature
         // --------------------------------------------------------------------------------------------------------------
@@ -1704,9 +1806,9 @@ int main(int argc, char** argv) {
         normal.destroy();
 
         PetscLogDouble mem9;
-        PetscMemoryGetCurrentUsage(&mem9);
+        if(check_memory_usage) PetscMemoryGetCurrentUsage(&mem9);
         // --------------------------------------------------------------------------------------------------------------
-        // Poisson Problem at Nodes: Setup and solve a Poisson problem on both the liquid and solidified subdomains
+        // STEP 3: Poisson Problem at Nodes: Setup and solve a Poisson problem on both the liquid and solidified subdomains
         // --------------------------------------------------------------------------------------------------------------
         // Get most updated derivatives of the LSF's (on current grid) -- Solver uses these:
         // ------------------------------------------------------------
@@ -1731,7 +1833,7 @@ int main(int argc, char** argv) {
             }
 
           // ------------------------------------------------------------
-          // Setup RHS:
+          // STEP 3.1: Setup RHS:
           // ------------------------------------------------------------
           // Create arrays to hold the RHS:
           rhs_Tl.create(p4est_np1,nodes_np1);
@@ -1742,8 +1844,10 @@ int main(int argc, char** argv) {
                     rhs_Tl,rhs_Ts,
                     p4est_np1,nodes_np1,ngbd_np1);
 
+          PetscLogDouble mem10;
+          if(check_memory_usage)PetscMemoryGetCurrentUsage(&mem10);
           // ------------------------------------------------------------
-          // Setup the solvers:
+          // STEP 3.1(cont.):Setup the solvers:
           // ------------------------------------------------------------
           // Now, set up the solver(s):
           solver_Tl = new my_p4est_poisson_nodes_mls_t(ngbd_np1);
@@ -1763,7 +1867,7 @@ int main(int argc, char** argv) {
           }
           else if(method_ ==1){
               solver_Tl->set_diag(1./dt);
-              solver_Tl->set_diag(1./dt);
+              solver_Ts->set_diag(1./dt);
           }
           else{
               throw std::invalid_argument("Error setting the diagonal. You must select a time-stepping method!\n");
@@ -1787,10 +1891,16 @@ int main(int argc, char** argv) {
           solver_Ts->set_cube_refinement(cube_refinement);
           solver_Ts->set_store_finite_volumes(0);
 
-          // Set the wall BC and RHS:
+          // Set the wall BC:
           solver_Tl ->set_wc(wall_bc_type_temp,wall_bc_value_temp);
           solver_Ts ->set_wc(wall_bc_type_temp,wall_bc_value_temp);
 
+
+          PetscLogDouble mem11;
+          if(check_memory_usage) PetscMemoryGetCurrentUsage(&mem11);
+          // ---------------------------------------------------------------------------
+          // STEP 3.2: Get the solution to your Poisson equation!
+          // ---------------------------------------------------------------------------
           // Preassemble the linear system
           solver_Tl->preassemble_linear_system();
           solver_Ts->preassemble_linear_system();
@@ -1821,7 +1931,6 @@ int main(int argc, char** argv) {
           T_l_np1.destroy(); T_s_np1.destroy();
 
           phi_dd.destroy(); phi_solid_dd.destroy();
-          phi_solid.destroy();
           curvature.destroy();
 
 
@@ -1838,6 +1947,10 @@ int main(int argc, char** argv) {
             PetscPrintf(mpi.comm()," ] \n");
             }
 
+          phi_solid.destroy();
+
+          PetscLogDouble mem12;
+          PetscMemoryGetCurrentUsage(&mem12);
           // ------------------------------------------------------------
           // Some example specific operations for the Poisson problem:
           // ------------------------------------------------------------
@@ -1845,9 +1958,12 @@ int main(int argc, char** argv) {
           if(example_ == FRANK_SPHERE){
               check_frank_sphere_error(T_l_n, T_s_n, phi, v_interface, p4est_np1, nodes_np1, dxyz_close_to_interface,name,fich,tstep);
             }
+          if(example_ == ICE_MELT){
+              keep_going = check_ice_melted(phi,tn + dt,nodes_np1,p4est_np1);
+          }
 
-        PetscLogDouble mem10;
-        PetscMemoryGetCurrentUsage(&mem10);
+        PetscLogDouble mem13;
+        PetscMemoryGetCurrentUsage(&mem13);
 
         // --------------------------------------------------------------------------------------------------------------
         // Delete the old grid:
@@ -1863,14 +1979,17 @@ int main(int argc, char** argv) {
 
 
         // Get current memory usage and print out all memory usage checkpoints:
-        PetscLogDouble mem13;
-        PetscMemoryGetCurrentUsage(&mem13);
-        PetscPrintf(mpi.comm(),"Memory used %g \n\n",mem13);
+        PetscLogDouble mem14;
+        PetscMemoryGetCurrentUsage(&mem14);
+        PetscPrintf(mpi.comm(),"Memory used %g \n\n",mem14);
 
 
-  //      ierr = PetscFOpen(mpi.comm(),name_mem,"a",&fich_mem); CHKERRXX(ierr);
-  //      ierr = PetscFPrintf(mpi.comm(),fich_mem,"%g %g %d %g %g %g %g %g %g %g %g %g %g %g %g %g \n",tn,dt,tstep,mem1,mem2,mem3,mem4,mem5,mem6,mem7,mem8,mem9,mem10,mem11,mem12,mem13);CHKERRXX(ierr);
-  //      ierr = PetscFClose(mpi.comm(),fich_mem); CHKERRXX(ierr);
+        if(check_memory_usage){
+              ierr = PetscFOpen(mpi.comm(),name_mem,"a",&fich_mem); CHKERRXX(ierr);
+              ierr = PetscFPrintf(mpi.comm(),fich_mem,"%g %g %d %g %g %g %g %g %g %g %g %g %g %g %g %g %g \n",tn,dt,tstep,mem1,mem2,mem3,mem4,mem5,mem6,mem7,mem8,mem9,mem10,mem11,mem12,mem13,mem14);CHKERRXX(ierr);
+              ierr = PetscFClose(mpi.comm(),fich_mem); CHKERRXX(ierr);
+        }
+
       } // <-- End of for loop through time
 
     phi.destroy();
