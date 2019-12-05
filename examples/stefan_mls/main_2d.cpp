@@ -101,7 +101,7 @@ DEFINE_PARAMETER(pl,double,tstart,0.0,"Simulation start time (default: 0.0)");
 DEFINE_PARAMETER(pl,double,tfinal,1.0,"Simulation end time (default: 1.0)");
 
 // Solution stability:
-DEFINE_PARAMETER(pl,double,cfl,0.5,"CFL number to enforce for timestepping (default: 0.5)");
+DEFINE_PARAMETER(pl,double,cfl,0.5,"CFL number to enforce for timestepping (default: 0.25)");
 DEFINE_PARAMETER(pl,double,v_interface_max_allowed,500.0,"Maximum interfacial velocity allowed -- will abort if interface value exceeds this (default: 500.0");
 DEFINE_PARAMETER(pl,double,dt_max_allowed,1.0,"Maximum allowable timestep -- if timestep exceeds this, it will be set to this value instead (default 1.0)");
 
@@ -168,13 +168,13 @@ void set_geometry(){
       // Scaling -> phyiscal_length_scale*scaling = computational_length_scale.
       // Scaling has units of 1/L where L is the physical length scale
       // Scaling = computational size/physical size
-      double r_physical = 0.05; // 2 cm --> 0.02 m
+      double r_physical = 0.02; // 2 cm --> 0.02 m
       scaling = 1.5/0.15;
       r0 = r_physical*scaling; // Computational radius -- not physical size
 
       Tice_init = 255.0; // [K] initial temp of ice out of freezer
       Tinterface = 273.0; // [K] -- freezing temp of water
-      Twall = 355.0; // [K] -- a bit under boiling temp of water
+      Twall = 380.0; // [K] -- a bit under boiling temp of water
       break;
 
     }
@@ -245,11 +245,11 @@ void set_conductivities(){
       break;
 
     case ICE_MELT:
-      k_s = 0.2;//2.2; // W/[m*K]
+      k_s = 2.3;//2.2; // W/[m*K]
       k_l = 0.65; // W/[m*K]
       L = 334.e3; //J/kg
       rho_l = 1000.0; // kg/m^3
-      sigma = 30.e-1;//30.e-3 // J/m^2 // surface tension of water
+      sigma = 9.e-6;//30.e-3 // J/m^2 // surface tension of water
       break;
 
     }
@@ -1318,7 +1318,10 @@ int main(int argc, char** argv) {
 
     k_s/=scaling;
     k_l/=scaling;
-    L/=(scaling*scaling*scaling);
+    //L/=(scaling*scaling*scaling);
+    if(example_==ICE_MELT){
+        sigma/=scaling;
+    }
 
     alpha_l*=(scaling*scaling);
     alpha_s*=(scaling*scaling);

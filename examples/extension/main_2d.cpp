@@ -55,17 +55,17 @@ param_t<int>    lmin        (pl, 4,   "lmin",         "Min level of refinement (
 param_t<int>    lmax        (pl, 4,   "lmax",         "Max level of refinement (default: 4)");
 param_t<double> lip         (pl, 1.2, "lip",          "Lipschitz constant (characterize transition width between coarse and fine regions) (default: 1.2)");
 param_t<double> uniform_band(pl, 5,   "uniform_band", "Width of the uniform band around interface (in smallest quadrant lengths) (default: 5)");
-param_t<int>    num_splits  (pl, 4,   "num_splits",   "Number of successive refinements (default: 5)");
+param_t<int>    num_splits  (pl, 8,   "num_splits",   "Number of successive refinements (default: 5)");
 
 // problem set-up (points of iterpolation and function to interpolate)
-param_t<int> test_domain(pl, 3, "test_domain", "Test domain (default: 0):\n"
+param_t<int> test_domain(pl, 0, "test_domain", "Test domain (default: 0):\n"
                                                "    0 - sphere \n"
                                                "    1 - flower shaped"
                                                "    2 - union of two spheres"
                                                "    3 - difference of two spheres");
 
 param_t<int> test_function(pl, 0, "test_function", "Test function (default: 0):\n"
-                                                   "    0 - sin(x)*cos(y)\n"
+                                                   "    0 - sin(pi*x)*cos(pi*y)\n"
                                                    "    1 - ... (more to be added)");
 
 // method set-up
@@ -84,7 +84,7 @@ struct: CF_3 {
     {
       case 0: return -(0.501 - sqrt(SQR(x) + SQR(y) + SQR(z)));
       case 1:
-        static flower_shaped_domain_t flower(0.501, .0, .0, .0, .15, 1);
+        static flower_shaped_domain_t flower(0.501, .0, .0, .0, .3, 1);
         return flower.phi(x,y,z);
       case 2:
         return MIN(-(0.501 - sqrt(SQR(x+.1) + SQR(y+.3) + SQR(z+.2))),
@@ -104,7 +104,7 @@ struct: CF_2 {
     {
       case 0: return -(0.501 - sqrt(SQR(x) + SQR(y)));
       case 1:
-        static flower_shaped_domain_t flower(0.501, .0, .0, .15, 1);
+        static flower_shaped_domain_t flower(0.501, .0, .0, .3, 1);
         return flower.phi(x,y);
       case 2:
         return MIN(-(0.501 - sqrt(SQR(x+.1) + SQR(y+.3))),
@@ -124,7 +124,7 @@ struct: CF_3 {
   double operator()(double x, double y, double z) const {
     switch (test_function.val)
     {
-      case 0: return sin(x)*cos(y)*exp(z);
+      case 0: return sin(PI*x)*cos(PI*y)*exp(z);
       default:
         throw std::invalid_argument("Invalid test function");
     }
@@ -135,7 +135,7 @@ struct: CF_2 {
   double operator()(double x, double y) const {
     switch (test_function.val)
     {
-      case 0: return sin(x)*cos(y);
+      case 0: return sin(PI*x)*cos(PI*y);
       default:
         throw std::invalid_argument("Invalid test function");
     }
@@ -278,7 +278,7 @@ int main(int argc, char** argv)
     ierr = VecGetArray(f_linear,    &f_linear_ptr);
     ierr = VecGetArray(f_quadratic, &f_quadratic_ptr);
 
-    foreach_local_node(n, nodes)
+    foreach_node(n, nodes)
     {
       if (phi_ptr[n] > 0)
       {
