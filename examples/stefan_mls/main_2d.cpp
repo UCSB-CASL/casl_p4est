@@ -48,6 +48,26 @@
 
 
 using namespace std;
+
+const static std::string main_description =
+     "In this example, we illustrate the procedure and methods used in the CASL p4est \n"
+     "library to solve the Stefan problem. This example builds on fundamental tools \n"
+     "of the CASL library such as interpolation, extrapolation of fields, adaptive grid \n"
+     "refinement, reinitialization and advection of a level set function, and solution of \n"
+     "a Poisson problem. \n"
+     "Two examples are included in each 2D and 3D. One solves the Frank Sphere problem, a \n"
+     "known analytical solution to the Stefan problem, and computes errors of the solution. \n"
+     "The other models the melting of ice in a tub of water. Note: the ice melting example \n"
+     "is more for illustrative purposes of a physical example, and has not been rigorously validated. \n"
+     "\n"
+     "For more information, please see the Solving_a_Stefan_problem_with_CASL_p4est.pdf file included \n"
+     "in the example folder. \n "
+    "Developer: Elyce Bayat (ebayat@ucsb.edu), December 2019.\n"
+     "\n\n\n"
+     "Note: There are 3 environment variables to set depending on the data you wish to save. They are: \n"
+     "(1) OUT_DIR_VTK -- the directory where you wish to save the vtk files of your simulation \n"
+     "(2) OUT_DIR_ERR -- the directory where you wish to save files with the frank sphere error information at each timestep \n"
+     "(3) OUT_DIR_MEM -- the directory where you wish to save files with data regarding memory usage of the code (this is more for debugging)\n";
 // ------------------------
 // Define parameters:
 // ------------------------
@@ -55,6 +75,7 @@ parameter_list_t pl;
 
 // Examples:
 DEFINE_PARAMETER(pl,int,example_,0,"Example number. 0 = Frank sphere, 1 = Ice melting. (default: 0)");
+
 // Define the numeric label for each type of example to make implementation a bit more clear
 enum{
     FRANK_SPHERE = 0,
@@ -68,7 +89,7 @@ DEFINE_PARAMETER(pl,int,save_every_iter,1,"Save every n (provided value) number 
 
 
 // Output settings:
-bool print_checkpoints = true;
+DEFINE_PARAMETER(pl,bool,print_checkpoints,0,"Boolean value for whether or not you want to print simulation information -- mostly for debugging. (default: 0)");
 // Solution methods:
 DEFINE_PARAMETER(pl,int,method_,1,"Timestepping method. 1 = Backward Euler, 2= Crank-Nicholson. (default: 1)");
 
@@ -79,12 +100,12 @@ DEFINE_PARAMETER(pl,double,lip,1.5,"Lipschitz constant (default: 1.5)");
 DEFINE_PARAMETER(pl,int,num_splits,0,"Number of splits -- used for convergence analysis (default: 0)");
 
 // Problem geometry:
-DEFINE_PARAMETER(pl,double,xmin,0.0,"");
-DEFINE_PARAMETER(pl,double,xmax,1.0,"");
-DEFINE_PARAMETER(pl,double,ymin,0.0,"");
-DEFINE_PARAMETER(pl,double,ymax,1.0,"");
-DEFINE_PARAMETER(pl,double,zmin,0.0,"");
-DEFINE_PARAMETER(pl,double,zmax,1.0,"");
+DEFINE_PARAMETER(pl,double,xmin,0.0,"Minimum x-coordinate of the grid (default: 0.0)");
+DEFINE_PARAMETER(pl,double,xmax,1.0,"Maximum x-coordinate of the grid (default: 1.0)");
+DEFINE_PARAMETER(pl,double,ymin,0.0,"Minimum y-coordinate of the grid (default: 0.0)");
+DEFINE_PARAMETER(pl,double,ymax,1.0,"Maximum y-coordinate of the grid (default: 1.0)");
+DEFINE_PARAMETER(pl,double,zmin,0.0,"Minimum z-coordinate of the grid (default: 0.0)");
+DEFINE_PARAMETER(pl,double,zmax,1.0,"Maximum z-coordinate of the grid (default: 1.0)");
 
 DEFINE_PARAMETER(pl,int,px,0,"Periodicity in x? Default: false");
 DEFINE_PARAMETER(pl,int,py,0,"Periodicity in y? Default: false");
@@ -94,14 +115,14 @@ DEFINE_PARAMETER(pl,int,nx,0,"Number of trees in x-direction (default: 1)");
 DEFINE_PARAMETER(pl,int,ny,0,"Number of trees in x-direction (default: 1)");
 DEFINE_PARAMETER(pl,int,nz,0,"Number of trees in x-direction (default: 1)");
 
-DEFINE_PARAMETER(pl,double,box_size,1.0,"Equivalent characteristic length of your physical problem (default: 1.0 - aka, no scaling necessary)");
+DEFINE_PARAMETER(pl,double,scaling,1.0,"The desired scaling between your physical problem and computational domain. ie.) physical_length_scale*scaling = computational_length_scale (default: 1.0 - aka, no scaling necessary)");
 
 // Simulation time:
 DEFINE_PARAMETER(pl,double,tstart,0.0,"Simulation start time (default: 0.0)");
 DEFINE_PARAMETER(pl,double,tfinal,1.0,"Simulation end time (default: 1.0)");
 
 // Solution stability:
-DEFINE_PARAMETER(pl,double,cfl,0.5,"CFL number to enforce for timestepping (default: 0.5)");
+DEFINE_PARAMETER(pl,double,cfl,0.5,"CFL number to enforce for timestepping (default: 0.25)");
 DEFINE_PARAMETER(pl,double,v_interface_max_allowed,500.0,"Maximum interfacial velocity allowed -- will abort if interface value exceeds this (default: 500.0");
 DEFINE_PARAMETER(pl,double,dt_max_allowed,1.0,"Maximum allowable timestep -- if timestep exceeds this, it will be set to this value instead (default 1.0)");
 
@@ -110,9 +131,6 @@ DEFINE_PARAMETER(pl,bool,check_memory_usage,0,"Boolean on whether you want to ch
 // ---------------------------------------
 // Auxiliary global variables:
 // ---------------------------------------
-// For geometry:
-double scaling;   // for scaling the problem
-
 // For timestepping:
 double tn; // the current simulation time
 bool keep_going = true;
@@ -125,7 +143,6 @@ double T_inf;
 double r0;
 double Twall;
 double Tinterface;
-double back_wall_temp_flux;
 double Tice_init;
 
 // For keeping track of interfacial velocity:
@@ -158,54 +175,46 @@ void set_geometry(){
 
       break;
   case ICE_MELT:
-      CODE2D(xmin = -1.5; ymin = -1.5; zmin = 0.0;
-             xmax = 1.5; ymax = 1.5; zmax = 0.0);
-       CODE3D(xmin = -1.5; ymin = -1.5; zmin = -1.5;
-       xmax = 1.5; ymax = 1.5; zmax = 1.5);
+      CODE2D(xmin = -0.8; ymin = -0.8; zmin = 0.0;
+             xmax = 0.8; ymax = 0.8; zmax = 0.0);
+       CODE3D(xmin = -0.8; ymin = -0.8; zmin = -0.8;
+       xmax = 0.8; ymax = 0.8; zmax = 0.8);
        nx = 1; ny = 1; CODE2D(nz = 0); CODE3D(nz = 1);
        px = 0; py = 0; pz = 0;
 
       // Scaling -> phyiscal_length_scale*scaling = computational_length_scale.
       // Scaling has units of 1/L where L is the physical length scale
       // Scaling = computational size/physical size
-      double r_physical = 0.05; // 2 cm --> 0.02 m
+      double r_physical = 0.02; // 2 cm --> 0.02 m
       scaling = 1.5/0.15;
       r0 = r_physical*scaling; // Computational radius -- not physical size
 
-      Tice_init = 255.0; // [K] initial temp of ice out of freezer
+      Tice_init = 263.0; // [K] initial temp of ice out of freezer
       Tinterface = 273.0; // [K] -- freezing temp of water
-      Twall = 355.0; // [K] -- a bit under boiling temp of water
+      Twall = 298.0; // [K] -- a bit under boiling temp of water
       break;
 
     }
-
-  //scaling = 1./box_size;
 }
 
 
 // ---------------------------------------
 // Time-stepping:
 // ---------------------------------------
-double delta_t;
-
-double dt;
-
-
+double dt; // Global variable which holds the current timestep value
 void simulation_time_info(){
   switch(example_){
     case FRANK_SPHERE:
       tstart = 1.0;
       tfinal = 1.3;
 
-      delta_t = 0.01;
       dt_max_allowed = 0.05;
 
       break;
     case ICE_MELT:
       tstart = 0.0;
-      tfinal = 50.0;
-      delta_t = 1.0e-3;
-      dt_max_allowed = 1.0e-1;
+      tfinal = 90.*60.; // approx 90 minutes
+      dt_max_allowed = 20.0;
       break;
     }
   tn = tstart;
@@ -215,7 +224,6 @@ void simulation_time_info(){
 // ---------------------------------------
 double alpha_s;
 double alpha_l;
-
 void set_diffusivities(){
   switch(example_){
     case FRANK_SPHERE:
@@ -229,11 +237,10 @@ void set_diffusivities(){
     }
 }
 
-
-double k_s;
-double k_l;
+double k_s; // Thermal conductivity of the solid
+double k_l; // Thermal conductivity of the liquid
 double L; // Latent heat of fusion
-double rho_l;
+double rho_l; // Liquid density
 
 void set_conductivities(){
   switch(example_){
@@ -245,11 +252,11 @@ void set_conductivities(){
       break;
 
     case ICE_MELT:
-      k_s = 0.2;//2.2; // W/[m*K]
+      k_s = 2.3;//2.2; // W/[m*K]
       k_l = 0.65; // W/[m*K]
       L = 334.e3; //J/kg
       rho_l = 1000.0; // kg/m^3
-      sigma = 30.e-1;//30.e-3 // J/m^2 // surface tension of water
+      sigma = 9.e-6;//30.e-3 // J/m^2 // surface tension of water
       break;
 
     }
@@ -258,9 +265,7 @@ void set_conductivities(){
 // ---------------------------------------
 // Other parameters:
 // ---------------------------------------
-
-bool check_temperature_values = false; // Whether or not you want to print out temperature value averages during various steps of the solution process -- for debugging
-
+DEFINE_PARAMETER(pl,bool,check_temperature_values,0,"Boolean for whether or not to check temperature values at various points during the simulation. Mainly for debugging. (default: 0)");
 // Begin defining classes for necessary functions and boundary conditions...
 // --------------------------------------------------------------------------------------------------------------
 // Auxiliary Frank sphere functions -- Functions necessary for evaluating the analytical solution of the Frank sphere problem, to validate results for example 1
@@ -392,18 +397,12 @@ class BC_interface_value: public CF_DIM{
 private:
   // Have interpolation objects for case with surface tension included in boundary condition: can interpolate the curvature in a timestep to the interface points while applying the boundary condition
   my_p4est_interpolation_nodes_t kappa_interp;
-  my_p4est_interpolation_nodes_t nx_interp;
-  my_p4est_interpolation_nodes_t ny_interp;
-  my_p4est_interpolation_nodes_t nz_interp;
 
 public:
-  BC_interface_value(my_p4est_node_neighbors_t *ngbd, vec_and_ptr_dim_t normal, vec_and_ptr_t kappa): kappa_interp(ngbd), nx_interp(ngbd), ny_interp(ngbd),nz_interp(ngbd)
+  BC_interface_value(my_p4est_node_neighbors_t *ngbd, vec_and_ptr_t kappa): kappa_interp(ngbd)
   {
     // Set the curvature and normal inputs to be interpolated when the BC object is constructed:
     kappa_interp.set_input(kappa.vec,linear);
-    nx_interp.set_input(normal.vec[0],linear);
-    ny_interp.set_input(normal.vec[1],linear);
-    CODE3D(nz_interp.set_input(normal.vec[2],linear));
   }
   double operator()(DIM(double x, double y,double z)) const
   {
@@ -503,7 +502,6 @@ public:
       case FRANK_SPHERE:{
         if (xlower_wall(DIM(x,y,z)) || xupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)) CODE3D(|| zlower_wall(DIM(x,y,z)) || zupper_wall(DIM(x,y,z)))){
             if (level_set(DIM(x,y,z)) < EPS){
-                //return Twall;
                 double r = sqrt(SQR(x) + SQR(y) CODE3D(+ SQR(z)));
                 double sval = s(r,tn+dt);
                 return frank_sphere_solution_t(sval);
@@ -553,11 +551,9 @@ public:
         r = sqrt(SQR(x) + SQR(y) CODE3D(+ SQR(z)));
         m = (Twall - Tinterface)/(level_set(DIM(xmax,ymax,zmax)) - r0);
         if (level_set(DIM(x,y,z))<0){
-            //return Tinterface + m*level_set(DIM(x,y,z));
             return Twall;
         }
         else{
-            //return Tinterface;
             return Tice_init;
         }
 
@@ -572,6 +568,7 @@ public:
 // --------------------------------------------------------------------------------------------------------------
 // Functions for checking the values of interest during the solution process
 // --------------------------------------------------------------------------------------------------------------
+// For checking temperature values: (NOTE: called when check_temperature_values flag is on)
 void check_T_values(vec_and_ptr_t phi, vec_and_ptr_t T, p4est_nodes_t* nodes, p4est_t* p4est) {
   T.get_array();
   phi.get_array();
@@ -630,6 +627,7 @@ void check_T_values(vec_and_ptr_t phi, vec_and_ptr_t T, p4est_nodes_t* nodes, p4
   phi.restore_array();
 }
 
+// For checking temperature derivative values: (NOTE: not called in main currently)
 void check_T_d_values(vec_and_ptr_t phi, vec_and_ptr_dim_t dT, p4est_nodes_t* nodes, p4est_t* p4est, bool get_location){
   dT.get_array();
   phi.get_array();
@@ -703,6 +701,7 @@ void check_T_d_values(vec_and_ptr_t phi, vec_and_ptr_dim_t dT, p4est_nodes_t* no
   phi.restore_array();
 }
 
+// For checking interfacial velocity values: (NOTE: not called in main currently)
 void check_vel_values(vec_and_ptr_t phi, vec_and_ptr_dim_t vel, p4est_nodes_t* nodes, p4est_t* p4est, bool get_location,double dxyz_close_to_interface){
   vel.get_array();
   phi.get_array();
@@ -918,7 +917,7 @@ void check_frank_sphere_error(vec_and_ptr_t T_l, vec_and_ptr_t T_s, vec_and_ptr_
 }
 
 // --------------------------------------------------------------------------------------------------------------
-// FUNCTIONS FOR SOLVING THE PROBLEM:
+// Auxiliary functions for solving the problem:
 // --------------------------------------------------------------------------------------------------------------
 // For ice melt case, check if the ice is all melted yet
 bool check_ice_melted(vec_and_ptr_t phi, double time, p4est_nodes_t* nodes,p4est_t* p4est){
@@ -943,7 +942,7 @@ bool check_ice_melted(vec_and_ptr_t phi, double time, p4est_nodes_t* nodes,p4est
   SC_CHECK_MPI(mpi_check);
   MPI_Barrier(p4est->mpicomm);
   if (!global_still_solid_present){ // If no more solid, then ice has melted
-      PetscPrintf(p4est->mpicomm,"\n \n Ice has entirely melted as of t = %0.3e \n \n ",time);
+      PetscPrintf(p4est->mpicomm,"\n \n Ice has entirely melted as of t = %0.3e seconds, or %0.2f minutes \n \n ",time,time/60.);
     }
 return global_still_solid_present;
 }
@@ -1119,20 +1118,19 @@ void compute_timestep(vec_and_ptr_dim_t v_interface, vec_and_ptr_t phi, double d
   double global_max_vnorm = 0.0;
   int mpi_ret = MPI_Allreduce(&max_v_norm,&global_max_vnorm,1,MPI_DOUBLE,MPI_MAX,p4est->mpicomm);
   SC_CHECK_MPI(mpi_ret);
-  PetscPrintf(p4est->mpicomm,"\n \n \n Computed interfacial velocity and timestep: \n {");
-  PetscPrintf(p4est->mpicomm,"\n Max v norm: %0.2e \n", global_max_vnorm);
-  PetscPrintf(p4est->mpicomm,"\n Physically, this corresponds to: %0.2e \n",global_max_vnorm/scaling);
+  PetscPrintf(p4est->mpicomm,"\n Computed interfacial velocity and timestep: \n");
+  PetscPrintf(p4est->mpicomm,"\n -- Max v norm: %0.2g \n", global_max_vnorm);
+  if(scaling>(1.0 + EPS) || scaling<(1.0 - EPS))PetscPrintf(p4est->mpicomm,"\n -- Physically, this corresponds to: %0.2g [m/s] \n \n",global_max_vnorm/scaling);
 
   // Compute new timestep:
   dt = cfl*min(dxyz_smallest[0],dxyz_smallest[1])/min(global_max_vnorm,1.0);
-  PetscPrintf(p4est->mpicomm,"Computed timestep: %0.3e \n",dt);
+  PetscPrintf(p4est->mpicomm,"-- Computed timestep: %0.3e \n",dt);
 
   dt = min(dt,dt_max_allowed);
-  //dt = min(dt,cfl*min(dxyz_smallest[0],dxyz_smallest[1]));
 
   // Report computed timestep and minimum grid size:
-  PetscPrintf(p4est->mpicomm,"Used timestep: %0.3e \n",dt);
-  PetscPrintf(p4est->mpicomm,"dxyz close to interface : %0.3e \n } \n \n  ",dxyz_close_to_interface);
+  PetscPrintf(p4est->mpicomm," -- Used timestep: %0.3e \n",dt);
+  if(print_checkpoints)PetscPrintf(p4est->mpicomm,"dxyz close to interface : %0.3e \n } \n \n  ",dxyz_close_to_interface);
 
   v_interface_max_norm = global_max_vnorm;
 }
@@ -1152,7 +1150,7 @@ void compute_curvature(vec_and_ptr_t phi,vec_and_ptr_dim_t normal,vec_and_ptr_t 
   for(size_t i = 0; i<ngbd->get_layer_size(); i++){
       p4est_locidx_t n = ngbd->get_layer_node(i);
       ngbd->get_neighbors(n,qnnn);
-      curvature_tmp.ptr[n] = qnnn.dx_central(normal.ptr[0]) + qnnn.dy_central(normal.ptr[1]);
+      curvature_tmp.ptr[n] = qnnn.dx_central(normal.ptr[0]) + qnnn.dy_central(normal.ptr[1]) CODE3D(+ qnnn.dz_central(normal.ptr[2]));
     }
 
   // Begin ghost update:
@@ -1162,7 +1160,7 @@ void compute_curvature(vec_and_ptr_t phi,vec_and_ptr_dim_t normal,vec_and_ptr_t 
   for(size_t i = 0; i<ngbd->get_local_size(); i++){
       p4est_locidx_t n = ngbd->get_local_node(i);
       ngbd->get_neighbors(n,qnnn);
-      curvature_tmp.ptr[n] = qnnn.dx_central(normal.ptr[0]) + qnnn.dy_central(normal.ptr[1]);
+      curvature_tmp.ptr[n] = qnnn.dx_central(normal.ptr[0]) + qnnn.dy_central(normal.ptr[1]) CODE3D(+ qnnn.dz_central(normal.ptr[2]));
     }
 
   // End ghost update:
@@ -1181,7 +1179,7 @@ void compute_curvature(vec_and_ptr_t phi,vec_and_ptr_dim_t normal,vec_and_ptr_t 
 }
 
 // --------------------------------------------------------------------------------------------------------------
-// FUNCTION FOR SAVING INFO:
+// Function for saving to VTK for visualization in paraview:
 // --------------------------------------------------------------------------------------------------------------
 void save_stefan_fields(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,vec_and_ptr_t phi,vec_and_ptr_t Tl,vec_and_ptr_t Ts,vec_and_ptr_dim_t v_int, vec_and_ptr_t T_error, vec_and_ptr_t T_ana, char* filename ){
   // Things we want to save:
@@ -1254,15 +1252,17 @@ int main(int argc, char** argv) {
   mpi_environment_t mpi;
   mpi.init(argc, argv);
   PetscErrorCode ierr;
-  PetscViewer viewer;
-  int mpi_ret; // Check mpi issues
 
   cmdParser cmd;
 
+  // Parse inputs:
   pl.initialize_parser(cmd);
+  if (cmd.parse(argc, argv, main_description)) return 0;
+
   cmd.parse(argc,argv);
 
   pl.get_all(cmd);
+
 
   // stopwatch
   parStopWatch w;
@@ -1300,7 +1300,7 @@ int main(int argc, char** argv) {
     // -----------------------------------------------
     // Set properties for the Poisson node problem:
     // -----------------------------------------------
-    int cube_refinement = 4;
+    int cube_refinement = 1; // We can set this to 1 since we are only considering Dirichlet BC's, and this only comes into play for Neumann/Robin
     interpolation_method interp_bw_grids = quadratic_non_oscillatory_continuous_v2;
 
     // Initialize physical properties:
@@ -1314,23 +1314,26 @@ int main(int argc, char** argv) {
     // Scale the problem appropriately:
     // -----------------------------------------------
     rho_l/=(scaling*scaling*scaling);
-
-
     k_s/=scaling;
     k_l/=scaling;
-    L/=(scaling*scaling*scaling);
+
+    if(example_==ICE_MELT){
+        sigma/=scaling;
+    }
 
     alpha_l*=(scaling*scaling);
     alpha_s*=(scaling*scaling);
 
-    PetscPrintf(mpi.comm(),"Scaled values are: "
-                           "ks = %0.3g \n"
-                           "kl = %0.3g \n"
-                           "alpha_s = %0.3g \n"
-                           "alpha_l = %0.3g \n"
-                           "L = %0.3g \n"
-                           "rho_l = %0.3g \n",k_s,k_l,alpha_s,alpha_l,L,rho_l
-                );
+    if(print_checkpoints){
+        PetscPrintf(mpi.comm(),"Scaled values are: "
+                               "ks = %0.3g \n"
+                               "kl = %0.3g \n"
+                               "alpha_s = %0.3g \n"
+                               "alpha_l = %0.3g \n"
+                               "L = %0.3g \n"
+                               "rho_l = %0.3g \n",k_s,k_l,alpha_s,alpha_l,L,rho_l);
+    }
+
 
     // -----------------------------------------------
     // Create the grid:
@@ -1451,7 +1454,7 @@ int main(int argc, char** argv) {
     if(!outdir_vtk && save_vtk){
         throw std::invalid_argument("You need to set the environment variable OUT_DIR_VTK to save vtk files\n");
     }
-    sprintf(outdir,"%s/snapshot_%d",outdir_vtk,out_idx);
+    //sprintf(outdir,"%s/lmin_%d_lmax_%d_snapshot_%d",outdir_vtk,lmin+grid_res_iter,lmax+grid_res_iter,out_idx);
 
     // -----------------------------------------------
     // Initialize file to output error and convergence information:
@@ -1462,7 +1465,7 @@ int main(int argc, char** argv) {
     if (example_ == FRANK_SPHERE){
       const char* outdir_err = getenv("OUT_DIR_ERR");
       if(!outdir_err && save_frank_sphere_errors){
-          throw std::invalid_argument("You need to set the environment variable OUT_DIR_VTK to save vtk files\n");
+          throw std::invalid_argument("You need to set the environment variable OUT_DIR_ERR to save vtk files\n");
       }
 
       CODE2D(sprintf(name,"%s/frank_sphere_error_2d_lmin_%d_lmax_%d_method_%d.dat",outdir_err,lmin+grid_res_iter,lmax + grid_res_iter,method_);)
@@ -1503,7 +1506,6 @@ int main(int argc, char** argv) {
     // Begin stepping through time
     // -----------------------------------------------
     int tstep = 0;
-    dt = delta_t;
 
     PetscPrintf(mpi.comm(),"Gets to here ");
     for (tn;tn<tfinal; tn+=dt){
@@ -1609,7 +1611,7 @@ int main(int argc, char** argv) {
           // Prepare filename:
           char output[1000];
           out_idx++;
-          sprintf(output,"%s/snapshot%d",outdir_vtk,out_idx);
+          sprintf(output,"%s/lmin_%d_lmax_%d_snapshot%d",outdir_vtk,lmin+grid_res_iter,lmax+grid_res_iter,out_idx);
 
           // Evaluate the error for visualization (in Frank Sphere Case):
           vec_and_ptr_t T_ana;
@@ -1813,7 +1815,7 @@ int main(int argc, char** argv) {
         // Get most updated derivatives of the LSF's (on current grid) -- Solver uses these:
         // ------------------------------------------------------------
 
-          PetscPrintf(mpi.comm(),"Beginning Poisson problem ... \n");
+          if(print_checkpoints) PetscPrintf(mpi.comm(),"Beginning Poisson problem ... \n");
           phi_solid_dd.create(p4est_np1,nodes_np1);
           ngbd_np1->second_derivatives_central(phi_solid.vec,phi_solid_dd.vec);
 
@@ -1853,7 +1855,7 @@ int main(int argc, char** argv) {
           solver_Tl = new my_p4est_poisson_nodes_mls_t(ngbd_np1);
           solver_Ts = new my_p4est_poisson_nodes_mls_t(ngbd_np1);
 
-          BC_interface_value bc_interface_val(ngbd_np1,normal,curvature);
+          BC_interface_value bc_interface_val(ngbd_np1,curvature);
 
           // Add the appropriate interfaces and interfacial boundary conditions:
           solver_Tl->add_boundary(MLS_INTERSECTION,phi.vec,DIM(phi_dd.vec[0],phi_dd.vec[1],phi_dd.vec[2]),interface_bc_type_temp,bc_interface_val,bc_interface_coeff);
@@ -1881,7 +1883,7 @@ int main(int argc, char** argv) {
           solver_Ts->set_rhs(rhs_Ts.vec);
 
           // Set some other solver properties:
-          solver_Tl->set_integration_order(1); // For Dirichlet/Neumann/Robin
+          solver_Tl->set_integration_order(1); // For Neumann/Robin
           solver_Tl->set_use_sc_scheme(0); // For Neumann/Robin
           solver_Tl->set_cube_refinement(cube_refinement); // For Neumann/Robin
           solver_Tl->set_store_finite_volumes(0);
@@ -1981,7 +1983,7 @@ int main(int argc, char** argv) {
         // Get current memory usage and print out all memory usage checkpoints:
         PetscLogDouble mem14;
         PetscMemoryGetCurrentUsage(&mem14);
-        PetscPrintf(mpi.comm(),"Memory used %g \n\n",mem14);
+        if(check_memory_usage) PetscPrintf(mpi.comm(),"Memory used %g \n\n",mem14);
 
 
         if(check_memory_usage){

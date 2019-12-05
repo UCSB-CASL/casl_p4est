@@ -109,8 +109,8 @@ param_t<int> num_shifts_x_dir (pl, 1, "num_shifts_x_dir", "Number of grid shifts
 param_t<int> num_shifts_y_dir (pl, 1, "num_shifts_y_dir", "Number of grid shifts in the y-direction");
 param_t<int> num_shifts_z_dir (pl, 1, "num_shifts_z_dir", "Number of grid shifts in the z-direction");
 #else
-param_t<int> lmin (pl, 5, "lmin", "Min level of the tree");
-param_t<int> lmax (pl, 5, "lmax", "Max level of the tree");
+param_t<int> lmin (pl, 6, "lmin", "Min level of the tree");
+param_t<int> lmax (pl, 16, "lmax", "Max level of the tree");
 
 param_t<int> num_splits           (pl, 5, "num_splits", "Number of recursive splits");
 param_t<int> num_splits_per_split (pl, 1, "num_splits_per_split", "Number of additional resolutions");
@@ -245,10 +245,10 @@ param_t<bool> kink_special_treatment (pl, 1, "kink_special_treatment", "Use the 
 // for superconvergent scheme:
 param_t<bool> try_remove_hanging_cells (pl, 0, "try_remove_hanging_cells", "Ask solver to eliminate hanging cells");
 
-param_t<bool> store_finite_volumes   (pl, 1, "store_finite_volumes", "");
-param_t<bool> apply_bc_pointwise     (pl, 1, "apply_bc_pointwise", "");
+param_t<bool> store_finite_volumes   (pl, 0, "store_finite_volumes", "");
+param_t<bool> apply_bc_pointwise     (pl, 0, "apply_bc_pointwise", "");
 param_t<bool> use_centroid_always    (pl, 0, "use_centroid_always", "");
-param_t<bool> sample_bc_node_by_node (pl, 1, "sample_bc_node_by_node", "");
+param_t<bool> sample_bc_node_by_node (pl, 0, "sample_bc_node_by_node", "");
 
 // for solving nonlinear equations
 param_t<int>    nonlinear_method (pl, 1, "nonlinear_method", "Method to solve nonlinear eqautions: 0 - solving for solution itself, 1 - solving for change in the solution");
@@ -259,7 +259,7 @@ param_t<double> nonlinear_tol    (pl, 1.e-10, "nonlinear_tol", "Tolerance for so
 // level-set representation parameters
 //-------------------------------------
 param_t<bool> use_phi_cf       (pl, 0, "use_phi_cf", "Use analytical level-set functions");
-param_t<bool> reinit_level_set (pl, 1, "reinit_level_set", "Reinitialize level-set function");
+param_t<bool> reinit_level_set (pl, 0, "reinit_level_set", "Reinitialize level-set function");
 
 // artificial perturbation of level-set values
 param_t<int>    dom_perturb     (pl, 0, "dom_perturb", "Artificially pertub level-set functions (0 - no perturbation (pl, 1 - smooth (pl, 2 - noisy)");
@@ -273,12 +273,12 @@ param_t<double> ifc_perturb_pow (pl, 2, "ifc_perturb_pow", "Order of level-set p
 //-------------------------------------
 // convergence study parameters
 //-------------------------------------
-param_t<bool>    compute_cond_num       (pl, 0, "compute_cond_num", "Estimate L1-norm condition number");
+param_t<bool>   compute_cond_num       (pl, 0, "compute_cond_num", "Estimate L1-norm condition number");
 param_t<int>    extend_solution        (pl, 0, "extend_solution", "Extend solution after solving: 0 - no extension (pl, 1 - extend using normal derivatives (pl, 2 - extend using all derivatives");
 param_t<double> mask_thresh            (pl, 0, "mask_thresh", "Mask threshold for excluding points in convergence study");
 param_t<bool>   compute_grad_between   (pl, 0, "compute_grad_between", "Computes gradient between points if yes");
 param_t<bool>   scale_errors           (pl, 0, "scale_errors", "Scale errors by max solution/gradient value");
-param_t<bool>   use_nonzero_guess      (pl, 1, "use_nonzero_guess", "");
+param_t<bool>   use_nonzero_guess      (pl, 0, "use_nonzero_guess", "");
 param_t<double> extension_band_extend  (pl, 60, "extension_band_extend", "");
 param_t<double> extension_band_compute (pl, 6, "extension_band_compute", "");
 param_t<double> extension_band_check   (pl, 6, "extension_band_check", "");
@@ -296,7 +296,7 @@ param_t<bool> save_matrix_ascii  (pl, 0, "save_matrix_ascii", "Save the matrix i
 param_t<bool> save_matrix_binary (pl, 0, "save_matrix_binary", "Save the matrix in BINARY MATLAB format");
 param_t<bool> save_convergence   (pl, 0, "save_convergence", "Save convergence results");
 
-param_t<int> n_example (pl, 24, "n_example", "Predefined example:\n"
+param_t<int> n_example (pl, 20, "n_example", "Predefined example:\n"
                                              "0 - no interfaces, no boudaries\n"
                                              "1 - sphere interior\n"
                                              "2 - sphere exterior\n"
@@ -744,8 +744,8 @@ void set_example(int n_example)
 
     case 20: // clusters of particles
 
-      n_um.val = 20; mag_um.val = 0; n_mu_m.val = 0; mag_mu_m.val = 10; n_diag_m.val = 0; mag_diag_m.val = 1;
-      n_up.val = 20; mag_up.val = 0; n_mu_p.val = 0; mag_mu_p.val = 1; n_diag_p.val = 0; mag_diag_p.val = 1;
+      n_um.val = 11; mag_um.val = 0; n_mu_m.val = 0; mag_mu_m.val = 10; n_diag_m.val = 0; mag_diag_m.val = 1;
+      n_up.val = 12; mag_up.val = 0; n_mu_p.val = 0; mag_mu_p.val = 1; n_diag_p.val = 0; mag_diag_p.val = 1;
 
       infc_phi_num.val = 1;
       bdry_phi_num.val = 0;
@@ -760,8 +760,8 @@ void set_example(int n_example)
       bdry_present_02.val = 0;
       bdry_present_03.val = 0;
 
-      rhs_m_value.val = 1;
-      rhs_p_value.val = 1;
+      rhs_m_value.val = 0;
+      rhs_p_value.val = 0;
 
       break;
 
@@ -1533,27 +1533,6 @@ public:
                    muy_m_cf(DIM(x,y,z))*uy_m_cf(DIM(x,y,z)),
                    muz_m_cf(DIM(x,y,z))*uz_m_cf(DIM(x,y,z)));
       case 1:
-        return 0;
-      default:
-        throw;
-    }
-  }
-} rhs_m_cf;
-
-class rhs_p_cf_t: public CF_DIM
-{
-public:
-  double operator()(DIM(double x, double y, double z)) const {
-    switch (rhs_p_value.val)
-    {
-      case 0:
-        return diag_p_cf(DIM(x,y,z))*u_p_cf(DIM(x,y,z))
-            + nonlinear_term_p_coeff_cf(DIM(x,y,z))*nonlinear_term_p_cf(u_p_cf(DIM(x,y,z)))
-            - mu_p_cf(DIM(x,y,z))*ul_p_cf(DIM(x,y,z))
-            - SUMD(mux_p_cf(DIM(x,y,z))*ux_p_cf(DIM(x,y,z)),
-                   muy_p_cf(DIM(x,y,z))*uy_p_cf(DIM(x,y,z)),
-                   muz_p_cf(DIM(x,y,z))*uz_p_cf(DIM(x,y,z)));
-      case 1:
       {
         static int num_particles = 68;
         static double X[] = { 0.294320, 0.292603, 0.296621, 0.301392, 0.293268, 0.289541, 0.290527, 0.295213, 0.300884, 0.935243, 0.936367, 0.937713, 0.927721, 0.926407, 0.939303, 0.926755, 0.936908, 0.934454, 0.160228, 0.164293, 0.173756, 0.168733, 0.170695, 0.160737, 0.725447, 0.740474, 0.736547, 0.723810, 0.742820, 0.728138, 0.728254, 0.052907, 0.034801, 0.048034, 0.038434, 0.037001, 0.048676, -0.182697, -0.180690, -0.171622, -0.177232, -0.182553, -0.169332, 0.082096, 0.070903, 0.086667, 0.089332, -0.416502, -0.435866, -0.428412, 0.367410, 0.364188, 0.357943, 0.354170, 0.355478, 0.356304, 0.368282, 0.370185, 0.352045, -0.187080, -0.177875, -0.177947, -0.193546, -0.190933, -0.184008, -0.192313, -0.190761 };
@@ -1576,9 +1555,33 @@ public:
             idx = i;
             min_dist = current;
           }
+
+//          PetscPrintf(MPI_COMM_WORLD, "%d & %f & %f & %f & %f & %d & %f & %+1.0e \\\\ \n", i+1, X[i], Y[i], R[i], b[i], (int)n[i], t[i], q[i]);
         }
+//        throw;
         return 1.e5*q[idx];
       }
+      default:
+        throw;
+    }
+  }
+} rhs_m_cf;
+
+class rhs_p_cf_t: public CF_DIM
+{
+public:
+  double operator()(DIM(double x, double y, double z)) const {
+    switch (rhs_p_value.val)
+    {
+      case 0:
+        return diag_p_cf(DIM(x,y,z))*u_p_cf(DIM(x,y,z))
+            + nonlinear_term_p_coeff_cf(DIM(x,y,z))*nonlinear_term_p_cf(u_p_cf(DIM(x,y,z)))
+            - mu_p_cf(DIM(x,y,z))*ul_p_cf(DIM(x,y,z))
+            - SUMD(mux_p_cf(DIM(x,y,z))*ux_p_cf(DIM(x,y,z)),
+                   muy_p_cf(DIM(x,y,z))*uy_p_cf(DIM(x,y,z)),
+                   muz_p_cf(DIM(x,y,z))*uz_p_cf(DIM(x,y,z)));
+      case 1:
+        return 0;
       default:
         throw;
     }
@@ -2327,19 +2330,19 @@ int main (int argc, char* argv[])
   vector<double> cond_num_arr;
 
   // Start up a MATLAB Engine to calculate condidition number
-//#ifdef MATLAB_PROVIDED
-//  Engine *mengine = NULL;
-//  if (mpi.rank() == 0 && compute_cond_num())
-//  {
-//    mengine = engOpen("matlab -nodisplay -nojvm");
-//    if (mengine == NULL) throw std::runtime_error("Cannot start a MATLAB Engine session.\n");
-//  }
-//#else
-//  if (compute_cond_num)
-//  {
-//    ierr = PetscPrintf(mpi.comm(), "[Warning]: MATLAB is either not provided or found. Condition numbers will not be computed. \n");
-//  }
-//#endif
+#ifdef MATLAB_PROVIDED
+  Engine *mengine = NULL;
+  if (mpi.rank() == 0 && compute_cond_num())
+  {
+    mengine = engOpen("matlab -nodisplay -nojvm");
+    if (mengine == NULL) throw std::runtime_error("Cannot start a MATLAB Engine session.\n");
+  }
+#else
+  if (compute_cond_num())
+  {
+    ierr = PetscPrintf(mpi.comm(), "[Warning]: MATLAB is either not provided or found. Condition numbers will not be computed. \n");
+  }
+#endif
 
 
   parStopWatch w;
