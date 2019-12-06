@@ -1783,7 +1783,7 @@ double my_p4est_biomolecules_t::better_distance(const double *xyz, const int& re
 
     double dist_xyz_to_c_i = 0.0;
     for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-      SQR(xyz[dir] - atom_i->xyz_c[dir]);
+      dist_xyz_to_c_i += SQR(xyz[dir] - atom_i->xyz_c[dir]);
     dist_xyz_to_c_i = sqrt(dist_xyz_to_c_i);
     double xyz_proj_i[P4EST_DIM]; // projection on \delta B(c_i, r_p + ri)
     if(dist_xyz_to_c_i > zero_threshold)
