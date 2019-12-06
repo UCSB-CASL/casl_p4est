@@ -1701,7 +1701,7 @@ double my_p4est_biomolecules_t::reduced_operator(const double *xyz, const int& r
   {
     double dist_xyz_to_c_i = 0.0;
     for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-      SQR(xyz[dir] - atom_i->xyz_c[dir]);
+      dist_xyz_to_c_i += SQR(xyz[dir] - atom_i->xyz_c[dir]);
     dist_xyz_to_c_i = sqrt(dist_xyz_to_c_i);
 
     if(dist_xyz_to_c_i > zero_threshold)
