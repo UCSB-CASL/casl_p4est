@@ -783,6 +783,7 @@ class my_p4est_biomolecules_solver_t{
   PetscErrorCode ierr;
 
   my_p4est_general_poisson_nodes_mls_solver_t*  jump_solver= NULL;
+  my_p4est_poisson_nodes_mls_t*                 jump_solver_v2= NULL;
   my_p4est_poisson_nodes_t*                     node_solver = NULL;
 
   Vec           psi_star;
@@ -876,6 +877,7 @@ public:
 
   void          solve_linear() {(void) solve_nonlinear(1e-8, 1);} // equivalent to ONE iteration of the nonlinear solver
   int           solve_nonlinear(double upper_bound_residual = 1e-8, int it_max = 10000);
+  int           solve_nonlinear_v2(double upper_bound_residual = 1e-8, int it_max = 10000);
   void          get_solvation_free_energy(const bool &nonlinear_flag);
   void          return_all_psi_vectors(Vec& psi_star_out, Vec& psi_hat_out);
   void          return_psi_hat(Vec& psi_hat_out);

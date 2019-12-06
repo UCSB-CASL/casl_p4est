@@ -170,8 +170,8 @@ int main(int argc, char *argv[]) {
   // Now, read the options and/or set default parameters
 
   // which molecule(s)
-  //  const string input_folder                 = cmd.get<string> ("input-dir", "/home/rochi/LabCode/casl_p4est/examples/biomol/mols");
-  const string input_folder                 = cmd.get<string> ("input-dir", "/home/regan/Desktop/casl_p4est_develop/examples/biomol/mols");
+  const string input_folder                 = cmd.get<string> ("input-dir", "/home/rochi/LabCode/casl_p4est/examples/biomol/mols");
+  // const string input_folder                 = cmd.get<string> ("input-dir", "/home/regan/Desktop/casl_p4est_develop/examples/biomol/mols");
   const string pqr_input                    = cmd.get<string>("pqr", "single_sphere.");
   //    const string pqr_input                    = cmd.get<string>("pqr", "3J6D."); // in 2D, for the illustrative planar molecule in the paper
   //    const string pqr_input                    = cmd.get<string>("pqr", "/3J3Q/pqr/3j3q-bundle."); // in 3D, for the graphical abstract of the paper
@@ -199,7 +199,7 @@ int main(int argc, char *argv[]) {
   const int lmax                            = cmd.get<int>("lmax", 9);
   const double lip                          = cmd.get<double>("lip", 1.2);
   const int surf_gen                        = cmd.get<int>("surfgen", 1);
-  const double probe_radius                 = cmd.get<double>("rp", 0.01);
+  const double probe_radius                 = cmd.get<double>("rp", 0.001);
   const int order_of_accuracy               = cmd.get<int>("OOA", 2);
   // physical and solver parameters
   const double eps_mol                      = cmd.get<double>("eps_mol", 1.0);
@@ -209,7 +209,7 @@ int main(int argc, char *argv[]) {
   const double far_field_ion_concentration  = cmd.get<double>("n0", 0.000);
   const double rtol                         = cmd.get<double>("rtol", 1e-11);
   const int niter_max                       = cmd.get<int>("niter", 1000);
-  const string linearization_string         = cmd.get<string>("linear", "yes");
+  const string linearization_string         = cmd.get<string>("linear", "no");
   const bool linearization_flag             = (boost::iequals("1", linearization_string) || boost::iequals("yes", linearization_string) || boost::iequals("true", linearization_string));
 
 

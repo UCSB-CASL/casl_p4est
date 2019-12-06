@@ -3046,6 +3046,7 @@ my_p4est_biomolecules_solver_t::my_p4est_biomolecules_solver_t(const my_p4est_bi
 
   // create the solvers
   jump_solver     = new my_p4est_general_poisson_nodes_mls_solver_t(biomolecules->neighbors);
+  jump_solver_v2  = new my_p4est_poisson_nodes_mls_t(biomolecules->neighbors);
   node_solver     = new my_p4est_poisson_nodes_t(biomolecules->neighbors);
 }
 void    my_p4est_biomolecules_solver_t::set_molecular_relative_permittivity(double epsilon_molecule)
@@ -3440,6 +3441,297 @@ int my_p4est_biomolecules_solver_t::solve_nonlinear(double upper_bound_residual,
   }
 
   nb_iterations_for_setting_psi_hat = jump_solver->solve_nonlinear(psi_hat, upper_bound_residual, it_max, true);
+  string timer_msg = "End of nonlinear iterations ";
+  if(solve_subtimer != NULL)
+  {
+    solve_subtimer->stop(); solve_subtimer->read_duration();
+    string timer_msg = "End of nonlinear iterations ";
+    solve_subtimer->stop();
+  }
+  ierr = VecDestroy(add_plus);                        CHKERRXX(ierr);
+  ierr = VecDestroy(eps_grad_n_psi_hat_jump);         CHKERRXX(ierr);
+  ierr = VecDestroy(eps_grad_n_psi_hat_jump_xxyyzz);  CHKERRXX(ierr);
+  ierr = VecDestroy(node_sampled_zero);               CHKERRXX(ierr);
+  ierr = VecDestroy(psi_star_xxyyzz);                 CHKERRXX(ierr);
+
+  if(solve_subtimer != NULL){
+    delete solve_subtimer; solve_subtimer = NULL; }
+
+  if(log_timer != NULL)
+  {
+    log_timer->stop(); log_timer->read_duration();
+    delete log_timer;
+  }
+
+  psi_hat_is_set = true;
+  return iter;
+}
+
+int my_p4est_biomolecules_solver_t::solve_nonlinear_v2(double upper_bound_residual, int it_max)
+{
+  int iter = 0;
+  if (psi_hat_is_set)
+    return iter;
+  P4EST_ASSERT(all_parameters_are_set());
+  P4EST_ASSERT(it_max >= 1);
+  P4EST_ASSERT((it_max == 1) || (upper_bound_residual > 0.0));
+  parStopWatch *log_timer = NULL, *solve_subtimer = NULL;
+  if(biomolecules->log_file != NULL)
+  {
+    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, " \n");                                                                                 CHKERRXX(ierr);
+    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "------------------------------------------------------------------------------- \n");  CHKERRXX(ierr);
+    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "Solving the Poisson-Boltzmann equation on a %d/%d grid with %d proc(s) \n",
+                        (int) biomolecules->parameters.lmin(), (int) biomolecules->parameters.lmax(), biomolecules->p4est->mpisize);                                  CHKERRXX(ierr);
+    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "------------------------------------------------------------------------------- \n");  CHKERRXX(ierr);
+    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "The ionic charge is %d \n", ion_charge);                                               CHKERRXX(ierr);
+    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "The far-field electrolyte density is %g m^{-3} \n", far_field_ion_density);            CHKERRXX(ierr);
+    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "The temperature is %g K \n", temperature);                                             CHKERRXX(ierr);
+    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "The inverse debye length %g A^{-1}, %g m^{-1}, or %g in domain units\n",
+                        (get_inverse_debye_length_in_angstrom_inverse()), (get_inverse_debye_length_in_meters_inverse()), get_inverse_debye_length_in_domain());      CHKERRXX(ierr);
+    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "\n");                                                                                  CHKERRXX(ierr);
+    if(biomolecules->timing_file != NULL)
+    {
+      log_timer = new parStopWatch(parStopWatch::all_timings, biomolecules->log_file, biomolecules->p4est->mpicomm);
+      log_timer->start("Resolution of the nonlinear Poisson-Boltzmann Equation");
+    }
+  }
+  ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "line 3497 ok \n");  CHKERRXX(ierr);
+  if(biomolecules->timing_file != NULL)
+  {
+    P4EST_ASSERT(solve_subtimer == NULL);
+    solve_subtimer = new parStopWatch(parStopWatch::root_timings, biomolecules->timing_file, biomolecules->p4est->mpicomm);
+  }
+
+  //parameter for nonlinear term
+  param_list_t pl;
+
+  param_t<int>    nonlinear_term_m       (pl, 0, "nonlinear_term_m",       "Nonlinear term in negative domain: 0 - zero, 1 - linear, 2 - sinh, 3 - u/(1+u)");
+  param_t<int>    nonlinear_term_m_coeff (pl, 0, "nonlinear_term_m_coeff", "Coefficient form for nonlinear term in negative domain: 0 - constant, 1 - ... ");
+  param_t<double> nonlinear_term_m_mag   (pl, 1, "nonlinear_term_m_mag",   "Scaling of nonlinear term in negative domain");
+
+  param_t<int>    nonlinear_term_p       (pl, 0, "nonlinear_term_p",       "Nonlinear term in negative domain: 0 - zero, 1 - linear, 2 - sinh, 3 - u/(1+u)");
+  param_t<int>    nonlinear_term_p_coeff (pl, 0, "nonlinear_term_p_coeff", "Coefficient form for nonlinear term in negative domain: 0 - constant, 1 - ... ");
+  param_t<double> nonlinear_term_p_mag   (pl, 1, "nonlinear_term_p_mag",   "Scaling of nonlinear term in negative domain");
+
+  param_t<int>    nonlinear_method (pl, 1, "nonlinear_method", "Method to solve nonlinear eqautions: 0 - solving for solution itself, 1 - solving for change in the solution");
+  param_t<int>    nonlinear_itmax  (pl, 10, "nonlinear_itmax", "Maximum iteration for solving nonlinear equations");
+  param_t<double> nonlinear_tol    (pl, 1.e-10, "nonlinear_tol", "Tolerance for solving nonlinear equations");
+
+  ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "line 3519 ok \n");  CHKERRXX(ierr);
+
+  nonlinear_term_m.val = 2;
+  nonlinear_term_m_coeff.val = 0;
+  nonlinear_term_m_mag.val = 0;
+
+  nonlinear_term_p.val = 2;
+  const double inverse_square_debye_length_in_domain = SQR(get_inverse_debye_length_in_domain());
+  nonlinear_term_p_coeff.val = 0;
+  nonlinear_term_p_mag.val = inverse_square_debye_length_in_domain;
+  ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "line 3529 ok \n");  CHKERRXX(ierr);
+
+  class nonlinear_term_cf_t: public CF_1
+  {
+    int *n;
+    cf_value_type_t what;
+  public:
+    nonlinear_term_cf_t(cf_value_type_t what, int &n) : what(what), n(&n) {}
+    double operator()(double u) const {
+      switch (*n) {
+        case 0:
+          switch (what) {
+            case VAL: return 0.;
+            case DDX: return 0.;
+            default: throw;
+          }
+        case 1:
+          switch (what) {
+            case VAL: return u;
+            case DDX: return 1.;
+            default: throw;
+          }
+        case 2:
+          switch (what) {
+            case VAL: return sinh(u);
+            case DDX: return cosh(u);
+            default: throw;
+          }
+        case 3:
+          switch (what) {
+            case VAL: return u/(1.+u);
+            case DDX: return 1./SQR(1.+u);
+            default: throw;
+          }
+        default:
+          throw;
+      }
+    }
+  };
+
+  nonlinear_term_cf_t nonlinear_term_m_cf(VAL, nonlinear_term_m.val), nonlinear_term_m_prime_cf(DDX, nonlinear_term_m.val);
+  nonlinear_term_cf_t nonlinear_term_p_cf(VAL, nonlinear_term_p.val), nonlinear_term_p_prime_cf(DDX, nonlinear_term_p.val);
+
+  class nonlinear_term_coeff_cf_t: public CF_DIM
+  {
+    int *n;
+    double *mag;
+  public:
+    nonlinear_term_coeff_cf_t(int &n, double &mag) : n(&n), mag(&mag) {}
+    double operator()(DIM(double x, double y, double z)) const {
+      switch (*n) {
+        case 0: return (*mag)*1.;
+        case 1:
+  #ifdef P4_TO_P8
+          return (*mag)*cos(x+z)*exp(y);
+  #else
+          return (*mag)*cos(x)*exp(y);
+  #endif
+      }
+    }
+  };
+
+  nonlinear_term_coeff_cf_t nonlinear_term_m_coeff_cf(nonlinear_term_m_coeff.val, nonlinear_term_m_mag.val);
+  nonlinear_term_coeff_cf_t nonlinear_term_p_coeff_cf(nonlinear_term_p_coeff.val, nonlinear_term_p_mag.val);
+  ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "line 3593 ok \n");  CHKERRXX(ierr);
+
+
+  if(!psi_star_is_set)
+  {
+    if(solve_subtimer != NULL)
+      solve_subtimer->start("Evaluating singular parts");
+    make_sure_is_node_sampled(psi_star);
+    double *psi_star_p = NULL;
+    ierr = VecGetArray(psi_star, &psi_star_p);                        CHKERRXX(ierr);
+    // sample the contribution of singular charges at grid nodes, but only in the inner domain(s)
+    double xyz[P4EST_DIM];
+    const double* phi_read_only_p = NULL;
+    ierr = VecGetArrayRead(biomolecules->phi, &phi_read_only_p);      CHKERRXX(ierr);
+    for (size_t i = 0; i<biomolecules->nodes->indep_nodes.elem_count; ++i) {
+      if(phi_read_only_p[i] <= 5.0*biomolecules->parameters.layer_thickness()) //1.5 == safety factor
+      {
+        node_xyz_fr_n(i, biomolecules->p4est, biomolecules->nodes, xyz);
+        psi_star_p[i] = non_dimensional_coulomb_in_mol(DIM(xyz[0], xyz[1], xyz[2]));
+      }
+      else
+        psi_star_p[i] = 0.0;
+    }
+    ierr = VecRestoreArrayRead(biomolecules->phi, &phi_read_only_p);  CHKERRXX(ierr);
+    ierr = VecRestoreArray(psi_star, &psi_star_p);                    CHKERRXX(ierr);
+    biomolecules->ls->extend_Over_Interface_TVD(biomolecules->phi, psi_star, 20, biomolecules->parameters.order_of_accuracy()); // Technically not needed but looks like this makes things more accurate... Why? No clue!
+
+    if(solve_subtimer != NULL){
+      solve_subtimer->stop(); solve_subtimer->read_duration(); }
+
+    psi_star_is_set = true;
+  }
+
+  if(solve_subtimer != NULL)
+    solve_subtimer->start("Initializing the solver");
+  // Create a node-sampled zero vector (will be useful)
+  Vec node_sampled_zero = NULL;
+  make_sure_is_node_sampled(node_sampled_zero);
+  // Create vector for the jump condition in normal gradient
+  // Vec eps_grad_n_psi_hat_jump = NULL;
+
+  Vec eps_grad_n_psi_hat_jump         = NULL;
+  Vec eps_grad_n_psi_hat_jump_xxyyzz  = NULL;
+  Vec psi_star_xxyyzz                 = NULL;
+  make_sure_is_node_sampled(eps_grad_n_psi_hat_jump);
+  ierr = VecCreateGhostNodesBlock(biomolecules->p4est, biomolecules->nodes, P4EST_DIM, &eps_grad_n_psi_hat_jump_xxyyzz);  CHKERRXX(ierr);
+  ierr = VecCreateGhostNodesBlock(biomolecules->p4est, biomolecules->nodes, P4EST_DIM, &psi_star_xxyyzz);                 CHKERRXX(ierr);
+
+  // Create vectors for the diagonal term in the outer domain
+  Vec add_plus = NULL;
+  make_sure_is_node_sampled(add_plus);
+
+  // define rhs's (nonzero only for validation purposes)
+  Vec rhs_minus = NULL, rhs_plus = NULL;
+
+  calculate_jumps_in_normal_gradient(eps_grad_n_psi_hat_jump);
+  biomolecules->neighbors->second_derivatives_central(eps_grad_n_psi_hat_jump, eps_grad_n_psi_hat_jump_xxyyzz);
+  my_p4est_interpolation_nodes_t eps_grad_n_psi_hat_jump_interp_(biomolecules->neighbors);
+  eps_grad_n_psi_hat_jump_interp_.set_input(eps_grad_n_psi_hat_jump, eps_grad_n_psi_hat_jump_xxyyzz, quadratic_non_oscillatory_continuous_v2);
+
+  my_p4est_interpolation_nodes_t psi_hat_jump_interp_(biomolecules->neighbors);
+  psi_hat_jump_interp_.set_input(psi_star, psi_star_xxyyzz, quadratic_non_oscillatory_continuous_v2);
+
+  double *node_sampled_zero_p = NULL, *add_plus_p = NULL;
+  ierr = VecGetArray(node_sampled_zero, &node_sampled_zero_p);      CHKERRXX(ierr);
+  //ierr = VecGetArray(add_plus, &add_plus_p);                        CHKERRXX(ierr);
+ ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "line 3659 ok \n");  CHKERRXX(ierr);
+ for (size_t k = 0; k < biomolecules->nodes->indep_nodes.elem_count; ++k) {
+    node_sampled_zero_p[k]  = 0.0;
+    }
+
+  //ierr = VecRestoreArray(add_plus, &add_plus_p);                    CHKERRXX(ierr);
+  ierr = VecRestoreArray(node_sampled_zero, &node_sampled_zero_p);  CHKERRXX(ierr);
+  rhs_minus = node_sampled_zero;
+  rhs_plus  = node_sampled_zero;
+  ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "line 3668 ok \n");  CHKERRXX(ierr);
+  jump_solver_v2->set_use_centroid_always(true);
+  ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "line 3669 ok \n");  CHKERRXX(ierr);
+  jump_solver_v2->set_store_finite_volumes(true);
+  ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "line 3672 ok \n");  CHKERRXX(ierr);
+  jump_solver_v2->set_jump_scheme(0);
+  ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "line 3674 ok \n");  CHKERRXX(ierr);
+  jump_solver_v2->set_jump_sub_scheme(0);
+  ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "line 3676 ok \n");  CHKERRXX(ierr);
+  jump_solver_v2->set_use_sc_scheme(false);
+  ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "line 3678 ok \n");  CHKERRXX(ierr);
+  jump_solver_v2->set_integration_order(2);
+  ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "line 3680 ok \n");  CHKERRXX(ierr);
+  jump_solver_v2->set_lip(biomolecules->parameters.lip());
+  jump_solver_v2->add_interface(MLS_INTERSECTION, biomolecules->phi, DIM(NULL, NULL, NULL), psi_hat_jump_interp_, eps_grad_n_psi_hat_jump_interp_);
+
+  ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "line 3684 ok \n");  CHKERRXX(ierr);
+  jump_solver_v2->set_mu(mol_rel_permittivity, elec_rel_permittivity);
+  class bc_wall_type_t : public WallBCDIM
+  {
+  public:
+    BoundaryConditionType operator()(DIM(double, double, double)) const { return DIRICHLET; }
+  } bc_wall_type;
+  far_field_boundary_cond far_bc(this);
+  jump_solver_v2->set_wc(bc_wall_type, far_bc);
+  jump_solver_v2->set_diag(node_sampled_zero,node_sampled_zero);
+  jump_solver_v2->set_use_taylor_correction(true);
+  jump_solver_v2->set_kink_treatment(true);
+  jump_solver_v2->set_rhs(rhs_minus, rhs_plus);
+  ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "line 3691 ok \n");  CHKERRXX(ierr);
+
+  make_sure_is_node_sampled(psi_hat);
+  if(solve_subtimer != NULL)
+  {
+    solve_subtimer->stop(); solve_subtimer->read_duration();
+    string timer_msg = "Solving nonlinear iterations ";
+    solve_subtimer->start(timer_msg);
+  }
+  if (nonlinear_term_m() == 0 && nonlinear_term_p() == 0)
+  {
+    jump_solver_v2->solve(psi_hat, 0);
+    ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "line 37703 ok \n");  CHKERRXX(ierr);
+  }
+  else
+  {
+    Vec nonlinear_term_m_coeff_sampled;
+    Vec nonlinear_term_p_coeff_sampled;
+
+    ierr = VecDuplicate(node_sampled_zero, &nonlinear_term_m_coeff_sampled); CHKERRXX(ierr);
+    ierr = VecDuplicate(node_sampled_zero, &nonlinear_term_p_coeff_sampled); CHKERRXX(ierr);
+
+    sample_cf_on_nodes(biomolecules->p4est, biomolecules->nodes, nonlinear_term_m_coeff_cf, nonlinear_term_m_coeff_sampled);
+    sample_cf_on_nodes(biomolecules->p4est, biomolecules->nodes, nonlinear_term_p_coeff_cf, nonlinear_term_p_coeff_sampled);
+
+    jump_solver_v2->set_nonlinear_term(nonlinear_term_m_coeff_sampled, nonlinear_term_m_cf, nonlinear_term_m_prime_cf,
+                              nonlinear_term_p_coeff_sampled, nonlinear_term_p_cf, nonlinear_term_p_prime_cf);
+
+    jump_solver_v2->set_solve_nonlinear_parameters(nonlinear_method.val, nonlinear_itmax.val, nonlinear_tol.val, 0);
+
+    nb_iterations_for_setting_psi_hat = jump_solver_v2->solve_nonlinear(psi_hat, 0);
+
+    ierr = VecDestroy(nonlinear_term_m_coeff_sampled); CHKERRXX(ierr);
+    ierr = VecDestroy(nonlinear_term_p_coeff_sampled); CHKERRXX(ierr);
+  }
+  ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "line 3725 ok \n");  CHKERRXX(ierr);
+  // nb_iterations_for_setting_psi_hat = jump_solver->solve_nonlinear(psi_hat, upper_bound_residual, it_max, true);
   string timer_msg = "End of nonlinear iterations ";
   if(solve_subtimer != NULL)
   {
