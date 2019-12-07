@@ -549,7 +549,7 @@ private:
   Vec                       inner_domain;
 
   const int                 rank_encoding;
-  const int64_t             max_quad_loc_idx;
+  const ulong               max_quad_loc_idx;
   const string              no_vtk = "null";
   int8_t                    global_max_level;         // max level of refinement of the forest in the entire domain
   vector<molecule>          bio_molecules;            // the vector of molecules
