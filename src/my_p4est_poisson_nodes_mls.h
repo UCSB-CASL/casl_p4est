@@ -27,13 +27,14 @@ using std::vector;
 class my_p4est_poisson_nodes_mls_t
 {
   const int phi_idx_wall_shift_ = 10;
+ protected:
   struct mat_entry_t
   {
     double val;
     PetscInt n;
     mat_entry_t(PetscInt n=0, double val=0) : n(n), val(val) {}
   };
-
+protected:
   PetscErrorCode ierr;
 
   // p4est objects
@@ -41,9 +42,11 @@ class my_p4est_poisson_nodes_mls_t
   p4est_nodes_t    *nodes_;
   p4est_ghost_t    *ghost_;
   my_p4est_brick_t *brick_;
+public:
   const my_p4est_node_neighbors_t *ngbd_;
 
   // grid variables
+public:
   double lip_;
   double d_min_;
   double diag_min_;
@@ -69,6 +72,7 @@ class my_p4est_poisson_nodes_mls_t
   Mat     submat_robin_sc_;
   Vec     submat_robin_sym_;
   double *submat_robin_sym_ptr;
+  std::vector< std::vector<mat_entry_t> > entries_robin_sc;
 
   bool new_submat_main_;
   bool new_submat_diag_;
@@ -88,6 +92,11 @@ class my_p4est_poisson_nodes_mls_t
   bool        new_pc_;
   PetscInt    itmax_;
   PetscScalar rtol_, atol_, dtol_;
+
+  // Tolerances for solving nonlinear equations
+  double nonlinear_change_tol_, nonlinear_pde_residual_tol_;
+  double nonlinear_itmax_;
+  int    nonlinear_method_;
 
   // local to global node number mapping
   std::vector<PetscInt> global_node_offset_;
@@ -137,6 +146,7 @@ class my_p4est_poisson_nodes_mls_t
   };
 
   geometry_t bdry_;
+public:
   geometry_t infc_;
 
   // forces
@@ -165,6 +175,19 @@ class my_p4est_poisson_nodes_mls_t
 
   double *mue_m_ptr, DIM(*mue_m_xx_ptr, *mue_m_yy_ptr, *mue_m_zz_ptr);
   double *mue_p_ptr, DIM(*mue_p_xx_ptr, *mue_p_yy_ptr, *mue_p_zz_ptr);
+
+  // nonlinear term
+  CF_1   *nonlinear_term_m_;
+  CF_1   *nonlinear_term_p_;
+  CF_1   *nonlinear_term_m_prime_;
+  CF_1   *nonlinear_term_p_prime_;
+  Vec     nonlinear_term_m_coeff_;
+  Vec     nonlinear_term_p_coeff_;
+  double *nonlinear_term_m_coeff_ptr;
+  double *nonlinear_term_p_coeff_ptr;
+  double  nonlinear_term_m_coeff_scalar_;
+  double  nonlinear_term_p_coeff_scalar_;
+  bool    var_nonlinear_term_coeff_;
 
   // wall conditions
   points_around_node_map_t       wall_pieces_map;
@@ -229,8 +252,10 @@ class my_p4est_poisson_nodes_mls_t
   bool finite_volumes_initialized_;
   bool finite_volumes_owned_;
   std::vector<int> bdry_node_to_fv_;
+public:
   std::vector<int> infc_node_to_fv_;
   std::vector<my_p4est_finite_volume_t> *bdry_fvs_;
+public:
   std::vector<my_p4est_finite_volume_t> *infc_fvs_;
 
   // discretization type
@@ -244,7 +269,7 @@ class my_p4est_poisson_nodes_mls_t
     FINITE_VOLUME,
     IMMERSED_INTERFACE,
   };
-
+public :
   std::vector<discretization_scheme_t> node_scheme_;
 
   // interpolators
@@ -381,7 +406,7 @@ public:
   inline void set_interface_phi_eff(Vec phi_eff) { infc_.phi_eff = phi_eff; infc_.calculate_phi_eff(); }
 
   // set wall conditions
-//  inline void set_wc(const WallBCDIM &wc_type, const CF_DIM &wc_value, const CF_DIM &wc_coeff)
+  //  inline void set_wc(const WallBCDIM &wc_type, const CF_DIM &wc_value, const CF_DIM &wc_coeff)
   inline void set_wc(const WallBCDIM &wc_type, const CF_DIM &wc_value, bool new_submat_main = true)
   {
     this->wc_type_  = &wc_type;
@@ -481,6 +506,44 @@ public:
     this->itmax_ = itmax;
   }
 
+  // set nonlinear term
+
+  inline void set_nonlinear_term(double nonlinear_term_m_coeff, CF_1 &nonlinear_m_term, CF_1 &nonlinear_term_m_prime,
+                                 double nonlinear_term_p_coeff, CF_1 &nonlinear_p_term, CF_1 &nonlinear_term_p_prime)
+  {
+    var_nonlinear_term_coeff_      = false;
+    nonlinear_term_m_              =&nonlinear_m_term;
+    nonlinear_term_p_              =&nonlinear_p_term;
+    nonlinear_term_m_prime_        =&nonlinear_term_m_prime;
+    nonlinear_term_p_prime_        =&nonlinear_term_p_prime;
+    nonlinear_term_m_coeff_scalar_ = nonlinear_term_m_coeff;
+    nonlinear_term_p_coeff_scalar_ = nonlinear_term_p_coeff;
+  }
+
+  inline void set_nonlinear_term(Vec nonlinear_term_m_coeff, CF_1 &nonlinear_m_term, CF_1 &nonlinear_term_m_prime,
+                                 Vec nonlinear_term_p_coeff, CF_1 &nonlinear_p_term, CF_1 &nonlinear_term_p_prime)
+  {
+    var_nonlinear_term_coeff_ = true;
+    nonlinear_term_m_         =&nonlinear_m_term;
+    nonlinear_term_p_         =&nonlinear_p_term;
+    nonlinear_term_m_prime_   =&nonlinear_term_m_prime;
+    nonlinear_term_p_prime_   =&nonlinear_term_p_prime;
+    nonlinear_term_m_coeff_   = nonlinear_term_m_coeff;
+    nonlinear_term_p_coeff_   = nonlinear_term_p_coeff;
+  }
+
+  inline void set_nonlinear_term(double nonlinear_term_coeff, CF_1 &nonlinear_term, CF_1 &nonlinear_term_prime)
+  {
+    set_nonlinear_term(nonlinear_term_coeff, nonlinear_term, nonlinear_term_prime,
+                       nonlinear_term_coeff, nonlinear_term, nonlinear_term_prime);
+  }
+
+  inline void set_nonlinear_term(Vec nonlinear_term_coeff, CF_1 &nonlinear_term, CF_1 &nonlinear_term_prime)
+  {
+    set_nonlinear_term(nonlinear_term_coeff, nonlinear_term, nonlinear_term_prime,
+                       nonlinear_term_coeff, nonlinear_term, nonlinear_term_prime);
+  }
+
 
   // solver options
   inline void set_integration_order(int value) { integration_order_ = value; }
@@ -508,7 +571,8 @@ public:
   inline void set_new_submat_robin(bool value) { new_submat_robin_ = value; }
 
   void preassemble_linear_system();
-  void solve(Vec solution, bool use_nonzero_guess = false, bool update_ghost = true, KSPType ksp_type = KSPBCGS, PCType pc_type = PCHYPRE);
+  void solve          (Vec solution, bool use_nonzero_guess = false, bool update_ghost = true, KSPType ksp_type = KSPBCGS, PCType pc_type = PCHYPRE);
+  int  solve_nonlinear(Vec solution, bool use_nonzero_guess = false, bool update_ghost = true, KSPType ksp_type = KSPBCGS, PCType pc_type = PCHYPRE);
 
   inline Vec get_mask()   { return mask_m_; }
   inline Vec get_mask_m() { return mask_m_; }
@@ -557,6 +621,14 @@ public:
   }
 
   inline PetscInt get_global_idx(p4est_locidx_t n) { return petsc_gloidx_[n]; }
+
+  inline void set_solve_nonlinear_parameters(int method=1, double itmax=10, double change_tol=1.e-10, double pde_residual_tol=0)
+  {
+    nonlinear_method_           = method;
+    nonlinear_itmax_            = itmax;
+    nonlinear_change_tol_       = change_tol;
+    nonlinear_pde_residual_tol_ = pde_residual_tol;
+  }
 };
 
 #endif // MY_P4EST_POISSON_NODES_MLS_H

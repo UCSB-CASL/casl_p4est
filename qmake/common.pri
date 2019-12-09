@@ -37,12 +37,14 @@ CONFIG(debug, debug|release): {
     INCLUDEPATH += \
         $$P4EST_INCLUDES_DEBUG \
         $$PETSC_INCLUDES_DEBUG \
-        $$VORO_INCLUDES_DEBUG
+        $$VORO_INCLUDES_DEBUG \
+        $$BOOST_INCLUDES
 
     LIBS += \
         $$P4EST_LIBS_DEBUG \
         $$PETSC_LIBS_DEBUG \
-        $$VORO_LIBS_DEBUG
+        $$VORO_LIBS_DEBUG \
+        $$BOOST_LIBS
 
     DEFINES += DEBUG CASL_THROWS P4EST_DEBUG
 }
@@ -51,12 +53,14 @@ CONFIG(release, debug|release): {
     INCLUDEPATH += \
         $$P4EST_INCLUDES_RELEASE \
         $$PETSC_INCLUDES_RELEASE \
-        $$VORO_INCLUDES_RELEASE
+        $$VORO_INCLUDES_RELEASE \
+        $$BOOST_INCLUDES
 
     LIBS += \
         $$P4EST_LIBS_RELEASE \
         $$PETSC_LIBS_RELEASE \
-        $$VORO_LIBS_RELEASE
+        $$VORO_LIBS_RELEASE \
+        $$BOOST_LIBS
 }
 
 exists($$MATLAB_INCLUDES/engine.h) {

@@ -1,4 +1,4 @@
-#ifdef P4_TO_P8
+﻿#ifdef P4_TO_P8
 #include "my_p8est_utils.h"
 #include "my_p8est_tools.h"
 #include <p8est_connectivity.h>
@@ -418,8 +418,6 @@ void quadratic_non_oscillatory_continuous_v1_interpolation(const p4est_t *p4est,
 #else
     results[k] -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1]);
 #endif
-
-
   }
 
   ierr = PetscLogFlops(45); CHKERRXX(ierr); // number of flops in this event
@@ -490,7 +488,6 @@ void quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_t *p4est,
     d_m00*d_0m0
   };
 #endif
-
 
   // Second alternative scheme: first, weight-average in perpendicular plane, then minmod
   double fdd[P4EST_DIM];
@@ -950,6 +947,16 @@ PetscErrorCode VecCreateCellsBlockNoGhost(const p4est_t *p4est, const PetscInt &
   return ierr;
 }
 
+PetscErrorCode VecScatterAllToSomeCreate(MPI_Comm comm, Vec origin_loc, Vec destination, const PetscInt &ndest_glo_idx, const PetscInt *dest_glo_idx, VecScatter *ctx)
+{
+  PetscErrorCode ierr;
+  IS is_from, is_to;
+  ierr    = ISCreateGeneral(comm, ndest_glo_idx, dest_glo_idx, PETSC_USE_POINTER, &is_to);    CHKERRQ(ierr);
+  ierr    = ISCreateStride(comm, ndest_glo_idx, 0, 1, &is_from);                              CHKERRQ(ierr);
+  ierr    = VecScatterCreate(origin_loc, is_from, destination, is_to, ctx);                   CHKERRQ(ierr);
+  return ierr;
+}
+
 PetscErrorCode VecScatterCreateChangeLayout(MPI_Comm comm, Vec from, Vec to, VecScatter *ctx)
 {
   PetscErrorCode ierr = 0;
@@ -1148,8 +1155,6 @@ int delete_directory(const char* root_path, int mpi_rank, MPI_Comm comm, bool no
   return return_;
 }
 
-
-
 void dxyz_min(const p4est_t *p4est, double *dxyz)
 {
   splitting_criteria_t *data = (splitting_criteria_t*)p4est->user_pointer;
@@ -1340,6 +1345,57 @@ double integrate_over_negative_domain(const p4est_t *p4est, const p4est_nodes_t 
 }
 
 
+void integrate_over_negative_domain(int num, double *values, const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec map, Vec f)
+{
+  PetscErrorCode ierr;
+
+  const double *map_ptr;
+  ierr = VecGetArrayRead(map, &map_ptr); CHKERRXX(ierr);
+
+  const p4est_locidx_t *q2n = nodes->local_nodes;
+  for (int i = 0; i < num; ++i) values[i] = 0;
+
+  for(p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx)
+  {
+    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
+    for(size_t quad_idx = 0; quad_idx < tree->quadrants.elem_count; ++quad_idx)
+    {
+      // count how many times each index appears in a quadrant
+      std::vector<int> count(num, 0);
+      for (int i = 0; i < P4EST_CHILDREN; ++i)
+      {
+        int loc_idx = int(map_ptr[q2n[quad_idx*P4EST_CHILDREN + i]]);
+        if (loc_idx >= num) throw;
+        if (loc_idx >= 0) count[loc_idx]++;
+      }
+
+      // select the most frequent one
+      int idx       = 0;
+      int max_count = count[0];
+      for (int i = 1; i < num; ++i)
+      {
+        if (max_count < count[i])
+        {
+          max_count = count[i];
+          idx = i;
+        }
+      }
+
+      // add intergal to appropriate value
+      const p4est_quadrant_t *quad = (const p4est_quadrant_t*)sc_array_index(&tree->quadrants, quad_idx);
+      values[idx] += integrate_over_negative_domain_in_one_quadrant(p4est, nodes, quad,
+                                                                    quad_idx + tree->quadrants_offset,
+                                                                    phi, f);
+    }
+  }
+
+  ierr = VecRestoreArrayRead(map, &map_ptr); CHKERRXX(ierr);
+
+  /* compute global sum */
+  ierr = MPI_Allreduce(MPI_IN_PLACE, values, num, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); CHKERRXX(ierr);
+}
+
+
 double area_in_negative_domain_in_one_quadrant(const p4est_t *p4est, const p4est_nodes_t *nodes, const p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi)
 {
 
@@ -1419,6 +1475,56 @@ double area_in_negative_domain(const p4est_t *p4est, const p4est_nodes_t *nodes,
   return sum;
 }
 
+void area_in_negative_domain(int num, double *values, const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec map)
+{
+  PetscErrorCode ierr;
+
+  const double *map_ptr;
+  ierr = VecGetArrayRead(map, &map_ptr); CHKERRXX(ierr);
+
+  const p4est_locidx_t *q2n = nodes->local_nodes;
+  for (int i = 0; i < num; ++i) values[i] = 0;
+
+  for(p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx)
+  {
+    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
+    for(size_t quad_idx = 0; quad_idx < tree->quadrants.elem_count; ++quad_idx)
+    {
+      // count how many times each index appears in a quadrant
+      std::vector<int> count(num, 0);
+      for (int i = 0; i < P4EST_CHILDREN; ++i)
+      {
+        int loc_idx = int(map_ptr[q2n[quad_idx*P4EST_CHILDREN + i]]);
+        if (loc_idx >= num) throw;
+        if (loc_idx >= 0) count[loc_idx]++;
+      }
+
+      // select the most frequent one
+      int idx = 0;
+      int max_count = count[0];
+      for (int i = 1; i < num; ++i)
+      {
+        if (max_count < count[i])
+        {
+          max_count = count[i];
+          idx = i;
+        }
+      }
+
+      // add intergal to appropriate value
+      const p4est_quadrant_t *quad = (const p4est_quadrant_t*)sc_array_index(&tree->quadrants, quad_idx);
+      values[idx] += area_in_negative_domain_in_one_quadrant(p4est, nodes, quad,
+                                                     quad_idx + tree->quadrants_offset,
+                                                     phi);
+    }
+  }
+
+  ierr = VecRestoreArrayRead(map, &map_ptr); CHKERRXX(ierr);
+
+  /* compute global sum */
+  ierr = MPI_Allreduce(MPI_IN_PLACE, values, num, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); CHKERRXX(ierr);
+}
+
 double integrate_over_interface_in_one_quadrant(const p4est_t *p4est, const p4est_nodes_t *nodes, const p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi, Vec f)
 {
 #ifdef P4_TO_P8
@@ -1492,6 +1598,63 @@ double integrate_over_interface_in_one_quadrant(const p4est_t *p4est, const p4es
   return cube.integrate_Over_Interface(f_values,phi_values);
 }
 
+double max_over_interface_in_one_quadrant(const p4est_nodes_t *nodes, p4est_locidx_t quad_idx, Vec phi, Vec f)
+{
+#ifdef P4_TO_P8
+  OctValue phi_values;
+  OctValue f_values;
+#else
+  QuadValue phi_values;
+  QuadValue f_values;
+#endif
+  double *P, *F;
+  PetscErrorCode ierr;
+  ierr = VecGetArray(phi, &P); CHKERRXX(ierr);
+  ierr = VecGetArray(f  , &F); CHKERRXX(ierr);
+
+  const p4est_locidx_t *q2n = nodes->local_nodes;
+#ifdef P4_TO_P8
+  phi_values.val000 = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
+  phi_values.val100 = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
+  phi_values.val010 = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
+  phi_values.val110 = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
+  phi_values.val001 = P[ q2n[ quad_idx*P4EST_CHILDREN + 4 ] ];
+  phi_values.val101 = P[ q2n[ quad_idx*P4EST_CHILDREN + 5 ] ];
+  phi_values.val011 = P[ q2n[ quad_idx*P4EST_CHILDREN + 6 ] ];
+  phi_values.val111 = P[ q2n[ quad_idx*P4EST_CHILDREN + 7 ] ];
+
+  f_values.val000   = F[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
+  f_values.val100   = F[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
+  f_values.val010   = F[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
+  f_values.val110   = F[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
+  f_values.val001   = F[ q2n[ quad_idx*P4EST_CHILDREN + 4 ] ];
+  f_values.val101   = F[ q2n[ quad_idx*P4EST_CHILDREN + 5 ] ];
+  f_values.val011   = F[ q2n[ quad_idx*P4EST_CHILDREN + 6 ] ];
+  f_values.val111   = F[ q2n[ quad_idx*P4EST_CHILDREN + 7 ] ];
+
+#else
+  phi_values.val00 = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
+  phi_values.val10 = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
+  phi_values.val01 = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
+  phi_values.val11 = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
+
+  f_values.val00   = F[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
+  f_values.val10   = F[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
+  f_values.val01   = F[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
+  f_values.val11   = F[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
+#endif
+  ierr = VecRestoreArray(phi, &P); CHKERRXX(ierr);
+  ierr = VecRestoreArray(f  , &F); CHKERRXX(ierr);
+
+#ifdef P4_TO_P8
+  Cube3 cube(0, 1, 0, 1, 0, 1);
+#else
+  Cube2 cube(0, 1, 0, 1);
+#endif
+
+  return cube.max_Over_Interface(f_values,phi_values);
+}
+
 double integrate_over_interface(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec f)
 {
   double sum = 0;
@@ -1514,6 +1677,72 @@ double integrate_over_interface(const p4est_t *p4est, const p4est_nodes_t *nodes
   return sum_global;
 }
 
+void integrate_over_interface(int num, double *values, const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec map, Vec f)
+{
+  PetscErrorCode ierr;
+
+  const double *map_ptr;
+  ierr = VecGetArrayRead(map, &map_ptr); CHKERRXX(ierr);
+
+  const p4est_locidx_t *q2n = nodes->local_nodes;
+  for (int i = 0; i < num; ++i) values[i] = 0;
+
+  for(p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx)
+  {
+    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
+    for(size_t quad_idx = 0; quad_idx < tree->quadrants.elem_count; ++quad_idx)
+    {
+      // count how many times each index appears in a quadrant
+      std::vector<int> count(num, 0);
+      for (int i = 0; i < P4EST_CHILDREN; ++i)
+      {
+        int loc_idx = int(map_ptr[q2n[quad_idx*P4EST_CHILDREN + i]]);
+        if (loc_idx >= num) throw;
+        if (loc_idx >= 0) count[loc_idx]++;
+      }
+
+      // select the most frequent one
+      int idx = 0;
+      int max_count = count[0];
+      for (int i = 1; i < num; ++i)
+      {
+        if (max_count < count[i])
+        {
+          max_count = count[i];
+          idx = i;
+        }
+      }
+
+      // add intergal to appropriate value
+      const p4est_quadrant_t *quad = (const p4est_quadrant_t*)sc_array_index(&tree->quadrants, quad_idx);
+      values[idx] += integrate_over_interface_in_one_quadrant(p4est, nodes, quad,
+                                                              quad_idx + tree->quadrants_offset,
+                                                              phi, f);
+    }
+  }
+
+  ierr = VecRestoreArrayRead(map, &map_ptr); CHKERRXX(ierr);
+
+  /* compute global sums */
+  ierr = MPI_Allreduce(MPI_IN_PLACE, values, num, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); CHKERRXX(ierr);
+}
+
+double max_over_interface(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec f)
+{
+  double max_over_interface = -DBL_MAX;
+  for(p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx)
+  {
+    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
+    for(size_t quad_idx = 0; quad_idx < tree->quadrants.elem_count; ++quad_idx)
+      max_over_interface = MAX(max_over_interface, max_over_interface_in_one_quadrant(nodes, quad_idx + tree->quadrants_offset, phi, f));
+  }
+
+  /* compute global sum */
+  double max_over_interface_global;
+  PetscErrorCode ierr;
+  ierr = MPI_Allreduce(&max_over_interface, &max_over_interface_global, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); CHKERRXX(ierr);
+  return max_over_interface_global;
+}
 
 double compute_mean_curvature(const quad_neighbor_nodes_of_node_t &qnnn, double *phi, double* phi_x[])
 {
@@ -2534,11 +2763,11 @@ PetscErrorCode VecCopyGhost(Vec input, Vec output)
 {
   PetscErrorCode ierr;
   Vec src, out;
-  ierr = VecGhostGetLocalForm(input, &src);      CHKERRXX(ierr);
-  ierr = VecGhostGetLocalForm(output, &out);     CHKERRXX(ierr);
-  ierr = VecCopy(src, out);                      CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(input, &src);  CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(output, &out); CHKERRXX(ierr);
+  ierr = VecGhostGetLocalForm(input, &src);      if (ierr != 0) return ierr;
+  ierr = VecGhostGetLocalForm(output, &out);     if (ierr != 0) return ierr;
+  ierr = VecCopy(src, out);                      if (ierr != 0) return ierr;
+  ierr = VecGhostRestoreLocalForm(input, &src);  if (ierr != 0) return ierr;
+  ierr = VecGhostRestoreLocalForm(output, &out); if (ierr != 0) return ierr;
   return ierr;
 }
 
