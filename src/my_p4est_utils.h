@@ -78,10 +78,12 @@ class quad_neighbor_nodes_of_node_t;
 #define ONLY3D(a) a
 #define DIM(a,b,c) a COMMA b COMMA c
 
-#define  SUMD(a,b,c) ( (a) +  (b) +  (c) )
-#define MULTD(a,b,c) ( (a) *  (b) *  (c) )
-#define  ANDD(a,b,c) ( (a) && (b) && (c) )
-#define   ORD(a,b,c) ( (a) || (b) || (c) )
+#define     SUMD(a,b,c) ( (a) +  (b) +  (c) )
+#define    MULTD(a,b,c) ( (a) *  (b) *  (c) )
+#define     ANDD(a,b,c) ( (a) && (b) && (c) )
+#define      ORD(a,b,c) ( (a) || (b) || (c) )
+#define  SQRSUMD(a,b,c) ( (a)*(a) +  (b)*(b) +  (c)*(c) )
+#define     ABSD(a,b,c) ( sqrt((a)*(a) +  (b)*(b) +  (c)*(c)) )
 
 #define CODEDIM(a,b) b
 
@@ -115,10 +117,12 @@ class quad_neighbor_nodes_of_node_t;
 #define ONLY3D(a)
 #define DIM(a,b,c) a COMMA b
 
-#define  SUMD(a,b,c) ( (a) +  (b) )
-#define MULTD(a,b,c) ( (a) *  (b) )
-#define  ANDD(a,b,c) ( (a) && (b) )
-#define   ORD(a,b,c) ( (a) || (b) )
+#define     SUMD(a,b,c) ( (a) +  (b) )
+#define    MULTD(a,b,c) ( (a) *  (b) )
+#define     ANDD(a,b,c) ( (a) && (b) )
+#define      ORD(a,b,c) ( (a) || (b) )
+#define  SQRSUMD(a,b,c) ( (a)*(a) +  (b)*(b) )
+#define     ABSD(a,b,c) ( sqrt((a)*(a) +  (b)*(b)) )
 
 #define XFOR(a) for (a)
 #define YFOR(a) for (a)
@@ -1513,6 +1517,25 @@ double integrate_over_negative_domain_in_one_quadrant(const p4est_t *p4est, cons
 double integrate_over_negative_domain(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec f);
 
 /*!
+ * \brief integrate_over_negative_domain integrate a quantity f over separate parts of the negative domain defined by phi
+ *        note: second order convergence
+ * \param num the number of separate parts
+ * \param values values of all integrals
+ * \param p4est the p4est
+ * \param nodes the nodes structure associated to p4est
+ * \param phi
+ * \param map the characteristic function that identifies separate parts of the domain
+ * \param f the scalar to integrate
+ * \return the integral of f over the phi<0 domain, \int_{\phi<0} f
+ */
+void integrate_over_negative_domain(int num, double *values, const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec map, Vec f);
+inline void integrate_over_negative_domain(int num, std::vector<double> &values, const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec map, Vec f)
+{
+  values.assign(num, 0.);
+  integrate_over_negative_domain(num, values.data(), p4est, nodes, phi, map, f);
+}
+
+/*!
  * \brief area_in_negative_domain_in_one_quadrant
  */
 double area_in_negative_domain_in_one_quadrant(const p4est_t *p4est, const p4est_nodes_t *nodes, const p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi);
@@ -1526,6 +1549,24 @@ double area_in_negative_domain_in_one_quadrant(const p4est_t *p4est, const p4est
  * \return the area in the negative phi domain, i.e. \int_{phi<0} 1
  */
 double area_in_negative_domain(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi);
+
+/*!
+ * \brief area_in_negative_domain compute the area of separate parts of the negative domain defined by phi
+ *        note: second order convergence
+ * \param num the number of separate parts
+ * \param values values of all integrals
+ * \param p4est the p4est
+ * \param nodes the nodes structure associated to p4est
+ * \param phi the level-set function
+ * \return the area in the negative phi domain, i.e. \int_{phi<0} 1
+ */
+void area_in_negative_domain(int num, double *values, const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec map);
+inline void area_in_negative_domain(int num, std::vector<double> &values, const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec map)
+{
+  values.assign(num, 0.);
+  area_in_negative_domain(num, values.data(), p4est, nodes, phi, map);
+}
+
 
 /*!
  * \brief integrate_over_interface_in_one_quadrant
@@ -1546,6 +1587,24 @@ double max_over_interface_in_one_quadrant(const p4est_nodes_t *nodes, p4est_loci
  * \return the integral of f over the contour defined by phi, i.e. \int_{phi=0} f
  */
 double integrate_over_interface(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec f);
+
+/*!
+ * \brief integrate_over_interface integrate a scalar f over separate parts of the 0-contour of the level-set function phi.
+ *        note: first order convergence only
+ * \param num the number of separate parts
+ * \param values values of all integrals
+ * \param p4est the p4est
+ * \param nodes the nodes structure associated to p4est
+ * \param phi the level-set function
+ * \param map the characteristic function that identifies separate parts of the interface
+ * \param f the scalar to integrate
+ */
+void integrate_over_interface(int num, double *values, const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec map, Vec f);
+inline void integrate_over_interface(int num, std::vector<double> &values, const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec map, Vec f)
+{
+  values.assign(num, 0.);
+  integrate_over_interface(num, values.data(), p4est, nodes, phi, map, f);
+}
 
 /*!
  * \brief max_over_interface calculate the maximum value of a scalar f over the 0-contour of the level-set function phi.
