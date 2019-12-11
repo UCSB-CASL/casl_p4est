@@ -2200,6 +2200,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(int dir)
 #endif
           break;
         default:
+          std::cout<<"BC Type is "<< bc[dir].wallType(xyz_min[0],y_pert)<< " at point : ("<< xyz_min[0] << ", "<< y_pert << ") in dir: "<<dir <<std::endl;
           throw std::invalid_argument("[CASL_ERROR]: my_p4est_poisson_faces_t: unknown boundary condition type. Issue on Wall m00");
         }
         break;
