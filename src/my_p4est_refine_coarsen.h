@@ -31,23 +31,35 @@ typedef int p4est_bool_t;
 class CF_3;
 class CF_2;
 
+#ifdef P4_TO_P8
+#define CF_DIM CF_3
+#else
+#define CF_DIM CF_2
+#endif
+
 /*!
  * \class splitting_criteria_t
  * \brief Basic grid refinement class. Not very useful by itself, but all of the
  *        refinement classes used in practice (see below) are inherited from it.
  */
 struct splitting_criteria_t {
-  splitting_criteria_t(int min_lvl = 0, int max_lvl = 0, double lip = 1.2)
+  splitting_criteria_t(int min_lvl = 0, int max_lvl = 0, double lip = 1.2, double band = 0)
   {
     if(min_lvl>max_lvl)
       throw std::invalid_argument("[ERROR]: you cannot choose a min level larger than the max level.");
-    this->max_lvl = max_lvl;
-    this->min_lvl = min_lvl;
-    this->lip     = lip;
+    this->max_lvl            = max_lvl;
+    this->min_lvl            = min_lvl;
+    this->lip                = lip;
+    this->band               = band;
+    this->refine_only_inside = false;
   }
 
-  int max_lvl, min_lvl; /*! Maximum and minimum levels of refinement.*/
-  double lip;           /*! Lipschitz constant for refinement with the distance to an interface.*/
+  void set_refine_only_inside(bool val) { refine_only_inside = val; }
+
+  int    max_lvl, min_lvl;   /*! Maximum and minimum levels of refinement.*/
+  double lip;                /*! Lipschitz constant for refinement with the distance to an interface.*/
+  double band;               /*! Uniform band around an interface.*/
+  bool   refine_only_inside; /*! If true, enforces refinement only where the l-s function is negative.*/
 };
 
 /*!
@@ -56,22 +68,12 @@ struct splitting_criteria_t {
  *        function representing the interface is provided as a continuous function.
  */
 struct splitting_criteria_cf_t : splitting_criteria_t {
-#ifdef P4_TO_P8
-  CF_3 *phi;               /*! Pointer to continuous function object representing the level-set function.*/
-#else
-  CF_2 *phi;               /*! Pointer to continuous function object representing the level-set function.*/
-#endif
-  bool refine_only_inside; /*! If true, enforces refinement only where the l-s function is negative.*/
-#ifdef P4_TO_P8
-  splitting_criteria_cf_t(int min_lvl, int max_lvl, CF_3 *phi, double lip=1.2)
-#else
-  splitting_criteria_cf_t(int min_lvl, int max_lvl, CF_2 *phi, double lip=1.2)
-#endif
-    : splitting_criteria_t(min_lvl, max_lvl, lip), refine_only_inside(false)
+  CF_DIM *phi;             /*! Pointer to continuous function object representing the level-set function.*/
+  splitting_criteria_cf_t(int min_lvl, int max_lvl, CF_DIM *phi, double lip=1.2, double band = 0)
+    : splitting_criteria_t(min_lvl, max_lvl, lip, band)
   {
     this->phi = phi;
   }
-  void set_refine_only_inside(bool val) { refine_only_inside = val; }
 };
 
 /*!
@@ -178,10 +180,9 @@ protected:
    */
   void tag_quadrant(p4est_t* p4est, p4est_quadrant_t* quad, p4est_topidx_t which_tree, const double* f);
   void tag_quadrant_inside(p4est_t* p4est, p4est_quadrant_t* quad, p4est_topidx_t which_tree, const double* f);
-  bool refine_only_inside; /*! If true, enforces refinement only where the l-s function is negative.*/
 public:
-  splitting_criteria_tag_t(int min_lvl, int max_lvl, double lip=1.2)
-    : splitting_criteria_t(min_lvl, max_lvl, lip), refine_only_inside(false)
+  splitting_criteria_tag_t(int min_lvl, int max_lvl, double lip=1.2, double band=0)
+    : splitting_criteria_t(min_lvl, max_lvl, lip, band)
   {
   }
 
@@ -197,8 +198,6 @@ public:
    */
   bool refine_and_coarsen(p4est_t* p4est, const p4est_nodes_t* nodes, const double* phi);
   bool refine(p4est_t* p4est, const p4est_nodes_t* nodes, const double* phi);
-
-  void set_refine_only_inside(bool val) { refine_only_inside = val; }
 };
 
 /*!
