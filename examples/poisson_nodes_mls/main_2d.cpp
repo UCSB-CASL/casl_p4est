@@ -71,21 +71,21 @@
 
 using namespace std;
 
-const int bdry_phi_max_num = 4;
-const int infc_phi_max_num = 4;
+const int num_bdry_max = 4;
+const int num_infc_max = 4;
 
 param_list_t pl;
 
 //-------------------------------------
 // computational domain parameters
 //-------------------------------------
-param_t<int> px (pl, 0, "px", "Periodicity in the x-direction (0/1)");
-param_t<int> py (pl, 0, "py", "Periodicity in the y-direction (0/1)");
-param_t<int> pz (pl, 0, "pz", "Periodicity in the z-direction (0/1)");
+param_t<int>    px (pl, 0, "px", "Periodicity in the x-direction (0/1)");
+param_t<int>    py (pl, 0, "py", "Periodicity in the y-direction (0/1)");
+param_t<int>    pz (pl, 0, "pz", "Periodicity in the z-direction (0/1)");
 
-param_t<int> nx (pl, 1, "nx", "Number of trees in the x-direction");
-param_t<int> ny (pl, 1, "ny", "Number of trees in the y-direction");
-param_t<int> nz (pl, 1, "nz", "Number of trees in the z-direction");
+param_t<int>    nx (pl, 1, "nx", "Number of trees in the x-direction");
+param_t<int>    ny (pl, 1, "ny", "Number of trees in the y-direction");
+param_t<int>    nz (pl, 1, "nz", "Number of trees in the z-direction");
 
 param_t<double> xmin (pl, -1, "xmin", "Box xmin");
 param_t<double> ymin (pl, -1, "ymin", "Box ymin");
@@ -99,156 +99,175 @@ param_t<double> zmax (pl,  1, "zmax", "Box zmax");
 // refinement parameters
 //-------------------------------------
 #ifdef P4_TO_P8
-param_t<int> lmin (pl, 7, "lmin", "Min level of the tree");
-param_t<int> lmax (pl, 9, "lmax", "Max level of the tree");
+param_t<int>    lmin (pl, 5, "lmin", "Min level of the tree");
+param_t<int>    lmax (pl, 5, "lmax", "Max level of the tree");
 
-param_t<int> num_splits           (pl, 1, "num_splits", "Number of recursive splits");
-param_t<int> num_splits_per_split (pl, 1, "num_splits_per_split", "Number of additional resolutions");
+param_t<int>    num_splits (pl, 5, "num_splits", "Number of recursive splits");
+param_t<int>    add_splits (pl, 1, "add_splits", "Number of additional resolutions");
 
-param_t<int> num_shifts_x_dir (pl, 1, "num_shifts_x_dir", "Number of grid shifts in the x-direction");
-param_t<int> num_shifts_y_dir (pl, 1, "num_shifts_y_dir", "Number of grid shifts in the y-direction");
-param_t<int> num_shifts_z_dir (pl, 1, "num_shifts_z_dir", "Number of grid shifts in the z-direction");
+param_t<int>    num_shifts_x_dir (pl, 1, "num_shifts_x_dir", "Number of grid shifts in the x-direction");
+param_t<int>    num_shifts_y_dir (pl, 1, "num_shifts_y_dir", "Number of grid shifts in the y-direction");
+param_t<int>    num_shifts_z_dir (pl, 1, "num_shifts_z_dir", "Number of grid shifts in the z-direction");
 #else
-param_t<int> lmin (pl, 6, "lmin", "Min level of the tree");
-param_t<int> lmax (pl, 10, "lmax", "Max level of the tree");
+param_t<int>    lmin (pl, 5, "lmin", "Min level of the tree");
+param_t<int>    lmax (pl, 8, "lmax", "Max level of the tree");
 
-param_t<int> num_splits           (pl, 1, "num_splits", "Number of recursive splits");
-param_t<int> num_splits_per_split (pl, 1, "num_splits_per_split", "Number of additional resolutions");
+param_t<int>    num_splits (pl, 5, "num_splits", "Number of recursive splits");
+param_t<int>    add_splits (pl, 1, "add_splits", "Number of additional resolutions");
 
-param_t<int> num_shifts_x_dir (pl, 1, "num_shifts_x_dir", "Number of grid shifts in the x-direction");
-param_t<int> num_shifts_y_dir (pl, 1, "num_shifts_y_dir", "Number of grid shifts in the y-direction");
-param_t<int> num_shifts_z_dir (pl, 1, "num_shifts_z_dir", "Number of grid shifts in the z-direction");
+param_t<int>    num_shifts_x_dir (pl, 1, "num_shifts_x_dir", "Number of grid shifts in the x-direction");
+param_t<int>    num_shifts_y_dir (pl, 1, "num_shifts_y_dir", "Number of grid shifts in the y-direction");
+param_t<int>    num_shifts_z_dir (pl, 1, "num_shifts_z_dir", "Number of grid shifts in the z-direction");
 #endif
 
-param_t<int> iter_start (pl, 0, "iter_start", "Skip n first iterations");
-param_t<double> lip (pl, 2.0, "lip", "Lipschitz constant");
+param_t<double> lip  (pl, 1.2, "lip",  "Transition width from coarse grid to fine grid (a.k.a. Lipschitz constant)");
+param_t<double> band (pl, 2.0, "band", "Width of the uniform band around boundaries and interfaces (in lengths of smallest quadrants)");
 
-param_t<bool> refine_strict  (pl, 0, "refine_strict", "Refines every cell starting from the coarsest case if yes");
-param_t<bool> refine_rand    (pl, 0, "refine_rand", "Add randomness into adaptive grid");
-param_t<bool> balance_grid   (pl, 0, "balance_grid", "Enforce 1:2 ratio for adaptive grid");
-param_t<bool> coarse_outside (pl, 0, "coarse_outside", "Use the coarsest possible grid outside the domain (0/1)");
-param_t<int>  expand_ghost   (pl, 0, "expand_ghost", "Number of ghost layer expansions");
+param_t<bool>   refine_strict  (pl, 0, "refine_strict",  "Refines every cell starting from the coarsest case if yes");
+param_t<bool>   refine_rand    (pl, 0, "refine_rand",    "Add randomness into adaptive grid");
+param_t<bool>   balance_grid   (pl, 0, "balance_grid",   "Enforce 1:2 ratio for adaptive grid");
+param_t<bool>   coarse_outside (pl, 0, "coarse_outside", "Use the coarsest possible grid outside the domain (0/1)");
+param_t<int>    expand_ghost   (pl, 0, "expand_ghost",   "Number of ghost layer expansions");
+param_t<int>    iter_start     (pl, 0, "iter_start",     "Skip n first iterations (for debugging)");
 
 //-------------------------------------
-// test solutions
+// problem parameters
 //-------------------------------------
+param_t<int>    sol_m      (pl, 0, "sol_m",      "Test solution in negative domain");
+param_t<int>    sol_p      (pl, 0, "sol_p",      "Test solution in positive domain");
+param_t<double> sol_m_mult (pl, 1, "sol_m_mult", "Mulitplier of test solution in negative domain");
+param_t<double> sol_p_mult (pl, 1, "sol_p_mult", "Mulitplier of test solution in positive domain");
 
-param_t<int> n_um (pl, 0, "n_um", "");
-param_t<int> n_up (pl, 0, "n_up", "");
+param_t<int>    linear_term_m_coeff (pl, 0, "linear_term_m_coeff", "Linear term in negative domain");
+param_t<int>    linear_term_p_coeff (pl, 0, "linear_term_p_coeff", "Linear term in positive domain");
+param_t<double> linear_term_m_mult  (pl, 1, "linear_term_m_mult",  "Multiplier of linear term in negative domain");
+param_t<double> linear_term_p_mult  (pl, 1, "linear_term_p_mult",  "Multiplier of linear term in positive domain");
 
-param_t<double> mag_um (pl, 1, "mag_um", "");
-param_t<double> mag_up (pl, 1, "mag_up", "");
-
-param_t<int> n_mu_m (pl, 0, "n_mu_m", "");
-param_t<int> n_mu_p (pl, 0, "n_mu_p", "");
-
-param_t<double> mag_mu_m (pl, 1, "mag_mu_m", "");
-param_t<double> mag_mu_p (pl, 1, "mag_mu_p", "");
-
-param_t<double> mu_iter_num (pl, 1, "mu_iter_num", "");
-param_t<double> mag_mu_m_min (pl, 1, "mag_mu_m_min", "");
-param_t<double> mag_mu_m_max (pl, 1, "mag_mu_m_max", "");
-
-param_t<int> n_diag_m (pl, 0, "n_diag_m", "");
-param_t<int> n_diag_p (pl, 0, "n_diag_p", "");
-
-param_t<double> mag_diag_m (pl, 1, "mag_diag_m", "");
-param_t<double> mag_diag_p (pl, 1, "mag_diag_p", "");
-
-param_t<int> bc_wtype (pl, DIRICHLET, "bc_wtype", "Type of boundary conditions on the walls");
-
-param_t<int>    nonlinear_term_m       (pl, 0, "nonlinear_term_m",       "Nonlinear term in negative domain: 0 - zero, 1 - linear, 2 - sinh, 3 - u/(1+u)");
+param_t<int>    nonlinear_term_m       (pl, 0, "nonlinear_term_m",       "Nonlinear term in negative domain: 0 - zero, 1 - u, 2 - sinh(u), 3 - u/(1+u)");
+param_t<int>    nonlinear_term_p       (pl, 0, "nonlinear_term_p",       "Nonlinear term in negative domain: 0 - zero, 1 - u, 2 - sinh(u), 3 - u/(1+u)");
 param_t<int>    nonlinear_term_m_coeff (pl, 0, "nonlinear_term_m_coeff", "Coefficient form for nonlinear term in negative domain: 0 - constant, 1 - ... ");
-param_t<double> nonlinear_term_m_mag   (pl, 1, "nonlinear_term_m_mag",   "Scaling of nonlinear term in negative domain");
-
-param_t<int>    nonlinear_term_p       (pl, 0, "nonlinear_term_p",       "Nonlinear term in negative domain: 0 - zero, 1 - linear, 2 - sinh, 3 - u/(1+u)");
 param_t<int>    nonlinear_term_p_coeff (pl, 0, "nonlinear_term_p_coeff", "Coefficient form for nonlinear term in negative domain: 0 - constant, 1 - ... ");
-param_t<double> nonlinear_term_p_mag   (pl, 1, "nonlinear_term_p_mag",   "Scaling of nonlinear term in negative domain");
+param_t<double> nonlinear_term_m_mult  (pl, 1, "nonlinear_term_m_mult",  "Multiplier of nonlinear term in negative domain");
+param_t<double> nonlinear_term_p_mult  (pl, 1, "nonlinear_term_p_mult",  "Multiplier of nonlinear term in negative domain");
+
+param_t<int>    diff_coeff_m      (pl, 0, "diff_coeff_m",      "Diffusion coefficient in negative domain");
+param_t<int>    diff_coeff_p      (pl, 0, "diff_coeff_p",      "Diffusion coefficient in positive domain");
+param_t<double> diff_coeff_m_mult (pl, 1, "diff_coeff_m_mult", "Multiplier of diffusion coefficient in negative domain");
+param_t<double> diff_coeff_p_mult (pl, 1, "diff_coeff_p_mult", "Multiplier of diffusion coefficient in positive domain");
+
+param_t<double> diff_coeff_iter_num   (pl, 1, "diff_coeff_iter_num",   "Number of diffusion coefficients to test");
+param_t<double> diff_coeff_m_mult_min (pl, 1, "diff_coeff_m_mult_min", "Minimum value of diffusion coefficient multiplier in negative domain");
+param_t<double> diff_coeff_m_mult_max (pl, 1, "diff_coeff_m_mult_max", "Maximum value of diffusion coefficient multiplier in negative domain");
+
+param_t<int>    wc_type (pl, DIRICHLET, "wc_type", "Type of boundary conditions on the walls");
+
+param_t<int>    rhs_m_value (pl, 0, "rhs_m_value", "Source term in negative domain: 0 - automatic (method of manufactured solutions), 1 - zero");
+param_t<int>    rhs_p_value (pl, 0, "rhs_p_value", "Source term in positive domain: 0 - automatic (method of manufactured solutions), 1 - zero");
+
+param_t<int>    num_bdry (pl, 0, "num_bdry", "Number of domain boundaries");
+param_t<int>    num_infc (pl, 0, "num_infc", "Number of immersed interfaces");
 
 // boundary geometry
-param_t<int> bdry_phi_num (pl, 0, "bdry_phi_num", "Domain geometry");
-param_t<int> infc_phi_num (pl, 0, "infc_phi_num", "Domain geometry");
+param_t<bool>   bdry_00_present    (pl, 0, "bdry_00_present", "Turn on/off boundary no. 0");
+param_t<bool>   bdry_01_present    (pl, 0, "bdry_01_present", "Turn on/off boundary no. 1");
+param_t<bool>   bdry_02_present    (pl, 0, "bdry_02_present", "Turn on/off boundary no. 2");
+param_t<bool>   bdry_03_present    (pl, 0, "bdry_03_present", "Turn on/off boundary no. 3");
 
-param_t<bool> bdry_present_00 (pl, 0, "bdry_present_00", "Domain geometry");
-param_t<bool> bdry_present_01 (pl, 0, "bdry_present_01", "Domain geometry");
-param_t<bool> bdry_present_02 (pl, 0, "bdry_present_02", "Domain geometry");
-param_t<bool> bdry_present_03 (pl, 0, "bdry_present_03", "Domain geometry");
+param_t<int>    bdry_00_geometry   (pl, 0, "bdry_00_geometry", "Geometry of boundary no. 0");
+param_t<int>    bdry_01_geometry   (pl, 0, "bdry_01_geometry", "Geometry of boundary no. 1");
+param_t<int>    bdry_02_geometry   (pl, 0, "bdry_02_geometry", "Geometry of boundary no. 2");
+param_t<int>    bdry_03_geometry   (pl, 0, "bdry_03_geometry", "Geometry of boundary no. 3");
 
-param_t<int> bdry_geom_00 (pl, 0, "bdry_geom_00", "Domain geometry");
-param_t<int> bdry_geom_01 (pl, 0, "bdry_geom_01", "Domain geometry");
-param_t<int> bdry_geom_02 (pl, 0, "bdry_geom_02", "Domain geometry");
-param_t<int> bdry_geom_03 (pl, 0, "bdry_geom_03", "Domain geometry");
+param_t<int>    bdry_00_opn        (pl, MLS_INTERSECTION, "bdry_00_opn", "Operation used to add boundary no. 0: 0 - intersection, 1 - union");
+param_t<int>    bdry_01_opn        (pl, MLS_INTERSECTION, "bdry_01_opn", "Operation used to add boundary no. 1: 0 - intersection, 1 - union");
+param_t<int>    bdry_02_opn        (pl, MLS_INTERSECTION, "bdry_02_opn", "Operation used to add boundary no. 2: 0 - intersection, 1 - union");
+param_t<int>    bdry_03_opn        (pl, MLS_INTERSECTION, "bdry_03_opn", "Operation used to add boundary no. 3: 0 - intersection, 1 - union");
 
-param_t<int> bdry_opn_00 (pl, MLS_INTERSECTION, "bdry_opn_00", "Domain geometry");
-param_t<int> bdry_opn_01 (pl, MLS_INTERSECTION, "bdry_opn_01", "Domain geometry");
-param_t<int> bdry_opn_02 (pl, MLS_INTERSECTION, "bdry_opn_02", "Domain geometry");
-param_t<int> bdry_opn_03 (pl, MLS_INTERSECTION, "bdry_opn_03", "Domain geometry");
+param_t<int>    bdry_00_type       (pl, DIRICHLET, "bdry_00_type", "Type of boundary conditions on boundary no. 0");
+param_t<int>    bdry_01_type       (pl, DIRICHLET, "bdry_01_type", "Type of boundary conditions on boundary no. 1");
+param_t<int>    bdry_02_type       (pl, DIRICHLET, "bdry_02_type", "Type of boundary conditions on boundary no. 2");
+param_t<int>    bdry_03_type       (pl, DIRICHLET, "bdry_03_type", "Type of boundary conditions on boundary no. 3");
 
-param_t<int> bc_coeff_00 (pl, 0, "bc_coeff_00", "Domain geometry");
-param_t<int> bc_coeff_01 (pl, 0, "bc_coeff_01", "Domain geometry");
-param_t<int> bc_coeff_02 (pl, 0, "bc_coeff_02", "Domain geometry");
-param_t<int> bc_coeff_03 (pl, 0, "bc_coeff_03", "Domain geometry");
+param_t<int>    bdry_00_coeff      (pl, 0, "bdry_00_coeff", "Robin coefficient on boundary no. 0");
+param_t<int>    bdry_01_coeff      (pl, 0, "bdry_01_coeff", "Robin coefficient on boundary no. 1");
+param_t<int>    bdry_02_coeff      (pl, 0, "bdry_02_coeff", "Robin coefficient on boundary no. 2");
+param_t<int>    bdry_03_coeff      (pl, 0, "bdry_03_coeff", "Robin coefficient on boundary no. 3");
 
-param_t<double> bc_coeff_00_mag (pl, 1, "bc_coeff_00_mag", "Domain geometry");
-param_t<double> bc_coeff_01_mag (pl, 1, "bc_coeff_01_mag", "Domain geometry");
-param_t<double> bc_coeff_02_mag (pl, 1, "bc_coeff_02_mag", "Domain geometry");
-param_t<double> bc_coeff_03_mag (pl, 1, "bc_coeff_03_mag", "Domain geometry");
-
-param_t<int> bc_type_00 (pl, DIRICHLET, "bc_type_00", "Type of boundary conditions on the domain boundary");
-param_t<int> bc_type_01 (pl, DIRICHLET, "bc_type_01", "Type of boundary conditions on the domain boundary");
-param_t<int> bc_type_02 (pl, DIRICHLET, "bc_type_02", "Type of boundary conditions on the domain boundary");
-param_t<int> bc_type_03 (pl, DIRICHLET, "bc_type_03", "Type of boundary conditions on the domain boundary");
+param_t<double> bdry_00_coeff_mult (pl, 1, "bdry_00_coeff_mult", "Multiplier of robin coefficient on boundary no. 0");
+param_t<double> bdry_01_coeff_mult (pl, 1, "bdry_01_coeff_mult", "Multiplier of robin coefficient on boundary no. 1");
+param_t<double> bdry_02_coeff_mult (pl, 1, "bdry_02_coeff_mult", "Multiplier of robin coefficient on boundary no. 2");
+param_t<double> bdry_03_coeff_mult (pl, 1, "bdry_03_coeff_mult", "Multiplier of robin coefficient on boundary no. 3");
 
 // interface geometry
-param_t<bool> infc_present_00 (pl, 0, "infc_present_00", "Domain geometry");
-param_t<bool> infc_present_01 (pl, 0, "infc_present_01", "Domain geometry");
-param_t<bool> infc_present_02 (pl, 0, "infc_present_02", "Domain geometry");
-param_t<bool> infc_present_03 (pl, 0, "infc_present_03", "Domain geometry");
+param_t<bool>   infc_00_present    (pl, 0, "infc_00_present", "Turn on/off interface no. 0");
+param_t<bool>   infc_01_present    (pl, 0, "infc_01_present", "Turn on/off interface no. 1");
+param_t<bool>   infc_02_present    (pl, 0, "infc_02_present", "Turn on/off interface no. 2");
+param_t<bool>   infc_03_present    (pl, 0, "infc_03_present", "Turn on/off interface no. 3");
 
-param_t<int> infc_geom_00 (pl, 0, "infc_geom_00", "Domain geometry");
-param_t<int> infc_geom_01 (pl, 0, "infc_geom_01", "Domain geometry");
-param_t<int> infc_geom_02 (pl, 0, "infc_geom_02", "Domain geometry");
-param_t<int> infc_geom_03 (pl, 0, "infc_geom_03", "Domain geometry");
+param_t<int>    infc_00_geometry   (pl, 0, "infc_00_geometry", "Geometry of interface no. 0");
+param_t<int>    infc_01_geometry   (pl, 0, "infc_01_geometry", "Geometry of interface no. 1");
+param_t<int>    infc_02_geometry   (pl, 0, "infc_02_geometry", "Geometry of interface no. 2");
+param_t<int>    infc_03_geometry   (pl, 0, "infc_03_geometry", "Geometry of interface no. 3");
 
-param_t<int> infc_opn_00 (pl, MLS_INTERSECTION, "infc_opn_00", "Domain geometry");
-param_t<int> infc_opn_01 (pl, MLS_INTERSECTION, "infc_opn_01", "Domain geometry");
-param_t<int> infc_opn_02 (pl, MLS_INTERSECTION, "infc_opn_02", "Domain geometry");
-param_t<int> infc_opn_03 (pl, MLS_INTERSECTION, "infc_opn_03", "Domain geometry");
+param_t<int>    infc_00_opn        (pl, MLS_INTERSECTION, "infc_00_opn", "Operation to add interface no. 0: 0 - itersection, 1 - union");
+param_t<int>    infc_01_opn        (pl, MLS_INTERSECTION, "infc_01_opn", "Operation to add interface no. 1: 0 - itersection, 1 - union");
+param_t<int>    infc_02_opn        (pl, MLS_INTERSECTION, "infc_02_opn", "Operation to add interface no. 2: 0 - itersection, 1 - union");
+param_t<int>    infc_03_opn        (pl, MLS_INTERSECTION, "infc_03_opn", "Operation to add interface no. 3: 0 - itersection, 1 - union");
 
-param_t<int> jc_value_00 (pl, 0, "jc_value_00", "0 - automatic (pl, others - hardcoded");
-param_t<int> jc_value_01 (pl, 0, "jc_value_01", "0 - automatic (pl, others - hardcoded");
-param_t<int> jc_value_02 (pl, 0, "jc_value_02", "0 - automatic (pl, others - hardcoded");
-param_t<int> jc_value_03 (pl, 0, "jc_value_03", "0 - automatic (pl, others - hardcoded");
+param_t<int>    infc_00_value_jump (pl, 0, "infc_00_value_jump", "0 - automatic, others - hardcoded");
+param_t<int>    infc_01_value_jump (pl, 0, "infc_01_value_jump", "0 - automatic, others - hardcoded");
+param_t<int>    infc_02_value_jump (pl, 0, "infc_02_value_jump", "0 - automatic, others - hardcoded");
+param_t<int>    infc_03_value_jump (pl, 0, "infc_03_value_jump", "0 - automatic, others - hardcoded");
 
-param_t<int> jc_flux_00 (pl, 0, "jc_flux_00", "0 - automatic (pl, others - hardcoded");
-param_t<int> jc_flux_01 (pl, 0, "jc_flux_01", "0 - automatic (pl, others - hardcoded");
-param_t<int> jc_flux_02 (pl, 0, "jc_flux_02", "0 - automatic (pl, others - hardcoded");
-param_t<int> jc_flux_03 (pl, 0, "jc_flux_03", "0 - automatic (pl, others - hardcoded");
+param_t<int>    infc_00_flux_jump  (pl, 0, "infc_00_flux_jump", "0 - automatic, others - hardcoded");
+param_t<int>    infc_01_flux_jump  (pl, 0, "infc_01_flux_jump", "0 - automatic, others - hardcoded");
+param_t<int>    infc_02_flux_jump  (pl, 0, "infc_02_flux_jump", "0 - automatic, others - hardcoded");
+param_t<int>    infc_03_flux_jump  (pl, 0, "infc_03_flux_jump", "0 - automatic, others - hardcoded");
 
-param_t<int> rhs_m_value (pl, 0, "rhs_m_value", "0 - automatic (pl, others - hardcoded");
-param_t<int> rhs_p_value (pl, 0, "rhs_p_value", "0 - automatic (pl, others - hardcoded");
-
-//param_t<int> bc_itype (pl, ROBIN, "bc_itype", "");
+param_t<int>    example (pl, 8, "example", "Predefined example:\n"
+                                            "0 - no interfaces, no boudaries\n"
+                                            "1 - sphere interior\n"
+                                            "2 - sphere exterior\n"
+                                            "3 - moderately flower-shaped domain\n"
+                                            "4 - highly flower-shaped domain\n"
+                                            "5 - triangle/tetrahedron example from (Bochkov&Gibou, JCP, 2019)\n"
+                                            "6 - union of spheres example from (Bochkov&Gibou, JCP, 2019)\n"
+                                            "7 - difference of spheres example from (Bochkov&Gibou, JCP, 2019)\n"
+                                            "8 - three stars example from (Bochkov&Gibou, JCP, 2019)\n"
+                                            "9 - shperical interface\n"
+                                            "10 - moderately flower-shaped interface\n"
+                                            "11 - highly flower-shaped interface\n"
+                                            "12 - curvy interface in an annular region from (Bochkov&Gibou, JCP, 2019)\n"
+                                            "13 - example form Maxime's multiphase paper\n"
+                                            "14 - shperical interface - case 4 from voronoi jump solver3D\n"
+                                            "15 - shperical interface - case 1 from voronoi jump solver3D\n"
+                                            "16 - shperical interface - case 5 from voronoi jump solver3D\n"
+                                            "17 - shperical interface - case 3 from voronoi jump solver2D\n"
+                                            "18 - shperical interface - case 0 from voronoi jump solver3D\n"
+                                            "19 - not defined\n"
+                                            "20 - clusters of particles\n"
+                                            "21 - same as no. 0 + nonlinear sinh term\n"
+                                            "22 - same as no. 1 + nonlinear sinh term\n"
+                                            "23 - same as no. 5 + nonlinear sinh term\n"
+                                            "24 - same as no. 9 + nonlinear sinh term\n"
+                                            "25 - same as no. 12 + nonlinear sinh term\n");
 
 //-------------------------------------
 // solver parameters
 //-------------------------------------
-param_t<int>  jc_scheme         (pl, 0, "jc_scheme", "Discretization scheme for interface conditions (0 - FVM (pl, 1 - FDM)");
-param_t<int>  jc_sub_scheme     (pl, 0, "jc_sub_scheme", "Interpolation subscheme for interface conditions (0 - from slow region (pl, 1 - from fast region (pl, 2 - based on nodes availability)");
-param_t<int>  integration_order (pl, 2, "integration_order", "Select integration order (1 - linear (pl, 2 - quadratic)");
-param_t<bool> sc_scheme         (pl, 0, "sc_scheme", "Use super-convergent scheme");
+param_t<int>    jump_scheme       (pl, 0, "jump_scheme",       "Interpolation scheme for interface conditions (0 - from slow region, 1 - from fast region, 2 - based on nodes availability)");
+param_t<int>    integration_order (pl, 2, "integration_order", "Integration order for finite volume discretization (1 - linear, 2 - quadratic)");
+param_t<bool>   fv_scheme         (pl, 0, "fv_scheme",         "Scheme for finite volume discretization on boundaries: 0 - symmetric, 1 - superconvergent");
 
-// for symmetric scheme:
-param_t<bool> taylor_correction      (pl, 1, "taylor_correction", "Use Taylor correction to approximate Robin term (symmetric scheme)");
-param_t<bool> kink_special_treatment (pl, 1, "kink_special_treatment", "Use the special treatment for kinks (symmetric scheme)");
+param_t<bool>   store_finite_volumes   (pl, 0, "store_finite_volumes", "");
+param_t<bool>   apply_bc_pointwise     (pl, 0, "apply_bc_pointwise", "");
+param_t<bool>   use_centroid_always    (pl, 0, "use_centroid_always", "");
+param_t<bool>   sample_bc_node_by_node (pl, 0, "sample_bc_node_by_node", "");
 
-// for superconvergent scheme:
-param_t<bool> try_remove_hanging_cells (pl, 0, "try_remove_hanging_cells", "Ask solver to eliminate hanging cells");
+// for symmetric finite volume scheme:
+param_t<bool>   taylor_correction      (pl, 1, "taylor_correction",      "Use Taylor correction to approximate Robin term (symmetric scheme)");
+param_t<bool>   kink_special_treatment (pl, 1, "kink_special_treatment", "Use the special treatment for kinks (symmetric scheme)");
 
-param_t<bool> store_finite_volumes   (pl, 0, "store_finite_volumes", "");
-param_t<bool> apply_bc_pointwise     (pl, 0, "apply_bc_pointwise", "");
-param_t<bool> use_centroid_always    (pl, 0, "use_centroid_always", "");
-param_t<bool> sample_bc_node_by_node (pl, 0, "sample_bc_node_by_node", "");
 
 // for solving nonlinear equations
 param_t<int>    nonlinear_method (pl, 1, "nonlinear_method", "Method to solve nonlinear eqautions: 0 - solving for solution itself, 1 - solving for change in the solution");
@@ -258,23 +277,23 @@ param_t<double> nonlinear_tol    (pl, 1.e-10, "nonlinear_tol", "Tolerance for so
 //-------------------------------------
 // level-set representation parameters
 //-------------------------------------
-param_t<bool> use_phi_cf       (pl, 0, "use_phi_cf", "Use analytical level-set functions");
-param_t<bool> reinit_level_set (pl, 0, "reinit_level_set", "Reinitialize level-set function");
+param_t<bool>   use_phi_cf       (pl, 0, "use_phi_cf", "Use analytical level-set functions");
+param_t<bool>   reinit_level_set (pl, 1, "reinit_level_set", "Reinitialize level-set function");
 
 // artificial perturbation of level-set values
-param_t<int>    dom_perturb     (pl, 0, "dom_perturb", "Artificially pertub level-set functions (0 - no perturbation (pl, 1 - smooth (pl, 2 - noisy)");
-param_t<double> dom_perturb_mag (pl, 0.1, "dom_perturb_mag", "Magnitude of level-set perturbations");
-param_t<double> dom_perturb_pow (pl, 2, "dom_perturb_pow", "Order of level-set perturbation (e.g. 2 for h^2 perturbations)");
+param_t<int>    bdry_perturb     (pl, 0,     "bdry_perturb",     "Artificially pertub level-set functions of boundaries (0 - no perturbation, 1 - smooth, 2 - noisy)");
+param_t<double> bdry_perturb_mag (pl, 1.e-1, "bdry_perturb_mag", "Magnitude of level-set perturbations for boundaries");
+param_t<double> bdry_perturb_pow (pl, 2,     "bdry_perturb_pow", "Order of level-set perturbation for boundaries (e.g. 2 for h^2 perturbations)");
 
-param_t<int>    ifc_perturb     (pl, 0, "ifc_perturb", "Artificially pertub level-set functions (0 - no perturbation (pl, 1 - smooth (pl, 2 - noisy)");
-param_t<double> ifc_perturb_mag (pl, 0.1e-6, "ifc_perturb_mag", "Magnitude of level-set perturbations");
-param_t<double> ifc_perturb_pow (pl, 2, "ifc_perturb_pow", "Order of level-set perturbation (e.g. 2 for h^2 perturbations)");
+param_t<int>    infc_perturb     (pl, 0,     "infc_perturb",     "Artificially pertub level-set functions of interfaces (0 - no perturbation, 1 - smooth, 2 - noisy)");
+param_t<double> infc_perturb_mag (pl, 1.e-6, "infc_perturb_mag", "Magnitude of level-set perturbations for interfaces");
+param_t<double> infc_perturb_pow (pl, 2,     "infc_perturb_pow", "Order of level-set perturbation for interfaces (e.g. 2 for h^2 perturbations)");
 
 //-------------------------------------
 // convergence study parameters
 //-------------------------------------
-param_t<bool>   compute_cond_num       (pl, 0, "compute_cond_num", "Estimate L1-norm condition number");
-param_t<int>    extend_solution        (pl, 0, "extend_solution", "Extend solution after solving: 0 - no extension (pl, 1 - extend using normal derivatives (pl, 2 - extend using all derivatives");
+param_t<bool>   compute_cond_num       (pl, 0, "compute_cond_num", "Estimate L1-norm condition number (requires MATLAB)");
+param_t<int>    extend_solution        (pl, 0, "extend_solution", "Extend solution after solving: 0 - no extension, 1 - extend using normal derivatives, 2 - extend using all derivatives");
 param_t<double> mask_thresh            (pl, 0, "mask_thresh", "Mask threshold for excluding points in convergence study");
 param_t<bool>   compute_grad_between   (pl, 0, "compute_grad_between", "Computes gradient between points if yes");
 param_t<bool>   scale_errors           (pl, 0, "scale_errors", "Scale errors by max solution/gradient value");
@@ -285,336 +304,307 @@ param_t<double> extension_band_check   (pl, 6, "extension_band_check", "");
 param_t<double> extension_tol          (pl, -1.e-10, "extension_tol", "");
 param_t<int>    extension_iterations   (pl, 100, "extension_iterations", "");
 
-
 //-------------------------------------
 // output
 //-------------------------------------
-param_t<bool> save_vtk           (pl, 1, "save_vtk", "Save the p4est in vtk format");
-param_t<bool> save_params        (pl, 0, "save_params", "Save list of entered parameters");
-param_t<bool> save_domain        (pl, 0, "save_domain", "Save the reconstruction of an irregular domain (works only in serial!)");
-param_t<bool> save_matrix_ascii  (pl, 0, "save_matrix_ascii", "Save the matrix in ASCII MATLAB format");
-param_t<bool> save_matrix_binary (pl, 0, "save_matrix_binary", "Save the matrix in BINARY MATLAB format");
-param_t<bool> save_convergence   (pl, 0, "save_convergence", "Save convergence results");
-
-param_t<int> n_example (pl, 1, "n_example", "Predefined example:\n"
-                                             "0 - no interfaces, no boudaries\n"
-                                             "1 - sphere interior\n"
-                                             "2 - sphere exterior\n"
-                                             "3 - moderately flower-shaped domain\n"
-                                             "4 - highly flower-shaped domain\n"
-                                             "5 - triangle/tetrahedron example from (Bochkov&Gibou, JCP, 2019)\n"
-                                             "6 - union of spheres example from (Bochkov&Gibou, JCP, 2019)\n"
-                                             "7 - difference of spheres example from (Bochkov&Gibou, JCP, 2019)\n"
-                                             "8 - three stars example from (Bochkov&Gibou, JCP, 2019)\n"
-                                             "9 - shperical interface\n"
-                                             "10 - moderately flower-shaped interface\n"
-                                             "11 - highly flower-shaped interface\n"
-                                             "12 - curvy interface in an annular region from (Bochkov&Gibou, JCP, 2019)\n"
-                                             "13 - example form Maxime's multiphase paper\n"
-                                             "14 - shperical interface - case 4 from voronoi jump solver3D\n"
-                                             "15 - shperical interface - case 1 from voronoi jump solver3D\n"
-                                             "16 - shperical interface - case 5 from voronoi jump solver3D\n"
-                                             "17 - shperical interface - case 3 from voronoi jump solver2D\n"
-                                             "18 - shperical interface - case 0 from voronoi jump solver3D\n"
-                                             "19 - not defined\n"
-                                             "20 - clusters of particles\n"
-                                             "21 - same as no. 0 + nonlinear sinh term\n"
-                                             "22 - same as no. 1 + nonlinear sinh term\n"
-                                             "23 - same as no. 5 + nonlinear sinh term\n"
-                                             "24 - same as no. 9 + nonlinear sinh term\n"
-                                             "25 - same as no. 12 + nonlinear sinh term\n");
+param_t<bool>   save_vtk           (pl, 1, "save_vtk", "Save the p4est in vtk format");
+param_t<bool>   save_params        (pl, 0, "save_params", "Save list of entered parameters");
+param_t<bool>   save_domain        (pl, 0, "save_domain", "Save the reconstruction of an irregular domain (works only in serial!)");
+param_t<bool>   save_matrix_ascii  (pl, 0, "save_matrix_ascii", "Save the matrix in ASCII MATLAB format");
+param_t<bool>   save_matrix_binary (pl, 0, "save_matrix_binary", "Save the matrix in BINARY MATLAB format");
+param_t<bool>   save_convergence   (pl, 0, "save_convergence", "Save convergence results");
 
 // define the poisson problem to solve
 
 
-// specify exact solution of the problem in the in the positive and negative domain defined  in class u_pm_cf_t -> n_up and n_um
-// specify  the scalar that is to be multiplied to the exact solution defined using the previous variables -> mag_up and mag_um
-// specify mu of the problem in the in the positive and negative domain defined  in class u_pm_cf_t -> n_mu_p and n_mu_m
-// specify  the scalar that is to be multiplied to mu defined using the previous variables -> mag_mu_p and mag_mu_m
-// specify type of  diagonal term in the positive and negative domain by setting n_diag_m and n_diag_p to 0 or 1 or 2
-// specify the scalar to be multiplied to the diagonal terms -> mag_diag_p and mag_diag_m
+// specify exact solution of the problem in the in the positive and negative domain defined  in class sol_cf_t -> sol_p and sol_m
+// specify  the scalar that is to be multiplied to the exact solution defined using the previous variables -> sol_p_mult and sol_m_mult
+// specify mu of the problem in the in the positive and negative domain defined  in class sol_cf_t -> diff_coeff_p and diff_coeff_m
+// specify  the scalar that is to be multiplied to mu defined using the previous variables -> diff_coeff_p_mult and diff_coeff_m_mult
+// specify type of  diagonal term in the positive and negative domain by setting linear_term_m_coeff and linear_term_p_coeff to 0 or 1 or 2
+// specify the scalar to be multiplied to the diagonal terms -> linear_term_p_mult and linear_term_m_mult
 
 
 
 // define the domain geometry namely boundaries and interfaces
-// specify number of boundaries and interfaces -> bdry_phi_num and infc_phi_num
+// specify number of boundaries and interfaces -> num_bdry and num_infc
 // code is currently setup in a way that it can handle at max 4 boundaries and 4 interfaces and this can easily be extended further
 
 // adding boundaries
 
 // the value of "xx" in the following lines can be either 01, 02, 03 or 04 specifying the boundary  or interface number
 // bdry_present_xx -> specifies if the bdry xx exists or not depending on whether the value is 1 or 0
-// bdry_geom_xx -> defines the geometry of bdry xx defined in class bdry_phi_cf_t
+// bdry_geometry_xx -> defines the geometry of bdry xx defined in class bdry_phi_cf_t
 // bdry_opn_xx -> can be MLS_INT or MLS_ADD
 // As evident from the name choosing MLS_INTERSECTION will create a compound domain that is the intersection of two or more given domains
 // and MLS_ADDITION will create a compound domain that is the union of two or more given domains
 // bc_coeff_xx -> defines the type of robin boundary coefficient defined in bc_c0eff_cf_t
-// bc_coeff_xx_mag -> defines the scalar to be multiplied with the Robin boundary coefficient specified using the above mentioned parameter
+// bc_coeff_xx_mult -> defines the scalar to be multiplied with the Robin boundary coefficient specified using the above mentioned parameter
 // bc_type_xx -> type of boundary coefficient DIRICHLET, NEUMANN or ROBIN defined in bc_wall_type_t
 
 
 // adding interfaces is exactly similar to adding boundaries except in all the names above "bry" is replaced with "infc"
-void set_example(int n_example)
+void set_example(int example)
 {
-  switch (n_example)
+  switch (example)
   {
     case 0: // no boundaries, no interfaces
 
-      n_um.val = 0; mag_um.val = 1; n_mu_m.val = 0; mag_mu_m.val = 1; n_diag_m.val = 0; mag_diag_m.val = 1;
-      n_up.val = 0; mag_up.val = 1; n_mu_p.val = 0; mag_mu_p.val = 1; n_diag_p.val = 0; mag_diag_p.val = 1;
+      sol_m.val = 0; sol_m_mult.val = 1; diff_coeff_m.val = 0; diff_coeff_m_mult.val = 1; linear_term_m_coeff.val = 0; linear_term_m_mult.val = 1;
+      sol_p.val = 0; sol_p_mult.val = 1; diff_coeff_p.val = 0; diff_coeff_p_mult.val = 1; linear_term_p_coeff.val = 0; linear_term_p_mult.val = 1;
 
-      infc_phi_num.val = 0;
-      bdry_phi_num.val = 0;
+      num_infc.val = 0;
+      num_bdry.val = 0;
 
-      infc_present_00.val = 0;
-      infc_present_01.val = 0;
-      infc_present_02.val = 0;
-      infc_present_03.val = 0;
+      infc_00_present.val = 0;
+      infc_01_present.val = 0;
+      infc_02_present.val = 0;
+      infc_03_present.val = 0;
 
-      bdry_present_00.val = 0;
-      bdry_present_01.val = 0;
-      bdry_present_02.val = 0;
-      bdry_present_03.val = 0;
+      bdry_00_present.val = 0;
+      bdry_01_present.val = 0;
+      bdry_02_present.val = 0;
+      bdry_03_present.val = 0;
 
       break;
 
     case 1: // sphere interior
 
-      n_um.val = 0; mag_um.val = 1; n_mu_m.val = 0; mag_mu_m.val = 1; n_diag_m.val = 1; mag_diag_m.val = 1;
-      n_up.val = 0; mag_up.val = 1; n_mu_p.val = 0; mag_mu_p.val = 1; n_diag_p.val = 1; mag_diag_p.val = 1;
+      sol_m.val = 0; sol_m_mult.val = 1; diff_coeff_m.val = 0; diff_coeff_m_mult.val = 1; linear_term_m_coeff.val = 1; linear_term_m_mult.val = 1;
+      sol_p.val = 0; sol_p_mult.val = 1; diff_coeff_p.val = 0; diff_coeff_p_mult.val = 1; linear_term_p_coeff.val = 1; linear_term_p_mult.val = 1;
 
-      infc_phi_num.val = 0;
-      bdry_phi_num.val = 1;
+      num_infc.val = 0;
+      num_bdry.val = 1;
 
-      infc_present_00.val = 0;
-      infc_present_01.val = 0;
-      infc_present_02.val = 0;
-      infc_present_03.val = 0;
+      infc_00_present.val = 0;
+      infc_01_present.val = 0;
+      infc_02_present.val = 0;
+      infc_03_present.val = 0;
 
-      bdry_present_00.val = 1; bdry_geom_00.val = 1; bdry_opn_00.val = MLS_INT; bc_coeff_00.val = 0; bc_coeff_00_mag.val = 1; bc_type_00.val = DIRICHLET;
-      bdry_present_01.val = 0; bdry_geom_01.val = 0; bdry_opn_01.val = MLS_INT; bc_coeff_01.val = 0; bc_coeff_01_mag.val = 1; bc_type_01.val = DIRICHLET;
-      bdry_present_02.val = 0; bdry_geom_02.val = 0; bdry_opn_02.val = MLS_INT; bc_coeff_02.val = 0; bc_coeff_02_mag.val = 1; bc_type_02.val = DIRICHLET;
-      bdry_present_03.val = 0; bdry_geom_03.val = 0; bdry_opn_03.val = MLS_INT; bc_coeff_03.val = 0; bc_coeff_03_mag.val = 1; bc_type_03.val = DIRICHLET;
+      bdry_00_present.val = 1; bdry_00_geometry.val = 1; bdry_00_opn.val = MLS_INT; bdry_00_coeff.val = 0; bdry_00_coeff_mult.val = 1; bdry_00_type.val = DIRICHLET;
+      bdry_01_present.val = 0; bdry_01_geometry.val = 0; bdry_01_opn.val = MLS_INT; bdry_01_coeff.val = 0; bdry_01_coeff_mult.val = 1; bdry_01_type.val = DIRICHLET;
+      bdry_02_present.val = 0; bdry_02_geometry.val = 0; bdry_02_opn.val = MLS_INT; bdry_02_coeff.val = 0; bdry_02_coeff_mult.val = 1; bdry_02_type.val = DIRICHLET;
+      bdry_03_present.val = 0; bdry_03_geometry.val = 0; bdry_03_opn.val = MLS_INT; bdry_03_coeff.val = 0; bdry_03_coeff_mult.val = 1; bdry_03_type.val = DIRICHLET;
 
       break;
 
     case 2: // sphere exterior
 
-      n_um.val = 0; mag_um.val = 1; n_mu_m.val = 0; mag_mu_m.val = 1; n_diag_m.val = 0; mag_diag_m.val = 1;
-      n_up.val = 0; mag_up.val = 1; n_mu_p.val = 0; mag_mu_p.val = 1; n_diag_p.val = 0; mag_diag_p.val = 1;
+      sol_m.val = 0; sol_m_mult.val = 1; diff_coeff_m.val = 0; diff_coeff_m_mult.val = 1; linear_term_m_coeff.val = 0; linear_term_m_mult.val = 1;
+      sol_p.val = 0; sol_p_mult.val = 1; diff_coeff_p.val = 0; diff_coeff_p_mult.val = 1; linear_term_p_coeff.val = 0; linear_term_p_mult.val = 1;
 
-      infc_phi_num.val = 0;
-      bdry_phi_num.val = 1;
+      num_infc.val = 0;
+      num_bdry.val = 1;
 
-      infc_present_00.val = 0;
-      infc_present_01.val = 0;
-      infc_present_02.val = 0;
-      infc_present_03.val = 0;
+      infc_00_present.val = 0;
+      infc_01_present.val = 0;
+      infc_02_present.val = 0;
+      infc_03_present.val = 0;
 
-      bdry_present_00.val = 1; bdry_geom_00.val = 2; bdry_opn_00.val = MLS_INT; bc_coeff_00.val = 0; bc_coeff_00_mag.val = 1; bc_type_00.val = ROBIN;
-      bdry_present_01.val = 0; bdry_geom_01.val = 0; bdry_opn_01.val = MLS_INT; bc_coeff_01.val = 0; bc_coeff_01_mag.val = 1; bc_type_01.val = ROBIN;
-      bdry_present_02.val = 0; bdry_geom_02.val = 0; bdry_opn_02.val = MLS_INT; bc_coeff_02.val = 0; bc_coeff_02_mag.val = 1; bc_type_02.val = ROBIN;
-      bdry_present_03.val = 0; bdry_geom_03.val = 0; bdry_opn_03.val = MLS_INT; bc_coeff_03.val = 0; bc_coeff_03_mag.val = 1; bc_type_03.val = ROBIN;
+      bdry_00_present.val = 1; bdry_00_geometry.val = 2; bdry_00_opn.val = MLS_INT; bdry_00_coeff.val = 0; bdry_00_coeff_mult.val = 1; bdry_00_type.val = ROBIN;
+      bdry_01_present.val = 0; bdry_01_geometry.val = 0; bdry_01_opn.val = MLS_INT; bdry_01_coeff.val = 0; bdry_01_coeff_mult.val = 1; bdry_01_type.val = ROBIN;
+      bdry_02_present.val = 0; bdry_02_geometry.val = 0; bdry_02_opn.val = MLS_INT; bdry_02_coeff.val = 0; bdry_02_coeff_mult.val = 1; bdry_02_type.val = ROBIN;
+      bdry_03_present.val = 0; bdry_03_geometry.val = 0; bdry_03_opn.val = MLS_INT; bdry_03_coeff.val = 0; bdry_03_coeff_mult.val = 1; bdry_03_type.val = ROBIN;
 
       break;
 
     case 3: // moderately star-shaped boundary
 
-      n_um.val = 0; mag_um.val = 1; n_mu_m.val = 0; mag_mu_m.val = 1; n_diag_m.val = 0; mag_diag_m.val = 1;
-      n_up.val = 0; mag_up.val = 1; n_mu_p.val = 0; mag_mu_p.val = 1; n_diag_p.val = 0; mag_diag_p.val = 1;
+      sol_m.val = 0; sol_m_mult.val = 1; diff_coeff_m.val = 0; diff_coeff_m_mult.val = 1; linear_term_m_coeff.val = 0; linear_term_m_mult.val = 1;
+      sol_p.val = 0; sol_p_mult.val = 1; diff_coeff_p.val = 0; diff_coeff_p_mult.val = 1; linear_term_p_coeff.val = 0; linear_term_p_mult.val = 1;
 
-      infc_phi_num.val = 0;
-      bdry_phi_num.val = 1;
+      num_infc.val = 0;
+      num_bdry.val = 1;
 
-      infc_present_00.val = 0;
-      infc_present_01.val = 0;
-      infc_present_02.val = 0;
-      infc_present_03.val = 0;
+      infc_00_present.val = 0;
+      infc_01_present.val = 0;
+      infc_02_present.val = 0;
+      infc_03_present.val = 0;
 
-      bdry_present_00.val = 1; bdry_geom_00.val = 4; bdry_opn_00.val = MLS_INT; bc_coeff_00.val = 0; bc_coeff_00_mag.val = 1; bc_type_00.val = ROBIN;
-      bdry_present_01.val = 0; bdry_geom_01.val = 0; bdry_opn_01.val = MLS_INT; bc_coeff_01.val = 0; bc_coeff_01_mag.val = 1; bc_type_01.val = ROBIN;
-      bdry_present_02.val = 0; bdry_geom_02.val = 0; bdry_opn_02.val = MLS_INT; bc_coeff_02.val = 0; bc_coeff_02_mag.val = 1; bc_type_02.val = ROBIN;
-      bdry_present_03.val = 0; bdry_geom_03.val = 0; bdry_opn_03.val = MLS_INT; bc_coeff_03.val = 0; bc_coeff_03_mag.val = 1; bc_type_03.val = ROBIN;
+      bdry_00_present.val = 1; bdry_00_geometry.val = 4; bdry_00_opn.val = MLS_INT; bdry_00_coeff.val = 0; bdry_00_coeff_mult.val = 1; bdry_00_type.val = ROBIN;
+      bdry_01_present.val = 0; bdry_01_geometry.val = 0; bdry_01_opn.val = MLS_INT; bdry_01_coeff.val = 0; bdry_01_coeff_mult.val = 1; bdry_01_type.val = ROBIN;
+      bdry_02_present.val = 0; bdry_02_geometry.val = 0; bdry_02_opn.val = MLS_INT; bdry_02_coeff.val = 0; bdry_02_coeff_mult.val = 1; bdry_02_type.val = ROBIN;
+      bdry_03_present.val = 0; bdry_03_geometry.val = 0; bdry_03_opn.val = MLS_INT; bdry_03_coeff.val = 0; bdry_03_coeff_mult.val = 1; bdry_03_type.val = ROBIN;
 
       break;
 
     case 4: // highly star-shaped boundary
 
-      n_um.val = 0; mag_um.val = 1; n_mu_m.val = 0; mag_mu_m.val = 1; n_diag_m.val = 0; mag_diag_m.val = 1;
-      n_up.val = 0; mag_up.val = 1; n_mu_p.val = 0; mag_mu_p.val = 1; n_diag_p.val = 0; mag_diag_p.val = 1;
+      sol_m.val = 0; sol_m_mult.val = 1; diff_coeff_m.val = 0; diff_coeff_m_mult.val = 1; linear_term_m_coeff.val = 0; linear_term_m_mult.val = 1;
+      sol_p.val = 0; sol_p_mult.val = 1; diff_coeff_p.val = 0; diff_coeff_p_mult.val = 1; linear_term_p_coeff.val = 0; linear_term_p_mult.val = 1;
 
-      infc_phi_num.val = 0;
-      bdry_phi_num.val = 1;
+      num_infc.val = 0;
+      num_bdry.val = 1;
 
-      infc_present_00.val = 0;
-      infc_present_01.val = 0;
-      infc_present_02.val = 0;
-      infc_present_03.val = 0;
+      infc_00_present.val = 0;
+      infc_01_present.val = 0;
+      infc_02_present.val = 0;
+      infc_03_present.val = 0;
 
-      bdry_present_00.val = 1; bdry_geom_00.val = 5; bdry_opn_00.val = MLS_INT; bc_coeff_00.val = 0; bc_coeff_00_mag.val = 1; bc_type_00.val = ROBIN;
-      bdry_present_01.val = 0; bdry_geom_01.val = 0; bdry_opn_01.val = MLS_INT; bc_coeff_01.val = 0; bc_coeff_01_mag.val = 1; bc_type_01.val = ROBIN;
-      bdry_present_02.val = 0; bdry_geom_02.val = 0; bdry_opn_02.val = MLS_INT; bc_coeff_02.val = 0; bc_coeff_02_mag.val = 1; bc_type_02.val = ROBIN;
-      bdry_present_03.val = 0; bdry_geom_03.val = 0; bdry_opn_03.val = MLS_INT; bc_coeff_03.val = 0; bc_coeff_03_mag.val = 1; bc_type_03.val = ROBIN;
+      bdry_00_present.val = 1; bdry_00_geometry.val = 5; bdry_00_opn.val = MLS_INT; bdry_00_coeff.val = 0; bdry_00_coeff_mult.val = 1; bdry_00_type.val = ROBIN;
+      bdry_01_present.val = 0; bdry_01_geometry.val = 0; bdry_01_opn.val = MLS_INT; bdry_01_coeff.val = 0; bdry_01_coeff_mult.val = 1; bdry_01_type.val = ROBIN;
+      bdry_02_present.val = 0; bdry_02_geometry.val = 0; bdry_02_opn.val = MLS_INT; bdry_02_coeff.val = 0; bdry_02_coeff_mult.val = 1; bdry_02_type.val = ROBIN;
+      bdry_03_present.val = 0; bdry_03_geometry.val = 0; bdry_03_opn.val = MLS_INT; bdry_03_coeff.val = 0; bdry_03_coeff_mult.val = 1; bdry_03_type.val = ROBIN;
 
       break;
 
     case 5: // triangle/tetrahedron example from (Bochkov&Gibou, JCP, 2019)
 
-      n_um.val = 0; mag_um.val = 1; n_mu_m.val = 0; mag_mu_m.val = 1; n_diag_m.val = 0; mag_diag_m.val = 1;
-      n_up.val = 0; mag_up.val = 1; n_mu_p.val = 0; mag_mu_p.val = 1; n_diag_p.val = 0; mag_diag_p.val = 1;
+      sol_m.val = 0; sol_m_mult.val = 1; diff_coeff_m.val = 0; diff_coeff_m_mult.val = 1; linear_term_m_coeff.val = 0; linear_term_m_mult.val = 1;
+      sol_p.val = 0; sol_p_mult.val = 1; diff_coeff_p.val = 0; diff_coeff_p_mult.val = 1; linear_term_p_coeff.val = 0; linear_term_p_mult.val = 1;
 
-      infc_phi_num.val = 0;
-      bdry_phi_num.val = P4EST_DIM+1;
+      num_infc.val = 0;
+      num_bdry.val = P4EST_DIM+1;
 
-      infc_present_00.val = 0;
-      infc_present_01.val = 0;
-      infc_present_02.val = 0;
-      infc_present_03.val = 0;
+      infc_00_present.val = 0;
+      infc_01_present.val = 0;
+      infc_02_present.val = 0;
+      infc_03_present.val = 0;
 
-      bdry_present_00.val = 1; bdry_geom_00.val = 13; bdry_opn_00.val = MLS_INT; bc_coeff_00.val = 0; bc_coeff_00_mag.val = 1; bc_type_00.val = ROBIN;
-      bdry_present_01.val = 1; bdry_geom_01.val = 14; bdry_opn_01.val = MLS_INT; bc_coeff_01.val = 0; bc_coeff_01_mag.val = 0; bc_type_01.val = ROBIN;
-      bdry_present_02.val = 1; bdry_geom_02.val = 15; bdry_opn_02.val = MLS_INT; bc_coeff_02.val = 2; bc_coeff_02_mag.val = 1; bc_type_02.val = ROBIN;
-      bdry_present_03.val = 1; bdry_geom_03.val = 16; bdry_opn_03.val = MLS_INT; bc_coeff_03.val = 1; bc_coeff_03_mag.val = 1; bc_type_03.val = ROBIN;
+      bdry_00_present.val = 1; bdry_00_geometry.val = 13; bdry_00_opn.val = MLS_INT; bdry_00_coeff.val = 0; bdry_00_coeff_mult.val = 1; bdry_00_type.val = ROBIN;
+      bdry_01_present.val = 1; bdry_01_geometry.val = 14; bdry_01_opn.val = MLS_INT; bdry_01_coeff.val = 0; bdry_01_coeff_mult.val = 0; bdry_01_type.val = ROBIN;
+      bdry_02_present.val = 1; bdry_02_geometry.val = 15; bdry_02_opn.val = MLS_INT; bdry_02_coeff.val = 2; bdry_02_coeff_mult.val = 1; bdry_02_type.val = ROBIN;
+      bdry_03_present.val = 1; bdry_03_geometry.val = 16; bdry_03_opn.val = MLS_INT; bdry_03_coeff.val = 1; bdry_03_coeff_mult.val = 1; bdry_03_type.val = ROBIN;
 
       break;
 
     case 6: // union of spheres example from (Bochkov&Gibou, JCP, 2019)
 
-      n_um.val = 3; mag_um.val = 1; n_mu_m.val = 0; mag_mu_m.val = 1; n_diag_m.val = 0; mag_diag_m.val = 1;
-      n_up.val = 0; mag_up.val = 1; n_mu_p.val = 0; mag_mu_p.val = 1; n_diag_p.val = 0; mag_diag_p.val = 1;
+      sol_m.val = 3; sol_m_mult.val = 1; diff_coeff_m.val = 0; diff_coeff_m_mult.val = 1; linear_term_m_coeff.val = 0; linear_term_m_mult.val = 1;
+      sol_p.val = 0; sol_p_mult.val = 1; diff_coeff_p.val = 0; diff_coeff_p_mult.val = 1; linear_term_p_coeff.val = 0; linear_term_p_mult.val = 1;
 
-      infc_phi_num.val = 0;
-      bdry_phi_num.val = 2;
+      num_infc.val = 0;
+      num_bdry.val = 2;
 
-      infc_present_00.val = 0; infc_geom_00.val = 0;
-      infc_present_01.val = 0; infc_geom_01.val = 0;
-      infc_present_02.val = 0; infc_geom_02.val = 0;
-      infc_present_03.val = 0; infc_geom_03.val = 0;
+      infc_00_present.val = 0; infc_00_geometry.val = 0;
+      infc_01_present.val = 0; infc_01_geometry.val = 0;
+      infc_02_present.val = 0; infc_02_geometry.val = 0;
+      infc_03_present.val = 0; infc_03_geometry.val = 0;
 
-      bdry_present_00.val = 1; bdry_geom_00.val = 6; bdry_opn_00.val = MLS_INT; bc_coeff_00.val = 0; bc_coeff_00_mag.val = 1; bc_type_00.val = ROBIN;
-      bdry_present_01.val = 1; bdry_geom_01.val = 7; bdry_opn_01.val = MLS_ADD; bc_coeff_01.val = 3; bc_coeff_01_mag.val = 1; bc_type_01.val = ROBIN;
-      bdry_present_02.val = 0; bdry_geom_02.val = 0; bdry_opn_02.val = MLS_INT; bc_coeff_02.val = 0; bc_coeff_02_mag.val = 1; bc_type_02.val = ROBIN;
-      bdry_present_03.val = 0; bdry_geom_03.val = 0; bdry_opn_03.val = MLS_INT; bc_coeff_03.val = 0; bc_coeff_03_mag.val = 1; bc_type_03.val = ROBIN;
+      bdry_00_present.val = 1; bdry_00_geometry.val = 6; bdry_00_opn.val = MLS_INT; bdry_00_coeff.val = 0; bdry_00_coeff_mult.val = 1; bdry_00_type.val = ROBIN;
+      bdry_01_present.val = 1; bdry_01_geometry.val = 7; bdry_01_opn.val = MLS_ADD; bdry_01_coeff.val = 3; bdry_01_coeff_mult.val = 1; bdry_01_type.val = ROBIN;
+      bdry_02_present.val = 0; bdry_02_geometry.val = 0; bdry_02_opn.val = MLS_INT; bdry_02_coeff.val = 0; bdry_02_coeff_mult.val = 1; bdry_02_type.val = ROBIN;
+      bdry_03_present.val = 0; bdry_03_geometry.val = 0; bdry_03_opn.val = MLS_INT; bdry_03_coeff.val = 0; bdry_03_coeff_mult.val = 1; bdry_03_type.val = ROBIN;
 
       break;
 
     case 7: // difference of spheres example from (Bochkov&Gibou, JCP, 2019)
 
-      n_um.val = 4; mag_um.val = 1; n_mu_m.val = 1; mag_mu_m.val = 1; n_diag_m.val = 1; mag_diag_m.val = 1;
-      n_up.val = 0; mag_up.val = 1; n_mu_p.val = 0; mag_mu_p.val = 1; n_diag_p.val = 0; mag_diag_p.val = 1;
+      sol_m.val = 4; sol_m_mult.val = 1; diff_coeff_m.val = 1; diff_coeff_m_mult.val = 1; linear_term_m_coeff.val = 1; linear_term_m_mult.val = 1;
+      sol_p.val = 0; sol_p_mult.val = 1; diff_coeff_p.val = 0; diff_coeff_p_mult.val = 1; linear_term_p_coeff.val = 0; linear_term_p_mult.val = 1;
 
-      infc_phi_num.val = 0;
-      bdry_phi_num.val = 2;
+      num_infc.val = 0;
+      num_bdry.val = 2;
 
-      infc_present_00.val = 0;
-      infc_present_01.val = 0;
-      infc_present_02.val = 0;
-      infc_present_03.val = 0;
+      infc_00_present.val = 0;
+      infc_01_present.val = 0;
+      infc_02_present.val = 0;
+      infc_03_present.val = 0;
 
-      bdry_present_00.val = 1; bdry_geom_00.val = 8; bdry_opn_00.val = MLS_INT; bc_coeff_00.val = 4; bc_coeff_00_mag.val = 1; bc_type_00.val = ROBIN;
-      bdry_present_01.val = 1; bdry_geom_01.val = 9; bdry_opn_01.val = MLS_INT; bc_coeff_01.val = 3; bc_coeff_01_mag.val = 1; bc_type_01.val = ROBIN;
-      bdry_present_02.val = 0; bdry_geom_02.val = 0; bdry_opn_02.val = MLS_INT; bc_coeff_02.val = 0; bc_coeff_02_mag.val = 1; bc_type_02.val = ROBIN;
-      bdry_present_03.val = 0; bdry_geom_03.val = 0; bdry_opn_03.val = MLS_INT; bc_coeff_03.val = 0; bc_coeff_03_mag.val = 1; bc_type_03.val = ROBIN;
+      bdry_00_present.val = 1; bdry_00_geometry.val = 8; bdry_00_opn.val = MLS_INT; bdry_00_coeff.val = 4; bdry_00_coeff_mult.val = 1; bdry_00_type.val = ROBIN;
+      bdry_01_present.val = 1; bdry_01_geometry.val = 9; bdry_01_opn.val = MLS_INT; bdry_01_coeff.val = 3; bdry_01_coeff_mult.val = 1; bdry_01_type.val = ROBIN;
+      bdry_02_present.val = 0; bdry_02_geometry.val = 0; bdry_02_opn.val = MLS_INT; bdry_02_coeff.val = 0; bdry_02_coeff_mult.val = 1; bdry_02_type.val = ROBIN;
+      bdry_03_present.val = 0; bdry_03_geometry.val = 0; bdry_03_opn.val = MLS_INT; bdry_03_coeff.val = 0; bdry_03_coeff_mult.val = 1; bdry_03_type.val = ROBIN;
 
       break;
 
     case 8: // three stars example from (Bochkov&Gibou, JCP, 2019)
 
-      n_um.val = 6; mag_um.val = 1; n_mu_m.val = 1; mag_mu_m.val = 1; n_diag_m.val = 2; mag_diag_m.val = 1;
-      n_up.val = 0; mag_up.val = 1; n_mu_p.val = 0; mag_mu_p.val = 1; n_diag_p.val = 0; mag_diag_p.val = 1;
+      sol_m.val = 6; sol_m_mult.val = 1; diff_coeff_m.val = 1; diff_coeff_m_mult.val = 1; linear_term_m_coeff.val = 2; linear_term_m_mult.val = 1;
+      sol_p.val = 0; sol_p_mult.val = 1; diff_coeff_p.val = 0; diff_coeff_p_mult.val = 1; linear_term_p_coeff.val = 0; linear_term_p_mult.val = 1;
 
-      infc_phi_num.val = 0;
-      bdry_phi_num.val = 3;
+      num_infc.val = 0;
+      num_bdry.val = 3;
 
-      infc_present_00.val = 0;
-      infc_present_01.val = 0;
-      infc_present_02.val = 0;
-      infc_present_03.val = 0;
+      infc_00_present.val = 0;
+      infc_01_present.val = 0;
+      infc_02_present.val = 0;
+      infc_03_present.val = 0;
 
-      bdry_present_00.val = 1; bdry_geom_00.val = 10; bdry_opn_00.val = MLS_INT; bc_coeff_00.val = 0; bc_coeff_00_mag.val = 1; bc_type_00.val = ROBIN;
-      bdry_present_01.val = 1; bdry_geom_01.val = 11; bdry_opn_01.val = MLS_ADD; bc_coeff_01.val = 5; bc_coeff_01_mag.val = 1; bc_type_01.val = ROBIN;
-      bdry_present_02.val = 1; bdry_geom_02.val = 12; bdry_opn_02.val = MLS_INT; bc_coeff_02.val = 6; bc_coeff_02_mag.val = 1; bc_type_02.val = ROBIN;
-      bdry_present_03.val = 0; bdry_geom_03.val =  0; bdry_opn_03.val = MLS_INT; bc_coeff_03.val = 0; bc_coeff_03_mag.val = 1; bc_type_03.val = ROBIN;
+      bdry_00_present.val = 1; bdry_00_geometry.val = 10; bdry_00_opn.val = MLS_INT; bdry_00_coeff.val = 0; bdry_00_coeff_mult.val = 1; bdry_00_type.val = ROBIN;
+      bdry_01_present.val = 1; bdry_01_geometry.val = 11; bdry_01_opn.val = MLS_ADD; bdry_01_coeff.val = 5; bdry_01_coeff_mult.val = 1; bdry_01_type.val = ROBIN;
+      bdry_02_present.val = 1; bdry_02_geometry.val = 12; bdry_02_opn.val = MLS_INT; bdry_02_coeff.val = 6; bdry_02_coeff_mult.val = 1; bdry_02_type.val = ROBIN;
+      bdry_03_present.val = 0; bdry_03_geometry.val =  0; bdry_03_opn.val = MLS_INT; bdry_03_coeff.val = 0; bdry_03_coeff_mult.val = 1; bdry_03_type.val = ROBIN;
 
       break;
 
     case 9: // shperical interface
 
-      n_um.val = 11; mag_um.val = 1; n_mu_m.val = 0; mag_mu_m.val = 5; n_diag_m.val = 1; mag_diag_m.val = 1;
-      n_up.val = 12; mag_up.val = 1; n_mu_p.val = 0; mag_mu_p.val = 1; n_diag_p.val = 1; mag_diag_p.val = 1;
+      sol_m.val = 11; sol_m_mult.val = 1; diff_coeff_m.val = 0; diff_coeff_m_mult.val = 5; linear_term_m_coeff.val = 1; linear_term_m_mult.val = 1;
+      sol_p.val = 12; sol_p_mult.val = 1; diff_coeff_p.val = 0; diff_coeff_p_mult.val = 1; linear_term_p_coeff.val = 1; linear_term_p_mult.val = 1;
 
-      infc_phi_num.val = 1;
-      bdry_phi_num.val = 0;
+      num_infc.val = 1;
+      num_bdry.val = 0;
 
-      infc_present_00.val = 1; infc_geom_00.val = 1; infc_opn_00.val = MLS_INT;
-      infc_present_01.val = 0; infc_geom_01.val = 0; infc_opn_01.val = MLS_INT;
-      infc_present_02.val = 0; infc_geom_02.val = 0; infc_opn_02.val = MLS_INT;
-      infc_present_03.val = 0; infc_geom_03.val = 0; infc_opn_03.val = MLS_INT;
+      infc_00_present.val = 1; infc_00_geometry.val = 1; infc_00_opn.val = MLS_INT;
+      infc_01_present.val = 0; infc_01_geometry.val = 0; infc_01_opn.val = MLS_INT;
+      infc_02_present.val = 0; infc_02_geometry.val = 0; infc_02_opn.val = MLS_INT;
+      infc_03_present.val = 0; infc_03_geometry.val = 0; infc_03_opn.val = MLS_INT;
 
-      bdry_present_00.val = 0;
-      bdry_present_01.val = 0;
-      bdry_present_02.val = 0;
-      bdry_present_03.val = 0;
+      bdry_00_present.val = 0;
+      bdry_01_present.val = 0;
+      bdry_02_present.val = 0;
+      bdry_03_present.val = 0;
 
       break;
 
     case 10: // moderately flower-shaped interface
 
-      n_um.val = 11; mag_um.val = 1; n_mu_m.val = 0; mag_mu_m.val = 5; n_diag_m.val = 1; mag_diag_m.val = 1;
-      n_up.val = 12; mag_up.val = 1; n_mu_p.val = 0; mag_mu_p.val = 1; n_diag_p.val = 1; mag_diag_p.val = 1;
+      sol_m.val = 11; sol_m_mult.val = 1; diff_coeff_m.val = 0; diff_coeff_m_mult.val = 5; linear_term_m_coeff.val = 1; linear_term_m_mult.val = 1;
+      sol_p.val = 12; sol_p_mult.val = 1; diff_coeff_p.val = 0; diff_coeff_p_mult.val = 1; linear_term_p_coeff.val = 1; linear_term_p_mult.val = 1;
 
-      infc_phi_num.val = 1;
-      bdry_phi_num.val = 0;
+      num_infc.val = 1;
+      num_bdry.val = 0;
 
-      infc_present_00.val = 1; infc_geom_00.val = 1; infc_opn_00.val = MLS_INT;
-      infc_present_01.val = 0; infc_geom_01.val = 0; infc_opn_01.val = MLS_INT;
-      infc_present_02.val = 0; infc_geom_02.val = 0; infc_opn_02.val = MLS_INT;
-      infc_present_03.val = 0; infc_geom_03.val = 0; infc_opn_03.val = MLS_INT;
+      infc_00_present.val = 1; infc_00_geometry.val = 1; infc_00_opn.val = MLS_INT;
+      infc_01_present.val = 0; infc_01_geometry.val = 0; infc_01_opn.val = MLS_INT;
+      infc_02_present.val = 0; infc_02_geometry.val = 0; infc_02_opn.val = MLS_INT;
+      infc_03_present.val = 0; infc_03_geometry.val = 0; infc_03_opn.val = MLS_INT;
 
-      bdry_present_00.val = 0;
-      bdry_present_01.val = 0;
-      bdry_present_02.val = 0;
-      bdry_present_03.val = 0;
+      bdry_00_present.val = 0;
+      bdry_01_present.val = 0;
+      bdry_02_present.val = 0;
+      bdry_03_present.val = 0;
 
       break;
 
     case 11: // highly flower-shaped interface
 
-      n_um.val = 11; mag_um.val = 1; n_mu_m.val = 0; mag_mu_m.val = 1; n_diag_m.val = 0; mag_diag_m.val = 1;
-      n_up.val = 12; mag_up.val = 1; n_mu_p.val = 0; mag_mu_p.val =  1; n_diag_p.val = 0; mag_diag_p.val = 1;
+      sol_m.val = 11; sol_m_mult.val = 1; diff_coeff_m.val = 0; diff_coeff_m_mult.val = 1; linear_term_m_coeff.val = 0; linear_term_m_mult.val = 1;
+      sol_p.val = 12; sol_p_mult.val = 1; diff_coeff_p.val = 0; diff_coeff_p_mult.val =  1; linear_term_p_coeff.val = 0; linear_term_p_mult.val = 1;
 
-      infc_phi_num.val = 1;
-      bdry_phi_num.val = 0;
+      num_infc.val = 1;
+      num_bdry.val = 0;
 
-      infc_present_00.val = 1; infc_geom_00.val = 3; infc_opn_00.val = MLS_INT;
-      infc_present_01.val = 0; infc_geom_01.val = 0; infc_opn_01.val = MLS_INT;
-      infc_present_02.val = 0; infc_geom_02.val = 0; infc_opn_02.val = MLS_INT;
-      infc_present_03.val = 0; infc_geom_03.val = 0; infc_opn_03.val = MLS_INT;
+      infc_00_present.val = 1; infc_00_geometry.val = 3; infc_00_opn.val = MLS_INT;
+      infc_01_present.val = 0; infc_01_geometry.val = 0; infc_01_opn.val = MLS_INT;
+      infc_02_present.val = 0; infc_02_geometry.val = 0; infc_02_opn.val = MLS_INT;
+      infc_03_present.val = 0; infc_03_geometry.val = 0; infc_03_opn.val = MLS_INT;
 
-      bdry_present_00.val = 0;
-      bdry_present_01.val = 0;
-      bdry_present_02.val = 0;
-      bdry_present_03.val = 0;
+      bdry_00_present.val = 0;
+      bdry_01_present.val = 0;
+      bdry_02_present.val = 0;
+      bdry_03_present.val = 0;
 
       break;
 
     case 12: // curvy interface in an annular region from (Bochkov&Gibou, JCP, 2019)
 
-      n_um.val = 11; mag_um.val = 1; n_mu_m.val = 1; mag_mu_m.val = 10; n_diag_m.val = 0; mag_diag_m.val = 1;
-      n_up.val = 12; mag_up.val = 1; n_mu_p.val = 0; mag_mu_p.val =  1; n_diag_p.val = 0; mag_diag_p.val = 1;
+      sol_m.val = 11; sol_m_mult.val = 1; diff_coeff_m.val = 1; diff_coeff_m_mult.val = 10; linear_term_m_coeff.val = 0; linear_term_m_mult.val = 1;
+      sol_p.val = 12; sol_p_mult.val = 1; diff_coeff_p.val = 0; diff_coeff_p_mult.val =  1; linear_term_p_coeff.val = 0; linear_term_p_mult.val = 1;
 
-      infc_phi_num.val = 1;
-      bdry_phi_num.val = 1;
+      num_infc.val = 1;
+      num_bdry.val = 1;
 
-      infc_present_00.val = 1; infc_geom_00.val = 4; infc_opn_00.val = MLS_INT;
-      infc_present_01.val = 0; infc_geom_01.val = 0; infc_opn_01.val = MLS_INT;
-      infc_present_02.val = 0; infc_geom_02.val = 0; infc_opn_02.val = MLS_INT;
-      infc_present_03.val = 0; infc_geom_03.val = 0; infc_opn_03.val = MLS_INT;
+      infc_00_present.val = 1; infc_00_geometry.val = 4; infc_00_opn.val = MLS_INT;
+      infc_01_present.val = 0; infc_01_geometry.val = 0; infc_01_opn.val = MLS_INT;
+      infc_02_present.val = 0; infc_02_geometry.val = 0; infc_02_opn.val = MLS_INT;
+      infc_03_present.val = 0; infc_03_geometry.val = 0; infc_03_opn.val = MLS_INT;
 
-      bdry_present_00.val = 1; bdry_geom_00.val = 3; bdry_opn_00.val = MLS_INT; bc_coeff_00.val = 0; bc_coeff_00_mag.val = 1; bc_type_00.val = DIRICHLET;
-      bdry_present_01.val = 0; bdry_geom_01.val = 0; bdry_opn_01.val = MLS_INT; bc_coeff_01.val = 0; bc_coeff_01_mag.val = 1; bc_type_01.val = ROBIN;
-      bdry_present_02.val = 0; bdry_geom_02.val = 0; bdry_opn_02.val = MLS_INT; bc_coeff_02.val = 0; bc_coeff_02_mag.val = 1; bc_type_02.val = ROBIN;
-      bdry_present_03.val = 0; bdry_geom_03.val = 0; bdry_opn_03.val = MLS_INT; bc_coeff_03.val = 0; bc_coeff_03_mag.val = 1; bc_type_03.val = ROBIN;
+      bdry_00_present.val = 1; bdry_00_geometry.val = 3; bdry_00_opn.val = MLS_INT; bdry_00_coeff.val = 0; bdry_00_coeff_mult.val = 1; bdry_00_type.val = DIRICHLET;
+      bdry_01_present.val = 0; bdry_01_geometry.val = 0; bdry_01_opn.val = MLS_INT; bdry_01_coeff.val = 0; bdry_01_coeff_mult.val = 1; bdry_01_type.val = ROBIN;
+      bdry_02_present.val = 0; bdry_02_geometry.val = 0; bdry_02_opn.val = MLS_INT; bdry_02_coeff.val = 0; bdry_02_coeff_mult.val = 1; bdry_02_type.val = ROBIN;
+      bdry_03_present.val = 0; bdry_03_geometry.val = 0; bdry_03_opn.val = MLS_INT; bdry_03_coeff.val = 0; bdry_03_coeff_mult.val = 1; bdry_03_type.val = ROBIN;
 
       break;
 
@@ -624,284 +614,284 @@ void set_example(int n_example)
       YCODE( ymin.val = -2; ymax.val = 2 );
       ZCODE( zmin.val = -2; zmax.val = 2 );
 
-      n_um.val = 1; mag_um.val = 1; n_mu_m.val = 0; mag_mu_m.val = 1; n_diag_m.val = 0; mag_diag_m.val = 1;
-      n_up.val = 0; mag_up.val = 1; n_mu_p.val = 0; mag_mu_p.val = 1.e8; n_diag_p.val = 0; mag_diag_p.val = 1;
+      sol_m.val = 1; sol_m_mult.val = 1; diff_coeff_m.val = 0; diff_coeff_m_mult.val = 1; linear_term_m_coeff.val = 0; linear_term_m_mult.val = 1;
+      sol_p.val = 0; sol_p_mult.val = 1; diff_coeff_p.val = 0; diff_coeff_p_mult.val = 1.e8; linear_term_p_coeff.val = 0; linear_term_p_mult.val = 1;
 
-      infc_phi_num.val = 1;
-      bdry_phi_num.val = 0;
+      num_infc.val = 1;
+      num_bdry.val = 0;
 
-      infc_present_00.val = 1; infc_geom_00.val = 1; infc_opn_00.val = MLS_INT;
-      infc_present_01.val = 0; infc_geom_01.val = 0; infc_opn_01.val = MLS_INT;
-      infc_present_02.val = 0; infc_geom_02.val = 0; infc_opn_02.val = MLS_INT;
-      infc_present_03.val = 0; infc_geom_03.val = 0; infc_opn_03.val = MLS_INT;
+      infc_00_present.val = 1; infc_00_geometry.val = 1; infc_00_opn.val = MLS_INT;
+      infc_01_present.val = 0; infc_01_geometry.val = 0; infc_01_opn.val = MLS_INT;
+      infc_02_present.val = 0; infc_02_geometry.val = 0; infc_02_opn.val = MLS_INT;
+      infc_03_present.val = 0; infc_03_geometry.val = 0; infc_03_opn.val = MLS_INT;
 
-      bdry_present_00.val = 0;
-      bdry_present_01.val = 0;
-      bdry_present_02.val = 0;
-      bdry_present_03.val = 0;
+      bdry_00_present.val = 0;
+      bdry_01_present.val = 0;
+      bdry_02_present.val = 0;
+      bdry_03_present.val = 0;
 
       break;
 
     case 14: // shperical interface - case 4 from voronoi jump solver3D
 
-      n_um.val = 17; mag_um.val = 1; n_mu_m.val = 8; mag_mu_m.val = 1; n_diag_m.val = 1; mag_diag_m.val = 0;
-      n_up.val = 18; mag_up.val = 1; n_mu_p.val = 7; mag_mu_p.val = 1; n_diag_p.val = 1; mag_diag_p.val = 1;
+      sol_m.val = 17; sol_m_mult.val = 1; diff_coeff_m.val = 8; diff_coeff_m_mult.val = 1; linear_term_m_coeff.val = 1; linear_term_m_mult.val = 0;
+      sol_p.val = 18; sol_p_mult.val = 1; diff_coeff_p.val = 7; diff_coeff_p_mult.val = 1; linear_term_p_coeff.val = 1; linear_term_p_mult.val = 1;
 
-      infc_phi_num.val = 1;
-      bdry_phi_num.val = 0;
+      num_infc.val = 1;
+      num_bdry.val = 0;
 
-      infc_present_00.val = 1; infc_geom_00.val = 2; infc_opn_00.val = MLS_INT;
-      infc_present_01.val = 0; infc_geom_01.val = 0; infc_opn_01.val = MLS_INT;
-      infc_present_02.val = 0; infc_geom_02.val = 0; infc_opn_02.val = MLS_INT;
-      infc_present_03.val = 0; infc_geom_03.val = 0; infc_opn_03.val = MLS_INT;
+      infc_00_present.val = 1; infc_00_geometry.val = 2; infc_00_opn.val = MLS_INT;
+      infc_01_present.val = 0; infc_01_geometry.val = 0; infc_01_opn.val = MLS_INT;
+      infc_02_present.val = 0; infc_02_geometry.val = 0; infc_02_opn.val = MLS_INT;
+      infc_03_present.val = 0; infc_03_geometry.val = 0; infc_03_opn.val = MLS_INT;
 
-      bdry_present_00.val = 0;
-      bdry_present_01.val = 0;
-      bdry_present_02.val = 0;
-      bdry_present_03.val = 0;
+      bdry_00_present.val = 0;
+      bdry_01_present.val = 0;
+      bdry_02_present.val = 0;
+      bdry_03_present.val = 0;
 
       break;
 
     case 15: // shperical interface - case 1 from voronoi jump solver3D
 
-      n_um.val = 15; mag_um.val = 1; n_mu_m.val = 9; mag_mu_m.val = 1; n_diag_m.val = 0; mag_diag_m.val = 1;
-      n_up.val = 16; mag_up.val = 1; n_mu_p.val = 10; mag_mu_p.val = 1; n_diag_p.val = 0; mag_diag_p.val = 1;
+      sol_m.val = 15; sol_m_mult.val = 1; diff_coeff_m.val = 9; diff_coeff_m_mult.val = 1; linear_term_m_coeff.val = 0; linear_term_m_mult.val = 1;
+      sol_p.val = 16; sol_p_mult.val = 1; diff_coeff_p.val = 10; diff_coeff_p_mult.val = 1; linear_term_p_coeff.val = 0; linear_term_p_mult.val = 1;
 
-      infc_phi_num.val = 1;
-      bdry_phi_num.val = 0;
+      num_infc.val = 1;
+      num_bdry.val = 0;
 
-      infc_present_00.val = 1; infc_geom_00.val = 2; infc_opn_00.val = MLS_INT;
-      infc_present_01.val = 0; infc_geom_01.val = 0; infc_opn_01.val = MLS_INT;
-      infc_present_02.val = 0; infc_geom_02.val = 0; infc_opn_02.val = MLS_INT;
-      infc_present_03.val = 0; infc_geom_03.val = 0; infc_opn_03.val = MLS_INT;
+      infc_00_present.val = 1; infc_00_geometry.val = 2; infc_00_opn.val = MLS_INT;
+      infc_01_present.val = 0; infc_01_geometry.val = 0; infc_01_opn.val = MLS_INT;
+      infc_02_present.val = 0; infc_02_geometry.val = 0; infc_02_opn.val = MLS_INT;
+      infc_03_present.val = 0; infc_03_geometry.val = 0; infc_03_opn.val = MLS_INT;
 
-      bdry_present_00.val = 0;
-      bdry_present_01.val = 0;
-      bdry_present_02.val = 0;
-      bdry_present_03.val = 0;
+      bdry_00_present.val = 0;
+      bdry_01_present.val = 0;
+      bdry_02_present.val = 0;
+      bdry_03_present.val = 0;
 
       break;
 
     case 16: // shperical interface - case 5 from voronoi jump solver3D
 
-      n_um.val = 14; mag_um.val = 1; n_mu_m.val = 8; mag_mu_m.val = 1; n_diag_m.val = 0; mag_diag_m.val = 1;
-      n_up.val = 14; mag_up.val = 1; n_mu_p.val = 7; mag_mu_p.val = 1; n_diag_p.val = 0; mag_diag_p.val = 1;
+      sol_m.val = 14; sol_m_mult.val = 1; diff_coeff_m.val = 8; diff_coeff_m_mult.val = 1; linear_term_m_coeff.val = 0; linear_term_m_mult.val = 1;
+      sol_p.val = 14; sol_p_mult.val = 1; diff_coeff_p.val = 7; diff_coeff_p_mult.val = 1; linear_term_p_coeff.val = 0; linear_term_p_mult.val = 1;
 
-      infc_phi_num.val = 1;
-      bdry_phi_num.val = 0;
+      num_infc.val = 1;
+      num_bdry.val = 0;
 
-      infc_present_00.val = 1; infc_geom_00.val = 2; infc_opn_00.val = MLS_INT;
-      infc_present_01.val = 0; infc_geom_01.val = 0; infc_opn_01.val = MLS_INT;
-      infc_present_02.val = 0; infc_geom_02.val = 0; infc_opn_02.val = MLS_INT;
-      infc_present_03.val = 0; infc_geom_03.val = 0; infc_opn_03.val = MLS_INT;
+      infc_00_present.val = 1; infc_00_geometry.val = 2; infc_00_opn.val = MLS_INT;
+      infc_01_present.val = 0; infc_01_geometry.val = 0; infc_01_opn.val = MLS_INT;
+      infc_02_present.val = 0; infc_02_geometry.val = 0; infc_02_opn.val = MLS_INT;
+      infc_03_present.val = 0; infc_03_geometry.val = 0; infc_03_opn.val = MLS_INT;
 
-      bdry_present_00.val = 0;
-      bdry_present_01.val = 0;
-      bdry_present_02.val = 0;
-      bdry_present_03.val = 0;
+      bdry_00_present.val = 0;
+      bdry_01_present.val = 0;
+      bdry_02_present.val = 0;
+      bdry_03_present.val = 0;
 
       break;
 
     case 17: // shperical interface - case 3 from voronoi jump solver2D
 
-      n_um.val = 13; mag_um.val = 1; n_mu_m.val = 5; mag_mu_m.val = 1; n_diag_m.val = 0; mag_diag_m.val = 1;
-      n_up.val = 16; mag_up.val = 1; n_mu_p.val = 6; mag_mu_p.val = 1; n_diag_p.val = 0; mag_diag_p.val = 1;
+      sol_m.val = 13; sol_m_mult.val = 1; diff_coeff_m.val = 5; diff_coeff_m_mult.val = 1; linear_term_m_coeff.val = 0; linear_term_m_mult.val = 1;
+      sol_p.val = 16; sol_p_mult.val = 1; diff_coeff_p.val = 6; diff_coeff_p_mult.val = 1; linear_term_p_coeff.val = 0; linear_term_p_mult.val = 1;
 
-      infc_phi_num.val = 1;
-      bdry_phi_num.val = 0;
+      num_infc.val = 1;
+      num_bdry.val = 0;
 
-      infc_present_00.val = 1; infc_geom_00.val = 3; infc_opn_00.val = MLS_INT;
-      infc_present_01.val = 0; infc_geom_01.val = 0; infc_opn_01.val = MLS_INT;
-      infc_present_02.val = 0; infc_geom_02.val = 0; infc_opn_02.val = MLS_INT;
-      infc_present_03.val = 0; infc_geom_03.val = 0; infc_opn_03.val = MLS_INT;
+      infc_00_present.val = 1; infc_00_geometry.val = 3; infc_00_opn.val = MLS_INT;
+      infc_01_present.val = 0; infc_01_geometry.val = 0; infc_01_opn.val = MLS_INT;
+      infc_02_present.val = 0; infc_02_geometry.val = 0; infc_02_opn.val = MLS_INT;
+      infc_03_present.val = 0; infc_03_geometry.val = 0; infc_03_opn.val = MLS_INT;
 
-      bdry_present_00.val = 0;
-      bdry_present_01.val = 0;
-      bdry_present_02.val = 0;
-      bdry_present_03.val = 0;
+      bdry_00_present.val = 0;
+      bdry_01_present.val = 0;
+      bdry_02_present.val = 0;
+      bdry_03_present.val = 0;
 
       break;
 
     case 18: // shperical interface - case 0 from voronoi jump solver3D
 
-      n_um.val = 15; mag_um.val = 1; n_mu_m.val = 0; mag_mu_m.val = 1; n_diag_m.val = 0; mag_diag_m.val = 1;
-      n_up.val = 16; mag_up.val = 1; n_mu_p.val = 0; mag_mu_p.val = 1; n_diag_p.val = 0; mag_diag_p.val = 1;
+      sol_m.val = 15; sol_m_mult.val = 1; diff_coeff_m.val = 0; diff_coeff_m_mult.val = 1; linear_term_m_coeff.val = 0; linear_term_m_mult.val = 1;
+      sol_p.val = 16; sol_p_mult.val = 1; diff_coeff_p.val = 0; diff_coeff_p_mult.val = 1; linear_term_p_coeff.val = 0; linear_term_p_mult.val = 1;
 
-      infc_phi_num.val = 1;
-      bdry_phi_num.val = 0;
+      num_infc.val = 1;
+      num_bdry.val = 0;
 
-      infc_present_00.val = 1; infc_geom_00.val = 3; infc_opn_00.val = MLS_INT;
-      infc_present_01.val = 0; infc_geom_01.val = 0; infc_opn_01.val = MLS_INT;
-      infc_present_02.val = 0; infc_geom_02.val = 0; infc_opn_02.val = MLS_INT;
-      infc_present_03.val = 0; infc_geom_03.val = 0; infc_opn_03.val = MLS_INT;
+      infc_00_present.val = 1; infc_00_geometry.val = 3; infc_00_opn.val = MLS_INT;
+      infc_01_present.val = 0; infc_01_geometry.val = 0; infc_01_opn.val = MLS_INT;
+      infc_02_present.val = 0; infc_02_geometry.val = 0; infc_02_opn.val = MLS_INT;
+      infc_03_present.val = 0; infc_03_geometry.val = 0; infc_03_opn.val = MLS_INT;
 
-      bdry_present_00.val = 0;
-      bdry_present_01.val = 0;
-      bdry_present_02.val = 0;
-      bdry_present_03.val = 0;
+      bdry_00_present.val = 0;
+      bdry_01_present.val = 0;
+      bdry_02_present.val = 0;
+      bdry_03_present.val = 0;
 
       break;
 
     case 20: // clusters of particles
 
-      n_um.val = 11; mag_um.val = 0; n_mu_m.val = 0; mag_mu_m.val = 10; n_diag_m.val = 0; mag_diag_m.val = 1;
-      n_up.val = 12; mag_up.val = 0; n_mu_p.val = 0; mag_mu_p.val = 1; n_diag_p.val = 0; mag_diag_p.val = 1;
+      sol_m.val = 20; sol_m_mult.val = 0; diff_coeff_m.val = 0; diff_coeff_m_mult.val = 10; linear_term_m_coeff.val = 0; linear_term_m_mult.val = 1;
+      sol_p.val = 20; sol_p_mult.val = 0; diff_coeff_p.val = 0; diff_coeff_p_mult.val = 1; linear_term_p_coeff.val = 0; linear_term_p_mult.val = 1;
 
-      infc_phi_num.val = 1;
-      bdry_phi_num.val = 0;
+      num_infc.val = 1;
+      num_bdry.val = 0;
 
-      infc_present_00.val = 1; infc_geom_00.val = 5; infc_opn_00.val = MLS_INT;
-      infc_present_01.val = 0; infc_geom_01.val = 0; infc_opn_01.val = MLS_INT;
-      infc_present_02.val = 0; infc_geom_02.val = 0; infc_opn_02.val = MLS_INT;
-      infc_present_03.val = 0; infc_geom_03.val = 0; infc_opn_03.val = MLS_INT;
+      infc_00_present.val = 1; infc_00_geometry.val = 5; infc_00_opn.val = MLS_INT;
+      infc_01_present.val = 0; infc_01_geometry.val = 0; infc_01_opn.val = MLS_INT;
+      infc_02_present.val = 0; infc_02_geometry.val = 0; infc_02_opn.val = MLS_INT;
+      infc_03_present.val = 0; infc_03_geometry.val = 0; infc_03_opn.val = MLS_INT;
 
-      bdry_present_00.val = 0;
-      bdry_present_01.val = 0;
-      bdry_present_02.val = 0;
-      bdry_present_03.val = 0;
+      bdry_00_present.val = 0;
+      bdry_01_present.val = 0;
+      bdry_02_present.val = 0;
+      bdry_03_present.val = 0;
 
-      rhs_m_value.val = 0;
-      rhs_p_value.val = 0;
+      rhs_m_value.val = 1;
+      rhs_p_value.val = 1;
 
       break;
 
     case 21: // no boundaries, no interfaces, nonlinear
 
-      n_um.val = 0; mag_um.val = 1; n_mu_m.val = 0; mag_mu_m.val = 1; n_diag_m.val = 0; mag_diag_m.val = 1;
-      n_up.val = 0; mag_up.val = 1; n_mu_p.val = 0; mag_mu_p.val = 1; n_diag_p.val = 0; mag_diag_p.val = 1;
+      sol_m.val = 0; sol_m_mult.val = 1; diff_coeff_m.val = 0; diff_coeff_m_mult.val = 1; linear_term_m_coeff.val = 0; linear_term_m_mult.val = 1;
+      sol_p.val = 0; sol_p_mult.val = 1; diff_coeff_p.val = 0; diff_coeff_p_mult.val = 1; linear_term_p_coeff.val = 0; linear_term_p_mult.val = 1;
 
-      infc_phi_num.val = 0;
-      bdry_phi_num.val = 0;
+      num_infc.val = 0;
+      num_bdry.val = 0;
 
-      infc_present_00.val = 0;
-      infc_present_01.val = 0;
-      infc_present_02.val = 0;
-      infc_present_03.val = 0;
+      infc_00_present.val = 0;
+      infc_01_present.val = 0;
+      infc_02_present.val = 0;
+      infc_03_present.val = 0;
 
-      bdry_present_00.val = 0;
-      bdry_present_01.val = 0;
-      bdry_present_02.val = 0;
-      bdry_present_03.val = 0;
+      bdry_00_present.val = 0;
+      bdry_01_present.val = 0;
+      bdry_02_present.val = 0;
+      bdry_03_present.val = 0;
 
       nonlinear_term_m.val = 2;
       nonlinear_term_m_coeff.val = 0;
-      nonlinear_term_m_mag.val = 1;
+      nonlinear_term_m_mult.val = 1;
 
       nonlinear_term_p.val = 2;
       nonlinear_term_p_coeff.val = 0;
-      nonlinear_term_p_mag.val = 1;
+      nonlinear_term_p_mult.val = 1;
 
       break;
 
     case 22: // sphere interior, nonlinear
 
-      n_um.val = 0; mag_um.val = 1; n_mu_m.val = 0; mag_mu_m.val = 1; n_diag_m.val = 1; mag_diag_m.val = 1;
-      n_up.val = 0; mag_up.val = 1; n_mu_p.val = 0; mag_mu_p.val = 1; n_diag_p.val = 1; mag_diag_p.val = 1;
+      sol_m.val = 0; sol_m_mult.val = 1; diff_coeff_m.val = 0; diff_coeff_m_mult.val = 1; linear_term_m_coeff.val = 1; linear_term_m_mult.val = 1;
+      sol_p.val = 0; sol_p_mult.val = 1; diff_coeff_p.val = 0; diff_coeff_p_mult.val = 1; linear_term_p_coeff.val = 1; linear_term_p_mult.val = 1;
 
-      infc_phi_num.val = 0;
-      bdry_phi_num.val = 1;
+      num_infc.val = 0;
+      num_bdry.val = 1;
 
-      infc_present_00.val = 0;
-      infc_present_01.val = 0;
-      infc_present_02.val = 0;
-      infc_present_03.val = 0;
+      infc_00_present.val = 0;
+      infc_01_present.val = 0;
+      infc_02_present.val = 0;
+      infc_03_present.val = 0;
 
-      bdry_present_00.val = 1; bdry_geom_00.val = 1; bdry_opn_00.val = MLS_INT; bc_coeff_00.val = 0; bc_coeff_00_mag.val = 1; bc_type_00.val = DIRICHLET;
-      bdry_present_01.val = 0; bdry_geom_01.val = 0; bdry_opn_01.val = MLS_INT; bc_coeff_01.val = 0; bc_coeff_01_mag.val = 1; bc_type_01.val = DIRICHLET;
-      bdry_present_02.val = 0; bdry_geom_02.val = 0; bdry_opn_02.val = MLS_INT; bc_coeff_02.val = 0; bc_coeff_02_mag.val = 1; bc_type_02.val = DIRICHLET;
-      bdry_present_03.val = 0; bdry_geom_03.val = 0; bdry_opn_03.val = MLS_INT; bc_coeff_03.val = 0; bc_coeff_03_mag.val = 1; bc_type_03.val = DIRICHLET;
+      bdry_00_present.val = 1; bdry_00_geometry.val = 1; bdry_00_opn.val = MLS_INT; bdry_00_coeff.val = 0; bdry_00_coeff_mult.val = 1; bdry_00_type.val = DIRICHLET;
+      bdry_01_present.val = 0; bdry_01_geometry.val = 0; bdry_01_opn.val = MLS_INT; bdry_01_coeff.val = 0; bdry_01_coeff_mult.val = 1; bdry_01_type.val = DIRICHLET;
+      bdry_02_present.val = 0; bdry_02_geometry.val = 0; bdry_02_opn.val = MLS_INT; bdry_02_coeff.val = 0; bdry_02_coeff_mult.val = 1; bdry_02_type.val = DIRICHLET;
+      bdry_03_present.val = 0; bdry_03_geometry.val = 0; bdry_03_opn.val = MLS_INT; bdry_03_coeff.val = 0; bdry_03_coeff_mult.val = 1; bdry_03_type.val = DIRICHLET;
 
       nonlinear_term_m.val = 2;
       nonlinear_term_m_coeff.val = 0;
-      nonlinear_term_m_mag.val = 1;
+      nonlinear_term_m_mult.val = 1;
 
       nonlinear_term_p.val = 2;
       nonlinear_term_p_coeff.val = 0;
-      nonlinear_term_p_mag.val = 1;
+      nonlinear_term_p_mult.val = 1;
 
       break;
 
     case 23: // triangle/tetrahedron, nonlinear
 
-      n_um.val = 0; mag_um.val = 1; n_mu_m.val = 0; mag_mu_m.val = 1; n_diag_m.val = 0; mag_diag_m.val = 1;
-      n_up.val = 0; mag_up.val = 1; n_mu_p.val = 0; mag_mu_p.val = 1; n_diag_p.val = 0; mag_diag_p.val = 1;
+      sol_m.val = 0; sol_m_mult.val = 1; diff_coeff_m.val = 0; diff_coeff_m_mult.val = 1; linear_term_m_coeff.val = 0; linear_term_m_mult.val = 1;
+      sol_p.val = 0; sol_p_mult.val = 1; diff_coeff_p.val = 0; diff_coeff_p_mult.val = 1; linear_term_p_coeff.val = 0; linear_term_p_mult.val = 1;
 
-      infc_phi_num.val = 0;
-      bdry_phi_num.val = P4EST_DIM+1;
+      num_infc.val = 0;
+      num_bdry.val = P4EST_DIM+1;
 
-      infc_present_00.val = 0;
-      infc_present_01.val = 0;
-      infc_present_02.val = 0;
-      infc_present_03.val = 0;
+      infc_00_present.val = 0;
+      infc_01_present.val = 0;
+      infc_02_present.val = 0;
+      infc_03_present.val = 0;
 
-      bdry_present_00.val = 1; bdry_geom_00.val = 13; bdry_opn_00.val = MLS_INT; bc_coeff_00.val = 0; bc_coeff_00_mag.val = 1; bc_type_00.val = ROBIN;
-      bdry_present_01.val = 1; bdry_geom_01.val = 14; bdry_opn_01.val = MLS_INT; bc_coeff_01.val = 0; bc_coeff_01_mag.val = 0; bc_type_01.val = ROBIN;
-      bdry_present_02.val = 1; bdry_geom_02.val = 15; bdry_opn_02.val = MLS_INT; bc_coeff_02.val = 2; bc_coeff_02_mag.val = 1; bc_type_02.val = ROBIN;
-      bdry_present_03.val = 1; bdry_geom_03.val = 16; bdry_opn_03.val = MLS_INT; bc_coeff_03.val = 1; bc_coeff_03_mag.val = 1; bc_type_03.val = ROBIN;
+      bdry_00_present.val = 1; bdry_00_geometry.val = 13; bdry_00_opn.val = MLS_INT; bdry_00_coeff.val = 0; bdry_00_coeff_mult.val = 1; bdry_00_type.val = ROBIN;
+      bdry_01_present.val = 1; bdry_01_geometry.val = 14; bdry_01_opn.val = MLS_INT; bdry_01_coeff.val = 0; bdry_01_coeff_mult.val = 0; bdry_01_type.val = ROBIN;
+      bdry_02_present.val = 1; bdry_02_geometry.val = 15; bdry_02_opn.val = MLS_INT; bdry_02_coeff.val = 2; bdry_02_coeff_mult.val = 1; bdry_02_type.val = ROBIN;
+      bdry_03_present.val = 1; bdry_03_geometry.val = 16; bdry_03_opn.val = MLS_INT; bdry_03_coeff.val = 1; bdry_03_coeff_mult.val = 1; bdry_03_type.val = ROBIN;
 
       nonlinear_term_m.val = 2;
       nonlinear_term_m_coeff.val = 0;
-      nonlinear_term_m_mag.val = 1;
+      nonlinear_term_m_mult.val = 1;
 
       nonlinear_term_p.val = 2;
       nonlinear_term_p_coeff.val = 0;
-      nonlinear_term_p_mag.val = 1;
+      nonlinear_term_p_mult.val = 1;
 
       break;
 
     case 24: // shperical interface, nonlinear
 
-      n_um.val = 11; mag_um.val = 1; n_mu_m.val = 0; mag_mu_m.val = 5; n_diag_m.val = 1; mag_diag_m.val = 1;
-      n_up.val = 12; mag_up.val = 1; n_mu_p.val = 0; mag_mu_p.val = 1; n_diag_p.val = 1; mag_diag_p.val = 1;
+      sol_m.val = 11; sol_m_mult.val = 1; diff_coeff_m.val = 0; diff_coeff_m_mult.val = 5; linear_term_m_coeff.val = 1; linear_term_m_mult.val = 1;
+      sol_p.val = 12; sol_p_mult.val = 1; diff_coeff_p.val = 0; diff_coeff_p_mult.val = 1; linear_term_p_coeff.val = 1; linear_term_p_mult.val = 1;
 
-      infc_phi_num.val = 1;
-      bdry_phi_num.val = 0;
+      num_infc.val = 1;
+      num_bdry.val = 0;
 
-      infc_present_00.val = 1; infc_geom_00.val = 1; infc_opn_00.val = MLS_INT;
-      infc_present_01.val = 0; infc_geom_01.val = 0; infc_opn_01.val = MLS_INT;
-      infc_present_02.val = 0; infc_geom_02.val = 0; infc_opn_02.val = MLS_INT;
-      infc_present_03.val = 0; infc_geom_03.val = 0; infc_opn_03.val = MLS_INT;
+      infc_00_present.val = 1; infc_00_geometry.val = 1; infc_00_opn.val = MLS_INT;
+      infc_01_present.val = 0; infc_01_geometry.val = 0; infc_01_opn.val = MLS_INT;
+      infc_02_present.val = 0; infc_02_geometry.val = 0; infc_02_opn.val = MLS_INT;
+      infc_03_present.val = 0; infc_03_geometry.val = 0; infc_03_opn.val = MLS_INT;
 
-      bdry_present_00.val = 0;
-      bdry_present_01.val = 0;
-      bdry_present_02.val = 0;
-      bdry_present_03.val = 0;
+      bdry_00_present.val = 0;
+      bdry_01_present.val = 0;
+      bdry_02_present.val = 0;
+      bdry_03_present.val = 0;
 
       nonlinear_term_m.val = 2;
       nonlinear_term_m_coeff.val = 0;
-      nonlinear_term_m_mag.val = 1;
+      nonlinear_term_m_mult.val = 1;
 
       nonlinear_term_p.val = 2;
       nonlinear_term_p_coeff.val = 0;
-      nonlinear_term_p_mag.val = 1;
+      nonlinear_term_p_mult.val = 1;
 
       break;
 
     case 25: // curvy interface in an annular region, nonlinear
 
-      n_um.val = 11; mag_um.val = 1; n_mu_m.val = 1; mag_mu_m.val = 10; n_diag_m.val = 0; mag_diag_m.val = 1;
-      n_up.val = 12; mag_up.val = 1; n_mu_p.val = 0; mag_mu_p.val =  1; n_diag_p.val = 0; mag_diag_p.val = 1;
+      sol_m.val = 11; sol_m_mult.val = 1; diff_coeff_m.val = 1; diff_coeff_m_mult.val = 10; linear_term_m_coeff.val = 0; linear_term_m_mult.val = 1;
+      sol_p.val = 12; sol_p_mult.val = 1; diff_coeff_p.val = 0; diff_coeff_p_mult.val =  1; linear_term_p_coeff.val = 0; linear_term_p_mult.val = 1;
 
-      infc_phi_num.val = 1;
-      bdry_phi_num.val = 1;
+      num_infc.val = 1;
+      num_bdry.val = 1;
 
-      infc_present_00.val = 1; infc_geom_00.val = 4; infc_opn_00.val = MLS_INT;
-      infc_present_01.val = 0; infc_geom_01.val = 0; infc_opn_01.val = MLS_INT;
-      infc_present_02.val = 0; infc_geom_02.val = 0; infc_opn_02.val = MLS_INT;
-      infc_present_03.val = 0; infc_geom_03.val = 0; infc_opn_03.val = MLS_INT;
+      infc_00_present.val = 1; infc_00_geometry.val = 4; infc_00_opn.val = MLS_INT;
+      infc_01_present.val = 0; infc_01_geometry.val = 0; infc_01_opn.val = MLS_INT;
+      infc_02_present.val = 0; infc_02_geometry.val = 0; infc_02_opn.val = MLS_INT;
+      infc_03_present.val = 0; infc_03_geometry.val = 0; infc_03_opn.val = MLS_INT;
 
-      bdry_present_00.val = 1; bdry_geom_00.val = 3; bdry_opn_00.val = MLS_INT; bc_coeff_00.val = 0; bc_coeff_00_mag.val = 1; bc_type_00.val = DIRICHLET;
-      bdry_present_01.val = 0; bdry_geom_01.val = 0; bdry_opn_01.val = MLS_INT; bc_coeff_01.val = 0; bc_coeff_01_mag.val = 1; bc_type_01.val = ROBIN;
-      bdry_present_02.val = 0; bdry_geom_02.val = 0; bdry_opn_02.val = MLS_INT; bc_coeff_02.val = 0; bc_coeff_02_mag.val = 1; bc_type_02.val = ROBIN;
-      bdry_present_03.val = 0; bdry_geom_03.val = 0; bdry_opn_03.val = MLS_INT; bc_coeff_03.val = 0; bc_coeff_03_mag.val = 1; bc_type_03.val = ROBIN;
+      bdry_00_present.val = 1; bdry_00_geometry.val = 3; bdry_00_opn.val = MLS_INT; bdry_00_coeff.val = 0; bdry_00_coeff_mult.val = 1; bdry_00_type.val = DIRICHLET;
+      bdry_01_present.val = 0; bdry_01_geometry.val = 0; bdry_01_opn.val = MLS_INT; bdry_01_coeff.val = 0; bdry_01_coeff_mult.val = 1; bdry_01_type.val = ROBIN;
+      bdry_02_present.val = 0; bdry_02_geometry.val = 0; bdry_02_opn.val = MLS_INT; bdry_02_coeff.val = 0; bdry_02_coeff_mult.val = 1; bdry_02_type.val = ROBIN;
+      bdry_03_present.val = 0; bdry_03_geometry.val = 0; bdry_03_opn.val = MLS_INT; bdry_03_coeff.val = 0; bdry_03_coeff_mult.val = 1; bdry_03_type.val = ROBIN;
 
       nonlinear_term_m.val = 2;
       nonlinear_term_m_coeff.val = 0;
-      nonlinear_term_m_mag.val = 1;
+      nonlinear_term_m_mult.val = 1;
 
       nonlinear_term_p.val = 2;
       nonlinear_term_p_coeff.val = 0;
-      nonlinear_term_p_mag.val = 1;
+      nonlinear_term_p_mult.val = 1;
 
       break;
 
@@ -909,69 +899,69 @@ void set_example(int n_example)
 }
 
 
-bool *bdry_present_all[] = { &bdry_present_00.val,
-                             &bdry_present_01.val,
-                             &bdry_present_02.val,
-                             &bdry_present_03.val };
+bool *bdry_present_all[] = { &bdry_00_present.val,
+                             &bdry_01_present.val,
+                             &bdry_02_present.val,
+                             &bdry_03_present.val };
 
-int *bdry_geom_all[] = { &bdry_geom_00.val,
-                         &bdry_geom_01.val,
-                         &bdry_geom_02.val,
-                         &bdry_geom_03.val };
+int *bdry_geometry_all[] = { &bdry_00_geometry.val,
+                         &bdry_01_geometry.val,
+                         &bdry_02_geometry.val,
+                         &bdry_03_geometry.val };
 
-int *bdry_opn_all[] = { &bdry_opn_00.val,
-                        &bdry_opn_01.val,
-                        &bdry_opn_02.val,
-                        &bdry_opn_03.val };
+int *bdry_opn_all[] = { &bdry_00_opn.val,
+                        &bdry_01_opn.val,
+                        &bdry_02_opn.val,
+                        &bdry_03_opn.val };
 
-int *bc_coeff_all[] = { &bc_coeff_00.val,
-                        &bc_coeff_01.val,
-                        &bc_coeff_02.val,
-                        &bc_coeff_03.val };
+int *bc_coeff_all[] = { &bdry_00_coeff.val,
+                        &bdry_01_coeff.val,
+                        &bdry_02_coeff.val,
+                        &bdry_03_coeff.val };
 
-double *bc_coeff_all_mag[] = { &bc_coeff_00_mag.val,
-                               &bc_coeff_01_mag.val,
-                               &bc_coeff_02_mag.val,
-                               &bc_coeff_03_mag.val };
+double *bc_coeff_all_mult[] = { &bdry_00_coeff_mult.val,
+                               &bdry_01_coeff_mult.val,
+                               &bdry_02_coeff_mult.val,
+                               &bdry_03_coeff_mult.val };
 
-int *bc_type_all[] = { &bc_type_00.val,
-                       &bc_type_01.val,
-                       &bc_type_02.val,
-                       &bc_type_03.val };
+int *bc_type_all[] = { &bdry_00_type.val,
+                       &bdry_01_type.val,
+                       &bdry_02_type.val,
+                       &bdry_03_type.val };
 
-bool *infc_present_all[] = { &infc_present_00.val,
-                             &infc_present_01.val,
-                             &infc_present_02.val,
-                             &infc_present_03.val };
+bool *infc_present_all[] = { &infc_00_present.val,
+                             &infc_01_present.val,
+                             &infc_02_present.val,
+                             &infc_03_present.val };
 
-int *infc_geom_all[] = { &infc_geom_00.val,
-                         &infc_geom_01.val,
-                         &infc_geom_02.val,
-                         &infc_geom_03.val };
+int *infc_geometry_all[] = { &infc_00_geometry.val,
+                         &infc_01_geometry.val,
+                         &infc_02_geometry.val,
+                         &infc_03_geometry.val };
 
-int *infc_opn_all[] = { &infc_opn_00.val,
-                        &infc_opn_01.val,
-                        &infc_opn_02.val,
-                        &infc_opn_03.val };
+int *infc_opn_all[] = { &infc_00_opn.val,
+                        &infc_01_opn.val,
+                        &infc_02_opn.val,
+                        &infc_03_opn.val };
 
-int *jc_value_all[] = { &jc_value_00.val,
-                        &jc_value_01.val,
-                        &jc_value_02.val,
-                        &jc_value_03.val };
+int *jc_value_all[] = { &infc_00_value_jump.val,
+                        &infc_01_value_jump.val,
+                        &infc_02_value_jump.val,
+                        &infc_03_value_jump.val };
 
-int *jc_flux_all[] = { &jc_flux_00.val,
-                       &jc_flux_01.val,
-                       &jc_flux_02.val,
-                       &jc_flux_03.val };
+int *jc_flux_all[] = { &infc_00_flux_jump.val,
+                       &infc_01_flux_jump.val,
+                       &infc_02_flux_jump.val,
+                       &infc_03_flux_jump.val };
 
 // DIFFUSION COEFFICIENTS
-class mu_all_cf_t : public CF_DIM
+class diff_coeff_cf_t : public CF_DIM
 {
   int    *n;
   double *mag;
   cf_value_type_t what;
 public:
-  mu_all_cf_t(cf_value_type_t what, int &n, double &mag) : what(what), n(&n), mag(&mag) {}
+  diff_coeff_cf_t(cf_value_type_t what, int &n, double &mag) : what(what), n(&n), mag(&mag) {}
   double operator()(DIM(double x, double y, double z)) const {
     switch (*n) {
       case 0: switch (what) {
@@ -1100,24 +1090,24 @@ public:
   }
 };
 
-mu_all_cf_t mu_m_cf(VAL, n_mu_m.val, mag_mu_m.val);
-mu_all_cf_t mu_p_cf(VAL, n_mu_p.val, mag_mu_p.val);
-mu_all_cf_t DIM(mux_m_cf(DDX, n_mu_m.val, mag_mu_m.val),
-                muy_m_cf(DDY, n_mu_m.val, mag_mu_m.val),
-                muz_m_cf(DDZ, n_mu_m.val, mag_mu_m.val));
-mu_all_cf_t DIM(mux_p_cf(DDX, n_mu_p.val, mag_mu_p.val),
-                muy_p_cf(DDY, n_mu_p.val, mag_mu_p.val),
-                muz_p_cf(DDZ, n_mu_p.val, mag_mu_p.val));
+diff_coeff_cf_t mu_m_cf(VAL, diff_coeff_m.val, diff_coeff_m_mult.val);
+diff_coeff_cf_t mu_p_cf(VAL, diff_coeff_p.val, diff_coeff_p_mult.val);
+diff_coeff_cf_t DIM(mux_m_cf(DDX, diff_coeff_m.val, diff_coeff_m_mult.val),
+                    muy_m_cf(DDY, diff_coeff_m.val, diff_coeff_m_mult.val),
+                    muz_m_cf(DDZ, diff_coeff_m.val, diff_coeff_m_mult.val));
+diff_coeff_cf_t DIM(mux_p_cf(DDX, diff_coeff_p.val, diff_coeff_p_mult.val),
+                    muy_p_cf(DDY, diff_coeff_p.val, diff_coeff_p_mult.val),
+                    muz_p_cf(DDZ, diff_coeff_p.val, diff_coeff_p_mult.val));
 
 
 // TEST SOLUTIONS
-class u_pm_cf_t : public CF_DIM
+class sol_cf_t : public CF_DIM
 {
 public:
   int    *n;
   double *mag;
   cf_value_type_t what;
-  u_pm_cf_t(cf_value_type_t what, int &n, double &mag) : what(what), n(&n), mag(&mag) {}
+  sol_cf_t(cf_value_type_t what, int &n, double &mag) : what(what), n(&n), mag(&mag) {}
   double operator()(DIM(double x, double y, double z)) const
   {
     switch (*n) {
@@ -1421,22 +1411,22 @@ public:
   }
 };
 
-u_pm_cf_t u_m_cf(VAL, n_um.val, mag_um.val),  u_p_cf(VAL, n_up.val, mag_up.val);
-u_pm_cf_t ul_m_cf(LAP, n_um.val, mag_um.val), ul_p_cf(LAP, n_up.val, mag_up.val);
-u_pm_cf_t DIM(ux_m_cf(DDX, n_um.val, mag_um.val),
-              uy_m_cf(DDY, n_um.val, mag_um.val),
-              uz_m_cf(DDZ, n_um.val, mag_um.val));
-u_pm_cf_t DIM(ux_p_cf(DDX, n_up.val, mag_up.val),
-              uy_p_cf(DDY, n_up.val, mag_up.val),
-              uz_p_cf(DDZ, n_up.val, mag_up.val));
+sol_cf_t u_m_cf(VAL, sol_m.val, sol_m_mult.val),  u_p_cf(VAL, sol_p.val, sol_p_mult.val);
+sol_cf_t ul_m_cf(LAP, sol_m.val, sol_m_mult.val), ul_p_cf(LAP, sol_p.val, sol_p_mult.val);
+sol_cf_t DIM(ux_m_cf(DDX, sol_m.val, sol_m_mult.val),
+              uy_m_cf(DDY, sol_m.val, sol_m_mult.val),
+              uz_m_cf(DDZ, sol_m.val, sol_m_mult.val));
+sol_cf_t DIM(ux_p_cf(DDX, sol_p.val, sol_p_mult.val),
+              uy_p_cf(DDY, sol_p.val, sol_p_mult.val),
+              uz_p_cf(DDZ, sol_p.val, sol_p_mult.val));
 
 // DIAGONAL TERMS
-class diag_cf_t: public CF_DIM
+class linear_term_cf_t: public CF_DIM
 {
   int *n;
   double *mag;
 public:
-  diag_cf_t(int &n, double &mag) : n(&n), mag(&mag) {}
+  linear_term_cf_t(int &n, double &mag) : n(&n), mag(&mag) {}
   double operator()(DIM(double x, double y, double z)) const {
     switch (*n) {
       case 0: return 0.;
@@ -1451,8 +1441,8 @@ public:
   }
 };
 
-diag_cf_t diag_m_cf(n_diag_m.val, mag_diag_m.val);
-diag_cf_t diag_p_cf(n_diag_p.val, mag_diag_p.val);
+linear_term_cf_t linear_term_m_coeff_cf(linear_term_m_coeff.val, linear_term_m_mult.val);
+linear_term_cf_t linear_term_p_coeff_cf(linear_term_p_coeff.val, linear_term_p_mult.val);
 
 // NONLINEAR TERMS
 class nonlinear_term_cf_t: public CF_1
@@ -1515,8 +1505,8 @@ public:
   }
 };
 
-nonlinear_term_coeff_cf_t nonlinear_term_m_coeff_cf(nonlinear_term_m_coeff.val, nonlinear_term_m_mag.val);
-nonlinear_term_coeff_cf_t nonlinear_term_p_coeff_cf(nonlinear_term_p_coeff.val, nonlinear_term_p_mag.val);
+nonlinear_term_coeff_cf_t nonlinear_term_m_coeff_cf(nonlinear_term_m_coeff.val, nonlinear_term_m_mult.val);
+nonlinear_term_coeff_cf_t nonlinear_term_p_coeff_cf(nonlinear_term_p_coeff.val, nonlinear_term_p_mult.val);
 
 // RHS
 class rhs_m_cf_t: public CF_DIM
@@ -1526,7 +1516,7 @@ public:
     switch (rhs_m_value.val)
     {
       case 0:
-        return diag_m_cf(DIM(x,y,z))*u_m_cf(DIM(x,y,z))
+        return linear_term_m_coeff_cf(DIM(x,y,z))*u_m_cf(DIM(x,y,z))
             + nonlinear_term_m_coeff_cf(DIM(x,y,z))*nonlinear_term_m_cf(u_m_cf(DIM(x,y,z)))
             - mu_m_cf(DIM(x,y,z))*ul_m_cf(DIM(x,y,z))
             - SUMD(mux_m_cf(DIM(x,y,z))*ux_m_cf(DIM(x,y,z)),
@@ -1574,7 +1564,7 @@ public:
     switch (rhs_p_value.val)
     {
       case 0:
-        return diag_p_cf(DIM(x,y,z))*u_p_cf(DIM(x,y,z))
+        return linear_term_p_coeff_cf(DIM(x,y,z))*u_p_cf(DIM(x,y,z))
             + nonlinear_term_p_coeff_cf(DIM(x,y,z))*nonlinear_term_p_cf(u_p_cf(DIM(x,y,z)))
             - mu_p_cf(DIM(x,y,z))*ul_p_cf(DIM(x,y,z))
             - SUMD(mux_p_cf(DIM(x,y,z))*ux_p_cf(DIM(x,y,z)),
@@ -1634,10 +1624,10 @@ public:
   }
 };
 
-bc_coeff_cf_t bc_coeff_cf_all[] = { bc_coeff_cf_t(bc_coeff_00.val, bc_coeff_00_mag.val),
-                                    bc_coeff_cf_t(bc_coeff_01.val, bc_coeff_01_mag.val),
-                                    bc_coeff_cf_t(bc_coeff_02.val, bc_coeff_02_mag.val),
-                                    bc_coeff_cf_t(bc_coeff_03.val, bc_coeff_03_mag.val) };
+bc_coeff_cf_t bc_coeff_cf_all[] = { bc_coeff_cf_t(bdry_00_coeff.val, bdry_00_coeff_mult.val),
+                                    bc_coeff_cf_t(bdry_01_coeff.val, bdry_01_coeff_mult.val),
+                                    bc_coeff_cf_t(bdry_02_coeff.val, bdry_02_coeff_mult.val),
+                                    bc_coeff_cf_t(bdry_03_coeff.val, bdry_03_coeff_mult.val) };
 
 // DOMAIN GEOMETRY
 class bdry_phi_cf_t: public CF_DIM {
@@ -1843,25 +1833,25 @@ public:
   }
 };
 
-bdry_phi_cf_t bdry_phi_cf_all  [] = { bdry_phi_cf_t(VAL, bdry_geom_00.val),
-                                      bdry_phi_cf_t(VAL, bdry_geom_01.val),
-                                      bdry_phi_cf_t(VAL, bdry_geom_02.val),
-                                      bdry_phi_cf_t(VAL, bdry_geom_03.val) };
+bdry_phi_cf_t bdry_phi_cf_all  [] = { bdry_phi_cf_t(VAL, bdry_00_geometry.val),
+                                      bdry_phi_cf_t(VAL, bdry_01_geometry.val),
+                                      bdry_phi_cf_t(VAL, bdry_02_geometry.val),
+                                      bdry_phi_cf_t(VAL, bdry_03_geometry.val) };
 
-bdry_phi_cf_t bdry_phi_x_cf_all[] = { bdry_phi_cf_t(DDX, bdry_geom_00.val),
-                                      bdry_phi_cf_t(DDX, bdry_geom_01.val),
-                                      bdry_phi_cf_t(DDX, bdry_geom_02.val),
-                                      bdry_phi_cf_t(DDX, bdry_geom_03.val) };
+bdry_phi_cf_t bdry_phi_x_cf_all[] = { bdry_phi_cf_t(DDX, bdry_00_geometry.val),
+                                      bdry_phi_cf_t(DDX, bdry_01_geometry.val),
+                                      bdry_phi_cf_t(DDX, bdry_02_geometry.val),
+                                      bdry_phi_cf_t(DDX, bdry_03_geometry.val) };
 
-bdry_phi_cf_t bdry_phi_y_cf_all[] = { bdry_phi_cf_t(DDY, bdry_geom_00.val),
-                                      bdry_phi_cf_t(DDY, bdry_geom_01.val),
-                                      bdry_phi_cf_t(DDY, bdry_geom_02.val),
-                                      bdry_phi_cf_t(DDY, bdry_geom_03.val) };
+bdry_phi_cf_t bdry_phi_y_cf_all[] = { bdry_phi_cf_t(DDY, bdry_00_geometry.val),
+                                      bdry_phi_cf_t(DDY, bdry_01_geometry.val),
+                                      bdry_phi_cf_t(DDY, bdry_02_geometry.val),
+                                      bdry_phi_cf_t(DDY, bdry_03_geometry.val) };
 #ifdef P4_TO_P8
-bdry_phi_cf_t bdry_phi_z_cf_all[] = { bdry_phi_cf_t(DDZ, bdry_geom_00.val),
-                                      bdry_phi_cf_t(DDZ, bdry_geom_01.val),
-                                      bdry_phi_cf_t(DDZ, bdry_geom_02.val),
-                                      bdry_phi_cf_t(DDZ, bdry_geom_03.val) };
+bdry_phi_cf_t bdry_phi_z_cf_all[] = { bdry_phi_cf_t(DDZ, bdry_00_geometry.val),
+                                      bdry_phi_cf_t(DDZ, bdry_01_geometry.val),
+                                      bdry_phi_cf_t(DDZ, bdry_02_geometry.val),
+                                      bdry_phi_cf_t(DDZ, bdry_03_geometry.val) };
 #endif
 
 // INTERFACE GEOMETRY
@@ -1987,25 +1977,25 @@ public:
 };
 
 
-infc_phi_cf_t infc_phi_cf_all  [] = { infc_phi_cf_t(VAL, infc_geom_00.val),
-                                      infc_phi_cf_t(VAL, infc_geom_01.val),
-                                      infc_phi_cf_t(VAL, infc_geom_02.val),
-                                      infc_phi_cf_t(VAL, infc_geom_03.val) };
+infc_phi_cf_t infc_phi_cf_all  [] = { infc_phi_cf_t(VAL, infc_00_geometry.val),
+                                      infc_phi_cf_t(VAL, infc_01_geometry.val),
+                                      infc_phi_cf_t(VAL, infc_02_geometry.val),
+                                      infc_phi_cf_t(VAL, infc_03_geometry.val) };
 
-infc_phi_cf_t infc_phi_x_cf_all[] = { infc_phi_cf_t(DDX, infc_geom_00.val),
-                                      infc_phi_cf_t(DDX, infc_geom_01.val),
-                                      infc_phi_cf_t(DDX, infc_geom_02.val),
-                                      infc_phi_cf_t(DDX, infc_geom_03.val) };
+infc_phi_cf_t infc_phi_x_cf_all[] = { infc_phi_cf_t(DDX, infc_00_geometry.val),
+                                      infc_phi_cf_t(DDX, infc_01_geometry.val),
+                                      infc_phi_cf_t(DDX, infc_02_geometry.val),
+                                      infc_phi_cf_t(DDX, infc_03_geometry.val) };
 
-infc_phi_cf_t infc_phi_y_cf_all[] = { infc_phi_cf_t(DDY, infc_geom_00.val),
-                                      infc_phi_cf_t(DDY, infc_geom_01.val),
-                                      infc_phi_cf_t(DDY, infc_geom_02.val),
-                                      infc_phi_cf_t(DDY, infc_geom_03.val) };
+infc_phi_cf_t infc_phi_y_cf_all[] = { infc_phi_cf_t(DDY, infc_00_geometry.val),
+                                      infc_phi_cf_t(DDY, infc_01_geometry.val),
+                                      infc_phi_cf_t(DDY, infc_02_geometry.val),
+                                      infc_phi_cf_t(DDY, infc_03_geometry.val) };
 #ifdef P4_TO_P8
-infc_phi_cf_t infc_phi_z_cf_all[] = { infc_phi_cf_t(DDZ, infc_geom_00.val),
-                                      infc_phi_cf_t(DDZ, infc_geom_01.val),
-                                      infc_phi_cf_t(DDZ, infc_geom_02.val),
-                                      infc_phi_cf_t(DDZ, infc_geom_03.val) };
+infc_phi_cf_t infc_phi_z_cf_all[] = { infc_phi_cf_t(DDZ, infc_00_geometry.val),
+                                      infc_phi_cf_t(DDZ, infc_01_geometry.val),
+                                      infc_phi_cf_t(DDZ, infc_02_geometry.val),
+                                      infc_phi_cf_t(DDZ, infc_03_geometry.val) };
 #endif
 
 // the effective LSF (initialized in main!)
@@ -2113,10 +2103,10 @@ public:
   }
 };
 
-bc_value_robin_t bc_value_cf_all[] = { bc_value_robin_t((BoundaryConditionType *)&bc_type_00.val, &bc_coeff_cf_all[0], DIM(&bdry_phi_x_cf_all[0], &bdry_phi_y_cf_all[0], &bdry_phi_z_cf_all[0])),
-                                       bc_value_robin_t((BoundaryConditionType *)&bc_type_01.val, &bc_coeff_cf_all[1], DIM(&bdry_phi_x_cf_all[1], &bdry_phi_y_cf_all[1], &bdry_phi_z_cf_all[1])),
-                                       bc_value_robin_t((BoundaryConditionType *)&bc_type_02.val, &bc_coeff_cf_all[2], DIM(&bdry_phi_x_cf_all[2], &bdry_phi_y_cf_all[2], &bdry_phi_z_cf_all[2])),
-                                       bc_value_robin_t((BoundaryConditionType *)&bc_type_03.val, &bc_coeff_cf_all[3], DIM(&bdry_phi_x_cf_all[3], &bdry_phi_y_cf_all[3], &bdry_phi_z_cf_all[3])) };
+bc_value_robin_t bc_value_cf_all[] = { bc_value_robin_t((BoundaryConditionType *)&bdry_00_type.val, &bc_coeff_cf_all[0], DIM(&bdry_phi_x_cf_all[0], &bdry_phi_y_cf_all[0], &bdry_phi_z_cf_all[0])),
+                                       bc_value_robin_t((BoundaryConditionType *)&bdry_01_type.val, &bc_coeff_cf_all[1], DIM(&bdry_phi_x_cf_all[1], &bdry_phi_y_cf_all[1], &bdry_phi_z_cf_all[1])),
+                                       bc_value_robin_t((BoundaryConditionType *)&bdry_02_type.val, &bc_coeff_cf_all[2], DIM(&bdry_phi_x_cf_all[2], &bdry_phi_y_cf_all[2], &bdry_phi_z_cf_all[2])),
+                                       bc_value_robin_t((BoundaryConditionType *)&bdry_03_type.val, &bc_coeff_cf_all[3], DIM(&bdry_phi_x_cf_all[3], &bdry_phi_y_cf_all[3], &bdry_phi_z_cf_all[3])) };
 
 // JUMP CONDITIONS
 class jc_value_cf_t : public CF_DIM
@@ -2134,12 +2124,12 @@ public:
   }
 };
 
-jc_value_cf_t jc_value_cf_all[] = { jc_value_cf_t(jc_value_00.val),
-                                    jc_value_cf_t(jc_value_01.val),
-                                    jc_value_cf_t(jc_value_02.val),
-                                    jc_value_cf_t(jc_value_03.val) };
+jc_value_cf_t jc_value_cf_all[] = { jc_value_cf_t(infc_00_value_jump.val),
+                                    jc_value_cf_t(infc_01_value_jump.val),
+                                    jc_value_cf_t(infc_02_value_jump.val),
+                                    jc_value_cf_t(infc_03_value_jump.val) };
 
-jc_value_cf_t jc_value_cf(jc_value_00.val);
+jc_value_cf_t jc_value_cf(infc_00_value_jump.val);
 
 class jc_flux_t : public CF_DIM
 {
@@ -2170,10 +2160,10 @@ public:
   }
 };
 
-jc_flux_t jc_flux_cf_all[] = { jc_flux_t(jc_flux_00.val, DIM(&infc_phi_x_cf_all[0], &infc_phi_y_cf_all[0], &infc_phi_z_cf_all[0])),
-                               jc_flux_t(jc_flux_01.val, DIM(&infc_phi_x_cf_all[1], &infc_phi_y_cf_all[1], &infc_phi_z_cf_all[1])),
-                               jc_flux_t(jc_flux_02.val, DIM(&infc_phi_x_cf_all[2], &infc_phi_y_cf_all[2], &infc_phi_z_cf_all[2])),
-                               jc_flux_t(jc_flux_03.val, DIM(&infc_phi_x_cf_all[3], &infc_phi_y_cf_all[3], &infc_phi_z_cf_all[3])) };
+jc_flux_t jc_flux_cf_all[] = { jc_flux_t(infc_00_flux_jump.val, DIM(&infc_phi_x_cf_all[0], &infc_phi_y_cf_all[0], &infc_phi_z_cf_all[0])),
+                               jc_flux_t(infc_01_flux_jump.val, DIM(&infc_phi_x_cf_all[1], &infc_phi_y_cf_all[1], &infc_phi_z_cf_all[1])),
+                               jc_flux_t(infc_02_flux_jump.val, DIM(&infc_phi_x_cf_all[2], &infc_phi_y_cf_all[2], &infc_phi_z_cf_all[2])),
+                               jc_flux_t(infc_03_flux_jump.val, DIM(&infc_phi_x_cf_all[3], &infc_phi_y_cf_all[3], &infc_phi_z_cf_all[3])) };
 
 
 class bc_wall_type_t : public WallBCDIM
@@ -2181,7 +2171,7 @@ class bc_wall_type_t : public WallBCDIM
 public:
   BoundaryConditionType operator()(DIM(double, double, double)) const
   {
-    return (BoundaryConditionType) bc_wtype.val;
+    return (BoundaryConditionType) wc_type.val;
   }
 } bc_wall_type;
 
@@ -2205,7 +2195,7 @@ public:
     }
 
   }
-} dom_perturb_cf(dom_perturb.val), ifc_perturb_cf(ifc_perturb.val);
+} bdry_perturb_cf(bdry_perturb.val), infc_perturb_cf(infc_perturb.val);
 
 // additional output functions
 double compute_convergence_order(std::vector<double> &x, std::vector<double> &y);
@@ -2276,8 +2266,8 @@ int main (int argc, char* argv[])
   pl.initialize_parser(cmd);
   cmd.parse(argc, argv);
 
-  n_example.set_from_cmd(cmd);
-  set_example(n_example.val);
+  example.set_from_cmd(cmd);
+  set_example(example.val);
 
   pl.set_from_cmd_all(cmd);
 
@@ -2287,26 +2277,26 @@ int main (int argc, char* argv[])
     file << out_dir << "/parameters.dat";
     pl.save_all(file.str().c_str());
   }
-  // bdry_phi_max_num -> defines the maximum number of boundaries that exist in this example. infc_phi_max_num -> defines the maximum number of interfaces that exist in this example.
+  // num_bdry_max -> defines the maximum number of boundaries that exist in this example. num_infc_max -> defines the maximum number of interfaces that exist in this example.
   // The way it is implemented for now, there can be atmost 4 interfaces and 4 boundaries.
   // initialize effective level-sets
   // To add boundaries or interfaces - objects of mls_eff_cf_t -> bdry_phi_eff_cf and infc_phi_eff_cf are created. mls_eff_cf_t is a class that inherits CF_DIM ( CF_2 or CF_3 depending on whether the problem is 2D or 3D )
   // The above mentioned class has an add_domain() which has two arguments namely a level set function representing the boundary (that is stored in bdry_phi_cf_all[i]) and the action (which can either  be MLS_INTERSECTION OR MLS_ADDITION)
   // As evident from the name choosing MLS_INTERSECTION will create a compound domain that is the intersection of two or more given domains and MLS_ADDITION will create a compound domain that is the union of two or more given domains
 
-  for (int i = 0; i < bdry_phi_max_num; ++i)
+  for (int i = 0; i < num_bdry_max; ++i)
   {
     if (*bdry_present_all[i] == true) bdry_phi_eff_cf.add_domain(bdry_phi_cf_all[i], (mls_opn_t) *bdry_opn_all[i]);
   }
 
-  for (int i = 0; i < infc_phi_max_num; ++i)
+  for (int i = 0; i < num_infc_max; ++i)
   {
     if (*infc_present_all[i] == true) infc_phi_eff_cf.add_domain(infc_phi_cf_all[i], (mls_opn_t) *infc_opn_all[i]);
   }
 
   int num_shifts_total = MULTD(num_shifts_x_dir.val, num_shifts_y_dir.val, num_shifts_z_dir.val);
 
-  int num_resolutions = ((num_splits.val-1)*num_splits_per_split.val + 1)*mu_iter_num.val;
+  int num_resolutions = ((num_splits.val-1)*add_splits.val + 1)*diff_coeff_iter_num.val;
   int num_iter_total = num_resolutions*num_shifts_total;
 
   const int periodicity[] = { DIM(px(), py(), pz()) };
@@ -2358,20 +2348,16 @@ int main (int argc, char* argv[])
   int iteration = -1;
   int file_idx  = -1;
 
-  for(int mu_iter = 0; mu_iter < mu_iter_num(); ++mu_iter)
+  for(int mu_iter = 0; mu_iter < diff_coeff_iter_num(); ++mu_iter)
   {
-    if (mu_iter_num() > 1)
-      mag_mu_m.val = mag_mu_m_min() * pow(mag_mu_m_max()/mag_mu_m_min(), ((double) mu_iter / (double) (mu_iter_num()-1)));
-    //for (int k=0; k<3;k++){
+    if (diff_coeff_iter_num() > 1)
+      diff_coeff_m_mult.val = diff_coeff_m_mult_min() * pow(diff_coeff_m_mult_max()/diff_coeff_m_mult_min(), ((double) mu_iter / (double) (diff_coeff_iter_num()-1)));
+
     for(int iter=0; iter<num_splits(); ++iter)
     {
-      PetscLogDouble mem1;
-      MPI_Barrier(mpi.comm());
-      PetscMemoryGetCurrentUsage(&mem1);
-      PetscPrintf(mpi.comm(), "Mem test: %0.4e \n", mem1);
       ierr = PetscPrintf(mpi.comm(), "Level %2d / %2d.\n", lmin()+iter, lmax()+iter); CHKERRXX(ierr);
 
-      int num_sub_iter = (iter == 0 ? 1 : num_splits_per_split());
+      int num_sub_iter = (iter == 0 ? 1 : add_splits());
 
       for (int sub_iter = 0; sub_iter < num_sub_iter; ++sub_iter)
       {
@@ -2394,7 +2380,7 @@ int main (int argc, char* argv[])
 
         double dxyz_m = MIN(DIM(dxyz[0],dxyz[1],dxyz[2]));
 
-        mu_arr.push_back(mag_mu_m());
+        mu_arr.push_back(diff_coeff_m_mult());
         h_arr.push_back(dxyz_m);
         lvl_arr.push_back(lmax()+iter-scale);
 
@@ -2427,7 +2413,7 @@ int main (int argc, char* argv[])
 
               if (refine_strict())
               {
-                splitting_criteria_cf_t data_tmp(lmin(), lmax(), &phi_eff_cf, lip());
+                splitting_criteria_cf_t data_tmp(lmin(), lmax(), &phi_eff_cf, lip(), band());
                 p4est->user_pointer = (void*)(&data_tmp);
 
                 my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
@@ -2438,7 +2424,7 @@ int main (int argc, char* argv[])
                   my_p4est_partition(p4est, P4EST_FALSE, NULL);
                 }
               } else {
-                splitting_criteria_cf_t data_tmp(lmin()+iter, lmax()+iter, &phi_eff_cf, lip());
+                splitting_criteria_cf_t data_tmp(lmin()+iter, lmax()+iter, &phi_eff_cf, lip(), band());
                 p4est->user_pointer = (void*)(&data_tmp);
 
                 for (int i = 0; i < lmax()+iter; ++i)
@@ -2449,7 +2435,7 @@ int main (int argc, char* argv[])
               }
               // macromesh has been generated at this point.
 
-              splitting_criteria_cf_t data(lmin()+iter, lmax()+iter, &phi_eff_cf, lip());
+              splitting_criteria_cf_t data(lmin()+iter, lmax()+iter, &phi_eff_cf, lip(), band());
               p4est->user_pointer = (void*)(&data);
 
               if (refine_rand())
@@ -2481,19 +2467,19 @@ int main (int argc, char* argv[])
               double diag = sqrt(SUMD(dxyz[0]*dxyz[0], dxyz[1]*dxyz[1], dxyz[2]*dxyz[2]));
 
               // sample level-set functions
-              Vec bdry_phi_vec_all[bdry_phi_max_num];
-              Vec infc_phi_vec_all[infc_phi_max_num];
+              Vec bdry_phi_vec_all[num_bdry_max];
+              Vec infc_phi_vec_all[num_infc_max];
 
 
               //Perturbing domain and interface boundaries and reinitializing
-              for (int i = 0; i < bdry_phi_max_num; ++i)
+              for (int i = 0; i < num_bdry_max; ++i)
               {
                 if (*bdry_present_all[i] == true)
                 {
                   ierr = VecCreateGhostNodes(p4est, nodes, &bdry_phi_vec_all[i]); CHKERRXX(ierr);
                   sample_cf_on_nodes(p4est, nodes, bdry_phi_cf_all[i], bdry_phi_vec_all[i]);
 
-                  if (dom_perturb())
+                  if (bdry_perturb())
                   {
                     double *phi_ptr;
                     ierr = VecGetArray(bdry_phi_vec_all[i], &phi_ptr); CHKERRXX(ierr);
@@ -2502,7 +2488,7 @@ int main (int argc, char* argv[])
                     {
                       double xyz[P4EST_DIM];
                       node_xyz_fr_n(n, p4est, nodes, xyz);
-                      phi_ptr[n] += dom_perturb_mag()*dom_perturb_cf.value(xyz)*pow(dxyz_m, dom_perturb_pow());
+                      phi_ptr[n] += bdry_perturb_mag()*bdry_perturb_cf.value(xyz)*pow(dxyz_m, bdry_perturb_pow());
                     }
 
                     ierr = VecRestoreArray(bdry_phi_vec_all[i], &phi_ptr); CHKERRXX(ierr);
@@ -2518,14 +2504,14 @@ int main (int argc, char* argv[])
                 }
               }
 
-              for (int i = 0; i < infc_phi_max_num; ++i)
+              for (int i = 0; i < num_infc_max; ++i)
               {
                 if (*infc_present_all[i] == true)
                 {
                   ierr = VecCreateGhostNodes(p4est, nodes, &infc_phi_vec_all[i]); CHKERRXX(ierr);
                   sample_cf_on_nodes(p4est, nodes, infc_phi_cf_all[i], infc_phi_vec_all[i]);
 
-                  if (ifc_perturb())
+                  if (infc_perturb())
                   {
                     double *phi_ptr;
                     ierr = VecGetArray(infc_phi_vec_all[i], &phi_ptr); CHKERRXX(ierr);
@@ -2534,7 +2520,7 @@ int main (int argc, char* argv[])
                     {
                       double xyz[P4EST_DIM];
                       node_xyz_fr_n(n, p4est, nodes, xyz);
-                      phi_ptr[n] += ifc_perturb_mag()*ifc_perturb_cf.value(xyz)*pow(dxyz_m, ifc_perturb_pow());
+                      phi_ptr[n] += infc_perturb_mag()*infc_perturb_cf.value(xyz)*pow(dxyz_m, infc_perturb_pow());
                     }
 
                     ierr = VecRestoreArray(infc_phi_vec_all[i], &phi_ptr); CHKERRXX(ierr);
@@ -2568,14 +2554,13 @@ int main (int argc, char* argv[])
               ierr = VecCreateGhostNodes(p4est, nodes, &mu_p); CHKERRXX(ierr);
               sample_cf_on_nodes(p4est, nodes, mu_p_cf, mu_p);
 
-              Vec diag_m;
-              ierr = VecCreateGhostNodes(p4est, nodes, &diag_m); CHKERRXX(ierr);
-              sample_cf_on_nodes(p4est, nodes, diag_m_cf, diag_m);
+              Vec linear_term_m_coeff;
+              ierr = VecCreateGhostNodes(p4est, nodes, &linear_term_m_coeff); CHKERRXX(ierr);
+              sample_cf_on_nodes(p4est, nodes, linear_term_m_coeff_cf, linear_term_m_coeff);
 
-              Vec diag_p;
-              ierr = VecCreateGhostNodes(p4est, nodes, &diag_p); CHKERRXX(ierr);
-              sample_cf_on_nodes(p4est, nodes, diag_p_cf, diag_p);
-
+              Vec linear_term_p_coeff;
+              ierr = VecCreateGhostNodes(p4est, nodes, &linear_term_p_coeff); CHKERRXX(ierr);
+              sample_cf_on_nodes(p4est, nodes, linear_term_p_coeff_cf, linear_term_p_coeff);
 
               Vec sol; double *sol_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &sol); CHKERRXX(ierr);
 
@@ -2584,15 +2569,14 @@ int main (int argc, char* argv[])
 
               solver.set_use_centroid_always(use_centroid_always());
               solver.set_store_finite_volumes(store_finite_volumes());
-              solver.set_jump_scheme(jc_scheme());
-              solver.set_jump_sub_scheme(jc_sub_scheme());
-              solver.set_use_sc_scheme(sc_scheme());
+              solver.set_jump_scheme(jump_scheme());
+              solver.set_use_sc_scheme(fv_scheme());
               solver.set_integration_order(integration_order());
               solver.set_lip(lip());
 
               // HOW TO ADD BOUNDARY
               // In the add_boundary(), creates a structure boundary_conditions_t
-              for (int i = 0; i < bdry_phi_max_num; ++i)
+              for (int i = 0; i < num_bdry_max; ++i)
                 if (*bdry_present_all[i] == true)
                 {
                   if (apply_bc_pointwise())
@@ -2601,7 +2585,7 @@ int main (int argc, char* argv[])
                     solver.add_boundary((mls_opn_t) *bdry_opn_all[i], bdry_phi_vec_all[i], DIM(NULL, NULL, NULL), (BoundaryConditionType) *bc_type_all[i], bc_value_cf_all[i], bc_coeff_cf_all[i]);
                 }
               // adding interface is exactly similar
-              for (int i = 0; i < infc_phi_max_num; ++i)
+              for (int i = 0; i < num_infc_max; ++i)
                 if (*infc_present_all[i] == true)
                 {
                   if (apply_bc_pointwise())
@@ -2615,32 +2599,32 @@ int main (int argc, char* argv[])
 
               solver.set_wc(bc_wall_type, u_cf);
               solver.set_rhs(rhs_m, rhs_p);
-              solver.set_diag(diag_m, diag_p);
+              solver.set_diag(linear_term_m_coeff, linear_term_p_coeff);
 
               solver.set_use_taylor_correction(taylor_correction());
               solver.set_kink_treatment(kink_special_treatment());
 
-              vector< vector<double> > pw_bc_values(bdry_phi_num());
-              vector< vector<double> > pw_bc_values_robin(bdry_phi_num());
-              vector< vector<double> > pw_bc_coeffs_robin(bdry_phi_num());
+              vector< vector<double> > pw_bc_values(num_bdry());
+              vector< vector<double> > pw_bc_values_robin(num_bdry());
+              vector< vector<double> > pw_bc_coeffs_robin(num_bdry());
 
-              vector< vector<double> > pw_jc_sol_jump_taylor(infc_phi_num());
-              vector< vector<double> > pw_jc_flx_jump_taylor(infc_phi_num());
-              vector< vector<double> > pw_jc_flx_jump_integr(infc_phi_num());
+              vector< vector<double> > pw_jc_sol_jump_taylor(num_infc());
+              vector< vector<double> > pw_jc_flx_jump_taylor(num_infc());
+              vector< vector<double> > pw_jc_flx_jump_integr(num_infc());
 
               if (apply_bc_pointwise())
               {
                 solver.preassemble_linear_system();
 
                 // allocate memory for bc values
-                for (int i = 0; i < bdry_phi_num(); ++i)
+                for (int i = 0; i < num_bdry(); ++i)
                 {
                   pw_bc_values      [i].assign(solver.pw_bc_num_value_pts(i), 0);
                   pw_bc_values_robin[i].assign(solver.pw_bc_num_robin_pts(i), 0);
                   pw_bc_coeffs_robin[i].assign(solver.pw_bc_num_robin_pts(i), 0);
                 }
 
-                for (int i = 0; i < infc_phi_num(); ++i)
+                for (int i = 0; i < num_infc(); ++i)
                 {
                   pw_jc_sol_jump_taylor[i].assign(solver.pw_jc_num_taylor_pts(i), 0);
                   pw_jc_flx_jump_taylor[i].assign(solver.pw_jc_num_taylor_pts(i), 0);
@@ -2653,7 +2637,7 @@ int main (int argc, char* argv[])
                 {
                   foreach_local_node(n, nodes)
                   {
-                    for (int i = 0; i < bdry_phi_num(); ++i)
+                    for (int i = 0; i < num_bdry(); ++i)
                     {
                       for (int k = 0; k < solver.pw_bc_num_value_pts(i,n); ++k)
                       {
@@ -2671,7 +2655,7 @@ int main (int argc, char* argv[])
                       }
                     }
 
-                    for (int i = 0; i < infc_phi_num(); ++i)
+                    for (int i = 0; i < num_infc(); ++i)
                     {
                       for (int k = 0; k < solver.pw_jc_num_taylor_pts(i,n); ++k)
                       {
@@ -2692,7 +2676,7 @@ int main (int argc, char* argv[])
                 }
                 else
                 {
-                  for (int i = 0; i < bdry_phi_num(); ++i)
+                  for (int i = 0; i < num_bdry(); ++i)
                   {
                     for (int j = 0; j < solver.pw_bc_num_value_pts(i); ++j)
                     {
@@ -2708,7 +2692,7 @@ int main (int argc, char* argv[])
                     }
                   }
 
-                  for (int i = 0; i < infc_phi_num(); ++i)
+                  for (int i = 0; i < num_infc(); ++i)
                   {
                     for (int j = 0; j < solver.pw_jc_num_taylor_pts(i); ++j)
                     {
@@ -2726,12 +2710,12 @@ int main (int argc, char* argv[])
                 }
 
                 // pass the sampled values to solver
-                for (int i = 0; i < bdry_phi_num(); ++i)
+                for (int i = 0; i < num_bdry(); ++i)
                 {
                   solver.set_bc(i, (BoundaryConditionType) *bc_type_all[i], pw_bc_values[i], pw_bc_values_robin[i], pw_bc_coeffs_robin[i]);
                 }
 
-                for (int i = 0; i < infc_phi_num(); ++i)
+                for (int i = 0; i < num_infc(); ++i)
                 {
                   solver.set_jc(i, pw_jc_sol_jump_taylor[i], pw_jc_flx_jump_taylor[i], pw_jc_flx_jump_integr[i]);
                 }
@@ -2747,8 +2731,8 @@ int main (int argc, char* argv[])
                 Vec nonlinear_term_m_coeff_sampled;
                 Vec nonlinear_term_p_coeff_sampled;
 
-                ierr = VecDuplicate(diag_m, &nonlinear_term_m_coeff_sampled); CHKERRXX(ierr);
-                ierr = VecDuplicate(diag_p, &nonlinear_term_p_coeff_sampled); CHKERRXX(ierr);
+                ierr = VecDuplicate(linear_term_m_coeff, &nonlinear_term_m_coeff_sampled); CHKERRXX(ierr);
+                ierr = VecDuplicate(linear_term_p_coeff, &nonlinear_term_p_coeff_sampled); CHKERRXX(ierr);
 
                 sample_cf_on_nodes(p4est, nodes, nonlinear_term_m_coeff_cf, nonlinear_term_m_coeff_sampled);
                 sample_cf_on_nodes(p4est, nodes, nonlinear_term_p_coeff_cf, nonlinear_term_p_coeff_sampled);
@@ -2922,7 +2906,7 @@ int main (int argc, char* argv[])
 #endif
 
 //              my_p4est_integration_mls_t integrator(p4est, nodes);
-//// integrator.set_phi(bdry_phi, dom_acn, dom_clr);
+//// integrator.set_phi(bdry_phi, bdry_acn, bdry_clr);
 
 //            s/*
 //            if (save_domain)
@@ -2952,9 +2936,9 @@ int main (int argc, char* argv[])
 //                        simplices.push_back(&cubes[k].cubes_l_[kk]->simplex[l]);
 
 //#ifdef P4_TO_P8
-//                simplex3_mls_l_vtk::write_simplex_geometry(simplices, oss.str(), to_string(file_idx));
+//                simplex3_mls_l_vtk::write_simplex_geometryetry(simplices, oss.str(), to_string(file_idx));
 //#else
-//                simplex2_mls_l_vtk::write_simplex_geometry(simplices, oss.str(), to_string(file_idx));
+//                simplex2_mls_l_vtk::write_simplex_geometryetry(simplices, oss.str(), to_string(file_idx));
 //#endif
 //              } else if (integration_order == 2) {
 
@@ -2970,9 +2954,9 @@ int main (int argc, char* argv[])
 //                        simplices.push_back(&cubes[k].cubes_q_[kk]->simplex[l]);
 
 //#ifdef P4_TO_P8
-//                simplex3_mls_q_vtk::write_simplex_geometry(simplices, oss.str(), to_string(file_idx));
+//                simplex3_mls_q_vtk::write_simplex_geometryetry(simplices, oss.str(), to_string(file_idx));
 //#else
-//                simplex2_mls_q_vtk::write_simplex_geometry(simplices, oss.str(), to_string(file_idx));
+//                simplex2_mls_q_vtk::write_simplex_geometryetry(simplices, oss.str(), to_string(file_idx));
 //#endif
 //              }
 
@@ -3505,11 +3489,11 @@ int main (int argc, char* argv[])
               ierr = VecDestroy(rhs_m);         CHKERRXX(ierr);
               ierr = VecDestroy(rhs_p);         CHKERRXX(ierr);
 
-              ierr = VecDestroy(diag_m);   CHKERRXX(ierr);
-              ierr = VecDestroy(diag_p);   CHKERRXX(ierr);
+              ierr = VecDestroy(linear_term_m_coeff);   CHKERRXX(ierr);
+              ierr = VecDestroy(linear_term_p_coeff);   CHKERRXX(ierr);
 
-              for (unsigned int i = 0; i < bdry_phi_max_num; i++) { if (*bdry_present_all[i] == true) { ierr = VecDestroy(bdry_phi_vec_all[i]); CHKERRXX(ierr); } }
-              for (unsigned int i = 0; i < infc_phi_max_num; i++) { if (*infc_present_all[i] == true) { ierr = VecDestroy(infc_phi_vec_all[i]); CHKERRXX(ierr); } }
+              for (unsigned int i = 0; i < num_bdry_max; i++) { if (*bdry_present_all[i] == true) { ierr = VecDestroy(bdry_phi_vec_all[i]); CHKERRXX(ierr); } }
+              for (unsigned int i = 0; i < num_infc_max; i++) { if (*infc_present_all[i] == true) { ierr = VecDestroy(infc_phi_vec_all[i]); CHKERRXX(ierr); } }
 
               p4est_nodes_destroy(nodes);
               p4est_ghost_destroy(ghost);
@@ -3522,12 +3506,7 @@ int main (int argc, char* argv[])
         }
 #endif
       }
-      PetscLogDouble mem2;
-      MPI_Barrier(mpi.comm());
-      PetscMemoryGetCurrentUsage(&mem2);
-      PetscPrintf(mpi.comm(), "Mem test: %0.4e \n", mem2);
     }
-    //}
   }
 
 #ifdef MATLAB_PROVIDED

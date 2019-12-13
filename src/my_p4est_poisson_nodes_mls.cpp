@@ -184,8 +184,7 @@ my_p4est_poisson_nodes_mls_t::my_p4est_poisson_nodes_mls_t(const my_p4est_node_n
   integration_order_          = 2;
   cube_refinement_            = 0;
   jump_scheme_                = 0;
-  jump_sub_scheme_            = 0;
-  use_sc_scheme_              = 1;
+  fv_scheme_                  = 1;
   use_taylor_correction_      = 1;
   kink_special_treatment_     = 1;
   neumann_wall_first_order_   = 0;
@@ -615,7 +614,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
   bool assembling_main     = new_submat_main_;
   bool assembling_jump     = new_submat_main_  && there_is_jump_;
   bool assembling_jump_ghost = new_submat_main_  && there_is_jump_  && there_is_jump_mu_;
-  bool assembling_robin_sc = new_submat_robin_ && there_is_robin_ && use_sc_scheme_;
+  bool assembling_robin_sc = new_submat_robin_ && there_is_robin_ && (fv_scheme_ == 1);
 
   // arrays to store matrices
   int nm = assembling_main     ? nodes_->num_owned_indeps : 0;
@@ -675,7 +674,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
     ierr = VecGetArray(diag_p_, &diag_p_ptr); CHKERRXX(ierr);
   }
 
-  if (new_submat_robin_ && !use_sc_scheme_ && there_is_robin_)
+  if (new_submat_robin_ && (fv_scheme_ == 0) && there_is_robin_)
   {
     if (submat_robin_sym_ != NULL) { ierr = VecDestroy(submat_robin_sym_); CHKERRXX(ierr); }
     ierr = VecDuplicate(rhs_, &submat_robin_sym_); CHKERRXX(ierr);
@@ -939,7 +938,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
     //-------------------------------------------------------------------------------------
     // determine which nodes will be part of discretization (needed for superconvergent schemes)
     //-------------------------------------------------------------------------------------
-    if (use_sc_scheme_ && !volumes_computed_ && (there_is_neumann_ || there_is_robin_ || there_is_jump_))
+    if ((fv_scheme_ == 1) && !volumes_computed_ && (there_is_neumann_ || there_is_robin_ || there_is_jump_))
     {
       ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_compute_finite_volumes_connections, 0, 0, 0, 0); CHKERRXX(ierr);
 
@@ -1196,7 +1195,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
     ierr = VecRestoreArray(diag_p_, &diag_p_ptr); CHKERRXX(ierr);
   }
 
-  if (new_submat_robin_ && !use_sc_scheme_ && there_is_robin_)
+  if (new_submat_robin_ && (fv_scheme_ == 0) && there_is_robin_)
   {
     ierr = VecRestoreArray(submat_robin_sym_, &submat_robin_sym_ptr); CHKERRXX(ierr);
   }
@@ -1352,7 +1351,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
     }
 
     // explicitly add zeros in place of elements from robin bc to speed up matrix sum later
-    if (there_is_robin_ && use_sc_scheme_)
+    if (there_is_robin_ && (fv_scheme_ == 1))
     {
       PetscInt           offset = global_node_offset_[p4est_->mpirank];
       PetscInt           cur;
@@ -1494,12 +1493,12 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
     {
       ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_add_submat_robin, 0, 0, 0, 0); CHKERRXX(ierr);
 
-      if (!use_sc_scheme_)
+      if (fv_scheme_ == 0)
       {
         // if symmetric scheme is used then the only correction is to diagonal elements
         ierr = MatDiagonalSet(A_, submat_robin_sym_, ADD_VALUES); CHKERRXX(ierr);
       }
-      else
+      else if (fv_scheme_ == 1)
       {
         // if non-symmetric scheme is used then
 
@@ -3239,7 +3238,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
     }
     else
     {
-      if (use_sc_scheme_)
+      if (fv_scheme_ == 1)
       {
         for (unsigned short idx = 0; idx < num_neighbors_cube; ++idx)
         {
@@ -3296,12 +3295,12 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
                                              y_C + fv.face_centroid_y[dir],
                                              z_C + fv.face_centroid_z[dir] )) : mu);
 
-                if (!use_sc_scheme_)
+                if (fv_scheme_ == 0)
                 {
                   w[f2c_m[dir][nnf_00]] += flux;
                   w[f2c_p[dir][nnf_00]] -= flux;
                 }
-                else
+                else if (fv_scheme_ == 1)
                 {
                   for (int nn=0; nn<num_neighbors_face; ++nn)
                   {
@@ -3325,7 +3324,8 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
                       w[f2c_p[dir][nn]] -= weights_face[nn] * flux;
                     }
                   }
-                } // if use_sc_scheme
+                }
+                else throw;
               } // if neighbour exists
             } // if good connection
           } // sign
@@ -3371,7 +3371,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
       if (there_is_robin_ && bdry_area.size() > 0)
       {
         bool sc_scheme_successful = false;
-        if (use_sc_scheme_)
+        if (fv_scheme_ == 1)
         {
           std::vector<double> w_robin(num_neighbors_cube, 0);
           double add_to_rhs = 0;
@@ -3643,11 +3643,11 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
 
         //*/
 
-        if (!use_sc_scheme_ || !sc_scheme_successful)
+        if ((fv_scheme_ == 0) || !sc_scheme_successful)
         {
           double add_to_matrix = 0;
 
-          if (new_submat_robin_ && use_sc_scheme_)
+          if (new_submat_robin_ && (fv_scheme_ == 1))
           {
             mask_ptr[n] = MAX(mask_ptr[n], -0.1);
             std::cout << "Fallback Robin BC\n";
@@ -3831,8 +3831,9 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
 
           if (new_submat_robin_)
           {
-            if (use_sc_scheme_) row_robin_sc->push_back(mat_entry_t(petsc_gloidx_[n], add_to_matrix));
-            else                submat_robin_sym_ptr[n] = add_to_matrix;
+            if      (fv_scheme_ == 1) row_robin_sc->push_back(mat_entry_t(petsc_gloidx_[n], add_to_matrix));
+            else if (fv_scheme_ == 0) submat_robin_sym_ptr[n] = add_to_matrix;
+            else throw;
           }
 
         } // end of symmetric scheme
@@ -3958,7 +3959,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_jump(bool setup_rhs, p4est_locidx_
 
   ngbd_->get_all_neighbors(n, neighbors, neighbors_exist);
 
-  if (use_sc_scheme_)
+  if (fv_scheme_ == 1)
   {
     for (int idx = 0; idx < num_neighbors_cube; ++idx)
       if (neighbors_exist[idx])
@@ -3967,7 +3968,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_jump(bool setup_rhs, p4est_locidx_
         neighbors_exist_m[idx] = neighbors_exist[idx] && (areas_m_ptr[neighbors[idx]] > interface_rel_thresh_);
       }
   }
-  else
+  else if (fv_scheme_ == 0)
   {
     for (int idx = 0; idx < num_neighbors_cube; ++idx)
       if (neighbors_exist[idx])
@@ -3976,6 +3977,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_jump(bool setup_rhs, p4est_locidx_
         neighbors_exist_m[idx] = neighbors_exist[idx];
       }
   }
+  else throw;
 
   if (face_m_area_max < interface_rel_thresh_) { face_m_area_max = 0; volume_cut_cell_m = 0; }
   if (face_p_area_max < interface_rel_thresh_) { face_p_area_max = 0; volume_cut_cell_p = 0; }
@@ -4055,30 +4057,30 @@ void my_p4est_poisson_nodes_mls_t::discretize_jump(bool setup_rhs, p4est_locidx_
                   (var_mu_ ? (*mu_interp)(DIM(x_C + fv.face_centroid_x[dir],
                                               y_C + fv.face_centroid_y[dir],
                                               z_C + fv.face_centroid_z[dir])) : mu);
-              if (!use_sc_scheme_)
-              {
+//              if (!use_sc_scheme_)
+//              {
                 w[f2c_m[dir][nnf_00]] += flux;
                 w[f2c_p[dir][nnf_00]] -= flux;
-              }
-              else
-              {
-                for (unsigned short nn = 0; nn < num_neighbors_face_; ++nn)
-                  neighbors_exist_face[nn] = neighbors_exist_pm[f2c_m[dir][nn]] && neighbors_exist_pm[f2c_p[dir][nn]];
+//              }
+//              else
+//              {
+//                for (unsigned short nn = 0; nn < num_neighbors_face_; ++nn)
+//                  neighbors_exist_face[nn] = neighbors_exist_pm[f2c_m[dir][nn]] && neighbors_exist_pm[f2c_p[dir][nn]];
 
-                double centroid_xyz[] = { DIM( fv.face_centroid_x[dir]/dx_min_,
-                                          fv.face_centroid_y[dir]/dy_min_,
-                                          fv.face_centroid_z[dir]/dz_min_ ) };
+//                double centroid_xyz[] = { DIM( fv.face_centroid_x[dir]/dx_min_,
+//                                          fv.face_centroid_y[dir]/dy_min_,
+//                                          fv.face_centroid_z[dir]/dz_min_ ) };
 
-                CODE2D( double mask_result = compute_weights_through_face(centroid_xyz[j_idx[dim]],                           neighbors_exist_face, weights_face, theta, map_face) );
-                CODE3D( double mask_result = compute_weights_through_face(centroid_xyz[j_idx[dim]], centroid_xyz[k_idx[dim]], neighbors_exist_face, weights_face, theta, map_face) );
+//                CODE2D( double mask_result = compute_weights_through_face(centroid_xyz[j_idx[dim]],                           neighbors_exist_face, weights_face, theta, map_face) );
+//                CODE3D( double mask_result = compute_weights_through_face(centroid_xyz[j_idx[dim]], centroid_xyz[k_idx[dim]], neighbors_exist_face, weights_face, theta, map_face) );
 
-                for (unsigned short nn = 0; nn < num_neighbors_face_; ++nn)
-                  if (map_face[nn])
-                  {
-                    w[f2c_m[dir][nn]] += weights_face[nn] * flux;
-                    w[f2c_p[dir][nn]] -= weights_face[nn] * flux;
-                  }
-              }
+//                for (unsigned short nn = 0; nn < num_neighbors_face_; ++nn)
+//                  if (map_face[nn])
+//                  {
+//                    w[f2c_m[dir][nn]] += weights_face[nn] * flux;
+//                    w[f2c_p[dir][nn]] -= weights_face[nn] * flux;
+//                  }
+//              }
 
             }
           }
@@ -4262,7 +4264,7 @@ void my_p4est_poisson_nodes_mls_t::discretize_jump(bool setup_rhs, p4est_locidx_
     // determine which side to use based on values of diffusion coefficients and neighbors' availability
     double sign_to_use;
 
-    switch (jump_sub_scheme_)
+    switch (jump_scheme_)
     {
       case 0:
         sign_to_use = (mu_m_proj < mu_p_proj) ? ((num_neg >= P4EST_DIM+1) ? -1 :  1)
