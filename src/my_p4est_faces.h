@@ -414,11 +414,7 @@ public:
       else
         search_dir[k] = 0;
     }
-#ifdef P4_TO_P8
-    ngbd_c->find_neighbor_cells_of_cell(cell_neighbor, quad_idx, tree_idx, search_dir[0], search_dir[1], search_dir[2]);
-#else
-    ngbd_c->find_neighbor_cells_of_cell(cell_neighbor, quad_idx, tree_idx, search_dir[0], search_dir[1]);
-#endif
+    ngbd_c->find_neighbor_cells_of_cell(cell_neighbor, quad_idx, tree_idx, DIM(search_dir[0], search_dir[1], search_dir[2]));
     P4EST_ASSERT(cell_neighbor.size()<=1);
     if((cell_neighbor.size()>0) && (cell_neighbor[0].level == max_p4est_lvl))
     {

@@ -155,6 +155,10 @@ public:
      * \return center_seed the coordinates of the point
      */
   inline const Point2& get_center_point() const { return center_seed; }
+  /*!
+     * \brief get the coordinates of the center of the partition
+     */
+  inline void get_center_point(double *xyz) const { xyz[0] = center_seed.x; xyz[1] = center_seed.y; }
 
   /*!
      * \brief add a point to the list of collocation points, making sure there is no repetition

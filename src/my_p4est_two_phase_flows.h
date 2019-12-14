@@ -85,7 +85,7 @@ private:
     my_p4est_two_phase_flows_t* _parent;
   public:
     wall_bc_value_hodge_t(my_p4est_two_phase_flows_t* obj) : _parent(obj) {}
-    double operator()(DIM(double x, double y, double z)) const;
+    inline double operator()(DIM(double x, double y, double z)) const { return _parent->bc_pressure->wallValue(DIM(x,y,z)) * _parent->dt_n / (_parent->BDF_alpha()); }
     double operator()(const double *xyz) const {return this->operator()(DIM(xyz[0], xyz[1], xyz[2]));}
   };
 
@@ -170,6 +170,7 @@ private:
   // ------------------------------------------------------------------------------
   // vector fields
   Vec dxyz_hodge[P4EST_DIM], vstar[P4EST_DIM], vnp1_minus[P4EST_DIM], vnp1_plus[P4EST_DIM];
+  Vec vnm1_faces[P4EST_DIM], vn_faces[P4EST_DIM], vnp1_faces[P4EST_DIM];
   // -------------------------------------------------------------------------
   // ----- FIELDS SAMPLED AT NODES OF THE COMPUTATIONAL GRID AT TIME NM1 -----
   // -------------------------------------------------------------------------
@@ -538,8 +539,8 @@ private:
     return is_face_in_omega_minus(face_idx, dir, fine_phi_p, dummy);
   }
 
-  inline double BDF_alpha() const {return ((sl_order ==1) ? 1.0: (2*dt_n+dt_nm1)/(dt_n+dt_nm1)); }
-  inline double BDF_beta() const {return ((sl_order ==1) ? 0.0: -dt_n/(dt_n+dt_nm1)); }
+  inline double BDF_alpha() const { return ((sl_order ==1) ? 1.0: (2*dt_n+dt_nm1)/(dt_n+dt_nm1)); }
+  inline double BDF_beta() const  { return ((sl_order ==1) ? 0.0: -dt_n/(dt_n+dt_nm1));           }
 
   void get_velocity_seen_from_cell(neighbor_value& neighbor_velocity, const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const int& face_dir,
                                    const double *vstar_p, const double *fine_phi_p, const double *fine_phi_xxyyzz_p, const double *fine_jump_mu_grad_v_p);
@@ -803,13 +804,47 @@ public:
   my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t *ngbd_nm1, my_p4est_node_neighbors_t *ngbd_n, my_p4est_faces_t *faces, my_p4est_node_neighbors_t *fine_ngbd_n);
   ~my_p4est_two_phase_flows_t();
 
-  void compute_dt(const double &min_value_for_u_max=1.0);
-  void set_bc(BoundaryConditionsDIM *bc_v, BoundaryConditionsDIM *bc_p);
-  void set_external_forces(CF_DIM *external_forces_[P4EST_DIM]);
+  inline void compute_dt(const double &min_value_for_u_max=1.0)
+  {
+    dt_nm1 = dt_n;
+    double max_L2_norm_u_overall = MAX(max_L2_norm_u[0], max_L2_norm_u[1]);
+    dt_n = MIN(1/min_value_for_u_max, 1/max_L2_norm_u_overall) * cfl * MIN(DIM(dxyz_min[0], dxyz_min[1], dxyz_min[2]));
+    dt_n = MIN(dt_n, sqrt((rho_minus+rho_plus)*pow(MIN(DIM(dxyz_min[0], dxyz_min[1], dxyz_min[2])), 3)/(4.0*M_PI*surface_tension)));
+    dt_n = MIN(dt_n, 1.0/(MAX(mu_minus/rho_minus, mu_plus/rho_plus)*2.0*(SUMD(1.0/SQR(dxyz_min[0]), 1.0/SQR(dxyz_min[1]), 1.0/SQR(dxyz_min[2])))));
 
-  void set_dynamic_viscosities(double mu_omega_minus, double mu_omega_plus);
-  void set_surface_tension(double surface_tension_);
-  void set_densities(double rho_omega_minus, double rho_omega_plus);
+    dt_updated = true;
+  }
+
+  inline void set_bc(BoundaryConditionsDIM *bc_v, BoundaryConditionsDIM *bc_p)
+  {
+    this->bc_v          = bc_v;
+    this->bc_pressure   = bc_p;
+    bc_hodge.setWallTypes(bc_pressure->getWallType());
+    bc_hodge.setWallValues(wall_bc_value_hodge);
+  }
+
+  inline void set_external_forces(CF_DIM *external_forces_[P4EST_DIM])
+  {
+    for(unsigned char dir=0; dir<P4EST_DIM; ++dir)
+      this->external_forces[dir] = external_forces_[dir];
+  }
+
+  inline void set_dynamic_viscosities(double mu_omega_minus, double mu_omega_plus)
+  {
+    mu_minus = mu_omega_minus;
+    mu_plus = mu_omega_plus;
+  }
+
+  inline void set_surface_tension(double surface_tension_)
+  {
+    surface_tension = surface_tension_;
+  }
+
+  inline void set_densities(double rho_omega_minus, double rho_omega_plus)
+  {
+    rho_minus = rho_omega_minus;
+    rho_plus = rho_omega_plus;
+  }
 
   void set_phi(Vec fine_phi_, bool set_second_derivatives = false);
   void set_node_velocities(CF_DIM* vnm1_omega_minus[P4EST_DIM], CF_DIM* vn_omega_minus[P4EST_DIM], CF_DIM* vnm1_omega_plus[P4EST_DIM], CF_DIM* vn_omega_plus[P4EST_DIM]);
@@ -823,36 +858,62 @@ public:
     compute_second_derivatives_of_nm1_velocities();
     compute_second_derivatives_of_n_velocities();
   }
-  void set_semi_lagrangian_order(int sl_);
-  void set_uniform_bands(double uniform_band_minus_, double uniform_band_plus_);
+
+  inline void set_semi_lagrangian_order(int sl_)
+  {
+    sl_order = sl_;
+  }
+
+  inline void set_uniform_bands(double uniform_band_minus_, double uniform_band_plus_)
+  {
+    uniform_band_minus = uniform_band_minus_;
+    uniform_band_plus = uniform_band_plus_;
+  }
+
   void set_uniform_band(double uniform_band_) {set_uniform_bands(uniform_band_, uniform_band_);}
-  void set_vorticity_split_threshold(double thresh_);
-  void set_cfl(double cfl_);
-  void set_dt(double dt_nm1_, double dt_n_);
+
+  inline void set_vorticity_split_threshold(double thresh_)
+  {
+    threshold_split_cell = thresh_;
+  }
+
+  inline void set_cfl(double cfl_)
+  {
+    cfl = cfl_;
+  }
+
+  inline void set_dt(double dt_nm1_, double dt_n_)
+  {
+    dt_nm1  = dt_nm1_;
+    dt_n    = dt_n_;
+  }
+
   inline void set_dt(double dt_n_) {dt_n = dt_n_; }
 
-  inline double get_dt() { return dt_n; }
-  inline double get_dtnm1() { return dt_nm1; }
-  inline p4est_t* get_p4est() { return p4est_n; }
-//  inline p4est_nodes_t* get_nodes() { return nodes_n; }
+  inline double get_dt()                                        { return dt_n; }
+  inline double get_dtnm1()                                     { return dt_nm1; }
+  inline p4est_t* get_p4est()                                   { return p4est_n; }
+  inline p4est_nodes_t* get_nodes()                             { return nodes_n; }
+  inline my_p4est_faces_t* get_faces()                          { return faces_n ; }
 
-  //  inline p4est_nodes_t* get_fine_nodes() { return fine_nodes_n; }
-  //  inline p4est_ghost_t* get_ghost() { return ghost_n; }
-  inline Vec get_hodge() { return hodge; }
-  //  inline Vec* get_normals() { return fine_normal; }
-  inline p4est_t* get_p4est_n() const { return p4est_n; }
-  inline Vec get_vnp1_nodes_omega_minus() const { return vnp1_nodes_omega_minus; }
-  inline Vec get_vnp1_nodes_omega_plus() const { return vnp1_nodes_omega_plus; }
-  inline my_p4est_node_neighbors_t* get_ngbd_n() const { return ngbd_n; }
+  inline p4est_nodes_t* get_fine_nodes()                        { return fine_nodes_n; }
+  inline p4est_ghost_t* get_ghost()                             { return ghost_n; }
+  inline Vec get_hodge()                                        { return hodge; }
+  inline Vec get_normals()                                      { return fine_normal; }
+  inline p4est_t* get_p4est_n() const                           { return p4est_n; }
+  inline Vec get_vnp1_nodes_omega_minus() const                 { return vnp1_nodes_omega_minus; }
+  inline Vec get_vnp1_nodes_omega_plus() const                  { return vnp1_nodes_omega_plus; }
+  inline my_p4est_node_neighbors_t* get_ngbd_n() const          { return ngbd_n; }
   inline my_p4est_interpolation_nodes_t* get_interp_phi() const { return interp_phi; }
-  inline p4est_nodes_t* get_nodes_n() const { return nodes_n; }
-  inline p4est_ghost_t* get_ghost_n() const { return ghost_n; }
-  inline double get_diag_min() const { return tree_diag/((double) (1<<(((splitting_criteria_t*)p4est_n->user_pointer)->max_lvl))); }
-  //  inline Vec get_curvature() { return fine_curvature; }
+  inline p4est_nodes_t* get_nodes_n() const                     { return nodes_n; }
+  inline p4est_ghost_t* get_ghost_n() const                     { return ghost_n; }
+  inline double get_diag_min() const                            { return tree_diag/((double) (1<<(((splitting_criteria_t*)p4est_n->user_pointer)->max_lvl))); }
+  inline Vec get_curvature()                                    { return fine_curvature; }
 
   void compute_jump_mu_grad_v();
   void compute_jumps_hodge();
   void solve_viscosity_explicit();
+  void test_viscosity_explicit(Vec rhs[P4EST_DIM], const double &tn);
 
   void solve_projection(const bool activate_xgfm)
   {
@@ -865,9 +926,26 @@ public:
   void extrapolate_velocities_across_interface_in_finest_computational_cells_Aslam_PDE(const extrapolation_technique& extrapolation_method = PSEUDO_TIME, const unsigned int& n_iteration = 10);
   void compute_velocity_at_nodes();
   void save_vtk(const char* name, const bool& export_fine_grid = false, const char* name_fine = NULL);
-  void update_from_tn_to_tnp1(const unsigned int &nnn);
+  void update_from_tn_to_tnp1(/*const unsigned int &nnn*/);
 
   inline double get_max_velocity() const { return MAX(max_L2_norm_u[0], max_L2_norm_u[1]); }
+
+  inline Vec* get_vnm1_faces()                                  { return vnm1_faces;                                  }
+  inline Vec* get_vn_faces()                                    { return vn_faces;                                    }
+  inline Vec* get_vnp1_faces()                                  { return vnp1_faces;                                  }
+  inline Vec  set_fine_jump_mu_grad_v(Vec fine_jump_mu_grad_v_) { return fine_jump_mu_grad_v = fine_jump_mu_grad_v_;  }
+  inline Vec  get_fine_jump_mu_grad_v()                         { return fine_jump_mu_grad_v;                         }
+  inline void slide_face_fields()
+  {
+    Vec tmp;
+    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
+      tmp             = vnm1_faces[dir];
+      vnm1_faces[dir] = vn_faces[dir];
+      vn_faces[dir]   = vnp1_faces[dir];
+      vnp1_faces[dir] = tmp;
+    }
+    return;
+  }
 
 };
 

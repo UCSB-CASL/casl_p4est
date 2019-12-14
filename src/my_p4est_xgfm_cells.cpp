@@ -293,7 +293,8 @@ void my_p4est_xgfm_cells_t::set_jump_mu_grad_u_for_nodes(const std::vector<p4est
       grad_jump_u_cdot_normal = 0.0;
     }
     norm_n = 0.0;
-    qnnn->gradient(jump_u_read_p, grad_jump_u);
+    if(activate_x)
+      qnnn->gradient(jump_u_read_p, grad_jump_u);
     for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
     {
       n_comp[dim] = normals_read_p[P4EST_DIM*node_idx+dim];
@@ -304,13 +305,15 @@ void my_p4est_xgfm_cells_t::set_jump_mu_grad_u_for_nodes(const std::vector<p4est
     norm_n = sqrt(norm_n);
     if(norm_n > EPS)
     {
-      grad_jump_u_cdot_normal /= norm_n;
+      if(activate_x)
+        grad_jump_u_cdot_normal /= norm_n;
       for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
         n_comp[dim] /= norm_n;
     }
     else
     {
-      grad_jump_u_cdot_normal = 0.0;
+      if(activate_x)
+        grad_jump_u_cdot_normal = 0.0;
       for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
         n_comp[dim] = 0.0;
     }
@@ -1503,10 +1506,10 @@ void my_p4est_xgfm_cells_t::update_interface_values(Vec new_cell_extension, cons
         int_nb.int_value =
             ((1.0-int_nb.theta)*int_nb.mu_this_side*solution_read_p[quad_idx]
              + int_nb.theta*int_nb.mu_other_side*solution_read_p[int_nb.quad_tmp_idx]
-             + ((dir%2 == 0) ? ((int_nb.phi_q <= 0) ? +1.0 : -1.0) :
-                               ((int_nb.phi_q <= 0) ? -1.0 : +1.0))*int_nb.theta*(1.0 - int_nb.theta)*dxyz_min[dir/2]*jump_flux_comp_across
+            + ((dir%2 == 0) ? ((int_nb.phi_q <= 0) ? +1.0 : -1.0) :
+                              ((int_nb.phi_q <= 0) ? -1.0 : +1.0))*int_nb.theta*(1.0 - int_nb.theta)*dxyz_min[dir/2]*jump_flux_comp_across
             + ((mu_m_is_larger) ?  ((int_nb.phi_q <= 0.0)? -int_nb.mu_other_side*int_nb.theta : -int_nb.mu_this_side*(1.0 - int_nb.theta)) :
-                                        ((int_nb.phi_q <= 0.0)? +int_nb.mu_this_side*(1.0 - int_nb.theta) : +int_nb.mu_other_side*int_nb.theta))*jump_sol_across
+                                   ((int_nb.phi_q <= 0.0)? +int_nb.mu_this_side*(1.0 - int_nb.theta) : +int_nb.mu_other_side*int_nb.theta))*jump_sol_across
             )/((1.0 - int_nb.theta)*int_nb.mu_this_side + int_nb.theta*int_nb.mu_other_side);
       }
     }
@@ -1539,9 +1542,9 @@ void my_p4est_xgfm_cells_t::update_interface_values(Vec new_cell_extension, cons
 
         qxyz_quad[0] = quad->x + P4EST_QUADRANT_LEN(quad->level+1);
         qxyz_quad[1] = quad->y + P4EST_QUADRANT_LEN(quad->level+1);
-  #ifdef P4_TO_P8
+#ifdef P4_TO_P8
         qxyz_quad[2] = quad->z + P4EST_QUADRANT_LEN(quad->level+1);
-  #endif
+#endif
         is_quad_a_fine_node = multilinear_interpolation_weights(nxyz_tree_quad, qxyz_quad, local_fine_indices_for_quad_interp, interp_weights_for_quad_interp);
         double phi_q = phi_read_p[local_fine_indices_for_quad_interp[0]]*interp_weights_for_quad_interp[0];
         for (unsigned char ccc = 1; ccc < (is_quad_a_fine_node ? 0 : P4EST_CHILDREN); ++ccc)
@@ -1575,9 +1578,9 @@ void my_p4est_xgfm_cells_t::update_interface_values(Vec new_cell_extension, cons
               }
               qxyz_tmp[0] = neighbor_cells[0].x + P4EST_QUADRANT_LEN(neighbor_cells[0].level+1);
               qxyz_tmp[1] = neighbor_cells[0].y + P4EST_QUADRANT_LEN(neighbor_cells[0].level+1);
-    #ifdef P4_TO_P8
+#ifdef P4_TO_P8
               qxyz_tmp[2] = neighbor_cells[0].z + P4EST_QUADRANT_LEN(neighbor_cells[0].level+1);
-    #endif
+#endif
 
               is_tmp_a_fine_node = multilinear_interpolation_weights(nxyz_tree_tmp, qxyz_tmp, local_fine_indices_for_tmp_interp, interp_weights_for_tmp_interp);
               double phi_tmp = phi_read_p[local_fine_indices_for_tmp_interp[0]]*interp_weights_for_tmp_interp[0];
@@ -1613,7 +1616,7 @@ void my_p4est_xgfm_cells_t::update_interface_values(Vec new_cell_extension, cons
                      + ((dir%2 == 0) ? ((phi_q <= 0) ? +1.0 : -1.0) :
                                        ((phi_q <= 0) ? -1.0 : +1.0))*int_nb.theta*(1.0 - int_nb.theta)*dxyz_min[dir/2]*jump_flux_comp_across
                     + ((mu_m_is_larger) ?  ((phi_q <= 0.0)? -int_nb.mu_other_side*int_nb.theta : -int_nb.mu_this_side*(1.0 - int_nb.theta)) :
-                                                ((phi_q <= 0.0)? +int_nb.mu_this_side*(1.0 - int_nb.theta) : +int_nb.mu_other_side*int_nb.theta))*jump_sol_across
+                                           ((phi_q <= 0.0)? +int_nb.mu_this_side*(1.0 - int_nb.theta) : +int_nb.mu_other_side*int_nb.theta))*jump_sol_across
                     )/((1.0 - int_nb.theta)*int_nb.mu_this_side + int_nb.theta*int_nb.mu_other_side);
               }
             }
@@ -1742,9 +1745,9 @@ void my_p4est_xgfm_cells_t::cell_TVD_extension_of_interface_values(Vec new_cell_
           p4est_qcoord_t qxyz_quad[P4EST_DIM];
           qxyz_quad[0] = quad->x + P4EST_QUADRANT_LEN(quad->level+1);
           qxyz_quad[1] = quad->y + P4EST_QUADRANT_LEN(quad->level+1);
-    #ifdef P4_TO_P8
+#ifdef P4_TO_P8
           qxyz_quad[2] = quad->z + P4EST_QUADRANT_LEN(quad->level+1);
-    #endif
+#endif
 
           p4est_locidx_t local_fine_indices_for_quad_interp[P4EST_CHILDREN];
           double interp_weights_for_quad_interp[P4EST_CHILDREN];
@@ -1799,9 +1802,9 @@ void my_p4est_xgfm_cells_t::cell_TVD_extension_of_interface_values(Vec new_cell_
               p4est_qcoord_t qxyz_tmp[P4EST_DIM];
               qxyz_tmp[0] = neighbor_cells[0].x + P4EST_QUADRANT_LEN(neighbor_cells[0].level+1);
               qxyz_tmp[1] = neighbor_cells[0].y + P4EST_QUADRANT_LEN(neighbor_cells[0].level+1);
-    #ifdef P4_TO_P8
+#ifdef P4_TO_P8
               qxyz_tmp[2] = neighbor_cells[0].z + P4EST_QUADRANT_LEN(neighbor_cells[0].level+1);
-    #endif
+#endif
 
               p4est_locidx_t local_fine_indices_for_tmp_interp[P4EST_CHILDREN];
               double interp_weights_for_tmp_interp[P4EST_CHILDREN];
@@ -2017,12 +2020,12 @@ void my_p4est_xgfm_cells_t::interpolate_coarse_cell_field_to_fine_nodes(const do
 
     splitting_criteria_t *data_fine   = (splitting_criteria_t*) fine_p4est->user_pointer;
     std::vector<bool> fine_node_visited(fine_nodes->num_owned_indeps, false);
-    double xyz_coarse_quad[P4EST_DIM], dxyz_coarse_quad[P4EST_DIM], xyz_fine_quad[P4EST_DIM], xyz_fine_node[P4EST_DIM];
+    double /*xyz_coarse_quad[P4EST_DIM], dxyz_coarse_quad[P4EST_DIM], xyz_fine_quad[P4EST_DIM], */ xyz_fine_node[P4EST_DIM];
     std::vector<p4est_quadrant_t> ngbd_of_coarse_cells; ngbd_of_coarse_cells.resize(0);
     std::vector<p4est_quadrant_t> remote_matches; remote_matches.resize(0);
-  #ifdef DEBUG
+#ifdef DEBUG
     p4est_locidx_t num_visited = 0;
-  #endif
+#endif
 
     for (size_t nnn = 0; nnn < fine_node_ngbd->layer_nodes.size(); ++nnn) {
       p4est_locidx_t fine_node_idx = fine_node_ngbd->layer_nodes[nnn];
@@ -2069,62 +2072,62 @@ void my_p4est_xgfm_cells_t::interpolate_coarse_cell_field_to_fine_nodes(const do
     }
 
 
-//    // evaluate the values for the local nodes
-//    // we pass through all quadrants of the fine grid and update the corresponding coarse quadrant and its neighborhood
-//    // as we progress to avoid calculating the same neighborhood several times
-//    for (p4est_topidx_t tree_idx = fine_p4est->first_local_tree; tree_idx <= fine_p4est->last_local_tree; ++tree_idx) {
-//      p4est_tree_t *fine_tree             = (p4est_tree_t*) sc_array_index(fine_p4est->trees, tree_idx);
-//      p4est_tree_t *tree                  = (p4est_tree_t*) sc_array_index(p4est->trees, tree_idx);
-//      const p4est_quadrant_t *coarse_quad = (const p4est_quadrant_t*) sc_array_index(&tree->quadrants, 0);
-//      p4est_locidx_t coarse_quad_idx      = tree->quadrants_offset;
-//      quad_xyz_fr_q(coarse_quad_idx, tree_idx, p4est, ghost, xyz_coarse_quad);
-//      for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
-//        dxyz_coarse_quad[dim] = tree_dimensions[dim]*((double) P4EST_QUADRANT_LEN(coarse_quad->level))/((double) P4EST_ROOT_LEN);
-//      ngbd_of_coarse_cells.resize(0);
-//      for(int ii=-1; ii<2; ++ii)
-//        for(int jj=-1; jj<2; ++jj)
-//#ifdef P4_TO_P8
-//          for(int kk=-1; kk<2; ++kk)
-//            cell_ngbd->find_neighbor_cells_of_cell(ngbd_of_coarse_cells, coarse_quad_idx, tree_idx, ii, jj, kk);
-//#else
-//          cell_ngbd->find_neighbor_cells_of_cell(ngbd_of_coarse_cells, coarse_quad_idx, tree_idx, ii, jj);
-//#endif
+    //    // evaluate the values for the local nodes
+    //    // we pass through all quadrants of the fine grid and update the corresponding coarse quadrant and its neighborhood
+    //    // as we progress to avoid calculating the same neighborhood several times
+    //    for (p4est_topidx_t tree_idx = fine_p4est->first_local_tree; tree_idx <= fine_p4est->last_local_tree; ++tree_idx) {
+    //      p4est_tree_t *fine_tree             = (p4est_tree_t*) sc_array_index(fine_p4est->trees, tree_idx);
+    //      p4est_tree_t *tree                  = (p4est_tree_t*) sc_array_index(p4est->trees, tree_idx);
+    //      const p4est_quadrant_t *coarse_quad = (const p4est_quadrant_t*) sc_array_index(&tree->quadrants, 0);
+    //      p4est_locidx_t coarse_quad_idx      = tree->quadrants_offset;
+    //      quad_xyz_fr_q(coarse_quad_idx, tree_idx, p4est, ghost, xyz_coarse_quad);
+    //      for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
+    //        dxyz_coarse_quad[dim] = tree_dimensions[dim]*((double) P4EST_QUADRANT_LEN(coarse_quad->level))/((double) P4EST_ROOT_LEN);
+    //      ngbd_of_coarse_cells.resize(0);
+    //      for(int ii=-1; ii<2; ++ii)
+    //        for(int jj=-1; jj<2; ++jj)
+    //#ifdef P4_TO_P8
+    //          for(int kk=-1; kk<2; ++kk)
+    //            cell_ngbd->find_neighbor_cells_of_cell(ngbd_of_coarse_cells, coarse_quad_idx, tree_idx, ii, jj, kk);
+    //#else
+    //          cell_ngbd->find_neighbor_cells_of_cell(ngbd_of_coarse_cells, coarse_quad_idx, tree_idx, ii, jj);
+    //#endif
 
-//      for (size_t q = 0; q < fine_tree->quadrants.elem_count; ++q) {
-//        const p4est_quadrant_t *fine_quad = (const p4est_quadrant_t*) sc_array_index(&fine_tree->quadrants, q);
-//        p4est_locidx_t fine_quad_idx      = q + fine_tree->quadrants_offset;
-//        quad_xyz_fr_q(fine_quad_idx, tree_idx, fine_p4est, fine_ghost, xyz_fine_quad);
-//        if(!is_quad_in_quad(xyz_coarse_quad, dxyz_coarse_quad, coarse_quad->level, xyz_fine_quad, fine_quad->level))
-//        {
-//          coarse_quad = (const p4est_quadrant_t*) sc_array_index(&tree->quadrants, ++coarse_quad_idx - tree->quadrants_offset);
-//          quad_xyz_fr_q(coarse_quad_idx, tree_idx, p4est, ghost, xyz_coarse_quad);
-//          for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
-//            dxyz_coarse_quad[dim] = tree_dimensions[dim]*((double) P4EST_QUADRANT_LEN(coarse_quad->level))/((double) P4EST_ROOT_LEN);
-//          ngbd_of_coarse_cells.resize(0);
-//          for(int ii=-1; ii<2; ++ii)
-//            for(int jj=-1; jj<2; ++jj)
-//#ifdef P4_TO_P8
-//              for(int kk=-1; kk<2; ++kk)
-//                cell_ngbd->find_neighbor_cells_of_cell(ngbd_of_coarse_cells, coarse_quad_idx, tree_idx, ii, jj, kk);
-//#else
-//              cell_ngbd->find_neighbor_cells_of_cell(ngbd_of_coarse_cells, coarse_quad_idx, tree_idx, ii, jj);
-//#endif
-//          P4EST_ASSERT(is_quad_in_quad(xyz_coarse_quad, dxyz_coarse_quad, coarse_quad->level, xyz_fine_quad, fine_quad->level));
-//        }
-//        for (unsigned char ccc = 0; ccc < P4EST_CHILDREN; ++ccc) {
-//          p4est_locidx_t fine_node_idx = fine_nodes->local_nodes[P4EST_CHILDREN*fine_quad_idx + ccc];
-//          p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&fine_nodes->indep_nodes, fine_node_idx);
-//          if(fine_node_idx >= fine_nodes->num_owned_indeps || fine_node_visited[fine_node_idx] || ni->pad8 != 0)
-//            continue;
-//          fine_node_visited[fine_node_idx] = true;
-//#ifdef DEBUG
-//          num_visited++;
-//#endif
-//          interpolate_cell_field_at_fine_node(fine_node_idx, ni, cell_field_read_p, fine_node_field_p, (fine_quad->level == data_fine->max_lvl),
-//                                              coarse_quad, coarse_quad_idx, tree_idx, ngbd_of_coarse_cells);
-//        }
-//      }
-//    }
+    //      for (size_t q = 0; q < fine_tree->quadrants.elem_count; ++q) {
+    //        const p4est_quadrant_t *fine_quad = (const p4est_quadrant_t*) sc_array_index(&fine_tree->quadrants, q);
+    //        p4est_locidx_t fine_quad_idx      = q + fine_tree->quadrants_offset;
+    //        quad_xyz_fr_q(fine_quad_idx, tree_idx, fine_p4est, fine_ghost, xyz_fine_quad);
+    //        if(!is_quad_in_quad(xyz_coarse_quad, dxyz_coarse_quad, coarse_quad->level, xyz_fine_quad, fine_quad->level))
+    //        {
+    //          coarse_quad = (const p4est_quadrant_t*) sc_array_index(&tree->quadrants, ++coarse_quad_idx - tree->quadrants_offset);
+    //          quad_xyz_fr_q(coarse_quad_idx, tree_idx, p4est, ghost, xyz_coarse_quad);
+    //          for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
+    //            dxyz_coarse_quad[dim] = tree_dimensions[dim]*((double) P4EST_QUADRANT_LEN(coarse_quad->level))/((double) P4EST_ROOT_LEN);
+    //          ngbd_of_coarse_cells.resize(0);
+    //          for(int ii=-1; ii<2; ++ii)
+    //            for(int jj=-1; jj<2; ++jj)
+    //#ifdef P4_TO_P8
+    //              for(int kk=-1; kk<2; ++kk)
+    //                cell_ngbd->find_neighbor_cells_of_cell(ngbd_of_coarse_cells, coarse_quad_idx, tree_idx, ii, jj, kk);
+    //#else
+    //              cell_ngbd->find_neighbor_cells_of_cell(ngbd_of_coarse_cells, coarse_quad_idx, tree_idx, ii, jj);
+    //#endif
+    //          P4EST_ASSERT(is_quad_in_quad(xyz_coarse_quad, dxyz_coarse_quad, coarse_quad->level, xyz_fine_quad, fine_quad->level));
+    //        }
+    //        for (unsigned char ccc = 0; ccc < P4EST_CHILDREN; ++ccc) {
+    //          p4est_locidx_t fine_node_idx = fine_nodes->local_nodes[P4EST_CHILDREN*fine_quad_idx + ccc];
+    //          p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&fine_nodes->indep_nodes, fine_node_idx);
+    //          if(fine_node_idx >= fine_nodes->num_owned_indeps || fine_node_visited[fine_node_idx] || ni->pad8 != 0)
+    //            continue;
+    //          fine_node_visited[fine_node_idx] = true;
+    //#ifdef DEBUG
+    //          num_visited++;
+    //#endif
+    //          interpolate_cell_field_at_fine_node(fine_node_idx, ni, cell_field_read_p, fine_node_field_p, (fine_quad->level == data_fine->max_lvl),
+    //                                              coarse_quad, coarse_quad_idx, tree_idx, ngbd_of_coarse_cells);
+    //        }
+    //      }
+    //    }
     ierr = VecGhostUpdateEnd(fine_node_field, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     P4EST_ASSERT(num_visited == fine_nodes->num_owned_indeps);
     local_interpolator_is_set = true;
@@ -2811,9 +2814,9 @@ void my_p4est_xgfm_cells_t::get_flux_components_and_subtract_them_from_velocitie
             double s_tmp = pow((double)P4EST_QUADRANT_LEN(ngbd[0].level)/(double)P4EST_ROOT_LEN, (double)P4EST_DIM-1);
             ngbd.resize(0);
             cell_ngbd->find_neighbor_cells_of_cell(ngbd, quad_tmp_idx, tree_tmp_idx, dir%2==0 ? dir+1 : dir-1);
-  #ifdef DEBUG
+#ifdef DEBUG
             double check_sum = 0.0;
-  #endif
+#endif
             double weighted_distance = 0.0;
             double local_flux = 0.0;
             for(unsigned int i=0; i<ngbd.size(); ++i)
