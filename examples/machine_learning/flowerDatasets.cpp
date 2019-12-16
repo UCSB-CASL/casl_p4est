@@ -301,10 +301,13 @@ int main ( int argc, char* argv[] )
 		mpi_environment_t mpi{};
 		mpi.init( argc, argv );
 
-		int numberOfIterations = 5;
-		Flower flower( 0.05, 0.15, 3 );
+		int numberOfIterations = 5;			// We used 5, 10, and 20 to test neural dictionary.
+		Flower flower( 0.05, 0.15, 3 );		// Smooth a = 0.05. Sharp a = 0.075.
 
-		generateReinitializedFlowerDataset( flower, 107, numberOfIterations, mpi );
+		// 256 | Smooth = 107, Sharp = 120.
+		// 266 | Smooth = 111, Sharp = 124.
+		// 276 | Smooth = 114, Sharp = 129.
+		generateReinitializedFlowerDataset( flower, 114, numberOfIterations, mpi );
 	}
 	catch( const std::exception &e )
 	{
