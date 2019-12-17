@@ -82,7 +82,7 @@ DEFINE_PARAMETER(pl,bool,save_navier_stokes,false,"Save navier stokes?");
 DEFINE_PARAMETER(pl,bool,save_coupled_fields,true,"Save the coupled problem?");
 DEFINE_PARAMETER(pl,int,save_every_iter,5,"Saves vtk every n number of iterations (default is 1)");
 DEFINE_PARAMETER(pl,bool,print_checkpoints,false,"Print checkpoints throughout script for debugging? ");
-DEFINE_PARAMETER(pl,bool,mem_checkpoints,false,"checks various memory checkpoints for mem usage");
+DEFINE_PARAMETER(pl,bool,mem_checkpoints,true,"checks various memory checkpoints for mem usage");
 DEFINE_PARAMETER(pl,double,mem_safety_limit,50.e9,"Memory upper limit before closing the program -- in bytes");
 
 // ---------------------------------------
@@ -282,7 +282,7 @@ void simulation_time_info(){
       tn = 1.0;
       break;
     case ICE_AROUND_CYLINDER: // ice solidifying around isothermally cooled cylinder
-      tfinal = 20.*60.0;
+      tfinal = 10.*60.0;
       dt_max_allowed = 1.0;
       tn = 0.0;
       dt = 1.e-2;
@@ -397,7 +397,7 @@ void set_NS_info(){
   switch(example_){
     case FRANK_SPHERE:throw std::invalid_argument("NS isnt setup for this example");
     case ICE_AROUND_CYLINDER:
-      Re_u = 20.;
+      Re_u = 400.;
       Re_v = 0.;
       mu_l = 1.793e-3;  // Viscosity of water , [Pa s]
       if(Re_overwrite>1.0){Re_u = Re_overwrite;}
@@ -2195,7 +2195,11 @@ void check_ice_cylinder_v_and_radius(vec_and_ptr_t phi,p4est_t* p4est,p4est_node
         double r = sqrt(SQR(x) + SQR(y));
         double Theta = atan2(y,x);
 
+
         double dr = r - r_cyl;
+
+//        printf("(x,y) = (%0.3f, %0.3f), (xnew,ynew) = (%0.3f, %0.3f), r = %.2f, dr = %.2f, theta = %.2f \n",xyz[0],xyz[1],x,y,r,dr,Theta*180./PI);
+
 
         delta_r.push_back(dr);
         theta.push_back(Theta);
@@ -3089,10 +3093,14 @@ int main(int argc, char** argv) {
     splitting_criteria_cf_and_uniform_band_t sp(lmin+grid_res_iter,lmax+grid_res_iter,&level_set,uniform_band);
     p4est->user_pointer = &sp;
 
+//    splitting_criteria_cf_and_uniform_band_t sp(lmin+grid_res_iter,lmax+grid_res_iter,&level_set,uniform_band);
+//    p4est->user_pointer = &sp;
 
                                     // save the pointer to the forst splitting criteria
     my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL); // refine the grid according to the splitting criteria
 
+                                    // save the pointer to the forst splitting criteria
+    my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL); // refine the grid according to the splitting criteria
 
     // partition the forest
     my_p4est_partition(p4est, P4EST_FALSE, NULL);                  // partition the forest, do not allow for coarsening --> Daniil does not allow (use P4EST_FALSE)
@@ -3297,6 +3305,7 @@ int main(int argc, char** argv) {
                                                         "v_int_error " "number_of_nodes" "min_grid_size \n");CHKERRXX(ierr);
       ierr = PetscFClose(mpi.comm(),fich_stefan_errors); CHKERRXX(ierr);
       }
+
 
     // (2) For checking error on LLNL NS benchmark case:
     FILE *fich_NS_errors;
@@ -3907,6 +3916,9 @@ int main(int argc, char** argv) {
 
                   } // End of if grid is changing
 
+            vorticity.get_array();
+            vorticity_refine.get_array();
+            phi.get_array();
 
                 if(no_grid_changes>10) {PetscPrintf(mpi.comm(),"NS grid did not converge!\n"); break;}
               } // end of while grid is changing
@@ -4441,7 +4453,6 @@ int main(int argc, char** argv) {
             bc_velocity[0].setWallTypes(wall_bc_type_velocity_u); bc_velocity[1].setWallTypes(wall_bc_type_velocity_v);
             bc_velocity[0].setWallValues(wall_bc_value_velocity_u); bc_velocity[1].setWallValues(wall_bc_value_velocity_v);
 
-            PetscPrintf(mpi.comm(),"BC velocity type on y wall is %d ",bc_velocity[1].wallType(0.0,1.e-13));
             interface_bc_pressure();
             bc_pressure.setInterfaceType(interface_bc_type_pressure);
             bc_pressure.setInterfaceValue(interface_bc_value_pressure);
@@ -4657,8 +4668,6 @@ int main(int argc, char** argv) {
                 PetscMemoryGetCurrentUsage(&mem10e);
               }
 
-
-
             if(example_ == NS_GIBOU_EXAMPLE){
                 PetscPrintf(mpi.comm(),"lmin = %d, lmax = %d \n",lmin + grid_res_iter,lmax + grid_res_iter);
                 check_NS_validation_error(phi,v_n,press_nodes,p4est_np1,nodes_np1,ghost_np1,ngbd,dxyz_close_to_interface,name_NS_errors,fich_NS_errors,tstep);
@@ -4712,8 +4721,10 @@ int main(int argc, char** argv) {
             // Check the overall:
             PetscMemoryView(PETSC_VIEWER_STDOUT_WORLD,"\nMemory information: \n");
           }
+        MPI_Barrier(mpi.comm());
 
         PetscMemoryGetCurrentUsage(&mem_safety_check);
+        PetscPrintf(mpi.comm(),"Current memory usage is : %0.5e GB \n Which is %0.2f % of safety limit \n",mem_safety_check*1.e-9,(mem_safety_check)/(mem_safety_limit)*100.0);
         if(mem_safety_check>mem_safety_limit){
             PetscPrintf(mpi.comm(),"We are encroaching upon the memory upper bound on this machine, calling MPI Abort...\n");
             MPI_Abort(mpi.comm(),1);
@@ -4733,8 +4744,14 @@ int main(int argc, char** argv) {
     p4est_ghost_destroy(ghost);
     p4est_destroy      (p4est);
     my_p4est_brick_destroy(conn, &brick);
+    delete hierarchy;
+    delete ngbd;
   }// end of loop through number of splits
 
+  MPI_Barrier(mpi.comm());
+  PetscLogDouble memfinal;
+  PetscMemoryGetCurrentUsage(&memfinal);
+  PetscPrintf(mpi.comm(),"Final memory usage is %.5e GB, which is %0.2f % of max allowed \n",memfinal*1.e-9,(memfinal)/(mem_safety_limit)*100.0);
   w.stop(); w.read_duration();
   return 0;
 }
