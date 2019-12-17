@@ -3785,3 +3785,29 @@ void my_p4est_navier_stokes_t::get_line_averaged_vnp1_profiles(const unsigned sh
   }
 }
 
+void my_p4est_navier_stokes_t::coupled_problem_partial_destructor()
+{
+  PetscErrorCode ierr;
+//  if(hodge!=PETSC_NULL)     { ierr = VecDestroy(hodge);     CHKERRXX(ierr); }
+
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    if(dxyz_hodge[dir]!=NULL) { ierr = VecDestroy(dxyz_hodge[dir]);                         CHKERRXX(ierr); }
+    if(vstar[dir]!=NULL)      { ierr = VecDestroy(vstar[dir]);                              CHKERRXX(ierr); }
+    if(face_is_well_defined[dir]!=NULL)
+                              { ierr = VecDestroy(face_is_well_defined[dir]);               CHKERRXX(ierr); }
+    for (short dd = 0; dd < P4EST_DIM; ++dd) {
+      if(second_derivatives_vn_nodes[dd][dir]!=NULL)
+                              { ierr = VecDestroy(second_derivatives_vn_nodes[dd][dir]);    CHKERRXX(ierr); }
+      if(second_derivatives_vnm1_nodes[dd][dir]!=NULL)
+                              { ierr = VecDestroy(second_derivatives_vnm1_nodes[dd][dir]);  CHKERRXX(ierr); }
+    }
+  }
+
+  if(interp_phi!=NULL) delete interp_phi;
+
+//  delete faces_n;
+//  delete ngbd_c;
+
+}
+

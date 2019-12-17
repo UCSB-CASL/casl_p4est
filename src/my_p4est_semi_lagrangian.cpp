@@ -734,7 +734,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *
 
 // ELYCE TRYING SOMETHING:---------------------------
 
-void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *phi_xx, Vec phi_add_refine, const int num_fields, bool use_block, Vec *fields, Vec fields_block, std::vector<double> criteria, std::vector<compare_option_t> compare_opn, std::vector<compare_diagonal_option_t> diag_opn,bool expand_ghost_layer)
+void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *phi_xx, Vec phi_add_refine, const int num_fields, bool use_block, bool enforce_uniform_band,double uniform_band, Vec *fields, Vec fields_block, std::vector<double> criteria, std::vector<compare_option_t> compare_opn, std::vector<compare_diagonal_option_t> diag_opn,bool expand_ghost_layer)
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_semi_lagrangian_update_p4est_1st_order, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -886,7 +886,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *
 
     // Call the refine and coarsen according to phi_effective and the provided fields:
     splitting_criteria_tag_t sp(sp_old->min_lvl, sp_old->max_lvl, sp_old->lip);
-    is_grid_changing = sp.refine_and_coarsen(p4est,nodes,phi_np1_eff,num_fields,use_block,fields_np1,fields_block_np1,criteria,compare_opn,diag_opn);
+    is_grid_changing = sp.refine_and_coarsen(p4est,nodes,phi_np1_eff,num_fields,use_block,enforce_uniform_band,uniform_band,fields_np1,fields_block_np1,criteria,compare_opn,diag_opn);
 
     // Destroy the phi_effective now that no longer in use:
     ierr = VecDestroy(phi_np1_eff); CHKERRXX(ierr);

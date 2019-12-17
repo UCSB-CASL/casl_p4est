@@ -654,6 +654,8 @@ public:
 
   inline double alpha() const { return ((sl_order == 1)? (1.0): ((2.0*dt_n+dt_nm1)/(dt_n+dt_nm1)));}
 
+  void coupled_problem_partial_destructor();
+
 };
 
 
