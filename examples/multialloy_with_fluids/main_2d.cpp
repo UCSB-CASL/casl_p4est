@@ -3089,10 +3089,14 @@ int main(int argc, char** argv) {
     splitting_criteria_cf_and_uniform_band_t sp(lmin+grid_res_iter,lmax+grid_res_iter,&level_set,uniform_band);
     p4est->user_pointer = &sp;
 
+    splitting_criteria_cf_and_uniform_band_t sp(lmin+grid_res_iter,lmax+grid_res_iter,&level_set,uniform_band);
+    p4est->user_pointer = &sp;
 
                                     // save the pointer to the forst splitting criteria
     my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL); // refine the grid according to the splitting criteria
 
+                                    // save the pointer to the forst splitting criteria
+    my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL); // refine the grid according to the splitting criteria
 
     // partition the forest
     my_p4est_partition(p4est, P4EST_FALSE, NULL);                  // partition the forest, do not allow for coarsening --> Daniil does not allow (use P4EST_FALSE)
@@ -3297,6 +3301,8 @@ int main(int argc, char** argv) {
                                                         "v_int_error " "number_of_nodes" "min_grid_size \n");CHKERRXX(ierr);
       ierr = PetscFClose(mpi.comm(),fich_stefan_errors); CHKERRXX(ierr);
       }
+    vec_and_ptr_t smoke_old;
+    vec_and_ptr_dim_t smoke_dd; // for Semi Lagrangian backtrace
 
     // (2) For checking error on LLNL NS benchmark case:
     FILE *fich_NS_errors;
@@ -3907,6 +3913,9 @@ int main(int argc, char** argv) {
 
                   } // End of if grid is changing
 
+            vorticity.get_array();
+            vorticity_refine.get_array();
+            phi.get_array();
 
                 if(no_grid_changes>10) {PetscPrintf(mpi.comm(),"NS grid did not converge!\n"); break;}
               } // end of while grid is changing
@@ -4657,6 +4666,7 @@ int main(int argc, char** argv) {
                 PetscMemoryGetCurrentUsage(&mem10e);
               }
 
+          } // End of "if solve navier stokes"
 
 
             if(example_ == NS_GIBOU_EXAMPLE){
