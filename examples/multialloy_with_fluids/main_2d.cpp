@@ -3307,6 +3307,7 @@ int main(int argc, char** argv) {
       }
 
 
+
     // (2) For checking error on LLNL NS benchmark case:
     FILE *fich_NS_errors;
     char name_NS_errors[1000];
