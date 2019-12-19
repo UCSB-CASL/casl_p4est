@@ -52,12 +52,13 @@ const static std::string main_description =
 param_list_t pl;
 
 // grid parameters
-param_t<int>    lmin                (pl, 5,   "lmin",                 "Min level of refinement (can be negative -> will stay same for all refinements) (default: 4)");
-param_t<int>    lmax                (pl, 5,   "lmax",                 "Max level of refinement (can be negative -> will stay same for all refinements) (default: 4)");
-param_t<double> lip                 (pl, 1.2, "lip",                  "Lipschitz constant (characterize transition width between coarse and fine regions) (default: 1.2)");
-param_t<double> uniform_band        (pl, 5,   "uniform_band",         "Width of the uniform band around interface (in smallest quadrant lengths) (default: 5)");
-param_t<int>    num_splits          (pl, 5,   "num_splits",           "Number of successive refinements (default: 5)");
-param_t<int>    num_splits_per_split(pl, 1,   "num_splits_per_split", "Number of additional refinements (default: 1)");
+param_t<int>    lmin                 (pl, -1,   "lmin",                 "Min level of refinement (can be negative -> will stay same for all refinements) (default: 4)");
+param_t<int>    lmax                 (pl, 5,   "lmax",                 "Max level of refinement (can be negative -> will stay same for all refinements) (default: 4)");
+param_t<double> lip                  (pl, 1.2, "lip",                  "Lipschitz constant (characterize transition width between coarse and fine regions) (default: 1.2)");
+param_t<double> uniform_band         (pl, 5,   "uniform_band",         "Width of the uniform band around interface (in smallest quadrant lengths) (default: 5)");
+param_t<int>    num_splits           (pl, 5,   "num_splits",           "Number of successive refinements (default: 5)");
+param_t<int>    num_splits_per_split (pl, 1,   "num_splits_per_split", "Number of additional refinements (default: 1)");
+param_t<bool>   aggressive_coarsening(pl, 1,   "aggressive_corsening", "Enfornce lip = 0 (i.e. no smooth transition from uniform band to coarse grid");
 
 
 // problem set-up (points of iterpolation and function to interpolate)
@@ -233,7 +234,14 @@ int main(int argc, char** argv)
       p4est->user_pointer = &sp;
       for (int i = 0; i < sp.max_lvl; ++i)
       {
-        my_p4est_refine(p4est, P4EST_FALSE, refine_levelset_cf_and_uniform_band, NULL);
+        my_p4est_refine(p4est, P4EST_FALSE, refine_levelset_cf, NULL);
+        my_p4est_partition(p4est, P4EST_TRUE, NULL);
+      }
+
+      if (aggressive_coarsening())
+      {
+        sp.lip = 0;
+        my_p4est_coarsen(p4est, P4EST_TRUE, coarsen_levelset_cf, NULL);
         my_p4est_partition(p4est, P4EST_TRUE, NULL);
       }
 
@@ -536,6 +544,28 @@ int main(int argc, char** argv)
             << "_nprocs_" << p4est->mpisize
             << "_split_" << std::setfill('0') << std::setw(3)<< iteration_gl;
 
+        /* save the size of the leaves */
+        Vec leaf_level;
+        ierr = VecCreateGhostCells(p4est, ghost, &leaf_level); CHKERRXX(ierr);
+        double *l_p;
+        ierr = VecGetArray(leaf_level, &l_p); CHKERRXX(ierr);
+
+        for(p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx)
+        {
+          p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
+          for( size_t q=0; q<tree->quadrants.elem_count; ++q)
+          {
+            const p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, q);
+            l_p[tree->quadrants_offset+q] = quad->level;
+          }
+        }
+
+        for(size_t q=0; q<ghost->ghosts.elem_count; ++q)
+        {
+          const p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts, q);
+          l_p[p4est->local_num_quadrants+q] = quad->level;
+        }
+
         ierr = VecGetArray(phi,             &phi_ptr);
         ierr = VecGetArray(phi_reinit,      &phi_reinit_ptr);
         ierr = VecGetArray(f_exact,         &f_exact_ptr);
@@ -549,7 +579,7 @@ int main(int argc, char** argv)
 
         my_p4est_vtk_write_all(p4est, nodes, ghost,
                                P4EST_TRUE, P4EST_TRUE,
-                               10, 0, oss.str().c_str(),
+                               10, 1, oss.str().c_str(),
                                VTK_POINT_DATA, "phi",             phi_ptr,
                                VTK_POINT_DATA, "phi_reinit",      phi_reinit_ptr,
                                VTK_POINT_DATA, "f_exact",         f_exact_ptr,
@@ -559,7 +589,8 @@ int main(int argc, char** argv)
                                VTK_POINT_DATA, "f_flat",          f_flat_ptr,
                                VTK_POINT_DATA, "error_const",     error_const_ptr,
                                VTK_POINT_DATA, "error_linear",    error_linear_ptr,
-                               VTK_POINT_DATA, "error_quadratic", error_quadratic_ptr);
+                               VTK_POINT_DATA, "error_quadratic", error_quadratic_ptr,
+                               VTK_CELL_DATA, "level", l_p);
 
         ierr = VecRestoreArray(phi,             &phi_ptr);
         ierr = VecRestoreArray(phi_reinit,      &phi_reinit_ptr);
@@ -571,6 +602,9 @@ int main(int argc, char** argv)
         ierr = VecRestoreArray(error_const,     &error_const_ptr);
         ierr = VecRestoreArray(error_linear,    &error_linear_ptr);
         ierr = VecRestoreArray(error_quadratic, &error_quadratic_ptr);
+
+        ierr = VecRestoreArray(leaf_level, &l_p); CHKERRXX(ierr);
+        ierr = VecDestroy(leaf_level); CHKERRXX(ierr);
 
         ierr = PetscPrintf(mpi.comm(), "VTK saved in %s", oss.str().c_str());
       }
