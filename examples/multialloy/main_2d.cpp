@@ -84,7 +84,8 @@ DEFINE_PARAMETER(pl, int, lmin, 5, "Min level of the tree");
 DEFINE_PARAMETER(pl, int, lmax, 10, "Max level of the tree");
 #endif
 
-DEFINE_PARAMETER(pl, double, lip, 2, "");
+DEFINE_PARAMETER(pl, double, lip, 1.0, "");
+DEFINE_PARAMETER(pl, double, band, 2.0, "");
 
 //-------------------------------------
 // solver parameters
@@ -195,7 +196,7 @@ DEFINE_PARAMETER(pl, int, alloy, 2, "0: Ni -  0.4at%Cu bi-alloy, "
                                     "6: a made-up tetra-alloy, "
                                     "7: a made-up penta-alloy");
 
-DEFINE_PARAMETER(pl, int, geometry, 6, "0 - directional solidification,"
+DEFINE_PARAMETER(pl, int, geometry, 2, "0 - directional solidification,"
                                        "1 - growth of a spherical seed in a spherical container,"
                                        "2 - growth of a spherical film in a spherical container,"
                                        "3 - radial directional solidification in,"
@@ -203,7 +204,7 @@ DEFINE_PARAMETER(pl, int, geometry, 6, "0 - directional solidification,"
                                        "5 - three spherical seeds,"
                                        "6 - planar front and three spherical seeds");
 
-DEFINE_PARAMETER(pl, int, seed_type, 1, "0 - aligned,"
+DEFINE_PARAMETER(pl, int, seed_type, 0, "0 - aligned,"
                                         "1 - misaligned");
 
 double* liquidus_slope_all[] = { &liquidus_slope_0,
@@ -286,7 +287,7 @@ void set_alloy_parameters()
       part_coeff_0     = 0.848;    // partition coefficient
       part_coeff_1     = 0.848;    // partition coefficient
 
-      eps_c = 3e-5/melting_temp;
+      eps_c = 0*3e-5/melting_temp;
       eps_v = 0*2.27e-2;
       eps_a = 0.05;
       symmetry = 4;
@@ -1104,7 +1105,7 @@ int main (int argc, char* argv[])
   /* initialize the solver */
   my_p4est_multialloy_t mas(num_comps, num_time_layers);
 
-  mas.initialize(mpi.comm(), xyz_min, xyz_max, n_xyz, periodic, phi_eff_cf, lmin, lmax, lip);
+  mas.initialize(mpi.comm(), xyz_min, xyz_max, n_xyz, periodic, phi_eff_cf, lmin, lmax, lip, band);
 
   p4est_t                   *p4est = mas.get_p4est();
   p4est_nodes_t             *nodes = mas.get_nodes();

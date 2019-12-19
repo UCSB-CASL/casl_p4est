@@ -885,6 +885,8 @@ void my_p4est_poisson_nodes_multialloy_t::solve_psi_c0()
       YCODE( normal[1] = pt->interpolate(node_neighbors_, front_normal_.ptr[1]) );
       ZCODE( normal[2] = pt->interpolate(node_neighbors_, front_normal_.ptr[2]) );
 
+      int seed = seed_map_.ptr[n];
+
       eps_v = eps_v_[seed_map_.ptr[n]]->value(normal);
       eps_c = eps_c_[seed_map_.ptr[n]]->value(normal);
 
@@ -1428,6 +1430,10 @@ void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_values(int start, int nu
 
       interp_local.set_input(front_curvature_.vec, linear);
       kappa_pr = interp_local.value(xyz_pr);
+
+      int seed  = seed_map_.ptr[n];
+
+      if (seed < 0) throw;
 
       eps_c_pr = 0.*eps_c_[seed_map_.ptr[n]]->value(normal);
 

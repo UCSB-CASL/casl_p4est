@@ -248,14 +248,14 @@ void my_p4est_multialloy_t::set_container(Vec phi)
   interp.interpolate(history_front_curvature_.vec);
 }
 
-void my_p4est_multialloy_t::initialize(MPI_Comm mpi_comm, double xyz_min[], double xyz_max[], int nxyz[], int periodicity[], CF_2 &level_set, int lmin, int lmax, double lip)
+void my_p4est_multialloy_t::initialize(MPI_Comm mpi_comm, double xyz_min[], double xyz_max[], int nxyz[], int periodicity[], CF_2 &level_set, int lmin, int lmax, double lip, double band)
 {
 
   /* create main p4est grid */
   connectivity_ = my_p4est_brick_new(nxyz, xyz_min, xyz_max, &brick_, periodicity);
   p4est_        = my_p4est_new(mpi_comm, connectivity_, 0, NULL, NULL);
 
-  sp_crit_ = new splitting_criteria_cf_t(lmin, lmax, &level_set, lip);
+  sp_crit_ = new splitting_criteria_cf_t(lmin, lmax, &level_set, lip, band);
 
   p4est_->user_pointer = (void*)(sp_crit_);
   my_p4est_refine(p4est_, P4EST_TRUE, refine_levelset_cf, NULL);
@@ -1512,7 +1512,7 @@ void my_p4est_multialloy_t::regularize_front()
     while (is_grid_changing)
     {
       front_phi_cur.get_array();
-      splitting_criteria_tag_t sp(sp_old->min_lvl, sp_old->max_lvl-front_smoothing_, sp_old->lip);
+      splitting_criteria_tag_t sp(sp_old->min_lvl, sp_old->max_lvl-front_smoothing_, sp_old->lip, sp_old->band);
       is_grid_changing = sp.refine_and_coarsen(p4est_cur, nodes_cur, front_phi_cur.ptr);
       front_phi_cur.restore_array();
 
