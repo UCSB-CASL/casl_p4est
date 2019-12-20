@@ -191,10 +191,10 @@ void set_geometry(){
     case ICE_AROUND_CYLINDER:{ // Ice layer growing around a constant temperature cooled cylinder
 
       // Physical domain -- .05 meters high (5 cm) by .1 meters long (10 cm)
-      xmin = 0.0; xmax = 2.0;//1.5;
+      xmin = 0.0; xmax = 2.0;//2.0;//1.5;
       ymin = 0.0; ymax = 1.0;
 
-      nx = 4;
+      nx = 4;//4;
       ny = 2;
 
       px = 0;
@@ -392,12 +392,12 @@ void set_NS_info(){
   pressure_prescribed_flux = 0.0; // For the Neumann condition on the two x walls and lower y wall
   pressure_prescribed_value = 0.0; // For the Dirichlet condition on the back y wall
 
-  uniform_band = 4.0;
+  uniform_band = 10.0;
   dt_NS = 1.e-3; // initial dt for NS
   switch(example_){
     case FRANK_SPHERE:throw std::invalid_argument("NS isnt setup for this example");
     case ICE_AROUND_CYLINDER:
-      Re_u = 400.;
+      Re_u = 1000.;
       Re_v = 0.;
       mu_l = 1.793e-3;  // Viscosity of water , [Pa s]
       if(Re_overwrite>1.0){Re_u = Re_overwrite;}
@@ -460,7 +460,7 @@ void set_NS_info(){
 // ---------------------------------------
 // Other parameters:
 // ---------------------------------------
-double v_int_max_allowed = 250.0;
+double v_int_max_allowed = 1.0;
 
 bool move_interface_with_v_external = false;
 
@@ -3348,8 +3348,7 @@ int main(int argc, char** argv) {
             out_dir_check_mem,solve_stefan,solve_navier_stokes,lmin+grid_res_iter,lmax+grid_res_iter,method_,advection_sl_order);
     ierr = PetscFOpen(mpi.comm(),name_mem,"w",&fich_mem); CHKERRXX(ierr);
     ierr = PetscFPrintf(mpi.comm(),fich_mem,"time " "timestep " "iteration "
-                                            "mem1 mem2 mem3 mem4 mem5 mem6 mem7 "
-                                            "mem8 mem9 mem10 mem11 mem12 mem13 \n");CHKERRXX(ierr);
+                                            "mem values \n");CHKERRXX(ierr);
     ierr = PetscFClose(mpi.comm(),fich_mem); CHKERRXX(ierr);
 
     // (5) For checking ice cylinder problem:
@@ -3395,10 +3394,11 @@ int main(int argc, char** argv) {
 
         // Initialize variables for checking the current memory usage
         PetscLogDouble mem1,mem2,mem3,mem4,mem5,mem6,mem7,mem8,mem9,mem10,mem11,mem12,mem13;
-        PetscLogDouble mem9a,mem9b,mem9c,mem9d,mem9e,mem9f,mem9g;
-        PetscLogDouble mem10a,mem10b,mem10c,mem10d,mem10d1,mem10e;
-        PetscLogDouble mem10c1,mem10c2,mem10c3,mem10c4;
-        PetscLogDouble mem5a,mem5b;
+        PetscLogDouble mem_grid1,mem_grid2;
+
+        PetscLogDouble memP1,memP2,memP3,memP4,memP5,memP6,memP7;//mem9a,mem9b,mem9c,mem9d,mem9e,mem9f,mem9g;
+        PetscLogDouble memNS1,memNS2,memNS3,memNS4,memNS5,memNS6;//mem10a,mem10b,mem10c,mem10d,mem10d1,mem10e;
+        PetscLogDouble memNS_H1,memNS_H2,memNS_H3,memNS_H4,memNS_H5;//mem10c1,mem10c2,mem10c3,mem10c4,mem10c11;
 
         if(mem_checkpoints){
             MPI_Barrier(mpi.comm());
@@ -3414,6 +3414,10 @@ int main(int argc, char** argv) {
         ierr = PetscPrintf(mpi.comm(),"Iteration %d , Time: %0.3g , Timestep: %0.3e, Percent Done : %0.2f % \n ------------------------------------------- \n",tstep,tn,dt,(tn/tfinal)*100.0);
         if(solve_stefan){
             ierr = PetscPrintf(mpi.comm(),"\n Previous interfacial velocity (max norm) is %0.3e \n",v_interface_max_norm);
+            if(v_interface_max_norm>v_int_max_allowed){
+                PetscPrintf(mpi.comm(),"Interfacial velocity has exceeded its max allowable value \n");
+                MPI_Abort(mpi.comm(),1);
+              }
           }
 
         // --------------------------------------------------------------------------------------------------------------
@@ -3429,8 +3433,15 @@ int main(int argc, char** argv) {
         extension_band_check_  = 6.*pow(min_volume_, 1./ double(P4EST_DIM)); // 6
 
 
+
         if(example_ == ICE_AROUND_CYLINDER){
             double delta_r = r0 - r_cyl;
+            uniform_band = 2.0;//4.0;/*delta_r/dxyz_close_to_interface;*/
+            PetscPrintf(mpi.comm(),"The uniform band is %0.2f\n",uniform_band);
+
+            extension_band_extend_ = uniform_band;
+            extension_band_use_ = uniform_band/2.;
+            extension_band_check_ = uniform_band/3.;
             if(delta_r<6.*dxyz_close_to_interface){
                 PetscPrintf(mpi.comm()," Your initial delta_r is %0.3e, and it must be at least %0.3e \n",delta_r,6.*dxyz_close_to_interface);
                 SC_ABORT("Your initial delta_r is too small \n");
@@ -3794,7 +3805,7 @@ int main(int argc, char** argv) {
 
         if(mem_checkpoints){
             MPI_Barrier(mpi.comm());
-            PetscMemoryGetCurrentUsage(&mem5a);
+            PetscMemoryGetCurrentUsage(&mem_grid1);
           }
 
 
@@ -3811,6 +3822,7 @@ int main(int argc, char** argv) {
         std::vector<compare_diagonal_option_t> diag_opn;
         std::vector<double> criteria;
         int num_fields = 1;
+        if(example_ == ICE_AROUND_CYLINDER) num_fields++;
         bool use_block = false;
         bool expand_ghost_layer = true;
         double threshold = 0.1;
@@ -3848,19 +3860,30 @@ int main(int argc, char** argv) {
             compare_opn.push_back(GREATER_THAN);
             diag_opn.push_back(DIVIDE_BY);
             criteria.push_back(threshold*NS_norm);
+
+            if(example_ == ICE_AROUND_CYLINDER){
+                fields_[1] = phi_cylinder.vec;
+
+                // Coarsening instructions: (for phi_cylinder)
+                compare_opn.push_back(GREATER_THAN);
+                diag_opn.push_back(MULTIPLY_BY);
+                criteria.push_back(lip);
+
+                // Refining instructions: (for phi_cylinder)
+                compare_opn.push_back(LESS_THAN);
+                diag_opn.push_back(MULTIPLY_BY);
+                criteria.push_back(0.5*lip);
+
+              }
           }
 
 
         // Advect the LSF and update the grid under the v_interface field:
         if(solve_coupled){
-            example_ == ICE_AROUND_CYLINDER ?
-              sl.update_p4est(v_interface.vec, dt, phi.vec, phi_dd.vec, phi_cylinder.vec,num_fields ,use_block ,true,uniform_band,fields_ ,NULL,criteria,compare_opn,diag_opn,expand_ghost_layer):
               sl.update_p4est(v_interface.vec, dt, phi.vec, phi_dd.vec, NULL,num_fields ,use_block ,true,uniform_band,fields_ ,NULL,criteria,compare_opn,diag_opn,expand_ghost_layer);
           }
         else if (solve_stefan && !solve_navier_stokes){
-            example_ == ICE_AROUND_CYLINDER ? // for example ice around cylinder, refine around both LSFs. Otherwise, refine around just the one
-                  sl.update_p4est(v_interface.vec,dt,phi.vec,phi_dd.vec,phi_cylinder.vec):
-                  sl.update_p4est(v_interface.vec,dt,phi.vec,phi_dd.vec);
+              sl.update_p4est(v_interface.vec,dt,phi.vec,phi_dd.vec);
           }
         else if (solve_navier_stokes && !solve_stefan){
             splitting_criteria_tag_t sp_NS(sp.min_lvl,sp.max_lvl,sp.lip);
@@ -3948,7 +3971,7 @@ int main(int argc, char** argv) {
 
         if(mem_checkpoints){
             MPI_Barrier(mpi.comm());
-            PetscMemoryGetCurrentUsage(&mem5b);
+            PetscMemoryGetCurrentUsage(&mem_grid2);
           }
 
         // Get the new neighbors:
@@ -4107,7 +4130,7 @@ int main(int argc, char** argv) {
 
           if(mem_checkpoints){
               MPI_Barrier(mpi.comm());
-              PetscMemoryGetCurrentUsage(&mem9a);
+              PetscMemoryGetCurrentUsage(&memP1);
             }          // Do quick optional check of values after interpolation: --> don't check till now bc we need phi_cylinder on new grid for ex 2
           if (check_temperature_values){
             // Check Temperature values:
@@ -4168,7 +4191,7 @@ int main(int argc, char** argv) {
           } // end of do_advection if statement
           if(mem_checkpoints){
               MPI_Barrier(mpi.comm());
-              PetscMemoryGetCurrentUsage(&mem9b);
+              PetscMemoryGetCurrentUsage(&memP2);
             }
           // ------------------------------------------------------------
           // Setup RHS:
@@ -4186,7 +4209,7 @@ int main(int argc, char** argv) {
                     p4est_np1,nodes_np1,ngbd_np1);
           if(mem_checkpoints){
               MPI_Barrier(mpi.comm());
-              PetscMemoryGetCurrentUsage(&mem9c);
+              PetscMemoryGetCurrentUsage(&memP3);
             }
           // ------------------------------------------------------------
           // Setup the solvers:
@@ -4201,7 +4224,7 @@ int main(int argc, char** argv) {
 
           if(mem_checkpoints){
               MPI_Barrier(mpi.comm());
-              PetscMemoryGetCurrentUsage(&mem9d);
+              PetscMemoryGetCurrentUsage(&memP4);
             }
 
           // Add the appropriate interfaces and interfacial boundary conditions:
@@ -4264,7 +4287,7 @@ int main(int argc, char** argv) {
 
           if(mem_checkpoints){
               MPI_Barrier(mpi.comm());
-              PetscMemoryGetCurrentUsage(&mem9e);
+              PetscMemoryGetCurrentUsage(&memP5);
             }
 
           // Preassemble the linear system
@@ -4281,7 +4304,7 @@ int main(int argc, char** argv) {
           solver_Ts.solve(T_s_np1.vec);
           if(mem_checkpoints){
               MPI_Barrier(mpi.comm());
-              PetscMemoryGetCurrentUsage(&mem9f);
+              PetscMemoryGetCurrentUsage(&memP6);
             }
 
 
@@ -4373,7 +4396,7 @@ int main(int argc, char** argv) {
 
           if(mem_checkpoints){
               MPI_Barrier(mpi.comm());
-              PetscMemoryGetCurrentUsage(&mem9g);
+              PetscMemoryGetCurrentUsage(&memP7);
             }
           // ------------------------------------------------------------
           // Some example specific operations for the Poisson problem:
@@ -4410,7 +4433,7 @@ int main(int argc, char** argv) {
 
             if(mem_checkpoints){
                 MPI_Barrier(mpi.comm());
-                PetscMemoryGetCurrentUsage(&mem10a);
+                PetscMemoryGetCurrentUsage(&memNS1);
               }
 
             // Set the LSF:
@@ -4465,7 +4488,7 @@ int main(int argc, char** argv) {
 
             if(mem_checkpoints){
                 MPI_Barrier(mpi.comm());
-                PetscMemoryGetCurrentUsage(&mem10b);
+                PetscMemoryGetCurrentUsage(&memNS2);
               }
             // set_external_forces
             CF_DIM *external_forces[P4EST_DIM] = {&fx_ext_tn,&fy_ext_tn};
@@ -4495,7 +4518,7 @@ int main(int argc, char** argv) {
 
             if(mem_checkpoints){
                 MPI_Barrier(mpi.comm());
-                PetscMemoryGetCurrentUsage(&mem10c);
+                PetscMemoryGetCurrentUsage(&memNS3);
               }
             while(keep_iterating_hodge){
                 cell_solver = NULL;
@@ -4512,11 +4535,15 @@ int main(int argc, char** argv) {
                 // Do NS Solution process:
                 // ------------------------------------
                 // Viscosity step:
+                if(mem_checkpoints){
+                    MPI_Barrier(mpi.comm());
+                    PetscMemoryGetCurrentUsage(&memNS_H1);
+                  }
                 ns->solve_viscosity(face_solver,(face_solver!=NULL),face_solver_type,pc_face);
 //                delete face_solver; cell_solver = NULL;
                 if(mem_checkpoints){
                     MPI_Barrier(mpi.comm());
-                    PetscMemoryGetCurrentUsage(&mem10c1);
+                    PetscMemoryGetCurrentUsage(&memNS_H2);
                   }
 
                 // Projection step:
@@ -4524,7 +4551,7 @@ int main(int argc, char** argv) {
 //                delete cell_solver; cell_solver = NULL;
                 if(mem_checkpoints){
                     MPI_Barrier(mpi.comm());
-                    PetscMemoryGetCurrentUsage(&mem10c2);
+                    PetscMemoryGetCurrentUsage(&memNS_H3);
                   }
                 // -------------------------------------------------------------
                 // Check the error on hodge:
@@ -4541,7 +4568,7 @@ int main(int argc, char** argv) {
 
                 if(mem_checkpoints){
                     MPI_Barrier(mpi.comm());
-                    PetscMemoryGetCurrentUsage(&mem10c3);
+                    PetscMemoryGetCurrentUsage(&memNS_H4);
                   }
                 // Loop over each quadrant in each tree, check the error in hodge
                 foreach_tree(tr,p4est_np1){
@@ -4569,7 +4596,7 @@ int main(int argc, char** argv) {
 
                 if(mem_checkpoints){
                     MPI_Barrier(mpi.comm());
-                    PetscMemoryGetCurrentUsage(&mem10c4);
+                    PetscMemoryGetCurrentUsage(&memNS_H5);
                   }
                 // Get the global hodge error:
                 int mpi_err = MPI_Allreduce(&hodge_error,&hodge_global_error,1,MPI_DOUBLE,MPI_MAX,mpi.comm()); SC_CHECK_MPI(mpi_err);
@@ -4588,7 +4615,7 @@ int main(int argc, char** argv) {
 //            hodge_new.destroy();
             if(mem_checkpoints){
                 MPI_Barrier(mpi.comm());
-                PetscMemoryGetCurrentUsage(&mem10d);
+                PetscMemoryGetCurrentUsage(&memNS4);
               }
 
 
@@ -4654,19 +4681,19 @@ int main(int argc, char** argv) {
             // Delete solver now that it isn't being used
             if(mem_checkpoints){
                 MPI_Barrier(mpi.comm());
-                PetscMemoryGetCurrentUsage(&mem10d1);
+                PetscMemoryGetCurrentUsage(&memNS5);
               }
 
 
             // Call custom function to delete the remaining things we don't need:
             ns->coupled_problem_partial_destructor();
 
-            delete faces_np1;
-            delete ngbd_c;
+//            delete faces_np1;
+//            delete ngbd_c;
 
             if(mem_checkpoints){
                 MPI_Barrier(mpi.comm());
-                PetscMemoryGetCurrentUsage(&mem10e);
+                PetscMemoryGetCurrentUsage(&memNS6);
               }
 
             if(example_ == NS_GIBOU_EXAMPLE){
@@ -4702,7 +4729,6 @@ int main(int argc, char** argv) {
         delete ngbd;
         delete hierarchy;
 
-
         p4est = p4est_np1;
         ghost = ghost_np1;
         nodes = nodes_np1;
@@ -4713,9 +4739,28 @@ int main(int argc, char** argv) {
         // Get current memory usage and print out all memory usage checkpoints:
         if(mem_checkpoints){
             MPI_Barrier(mpi.comm());
+            int no_nodes = nodes->num_owned_indeps;
+            PetscPrintf(mpi.comm(),"Current grid has %d nodes \n", no_nodes);
             PetscMemoryGetCurrentUsage(&mem13);
+
+            double mem_all[33] = {mem1, mem2, mem3, mem4, mem5,
+                                  mem_grid1, mem_grid2, mem6, mem7, mem8,
+                                  mem9,memP1,memP2,memP3,memP4,
+                                  memP5,memP6,memP7,mem10,memNS1,
+                                  memNS2,memNS3,memNS_H1,memNS_H2,memNS_H3,
+                                  memNS_H4,memNS_H5,memNS4,memNS5,memNS6,
+                                  mem11,mem12,mem13};
+
             ierr = PetscFOpen(mpi.comm(),name_mem,"a",&fich_mem); CHKERRXX(ierr);
-            ierr = PetscFPrintf(mpi.comm(),fich_mem,"%g %g %d %g %g %g %g %g %g %g %g %g %g %g %g %g %g %g %g %g %g %g %g %g %g %g %g %g %g %g %g %g %g %g \n",tn,dt,tstep,mem1,mem2,mem3,mem4,mem5,mem5a,mem5b,mem6,mem7,mem8,mem9,mem9a,mem9b,mem9c,mem9d,mem9e,mem9f,mem9g,mem10,mem10a,mem10b,mem10c,mem10c1,mem10c2,mem10c3,mem10c4,mem10d,mem10d1,mem10e,mem11,mem12,mem13);CHKERRXX(ierr);
+            ierr = PetscFPrintf(mpi.comm(),fich_mem,"%g %g %d %d "
+                                                    "%g %g %g %g %g %g %g %g %g %g "
+                                                    "%g %g %g %g %g %g %g %g %g %g "
+                                                    "%g %g %g %g %g %g %g %g %g %g "
+                                                    "%g %g %g\n",tn,dt,tstep,no_nodes,
+                                                    mem_all[0],mem_all[1],mem_all[2],mem_all[3],mem_all[4],mem_all[5],mem_all[6],mem_all[7],mem_all[8],mem_all[9],
+                                                    mem_all[10],mem_all[11],mem_all[12],mem_all[13],mem_all[14],mem_all[15],mem_all[16],mem_all[17],mem_all[18],mem_all[19],
+                                                    mem_all[20],mem_all[21],mem_all[22],mem_all[23],mem_all[24],mem_all[25],mem_all[26],mem_all[27],mem_all[28],mem_all[29],
+                                                    mem_all[30],mem_all[31],mem_all[32]);CHKERRXX(ierr);
             ierr = PetscFClose(mpi.comm(),fich_mem); CHKERRXX(ierr);
 
 
@@ -4725,8 +4770,8 @@ int main(int argc, char** argv) {
         MPI_Barrier(mpi.comm());
 
         PetscMemoryGetCurrentUsage(&mem_safety_check);
-        PetscPrintf(mpi.comm(),"Current memory usage is : %0.5e GB \n Which is %0.2f % of safety limit \n",mem_safety_check*1.e-9,(mem_safety_check)/(mem_safety_limit)*100.0);
-        if(mem_safety_check>mem_safety_limit){
+        PetscPrintf(mpi.comm(),"Current memory usage is : %0.5e GB \n Which is %0.2f % of safety limit \n",mpi.size()*mem_safety_check*1.e-9,(mpi.size()*mem_safety_check)/(mem_safety_limit)*100.0);
+        if(mem_safety_check>mem_safety_limit/mpi.size()){
             PetscPrintf(mpi.comm(),"We are encroaching upon the memory upper bound on this machine, calling MPI Abort...\n");
             MPI_Abort(mpi.comm(),1);
           }

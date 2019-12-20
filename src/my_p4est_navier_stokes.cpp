@@ -3806,8 +3806,8 @@ void my_p4est_navier_stokes_t::coupled_problem_partial_destructor()
 
   if(interp_phi!=NULL) delete interp_phi;
 
-//  delete faces_n;
-//  delete ngbd_c;
+  delete faces_n;
+  delete ngbd_c;
 
 }
 

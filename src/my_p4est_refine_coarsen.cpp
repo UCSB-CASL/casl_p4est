@@ -666,18 +666,26 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
       double tree_zmax = p4est->connectivity->vertices[3*v_p + 2];
   #endif
 
-      const double dmin = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
+      const double dxyz_min_overall = (double)P4EST_QUADRANT_LEN((int8_t) max_lvl)/(double)P4EST_ROOT_LEN; // Gives min dimension overall --> used for uniform band implementation
+      const double dmin = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN; // Gives min dimension of the quad--> used to get quad_diag
       const double dx = (tree_xmax-tree_xmin) * dmin;
       const double dy = (tree_ymax-tree_ymin) * dmin;
+
+
   #ifdef P4_TO_P8
       double dz = (tree_zmax-tree_zmin) * dmin;
+
   #endif
 
   #ifdef P4_TO_P8
       double d = sqrt(dx*dx + dy*dy + dz*dz);
   #else
-      const double d = sqrt(dx*dx + dy*dy);
+      const double d = sqrt(dx*dx + dy*dy); // This gives the quad diagonal
   #endif
+      double max_tree_dim = MAX((tree_xmax - tree_xmin),(tree_ymax - tree_ymin));
+
+      CODE3D(max_tree_dim = MAX(max_tree_dim,(tree_zmax - tree_zmin)));
+      double dxyz_smallest = max_tree_dim*dxyz_min_overall;
 
       // Check possibility of refining or coarsening:
       bool coarsen_possible = (quad->level > min_lvl); // Will return true if possible to coarsen
@@ -693,6 +701,8 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
       bool all_pos = true;
       bool all_neg = true;
 
+      double band;
+      band = enforce_uniform_band? dxyz_smallest*uniform_band : 0.0;
       if(refine_possible || coarsen_possible){
         // Initialize holder for node index in question
         p4est_locidx_t node_idx;
@@ -703,12 +713,10 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
 
             // First, check conditions on the LSF: -- If LSF won't allow for coarsening, there is no point in checking for more coarsening conditions
             if(coarsen_possible) { // Elyce 12-16-19: changed coarsen requirement from >= to just >, reserve <= for refine case
-                coarsen = coarsen && (fabs(phi_p[node_idx]) > 1.0*lip*d);
-                if(enforce_uniform_band) coarsen = coarsen && (fabs(phi_p[node_idx]) > uniform_band*d);
+                coarsen = coarsen && ((fabs(phi_p[node_idx]) - band) > 1.0*lip*d);
               } // at this point, coarsen is a more restrictive flag than coarsen_possible
             if (refine_possible) {
-                refine = refine || (fabs(phi_p[node_idx]) <= 0.5*lip*d);
-                if(enforce_uniform_band) refine = refine || (fabs(phi_p[node_idx]) <= uniform_band*d);
+                refine = refine || ((fabs(phi_p[node_idx]) - band) <= 0.5*lip*d);
               }
 
             all_pos = all_pos && (phi_p[node_idx]>0);
