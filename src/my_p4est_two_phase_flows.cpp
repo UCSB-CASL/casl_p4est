@@ -1105,59 +1105,6 @@ void my_p4est_two_phase_flows_t::test_viscosity_explicit(Vec rhs[P4EST_DIM], con
         const bool face_is_in_omega_minus = is_face_in_omega_minus(f_idx, dir, fine_phi_p, fine_idx_of_face);
         double mu_laplace_v_dir = div_mu_grad_u_dir(f_idx, dir, face_is_in_omega_minus, fine_idx_of_face, vn_p, fine_jump_mu_grad_v_p, fine_phi_p, fine_phi_xxyyzz_p);
         vnp1_p[f_idx] = + (dt_n/(alpha*(face_is_in_omega_minus?rho_minus:rho_plus)))*mu_laplace_v_dir + (beta*dt_n/(alpha*dt_nm1))*vnm1_p[f_idx] + (1.0-(beta*dt_n/(alpha*dt_nm1)))*vn_p[f_idx];
-//        double laplace_v_dir = 0.0;
-//        for (unsigned char der = 0; der < P4EST_DIM; ++der) {
-//          const double surface = dxyz_min[(der+1)%P4EST_DIM]ONLY3D(*dxyz_min[(der+2)%P4EST_DIM]);
-//          p4est_locidx_t ngbd_face_p;
-//          bool found = faces_n->found_finest_face_neighbor(f_idx, dir, 2*der+1, ngbd_face_p);
-//          P4EST_ASSERT(found);
-//          if(ngbd_face_p>=0)
-//          {
-//            double xyz_p[P4EST_DIM];
-//            faces_n->xyz_fr_f(ngbd_face_p, dir, xyz_p);
-//            P4EST_ASSERT(ANDD((fabs(xyz_p[der] - xyz[der] - dxyz_min[der]) < EPS), (fabs(xyz_p[(der+1)%P4EST_DIM] - xyz[(der+1)%P4EST_DIM]) < EPS), (fabs(xyz_p[(der+2)%P4EST_DIM] - xyz[(der+2)%P4EST_DIM]) < EPS)));
-//            laplace_v_dir += ((vn_p[ngbd_face_p] - vn_p[f_idx])/dxyz_min[der])*surface;
-//          }
-//          else
-//          {
-////            vnp1_p[f_idx] = bc_v[dir].wallValue(xyz);
-////            goto end_of_loop;
-//            P4EST_ASSERT(dir!=der);
-//            double xyz_wall[P4EST_DIM];
-//            xyz_wall[der] = xyz_max[der];
-//            xyz_wall[(der+1)%P4EST_DIM] = xyz[(der+1)%P4EST_DIM];
-//#ifdef P4EST_TO_P8
-//            xyz_wall[(der+2)%P4EST_DIM] = xyz[(der+2)%P4EST_DIM];
-//#endif
-////            std::cout << "dir = " << (int) dir << ", xyz_wall = " << xyz_wall[0] << ", " << xyz_wall[1] << ", ((bc_v[dir].wallValue(xyz_wall) - vn_p[f_idx])/(0.5*dxyz_min[der])) = " << ((bc_v[dir].wallValue(xyz_wall) - vn_p[f_idx])/(0.5*dxyz_min[der])) << ", exact value is " << ((dir==dir::x)? -sin(xyz[0])*sin(xyz[1]): cos(tn)*(9.0*SQR(xyz[0])-2.5*pow(xyz[0], 4))*log(1.0+SQR(xyz[1]))) << std::endl;
-////            std::cout << "error = " << fabs(((bc_v[dir].wallValue(xyz_wall) - vn_p[f_idx])/(0.5*dxyz_min[der])) - ((dir==dir::x)? -sin(xyz[0])*sin(xyz[1]): cos(tn)*(9.0*SQR(xyz[0])-2.5*pow(xyz[0], 4))*log(1.0+SQR(xyz[1])))) << std::endl;
-//            laplace_v_dir += ((bc_v[dir].wallValue(xyz_wall) - vn_p[f_idx])/(0.5*dxyz_min[der]))*surface;
-//          }
-//          p4est_locidx_t ngbd_face_m;
-//          found = faces_n->found_finest_face_neighbor(f_idx, dir, 2*der, ngbd_face_m);
-//          P4EST_ASSERT(found);
-//          if(ngbd_face_m>=0)
-//          {
-//            double xyz_m[P4EST_DIM];
-//            faces_n->xyz_fr_f(ngbd_face_m, dir, xyz_m);
-//            P4EST_ASSERT(ANDD((fabs(xyz_m[der] - xyz[der] + dxyz_min[der]) < EPS), (fabs(xyz_m[(der+1)%P4EST_DIM] - xyz[(der+1)%P4EST_DIM]) < EPS), (fabs(xyz_m[(der+2)%P4EST_DIM] - xyz[(der+2)%P4EST_DIM]) < EPS)));
-//            laplace_v_dir += ((vn_p[ngbd_face_m] - vn_p[f_idx])/dxyz_min[der])*surface;
-//          }
-//          else
-//          {
-////            vnp1_p[f_idx] = bc_v[dir].wallValue(xyz);
-////            goto end_of_loop;
-//            P4EST_ASSERT(dir!=der);
-//            double xyz_wall[P4EST_DIM];
-//            xyz_wall[der] = xyz_min[der];
-//            xyz_wall[(der+1)%P4EST_DIM] = xyz[(der+1)%P4EST_DIM];
-//#ifdef P4EST_TO_P8
-//            xyz_wall[(der+2)%P4EST_DIM] = xyz[(der+2)%P4EST_DIM];
-//#endif
-//            laplace_v_dir += ((bc_v[dir].wallValue(xyz_wall) - vn_p[f_idx])/(0.5*dxyz_min[der]))*surface;
-//          }
-//        }
-//        laplace_v_dir /= (MULTD(dxyz_min[0], dxyz_min[1], dxyz_min[2]));
         double laplace_v_dir_exact;
         if(dir == dir::x)
           laplace_v_dir_exact = -cos(tn)*((double) P4EST_DIM)*MULTD(sin(xyz[0]), cos(xyz[1]), sin(xyz[2]));
@@ -1182,11 +1129,11 @@ void my_p4est_two_phase_flows_t::test_viscosity_explicit(Vec rhs[P4EST_DIM], con
     ierr = VecRestoreArray(rhs[dir],          &rhs_p);                            CHKERRXX(ierr);
   }
   int mpiret = MPI_Allreduce(MPI_IN_PLACE, error_laplacian, P4EST_DIM, MPI_DOUBLE, MPI_MAX, p4est_n->mpicomm); SC_CHECK_MPI(mpiret);
-  if(p4est_n->mpirank == 0)
-  {
-    std::cout << "error in laplacian of u = " << error_laplacian[0] << std::endl;
-    std::cout << "error in laplacian of v = " << error_laplacian[1] << std::endl;
-  }
+//  if(p4est_n->mpirank == 0)
+//  {
+//    std::cout << "error in laplacian of u = " << error_laplacian[0] << std::endl;
+//    std::cout << "error in laplacian of v = " << error_laplacian[1] << std::endl;
+//  }
 
   ierr = VecRestoreArrayRead(fine_jump_mu_grad_v, &fine_jump_mu_grad_v_p);        CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(fine_phi, &fine_phi_p);                              CHKERRXX(ierr);
@@ -1230,21 +1177,12 @@ double my_p4est_two_phase_flows_t::div_mu_grad_u_dir(const p4est_locidx_t &face_
         to_return += (face_is_in_omega_minus? mu_minus:mu_plus)*voro_face_area*(vn_dir_p[(*points)[m].n]-vn_dir_p[face_idx])/voro_neighbor_distance;
       else
       {
-//        if(dir == dir::x)
-//          return -((double) P4EST_DIM)*MULTD(sin(voro_cell.get_center_point().x), cos(voro_cell.get_center_point().y), sin(voro_cell.get_center_point().z));
-//        else
-//          return ((18.0*voro_cell.get_center_point().x - 10.0*pow(voro_cell.get_center_point().x, 3.0))*log(1.0+SQR(voro_cell.get_center_point().y))
-//              + (3.0*pow(voro_cell.get_center_point().x, 3.0)-0.5*pow(voro_cell.get_center_point().x, 5.0))*(2.0*(1.0-SQR(voro_cell.get_center_point().y))/(SQR(1.0+SQR(voro_cell.get_center_point().y)))));
-
         double xyz_wall[P4EST_DIM]; voro_cell.get_center_point(xyz_wall);
         char wall_face_dir = (-1-(*points)[m].n);
         P4EST_ASSERT((dir!=wall_face_dir/2) && (0 <= wall_face_dir) && (wall_face_dir < P4EST_FACES));
 
         xyz_wall[wall_face_dir/2] = ((wall_face_dir%2==0)? xyz_min[wall_face_dir/2] : xyz_max[wall_face_dir/2]);
-//        std::cout << "dir = " << (int) dir << ", xyz_wall = " << xyz_wall[0] << ", " << xyz_wall[1] << std::endl;
-//        std::cout << "(bc_v[dir].wallValue(xyz_wall) = " << bc_v[dir].wallValue(xyz_wall) << ", vn_dir_p[face_idx] = " << vn_dir_p[face_idx]<< std::endl;
         P4EST_ASSERT(bc_v[dir].wallType(xyz_wall) == DIRICHLET);
-//        std::cout << "voro_face_area = " << voro_face_area << ", dxyz_min[0] = " << dxyz_min[0] << ", dxyz_min[1] = " << dxyz_min[1] << std::endl;
         to_return += (face_is_in_omega_minus? mu_minus:mu_plus)*voro_face_area*(bc_v[dir].wallValue(xyz_wall)-vn_dir_p[face_idx])/(voro_neighbor_distance/2);
       }
     }
@@ -1252,7 +1190,10 @@ double my_p4est_two_phase_flows_t::div_mu_grad_u_dir(const p4est_locidx_t &face_
   }
   else
     for (unsigned char ff = 0; ff < P4EST_DIM; ++ff)
+    {
+      std::cout << "dir = " << (int) ff << ": "<< xgfm_fluxes[2*ff+1] << ", " << xgfm_fluxes[2*ff] << std::endl;
       to_return += (xgfm_fluxes[2*ff+1] - xgfm_fluxes[2*ff])/dxyz_min[ff];
+    }
 
   return to_return;
 }
@@ -1264,6 +1205,9 @@ Voronoi_DIM my_p4est_two_phase_flows_t::compute_voronoi_cell(const p4est_locidx_
                                                              bool &xgfm_treatment_required, double xgfm_fluxes[P4EST_DIM])
 {
   PetscErrorCode ierr;
+#ifndef P4_T_P8
+  const unsigned char face_order_to_counterclock_cycle_order[P4EST_FACES] = {2,0,3,1};
+#endif
 
 
   ierr = PetscLogEventBegin(log_my_p4est_two_phase_compute_voronoi_cell, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -1296,14 +1240,17 @@ Voronoi_DIM my_p4est_two_phase_flows_t::compute_voronoi_cell(const p4est_locidx_
     vector<Point2> partition(P4EST_FACES);
 #endif
     for (unsigned char face_dir = 0; face_dir < P4EST_FACES; ++face_dir) {
+#ifdef P4_TO_P8
       points[face_dir].n = face_neighbors->neighbor_face_idx[face_dir];
       faces_n->point_fr_f(points[face_dir].n, dir, points[face_dir].p);
-#ifdef P4_TO_P8
       points[face_dir].s      = ((face_dir/2==dir::x) ? dxyz[1]*dxyz[2] : ((face_dir/2==dir::y) ? dxyz[0]*dxyz[2] : dxyz[0]*dxyz[1]));
 #else
-      points[face_dir].theta  = ((double)(face_dir/2))*0.5*PI + ((double)(1-face_dir%2))*PI;
-      partition[face_dir].x   = points[face_dir].p.x + ((face_dir/2==1) ? ((0.5 - 1.0*((double) (face_dir%2)))*dxyz[0]) : ((0.5 - 1.0*((double) (face_dir%2)))*dxyz_min[0]));
-      partition[face_dir].y   = points[face_dir].p.y + ((face_dir/2==0) ? ((((double) (face_dir%2)) - 0.5)*dxyz[1])     : ((0.5 - 1.0*((double) (face_dir%2)))*dxyz_min[1]));
+      unsigned char idx = face_order_to_counterclock_cycle_order[face_dir];
+      points[idx].n = face_neighbors->neighbor_face_idx[face_dir];
+      faces_n->point_fr_f(points[idx].n, dir, points[idx].p);
+      points[idx].theta = ((double)(face_dir/2))*0.5*PI + ((double)(1-face_dir%2))*PI;
+      partition[idx].x  = points[idx].p.x + ((face_dir/2==1) ? ((0.5 - 1.0*((double) (face_dir%2)))*dxyz[0]) : ((0.5 - 1.0*((double) (face_dir%2)))*dxyz_min[0]));
+      partition[idx].y  = points[idx].p.y + ((face_dir/2==0) ? ((((double) (face_dir%2)) - 0.5)*dxyz[1])     : ((0.5 - 1.0*((double) (face_dir%2)))*dxyz_min[1]));
 #endif
     }
 
@@ -1311,7 +1258,6 @@ Voronoi_DIM my_p4est_two_phase_flows_t::compute_voronoi_cell(const p4est_locidx_
     voro_tmp.set_cell(points, dxyz[0]*dxyz[1]*dxyz[2]);
 #else
     voro_tmp.set_neighbors_and_partition(points, partition, dxyz[0]*dxyz[1]);
-    voro_tmp.reorder_neighbors_and_partition_from_faces_to_counterclock_cycle();
 #endif
 
     sharp_derivative local_one_sided_derivative;
@@ -1370,36 +1316,44 @@ Voronoi_DIM my_p4est_two_phase_flows_t::compute_voronoi_cell(const p4est_locidx_
       for (unsigned char cartesian_dir = 0; cartesian_dir < P4EST_DIM; ++cartesian_dir) {
         if(cartesian_dir == dir)
         {
+#ifdef P4_TO_P8
           points[2*dir].n  = faces_n->q2f(qm.p.piggy3.local_num, 2*dir);
           faces_n->point_fr_f(points[2*dir].n, dir, points[2*dir].p);
-#ifdef P4_TO_P8
-          points[2*dir].s     = ((dir==dir::x) ? dxyz[1]*dxyz[2] : ((dir==dir::y) ? dxyz[0]*dxyz[2] : dxyz[0]*dxyz[1]));
-#else
-          points[2*dir].theta = ((double) dir)*0.5*PI + PI;
-          partition[2*dir].x   = points[2*dir].p.x + ((dir==1) ? 0.5*dxyz[0]: 0.0);
-          partition[2*dir].y   = points[2*dir].p.y - ((dir==0) ? 0.5*dxyz[1]: 0.0);
-#endif
+          points[2*dir].s   = ((dir==dir::x) ? dxyz[1]*dxyz[2] : ((dir==dir::y) ? dxyz[0]*dxyz[2] : dxyz[0]*dxyz[1]));
+
           points[2*dir+1].n  = faces_n->q2f(qp.p.piggy3.local_num, 2*dir+1);
           faces_n->point_fr_f(points[2*dir+1].n, dir, points[2*dir+1].p);
-#ifdef P4_TO_P8
           points[2*dir+1].s     = ((dir==dir::x) ? dxyz[1]*dxyz[2] : ((dir==dir::y) ? dxyz[0]*dxyz[2] : dxyz[0]*dxyz[1]));
 #else
-          points[2*dir+1].theta = ((double) dir)*0.5*PI;
-          partition[2*dir+1].x   = points[2*dir+1].p.x - ((dir==1) ? 0.5*dxyz[0]: 0.0);
-          partition[2*dir+1].y   = points[2*dir+1].p.y + ((dir==0) ? 0.5*dxyz[1]: 0.0);
+          unsigned char idx = face_order_to_counterclock_cycle_order[2*dir];
+          points[idx].n     = faces_n->q2f(qm.p.piggy3.local_num, 2*dir);
+          faces_n->point_fr_f(points[idx].n, dir, points[idx].p);
+          points[idx].theta = ((double) dir)*0.5*PI + PI;
+          partition[idx].x  = points[idx].p.x + 0.5*dxyz[0];
+          partition[idx].y  = points[idx].p.y + ((dir==1) ? 0.5*dxyz[1]: -0.5*dxyz[1]);
+
+          idx               = face_order_to_counterclock_cycle_order[2*dir+1];
+          points[idx].n     = faces_n->q2f(qp.p.piggy3.local_num, 2*dir+1);
+          faces_n->point_fr_f(points[idx].n, dir, points[idx].p);
+          points[idx].theta = ((double) dir)*0.5*PI;
+          partition[idx].x  = points[idx].p.x - 0.5*dxyz[0];
+          partition[idx].y  = points[idx].p.y + ((dir==0) ? 0.5*dxyz[1]: -0.5*dxyz[1]);
 #endif
         }
         else
           for (char cart_search = -1; cart_search < 2; cart_search+=2) {
             unsigned char ff_idx = 2*cartesian_dir + ((cart_search == 1) ? 1:0);
-            points[ff_idx].n   = faces_n->q2f(ngbd_p_[ngbd_idx][0].p.piggy3.local_num, 2*dir); // we loop through ngbd_p_ in the same order as when it was built
-            faces_n->point_fr_f(points[ff_idx].n, dir, points[ff_idx].p);
 #ifdef P4_TO_P8
-            points[ff_idx].s      = ((cartesian_dir==dir::x) ? dxyz[1]*dxyz[2] : ((cartesian_dir==dir::y) ? dxyz[0]*dxyz[2] : dxyz[0]*dxyz[1]));
+            points[ff_idx].n  = faces_n->q2f(ngbd_p_[ngbd_idx][0].p.piggy3.local_num, 2*dir); // we loop through ngbd_p_ in the same order as when it was built
+            faces_n->point_fr_f(points[ff_idx].n, dir, points[ff_idx].p);
+            points[ff_idx].s  = ((cartesian_dir==dir::x) ? dxyz[1]*dxyz[2] : ((cartesian_dir==dir::y) ? dxyz[0]*dxyz[2] : dxyz[0]*dxyz[1]));
 #else
-            points[ff_idx].theta  =((double)(ff_idx/2))*0.5*PI + ((double)(1-ff_idx%2))*PI;
-            partition[ff_idx].x   = points[ff_idx].p.x + ((ff_idx/2==1) ? ((1.0 - 2.0*((double) (ff_idx%2)))*0.5*dxyz[0]): 0.0);
-            partition[ff_idx].y   = points[ff_idx].p.y + ((ff_idx/2==0) ? ((((double) (2*(ff_idx%2)))-1.0)*0.5*dxyz[1]): 0.0);
+            unsigned char idx = face_order_to_counterclock_cycle_order[ff_idx];
+            points[idx].n     = faces_n->q2f(ngbd_p_[ngbd_idx][0].p.piggy3.local_num, 2*dir); // we loop through ngbd_p_ in the same order as when it was built
+            faces_n->point_fr_f(points[idx].n, dir, points[idx].p);
+            points[idx].theta = ((double)(ff_idx/2))*0.5*PI + ((double)(1-ff_idx%2))*PI;
+            partition[idx].x  = points[idx].p.x + ((ff_idx%2 == 0) ? 0.5*dxyz[0]: -0.5*dxyz[0]);
+            partition[idx].y  = points[idx].p.y + ((ff_idx==dir::f_m00 || ff_idx==dir::f_0p0) ? -0.5*dxyz[1]: 0.5*dxyz[1]);
 #endif
             ngbd_idx++;
           }
@@ -1410,7 +1364,6 @@ Voronoi_DIM my_p4est_two_phase_flows_t::compute_voronoi_cell(const p4est_locidx_
       voro_tmp.set_cell(points, dxyz[0]*dxyz[1]*dxyz[2]);
 #else
       voro_tmp.set_neighbors_and_partition(points, partition, dxyz[0]*dxyz[1]);
-      voro_tmp.reorder_neighbors_and_partition_from_faces_to_counterclock_cycle();
 #endif
     }
     /* otherwise, there is a T-junction and the grid is not uniform, need to compute the voronoi cell */

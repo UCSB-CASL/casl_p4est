@@ -1,8 +1,6 @@
 #ifndef VORONOI2D_H
 #define VORONOI2D_H
 
-#define UNIFORM_2D_NB_NEIGHBORS 4
-
 #include <fstream>
 #include <vector>
 
@@ -121,7 +119,7 @@ public:
      */
   void set_neighbors_and_partition( vector<ngbd2Dseed>& neighbors_, vector<Point2>& partition_, double volume_ );
 
-  void reorder_neighbors_and_partition_from_faces_to_counterclock_cycle();
+//  void reorder_neighbors_and_partition_from_faces_to_counterclock_cycle();
 
   /*!
      * \brief set the level-set values at the vertices of the voronoi partition

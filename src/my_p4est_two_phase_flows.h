@@ -771,7 +771,9 @@ private:
                                                       const double *normal_derivative_of_vnp1_minus_p[P4EST_DIM], const double *normal_derivative_of_vnp1_plus_p[P4EST_DIM],
                                                       double *vnp1_minus_p[P4EST_DIM], double *vnp1_plus_p[P4EST_DIM]);
 
+public:
   void interpolate_linearly_from_fine_nodes_to_coarse_nodes(const Vec& vv_fine, Vec& vv_coarse);
+private:
 
   void trajectory_from_all_faces_two_phases(p4est_t *p4est_n, my_p4est_faces_t *faces_n, my_p4est_node_neighbors_t *ngbd_nm1, my_p4est_node_neighbors_t *ngbd_n,
                                             const double *fine_phi_p,
@@ -909,6 +911,7 @@ public:
   inline p4est_ghost_t* get_ghost_n() const                     { return ghost_n; }
   inline double get_diag_min() const                            { return tree_diag/((double) (1<<(((splitting_criteria_t*)p4est_n->user_pointer)->max_lvl))); }
   inline Vec get_curvature()                                    { return fine_curvature; }
+//  inline Vec get_phi()                                          { return fine_phi; }
 
   void compute_jump_mu_grad_v();
   void compute_jumps_hodge();

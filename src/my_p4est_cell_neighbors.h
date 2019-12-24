@@ -26,11 +26,7 @@ private:
   p4est_ghost_t *ghost;
   my_p4est_brick_t *myb;
 
-#ifdef P4_TO_P8
-  void find_neighbor_cells_of_cell_recursive_test( std::vector<p4est_quadrant_t>& ngbd, p4est_topidx_t tr, int ind, char dir_x, char dir_y, char dir_z ) const;
-#else
-  void find_neighbor_cells_of_cell_recursive( std::vector<p4est_quadrant_t>& ngbd, p4est_topidx_t tr, int ind, char dir_x, char dir_y ) const;
-#endif
+  void find_neighbor_cells_of_cell_recursive( std::vector<p4est_quadrant_t>& ngbd, p4est_topidx_t tr, int ind, DIM(char dir_x, char dir_y, char dir_z) ) const;
 
 public:
   my_p4est_cell_neighbors_t( my_p4est_hierarchy_t *hierarchy_ )
@@ -42,11 +38,7 @@ public:
    * @brief find the neighbor cell of a cell in the direction (dir_x, dir_y), any combination of directions is accepted
    * @return
    */
-#ifdef P4_TO_P8
-  void find_neighbor_cells_of_cell(std::vector<p4est_quadrant_t>& ngbd, p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, char dir_x, char dir_y, char dir_z ) const;
-#else
-  void find_neighbor_cells_of_cell(std::vector<p4est_quadrant_t>& ngbd, p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, char dir_x, char dir_y ) const;
-#endif
+  void find_neighbor_cells_of_cell(std::vector<p4est_quadrant_t>& ngbd, p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, DIM(char dir_x, char dir_y, char dir_z) ) const;
 
   /*!
    * \brief find the neighbor cells of a cell in a cartesian direction

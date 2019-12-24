@@ -5,12 +5,7 @@
 #endif
 
 
-
-#ifdef P4_TO_P8
-void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell(std::vector<p4est_quadrant_t>& ngbd, p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, char dir_x, char dir_y, char dir_z ) const
-#else
-void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell(std::vector<p4est_quadrant_t>& ngbd, p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, char dir_x, char dir_y ) const
-#endif
+void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell(std::vector<p4est_quadrant_t>& ngbd, p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, DIM(char dir_x, char dir_y, char dir_z) ) const
 {
   const p4est_quadrant_t *quad;
   if(quad_idx<p4est->local_num_quadrants)
@@ -299,19 +294,10 @@ void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell(std::vector<p4est_qu
   }
 
   /* now find the children of this constructed cell in the desired direction and add them to the list */
-#ifdef P4_TO_P8
-  find_neighbor_cells_of_cell_recursive_test( ngbd, nb_tree_idx, ind, dir_x, dir_y, dir_z );
-#else
-  find_neighbor_cells_of_cell_recursive( ngbd, nb_tree_idx, ind, dir_x, dir_y );
-#endif
+  find_neighbor_cells_of_cell_recursive( ngbd, nb_tree_idx, ind, DIM(dir_x, dir_y, dir_z) );
 }
 
-
-#ifdef P4_TO_P8
-void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell_recursive_test( std::vector<p4est_quadrant_t>& ngbd, p4est_topidx_t tr, int ind, char dir_x, char dir_y, char dir_z ) const
-#else
-void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell_recursive( std::vector<p4est_quadrant_t>& ngbd, p4est_topidx_t tr, int ind, char dir_x, char dir_y ) const
-#endif
+void my_p4est_cell_neighbors_t::find_neighbor_cells_of_cell_recursive( std::vector<p4est_quadrant_t>& ngbd, p4est_topidx_t tr, int ind, DIM(char dir_x, char dir_y, char dir_z) ) const
 {
   if (hierarchy->trees[tr][ind].child == CELL_LEAF)
   {

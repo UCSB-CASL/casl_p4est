@@ -50,41 +50,41 @@ void Voronoi2D::set_neighbors_and_partition(vector<ngbd2Dseed>& neighbors_, vect
   this->volume = volume_;
 }
 
-void Voronoi2D::reorder_neighbors_and_partition_from_faces_to_counterclock_cycle()
-{
-  P4EST_ASSERT((nb_seeds.size() == UNIFORM_2D_NB_NEIGHBORS) && (partition.size() == UNIFORM_2D_NB_NEIGHBORS));
-  unsigned char face_order_to_counterclock_cycle_order[UNIFORM_2D_NB_NEIGHBORS] = {2,0,3,1};
-  for (unsigned char i = 0; i < UNIFORM_2D_NB_NEIGHBORS-1; ++i)
-  {
-//    for (int i = 0; i < UNIFORM_2D_NB_NEIGHBORS; ++i) {
-//      std::cout << (int)face_order_to_counterclock_cycle_order[i] << "\t ";
+//void Voronoi2D::reorder_neighbors_and_partition_from_faces_to_counterclock_cycle()
+//{
+//  P4EST_ASSERT((nb_seeds.size() == UNIFORM_2D_NB_NEIGHBORS) && (partition.size() == UNIFORM_2D_NB_NEIGHBORS));
+//  unsigned char face_order_to_counterclock_cycle_order[UNIFORM_2D_NB_NEIGHBORS] = {2,0,3,1};
+//  for (unsigned char i = 0; i < UNIFORM_2D_NB_NEIGHBORS-1; ++i)
+//  {
+////    for (int i = 0; i < UNIFORM_2D_NB_NEIGHBORS; ++i) {
+////      std::cout << (int)face_order_to_counterclock_cycle_order[i] << "\t ";
+////    }
+////    std::cout << std::endl;
+////    for (int i = 0; i < UNIFORM_2D_NB_NEIGHBORS; ++i) {
+////      std::cout << nb_seeds[i].p.x << "\t ";
+////    }
+////    std::cout << std::endl;
+////    for (int i = 0; i < UNIFORM_2D_NB_NEIGHBORS; ++i) {
+////      std::cout << nb_seeds[i].p.y << "\t ";
+////    }
+////    std::cout << std::endl;
+////    std::cout << std::endl;
+////    for (int i = 0; i < UNIFORM_2D_NB_NEIGHBORS; ++i) {
+////      std::cout << partition[i].x << "\t ";
+////    }
+////    std::cout << std::endl;
+////    for (int i = 0; i < UNIFORM_2D_NB_NEIGHBORS; ++i) {
+////      std::cout << partition[i].y << "\t ";
+////    }
+////    std::cout << std::endl;
+//    while (i!=face_order_to_counterclock_cycle_order[i]) {
+//      unsigned char tmp = face_order_to_counterclock_cycle_order[i];
+//      std::swap(nb_seeds[i], nb_seeds[tmp]);
+//      std::swap(partition[i], partition[tmp]);
+//      std::swap(face_order_to_counterclock_cycle_order[i], face_order_to_counterclock_cycle_order[tmp]);
 //    }
-//    std::cout << std::endl;
-//    for (int i = 0; i < UNIFORM_2D_NB_NEIGHBORS; ++i) {
-//      std::cout << nb_seeds[i].p.x << "\t ";
-//    }
-//    std::cout << std::endl;
-//    for (int i = 0; i < UNIFORM_2D_NB_NEIGHBORS; ++i) {
-//      std::cout << nb_seeds[i].p.y << "\t ";
-//    }
-//    std::cout << std::endl;
-//    std::cout << std::endl;
-//    for (int i = 0; i < UNIFORM_2D_NB_NEIGHBORS; ++i) {
-//      std::cout << partition[i].x << "\t ";
-//    }
-//    std::cout << std::endl;
-//    for (int i = 0; i < UNIFORM_2D_NB_NEIGHBORS; ++i) {
-//      std::cout << partition[i].y << "\t ";
-//    }
-//    std::cout << std::endl;
-    while (i!=face_order_to_counterclock_cycle_order[i]) {
-      unsigned char tmp = face_order_to_counterclock_cycle_order[i];
-      std::swap(nb_seeds[i], nb_seeds[tmp]);
-      std::swap(partition[i], partition[tmp]);
-      std::swap(face_order_to_counterclock_cycle_order[i], face_order_to_counterclock_cycle_order[tmp]);
-    }
-  }
-}
+//  }
+//}
 
 void Voronoi2D::set_level_set_values(const CF_2 &ls )
 {

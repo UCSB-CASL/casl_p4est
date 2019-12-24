@@ -106,118 +106,119 @@ public:
                                       );
   }
 
-//  double u_plus(DIM(double x, double y, double z))
-//  {
-//    return sin(tn+(implicit?dt:0.0))*MULTD(sin(x), cos(y), sin(z));
-//  }
-//  double dt_u_plus(DIM(double x, double y, double z))
-//  {
-//    return cos(tn+(implicit?dt:0.0))*MULTD(sin(x), cos(y), sin(z));
-//  }
-//  double dx_u_plus(DIM(double x, double y, double z))
-//  {
-//    return sin(tn+(implicit?dt:0.0))*MULTD(cos(x), cos(y), sin(z));
-//  }
-//  double dy_u_plus(DIM(double x, double y, double z))
-//  {
-//    return sin(tn+(implicit?dt:0.0))*MULTD(sin(x), -sin(y), sin(z));
-//  }
-//#ifdef P4_TO_P8
-//  double dz_u_plus(DIM(double x, double y, double z))
-//  {
-//    return sin(tn+(implicit?dt:0.0))*MULTD(sin(x), cos(y), cos(z));
-//  }
-//#endif
-//  double laplace_u_plus(DIM(double x, double y, double z))
-//  {
-//    return -sin(tn+(implicit?dt:0.0))*((double) P4EST_DIM)*MULTD(sin(x), cos(y), sin(z));
-//  }
-//  double v_plus(DIM(double x, double y, double z))
-//  {
-//    return cos(tn+(implicit?dt:0.0))*(3.0*pow(x, 3.0)-0.5*pow(x, 5.0))*log(1.0+SQR(y))ONLY3D(*atan(z/2.5));
-//  }
-//  double dt_v_plus(DIM(double x, double y, double z))
-//  {
-//    return -sin(tn+(implicit?dt:0.0))*(3.0*pow(x, 3.0)-0.5*pow(x, 5.0))*log(1.0+SQR(y))ONLY3D(*atan(z/2.5));
-//  }
-//  double dx_v_plus(DIM(double x, double y, double z))
-//  {
-//    return cos(tn+(implicit?dt:0.0))*(9.0*SQR(x)-2.5*pow(x, 4))*log(1.0+SQR(y))ONLY3D(*atan(z/2.5));
-//  }
-//  double dy_v_plus(DIM(double x, double y, double z))
-//  {
-//    return cos(tn+(implicit?dt:0.0))*(3.0*pow(x, 3.0)-0.5*pow(x, 5.0))*(2.0*y/(1.0+SQR(y)))ONLY3D(*atan(z/2.5));
-//  }
-//#ifdef P4_TO_P8
-//  double dz_v_plus(DIM(double x, double y, double z))
-//  {
-//    return cos(tn+(implicit?dt:0.0))*(3.0*pow(x, 3.0)-0.5*pow(x, 5.0))*log(1.0+SQR(y))ONLY3D(*(1.0/2.5)/(1.0+SQR(z/2.5)));
-//  }
-//#endif
-//  double laplace_v_plus(DIM(double x, double y, double z))
-//  {
-//    return cos(tn+(implicit?dt:0.0))*((18.0*x - 10*pow(x, 3.0))*log(1.0+SQR(y))ONLY3D(*atan(z/2.5))
-//                                      + (3.0*pow(x, 3.0)-0.5*pow(x, 5.0))*(2.0*(1.0-SQR(y))/(SQR(1.0+SQR(y))))ONLY3D(*atan(z/2.5))
-//                                  #ifdef P4_TO_P8
-//                                      + (3.0*pow(x, 3.0)-0.5*pow(x, 5.0))*log(1.0+SQR(y))*(-2.0*z/(SQR(2.5)))/(SQR(1.0+SQR(z/2.5)))
-//                                  #endif
-//                                      );
-
   double u_plus(DIM(double x, double y, double z))
   {
-    return (1.0+exp(-SQR(tn+(implicit?dt:0.0)-0.5)))*(pow(y-x, 3.0) + cos(2.0*x-y) ONLY3D( + (5.0/3.0)*(z-2.0*x + cos(3.0*z-y))));
+    return cos(tn+(implicit?dt:0.0))*MULTD(sin(x), cos(y), sin(z));
   }
   double dt_u_plus(DIM(double x, double y, double z))
   {
-    return (exp(-SQR(tn+(implicit?dt:0.0)-0.5))*(1-2*(tn+(implicit?dt:0.0))))*(pow(y-x, 3.0) + cos(2.0*x-y) ONLY3D( + (5.0/3.0)*(z-2.0*x + cos(3.0*z-y))));
+    return -sin(tn+(implicit?dt:0.0))*MULTD(sin(x), cos(y), sin(z));
   }
   double dx_u_plus(DIM(double x, double y, double z))
   {
-    return (1.0+exp(-SQR(tn+(implicit?dt:0.0)-0.5)))*(-3.0*SQR(y-x) - 2.0*sin(2.0*x-y) ONLY3D( + (5.0/3.0)*(-2.0)));
+    return cos(tn+(implicit?dt:0.0))*MULTD(cos(x), cos(y), sin(z));
   }
   double dy_u_plus(DIM(double x, double y, double z))
   {
-    return (1.0+exp(-SQR(tn+(implicit?dt:0.0)-0.5)))*(3.0*SQR(y-x) + sin(2.0*x-y) ONLY3D( + (5.0/3.0)*sin(3.0*z-y)));
+    return cos(tn+(implicit?dt:0.0))*MULTD(sin(x), -sin(y), sin(z));
   }
 #ifdef P4_TO_P8
   double dz_u_plus(DIM(double x, double y, double z))
   {
-    return (1.0+exp(-SQR(tn+(implicit?dt:0.0)-0.5)))*(pow(y-x, 3.0) + cos(2.0*x-y) ONLY3D( + (5.0/3.0)*(1.0 - 3.0*sin(3.0*z-y))));
+    return cos(tn+(implicit?dt:0.0))*MULTD(sin(x), cos(y), cos(z));
   }
 #endif
   double laplace_u_plus(DIM(double x, double y, double z))
   {
-    return (1.0+exp(-SQR(tn+(implicit?dt:0.0)-0.5)))*(12.0*(y-x)-5.0*cos(2.0*x-y) ONLY3D( + (5.0/3.0)*(-10.0*cos(3.0*z-y))));
+    return -cos(tn+(implicit?dt:0.0))*((double) P4EST_DIM)*MULTD(sin(x), cos(y), sin(z));
   }
-
   double v_plus(DIM(double x, double y, double z))
   {
-    return (1.0+0.3*cos(1.5*(tn+(implicit?dt:0.0))))*(sin(3.0*x-2.0*y) + log(1.0 + SQR(0.5*y-1.2*x)) ONLY3D( + cos(1.7*z-0.3*x)));
+    return cos(tn+(implicit?dt:0.0))*(3.0*pow(x, 3.0)-0.5*pow(x, 5.0))*log(1.0+SQR(y))ONLY3D(*atan(z/2.5));
   }
   double dt_v_plus(DIM(double x, double y, double z))
   {
-    return (-0.3*1.5*sin(1.5*(tn+(implicit?dt:0.0))))*(sin(3.0*x-2.0*y) + log(1.0 + SQR(0.5*y-1.2*x)) ONLY3D( + cos(1.7*z-0.3*x)));
+    return -sin(tn+(implicit?dt:0.0))*(3.0*pow(x, 3.0)-0.5*pow(x, 5.0))*log(1.0+SQR(y))ONLY3D(*atan(z/2.5));
   }
   double dx_v_plus(DIM(double x, double y, double z))
   {
-    return (1.0+0.3*cos(1.5*(tn+(implicit?dt:0.0))))*(3.0*cos(3.0*x-2.0*y) + (-2.0*1.2*(0.5*y-1.2*x))/(1.0 + SQR(0.5*y-1.2*x)) ONLY3D( + 0.3*sin(1.7*z-0.3*x)));
+    return cos(tn+(implicit?dt:0.0))*(9.0*SQR(x)-2.5*pow(x, 4))*log(1.0+SQR(y))ONLY3D(*atan(z/2.5));
   }
   double dy_v_plus(DIM(double x, double y, double z))
   {
-    return (1.0+0.3*cos(1.5*(tn+(implicit?dt:0.0))))*(-2.0*cos(3.0*x-2.0*y) + (2.0*0.5*(0.5*y-1.2*x))/(1.0 + SQR(0.5*y-1.2*x)));
+    return cos(tn+(implicit?dt:0.0))*(3.0*pow(x, 3.0)-0.5*pow(x, 5.0))*(2.0*y/(1.0+SQR(y)))ONLY3D(*atan(z/2.5));
   }
 #ifdef P4_TO_P8
   double dz_v_plus(DIM(double x, double y, double z))
   {
-    return (1.0+0.3*cos(1.5*(tn+(implicit?dt:0.0))))*(- 1.7*sin(1.7*z-0.3*x));
+    return cos(tn+(implicit?dt:0.0))*(3.0*pow(x, 3.0)-0.5*pow(x, 5.0))*log(1.0+SQR(y))ONLY3D(*(1.0/2.5)/(1.0+SQR(z/2.5)));
   }
 #endif
   double laplace_v_plus(DIM(double x, double y, double z))
   {
-    return (1.0+0.3*cos(1.5*(tn+(implicit?dt:0.0))))*((-SQR(3.0)-SQR(-2.0))*sin(3.0*x-2.0*y) +
-                                                      (2.0*(SQR(-1.2) + SQR(0.5))*(1.0-SQR(0.5*y - 1.2*x)))/(SQR(1.0+SQR(0.5*y-1.2*x)))
-                                                      ONLY3D(+ (-SQR(1.7) - SQR(0.3))*cos(1.7*z-0.3*x)));
+    return cos(tn+(implicit?dt:0.0))*((18.0*x - 10*pow(x, 3.0))*log(1.0+SQR(y))ONLY3D(*atan(z/2.5))
+                                      + (3.0*pow(x, 3.0)-0.5*pow(x, 5.0))*(2.0*(1.0-SQR(y))/(SQR(1.0+SQR(y))))ONLY3D(*atan(z/2.5))
+                                  #ifdef P4_TO_P8
+                                      + (3.0*pow(x, 3.0)-0.5*pow(x, 5.0))*log(1.0+SQR(y))*(-2.0*z/(SQR(2.5)))/(SQR(1.0+SQR(z/2.5)))
+                                  #endif
+                                      );
   }
+
+//  double u_plus(DIM(double x, double y, double z))
+//  {
+//    return (1.0+exp(-SQR(tn+(implicit?dt:0.0)-0.5)))*(pow(y-x, 3.0) + cos(2.0*x-y) ONLY3D( + (5.0/3.0)*(z-2.0*x + cos(3.0*z-y))));
+//  }
+//  double dt_u_plus(DIM(double x, double y, double z))
+//  {
+//    return (exp(-SQR(tn+(implicit?dt:0.0)-0.5))*(1-2*(tn+(implicit?dt:0.0))))*(pow(y-x, 3.0) + cos(2.0*x-y) ONLY3D( + (5.0/3.0)*(z-2.0*x + cos(3.0*z-y))));
+//  }
+//  double dx_u_plus(DIM(double x, double y, double z))
+//  {
+//    return (1.0+exp(-SQR(tn+(implicit?dt:0.0)-0.5)))*(-3.0*SQR(y-x) - 2.0*sin(2.0*x-y) ONLY3D( + (5.0/3.0)*(-2.0)));
+//  }
+//  double dy_u_plus(DIM(double x, double y, double z))
+//  {
+//    return (1.0+exp(-SQR(tn+(implicit?dt:0.0)-0.5)))*(3.0*SQR(y-x) + sin(2.0*x-y) ONLY3D( + (5.0/3.0)*sin(3.0*z-y)));
+//  }
+//#ifdef P4_TO_P8
+//  double dz_u_plus(DIM(double x, double y, double z))
+//  {
+//    return (1.0+exp(-SQR(tn+(implicit?dt:0.0)-0.5)))*(pow(y-x, 3.0) + cos(2.0*x-y) ONLY3D( + (5.0/3.0)*(1.0 - 3.0*sin(3.0*z-y))));
+//  }
+//#endif
+//  double laplace_u_plus(DIM(double x, double y, double z))
+//  {
+//    return (1.0+exp(-SQR(tn+(implicit?dt:0.0)-0.5)))*(12.0*(y-x)-5.0*cos(2.0*x-y) ONLY3D( + (5.0/3.0)*(-10.0*cos(3.0*z-y))));
+//  }
+
+//  double v_plus(DIM(double x, double y, double z))
+//  {
+//    return (1.0+0.3*cos(1.5*(tn+(implicit?dt:0.0))))*(sin(3.0*x-2.0*y) + log(1.0 + SQR(0.5*y-1.2*x)) ONLY3D( + cos(1.7*z-0.3*x)));
+//  }
+//  double dt_v_plus(DIM(double x, double y, double z))
+//  {
+//    return (-0.3*1.5*sin(1.5*(tn+(implicit?dt:0.0))))*(sin(3.0*x-2.0*y) + log(1.0 + SQR(0.5*y-1.2*x)) ONLY3D( + cos(1.7*z-0.3*x)));
+//  }
+//  double dx_v_plus(DIM(double x, double y, double z))
+//  {
+//    return (1.0+0.3*cos(1.5*(tn+(implicit?dt:0.0))))*(3.0*cos(3.0*x-2.0*y) + (-2.0*1.2*(0.5*y-1.2*x))/(1.0 + SQR(0.5*y-1.2*x)) ONLY3D( + 0.3*sin(1.7*z-0.3*x)));
+//  }
+//  double dy_v_plus(DIM(double x, double y, double z))
+//  {
+//    return (1.0+0.3*cos(1.5*(tn+(implicit?dt:0.0))))*(-2.0*cos(3.0*x-2.0*y) + (2.0*0.5*(0.5*y-1.2*x))/(1.0 + SQR(0.5*y-1.2*x)));
+//  }
+//#ifdef P4_TO_P8
+//  double dz_v_plus(DIM(double x, double y, double z))
+//  {
+//    return (1.0+0.3*cos(1.5*(tn+(implicit?dt:0.0))))*(- 1.7*sin(1.7*z-0.3*x));
+//  }
+//#endif
+//  double laplace_v_plus(DIM(double x, double y, double z))
+//  {
+//    return (1.0+0.3*cos(1.5*(tn+(implicit?dt:0.0))))*((-SQR(3.0)-SQR(-2.0))*sin(3.0*x-2.0*y) +
+//                                                      (2.0*(SQR(-1.2) + SQR(0.5))*(1.0-SQR(0.5*y - 1.2*x)))/(SQR(1.0+SQR(0.5*y-1.2*x)))
+//                                                      ONLY3D(+ (-SQR(1.7) - SQR(0.3))*cos(1.7*z-0.3*x)));
+//  }
 
   double source_term(const unsigned char &dir, DIM(const double &x, const double &y, const double &z), const my_p4est_interpolation_nodes_t &interp_phi)
   {
@@ -327,6 +328,15 @@ public:
     return r0 - sqrt(SUMD(SQR(x-(xmax+xmin)/2), SQR(y-(ymax+ymin)/2), SQR(z-(zmax+zmin)/2))) - 100.0*r0;
   }
 } level_set;
+
+class LEVEL_SET_MINUS: public CF_DIM {
+public:
+  LEVEL_SET_MINUS() { lip = 1.2; }
+  double operator()(DIM(double, double, double)) const
+  {
+    return -1.0;
+  }
+} level_set_value;
 
 struct BCWALLTYPE_U : WallBCDIM {
   BoundaryConditionType operator()(DIM(double, double, double)) const
@@ -454,12 +464,11 @@ int main (int argc, char* argv[])
   my_p4est_two_phase_flows_t* two_phase_flow_solver = NULL;
   my_p4est_brick_t* brick                           = NULL;
   splitting_criteria_cf_and_uniform_band_t* data    = NULL;
-  LEVEL_SET level_set;
 
   double uniform_band_m, uniform_band_p;
   int n_tree_xyz [P4EST_DIM];
 
-  const string export_dir               = "/home/regan/workspace/projects/two_phase_flow/check_viscosity/results_" + to_string(P4EST_DIM) + "d";
+  const string export_dir               = "/home/raphael/workspace/projects/two_phase_flow/check_viscosity/results_" + to_string(P4EST_DIM) + "d";
   const bool save_vtk                   = true;
   double vtk_dt                         = -1.0;
   if(save_vtk)
@@ -485,8 +494,8 @@ int main (int argc, char* argv[])
   bc_v[2].setWallTypes(bc_wall_type_w); bc_v[2].setWallValues(bc_wall_value_w);
 #endif
 
-  lmin                    = cmd.get<int>("lmin", 4);
-  lmax                    = cmd.get<int>("lmax", 4);
+  lmin                    = cmd.get<int>("lmin", 4+0);
+  lmax                    = cmd.get<int>("lmax", 5+0);
   n_tree_xyz[0]           = cmd.get<int>("nx", 1);
   n_tree_xyz[1]           = cmd.get<int>("ny", 1);
 #ifdef P4_TO_P8
@@ -570,7 +579,7 @@ int main (int argc, char* argv[])
 
   Vec fine_phi;
   ierr = VecCreateGhostNodes(p4est_fine, nodes_fine, &fine_phi); CHKERRXX(ierr);
-  sample_cf_on_nodes(p4est_fine, nodes_fine, level_set, fine_phi);
+  sample_cf_on_nodes(p4est_fine, nodes_fine, level_set_value, fine_phi);
 
   two_phase_flow_solver = new my_p4est_two_phase_flows_t(ngbd_nm1, ngbd_n, faces_n, ngbd_n_fine);
   bool second_order_phi = true;
@@ -706,8 +715,8 @@ int main (int argc, char* argv[])
     }
 
     tn += dt;
-    if(!implicit)
-      two_phase_flow_solver->enforce_bc_v();
+//    if(!implicit)
+//      two_phase_flow_solver->enforce_bc_v();
 
     two_phase_flow_solver->slide_face_fields();
 
@@ -730,7 +739,7 @@ int main (int argc, char* argv[])
 
     iter++;
 
-    break;
+//    break;
   }
 #ifdef P4_TO_P8
   ierr = PetscPrintf(mpi.comm(), "\t MAX error u_minus = %.5e \t MAX error v_minus = %.5e \t MAX error w_minus = %.5e\n",
@@ -747,6 +756,24 @@ int main (int argc, char* argv[])
   for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
     ierr = VecDestroy(rhs[dir]); CHKERRXX(ierr);
   }
+
+  Vec coarse_phi = NULL;
+  two_phase_flow_solver->interpolate_linearly_from_fine_nodes_to_coarse_nodes(fine_phi, coarse_phi);
+
+  const double *coarse_phi_p, *fine_phi_p;
+  ierr = VecGetArrayRead(coarse_phi, &coarse_phi_p); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(fine_phi, &fine_phi_p); CHKERRXX(ierr);
+  my_p4est_vtk_write_all(p4est_n, nodes_n, ghost_n,
+                         P4EST_TRUE, P4EST_TRUE,
+                         1, 0, (export_dir + "/illustration").c_str(),
+                         VTK_NODE_SCALAR, "phi", coarse_phi_p);
+  my_p4est_vtk_write_all(p4est_fine, nodes_fine, ghost_fine,
+                         P4EST_TRUE, P4EST_TRUE,
+                         1, 0, (export_dir + "/fine_illustration").c_str(),
+                         VTK_NODE_SCALAR, "phi", fine_phi_p);
+  ierr = VecRestoreArrayRead(coarse_phi, &coarse_phi_p); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(fine_phi, &fine_phi_p); CHKERRXX(ierr);
+  ierr = VecDestroy(coarse_phi); CHKERRXX(ierr);
 
   delete two_phase_flow_solver;
   delete data;
