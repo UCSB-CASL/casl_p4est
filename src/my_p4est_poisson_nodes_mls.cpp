@@ -621,7 +621,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
   std::vector< std::vector<mat_entry_t> > entries_jump    (nj);
   std::vector< std::vector<mat_entry_t> > entries_jump_ghost(na);
 //  std::vector< std::vector<mat_entry_t> > entries_robin_sc(nr);
-  if (assembling_robin_sc) entries_robin_sc.resize(nr);
+  if (assembling_robin_sc) entries_robin_sc.assign(nr, std::vector<mat_entry_t>(0));
 
   std::vector<PetscInt> d_nnz_main    (nm, 1);
   std::vector<PetscInt> o_nnz_main    (nm, 0);
