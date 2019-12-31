@@ -285,7 +285,7 @@ private:
 
   void solve_c0();
   void solve_c0_robin();
-  void solve_psi_c0();
+  void solve_psi_c0(int scheme);
 
   void solve_c(int start, int num);
   void solve_psi_c(int start, int num);
@@ -293,7 +293,7 @@ private:
   void compute_c0n();
   void compute_psi_c0n();
 
-  void adjust_c0_gamma(int scheme);
+  void compute_c0_change(int scheme=0);
   void compute_pw_bc_values(int start, int num);
   void compute_pw_bc_psi_values(int start, int num);
 
@@ -323,9 +323,10 @@ private:
   vector<double> pw_psi_t_flx_jump_taylor_;
   vector<double> pw_psi_t_flx_jump_integr_;
 
+  vector<double> pw_inverse_gradient_;
+  vector<double> pw_c0_change_;
   vector<double> pw_c0_values_;
   vector<double> pw_psi_c0_values_;
-
 
   //--------------------------------------------------
   // Solver parameters

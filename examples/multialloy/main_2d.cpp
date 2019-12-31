@@ -131,7 +131,8 @@ DEFINE_PARAMETER(pl, double, termination_length,    0.99, "");
 DEFINE_PARAMETER(pl, double, init_perturb,          1.e-3, "");
 DEFINE_PARAMETER(pl, bool,   enforce_planar_front,  0,"");
 
-DEFINE_PARAMETER(pl, double, box_size, 4.e-2, "equivalent width (in x) of the box in cm");
+//DEFINE_PARAMETER(pl, double, box_size, 4.e-2, "equivalent width (in x) of the box in cm");
+DEFINE_PARAMETER(pl, double, box_size, 1, "equivalent width (in x) of the box in cm");
 
 double scaling = 1./box_size;
 
@@ -187,7 +188,7 @@ DEFINE_PARAMETER(pl, double, eps_v, 0, ""); /* kinetic undercooling coefficient 
 DEFINE_PARAMETER(pl, double, eps_a, 0, ""); /* anisotropy coefficient                                    */
 DEFINE_PARAMETER(pl, double, symmetry, 4, ""); // symmetric of crystals
 
-DEFINE_PARAMETER(pl, int, alloy, 2, "0: Ni -  0.4at%Cu bi-alloy, "
+DEFINE_PARAMETER(pl, int, alloy, 0, "0: Ni -  0.4at%Cu bi-alloy, "
                                     "1: Ni -  0.2at%Cu -  0.2at%Cu tri-alloy, "
                                     "2: Co - 10.7at%W  -  9.4at%Al tri-alloy, "
                                     "3: Co -  9.4at%Al - 10.7at%W  tri-alloy, "
@@ -228,7 +229,7 @@ void set_alloy_parameters()
 
       num_comps = 1;
 
-      solute_diff_0    = 1.e-5;  // cm2.s-1 - concentration diffusion coefficient
+      solute_diff_0    = 1.e-3;  // cm2.s-1 - concentration diffusion coefficient
       liquidus_slope_0 = -357;   // K / at frac. - liquidous slope
       initial_conc_0   = 0.4;    // at frac.
       part_coeff_0     = 0.86;   // partition coefficient
@@ -279,7 +280,7 @@ void set_alloy_parameters()
       num_comps = 2;
 
       solute_diff_0    = 1e-5;     // cm2.s-1 - concentration diffusion coefficient
-      solute_diff_1    = 5e-5;     // cm2.s-1 - concentration diffusion coefficient
+      solute_diff_1    = 1e-5;     // cm2.s-1 - concentration diffusion coefficient
       liquidus_slope_0 =-874;      // K / at frac. - liquidous slope
       liquidus_slope_1 =-1378;     // K / at frac. - liquidous slope
       initial_conc_0   = 0.107;    // at frac.
@@ -1092,6 +1093,23 @@ int main (int argc, char* argv[])
 //  volumetric_heat  /= (scaling*scaling*scaling);
   temp_gradient    /= scaling;
   cooling_velocity *= scaling;
+
+  if (mpi.rank() == 0)
+  {
+    ierr = PetscPrintf(mpi.comm(), "density_l: %g\n", density_l); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "density_s: %g\n", density_s); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "thermal_cond_l: %g\n", thermal_cond_l); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "thermal_cond_s: %g\n", thermal_cond_s); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "thermal_diff_l: %g\n", thermal_cond_l/density_l/heat_capacity_l); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "thermal_diff_s: %g\n", thermal_cond_s/density_s/heat_capacity_s); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "latent_heat: %g\n", latent_heat); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "solute_diff_0: %g\n", solute_diff_0); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "solute_diff_1: %g\n", solute_diff_1); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "solute_diff_2: %g\n", solute_diff_2); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "solute_diff_3: %g\n", solute_diff_3); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "temp_gradient: %g\n", temp_gradient); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "cooling_velocity: %g\n", cooling_velocity); CHKERRXX(ierr);
+  }
 
 
   parStopWatch w1;

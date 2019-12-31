@@ -89,7 +89,7 @@ DEFINE_PARAMETER(pl, int, num_shifts_y_dir, 1, "Number of grid shifts in the y-d
 DEFINE_PARAMETER(pl, int, num_shifts_z_dir, 1, "Number of grid shifts in the z-direction");
 #else
 DEFINE_PARAMETER(pl, int, lmin, 5, "Min level of the tree");
-DEFINE_PARAMETER(pl, int, lmax, 5, "Max level of the tree");
+DEFINE_PARAMETER(pl, int, lmax, 10, "Max level of the tree");
 
 DEFINE_PARAMETER(pl, int, num_splits,           5, "Number of recursive splits");
 DEFINE_PARAMETER(pl, int, num_splits_per_split, 1, "Number of additional resolutions");
@@ -106,19 +106,19 @@ DEFINE_PARAMETER(pl, double, lip, 1.5, "");
 //-------------------------------------
 DEFINE_PARAMETER(pl, bool, use_points_on_interface,   1, "");
 DEFINE_PARAMETER(pl, int,  update_c0_robin,           0, "");
-DEFINE_PARAMETER(pl, bool, use_superconvergent_robin, 1, "");
+DEFINE_PARAMETER(pl, bool, use_superconvergent_robin, 0, "");
 
-DEFINE_PARAMETER(pl, int,    pin_every_n_iterations, 100, "");
+DEFINE_PARAMETER(pl, int,    pin_every_n_iterations, 1, "");
 DEFINE_PARAMETER(pl, int,    max_iterations,    100, "");
 DEFINE_PARAMETER(pl, double, bc_tolerance,      1.e-11, "");
 
 //-------------------------------------
 // problem geometry
 //-------------------------------------
-DEFINE_PARAMETER(pl, double, box_size, 0.1, "equivalent width (in x) of the box in cm");
+DEFINE_PARAMETER(pl, double, box_size, 1, "equivalent width (in x) of the box in cm");
 
 DEFINE_PARAMETER(pl, double, cfl_number, 0.1, "");
-DEFINE_PARAMETER(pl, double, dt, 0.333, "");
+DEFINE_PARAMETER(pl, double, dt, 1, "");
 
 DEFINE_PARAMETER(pl, int, front_geometry, 0, "0 - circular, 1 - flower-shaped, 2 - assymetrically flower-shaped, ");
 DEFINE_PARAMETER(pl, int, container_geometry, 0, "0 - no container, 1 - circular");
@@ -133,7 +133,7 @@ DEFINE_PARAMETER(pl, int, n_c1, 0, "Test solution for C1");
 DEFINE_PARAMETER(pl, int, n_c2, 0, "Test solution for C2");
 DEFINE_PARAMETER(pl, int, n_c3, 0, "Test solution for C3");
 DEFINE_PARAMETER(pl, int, n_vn, 1, "Test solution for vn");
-DEFINE_PARAMETER(pl, int, n_guess, 2, "Guess for C0");
+DEFINE_PARAMETER(pl, int, n_guess, 0, "Guess for C0");
 
 DEFINE_PARAMETER(pl, BoundaryConditionType, wc_type_thermal,     DIRICHLET, "Wall conditions type for temperature");
 DEFINE_PARAMETER(pl, BoundaryConditionType, wc_type_composition, DIRICHLET, "Wall conditions type for concentrations");
@@ -200,7 +200,7 @@ DEFINE_PARAMETER(pl, double, seed_1_phase_zx, 0, "");
 DEFINE_PARAMETER(pl, double, seed_2_phase_zx, 0, "");
 #endif
 
-DEFINE_PARAMETER(pl, int, alloy, 1, "0: Ni -  0.4at%Cu bi-alloy, "
+DEFINE_PARAMETER(pl, int, alloy, 8, "0: Ni -  0.4at%Cu bi-alloy, "
                                     "1: Ni -  0.3at%Cu -  0.1at%Cu tri-alloy, "
                                     "2: Co - 10.7at%W  -  9.4at%Al tri-alloy, "
                                     "3: Co -  9.4at%Al - 10.7at%W  tri-alloy, "
@@ -290,6 +290,30 @@ void set_alloy_parameters()
       part_coeff_1     = 0.86;
       part_coeff_2     = 0.86;
       part_coeff_3     = 0.86;
+
+      eps_c = 0;
+      eps_v = 0;
+      eps_a = 0.05;
+      break;
+    case 8:// Ni - 0.3at%Cu - 0.1at%Cu
+      density_l       = 1; // kg.cm-3
+      density_s       = 1; // kg.cm-3
+      heat_capacity_l = 1;  // J.kg-1.K-1
+      heat_capacity_s = 1;  // J.kg-1.K-1
+      melting_temp    = 0;    // K
+      latent_heat     = 1;    // J.cm-3
+      thermal_cond_l  = 1; // W.cm-1.K-1
+      thermal_cond_s  = 1; // W.cm-1.K-1
+
+      num_comps = 2;
+      solute_diff_0    = 1.e-0;
+      solute_diff_1    = 1.e-0;
+      liquidus_slope_0 = -50;
+      liquidus_slope_1 = -50;
+      initial_conc_0   = 0.3;
+      initial_conc_1   = 0.1;
+      part_coeff_0     = 0.5;
+      part_coeff_1     = 0.5;
 
       eps_c = 0;
       eps_v = 0;
@@ -1445,7 +1469,7 @@ int main (int argc, char* argv[])
 
 
     double bc_error_max = 0;
-    solver_all_in_one.solve(sol_tl.vec, sol_ts.vec, sol_c_all, sol_c0d.vec, bc_error.vec, bc_error_max, true, &pdes_it, &error_it);
+    solver_all_in_one.solve(sol_tl.vec, sol_ts.vec, sol_c_all, sol_c0d.vec, bc_error.vec, bc_error_max, false, &pdes_it, &error_it);
 //    while (1)
 //    {
 //      solver_all_in_one.solve(sol_tl.vec, sol_ts.vec, sol_c_all, sol_c0d.vec, bc_error.vec, bc_error_max, 0, &pdes_it, &error_it);
