@@ -1866,5 +1866,4 @@ void my_p4est_multialloy_t::compute_filtered_curvature()
   ls.set_interpolation_on_interface(linear);
 
   ls.extend_from_interface_to_whole_domain_TVD_in_place(front_phi_.vec, front_curvature_filtered_.vec, front_phi_.vec);
-
 }

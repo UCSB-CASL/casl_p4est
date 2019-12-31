@@ -104,9 +104,9 @@ DEFINE_PARAMETER(pl, double, lip, 1.5, "");
 //-------------------------------------
 // solver parameters
 //-------------------------------------
-DEFINE_PARAMETER(pl, bool, use_points_on_interface,   0, "");
+DEFINE_PARAMETER(pl, bool, use_points_on_interface,   1, "");
 DEFINE_PARAMETER(pl, int,  update_c0_robin,           0, "");
-DEFINE_PARAMETER(pl, bool, use_superconvergent_robin, 0, "");
+DEFINE_PARAMETER(pl, bool, use_superconvergent_robin, 1, "");
 
 DEFINE_PARAMETER(pl, int,    pin_every_n_iterations, 100, "");
 DEFINE_PARAMETER(pl, int,    max_iterations,    100, "");
@@ -133,7 +133,7 @@ DEFINE_PARAMETER(pl, int, n_c1, 0, "Test solution for C1");
 DEFINE_PARAMETER(pl, int, n_c2, 0, "Test solution for C2");
 DEFINE_PARAMETER(pl, int, n_c3, 0, "Test solution for C3");
 DEFINE_PARAMETER(pl, int, n_vn, 1, "Test solution for vn");
-DEFINE_PARAMETER(pl, int, n_guess, 0, "Guess for C0");
+DEFINE_PARAMETER(pl, int, n_guess, 2, "Guess for C0");
 
 DEFINE_PARAMETER(pl, BoundaryConditionType, wc_type_thermal,     DIRICHLET, "Wall conditions type for temperature");
 DEFINE_PARAMETER(pl, BoundaryConditionType, wc_type_composition, DIRICHLET, "Wall conditions type for concentrations");
@@ -251,7 +251,7 @@ void set_alloy_parameters()
 
       num_comps = 2;
       solute_diff_0    = 1.e-4;
-      solute_diff_1    = 1.e-3;
+      solute_diff_1    = 1.e-4;
       liquidus_slope_0 = -357;
       liquidus_slope_1 = -357;
       initial_conc_0   = 0.3;

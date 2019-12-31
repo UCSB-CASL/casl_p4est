@@ -41,107 +41,142 @@
 
 #include <src/petsc_compatibility.h>
 #include <src/Parser.h>
+#include <src/parameter_list.h>
 
 #undef MIN
 #undef MAX
 
-#define ADD_OPTION(i, var, description) \
-  i == 0 ? cmd.add_option(#var, description) : (void) (var = cmd.get(#var, var));
-
-#define ADD_OPTION2(i, var, name, description) \
-  i == 0 ? cmd.add_option(name, description) : (void) (var = cmd.get(name, var));
-
 using namespace std;
 
-// computational domain
-double xmin = 0, xmax = 1; int nx = 1; bool px = 0;
-double ymin = 0, ymax = 1; int ny = 1; bool py = 1;
-double zmin = 0, zmax = 1; int nz = 1; bool pz = 1;
+param_list_t pl;
 
+//-------------------------------------
+// computational domain parameters
+//-------------------------------------
+param_t<int> px (pl, 0, "px", "Periodicity in the x-direction (0/1)");
+param_t<int> py (pl, 1, "py", "Periodicity in the y-direction (0/1)");
+param_t<int> pz (pl, 1, "pz", "Periodicity in the z-direction (0/1)");
+
+param_t<int> nx (pl, 1, "nx", "Number of trees in the x-direction");
+param_t<int> ny (pl, 1, "ny", "Number of trees in the y-direction");
+param_t<int> nz (pl, 1, "nz", "Number of trees in the z-direction");
+
+param_t<double> xmin (pl, 0, "xmin", "Box xmin");
+param_t<double> ymin (pl, 0, "ymin", "Box ymin");
+param_t<double> zmin (pl, 0, "zmin", "Box zmin");
+
+param_t<double> xmax (pl, 1, "xmax", "Box xmax");
+param_t<double> ymax (pl, 1, "ymax", "Box ymax");
+param_t<double> zmax (pl, 1, "zmax", "Box zmax");
+
+//-------------------------------------
 // grid resolution parameters
+//-------------------------------------
 #ifdef P4_TO_P8
-int lmin = 4;
-int lmax = 6;
-double lip = 1.5;
+param_t<int>    lmin (pl, 4,   "lmin", "Minimum level of refinement");
+param_t<int>    lmax (pl, 6,   "lmax", "Maximum level of refinement");
+param_t<double> lip  (pl, 1.6, "lip",  "Refinement transition width");
 #else
-int lmin = 6;
-int lmax = 10;
-double lip = 1.5;
+param_t<int>    lmin (pl, 6,   "lmin", "Minimum level of refinement");
+param_t<int>    lmax (pl, 10,  "lmax", "Maximum level of refinement");
+param_t<double> lip  (pl, 1.6, "lip",  "Refinement transition width");
 #endif
 
+//-------------------------------------
 // model options
-int  velocity_type; /* 0 - using concentration (not implemented), 1 - using pressure (Darcy) */
-bool steady_state;  /* assume steady state profile for concentration or not */
+//-------------------------------------
+param_t<int>  velocity_type (pl, 1, "velocity_type", "Calculation of velocity: 0 - using concentration (not implemented), 1 - using pressure (Darcy)");
+param_t<bool> steady_state  (pl, 0, "steady_state",  "Assume steady state profile for concentration or not");
 
-double box_size; /* lateral dimensions of simulation box      - m         */
-double Df;       /* diffusivity of nutrients in air           - m^2/s     */
-double Db;       /* diffusivity of nutrients in biofilm       - m^2/s     */
-double Da;       /* diffusivity of nutrients in agar          - m^2/s     */
-double sigma;    /* surface tension of air/film interface     - N/m       */
-double rho;      /* density of biofilm                        - kg/m^3    */
-double lambda;   /* mobility of biofilm                       - m^4/(N*s) */
-double A;        /* maximum uptake rate                       - kg/m^3    */
-double Kc;       /* half-saturation constant                  - kg/m^3    */
-double gam;      /* biofilm yield per nutrient mass           -           */
-double C0f;      /* initial nutrient concentration in air     - kg/m^3    */
-double C0b;      /* initial nutrient concentration in biofilm - kg/m^3    */
-double C0a;      /* initial nutrient concentration in agar    - kg/m^3    */
+param_t<double> box_size (pl, 1.0,   "box_size", "Lateral dimensions of simulation box      - m        ");
+param_t<double> Df       (pl, 1.e-3, "Df",       "Diffusivity of nutrients in air           - m^2/s    ");
+param_t<double> Db       (pl, 1.e-2, "Db",       "Diffusivity of nutrients in biofilm       - m^2/s    ");
+param_t<double> Da       (pl, 1.e-1, "Da",       "Diffusivity of nutrients in agar          - m^2/s    ");
+param_t<double> sigma    (pl, 0.0,   "sigma",    "Surface tension of air/film interface     - N/m      ");
+param_t<double> rho      (pl, 1.0,   "rho",      "Density of biofilm                        - kg/m^3   ");
+param_t<double> lambda   (pl, 1.0,   "lambda",   "Mobility of biofilm                       - m^4/(N*s)");
+param_t<double> A        (pl, 1.0,   "A",        "Maximum uptake rate                       - kg/m^3   ");
+param_t<double> Kc       (pl, 1.0,   "Kc",       "Half-saturation constant                  - kg/m^3   ");
+param_t<double> gam      (pl, 0.5,   "gam",      "This represent B/A (see the paper)");
+param_t<double> C0f      (pl, 1.0,   "C0f",      "Initial nutrient concentration in air     - kg/m^3");
+param_t<double> C0b      (pl, 1.0,   "C0b",      "Initial nutrient concentration in biofilm - kg/m^3");
+param_t<double> C0a      (pl, 1.0,   "C0a",      "Initial nutrient concentration in agar    - kg/m^3");
 
-BoundaryConditionType bc_agar; /* BC type (on computatoinal domain boundary) for nutrients in agar    */
-BoundaryConditionType bc_free; /* BC type (on computatoinal domain boundary) for nutrients in biofilm */
-BoundaryConditionType bc_biof; /* BC type (on computatoinal domain boundary) for nutrients in air     */
+param_t<BoundaryConditionType> bc_agar (pl, NEUMANN, "bc_agar", "BC type (on computatoinal domain boundary) for nutrients in agar   ");
+param_t<BoundaryConditionType> bc_free (pl, NEUMANN, "bc_free", "BC type (on computatoinal domain boundary) for nutrients in biofilm");
+param_t<BoundaryConditionType> bc_biof (pl, NEUMANN, "bc_biof", "BC type (on computatoinal domain boundary) for nutrients in air    ");
 
-int nb_geometry; /* initial geometry:
-                  * 0 - planar
-                  * 1 - sphere
-                  * 2 - three spheres
-                  * 3 - pipe
-                  * 4 - planar + bump
-                  * 5 - corrugated agar
-                  * 6 - porous media (grains)
-                  * 7 - porous media (cavities)
-                  */
-double h_agar;   /* characteristic size of agar      - m */
-double h_biof;   /* characteristic size of biofilm   - m */
+param_t<int> nb_geometry (pl, 1, "nb_geometry", "Initial geometry:\n"
+                                                "0 - planar\n"
+                                                "1 - sphere\n"
+                                                "2 - three spheres\n"
+                                                "3 - pipe\n"
+                                                "4 - planar + bump\n"
+                                                "5 - corrugated agar\n"
+                                                "6 - porous media (grains)\n"
+                                                "7 - porous media (cavities)");
 
+param_t<double> h_agar (pl, 1, "h_agar", "characteristic size of agar    - m");
+param_t<double> h_biof (pl, 1, "h_biof", "characteristic size of biofilm - m");
+
+//-------------------------------------
 // specifically for porous media examples
-int    grain_num;        /* number of grains or cavities    */
-double grain_dispersity; /* grains/cavities size dispersion */
-double grain_smoothing;  /* smoothing of initial geometry   */
+//-------------------------------------
+param_t<int>    grain_num        (pl, 1, "grain_num",        "Number of grains or cavities");
+param_t<double> grain_dispersity (pl, 1, "grain_dispersity", "Grains/cavities size dispersion");
+param_t<double> grain_smoothing  (pl, 1, "grain_smoothing",  "Smoothing of initial geometry");
 
+//-------------------------------------
 // time discretization
-int    advection_scheme = 2;   // 1 - 1st order, 2 - 2nd order
-int    time_scheme      = 2;   // 1 - Euler (1st order), 2 - BDF2 (2nd order)
-double cfl_number       = 0.25; //
+//-------------------------------------
+param_t<int>    advection_scheme (pl, 2,    "advection_scheme", "Advection scheme: 1 - 1st order, 2 - 2nd order");
+param_t<int>    time_scheme      (pl, 2,    "time_scheme",      "Time discretization: 1 - Euler (1st order), 2 - BDF2 (2nd order)");
+param_t<double> cfl_number       (pl, 0.25, "cfl_number",       "CFL number for computing time step");
 
+//-------------------------------------
 // solving non-linear diffusion equation
-int    iteration_scheme = 1;     // iterative scheme : 0 - simple fixed-point, 1 - linearized fixed-point (a.k.a. Newton)
-int    max_iterations   = 10;    // max iterations
-double tolerance        = 1.e-8; // tolerance
+//-------------------------------------
+param_t<int>    iteration_scheme (pl, 1,      "iteration_scheme", "Iterative scheme for solving nonlinear equation: 0 - simple fixed-point, 1 - linearized fixed-point (a.k.a. Newton)");
+param_t<int>    max_iterations   (pl, 10,     "max_iterations",   "Maximum iterations for solving nonlinear equation");
+param_t<double> tolerance        (pl, 1.e-12, "tolerance",        "Tolerance for solving nonlinear equation");
 
+//-------------------------------------
 // general poisson solver parameters
-bool use_sc_scheme         = 1; // for finite volume schemes (jump, neumann, robin): 0 - simple scheme, 1 - superconvergent (second-order accurate gradients)
-bool use_taylor_correction = 1; // for symmetric scheme for robin bc, irrelevant here actually
-int  integration_order     = 1; // order of geometric recpnstruction for computing domain and boundary integrals: 1 - linear, 2 - quadratic
+//-------------------------------------
+param_t<bool> use_sc_scheme         (pl, 1, "use_sc_scheme",         "For finite volume schemes (jump, neumann, robin): 0 - simple scheme, 1 - superconvergent (second-order accurate gradients)");
+param_t<bool> use_taylor_correction (pl, 1, "use_taylor_correction", "For symmetric scheme for robin bc, irrelevant here actually");
+param_t<int>  integration_order     (pl, 1, "integration_order",     "Order of geometric reconstruction for computing domain and boundary integrals: 1 - linear, 2 - quadratic");
 
+//-------------------------------------
+// smoothing of curvature
+//-------------------------------------
+param_t<double> curvature_smoothing       (pl, 0, "curvature_smoothing",       "Characteristic distance over which curvature is smoothed (in diagonal lengths)");
+param_t<int>    curvature_smoothing_steps (pl, 5,  "curvature_smoothing_steps", "Number of smoothing steps");
+
+//-------------------------------------
 // output parameters
-bool   save_data  = 1; // save scalar characteristics (time elapsed, biofilm volume, surface area, etc)
-bool   save_vtk   = 1; // save spatial data
-int    save_type  = 0; // 0 - every dn iterations, 1 - every dl of growth, 2 - every dt of time
-int    save_every_dn = 1;
-double save_every_dl = 0.01;
-double save_every_dt = 0.5;
+//-------------------------------------
+param_t<bool>   save_data     (pl, 1,    "save_data",     "Save scalar characteristics (time elapsed, biofilm volume, surface area, etc)");
+param_t<bool>   save_vtk      (pl, 1,    "save_vtk",      "Save spatial data");
+param_t<int>    save_type     (pl, 0,    "save_type",     "When save 0 - every dn iterations, 1 - every dl of growth, 2 - every dt of time");
+param_t<int>    save_every_dn (pl, 1,    "save_every_dn", "");
+param_t<double> save_every_dl (pl, 0.01, "save_every_dl", "");
+param_t<double> save_every_dt (pl, 0.5,  "save_every_dt", "");
 
+//-------------------------------------
 // simulation run parameters
-int    limit_iter   = 10000; // max total time steps
-double limit_time   = DBL_MAX; // max total run time
-double limit_length = 1.8; // max total biofilm growth (not implemented yet)
-double limit_nutrient = 0.02; // terminate simulation when this fraction of initial nutrient is left in the system
-double limit_wall   = 0.05; // terminate simulation when biofilm gets that close to walls of computational domain
-double init_perturb = 0.00001; // initial random perturbation of biofilm surface
+//-------------------------------------
+param_t<int>    limit_iter     (pl, 10000,   "limit_iter",     "Max total time steps");
+param_t<double> limit_time     (pl, DBL_MAX, "limit_time",     "Max total run time");
+param_t<double> limit_length   (pl, 1.8,     "limit_length",   "Max total biofilm growth (not implemented yet)");
+param_t<double> limit_nutrient (pl, 0.02,    "limit_nutrient", "Terminate simulation when this fraction of initial nutrient is left in the system");
+param_t<double> limit_wall     (pl, 0.05,    "limit_wall",     "Terminate simulation when biofilm gets that close to walls of computational domain");
+param_t<double> init_perturb   (pl, 0.00001, "init_perturb",   "Initial random perturbation of biofilm surface");
 
+//-------------------------------------
 // pre-defined examples
-int nb_experiment = 2;
+//-------------------------------------
+param_t<int> nb_experiment (pl, 6, "nb_experiment", "");
 /* 0 - (biofilm + agar + water), planar, transient
  * 1 - (biofilm + agar + water), planar, steady-state
  * 2 - (biofilm + agar), planar with a bump, transient
@@ -151,388 +186,236 @@ int nb_experiment = 2;
  * 6 - (biofilm + water + agar), porous (grains), transient
  */
 
+void setup_experiment()
+{
+  // common parameters
+  velocity_type.val = 1;
+  box_size.val = 1;
+  sigma.val = 1.e-20;
+  rho.val = 1;
+  lambda.val = 1.0;
+  A.val = 1;
+  Kc.val = 1;
+  gam.val = 0.5;
+  C0a.val = 1;
+  C0b.val = 1.0;
+  C0f.val = 1;
+
+  switch(nb_experiment.val)
+  {
+    case 0:
+      {
+        steady_state.val = 0;
+
+        Da.val = 0.001;
+        Db.val = 0.01;
+        Df.val = 0.1;
+
+        bc_agar.val = NEUMANN;
+        bc_free.val = NEUMANN;
+        bc_biof.val = NEUMANN;
+
+        nb_geometry.val = 0;
+        h_agar.val      = 0.2;
+        h_biof.val      = 0.015;
+        break;
+      }
+    case 1:
+      {
+        steady_state.val = 1;
+
+        Da.val = 0.001;
+        Db.val = 0.01;
+        Df.val = 0.1;
+
+        bc_agar.val = NEUMANN;
+        bc_free.val = DIRICHLET;
+        bc_biof.val = NEUMANN;
+
+        nb_geometry.val = 0;
+        h_agar.val      = 0.2;
+        h_biof.val      = 0.015;
+        break;
+      }
+    case 2:
+      {
+        steady_state.val = 0;
+
+        Da.val = 0.001;
+        Db.val = 0.01;
+        Df.val = 0;
+
+        bc_agar.val = NEUMANN;
+        bc_free.val = NEUMANN;
+        bc_biof.val = NEUMANN;
+
+        nb_geometry.val = 4;
+        h_agar.val      = 0.4;
 #ifdef P4_TO_P8
-void setup_experiment()
-{
-  // common parameters
-  velocity_type = 1;
-  box_size = 1;
-  sigma = 0.0;
-  rho = 1;
-  lambda = 1.0;
-  A = 1;
-  Kc = 1;
-  gam = 0.5;
-  C0a = 1;
-  C0b = 1.0;
-  C0f = 1;
-
-  switch(nb_experiment)
-  {
-    case 0:
-      {
-        steady_state = 0;
-
-        Da = 0.001;
-        Db = 0.01;
-        Df = 0.1;
-
-        bc_agar = NEUMANN;
-        bc_free = NEUMANN;
-        bc_biof = NEUMANN;
-
-        nb_geometry = 0;
-        h_agar      = 0.2;
-        h_biof      = 0.015;
-        break;
-      }
-    case 1:
-      {
-        steady_state = 1;
-
-        Da = 0.001;
-        Db = 0.01;
-        Df = 0.1;
-
-        bc_agar = NEUMANN;
-        bc_free = DIRICHLET;
-        bc_biof = NEUMANN;
-
-        nb_geometry = 0;
-        h_agar      = 0.2;
-        h_biof      = 0.015;
-        break;
-      }
-    case 2:
-      {
-        steady_state = 0;
-
-        Da = 0.001;
-        Db = 0.01;
-        Df = 0;
-
-        bc_agar = NEUMANN;
-        bc_free = NEUMANN;
-        bc_biof = NEUMANN;
-
-        nb_geometry = 4;
-        h_agar      = 0.4;
-        h_biof      = 0.115;
-
-        C0f = 0;
-        break;
-      }
-    case 3:
-      {
-        steady_state = 0;
-
-        Da = 0;
-        Db = 0.01;
-        Df = 0.1;
-
-        bc_agar = NEUMANN;
-        bc_free = DIRICHLET;
-        bc_biof = NEUMANN;
-
-        nb_geometry = 1;
-        h_agar      = -0.125;
-        h_biof      = 0.015;
-        break;
-      }
-    case 4:
-      {
-        steady_state = 0;
-
-        Da = 0;
-        Db = 0.01;
-        Df = 0.1;
-
-        bc_agar = NEUMANN;
-        bc_free = DIRICHLET;
-        bc_biof = NEUMANN;
-
-        nb_geometry = 3;
-        h_agar      = 0.4;
-        h_biof      = 0.015;
-
-        C0a = 0;
-        break;
-      }
-    case 5:
-      {
-        steady_state = 0;
-
-        Da = 0;
-        Db = 0.01;
-        Df = 0.1;
-
-        bc_agar = NEUMANN;
-        bc_free = NEUMANN;
-        bc_biof = NEUMANN;
-
-        nb_geometry = 7;
-        h_agar      = 0.03;
-        h_biof      = 0.015;
-
-        grain_num        = 100;
-        grain_dispersity = 2;
-        grain_smoothing  = 0.01;
-
-        C0a = 0;
-        break;
-      }
-    case 6:
-      {
-        steady_state = 0;
-
-        Da = 0.001;
-        Db = 0.01;
-        Df = 0.1;
-
-        bc_agar = NEUMANN;
-        bc_free = NEUMANN;
-        bc_biof = NEUMANN;
-
-        nb_geometry = 6;
-        h_agar      = 0.011;
-        h_biof      = 0.015;
-
-        grain_num        = 50;
-        grain_dispersity = 1.5;
-        grain_smoothing  = 0.01;
-        break;
-      }
-  }
-}
+        h_biof.val      = 0.115;
 #else
-void setup_experiment()
-{
-  // common parameters
-  velocity_type = 1;
-  box_size = 1;
-  sigma = 0.0;
-  rho = 1;
-  lambda = 1.0;
-  A = 1;
-  Kc = 1;
-  gam = 0.5;
-  C0a = 1;
-  C0b = 1.0;
-  C0f = 1;
+        h_biof.val      = 0.015;
+#endif
 
-  switch(nb_experiment)
-  {
-    case 0:
-      {
-        steady_state = 0;
-
-        Da = 0.001;
-        Db = 0.01;
-        Df = 0.1;
-
-        bc_agar = NEUMANN;
-        bc_free = NEUMANN;
-        bc_biof = NEUMANN;
-
-        nb_geometry = 0;
-        h_agar      = 0.2;
-        h_biof      = 0.015;
-        break;
-      }
-    case 1:
-      {
-        steady_state = 1;
-
-        Da = 0.001;
-        Db = 0.01;
-        Df = 0.1;
-
-        bc_agar = NEUMANN;
-        bc_free = DIRICHLET;
-        bc_biof = NEUMANN;
-
-        nb_geometry = 0;
-        h_agar      = 0.2;
-        h_biof      = 0.015;
-        break;
-      }
-    case 2:
-      {
-        steady_state = 0;
-
-        Da = 0.001;
-        Db = 0.01;
-        Df = 0;
-
-        bc_agar = NEUMANN;
-        bc_free = NEUMANN;
-        bc_biof = NEUMANN;
-
-        nb_geometry = 4;
-        h_agar      = 0.4;
-        h_biof      = 0.015;
-
-        C0f = 0;
+        C0f.val = 0;
         break;
       }
     case 3:
       {
-        steady_state = 0;
+        steady_state.val = 0;
 
-        Da = 0;
-        Db = 0.01;
-        Df = 0.1;
+        Da.val = 0;
+        Db.val = 0.01;
+        Df.val = 0.1;
 
-        bc_agar = NEUMANN;
-        bc_free = DIRICHLET;
-        bc_biof = NEUMANN;
+        bc_agar.val = NEUMANN;
+        bc_free.val = DIRICHLET;
+        bc_biof.val = NEUMANN;
 
-        nb_geometry = 1;
-        h_agar      = -0.125;
-        h_biof      = 0.015;
+        nb_geometry.val = 1;
+        h_agar.val      = -0.125;
+        h_biof.val      = 0.015;
         break;
       }
     case 4:
       {
-        steady_state = 0;
+        steady_state.val = 0;
 
-        Da = 0;
-        Db = 0.01;
-        Df = 0.1;
+        Da.val = 0;
+        Db.val = 0.01;
+        Df.val = 0.1;
 
-        bc_agar = NEUMANN;
-        bc_free = DIRICHLET;
-        bc_biof = NEUMANN;
+        bc_agar.val = NEUMANN;
+        bc_free.val = DIRICHLET;
+        bc_biof.val = NEUMANN;
 
-        nb_geometry = 3;
-        h_agar      = 0.4;
-        h_biof      = 0.015;
+        nb_geometry.val = 3;
+        h_agar.val      = 0.4;
+        h_biof.val      = 0.015;
 
-        C0a = 0;
+        C0a.val = 0;
         break;
       }
     case 5:
       {
-        steady_state = 0;
+        steady_state.val = 0;
 
-        Da = 0;
-        Db = 0.01;
-        Df = 0.1;
+        Da.val = 0;
+        Db.val = 0.01;
+        Df.val = 0.1;
 
-        bc_agar = NEUMANN;
-        bc_free = NEUMANN;
-        bc_biof = NEUMANN;
+        bc_agar.val = NEUMANN;
+        bc_free.val = NEUMANN;
+        bc_biof.val = NEUMANN;
 
-        nb_geometry = 7;
-        h_agar      = 0.03;
-        h_biof      = 0.015;
+        nb_geometry.val = 7;
+        h_agar.val      = 0.03;
+        h_biof.val      = 0.015;
 
-        grain_num        = 100;
-        grain_dispersity = 2;
-        grain_smoothing  = 0.01;
+        grain_num.val        = 100;
+        grain_dispersity.val = 2;
+        grain_smoothing.val  = 0.01;
 
-        C0a = 0;
+        C0a.val = 0;
         break;
       }
     case 6:
       {
-        steady_state = 0;
+        steady_state.val = 0;
 
-        Da = 0.001;
-        Db = 0.01;
-        Df = 0.1;
+        Da.val = 0.001;
+        Db.val = 0.01;
+        Df.val = 0.1;
 
-        bc_agar = NEUMANN;
-        bc_free = NEUMANN;
-        bc_biof = NEUMANN;
+        bc_agar.val = NEUMANN;
+        bc_free.val = NEUMANN;
+        bc_biof.val = NEUMANN;
 
-        nb_geometry = 6;
-        h_agar      = 0.011;
-        h_biof      = 0.015;
+        nb_geometry.val = 6;
+        h_agar.val      = 0.011;
+        h_biof.val      = 0.015;
 
-        grain_num        = 50;
-        grain_dispersity = 1.5;
-        grain_smoothing  = 0.01;
+        grain_num.val        = 50;
+        grain_dispersity.val = 1.5;
+        grain_smoothing.val  = 0.01;
         break;
       }
   }
 }
-#endif
 
 void set_periodicity()
 {
-  switch (nb_geometry)
+  switch (nb_geometry.val)
   {
-    case 0: px = 0; py = 1; pz = 1; break;
-    case 1: px = 0; py = 0; pz = 0; break;
-    case 2: px = 0; py = 0; pz = 0; break;
-    case 3: px = 0; py = 0; pz = 1; break;
-    case 4: px = 0; py = 1; pz = 1; break;
-    case 5: px = 0; py = 1; pz = 1; break;
-    case 6: px = 1; py = 1; pz = 1; break;
-    case 7: px = 1; py = 1; pz = 1; break;
+    case 0: px.val = 0; py.val = 1; pz.val = 1; break;
+    case 1: px.val = 0; py.val = 0; pz.val = 0; break;
+    case 2: px.val = 0; py.val = 0; pz.val = 0; break;
+    case 3: px.val = 0; py.val = 0; pz.val = 1; break;
+    case 4: px.val = 0; py.val = 1; pz.val = 1; break;
+    case 5: px.val = 0; py.val = 1; pz.val = 1; break;
+    case 6: px.val = 1; py.val = 1; pz.val = 1; break;
+    case 7: px.val = 1; py.val = 1; pz.val = 1; break;
     default: throw std::invalid_argument("[ERROR]: Wrong type of initial geometry");
   }
 }
 
-#ifdef P4_TO_P8
-class phi_agar_cf_t : public CF_3 {
+class phi_agar_cf_t : public CF_DIM {
 public:
-  double operator()(double x, double y, double z) const
+  double operator()(DIM(double x, double y, double z)) const
   {
-    switch (nb_geometry)
+    switch (nb_geometry.val)
     {
       case 0:
-        return -(x-h_agar);
+        return -(x-h_agar.val);
       case 1:
         {
-          double xc = xmin +.5*(xmax-xmin);
-          double yc = ymin +.5*(ymax-ymin);
-          double zc = zmin +.5*(zmax-zmin);
-          return h_agar - sqrt( SQR(x-xc) + SQR(y-yc) + SQR(z-zc) );
+          double xc = xmin.val +.5*(xmax.val-xmin.val);
+          double yc = ymin.val +.5*(ymax.val-ymin.val);
+          double zc = zmin.val +.5*(zmax.val-zmin.val);
+          return h_agar.val - sqrt( SUMD(SQR(x-xc), SQR(y-yc), SQR(z-zc)) );
         }
       case 2:
         {
-          double xc0 = xmin +.3*(xmax-xmin), xc1 = xmin +.5*(xmax-xmin), xc2 = xmin +.6*(xmax-xmin);
-          double yc0 = ymin +.5*(ymax-ymin), yc1 = ymin +.6*(ymax-ymin), yc2 = ymin +.4*(ymax-ymin);
-          double zc0 = zmin +.6*(zmax-zmin), zc1 = zmin +.4*(zmax-zmin), zc2 = zmin +.3*(zmax-zmin);
+          double xc0 = xmin.val +.3*(xmax.val-xmin.val), xc1 = xmin.val +.5*(xmax.val-xmin.val), xc2 = xmin.val +.6*(xmax.val-xmin.val);
+          double yc0 = ymin.val +.5*(ymax.val-ymin.val), yc1 = ymin.val +.6*(ymax.val-ymin.val), yc2 = ymin.val +.4*(ymax.val-ymin.val);
+          double zc0 = zmin.val +.6*(zmax.val-zmin.val), zc1 = zmin.val +.4*(zmax.val-zmin.val), zc2 = zmin.val +.3*(zmax.val-zmin.val);
 
-          return MAX(h_agar - sqrt( SQR(x-xc0) + SQR(y-yc0) + SQR(z-zc0) ),
-                     h_agar - sqrt( SQR(x-xc1) + SQR(y-yc1) + SQR(z-zc1) ),
-                     h_agar - sqrt( SQR(x-xc2) + SQR(y-yc2) + SQR(z-zc2) ));
+          return MAX(h_agar.val - sqrt( SUMD(SQR(x-xc0), SQR(y-yc0), SQR(z-zc0)) ),
+                     h_agar.val - sqrt( SUMD(SQR(x-xc1), SQR(y-yc1), SQR(z-zc1)) ),
+                     h_agar.val - sqrt( SUMD(SQR(x-xc2), SQR(y-yc2), SQR(z-zc2)) ));
         }
       case 3:
         {
-          double xc = xmin +.5*(xmax-xmin);
-          double yc = ymin +.5*(ymax-ymin);
-          double zc = zmin +.5*(zmax-zmin);
-          return -h_agar + sqrt( SQR(x-xc) + SQR(y-yc) + SQR(z-zc) );
+          double xc = xmin.val +.5*(xmax.val-xmin.val);
+          double yc = ymin.val +.5*(ymax.val-ymin.val);
+          double zc = zmin.val +.5*(zmax.val-zmin.val);
+          return -h_agar.val + sqrt( SUMD(SQR(x-xc), SQR(y-yc), SQR(z-zc)) );
         }
       case 4:
-        return -(x-h_agar);
+        return -(x-h_agar.val);
       case 5:
-        return -(x-h_agar)
-            + 0.02*cos(2.*PI*5*(y-ymin)/(ymax-ymin))
-            + 0.02*cos(2.*PI*5*(z-zmin)/(zmax-zmin));
+        return -(x-h_agar.val)
+            + 0.02*cos(2.*PI*5.*(y-ymin.val)/(ymax.val-ymin.val))
+            ONLY3D(+ 0.02*cos(2.*PI*5.*(z-zmin.val)/(zmax.val-zmin.val)));
       case 6:
         {
           srand(0);
 
           double sum = 10;
-          for (int i = 0; i < grain_num; ++i)
+          for (int i = 0; i < grain_num.val; ++i)
           {
-            double R = h_agar * (1. + grain_dispersity*(((double) rand() / (double) RAND_MAX)));
-            double X = xmin + ((double) rand() / (double) RAND_MAX) *(xmax-xmin);
-            double Y = ymin + ((double) rand() / (double) RAND_MAX) *(ymax-ymin);
-            double Z = zmin + ((double) rand() / (double) RAND_MAX) *(zmax-zmin);
+            double R = h_agar.val * (1. + grain_dispersity.val*(((double) rand() / (double) RAND_MAX)));
+            double X = xmin.val + ((double) rand() / (double) RAND_MAX) *(xmax.val-xmin.val);
+            double Y = ymin.val + ((double) rand() / (double) RAND_MAX) *(ymax.val-ymin.val);
+            double Z = zmin.val + ((double) rand() / (double) RAND_MAX) *(zmax.val-zmin.val);
 
-            int nx = round((X-x)/(xmax-xmin));
-            int ny = round((Y-y)/(ymax-ymin));
-            int nz = round((Z-z)/(zmax-zmin));
+            XCODE( int nx = round((X-x)/(xmax.val-xmin.val)) );
+            YCODE( int ny = round((Y-y)/(ymax.val-ymin.val)) );
+            ZCODE( int nz = round((Z-z)/(zmax.val-zmin.val)) );
 
-            double dist = R - sqrt( SQR(x-X + nx*(xmax-xmin)) +
-                                    SQR(y-Y + ny*(ymax-ymin)) +
-                                    SQR(z-Z + nz*(zmax-zmin)) );
+            double dist = R - sqrt( SUMD(SQR(x-X + nx*(xmax.val-xmin.val)),
+                                         SQR(y-Y + ny*(ymax.val-ymin.val)),
+                                         SQR(z-Z + nz*(zmax.val-zmin.val))) );
 
             sum = MIN(sum, -dist);
           }
@@ -544,20 +427,20 @@ public:
           srand(0);
 
           double sum = 10;
-          for (int i = 0; i < grain_num; ++i)
+          for (int i = 0; i < grain_num.val; ++i)
           {
-            double R = h_agar * (1. + grain_dispersity*(((double) rand() / (double) RAND_MAX)));
-            double X = xmin + ((double) rand() / (double) RAND_MAX) *(xmax-xmin);
-            double Y = ymin + ((double) rand() / (double) RAND_MAX) *(ymax-ymin);
-            double Z = zmin + ((double) rand() / (double) RAND_MAX) *(zmax-zmin);
+            double R = h_agar.val * (1. + grain_dispersity.val*(((double) rand() / (double) RAND_MAX)));
+            double X = xmin.val + ((double) rand() / (double) RAND_MAX) *(xmax.val-xmin.val);
+            double Y = ymin.val + ((double) rand() / (double) RAND_MAX) *(ymax.val-ymin.val);
+            double Z = zmin.val + ((double) rand() / (double) RAND_MAX) *(zmax.val-zmin.val);
 
-            int nx = round((X-x)/(xmax-xmin));
-            int ny = round((Y-y)/(ymax-ymin));
-            int nz = round((Z-z)/(zmax-zmin));
+            XCODE( int nx = round((X-x)/(xmax.val-xmin.val)) );
+            YCODE( int ny = round((Y-y)/(ymax.val-ymin.val)) );
+            ZCODE( int nz = round((Z-z)/(zmax.val-zmin.val)) );
 
-            double dist = R - sqrt( SQR(x-X + nx*(xmax-xmin)) +
-                                    SQR(y-Y + ny*(ymax-ymin)) +
-                                    SQR(z-Z + nz*(zmax-zmin)) );
+            double dist = R - sqrt( SUMD(SQR(x-X + nx*(xmax.val-xmin.val)),
+                                         SQR(y-Y + ny*(ymax.val-ymin.val)),
+                                         SQR(z-Z + nz*(zmax.val-zmin.val))) );
 
             sum = MIN(sum, -dist);
           }
@@ -569,73 +452,76 @@ public:
   }
 } phi_agar_cf;
 
-class phi_free_cf_t : public CF_3 {
+class phi_free_cf_t : public CF_DIM {
 public:
-  double operator()(double x, double y, double z) const
+  double operator()(DIM(double x, double y, double z)) const
   {
-    switch (nb_geometry)
+    switch (nb_geometry.val)
     {
       case 0:
-        return (x-(MAX(0.,h_agar)+h_biof));
+        return (x-(MAX(0.,h_agar.val)+h_biof.val));
       case 1:
         {
-          double xc = xmin +.5*(xmax-xmin);
-          double yc = ymin +.5*(ymax-ymin);
-          double zc = zmin +.5*(zmax-zmin);
-          return -(MAX(0.,h_agar)+h_biof) + sqrt( SQR(x-xc) + SQR(y-yc) + SQR(z-zc) );
+          double xc = xmin.val +.5*(xmax.val-xmin.val);
+          double yc = ymin.val +.5*(ymax.val-ymin.val);
+          double zc = zmin.val +.5*(zmax.val-zmin.val);
+          return -(MAX(0.,h_agar.val)+h_biof.val) + sqrt( SUMD(SQR(x-xc), SQR(y-yc), SQR(z-zc)) );
         }
       case 2:
         {
-          double xc0 = xmin +.3*(xmax-xmin), xc1 = xmin +.5*(xmax-xmin), xc2 = xmin +.6*(xmax-xmin);
-          double yc0 = ymin +.5*(ymax-ymin), yc1 = ymin +.6*(ymax-ymin), yc2 = ymin +.4*(ymax-ymin);
-          double zc0 = zmin +.6*(zmax-zmin), zc1 = zmin +.4*(zmax-zmin), zc2 = zmin +.3*(zmax-zmin);
+          double xc0 = xmin.val +.3*(xmax.val-xmin.val), xc1 = xmin.val +.5*(xmax.val-xmin.val), xc2 = xmin.val +.6*(xmax.val-xmin.val);
+          double yc0 = ymin.val +.5*(ymax.val-ymin.val), yc1 = ymin.val +.6*(ymax.val-ymin.val), yc2 = ymin.val +.4*(ymax.val-ymin.val);
+          double zc0 = zmin.val +.6*(zmax.val-zmin.val), zc1 = zmin.val +.4*(zmax.val-zmin.val), zc2 = zmin.val +.3*(zmax.val-zmin.val);
 
-          return -MAX((MAX(0.,h_agar)+h_biof) - sqrt( SQR(x-xc0) + SQR(y-yc0) + SQR(z-zc0) ),
-                      (MAX(0.,h_agar)+h_biof) - sqrt( SQR(x-xc1) + SQR(y-yc1) + SQR(z-zc1) ),
-                      (MAX(0.,h_agar)+h_biof) - sqrt( SQR(x-xc2) + SQR(y-yc2) + SQR(z-zc2) ));
+          return -MAX((MAX(0.,h_agar.val)+h_biof.val) - sqrt( SUMD(SQR(x-xc0), SQR(y-yc0), SQR(z-zc0)) ),
+                      (MAX(0.,h_agar.val)+h_biof.val) - sqrt( SUMD(SQR(x-xc1), SQR(y-yc1), SQR(z-zc1)) ),
+                      (MAX(0.,h_agar.val)+h_biof.val) - sqrt( SUMD(SQR(x-xc2), SQR(y-yc2), SQR(z-zc2)) ));
         }
       case 3:
         {
-          double xc = xmin +.5*(xmax-xmin);
-          double yc = ymin +.5*(ymax-ymin);
-          double zc = zmin +.5*(zmax-zmin);
-          return (MAX(0.,h_agar)+h_biof) - sqrt( SQR(x-xc) + SQR(y-yc) + SQR(z-zc) );
+          double xc = xmin.val +.5*(xmax.val-xmin.val);
+          double yc = ymin.val +.5*(ymax.val-ymin.val);
+          double zc = zmin.val +.5*(zmax.val-zmin.val);
+          return (MAX(0.,h_agar.val)-h_biof.val) - sqrt( SUMD(SQR(x-xc), SQR(y-yc), SQR(z-zc)) );
         }
       case 4:
-        {
-          double plane = (x-(MAX(0., h_agar) + h_biof));
+      {
+        double plane = (x-(MAX(0., h_agar.val) + h_biof.val));
+        double bump = -(.1*(xmax.val-xmin.val) - sqrt( SQR(x-(MAX(0., h_agar.val) + h_biof.val)) + SQR(y-0.5*(ymax.val+ymin.val))));
+        return .5*(plane+bump - sqrt(SQR(plane-bump) + .001*(xmax.val-xmin.val)));
+      }
+//        {
+//          double plane = (x-(MAX(0., h_agar.val) + h_biof.val));
 
-          double xc = (MAX(0., h_agar) + h_biof);
-          double yc = ymin +.5*(ymax-ymin);
-          double zc = zmin +.5*(zmax-zmin);
+//          double xc = (MAX(0., h_agar.val) + h_biof.val);
+//          double yc = ymin.val +.5*(ymax.val-ymin.val);
+//          double zc = zmin.val +.5*(zmax.val-zmin.val);
 
-          double bump = -.2*(xmax-xmin) + sqrt( SQR(x-xc) + SQR(y-yc) + SQR(z-zc) );
+//          double bump = -.1*(xmax.val-xmin.val) + sqrt( SUMD(SQR(x-xc), SQR(y-yc), SQR(z-zc)) );
 
-          return .5*( plane + bump - sqrt( SQR(plane-bump) + SQR(.01*(xmax-xmin)) ) );
-        }
+//          return .5*( plane + bump - sqrt( SQR(plane-bump) + SQR(.01*(xmax.val-xmin.val)) ) );
+//        }
       case 5:
-        return (x-(MAX(0.,h_agar)+h_biof))
-            + 0.02*cos(2.*PI*5*(y-ymin)/(ymax-ymin))
-            + 0.02*cos(2.*PI*5*(z-zmin)/(zmax-zmin));
+        return (x-(MAX(0.,h_agar.val)+h_biof.val));
       case 6:
         {
           srand(0);
 
           double sum = 10;
-          for (int i = 0; i < grain_num; ++i)
+          for (int i = 0; i < grain_num.val; ++i)
           {
-            double R = (MAX(0.,h_agar)+h_biof) * (1. + grain_dispersity*(((double) rand() / (double) RAND_MAX)));
-            double X = xmin + ((double) rand() / (double) RAND_MAX) *(xmax-xmin);
-            double Y = ymin + ((double) rand() / (double) RAND_MAX) *(ymax-ymin);
-            double Z = zmin + ((double) rand() / (double) RAND_MAX) *(zmax-zmin);
+            double R = (MAX(0.,h_agar.val)+h_biof.val) * (1. + grain_dispersity.val*(((double) rand() / (double) RAND_MAX)));
+            double X = xmin.val + ((double) rand() / (double) RAND_MAX) *(xmax.val-xmin.val);
+            double Y = ymin.val + ((double) rand() / (double) RAND_MAX) *(ymax.val-ymin.val);
+            double Z = zmin.val + ((double) rand() / (double) RAND_MAX) *(zmax.val-zmin.val);
 
-            int nx = round((X-x)/(xmax-xmin));
-            int ny = round((Y-y)/(ymax-ymin));
-            int nz = round((Z-z)/(zmax-zmin));
+            XCODE( int nx = round((X-x)/(xmax.val-xmin.val)) );
+            YCODE( int ny = round((Y-y)/(ymax.val-ymin.val)) );
+            ZCODE( int nz = round((Z-z)/(zmax.val-zmin.val)) );
 
-            double dist = R - sqrt( SQR(x-X + nx*(xmax-xmin)) +
-                                    SQR(y-Y + ny*(ymax-ymin)) +
-                                    SQR(z-Z + nz*(zmax-zmin)) );
+            double dist = R - sqrt( SUMD(SQR(x-X + nx*(xmax.val-xmin.val)),
+                                         SQR(y-Y + ny*(ymax.val-ymin.val)),
+                                         SQR(z-Z + nz*(zmax.val-zmin.val))) );
 
             sum = MIN(sum, -dist);
           }
@@ -647,20 +533,20 @@ public:
           srand(0);
 
           double sum = 10;
-          for (int i = 0; i < grain_num; ++i)
+          for (int i = 0; i < grain_num.val; ++i)
           {
-            double R = (MAX(0.,h_agar)+h_biof) * (1. + grain_dispersity*(((double) rand() / (double) RAND_MAX)));
-            double X = xmin + ((double) rand() / (double) RAND_MAX) *(xmax-xmin);
-            double Y = ymin + ((double) rand() / (double) RAND_MAX) *(ymax-ymin);
-            double Z = zmin + ((double) rand() / (double) RAND_MAX) *(zmax-zmin);
+            double R = (MAX(0.,h_agar.val)+h_biof.val) * (1. + grain_dispersity.val*(((double) rand() / (double) RAND_MAX)));
+            double X = xmin.val + ((double) rand() / (double) RAND_MAX) *(xmax.val-xmin.val);
+            double Y = ymin.val + ((double) rand() / (double) RAND_MAX) *(ymax.val-ymin.val);
+            double Z = zmin.val + ((double) rand() / (double) RAND_MAX) *(zmax.val-zmin.val);
 
-            int nx = round((X-x)/(xmax-xmin));
-            int ny = round((Y-y)/(ymax-ymin));
-            int nz = round((Z-z)/(zmax-zmin));
+            XCODE( int nx = round((X-x)/(xmax.val-xmin.val)) );
+            YCODE( int ny = round((Y-y)/(ymax.val-ymin.val)) );
+            ZCODE( int nz = round((Z-z)/(zmax.val-zmin.val)) );
 
-            double dist = R - sqrt( SQR(x-X + nx*(xmax-xmin)) +
-                                    SQR(y-Y + ny*(ymax-ymin)) +
-                                    SQR(z-Z + nz*(zmax-zmin)) );
+            double dist = R - sqrt( SUMD(SQR(x-X + nx*(xmax.val-xmin.val)),
+                                         SQR(y-Y + ny*(ymax.val-ymin.val)),
+                                         SQR(z-Z + nz*(zmax.val-zmin.val))) );
 
             sum = MIN(sum, -dist);
           }
@@ -672,246 +558,66 @@ public:
   }
 } phi_free_cf;
 
-class phi_biof_cf_t : public CF_3 {
+class phi_biof_cf_t : public CF_DIM {
 public:
-  double operator()(double x, double y, double z) const { return MAX(phi_agar_cf(x,y,z), phi_free_cf(x,y,z)); }
+  double operator()(DIM(double x, double y, double z)) const { return MAX(phi_agar_cf(DIM(x,y,z)), phi_free_cf(DIM(x,y,z))); }
 } phi_biof_cf;
 
-class bc_wall_type_t : public WallBC3D {
+class bc_wall_type_t : public WallBCDIM {
 public:
-  BoundaryConditionType operator()(double x, double y, double z) const
+  BoundaryConditionType operator()(DIM(double x, double y, double z)) const
   {
-    double pa = phi_agar_cf(x,y,z);
-    double pf = phi_free_cf(x,y,z);
-    if (pa < 0 && pf < 0) return bc_biof;
+    double pa = phi_agar_cf(DIM(x,y,z));
+    double pf = phi_free_cf(DIM(x,y,z));
+    if (pa < 0 && pf < 0) return bc_biof.val;
     else if (pa > 0 && pf > 0) throw;
-    else if (pa > 0)      return bc_agar;
-    else if (pf > 0)      return bc_free;
+    else if (pa > 0)      return bc_agar.val;
+    else if (pf > 0)      return bc_free.val;
   }
 } bc_wall_type;
 
-class bc_wall_value_t : public CF_3 {
+class bc_wall_value_t : public CF_DIM {
 public:
-  double operator()(double x, double y, double z) const
+  double operator()(DIM(double x, double y, double z)) const
   {
-    double pa = phi_agar_cf(x,y,z);
-    double pf = phi_free_cf(x,y,z);
-    if (pa < 0 && pf < 0) return bc_biof == NEUMANN ? 0 : C0b;
+    double pa = phi_agar_cf(DIM(x,y,z));
+    double pf = phi_free_cf(DIM(x,y,z));
+    if (pa < 0 && pf < 0) return bc_biof.val == NEUMANN ? 0 : C0b.val;
     else if (pa > 0 && pf > 0) throw;
-    else if (pa > 0)      return bc_agar == NEUMANN ? 0 : C0a;
-    else if (pf > 0)      return bc_free == NEUMANN ? 0 : C0f;
+    else if (pa > 0)      return bc_agar.val == NEUMANN ? 0 : C0a.val;
+    else if (pf > 0)      return bc_free.val == NEUMANN ? 0 : C0f.val;
   }
 } bc_wall_value;
 
-class initial_concentration_free_t : public CF_3 {
+class initial_concentration_free_t : public CF_DIM {
 public:
-  double operator()(double , double, double ) const {
-    return C0f;
+  double operator()(DIM(double , double, double )) const {
+    return C0f.val;
   }
 } initial_concentration_free;
 
-class initial_concentration_agar_t : public CF_3 {
+class initial_concentration_agar_t : public CF_DIM {
 public:
-  double operator()(double , double, double ) const {
-    return C0a;
+  double operator()(DIM(double , double, double )) const {
+    return C0a.val;
   }
 } initial_concentration_agar;
 
-class initial_concentration_biof_t : public CF_3 {
+class initial_concentration_biof_t : public CF_DIM {
 public:
-  double operator()(double , double, double ) const {
-    return C0b;
+  double operator()(DIM(double , double, double )) const {
+    return C0b.val;
   }
 } initial_concentration_biof;
-#else
-class phi_agar_cf_t : public CF_2 {
-public:
-  double operator()(double x, double y) const
-  {
-    switch (nb_geometry)
-    {
-      case 0: return -(x-h_agar);
-      case 1: return h_agar - sqrt( SQR(x-0.5*(xmax+xmin)) + SQR(y-0.5*(ymax+ymin)));
-      case 2: return MAX(h_agar - sqrt( SQR(x-(xmin + .3*(xmax-xmin))) + SQR(y-(ymin + .5*(ymax-ymin)))),
-                         h_agar - sqrt( SQR(x-(xmin + .5*(xmax-xmin))) + SQR(y-(ymin + .6*(ymax-ymin)))),
-                         h_agar - sqrt( SQR(x-(xmin + .6*(xmax-xmin))) + SQR(y-(ymin + .4*(ymax-ymin)))));
-      case 3: return -(h_agar - sqrt(SQR(x-.5*(xmax+xmin)) + SQR(y-.5*(ymax+ymin))));
-      case 4: return -(x-h_agar);
-      case 5: return -(x-h_agar) + 0.02*cos(2.*PI*10*(y-ymin)/(ymax-ymin));
-      case 6:
-        {
-          srand(0);
-
-          double sum = 10;
-          for (int i = 0; i < grain_num; ++i)
-          {
-            double R = h_agar * (1. + grain_dispersity*(((double) rand() / (double) RAND_MAX)));
-            double X = xmin + ((double) rand() / (double) RAND_MAX) *(xmax-xmin);
-            double Y = ymin + ((double) rand() / (double) RAND_MAX) *(ymax-ymin);
-
-            int nx = round((X-x)/(xmax-xmin));
-            int ny = round((Y-y)/(ymax-ymin));
-
-            double dist = R - sqrt( SQR(x-X + nx*(xmax-xmin)) + SQR(y-Y + ny*(ymax-ymin)) );
-
-            sum = MIN(sum, -dist);
-          }
-
-          return -sum;
-        }
-      case 7:
-        {
-          srand(0);
-
-          double sum = 10;
-          for (int i = 0; i < grain_num; ++i)
-          {
-            double R = h_agar * (1. + grain_dispersity*(((double) rand() / (double) RAND_MAX)));
-            double X = xmin + ((double) rand() / (double) RAND_MAX) *(xmax-xmin);
-            double Y = ymin + ((double) rand() / (double) RAND_MAX) *(ymax-ymin);
-
-            int nx = round((X-x)/(xmax-xmin));
-            int ny = round((Y-y)/(ymax-ymin));
-
-            double dist = R - sqrt( SQR(x-X + nx*(xmax-xmin)) + SQR(y-Y + ny*(ymax-ymin)) );
-
-            sum = MIN(sum, -dist);
-          }
-
-          return sum;
-        }
-      default: throw std::invalid_argument("[ERROR]: Wrong type of initial geometry");
-    }
-  }
-} phi_agar_cf;
-
-class phi_free_cf_t : public CF_2 {
-public:
-  double operator()(double x, double y) const
-  {
-    switch (nb_geometry)
-    {
-      case 0: return (x- MAX(0., h_agar) - h_biof);
-      case 1: return -(MAX(0., h_agar) + h_biof - sqrt( SQR(x-0.5*(xmax+xmin)) + SQR(y-0.5*(ymax+ymin))));
-      case 2: return -MAX(MAX(0., h_agar) + h_biof - sqrt( SQR(x-(xmin + .3*(xmax-xmin))) + SQR(y-(ymin + .5*(ymax-ymin)))),
-                          MAX(0., h_agar) + h_biof - sqrt( SQR(x-(xmin + .5*(xmax-xmin))) + SQR(y-(ymin + .6*(ymax-ymin)))),
-                          MAX(0., h_agar) + h_biof - sqrt( SQR(x-(xmin + .6*(xmax-xmin))) + SQR(y-(ymin + .4*(ymax-ymin)))));
-      case 3: return ((MAX(0., h_agar) - h_biof) - sqrt(SQR(x-.5*(xmax+xmin)) + SQR(y-.5*(ymax+ymin))));
-      case 4:
-        {
-          double plane = (x-(MAX(0., h_agar) + h_biof));
-          double bump = -(.1*(xmax-xmin) - sqrt( SQR(x-(MAX(0., h_agar) + h_biof)) + SQR(y-0.5*(ymax+ymin))));
-          return .5*(plane+bump - sqrt(SQR(plane-bump) + .001*(xmax-xmin)));
-        }
-      case 5: return (x-(MAX(0., h_agar) + h_biof));
-      case 6:
-        {
-          srand(0);
-
-          double sum = 10;
-          for (int i = 0; i < grain_num; ++i)
-          {
-            double R = (MAX(0., h_agar) + h_biof) * (1. + grain_dispersity*(((double) rand() / (double) RAND_MAX)));
-            double X = xmin + ((double) rand() / (double) RAND_MAX) *(xmax-xmin);
-            double Y = ymin + ((double) rand() / (double) RAND_MAX) *(ymax-ymin);
-
-            int nx = round((X-x)/(xmax-xmin));
-            int ny = round((Y-y)/(ymax-ymin));
-
-            double dist = R - sqrt( SQR(x-X + nx*(xmax-xmin)) + SQR(y-Y + ny*(ymax-ymin)) );
-
-            sum = MIN(sum, -dist);
-          }
-
-          return sum;
-        }
-      case 7:
-        {
-          srand(0);
-
-          double sum = 10;
-          for (int i = 0; i < grain_num; ++i)
-          {
-            double R = (MAX(0., h_agar) - h_biof) * (1. + grain_dispersity*(((double) rand() / (double) RAND_MAX)));
-            double X = xmin + ((double) rand() / (double) RAND_MAX) *(xmax-xmin);
-            double Y = ymin + ((double) rand() / (double) RAND_MAX) *(ymax-ymin);
-
-            int nx = round((X-x)/(xmax-xmin));
-            int ny = round((Y-y)/(ymax-ymin));
-
-            double dist = R - sqrt( SQR(x-X + nx*(xmax-xmin)) + SQR(y-Y + ny*(ymax-ymin)) );
-
-            sum = MIN(sum, -dist);
-          }
-
-          return -sum;
-        }
-      default: throw std::invalid_argument("[ERROR]: Wrong type of initial geometry");
-    }
-  }
-} phi_free_cf;
-
-class phi_biof_cf_t : public CF_2 {
-public:
-  double operator()(double x, double y) const { return MAX(phi_agar_cf(x,y), phi_free_cf(x,y)); }
-} phi_biof_cf;
-
-class bc_wall_type_t : public WallBC2D {
-public:
-  BoundaryConditionType operator()(double x, double y) const
-  {
-    double pa = phi_agar_cf(x,y);
-    double pf = phi_free_cf(x,y);
-    if (pa < 0 && pf < 0) return bc_biof;
-    else if (pa > 0 && pf > 0) throw;
-    else if (pa > 0)      return bc_agar;
-    else if (pf > 0)      return bc_free;
-  }
-} bc_wall_type;
-
-class bc_wall_value_t : public CF_2 {
-public:
-  double operator()(double x, double y) const
-  {
-    double pa = phi_agar_cf(x,y);
-    double pf = phi_free_cf(x,y);
-    if (pa < 0 && pf < 0) return bc_biof == NEUMANN ? 0 : C0b;
-    else if (pa > 0 && pf > 0) throw;
-    else if (pa > 0)      return bc_agar == NEUMANN ? 0 : C0a;
-    else if (pf > 0)      return bc_free == NEUMANN ? 0 : C0f;
-  }
-} bc_wall_value;
-
-class initial_concentration_free_t : public CF_2 {
-public:
-  double operator()(double , double ) const {
-    return C0f;
-  }
-} initial_concentration_free;
-
-class initial_concentration_agar_t : public CF_2 {
-public:
-  double operator()(double , double ) const {
-    return C0a;
-  }
-} initial_concentration_agar;
-
-class initial_concentration_biof_t : public CF_2 {
-public:
-  double operator()(double , double ) const {
-    return C0b;
-  }
-} initial_concentration_biof;
-#endif
 
 class f_cf_t : public CF_1 {
 public:
-  double operator()(double c) const { return A*c/(Kc+c); }
+  double operator()(double c) const { return A.val*c/(Kc.val+c); }
 } f_cf;
 
 class fc_cf_t : public CF_1 {
 public:
-  double operator()(double c) const { return A/(Kc+c) - A*c/pow(Kc+c, 2.); }
+  double operator()(double c) const { return A.val*Kc.val/pow(Kc.val+c, 2.); }
 } fc_cf;
 
 int main (int argc, char* argv[])
@@ -922,149 +628,49 @@ int main (int argc, char* argv[])
 
   cmdParser cmd;
 
-  for (short i = 0; i < 2; ++i)
-  {
-    // computational domain
-    ADD_OPTION(i, xmin, "xmin"); ADD_OPTION(i, xmax, "xmax");
-    ADD_OPTION(i, ymin, "ymin"); ADD_OPTION(i, ymax, "ymax");
-#ifdef P4_TO_P8
-    ADD_OPTION(i, zmin, "zmin"); ADD_OPTION(i, zmax, "zmax");
-#endif
+  pl.initialize_parser(cmd);
+  cmd.parse(argc, argv);
 
-    ADD_OPTION(i, nx, "number of macroblocks in x-dimension");
-    ADD_OPTION(i, ny, "number of macroblocks in y-dimension");
-#ifdef P4_TO_P8
-    ADD_OPTION(i, nz, "number of macroblocks in z-dimension");
-#endif
-
-    // grid resolution parameters
-    ADD_OPTION(i, lmin, "min level of the tree");
-    ADD_OPTION(i, lmax, "max level of the tree");
-    ADD_OPTION(i, lip,  "Lipschitz constant");
-
-    // pre-defined examples
-    ADD_OPTION(i, nb_experiment, "predefined example:\n"
-               "0 - (biofilm + agar + water), planar, transient\n"
-               "1 - (biofilm + agar + water), planar, steady-state\n"
-               "2 - (biofilm + agar), planar with a bump, transient\n"
-               "3 - (biofilm + water), spherical, steady-state\n"
-               "4 - (biofilm + water), pipe, transient\n"
-               "5 - (biofilm + water), porous (cavities), transient\n"
-               "6 - (biofilm + water + agar), porous (grains), transient");
-
-    if (i == 1) setup_experiment();
-
-    ADD_OPTION(i, steady_state, "assume steady state profile for concentration or not");
-
-    ADD_OPTION(i, box_size, "lateral dimensions of simulation box      - m        ");
-    ADD_OPTION(i, Df,       "diffusivity of nutrients in air           - m^2/s    ");
-    ADD_OPTION(i, Db,       "diffusivity of nutrients in biofilm       - m^2/s    ");
-    ADD_OPTION(i, Da,       "diffusivity of nutrients in agar          - m^2/s    ");
-    ADD_OPTION(i, sigma,    "surface tension of air/film interface     - N/m      ");
-    ADD_OPTION(i, rho,      "density of biofilm                        - kg/m^3   ");
-    ADD_OPTION(i, lambda,   "mobility of biofilm                       - m^4/(N*s)");
-    ADD_OPTION(i, A,        "maximum uptake rate                       - kg/m^3   ");
-    ADD_OPTION(i, Kc,       "half-saturation constant                  - kg/m^3   ");
-    ADD_OPTION(i, gam,      "biofilm yield per nutrient mass           -          ");
-    ADD_OPTION(i, C0f,      "initial nutrient concentration in air     - kg/m^3   ");
-    ADD_OPTION(i, C0b,      "initial nutrient concentration in biofilm - kg/m^3   ");
-    ADD_OPTION(i, C0a,      "initial nutrient concentration in agar    - kg/m^3   ");
-
-    ADD_OPTION(i, bc_agar, "BC type (on computatoinal domain boundary) for nutrients in agar"   );
-    ADD_OPTION(i, bc_free, "BC type (on computatoinal domain boundary) for nutrients in biofilm");
-    ADD_OPTION(i, bc_biof, "BC type (on computatoinal domain boundary) for nutrients in air"    );
-
-    ADD_OPTION(i, nb_geometry, " initial geometry: \n"
-                      "0 - planar\n"
-                      "1 - sphere\n"
-                      "2 - three spheres\n"
-                      "3 - pipe\n"
-                      "4 - planar + bump\n"
-                      "5 - corrugated agar\n"
-                      "6 - porous media (grains)\n"
-                      "7 - porous media (cavities).");
-    ADD_OPTION(i, h_agar,   "characteristic size of agar      - m");
-    ADD_OPTION(i, h_biof,   "characteristic size of biofilm   - m");
-
-    // specifically for porous media examples
-    ADD_OPTION(i, grain_num,        "number of grains or cavities   ");
-    ADD_OPTION(i, grain_dispersity, "grains/cavities size dispersion");
-    ADD_OPTION(i, grain_smoothing,  "smoothing of initial geometry  ");
-
-    // time discretization
-    ADD_OPTION(i, advection_scheme, "1 - 1st order, 2 - 2nd order");
-    ADD_OPTION(i, time_scheme     , "1 - Euler (1st order), 2 - BDF2 (2nd order)");
-    ADD_OPTION(i, cfl_number      , "CFL number");
-
-    // solving non-linear diffusion equation
-    ADD_OPTION(i, iteration_scheme, "iterative scheme: 0 - simple fixed-point, 1 - linearized fixed-point (a.k.a. Newton)");
-    ADD_OPTION(i, max_iterations  , "max iterations");
-    ADD_OPTION(i, tolerance       , "tolerance");
-
-    // general poisson solver parameters
-    ADD_OPTION(i, use_sc_scheme        , "for finite volume schemes (jump, neumann, robin): 0 - simple scheme, 1 - superconvergent (second-order accurate gradients)");
-    ADD_OPTION(i, use_taylor_correction, "for symmetric scheme for robin bc, irrelevant here");
-    ADD_OPTION(i, integration_order    , "order of geometric recpnstruction for computing domain and boundary integrals: 1 - linear, 2 - quadratic");
-
-    // output parameters
-    ADD_OPTION(i, save_data, "save scalar characteristics (time elapsed, biofilm volume, surface area, etc)");
-    ADD_OPTION(i, save_vtk , "save spatial data");
-    ADD_OPTION(i, save_type, "0 - every dn iterations, 1 - every dl of growth, 2 - every dt of time");
-    ADD_OPTION(i, save_every_dn, "");
-    ADD_OPTION(i, save_every_dl, "");
-    ADD_OPTION(i, save_every_dt, "");
-
-    // simulation run parameters
-    ADD_OPTION(i, limit_iter  , "max total time steps");
-    ADD_OPTION(i, limit_time  , "max total run time");
-    ADD_OPTION(i, limit_length, "max total biofilm growth (not implemented yet)");
-    ADD_OPTION(i, init_perturb, "initial random perturbation of biofilm surface");
-
-    if (i == 0) cmd.parse(argc, argv);
-  }
+  nb_experiment.set_from_cmd(cmd);
+  setup_experiment();
   set_periodicity();
 
+  pl.set_from_cmd_all(cmd);
+
   // scale computational box
-  double scaling = 1/box_size;
+  double scaling = 1/box_size.val;
 
-  rho /= (scaling*scaling*scaling);
+  rho.val /= (scaling*scaling*scaling);
 
-  Da *= (scaling*scaling);
-  Db *= (scaling*scaling);
-  Df *= (scaling*scaling);
+  Da.val *= (scaling*scaling);
+  Db.val *= (scaling*scaling);
+  Df.val *= (scaling*scaling);
 
-  sigma /= (scaling);
+  sigma.val /= (scaling);
 
-  A /= (scaling*scaling*scaling);
-  Kc /= (scaling*scaling*scaling);
+  A.val /= (scaling*scaling*scaling);
+  Kc.val /= (scaling*scaling*scaling);
 
-  C0a /= (scaling*scaling*scaling);
-  C0b /= (scaling*scaling*scaling);
-  C0f /= (scaling*scaling*scaling);
+  C0a.val /= (scaling*scaling*scaling);
+  C0b.val /= (scaling*scaling*scaling);
+  C0f.val /= (scaling*scaling*scaling);
 
-  lambda *= (scaling*scaling*scaling*scaling);
+  lambda.val *= (scaling*scaling*scaling*scaling);
 
   parStopWatch w1;
   w1.start("total time");
 
   /* create the p4est */
   my_p4est_brick_t brick;
-#ifdef P4_TO_P8
-  double xyz_min [] = { xmin, ymin, zmin };
-  double xyz_max [] = { xmax, ymax, zmax };
-  int periodic   [] = { px, py, pz };
-  int nxyz       [] = { nx, ny, nz };
-#else
-  double xyz_min [] = { xmin, ymin };
-  double xyz_max [] = { xmax, ymax };
-  int periodic   [] = { px, py };
-  int nxyz       [] = { nx, ny };
-#endif
+  double xyz_min [] = { DIM(xmin.val, ymin.val, zmin.val) };
+  double xyz_max [] = { DIM(xmax.val, ymax.val, zmax.val) };
+  int periodic   [] = { DIM(px.val,   py.val,   pz.val) };
+  int nxyz       [] = { DIM(nx.val,   ny.val,   nz.val) };
 
   p4est_connectivity_t *connectivity = my_p4est_brick_new(nxyz, xyz_min, xyz_max, &brick, periodic);
   p4est_t *p4est = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
 
-  splitting_criteria_cf_t data(lmin, lmax, &phi_biof_cf, lip);
+  splitting_criteria_cf_t data(lmin.val, lmax.val, &phi_biof_cf, lip.val);
 
   p4est->user_pointer = (void*)(&data);
   my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
@@ -1091,13 +697,10 @@ int main (int argc, char* argv[])
   double dz = (zmax_tree-zmin_tree) / pow(2.,(double) data.max_lvl);
 #endif
 
-  double dt_max = MIN( 1.e4*dx*dx/MAX(Da, Db, Df), 1.e4/A);
+  double dt_max =  0.05*(Kc.val+C0b.val)/A.val;
 
   // experimentally determined time-step restriction due to surface tension
 //  double dt_max = 0.5e-10*pow(2., 3.*(11.-lmax))/MAX(sigma, 1.e-30);
-
-//  dt_max = 1.e6;
-
 
   /* initial geometry */
   Vec phi_free; ierr = VecCreateGhostNodes(p4est, nodes, &phi_free); CHKERRXX(ierr);
@@ -1115,7 +718,7 @@ int main (int argc, char* argv[])
 
     for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
     {
-      phi_free_ptr[n] += init_perturb*dx*(double)(rand()%1000)/1000.;
+      phi_free_ptr[n] += init_perturb.val*dx*(double)(rand()%1000)/1000.;
     }
 
     ierr = VecRestoreArray(phi_free, &phi_free_ptr); CHKERRXX(ierr);
@@ -1124,41 +727,41 @@ int main (int argc, char* argv[])
     ierr = VecGhostUpdateEnd  (phi_free, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   }
 
-  if (nb_geometry == 6)
+  if (nb_geometry.val == 6)
   {
-    shift_ghosted_vec(phi_free, -grain_smoothing);
-    shift_ghosted_vec(phi_agar, +grain_smoothing);
+    shift_ghosted_vec(phi_free, -grain_smoothing.val);
+    shift_ghosted_vec(phi_agar, +grain_smoothing.val);
   }
 
-  if (nb_geometry == 7)
+  if (nb_geometry.val == 7)
   {
-    shift_ghosted_vec(phi_free, +grain_smoothing);
-    shift_ghosted_vec(phi_agar, -grain_smoothing);
+    shift_ghosted_vec(phi_free, +grain_smoothing.val);
+    shift_ghosted_vec(phi_agar, -grain_smoothing.val);
   }
 
   my_p4est_level_set_t ls(ngbd);
   ls.reinitialize_1st_order_time_2nd_order_space(phi_free);
   ls.reinitialize_1st_order_time_2nd_order_space(phi_agar);
 
-  if (nb_geometry == 6)
+  if (nb_geometry.val == 6)
   {
-    shift_ghosted_vec(phi_free, +grain_smoothing);
-    shift_ghosted_vec(phi_agar, -grain_smoothing);
+    shift_ghosted_vec(phi_free, +grain_smoothing.val);
+    shift_ghosted_vec(phi_agar, -grain_smoothing.val);
     copy_ghosted_vec(phi_free, phi_agar);
     invert_phi(nodes, phi_agar);
-    shift_ghosted_vec(phi_agar, -h_biof);
+    shift_ghosted_vec(phi_agar, -h_biof.val);
     ls.reinitialize_1st_order_time_2nd_order_space(phi_agar);
   }
 
-  if (nb_geometry == 7)
+  if (nb_geometry.val == 7)
   {
-    shift_ghosted_vec(phi_free, -grain_smoothing);
-    shift_ghosted_vec(phi_agar, +grain_smoothing);
-    if (h_agar > 0)
+    shift_ghosted_vec(phi_free, -grain_smoothing.val);
+    shift_ghosted_vec(phi_agar, +grain_smoothing.val);
+    if (h_agar.val > 0)
     {
       copy_ghosted_vec(phi_agar, phi_free);
       invert_phi(nodes, phi_free);
-      shift_ghosted_vec(phi_free, -h_biof);
+      shift_ghosted_vec(phi_free, -h_biof.val);
       ls.reinitialize_1st_order_time_2nd_order_space(phi_free);
     } else {
       set_ghosted_vec(phi_agar, -1);
@@ -1178,27 +781,28 @@ int main (int argc, char* argv[])
   my_p4est_biofilm_t biofilm_solver(ngbd);
 
   // model parameters
-  biofilm_solver.set_velocity_type(velocity_type);
-  biofilm_solver.set_parameters   (Da, Db, Df, sigma, rho, lambda, gam, scaling);
+  biofilm_solver.set_velocity_type(velocity_type.val);
+  biofilm_solver.set_parameters   (Da.val, Db.val, Df.val, sigma.val, rho.val, lambda.val, gam.val, scaling);
   biofilm_solver.set_kinetics     (f_cf, fc_cf);
   biofilm_solver.set_bc           (bc_wall_type, bc_wall_value);
-  biofilm_solver.set_steady_state (steady_state);
+  biofilm_solver.set_steady_state (steady_state.val);
 
   // time discretization parameters
-  biofilm_solver.set_advection_scheme(advection_scheme);
-  biofilm_solver.set_time_scheme     (time_scheme);
+  biofilm_solver.set_advection_scheme(advection_scheme.val);
+  biofilm_solver.set_time_scheme     (time_scheme.val);
   biofilm_solver.set_dt_max          (dt_max);
-  biofilm_solver.set_cfl             (cfl_number);
+  biofilm_solver.set_cfl             (cfl_number.val);
 
   // parameters for solving non-linear equation
-  biofilm_solver.set_iteration_scheme(iteration_scheme);
-  biofilm_solver.set_max_iterations  (max_iterations);
-  biofilm_solver.set_tolerance       (tolerance);
+  biofilm_solver.set_iteration_scheme(iteration_scheme.val);
+  biofilm_solver.set_max_iterations  (max_iterations.val);
+  biofilm_solver.set_tolerance       (tolerance.val);
 
   // general poisson solver parameter
-  biofilm_solver.set_use_sc_scheme(use_sc_scheme);
-  biofilm_solver.set_use_taylor_correction(use_taylor_correction);
-  biofilm_solver.set_integration_order(integration_order);
+  biofilm_solver.set_use_sc_scheme(use_sc_scheme.val);
+  biofilm_solver.set_use_taylor_correction(use_taylor_correction.val);
+  biofilm_solver.set_integration_order(integration_order.val);
+  biofilm_solver.set_curvature_smoothing(curvature_smoothing.val, curvature_smoothing_steps.val);
 
   // initial geometry and concentrations
   biofilm_solver.set_phi(phi_free, phi_agar);
@@ -1221,12 +825,12 @@ int main (int argc, char* argv[])
   const char *out_dir = getenv("OUT_DIR");
   if (!out_dir) out_dir = ".";
 #ifdef P4_TO_P8
-  sprintf(name, "%s/data_%dx%dx%d_box_%g_level_%d-%d.dat", out_dir, nxyz[0], nxyz[1], nxyz[2], box_size, lmin, lmax);
+  sprintf(name, "%s/data_%dx%dx%d_box_%g_level_%d-%d.dat", out_dir, nxyz[0], nxyz[1], nxyz[2], box_size.val, lmin.val, lmax.val);
 #else
-  sprintf(name, "%s/data_%dx%d_box_%g_level_%d-%d.dat", out_dir, nxyz[0], nxyz[1], box_size, lmin, lmax);
+  sprintf(name, "%s/data_%dx%d_box_%g_level_%d-%d.dat", out_dir, nxyz[0], nxyz[1], box_size.val, lmin.val, lmax.val);
 #endif
 
-  if(save_data)
+  if(save_data.val)
   {
     ierr = PetscFOpen(mpi.comm(), name, "w", &fich); CHKERRXX(ierr);
     ierr = PetscFPrintf(mpi.comm(), fich, "time average_interface_velocity max_interface_velocity interface_length biofilm_area time_elapsed iteration\n"); CHKERRXX(ierr);
@@ -1241,13 +845,13 @@ int main (int argc, char* argv[])
   double base = 0.1;
   double nutrient_left = 1;
   double nutrient_init = 1;
-  double wall_proximity = MIN(xmax-xmin, ymax-ymin);
+  double wall_proximity = MIN(xmax.val-xmin.val, ymax.val-ymin.val);
 
   biofilm_solver.update_grid();
 
   while(keep_going)
   {
-    if (steady_state && iteration == 0)
+    if (steady_state.val && iteration == 0)
     {
       biofilm_solver.solve_concentration();
     }
@@ -1276,7 +880,7 @@ int main (int argc, char* argv[])
 
       if (iteration == 1) nutrient_init = nutrient_left;
 
-      wall_proximity = MIN(xmax-xmin, ymax-ymin);
+      wall_proximity = MIN(xmax.val-xmin.val, ymax.val-ymin.val);
 
       const double *phi_free_ptr;
       ierr = VecGetArrayRead(phi_free, &phi_free_ptr); CHKERRXX(ierr);
@@ -1310,12 +914,12 @@ int main (int argc, char* argv[])
 
     // determine to save or not
     bool save_now =
-        (save_type == 0 && iteration    >= vtk_idx*save_every_dn) ||
-        (save_type == 1 && total_growth >= vtk_idx*save_every_dl) ||
-        (save_type == 2 && tn           >= vtk_idx*save_every_dt);
+        (save_type.val == 0 && iteration    >= vtk_idx*save_every_dn.val) ||
+        (save_type.val == 1 && total_growth >= vtk_idx*save_every_dl.val) ||
+        (save_type.val == 2 && tn           >= vtk_idx*save_every_dt.val);
 
     // save velocity, area of interface and volume of biofilm
-    if(save_data && save_now)
+    if(save_data.val && save_now)
     {
       p4est = biofilm_solver.get_p4est();
       nodes = biofilm_solver.get_nodes();
@@ -1352,10 +956,14 @@ int main (int argc, char* argv[])
       ierr = PetscPrintf(mpi.comm(), "saved data in %s\n", name); CHKERRXX(ierr);
     }
 
-    keep_going = keep_going && (iteration < limit_iter) && (total_growth < limit_length) && (nutrient_left > limit_nutrient*nutrient_init) && (wall_proximity > limit_wall);
+    keep_going = keep_going
+                 && (iteration < limit_iter.val)
+                 && (total_growth < limit_length.val)
+                 && (nutrient_left > limit_nutrient.val*nutrient_init)
+                 && (wall_proximity > limit_wall.val);
 
     // save field data
-    if(save_vtk && save_now)
+    if(save_vtk.val && save_now)
     {
       biofilm_solver.save_VTK(vtk_idx);
     }
@@ -1364,16 +972,14 @@ int main (int argc, char* argv[])
 
     biofilm_solver.compute_dt();
 
-    if (tn + biofilm_solver.get_dt() > limit_time)
+    if (tn + biofilm_solver.get_dt() > limit_time.val)
     {
-      biofilm_solver.set_dt_max(limit_time-tn);
+      biofilm_solver.set_dt_max(limit_time.val-tn);
       keep_going = false;
     }
 
     tn += biofilm_solver.get_dt();
-
     biofilm_solver.update_grid();
-
     biofilm_solver.solve_concentration();
 
     iteration++;

@@ -129,9 +129,6 @@ private:
   vector<CF_DIM *>  wall_bc_value_conc_;
 
 public:
-//  inline void set_number_of_components(int num)
-//  {
-//  }
 
   inline void set_composition_parameters(double conc_diag[], double conc_diff[], double part_coeff[])
   {
@@ -296,7 +293,7 @@ private:
   void compute_c0n();
   void compute_psi_c0n();
 
-  void adjust_c0_gamma(bool simple);
+  void adjust_c0_gamma(int scheme);
   void compute_pw_bc_values(int start, int num);
   void compute_pw_bc_psi_values(int start, int num);
 
@@ -305,12 +302,6 @@ public:
   int solve(Vec tl, Vec ts, Vec c[], Vec c0d[], Vec bc_error, double &bc_error_max, bool use_non_zero_guess = false,
             std::vector<double> *num_pdes = NULL, std::vector<double> *error = NULL,
             Vec psi_tl=NULL, Vec psi_ts=NULL, Vec psi_c[]=NULL);
-
-//#ifdef P4_TO_P8
-//  CF_3* get_vn() { return &vn_from_c0_; }
-//#else
-//  CF_2* get_vn() { return &vn_from_c0_; }
-//#endif
 private:
 
   //--------------------------------------------------
@@ -334,6 +325,7 @@ private:
 
   vector<double> pw_c0_values_;
   vector<double> pw_psi_c0_values_;
+
 
   //--------------------------------------------------
   // Solver parameters
@@ -365,6 +357,7 @@ private:
   int    num_extend_iterations_;
   int    cube_refinement_;
   int    integration_order_;
+  int    iteration_scheme_; // 0 - old, 1 - new, 2 - new (two stage)
 
   enum var_scheme_t
   {
@@ -378,6 +371,7 @@ private:
   } var_scheme_;
 
 public:
+  inline void set_iteration_scheme_         (int          value) { iteration_scheme_          = value; }
   inline void set_pin_every_n_iterations    (int          value) { pin_every_n_iterations_    = value; }
   inline void set_cube_refinement           (int          value) { cube_refinement_           = value; }
   inline void set_integration_order         (int          value) { integration_order_         = value; }
@@ -409,229 +403,6 @@ public:
     interp_.set_input(c_[0].vec, DIM(c_dd_[0].vec[0], c_dd_[0].vec[1], c_dd_[0].vec[2]), quadratic_non_oscillatory_continuous_v2);
     return (conc_diff_[0]*c0n - front_conc_flux_[0]->value(xyz))/interp_.value(xyz)/(1.0-part_coeff_[0]);
   }
-
-//private:
-//#ifdef P4_TO_P8
-//  class bc_error_cf_t : public CF_3
-//  {
-//  public:
-//    double operator()(double, double, double) const
-//    {
-//      return 1;
-//    }
-//  } bc_error_cf_;
-//#else
-//  class bc_error_cf_t : public CF_2
-//  {
-//    my_p4est_poisson_nodes_multialloy_t *ptr_;
-//  public:
-//    inline void set_ptr(my_p4est_poisson_nodes_multialloy_t* ptr) {ptr_ = ptr;}
-//    double operator()(double x, double y) const
-//    {
-//      ptr_->interp_.set_input(ptr_->bc_error_gamma_.vec, linear);
-//      return ptr_->interp_(x, y);
-//    }
-//  } bc_error_cf_;
-//#endif
-
-//  // boundary conditions for Lagrangian multipliers
-//#ifdef P4_TO_P8
-//  class jump_psi_tn_t : public CF_3
-//  {
-//    my_p4est_poisson_nodes_multialloy_t *ptr_;
-//  public:
-//    inline void set_ptr(my_p4est_poisson_nodes_multialloy_t* ptr) {ptr_ = ptr;}
-//    double operator()(double, double, double) const
-//    {
-//      return ptr_->dt_/ptr_->ml0_;
-//    }
-//  } jump_psi_tn_;
-//#else
-//  class jump_psi_tn_t : public CF_2
-//  {
-//    my_p4est_poisson_nodes_multialloy_t *ptr_;
-//  public:
-//    inline void set_ptr(my_p4est_poisson_nodes_multialloy_t* ptr) {ptr_ = ptr;}
-//    double operator()(double x, double y) const
-//    {
-//      double factor = ptr_->dt_/ptr_->ml0_;
-//      switch (ptr_->var_scheme_) {
-//        case VALUE:     return factor;
-//        case ABS_ALTER: return factor;
-//        case ABS_VALUE: return factor*(ptr_->bc_error_cf_(x,y) < 0 ? -1. : 1.);
-//        case ABS_SMTH1: { double err = ptr_->bc_error_cf_(x,y); double err_eps = ptr_->err_eps_; return factor*(2.*exp(err/err_eps)/(1.+exp(err/err_eps)) - 1.); }
-//        case ABS_SMTH2: { double err = ptr_->bc_error_cf_(x,y); double err_eps = ptr_->err_eps_; return factor*(err/sqrt(err*err + err_eps*err_eps)); }
-//        case ABS_SMTH3: { double err = ptr_->bc_error_cf_(x,y); double err_eps = ptr_->err_eps_; return factor*(err/sqrt(err*err + err_eps*err_eps) + err_eps*err_eps*err/pow(err*err + err_eps*err_eps, 1.5)); }
-//        case QUADRATIC: return factor*(ptr_->bc_error_cf_(x,y));
-//      }
-//    }
-//  } jump_psi_tn_;
-//#endif
-
-//#ifdef P4_TO_P8
-//  class psi_c1_interface_value_t : public CF_3
-//  {
-//    my_p4est_poisson_nodes_multialloy_t *ptr_;
-//  public:
-//    inline void set_ptr(my_p4est_poisson_nodes_multialloy_t* ptr) {ptr_ = ptr;}
-//    double operator()(double, double, double) const
-//    {
-//      return -ptr_->ml1_/ptr_->ml0_*ptr_->dt_;
-//    }
-//  } psi_c1_interface_value_;
-//#else
-//  class psi_c1_interface_value_t : public CF_2
-//  {
-//    my_p4est_poisson_nodes_multialloy_t *ptr_;
-//  public:
-//    inline void set_ptr(my_p4est_poisson_nodes_multialloy_t* ptr) {ptr_ = ptr;}
-//    double operator()(double x, double y) const
-//    {
-//      double factor = -ptr_->ml1_/ptr_->ml0_*ptr_->dt_;
-
-//      switch (ptr_->var_scheme_) {
-//        case VALUE:     return factor;
-//        case ABS_ALTER: return factor;
-//        case ABS_VALUE: return factor*(ptr_->bc_error_cf_(x,y) < 0 ? -1. : 1.);
-//        case ABS_SMTH1: { double err = ptr_->bc_error_cf_(x,y); double err_eps = ptr_->err_eps_; return factor*(2.*exp(err/err_eps)/(1.+exp(err/err_eps)) - 1.); }
-//        case ABS_SMTH2: { double err = ptr_->bc_error_cf_(x,y); double err_eps = ptr_->err_eps_; return factor*(err/sqrt(err*err + err_eps*err_eps)); }
-//        case ABS_SMTH3: { double err = ptr_->bc_error_cf_(x,y); double err_eps = ptr_->err_eps_; return factor*(err/sqrt(err*err + err_eps*err_eps) + err_eps*err_eps*err/pow(err*err + err_eps*err_eps, 1.5)); }
-//        case QUADRATIC: return factor*(ptr_->bc_error_cf_(x,y));
-//      }
-//    }
-//  } psi_c1_interface_value_;
-//#endif
-
-//  // velocity
-//#ifdef P4_TO_P8
-//  class vn_from_c0_t : public CF_3
-//  {
-//    my_p4est_poisson_nodes_multialloy_t *ptr_;
-//  public:
-//    inline void set_ptr(my_p4est_poisson_nodes_multialloy_t* ptr) {ptr_ = ptr;}
-//    double operator()(double x, double y, double z) const
-//    {
-////      ptr_->interp_.set_input(ptr_->c0_.vec, ptr_->c0_dd_.vec[0], ptr_->c0_dd_.vec[1], ptr_->c0_dd_.vec[2], quadratic_non_oscillatory_continuous_v1);
-////      ptr_->interp_.set_input(ptr_->c0_.vec, linear);
-//      ptr_->interp_.set_input(ptr_->c0_gamma_.vec, linear);
-//      double c0 = ptr_->interp_(x, y, z);
-
-////      ptr_->interp_.set_input(ptr_->c0n_.vec, ptr_->c0n_dd_.vec[0], ptr_->c0n_dd_.vec[1], ptr_->c0n_dd_.vec[2], quadratic_non_oscillatory_continuous_v1);
-////      ptr_->interp_.set_input(ptr_->c0n_.vec, linear);
-//      ptr_->interp_.set_input(ptr_->c0n_gamma_.vec, linear);
-//      double c0n = ptr_->interp_(x, y, z);
-
-//      return ((*ptr_->c0_flux_)(x,y,z)-ptr_->Dl0_*c0n)/c0/(1.-ptr_->kp0_);
-//    }
-//  } vn_from_c0_;
-//#else
-//  class vn_from_c0_t : public CF_2
-//  {
-//    my_p4est_poisson_nodes_multialloy_t *ptr_;
-//  public:
-//    inline void set_ptr(my_p4est_poisson_nodes_multialloy_t* ptr) {ptr_ = ptr;}
-//    double operator()(double x, double y) const
-//    {
-////      ptr_->interp_.set_input(ptr_->c0_.vec, ptr_->c0_dd_.vec[0], ptr_->c0_dd_.vec[1], quadratic_non_oscillatory_continuous_v1);
-////      ptr_->interp_.set_input(ptr_->c0_.vec, linear);
-//      ptr_->interp_.set_input(ptr_->c0_gamma_.vec, linear);
-//      double c0 = ptr_->interp_(x, y);
-
-//////      ptr_->interp_.set_input(ptr_->c0n_.vec, ptr_->c0n_dd_.vec[0], ptr_->c0n_dd_.vec[1], quadratic_non_oscillatory_continuous_v1);
-//////      ptr_->interp_.set_input(ptr_->c0n_.vec, linear);
-////      ptr_->interp_.set_input(ptr_->c0n_gamma_.vec, linear);
-////      double c0n = ptr_->interp_(x, y);
-
-//      double n = 0;
-//      double c0n = 0;
-
-//      foreach_dimension(dim)
-//      {
-//        ptr_->interp_.set_input(ptr_->front_normal_[dim], linear);
-//        n = ptr_->interp_(x, y);
-//        ptr_->interp_.set_input(ptr_->c0d_.vec[dim], linear);
-//        c0n += n*ptr_->interp_(x, y);
-//      }
-
-//      return ((*ptr_->c0_flux_)(x,y) - ptr_->Dl0_*c0n)/c0/(1.-ptr_->kp0_);
-//    }
-//  } vn_from_c0_;
-//#endif
-
-//  // robin coefficients for concentrations
-//#ifdef P4_TO_P8
-//  class c1_robin_coef_t : public CF_3
-//  {
-//    my_p4est_poisson_nodes_multialloy_t *ptr_;
-//  public:
-//    inline void set_ptr(my_p4est_poisson_nodes_multialloy_t* ptr) {ptr_ = ptr;}
-//    double operator()(double x, double y, double z) const
-//    {
-//      return (1.-ptr_->kp1_)*ptr_->vn_from_c0_(x,y,z);
-//    }
-//  } c1_robin_coef_;
-//#else
-//  class c1_robin_coef_t : public CF_2
-//  {
-//    my_p4est_poisson_nodes_multialloy_t *ptr_;
-//  public:
-//    inline void set_ptr(my_p4est_poisson_nodes_multialloy_t* ptr) {ptr_ = ptr;}
-//    double operator()(double x, double y) const
-//    {
-////      return (1.-ptr_->kp1_)*(*ptr_->vn_exact_)(x,y);
-//      return (1.-ptr_->kp1_)*ptr_->vn_from_c0_(x,y);
-//    }
-//  } c1_robin_coef_;
-//#endif
-
-//#ifdef P4_TO_P8
-//  class c0_robin_coef_t : public CF_3
-//  {
-//    my_p4est_poisson_nodes_multialloy_t *ptr_;
-//  public:
-//    inline void set_ptr(my_p4est_poisson_nodes_multialloy_t* ptr) {ptr_ = ptr;}
-//    double operator()(double x, double y, double z) const
-//    {
-//      return (1.-ptr_->kp0_)*ptr_->vn_from_c0_(x,y,z);
-//    }
-//  } c0_robin_coef_;
-//#else
-//  class c0_robin_coef_t : public CF_2
-//  {
-//    my_p4est_poisson_nodes_multialloy_t *ptr_;
-//  public:
-//    inline void set_ptr(my_p4est_poisson_nodes_multialloy_t* ptr) {ptr_ = ptr;}
-//    double operator()(double x, double y) const
-//    {
-//      return (1.-ptr_->kp0_)*ptr_->vn_from_c0_(x,y);
-//    }
-//  } c0_robin_coef_;
-//#endif
-
-//  // jump in normal derivative of temperature
-//  class tn_jump_t :
-//    #ifdef P4_TO_P8
-//      public CF_3
-//    #else
-//      public CF_2
-//    #endif
-//  {
-//    my_p4est_poisson_nodes_multialloy_t *ptr_;
-//  public:
-//    inline void set_ptr(my_p4est_poisson_nodes_multialloy_t* ptr) { ptr_ = ptr; }
-//#ifdef P4_TO_P8
-//    double operator()(double x, double y, double z) const
-//    {
-//      return -ptr_->t_diff_*ptr_->dt_*(ptr_->latent_heat_/ptr_->t_cond_*ptr_->vn_from_c0_(x,y,z) - (*ptr_->jump_tn_)(x,y,z));
-//    }
-//#else
-//    double operator()(double x, double y) const
-//    {
-//      return -ptr_->t_diff_*ptr_->dt_*(ptr_->latent_heat_/ptr_->t_cond_*ptr_->vn_from_c0_(x,y) - (*ptr_->jump_tn_)(x,y));
-//    }
-//#endif
-//  } tn_jump_;
-
 };
 
 #endif // MY_P4EST_POISSON_NODES_MULTIALLOY_H
