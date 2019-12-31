@@ -286,7 +286,7 @@ void set_alloy_parameters()
       part_coeff_0     = 0.848;    // partition coefficient
       part_coeff_1     = 0.848;    // partition coefficient
 
-      eps_c = 3e-5/melting_temp;
+      eps_c = 0*3e-5/melting_temp;
       eps_v = 0*2.27e-2;
       eps_a = 0.05;
       symmetry = 4;
