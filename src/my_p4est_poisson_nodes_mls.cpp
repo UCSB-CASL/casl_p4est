@@ -339,6 +339,12 @@ void my_p4est_poisson_nodes_mls_t::geometry_t::calculate_phi_eff()
     }
   }
 }
+Vec my_p4est_poisson_nodes_mls_t::geometry_t::return_phi_eff()
+{
+  P4EST_ASSERT(phi_eff!=NULL);
+  Vec phi_to_return = phi_eff;
+  return phi_to_return;
+}
 
 void my_p4est_poisson_nodes_mls_t::geometry_t::add_phi(mls_opn_t opn, Vec phi, DIM(Vec phi_xx, Vec phi_yy, Vec phi_zz))
 {

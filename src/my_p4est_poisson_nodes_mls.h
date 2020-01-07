@@ -141,6 +141,7 @@ public:
     void get_arrays();
     void restore_arrays();
     void calculate_phi_eff();
+    Vec  return_phi_eff();
     void add_phi(mls_opn_t opn, Vec phi, DIM(Vec phi_xx, Vec phi_yy, Vec phi_zz));
     inline double phi_eff_value(p4est_locidx_t n) { return (num_phi == 0) ? -1 : phi_eff_ptr[n]; }
   };
