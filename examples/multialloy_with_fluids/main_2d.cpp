@@ -65,7 +65,7 @@ enum{
   FLOW_PAST_CYLINDER = 5,
 
 };
-DEFINE_PARAMETER(pl,int,example_,4,"example number: \n"
+DEFINE_PARAMETER(pl,int,example_,3,"example number: \n"
                                    "0 - Frank Sphere (Stefan only) \n"
                                    "1 - NS Gibou example (Navier Stokes only) \n"
                                    "2 - work in progress \n"
@@ -81,7 +81,7 @@ DEFINE_PARAMETER(pl,bool,save_stefan,false,"Save stefan ?");
 DEFINE_PARAMETER(pl,bool,save_navier_stokes,false,"Save navier stokes?");
 DEFINE_PARAMETER(pl,bool,save_coupled_fields,true,"Save the coupled problem?");
 DEFINE_PARAMETER(pl,int,save_every_iter,5,"Saves vtk every n number of iterations (default is 1)");
-DEFINE_PARAMETER(pl,bool,print_checkpoints,false,"Print checkpoints throughout script for debugging? ");
+DEFINE_PARAMETER(pl,bool,print_checkpoints,true,"Print checkpoints throughout script for debugging? ");
 DEFINE_PARAMETER(pl,bool,mem_checkpoints,true,"checks various memory checkpoints for mem usage");
 DEFINE_PARAMETER(pl,double,mem_safety_limit,50.e9,"Memory upper limit before closing the program -- in bytes");
 
@@ -258,7 +258,7 @@ double v_interface_max_norm; // For keeping track of the interfacial velocity ma
 // Grid refinement:
 // ---------------------------------------
 DEFINE_PARAMETER(pl,int,lmin,3,"Minimum level of refinement");
-DEFINE_PARAMETER(pl,int,lmax,9,"Maximum level of refinement");
+DEFINE_PARAMETER(pl,int,lmax,7,"Maximum level of refinement");
 DEFINE_PARAMETER(pl,double,lip,1.75,"Lipschitz coefficient");
 DEFINE_PARAMETER(pl,int,method_,1,"Solver in time for solid domain, and for fluid if no advection. 1 - Backward Euler, 2 - Crank Nicholson");
 DEFINE_PARAMETER(pl,int,num_splits,0,"Number of splits -- used for convergence tests");
@@ -278,7 +278,7 @@ void simulation_time_info(){
   switch(example_){
     case FRANK_SPHERE:
       tfinal = 1.30;
-      dt_max_allowed = 0.05;
+      dt_max_allowed = 0.005;
       tn = 1.0;
       break;
     case ICE_AROUND_CYLINDER: // ice solidifying around isothermally cooled cylinder
@@ -3393,12 +3393,12 @@ int main(int argc, char** argv) {
         PetscLogDouble mem_safety_check;
 
         // Initialize variables for checking the current memory usage
-        PetscLogDouble mem1,mem2,mem3,mem4,mem5,mem6,mem7,mem8,mem9,mem10,mem11,mem12,mem13;
-        PetscLogDouble mem_grid1,mem_grid2;
+        PetscLogDouble mem1=0.,mem2=0.,mem3=0.,mem4=0.,mem5=0.,mem6=0.,mem7=0.,mem8=0.,mem9=0.,mem10=0.,mem11=0.,mem12=0.,mem13=0.;
+        PetscLogDouble mem_grid1=0.,mem_grid2=0.;
 
-        PetscLogDouble memP1,memP2,memP3,memP4,memP5,memP6,memP7;//mem9a,mem9b,mem9c,mem9d,mem9e,mem9f,mem9g;
-        PetscLogDouble memNS1,memNS2,memNS3,memNS4,memNS5,memNS6;//mem10a,mem10b,mem10c,mem10d,mem10d1,mem10e;
-        PetscLogDouble memNS_H1,memNS_H2,memNS_H3,memNS_H4,memNS_H5;//mem10c1,mem10c2,mem10c3,mem10c4,mem10c11;
+        PetscLogDouble memP1=0.,memP2=0.,memP3=0.,memP4=0.,memP5=0.,memP6=0.,memP7=0.;//mem9a,mem9b,mem9c,mem9d,mem9e,mem9f,mem9g;
+        PetscLogDouble memNS1=0.,memNS2=0.,memNS3=0.,memNS4=0.,memNS5=0.,memNS6=0.;//mem10a,mem10b,mem10c,mem10d,mem10d1,mem10e;
+        PetscLogDouble memNS_H1=0.,memNS_H2=0.,memNS_H3=0.,memNS_H4=0.,memNS_H5=0.;//mem10c1,mem10c2,mem10c3,mem10c4,mem10c11;
 
         if(mem_checkpoints){
             MPI_Barrier(mpi.comm());
@@ -4739,7 +4739,11 @@ int main(int argc, char** argv) {
         // Get current memory usage and print out all memory usage checkpoints:
         if(mem_checkpoints){
             MPI_Barrier(mpi.comm());
-            int no_nodes = nodes->num_owned_indeps;
+//            int no_nodes = nodes->num_owned_indeps;
+            p4est_gloidx_t no_nodes = 0;
+            for (int i = 0; i<p4est->mpisize; i++){
+              no_nodes += nodes->global_owned_indeps[i];
+            }
             PetscPrintf(mpi.comm(),"Current grid has %d nodes \n", no_nodes);
             PetscMemoryGetCurrentUsage(&mem13);
 
@@ -4770,7 +4774,7 @@ int main(int argc, char** argv) {
         MPI_Barrier(mpi.comm());
 
         PetscMemoryGetCurrentUsage(&mem_safety_check);
-        PetscPrintf(mpi.comm(),"Current memory usage is : %0.5e GB \n Which is %0.2f % of safety limit \n",mpi.size()*mem_safety_check*1.e-9,(mpi.size()*mem_safety_check)/(mem_safety_limit)*100.0);
+        PetscPrintf(mpi.comm(),"Current memory usage is : %0.5e GB \n Which is %0.2f percent of safety limit \n",mpi.size()*mem_safety_check*1.e-9,(mpi.size()*mem_safety_check)/(mem_safety_limit)*100.0);
         if(mem_safety_check>mem_safety_limit/mpi.size()){
             PetscPrintf(mpi.comm(),"We are encroaching upon the memory upper bound on this machine, calling MPI Abort...\n");
             MPI_Abort(mpi.comm(),1);
@@ -4797,7 +4801,7 @@ int main(int argc, char** argv) {
   MPI_Barrier(mpi.comm());
   PetscLogDouble memfinal;
   PetscMemoryGetCurrentUsage(&memfinal);
-  PetscPrintf(mpi.comm(),"Final memory usage is %.5e GB, which is %0.2f % of max allowed \n",memfinal*1.e-9,(memfinal)/(mem_safety_limit)*100.0);
+  PetscPrintf(mpi.comm(),"Final memory usage is %.5e GB, which is %0.2f percent of max allowed \n",memfinal*1.e-9,(memfinal)/(mem_safety_limit)*100.0);
   w.stop(); w.read_duration();
   return 0;
 }

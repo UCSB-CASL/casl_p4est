@@ -1275,9 +1275,26 @@ int main (int argc, char* argv[])
   my_p4est_poisson_cells_t* cell_solver = NULL;
   my_p4est_poisson_faces_t* face_solver = NULL;
 
-  //ierr = PetscPrintf(mpi.comm(),"Gets to just before the main time loop \n");
+//  ierr = PetscPrintf(mpi.comm(),"Gets to just before the main time loop \n");
+  // Elyce debugging:--------------
+  FILE *fich_mem;
+  char mem_name[1000];
+  sprintf(mem_name,"/home/elyce/workspace/projects/navier_stokes/memory/memory_info_lmin_%d_lmax_%d.dat",lmin,lmax);
+  ierr = PetscPrintf(mpi.comm(),"\n %s \n",mem_name); CHKERRXX(ierr);
+
+  ierr = PetscFOpen(mpi.comm(),mem_name,"w",&fich_mem); CHKERRXX(ierr);
+  ierr = PetscFPrintf(mpi.comm(),fich_mem,"time " "timestep " "mem_initial " "mem_final \n");CHKERRXX(ierr);
+  ierr = PetscFClose(mpi.comm(),fich_mem); CHKERRXX(ierr);
+  //-------------------------------
+
+
   while(tn+0.01*dt<tstart+duration)
   {
+
+    PetscLogDouble memstart;
+    PetscMemoryGetCurrentUsage(&memstart);
+    PetscPrintf(mpi.comm(),"Start usage: %0.3e \n",memstart);
+
     if(get_timing)
       substep_watch.start("");
     if(iter>0)
@@ -1405,7 +1422,7 @@ int main (int argc, char* argv[])
         fprintf(fp_forces, "%g %g %g %g\n", tn, forces[0]/(.5*PI*r0*r0*u0*u0*rho), forces[1]/(.5*PI*r0*r0*u0*u0*rho), forces[2]/(.5*PI*r0*r0*u0*u0*rho));
   #else
           throw std::invalid_argument("main_flow_past_sphere_2d: could not open file for forces output.");
-        fprintf(fp_forces, "%g %g %g\n", tn, forces[0]/r0/u0/u0/rho, forces[1]/r0/u0/u0/rho);
+        fprintf(fp_forces, "%g %g %g \n", tn, forces[0]/r0/u0/u0/rho, forces[1]/r0/u0/u0/rho);
   #endif
         fclose(fp_forces);
       }
@@ -1441,6 +1458,14 @@ int main (int argc, char* argv[])
       }
     }
 
+
+    PetscLogDouble memfinish;
+    PetscMemoryGetCurrentUsage(&memfinish);
+    PetscPrintf(mpi.comm(),"Final usage: %0.3e \n",memfinish);
+    ierr = PetscFOpen(mpi.comm(),mem_name,"a",&fich_mem); CHKERRXX(ierr);
+    ierr = PetscFPrintf(mpi.comm(),fich_mem,"%g %d %g %g \n",tn,iter,memstart,memfinish);CHKERRXX(ierr);
+
+    ierr = PetscFClose(mpi.comm(),fich_mem); CHKERRXX(ierr);
 
     iter++;
   }
