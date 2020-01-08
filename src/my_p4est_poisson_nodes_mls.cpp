@@ -4765,7 +4765,7 @@ int my_p4est_poisson_nodes_mls_t::solve_nonlinear(Vec sol, bool use_nonzero_gues
   while (iter < nonlinear_itmax_ && change_norm > nonlinear_change_tol_ && pde_residual_norm > nonlinear_pde_residual_tol_)
   {
     // compute ghost values
-    if (there_is_jump_)
+    if (there_is_jump_ && iter > 0)
     {
       if (there_is_jump_mu_)
       {
@@ -4777,6 +4777,13 @@ int my_p4est_poisson_nodes_mls_t::solve_nonlinear(Vec sol, bool use_nonzero_gues
       }
 
       ierr = VecAXPY(sol_ghost, -1.0, rhs_jump_); CHKERRXX(ierr);
+
+//      double norm_m;
+//      double norm_p;
+//      ierr = VecMax(sol_ghost, NULL, &norm_m); CHKERRXX(ierr);
+//      ierr = VecMin(sol_ghost, NULL, &norm_p); CHKERRXX(ierr);
+
+//      std::cout << norm_m << " " << norm_p << "\n";
     }
 
     // compute current diag and rhs.
@@ -4885,6 +4892,13 @@ int my_p4est_poisson_nodes_mls_t::solve_nonlinear(Vec sol, bool use_nonzero_gues
 
     set_diag(diag_m_current, diag_p_current);
     set_rhs(rhs_m_current, rhs_p_current);
+
+//    double norm_m;
+//    double norm_p;
+//    ierr = VecNorm(diag_m_current, NORM_2, &norm_m); CHKERRXX(ierr);
+//    ierr = VecNorm(diag_p_current, NORM_2, &norm_p); CHKERRXX(ierr);
+
+//    std::cout << norm_m << " " << norm_p << "\n";
 
     // assemble current linear system
     setup_linear_system(true);

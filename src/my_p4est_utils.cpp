@@ -2612,11 +2612,11 @@ PetscErrorCode VecCopyGhost(Vec input, Vec output)
 {
   PetscErrorCode ierr;
   Vec src, out;
-  ierr = VecGhostGetLocalForm(input, &src);      CHKERRXX(ierr);
-  ierr = VecGhostGetLocalForm(output, &out);     CHKERRXX(ierr);
-  ierr = VecCopy(src, out);                      CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(input, &src);  CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(output, &out); CHKERRXX(ierr);
+  ierr = VecGhostGetLocalForm(input, &src);      if (ierr != 0) return ierr;
+  ierr = VecGhostGetLocalForm(output, &out);     if (ierr != 0) return ierr;
+  ierr = VecCopy(src, out);                      if (ierr != 0) return ierr;
+  ierr = VecGhostRestoreLocalForm(input, &src);  if (ierr != 0) return ierr;
+  ierr = VecGhostRestoreLocalForm(output, &out); if (ierr != 0) return ierr;
   return ierr;
 }
 
@@ -3376,3 +3376,4 @@ void variable_step_BDF_implicit(const int order, std::vector<double> &dt, std::v
       throw;
   }
 }
+

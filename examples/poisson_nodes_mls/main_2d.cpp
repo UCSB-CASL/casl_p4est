@@ -98,11 +98,11 @@ param_t<double> zmax (pl,  1, "zmax", "Box zmax");
 // refinement parameters
 //-------------------------------------
 #ifdef P4_TO_P8
-param_t<int> lmin (pl, 7, "lmin", "Min level of the tree");
-param_t<int> lmax (pl, 9, "lmax", "Max level of the tree");
+param_t<int> lmin (pl, 5, "lmin", "Min level of the tree");
+param_t<int> lmax (pl, 5, "lmax", "Max level of the tree");
 
-param_t<int> num_splits           (pl, 1, "num_splits", "Number of recursive splits");
-param_t<int> num_splits_per_split (pl, 1, "num_splits_per_split", "Number of additional resolutions");
+param_t<int> num_splits           (pl, 4, "num_splits", "Number of recursive splits");
+param_t<int> num_splits_per_split (pl, 3, "num_splits_per_split", "Number of additional resolutions");
 
 param_t<int> num_shifts_x_dir (pl, 1, "num_shifts_x_dir", "Number of grid shifts in the x-direction");
 param_t<int> num_shifts_y_dir (pl, 1, "num_shifts_y_dir", "Number of grid shifts in the y-direction");
@@ -112,7 +112,7 @@ param_t<int> lmin (pl, 5, "lmin", "Min level of the tree");
 param_t<int> lmax (pl, 5, "lmax", "Max level of the tree");
 
 param_t<int> num_splits           (pl, 5, "num_splits", "Number of recursive splits");
-param_t<int> num_splits_per_split (pl, 1, "num_splits_per_split", "Number of additional resolutions");
+param_t<int> num_splits_per_split (pl, 5, "num_splits_per_split", "Number of additional resolutions");
 
 param_t<int> num_shifts_x_dir (pl, 1, "num_shifts_x_dir", "Number of grid shifts in the x-direction");
 param_t<int> num_shifts_y_dir (pl, 1, "num_shifts_y_dir", "Number of grid shifts in the y-direction");
@@ -289,11 +289,11 @@ param_t<int>    extension_iterations   (pl, 100, "extension_iterations", "");
 // output
 //-------------------------------------
 param_t<bool> save_vtk           (pl, 1, "save_vtk", "Save the p4est in vtk format");
-param_t<bool> save_params        (pl, 0, "save_params", "Save list of entered parameters");
-param_t<bool> save_domain        (pl, 0, "save_domain", "Save the reconstruction of an irregular domain (works only in serial!)");
+param_t<bool> save_params        (pl, 1, "save_params", "Save list of entered parameters");
+param_t<bool> save_domain        (pl, 1, "save_domain", "Save the reconstruction of an irregular domain (works only in serial!)");
 param_t<bool> save_matrix_ascii  (pl, 0, "save_matrix_ascii", "Save the matrix in ASCII MATLAB format");
 param_t<bool> save_matrix_binary (pl, 0, "save_matrix_binary", "Save the matrix in BINARY MATLAB format");
-param_t<bool> save_convergence   (pl, 0, "save_convergence", "Save convergence results");
+param_t<bool> save_convergence   (pl, 1, "save_convergence", "Save convergence results");
 
 param_t<int> n_example (pl, 25, "n_example", "Predefined example:\n"
                                              "0 - no interfaces, no boudaries\n"
@@ -318,7 +318,7 @@ param_t<int> n_example (pl, 25, "n_example", "Predefined example:\n"
                                              "19 - not defined\n"
                                              "20 - clusters of particles\n"
                                              "21 - same as no. 0 + nonlinear sinh term\n"
-                                             "22 - same as no. 1 + nonlinear sinh term\n"
+                                             "22 - same as no. 3 + nonlinear sinh term\n"
                                              "23 - same as no. 5 + nonlinear sinh term\n"
                                              "24 - same as no. 9 + nonlinear sinh term\n"
                                              "25 - same as no. 12 + nonlinear sinh term\n");
@@ -767,8 +767,8 @@ void set_example(int n_example)
       n_um.val = 0; mag_um.val = 1; n_mu_m.val = 0; mag_mu_m.val = 1; n_diag_m.val = 1; mag_diag_m.val = 1;
       n_up.val = 0; mag_up.val = 1; n_mu_p.val = 0; mag_mu_p.val = 1; n_diag_p.val = 1; mag_diag_p.val = 1;
 
-      infc_phi_num.val = 0;
-      bdry_phi_num.val = 1;
+      infc_phi_num.val = 1;
+      bdry_phi_num.val = 0;
 
       infc_present_00.val = 0;
       infc_present_01.val = 0;
@@ -826,7 +826,7 @@ void set_example(int n_example)
       infc_phi_num.val = 1;
       bdry_phi_num.val = 0;
 
-      infc_present_00.val = 1; infc_geom_00.val = 1; infc_opn_00.val = MLS_INT;
+      infc_present_00.val = 1; infc_geom_00.val = 4; infc_opn_00.val = MLS_INT;
       infc_present_01.val = 0; infc_geom_01.val = 0; infc_opn_01.val = MLS_INT;
       infc_present_02.val = 0; infc_geom_02.val = 0; infc_opn_02.val = MLS_INT;
       infc_present_03.val = 0; infc_geom_03.val = 0; infc_opn_03.val = MLS_INT;
@@ -836,13 +836,13 @@ void set_example(int n_example)
       bdry_present_02.val = 0;
       bdry_present_03.val = 0;
 
-      nonlinear_term_m.val = 2;
+      nonlinear_term_m.val = 0;
       nonlinear_term_m_coeff.val = 0;
-      nonlinear_term_m_mag.val = 1;
+      nonlinear_term_m_mag.val = 0;
 
       nonlinear_term_p.val = 2;
       nonlinear_term_p_coeff.val = 0;
-      nonlinear_term_p_mag.val = 1;
+      nonlinear_term_p_mag.val = 0.1;
 
       break;
 
@@ -864,13 +864,13 @@ void set_example(int n_example)
       bdry_present_02.val = 0; bdry_geom_02.val = 0; bdry_opn_02.val = MLS_INT; bc_coeff_02.val = 0; bc_coeff_02_mag.val = 1; bc_type_02.val = ROBIN;
       bdry_present_03.val = 0; bdry_geom_03.val = 0; bdry_opn_03.val = MLS_INT; bc_coeff_03.val = 0; bc_coeff_03_mag.val = 1; bc_type_03.val = ROBIN;
 
-      nonlinear_term_m.val = 2;
+      nonlinear_term_m.val = 0;
       nonlinear_term_m_coeff.val = 0;
-      nonlinear_term_m_mag.val = 1;
+      nonlinear_term_m_mag.val = 0;
 
       nonlinear_term_p.val = 2;
       nonlinear_term_p_coeff.val = 0;
-      nonlinear_term_p_mag.val = 1;
+      nonlinear_term_p_mag.val = 0.1;
 
       break;
 
@@ -2300,10 +2300,10 @@ int main (int argc, char* argv[])
     if (mengine == NULL) throw std::runtime_error("Cannot start a MATLAB Engine session.\n");
   }
 #else
-  if (compute_cond_num)
-  {
-    ierr = PetscPrintf(mpi.comm(), "[Warning]: MATLAB is either not provided or found. Condition numbers will not be computed. \n");
-  }
+//  if (compute_cond_num)
+//  {
+//    ierr = PetscPrintf(mpi.comm(), "[Warning]: MATLAB is either not provided or found. Condition numbers will not be computed. \n");
+//  }
 #endif
 
 

@@ -549,7 +549,7 @@ private:
   Vec                       inner_domain;
 
   const int                 rank_encoding;
-  const int64_t             max_quad_loc_idx;
+  const ulong               max_quad_loc_idx;
   const string              no_vtk = "null";
   int8_t                    global_max_level;         // max level of refinement of the forest in the entire domain
   vector<molecule>          bio_molecules;            // the vector of molecules
@@ -787,6 +787,8 @@ class my_p4est_biomolecules_solver_t{
   my_p4est_poisson_nodes_t*                     node_solver = NULL;
 
   Vec           psi_star;
+  Vec           psi_naught;
+  Vec           psi_bar;
   Vec           psi_hat;
   bool          psi_star_is_set;
   bool          psi_hat_is_set;
@@ -816,8 +818,8 @@ class my_p4est_biomolecules_solver_t{
       {
 #ifdef P4_TO_P8
         const Atom* a = mol.get_charged_atom(charged_atom_idx);
-        psi_star_value += (a->q*SQR(electron)*((double) ion_charge))/
-            (length_scale_in_meter()*4.0*PI*eps_0*mol_rel_permittivity*kB*temperature*sqrt(SUMD(SQR(x - a->xyz_c[0]), SQR(y - a->xyz_c[1]), SQR(z - a->xyz_c[2])))); // constant = 0
+        psi_star_value += (a->q*SQR(electron)*((double) ion_charge))
+            /(length_scale_in_meter()*4.0*PI*eps_0*mol_rel_permittivity*kB*temperature*sqrt(SUMD(SQR(x - a->xyz_c[0]), SQR(y - a->xyz_c[1]), SQR(z - a->xyz_c[2])))); // constant = 0
 #else
         // there is no real 2D equivalent in terms of electrostatics,
         // in the 2d case, let's consider q a linear (partial) charge density,
@@ -830,6 +832,7 @@ class my_p4est_biomolecules_solver_t{
   }
 
   void          calculate_jumps_in_normal_gradient(Vec& eps_grad_n_psi_hat_jump);
+  void          calculate_jumps_in_normal_gradient_with_psi_bar(Vec& eps_grad_n_psi_hat_jump);
   void          get_rhs_and_add_plus(Vec& rhs_plus, Vec& add_plus);
   void          get_linear_diagonal_terms(Vec& pristine_diagonal_terms);
   void          clean_matrix_diagonal(const Vec& pristine_diagonal_terms);
@@ -875,13 +878,17 @@ public:
   inline double get_far_field_ion_density() const {return far_field_ion_density;}
   inline int    get_ion_charge() const {return ion_charge;}
 
-  void          solve_linear() {(void) solve_nonlinear(1e-8, 1);} // equivalent to ONE iteration of the nonlinear solver
+  void          solve_linear() {(void) solve_nonlinear_v2(1e-8, 1);} // equivalent to ONE iteration of the nonlinear solver
   int           solve_nonlinear(double upper_bound_residual = 1e-8, int it_max = 10000);
   int           solve_nonlinear_v2(double upper_bound_residual = 1e-8, int it_max = 10000);
-  void          get_solvation_free_energy(const bool &nonlinear_flag);
+  int           solve_nonlinear_first_approach(double upper_bound_residual = 1e-8, int it_max = 10000);
+  //void          get_solvation_free_energy(const bool &nonlinear_flag);
+  double        get_solvation_free_energy(const bool &nonlinear_flag);
+  double        get_solvation_free_energy_first_approach(const bool &nonlinear_flag);
   void          return_all_psi_vectors(Vec& psi_star_out, Vec& psi_hat_out);
   void          return_psi_hat(Vec& psi_hat_out);
   void          return_psi_star(Vec& psi_star_out);
+  void          return_psi_bar(Vec& psi_bar_out);
 
   ~my_p4est_biomolecules_solver_t();
 };
