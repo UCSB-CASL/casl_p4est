@@ -41,7 +41,7 @@ static const double r0   = 0.5;
 
 static const double rho       = 1.0;
 static const double mu_minus  = 1.0;
-static const double mu_plus   = 1.0;
+static const double mu_plus   = 10.0;
 static const bool implicit    = false;
 static double tn;
 static double dt;
@@ -50,175 +50,115 @@ class EXACT_SOLUTION{
 public:
   double u_minus(DIM(double x, double y, double z))
   {
-    return cos(tn+(implicit?dt:0.0))*MULTD(sin(x), cos(y), sin(z));
+    return cos(tn + (implicit ? dt : 0.0))*MULTD(sin(x), cos(y), sin(z));
   }
   double dt_u_minus(DIM(double x, double y, double z))
   {
-    return -sin(tn+(implicit?dt:0.0))*MULTD(sin(x), cos(y), sin(z));
+    return -sin(tn + (implicit ? dt : 0.0))*MULTD(sin(x), cos(y), sin(z));
   }
   double dx_u_minus(DIM(double x, double y, double z))
   {
-    return cos(tn+(implicit?dt:0.0))*MULTD(cos(x), cos(y), sin(z));
+    return cos(tn + (implicit ? dt : 0.0))*MULTD(cos(x), cos(y), sin(z));
   }
   double dy_u_minus(DIM(double x, double y, double z))
   {
-    return cos(tn+(implicit?dt:0.0))*MULTD(sin(x), -sin(y), sin(z));
+    return cos(tn + (implicit ? dt : 0.0))*MULTD(sin(x), -sin(y), sin(z));
   }
 #ifdef P4_TO_P8
   double dz_u_minus(DIM(double x, double y, double z))
   {
-    return cos(tn+(implicit?dt:0.0))*MULTD(sin(x), cos(y), cos(z));
+    return cos(tn + (implicit ? dt : 0.0))*MULTD(sin(x), cos(y), cos(z));
   }
 #endif
   double laplace_u_minus(DIM(double x, double y, double z))
   {
-    return -cos(tn+(implicit?dt:0.0))*((double) P4EST_DIM)*MULTD(sin(x), cos(y), sin(z));
+    return -cos(tn + (implicit ? dt : 0.0))*((double) P4EST_DIM)*MULTD(sin(x), cos(y), sin(z));
   }
   double v_minus(DIM(double x, double y, double z))
   {
-    return cos(tn+(implicit?dt:0.0))*(3.0*pow(x, 3.0)-0.5*pow(x, 5.0))*log(1.0+SQR(y))ONLY3D(*atan(z/2.5));
+    return cos(tn + (implicit ? dt : 0.0))*(3.0*pow(x, 3.0) - 0.5*pow(x, 5.0))*log(1.0 + SQR(y))ONLY3D(*atan(z/2.5));
   }
   double dt_v_minus(DIM(double x, double y, double z))
   {
-    return -sin(tn+(implicit?dt:0.0))*(3.0*pow(x, 3.0)-0.5*pow(x, 5.0))*log(1.0+SQR(y))ONLY3D(*atan(z/2.5));
+    return -sin(tn + (implicit ? dt : 0.0))*(3.0*pow(x, 3.0) - 0.5*pow(x, 5.0))*log(1.0 + SQR(y))ONLY3D(*atan(z/2.5));
   }
   double dx_v_minus(DIM(double x, double y, double z))
   {
-    return cos(tn+(implicit?dt:0.0))*(9.0*SQR(x)-2.5*pow(x, 4))*log(1.0+SQR(y))ONLY3D(*atan(z/2.5));
+    return cos(tn + (implicit ? dt : 0.0))*(9.0*SQR(x) - 2.5*pow(x, 4))*log(1.0 + SQR(y))ONLY3D(*atan(z/2.5));
   }
   double dy_v_minus(DIM(double x, double y, double z))
   {
-    return cos(tn+(implicit?dt:0.0))*(3.0*pow(x, 3.0)-0.5*pow(x, 5.0))*(2.0*y/(1.0+SQR(y)))ONLY3D(*atan(z/2.5));
+    return cos(tn + (implicit ? dt : 0.0))*(3.0*pow(x, 3.0) - 0.5*pow(x, 5.0))*(2.0*y/(1.0 + SQR(y)))ONLY3D(*atan(z/2.5));
   }
 #ifdef P4_TO_P8
   double dz_v_minus(DIM(double x, double y, double z))
   {
-    return cos(tn+(implicit?dt:0.0))*(3.0*pow(x, 3.0)-0.5*pow(x, 5.0))*log(1.0+SQR(y))ONLY3D(*(1.0/2.5)/(1.0+SQR(z/2.5)));
+    return cos(tn + (implicit ? dt : 0.0))*(3.0*pow(x, 3.0) - 0.5*pow(x, 5.0))*log(1.0 + SQR(y))ONLY3D(*(1.0/2.5)/(1.0 + SQR(z/2.5)));
   }
 #endif
   double laplace_v_minus(DIM(double x, double y, double z))
   {
-    return cos(tn+(implicit?dt:0.0))*((18.0*x - 10*pow(x, 3.0))*log(1.0+SQR(y))ONLY3D(*atan(z/2.5))
-                                      + (3.0*pow(x, 3.0)-0.5*pow(x, 5.0))*(2.0*(1.0-SQR(y))/(SQR(1.0+SQR(y))))ONLY3D(*atan(z/2.5))
-                                  #ifdef P4_TO_P8
-                                      + (3.0*pow(x, 3.0)-0.5*pow(x, 5.0))*log(1.0+SQR(y))*(-2.0*z/(SQR(2.5)))/(SQR(1.0+SQR(z/2.5)))
-                                  #endif
+    return cos(tn + (implicit ? dt : 0.0))*((18.0*x - 10*pow(x, 3.0))*log(1.0 + SQR(y))ONLY3D(*atan(z/2.5))
+                                            + (3.0*pow(x, 3.0) - 0.5*pow(x, 5.0))*(2.0*(1.0 - SQR(y))/(SQR(1.0 + SQR(y))))ONLY3D(*atan(z/2.5))
+                                            ONLY3D(+ (3.0*pow(x, 3.0) - 0.5*pow(x, 5.0))*log(1.0 + SQR(y))*(-2.0*z/(SQR(2.5)))/(SQR(1.0 + SQR(z/2.5))))
                                       );
   }
 
   double u_plus(DIM(double x, double y, double z))
   {
-    return cos(tn+(implicit?dt:0.0))*MULTD(sin(x), cos(y), sin(z));
+    return (1.0 + exp(-SQR(tn + (implicit ? dt : 0.0)-0.5)))*(pow(y - x, 3.0) + cos(2.0*x - y) ONLY3D( + (5.0/3.0)*(z - 2.0*x + cos(3.0*z - y))));
   }
   double dt_u_plus(DIM(double x, double y, double z))
   {
-    return -sin(tn+(implicit?dt:0.0))*MULTD(sin(x), cos(y), sin(z));
+    return (exp(-SQR(tn + (implicit ? dt : 0.0)-0.5))*(1.0 - 2.0*(tn + (implicit ? dt : 0.0))))*(pow(y - x, 3.0) + cos(2.0*x - y) ONLY3D( + (5.0/3.0)*(z-2.0*x + cos(3.0*z - y))));
   }
   double dx_u_plus(DIM(double x, double y, double z))
   {
-    return cos(tn+(implicit?dt:0.0))*MULTD(cos(x), cos(y), sin(z));
+    return (1.0+exp(-SQR(tn + (implicit ? dt : 0.0)-0.5)))*(-3.0*SQR(y - x) - 2.0*sin(2.0*x - y) ONLY3D( + (5.0/3.0)*(-2.0)));
   }
   double dy_u_plus(DIM(double x, double y, double z))
   {
-    return cos(tn+(implicit?dt:0.0))*MULTD(sin(x), -sin(y), sin(z));
+    return (1.0+exp(-SQR(tn + (implicit ? dt : 0.0)-0.5)))*(3.0*SQR(y - x) + sin(2.0*x - y) ONLY3D( + (5.0/3.0)*sin(3.0*z - y)));
   }
 #ifdef P4_TO_P8
   double dz_u_plus(DIM(double x, double y, double z))
   {
-    return cos(tn+(implicit?dt:0.0))*MULTD(sin(x), cos(y), cos(z));
+    return (1.0+exp(-SQR(tn + (implicit ? dt : 0.0)-0.5)))*(5.0/3.0)*(1.0 - 3.0*sin(3.0*z - y));
   }
 #endif
   double laplace_u_plus(DIM(double x, double y, double z))
   {
-    return -cos(tn+(implicit?dt:0.0))*((double) P4EST_DIM)*MULTD(sin(x), cos(y), sin(z));
+    return (1.0+exp(-SQR(tn + (implicit ? dt : 0.0)-0.5)))*(12.0*(y - x) - 5.0*cos(2.0*x - y) ONLY3D( + (5.0/3.0)*(-10.0*cos(3.0*z - y))));
   }
+
   double v_plus(DIM(double x, double y, double z))
   {
-    return cos(tn+(implicit?dt:0.0))*(3.0*pow(x, 3.0)-0.5*pow(x, 5.0))*log(1.0+SQR(y))ONLY3D(*atan(z/2.5));
+    return (1.0 + 0.3*cos(1.5*(tn + (implicit ? dt : 0.0))))*(sin(3.0*x - 2.0*y) + log(1.0 + SQR(0.5*y-1.2*x)) ONLY3D( + cos(1.7*z - 0.3*x)));
   }
   double dt_v_plus(DIM(double x, double y, double z))
   {
-    return -sin(tn+(implicit?dt:0.0))*(3.0*pow(x, 3.0)-0.5*pow(x, 5.0))*log(1.0+SQR(y))ONLY3D(*atan(z/2.5));
+    return (-0.3*1.5*sin(1.5*(tn + (implicit ? dt : 0.0))))*(sin(3.0*x - 2.0*y) + log(1.0 + SQR(0.5*y-1.2*x)) ONLY3D( + cos(1.7*z - 0.3*x)));
   }
   double dx_v_plus(DIM(double x, double y, double z))
   {
-    return cos(tn+(implicit?dt:0.0))*(9.0*SQR(x)-2.5*pow(x, 4))*log(1.0+SQR(y))ONLY3D(*atan(z/2.5));
+    return (1.0 + 0.3*cos(1.5*(tn + (implicit ? dt : 0.0))))*(3.0*cos(3.0*x - 2.0*y) + (-2.0*1.2*(0.5*y-1.2*x))/(1.0 + SQR(0.5*y-1.2*x)) ONLY3D( + 0.3*sin(1.7*z - 0.3*x)));
   }
   double dy_v_plus(DIM(double x, double y, double z))
   {
-    return cos(tn+(implicit?dt:0.0))*(3.0*pow(x, 3.0)-0.5*pow(x, 5.0))*(2.0*y/(1.0+SQR(y)))ONLY3D(*atan(z/2.5));
+    return (1.0 + 0.3*cos(1.5*(tn + (implicit ? dt : 0.0))))*(-2.0*cos(3.0*x - 2.0*y) + 2.0*0.5*(0.5*y-1.2*x)/(1.0 + SQR(0.5*y-1.2*x)));
   }
 #ifdef P4_TO_P8
   double dz_v_plus(DIM(double x, double y, double z))
   {
-    return cos(tn+(implicit?dt:0.0))*(3.0*pow(x, 3.0)-0.5*pow(x, 5.0))*log(1.0+SQR(y))ONLY3D(*(1.0/2.5)/(1.0+SQR(z/2.5)));
+    return (1.0 + 0.3*cos(1.5*(tn + (implicit ? dt : 0.0))))*(- 1.7*sin(1.7*z - 0.3*x));
   }
 #endif
   double laplace_v_plus(DIM(double x, double y, double z))
   {
-    return cos(tn+(implicit?dt:0.0))*((18.0*x - 10*pow(x, 3.0))*log(1.0+SQR(y))ONLY3D(*atan(z/2.5))
-                                      + (3.0*pow(x, 3.0)-0.5*pow(x, 5.0))*(2.0*(1.0-SQR(y))/(SQR(1.0+SQR(y))))ONLY3D(*atan(z/2.5))
-                                  #ifdef P4_TO_P8
-                                      + (3.0*pow(x, 3.0)-0.5*pow(x, 5.0))*log(1.0+SQR(y))*(-2.0*z/(SQR(2.5)))/(SQR(1.0+SQR(z/2.5)))
-                                  #endif
-                                      );
+    return (1.0 + 0.3*cos(1.5*(tn + (implicit ? dt : 0.0))))*((-SQR(3.0) - SQR(-2.0))*sin(3.0*x - 2.0*y) +
+                                                              (2.0*(SQR(-1.2) + SQR(0.5))*(1.0 - SQR(0.5*y - 1.2*x)))/(SQR(1.0 + SQR(0.5*y-1.2*x)))
+                                                              ONLY3D(+ (-SQR(1.7) - SQR(0.3))*cos(1.7*z - 0.3*x)));
   }
-
-//  double u_plus(DIM(double x, double y, double z))
-//  {
-//    return (1.0+exp(-SQR(tn+(implicit?dt:0.0)-0.5)))*(pow(y-x, 3.0) + cos(2.0*x-y) ONLY3D( + (5.0/3.0)*(z-2.0*x + cos(3.0*z-y))));
-//  }
-//  double dt_u_plus(DIM(double x, double y, double z))
-//  {
-//    return (exp(-SQR(tn+(implicit?dt:0.0)-0.5))*(1-2*(tn+(implicit?dt:0.0))))*(pow(y-x, 3.0) + cos(2.0*x-y) ONLY3D( + (5.0/3.0)*(z-2.0*x + cos(3.0*z-y))));
-//  }
-//  double dx_u_plus(DIM(double x, double y, double z))
-//  {
-//    return (1.0+exp(-SQR(tn+(implicit?dt:0.0)-0.5)))*(-3.0*SQR(y-x) - 2.0*sin(2.0*x-y) ONLY3D( + (5.0/3.0)*(-2.0)));
-//  }
-//  double dy_u_plus(DIM(double x, double y, double z))
-//  {
-//    return (1.0+exp(-SQR(tn+(implicit?dt:0.0)-0.5)))*(3.0*SQR(y-x) + sin(2.0*x-y) ONLY3D( + (5.0/3.0)*sin(3.0*z-y)));
-//  }
-//#ifdef P4_TO_P8
-//  double dz_u_plus(DIM(double x, double y, double z))
-//  {
-//    return (1.0+exp(-SQR(tn+(implicit?dt:0.0)-0.5)))*(pow(y-x, 3.0) + cos(2.0*x-y) ONLY3D( + (5.0/3.0)*(1.0 - 3.0*sin(3.0*z-y))));
-//  }
-//#endif
-//  double laplace_u_plus(DIM(double x, double y, double z))
-//  {
-//    return (1.0+exp(-SQR(tn+(implicit?dt:0.0)-0.5)))*(12.0*(y-x)-5.0*cos(2.0*x-y) ONLY3D( + (5.0/3.0)*(-10.0*cos(3.0*z-y))));
-//  }
-
-//  double v_plus(DIM(double x, double y, double z))
-//  {
-//    return (1.0+0.3*cos(1.5*(tn+(implicit?dt:0.0))))*(sin(3.0*x-2.0*y) + log(1.0 + SQR(0.5*y-1.2*x)) ONLY3D( + cos(1.7*z-0.3*x)));
-//  }
-//  double dt_v_plus(DIM(double x, double y, double z))
-//  {
-//    return (-0.3*1.5*sin(1.5*(tn+(implicit?dt:0.0))))*(sin(3.0*x-2.0*y) + log(1.0 + SQR(0.5*y-1.2*x)) ONLY3D( + cos(1.7*z-0.3*x)));
-//  }
-//  double dx_v_plus(DIM(double x, double y, double z))
-//  {
-//    return (1.0+0.3*cos(1.5*(tn+(implicit?dt:0.0))))*(3.0*cos(3.0*x-2.0*y) + (-2.0*1.2*(0.5*y-1.2*x))/(1.0 + SQR(0.5*y-1.2*x)) ONLY3D( + 0.3*sin(1.7*z-0.3*x)));
-//  }
-//  double dy_v_plus(DIM(double x, double y, double z))
-//  {
-//    return (1.0+0.3*cos(1.5*(tn+(implicit?dt:0.0))))*(-2.0*cos(3.0*x-2.0*y) + (2.0*0.5*(0.5*y-1.2*x))/(1.0 + SQR(0.5*y-1.2*x)));
-//  }
-//#ifdef P4_TO_P8
-//  double dz_v_plus(DIM(double x, double y, double z))
-//  {
-//    return (1.0+0.3*cos(1.5*(tn+(implicit?dt:0.0))))*(- 1.7*sin(1.7*z-0.3*x));
-//  }
-//#endif
-//  double laplace_v_plus(DIM(double x, double y, double z))
-//  {
-//    return (1.0+0.3*cos(1.5*(tn+(implicit?dt:0.0))))*((-SQR(3.0)-SQR(-2.0))*sin(3.0*x-2.0*y) +
-//                                                      (2.0*(SQR(-1.2) + SQR(0.5))*(1.0-SQR(0.5*y - 1.2*x)))/(SQR(1.0+SQR(0.5*y-1.2*x)))
-//                                                      ONLY3D(+ (-SQR(1.7) - SQR(0.3))*cos(1.7*z-0.3*x)));
-//  }
 
   double source_term(const unsigned char &dir, DIM(const double &x, const double &y, const double &z), const my_p4est_interpolation_nodes_t &interp_phi)
   {
@@ -325,18 +265,9 @@ public:
   LEVEL_SET() { lip = 1.2; }
   double operator()(DIM(double x, double y, double z)) const
   {
-    return r0 - sqrt(SUMD(SQR(x-(xmax+xmin)/2), SQR(y-(ymax+ymin)/2), SQR(z-(zmax+zmin)/2))) - 100.0*r0;
+    return r0 - sqrt(SUMD(SQR(x-(xmax+xmin)/2), SQR(y-(ymax+ymin)/2), SQR(z-(zmax+zmin)/2)));
   }
 } level_set;
-
-class LEVEL_SET_MINUS: public CF_DIM {
-public:
-  LEVEL_SET_MINUS() { lip = 1.2; }
-  double operator()(DIM(double, double, double)) const
-  {
-    return -1.0;
-  }
-} level_set_value;
 
 struct BCWALLTYPE_U : WallBCDIM {
   BoundaryConditionType operator()(DIM(double, double, double)) const
@@ -366,7 +297,6 @@ struct BCWALLVALUE_U : CF_DIM {
   double operator()(DIM(double x, double y, double z)) const
   {
     return exact_solution.u_minus(DIM(x, y, z));
-//    return exact_solution.u_plus(DIM(x, y, z));
   }
 } bc_wall_value_u;
 
@@ -374,7 +304,6 @@ struct BCWALLVALUE_V : CF_DIM {
   double operator()(DIM(double x, double y, double z)) const
   {
     return exact_solution.v_minus(DIM(x, y, z));
-//    return exact_solution.v_plus(DIM(x, y, z));
   }
 } bc_wall_value_v;
 
@@ -383,7 +312,6 @@ struct BCWALLVALUE_W : CF_3 {
   double operator()(double x, double y, double z)) const
   {
     return exact_solution.w_minus(DIM(x, y, z));
-//    return exact_solution.w_plus(DIM(x, y, z));
   }
 } bc_wall_value_w;
 #endif
@@ -468,7 +396,7 @@ int main (int argc, char* argv[])
   double uniform_band_m, uniform_band_p;
   int n_tree_xyz [P4EST_DIM];
 
-  const string export_dir               = "/home/raphael/workspace/projects/two_phase_flow/check_viscosity/results_" + to_string(P4EST_DIM) + "d";
+  const string export_dir               = "/home/regan/workspace/projects/two_phase_flow/check_viscosity/results_" + to_string(P4EST_DIM) + "d";
   const bool save_vtk                   = true;
   double vtk_dt                         = -1.0;
   if(save_vtk)
@@ -494,8 +422,8 @@ int main (int argc, char* argv[])
   bc_v[2].setWallTypes(bc_wall_type_w); bc_v[2].setWallValues(bc_wall_value_w);
 #endif
 
-  lmin                    = cmd.get<int>("lmin", 4+0);
-  lmax                    = cmd.get<int>("lmax", 5+0);
+  lmin                    = cmd.get<int>("lmin", 3+0);
+  lmax                    = cmd.get<int>("lmax", 4+0);
   n_tree_xyz[0]           = cmd.get<int>("nx", 1);
   n_tree_xyz[1]           = cmd.get<int>("ny", 1);
 #ifdef P4_TO_P8
@@ -503,7 +431,7 @@ int main (int argc, char* argv[])
 #endif
 
   tn = 0.0;
-  dt = 0.5*SQR(MIN(DIM(xmax-xmin, ymax-ymin, zmax-zmin))/((double) (1<<lmax)))/MIN(mu_minus, mu_plus);
+  dt = 0.5*SQR(MIN(DIM(xmax-xmin, ymax-ymin, zmax-zmin))/((double) (1<<lmax)))/MAX(mu_minus/rho, mu_plus/rho);
 
 
   uniform_band_m = uniform_band_p = .15*r0;
@@ -579,7 +507,7 @@ int main (int argc, char* argv[])
 
   Vec fine_phi;
   ierr = VecCreateGhostNodes(p4est_fine, nodes_fine, &fine_phi); CHKERRXX(ierr);
-  sample_cf_on_nodes(p4est_fine, nodes_fine, level_set_value, fine_phi);
+  sample_cf_on_nodes(p4est_fine, nodes_fine, level_set/*_value*/, fine_phi);
 
   two_phase_flow_solver = new my_p4est_two_phase_flows_t(ngbd_nm1, ngbd_n, faces_n, ngbd_n_fine);
   bool second_order_phi = true;
@@ -591,7 +519,7 @@ int main (int argc, char* argv[])
   // initialize face fields
   my_p4est_interpolation_nodes_t* interp_phi = two_phase_flow_solver->get_interp_phi();
   // time nm1
-  tn = tn - (implicit? 2.0:1.0)*dt;
+  tn = tn - (implicit ? 2.0:1.0)*dt;
   Vec* vnm1_faces = two_phase_flow_solver->get_vnm1_faces();
   double *vnm1_faces_dir_p;
   double xyz_face[P4EST_DIM];
@@ -698,15 +626,15 @@ int main (int argc, char* argv[])
     }
 
     ierr = VecGetArray(two_phase_flow_solver->get_fine_jump_mu_grad_v(), &fine_jump_mu_grad_v_p); CHKERRXX(ierr);
-    for (p4est_locidx_t fine_node_idx = 0; fine_node_idx < nodes_fine->num_owned_indeps; ++fine_node_idx) {
+    for (size_t fine_node_idx = 0; fine_node_idx < nodes_fine->indep_nodes.elem_count; ++fine_node_idx) {
       node_xyz_fr_n(fine_node_idx, p4est_fine, nodes_fine, xyz_node);
       for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
         for (unsigned char der = 0; der < P4EST_DIM; ++der)
-          fine_jump_mu_grad_v_p[fine_node_idx+P4EST_DIM*dir+der] = exact_solution.jump_in_flux(dir, der, DIM(xyz_node[0], xyz_node[1], xyz_node[2]));
+          fine_jump_mu_grad_v_p[P4EST_DIM*P4EST_DIM*fine_node_idx+P4EST_DIM*dir+der] = exact_solution.jump_in_flux(dir, der, DIM(xyz_node[0], xyz_node[1], xyz_node[2]));
     }
     ierr = VecRestoreArray(two_phase_flow_solver->get_fine_jump_mu_grad_v(), &fine_jump_mu_grad_v_p); CHKERRXX(ierr);
 
-    two_phase_flow_solver->test_viscosity_explicit(rhs, tn);
+    two_phase_flow_solver->test_viscosity_explicit(rhs);
 
     evaluate_errors(two_phase_flow_solver, error_vnp1_minus, error_vnp1_plus);
     for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {

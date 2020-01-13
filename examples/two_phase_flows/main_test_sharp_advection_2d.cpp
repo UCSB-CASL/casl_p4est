@@ -155,7 +155,7 @@ public:
       return 0.0;
       break;
     case 1:
-      return ((t_<time_reverse)?+1.0:-1.0)*MULTD(SQR(sin(2.0*M_PI*x), sin(M_PI*y)), -1.0*sin(2.0*M_PI*z));
+      return ((t_<time_reverse)?+1.0:-1.0)*MULTD(SQR(sin(2.0*M_PI*x)), sin(M_PI*y), -1.0*sin(2.0*M_PI*z));
       break;
     default:
       throw std::runtime_error("prescribed_velocity_v_t: unknown case");
@@ -478,6 +478,7 @@ int main (int argc, char* argv[])
   const double duration                 = cmd.get<double>("duration", 1.4);
 #else
   const double duration                 = cmd.get<double>("duration", 2.0);
+#endif
 #ifdef P4_TO_P8
   const string export_dir               = "/home/regan/workspace/projects/two_phase_flow/sharp_advection_3d";
 #else

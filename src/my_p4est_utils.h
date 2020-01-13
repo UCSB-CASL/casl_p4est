@@ -10,6 +10,7 @@
 #include <src/my_p8est_macros.h>
 #include <src/my_p8est_nodes.h>
 #include <src/my_p8est_refine_coarsen.h>
+#define SQR_P4EST_DIM 9
 #else
 #include <p4est.h>
 #include <p4est_nodes.h>
@@ -18,6 +19,7 @@
 #include <src/my_p4est_macros.h>
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_refine_coarsen.h>
+#define SQR_P4EST_DIM 4
 #endif
 #include <src/petsc_logging.h>
 #include "petsc_compatibility.h"
