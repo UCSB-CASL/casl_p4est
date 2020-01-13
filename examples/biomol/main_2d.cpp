@@ -198,7 +198,7 @@ int main(int argc, char *argv[]) {
   const int lmin                            = cmd.get<int>("lmin", 5);
   const int lmax                            = cmd.get<int>("lmax", 7);
   const double lip                          = cmd.get<double>("lip", 1.2);
-  const int surf_gen                        = cmd.get<int>("surfgen", 1);
+  const int surf_gen                        = cmd.get<int>("surfgen", 2);
   const double probe_radius                 = cmd.get<double>("rp", 1.4);
   const int order_of_accuracy               = cmd.get<int>("OOA", 2);
   // physical and solver parameters

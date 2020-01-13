@@ -4376,6 +4376,8 @@ double my_p4est_biomolecules_solver_t::get_solvation_free_energy(const bool &non
   ierr = VecRestoreArray(integrand, &integrand_p);                    CHKERRXX(ierr);
   biomolecules->ls->extend_Over_Interface_TVD(biomolecules->phi, integrand, 20, 2); // 20 for the number of iterations, default parameter
   solvation_free_energy = integrate_over_negative_domain(biomolecules->p4est, biomolecules->nodes, biomolecules->phi, integrand)*(pow(length_scale_in_meter(), 3.0));
+  //ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "Integration over negative domain is %g J, that is %g kJ/mol ,that is %g kcal/mol \n", solvation_free_energy, solvation_free_energy*avogadro_number*0.001, solvation_free_energy*avogadro_number*0.000239006); CHKERRXX(ierr);
+
   Vec phi_ghost_loc = NULL;
   ierr = VecGhostGetLocalForm(biomolecules->phi, &phi_ghost_loc);     CHKERRXX(ierr);
   ierr = VecScale(phi_ghost_loc, -1.0);                               CHKERRXX(ierr); // reverse the levelset function to get back to original state
@@ -4461,6 +4463,7 @@ double my_p4est_biomolecules_solver_t::get_solvation_free_energy(const bool &non
 
   int mpiret = MPI_Allreduce(MPI_IN_PLACE, &integral_contribution_from_singular_charges, 1, MPI_DOUBLE, MPI_SUM, biomolecules->p4est->mpicomm); SC_CHECK_MPI(mpiret);
   solvation_free_energy += integral_contribution_from_singular_charges;
+  //ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "Contribution of singular charges is %g J, that is %g kJ/mol ,that is %g kcal/mol \n", integral_contribution_from_singular_charges, integral_contribution_from_singular_charges*avogadro_number*0.001, integral_contribution_from_singular_charges*avogadro_number*0.000239006); CHKERRXX(ierr);
 
   ierr = VecDestroy(integrand);       CHKERRXX(ierr);
   ierr = VecDestroy(psi_hat_xxyyzz);  CHKERRXX(ierr);
