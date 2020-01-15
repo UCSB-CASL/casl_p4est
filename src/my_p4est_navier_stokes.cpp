@@ -858,6 +858,7 @@ double my_p4est_navier_stokes_t::compute_dxyz_hodge(p4est_locidx_t quad_idx, p4e
   const double *hodge_p;
   ierr = VecGetArrayRead(hodge, &hodge_p); CHKERRXX(ierr);
 
+
   if(is_quad_Wall(p4est_n, tree_idx, quad, dir))
   {
     double x = quad_x_fr_q(quad_idx, tree_idx, p4est_n, ghost_n);
@@ -944,7 +945,9 @@ double my_p4est_navier_stokes_t::compute_dxyz_hodge(p4est_locidx_t quad_idx, p4e
       double phi_0 = (*interp_phi)(x0, y0, z0);
 #else
       double phi_q = (*interp_phi)(xq, yq);
+
       double phi_0 = (*interp_phi)(x0, y0);
+
 #endif
 
       double dmin = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
@@ -2060,9 +2063,9 @@ bool my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set, boo
   for(short dir=0; dir<P4EST_DIM; ++dir)
   {
     ierr = VecDestroy(vnm1_nodes[dir]); CHKERRXX(ierr);
-    vnm1_nodes[dir] = vn_nodes[dir];
+    vnm1_nodes[dir] = vn_nodes[dir]; // At this point, both vnm1_nodes and vn_nodes point to the same object
     if(!grid_is_unchanged){
-      ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &vn_nodes[dir]); CHKERRXX(ierr); }
+      ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &vn_nodes[dir]); CHKERRXX(ierr); } // At this point, we now create a new object, which vn_nodes points to now.
     else
       vn_nodes[dir]   = vnp1_nodes[dir];
     for (short dd = 0; dd < P4EST_DIM; ++dd) {
@@ -2236,6 +2239,174 @@ bool my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_2 *level_set, boo
   return (grid_is_unchanged && (level_set == NULL));
 }
 
+// ELYCE TRYING SOMETHING:
+#ifdef P4_TO_P8
+void my_p4est_navier_stokes_t::update_from_tn_to_tnp1_grid_external(Vec phi_np1, p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, p4est_ghost_t* ghost_np1, my_p4est_node_neighbors_t* ngbd_np1, my_p4est_faces_t* faces_np1, my_p4est_cell_neighbors_t* ngbd_c_np1, my_p4est_hierarchy_t* hierarchy_np1)
+#else
+void my_p4est_navier_stokes_t::update_from_tn_to_tnp1_grid_external(Vec phi_np1, p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, p4est_ghost_t* ghost_np1, my_p4est_node_neighbors_t* ngbd_np1, my_p4est_faces_t* faces_np1, my_p4est_cell_neighbors_t* ngbd_c_np1, my_p4est_hierarchy_t* hierarchy_np1)
+#endif
+{
+  PetscErrorCode ierr;
+
+  ierr = PetscLogEventBegin(log_my_p4est_navier_stokes_update, 0, 0, 0, 0); CHKERRXX(ierr);
+
+  // (1) Set phi as the new phi on new grid -------------------------------------
+  phi = phi_np1;
+  delete interp_phi;
+  interp_phi = new my_p4est_interpolation_nodes_t(ngbd_np1);
+  interp_phi->set_input(phi_np1,linear);
+
+  // (2) Reset the scalar vorticity field onto the new grid provided -------------
+  ierr = VecDestroy(vorticity); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &vorticity); CHKERRXX(ierr);
+
+  // (3) Slide velocity fields at nodes (and their second derivatives) -----------
+  for(short dir=0; dir<P4EST_DIM; ++dir)
+  {
+    ierr = VecDestroy(vnm1_nodes[dir]); CHKERRXX(ierr);
+    vnm1_nodes[dir] = vn_nodes[dir]; // At this point, both vnm1_nodes and vn_nodes point to the same object
+
+    // Create new object to hold the new v_n values (which will be slided from the computed vnp1)
+    ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &vn_nodes[dir]); CHKERRXX(ierr);// At this point, we now create a new object, which vn_nodes points to now.
+    for (short dd = 0; dd < P4EST_DIM; ++dd) {
+      ierr = VecDestroy(second_derivatives_vnm1_nodes[dd][dir]); CHKERRXX(ierr);
+      second_derivatives_vnm1_nodes[dd][dir] = second_derivatives_vn_nodes[dd][dir];
+      ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &second_derivatives_vn_nodes[dd][dir]); CHKERRXX(ierr);
+    }
+  }
+
+  // Prepare interpolator for velocity fields at nodes
+  my_p4est_interpolation_nodes_t interp_nodes(ngbd_n);
+  for(size_t n=0; n<nodes_np1->indep_nodes.elem_count; ++n)
+  {
+    double xyz[P4EST_DIM];
+    node_xyz_fr_n(n, p4est_np1, nodes_np1, xyz);
+    interp_nodes.add_point(n, xyz);
+  }
+
+  // Interpolate the vnp1 nodes (which were solved for on the nth grid) onto the n+1 grid to become the vn values at upcoming the (n+1) timestep
+  interp_nodes.set_input(vnp1_nodes, quadratic, P4EST_DIM);
+  interp_nodes.interpolate(vn_nodes); CHKERRXX(ierr);
+
+  for (short dir = 0; dir < P4EST_DIM; ++dir) {
+    ierr = VecDestroy(vnp1_nodes[dir]); CHKERRXX(ierr);
+    ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &vnp1_nodes[dir]); CHKERRXX(ierr);
+  }
+  interp_nodes.clear();
+
+#ifdef P4_TO_P8
+  ngbd_np1->second_derivatives_central(vn_nodes, second_derivatives_vn_nodes[0], second_derivatives_vn_nodes[1], second_derivatives_vn_nodes[2], P4EST_DIM);
+#else
+  ngbd_np1->second_derivatives_central(vn_nodes, second_derivatives_vn_nodes[0], second_derivatives_vn_nodes[1], P4EST_DIM);
+#endif
+
+  // [Raphael]: the following was already commented in the original version. If uncommented, I think it should be called here...
+  /* set velocity inside solid to bc_v */
+  //  extrapolate_bc_v(ngbd_np1, vn_nodes, phi_np1);
+
+  // (4) Smoke should be handled here -- [Elyce: Ignoring this for now, will come back to it later]
+
+  // (5) cell-centered hodge variable, face-centered dxyz_hodge and face-centered face_is_well_defined vectors
+  // the first two variables are interpolated (cells to cells and faces to faces) and the
+  // face_is_well_defined vectors are recalculated and reset.
+
+  /* interpolate the Hodge variable on the new forest (for good initial guess for next projection step)
+   * build a new cell-centered pressure vector for calculating the next pressure field */
+  my_p4est_interpolation_cells_t interp_cell(ngbd_c, ngbd_n);
+  for (p4est_topidx_t tree_idx = p4est_np1->first_local_tree; tree_idx <= p4est_np1->last_local_tree; ++tree_idx) {
+    p4est_tree_t *tree = p4est_tree_array_index(p4est_np1->trees, tree_idx);
+    for (size_t q = 0; q < tree->quadrants.elem_count; ++q) {
+      p4est_locidx_t quad_idx = tree->quadrants_offset + q;
+      double xyz_c[P4EST_DIM];
+      quad_xyz_fr_q(quad_idx, tree_idx, p4est_np1, ghost_np1, xyz_c);
+      interp_cell.add_point(quad_idx, xyz_c);
+    }
+  }
+  interp_cell.set_input(hodge, phi, &bc_hodge);
+  Vec hodge_tmp;
+  ierr = VecCreateGhostCells(p4est_np1, ghost_np1, &hodge_tmp); CHKERRXX(ierr);
+  interp_cell.interpolate(hodge_tmp);
+  interp_cell.clear();
+  ierr = VecDestroy(hodge); CHKERRXX(ierr);
+  hodge = hodge_tmp;
+  ierr = VecGhostUpdateBegin(hodge, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  // create a new pressure vector...
+  ierr = VecDestroy(pressure); CHKERRXX(ierr);
+  ierr = VecCreateGhostCells(p4est_np1, ghost_np1, &pressure); CHKERRXX(ierr);
+
+  /* interpolate the gradient of the Hodge variable on the new forest
+   * The (Dirichlet) velocity boundary conditions depend on the components of the gradient of Hodge, so they are
+   * required to condition the solver for the next step...
+   * [Raphael's note:] it might be better and more efficient to recalculate them from the interpolated Hodge here
+   * above for better consistent conditioning of the iterative solver (since this is how the solver itself defines
+   * its components within a solve step) --> ask Frederic's opinion! */
+  my_p4est_interpolation_faces_t interp_faces(ngbd_n, faces_n);
+
+  for(int dir=0; dir<P4EST_DIM; ++dir)
+  {
+    Vec dxyz_hodge_tmp;
+    ierr = VecCreateGhostFaces(p4est_np1, faces_np1, &dxyz_hodge_tmp, dir); CHKERRXX(ierr);
+    for(p4est_locidx_t f_idx=0; f_idx<faces_np1->num_local[dir]; ++f_idx)
+    {
+      double xyz[P4EST_DIM];
+      faces_np1->xyz_fr_f(f_idx, dir, xyz);
+      interp_faces.add_point(f_idx, xyz);
+    }
+    interp_faces.set_input(dxyz_hodge[dir], dir, 1, face_is_well_defined[dir]);
+    interp_faces.interpolate(dxyz_hodge_tmp);
+    interp_faces.clear();
+
+    ierr = VecDestroy(dxyz_hodge[dir]); CHKERRXX(ierr);
+    dxyz_hodge[dir] = dxyz_hodge_tmp;
+
+    ierr = VecGhostUpdateBegin(dxyz_hodge[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+
+    ierr = VecDestroy(face_is_well_defined[dir]); CHKERRXX(ierr);
+    ierr = VecCreateGhostFaces(p4est_np1, faces_np1, &face_is_well_defined[dir], dir); CHKERRXX(ierr);
+    check_if_faces_are_well_defined(p4est_np1, ngbd_np1, faces_np1, dir, phi_np1, bc_v[dir].interfaceType(), face_is_well_defined[dir]);
+
+    ierr = VecDestroy(vstar[dir]); CHKERRXX(ierr);
+    ierr = VecCreateGhostFaces(p4est_np1, faces_np1, &vstar[dir], dir); CHKERRXX(ierr);
+
+    ierr = VecDestroy(vnp1[dir]); CHKERRXX(ierr);
+    ierr = VecCreateGhostFaces(p4est_np1, faces_np1, &vnp1[dir], dir); CHKERRXX(ierr);
+  }
+  // finish communicating ghost values for hodge and dxyz_hodge
+  ierr = VecGhostUpdateEnd(hodge, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  for (short dir = 0; dir < P4EST_DIM; ++dir) {
+    ierr = VecGhostUpdateEnd  (dxyz_hodge[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  }
+
+  /* update the variables */ // NOTE: Elyce: We are not destroying anything here because all this deletion will be handled externally of the NS class
+//  if(p4est_nm1!=p4est_n)
+//    p4est_destroy(p4est_nm1);
+  p4est_nm1 = p4est_n; p4est_n = p4est_np1;
+//  if(ghost_nm1!=ghost_n)
+//    p4est_ghost_destroy(ghost_nm1);
+  ghost_nm1 = ghost_n; ghost_n = ghost_np1;
+//  if(nodes_nm1!=nodes_n)
+//    p4est_nodes_destroy(nodes_nm1);
+  nodes_nm1 = nodes_n; nodes_n = nodes_np1;
+//  if(hierarchy_nm1!=hierarchy_n)
+//    delete hierarchy_nm1;
+  hierarchy_nm1 = hierarchy_n; hierarchy_n = hierarchy_np1;
+//  if(ngbd_nm1!= ngbd_n)
+//    delete ngbd_nm1;
+  ngbd_nm1 = ngbd_n; ngbd_n = ngbd_np1;
+//  if(ngbd_c!= ngbd_c_np1)
+  delete ngbd_c;
+  ngbd_c = ngbd_c_np1;
+//  if(faces_n!= faces_np1)
+  delete faces_n;
+  faces_n = faces_np1;
+
+  semi_lagrangian_backtrace_is_done         = false;
+  ierr = PetscLogEventEnd(log_my_p4est_navier_stokes_update, 0, 0, 0, 0); CHKERRXX(ierr);
+
+}
+
+
+// DONE ELYCE TRYING SOMETHING.
 void my_p4est_navier_stokes_t::compute_pressure()
 {
   PetscErrorCode ierr;

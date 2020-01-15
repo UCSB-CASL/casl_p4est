@@ -393,7 +393,23 @@ public:
 
   inline Vec* get_velocity() { return vn_nodes; }
 
+  void copy_velocity_n(Vec* v_n_external){
+    // Allows an external user to copy the object without interfering with NS solver's internal handling and objects
+    PetscErrorCode ierr;
+    for(short dim = 0; dim<P4EST_DIM;dim++){
+        ierr = VecCopyGhost(vn_nodes[dim],v_n_external[dim]);
+      }
+  }
+
   inline Vec* get_velocity_np1() { return vnp1_nodes; }
+
+  void copy_velocity_np1(Vec* v_np1_external){
+    // Allows an external user to copy the object without interfering with NS solver's internal handling and objects
+    PetscErrorCode ierr;
+    for(short dim = 0; dim<P4EST_DIM;dim++){
+        ierr = VecCopyGhost(vnp1_nodes[dim],v_np1_external[dim]);
+      }
+  }
 
   inline Vec* get_vstar() { return vstar; }
 
@@ -401,13 +417,28 @@ public:
 
   inline Vec get_hodge() { return hodge; }
 
+  void copy_hodge(Vec hodge_external){
+    PetscErrorCode ierr;
+    ierr = VecCopyGhost(hodge,hodge_external);
+  }
+
   inline Vec get_smoke() { return smoke; }
 
   inline Vec get_vorticity(){return vorticity;}
+
+  void copy_vorticity(Vec vort){
+    PetscErrorCode ierr;
+    ierr = VecCopyGhost(vorticity,vort);
+  }
   inline bool get_refine_with_smoke() { return refine_with_smoke; }
   inline double get_smoke_threshold() { return smoke_thresh; }
 
   inline Vec get_pressure() { return pressure; }
+
+  void copy_pressure(Vec press){
+    PetscErrorCode ierr;
+    ierr = VecCopyGhost(pressure,press);
+  }
 
   inline my_p4est_interpolation_nodes_t* get_interp_phi() { return interp_phi; }
 
@@ -498,6 +529,11 @@ public:
   bool update_from_tn_to_tnp1(const CF_2 *level_set=NULL, bool keep_grid_as_such=false, bool do_reinitialization=true);
 #endif
 
+#ifdef P4_TO_P8
+  void update_from_tn_to_tnp1_grid_external(Vec phi_np1,p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, p4est_ghost_t* ghost_np1, my_p4est_node_neighbors_t* ngbd_np1, my_p4est_faces_t* faces_np1, my_p4est_cell_neighbors_t* ngbd_c_np1, my_p4est_hierarchy_t* hierarchy_np1);
+#else
+  void update_from_tn_to_tnp1_grid_external(Vec phi_np1, p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, p4est_ghost_t* ghost_np1, my_p4est_node_neighbors_t* ngbd_np1, my_p4est_faces_t* faces_np1, my_p4est_cell_neighbors_t* ngbd_c_np1, my_p4est_hierarchy_t* hierarchy_np1);
+#endif
   void compute_pressure();
 
   void compute_forces(double *f);

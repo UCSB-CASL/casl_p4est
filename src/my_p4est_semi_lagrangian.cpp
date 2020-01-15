@@ -772,13 +772,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *
     phi_xx = new Vec[P4EST_DIM];
     for(int dir=0; dir<P4EST_DIM; ++dir)
     {
-//      ierr = VecDuplicate(vxx[0][dir], &phi_xx[dir]); CHKERRXX(ierr);
-//      if (dir == 0)
-//      {
         ierr = VecCreateGhostNodes(ngbd_phi->p4est, ngbd_phi->nodes, &phi_xx[dir]); CHKERRXX(ierr);
-//      } else {
-//        ierr = VecDuplicate(phi_xx[0], &phi_xx[dir]); CHKERRXX(ierr);
-//      }
     }
 
 #ifdef P4_TO_P8
@@ -809,6 +803,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *
 
 
   bool is_grid_changing = true;
+  bool additional_phi_is_used = false;
 
   int counter = 0;
   while (is_grid_changing) {
@@ -821,12 +816,14 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *
     advect_from_n_to_np1(dt, v, vxx, phi, phi_xx, phi_np1_p);
 
     Vec phi_np1_eff;
-    ierr = VecDuplicate(phi_np1, &phi_np1_eff);
-
     double *phi_np1_eff_p = phi_np1_p;
+
 
     if (phi_add_refine != NULL)
     {
+      additional_phi_is_used = true;
+      ierr = VecDuplicate(phi_np1, &phi_np1_eff);
+
       // Interpolate phi_add_refine onto the current grid, so we can get the effective LSF to refine/coarsen by:
       my_p4est_interpolation_nodes_t interp(ngbd_phi);
       for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
@@ -841,7 +838,6 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *
       ierr = VecGetArray(phi_np1_eff, &phi_np1_eff_p); CHKERRXX(ierr);
       for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
       {
-//        phi_np1_eff_p[n] = MIN(fabs(phi_np1_eff_p[n]), fabs(phi_np1_p[n]));
           if(fabs(phi_np1_eff_p[n]) > fabs(phi_np1_p[n])){
               phi_np1_eff_p[n] = phi_np1_p[n];
             }
@@ -849,11 +845,8 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *
 
       ierr = VecRestoreArray(phi_np1_eff, &phi_np1_eff_p); CHKERRXX(ierr);
     }
-    else{
-        ierr = VecCopyGhost(phi_np1,phi_np1_eff);
-      }
-    ierr = VecRestoreArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
 
+    ierr = VecRestoreArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
 
     // Interpolate the fields onto the current grid: (either block vector, or array of vectors)
     if(use_block){
@@ -880,19 +873,23 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *
           interp_fields.add_point(n, xyz);
         }
         interp_fields.interpolate(fields_np1);
+        interp_fields.clear();
       }
 
     if(counter > 10){PetscPrintf(p4est->mpicomm,"Grid did not converge ... \n"); break;}
 
     // Call the refine and coarsen according to phi_effective and the provided fields:
     splitting_criteria_tag_t sp(sp_old->min_lvl, sp_old->max_lvl, sp_old->lip);
-    is_grid_changing = sp.refine_and_coarsen(p4est,nodes,phi_np1_eff,num_fields,use_block,enforce_uniform_band,uniform_band,fields_np1,fields_block_np1,criteria,compare_opn,diag_opn);
+    is_grid_changing = sp.refine_and_coarsen(p4est,nodes,additional_phi_is_used?phi_np1_eff:phi_np1,num_fields,use_block,enforce_uniform_band,uniform_band,fields_np1,fields_block_np1,criteria,compare_opn,diag_opn);
 
     // Destroy the phi_effective now that no longer in use:
-    ierr = VecDestroy(phi_np1_eff); CHKERRXX(ierr);
+    if(additional_phi_is_used){
+        ierr = VecDestroy(phi_np1_eff); CHKERRXX(ierr);
+      }
 
     if (is_grid_changing) {
       PetscPrintf(p4est->mpicomm, "Grid changed\n");
+      p4est_balance(p4est,P4EST_CONNECT_FULL,NULL);
       my_p4est_partition(p4est, P4EST_FALSE, NULL);
 
       // reset nodes, ghost, and phi
@@ -946,7 +943,6 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *
     delete[] phi_xx;
   }
 
-  // Destroy the np1 fields now that they are no longer in use: // CHECK THAT THIS WORKS FINE -- DIDNT HAVE IT BEFORE BUT NOT DESTROYING WILL CAUSE MEMORY LEAK
   if(use_block){
       ierr = VecDestroy(fields_block_np1);CHKERRXX(ierr);
     }

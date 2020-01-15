@@ -713,7 +713,7 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
 
             // First, check conditions on the LSF: -- If LSF won't allow for coarsening, there is no point in checking for more coarsening conditions
             if(coarsen_possible) { // Elyce 12-16-19: changed coarsen requirement from >= to just >, reserve <= for refine case
-                coarsen = coarsen && ((fabs(phi_p[node_idx]) - band) > 1.0*lip*d);
+                coarsen = coarsen && ((fabs(phi_p[node_idx]) - 2.*band) > 1.0*lip*d); // ELYCE DEBUGGING
               } // at this point, coarsen is a more restrictive flag than coarsen_possible
             if (refine_possible) {
                 refine = refine || ((fabs(phi_p[node_idx]) - band) <= 0.5*lip*d);
