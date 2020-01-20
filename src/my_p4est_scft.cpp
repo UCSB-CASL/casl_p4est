@@ -357,8 +357,9 @@ void my_p4est_scft_t::initialize_bc_smart(bool adaptive)
 
     int mpiret = MPI_Allreduce(MPI_IN_PLACE, &energy_singular_part, 1, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); SC_CHECK_MPI(mpiret);
 
-    energy_singular_part *= scalling;
-    energy_singular_part /= volume;
+//    energy_singular_part *= scalling;
+//    energy_singular_part /= volume;
+    energy_singular_part /= pow(scalling, P4EST_DIM - 1.);
 
     solver_a.set_new_submat_robin(true);
     solver_b.set_new_submat_robin(true);
@@ -516,11 +517,20 @@ void my_p4est_scft_t::calculate_densities()
   {
     if (mask_ptr[n] < 0)
     {
-      for (int is = 0; is < ns; is++)
-        time_integrand[is] = qf_ptr[is][n]*qb_ptr[is][n];
+//      for (int is = 0; is < ns; is++)
+//        time_integrand[is] = qf_ptr[is][n]*qb_ptr[is][n];
 
-      rho_a_ptr[n] = compute_rho_a(time_integrand);
-      rho_b_ptr[n] = compute_rho_b(time_integrand);
+//      rho_a_ptr[n] = compute_rho_a(time_integrand);
+//      rho_b_ptr[n] = compute_rho_b(time_integrand);
+      rho_a_ptr[n] = 0;
+      rho_b_ptr[n] = 0;
+
+      for (int is = 1;   is <= fns-1; is++) rho_a_ptr[n] += qf_ptr[is][n]*qb_ptr[is-1][n];
+      for (int is = fns; is <= ns-1;  is++) rho_b_ptr[n] += qf_ptr[is][n]*qb_ptr[is-1][n];
+
+      rho_a_ptr[n] *= ds_a;
+      rho_b_ptr[n] *= ds_b;
+
     } else {
       rho_a_ptr[n] = 0.0;
       rho_b_ptr[n] = 0.0;
@@ -537,8 +547,9 @@ void my_p4est_scft_t::calculate_densities()
   }
 
   ierr = VecRestoreArray(mask, &mask_ptr); CHKERRXX(ierr);
-
-  Q = (integrate_over_domain_fast(rho_a) + integrate_over_domain_fast(rho_b))/volume;
+  Q = integrate_over_domain_fast(qf[ns-1])/volume;
+//  Q = .5*(integrate_over_domain_fast(qf[ns-1])+integrate_over_domain_fast(qb[0]))/volume;
+//  Q = (integrate_over_domain_fast(rho_a) + integrate_over_domain_fast(rho_b))/volume;
 
   ierr = VecScale(rho_a, 1.0/Q); CHKERRXX(ierr);
   ierr = VecScale(rho_b, 1.0/Q); CHKERRXX(ierr);
@@ -548,10 +559,8 @@ void my_p4est_scft_t::calculate_densities()
   delete[] qb_ptr;
 
   double mu_m_sqrd_int = integrate_over_domain_fast_squared(mu_m);
-//  double mu_p_int = integrate_over_domain_fast(mu_p);
 
-  energy = 1.0*energy_singular_part + 1.0*(mu_m_sqrd_int/XN)/volume - 1.0*log(Q);
-//  energy = Q*volume;
+  energy = energy_singular_part + (mu_m_sqrd_int/XN - volume*log(Q))/pow(scalling, P4EST_DIM);
 
 }
 
@@ -593,11 +602,13 @@ void my_p4est_scft_t::update_potentials(bool update_mu_m, bool update_mu_p)
 
   ierr = VecGetArray(mask, &mask_ptr); CHKERRXX(ierr);
 
+  double rho_avg = (integrate_over_domain_fast(rho_a) + integrate_over_domain_fast(rho_b))/volume;
+
   foreach_node(n, nodes)
   {
     if (mask_ptr[n] < 0.)
     {
-      force_p_ptr[n] = rho_a_ptr[n] + rho_b_ptr[n] - 1.0;
+      force_p_ptr[n] = rho_a_ptr[n] + rho_b_ptr[n] - 1.0*rho_avg;
       force_m_ptr[n] = 2.0*mu_m_ptr[n]/XN - rho_a_ptr[n] + rho_b_ptr[n];
     }
     else
@@ -1247,6 +1258,8 @@ void my_p4est_scft_t::compute_energy_shape_derivative(int phi_idx, Vec velo)
   // volumetric term
   double energy_shape_deriv_volumetric = ( 1.0 - (energy-log(Q)) )/volume;
 
+  double rho_avg = (integrate_over_domain_fast(rho_a) + integrate_over_domain_fast(rho_b))/volume;
+
   // compute velocity
   double *energy_shape_deriv_ptr;
   double *qf_ptr, *rho_a_ptr, *bc_coeffs_a_ptr, *mu_m_ptr;
@@ -1294,10 +1307,12 @@ void my_p4est_scft_t::compute_energy_shape_derivative(int phi_idx, Vec velo)
     double gamma_b_val = gamma_b[phi_idx]->value(xyz)*scalling;
 
     energy_shape_deriv_ptr[n] = 0.0*energy_shape_deriv_volumetric
-        + (mu_m_ptr[n]*mu_m_ptr[n]/XN - mu_p_ptr[n])/volume
-        - 0.5*(qf_ptr[n]+qb_ptr[n])/Q/volume;
+        + (mu_m_ptr[n]*mu_m_ptr[n]/XN - mu_p_ptr[n]*rho_avg)
+        - 0.5*(qf_ptr[n]+qb_ptr[n])/Q;
 //        + 1.0*kappa_ptr[n]*(rho_a_ptr[n]*gamma_a_val + rho_b_ptr[n]*gamma_b_val)/volume
 //        - 1.0*2.0*(bc_coeffs_a_ptr[n]*rho_a_ptr[n]*gamma_a_val + bc_coeffs_b_ptr[n]*rho_b_ptr[n]*gamma_b_val)/volume;
+
+    energy_shape_deriv_ptr[n] /= pow(scalling, P4EST_DIM);
 
 //    energy_shape_deriv_ptr[n] = - (mu_m_sqrd_int/XN-mu_p_int)/volume/volume
 //        + (mu_m_ptr[n]*mu_m_ptr[n]/XN - mu_p_ptr[n])/volume;

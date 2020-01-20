@@ -73,8 +73,8 @@ static bool save_energy      = 1;  ADD_TO_LIST(pl, save_energy, "Save effective 
 // scft parameters
 //-------------------------------------
 static bool   use_scft            = 1;     ADD_TO_LIST(pl, use_scft           , "Turn on/off SCFT 0/1");
-static double scft_tol            = 4.e-3; ADD_TO_LIST(pl, scft_tol           , "Tolerance for SCFT");
-static int    max_scft_iterations = 200;   ADD_TO_LIST(pl, max_scft_iterations, "Maximum SCFT iterations");
+static double scft_tol            = 1.e-4; ADD_TO_LIST(pl, scft_tol           , "Tolerance for SCFT");
+static int    max_scft_iterations = 300;   ADD_TO_LIST(pl, max_scft_iterations, "Maximum SCFT iterations");
 static int    bc_adjust_min       = 5;     ADD_TO_LIST(pl, bc_adjust_min      , "Minimun SCFT steps between adjusting BC");
 static bool   smooth_pressure     = 1;     ADD_TO_LIST(pl, smooth_pressure    , "Smooth pressure after first BC adjustment 0/1");
 static double scft_bc_tol         = 4.e-2; ADD_TO_LIST(pl, scft_bc_tol        , "Tolerance for adjusting BC");
@@ -83,10 +83,10 @@ static double scft_bc_tol         = 4.e-2; ADD_TO_LIST(pl, scft_bc_tol        , 
 // polymer parameters
 //-------------------------------------
 static double XN       = 20;  ADD_TO_LIST(pl, XN        , "Interaction strength between A and B blocks");
-static double gamma_a  = 0.5; ADD_TO_LIST(pl, gamma_a   , "Surface tension of A block");
+static double gamma_a  = 0.0; ADD_TO_LIST(pl, gamma_a   , "Surface tension of A block");
 static double gamma_b  = 0.0; ADD_TO_LIST(pl, gamma_b   , "Surface tension of B block");
 static int    ns       = 40;  ADD_TO_LIST(pl, ns        , "Discretization of polymer chain");
-static double box_size = 2;  ADD_TO_LIST(pl, box_size  , "Box size in units of Rg");
+static double box_size = 1;   ADD_TO_LIST(pl, box_size  , "Box size in units of Rg");
 static double f        = .5;  ADD_TO_LIST(pl, f         , "Fraction of polymer A");
 
 //-------------------------------------
@@ -187,6 +187,7 @@ class get_mu_minus : public CF_DIM {
 public:
   double operator()(DIM(double x, double y, double z)) const
   {
+//    return 0.5*XN*(2.*(double)rand()/RAND_MAX-1.);
     return 0.5*XN*sin(x+y);
   }
 };
@@ -242,6 +243,8 @@ int main(int argc, char** argv)
   cmd.parse(argc, argv);
   pl.get_all(cmd);
 
+  double scaling = 1./box_size;
+
 
   // stopwatch
   parStopWatch w;
@@ -258,7 +261,7 @@ int main(int argc, char** argv)
 
   vector<double> xc(np);
   vector<double> yc(np);
-  vector<double> radius(np, 0.3); // radius of particles
+  vector<double> radius(np, 0.5); // radius of particles
 
   // create the initial position of particles
 //  for (int i=0; i<np; ++i)
@@ -276,12 +279,12 @@ int main(int argc, char** argv)
 //  xc[0] = 0.75; //Test NP1
 //  yc[0] = 0.5;
 
-  xc[0] = -1.5;
-  yc[0] = -1;
+  xc[0] = -0.7;
+  yc[0] = -0.1;
 
 
-//  xc[1] = 1.5;
-//  yc[1] = 1.5;
+//  xc[1] = 0.6;
+//  yc[1] = 0.7;
 
 //  xc[2] = -2.0;
 //  yc[2] = -1.25;
@@ -330,10 +333,11 @@ int main(int argc, char** argv)
     sprintf(file_energy_name, "%s/convergence.dat", out_dir);
 
     ierr = PetscFOpen(mpi.comm(), file_energy_name, "w", &file_energy); CHKERRXX(ierr);
-    ierr = PetscFPrintf(mpi.comm(), file_energy, "effective energy "
-                                                 "expected dE/dt"
-                                                 "expected dE"
-                                                 "effective dE\n"); CHKERRXX(ierr);
+    ierr = PetscFPrintf(mpi.comm(), file_energy, "iteration "
+                                                 "effective_energy "
+                                                 "expected_dEdt "
+                                                 "expected_dE "
+                                                 "effective_dE\n"); CHKERRXX(ierr);
     ierr = PetscFClose(mpi.comm(), file_energy); CHKERRXX(ierr);
   }
 
@@ -479,7 +483,7 @@ int main(int argc, char** argv)
       // set geometry
       scft.add_boundary(particles_level_set, MLS_INTERSECTION, gamma_Aa, gamma_Bb);
 
-      scft.set_scalling(1./box_size);
+      scft.set_scalling(scaling);
       scft.set_polymer(f, XN);
 
       // initialize potentials
@@ -502,7 +506,7 @@ int main(int argc, char** argv)
         scft.calculate_densities();
         scft.update_potentials();
 
-        if (scft.get_exchange_force() < scft_bc_tol && bc_iters >= bc_adjust_min)
+        if (scft.get_exchange_force() < scft_bc_tol && bc_iters >= bc_adjust_min && 0)
         {
           scft.initialize_bc_smart();
           if (smooth_pressure)
@@ -514,7 +518,7 @@ int main(int argc, char** argv)
           bc_iters = 0;
         }
 
-        ierr = PetscPrintf(mpi.comm(), "%d Energy: %e; Pressure: %e; Exchange: %e\n", scft_iteration, scft.get_energy(), scft.get_pressure_force(), scft.get_exchange_force()); CHKERRXX(ierr);
+        ierr = PetscPrintf(mpi.comm(), "%d Energy: %e; Pressure: %e; Exchange: %e; dE: %e\n", scft_iteration, scft.get_energy(), scft.get_pressure_force(), scft.get_exchange_force(), scft.get_energy()-energy_eff_previous); CHKERRXX(ierr);
 
         scft_error = MAX(fabs(scft.get_pressure_force()), fabs(scft.get_exchange_force()));
         scft_iteration++;
@@ -526,7 +530,7 @@ int main(int argc, char** argv)
 
       scft.sync_and_extend();
       scft.compute_energy_shape_derivative(0, velo); //second part of dE/dt, which is derivative of integral of f dx
-      VecScaleGhost(velo, -1.);
+//      VecScaleGhost(velo, -1.);
 
       VecCopyGhost(mu_m, mu_minus_field);
     }
@@ -550,7 +554,7 @@ int main(int argc, char** argv)
 
     foreach_node(n, nodes)
     {
-      gamma_effective_field_ptr[n] = (0.5*(gamma_a+gamma_b) + (gamma_a-gamma_b)*(mu_m_ptr[n])/XN);;
+      gamma_effective_field_ptr[n] = (0.5*(gamma_a+gamma_b) + (gamma_a-gamma_b)*(mu_m_ptr[n])/XN);
     }
 
     ierr = VecRestoreArray(gamma_effective_field, &gamma_effective_field_ptr); CHKERRXX(ierr);
@@ -559,6 +563,7 @@ int main(int argc, char** argv)
     if (!use_scft)
     {
       energy_eff_t = integrate_over_interface(p4est, nodes, particles_level_set, gamma_effective_field);
+      energy_eff_t /= pow(scaling, P4EST_DIM-1.);
     }
 
 
@@ -570,6 +575,7 @@ int main(int argc, char** argv)
     Vec kappa;
     foreach_dimension(dim) { ierr = VecCreateGhostNodes(p4est, nodes, &normal[dim]); CHKERRXX(ierr); }
     ierr = VecCreateGhostNodes(p4est, nodes, &kappa); CHKERRXX(ierr);
+
     compute_normals_and_mean_curvature(*ngbd, particles_level_set, normal, kappa);
 
     // compute first_derivaties of gamma (del_gamma/del_x and del_gamma/del_y)
@@ -599,6 +605,7 @@ int main(int argc, char** argv)
     ierr = VecDuplicate(kappa, &G); CHKERRXX(ierr);
     VecPointwiseMultGhost(G, gamma_effective_field, kappa);
     VecAXPBYGhost(G, 1., 1., G_2); // G = G + 1*G_2
+    VecScaleGhost(G, 1./pow(scaling, P4EST_DIM-1.));
     VecAXPBYGhost(G, 1., 1., velo); //G = G + 1*velo
 
     // calculate g_x and g_y to get velocity
@@ -616,7 +623,7 @@ int main(int argc, char** argv)
     double difference_y; //yc_i minus yc_j
     double distance; // r_ij = sqrt((xc_i minus xc_j)^2 + (yc_i minus yc_j)^2)
     double energy_term = 0;
-    double a = 0.3;
+    double a = 0.3*0;
     double c = 0.1;
 
     for(int i = 0; i < np; i++){
@@ -642,6 +649,9 @@ int main(int argc, char** argv)
       std::cout << "q_y" << k << " is: " << q_y[k] << '\n';
     }
 
+    std::vector<double> gx(np);
+    std::vector<double> gy(np);
+
     // calculate the velocity from g_x and q_x as well as g_y and q_y
     foreach_dimension(dim) { ierr = VecDuplicate(normal[dim], &integrand_g[dim]); CHKERRXX(ierr); }
     foreach_dimension(dim)
@@ -654,25 +664,36 @@ int main(int argc, char** argv)
       if(dim == 0)
       {
         for(int i = 0; i < np; i++){
-          vx[i] = -integrands_np[i] - q_x[i];
+          gx[i] = integrands_np[i] + q_x[i];
         }
       }
       else
       {
         for(int i = 0; i < np; i++){
-          vy[i] = -integrands_np[i] - q_y[i];
+          gy[i] = integrands_np[i] + q_y[i];
         }
       }
     }
 
-    double v_x_squared = 0;
-    double v_y_squared = 0;
-    for(int i = 0; i<np; i++){
-      v_x_squared = v_x_squared + fabs(vx[i])*fabs(vx[i]);
-      v_y_squared = v_y_squared + fabs(vy[i])*fabs(vy[i]);
+//    for(int i = 0; i < np; i++)
+//    {
+//      vx[i] = -gx[i];
+//      vy[i] = -gy[i];
+//    }
+
+    for(int i = 0; i < np; i++)
+    {
+      vx[i] = 1;
+      vy[i] = 1;
     }
 
-    dE_dt_expected = -v_x_squared-v_y_squared;
+
+    dE_dt_expected = 0;
+    for (int i = 0; i<np; i++)
+    {
+      dE_dt_expected = vx[i]*gx[i] + vy[i]*gy[i];
+    }
+
 
     // add correction term to the energy (when particles come too close to each other, 'push' them away)
     energy_eff_t = energy_eff_t + energy_term;
@@ -696,24 +717,29 @@ int main(int argc, char** argv)
     double *particle_number_p;
     double *mu_minus_p;
     double *gamma_effective_p;
+    double *G_p;
 
     ierr = VecGetArray(particles_level_set, &particles_level_set_p); CHKERRXX(ierr);
     ierr = VecGetArray(particle_number, &particle_number_p); CHKERRXX(ierr);
     ierr = VecGetArray(mu_minus_field, &mu_minus_p); CHKERRXX(ierr);
     ierr = VecGetArray(gamma_effective_field, &gamma_effective_p); CHKERRXX(ierr);
+    ierr = VecGetArray(G, &G_p); CHKERRXX(ierr);
 
     my_p4est_vtk_write_all(p4est, nodes, ghost,
                            P4EST_TRUE, P4EST_TRUE,
-                           4, 0, oss.str().c_str(),
+                           5, 0, oss.str().c_str(),
                            VTK_POINT_DATA, "phi", particles_level_set_p,
                            VTK_POINT_DATA, "particle_number", particle_number_p,
                            VTK_POINT_DATA, "mu_minus", mu_minus_p,
-                           VTK_POINT_DATA, "gamma_effective", gamma_effective_p);
+                           VTK_POINT_DATA, "gamma_effective", gamma_effective_p,
+                           VTK_POINT_DATA, "G", G_p);
 
     ierr = VecRestoreArray(particles_level_set, &particles_level_set_p); CHKERRXX(ierr);
     ierr = VecRestoreArray(particle_number, &particle_number_p); CHKERRXX(ierr);
     ierr = VecRestoreArray(mu_minus_field, &mu_minus_p); CHKERRXX(ierr);
     ierr = VecRestoreArray(gamma_effective_field, &gamma_effective_p); CHKERRXX(ierr);
+    ierr = VecRestoreArray(G, &G_p); CHKERRXX(ierr);
+
 
     // destroy particle_level_set
 //    ierr = VecDestroy(particles_level_set); CHKERRXX(ierr);
@@ -768,12 +794,9 @@ int main(int argc, char** argv)
     if (save_energy)
     {
       ierr = PetscFOpen(mpi.comm(), file_energy_name, "a", &file_energy); CHKERRXX(ierr);
-      PetscFPrintf(mpi.comm(), file_energy, "%d %f %f %f %f\n", step, energy_eff_t, dE_dt_expected, expected_change_in_energy, effective_change_in_energy);
+      PetscFPrintf(mpi.comm(), file_energy, "%d %12.11e %3.2e %3.2e %3.2e\n", step, energy_eff_t, dE_dt_expected, expected_change_in_energy, effective_change_in_energy);
       ierr = PetscFClose(mpi.comm(), file_energy); CHKERRXX(ierr);
     }
-
-
-
 
     // move particles and create new levelset
     for (int j = 0; j < np; ++j)
