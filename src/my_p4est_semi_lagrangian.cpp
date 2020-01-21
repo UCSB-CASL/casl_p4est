@@ -792,14 +792,16 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *
 
   Vec fields_np1[num_fields];
   Vec fields_block_np1;
-  if(use_block){
-      ierr = VecCreateGhostNodesBlock(p4est,nodes,num_fields,&fields_block_np1);CHKERRXX(ierr);
-    }
-  else{
-      for(unsigned int k=0; k<num_fields; k++){
-          ierr = VecCreateGhostNodes(p4est,nodes,&fields_np1[k]); CHKERRXX(ierr);
-        }
-    }
+  if(num_fields!=0){
+    if(use_block){
+        ierr = VecCreateGhostNodesBlock(p4est,nodes,num_fields,&fields_block_np1);CHKERRXX(ierr);
+      }
+    else{
+        for(unsigned int k=0; k<num_fields; k++){
+            ierr = VecCreateGhostNodes(p4est,nodes,&fields_np1[k]); CHKERRXX(ierr);
+          }
+      }
+  }
 
 
   bool is_grid_changing = true;
@@ -838,9 +840,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *
       ierr = VecGetArray(phi_np1_eff, &phi_np1_eff_p); CHKERRXX(ierr);
       for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
       {
-          if(fabs(phi_np1_eff_p[n]) > fabs(phi_np1_p[n])){
-              phi_np1_eff_p[n] = phi_np1_p[n];
-            }
+          phi_np1_eff_p[n] = MIN(fabs(phi_np1_eff_p[n]),fabs(phi_np1_p[n]));
       }
 
       ierr = VecRestoreArray(phi_np1_eff, &phi_np1_eff_p); CHKERRXX(ierr);
@@ -849,32 +849,36 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *
     ierr = VecRestoreArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
 
     // Interpolate the fields onto the current grid: (either block vector, or array of vectors)
-    if(use_block){
-        my_p4est_interpolation_nodes_t interp_block(ngbd_phi);
-        interp_block.set_input(fields_block, phi_interpolation,num_fields);
+    if(num_fields!=0){
+//      PetscPrintf(p4est->mpicomm,"Doing interp of fields \n");
+      if(use_block){
+          my_p4est_interpolation_nodes_t interp_block(ngbd_phi);
+          interp_block.set_input(fields_block, phi_interpolation,num_fields);
 
-        for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
-        {
+          for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+            {
+              double xyz[P4EST_DIM];
+              node_xyz_fr_n(n, p4est, nodes, xyz);
+              interp_block.add_point(n, xyz);
+            }
+          interp_block.interpolate(fields_block_np1);
+          interp_block.clear();
+
+        }
+      else{
+          my_p4est_interpolation_nodes_t interp_fields(ngbd_phi);
+          interp_fields.set_input(fields, phi_interpolation,num_fields);
+
           double xyz[P4EST_DIM];
-          node_xyz_fr_n(n, p4est, nodes, xyz);
-          interp_block.add_point(n, xyz);
+          for(p4est_locidx_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+            {
+              node_xyz_fr_n(n, p4est, nodes, xyz);
+              interp_fields.add_point(n, xyz);
+            }
+          interp_fields.interpolate(fields_np1);
+          interp_fields.clear();
         }
-        interp_block.interpolate(fields_block_np1);
-
-      }
-    else{
-        my_p4est_interpolation_nodes_t interp_fields(ngbd_phi);
-        interp_fields.set_input(fields, phi_interpolation,num_fields);
-
-        double xyz[P4EST_DIM];
-        for(p4est_locidx_t n=0; n<nodes->indep_nodes.elem_count; ++n)
-        {
-          node_xyz_fr_n(n, p4est, nodes, xyz);
-          interp_fields.add_point(n, xyz);
-        }
-        interp_fields.interpolate(fields_np1);
-        interp_fields.clear();
-      }
+    }
 
     if(counter > 10){PetscPrintf(p4est->mpicomm,"Grid did not converge ... \n"); break;}
 
@@ -889,8 +893,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *
 
     if (is_grid_changing) {
       PetscPrintf(p4est->mpicomm, "Grid changed\n");
-      p4est_balance(p4est,P4EST_CONNECT_FULL,NULL);
-      my_p4est_partition(p4est, P4EST_FALSE, NULL);
+      my_p4est_partition(p4est, P4EST_TRUE, NULL);
 
       // reset nodes, ghost, and phi
       p4est_ghost_destroy(ghost); ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
@@ -901,21 +904,48 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *
       ierr = VecCreateGhostNodes(p4est, nodes, &phi_np1); CHKERRXX(ierr);
 
       // Reset the fields to refine by
-      if(use_block){
-          ierr = VecDestroy(fields_block_np1); CHKERRXX(ierr);
-          ierr = VecCreateGhostNodesBlock(p4est,nodes,num_fields,&fields_block_np1);
-        }
-      else{
-          for(unsigned int k=0; k<num_fields; k++){
-              ierr = VecDestroy(fields_np1[k]);CHKERRXX(ierr);
-              ierr = VecCreateGhostNodes(p4est,nodes,&fields_np1[k]);
-            } // end of (for k = 0, ..., num fields)
-        } //end of "if use block, else"
+      if(num_fields!=0){
+        if(use_block){
+            ierr = VecDestroy(fields_block_np1); CHKERRXX(ierr);
+            ierr = VecCreateGhostNodesBlock(p4est,nodes,num_fields,&fields_block_np1);
+          }
+        else{
+            for(unsigned int k=0; k<num_fields; k++){
+                ierr = VecDestroy(fields_np1[k]);CHKERRXX(ierr);
+                ierr = VecCreateGhostNodes(p4est,nodes,&fields_np1[k]);
+              } // end of (for k = 0, ..., num fields)
+          } //end of "if use block, else"
+      }
     } // end of "if grid changing"
-
     ierr = PetscLogEventEnd(log_my_p4est_semi_lagrangian_grid_gen_iter[counter], 0, 0, 0, 0); CHKERRXX(ierr);
     counter++;
-  }
+  } // end of "while grid is changing"
+
+//    // Do one more balancing of everything:
+//  PetscPrintf(p4est->mpicomm,"Doing final balance \n");
+  p4est_balance(p4est,P4EST_CONNECT_FULL,NULL);
+  my_p4est_partition(p4est, P4EST_TRUE, NULL);
+  p4est_ghost_destroy(ghost); ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
+  if(expand_ghost_layer) my_p4est_ghost_expand(p4est,ghost);
+  p4est_nodes_destroy(nodes); nodes = my_p4est_nodes_new(p4est, ghost);
+
+  ierr = VecDestroy(phi_np1); CHKERRXX(ierr);
+  ierr = VecCreateGhostNodes(p4est, nodes, &phi_np1); CHKERRXX(ierr);
+  // NEED TO INTERP PHINP1 ONTO NEW GRID
+
+  PetscPrintf(p4est->mpicomm,"Doing phi interp \n");
+
+  my_p4est_interpolation_nodes_t interp_phi(ngbd_phi);
+  interp_phi.set_input(phi, phi_interpolation);
+
+  double xyz[P4EST_DIM];
+  for(p4est_locidx_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+    {
+      node_xyz_fr_n(n, p4est, nodes, xyz);
+      interp_phi.add_point(n, xyz);
+    }
+  interp_phi.interpolate(phi_np1);
+  interp_phi.clear();
 
   p4est->user_pointer = (void*) sp_old;
   *p_p4est = p4est;
@@ -943,14 +973,16 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *
     delete[] phi_xx;
   }
 
-  if(use_block){
-      ierr = VecDestroy(fields_block_np1);CHKERRXX(ierr);
-    }
-  else{
-      for(unsigned int k=0; k<num_fields; k++){
-          ierr = VecDestroy(fields_np1[k]); CHKERRXX(ierr);
-        }
-    }
+  if(num_fields!=0){
+    if(use_block){
+        ierr = VecDestroy(fields_block_np1);CHKERRXX(ierr);
+      }
+    else{
+        for(unsigned int k=0; k<num_fields; k++){
+            ierr = VecDestroy(fields_np1[k]); CHKERRXX(ierr);
+          }
+      }
+  }
   ierr = PetscLogEventEnd(log_my_p4est_semi_lagrangian_update_p4est_1st_order, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 

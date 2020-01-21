@@ -694,7 +694,7 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
       // Initialize booleans which will track if any refinement or coarsening is allowed -- which is different than possible
       // Only one refinement condition must be true to tag the cell for refining
       // All coarsening conditions must be true to tag the cell for coarsening
-      bool coarsen = false;
+      bool coarsen = true;
       bool refine = false;
 
       // Initialize booleans to check if the LSF changes sign within the quadrant --> if not all pos and not all neg, tag for refinement
@@ -712,11 +712,13 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
             node_idx = nodes->local_nodes[P4EST_CHILDREN*quad_idx + i];
 
             // First, check conditions on the LSF: -- If LSF won't allow for coarsening, there is no point in checking for more coarsening conditions
-            if(coarsen_possible) { // Elyce 12-16-19: changed coarsen requirement from >= to just >, reserve <= for refine case
-                coarsen = coarsen && ((fabs(phi_p[node_idx]) - 2.*band) > 1.0*lip*d); // ELYCE DEBUGGING
-              } // at this point, coarsen is a more restrictive flag than coarsen_possible
+            coarsen = coarsen_possible && ((fabs(phi_p[node_idx]) - band) > 1.0*lip*d);
+/*            if(coarsen_possible) {
+                coarsen = coarsen && ; // ELYCE DEBUGGING
+//                if(coarsen) PetscPrintf(p4est->mpicomm,"COARSEN ALLOWED\n");
+              } // a*/ //t this point, coarsen is a more restrictive flag than coarsen_possible
             if (refine_possible) {
-                refine = refine || ((fabs(phi_p[node_idx]) - band) <= 0.5*lip*d);
+                refine = ((fabs(phi_p[node_idx]) - band) <= 0.5*lip*d);
               }
 
             all_pos = all_pos && (phi_p[node_idx]>0);
@@ -734,10 +736,10 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
                 double criteria_refine = NULL;
 
                 for(unsigned short n = 0; n<num_fields;n++){
-                    if(refine){ // If refine is ever true, we can stop checking and mark the quad for refinement
+//                    if(refine){ // If refine is ever true, we can stop checking and mark the quad for refinement
 //                        PetscPrintf(p4est->mpicomm,"--> Going to end of function to refine \n");
-                        goto end_of_function;
-                      }
+//                        goto end_of_function;
+//                      }
                     // Get the value of the field and store it as a double -- so we don't keep accessing the vector over and over
                     // Need to get it either from a block vector ptr, or from a vector of PETSc vector ptrs, depending on what the user has specified and provided
 
@@ -858,11 +860,12 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
               } // End if(coarsen OR refine_possible)
           } // End of loop over quadrant children
 
-        if(refine_possible && (!all_pos && !all_neg)){
-            refine = true;
-          }
+
         } // End of refine possible OR coarsen possible
 
+      if(refine_possible && (!all_pos && !all_neg)){ // if nodes of the quad have different signs after checking each node --> interface crosses quad
+          refine = true;
+        }
 end_of_function:
       // Now --> Apply the results of the check:
       if(refine){
@@ -871,12 +874,12 @@ end_of_function:
         }
       else if (coarsen){
           quad->p.user_int = COARSEN_QUADRANT;
-//          PetscPrintf(p4est->mpicomm,"Quadrant is marked for coarsening \n");
+//          PetscPrintf(p4est->mpicomm,"QUAD COARSENED \n");
 
         }
       else {
           quad->p.user_int = SKIP_QUADRANT;
-//          PetscPrintf(p4est->mpicomm,"Quadrant is marked to be skipped \n");
+//          PetscPrintf(p4est->mpicomm,"QUAD SKIPPED \n");
 
         }
     } // End of if statement to check for refine and coarsening
@@ -1049,11 +1052,10 @@ bool splitting_criteria_tag_t::refine_and_coarsen(p4est_t* p4est, p4est_nodes_t*
     }
   }
   function_end:
-
-  // Check how the grid has changed across all the processes:
-  int global_is_grid_changed = false;
-  MPI_Allreduce(&is_grid_changed,&global_is_grid_changed,1,MPI_INT,MPI_LOR,p4est->mpicomm);
-  return global_is_grid_changed;
+    // Check how the grid has changed across all the processes:
+    int global_is_grid_changed = false;
+    MPI_Allreduce(&is_grid_changed,&global_is_grid_changed,1,MPI_INT,MPI_LOR,p4est->mpicomm);
+    return global_is_grid_changed;
 }
 
 // END: ELYCE TRYING SOMETHING--------------

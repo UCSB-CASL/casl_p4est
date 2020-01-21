@@ -271,7 +271,7 @@ int main(int argc, char** argv) {
   // Initialize output file name:
   int ex_no = 0;
   char out_dir[1000];
-  sprintf(out_dir,"/home/elyce/workspace/projects/multialloy_with_fluids/solidif_with_fluids_output");
+  sprintf(out_dir,"/home/elyce/workspace/projects/multialloy_with_fluids/output_refine_with_fields");
   char file_name[1000];
   sprintf(file_name,"%s/refinement_test_ex_%d",out_dir,ex_no);
   PetscPrintf(mpi.comm(),"Output file is %s \n",file_name);
@@ -580,11 +580,11 @@ int main(int argc, char** argv) {
     while(is_grid_changing){
           if(use_block){
                // Using block vector:
-              is_grid_changing = sp1.refine_and_coarsen(p4est_np1,nodes_np1,phi_eff_new.vec,num_fields,use_block,NULL,fields_new_block,criteria,compare_opn,diag_opn);
+              is_grid_changing = sp1.refine_and_coarsen(p4est_np1,nodes_np1,phi_eff_new.vec,num_fields,use_block,false,0.0,NULL,fields_new_block,criteria,compare_opn,diag_opn);
             }
           else{
               // Using vector of vectors:
-              is_grid_changing = sp1.refine_and_coarsen(p4est_np1,nodes_np1,phi_eff_new.vec,num_fields,use_block,fields_new,NULL,criteria,compare_opn,diag_opn);
+              is_grid_changing = sp1.refine_and_coarsen(p4est_np1,nodes_np1,phi_eff_new.vec,num_fields,use_block,false,0.0,fields_new,NULL,criteria,compare_opn,diag_opn);
             }
 
         PetscPrintf(mpi.comm(),"Did the grid change? --> %s \n \n ", is_grid_changing? "yes" : "no");
@@ -594,6 +594,7 @@ int main(int argc, char** argv) {
             PetscPrintf(mpi.comm(),"Grid changed (%d time(s) ) \n \n ",no_grid_changes);
 
             // Repartition the grid:
+//            p4est_balance(p4est,P4EST_CONNECT_FULL,NULL);
             my_p4est_partition(p4est_np1,P4EST_TRUE,NULL);
 
             // Reset the grid:
@@ -642,6 +643,9 @@ int main(int argc, char** argv) {
 
           } // End of "if grid changing"
         intermediate_no++;
+
+        // If grid is done changing, balance the grid:
+
 
         // Save the intermediate grid:
         sprintf(file_name,"%s/intermediate_%d",out_dir,intermediate_no);
@@ -815,7 +819,7 @@ int main(int argc, char** argv) {
       my_p4est_semi_lagrangian_t sl(&p4est_np1,&nodes_np1,&ghost_np1,ngbd);
 
       // Call the update_p4est function:
-      sl.update_p4est(velocity.vec,0.2,phi_1_new.vec,phi_1_new_xx.vec,NULL,num_fields,use_block,fields_new,fields_new_block,criteria,compare_opn,diag_opn,false);
+      sl.update_p4est(velocity.vec,0.2,phi_1_new.vec,phi_1_new_xx.vec,NULL,num_fields,use_block,false,0.0,fields_new,fields_new_block,criteria,compare_opn,diag_opn,false);
 
 
       // Interpolate all other fields onto the new grid (besides phi_1_new, which has already been advected):
