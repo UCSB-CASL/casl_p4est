@@ -28,6 +28,8 @@ my_p4est_scft_t::my_p4est_scft_t(my_p4est_node_neighbors_t *ngbd, int ns)
   mu_m_avg = 0;
   mu_p_avg = 0;
 
+  rho_avg = 1;
+
   /* densities */
   ierr = VecDuplicate(mu_m, &rho_a); CHKERRXX(ierr);
   ierr = VecDuplicate(mu_m, &rho_b); CHKERRXX(ierr);
@@ -72,7 +74,7 @@ my_p4est_scft_t::my_p4est_scft_t(my_p4est_node_neighbors_t *ngbd, int ns)
 
   /* auxiliary variables */
   num_surfaces = 0;
-  lambda = 2;
+  lambda = 1;
   diag = 1;
   dxyz_min = 1;
   dxyz_max = 1;
@@ -282,7 +284,7 @@ void my_p4est_scft_t::initialize_solvers()
     solver_b.set_bc(i, ROBIN, pw_bc_values[i], pw_bc_values[i], pw_bc_coeffs_b[i]);
   }
 
-  ierr = PetscPrintf(p4est->mpicomm, "new volume %e\n", volume); CHKERRXX(ierr);
+//  ierr = PetscPrintf(p4est->mpicomm, "new volume %e\n", volume); CHKERRXX(ierr);
 }
 
 void my_p4est_scft_t::initialize_bc_simple()
@@ -344,13 +346,13 @@ void my_p4est_scft_t::initialize_bc_smart(bool adaptive)
         // compute robin coefficients
         solver_a.pw_bc_xyz_robin_pt(i, j, xyz);
         double mu_m_val = mu_cf->value(xyz);
-        pw_bc_coeffs_a[i][j] = (gamma_a[i]->value(xyz)-gamma_b[i]->value(xyz))*(-mu_m_val/XN+0.5)*scalling;
-        pw_bc_coeffs_b[i][j] = (gamma_a[i]->value(xyz)-gamma_b[i]->value(xyz))*(-mu_m_val/XN-0.5)*scalling;
+        pw_bc_coeffs_a[i][j] = (gamma_a[i]->value(xyz)-gamma_b[i]->value(xyz))*(-mu_m_val/XN/rho_avg+0.5)*scalling;
+        pw_bc_coeffs_b[i][j] = (gamma_a[i]->value(xyz)-gamma_b[i]->value(xyz))*(-mu_m_val/XN/rho_avg-0.5)*scalling;
 
         // calculate addition to energy from surface tensions
         solver_a.pw_bc_xyz_value_pt(i, j, xyz);
         double pw_integrand = 0.5*(gamma_a[i]->value(xyz)+gamma_b[i]->value(xyz))
-                              +   (gamma_a[i]->value(xyz)-gamma_b[i]->value(xyz))*mu_cf->value(xyz)/XN;
+                              +   (gamma_a[i]->value(xyz)-gamma_b[i]->value(xyz))*mu_cf->value(xyz)/XN/rho_avg;
         energy_singular_part += bc->areas[j]*pw_integrand;
       }
     }
@@ -551,8 +553,10 @@ void my_p4est_scft_t::calculate_densities()
 //  Q = .5*(integrate_over_domain_fast(qf[ns-1])+integrate_over_domain_fast(qb[0]))/volume;
 //  Q = (integrate_over_domain_fast(rho_a) + integrate_over_domain_fast(rho_b))/volume;
 
-  ierr = VecScale(rho_a, 1.0/Q); CHKERRXX(ierr);
-  ierr = VecScale(rho_b, 1.0/Q); CHKERRXX(ierr);
+  ierr = VecScaleGhost(rho_a, 1.0/Q); CHKERRXX(ierr);
+  ierr = VecScaleGhost(rho_b, 1.0/Q); CHKERRXX(ierr);
+
+  rho_avg = (integrate_over_domain_fast(rho_a) + integrate_over_domain_fast(rho_b))/volume;
 
   delete[] time_integrand;
   delete[] qf_ptr;
@@ -560,7 +564,7 @@ void my_p4est_scft_t::calculate_densities()
 
   double mu_m_sqrd_int = integrate_over_domain_fast_squared(mu_m);
 
-  energy = energy_singular_part + (mu_m_sqrd_int/XN - volume*log(Q))/pow(scalling, P4EST_DIM);
+  energy = 0*energy_singular_part + (mu_m_sqrd_int/XN - volume*log(Q))/pow(scalling, P4EST_DIM);
 
 }
 
@@ -602,14 +606,14 @@ void my_p4est_scft_t::update_potentials(bool update_mu_m, bool update_mu_p)
 
   ierr = VecGetArray(mask, &mask_ptr); CHKERRXX(ierr);
 
-  double rho_avg = (integrate_over_domain_fast(rho_a) + integrate_over_domain_fast(rho_b))/volume;
-
   foreach_node(n, nodes)
   {
     if (mask_ptr[n] < 0.)
     {
       force_p_ptr[n] = rho_a_ptr[n] + rho_b_ptr[n] - 1.0*rho_avg;
       force_m_ptr[n] = 2.0*mu_m_ptr[n]/XN - rho_a_ptr[n] + rho_b_ptr[n];
+//      force_p_ptr[n] /= rho_avg;
+//      force_m_ptr[n] /= rho_avg;
     }
     else
     {
@@ -643,6 +647,7 @@ void my_p4est_scft_t::update_potentials(bool update_mu_m, bool update_mu_p)
     ierr = VecAXPBYGhost(mu_p,  lambda, 1., force_p); CHKERRXX(ierr);
     mu_p_avg = integrate_over_domain_fast(mu_p)/volume;
     ierr = VecShiftGhost(mu_p, -mu_p_avg); CHKERRXX(ierr);
+    ierr = VecShiftGhost(mu_p, energy_singular_part/volume); CHKERRXX(ierr);
   }
 
 //  mu_m_avg = integrate_over_domain_fast(mu_m)/volume;
@@ -1257,8 +1262,6 @@ void my_p4est_scft_t::compute_energy_shape_derivative(int phi_idx, Vec velo)
 
   // volumetric term
   double energy_shape_deriv_volumetric = ( 1.0 - (energy-log(Q)) )/volume;
-
-  double rho_avg = (integrate_over_domain_fast(rho_a) + integrate_over_domain_fast(rho_b))/volume;
 
   // compute velocity
   double *energy_shape_deriv_ptr;

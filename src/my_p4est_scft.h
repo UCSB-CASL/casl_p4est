@@ -58,6 +58,7 @@ class my_p4est_scft_t
   /* densities */
   Vec rho_a;
   Vec rho_b;
+  double rho_avg;
 
   /* surface tensions */
   std::vector<CF_DIM *> gamma_a;
@@ -156,6 +157,9 @@ public:
   double get_energy() { return energy;}
   double get_pressure_force() { return force_p_avg; }
   double get_exchange_force() { return force_m_avg; }
+  double get_rho_avg() { return rho_avg;}
+  void   set_rho_avg(double val) { rho_avg = val;}
+
 
   void   assemble_integrating_vec();
   double integrate_over_domain_fast(Vec f);
