@@ -110,9 +110,9 @@ param_t<int> num_shifts_y_dir (pl, 1, "num_shifts_y_dir", "Number of grid shifts
 param_t<int> num_shifts_z_dir (pl, 1, "num_shifts_z_dir", "Number of grid shifts in the z-direction");
 #else
 param_t<int> lmin (pl, 6, "lmin", "Min level of the tree");
-param_t<int> lmax (pl, 16, "lmax", "Max level of the tree");
+param_t<int> lmax (pl, 10, "lmax", "Max level of the tree");
 
-param_t<int> num_splits           (pl, 5, "num_splits", "Number of recursive splits");
+param_t<int> num_splits           (pl, 1, "num_splits", "Number of recursive splits");
 param_t<int> num_splits_per_split (pl, 1, "num_splits_per_split", "Number of additional resolutions");
 
 param_t<int> num_shifts_x_dir (pl, 1, "num_shifts_x_dir", "Number of grid shifts in the x-direction");
@@ -296,7 +296,7 @@ param_t<bool> save_matrix_ascii  (pl, 0, "save_matrix_ascii", "Save the matrix i
 param_t<bool> save_matrix_binary (pl, 0, "save_matrix_binary", "Save the matrix in BINARY MATLAB format");
 param_t<bool> save_convergence   (pl, 0, "save_convergence", "Save convergence results");
 
-param_t<int> n_example (pl, 20, "n_example", "Predefined example:\n"
+param_t<int> n_example (pl, 1, "n_example", "Predefined example:\n"
                                              "0 - no interfaces, no boudaries\n"
                                              "1 - sphere interior\n"
                                              "2 - sphere exterior\n"
@@ -2362,9 +2362,13 @@ int main (int argc, char* argv[])
   {
     if (mu_iter_num() > 1)
       mag_mu_m.val = mag_mu_m_min() * pow(mag_mu_m_max()/mag_mu_m_min(), ((double) mu_iter / (double) (mu_iter_num()-1)));
-
+    //for (int k=0; k<3;k++){
     for(int iter=0; iter<num_splits(); ++iter)
     {
+      PetscLogDouble mem1;
+      MPI_Barrier(mpi.comm());
+      PetscMemoryGetCurrentUsage(&mem1);
+      PetscPrintf(mpi.comm(), "Mem test: %0.4e \n", mem1);
       ierr = PetscPrintf(mpi.comm(), "Level %2d / %2d.\n", lmin()+iter, lmax()+iter); CHKERRXX(ierr);
 
       int num_sub_iter = (iter == 0 ? 1 : num_splits_per_split());
@@ -3518,7 +3522,12 @@ int main (int argc, char* argv[])
         }
 #endif
       }
+      PetscLogDouble mem2;
+      MPI_Barrier(mpi.comm());
+      PetscMemoryGetCurrentUsage(&mem2);
+      PetscPrintf(mpi.comm(), "Mem test: %0.4e \n", mem2);
     }
+    //}
   }
 
 #ifdef MATLAB_PROVIDED

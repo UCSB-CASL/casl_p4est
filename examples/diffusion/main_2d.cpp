@@ -80,7 +80,9 @@
 using namespace std;
 
 const int bdry_phi_max_num = 4;
+const int bdry1_phi_max_num = 4;
 const int infc_phi_max_num = 4;
+const int infc1_phi_max_num = 4;
 
 param_list_t pl;
 
@@ -95,9 +97,9 @@ param_t<int> nx (pl, 1, "nx", "Number of trees in the x-direction");
 param_t<int> ny (pl, 1, "ny", "Number of trees in the y-direction");
 param_t<int> nz (pl, 1, "nz", "Number of trees in the z-direction");
 
-param_t<double> xmin (pl, -1, "xmin", "Box xmin");
-param_t<double> ymin (pl, -1, "ymin", "Box ymin");
-param_t<double> zmin (pl, -1, "zmin", "Box zmin");
+param_t<double> xmin (pl, 0, "xmin", "Box xmin");
+param_t<double> ymin (pl, 0, "ymin", "Box ymin");
+param_t<double> zmin (pl, 0, "zmin", "Box zmin");
 
 param_t<double> xmax (pl,  1, "xmax", "Box xmax");
 param_t<double> ymax (pl,  1, "ymax", "Box ymax");
@@ -120,7 +122,7 @@ param_t<int> num_shifts_z_dir (pl, 1, "num_shifts_z_dir", "Number of grid shifts
 param_t<int> lmin (pl, 6, "lmin", "Min level of the tree");
 param_t<int> lmax (pl, 8, "lmax", "Max level of the tree");
 
-param_t<int> num_splits           (pl, 3, "num_splits", "Number of recursive splits");
+param_t<int> num_splits           (pl, 1, "num_splits", "Number of recursive splits");
 param_t<int> num_splits_per_split (pl, 1, "num_splits_per_split", "Number of additional resolutions");
 
 param_t<int> num_shifts_x_dir (pl, 1, "num_shifts_x_dir", "Number of grid shifts in the x-direction");
@@ -137,10 +139,25 @@ param_t<bool> balance_grid   (pl, 0, "balance_grid", "Enforce 1:2 ratio for adap
 param_t<bool> coarse_outside (pl, 0, "coarse_outside", "Use the coarsest possible grid outside the domain (0/1)");
 param_t<int>  expand_ghost   (pl, 0, "expand_ghost", "Number of ghost layer expansions");
 
+// For debugging:
+param_t<bool> check_memory_usage (pl, 0, "coarse_outside", "Whether to check memory usage or not(0/1)");
+
+//-------------------------------------
+//parameters for time
+//-------------------------------------
+param_t<double>  tstart   (pl, 0.0, "tstart", "Simulation start time (default: 0.0)");
+param_t<double>  tfinal   (pl, 1.0, "tfinal", "Simulation end time (default: 1.4)");
+param_t<int> method_      (pl, 1, "method_", "Timestepping method. : 1 = Backward Euler, 2 = Crank Nicholson (default 1)");
+param_t<double>      dt   (pl, 0.01, "dt", "time step (default: 0.01)");
+double tn; // the current simulation time
+bool keep_going = true;
+//-------------------------------------
+
 //-------------------------------------
 // test solutions
 //-------------------------------------
-
+// parameters for domain 1
+//-------------------------------------
 param_t<int> n_um (pl, 0, "n_um", "");
 param_t<int> n_up (pl, 0, "n_up", "");
 
@@ -237,6 +254,105 @@ param_t<int> rhs_m_value (pl, 0, "rhs_m_value", "0 - automatic (pl, others - har
 param_t<int> rhs_p_value (pl, 0, "rhs_p_value", "0 - automatic (pl, others - hardcoded");
 
 //param_t<int> bc_itype (pl, ROBIN, "bc_itype", "");
+//-------------------------------------
+//parameters for domain 2
+//-------------------------------------
+param_t<int> n_um1 (pl, 0, "n_um", "");
+param_t<int> n_up1 (pl, 0, "n_up", "");
+
+param_t<double> mag_um1 (pl, 1, "mag_um", "");
+param_t<double> mag_up1 (pl, 1, "mag_up", "");
+
+param_t<int> n_mu_m1 (pl, 0, "n_mu_m", "");
+param_t<int> n_mu_p1 (pl, 0, "n_mu_p", "");
+
+param_t<double> mag_mu_m1 (pl, 1, "mag_mu_m", "");
+param_t<double> mag_mu_p1 (pl, 1, "mag_mu_p", "");
+
+param_t<double> mu_iter_num1 (pl, 1, "mu_iter_num", "");
+param_t<double> mag_mu_m_min1 (pl, 1, "mag_mu_m_min", "");
+param_t<double> mag_mu_m_max1 (pl, 1, "mag_mu_m_max", "");
+
+param_t<int> n_diag_m1 (pl, 0, "n_diag_m", "");
+param_t<int> n_diag_p1 (pl, 0, "n_diag_p", "");
+
+param_t<double> mag_diag_m1 (pl, 1, "mag_diag_m", "");
+param_t<double> mag_diag_p1 (pl, 1, "mag_diag_p", "");
+
+param_t<int> bc_wtype1 (pl, DIRICHLET, "bc_wtype", "Type of boundary conditions on the walls");
+
+param_t<int>    nonlinear_term_m1      (pl, 0, "nonlinear_term_m",       "Nonlinear term in negative domain: 0 - zero, 1 - linear, 2 - sinh, 3 - u/(1+u)");
+param_t<int>    nonlinear_term_m_coeff1 (pl, 0, "nonlinear_term_m_coeff", "Coefficient form for nonlinear term in negative domain: 0 - constant, 1 - ... ");
+param_t<double> nonlinear_term_m_mag1   (pl, 1, "nonlinear_term_m_mag",   "Scaling of nonlinear term in negative domain");
+
+param_t<int>    nonlinear_term_p1       (pl, 0, "nonlinear_term_p",       "Nonlinear term in negative domain: 0 - zero, 1 - linear, 2 - sinh, 3 - u/(1+u)");
+param_t<int>    nonlinear_term_p_coeff1 (pl, 0, "nonlinear_term_p_coeff", "Coefficient form for nonlinear term in negative domain: 0 - constant, 1 - ... ");
+param_t<double> nonlinear_term_p_mag1   (pl, 1, "nonlinear_term_p_mag",   "Scaling of nonlinear term in negative domain");
+
+// boundary geometry
+param_t<int> bdry1_phi_num (pl, 0, "bdry_phi_num", "Domain geometry");
+param_t<int> infc1_phi_num (pl, 0, "infc_phi_num", "Domain geometry");
+
+param_t<bool> bdry1_present_00 (pl, 0, "bdry_present_00", "Domain geometry");
+param_t<bool> bdry1_present_01 (pl, 0, "bdry_present_01", "Domain geometry");
+param_t<bool> bdry1_present_02 (pl, 0, "bdry_present_02", "Domain geometry");
+param_t<bool> bdry1_present_03 (pl, 0, "bdry_present_03", "Domain geometry");
+
+param_t<int> bdry1_geom_00 (pl, 0, "bdry_geom_00", "Domain geometry");
+param_t<int> bdry1_geom_01 (pl, 0, "bdry_geom_01", "Domain geometry");
+param_t<int> bdry1_geom_02 (pl, 0, "bdry_geom_02", "Domain geometry");
+param_t<int> bdry1_geom_03 (pl, 0, "bdry_geom_03", "Domain geometry");
+
+param_t<int> bdry1_opn_00 (pl, MLS_INTERSECTION, "bdry_opn_00", "Domain geometry");
+param_t<int> bdry1_opn_01 (pl, MLS_INTERSECTION, "bdry_opn_01", "Domain geometry");
+param_t<int> bdry1_opn_02 (pl, MLS_INTERSECTION, "bdry_opn_02", "Domain geometry");
+param_t<int> bdry1_opn_03 (pl, MLS_INTERSECTION, "bdry_opn_03", "Domain geometry");
+
+param_t<int> bc1_coeff_00 (pl, 0, "bc_coeff_00", "Domain geometry");
+param_t<int> bc1_coeff_01 (pl, 0, "bc_coeff_01", "Domain geometry");
+param_t<int> bc1_coeff_02 (pl, 0, "bc_coeff_02", "Domain geometry");
+param_t<int> bc1_coeff_03 (pl, 0, "bc_coeff_03", "Domain geometry");
+
+param_t<double> bc1_coeff_00_mag (pl, 1, "bc_coeff_00_mag", "Domain geometry");
+param_t<double> bc1_coeff_01_mag (pl, 1, "bc_coeff_01_mag", "Domain geometry");
+param_t<double> bc1_coeff_02_mag (pl, 1, "bc_coeff_02_mag", "Domain geometry");
+param_t<double> bc1_coeff_03_mag (pl, 1, "bc_coeff_03_mag", "Domain geometry");
+
+param_t<int> bc1_type_00 (pl, DIRICHLET, "bc_type_00", "Type of boundary conditions on the domain boundary");
+param_t<int> bc1_type_01 (pl, DIRICHLET, "bc_type_01", "Type of boundary conditions on the domain boundary");
+param_t<int> bc1_type_02 (pl, DIRICHLET, "bc_type_02", "Type of boundary conditions on the domain boundary");
+param_t<int> bc1_type_03 (pl, DIRICHLET, "bc_type_03", "Type of boundary conditions on the domain boundary");
+
+// interface geometry
+param_t<bool> infc1_present_00 (pl, 0, "infc_present_00", "Domain geometry");
+param_t<bool> infc1_present_01 (pl, 0, "infc_present_01", "Domain geometry");
+param_t<bool> infc1_present_02 (pl, 0, "infc_present_02", "Domain geometry");
+param_t<bool> infc1_present_03 (pl, 0, "infc_present_03", "Domain geometry");
+
+param_t<int> infc1_geom_00 (pl, 0, "infc_geom_00", "Domain geometry");
+param_t<int> infc1_geom_01 (pl, 0, "infc_geom_01", "Domain geometry");
+param_t<int> infc1_geom_02 (pl, 0, "infc_geom_02", "Domain geometry");
+param_t<int> infc1_geom_03 (pl, 0, "infc_geom_03", "Domain geometry");
+
+param_t<int> infc1_opn_00 (pl, MLS_INTERSECTION, "infc_opn_00", "Domain geometry");
+param_t<int> infc1_opn_01 (pl, MLS_INTERSECTION, "infc_opn_01", "Domain geometry");
+param_t<int> infc1_opn_02 (pl, MLS_INTERSECTION, "infc_opn_02", "Domain geometry");
+param_t<int> infc1_opn_03 (pl, MLS_INTERSECTION, "infc_opn_03", "Domain geometry");
+
+param_t<int> jc1_value_00 (pl, 0, "jc_value_00", "0 - automatic (pl, others - hardcoded");
+param_t<int> jc1_value_01 (pl, 0, "jc_value_01", "0 - automatic (pl, others - hardcoded");
+param_t<int> jc1_value_02 (pl, 0, "jc_value_02", "0 - automatic (pl, others - hardcoded");
+param_t<int> jc1_value_03 (pl, 0, "jc_value_03", "0 - automatic (pl, others - hardcoded");
+
+param_t<int> jc1_flux_00 (pl, 0, "jc_flux_00", "0 - automatic (pl, others - hardcoded");
+param_t<int> jc1_flux_01 (pl, 0, "jc_flux_01", "0 - automatic (pl, others - hardcoded");
+param_t<int> jc1_flux_02 (pl, 0, "jc_flux_02", "0 - automatic (pl, others - hardcoded");
+param_t<int> jc1_flux_03 (pl, 0, "jc_flux_03", "0 - automatic (pl, others - hardcoded");
+
+param_t<int> rhs1_m_value (pl, 0, "rhs_m_value", "0 - automatic (pl, others - hardcoded");
+param_t<int> rhs1_p_value (pl, 0, "rhs_p_value", "0 - automatic (pl, others - hardcoded");
+
+//param_t<int> bc_itype (pl, ROBIN, "bc_itype", "");
 
 //-------------------------------------
 // solver parameters
@@ -298,6 +414,8 @@ param_t<int>    extension_iterations   (pl, 100, "extension_iterations", "");
 // output
 //-------------------------------------
 param_t<bool> save_vtk           (pl, 1, "save_vtk", "Save the p4est in vtk format");
+param_t<int>  save_every_iter    (pl, 1, "save_every_iter","Save every n (provided value) number of iterations (default:1)");
+param_t<bool> print_checkpoints  (pl, 1, "print_checkpoints", "Print checkpoints");
 param_t<bool> save_params        (pl, 0, "save_params", "Save list of entered parameters");
 param_t<bool> save_domain        (pl, 0, "save_domain", "Save the reconstruction of an irregular domain (works only in serial!)");
 param_t<bool> save_matrix_ascii  (pl, 0, "save_matrix_ascii", "Save the matrix in ASCII MATLAB format");
@@ -366,553 +484,43 @@ void set_example(int n_example)
 {
   switch (n_example)
   {
-    case 0: // no boundaries, no interfaces
 
-      n_um.val = 0; mag_um.val = 1; n_mu_m.val = 0; mag_mu_m.val = 1; n_diag_m.val = 0; mag_diag_m.val = 1;
-      n_up.val = 0; mag_up.val = 1; n_mu_p.val = 0; mag_mu_p.val = 1; n_diag_p.val = 0; mag_diag_p.val = 1;
+    case 1: // sphere exterior
+
+      n_um.val = 20; mag_um.val = 0; n_mu_m.val = 0; mag_mu_m.val = 0.1; n_diag_m.val = 0; mag_diag_m.val = 1;
+      n_up.val = 20; mag_up.val = 0; n_mu_p.val = 0; mag_mu_p.val = 0.1; n_diag_p.val = 0; mag_diag_p.val = 1;
 
       infc_phi_num.val = 0;
       bdry_phi_num.val = 0;
 
-      infc_present_00.val = 0;
-      infc_present_01.val = 0;
-      infc_present_02.val = 0;
-      infc_present_03.val = 0;
+      infc_present_00.val = 0; infc_geom_00.val = 0; infc_opn_00.val = MLS_INT;
+      infc_present_01.val = 0; infc_geom_01.val = 0; infc_opn_01.val = MLS_INT;
+      infc_present_02.val = 0; infc_geom_02.val = 0; infc_opn_02.val = MLS_INT;
+      infc_present_03.val = 0; infc_geom_03.val = 0; infc_opn_03.val = MLS_INT;
 
-      bdry_present_00.val = 0;
-      bdry_present_01.val = 0;
-      bdry_present_02.val = 0;
-      bdry_present_03.val = 0;
-
-      break;
-
-    case 1: // sphere interior
-
-      n_um.val = 0; mag_um.val = 1; n_mu_m.val = 0; mag_mu_m.val = 1; n_diag_m.val = 1; mag_diag_m.val = 1;
-      n_up.val = 0; mag_up.val = 1; n_mu_p.val = 0; mag_mu_p.val = 1; n_diag_p.val = 1; mag_diag_p.val = 1;
-
-      infc_phi_num.val = 0;
-      bdry_phi_num.val = 1;
-
-      infc_present_00.val = 0;
-      infc_present_01.val = 0;
-      infc_present_02.val = 0;
-      infc_present_03.val = 0;
-
-      bdry_present_00.val = 1; bdry_geom_00.val = 1; bdry_opn_00.val = MLS_INT; bc_coeff_00.val = 0; bc_coeff_00_mag.val = 1; bc_type_00.val = DIRICHLET;
+      bdry_present_00.val = 0; bdry_geom_00.val = 0; bdry_opn_00.val = MLS_INT; bc_coeff_00.val = 0; bc_coeff_00_mag.val = 0; bc_type_00.val = DIRICHLET;
       bdry_present_01.val = 0; bdry_geom_01.val = 0; bdry_opn_01.val = MLS_INT; bc_coeff_01.val = 0; bc_coeff_01_mag.val = 1; bc_type_01.val = DIRICHLET;
       bdry_present_02.val = 0; bdry_geom_02.val = 0; bdry_opn_02.val = MLS_INT; bc_coeff_02.val = 0; bc_coeff_02_mag.val = 1; bc_type_02.val = DIRICHLET;
       bdry_present_03.val = 0; bdry_geom_03.val = 0; bdry_opn_03.val = MLS_INT; bc_coeff_03.val = 0; bc_coeff_03_mag.val = 1; bc_type_03.val = DIRICHLET;
 
-      break;
 
-    case 2: // sphere exterior
+      n_um1.val = 0; mag_um1.val =-5; n_mu_m1.val = 0; mag_mu_m1.val = 1; n_diag_m1.val = 0; mag_diag_m1.val = 1;
+      n_up1.val = 0; mag_up1.val = 5; n_mu_p1.val = 0; mag_mu_p1.val = 1; n_diag_p1.val = 0; mag_diag_p1.val = 1;
 
-      n_um.val = 0; mag_um.val = 1; n_mu_m.val = 0; mag_mu_m.val = 1; n_diag_m.val = 0; mag_diag_m.val = 1;
-      n_up.val = 0; mag_up.val = 1; n_mu_p.val = 0; mag_mu_p.val = 1; n_diag_p.val = 0; mag_diag_p.val = 1;
+      infc1_phi_num.val = 0;
+      bdry1_phi_num.val = 0;
 
-      infc_phi_num.val = 0;
-      bdry_phi_num.val = 1;
+      infc1_present_00.val = 0;
+      infc1_present_01.val = 0;
+      infc1_present_02.val = 0;
+      infc1_present_03.val = 0;
 
-      infc_present_00.val = 0;
-      infc_present_01.val = 0;
-      infc_present_02.val = 0;
-      infc_present_03.val = 0;
-
-      bdry_present_00.val = 1; bdry_geom_00.val = 2; bdry_opn_00.val = MLS_INT; bc_coeff_00.val = 0; bc_coeff_00_mag.val = 1; bc_type_00.val = ROBIN;
-      bdry_present_01.val = 0; bdry_geom_01.val = 0; bdry_opn_01.val = MLS_INT; bc_coeff_01.val = 0; bc_coeff_01_mag.val = 1; bc_type_01.val = ROBIN;
-      bdry_present_02.val = 0; bdry_geom_02.val = 0; bdry_opn_02.val = MLS_INT; bc_coeff_02.val = 0; bc_coeff_02_mag.val = 1; bc_type_02.val = ROBIN;
-      bdry_present_03.val = 0; bdry_geom_03.val = 0; bdry_opn_03.val = MLS_INT; bc_coeff_03.val = 0; bc_coeff_03_mag.val = 1; bc_type_03.val = ROBIN;
+      bdry1_present_00.val = 1; bdry1_geom_00.val = 2; bdry1_opn_00.val = MLS_INT; bc1_coeff_00.val = 1; bc1_coeff_00_mag.val = 1; bc1_type_00.val = NEUMANN;
+      bdry1_present_01.val = 0; bdry1_geom_01.val = 0; bdry1_opn_01.val = MLS_INT; bc1_coeff_01.val = 0; bc1_coeff_01_mag.val = 1; bc1_type_01.val = ROBIN;
+      bdry1_present_02.val = 0; bdry1_geom_02.val = 0; bdry1_opn_02.val = MLS_INT; bc1_coeff_02.val = 0; bc1_coeff_02_mag.val = 1; bc1_type_02.val = ROBIN;
+      bdry1_present_03.val = 0; bdry1_geom_03.val = 0; bdry1_opn_03.val = MLS_INT; bc1_coeff_03.val = 0; bc1_coeff_03_mag.val = 1; bc1_type_03.val = ROBIN;
 
       break;
-
-    case 3: // moderately star-shaped boundary
-
-      n_um.val = 0; mag_um.val = 1; n_mu_m.val = 0; mag_mu_m.val = 1; n_diag_m.val = 0; mag_diag_m.val = 1;
-      n_up.val = 0; mag_up.val = 1; n_mu_p.val = 0; mag_mu_p.val = 1; n_diag_p.val = 0; mag_diag_p.val = 1;
-
-      infc_phi_num.val = 0;
-      bdry_phi_num.val = 1;
-
-      infc_present_00.val = 0;
-      infc_present_01.val = 0;
-      infc_present_02.val = 0;
-      infc_present_03.val = 0;
-
-      bdry_present_00.val = 1; bdry_geom_00.val = 4; bdry_opn_00.val = MLS_INT; bc_coeff_00.val = 0; bc_coeff_00_mag.val = 1; bc_type_00.val = ROBIN;
-      bdry_present_01.val = 0; bdry_geom_01.val = 0; bdry_opn_01.val = MLS_INT; bc_coeff_01.val = 0; bc_coeff_01_mag.val = 1; bc_type_01.val = ROBIN;
-      bdry_present_02.val = 0; bdry_geom_02.val = 0; bdry_opn_02.val = MLS_INT; bc_coeff_02.val = 0; bc_coeff_02_mag.val = 1; bc_type_02.val = ROBIN;
-      bdry_present_03.val = 0; bdry_geom_03.val = 0; bdry_opn_03.val = MLS_INT; bc_coeff_03.val = 0; bc_coeff_03_mag.val = 1; bc_type_03.val = ROBIN;
-
-      break;
-
-    case 4: // highly star-shaped boundary
-
-      n_um.val = 0; mag_um.val = 1; n_mu_m.val = 0; mag_mu_m.val = 1; n_diag_m.val = 0; mag_diag_m.val = 1;
-      n_up.val = 0; mag_up.val = 1; n_mu_p.val = 0; mag_mu_p.val = 1; n_diag_p.val = 0; mag_diag_p.val = 1;
-
-      infc_phi_num.val = 0;
-      bdry_phi_num.val = 1;
-
-      infc_present_00.val = 0;
-      infc_present_01.val = 0;
-      infc_present_02.val = 0;
-      infc_present_03.val = 0;
-
-      bdry_present_00.val = 1; bdry_geom_00.val = 5; bdry_opn_00.val = MLS_INT; bc_coeff_00.val = 0; bc_coeff_00_mag.val = 1; bc_type_00.val = ROBIN;
-      bdry_present_01.val = 0; bdry_geom_01.val = 0; bdry_opn_01.val = MLS_INT; bc_coeff_01.val = 0; bc_coeff_01_mag.val = 1; bc_type_01.val = ROBIN;
-      bdry_present_02.val = 0; bdry_geom_02.val = 0; bdry_opn_02.val = MLS_INT; bc_coeff_02.val = 0; bc_coeff_02_mag.val = 1; bc_type_02.val = ROBIN;
-      bdry_present_03.val = 0; bdry_geom_03.val = 0; bdry_opn_03.val = MLS_INT; bc_coeff_03.val = 0; bc_coeff_03_mag.val = 1; bc_type_03.val = ROBIN;
-
-      break;
-
-    case 5: // triangle/tetrahedron example from (Bochkov&Gibou, JCP, 2019)
-
-      n_um.val = 0; mag_um.val = 1; n_mu_m.val = 0; mag_mu_m.val = 1; n_diag_m.val = 0; mag_diag_m.val = 1;
-      n_up.val = 0; mag_up.val = 1; n_mu_p.val = 0; mag_mu_p.val = 1; n_diag_p.val = 0; mag_diag_p.val = 1;
-
-      infc_phi_num.val = 0;
-      bdry_phi_num.val = P4EST_DIM+1;
-
-      infc_present_00.val = 0;
-      infc_present_01.val = 0;
-      infc_present_02.val = 0;
-      infc_present_03.val = 0;
-
-      bdry_present_00.val = 1; bdry_geom_00.val = 13; bdry_opn_00.val = MLS_INT; bc_coeff_00.val = 0; bc_coeff_00_mag.val = 1; bc_type_00.val = ROBIN;
-      bdry_present_01.val = 1; bdry_geom_01.val = 14; bdry_opn_01.val = MLS_INT; bc_coeff_01.val = 0; bc_coeff_01_mag.val = 0; bc_type_01.val = ROBIN;
-      bdry_present_02.val = 1; bdry_geom_02.val = 15; bdry_opn_02.val = MLS_INT; bc_coeff_02.val = 2; bc_coeff_02_mag.val = 1; bc_type_02.val = ROBIN;
-      bdry_present_03.val = 1; bdry_geom_03.val = 16; bdry_opn_03.val = MLS_INT; bc_coeff_03.val = 1; bc_coeff_03_mag.val = 1; bc_type_03.val = ROBIN;
-
-      break;
-
-    case 6: // union of spheres example from (Bochkov&Gibou, JCP, 2019)
-
-      n_um.val = 3; mag_um.val = 1; n_mu_m.val = 0; mag_mu_m.val = 1; n_diag_m.val = 0; mag_diag_m.val = 1;
-      n_up.val = 0; mag_up.val = 1; n_mu_p.val = 0; mag_mu_p.val = 1; n_diag_p.val = 0; mag_diag_p.val = 1;
-
-      infc_phi_num.val = 0;
-      bdry_phi_num.val = 2;
-
-      infc_present_00.val = 0; infc_geom_00.val = 0;
-      infc_present_01.val = 0; infc_geom_01.val = 0;
-      infc_present_02.val = 0; infc_geom_02.val = 0;
-      infc_present_03.val = 0; infc_geom_03.val = 0;
-
-      bdry_present_00.val = 1; bdry_geom_00.val = 6; bdry_opn_00.val = MLS_INT; bc_coeff_00.val = 0; bc_coeff_00_mag.val = 1; bc_type_00.val = ROBIN;
-      bdry_present_01.val = 1; bdry_geom_01.val = 7; bdry_opn_01.val = MLS_ADD; bc_coeff_01.val = 3; bc_coeff_01_mag.val = 1; bc_type_01.val = ROBIN;
-      bdry_present_02.val = 0; bdry_geom_02.val = 0; bdry_opn_02.val = MLS_INT; bc_coeff_02.val = 0; bc_coeff_02_mag.val = 1; bc_type_02.val = ROBIN;
-      bdry_present_03.val = 0; bdry_geom_03.val = 0; bdry_opn_03.val = MLS_INT; bc_coeff_03.val = 0; bc_coeff_03_mag.val = 1; bc_type_03.val = ROBIN;
-
-      break;
-
-    case 7: // difference of spheres example from (Bochkov&Gibou, JCP, 2019)
-
-      n_um.val = 4; mag_um.val = 1; n_mu_m.val = 1; mag_mu_m.val = 1; n_diag_m.val = 1; mag_diag_m.val = 1;
-      n_up.val = 0; mag_up.val = 1; n_mu_p.val = 0; mag_mu_p.val = 1; n_diag_p.val = 0; mag_diag_p.val = 1;
-
-      infc_phi_num.val = 0;
-      bdry_phi_num.val = 2;
-
-      infc_present_00.val = 0;
-      infc_present_01.val = 0;
-      infc_present_02.val = 0;
-      infc_present_03.val = 0;
-
-      bdry_present_00.val = 1; bdry_geom_00.val = 8; bdry_opn_00.val = MLS_INT; bc_coeff_00.val = 4; bc_coeff_00_mag.val = 1; bc_type_00.val = ROBIN;
-      bdry_present_01.val = 1; bdry_geom_01.val = 9; bdry_opn_01.val = MLS_INT; bc_coeff_01.val = 3; bc_coeff_01_mag.val = 1; bc_type_01.val = ROBIN;
-      bdry_present_02.val = 0; bdry_geom_02.val = 0; bdry_opn_02.val = MLS_INT; bc_coeff_02.val = 0; bc_coeff_02_mag.val = 1; bc_type_02.val = ROBIN;
-      bdry_present_03.val = 0; bdry_geom_03.val = 0; bdry_opn_03.val = MLS_INT; bc_coeff_03.val = 0; bc_coeff_03_mag.val = 1; bc_type_03.val = ROBIN;
-
-      break;
-
-    case 8: // three stars example from (Bochkov&Gibou, JCP, 2019)
-
-      n_um.val = 6; mag_um.val = 1; n_mu_m.val = 1; mag_mu_m.val = 1; n_diag_m.val = 2; mag_diag_m.val = 1;
-      n_up.val = 0; mag_up.val = 1; n_mu_p.val = 0; mag_mu_p.val = 1; n_diag_p.val = 0; mag_diag_p.val = 1;
-
-      infc_phi_num.val = 0;
-      bdry_phi_num.val = 3;
-
-      infc_present_00.val = 0;
-      infc_present_01.val = 0;
-      infc_present_02.val = 0;
-      infc_present_03.val = 0;
-
-      bdry_present_00.val = 1; bdry_geom_00.val = 10; bdry_opn_00.val = MLS_INT; bc_coeff_00.val = 0; bc_coeff_00_mag.val = 1; bc_type_00.val = ROBIN;
-      bdry_present_01.val = 1; bdry_geom_01.val = 11; bdry_opn_01.val = MLS_ADD; bc_coeff_01.val = 5; bc_coeff_01_mag.val = 1; bc_type_01.val = ROBIN;
-      bdry_present_02.val = 1; bdry_geom_02.val = 12; bdry_opn_02.val = MLS_INT; bc_coeff_02.val = 6; bc_coeff_02_mag.val = 1; bc_type_02.val = ROBIN;
-      bdry_present_03.val = 0; bdry_geom_03.val =  0; bdry_opn_03.val = MLS_INT; bc_coeff_03.val = 0; bc_coeff_03_mag.val = 1; bc_type_03.val = ROBIN;
-
-      break;
-
-    case 9: // shperical interface
-
-      n_um.val = 11; mag_um.val = 1; n_mu_m.val = 0; mag_mu_m.val = 5; n_diag_m.val = 1; mag_diag_m.val = 1;
-      n_up.val = 12; mag_up.val = 1; n_mu_p.val = 0; mag_mu_p.val = 1; n_diag_p.val = 1; mag_diag_p.val = 1;
-
-      infc_phi_num.val = 1;
-      bdry_phi_num.val = 0;
-
-      infc_present_00.val = 1; infc_geom_00.val = 1; infc_opn_00.val = MLS_INT;
-      infc_present_01.val = 0; infc_geom_01.val = 0; infc_opn_01.val = MLS_INT;
-      infc_present_02.val = 0; infc_geom_02.val = 0; infc_opn_02.val = MLS_INT;
-      infc_present_03.val = 0; infc_geom_03.val = 0; infc_opn_03.val = MLS_INT;
-
-      bdry_present_00.val = 0;
-      bdry_present_01.val = 0;
-      bdry_present_02.val = 0;
-      bdry_present_03.val = 0;
-
-      break;
-
-    case 10: // moderately flower-shaped interface
-
-      n_um.val = 11; mag_um.val = 1; n_mu_m.val = 0; mag_mu_m.val = 5; n_diag_m.val = 1; mag_diag_m.val = 1;
-      n_up.val = 12; mag_up.val = 1; n_mu_p.val = 0; mag_mu_p.val = 1; n_diag_p.val = 1; mag_diag_p.val = 1;
-
-      infc_phi_num.val = 1;
-      bdry_phi_num.val = 0;
-
-      infc_present_00.val = 1; infc_geom_00.val = 1; infc_opn_00.val = MLS_INT;
-      infc_present_01.val = 0; infc_geom_01.val = 0; infc_opn_01.val = MLS_INT;
-      infc_present_02.val = 0; infc_geom_02.val = 0; infc_opn_02.val = MLS_INT;
-      infc_present_03.val = 0; infc_geom_03.val = 0; infc_opn_03.val = MLS_INT;
-
-      bdry_present_00.val = 0;
-      bdry_present_01.val = 0;
-      bdry_present_02.val = 0;
-      bdry_present_03.val = 0;
-
-      break;
-
-    case 11: // highly flower-shaped interface
-
-      n_um.val = 11; mag_um.val = 1; n_mu_m.val = 0; mag_mu_m.val = 1; n_diag_m.val = 0; mag_diag_m.val = 1;
-      n_up.val = 12; mag_up.val = 1; n_mu_p.val = 0; mag_mu_p.val =  1; n_diag_p.val = 0; mag_diag_p.val = 1;
-
-      infc_phi_num.val = 1;
-      bdry_phi_num.val = 0;
-
-      infc_present_00.val = 1; infc_geom_00.val = 3; infc_opn_00.val = MLS_INT;
-      infc_present_01.val = 0; infc_geom_01.val = 0; infc_opn_01.val = MLS_INT;
-      infc_present_02.val = 0; infc_geom_02.val = 0; infc_opn_02.val = MLS_INT;
-      infc_present_03.val = 0; infc_geom_03.val = 0; infc_opn_03.val = MLS_INT;
-
-      bdry_present_00.val = 0;
-      bdry_present_01.val = 0;
-      bdry_present_02.val = 0;
-      bdry_present_03.val = 0;
-
-      break;
-
-    case 12: // curvy interface in an annular region from (Bochkov&Gibou, JCP, 2019)
-
-      n_um.val = 11; mag_um.val = 1; n_mu_m.val = 1; mag_mu_m.val = 10; n_diag_m.val = 0; mag_diag_m.val = 1;
-      n_up.val = 12; mag_up.val = 1; n_mu_p.val = 0; mag_mu_p.val =  1; n_diag_p.val = 0; mag_diag_p.val = 1;
-
-      infc_phi_num.val = 1;
-      bdry_phi_num.val = 1;
-
-      infc_present_00.val = 1; infc_geom_00.val = 4; infc_opn_00.val = MLS_INT;
-      infc_present_01.val = 0; infc_geom_01.val = 0; infc_opn_01.val = MLS_INT;
-      infc_present_02.val = 0; infc_geom_02.val = 0; infc_opn_02.val = MLS_INT;
-      infc_present_03.val = 0; infc_geom_03.val = 0; infc_opn_03.val = MLS_INT;
-
-      bdry_present_00.val = 1; bdry_geom_00.val = 3; bdry_opn_00.val = MLS_INT; bc_coeff_00.val = 0; bc_coeff_00_mag.val = 1; bc_type_00.val = DIRICHLET;
-      bdry_present_01.val = 0; bdry_geom_01.val = 0; bdry_opn_01.val = MLS_INT; bc_coeff_01.val = 0; bc_coeff_01_mag.val = 1; bc_type_01.val = ROBIN;
-      bdry_present_02.val = 0; bdry_geom_02.val = 0; bdry_opn_02.val = MLS_INT; bc_coeff_02.val = 0; bc_coeff_02_mag.val = 1; bc_type_02.val = ROBIN;
-      bdry_present_03.val = 0; bdry_geom_03.val = 0; bdry_opn_03.val = MLS_INT; bc_coeff_03.val = 0; bc_coeff_03_mag.val = 1; bc_type_03.val = ROBIN;
-
-      break;
-
-    case 13: // example form Maxime's multiphase paper
-
-      XCODE( xmin.val = -2; xmax.val = 2 );
-      YCODE( ymin.val = -2; ymax.val = 2 );
-      ZCODE( zmin.val = -2; zmax.val = 2 );
-
-      n_um.val = 1; mag_um.val = 1; n_mu_m.val = 0; mag_mu_m.val = 1; n_diag_m.val = 0; mag_diag_m.val = 1;
-      n_up.val = 0; mag_up.val = 1; n_mu_p.val = 0; mag_mu_p.val = 1.e8; n_diag_p.val = 0; mag_diag_p.val = 1;
-
-      infc_phi_num.val = 1;
-      bdry_phi_num.val = 0;
-
-      infc_present_00.val = 1; infc_geom_00.val = 1; infc_opn_00.val = MLS_INT;
-      infc_present_01.val = 0; infc_geom_01.val = 0; infc_opn_01.val = MLS_INT;
-      infc_present_02.val = 0; infc_geom_02.val = 0; infc_opn_02.val = MLS_INT;
-      infc_present_03.val = 0; infc_geom_03.val = 0; infc_opn_03.val = MLS_INT;
-
-      bdry_present_00.val = 0;
-      bdry_present_01.val = 0;
-      bdry_present_02.val = 0;
-      bdry_present_03.val = 0;
-
-      break;
-
-    case 14: // shperical interface - case 4 from voronoi jump solver3D
-
-      n_um.val = 17; mag_um.val = 1; n_mu_m.val = 8; mag_mu_m.val = 1; n_diag_m.val = 1; mag_diag_m.val = 0;
-      n_up.val = 18; mag_up.val = 1; n_mu_p.val = 7; mag_mu_p.val = 1; n_diag_p.val = 1; mag_diag_p.val = 1;
-
-      infc_phi_num.val = 1;
-      bdry_phi_num.val = 0;
-
-      infc_present_00.val = 1; infc_geom_00.val = 2; infc_opn_00.val = MLS_INT;
-      infc_present_01.val = 0; infc_geom_01.val = 0; infc_opn_01.val = MLS_INT;
-      infc_present_02.val = 0; infc_geom_02.val = 0; infc_opn_02.val = MLS_INT;
-      infc_present_03.val = 0; infc_geom_03.val = 0; infc_opn_03.val = MLS_INT;
-
-      bdry_present_00.val = 0;
-      bdry_present_01.val = 0;
-      bdry_present_02.val = 0;
-      bdry_present_03.val = 0;
-
-      break;
-
-    case 15: // shperical interface - case 1 from voronoi jump solver3D
-
-      n_um.val = 15; mag_um.val = 1; n_mu_m.val = 9; mag_mu_m.val = 1; n_diag_m.val = 0; mag_diag_m.val = 1;
-      n_up.val = 16; mag_up.val = 1; n_mu_p.val = 10; mag_mu_p.val = 1; n_diag_p.val = 0; mag_diag_p.val = 1;
-
-      infc_phi_num.val = 1;
-      bdry_phi_num.val = 0;
-
-      infc_present_00.val = 1; infc_geom_00.val = 2; infc_opn_00.val = MLS_INT;
-      infc_present_01.val = 0; infc_geom_01.val = 0; infc_opn_01.val = MLS_INT;
-      infc_present_02.val = 0; infc_geom_02.val = 0; infc_opn_02.val = MLS_INT;
-      infc_present_03.val = 0; infc_geom_03.val = 0; infc_opn_03.val = MLS_INT;
-
-      bdry_present_00.val = 0;
-      bdry_present_01.val = 0;
-      bdry_present_02.val = 0;
-      bdry_present_03.val = 0;
-
-      break;
-
-    case 16: // shperical interface - case 5 from voronoi jump solver3D
-
-      n_um.val = 14; mag_um.val = 1; n_mu_m.val = 8; mag_mu_m.val = 1; n_diag_m.val = 0; mag_diag_m.val = 1;
-      n_up.val = 14; mag_up.val = 1; n_mu_p.val = 7; mag_mu_p.val = 1; n_diag_p.val = 0; mag_diag_p.val = 1;
-
-      infc_phi_num.val = 1;
-      bdry_phi_num.val = 0;
-
-      infc_present_00.val = 1; infc_geom_00.val = 2; infc_opn_00.val = MLS_INT;
-      infc_present_01.val = 0; infc_geom_01.val = 0; infc_opn_01.val = MLS_INT;
-      infc_present_02.val = 0; infc_geom_02.val = 0; infc_opn_02.val = MLS_INT;
-      infc_present_03.val = 0; infc_geom_03.val = 0; infc_opn_03.val = MLS_INT;
-
-      bdry_present_00.val = 0;
-      bdry_present_01.val = 0;
-      bdry_present_02.val = 0;
-      bdry_present_03.val = 0;
-
-      break;
-
-    case 17: // shperical interface - case 3 from voronoi jump solver2D
-
-      n_um.val = 13; mag_um.val = 1; n_mu_m.val = 5; mag_mu_m.val = 1; n_diag_m.val = 0; mag_diag_m.val = 1;
-      n_up.val = 16; mag_up.val = 1; n_mu_p.val = 6; mag_mu_p.val = 1; n_diag_p.val = 0; mag_diag_p.val = 1;
-
-      infc_phi_num.val = 1;
-      bdry_phi_num.val = 0;
-
-      infc_present_00.val = 1; infc_geom_00.val = 3; infc_opn_00.val = MLS_INT;
-      infc_present_01.val = 0; infc_geom_01.val = 0; infc_opn_01.val = MLS_INT;
-      infc_present_02.val = 0; infc_geom_02.val = 0; infc_opn_02.val = MLS_INT;
-      infc_present_03.val = 0; infc_geom_03.val = 0; infc_opn_03.val = MLS_INT;
-
-      bdry_present_00.val = 0;
-      bdry_present_01.val = 0;
-      bdry_present_02.val = 0;
-      bdry_present_03.val = 0;
-
-      break;
-
-    case 18: // shperical interface - case 0 from voronoi jump solver3D
-
-      n_um.val = 15; mag_um.val = 1; n_mu_m.val = 0; mag_mu_m.val = 1; n_diag_m.val = 0; mag_diag_m.val = 1;
-      n_up.val = 16; mag_up.val = 1; n_mu_p.val = 0; mag_mu_p.val = 1; n_diag_p.val = 0; mag_diag_p.val = 1;
-
-      infc_phi_num.val = 1;
-      bdry_phi_num.val = 0;
-
-      infc_present_00.val = 1; infc_geom_00.val = 3; infc_opn_00.val = MLS_INT;
-      infc_present_01.val = 0; infc_geom_01.val = 0; infc_opn_01.val = MLS_INT;
-      infc_present_02.val = 0; infc_geom_02.val = 0; infc_opn_02.val = MLS_INT;
-      infc_present_03.val = 0; infc_geom_03.val = 0; infc_opn_03.val = MLS_INT;
-
-      bdry_present_00.val = 0;
-      bdry_present_01.val = 0;
-      bdry_present_02.val = 0;
-      bdry_present_03.val = 0;
-
-      break;
-
-    case 20: // clusters of particles
-
-      n_um.val = 11; mag_um.val = 0; n_mu_m.val = 0; mag_mu_m.val = 10; n_diag_m.val = 0; mag_diag_m.val = 1;
-      n_up.val = 12; mag_up.val = 0; n_mu_p.val = 0; mag_mu_p.val = 1; n_diag_p.val = 0; mag_diag_p.val = 1;
-
-      infc_phi_num.val = 1;
-      bdry_phi_num.val = 0;
-
-      infc_present_00.val = 1; infc_geom_00.val = 5; infc_opn_00.val = MLS_INT;
-      infc_present_01.val = 0; infc_geom_01.val = 0; infc_opn_01.val = MLS_INT;
-      infc_present_02.val = 0; infc_geom_02.val = 0; infc_opn_02.val = MLS_INT;
-      infc_present_03.val = 0; infc_geom_03.val = 0; infc_opn_03.val = MLS_INT;
-
-      bdry_present_00.val = 0;
-      bdry_present_01.val = 0;
-      bdry_present_02.val = 0;
-      bdry_present_03.val = 0;
-
-      rhs_m_value.val = 0;
-      rhs_p_value.val = 0;
-
-      break;
-
-    case 21: // no boundaries, no interfaces, nonlinear
-
-      n_um.val = 0; mag_um.val = 1; n_mu_m.val = 0; mag_mu_m.val = 1; n_diag_m.val = 0; mag_diag_m.val = 1;
-      n_up.val = 0; mag_up.val = 1; n_mu_p.val = 0; mag_mu_p.val = 1; n_diag_p.val = 0; mag_diag_p.val = 1;
-
-      infc_phi_num.val = 0;
-      bdry_phi_num.val = 0;
-
-      infc_present_00.val = 0;
-      infc_present_01.val = 0;
-      infc_present_02.val = 0;
-      infc_present_03.val = 0;
-
-      bdry_present_00.val = 0;
-      bdry_present_01.val = 0;
-      bdry_present_02.val = 0;
-      bdry_present_03.val = 0;
-
-      nonlinear_term_m.val = 2;
-      nonlinear_term_m_coeff.val = 0;
-      nonlinear_term_m_mag.val = 1;
-
-      nonlinear_term_p.val = 2;
-      nonlinear_term_p_coeff.val = 0;
-      nonlinear_term_p_mag.val = 1;
-
-      break;
-
-    case 22: // sphere interior, nonlinear
-
-      n_um.val = 0; mag_um.val = 1; n_mu_m.val = 0; mag_mu_m.val = 1; n_diag_m.val = 1; mag_diag_m.val = 1;
-      n_up.val = 0; mag_up.val = 1; n_mu_p.val = 0; mag_mu_p.val = 1; n_diag_p.val = 1; mag_diag_p.val = 1;
-
-      infc_phi_num.val = 0;
-      bdry_phi_num.val = 1;
-
-      infc_present_00.val = 0;
-      infc_present_01.val = 0;
-      infc_present_02.val = 0;
-      infc_present_03.val = 0;
-
-      bdry_present_00.val = 1; bdry_geom_00.val = 1; bdry_opn_00.val = MLS_INT; bc_coeff_00.val = 0; bc_coeff_00_mag.val = 1; bc_type_00.val = DIRICHLET;
-      bdry_present_01.val = 0; bdry_geom_01.val = 0; bdry_opn_01.val = MLS_INT; bc_coeff_01.val = 0; bc_coeff_01_mag.val = 1; bc_type_01.val = DIRICHLET;
-      bdry_present_02.val = 0; bdry_geom_02.val = 0; bdry_opn_02.val = MLS_INT; bc_coeff_02.val = 0; bc_coeff_02_mag.val = 1; bc_type_02.val = DIRICHLET;
-      bdry_present_03.val = 0; bdry_geom_03.val = 0; bdry_opn_03.val = MLS_INT; bc_coeff_03.val = 0; bc_coeff_03_mag.val = 1; bc_type_03.val = DIRICHLET;
-
-      nonlinear_term_m.val = 2;
-      nonlinear_term_m_coeff.val = 0;
-      nonlinear_term_m_mag.val = 1;
-
-      nonlinear_term_p.val = 2;
-      nonlinear_term_p_coeff.val = 0;
-      nonlinear_term_p_mag.val = 1;
-
-      break;
-
-    case 23: // triangle/tetrahedron, nonlinear
-
-      n_um.val = 0; mag_um.val = 1; n_mu_m.val = 0; mag_mu_m.val = 1; n_diag_m.val = 0; mag_diag_m.val = 1;
-      n_up.val = 0; mag_up.val = 1; n_mu_p.val = 0; mag_mu_p.val = 1; n_diag_p.val = 0; mag_diag_p.val = 1;
-
-      infc_phi_num.val = 0;
-      bdry_phi_num.val = P4EST_DIM+1;
-
-      infc_present_00.val = 0;
-      infc_present_01.val = 0;
-      infc_present_02.val = 0;
-      infc_present_03.val = 0;
-
-      bdry_present_00.val = 1; bdry_geom_00.val = 13; bdry_opn_00.val = MLS_INT; bc_coeff_00.val = 0; bc_coeff_00_mag.val = 1; bc_type_00.val = ROBIN;
-      bdry_present_01.val = 1; bdry_geom_01.val = 14; bdry_opn_01.val = MLS_INT; bc_coeff_01.val = 0; bc_coeff_01_mag.val = 0; bc_type_01.val = ROBIN;
-      bdry_present_02.val = 1; bdry_geom_02.val = 15; bdry_opn_02.val = MLS_INT; bc_coeff_02.val = 2; bc_coeff_02_mag.val = 1; bc_type_02.val = ROBIN;
-      bdry_present_03.val = 1; bdry_geom_03.val = 16; bdry_opn_03.val = MLS_INT; bc_coeff_03.val = 1; bc_coeff_03_mag.val = 1; bc_type_03.val = ROBIN;
-
-      nonlinear_term_m.val = 2;
-      nonlinear_term_m_coeff.val = 0;
-      nonlinear_term_m_mag.val = 1;
-
-      nonlinear_term_p.val = 2;
-      nonlinear_term_p_coeff.val = 0;
-      nonlinear_term_p_mag.val = 1;
-
-      break;
-
-    case 24: // shperical interface, nonlinear
-
-      n_um.val = 11; mag_um.val = 1; n_mu_m.val = 0; mag_mu_m.val = 5; n_diag_m.val = 1; mag_diag_m.val = 1;
-      n_up.val = 12; mag_up.val = 1; n_mu_p.val = 0; mag_mu_p.val = 1; n_diag_p.val = 1; mag_diag_p.val = 1;
-
-      infc_phi_num.val = 1;
-      bdry_phi_num.val = 0;
-
-      infc_present_00.val = 1; infc_geom_00.val = 1; infc_opn_00.val = MLS_INT;
-      infc_present_01.val = 0; infc_geom_01.val = 0; infc_opn_01.val = MLS_INT;
-      infc_present_02.val = 0; infc_geom_02.val = 0; infc_opn_02.val = MLS_INT;
-      infc_present_03.val = 0; infc_geom_03.val = 0; infc_opn_03.val = MLS_INT;
-
-      bdry_present_00.val = 0;
-      bdry_present_01.val = 0;
-      bdry_present_02.val = 0;
-      bdry_present_03.val = 0;
-
-      nonlinear_term_m.val = 2;
-      nonlinear_term_m_coeff.val = 0;
-      nonlinear_term_m_mag.val = 1;
-
-      nonlinear_term_p.val = 2;
-      nonlinear_term_p_coeff.val = 0;
-      nonlinear_term_p_mag.val = 1;
-
-      break;
-
-    case 25: // curvy interface in an annular region, nonlinear
-
-      n_um.val = 11; mag_um.val = 1; n_mu_m.val = 1; mag_mu_m.val = 10; n_diag_m.val = 0; mag_diag_m.val = 1;
-      n_up.val = 12; mag_up.val = 1; n_mu_p.val = 0; mag_mu_p.val =  1; n_diag_p.val = 0; mag_diag_p.val = 1;
-
-      infc_phi_num.val = 1;
-      bdry_phi_num.val = 1;
-
-      infc_present_00.val = 1; infc_geom_00.val = 4; infc_opn_00.val = MLS_INT;
-      infc_present_01.val = 0; infc_geom_01.val = 0; infc_opn_01.val = MLS_INT;
-      infc_present_02.val = 0; infc_geom_02.val = 0; infc_opn_02.val = MLS_INT;
-      infc_present_03.val = 0; infc_geom_03.val = 0; infc_opn_03.val = MLS_INT;
-
-      bdry_present_00.val = 1; bdry_geom_00.val = 3; bdry_opn_00.val = MLS_INT; bc_coeff_00.val = 0; bc_coeff_00_mag.val = 1; bc_type_00.val = DIRICHLET;
-      bdry_present_01.val = 0; bdry_geom_01.val = 0; bdry_opn_01.val = MLS_INT; bc_coeff_01.val = 0; bc_coeff_01_mag.val = 1; bc_type_01.val = ROBIN;
-      bdry_present_02.val = 0; bdry_geom_02.val = 0; bdry_opn_02.val = MLS_INT; bc_coeff_02.val = 0; bc_coeff_02_mag.val = 1; bc_type_02.val = ROBIN;
-      bdry_present_03.val = 0; bdry_geom_03.val = 0; bdry_opn_03.val = MLS_INT; bc_coeff_03.val = 0; bc_coeff_03_mag.val = 1; bc_type_03.val = ROBIN;
-
-      nonlinear_term_m.val = 2;
-      nonlinear_term_m_coeff.val = 0;
-      nonlinear_term_m_mag.val = 1;
-
-      nonlinear_term_p.val = 2;
-      nonlinear_term_p_coeff.val = 0;
-      nonlinear_term_p_mag.val = 1;
-
-      break;
-
   }
 }
 
@@ -971,6 +579,61 @@ int *jc_flux_all[] = { &jc_flux_00.val,
                        &jc_flux_01.val,
                        &jc_flux_02.val,
                        &jc_flux_03.val };
+
+bool *bdry1_present_all[] = { &bdry1_present_00.val,
+                             &bdry1_present_01.val,
+                             &bdry1_present_02.val,
+                             &bdry1_present_03.val };
+
+int *bdry1_geom_all[] = { &bdry1_geom_00.val,
+                         &bdry1_geom_01.val,
+                         &bdry1_geom_02.val,
+                         &bdry1_geom_03.val };
+
+int *bdry1_opn_all[] = { &bdry1_opn_00.val,
+                        &bdry1_opn_01.val,
+                        &bdry1_opn_02.val,
+                        &bdry1_opn_03.val };
+
+int *bc1_coeff_all[] = {&bc1_coeff_00.val,
+                        &bc1_coeff_01.val,
+                        &bc1_coeff_02.val,
+                        &bc1_coeff_03.val };
+
+double *bc1_coeff_all_mag[] = { &bc1_coeff_00_mag.val,
+                               &bc1_coeff_01_mag.val,
+                               &bc1_coeff_02_mag.val,
+                               &bc1_coeff_03_mag.val };
+
+int *bc1_type_all[] = {&bc1_type_00.val,
+                       &bc1_type_01.val,
+                       &bc1_type_02.val,
+                       &bc1_type_03.val };
+
+bool *infc1_present_all[] = {&infc1_present_00.val,
+                             &infc1_present_01.val,
+                             &infc1_present_02.val,
+                             &infc1_present_03.val };
+
+int *infc1_geom_all[] = {&infc1_geom_00.val,
+                         &infc1_geom_01.val,
+                         &infc1_geom_02.val,
+                         &infc1_geom_03.val };
+
+int *infc1_opn_all[] = {&infc1_opn_00.val,
+                        &infc1_opn_01.val,
+                        &infc1_opn_02.val,
+                        &infc1_opn_03.val };
+
+int *jc1_value_all[] = {&jc1_value_00.val,
+                        &jc1_value_01.val,
+                        &jc1_value_02.val,
+                        &jc1_value_03.val };
+
+int *jc1_flux_all[] = {&jc1_flux_00.val,
+                       &jc1_flux_01.val,
+                       &jc1_flux_02.val,
+                       &jc1_flux_03.val };
 
 // DIFFUSION COEFFICIENTS
 class mu_all_cf_t : public CF_DIM
@@ -1116,6 +779,15 @@ mu_all_cf_t DIM(mux_m_cf(DDX, n_mu_m.val, mag_mu_m.val),
 mu_all_cf_t DIM(mux_p_cf(DDX, n_mu_p.val, mag_mu_p.val),
                 muy_p_cf(DDY, n_mu_p.val, mag_mu_p.val),
                 muz_p_cf(DDZ, n_mu_p.val, mag_mu_p.val));
+
+mu_all_cf_t mu_m_cf1(VAL, n_mu_m1.val, mag_mu_m1.val);
+mu_all_cf_t mu_p_cf1(VAL, n_mu_p1.val, mag_mu_p1.val);
+mu_all_cf_t DIM(mux_m_cf1(DDX, n_mu_m1.val, mag_mu_m1.val),
+                muy_m_cf1(DDY, n_mu_m1.val, mag_mu_m1.val),
+                muz_m_cf1(DDZ, n_mu_m1.val, mag_mu_m1.val));
+mu_all_cf_t DIM(mux_p_cf1(DDX, n_mu_p1.val, mag_mu_p1.val),
+                muy_p_cf1(DDY, n_mu_p1.val, mag_mu_p1.val),
+                muz_p_cf1(DDZ, n_mu_p1.val, mag_mu_p1.val));
 
 
 // TEST SOLUTIONS
@@ -1423,6 +1095,20 @@ public:
 #endif
           case LAP: return 0;
         }
+    case 21: switch (what) {
+#ifdef P4_TO_P8
+      case VAL: return  (*mag)*sin(PI*x/0.911)*sin(PI*y/0.911)*exp(PI*z/0.911);
+      case DDX: return  (*mag)*(PI/0.911)*cos(PI*x/0.911)*sin(PI*y/0.911)*exp(PI*z/0.911);
+      case DDY: return  (*mag)*(PI/0.911)*sin(PI*x/0.911)*cos(PI*y/0.911)*exp(PI*z/0.911);
+      case DDZ: return  (*mag)*(PI/0.911)*sin(PI*x/0.911)*sin(PI*y/0.911)*exp(PI*z/0.911);
+      case LAP: return -(*mag)*(PI/0.911)*(PI/0.911)*sin(PI*x/0.911)*sin(PI*y/0.911)*exp(PI*z/0.911);
+#else
+        case VAL: return  (*mag)*sin(PI*x/0.911)*sin(PI*y/0.911);
+        case DDX: return  (*mag)*(PI/0.911)*cos(PI*x/0.911)*sin(PI*y/0.911);
+        case DDY: return  (*mag)*(PI/0.911)*sin(PI*x/0.911)*cos(PI*y/0.911);
+        case LAP: return -(*mag)*2.*(PI/0.911)*(PI/0.911)*sin(PI*x/0.911)*sin(PI*y/0.911);
+#endif
+      }
       default:
         throw std::invalid_argument("Unknown test function\n");
     }
@@ -1437,6 +1123,15 @@ u_pm_cf_t DIM(ux_m_cf(DDX, n_um.val, mag_um.val),
 u_pm_cf_t DIM(ux_p_cf(DDX, n_up.val, mag_up.val),
               uy_p_cf(DDY, n_up.val, mag_up.val),
               uz_p_cf(DDZ, n_up.val, mag_up.val));
+
+u_pm_cf_t u_m_cf1(VAL, n_um1.val, mag_um1.val),  u_p_cf1(VAL, n_up1.val, mag_up1.val);
+u_pm_cf_t ul_m_cf1(LAP, n_um1.val, mag_um1.val), ul_p_cf1(LAP, n_up1.val, mag_up1.val);
+u_pm_cf_t DIM(ux_m_cf1(DDX, n_um1.val, mag_um1.val),
+              uy_m_cf1(DDY, n_um1.val, mag_um1.val),
+              uz_m_cf1(DDZ, n_um1.val, mag_um1.val));
+u_pm_cf_t DIM(ux_p_cf1(DDX, n_up1.val, mag_up1.val),
+              uy_p_cf1(DDY, n_up1.val, mag_up1.val),
+              uz_p_cf1(DDZ, n_up1.val, mag_up1.val));
 
 // DIAGONAL TERMS
 class diag_cf_t: public CF_DIM
@@ -1462,6 +1157,8 @@ public:
 diag_cf_t diag_m_cf(n_diag_m.val, mag_diag_m.val);
 diag_cf_t diag_p_cf(n_diag_p.val, mag_diag_p.val);
 
+diag_cf_t diag_m_cf1(n_diag_m1.val, mag_diag_m1.val);
+diag_cf_t diag_p_cf1(n_diag_p1.val, mag_diag_p1.val);
 // NONLINEAR TERMS
 class nonlinear_term_cf_t: public CF_1
 {
@@ -1504,6 +1201,9 @@ public:
 nonlinear_term_cf_t nonlinear_term_m_cf(VAL, nonlinear_term_m.val), nonlinear_term_m_prime_cf(DDX, nonlinear_term_m.val);
 nonlinear_term_cf_t nonlinear_term_p_cf(VAL, nonlinear_term_p.val), nonlinear_term_p_prime_cf(DDX, nonlinear_term_p.val);
 
+nonlinear_term_cf_t nonlinear_term_m_cf1(VAL, nonlinear_term_m1.val), nonlinear_term_m_prime_cf1(DDX, nonlinear_term_m1.val);
+nonlinear_term_cf_t nonlinear_term_p_cf1(VAL, nonlinear_term_p1.val), nonlinear_term_p_prime_cf1(DDX, nonlinear_term_p1.val);
+
 class nonlinear_term_coeff_cf_t: public CF_DIM
 {
   int *n;
@@ -1525,6 +1225,9 @@ public:
 
 nonlinear_term_coeff_cf_t nonlinear_term_m_coeff_cf(nonlinear_term_m_coeff.val, nonlinear_term_m_mag.val);
 nonlinear_term_coeff_cf_t nonlinear_term_p_coeff_cf(nonlinear_term_p_coeff.val, nonlinear_term_p_mag.val);
+
+nonlinear_term_coeff_cf_t nonlinear_term_m_coeff_cf1(nonlinear_term_m_coeff1.val, nonlinear_term_m_mag1.val);
+nonlinear_term_coeff_cf_t nonlinear_term_p_coeff_cf1(nonlinear_term_p_coeff1.val, nonlinear_term_p_mag1.val);
 
 // RHS
 class rhs_m_cf_t: public CF_DIM
@@ -1647,6 +1350,11 @@ bc_coeff_cf_t bc_coeff_cf_all[] = { bc_coeff_cf_t(bc_coeff_00.val, bc_coeff_00_m
                                     bc_coeff_cf_t(bc_coeff_02.val, bc_coeff_02_mag.val),
                                     bc_coeff_cf_t(bc_coeff_03.val, bc_coeff_03_mag.val) };
 
+
+bc_coeff_cf_t bc1_coeff_cf_all[] = {bc_coeff_cf_t(bc1_coeff_00.val, bc1_coeff_00_mag.val),
+                                    bc_coeff_cf_t(bc1_coeff_01.val, bc1_coeff_01_mag.val),
+                                    bc_coeff_cf_t(bc1_coeff_02.val, bc1_coeff_02_mag.val),
+                                    bc_coeff_cf_t(bc1_coeff_03.val, bc1_coeff_03_mag.val) };
 // DOMAIN GEOMETRY
 class bdry_phi_cf_t: public CF_DIM {
 public:
@@ -1670,7 +1378,7 @@ public:
       } break;
       case 2: // circle/sphere exterior
       {
-        static double r0 = 0.311, DIM(xc = 0, yc = 0, zc = 0);
+        static double r0 = 0.911, DIM(xc = 0, yc = 0, zc = 0);
         static flower_shaped_domain_t circle(r0, DIM(xc, yc, zc), 0, -1);
         switch (what) {
           _CODE( case VAL: return circle.phi  (DIM(x,y,z)) );
@@ -1872,6 +1580,29 @@ bdry_phi_cf_t bdry_phi_z_cf_all[] = { bdry_phi_cf_t(DDZ, bdry_geom_00.val),
                                       bdry_phi_cf_t(DDZ, bdry_geom_03.val) };
 #endif
 
+bdry_phi_cf_t bdry1_phi_cf_all  [] = { bdry_phi_cf_t(VAL, bdry1_geom_00.val),
+                                      bdry_phi_cf_t(VAL, bdry1_geom_01.val),
+                                      bdry_phi_cf_t(VAL, bdry1_geom_02.val),
+                                      bdry_phi_cf_t(VAL, bdry1_geom_03.val) };
+
+bdry_phi_cf_t bdry1_phi_x_cf_all[] = { bdry_phi_cf_t(DDX, bdry1_geom_00.val),
+                                      bdry_phi_cf_t(DDX, bdry1_geom_01.val),
+                                      bdry_phi_cf_t(DDX, bdry1_geom_02.val),
+                                      bdry_phi_cf_t(DDX, bdry1_geom_03.val) };
+
+bdry_phi_cf_t bdry1_phi_y_cf_all[] = { bdry_phi_cf_t(DDY, bdry1_geom_00.val),
+                                      bdry_phi_cf_t(DDY, bdry1_geom_01.val),
+                                      bdry_phi_cf_t(DDY, bdry1_geom_02.val),
+                                      bdry_phi_cf_t(DDY, bdry1_geom_03.val) };
+#ifdef P4_TO_P8
+bdry_phi_cf_t bdry1_phi_z_cf_all[] = {bdry_phi_cf_t(DDZ, bdry1_geom_00.val),
+                                      bdry_phi_cf_t(DDZ, bdry1_geom_01.val),
+                                      bdry_phi_cf_t(DDZ, bdry1_geom_02.val),
+                                      bdry_phi_cf_t(DDZ, bdry1_geom_03.val) };
+#endif
+
+
+
 // INTERFACE GEOMETRY
 class infc_phi_cf_t: public CF_DIM {
 public:
@@ -2016,9 +1747,32 @@ infc_phi_cf_t infc_phi_z_cf_all[] = { infc_phi_cf_t(DDZ, infc_geom_00.val),
                                       infc_phi_cf_t(DDZ, infc_geom_03.val) };
 #endif
 
+infc_phi_cf_t infc1_phi_cf_all  [] = {infc_phi_cf_t(VAL, infc1_geom_00.val),
+                                      infc_phi_cf_t(VAL, infc1_geom_01.val),
+                                      infc_phi_cf_t(VAL, infc1_geom_02.val),
+                                      infc_phi_cf_t(VAL, infc1_geom_03.val) };
+
+infc_phi_cf_t infc1_phi_x_cf_all[] = {infc_phi_cf_t(DDX, infc1_geom_00.val),
+                                      infc_phi_cf_t(DDX, infc1_geom_01.val),
+                                      infc_phi_cf_t(DDX, infc1_geom_02.val),
+                                      infc_phi_cf_t(DDX, infc1_geom_03.val) };
+
+infc_phi_cf_t infc1_phi_y_cf_all[] = {infc_phi_cf_t(DDY, infc1_geom_00.val),
+                                      infc_phi_cf_t(DDY, infc1_geom_01.val),
+                                      infc_phi_cf_t(DDY, infc1_geom_02.val),
+                                      infc_phi_cf_t(DDY, infc1_geom_03.val) };
+#ifdef P4_TO_P8
+infc_phi_cf_t infc1_phi_z_cf_all[] = {infc_phi_cf_t(DDZ, infc1_geom_00.val),
+                                      infc_phi_cf_t(DDZ, infc1_geom_01.val),
+                                      infc_phi_cf_t(DDZ, infc1_geom_02.val),
+                                      infc_phi_cf_t(DDZ, infc1_geom_03.val) };
+#endif
 // the effective LSF (initialized in main!)
 mls_eff_cf_t bdry_phi_eff_cf;
 mls_eff_cf_t infc_phi_eff_cf;
+
+mls_eff_cf_t bdry1_phi_eff_cf;
+mls_eff_cf_t infc1_phi_eff_cf;
 
 class phi_eff_cf_t : public CF_DIM
 {
@@ -2030,44 +1784,82 @@ public:
   {
     return MAX( (*bdry_phi_cf_)(DIM(x,y,z)), -fabs((*infc_phi_cf_)(DIM(x,y,z))) );
   }
-} phi_eff_cf(bdry_phi_eff_cf, infc_phi_eff_cf);
-
+};
+phi_eff_cf_t phi_eff_cf(bdry_phi_eff_cf,infc_phi_eff_cf);
+phi_eff_cf_t phi_eff_cf1(bdry1_phi_eff_cf,infc1_phi_eff_cf);
 class mu_cf_t : public CF_DIM
 {
+  CF_DIM *infc_phi_cf_;
+  CF_DIM *mu_m_cf_;
+  CF_DIM *mu_p_cf_;
 public:
+  mu_cf_t(CF_DIM &infc_phi_cf, CF_DIM &mu_m_cf, CF_DIM &mu_p_cf) : infc_phi_cf_(&infc_phi_cf), mu_m_cf_(&mu_m_cf), mu_p_cf_(&mu_p_cf) {}
   double operator()(DIM(double x, double y, double z)) const {
-    return infc_phi_eff_cf(DIM(x,y,z)) >= 0 ? mu_p_cf(DIM(x,y,z)) : mu_m_cf(DIM(x,y,z));
+    return (*infc_phi_cf_)(DIM(x,y,z)) >= 0 ? (*mu_p_cf_)(DIM(x,y,z)) : (*mu_m_cf_)(DIM(x,y,z));
   }
-} mu_cf;
+};
+mu_cf_t mu_cf(infc_phi_eff_cf, mu_p_cf, mu_m_cf);
+mu_cf_t mu_cf1(infc_phi_eff_cf, mu_p_cf1, mu_m_cf1);
+
+
 class u_cf_t : public CF_DIM
 {
+  CF_DIM *infc_phi_cf_;
+  CF_DIM *u_m_cf_;
+  CF_DIM *u_p_cf_;
 public:
-  double operator()(DIM(double x, double y, double z)) const {
-    return infc_phi_eff_cf(DIM(x,y,z)) >= 0 ? u_p_cf(DIM(x,y,z)) : u_m_cf(DIM(x,y,z));
+    u_cf_t(CF_DIM &infc_phi_cf, CF_DIM &u_m_cf, CF_DIM &u_p_cf) : infc_phi_cf_(&infc_phi_cf), u_m_cf_(&u_m_cf), u_p_cf_(&u_p_cf) {}
+    double operator()(DIM(double x, double y, double z)) const {
+    return (*infc_phi_cf_)(DIM(x,y,z)) >= 0 ? (*u_p_cf_)(DIM(x,y,z)) : (*u_m_cf_)(DIM(x,y,z));
   }
-} u_cf;
+};
+u_cf_t u_cf(infc_phi_eff_cf, u_p_cf, u_m_cf);
+u_cf_t u_cf1(infc_phi_eff_cf, u_p_cf1, u_m_cf1);
+
+
 class ux_cf_t : public CF_DIM
 {
+  CF_DIM *infc_phi_cf_;
+  CF_DIM *ux_m_cf_;
+  CF_DIM *ux_p_cf_;
 public:
-  double operator()(DIM(double x, double y, double z)) const  {
-    return infc_phi_eff_cf(DIM(x,y,z)) >= 0 ? ux_p_cf(DIM(x,y,z)) : ux_m_cf(DIM(x,y,z));
+    ux_cf_t(CF_DIM &infc_phi_cf, CF_DIM &ux_m_cf, CF_DIM &ux_p_cf) : infc_phi_cf_(&infc_phi_cf), ux_m_cf_(&ux_m_cf), ux_p_cf_(&ux_p_cf) {}
+    double operator()(DIM(double x, double y, double z)) const {
+    return (*infc_phi_cf_)(DIM(x,y,z)) >= 0 ? (*ux_p_cf_)(DIM(x,y,z)) : (*ux_m_cf_)(DIM(x,y,z));
   }
-} ux_cf;
+};
+ux_cf_t ux_cf(infc_phi_eff_cf, ux_p_cf, ux_m_cf);
+ux_cf_t ux_cf1(infc_phi_eff_cf, ux_p_cf1, ux_m_cf1);
+
 class uy_cf_t : public CF_DIM
 {
+  CF_DIM *infc_phi_cf_;
+  CF_DIM *uy_m_cf_;
+  CF_DIM *uy_p_cf_;
 public:
-  double operator()(DIM(double x, double y, double z)) const {
-    return infc_phi_eff_cf(DIM(x,y,z)) >= 0 ? uy_p_cf(DIM(x,y,z)) : uy_m_cf(DIM(x,y,z));
+    uy_cf_t(CF_DIM &infc_phi_cf, CF_DIM &uy_m_cf, CF_DIM &uy_p_cf) : infc_phi_cf_(&infc_phi_cf), uy_m_cf_(&uy_m_cf), uy_p_cf_(&uy_p_cf) {}
+    double operator()(DIM(double x, double y, double z)) const {
+    return (*infc_phi_cf_)(DIM(x,y,z)) >= 0 ? (*uy_p_cf_)(DIM(x,y,z)) : (*uy_m_cf_)(DIM(x,y,z));
   }
-} uy_cf;
+};
+uy_cf_t uy_cf(infc_phi_eff_cf, uy_p_cf, uy_m_cf);
+uy_cf_t uy_cf1(infc_phi_eff_cf, uy_p_cf1, uy_m_cf1);
+
+
 #ifdef P4_TO_P8
 class uz_cf_t : public CF_DIM
 {
+  CF_DIM *infc_phi_cf_;
+  CF_DIM *uz_m_cf_;
+  CF_DIM *uz_p_cf_;
 public:
-  double operator()(DIM(double x, double y, double z)) const {
-    return infc_phi_eff_cf(DIM(x,y,z)) >= 0 ? uz_p_cf(DIM(x,y,z)) : uz_m_cf(DIM(x,y,z));
+    uz_cf_t(CF_DIM &infc_phi_cf, CF_DIM &uz_m_cf, CF_DIM &uz_p_cf) : infc_phi_cf_(&infc_phi_cf), uz_m_cf_(&uz_m_cf), uz_p_cf_(&uz_p_cf) {}
+    double operator()(DIM(double x, double y, double z)) const {
+    return (*infc_phi_cf_)(DIM(x,y,z)) >= 0 ? (*uz_p_cf_)(DIM(x,y,z)) : (*uz_m_cf_)(DIM(x,y,z));
   }
-} uz_cf;
+};
+uz_cf_t uz_cf(infc_phi_eff_cf, uz_p_cf, uz_m_cf);
+uz_cf_t uz_cf1(infc_phi_eff_cf, uz_p_cf1, uz_m_cf1);
 #endif
 
 // BC VALUES
@@ -2078,21 +1870,36 @@ class bc_value_robin_t : public CF_DIM
              *phi_y_cf_,
              *phi_z_cf_);
   CF_DIM *bc_coeff_cf_;
+  CF_DIM *u_cf_;
+  CF_DIM *mu_cf_;
+  CF_DIM DIM(*ux_cf_,
+             *uy_cf_,
+             *uz_cf_);
 public:
   bc_value_robin_t(BoundaryConditionType *bc_type,
                    CF_DIM *bc_coeff_cf,
+                   CF_DIM *u_cf,
+                   CF_DIM *mu_cf,
                    DIM(CF_DIM *phi_x_cf,
                        CF_DIM *phi_y_cf,
-                       CF_DIM *phi_z_cf))
+                       CF_DIM *phi_z_cf),
+                   DIM(CF_DIM *ux_cf,
+                       CF_DIM *uy_cf,
+                       CF_DIM *uz_cf))
     : bc_type_(bc_type),
       bc_coeff_cf_(bc_coeff_cf),
+      u_cf_(u_cf),
+      mu_cf_(mu_cf),
       DIM(phi_x_cf_(phi_x_cf),
           phi_y_cf_(phi_y_cf),
-          phi_z_cf_(phi_z_cf)) {}
+          phi_z_cf_(phi_z_cf)),
+      DIM(ux_cf_(ux_cf),
+          uy_cf_(uy_cf),
+          uz_cf_(uz_cf)){}
   double operator()(DIM(double x, double y, double z)) const
   {
     switch (*bc_type_) {
-      case DIRICHLET: return u_cf(DIM(x,y,z));
+      case DIRICHLET: return (*u_cf_)(DIM(x,y,z))*0.0;
       case NEUMANN: {
           double DIM( nx = (*phi_x_cf_)(DIM(x,y,z)),
                       ny = (*phi_y_cf_)(DIM(x,y,z)),
@@ -2101,9 +1908,9 @@ public:
           double norm = sqrt(SUMD(nx*nx, ny*ny, nz*nz));
           nx /= norm; ny /= norm; P8( nz /= norm );
 
-          return mu_cf(DIM(x,y,z))*SUMD(nx*ux_cf(DIM(x,y,z)),
-                                        ny*uy_cf(DIM(x,y,z)),
-                                        nz*uz_cf(DIM(x,y,z)));
+          return (*bc_coeff_cf_)(DIM(x,y,z))*(*mu_cf_)(DIM(x,y,z))*SUMD(nx*(*ux_cf_)(DIM(x,y,z)),
+                                                                        ny*(*uy_cf_)(DIM(x,y,z)),
+                                                                        nz*(*uz_cf_)(DIM(x,y,z)));
         }
       case ROBIN: {
           double DIM( nx = (*phi_x_cf_)(DIM(x,y,z)),
@@ -2113,51 +1920,73 @@ public:
           double norm = sqrt(SUMD(nx*nx, ny*ny, nz*nz));
           nx /= norm; ny /= norm; CODE3D( nz /= norm );
 
-          return mu_cf(DIM(x,y,z))*SUMD(nx*ux_cf(DIM(x,y,z)),
-                                        ny*uy_cf(DIM(x,y,z)),
-                                        nz*uz_cf(DIM(x,y,z))) + (*bc_coeff_cf_)(DIM(x,y,z))*u_cf(DIM(x,y,z));
+          return (*mu_cf_)(DIM(x,y,z))*SUMD(nx*(*ux_cf_)(DIM(x,y,z)),
+                                        ny*(*uy_cf_)(DIM(x,y,z)),
+                                        nz*(*uz_cf_)(DIM(x,y,z))) + (*bc_coeff_cf_)(DIM(x,y,z))*(*u_cf_)(DIM(x,y,z));
         }
     }
   }
 };
 
-bc_value_robin_t bc_value_cf_all[] = { bc_value_robin_t((BoundaryConditionType *)&bc_type_00.val, &bc_coeff_cf_all[0], DIM(&bdry_phi_x_cf_all[0], &bdry_phi_y_cf_all[0], &bdry_phi_z_cf_all[0])),
-                                       bc_value_robin_t((BoundaryConditionType *)&bc_type_01.val, &bc_coeff_cf_all[1], DIM(&bdry_phi_x_cf_all[1], &bdry_phi_y_cf_all[1], &bdry_phi_z_cf_all[1])),
-                                       bc_value_robin_t((BoundaryConditionType *)&bc_type_02.val, &bc_coeff_cf_all[2], DIM(&bdry_phi_x_cf_all[2], &bdry_phi_y_cf_all[2], &bdry_phi_z_cf_all[2])),
-                                       bc_value_robin_t((BoundaryConditionType *)&bc_type_03.val, &bc_coeff_cf_all[3], DIM(&bdry_phi_x_cf_all[3], &bdry_phi_y_cf_all[3], &bdry_phi_z_cf_all[3])) };
+bc_value_robin_t bc_value_cf_all[] = { bc_value_robin_t((BoundaryConditionType *)&bc_type_00.val, &bc_coeff_cf_all[0], &u_cf, &mu_cf, DIM(&bdry_phi_x_cf_all[0], &bdry_phi_y_cf_all[0], &bdry_phi_z_cf_all[0]),DIM(&ux_cf, &uy_cf, &uz_cf)),
+                                       bc_value_robin_t((BoundaryConditionType *)&bc_type_01.val, &bc_coeff_cf_all[1], &u_cf, &mu_cf, DIM(&bdry_phi_x_cf_all[1], &bdry_phi_y_cf_all[1], &bdry_phi_z_cf_all[1]),DIM(&ux_cf, &uy_cf, &uz_cf)),
+                                       bc_value_robin_t((BoundaryConditionType *)&bc_type_02.val, &bc_coeff_cf_all[2], &u_cf, &mu_cf, DIM(&bdry_phi_x_cf_all[2], &bdry_phi_y_cf_all[2], &bdry_phi_z_cf_all[2]),DIM(&ux_cf, &uy_cf, &uz_cf)),
+                                       bc_value_robin_t((BoundaryConditionType *)&bc_type_03.val, &bc_coeff_cf_all[3], &u_cf, &mu_cf, DIM(&bdry_phi_x_cf_all[3], &bdry_phi_y_cf_all[3], &bdry_phi_z_cf_all[3]),DIM(&ux_cf, &uy_cf, &uz_cf))};
+
+bc_value_robin_t bc1_value_cf_all[] = { bc_value_robin_t((BoundaryConditionType *)&bc1_type_00.val, &bc1_coeff_cf_all[0], &u_cf1, &mu_cf1, DIM(&bdry1_phi_x_cf_all[0], &bdry1_phi_y_cf_all[0], &bdry1_phi_z_cf_all[0]),DIM(&ux_cf1, &uy_cf1, &uz_cf1)),
+                                        bc_value_robin_t((BoundaryConditionType *)&bc1_type_01.val, &bc1_coeff_cf_all[1], &u_cf1, &mu_cf1, DIM(&bdry1_phi_x_cf_all[1], &bdry1_phi_y_cf_all[1], &bdry1_phi_z_cf_all[1]),DIM(&ux_cf1, &uy_cf1, &uz_cf1)),
+                                        bc_value_robin_t((BoundaryConditionType *)&bc1_type_02.val, &bc1_coeff_cf_all[2], &u_cf1, &mu_cf1, DIM(&bdry1_phi_x_cf_all[2], &bdry1_phi_y_cf_all[2], &bdry1_phi_z_cf_all[2]),DIM(&ux_cf1, &uy_cf1, &uz_cf1)),
+                                        bc_value_robin_t((BoundaryConditionType *)&bc1_type_03.val, &bc1_coeff_cf_all[3], &u_cf1, &mu_cf1, DIM(&bdry1_phi_x_cf_all[3], &bdry1_phi_y_cf_all[3], &bdry1_phi_z_cf_all[3]),DIM(&ux_cf1, &uy_cf1, &uz_cf1))};
 
 // JUMP CONDITIONS
 class jc_value_cf_t : public CF_DIM
 {
   int    *n;
   double *mag;
+  CF_DIM *u_m_cf_;
+  CF_DIM *u_p_cf_;
 public:
-  jc_value_cf_t(int &n) : n(&n) {}
+  jc_value_cf_t(int &n, CF_DIM *u_m_cf, CF_DIM *u_p_cf) : n(&n),
+                                                          u_m_cf_(u_m_cf),
+                                                          u_p_cf_(u_p_cf) {}
   double operator()(DIM(double x, double y, double z)) const
   {
     switch(*n) {
-      case 0: return u_p_cf(DIM(x,y,z)) - u_m_cf(DIM(x,y,z));
+      case 0: return (*u_p_cf_)(DIM(x,y,z)) - (*u_p_cf_)(DIM(x,y,z));
       case 1: return 0;
     }
   }
 };
 
-jc_value_cf_t jc_value_cf_all[] = { jc_value_cf_t(jc_value_00.val),
-                                    jc_value_cf_t(jc_value_01.val),
-                                    jc_value_cf_t(jc_value_02.val),
-                                    jc_value_cf_t(jc_value_03.val) };
+jc_value_cf_t jc_value_cf_all[] = { jc_value_cf_t(jc_value_00.val,&u_m_cf,&u_p_cf),
+                                    jc_value_cf_t(jc_value_01.val,&u_m_cf,&u_p_cf),
+                                    jc_value_cf_t(jc_value_02.val,&u_m_cf,&u_p_cf),
+                                    jc_value_cf_t(jc_value_03.val,&u_m_cf,&u_p_cf) };
+jc_value_cf_t jc1_value_cf_all[] = { jc_value_cf_t(jc1_value_00.val,&u_m_cf1,&u_p_cf1),
+                                     jc_value_cf_t(jc1_value_01.val,&u_m_cf1,&u_p_cf1),
+                                     jc_value_cf_t(jc1_value_02.val,&u_m_cf1,&u_p_cf1),
+                                     jc_value_cf_t(jc1_value_03.val,&u_m_cf1,&u_p_cf1) };
 
-jc_value_cf_t jc_value_cf(jc_value_00.val);
-
+jc_value_cf_t jc_value_cf(jc_value_00.val,&u_m_cf,&u_p_cf);
+jc_value_cf_t jc_value_cf1(jc1_value_00.val,&u_m_cf1,&u_p_cf1);
 class jc_flux_t : public CF_DIM
 {
   int    *n;
+  CF_DIM *mu_p_cf_;
+  CF_DIM *mu_m_cf_;
   CF_DIM *phi_x_;
   CF_DIM *phi_y_;
   CF_DIM *phi_z_;
+  CF_DIM *ux_p_cf_;
+  CF_DIM *ux_m_cf_;
+  CF_DIM *uy_p_cf_;
+  CF_DIM *uy_m_cf_;
+  CF_DIM *uz_p_cf_;
+  CF_DIM *uz_m_cf_;
+
 public:
-  jc_flux_t(int &n, DIM(CF_DIM *phi_x, CF_DIM *phi_y, CF_DIM *phi_z)) :
-    n(&n), DIM(phi_x_(phi_x), phi_y_(phi_y), phi_z_(phi_z)) {}
+  jc_flux_t(int &n, CF_DIM *mu_p_cf, CF_DIM *mu_m_cf, DIM(CF_DIM *phi_x, CF_DIM *phi_y, CF_DIM *phi_z), DIM(CF_DIM *ux_p_cf, CF_DIM *uy_p_cf, CF_DIM *uz_p_cf), DIM(CF_DIM *ux_m_cf, CF_DIM *uy_m_cf, CF_DIM *uz_m_cf) ) :
+    n(&n), mu_p_cf_(mu_p_cf), mu_m_cf_(mu_m_cf), DIM(phi_x_(phi_x), phi_y_(phi_y), phi_z_(phi_z)), DIM(ux_p_cf_(ux_p_cf),uy_p_cf_(uy_p_cf), uz_p_cf_(uz_p_cf)),  DIM(ux_m_cf_(ux_m_cf),uy_m_cf_(uy_m_cf), uz_m_cf_(uz_m_cf)){}
 
   double operator()(DIM(double x, double y, double z)) const
   {
@@ -2170,18 +1999,22 @@ public:
         double norm = sqrt(SUMD(nx*nx, ny*ny, nz*nz));
         nx /= norm; ny /= norm; CODE3D( nz /= norm; )
 
-            return mu_p_cf(DIM(x,y,z)) * SUMD(ux_p_cf(DIM(x,y,z))*nx, uy_p_cf(DIM(x,y,z))*ny, uz_p_cf(DIM(x,y,z))*nz)
-            -  mu_m_cf(DIM(x,y,z)) * SUMD(ux_m_cf(DIM(x,y,z))*nx, uy_m_cf(DIM(x,y,z))*ny, uz_m_cf(DIM(x,y,z))*nz);
+            return (*mu_p_cf_)(DIM(x,y,z)) * SUMD((*ux_p_cf_)(DIM(x,y,z))*nx, (*uy_p_cf_)(DIM(x,y,z))*ny, (*uz_p_cf_)(DIM(x,y,z))*nz)
+            -  (*mu_m_cf_)(DIM(x,y,z)) * SUMD((*ux_m_cf_)(DIM(x,y,z))*nx, (*uy_m_cf_)(DIM(x,y,z))*ny, (*uz_m_cf_)(DIM(x,y,z))*nz);
       }
       case 1: return 0;
     }
   }
 };
 
-jc_flux_t jc_flux_cf_all[] = { jc_flux_t(jc_flux_00.val, DIM(&infc_phi_x_cf_all[0], &infc_phi_y_cf_all[0], &infc_phi_z_cf_all[0])),
-                               jc_flux_t(jc_flux_01.val, DIM(&infc_phi_x_cf_all[1], &infc_phi_y_cf_all[1], &infc_phi_z_cf_all[1])),
-                               jc_flux_t(jc_flux_02.val, DIM(&infc_phi_x_cf_all[2], &infc_phi_y_cf_all[2], &infc_phi_z_cf_all[2])),
-                               jc_flux_t(jc_flux_03.val, DIM(&infc_phi_x_cf_all[3], &infc_phi_y_cf_all[3], &infc_phi_z_cf_all[3])) };
+jc_flux_t jc_flux_cf_all[] = { jc_flux_t(jc_flux_00.val, &mu_m_cf, &mu_p_cf, DIM(&infc_phi_x_cf_all[0], &infc_phi_y_cf_all[0], &infc_phi_z_cf_all[0]), DIM(&ux_p_cf, &uy_p_cf, &uz_p_cf), DIM(&ux_m_cf, &uy_m_cf, &uz_m_cf)),
+                               jc_flux_t(jc_flux_01.val, &mu_m_cf, &mu_p_cf, DIM(&infc_phi_x_cf_all[1], &infc_phi_y_cf_all[1], &infc_phi_z_cf_all[1]), DIM(&ux_p_cf, &uy_p_cf, &uz_p_cf), DIM(&ux_m_cf, &uy_m_cf, &uz_m_cf)),
+                               jc_flux_t(jc_flux_02.val, &mu_m_cf, &mu_p_cf, DIM(&infc_phi_x_cf_all[2], &infc_phi_y_cf_all[2], &infc_phi_z_cf_all[2]), DIM(&ux_p_cf, &uy_p_cf, &uz_p_cf), DIM(&ux_m_cf, &uy_m_cf, &uz_m_cf)),
+                               jc_flux_t(jc_flux_03.val, &mu_m_cf, &mu_p_cf, DIM(&infc_phi_x_cf_all[3], &infc_phi_y_cf_all[3], &infc_phi_z_cf_all[3]), DIM(&ux_p_cf, &uy_p_cf, &uz_p_cf), DIM(&ux_m_cf, &uy_m_cf, &uz_m_cf)) };
+jc_flux_t jc1_flux_cf_all[] = { jc_flux_t(jc1_flux_00.val, &mu_m_cf1, &mu_p_cf1, DIM(&infc1_phi_x_cf_all[0], &infc1_phi_y_cf_all[0], &infc1_phi_z_cf_all[0]), DIM(&ux_p_cf1, &uy_p_cf1, &uz_p_cf1), DIM(&ux_m_cf1, &uy_m_cf1, &uz_m_cf1)),
+                               jc_flux_t(jc1_flux_01.val, &mu_m_cf1, &mu_p_cf1, DIM(&infc1_phi_x_cf_all[1], &infc1_phi_y_cf_all[1], &infc1_phi_z_cf_all[1]), DIM(&ux_p_cf1, &uy_p_cf1, &uz_p_cf1), DIM(&ux_m_cf1, &uy_m_cf1, &uz_m_cf1)),
+                               jc_flux_t(jc1_flux_02.val, &mu_m_cf1, &mu_p_cf1, DIM(&infc1_phi_x_cf_all[2], &infc1_phi_y_cf_all[2], &infc1_phi_z_cf_all[2]), DIM(&ux_p_cf1, &uy_p_cf1, &uz_p_cf1), DIM(&ux_m_cf1, &uy_m_cf1, &uz_m_cf1)),
+                               jc_flux_t(jc1_flux_03.val, &mu_m_cf1, &mu_p_cf1, DIM(&infc1_phi_x_cf_all[3], &infc1_phi_y_cf_all[3], &infc1_phi_z_cf_all[3]), DIM(&ux_p_cf1, &uy_p_cf1, &uz_p_cf1), DIM(&ux_m_cf1, &uy_m_cf1, &uz_m_cf1)) };
 
 
 class bc_wall_type_t : public WallBCDIM
@@ -2214,6 +2047,122 @@ public:
 
   }
 } dom_perturb_cf(dom_perturb.val), ifc_perturb_cf(ifc_perturb.val);
+void setup_u_exact(vec_and_ptr_t u_ex, double time, p4est_t* p4est, p4est_nodes_t* nodes,my_p4est_node_neighbors_t *ngbd){
+  u_ex.get_array();
+
+  foreach_node(n,nodes){
+    double xyz[P4EST_DIM];
+    node_xyz_fr_n(n, p4est, nodes, xyz);
+    u_ex.ptr[n] = 5*tn*xyz[0]*(xmax.val- xyz[0])*xyz[1]*(xyz[1]-ymax.val);
+  }// end of loop over nodes
+
+  u_ex.restore_array();
+}
+
+void setup_rhs(vec_and_ptr_t u, vec_and_ptr_t u1,vec_and_ptr_t rhs_u, vec_and_ptr_t rhs_u1, p4est_t* p4est, p4est_nodes_t* nodes,my_p4est_node_neighbors_t *ngbd, double time){
+
+  // In building RHS, we have two options: (1) Backward Euler 1st order approx, (2) Crank Nicholson 2nd order approx
+  // (1) du/dt = (u(n+1) - u(n)/dt) --> which is a backward euler 1st order approximation (since the RHS is discretized spatially at T(n+1))
+  // (2) du/dt = alpha*laplace(u) ~ (u(n+1) - u(n)/dt) = (1/2)*(laplace(u(n)) + laplace(u(n+1)) )  ,
+  //                              in which case we need the second derivatives of the temperature field at time n
+  // Where alpha is the thermal diffusivity of the phase
+
+
+
+    // Get derivatives of temperature fields if we are using Crank Nicholson:
+    vec_and_ptr_dim_t u_dd;
+    vec_and_ptr_dim_t u1_dd;
+    if(method_.val ==2){
+        u_dd.create(p4est,nodes);
+        ngbd->second_derivatives_central(u.vec,u_dd.vec);
+        u_dd.get_array();
+
+        u1_dd.create(p4est,nodes);
+        ngbd->second_derivatives_central(u1.vec,u1_dd.vec);
+        u1_dd.get_array();
+      }
+
+  // Get u arrays:
+  u.get_array();
+  rhs_u.get_array();
+
+  // Get u1 arrays:
+  u1.get_array();
+  rhs_u1.get_array();
+
+
+  foreach_node(n,nodes){
+    double xyz[P4EST_DIM];
+    node_xyz_fr_n(n, p4est, nodes, xyz);
+    // First, assemble system for Ts depending on case:
+    if(method_.val == 2){ // Crank Nicholson
+        rhs_u.ptr[n] = 2.*u.ptr[n]/dt.val + mu_cf.value(xyz)*(u_dd.ptr[0][n] + u_dd.ptr[1][n] CODE3D(+ u_dd.ptr[2][n]));
+        rhs_u1.ptr[n] = 2.*u1.ptr[n]/dt.val + mu_cf1.value(xyz)*(u1_dd.ptr[0][n] + u1_dd.ptr[1][n] CODE3D(+ u1_dd.ptr[2][n]));
+      }
+    else{ // Backward Euler
+        rhs_u.ptr[n] = u.ptr[n]/dt.val + 5*xyz[0]*(xmax.val- xyz[0])*xyz[1]*(xyz[1]-ymax.val) + 10*0.1*tn*(-xyz[0]*(xmax.val- xyz[0])+xyz[1]*(xyz[1]-ymax.val));
+        rhs_u1.ptr[n] = u1.ptr[n]/dt.val + 5*xyz[0]*(xmax.val- xyz[0])*xyz[1]*(xyz[1]-ymax.val) + 10*0.1*tn*(-xyz[0]*(xmax.val- xyz[0])+xyz[1]*(xyz[1]-ymax.val));
+      }
+  }// end of loop over nodes
+
+  // Restore u arrays:
+  u.restore_array();
+  rhs_u.restore_array();
+
+  // Restore u1 arrays:
+  rhs_u1.restore_array();
+  u1.restore_array();
+
+  if(method_.val ==2){
+      u_dd.restore_array();
+      u_dd.destroy();
+
+      u1_dd.restore_array();
+      u1_dd.destroy();
+    }
+}
+
+void save_fields(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,vec_and_ptr_t phi, vec_and_ptr_t phi1, vec_and_ptr_t u,vec_and_ptr_t u1, char* filename ){
+  // Things we want to save:
+  /*
+   * LSF
+   * LSF2 for ex 2
+   * Tl
+   * Ts
+   * v_interface
+   * */
+
+    // First, need to scale the fields appropriately:
+
+
+    // Get arrays:
+    phi.get_array();
+    phi1.get_array();
+    u.get_array(); u1.get_array();
+
+
+    // Save data:
+    std::vector<std::string> point_names;
+    std::vector<double*> point_data;
+
+
+    point_names = {"phi","phi1","u","u1"};
+    point_data = {phi.ptr,phi1.ptr,u.ptr,u1.ptr};
+
+
+    std::vector<std::string> cell_names;
+    std::vector<double*> cell_data;
+
+    my_p4est_vtk_write_all_vector_form(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,filename,point_data,point_names,cell_data,cell_names);
+
+
+    // Restore arrays:
+
+    phi.restore_array();
+    u.restore_array(); u1.restore_array();
+    phi1.restore_array();
+
+}
 
 // additional output functions
 double compute_convergence_order(std::vector<double> &x, std::vector<double> &y);
@@ -2310,6 +2259,16 @@ int main (int argc, char* argv[])
   for (int i = 0; i < infc_phi_max_num; ++i)
   {
     if (*infc_present_all[i] == true) infc_phi_eff_cf.add_domain(infc_phi_cf_all[i], (mls_opn_t) *infc_opn_all[i]);
+  }
+
+  for (int i = 0; i < bdry1_phi_max_num; ++i)
+  {
+    if (*bdry1_present_all[i] == true) bdry1_phi_eff_cf.add_domain(bdry1_phi_cf_all[i], (mls_opn_t) *bdry1_opn_all[i]);
+  }
+
+  for (int i = 0; i < infc1_phi_max_num; ++i)
+  {
+    if (*infc1_present_all[i] == true) infc1_phi_eff_cf.add_domain(infc1_phi_cf_all[i], (mls_opn_t) *infc1_opn_all[i]);
   }
 
   int num_shifts_total = MULTD(num_shifts_x_dir.val, num_shifts_y_dir.val, num_shifts_z_dir.val);
@@ -2488,6 +2447,8 @@ int main (int argc, char* argv[])
               Vec bdry_phi_vec_all[bdry_phi_max_num];
               Vec infc_phi_vec_all[infc_phi_max_num];
 
+              Vec bdry1_phi_vec_all[bdry1_phi_max_num];
+              Vec infc1_phi_vec_all[infc1_phi_max_num];
 
               //Perturbing domain and interface boundaries and reinitializing
               for (int i = 0; i < bdry_phi_max_num; ++i)
@@ -2521,7 +2482,37 @@ int main (int argc, char* argv[])
                   }
                 }
               }
+              for (int i = 0; i < bdry1_phi_max_num; ++i)
+              {
+                if (*bdry1_present_all[i] == true)
+                {
+                  ierr = VecCreateGhostNodes(p4est, nodes, &bdry1_phi_vec_all[i]); CHKERRXX(ierr);
+                  sample_cf_on_nodes(p4est, nodes, bdry1_phi_cf_all[i], bdry1_phi_vec_all[i]);
 
+                  if (dom_perturb())
+                  {
+                    double *phi_ptr;
+                    ierr = VecGetArray(bdry1_phi_vec_all[i], &phi_ptr); CHKERRXX(ierr);
+
+                    for (p4est_locidx_t n = 0; n < nodes->num_owned_indeps; ++n)
+                    {
+                      double xyz[P4EST_DIM];
+                      node_xyz_fr_n(n, p4est, nodes, xyz);
+                      phi_ptr[n] += dom_perturb_mag()*dom_perturb_cf.value(xyz)*pow(dxyz_m, dom_perturb_pow());
+                    }
+
+                    ierr = VecRestoreArray(bdry1_phi_vec_all[i], &phi_ptr); CHKERRXX(ierr);
+
+                    ierr = VecGhostUpdateBegin(bdry1_phi_vec_all[i], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+                    ierr = VecGhostUpdateEnd  (bdry1_phi_vec_all[i], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+                  }
+
+                  if (reinit_level_set())
+                  {
+                    ls.reinitialize_1st_order_time_2nd_order_space(bdry1_phi_vec_all[i], 20);
+                  }
+                }
+              }
               for (int i = 0; i < infc_phi_max_num; ++i)
               {
                 if (*infc_present_all[i] == true)
@@ -2554,16 +2545,181 @@ int main (int argc, char* argv[])
                 }
               }
 
+              for (int i = 0; i < infc1_phi_max_num; ++i)
+              {
+                if (*infc1_present_all[i] == true)
+                {
+                  ierr = VecCreateGhostNodes(p4est, nodes, &infc1_phi_vec_all[i]); CHKERRXX(ierr);
+                  sample_cf_on_nodes(p4est, nodes, infc1_phi_cf_all[i], infc1_phi_vec_all[i]);
 
-              //initializing vectors needed to setup the problem
-              Vec rhs_m;
-              ierr = VecCreateGhostNodes(p4est, nodes, &rhs_m); CHKERRXX(ierr);
-              sample_cf_on_nodes(p4est, nodes, rhs_m_cf, rhs_m);
+                  if (ifc_perturb())
+                  {
+                    double *phi_ptr;
+                    ierr = VecGetArray(infc1_phi_vec_all[i], &phi_ptr); CHKERRXX(ierr);
 
-              Vec rhs_p;
-              ierr = VecCreateGhostNodes(p4est, nodes, &rhs_p); CHKERRXX(ierr);
-              sample_cf_on_nodes(p4est, nodes, rhs_p_cf, rhs_p);
+                    for (p4est_locidx_t n = 0; n < nodes->num_owned_indeps; ++n)
+                    {
+                      double xyz[P4EST_DIM];
+                      node_xyz_fr_n(n, p4est, nodes, xyz);
+                      phi_ptr[n] += ifc_perturb_mag()*ifc_perturb_cf.value(xyz)*pow(dxyz_m, ifc_perturb_pow());
+                    }
 
+                    ierr = VecRestoreArray(infc1_phi_vec_all[i], &phi_ptr); CHKERRXX(ierr);
+
+                    ierr = VecGhostUpdateBegin(infc1_phi_vec_all[i], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+                    ierr = VecGhostUpdateEnd  (infc1_phi_vec_all[i], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+                  }
+
+                  if (reinit_level_set())
+                  {
+                    ls.reinitialize_1st_order_time_2nd_order_space(infc1_phi_vec_all[i], 20);
+                  }
+                }
+              }
+              //Initialize vectors relevant for the poisson problem
+              vec_and_ptr_t u;
+
+              vec_and_ptr_t u1;
+
+
+              u.create(p4est,nodes);
+              sample_cf_on_nodes(p4est,nodes,u_cf,u.vec);
+
+              u1.create(p4est,nodes);
+              sample_cf_on_nodes(p4est,nodes,u_cf1,u1.vec);
+
+              // vectors to hold first derivatives
+              vec_and_ptr_t u_d;
+              vec_and_ptr_t u1_d;
+
+              // vectors to hold second derivatives
+              vec_and_ptr_t u_dd;
+              vec_and_ptr_t u1_dd;
+
+              //vectors to hold normals
+              vec_and_ptr_dim_t d_normals;
+              vec_and_ptr_dim_t d1_normals;
+              ierr= PetscPrintf(mpi.comm(),"line 2532 ok \n");CHKERRXX(ierr);
+
+              my_p4est_poisson_nodes_mls_t solver_u(&ngbd_n);  // will solve poisson problem for u in domain 1
+              my_p4est_poisson_nodes_mls_t solver_u1(&ngbd_n);  // will solve poisson problem for u in domain 2
+
+              //setting up solver for domains
+              ierr= PetscPrintf(mpi.comm(),"line 2538 ok \n");CHKERRXX(ierr);
+              solver_u.set_use_centroid_always(use_centroid_always());
+              solver_u1.set_use_centroid_always(use_centroid_always());
+
+
+              solver_u.set_store_finite_volumes(store_finite_volumes());
+              solver_u1.set_store_finite_volumes(store_finite_volumes());
+
+              solver_u.set_jump_scheme(jc_scheme());
+              solver_u1.set_jump_scheme(jc_scheme());
+
+              solver_u.set_jump_sub_scheme(jc_sub_scheme());
+              solver_u1.set_jump_sub_scheme(jc_sub_scheme());
+
+              solver_u.set_use_sc_scheme(sc_scheme());
+              solver_u1.set_use_sc_scheme(sc_scheme());
+
+              solver_u.set_integration_order(integration_order());
+              solver_u1.set_integration_order(integration_order());
+
+              solver_u.set_lip(lip());
+              solver_u1.set_lip(lip());
+
+              ierr= PetscPrintf(mpi.comm(),"line 2561 ok \n");CHKERRXX(ierr);
+
+              // HOW TO ADD BOUNDARY
+
+              //Adding Boundary and Interface for dommain 1
+              // In the add_boundary(), creates a structure boundary_conditions_t
+              for (int i = 0; i < bdry_phi_max_num; ++i)
+                if (*bdry_present_all[i] == true)
+                {
+                  if (apply_bc_pointwise())
+                    solver_u.add_boundary((mls_opn_t) *bdry_opn_all[i], bdry_phi_vec_all[i], DIM(NULL, NULL, NULL), (BoundaryConditionType) *bc_type_all[i], zero_cf, zero_cf);
+                  else
+                    solver_u.add_boundary((mls_opn_t) *bdry_opn_all[i], bdry_phi_vec_all[i], DIM(NULL, NULL, NULL), (BoundaryConditionType) *bc_type_all[i], bc_value_cf_all[i], bc_coeff_cf_all[i]);
+                }
+              // adding interface is exactly similar
+              for (int i = 0; i < infc_phi_max_num; ++i)
+                if (*infc_present_all[i] == true)
+                {
+                  if (apply_bc_pointwise())
+                    solver_u.add_interface((mls_opn_t) *infc_opn_all[i], infc_phi_vec_all[i], DIM(NULL, NULL, NULL), zero_cf, zero_cf);
+                  else
+                    solver_u.add_interface((mls_opn_t) *infc_opn_all[i], infc_phi_vec_all[i], DIM(NULL, NULL, NULL), jc_value_cf_all[i], jc_flux_cf_all[i]);
+                }
+              ierr= PetscPrintf(mpi.comm(),"line 2584 ok \n");CHKERRXX(ierr);
+              //Adding Boundary and Interface for dommain 2
+              // In the add_boundary(), creates a structure boundary_conditions_t
+              for (int i = 0; i < bdry1_phi_max_num; ++i)
+                if (*bdry1_present_all[i] == true)
+                {
+                  if (apply_bc_pointwise())
+                    solver_u1.add_boundary((mls_opn_t) *bdry1_opn_all[i], bdry1_phi_vec_all[i], DIM(NULL, NULL, NULL), (BoundaryConditionType) *bc1_type_all[i], zero_cf, zero_cf);
+                  else
+                    solver_u1.add_boundary((mls_opn_t) *bdry1_opn_all[i], bdry1_phi_vec_all[i], DIM(NULL, NULL, NULL), (BoundaryConditionType) *bc1_type_all[i], bc1_value_cf_all[i], bc1_coeff_cf_all[i]);
+                }
+              // adding interface is exactly similar
+              for (int i = 0; i < infc1_phi_max_num; ++i)
+                if (*infc1_present_all[i] == true)
+                {
+                  if (apply_bc_pointwise())
+                    solver_u1.add_interface((mls_opn_t) *infc1_opn_all[i], infc1_phi_vec_all[i], DIM(NULL, NULL, NULL), zero_cf, zero_cf);
+                  else
+                    solver_u1.add_interface((mls_opn_t) *infc1_opn_all[i], infc1_phi_vec_all[i], DIM(NULL, NULL, NULL), jc1_value_cf_all[i], jc1_flux_cf_all[i]);
+                }
+              ierr= PetscPrintf(mpi.comm(),"line 2604 ok \n");CHKERRXX(ierr);
+//              Vec bdry_phi_eff;
+//              solver_u.set_boundary_phi_eff(bdry_phi_eff);
+//              ierr= PetscPrintf(mpi.comm(),"line 2607 ok \n");CHKERRXX(ierr);
+//              Vec infc_phi_eff;
+//              solver_u.set_interface_phi_eff(infc_phi_eff);
+//              ierr= PetscPrintf(mpi.comm(),"line 2610 ok \n");CHKERRXX(ierr);
+
+//              Vec bdry1_phi_eff;
+//              solver_u1.set_boundary_phi_eff(bdry1_phi_eff);
+//              ierr= PetscPrintf(mpi.comm(),"line 2614 ok \n");CHKERRXX(ierr);
+//              Vec infc1_phi_eff;
+//              solver_u1.set_interface_phi_eff(infc1_phi_eff);
+//              ierr= PetscPrintf(mpi.comm(),"line 2617 ok \n");CHKERRXX(ierr);
+
+//              Vec phi_m;
+//              ierr= PetscPrintf(mpi.comm(),"line 2619 ok \n");CHKERRXX(ierr);
+//              if (bdry_phi_eff == NULL) { ierr= PetscPrintf(mpi.comm(),"bdry_phi_eff is NULL \n");CHKERRXX(ierr); }
+//              ierr = VecDuplicate(bdry_phi_eff, &phi_m); CHKERRXX(ierr);
+//              ierr= PetscPrintf(mpi.comm(),"line 2620 ok \n");CHKERRXX(ierr);
+//              VecCopyGhost(bdry_phi_eff, phi_m);
+//              ierr= PetscPrintf(mpi.comm(),"line 2622 ok \n");CHKERRXX(ierr);
+//              VecPointwiseMaxGhost(phi_m, phi_m, infc_phi_eff);
+//              ierr= PetscPrintf(mpi.comm(),"line 2624 ok \n");CHKERRXX(ierr);
+//              VecScaleGhost(infc_phi_eff, -1);
+//              ierr= PetscPrintf(mpi.comm(),"line 2626 ok \n");CHKERRXX(ierr);
+
+//              Vec phi1_m; ierr = VecDuplicate(bdry1_phi_eff, &phi1_m); CHKERRXX(ierr); VecCopyGhost(bdry1_phi_eff, phi1_m);
+//              VecPointwiseMaxGhost(phi1_m, phi1_m, infc1_phi_eff);
+//              VecScaleGhost(infc1_phi_eff, -1);
+//              ierr= PetscPrintf(mpi.comm(),"line 2627 ok \n");CHKERRXX(ierr);
+
+
+              ierr= PetscPrintf(mpi.comm(),"line 2630 ok \n");CHKERRXX(ierr);
+
+
+
+//              switch (extend_solution())
+//              {
+//                case 1:
+//                  ls.extend_Over_Interface_TVD(phi_m, u.vec, extension_iterations(), 2, extension_tol(), -extension_band_compute()*dxyz_max,  extension_band_extend()*dxyz_max,  extension_band_check()*dxyz_max, NULL, NULL, NULL, use_nonzero_guess()); CHKERRXX(ierr);
+//                  ls.extend_Over_Interface_TVD(phi1_m, u1.vec, extension_iterations(), 2, extension_tol(), -extension_band_compute()*dxyz_max,  extension_band_extend()*dxyz_max,  extension_band_check()*dxyz_max, NULL, NULL, NULL, use_nonzero_guess()); CHKERRXX(ierr);
+//                  break;
+//                case 2:
+//                  ls.extend_Over_Interface_TVD_Full(phi_m, u.vec, extension_iterations(), 2, extension_tol(), -extension_band_compute()*dxyz_max,  extension_band_extend()*dxyz_max,  extension_band_check()*dxyz_max, NULL, NULL, NULL, use_nonzero_guess()); CHKERRXX(ierr);
+//                  ls.extend_Over_Interface_TVD_Full(phi1_m, u1.vec, extension_iterations(), 2, extension_tol(), -extension_band_compute()*dxyz_max,  extension_band_extend()*dxyz_max,  extension_band_check()*dxyz_max, NULL, NULL, NULL, use_nonzero_guess()); CHKERRXX(ierr);
+//                  break;
+//              }
+              ierr= PetscPrintf(mpi.comm(),"line 2635 ok \n");CHKERRXX(ierr);
               Vec mu_m;
               ierr = VecCreateGhostNodes(p4est, nodes, &mu_m); CHKERRXX(ierr);
               sample_cf_on_nodes(p4est, nodes, mu_m_cf, mu_m);
@@ -2572,948 +2728,273 @@ int main (int argc, char* argv[])
               ierr = VecCreateGhostNodes(p4est, nodes, &mu_p); CHKERRXX(ierr);
               sample_cf_on_nodes(p4est, nodes, mu_p_cf, mu_p);
 
-              Vec diag_m;
-              ierr = VecCreateGhostNodes(p4est, nodes, &diag_m); CHKERRXX(ierr);
-              sample_cf_on_nodes(p4est, nodes, diag_m_cf, diag_m);
 
-              Vec diag_p;
-              ierr = VecCreateGhostNodes(p4est, nodes, &diag_p); CHKERRXX(ierr);
-              sample_cf_on_nodes(p4est, nodes, diag_p_cf, diag_p);
+              Vec mu_m1;
+              ierr = VecCreateGhostNodes(p4est, nodes, &mu_m1); CHKERRXX(ierr);
+              sample_cf_on_nodes(p4est, nodes, mu_m_cf1, mu_m1);
+
+              Vec mu_p1;
+              ierr = VecCreateGhostNodes(p4est, nodes, &mu_p1); CHKERRXX(ierr);
+              sample_cf_on_nodes(p4est, nodes, mu_p_cf1, mu_p1);
+
+              ierr= PetscPrintf(mpi.comm(),"line 2653 ok \n");CHKERRXX(ierr);
 
 
-              Vec sol; double *sol_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &sol); CHKERRXX(ierr);
 
-             //creating an object of the poisson solver which has to be setup
-              my_p4est_poisson_nodes_mls_t solver(&ngbd_n);
-
-              solver.set_use_centroid_always(use_centroid_always());
-              solver.set_store_finite_volumes(store_finite_volumes());
-              solver.set_jump_scheme(jc_scheme());
-              solver.set_jump_sub_scheme(jc_sub_scheme());
-              solver.set_use_sc_scheme(sc_scheme());
-              solver.set_integration_order(integration_order());
-              solver.set_lip(lip());
-
-              // HOW TO ADD BOUNDARY
-              // In the add_boundary(), creates a structure boundary_conditions_t
-              for (int i = 0; i < bdry_phi_max_num; ++i)
-                if (*bdry_present_all[i] == true)
-                {
-                  if (apply_bc_pointwise())
-                    solver.add_boundary((mls_opn_t) *bdry_opn_all[i], bdry_phi_vec_all[i], DIM(NULL, NULL, NULL), (BoundaryConditionType) *bc_type_all[i], zero_cf, zero_cf);
-                  else
-                    solver.add_boundary((mls_opn_t) *bdry_opn_all[i], bdry_phi_vec_all[i], DIM(NULL, NULL, NULL), (BoundaryConditionType) *bc_type_all[i], bc_value_cf_all[i], bc_coeff_cf_all[i]);
-                }
-              // adding interface is exactly similar
-              for (int i = 0; i < infc_phi_max_num; ++i)
-                if (*infc_present_all[i] == true)
-                {
-                  if (apply_bc_pointwise())
-                    solver.add_interface((mls_opn_t) *infc_opn_all[i], infc_phi_vec_all[i], DIM(NULL, NULL, NULL), zero_cf, zero_cf);
-                  else
-                    solver.add_interface((mls_opn_t) *infc_opn_all[i], infc_phi_vec_all[i], DIM(NULL, NULL, NULL), jc_value_cf_all[i], jc_flux_cf_all[i]);
-                }
-
-              solver.set_mu(mu_m, DIM(NULL, NULL, NULL),
+              solver_u.set_mu(mu_m, DIM(NULL, NULL, NULL),
                             mu_p, DIM(NULL, NULL, NULL));
 
-              solver.set_wc(bc_wall_type, u_cf);
-              solver.set_rhs(rhs_m, rhs_p);
-              solver.set_diag(diag_m, diag_p);
+              solver_u1.set_mu(mu_m1, DIM(NULL, NULL, NULL),
+                            mu_p1, DIM(NULL, NULL, NULL));
 
-              solver.set_use_taylor_correction(taylor_correction());
-              solver.set_kink_treatment(kink_special_treatment());
+              ierr= PetscPrintf(mpi.comm(),"line 2663 ok \n");CHKERRXX(ierr);
 
-              vector< vector<double> > pw_bc_values(bdry_phi_num());
-              vector< vector<double> > pw_bc_values_robin(bdry_phi_num());
-              vector< vector<double> > pw_bc_coeffs_robin(bdry_phi_num());
+              if(method_.val == 2){
+                  solver_u.set_diag(2./dt.val);
+                  solver_u1.set_diag(2./dt.val);
+              }
+              else if(method_.val ==1){
+                  solver_u.set_diag(1./dt.val);
+                  solver_u1.set_diag(1./dt.val);
+              }
+              else{
+                  throw std::invalid_argument("Error setting the diagonal. You must select a time-stepping method!\n");
+              }
 
-              vector< vector<double> > pw_jc_sol_jump_taylor(infc_phi_num());
-              vector< vector<double> > pw_jc_flx_jump_taylor(infc_phi_num());
-              vector< vector<double> > pw_jc_flx_jump_integr(infc_phi_num());
 
-              if (apply_bc_pointwise())
-              {
-                solver.preassemble_linear_system();
+              solver_u.set_wc(bc_wall_type, u_cf);
+              solver_u1.set_wc(bc_wall_type, u_cf1);
 
-                // allocate memory for bc values
-                for (int i = 0; i < bdry_phi_num(); ++i)
-                {
-                  pw_bc_values      [i].assign(solver.pw_bc_num_value_pts(i), 0);
-                  pw_bc_values_robin[i].assign(solver.pw_bc_num_robin_pts(i), 0);
-                  pw_bc_coeffs_robin[i].assign(solver.pw_bc_num_robin_pts(i), 0);
+              solver_u.set_use_taylor_correction(taylor_correction());
+              solver_u.set_kink_treatment(kink_special_treatment());
+
+              solver_u1.set_use_taylor_correction(taylor_correction());
+              solver_u1.set_kink_treatment(kink_special_treatment());
+
+
+              int t_iterations= (int)tfinal.val/dt.val+1;
+              vector<double> error_in_u(t_iterations,0.0);
+              int tstep =0;
+              for (tn=0; tn<tfinal.val; tn+=dt.val){
+                tstep++;
+                if (!keep_going) break;
+                // Get current memory usage:
+                PetscLogDouble mem1;
+                if(check_memory_usage.val) PetscMemoryGetCurrentUsage(&mem1);
+
+                PetscPrintf(mpi.comm(),"\n -------------------------------------------\n");
+                ierr = PetscPrintf(mpi.comm(),"Iteration %d , Time: %0.3g , Timestep: %0.3e, Percent Done : %0.2f % \n ------------------------------------------- \n",tstep,tn,dt.val,((tn-tstart.val)/(tfinal.val - tstart.val))*100.0);
+
+                vec_and_ptr_t rhs_u;
+
+                vec_and_ptr_t rhs_u1;
+
+                vec_and_ptr_t u_ex;
+
+                rhs_u.create(p4est,nodes);
+                rhs_u1.create(p4est,nodes);
+                u_ex.create(p4est,nodes);
+
+                setup_rhs(u,u1,
+                          rhs_u,rhs_u1,
+                          p4est,nodes,&ngbd_n,tn);
+
+                setup_u_exact(u_ex,tn,p4est,nodes,&ngbd_n);
+
+                solver_u.set_rhs(rhs_u.vec);
+                solver_u1.set_rhs(rhs_u1.vec);
+
+                solver_u.preassemble_linear_system();
+                solver_u1.preassemble_linear_system();
+
+
+                vec_and_ptr_t u_new;
+
+                vec_and_ptr_t u1_new;
+
+                u_new.create(p4est,nodes);
+                u1_new.create(p4est,nodes);
+
+                solver_u.solve(u_new.vec,use_nonzero_guess());
+                solver_u1.solve(u1_new.vec,use_nonzero_guess());
+
+                u.destroy();
+                u1.destroy();
+
+                u.create(p4est,nodes);
+                u1.create(p4est,nodes);
+
+                VecCopyGhost(u_new.vec,u.vec);
+                VecCopyGhost(u1_new.vec,u1.vec);
+
+                vec_and_ptr_t u_error;
+                u_error.create(p4est,nodes);
+                u.get_array();
+                u_ex.get_array();
+                u_error.get_array();
+                foreach_node(n,nodes){
+                  u_error.ptr[n] = abs(u.ptr[n]-u_ex.ptr[n]);
                 }
+                u_error.restore_array();
+                u.restore_array();
+                u_ex.restore_array();
+                ierr = VecGhostUpdateBegin(u_error.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+                ierr = VecGhostUpdateEnd(u_error.vec, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-                for (int i = 0; i < infc_phi_num(); ++i)
-                {
-                  pw_jc_sol_jump_taylor[i].assign(solver.pw_jc_num_taylor_pts(i), 0);
-                  pw_jc_flx_jump_taylor[i].assign(solver.pw_jc_num_taylor_pts(i), 0);
-                  pw_jc_flx_jump_integr[i].assign(solver.pw_jc_num_integr_pts(i), 0);
-                }
 
-                double xyz[P4EST_DIM];
-                // sample bc and jc at requested points
-                if (sample_bc_node_by_node())
+                Vec bdry_phi_eff = solver_u.get_boundary_phi_eff();
+                Vec infc_phi_eff = solver_u.get_interface_phi_eff();
+
+                Vec bdry1_phi_eff = solver_u1.get_boundary_phi_eff();
+                Vec infc1_phi_eff = solver_u1.get_interface_phi_eff();
+
+                if(save_vtk())
                 {
-                  foreach_local_node(n, nodes)
+                  char *out_dir;
+                  out_dir = getenv("OUT_DIR");
+
+                  std::ostringstream oss;
+
+                  oss << out_dir
+                      << "/vtu/nodes_"
+                      << p4est->mpisize << "_"
+                      << brick.nxyztrees[0] << "x"
+                      << brick.nxyztrees[1] <<
+         #ifdef P4_TO_P8
+                         "x" << brick.nxyztrees[2] <<
+         #endif
+                         "." << iter <<
+                         "." << tstep;
+
+                  /* save the size of the leaves */
+                  Vec leaf_level;
+                  ierr = VecCreateGhostCells(p4est, ghost, &leaf_level); CHKERRXX(ierr);
+                  double *l_p;
+                  ierr = VecGetArray(leaf_level, &l_p); CHKERRXX(ierr);
+
+                  for(p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx)
                   {
-                    for (int i = 0; i < bdry_phi_num(); ++i)
+                    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
+                    for( size_t q=0; q<tree->quadrants.elem_count; ++q)
                     {
-                      for (int k = 0; k < solver.pw_bc_num_value_pts(i,n); ++k)
-                      {
-                        int j = solver.pw_bc_idx_value_pt(i,n,k);
-                        solver.pw_bc_xyz_value_pt(i, j, xyz);
-                        pw_bc_values[i][j] = bc_value_cf_all[i].value(xyz);
-                      }
-
-                      for (int k = 0; k < solver.pw_bc_num_robin_pts(i,n); ++k)
-                      {
-                        int j = solver.pw_bc_idx_robin_pt(i,n,k);
-                        solver.pw_bc_xyz_robin_pt(i, j, xyz);
-                        pw_bc_values_robin[i][j] = bc_value_cf_all[i].value(xyz);
-                        pw_bc_coeffs_robin[i][j] = bc_coeff_cf_all[i].value(xyz);
-                      }
-                    }
-
-                    for (int i = 0; i < infc_phi_num(); ++i)
-                    {
-                      for (int k = 0; k < solver.pw_jc_num_taylor_pts(i,n); ++k)
-                      {
-                        int j = solver.pw_jc_idx_taylor_pt(i,n,k);
-                        solver.pw_jc_xyz_taylor_pt(i, j, xyz);
-                        pw_jc_sol_jump_taylor[i][j] = jc_value_cf_all[i].value(xyz);
-                        pw_jc_flx_jump_taylor[i][j] = jc_flux_cf_all[i].value(xyz);
-                      }
-
-                      for (int k = 0; k < solver.pw_jc_num_integr_pts(i,n); ++k)
-                      {
-                        int j = solver.pw_jc_idx_integr_pt(i,n,k);
-                        solver.pw_jc_xyz_integr_pt(i, j, xyz);
-                        pw_jc_flx_jump_integr[i][j] = jc_flux_cf_all[i].value(xyz);
-                      }
-                    }
-                  }
-                }
-                else
-                {
-                  for (int i = 0; i < bdry_phi_num(); ++i)
-                  {
-                    for (int j = 0; j < solver.pw_bc_num_value_pts(i); ++j)
-                    {
-                      solver.pw_bc_xyz_value_pt(i, j, xyz);
-                      pw_bc_values[i][j] = bc_value_cf_all[i].value(xyz);
-                    }
-
-                    for (int j = 0; j < solver.pw_bc_num_robin_pts(i); ++j)
-                    {
-                      solver.pw_bc_xyz_robin_pt(i, j, xyz);
-                      pw_bc_values_robin[i][j] = bc_value_cf_all[i].value(xyz);
-                      pw_bc_coeffs_robin[i][j] = bc_coeff_cf_all[i].value(xyz);
-                    }
-                  }
-
-                  for (int i = 0; i < infc_phi_num(); ++i)
-                  {
-                    for (int j = 0; j < solver.pw_jc_num_taylor_pts(i); ++j)
-                    {
-                      solver.pw_jc_xyz_taylor_pt(i, j, xyz);
-                      pw_jc_sol_jump_taylor[i][j] = jc_value_cf_all[i].value(xyz);
-                      pw_jc_flx_jump_taylor[i][j] = jc_flux_cf_all [i].value(xyz);
-                    }
-
-                    for (int j = 0; j < solver.pw_jc_num_integr_pts(i); ++j)
-                    {
-                      solver.pw_jc_xyz_integr_pt(i, j, xyz);
-                      pw_jc_flx_jump_integr[i][j] = jc_flux_cf_all[i].value(xyz);
-                    }
-                  }
-                }
-
-                // pass the sampled values to solver
-                for (int i = 0; i < bdry_phi_num(); ++i)
-                {
-                  solver.set_bc(i, (BoundaryConditionType) *bc_type_all[i], pw_bc_values[i], pw_bc_values_robin[i], pw_bc_coeffs_robin[i]);
-                }
-
-                for (int i = 0; i < infc_phi_num(); ++i)
-                {
-                  solver.set_jc(i, pw_jc_sol_jump_taylor[i], pw_jc_flx_jump_taylor[i], pw_jc_flx_jump_integr[i]);
-                }
-              }
-
-              if (nonlinear_term_m() == 0 && nonlinear_term_p() == 0)
-              {
-                if (use_nonzero_guess()) sample_cf_on_nodes(p4est, nodes, u_cf, sol);
-                solver.solve(sol, use_nonzero_guess());
-              }
-              else
-              {
-                Vec nonlinear_term_m_coeff_sampled;
-                Vec nonlinear_term_p_coeff_sampled;
-
-                ierr = VecDuplicate(diag_m, &nonlinear_term_m_coeff_sampled); CHKERRXX(ierr);
-                ierr = VecDuplicate(diag_p, &nonlinear_term_p_coeff_sampled); CHKERRXX(ierr);
-
-                sample_cf_on_nodes(p4est, nodes, nonlinear_term_m_coeff_cf, nonlinear_term_m_coeff_sampled);
-                sample_cf_on_nodes(p4est, nodes, nonlinear_term_p_coeff_cf, nonlinear_term_p_coeff_sampled);
-
-                solver.set_nonlinear_term(nonlinear_term_m_coeff_sampled, nonlinear_term_m_cf, nonlinear_term_m_prime_cf,
-                                          nonlinear_term_p_coeff_sampled, nonlinear_term_p_cf, nonlinear_term_p_prime_cf);
-
-                solver.set_solve_nonlinear_parameters(nonlinear_method.val, nonlinear_itmax.val, nonlinear_tol.val, 0);
-
-                if (use_nonzero_guess()) sample_cf_on_nodes(p4est, nodes, u_cf, sol);
-                solver.solve_nonlinear(sol, use_nonzero_guess());
-
-                ierr = VecDestroy(nonlinear_term_m_coeff_sampled); CHKERRXX(ierr);
-                ierr = VecDestroy(nonlinear_term_p_coeff_sampled); CHKERRXX(ierr);
-              }
-
-              Vec bdry_phi_eff = solver.get_boundary_phi_eff();
-              Vec infc_phi_eff = solver.get_interface_phi_eff();
-
-              if (reinit_level_set())
-              {
-                if (bdry_phi_eff != NULL) ls.reinitialize_1st_order_time_2nd_order_space(bdry_phi_eff, 20);
-                if (infc_phi_eff != NULL) ls.reinitialize_1st_order_time_2nd_order_space(infc_phi_eff, 20);
-              }
-
-              Vec mask_m  = solver.get_mask_m();
-              Vec mask_p  = solver.get_mask_p();
-              Mat A       = solver.get_matrix();
-
-              double *bdry_phi_eff_ptr;
-              double *infc_phi_eff_ptr;
-              double *mask_m_ptr;
-              double *mask_p_ptr;
-
-              if (save_matrix_ascii())
-              {
-                std::ostringstream oss; oss << out_dir << "/matrix/mat_" << file_idx << ".m";
-
-                PetscViewer viewer;
-                ierr = PetscViewerASCIIOpen(mpi.comm(), oss.str().c_str(), &viewer); CHKERRXX(ierr);
-                ierr = PetscViewerPushFormat(viewer, 	PETSC_VIEWER_ASCII_MATLAB); CHKERRXX(ierr);
-
-                ierr = PetscObjectSetName((PetscObject)A, "mat");
-                ierr = MatView(A, viewer); CHKERRXX(ierr);
-
-                Vec lex_order;
-                ierr = VecCreateGhostNodes(p4est, nodes, &lex_order); CHKERRXX(ierr);
-
-                double *vec_ptr; ierr = VecGetArray(lex_order, &vec_ptr); CHKERRXX(ierr);
-
-                int nx = round((grid_xyz_max_shift[0]-grid_xyz_min_shift[0])/dxyz[0] + 1);
-#ifdef P4_TO_P8
-                int ny = round((grid_xyz_max_shift[1]-grid_xyz_min_shift[1])/dxyz[1] + 1);
-                int nz = round((grid_xyz_max_shift[2]-grid_xyz_min_shift[2])/dxyz[2] + 1);
-#endif
-                for (p4est_locidx_t n = 0; n < nodes->num_owned_indeps; ++n)
-                {
-                  double xyz[P4EST_DIM];
-                  node_xyz_fr_n(n, p4est, nodes, xyz);
-
-                  int ix = round((xyz[0]-grid_xyz_min_shift[0])/dxyz[0]);
-                  int iy = round((xyz[1]-grid_xyz_min_shift[1])/dxyz[1]);
-#ifdef P4_TO_P8
-                  int iz = round((xyz[2]-grid_xyz_min_shift[2])/dxyz[2]);
-                  vec_ptr[n] = iz*nx*ny + iy*(nx) + ix + 1;
-#else
-                  vec_ptr[n] = iy*(nx) + ix + 1;
-#endif
-                }
-
-                ierr = VecRestoreArray(lex_order, &vec_ptr); CHKERRXX(ierr);
-
-                ierr = PetscObjectSetName((PetscObject)lex_order, "vec");
-                ierr = VecView(lex_order, viewer); CHKERRXX(ierr);
-
-                ierr = PetscViewerDestroy(viewer); CHKERRXX(ierr);
-              }
-
-              if (save_matrix_binary())
-              {
-                std::ostringstream oss; oss << out_dir << "/matrix/mat_" << file_idx << ".dat";
-
-                PetscViewer viewer;
-                ierr = PetscViewerBinaryOpen(mpi.comm(), oss.str().c_str(), FILE_MODE_WRITE, &viewer); CHKERRXX(ierr);
-                ierr = PetscViewerPushFormat(viewer, PETSC_VIEWER_BINARY_MATLAB); CHKERRXX(ierr);
-                ierr = MatView(A, viewer); CHKERRXX(ierr);
-                ierr = PetscViewerDestroy(viewer); CHKERRXX(ierr);
-              }
-
-#ifdef MATLAB_PROVIDED
-              if (iter < compute_cond_num())
-              {
-                // Get the local AIJ representation of the matrix
-                std::vector<double> aij;
-
-                int M,N;
-
-                ierr = MatGetLocalSize(A, &M, &N);
-
-                for (int n = 0; n < M; ++n)
-                {
-                  int num_elem;
-                  const int *icol;
-                  const double *vals;
-
-                  PetscInt N = solver.get_global_idx(n);
-                  MatGetRow(A, N, &num_elem, &icol, &vals);
-                  for (int i = 0; i < num_elem; ++i)
-                  {
-                    aij.push_back((double) (N+1));
-                    aij.push_back((double) (icol[i]+1));
-                    aij.push_back(vals[i]);
-                  }
-                  MatRestoreRow(A, N, &num_elem, &icol, &vals);
-                }
-
-                int num_local_entries = aij.size();
-
-                // Collect all chucks of the matrix into global_aij on the 0-rank process
-                std::vector<int> local_sizes(mpi.size(), 0);
-                std::vector<int> displs(mpi.size(), 0);
-
-                MPI_Gather(&num_local_entries, 1, MPI_INT, local_sizes.data(), 1, MPI_INT, 0, mpi.comm());
-
-                int num_total_entries = local_sizes[0];
-
-                for (int i = 1; i < mpi.size(); ++i)
-                {
-                  displs[i] = displs[i-1] + local_sizes[i-1];
-                  num_total_entries += local_sizes[i];
-                }
-
-                mxArray *mat = NULL;
-                mxDouble *mat_data = NULL;
-
-                if (mpi.rank() == 0)
-                {
-                  mat = mxCreateDoubleMatrix(3, num_total_entries/3, mxREAL);
-                  mat_data = mxGetDoubles(mat);
-                }
-
-                MPI_Gatherv(aij.data(), aij.size(), MPI_DOUBLE, mat_data, local_sizes.data(), displs.data(), MPI_DOUBLE, 0, mpi.comm());
-
-                aij.clear();
-
-                // pass the matrix to MATLAB and ask to compute condition number
-                if (mpi.rank() == 0)
-                {
-                  // send the matrix to MATLAB
-                  engPutVariable(mengine, "AIJ", mat);
-                  mxDestroyArray(mat);
-
-                  // ask to compute condition number
-                  engEvalString(mengine, "cn = condest(spconvert(AIJ'));");
-
-                  // get the result
-                  mxArray *value = engGetVariable(mengine, "cn");
-                  double cn = *mxGetDoubles(value);
-                  mxDestroyArray(value);
-
-                  // store
-                  cond_num_arr.push_back(cn);
-                } else {
-                  cond_num_arr.push_back(NAN);
-                }
-              } else {
-                cond_num_arr.push_back(NAN);
-              }
-#else
-              cond_num_arr.push_back(NAN);
-#endif
-
-//              my_p4est_integration_mls_t integrator(p4est, nodes);
-//// integrator.set_phi(bdry_phi, dom_acn, dom_clr);
-
-//            s/*
-//            if (save_domain)
-//            {
-//              std::ostringstream oss; oss << out_dir << "/geometry";
-
-//#ifdef P4_TO_P8
-//              vector<cube3_mls_t> cubes;
-//              unsigned int n_sps = 6;
-//#else
-//              vector<cube2_mls_t> cubes;
-//              unsigned int n_sps = 2;
-//#endif
-//              solver.reconstruct_domain(cubes);
-
-//              if (integration_order == 1)
-//              {
-//#ifdef P4_TO_P8
-//                vector<simplex3_mls_l_t *> simplices;
-//#else
-//                vector<simplex2_mls_l_t *> simplices;
-//#endif
-//                for (unsigned int k = 0; k < cubes.size(); k++)
-//                  for (unsigned int kk = 0; kk < cubes[k].cubes_l_.size(); kk++)
-//                    if (cubes[k].cubes_l_[kk]->loc == FCE)
-//                      for (unsigned int l = 0; l < n_sps; l++)
-//                        simplices.push_back(&cubes[k].cubes_l_[kk]->simplex[l]);
-
-//#ifdef P4_TO_P8
-//                simplex3_mls_l_vtk::write_simplex_geometry(simplices, oss.str(), to_string(file_idx));
-//#else
-//                simplex2_mls_l_vtk::write_simplex_geometry(simplices, oss.str(), to_string(file_idx));
-//#endif
-//              } else if (integration_order == 2) {
-
-//#ifdef P4_TO_P8
-//                vector<simplex3_mls_q_t *> simplices;
-//#else
-//                vector<simplex2_mls_q_t *> simplices;
-//#endif
-//                for (unsigned int k = 0; k < cubes.size(); k++)
-//                  for (unsigned int kk = 0; kk < cubes[k].cubes_q_.size(); kk++)
-//                    if (cubes[k].cubes_q_[kk]->loc == FCE)
-//                      for (unsigned int l = 0; l < n_sps; l++)
-//                        simplices.push_back(&cubes[k].cubes_q_[kk]->simplex[l]);
-
-//#ifdef P4_TO_P8
-//                simplex3_mls_q_vtk::write_simplex_geometry(simplices, oss.str(), to_string(file_idx));
-//#else
-//                simplex2_mls_q_vtk::write_simplex_geometry(simplices, oss.str(), to_string(file_idx));
-//#endif
-//              }
-
-//            }
-            //*/
-
-              Vec sol_m = sol; double *sol_m_ptr;
-              Vec sol_p = sol; double *sol_p_ptr;
-
-              /* calculate errors */
-              Vec vec_error_sl_m; double *vec_error_sl_m_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &vec_error_sl_m); CHKERRXX(ierr);
-              Vec vec_error_gr_m; double *vec_error_gr_m_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &vec_error_gr_m); CHKERRXX(ierr);
-              Vec vec_error_ex_m; double *vec_error_ex_m_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &vec_error_ex_m); CHKERRXX(ierr);
-              Vec vec_error_dd_m; double *vec_error_dd_m_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &vec_error_dd_m); CHKERRXX(ierr);
-
-              Vec vec_error_sl_p; double *vec_error_sl_p_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &vec_error_sl_p); CHKERRXX(ierr);
-              Vec vec_error_gr_p; double *vec_error_gr_p_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &vec_error_gr_p); CHKERRXX(ierr);
-              Vec vec_error_ex_p; double *vec_error_ex_p_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &vec_error_ex_p); CHKERRXX(ierr);
-              Vec vec_error_dd_p; double *vec_error_dd_p_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &vec_error_dd_p); CHKERRXX(ierr);
-
-              //----------------------------------------------------------------------------------------------
-              // calculate error of solution
-              //----------------------------------------------------------------------------------------------
-              ierr = VecGetArray(sol_m, &sol_m_ptr); CHKERRXX(ierr);
-              ierr = VecGetArray(sol_p, &sol_p_ptr); CHKERRXX(ierr);
-
-              ierr = VecGetArray(vec_error_sl_m, &vec_error_sl_m_ptr); CHKERRXX(ierr);
-              ierr = VecGetArray(vec_error_sl_p, &vec_error_sl_p_ptr); CHKERRXX(ierr);
-
-              ierr = VecGetArray(mask_m, &mask_m_ptr); CHKERRXX(ierr);
-              ierr = VecGetArray(mask_p, &mask_p_ptr); CHKERRXX(ierr);
-
-              double u_max = 0;
-
-              foreach_local_node(n, nodes)
-              {
-                double xyz[P4EST_DIM];
-                node_xyz_fr_n(n, p4est, nodes, xyz);
-
-                vec_error_sl_m_ptr[n] = mask_m_ptr[n] < 0 ? ABS(sol_m_ptr[n] - u_m_cf.value(xyz)) : 0;
-                vec_error_sl_p_ptr[n] = mask_p_ptr[n] < 0 ? ABS(sol_p_ptr[n] - u_p_cf.value(xyz)) : 0;
-
-                u_max = MAX(u_max, fabs(u_m_cf.value(xyz)), fabs(u_p_cf.value(xyz)));
-              }
-
-              ierr = VecRestoreArray(mask_m, &mask_m_ptr); CHKERRXX(ierr);
-              ierr = VecRestoreArray(mask_p, &mask_p_ptr); CHKERRXX(ierr);
-
-              ierr = VecRestoreArray(sol_m, &sol_m_ptr); CHKERRXX(ierr);
-              ierr = VecRestoreArray(sol_p, &sol_p_ptr); CHKERRXX(ierr);
-
-              ierr = VecRestoreArray(vec_error_sl_m, &vec_error_sl_m_ptr); CHKERRXX(ierr);
-              ierr = VecRestoreArray(vec_error_sl_p, &vec_error_sl_p_ptr); CHKERRXX(ierr);
-
-              ierr = VecGhostUpdateBegin(vec_error_sl_m, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-              ierr = VecGhostUpdateBegin(vec_error_sl_p, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-              ierr = VecGhostUpdateEnd  (vec_error_sl_m, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-              ierr = VecGhostUpdateEnd  (vec_error_sl_p, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-              //----------------------------------------------------------------------------------------------
-              // calculate error of gradients
-              //----------------------------------------------------------------------------------------------
-              ierr = VecGetArray(sol_m, &sol_m_ptr); CHKERRXX(ierr);
-              ierr = VecGetArray(sol_p, &sol_p_ptr); CHKERRXX(ierr);
-
-              ierr = VecGetArray(mask_m, &mask_m_ptr); CHKERRXX(ierr);
-              ierr = VecGetArray(mask_p, &mask_p_ptr); CHKERRXX(ierr);
-
-              ierr = VecGetArray(vec_error_gr_m, &vec_error_gr_m_ptr); CHKERRXX(ierr);
-              ierr = VecGetArray(vec_error_gr_p, &vec_error_gr_p_ptr); CHKERRXX(ierr);
-
-              quad_neighbor_nodes_of_node_t qnnn;
-
-              double gr_max = 0;
-
-              foreach_local_node(n, nodes)
-              {
-                double xyz[P4EST_DIM];
-                node_xyz_fr_n(n, p4est, nodes, xyz);
-
-                p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
-
-                if (!compute_grad_between())
-                {
-                  ngbd_n.get_neighbors(n, qnnn);
-
-                  if (!is_node_Wall(p4est, ni) && qnnn.is_stencil_in_negative_domain(mask_m_ptr))
-                  {
-                    double DIM( ux_m_exact = ux_m_cf(DIM(xyz[0], xyz[1], xyz[2])),
-                                uy_m_exact = uy_m_cf(DIM(xyz[0], xyz[1], xyz[2])),
-                                uz_m_exact = uz_m_cf(DIM(xyz[0], xyz[1], xyz[2])) );
-
-                    gr_max = MAX(gr_max, sqrt(SUMD(SQR(ux_m_exact), SQR(uy_m_exact), SQR(uz_m_exact))));
-
-                    double DIM( ux_m_error = fabs(qnnn.dx_central(sol_m_ptr) - ux_m_exact),
-                                uy_m_error = fabs(qnnn.dy_central(sol_m_ptr) - uy_m_exact),
-                                uz_m_error = fabs(qnnn.dz_central(sol_m_ptr) - uz_m_exact) );
-
-                    vec_error_gr_m_ptr[n] = sqrt(SUMD(SQR(ux_m_error), SQR(uy_m_error), SQR(uz_m_error)));
-                  } else {
-                    vec_error_gr_m_ptr[n] = 0;
-                  }
-
-                  if (!is_node_Wall(p4est, ni) && qnnn.is_stencil_in_negative_domain(mask_p_ptr))
-                  {
-                    double DIM( ux_p_exact = ux_p_cf(DIM(xyz[0], xyz[1], xyz[2])),
-                        uy_p_exact = uy_p_cf(DIM(xyz[0], xyz[1], xyz[2])),
-                        uz_p_exact = uz_p_cf(DIM(xyz[0], xyz[1], xyz[2])) );
-
-                    gr_max = MAX(gr_max, sqrt(SUMD(SQR(ux_p_exact), SQR(uy_p_exact), SQR(uz_p_exact))));
-
-                    double DIM( ux_p_error = fabs(qnnn.dx_central(sol_p_ptr) - ux_p_exact),
-                                uy_p_error = fabs(qnnn.dy_central(sol_p_ptr) - uy_p_exact),
-                                uz_p_error = fabs(qnnn.dz_central(sol_p_ptr) - uz_p_exact) );
-
-                    vec_error_gr_p_ptr[n] = sqrt(SUMD(SQR(ux_p_error), SQR(uy_p_error), SQR(uz_p_error)));
-                  } else {
-                    vec_error_gr_p_ptr[n] = 0;
-                  }
-                } else {
-                  p4est_locidx_t neighbors      [num_neighbors_cube];
-                  bool           neighbors_exist[num_neighbors_cube];
-
-                  double xyz_nei[P4EST_DIM];
-                  double xyz_mid[P4EST_DIM];
-                  double normal[P4EST_DIM];
-
-                  vec_error_gr_m_ptr[n] = 0;
-                  vec_error_gr_p_ptr[n] = 0;
-
-                  if (!is_node_Wall(p4est, ni))
-                  {
-                    ngbd_n.get_all_neighbors(n, neighbors, neighbors_exist);
-                    for (int j = 1; j < (int)pow(3, P4EST_DIM); j+=2)
-                    {
-                      p4est_locidx_t n_nei = neighbors[j];
-                      node_xyz_fr_n(n_nei, p4est, nodes, xyz_nei);
-
-                      double delta = 0;
-
-                      foreach_dimension(i)
-                      {
-                        xyz_mid[i] = .5*(xyz[i]+xyz_nei[i]);
-                        delta += SQR(xyz[i]-xyz_nei[i]);
-                        normal[i] = xyz_nei[i]-xyz[i];
-                      }
-
-                      delta = sqrt(delta);
-
-                      foreach_dimension(i)
-                          normal[i] /= delta;
-
-                      if (mask_m_ptr[n] < 0)
-                        if (mask_m_ptr[n_nei] < 0)
-                        {
-                          double grad_exact = SUMD(ux_m_cf.value(xyz_mid)*normal[0], uy_m_cf.value(xyz_mid)*normal[1], uz_m_cf.value(xyz_mid)*normal[2]);
-                          vec_error_gr_m_ptr[n] = MAX(vec_error_gr_m_ptr[n], fabs((sol_m_ptr[n_nei]-sol_m_ptr[n])/delta - grad_exact));
-                          gr_max = MAX(gr_max, fabs(grad_exact));
-                        }
-
-                      if (mask_p_ptr[n] < 0)
-                        if (mask_p_ptr[n_nei] < 0)
-                        {
-                          double grad_exact = SUMD(ux_p_cf.value(xyz_mid)*normal[0], uy_p_cf.value(xyz_mid)*normal[1], uz_p_cf.value(xyz_mid)*normal[2]);
-                          vec_error_gr_p_ptr[n] = MAX(vec_error_gr_p_ptr[n], fabs((sol_p_ptr[n_nei]-sol_p_ptr[n])/delta - grad_exact));
-                          gr_max = MAX(gr_max, fabs(grad_exact));
-                        }
+                      const p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, q);
+                      l_p[tree->quadrants_offset+q] = quad->level;
                     }
                   }
-                }
 
-              }
-
-              ierr = VecRestoreArray(sol_m, &sol_m_ptr); CHKERRXX(ierr);
-              ierr = VecRestoreArray(sol_p, &sol_p_ptr); CHKERRXX(ierr);
-
-              ierr = VecRestoreArray(mask_m, &mask_m_ptr); CHKERRXX(ierr);
-              ierr = VecRestoreArray(mask_p, &mask_p_ptr); CHKERRXX(ierr);
-
-              ierr = VecRestoreArray(vec_error_gr_m, &vec_error_gr_m_ptr); CHKERRXX(ierr);
-              ierr = VecRestoreArray(vec_error_gr_p, &vec_error_gr_p_ptr); CHKERRXX(ierr);
-
-              ierr = VecGhostUpdateBegin(vec_error_gr_m, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-              ierr = VecGhostUpdateBegin(vec_error_gr_p, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-              ierr = VecGhostUpdateEnd  (vec_error_gr_m, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-              ierr = VecGhostUpdateEnd  (vec_error_gr_p, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-              //---------------------------------------------------------------------------------------------
-              // calculate error of Laplacian
-              //----------------------------------------------------------------------------------------------
-              ierr = VecGetArray(sol_m, &sol_m_ptr); CHKERRXX(ierr);
-              ierr = VecGetArray(sol_p, &sol_p_ptr); CHKERRXX(ierr);
-
-              ierr = VecGetArray(mask_m, &mask_m_ptr); CHKERRXX(ierr);
-              ierr = VecGetArray(mask_p, &mask_p_ptr); CHKERRXX(ierr);
-
-              ierr = VecGetArray(vec_error_dd_m, &vec_error_dd_m_ptr); CHKERRXX(ierr);
-              ierr = VecGetArray(vec_error_dd_p, &vec_error_dd_p_ptr); CHKERRXX(ierr);
-
-              foreach_local_node(n, nodes)
-              {
-                double xyz[P4EST_DIM];
-                node_xyz_fr_n(n, p4est, nodes, xyz);
-
-                p4est_indep_t *ni = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
-                ngbd_n.get_neighbors(n, qnnn);
-
-                if (!is_node_Wall(p4est, ni) && qnnn.is_stencil_in_negative_domain(mask_m_ptr))
-                {
-                  double udd_exact = ul_m_cf.value(xyz);
-                  double DIM( uxx = qnnn.dxx_central(sol_m_ptr),
-                              uyy = qnnn.dyy_central(sol_m_ptr),
-                              uzz = qnnn.dzz_central(sol_m_ptr) );
-                  vec_error_dd_m_ptr[n] = fabs(udd_exact - SUMD(uxx,uyy,uzz));
-                } else {
-                  vec_error_dd_m_ptr[n] = 0;
-                }
-
-                if (!is_node_Wall(p4est, ni) && qnnn.is_stencil_in_negative_domain(mask_p_ptr))
-                {
-                  double udd_exact = ul_p_cf.value(xyz);
-                  double DIM( uxx = qnnn.dxx_central(sol_p_ptr),
-                              uyy = qnnn.dyy_central(sol_p_ptr),
-                              uzz = qnnn.dzz_central(sol_p_ptr) );
-                  vec_error_dd_p_ptr[n] = fabs(udd_exact - SUMD(uxx,uyy,uzz));
-                } else {
-                  vec_error_dd_p_ptr[n] = 0;
-                }
-              }
-
-              ierr = VecRestoreArray(sol_m, &sol_m_ptr); CHKERRXX(ierr);
-              ierr = VecRestoreArray(sol_p, &sol_p_ptr); CHKERRXX(ierr);
-
-              ierr = VecRestoreArray(mask_m, &mask_m_ptr); CHKERRXX(ierr);
-              ierr = VecRestoreArray(mask_p, &mask_p_ptr); CHKERRXX(ierr);
-
-              ierr = VecRestoreArray(vec_error_dd_m, &vec_error_dd_m_ptr); CHKERRXX(ierr);
-              ierr = VecRestoreArray(vec_error_dd_p, &vec_error_dd_p_ptr); CHKERRXX(ierr);
-
-              ierr = VecGhostUpdateBegin(vec_error_dd_m, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-              ierr = VecGhostUpdateBegin(vec_error_dd_p, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-              ierr = VecGhostUpdateEnd  (vec_error_dd_m, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-              ierr = VecGhostUpdateEnd  (vec_error_dd_p, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-              //----------------------------------------------------------------------------------------------
-              // calculate extrapolation error
-              //----------------------------------------------------------------------------------------------
-              double band = extension_band_check();
-
-              // copy solution into a new Vec
-              Vec sol_m_ex; double *sol_m_ex_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &sol_m_ex); CHKERRXX(ierr);
-              Vec sol_p_ex; double *sol_p_ex_ptr; ierr = VecCreateGhostNodes(p4est, nodes, &sol_p_ex); CHKERRXX(ierr);
-
-              VecCopyGhost(sol_m, sol_m_ex);
-              VecCopyGhost(sol_p, sol_p_ex);
-
-              Vec phi_m; ierr = VecDuplicate(bdry_phi_eff, &phi_m); CHKERRXX(ierr); VecCopyGhost(bdry_phi_eff, phi_m);
-              Vec phi_p; ierr = VecDuplicate(bdry_phi_eff, &phi_p); CHKERRXX(ierr); VecCopyGhost(bdry_phi_eff, phi_p);
-
-              double *phi_m_ptr;
-              double *phi_p_ptr;
-
-              VecPointwiseMaxGhost(phi_m, phi_m, infc_phi_eff);
-              VecScaleGhost(infc_phi_eff, -1);
-              VecPointwiseMaxGhost(phi_p, phi_p, infc_phi_eff);
-              VecScaleGhost(infc_phi_eff, -1);
-
-              // extend
-              boundary_conditions_t *bc = NULL;
-              if (apply_bc_pointwise())
-              {
-                bc = solver.get_bc(0);
-              }
-
-              ls.set_show_convergence(0);
-              switch (extend_solution())
-              {
-                case 1:
-                  ls.extend_Over_Interface_TVD(phi_m, sol_m_ex, extension_iterations(), 2, extension_tol(), -extension_band_compute()*dxyz_max,  extension_band_extend()*dxyz_max,  extension_band_check()*dxyz_max, NULL, mask_m, bc, use_nonzero_guess()); CHKERRXX(ierr);
-                  ls.extend_Over_Interface_TVD(phi_p, sol_p_ex, extension_iterations(), 2, extension_tol(), -extension_band_compute()*dxyz_max,  extension_band_extend()*dxyz_max,  extension_band_check()*dxyz_max, NULL, mask_p, bc, use_nonzero_guess()); CHKERRXX(ierr);
-                  break;
-                case 2:
-                  ls.extend_Over_Interface_TVD_Full(phi_m, sol_m_ex, extension_iterations(), 2, extension_tol(), -extension_band_compute()*dxyz_max,  extension_band_extend()*dxyz_max,  extension_band_check()*dxyz_max, NULL, mask_m, bc, use_nonzero_guess()); CHKERRXX(ierr);
-                  ls.extend_Over_Interface_TVD_Full(phi_p, sol_p_ex, extension_iterations(), 2, extension_tol(), -extension_band_compute()*dxyz_max,  extension_band_extend()*dxyz_max,  extension_band_check()*dxyz_max, NULL, mask_p, bc, use_nonzero_guess()); CHKERRXX(ierr);
-                  break;
-              }
-
-              // calculate error
-              ierr = VecGetArray(sol_m_ex, &sol_m_ex_ptr); CHKERRXX(ierr);
-              ierr = VecGetArray(sol_p_ex, &sol_p_ex_ptr); CHKERRXX(ierr);
-
-              ierr = VecGetArray(vec_error_ex_m, &vec_error_ex_m_ptr); CHKERRXX(ierr);
-              ierr = VecGetArray(vec_error_ex_p, &vec_error_ex_p_ptr); CHKERRXX(ierr);
-
-              ierr = VecGetArray(mask_m, &mask_m_ptr); CHKERRXX(ierr);
-              ierr = VecGetArray(mask_p, &mask_p_ptr); CHKERRXX(ierr);
-
-              ierr = VecGetArray(phi_m, &phi_m_ptr); CHKERRXX(ierr);
-              ierr = VecGetArray(phi_p, &phi_p_ptr); CHKERRXX(ierr);
-
-              foreach_local_node(n, nodes)
-              {
-                double xyz[P4EST_DIM];
-                node_xyz_fr_n(n, p4est, nodes, xyz);
-
-                vec_error_ex_m_ptr[n] = (mask_m_ptr[n] > 0. && phi_m_ptr[n] < band*dxyz_max) ? ABS(sol_m_ex_ptr[n] - u_m_cf.value(xyz)) : 0;
-                vec_error_ex_p_ptr[n] = (mask_p_ptr[n] > 0. && phi_p_ptr[n] < band*dxyz_max) ? ABS(sol_p_ex_ptr[n] - u_p_cf.value(xyz)) : 0;
-              }
-
-              ierr = VecRestoreArray(sol_m_ex, &sol_m_ex_ptr); CHKERRXX(ierr);
-              ierr = VecRestoreArray(sol_p_ex, &sol_p_ex_ptr); CHKERRXX(ierr);
-
-              ierr = VecRestoreArray(vec_error_ex_m, &vec_error_ex_m_ptr); CHKERRXX(ierr);
-              ierr = VecRestoreArray(vec_error_ex_p, &vec_error_ex_p_ptr); CHKERRXX(ierr);
-
-              ierr = VecRestoreArray(mask_m, &mask_m_ptr); CHKERRXX(ierr);
-              ierr = VecRestoreArray(mask_p, &mask_p_ptr); CHKERRXX(ierr);
-
-              ierr = VecRestoreArray(phi_m, &phi_m_ptr); CHKERRXX(ierr);
-              ierr = VecRestoreArray(phi_p, &phi_p_ptr); CHKERRXX(ierr);
-
-              ierr = VecGhostUpdateBegin(vec_error_ex_m, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-              ierr = VecGhostUpdateBegin(vec_error_ex_p, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-              ierr = VecGhostUpdateEnd  (vec_error_ex_m, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-              ierr = VecGhostUpdateEnd  (vec_error_ex_p, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
-              ierr = VecDestroy(phi_m); CHKERRXX(ierr);
-              ierr = VecDestroy(phi_p); CHKERRXX(ierr);
-
-              // compute L-inf norm of errors
-              double err_sl_m_max = 0.;   ierr = VecMax(vec_error_sl_m, NULL, &err_sl_m_max); CHKERRXX(ierr);   mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_sl_m_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-              double err_gr_m_max = 0.;   ierr = VecMax(vec_error_gr_m, NULL, &err_gr_m_max); CHKERRXX(ierr);   mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_gr_m_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-              double err_ex_m_max = 0.;   ierr = VecMax(vec_error_ex_m, NULL, &err_ex_m_max); CHKERRXX(ierr);   mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_ex_m_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-              double err_dd_m_max = 0.;   ierr = VecMax(vec_error_dd_m, NULL, &err_dd_m_max); CHKERRXX(ierr);   mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_dd_m_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-
-              double err_sl_p_max = 0.;   ierr = VecMax(vec_error_sl_p, NULL, &err_sl_p_max); CHKERRXX(ierr);   mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_sl_p_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-              double err_gr_p_max = 0.;   ierr = VecMax(vec_error_gr_p, NULL, &err_gr_p_max); CHKERRXX(ierr);   mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_gr_p_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-              double err_ex_p_max = 0.;   ierr = VecMax(vec_error_ex_p, NULL, &err_ex_p_max); CHKERRXX(ierr);   mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_ex_p_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-              double err_dd_p_max = 0.;   ierr = VecMax(vec_error_dd_p, NULL, &err_dd_p_max); CHKERRXX(ierr);   mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_dd_p_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-
-              if (scale_errors())
-              {
-                mpiret = MPI_Allreduce(MPI_IN_PLACE, &u_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-                err_sl_m_max /= u_max;
-                err_sl_p_max /= u_max;
-
-                mpiret = MPI_Allreduce(MPI_IN_PLACE, &gr_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
-                err_gr_m_max /= gr_max;
-                err_gr_p_max /= gr_max;
-              }
-
-              error_sl_m_arr.push_back(err_sl_m_max);
-              error_gr_m_arr.push_back(err_gr_m_max);
-              error_ex_m_arr.push_back(err_ex_m_max);
-              error_dd_m_arr.push_back(err_dd_m_max);
-
-              error_sl_p_arr.push_back(err_sl_p_max);
-              error_gr_p_arr.push_back(err_gr_p_max);
-              error_ex_p_arr.push_back(err_ex_p_max);
-              error_dd_p_arr.push_back(err_dd_p_max);
-
-              // Print current errors
-              if (iter > -1)
-              {
-                ierr = PetscPrintf(p4est->mpicomm, "Errors Neg: "); CHKERRXX(ierr);
-                ierr = PetscPrintf(p4est->mpicomm, "sol = %3.2e (%+3.2f), ", err_sl_m_max, log(error_sl_m_arr[iter-1]/error_sl_m_arr[iter])/log(2)); CHKERRXX(ierr);
-                ierr = PetscPrintf(p4est->mpicomm, "gra = %3.2e (%+3.2f), ", err_gr_m_max, log(error_gr_m_arr[iter-1]/error_gr_m_arr[iter])/log(2)); CHKERRXX(ierr);
-                //ierr = PetscPrintf(p4est->mpicomm, "ext = %3.2e (%+3.2f), ", err_ex_m_max, log(error_ex_m_arr[iter-1]/error_ex_m_arr[iter])/log(2)); CHKERRXX(ierr);
-                //ierr = PetscPrintf(p4est->mpicomm, "lap = %3.2e (%+3.2f). ", err_dd_m_max, log(error_dd_m_arr[iter-1]/error_dd_m_arr[iter])/log(2)); CHKERRXX(ierr);
-                ierr = PetscPrintf(p4est->mpicomm, "\n"); CHKERRXX(ierr);
-
-                ierr = PetscPrintf(p4est->mpicomm, "Errors Pos: "); CHKERRXX(ierr);
-                ierr = PetscPrintf(p4est->mpicomm, "sol = %3.2e (%+3.2f), ", err_sl_p_max, log(error_sl_p_arr[iter-1]/error_sl_p_arr[iter])/log(2)); CHKERRXX(ierr);
-                ierr = PetscPrintf(p4est->mpicomm, "gra = %3.2e (%+3.2f), ", err_gr_p_max, log(error_gr_p_arr[iter-1]/error_gr_p_arr[iter])/log(2)); CHKERRXX(ierr);
-                //ierr = PetscPrintf(p4est->mpicomm, "ext = %3.2e (%+3.2f), ", err_ex_p_max, log(error_ex_p_arr[iter-1]/error_ex_p_arr[iter])/log(2)); CHKERRXX(ierr);
-                //ierr = PetscPrintf(p4est->mpicomm, "lap = %3.2e (%+3.2f). ", err_dd_p_max, log(error_dd_p_arr[iter-1]/error_dd_p_arr[iter])/log(2)); CHKERRXX(ierr);
-                ierr = PetscPrintf(p4est->mpicomm, "\n"); CHKERRXX(ierr);
-
-                ierr = PetscPrintf(p4est->mpicomm, "Cond num: %e\n", cond_num_arr[iter]); CHKERRXX(ierr);
-              }
-
-              if(save_vtk())
-              {
-                char *out_dir;
-                out_dir = getenv("OUT_DIR");
-
-                std::ostringstream oss;
-
-                oss << out_dir
-                    << "/vtu/nodes_"
-                    << p4est->mpisize << "_"
-                    << brick.nxyztrees[0] << "x"
-                    << brick.nxyztrees[1] <<
-       #ifdef P4_TO_P8
-                       "x" << brick.nxyztrees[2] <<
-       #endif
-                       "." << iter;
-
-                /* save the size of the leaves */
-                Vec leaf_level;
-                ierr = VecCreateGhostCells(p4est, ghost, &leaf_level); CHKERRXX(ierr);
-                double *l_p;
-                ierr = VecGetArray(leaf_level, &l_p); CHKERRXX(ierr);
-
-                for(p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx)
-                {
-                  p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
-                  for( size_t q=0; q<tree->quadrants.elem_count; ++q)
+                  for(size_t q=0; q<ghost->ghosts.elem_count; ++q)
                   {
-                    const p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, q);
-                    l_p[tree->quadrants_offset+q] = quad->level;
+                    const p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts, q);
+                    l_p[p4est->local_num_quadrants+q] = quad->level;
                   }
+
+
+                  double *bdry_phi_eff_ptr, *infc_phi_eff_ptr;
+                  double *bdry1_phi_eff_ptr, *infc1_phi_eff_ptr;
+
+                  ierr = VecGetArray(bdry_phi_eff, &bdry_phi_eff_ptr); CHKERRXX(ierr);
+                  ierr = VecGetArray(infc_phi_eff, &infc_phi_eff_ptr); CHKERRXX(ierr);
+
+                  ierr = VecGetArray(bdry1_phi_eff, &bdry1_phi_eff_ptr); CHKERRXX(ierr);
+                  ierr = VecGetArray(infc1_phi_eff, &infc1_phi_eff_ptr); CHKERRXX(ierr);
+
+
+                  u.get_array();
+                  u1.get_array();
+                  u_ex.get_array();
+
+                  double *mu_m_ptr;
+                  double *mu_p_ptr;
+
+                  double *mu_m_ptr1;
+                  double *mu_p_ptr1;
+
+                  ierr = VecGetArray(mu_m, &mu_m_ptr); CHKERRXX(ierr);
+                  ierr = VecGetArray(mu_p, &mu_p_ptr); CHKERRXX(ierr);
+
+                  ierr = VecGetArray(mu_m1, &mu_m_ptr1); CHKERRXX(ierr);
+                  ierr = VecGetArray(mu_p1, &mu_p_ptr1); CHKERRXX(ierr);
+
+                  if (u.vec == NULL){ierr = PetscPrintf(mpi.comm(), "u is NULL\n"); CHKERRXX(ierr);}
+                  if (u1.vec == NULL){ierr = PetscPrintf(mpi.comm(), "u1 is NULL\n"); CHKERRXX(ierr);}
+                  u_error.get_array();
+
+                  my_p4est_vtk_write_all(p4est, nodes, ghost,
+                                         P4EST_TRUE, P4EST_TRUE,
+                                         6, 1, oss.str().c_str(),
+
+                                         VTK_POINT_DATA, "phi", bdry_phi_eff_ptr,
+                                         VTK_POINT_DATA, "phi1", bdry1_phi_eff_ptr,
+                                         VTK_POINT_DATA, "u", u.ptr,
+                                         VTK_POINT_DATA, "u1", u1.ptr,
+                                         VTK_POINT_DATA, "u_exact", u_ex.ptr,
+                                         VTK_POINT_DATA, "u_error", u_error.ptr,
+                                         VTK_CELL_DATA , "leaf_level", l_p);
+
+                  u_error.restore_array();
+                  ierr = VecRestoreArray(bdry_phi_eff, &bdry_phi_eff_ptr); CHKERRXX(ierr);
+                  ierr = VecRestoreArray(infc_phi_eff, &infc_phi_eff_ptr); CHKERRXX(ierr);
+
+                  ierr = VecRestoreArray(bdry1_phi_eff, &bdry1_phi_eff_ptr); CHKERRXX(ierr);
+                  ierr = VecRestoreArray(infc1_phi_eff, &infc1_phi_eff_ptr); CHKERRXX(ierr);
+
+                  ierr = VecRestoreArray(mu_m, &mu_m_ptr); CHKERRXX(ierr);
+                  ierr = VecRestoreArray(mu_p, &mu_p_ptr); CHKERRXX(ierr);
+
+                  ierr = VecRestoreArray(mu_m1, &mu_m_ptr1); CHKERRXX(ierr);
+                  ierr = VecRestoreArray(mu_p1, &mu_p_ptr1); CHKERRXX(ierr);
+
+                  u_ex.restore_array();
+                  u1.restore_array();
+                  u.restore_array();
+                  double u_max =0.; ierr = VecMax(u.vec, NULL, &u_max); CHKERRXX(ierr);   mpiret = MPI_Allreduce(MPI_IN_PLACE, &u_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+                  double u_err_max =0.; ierr = VecMax(u_error.vec, NULL, &u_err_max); CHKERRXX(ierr);   mpiret = MPI_Allreduce(MPI_IN_PLACE, &u_err_max, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+                  //scaling error
+                  u_err_max=u_err_max/u_max;
+                  error_in_u.push_back(u_max);
+
+                  ierr = VecRestoreArray(leaf_level, &l_p); CHKERRXX(ierr);
+                  ierr = VecDestroy(leaf_level); CHKERRXX(ierr);
+
+                  PetscPrintf(p4est->mpicomm, "VTK saved in %s\n", oss.str().c_str());
                 }
 
-                for(size_t q=0; q<ghost->ghosts.elem_count; ++q)
-                {
-                  const p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts, q);
-                  l_p[p4est->local_num_quadrants+q] = quad->level;
-                }
+                u_new.destroy();
+                u1_new.destroy();
 
-                Vec     exact;
-                double *exact_ptr;
+                rhs_u.destroy();
+                rhs_u1.destroy();
 
-                ierr = VecDuplicate(sol, &exact); CHKERRXX(ierr);
-                sample_cf_on_nodes(p4est, nodes, u_cf, exact);
+                u_ex.destroy();
 
-                ierr = VecGetArray(bdry_phi_eff, &bdry_phi_eff_ptr); CHKERRXX(ierr);
-                ierr = VecGetArray(infc_phi_eff, &infc_phi_eff_ptr); CHKERRXX(ierr);
-
-                ierr = VecGetArray(sol,   &sol_ptr);   CHKERRXX(ierr);
-                ierr = VecGetArray(exact, &exact_ptr); CHKERRXX(ierr);
-
-                ierr = VecGetArray(sol_m_ex, &sol_m_ex_ptr); CHKERRXX(ierr);
-                ierr = VecGetArray(sol_p_ex, &sol_p_ex_ptr); CHKERRXX(ierr);
-
-                ierr = VecGetArray(vec_error_sl_m, &vec_error_sl_m_ptr); CHKERRXX(ierr);
-                ierr = VecGetArray(vec_error_gr_m, &vec_error_gr_m_ptr); CHKERRXX(ierr);
-                ierr = VecGetArray(vec_error_ex_m, &vec_error_ex_m_ptr); CHKERRXX(ierr);
-                ierr = VecGetArray(vec_error_dd_m, &vec_error_dd_m_ptr); CHKERRXX(ierr);
-
-                ierr = VecGetArray(vec_error_sl_p, &vec_error_sl_p_ptr); CHKERRXX(ierr);
-                ierr = VecGetArray(vec_error_gr_p, &vec_error_gr_p_ptr); CHKERRXX(ierr);
-                ierr = VecGetArray(vec_error_ex_p, &vec_error_ex_p_ptr); CHKERRXX(ierr);
-                ierr = VecGetArray(vec_error_dd_p, &vec_error_dd_p_ptr); CHKERRXX(ierr);
-
-                ierr = VecGetArray(mask_m, &mask_m_ptr); CHKERRXX(ierr);
-                ierr = VecGetArray(mask_p, &mask_p_ptr); CHKERRXX(ierr);
-
-                double *mu_m_ptr;
-                double *mu_p_ptr;
-
-                ierr = VecGetArray(mu_m, &mu_m_ptr); CHKERRXX(ierr);
-                ierr = VecGetArray(mu_p, &mu_p_ptr); CHKERRXX(ierr);
-
-                my_p4est_vtk_write_all(p4est, nodes, ghost,
-                                       P4EST_TRUE, P4EST_TRUE,
-                                       18, 1, oss.str().c_str(),
-                                       VTK_POINT_DATA, "phi", bdry_phi_eff_ptr,
-                                       VTK_POINT_DATA, "infc_phi", infc_phi_eff_ptr,
-                                       VTK_POINT_DATA, "sol", sol_ptr,
-                                       VTK_POINT_DATA, "exact", exact_ptr,
-                                       VTK_POINT_DATA, "sol_m_ex", sol_m_ex_ptr,
-                                       VTK_POINT_DATA, "sol_p_ex", sol_p_ex_ptr,
-                                       VTK_POINT_DATA, "mu_m", mu_m_ptr,
-                                       VTK_POINT_DATA, "mu_p", mu_p_ptr,
-                                       VTK_POINT_DATA, "mask_m", mask_m_ptr,
-                                       VTK_POINT_DATA, "mask_p", mask_p_ptr,
-                                       VTK_POINT_DATA, "error_sl_m", vec_error_sl_m_ptr,
-                                       VTK_POINT_DATA, "error_gr_m", vec_error_gr_m_ptr,
-                                       VTK_POINT_DATA, "error_ex_m", vec_error_ex_m_ptr,
-                                       VTK_POINT_DATA, "error_dd_m", vec_error_dd_m_ptr,
-                                       VTK_POINT_DATA, "error_sl_p", vec_error_sl_p_ptr,
-                                       VTK_POINT_DATA, "error_gr_p", vec_error_gr_p_ptr,
-                                       VTK_POINT_DATA, "error_ex_p", vec_error_ex_p_ptr,
-                                       VTK_POINT_DATA, "error_dd_p", vec_error_dd_p_ptr,
-                                       VTK_CELL_DATA , "leaf_level", l_p);
-
-                ierr = VecRestoreArray(bdry_phi_eff, &bdry_phi_eff_ptr);    CHKERRXX(ierr);
-                ierr = VecRestoreArray(infc_phi_eff, &infc_phi_eff_ptr); CHKERRXX(ierr);
-
-                ierr = VecRestoreArray(sol,   &sol_ptr);   CHKERRXX(ierr);
-                ierr = VecRestoreArray(exact, &exact_ptr); CHKERRXX(ierr);
-
-                ierr = VecRestoreArray(sol_m_ex, &sol_m_ex_ptr); CHKERRXX(ierr);
-                ierr = VecRestoreArray(sol_p_ex, &sol_p_ex_ptr); CHKERRXX(ierr);
-
-                ierr = VecRestoreArray(vec_error_sl_m, &vec_error_sl_m_ptr); CHKERRXX(ierr);
-                ierr = VecRestoreArray(vec_error_gr_m, &vec_error_gr_m_ptr); CHKERRXX(ierr);
-                ierr = VecRestoreArray(vec_error_ex_m, &vec_error_ex_m_ptr); CHKERRXX(ierr);
-                ierr = VecRestoreArray(vec_error_dd_m, &vec_error_dd_m_ptr); CHKERRXX(ierr);
-
-                ierr = VecRestoreArray(vec_error_sl_p, &vec_error_sl_p_ptr); CHKERRXX(ierr);
-                ierr = VecRestoreArray(vec_error_gr_p, &vec_error_gr_p_ptr); CHKERRXX(ierr);
-                ierr = VecRestoreArray(vec_error_ex_p, &vec_error_ex_p_ptr); CHKERRXX(ierr);
-                ierr = VecRestoreArray(vec_error_dd_p, &vec_error_dd_p_ptr); CHKERRXX(ierr);
-
-                ierr = VecRestoreArray(mask_m, &mask_m_ptr); CHKERRXX(ierr);
-                ierr = VecRestoreArray(mask_p, &mask_p_ptr); CHKERRXX(ierr);
-
-                ierr = VecRestoreArray(mu_m, &mu_m_ptr); CHKERRXX(ierr);
-                ierr = VecRestoreArray(mu_p, &mu_p_ptr); CHKERRXX(ierr);
-
-                ierr = VecRestoreArray(leaf_level, &l_p); CHKERRXX(ierr);
-                ierr = VecDestroy(leaf_level); CHKERRXX(ierr);
-                ierr = VecDestroy(exact); CHKERRXX(ierr);
-
-                PetscPrintf(p4est->mpicomm, "VTK saved in %s\n", oss.str().c_str());
-              }
-
-              // destroy Vec's with errors
-              ierr = VecDestroy(vec_error_sl_m); CHKERRXX(ierr);
-              ierr = VecDestroy(vec_error_gr_m); CHKERRXX(ierr);
-              ierr = VecDestroy(vec_error_ex_m); CHKERRXX(ierr);
-              ierr = VecDestroy(vec_error_dd_m); CHKERRXX(ierr);
-
-              ierr = VecDestroy(vec_error_sl_p); CHKERRXX(ierr);
-              ierr = VecDestroy(vec_error_gr_p); CHKERRXX(ierr);
-              ierr = VecDestroy(vec_error_ex_p); CHKERRXX(ierr);
-              ierr = VecDestroy(vec_error_dd_p); CHKERRXX(ierr);
-
-              ierr = VecDestroy(sol_m_ex); CHKERRXX(ierr);
-              ierr = VecDestroy(sol_p_ex); CHKERRXX(ierr);
-
-              ierr = VecDestroy(sol);           CHKERRXX(ierr);
+            }
 
               ierr = VecDestroy(mu_m);          CHKERRXX(ierr);
               ierr = VecDestroy(mu_p);          CHKERRXX(ierr);
 
-              ierr = VecDestroy(rhs_m);         CHKERRXX(ierr);
-              ierr = VecDestroy(rhs_p);         CHKERRXX(ierr);
+              ierr = VecDestroy(mu_m1);          CHKERRXX(ierr);
+              ierr = VecDestroy(mu_p1);          CHKERRXX(ierr);
 
-              ierr = VecDestroy(diag_m);   CHKERRXX(ierr);
-              ierr = VecDestroy(diag_p);   CHKERRXX(ierr);
+              std::string filename_dat_file;
+              filename_dat_file="/home/rochi/LabCode/executables/diffusion_debug_2d/output/error_in_u.dat";
+              ofstream outputFile;
+              outputFile.open (filename_dat_file.c_str());
+              outputFile << 'error'<<'\n';
+              for(int t=0; t<t_iterations; t++)
+              {
+                outputFile<<error_in_u[t] <<'\n';
+              }
+              outputFile<<'\n';
+              outputFile.close();
+              error_in_u.clear();
+
+
 
               for (unsigned int i = 0; i < bdry_phi_max_num; i++) { if (*bdry_present_all[i] == true) { ierr = VecDestroy(bdry_phi_vec_all[i]); CHKERRXX(ierr); } }
               for (unsigned int i = 0; i < infc_phi_max_num; i++) { if (*infc_present_all[i] == true) { ierr = VecDestroy(infc_phi_vec_all[i]); CHKERRXX(ierr); } }
+
+              for (unsigned int i = 0; i < bdry1_phi_max_num; i++) { if (*bdry1_present_all[i] == true) { ierr = VecDestroy(bdry1_phi_vec_all[i]); CHKERRXX(ierr); } }
+              for (unsigned int i = 0; i < infc1_phi_max_num; i++) { if (*infc1_present_all[i] == true) { ierr = VecDestroy(infc1_phi_vec_all[i]); CHKERRXX(ierr); } }
 
               p4est_nodes_destroy(nodes);
               p4est_ghost_destroy(ghost);
@@ -3527,157 +3008,7 @@ int main (int argc, char* argv[])
 #endif
       }
     }
-  //}
 
-#ifdef MATLAB_PROVIDED
-  if (mpi.rank() == 0 && compute_cond_num())
-  {
-    engClose(mengine);
-  }
-#endif
-
-
-  MPI_Barrier(mpi.comm());
-
-  std::vector<double> error_m_sl_one(num_resolutions, 0), error_m_sl_avg(num_resolutions, 0), error_m_sl_max(num_resolutions, 0);
-  std::vector<double> error_m_gr_one(num_resolutions, 0), error_m_gr_avg(num_resolutions, 0), error_m_gr_max(num_resolutions, 0);
-  std::vector<double> error_m_dd_one(num_resolutions, 0), error_m_dd_avg(num_resolutions, 0), error_m_dd_max(num_resolutions, 0);
-  std::vector<double> error_m_ex_one(num_resolutions, 0), error_m_ex_avg(num_resolutions, 0), error_m_ex_max(num_resolutions, 0);
-
-  std::vector<double> error_p_sl_one(num_resolutions, 0), error_p_sl_avg(num_resolutions, 0), error_p_sl_max(num_resolutions, 0);
-  std::vector<double> error_p_gr_one(num_resolutions, 0), error_p_gr_avg(num_resolutions, 0), error_p_gr_max(num_resolutions, 0);
-  std::vector<double> error_p_dd_one(num_resolutions, 0), error_p_dd_avg(num_resolutions, 0), error_p_dd_max(num_resolutions, 0);
-  std::vector<double> error_p_ex_one(num_resolutions, 0), error_p_ex_avg(num_resolutions, 0), error_p_ex_max(num_resolutions, 0);
-
-  std::vector<double> cond_num_one(num_resolutions, 0), cond_num_avg(num_resolutions, 0), cond_num_max(num_resolutions, 0);
-
-////  error_dd_m_arr = error_sl_m_arr;
-//  error_ex_m_arr = error_sl_m_arr;
-////  error_dd_p_arr = error_sl_p_arr;
-//  error_ex_p_arr = error_sl_p_arr;
-
-  // for each resolution compute max, mean and deviation
-  for (int p = 0; p < num_resolutions; ++p)
-  {
-    // one
-    error_m_sl_one[p] = error_sl_m_arr[p*num_shifts_total];
-    error_m_gr_one[p] = error_gr_m_arr[p*num_shifts_total];
-    error_m_dd_one[p] = error_dd_m_arr[p*num_shifts_total];
-    error_m_ex_one[p] = error_ex_m_arr[p*num_shifts_total];
-
-    error_p_sl_one[p] = error_sl_p_arr[p*num_shifts_total];
-    error_p_gr_one[p] = error_gr_p_arr[p*num_shifts_total];
-    error_p_dd_one[p] = error_dd_p_arr[p*num_shifts_total];
-    error_p_ex_one[p] = error_ex_p_arr[p*num_shifts_total];
-
-    cond_num_one[p] = cond_num_arr[p*num_shifts_total];
-
-    // max
-    for (int s = 0; s < num_shifts_total; ++s)
-    {
-      error_m_sl_max[p] = MAX(error_m_sl_max[p], error_sl_m_arr[p*num_shifts_total + s]);
-      error_m_gr_max[p] = MAX(error_m_gr_max[p], error_gr_m_arr[p*num_shifts_total + s]);
-      error_m_dd_max[p] = MAX(error_m_dd_max[p], error_dd_m_arr[p*num_shifts_total + s]);
-      error_m_ex_max[p] = MAX(error_m_ex_max[p], error_ex_m_arr[p*num_shifts_total + s]);
-
-      error_p_sl_max[p] = MAX(error_p_sl_max[p], error_sl_p_arr[p*num_shifts_total + s]);
-      error_p_gr_max[p] = MAX(error_p_gr_max[p], error_gr_p_arr[p*num_shifts_total + s]);
-      error_p_dd_max[p] = MAX(error_p_dd_max[p], error_dd_p_arr[p*num_shifts_total + s]);
-      error_p_ex_max[p] = MAX(error_p_ex_max[p], error_ex_p_arr[p*num_shifts_total + s]);
-
-      cond_num_max[p] = MAX(cond_num_max[p], cond_num_arr[p*num_shifts_total + s]);
-    }
-
-    // avg
-    for (int s = 0; s < num_shifts_total; ++s)
-    {
-      error_m_sl_avg[p] += error_sl_m_arr[p*num_shifts_total + s];
-      error_m_gr_avg[p] += error_gr_m_arr[p*num_shifts_total + s];
-      error_m_dd_avg[p] += error_dd_m_arr[p*num_shifts_total + s];
-      error_m_ex_avg[p] += error_ex_m_arr[p*num_shifts_total + s];
-
-      error_p_sl_avg[p] += error_sl_p_arr[p*num_shifts_total + s];
-      error_p_gr_avg[p] += error_gr_p_arr[p*num_shifts_total + s];
-      error_p_dd_avg[p] += error_dd_p_arr[p*num_shifts_total + s];
-      error_p_ex_avg[p] += error_ex_p_arr[p*num_shifts_total + s];
-
-      cond_num_avg[p] += cond_num_arr[p*num_shifts_total + s];
-    }
-
-    error_m_sl_avg[p] /= num_shifts_total;
-    error_m_gr_avg[p] /= num_shifts_total;
-    error_m_dd_avg[p] /= num_shifts_total;
-    error_m_ex_avg[p] /= num_shifts_total;
-
-    error_p_sl_avg[p] /= num_shifts_total;
-    error_p_gr_avg[p] /= num_shifts_total;
-    error_p_dd_avg[p] /= num_shifts_total;
-    error_p_ex_avg[p] /= num_shifts_total;
-
-    cond_num_avg[p] /= num_shifts_total;
-  }
-
-  if (mpi.rank() == 0)
-  {
-    std::ostringstream command;
-    command << "mkdir -p " << out_dir << "/convergence";
-    int ret_sys = system(command.str().c_str());
-    if (ret_sys<0)
-      throw std::invalid_argument("could not create directory");
-
-    std::string filename;
-
-    // save level and resolution
-    filename = out_dir; filename += "/convergence/lvl.txt";   save_vector(filename.c_str(), lvl_arr);
-    filename = out_dir; filename += "/convergence/h_arr.txt"; save_vector(filename.c_str(), h_arr);
-    filename = out_dir; filename += "/convergence/mu_arr.txt"; save_vector(filename.c_str(), mu_arr);
-
-    filename = out_dir; filename += "/convergence/error_m_sl_all.txt"; save_vector(filename.c_str(), error_sl_m_arr);
-    filename = out_dir; filename += "/convergence/error_m_gr_all.txt"; save_vector(filename.c_str(), error_gr_m_arr);
-    filename = out_dir; filename += "/convergence/error_m_dd_all.txt"; save_vector(filename.c_str(), error_dd_m_arr);
-    filename = out_dir; filename += "/convergence/error_m_ex_all.txt"; save_vector(filename.c_str(), error_ex_m_arr);
-
-    filename = out_dir; filename += "/convergence/error_m_sl_one.txt"; save_vector(filename.c_str(), error_m_sl_one);
-    filename = out_dir; filename += "/convergence/error_m_gr_one.txt"; save_vector(filename.c_str(), error_m_gr_one);
-    filename = out_dir; filename += "/convergence/error_m_dd_one.txt"; save_vector(filename.c_str(), error_m_dd_one);
-    filename = out_dir; filename += "/convergence/error_m_ex_one.txt"; save_vector(filename.c_str(), error_m_ex_one);
-
-    filename = out_dir; filename += "/convergence/error_m_sl_avg.txt"; save_vector(filename.c_str(), error_m_sl_avg);
-    filename = out_dir; filename += "/convergence/error_m_gr_avg.txt"; save_vector(filename.c_str(), error_m_gr_avg);
-    filename = out_dir; filename += "/convergence/error_m_dd_avg.txt"; save_vector(filename.c_str(), error_m_dd_avg);
-    filename = out_dir; filename += "/convergence/error_m_ex_avg.txt"; save_vector(filename.c_str(), error_m_ex_avg);
-
-    filename = out_dir; filename += "/convergence/error_m_sl_max.txt"; save_vector(filename.c_str(), error_m_sl_max);
-    filename = out_dir; filename += "/convergence/error_m_gr_max.txt"; save_vector(filename.c_str(), error_m_gr_max);
-    filename = out_dir; filename += "/convergence/error_m_dd_max.txt"; save_vector(filename.c_str(), error_m_dd_max);
-    filename = out_dir; filename += "/convergence/error_m_ex_max.txt"; save_vector(filename.c_str(), error_m_ex_max);
-
-    filename = out_dir; filename += "/convergence/error_p_sl_all.txt"; save_vector(filename.c_str(), error_sl_p_arr);
-    filename = out_dir; filename += "/convergence/error_p_gr_all.txt"; save_vector(filename.c_str(), error_gr_p_arr);
-    filename = out_dir; filename += "/convergence/error_p_dd_all.txt"; save_vector(filename.c_str(), error_dd_p_arr);
-    filename = out_dir; filename += "/convergence/error_p_ex_all.txt"; save_vector(filename.c_str(), error_ex_p_arr);
-
-    filename = out_dir; filename += "/convergence/error_p_sl_one.txt"; save_vector(filename.c_str(), error_p_sl_one);
-    filename = out_dir; filename += "/convergence/error_p_gr_one.txt"; save_vector(filename.c_str(), error_p_gr_one);
-    filename = out_dir; filename += "/convergence/error_p_dd_one.txt"; save_vector(filename.c_str(), error_p_dd_one);
-    filename = out_dir; filename += "/convergence/error_p_ex_one.txt"; save_vector(filename.c_str(), error_p_ex_one);
-
-    filename = out_dir; filename += "/convergence/error_p_sl_avg.txt"; save_vector(filename.c_str(), error_p_sl_avg);
-    filename = out_dir; filename += "/convergence/error_p_gr_avg.txt"; save_vector(filename.c_str(), error_p_gr_avg);
-    filename = out_dir; filename += "/convergence/error_p_dd_avg.txt"; save_vector(filename.c_str(), error_p_dd_avg);
-    filename = out_dir; filename += "/convergence/error_p_ex_avg.txt"; save_vector(filename.c_str(), error_p_ex_avg);
-
-    filename = out_dir; filename += "/convergence/error_p_sl_max.txt"; save_vector(filename.c_str(), error_p_sl_max);
-    filename = out_dir; filename += "/convergence/error_p_gr_max.txt"; save_vector(filename.c_str(), error_p_gr_max);
-    filename = out_dir; filename += "/convergence/error_p_dd_max.txt"; save_vector(filename.c_str(), error_p_dd_max);
-    filename = out_dir; filename += "/convergence/error_p_ex_max.txt"; save_vector(filename.c_str(), error_p_ex_max);
-
-    filename = out_dir; filename += "/convergence/cond_num_all.txt"; save_vector(filename.c_str(), cond_num_arr);
-    filename = out_dir; filename += "/convergence/cond_num_one.txt"; save_vector(filename.c_str(), cond_num_one);
-    filename = out_dir; filename += "/convergence/cond_num_avg.txt"; save_vector(filename.c_str(), cond_num_avg);
-    filename = out_dir; filename += "/convergence/cond_num_max.txt"; save_vector(filename.c_str(), cond_num_max);
-
-  }
 
   w.stop(); w.read_duration();
 
