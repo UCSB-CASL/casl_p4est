@@ -138,7 +138,7 @@ void select_solvers(){
 
 DEFINE_PARAMETER(pl,int,advection_sl_order,2,"Integeer for advection solution order (can choose 1 or 2) (default:1) -- note: this also sets the NS solution order");
 DEFINE_PARAMETER(pl,bool,solve_smoke,0,"Boolean for whether to solve for smoke or not (a passive scalar), default: 0");
-DEFINE_PARAMETER(pl,double,cfl,0.5,"CFL number (default:0.5)");
+DEFINE_PARAMETER(pl,double,cfl,0.1,"CFL number (default:0.5)");
 
 DEFINE_PARAMETER(pl,bool,force_interfacial_velocity_to_zero,false,"Force the interfacial velocity to zero? ");
 
@@ -194,15 +194,15 @@ void set_geometry(){
       xmin = 0.0; xmax = 2.0;//2.0;//1.5;
       ymin = 0.0; ymax = 1.0;
 
-      nx = 4;//4;
-      ny = 2;
+      nx = 2;//4;
+      ny = 1;
 
       px = 0;
       py = 1;
 
       scaling = 10.;
 
-      double r_physical = .011; // 1.1 cm
+      double r_physical = 0.0105;//.011; // 1.1 cm
       double r_cyl_physical = 0.01; // 1 cm
 
       r0 = r_physical*scaling;
@@ -400,7 +400,7 @@ void set_NS_info(){
   switch(example_){
     case FRANK_SPHERE:throw std::invalid_argument("NS isnt setup for this example");
     case ICE_AROUND_CYLINDER:
-      Re_u = 300.;
+      Re_u = 200.;
       Re_v = 0.;
       mu_l = 1.793e-3;  // Viscosity of water , [Pa s]
       uniform_band = 4.;
@@ -715,7 +715,7 @@ public:
       case FRANK_SPHERE:
         return s0 - sqrt(SQR(x) + SQR(y));
       case ICE_AROUND_CYLINDER:
-        return r0 - sqrt(SQR(x - (xmax/4.0)) + SQR(y - (ymax/2.0)));
+        return r0 - sqrt(SQR(x - (xmax/3.0)) + SQR(y - (ymax/2.0)));
       case NS_GIBOU_EXAMPLE:
         return 0.2 - sin(x)*sin(y);
       case FLOW_PAST_CYLINDER:
@@ -735,7 +735,7 @@ public:
   {
     switch(example_){
       case FRANK_SPHERE: throw std::invalid_argument("This option may not be used for the particular example being called");
-      case ICE_AROUND_CYLINDER: return r_cyl - sqrt(SQR(x - (xmax/4.0)) + SQR(y - (ymax/2.0)));
+      case ICE_AROUND_CYLINDER: return r_cyl - sqrt(SQR(x - (xmax/3.0)) + SQR(y - (ymax/2.0)));
       case NS_GIBOU_EXAMPLE: throw std::invalid_argument("This option may not be used for the particular example being called");
       }
   }
@@ -2185,7 +2185,7 @@ void check_ice_cylinder_v_and_radius(vec_and_ptr_t phi,p4est_t* p4est,p4est_node
         // Note: we are using coordinates shifted such that the origin is defined as the center of the cylinder
 
         // Note: this x and y must be defined in the same way as it is in the Level set function
-        double x = xyz[0] - (xmax)/4.0;
+        double x = xyz[0] - (xmax)/3.0;
         double y = xyz[1] - (ymax)/2.0;
 
 
@@ -3464,7 +3464,7 @@ int main(int argc, char** argv) {
         // Get smallest grid size:
         dxyz_min(p4est,dxyz_smallest);
 
-        dxyz_close_to_interface = 1.0*max(dxyz_smallest[0],dxyz_smallest[1]);
+        dxyz_close_to_interface = 1.5*max(dxyz_smallest[0],dxyz_smallest[1]);
         min_volume_ = MULTD(dxyz_smallest[0], dxyz_smallest[1], dxyz_smallest[2]);
         extension_band_use_    = (8.)*pow(min_volume_, 1./ double(P4EST_DIM)); //8
         extension_band_extend_ = 10.*pow(min_volume_, 1./ double(P4EST_DIM)); //10
@@ -3479,8 +3479,8 @@ int main(int argc, char** argv) {
             extension_band_extend_ = uniform_band;
             extension_band_use_ = uniform_band/2.;
             extension_band_check_ = uniform_band/3.;
-            if(delta_r<6.*dxyz_close_to_interface){
-                PetscPrintf(mpi.comm()," Your initial delta_r is %0.3e, and it must be at least %0.3e \n",delta_r,6.*dxyz_close_to_interface);
+            if(delta_r<3.*dxyz_close_to_interface){
+                PetscPrintf(mpi.comm()," Your initial delta_r is %0.3e, and it must be at least %0.3e \n",delta_r,4.*dxyz_close_to_interface);
                 SC_ABORT("Your initial delta_r is too small \n");
               }
           }
@@ -3511,7 +3511,7 @@ int main(int argc, char** argv) {
                 cyl_normals.create(p4est,nodes);
                 compute_normals(*ngbd,phi_cylinder.vec,cyl_normals.vec);
 
-                ls.extend_Over_Interface_TVD_Full(phi_cylinder.vec,T_s_n.vec,50,2,1.e-9,extension_band_use_,extension_band_extend_,extension_band_extend_,cyl_normals.vec,NULL,NULL,false,NULL,NULL);
+                ls.extend_Over_Interface_TVD_Full(phi_cylinder.vec,T_s_n.vec,50,2,1.e-15,extension_band_use_,extension_band_extend_,extension_band_extend_,cyl_normals.vec,NULL,NULL,false,NULL,NULL);
                 cyl_normals.destroy();
               }
 
@@ -3541,8 +3541,8 @@ int main(int argc, char** argv) {
             compute_normals(*ngbd,phi_solid.vec,solid_normals.vec);
 
             // Extend Temperature Fields across the interface: // WAS USING 1ST ORDER, NOW CHANGED TO SECOND
-            ls.extend_Over_Interface_TVD_Full(phi.vec, T_l_n.vec, 50, 2, 1.e-9, extension_band_use_, extension_band_extend_, extension_band_check_, liquid_normals.vec, NULL, NULL, false, NULL, NULL);
-            ls.extend_Over_Interface_TVD_Full(phi_solid.vec, T_s_n.vec, 50, 2, 1.e-9, extension_band_use_, extension_band_extend_, extension_band_check_, solid_normals.vec, NULL, NULL, false, NULL, NULL);
+            ls.extend_Over_Interface_TVD_Full(phi.vec, T_l_n.vec, 50, 2, 1.e-15, extension_band_use_, extension_band_extend_, extension_band_check_, liquid_normals.vec, NULL, NULL, false, NULL, NULL);
+            ls.extend_Over_Interface_TVD_Full(phi_solid.vec, T_s_n.vec, 50, 2, 1.e-15, extension_band_use_, extension_band_extend_, extension_band_check_, solid_normals.vec, NULL, NULL, false, NULL, NULL);
 
 
             // Delete data for normals since it is no longer needed:
@@ -3906,18 +3906,20 @@ int main(int argc, char** argv) {
         // Advect the LSF and update the grid under the v_interface field:
         if(solve_coupled){
             if(example_ == ICE_AROUND_CYLINDER){
-                sl.update_p4est(v_interface.vec, dt, phi.vec, phi_dd.vec, phi_cylinder.vec,num_fields ,use_block ,true,uniform_band,fields_ ,NULL,criteria,compare_opn,diag_opn,expand_ghost_layer);
+                uniform_band = 8.;
+                sl.update_p4est(v_interface.vec, dt, phi.vec, phi_dd.vec, phi_cylinder.vec,num_fields ,use_block ,true,uniform_band,uniform_band*(1.5),fields_ ,NULL,criteria,compare_opn,diag_opn,expand_ghost_layer);
+//                sl.update_p4est(v_interface.vec,dt,phi.vec,phi_dd.vec,phi_cylinder.vec);
+
               }
             else{
-//                sl.update_p4est(v_interface.vec,dt,phi.vec,phi_dd.vec);
-
-                sl.update_p4est(v_interface.vec, dt, phi.vec, phi_dd.vec, NULL,num_fields ,use_block ,true,1.0,fields_ ,NULL,criteria,compare_opn,diag_opn,expand_ghost_layer);
+                sl.update_p4est(v_interface.vec,dt,phi.vec,phi_dd.vec);
               }
 
           }
         else if (solve_stefan && !solve_navier_stokes){
-              sl.update_p4est(v_interface.vec,dt,phi.vec,phi_dd.vec);
-//              sl.update_p4est(v_interface.vec,dt,phi.vec,phi_dd.vec,NULL,num_fields,use_block,true,1.0,fields_,NULL,criteria,compare_opn,diag_opn,expand_ghost_layer);
+//              sl.update_p4est(v_interface.vec,dt,phi.vec,phi_dd.vec);
+              sl.update_p4est(v_interface.vec,dt,phi.vec,phi_dd.vec,NULL,0,use_block,true,1.0,1.0,fields_,NULL,criteria,compare_opn,diag_opn,expand_ghost_layer);
+
           }
         else if (solve_navier_stokes && !solve_stefan){
             bool use_standard_method = false;
@@ -3963,7 +3965,7 @@ int main(int argc, char** argv) {
               bool last_grid_balance = false;
               while(is_grid_changing){
                   if(!last_grid_balance){
-                      is_grid_changing = sp_NS.refine_and_coarsen(p4est_np1,nodes_np1,phi_new.vec,num_fields,use_block,true,1.0,fields_new_,NULL,criteria,compare_opn,diag_opn);
+                      is_grid_changing = sp_NS.refine_and_coarsen(p4est_np1,nodes_np1,phi_new.vec,num_fields,use_block,true,1.0,1.0,fields_new_,NULL,criteria,compare_opn,diag_opn);
 
                       if(no_grid_changes>0 && !is_grid_changing){
                           last_grid_balance = true; // if the grid isn't changing anymore but it has changed, we need to do one more special interp of fields and balancing of the grid

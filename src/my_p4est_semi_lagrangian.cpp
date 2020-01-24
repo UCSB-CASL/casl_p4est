@@ -734,7 +734,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *
 
 // ELYCE TRYING SOMETHING:---------------------------
 
-void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *phi_xx, Vec phi_add_refine, const int num_fields, bool use_block, bool enforce_uniform_band,double uniform_band, Vec *fields, Vec fields_block, std::vector<double> criteria, std::vector<compare_option_t> compare_opn, std::vector<compare_diagonal_option_t> diag_opn,bool expand_ghost_layer)
+void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *phi_xx, Vec phi_add_refine, const int num_fields, bool use_block, bool enforce_uniform_band,double refine_band, double coarsen_band, Vec *fields, Vec fields_block, std::vector<double> criteria, std::vector<compare_option_t> compare_opn, std::vector<compare_diagonal_option_t> diag_opn,bool expand_ghost_layer)
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_semi_lagrangian_update_p4est_1st_order, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -884,7 +884,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *
 
     // Call the refine and coarsen according to phi_effective and the provided fields:
     splitting_criteria_tag_t sp(sp_old->min_lvl, sp_old->max_lvl, sp_old->lip);
-    is_grid_changing = sp.refine_and_coarsen(p4est,nodes,additional_phi_is_used?phi_np1_eff:phi_np1,num_fields,use_block,enforce_uniform_band,uniform_band,fields_np1,fields_block_np1,criteria,compare_opn,diag_opn);
+    is_grid_changing = sp.refine_and_coarsen(p4est,nodes,additional_phi_is_used?phi_np1_eff:phi_np1,num_fields,use_block,enforce_uniform_band,refine_band,coarsen_band,fields_np1,fields_block_np1,criteria,compare_opn,diag_opn);
 
     // Destroy the phi_effective now that no longer in use:
     if(additional_phi_is_used){
@@ -921,7 +921,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *
     counter++;
   } // end of "while grid is changing"
 
-//    // Do one more balancing of everything:
+// Do one more balancing of everything:
 //  PetscPrintf(p4est->mpicomm,"Doing final balance \n");
   p4est_balance(p4est,P4EST_CONNECT_FULL,NULL);
   my_p4est_partition(p4est, P4EST_TRUE, NULL);
@@ -929,23 +929,15 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *
   if(expand_ghost_layer) my_p4est_ghost_expand(p4est,ghost);
   p4est_nodes_destroy(nodes); nodes = my_p4est_nodes_new(p4est, ghost);
 
+  // We will need to advect phi one last time using the balanced grid
   ierr = VecDestroy(phi_np1); CHKERRXX(ierr);
-  ierr = VecCreateGhostNodes(p4est, nodes, &phi_np1); CHKERRXX(ierr);
-  // NEED TO INTERP PHINP1 ONTO NEW GRID
+  ierr = VecCreateGhostNodes(p4est,nodes,&phi_np1);
+  double* phi_np1_p;
+  ierr = VecGetArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
 
-  PetscPrintf(p4est->mpicomm,"Doing phi interp \n");
+  advect_from_n_to_np1(dt, v, vxx, phi, phi_xx, phi_np1_p);
+  ierr = VecRestoreArray(phi_np1,&phi_np1_p);
 
-  my_p4est_interpolation_nodes_t interp_phi(ngbd_phi);
-  interp_phi.set_input(phi, phi_interpolation);
-
-  double xyz[P4EST_DIM];
-  for(p4est_locidx_t n=0; n<nodes->indep_nodes.elem_count; ++n)
-    {
-      node_xyz_fr_n(n, p4est, nodes, xyz);
-      interp_phi.add_point(n, xyz);
-    }
-  interp_phi.interpolate(phi_np1);
-  interp_phi.clear();
 
   p4est->user_pointer = (void*) sp_old;
   *p_p4est = p4est;

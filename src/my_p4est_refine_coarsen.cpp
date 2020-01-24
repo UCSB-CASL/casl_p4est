@@ -627,7 +627,7 @@ void splitting_criteria_tag_t::tag_quadrant_inside(p4est_t *p4est, p4est_quadran
 
 // ELYCE TRYING SOMETHING --------:
 
-void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *quad, p4est_topidx_t tree_idx, p4est_locidx_t quad_idx,p4est_nodes_t *nodes, const double* phi_p, const int num_fields,bool use_block, bool enforce_uniform_band,double uniform_band,const double** fields,const double* fields_block, std::vector<double> criteria, std::vector<compare_option_t> compare_opn, std::vector<compare_diagonal_option_t> diag_opn){
+void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *quad, p4est_topidx_t tree_idx, p4est_locidx_t quad_idx,p4est_nodes_t *nodes, const double* phi_p, const int num_fields,bool use_block, bool enforce_uniform_band,double refine_band,double coarsen_band,const double** fields,const double* fields_block, std::vector<double> criteria, std::vector<compare_option_t> compare_opn, std::vector<compare_diagonal_option_t> diag_opn){
 
   // WARNING: This function has not yet been validated in 3d
 
@@ -701,8 +701,10 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
       bool all_pos = true;
       bool all_neg = true;
 
-      double band;
-      band = enforce_uniform_band? dxyz_smallest*uniform_band : 0.0;
+      double ref_band,coars_band;
+      ref_band = enforce_uniform_band? dxyz_smallest*refine_band : 0.0;
+      coars_band = enforce_uniform_band? dxyz_smallest*coarsen_band : 0.0;
+
       if(refine_possible || coarsen_possible){
         // Initialize holder for node index in question
         p4est_locidx_t node_idx;
@@ -712,13 +714,13 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
             node_idx = nodes->local_nodes[P4EST_CHILDREN*quad_idx + i];
 
             // First, check conditions on the LSF: -- If LSF won't allow for coarsening, there is no point in checking for more coarsening conditions
-            coarsen = coarsen_possible && ((fabs(phi_p[node_idx]) - band) > 1.0*lip*d);
+            coarsen = coarsen_possible && ((fabs(phi_p[node_idx]) - coars_band) > 1.0*lip*d);
 /*            if(coarsen_possible) {
                 coarsen = coarsen && ; // ELYCE DEBUGGING
 //                if(coarsen) PetscPrintf(p4est->mpicomm,"COARSEN ALLOWED\n");
               } // a*/ //t this point, coarsen is a more restrictive flag than coarsen_possible
             if (refine_possible) {
-                refine = ((fabs(phi_p[node_idx]) - band) <= 0.5*lip*d);
+                refine = ((fabs(phi_p[node_idx]) - ref_band) <= 0.5*lip*d);
               }
 
             all_pos = all_pos && (phi_p[node_idx]>0);
@@ -947,7 +949,7 @@ function_end:
 }
 // ELYCE TRYING SOMETHING -------:
 
-bool splitting_criteria_tag_t::refine_and_coarsen(p4est_t* p4est, p4est_nodes_t* nodes, Vec phi, const int num_fields, bool use_block, bool enforce_uniform_band,double uniform_band,Vec *fields,Vec fields_block, std::vector<double> criteria, std::vector<compare_option_t> compare_opn, std::vector<compare_diagonal_option_t> diag_opn){
+bool splitting_criteria_tag_t::refine_and_coarsen(p4est_t* p4est, p4est_nodes_t* nodes, Vec phi, const int num_fields, bool use_block, bool enforce_uniform_band,double refine_band,double coarsen_band,Vec *fields,Vec fields_block, std::vector<double> criteria, std::vector<compare_option_t> compare_opn, std::vector<compare_diagonal_option_t> diag_opn){
   PetscErrorCode ierr;
   bool is_grid_changed;
 
@@ -975,7 +977,7 @@ bool splitting_criteria_tag_t::refine_and_coarsen(p4est_t* p4est, p4est_nodes_t*
 
 
   // Call inner function which uses the pointers:
-  is_grid_changed = refine_and_coarsen(p4est,nodes,phi_p,num_fields,use_block,enforce_uniform_band,uniform_band,fields_p,fields_block_p,criteria,compare_opn,diag_opn);
+  is_grid_changed = refine_and_coarsen(p4est,nodes,phi_p,num_fields,use_block,enforce_uniform_band,refine_band,coarsen_band,fields_p,fields_block_p,criteria,compare_opn,diag_opn);
 
 
   // Restore appropriate arrays:
@@ -991,7 +993,7 @@ bool splitting_criteria_tag_t::refine_and_coarsen(p4est_t* p4est, p4est_nodes_t*
   return is_grid_changed;
 }
 
-bool splitting_criteria_tag_t::refine_and_coarsen(p4est_t* p4est, p4est_nodes_t* nodes, const double *phi_p, const int num_fields, bool use_block,bool enforce_uniform_band,double uniform_band, const double** fields,const double* fields_block, std::vector<double> criteria, std::vector<compare_option_t> compare_opn, std::vector<compare_diagonal_option_t> diag_opn){
+bool splitting_criteria_tag_t::refine_and_coarsen(p4est_t* p4est, p4est_nodes_t* nodes, const double *phi_p, const int num_fields, bool use_block,bool enforce_uniform_band,double refine_band,double coarsen_band, const double** fields,const double* fields_block, std::vector<double> criteria, std::vector<compare_option_t> compare_opn, std::vector<compare_diagonal_option_t> diag_opn){
   // WARNING: This function has not yet been validated in 3d
 
   // Option lists are provided in the following format:
@@ -1029,7 +1031,7 @@ bool splitting_criteria_tag_t::refine_and_coarsen(p4est_t* p4est, p4est_nodes_t*
       p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants,q);
       p4est_locidx_t quad_idx = q + tree->quadrants_offset;
 
-      tag_quadrant(p4est,quad,tr,quad_idx,nodes,phi_p,num_fields,use_block,enforce_uniform_band, uniform_band,fields,fields_block,criteria,compare_opn,diag_opn);
+      tag_quadrant(p4est,quad,tr,quad_idx,nodes,phi_p,num_fields,use_block,enforce_uniform_band, refine_band,coarsen_band,fields,fields_block,criteria,compare_opn,diag_opn);
     }
   }
 
