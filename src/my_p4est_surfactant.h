@@ -211,6 +211,10 @@ public:
   inline double get_dt_n() { return dt_n; }
   inline double get_dt_nm1() { return dt_nm1; }
 
+  inline double get_dxyz_max() { return dxyz_max; }
+  inline double get_dxyz_min() { return dxyz_min; }
+  inline double get_dxyz_diag() { return dxyz_diag; }
+
   inline p4est_t* get_p4est_n() { return p4est_n; }
   inline p4est_t* get_p4est_nm1() { return p4est_nm1; }
 

@@ -603,7 +603,7 @@ void my_p4est_surfactant_t::compute_curvature()
   if(kappa!=NULL) { ierr = VecDestroy(kappa); CHKERRXX(ierr); }
   ierr = VecCreateGhostNodes(p4est_n, nodes_n, &kappa); CHKERRXX(ierr);
   my_p4est_level_set_t ls(ngbd_n);
-  ls.extend_from_interface_to_whole_domain_TVD(phi, kappa_temp, kappa);
+  ls.extend_from_interface_to_whole_domain_TVD(phi, kappa_temp, kappa, 30);
 
   // compute maximum absolute curvature
   max_abs_kappa = 0.0;
@@ -802,7 +802,7 @@ void my_p4est_surfactant_t::compute_extended_velocities(CF_2 *ls_nm1, CF_2 *ls_n
     ls_extend_nm1.perturb_level_set_function(phi_nm1_temp, EPS*dxyz_min);
   }
   for(unsigned short dir=0; dir<P4EST_DIM; ++dir)
-    ls_extend_nm1.extend_from_interface_to_whole_domain_TVD(phi_nm1_temp, vnm1_nodes[dir], vnm1_s_nodes[dir]);
+    ls_extend_nm1.extend_from_interface_to_whole_domain_TVD(phi_nm1_temp, vnm1_nodes[dir], vnm1_s_nodes[dir], 30);
 
   my_p4est_level_set_t ls_extend_n(ngbd_n);
   for(unsigned short dir=0; dir<P4EST_DIM; ++dir){
@@ -811,7 +811,7 @@ void my_p4est_surfactant_t::compute_extended_velocities(CF_2 *ls_nm1, CF_2 *ls_n
   {
     for(unsigned short dir=0; dir<P4EST_DIM; ++dir)
     {
-      ls_extend_n.extend_from_interface_to_whole_domain_TVD(phi, vn_nodes[dir], vn_s_nodes[dir]);
+      ls_extend_n.extend_from_interface_to_whole_domain_TVD(phi, vn_nodes[dir], vn_s_nodes[dir], 30);
     }
   }
   else
@@ -826,7 +826,7 @@ void my_p4est_surfactant_t::compute_extended_velocities(CF_2 *ls_nm1, CF_2 *ls_n
     }
     for(unsigned short dir=0; dir<P4EST_DIM; ++dir)
     {
-      ls_extend_n.extend_from_interface_to_whole_domain_TVD(phi_n_temp, vn_nodes[dir], vn_s_nodes[dir]);
+      ls_extend_n.extend_from_interface_to_whole_domain_TVD(phi_n_temp, vn_nodes[dir], vn_s_nodes[dir], 30);
     }
   }
 
@@ -911,7 +911,7 @@ void my_p4est_surfactant_t::compute_stretching_term_nm1(CF_2 *ls_nm1)
   my_p4est_level_set_t ls(ngbd_nm1);
   if(str_nm1!=NULL) { ierr = VecDestroy(str_nm1); CHKERRXX(ierr); }
   ierr = VecCreateGhostNodes(p4est_nm1, nodes_nm1, &str_nm1); CHKERRXX(ierr);
-  ls.extend_from_interface_to_whole_domain_TVD(phi_nm1_temp, str_nm1_temp, str_nm1);
+  ls.extend_from_interface_to_whole_domain_TVD(phi_nm1_temp, str_nm1_temp, str_nm1, 30);
 }
 
 #ifdef P4_TO_P8
@@ -967,14 +967,14 @@ void my_p4est_surfactant_t::compute_stretching_term_n(CF_2 *ls_n)
 
   if(ls_n==NULL)
   {
-    ls.extend_from_interface_to_whole_domain_TVD(phi, str_n_temp, str_n);
+    ls.extend_from_interface_to_whole_domain_TVD(phi, str_n_temp, str_n, 30);
   }
   else
   {
     Vec phi_n_temp = NULL;
     ierr = VecCreateGhostNodes(p4est_n, nodes_n, &phi_n_temp); CHKERRXX(ierr);
     sample_cf_on_nodes(p4est_n, nodes_n, *ls_n, phi_n_temp);
-    ls.extend_from_interface_to_whole_domain_TVD(phi_n_temp, str_n_temp, str_n);
+    ls.extend_from_interface_to_whole_domain_TVD(phi_n_temp, str_n_temp, str_n, 30);
   }
 }
 
@@ -1026,7 +1026,7 @@ void my_p4est_surfactant_t::advect_interface_one_step()
   ierr = VecGhostUpdateBegin(phi_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecGhostUpdateEnd  (phi_np1, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-  // Reinitialize level-set function (will be needed to build cut-cells soling diffusion implicitly)
+  // Reinitialize level-set function (will be needed to build cut-cells solving diffusion implicitly)
   my_p4est_level_set_t lsn(ngbd_n);
   lsn.reinitialize_2nd_order(phi_np1);
   lsn.perturb_level_set_function(phi_np1, EPS*dxyz_min);
@@ -1158,7 +1158,7 @@ void my_p4est_surfactant_t::compute_one_step_Gamma()
 
   // Constant extension of the right-hand side:
   my_p4est_level_set_t ls(ngbd_n);
-  ls.extend_from_interface_to_whole_domain_TVD(phi, rhs_Gamma_temp, rhs_Gamma);
+  ls.extend_from_interface_to_whole_domain_TVD(phi, rhs_Gamma_temp, rhs_Gamma, 50);
 
   // Solve for Gamma at t_np1 (at the t_n grid!)
   ierr = VecCreateGhostNodes(p4est_n, nodes_n, &Gamma_np1); CHKERRXX(ierr);
@@ -1339,7 +1339,7 @@ void my_p4est_surfactant_t::update_from_tn_to_tnp1(CF_2 **vnp1)
     ierr = VecDestroy(vn_s_nodes[dir]); CHKERRXX(ierr);
     ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &vn_s_nodes[dir]); CHKERRXX(ierr);
     my_p4est_level_set_t ls_extend_np1(ngbd_np1);
-    ls_extend_np1.extend_from_interface_to_whole_domain_TVD(phi_np1, vn_nodes[dir], vn_s_nodes[dir]);
+    ls_extend_np1.extend_from_interface_to_whole_domain_TVD(phi_np1, vn_nodes[dir], vn_s_nodes[dir], 30);
   }
 
   // Slide str_nm1 <- str_n

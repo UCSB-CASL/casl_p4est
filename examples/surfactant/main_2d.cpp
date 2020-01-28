@@ -116,7 +116,7 @@ struct theta_from_xyz : public CF_3
 
 /*------------------------------------------------------------------------------------------------------------------------------------*/
 
-struct star : public CF_3
+struct star : public CF_2
 {
   double r0, alpha, beta;
   unsigned short n, m;
@@ -131,17 +131,17 @@ public:
     n     = n_input;
     m     = m_input;
   }
-  double operator()(double x, double y, double z) const
+  double operator()(double phi, double theta) const
   {
-    return r0*( 1 + alpha*(1-beta*cos((double)m*phi(x,y,z)))*(1-cos((double)n*theta(x,y,z))) );
+    return r0*( 1 + alpha*(1-beta*cos((double)m*phi))*(1-cos((double)n*theta)) );
   }
-  double d_theta(double x, double y, double z) const
+  double d_theta(double phi, double theta) const
   {
-    return r0*alpha*n*(1-beta*cos((double)m*phi(x,y,z)))*sin((double)n*theta(x,y,z));
+    return r0*alpha*n*(1-beta*cos((double)m*phi))*sin((double)n*theta);
   }
-  double d_phi(double x, double y, double z) const
+  double d_phi(double phi, double theta) const
   {
-    return r0*alpha*beta*m*sin((double)m*phi(x,y,z))*(1-cos((double)n*theta(x,y,z)));
+    return r0*alpha*beta*m*sin((double)m*phi)*(1-cos((double)n*theta));
   }
 } r_star;
 
@@ -153,7 +153,7 @@ struct exact_level_set_t
   {
     switch(test_number)
     {
-      case 0: return t + r_star(x,y,z) - rad(x,y,z); // NOTE: This is NOT a signed distance function for any t
+      case 0: return t + r_star(phi(x,y,z),theta(x,y,z)) - rad(x,y,z); // NOTE: This is NOT a signed distance function for any t
       case 1: throw std::invalid_argument("There is no available analytical solution for this test.");
       default: throw std::invalid_argument("Please choose a valid test.");
     }
@@ -269,8 +269,10 @@ struct exact_Gamma_t
   {
     switch(test_number)
     {
-      case 0: return 0.5*sqrt(SQR(  r_star(x,y,z))+SQR(r_star.d_theta(x,y,z)))*sqrt(SQR(  r_star(x,y,z))+SQR(r_star.d_phi(x,y,z)))
-                       /(sqrt(SQR(t+r_star(x,y,z))+SQR(r_star.d_theta(x,y,z)))*sqrt(SQR(t+r_star(x,y,z))+SQR(r_star.d_phi(x,y,z))));
+      case 0: return 0.5*sqrt(SQR(  r_star(phi(x,y,z),theta(x,y,z)))+SQR(r_star.d_theta(phi(x,y,z),theta(x,y,z))))*
+                         sqrt(SQR(  r_star(phi(x,y,z),theta(x,y,z)))+SQR(r_star.d_phi(  phi(x,y,z),theta(x,y,z))))
+                       /(sqrt(SQR(t+r_star(phi(x,y,z),theta(x,y,z)))+SQR(r_star.d_theta(phi(x,y,z),theta(x,y,z))))*
+                         sqrt(SQR(t+r_star(phi(x,y,z),theta(x,y,z)))+SQR(r_star.d_phi(  phi(x,y,z),theta(x,y,z)))));
       case 1: throw std::invalid_argument("There is no available analytical solution for this test.");
       default: throw std::invalid_argument("Please choose a valid test.");
     }
@@ -333,7 +335,7 @@ struct phi_from_xyz : public CF_2
 
 /*------------------------------------------------------------------------------------------------------------------------------------*/
 
-struct star : public CF_2
+struct star : public CF_1
 {
   double r0, alpha;
   unsigned short n;
@@ -345,15 +347,15 @@ public:
     alpha = alpha_input;
     n     = n_input;
   }
-  double operator()(double x, double y) const
+  double operator()(double phi) const
   {
-    return r0*(1-alpha*sin((double)n*phi(x,y)));
+    return r0*(1-alpha*sin((double)n*phi));
   }
-  double d_phi(double x, double y) const
+  double d_phi(double phi) const
   {
-    return -r0*alpha*n*cos((double)n*phi(x,y));
+    return -r0*alpha*n*cos((double)n*phi);
   }
-} r_star;
+} r_star(1.0,0.0);
 
 /*------------------------------------------------------------------------------------------------------------------------------------*/
 
@@ -363,7 +365,7 @@ struct exact_level_set_t
   {
     switch(test_number)
     {
-      case 0: return t + r_star(x,y) - rad(x,y); // NOTE: This is NOT a signed distance function for any t
+      case 0: return t + r_star(phi(x,y)) - rad(x,y); // NOTE: This is NOT a signed distance function for any t
       case 1: throw std::invalid_argument("There is no available analytical solution for this test.");
       default: throw std::invalid_argument("Please choose a valid test.");
     }
@@ -451,7 +453,7 @@ struct exact_Gamma_t
   {
     switch(test_number)
     {
-      case 0: return 0.5*sqrt(SQR(r_star(x,y))+SQR(r_star.d_phi(x,y)))/sqrt(SQR(t+r_star(x,y))+SQR(r_star.d_phi(x,y)));
+      case 0: return 0.5*sqrt(SQR(r_star(phi(x,y)))+SQR(r_star.d_phi(phi(x,y))))/sqrt(SQR(t+r_star(phi(x,y)))+SQR(r_star.d_phi(phi(x,y))));
       case 1: throw std::invalid_argument("There is no available analytical solution for this test.");
       default: throw std::invalid_argument("Please choose a valid test.");
     }
@@ -495,102 +497,232 @@ struct initial_Gamma_n_t : public CF_2
 /*------------------------------------------------------------------------------------------------------------------------------------*/
 
 
-void compute_and_save_errors(my_p4est_surfactant_t* solver, char name[])
+void compute_and_save_errors(my_p4est_surfactant_t* solver, char error_space_name[], char error_time_name[], int N_sampling=2500)
 {
-  PetscErrorCode ierr;
-  Vec Gamma_ex_tmp = NULL, Gamma_ex = NULL, phi_ex = NULL;
-  ierr = VecCreateGhostNodes(solver->get_p4est_n(), solver->get_nodes_n(), &Gamma_ex_tmp); CHKERRXX(ierr);
-  ierr = VecCreateGhostNodes(solver->get_p4est_n(), solver->get_nodes_n(), &phi_ex); CHKERRXX(ierr);
-  double *Gamma_ex_p, *phi_ex_p;
-  ierr = VecGetArray(Gamma_ex_tmp, &Gamma_ex_p);
-  ierr = VecGetArray(phi_ex, &phi_ex_p);
-  for(size_t n=0; n<solver->get_nodes_n()->indep_nodes.elem_count; ++n)
+  // Sample exact and numerical solutions at points of the exact interface
+  my_p4est_interpolation_nodes_t interp_n(solver->get_ngbd_n());
+  interp_n.set_input(solver->get_Gamma_n(), linear);
+  std::vector<double> Gamma_num(N_sampling);
+  std::vector<double> Gamma_exact(N_sampling);
+  std::vector<double> xyz_intf[P4EST_DIM];
+  for (short dir = 0; dir < P4EST_DIM; ++dir)
+  {
+    xyz_intf[dir].resize(N_sampling);
+  }
+
+  if(solver->get_p4est_n()->mpirank==0)
   {
     double xyz_tmp[P4EST_DIM];
-    node_xyz_fr_n(n, solver->get_p4est_n(), solver->get_nodes_n(), xyz_tmp);
-    Gamma_ex_p[n] = exact_Gamma(xyz_tmp[0],
-                                xyz_tmp[1],
-#ifdef P4_TO_P8
-                                xyz_tmp[2],
-#endif
-                                tn         );
-    phi_ex_p[n] = exact_ls(xyz_tmp[0],
-                           xyz_tmp[1],
-#ifdef P4_TO_P8
-                           xyz_tmp[2],
-#endif
-                           tn         );
+    P4EST_ASSERT(P4EST_DIM==2); // Not ready for 3D yet
+    double phi_k = 0.0;
+
+    for(p4est_locidx_t k=0; k<N_sampling; ++k)
+    {
+      phi_k = ((double)k)*2.0*PI / ((double)N_sampling);
+      xyz_tmp[0] = (tn + r_star(phi_k))*cos(phi_k); // For 3D: need to add general functions x_from_rad, etc and call generally
+      xyz_tmp[1] = (tn + r_star(phi_k))*sin(phi_k);
+
+      Gamma_exact[k] = exact_Gamma(xyz_tmp[0], xyz_tmp[1], tn);
+      interp_n.add_point(k, xyz_tmp);
+      for (short dir = 0; dir < P4EST_DIM; ++dir)
+        xyz_intf[dir][k] = xyz_tmp[dir];
+    }
   }
-  ierr = VecRestoreArray(Gamma_ex_tmp, &Gamma_ex_p);
-  ierr = VecRestoreArray(phi_ex, &phi_ex_p);
 
-  my_p4est_level_set_t ls(solver->get_ngbd_n());
-  ls.reinitialize_2nd_order(phi_ex);
-  ls.perturb_level_set_function(phi_ex, EPS*dmin);
-  ierr = VecCreateGhostNodes(solver->get_p4est_n(), solver->get_nodes_n(), &Gamma_ex); CHKERRXX(ierr);
-  ls.extend_from_interface_to_whole_domain_TVD(phi_ex, Gamma_ex_tmp, Gamma_ex);
+  double* data = Gamma_num.data();
+  interp_n.interpolate(data);
 
-  Vec err_Gamma = NULL, err_phi = NULL;
-  ierr = VecCreateGhostNodes(solver->get_p4est_n(), solver->get_nodes_n(), &err_Gamma); CHKERRXX(ierr);
-  ierr = VecCreateGhostNodes(solver->get_p4est_n(), solver->get_nodes_n(), &err_phi); CHKERRXX(ierr);
-  double *err_Gamma_p, *err_phi_p;
-  ierr = VecGetArray(err_Gamma, &err_Gamma_p);
-  ierr = VecGetArray(err_phi, &err_phi_p);
-  const double* Gamma_exact_p;
-  const double* Gamma_num_p;
-  const double* phi_exact_p;
-  const double* phi_num_p;
-  ierr = VecGetArrayRead(Gamma_ex, &Gamma_exact_p);
-  ierr = VecGetArrayRead(solver->get_Gamma_n(), &Gamma_num_p);
-  ierr = VecGetArrayRead(phi_ex, &phi_exact_p);
-  ierr = VecGetArrayRead(solver->get_phi(), &phi_num_p);
-  for(size_t n=0; n<solver->get_nodes_n()->indep_nodes.elem_count; ++n)
+  if(solver->get_p4est_n()->mpirank==0)
   {
-    err_Gamma_p[n] = Gamma_exact_p[n] - Gamma_num_p[n];
-    err_phi_p[n] = phi_exact_p[n] - phi_num_p[n];
-  }
-  ierr = VecRestoreArray(err_Gamma, &err_Gamma_p);
-  ierr = VecRestoreArray(err_phi, &err_phi_p);
-  ierr = VecRestoreArrayRead(Gamma_ex, &Gamma_exact_p);
-  ierr = VecRestoreArrayRead(solver->get_Gamma_n(), &Gamma_num_p);
-  ierr = VecRestoreArrayRead(phi_ex, &phi_exact_p);
-  ierr = VecRestoreArrayRead(solver->get_phi(), &phi_num_p);
+    double l_inf_error = 0.0;
+    double phi_k = 0.0;
 
-  unsigned short count_node_scalars = 0;
-  ierr = VecGetArrayRead(Gamma_ex, &Gamma_exact_p);                ++count_node_scalars;
-  ierr = VecGetArrayRead(solver->get_Gamma_n(), &Gamma_num_p);     ++count_node_scalars;
-  ierr = VecGetArrayRead(phi_ex, &phi_exact_p);                    ++count_node_scalars;
-  ierr = VecGetArrayRead(solver->get_phi(), &phi_num_p);           ++count_node_scalars;
-  const double* error_phi_p;
-  const double* error_Gamma_p;
-  const double* phi_band_num_p;
-  ierr = VecGetArrayRead(err_phi, &error_phi_p);               ++count_node_scalars;
-  ierr = VecGetArrayRead(err_Gamma, &error_Gamma_p);           ++count_node_scalars;
-  ierr = VecGetArrayRead(solver->get_phi_band(), &phi_band_num_p); ++count_node_scalars;
-  my_p4est_vtk_write_all_general(solver->get_p4est_n(), solver->get_nodes_n(), solver->get_ghost_n(),
-                                 P4EST_TRUE, P4EST_TRUE,
-                                 count_node_scalars, // number of VTK_NODE_SCALAR
-                                 0,                  // number of VTK_NODE_VECTOR_BY_COMPONENTS
-                                 0,                  // number of VTK_NODE_VECTOR_BLOCK
-                                 0,                  // number of VTK_CELL_SCALAR
-                                 0,                  // number of VTK_CELL_VECTOR_BY_COMPONENTS
-                                 0,                  // number of VTK_CELL_VECTOR_BLOCK
-                                 name,
-                                 VTK_NODE_SCALAR, "phi_exact",    phi_exact_p,
-                                 VTK_NODE_SCALAR, "phi_num",      phi_num_p,
-                                 VTK_NODE_SCALAR, "phi_band_num", phi_band_num_p,
-                                 VTK_NODE_SCALAR, "err_phi",      error_phi_p,
-                                 VTK_NODE_SCALAR, "Gamma_exact",  Gamma_exact_p,
-                                 VTK_NODE_SCALAR, "Gamma_num",    Gamma_num_p,
-                                 VTK_NODE_SCALAR, "err_Gamma",    error_Gamma_p);
-  ierr = VecRestoreArrayRead(Gamma_ex, &Gamma_exact_p);
-  ierr = VecRestoreArrayRead(solver->get_Gamma_n(), &Gamma_num_p);
-  ierr = VecRestoreArrayRead(phi_ex, &phi_exact_p);
-  ierr = VecRestoreArrayRead(solver->get_phi(), &phi_num_p);
-  ierr = VecRestoreArrayRead(err_phi, &error_phi_p);
-  ierr = VecRestoreArrayRead(err_Gamma, &error_Gamma_p);
-  ierr = VecRestoreArrayRead(solver->get_phi_band(), &phi_band_num_p);
+    for(p4est_locidx_t k=0; k<N_sampling; ++k)
+    {
+      phi_k = ((double)k)*2.0*PI / ((double)N_sampling);
+      l_inf_error = MAX(l_inf_error, fabs(Gamma_num[k]-Gamma_exact[k]));
+
+      FILE* fp_errors;
+      if(k==0)
+      {
+        fp_errors = fopen(error_space_name, "w");
+        if(fp_errors==NULL)
+        {
+          char error_msg[1024];
+          sprintf(error_msg, "compute_and_save_errors: could not open file %s.", error_space_name);
+          throw std::invalid_argument(error_msg);
+        }
+        fprintf(fp_errors, "phi            \t Gamma_num          \t Gamma_exact\n");
+        fclose(fp_errors);
+      }
+      fp_errors = fopen(error_space_name, "a");
+      fprintf(fp_errors, "%.12f \t %.12e \t %.12e \n", phi_k, Gamma_num[k], Gamma_exact[k]);
+      fclose(fp_errors);
+    }
+
+    FILE* fp_errors_time;
+    if(tn==0.0)
+    {
+      fp_errors_time = fopen(error_time_name, "w");
+      if(fp_errors_time==NULL)
+      {
+        char error_msg[1024];
+        sprintf(error_msg, "compute_and_save_errors: could not open file %s.", error_time_name);
+        throw std::invalid_argument(error_msg);
+      }
+      fprintf(fp_errors_time, "time         \t l_inf_error_Gamma \n");
+      fclose(fp_errors_time);
+    }
+    fp_errors_time = fopen(error_time_name, "a");
+    fprintf(fp_errors_time, "%.12f \t %.12e \n", tn, l_inf_error);
+    fclose(fp_errors_time);
+  }
 }
+
+
+//void compute_and_save_errors(my_p4est_surfactant_t* solver, char vtk_name[], char file_name[])
+//{
+//  PetscErrorCode ierr;
+
+//  // Sample exact solution and exact ls
+//  Vec Gamma_exact_tmp = NULL, Gamma_exact = NULL, phi_ex = NULL;
+//  ierr = VecCreateGhostNodes(solver->get_p4est_n(), solver->get_nodes_n(), &Gamma_exact_tmp); CHKERRXX(ierr);
+//  ierr = VecCreateGhostNodes(solver->get_p4est_n(), solver->get_nodes_n(), &phi_ex); CHKERRXX(ierr);
+//  double *Gamma_exact_p, *phi_exact_p;
+//  ierr = VecGetArray(Gamma_exact_tmp, &Gamma_exact_p);
+//  ierr = VecGetArray(phi_ex, &phi_exact_p);
+//  for(size_t n=0; n<solver->get_nodes_n()->indep_nodes.elem_count; ++n)
+//  {
+//    double xyz_tmp[P4EST_DIM];
+//    node_xyz_fr_n(n, solver->get_p4est_n(), solver->get_nodes_n(), xyz_tmp);
+//    Gamma_exact_p[n] = exact_Gamma(xyz_tmp[0],
+//                                xyz_tmp[1],
+//#ifdef P4_TO_P8
+//                                xyz_tmp[2],
+//#endif
+//                                tn         );
+//    phi_exact_p[n] = exact_ls(xyz_tmp[0],
+//                           xyz_tmp[1],
+//#ifdef P4_TO_P8
+//                           xyz_tmp[2],
+//#endif
+//                           tn         );
+//  }
+//  ierr = VecRestoreArray(Gamma_exact_tmp, &Gamma_exact_p);
+//  ierr = VecRestoreArray(phi_ex, &phi_exact_p);
+
+//  my_p4est_level_set_t ls(solver->get_ngbd_n());
+//  ls.reinitialize_2nd_order(phi_ex); // remember the exact phi is not a signed-distance function
+//  ls.perturb_level_set_function(phi_ex, EPS*dmin);
+//  ierr = VecCreateGhostNodes(solver->get_p4est_n(), solver->get_nodes_n(), &Gamma_exact); CHKERRXX(ierr);
+//  ls.extend_from_interface_to_whole_domain_TVD(phi_ex, Gamma_exact_tmp, Gamma_exact, 40);
+
+//  // Compute errors
+//  Vec err_Gamma = NULL, err_phi = NULL;
+//  ierr = VecCreateGhostNodes(solver->get_p4est_n(), solver->get_nodes_n(), &err_Gamma); CHKERRXX(ierr);
+//  ierr = VecCreateGhostNodes(solver->get_p4est_n(), solver->get_nodes_n(), &err_phi); CHKERRXX(ierr);
+//  double *err_Gamma_p, *err_phi_p;
+//  ierr = VecGetArray(err_Gamma, &err_Gamma_p);
+//  ierr = VecGetArray(err_phi, &err_phi_p);
+//  const double* Gamma_exact_p_r;
+//  const double* Gamma_num_p;
+//  const double* phi_exact_p_r;
+//  const double* phi_num_p;
+//  ierr = VecGetArrayRead(Gamma_exact, &Gamma_exact_p_r);
+//  ierr = VecGetArrayRead(solver->get_Gamma_n(), &Gamma_num_p);
+//  ierr = VecGetArrayRead(phi_ex, &phi_exact_p_r);
+//  ierr = VecGetArrayRead(solver->get_phi(), &phi_num_p);
+//  for(size_t n=0; n<solver->get_nodes_n()->indep_nodes.elem_count; ++n)
+//  {
+//    err_Gamma_p[n] = fabs( Gamma_exact_p_r[n] - Gamma_num_p[n] );
+//    err_phi_p[n]   = fabs( phi_exact_p_r[n]   - phi_num_p[n]   );
+//  }
+//  ierr = VecRestoreArray(err_Gamma, &err_Gamma_p);
+//  ierr = VecRestoreArray(err_phi, &err_phi_p);
+//  ierr = VecRestoreArrayRead(Gamma_exact, &Gamma_exact_p_r);
+//  ierr = VecRestoreArrayRead(solver->get_Gamma_n(), &Gamma_num_p);
+//  ierr = VecRestoreArrayRead(phi_ex, &phi_exact_p_r);
+//  ierr = VecRestoreArrayRead(solver->get_phi(), &phi_num_p);
+
+//  // Plot errors to vtk
+//  unsigned short count_node_scalars = 0;
+//  const double* phi_band_p;
+//  const double* error_phi_p;
+//  const double* error_Gamma_p;
+//  ierr = VecGetArrayRead(solver->get_phi_band(), &phi_band_p);     ++count_node_scalars;
+//  ierr = VecGetArrayRead(Gamma_exact, &Gamma_exact_p_r);             ++count_node_scalars;
+//  ierr = VecGetArrayRead(phi_ex, &phi_exact_p_r);                    ++count_node_scalars;
+//  ierr = VecGetArrayRead(err_phi, &error_phi_p);                   ++count_node_scalars;
+//  ierr = VecGetArrayRead(err_Gamma, &error_Gamma_p);               ++count_node_scalars;
+//  my_p4est_vtk_write_all_general(solver->get_p4est_n(), solver->get_nodes_n(), solver->get_ghost_n(),
+//                                 P4EST_TRUE, P4EST_TRUE,
+//                                 count_node_scalars, // number of VTK_NODE_SCALAR
+//                                 0,                  // number of VTK_NODE_VECTOR_BY_COMPONENTS
+//                                 0,                  // number of VTK_NODE_VECTOR_BLOCK
+//                                 0,                  // number of VTK_CELL_SCALAR
+//                                 0,                  // number of VTK_CELL_VECTOR_BY_COMPONENTS
+//                                 0,                  // number of VTK_CELL_VECTOR_BLOCK
+//                                 vtk_name,
+//                                 VTK_NODE_SCALAR, "phi_band",     phi_band_p,
+//                                 VTK_NODE_SCALAR, "phi_exact",    phi_exact_p_r,
+//                                 VTK_NODE_SCALAR, "Gamma_exact",  Gamma_exact_p_r,
+//                                 VTK_NODE_SCALAR, "err_phi",      error_phi_p,
+//                                 VTK_NODE_SCALAR, "err_Gamma",    error_Gamma_p);
+//  ierr = VecRestoreArrayRead(solver->get_phi_band(), &phi_band_p);
+//  ierr = VecRestoreArrayRead(Gamma_exact, &Gamma_exact_p_r);
+//  ierr = VecRestoreArrayRead(phi_ex, &phi_exact_p_r);
+//  ierr = VecRestoreArrayRead(err_phi, &error_phi_p);
+//  ierr = VecRestoreArrayRead(err_Gamma, &error_Gamma_p);
+
+//  // Compute error norms and export to file
+//  double l_1_norm_err[2], l_inf_norm_err[2] = {0.0, 0.0};
+//  l_1_norm_err[0] = integrate_over_negative_domain(solver->get_p4est_n(), solver->get_nodes_n(), solver->get_phi_band(), err_Gamma)
+//                    / area_in_negative_domain(solver->get_p4est_n(), solver->get_nodes_n(), solver->get_phi_band());
+//  l_1_norm_err[1] = integrate_over_interface(solver->get_p4est_n(), solver->get_nodes_n(), solver->get_phi(), err_Gamma)
+//                    / interface_length(solver->get_p4est_n(), solver->get_nodes_n(), solver->get_phi());
+//  ierr = VecGetArrayRead(err_Gamma, &error_Gamma_p);
+//  ierr = VecGetArrayRead(solver->get_phi_band(), &phi_band_p);
+//  ierr = VecGetArrayRead(solver->get_phi(), &phi_num_p);
+//  for(p4est_locidx_t n=0; n<solver->get_nodes_n()->num_owned_indeps; ++n)
+//  {
+//    if(phi_band_p[n] < solver->get_dxyz_max())
+//    {
+//      l_inf_norm_err[0] = MAX(l_inf_norm_err[0], error_Gamma_p[n]);
+//    }
+//    if(fabs(phi_num_p[n]) < solver->get_dxyz_max())
+//    {
+//      l_inf_norm_err[1] = MAX(l_inf_norm_err[1], error_Gamma_p[n]);
+//    }
+//  }
+//  ierr = VecRestoreArrayRead(err_Gamma, &error_Gamma_p);
+//  ierr = VecRestoreArrayRead(solver->get_phi_band(), &phi_band_p);
+//  ierr = VecRestoreArrayRead(solver->get_phi(), &phi_num_p);
+//  int mpiret = MPI_Allreduce(MPI_IN_PLACE, l_inf_norm_err, 2, MPI_DOUBLE, MPI_MAX, solver->get_p4est_n()->mpicomm); SC_CHECK_MPI(mpiret);
+//  if(solver->get_p4est_n()->mpirank==0)
+//  {
+//    if(tn==0.0)
+//    {
+//      FILE* fp_errors;
+//      fp_errors = fopen(file_name, "w");
+//      if(fp_errors==NULL)
+//      {
+//        char error_msg[1024];
+//        sprintf(error_msg, "compute_and_save_errors: could not open file %s.", file_name);
+//        throw std::invalid_argument(error_msg);
+//      }
+//      fprintf(fp_errors, "tn     \t l1_band_error      \t linf_band_error    \t l1_intf_error        \t linf_intf_error\n");
+//      fprintf(fp_errors, "%.4f \t %.12e \t %.12e \t %.12e \t %.12e \n", tn, l_1_norm_err[0], l_inf_norm_err[0], l_1_norm_err[1], l_inf_norm_err[1]);
+//      fclose(fp_errors);
+//    }
+//    else
+//    {
+//      FILE* fp_errors;
+//      fp_errors = fopen(file_name, "a");
+//      fprintf(fp_errors, "%.4f \t %.12e \t %.12e \t %.12e \t %.12e \n", tn, l_1_norm_err[0], l_inf_norm_err[0], l_1_norm_err[1], l_inf_norm_err[1]);
+//      fclose(fp_errors);
+//    }
+//  }
+//}
 
 
 /*------------------------------------------------------------------------------------------------------------------------------------*/
@@ -612,7 +744,7 @@ int main(int argc, char** argv) {
 
   // Save flags
   const bool save_vtk = true;
-  const bool save_errors_vtk = true;
+  const bool save_errors = true;
 
   // Domain parameters
   const double xmin = -PI;
@@ -690,7 +822,7 @@ int main(int argc, char** argv) {
   surf->set_no_surface_diffusion(true);
 
   // Print vtk data
-  char out_dir[1024], vtk_path[1024], vtk_name[1024], vtk_error_name[1024];
+  char out_dir[1024], vtk_path[1024], vtk_name[1024], error_path[1024], dat_error_space_name[1024], dat_error_time_name[1024];
   string export_dir = "/home/temprano/Output/p4est_surfactant/tests";
   string test_name;
   switch(test_number)
@@ -699,8 +831,10 @@ int main(int argc, char** argv) {
     case 1: test_name = "advection_vortex";        break;
     default: throw std::invalid_argument("Please choose a valid test.");
   }
-  sprintf(out_dir, "%s/%dd/%s/%d_%d", export_dir.c_str(), (int)P4EST_DIM, test_name.c_str(), lmin, lmax);
+  sprintf(out_dir, "%s/%dd/%s/%02d_%02d", export_dir.c_str(), (int)P4EST_DIM, test_name.c_str(), lmin, lmax);
   sprintf(vtk_path, "%s/vtu",  out_dir);
+  sprintf(error_path, "%s/errors",  out_dir);
+  sprintf(dat_error_time_name, "%s/errors_t.dat", error_path);
 
   if(create_directory(out_dir, mpi.rank(), mpi.comm()))
   {
@@ -719,6 +853,15 @@ int main(int argc, char** argv) {
     sprintf(error_msg, "main_3d: could not create exportation directory for vtk files %s", vtk_path);
 #else
     sprintf(error_msg, "main_2d: could not create exportation directory for vtk files %s", vtk_path);
+#endif
+  }
+  if(save_errors && create_directory(error_path, mpi.rank(), mpi.comm()))
+  {
+    char error_msg[1024];
+#ifdef P4_TO_P8
+    sprintf(error_msg, "main_3d: could not create exportation directory for error files %s", vtk_path);
+#else
+    sprintf(error_msg, "main_2d: could not create exportation directory for error files %s", vtk_path);
 #endif
   }
 
@@ -741,11 +884,11 @@ int main(int argc, char** argv) {
     surf->save_vtk(vtk_name);
     ierr = PetscPrintf(mpi.comm(), "  -> Saving result vtk files in %s...\n",vtk_name); CHKERRXX(ierr);
   }
-  if(save_errors_vtk)
+  if(save_errors)
   {
-    sprintf(vtk_error_name, "%s/error_snapshot_%d", vtk_path, iter);
-    compute_and_save_errors(surf, vtk_error_name);
-    ierr = PetscPrintf(mpi.comm(), "  -> Saving errors vtk files in %s...\n", vtk_error_name); CHKERRXX(ierr);
+    sprintf(dat_error_space_name, "%s/error_snapshot_%d.dat", error_path, iter);
+    compute_and_save_errors(surf, dat_error_space_name, dat_error_time_name);
+    ierr = PetscPrintf(mpi.comm(), "  -> Saving errors dat files in %s...\n", dat_error_space_name); CHKERRXX(ierr);
   }
 
   while(tn+0.01*dt < tf)
@@ -779,11 +922,11 @@ int main(int argc, char** argv) {
       surf->save_vtk(vtk_name);
       ierr = PetscPrintf(mpi.comm(), "  -> Saving result vtk files in %s...\n",vtk_name); CHKERRXX(ierr);
     }
-    if(save_errors_vtk)
+    if(save_errors)
     {
-      sprintf(vtk_error_name, "%s/error_snapshot_%d", vtk_path, iter);
-      compute_and_save_errors(surf, vtk_error_name);
-      ierr = PetscPrintf(mpi.comm(), "  -> Saving errors vtk files in %s...\n", vtk_error_name); CHKERRXX(ierr);
+      sprintf(dat_error_space_name, "%s/error_snapshot_%d.dat", error_path, iter);
+      compute_and_save_errors(surf, dat_error_space_name, dat_error_time_name);
+      ierr = PetscPrintf(mpi.comm(), "  -> Saving errors vtk files in %s...\n", dat_error_space_name); CHKERRXX(ierr);
     }
   }
 
