@@ -281,7 +281,7 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(const double *
 
   /* In order to use the standard vectors of HierarchyCell's, i.e. trees[tree_idx], as
    * constructed by this object, we need to rescale these coordinates to
-   * [0, nx]x[0, ny]x[0xny] where nx, ny and nz are the numbers of trees in the brick,
+   * [0, nx]x[0, ny]x[0, nz] where nx, ny and nz are the numbers of trees in the brick,
    * i.e. the numbers of trees along the cartesian directions in the brick
    */
   xyz_[0] = (xyz_[0]-xmin)/(xmax-xmin); P4EST_ASSERT((0.0 <= xyz_[0]) && (xyz_[0] <= myb->nxyztrees[0]));

@@ -1,4 +1,4 @@
-#ifdef P4_TO_P8
+﻿#ifdef P4_TO_P8
 #include "my_p8est_utils.h"
 #include "my_p8est_tools.h"
 #include <p8est_connectivity.h>
@@ -1345,6 +1345,57 @@ double integrate_over_negative_domain(const p4est_t *p4est, const p4est_nodes_t 
 }
 
 
+void integrate_over_negative_domain(int num, double *values, const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec map, Vec f)
+{
+  PetscErrorCode ierr;
+
+  const double *map_ptr;
+  ierr = VecGetArrayRead(map, &map_ptr); CHKERRXX(ierr);
+
+  const p4est_locidx_t *q2n = nodes->local_nodes;
+  for (int i = 0; i < num; ++i) values[i] = 0;
+
+  for(p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx)
+  {
+    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
+    for(size_t quad_idx = 0; quad_idx < tree->quadrants.elem_count; ++quad_idx)
+    {
+      // count how many times each index appears in a quadrant
+      std::vector<int> count(num, 0);
+      for (int i = 0; i < P4EST_CHILDREN; ++i)
+      {
+        int loc_idx = int(map_ptr[q2n[quad_idx*P4EST_CHILDREN + i]]);
+        if (loc_idx >= num) throw;
+        if (loc_idx >= 0) count[loc_idx]++;
+      }
+
+      // select the most frequent one
+      int idx       = 0;
+      int max_count = count[0];
+      for (int i = 1; i < num; ++i)
+      {
+        if (max_count < count[i])
+        {
+          max_count = count[i];
+          idx = i;
+        }
+      }
+
+      // add intergal to appropriate value
+      const p4est_quadrant_t *quad = (const p4est_quadrant_t*)sc_array_index(&tree->quadrants, quad_idx);
+      values[idx] += integrate_over_negative_domain_in_one_quadrant(p4est, nodes, quad,
+                                                                    quad_idx + tree->quadrants_offset,
+                                                                    phi, f);
+    }
+  }
+
+  ierr = VecRestoreArrayRead(map, &map_ptr); CHKERRXX(ierr);
+
+  /* compute global sum */
+  ierr = MPI_Allreduce(MPI_IN_PLACE, values, num, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); CHKERRXX(ierr);
+}
+
+
 double area_in_negative_domain_in_one_quadrant(const p4est_t *p4est, const p4est_nodes_t *nodes, const p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi)
 {
 
@@ -1422,6 +1473,56 @@ double area_in_negative_domain(const p4est_t *p4est, const p4est_nodes_t *nodes,
   PetscErrorCode ierr;
   ierr = MPI_Allreduce(MPI_IN_PLACE, &sum, 1, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); CHKERRXX(ierr);
   return sum;
+}
+
+void area_in_negative_domain(int num, double *values, const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec map)
+{
+  PetscErrorCode ierr;
+
+  const double *map_ptr;
+  ierr = VecGetArrayRead(map, &map_ptr); CHKERRXX(ierr);
+
+  const p4est_locidx_t *q2n = nodes->local_nodes;
+  for (int i = 0; i < num; ++i) values[i] = 0;
+
+  for(p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx)
+  {
+    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
+    for(size_t quad_idx = 0; quad_idx < tree->quadrants.elem_count; ++quad_idx)
+    {
+      // count how many times each index appears in a quadrant
+      std::vector<int> count(num, 0);
+      for (int i = 0; i < P4EST_CHILDREN; ++i)
+      {
+        int loc_idx = int(map_ptr[q2n[quad_idx*P4EST_CHILDREN + i]]);
+        if (loc_idx >= num) throw;
+        if (loc_idx >= 0) count[loc_idx]++;
+      }
+
+      // select the most frequent one
+      int idx = 0;
+      int max_count = count[0];
+      for (int i = 1; i < num; ++i)
+      {
+        if (max_count < count[i])
+        {
+          max_count = count[i];
+          idx = i;
+        }
+      }
+
+      // add intergal to appropriate value
+      const p4est_quadrant_t *quad = (const p4est_quadrant_t*)sc_array_index(&tree->quadrants, quad_idx);
+      values[idx] += area_in_negative_domain_in_one_quadrant(p4est, nodes, quad,
+                                                     quad_idx + tree->quadrants_offset,
+                                                     phi);
+    }
+  }
+
+  ierr = VecRestoreArrayRead(map, &map_ptr); CHKERRXX(ierr);
+
+  /* compute global sum */
+  ierr = MPI_Allreduce(MPI_IN_PLACE, values, num, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); CHKERRXX(ierr);
 }
 
 double integrate_over_interface_in_one_quadrant(const p4est_t *p4est, const p4est_nodes_t *nodes, const p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi, Vec f)
@@ -1574,6 +1675,56 @@ double integrate_over_interface(const p4est_t *p4est, const p4est_nodes_t *nodes
   PetscErrorCode ierr;
   ierr = MPI_Allreduce(&sum, &sum_global, 1, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); CHKERRXX(ierr);
   return sum_global;
+}
+
+void integrate_over_interface(int num, double *values, const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec map, Vec f)
+{
+  PetscErrorCode ierr;
+
+  const double *map_ptr;
+  ierr = VecGetArrayRead(map, &map_ptr); CHKERRXX(ierr);
+
+  const p4est_locidx_t *q2n = nodes->local_nodes;
+  for (int i = 0; i < num; ++i) values[i] = 0;
+
+  for(p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx)
+  {
+    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
+    for(size_t quad_idx = 0; quad_idx < tree->quadrants.elem_count; ++quad_idx)
+    {
+      // count how many times each index appears in a quadrant
+      std::vector<int> count(num, 0);
+      for (int i = 0; i < P4EST_CHILDREN; ++i)
+      {
+        int loc_idx = int(map_ptr[q2n[quad_idx*P4EST_CHILDREN + i]]);
+        if (loc_idx >= num) throw;
+        if (loc_idx >= 0) count[loc_idx]++;
+      }
+
+      // select the most frequent one
+      int idx = 0;
+      int max_count = count[0];
+      for (int i = 1; i < num; ++i)
+      {
+        if (max_count < count[i])
+        {
+          max_count = count[i];
+          idx = i;
+        }
+      }
+
+      // add intergal to appropriate value
+      const p4est_quadrant_t *quad = (const p4est_quadrant_t*)sc_array_index(&tree->quadrants, quad_idx);
+      values[idx] += integrate_over_interface_in_one_quadrant(p4est, nodes, quad,
+                                                              quad_idx + tree->quadrants_offset,
+                                                              phi, f);
+    }
+  }
+
+  ierr = VecRestoreArrayRead(map, &map_ptr); CHKERRXX(ierr);
+
+  /* compute global sums */
+  ierr = MPI_Allreduce(MPI_IN_PLACE, values, num, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); CHKERRXX(ierr);
 }
 
 double max_over_interface(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec f)
@@ -2612,11 +2763,11 @@ PetscErrorCode VecCopyGhost(Vec input, Vec output)
 {
   PetscErrorCode ierr;
   Vec src, out;
-  ierr = VecGhostGetLocalForm(input, &src);      CHKERRXX(ierr);
-  ierr = VecGhostGetLocalForm(output, &out);     CHKERRXX(ierr);
-  ierr = VecCopy(src, out);                      CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(input, &src);  CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(output, &out); CHKERRXX(ierr);
+  ierr = VecGhostGetLocalForm(input, &src);      if (ierr != 0) return ierr;
+  ierr = VecGhostGetLocalForm(output, &out);     if (ierr != 0) return ierr;
+  ierr = VecCopy(src, out);                      if (ierr != 0) return ierr;
+  ierr = VecGhostRestoreLocalForm(input, &src);  if (ierr != 0) return ierr;
+  ierr = VecGhostRestoreLocalForm(output, &out); if (ierr != 0) return ierr;
   return ierr;
 }
 

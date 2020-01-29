@@ -72,6 +72,7 @@ public:
   Mat     submat_robin_sc_;
   Vec     submat_robin_sym_;
   double *submat_robin_sym_ptr;
+  std::vector< std::vector<mat_entry_t> > entries_robin_sc;
 
   bool new_submat_main_;
   bool new_submat_diag_;
@@ -91,6 +92,11 @@ public:
   bool        new_pc_;
   PetscInt    itmax_;
   PetscScalar rtol_, atol_, dtol_;
+
+  // Tolerances for solving nonlinear equations
+  double nonlinear_change_tol_, nonlinear_pde_residual_tol_;
+  double nonlinear_itmax_;
+  int    nonlinear_method_;
 
   // local to global node number mapping
   std::vector<PetscInt> global_node_offset_;
@@ -135,6 +141,7 @@ public:
     void get_arrays();
     void restore_arrays();
     void calculate_phi_eff();
+    Vec  return_phi_eff();
     void add_phi(mls_opn_t opn, Vec phi, DIM(Vec phi_xx, Vec phi_yy, Vec phi_zz));
     inline double phi_eff_value(p4est_locidx_t n) { return (num_phi == 0) ? -1 : phi_eff_ptr[n]; }
   };
@@ -169,6 +176,19 @@ public:
 
   double *mue_m_ptr, DIM(*mue_m_xx_ptr, *mue_m_yy_ptr, *mue_m_zz_ptr);
   double *mue_p_ptr, DIM(*mue_p_xx_ptr, *mue_p_yy_ptr, *mue_p_zz_ptr);
+
+  // nonlinear term
+  CF_1   *nonlinear_term_m_;
+  CF_1   *nonlinear_term_p_;
+  CF_1   *nonlinear_term_m_prime_;
+  CF_1   *nonlinear_term_p_prime_;
+  Vec     nonlinear_term_m_coeff_;
+  Vec     nonlinear_term_p_coeff_;
+  double *nonlinear_term_m_coeff_ptr;
+  double *nonlinear_term_p_coeff_ptr;
+  double  nonlinear_term_m_coeff_scalar_;
+  double  nonlinear_term_p_coeff_scalar_;
+  bool    var_nonlinear_term_coeff_;
 
   // wall conditions
   points_around_node_map_t       wall_pieces_map;
@@ -487,6 +507,44 @@ public:
     this->itmax_ = itmax;
   }
 
+  // set nonlinear term
+
+  inline void set_nonlinear_term(double nonlinear_term_m_coeff, CF_1 &nonlinear_m_term, CF_1 &nonlinear_term_m_prime,
+                                 double nonlinear_term_p_coeff, CF_1 &nonlinear_p_term, CF_1 &nonlinear_term_p_prime)
+  {
+    var_nonlinear_term_coeff_      = false;
+    nonlinear_term_m_              =&nonlinear_m_term;
+    nonlinear_term_p_              =&nonlinear_p_term;
+    nonlinear_term_m_prime_        =&nonlinear_term_m_prime;
+    nonlinear_term_p_prime_        =&nonlinear_term_p_prime;
+    nonlinear_term_m_coeff_scalar_ = nonlinear_term_m_coeff;
+    nonlinear_term_p_coeff_scalar_ = nonlinear_term_p_coeff;
+  }
+
+  inline void set_nonlinear_term(Vec nonlinear_term_m_coeff, CF_1 &nonlinear_m_term, CF_1 &nonlinear_term_m_prime,
+                                 Vec nonlinear_term_p_coeff, CF_1 &nonlinear_p_term, CF_1 &nonlinear_term_p_prime)
+  {
+    var_nonlinear_term_coeff_ = true;
+    nonlinear_term_m_         =&nonlinear_m_term;
+    nonlinear_term_p_         =&nonlinear_p_term;
+    nonlinear_term_m_prime_   =&nonlinear_term_m_prime;
+    nonlinear_term_p_prime_   =&nonlinear_term_p_prime;
+    nonlinear_term_m_coeff_   = nonlinear_term_m_coeff;
+    nonlinear_term_p_coeff_   = nonlinear_term_p_coeff;
+  }
+
+  inline void set_nonlinear_term(double nonlinear_term_coeff, CF_1 &nonlinear_term, CF_1 &nonlinear_term_prime)
+  {
+    set_nonlinear_term(nonlinear_term_coeff, nonlinear_term, nonlinear_term_prime,
+                       nonlinear_term_coeff, nonlinear_term, nonlinear_term_prime);
+  }
+
+  inline void set_nonlinear_term(Vec nonlinear_term_coeff, CF_1 &nonlinear_term, CF_1 &nonlinear_term_prime)
+  {
+    set_nonlinear_term(nonlinear_term_coeff, nonlinear_term, nonlinear_term_prime,
+                       nonlinear_term_coeff, nonlinear_term, nonlinear_term_prime);
+  }
+
 
   // solver options
   inline void set_integration_order(int value) { integration_order_ = value; }
@@ -514,7 +572,8 @@ public:
   inline void set_new_submat_robin(bool value) { new_submat_robin_ = value; }
 
   void preassemble_linear_system();
-  void solve(Vec solution, bool use_nonzero_guess = false, bool update_ghost = true, KSPType ksp_type = KSPBCGS, PCType pc_type = PCHYPRE);
+  void solve          (Vec solution, bool use_nonzero_guess = false, bool update_ghost = true, KSPType ksp_type = KSPBCGS, PCType pc_type = PCHYPRE);
+  int  solve_nonlinear(Vec solution, bool use_nonzero_guess = false, bool update_ghost = true, KSPType ksp_type = KSPBCGS, PCType pc_type = PCHYPRE);
 
   inline Vec get_mask()   { return mask_m_; }
   inline Vec get_mask_m() { return mask_m_; }
@@ -563,6 +622,14 @@ public:
   }
 
   inline PetscInt get_global_idx(p4est_locidx_t n) { return petsc_gloidx_[n]; }
+
+  inline void set_solve_nonlinear_parameters(int method=1, double itmax=10, double change_tol=1.e-10, double pde_residual_tol=0)
+  {
+    nonlinear_method_           = method;
+    nonlinear_itmax_            = itmax;
+    nonlinear_change_tol_       = change_tol;
+    nonlinear_pde_residual_tol_ = pde_residual_tol;
+  }
 };
 
 #endif // MY_P4EST_POISSON_NODES_MLS_H

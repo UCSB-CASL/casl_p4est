@@ -51,10 +51,11 @@ const static std::string main_description =
 param_list_t pl;
 
 // grid parameters
-param_t<int>    lmin       (pl, 4,   "lmin",       "Min level of refinement (default: 4)");
-param_t<int>    lmax       (pl, 4,   "lmax",       "Max level of refinement (default: 4)");
-param_t<double> lip        (pl, 1.2, "lip",        "Lipschitz constant (default: 1.2)");
-param_t<int>    num_splits (pl, 5,   "num_splits", "Number of successive refinements (default: 5)");
+param_t<int>    lmin        (pl, 4,   "lmin",         "Min level of refinement (default: 4)");
+param_t<int>    lmax        (pl, 4,   "lmax",         "Max level of refinement (default: 4)");
+param_t<double> lip         (pl, 1.2, "lip",          "Lipschitz constant (characterize transition width between coarse and fine regions) (default: 1.2)");
+param_t<double> uniform_band(pl, 5,   "uniform_band", "Width of the uniform band around interface (in smallest quadrant lengths) (default: 5)");
+param_t<int>    num_splits  (pl, 8,   "num_splits",   "Number of successive refinements (default: 5)");
 
 // problem set-up (points of iterpolation and function to interpolate)
 param_t<int> test_domain(pl, 0, "test_domain", "Test domain (default: 0):\n"
@@ -64,10 +65,11 @@ param_t<int> test_domain(pl, 0, "test_domain", "Test domain (default: 0):\n"
                                                "    3 - difference of two spheres");
 
 param_t<int> test_function(pl, 0, "test_function", "Test function (default: 0):\n"
-                                                   "    0 - sin(x)*cos(y)\n"
+                                                   "    0 - sin(pi*x)*cos(pi*y)\n"
                                                    "    1 - ... (more to be added)");
 
 // method set-up
+param_t<bool>   reinit_level_set(pl, 0,  "reinit_level_set", "Reinitialize level-set function before extension (helps to regularize normals in the presence of kinks) (default: 0)");
 param_t<bool>   show_convergence(pl, 0,  "show_convergence", "Show convergence as iterations performed (default: 0)");
 param_t<bool>   use_full        (pl, 0,  "use_full"        , "Extend only normal derivatives (0) or all derivatives in Cartesian directions (1) (default: 0)");
 param_t<int>    num_iterations  (pl, 50, "num_iterations"  , "Number of iterations (default: 50)\n");
@@ -82,7 +84,7 @@ struct: CF_3 {
     {
       case 0: return -(0.501 - sqrt(SQR(x) + SQR(y) + SQR(z)));
       case 1:
-        static flower_shaped_domain_t flower(0.501, .0, .0, .0, .15, 1);
+        static flower_shaped_domain_t flower(0.501, .0, .0, .0, .3, 1);
         return flower.phi(x,y,z);
       case 2:
         return MIN(-(0.501 - sqrt(SQR(x+.1) + SQR(y+.3) + SQR(z+.2))),
@@ -102,7 +104,7 @@ struct: CF_2 {
     {
       case 0: return -(0.501 - sqrt(SQR(x) + SQR(y)));
       case 1:
-        static flower_shaped_domain_t flower(0.501, .0, .0, .15, 1);
+        static flower_shaped_domain_t flower(0.501, .0, .0, .3, 1);
         return flower.phi(x,y);
       case 2:
         return MIN(-(0.501 - sqrt(SQR(x+.1) + SQR(y+.3))),
@@ -122,7 +124,7 @@ struct: CF_3 {
   double operator()(double x, double y, double z) const {
     switch (test_function.val)
     {
-      case 0: return sin(x)*cos(y)*exp(z);
+      case 0: return sin(PI*x)*cos(PI*y)*exp(z);
       default:
         throw std::invalid_argument("Invalid test function");
     }
@@ -133,7 +135,7 @@ struct: CF_2 {
   double operator()(double x, double y) const {
     switch (test_function.val)
     {
-      case 0: return sin(x)*cos(y);
+      case 0: return sin(PI*x)*cos(PI*y);
       default:
         throw std::invalid_argument("Invalid test function");
     }
@@ -195,11 +197,11 @@ int main(int argc, char** argv)
     p4est = my_p4est_new(mpi.comm(), conn, 0, NULL, NULL);
 
     // refine based on distance to a level-set
-    splitting_criteria_cf_t sp(lmin()+iter, lmax()+iter, &phi_cf, lip());
+    splitting_criteria_cf_and_uniform_band_t sp(lmin() == -1 ? 0 : lmin()+iter, lmax()+iter, &phi_cf, uniform_band(), lip());
     p4est->user_pointer = &sp;
     for (int i = 0; i < lmax()+iter; ++i)
     {
-      my_p4est_refine(p4est, P4EST_FALSE, refine_levelset_cf, NULL);
+      my_p4est_refine(p4est, P4EST_FALSE, refine_levelset_cf_and_uniform_band, NULL);
       my_p4est_partition(p4est, P4EST_TRUE, NULL);
     }
 
@@ -276,7 +278,7 @@ int main(int argc, char** argv)
     ierr = VecGetArray(f_linear,    &f_linear_ptr);
     ierr = VecGetArray(f_quadratic, &f_quadratic_ptr);
 
-    foreach_local_node(n, nodes)
+    foreach_node(n, nodes)
     {
       if (phi_ptr[n] > 0)
       {
@@ -297,21 +299,29 @@ int main(int argc, char** argv)
     // ---------------------------------------------------------
     my_p4est_level_set_t ls(&ngbd);
 
+    if (reinit_level_set()) ls.reinitialize_2nd_order(phi);
+
     if (show_convergence())
     {
       ls.set_show_convergence(1);
       ls.set_show_convergence_band(band()*diag_min);
     }
 
+    parStopWatch timer;
+    double time_const;
+    double time_linear;
+    double time_quadratic;
     if (use_full())
     {
-      ls.extend_Over_Interface_TVD_Full(phi, f_const,     num_iterations(), 0); // constant extrapolation
-      ls.extend_Over_Interface_TVD_Full(phi, f_linear,    num_iterations(), 1); // linear extrapolation
-      ls.extend_Over_Interface_TVD_Full(phi, f_quadratic, num_iterations(), 2); // quadratic extrapolationn
-    } else {
-      ls.extend_Over_Interface_TVD(phi, f_const,     num_iterations(), 0); // constant extrapolation
-      ls.extend_Over_Interface_TVD(phi, f_linear,    num_iterations(), 1); // linear extrapolation
-      ls.extend_Over_Interface_TVD(phi, f_quadratic, num_iterations(), 2); // quadratic extrapolationn
+      w.start(); ls.extend_Over_Interface_TVD_Full(phi, f_const,     num_iterations(), 0); w.stop(); time_const     = w.get_duration(); // constant extrapolation
+      w.start(); ls.extend_Over_Interface_TVD_Full(phi, f_linear,    num_iterations(), 1); w.stop(); time_linear    = w.get_duration(); // linear extrapolation
+      w.start(); ls.extend_Over_Interface_TVD_Full(phi, f_quadratic, num_iterations(), 2); w.stop(); time_quadratic = w.get_duration(); // quadratic extrapolationn
+    }
+    else
+    {
+      w.start(); ls.extend_Over_Interface_TVD     (phi, f_const,     num_iterations(), 0); w.stop(); time_const     = w.get_duration(); // constant extrapolation
+      w.start(); ls.extend_Over_Interface_TVD     (phi, f_linear,    num_iterations(), 1); w.stop(); time_linear    = w.get_duration(); // linear extrapolation
+      w.start(); ls.extend_Over_Interface_TVD     (phi, f_quadratic, num_iterations(), 2); w.stop(); time_quadratic = w.get_duration(); // quadratic extrapolationn
     }
 
     ls.extend_from_interface_to_whole_domain_TVD(phi, f_exact, f_flat, num_iterations()); // constant extrapolation in both directions (flattening)
@@ -372,10 +382,10 @@ int main(int argc, char** argv)
     ierr = VecRestoreArray(error_quadratic, &error_quadratic_ptr);
 
     // print out max error
-    ierr = PetscPrintf(mpi.comm(), "Grid levels: %2d / %2d, const: %1.2e / %1.2g, linear: %1.2e / %1.3g, quadratic: %1.2e / %1.3g\n", lmin()+iter, lmax()+iter,
-                       error_const_max_cur,     log(error_const_max_old/error_const_max_cur)/log(2),
-                       error_linear_max_cur,    log(error_linear_max_old/error_linear_max_cur)/log(2),
-                       error_quadratic_max_cur, log(error_quadratic_max_old/error_quadratic_max_cur)/log(2)); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "Grid levels: %2d / %2d, const (%1.2e s): %1.2e / %1.2f, linear (%1.2e s): %1.2e / %1.2f, quadratic (%1.2e s): %1.2e / %1.2f\n", lmin() == -1 ? 0 : lmin()+iter, lmax()+iter,
+                       time_const,     error_const_max_cur,     log(error_const_max_old/error_const_max_cur)/log(2),
+                       time_linear,    error_linear_max_cur,    log(error_linear_max_old/error_linear_max_cur)/log(2),
+                       time_quadratic, error_quadratic_max_cur, log(error_quadratic_max_old/error_quadratic_max_cur)/log(2)); CHKERRXX(ierr);
 
     // ---------------------------------------------------------
     // save the grid and data into vtk
