@@ -122,7 +122,7 @@ my_p4est_poisson_nodes_mls_t::my_p4est_poisson_nodes_mls_t(const my_p4est_node_n
   nonlinear_change_tol_ = 1.0e-12,
   nonlinear_pde_residual_tol_= 0;
   nonlinear_itmax_ = 10;
-  nonlinear_method_ = 0;
+  nonlinear_method_ = 1;
 
   // local to global node number mapping
   // compute global numbering of nodes
