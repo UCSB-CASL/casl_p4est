@@ -568,7 +568,10 @@ void my_p4est_multialloy_t::compute_dt()
   dt_[0] = MIN(dt_[0], dt_max_);
   dt_[0] = MAX(dt_[0], dt_min_);
 
-  PetscPrintf(p4est_->mpicomm, "curvature max = %e, velo max = %e, dt = %e\n", curvature_max, velo_norm_max/scaling_, dt_[0]);
+  double cfl_tmp = dt_[0]*MAX(fabs(velo_norm_max),EPS)/dxyz_min_;
+
+
+  PetscPrintf(p4est_->mpicomm, "curvature max = %e, velo max = %e, dt = %e, eff cfl = %e\n", curvature_max, velo_norm_max/scaling_, dt_[0], cfl_tmp);
 
   ierr = PetscLogEventEnd(log_my_p4est_multialloy_compute_dt, 0, 0, 0, 0); CHKERRXX(ierr);
 }

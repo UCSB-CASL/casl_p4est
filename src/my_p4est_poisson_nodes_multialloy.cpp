@@ -134,7 +134,7 @@ my_p4est_poisson_nodes_multialloy_t::my_p4est_poisson_nodes_multialloy_t(my_p4es
 
   poisson_use_nonzero_guess_ = true;
 
-  iteration_scheme_ = 3;
+  iteration_scheme_ = 2;
 }
 
 my_p4est_poisson_nodes_multialloy_t::~my_p4est_poisson_nodes_multialloy_t()
@@ -426,6 +426,7 @@ int my_p4est_poisson_nodes_multialloy_t::solve(Vec tl, Vec ts, Vec c[], Vec c0d[
         break;
 
         case 3:
+        {
           //        if (iteration == 1)
           //        {
           solve_psi_c0(2);  ++num_pdes_solved;
@@ -437,13 +438,19 @@ int my_p4est_poisson_nodes_multialloy_t::solve(Vec tl, Vec ts, Vec c[], Vec c0d[
 
           compute_c0_change(2);
 
+          bool poisson_use_nonzero_guess_tmp = poisson_use_nonzero_guess_;
+          poisson_use_nonzero_guess_ = 0;
+
           solve_psi_c0(3);  ++num_pdes_solved;
           compute_psi_c0n();
           compute_pw_bc_psi_values(conc_start, conc_num);
           solve_psi_c(conc_start, conc_num); num_pdes_solved += conc_num;
           solve_psi_t();                     num_pdes_solved += 1;
 
-        break;
+          poisson_use_nonzero_guess_ = poisson_use_nonzero_guess_tmp;
+
+          break;
+        }
 
         default:
           throw;

@@ -125,14 +125,14 @@ DEFINE_PARAMETER(pl, double, dendrite_min_length,       0.05, "");
 
 // problem parameters
 DEFINE_PARAMETER(pl, bool,   concentration_neumann, 1, "");
-DEFINE_PARAMETER(pl, int,    max_total_iterations,  1000000000, "");
+DEFINE_PARAMETER(pl, int,    max_total_iterations,  5000, "");
 DEFINE_PARAMETER(pl, double, time_limit,            DBL_MAX, "");
 DEFINE_PARAMETER(pl, double, termination_length,    0.99, "");
 DEFINE_PARAMETER(pl, double, init_perturb,          1.e-3, "");
 DEFINE_PARAMETER(pl, bool,   enforce_planar_front,  0,"");
 
-//DEFINE_PARAMETER(pl, double, box_size, 4.e-2, "equivalent width (in x) of the box in cm");
-DEFINE_PARAMETER(pl, double, box_size, 1, "equivalent width (in x) of the box in cm");
+DEFINE_PARAMETER(pl, double, box_size, 2.e-2, "equivalent width (in x) of the box in cm");
+//DEFINE_PARAMETER(pl, double, box_size, 1, "equivalent width (in x) of the box in cm");
 
 double scaling = 1./box_size;
 
@@ -144,7 +144,7 @@ int num_comps = 1; // Number of components used
 
 //DEFINE_PARAMETER(pl, double, volumetric_heat,  0, "Volumetric heat generation, J/cm^3");
 DEFINE_PARAMETER(pl, double, cooling_velocity, 0.01, "Cooling velocity, cm/s");
-DEFINE_PARAMETER(pl, double, temp_gradient,    200, "Temperature gradient, K/cm");
+DEFINE_PARAMETER(pl, double, temp_gradient,    15000, "Temperature gradient, K/cm");
 
 DEFINE_PARAMETER(pl, int,    smoothstep_order, 5, "Smoothness of cooling/heating ");
 DEFINE_PARAMETER(pl, double, starting_time, 0.e-3, "Time for cooling/heating to fully switch on, s");
@@ -188,7 +188,7 @@ DEFINE_PARAMETER(pl, double, eps_v, 0, ""); /* kinetic undercooling coefficient 
 DEFINE_PARAMETER(pl, double, eps_a, 0, ""); /* anisotropy coefficient                                    */
 DEFINE_PARAMETER(pl, double, symmetry, 4, ""); // symmetric of crystals
 
-DEFINE_PARAMETER(pl, int, alloy, 0, "0: Ni -  0.4at%Cu bi-alloy, "
+DEFINE_PARAMETER(pl, int, alloy, 2, "0: Ni -  0.4at%Cu bi-alloy, "
                                     "1: Ni -  0.2at%Cu -  0.2at%Cu tri-alloy, "
                                     "2: Co - 10.7at%W  -  9.4at%Al tri-alloy, "
                                     "3: Co -  9.4at%Al - 10.7at%W  tri-alloy, "
@@ -197,7 +197,7 @@ DEFINE_PARAMETER(pl, int, alloy, 0, "0: Ni -  0.4at%Cu bi-alloy, "
                                     "6: a made-up tetra-alloy, "
                                     "7: a made-up penta-alloy");
 
-DEFINE_PARAMETER(pl, int, geometry, 2, "0 - directional solidification,"
+DEFINE_PARAMETER(pl, int, geometry, 0, "0 - directional solidification,"
                                        "1 - growth of a spherical seed in a spherical container,"
                                        "2 - growth of a spherical film in a spherical container,"
                                        "3 - radial directional solidification in,"
@@ -288,8 +288,8 @@ void set_alloy_parameters()
       part_coeff_0     = 0.848;    // partition coefficient
       part_coeff_1     = 0.848;    // partition coefficient
 
-      eps_c = 0*3e-5/melting_temp;
-      eps_v = 0*2.27e-2;
+      eps_c = 5e-5/melting_temp;
+      eps_v = 5e-2;
       eps_a = 0.05;
       symmetry = 4;
       break;
@@ -689,7 +689,7 @@ int num_seeds()
   }
 }
 
-double seed_direction = PI/6.;
+double seed_direction = 0*PI/6.;
 
 double theta0(int seed)
 {

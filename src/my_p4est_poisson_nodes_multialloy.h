@@ -372,7 +372,7 @@ private:
   } var_scheme_;
 
 public:
-  inline void set_iteration_scheme_         (int          value) { iteration_scheme_          = value; }
+  inline void set_iteration_scheme          (int          value) { iteration_scheme_          = value; }
   inline void set_pin_every_n_iterations    (int          value) { pin_every_n_iterations_    = value; }
   inline void set_cube_refinement           (int          value) { cube_refinement_           = value; }
   inline void set_integration_order         (int          value) { integration_order_         = value; }
