@@ -91,7 +91,7 @@ param_t<bool>   use_scft   (pl, 1,       "use_scft", "Turn on/off SCFT (0/1)");
 param_t<bool>   minimize   (pl, 1,       "minimize", "Turn on/off energy minimization (0/1)");
 param_t<int>    geometry   (pl, 6,       "geometry", "Initial placement of particles: 0 - one particle, 1 - ...");
 param_t<int>    velocity   (pl, 3,       "velocity", "Predifined velocity in case of minimize=0: 0 - along x-axis, 1 - along y-axis, 2 - diagonally, 3 - circular");
-param_t<double> CFL        (pl, 0.5,     "CFL", "CFL number");
+param_t<double> CFL        (pl, 1,     "CFL", "CFL number");
 param_t<double> time_limit (pl, DBL_MAX, "time_limit", "Time limit");
 param_t<int>    step_limit (pl, 200,     "step_limit", "Step limit");
 
@@ -103,6 +103,7 @@ param_t<double> pairwise_potential_width (pl, 0.01, "pairwise_potential_width", 
 //-------------------------------------
 param_t<bool> save_energy (pl, 1,  "save_energy", "Save effective energy into a file");
 param_t<bool> save_vtk    (pl, 1,  "save_vtk", "Save vtk data");
+param_t<int>  save_freq   (pl, 10, "save_freq", "Frequency of saving vtk data");
 
 // this class constructs the 'analytical field' (level-set function for every (x,y) coordinate)
 class particles_level_set_cf_t : public CF_DIM
@@ -1175,13 +1176,13 @@ int main(int argc, char** argv)
     }
 
     // save as vtk files
-    if (save_vtk())
+    if (save_vtk() && (step%save_freq()==0))
     {
       std::ostringstream oss;
       oss << out_dir
           << "/vtu/scft_"
           << p4est->mpisize
-          << "_" << step;
+          << "_" << int(round(step/save_freq()));
 
       ierr = VecGetArray(particles_level_set, &particles_level_set_ptr); CHKERRXX(ierr);
       ierr = VecGetArray(particles_number, &particles_number_ptr); CHKERRXX(ierr);
