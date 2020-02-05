@@ -41,35 +41,35 @@ static param_list_t pl;
 //-------------------------------------
 // computational domain parameters
 //-------------------------------------
-param_t<double> xmin (pl, -3, "xmin", "Box xmin");
-param_t<double> ymin (pl, -3, "ymin", "Box ymin");
-param_t<double> zmin (pl, -3, "zmin", "Box zmin");
+param_t<double> xmin (pl, -6, "xmin", "Box xmin");
+param_t<double> ymin (pl, -6, "ymin", "Box ymin");
+param_t<double> zmin (pl, -6, "zmin", "Box zmin");
 
-param_t<double> xmax (pl, 3, "xmax", "Box xmax");
-param_t<double> ymax (pl, 3, "ymax", "Box ymax");
-param_t<double> zmax (pl, 3, "zmax", "Box zmax");
+param_t<double> xmax (pl, 6, "xmax", "Box xmax");
+param_t<double> ymax (pl, 6, "ymax", "Box ymax");
+param_t<double> zmax (pl, 6, "zmax", "Box zmax");
 
 param_t<int> nx (pl, 1, "nx", "Number of trees in the x-direction");
 param_t<int> ny (pl, 1, "ny", "Number of trees in the y-direction");
 param_t<int> nz (pl, 1, "nz", "Number of trees in the z-direction");
 
-param_t<bool> px (pl, 0, "px", "Periodicity in the x-direction (0/1)");
-param_t<bool> py (pl, 0, "py", "Periodicity in the y-direction (0/1)");
-param_t<bool> pz (pl, 0, "pz", "Periodicity in the z-direction (0/1)");
+param_t<bool> px (pl, 1, "px", "Periodicity in the x-direction (0/1)");
+param_t<bool> py (pl, 1, "py", "Periodicity in the y-direction (0/1)");
+param_t<bool> pz (pl, 1, "pz", "Periodicity in the z-direction (0/1)");
 
 //-------------------------------------
 // refinement parameters
 //-------------------------------------
-param_t<int> lmin (pl, 6, "lmin", "Min level of the tree");
-param_t<int> lmax (pl, 8, "lmax", "Max level of the tree");
+param_t<int> lmin (pl, 7, "lmin", "Min level of the tree");
+param_t<int> lmax (pl, 9, "lmax", "Max level of the tree");
 param_t<int> lip  (pl, 2, "lip" , "Refinement transition");
 
 //-------------------------------------
 // polymer parameters
 //-------------------------------------
 param_t<double> XN       (pl, 20,  "XN"      , "Interaction strength between A and B blocks");
-param_t<double> gamma_a  (pl,-0.5, "gamma_a" , "Surface tension of A block");
-param_t<double> gamma_b  (pl, 0.0, "gamma_b" , "Surface tension of B block");
+param_t<double> gamma_a  (pl, 1, "gamma_a" , "Surface tension of A block");
+param_t<double> gamma_b  (pl, 0, "gamma_b" , "Surface tension of B block");
 param_t<int>    ns       (pl, 40,  "ns"      , "Discretization of polymer chain");
 param_t<double> box_size (pl, 1,   "box_size", "Box size in units of Rg");
 param_t<double> f        (pl, .5,  "f"       , "Fraction of polymer A");
@@ -88,12 +88,12 @@ param_t<double> scft_bc_tol         (pl, 4.e-2, "scft_bc_tol"        , "Toleranc
 // particle dynamics parameters
 //-------------------------------------
 param_t<bool>   use_scft   (pl, 1,       "use_scft", "Turn on/off SCFT (0/1)");
-param_t<bool>   minimize   (pl, 0,       "minimize", "Turn on/off energy minimization (0/1)");
-param_t<int>    geometry   (pl, 0,       "geometry", "Initial placement of particles: 0 - one particle, 1 - ...");
+param_t<bool>   minimize   (pl, 1,       "minimize", "Turn on/off energy minimization (0/1)");
+param_t<int>    geometry   (pl, 6,       "geometry", "Initial placement of particles: 0 - one particle, 1 - ...");
 param_t<int>    velocity   (pl, 3,       "velocity", "Predifined velocity in case of minimize=0: 0 - along x-axis, 1 - along y-axis, 2 - diagonally, 3 - circular");
 param_t<double> CFL        (pl, 0.5,     "CFL", "CFL number");
 param_t<double> time_limit (pl, DBL_MAX, "time_limit", "Time limit");
-param_t<int>    step_limit (pl, 100,     "step_limit", "Step limit");
+param_t<int>    step_limit (pl, 200,     "step_limit", "Step limit");
 
 param_t<double> pairwise_potential_mag   (pl, 0.3, "pairwise_potential_mag", "Magnitude of pairwise potential");
 param_t<double> pairwise_potential_width (pl, 0.01, "pairwise_potential_width", "Width of pairwise potential");
@@ -115,17 +115,72 @@ private:
   vector<double> zc;
 
 public:
+
   particles_level_set_cf_t(int np_, vector<double> R_, DIM(vector<double> xc_, vector<double> yc_, vector<double> zc_))
     : np(np_), R(R_), DIM(xc(xc_), yc(yc_), zc(zc_)) {}
+
+  void change_coordinates_of_particle(vector<double> xc_new_, vector<double> yc_new_, vector<double> zc_new_){
+    xc = xc_new_;
+    yc = yc_new_;
+    zc = zc_new_;
+  }
 
   double operator()(DIM(double x, double y, double z)) const
   {
     vector<double> phi_particles(np);
-    for (int j = 0; j < np; ++j)
-    {
-      phi_particles[j] =  R[j] - sqrt( SUMD(SQR(x-xc[j]),
-                                            SQR(y-yc[j]),
-                                            SQR(z-zc[j])) );
+    vector<double> distances(4, 0); // vector with 4 rows, all of the entities are 0
+    double xc_mirror = 0;
+    double yc_mirror = 0;
+    double delta_x = 0;
+    double delta_y =0;
+    double distance_min = 0;
+
+    // if we have periodicity in all directions, we assume an INFINITE DOMAIN
+    if (px()==1 && py()==1 && pz()==1){
+      for (int j = 0; j < np; ++j)
+      {
+        delta_x = xc[j] - x;
+        delta_y = yc[j] - y;
+
+        // decide where the mirror x and y coordinates are depending on distance of xc/yc to the node (x,y)
+        if(delta_x > 0){
+          xc_mirror = xc[j] - (xmax()-xmin());
+        }
+        else
+          xc_mirror = xc[j] + (xmax()-xmin());
+
+        if(delta_y > 0){
+          yc_mirror = yc[j] - (xmax()-xmin());
+        }
+        else
+          yc_mirror = yc[j] + (xmax()-xmin());
+        // the initial particle and the three mirrored particles are at: (xc, yc), (xc_mirror, yc), (xc, yc_mirror) and (xc_mirror, yc_mirror)
+
+        // calculate the distance from all 4 particles to node (x,y)
+        distances[0] = sqrt((SQR(x-xc[j]) + SQR(y-yc[j])));
+        distances[1] = sqrt((SQR(x-xc_mirror) + SQR(y-yc[j])));
+        distances[2] = sqrt((SQR(x-xc[j]) + SQR(y-yc_mirror)));
+        distances[3] = sqrt((SQR(x-xc_mirror) + SQR(y-yc_mirror)));
+
+        // find the particle which has the minimum distance to the node (x,y)
+        distance_min = distances[0];
+        for(int k = 1; k < distances.size(); k++){
+          if (distance_min > distances[k]){
+            distance_min = distances[k];
+          }
+        }
+        // calculate the level-set function which includes the new, mirrored particles
+        phi_particles[j] =  R[j] - distance_min;
+      }
+    }
+
+    else{
+      for (int j = 0; j < np; ++j)
+      {
+        phi_particles[j] =  R[j] - sqrt( SUMD(SQR(x-xc[j]),
+                                              SQR(y-yc[j]),
+                                              SQR(z-zc[j])) );
+      }
     }
 
     double current_max = phi_particles[0];
@@ -133,6 +188,8 @@ public:
     {
       current_max = MAX(current_max, phi_particles[k]);
     }
+
+    if (current_max != current_max) throw;
 
     return current_max;
   }
@@ -157,11 +214,59 @@ public:
   double operator()(DIM(double x, double y, double z)) const
   {
     vector<double> phi_particles(np);
-    for (int j = 0; j < np; ++j)
-    {
-      phi_particles[j] =  R[j] - sqrt( SUMD(SQR(x-xc[j]),
-                                            SQR(y-yc[j]),
-                                            SQR(z-zc[j])) );
+    vector<double> distances(4, 0); // vector with 4 rows, all of the entities are 0
+    double xc_mirror = 0;
+    double yc_mirror = 0;
+    double delta_x = 0;
+    double delta_y =0;
+    double distance_min = 0;
+
+    // if we have periodicity in all directions, we assume an INFINITE DOMAIN
+    if (px()==1 && py()==1 && pz()==1){
+      for (int j = 0; j < np; ++j)
+      {
+        delta_x = xc[j] - x;
+        delta_y = yc[j] - y;
+
+        // decide where the mirror x and y coordinates are depending on distance of xc/yc to the node (x,y)
+        if(delta_x > 0){
+          xc_mirror = xc[j] - (xmax()-xmin());
+        }
+        else
+          xc_mirror = xc[j] + (xmax()-xmin());
+
+        if(delta_y > 0){
+          yc_mirror = yc[j] - (xmax()-xmin());
+        }
+        else
+          yc_mirror = yc[j] + (xmax()-xmin());
+        // the initial particle and the three mirrored particles are at: (xc, yc), (xc_mirror, yc), (xc, yc_mirror) and (xc_mirror, yc_mirror)
+
+        // calculate the distance from all 4 particles to node (x,y)
+        distances[0] = sqrt((SQR(x-xc[j]) + SQR(y-yc[j])));
+        distances[1] = sqrt((SQR(x-xc_mirror) + SQR(y-yc[j])));
+        distances[2] = sqrt((SQR(x-xc[j]) + SQR(y-yc_mirror)));
+        distances[3] = sqrt((SQR(x-xc_mirror) + SQR(y-yc_mirror)));
+
+        // find the particle which has the minimum distance to the node (x,y)
+        distance_min = distances[0];
+        for(int k = 1; k < distances.size(); k++){
+          if (distance_min > distances[k]){
+            distance_min = distances[k];
+          }
+        }
+        // calculate the level-set function which includes the new, mirrored particles
+        phi_particles[j] =  R[j] - distance_min;
+      }
+    }
+
+    else{
+      for (int j = 0; j < np; ++j)
+      {
+        phi_particles[j] =  R[j] - sqrt( SUMD(SQR(x-xc[j]),
+                                              SQR(y-yc[j]),
+                                              SQR(z-zc[j])) );
+      }
     }
 
     int particle_num = 0;
@@ -253,24 +358,272 @@ void initalize_particles(int &np, vector<double> &radius, DIM( vector<double> &x
 
     case 1:
 
-      radius.push_back(+0.60); xc.push_back(-1.50); yc.push_back(-0.45); CODE3D( zc.push_back(+0.00) );
-      radius.push_back(+0.50); xc.push_back(+1.50); yc.push_back(-0.30); CODE3D( zc.push_back(+0.00) );
-      radius.push_back(+0.40); xc.push_back(-0.50); yc.push_back(+0.35); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.60); xc.push_back(-1.50); yc.push_back(-1.50); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.50); xc.push_back(+1.50); yc.push_back(-0.20); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.40); xc.push_back(-0.90); yc.push_back(+0.75); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.60); xc.push_back(2.20); yc.push_back(-2.90); CODE3D( zc.push_back(+0.00) ); //place particle at boundary to see if the mirroring works
 
       np = radius.size();
 
       break;
+
+    case 2:
+
+      radius.push_back(+0.60); xc.push_back(-2.50); yc.push_back(-1.45); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.60); xc.push_back(+2.50); yc.push_back(-4.30); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.60); xc.push_back(-1.50); yc.push_back(+1.35); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.60); xc.push_back(-3.75); yc.push_back(-2.75); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.60); xc.push_back(+2.50); yc.push_back(+2.35); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.60); xc.push_back(-4.10); yc.push_back(+1.50); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.60); xc.push_back(+4.75); yc.push_back(-0.75); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.60); xc.push_back(+0.50); yc.push_back(+0.35); CODE3D( zc.push_back(+0.00) );
+
+      radius.push_back(+0.60); xc.push_back(-3.50); yc.push_back(+4.45); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.60); xc.push_back(+1.50); yc.push_back(+4.10); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.60); xc.push_back(+4.50); yc.push_back(+5.35); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.60); xc.push_back(+2.75); yc.push_back(-2.75); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.60); xc.push_back(+0.00); yc.push_back(-4.15); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.60); xc.push_back(-4.80); yc.push_back(-4.00); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.60); xc.push_back(-0.75); yc.push_back(-2.75); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.60); xc.push_back(-1.50); yc.push_back(-4.85); CODE3D( zc.push_back(+0.00) );
+
+      radius.push_back(+0.60); xc.push_back(+4.80); yc.push_back(-3.60); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.60); xc.push_back(+5.00); yc.push_back(-5.30); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.60); xc.push_back(+4.90); yc.push_back(+3.35); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.60); xc.push_back(+1.75); yc.push_back(-0.75); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.60); xc.push_back(-0.50); yc.push_back(+5.35); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.60); xc.push_back(-5.10); yc.push_back(-0.20); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.60); xc.push_back(-5.00); yc.push_back(+5.00); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.60); xc.push_back(-0.20); yc.push_back(+3.35); CODE3D( zc.push_back(+0.00) );
+
+      radius.push_back(+0.60); xc.push_back(+5.30); yc.push_back(+0.90); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.60); xc.push_back(-2.50); yc.push_back(+3.00); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.60); xc.push_back(+2.50); yc.push_back(+5.20); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.60); xc.push_back(-5.00); yc.push_back(-1.80); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.60); xc.push_back(-3.50); yc.push_back(-5.30); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.60); xc.push_back(+1.20); yc.push_back(-5.40); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.60); xc.push_back(-5.30); yc.push_back(+2.70); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.60); xc.push_back(-0.20); yc.push_back(-1.00); CODE3D( zc.push_back(+0.00) );
+
+      np = radius.size();
+
+    break;
+
+  case 3:
+
+      radius.push_back(+0.40); xc.push_back(-2.50); yc.push_back(-1.45); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.40); xc.push_back(+2.50); yc.push_back(-4.30); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.40); xc.push_back(-1.50); yc.push_back(+1.35); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.40); xc.push_back(-3.75); yc.push_back(-2.75); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.40); xc.push_back(+2.50); yc.push_back(+2.35); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.40); xc.push_back(-4.10); yc.push_back(+1.50); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.40); xc.push_back(+4.75); yc.push_back(-0.75); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.40); xc.push_back(+0.50); yc.push_back(+0.35); CODE3D( zc.push_back(+0.00) );
+
+      radius.push_back(+0.40); xc.push_back(-3.50); yc.push_back(+4.45); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.40); xc.push_back(+1.50); yc.push_back(+4.10); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.40); xc.push_back(+4.50); yc.push_back(+5.35); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.40); xc.push_back(+2.75); yc.push_back(-2.75); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.40); xc.push_back(+0.00); yc.push_back(-4.15); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.40); xc.push_back(-4.80); yc.push_back(-4.00); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.40); xc.push_back(-0.75); yc.push_back(-2.75); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.40); xc.push_back(-1.50); yc.push_back(-4.85); CODE3D( zc.push_back(+0.00) );
+
+      radius.push_back(+0.40); xc.push_back(+4.80); yc.push_back(-3.60); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.40); xc.push_back(+5.00); yc.push_back(-5.30); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.40); xc.push_back(+4.90); yc.push_back(+3.35); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.40); xc.push_back(+1.75); yc.push_back(-0.75); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.40); xc.push_back(-0.50); yc.push_back(+5.35); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.40); xc.push_back(-5.10); yc.push_back(-0.20); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.40); xc.push_back(-5.00); yc.push_back(+5.00); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.40); xc.push_back(-0.20); yc.push_back(+3.35); CODE3D( zc.push_back(+0.00) );
+
+      radius.push_back(+0.40); xc.push_back(+5.30); yc.push_back(+0.90); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.40); xc.push_back(-2.50); yc.push_back(+3.00); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.40); xc.push_back(+2.50); yc.push_back(+5.20); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.40); xc.push_back(-5.00); yc.push_back(-1.80); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.40); xc.push_back(-3.50); yc.push_back(-5.30); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.40); xc.push_back(+1.20); yc.push_back(-5.40); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.40); xc.push_back(-5.30); yc.push_back(+2.70); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.40); xc.push_back(-0.20); yc.push_back(-1.00); CODE3D( zc.push_back(+0.00) );
+
+      np = radius.size();
+
+    break;
+
+  case 4:
+
+      radius.push_back(+0.20); xc.push_back(-2.50); yc.push_back(-1.45); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.20); xc.push_back(+2.50); yc.push_back(-4.30); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.20); xc.push_back(-1.50); yc.push_back(+1.35); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.20); xc.push_back(-3.75); yc.push_back(-2.75); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.20); xc.push_back(+2.50); yc.push_back(+2.35); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.20); xc.push_back(-4.10); yc.push_back(+1.50); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.20); xc.push_back(+4.75); yc.push_back(-0.75); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.20); xc.push_back(+0.50); yc.push_back(+0.35); CODE3D( zc.push_back(+0.00) );
+
+      radius.push_back(+0.20); xc.push_back(-3.50); yc.push_back(+4.45); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.20); xc.push_back(+1.50); yc.push_back(+4.10); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.20); xc.push_back(+4.50); yc.push_back(+5.35); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.20); xc.push_back(+2.75); yc.push_back(-2.75); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.20); xc.push_back(+0.00); yc.push_back(-4.15); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.20); xc.push_back(-4.80); yc.push_back(-4.00); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.20); xc.push_back(-0.75); yc.push_back(-2.75); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.20); xc.push_back(-1.50); yc.push_back(-4.85); CODE3D( zc.push_back(+0.00) );
+
+      radius.push_back(+0.20); xc.push_back(+4.80); yc.push_back(-3.60); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.20); xc.push_back(+5.00); yc.push_back(-5.30); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.20); xc.push_back(+4.90); yc.push_back(+3.35); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.20); xc.push_back(+1.75); yc.push_back(-0.75); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.20); xc.push_back(-0.50); yc.push_back(+5.35); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.20); xc.push_back(-5.10); yc.push_back(-0.20); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.20); xc.push_back(-5.00); yc.push_back(+5.00); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.20); xc.push_back(-0.20); yc.push_back(+3.35); CODE3D( zc.push_back(+0.00) );
+
+      radius.push_back(+0.20); xc.push_back(+5.30); yc.push_back(+0.90); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.20); xc.push_back(-2.50); yc.push_back(+3.00); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.20); xc.push_back(+2.50); yc.push_back(+5.20); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.20); xc.push_back(-5.00); yc.push_back(-1.80); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.20); xc.push_back(-3.50); yc.push_back(-5.30); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.20); xc.push_back(+1.20); yc.push_back(-5.40); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.20); xc.push_back(-5.30); yc.push_back(+2.70); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.20); xc.push_back(-0.20); yc.push_back(-1.00); CODE3D( zc.push_back(+0.00) );
+
+      np = radius.size();
+
+    break;
+
+  case 5:
+
+      radius.push_back(+0.60); xc.push_back(-2.50); yc.push_back(-1.45); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.60); xc.push_back(+2.50); yc.push_back(-4.30); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.60); xc.push_back(-1.50); yc.push_back(+1.35); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.60); xc.push_back(-3.75); yc.push_back(+2.75); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.60); xc.push_back(+2.50); yc.push_back(+2.35); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.60); xc.push_back(-5.10); yc.push_back(-0.50); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.60); xc.push_back(+4.75); yc.push_back(-0.75); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.60); xc.push_back(+0.50); yc.push_back(+0.35); CODE3D( zc.push_back(+0.00) );
+
+      radius.push_back(+0.60); xc.push_back(-3.50); yc.push_back(+4.45); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.60); xc.push_back(+1.50); yc.push_back(+4.30); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.60); xc.push_back(+4.50); yc.push_back(+5.35); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.60); xc.push_back(+2.75); yc.push_back(-2.75); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.60); xc.push_back(+0.00); yc.push_back(-4.15); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.60); xc.push_back(-4.80); yc.push_back(-4.00); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.60); xc.push_back(-0.75); yc.push_back(-2.75); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.60); xc.push_back(-1.50); yc.push_back(-4.85); CODE3D( zc.push_back(+0.00) );
+
+      np = radius.size();
+
+    break;
+
+  case 6:
+
+      radius.push_back(+0.40); xc.push_back(-2.50); yc.push_back(-1.45); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.40); xc.push_back(+2.50); yc.push_back(-4.30); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.40); xc.push_back(-1.50); yc.push_back(+1.35); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.40); xc.push_back(-3.75); yc.push_back(+2.75); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.40); xc.push_back(+2.50); yc.push_back(+2.35); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.40); xc.push_back(-5.10); yc.push_back(-0.50); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.40); xc.push_back(+4.75); yc.push_back(-0.75); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.40); xc.push_back(+0.50); yc.push_back(+0.35); CODE3D( zc.push_back(+0.00) );
+
+      radius.push_back(+0.40); xc.push_back(-3.50); yc.push_back(+4.45); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.40); xc.push_back(+1.50); yc.push_back(+4.30); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.40); xc.push_back(+4.50); yc.push_back(+5.35); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.40); xc.push_back(+2.75); yc.push_back(-2.75); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.40); xc.push_back(+0.00); yc.push_back(-4.15); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.40); xc.push_back(-4.80); yc.push_back(-4.00); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.40); xc.push_back(-0.75); yc.push_back(-2.75); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.40); xc.push_back(-1.50); yc.push_back(-4.85); CODE3D( zc.push_back(+0.00) );
+
+      np = radius.size();
+
+    break;
+
+
+  case 7:
+
+      radius.push_back(+0.20); xc.push_back(-2.50); yc.push_back(-1.45); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.20); xc.push_back(+2.50); yc.push_back(-4.30); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.20); xc.push_back(-1.50); yc.push_back(+1.35); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.20); xc.push_back(-3.75); yc.push_back(+2.75); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.20); xc.push_back(+2.50); yc.push_back(+2.35); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.20); xc.push_back(-5.10); yc.push_back(-0.50); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.20); xc.push_back(+4.75); yc.push_back(-0.75); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.20); xc.push_back(+0.50); yc.push_back(+0.35); CODE3D( zc.push_back(+0.00) );
+
+      radius.push_back(+0.20); xc.push_back(-3.50); yc.push_back(+4.45); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.20); xc.push_back(+1.50); yc.push_back(+4.30); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.20); xc.push_back(+4.50); yc.push_back(+5.35); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.20); xc.push_back(+2.75); yc.push_back(-2.75); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.20); xc.push_back(+0.00); yc.push_back(-4.15); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.20); xc.push_back(-4.80); yc.push_back(-4.00); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.20); xc.push_back(-0.75); yc.push_back(-2.75); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.20); xc.push_back(-1.50); yc.push_back(-4.85); CODE3D( zc.push_back(+0.00) );
+
+      np = radius.size();
+
+    break;
+
+  case 8:
+
+      radius.push_back(+0.60); xc.push_back(-2.50); yc.push_back(-1.45); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.60); xc.push_back(+2.50); yc.push_back(-4.30); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.60); xc.push_back(-1.50); yc.push_back(+1.35); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.60); xc.push_back(-3.75); yc.push_back(+4.75); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.60); xc.push_back(+2.50); yc.push_back(+2.35); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.60); xc.push_back(-5.10); yc.push_back(-4.50); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.60); xc.push_back(+4.75); yc.push_back(-0.75); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.60); xc.push_back(+0.50); yc.push_back(+0.35); CODE3D( zc.push_back(+0.00) );
+
+      np = radius.size();
+
+    break;
+
+  case 9:
+
+      radius.push_back(+0.40); xc.push_back(-2.50); yc.push_back(-1.45); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.40); xc.push_back(+2.50); yc.push_back(-4.30); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.40); xc.push_back(-1.50); yc.push_back(+1.35); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.40); xc.push_back(-3.75); yc.push_back(+4.75); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.40); xc.push_back(+2.50); yc.push_back(+2.35); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.40); xc.push_back(-5.10); yc.push_back(-4.50); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.40); xc.push_back(+4.75); yc.push_back(-0.75); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.40); xc.push_back(+0.50); yc.push_back(+0.35); CODE3D( zc.push_back(+0.00) );
+
+      np = radius.size();
+
+    break;
+
+  case 10:
+
+      radius.push_back(+0.20); xc.push_back(-2.50); yc.push_back(-1.45); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.20); xc.push_back(+2.50); yc.push_back(-4.30); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.20); xc.push_back(-1.50); yc.push_back(+1.35); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.20); xc.push_back(-3.75); yc.push_back(+4.75); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.20); xc.push_back(+2.50); yc.push_back(+2.35); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.20); xc.push_back(-5.10); yc.push_back(-4.50); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.20); xc.push_back(+4.75); yc.push_back(-0.75); CODE3D( zc.push_back(+0.00) );
+      radius.push_back(+0.20); xc.push_back(+0.50); yc.push_back(+0.35); CODE3D( zc.push_back(+0.00) );
+
+      np = radius.size();
+
+    break;
+
     default: throw;
   }
 }
 
 double pairwise_potential(double r)
 {
+  if (r > 10.*pairwise_potential_width()) return 0;
   return pairwise_potential_mag()/(exp(r/pairwise_potential_width())-1.);
 }
 
 double pairwise_force(double r)
 {
+  if (r > 10.*pairwise_potential_width()) return 0;
   return -exp(r/pairwise_potential_width())*pairwise_potential_mag()/SQR(exp(r/pairwise_potential_width())-1.)/pairwise_potential_width();
 }
 
@@ -284,7 +637,7 @@ public:
       case 0: return 1;
       case 1: return 0;
       case 2: return 1;
-      case 3: return -sin(atan2(y,x));
+      case 3: return -sqrt(SQR(x)+SQR(y))*sin(atan2(y,x));
       default:
         throw;
     }
@@ -301,7 +654,7 @@ public:
       case 0: return 0;
       case 1: return 1;
       case 2: return 1;
-      case 3: return cos(atan2(y,x));
+      case 3: return sqrt(SQR(x)+SQR(y))*cos(atan2(y,x));
       default:
         throw;
     }
@@ -364,7 +717,8 @@ int main(int argc, char** argv)
                                                  "effective_energy "
                                                  "expected_dEdt "
                                                  "expected_dE "
-                                                 "effective_dE\n"); CHKERRXX(ierr);
+                                                 "effective_dE"
+                                                 "mu_minus integral\n"); CHKERRXX(ierr);
     ierr = PetscFClose(mpi.comm(), file_energy); CHKERRXX(ierr);
   }
 
@@ -692,6 +1046,8 @@ int main(int argc, char** argv)
 
           double force = pairwise_force(dist);
 
+          if (force != force) throw;
+
           XCODE( q[0][i] += (dx/dist)*force ); // u = a*exp(-r^2/(2*c^2)) => use derivative of u for multiplication
           YCODE( q[1][i] += (dy/dist)*force );
           ZCODE( q[2][i] += (dy/dist)*force );
@@ -737,6 +1093,9 @@ int main(int argc, char** argv)
       double v_abs = sqrt( SUMD(SQR(v[0][i]), SQR(v[1][i]), SQR(v[2][i])) );
       if (v_max < v_abs) v_max = v_abs;
     }
+//    if(v_max < pow(10, -3)){
+//      v_max = pow(10, -3);
+//    }
 
     // find the diagonal length of the smallest quadrant (needed to calculate the timestep delta_t)
     double dxyz[P4EST_DIM]; // dimensions of the smallest quadrants
@@ -747,12 +1106,42 @@ int main(int argc, char** argv)
     // calculate timestep delta_t, such that it's small enough to capture 'everything'
     double delta_t = diag_min*CFL()/v_max;
 
-    // move particles
-    for (int j = 0; j < np; ++j)
-    {
-      XCODE( xc[j] = xc[j] + v[0][j]*delta_t );
-      YCODE( yc[j] = yc[j] + v[1][j]*delta_t );
-      ZCODE( zc[j] = zc[j] + v[2][j]*delta_t );
+
+
+    // how to move particles if we chose a periodic domain
+    if (px()==1 && py()==1 && pz()==1){
+      for (int j = 0; j < np; ++j)
+      {
+        if(xc[j] > xmax()){
+          xc[j] = xc[j] - (xmax()-xmin());
+        }
+        if (xc[j] < xmin()){
+          xc[j] = xc[j] + (xmax()-xmin());
+        }
+
+        if(yc[j] < ymin()){
+          yc[j] = yc[j] + (ymax()-ymin());
+        }
+        if (yc[j] > ymax()){
+          yc[j] = yc[j] - (ymax()-ymin());
+        }
+
+        XCODE( xc[j] = xc[j] + v[0][j]*delta_t );
+        YCODE( yc[j] = yc[j] + v[1][j]*delta_t );
+        ZCODE( zc[j] = zc[j] + v[2][j]*delta_t );
+      }
+
+    }
+
+    else{
+
+      // move particles
+      for (int j = 0; j < np; ++j)
+      {
+        XCODE( xc[j] = xc[j] + v[0][j]*delta_t );
+        YCODE( yc[j] = yc[j] + v[1][j]*delta_t );
+        ZCODE( zc[j] = zc[j] + v[2][j]*delta_t );
+      }
     }
 
     // calculate the expected and effective changes in energy (compare step i with step i+1)
@@ -767,17 +1156,21 @@ int main(int argc, char** argv)
     double expected_change_in_energy  = dE_dt_expected*delta_t;
     double effective_change_in_energy = energy - energy_previous;
 
-    ierr = PetscPrintf(mpi.comm(), "Iteration no. %4d: time = %3.2e, dt = %3.2e, vmax = %3.2e, E = %6.5e, dE = %+3.2e / %+3.2e\n", step, t, delta_t, v_max, energy, expected_change_in_energy, effective_change_in_energy); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "Iteration no. %4d: time = %3.2e, dt = %3.2e, vmax = %3.2e, E = %6.5e, dE = %+3.2e / %+3.2e, dE_dt_expected= %6.5e \n", step, t, delta_t, v_max, energy, expected_change_in_energy, effective_change_in_energy, dE_dt_expected); CHKERRXX(ierr);
 
     // ---------------------------------------------------------
     // save info into files
     // ---------------------------------------------------------
 
+    double mu_minus_integral;
+    mu_minus_integral = integrate_over_interface(p4est, nodes, particles_level_set, mu_minus);
+
+
     // write the energy in every iteration into the separate file
     if (save_energy())
     {
       ierr = PetscFOpen(mpi.comm(), file_energy_name, "a", &file_energy); CHKERRXX(ierr);
-      PetscFPrintf(mpi.comm(), file_energy, "%d %12.11e %3.2e %3.2e %3.2e\n", step, energy, dE_dt_expected, expected_change_in_energy, effective_change_in_energy);
+      PetscFPrintf(mpi.comm(), file_energy, "%d %12.11e %3.2e %3.2e %3.2e %f\n", step, energy, dE_dt_expected, expected_change_in_energy, effective_change_in_energy, mu_minus_integral);
       ierr = PetscFClose(mpi.comm(), file_energy); CHKERRXX(ierr);
     }
 
