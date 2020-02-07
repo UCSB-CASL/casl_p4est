@@ -203,6 +203,8 @@ const unsigned short f2c_p[P4EST_FACES][num_neighbors_face_] = { { nn_mm0, nn_m0
                                                                  { nn_mp0, nn_0p0, nn_pp0 }};
 const unsigned short i_idx[] = { 0, 1 };
 const unsigned short j_idx[] = { 1, 0 };
+const unsigned char face_order_to_counterclock_cycle_order[P4EST_FACES] = {2,0,3,1};
+const unsigned char counterclock_cycle_order_to_face_order[P4EST_FACES] = {1,3,0,2};
 #endif
 
 const static std::string null_str    = "NULL";
@@ -242,6 +244,16 @@ const static std::string stderr_str  = "stderr";
 //#endif
 const unsigned short q2c_num_pts = P4EST_CHILDREN;
 const unsigned short t2c_num_pts = P4EST_DIM+1;
+
+struct indexed_and_located_face // for assembly of Voronoi cells, lsqr face-interpolation...
+{
+  double xyz_face[P4EST_DIM];
+  p4est_locidx_t face_idx;
+  bool operator <(const indexed_and_located_face& other_one) const
+  {
+    return (face_idx < other_one.face_idx);
+  }
+};
 
 #ifdef P4_TO_P8
 const unsigned short q2c[P4EST_CHILDREN][q2c_num_pts] = { { nn_000, nn_m00, nn_0m0, nn_mm0, nn_00m, nn_m0m, nn_0mm, nn_mmm },
@@ -1706,29 +1718,29 @@ bool is_quad_Wall  (const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quad
  * \param dir   [in] the direction to check, 0 (x), 1 (y) or 2 (z, only in 3D)
  * \return true if the forest is periodic in direction dir, false otherwise
  */
-inline bool is_periodic(const p4est_connectivity_t *const conn, int dir)
+inline bool is_periodic(const p4est_connectivity_t *const conn, const unsigned char & dir)
 {
   /* check whether there is not a boundary on the left side of first tree */
   P4EST_ASSERT (0 <= dir && dir < P4EST_DIM);
 
-  const int face = 2 * dir;
+  const unsigned char face = 2 * dir;
   const p4est_topidx_t tfindex = 0 * P4EST_FACES + face;
 
   return !(conn->tree_to_tree[tfindex] == 0 &&
            conn->tree_to_face[tfindex] == face);
 }
-inline bool is_periodic(const p4est_t *p4est, int dir)
+inline bool is_periodic(const p4est_t *p4est, const unsigned char &dir)
 {
   return is_periodic(p4est->connectivity, dir);
 }
 
 inline void clip_in_domain(double xyz[P4EST_DIM], const double xyz_min[P4EST_DIM], const double xyz_max[P4EST_DIM], const bool periodic[P4EST_DIM])
 {
-  for(unsigned char dir=0; dir<P4EST_DIM; ++dir)
-    if((xyz[dir]<xyz_min[dir]) || (xyz[dir]>xyz_max[dir]))
+  for(unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+    if(xyz[dir] < xyz_min[dir] || xyz[dir] > xyz_max[dir])
     {
       if(periodic[dir])
-        xyz[dir] = xyz[dir] - floor((xyz[dir]-xyz_min[dir])/(xyz_max[dir]-xyz_min[dir]))*(xyz_max[dir]-xyz_min[dir]);
+        xyz[dir] = xyz[dir] - floor((xyz[dir] - xyz_min[dir])/(xyz_max[dir] - xyz_min[dir]))*(xyz_max[dir] - xyz_min[dir]);
       else
         xyz[dir] = MAX(xyz_min[dir], MIN(xyz_max[dir], xyz[dir]));
     }
@@ -1748,12 +1760,18 @@ inline void clip_in_domain(double xyz[P4EST_DIM], const p4est_t* p4est)
 }
 
 /*!
- * \brief find the owner rank of a ghost quadrant
- * \param ghost the ghost structure
- * \param ghost_idx the index of the ghost quadrant (between 0 and the number of ghost quadrants)
+ * \brief quad_find_ghost_owner finds the owner rank of a ghost quadrant by binary search
+ * \param ghost     [in] the ghost structure
+ * \param ghost_idx [in] the index of the ghost quadrant (between 0 and the number of ghost quadrants)
+ * \param r_down    [in] lower bound for the owner rank
+ * \param r_up      [in] upper bound for the owner rank
  * \return the rank who owns the ghost quadrant
  */
-int quad_find_ghost_owner(const p4est_ghost_t *ghost, p4est_locidx_t ghost_idx);
+int quad_find_ghost_owner(const p4est_ghost_t *ghost, const p4est_locidx_t &ghost_idx, int r_down, int r_up);
+inline int quad_find_ghost_owner(const p4est_ghost_t *ghost, p4est_locidx_t ghost_idx)
+{
+  return quad_find_ghost_owner(ghost, ghost_idx, 0, ghost->mpisize);
+}
 
 /*!
  * \brief sample_cf_on_nodes samples a cf function on the nodes. both local and ghost poinst are considered

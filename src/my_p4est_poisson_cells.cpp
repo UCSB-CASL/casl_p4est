@@ -93,7 +93,7 @@ void my_p4est_poisson_cells_t::preallocate_matrix()
   PetscInt num_owned_global = p4est->global_num_quadrants;
   PetscInt num_owned_local  = p4est->local_num_quadrants;
 
-  std::vector<p4est_quadrant_t> ngbd;
+  set_of_neighboring_quadrants ngbd;
 
   if (A != NULL)
     ierr = MatDestroy(A); CHKERRXX(ierr);
@@ -146,39 +146,39 @@ void my_p4est_poisson_cells_t::preallocate_matrix()
      */
       for(int dir=0; dir<P4EST_FACES; ++dir)
       {
-        ngbd.resize(0);
+        ngbd.clear();
         ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, dir);
 
-        if(ngbd.size()==1 && ngbd[0].level<quad->level)
+        if(ngbd.size() == 1 && ngbd.begin()->level<quad->level)
         {
-          p4est_locidx_t q_tmp = ngbd[0].p.piggy3.local_num;
-          p4est_topidx_t t_tmp = ngbd[0].p.piggy3.which_tree;
+          p4est_locidx_t q_tmp = ngbd.begin()->p.piggy3.local_num;
+          p4est_topidx_t t_tmp = ngbd.begin()->p.piggy3.which_tree;
 
           /* no need to add this one to "indices" since it can't be found with a search in another direction */
           if(q_tmp<num_owned_local) d_nnz[quad_idx]++;
           else                      o_nnz[quad_idx]++;
 
-          ngbd.resize(0);
+          ngbd.clear();
           ngbd_c->find_neighbor_cells_of_cell(ngbd, q_tmp, t_tmp, dir%2==0 ? dir+1 : dir-1);
-          for(unsigned int m=0; m<ngbd.size(); ++m)
+          for (set_of_neighboring_quadrants::const_iterator it = ngbd.begin(); it != ngbd.end(); ++it)
           {
-            if(ngbd[m].p.piggy3.local_num!=quad_idx && std::find(indices.begin(), indices.end(), ngbd[m].p.piggy3.local_num)==indices.end())
+            if(it->p.piggy3.local_num!=quad_idx && std::find(indices.begin(), indices.end(), it->p.piggy3.local_num)==indices.end())
             {
-              indices.push_back(ngbd[m].p.piggy3.local_num);
-              if(ngbd[m].p.piggy3.local_num<num_owned_local) d_nnz[quad_idx]++;
-              else                                           o_nnz[quad_idx]++;
+              indices.push_back(it->p.piggy3.local_num);
+              if(it->p.piggy3.local_num<num_owned_local)  d_nnz[quad_idx]++;
+              else                                        o_nnz[quad_idx]++;
             }
           }
         }
         else
         {
-          for(unsigned int m=0; m<ngbd.size(); ++m)
+          for (set_of_neighboring_quadrants::const_iterator it = ngbd.begin(); it != ngbd.end(); ++it)
           {
-            if(std::find(indices.begin(), indices.end(), ngbd[m].p.piggy3.local_num)==indices.end())
+            if(std::find(indices.begin(), indices.end(), it->p.piggy3.local_num)==indices.end())
             {
-              indices.push_back(ngbd[m].p.piggy3.local_num);
-              if(ngbd[m].p.piggy3.local_num<num_owned_local) d_nnz[quad_idx]++;
-              else                                           o_nnz[quad_idx]++;
+              indices.push_back(it->p.piggy3.local_num);
+              if(it->p.piggy3.local_num<num_owned_local)  d_nnz[quad_idx]++;
+              else                                        o_nnz[quad_idx]++;
             }
           }
         }
@@ -387,7 +387,7 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
   Cube2 cube;
 #endif
 
-  std::vector<p4est_quadrant_t> ngbd;
+  set_of_neighboring_quadrants ngbd;
 
   for(p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx){
     p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
@@ -425,10 +425,10 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
       for(int i=0; i<P4EST_CHILDREN; ++i)
         all_pos = all_pos && (phi_p[corners[i]]>0);
 
-      cube.x0 = x - 0.5*dx;
-      cube.x1 = x + 0.5*dx;
-      cube.y0 = y - 0.5*dy;
-      cube.y1 = y + 0.5*dy;
+      cube.xyz_mmm[0] = x - 0.5*dx;
+      cube.xyz_ppp[0] = x + 0.5*dx;
+      cube.xyz_mmm[1] = y - 0.5*dy;
+      cube.xyz_ppp[1] = y + 0.5*dy;
 
 #ifdef P4_TO_P8
       OctValue  p(phi_p[corners[dir::v_mmm]], phi_p[corners[dir::v_mmp]],
@@ -436,8 +436,8 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
                   phi_p[corners[dir::v_pmm]], phi_p[corners[dir::v_pmp]],
                   phi_p[corners[dir::v_ppm]], phi_p[corners[dir::v_ppp]]);
 
-      cube.z0 = z - 0.5*dz;
-      cube.z1 = z + 0.5*dz;
+      cube.xyz_mmm[2] = z - 0.5*dz;
+      cube.xyz_ppp[2] = z + 0.5*dz;
       double volume_cut_cell = cube.volume_In_Negative_Domain(p);
 #else
       QuadValue p(phi_p[corners[dir::v_mmm]], phi_p[corners[dir::v_mpm]], phi_p[corners[dir::v_pmm]], phi_p[corners[dir::v_ppm]]);
@@ -487,13 +487,13 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
             {
               matrix_has_nullspace = false;
 #ifdef P4_TO_P8
-              c2.x0 = cube.y0; c2.x1 = cube.y1;
-              c2.y0 = cube.z0; c2.y1 = cube.z1;
-              q2.val00 = p.val000; q2.val01 = p.val001;
-              q2.val10 = p.val010; q2.val11 = p.val011;
+              c2.xyz_mmm[0] = cube.xyz_mmm[1]; c2.xyz_ppp[0] = cube.xyz_ppp[1];
+              c2.xyz_mmm[1] = cube.xyz_mmm[2]; c2.xyz_ppp[1] = cube.xyz_ppp[2];
+              q2.val[0] = p.val[0]; q2.val[1] = p.val[1];
+              q2.val[2] = p.val[2]; q2.val[3] = p.val[3];
               s = c2.area_In_Negative_Domain(q2);
 #else
-              s = dy * fraction_Interval_Covered_By_Irregular_Domain(p.val00, p.val01, dy, dy);
+              s = dy * fraction_Interval_Covered_By_Irregular_Domain(p.val[0], p.val[1], dy, dy);
 #endif
               ierr = MatSetValue(A, quad_gloidx, quad_gloidx, 2*mu*s/dx, ADD_VALUES); CHKERRXX(ierr);
             }
@@ -508,13 +508,13 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
             {
               matrix_has_nullspace = false;
 #ifdef P4_TO_P8
-              c2.x0 = cube.y0; c2.x1 = cube.y1;
-              c2.y0 = cube.z0; c2.y1 = cube.z1;
-              q2.val00 = p.val100; q2.val01 = p.val101;
-              q2.val10 = p.val110; q2.val11 = p.val111;
+              c2.xyz_mmm[0] = cube.xyz_mmm[1]; c2.xyz_ppp[0] = cube.xyz_ppp[0];
+              c2.xyz_mmm[1] = cube.xyz_mmm[2]; c2.xyz_ppp[1] = cube.xyz_ppp[2];
+              q2.val[0] = p.val[4]; q2.val[1] = p.val[5];
+              q2.val[2] = p.val[6]; q2.val[3] = p.val[7];
               s = c2.area_In_Negative_Domain(q2);
 #else
-              s = dy * fraction_Interval_Covered_By_Irregular_Domain(p.val10, p.val11, dy, dy);
+              s = dy * fraction_Interval_Covered_By_Irregular_Domain(p.val[2], p.val[3], dy, dy);
 #endif
               ierr = MatSetValue(A, quad_gloidx, quad_gloidx, 2*mu*s/dx, ADD_VALUES); CHKERRXX(ierr);
             }
@@ -529,13 +529,13 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
             {
               matrix_has_nullspace = false;
 #ifdef P4_TO_P8
-              c2.x0 = cube.x0; c2.x1 = cube.x1;
-              c2.y0 = cube.z0; c2.y1 = cube.z1;
-              q2.val00 = p.val000; q2.val01 = p.val001;
-              q2.val10 = p.val100; q2.val11 = p.val101;
+              c2.xyz_mmm[0] = cube.xyz_mmm[0]; c2.xyz_ppp[0] = cube.xyz_ppp[0];
+              c2.xyz_mmm[1] = cube.xyz_mmm[2]; c2.xyz_ppp[1] = cube.xyz_ppp[2];
+              q2.val[0] = p.val[0]; q2.val[1] = p.val[1];
+              q2.val[2] = p.val[4]; q2.val[3] = p.val[5];
               s = c2.area_In_Negative_Domain(q2);
 #else
-              s = dx * fraction_Interval_Covered_By_Irregular_Domain(p.val00, p.val10, dx, dx);
+              s = dx * fraction_Interval_Covered_By_Irregular_Domain(p.val[0], p.val[2], dx, dx);
 #endif
               ierr = MatSetValue(A, quad_gloidx, quad_gloidx, 2*mu*s/dy, ADD_VALUES); CHKERRXX(ierr);
             }
@@ -550,13 +550,13 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
             {
               matrix_has_nullspace = false;
 #ifdef P4_TO_P8
-              c2.x0 = cube.x0; c2.x1 = cube.x1;
-              c2.y0 = cube.z0; c2.y1 = cube.z1;
-              q2.val00 = p.val010; q2.val01 = p.val011;
-              q2.val10 = p.val110; q2.val11 = p.val111;
+              c2.xyz_mmm[0] = cube.xyz_mmm[0]; c2.xyz_ppp[0] = cube.xyz_ppp[0];
+              c2.xyz_mmm[1] = cube.xyz_mmm[2]; c2.xyz_ppp[1] = cube.xyz_ppp[2];
+              q2.val[0] = p.val[2]; q2.val[1] = p.val[3];
+              q2.val[2] = p.val[6]; q2.val[3] = p.val[7];
               s = c2.area_In_Negative_Domain(q2);
 #else
-              s = dx * fraction_Interval_Covered_By_Irregular_Domain(p.val01, p.val11, dx, dx);
+              s = dx * fraction_Interval_Covered_By_Irregular_Domain(p.val[1], p.val[3], dx, dx);
 #endif
               ierr = MatSetValue(A, quad_gloidx, quad_gloidx, 2*mu*s/dy, ADD_VALUES); CHKERRXX(ierr);
             }
@@ -567,10 +567,10 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
             if(bc->wallType(x, y, z-.5*dz)==DIRICHLET)
             {
               matrix_has_nullspace = false;
-              c2.x0 = cube.x0; c2.x1 = cube.x1;
-              c2.y0 = cube.y0; c2.y1 = cube.y1;
-              q2.val00 = p.val000; q2.val01 = p.val010;
-              q2.val10 = p.val100; q2.val11 = p.val110;
+              c2.xyz_mmm[0] = cube.xyz_mmm[0]; c2.xyz_ppp[0] = cube.xyz_ppp[0];
+              c2.xyz_mmm[1] = cube.xyz_mmm[1]; c2.xyz_ppp[1] = cube.xyz_ppp[1];
+              q2.val[0] = p.val[0]; q2.val[1] = p.val[2];
+              q2.val[2] = p.val[4]; q2.val[3] = p.val[6];
               s = c2.area_In_Negative_Domain(q2);
 
               ierr = MatSetValue(A, quad_gloidx, quad_gloidx, 2*mu*s/dz, ADD_VALUES); CHKERRXX(ierr);
@@ -581,10 +581,10 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
             if(bc->wallType(x, y, z+.5*dz)==DIRICHLET)
             {
               matrix_has_nullspace = false;
-              c2.x0 = cube.x0; c2.x1 = cube.x1;
-              c2.y0 = cube.y0; c2.y1 = cube.y1;
-              q2.val00 = p.val001; q2.val01 = p.val011;
-              q2.val10 = p.val101; q2.val11 = p.val111;
+              c2.xyz_mmm[0] = cube.xyz_mmm[0]; c2.xyz_ppp[0] = cube.xyz_ppp[0];
+              c2.xyz_mmm[1] = cube.xyz_mmm[1]; c2.xyz_ppp[1] = cube.xyz_ppp[1];
+              q2.val[0] = p.val[1]; q2.val[1] = p.val[3];
+              q2.val[2] = p.val[5]; q2.val[3] = p.val[7];
               s = c2.area_In_Negative_Domain(q2);
 
               ierr = MatSetValue(A, quad_gloidx, quad_gloidx, 2*mu*s/dz, ADD_VALUES); CHKERRXX(ierr);
@@ -598,14 +598,14 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
 
 
         /* now get the neighbors */
-        ngbd.resize(0);
+        ngbd.clear();
         ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, dir);
 
-        if(ngbd.size()==1)
+        if(ngbd.size() == 1)
         {
-          int8_t level_tmp = ngbd[0].level;
-          p4est_locidx_t quad_tmp_idx = ngbd[0].p.piggy3.local_num;
-          p4est_locidx_t tree_tmp_idx = ngbd[0].p.piggy3.which_tree;
+          int8_t level_tmp = ngbd.begin()->level;
+          p4est_locidx_t quad_tmp_idx = ngbd.begin()->p.piggy3.local_num;
+          p4est_locidx_t tree_tmp_idx = ngbd.begin()->p.piggy3.which_tree;
 
           /* make sure the neighbor is well defined ... important for the nullspace to be correct */
           p4est_locidx_t corners_tmp[P4EST_CHILDREN];
@@ -620,10 +620,10 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
 #else
           Cube2 cube_tmp;
 #endif
-          cube_tmp.x0 = x_tmp - 0.5*dx;
-          cube_tmp.x1 = x_tmp + 0.5*dx;
-          cube_tmp.y0 = y_tmp - 0.5*dy;
-          cube_tmp.y1 = y_tmp + 0.5*dy;
+          cube_tmp.xyz_mmm[0] = x_tmp - 0.5*dx;
+          cube_tmp.xyz_ppp[0] = x_tmp + 0.5*dx;
+          cube_tmp.xyz_mmm[1] = y_tmp - 0.5*dy;
+          cube_tmp.xyz_ppp[1] = y_tmp + 0.5*dy;
 
 #ifdef P4_TO_P8
           OctValue  p_tmp(phi_p[corners_tmp[dir::v_mmm]], phi_p[corners_tmp[dir::v_mmp]],
@@ -631,8 +631,8 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
                           phi_p[corners_tmp[dir::v_pmm]], phi_p[corners_tmp[dir::v_pmp]],
                           phi_p[corners_tmp[dir::v_ppm]], phi_p[corners_tmp[dir::v_ppp]]);
 
-          cube_tmp.z0 = z_tmp - 0.5*dz;
-          cube_tmp.z1 = z_tmp + 0.5*dz;
+          cube_tmp.xyz_mmm[2] = z_tmp - 0.5*dz;
+          cube_tmp.xyz_ppp[2] = z_tmp + 0.5*dz;
           double volume_cut_cell_tmp = cube_tmp.volume_In_Negative_Domain(p_tmp);
 #else
           QuadValue p_tmp(phi_p[corners_tmp[dir::v_mmm]], phi_p[corners_tmp[dir::v_mpm]], phi_p[corners_tmp[dir::v_pmm]], phi_p[corners_tmp[dir::v_ppm]]);
@@ -647,28 +647,28 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
           {
 #ifdef P4_TO_P8
           case dir::f_m00:
-            is_pos = p.val000>0 || p.val001>0 || p.val010>0 ||p.val011>0;
-            is_neg = p.val000<0 || p.val001<0 || p.val010<0 ||p.val011<0; break;
+            is_pos = p.val[0]>0 || p.val[1]>0 || p.val[2]>0 ||p.val[3]>0;
+            is_neg = p.val[0]<0 || p.val[1]<0 || p.val[2]<0 ||p.val[3]<0; break;
           case dir::f_p00:
-            is_pos = p.val100>0 || p.val101>0 || p.val110>0 ||p.val111>0;
-            is_neg = p.val100<0 || p.val101<0 || p.val110<0 ||p.val111<0; break;
+            is_pos = p.val[4]>0 || p.val[5]>0 || p.val[6]>0 ||p.val[7]>0;
+            is_neg = p.val[4]<0 || p.val[5]<0 || p.val[6]<0 ||p.val[7]<0; break;
           case dir::f_0m0:
-            is_pos = p.val000>0 || p.val001>0 || p.val100>0 ||p.val101>0;
-            is_neg = p.val000<0 || p.val001<0 || p.val100<0 ||p.val101<0; break;
+            is_pos = p.val[0]>0 || p.val[1]>0 || p.val[4]>0 ||p.val[5]>0;
+            is_neg = p.val[0]<0 || p.val[1]<0 || p.val[4]<0 ||p.val[5]<0; break;
           case dir::f_0p0:
-            is_pos = p.val010>0 || p.val011>0 || p.val110>0 ||p.val111>0;
-            is_neg = p.val010<0 || p.val011<0 || p.val110<0 ||p.val111<0; break;
+            is_pos = p.val[2]>0 || p.val[3]>0 || p.val[6]>0 ||p.val[7]>0;
+            is_neg = p.val[2]<0 || p.val[3]<0 || p.val[6]<0 ||p.val[7]<0; break;
           case dir::f_00m:
-            is_pos = p.val000>0 || p.val010>0 || p.val100>0 ||p.val110>0;
-            is_neg = p.val000<0 || p.val010<0 || p.val100<0 ||p.val110<0; break;
+            is_pos = p.val[0]>0 || p.val[2]>0 || p.val[4]>0 ||p.val[6]>0;
+            is_neg = p.val[0]<0 || p.val[2]<0 || p.val[4]<0 ||p.val[6]<0; break;
           case dir::f_00p:
-            is_pos = p.val001>0 || p.val011>0 || p.val101>0 ||p.val111>0;
-            is_neg = p.val001<0 || p.val011<0 || p.val101<0 ||p.val111<0; break;
+            is_pos = p.val[1]>0 || p.val[3]>0 || p.val[5]>0 ||p.val[7]>0;
+            is_neg = p.val[1]<0 || p.val[3]<0 || p.val[5]<0 ||p.val[7]<0; break;
 #else
-          case dir::f_m00: is_pos = p.val00>0 || p.val01>0; is_neg = p.val00<0 || p.val01<0; break;
-          case dir::f_p00: is_pos = p.val10>0 || p.val11>0; is_neg = p.val10<0 || p.val11<0; break;
-          case dir::f_0m0: is_pos = p.val00>0 || p.val10>0; is_neg = p.val00<0 || p.val10<0; break;
-          case dir::f_0p0: is_pos = p.val01>0 || p.val11>0; is_neg = p.val01<0 || p.val11<0; break;
+          case dir::f_m00: is_pos = p.val[0]>0 || p.val[1]>0; is_neg = p.val[0]<0 || p.val[1]<0; break;
+          case dir::f_p00: is_pos = p.val[2]>0 || p.val[3]>0; is_neg = p.val[2]<0 || p.val[3]<0; break;
+          case dir::f_0m0: is_pos = p.val[0]>0 || p.val[2]>0; is_neg = p.val[0]<0 || p.val[2]<0; break;
+          case dir::f_0p0: is_pos = p.val[1]>0 || p.val[3]>0; is_neg = p.val[1]<0 || p.val[3]<0; break;
 #endif
           }
 
@@ -725,64 +725,63 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
             {
 #ifdef P4_TO_P8
             case dir::f_m00:
-              c2.x0 = cube.y0; c2.x1 = cube.y1; c2.y0 = cube.z0; c2.y1 = cube.z1;
-              q2.val00 = p.val000; q2.val01 = p.val001; q2.val10 = p.val010; q2.val11 = p.val011;
+              c2.xyz_mmm[0] = cube.xyz_mmm[1]; c2.xyz_ppp[0] = cube.xyz_ppp[1]; c2.xyz_mmm[1] = cube.xyz_mmm[2]; c2.xyz_ppp[1] = cube.xyz_ppp[2];
+              q2.val[0] = p.val[0]; q2.val[1] = p.val[1]; q2.val[2] = p.val[2]; q2.val[3] = p.val[3];
               s = c2.area_In_Negative_Domain(q2); d = dx;
               break;
             case dir::f_p00:
-              c2.x0 = cube.y0; c2.x1 = cube.y1; c2.y0 = cube.z0; c2.y1 = cube.z1;
-              q2.val00 = p.val100; q2.val01 = p.val101; q2.val10 = p.val110; q2.val11 = p.val111;
+              c2.xyz_mmm[0] = cube.xyz_mmm[1]; c2.xyz_ppp[0] = cube.xyz_ppp[1]; c2.xyz_mmm[1] = cube.xyz_mmm[2]; c2.xyz_ppp[1] = cube.xyz_ppp[2];
+              q2.val[0] = p.val[4]; q2.val[1] = p.val[5]; q2.val[2] = p.val[6]; q2.val[3] = p.val[7];
               s = c2.area_In_Negative_Domain(q2); d = dx;
               break;
             case dir::f_0m0:
-              c2.x0 = cube.x0; c2.x1 = cube.x1; c2.y0 = cube.z0; c2.y1 = cube.z1;
-              q2.val00 = p.val000; q2.val01 = p.val001; q2.val10 = p.val100; q2.val11 = p.val101;
+              c2.xyz_mmm[0] = cube.xyz_mmm[0]; c2.xyz_ppp[0] = cube.xyz_ppp[0]; c2.xyz_mmm[1] = cube.xyz_mmm[2]; c2.xyz_ppp[1] = cube.xyz_ppp[2];
+              q2.val[0] = p.val[0]; q2.val[1] = p.val[1]; q2.val[2] = p.val[4]; q2.val[3] = p.val[5];
               s = c2.area_In_Negative_Domain(q2); d = dy;
               break;
             case dir::f_0p0:
-              c2.x0 = cube.x0; c2.x1 = cube.x1; c2.y0 = cube.z0; c2.y1 = cube.z1;
-              q2.val00 = p.val010; q2.val01 = p.val011; q2.val10 = p.val110; q2.val11 = p.val111;
+              c2.xyz_mmm[0] = cube.xyz_mmm[0]; c2.xyz_ppp[0] = cube.xyz_ppp[0]; c2.xyz_mmm[1] = cube.xyz_mmm[2]; c2.xyz_ppp[1] = cube.xyz_ppp[2];
+              q2.val[0] = p.val[2]; q2.val[1] = p.val[3]; q2.val[2] = p.val[6]; q2.val[3] = p.val[7];
               s = c2.area_In_Negative_Domain(q2); d = dy;
               break;
             case dir::f_00m:
-              c2.x0 = cube.x0; c2.x1 = cube.x1; c2.y0 = cube.y0; c2.y1 = cube.y1;
-              q2.val00 = p.val000; q2.val01 = p.val010; q2.val10 = p.val100; q2.val11 = p.val110;
+              c2.xyz_mmm[0] = cube.xyz_mmm[0]; c2.xyz_ppp[0] = cube.xyz_ppp[0]; c2.xyz_mmm[1] = cube.xyz_mmm[1]; c2.xyz_ppp[1] = cube.xyz_ppp[1];
+              q2.val[0] = p.val[0]; q2.val[1] = p.val[2]; q2.val[2] = p.val[4]; q2.val[3] = p.val[6];
               s = c2.area_In_Negative_Domain(q2); d = dz;
               break;
             case dir::f_00p:
-              c2.x0 = cube.x0; c2.x1 = cube.x1; c2.y0 = cube.y0; c2.y1 = cube.y1;
-              q2.val00 = p.val001; q2.val01 = p.val011; q2.val10 = p.val101; q2.val11 = p.val111;
+              c2.xyz_mmm[0] = cube.xyz_mmm[0]; c2.xyz_ppp[0] = cube.xyz_ppp[0]; c2.xyz_mmm[1] = cube.xyz_mmm[1]; c2.xyz_ppp[1] = cube.xyz_ppp[1];
+              q2.val[0] = p.val[1]; q2.val[1] = p.val[3]; q2.val[2] = p.val[5]; q2.val[3] = p.val[7];
               s = c2.area_In_Negative_Domain(q2); d = dz;
               break;
 #else
-            case dir::f_m00: s = dy*fraction_Interval_Covered_By_Irregular_Domain(p.val00, p.val01, dy, dy); d = dx; break;
-            case dir::f_p00: s = dy*fraction_Interval_Covered_By_Irregular_Domain(p.val10, p.val11, dy, dy); d = dx; break;
-            case dir::f_0m0: s = dx*fraction_Interval_Covered_By_Irregular_Domain(p.val00, p.val10, dx, dx); d = dy; break;
-            case dir::f_0p0: s = dx*fraction_Interval_Covered_By_Irregular_Domain(p.val01, p.val11, dx, dx); d = dy; break;
+            case dir::f_m00: s = dy*fraction_Interval_Covered_By_Irregular_Domain(p.val[0], p.val[1], dy, dy); d = dx; break;
+            case dir::f_p00: s = dy*fraction_Interval_Covered_By_Irregular_Domain(p.val[2], p.val[3], dy, dy); d = dx; break;
+            case dir::f_0m0: s = dx*fraction_Interval_Covered_By_Irregular_Domain(p.val[0], p.val[2], dx, dx); d = dy; break;
+            case dir::f_0p0: s = dx*fraction_Interval_Covered_By_Irregular_Domain(p.val[1], p.val[3], dx, dx); d = dy; break;
 #endif
             }
 
-            if(s>EPS)
+            if(s > EPS)
             {
-              ierr = MatSetValue(A, quad_gloidx, quad_gloidx                       ,  mu*s/d, ADD_VALUES); CHKERRXX(ierr);
+              ierr = MatSetValue(A, quad_gloidx, quad_gloidx,                         mu*s/d, ADD_VALUES); CHKERRXX(ierr);
               ierr = MatSetValue(A, quad_gloidx, compute_global_index(quad_tmp_idx), -mu*s/d, ADD_VALUES); CHKERRXX(ierr);
             }
           }
           /* no interface - regular discretization */
-          else if(is_neg && !(bc->interfaceType(xyz_q)==NEUMANN && volume_cut_cell_tmp<EPS))
+          else if(is_neg && !(bc->interfaceType(xyz_q)==NEUMANN && volume_cut_cell_tmp < EPS))
           {
-            double s_tmp = pow((double)P4EST_QUADRANT_LEN(ngbd[0].level)/(double)P4EST_ROOT_LEN, (double)P4EST_DIM-1);
+            double s_tmp = pow((double)P4EST_QUADRANT_LEN(ngbd.begin()->level)/(double)P4EST_ROOT_LEN, (double)P4EST_DIM-1);
 
-            ngbd.resize(0);
+            ngbd.clear();
             ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_tmp_idx, tree_tmp_idx, dir%2==0 ? dir+1 : dir-1);
 
-            std::vector<double> s_ng(ngbd.size());
-            for(unsigned int i=0; i<ngbd.size(); ++i)
-              s_ng[i] = pow((double)P4EST_QUADRANT_LEN(ngbd[i].level)/(double)P4EST_ROOT_LEN, (double)P4EST_DIM-1);
-
             double d = 0;
-            for(unsigned int i=0; i<ngbd.size(); ++i)
-              d += s_ng[i]/s_tmp * 0.5 * (double)(P4EST_QUADRANT_LEN(level_tmp)+P4EST_QUADRANT_LEN(ngbd[i].level))/(double)P4EST_ROOT_LEN;
+            for (set_of_neighboring_quadrants::const_iterator it = ngbd.begin(); it != ngbd.end(); ++it)
+            {
+              double s_ng = pow((double)P4EST_QUADRANT_LEN(it->level)/(double)P4EST_ROOT_LEN, (double)P4EST_DIM-1);
+              d += s_ng/s_tmp * 0.5 * (double)(P4EST_QUADRANT_LEN(level_tmp)+P4EST_QUADRANT_LEN(it->level))/(double)P4EST_ROOT_LEN;
+            }
 
             d *= (xyz_max[dir/2]-xyz_min[dir/2]);
 
@@ -799,9 +798,10 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
             default: throw std::invalid_argument("[ERROR]: unknown direction.");
             }
 
-            for(unsigned int i=0; i<ngbd.size(); ++i)
+            for (set_of_neighboring_quadrants::const_iterator it = ngbd.begin(); it != ngbd.end(); ++it)
             {
-              ierr = MatSetValue(A, quad_gloidx, compute_global_index(ngbd[i].p.piggy3.local_num), mu*s * s_ng[i]/s_tmp/d, ADD_VALUES); CHKERRXX(ierr);
+              double s_ng = pow((double)P4EST_QUADRANT_LEN(it->level)/(double)P4EST_ROOT_LEN, (double)P4EST_DIM-1);
+              ierr = MatSetValue(A, quad_gloidx, compute_global_index(it->p.piggy3.local_num), mu*s * s_ng/s_tmp/d, ADD_VALUES); CHKERRXX(ierr);
             }
 
             ierr = MatSetValue(A, quad_gloidx, compute_global_index(quad_tmp_idx), -mu*s/d, ADD_VALUES); CHKERRXX(ierr);
@@ -814,17 +814,16 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
           }
         }
         /* there is more than one neighbor, regular bulk case. This assumes uniform on interface ! */
-        else if(ngbd.size()>1)
+        else if(ngbd.size() > 1)
         {
           double s_tmp = pow((double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN, (double)P4EST_DIM-1);
 
-          std::vector<double> s_ng(ngbd.size());
-          for(unsigned int i=0; i<ngbd.size(); ++i)
-            s_ng[i] = pow((double)P4EST_QUADRANT_LEN(ngbd[i].level)/(double)P4EST_ROOT_LEN, (double)P4EST_DIM-1);
-
           double d = 0;
-          for(unsigned int i=0; i<ngbd.size(); ++i)
-            d += s_ng[i]/s_tmp * 0.5 * (double)(P4EST_QUADRANT_LEN(quad->level)+P4EST_QUADRANT_LEN(ngbd[i].level))/(double)P4EST_ROOT_LEN;
+          for (set_of_neighboring_quadrants::const_iterator it = ngbd.begin(); it != ngbd.end(); ++it)
+          {
+            double s_ng = pow((double)P4EST_QUADRANT_LEN(it->level)/(double)P4EST_ROOT_LEN, (double)P4EST_DIM-1);
+            d += s_ng/s_tmp * 0.5 * (double)(P4EST_QUADRANT_LEN(quad->level)+P4EST_QUADRANT_LEN(it->level))/(double)P4EST_ROOT_LEN;
+          }
 
           d *= (xyz_max[dir/2]-xyz_min[dir/2]);
 
@@ -841,9 +840,10 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
           default: throw std::invalid_argument("[ERROR]: unknown direction.");
           }
 
-          for(unsigned int i=0; i<ngbd.size(); ++i)
+          for (set_of_neighboring_quadrants::const_iterator it = ngbd.begin(); it != ngbd.end(); ++it)
           {
-            ierr = MatSetValue(A, quad_gloidx, compute_global_index(ngbd[i].p.piggy3.local_num), -mu*s * s_ng[i]/s_tmp/d, ADD_VALUES); CHKERRXX(ierr);
+            double s_ng = pow((double)P4EST_QUADRANT_LEN(it->level)/(double)P4EST_ROOT_LEN, (double)P4EST_DIM-1);
+            ierr = MatSetValue(A, quad_gloidx, compute_global_index(it->p.piggy3.local_num), -mu*s * s_ng/s_tmp/d, ADD_VALUES); CHKERRXX(ierr);
           }
 
           ierr = MatSetValue(A, quad_gloidx, quad_gloidx, mu*s/d, ADD_VALUES); CHKERRXX(ierr);
@@ -1016,10 +1016,10 @@ void my_p4est_poisson_cells_t::update_matrix_diag_only()
       for(int i=0; i<P4EST_CHILDREN; ++i)
         all_pos = all_pos && (phi_p[corners[i]]>0);
 
-      cube.x0 = x - 0.5*dx;
-      cube.x1 = x + 0.5*dx;
-      cube.y0 = y - 0.5*dy;
-      cube.y1 = y + 0.5*dy;
+      cube.xyz_mmm[0] = x - 0.5*dx;
+      cube.xyz_ppp[0] = x + 0.5*dx;
+      cube.xyz_mmm[1] = y - 0.5*dy;
+      cube.xyz_ppp[1] = y + 0.5*dy;
 
 #ifdef P4_TO_P8
       OctValue  p(phi_p[corners[dir::v_mmm]], phi_p[corners[dir::v_mmp]],
@@ -1027,8 +1027,8 @@ void my_p4est_poisson_cells_t::update_matrix_diag_only()
                   phi_p[corners[dir::v_pmm]], phi_p[corners[dir::v_pmp]],
                   phi_p[corners[dir::v_ppm]], phi_p[corners[dir::v_ppp]]);
 
-      cube.z0 = z - 0.5*dz;
-      cube.z1 = z + 0.5*dz;
+      cube.xyz_mmm[2] = z - 0.5*dz;
+      cube.xyz_ppp[2] = z + 0.5*dz;
       double volume_cut_cell = cube.volume_In_Negative_Domain(p);
 #else
       QuadValue p(phi_p[corners[dir::v_mmm]], phi_p[corners[dir::v_mpm]], phi_p[corners[dir::v_pmm]], phi_p[corners[dir::v_ppm]]);
@@ -1137,7 +1137,7 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_rhsvec()
   Cube2 cube;
 #endif
 
-  std::vector<p4est_quadrant_t> ngbd;
+  set_of_neighboring_quadrants ngbd;
 
   /* Main loop over all local quadrant */
   for(p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx){
@@ -1179,10 +1179,10 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_rhsvec()
         is_pos = is_pos || (phi_p[corners[i]]>0);
       }
 
-      cube.x0 = x - 0.5*dx;
-      cube.x1 = x + 0.5*dx;
-      cube.y0 = y - 0.5*dy;
-      cube.y1 = y + 0.5*dy;
+      cube.xyz_mmm[0] = x - 0.5*dx;
+      cube.xyz_ppp[0] = x + 0.5*dx;
+      cube.xyz_mmm[1] = y - 0.5*dy;
+      cube.xyz_ppp[1] = y + 0.5*dy;
 
 #ifdef P4_TO_P8
       OctValue  p(phi_p[corners[dir::v_mmm]], phi_p[corners[dir::v_mmp]],
@@ -1190,8 +1190,8 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_rhsvec()
                   phi_p[corners[dir::v_pmm]], phi_p[corners[dir::v_pmp]],
                   phi_p[corners[dir::v_ppm]], phi_p[corners[dir::v_ppp]]);
 
-      cube.z0 = z - 0.5*dz;
-      cube.z1 = z + 0.5*dz;
+      cube.xyz_mmm[2] = z - 0.5*dz;
+      cube.xyz_ppp[2] = z + 0.5*dz;
       double volume_cut_cell = cube.volume_In_Negative_Domain(p);
 #else
       QuadValue p(phi_p[corners[dir::v_mmm]], phi_p[corners[dir::v_mpm]], phi_p[corners[dir::v_pmm]], phi_p[corners[dir::v_ppm]]);
@@ -1213,20 +1213,20 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_rhsvec()
       {
 #ifdef P4_TO_P8
         OctValue interface_values;
-        interface_values.val000 = bc->interfaceValue(cube.x0, cube.y0, cube.z0);
-        interface_values.val001 = bc->interfaceValue(cube.x0, cube.y0, cube.z1);
-        interface_values.val010 = bc->interfaceValue(cube.x0, cube.y1, cube.z0);
-        interface_values.val011 = bc->interfaceValue(cube.x0, cube.y1, cube.z1);
-        interface_values.val100 = bc->interfaceValue(cube.x1, cube.y0, cube.z0);
-        interface_values.val101 = bc->interfaceValue(cube.x1, cube.y0, cube.z1);
-        interface_values.val110 = bc->interfaceValue(cube.x1, cube.y1, cube.z0);
-        interface_values.val111 = bc->interfaceValue(cube.x1, cube.y1, cube.z1);
+        interface_values.val[0] = bc->interfaceValue(cube.xyz_mmm[0], cube.xyz_mmm[1], cube.xyz_mmm[2]);
+        interface_values.val[1] = bc->interfaceValue(cube.xyz_mmm[0], cube.xyz_mmm[1], cube.xyz_ppp[2]);
+        interface_values.val[2] = bc->interfaceValue(cube.xyz_mmm[0], cube.xyz_ppp[1], cube.xyz_mmm[2]);
+        interface_values.val[3] = bc->interfaceValue(cube.xyz_mmm[0], cube.xyz_ppp[1], cube.xyz_ppp[2]);
+        interface_values.val[4] = bc->interfaceValue(cube.xyz_ppp[0], cube.xyz_mmm[1], cube.xyz_mmm[2]);
+        interface_values.val[5] = bc->interfaceValue(cube.xyz_ppp[0], cube.xyz_mmm[1], cube.xyz_ppp[2]);
+        interface_values.val[6] = bc->interfaceValue(cube.xyz_ppp[0], cube.xyz_ppp[1], cube.xyz_mmm[2]);
+        interface_values.val[7] = bc->interfaceValue(cube.xyz_ppp[0], cube.xyz_ppp[1], cube.xyz_ppp[2]);
 #else
         QuadValue interface_values;
-        interface_values.val00 = bc->interfaceValue(cube.x0, cube.y0);
-        interface_values.val01 = bc->interfaceValue(cube.x0, cube.y1);
-        interface_values.val10 = bc->interfaceValue(cube.x1, cube.y0);
-        interface_values.val11 = bc->interfaceValue(cube.x1, cube.y1);
+        interface_values.val[0] = bc->interfaceValue(cube.xyz_mmm[0], cube.xyz_mmm[1]);
+        interface_values.val[1] = bc->interfaceValue(cube.xyz_mmm[0], cube.xyz_ppp[1]);
+        interface_values.val[2] = bc->interfaceValue(cube.xyz_ppp[0], cube.xyz_mmm[1]);
+        interface_values.val[3] = bc->interfaceValue(cube.xyz_ppp[0], cube.xyz_ppp[1]);
 #endif
 
         double val_interface = cube.integrate_Over_Interface(interface_values,p);
@@ -1240,10 +1240,10 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_rhsvec()
         {
           if(!is_quad_Wall(p4est, tree_idx, quad, dir))
           {
-            ngbd.resize(0);
+            ngbd.clear();
             ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, dir);
 
-            double phi_tmp = phi_cell(ngbd[0].p.piggy3.local_num, phi_p);
+            double phi_tmp = phi_cell(ngbd.begin()->p.piggy3.local_num, phi_p);
 
             if(phi_tmp*phi_q < 0)
             {
@@ -1303,60 +1303,60 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_rhsvec()
           case dir::f_m00:
             bc_wtype = bc->wallType (x-.5*dx, y, z);
             val_wall = bc->wallValue(x-.5*dx, y, z);
-            c2.x0 = cube.y0; c2.x1 = cube.y1;
-            c2.y0 = cube.z0; c2.y1 = cube.z1;
-            qval.val00 = p.val000; qval.val01 = p.val001;
-            qval.val10 = p.val010; qval.val11 = p.val011;
+            c2.xyz_mmm[0] = cube.xyz_mmm[1]; c2.xyz_ppp[0] = cube.xyz_ppp[1];
+            c2.xyz_mmm[1] = cube.xyz_mmm[2]; c2.xyz_ppp[1] = cube.xyz_ppp[2];
+            qval.val[0] = p.val[0]; qval.val[1] = p.val[1];
+            qval.val[2] = p.val[2]; qval.val[3] = p.val[3];
             s = c2.area_In_Negative_Domain(qval);
             d = dx;
             break;
           case dir::f_p00:
             bc_wtype = bc->wallType (x+.5*dx, y, z);
             val_wall = bc->wallValue(x+.5*dx, y, z);
-            c2.x0 = cube.y0; c2.x1 = cube.y1;
-            c2.y0 = cube.z0; c2.y1 = cube.z1;
-            qval.val00 = p.val100; qval.val01 = p.val101;
-            qval.val10 = p.val110; qval.val11 = p.val111;
+            c2.xyz_mmm[0] = cube.xyz_mmm[1]; c2.xyz_ppp[0] = cube.xyz_ppp[1];
+            c2.xyz_mmm[1] = cube.xyz_mmm[2]; c2.xyz_ppp[1] = cube.xyz_ppp[2];
+            qval.val[0] = p.val[4]; qval.val[1] = p.val[5];
+            qval.val[2] = p.val[6]; qval.val[3] = p.val[7];
             s = c2.area_In_Negative_Domain(qval);
             d = dx;
             break;
           case dir::f_0m0:
             bc_wtype = bc->wallType (x, y-.5*dy, z);
             val_wall = bc->wallValue(x, y-.5*dy, z);
-            c2.x0 = cube.x0; c2.x1 = cube.x1;
-            c2.y0 = cube.z0; c2.y1 = cube.z1;
-            qval.val00 = p.val000; qval.val01 = p.val001;
-            qval.val10 = p.val100; qval.val11 = p.val101;
+            c2.xyz_mmm[0] = cube.xyz_mmm[0]; c2.xyz_ppp[0] = cube.xyz_ppp[0];
+            c2.xyz_mmm[1] = cube.xyz_mmm[2]; c2.xyz_ppp[1] = cube.xyz_ppp[2];
+            qval.val[0] = p.val[0]; qval.val[1] = p.val[1];
+            qval.val[2] = p.val[4]; qval.val[3] = p.val[5];
             s = c2.area_In_Negative_Domain(qval);
             d = dy;
             break;
           case dir::f_0p0:
             bc_wtype = bc->wallType (x, y+.5*dy, z);
             val_wall = bc->wallValue(x, y+.5*dy, z);
-            c2.x0 = cube.x0; c2.x1 = cube.x1;
-            c2.y0 = cube.z0; c2.y1 = cube.z1;
-            qval.val00 = p.val010; qval.val01 = p.val011;
-            qval.val10 = p.val110; qval.val11 = p.val111;
+            c2.xyz_mmm[0] = cube.xyz_mmm[0]; c2.xyz_ppp[0] = cube.xyz_ppp[0];
+            c2.xyz_mmm[1] = cube.xyz_mmm[2]; c2.xyz_ppp[1] = cube.xyz_ppp[2];
+            qval.val[0] = p.val[2]; qval.val[1] = p.val[3];
+            qval.val[2] = p.val[6]; qval.val[3] = p.val[7];
             s = c2.area_In_Negative_Domain(qval);
             d = dy;
             break;
           case dir::f_00m:
             bc_wtype = bc->wallType (x, y, z-.5*dz);
             val_wall = bc->wallValue(x, y, z-.5*dz);
-            c2.x0 = cube.x0; c2.x1 = cube.x1;
-            c2.y0 = cube.y0; c2.y1 = cube.y1;
-            qval.val00 = p.val000; qval.val01 = p.val010;
-            qval.val10 = p.val100; qval.val11 = p.val110;
+            c2.xyz_mmm[0] = cube.xyz_mmm[0]; c2.xyz_ppp[0] = cube.xyz_ppp[0];
+            c2.xyz_mmm[1] = cube.xyz_mmm[1]; c2.xyz_ppp[1] = cube.xyz_ppp[1];
+            qval.val[0] = p.val[0]; qval.val[1] = p.val[2];
+            qval.val[2] = p.val[4]; qval.val[3] = p.val[6];
             s = c2.area_In_Negative_Domain(qval);
             d = dz;
             break;
           case dir::f_00p:
             bc_wtype = bc->wallType (x, y, z+.5*dz);
             val_wall = bc->wallValue(x, y, z+.5*dz);
-            c2.x0 = cube.x0; c2.x1 = cube.x1;
-            c2.y0 = cube.y0; c2.y1 = cube.y1;
-            qval.val00 = p.val001; qval.val01 = p.val011;
-            qval.val10 = p.val101; qval.val11 = p.val111;
+            c2.xyz_mmm[0] = cube.xyz_mmm[0]; c2.xyz_ppp[0] = cube.xyz_ppp[0];
+            c2.xyz_mmm[1] = cube.xyz_mmm[1]; c2.xyz_ppp[1] = cube.xyz_ppp[1];
+            qval.val[0] = p.val[1]; qval.val[1] = p.val[3];
+            qval.val[2] = p.val[5]; qval.val[3] = p.val[7];
             s = c2.area_In_Negative_Domain(qval);
             d = dz;
             break;
@@ -1364,25 +1364,25 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_rhsvec()
           case dir::f_m00:
             bc_wtype = bc->wallType (x-.5*dx, y);
             val_wall = bc->wallValue(x-.5*dx, y);
-            s = dy*fraction_Interval_Covered_By_Irregular_Domain(p.val00, p.val01, dx, dx);
+            s = dy*fraction_Interval_Covered_By_Irregular_Domain(p.val[0], p.val[1], dx, dx);
             d = dx;
             break;
           case dir::f_p00:
             bc_wtype = bc->wallType (x+.5*dx, y);
             val_wall = bc->wallValue(x+.5*dx, y);
-            s = dy*fraction_Interval_Covered_By_Irregular_Domain(p.val10, p.val11, dx, dx);
+            s = dy*fraction_Interval_Covered_By_Irregular_Domain(p.val[2], p.val[3], dx, dx);
             d = dx;
             break;
           case dir::f_0m0:
             bc_wtype = bc->wallType (x, y-.5*dy);
             val_wall = bc->wallValue(x, y-.5*dy);
-            s = dx*fraction_Interval_Covered_By_Irregular_Domain(p.val00, p.val10, dy, dy);
+            s = dx*fraction_Interval_Covered_By_Irregular_Domain(p.val[0], p.val[2], dy, dy);
             d = dy;
             break;
           case dir::f_0p0:
             bc_wtype = bc->wallType (x, y+.5*dy);
             val_wall = bc->wallValue(x, y+.5*dy);
-            s = dx*fraction_Interval_Covered_By_Irregular_Domain(p.val01, p.val11, dy, dy);
+            s = dx*fraction_Interval_Covered_By_Irregular_Domain(p.val[1], p.val[3], dy, dy);
             d = dy;
             break;
 #endif

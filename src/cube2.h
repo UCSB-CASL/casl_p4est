@@ -63,8 +63,7 @@ private:
   }
 
 public:
-  double x0,x1; // nodes
-  double y0,y1;
+  double xyz_mmm[2], xyz_ppp[2]; // nodes
 
   /*!
      * \brief default constructor for Cube2, initialize the coordinates to zero

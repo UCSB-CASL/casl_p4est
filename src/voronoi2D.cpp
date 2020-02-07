@@ -50,42 +50,6 @@ void Voronoi2D::set_neighbors_and_partition(vector<ngbd2Dseed>& neighbors_, vect
   this->volume = volume_;
 }
 
-//void Voronoi2D::reorder_neighbors_and_partition_from_faces_to_counterclock_cycle()
-//{
-//  P4EST_ASSERT((nb_seeds.size() == UNIFORM_2D_NB_NEIGHBORS) && (partition.size() == UNIFORM_2D_NB_NEIGHBORS));
-//  unsigned char face_order_to_counterclock_cycle_order[UNIFORM_2D_NB_NEIGHBORS] = {2,0,3,1};
-//  for (unsigned char i = 0; i < UNIFORM_2D_NB_NEIGHBORS-1; ++i)
-//  {
-////    for (int i = 0; i < UNIFORM_2D_NB_NEIGHBORS; ++i) {
-////      std::cout << (int)face_order_to_counterclock_cycle_order[i] << "\t ";
-////    }
-////    std::cout << std::endl;
-////    for (int i = 0; i < UNIFORM_2D_NB_NEIGHBORS; ++i) {
-////      std::cout << nb_seeds[i].p.x << "\t ";
-////    }
-////    std::cout << std::endl;
-////    for (int i = 0; i < UNIFORM_2D_NB_NEIGHBORS; ++i) {
-////      std::cout << nb_seeds[i].p.y << "\t ";
-////    }
-////    std::cout << std::endl;
-////    std::cout << std::endl;
-////    for (int i = 0; i < UNIFORM_2D_NB_NEIGHBORS; ++i) {
-////      std::cout << partition[i].x << "\t ";
-////    }
-////    std::cout << std::endl;
-////    for (int i = 0; i < UNIFORM_2D_NB_NEIGHBORS; ++i) {
-////      std::cout << partition[i].y << "\t ";
-////    }
-////    std::cout << std::endl;
-//    while (i!=face_order_to_counterclock_cycle_order[i]) {
-//      unsigned char tmp = face_order_to_counterclock_cycle_order[i];
-//      std::swap(nb_seeds[i], nb_seeds[tmp]);
-//      std::swap(partition[i], partition[tmp]);
-//      std::swap(face_order_to_counterclock_cycle_order[i], face_order_to_counterclock_cycle_order[tmp]);
-//    }
-//  }
-//}
-
 void Voronoi2D::set_level_set_values(const CF_2 &ls )
 {
   phi_c = ls(center_seed.x, center_seed.y);
@@ -108,16 +72,12 @@ void Voronoi2D::push( int n, double x, double y, const bool* periodicity, const 
   add_point(n, x, y, periodicity, xyz_min, xyz_max);
 }
 
-void Voronoi2D::assemble_from_set_of_faces(const unsigned char& dir, const std::set<p4est_locidx_t>& set_of_faces, const my_p4est_faces_t* faces, const bool* periodicity, const double* xyz_min, const double* xyz_max)
+void Voronoi2D::assemble_from_set_of_faces(const std::set<indexed_and_located_face>& set_of_neighbor_faces, const bool* periodicity, const double* xyz_min, const double* xyz_max)
 {
   nb_seeds.clear();
-  int n;
-  double xyz[2];
-  for (std::set<p4est_locidx_t>::const_iterator got_it= set_of_faces.begin(); got_it != set_of_faces.end(); ++got_it) {
-    n = *got_it;
-    P4EST_ASSERT((n>=0) && (n < (faces->num_local[dir] + faces->num_ghost[dir])));
-    faces->xyz_fr_f(*got_it, dir, xyz);
-    add_point(n, xyz[0], xyz[1], periodicity, xyz_min, xyz_max); // no need to check for duplicates by definition of std::set
+  for (std::set<indexed_and_located_face>::const_iterator got_it= set_of_neighbor_faces.begin(); got_it != set_of_neighbor_faces.end(); ++got_it) {
+    P4EST_ASSERT((*got_it).face_idx >= 0);
+    add_point((*got_it).face_idx, (*got_it).xyz_face[0], (*got_it).xyz_face[1], periodicity, xyz_min, xyz_max); // no need to check for duplicates by definition of std::set
   }
 }
 
@@ -207,7 +167,7 @@ void Voronoi2D::set_center_point(double x, double y)
   center_seed.y = y;
 }
 
-void Voronoi2D::construct_partition()
+bool Voronoi2D::construct_partition()
 {
 #ifdef CASL_THROWS
   if(center_seed.x==DBL_MAX || center_seed.y==DBL_MAX) throw std::invalid_argument("[CASL_ERROR]: Voronoi2D: invalid center point to build the voronoi partition.");
@@ -301,14 +261,18 @@ void Voronoi2D::construct_partition()
   }
 
   P4EST_ASSERT(partition.size() == nb_seeds.size());
+  bool has_a_wall_neighbor = false;
   center_seed = center_seed_saved;
   for (size_t m = 0; m < partition.size(); ++m) {
     nb_seeds[m].p     = center_seed + (nb_seeds[m].p)*scaling_length;
     nb_seeds[m].dist  *= scaling_length;
     partition[m]      = center_seed + (partition[m])*scaling_length;
+    has_a_wall_neighbor = has_a_wall_neighbor || nb_seeds[m].n < 0;
   }
 
   compute_volume();
+
+  return has_a_wall_neighbor;
 }
 
 
@@ -323,7 +287,7 @@ void Voronoi2D::clip_interface( const CF_2& ls )
 void Voronoi2D::clip_interface()
 {
 #ifdef CASL_THROWS
-  if(phi_values.size()!=nb_seeds.size() || phi_values.size()!= partition.size())
+  if(phi_values.size() != nb_seeds.size() || phi_values.size() != partition.size())
     throw std::invalid_argument("[CASL_THROWS]: Voronoi2D: the lists of points, vertices and/or level-set values do not have the same length.");
 #endif
 
@@ -335,13 +299,13 @@ void Voronoi2D::clip_interface()
   double thresh = -EPS/2;
 
   /* find a vertex that is in the negative domain */
-  unsigned int m0 = 0;
-  for(; m0<partition.size(); ++m0)
-    if(phi_values[m0]<=thresh)
+  size_t m0 = 0;
+  for(; m0 < partition.size(); ++m0)
+    if(phi_values[m0] <= thresh)
       break;
 
   /* the partition is entirely in the positive domain */
-  if(m0>=partition.size())
+  if(m0 >= partition.size())
   {
     nb_seeds.resize(0);
     partition.resize(0);
@@ -352,11 +316,11 @@ void Voronoi2D::clip_interface()
 
   /* otherwise clip the partition */
   unsigned int m = m0;
-  unsigned int k = mod(m+1, partition.size());
+  unsigned int k = mod(m + 1, partition.size());
   do
   {
     /* the next vertex needs to be clipped */
-    if(phi_values[k]>thresh)
+    if(phi_values[k] > thresh)
     {
       Point2 dir;
       double theta;
@@ -368,30 +332,30 @@ void Voronoi2D::clip_interface()
 
       /* find the following vertex */
       unsigned int l = k;
-      unsigned int r = mod(l+1, partition.size());
-      while(phi_values[r]>thresh)
+      unsigned int r = mod(l + 1, partition.size());
+      while(phi_values[r] > thresh)
       {
         l = r;
-        r = mod(l+1, partition.size());
+        r = mod(l + 1, partition.size());
       }
 
       /* remove intermediate vertices if necessary */
-      if(k!=l)
+      if(k != l)
       {
-        unsigned int h = mod(k+1, partition.size());
-        while(h!=l)
+        unsigned int h = mod(k + 1, partition.size());
+        while(h != l)
         {
           nb_seeds.erase(nb_seeds.begin() + h);
           partition.erase(partition.begin() + h);
           phi_values.erase(phi_values.begin() + h);
 
-          if(h<m0) m0--;
-          if(h<m)  m--;
-          if(h<k)  k--;
-          if(h<l)  l--;
-          if(h<r)  r--;
+          if(h < m0) m0--;
+          if(h < m)  m--;
+          if(h < k)  k--;
+          if(h < l)  l--;
+          if(h < r)  r--;
 
-          h = mod(k+1, partition.size());
+          h = mod(k + 1, partition.size());
         }
       }
 
@@ -404,52 +368,50 @@ void Voronoi2D::clip_interface()
       Point2 u = plr - pmk;
 
       /* the new points are on top of each other ... which can only mean that the value at point k=l is exactly 0 */
-      if(u.norm_L2()<EPS)
+      if(u.norm_L2() < EPS)
       {
         m = r;
         continue;
       }
 
-      u /= u.norm_L2();
+      u /= u.norm_L2(); // --> norm of u is 1.0
       ngbd2Dseed tmp;
       tmp.n = INTERFACE;
-      Point2 n; n.x = u.y; n.y = -u.x;
-      double d = (u.x*(center_seed.y-pmk.y) - u.y*(center_seed.x-pmk.x)) / n.cross(u);
-      tmp.p = center_seed + n*2*d;
+      const Point2 center_to_pmk = pmk - center_seed;
+      tmp.p = center_seed + (center_to_pmk - u*(center_to_pmk.dot(u)))*2.0; // mirror point of the center seed across the (straight) INTERFACE partition segment
+
 
       partition[k] = pmk;
-      phi_values[k] = 0;
+      phi_values[k] = 0.0;
 
-      if(k==l)
+      if(k == l)
       {
-        partition.insert(partition.begin()+r, plr);
-        phi_values.insert(phi_values.begin()+r, 0);
-        nb_seeds.insert(nb_seeds.begin()+r, tmp);
-        if(r<=m0) m0++;
+        partition.insert(partition.begin() + r, plr);
+        phi_values.insert(phi_values.begin() + r, 0);
+        nb_seeds.insert(nb_seeds.begin() + r, tmp);
+        if(r <= m0) m0++;
 
         /* move on to next point */
-        m = mod(r+1, partition.size());
+        m = mod(r + 1, partition.size());
       }
       else
       {
         partition[l] = plr;
-        phi_values[l] = 0;
+        phi_values[l] = 0.0;
         nb_seeds[l] = tmp;
 
         /* move on to next point */
-        m = mod(l+1, partition.size());
+        m = mod(l + 1, partition.size());
       }
     }
     else
-    {
-      m = mod(m+1, partition.size());
-    }
+      m = mod(m + 1, partition.size());
 
-    k = mod(m+1, partition.size());
-  } while(k!=m0 && m!=m0);
+    k = mod(m + 1, partition.size());
+  } while(k != m0 && m != m0);
 
 #ifdef CASL_THROWS
-  if(partition.size()!=nb_seeds.size() || phi_values.size()!=nb_seeds.size())
+  if(partition.size() != nb_seeds.size() || phi_values.size() != nb_seeds.size())
     throw std::invalid_argument("[CASL_ERROR]: Voronoi2D->clip_Interface: error while clipping the interface.");
 #endif
 
@@ -459,7 +421,7 @@ void Voronoi2D::clip_interface()
 
 bool Voronoi2D::is_interface() const
 {
-  for(unsigned int n=0; n<nb_seeds.size(); ++n)
+  for(size_t n = 0; n < nb_seeds.size(); ++n)
     if(nb_seeds[n].n == INTERFACE)
       return true;
   return false;

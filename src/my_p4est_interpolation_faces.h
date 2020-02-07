@@ -24,12 +24,7 @@ private:
 
   Vec face_is_well_defined;
 
-#ifdef P4_TO_P8
-  BoundaryConditions3D* bc;
-#else
-  BoundaryConditions2D* bc;
-#endif
-  double tree_dimension[P4EST_DIM];
+  BoundaryConditionsDIM* bc;
 
   // rule of three -- disable copy ctr and assignment if not useful
   my_p4est_interpolation_faces_t(const my_p4est_interpolation_faces_t& other);
@@ -41,21 +36,12 @@ public:
   my_p4est_interpolation_faces_t(const my_p4est_node_neighbors_t* ngbd_n, const my_p4est_faces_t *faces);
 
   using my_p4est_interpolation_t::set_input;
-#ifdef P4_TO_P8
-  void set_input(Vec F, int dir, int order=2, Vec face_is_well_defined=NULL, BoundaryConditions3D *bc=NULL){ set_input(&F, dir, 1, order, face_is_well_defined, bc); }
-  void set_input(Vec *F, int dir, unsigned int n_vecs_, int order=2, Vec face_is_well_defined=NULL, BoundaryConditions3D *bc=NULL);
-#else
-  void set_input(Vec F, int dir, int order=2, Vec face_is_well_defined=NULL, BoundaryConditions2D *bc=NULL){ set_input(&F, dir, 1, order, face_is_well_defined, bc); }
-  void set_input(Vec *F, int dir, unsigned int n_vecs_, int order=2, Vec face_is_well_defined=NULL, BoundaryConditions2D *bc=NULL);
-#endif
+  void set_input(Vec F,   unsigned char dir, int order=2, Vec face_is_well_defined=NULL, BoundaryConditionsDIM *bc=NULL){ set_input(&F, dir, 1, order, face_is_well_defined, bc); }
+  void set_input(Vec *F,  unsigned char dir, unsigned int n_vecs_, int order=2, Vec face_is_well_defined=NULL, BoundaryConditionsDIM *bc=NULL);
 
   // definition of abstract interpolation methods
   using my_p4est_interpolation_t::operator();
-#ifdef P4_TO_P8
-  void operator()(double x, double y, double z, double *results) const;
-#else
-  void operator()(double x, double y, double *results) const;
-#endif
+  void operator()(DIM(double x, double y, double z), double *results) const;
 
   void interpolate(const p4est_quadrant_t &quad, const double *xyz, double *results, const unsigned int &comp) const;
 };

@@ -341,6 +341,8 @@ public:
     construct_tree();
   }
 
+  inline const bool *get_periodicity() const { return periodic; }
+
   /*!
    * \brief get_cell gives read access to a constant HierarchyCell as constructed by the my_p4est_hierarchy object
    * \param [in] tr the tree index;

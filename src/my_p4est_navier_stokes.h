@@ -48,38 +48,22 @@ protected:
     bool refine_and_coarsen(p4est_t* p4est, p4est_nodes_t* nodes, Vec phi, Vec vorticity, Vec smoke);
   };
 
-#ifdef P4_TO_P8
-  class wall_bc_value_hodge_t : public CF_3
-    #else
-  class wall_bc_value_hodge_t : public CF_2
-    #endif
+  class wall_bc_value_hodge_t : public CF_DIM
   {
   private:
     my_p4est_navier_stokes_t* _prnt;
   public:
     wall_bc_value_hodge_t(my_p4est_navier_stokes_t* obj) : _prnt(obj) {}
-#ifdef P4_TO_P8
-    double operator()( double x, double y, double z ) const;
-#else
-    double operator()( double x, double y ) const;
-#endif
+    double operator()(DIM(double x, double y, double z)) const;
   };
 
-#ifdef P4_TO_P8
-  class interface_bc_value_hodge_t : public CF_3
-    #else
-  class interface_bc_value_hodge_t : public CF_2
-    #endif
+  class interface_bc_value_hodge_t : public CF_DIM
   {
   private:
     my_p4est_navier_stokes_t* _prnt;
   public:
     interface_bc_value_hodge_t(my_p4est_navier_stokes_t* obj) : _prnt(obj) {}
-#ifdef P4_TO_P8
-    double operator()( double x, double y, double z ) const;
-#else
-    double operator()( double x, double y ) const;
-#endif
+    double operator()(DIM(double x, double y, double z)) const;
   };
 
   my_p4est_brick_t *brick;
@@ -140,11 +124,7 @@ protected:
   Vec pressure;
 
   Vec smoke;
-#ifdef P4_TO_P8
-  CF_3 *bc_smoke;
-#else
-  CF_2 *bc_smoke;
-#endif
+  CF_DIM *bc_smoke;
   bool refine_with_smoke;
   double smoke_thresh;
 
@@ -152,24 +132,14 @@ protected:
 
   Vec face_is_well_defined[P4EST_DIM];
 
-#ifdef P4_TO_P8
-  BoundaryConditions3D *bc_pressure;
-  BoundaryConditions3D bc_hodge;
-  BoundaryConditions3D *bc_v;
-#else
-  BoundaryConditions2D *bc_pressure;
-  BoundaryConditions2D bc_hodge;
-  BoundaryConditions2D *bc_v;
-#endif
+  BoundaryConditionsDIM *bc_pressure;
+  BoundaryConditionsDIM bc_hodge;
+  BoundaryConditionsDIM *bc_v;
 
   wall_bc_value_hodge_t wall_bc_value_hodge;
   interface_bc_value_hodge_t interface_bc_value_hodge;
 
-#ifdef P4_TO_P8
-  CF_3 *external_forces[P4EST_DIM];
-#else
-  CF_2 *external_forces[P4EST_DIM];
-#endif
+  CF_DIM *external_forces[P4EST_DIM];
 
   my_p4est_interpolation_nodes_t *interp_phi;
 
@@ -184,23 +154,14 @@ protected:
   void compute_norm_grad_v();
 
   bool is_in_domain(const double xyz_[]) const {
-    double threshold[P4EST_DIM];
-    for (short dd = 0; dd < P4EST_DIM; ++dd)
-      threshold[dd] = 0.1*dxyz_min[dd];
-    return ((((xyz_[0] - xyz_min[0] > -threshold[0]) && (xyz_[0] - xyz_max[0] < threshold[0])) || is_periodic(p4est_n, dir::x))
-        && (((xyz_[1] - xyz_min[1] > -threshold[1]) && (xyz_[1] - xyz_max[1] < threshold[1])) || is_periodic(p4est_n, dir::y))
-    #ifdef P4_TO_P8
-        && (((xyz_[2] - xyz_min[2] > -threshold[2]) && (xyz_[2] - xyz_max[2] < threshold[2])) || is_periodic(p4est_n, dir::z))
-    #endif
-        );
+    bool to_return = true;
+    for (unsigned char dd = 0; dd < P4EST_DIM && to_return; ++dd)
+      to_return = (xyz_[dd] - xyz_min[dd] > -0.1-dxyz_min[dd] && xyz_[dd] - xyz_max[dd] < 0.1*dxyz_min[dd]) || is_periodic(p4est_n, dd);
+    return to_return;
   };
 
   bool is_no_slip(const double xyz_[]) const {
-    return ((bc_v[0].wallType(xyz_) == DIRICHLET) && (bc_v[1].wallType(xyz_) == DIRICHLET) &&
-    #ifdef P4_TO_P8
-        (bc_v[2].wallType(xyz_) == DIRICHLET) &&
-    #endif
-        bc_pressure->wallType(xyz_) == NEUMANN);
+    return (ANDD(bc_v[0].wallType(xyz_) == DIRICHLET, bc_v[1].wallType(xyz_) == DIRICHLET, bc_v[2].wallType(xyz_) == DIRICHLET) && bc_pressure->wallType(xyz_) == NEUMANN);
   }
 
   /*!
@@ -264,33 +225,17 @@ public:
 
   void set_parameters(double mu, double rho, int sl_order, double uniform_band, double threshold_split_cell, double n_times_dt);
 
-#ifdef P4_TO_P8
-  void set_smoke(Vec smoke, CF_3 *bc_smoke, bool refine_with_smoke=true, double smoke_thresh=.5);
-#else
-  void set_smoke(Vec smoke, CF_2 *bc_smoke, bool refine_with_smoke=true, double smoke_thresh=.5);
-#endif
+  void set_smoke(Vec smoke, CF_DIM *bc_smoke, bool refine_with_smoke=true, double smoke_thresh=.5);
 
   void set_phi(Vec phi);
 
-#ifdef P4_TO_P8
-  void set_external_forces(CF_3 **external_forces);
-#else
-  void set_external_forces(CF_2 **external_forces);
-#endif
+  void set_external_forces(CF_DIM **external_forces);
 
-#ifdef P4_TO_P8
-  void set_bc(BoundaryConditions3D *bc_v, BoundaryConditions3D *bc_p);
-#else
-  void set_bc(BoundaryConditions2D *bc_v, BoundaryConditions2D *bc_p);
-#endif
+  void set_bc(BoundaryConditionsDIM *bc_v, BoundaryConditionsDIM *bc_p);
 
   void set_velocities(Vec *vnm1, Vec *vn);
 
-#ifdef P4_TO_P8
-  void set_velocities(CF_3 **vnm1, CF_3 **vn);
-#else
-  void set_velocities(CF_2 **vnm1, CF_2 **vn);
-#endif
+  void set_velocities(CF_DIM **vnm1, CF_DIM **vn);
 
   void set_vstar(Vec *vstar);
 
@@ -389,11 +334,7 @@ public:
 
   void extrapolate_bc_v(my_p4est_node_neighbors_t *ngbd, Vec *v, Vec phi);
 
-#ifdef P4_TO_P8
-  bool update_from_tn_to_tnp1(const CF_3 *level_set=NULL, bool keep_grid_as_such=false, bool do_reinitialization=true);
-#else
-  bool update_from_tn_to_tnp1(const CF_2 *level_set=NULL, bool keep_grid_as_such=false, bool do_reinitialization=true);
-#endif
+  bool update_from_tn_to_tnp1(const CF_DIM *level_set=NULL, bool keep_grid_as_such=false, bool do_reinitialization=true);
 
   void compute_pressure();
 
@@ -451,11 +392,7 @@ public:
    */
   void save_state(const char* path_to_root_directory, double tn, unsigned int n_saved=1);
 
-#ifdef P4_TO_P8
-  void refine_coarsen_grid_after_restart(const CF_3 *level_set, bool do_reinitialization = true);
-#else
-  void refine_coarsen_grid_after_restart(const CF_2 *level_set, bool do_reinitialization = true);
-#endif
+  void refine_coarsen_grid_after_restart(const CF_DIM *level_set, bool do_reinitialization = true);
   size_t memory_estimate() const;
 
   void get_slice_averaged_vnp1_profile(unsigned short vel_component, unsigned short axis, std::vector<double>& avg_velocity_profile);

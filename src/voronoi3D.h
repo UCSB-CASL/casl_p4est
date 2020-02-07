@@ -6,7 +6,7 @@
 
 // We are in 3D (you, idiot!), so include p8est headers immediately
 #include <src/my_p8est_utils.h>
-#include <src/my_p8est_faces.h>
+//#include <src/my_p8est_faces.h>
 #include <src/casl_math.h>
 #include <src/point3.h>
 
@@ -15,7 +15,11 @@
 #ifdef Voronoi_DIM
 #undef Voronoi_DIM
 #endif
+#ifdef ngbdDIMseed
+#undef ngbdDIMseed
+#endif
 #define Voronoi_DIM Voronoi3D
+#define ngbdDIMseed ngbd3Dseed
 
 using std::vector;
 
@@ -84,6 +88,11 @@ private:
    * \param xyz_min the coordinates of the upper right corner of the computational domain
    */
   void add_point( int n, Point3 &pt, const bool* periodicity, const double* xyz_min, const double* xyz_max);
+  inline void add_point( int n, double x, double y, double z, const bool* periodicity, const double* xyz_min, const double* xyz_max)
+  {
+    Point3 pt(x, y, z);
+    add_point(n, pt, periodicity, xyz_min, xyz_max);
+  }
 
 public:
   /*!
@@ -136,12 +145,17 @@ public:
   // overloading
   void push( int n, double x, double y, double z, const bool* periodicity, const double* xyz_min, const double* xyz_max) { Point3 tmp(x, y, z); push(n, tmp, periodicity, xyz_min, xyz_max); }
 
-  void assemble_from_set_of_faces(const unsigned char& dir, const std::set<p4est_locidx_t>& set_of_faces, const my_p4est_faces_t* faces, const bool* periodicity, const double* xyz_min, const double* xyz_max);
+
+  void assemble_from_set_of_faces(const std::set<indexed_and_located_face>& set_of_neighbor_faces, const bool* periodicity, const double* xyz_min, const double* xyz_max);
 
   /*!
-     * \brief construct the voronoi parition around point pc using the neighborhood given in nb_seeds
-     */
-  void construct_partition(const double *xyz_min, const double *xyz_max, const bool *periodic);
+   * \brief construct_partition constructs the voronoi cell around point pc using the neighborhood given in nb_seeds
+   * \param [in] xyz_min:   minimal bounds of the domain
+   * \param [in] xyz_max:   maximal bounds of the domain
+   * \param [in] periodic:  periodicity flags for each cartesian direction
+   * \return a flag that is true iff the constructed cell has a wall neighbor.
+   */
+  bool construct_partition(const double *xyz_min, const double *xyz_max, const bool *periodic);
 
   inline double get_volume() const { return this->volume; }
 

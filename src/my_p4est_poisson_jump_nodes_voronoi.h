@@ -49,11 +49,7 @@ struct error_sample
     this->error_location_z  = -DBL_MAX;
 #endif
   }
-  error_sample(double value, double x_loc, double y_loc
-             #ifdef P4_TO_P8
-               , double z_loc
-             #endif
-               )
+  error_sample(double value, DIM(double x_loc, double y_loc, double z_loc))
   {
     this->error_value       = value;
     this->error_location_x  = x_loc;
@@ -114,77 +110,39 @@ class my_p4est_poisson_jump_nodes_voronoi_t
   };
 
 
-#ifdef P4_TO_P8
-  class ZERO: public CF_3
+  class ZERO: public CF_DIM
   {
   public:
-    double operator()(double, double, double) const
+    double operator()(DIM(double, double, double)) const
     {
       return 0;
     }
   } zero;
 
-  class MU_CONSTANT: public CF_3
+  class MU_CONSTANT: public CF_DIM
   {
   private:
     double cst;
   public:
     MU_CONSTANT() { cst = 1; }
     void set(double cst) { this->cst = cst; }
-    double operator()(double, double, double) const
+    double operator()(DIM(double, double, double)) const
     {
       return cst;
     }
   };
-
-  class ADD_CONSTANT: public CF_3
+  class ADD_CONSTANT: public CF_DIM
   {
   private:
     double cst;
   public:
     ADD_CONSTANT() { cst = 0; }
     void set(double cst) { this->cst = cst; }
-    double operator()(double, double, double) const
+    double operator()(DIM(double, double, double)) const
     {
       return cst;
     }
   };
-#else
-  class ZERO: public CF_2
-  {
-  public:
-    double operator()(double, double) const
-    {
-      return 0;
-    }
-  } zero;
-
-  class MU_CONSTANT: public CF_2
-  {
-  private:
-    double cst;
-  public:
-    MU_CONSTANT() { cst = 1; }
-    void set(double cst) { this->cst = cst; }
-    double operator()(double, double) const
-    {
-      return cst;
-    }
-  };
-
-  class ADD_CONSTANT: public CF_2
-  {
-  private:
-    double cst;
-  public:
-    ADD_CONSTANT() { cst = 0; }
-    void set(double cst) { this->cst = cst; }
-    double operator()(double, double) const
-    {
-      return cst;
-    }
-  };
-#endif
 
   MU_CONSTANT   mu_constant_m, mu_constant_p;
   ADD_CONSTANT  add_constant_m, add_constant_p;
@@ -214,11 +172,7 @@ class my_p4est_poisson_jump_nodes_voronoi_t
    * \brief voro_seeds: vector of Voronoi seeds, contains num_local_voro
    * locally owned Voronoi seeds, first, then all the ghost Voronoi seeds
    */
-#ifdef P4_TO_P8
-  std::vector<Point3> voro_seeds;
-#else
-  std::vector<Point2> voro_seeds;
-#endif
+  std::vector<PointDIM> voro_seeds;
   /*!
    * \brief grid2voro: map between grid nodes and closest Voronoi seeds
    * grid2voro[k] is a vector of local indices in Voronoi seeds in
@@ -250,11 +204,7 @@ class my_p4est_poisson_jump_nodes_voronoi_t
    */
   std::vector<p4est_locidx_t> voro_ghost_rank;
 
-#ifdef P4_TO_P8
-  BoundaryConditions3D *bc;
-#else
-  BoundaryConditions2D *bc;
-#endif
+  BoundaryConditionsDIM *bc;
 
   my_p4est_interpolation_nodes_t interp_phi;
   my_p4est_interpolation_nodes_t rhs_m;
@@ -265,19 +215,11 @@ class my_p4est_poisson_jump_nodes_voronoi_t
   bool local_u_jump;
   bool local_mu_grad_u_jump;
 
-#ifdef P4_TO_P8
-  CF_3 *mu_m, *mu_p;
-//  CF_3 *add;
-  CF_3 *add_m, *add_p;
-  CF_3 *u_jump;
-  CF_3 *mu_grad_u_jump;
-#else
-  CF_2 *mu_m, *mu_p;
-//  CF_2 *add;
-  CF_2 *add_m, *add_p;
-  CF_2 *u_jump;
-  CF_2 *mu_grad_u_jump;
-#endif
+  CF_DIM *mu_m, *mu_p;
+//  CF_DIM *add;
+  CF_DIM *add_m, *add_p;
+  CF_DIM *u_jump;
+  CF_DIM *mu_grad_u_jump;
 
   // PETSc objects
   Mat A;
@@ -389,38 +331,7 @@ public:
    * That would ensure geomertical consistency and avoid ill-behaved problems when points are very
    * close to vertices or numerically considered as non-vertices]
    */
-#ifdef P4_TO_P8
-  void compute_voronoi_cell(unsigned int seed_idx, Voronoi3D &voro) const;
-#else
-  void compute_voronoi_cell(unsigned int seed_idx, Voronoi2D &voro) const;
-#endif
-  /*!
-   * \brief push_quad_idx_to_list adds a local quadrant index to a list if not already in it
-   * \param loc_quad_idx: local index of the quadrant under consideration
-   * \param list_of_quad_idx: list of local quadrant indices
-   */
-  inline void push_quad_idx_to_list(const p4est_locidx_t loc_quad_idx, std::vector<p4est_locidx_t>& list_of_quad_idx) const
-  {
-    if(loc_quad_idx >= 0) // invalid quad if loc_quad_idx < 0
-    {
-      bool add_it = true;
-      for(unsigned int nn=0; nn<list_of_quad_idx.size(); ++nn)
-        if(list_of_quad_idx[nn] == loc_quad_idx)
-        {
-          add_it = false;
-          break;
-        }
-      if(add_it)
-      {
-#ifndef P4_TO_P8
-        std::cout << std::endl;
-        std::cout << "GUESS WHAT; I'm NOT useless" << std::endl; // see comment above in compute_voronoi_cell
-        std::cout << std::endl;
-#endif
-        list_of_quad_idx.push_back(loc_quad_idx);
-      }
-    }
-  }
+  void compute_voronoi_cell(unsigned int seed_idx, Voronoi_DIM &voro) const;
   /*!
    * \brief setup_linear_system: self-explanatory, core of the solver, see Arthur's paper
    * "Solving elliptic problems with discontinuities on irregular domains – the Voronoi Interface Method"
@@ -446,11 +357,7 @@ public:
   void set_diagonal(Vec add_) {set_diagonals(add_, add_);}
   void set_diagonals(Vec add_m_, Vec add_p_);
 
-#ifdef P4_TO_P8
-  void set_bc(BoundaryConditions3D& bc);
-#else
-  void set_bc(BoundaryConditions2D& bc);
-#endif
+  void set_bc(BoundaryConditionsDIM& bc);
 
   void set_mu(double mu_) {set_mu(mu_, mu_);}
   void set_mu(double mu_m_, double mu_p_);
@@ -552,14 +459,7 @@ public:
    */
   void check_voronoi_partition() const;
 
-  void get_max_error_at_seed_locations(error_sample& max_error_on_seeds, int& rank_max_error,
-                                     #ifdef P4_TO_P8
-                                       double (*exact_solution) (double, double, double),
-                                     #else
-                                       double (*exact_solution) (double, double),
-                                     #endif
-                                       const double& shift_value = 0.0
-                                       )  const;
+  void get_max_error_at_seed_locations(error_sample& max_error_on_seeds, int& rank_max_error, double (*exact_solution) (DIM(double, double, double)), const double& shift_value = 0.0)  const;
 };
 /*
 POTENTIAL IMPROVEMENTS [Raphael]

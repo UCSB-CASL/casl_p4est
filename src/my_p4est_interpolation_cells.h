@@ -19,11 +19,7 @@ private:
 
   Vec phi;
 
-#ifdef P4_TO_P8
-  const BoundaryConditions3D *bc;
-#else
-  const BoundaryConditions2D *bc;
-#endif
+  const BoundaryConditionsDIM *bc;
 
   double tree_dimension[P4EST_DIM], domain_dimension[P4EST_DIM];
 
@@ -37,21 +33,12 @@ public:
   my_p4est_interpolation_cells_t(const my_p4est_cell_neighbors_t *ngbd_c, const my_p4est_node_neighbors_t* ngbd_n);
 
   using my_p4est_interpolation_t::set_input;
-#ifdef P4_TO_P8
-  void set_input(Vec *F, Vec phi, const BoundaryConditions3D *bc, unsigned int n_vecs_);
-  inline void set_input(Vec F, Vec phi, const BoundaryConditions3D *bc) { set_input(&F, phi, bc, 1); }
-#else
-  void set_input(Vec *F, Vec phi, const BoundaryConditions2D *bc, unsigned int n_vecs_);
-  inline void set_input(Vec F, Vec phi, const BoundaryConditions2D *bc) { set_input(&F, phi, bc, 1); }
-#endif
+  void set_input(Vec *F, Vec phi, const BoundaryConditionsDIM *bc, unsigned int n_vecs_);
+  inline void set_input(Vec F, Vec phi, const BoundaryConditionsDIM *bc) { set_input(&F, phi, bc, 1); }
 
   // definition of abstract interpolation methods
   using my_p4est_interpolation_t::operator();
-#ifdef P4_TO_P8
-  void operator()(double x, double y, double z, double* results) const;
-#else
-  void operator()(double x, double y, double* results) const;
-#endif
+  void operator()(DIM(double x, double y, double z), double* results) const;
 
   void interpolate(const p4est_quadrant_t &quad, const double *xyz, double* results, const unsigned int &comp) const;
 };

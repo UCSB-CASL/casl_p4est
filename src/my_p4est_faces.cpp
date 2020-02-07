@@ -24,6 +24,7 @@
 #else
 extern PetscLogEvent log_my_p4est_faces_t;
 extern PetscLogEvent log_my_p4est_faces_notify_t;
+extern PetscLogEvent log_my_p4est_faces_compute_voronoi_cell_t;
 #endif
 #ifndef CASL_LOG_FLOPS
 #undef PetscLogFlops
@@ -34,11 +35,21 @@ extern PetscLogEvent log_my_p4est_faces_notify_t;
 my_p4est_faces_t::my_p4est_faces_t(p4est_t *p4est, p4est_ghost_t *ghost, my_p4est_brick_t *myb, my_p4est_cell_neighbors_t *ngbd_c, bool initialize_neighborhoods_of_fine_faces):
   max_p4est_lvl(((splitting_criteria_t*) p4est->user_pointer)->max_lvl)
 {
-  this->p4est = p4est;
-  this->ghost = ghost;
-  this->myb = myb;
-  this->ngbd_c = ngbd_c;
-  dxyz_min(p4est, smallest_dxyz);
+  this->p4est   = p4est;
+  this->ghost   = ghost;
+  this->myb     = myb;
+  this->ngbd_c  = ngbd_c;
+  // domain-size info
+  const p4est_topidx_t  *t2v = p4est->connectivity->tree_to_vertex;
+  const double          *v2c = p4est->connectivity->vertices;
+  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+  {
+    periodic[dir]         = is_periodic(p4est, dir);
+    tree_dimensions[dir]  = v2c[3*t2v[P4EST_CHILDREN - 1] + dir] - v2c[3*t2v[0] + dir];
+    smallest_dxyz[dir]    = tree_dimensions[dir]/(1 << (((splitting_criteria_t *) p4est->user_pointer)->max_lvl));
+    xyz_max[dir]          = v2c[3*t2v[P4EST_CHILDREN*(p4est->trees->elem_count - 1) + P4EST_CHILDREN - 1] + dir];
+    xyz_min[dir]          = v2c[3*t2v[0] + dir];
+  }
   finest_faces_neighborhoods_are_set = false;
   init_faces(initialize_neighborhoods_of_fine_faces);
 }
@@ -50,10 +61,10 @@ void my_p4est_faces_t::init_faces(bool initialize_neighborhoods_of_fine_faces)
 
   int mpiret;
 
-  for(unsigned char d=0; d<P4EST_FACES; ++d)
+  for(unsigned char d = 0; d < P4EST_FACES; ++d)
     q2f_[d].resize(p4est->local_num_quadrants + ghost->ghosts.elem_count, NO_VELOCITY);
 
-  for(unsigned char d=0; d<P4EST_DIM; ++d)
+  for(unsigned char d = 0; d < P4EST_DIM; ++d)
   {
     num_local[d] = 0;
     num_ghost[d] = 0;
@@ -64,23 +75,25 @@ void my_p4est_faces_t::init_faces(bool initialize_neighborhoods_of_fine_faces)
     uniform_face_neighbors[d].clear();
   }
 
-  vector<p4est_quadrant_t> ngbd;
+  set_of_neighboring_quadrants ngbd;
+  const int min_ghost_owner_rank = quad_find_ghost_owner(ghost, 0);
+  const int max_ghost_owner_rank = quad_find_ghost_owner(ghost, ghost->ghosts.elem_count - 1);
+  std::set<int> set_of_ranks;
   vector< vector<faces_comm_1_t> > buff_query1(p4est->mpisize); // buff_query[r][k] :: kth query to be sent to processor r (query == what is your local face number for the quadrant of queried local index in the queried face direction?)
   vector< vector<p4est_locidx_t> > map(p4est->mpisize); // map[r][k] :: local index of the locally owned quadrant associated with the kth query sent to proc r (i.e. buff_query[r][k])
 
   /* first process local velocities:
    * loop through all local quadrants, and process face by face in the following order f_m00, f_p00, f_0m0, f_0p0, f_00m and f_00p
    * */
-  for(p4est_topidx_t tree_idx=p4est->first_local_tree; tree_idx<=p4est->last_local_tree; ++tree_idx)
+  for(p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx)
   {
     p4est_tree_t *tree = p4est_tree_array_index(p4est->trees, tree_idx);
-    for(size_t q=0; q<tree->quadrants.elem_count; ++q)
+    for(size_t q = 0; q < tree->quadrants.elem_count; ++q)
     {
-      p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, q);
-      p4est_locidx_t quad_idx = q+tree->quadrants_offset;
-      for (int face_dir = 0; face_dir < P4EST_FACES; ++face_dir)
+      p4est_quadrant_t *quad = p4est_quadrant_array_index(&tree->quadrants, q);
+      p4est_locidx_t quad_idx = q + tree->quadrants_offset;
+      for (unsigned char face_dir = 0; face_dir < P4EST_FACES; ++face_dir)
       {
-
         /*
          * - If the face is a wall, it is owned by the current proc (and not shared by definition).
          * - Otherwise, find the neighboring cell(s) across the face,
@@ -96,26 +109,28 @@ void my_p4est_faces_t::init_faces(bool initialize_neighborhoods_of_fine_faces)
           q2f_[face_dir][quad_idx] = num_local[face_dir/2]++;
         else
         {
-          ngbd.resize(0);
-          ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, DIM(((face_dir/2==dir::x)?((face_dir%2==1)?+1:-1):0), ((face_dir/2==dir::y)?((face_dir%2==1)?+1:-1):0), ((face_dir/2==dir::z)?((face_dir%2==1)?+1:-1):0)));
-          if(ngbd.size()==1)
+          ngbd.clear();
+          char search[P4EST_DIM] = {DIM(0, 0, 0)}; search[face_dir/2] = (face_dir%2 == 1 ? 1 : -1);
+          ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, DIM(search[0], search[1], search[2]));
+          if(ngbd.size() == 1)
           {
-            P4EST_ASSERT(ngbd[0].level<=quad->level);
-            if(ngbd[0].level<quad->level /* the neighbor is a (strictly) bigger cell */
-               || (ngbd[0].p.piggy3.local_num <  p4est->local_num_quadrants && q2f_[((face_dir%2==0)?face_dir+1:face_dir-1)][ngbd[0].p.piggy3.local_num]==NO_VELOCITY) /* the shared face is local has not been indexed yet */
-               || (ngbd[0].p.piggy3.local_num >= p4est->local_num_quadrants && ngbd[0].p.piggy3.local_num-p4est->local_num_quadrants >= ghost->proc_offsets[p4est->mpirank] ) ) /* ngbd is on process with larger index */
+            P4EST_ASSERT(ngbd.begin()->level <= quad->level);
+            if(ngbd.begin()->level < quad->level /* the neighbor is a (strictly) bigger cell */
+               || (ngbd.begin()->p.piggy3.local_num <  p4est->local_num_quadrants && q2f_[(face_dir%2 == 0 ? face_dir + 1 : face_dir - 1)][ngbd.begin()->p.piggy3.local_num] == NO_VELOCITY) /* the shared face is local has not been indexed yet */
+               || (ngbd.begin()->p.piggy3.local_num >= p4est->local_num_quadrants && ngbd.begin()->p.piggy3.local_num - p4est->local_num_quadrants >= ghost->proc_offsets[p4est->mpirank])) /* ngbd is on process with larger index */
               q2f_[face_dir][quad_idx] = num_local[face_dir/2]++;
-            else if(ngbd[0].p.piggy3.local_num >= p4est->local_num_quadrants && ngbd[0].p.piggy3.local_num-p4est->local_num_quadrants < ghost->proc_offsets[p4est->mpirank])
+            else if(ngbd.begin()->p.piggy3.local_num >= p4est->local_num_quadrants && ngbd.begin()->p.piggy3.local_num - p4est->local_num_quadrants < ghost->proc_offsets[p4est->mpirank])
             {
-              p4est_locidx_t ghost_idx = ngbd[0].p.piggy3.local_num-p4est->local_num_quadrants;
-              int r = quad_find_ghost_owner(ghost, ghost_idx);
-              const p4est_quadrant_t* g = (const p4est_quadrant_t*)sc_array_index(&ghost->ghosts, ghost_idx);
-              faces_comm_1_t c; c.local_num = g->p.piggy3.local_num; c.dir = ((face_dir%2==0)?face_dir+1:face_dir-1);
+              p4est_locidx_t ghost_idx = ngbd.begin()->p.piggy3.local_num - p4est->local_num_quadrants;
+              int r = quad_find_ghost_owner(ghost, ghost_idx, min_ghost_owner_rank, p4est->mpirank); P4EST_ASSERT(r < p4est->mpirank); // we know upper limit is mpirank (more restrictive than max_ghost_owner_rank)
+              const p4est_quadrant_t* g = p4est_quadrant_array_index(&ghost->ghosts, ghost_idx);
+              faces_comm_1_t c; c.local_num = g->p.piggy3.local_num; c.dir = (face_dir%2 == 0 ? face_dir + 1 : face_dir - 1);
               buff_query1[r].push_back(c);
               map[r].push_back(quad_idx);
+              set_of_ranks.insert(r);
             }
             else
-              q2f_[face_dir][quad_idx] = q2f_[((face_dir%2==0)?face_dir+1:face_dir-1)][ngbd[0].p.piggy3.local_num];
+              q2f_[face_dir][quad_idx] = q2f_[(face_dir%2 == 0 ? face_dir + 1 : face_dir - 1)][ngbd.begin()->p.piggy3.local_num];
           }
         }
       }
@@ -124,24 +139,26 @@ void my_p4est_faces_t::init_faces(bool initialize_neighborhoods_of_fine_faces)
 
   /* synchronize number of owned faces with the rest of the processes */
   vector<bool> face_has_already_been_visited[P4EST_DIM];
-  for(unsigned char d=0; d<P4EST_DIM; ++d)
+  for(unsigned char d = 0; d < P4EST_DIM; ++d)
   {
     global_owned_indeps[d].resize(p4est->mpisize);
     global_owned_indeps[d][p4est->mpirank] = num_local[d];
     face_has_already_been_visited[d].resize(num_local[d], false);
     mpiret = MPI_Allgather(&num_local[d], 1, P4EST_MPI_LOCIDX, &global_owned_indeps[d][0], 1, P4EST_MPI_LOCIDX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+    proc_offset[d].resize(p4est->mpisize+1);
+    proc_offset[d][0] = 0;
   }
+  for (int r = 1; r <= p4est->mpisize; ++r)
+    for (unsigned char d = 0; d < P4EST_DIM; ++d)
+      proc_offset[d][r] = proc_offset[d][r-1] + global_owned_indeps[d][r-1];
 
   /* initiate communications */
   vector<int> receivers_rank;
-  for(int r=0; r<p4est->mpisize; ++r) // [Raphael:] probably not the best way to do it on large numbers of cores, but it'll do for now (consider using std::set otherwise)
-  {
-    if(buff_query1[r].size()>0)
-    {
-      P4EST_ASSERT(r != p4est->mpirank);
-      receivers_rank.push_back(r);
-    }
+  for (std::set<int>::const_iterator it = set_of_ranks.begin(); it != set_of_ranks.end(); ++it) {
+    P4EST_ASSERT(*it < p4est->mpirank);
+    receivers_rank.push_back(*it);
   }
+
   int num_receivers = receivers_rank.size();
   vector<int> senders_rank(p4est->mpisize);
   int num_senders;
@@ -151,10 +168,9 @@ void my_p4est_faces_t::init_faces(bool initialize_neighborhoods_of_fine_faces)
   sc_notify(receivers_rank.data(), num_receivers, senders_rank.data(), &num_senders, p4est->mpicomm);
   ierr = PetscLogEventEnd(log_my_p4est_faces_notify_t, 0, 0, 0, 0); CHKERRXX(ierr);
 
-
   /* send the queries to fill in the local information */
   vector<MPI_Request> req_query1(num_receivers);
-  for(int l=0; l<num_receivers; ++l)
+  for(int l = 0; l < num_receivers; ++l)
   {
     mpiret = MPI_Isend(&buff_query1[receivers_rank[l]][0],
         buff_query1[receivers_rank[l]].size()*sizeof(faces_comm_1_t),
@@ -166,7 +182,7 @@ void my_p4est_faces_t::init_faces(bool initialize_neighborhoods_of_fine_faces)
   vector<faces_comm_1_t> buff_recv_comm1;
   vector< vector<p4est_locidx_t> > buff_reply1_send(num_senders);
   vector<MPI_Request> req_reply1(num_senders);
-  for(int l=0; l<num_senders; ++l)
+  for(int l = 0; l < num_senders; ++l)
   {
     MPI_Status status;
     mpiret = MPI_Probe(MPI_ANY_SOURCE, 5, p4est->mpicomm, &status); SC_CHECK_MPI(mpiret);
@@ -181,7 +197,7 @@ void my_p4est_faces_t::init_faces(bool initialize_neighborhoods_of_fine_faces)
 
     /* prepare the reply */
     buff_reply1_send[l].resize(buff_recv_comm1.size());
-    for(unsigned int n=0; n<buff_recv_comm1.size(); ++n)
+    for(size_t n = 0; n < buff_recv_comm1.size(); ++n)
     {
       p4est_locidx_t local_face_idx = q2f_[buff_recv_comm1[n].dir][buff_recv_comm1[n].local_num];
       buff_reply1_send[l][n] = local_face_idx;
@@ -201,7 +217,7 @@ void my_p4est_faces_t::init_faces(bool initialize_neighborhoods_of_fine_faces)
 
   /* get the reply and fill in the missing local information */
   vector<p4est_locidx_t> buff_recv_locidx;
-  for(int l=0; l<num_receivers; ++l)
+  for(int l = 0; l < num_receivers; ++l)
   {
     MPI_Status status;
     mpiret = MPI_Probe(MPI_ANY_SOURCE, 6, p4est->mpicomm, &status); SC_CHECK_MPI(mpiret);
@@ -215,10 +231,10 @@ void my_p4est_faces_t::init_faces(bool initialize_neighborhoods_of_fine_faces)
     mpiret = MPI_Recv(&buff_recv_locidx[0], vec_size*sizeof(p4est_locidx_t), MPI_BYTE, r, status.MPI_TAG, p4est->mpicomm, &status);
     SC_CHECK_MPI(mpiret);
 
-    for(unsigned int n=0; n<buff_recv_locidx.size(); ++n)
+    for(size_t n = 0; n < buff_recv_locidx.size(); ++n)
     {
-      unsigned int queried_face_dir = buff_query1[r][n].dir;
-      q2f_[((queried_face_dir%2==0)? (queried_face_dir+1) : (queried_face_dir-1))][map[r][n]] = num_ghost[queried_face_dir/2]+num_local[queried_face_dir/2];
+      unsigned char queried_face_dir = buff_query1[r][n].dir;
+      q2f_[(queried_face_dir%2 == 0 ? queried_face_dir + 1 : queried_face_dir - 1)][map[r][n]] = num_ghost[queried_face_dir/2]+num_local[queried_face_dir/2];
       ghost_local_num[queried_face_dir/2].push_back(buff_recv_locidx[n]);
       nonlocal_ranks[queried_face_dir/2].push_back(r);
       num_ghost[queried_face_dir/2]++;
@@ -231,25 +247,26 @@ void my_p4est_faces_t::init_faces(bool initialize_neighborhoods_of_fine_faces)
 
   /* now synchronize the ghost layer */
   vector< vector<p4est_locidx_t> > buff_query2(p4est->mpisize);
-  for(int r=0; r<p4est->mpisize; ++r)
-    map[r].clear();
-  for(size_t ghost_idx=0; ghost_idx<ghost->ghosts.elem_count; ++ghost_idx)
+  for (std::set<int>::const_iterator it = set_of_ranks.begin(); it != set_of_ranks.end(); ++it) {
+    P4EST_ASSERT(*it < p4est->mpirank);
+    map[*it].clear();
+  }
+  set_of_ranks.clear();
+  int ghost_rank = min_ghost_owner_rank;
+  for(p4est_locidx_t ghost_idx = 0; ghost_idx < (p4est_locidx_t) ghost->ghosts.elem_count; ++ghost_idx)
   {
-    int r = quad_find_ghost_owner(ghost, ghost_idx);
-    p4est_quadrant_t *g = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts, ghost_idx);
-    buff_query2[r].push_back(g->p.piggy3.local_num);
-    map[r].push_back(ghost_idx);
+    while (ghost_rank < max_ghost_owner_rank && ghost->proc_offsets[ghost_rank + 1] <= ghost_idx) { ghost_rank++; } // we loop in increasing ghost owner rank --> this is more efficient than binary search
+    p4est_quadrant_t *g = p4est_quadrant_array_index(&ghost->ghosts, ghost_idx);
+    buff_query2[ghost_rank].push_back(g->p.piggy3.local_num);
+    map[ghost_rank].push_back(ghost_idx);
+    set_of_ranks.insert(ghost_rank);
   }
 
   /* figure out the second communication pattern */
   receivers_rank.clear();
-  for(int r=0; r<p4est->mpisize; ++r)
-  {
-    if(buff_query2[r].size()>0)
-    {
-      P4EST_ASSERT(r != p4est->mpirank);
-      receivers_rank.push_back(r);
-    }
+  for (std::set<int>::const_iterator it = set_of_ranks.begin(); it != set_of_ranks.end(); ++it) {
+    P4EST_ASSERT(min_ghost_owner_rank <= *it && *it <= max_ghost_owner_rank);
+    receivers_rank.push_back(*it);
   }
   num_receivers = receivers_rank.size();
   ierr = PetscLogEventBegin(log_my_p4est_faces_notify_t, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -257,7 +274,7 @@ void my_p4est_faces_t::init_faces(bool initialize_neighborhoods_of_fine_faces)
   ierr = PetscLogEventEnd(log_my_p4est_faces_notify_t, 0, 0, 0, 0); CHKERRXX(ierr);
 
   vector<MPI_Request> req_query2(num_receivers);
-  for(int l=0; l<num_receivers; ++l)
+  for(int l = 0; l < num_receivers; ++l)
   {
     mpiret = MPI_Isend(&buff_query2[receivers_rank[l]][0],
         buff_query2[receivers_rank[l]].size()*sizeof(p4est_locidx_t),
@@ -267,7 +284,7 @@ void my_p4est_faces_t::init_faces(bool initialize_neighborhoods_of_fine_faces)
 
   vector<MPI_Request> req_reply2(num_senders);
   vector< vector<faces_comm_2_t> > buff_reply2(num_senders);
-  for(int l=0; l<num_senders; ++l)
+  for(int l = 0; l < num_senders; ++l)
   {
     MPI_Status status;
     mpiret = MPI_Probe(MPI_ANY_SOURCE, 7, p4est->mpicomm, &status); SC_CHECK_MPI(mpiret);
@@ -281,18 +298,18 @@ void my_p4est_faces_t::init_faces(bool initialize_neighborhoods_of_fine_faces)
     mpiret = MPI_Recv(&buff_recv_locidx[0], vec_size*sizeof(p4est_locidx_t), MPI_BYTE, r, status.MPI_TAG, p4est->mpicomm, &status);
     SC_CHECK_MPI(mpiret);
 
-    for(unsigned int q=0; q<buff_recv_locidx.size(); ++q)
+    for(size_t q = 0; q < buff_recv_locidx.size(); ++q)
     {
       faces_comm_2_t c;
-      for(int face_dir=0; face_dir<P4EST_FACES; face_dir++)
+      for(unsigned char face_dir = 0; face_dir < P4EST_FACES; face_dir++)
       {
         p4est_locidx_t u_tmp = q2f_[face_dir][buff_recv_locidx[q]];
         /* local value */
-        if(u_tmp<num_local[face_dir/2])
+        if(u_tmp < num_local[face_dir/2])
         {
           c.rank[face_dir] = p4est->mpirank;
           c.local_num[face_dir] = u_tmp;
-          if(u_tmp!=NO_VELOCITY && !face_has_already_been_visited[face_dir/2][u_tmp])
+          if(u_tmp != NO_VELOCITY && !face_has_already_been_visited[face_dir/2][u_tmp])
           {
             local_layer_face_index[face_dir/2].push_back(u_tmp);
             face_has_already_been_visited[face_dir/2][u_tmp] = true;
@@ -301,8 +318,8 @@ void my_p4est_faces_t::init_faces(bool initialize_neighborhoods_of_fine_faces)
         /* ghost value */
         else
         {
-          c.rank[face_dir] = nonlocal_ranks[face_dir/2][u_tmp-num_local[face_dir/2]];
-          c.local_num[face_dir] = ghost_local_num[face_dir/2][u_tmp-num_local[face_dir/2]];
+          c.rank[face_dir] = nonlocal_ranks[face_dir/2][u_tmp - num_local[face_dir/2]];
+          c.local_num[face_dir] = ghost_local_num[face_dir/2][u_tmp - num_local[face_dir/2]];
         }
       }
       buff_reply2[l].push_back(c);
@@ -314,7 +331,7 @@ void my_p4est_faces_t::init_faces(bool initialize_neighborhoods_of_fine_faces)
 
   /* receive the ghost information and fill in the local info */
   vector<faces_comm_2_t> buff_recv_comm2;
-  for(int l=0; l<num_receivers; ++l)
+  for(int l = 0; l < num_receivers; ++l)
   {
     MPI_Status status;
     mpiret = MPI_Probe(MPI_ANY_SOURCE, 8, p4est->mpicomm, &status); SC_CHECK_MPI(mpiret);
@@ -329,13 +346,13 @@ void my_p4est_faces_t::init_faces(bool initialize_neighborhoods_of_fine_faces)
     SC_CHECK_MPI(mpiret);
 
     /* FILL IN LOCAL INFO */
-    for(int n=0; n<vec_size; ++n)
+    for(int n = 0; n < vec_size; ++n)
     {
-      p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts, map[r][n]);
+      p4est_quadrant_t *quad = p4est_quadrant_array_index(&ghost->ghosts, map[r][n]);
       p4est_locidx_t quad_idx = map[r][n]+p4est->local_num_quadrants;
       p4est_topidx_t tree_idx = quad->p.piggy3.which_tree;
 
-      for (int face_dir = 0; face_dir < P4EST_FACES; ++face_dir) {
+      for (unsigned char face_dir = 0; face_dir < P4EST_FACES; ++face_dir) {
         if(is_quad_Wall(p4est, tree_idx, quad, face_dir))
         {
           q2f_[face_dir][quad_idx] = num_local[face_dir/2] + num_ghost[face_dir/2];
@@ -345,11 +362,12 @@ void my_p4est_faces_t::init_faces(bool initialize_neighborhoods_of_fine_faces)
         }
         else
         {
-          ngbd.resize(0);
-          ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, DIM(((face_dir/2==dir::x)? ((face_dir%2==1)?+1:-1):0), ((face_dir/2==dir::y)? ((face_dir%2==1)?+1:-1):0), ((face_dir/2==dir::z)? ((face_dir%2==1)?+1:-1):0)));
-          if((ngbd.size()==0 || ngbd.size()==1) && buff_recv_comm2[n].local_num[face_dir]!=NO_VELOCITY)
+          ngbd.clear();
+          char search[P4EST_DIM] = {DIM(0, 0, 0)}; search[face_dir/2] = (face_dir%2 == 1 ? +1 : -1);
+          ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, DIM(search[0], search[1], search[2]));
+          if((ngbd.size() == 0 || ngbd.size() == 1) && buff_recv_comm2[n].local_num[face_dir] != NO_VELOCITY)
           {
-            if(ngbd.size()==0 || q2f_[((face_dir%2==0)?(face_dir+1):(face_dir-1))][ngbd[0].p.piggy3.local_num]==NO_VELOCITY)
+            if(ngbd.size() == 0 || q2f_[(face_dir%2 == 0 ? face_dir + 1 : face_dir - 1)][ngbd.begin()->p.piggy3.local_num] == NO_VELOCITY)
             {
               q2f_[face_dir][quad_idx] = num_local[face_dir/2] + num_ghost[face_dir/2];
               ghost_local_num[face_dir/2].push_back(buff_recv_comm2[n].local_num[face_dir]);
@@ -357,7 +375,7 @@ void my_p4est_faces_t::init_faces(bool initialize_neighborhoods_of_fine_faces)
               num_ghost[face_dir/2]++;
             }
             else
-              q2f_[face_dir][quad_idx] = q2f_[((face_dir%2==0)?(face_dir+1):(face_dir-1))][ngbd[0].p.piggy3.local_num];
+              q2f_[face_dir][quad_idx] = q2f_[(face_dir%2 == 0 ? face_dir + 1 : face_dir - 1)][ngbd.begin()->p.piggy3.local_num];
           }
         }
       }
@@ -366,19 +384,19 @@ void my_p4est_faces_t::init_faces(bool initialize_neighborhoods_of_fine_faces)
 
   /* now construct the velocity to quadrant link and complete the list of entirely local faces */
   int local_idx[P4EST_DIM];
-  for(unsigned char d=0; d<P4EST_DIM; ++d)
+  for(unsigned char d = 0; d < P4EST_DIM; ++d)
   {
     f2q_[d].resize(num_local[d] + num_ghost[d]);
     local_inner_face_index[d].resize(num_local[d]-local_layer_face_index[d].size());
     local_idx[d] = 0;
   }
-  for(p4est_topidx_t tree_idx=p4est->first_local_tree; tree_idx<=p4est->last_local_tree; ++tree_idx)
+  for(p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx)
   {
-    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
-    for(size_t q=0; q<tree->quadrants.elem_count; ++q)
+    p4est_tree_t *tree = p4est_tree_array_index(p4est->trees, tree_idx);
+    for(size_t q = 0; q < tree->quadrants.elem_count; ++q)
     {
-      p4est_locidx_t quad_idx = q+tree->quadrants_offset;
-      for(unsigned char face_dir=0; face_dir<P4EST_FACES; face_dir++)
+      p4est_locidx_t quad_idx = q + tree->quadrants_offset;
+      for(unsigned char face_dir = 0; face_dir < P4EST_FACES; face_dir++)
       {
         if(q2f_[face_dir][quad_idx] != NO_VELOCITY)
         {
@@ -401,11 +419,11 @@ void my_p4est_faces_t::init_faces(bool initialize_neighborhoods_of_fine_faces)
     P4EST_ASSERT(local_idx[dir] == num_local[dir]-((int) local_layer_face_index[dir].size()));
 #endif
 
-  for(size_t q=0; q<ghost->ghosts.elem_count; ++q)
+  for(size_t q = 0; q < ghost->ghosts.elem_count; ++q)
   {
     const p4est_quadrant_t* ghost_quad = p4est_quadrant_array_index(&ghost->ghosts, q);
-    p4est_locidx_t quad_idx = q+p4est->local_num_quadrants;
-    for(unsigned char face_dir=0; face_dir<P4EST_FACES; face_dir++)
+    p4est_locidx_t quad_idx = q + p4est->local_num_quadrants;
+    for(unsigned char face_dir = 0; face_dir < P4EST_FACES; face_dir++)
     {
       if(q2f_[face_dir][quad_idx] != NO_VELOCITY && f2q_[face_dir/2][q2f_[face_dir][quad_idx]].quad_idx == -1) // we do not overwrite f2q if already well-defined (i.e. not -1) to give precedence of local quadrants over ghosts
       {
@@ -431,21 +449,22 @@ void my_p4est_faces_t::init_faces(bool initialize_neighborhoods_of_fine_faces)
   ierr = PetscLogEventEnd(log_my_p4est_faces_t, 0, 0, 0, 0); CHKERRXX(ierr);
 }
 
-
 void my_p4est_faces_t::find_fine_face_neighbors_and_store_it(const p4est_topidx_t& tree_idx, const p4est_locidx_t& quad_idx, p4est_tree_t*tree,
                                                              const unsigned char& face_dir, const p4est_locidx_t& local_face_idx)
 {
-  P4EST_ASSERT((quad_idx >=0) && (quad_idx <p4est->local_num_quadrants + ((p4est_locidx_t)ghost->ghosts.elem_count)));
+  if(finest_faces_neighborhoods_are_set)
+    return;
+  P4EST_ASSERT(quad_idx >= 0 && quad_idx < p4est->local_num_quadrants + (p4est_locidx_t) ghost->ghosts.elem_count);
   P4EST_ASSERT(local_face_idx == q2f_[face_dir][quad_idx]);
   const p4est_quadrant_t* quad;
   if(quad_idx < p4est->local_num_quadrants)
-    quad = p4est_quadrant_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
+    quad = p4est_quadrant_array_index(&tree->quadrants, quad_idx - tree->quadrants_offset);
   else
-    quad = p4est_quadrant_array_index(&ghost->ghosts, quad_idx-p4est->local_num_quadrants);
+    quad = p4est_quadrant_array_index(&ghost->ghosts, quad_idx - p4est->local_num_quadrants);
   if(quad->level < max_p4est_lvl)
     return;
 
-  if(!found_uniform_face_neighborhood(local_face_idx, face_dir/2)) // not in there yet
+  if(uniform_face_neighbors[face_dir/2].find(local_face_idx) == uniform_face_neighbors[face_dir/2].end()) // not in there yet
   {
     uniform_face_ngbd face_neighborhood;
     // ok, find neighboring faces, now
@@ -457,97 +476,17 @@ void my_p4est_faces_t::find_fine_face_neighbors_and_store_it(const p4est_topidx_
   }
 }
 
-
-//void my_p4est_faces_t::find_fine_face_neighbors_and_store_it(const p4est_topidx_t& tree_idx, const p4est_locidx_t& quad_idx, p4est_tree_t*tree,
-//                                                             const unsigned char& face_dir, const p4est_locidx_t& local_face_idx)
-//{
-//  P4EST_ASSERT((quad_idx >=0) && (quad_idx <p4est->local_num_quadrants + ((p4est_locidx_t)ghost->ghosts.elem_count)));
-//  P4EST_ASSERT(local_face_idx == q2f_[face_dir][quad_idx]);
-//  const p4est_quadrant_t* quad;
-//  if(quad_idx < p4est->local_num_quadrants)
-//    quad = p4est_quadrant_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
-//  else
-//    quad = p4est_quadrant_array_index(&ghost->ghosts, quad_idx-p4est->local_num_quadrants);
-//  if(quad->level < max_p4est_lvl)
-//    return;
-
-//  if(!found_uniform_face_neighborhood(local_face_idx, face_dir/2)) // not in there yet
-//  {
-//    uniform_face_ngbd face_neighborhood;
-//    vector<p4est_quadrant_t> cell_neighbor(0);
-//    p4est_locidx_t local_index_of_sharing_quad = -1;
-//    p4est_topidx_t tree_idx_of_sharing_quad = -1;
-//    // ok, find neighboring faces, now
-//    bool do_not_add_to_map = false;
-//    // in dual face_direction, first: use same quad
-//    unsigned char dual_face_dir = ((face_dir%2==1)?(face_dir-1):(face_dir+1));
-//    P4EST_ASSERT(q2f_[dual_face_dir][quad_idx] != NO_VELOCITY);
-//    face_neighborhood.neighbor_face_idx[dual_face_dir] = q2f_[dual_face_dir][quad_idx];
-//    // in face_dir, second: use sharing quad
-//    if(is_quad_Wall(p4est, tree_idx, quad, face_dir))
-//      face_neighborhood.neighbor_face_idx[face_dir] = WALL_idx(face_dir);
-//    else
-//    {
-//      cell_neighbor.clear();
-//      ngbd_c->find_neighbor_cells_of_cell(cell_neighbor, quad_idx, tree_idx, face_dir);
-//      P4EST_ASSERT(cell_neighbor.size()<=1);
-//      if((cell_neighbor.size()>0) && (cell_neighbor[0].level == max_p4est_lvl))
-//      {
-//        local_index_of_sharing_quad = cell_neighbor[0].p.piggy3.local_num;
-//        tree_idx_of_sharing_quad    = cell_neighbor[0].p.piggy3.which_tree;
-//        P4EST_ASSERT((q2f_[face_dir][local_index_of_sharing_quad] != NO_VELOCITY) && (q2f_[dual_face_dir][local_index_of_sharing_quad] == local_face_idx));
-//        face_neighborhood.neighbor_face_idx[face_dir] = q2f_[face_dir][local_index_of_sharing_quad];
-//      }
-//      else
-//        do_not_add_to_map = true;
-//    }
-
-//    for (unsigned char cart_dir = 0; !do_not_add_to_map && (cart_dir < P4EST_FACES); ++cart_dir) {
-//      if((cart_dir == face_dir) || (cart_dir == dual_face_dir))
-//        continue;
-//      if(is_quad_Wall(p4est, tree_idx, quad, cart_dir))
-//        face_neighborhood.neighbor_face_idx[cart_dir] = WALL_idx(cart_dir);
-//      else
-//      {
-//        cell_neighbor.clear();
-//        ngbd_c->find_neighbor_cells_of_cell(cell_neighbor, quad_idx, tree_idx, cart_dir);
-//        P4EST_ASSERT(cell_neighbor.size()<=1);
-//        if((cell_neighbor.size()>0) && (cell_neighbor[0].level == max_p4est_lvl))
-//        {
-//          P4EST_ASSERT(q2f_[face_dir][cell_neighbor[0].p.piggy3.local_num] != NO_VELOCITY);
-//          face_neighborhood.neighbor_face_idx[cart_dir] = q2f_[face_dir][cell_neighbor[0].p.piggy3.local_num];
-//        }
-//        else
-//        {
-//          P4EST_ASSERT((cell_neighbor.size() == 0) || (cell_neighbor[0].level < max_p4est_lvl));
-//          cell_neighbor.clear();
-//          ngbd_c->find_neighbor_cells_of_cell(cell_neighbor, local_index_of_sharing_quad, tree_idx_of_sharing_quad, cart_dir);
-//          if((cell_neighbor.size()>0) && (cell_neighbor[0].level == max_p4est_lvl))
-//          {
-//            P4EST_ASSERT(q2f_[dual_face_dir][cell_neighbor[0].p.piggy3.local_num] != NO_VELOCITY);
-//            face_neighborhood.neighbor_face_idx[cart_dir] = q2f_[dual_face_dir][cell_neighbor[0].p.piggy3.local_num];
-//          }
-//          else
-//            do_not_add_to_map = true;
-//        }
-//      }
-//    }
-//    if(!do_not_add_to_map)
-//      uniform_face_neighbors[face_dir/2][local_face_idx] = face_neighborhood;
-//  }
-//}
-
 void my_p4est_faces_t::set_finest_face_neighborhoods()
 {
   if(finest_faces_neighborhoods_are_set)
     return;
-  for(p4est_topidx_t tree_idx=p4est->first_local_tree; tree_idx<=p4est->last_local_tree; ++tree_idx)
+  for(p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx)
   {
-    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
-    for(size_t q=0; q<tree->quadrants.elem_count; ++q)
+    p4est_tree_t *tree = p4est_tree_array_index(p4est->trees, tree_idx);
+    for(size_t q = 0; q < tree->quadrants.elem_count; ++q)
     {
-      p4est_locidx_t quad_idx = q+tree->quadrants_offset;
-      for(unsigned char face_dir=0; face_dir<P4EST_FACES; face_dir++)
+      p4est_locidx_t quad_idx = q + tree->quadrants_offset;
+      for(unsigned char face_dir = 0; face_dir < P4EST_FACES; face_dir++)
       {
         if(q2f_[face_dir][quad_idx] != NO_VELOCITY)
         {
@@ -561,146 +500,135 @@ void my_p4est_faces_t::set_finest_face_neighborhoods()
   P4EST_ASSERT(finest_face_neighborhoods_are_valid());
 }
 
-double my_p4est_faces_t::x_fr_f(p4est_locidx_t f_idx, int dir) const
+double my_p4est_faces_t::x_fr_f(p4est_locidx_t f_idx, const unsigned char &dir) const
 {
   p4est_locidx_t quad_idx;
   p4est_topidx_t tree_idx;
   f2q(f_idx, dir, quad_idx, tree_idx);
 
   p4est_quadrant_t *quad;
-  if(quad_idx<p4est->local_num_quadrants)
+  if(quad_idx < p4est->local_num_quadrants)
   {
-    P4EST_ASSERT(tree_idx>=0);
-    p4est_tree_t* tree = (p4est_tree_t*) sc_array_index(p4est->trees, tree_idx);
-    quad = (p4est_quadrant_t*) sc_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
+    P4EST_ASSERT(tree_idx >= 0);
+    p4est_tree_t* tree = p4est_tree_array_index(p4est->trees, tree_idx);
+    quad = p4est_quadrant_array_index(&tree->quadrants, quad_idx - tree->quadrants_offset);
   }
   else
   {
-    quad = (p4est_quadrant_t*) sc_array_index(&ghost->ghosts, quad_idx-p4est->local_num_quadrants);
+    quad = p4est_quadrant_array_index(&ghost->ghosts, quad_idx - p4est->local_num_quadrants);
     tree_idx = quad->p.piggy3.which_tree;
   }
 
-  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[tree_idx*P4EST_CHILDREN + 0];
-  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[tree_idx*P4EST_CHILDREN + P4EST_CHILDREN-1];
-  double tree_xmin = p4est->connectivity->vertices[3*v_m + 0];
-  double tree_xmax = p4est->connectivity->vertices[3*v_p + 0];
+  p4est_topidx_t v_m  = p4est->connectivity->tree_to_vertex[tree_idx*P4EST_CHILDREN + 0];
+  double tree_xmin    = p4est->connectivity->vertices[3*v_m + 0];
 
-  p4est_qcoord_t xc = quad->x;
-  if(dir!=dir::x)                           xc += .5*P4EST_QUADRANT_LEN(quad->level);
-  else if(q2f(quad_idx, dir::f_p00)==f_idx) xc +=    P4EST_QUADRANT_LEN(quad->level);
-  return (tree_xmax-tree_xmin)*(double)xc/(double)P4EST_ROOT_LEN + tree_xmin;
+  p4est_qcoord_t xc   = quad->x;
+  if(dir != dir::x)                           xc += .5*P4EST_QUADRANT_LEN(quad->level);
+  else if(q2f(quad_idx, dir::f_p00) == f_idx) xc +=    P4EST_QUADRANT_LEN(quad->level);
+  return tree_dimensions[0]*(double)xc/(double)P4EST_ROOT_LEN + tree_xmin;
 }
 
 
-double my_p4est_faces_t::y_fr_f(p4est_locidx_t f_idx, int dir) const
+double my_p4est_faces_t::y_fr_f(p4est_locidx_t f_idx, const unsigned char &dir) const
 {
   p4est_locidx_t quad_idx;
   p4est_topidx_t tree_idx;
   f2q(f_idx, dir, quad_idx, tree_idx);
 
   p4est_quadrant_t *quad;
-  if(quad_idx<p4est->local_num_quadrants)
+  if(quad_idx < p4est->local_num_quadrants)
   {
-    P4EST_ASSERT(tree_idx>=0);
-    p4est_tree_t* tree = (p4est_tree_t*) sc_array_index(p4est->trees, tree_idx);
-    quad = (p4est_quadrant_t*) sc_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
+    P4EST_ASSERT(tree_idx >= 0);
+    p4est_tree_t* tree = p4est_tree_array_index(p4est->trees, tree_idx);
+    quad = p4est_quadrant_array_index(&tree->quadrants, quad_idx - tree->quadrants_offset);
   }
   else
   {
-    quad = (p4est_quadrant_t*) sc_array_index(&ghost->ghosts, quad_idx-p4est->local_num_quadrants);
+    quad = p4est_quadrant_array_index(&ghost->ghosts, quad_idx - p4est->local_num_quadrants);
     tree_idx = quad->p.piggy3.which_tree;
   }
 
   p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[tree_idx*P4EST_CHILDREN + 0];
-  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[tree_idx*P4EST_CHILDREN + P4EST_CHILDREN-1];
   double tree_ymin = p4est->connectivity->vertices[3*v_m + 1];
-  double tree_ymax = p4est->connectivity->vertices[3*v_p + 1];
 
   p4est_qcoord_t yc = quad->y;
-  if(dir!=dir::y)                           yc += .5*P4EST_QUADRANT_LEN(quad->level);
-  else if(q2f(quad_idx, dir::f_0p0)==f_idx) yc +=    P4EST_QUADRANT_LEN(quad->level);
-  return (tree_ymax-tree_ymin)*(double)yc/(double)P4EST_ROOT_LEN + tree_ymin;
+  if(dir != dir::y)                           yc += .5*P4EST_QUADRANT_LEN(quad->level);
+  else if(q2f(quad_idx, dir::f_0p0) == f_idx) yc +=    P4EST_QUADRANT_LEN(quad->level);
+  return tree_dimensions[1]*(double)yc/(double)P4EST_ROOT_LEN + tree_ymin;
 }
 
 
 #ifdef P4_TO_P8
-double my_p4est_faces_t::z_fr_f(p4est_locidx_t f_idx, int dir) const
+double my_p4est_faces_t::z_fr_f(p4est_locidx_t f_idx, const unsigned char &dir) const
 {
   p4est_locidx_t quad_idx;
   p4est_topidx_t tree_idx;
   f2q(f_idx, dir, quad_idx, tree_idx);
 
   p4est_quadrant_t *quad;
-  if(quad_idx<p4est->local_num_quadrants)
+  if(quad_idx < p4est->local_num_quadrants)
   {
-    P4EST_ASSERT(tree_idx>=0);
-    p4est_tree_t* tree = (p4est_tree_t*) sc_array_index(p4est->trees, tree_idx);
-    quad = (p4est_quadrant_t*) sc_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
+    P4EST_ASSERT(tree_idx >= 0);
+    p4est_tree_t* tree = p4est_tree_array_index(p4est->trees, tree_idx);
+    quad = p4est_quadrant_array_index(&tree->quadrants, quad_idx - tree->quadrants_offset);
   }
   else
   {
-    quad = (p4est_quadrant_t*) sc_array_index(&ghost->ghosts, quad_idx-p4est->local_num_quadrants);
+    quad = p4est_quadrant_array_index(&ghost->ghosts, quad_idx - p4est->local_num_quadrants);
     tree_idx = quad->p.piggy3.which_tree;
   }
 
   p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[tree_idx*P4EST_CHILDREN + 0];
-  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[tree_idx*P4EST_CHILDREN + P4EST_CHILDREN-1];
   double tree_zmin = p4est->connectivity->vertices[3*v_m + 2];
-  double tree_zmax = p4est->connectivity->vertices[3*v_p + 2];
 
   p4est_qcoord_t zc = quad->z;
-  if(dir!=dir::z)                           zc += .5*P4EST_QUADRANT_LEN(quad->level);
-  else if(q2f(quad_idx, dir::f_00p)==f_idx) zc +=    P4EST_QUADRANT_LEN(quad->level);
-  return (tree_zmax-tree_zmin)*(double)zc/(double)P4EST_ROOT_LEN + tree_zmin;
+  if(dir != dir::z)                           zc += .5*P4EST_QUADRANT_LEN(quad->level);
+  else if(q2f(quad_idx, dir::f_00p) == f_idx) zc +=    P4EST_QUADRANT_LEN(quad->level);
+  return tree_dimensions[2]*(double)zc/(double)P4EST_ROOT_LEN + tree_zmin;
 }
 #endif
 
 
 
-void my_p4est_faces_t::xyz_fr_f(p4est_locidx_t f_idx, int dir, double* xyz) const
+void my_p4est_faces_t::xyz_fr_f(p4est_locidx_t f_idx, const unsigned char &dir, double* xyz) const
 {
   p4est_locidx_t quad_idx;
   p4est_topidx_t tree_idx;
   f2q(f_idx, dir, quad_idx, tree_idx);
 
   p4est_quadrant_t *quad;
-  if(quad_idx<p4est->local_num_quadrants)
+  if(quad_idx < p4est->local_num_quadrants)
   {
-    P4EST_ASSERT(tree_idx>=0);
-    p4est_tree_t* tree = (p4est_tree_t*) sc_array_index(p4est->trees, tree_idx);
-    quad = (p4est_quadrant_t*) sc_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
+    P4EST_ASSERT(tree_idx >= 0);
+    p4est_tree_t* tree = p4est_tree_array_index(p4est->trees, tree_idx);
+    quad = p4est_quadrant_array_index(&tree->quadrants, quad_idx - tree->quadrants_offset);
   }
   else
   {
-    quad = (p4est_quadrant_t*) sc_array_index(&ghost->ghosts, quad_idx-p4est->local_num_quadrants);
+    quad = p4est_quadrant_array_index(&ghost->ghosts, quad_idx - p4est->local_num_quadrants);
     tree_idx = quad->p.piggy3.which_tree;
   }
 
   p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[tree_idx*P4EST_CHILDREN + 0];
-  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[tree_idx*P4EST_CHILDREN + P4EST_CHILDREN-1];
   double tree_xyz_min[P4EST_DIM];
-  double tree_xyz_max[P4EST_DIM];
-  for(int i=0; i<P4EST_DIM; ++i)
-  {
+  for(unsigned char i = 0; i < P4EST_DIM; ++i)
     tree_xyz_min[i] = p4est->connectivity->vertices[3*v_m + i];
-    tree_xyz_max[i] = p4est->connectivity->vertices[3*v_p + i];
-  }
 
   p4est_qcoord_t xc = quad->x;
-  if(dir!=dir::x)                           xc += .5*P4EST_QUADRANT_LEN(quad->level);
-  else if(q2f(quad_idx, dir::f_p00)==f_idx) xc +=    P4EST_QUADRANT_LEN(quad->level);
-  xyz[0] = (tree_xyz_max[0]-tree_xyz_min[0])*(double)xc/(double)P4EST_ROOT_LEN + tree_xyz_min[0];
+  if(dir != dir::x)                           xc += .5*P4EST_QUADRANT_LEN(quad->level);
+  else if(q2f(quad_idx, dir::f_p00) == f_idx) xc +=    P4EST_QUADRANT_LEN(quad->level);
+  xyz[0] = tree_dimensions[0]*(double)xc/(double)P4EST_ROOT_LEN + tree_xyz_min[0];
 
   p4est_qcoord_t yc = quad->y;
-  if(dir!=dir::y)                           yc += .5*P4EST_QUADRANT_LEN(quad->level);
-  else if(q2f(quad_idx, dir::f_0p0)==f_idx) yc +=    P4EST_QUADRANT_LEN(quad->level);
-  xyz[1] = (tree_xyz_max[1]-tree_xyz_min[1])*(double)yc/(double)P4EST_ROOT_LEN + tree_xyz_min[1];
+  if(dir != dir::y)                           yc += .5*P4EST_QUADRANT_LEN(quad->level);
+  else if(q2f(quad_idx, dir::f_0p0) == f_idx) yc +=    P4EST_QUADRANT_LEN(quad->level);
+  xyz[1] = tree_dimensions[1]*(double)yc/(double)P4EST_ROOT_LEN + tree_xyz_min[1];
 
 #ifdef P4_TO_P8
   p4est_qcoord_t zc = quad->z;
-  if(dir!=dir::z)                           zc += .5*P4EST_QUADRANT_LEN(quad->level);
-  else if(q2f(quad_idx, dir::f_00p)==f_idx) zc +=    P4EST_QUADRANT_LEN(quad->level);
-  xyz[2] = (tree_xyz_max[2]-tree_xyz_min[2])*(double)zc/(double)P4EST_ROOT_LEN + tree_xyz_min[2];
+  if(dir != dir::z)                           zc += .5*P4EST_QUADRANT_LEN(quad->level);
+  else if(q2f(quad_idx, dir::f_00p) == f_idx) zc +=    P4EST_QUADRANT_LEN(quad->level);
+  xyz[2] = tree_dimensions[2]*(double)zc/(double)P4EST_ROOT_LEN + tree_xyz_min[2];
 #endif
 }
 
@@ -711,73 +639,68 @@ void my_p4est_faces_t::rel_xyz_face_fr_node(const p4est_locidx_t& f_idx, const u
   f2q(f_idx, dir, quad_idx, tree_idx);
 
   p4est_quadrant_t *quad;
-  if(quad_idx<p4est->local_num_quadrants)
+  if(quad_idx < p4est->local_num_quadrants)
   {
-    P4EST_ASSERT(tree_idx>=0);
-    p4est_tree_t* tree = (p4est_tree_t*) sc_array_index(p4est->trees, tree_idx);
-    quad = (p4est_quadrant_t*) sc_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
+    P4EST_ASSERT(tree_idx >= 0);
+    p4est_tree_t* tree = p4est_tree_array_index(p4est->trees, tree_idx);
+    quad = p4est_quadrant_array_index(&tree->quadrants, quad_idx - tree->quadrants_offset);
   }
   else
   {
-    quad = (p4est_quadrant_t*) sc_array_index(&ghost->ghosts, quad_idx-p4est->local_num_quadrants);
+    quad = p4est_quadrant_array_index(&ghost->ghosts, quad_idx - p4est->local_num_quadrants);
     tree_idx = quad->p.piggy3.which_tree;
   }
 
   p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[tree_idx*P4EST_CHILDREN + 0];
-  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[tree_idx*P4EST_CHILDREN + P4EST_CHILDREN-1];
   double tree_xyz_min[P4EST_DIM];
-  double tree_xyz_max[P4EST_DIM];
-  for(int i=0; i<P4EST_DIM; ++i)
-  {
+  for(unsigned char i = 0; i < P4EST_DIM; ++i)
     tree_xyz_min[i]       = p4est->connectivity->vertices[3*v_m + i];
-    tree_xyz_max[i]       = p4est->connectivity->vertices[3*v_p + i];
-  }
 
   p4est_qcoord_t xc = quad->x;
-  if(dir!=dir::x)                           xc += .5*P4EST_QUADRANT_LEN(quad->level);
-  else if(q2f(quad_idx, dir::f_p00)==f_idx) xc +=    P4EST_QUADRANT_LEN(quad->level);
-  xyz_rel[0] = (tree_xyz_max[0]-tree_xyz_min[0])*(double)xc/(double)P4EST_ROOT_LEN + tree_xyz_min[0] - xyz_node[0];
+  if(dir != dir::x)                           xc += .5*P4EST_QUADRANT_LEN(quad->level);
+  else if(q2f(quad_idx, dir::f_p00) == f_idx) xc +=    P4EST_QUADRANT_LEN(quad->level);
+  xyz_rel[0] = tree_dimensions[0]*(double)xc/(double)P4EST_ROOT_LEN + tree_xyz_min[0] - xyz_node[0];
   double x_diff_tree = tree_xyz_min[0] - p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*node->p.which_tree + 0] + 0];
-  p4est_topidx_t tree_x_diff = (p4est_topidx_t) round(x_diff_tree/(tree_xyz_max[0] - tree_xyz_min[0])); // assumes trees of constant size across the domain and cartesian block-structured
-  logical_qcoord_diff[0] = tree_x_diff*P4EST_ROOT_LEN + xc - ((node->x != P4EST_ROOT_LEN-1)? node->x : P4EST_ROOT_LEN); // node might be clamped
-  if(is_periodic(p4est, dir::x))
+  p4est_topidx_t tree_x_diff = (p4est_topidx_t) round(x_diff_tree/tree_dimensions[0]); // assumes trees of constant size across the domain and cartesian block-structured
+  logical_qcoord_diff[0] = tree_x_diff*P4EST_ROOT_LEN + xc - (node->x != P4EST_ROOT_LEN - 1 ? node->x : P4EST_ROOT_LEN); // node might be clamped
+  if(periodic[dir::x])
     for (char i = -1; i < 2; i+=2)
     {
-      if(fabs(xyz_rel[0] + ((double) i)*(brick->xyz_max[0] - brick->xyz_min[0])) < fabs(xyz_rel[0]))
-        xyz_rel[0] += ((double) i)*(brick->xyz_max[0] - brick->xyz_min[0]);
+      if(fabs(xyz_rel[0] + i*(xyz_max[0] - xyz_min[0])) < fabs(xyz_rel[0]))
+        xyz_rel[0] += i*(xyz_max[0] - xyz_min[0]);
       if(abs(logical_qcoord_diff[0] + i*brick->nxyztrees[0]*P4EST_ROOT_LEN) < abs(logical_qcoord_diff[0]))
         logical_qcoord_diff[0] += i*brick->nxyztrees[0]*P4EST_ROOT_LEN;
     }
 
   p4est_qcoord_t yc = quad->y;
-  if(dir!=dir::y)                           yc += .5*P4EST_QUADRANT_LEN(quad->level);
-  else if(q2f(quad_idx, dir::f_0p0)==f_idx) yc +=    P4EST_QUADRANT_LEN(quad->level);
-  xyz_rel[1] = (tree_xyz_max[1]-tree_xyz_min[1])*(double)yc/(double)P4EST_ROOT_LEN + tree_xyz_min[1] - xyz_node[1];
+  if(dir != dir::y)                           yc += .5*P4EST_QUADRANT_LEN(quad->level);
+  else if(q2f(quad_idx, dir::f_0p0) == f_idx) yc +=    P4EST_QUADRANT_LEN(quad->level);
+  xyz_rel[1] = tree_dimensions[1]*(double)yc/(double)P4EST_ROOT_LEN + tree_xyz_min[1] - xyz_node[1];
   double y_diff_tree = tree_xyz_min[1] - p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*node->p.which_tree + 0] + 1];
-  p4est_topidx_t tree_y_diff = (p4est_topidx_t) round(y_diff_tree/(tree_xyz_max[1] - tree_xyz_min[1])); // assumes trees of constant size across the domain and cartesian block-structured
-  logical_qcoord_diff[1] = tree_y_diff*P4EST_ROOT_LEN + yc - ((node->y != P4EST_ROOT_LEN-1)? node->y : P4EST_ROOT_LEN); // node might be clamped
-  if(is_periodic(p4est, dir::y))
+  p4est_topidx_t tree_y_diff = (p4est_topidx_t) round(y_diff_tree/tree_dimensions[1]); // assumes trees of constant size across the domain and cartesian block-structured
+  logical_qcoord_diff[1] = tree_y_diff*P4EST_ROOT_LEN + yc - (node->y != P4EST_ROOT_LEN - 1 ? node->y : P4EST_ROOT_LEN); // node might be clamped
+  if(periodic[dir::y])
     for (char i = -1; i < 2; i+=2)
     {
-      if(fabs(xyz_rel[1] + ((double) i)*(brick->xyz_max[1] - brick->xyz_min[1])) < fabs(xyz_rel[1]))
-        xyz_rel[1] += ((double) i)*(brick->xyz_max[1] - brick->xyz_min[1]);
+      if(fabs(xyz_rel[1] + i*(xyz_max[1] - xyz_min[1])) < fabs(xyz_rel[1]))
+        xyz_rel[1] += i*(xyz_max[1] - xyz_min[1]);
       if(abs(logical_qcoord_diff[1] + i*brick->nxyztrees[1]*P4EST_ROOT_LEN) < abs(logical_qcoord_diff[1]))
         logical_qcoord_diff[1] += i*brick->nxyztrees[1]*P4EST_ROOT_LEN;
     }
 
 #ifdef P4_TO_P8
   p4est_qcoord_t zc = quad->z;
-  if(dir!=dir::z)                           zc += .5*P4EST_QUADRANT_LEN(quad->level);
-  else if(q2f(quad_idx, dir::f_00p)==f_idx) zc +=    P4EST_QUADRANT_LEN(quad->level);
-  xyz_rel[2] = (tree_xyz_max[2]-tree_xyz_min[2])*(double)zc/(double)P4EST_ROOT_LEN + tree_xyz_min[2] - xyz_node[2];
+  if(dir != dir::z)                           zc += .5*P4EST_QUADRANT_LEN(quad->level);
+  else if(q2f(quad_idx, dir::f_00p) == f_idx) zc +=    P4EST_QUADRANT_LEN(quad->level);
+  xyz_rel[2] = tree_dimensions[2]*(double)zc/(double)P4EST_ROOT_LEN + tree_xyz_min[2] - xyz_node[2];
   double z_diff_tree = tree_xyz_min[2] - p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*node->p.which_tree + 0] + 2];
-  p4est_topidx_t tree_z_diff = (p4est_topidx_t) round(z_diff_tree/(tree_xyz_max[2] - tree_xyz_min[2])); // assumes trees of constant size across the domain and cartesian block-structured
-  logical_qcoord_diff[2] = tree_z_diff*P4EST_ROOT_LEN + zc - ((node->z != P4EST_ROOT_LEN-1)? node->z : P4EST_ROOT_LEN); // node might be clamped
-  if(is_periodic(p4est, dir::z))
+  p4est_topidx_t tree_z_diff = (p4est_topidx_t) round(z_diff_tree/tree_dimensions[2]); // assumes trees of constant size across the domain and cartesian block-structured
+  logical_qcoord_diff[2] = tree_z_diff*P4EST_ROOT_LEN + zc - (node->z != P4EST_ROOT_LEN - 1 ? node->z : P4EST_ROOT_LEN); // node might be clamped
+  if(periodic[dir::z])
     for (char i = -1; i < 2; i+=2)
     {
-      if(fabs(xyz_rel[2] + ((double) i)*(brick->xyz_max[2] - brick->xyz_min[2])) < fabs(xyz_rel[2]))
-        xyz_rel[2] += ((double) i)*(brick->xyz_max[2] - brick->xyz_min[2]);
+      if(fabs(xyz_rel[2] + i*(xyz_max[2] - xyz_min[2])) < fabs(xyz_rel[2]))
+        xyz_rel[2] += i*(xyz_max[2] - xyz_min[2]);
       if(abs(logical_qcoord_diff[2] + i*brick->nxyztrees[2]*P4EST_ROOT_LEN) < abs(logical_qcoord_diff[2]))
         logical_qcoord_diff[2] += i*brick->nxyztrees[2]*P4EST_ROOT_LEN;
     }
@@ -785,79 +708,72 @@ void my_p4est_faces_t::rel_xyz_face_fr_node(const p4est_locidx_t& f_idx, const u
 }
 
 #ifdef P4_TO_P8
-double my_p4est_faces_t::face_area_in_negative_domain(p4est_locidx_t f_idx, int dir, const double *phi_p, const p4est_nodes_t* nodes) const
+double my_p4est_faces_t::face_area_in_negative_domain(p4est_locidx_t f_idx, const unsigned char &dir, const double *phi_p, const p4est_nodes_t* nodes) const
 #else
-double my_p4est_faces_t::face_area_in_negative_domain(p4est_locidx_t f_idx, int dir, const double *phi_p, const p4est_nodes_t* nodes, const double *phi_dd[]) const
+double my_p4est_faces_t::face_area_in_negative_domain(p4est_locidx_t f_idx, const unsigned char &dir, const double *phi_p, const p4est_nodes_t* nodes, const double *phi_dd[]) const
 #endif
 {
 #ifdef CASL_THROWS
-  if((phi_p != NULL) && (nodes == NULL))
+  if(phi_p != NULL && nodes == NULL)
     throw std::invalid_argument("my_p4est_faces_t::face_area: if the node-sampled levelset function is provided, the nodes MUST be provided as well.");
 #endif
-  p4est_locidx_t  *t2v = p4est->connectivity->tree_to_vertex;
-  double          *v2c = p4est->connectivity->vertices;
 
   p4est_locidx_t quad_idx;
   p4est_topidx_t tree_idx;
   f2q(f_idx, dir, quad_idx, tree_idx);
 
   p4est_quadrant_t *quad;
-  if(quad_idx<p4est->local_num_quadrants)
+  if(quad_idx < p4est->local_num_quadrants)
   {
-    P4EST_ASSERT(tree_idx>=0);
-    p4est_tree_t* tree = (p4est_tree_t*) sc_array_index(p4est->trees, tree_idx);
-    quad = (p4est_quadrant_t*) sc_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
+    P4EST_ASSERT(tree_idx >= 0);
+    p4est_tree_t* tree = p4est_tree_array_index(p4est->trees, tree_idx);
+    quad = p4est_quadrant_array_index(&tree->quadrants, quad_idx - tree->quadrants_offset);
   }
   else
-  {
-    quad = (p4est_quadrant_t*) sc_array_index(&ghost->ghosts, quad_idx-p4est->local_num_quadrants);
-    tree_idx = quad->p.piggy3.which_tree;
-  }
+    quad = p4est_quadrant_array_index(&ghost->ghosts, quad_idx - p4est->local_num_quadrants);
 
-  int tmp = ((q2f(quad_idx, 2*dir)==f_idx)? 0 : 1);
-
+  const unsigned char tmp = (q2f(quad_idx, 2*dir) == f_idx ? 0 : 1);
   double area = 1.0;
-  for (short dim = 0; dim < P4EST_DIM; ++dim)
+  for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
   {
     if(dim == dir)
       continue;
-    area *= (v2c[3*t2v[P4EST_CHILDREN*tree_idx + P4EST_CHILDREN-1] + dir]-v2c[3*t2v[P4EST_CHILDREN*tree_idx + 0] + dir])/((double) (1<<quad->level));
+    area *= tree_dimensions[dir]/((double) (1 << quad->level));
   }
   if(phi_p != NULL)
   {
-    p4est_locidx_t node_indices[2*(P4EST_DIM-1)];
-    short zzz, yyy, xxx;
-    for (short first = 0; first < P4EST_DIM-1; ++first) {
-      for (short second = 0; second < 2; ++second) {
+    p4est_locidx_t node_indices[2*(P4EST_DIM - 1)];
+    unsigned char xxx, yyy;
 #ifdef P4_TO_P8
-        zzz = ((dir==dir::z)? tmp : first);
-        yyy = ((dir==dir::y)? tmp : ((dir==dir::z)? first : second));
-        xxx = ((dir==dir::x)? tmp : second);
-#else
-        zzz = first; // always 0...
-        yyy = ((dir==dir::y)? tmp : second);
-        xxx = ((dir==dir::x)? tmp : second);
+    unsigned char zzz;
 #endif
-        node_indices[2*first+second] = nodes->local_nodes[P4EST_CHILDREN*quad_idx+4*zzz+2*yyy+xxx];
+    for (unsigned char first = 0; first < P4EST_DIM - 1; ++first)
+      for (unsigned char second = 0; second < 2; ++second) {
+#ifdef P4_TO_P8
+        zzz = (dir == dir::z ? tmp : first);
+        yyy = (dir == dir::y ? tmp : (dir == dir::z ? first : second));
+#else
+        yyy = (dir == dir::y ? tmp : second);
+#endif
+        xxx = (dir == dir::x ? tmp : second);
+        node_indices[2*first+second] = nodes->local_nodes[P4EST_CHILDREN*quad_idx + SUMD(xxx, 2*yyy, 4*zzz)];
       }
-    }
     bool they_are_all_positive    = true;
     bool at_least_one_is_positive = false;
-    for (short kk = 0; kk < 2*(P4EST_DIM-1); ++kk) {
-      bool node_is_in_positive_domain = (phi_p[node_indices[kk]] > 0.0);
+    for (unsigned char kk = 0; kk < 2*(P4EST_DIM - 1); ++kk) {
+      bool node_is_in_positive_domain = phi_p[node_indices[kk]] > 0.0;
       they_are_all_positive     = they_are_all_positive && node_is_in_positive_domain;
-      at_least_one_is_positive  = at_least_one_is_positive || (node_is_in_positive_domain);
+      at_least_one_is_positive  = at_least_one_is_positive || node_is_in_positive_domain;
     }
     if (they_are_all_positive)
       return 0.0;
     if (at_least_one_is_positive)
     {
 #ifndef P4_TO_P8
-      double h = area;
       if(phi_dd == NULL)
-        area *= fraction_Interval_Covered_By_Irregular_Domain(phi_p[node_indices[0]], phi_p[node_indices[1]], h, h);
+        area *= fraction_Interval_Covered_By_Irregular_Domain(phi_p[node_indices[0]], phi_p[node_indices[1]], area, area);
       else
-        area *= fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(phi_p[node_indices[0]], phi_p[node_indices[1]], phi_dd[(dir?0:1)][node_indices[0]], phi_dd[(dir?0:1)][node_indices[1]], h);
+        area *= fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(phi_p[node_indices[0]], phi_p[node_indices[1]], phi_dd[dir][node_indices[0]], phi_dd[dir][node_indices[1]], area);
 #else
       Cube2 my_face(0.0, 1.0, 0.0, 1.0);
       QuadValue ls_value(phi_p[node_indices[0]], phi_p[node_indices[1]], phi_p[node_indices[2]], phi_p[node_indices[3]]);
@@ -869,8 +785,7 @@ double my_p4est_faces_t::face_area_in_negative_domain(p4est_locidx_t f_idx, int 
 }
 
 
-
-PetscErrorCode VecCreateGhostFaces(const p4est_t *p4est, const my_p4est_faces_t *faces, Vec* v, int dir)
+PetscErrorCode VecCreateGhostFaces(const p4est_t *p4est, const my_p4est_faces_t *faces, Vec* v, const unsigned char &dir)
 {
   PetscErrorCode ierr = 0;
   p4est_locidx_t num_local = faces->num_local[dir];
@@ -880,11 +795,11 @@ PetscErrorCode VecCreateGhostFaces(const p4est_t *p4est, const my_p4est_faces_t 
 
   // Calculate the global number of points
   for (int r = 0; r<p4est->mpisize; ++r)
-    global_offset_sum[r+1] = global_offset_sum[r] + (PetscInt)faces->global_owned_indeps[dir][r];
+    global_offset_sum[r + 1] = global_offset_sum[r] + (PetscInt)faces->global_owned_indeps[dir][r];
 
   PetscInt num_global = global_offset_sum[p4est->mpisize];
 
-  for(size_t i=0; i<ghost_faces.size(); ++i)
+  for(size_t i = 0; i < ghost_faces.size(); ++i)
     ghost_faces[i] = faces->ghost_local_num[dir][i] + global_offset_sum[faces->nonlocal_ranks[dir][i]];
 
   ierr = VecCreateGhost(p4est->mpicomm, num_local, num_global,
@@ -895,7 +810,7 @@ PetscErrorCode VecCreateGhostFaces(const p4est_t *p4est, const my_p4est_faces_t 
 }
 
 
-PetscErrorCode VecCreateGhostFacesBlock(const p4est_t *p4est, const my_p4est_faces_t *faces, PetscInt block_size, Vec* v, int dir)
+PetscErrorCode VecCreateGhostFacesBlock(const p4est_t *p4est, const my_p4est_faces_t *faces, PetscInt block_size, Vec* v, const unsigned char &dir)
 {
   PetscErrorCode ierr = 0;
   p4est_locidx_t num_local = faces->num_local[dir];
@@ -905,11 +820,11 @@ PetscErrorCode VecCreateGhostFacesBlock(const p4est_t *p4est, const my_p4est_fac
 
   // Calculate the global number of points
   for (int r = 0; r<p4est->mpisize; ++r)
-    global_offset_sum[r+1] = global_offset_sum[r] + (PetscInt)faces->global_owned_indeps[dir][r];
+    global_offset_sum[r + 1] = global_offset_sum[r] + (PetscInt)faces->global_owned_indeps[dir][r];
 
   PetscInt num_global = global_offset_sum[p4est->mpisize];
 
-  for(size_t i=0; i<ghost_faces.size(); ++i)
+  for(size_t i = 0; i < ghost_faces.size(); ++i)
     ghost_faces[i] = faces->ghost_local_num[dir][i] + global_offset_sum[faces->nonlocal_ranks[dir][i]];
 
   ierr = VecCreateGhostBlock(p4est->mpicomm,
@@ -920,16 +835,12 @@ PetscErrorCode VecCreateGhostFacesBlock(const p4est_t *p4est, const my_p4est_fac
   return ierr;
 }
 
-
-
-
-void check_if_faces_are_well_defined(p4est_t *p4est, my_p4est_node_neighbors_t *ngbd_n,
-                                     my_p4est_faces_t *faces, int dir,
-                                     Vec phi, BoundaryConditionType bc_type, Vec face_is_well_defined)
+void check_if_faces_are_well_defined(my_p4est_node_neighbors_t *ngbd_n, my_p4est_faces_t *faces, const unsigned char &dir,
+                                     Vec phi, BoundaryConditionType interface_type, Vec face_is_well_defined)
 {
   PetscErrorCode ierr;
 
-  if(bc_type==NOINTERFACE)
+  if(interface_type == NOINTERFACE)
   {
     Vec face_is_well_defined_loc;
     ierr = VecGhostGetLocalForm(face_is_well_defined, &face_is_well_defined_loc); CHKERRXX(ierr);
@@ -944,51 +855,33 @@ void check_if_faces_are_well_defined(p4est_t *p4est, my_p4est_node_neighbors_t *
   my_p4est_interpolation_nodes_t interp(ngbd_n);
   interp.set_input(phi, linear);
 
-  splitting_criteria_t *data = (splitting_criteria_t*) p4est->user_pointer;
-  p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
-  p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
-  double xmin = p4est->connectivity->vertices[3*vm + 0];
-  double ymin = p4est->connectivity->vertices[3*vm + 1];
-  double xmax = p4est->connectivity->vertices[3*vp + 0];
-  double ymax = p4est->connectivity->vertices[3*vp + 1];
-  double dx = .5 * (xmax-xmin) / pow(2.,(double) data->max_lvl);
-  double dy = .5 * (ymax-ymin) / pow(2.,(double) data->max_lvl);
-#ifdef P4_TO_P8
-  double zmin = p4est->connectivity->vertices[3*vm + 2];
-  double zmax = p4est->connectivity->vertices[3*vp + 2];
-  double dz = .5 * (zmax-zmin) / pow(2.,(double) data->max_lvl);
-#endif
+  const double *dxyz = faces->get_smallest_dxyz();
+  double xyz_face[P4EST_DIM];
 
-  if(bc_type==DIRICHLET)
+  if(interface_type == DIRICHLET)
   {
-    for(p4est_locidx_t f_idx=0; f_idx<faces->num_local[dir]; ++f_idx)
+    for(p4est_locidx_t f_idx = 0; f_idx < faces->num_local[dir]; ++f_idx)
     {
-      double x = faces->x_fr_f(f_idx,dir);
-      double y = faces->y_fr_f(f_idx,dir);
-#ifdef P4_TO_P8
-      double z = faces->z_fr_f(f_idx,dir);
-      face_is_well_defined_p[f_idx] = interp(x,y,z)<=0;
-#else
-      face_is_well_defined_p[f_idx] = interp(x,y)<=0;
-#endif
+      faces->xyz_fr_f(f_idx, dir, xyz_face);
+      face_is_well_defined_p[f_idx] = interp(xyz_face) <= 0.0;
     }
   }
   else /* NEUMANN */
   {
-    for(p4est_locidx_t f_idx=0; f_idx<faces->num_local[dir]; ++f_idx)
+    for(p4est_locidx_t f_idx = 0; f_idx < faces->num_local[dir]; ++f_idx)
     {
-      double x = faces->x_fr_f(f_idx,dir);
-      double y = faces->y_fr_f(f_idx,dir);
+      faces->xyz_fr_f(f_idx, dir, xyz_face);
+      bool well_defined = false;
+      for (char xxx = -1; xxx < 2 && !well_defined; xxx+=2)
+        for (char yyy = -1; yyy < 2 && !well_defined; yyy+=2)
 #ifdef P4_TO_P8
-      double z = faces->z_fr_f(f_idx,dir);
-      face_is_well_defined_p[f_idx] = ( interp(x-dx, y-dy, z-dz)<=0 || interp(x+dx, y-dy, z-dz)<=0 ||
-                                        interp(x-dx, y-dy, z+dz)<=0 || interp(x+dx, y-dy, z+dz)<=0 ||
-                                        interp(x-dx, y+dy, z-dz)<=0 || interp(x+dx, y+dy, z-dz)<=0 ||
-                                        interp(x-dx, y+dy, z+dz)<=0 || interp(x+dx, y+dy, z+dz)<=0 );
-#else
-      face_is_well_defined_p[f_idx] = ( interp(x-dx, y-dy)<=0 || interp(x+dx, y-dy)<=0 ||
-                                        interp(x-dx, y+dy)<=0 || interp(x+dx, y+dy)<=0 );
+          for (char zzz = -1; zzz < 2 && !well_defined; zzz+=2)
 #endif
+          {
+            double xyz_eval[P4EST_DIM] = {DIM(xyz_face[0] + xxx*0.5*dxyz[0], xyz_face[1] + yyy*0.5*dxyz[1], xyz_face[2] + zzz*0.5*dxyz[2])};
+            well_defined = well_defined || interp(xyz_eval) <= 0.0;
+          }
+      face_is_well_defined_p[f_idx] = well_defined; // implicit conversion from bool to PetscScalar
     }
   }
 
@@ -998,152 +891,103 @@ void check_if_faces_are_well_defined(p4est_t *p4est, my_p4est_node_neighbors_t *
   ierr = VecGhostUpdateEnd  (face_is_well_defined, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 }
 
-
-
-
-
-
-#ifdef P4_TO_P8
 double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4est_faces_t *faces,
                                my_p4est_cell_neighbors_t *ngbd_c, my_p4est_node_neighbors_t *ngbd_n,
-                               p4est_locidx_t node_idx, Vec f, int dir,
-                               Vec face_is_well_defined, int order, BoundaryConditions3D *bc)
-#else
-double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4est_faces_t *faces,
-                               my_p4est_cell_neighbors_t *ngbd_c, my_p4est_node_neighbors_t *ngbd_n,
-                               p4est_locidx_t node_idx, Vec f, int dir,
-                               Vec face_is_well_defined, int order, BoundaryConditions2D *bc)
-#endif
+                               p4est_locidx_t node_idx, Vec f, const unsigned char &dir,
+                               Vec face_is_well_defined, int order, BoundaryConditionsDIM *bc)
 {
   PetscErrorCode ierr;
 
   double xyz[P4EST_DIM];
-  xyz[0] = node_x_fr_n(node_idx, p4est, nodes);
-  xyz[1] = node_y_fr_n(node_idx, p4est, nodes);
-#ifdef P4_TO_P8
-  xyz[2] = node_z_fr_n(node_idx, p4est, nodes);
-#endif
+  node_xyz_fr_n(node_idx, p4est, nodes, xyz);
 
   p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, node_idx);
 
-  if(bc!=NULL && is_node_Wall(p4est, node) && bc[dir].wallType(xyz)==DIRICHLET)
+  if(bc != NULL && is_node_Wall(p4est, node) && bc[dir].wallType(xyz) == DIRICHLET)
     return bc[dir].wallValue(xyz);
 
-  double *v2c = p4est->connectivity->vertices;
-  p4est_topidx_t *t2v = p4est->connectivity->tree_to_vertex;
-  double xmin = v2c[3*t2v[0 + 0] + 0];
-  double xmax = v2c[3*t2v[0 + P4EST_CHILDREN-1] + 0];
-  double ymin = v2c[3*t2v[0 + 0] + 1];
-  double ymax = v2c[3*t2v[0 + P4EST_CHILDREN-1] + 1];
-#ifdef P4_TO_P8
-  double zmin = v2c[3*t2v[0 + 0] + 2];
-  double zmax = v2c[3*t2v[0 + P4EST_CHILDREN-1] + 2];
-  double qh = MIN(xmax-xmin, ymax-ymin, zmax-zmin);
-#else
-  double qh = MIN(xmax-xmin, ymax-ymin);
-#endif
+  const double *dxyz    = faces->get_smallest_dxyz();
+  const double *xyz_max = faces->get_xyz_max();
+  const double *xyz_min = faces->get_xyz_min();
+  const int8_t max_lvl  = ((splitting_criteria_t *) p4est->user_pointer)->max_lvl;
+  const double qh = MIN(DIM(dxyz[0], dxyz[1], dxyz[2]));
   double domain_size[P4EST_DIM];
-  if(is_periodic(p4est, dir::x) || is_periodic(p4est, dir::y)
-   #ifdef P4_TO_P8
-     || is_periodic(p4est, dir::z)
-   #endif
-     )
-    for (short dim = 0; dim < P4EST_DIM; ++dim)
-      domain_size[dim] =
-          p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*(p4est->trees->elem_count-1) + P4EST_CHILDREN-1] + dim] -
-          p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[0 + 0] + dim];
+  for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
+    domain_size[dim] = xyz_max[dim] - xyz_min[dim];
 
 
   /* gather the neighborhood */
 #ifdef CASL_THROWS
   bool is_local = false;
 #endif
-  vector<p4est_quadrant_t> ngbd_tmp;
+  set_of_neighboring_quadrants ngbd_tmp;
   p4est_locidx_t quad_idx;
   p4est_topidx_t tree_idx;
   double scaling = DBL_MAX;
-  for(int i=-1; i<2; i+=2)
-    for(int j=-1; j<2; j+=2)
+  for(char i = -1; i < 2; i += 2)
+    for(char j = -1; j < 2; j += 2)
 #ifdef P4_TO_P8
-      for(int k=-1; k<2; k+=2)
-      {
-        ngbd_n->find_neighbor_cell_of_node(node_idx, i, j, k, quad_idx, tree_idx);
-#else
-    {
-      ngbd_n->find_neighbor_cell_of_node(node_idx, i, j, quad_idx, tree_idx);
+      for(char k = -1; k < 2; k += 2)
 #endif
-      if(quad_idx!=NOT_A_VALID_QUADRANT)
       {
-        p4est_quadrant_t quad;
-        if(quad_idx<p4est->local_num_quadrants)
+        ngbd_n->find_neighbor_cell_of_node(node_idx, DIM(i, j, k), quad_idx, tree_idx);
+        if(quad_idx != NOT_A_VALID_QUADRANT)
         {
-          p4est_tree_t* tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
-          quad = *(p4est_quadrant_t*)sc_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
-        }
-        else
-        {
-          quad = *(p4est_quadrant_t*)sc_array_index(&ghost->ghosts, quad_idx-p4est->local_num_quadrants);
-        }
+          p4est_quadrant_t quad;
+          if(quad_idx < p4est->local_num_quadrants)
+          {
+            p4est_tree_t* tree = p4est_tree_array_index(p4est->trees, tree_idx);
+            quad = *p4est_quadrant_array_index(&tree->quadrants, quad_idx - tree->quadrants_offset);
+          }
+          else
+            quad = *p4est_quadrant_array_index(&ghost->ghosts, quad_idx - p4est->local_num_quadrants);
 
-        quad.p.piggy3.local_num = quad_idx;
+          quad.p.piggy3.local_num = quad_idx;
 
 #ifdef CASL_THROWS
-        is_local = is_local || (quad_idx<p4est->local_num_quadrants);
+          is_local = is_local || quad_idx < p4est->local_num_quadrants;
 #endif
 
-        ngbd_tmp.push_back(quad);
-        scaling = MIN(scaling, .5*qh*(double)P4EST_QUADRANT_LEN(quad.level)/(double)P4EST_ROOT_LEN);
+          ngbd_tmp.insert(quad);
+          scaling = MIN(scaling, .5*qh*(double) (1 << (max_lvl - quad.level)));
 
+          ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, quad_idx, tree_idx, DIM(i, 0, 0));
+          ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, quad_idx, tree_idx, DIM(0, j, 0));
 #ifdef P4_TO_P8
-        ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, quad_idx, tree_idx, i, 0, 0);
-        ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, quad_idx, tree_idx, 0, j, 0);
-        ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, quad_idx, tree_idx, 0, 0, k);
-        ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, quad_idx, tree_idx, i, j, 0);
-        ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, quad_idx, tree_idx, i, 0, k);
-        ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, quad_idx, tree_idx, 0, j, k);
-        ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, quad_idx, tree_idx, i, j, k);
-#else
-        ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, quad_idx, tree_idx, i, 0);
-        ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, quad_idx, tree_idx, 0, j);
-        ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, quad_idx, tree_idx, i, j);
+          ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, quad_idx, tree_idx,     0, 0, k );
 #endif
+          ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, quad_idx, tree_idx, DIM(i, j, 0));
+#ifdef P4_TO_P8
+          ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, quad_idx, tree_idx,     i, 0, k );
+          ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, quad_idx, tree_idx,     0, j, k );
+          ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, quad_idx, tree_idx,     i, j, k );
+#endif
+        }
       }
-    }
 
 #ifdef CASL_THROWS
   if(!is_local)
   {
     ierr = PetscPrintf(p4est->mpicomm, "Warning !! interpolation_f_at_node_n: the node is not local."); CHKERRXX(ierr);
-//    throw std::invalid_argument("[CASL_ERROR]: interpolate_f_at_node_n: cannot be called on a ghost node.");
   }
 #endif
 
-  vector<p4est_locidx_t> ngbd;
-  p4est_locidx_t f_tmp;
-  for(unsigned int m=0; m<ngbd_tmp.size(); ++m)
-  {
-    f_tmp = faces->q2f(ngbd_tmp[m].p.piggy3.local_num, 2*dir  );
-    if(f_tmp!=NO_VELOCITY && std::find(ngbd.begin(), ngbd.end(),f_tmp)==ngbd.end())
-      ngbd.push_back(f_tmp);
-
-    f_tmp = faces->q2f(ngbd_tmp[m].p.piggy3.local_num, 2*dir+1);
-    if(f_tmp!=NO_VELOCITY && std::find(ngbd.begin(), ngbd.end(),f_tmp)==ngbd.end())
-      ngbd.push_back(f_tmp);
-  }
+  std::set<indexed_and_located_face> face_ngbd;
+  add_faces_to_set_and_clear_set_of_quad(faces, NO_VELOCITY, dir, face_ngbd, ngbd_tmp); // NO_VELOCITY for 2nd argument, because no "center_seed", we are not constructing a Voronoi cell --> bypass the check
 
   double *f_p;
   ierr = VecGetArray(f, &f_p); CHKERRXX(ierr);
 
   vector<p4est_locidx_t> interp_points;
   matrix_t A;
-  bool neumann_wall_x = (bc!=NULL && (is_node_xmWall(p4est, node) || is_node_xpWall(p4est, node)) && bc[dir].wallType(xyz)==NEUMANN);
-  bool neumann_wall_y = (bc!=NULL && (is_node_ymWall(p4est, node) || is_node_ypWall(p4est, node)) && bc[dir].wallType(xyz)==NEUMANN);
-#ifdef P4_TO_P8
-  bool neumann_wall_z = (bc!=NULL && (is_node_zmWall(p4est, node) || is_node_zpWall(p4est, node)) && bc[dir].wallType(xyz)==NEUMANN);
-  A.resize(1, (order>=2 ? 10 : 4) - (neumann_wall_x?1:0)- (neumann_wall_y?1:0) - (neumann_wall_z?1:0));
-#else
-  A.resize(1, (order>=2 ? 6 : 3) - (neumann_wall_x?1:0)- (neumann_wall_y?1:0));
-#endif
+  /* [Raphael Egan (01/22/2020): results seem more accurate (2nd order vs 1st order) when disregarding the Neumann wall boundary condition (from tests in main file for testing poisson_faces)...] */
+  /* --> TO DO : test if SHS still behaves OK when not doing anyting for Neumann wall BC! */
+//  bool neumann_wall_x = (bc != NULL && (is_node_xmWall(p4est, node) || is_node_xpWall(p4est, node)) && bc[dir].wallType(xyz) == NEUMANN);
+//  bool neumann_wall_y = (bc != NULL && (is_node_ymWall(p4est, node) || is_node_ypWall(p4est, node)) && bc[dir].wallType(xyz) == NEUMANN);
+//#ifdef P4_TO_P8
+//  bool neumann_wall_z = (bc != NULL && (is_node_zmWall(p4est, node) || is_node_zpWall(p4est, node)) && bc[dir].wallType(xyz) == NEUMANN);
+//#endif
+  A.resize(1, (order >= 2 ? 1 + P4EST_DIM + P4EST_DIM*(P4EST_DIM + 1)/2 : 1 + P4EST_DIM)/* - SUMD((neumann_wall_x ? 1 : 0), (neumann_wall_y ? 1 : 0), (neumann_wall_z ? 1 : 0))*/);
   vector<double> p;
   vector<double> nb[P4EST_DIM];
 
@@ -1151,90 +995,343 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
   double inv_max_w = 1e-6;
 
   const PetscScalar *face_is_well_defined_p;
-  if(face_is_well_defined!=NULL)
+  if(face_is_well_defined != NULL)
     ierr = VecGetArrayRead(face_is_well_defined, &face_is_well_defined_p); CHKERRXX(ierr);
 
-  for(unsigned int m=0; m<ngbd.size(); m++)
+  for(std::set<indexed_and_located_face>::const_iterator it = face_ngbd.begin(); it != face_ngbd.end() ; it++)
   {
     /* minus direction */
-    p4est_locidx_t fm_idx = ngbd[m];
-    if((face_is_well_defined==NULL || face_is_well_defined_p[fm_idx]) && std::find(interp_points.begin(), interp_points.end(),fm_idx)==interp_points.end() )
+    const indexed_and_located_face &neighbor_face = *it;
+    if((face_is_well_defined == NULL || face_is_well_defined_p[neighbor_face.face_idx]) && std::find(interp_points.begin(), interp_points.end(), neighbor_face.face_idx) == interp_points.end())
     {
-      double xyz_t[P4EST_DIM];
-      faces->xyz_fr_f(fm_idx, dir, xyz_t);
-      for(int i=0; i<P4EST_DIM; ++i)
+      double xyz_t[P4EST_DIM] = {DIM(neighbor_face.xyz_face[0], neighbor_face.xyz_face[1], neighbor_face.xyz_face[2])};
+      for(unsigned char i = 0; i < P4EST_DIM; ++i)
       {
         double rel_dist = (xyz[i] - xyz_t[i]);
-        if(is_periodic(p4est, i))
-          for (short cc = -1; cc < 2; cc+=2)
-            if(fabs((xyz[i] - xyz_t[i] + ((double) cc)*domain_size[i])) < fabs(rel_dist))
-              rel_dist = (xyz[i] - xyz_t[i] + ((double) cc)*domain_size[i]);
+        if(faces->periodicity(i))
+          for (char cc = -1; cc < 2; cc+=2)
+            if(fabs(xyz[i] - xyz_t[i] + cc*domain_size[i]) < fabs(rel_dist))
+              rel_dist = (xyz[i] - xyz_t[i] + cc*domain_size[i]);
         xyz_t[i] = rel_dist / scaling;
       }
 
+      double w = MAX(min_w,1./MAX(inv_max_w, sqrt(SUMD(SQR(xyz_t[0]), SQR(xyz_t[1]), SQR(xyz_t[2])))));
+
+      A.set_value(interp_points.size(), 0,                                                                                                          1.0               * w);
+//      if(!neumann_wall_x)
+      A.set_value(interp_points.size(), 1,                                                                                                          xyz_t[0]          * w);
+//      if(!neumann_wall_y)
+      A.set_value(interp_points.size(), 2 /*- (neumann_wall_x ? 1 : 0)*/,                                                                           xyz_t[1]          * w);
 #ifdef P4_TO_P8
-      double w = MAX(min_w,1./MAX(inv_max_w,sqrt(SQR(xyz_t[0]) + SQR(xyz_t[1]) + SQR(xyz_t[2]))));
-#else
-      double w = MAX(min_w,1./MAX(inv_max_w,sqrt(SQR(xyz_t[0]) + SQR(xyz_t[1]))));
+//      if(!neumann_wall_z)
+      A.set_value(interp_points.size(), 3 /*- (neumann_wall_x ? 1 : 0) - (neumann_wall_y ? 1 : 0)*/,                                                xyz_t[2]          * w);
 #endif
-
+      if(order >= 2)
+      {
+        A.set_value(interp_points.size(),   1 + P4EST_DIM /*- SUMD((neumann_wall_x ? 1 : 0), (neumann_wall_y ? 1 : 0), (neumann_wall_z ? 1 : 0))*/, xyz_t[0]*xyz_t[0] * w);
+        A.set_value(interp_points.size(),   2 + P4EST_DIM /*- SUMD((neumann_wall_x ? 1 : 0), (neumann_wall_y ? 1 : 0), (neumann_wall_z ? 1 : 0))*/, xyz_t[0]*xyz_t[1] * w);
 #ifdef P4_TO_P8
-      A.set_value(interp_points.size(), 0, 1                                                                                  * w);
-      if(!neumann_wall_x)
-        A.set_value(interp_points.size(), 1, xyz_t[0]                                                                         * w);
-      if(!neumann_wall_y)
-        A.set_value(interp_points.size(), 2-(neumann_wall_x?1:0), xyz_t[1]                                                    * w);
-      if(!neumann_wall_z)
-        A.set_value(interp_points.size(), 3-(neumann_wall_x?1:0)-(neumann_wall_y?1:0), xyz_t[2]                               * w);
-      if(order>=2)
-      {
-        A.set_value(interp_points.size(), 4-(neumann_wall_x?1:0)-(neumann_wall_y?1:0)-(neumann_wall_z?1:0), xyz_t[0]*xyz_t[0] * w);
-        A.set_value(interp_points.size(), 5-(neumann_wall_x?1:0)-(neumann_wall_y?1:0)-(neumann_wall_z?1:0), xyz_t[0]*xyz_t[1] * w);
-        A.set_value(interp_points.size(), 6-(neumann_wall_x?1:0)-(neumann_wall_y?1:0)-(neumann_wall_z?1:0), xyz_t[0]*xyz_t[2] * w);
-        A.set_value(interp_points.size(), 7-(neumann_wall_x?1:0)-(neumann_wall_y?1:0)-(neumann_wall_z?1:0), xyz_t[1]*xyz_t[1] * w);
-        A.set_value(interp_points.size(), 8-(neumann_wall_x?1:0)-(neumann_wall_y?1:0)-(neumann_wall_z?1:0), xyz_t[1]*xyz_t[2] * w);
-        A.set_value(interp_points.size(), 9-(neumann_wall_x?1:0)-(neumann_wall_y?1:0)-(neumann_wall_z?1:0), xyz_t[2]*xyz_t[2] * w);
-      }
-#else
-      A.set_value(interp_points.size(), 0, 1                                                              * w);
-      if(!neumann_wall_x)
-        A.set_value(interp_points.size(), 1, xyz_t[0]                                                     * w);
-      if(!neumann_wall_y)
-        A.set_value(interp_points.size(), 2-(neumann_wall_x?1:0), xyz_t[1]                                * w);
-      if(order>=2)
-      {
-        A.set_value(interp_points.size(), 3-(neumann_wall_x?1:0)-(neumann_wall_y?1:0), xyz_t[0]*xyz_t[0]  * w);
-        A.set_value(interp_points.size(), 4-(neumann_wall_x?1:0)-(neumann_wall_y?1:0), xyz_t[0]*xyz_t[1]  * w);
-        A.set_value(interp_points.size(), 5-(neumann_wall_x?1:0)-(neumann_wall_y?1:0), xyz_t[1]*xyz_t[1]  * w);
-      }
+        A.set_value(interp_points.size(),   3 + P4EST_DIM /*- SUMD((neumann_wall_x ? 1 : 0), (neumann_wall_y ? 1 : 0), (neumann_wall_z ? 1 : 0))*/, xyz_t[0]*xyz_t[2] * w);
 #endif
+        A.set_value(interp_points.size(), 1 + 2*P4EST_DIM /*- SUMD((neumann_wall_x ? 1 : 0), (neumann_wall_y ? 1 : 0), (neumann_wall_z ? 1 : 0))*/, xyz_t[1]*xyz_t[1] * w);
+#ifdef P4_TO_P8
+        A.set_value(interp_points.size(), 2 + 2*P4EST_DIM /*- SUMD((neumann_wall_x ? 1 : 0), (neumann_wall_y ? 1 : 0), (neumann_wall_z ? 1 : 0))*/, xyz_t[1]*xyz_t[2] * w);
+        A.set_value(interp_points.size(),     3*P4EST_DIM /*- SUMD((neumann_wall_x ? 1 : 0), (neumann_wall_y ? 1 : 0), (neumann_wall_z ? 1 : 0))*/, xyz_t[2]*xyz_t[2] * w);
+#endif
+      }
 
-      p.push_back((f_p[fm_idx] + (neumann_wall_x? bc->wallValue(xyz)*xyz_t[0]*scaling: 0.0) + (neumann_wall_y? bc->wallValue(xyz)*xyz_t[1]*scaling: 0.0)
-             #ifdef P4_TO_P8
-                   + (neumann_wall_z? bc->wallValue(xyz)*xyz_t[2]*scaling: 0.0)
-             #endif
-                   ) * w);
+//      const double neumann_term = SUMD((neumann_wall_x ? bc->wallValue(xyz)*xyz_t[0]*scaling : 0.0),
+//                                       (neumann_wall_y ? bc->wallValue(xyz)*xyz_t[1]*scaling : 0.0),
+//                                       (neumann_wall_z ? bc->wallValue(xyz)*xyz_t[2]*scaling : 0.0));
+      p.push_back((f_p[neighbor_face.face_idx] /*+ neumann_term*/) * w);
 
-      for(int d=0; d<P4EST_DIM; ++d)
+      for(unsigned char d = 0; d < P4EST_DIM; ++d)
         if(std::find(nb[d].begin(), nb[d].end(), xyz_t[d]) == nb[d].end())
           nb[d].push_back(xyz_t[d]);
 
-      interp_points.push_back(fm_idx);
+      interp_points.push_back(neighbor_face.face_idx);
     }
   }
 
   ierr = VecRestoreArray(f, &f_p); CHKERRXX(ierr);
-  if(face_is_well_defined!=NULL)
+  if(face_is_well_defined != NULL)
     ierr = VecRestoreArrayRead(face_is_well_defined, &face_is_well_defined_p); CHKERRXX(ierr);
 
-  if(interp_points.size()==0)
-    return 0;
+  if(interp_points.size() == 0)
+    return 0.0;
 
   A.scale_by_maxabs(p);
 
-#ifdef P4_TO_P8
-  return solve_lsqr_system(A, p, nb[0].size(), nb[1].size(), nb[2].size(), order);
+  return solve_lsqr_system(A, p, DIM(nb[0].size(), nb[1].size(), nb[2].size()), order);
+}
+
+voro_cell_type compute_voronoi_cell(Voronoi_DIM &voronoi_cell, const my_p4est_faces_t* faces, const p4est_locidx_t &f_idx, const unsigned char &dir, const BoundaryConditionsDIM *bc, const PetscScalar *face_is_well_defined_p)
+{
+  PetscErrorCode ierr;
+  ierr = PetscLogEventBegin(log_my_p4est_faces_compute_voronoi_cell_t, 0, 0, 0, 0); CHKERRXX(ierr);
+
+#ifdef CASL_THROWS
+  p4est_t* p4est = faces->get_p4est();
 #else
-  return solve_lsqr_system(A, p, nb[0].size(), nb[1].size(), order);
+  const p4est_t* p4est = faces->get_p4est();
 #endif
+  const my_p4est_cell_neighbors_t *ngbd_c = faces->get_ngbd_c();
+  const double *dxyz    = faces->get_smallest_dxyz();
+
+  voronoi_cell.clear();
+  double xyz_face[P4EST_DIM]; faces->xyz_fr_f(f_idx, dir, xyz_face);
+  voronoi_cell.set_center_point(ONLY3D(f_idx COMMA) xyz_face);
+
+  // check first if the neighbors of the finest faces were stored during construction of faces
+  // and if the face of interest is one of the finest quadrants' in the uniform region
+  // in that case, the task is straightforward.
+  const uniform_face_ngbd* face_neighbors;
+  if(faces->found_uniform_face_neighborhood(f_idx, dir, face_neighbors) && no_wall_in_face_neighborhood(face_neighbors))
+  {
+#ifdef DEBUG
+    p4est_quadrant_t qm, qp;
+    faces->find_quads_touching_face(f_idx, dir, qm, qp);
+    P4EST_ASSERT(qm.level == qp.level && qm.level == ((splitting_criteria_t*) (faces->get_p4est())->user_pointer)->max_lvl);
+#endif
+#ifdef P4_TO_P8
+    vector<ngbd3Dseed> points(P4EST_FACES);
+#else
+    vector<ngbd2Dseed> points(P4EST_FACES);
+    vector<Point2> partition(P4EST_FACES);
+#endif
+    for (unsigned char face_dir = 0; face_dir < P4EST_FACES; ++face_dir) {
+#ifdef P4_TO_P8
+      points[face_dir].n  = face_neighbors->neighbor_face_idx[face_dir];
+      faces->point_fr_f(points[face_dir].n, dir, points[face_dir].p);
+      points[face_dir].s  = (face_dir/2 == dir::x ? dxyz[1]*dxyz[2] : (face_dir/2 == dir::y ? dxyz[0]*dxyz[2] : dxyz[0]*dxyz[1]));
+#else
+      unsigned char idx   = face_order_to_counterclock_cycle_order[face_dir];
+      points[idx].n       = face_neighbors->neighbor_face_idx[face_dir];
+      faces->point_fr_f(points[idx].n, dir, points[idx].p);
+      points[idx].theta   = (face_dir/2)*M_PI_2 + (1.0 - face_dir%2)*M_PI;
+      partition[idx].x    = points[idx].p.x + (0.5 - (face_dir%2))*dxyz[0];
+      partition[idx].y    = points[idx].p.y + (1.0 - 2.0*(face_dir/2))*(face_dir%2 - 0.5)*dxyz[1];
+#endif
+    }
+#ifdef P4_TO_P8
+    voronoi_cell.set_cell(points, dxyz[0]*dxyz[1]*dxyz[2]);
+#else
+    voronoi_cell.set_neighbors_and_partition(points, partition, dxyz[0]*dxyz[1]);
+#endif
+    ierr = PetscLogEventEnd(log_my_p4est_faces_compute_voronoi_cell_t, 0, 0, 0, 0); CHKERRXX(ierr);
+    return uniform_no_wall;
+  }
+
+  // check if well-defined (if using those tags) : if far in the positive domain and if not solving there, we don't need anything here
+  if(face_is_well_defined_p != NULL && !face_is_well_defined_p[f_idx])
+  {
+    ierr = PetscLogEventEnd(log_my_p4est_faces_compute_voronoi_cell_t, 0, 0, 0, 0); CHKERRXX(ierr);
+    return not_well_defined;
+  }
+
+  p4est_quadrant_t qm, qp;
+  faces->find_quads_touching_face(f_idx, dir, qm, qp);
+
+  /* check for DIRICHLET wall faces */
+  const bool is_wall_face = qm.p.piggy3.local_num == -1 || qp.p.piggy3.local_num == -1;
+  if(is_wall_face && bc[dir].wallType(xyz_face) == DIRICHLET)
+  {
+    ierr = PetscLogEventEnd(log_my_p4est_faces_compute_voronoi_cell_t, 0, 0, 0, 0); CHKERRXX(ierr);
+    return dirichlet_wall_face;
+  }
+
+  /* find direct neighbors */
+  /* Gather the neighbor cells to get the potential voronoi neighbors */
+  set_of_neighboring_quadrants ngbd_m_[2*(P4EST_DIM - 1)]; // neighbors of qm in transverse cartesian direction
+  set_of_neighboring_quadrants ngbd_p_[2*(P4EST_DIM - 1)]; // neighbors of qp in transverse cartesian direction
+  P4EST_ASSERT(ORD(dir == dir::x, dir == dir::y, dir == dir::z));
+  unsigned char ngbd_idx = 0;
+  for (unsigned char neigbor_dir = 0; neigbor_dir < P4EST_FACES; ++neigbor_dir) {
+    if(neigbor_dir/2 == dir)
+      continue;
+    char search[P4EST_DIM]  = {DIM(0, 0, 0)};
+    search[neigbor_dir/2]   = (neigbor_dir%2 == 1 ?  1 : -1);
+    if(qm.p.piggy3.local_num != -1)
+      ngbd_c->find_neighbor_cells_of_cell(ngbd_m_[ngbd_idx], qm.p.piggy3.local_num, qm.p.piggy3.which_tree, DIM(search[0], search[1], search[2]));
+    if(qp.p.piggy3.local_num != -1)
+      ngbd_c->find_neighbor_cells_of_cell(ngbd_p_[ngbd_idx], qp.p.piggy3.local_num, qp.p.piggy3.which_tree, DIM(search[0], search[1], search[2]));
+    ngbd_idx++;
+  }
+  P4EST_ASSERT(ngbd_idx == 2*(P4EST_DIM - 1));
+
+  /* now gather the neighbor cells to get the potential voronoi neighbors */
+
+  /* check for uniform case, if so build voronoi partition by hand */
+  bool is_uniform_no_wall = (qp.level == qm.level);
+  for (unsigned char k = 0; is_uniform_no_wall && k < 2*(P4EST_DIM - 1); ++k)
+    is_uniform_no_wall = is_uniform_no_wall && ngbd_m_[k].size() == 1 && ngbd_p_[k].size() == 1 &&
+        ngbd_m_[k].begin()->level == qm.level && ngbd_p_[k].begin()->level == qp.level &&
+        faces->q2f(ngbd_m_[k].begin()->p.piggy3.local_num, 2*dir) != NO_VELOCITY && faces->q2f(ngbd_p_[k].begin()->p.piggy3.local_num, 2*dir + 1) != NO_VELOCITY;
+  is_uniform_no_wall = is_uniform_no_wall && faces->q2f(qm.p.piggy3.local_num, 2*dir) != NO_VELOCITY && faces->q2f(qp.p.piggy3.local_num, 2*dir + 1) != NO_VELOCITY;
+  if(is_uniform_no_wall)
+  {
+    P4EST_ASSERT(qm.level <= ((splitting_criteria_t*) p4est->user_pointer)->max_lvl); // consistency check
+#ifdef P4EST_DEBUG
+    for (unsigned char k = 0; k < 2*(P4EST_DIM - 1); ++k)
+      P4EST_ASSERT(faces->q2f(ngbd_m_[k].begin()->p.piggy3.local_num, 2*dir + 1) == faces->q2f(ngbd_p_[k].begin()->p.piggy3.local_num, 2*dir)); // consistency check
+#endif
+    const double cell_ratio = (double) (1 << (((splitting_criteria_t *) p4est->user_pointer)->max_lvl - qm.level));
+    // neighbor faces in the direction of the face orientation, first:
+#ifdef P4_TO_P8
+    vector<ngbd3Dseed> points(P4EST_FACES);
+    points[2*dir].n   = faces->q2f(qm.p.piggy3.local_num, 2*dir);
+    faces->point_fr_f(points[2*dir].n, dir, points[2*dir].p);
+    points[2*dir].s   = (dir == dir::x ? dxyz[1]*dxyz[2] : (dir == dir::y ? dxyz[0]*dxyz[2] : dxyz[0]*dxyz[1]))*SQR(cell_ratio);
+
+    points[2*dir + 1].n = faces->q2f(qp.p.piggy3.local_num, 2*dir + 1);
+    faces->point_fr_f(points[2*dir + 1].n, dir, points[2*dir + 1].p);
+    points[2*dir + 1].s = (dir == dir::x ? dxyz[1]*dxyz[2] : (dir == dir::y ? dxyz[0]*dxyz[2] : dxyz[0]*dxyz[1]))*SQR(cell_ratio);
+#else
+    vector<ngbd2Dseed> points(P4EST_FACES);
+    vector<Point2> partition(P4EST_FACES);
+    unsigned char idx;
+    idx               = face_order_to_counterclock_cycle_order[2*dir];
+    points[idx].n     = faces->q2f(qm.p.piggy3.local_num, 2*dir);
+    faces->point_fr_f(points[idx].n, dir, points[idx].p);
+    points[idx].theta = dir*M_PI_2 + M_PI;
+    partition[idx].x  = points[idx].p.x +         0.5*dxyz[0]*cell_ratio;
+    partition[idx].y  = points[idx].p.y + (dir - 0.5)*dxyz[1]*cell_ratio;
+
+    idx               = face_order_to_counterclock_cycle_order[2*dir + 1];
+    points[idx].n     = faces->q2f(qp.p.piggy3.local_num, 2*dir + 1);
+    faces->point_fr_f(points[idx].n, dir, points[idx].p);
+    points[idx].theta = dir*M_PI_2;
+    partition[idx].x  = points[idx].p.x -         0.5*dxyz[0]*cell_ratio;
+    partition[idx].y  = points[idx].p.y + (0.5 - dir)*dxyz[1]*cell_ratio;
+#endif
+    // neighbor faces in the tranverse direction(s), then:
+    unsigned char ngbd_idx = 0;
+    for (unsigned char face_dir = 0; face_dir < P4EST_FACES; ++face_dir) {
+      if(face_dir/2 == dir)
+        continue;
+      else
+      {
+#ifdef P4_TO_P8
+        points[face_dir].n  = faces->q2f(ngbd_p_[ngbd_idx].begin()->p.piggy3.local_num, 2*dir); // we loop through ngbd_p_ in the same order as when it was built
+        faces->point_fr_f(points[face_dir].n, dir, points[face_dir].p);
+        points[face_dir].s  = (face_dir == dir::x ? dxyz[1]*dxyz[2] : (face_dir == dir::y ? dxyz[0]*dxyz[2] : dxyz[0]*dxyz[1]))*SQR(cell_ratio);
+#else
+        idx = face_order_to_counterclock_cycle_order[face_dir];
+        points[idx].n     = faces->q2f(ngbd_p_[ngbd_idx].begin()->p.piggy3.local_num, 2*dir); // we loop through ngbd_p_ in the same order as when it was built
+        faces->point_fr_f(points[idx].n, dir, points[idx].p);
+        points[idx].theta = (face_dir/2)*M_PI_2 + (1.0 - face_dir%2)*M_PI;
+        partition[idx].x  = points[idx].p.x + (0.5 - face_dir%2)*dxyz[0]*cell_ratio;
+        partition[idx].y  = points[idx].p.y + (1.0 - 2.0*(face_dir/2))*(face_dir%2 - 0.5)*dxyz[1]*cell_ratio;
+#endif
+        ngbd_idx++;
+      }
+    }
+    P4EST_ASSERT(ngbd_idx == 2*(P4EST_DIM - 1));
+#ifdef P4_TO_P8
+    voronoi_cell.set_cell(points, dxyz[0]*dxyz[1]*dxyz[2]*pow(cell_ratio, 3.0));
+#else
+    voronoi_cell.set_neighbors_and_partition(points, partition, dxyz[0]*dxyz[1]*SQR(cell_ratio));
+#endif
+    ierr = PetscLogEventEnd(log_my_p4est_faces_compute_voronoi_cell_t, 0, 0, 0, 0); CHKERRXX(ierr);
+    return uniform_no_wall;
+  }
+  /* otherwise, either
+   * 1) the face is a non-Dirichlet wall face,
+   * 2) there is a wall nearby,
+   * 3) there is a T-junction and the grid is not uniform
+   * --> need to compute the voronoi cell */
+  else
+  {
+    /* gather neighbor cells:
+     * find neighbor quadrants of touching quadrants in (all possible) transverse orientations + one more layer of such in the positive and negative face-normals
+     */
+    set_of_neighboring_quadrants ngbd; ngbd.clear();
+    std::set<indexed_and_located_face> set_of_neighbor_faces; set_of_neighbor_faces.clear();
+    // we add faces to the set as we find them and clear the list of neighbor quadrants after every search to avoid vectors growing very large and slowing down the O(n) searches implemented in find_neighbor_cells_of_cell
+    for (char face_touch = -1; face_touch < 2; face_touch += 2) {
+      p4est_locidx_t quadrant_touch_idx = (face_touch == -1 ? qm.p.piggy3.local_num : qp.p.piggy3.local_num);
+      if(quadrant_touch_idx != -1)
+      {
+        p4est_topidx_t tree_touch_idx = (face_touch == -1 ? qm.p.piggy3.which_tree : qp.p.piggy3.which_tree);
+        p4est_quadrant_t& quad_touch  = (face_touch == -1 ? qm : qp);
+        const unsigned char dir_touch = 2*dir + (face_touch == -1 ? 0 : 1);
+        ngbd.insert(quad_touch);
+
+        // in face normal direction if needed
+        if (faces->q2f(quadrant_touch_idx, dir_touch) == NO_VELOCITY)
+          ngbd_c->find_neighbor_cells_of_cell(ngbd, quadrant_touch_idx, tree_touch_idx, dir_touch);
+        // in all tranverse cartesian directions
+        for (unsigned char k = 0; k < 2*(P4EST_DIM - 1); ++k)
+          add_faces_to_set_and_clear_set_of_quad(faces, f_idx, dir, set_of_neighbor_faces, (face_touch == -1 ? ngbd_m_[k] : ngbd_p_[k]));
+        char search[P4EST_DIM];
+#ifdef P4_TO_P8
+        // in all transverse "diagonal directions"
+        search[dir] = 0;
+        for (char iii = -1; iii < 2; iii += 2) {
+          search[(dir + 1)%P4EST_DIM] = iii;
+          for (char jjj = -1; jjj < 2; jjj += 2) {
+            search[(dir + 2)%P4EST_DIM] = jjj;
+            ngbd_c->find_neighbor_cells_of_cell(ngbd, quadrant_touch_idx, tree_touch_idx, search[0], search[1], search[2]);
+          }
+        }
+#endif
+        // extra layer
+        search[dir] = face_touch;
+        for (char iii = -1; iii < 2; ++iii)
+        {
+#ifdef P4_TO_P8
+          for (char jjj = -1; jjj < 2; ++jjj)
+          {
+            if(iii == 0 && jjj == 0)
+              continue;
+            search[(dir + 1)%P4EST_DIM] = iii;
+            search[(dir + 2)%P4EST_DIM] = jjj;
+            ngbd_c->find_neighbor_cells_of_cell(ngbd, quadrant_touch_idx, tree_touch_idx, search[0], search[1], search[2]);
+          }
+#else
+          if(iii == 0)
+            continue;
+          search[(dir + 1)%P4EST_DIM] = iii;
+          ngbd_c->find_neighbor_cells_of_cell(ngbd, quadrant_touch_idx, tree_touch_idx, search[0], search[1]);
+#endif
+        }
+        add_faces_to_set_and_clear_set_of_quad(faces, f_idx, dir, set_of_neighbor_faces, ngbd);
+      }
+    }
+
+    const bool *periodic  = faces->get_periodicity();
+    const double *xyz_min = faces->get_xyz_min();
+    const double *xyz_max = faces->get_xyz_max();
+    voronoi_cell.assemble_from_set_of_faces(set_of_neighbor_faces, periodic, xyz_min, xyz_max);
+
+    /* add the walls in 2d, note that they are dealt with by voro++ in 3D
+     * This needs to be done AFTER assemble_from_set_of_faces because the latter starts by clearing the neighbor seeds
+     * */
+#ifndef P4_TO_P8
+    const double cell_ratio = (double) (1 << (((splitting_criteria_t *) p4est->user_pointer)->max_lvl - MAX(qm.level, qp.level)));
+    const unsigned char other_cartesian_dir = (dir == dir::x ? dir::y : dir::x);
+    if(qm.p.piggy3.local_num == -1 && bc[dir].wallType(xyz_face) == NEUMANN)
+      voronoi_cell.push(WALL_idx(2*dir),   xyz_face[0] - (dir == dir::x ? dxyz[0]*cell_ratio : 0.0), xyz_face[1] - (dir == dir::y ? dxyz[1]*cell_ratio : 0.0), periodic, xyz_min, xyz_max);
+    if(qp.p.piggy3.local_num == -1 && bc[dir].wallType(xyz_face) == NEUMANN)
+      voronoi_cell.push(WALL_idx(2*dir+1), xyz_face[0] + (dir == dir::x ? dxyz[0]*cell_ratio : 0.0), xyz_face[1] + (dir == dir::y ? dxyz[1]*cell_ratio : 0.0), periodic, xyz_min, xyz_max);
+    if ((qm.p.piggy3.local_num == -1 || is_quad_Wall(p4est, qm.p.piggy3.which_tree, &qm, 2*other_cartesian_dir)) && (qp.p.piggy3.local_num == -1 || is_quad_Wall(p4est, qp.p.piggy3.which_tree, &qp, 2*other_cartesian_dir)))
+      voronoi_cell.push(WALL_idx(2*other_cartesian_dir),      xyz_face[0] - (other_cartesian_dir == dir::x ? dxyz[0]*cell_ratio : 0.0), xyz_face[1] - (other_cartesian_dir == dir::y ? dxyz[1]*cell_ratio : 0.0), periodic, xyz_min, xyz_max);
+    if ((qm.p.piggy3.local_num == -1 || is_quad_Wall(p4est, qm.p.piggy3.which_tree, &qm, 2*other_cartesian_dir + 1)) && (qp.p.piggy3.local_num == -1 || is_quad_Wall(p4est, qp.p.piggy3.which_tree, &qp, 2*other_cartesian_dir + 1)))
+      voronoi_cell.push(WALL_idx(2*other_cartesian_dir + 1),  xyz_face[0] + (other_cartesian_dir == dir::x ? dxyz[0]*cell_ratio : 0.0), xyz_face[1] + (other_cartesian_dir == dir::y ? dxyz[1]*cell_ratio : 0.0), periodic, xyz_min, xyz_max);
+#endif
+
+#ifdef P4_TO_P8
+    const bool has_wall_neighbor = voronoi_cell.construct_partition(xyz_min, xyz_max, periodic);
+#else
+    const bool has_wall_neighbor = voronoi_cell.construct_partition();
+    voronoi_cell.compute_volume();
+#endif
+    ierr = PetscLogEventEnd(log_my_p4est_faces_compute_voronoi_cell_t, 0, 0, 0, 0); CHKERRXX(ierr);
+    if(is_wall_face)
+      return non_dirichlet_wall_face;
+    if(has_wall_neighbor)
+      return with_wall_neighbor;
+    // if none of the above, then it was nothing but a locally nonuniform grid...
+    return nonuniform;
+  }
 }

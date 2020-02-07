@@ -5,14 +5,18 @@
 #include <vector>
 
 #include <src/my_p4est_utils.h>
-#include <src/my_p4est_faces.h>
 #include <src/casl_math.h>
 #include <src/point2.h>
 
 #ifdef Voronoi_DIM
 #undef Voronoi_DIM
 #endif
+#ifdef ngbdDIMseed
+#undef ngbdDIMseed
+#endif
+
 #define Voronoi_DIM Voronoi2D
+#define ngbdDIMseed ngbd2Dseed
 
 using std::vector;
 
@@ -44,7 +48,7 @@ struct ngbd2Dseed
   }
   inline bool operator<(const ngbd2Dseed& v) const
   {
-    return (((this->theta <= 2.0*PI) && (this->theta >=0.0) && (v.theta <= 2.0*PI) && (v.theta >=0.0) && (fabs(this->theta - v.theta) > 2.0*PI*EPS))? (this->theta < v.theta):(this->dist < v.dist));
+    return ((this->theta <= 2.0*PI && this->theta >= 0.0 && v.theta <= 2.0*PI && v.theta >=0.0 && fabs(this->theta - v.theta) > 2.0*PI*EPS)? this->theta < v.theta : this->dist < v.dist);
   }
 };
 
@@ -55,6 +59,7 @@ struct ngbd2Dseed
  */
 class Voronoi2D
 {
+  friend class my_p4est_faces_t;
 private:
   Point2 center_seed;
   vector<ngbd2Dseed> nb_seeds;
@@ -119,8 +124,6 @@ public:
      */
   void set_neighbors_and_partition( vector<ngbd2Dseed>& neighbors_, vector<Point2>& partition_, double volume_ );
 
-//  void reorder_neighbors_and_partition_from_faces_to_counterclock_cycle();
-
   /*!
      * \brief set the level-set values at the vertices of the voronoi partition
      * \param ls a continuous description of the level-set function
@@ -169,7 +172,7 @@ public:
      */
   void push( int n, double x, double y, const bool* periodicity, const double* xyz_min, const double* xyz_max);
 
-  void assemble_from_set_of_faces(const unsigned char& dir, const std::set<p4est_locidx_t>& set_of_faces, const my_p4est_faces_t* faces, const bool* periodicity, const double* xyz_min, const double* xyz_max);
+  void assemble_from_set_of_faces(const std::set<indexed_and_located_face>& set_of_neighbor_faces, const bool* periodicity, const double* xyz_min, const double* xyz_max);
 
   /*!
      * \brief modify the coordinates of the points to take in account the periodicity
@@ -185,9 +188,11 @@ public:
   void enforce_periodicity( bool p_x, bool p_y, double xmin, double xmax, double ymin, double ymax );
 
   /*!
-     * \brief construct the voronoi partition around point center_seed using the neighborhood given in nb_seeds
-     */
-  void construct_partition();
+   * \brief construct_partition constructs the voronoi partition around point center_seed using
+   * the neighborhood given in nb_seeds
+   * \return a flag that is true if one of the neighbor is a Wall
+   */
+  bool construct_partition();
 
   /*!
      * \brief clip the voronoi partition to exclude the points in the positive domain

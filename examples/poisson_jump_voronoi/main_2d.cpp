@@ -48,9 +48,9 @@
 
 using namespace std;
 
-int lmin = 0;
+int lmin = 2;
 int lmax = 5;
-int nb_splits = 5;
+int nb_splits = 4;
 
 int k1 = 1;
 int k2 = 1;
@@ -92,7 +92,7 @@ domain omega = centered_ones;
 /*
  * 0 - circle
  */
-int level_set_type = 1;
+int level_set_type = 0;
 
 int test_number = 2;
 /*
@@ -833,7 +833,7 @@ void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4e
               int compt)
 {
   PetscErrorCode ierr;
-  string output = "/home/egan/workspace/projects/jump_solver/output";
+  string output = "/home/regan/workspace/projects/jump_solver_voronoi/output";
   const char *out_dir = output.c_str();
   if(out_dir==NULL)
   {

@@ -117,7 +117,7 @@ lookup_in_ghost_nodes:
         idx = idx_u;
         return true;
       }
-      if(idx_u-idx_l == 1)
+      if(idx_u - idx_l == 1)
         break;
       idx_m   = (idx_l + idx_u)/2;
       node_m  = (const p4est_indep_t*) sc_array_index(&nodes->indep_nodes, idx_m);
@@ -1144,7 +1144,7 @@ void dxyz_min(const p4est_t *p4est, double *dxyz)
   p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
   double *v = p4est->connectivity->vertices;
 
-  for(int dir=0; dir<P4EST_DIM; ++dir)
+  for(unsigned char dir=0; dir<P4EST_DIM; ++dir)
     dxyz[dir] = (v[3*v_p + dir] - v[3*v_m + dir]) / (1<<data->max_lvl);
 }
 
@@ -1229,34 +1229,34 @@ double integrate_over_negative_domain_in_one_quadrant(const p4est_t *p4est, cons
 
   // TODO: This is terrible! QuadValue, Cube2, Point2, etc should be templated classes!
 #ifdef P4_TO_P8
-  phi_values.val000 = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
-  phi_values.val100 = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
-  phi_values.val010 = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
-  phi_values.val110 = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
-  phi_values.val001 = P[ q2n[ quad_idx*P4EST_CHILDREN + 4 ] ];
-  phi_values.val101 = P[ q2n[ quad_idx*P4EST_CHILDREN + 5 ] ];
-  phi_values.val011 = P[ q2n[ quad_idx*P4EST_CHILDREN + 6 ] ];
-  phi_values.val111 = P[ q2n[ quad_idx*P4EST_CHILDREN + 7 ] ];
+  phi_values.val[0] = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
+  phi_values.val[4] = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
+  phi_values.val[2] = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
+  phi_values.val[6] = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
+  phi_values.val[1] = P[ q2n[ quad_idx*P4EST_CHILDREN + 4 ] ];
+  phi_values.val[5] = P[ q2n[ quad_idx*P4EST_CHILDREN + 5 ] ];
+  phi_values.val[3] = P[ q2n[ quad_idx*P4EST_CHILDREN + 6 ] ];
+  phi_values.val[7] = P[ q2n[ quad_idx*P4EST_CHILDREN + 7 ] ];
 
-  f_values.val000   = F[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
-  f_values.val100   = F[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
-  f_values.val010   = F[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
-  f_values.val110   = F[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
-  f_values.val001   = F[ q2n[ quad_idx*P4EST_CHILDREN + 4 ] ];
-  f_values.val101   = F[ q2n[ quad_idx*P4EST_CHILDREN + 5 ] ];
-  f_values.val011   = F[ q2n[ quad_idx*P4EST_CHILDREN + 6 ] ];
-  f_values.val111   = F[ q2n[ quad_idx*P4EST_CHILDREN + 7 ] ];
+  f_values.val[0]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
+  f_values.val[4]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
+  f_values.val[2]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
+  f_values.val[6]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
+  f_values.val[1]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 4 ] ];
+  f_values.val[5]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 5 ] ];
+  f_values.val[3]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 6 ] ];
+  f_values.val[7]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 7 ] ];
 
 #else
-  phi_values.val00 = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
-  phi_values.val10 = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
-  phi_values.val01 = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
-  phi_values.val11 = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
+  phi_values.val[0] = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
+  phi_values.val[2] = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
+  phi_values.val[1] = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
+  phi_values.val[3] = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
 
-  f_values.val00   = F[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
-  f_values.val10   = F[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
-  f_values.val01   = F[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
-  f_values.val11   = F[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
+  f_values.val[0]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
+  f_values.val[2]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
+  f_values.val[1]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
+  f_values.val[3]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
 #endif
 
   ierr = VecRestoreArray(phi, &P); CHKERRXX(ierr);
@@ -1327,19 +1327,19 @@ double area_in_negative_domain_in_one_quadrant(const p4est_t *p4est, const p4est
   const p4est_locidx_t *q2n = nodes->local_nodes;
 
 #ifdef P4_TO_P8
-  phi_values.val000 = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
-  phi_values.val100 = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
-  phi_values.val010 = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
-  phi_values.val110 = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
-  phi_values.val001 = P[ q2n[ quad_idx*P4EST_CHILDREN + 4 ] ];
-  phi_values.val101 = P[ q2n[ quad_idx*P4EST_CHILDREN + 5 ] ];
-  phi_values.val011 = P[ q2n[ quad_idx*P4EST_CHILDREN + 6 ] ];
-  phi_values.val111 = P[ q2n[ quad_idx*P4EST_CHILDREN + 7 ] ];
+  phi_values.val[0] = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
+  phi_values.val[4] = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
+  phi_values.val[2] = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
+  phi_values.val[6] = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
+  phi_values.val[1] = P[ q2n[ quad_idx*P4EST_CHILDREN + 4 ] ];
+  phi_values.val[5] = P[ q2n[ quad_idx*P4EST_CHILDREN + 5 ] ];
+  phi_values.val[3] = P[ q2n[ quad_idx*P4EST_CHILDREN + 6 ] ];
+  phi_values.val[7] = P[ q2n[ quad_idx*P4EST_CHILDREN + 7 ] ];
 #else
-  phi_values.val00 = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
-  phi_values.val10 = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
-  phi_values.val01 = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
-  phi_values.val11 = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
+  phi_values.val[0] = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
+  phi_values.val[2] = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
+  phi_values.val[1] = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
+  phi_values.val[3] = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
 #endif
 
   ierr = VecRestoreArray(phi, &P); CHKERRXX(ierr);
@@ -1406,34 +1406,34 @@ double integrate_over_interface_in_one_quadrant(const p4est_t *p4est, const p4es
 
   const p4est_locidx_t *q2n = nodes->local_nodes;
 #ifdef P4_TO_P8
-  phi_values.val000 = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
-  phi_values.val100 = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
-  phi_values.val010 = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
-  phi_values.val110 = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
-  phi_values.val001 = P[ q2n[ quad_idx*P4EST_CHILDREN + 4 ] ];
-  phi_values.val101 = P[ q2n[ quad_idx*P4EST_CHILDREN + 5 ] ];
-  phi_values.val011 = P[ q2n[ quad_idx*P4EST_CHILDREN + 6 ] ];
-  phi_values.val111 = P[ q2n[ quad_idx*P4EST_CHILDREN + 7 ] ];
+  phi_values.val[0] = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
+  phi_values.val[4] = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
+  phi_values.val[2] = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
+  phi_values.val[6] = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
+  phi_values.val[1] = P[ q2n[ quad_idx*P4EST_CHILDREN + 4 ] ];
+  phi_values.val[5] = P[ q2n[ quad_idx*P4EST_CHILDREN + 5 ] ];
+  phi_values.val[3] = P[ q2n[ quad_idx*P4EST_CHILDREN + 6 ] ];
+  phi_values.val[7] = P[ q2n[ quad_idx*P4EST_CHILDREN + 7 ] ];
 
-  f_values.val000   = F[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
-  f_values.val100   = F[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
-  f_values.val010   = F[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
-  f_values.val110   = F[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
-  f_values.val001   = F[ q2n[ quad_idx*P4EST_CHILDREN + 4 ] ];
-  f_values.val101   = F[ q2n[ quad_idx*P4EST_CHILDREN + 5 ] ];
-  f_values.val011   = F[ q2n[ quad_idx*P4EST_CHILDREN + 6 ] ];
-  f_values.val111   = F[ q2n[ quad_idx*P4EST_CHILDREN + 7 ] ];
+  f_values.val[0]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
+  f_values.val[4]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
+  f_values.val[2]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
+  f_values.val[6]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
+  f_values.val[1]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 4 ] ];
+  f_values.val[5]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 5 ] ];
+  f_values.val[3]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 6 ] ];
+  f_values.val[7]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 7 ] ];
 
 #else
-  phi_values.val00 = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
-  phi_values.val10 = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
-  phi_values.val01 = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
-  phi_values.val11 = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
+  phi_values.val[0] = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
+  phi_values.val[2] = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
+  phi_values.val[1] = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
+  phi_values.val[3] = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
 
-  f_values.val00   = F[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
-  f_values.val10   = F[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
-  f_values.val01   = F[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
-  f_values.val11   = F[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
+  f_values.val[0]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
+  f_values.val[2]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
+  f_values.val[1]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
+  f_values.val[3]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
 #endif
   ierr = VecRestoreArray(phi, &P); CHKERRXX(ierr);
   ierr = VecRestoreArray(f  , &F); CHKERRXX(ierr);
@@ -1479,34 +1479,34 @@ double max_over_interface_in_one_quadrant(const p4est_nodes_t *nodes, p4est_loci
 
   const p4est_locidx_t *q2n = nodes->local_nodes;
 #ifdef P4_TO_P8
-  phi_values.val000 = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
-  phi_values.val100 = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
-  phi_values.val010 = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
-  phi_values.val110 = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
-  phi_values.val001 = P[ q2n[ quad_idx*P4EST_CHILDREN + 4 ] ];
-  phi_values.val101 = P[ q2n[ quad_idx*P4EST_CHILDREN + 5 ] ];
-  phi_values.val011 = P[ q2n[ quad_idx*P4EST_CHILDREN + 6 ] ];
-  phi_values.val111 = P[ q2n[ quad_idx*P4EST_CHILDREN + 7 ] ];
+  phi_values.val[0] = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
+  phi_values.val[4] = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
+  phi_values.val[2] = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
+  phi_values.val[6] = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
+  phi_values.val[1] = P[ q2n[ quad_idx*P4EST_CHILDREN + 4 ] ];
+  phi_values.val[5] = P[ q2n[ quad_idx*P4EST_CHILDREN + 5 ] ];
+  phi_values.val[3] = P[ q2n[ quad_idx*P4EST_CHILDREN + 6 ] ];
+  phi_values.val[7] = P[ q2n[ quad_idx*P4EST_CHILDREN + 7 ] ];
 
-  f_values.val000   = F[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
-  f_values.val100   = F[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
-  f_values.val010   = F[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
-  f_values.val110   = F[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
-  f_values.val001   = F[ q2n[ quad_idx*P4EST_CHILDREN + 4 ] ];
-  f_values.val101   = F[ q2n[ quad_idx*P4EST_CHILDREN + 5 ] ];
-  f_values.val011   = F[ q2n[ quad_idx*P4EST_CHILDREN + 6 ] ];
-  f_values.val111   = F[ q2n[ quad_idx*P4EST_CHILDREN + 7 ] ];
+  f_values.val[0]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
+  f_values.val[4]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
+  f_values.val[2]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
+  f_values.val[6]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
+  f_values.val[1]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 4 ] ];
+  f_values.val[5]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 5 ] ];
+  f_values.val[3]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 6 ] ];
+  f_values.val[7]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 7 ] ];
 
 #else
-  phi_values.val00 = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
-  phi_values.val10 = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
-  phi_values.val01 = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
-  phi_values.val11 = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
+  phi_values.val[0] = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
+  phi_values.val[2] = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
+  phi_values.val[1] = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
+  phi_values.val[3] = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
 
-  f_values.val00   = F[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
-  f_values.val10   = F[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
-  f_values.val01   = F[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
-  f_values.val11   = F[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
+  f_values.val[0]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
+  f_values.val[2]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
+  f_values.val[1]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
+  f_values.val[3]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
 #endif
   ierr = VecRestoreArray(phi, &P); CHKERRXX(ierr);
   ierr = VecRestoreArray(f  , &F); CHKERRXX(ierr);
@@ -1774,19 +1774,19 @@ double interface_length_in_one_quadrant(const p4est_t *p4est, const p4est_nodes_
 
   const p4est_locidx_t *q2n = nodes->local_nodes;
 #ifdef P4_TO_P8
-  phi_values.val000 = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
-  phi_values.val100 = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
-  phi_values.val010 = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
-  phi_values.val110 = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
-  phi_values.val001 = P[ q2n[ quad_idx*P4EST_CHILDREN + 4 ] ];
-  phi_values.val101 = P[ q2n[ quad_idx*P4EST_CHILDREN + 5 ] ];
-  phi_values.val011 = P[ q2n[ quad_idx*P4EST_CHILDREN + 6 ] ];
-  phi_values.val111 = P[ q2n[ quad_idx*P4EST_CHILDREN + 7 ] ];
+  phi_values.val[0] = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
+  phi_values.val[4] = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
+  phi_values.val[2] = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
+  phi_values.val[6] = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
+  phi_values.val[1] = P[ q2n[ quad_idx*P4EST_CHILDREN + 4 ] ];
+  phi_values.val[5] = P[ q2n[ quad_idx*P4EST_CHILDREN + 5 ] ];
+  phi_values.val[3] = P[ q2n[ quad_idx*P4EST_CHILDREN + 6 ] ];
+  phi_values.val[7] = P[ q2n[ quad_idx*P4EST_CHILDREN + 7 ] ];
 #else
-  phi_values.val00 = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
-  phi_values.val10 = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
-  phi_values.val01 = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
-  phi_values.val11 = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
+  phi_values.val[0] = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
+  phi_values.val[2] = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
+  phi_values.val[1] = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
+  phi_values.val[3] = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
 #endif
   ierr = VecRestoreArray(phi, &P); CHKERRXX(ierr);
 
@@ -2091,12 +2091,20 @@ bool is_quad_Wall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadra
 #endif
 }
 
-int quad_find_ghost_owner(const p4est_ghost_t *ghost, p4est_locidx_t ghost_idx)
+int quad_find_ghost_owner(const p4est_ghost_t *ghost, const p4est_locidx_t &ghost_idx, int r_down, int r_up)
 {
-  P4EST_ASSERT(ghost_idx<(p4est_locidx_t) ghost->ghosts.elem_count);
-  int r=0;
-  while(ghost->proc_offsets[r+1]<=ghost_idx) r++;
-  return r;
+  P4EST_ASSERT(ghost_idx < (p4est_locidx_t) ghost->ghosts.elem_count);
+  P4EST_ASSERT(0 <= r_down && r_down < r_up && r_up <= ghost->mpisize);
+  P4EST_ASSERT(ghost->proc_offsets[r_down] <= ghost_idx && ghost_idx < ghost->proc_offsets[r_up]);
+  while(r_up - r_down > 1)
+  {
+    int r = (r_down + r_up)/2;
+    if(ghost->proc_offsets[r] <= ghost_idx)
+      r_down = r;
+    else
+      r_up = r;
+  }
+  return r_down;
 }
 
 #ifdef P4_TO_P8

@@ -77,7 +77,7 @@ using namespace std;
 
 int lmin = 2;
 int lmax = 4;
-int nb_splits = 6;
+int nb_splits = 4;
 
 int nx = 1;
 int ny = 1;
@@ -85,7 +85,7 @@ int ny = 1;
 int nz = 1;
 #endif
 
-double mu = 1.;
+double mu = 20.;
 double add_diagonal = 0;
 
 /*
@@ -101,274 +101,149 @@ int interface_type = 0;
  */
 int test_number = 2;
 
-BoundaryConditionType bc_wtype = DIRICHLET;
-BoundaryConditionType bc_itype = NEUMANN;
+BoundaryConditionType bc_wtype = NEUMANN; // DIRICHLET;
+BoundaryConditionType bc_itype = DIRICHLET; // NEUMANN;
 
-#ifdef P4_TO_P8
-double r0 = (double) MIN(xmax-xmin, ymax-ymin, zmax-zmin) / 4;
-#else
-double r0 = (double) MIN(xmax-xmin, ymax-ymin) / 4;
-#endif
+double r0 = (double) MIN(DIM(xmax-xmin, ymax-ymin, zmax-zmin)) / 4;
 
-
-
-#ifdef P4_TO_P8
-
-class LEVEL_SET: public CF_3
+class LEVEL_SET: public CF_DIM
 {
 public:
-  double operator()(double x, double y, double z) const
+  double operator()(DIM(double x, double y, double z)) const
   {
     switch(interface_type)
     {
     case 0:
-      return r0 - sqrt(SQR(x - (xmax+xmin)/2) + SQR(y - (ymax+ymin)/2) + SQR(z - (zmax+zmin)/2));
+      return r0 - sqrt(SUMD(SQR(x - (xmax+xmin)/2), SQR(y - (ymax+ymin)/2), SQR(z - (zmax+zmin)/2)));
     default:
       throw std::invalid_argument("Choose a valid level set.");
     }
   }
 } level_set;
 
-class NO_INTERFACE_CF : public CF_3
+class NO_INTERFACE_CF : public CF_DIM
 {
 public:
-  double operator()(double, double, double) const
+  double operator()(DIM(double, double, double)) const
   {
     return -1;
   }
 } no_interface_cf;
 
-double u_exact(double x, double y, double z)
+double u_exact(DIM(double x, double y, double z))
 {
   switch(test_number)
   {
   case 0:
-    return x+y+z;
+    return SUMD(x, y, z);
   case 1:
-    return x*x + y*y + z*z;
+    return SUMD(x*x, y*y, z*z);
   case 2:
-    return sin(x)*cos(y)*exp(z)+2;
+    return MULTD(sin(x), cos(y), exp(z)) ONLY3D(+2.0);
   default:
     throw std::invalid_argument("Choose a valid test.");
   }
 }
 
-class BCINTERFACEVAL : public CF_3
+class BCINTERFACEVAL : public CF_DIM
 {
 public:
-  double operator()(double x, double y, double z) const
+  double operator()(DIM(double x, double y, double z)) const
   {
-    if(bc_itype==DIRICHLET)
-      return u_exact(x,y,z);
+    if(bc_itype == DIRICHLET)
+      return u_exact(DIM(x, y, z));
     else
     {
-      double dx, dy, dz;
+      double DIM(dx, dy, dz);
       switch(interface_type)
       {
       case 0:
-        if(fabs(x-(xmax+xmin)/2)<EPS && fabs(y-(ymax+ymin)/2)<EPS && fabs(z-(zmax+zmin)/2)<EPS)
+        if(ANDD(fabs(x - (xmax + xmin)/2.0) < EPS, fabs(y - (ymax + ymin)/2.0) < EPS, fabs(z - (zmax + zmin)/2.0) < EPS))
         {
           dx = 0;
           dy = 0;
+#ifdef P4_TO_P8
           dz = 0;
-        }
-        else
-        {
-          dx = -(x - (xmax+xmin)/2)/sqrt(SQR(x -(xmax+xmin)/2) + SQR(y - (ymax+ymin)/2) + SQR(z - (zmax+zmin)/2));
-          dy = -(y - (ymax+ymin)/2)/sqrt(SQR(x -(xmax+xmin)/2) + SQR(y - (ymax+ymin)/2) + SQR(z - (zmax+zmin)/2));
-          dz = -(z - (zmax+zmin)/2)/sqrt(SQR(x -(xmax+xmin)/2) + SQR(y - (ymax+ymin)/2) + SQR(z - (zmax+zmin)/2));
-        }
-        break;
-      default:
-        throw std::invalid_argument("choose a valid interface type.");
-      }
-
-      switch(test_number)
-      {
-      case 0:
-        return dx + dy + dz;
-      case 1:
-        return 2*x*dx + 2*y*dy + 2*z*dz;
-      case 2:
-        return cos(x)*cos(y)*exp(z)*dx - sin(x)*sin(y)*exp(z)*dy + sin(x)*cos(y)*exp(z)*dz;
-      default:
-        throw std::invalid_argument("Choose a valid test.");
-      }
-    }
-  }
-} bc_interface_val;
-
-class BCWALLTYPE : public WallBC3D
-{
-public:
-  BoundaryConditionType operator()(double, double, double) const
-  {
-    return bc_wtype;
-  }
-} bc_wall_type;
-
-class BCWALLVAL : public CF_3
-{
-public:
-  double operator()(double x, double y, double z) const
-  {
-    if(bc_wall_type(x,y,z)==DIRICHLET)
-      return u_exact(x,y,z);
-    else
-    {
-      double dx = 0; dx = fabs(x-xmin)<EPS ? -1 : (fabs(x-xmax)<EPS  ? 1 : 0);
-      double dy = 0; dy = fabs(y-ymin)<EPS ? -1 : (fabs(y-ymax)<EPS  ? 1 : 0);
-      double dz = 0; dz = fabs(z-zmin)<EPS ? -1 : (fabs(z-zmax)<EPS  ? 1 : 0);
-      switch(test_number)
-      {
-      case 0:
-        return dx + dy + dz;
-      case 1:
-        return 2*x*dx + 2*y*dy + 2*z*dz;
-      case 2:
-        return cos(x)*cos(y)*exp(z)*dx - sin(x)*sin(y)*exp(z)*dy + sin(x)*cos(y)*exp(z)*dz;
-      default:
-        throw std::invalid_argument("Choose a valid test.");
-      }
-    }
-  }
-} bc_wall_val;
-
-#else
-
-class LEVEL_SET: public CF_2
-{
-public:
-  double operator()(double x, double y) const
-  {
-    switch(interface_type)
-    {
-    case 0:
-      return r0 - sqrt(SQR(x - (xmax+xmin)/2) + SQR(y - (ymax+ymin)/2));
-    default:
-      throw std::invalid_argument("Choose a valid level set.");
-    }
-  }
-} level_set;
-
-class NO_INTERFACE_CF : public CF_2
-{
-public:
-  double operator()(double, double) const
-  {
-    return -1;
-  }
-} no_interface_cf;
-
-double u_exact(double x, double y)
-{
-  switch(test_number)
-  {
-  case 0:
-    return x+y;
-  case 1:
-    return x*x + y*y;
-  case 2:
-    return sin(x)*cos(y);
-  default:
-    throw std::invalid_argument("Choose a valid test.");
-  }
-}
-
-class BCINTERFACEVAL : public CF_2
-{
-public:
-  double operator()(double x, double y) const
-  {
-    if(bc_itype==DIRICHLET)
-      return u_exact(x,y);
-    else
-    {
-      double dx, dy;
-      switch(interface_type)
-      {
-      case 0:
-        if(fabs(x-(xmax+xmin)/2)<EPS && fabs(y-(ymax+ymin)/2)<EPS)
-        {
-          dx = 0;
-          dy = 0;
-        }
-        else
-        {
-          dx = -(x - (xmax+xmin)/2)/sqrt(SQR(x -(xmax+xmin)/2) + SQR(y - (ymax+ymin)/2));
-          dy = -(y - (ymax+ymin)/2)/sqrt(SQR(x -(xmax+xmin)/2) + SQR(y - (ymax+ymin)/2));
-        }
-        break;
-      default:
-        throw std::invalid_argument("choose a valid interface type.");
-      }
-
-      switch(test_number)
-      {
-      case 0:
-        return dx + dy;
-      case 1:
-        return 2*x*dx + 2*y*dy;
-      case 2:
-        return cos(x)*cos(y)*dx - sin(x)*sin(y)*dy;
-      default:
-        throw std::invalid_argument("Choose a valid test.");
-      }
-    }
-  }
-} bc_interface_val;
-
-class BCWALLTYPE : public WallBC2D
-{
-public:
-  BoundaryConditionType operator()(double, double) const
-  {
-    return bc_wtype;
-  }
-} bc_wall_type;
-
-class BCWALLVAL : public CF_2
-{
-public:
-  double operator()(double x, double y) const
-  {
-    if(bc_wall_type(x,y)==DIRICHLET)
-      return u_exact(x,y);
-    else
-    {
-      double dx = 0; dx = fabs(x-xmin)<EPS ? -1 : (fabs(x-xmax)<EPS  ? 1 : 0);
-      double dy = 0; dy = fabs(y-ymin)<EPS ? -1 : (fabs(y-ymax)<EPS  ? 1 : 0);
-      switch(test_number)
-      {
-      case 0:
-        return dx + dy;
-      case 1:
-        return 2*x*dx + 2*y*dy;
-      case 2:
-        return cos(x)*cos(y)*dx - sin(x)*sin(y)*dy;
-      default:
-        throw std::invalid_argument("Choose a valid test.");
-      }
-    }
-  }
-} bc_wall_val;
-
 #endif
+        }
+        else
+        {
+          dx = -(x - (xmax + xmin)/2.0)/sqrt(SUMD(SQR(x - (xmax + xmin)/2.0), SQR(y - (ymax + ymin)/2.0), SQR(z - (zmax + zmin)/2.0)));
+          dy = -(y - (ymax + ymin)/2.0)/sqrt(SUMD(SQR(x - (xmax + xmin)/2.0), SQR(y - (ymax + ymin)/2.0), SQR(z - (zmax + zmin)/2.0)));
+#ifdef P4_TO_P8
+          dz = -(z - (zmax + zmin)/2.0)/sqrt(SUMD(SQR(x - (xmax + xmin)/2.0), SQR(y - (ymax + ymin)/2.0), SQR(z - (zmax + zmin)/2.0)));
+#endif
+        }
+        break;
+      default:
+        throw std::invalid_argument("choose a valid interface type.");
+      }
 
+      switch(test_number)
+      {
+      case 0:
+        return SUMD(dx, dy, dz);
+      case 1:
+        return SUMD(2*x*dx, 2*y*dy, 2*z*dz);
+      case 2:
+        return MULTD(cos(x), cos(y), exp(z))*dx - MULTD(sin(x), sin(y), exp(z))*dy ONLY3D(+ sin(x)*cos(y)*exp(z)*dz);
+      default:
+        throw std::invalid_argument("Choose a valid test.");
+      }
+    }
+  }
+} bc_interface_val;
 
+class BCWALLTYPE : public WallBCDIM
+{
+public:
+  BoundaryConditionType operator()(DIM(double, double, double)) const
+  {
+    return bc_wtype;
+  }
+} bc_wall_type;
+
+class BCWALLVAL : public CF_DIM
+{
+public:
+  double operator()(DIM(double x, double y, double z)) const
+  {
+    if(bc_wall_type(DIM(x, y, z)) == DIRICHLET)
+      return u_exact(DIM(x, y, z));
+    else
+    {
+      double dx = 0; dx = fabs(x - xmin) < EPS ? -1.0 : (fabs(x - xmax) < EPS  ? 1.0 : 0.0);
+      double dy = 0; dy = fabs(y - ymin) < EPS ? -1.0 : (fabs(y - ymax) < EPS  ? 1.0 : 0.0);
+#ifdef P4_TO_P8
+      double dz = 0; dz = fabs(z - zmin) < EPS ? -1.0 : (fabs(z - zmax) < EPS  ? 1.0 : 0.0);
+#endif
+      switch(test_number)
+      {
+      case 0:
+        return SUMD(dx, dy, dz);
+      case 1:
+        return SUMD(2*x*dx, 2*y*dy, 2*z*dz);
+      case 2:
+        return MULTD(cos(x), cos(y), exp(z))*dx - MULTD(sin(x), sin(y), exp(z))*dy ONLY3D(+ sin(x)*cos(y)*exp(z)*dz);
+      default:
+        throw std::invalid_argument("Choose a valid test.");
+      }
+    }
+  }
+} bc_wall_val;
 
 void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4est_brick_t *brick,
-              Vec phi, Vec u_idx, Vec v_idx, Vec *sol_nodes, Vec *err_nodes,
+              Vec phi, Vec error_cells, Vec *sol_nodes, Vec *err_nodes,
               int compt)
 {
   PetscErrorCode ierr;
   const char *out_dir = getenv("OUT_DIR");
   if(!out_dir){
     out_dir = "./out_dir";
-    ostringstream command;
-    command << "mkdir -p " << out_dir << "/vtu";
-    system(command.str().c_str());
   }
+  ostringstream command;
+  command << "mkdir -p " << out_dir << "/vtu";
+  int sys_return = system(command.str().c_str()); (void) sys_return;
   std::ostringstream oss;
   oss << out_dir
       << "/vtu/faces_"
@@ -380,14 +255,13 @@ void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4e
        #endif
          "." << compt;
 
-  double *phi_p, *u_idx_p, *v_idx_p;
+  double *phi_p, *solution_cells_p, *error_cells_p;
   ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
-  ierr = VecGetArray(u_idx, &u_idx_p); CHKERRXX(ierr);
-  ierr = VecGetArray(v_idx, &v_idx_p); CHKERRXX(ierr);
+  ierr = VecGetArray(error_cells, &error_cells_p); CHKERRXX(ierr);
 
   double *sol_nodes_p[P4EST_DIM];
   double *err_nodes_p[P4EST_DIM];
-  for(int d=0; d<P4EST_DIM; ++d)
+  for(unsigned char d = 0; d < P4EST_DIM; ++d)
   {
     ierr = VecGetArray(sol_nodes[d], &sol_nodes_p[d]); CHKERRXX(ierr);
     ierr = VecGetArray(err_nodes[d], &err_nodes_p[d]); CHKERRXX(ierr);
@@ -415,32 +289,22 @@ void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4e
     l_p[p4est->local_num_quadrants+q] = quad->level;
   }
 
-  my_p4est_vtk_write_all(p4est, nodes, ghost,
-                         P4EST_TRUE, P4EST_TRUE,
-                         1+2*P4EST_DIM, 3, oss.str().c_str(),
-                         VTK_POINT_DATA, "phi", phi_p,
-                         VTK_POINT_DATA, "sol_u", sol_nodes_p[0],
-      VTK_POINT_DATA, "sol_v", sol_nodes_p[1],
-    #ifdef P4_TO_P8
-      VTK_POINT_DATA, "sol_w", sol_nodes_p[2],
-    #endif
-                         VTK_POINT_DATA, "err_u", err_nodes_p[0],
-      VTK_POINT_DATA, "err_v", err_nodes_p[1],
-    #ifdef P4_TO_P8
-      VTK_POINT_DATA, "err_w", err_nodes_p[2],
-    #endif
-                         VTK_CELL_DATA, "u_idx", u_idx_p,
-                         VTK_CELL_DATA, "v_idx", v_idx_p,
-                         VTK_CELL_DATA , "leaf_level", l_p);
+  my_p4est_vtk_write_all_general(p4est, nodes, ghost,
+                                 P4EST_TRUE, P4EST_TRUE,
+                                 1, 2, 0, 1, 0, 1, oss.str().c_str(),
+                                 VTK_NODE_SCALAR, "phi", phi_p,
+                                 VTK_NODE_VECTOR_BY_COMPONENTS, "solution", DIM(sol_nodes_p[0], sol_nodes_p[1], sol_nodes_p[2]),
+                                 VTK_NODE_VECTOR_BY_COMPONENTS, "errors", DIM(err_nodes_p[0], err_nodes_p[1], err_nodes_p[2]),
+                                 VTK_CELL_VECTOR_BLOCK, "error_faces", error_cells_p,
+                                 VTK_CELL_SCALAR, "leaf_level", l_p);
 
   ierr = VecRestoreArray(leaf_level, &l_p); CHKERRXX(ierr);
   ierr = VecDestroy(leaf_level); CHKERRXX(ierr);
 
   ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(u_idx, &u_idx_p); CHKERRXX(ierr);
-  ierr = VecRestoreArray(v_idx, &v_idx_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(error_cells, &error_cells_p); CHKERRXX(ierr);
 
-  for(int d=0; d<P4EST_DIM; ++d)
+  for(unsigned char d = 0; d < P4EST_DIM; ++d)
   {
     ierr = VecRestoreArray(sol_nodes[d], &sol_nodes_p[d]); CHKERRXX(ierr);
     ierr = VecRestoreArray(err_nodes[d], &err_nodes_p[d]); CHKERRXX(ierr);
@@ -507,16 +371,12 @@ int main (int argc, char* argv[])
 
   p4est_connectivity_t *connectivity;
   my_p4est_brick_t brick;
-#ifdef P4_TO_P8
-  int n_xyz [] = {nx, ny, nz};
-  double xyz_min [] = {xmin, ymin, zmin};
-  double xyz_max [] = {xmax, ymax, zmax};
-#else
-  int n_xyz [] = {nx, ny};
-  double xyz_min [] = {xmin, ymin};
-  double xyz_max [] = {xmax, ymax};
-#endif
-  connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick);
+  const int     n_xyz   [P4EST_DIM] = {DIM(nx, ny, nz)};
+  const double  xyz_min [P4EST_DIM] = {DIM(xmin, ymin, zmin)};
+  const double  xyz_max [P4EST_DIM] = {DIM(xmax, ymax, zmax)};
+  const int     periodic[P4EST_DIM] = {DIM(0,0,0)};
+
+  connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick, periodic);
 
   p4est_t       *p4est;
   p4est_nodes_t *nodes;
@@ -536,14 +396,11 @@ int main (int argc, char* argv[])
     ierr = PetscPrintf(mpi.comm(), "Level %d / %d\n", lmin+iter, lmax+iter); CHKERRXX(ierr);
     p4est = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
 
-//    srand(1);
-//    splitting_criteria_random_t data(2, 7, 1000, 10000);
     splitting_criteria_cf_t data(lmin+iter, lmax+iter, &level_set, 1.6);
     p4est->user_pointer = (void*)(&data);
 
     for(int l=0; l<lmax+iter; ++l)
     {
-      //    my_p4est_refine(p4est, P4EST_FALSE, refine_random, NULL);
       my_p4est_refine(p4est, P4EST_FALSE, refine_levelset_cf, NULL);
       my_p4est_partition(p4est, P4EST_FALSE, NULL);
     }
@@ -569,31 +426,18 @@ int main (int argc, char* argv[])
     ls.perturb_level_set_function(phi, EPS);
 
     /* find dx and dy smallest */
-    p4est_topidx_t vm = p4est->connectivity->tree_to_vertex[0 + 0];
-    p4est_topidx_t vp = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
-    double xmin = p4est->connectivity->vertices[3*vm + 0];
-    double ymin = p4est->connectivity->vertices[3*vm + 1];
-    double xmax = p4est->connectivity->vertices[3*vp + 0];
-    double ymax = p4est->connectivity->vertices[3*vp + 1];
-    double dx = (xmax-xmin) / pow(2.,(double) data.max_lvl);
-    double dy = (ymax-ymin) / pow(2.,(double) data.max_lvl);
-
-  #ifdef P4_TO_P8
-    double zmin = p4est->connectivity->vertices[3*vm + 2];
-    double zmax = p4est->connectivity->vertices[3*vp + 2];
-    double dz = (zmax-zmin) / pow(2.,(double) data.max_lvl);
-  #endif
+    const double dx = (xmax - xmin)/(nx*pow(2., data.max_lvl));
+    const double dy = (ymax - ymin)/(ny*pow(2., data.max_lvl));
+#ifdef P4_TO_P8
+    const double dz = (zmax - zmin)/(nz*pow(2., data.max_lvl));
+#endif
 
     /* TEST THE FACES FUNCTIONS */
     my_p4est_faces_t faces(p4est, ghost, &brick, &ngbd_c);
 
-#ifdef P4_TO_P8
-    BoundaryConditions3D bc[P4EST_DIM];
-#else
-    BoundaryConditions2D bc[P4EST_DIM];
-#endif
+    BoundaryConditionsDIM bc[P4EST_DIM];
 
-    for(int dir=0; dir<P4EST_DIM; ++dir)
+    for(unsigned char dir = 0; dir < P4EST_DIM; ++dir)
     {
       bc[dir].setWallTypes(bc_wall_type);
       bc[dir].setWallValues(bc_wall_val);
@@ -603,45 +447,30 @@ int main (int argc, char* argv[])
 
     Vec rhs[P4EST_DIM];
     Vec face_is_well_defined[P4EST_DIM];
-    for(int dir=0; dir<P4EST_DIM; ++dir)
+    for(unsigned char dir = 0; dir < P4EST_DIM; ++dir)
     {
       ierr = VecCreateGhostFaces(p4est, &faces, &rhs[dir], dir); CHKERRXX(ierr);
       double *rhs_p;
       ierr = VecGetArray(rhs[dir], &rhs_p); CHKERRXX(ierr);
 
       ierr = VecDuplicate(rhs[dir], &face_is_well_defined[dir]); CHKERRXX(ierr);
-      check_if_faces_are_well_defined(p4est, &ngbd_n, &faces, dir, phi, bc_itype, face_is_well_defined[dir]);
+      check_if_faces_are_well_defined(&ngbd_n, &faces, dir, phi, bc_itype, face_is_well_defined[dir]);
 
-      for(p4est_locidx_t f_idx=0; f_idx<faces.num_local[dir]; ++f_idx)
+      for(p4est_locidx_t f_idx = 0; f_idx < faces.num_local[dir]; ++f_idx)
       {
-        double x = faces.x_fr_f(f_idx, dir);
-        double y = faces.y_fr_f(f_idx, dir);
-#ifdef P4_TO_P8
-        double z = faces.z_fr_f(f_idx, dir);
-#endif
+        double xyz[P4EST_DIM];
+        faces.xyz_fr_f(f_idx, dir, xyz);
         switch(test_number)
         {
-#ifdef P4_TO_P8
         case 0:
-          rhs_p[f_idx] = mu*0 + add_diagonal*u_exact(x,y,z);
+          rhs_p[f_idx] = mu*0 + add_diagonal*u_exact(DIM(xyz[0], xyz[1], xyz[2]));
           break;
         case 1:
-          rhs_p[f_idx] = -6*mu + add_diagonal*u_exact(x,y,z);
+          rhs_p[f_idx] = -6*mu + add_diagonal*u_exact(DIM(xyz[0], xyz[1], xyz[2]));
           break;
         case 2:
-          rhs_p[f_idx] = mu*sin(x)*cos(y)*exp(z) + add_diagonal*u_exact(x,y,z);
+          rhs_p[f_idx] = mu*SUMD(1.0, 1.0, -1.0)*MULTD(sin(xyz[0]), cos(xyz[1]), exp(xyz[2])) + add_diagonal*u_exact(DIM(xyz[0], xyz[1], xyz[2]));
           break;
-#else
-        case 0:
-          rhs_p[f_idx] = mu*0 + add_diagonal*u_exact(x,y);
-          break;
-        case 1:
-          rhs_p[f_idx] = -4*mu + add_diagonal*u_exact(x,y);
-          break;
-        case 2:
-          rhs_p[f_idx] = 2*mu*sin(x)*cos(y) + add_diagonal*u_exact(x,y);
-          break;
-#endif
         default:
           throw std::invalid_argument("set rhs : unknown test number.");
         }
@@ -651,7 +480,7 @@ int main (int argc, char* argv[])
     }
 
     Vec dxyz_hodge[P4EST_DIM];
-    for(int dir=0; dir<P4EST_DIM; ++dir)
+    for(unsigned char dir = 0; dir < P4EST_DIM; ++dir)
     {
       ierr = VecDuplicate(rhs[dir], &dxyz_hodge[dir]); CHKERRXX(ierr);
       Vec loc;
@@ -669,43 +498,42 @@ int main (int argc, char* argv[])
     solver.set_compute_partition_on_the_fly(false);
 
     Vec sol[P4EST_DIM];
-    for(int dir=0; dir<P4EST_DIM; ++dir)
-      ierr = VecDuplicate(rhs[dir], &sol[dir]); CHKERRXX(ierr);
+    for(unsigned char dir = 0; dir < P4EST_DIM; ++dir){
+      ierr = VecDuplicate(rhs[dir], &sol[dir]); CHKERRXX(ierr); }
 
     solver.solve(sol);
 
-    for(int dir=0; dir<P4EST_DIM; ++dir)
-    {
-      ierr = VecDestroy(dxyz_hodge[dir]); CHKERRXX(ierr);
-    }
+    for(unsigned char dir = 0; dir < P4EST_DIM; ++dir){
+      ierr = VecDestroy(dxyz_hodge[dir]); CHKERRXX(ierr); }
 
     const int *matrix_has_nullspace = solver.get_matrix_has_nullspace();
-    for(int dir=0; dir<P4EST_DIM; ++dir)
-    {
-      if(matrix_has_nullspace[dir])
-      {
-        ierr = PetscPrintf(p4est->mpicomm, "Warning !! all neumann not tested for solver on faces ... missing integrations on faces.");
-      }
-    }
+    for(unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+      if(matrix_has_nullspace[dir]){
+        ierr = PetscPrintf(p4est->mpicomm, "Warning !! all neumann not tested for solver on faces ... missing integrations on faces."); }
 
     if(save_voro)
     {
-      char name[1000];
+      char name[PATH_MAX];
       const char *out_dir = getenv("OUT_DIR");
       if(!out_dir){
         out_dir = "./out_dir";
         mkdir(out_dir, 0755);
       }
+      ostringstream command;
+      command << "mkdir -p " << out_dir << "/voro_grid";
+      int sys_return = system(command.str().c_str()); (void) sys_return;
 
-      sprintf(name, "%s/voro_%d.vtk", out_dir, p4est->mpirank);
-      solver.print_partition_VTK(name);
+      for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
+        sprintf(name, "%s/voro_grid/voro_%s_face_%d.vtk", out_dir, (dir == dir::x ? "x" : (dir == dir::y ? "y" : "z")), p4est->mpirank);
+        solver.print_partition_VTK(name, dir);
+      }
     }
 
     /* check the error */
     my_p4est_interpolation_nodes_t interp_n(&ngbd_n);
     interp_n.set_input(phi, linear);
 
-    for(int dir=0; dir<P4EST_DIM; ++dir)
+    for(unsigned char dir = 0; dir < P4EST_DIM; ++dir)
     {
       double *sol_p;
       ierr = VecGetArray(sol[dir], &sol_p); CHKERRXX(ierr);
@@ -715,20 +543,12 @@ int main (int argc, char* argv[])
 
       for(p4est_locidx_t f_idx=0; f_idx<faces.num_local[dir]; ++f_idx)
       {
-        double x = faces.x_fr_f(f_idx, dir);
-        double y = faces.y_fr_f(f_idx, dir);
-#ifdef P4_TO_P8
-        double z = faces.z_fr_f(f_idx, dir);
-        if(interp_n(x,y,z)<0)
-          err_n[dir] = MAX(err_n[dir], fabs(sol_p[f_idx] - u_exact(x,y,z)));
-#else
-        if(interp_n(x,y)<0)
-          err_n[dir] = MAX(err_n[dir], fabs(sol_p[f_idx] - u_exact(x,y)));
-#endif
+        double xyz[P4EST_DIM]; faces.xyz_fr_f(f_idx, dir, xyz);
+        if(interp_n(DIM(xyz[0], xyz[1], xyz[2]))<0)
+          err_n[dir] = MAX(err_n[dir], fabs(sol_p[f_idx] - u_exact(DIM(xyz[0], xyz[1], xyz[2]))));
       }
 
-      int mpiret;
-      mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_n[dir], 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+      int mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_n[dir], 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
       ierr = PetscPrintf(p4est->mpicomm, "Error for direction %d : %g, order = %g\n", dir, err_n[dir], log(err_nm1[dir]/err_n[dir])/log(2)); CHKERRXX(ierr);
 
       ierr = VecRestoreArray(sol[dir], &sol_p); CHKERRXX(ierr);
@@ -742,20 +562,19 @@ int main (int argc, char* argv[])
     my_p4est_interpolation_faces_t interp_f(&ngbd_n, &faces);
     for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
     {
-      double xyz[P4EST_DIM];
-      node_xyz_fr_n(n, p4est, nodes, xyz);
+      double xyz[P4EST_DIM]; node_xyz_fr_n(n, p4est, nodes, xyz);
       interp_f.add_point(n, xyz);
     }
 
-    for(int dir=0; dir<P4EST_DIM; ++dir)
+    for(unsigned char dir = 0; dir < P4EST_DIM; ++dir)
     {
       ierr = VecDuplicate(phi, &sol_nodes[dir]); CHKERRXX(ierr);
-      interp_f.set_input(sol[dir], dir, 2, face_is_well_defined[dir]);
+      interp_f.set_input(sol[dir], dir, 2, face_is_well_defined[dir], &bc[dir]);
       interp_f.interpolate(sol_nodes[dir]);
     }
     interp_f.clear();
 
-    for(int dir=0; dir<P4EST_DIM; ++dir)
+    for(unsigned char dir = 0; dir < P4EST_DIM; ++dir)
     {
       double *sol_nodes_p;
       ierr = VecGetArray(sol_nodes[dir], &sol_nodes_p); CHKERRXX(ierr);
@@ -771,21 +590,12 @@ int main (int argc, char* argv[])
       err_nodes_n[dir] = 0;
 
       for(p4est_locidx_t n=0; n<nodes->num_owned_indeps; ++n)
-      {
         if(phi_p[n]<0)
         {
-          double x = node_x_fr_n(n, p4est, nodes);
-          double y = node_y_fr_n(n, p4est, nodes);
-#ifdef P4_TO_P8
-          double z = node_z_fr_n(n, p4est, nodes);
-          err_p[n] = fabs(sol_nodes_p[n] - u_exact(x,y,z));
-          err_nodes_n[dir] = max(err_nodes_n[dir], fabs(u_exact(x,y,z) - sol_nodes_p[n]));
-#else
-          err_p[n] = fabs(sol_nodes_p[n] - u_exact(x,y));
-          err_nodes_n[dir] = max(err_nodes_n[dir], fabs(u_exact(x,y) - sol_nodes_p[n]));
-#endif
+          double xyz[P4EST_DIM]; node_xyz_fr_n(n, p4est, nodes, xyz);
+          err_p[n] = fabs(sol_nodes_p[n] - u_exact(DIM(xyz[0], xyz[1], xyz[2])));
+          err_nodes_n[dir] = max(err_nodes_n[dir], fabs(u_exact(DIM(xyz[0], xyz[1], xyz[2])) - sol_nodes_p[n]));
         }
-      }
 
       ierr = VecRestoreArray(sol_nodes[dir], &sol_nodes_p); CHKERRXX(ierr);
       ierr = VecRestoreArray(err_nodes[dir], &err_p); CHKERRXX(ierr);
@@ -807,7 +617,7 @@ int main (int argc, char* argv[])
     if(bc_itype!=NOINTERFACE)
     {
       my_p4est_level_set_faces_t ls_f(&ngbd_n, &faces);
-      for(int dir=0; dir<P4EST_DIM; ++dir)
+      for(unsigned char dir = 0; dir < P4EST_DIM; ++dir)
       {
         double band = 4;
         ls_f.extend_Over_Interface(phi, sol[dir], bc[dir], dir, face_is_well_defined[dir], NULL, 2, band);
@@ -823,23 +633,15 @@ int main (int argc, char* argv[])
 
         for(p4est_locidx_t f_idx=0; f_idx<faces.num_local[dir]+faces.num_ghost[dir]; ++f_idx)
         {
-          double x = faces.x_fr_f(f_idx, dir);
-          double y = faces.y_fr_f(f_idx, dir);
-#ifdef P4_TO_P8
-          double z = faces.z_fr_f(f_idx, dir);
-          if(!face_is_well_defined_p[f_idx] && interp_n(x,y,z)<band*MIN(dx,dy,dz))
-            err_ex_f_n[dir] = MAX(err_ex_f_n[dir], fabs(sol_p[f_idx] - u_exact(x,y,z)));
-#else
-          if(!face_is_well_defined_p[f_idx] && interp_n(x,y)<band*MIN(dx,dy))
-            err_ex_f_n[dir] = MAX(err_ex_f_n[dir], fabs(sol_p[f_idx] - u_exact(x,y)));
-#endif
+          double xyz[P4EST_DIM]; faces.xyz_fr_f(f_idx, dir, xyz);
+          if(!face_is_well_defined_p[f_idx] && interp_n(DIM(xyz[0], xyz[1], xyz[2])) < band*MIN(DIM(dx,dy,dz)))
+            err_ex_f_n[dir] = MAX(err_ex_f_n[dir], fabs(sol_p[f_idx] - u_exact(DIM(xyz[0], xyz[1], xyz[2]))));
         }
 
         ierr = VecRestoreArray(sol[dir], &sol_p); CHKERRXX(ierr);
         ierr = VecRestoreArrayRead(face_is_well_defined[dir], &face_is_well_defined_p); CHKERRXX(ierr);
 
-        int mpiret;
-        mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_ex_f_n[dir], 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+        int mpiret = MPI_Allreduce(MPI_IN_PLACE, &err_ex_f_n[dir], 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
         ierr = PetscPrintf(p4est->mpicomm, "Error extrapolation for direction %d : %g, order = %g\n", dir, err_ex_f_n[dir], log(err_ex_f_nm1[dir]/err_ex_f_n[dir])/log(2)); CHKERRXX(ierr);
       }
     }
@@ -847,64 +649,76 @@ int main (int argc, char* argv[])
 
     if(save_vtk)
     {
-      double *sol_u_p;
-      ierr = VecGetArray(sol[0], &sol_u_p); CHKERRXX(ierr);
 
-      Vec um_cells, up_cells;
-      ierr = VecCreateGhostCells(p4est, ghost, &um_cells); CHKERRXX(ierr);
-      ierr = VecDuplicate(um_cells, &up_cells);
-      double *um_cells_p;
-      ierr = VecGetArray(um_cells, &um_cells_p); CHKERRXX(ierr);
-      double *up_cells_p;
-      ierr = VecGetArray(up_cells, &up_cells_p); CHKERRXX(ierr);
-      for(p4est_locidx_t q=0; q<p4est->local_num_quadrants; ++q)
-      {
-        p4est_locidx_t um = faces.q2f(q, dir::f_m00);
-        if(um!=-1)
-        {
-          double x = faces.x_fr_f(um, dir::x);
-          double y = faces.y_fr_f(um, dir::x);
-#ifdef P4_TO_P8
-          double z = faces.z_fr_f(um, dir::x);
-          if(interp_n(x,y,z)<0)
-#else
-          if(interp_n(x,y)<0)
-#endif
-          {
-            um_cells_p[q] = sol_u_p[um];
-#ifdef P4_TO_P8
-            up_cells_p[q] = fabs(sol_u_p[um] - u_exact(x,y,z));
-#else
-            up_cells_p[q] = fabs(sol_u_p[um] - u_exact(x,y));
-#endif
+      Vec error_cells;
+      double *error_cells_p;
+      ierr = VecCreateGhostCellsBlock(p4est, ghost, P4EST_DIM, &error_cells); CHKERRXX(ierr);
+      ierr = VecGetArray(error_cells, &error_cells_p); CHKERRXX(ierr);
+      for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
+        const double *sol_p;
+        ierr = VecGetArrayRead(sol[dir], &sol_p); CHKERRXX(ierr);
+        for (p4est_topidx_t tr_idx = p4est->first_local_tree; tr_idx <= p4est->last_local_tree ; ++tr_idx) {
+          const p4est_tree_t *tree = p4est_tree_array_index(p4est->trees, tr_idx);
+          for (size_t q = 0; q < tree->quadrants.elem_count; ++q) {
+            p4est_locidx_t quad_idx = q + tree->quadrants_offset;
+            error_cells_p[P4EST_DIM*q + dir] = 0.0;
+            // negative direction
+            p4est_locidx_t f_idx = faces.q2f(quad_idx, 2*dir);
+            if(f_idx!=-1)
+            {
+              double xyz[P4EST_DIM]; faces.xyz_fr_f(f_idx, dir, xyz);
+              if(interp_n(DIM(xyz[0], xyz[1], xyz[2])) < 0.0)
+                error_cells_p[P4EST_DIM*q + dir] = MAX(error_cells_p[P4EST_DIM*q + dir], fabs(sol_p[f_idx] - u_exact(DIM(xyz[0], xyz[1], xyz[2]))));
+            }
+            else
+            {
+              set_of_neighboring_quadrants ngbd; ngbd.clear();
+              ngbd_c.find_neighbor_cells_of_cell(ngbd, quad_idx, tr_idx, DIM(dir == dir::x ? -1 : 0, dir == dir::y ? -1 : 0, dir == dir::z ? -1 : 0));
+              for (set_of_neighboring_quadrants::const_iterator it = ngbd.begin(); it != ngbd.end() ; ++it) {
+                f_idx = faces.q2f(it->p.piggy3.local_num, 2*dir+1);
+                double xyz[P4EST_DIM]; faces.xyz_fr_f(f_idx, dir, xyz);
+                if(interp_n(DIM(xyz[0], xyz[1], xyz[2])) < 0.0)
+                  error_cells_p[P4EST_DIM*q + dir] = MAX(error_cells_p[P4EST_DIM*q + dir], fabs(sol_p[f_idx] - u_exact(DIM(xyz[0], xyz[1], xyz[2]))));
+              }
+            }
+            // positive direction
+            f_idx = faces.q2f(quad_idx, 2*dir+1);
+            if(f_idx!=-1)
+            {
+              double xyz[P4EST_DIM]; faces.xyz_fr_f(f_idx, dir, xyz);
+              if(interp_n(DIM(xyz[0], xyz[1], xyz[2])) < 0.0)
+                error_cells_p[P4EST_DIM*q + dir] = MAX(error_cells_p[P4EST_DIM*q + dir], fabs(sol_p[f_idx] - u_exact(DIM(xyz[0], xyz[1], xyz[2]))));
+            }
+            else
+            {
+              set_of_neighboring_quadrants ngbd; ngbd.clear();
+              ngbd_c.find_neighbor_cells_of_cell(ngbd, quad_idx, tr_idx, DIM(dir == dir::x ? +1 : 0, dir == dir::y ? +1 : 0, dir == dir::z ? +1 : 0));
+              for (set_of_neighboring_quadrants::const_iterator it = ngbd.begin(); it != ngbd.end() ; ++it) {
+                f_idx = faces.q2f(it->p.piggy3.local_num, 2*dir);
+                double xyz[P4EST_DIM]; faces.xyz_fr_f(f_idx, dir, xyz);
+                if(interp_n(DIM(xyz[0], xyz[1], xyz[2])) < 0.0)
+                  error_cells_p[P4EST_DIM*q + dir] = MAX(error_cells_p[P4EST_DIM*q + dir], fabs(sol_p[f_idx] - u_exact(DIM(xyz[0], xyz[1], xyz[2]))));
+              }
+            }
           }
         }
-        else
-        {
-          um_cells_p[q] = 0;
-          up_cells_p[q] = 0;
-        }
+        ierr = VecRestoreArrayRead(sol[dir], &sol_p); CHKERRXX(ierr);
       }
-      ierr = VecGhostUpdateBegin(um_cells, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-      ierr = VecGhostUpdateEnd  (um_cells, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-      ierr = VecGhostUpdateBegin(up_cells, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-      ierr = VecGhostUpdateEnd  (up_cells, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+      ierr = VecGhostUpdateBegin(error_cells, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+      ierr = VecGhostUpdateEnd  (error_cells, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-      ierr = VecRestoreArray(sol[0], &sol_u_p); CHKERRXX(ierr);
-      ierr = VecRestoreArray(um_cells, &um_cells_p); CHKERRXX(ierr);
-      ierr = VecRestoreArray(up_cells, &up_cells_p); CHKERRXX(ierr);
+      ierr = VecRestoreArray(error_cells, &error_cells_p); CHKERRXX(ierr);
 
       /* END OF TESTS */
 
-      save_VTK(p4est, ghost, nodes, &brick, phi, um_cells, up_cells, sol_nodes, err_nodes, iter);
+      save_VTK(p4est, ghost, nodes, &brick, phi, error_cells, sol_nodes, err_nodes, iter);
 
-      ierr = VecDestroy(um_cells); CHKERRXX(ierr);
-      ierr = VecDestroy(up_cells); CHKERRXX(ierr);
+      ierr = VecDestroy(error_cells); CHKERRXX(ierr);
     }
 
     ierr = VecDestroy(phi); CHKERRXX(ierr);
 
-    for(int dir=0; dir<P4EST_DIM; ++dir)
+    for(unsigned char dir = 0; dir < P4EST_DIM; ++dir)
     {
       ierr = VecDestroy(face_is_well_defined[dir]); CHKERRXX(ierr);
       ierr = VecDestroy(rhs[dir]); CHKERRXX(ierr);
