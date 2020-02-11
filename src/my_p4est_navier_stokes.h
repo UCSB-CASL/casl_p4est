@@ -379,6 +379,9 @@ public:
 
   inline p4est_t *get_p4est() { return p4est_n; }
 
+  // ONLY FOR PEOPLE WHO KNOW WHAT THEY ARE DOING!!!
+  inline void nullify_p4est_nm1() { p4est_nm1 = NULL; }
+
   inline p4est_t *get_p4est_nm1() { return p4est_nm1; }
 
   inline p4est_ghost_t *get_ghost() { return ghost_n; }
@@ -462,6 +465,7 @@ public:
     my_p4est_poisson_faces_t* face_solver = NULL;
     solve_viscosity(face_solver);
     delete face_solver;
+;
   }
   void solve_viscosity(my_p4est_poisson_faces_t* &face_poisson_solver, const bool use_initial_guess = false, const KSPType ksp = KSPBCGS, const PCType pc = PCSOR);
 

@@ -18,6 +18,7 @@
 #include <src/my_p4est_level_set_faces.h>
 #include <src/my_p4est_trajectory_of_point.h>
 #include <src/my_p4est_vtk.h>
+#include <src/my_p4est_macros.h>
 #include <p4est_extended.h>
 #include <p4est_algorithms.h>
 #endif
@@ -1108,7 +1109,6 @@ double my_p4est_navier_stokes_t::compute_divergence(p4est_locidx_t quad_idx, p4e
 void my_p4est_navier_stokes_t::solve_viscosity(my_p4est_poisson_faces_t* &face_poisson_solver, const bool use_initial_guess, const KSPType ksp, const PCType pc)
 {
   PetscErrorCode ierr;
-
   ierr = PetscLogEventBegin(log_my_p4est_navier_stokes_viscosity, 0, 0, 0, 0); CHKERRXX(ierr);
 
   double alpha;
@@ -1124,7 +1124,9 @@ void my_p4est_navier_stokes_t::solve_viscosity(my_p4est_poisson_faces_t* &face_p
     beta = -dt_n/(dt_n+dt_nm1);
   }
 
+
   /* construct the right hand side */
+
   if(!semi_lagrangian_backtrace_is_done)
   {
     trajectory_from_np1_all_faces(p4est_n, faces_n, ngbd_nm1, ngbd_n,
@@ -1221,6 +1223,7 @@ void my_p4est_navier_stokes_t::solve_viscosity(my_p4est_poisson_faces_t* &face_p
     ierr = VecRestoreArrayRead(face_is_well_defined[dir], &face_is_well_defined_p); CHKERRXX(ierr);
   }
 
+
   if(face_poisson_solver == NULL)
   {
     face_poisson_solver = new my_p4est_poisson_faces_t(faces_n, ngbd_n);
@@ -1239,12 +1242,16 @@ void my_p4est_navier_stokes_t::solve_viscosity(my_p4est_poisson_faces_t* &face_p
   face_poisson_solver->set_diagonal(alpha * rho/dt_n);
   face_poisson_solver->set_rhs(rhs);
 
+
   face_poisson_solver->solve(vstar, use_initial_guess, ksp, pc);
+
+
 
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
     ierr = VecDestroy(rhs[dir]); CHKERRXX(ierr);
   }
+
 
   if(bc_pressure->interfaceType()!=NOINTERFACE)
   {
@@ -1253,6 +1260,8 @@ void my_p4est_navier_stokes_t::solve_viscosity(my_p4est_poisson_faces_t* &face_p
     {
       lsf.extend_Over_Interface(phi, vstar[dir], bc_v[dir], dir, face_is_well_defined[dir], dxyz_hodge[dir], 2, 2);
     }
+
+
   }
 
   ierr = PetscLogEventEnd(log_my_p4est_navier_stokes_viscosity, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -2250,6 +2259,22 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1_grid_external(Vec phi_np1,
 
   ierr = PetscLogEventBegin(log_my_p4est_navier_stokes_update, 0, 0, 0, 0); CHKERRXX(ierr);
 
+  // Elyce trying something:
+  // Reset the semi-lagrangian vectors holding backtrace points
+  foreach_dimension(d){
+    foreach_dimension(dd){
+      xyz_n[d][dd].clear(); xyz_n[d][dd].shrink_to_fit();
+      std::vector<double>().swap(xyz_n[d][dd]);
+      if(sl_order==2){
+          xyz_nm1[d][dd].clear();xyz_nm1[d][dd].shrink_to_fit();
+          std::vector<double>().swap(xyz_nm1[d][dd]);
+        }
+    }
+  }
+
+
+
+
   // (1) Set phi as the new phi on new grid -------------------------------------
   phi = phi_np1;
   delete interp_phi;
@@ -2293,6 +2318,7 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1_grid_external(Vec phi_np1,
     ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &vnp1_nodes[dir]); CHKERRXX(ierr);
   }
   interp_nodes.clear();
+
 
 #ifdef P4_TO_P8
   ngbd_np1->second_derivatives_central(vn_nodes, second_derivatives_vn_nodes[0], second_derivatives_vn_nodes[1], second_derivatives_vn_nodes[2], P4EST_DIM);
@@ -2378,8 +2404,8 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1_grid_external(Vec phi_np1,
   }
 
   /* update the variables */ // NOTE: Elyce: We are not destroying anything here because all this deletion will be handled externally of the NS class
-//  if(p4est_nm1!=p4est_n)
-//    p4est_destroy(p4est_nm1);
+  if(p4est_nm1!=p4est_n && p4est_nm1 != NULL)
+      p4est_destroy(p4est_nm1);
   p4est_nm1 = p4est_n; p4est_n = p4est_np1;
 //  if(ghost_nm1!=ghost_n)
 //    p4est_ghost_destroy(ghost_nm1);

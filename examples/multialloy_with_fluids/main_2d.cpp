@@ -85,15 +85,11 @@ DEFINE_PARAMETER(pl,bool,save_coupled_fields,true,"Save the coupled problem?");
 DEFINE_PARAMETER(pl,int,save_every_iter,50,"Saves vtk every n number of iterations (default is 1)");
 DEFINE_PARAMETER(pl,bool,print_checkpoints,false,"Print checkpoints throughout script for debugging? ");
 DEFINE_PARAMETER(pl,bool,mem_checkpoints,false,"checks various memory checkpoints for mem usage");
-DEFINE_PARAMETER(pl,double,mem_safety_limit,50.e9,"Memory upper limit before closing the program -- in bytes");
+DEFINE_PARAMETER(pl,double,mem_safety_limit,60.e9,"Memory upper limit before closing the program -- in bytes");
 
 // ---------------------------------------
 // Solution options:
 // ---------------------------------------
-//bool solve_stefan = true;
-//bool solve_navier_stokes = true;
-//bool solve_coupled = solve_stefan && solve_navier_stokes;
-
 DEFINE_PARAMETER(pl,bool,solve_stefan,false,"Solve stefan ?");
 DEFINE_PARAMETER(pl,bool,solve_navier_stokes,false,"Solve navier stokes?");
 DEFINE_PARAMETER(pl,bool,solve_coupled,true,"Solve the coupled problem?");
@@ -139,7 +135,7 @@ void select_solvers(){
 }
 
 DEFINE_PARAMETER(pl,int,advection_sl_order,2,"Integeer for advection solution order (can choose 1 or 2) (default:1) -- note: this also sets the NS solution order");
-DEFINE_PARAMETER(pl,bool,solve_smoke,0,"Boolean for whether to solve for smoke or not (a passive scalar), default: 0");
+//DEFINE_PARAMETER(pl,bool,solve_smoke,0,"Boolean for whether to solve for smoke or not (a passive scalar), default: 0");
 DEFINE_PARAMETER(pl,double,cfl,0.5,"CFL number (default:0.5)");
 DEFINE_PARAMETER(pl,bool,force_interfacial_velocity_to_zero,false,"Force the interfacial velocity to zero? ");
 
@@ -391,6 +387,7 @@ double outflow_u;
 double outflow_v;
 double mu_l;
 double hodge_percentage_of_max_u;
+int hodge_max_it = 30;
 double uniform_band;
 double dt_NS;
 
@@ -775,20 +772,24 @@ void inner_interface_bc(){ //-- Call this function before setting interface bc i
     }
 }
 
-class BC_interface_value: public CF_DIM{
+class BC_interface_value_temp: public CF_DIM{
 private:
   // Have interpolation objects for case with surface tension included in boundary condition: can interpolate the curvature in a timestep to the interface points while applying the boundary condition
   my_p4est_interpolation_nodes_t kappa_interp;
 
 public:
-  BC_interface_value(my_p4est_node_neighbors_t *ngbd,vec_and_ptr_t kappa): kappa_interp(ngbd)
+  BC_interface_value_temp(my_p4est_node_neighbors_t *ngbd): kappa_interp(ngbd)
   {
-    // Set the curvature and normal inputs to be interpolated when the BC object is constructed:
-    kappa_interp.set_input(kappa.vec,linear);
+//    // Set the curvature and normal inputs to be interpolated when the BC object is constructed:
+//    kappa_interp.set_input(kappa.vec,linear);
   }
-//  void clear(){
-//    kappa_interp.clear();
-//  }
+  void create(my_p4est_node_neighbors_t *ngbd,Vec kappa){
+    kappa_interp.update_neighbors(ngbd);
+    kappa_interp.set_input(kappa,linear);
+  }
+  void clear(){
+    kappa_interp.clear();
+  }
   double operator()(double x, double y) const
   {
     switch(example_){
@@ -1333,9 +1334,14 @@ private:
   my_p4est_interpolation_nodes_t v_interface_interp;
 
 public:
-  BC_interface_value_velocity_u(my_p4est_node_neighbors_t *ngbd,vec_and_ptr_dim_t v_interface): v_interface_interp(ngbd){
-    // Set up the interpolation of the interfacial velocity x component:
-    v_interface_interp.set_input(v_interface.vec[0],linear);
+//  BC_interface_value_velocity_u(my_p4est_node_neighbors_t *ngbd,vec_and_ptr_dim_t v_interface): v_interface_interp(ngbd){
+//    // Set up the interpolation of the interfacial velocity x component:
+//    v_interface_interp.set_input(v_interface.vec[0],linear);
+//  }
+  BC_interface_value_velocity_u(my_p4est_node_neighbors_t *ngbd):v_interface_interp(ngbd){};
+  void create(my_p4est_node_neighbors_t *ngbd, Vec v_interface){
+    v_interface_interp.update_neighbors(ngbd);
+    v_interface_interp.set_input(v_interface,linear);
   }
   void clear(){
     v_interface_interp.clear();
@@ -1400,14 +1406,20 @@ void interface_bc_velocity_v(){ //-- Call this function before setting interface
     }
 }
 
+// Interfacial condition for the v component:
 class BC_interface_value_velocity_v: public CF_DIM{
 private:
   my_p4est_interpolation_nodes_t v_interface_interp;
 
 public:
-  BC_interface_value_velocity_v(my_p4est_node_neighbors_t *ngbd,vec_and_ptr_dim_t v_interface): v_interface_interp(ngbd){
-    // Set up the interpolation of the interfacial velocity for the y component:
-    v_interface_interp.set_input(v_interface.vec[1],linear);
+//  BC_interface_value_velocity_u(my_p4est_node_neighbors_t *ngbd,vec_and_ptr_dim_t v_interface): v_interface_interp(ngbd){
+//    // Set up the interpolation of the interfacial velocity x component:
+//    v_interface_interp.set_input(v_interface.vec[0],linear);
+//  }
+  BC_interface_value_velocity_v(my_p4est_node_neighbors_t *ngbd):v_interface_interp(ngbd){};
+  void create(my_p4est_node_neighbors_t *ngbd, Vec v_interface){
+    v_interface_interp.update_neighbors(ngbd);
+    v_interface_interp.set_input(v_interface,linear);
   }
   void clear(){
     v_interface_interp.clear();
@@ -1415,29 +1427,28 @@ public:
   }
   double operator()(double x, double y) const
   {
-    double v;
     switch(example_){
       case FRANK_SPHERE: throw std::invalid_argument("Navier Stokes is not set up properly for this example \n");
         //------------------------------------------------------------------
 
-      case ICE_AROUND_CYLINDER:{ // Set velocity at interface = interfacial velocity computed by Stefan problem
+      case ICE_AROUND_CYLINDER:{ // Ice solidifying around a cylinder
         try {
-          //std::cout<<"Calling interpolation of the boundary condition at ( " << x << ", "<<y<< ")\n"<<std::endl;
-          v = v_interface_interp(x,y);
+          v_interface_interp(x,y);
+          //std::cout<<"Returning vx = " << v_interface_interp(x,y) << " at ( " << x << ", "<< y << ") \n"<<std::endl;
 
         } catch (std::exception &e) {
-          std::cout<<"Was unable to interpolate the y direction boundary condition properly \n"<<std::endl;
+          std::cout<<"Was unable to interpolate the x direction boundary condition properly \n"<<std::endl;
           std::cout<<" Point is: ( "<< x << ", "<< y << ") \n"<<std::endl;
-          throw;
+          throw std::invalid_argument("Interpolation failed at this point \n ");
 
         }
-        return v_interface_interp(x,y); // No slip on the interface  -- Thus is equal to the y component of the interfacial velocity
+        return v_interface_interp(x,y); // No slip on the interface  -- Thus is equal to the x component of the interfacial velocity
       }
         //------------------------------------------------------------------
 
       case NS_GIBOU_EXAMPLE:
-        return v_ana_tnp1(x,y);
-        //------------------------------------------------------------------
+         return v_ana_tnp1(x,y);
+         //------------------------------------------------------------------
 
       case COUPLED_PROBLEM_EXAMPLE:
         return v_ana_tnp1(x,y);
@@ -1446,6 +1457,7 @@ public:
       }
   }
 };
+
 // --------------------------------------------------------------------------------------------------------------
 // VELOCITY INITIAL CONDITION -- for velocity vector = (u,v,w), in Navier-Stokes problem
 // --------------------------------------------------------------------------------------------------------------
@@ -2286,11 +2298,17 @@ void check_ice_cylinder_v_and_radius(vec_and_ptr_t phi,p4est_t* p4est,p4est_node
   for (unsigned long i = 0; i<theta.size();i++){
       ierr = PetscSynchronizedFPrintf(p4est->mpicomm,fich,"%0.4e %0.4e ",theta[i],delta_r[i]/scaling);CHKERRXX(ierr);
     }
-//  for (unsigned long i = 0; i<theta.size();i++){
-//    ierr = PetscSynchronizedFPrintf(p4est->mpicomm,fich,"%0.4e ",delta_r[i]);CHKERRXX(ierr);
-//  }
+
   ierr= PetscSynchronizedFlush(p4est->mpicomm,fich);
   ierr = PetscFClose(p4est->mpicomm,fich); CHKERRXX(ierr);
+
+//  theta.clear();
+//  delta_r.clear();
+//  theta.shrink_to_fit();
+//  delta_r.shrink_to_fit();
+  std::vector<double>().swap(delta_r);
+  std::vector<double>().swap(theta);
+
 
 }
 // --------------------------------------------------------------------------------------------------------------
@@ -2322,7 +2340,7 @@ bool check_ice_melted(vec_and_ptr_t phi, double time, p4est_nodes_t* nodes,p4est
 return global_still_solid_present;
 }
 
-void setup_rhs(vec_and_ptr_t phi,vec_and_ptr_t T_l, vec_and_ptr_t T_s, vec_and_ptr_t smoke, vec_and_ptr_t rhs_Tl, vec_and_ptr_t rhs_Ts, vec_and_ptr_t rhs_smoke, vec_and_ptr_t T_l_backtrace, vec_and_ptr_t smoke_backtrace, vec_and_ptr_t T_l_backtrace_nm1, vec_and_ptr_t smoke_backtrace_nm1, p4est_t* p4est, p4est_nodes_t* nodes,my_p4est_node_neighbors_t *ngbd){
+void setup_rhs(vec_and_ptr_t phi,vec_and_ptr_t T_l, vec_and_ptr_t T_s, vec_and_ptr_t rhs_Tl, vec_and_ptr_t rhs_Ts,vec_and_ptr_t T_l_backtrace, vec_and_ptr_t T_l_backtrace_nm1, p4est_t* p4est, p4est_nodes_t* nodes,my_p4est_node_neighbors_t *ngbd){
 
   // In building RHS, if we are doing advection, we have two options:
   // (1) 1st order -- approx is (dT/dt + u dot grad(T)) ~ (T(n+1) - Td(n))/dt --> so we add Td/dt to the RHS
@@ -2366,17 +2384,17 @@ void setup_rhs(vec_and_ptr_t phi,vec_and_ptr_t T_l, vec_and_ptr_t T_s, vec_and_p
       T_l.get_array();
     }
 
-  // Get smoke arrays:
-  if(solve_smoke){
-      rhs_smoke.get_array();
-      if(do_advection){
-          smoke_backtrace.get_array();
-          if(advection_sl_order ==2) smoke_backtrace_nm1.get_array();
-        }
-      else{
-          smoke.get_array();
-        }
-    }
+//  // Get smoke arrays:
+//  if(solve_smoke){
+//      rhs_smoke.get_array();
+//      if(do_advection){
+//          smoke_backtrace.get_array();
+//          if(advection_sl_order ==2) smoke_backtrace_nm1.get_array();
+//        }
+//      else{
+//          smoke.get_array();
+//        }
+//    }
 
   // Prep coefficients if we are doing 2nd order advection:
   double alpha=0.0; double beta=0.0;
@@ -2424,20 +2442,20 @@ void setup_rhs(vec_and_ptr_t phi,vec_and_ptr_t T_l, vec_and_ptr_t T_s, vec_and_p
           }
       }
 
-    // Now for smoke:
-    if(solve_smoke){
-        if(do_advection){
-            if(advection_sl_order ==2){
-                rhs_smoke.ptr[n] = smoke_backtrace.ptr[n]*((alpha/dt) - (beta/dt_nm1)) + smoke_backtrace_nm1.ptr[n]*(beta/dt_nm1);
-              }
-            else{
-                rhs_smoke.ptr[n] = smoke_backtrace.ptr[n]/dt;
-              }
-          }
-        else{
-            rhs_smoke.ptr[n] = smoke.ptr[n]/dt;
-          }
-      }
+//    // Now for smoke:
+//    if(solve_smoke){
+//        if(do_advection){
+//            if(advection_sl_order ==2){
+//                rhs_smoke.ptr[n] = smoke_backtrace.ptr[n]*((alpha/dt) - (beta/dt_nm1)) + smoke_backtrace_nm1.ptr[n]*(beta/dt_nm1);
+//              }
+//            else{
+//                rhs_smoke.ptr[n] = smoke_backtrace.ptr[n]/dt;
+//              }
+//          }
+//        else{
+//            rhs_smoke.ptr[n] = smoke.ptr[n]/dt;
+//          }
+//      }
 
     // Now, if we are applying a forcing term, ie for an example:
     if(example_ == COUPLED_PROBLEM_EXAMPLE){
@@ -2446,7 +2464,6 @@ void setup_rhs(vec_and_ptr_t phi,vec_and_ptr_t T_l, vec_and_ptr_t T_s, vec_and_p
         rhs_Tl.ptr[n] += g_ana_tn(xyz[0],xyz[1]);
       }
 
-//    rhs_smoke.ptr[n] = smoke_backtrace.ptr[n];
   }// end of loop over nodes
 
   phi.restore_array();
@@ -2464,16 +2481,16 @@ void setup_rhs(vec_and_ptr_t phi,vec_and_ptr_t T_l, vec_and_ptr_t T_s, vec_and_p
       T_l.restore_array();
     }
   // Restore smoke arrays:
-  if(solve_smoke){
-      rhs_smoke.restore_array();
-      if(do_advection){
-          if(advection_sl_order==2) smoke_backtrace_nm1.restore_array();
-          smoke_backtrace.restore_array();
-        }
-      else{
-          smoke.restore_array();
-        }
-    }
+//  if(solve_smoke){
+//      rhs_smoke.restore_array();
+//      if(do_advection){
+//          if(advection_sl_order==2) smoke_backtrace_nm1.restore_array();
+//          smoke_backtrace.restore_array();
+//        }
+//      else{
+//          smoke.restore_array();
+//        }
+//    }
 
   if(method_ ==2){
       T_s_dd.restore_array();
@@ -2491,7 +2508,7 @@ void setup_rhs(vec_and_ptr_t phi,vec_and_ptr_t T_l, vec_and_ptr_t T_s, vec_and_p
     }
 }
 
-void do_backtrace(vec_and_ptr_t T_l,vec_and_ptr_t T_l_nm1,vec_and_ptr_t T_l_backtrace,vec_and_ptr_dim_t v, vec_and_ptr_t smoke, vec_and_ptr_t smoke_backtrace, p4est_t* p4est, p4est_nodes_t* nodes,my_p4est_node_neighbors_t* ngbd, p4est_t *p4est_nm1, p4est_nodes_t *nodes_nm1, my_p4est_node_neighbors_t *ngbd_nm1,  vec_and_ptr_t T_l_backtrace_nm1, vec_and_ptr_dim_t v_nm1,vec_and_ptr_t smoke_backtrace_nm1, interpolation_method interp_method){
+void do_backtrace(vec_and_ptr_t T_l,vec_and_ptr_t T_l_nm1,vec_and_ptr_t T_l_backtrace,vec_and_ptr_dim_t v, p4est_t* p4est, p4est_nodes_t* nodes,my_p4est_node_neighbors_t* ngbd, p4est_t *p4est_nm1, p4est_nodes_t *nodes_nm1, my_p4est_node_neighbors_t *ngbd_nm1,  vec_and_ptr_t T_l_backtrace_nm1, vec_and_ptr_dim_t v_nm1,interpolation_method interp_method){
   if(print_checkpoints) PetscPrintf(p4est->mpicomm,"Beginning to do backtrace \n");
 
   // Get second derivatives of temp fields for interpolation purposes:
@@ -2563,41 +2580,41 @@ void do_backtrace(vec_and_ptr_t T_l,vec_and_ptr_t T_l_nm1,vec_and_ptr_t T_l_back
   // Note: We interpolate using an array of fields if we are solving for smoke to make interpolation more efficient
   // (rather than calling the interpolation over and over again)
   if(print_checkpoints)PetscPrintf(p4est->mpicomm,"Beginning interpolations \n");
-  if(solve_smoke){
-      Vec fields_in[2];
-      Vec fields_out[2];
+//  if(solve_smoke){
+//      Vec fields_in[2];
+//      Vec fields_out[2];
 
-      fields_in[0] = T_l.vec;
-      fields_in[1] = smoke.vec;
+//      fields_in[0] = T_l.vec;
+//      fields_in[1] = smoke.vec;
 
-      fields_out[0] = T_l_backtrace.vec;
-      fields_out[1] = smoke_backtrace.vec;
+//      fields_out[0] = T_l_backtrace.vec;
+//      fields_out[1] = smoke_backtrace.vec;
 
-      SL_backtrace_interp.set_input(fields_in,interp_method,2);
-      SL_backtrace_interp.interpolate(fields_out);
+//      SL_backtrace_interp.set_input(fields_in,interp_method,2);
+//      SL_backtrace_interp.interpolate(fields_out);
 
-      if(advection_sl_order ==2){
-          Vec fields_out_nm1[2];
+//      if(advection_sl_order ==2){
+//          Vec fields_out_nm1[2];
 
-          fields_out_nm1[0] = T_l_backtrace_nm1.vec;
-          fields_out_nm1[1] = smoke_backtrace_nm1.vec;
+//          fields_out_nm1[0] = T_l_backtrace_nm1.vec;
+//          fields_out_nm1[1] = smoke_backtrace_nm1.vec;
 
-          SL_backtrace_interp_nm1.set_input(fields_in,interp_method,2);
-          SL_backtrace_interp_nm1.interpolate(fields_out_nm1);
-        }
+//          SL_backtrace_interp_nm1.set_input(fields_in,interp_method,2);
+//          SL_backtrace_interp_nm1.interpolate(fields_out_nm1);
+//        }
+//    }
+
+  SL_backtrace_interp.set_input(T_l.vec,T_l_dd.vec[0],T_l_dd.vec[1],interp_method);
+  SL_backtrace_interp.interpolate(T_l_backtrace.vec);
+  if(print_checkpoints) PetscPrintf(p4est->mpicomm,"Successfully interpolates T_l backtrace \n");
+
+  if(advection_sl_order ==2){
+      SL_backtrace_interp_nm1.set_input(T_l_nm1.vec,T_l_dd_nm1.vec[0],T_l_dd_nm1.vec[1],interp_method);
+      SL_backtrace_interp_nm1.interpolate(T_l_backtrace_nm1.vec);
     }
-  else {
-      SL_backtrace_interp.set_input(T_l.vec,T_l_dd.vec[0],T_l_dd.vec[1],interp_method);
-      SL_backtrace_interp.interpolate(T_l_backtrace.vec);
-      if(print_checkpoints) PetscPrintf(p4est->mpicomm,"Successfully interpolates T_l backtrace \n");
+  if(print_checkpoints) PetscPrintf(p4est->mpicomm,"Successfully interpolates T_l_nm1 backtrace \n");
 
-      if(advection_sl_order ==2){
-          SL_backtrace_interp_nm1.set_input(T_l_nm1.vec,T_l_dd_nm1.vec[0],T_l_dd_nm1.vec[1],interp_method);
-          SL_backtrace_interp_nm1.interpolate(T_l_backtrace_nm1.vec);
-        }
-      if(print_checkpoints) PetscPrintf(p4est->mpicomm,"Successfully interpolates T_l_nm1 backtrace \n");
 
-    }
 
 //  // Check values
 //  T_l_backtrace.get_array();
@@ -2646,7 +2663,6 @@ void interpolate_values_onto_new_grid(vec_and_ptr_t T_l, vec_and_ptr_t T_l_new,
                                       vec_and_ptr_t T_s, vec_and_ptr_t T_s_new,
                                       vec_and_ptr_dim_t v_interface,vec_and_ptr_dim_t v_interface_new,
                                       vec_and_ptr_dim_t v_external,vec_and_ptr_dim_t v_external_new,
-                                      vec_and_ptr_t smoke, vec_and_ptr_t smoke_new,
                                       p4est_nodes_t *nodes_new_grid, p4est_t *p4est_new, p4est_nodes_t *nodes_old_grid, p4est_t *p4est_old,
                                       my_p4est_node_neighbors_t *ngbd_old_grid,interpolation_method interp_method){
   // Need neighbors of old grid to create interpolation object
@@ -2663,8 +2679,6 @@ void interpolate_values_onto_new_grid(vec_and_ptr_t T_l, vec_and_ptr_t T_l_new,
   if(solve_stefan){
       num_fields+=4;
     }
-  if(solve_smoke) num_fields+=1;
-
   Vec all_fields_old[num_fields];
   Vec all_fields_new[num_fields];
 
@@ -2689,17 +2703,17 @@ void interpolate_values_onto_new_grid(vec_and_ptr_t T_l, vec_and_ptr_t T_l_new,
           all_fields_new[4] = v_external_new.vec[0];
           all_fields_new[5] = v_external_new.vec[1];
 
-          if(solve_smoke) {
-              all_fields_old[6] = smoke.vec;
-              all_fields_new[6] = smoke_new.vec;
-            }
+//          if(solve_smoke) {
+//              all_fields_old[6] = smoke.vec;
+//              all_fields_new[6] = smoke_new.vec;
+//            }
         }
-      else{
-          if(solve_smoke) {
-              all_fields_old[4] = smoke.vec;
-              all_fields_new[4] = smoke_new.vec;
-            }
-        }
+//      else{
+//          if(solve_smoke) {
+//              all_fields_old[4] = smoke.vec;
+//              all_fields_new[4] = smoke_new.vec;
+//            }
+//        }
 
     }
   else if(solve_navier_stokes){
@@ -3156,7 +3170,7 @@ void regularize_front(p4est_t* p4est_, p4est_nodes_t* nodes_, p4est_ghost_t* gho
 // --------------------------------------------------------------------------------------------------------------
 // FUNCTIONS FOR SAVING:
 // --------------------------------------------------------------------------------------------------------------
-void save_everything(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,vec_and_ptr_t phi, vec_and_ptr_t phi_2, vec_and_ptr_t Tl,vec_and_ptr_t Ts,vec_and_ptr_dim_t v_int,vec_and_ptr_dim_t v_NS, vec_and_ptr_t press, vec_and_ptr_t vorticity, vec_and_ptr_t smoke, char* filename){
+void save_everything(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,vec_and_ptr_t phi, vec_and_ptr_t phi_2, vec_and_ptr_t Tl,vec_and_ptr_t Ts,vec_and_ptr_dim_t v_int,vec_and_ptr_dim_t v_NS, vec_and_ptr_t press, vec_and_ptr_t vorticity, char* filename){
 // Things we want to save:
 /*
  * LSF
@@ -3167,7 +3181,7 @@ void save_everything(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
  * v NS
  * pressure
  * vorticity
- * smoke
+ * smoke -TAKEN OUT
  * */
 
   // First, need to scale the fields appropriately:
@@ -3191,18 +3205,18 @@ void save_everything(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
 
   press.get_array(); vorticity.get_array();
 
-  if(solve_smoke) smoke.get_array();
+//  if(solve_smoke) smoke.get_array();
 
 
   // Save data:
   std::vector<std::string> point_names;
   std::vector<double*> point_data;
 
-  if(example_ == ICE_AROUND_CYLINDER && solve_smoke){
-      point_names = {"phi","phi_cyl","T_l","T_s","v_interface_x","v_interface_y","u","v","vorticity","pressure","smoke"};
-      point_data = {phi.ptr, phi_2.ptr,Tl.ptr, Ts.ptr,v_int.ptr[0],v_int.ptr[1],v_NS.ptr[0],v_NS.ptr[1],vorticity.ptr,press.ptr,smoke.ptr};
-    }
-  else if (example_ == ICE_AROUND_CYLINDER && !solve_smoke) {
+//  if(example_ == ICE_AROUND_CYLINDER && solve_smoke){
+//      point_names = {"phi","phi_cyl","T_l","T_s","v_interface_x","v_interface_y","u","v","vorticity","pressure","smoke"};
+//      point_data = {phi.ptr, phi_2.ptr,Tl.ptr, Ts.ptr,v_int.ptr[0],v_int.ptr[1],v_NS.ptr[0],v_NS.ptr[1],vorticity.ptr,press.ptr,smoke.ptr};
+//    }
+  if (example_ == ICE_AROUND_CYLINDER) {
       point_names = {"phi","phi_cyl","T_l","T_s","v_interface_x","v_interface_y","u","v","vorticity","pressure"};
       point_data = {phi.ptr, phi_2.ptr,Tl.ptr, Ts.ptr,v_int.ptr[0],v_int.ptr[1],v_NS.ptr[0],v_NS.ptr[1],vorticity.ptr,press.ptr};
 //      vec_and_ptr_dim_t dTl, dTs, jump;
@@ -3213,11 +3227,11 @@ void save_everything(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
 //      point_names = {"phi","phi_cyl","T_l","T_s","dTl_dx","dTl_dy","dTs_dx","dTs_dy","jump_x","jump_y","v_interface_x","v_interface_y","u","v","vorticity","pressure"};
 //      point_data = {phi.ptr, phi_2.ptr,Tl.ptr, Ts.ptr,v_int.ptr[0],v_int.ptr[1],v_NS.ptr[0],v_NS.ptr[1],vorticity.ptr,press.ptr};
     }
-  else if (example_ !=ICE_AROUND_CYLINDER && solve_smoke){
-      point_names = {"phi","T_l","T_s","v_interface_x","v_interface_y","u","v","vorticity","pressure","smoke"};
-      point_data = {phi.ptr, Tl.ptr, Ts.ptr,v_int.ptr[0],v_int.ptr[1],v_NS.ptr[0],v_NS.ptr[1],vorticity.ptr,press.ptr,smoke.ptr};
+//  else if (example_ !=ICE_AROUND_CYLINDER && solve_smoke){
+//      point_names = {"phi","T_l","T_s","v_interface_x","v_interface_y","u","v","vorticity","pressure","smoke"};
+//      point_data = {phi.ptr, Tl.ptr, Ts.ptr,v_int.ptr[0],v_int.ptr[1],v_NS.ptr[0],v_NS.ptr[1],vorticity.ptr,press.ptr,smoke.ptr};
 
-    }
+//    }
   else{
       point_names = {"phi","T_l","T_s","v_interface_x","v_interface_y","u","v","vorticity","pressure"};
       point_data = {phi.ptr, Tl.ptr, Ts.ptr,v_int.ptr[0],v_int.ptr[1],v_NS.ptr[0],v_NS.ptr[1],vorticity.ptr,press.ptr};
@@ -3242,7 +3256,7 @@ void save_everything(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
 
   press.restore_array(); vorticity.restore_array();          // ------------------
 
-  if(solve_smoke) smoke.restore_array();
+//  if(solve_smoke) smoke.restore_array();
   // Scale things back:
   foreach_dimension(d){
     VecScaleGhost(v_int.vec[d],scaling);
@@ -3253,7 +3267,7 @@ void save_everything(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
   VecScaleGhost(press.vec,1./scaling);
 }
 
-void save_stefan_fields(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,vec_and_ptr_t phi, vec_and_ptr_t phi_2, vec_and_ptr_t Tl,vec_and_ptr_t Ts,vec_and_ptr_dim_t v_int, vec_and_ptr_t smoke, char* filename ){
+void save_stefan_fields(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,vec_and_ptr_t phi, vec_and_ptr_t phi_2, vec_and_ptr_t Tl,vec_and_ptr_t Ts,vec_and_ptr_dim_t v_int, char* filename ){
   // Things we want to save:
   /*
    * LSF
@@ -3278,24 +3292,24 @@ void save_stefan_fields(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *gho
 
     v_int.get_array();
 
-    if(solve_smoke) smoke.get_array();
+//    if(solve_smoke) smoke.get_array();
 
     // Save data:
     std::vector<std::string> point_names;
     std::vector<double*> point_data;
 
-    if(example_ == ICE_AROUND_CYLINDER && solve_smoke){
-        point_names = {"phi","phi_cyl","T_l","T_s","v_interface_x","v_interface_y","smoke"};
-        point_data = {phi.ptr, phi_2.ptr,Tl.ptr, Ts.ptr,v_int.ptr[0],v_int.ptr[1],smoke.ptr};
-      }
-    else if (example_ == ICE_AROUND_CYLINDER && !solve_smoke) {
+//    if(example_ == ICE_AROUND_CYLINDER && solve_smoke){
+//        point_names = {"phi","phi_cyl","T_l","T_s","v_interface_x","v_interface_y","smoke"};
+//        point_data = {phi.ptr, phi_2.ptr,Tl.ptr, Ts.ptr,v_int.ptr[0],v_int.ptr[1],smoke.ptr};
+//      }
+    if (example_ == ICE_AROUND_CYLINDER) {
         point_names = {"phi","phi_cyl","T_l","T_s","v_interface_x","v_interface_y"};
         point_data = {phi.ptr, phi_2.ptr,Tl.ptr, Ts.ptr,v_int.ptr[0],v_int.ptr[1]};
       }
-    else if (example_ !=ICE_AROUND_CYLINDER && solve_smoke){
-        point_names = {"phi","T_l","T_s","v_interface_x","v_interface_y","smoke"};
-        point_data = {phi.ptr, Tl.ptr, Ts.ptr,v_int.ptr[0],v_int.ptr[1],smoke.ptr};
-      }
+//    else if (example_ !=ICE_AROUND_CYLINDER && solve_smoke){
+//        point_names = {"phi","T_l","T_s","v_interface_x","v_interface_y","smoke"};
+//        point_data = {phi.ptr, Tl.ptr, Ts.ptr,v_int.ptr[0],v_int.ptr[1],smoke.ptr};
+//      }
     else{
         point_names = {"phi","T_l","T_s","v_interface_x","v_interface_y"};
         point_data = {phi.ptr, Tl.ptr, Ts.ptr,v_int.ptr[0],v_int.ptr[1]};
@@ -3319,20 +3333,20 @@ void save_stefan_fields(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *gho
 
     v_int.restore_array();
 
-    if(solve_smoke) smoke.restore_array();
+//    if(solve_smoke) smoke.restore_array();
     // Scale things back:
     foreach_dimension(d){
       VecScaleGhost(v_int.vec[d],scaling);
     }
 }
-void save_navier_stokes_fields(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,vec_and_ptr_t phi, vec_and_ptr_dim_t v_NS, vec_and_ptr_t press, vec_and_ptr_t vorticity, vec_and_ptr_t smoke, char* filename){
+void save_navier_stokes_fields(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,vec_and_ptr_t phi, vec_and_ptr_dim_t v_NS, vec_and_ptr_t press, vec_and_ptr_t vorticity, char* filename){
   // Things we want to save:
   /*
    * LSF
    * v NS
    * pressure
    * vorticity
-   * smoke
+   * smoke - REMOVED
    * */
     // First, need to scale the fields appropriately:
     // Scale velocities:
@@ -3349,20 +3363,20 @@ void save_navier_stokes_fields(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost
 
     press.get_array(); vorticity.get_array();
 
-    if(solve_smoke) smoke.get_array();
+//    if(solve_smoke) smoke.get_array();
 
     // Save data:
     std::vector<std::string> point_names;
     std::vector<double*> point_data;
 
-    if(solve_smoke){
-        point_names = {"phi","u","v","vorticity","smoke"};
-        point_data = {phi.ptr,v_NS.ptr[0],v_NS.ptr[1],vorticity.ptr,smoke.ptr};
-      }
-    else{
-        point_names = {"phi","u","v","vorticity","pressure"};
-        point_data = {phi.ptr,v_NS.ptr[0],v_NS.ptr[1],vorticity.ptr,press.ptr};
-      }
+//    if(solve_smoke){
+//        point_names = {"phi","u","v","vorticity","smoke"};
+//        point_data = {phi.ptr,v_NS.ptr[0],v_NS.ptr[1],vorticity.ptr,smoke.ptr};
+//      }
+
+    point_names = {"phi","u","v","vorticity","pressure"};
+    point_data = {phi.ptr,v_NS.ptr[0],v_NS.ptr[1],vorticity.ptr,press.ptr};
+
 
     std::vector<std::string> cell_names = {};
     std::vector<double*> cell_data = {};
@@ -3381,7 +3395,7 @@ void save_navier_stokes_fields(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost
     press.restore_array(); vorticity.restore_array();
 
 
-    if(solve_smoke) smoke.restore_array();
+//    if(solve_smoke) smoke.restore_array();
     // Scale things back:
     foreach_dimension(d){
       VecScaleGhost(v_NS.vec[d],scaling);
@@ -3414,16 +3428,19 @@ int main(int argc, char** argv) {
   PetscPrintf(mpi.comm(),"lmin = %d, lmax = %d, method = %d \n",lmin,lmax,method_);
   PetscPrintf(mpi.comm(),"Stefan = %d, NS = %d, Coupled = %d \n",solve_stefan,solve_navier_stokes,solve_coupled);
 
-  PetscMemorySetGetMaximumUsage();
   // stopwatch
   parStopWatch w;
   w.start("Running example: multialloy_with_fluids");
 
-  double memory_change = 0.0;
   int num_16_to_17_increases = 0;
   int num_node_increases = 0;
   int num_17_to_18_decreases = 0;
   int num_ns_increases = 0;
+  int num_ns_decreases = 0;
+
+  int num_ngbd_increases = 0;
+  int num_delete_grid_decreases = 0;
+
   for(int grid_res_iter=0;grid_res_iter<=num_splits;grid_res_iter++){
 
     // -----------------------------------------------
@@ -3540,37 +3557,31 @@ int main(int argc, char** argv) {
     // create the forest
     p4est = my_p4est_new(mpi.comm(), conn, 0, NULL, NULL); // same as Daniil
 
-    // refine based on distance to a level-set
-    //splitting_criteria_cf_t sp(lmin, lmax, &level_set,lip);
-
+    // Create refinement splitting criteria related to level set and uniform band
     splitting_criteria_cf_and_uniform_band_t sp(lmin+grid_res_iter,lmax+grid_res_iter,&level_set,uniform_band);
+
+    // Save the pointer to the forest splitting criteria
     p4est->user_pointer = &sp;
 
-//    splitting_criteria_cf_and_uniform_band_t sp(lmin+grid_res_iter,lmax+grid_res_iter,&level_set,uniform_band);
-//    p4est->user_pointer = &sp;
+    // Refine grid according to the splitting criteria:
+    my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL);
 
-                                    // save the pointer to the forst splitting criteria
-//    my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL); // refine the grid according to the splitting criteria
-
-                                    // save the pointer to the forst splitting criteria
-    my_p4est_refine(p4est, P4EST_TRUE, refine_levelset_cf, NULL); // refine the grid according to the splitting criteria
-
-    // partition the forest
-    my_p4est_partition(p4est, P4EST_FALSE, NULL);                  // partition the forest, do not allow for coarsening --> Daniil does not allow (use P4EST_FALSE)
+    // partition the forest, do not allow for coarsening
+    my_p4est_partition(p4est, P4EST_FALSE, NULL);
 
     // create ghost layer
-    ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL); // same
+    ghost = my_p4est_ghost_new(p4est, P4EST_CONNECT_FULL);
 
-    // Expand ghost layer -- FOR NAVIER STOKES:
+    // Expand ghost layer -- required for navier stokes | TO-DO: make this consistent with ghost layer boolean
     my_p4est_ghost_expand(p4est,ghost);
 
-    // create node structure
+    // Create nodes
     nodes = my_p4est_nodes_new(p4est, ghost); //same
 
     // Create hierarchy
     my_p4est_hierarchy_t *hierarchy = new my_p4est_hierarchy_t(p4est, ghost, &brick);
 
-    // Get neighbors
+    // Get node neighbors and initialize them
     my_p4est_node_neighbors_t *ngbd = new my_p4est_node_neighbors_t(hierarchy, nodes);
     ngbd->init_neighbors();
 
@@ -3588,10 +3599,10 @@ int main(int argc, char** argv) {
 
     // LSF for the inner cylinder, if applicable (example 2):
     vec_and_ptr_t phi_cylinder;
-    if(example_ == ICE_AROUND_CYLINDER){
-        phi_cylinder.create(phi.vec);
-        sample_cf_on_nodes(p4est,nodes,mini_level_set,phi_cylinder.vec);
-      }
+//    if(example_ == ICE_AROUND_CYLINDER){
+//        phi_cylinder.create(phi.vec);
+//        sample_cf_on_nodes(p4est,nodes,mini_level_set,phi_cylinder.vec);
+//      }
 
     // 2nd derivatives of LSF's
     vec_and_ptr_dim_t phi_dd;
@@ -3601,13 +3612,20 @@ int main(int argc, char** argv) {
     // -----------------------------------------------
     // Initialize the interfacial velocity field (used for Stefan problem)
     // -----------------------------------------------
-    vec_and_ptr_dim_t v_interface(p4est,nodes);
+    vec_and_ptr_dim_t v_interface;/*(p4est,nodes)*/;
     vec_and_ptr_dim_t v_interface_new;
-    if(solve_stefan){
-        for (int dir = 0; dir<P4EST_DIM;dir++){
-            sample_cf_on_nodes(p4est,nodes,zero_cf,v_interface.vec[dir]);
-          }
-      }
+//    if(solve_stefan){
+//        for (int dir = 0; dir<P4EST_DIM;dir++){
+//            sample_cf_on_nodes(p4est,nodes,zero_cf,v_interface.vec[dir]);
+//          }
+//      }
+
+    // Vectors to hold the normal and curvature information used to compute interfacial velocity due to jump in temp flux:
+    vec_and_ptr_dim_t normal;
+    vec_and_ptr_t curvature;
+    vec_and_ptr_dim_t jump;
+
+
 
     // -----------------------------------------------
     // Initialize the fields relevant to the Poisson problem:
@@ -3641,6 +3659,9 @@ int main(int argc, char** argv) {
         sample_cf_on_nodes(p4est,nodes,IC_temp_sol,T_s_n.vec); // Sample this just so that we can save the initial temperature distribution
       }
 
+    // Initialize interfacial boundary condition
+    BC_interface_value_temp bc_interface_val_temp(ngbd);
+
 
 
     // Vectors to hold T values on old grid (for interpolation purposes)
@@ -3651,34 +3672,9 @@ int main(int argc, char** argv) {
     vec_and_ptr_dim_t T_l_d;
     vec_and_ptr_dim_t T_s_d;
 
-    // Vectors to hold first derivatives of T
-    vec_and_ptr_dim_t T_l_dd;
-    vec_and_ptr_dim_t T_s_dd;
-
-    // Vectors to hold solution for T_np1 temporarily within each timestep
-    vec_and_ptr_t T_l_np1;
-    vec_and_ptr_t T_s_np1;
-
     // Vectors to hold the normals of each domain:
     vec_and_ptr_dim_t liquid_normals;
     vec_and_ptr_dim_t solid_normals;
-    vec_and_ptr_dim_t cyl_normals;
-
-    // vectors to hold smoke solution:
-    vec_and_ptr_t smoke;
-    vec_and_ptr_t smoke_new;
-    vec_and_ptr_t smoke_np1;
-
-    if (solve_smoke){
-        smoke.create(p4est,nodes);
-        sample_cf_on_nodes(p4est,nodes,ic_smoke,smoke.vec);
-      }
-    vec_and_ptr_t smoke_old;
-    vec_and_ptr_dim_t smoke_dd; // for Semi Lagrangian backtrace
-
-    vec_and_ptr_t smoke_backtrace;
-    vec_and_ptr_t smoke_backtrace_nm1;
-    vec_and_ptr_t rhs_smoke;
 
     // -----------------------------------------------
     // Initialize the Velocity field (if solving Navier-Stokes), and other Navier-Stokes relevant variables:
@@ -3687,7 +3683,6 @@ int main(int argc, char** argv) {
     vec_and_ptr_dim_t v_n_new;
 
     vec_and_ptr_dim_t v_nm1;
-    vec_and_ptr_dim_t v_np1;
 
     vec_and_ptr_t vorticity;
     vec_and_ptr_t vorticity_refine;
@@ -3719,10 +3714,12 @@ int main(int argc, char** argv) {
 
     vec_and_ptr_cells_t hodge_old;
     vec_and_ptr_cells_t hodge_new;
-    vec_and_ptr_cells_t hodge_old_grid;
 
-    my_p4est_cell_neighbors_t *ngbd_c = NULL;
-    my_p4est_faces_t *faces_np1 = NULL;
+    my_p4est_cell_neighbors_t *ngbd_c;
+    my_p4est_faces_t *faces_np1;
+
+    BC_interface_value_velocity_u bc_velocity_u_interfacial(ngbd);
+    BC_interface_value_velocity_v bc_velocity_v_interfacial(ngbd);
 
     // -----------------------------------------------
     // Initialize variables for extension bands across interface and etc:
@@ -3827,14 +3824,15 @@ int main(int argc, char** argv) {
     my_p4est_poisson_nodes_mls_t *solver_Tl;  // will solve poisson problem for Temperature in liquid domains
     my_p4est_poisson_nodes_mls_t *solver_Ts;  // will solve poisson problem for Temperature in solid domain
 
-    my_p4est_poisson_nodes_mls_t *solver_smoke; // will solve for smoke over whole domain if being used
-
     // -----------------------------------------------
     // Initialize the needed solvers for the Navier-Stokes problem
     // -----------------------------------------------
     my_p4est_navier_stokes_t* ns;
-    my_p4est_poisson_cells_t* cell_solver;
+    my_p4est_poisson_cells_t* cell_solver; // TO-DO: These may be unnecessary now
     my_p4est_poisson_faces_t* face_solver;
+
+    BoundaryConditions2D bc_velocity[P4EST_DIM];
+    BoundaryConditions2D bc_pressure;
 
 
     // -----------------------------------------------
@@ -3844,7 +3842,7 @@ int main(int argc, char** argv) {
     double tstart = tn;
     for (tn;tn<tfinal; tn+=dt, tstep++){
 //        if (!keep_going) break;
-//        if(tstep>=10) keep_going = false; // TIMESTEP BREAK
+//        if(tstep>=50) keep_going = false; // TIMESTEP BREAK
         PetscLogDouble mem_safety_check;
 
         // Initialize variables for checking the current memory usage
@@ -3911,7 +3909,6 @@ int main(int argc, char** argv) {
             // Perturb the LSF on the first iteration
 
             ls.perturb_level_set_function(phi.vec,EPS);
-            if(example_ ==ICE_AROUND_CYLINDER ) ls.perturb_level_set_function(phi_cylinder.vec,EPS);
           }
 
         // --------------------------------------------------------------------------------------------------------------
@@ -3924,35 +3921,6 @@ int main(int argc, char** argv) {
             VecCopyGhost(phi.vec,phi_solid.vec);
             VecScaleGhost(phi_solid.vec,-1.0);
 
-            // For the case where we have a second interface:
-            if(example_ == ICE_AROUND_CYLINDER){
-                phi_cylinder.create(p4est,nodes);
-                sample_cf_on_nodes(p4est,nodes,mini_level_set,phi_cylinder.vec);
-
-//                cyl_normals.create(p4est,nodes);
-//                compute_normals(*ngbd,phi_cylinder.vec,cyl_normals.vec);
-
-//                ls.extend_Over_Interface_TVD_Full(phi_cylinder.vec,T_s_n.vec,50,2,1.e-15,extension_band_use_,extension_band_extend_,extension_band_extend_,cyl_normals.vec,NULL,NULL,false,NULL,NULL); // pretty sure don't need to do this
-//                cyl_normals.destroy();
-              }
-
-
-            if(check_temperature_values){
-              // Check Temperature values:
-              PetscPrintf(mpi.comm(),"\n Checking temperature values before field extension: \n [ ");
-              PetscPrintf(mpi.comm(),"\nIn fluid domain: ");
-              check_T_values(phi,T_l_n,nodes,p4est, example_,phi_cylinder,true);
-              PetscPrintf(mpi.comm(),"\nIn solid domain: ");
-              check_T_values(phi_solid,T_s_n,nodes,p4est,example_,phi_cylinder,true);
-              PetscPrintf(mpi.comm()," ] \n");
-              }
-
-            // Get second derivatives of both LSFs:
-            phi_dd.create(p4est,nodes);
-            phi_solid_dd.create(p4est,nodes);
-
-            ngbd->second_derivatives_central(phi.vec,phi_dd.vec);
-            ngbd->second_derivatives_central(phi_solid.vec,phi_solid_dd.vec);
 
             // Compute normals for each domain:
             liquid_normals.create(p4est,nodes);
@@ -4013,10 +3981,13 @@ int main(int argc, char** argv) {
               if(!out_dir_coupled){
                   throw std::invalid_argument("You need to set the output directory for coupled VTK: OUT_DIR_VTK_coupled");
                 }
+              phi_cylinder.create(p4est,nodes);
+              sample_cf_on_nodes(p4est,nodes,mini_level_set,phi_cylinder.vec);
 
               sprintf(output,"%s/snapshot_lmin_%d_lmax_%d_outiter_%d",out_dir_coupled,lmin+grid_res_iter,lmax+grid_res_iter,out_idx);
-              save_everything(p4est,nodes,ghost,phi,phi_cylinder,T_l_n,T_s_n,v_interface,v_n,press_nodes,vorticity,smoke,output);
+              save_everything(p4est,nodes,ghost,phi,phi_cylinder,T_l_n,T_s_n,v_interface,v_n,press_nodes,vorticity,output);
 
+              phi_cylinder.destroy();
 /*
               if(example_ == COUPLED_PROBLEM_EXAMPLE){
                   // Save NS analytical to compare:
@@ -4098,12 +4069,12 @@ int main(int argc, char** argv) {
               const char* out_dir_stefan = getenv("OUT_DIR_VTK_stefan");
               sprintf(output,"%s/snapshot_lmin_%d_lmax_%d_outiter_%d",out_dir_stefan,lmin+grid_res_iter,lmax+grid_res_iter,out_idx);
 
-              save_stefan_fields(p4est,nodes,ghost,phi,phi_cylinder,T_l_n,T_s_n,v_interface,smoke,output);
+              save_stefan_fields(p4est,nodes,ghost,phi,phi_cylinder,T_l_n,T_s_n,v_interface,output);
             }
           if(save_navier_stokes){
               const char* out_dir_ns = getenv("OUT_DIR_VTK_NS");
               sprintf(output,"%s/snapshot_lmin_%d_lmax_%d_outiter_%d",out_dir_ns,lmin+grid_res_iter,lmax+grid_res_iter,out_idx);
-              save_navier_stokes_fields(p4est,nodes,ghost,phi,v_n,press_nodes,vorticity,smoke,output);
+              save_navier_stokes_fields(p4est,nodes,ghost,phi,v_n,press_nodes,vorticity,output);
 
               if(example_ == NS_GIBOU_EXAMPLE){
                   // Save NS analytical to compare:
@@ -4190,7 +4161,6 @@ int main(int argc, char** argv) {
             ngbd->first_derivatives_central(T_s_n.vec,T_s_d.vec);
 
             // Create vector to hold the jump values:
-            vec_and_ptr_dim_t jump;
             jump.create(p4est,nodes);
             v_interface.destroy();
             v_interface.create(p4est,nodes);
@@ -4331,21 +4301,25 @@ int main(int argc, char** argv) {
             criteria.push_back(threshold*NS_norm);
           }
 
-//        bool nodes_increased = false;
-//        MPI_Barrier(mpi.comm());
-//        p4est_gloidx_t no_nodes1 = 0;
-//        for (int i = 0; i<p4est_np1->mpisize; i++){
-//          no_nodes1 += nodes_np1->global_owned_indeps[i];
-//        }
+        bool nodes_increased = false;
+        MPI_Barrier(mpi.comm());
+        p4est_gloidx_t no_nodes1 = 0;
+        for (int i = 0; i<p4est_np1->mpisize; i++){
+          no_nodes1 += nodes_np1->global_owned_indeps[i];
+        }
 //        PetscPrintf(mpi.comm(),"BEFORE UPDATE: Current grid has %d nodes \n", no_nodes1);
 
+        // Create second derivatives for phi in the case that we are using update_p4est:
+        if(solve_stefan){
+            phi_dd.create(p4est,nodes);
+            ngbd->second_derivatives_central(phi.vec,phi_dd.vec);
+          }
 
         // Advect the LSF and update the grid under the v_interface field:
         if(solve_coupled){
             if(example_ == ICE_AROUND_CYLINDER){
-                uniform_band = 8.;
+                uniform_band = 4.;
                 sl.update_p4est(v_interface.vec, dt, phi.vec, phi_dd.vec, phi_cylinder.vec,num_fields ,use_block ,true,uniform_band,uniform_band*(1.5),fields_ ,NULL,criteria,compare_opn,diag_opn,expand_ghost_layer);
-//                sl.update_p4est(v_interface.vec,dt,phi.vec,phi_dd.vec,phi_cylinder.vec);
               }
             else{
                   sl.update_p4est(v_interface.vec, dt, phi.vec, phi_dd.vec, NULL,num_fields ,use_block ,true,uniform_band,uniform_band*(1.5),fields_ ,NULL,criteria,compare_opn,diag_opn,expand_ghost_layer);
@@ -4357,27 +4331,27 @@ int main(int argc, char** argv) {
               sl.update_p4est(v_interface.vec,dt,phi.vec,phi_dd.vec,NULL,0,use_block,true,1.0,1.0,fields_,NULL,criteria,compare_opn,diag_opn,expand_ghost_layer);
 
           }
-        else if (solve_navier_stokes && !solve_stefan){
+        else if (/*example_ == ICE_AROUND_CYLINDER*/solve_navier_stokes && !solve_stefan){
             bool use_standard_method = false;
 
-            if(use_standard_method){
-              phi_dd.create(p4est,nodes);
-              ngbd->second_derivatives_central(phi.vec,phi_dd.vec);
+//            if(use_standard_method){
+//              phi_dd.create(p4est,nodes);
+//              ngbd->second_derivatives_central(phi.vec,phi_dd.vec);
 
-              v_interface.create(p4est,nodes);
-              v_interface.get_array();
-              foreach_node(n,nodes){
-                foreach_dimension(d){
-                  v_interface.ptr[d][n] = 0.0;
+//              v_interface.create(p4est,nodes);
+//              v_interface.get_array();
+//              foreach_node(n,nodes){
+//                foreach_dimension(d){
+//                  v_interface.ptr[d][n] = 0.0;
 
-                }
+//                }
 
-              }
-              v_interface.restore_array();
-              sl.update_p4est(v_interface.vec,dt,phi.vec,phi_dd.vec);
-              v_interface.destroy();
-              phi_dd.destroy();
-            }
+//              }
+//              v_interface.restore_array();
+//              sl.update_p4est(v_interface.vec,dt,phi.vec,phi_dd.vec);
+//              v_interface.destroy();
+//              phi_dd.destroy();
+//            }
 
             if(!use_standard_method){
               splitting_criteria_tag_t sp_NS(sp.min_lvl,sp.max_lvl,sp.lip);
@@ -4412,8 +4386,6 @@ int main(int argc, char** argv) {
                       no_grid_changes++;
                       PetscPrintf(mpi.comm(),"NS grid changed %d times \n",no_grid_changes);
                       if(last_grid_balance){
-                          PetscPrintf(mpi.comm(),"Gets to here \n");
-
                           p4est_balance(p4est_np1,P4EST_CONNECT_FULL,NULL);
                         }
 
@@ -4478,19 +4450,9 @@ int main(int argc, char** argv) {
             }
           } // end of if only navier stokes
 
-//        MPI_Barrier(mpi.comm());
-//        p4est_gloidx_t no_nodes2 = 0;
-//        for (int i = 0; i<p4est_np1->mpisize; i++){
-//          no_nodes2 += nodes_np1->global_owned_indeps[i];
-//        }
-//        if(no_nodes2!=no_nodes1){
-//            nodes_increased=true;
-//            num_node_increases++;
-//          }
-//        PetscPrintf(mpi.comm(),"AFTER UPDATE: Current grid has %d nodes \n", no_nodes2);
 
-        // Destroy old derivative values:
-        phi_dd.destroy();
+        // Destroy old derivative values in the case that we used it for update_p4est:
+        if(solve_stefan)phi_dd.destroy();
 
         // Destroy refinement vorticity:
         if(solve_navier_stokes)vorticity_refine.destroy();
@@ -4517,18 +4479,19 @@ int main(int argc, char** argv) {
         if(mem_checkpoints){
             MPI_Barrier(mpi.comm());
             PetscMemoryGetCurrentUsage(&mem6);
+            if(mem6>mem_grid2){
+                num_ngbd_increases++;
+                PetscPrintf(mpi.comm(),"There have been %d ngbd increases \n",num_ngbd_increases);
+                PetscPrintf(mpi.comm(),"ngbd increase value : %0.6e \n",mem6-mem_grid2);
+              }
           }
+        p4est_gloidx_t no_nodes2 = 0;
+        for (int i = 0; i<p4est_np1->mpisize; i++){
+          no_nodes2 += nodes_np1->global_owned_indeps[i];
+        }
+        if(no_nodes2>no_nodes1) num_node_increases++;
 
-
-//        PetscPrintf(mpi.comm(),"About to initialize stolen class \n");
-//        // Call the regularize front option using current grid info:
-//        stolen_from_multialloy_t stolen(p4est_np1,nodes_np1,ghost_np1,ngbd_np1,hierarchy_np1,dxyz_close_to_interface,phi);
-//        PetscPrintf(mpi.comm(),"Calling regularize_front \n");
-
-//        stolen.regularize_front();
-//        PetscPrintf(mpi.comm(),"Finishes regularize_front \n");
-
-//        // Check solidification front to see if it needs to be regularlized:
+//        // Check solidification front to see if it needs to be regularlized: // TO-DO: THIS WILL CREATE A MEMORY LEAK -- THINK BEFORE UNCOMMENTING
 //        phi_solid.create(p4est_np1,nodes_np1);
 //        VecCopyGhost(phi.vec,phi_solid.vec);
 //        VecScaleGhost(phi_solid.vec,-1.);
@@ -4562,18 +4525,11 @@ int main(int argc, char** argv) {
             v_n_new.create(p4est_np1,nodes_np1);
           }
 
-
-//        vec_and_ptr_t smoke_new;
-//        if (solve_smoke){
-//            smoke_new.create(T_l_new.vec);
-//          }
-
         // Interpolate things to the new grid:
         interpolate_values_onto_new_grid(T_l_n,T_l_new,
                                          T_s_n, T_s_new,
                                          v_interface, v_interface_new,
                                          v_n, v_n_new,
-                                         smoke, smoke_new,
                                          nodes_np1, p4est_np1, nodes,p4est,
                                          ngbd, interp_bw_grids);
 
@@ -4606,13 +4562,6 @@ int main(int argc, char** argv) {
 
           } // end of if solve stefan
 
-//        if(solve_smoke) {
-//            smoke.destroy();
-//            smoke.create(T_l_n.vec);
-//            VecCopyGhost(smoke_new.vec,smoke.vec);
-//            smoke_new.destroy();
-//          }
-
         if(solve_navier_stokes){
             v_n.destroy(); v_n.create(p4est_np1,nodes_np1);
             foreach_dimension(d){
@@ -4629,8 +4578,6 @@ int main(int argc, char** argv) {
         // --------------------------------------------------------------------------------------------------------------
         // Compute the normal and curvature of the interface -- curvature is used in some of the interfacial boundary condition(s) on temperature
         // --------------------------------------------------------------------------------------------------------------
-        vec_and_ptr_dim_t normal;
-        vec_and_ptr_t curvature;  // This one will hold curvature extended from interface to whole domain
 
         if(solve_stefan){
             normal.create(p4est_np1,nodes_np1);
@@ -4670,7 +4617,6 @@ int main(int argc, char** argv) {
           ngbd_np1->second_derivatives_central(phi.vec,phi_dd.vec);
 
           if(example_ ==ICE_AROUND_CYLINDER){
-              phi_cylinder.destroy();
               phi_cylinder.create(p4est_np1,nodes_np1);
               sample_cf_on_nodes(p4est_np1,nodes_np1,mini_level_set,phi_cylinder.vec);
 
@@ -4678,22 +4624,10 @@ int main(int argc, char** argv) {
               ngbd_np1->second_derivatives_central(phi_cylinder.vec,phi_cylinder_dd.vec);
             }
 
-
-
           if(mem_checkpoints){
               MPI_Barrier(mpi.comm());
               PetscMemoryGetCurrentUsage(&memP1);
-//              PetscPrintf(mpi.comm(),"index 12: %0.6e \n",memP1);
 
-            }          // Do quick optional check of values after interpolation: --> don't check till now bc we need phi_cylinder on new grid for ex 2
-          if (check_temperature_values){
-            // Check Temperature values:
-            PetscPrintf(mpi.comm(),"\n Checking temperature values after interpolating onto new grid: \n [ ");
-            PetscPrintf(mpi.comm(),"\nIn fluid domain: ");
-            check_T_values(phi,T_l_n,nodes_np1,p4est_np1,example_,phi_cylinder,true);
-            PetscPrintf(mpi.comm(),"\nIn solid domain: ");
-            check_T_values(phi_solid,T_s_n,nodes_np1,p4est_np1,example_,phi_cylinder,true);
-            PetscPrintf(mpi.comm()," ] \n");
             }
 
           // ---------------------------------------
@@ -4702,24 +4636,12 @@ int main(int argc, char** argv) {
           if (do_advection){
               if(print_checkpoints) PetscPrintf(mpi.comm(),"Gets into do advection \n\n");
               // Create backtrace vectors:
-              T_l_backtrace.destroy();
               T_l_backtrace.create(p4est_np1,nodes_np1);
 
               if(advection_sl_order ==2){
-                  T_l_backtrace_nm1.destroy();
                   T_l_backtrace_nm1.create(p4est_np1,nodes_np1);
                 }
-
-              if (solve_smoke){
-                  smoke_backtrace.destroy();
-                  smoke_backtrace.create(T_l_backtrace.vec);
-
-                  if(advection_sl_order ==2){
-                      smoke_backtrace_nm1.destroy();
-                      smoke_backtrace_nm1.create(p4est_np1,nodes_np1);
-                    }
-                }
-              do_backtrace(T_l_n,T_l_nm1,T_l_backtrace,v_n,smoke,smoke_backtrace,p4est_np1,nodes_np1,ngbd_np1,p4est,nodes,ngbd, T_l_backtrace_nm1,v_nm1,smoke_backtrace_nm1,interp_bw_grids);
+              do_backtrace(T_l_n,T_l_nm1,T_l_backtrace,v_n,p4est_np1,nodes_np1,ngbd_np1,p4est,nodes,ngbd, T_l_backtrace_nm1,v_nm1,interp_bw_grids);
 
               if(check_temperature_values){
                   PetscPrintf(mpi.comm(),"\n Checking temperature values for backtrace: \n [ ");
@@ -4738,8 +4660,6 @@ int main(int argc, char** argv) {
           if(mem_checkpoints){
               MPI_Barrier(mpi.comm());
               PetscMemoryGetCurrentUsage(&memP2);
-//              PetscPrintf(mpi.comm(),"index 13: %0.6e \n",memP2);
-
             }
           // ------------------------------------------------------------
           // Setup RHS:
@@ -4751,9 +4671,9 @@ int main(int argc, char** argv) {
 
           // Set up the RHS:
 
-          setup_rhs(phi,T_l_n,T_s_n,smoke,
-                    rhs_Tl,rhs_Ts,rhs_smoke,
-                    T_l_backtrace,smoke_backtrace, T_l_backtrace_nm1,smoke_backtrace_nm1,
+          setup_rhs(phi,T_l_n,T_s_n,
+                    rhs_Tl,rhs_Ts,
+                    T_l_backtrace,T_l_backtrace_nm1,
                     p4est_np1,nodes_np1,ngbd_np1);
           if(mem_checkpoints){
               MPI_Barrier(mpi.comm());
@@ -4772,17 +4692,17 @@ int main(int argc, char** argv) {
           solver_Tl = new my_p4est_poisson_nodes_mls_t(ngbd_np1);
           solver_Ts = new my_p4est_poisson_nodes_mls_t(ngbd_np1);
 
-          BC_interface_value bc_interface_val(ngbd_np1,curvature);
+          bc_interface_val_temp.clear();
+          bc_interface_val_temp.create(ngbd_np1,curvature.vec);
 
           if(mem_checkpoints){
               MPI_Barrier(mpi.comm());
               PetscMemoryGetCurrentUsage(&memP4);
-//              PetscPrintf(mpi.comm(),"memP4: index 15, After creating solvers: %0.6e \n",memP4);
             }
 
           // Add the appropriate interfaces and interfacial boundary conditions:
-          solver_Tl->add_boundary(MLS_INTERSECTION,phi.vec,phi_dd.vec[0],phi_dd.vec[1],interface_bc_type_temp,bc_interface_val,bc_interface_coeff);
-          solver_Ts->add_boundary(MLS_INTERSECTION,phi_solid.vec,phi_solid_dd.vec[0],phi_solid_dd.vec[1],interface_bc_type_temp,bc_interface_val,bc_interface_coeff);
+          solver_Tl->add_boundary(MLS_INTERSECTION,phi.vec,phi_dd.vec[0],phi_dd.vec[1],interface_bc_type_temp,bc_interface_val_temp,bc_interface_coeff);
+          solver_Ts->add_boundary(MLS_INTERSECTION,phi_solid.vec,phi_solid_dd.vec[0],phi_solid_dd.vec[1],interface_bc_type_temp,bc_interface_val_temp,bc_interface_coeff);
 
           if(example_ == ICE_AROUND_CYLINDER){
             solver_Ts->add_boundary(MLS_INTERSECTION,phi_cylinder.vec,phi_cylinder_dd.vec[0],phi_cylinder_dd.vec[1],inner_interface_bc_type_temp,bc_interface_val_inner,bc_interface_coeff_inner);
@@ -4850,117 +4770,31 @@ int main(int argc, char** argv) {
               PetscPrintf(mpi.comm(),"memP5: idx 16: After setting up solvers: %0.6e \n",memP5);
 
             }
-//          PetscLogDouble memtest0, memtest1,memtest2,memtest3,memtest4,memtest5;
-//          MPI_Barrier(mpi.comm());
-//          PetscMemoryGetCurrentUsage(&memtest0);
-//          PetscPrintf(mpi.comm(),"Before preassemble: %0.6e \n",memtest1);
 
           // Preassemble the linear system
           solver_Tl->preassemble_linear_system();
-//          MPI_Barrier(mpi.comm());
-//          PetscMemoryGetCurrentUsage(&memtest1);
-//          PetscPrintf(mpi.comm(),"After preassemble Tl: %0.6e \n",memtest1);
 
           solver_Ts->preassemble_linear_system();
-//          MPI_Barrier(mpi.comm());
-//          PetscMemoryGetCurrentUsage(&memtest2);
-//          PetscPrintf(mpi.comm(),"After preassemble Ts: %0.6e \n",memtest2);
 
           // Solve the system:
           solver_Tl->solve(T_l_n.vec,false,true,KSPBCGS,PCHYPRE);
-
-//          MPI_Barrier(mpi.comm());
-//          PetscMemoryGetCurrentUsage(&memtest3);
-//          PetscPrintf(mpi.comm(),"Solves Tl: %0.6e \n",memtest3);
-
           solver_Ts->solve(T_s_n.vec,false,true,KSPBCGS,PCHYPRE);
-
-//          MPI_Barrier(mpi.comm());
-//          PetscMemoryGetCurrentUsage(&memtest4);
-//          PetscPrintf(mpi.comm(),"Solves Ts: %0.6e \n",memtest4);
-
-//          MPI_Barrier(mpi.comm());
-//          PetscMemoryGetCurrentUsage(&memtest5);
-//          PetscPrintf(mpi.comm(),"Mem test 5: %0.4e\n",memtest5);
-
-//          if(memtest5<=memtest1){
-//              PetscPrintf(mpi.comm(),"Memory seems to be released \n");
-//            }
-//          else PetscPrintf(mpi.comm(),"Memory experiences an overall increase \n");
-
-//          memory_change+=(memtest5 - memtest1);
-//          PetscPrintf(mpi.comm(),"Cumulative memory change is %0.4e \n",memory_change);
-
 
 
           if(mem_checkpoints){
               MPI_Barrier(mpi.comm());
               PetscMemoryGetCurrentUsage(&memP6);
-//              PetscPrintf(mpi.comm(),"Index 17 : %0.6e \n \n",memP6);
               PetscPrintf(mpi.comm(),"16 TO 17 INCREASE: %0.10e \n \n",memP6 - memP5);
               PetscPrintf(mpi.comm(),"MEM INCREASE: %s\n",memP6 > memP5?"YES":"NO");
 
-//              PetscPrintf(mpi.comm(),"num nodes increased? %s \n \n",nodes_increased?"YES":"NO");
               if((memP6-memP5)>0.){ num_16_to_17_increases++;PetscPrintf(mpi.comm(),"Memory increased \n");}
               PetscPrintf(mpi.comm(),"There have been %d increases from 16 to 17 \n",num_16_to_17_increases);
               PetscPrintf(mpi.comm(),"There have been %d increases in grid size \n",num_node_increases);
 
             }
 
-          // Elyce DEBUGGING:
-          // Correct all the values in the positive subdomain to equal the boundary condition
-
-
-
-
-
-//          bc_interface_val.clear();
-
           delete solver_Tl;
-
           delete solver_Ts;
-/*
-          if(solve_smoke){
-              // FOR now: smoke has same diffusivity as the liquid phase, and we solve with no interfacial condition
-              // Eventually: solve smoke with two RHSs, two diffusivities, and a jump condition on the interface -- enforce a zero jump in value and flux
-              PetscPrintf(mpi.comm(),"Beginning solver setup for smoke \n");
-              solver_smoke = new my_p4est_poisson_nodes_mls_t(ngbd_np1);
-
-  //            solver_smoke->add_boundary(MLS_ADD,phi.vec,phi_dd.vec[0],phi_dd.vec[1],NEUMANN,zero_cf,zero_cf);
-              solver_smoke->set_diag(1./dt);
-
-              solver_smoke->set_mu(alpha_l);//alpha_l
-
-              solver_smoke->set_integration_order(1);
-              solver_smoke->set_use_sc_scheme(0);
-              solver_smoke->set_cube_refinement(cube_refinement);
-              solver_smoke->set_store_finite_volumes(1);
-
-              // Set wall BC and RHS:
-              solver_smoke ->set_wc(bc_type_smoke,bc_smoke_value);
-              solver_smoke->set_rhs(rhs_smoke.vec);
-              solver_smoke->preassemble_linear_system();
-
-              // Create vector to hold the solution:
-              smoke_np1.create(p4est_np1,nodes_np1);
-
-              // Solve the system:
-              PetscPrintf(mpi.comm(),"Calling solve_smoke \n");
-              solver_smoke->solve(smoke_np1.vec);
-              PetscPrintf(mpi.comm(),"Completed solve smoke \n");
-
-              // Destroy the n values now and update them with the solution for the next timestep:
-              smoke.destroy();
-              smoke.create(p4est_np1,nodes_np1);
-              VecCopyGhost(smoke_np1.vec,smoke.vec);
-
-              // Destroy np1 now that not needed:
-              smoke_np1.destroy();
-              rhs_smoke.destroy();
-
-              delete solver_smoke;
-            }
-*/
 
           // Check Temperature values:
           PetscPrintf(mpi.comm(),"--> Temperature values in the fluid domain: \n");
@@ -4990,6 +4824,10 @@ int main(int argc, char** argv) {
           // Destroy rhs vectors now that no longer in use:
           rhs_Tl.destroy();
           rhs_Ts.destroy();
+
+          // Destroy backtrace vectors now that no longer in use:
+          if(do_advection) T_l_backtrace.destroy();
+          if(do_advection && advection_sl_order==2) T_l_backtrace_nm1.destroy();
 
 //          MPI_Barrier(mpi.comm());
 //          PetscLogDouble m5;
@@ -5085,20 +4923,26 @@ int main(int argc, char** argv) {
             interface_bc_velocity_u(); interface_bc_velocity_v();
 
             // Now setup the bc interface objects -- must be initialized with the neighbors and computed interfacial velocity of the moving solid front
-            BC_interface_value_velocity_u bc_interface_value_u(ngbd_np1,v_interface);
-            BC_interface_value_velocity_v bc_interface_value_v(ngbd_np1,v_interface);
+//            BC_interface_value_velocity_u bc_interface_value_u(ngbd_np1,v_interface);
+//            BC_interface_value_velocity_v bc_interface_value_v(ngbd_np1,v_interface);
 
 
             // Initialize the BC objects:
-            BoundaryConditions2D bc_velocity[P4EST_DIM];
-            BoundaryConditions2D bc_pressure;
+//            BoundaryConditions2D bc_velocity[P4EST_DIM];
+//            BoundaryConditions2D bc_pressure;
+            bc_velocity_u_interfacial.clear();
+            bc_velocity_u_interfacial.create(ngbd_np1,v_interface.vec[0]);
+            bc_velocity_v_interfacial.clear();
+            bc_velocity_v_interfacial.create(ngbd_np1,v_interface.vec[1]);
 
             // Set the interfacial boundary conditions for velocity:
             bc_velocity[0].setInterfaceType(interface_bc_type_velocity_u);
             bc_velocity[1].setInterfaceType(interface_bc_type_velocity_v);
 
-            bc_velocity[0].setInterfaceValue(bc_interface_value_u);
-            bc_velocity[1].setInterfaceValue(bc_interface_value_v);
+//            bc_velocity[0].setInterfaceValue(bc_interface_value_u);
+//            bc_velocity[1].setInterfaceValue(bc_interface_value_v);
+            bc_velocity[0].setInterfaceValue(bc_velocity_u_interfacial);
+            bc_velocity[1].setInterfaceValue(bc_velocity_v_interfacial);
 
             // Set the wall boundary conditions for velocity:
             bc_velocity[0].setWallTypes(wall_bc_type_velocity_u); bc_velocity[1].setWallTypes(wall_bc_type_velocity_v);
@@ -5141,8 +4985,6 @@ int main(int argc, char** argv) {
                                    "--> Hodge tolerance is %0.2e \n"
                                    "-----------\n",hodge_tolerance);
 
-            int hodge_max_it = 30;
-
             int hodge_iteration = 0;
 
             if(mem_checkpoints){
@@ -5153,8 +4995,8 @@ int main(int argc, char** argv) {
             // Create interpolation object to interpolate phi to the quadrant location (since we are checking hodge error only in negative subdomain, we need to check value of LSF):
             my_p4est_interpolation_nodes_t *interp_phi = ns->get_interp_phi();
             while(keep_iterating_hodge){
-                cell_solver = NULL;
-                face_solver = NULL;
+//                cell_solver = NULL;
+//                face_solver = NULL;
 
                 double hodge_error = - 10.0;
                 hodge_global_error = -10.0;
@@ -5171,8 +5013,9 @@ int main(int argc, char** argv) {
                     PetscMemoryGetCurrentUsage(&memNS_H1);
                   }
 
-                ns->solve_viscosity(face_solver,(face_solver!=NULL),face_solver_type,pc_face);
-                delete face_solver;
+//                ns->solve_viscosity(face_solver,(face_solver!=NULL),face_solver_type,pc_face);
+//                delete face_solver;
+                ns->solve_viscosity();
 
                 if(mem_checkpoints){
                     MPI_Barrier(mpi.comm());
@@ -5180,8 +5023,9 @@ int main(int argc, char** argv) {
                   }
 
                 // Projection step:
-                ns->solve_projection(cell_solver,(cell_solver!=NULL),cell_solver_type,pc_cell);
-                delete cell_solver;
+//                ns->solve_projection(cell_solver,(cell_solver!=NULL),cell_solver_type,pc_cell);
+                ns->solve_projection();
+//                delete cell_solver;
 
                 if(mem_checkpoints){
                     MPI_Barrier(mpi.comm());
@@ -5321,9 +5165,9 @@ int main(int argc, char** argv) {
 
             if(dt_NS>dt_max_allowed) dt_NS = dt_max_allowed;
 
-            // Clear BC interpolations:
-            bc_interface_value_u.clear();
-            bc_interface_value_v.clear();
+//            // Clear BC interpolations:
+//            bc_interface_value_u.clear();
+//            bc_interface_value_v.clear();
 
             if(mem_checkpoints){
                 MPI_Barrier(mpi.comm());
@@ -5335,8 +5179,15 @@ int main(int argc, char** argv) {
                 PetscMemoryGetCurrentUsage(&memNS6);
                 if(memNS6>memNS1) {PetscPrintf(mpi.comm(),"NS MEM INCREASE : %0.6e \n",memNS6-memNS1); num_ns_increases++;
                     }
+                if(memNS6<memNS1){
+                    PetscPrintf(mpi.comm(),"NS MEM DECREASE : %0.6e \n",memNS1-memNS6); num_ns_decreases++;
+                  }
 //                if(nodes_increased){PetscPrintf(mpi.comm(),"NUM NODES CHANGED \n");}
+                PetscPrintf(mpi.comm(),"NS1 : %0.6e \n",memNS1);
+                PetscPrintf(mpi.comm(),"NS6 : %0.6e \n",memNS6);
                 PetscPrintf(mpi.comm(),"There have been %d increases in NS mem usage \n \n ",num_ns_increases);
+                PetscPrintf(mpi.comm(),"There have been %d decreases in NS mem usage \n \n ",num_ns_decreases);
+
                 PetscPrintf(mpi.comm(),"There have been %d changes in grid size \n",num_node_increases);
               }
 
@@ -5355,6 +5206,7 @@ int main(int argc, char** argv) {
             PetscMemoryGetCurrentUsage(&mem11);
           }
         if(example_ == COUPLED_PROBLEM_EXAMPLE){
+            PetscPrintf(mpi.comm(),"lmin = %d, lmax = %d \n",lmin + grid_res_iter,lmax + grid_res_iter);
             check_coupled_problem_error(phi,v_n,press_nodes,T_l_n,p4est_np1,nodes_np1,ngbd,dxyz_close_to_interface,name_coupled_errors,fich_coupled_errors,tstep);
           }
         if(example_ == ICE_AROUND_CYLINDER && tstep%save_every_iter ==0 ){
@@ -5374,7 +5226,10 @@ int main(int argc, char** argv) {
             delete ns;
           }
         else{
-            p4est_destroy(p4est);
+            PetscLogDouble before_grid_delete, after_grid_delete;
+            PetscMemoryGetCurrentUsage(&before_grid_delete);
+            PetscPrintf(mpi.comm(),"Destroying old grid variables ... \n");
+            p4est_destroy(p4est); ns->nullify_p4est_nm1();
             p4est_ghost_destroy(ghost);
             p4est_nodes_destroy(nodes);
             delete ngbd;
@@ -5392,6 +5247,18 @@ int main(int argc, char** argv) {
 //                delete faces_np1;
 //                delete ngbd_c;
 //              }
+            PetscMemoryGetCurrentUsage(&after_grid_delete);
+            if(after_grid_delete<before_grid_delete){
+                num_delete_grid_decreases++;
+                PetscPrintf(mpi.comm(),"There have been %d grid delete decreases \n",num_delete_grid_decreases);
+
+              }
+            PetscPrintf(mpi.comm(),"\n Before grid delete : %0.6e \n",before_grid_delete);
+            PetscPrintf(mpi.comm(),"After grid delete : %0.6e \n \n",after_grid_delete);
+
+            PetscPrintf(mpi.comm(),"\n ngbd increase value: %0.6e \n",mem6 - mem_grid2);
+
+            PetscPrintf(mpi.comm(),"grid decrease value: %0.6e \n \n",after_grid_delete-before_grid_delete);
           }
 
 
@@ -5453,11 +5320,11 @@ int main(int argc, char** argv) {
     if(solve_stefan){
         T_l_n.destroy();
         T_s_n.destroy();
-        smoke.destroy();
+        if(advection_sl_order==2) T_l_nm1.destroy();
       }
 
     if(solve_navier_stokes){ v_n.destroy();v_nm1.destroy();vorticity.destroy();press_nodes.destroy();}
-    else{
+    else{ // TO-DO : Don't think this is being done 100% correctly... for example, in above code, should still need to destroy phi(?) maybe not ... look into this
         phi.destroy();
 
         // destroy the structures leftover (in non NS case)
