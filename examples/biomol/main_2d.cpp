@@ -172,7 +172,7 @@ int main(int argc, char *argv[]) {
   // which molecule(s)
   const string input_folder                 = cmd.get<string> ("input-dir", "/home/rochi/LabCode/casl_p4est/examples/biomol/mols");
   //const string input_folder                 = cmd.get<string> ("input-dir", "/home/regan/Desktop/casl_p4est_develop/examples/biomol/mols");
-  const string pqr_input                    = cmd.get<string>("pqr", "1etn.");
+  const string pqr_input                    = cmd.get<string>("pqr", "single_sphere.");
   //    const string pqr_input                    = cmd.get<string>("pqr", "3J6D."); // in 2D, for the illustrative planar molecule in the paper
   //    const string pqr_input                    = cmd.get<string>("pqr", "/3J3Q/pqr/3j3q-bundle."); // in 3D, for the graphical abstract of the paper
   const vector<string>* pqr = NULL;
@@ -198,18 +198,18 @@ int main(int argc, char *argv[]) {
   const int lmin                            = cmd.get<int>("lmin", 6);
   const int lmax                            = cmd.get<int>("lmax", 8);
   const double lip                          = cmd.get<double>("lip", 1.2);
-  const int surf_gen                        = cmd.get<int>("surfgen", 1);
-  const double probe_radius                 = cmd.get<double>("rp", 1.4);
+  const int surf_gen                        = cmd.get<int>("surfgen", 2);
+  const double probe_radius                 = cmd.get<double>("rp", 0.02);
   const int order_of_accuracy               = cmd.get<int>("OOA", 2);
   // physical and solver parameters
   const double eps_mol                      = cmd.get<double>("eps_mol", 1.0);
   const double eps_elec                     = cmd.get<double>("eps_elec", 78.54);
   const int ion_charge                      = cmd.get<int>("ion", 1);
   const double temperature                  = cmd.get<double>("temperature", 298.15);
-  const double far_field_ion_concentration  = cmd.get<double>("n0", 0.1 );
+  const double far_field_ion_concentration  = cmd.get<double>("n0", 0.0 );
   const double rtol                         = cmd.get<double>("rtol", 1e-11);
   const int niter_max                       = cmd.get<int>("niter", 1000);
-  const string linearization_string         = cmd.get<string>("linear", "no");
+  const string linearization_string         = cmd.get<string>("linear", "yes");
   const bool linearization_flag             = (boost::iequals("1", linearization_string) || boost::iequals("yes", linearization_string) || boost::iequals("true", linearization_string));
 
 
@@ -368,35 +368,51 @@ int main(int argc, char *argv[]) {
             Vec psi_hat = NULL;
             Vec psi_star = NULL;
             //Vec psi_bar = NULL;
-            solver.return_psi_hat(psi_hat);
-            solver.return_psi_star(psi_star);
+
             //solver.return_psi_bar(psi_bar);
             Vec phi               = my_biomol.return_phi_vector();
             p4est_nodes_t* nodes  = my_biomol.return_nodes();
             p4est_ghost_t* ghost  = my_biomol.return_ghost();
+            ierr = PetscPrintf(mpi.comm(), "line 377 ok \n"); CHKERRXX(ierr);
+
             if(!boost::iequals(null_str, vtk_name))
             {
 
-              double *phi_p = NULL,*psi_hat_p = NULL, *psi_star_p= NULL; //*psi_bar_p= NULL;
+              Vec psi= NULL;
+              Vec grad_psi = NULL;
+              ierr = VecCreateGhostNodes(p4est, nodes, &psi);
+              ierr = VecCreateGhostNodesBlock(p4est, nodes, P4EST_DIM, &grad_psi);
+
+              solver.calculate_psi_and_grad_psi(psi, grad_psi);
+              solver.return_psi_hat(psi_hat);
+              solver.return_psi_star(psi_star);
+              double *phi_p = NULL,*psi_hat_p = NULL, *psi_star_p= NULL, *psi_p=NULL, *grad_psi_p=NULL; //*psi_bar_p= NULL;
               ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
+              ierr = VecGetArray(psi, &psi_p); CHKERRXX(ierr);
+              ierr = VecGetArray(grad_psi, &grad_psi_p); CHKERRXX(ierr);
               ierr = VecGetArray(psi_hat, &psi_hat_p); CHKERRXX(ierr);
               ierr = VecGetArray(psi_star, &psi_star_p); CHKERRXX(ierr);
               //ierr = VecGetArray(psi_bar, &psi_bar_p); CHKERRXX(ierr);
               string vtk_file = output_folder + vtk_name;
 
-
-              my_p4est_vtk_write_all(p4est, nodes, ghost,
-                                     P4EST_TRUE, P4EST_TRUE,
-                                     3, 0, vtk_file.c_str(),
-                                     VTK_POINT_DATA, "psi_hat", psi_hat_p,
-                                     VTK_POINT_DATA, "psi_star", psi_star_p,
-                                     VTK_POINT_DATA, "phi", phi_p);
+              ierr = PetscPrintf(mpi.comm(), "line 396 ok \n"); CHKERRXX(ierr);
+              my_p4est_vtk_write_all_general(p4est, nodes, ghost,
+                                             P4EST_TRUE, P4EST_TRUE,
+                                             4, 0, 1, 0, 0, 0, vtk_file.c_str(),
+                                             VTK_NODE_SCALAR, "psi_hat", psi_hat_p,
+                                             VTK_NODE_SCALAR, "psi_star", psi_star_p,
+                                             VTK_NODE_SCALAR, "phi", phi_p,
+                                             VTK_NODE_SCALAR, "psi", psi_p,
+                                             VTK_NODE_VECTOR_BLOCK, "grad_psi", grad_psi_p);
 
               //ierr = VecRestoreArray(psi_bar, &psi_bar_p); psi_bar_p = NULL; CHKERRXX(ierr);
               ierr = VecRestoreArray(psi_hat, &psi_hat_p); psi_hat_p = NULL; CHKERRXX(ierr);
               ierr = VecRestoreArray(psi_star, &psi_star_p); psi_star_p = NULL; CHKERRXX(ierr);
               ierr = VecRestoreArray(phi, &phi_p); phi_p = NULL; CHKERRXX(ierr);
-
+              ierr = VecRestoreArray(psi, &psi_p); psi_p = NULL; CHKERRXX(ierr);
+              ierr = VecRestoreArray(grad_psi, &grad_psi_p); grad_psi_p = NULL; CHKERRXX(ierr);
+              ierr = VecDestroy(grad_psi);
+              ierr = VecDestroy(psi);
             }
 
             /* release memory */

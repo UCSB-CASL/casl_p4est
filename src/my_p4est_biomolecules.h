@@ -833,6 +833,7 @@ class my_p4est_biomolecules_solver_t{
 
   void          calculate_jumps_in_normal_gradient(Vec& eps_grad_n_psi_hat_jump);
   void          calculate_jumps_in_normal_gradient_with_psi_bar(Vec& eps_grad_n_psi_hat_jump);
+
   void          get_rhs_and_add_plus(Vec& rhs_plus, Vec& add_plus);
   void          get_linear_diagonal_terms(Vec& pristine_diagonal_terms);
   void          clean_matrix_diagonal(const Vec& pristine_diagonal_terms);
@@ -889,6 +890,7 @@ public:
   void          return_psi_hat(Vec& psi_hat_out);
   void          return_psi_star(Vec& psi_star_out);
   void          return_psi_bar(Vec& psi_bar_out);
+  void          calculate_psi_and_grad_psi(Vec& psi, Vec& grad_psi);
 
   ~my_p4est_biomolecules_solver_t();
 };

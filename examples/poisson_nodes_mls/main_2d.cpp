@@ -235,14 +235,14 @@ param_t<int> rhs_p_value (pl, 0, "rhs_p_value", "0 - automatic (pl, others - har
 param_t<int>  jc_scheme         (pl, 0, "jc_scheme", "Discretization scheme for interface conditions (0 - FVM (pl, 1 - FDM)");
 param_t<int>  jc_sub_scheme     (pl, 0, "jc_sub_scheme", "Interpolation subscheme for interface conditions (0 - from slow region (pl, 1 - from fast region (pl, 2 - based on nodes availability)");
 param_t<int>  integration_order (pl, 2, "integration_order", "Select integration order (1 - linear (pl, 2 - quadratic)");
-param_t<bool> sc_scheme         (pl, 0, "sc_scheme", "Use super-convergent scheme");
+param_t<bool> sc_scheme         (pl, 1, "sc_scheme", "Use super-convergent scheme");
 
 // for symmetric scheme:
 param_t<bool> taylor_correction      (pl, 1, "taylor_correction", "Use Taylor correction to approximate Robin term (symmetric scheme)");
 param_t<bool> kink_special_treatment (pl, 1, "kink_special_treatment", "Use the special treatment for kinks (symmetric scheme)");
 
 // for superconvergent scheme:
-param_t<bool> try_remove_hanging_cells (pl, 0, "try_remove_hanging_cells", "Ask solver to eliminate hanging cells");
+param_t<bool> try_remove_hanging_cells (pl, 1, "try_remove_hanging_cells", "Ask solver to eliminate hanging cells");
 
 param_t<bool> store_finite_volumes   (pl, 1, "store_finite_volumes", "");
 param_t<bool> apply_bc_pointwise     (pl, 1, "apply_bc_pointwise", "");

@@ -3311,6 +3311,39 @@ void my_p4est_biomolecules_solver_t::calculate_jumps_in_normal_gradient(Vec &eps
   ierr = VecRestoreArrayRead(biomolecules->phi, &phi_read_only_p);                    CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(psi_star, &psi_star_read_only_p);                        CHKERRXX(ierr);
 }
+void my_p4est_biomolecules_solver_t::calculate_psi_and_grad_psi(Vec &psi, Vec &grad_psi)
+{
+  const double *psi_star_read_only_p = NULL, *psi_hat_read_only_p=NULL;
+  double *psi_p = NULL;
+
+  ierr = VecGetArray(psi, &psi_p);
+;
+  ierr = VecGetArrayRead(psi_star, &psi_star_read_only_p); CHKERRXX(ierr);
+
+  ierr = VecGetArrayRead(psi_hat, &psi_hat_read_only_p);   CHKERRXX(ierr);
+
+  quad_neighbor_nodes_of_node_t qnnn;
+  p4est_locidx_t node_idx;
+  for (size_t k = 0; k < biomolecules->neighbors->get_layer_size(); ++k)
+  {
+    node_idx = biomolecules->neighbors->get_layer_node(k);
+    psi_p[node_idx]=psi_star_read_only_p[node_idx]+psi_hat_read_only_p[node_idx];
+  }
+
+  ierr = VecGhostUpdateBegin(psi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  for (size_t k = 0; k < biomolecules->neighbors->get_local_size(); ++k)
+  {
+    node_idx = biomolecules->neighbors->get_local_node(k);
+    psi_p[node_idx]=psi_star_read_only_p[node_idx]+psi_hat_read_only_p[node_idx];
+  }
+
+  ierr = VecGhostUpdateEnd(psi, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  ierr = VecRestoreArray(psi, &psi_p);        CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(psi_star, &psi_star_read_only_p);                    CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(psi_hat, &psi_hat_read_only_p);
+
+  biomolecules->neighbors->first_derivatives_central(psi,grad_psi);
+}
 void my_p4est_biomolecules_solver_t::calculate_jumps_in_normal_gradient_with_psi_bar(Vec &eps_grad_n_psi_hat_jump)
 {
   const double *phi_read_only_p = NULL , *psi_bar_read_only_p = NULL;
@@ -4376,7 +4409,7 @@ double my_p4est_biomolecules_solver_t::get_solvation_free_energy(const bool &non
   ierr = VecRestoreArray(integrand, &integrand_p);                    CHKERRXX(ierr);
   biomolecules->ls->extend_Over_Interface_TVD(biomolecules->phi, integrand, 20, 2); // 20 for the number of iterations, default parameter
   solvation_free_energy = integrate_over_negative_domain(biomolecules->p4est, biomolecules->nodes, biomolecules->phi, integrand)*(pow(length_scale_in_meter(), 3.0));
-  //ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "Integration over negative domain is %g J, that is %g kJ/mol ,that is %g kcal/mol \n", solvation_free_energy, solvation_free_energy*avogadro_number*0.001, solvation_free_energy*avogadro_number*0.000239006); CHKERRXX(ierr);
+  ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "Integration over negative domain is %g J, that is %g kJ/mol ,that is %g kcal/mol \n", solvation_free_energy, solvation_free_energy*avogadro_number*0.001, solvation_free_energy*avogadro_number*0.000239006); CHKERRXX(ierr);
 
   Vec phi_ghost_loc = NULL;
   ierr = VecGhostGetLocalForm(biomolecules->phi, &phi_ghost_loc);     CHKERRXX(ierr);
@@ -4463,7 +4496,7 @@ double my_p4est_biomolecules_solver_t::get_solvation_free_energy(const bool &non
 
   int mpiret = MPI_Allreduce(MPI_IN_PLACE, &integral_contribution_from_singular_charges, 1, MPI_DOUBLE, MPI_SUM, biomolecules->p4est->mpicomm); SC_CHECK_MPI(mpiret);
   solvation_free_energy += integral_contribution_from_singular_charges;
-  //ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "Contribution of singular charges is %g J, that is %g kJ/mol ,that is %g kcal/mol \n", integral_contribution_from_singular_charges, integral_contribution_from_singular_charges*avogadro_number*0.001, integral_contribution_from_singular_charges*avogadro_number*0.000239006); CHKERRXX(ierr);
+  ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->log_file, "Contribution of singular charges is %g J, that is %g kJ/mol ,that is %g kcal/mol \n", integral_contribution_from_singular_charges, integral_contribution_from_singular_charges*avogadro_number*0.001, integral_contribution_from_singular_charges*avogadro_number*0.000239006); CHKERRXX(ierr);
 
   ierr = VecDestroy(integrand);       CHKERRXX(ierr);
   ierr = VecDestroy(psi_hat_xxyyzz);  CHKERRXX(ierr);
