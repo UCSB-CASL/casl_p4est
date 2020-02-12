@@ -35,11 +35,7 @@ double node_linear_combination::calculate_dd( const unsigned char der, const dou
   return value;
 }
 
-#ifdef P4_TO_P8
-void quad_neighbor_nodes_of_node_t::correct_naive_second_derivatives(double *Dxx, double *Dyy, double *Dzz, const unsigned int &n_values) const
-#else
-void quad_neighbor_nodes_of_node_t::correct_naive_second_derivatives(double *Dxx, double *Dyy,              const unsigned int &n_values) const
-#endif
+void quad_neighbor_nodes_of_node_t::correct_naive_second_derivatives(DIM(double *Dxx, double *Dyy, double *Dzz), const unsigned int &n_values) const
 {
   const double m12 = d_m00_m0*d_m00_p0/d_m00/(d_p00+d_m00) + d_p00_m0*d_p00_p0/d_p00/(d_p00+d_m00) ; // 9 flops
 #ifdef P4_TO_P8
@@ -297,11 +293,7 @@ void quad_neighbor_nodes_of_node_t::correct_naive_second_derivatives(double *Dxx
 }
 
 /*
-#ifdef P4_TO_P8
-void quad_neighbor_nodes_of_node_t::correct_naive_second_derivatives(node_linear_combination &Dxx, node_linear_combination &Dyy, node_linear_combination &Dzz) const
-#else
-void quad_neighbor_nodes_of_node_t::correct_naive_second_derivatives(node_linear_combination &Dxx, node_linear_combination &Dyy) const
-#endif
+void quad_neighbor_nodes_of_node_t::correct_naive_second_derivatives(DIM(node_linear_combination &Dxx, node_linear_combination &Dyy, node_linear_combination &Dzz)) const
 {
   const double m12 = d_m00_m0*d_m00_p0/d_m00/(d_p00+d_m00) + d_p00_m0*d_p00_p0/d_p00/(d_p00+d_m00) ; // 9 flops
 #ifdef P4_TO_P8
@@ -483,11 +475,7 @@ void quad_neighbor_nodes_of_node_t::x_ngbd_with_quadratic_interpolation_all_comp
 #ifdef P4_TO_P8
     double temp_2[n_arrays*bs], temp_3[n_arrays*bs];
 #endif
-    ngbd_with_quadratic_interpolation_all_components(f, f_000, f_m00, f_p00, temp_0, temp_1,
-                                                 #ifdef P4_TO_P8
-                                                     temp_2, temp_3,
-                                                 #endif
-                                                     n_arrays, bs);
+    ngbd_with_quadratic_interpolation_all_components(f, f_000, f_m00, f_p00, temp_0, temp_1 ONLY3D(COMMA temp_2 COMMA temp_3), n_arrays, bs);
   }
 #ifdef CASL_LOG_TINY_EVENTS
   ierr_log_event = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_x_ngbd_with_quadratic_interpolation, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
@@ -532,11 +520,7 @@ void quad_neighbor_nodes_of_node_t::x_ngbd_with_quadratic_interpolation_componen
 #ifdef P4_TO_P8
     double temp_2[n_arrays], temp_3[n_arrays];
 #endif
-    ngbd_with_quadratic_interpolation_component(f, f_000, f_m00, f_p00, temp_0, temp_1,
-                                            #ifdef P4_TO_P8
-                                                temp_2, temp_3,
-                                            #endif
-                                                n_arrays, bs, comp);
+    ngbd_with_quadratic_interpolation_component(f, f_000, f_m00, f_p00, temp_0, temp_1 ONLY3D(COMMA temp_2 COMMA temp_3), n_arrays, bs, comp);
   }
 #ifdef CASL_LOG_TINY_EVENTS
   ierr_log_event = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_x_ngbd_with_quadratic_interpolation, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
@@ -576,11 +560,7 @@ void quad_neighbor_nodes_of_node_t::x_ngbd_with_quadratic_interpolation(const do
 #ifdef P4_TO_P8
     double temp_2[n_arrays], temp_3[n_arrays];
 #endif
-    ngbd_with_quadratic_interpolation(f, f_000, f_m00, f_p00, temp_0, temp_1,
-                                  #ifdef P4_TO_P8
-                                      temp_2, temp_3,
-                                  #endif
-                                      n_arrays);
+    ngbd_with_quadratic_interpolation(f, f_000, f_m00, f_p00, temp_0, temp_1 ONLY3D(COMMA temp_2 COMMA temp_3), n_arrays);
   }
 #ifdef CASL_LOG_TINY_EVENTS
   ierr_log_event = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_x_ngbd_with_quadratic_interpolation, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
@@ -630,11 +610,7 @@ void quad_neighbor_nodes_of_node_t::y_ngbd_with_quadratic_interpolation_all_comp
 #ifdef P4_TO_P8
     double temp_2[n_arrays*bs], temp_3[n_arrays*bs];
 #endif
-    ngbd_with_quadratic_interpolation_all_components(f, f_000, temp_0, temp_1, f_0m0, f_0p0,
-                                                 #ifdef P4_TO_P8
-                                                     temp_2, temp_3,
-                                                 #endif
-                                                     n_arrays, bs);
+    ngbd_with_quadratic_interpolation_all_components(f, f_000, temp_0, temp_1, f_0m0, f_0p0 ONLY3D(COMMA temp_2 COMMA temp_3), n_arrays, bs);
   }
 #ifdef CASL_LOG_TINY_EVENTS
   ierr_log_event = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_y_ngbd_with_quadratic_interpolation, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
@@ -678,11 +654,7 @@ void quad_neighbor_nodes_of_node_t::y_ngbd_with_quadratic_interpolation_componen
 #ifdef P4_TO_P8
     double temp_2[n_arrays], temp_3[n_arrays];
 #endif
-    ngbd_with_quadratic_interpolation_component(f, f_000, temp_0, temp_1, f_0m0, f_0p0,
-                                                 #ifdef P4_TO_P8
-                                                     temp_2, temp_3,
-                                                 #endif
-                                                     n_arrays, bs, comp);
+    ngbd_with_quadratic_interpolation_component(f, f_000, temp_0, temp_1, f_0m0, f_0p0 ONLY3D(COMMA temp_2 COMMA temp_3), n_arrays, bs, comp);
   }
 #ifdef CASL_LOG_TINY_EVENTS
   ierr_log_event = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_y_ngbd_with_quadratic_interpolation, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
@@ -722,11 +694,7 @@ void quad_neighbor_nodes_of_node_t::y_ngbd_with_quadratic_interpolation(const do
 #ifdef P4_TO_P8
     double temp_2[n_arrays], temp_3[n_arrays];
 #endif
-    ngbd_with_quadratic_interpolation(f, f_000, temp_0, temp_1, f_0m0, f_0p0,
-                                  #ifdef P4_TO_P8
-                                      temp_2, temp_3,
-                                  #endif
-                                      n_arrays);
+    ngbd_with_quadratic_interpolation(f, f_000, temp_0, temp_1, f_0m0, f_0p0 ONLY3D(COMMA temp_2 COMMA temp_3), n_arrays);
   }
 #ifdef CASL_LOG_TINY_EVENTS
   ierr_log_event = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_y_ngbd_with_quadratic_interpolation, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
@@ -853,11 +821,7 @@ void quad_neighbor_nodes_of_node_t::z_ngbd_with_quadratic_interpolation(const do
 }
 #endif
 
-#ifdef P4_TO_P8
-void quad_neighbor_nodes_of_node_t::correct_naive_first_derivatives(const double *f[], const double *naive_Dx, const double *naive_Dy, const double *naive_Dz,  double *Dx, double *Dy, double *Dz, const unsigned int &n_arrays, const unsigned int &bs, const unsigned int &comp) const
-#else
-void quad_neighbor_nodes_of_node_t::correct_naive_first_derivatives(const double *f[], const double *naive_Dx, const double *naive_Dy,                          double *Dx, double *Dy,             const unsigned int &n_arrays, const unsigned int &bs, const unsigned int &comp) const
-#endif
+void quad_neighbor_nodes_of_node_t::correct_naive_first_derivatives(const double *f[], DIM(const double *naive_Dx, const double *naive_Dy, const double *naive_Dz),  DIM(double *Dx, double *Dy, double *Dz), const unsigned int &n_arrays, const unsigned int &bs, const unsigned int &comp) const
 {
   P4EST_ASSERT(comp <= bs);
   // comp == bs means "all components", comp < bs means, only one, comp > bs is not accepted
@@ -929,11 +893,7 @@ void quad_neighbor_nodes_of_node_t::correct_naive_first_derivatives(const double
 }
 
 /*
-#ifdef P4_TO_P8
-void quad_neighbor_nodes_of_node_t::correct_naive_first_derivatives(node_linear_combination &Dx, node_linear_combination &Dy, node_linear_combination &Dz, const node_linear_combination &Dxx, const node_linear_combination &Dyy, const node_linear_combination &Dzz) const
-#else
-void quad_neighbor_nodes_of_node_t::correct_naive_first_derivatives(node_linear_combination &Dx, node_linear_combination &Dy,                              const node_linear_combination &Dxx, const node_linear_combination &Dyy) const
-#endif
+void quad_neighbor_nodes_of_node_t::correct_naive_first_derivatives(DIM(node_linear_combination &Dx, node_linear_combination &Dy, node_linear_combination &Dz), DIM(const node_linear_combination &Dxx, const node_linear_combination &Dyy, const node_linear_combination &Dzz)) const
 {
   double yy_correction_weight_to_naive_Dx, xx_correction_weight_to_naive_Dy;
 #ifdef P4_TO_P8
@@ -1219,11 +1179,8 @@ double quad_neighbor_nodes_of_node_t::dx_backward_quadratic(const double *f, con
   else
   {*/
   node_linear_combination lin_m00(1<<(P4EST_DIM-1));
-#ifdef P4_TO_P8
-  get_linear_interpolator(lin_m00, node_m00_mm, node_m00_pm, node_m00_mp, node_m00_pp, d_m00_m0, d_m00_p0, d_m00_0m, d_m00_0p);
-#else
-  get_linear_interpolator(lin_m00, node_m00_mm, node_m00_pm,                           d_m00_m0, d_m00_p0);
-#endif
+  get_linear_interpolator(lin_m00, node_m00_mm, node_m00_pm ONLY3D(COMMA node_m00_mp COMMA node_m00_pp), d_m00_m0, d_m00_p0 ONLY3D(COMMA d_m00_0m COMMA d_m00_0p));
+
   f_xx_m00 = lin_m00.calculate_dd(dir::x, f, neighbors);
   /*}*/
   return d_backward_quadratic(f_000, f_m00, d_m00, f_xx_000, f_xx_m00);
@@ -1240,11 +1197,7 @@ double quad_neighbor_nodes_of_node_t::dx_forward_quadratic(const double *f, cons
   else
   {*/
   node_linear_combination lin_p00(1<<(P4EST_DIM-1));
-#ifdef P4_TO_P8
-  get_linear_interpolator(lin_p00, node_p00_mm, node_p00_pm, node_p00_mp, node_p00_pp, d_p00_m0, d_p00_p0, d_p00_0m, d_p00_0p);
-#else
-  get_linear_interpolator(lin_p00, node_p00_mm, node_p00_pm,                           d_p00_m0, d_p00_p0);
-#endif
+  get_linear_interpolator(lin_p00, node_p00_mm, node_p00_pm ONLY3D(COMMA node_p00_mp COMMA node_p00_pp), d_p00_m0, d_p00_p0 ONLY3D(COMMA d_p00_0m COMMA d_p00_0p));
   f_xx_p00 = lin_p00.calculate_dd(dir::x, f, neighbors);
   /*}*/
   return d_forward_quadratic(f_p00, f_000, d_p00, f_xx_000, f_xx_p00);
@@ -1261,11 +1214,7 @@ double quad_neighbor_nodes_of_node_t::dy_backward_quadratic(const double *f, con
   else
   {*/
   node_linear_combination lin_0m0(1<<(P4EST_DIM-1));
-#ifdef P4_TO_P8
-  get_linear_interpolator(lin_0m0, node_0m0_mm, node_0m0_pm, node_0m0_mp, node_0m0_pp, d_0m0_m0, d_0m0_p0, d_0m0_0m, d_0m0_0p);
-#else
-  get_linear_interpolator(lin_0m0, node_0m0_mm, node_0m0_pm,                           d_0m0_m0, d_0m0_p0);
-#endif
+  get_linear_interpolator(lin_0m0, node_0m0_mm, node_0m0_pm ONLY3D(COMMA node_0m0_mp COMMA node_0m0_pp), d_0m0_m0, d_0m0_p0 ONLY3D(COMMA d_0m0_0m COMMA d_0m0_0p));
   f_yy_0m0 = lin_0m0.calculate_dd(dir::y, f, neighbors);
   /*}*/
   return d_backward_quadratic(f_000, f_0m0, d_0m0, f_yy_000, f_yy_0m0);
@@ -1282,11 +1231,7 @@ double quad_neighbor_nodes_of_node_t::dy_forward_quadratic(const double *f, cons
   else
   {*/
   node_linear_combination lin_0p0(1<<(P4EST_DIM-1));
-#ifdef P4_TO_P8
-  get_linear_interpolator(lin_0p0, node_0p0_mm, node_0p0_pm, node_0p0_mp, node_0p0_pp, d_0p0_m0, d_0p0_p0, d_0p0_0m, d_0p0_0p);
-#else
-  get_linear_interpolator(lin_0p0, node_0p0_mm, node_0p0_pm,                           d_0p0_m0, d_0p0_p0);
-#endif
+  get_linear_interpolator(lin_0p0, node_0p0_mm, node_0p0_pm ONLY3D(COMMA node_0p0_mp COMMA node_0p0_pp), d_0p0_m0, d_0p0_p0 ONLY3D(COMMA d_0p0_0m COMMA d_0p0_0p));
   f_yy_0p0 = lin_0p0.calculate_dd(dir::y, f, neighbors);
   /*}*/
   return d_forward_quadratic(f_0p0, f_000, d_0p0, f_yy_000, f_yy_0p0);

@@ -606,13 +606,13 @@ void my_p4est_xgfm_cells_t::solve(KSPType ksp_type, PCType pc_type,
     ierr = VecGetArray(extension_cell_values, &extension_cell_values_p); CHKERRXX(ierr);
     interpolate_coarse_cell_field_to_fine_nodes(extension_cell_values_p, extension_on_fine_nodes);
     // calculate the correction for the rhs
-    ierr = VecCreateCellsNoGhost(p4est, &corrected_rhs); CHKERRXX(ierr);
+    ierr = VecCreateNoGhostCells(p4est, &corrected_rhs); CHKERRXX(ierr);
     double *extension_on_fine_nodes_p;
     ierr = VecGetArray(extension_on_fine_nodes, &extension_on_fine_nodes_p); CHKERRXX(ierr);
     get_corrected_rhs(corrected_rhs, extension_on_fine_nodes_p);
     // calculate the residual of the current solution
     Vec residual;
-    ierr = VecCreateCellsNoGhost(p4est, &residual); CHKERRXX(ierr);
+    ierr = VecCreateNoGhostCells(p4est, &residual); CHKERRXX(ierr);
     ierr = VecRestoreArray(solution, &solution_p); CHKERRXX(ierr);
     ierr = MatMult(A, solution, residual); CHKERRXX(ierr);
     ierr = VecGetArray(solution, &solution_p); CHKERRXX(ierr);
@@ -685,10 +685,10 @@ void my_p4est_xgfm_cells_t::solve(KSPType ksp_type, PCType pc_type,
         ierr = VecCreateGhostNodes(fine_p4est, fine_nodes, &extension_on_fine_nodes_tilde); CHKERRXX(ierr);
         ierr = VecGetArray(extension_on_fine_nodes_tilde, &extension_on_fine_nodes_tilde_p); CHKERRXX(ierr);
         P4EST_ASSERT(corrected_rhs_tilde == NULL);
-        ierr = VecCreateCellsNoGhost(p4est, &corrected_rhs_tilde); CHKERRXX(ierr);
+        ierr = VecCreateNoGhostCells(p4est, &corrected_rhs_tilde); CHKERRXX(ierr);
         ierr = VecGetArray(corrected_rhs_tilde, &corrected_rhs_tilde_p); CHKERRXX(ierr);
         P4EST_ASSERT(residual_tilde == NULL);
-        ierr = VecCreateCellsNoGhost(p4est, &residual_tilde); CHKERRXX(ierr);
+        ierr = VecCreateNoGhostCells(p4est, &residual_tilde); CHKERRXX(ierr);
         ierr = VecGetArray(residual_tilde, &residual_tilde_p); CHKERRXX(ierr);
         // update extension_cell_values_tilde <= extension_cell_values as well for good initial guess
         // the original vector's ghost values are already up-to-date, no need to GhostUpdate...

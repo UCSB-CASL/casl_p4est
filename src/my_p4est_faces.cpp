@@ -784,52 +784,32 @@ double my_p4est_faces_t::face_area_in_negative_domain(p4est_locidx_t f_idx, cons
   return area;
 }
 
-
-PetscErrorCode VecCreateGhostFaces(const p4est_t *p4est, const my_p4est_faces_t *faces, Vec* v, const unsigned char &dir)
+PetscErrorCode VecCreateGhostFacesBlock(const p4est_t *p4est, const my_p4est_faces_t *faces, PetscInt block_size, Vec* v, const unsigned char &dir)
 {
-  PetscErrorCode ierr = 0;
-  p4est_locidx_t num_local = faces->num_local[dir];
-
   std::vector<PetscInt> ghost_faces(faces->num_ghost[dir], 0);
-  std::vector<PetscInt> global_offset_sum(p4est->mpisize + 1, 0);
-
-  // Calculate the global number of points
-  for (int r = 0; r<p4est->mpisize; ++r)
-    global_offset_sum[r + 1] = global_offset_sum[r] + (PetscInt)faces->global_owned_indeps[dir][r];
-
-  PetscInt num_global = global_offset_sum[p4est->mpisize];
-
   for(size_t i = 0; i < ghost_faces.size(); ++i)
-    ghost_faces[i] = faces->ghost_local_num[dir][i] + global_offset_sum[faces->nonlocal_ranks[dir][i]];
+    ghost_faces[i] = faces->ghost_local_num[dir][i] + faces->proc_offset[dir][faces->nonlocal_ranks[dir][i]];
 
-  ierr = VecCreateGhost(p4est->mpicomm, num_local, num_global,
-                        ghost_faces.size(), (const PetscInt*)&ghost_faces[0], v); CHKERRQ(ierr);
+  PetscErrorCode ierr = 0;
+  if(block_size > 1){
+    ierr = VecCreateGhostBlock(p4est->mpicomm, block_size, faces->num_local[dir]*block_size, faces->proc_offset[dir][p4est->mpisize]*block_size,
+        ghost_faces.size(), (const PetscInt*)&ghost_faces[0], v); CHKERRQ(ierr);
+  } else {
+    ierr = VecCreateGhost(p4est->mpicomm, faces->num_local[dir], faces->proc_offset[dir][p4est->mpisize],
+        ghost_faces.size(), (const PetscInt*)&ghost_faces[0], v); CHKERRQ(ierr);
+  }
   ierr = VecSetFromOptions(*v); CHKERRQ(ierr);
 
   return ierr;
 }
 
-
-PetscErrorCode VecCreateGhostFacesBlock(const p4est_t *p4est, const my_p4est_faces_t *faces, PetscInt block_size, Vec* v, const unsigned char &dir)
+PetscErrorCode VecCreateNoGhostFacesBlock(const p4est_t *p4est, const my_p4est_faces_t *faces, PetscInt block_size, Vec* v, const unsigned char &dir)
 {
   PetscErrorCode ierr = 0;
-  p4est_locidx_t num_local = faces->num_local[dir];
-
-  std::vector<PetscInt> ghost_faces(faces->num_ghost[dir], 0);
-  std::vector<PetscInt> global_offset_sum(p4est->mpisize + 1, 0);
-
-  // Calculate the global number of points
-  for (int r = 0; r<p4est->mpisize; ++r)
-    global_offset_sum[r + 1] = global_offset_sum[r] + (PetscInt)faces->global_owned_indeps[dir][r];
-
-  PetscInt num_global = global_offset_sum[p4est->mpisize];
-
-  for(size_t i = 0; i < ghost_faces.size(); ++i)
-    ghost_faces[i] = faces->ghost_local_num[dir][i] + global_offset_sum[faces->nonlocal_ranks[dir][i]];
-
-  ierr = VecCreateGhostBlock(p4est->mpicomm,
-                             block_size, num_local*block_size, num_global*block_size,
-                             ghost_faces.size(), (const PetscInt*)&ghost_faces[0], v); CHKERRQ(ierr);
+  ierr = VecCreateMPI(p4est->mpicomm, faces->num_local[dir]*block_size, faces->proc_offset[dir][p4est->mpisize]*block_size, v); CHKERRQ(ierr);
+  if(block_size > 1){
+    ierr = VecSetBlockSize(*v, block_size); CHKERRQ(ierr);
+  }
   ierr = VecSetFromOptions(*v); CHKERRQ(ierr);
 
   return ierr;

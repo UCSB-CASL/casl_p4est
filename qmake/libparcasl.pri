@@ -88,8 +88,8 @@ HEADERS += \
   $$PARCASL/src/my_p4est_poisson_cells.h \
   $$PARCASL/src/my_p4est_poisson_faces.h \
 #  $$PARCASL/src/my_p4est_poisson_jump_nodes_extended.h \
-#  $$PARCASL/src/my_p4est_poisson_jump_nodes_voronoi.h \
-#  $$PARCASL/src/my_p4est_poisson_jump_voronoi_block.h \
+  $$PARCASL/src/my_p4est_poisson_jump_nodes_voronoi.h \
+  $$PARCASL/src/my_p4est_poisson_jump_voronoi_block.h \
 #  $$PARCASL/src/my_p4est_poisson_nodes.h \
   $$PARCASL/src/my_p4est_poisson_nodes_mls.h \
 #  $$PARCASL/src/my_p4est_poisson_nodes_multialloy.h \
@@ -133,8 +133,8 @@ SOURCES += \
   $$PARCASL/src/my_p4est_poisson_cells.cpp \
   $$PARCASL/src/my_p4est_poisson_faces.cpp \
 #  $$PARCASL/src/my_p4est_poisson_jump_nodes_extended.cpp \
-#  $$PARCASL/src/my_p4est_poisson_jump_nodes_voronoi.cpp \
-#  $$PARCASL/src/my_p4est_poisson_jump_voronoi_block.cpp \
+  $$PARCASL/src/my_p4est_poisson_jump_nodes_voronoi.cpp \
+  $$PARCASL/src/my_p4est_poisson_jump_voronoi_block.cpp \
 #  $$PARCASL/src/my_p4est_poisson_nodes.cpp \
   $$PARCASL/src/my_p4est_poisson_nodes_mls.cpp \
 #  $$PARCASL/src/my_p4est_poisson_nodes_multialloy.cpp \
@@ -184,8 +184,8 @@ HEADERS += \
   $$PARCASL/src/my_p8est_poisson_cells.h \
   $$PARCASL/src/my_p8est_poisson_faces.h \
 #  $$PARCASL/src/my_p8est_poisson_jump_nodes_extended.h \
-#  $$PARCASL/src/my_p8est_poisson_jump_nodes_voronoi.h \
-#  $$PARCASL/src/my_p8est_poisson_jump_voronoi_block.h \
+  $$PARCASL/src/my_p8est_poisson_jump_nodes_voronoi.h \
+  $$PARCASL/src/my_p8est_poisson_jump_voronoi_block.h \
 #  $$PARCASL/src/my_p8est_poisson_nodes.h \
   $$PARCASL/src/my_p8est_poisson_nodes_mls.h \
 #  $$PARCASL/src/my_p8est_poisson_nodes_multialloy.h \
@@ -229,8 +229,8 @@ SOURCES += \
   $$PARCASL/src/my_p8est_poisson_cells.cpp \
   $$PARCASL/src/my_p8est_poisson_faces.cpp \
 #  $$PARCASL/src/my_p8est_poisson_jump_nodes_extended.cpp \
-#  $$PARCASL/src/my_p8est_poisson_jump_nodes_voronoi.cpp \
-#  $$PARCASL/src/my_p8est_poisson_jump_voronoi_block.cpp \
+  $$PARCASL/src/my_p8est_poisson_jump_nodes_voronoi.cpp \
+  $$PARCASL/src/my_p8est_poisson_jump_voronoi_block.cpp \
 #  $$PARCASL/src/my_p8est_poisson_nodes.cpp \
   $$PARCASL/src/my_p8est_poisson_nodes_mls.cpp \
 #  $$PARCASL/src/my_p8est_poisson_nodes_multialloy.cpp \

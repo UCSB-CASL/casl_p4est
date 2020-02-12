@@ -177,6 +177,7 @@ public:
       throw std::invalid_argument("Choose a valid level set.");
     }
   }
+  double operator()(double *xyz) const {return this->operator()(xyz[0], xyz[1], xyz[2]); }
 } level_set;
 
 class ONE: public CF_3
@@ -542,6 +543,7 @@ public:
       throw std::invalid_argument("Choose a valid level set.");
     }
   }
+  double operator()(double *xyz) const {return this->operator()(xyz[0], xyz[1]); }
 } level_set;
 
 class ONE: public CF_2
@@ -1172,7 +1174,8 @@ void solve_Poisson_Jump( p4est_t *p4est, p4est_nodes_t *nodes,
 //  sample_cf_on_nodes(p4est, nodes, u_m, sol);
 
   char out_path[1000];
-  char *out_dir = "/home/egan/workspace/projects/jump_solver/output";
+  const string my_path = "/home/egan/workspace/projects/jump_solver/output";
+  const char *out_dir = my_path.c_str();
 //  out_dir = getenv("OUT_DIR");
   if(out_dir==NULL)
   {
@@ -1469,11 +1472,11 @@ int main (int argc, char* argv[])
     }
     PetscPrintf(p4est->mpicomm, "Iter %d\n", iter);
 #ifdef P4_TO_P8
-    PetscPrintf(p4est->mpicomm, "  -- On the grid nodes -- max_err = %g, \t order : %g. \t Max error at point %g, %g, %g, \t on proc %d, \t dist_interface = %g, \t qh = %g. \n", err_n.error_value, log(err_nm1.error_value/err_n.error_value)/log(2), err_n.error_location_x, err_n.error_location_y, err_n.error_location_z, rank_max_error, fabs(level_set(err_n.error_location_x, err_n.error_location_y, err_n.error_location_z)), MAX((xyz_max[0]-xyz_min[0])/nx, (xyz_max[1]-xyz_min[1])/ny, (xyz_max[2]-xyz_min[2])/nz)/pow(2.0,lmax+iter));
-    PetscPrintf(p4est->mpicomm, "  --  On Voronoi mesh  -- max_err = %g, \t order : %g. \t Max error at point %g, %g, %g, \t on proc %d, \t dist_interface = %g. \n", err_seed_n.error_value, log(err_seed_nm1.error_value/err_seed_n.error_value)/log(2), err_seed_n.error_location_x, err_seed_n.error_location_y, err_seed_n.error_location_z, rank_max_error_seed, fabs(level_set(err_seed_n.error_location_x, err_seed_n.error_location_y, err_seed_n.error_location_z)));
+    PetscPrintf(p4est->mpicomm, "  -- On the grid nodes -- max_err = %g, \t order : %g. \t Max error at point %g, %g, %g, \t on proc %d, \t dist_interface = %g, \t qh = %g. \n", err_n.error_value, log(err_nm1.error_value/err_n.error_value)/log(2), err_n.error_location_xyz[0], err_n.error_location_xyz[1], err_n.error_location_xyz[2], rank_max_error, fabs(level_set(err_n.error_location_xyz)), MAX((xyz_max[0]-xyz_min[0])/nx, (xyz_max[1]-xyz_min[1])/ny, (xyz_max[2]-xyz_min[2])/nz)/pow(2.0,lmax+iter));
+    PetscPrintf(p4est->mpicomm, "  --  On Voronoi mesh  -- max_err = %g, \t order : %g. \t Max error at point %g, %g, %g, \t on proc %d, \t dist_interface = %g. \n", err_seed_n.error_value, log(err_seed_nm1.error_value/err_seed_n.error_value)/log(2), err_seed_n.error_location_xyz[0], err_seed_n.error_location_xyz[1], err_seed_n.error_location_xyz[2], rank_max_error_seed, fabs(level_set(err_seed_n.error_location_xyz)));
 #else
-    PetscPrintf(p4est->mpicomm, "  -- On the grid nodes -- max_err = %g, \t order : %g. \t Max error at point %g, %g, \t on proc %d, \t dist_interface = %g, \t qh = %g. \n", err_n.error_value, log(err_nm1.error_value/err_n.error_value)/log(2), err_n.error_location_x, err_n.error_location_y, rank_max_error, fabs(level_set(err_n.error_location_x, err_n.error_location_y)), MAX((xyz_max[0]-xyz_min[0])/nx, (xyz_max[1]-xyz_min[1])/ny)/pow(2.0,lmax+iter));
-    PetscPrintf(p4est->mpicomm, "  --  On Voronoi mesh  -- max_err = %g, \t order : %g. \t Max error at point %g, %g, \t on proc %d, \t dist_interface = %g. \n", err_seed_n.error_value, log(err_seed_nm1.error_value/err_seed_n.error_value)/log(2), err_seed_n.error_location_x, err_seed_n.error_location_y, rank_max_error_seed, fabs(level_set(err_seed_n.error_location_x, err_seed_n.error_location_y)));
+    PetscPrintf(p4est->mpicomm, "  -- On the grid nodes -- max_err = %g, \t order : %g. \t Max error at point %g, %g, \t on proc %d, \t dist_interface = %g, \t qh = %g. \n", err_n.error_value, log(err_nm1.error_value/err_n.error_value)/log(2), err_n.error_location_xyz[0], err_n.error_location_xyz[1], rank_max_error, fabs(level_set(err_n.error_location_xyz)), MAX((xyz_max[0]-xyz_min[0])/nx, (xyz_max[1]-xyz_min[1])/ny)/pow(2.0,lmax+iter));
+    PetscPrintf(p4est->mpicomm, "  --  On Voronoi mesh  -- max_err = %g, \t order : %g. \t Max error at point %g, %g, \t on proc %d, \t dist_interface = %g. \n", err_seed_n.error_value, log(err_seed_nm1.error_value/err_seed_n.error_value)/log(2), err_seed_n.error_location_xyz[0], err_seed_n.error_location_xyz[1], rank_max_error_seed, fabs(level_set(err_seed_n.error_location_xyz)));
 #endif
 
     ierr = VecRestoreArray(err, &err_p); CHKERRXX(ierr);

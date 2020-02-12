@@ -1029,7 +1029,7 @@ void my_p4est_navier_stokes_t::solve_viscosity(my_p4est_poisson_faces_t* &face_p
     double *rhs_p;
     ierr = VecGetArray(rhs[dir], &rhs_p); CHKERRXX(ierr);
 
-    for(p4est_locidx_t f_idx=0; f_idx<faces_n->num_local[dir]; ++f_idx)
+    for(p4est_locidx_t f_idx = 0; f_idx < faces_n->num_local[dir]; ++f_idx)
     {
       if(face_is_well_defined_p[f_idx])
       {

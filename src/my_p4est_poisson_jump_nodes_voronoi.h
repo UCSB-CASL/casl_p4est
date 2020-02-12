@@ -22,19 +22,12 @@
 struct error_sample
 {
   double error_value;
-  double error_location_x;
-  double error_location_y;
-#ifdef P4_TO_P8
-  double error_location_z;
-#endif
+  double error_location_xyz[P4EST_DIM];
   void operator=(error_sample& rhs)
   {
     this->error_value       = rhs.error_value;
-    this->error_location_x  = rhs.error_location_x;
-    this->error_location_y  = rhs.error_location_y;
-#ifdef P4_TO_P8
-    this->error_location_z  = rhs.error_location_z;
-#endif
+    for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
+      this->error_location_xyz[dim] = rhs.error_location_xyz[dim];
   }
   bool operator>(error_sample& rhs)
   {
@@ -43,19 +36,16 @@ struct error_sample
   error_sample()
   {
     this->error_value       = 0.0;
-    this->error_location_x  = -DBL_MAX;
-    this->error_location_y  = -DBL_MAX;
-#ifdef P4_TO_P8
-    this->error_location_z  = -DBL_MAX;
-#endif
+    for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
+      this->error_location_xyz[dim] = -DBL_MAX;
   }
   error_sample(double value, DIM(double x_loc, double y_loc, double z_loc))
   {
     this->error_value       = value;
-    this->error_location_x  = x_loc;
-    this->error_location_y  = y_loc;
+    this->error_location_xyz[0] = x_loc;
+    this->error_location_xyz[1] = y_loc;
 #ifdef P4_TO_P8
-    this->error_location_z  = z_loc;
+    this->error_location_xyz[2] = z_loc;
 #endif
   }
 };
@@ -71,37 +61,25 @@ class my_p4est_poisson_jump_nodes_voronoi_t
 
   typedef struct
   {
-    unsigned int n;
-    unsigned int k;
+    int n;
+    int k;
   } check_comm_t;
 
   typedef struct
   {
     p4est_locidx_t local_num;
-    double x;
-    double y;
-#ifdef P4_TO_P8
-    double z;
-#endif
+    double xyz[P4EST_DIM];
   } voro_seed_comm_t;
 
   typedef struct
   {
-    double x;
-    double y;
-#ifdef P4_TO_P8
-    double z;
-#endif
-    double dx;
-    double dy;
-#ifdef P4_TO_P8
-    double dz;
-#endif
+    double xyz[P4EST_DIM];
+    double dxdydz[P4EST_DIM];
   } projected_point_t;
 
   struct neighbor_seed
   {
-    size_t local_seed_idx;
+    int local_seed_idx;
     double distance;
     inline bool operator <(const neighbor_seed& rhs_seed) const
     {
@@ -167,7 +145,7 @@ class my_p4est_poisson_jump_nodes_voronoi_t
   Vec phi;
   Vec rhs;
   Vec sol_voro;
-  unsigned int num_local_voro; // number of locally owned Voronoi seeds
+  int num_local_voro; // number of locally owned Voronoi seeds
   /*!
    * \brief voro_seeds: vector of Voronoi seeds, contains num_local_voro
    * locally owned Voronoi seeds, first, then all the ghost Voronoi seeds
@@ -178,7 +156,7 @@ class my_p4est_poisson_jump_nodes_voronoi_t
    * grid2voro[k] is a vector of local indices in Voronoi seeds in
    * voro_seeds that are close to grid node of local index k
    */
-  std::vector< std::vector<size_t> > grid2voro;
+  std::vector< std::vector<int> > grid2voro;
 
   /*!
    * \brief voro_global_offset: each rank's offset to compute global index
@@ -331,7 +309,7 @@ public:
    * That would ensure geomertical consistency and avoid ill-behaved problems when points are very
    * close to vertices or numerically considered as non-vertices]
    */
-  void compute_voronoi_cell(unsigned int seed_idx, Voronoi_DIM &voro) const;
+  void compute_voronoi_cell(int seed_idx, Voronoi_DIM &voro) const;
   /*!
    * \brief setup_linear_system: self-explanatory, core of the solver, see Arthur's paper
    * "Solving elliptic problems with discontinuities on irregular domains – the Voronoi Interface Method"

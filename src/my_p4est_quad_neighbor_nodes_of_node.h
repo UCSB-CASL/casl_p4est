@@ -235,15 +235,9 @@ private:
 #endif
 
 
-#ifdef P4_TO_P8
-  inline void interpolate_linearly_all_components(const p4est_locidx_t &node_idx_mm, const p4est_locidx_t &node_idx_pm, const p4est_locidx_t &node_idx_mp, const p4est_locidx_t &node_idx_pp,
-                                                  const double &d_m0, const double &d_p0, const double &d_0m, const double &d_0p,
+  inline void interpolate_linearly_all_components(const p4est_locidx_t &node_idx_mm, const p4est_locidx_t &node_idx_pm ONLY3D(COMMA const p4est_locidx_t &node_idx_mp COMMA const p4est_locidx_t &node_idx_pp),
+                                                  const double &d_m0, const double &d_p0 ONLY3D(COMMA const double &d_0m COMMA const double &d_0p),
                                                   const double *f[], double *results, const unsigned int &n_arrays, const unsigned int &bs) const
-#else
-  inline void interpolate_linearly_all_components(const p4est_locidx_t &node_idx_mm, const p4est_locidx_t &node_idx_pm,
-                                                  const double &d_m0, const double &d_p0,
-                                                  const double *f[], double *results, const unsigned int &n_arrays, const unsigned int &bs) const
-#endif
   {
     P4EST_ASSERT(bs>1); // the elementary functions for bs==1 use less flops (straightfward indices) --> functions have been duplicated for efficiency
     double normalization, w_mm, w_pm;
@@ -274,15 +268,9 @@ private:
     return;
   }
 
-#ifdef P4_TO_P8
-  inline void interpolate_linearly_component(const p4est_locidx_t &node_idx_mm, const p4est_locidx_t &node_idx_pm, const p4est_locidx_t &node_idx_mp, const p4est_locidx_t &node_idx_pp,
-                                             const double &d_m0, const double &d_p0, const double &d_0m, const double &d_0p,
+  inline void interpolate_linearly_component(const p4est_locidx_t &node_idx_mm, const p4est_locidx_t &node_idx_pm ONLY3D(COMMA const p4est_locidx_t &node_idx_mp COMMA const p4est_locidx_t &node_idx_pp),
+                                             const double &d_m0, const double &d_p0 ONLY3D(COMMA const double &d_0m COMMA const double &d_0p),
                                              const double *f[], double *results, const unsigned int &n_arrays, const unsigned int &bs, const unsigned int &comp) const
-#else
-  inline void interpolate_linearly_component(const p4est_locidx_t &node_idx_mm, const p4est_locidx_t &node_idx_pm,
-                                             const double &d_m0, const double &d_p0,
-                                             const double *f[], double *results, const unsigned int &n_arrays, const unsigned int &bs, const unsigned int &comp) const
-#endif
   {
     P4EST_ASSERT(bs>1);
     P4EST_ASSERT(comp < bs);
@@ -306,15 +294,9 @@ private:
     return;
   }
 
-#ifdef P4_TO_P8
-  inline void interpolate_linearly(const p4est_locidx_t &node_idx_mm, const p4est_locidx_t &node_idx_pm, const p4est_locidx_t &node_idx_mp, const p4est_locidx_t &node_idx_pp,
-                                   const double &d_m0, const double &d_p0, const double &d_0m, const double &d_0p,
+  inline void interpolate_linearly(const p4est_locidx_t &node_idx_mm, const p4est_locidx_t &node_idx_pm ONLY3D(COMMA const p4est_locidx_t &node_idx_mp COMMA const p4est_locidx_t &node_idx_pp),
+                                   const double &d_m0, const double &d_p0 ONLY3D(COMMA const double &d_0m COMMA const double &d_0p),
                                    const double *f[], double *results, const unsigned int &n_arrays) const
-#else
-  inline void interpolate_linearly(const p4est_locidx_t &node_idx_mm, const p4est_locidx_t &node_idx_pm,
-                                   const double &d_m0, const double &d_p0,
-                                   const double *f[], double *results, const unsigned int &n_arrays) const
-#endif
   {
     double normalization, w_mm, w_pm;
 #ifdef P4_TO_P8
@@ -336,13 +318,8 @@ private:
     return;
   }
 
-#ifdef P4_TO_P8
-  inline void get_linear_interpolator(node_linear_combination &lc_tool, const p4est_locidx_t &node_idx_mm, const p4est_locidx_t &node_idx_pm, const p4est_locidx_t &node_idx_mp, const p4est_locidx_t &node_idx_pp,
-                                      const double &d_m0, const double &d_p0, const double &d_0m, const double &d_0p) const
-#else
-  inline void get_linear_interpolator(node_linear_combination &lc_tool, const p4est_locidx_t &node_idx_mm, const p4est_locidx_t &node_idx_pm,
-                                      const double &d_m0, const double &d_p0) const
-#endif
+  inline void get_linear_interpolator(node_linear_combination &lc_tool, const p4est_locidx_t &node_idx_mm, const p4est_locidx_t &node_idx_pm ONLY3D(COMMA const p4est_locidx_t &node_idx_mp COMMA const p4est_locidx_t &node_idx_pp),
+                                      const double &d_m0, const double &d_p0 ONLY3D(COMMA const double &d_0m COMMA const double &d_0p)) const
   {
     P4EST_ASSERT(lc_tool.elements.size()==0);
     double normalization, w_mm, w_pm;
@@ -365,205 +342,113 @@ private:
   inline void f_m00_linear_all_components(const double *f[], double *results, const unsigned int &n_arrays, const unsigned int &bs) const
   {
     P4EST_ASSERT(bs>1); // the elementary functions for bs==1 use less flops (straightfward indices) --> functions have been duplicated for efficiency
-#ifdef P4_TO_P8
-    interpolate_linearly_all_components(node_m00_mm, node_m00_pm, node_m00_mp, node_m00_pp, d_m00_m0, d_m00_p0, d_m00_0m, d_m00_0p, f, results, n_arrays, bs);
-#else
-    interpolate_linearly_all_components(node_m00_mm, node_m00_pm,                           d_m00_m0, d_m00_p0,                     f, results, n_arrays, bs);
-#endif
+    interpolate_linearly_all_components(node_m00_mm, node_m00_pm ONLY3D(COMMA node_m00_mp COMMA node_m00_pp), d_m00_m0, d_m00_p0 ONLY3D(COMMA d_m00_0m COMMA d_m00_0p), f, results, n_arrays, bs);
     /*
-#ifdef P4_TO_P8
-    linear_interpolators_are_set? linear_interpolator[dir::f_m00].calculate_all_components(f, results, n_arrays, bs) : interpolate_linearly_all_components(node_m00_mm, node_m00_pm, node_m00_mp, node_m00_pp, d_m00_m0, d_m00_p0, d_m00_0m, d_m00_0p, f, results, n_arrays, bs);
-#else
-    linear_interpolators_are_set? linear_interpolator[dir::f_m00].calculate_all_components(f, results, n_arrays, bs) : interpolate_linearly_all_components(node_m00_mm, node_m00_pm,                           d_m00_m0, d_m00_p0,                     f, results, n_arrays, bs);
-#endif
-*/
+    linear_interpolators_are_set? linear_interpolator[dir::f_m00].calculate_all_components(f, results, n_arrays, bs) : interpolate_linearly_all_components(node_m00_mm, node_m00_pm ONLY3D(COMMA node_m00_mp COMMA node_m00_pp), d_m00_m0, d_m00_p0 ONLY3D(COMMA d_m00_0m COMMA d_m00_0p), f, results, n_arrays, bs);
+    */
     return;
   }
   inline void f_m00_linear_component(const double *f[], double *results, const unsigned int &n_arrays, const unsigned int &bs, const unsigned int &comp) const
   {
     P4EST_ASSERT(bs>1);
     P4EST_ASSERT(comp < bs);
-#ifdef P4_TO_P8
-    interpolate_linearly_component(node_m00_mm, node_m00_pm, node_m00_mp, node_m00_pp, d_m00_m0, d_m00_p0, d_m00_0m, d_m00_0p, f, results, n_arrays, bs, comp);
-#else
-    interpolate_linearly_component(node_m00_mm, node_m00_pm,                           d_m00_m0, d_m00_p0,                     f, results, n_arrays, bs, comp);
-#endif
+    interpolate_linearly_component(node_m00_mm, node_m00_pm ONLY3D(COMMA node_m00_mp COMMA node_m00_pp), d_m00_m0, d_m00_p0 ONLY3D(COMMA d_m00_0m COMMA d_m00_0p), f, results, n_arrays, bs, comp);
+
     /*
-#ifdef P4_TO_P8
-    linear_interpolators_are_set? linear_interpolator[dir::f_m00].calculate_component(f, results, n_arrays, bs, comp) : interpolate_linearly_component(node_m00_mm, node_m00_pm, node_m00_mp, node_m00_pp, d_m00_m0, d_m00_p0, d_m00_0m, d_m00_0p, f, results, n_arrays, bs, comp);
-#else
-    linear_interpolators_are_set? linear_interpolator[dir::f_m00].calculate_component(f, results, n_arrays, bs, comp) : interpolate_linearly_component(node_m00_mm, node_m00_pm,                           d_m00_m0, d_m00_p0,                     f, results, n_arrays, bs, comp);
-#endif
-*/
+    linear_interpolators_are_set? linear_interpolator[dir::f_m00].calculate_component(f, results, n_arrays, bs, comp) : interpolate_linearly_component(node_m00_mm, node_m00_pm ONLY3D(COMMA node_m00_mp COMMA node_m00_pp), d_m00_m0, d_m00_p0 ONLY3D(COMMA d_m00_0m COMMA d_m00_0p), f, results, n_arrays, bs, comp);
+    */
     return;
   }
   inline void f_m00_linear(const double *f[], double *results, const unsigned int &n_arrays) const
   {
-#ifdef P4_TO_P8
-    interpolate_linearly(node_m00_mm, node_m00_pm, node_m00_mp, node_m00_pp, d_m00_m0, d_m00_p0, d_m00_0m, d_m00_0p, f, results, n_arrays);
-#else
-    interpolate_linearly(node_m00_mm, node_m00_pm,                           d_m00_m0, d_m00_p0,                     f, results, n_arrays);
-#endif
+    interpolate_linearly(node_m00_mm, node_m00_pm ONLY3D(COMMA node_m00_mp COMMA node_m00_pp), d_m00_m0, d_m00_p0 ONLY3D(COMMA d_m00_0m COMMA d_m00_0p), f, results, n_arrays);
+
     /*
-#ifdef P4_TO_P8
-    linear_interpolators_are_set? linear_interpolator[dir::f_m00].calculate(f, results, n_arrays) : interpolate_linearly(node_m00_mm, node_m00_pm, node_m00_mp, node_m00_pp, d_m00_m0, d_m00_p0, d_m00_0m, d_m00_0p, f, results, n_arrays);
-#else
-    linear_interpolators_are_set? linear_interpolator[dir::f_m00].calculate(f, results, n_arrays) : interpolate_linearly(node_m00_mm, node_m00_pm,                           d_m00_m0, d_m00_p0,                     f, results, n_arrays);
-#endif
-*/
+    linear_interpolators_are_set? linear_interpolator[dir::f_m00].calculate(f, results, n_arrays) : interpolate_linearly(node_m00_mm, node_m00_pm ONLY3D(COMMA node_m00_mp COMMA node_m00_pp), d_m00_m0, d_m00_p0 ONLY3D(COMMA d_m00_0m COMMA d_m00_0p), f, results, n_arrays);
+    */
     return;
   }
   inline void f_p00_linear_all_components(const double *f[], double *results, const unsigned int &n_arrays, const unsigned int &bs) const
   {
     P4EST_ASSERT(bs>1); // the elementary functions for bs==1 use less flops (straightfward indices) --> functions have been duplicated for efficiency
-#ifdef P4_TO_P8
-    interpolate_linearly_all_components(node_p00_mm, node_p00_pm, node_p00_mp, node_p00_pp, d_p00_m0, d_p00_p0, d_p00_0m, d_p00_0p, f, results, n_arrays, bs);
-#else
-    interpolate_linearly_all_components(node_p00_mm, node_p00_pm,                           d_p00_m0, d_p00_p0,                     f, results, n_arrays, bs);
-#endif
+    interpolate_linearly_all_components(node_p00_mm, node_p00_pm ONLY3D(COMMA node_p00_mp COMMA node_p00_pp), d_p00_m0, d_p00_p0 ONLY3D(COMMA d_p00_0m COMMA d_p00_0p), f, results, n_arrays, bs);
     /*
-#ifdef P4_TO_P8
-    linear_interpolators_are_set? linear_interpolator[dir::f_p00].calculate_all_components(f, results, n_arrays, bs) : interpolate_linearly_all_components(node_p00_mm, node_p00_pm, node_p00_mp, node_p00_pp, d_p00_m0, d_p00_p0, d_p00_0m, d_p00_0p, f, results, n_arrays, bs);
-#else
-    linear_interpolators_are_set? linear_interpolator[dir::f_p00].calculate_all_components(f, results, n_arrays, bs) : interpolate_linearly_all_components(node_p00_mm, node_p00_pm,                           d_p00_m0, d_p00_p0,                     f, results, n_arrays, bs);
-#endif
-*/
+    linear_interpolators_are_set? linear_interpolator[dir::f_p00].calculate_all_components(f, results, n_arrays, bs) : interpolate_linearly_all_components(node_p00_mm, node_p00_pm ONLY3D(COMMA node_p00_mp COMMA node_p00_pp), d_p00_m0, d_p00_p0, d_p00_0m, d_p00_0p, f, results, n_arrays, bs);
+    */
     return;
   }
   inline void f_p00_linear_component(const double *f[], double *results, const unsigned int &n_arrays, const unsigned int &bs, const unsigned int &comp) const
   {
     P4EST_ASSERT(bs>1);
     P4EST_ASSERT(comp < bs);
-#ifdef P4_TO_P8
-    interpolate_linearly_component(node_p00_mm, node_p00_pm, node_p00_mp, node_p00_pp, d_p00_m0, d_p00_p0, d_p00_0m, d_p00_0p, f, results, n_arrays, bs, comp);
-#else
-    interpolate_linearly_component(node_p00_mm, node_p00_pm,                           d_p00_m0, d_p00_p0,                     f, results, n_arrays, bs, comp);
-#endif
+    interpolate_linearly_component(node_p00_mm, node_p00_pm ONLY3D(COMMA node_p00_mp COMMA node_p00_pp), d_p00_m0, d_p00_p0 ONLY3D(COMMA d_p00_0m COMMA d_p00_0p), f, results, n_arrays, bs, comp);
     /*
-#ifdef P4_TO_P8
-    linear_interpolators_are_set? linear_interpolator[dir::f_p00].calculate_component(f, results, n_arrays, bs, comp) : interpolate_linearly_component(node_p00_mm, node_p00_pm, node_p00_mp, node_p00_pp, d_p00_m0, d_p00_p0, d_p00_0m, d_p00_0p, f, results, n_arrays, bs, comp);
-#else
-    linear_interpolators_are_set? linear_interpolator[dir::f_p00].calculate_component(f, results, n_arrays, bs, comp) : interpolate_linearly_component(node_p00_mm, node_p00_pm,                           d_p00_m0, d_p00_p0,                     f, results, n_arrays, bs, comp);
-#endif
-*/
+    linear_interpolators_are_set? linear_interpolator[dir::f_p00].calculate_component(f, results, n_arrays, bs, comp) : interpolate_linearly_component(node_p00_mm, node_p00_pm ONLY3D(COMMA node_p00_mp COMMA node_p00_pp), d_p00_m0, d_p00_p0, d_p00_0m, d_p00_0p, f, results, n_arrays, bs, comp);
+    */
     return;
   }
   inline void f_p00_linear(const double *f[], double *results, const unsigned int &n_arrays) const
   {
-#ifdef P4_TO_P8
-    interpolate_linearly(node_p00_mm, node_p00_pm, node_p00_mp, node_p00_pp, d_p00_m0, d_p00_p0, d_p00_0m, d_p00_0p, f, results, n_arrays);
-#else
-    interpolate_linearly(node_p00_mm, node_p00_pm,                           d_p00_m0, d_p00_p0,                     f, results, n_arrays);
-#endif
+    interpolate_linearly(node_p00_mm, node_p00_pm ONLY3D(COMMA node_p00_mp COMMA node_p00_pp), d_p00_m0, d_p00_p0 ONLY3D(COMMA d_p00_0m COMMA d_p00_0p), f, results, n_arrays);
     /*
-#ifdef P4_TO_P8
-    linear_interpolators_are_set? linear_interpolator[dir::f_p00].calculate(f, results, n_arrays) : interpolate_linearly(node_p00_mm, node_p00_pm, node_p00_mp, node_p00_pp, d_p00_m0, d_p00_p0, d_p00_0m, d_p00_0p, f, results, n_arrays);
-#else
-    linear_interpolators_are_set? linear_interpolator[dir::f_p00].calculate(f, results, n_arrays) : interpolate_linearly(node_p00_mm, node_p00_pm,                           d_p00_m0, d_p00_p0,                     f, results, n_arrays);
-#endif
-*/
+    linear_interpolators_are_set? linear_interpolator[dir::f_p00].calculate(f, results, n_arrays) : interpolate_linearly(node_p00_mm, node_p00_pm ONLY3D(COMMA node_p00_mp COMMA node_p00_pp), d_p00_m0, d_p00_p0, d_p00_0m, d_p00_0p, f, results, n_arrays);
+    */
     return;
   }
   inline void f_0m0_linear_all_components(const double *f[], double *results, const unsigned int &n_arrays, const unsigned int &bs) const
   {
-    P4EST_ASSERT(bs>1); // the elementary functions for bs==1 use less flops (straightfward indices) --> functions have been duplicated for efficiency
-#ifdef P4_TO_P8
-    interpolate_linearly_all_components(node_0m0_mm, node_0m0_pm, node_0m0_mp, node_0m0_pp, d_0m0_m0, d_0m0_p0, d_0m0_0m, d_0m0_0p, f, results, n_arrays, bs);
-#else
-    interpolate_linearly_all_components(node_0m0_mm, node_0m0_pm,                           d_0m0_m0, d_0m0_p0,                     f, results, n_arrays, bs);
-#endif
+    P4EST_ASSERT(bs > 1); // the elementary functions for bs==1 use less flops (straightfward indices) --> functions have been duplicated for efficiency
+    interpolate_linearly_all_components(node_0m0_mm, node_0m0_pm ONLY3D(COMMA node_0m0_mp COMMA node_0m0_pp), d_0m0_m0, d_0m0_p0 ONLY3D(COMMA d_0m0_0m COMMA d_0m0_0p), f, results, n_arrays, bs);
     /*
-#ifdef P4_TO_P8
-    linear_interpolators_are_set? linear_interpolator[dir::f_0m0].calculate_all_components(f, results, n_arrays, bs) : interpolate_linearly_all_components(node_0m0_mm, node_0m0_pm, node_0m0_mp, node_0m0_pp, d_0m0_m0, d_0m0_p0, d_0m0_0m, d_0m0_0p, f, results, n_arrays, bs);
-#else
-    linear_interpolators_are_set? linear_interpolator[dir::f_0m0].calculate_all_components(f, results, n_arrays, bs) : interpolate_linearly_all_components(node_0m0_mm, node_0m0_pm,                           d_0m0_m0, d_0m0_p0,                     f, results, n_arrays, bs);
-#endif
-*/
+    linear_interpolators_are_set? linear_interpolator[dir::f_0m0].calculate_all_components(f, results, n_arrays, bs) : interpolate_linearly_all_components(node_0m0_mm, node_0m0_pm ONLY3D(COMMA node_0m0_mp COMMA node_0m0_pp), d_0m0_m0, d_0m0_p0 ONLY3D(COMMA d_0m0_0m COMMA d_0m0_0p), f, results, n_arrays, bs);
+    */
     return;
   }
   inline void f_0m0_linear_component(const double *f[], double *results, const unsigned int &n_arrays, const unsigned int &bs, const unsigned int &comp) const
   {
     P4EST_ASSERT(bs>1);
     P4EST_ASSERT(comp < bs);
-#ifdef P4_TO_P8
-    interpolate_linearly_component(node_0m0_mm, node_0m0_pm, node_0m0_mp, node_0m0_pp, d_0m0_m0, d_0m0_p0, d_0m0_0m, d_0m0_0p, f, results, n_arrays, bs, comp);
-#else
-    interpolate_linearly_component(node_0m0_mm, node_0m0_pm,                           d_0m0_m0, d_0m0_p0,                     f, results, n_arrays, bs, comp);
-#endif
+    interpolate_linearly_component(node_0m0_mm, node_0m0_pm ONLY3D(COMMA node_0m0_mp COMMA node_0m0_pp), d_0m0_m0, d_0m0_p0 ONLY3D(COMMA d_0m0_0m COMMA d_0m0_0p), f, results, n_arrays, bs, comp);
     /*
-#ifdef P4_TO_P8
-    linear_interpolators_are_set? linear_interpolator[dir::f_0m0].calculate_component(f, results, n_arrays, bs, comp) : interpolate_linearly_component(node_0m0_mm, node_0m0_pm, node_0m0_mp, node_0m0_pp, d_0m0_m0, d_0m0_p0, d_0m0_0m, d_0m0_0p, f, results, n_arrays, bs, comp);
-#else
-    linear_interpolators_are_set? linear_interpolator[dir::f_0m0].calculate_component(f, results, n_arrays, bs, comp) : interpolate_linearly_component(node_0m0_mm, node_0m0_pm,                           d_0m0_m0, d_0m0_p0,                     f, results, n_arrays, bs, comp);
-#endif
-*/
+    linear_interpolators_are_set? linear_interpolator[dir::f_0m0].calculate_component(f, results, n_arrays, bs, comp) : interpolate_linearly_component(node_0m0_mm, node_0m0_pm ONLY3D(COMMA node_0m0_mp COMMA node_0m0_pp), d_0m0_m0, d_0m0_p0 ONLY3D(COMMA d_0m0_0m COMMA d_0m0_0p), f, results, n_arrays, bs, comp);
+    */
     return;
   }
   inline void f_0m0_linear(const double *f[], double *results, const unsigned int &n_arrays) const
   {
-#ifdef P4_TO_P8
-    interpolate_linearly(node_0m0_mm, node_0m0_pm, node_0m0_mp, node_0m0_pp, d_0m0_m0, d_0m0_p0, d_0m0_0m, d_0m0_0p, f, results, n_arrays);
-#else
-    interpolate_linearly(node_0m0_mm, node_0m0_pm,                           d_0m0_m0, d_0m0_p0,                     f, results, n_arrays);
-#endif
+    interpolate_linearly(node_0m0_mm, node_0m0_pm ONLY3D(COMMA node_0m0_mp COMMA node_0m0_pp), d_0m0_m0, d_0m0_p0 ONLY3D(COMMA d_0m0_0m COMMA d_0m0_0p), f, results, n_arrays);
     /*
-#ifdef P4_TO_P8
-    linear_interpolators_are_set? linear_interpolator[dir::f_0m0].calculate(f, results, n_arrays) : interpolate_linearly(node_0m0_mm, node_0m0_pm, node_0m0_mp, node_0m0_pp, d_0m0_m0, d_0m0_p0, d_0m0_0m, d_0m0_0p, f, results, n_arrays);
-#else
-    linear_interpolators_are_set? linear_interpolator[dir::f_0m0].calculate(f, results, n_arrays) : interpolate_linearly(node_0m0_mm, node_0m0_pm,                           d_0m0_m0, d_0m0_p0,                     f, results, n_arrays);
-#endif
-*/
+    linear_interpolators_are_set? linear_interpolator[dir::f_0m0].calculate(f, results, n_arrays) : interpolate_linearly(node_0m0_mm, node_0m0_pm ONLY3D(COMMA node_0m0_mp COMMA node_0m0_pp), d_0m0_m0, d_0m0_p0 ONLY3D(COMMA d_0m0_0m COMMA d_0m0_0p), f, results, n_arrays);
+    */
     return;
   }
   inline void f_0p0_linear_all_components(const double *f[], double *results, const unsigned int &n_arrays, const unsigned int &bs) const
   {
     P4EST_ASSERT(bs>1); // the elementary functions for bs==1 use less flops (straightfward indices) --> functions have been duplicated for efficiency
-#ifdef P4_TO_P8
-    interpolate_linearly_all_components(node_0p0_mm, node_0p0_pm, node_0p0_mp, node_0p0_pp, d_0p0_m0, d_0p0_p0, d_0p0_0m, d_0p0_0p, f, results, n_arrays, bs);
-#else
-    interpolate_linearly_all_components(node_0p0_mm, node_0p0_pm,                           d_0p0_m0, d_0p0_p0,                     f, results, n_arrays, bs);
-#endif
+    interpolate_linearly_all_components(node_0p0_mm, node_0p0_pm ONLY3D(COMMA node_0p0_mp COMMA node_0p0_pp), d_0p0_m0, d_0p0_p0 ONLY3D(COMMA d_0p0_0m COMMA d_0p0_0p), f, results, n_arrays, bs);
+
     /*
-#ifdef P4_TO_P8
-    linear_interpolators_are_set? linear_interpolator[dir::f_0p0].calculate_all_components(f, results, n_arrays, bs) : interpolate_linearly_all_components(node_0p0_mm, node_0p0_pm, node_0p0_mp, node_0p0_pp, d_0p0_m0, d_0p0_p0, d_0p0_0m, d_0p0_0p, f, results, n_arrays, bs);
-#else
-    linear_interpolators_are_set? linear_interpolator[dir::f_0p0].calculate_all_components(f, results, n_arrays, bs) : interpolate_linearly_all_components(node_0p0_mm, node_0p0_pm,                           d_0p0_m0, d_0p0_p0,                     f, results, n_arrays, bs);
-#endif
-*/
+    linear_interpolators_are_set? linear_interpolator[dir::f_0p0].calculate_all_components(f, results, n_arrays, bs) : interpolate_linearly_all_components(node_0p0_mm, node_0p0_pm ONLY3D(COMMA node_0p0_mp COMMA node_0p0_pp), d_0p0_m0, d_0p0_p0 ONLY3D(COMMA d_0p0_0m COMMA d_0p0_0p), f, results, n_arrays, bs);
+    */
     return;
   }
   inline void f_0p0_linear_component(const double *f[], double *results, const unsigned int &n_arrays, const unsigned int &bs, const unsigned int &comp) const
   {
     P4EST_ASSERT(bs>1);
     P4EST_ASSERT(comp < bs);
-#ifdef P4_TO_P8
-    interpolate_linearly_component(node_0p0_mm, node_0p0_pm, node_0p0_mp, node_0p0_pp, d_0p0_m0, d_0p0_p0, d_0p0_0m, d_0p0_0p, f, results, n_arrays, bs, comp);
-#else
-    interpolate_linearly_component(node_0p0_mm, node_0p0_pm,                           d_0p0_m0, d_0p0_p0,                     f, results, n_arrays, bs, comp);
-#endif
+    interpolate_linearly_component(node_0p0_mm, node_0p0_pm ONLY3D(COMMA node_0p0_mp COMMA node_0p0_pp), d_0p0_m0, d_0p0_p0 ONLY3D(COMMA d_0p0_0m COMMA d_0p0_0p), f, results, n_arrays, bs, comp);
     /*
-#ifdef P4_TO_P8
-    linear_interpolators_are_set? linear_interpolator[dir::f_0p0].calculate_component(f, results, n_arrays, bs, comp) : interpolate_linearly_component(node_0p0_mm, node_0p0_pm, node_0p0_mp, node_0p0_pp, d_0p0_m0, d_0p0_p0, d_0p0_0m, d_0p0_0p, f, results, n_arrays, bs, comp);
-#else
-    linear_interpolators_are_set? linear_interpolator[dir::f_0p0].calculate_component(f, results, n_arrays, bs, comp) : interpolate_linearly_component(node_0p0_mm, node_0p0_pm,                           d_0p0_m0, d_0p0_p0,                     f, results, n_arrays, bs, comp);
-#endif
-*/
+    linear_interpolators_are_set? linear_interpolator[dir::f_0p0].calculate_component(f, results, n_arrays, bs, comp) : interpolate_linearly_component(node_0p0_mm, node_0p0_pm ONLY3D(COMMA node_0p0_mp COMMA node_0p0_pp), d_0p0_m0, d_0p0_p0 ONLY3D(COMMA d_0p0_0m COMMA d_0p0_0p), f, results, n_arrays, bs, comp);
+    */
     return;
   }
   inline void f_0p0_linear(const double *f[], double *results, const unsigned int &n_arrays) const
   {
-#ifdef P4_TO_P8
-    interpolate_linearly(node_0p0_mm, node_0p0_pm, node_0p0_mp, node_0p0_pp, d_0p0_m0, d_0p0_p0, d_0p0_0m, d_0p0_0p, f, results, n_arrays);
-#else
-    interpolate_linearly(node_0p0_mm, node_0p0_pm,                           d_0p0_m0, d_0p0_p0,                     f, results, n_arrays);
-#endif
+    interpolate_linearly(node_0p0_mm, node_0p0_pm ONLY3D(COMMA node_0p0_mp COMMA node_0p0_pp), d_0p0_m0, d_0p0_p0 ONLY3D(COMMA d_0p0_0m COMMA d_0p0_0p), f, results, n_arrays);
+
     /*
-#ifdef P4_TO_P8
-    linear_interpolators_are_set? linear_interpolator[dir::f_0p0].calculate(f, results, n_arrays) : interpolate_linearly(node_0p0_mm, node_0p0_pm, node_0p0_mp, node_0p0_pp, d_0p0_m0, d_0p0_p0, d_0p0_0m, d_0p0_0p, f, results, n_arrays);
-#else
-    linear_interpolators_are_set? linear_interpolator[dir::f_0p0].calculate(f, results, n_arrays) : interpolate_linearly(node_0p0_mm, node_0p0_pm,                           d_0p0_m0, d_0p0_p0,                     f, results, n_arrays);
-#endif
-*/
+    linear_interpolators_are_set? linear_interpolator[dir::f_0p0].calculate(f, results, n_arrays) : interpolate_linearly(node_0p0_mm, node_0p0_pm ONLY3D(COMMA node_0p0_mp COMMA node_0p0_pp), d_0p0_m0, d_0p0_p0 ONLY3D(COMMA d_0p0_0m COMMA d_0p0_0p), f, results, n_arrays);
+    */
     return;
   }
 #ifdef P4_TO_P8
@@ -611,13 +496,8 @@ private:
   }
 #endif
 
-#ifdef P4_TO_P8
-  void linearly_interpolated_neighbors_all_components(const double *f[], double *f_000, double *f_m00, double *f_p00, double *f_0m0, double *f_0p0, double *f_00m, double *f_00p,
+  void linearly_interpolated_neighbors_all_components(const double *f[], double *f_000, double *f_m00, double *f_p00, double *f_0m0, double *f_0p0 ONLY3D(COMMA double *f_00m COMMA double *f_00p),
                                                       const unsigned int &n_arrays, const unsigned int &bs) const
-#else
-  void linearly_interpolated_neighbors_all_components(const double *f[], double *f_000, double *f_m00, double *f_p00, double *f_0m0, double *f_0p0,
-                                                      const unsigned int &n_arrays, const unsigned int &bs) const
-#endif
   {
     P4EST_ASSERT(bs>1); // the elementary functions for bs==1 use less flops (straightfward indices) --> functions have been duplicated for efficiency
     const unsigned bs_node_000 = bs*node_000;
@@ -633,13 +513,8 @@ private:
 #endif
     return;
   }
-#ifdef P4_TO_P8
-  void linearly_interpolated_neighbors_component(const double *f[], double *f_000, double *f_m00, double *f_p00, double *f_0m0, double *f_0p0, double *f_00m, double *f_00p,
+  void linearly_interpolated_neighbors_component(const double *f[], double *f_000, double *f_m00, double *f_p00, double *f_0m0, double *f_0p0 ONLY3D(COMMA double *f_00m COMMA double *f_00p),
                                                  const unsigned int &n_arrays, const unsigned int &bs, const unsigned int &comp) const
-#else
-  void linearly_interpolated_neighbors_component(const double *f[], double *f_000, double *f_m00, double *f_p00, double *f_0m0, double *f_0p0,
-                                                 const unsigned int &n_arrays, const unsigned int &bs, const unsigned int &comp) const
-#endif
   {
     P4EST_ASSERT(bs>1);
     P4EST_ASSERT(comp < bs);
@@ -653,13 +528,8 @@ private:
 #endif
     return;
   }
-#ifdef P4_TO_P8
-  void linearly_interpolated_neighbors(const double *f[], double *f_000, double *f_m00, double *f_p00, double *f_0m0, double *f_0p0, double *f_00m, double *f_00p,
+  void linearly_interpolated_neighbors(const double *f[], double *f_000, double *f_m00, double *f_p00, double *f_0m0, double *f_0p0 ONLY3D(COMMA double *f_00m COMMA double *f_00p),
                                        const unsigned int &n_arrays) const
-#else
-  void linearly_interpolated_neighbors(const double *f[], double *f_000, double *f_m00, double *f_p00, double *f_0m0, double *f_0p0,
-                                       const unsigned int &n_arrays) const
-#endif
   {
     for (unsigned int k = 0; k < n_arrays; ++k)
       f_000[k] = f[k][node_000];
@@ -708,33 +578,18 @@ private:
   }
 #endif
 
-#ifdef P4_TO_P8
-  void correct_naive_second_derivatives(double *Dxx, double *Dyy, double *Dzz,  const unsigned int &n_values) const;
-  //  void correct_naive_second_derivatives(node_linear_combination &Dxx, node_linear_combination &Dyy, node_linear_combination &Dzzs) const;
-#else
-  void correct_naive_second_derivatives(double *Dxx, double *Dyy,               const unsigned int &n_values) const;
-  //  void correct_naive_second_derivatives(node_linear_combination &Dxx, node_linear_combination &Dyy) const;
-#endif
+  void correct_naive_second_derivatives(DIM(double *Dxx, double *Dyy, double *Dzz),  const unsigned int &n_values) const;
+  //  void correct_naive_second_derivatives(DIM(node_linear_combination &Dxx, node_linear_combination &Dyy, node_linear_combination &Dzz)) const;
 
-#ifdef P4_TO_P8
-  inline void laplace_all_components(const double *f[], double *f_000, double *f_m00, double *f_p00, double *f_0m0, double *f_0p0, double *f_00m, double *f_00p,
-                                     double *fxx, double *fyy, double *fzz,
+  inline void laplace_all_components(const double *f[], double *f_000, double *f_m00, double *f_p00, double *f_0m0, double *f_0p0 ONLY3D(COMMA double *f_00m COMMA double *f_00p),
+                                     DIM(double *fxx, double *fyy, double *fzz),
                                      const unsigned int &n_arrays, const unsigned int &bs) const
-#else
-  inline void laplace_all_components(const double *f[], double *f_000, double *f_m00, double *f_p00, double *f_0m0, double *f_0p0,
-                                     double *fxx, double *fyy,
-                                     const unsigned int &n_arrays, const unsigned int &bs) const
-#endif
   {
     P4EST_ASSERT(bs>1); // the elementary functions for bs==1 use less flops (straightfward indices) --> functions have been duplicated for efficiency
 #ifdef CASL_LOG_TINY_EVENTS
     PetscErrorCode ierr_log_event = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_laplace, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
 #endif
-#ifdef P4_TO_P8
-    linearly_interpolated_neighbors_all_components(f, f_000, f_m00, f_p00, f_0m0, f_0p0, f_00m, f_00p, n_arrays, bs);
-#else
-    linearly_interpolated_neighbors_all_components(f, f_000, f_m00, f_p00, f_0m0, f_0p0,               n_arrays, bs);
-#endif
+    linearly_interpolated_neighbors_all_components(f, f_000, f_m00, f_p00, f_0m0, f_0p0 ONLY3D(COMMA f_00m COMMA f_00p), n_arrays, bs);
     // naive calculations
     for (unsigned int k = 0; k < n_arrays*bs; ++k) {
       fxx[k] = central_second_derivative(f_p00[k], f_000[k], f_m00[k], d_p00, d_m00);
@@ -743,37 +598,23 @@ private:
       fzz[k] = central_second_derivative(f_00p[k], f_000[k], f_00m[k], d_00p, d_00m);
 #endif
     }
-#ifdef P4_TO_P8
-    correct_naive_second_derivatives(fxx, fyy, fzz,  n_arrays*bs);
-#else
-    correct_naive_second_derivatives(fxx, fyy,       n_arrays*bs);
-#endif
+    correct_naive_second_derivatives(DIM(fxx, fyy, fzz),  n_arrays*bs);
 #ifdef CASL_LOG_TINY_EVENTS
     ierr_log_event = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_laplace, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
 #endif
     return;
   }
 
-#ifdef P4_TO_P8
-  inline void laplace_component(const double *f[], double *f_000, double *f_m00, double *f_p00, double *f_0m0, double *f_0p0, double *f_00m, double *f_00p,
-                                double *fxx, double *fyy, double *fzz,
+  inline void laplace_component(const double *f[], double *f_000, double *f_m00, double *f_p00, double *f_0m0, double *f_0p0 ONLY3D(COMMA double *f_00m COMMA double *f_00p),
+                                DIM(double *fxx, double *fyy, double *fzz),
                                 const unsigned int &n_arrays, const unsigned int &bs, const unsigned int &comp) const
-#else
-  inline void laplace_component(const double *f[], double *f_000, double *f_m00, double *f_p00, double *f_0m0, double *f_0p0,
-                                double *fxx, double *fyy,
-                                const unsigned int &n_arrays, const unsigned int &bs, const unsigned int &comp) const
-#endif
   {
     P4EST_ASSERT(bs>1);
     P4EST_ASSERT(comp < bs);
 #ifdef CASL_LOG_TINY_EVENTS
     PetscErrorCode ierr_log_event = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_laplace, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
 #endif
-#ifdef P4_TO_P8
-    linearly_interpolated_neighbors_component(f, f_000, f_m00, f_p00, f_0m0, f_0p0, f_00m, f_00p, n_arrays, bs, comp);
-#else
-    linearly_interpolated_neighbors_component(f, f_000, f_m00, f_p00, f_0m0, f_0p0,               n_arrays, bs, comp);
-#endif
+    linearly_interpolated_neighbors_component(f, f_000, f_m00, f_p00, f_0m0, f_0p0 ONLY3D(COMMA f_00m COMMA f_00p), n_arrays, bs, comp);
     // naive calculations
     for (unsigned int k = 0; k < n_arrays; ++k) {
       fxx[k] = central_second_derivative(f_p00[k], f_000[k], f_m00[k], d_p00, d_m00);
@@ -782,33 +623,20 @@ private:
       fzz[k] = central_second_derivative(f_00p[k], f_000[k], f_00m[k], d_00p, d_00m);
 #endif
     }
-#ifdef P4_TO_P8
-    correct_naive_second_derivatives(fxx, fyy, fzz,  n_arrays);
-#else
-    correct_naive_second_derivatives(fxx, fyy,       n_arrays);
-#endif
+    correct_naive_second_derivatives(DIM(fxx, fyy, fzz),  n_arrays);
 #ifdef CASL_LOG_TINY_EVENTS
     ierr_log_event = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_laplace, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
 #endif
     return;
   }
 
-#ifdef P4_TO_P8
-  inline void laplace(const double *f[], double *f_000, double *f_m00, double *f_p00, double *f_0m0, double *f_0p0, double *f_00m, double *f_00p,
-                      double *fxx, double *fyy, double *fzz, const unsigned int &n_arrays) const
-#else
-  inline void laplace(const double *f[], double *f_000, double *f_m00, double *f_p00, double *f_0m0, double *f_0p0,
-                      double *fxx, double *fyy, const unsigned int &n_arrays) const
-#endif
+  inline void laplace(const double *f[], double *f_000, double *f_m00, double *f_p00, double *f_0m0, double *f_0p0 ONLY3D(COMMA double *f_00m COMMA double *f_00p),
+                      DIM(double *fxx, double *fyy, double *fzz), const unsigned int &n_arrays) const
   {
 #ifdef CASL_LOG_TINY_EVENTS
     PetscErrorCode ierr_log_event = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_laplace, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
 #endif
-#ifdef P4_TO_P8
-    linearly_interpolated_neighbors(f, f_000, f_m00, f_p00, f_0m0, f_0p0, f_00m, f_00p, n_arrays);
-#else
-    linearly_interpolated_neighbors(f, f_000, f_m00, f_p00, f_0m0, f_0p0,               n_arrays);
-#endif
+    linearly_interpolated_neighbors(f, f_000, f_m00, f_p00, f_0m0, f_0p0 ONLY3D(COMMA f_00m COMMA f_00p), n_arrays);
     // naive calculations
     for (unsigned int k = 0; k < n_arrays; ++k) {
       fxx[k] = central_second_derivative(f_p00[k], f_000[k], f_m00[k], d_p00, d_m00);
@@ -817,24 +645,14 @@ private:
       fzz[k] = central_second_derivative(f_00p[k], f_000[k], f_00m[k], d_00p, d_00m);
 #endif
     }
-#ifdef P4_TO_P8
-    correct_naive_second_derivatives(fxx, fyy, fzz,  n_arrays);
-#else
-    correct_naive_second_derivatives(fxx, fyy,       n_arrays);
-#endif
+    correct_naive_second_derivatives(DIM(fxx, fyy, fzz),  n_arrays);
 #ifdef CASL_LOG_TINY_EVENTS
     ierr_log_event = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_laplace, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
 #endif
     return;
   }
 
-#ifdef P4_TO_P8
-  inline void laplace_all_components(const double *f[], double *fxx, double *fyy, double *fzz,
-                                     const unsigned int &n_arrays, const unsigned int &bs) const
-#else
-  inline void laplace_all_components(const double *f[], double *fxx, double *fyy,
-                                     const unsigned int &n_arrays, const unsigned int &bs) const
-#endif
+  inline void laplace_all_components(const double *f[], DIM(double *fxx, double *fyy, double *fzz), const unsigned int &n_arrays, const unsigned int &bs) const
   {
     P4EST_ASSERT(bs>1); // the elementary functions for bs==1 use less flops (straightfward indices) --> functions have been duplicated for efficiency
     /*
@@ -851,20 +669,12 @@ private:
     double tmp_000[n_arrays*bs], tmp_m00[n_arrays*bs], tmp_p00[n_arrays*bs], tmp_0m0[n_arrays*bs], tmp_0p0[n_arrays*bs];
 #ifdef P4_TO_P8
     double tmp_00m[n_arrays*bs], tmp_00p[n_arrays*bs];
-    laplace_all_components(f, tmp_000, tmp_m00, tmp_p00, tmp_0m0, tmp_0p0, tmp_00m, tmp_00p, fxx, fyy, fzz, n_arrays, bs);
-#else
-    laplace_all_components(f, tmp_000, tmp_m00, tmp_p00, tmp_0m0, tmp_0p0,                   fxx, fyy,      n_arrays, bs);
 #endif
+    laplace_all_components(f, tmp_000, tmp_m00, tmp_p00, tmp_0m0, tmp_0p0 ONLY3D(COMMA tmp_00m COMMA tmp_00p), DIM(fxx, fyy, fzz), n_arrays, bs);
     return;
   }
 
-#ifdef P4_TO_P8
-  inline void laplace_component(const double *f[], double *fxx, double *fyy, double *fzz,
-                                const unsigned int &n_arrays, const unsigned int &bs, const unsigned int &comp) const
-#else
-  inline void laplace_component(const double *f[], double *fxx, double *fyy,
-                                const unsigned int &n_arrays, const unsigned int &bs, const unsigned int &comp) const
-#endif
+  inline void laplace_component(const double *f[], DIM(double *fxx, double *fyy, double *fzz),  const unsigned int &n_arrays, const unsigned int &bs, const unsigned int &comp) const
   {
     P4EST_ASSERT(bs>1);
     P4EST_ASSERT(comp < bs);
@@ -882,18 +692,12 @@ private:
     double tmp_000[n_arrays], tmp_m00[n_arrays], tmp_p00[n_arrays], tmp_0m0[n_arrays], tmp_0p0[n_arrays];
 #ifdef P4_TO_P8
     double tmp_00m[n_arrays], tmp_00p[n_arrays];
-    laplace_component(f, tmp_000, tmp_m00, tmp_p00, tmp_0m0, tmp_0p0, tmp_00m, tmp_00p, fxx, fyy, fzz, n_arrays, bs, comp);
-#else
-    laplace_component(f, tmp_000, tmp_m00, tmp_p00, tmp_0m0, tmp_0p0,                   fxx, fyy,      n_arrays, bs, comp);
 #endif
+    laplace_component(f, tmp_000, tmp_m00, tmp_p00, tmp_0m0, tmp_0p0 ONLY3D(COMMA tmp_00m COMMA tmp_00p), DIM(fxx, fyy, fzz), n_arrays, bs, comp);
     return;
   }
 
-#ifdef P4_TO_P8
-  inline void laplace(const double *f[], double *fxx, double *fyy, double *fzz,  const unsigned int &n_arrays) const
-#else
-  inline void laplace(const double *f[], double *fxx, double *fyy,               const unsigned int &n_arrays) const
-#endif
+  inline void laplace(const double *f[], DIM(double *fxx, double *fyy, double *fzz),  const unsigned int &n_arrays) const
   {
     /*
     if(second_derivative_operators_are_set)
@@ -909,19 +713,13 @@ private:
     double tmp_000[n_arrays], tmp_m00[n_arrays], tmp_p00[n_arrays], tmp_0m0[n_arrays], tmp_0p0[n_arrays];
 #ifdef P4_TO_P8
     double tmp_00m[n_arrays], tmp_00p[n_arrays];
-    laplace(f, tmp_000, tmp_m00, tmp_p00, tmp_0m0, tmp_0p0, tmp_00m, tmp_00p, fxx, fyy, fzz, n_arrays);
-#else
-    laplace(f, tmp_000, tmp_m00, tmp_p00, tmp_0m0, tmp_0p0,                   fxx, fyy,      n_arrays);
 #endif
+    laplace(f, tmp_000, tmp_m00, tmp_p00, tmp_0m0, tmp_0p0 ONLY3D(COMMA tmp_00m COMMA tmp_00p), DIM(fxx, fyy, fzz), n_arrays);
     return;
   }
 
 
-  inline void ngbd_with_quadratic_interpolation_all_components(const double *f[], double *f_000, double *f_m00, double *f_p00, double *f_0m0, double *f_0p0,
-                                                             #ifdef P4_TO_P8
-                                                               double *f_00m, double *f_00p,
-                                                             #endif
-                                                               const unsigned int &n_arrays, const unsigned int &bs) const
+  inline void ngbd_with_quadratic_interpolation_all_components(const double *f[], double *f_000, double *f_m00, double *f_p00, double *f_0m0, double *f_0p0 ONLY3D(COMMA double *f_00m COMMA double *f_00p), const unsigned int &n_arrays, const unsigned int &bs) const
   {
     P4EST_ASSERT(bs>1); // the elementary functions for bs==1 use less flops (straightfward indices) --> functions have been duplicated for efficiency
 #ifdef CASL_LOG_TINY_EVENTS
@@ -951,10 +749,8 @@ private:
     double fxx[n_arrays*bs], fyy[n_arrays*bs];
 #ifdef P4_TO_P8
     double fzz[n_arrays*bs];
-    laplace_all_components(f, f_000, f_m00, f_p00, f_0m0, f_0p0, f_00m, f_00p, fxx, fyy, fzz,  n_arrays, bs);
-#else
-    laplace_all_components(f, f_000, f_m00, f_p00, f_0m0, f_0p0,               fxx, fyy,       n_arrays, bs);
 #endif
+    laplace_all_components(f, f_000, f_m00, f_p00, f_0m0, f_0p0 ONLY3D(COMMA f_00m COMMA f_00p), DIM(fxx, fyy, fzz),  n_arrays, bs);
     // third order interpolation
     for (unsigned int k = 0; k < n_arrays*bs; ++k) {
       f_m00[k] -= 0.5*d_m00_m0*d_m00_p0*fyy[k];
@@ -990,11 +786,7 @@ private:
     return;
   }
 
-  inline void ngbd_with_quadratic_interpolation_component(const double *f[], double *f_000, double *f_m00, double *f_p00, double *f_0m0, double *f_0p0,
-                                                        #ifdef P4_TO_P8
-                                                          double *f_00m, double *f_00p,
-                                                        #endif
-                                                          const unsigned int &n_arrays, const unsigned int &bs, const unsigned int &comp) const
+  inline void ngbd_with_quadratic_interpolation_component(const double *f[], double *f_000, double *f_m00, double *f_p00, double *f_0m0, double *f_0p0 ONLY3D(COMMA double *f_00m COMMA double *f_00p), const unsigned int &n_arrays, const unsigned int &bs, const unsigned int &comp) const
   {
     P4EST_ASSERT(bs>1);
     P4EST_ASSERT(comp < bs);
@@ -1022,10 +814,8 @@ private:
     double fxx[n_arrays], fyy[n_arrays];
 #ifdef P4_TO_P8
     double fzz[n_arrays];
-    laplace_component(f, f_000, f_m00, f_p00, f_0m0, f_0p0, f_00m, f_00p, fxx, fyy, fzz,  n_arrays, bs, comp);
-#else
-    laplace_component(f, f_000, f_m00, f_p00, f_0m0, f_0p0,               fxx, fyy,       n_arrays, bs, comp);
 #endif
+    laplace_component(f, f_000, f_m00, f_p00, f_0m0, f_0p0 ONLY3D(COMMA f_00m COMMA f_00p), DIM(fxx, fyy, fzz),  n_arrays, bs, comp);
     // third order interpolation
     for (unsigned int k = 0; k < n_arrays; ++k) {
       f_m00[k] -= 0.5*d_m00_m0*d_m00_p0*fyy[k];
@@ -1061,11 +851,7 @@ private:
     return;
   }
 
-  inline void ngbd_with_quadratic_interpolation(const double *f[], double *f_000, double *f_m00, double *f_p00, double *f_0m0, double *f_0p0,
-                                              #ifdef P4_TO_P8
-                                                double *f_00m, double *f_00p,
-                                              #endif
-                                                const unsigned int &n_arrays) const
+  inline void ngbd_with_quadratic_interpolation(const double *f[], double *f_000, double *f_m00, double *f_p00, double *f_0m0, double *f_0p0 ONLY3D(COMMA double *f_00m COMMA double *f_00p), const unsigned int &n_arrays) const
   {
 #ifdef CASL_LOG_TINY_EVENTS
     PetscErrorCode ierr_log_event = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_ngbd_with_quadratic_interpolation, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
@@ -1090,10 +876,8 @@ private:
     double fxx[n_arrays], fyy[n_arrays];
 #ifdef P4_TO_P8
     double fzz[n_arrays];
-    laplace(f, f_000, f_m00, f_p00, f_0m0, f_0p0, f_00m, f_00p, fxx, fyy, fzz,  n_arrays);
-#else
-    laplace(f, f_000, f_m00, f_p00, f_0m0, f_0p0,               fxx, fyy,       n_arrays);
 #endif
+    laplace(f, f_000, f_m00, f_p00, f_0m0, f_0p0 ONLY3D(COMMA f_00m COMMA f_00p), DIM(fxx, fyy, fzz),  n_arrays);
     // third order interpolation
     for (unsigned int k = 0; k < n_arrays; ++k) {
       f_m00[k] -= 0.5*d_m00_m0*d_m00_p0*fyy[k];
@@ -1375,11 +1159,7 @@ private:
   }
 
   // first-derivatives-related procedures
-#ifdef P4_TO_P8
-  inline void gradient_all_components(const double *f[], double *fx, double *fy, double *fz, const unsigned int &n_arrays, const unsigned int &bs) const
-#else
-  inline void gradient_all_components(const double *f[], double *fx, double *fy,             const unsigned int &n_arrays, const unsigned int &bs) const
-#endif
+  inline void gradient_all_components(const double *f[], DIM(double *fx, double *fy, double *fz), const unsigned int &n_arrays, const unsigned int &bs) const
   {
     P4EST_ASSERT(bs>1); // the elementary functions for bs==1 use less flops (straightfward indices) --> functions have been duplicated for efficiency
 #ifdef CASL_LOG_TINY_EVENTS
@@ -1399,10 +1179,8 @@ private:
     double f_000[n_arrays*bs], f_m00[n_arrays*bs], f_p00[n_arrays*bs], f_0m0[n_arrays*bs], f_0p0[n_arrays*bs];
 #ifdef P4_TO_P8
     double f_00m[n_arrays*bs], f_00p[n_arrays*bs];
-    linearly_interpolated_neighbors_all_components(f, f_000, f_m00, f_p00, f_0m0, f_0p0, f_00m, f_00p, n_arrays, bs);
-#else
-    linearly_interpolated_neighbors_all_components(f, f_000, f_m00, f_p00, f_0m0, f_0p0,               n_arrays, bs);
 #endif
+    linearly_interpolated_neighbors_all_components(f, f_000, f_m00, f_p00, f_0m0, f_0p0 ONLY3D(COMMA f_00m COMMA f_00p), n_arrays, bs);
 
     double naive_Dx[n_arrays*bs], naive_Dy[n_arrays*bs];
 #ifdef P4_TO_P8
@@ -1415,21 +1193,14 @@ private:
       naive_Dz[k] = central_derivative(f_00p[k], f_000[k], f_00m[k], d_00p, d_00m);
 #endif
     }
-#ifdef P4_TO_P8
-    correct_naive_first_derivatives(f, naive_Dx, naive_Dy, naive_Dz, fx, fy, fz, n_arrays, bs, bs);
-#else
-    correct_naive_first_derivatives(f, naive_Dx, naive_Dy,           fx, fy,     n_arrays, bs, bs);
-#endif
+    correct_naive_first_derivatives(f, DIM(naive_Dx, naive_Dy, naive_Dz), DIM(fx, fy, fz), n_arrays, bs, bs);
 #ifdef CASL_LOG_TINY_EVENTS
     ierr_log_event = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_gradient, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
 #endif
     return;
   }
-#ifdef P4_TO_P8
-  inline void gradient_component(const double *f[], double *fx, double *fy, double *fz, const unsigned int &n_arrays, const unsigned int &bs, const unsigned int &comp) const
-#else
-  inline void gradient_component(const double *f[], double *fx, double *fy,             const unsigned int &n_arrays, const unsigned int &bs, const unsigned int &comp) const
-#endif
+
+  inline void gradient_component(const double *f[], DIM(double *fx, double *fy, double *fz), const unsigned int &n_arrays, const unsigned int &bs, const unsigned int &comp) const
   {
     P4EST_ASSERT(bs>1);
     P4EST_ASSERT(comp < bs);
@@ -1450,10 +1221,8 @@ private:
     double f_000[n_arrays], f_m00[n_arrays], f_p00[n_arrays], f_0m0[n_arrays], f_0p0[n_arrays];
 #ifdef P4_TO_P8
     double f_00m[n_arrays], f_00p[n_arrays];
-    linearly_interpolated_neighbors_component(f, f_000, f_m00, f_p00, f_0m0, f_0p0, f_00m, f_00p, n_arrays, bs, comp);
-#else
-    linearly_interpolated_neighbors_component(f, f_000, f_m00, f_p00, f_0m0, f_0p0,               n_arrays, bs, comp);
 #endif
+    linearly_interpolated_neighbors_component(f, f_000, f_m00, f_p00, f_0m0, f_0p0 ONLY3D(COMMA f_00m COMMA f_00p), n_arrays, bs, comp);
 
     double naive_Dx[n_arrays], naive_Dy[n_arrays];
 #ifdef P4_TO_P8
@@ -1466,21 +1235,13 @@ private:
       naive_Dz[k] = central_derivative(f_00p[k], f_000[k], f_00m[k], d_00p, d_00m);
 #endif
     }
-#ifdef P4_TO_P8
-    correct_naive_first_derivatives(f, naive_Dx, naive_Dy, naive_Dz, fx, fy, fz, n_arrays, bs, comp);
-#else
-    correct_naive_first_derivatives(f, naive_Dx, naive_Dy,           fx, fy,     n_arrays, bs, comp);
-#endif
+    correct_naive_first_derivatives(f, DIM(naive_Dx, naive_Dy, naive_Dz), DIM(fx, fy, fz), n_arrays, bs, comp);
 #ifdef CASL_LOG_TINY_EVENTS
     ierr_log_event = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_gradient, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
 #endif
     return;
   }
-#ifdef P4_TO_P8
-  inline void gradient(const double *f[], double *fx, double *fy, double *fz, const unsigned int &n_arrays) const
-#else
-  inline void gradient(const double *f[], double *fx, double *fy,             const unsigned int &n_arrays) const
-#endif
+  inline void gradient(const double *f[], DIM(double *fx, double *fy, double *fz), const unsigned int &n_arrays) const
   {
 #ifdef CASL_LOG_TINY_EVENTS
     PetscErrorCode ierr_log_event = PetscLogEventBegin(log_quad_neighbor_nodes_of_node_t_gradient, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
@@ -1499,10 +1260,8 @@ private:
     double f_000[n_arrays], f_m00[n_arrays], f_p00[n_arrays], f_0m0[n_arrays], f_0p0[n_arrays];
 #ifdef P4_TO_P8
     double f_00m[n_arrays], f_00p[n_arrays];
-    linearly_interpolated_neighbors(f, f_000, f_m00, f_p00, f_0m0, f_0p0, f_00m, f_00p, n_arrays);
-#else
-    linearly_interpolated_neighbors(f, f_000, f_m00, f_p00, f_0m0, f_0p0,               n_arrays);
 #endif
+    linearly_interpolated_neighbors(f, f_000, f_m00, f_p00, f_0m0, f_0p0 ONLY3D(COMMA f_00m COMMA f_00p), n_arrays);
 
     double naive_Dx[n_arrays], naive_Dy[n_arrays];
 #ifdef P4_TO_P8
@@ -1515,11 +1274,7 @@ private:
       naive_Dz[k] = central_derivative(f_00p[k], f_000[k], f_00m[k], d_00p, d_00m);
 #endif
     }
-#ifdef P4_TO_P8
-    correct_naive_first_derivatives(f, naive_Dx, naive_Dy, naive_Dz, fx, fy, fz, n_arrays, 1, 1);
-#else
-    correct_naive_first_derivatives(f, naive_Dx, naive_Dy,           fx, fy,     n_arrays, 1, 1);
-#endif
+    correct_naive_first_derivatives(f, DIM(naive_Dx, naive_Dy, naive_Dz), DIM(fx, fy, fz), n_arrays, 1, 1);
 #ifdef CASL_LOG_TINY_EVENTS
     ierr_log_event = PetscLogEventEnd(log_quad_neighbor_nodes_of_node_t_gradient, 0, 0, 0, 0); CHKERRXX(ierr_log_event);
 #endif
@@ -1541,13 +1296,8 @@ private:
   inline void dz_central                (const double *f[], double *fz, const unsigned int &n_arrays) const                                                   { dz_central_internal(f, fz, n_arrays, 1,  1);     }
 #endif
 
-#ifdef P4_TO_P8
-  void correct_naive_first_derivatives(const double *f[], const double *naive_Dx, const double *naive_Dy, const double *naive_Dz, double *Dx, double *Dy, double *Dz, const unsigned int &n_arrays, const unsigned int &bs, const unsigned int &comp) const;
-  //  void correct_naive_first_derivatives(node_linear_combination &Dx, node_linear_combination &Dy, node_linear_combination &Dz, const node_linear_combination &Dxx, const node_linear_combination &Dyy, const node_linear_combination &Dzz) const;
-#else
-  void correct_naive_first_derivatives(const double *f[], const double *naive_Dx, const double *naive_Dy,                         double *Dx, double *Dy,             const unsigned int &n_arrays, const unsigned int &bs, const unsigned int &comp) const;
-  //  void correct_naive_first_derivatives(node_linear_combination &Dx, node_linear_combination &Dy,                              const node_linear_combination &Dxx, const node_linear_combination &Dyy) const;
-#endif
+  void correct_naive_first_derivatives(const double *f[], DIM(const double *naive_Dx, const double *naive_Dy, const double *naive_Dz), DIM(double *Dx, double *Dy, double *Dz), const unsigned int &n_arrays, const unsigned int &bs, const unsigned int &comp) const;
+  //  void correct_naive_first_derivatives(DIM(node_linear_combination &Dx, node_linear_combination &Dy, node_linear_combination &Dz), DIM(const node_linear_combination &Dxx, const node_linear_combination &Dyy, const node_linear_combination &Dzz)) const;
 
   // biased-first-derivative-related procedures
   // based on quadratic-interpolation neighbors
@@ -1869,25 +1619,13 @@ public:
   // second-derivatives-related and third-order-interpolation-related procedures
   inline void laplace(const double *f, double fxxyyzz[P4EST_DIM]) const
   {
-#ifdef P4_TO_P8
-    laplace(&f, &fxxyyzz[0], &fxxyyzz[1], &fxxyyzz[2], 1);
-#else
-    laplace(&f, &fxxyyzz[0], &fxxyyzz[1],              1);
-#endif
+    laplace(&f, DIM(&fxxyyzz[0], &fxxyyzz[1], &fxxyyzz[2]), 1);
     return;
   }
 
-#ifdef P4_TO_P8
-  inline void laplace(const double *f, double &fxx, double &fyy, double &fzz) const
-#else
-  inline void laplace(const double *f, double &fxx, double &fyy) const
-#endif
+  inline void laplace(const double *f, DIM(double &fxx, double &fyy, double &fzz)) const
   {
-#ifdef P4_TO_P8
-    laplace(&f, &fxx, &fyy, &fzz, 1);
-#else
-    laplace(&f, &fxx, &fyy,       1);
-#endif
+    laplace(&f, DIM(&fxx, &fyy, &fzz), 1);
     return;
   }
 
@@ -1896,10 +1634,8 @@ public:
     double fxx[n_arrays], fyy[n_arrays];
 #ifdef P4_TO_P8
     double fzz[n_arrays];
-    laplace(f, fxx, fyy, fzz, n_arrays);
-#else
-    laplace(f, fxx, fyy, n_arrays);
 #endif
+    laplace(f, DIM(fxx, fyy, fzz), n_arrays);
     for (unsigned int k = 0; k < n_arrays; ++k) {
       const unsigned int l_offset = P4EST_DIM*k;
       serialized_fxxyyzz[l_offset+0] = fxx[k];
@@ -1911,19 +1647,13 @@ public:
     return;
   }
 
-#ifdef P4_TO_P8
-  inline void laplace_insert_in_vectors(const double *f[], double *fxx[], double *fyy[], double *fzz[], const unsigned int &n_arrays) const
-#else
-  inline void laplace_insert_in_vectors(const double *f[], double *fxx[], double *fyy[],                const unsigned int &n_arrays) const
-#endif
+  inline void laplace_insert_in_vectors(const double *f[], DIM(double *fxx[], double *fyy[], double *fzz[]), const unsigned int &n_arrays) const
   {
     double fxx_serial[n_arrays], fyy_serial[n_arrays];
 #ifdef P4_TO_P8
     double fzz_serial[n_arrays];
-    laplace(f, fxx_serial, fyy_serial, fzz_serial,  n_arrays);
-#else
-    laplace(f, fxx_serial, fyy_serial,              n_arrays);
 #endif
+    laplace(f, DIM(fxx_serial, fyy_serial, fzz_serial),  n_arrays);
     for (unsigned int k = 0; k < n_arrays; ++k) {
       fxx[k][node_000] = fxx_serial[k];
       fyy[k][node_000] = fyy_serial[k];
@@ -1939,10 +1669,8 @@ public:
     double fxx_serial[n_arrays], fyy_serial[n_arrays];
 #ifdef P4_TO_P8
     double fzz_serial[n_arrays];
-    laplace(f, fxx_serial, fyy_serial, fzz_serial,  n_arrays);
-#else
-    laplace(f, fxx_serial, fyy_serial,              n_arrays);
 #endif
+    laplace(f, DIM(fxx_serial, fyy_serial, fzz_serial),  n_arrays);
     for (unsigned int k = 0; k < n_arrays; ++k) {
       const unsigned int l_offset = P4EST_DIM*node_000;
       fxxyyzz[k][l_offset]    = fxx_serial[k];
@@ -1961,10 +1689,8 @@ public:
     double fxx[n_arrays_bs], fyy[n_arrays_bs];
 #ifdef P4_TO_P8
     double fzz[n_arrays_bs];
-    laplace_all_components(f, fxx, fyy, fzz, n_arrays, bs);
-#else
-    laplace_all_components(f, fxx, fyy,      n_arrays, bs);
 #endif
+    laplace_all_components(f, DIM(fxx, fyy, fzz), n_arrays, bs);
     for (unsigned int k = 0; k < n_arrays; ++k) {
       const unsigned int kbs = k*bs;
       for (unsigned int comp = 0; comp < bs; ++comp) {
@@ -1980,21 +1706,15 @@ public:
     return;
   }
 
-#ifdef P4_TO_P8
-  inline void laplace_all_components_insert_in_vectors(const double *f[], double *fxx[], double *fyy[], double *fzz[], const unsigned int &n_arrays, const unsigned int &bs) const
-#else
-  inline void laplace_all_components_insert_in_vectors(const double *f[], double *fxx[], double *fyy[],                const unsigned int &n_arrays, const unsigned int &bs) const
-#endif
+  inline void laplace_all_components_insert_in_vectors(const double *f[], DIM(double *fxx[], double *fyy[], double *fzz[]), const unsigned int &n_arrays, const unsigned int &bs) const
   {
     P4EST_ASSERT(bs>1);
     const unsigned int n_arrays_bs =n_arrays*bs;
     double fxx_serial[n_arrays_bs], fyy_serial[n_arrays_bs];
 #ifdef P4_TO_P8
     double fzz_serial[n_arrays_bs];
-    laplace_all_components(f, fxx_serial, fyy_serial, fzz_serial,  n_arrays, bs);
-#else
-    laplace_all_components(f, fxx_serial, fyy_serial,              n_arrays, bs);
 #endif
+    laplace_all_components(f, DIM(fxx_serial, fyy_serial, fzz_serial),  n_arrays, bs);
     const unsigned int l_offset = bs*node_000;
     for (unsigned int k = 0; k < n_arrays; ++k) {
       const unsigned int kbs = k*bs;
@@ -2018,10 +1738,8 @@ public:
     double fxx_serial[n_arrays_bs], fyy_serial[n_arrays_bs];
 #ifdef P4_TO_P8
     double fzz_serial[n_arrays_bs];
-    laplace_all_components(f, fxx_serial, fyy_serial, fzz_serial,  n_arrays, bs);
-#else
-    laplace_all_components(f, fxx_serial, fyy_serial,              n_arrays, bs);
 #endif
+    laplace_all_components(f, DIM(fxx_serial, fyy_serial, fzz_serial),  n_arrays, bs);
     const unsigned int bs_node_000 = bs*node_000;
     for (unsigned int k = 0; k < n_arrays; ++k) {
       const unsigned int kbs = k*bs;
@@ -2043,10 +1761,8 @@ public:
     double fxx[n_arrays], fyy[n_arrays];
 #ifdef P4_TO_P8
     double fzz[n_arrays];
-    laplace_component(f, fxx, fyy, fzz, n_arrays, bs, comp);
-#else
-    laplace_component(f, fxx, fyy, n_arrays, bs, comp);
 #endif
+    laplace_component(f, DIM(fxx, fyy, fzz), n_arrays, bs, comp);
     for (unsigned int k = 0; k < n_arrays; ++k) {
       const unsigned int l_offset = P4EST_DIM*k;
       serialized_fxxyyzz[l_offset+0] = fxx[k];
@@ -2058,17 +1774,9 @@ public:
     return;
   }
 
-  inline void ngbd_with_quadratic_interpolation(const double *f, double &f_000, double &f_m00, double &f_p00, double &f_0m0, double &f_0p0
-                                              #ifdef P4_TO_P8
-                                                , double &f_00m, double &f_00p
-                                              #endif
-                                                ) const
+  inline void ngbd_with_quadratic_interpolation(const double *f, double &f_000, double &f_m00, double &f_p00, double &f_0m0, double &f_0p0 ONLY3D(COMMA double &f_00m COMMA double &f_00p)) const
   {
-#ifdef P4_TO_P8
-    ngbd_with_quadratic_interpolation(&f, &f_000, &f_m00, &f_p00, &f_0m0, &f_0p0, &f_00m, &f_00p, 1);
-#else
-    ngbd_with_quadratic_interpolation(&f, &f_000, &f_m00, &f_p00, &f_0m0, &f_0p0,                 1);
-#endif
+    ngbd_with_quadratic_interpolation(&f, &f_000, &f_m00, &f_p00, &f_0m0, &f_0p0 ONLY3D(COMMA &f_00m COMMA &f_00p), 1);
     return;
   }
 
@@ -2187,24 +1895,12 @@ public:
   // first-derivatives-related procedures
   inline void gradient(const double *f, double fxyx[P4EST_DIM]) const
   {
-#ifdef P4_TO_P8
-    gradient(&f, &fxyx[0], &fxyx[1], &fxyx[2],  1);
-#else
-    gradient(&f, &fxyx[0], &fxyx[1],            1);
-#endif
+    gradient(&f, DIM(&fxyx[0], &fxyx[1], &fxyx[2]),  1);
     return;
   }
-#ifdef P4_TO_P8
-  inline void gradient(const double *f, double &fx, double &fy, double &fz) const
-#else
-  inline void gradient(const double *f, double &fx, double &fy) const
-#endif
+  inline void gradient(const double *f, DIM(double &fx, double &fy, double &fz)) const
   {
-#ifdef P4_TO_P8
-    gradient(&f, &fx, &fy, &fz, 1);
-#else
-    gradient(&f, &fx, &fy,      1);
-#endif
+    gradient(&f, DIM(&fx, &fy, &fz), 1);
     return;
   }
   inline void gradient_all_components(const double *f[], double *fxyz[], const unsigned int &n_vecs, const unsigned int &bs) const
@@ -2214,10 +1910,8 @@ public:
     double fx_serial[bsnvecs], fy_serial[bsnvecs];
 #ifdef P4_TO_P8
     double fz_serial[bsnvecs];
-    gradient_all_components(f, fx_serial, fy_serial, fz_serial,  n_vecs, bs);
-#else
-    gradient_all_components(f, fx_serial, fy_serial,             n_vecs, bs);
 #endif
+    gradient_all_components(f, DIM(fx_serial, fy_serial, fz_serial),  n_vecs, bs);
     for (unsigned int k = 0; k < n_vecs; ++k) {
       const unsigned int bsk = bs*k;
       for (unsigned int comp = 0; comp < bs; ++comp) {
@@ -2237,10 +1931,8 @@ public:
     double fx_serial[bs], fy_serial[bs];
 #ifdef P4_TO_P8
     double fz_serial[bs];
-    gradient_all_components(&f, fx_serial, fy_serial, fz_serial,  1, bs);
-#else
-    gradient_all_components(&f, fx_serial, fy_serial,             1, bs);
 #endif
+    gradient_all_components(&f, DIM(fx_serial, fy_serial, fz_serial),  1, bs);
     for (unsigned int comp = 0; comp < bs; ++comp) {
       const unsigned int comp_dim = comp*P4EST_DIM;
       fxyz[comp_dim+0] = fx_serial[comp];
@@ -2251,19 +1943,13 @@ public:
     }
     return;
   }
-#ifdef P4_TO_P8
-  inline void gradient_insert_in_vectors(const double *f[], double *fx[], double *fy[], double *fz[], const unsigned int &n_arrays) const
-#else
-  inline void gradient_insert_in_vectors(const double *f[], double *fx[], double *fy[],               const unsigned int &n_arrays) const
-#endif
+  inline void gradient_insert_in_vectors(const double *f[], DIM(double *fx[], double *fy[], double *fz[]), const unsigned int &n_arrays) const
   {
     double fx_serial[n_arrays], fy_serial[n_arrays];
 #ifdef P4_TO_P8
     double fz_serial[n_arrays];
-    gradient(f, fx_serial, fy_serial, fz_serial,  n_arrays);
-#else
-    gradient(f, fx_serial, fy_serial,             n_arrays);
 #endif
+    gradient(f, DIM(fx_serial, fy_serial, fz_serial),  n_arrays);
     for (unsigned int k = 0; k < n_arrays; ++k) {
       fx[k][node_000] = fx_serial[k];
       fy[k][node_000] = fy_serial[k];
@@ -2278,10 +1964,8 @@ public:
     double fx_serial[n_arrays], fy_serial[n_arrays];
 #ifdef P4_TO_P8
     double fz_serial[n_arrays];
-    gradient(f, fx_serial, fy_serial, fz_serial,  n_arrays);
-#else
-    gradient(f, fx_serial, fy_serial,             n_arrays);
 #endif
+    gradient(f, DIM(fx_serial, fy_serial, fz_serial), n_arrays);
     for (unsigned int k = 0; k < n_arrays; ++k) {
       const unsigned int l_offset = P4EST_DIM*node_000;
       fxyz[k][l_offset]    = fx_serial[k];
@@ -2293,21 +1977,15 @@ public:
     return;
   }
 
-#ifdef P4_TO_P8
-  inline void gradient_all_components_insert_in_vectors(const double *f[], double *fx[], double *fy[], double *fz[], const unsigned int &n_arrays, const unsigned int &bs) const
-#else
-  inline void gradient_all_components_insert_in_vectors(const double *f[], double *fx[], double *fy[],               const unsigned int &n_arrays, const unsigned int &bs) const
-#endif
+  inline void gradient_all_components_insert_in_vectors(const double *f[], DIM(double *fx[], double *fy[], double *fz[]), const unsigned int &n_arrays, const unsigned int &bs) const
   {
     P4EST_ASSERT(bs>1);
     const unsigned int n_arrays_bs = n_arrays*bs;
     double fx_serial[n_arrays_bs], fy_serial[n_arrays_bs];
 #ifdef P4_TO_P8
     double fz_serial[n_arrays_bs];
-    gradient_all_components(f, fx_serial, fy_serial, fz_serial,  n_arrays, bs);
-#else
-    gradient_all_components(f, fx_serial, fy_serial,             n_arrays, bs);
 #endif
+    gradient_all_components(f, DIM(fx_serial, fy_serial, fz_serial),  n_arrays, bs);
     const unsigned int l_offset = bs*node_000;
     for (unsigned int k = 0; k < n_arrays; ++k) {
       const unsigned int kbs = k*bs;
@@ -2330,10 +2008,8 @@ public:
     double fx_serial[n_arrays_bs], fy_serial[n_arrays_bs];
 #ifdef P4_TO_P8
     double fz_serial[n_arrays_bs];
-    gradient_all_components(f, fx_serial, fy_serial, fz_serial,  n_arrays, bs);
-#else
-    gradient_all_components(f, fx_serial, fy_serial,             n_arrays, bs);
 #endif
+    gradient_all_components(f, DIM(fx_serial, fy_serial, fz_serial),  n_arrays, bs);
     const unsigned int bs_node_000 = bs*node_000;
     for (unsigned int k = 0; k < n_arrays; ++k) {
       unsigned int kbs = k*bs;

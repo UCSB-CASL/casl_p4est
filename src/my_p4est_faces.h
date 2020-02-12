@@ -501,7 +501,7 @@ public:
     {
       qm = *quad; qm.p.piggy3.local_num = quad_idx; qm.p.piggy3.which_tree = tree_idx;
       ngbd.clear();
-      ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, 2*dir+1);
+      ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, 2*dir + 1);
       /* note that the potential neighbor has to be the same size or bigger */
       if(ngbd.size() > 0)
       {
@@ -556,8 +556,17 @@ public:
   }
 };
 
-PetscErrorCode VecCreateGhostFaces     (const p4est_t *p4est, const my_p4est_faces_t *faces, Vec* v, const unsigned char &dir);
-PetscErrorCode VecCreateGhostFacesBlock(const p4est_t *p4est, const my_p4est_faces_t *faces, PetscInt block_size, Vec* v, const unsigned char &dir);
+PetscErrorCode VecCreateGhostFacesBlock     (const p4est_t *p4est, const my_p4est_faces_t *faces, PetscInt block_size, Vec* v, const unsigned char &dir);
+inline PetscErrorCode VecCreateGhostFaces   (const p4est_t *p4est, const my_p4est_faces_t *faces, Vec* v, const unsigned char &dir)
+{
+  return VecCreateGhostFacesBlock(p4est, faces, 1, v, dir);
+}
+PetscErrorCode VecCreateNoGhostFacesBlock   (const p4est_t *p4est, const my_p4est_faces_t *faces, PetscInt block_size, Vec* v, const unsigned char &dir);
+inline PetscErrorCode VecCreateNoGhostFaces (const p4est_t *p4est, const my_p4est_faces_t *faces, Vec* v, const unsigned char &dir)
+{
+  return VecCreateNoGhostFacesBlock(p4est, faces, 1, v, dir);
+}
+
 
 
 /*!
@@ -598,15 +607,15 @@ inline void add_faces_to_set_and_clear_set_of_quad(const my_p4est_faces_t* faces
   quad_ngbd.clear();
 }
 
-inline void add_all_faces_to_sets_and_clear_vector_of_quad(const my_p4est_faces_t* faces, std::set<p4est_locidx_t> set_of_faces[P4EST_DIM], vector<p4est_quadrant_t>& quad_ngbd)
+inline void add_all_faces_to_sets_and_clear_set_of_quad(const my_p4est_faces_t* faces, std::set<p4est_locidx_t> set_of_faces[P4EST_DIM], set_of_neighboring_quadrants& quad_ngbd)
 {
   p4est_locidx_t f_tmp;
-  for (size_t k = 0; k < quad_ngbd.size(); ++k) {
+  for (set_of_neighboring_quadrants::const_iterator it = quad_ngbd.begin(); it != quad_ngbd.end(); ++it) {
     for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
-      f_tmp = faces->q2f(quad_ngbd[k].p.piggy3.local_num, 2*dir);
+      f_tmp = faces->q2f(it->p.piggy3.local_num, 2*dir);
       if(f_tmp != NO_VELOCITY)
         set_of_faces[dir].insert(f_tmp);
-      f_tmp = faces->q2f(quad_ngbd[k].p.piggy3.local_num, 2*dir + 1);
+      f_tmp = faces->q2f(it->p.piggy3.local_num, 2*dir + 1);
       if(f_tmp != NO_VELOCITY)
         set_of_faces[dir].insert(f_tmp);
     }

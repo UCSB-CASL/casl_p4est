@@ -911,7 +911,7 @@ PetscErrorCode VecCreateGhostCellsBlock(const p4est_t *p4est, const p4est_ghost_
   return ierr;
 }
 
-PetscErrorCode VecCreateCellsBlockNoGhost(const p4est_t *p4est, const PetscInt &block_size, Vec* v)
+PetscErrorCode VecCreateNoGhostCellsBlock(const p4est_t *p4est, const PetscInt &block_size, Vec* v)
 {
   PetscErrorCode ierr = 0;
   p4est_locidx_t num_local = p4est->local_num_quadrants;

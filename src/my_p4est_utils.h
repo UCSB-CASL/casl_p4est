@@ -203,8 +203,8 @@ const unsigned short f2c_p[P4EST_FACES][num_neighbors_face_] = { { nn_mm0, nn_m0
                                                                  { nn_mp0, nn_0p0, nn_pp0 }};
 const unsigned short i_idx[] = { 0, 1 };
 const unsigned short j_idx[] = { 1, 0 };
-const unsigned char face_order_to_counterclock_cycle_order[P4EST_FACES] = {2,0,3,1};
-const unsigned char counterclock_cycle_order_to_face_order[P4EST_FACES] = {1,3,0,2};
+const unsigned char face_order_to_counterclock_cycle_order[P4EST_FACES] = {2, 0, 3, 1};
+const unsigned char counterclock_cycle_order_to_face_order[P4EST_FACES] = {1, 3, 0, 2};
 #endif
 
 const static std::string null_str    = "NULL";
@@ -792,16 +792,16 @@ inline PetscErrorCode VecCreateGhostCells(const p4est_t *p4est, const p4est_ghos
 }
 
 /*!
- * \brief VecCreateCellsBlockNoGhost Creates a non-ghosted block PETSc parallel vector on the cells
+ * \brief VecCreateNoGhostCellsBlock Creates a non-ghosted block PETSc parallel vector on the cells
  * \param p4est       [in]  the forest
  * \param block_size  [in]  block size of the vector
  * \param v           [out] PETSc vector type
  * \return a PetscErrorCode to be checked against using CHKERRXX()
  */
-PetscErrorCode VecCreateCellsBlockNoGhost(const p4est_t *p4est, const PetscInt &block_size, Vec* v);
-inline PetscErrorCode VecCreateCellsNoGhost(const p4est_t *p4est, Vec* v)
+PetscErrorCode VecCreateNoGhostCellsBlock(const p4est_t *p4est, const PetscInt &block_size, Vec* v);
+inline PetscErrorCode VecCreateNoGhostCells(const p4est_t *p4est, Vec* v)
 {
-  return VecCreateCellsBlockNoGhost(p4est, 1, v);
+  return VecCreateNoGhostCellsBlock(p4est, 1, v);
 }
 
 PetscErrorCode VecScatterAllToSomeCreate(MPI_Comm comm, Vec origin_loc, Vec destination, const PetscInt &ndest_glo_idx, const PetscInt *dest_glo_idx, VecScatter *ctx);

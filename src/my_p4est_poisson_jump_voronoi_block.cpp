@@ -1113,8 +1113,8 @@ void my_p4est_poisson_jump_voronoi_block_t::compute_voronoi_cell(unsigned int n,
       ngbd_c->find_neighbor_cells_of_cell(tmp2, it->p.piggy3.local_num, it->p.piggy3.which_tree,  0,  1);
 #endif
 
-      for (set_of_neighboring_quadrants::const_iterator it = tmp2.begin(); it != tmp2.end(); ++it)
-        ngbd_quads.push_back(it->p.piggy3.local_num);
+      for (set_of_neighboring_quadrants::const_iterator itt = tmp2.begin(); itt != tmp2.end(); ++itt)
+        ngbd_quads.push_back(itt->p.piggy3.local_num);
       tmp2.clear();
     }
   }

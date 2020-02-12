@@ -71,10 +71,19 @@ typedef struct
   p4est_locidx_t fine_intermediary_idx;
 } interface_data;
 
-
 class my_p4est_two_phase_flows_t
 {
 private:
+
+  struct augmented_voronoi_cell
+  {
+    Voronoi_DIM voro;
+    p4est_locidx_t fine_idx_of_face;
+    voro_cell_type cell_type;
+    bool is_set, is_in_negative_domain, has_neighbor_across;
+    augmented_voronoi_cell() : fine_idx_of_face(-1), is_set(false), has_neighbor_across(false) {}
+  };
+
   class splitting_criteria_computational_grid_two_phase_t : public splitting_criteria_tag_t
   {
   private:
@@ -151,6 +160,7 @@ private:
   // -------------------------------------------------------------------
   // scalar fields
   Vec fine_phi, fine_curvature, fine_jump_hodge, fine_jump_normal_flux_hodge, fine_mass_flux, fine_variable_surface_tension;
+  Vec fine_jump_u_test;
   // vector fields, P4EST_DIM-block-structured
   Vec fine_normal, fine_phi_xxyyzz;
   // tensor/matrix fields, (SQR_P4EST_DIM)-block-structured
@@ -178,7 +188,7 @@ private:
   // ------------------------------------------------------------------------------
   // vector fields
   Vec dxyz_hodge[P4EST_DIM], vstar[P4EST_DIM], vnp1_m[P4EST_DIM], vnp1_p[P4EST_DIM];
-  Vec vnm1_faces[P4EST_DIM], vn_faces[P4EST_DIM], vnp1_faces[P4EST_DIM];
+  Vec test_vnm1_faces[P4EST_DIM], test_vn_faces[P4EST_DIM], test_vnp1_faces[P4EST_DIM];
   // -------------------------------------------------------------------------
   // ----- FIELDS SAMPLED AT NODES OF THE COMPUTATIONAL GRID AT TIME NM1 -----
   // -------------------------------------------------------------------------
@@ -192,14 +202,123 @@ private:
   // semi-lagrangian backtraced points for faces (needed in viscosity step's setup, needs to be done only once)
   // no need to destroy these, not dynamically allocated...
   bool semi_lagrangian_backtrace_is_done;
-  std::vector<double> xyz_n[P4EST_DIM];
-  std::vector<double> xyz_nm1[P4EST_DIM];
-  // coordinates of the points at time n and nm1 backtraced from the face of orientation dir and local index f_idx are
-  // xyz_n[dir][P4EST_DIM*f_idx+0], xyz_n[dir][P4EST_DIM*f_idx+1] (, xyz_n[dir][P4EST_DIM*f_idx+2])
-  // xyz_nm1[dir][P4EST_DIM*f_idx+0], xyz_nm1[dir][P4EST_DIM*f_idx+1] (, xyz_nm1[dir][P4EST_DIM*f_idx+2])
+  std::vector<double> backtraced_vn_faces[P4EST_DIM];
+  std::vector<double> backtraced_vnm1_faces[P4EST_DIM];
+  // The value of the dir velocity component at the points at time n and nm1 backtraced from the face of orientation dir and local index f_idx are
+  // backtraced_vn_faces[dir][f_idx], and
+  // backtraced_vnm1_faces[dir][f_idx].
 
   computational_to_fine_node_t face_to_fine_node[P4EST_DIM], cell_to_fine_node, node_to_fine_node;
   bool face_to_fine_node_maps_are_set[P4EST_DIM], cell_to_fine_node_map_is_set, node_to_fine_node_map_is_set;
+
+  // viscosity solver
+  bool voronoi_on_the_fly;
+  vector<augmented_voronoi_cell> voro_cell[P4EST_DIM];
+  class jump_face_solver
+  {
+    /* NOTE : inspired from my_p4est_poisson_faces_t with an xgfm twist for interface jump problems,
+     * and without any Shortley-Weller kind of treatment (to keep symmetric systems).
+     * There is a notable difference though in the treatment of Neumann boundary conditions, since we assume
+     * that bc_v[dir].wallValue(...) is the prescribed value for mu*(normal derivative of u[dir]), everywhere,
+     * as opposed as the prescribed value for (normal derivative of u[dir]) only in my_p4est_poisson_faces_t.
+     */
+  private:
+    bool run_for_testing;
+    bool matrix_is_preallocated[P4EST_DIM];
+    Mat matrix[P4EST_DIM];
+    // if we do have a null space, it will be the constant nullspace
+    // (unless some other border is added) -> no need to build it ourselves
+//    MatNullSpace matrix_nullspace[P4EST_DIM];
+//    Vec nullspace[P4EST_DIM];
+    KSP ksp[P4EST_DIM];
+    Vec rhs[P4EST_DIM];
+    int matrix_has_nullspace[P4EST_DIM];
+    bool matrix_is_ready[P4EST_DIM], only_diags_are_modified[P4EST_DIM];
+    double current_diag_m[P4EST_DIM], current_diag_p[P4EST_DIM];
+    double desired_diag_m[P4EST_DIM], desired_diag_p[P4EST_DIM];
+    bool ksp_is_set_from_options[P4EST_DIM], pc_is_set_from_options[P4EST_DIM];
+    my_p4est_two_phase_flows_t* env;
+
+    inline void reset_current_diagonals(const unsigned char &dir)
+    {
+      current_diag_m[dir] = current_diag_p[dir] = 0.0;
+    }
+
+    inline bool current_diags_are_as_desired(const unsigned char &dir) const
+    {
+      return (fabs(current_diag_m[dir] - desired_diag_m[dir]) < EPS*MAX(fabs(current_diag_m[dir]), fabs(desired_diag_m[dir])) || (fabs(current_diag_m[dir]) < EPS && fabs(desired_diag_m[dir]) < EPS))
+          && (fabs(current_diag_p[dir] - desired_diag_p[dir]) < EPS*MAX(fabs(current_diag_p[dir]), fabs(desired_diag_p[dir])) || (fabs(current_diag_p[dir]) < EPS && fabs(desired_diag_p[dir]) < EPS));
+    }
+
+    inline void destroy_and_nullify_owned_members()
+    {
+      PetscErrorCode ierr;
+      for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+        if(matrix[dim] != NULL)           { ierr = MatDestroy(matrix[dim]);                     CHKERRXX(ierr); matrix[dim]           = NULL; }
+//        if(nullspace[dim]  !=  NULL)      { ierr = MatNullSpaceDestroy(matrix_nullspace[dim]);  CHKERRXX(ierr); matrix_nullspace[dim] = NULL; }
+//        if(matrix_nullspace[dim] != NULL) { ierr = VecDestroy(nullspace[dim]);                  CHKERRXX(ierr); nullspace[dim]        = NULL; }
+        if(ksp[dim] != NULL)              { ierr = KSPDestroy(ksp[dim]);                        CHKERRXX(ierr); ksp[dim]              = NULL; }
+        if(rhs[dim] != NULL)              { ierr = VecDestroy(rhs[dim]);                        CHKERRXX(ierr); rhs[dim]              = NULL; }
+      }
+    }
+
+    void preallocate_matrix(const unsigned char &dir);
+    void setup_linear_system(const unsigned char &dir);
+    void setup_linear_solver(const unsigned char &dir, const PetscBool &use_nonzero_initial_guess, const KSPType &ksp_type, const PCType &pc_type);
+
+  public:
+    jump_face_solver(my_p4est_two_phase_flows_t *parent_solver = NULL) : run_for_testing(false), env(parent_solver)
+    {
+      /* initialize the KSP solvers and other parameter s*/
+      for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+        matrix_is_preallocated[dim]   = false;
+        matrix[dim]                   = NULL;
+//        matrix_nullspace[dim]         = NULL;
+//        nullspace[dim]                = NULL;
+        ksp[dim]                      = NULL;
+        rhs[dim]                      = NULL;
+        matrix_has_nullspace[dim] = matrix_is_ready[dim] = only_diags_are_modified[dim]  = false;
+        current_diag_m[dim] = current_diag_p[dim] = 0.0;
+        desired_diag_m[dim] = desired_diag_p[dim] = 0.0;
+        ksp_is_set_from_options[dim] = pc_is_set_from_options[dim] = false;
+      }
+    }
+    ~jump_face_solver() { destroy_and_nullify_owned_members(); }
+
+    inline void set_environment(my_p4est_two_phase_flows_t* env_)
+    {
+      env = env_;
+      PetscErrorCode ierr;
+      for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
+        if(ksp[dir] == NULL)
+        {
+          ierr = KSPCreate(env->p4est_n->mpicomm, &ksp[dir]); CHKERRXX(ierr);
+          ierr = KSPSetTolerances(ksp[dir], 1e-12, PETSC_DEFAULT, PETSC_DEFAULT, PETSC_DEFAULT); CHKERRXX(ierr);
+        }
+      }
+    }
+
+
+    inline void set_diagonals(const double &add_m, const double &add_p)
+    {
+      for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+        desired_diag_m[dim]           = add_m;
+        desired_diag_p[dim]           = add_p;
+        if(!current_diags_are_as_desired(dim))
+        {
+          // actual modification of diag, do not change the flag values otherwise, especially not of matrix_is_ready
+          only_diags_are_modified[dim]  = matrix_is_ready[dim];
+          matrix_is_ready[dim]          = false;
+        }
+      }
+    }
+
+    inline void set_for_testing() { run_for_testing = true; }
+
+    void solve(Vec *solution, const PetscBool &use_nonzero_initial_guess = PETSC_FALSE, const KSPType &ksp_type = KSPBCGS, const PCType &pc_type = PCSOR);
+
+  } viscosity_solver;
+
 
 
   //  inline bool get_close_coarse_node(const p4est_indep_t* fine_node, p4est_locidx_t& coarse_node_idx, bool subrefined [P4EST_DIM]) const
@@ -316,11 +435,10 @@ private:
 
   inline bool get_fine_node_idx_of_logical_vertex(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, DIM(const char& vx, const char& vy, const char& vz), p4est_locidx_t& fine_vertex_idx,  const p4est_quadrant_t* coarse_quad)
   {
-    unsigned char sum_v = abs(vx) + abs(vy);
-    P4EST_ASSERT(vx==-1 || vx==0 || vx==1);
-    P4EST_ASSERT(vy==-1 || vy==0 || vy==1);
-    ONLY3D(P4EST_ASSERT(vz==-1 || vz==0 || vz==1));
-    ONLY3D(sum_v += abs(vz));
+    const unsigned char sum_v = SUMD(abs(vx), abs(vy), abs(vz));
+    P4EST_ASSERT(vx == -1 || vx == 0 || vx == 1);
+    P4EST_ASSERT(vy == -1 || vy == 0 || vy == 1);
+    ONLY3D(P4EST_ASSERT(vz == -1 || vz == 0 || vz == 1));
     P4EST_ASSERT(sum_v <= P4EST_DIM);
     // looking for saved shortcuts first
     const bool is_center  = (sum_v == 0);
@@ -347,7 +465,7 @@ private:
 #ifdef P4_TO_P8
       local_face_dir = (abs(vx) == 1 ? 1 + vx : (abs(vy) == 1 ? 5 + vy : 9 + vz))/2;
 #else
-      local_face_dir = (abs(vx) == 1 ? 1 + vx : 5+  vy)/2;
+      local_face_dir = (abs(vx) == 1 ? 1 + vx : 5 + vy)/2;
 #endif
       P4EST_ASSERT((local_face_dir >=0) && (local_face_dir < P4EST_FACES));
       face_idx = faces_n->q2f(quad_idx, local_face_dir);
@@ -428,7 +546,7 @@ private:
 
   inline bool get_fine_node_idx_node(const p4est_locidx_t& node_idx, p4est_locidx_t& fine_vertex_idx)
   {
-    P4EST_ASSERT((node_idx >= 0) && (node_idx < nodes_n->num_owned_indeps));
+    P4EST_ASSERT(node_idx >= 0 && node_idx < nodes_n->num_owned_indeps);
     computational_to_fine_node_t::const_iterator got_it = node_to_fine_node.find(node_idx);
     if(got_it != node_to_fine_node.end())
     {
@@ -452,7 +570,7 @@ private:
 
   inline bool get_fine_node_idx_of_face(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const unsigned char& loc_face_dir, p4est_locidx_t& fine_face_idx, const p4est_quadrant_t* coarse_quad = NULL, const p4est_locidx_t* face_idx_ptr = NULL)
   {
-    computational_to_fine_node_t::const_iterator got_it = face_to_fine_node[loc_face_dir/2].find((face_idx_ptr != NULL ? *face_idx_ptr :faces_n->q2f(quad_idx, loc_face_dir)));
+    computational_to_fine_node_t::const_iterator got_it = face_to_fine_node[loc_face_dir/2].find(face_idx_ptr != NULL ? *face_idx_ptr : faces_n->q2f(quad_idx, loc_face_dir));
     if(got_it != face_to_fine_node[loc_face_dir/2].end()) // found in map
     {
       fine_face_idx = got_it->second;
@@ -480,7 +598,7 @@ private:
   }
   inline bool signs_of_phi_are_different(const double& phi_0, const double& phi_1) const
   {
-    return (phi_0 > 0.0 && phi_1 <= 0.0) || (phi_0 <= 0.0 && phi_1 > 0.0);
+    return ((phi_0 > 0.0 && phi_1 <= 0.0) || (phi_0 <= 0.0 && phi_1 > 0.0));
   }
   inline bool face_is_across(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const unsigned char& dir, const double* fine_phi_p, p4est_locidx_t& fine_center_idx, p4est_locidx_t& fine_face_idx, const p4est_quadrant_t* coarse_quad = NULL)
   {
@@ -506,13 +624,38 @@ private:
       quad = p4est_quadrant_array_index(&ghost_n->ghosts, quad_idx-p4est_n->local_num_quadrants);
     return (is_quad_Wall(p4est_n, tree_idx, quad, loc_face_idx) && (bc_v[dir].wallType(xyz_face) == DIRICHLET));
   }
+  inline bool is_wall_neighbor_of_face_in_negative_domain(p4est_locidx_t& fine_wall_node_idx, const p4est_locidx_t& face_idx, const p4est_locidx_t &quad_idx, const p4est_topidx_t &tree_idx,
+                                                          const unsigned char &face_touch, const unsigned char &der, const p4est_quadrant_t *quad, const double* fine_phi_p, const double *xyz_wall = NULL)
+  {
+    P4EST_ASSERT(faces_n->q2f(quad_idx, face_touch) == face_idx);
+    P4EST_ASSERT(is_quad_Wall(p4est_n, tree_idx, quad, der));
+    char search[P4EST_DIM]  = {DIM(0, 0, 0)};
+    search[face_touch/2]    = (face_touch%2 == 1 ? 1 : -1);
+    search[der/2]           = (der%2 == 1 ? 1 : -1);
+    if(get_fine_node_idx_of_logical_vertex(quad_idx, tree_idx, DIM(search[0], search[1],search[2]), fine_wall_node_idx, quad))
+    {
+#ifdef P4EST_DEBUG
+      const p4est_indep_t *found_node = (const p4est_indep_t *) sc_array_index(&fine_nodes_n->indep_nodes, fine_wall_node_idx);
+      P4EST_ASSERT(is_node_Wall(fine_p4est_n, found_node, der));
+#endif
+      return (fine_phi_p[fine_wall_node_idx] <= 0.0);
+    }
+    else
+    {
+      if(xyz_wall != NULL)
+        return ((*interp_phi)(xyz_wall) <= 0.0);
+      double xyz_w[P4EST_DIM]; faces_n->xyz_fr_f(face_idx, face_touch/2, xyz_w);
+      xyz_w[der/2] = (der%2 == 1 ? xyz_max[der/2] : xyz_min[der/2]);
+      return ((*interp_phi)(xyz_wall) <= 0.0);
+    }
+  }
   inline bool is_face_in_negative_domain(const p4est_locidx_t& face_idx, const unsigned char& dir, const double* fine_phi_p, p4est_locidx_t& fine_face_idx)
   {
     computational_to_fine_node_t::const_iterator got_it = face_to_fine_node[dir].find(face_idx);
     if(got_it != face_to_fine_node[dir].end()) // found in map
     {
       fine_face_idx = got_it->second;
-      return (fine_phi_p[fine_face_idx] <=0.0);
+      return (fine_phi_p[fine_face_idx] <= 0.0);
     }
     else
     {
@@ -524,13 +667,13 @@ private:
       const p4est_quadrant_t* coarse_quad;
       if(quad_idx<p4est_n->local_num_quadrants)
       {
-        p4est_tree_t* tree = (p4est_tree_t*) sc_array_index(p4est_n->trees, tree_idx);
+        p4est_tree_t* tree = p4est_tree_array_index(p4est_n->trees, tree_idx);
         coarse_quad = p4est_quadrant_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
       }
       else
         coarse_quad = p4est_quadrant_array_index(&ghost_n->ghosts, quad_idx-p4est_n->local_num_quadrants);
-      if ((!face_to_fine_node_maps_are_set[dir]) && (coarse_quad->level == ((splitting_criteria_t*) p4est_n->user_pointer)->max_lvl) && get_fine_node_idx_of_face(quad_idx, tree_idx, loc_face_dir, fine_face_idx, coarse_quad, &face_idx))
-        return (fine_phi_p[fine_face_idx] <=0.0);
+      if (!face_to_fine_node_maps_are_set[dir] && coarse_quad->level == ((splitting_criteria_t*) p4est_n->user_pointer)->max_lvl && get_fine_node_idx_of_face(quad_idx, tree_idx, loc_face_dir, fine_face_idx, coarse_quad, &face_idx))
+        return (fine_phi_p[fine_face_idx] <= 0.0);
       else
       {
         double xyz_face [P4EST_DIM];
@@ -545,20 +688,84 @@ private:
     return is_face_in_negative_domain(face_idx, dir, fine_phi_p, dummy);
   }
 
-  inline double BDF_alpha() const { return (sl_order == 1 ? 1.0 : (2*dt_n+dt_nm1)/(dt_n+dt_nm1)); }
-  inline double BDF_beta() const  { return (sl_order == 1 ? 0.0 : -dt_n/(dt_n+dt_nm1));           }
+  inline double BDF_alpha() const { return (sl_order == 1 ? 1.0 : (2.0*dt_n + dt_nm1)/(dt_n + dt_nm1)); }
+  inline double BDF_beta() const  { return (sl_order == 1 ? 0.0 : -dt_n/(dt_n + dt_nm1));               }
 
   void get_velocity_seen_from_cell(neighbor_value& neighbor_velocity, const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const int& face_dir,
                                    const double *vstar_p, const double *fine_phi_p, const double *fine_phi_xxyyzz_p, const double *fine_jump_mu_grad_v_p);
 
   double compute_divergence(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, const double *vstar_p[], const double *fine_phi_p, const double *fine_phi_xxyyzz_p, const double *fine_jump_mu_grad_v_p);
 
-  double div_mu_grad_u_dir(const p4est_locidx_t &face_idx, const unsigned char &dir, const bool &face_is_in_negative_domain, const p4est_locidx_t &fine_idx_of_face,
+  double div_mu_grad_u_dir(bool &face_is_in_negative_domain, const p4est_locidx_t &face_idx, const unsigned char &dir,
                            const double *vn_dir_p, const double *fine_mass_flux_p, const double *fine_jump_mu_grad_vdir_p,
-                           const double *fine_phi_p, const double *fine_phi_xxyyzz_p, const double *fine_normal_p);
+                           const double *fine_phi_p, const double *fine_phi_xxyyzz_p, const double *fine_normal_p, const double *fine_jump_u_p = NULL);
 
-  bool compute_voronoi_cell(Voronoi_DIM &voro_cell, const p4est_locidx_t &face_idx, const unsigned char &dir,
-                            const bool &face_is_in_negative_domain, const double *fine_phi_p);
+
+  inline const augmented_voronoi_cell& get_augmented_voronoi_cell(const p4est_locidx_t &face_idx, const unsigned char &dir, const double *fine_phi_p)
+  {
+    augmented_voronoi_cell &my_cell = (voronoi_on_the_fly ? voro_cell[dir][0] : voro_cell[dir][face_idx]);
+    if(!voronoi_on_the_fly && my_cell.is_set)
+      return my_cell;
+
+    P4EST_ASSERT(!my_cell.is_set);
+
+    my_cell.cell_type = compute_voronoi_cell(my_cell.voro, faces_n, face_idx, dir, bc_v, NULL);
+    my_cell.has_neighbor_across = false;
+    my_cell.is_in_negative_domain = is_face_in_negative_domain(face_idx, dir, fine_phi_p, my_cell.fine_idx_of_face);
+    if(my_cell.cell_type == uniform_no_wall || my_cell.cell_type == non_dirichlet_wall_face || my_cell.cell_type == with_wall_neighbor)
+    {
+#ifdef P4_TO_P8
+      const vector<ngbd3Dseed> *points;
+#else
+      vector<ngbd2Dseed> *points;
+#endif
+      my_cell.voro.get_neighbor_seeds(points);
+      for (size_t n = 0; n < points->size() && !my_cell.has_neighbor_across; ++n)
+        if((*points)[n].n >= 0)
+        {
+          if(my_cell.is_in_negative_domain)
+            my_cell.has_neighbor_across = !is_face_in_negative_domain((*points)[n].n, dir, fine_phi_p);
+          else
+            my_cell.has_neighbor_across =  is_face_in_negative_domain((*points)[n].n, dir, fine_phi_p);
+        }
+    }
+#ifndef P4_TO_P8
+    if(my_cell.cell_type == non_dirichlet_wall_face || my_cell.cell_type == with_wall_neighbor)
+      clip_voronoi_cell_by_parallel_walls(my_cell.voro, dir);
+#endif
+
+    my_cell.is_set = !voronoi_on_the_fly; // we NEVER raise the flag if doing it on the fly (safety measure :-p)
+
+    return my_cell;
+  }
+
+#ifndef P4_TO_P8
+  inline void clip_voronoi_cell_by_parallel_walls(Voronoi2D &voro_cell, const unsigned char &dir)
+  {
+    const vector<ngbd2Dseed> *points;
+    vector<Point2> *partition;
+
+    voro_cell.get_neighbor_seeds(points);
+    voro_cell.get_partition(partition);
+
+    /* clip the voronoi partition at the boundary of the domain */
+    const unsigned char other_dir = (dir + 1)%P4EST_DIM;
+    for(size_t m = 0; m < points->size(); m++)
+      if((*points)[m].n < 0 &&  (-1 - (*points)[m].n)/2 == dir) // there is a "wall" point added because of a parallel wall
+      {
+        const unsigned char which_wall = (-1 - (*points)[m].n)%2;
+        for(char i = -1; i < 1; ++i)
+        {
+          size_t k                        = mod(m + i                 , partition->size());
+          size_t tmp                      = mod(k + (i == -1 ? -1 : 1), partition->size());
+          Point2 segment                  = (*partition)[tmp] - (*partition)[k];
+          double lambda                   = ((which_wall == 0 ? xyz_min[dir] : xyz_max[dir]) - (*partition)[k].xyz(dir))/segment.xyz(dir);
+          (*partition)[k].xyz(dir)        = (which_wall == 0 ? xyz_min[dir] : xyz_max[dir]);
+          (*partition)[k].xyz(other_dir)  = (*partition)[k].xyz(other_dir) + lambda*segment.xyz(other_dir);
+        }
+      }
+  }
+#endif
 
   void compute_normals_curvature_and_second_derivatives(const bool& set_second_derivatives);
   void compute_curvature();
@@ -710,7 +917,13 @@ private:
                                               const double *fine_jump_mu_grad_v_p, const double *fine_mass_flux_p,
                                               const p4est_locidx_t &fine_idx_of_face, const p4est_locidx_t &fine_idx_of_other_face,
                                               const p4est_quadrant_t &qm, const p4est_quadrant_t &qp,
-                                              const unsigned char &dir, const unsigned char der);
+                                              const unsigned char &dir, const unsigned char der, const double *fine_jump_u_p = NULL);
+
+  interface_data interface_data_between_face_and_tranverse_wall(const double *fine_phi_p, const double *fine_phi_xxyyzz_p, const double *fine_normal_p,
+                                                                const double *fine_jump_mu_grad_v_p, const double *fine_mass_flux_p,
+                                                                const p4est_locidx_t &fine_idx_of_face, const p4est_locidx_t &fine_idx_of_wall_node,
+                                                                const unsigned char &dir, const unsigned char der, const double *fine_jump_u_p = NULL);
+
   /*
    * qm and qp must be defined and have their p.piggy3 filled!
    */
@@ -728,36 +941,6 @@ private:
                                    const unsigned char &der, const unsigned char &dir,
                                    const double *vn_dir_m_p, const double *vn_dir_p_p, const double *fine_jump_mu_grad_v_p,
                                    const double *fine_mass_flux_p = NULL, const double *fine_normal_p = NULL);
-
-
-  inline void add_faces_to_set_and_clear_vector_of_quad(const p4est_locidx_t& center_face_idx, const unsigned char& dir, set<p4est_locidx_t>& set_of_faces, vector<p4est_quadrant_t>& quad_ngbd) const
-  {
-    for (size_t k = 0; k < quad_ngbd.size(); ++k) {
-      p4est_locidx_t f_tmp = faces_n->q2f(quad_ngbd[k].p.piggy3.local_num, 2*dir);
-      if(f_tmp != NO_VELOCITY && f_tmp != center_face_idx)
-        set_of_faces.insert(f_tmp);
-      f_tmp = faces_n->q2f(quad_ngbd[k].p.piggy3.local_num, 2*dir+1);
-      if(f_tmp != NO_VELOCITY && f_tmp != center_face_idx)
-        set_of_faces.insert(f_tmp);
-    }
-    quad_ngbd.clear();
-  }
-
-  inline void add_all_faces_to_sets_and_clear_vector_of_quad(set<p4est_locidx_t> set_of_faces[P4EST_DIM], vector<p4est_quadrant_t>& quad_ngbd) const
-  {
-    p4est_locidx_t f_tmp;
-    for (size_t k = 0; k < quad_ngbd.size(); ++k) {
-      for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
-        f_tmp = faces_n->q2f(quad_ngbd[k].p.piggy3.local_num, 2*dir);
-        if(f_tmp != NO_VELOCITY)
-          set_of_faces[dir].insert(f_tmp);
-        f_tmp = faces_n->q2f(quad_ngbd[k].p.piggy3.local_num, 2*dir+1);
-        if(f_tmp != NO_VELOCITY)
-          set_of_faces[dir].insert(f_tmp);
-      }
-    }
-    quad_ngbd.clear();
-  }
 
   void initialize_normal_derivative_of_velocity_on_faces_local(const p4est_locidx_t &local_face_idx, const unsigned char &dir, const my_p4est_interpolation_nodes_t &interp_normal,
                                                                const double *fine_jump_mu_grad_vdir_p, const double *fine_phi_p, const double *fine_phi_xxyyzz_p,
@@ -801,15 +984,9 @@ private:
 
   void set_interface_velocity();
 
-  inline bool no_wall_in_face_neighborhood(const uniform_face_ngbd *face_neighbors)
-  {
-    bool to_return = true;
-    for (unsigned char dir = 0; dir < P4EST_FACES; ++dir)
-      to_return = to_return && (face_neighbors->neighbor_face_idx[dir] >=0);
-    return to_return;
-  }
-
   void extend_vector_field_from_interface_to_whole_domain();
+
+  void do_semi_lagrangian_backtracing_from_faces_if_needed();
 
 public:
   my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t *ngbd_nm1, my_p4est_node_neighbors_t *ngbd_n, my_p4est_faces_t *faces, my_p4est_node_neighbors_t *fine_ngbd_n);
@@ -922,10 +1099,40 @@ public:
   inline Vec get_curvature()                                    { return fine_curvature; }
 //  inline Vec get_phi()                                          { return fine_phi; }
 
+  inline void do_voronoi_computations_on_the_fly(bool do_it_on_the_fly)
+  {
+    voronoi_on_the_fly = do_it_on_the_fly;
+    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
+      voro_cell[dir].clear();
+      if(voronoi_on_the_fly)
+        voro_cell[dir].resize(1);
+      else
+        voro_cell[dir].resize(faces_n->num_local[dir]);
+    }
+  }
+
   void compute_jump_mu_grad_v();
   void compute_jumps_hodge();
+  void solve_viscosity();
+  void test_viscosity();
   void solve_viscosity_explicit();
-  void test_viscosity_explicit(Vec rhs[P4EST_DIM]);
+  void test_viscosity_explicit();
+
+  inline void initialize_viscosity_test_vectors()
+  {
+    PetscErrorCode ierr;
+    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
+      if(test_vnm1_faces[dir] == NULL){
+        ierr = VecCreateGhostFaces(p4est_n, faces_n, &test_vnm1_faces[dir], dir);  CHKERRXX(ierr);
+      }
+      if(test_vn_faces[dir] == NULL){
+        ierr = VecCreateGhostFaces(p4est_n, faces_n, &test_vn_faces[dir], dir);    CHKERRXX(ierr);
+      }
+      if(test_vnp1_faces[dir] == NULL){
+        ierr = VecCreateGhostFaces(p4est_n, faces_n, &test_vnp1_faces[dir], dir);  CHKERRXX(ierr);
+      }
+    }
+  }
 
   void solve_projection(const bool activate_xgfm)
   {
@@ -942,19 +1149,21 @@ public:
 
   inline double get_max_velocity() const { return MAX(max_L2_norm_u[0], max_L2_norm_u[1]); }
 
-  inline Vec* get_vnm1_faces()                                  { return vnm1_faces;                                  }
-  inline Vec* get_vn_faces()                                    { return vn_faces;                                    }
-  inline Vec* get_vnp1_faces()                                  { return vnp1_faces;                                  }
-  inline Vec  set_fine_jump_mu_grad_v(Vec fine_jump_mu_grad_v_) { return fine_jump_mu_grad_v = fine_jump_mu_grad_v_;  }
+  inline Vec* get_test_vnm1_faces()                             { return test_vnm1_faces;                             }
+  inline Vec* get_test_vn_faces()                               { return test_vn_faces;                               }
+  inline Vec* get_test_vnp1_faces()                             { return test_vnp1_faces;                             }
+  inline void set_fine_jump_mu_grad_v(Vec fine_jump_mu_grad_v_) { fine_jump_mu_grad_v = fine_jump_mu_grad_v_; return; }
   inline Vec  get_fine_jump_mu_grad_v()                         { return fine_jump_mu_grad_v;                         }
+  inline void set_fine_jump_velocity(Vec fine_jump_u_)          { fine_jump_u_test = fine_jump_u_; return;            }
+  inline Vec  get_fine_jump_velocity_test()                     { return fine_jump_u_test;                            }
   inline void slide_face_fields()
   {
     Vec tmp;
     for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
-      tmp             = vnm1_faces[dir];
-      vnm1_faces[dir] = vn_faces[dir];
-      vn_faces[dir]   = vnp1_faces[dir];
-      vnp1_faces[dir] = tmp;
+      tmp                   = test_vnm1_faces[dir];
+      test_vnm1_faces[dir]  = test_vn_faces[dir];
+      test_vn_faces[dir]    = test_vnp1_faces[dir];
+      test_vnp1_faces[dir]  = tmp;
     }
     return;
   }
