@@ -133,6 +133,8 @@ public:
      */
   inline const Point3& get_center_point() const { return center_seed; }
 
+  inline void get_center_point(double *xyz) const { xyz[0] = center_seed.x; xyz[1] = center_seed.y; xyz[2] = center_seed.z; }
+
   /*!
    * \brief add a potential neighbor seed candidate, after making sure there is no repetition
    * \param n the index of the point to add

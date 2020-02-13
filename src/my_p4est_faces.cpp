@@ -76,8 +76,14 @@ void my_p4est_faces_t::init_faces(bool initialize_neighborhoods_of_fine_faces)
   }
 
   set_of_neighboring_quadrants ngbd;
-  const int min_ghost_owner_rank = quad_find_ghost_owner(ghost, 0);
-  const int max_ghost_owner_rank = quad_find_ghost_owner(ghost, ghost->ghosts.elem_count - 1);
+  int min_ghost_owner_rank = 0;
+  int max_ghost_owner_rank = 0;
+  if(ghost->ghosts.elem_count > 0)
+  {
+    min_ghost_owner_rank = quad_find_ghost_owner(ghost, 0);
+    max_ghost_owner_rank = quad_find_ghost_owner(ghost, ghost->ghosts.elem_count - 1);
+  }
+
   std::set<int> set_of_ranks;
   vector< vector<faces_comm_1_t> > buff_query1(p4est->mpisize); // buff_query[r][k] :: kth query to be sent to processor r (query == what is your local face number for the quadrant of queried local index in the queried face direction?)
   vector< vector<p4est_locidx_t> > map(p4est->mpisize); // map[r][k] :: local index of the locally owned quadrant associated with the kth query sent to proc r (i.e. buff_query[r][k])

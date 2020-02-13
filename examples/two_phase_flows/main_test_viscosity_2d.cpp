@@ -40,8 +40,8 @@ static const double zmax = +1.25;
 static const double r0   = 0.5;
 static const double uniform_band_factor = 0.15;
 
-static const int lmin_  = 3+3;
-static const int lmax_  = 5+3;
+static const int lmin_  = 2;
+static const int lmax_  = 2;
 static const int nx_ = 1;
 static const int ny_ = 1;
 #ifdef P4_TO_P8
@@ -49,13 +49,14 @@ static const int nz_ = 1;
 #endif
 static const double rho             = 1.0;
 static const double mu_minus_       = 1.0;
-static const double mu_plus_        = 10.0;
+static const double mu_plus_        = 1.0;
 static const bool implicit_         = true;
 static const bool voro_fly_         = false;
-static const unsigned int nsplits_  = 1;
-static const bool save_vtk_         = false; //true;
+static const unsigned int ngrids_   = 2;
+static const bool save_vtk_         = true;
 const static double duration_       = 1.0; // M_PI;
 static const double vtk_dt_         = duration_;
+static const bool print_            = false;
 static double tn;
 static double dt;
 
@@ -78,7 +79,7 @@ public:
   double operator()(DIM(double x, double y, double z)) const
   {
     return level_set_grid(DIM(x, y, z));
-//    return 21.0;
+//    return -1.0;
   }
   double operator()(const double *xyz) const
   {
@@ -87,66 +88,97 @@ public:
 } level_set;
 
 class EXACT_SOLUTION{
-  const double TT = 2.0*M_PI_2;
+  const double TT = 2.0*M_PI*duration_;
   bool implicit;
   double mu_minus;
   double mu_plus;
 public:
   inline double u_minus(const double *xyz)
   {
-    return cos(tn + (implicit ? dt : 0.0))*MULTD(sin(xyz[0]), cos(xyz[1]), sin(xyz[2]));
+    return cos((tn + (implicit ? dt : 0.0))*2.0*M_PI/TT)*MULTD(sin(xyz[0]), cos(xyz[1]), sin(xyz[2]));
   }
   inline double dt_u_minus(const double *xyz)
   {
-    return -sin(tn + (implicit ? dt : 0.0))*MULTD(sin(xyz[0]), cos(xyz[1]), sin(xyz[2]));
+    return -(2.0*M_PI/TT)*sin((tn + (implicit ? dt : 0.0))*2.0*M_PI/TT)*MULTD(sin(xyz[0]), cos(xyz[1]), sin(xyz[2]));
   }
   inline double dx_u_minus(const double *xyz)
   {
-    return cos(tn + (implicit ? dt : 0.0))*MULTD(cos(xyz[0]), cos(xyz[1]), sin(xyz[2]));
+    return cos((tn + (implicit ? dt : 0.0))*2.0*M_PI/TT)*MULTD(cos(xyz[0]), cos(xyz[1]), sin(xyz[2]));
   }
   inline double dy_u_minus(const double *xyz)
   {
-    return cos(tn + (implicit ? dt : 0.0))*MULTD(sin(xyz[0]), -sin(xyz[1]), sin(xyz[2]));
+    return cos((tn + (implicit ? dt : 0.0))*2.0*M_PI/TT)*MULTD(sin(xyz[0]), -sin(xyz[1]), sin(xyz[2]));
   }
 #ifdef P4_TO_P8
   inline double dz_u_minus(const double *xyz)
   {
-    return cos(tn + (implicit ? dt : 0.0))*MULTD(sin(xyz[0]), cos(xyz[1]), cos(xyz[2]));
+    return cos((tn + (implicit ? dt : 0.0))*2.0*M_PI/TT)*MULTD(sin(xyz[0]), cos(xyz[1]), cos(xyz[2]));
   }
 #endif
   inline double laplace_u_minus(const double *xyz)
   {
-    return -cos(tn + (implicit ? dt : 0.0))*((double) P4EST_DIM)*MULTD(sin(xyz[0]), cos(xyz[1]), sin(xyz[2]));
+    return -cos((tn + (implicit ? dt : 0.0))*2.0*M_PI/TT)*((double) P4EST_DIM)*MULTD(sin(xyz[0]), cos(xyz[1]), sin(xyz[2]));
   }
   inline double v_minus(const double *xyz)
   {
-    return cos(tn + (implicit ? dt : 0.0))*(3.0*pow(xyz[0], 3.0) - 0.5*pow(xyz[0], 5.0))*log(1.0 + SQR(xyz[1]))ONLY3D(*atan(xyz[2]/2.5));
+    return cos((tn + (implicit ? dt : 0.0))*2.0*M_PI/TT)*(3.0*pow(xyz[0], 3.0) - 0.5*pow(xyz[0], 5.0))*log(1.0 + SQR(xyz[1]))ONLY3D(*atan(xyz[2]/2.5));
   }
   inline double dt_v_minus(const double *xyz)
   {
-    return -sin(tn + (implicit ? dt : 0.0))*(3.0*pow(xyz[0], 3.0) - 0.5*pow(xyz[0], 5.0))*log(1.0 + SQR(xyz[1]))ONLY3D(*atan(xyz[2]/2.5));
+    return -(2.0*M_PI/TT)*sin((tn + (implicit ? dt : 0.0))*2.0*M_PI/TT)*(3.0*pow(xyz[0], 3.0) - 0.5*pow(xyz[0], 5.0))*log(1.0 + SQR(xyz[1]))ONLY3D(*atan(xyz[2]/2.5));
   }
   inline double dx_v_minus(const double *xyz)
   {
-    return cos(tn + (implicit ? dt : 0.0))*(9.0*SQR(xyz[0]) - 2.5*pow(xyz[0], 4))*log(1.0 + SQR(xyz[1]))ONLY3D(*atan(xyz[2]/2.5));
+    return cos((tn + (implicit ? dt : 0.0))*2.0*M_PI/TT)*(9.0*SQR(xyz[0]) - 2.5*pow(xyz[0], 4))*log(1.0 + SQR(xyz[1]))ONLY3D(*atan(xyz[2]/2.5));
   }
   inline double dy_v_minus(const double *xyz)
   {
-    return cos(tn + (implicit ? dt : 0.0))*(3.0*pow(xyz[0], 3.0) - 0.5*pow(xyz[0], 5.0))*(2.0*xyz[1]/(1.0 + SQR(xyz[1])))ONLY3D(*atan(xyz[2]/2.5));
+    return cos((tn + (implicit ? dt : 0.0))*2.0*M_PI/TT)*(3.0*pow(xyz[0], 3.0) - 0.5*pow(xyz[0], 5.0))*(2.0*xyz[1]/(1.0 + SQR(xyz[1])))ONLY3D(*atan(xyz[2]/2.5));
   }
 #ifdef P4_TO_P8
   inline double dz_v_minus(const double *xyz)
   {
-    return cos(tn + (implicit ? dt : 0.0))*(3.0*pow(xyz[0], 3.0) - 0.5*pow(xyz[0], 5.0))*log(1.0 + SQR(xyz[1]))ONLY3D(*(1.0/2.5)/(1.0 + SQR(xyz[2]/2.5)));
+    return cos((tn + (implicit ? dt : 0.0))*2.0*M_PI/TT)*(3.0*pow(xyz[0], 3.0) - 0.5*pow(xyz[0], 5.0))*log(1.0 + SQR(xyz[1]))ONLY3D(*(1.0/2.5)/(1.0 + SQR(xyz[2]/2.5)));
   }
 #endif
   inline double laplace_v_minus(const double *xyz)
   {
-    return cos(tn + (implicit ? dt : 0.0))*((18.0*xyz[0] - 10*pow(xyz[0], 3.0))*log(1.0 + SQR(xyz[1]))ONLY3D(*atan(xyz[2]/2.5))
-                                            + (3.0*pow(xyz[0], 3.0) - 0.5*pow(xyz[0], 5.0))*(2.0*(1.0 - SQR(xyz[1]))/(SQR(1.0 + SQR(xyz[1]))))ONLY3D(*atan(xyz[2]/2.5))
-                                            ONLY3D(+ (3.0*pow(xyz[0], 3.0) - 0.5*pow(xyz[0], 5.0))*log(1.0 + SQR(xyz[1]))*(-2.0*xyz[2]/(SQR(2.5)))/(SQR(1.0 + SQR(xyz[2]/2.5))))
-                                      );
+    return cos((tn + (implicit ? dt : 0.0))*2.0*M_PI/TT)*((18.0*xyz[0] - 10*pow(xyz[0], 3.0))*log(1.0 + SQR(xyz[1]))ONLY3D(*atan(xyz[2]/2.5))
+        + (3.0*pow(xyz[0], 3.0) - 0.5*pow(xyz[0], 5.0))*(2.0*(1.0 - SQR(xyz[1]))/(SQR(1.0 + SQR(xyz[1]))))ONLY3D(*atan(xyz[2]/2.5))
+        ONLY3D(+ (3.0*pow(xyz[0], 3.0) - 0.5*pow(xyz[0], 5.0))*log(1.0 + SQR(xyz[1]))*(-2.0*xyz[2]/(SQR(2.5)))/(SQR(1.0 + SQR(xyz[2]/2.5))))
+        );
   }
+
+#ifdef P4_TO_P8
+  inline double w_minus(const double *xyz)
+  {
+    return (0.3 + 1.7*exp(-SQR(cos(1.4*2.0*M_PI*(tn + (implicit ? dt : 0.0))/TT))))*sin(0.5*(xyz[0] - xyz[2]))*(xyz[0]*sin(xyz[1]) - cos(xyz[0] + xyz[1])*atan(xyz[2]));
+  }
+  inline double dt_w_minus(const double *xyz)
+  {
+    return (1.7*exp(-SQR(cos(1.4*2.0*M_PI*(tn + (implicit ? dt : 0.0))/TT)))*sin(2.0*1.4*2.0*M_PI*(tn + (implicit ? dt : 0.0))/TT)*1.4*2.0*M_PI/TT)*sin(0.5*(xyz[0] - xyz[2]))*(xyz[0]*sin(xyz[1]) - cos(xyz[0] + xyz[1])*atan(xyz[2]));
+  }
+  inline double dx_w_minus(const double *xyz)
+  {
+    return (0.3 + 1.7*exp(-SQR(cos(1.4*2.0*M_PI*(tn + (implicit ? dt : 0.0))/TT))))*(0.5*cos(0.5*(xyz[0] - xyz[2]))*(xyz[0]*sin(xyz[1]) - cos(xyz[0] + xyz[1])*atan(xyz[2])) + sin(0.5*(xyz[0] - xyz[2]))*(sin(xyz[1]) + sin(xyz[0] + xyz[1])*atan(xyz[2])));
+  }
+  inline double dy_w_minus(const double *xyz)
+  {
+    return (0.3 + 1.7*exp(-SQR(cos(1.4*2.0*M_PI*(tn + (implicit ? dt : 0.0))/TT))))*sin(0.5*(xyz[0] - xyz[2]))*(xyz[0]*cos(xyz[1]) + sin(xyz[0] + xyz[1])*atan(xyz[2]));
+  }
+  inline double dz_w_minus(const double *xyz)
+  {
+    return (0.3 + 1.7*exp(-SQR(cos(1.4*2.0*M_PI*(tn + (implicit ? dt : 0.0))/TT))))*(-0.5*cos(0.5*(xyz[0] - xyz[2]))*(xyz[0]*sin(xyz[1]) - cos(xyz[0] + xyz[1])*atan(xyz[2])) + sin(0.5*(xyz[0] - xyz[2]))*(-cos(xyz[0] + xyz[1])*(1.0/(1.0 + SQR(xyz[2])))));
+  }
+  inline double laplace_w_minus(const double *xyz)
+  {
+    return (0.3 + 1.7*exp(-SQR(cos(1.4*2.0*M_PI*(tn + (implicit ? dt : 0.0))/TT))))*(
+          (-0.25*sin(0.5*(xyz[0] - xyz[2]))*(xyz[0]*sin(xyz[1]) - cos(xyz[0] + xyz[1])*atan(xyz[2])) + cos(0.5*(xyz[0] - xyz[2]))*(sin(xyz[1]) + sin(xyz[0] + xyz[1])*atan(xyz[2])) + sin(0.5*(xyz[0] - xyz[2]))*cos(xyz[0] + xyz[1])*atan(xyz[2])) // dxx
+        + (sin(0.5*(xyz[0] - xyz[2]))*(-xyz[0]*sin(xyz[1]) + cos(xyz[0] + xyz[1])*atan(xyz[2]))) // dyy
+        + (-0.25*sin(0.5*(xyz[0] - xyz[2]))*(xyz[0]*sin(xyz[1]) - cos(xyz[0] + xyz[1])*atan(xyz[2])) + cos(0.5*(xyz[0] - xyz[2]))*cos(xyz[0] + xyz[1])*(1.0/(1.0 + SQR(xyz[2]))) + sin(0.5*(xyz[0] - xyz[2]))*cos(xyz[0] + xyz[1])*(2.0*xyz[2]/SQR(1.0 + SQR(xyz[2]))))); // dzz
+  }
+#endif
+
 
   inline double u_plus(const double *xyz)
   {
@@ -177,32 +209,62 @@ public:
 
   inline double v_plus(const double *xyz)
   {
-    return (1.0 + 0.3*cos(1.5*(tn + (implicit ? dt : 0.0))))*(sin(3.0*xyz[0] - 2.0*xyz[1]) + log(1.0 + SQR(0.5*xyz[1] - 1.2*xyz[0])) ONLY3D( + cos(1.7*xyz[2] - 0.3*xyz[0])));
+    return (1.0 + 0.3*cos(1.5*((tn + (implicit ? dt : 0.0))*2.0*M_PI/TT)))*(sin(3.0*xyz[0] - 2.0*xyz[1]) + log(1.0 + SQR(0.5*xyz[1] - 1.2*xyz[0])) ONLY3D( + cos(1.7*xyz[2] - 0.3*xyz[0])));
   }
   inline double dt_v_plus(const double *xyz)
   {
-    return (-0.3*1.5*sin(1.5*(tn + (implicit ? dt : 0.0))))*(sin(3.0*xyz[0] - 2.0*xyz[1]) + log(1.0 + SQR(0.5*xyz[1] - 1.2*xyz[0])) ONLY3D( + cos(1.7*xyz[2] - 0.3*xyz[0])));
+    return (-0.3*1.5*sin(1.5*((tn + (implicit ? dt : 0.0))*2.0*M_PI/TT)))*(sin(3.0*xyz[0] - 2.0*xyz[1]) + log(1.0 + SQR(0.5*xyz[1] - 1.2*xyz[0])) ONLY3D( + cos(1.7*xyz[2] - 0.3*xyz[0])));
   }
   inline double dx_v_plus(const double *xyz)
   {
-    return (1.0 + 0.3*cos(1.5*(tn + (implicit ? dt : 0.0))))*(3.0*cos(3.0*xyz[0] - 2.0*xyz[1]) + (-2.0*1.2*(0.5*xyz[1] - 1.2*xyz[0]))/(1.0 + SQR(0.5*xyz[1] - 1.2*xyz[0])) ONLY3D( + 0.3*sin(1.7*xyz[2] - 0.3*xyz[0])));
+    return (1.0 + 0.3*cos(1.5*((tn + (implicit ? dt : 0.0))*2.0*M_PI/TT)))*(3.0*cos(3.0*xyz[0] - 2.0*xyz[1]) + (-2.0*1.2*(0.5*xyz[1] - 1.2*xyz[0]))/(1.0 + SQR(0.5*xyz[1] - 1.2*xyz[0])) ONLY3D( + 0.3*sin(1.7*xyz[2] - 0.3*xyz[0])));
   }
   inline double dy_v_plus(const double *xyz)
   {
-    return (1.0 + 0.3*cos(1.5*(tn + (implicit ? dt : 0.0))))*(-2.0*cos(3.0*xyz[0] - 2.0*xyz[1]) + 2.0*0.5*(0.5*xyz[1] - 1.2*xyz[0])/(1.0 + SQR(0.5*xyz[1] - 1.2*xyz[0])));
+    return (1.0 + 0.3*cos(1.5*((tn + (implicit ? dt : 0.0))*2.0*M_PI/TT)))*(-2.0*cos(3.0*xyz[0] - 2.0*xyz[1]) + 2.0*0.5*(0.5*xyz[1] - 1.2*xyz[0])/(1.0 + SQR(0.5*xyz[1] - 1.2*xyz[0])));
   }
 #ifdef P4_TO_P8
   inline double dz_v_plus(const double *xyz)
   {
-    return (1.0 + 0.3*cos(1.5*(tn + (implicit ? dt : 0.0))))*(- 1.7*sin(1.7*xyz[2] - 0.3*xyz[0]));
+    return (1.0 + 0.3*cos(1.5*((tn + (implicit ? dt : 0.0))*2.0*M_PI/TT)))*(- 1.7*sin(1.7*xyz[2] - 0.3*xyz[0]));
   }
 #endif
   inline double laplace_v_plus(const double *xyz)
   {
-    return (1.0 + 0.3*cos(1.5*(tn + (implicit ? dt : 0.0))))*((-SQR(3.0) - SQR(-2.0))*sin(3.0*xyz[0] - 2.0*xyz[1]) +
-                                                              (2.0*(SQR(-1.2) + SQR(0.5))*(1.0 - SQR(0.5*xyz[1] - 1.2*xyz[0])))/(SQR(1.0 + SQR(0.5*xyz[1] - 1.2*xyz[0])))
-                                                              ONLY3D(+ (-SQR(1.7) - SQR(0.3))*cos(1.7*xyz[2] - 0.3*xyz[0])));
+    return (1.0 + 0.3*cos(1.5*((tn + (implicit ? dt : 0.0))*2.0*M_PI/TT)))*((-SQR(3.0) - SQR(-2.0))*sin(3.0*xyz[0] - 2.0*xyz[1]) +
+        (2.0*(SQR(-1.2) + SQR(0.5))*(1.0 - SQR(0.5*xyz[1] - 1.2*xyz[0])))/(SQR(1.0 + SQR(0.5*xyz[1] - 1.2*xyz[0])))
+        ONLY3D(+ (-SQR(1.7) - SQR(0.3))*cos(1.7*xyz[2] - 0.3*xyz[0])));
   }
+
+#ifdef P4_TO_P8
+  inline double w_plus(const double *xyz)
+  {
+    return (1.0 + 0.7*cos(1.5*(((tn + (implicit ? dt : 0.0))*2.0*M_PI/TT)*2.0*M_PI/TT)))*(0.1*xyz[0]*xyz[0]*xyz[0]*xyz[1] + 2.0*xyz[2]*cos(xyz[1]) - xyz[1]*sin(xyz[0] + xyz[2]));
+  }
+  inline double dt_w_plus(const double *xyz)
+  {
+    return (-0.7*1.5*sin(1.5*(((tn + (implicit ? dt : 0.0))*2.0*M_PI/TT)*2.0*M_PI/TT)))*(0.1*xyz[0]*xyz[0]*xyz[0]*xyz[1] + 2.0*xyz[2]*cos(xyz[1]) - xyz[1]*sin(xyz[0] + xyz[2]));
+  }
+  inline double dx_w_plus(const double *xyz)
+  {
+    return (1.0 + 0.7*cos(1.5*(((tn + (implicit ? dt : 0.0))*2.0*M_PI/TT)*2.0*M_PI/TT)))*(0.3*xyz[0]*xyz[0]*xyz[1] - xyz[1]*cos(xyz[0] + xyz[2]));
+  }
+  inline double dy_w_plus(const double *xyz)
+  {
+    return (1.0 + 0.7*cos(1.5*(((tn + (implicit ? dt : 0.0))*2.0*M_PI/TT)*2.0*M_PI/TT)))*(0.1*xyz[0]*xyz[0]*xyz[0] - 2.0*xyz[2]*sin(xyz[1]) - sin(xyz[0] + xyz[2]));
+  }
+  inline double dz_w_plus(const double *xyz)
+  {
+    return (1.0 + 0.7*cos(1.5*(((tn + (implicit ? dt : 0.0))*2.0*M_PI/TT)*2.0*M_PI/TT)))*(2.0*cos(xyz[1]) - xyz[1]*cos(xyz[0] + xyz[2]));
+  }
+  inline double laplace_w_plus(const double *xyz)
+  {
+    return (1.0 + 0.7*cos(1.5*(((tn + (implicit ? dt : 0.0))*2.0*M_PI/TT)*2.0*M_PI/TT)))*(
+          (0.6*xyz[0]*xyz[1] + xyz[1]*sin(xyz[0] + xyz[2])) // dxx
+        + (-2.0*xyz[2]*cos(xyz[1])) // dyy
+        + (xyz[1]*sin(xyz[0] + xyz[2])));
+  }
+#endif
 
   inline double source_term(const unsigned char &dir, const double *xyz)
   {
@@ -362,9 +424,9 @@ struct BCWALLVALUE_W : CF_3 {
   {
     return (level_set(xyz) <= 0.0 ? exact_solution.w_minus(xyz) : exact_solution.w_plus(xyz));
   }
-  double operator()(double x, double y, double z)) const
+  double operator()(double x, double y, double z) const
   {
-    const double xyz[P4EST_DIM] = {DIM(x, y, z)};
+    const double xyz[P4EST_DIM] = {x, y, z};
     return operator()(xyz);
   }
 } bc_wall_value_w;
@@ -485,21 +547,22 @@ int main (int argc, char* argv[])
 #ifdef P4_TO_P8
   cmd.add_option("nz", "number of trees in the z-direction. The default value is " + to_string(nx_) + " (width of domain is 2.5)");
 #endif
-  cmd.add_option("uniform_band_", "number of grid cells of uniform grid layering the interface on either side (default is such that the absolue value of phi is less than"  + to_string(uniform_band_factor*r0) + ")");
+  cmd.add_option("uniform_band_", "number of grid cells of uniform grid layering the interface on either side (default is such that the absolue value of phi is less than "  + to_string(uniform_band_factor*r0) + ")");
   // method/inner procedure control
   cmd.add_option("implicit",        "activates the implicit version if present (default is " + string(implicit_ ? "implicit)" : "explicit)"));
   cmd.add_option("explicit",        "deactivates the implicit version if present (default is " + string(implicit_ ? "implicit)" : "explicit)"));
-  cmd.add_option("voro_on_the_fly", "activates the calculation of Voronoi cells on the fly (default is" + string(voro_fly_ ? "done on the fly)" : "stored in memory"));
+  cmd.add_option("voro_on_the_fly", "activates the calculation of Voronoi cells on the fly (default is " + string(voro_fly_ ? "done on the fly)" : "stored in memory"));
   // physical parameters for the simulations
-  cmd.add_option("mu_minus",  "viscosity coefficient in the negative domain (default is " + to_string(mu_minus_));
-  cmd.add_option("mu_plus",   "viscosity coefficient in the positive domain (default is " + to_string(mu_plus_));
-  cmd.add_option("duration",  "the duration of the simulation (tfinal - tstart). If not restarted, tstart = 0.0, default duration is " + to_string(duration_) +".");
+  cmd.add_option("mu_minus",  "viscosity coefficient in the negative domain (default is " + to_string(mu_minus_) + string(")"));
+  cmd.add_option("mu_plus",   "viscosity coefficient in the positive domain (default is " + to_string(mu_plus_) + string(")"));
+  cmd.add_option("duration",  "the duration of the simulation tfinal, tstart = 0.0, default duration is " + to_string(duration_) +".");
   // exportation control
   cmd.add_option("save_vtk",      "saves vtk visualization files if present (default is " + string(save_vtk_ ? "" : "not ") + "saved)");
   cmd.add_option("no_save_vtk",   "does not save vtk visualization files if present (default is " + string(save_vtk_ ? "" : "not ") + "saved)");
   cmd.add_option("vtk_dt",        "time step between two vtk exportation, default duration is " + to_string(vtk_dt_));
   cmd.add_option("track_errors",  "prints the errors (sampled at faces) at every time step if present, only the final error is shown if not present)");
-  cmd.add_option("nsplits",       "number of grid refinement(s) to consider (default is " + to_string(nsplits_) + ")");
+  cmd.add_option("ngrids",        "number of successively finer grids to consider (default is " + to_string(ngrids_) + ")");
+  cmd.add_option("print",         "prints results and final convergence results in a file in the root exportation directory if present (default is "  + string(print_ ? "with" : "without") + " exportation)");
 
   string extra_info = "More details to come when I really have nothing better to do. If you really need it: reach out! (Raphael)";
   if(cmd.parse(argc, argv, extra_info))
@@ -519,8 +582,10 @@ int main (int argc, char* argv[])
   if(getenv("OUTDIR") != NULL)
     root_export_dir = getenv("OUTDIR");
   else
-#ifdef POD_CLUSTER
-    root_export_dir = "XXXXX";
+#if defined(POD_CLUSTER)
+    root_export_dir = "/scratch/regan/two_phase_flows/check_viscosity";
+#elif defined(STAMPEDE)
+    root_export_dir = "/scratch/04965/tg842642/two_phase_flows/check_viscosity";
 #else
     root_export_dir = "/home/regan/workspace/projects/two_phase_flow/check_viscosity";
 #endif
@@ -570,8 +635,34 @@ int main (int argc, char* argv[])
   const double mu_plus  = cmd.get<double>("mu_plus", mu_plus_);
   exact_solution.set_viscosities(mu_minus, mu_plus);
 
-  for (int k = 0; k < cmd.get<int>("nsplits", nsplits_); ++k) {
-    if(k > 0)
+  const int ngrids = cmd.get<int>("ngrids", ngrids_);
+
+  std::vector<double> convergence_error_minus[P4EST_DIM];
+  std::vector<double> convergence_error_plus[P4EST_DIM];
+  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
+    convergence_error_minus[dir].resize(ngrids, 0.0);
+    convergence_error_plus[dir].resize(ngrids, 0.0);
+  }
+
+  FILE *fp = NULL;
+  const bool print_in_file = print_ || cmd.contains("print");
+  if (!print_in_file)
+    fp = stdout;
+  else
+  {
+    if(create_directory(root_export_dir.c_str(), mpi.rank(), mpi.comm()))
+    {
+      char error_msg[1024];
+      sprintf(error_msg, "main_two_phase_flow_%dd: could not create the main exportation directory %s", P4EST_DIM, root_export_dir.c_str());
+      throw std::runtime_error(error_msg);
+    }
+    string level_set  = "circle";
+    string method     = (implicit ? "implicit" : "explicit");
+    string filename = root_export_dir + string("/") + level_set + string("_") + method + string("_macromesh_") + to_string(n_tree_xyz[0]) + string("_") + to_string(n_tree_xyz[1]) ONLY3D(+ string("_") + to_string(n_tree_xyz[2])) + string("_lmin_") + to_string(lmin) + string("_lmax_") + to_string(lmax) + string("_ngrids_") + to_string(ngrids) + string("_mu_m_") + to_string(mu_minus) + string("_mu_p_") + to_string(mu_plus) + string(".dat") ;
+    ierr = PetscFOpen(mpi.comm(), filename.c_str(), "w", &fp);
+  }
+  for (int k_grid = 0; k_grid < ngrids; ++k_grid) {
+    if(k_grid > 0)
     {
       lmin++;
       lmax++;
@@ -611,7 +702,6 @@ int main (int argc, char* argv[])
     p4est_ghost_t *ghost_comp = my_p4est_ghost_new(p4est_comp, P4EST_CONNECT_FULL);
     my_p4est_ghost_expand(p4est_comp, ghost_comp);
 
-
     p4est_nodes_t *nodes_comp = my_p4est_nodes_new(p4est_comp, ghost_comp);
     my_p4est_hierarchy_t *hierarchy_comp = new my_p4est_hierarchy_t(p4est_comp, ghost_comp, brick);
     my_p4est_node_neighbors_t *ngbd_comp = new my_p4est_node_neighbors_t(hierarchy_comp, nodes_comp); ngbd_comp->init_neighbors();
@@ -620,6 +710,7 @@ int main (int argc, char* argv[])
     my_p4est_cell_neighbors_t *ngbd_c = new my_p4est_cell_neighbors_t(hierarchy_comp);
     my_p4est_faces_t *faces_comp = new my_p4est_faces_t(p4est_comp, ghost_comp, brick, ngbd_c, true);
     P4EST_ASSERT(faces_comp->finest_face_neighborhoods_are_valid());
+
 
     /* build the interface-capturing grid, its expanded ghost, its nodes, its hierarchy, its node neighborhoods
      * the REINITIALIZED levelset on the interface-capturing grid
@@ -795,8 +886,10 @@ int main (int argc, char* argv[])
       if(!implicit)
       {
         two_phase_flow_solver->test_viscosity_explicit();
+//        std::cout << "done with this, proc " << p4est_comp->mpirank << std::endl;
         tn += dt;
-//        two_phase_flow_solver->enforce_bc_v();
+        // the bc objects were (and needed to be) set to tn, so the wall faces are not updated as they should. We fix that with
+        two_phase_flow_solver->enforce_dirichlet_bc_on_test_vnp1_faces();
       }
       else
         two_phase_flow_solver->test_viscosity();
@@ -812,19 +905,19 @@ int main (int argc, char* argv[])
 
       two_phase_flow_solver->slide_face_fields();
 
-      if(track_errors || (tn + 0.01*dt >= duration))
+      if(track_errors && (tn + 0.01*dt < duration))
       {
-        ierr = PetscPrintf(mpi.comm(), "Iteration #%04d : tn = %.5e, percent done : %.1f%%, \t number of leaves = %d\n",
-                           iter, tn, 100*tn/duration, two_phase_flow_solver->get_p4est()->global_num_quadrants); CHKERRXX(ierr);
+        ierr = PetscFPrintf(mpi.comm(), fp, "Iteration #%04d : tn = %.5e, percent done : %.1f%%, \t number of leaves = %d\n",
+                            iter, tn, 100*tn/duration, two_phase_flow_solver->get_p4est()->global_num_quadrants); CHKERRXX(ierr);
 #ifdef P4_TO_P8
-        ierr = PetscPrintf(mpi.comm(), "\t error u_minus = %.5e \t error v_minus = %.5e \t error w_minus = %.5e \t(MAX so far)\n",
+        ierr = PetscFPrintf(mpi.comm(), fp, "\t error u_minus = %.5e \t error v_minus = %.5e \t error w_minus = %.5e \t \n",
                            error_vnp1_minus[0], error_vnp1_minus[1], error_vnp1_minus[2]); CHKERRXX(ierr);
-        ierr = PetscPrintf(mpi.comm(), "\t error u_plus  = %.5e \t error v_plus  = %.5e \t error w_plus  = %.5e \t(MAX so far)\n",
+        ierr = PetscFPrintf(mpi.comm(), fp, "\t error u_plus  = %.5e \t error v_plus  = %.5e \t error w_plus  = %.5e \t \n",
                            error_vnp1_plus[0], error_vnp1_plus[1], error_vnp1_plus[2]); CHKERRXX(ierr);
 #else
-        ierr = PetscPrintf(mpi.comm(), "\t error u_minus = %.5e \t error v_minus = %.5e \t(MAX so far)\n",
+        ierr = PetscFPrintf(mpi.comm(), fp, "\t error u_minus = %.5e \t error v_minus = %.5e \t \n",
                            error_vnp1_minus[0], error_vnp1_minus[1]); CHKERRXX(ierr);
-        ierr = PetscPrintf(mpi.comm(), "\t error u_plus  = %.5e \t error v_plus  = %.5e \t(MAX so far)\n",
+        ierr = PetscFPrintf(mpi.comm(), fp, "\t error u_plus  = %.5e \t error v_plus  = %.5e \t \n",
                            error_vnp1_plus[0], error_vnp1_plus[1]); CHKERRXX(ierr);
 #endif
       }
@@ -839,6 +932,24 @@ int main (int argc, char* argv[])
             p4est_locidx_t node_idx = ngbd_comp->get_layer_node(k);
             error_at_node_minus_p[dir][node_idx] = interpolate_f_at_node_n(p4est_comp, ghost_comp, nodes_comp, faces_comp, ngbd_c, ngbd_comp, node_idx, error_at_faces_minus[dir], dir);
             error_at_node_plus_p[dir][node_idx] = interpolate_f_at_node_n(p4est_comp, ghost_comp, nodes_comp, faces_comp, ngbd_c, ngbd_comp, node_idx, error_at_faces_plus[dir], dir);
+            double xyz_node[P4EST_DIM]; node_xyz_fr_n(node_idx, p4est_comp, nodes_comp, xyz_node);
+            if(dir == 0)
+            {
+              exact_solution_minus_p[P4EST_DIM*node_idx + dir] = exact_solution.u_minus(xyz_node);
+              exact_solution_plus_p[P4EST_DIM*node_idx + dir] = exact_solution.u_plus(xyz_node);
+            }
+            else if(dir == 1)
+            {
+              exact_solution_minus_p[P4EST_DIM*node_idx + dir] = exact_solution.v_minus(xyz_node);
+              exact_solution_plus_p[P4EST_DIM*node_idx + dir] = exact_solution.v_plus(xyz_node);
+            }
+#ifdef P4_TO_P8
+            else
+            {
+              exact_solution_minus_p[P4EST_DIM*node_idx + dir] = exact_solution.w_minus(xyz_node);
+              exact_solution_plus_p[P4EST_DIM*node_idx + dir] = exact_solution.w_plus(xyz_node);
+            }
+#endif
           }
           ierr = VecGhostUpdateBegin(error_at_node_minus[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
           ierr = VecGhostUpdateBegin(error_at_node_plus[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -846,10 +957,32 @@ int main (int argc, char* argv[])
             p4est_locidx_t node_idx = ngbd_comp->get_local_node(k);
             error_at_node_minus_p[dir][node_idx] = interpolate_f_at_node_n(p4est_comp, ghost_comp, nodes_comp, faces_comp, ngbd_c, ngbd_comp, node_idx, error_at_faces_minus[dir], dir);
             error_at_node_plus_p[dir][node_idx] = interpolate_f_at_node_n(p4est_comp, ghost_comp, nodes_comp, faces_comp, ngbd_c, ngbd_comp, node_idx, error_at_faces_plus[dir], dir);
+            double xyz_node[P4EST_DIM]; node_xyz_fr_n(node_idx, p4est_comp, nodes_comp, xyz_node);
+            if(dir == 0)
+            {
+              exact_solution_minus_p[P4EST_DIM*node_idx + dir] = exact_solution.u_minus(xyz_node);
+              exact_solution_plus_p[P4EST_DIM*node_idx + dir] = exact_solution.u_plus(xyz_node);
+            }
+            else if(dir == 1)
+            {
+              exact_solution_minus_p[P4EST_DIM*node_idx + dir] = exact_solution.v_minus(xyz_node);
+              exact_solution_plus_p[P4EST_DIM*node_idx + dir] = exact_solution.v_plus(xyz_node);
+            }
+#ifdef P4_TO_P8
+            else
+            {
+              exact_solution_minus_p[P4EST_DIM*node_idx + dir] = exact_solution.w_minus(xyz_node);
+              exact_solution_plus_p[P4EST_DIM*node_idx + dir] = exact_solution.w_plus(xyz_node);
+            }
+#endif
           }
           ierr = VecGhostUpdateEnd(error_at_node_minus[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
           ierr = VecGhostUpdateEnd(error_at_node_plus[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
         }
+        ierr = VecGhostUpdateBegin(exact_solution_minus, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+        ierr = VecGhostUpdateBegin(exact_solution_plus, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+        ierr = VecGhostUpdateEnd(exact_solution_minus, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+        ierr = VecGhostUpdateEnd(exact_solution_plus, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
         my_p4est_vtk_write_all_general(p4est_comp, nodes_comp, ghost_comp,
                                        P4EST_TRUE, P4EST_TRUE,
@@ -865,9 +998,34 @@ int main (int argc, char* argv[])
                                1, 0, (export_dir + "/fine_illustration_" + to_string(iter_vtk)).c_str(),
                                VTK_NODE_SCALAR, "phi", fine_phi_p);
       }
-
       iter++;
     }
+
+
+    ierr = PetscFPrintf(mpi.comm(), fp, "--------------------------------------------------------------------------------------------------------------\n");  CHKERRXX(ierr);
+    ierr = PetscFPrintf(mpi.comm(), fp, "Final errors in infinity norm for the simulation with lmin/lmax = %d/%d \t (number of leaves = %d)\n",
+                        lmin, lmax, two_phase_flow_solver->get_p4est()->global_num_quadrants);                                                                CHKERRXX(ierr);
+    ierr = PetscFPrintf(mpi.comm(), fp, "(error analysis in each subdomain in infinity norm;\n");                                                             CHKERRXX(ierr);
+    ierr = PetscFPrintf(mpi.comm(), fp, " maximum error over the full run of the simulation, i.e. max in time as well)\n");                                   CHKERRXX(ierr);
+    ierr = PetscFPrintf(mpi.comm(), fp, "--------------------------------------------------------------------------------------------------------------\n");  CHKERRXX(ierr);
+#ifdef P4_TO_P8
+    ierr = PetscFPrintf(mpi.comm(), fp, "\t error u_minus = %.5e \t error v_minus = %.5e \t error w_minus = %.5e \t(MAX over time)\n",
+                       max_error_vnp1_minus[0], max_error_vnp1_minus[1], max_error_vnp1_minus[2]); CHKERRXX(ierr);
+    ierr = PetscFPrintf(mpi.comm(), fp, "\t error u_plus  = %.5e \t error v_plus  = %.5e \t error w_plus  = %.5e \t(MAX over time)\n",
+                       max_error_vnp1_plus[0], max_error_vnp1_plus[1], max_error_vnp1_plus[2]); CHKERRXX(ierr);
+#else
+    ierr = PetscFPrintf(mpi.comm(), fp, "\t error u_minus = %.5e \t error v_minus = %.5e \t (MAX overall)\n",
+                       max_error_vnp1_minus[0], max_error_vnp1_minus[1]); CHKERRXX(ierr);
+    ierr = PetscFPrintf(mpi.comm(), fp, "\t error u_plus  = %.5e \t error v_plus  = %.5e \t (MAX overall)\n",
+                       max_error_vnp1_plus[0], max_error_vnp1_plus[1]); CHKERRXX(ierr);
+#endif
+
+
+    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
+      convergence_error_minus[dir][k_grid] = max_error_vnp1_minus[dir];
+      convergence_error_plus[dir][k_grid]  = max_error_vnp1_plus[dir];
+    }
+
 
     if(save_vtk)
     {
@@ -901,6 +1059,54 @@ int main (int argc, char* argv[])
     delete data;
     delete data_fine;
   }
+
+  ierr = PetscFPrintf(mpi.comm(), fp, "--------------------------------------------------------------------------------------------------------------\n");  CHKERRXX(ierr);
+  ierr = PetscFPrintf(mpi.comm(), fp, "--------------------------------------------------------------------------------------------------------------\n");  CHKERRXX(ierr);
+  ierr = PetscFPrintf(mpi.comm(), fp, "                                          CONVERGENCE SUMMARY                                                 \n");  CHKERRXX(ierr);
+  ierr = PetscFPrintf(mpi.comm(), fp, "                       (errors in each subdomain in infinity norm, max over time)                             \n");  CHKERRXX(ierr);
+  ierr = PetscFPrintf(mpi.comm(), fp, "--------------------------------------------------------------------------------------------------------------\n");  CHKERRXX(ierr);
+  ierr = PetscFPrintf(mpi.comm(), fp, "--------------------------------------------------------------------------------------------------------------\n");  CHKERRXX(ierr);
+  lmin = cmd.get<int>("lmin", lmin_);
+  lmax = cmd.get<int>("lmax", lmax_);
+  ierr = PetscFPrintf(mpi.comm(), fp, "Grid levels (lmin/lmax): ");  CHKERRXX(ierr);
+  for (int k_grid = 0; k_grid < ngrids; ++k_grid){
+    ierr = PetscFPrintf(mpi.comm(), fp, "      %d/%d  ", lmin+k_grid, lmax+k_grid);  CHKERRXX(ierr);
+  }
+  ierr = PetscFPrintf(mpi.comm(), fp, "\n");  CHKERRXX(ierr);
+  ierr = PetscFPrintf(mpi.comm(), fp, "Max error in u_minus:  	 ");  CHKERRXX(ierr);
+  for (int k_grid = 0; k_grid < ngrids; ++k_grid){
+    ierr = PetscFPrintf(mpi.comm(), fp, "%.3e  ", convergence_error_minus[0][k_grid]);  CHKERRXX(ierr);
+  }
+  ierr = PetscFPrintf(mpi.comm(), fp, "\n");  CHKERRXX(ierr);
+  ierr = PetscFPrintf(mpi.comm(), fp, "Max error in v_minus:  	 ");  CHKERRXX(ierr);
+  for (int k_grid = 0; k_grid < ngrids; ++k_grid){
+    ierr = PetscFPrintf(mpi.comm(), fp, "%.3e  ", convergence_error_minus[1][k_grid]);  CHKERRXX(ierr);
+  }
+  ierr = PetscFPrintf(mpi.comm(), fp, "\n");  CHKERRXX(ierr);
+#ifdef P4_TO_P8
+  ierr = PetscFPrintf(mpi.comm(), fp, "Max error in w_minus:  	 ");  CHKERRXX(ierr);
+  for (int k_grid = 0; k_grid < ngrids; ++k_grid){
+    ierr = PetscFPrintf(mpi.comm(), fp, "%.3e  ", convergence_error_minus[2][k_grid]);  CHKERRXX(ierr);
+  }
+  ierr = PetscFPrintf(mpi.comm(), fp, "\n");  CHKERRXX(ierr);
+#endif
+  ierr = PetscFPrintf(mpi.comm(), fp, "Max error in u_plus :  	 ");  CHKERRXX(ierr);
+  for (int k_grid = 0; k_grid < ngrids; ++k_grid){
+    ierr = PetscFPrintf(mpi.comm(), fp, "%.3e  ", convergence_error_plus[0][k_grid]);  CHKERRXX(ierr);
+  }
+  ierr = PetscFPrintf(mpi.comm(), fp, "\n");  CHKERRXX(ierr);
+  ierr = PetscFPrintf(mpi.comm(), fp, "Max error in v_plus :  	 ");  CHKERRXX(ierr);
+  for (int k_grid = 0; k_grid < ngrids; ++k_grid){
+    ierr = PetscFPrintf(mpi.comm(), fp, "%.3e  ", convergence_error_plus[1][k_grid]);  CHKERRXX(ierr);
+  }
+  ierr = PetscFPrintf(mpi.comm(), fp, "\n");  CHKERRXX(ierr);
+#ifdef P4_TO_P8
+  ierr = PetscFPrintf(mpi.comm(), fp, "Max error in w_plus :  	 ");  CHKERRXX(ierr);
+  for (int k_grid = 0; k_grid < ngrids; ++k_grid){
+    ierr = PetscFPrintf(mpi.comm(), fp, "%.3e  ", convergence_error_plus[2][k_grid]);  CHKERRXX(ierr);
+  }
+  ierr = PetscFPrintf(mpi.comm(), fp, "\n");  CHKERRXX(ierr);
+#endif
 
   return 0;
 }

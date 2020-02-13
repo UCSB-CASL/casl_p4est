@@ -18,11 +18,12 @@
 #else
 extern PetscLogEvent log_my_p4est_two_phase_flows_viscosity;
 extern PetscLogEvent log_my_p4est_two_phase_flows_viscosity_explicit;
+extern PetscLogEvent log_my_p4est_two_phase_flows_enforce_dirichlet_bc_on_test_vnp1_faces;
 extern PetscLogEvent log_my_p4est_two_phase_flows_test_viscosity;
 extern PetscLogEvent log_my_p4est_two_phase_flows_test_viscosity_explicit;
 extern PetscLogEvent log_my_p4est_two_phase_flows_jump_face_solver_solve;
 extern PetscLogEvent log_my_p4est_two_phase_flows_jump_face_solver_preallocate_viscous_matrix;
-extern PetscLogEvent log_my_p4est_two_phase_flows_setup_linear_system_viscosity;
+extern PetscLogEvent log_my_p4est_two_phase_flows_jump_face_solver_setup_linear_system;
 extern PetscLogEvent log_my_p4est_two_phase_flows_projection;
 extern PetscLogEvent log_my_p4est_two_phase_compute_voronoi_cell;
 extern PetscLogEvent log_my_p4est_two_phase_trajectory_of_all_faces;
@@ -1111,10 +1112,25 @@ void my_p4est_two_phase_flows_t::test_viscosity_explicit()
     ierr = VecGetArray(test_vn_faces[dir],   &vn_p);                                  CHKERRXX(ierr);
     ierr = VecGetArray(test_vnm1_faces[dir], &vnm1_p);                                CHKERRXX(ierr);
     bool face_is_in_negative_domain;
-    for(p4est_locidx_t f_idx = 0; f_idx < faces_n->num_local[dir]; ++f_idx)
+    for(size_t k = 0; k < faces_n->get_layer_size(dir); ++k)
     {
-      double xyz[P4EST_DIM];
-      faces_n->xyz_fr_f(f_idx, dir, xyz);
+      p4est_locidx_t f_idx = faces_n->get_layer_face(dir, k);
+      double xyz[P4EST_DIM]; faces_n->xyz_fr_f(f_idx, dir, xyz);
+      if(!face_is_dirichlet_wall(f_idx, dir, xyz))
+      {
+        double mu_laplace_v_dir = div_mu_grad_u_dir(face_is_in_negative_domain, f_idx, dir, vn_p, NULL, fine_jump_mu_grad_v_p, fine_phi_p, fine_phi_xxyyzz_p, NULL, fine_jump_u_p);
+        vnp1_p[f_idx] =  (dt_n/(alpha*(face_is_in_negative_domain ? rho_m : rho_p)))*mu_laplace_v_dir + (beta*dt_n/(alpha*dt_nm1))*vnm1_p[f_idx] + (1.0 - beta*dt_n/(alpha*dt_nm1))*vn_p[f_idx];
+        if(external_forces[dir] != NULL)
+          vnp1_p[f_idx] += (dt_n/(alpha*(face_is_in_negative_domain ? rho_m : rho_p)))*(*external_forces[dir])(DIM(xyz[0], xyz[1], xyz[2]));
+      }
+      else
+        vnp1_p[f_idx] = bc_v[dir].wallValue(xyz);
+    }
+    ierr = VecGhostUpdateBegin(test_vnp1_faces[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    for(size_t k = 0; k < faces_n->get_local_size(dir); ++k)
+    {
+      p4est_locidx_t f_idx = faces_n->get_local_face(dir, k);
+      double xyz[P4EST_DIM]; faces_n->xyz_fr_f(f_idx, dir, xyz);
       if(!face_is_dirichlet_wall(f_idx, dir, xyz))
       {
         double mu_laplace_v_dir = div_mu_grad_u_dir(face_is_in_negative_domain, f_idx, dir, vn_p, NULL, fine_jump_mu_grad_v_p, fine_phi_p, fine_phi_xxyyzz_p, NULL, fine_jump_u_p);
@@ -1126,7 +1142,6 @@ void my_p4est_two_phase_flows_t::test_viscosity_explicit()
         vnp1_p[f_idx] = bc_v[dir].wallValue(xyz);
     }
     ierr = VecRestoreArray(test_vnp1_faces[dir], &vnp1_p);                            CHKERRXX(ierr);
-    ierr = VecGhostUpdateBegin(test_vnp1_faces[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecGhostUpdateEnd(test_vnp1_faces[dir],   INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecRestoreArray(test_vn_faces[dir],   &vn_p);                              CHKERRXX(ierr);
     ierr = VecRestoreArray(test_vnm1_faces[dir], &vnm1_p);                            CHKERRXX(ierr);
@@ -1139,6 +1154,38 @@ void my_p4est_two_phase_flows_t::test_viscosity_explicit()
     ierr = VecRestoreArrayRead(fine_phi_xxyyzz, &fine_phi_xxyyzz_p);                  CHKERRXX(ierr); }
 
   ierr = PetscLogEventEnd(log_my_p4est_two_phase_flows_test_viscosity_explicit, 0, 0, 0, 0);    CHKERRXX(ierr);
+}
+
+void my_p4est_two_phase_flows_t::enforce_dirichlet_bc_on_test_vnp1_faces()
+{
+  PetscErrorCode ierr;
+
+  ierr = PetscLogEventBegin(log_my_p4est_two_phase_flows_enforce_dirichlet_bc_on_test_vnp1_faces, 0, 0, 0, 0);  CHKERRXX(ierr);
+
+  for(unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+  {
+    double *vnp1_p;
+    ierr = VecGetArray(test_vnp1_faces[dir], &vnp1_p);                                CHKERRXX(ierr);
+    for(size_t k = 0; k < faces_n->get_layer_size(dir); ++k)
+    {
+      p4est_locidx_t f_idx = faces_n->get_layer_face(dir, k);
+      double xyz[P4EST_DIM]; faces_n->xyz_fr_f(f_idx, dir, xyz);
+      if(face_is_dirichlet_wall(f_idx, dir, xyz))
+        vnp1_p[f_idx] = bc_v[dir].wallValue(xyz);
+    }
+    ierr = VecGhostUpdateBegin(test_vnp1_faces[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+    for(size_t k = 0; k < faces_n->get_local_size(dir); ++k)
+    {
+      p4est_locidx_t f_idx = faces_n->get_local_face(dir, k);
+      double xyz[P4EST_DIM]; faces_n->xyz_fr_f(f_idx, dir, xyz);
+      if(face_is_dirichlet_wall(f_idx, dir, xyz))
+        vnp1_p[f_idx] = bc_v[dir].wallValue(xyz);
+    }
+    ierr = VecRestoreArray(test_vnp1_faces[dir], &vnp1_p);                            CHKERRXX(ierr);
+    ierr = VecGhostUpdateEnd(test_vnp1_faces[dir],   INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  }
+
+  ierr = PetscLogEventEnd(log_my_p4est_two_phase_flows_enforce_dirichlet_bc_on_test_vnp1_faces, 0, 0, 0, 0);    CHKERRXX(ierr);
 }
 
 void my_p4est_two_phase_flows_t::do_semi_lagrangian_backtracing_from_faces_if_needed()
@@ -1166,7 +1213,7 @@ void my_p4est_two_phase_flows_t::do_semi_lagrangian_backtracing_from_faces_if_ne
   my_p4est_interpolation_nodes_t interp_n_m  (ngbd_n),   interp_n_p  (ngbd_n);
   for(unsigned char dir = 0; dir < P4EST_DIM; ++dir)
   {
-    for(p4est_locidx_t f_idx=0; f_idx<faces_n->num_local[dir]; ++f_idx)
+    for(p4est_locidx_t f_idx = 0; f_idx < faces_n->num_local[dir]; ++f_idx)
     {
       const bool face_is_in_negative_domain = is_face_in_negative_domain(f_idx, dir, fine_phi_p);
       if(sl_order == 2)
@@ -1397,7 +1444,7 @@ void my_p4est_two_phase_flows_t::jump_face_solver::preallocate_matrix(const unsi
 void my_p4est_two_phase_flows_t::jump_face_solver::setup_linear_system(const unsigned char &dir)
 {
   PetscErrorCode ierr;
-  ierr = PetscLogEventBegin(log_my_p4est_two_phase_flows_setup_linear_system, A, rhs[dir], 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventBegin(log_my_p4est_two_phase_flows_jump_face_solver_setup_linear_system, A, rhs[dir], 0, 0); CHKERRXX(ierr);
 
   // check that the current "diagonal" is as desired if the matrix is ready to go...
   P4EST_ASSERT(!matrix_is_ready[dir] || current_diags_are_as_desired(dir));
@@ -1531,17 +1578,6 @@ void my_p4est_two_phase_flows_t::jump_face_solver::setup_linear_system(const uns
     // multiply by volume and here starts the fun!
     rhs_p[f_idx] *= volume;
 
-//    if(fabs(xyz[0] + 0.46875) < 0.5*env->dxyz_min[0] && fabs(xyz[1] - 0.0390625) < 0.5*env->dxyz_min[1])
-//    {
-//      std::cout << "Face to the right has index " << f_idx << " and is owned by processor " << env->p4est_n->mpirank << std::endl;
-//      std::cout << "qm.p.piggy3.local_num for face to the right = " << qm.p.piggy3.local_num << std::endl;
-//      std::cout << "qp.p.piggy3.local_num for face to the right = " << qp.p.piggy3.local_num  << std::endl;
-//      if(!my_cell.has_neighbor_across)
-//        std::cout << "apparently, it has no neighbor across the interface..." << std::endl;
-//      for (unsigned char ff = 0; ff < P4EST_FACES; ++ff)
-//        std::cout << "neighbor in direction " << (int) ff << " is of index " << (*points)[face_order_to_counterclock_cycle_order[ff]].n << std::endl;
-//    }
-
     if(my_cell.has_neighbor_across) // some (x)GFM discretization, multiplied by the volume of the cell (*not* cut/clipped by the interface)
     {
       P4EST_ASSERT(my_cell.cell_type == uniform_no_wall || my_cell.cell_type == non_dirichlet_wall_face || my_cell.cell_type == with_wall_neighbor);
@@ -1620,24 +1656,6 @@ void my_p4est_two_phase_flows_t::jump_face_solver::setup_linear_system(const uns
           if(across)
           {
             interface_data jump_info = env->interface_data_between_faces(fine_phi_p, fine_phi_xxyyzz_p, fine_normal_p, fine_jump_mu_grad_v_p, fine_mass_flux_p, my_cell.fine_idx_of_face, fine_idx_of_neighbor, qm, qp, dir, ff, fine_jump_u_p);
-//            if(fabs(xyz[0] + 0.546875) < 0.5*env->dxyz_min[0] && fabs(xyz[1] - 0.0390625) < 0.5*env->dxyz_min[1])
-//            {
-//              std::cout << "qm.p.piggy3.local_num for face to the left = " << qm.p.piggy3.local_num << std::endl;
-//              std::cout << "qp.p.piggy3.local_num for face to the left = " << qp.p.piggy3.local_num  << std::endl;
-
-//              std::cout << "jump_info.theta for face to the left = " << jump_info.theta << std::endl;
-//              std::cout << "jump_info.jump_field for face to the left = " << jump_info.jump_field << std::endl;
-//              std::cout << "jump_info.jump_flux_component for face to the left = " << jump_info.jump_flux_component << std::endl;
-//            }
-//            if(fabs(xyz[0] + 0.46875) < 0.5*env->dxyz_min[0] && fabs(xyz[1] - 0.0390625) < 0.5*env->dxyz_min[1])
-//            {
-//              std::cout << "qm.p.piggy3.local_num for face to the right = " << qm.p.piggy3.local_num << std::endl;
-//              std::cout << "qp.p.piggy3.local_num for face to the right = " << qp.p.piggy3.local_num  << std::endl;
-
-//              std::cout << "jump_info.theta for face to the right = " << jump_info.theta << std::endl;
-//              std::cout << "jump_info.jump_field for face to the right = " << jump_info.jump_field << std::endl;
-//              std::cout << "jump_info.jump_flux_component for face to the right = " << jump_info.jump_flux_component << std::endl;
-//            }
             // the contribution of the the local term in the discretization (to the negative laplacian) is, after calculations
             // (i.e., finding the value of u_interface_this_side that matches jumps in flux componens),
             //
@@ -1653,12 +1671,22 @@ void my_p4est_two_phase_flows_t::jump_face_solver::setup_linear_system(const uns
           }
           else
             offdiag_coeff   = -(my_cell.is_in_negative_domain ? env->mu_m : env->mu_p)*neighbor_area/env->dxyz_min[ff/2];
-          if(!only_diags_are_modified[dir] && !matrix_is_ready[dir])
-          {
-            p4est_gloidx_t f_tmp_g = env->faces_n->global_index(neighbor_face_idx, dir);
-            ierr = MatSetValue(matrix[dir], f_idx_g, f_tmp_g,  offdiag_coeff, ADD_VALUES); CHKERRXX(ierr);
+
+          // this is a regular face so
+          double xyz_face_neighbor[P4EST_DIM];
+          const bool neighbor_face_is_wall = (ff/2 == dir && (ff%2 == 1 ? is_quad_Wall(env->p4est_n, qp.p.piggy3.which_tree, &qp, ff) : is_quad_Wall(env->p4est_n, qm.p.piggy3.which_tree, &qm, ff)));
+          if(neighbor_face_is_wall)
+            env->faces_n->xyz_fr_f(neighbor_face_idx, dir, xyz_face_neighbor); // we need it only if it's wall, avoid useless steps...
+          if(!only_diags_are_modified[dir] && !matrix_is_ready[dir]){
+            // we do not add the off-diagonal element to the matrix if the neighbor is a Dirichlet wall face
+            // but we modify the rhs correspondingly, right away instead (see if statement here below)
+            // --> ensures full symmetry of the matrix, one can use CG solver, safely!
+            if(!neighbor_face_is_wall || env->bc_v[dir].wallType(xyz_face_neighbor) != DIRICHLET) {
+              ierr = MatSetValue(matrix[dir], f_idx_g, env->faces_n->global_index(neighbor_face_idx, dir),  offdiag_coeff, ADD_VALUES); CHKERRXX(ierr); }
             ierr = MatSetValue(matrix[dir], f_idx_g, f_idx_g, -offdiag_coeff, ADD_VALUES); CHKERRXX(ierr);
           }
+          if(neighbor_face_is_wall && env->bc_v[dir].wallType(xyz_face_neighbor) == DIRICHLET)
+            rhs_p[f_idx] -= offdiag_coeff*(env->bc_v[dir].wallValue(xyz_face_neighbor) /* + interp_dxyz_hodge(xyz_face_neighbor) <- maybe this requires global interpolation /!\ */);
         }
         else
         {
@@ -1817,12 +1845,21 @@ void my_p4est_two_phase_flows_t::jump_face_solver::setup_linear_system(const uns
           throw std::logic_error("my_p4est_two_phase_flows_t::jump_face_solver::setup_linear_solver: a Voronoi seed neighbor of a regular, one-sided face was marked INTERFACE. This must not happen in this solver, have you constructed your Voronoi cell using clip_interface()?");
           break;
         default:
+          // this is a regular face so
+          double xyz_face_neighbor[P4EST_DIM]; env->faces_n->xyz_fr_f((*points)[m].n, dir, xyz_face_neighbor);
+          const bool neighbor_is_wall = fabs(xyz_face_neighbor[dir] - env->xyz_max[dir]) < 0.1*env->dxyz_min[dir] || fabs(xyz_face_neighbor[dir] - env->xyz_min[dir]) < 0.1*env->dxyz_min[dir];
           if(!only_diags_are_modified[dir] && !matrix_is_ready[dir])
           {
             /* add coefficients in the matrix */
             ierr = MatSetValue(matrix[dir], f_idx_g, f_idx_g,                                          mu_this_side*surface/distance_to_neighbor, ADD_VALUES); CHKERRXX(ierr);
-            ierr = MatSetValue(matrix[dir], f_idx_g, env->faces_n->global_index((*points)[m].n, dir), -mu_this_side*surface/distance_to_neighbor, ADD_VALUES); CHKERRXX(ierr);
+            // we do not add the off-diagonal element to the matrix if the neighbor is a Dirichlet wall face
+            // but we modify the rhs correspondingly, right away instead (see if statement here below)
+            // --> ensures full symmetry of the matrix, one can use CG solver, safely!
+            if(!neighbor_is_wall || env->bc_v[dir].wallType(xyz_face_neighbor) != DIRICHLET) {
+              ierr = MatSetValue(matrix[dir], f_idx_g, env->faces_n->global_index((*points)[m].n, dir), -mu_this_side*surface/distance_to_neighbor, ADD_VALUES); CHKERRXX(ierr); }
           }
+          if(neighbor_is_wall && env->bc_v[dir].wallType(xyz_face_neighbor) == DIRICHLET)
+            rhs_p[f_idx] += (mu_this_side*surface/distance_to_neighbor)*(env->bc_v[dir].wallValue(xyz_face_neighbor) /* + interp_dxyz_hodge(xyz_face_neighbor) <- maybe this requires global interpolation /!\ */);
         }
       }
     }
@@ -1894,7 +1931,7 @@ void my_p4est_two_phase_flows_t::jump_face_solver::setup_linear_system(const uns
   current_diag_p[dir]   = desired_diag_p[dir];
   P4EST_ASSERT(current_diags_are_as_desired(dir));
 
-  ierr = PetscLogEventEnd(log_my_p4est_two_phase_flows_setup_linear_system, A, rhs[dir], 0, 0); CHKERRXX(ierr);
+  ierr = PetscLogEventEnd(log_my_p4est_two_phase_flows_jump_face_solver_setup_linear_system, A, rhs[dir], 0, 0); CHKERRXX(ierr);
 }
 
 double my_p4est_two_phase_flows_t::div_mu_grad_u_dir(bool &face_is_in_negative_domain, const p4est_locidx_t &face_idx, const unsigned char &dir,
@@ -1925,7 +1962,7 @@ double my_p4est_two_phase_flows_t::div_mu_grad_u_dir(bool &face_is_in_negative_d
       voro_face_area = ((*partition)[m] - (*partition)[k]).norm_L2();
 #endif
       voro_neighbor_distance = ((*points)[m].p - my_cell.voro.get_center_point()).norm_L2();
-      if((*points)[m].n >=0)
+      if((*points)[m].n >= 0)
         to_return += (face_is_in_negative_domain ? mu_m : mu_p)*voro_face_area*(vn_dir_p[(*points)[m].n] - vn_dir_p[face_idx])/voro_neighbor_distance;
       else
       {
@@ -1942,11 +1979,18 @@ double my_p4est_two_phase_flows_t::div_mu_grad_u_dir(bool &face_is_in_negative_d
   }
   else
   {
+    P4EST_ASSERT(my_cell.cell_type == uniform_no_wall || my_cell.cell_type == non_dirichlet_wall_face || my_cell.cell_type == with_wall_neighbor);
+    P4EST_ASSERT(my_cell.fine_idx_of_face >= 0);
+    if(points->size() != P4EST_FACES)
+      throw std::runtime_error("my_p4est_two_phase_flows_t::div_mu_grad_u_dir: not the expected number of face neighbors for face with an interface neighbor...");
     P4EST_ASSERT(my_cell.fine_idx_of_face >= 0);
     p4est_quadrant_t qm, qp;
+    faces_n->find_quads_touching_face(face_idx, dir, qm, qp);
+    P4EST_ASSERT((qm.p.piggy3.local_num == -1 || qm.level == ((const splitting_criteria_t *) p4est_n->user_pointer)->max_lvl)
+                 && (qp.p.piggy3.local_num == -1 || qp.level == ((const splitting_criteria_t *) p4est_n->user_pointer)->max_lvl));
+
     const uniform_face_ngbd* face_neighbors = NULL;
 
-    faces_n->find_quads_touching_face(face_idx, dir, qm, qp);
 #ifdef P4EST_ENABLE_DEBUG
     bool found = faces_n->found_uniform_face_neighborhood(face_idx, dir, face_neighbors);
 #else
@@ -1955,16 +1999,84 @@ double my_p4est_two_phase_flows_t::div_mu_grad_u_dir(bool &face_is_in_negative_d
     P4EST_ASSERT(found && face_neighbors != NULL);
     for (unsigned char ff = 0; ff < P4EST_FACES; ++ff)
     {
-      p4est_locidx_t fine_idx_of_other_face = -1;
-      bool other_face_is_in_negative_domain = is_face_in_negative_domain(face_neighbors->neighbor_face_idx[ff], dir, fine_phi_p, fine_idx_of_other_face);
-      if ((face_is_in_negative_domain && other_face_is_in_negative_domain) || (!face_is_in_negative_domain && !other_face_is_in_negative_domain))
-        to_return += (face_is_in_negative_domain ? mu_m : mu_p)*((vn_dir_p[face_neighbors->neighbor_face_idx[ff]] - vn_dir_p[face_idx])/SQR(dxyz_min[ff/2]));
-      else
+      if(face_neighbors->neighbor_face_idx[ff] >= 0)
       {
-        interface_data jump_info = interface_data_between_faces(fine_phi_p, fine_phi_xxyyzz_p, fine_normal_p, fine_jump_mu_grad_v_p, fine_mass_flux_p, my_cell.fine_idx_of_face, fine_idx_of_other_face, qm, qp, dir, ff, fine_jump_u_p);
-        double mu_tilde   = (face_is_in_negative_domain ? (1.0-jump_info.theta)*mu_m + jump_info.theta*mu_p : (1.0-jump_info.theta)*mu_p + jump_info.theta*mu_m);
-        double mu_across  = (face_is_in_negative_domain ? mu_p                                              : mu_m);
-        to_return += (mu_m*mu_p/mu_tilde)*(vn_dir_p[face_neighbors->neighbor_face_idx[ff]] - vn_dir_p[face_idx] + (face_is_in_negative_domain ? -1.0 : +1.0)*jump_info.jump_field + (face_is_in_negative_domain ? -1.0 : +1.0)*(2.0*(ff%2)-1.0)*(1.0-jump_info.theta)*jump_info.jump_flux_component*dxyz_min[ff/2]/mu_across)/SQR(dxyz_min[ff/2]);
+        p4est_locidx_t fine_idx_of_other_face = -1;
+        bool other_face_is_in_negative_domain = is_face_in_negative_domain(face_neighbors->neighbor_face_idx[ff], dir, fine_phi_p, fine_idx_of_other_face);
+        if ((face_is_in_negative_domain && other_face_is_in_negative_domain) || (!face_is_in_negative_domain && !other_face_is_in_negative_domain))
+          to_return += (face_is_in_negative_domain ? mu_m : mu_p)*((vn_dir_p[face_neighbors->neighbor_face_idx[ff]] - vn_dir_p[face_idx])/SQR(dxyz_min[ff/2]));
+        else
+        {
+          interface_data jump_info = interface_data_between_faces(fine_phi_p, fine_phi_xxyyzz_p, fine_normal_p, fine_jump_mu_grad_v_p, fine_mass_flux_p, my_cell.fine_idx_of_face, fine_idx_of_other_face, qm, qp, dir, ff, fine_jump_u_p);
+          double mu_tilde   = (face_is_in_negative_domain ? (1.0-jump_info.theta)*mu_m + jump_info.theta*mu_p : (1.0-jump_info.theta)*mu_p + jump_info.theta*mu_m);
+          double mu_across  = (face_is_in_negative_domain ? mu_p                                              : mu_m);
+          to_return += (mu_m*mu_p/mu_tilde)*(vn_dir_p[face_neighbors->neighbor_face_idx[ff]] - vn_dir_p[face_idx] + (face_is_in_negative_domain ? -1.0 : +1.0)*jump_info.jump_field + (face_is_in_negative_domain ? -1.0 : +1.0)*(2.0*(ff%2)-1.0)*(1.0-jump_info.theta)*jump_info.jump_flux_component*dxyz_min[ff/2]/mu_across)/SQR(dxyz_min[ff/2]);
+        }
+      }
+      else // the neighbor is a WALL
+      {
+        double xyz_wall[P4EST_DIM]; my_cell.voro.get_center_point(xyz_wall);
+        xyz_wall[ff/2] = (ff%2 == 0 ? xyz_min[ff/2] : xyz_max[ff/2]);
+        if(ff/2 == dir) // parallel to the wall --> cannot be DIRICHLET
+        {
+          P4EST_ASSERT(bc_v[dir].wallType(xyz_wall) == NEUMANN);
+          to_return += bc_v[dir].wallValue(xyz_wall)/dxyz_min[ff/2];
+        }
+        else // tranverse wall
+        {
+          p4est_locidx_t fine_idx_of_neighbor = -1;
+          p4est_locidx_t quad_idx;
+          p4est_topidx_t tree_idx;
+          faces_n->f2q(face_idx, dir, quad_idx, tree_idx);
+          const unsigned char face_touch = (faces_n->q2f(quad_idx, 2*dir) == face_idx ? 2*dir : 2*dir + 1);
+          p4est_quadrant_t *quad;
+          if(quad_idx < p4est_n->local_num_quadrants)
+          {
+            p4est_tree_t *tree = p4est_tree_array_index(p4est_n->trees, tree_idx);
+            quad = p4est_quadrant_array_index(&tree->quadrants, quad_idx - tree->quadrants_offset);
+          }
+          else
+            quad = p4est_quadrant_array_index(&ghost_n->ghosts, quad_idx - p4est_n->local_num_quadrants);
+          const bool across = (is_wall_neighbor_of_face_in_negative_domain(fine_idx_of_neighbor, face_idx, quad_idx, tree_idx, face_touch, ff, quad, fine_phi_p, xyz_wall) != my_cell.is_in_negative_domain);
+          P4EST_ASSERT(!across || fine_idx_of_neighbor >= 0);
+
+          if(across) // the tranverse wall is across the interface
+          {
+            interface_data jump_info = interface_data_between_face_and_tranverse_wall(fine_phi_p, fine_phi_xxyyzz_p, fine_normal_p, fine_jump_mu_grad_v_p, fine_mass_flux_p, my_cell.fine_idx_of_face, fine_idx_of_neighbor, dir, ff, fine_jump_u_p);
+            // /!\ WARNING /!\ : theta is relative to 0.5*dxyz_min[ff/2] in this case!
+            switch (bc_v[dir].wallType(xyz_wall)) {
+            case DIRICHLET:
+            {
+              const double mu_tilde   = (my_cell.is_in_negative_domain ? (1.0 - jump_info.theta)*mu_m + jump_info.theta*mu_p : (1.0 - jump_info.theta)*mu_p + jump_info.theta*mu_m);
+              const double mu_across  = (my_cell.is_in_negative_domain ? mu_p : mu_m);
+              to_return += (2.0*mu_m*mu_p/(mu_tilde*dxyz_min[ff/2]))*(bc_v[dir].wallValue(xyz_wall) + (my_cell.is_in_negative_domain ? -1.0 : +1.0)*(jump_info.jump_field + (ff%2 == 1 ? +1.0 : -1.0)*(1.0 - jump_info.theta)*0.5*dxyz_min[ff/2]*jump_info.jump_flux_component/mu_across) - vn_dir_p[face_idx]);
+              break;
+            }
+            case NEUMANN:
+            {
+              to_return += (bc_v[dir].wallValue(xyz_wall) + (my_cell.is_in_negative_domain ? -1.0 : +1.0)*(ff%2 == 1 ? +1.0 : -1.0)*jump_info.jump_flux_component)/dxyz_min[ff/2];
+              break;
+            }
+            default:
+              throw std::invalid_argument("my_p4est_two_phase_flows_t::div_mu_grad_u_dir: unknown wall type for a tranverse wall neighbor of a face, across the interface --> not handled yet, TO BE DONE...");
+              break;
+            }
+          }
+          else // the tranverse wall is on the same side of the interface
+          {
+            switch (bc_v[dir].wallType(xyz_wall)) {
+            case DIRICHLET:
+              to_return += 2.0*(my_cell.is_in_negative_domain? mu_m : mu_p)*(bc_v[dir].wallValue(xyz_wall) - vn_dir_p[face_idx]);
+              break;
+            case NEUMANN:
+              to_return += bc_v[dir].wallValue(xyz_wall)/dxyz_min[ff/2];
+              break;
+            default:
+              throw std::invalid_argument("my_p4est_two_phase_flows_t::jump_face_solver::setup_linear_solver: unknown wall type for a tranverse wall neighbor of a face, on the same side of the interface --> not handled yet, TO BE DONE...");
+              break;
+            }
+          }
+        }
       }
     }
   }
@@ -2205,9 +2317,9 @@ void my_p4est_two_phase_flows_t::interpolate_velocity_at_node(const p4est_locidx
     for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
       if(bc_v[dir].wallType(xyz) == DIRICHLET)
       {
-        v_nodes_m_p[P4EST_DIM*node_idx+dir] = bc_v[dir].wallValue(xyz); mag_v_m += SQR(v_nodes_m_p[P4EST_DIM*node_idx+dir]);
+        v_nodes_m_p[P4EST_DIM*node_idx + dir] = bc_v[dir].wallValue(xyz); mag_v_m += SQR(v_nodes_m_p[P4EST_DIM*node_idx + dir]);
         velocity_component_is_set[dir]                = true;
-        v_nodes_p_p[P4EST_DIM*node_idx+dir] = bc_v[dir].wallValue(xyz); mag_v_p += SQR(v_nodes_p_p[P4EST_DIM*node_idx+dir]);
+        v_nodes_p_p[P4EST_DIM*node_idx + dir] = bc_v[dir].wallValue(xyz); mag_v_p += SQR(v_nodes_p_p[P4EST_DIM*node_idx + dir]);
         velocity_component_is_set[P4EST_DIM+dir]      = true;
       }
 
@@ -2277,10 +2389,11 @@ void my_p4est_two_phase_flows_t::interpolate_velocity_at_node(const p4est_locidx
       double &mag_v = (sign == 0 ? mag_v_m: mag_v_p);
 
 #ifdef P4_TO_P8
+      const double phi_node = (*interp_phi)(xyz);
       if((sign == 0 && (phi_node > 2.0*tree_diag/((double) (1<<(((splitting_criteria_t*) p4est_n->user_pointer)->max_lvl))))) ||
          (sign == 1 && (phi_node < -2.0*tree_diag/((double) (1<<(((splitting_criteria_t*) p4est_n->user_pointer)->max_lvl))))))
       {
-        result_field[P4EST_DIM*node_idx+dir] = NAN;
+        result_field[P4EST_DIM*node_idx + dir] = NAN;
         mag_v = NAN;
         continue;
       }
@@ -2310,7 +2423,7 @@ void my_p4est_two_phase_flows_t::interpolate_velocity_at_node(const p4est_locidx
       }
       if(row_idx == 0)
       {
-        result_field[P4EST_DIM*node_idx+dir] = NAN; // absurd value for undefined interpolated field (e.g. vn_minus far in negative domain --> no well-defined neighbor to be found so move on)
+        result_field[P4EST_DIM*node_idx + dir] = NAN; // absurd value for undefined interpolated field (e.g. vn_minus far in negative domain --> no well-defined neighbor to be found so move on)
         mag_v = NAN;
         continue;
       }
@@ -2358,10 +2471,10 @@ void my_p4est_two_phase_flows_t::interpolate_velocity_at_node(const p4est_locidx
       P4EST_ASSERT(row_idx == A_lsqr.num_rows());
       A_lsqr.scale_by_maxabs(rhs_lsqr);
 
-      result_field[P4EST_DIM*node_idx+dir] = solve_lsqr_system(A_lsqr, rhs_lsqr, DIM(nb[0].size(), nb[1].size(), nb[2].size()), 2);
+      result_field[P4EST_DIM*node_idx + dir] = solve_lsqr_system(A_lsqr, rhs_lsqr, DIM(nb[0].size(), nb[1].size(), nb[2].size()), 2);
 
       if (!ISNAN(mag_v))
-        mag_v += SQR(result_field[P4EST_DIM*node_idx+dir]);
+        mag_v += SQR(result_field[P4EST_DIM*node_idx + dir]);
     }
   }
   if (!ISNAN(mag_v_m))

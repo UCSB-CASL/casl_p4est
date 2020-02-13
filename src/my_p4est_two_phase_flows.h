@@ -315,7 +315,7 @@ private:
 
     inline void set_for_testing() { run_for_testing = true; }
 
-    void solve(Vec *solution, const PetscBool &use_nonzero_initial_guess = PETSC_FALSE, const KSPType &ksp_type = KSPBCGS, const PCType &pc_type = PCSOR);
+    void solve(Vec *solution, const PetscBool &use_nonzero_initial_guess = PETSC_FALSE, const KSPType &ksp_type = KSPCG /*KSPBCGS*/, const PCType &pc_type = PCSOR);
 
   } viscosity_solver;
 
@@ -622,7 +622,7 @@ private:
     }
     else
       quad = p4est_quadrant_array_index(&ghost_n->ghosts, quad_idx-p4est_n->local_num_quadrants);
-    return (is_quad_Wall(p4est_n, tree_idx, quad, loc_face_idx) && (bc_v[dir].wallType(xyz_face) == DIRICHLET));
+    return (is_quad_Wall(p4est_n, tree_idx, quad, loc_face_idx) && bc_v[dir].wallType(xyz_face) == DIRICHLET);
   }
   inline bool is_wall_neighbor_of_face_in_negative_domain(p4est_locidx_t& fine_wall_node_idx, const p4est_locidx_t& face_idx, const p4est_locidx_t &quad_idx, const p4est_topidx_t &tree_idx,
                                                           const unsigned char &face_touch, const unsigned char &der, const p4est_quadrant_t *quad, const double* fine_phi_p, const double *xyz_wall = NULL)
@@ -663,6 +663,14 @@ private:
       p4est_topidx_t tree_idx;
       faces_n->f2q(face_idx, dir, quad_idx, tree_idx);
       unsigned char loc_face_dir = (faces_n->q2f(quad_idx, 2*dir) == face_idx ? 2*dir : 2*dir + 1);
+      if(faces_n->q2f(quad_idx, loc_face_dir) != face_idx)
+      {
+        std::cout << " problem on proc " << p4est_n->mpirank << std::endl;
+        std::cout << "face_idx = " << face_idx << std::endl;
+        std::cout << "quad_idx = " << quad_idx << std::endl;
+        std::cout << "faces_n->q2f(quad_idx, loc_face_dir) = " << faces_n->q2f(quad_idx, loc_face_dir) << std::endl;
+      }
+      P4EST_ASSERT(face_idx >= 0);
       P4EST_ASSERT(faces_n->q2f(quad_idx, loc_face_dir) == face_idx);
       const p4est_quadrant_t* coarse_quad;
       if(quad_idx<p4est_n->local_num_quadrants)
@@ -1167,6 +1175,8 @@ public:
     }
     return;
   }
+  // to be called by the main after the time has been advanced!
+  void enforce_dirichlet_bc_on_test_vnp1_faces();
 
 };
 
