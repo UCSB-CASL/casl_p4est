@@ -157,7 +157,7 @@ public:
    * \param [in] periodic:  periodicity flags for each cartesian direction
    * \return a flag that is true iff the constructed cell has a wall neighbor.
    */
-  bool construct_partition(const double *xyz_min, const double *xyz_max, const bool *periodic);
+  void construct_partition(const double *xyz_min, const double *xyz_max, const bool *periodic);
 
   inline double get_volume() const { return this->volume; }
 

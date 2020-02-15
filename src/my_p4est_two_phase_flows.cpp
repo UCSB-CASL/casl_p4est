@@ -1498,8 +1498,15 @@ void my_p4est_two_phase_flows_t::jump_face_solver::setup_linear_system(const uns
     p4est_locidx_t quad_idx;
     p4est_topidx_t tree_idx;
     env->faces_n->f2q(f_idx, dir, quad_idx, tree_idx);
-    p4est_tree_t *tree = p4est_tree_array_index(env->p4est_n->trees, tree_idx);
-    p4est_quadrant_t *quad = p4est_quadrant_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
+    const p4est_quadrant_t *quad;
+    if(quad_idx < env->p4est_n->local_num_quadrants)
+    {
+      p4est_tree_t *tree = p4est_tree_array_index(env->p4est_n->trees, tree_idx);
+      quad = p4est_quadrant_array_index(&tree->quadrants, quad_idx - tree->quadrants_offset);
+    }
+    else
+      quad = p4est_quadrant_array_index(&env->ghost_n->ghosts, quad_idx - env->p4est_n->local_num_quadrants);
+
     const unsigned char face_touch = (env->faces_n->q2f(quad_idx, 2*dir) == f_idx ? 2*dir : 2*dir + 1);
     P4EST_ASSERT(env->faces_n->q2f(quad_idx, face_touch) == f_idx);
 
@@ -1564,7 +1571,7 @@ void my_p4est_two_phase_flows_t::jump_face_solver::setup_linear_system(const uns
       P4EST_ASSERT(env->semi_lagrangian_backtrace_is_done);
       rhs_p[f_idx]  = -(my_cell.is_in_negative_domain ? env->rho_m : env->rho_p)*(
             (-env->BDF_alpha()/env->dt_n + env->BDF_beta()/env->dt_nm1)*env->backtraced_vn_faces[dir][f_idx]
-            - (env->sl_order == 2 ? env->BDF_beta()*env->backtraced_vnm1_faces[dir][f_idx]/env->dt_nm1 : 0.0)); // alpha and beta are 1 and 0 if sl_order = 1...
+            -(env->sl_order == 2 ? env->BDF_beta()*env->backtraced_vnm1_faces[dir][f_idx]/env->dt_nm1 : 0.0)); // alpha and beta are 1 and 0 if sl_order = 1...
     }
     else
     {
@@ -1578,12 +1585,11 @@ void my_p4est_two_phase_flows_t::jump_face_solver::setup_linear_system(const uns
     // multiply by volume and here starts the fun!
     rhs_p[f_idx] *= volume;
 
-    if(my_cell.has_neighbor_across) // some (x)GFM discretization, multiplied by the volume of the cell (*not* cut/clipped by the interface)
+    if(my_cell.has_neighbor_across && (my_cell.cell_type == parallelepiped_no_wall || my_cell.cell_type == parallelepiped_with_wall))
     {
-      P4EST_ASSERT(my_cell.cell_type == uniform_no_wall || my_cell.cell_type == non_dirichlet_wall_face || my_cell.cell_type == with_wall_neighbor);
+      // some (x)GFM discretization, multiplied by the volume of the parallelipiped cell (*not* cut/clipped by the interface)
       P4EST_ASSERT((qm.p.piggy3.local_num == -1 || qm.level == ((const splitting_criteria_t *) env->p4est_n->user_pointer)->max_lvl)
                    && (qp.p.piggy3.local_num == -1 || qp.level == ((const splitting_criteria_t *) env->p4est_n->user_pointer)->max_lvl));
-      P4EST_ASSERT(my_cell.fine_idx_of_face >= 0);
 
       if(points->size() != P4EST_FACES)
         throw std::runtime_error("my_p4est_two_phase_flows_t::jump_face_solver::setup_linear_solver: not the expected number of face neighbors for face with an interface neighbor...");
@@ -1594,7 +1600,7 @@ void my_p4est_two_phase_flows_t::jump_face_solver::setup_linear_system(const uns
       // using standard or (x)GFM-like approximations or by wall value in case of NEUMANN wall boundary condition.
       // - We do NOT clip those FV cells by the interface in any way; in other words, the presence of the interface is relevant
       // to the definition of those areas.
-      // - The right hand side and diagonal contributions are consistenly multiplied by the volume of the FV cell (see above).
+      // - The right hand side and diagonal contributions are consistently multiplied by the volume of the FV cell (see above).
       // --> This is done in order to ensure symmetry and consistency between off-diagonal weights by comparison with other
       // discretized equations involving nearby faces that do not have any neighbor across the interface
       // (reminder: if no neigbor across, FV on Voronoi cells)
@@ -1604,7 +1610,7 @@ void my_p4est_two_phase_flows_t::jump_face_solver::setup_linear_system(const uns
       {
         // get the face index of the direct face/wall neighbor
         p4est_locidx_t neighbor_face_idx;
-        if(my_cell.cell_type == uniform_no_wall)
+        if(my_cell.cell_type == parallelepiped_no_wall)
         {
 #ifndef P4_TO_P8
           neighbor_face_idx = (*points)[face_order_to_counterclock_cycle_order[ff]].n;
@@ -1612,7 +1618,7 @@ void my_p4est_two_phase_flows_t::jump_face_solver::setup_linear_system(const uns
           neighbor_face_idx = (*points)[ff].n; // already ordered like this, in 3D
 #endif
         }
-        else // the cell is either of type non_dirichlet_wall_face or with_wall_neighbor
+        else // the cell most probably has a wall neighbor, but it's a parallelepiped and it was build by built-in routines (not by hand)
         {
           // the voronoi cell was actually constructed by built-in routines, gathering neighbors etc.
           // but it should still be locally uniform, maybe with wall(s). Let's re-order the neighbors as we need them
@@ -1652,7 +1658,7 @@ void my_p4est_two_phase_flows_t::jump_face_solver::setup_linear_system(const uns
         {
           p4est_locidx_t fine_idx_of_neighbor = -1;
           const bool across = (env->is_face_in_negative_domain(neighbor_face_idx, dir, fine_phi_p, fine_idx_of_neighbor) != my_cell.is_in_negative_domain);
-          P4EST_ASSERT(!across || fine_idx_of_neighbor >= 0);
+          P4EST_ASSERT(!across || fine_idx_of_neighbor >= 0 || my_cell.fine_idx_of_face >= 0);
           if(across)
           {
             interface_data jump_info = env->interface_data_between_faces(fine_phi_p, fine_phi_xxyyzz_p, fine_normal_p, fine_jump_mu_grad_v_p, fine_mass_flux_p, my_cell.fine_idx_of_face, fine_idx_of_neighbor, qm, qp, dir, ff, fine_jump_u_p);
@@ -1708,6 +1714,7 @@ void my_p4est_two_phase_flows_t::jump_face_solver::setup_linear_system(const uns
             P4EST_ASSERT(!across || fine_idx_of_neighbor >= 0);
             if(across) // the tranverse wall is across the interface
             {
+              P4EST_ASSERT(my_cell.fine_idx_of_face >= 0);
               interface_data jump_info = env->interface_data_between_face_and_tranverse_wall(fine_phi_p, fine_phi_xxyyzz_p, fine_normal_p, fine_jump_mu_grad_v_p, fine_mass_flux_p, my_cell.fine_idx_of_face, fine_idx_of_neighbor, dir, ff, fine_jump_u_p);
               // /!\ WARNING /!\ : theta is relative to 0.5*dxyz_min[ff/2] in this case!
 
@@ -1808,32 +1815,54 @@ void my_p4est_two_phase_flows_t::jump_face_solver::setup_linear_system(const uns
         case WALL_p00:
         case WALL_0m0:
         case WALL_0p0:
-  #ifdef P4_TO_P8
+#ifdef P4_TO_P8
         case WALL_00m:
         case WALL_00p:
-  #endif
+#endif
         {
           char wall_orientation = -1 - (*points)[m].n;
           P4EST_ASSERT(wall_orientation >= 0 && wall_orientation < P4EST_FACES);
           double wall_eval[P4EST_DIM];
+          const double lambda = ((wall_orientation%2 == 1 ? env->xyz_max[wall_orientation/2] : env->xyz_min[wall_orientation/2]) - xyz[wall_orientation/2])/((*points)[m].p.xyz(wall_orientation/2) - xyz[wall_orientation/2]);
           for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
             if(dim == wall_orientation/2)
               wall_eval[dim] = (wall_orientation%2 == 1 ? env->xyz_max[wall_orientation/2] : env->xyz_min[wall_orientation/2]); // on the wall of interest
             else
-              wall_eval[dim] = MIN(MAX(xyz[dim], env->xyz_min[dim] + 2.0*EPS*(env->xyz_max[dim] - env->xyz_min[dim])), env->xyz_max[dim] - 2.0*EPS*(env->xyz_max[dim] - env->xyz_min[dim])); // make sure it's indeed inside, just to be safe in case the bc object needs that
+              wall_eval[dim] = MIN(MAX(xyz[dim] + lambda*((*points)[m].p.xyz(dim) - xyz[dim]), env->xyz_min[dim] + 2.0*EPS*(env->xyz_max[dim] - env->xyz_min[dim])), env->xyz_max[dim] - 2.0*EPS*(env->xyz_max[dim] - env->xyz_min[dim])); // make sure it's indeed inside, just to be safe in case the bc object needs that
           }
           switch(env->bc_v[dir].wallType(wall_eval))
           {
           case DIRICHLET:
+          {
             if(dir == wall_orientation/2)
-              throw std::runtime_error("my_p4est_two_phase_flows_t::jump_face_solver::setup_linear_solver: dirichlet conditions on walls parallel to faces should have been done before... You might be using an unconventional aspect ratio for your cells: if yes, it is not taken care yet, sorry!");
-            matrix_has_nullspace[dir] = false;
+              throw std::runtime_error("my_p4est_two_phase_flows_t::jump_face_solver::setup_linear_solver: Dirichlet boundary conditions on walls parallel to faces should have been done before... You might be using an unconventional aspect ratio for your cells: if yes, it is not taken care yet, sorry!");
+            p4est_locidx_t fine_idx_of_neighbor = -1;
+            bool across = my_cell.has_neighbor_across && (my_cell.is_in_negative_domain != env->is_wall_neighbor_of_face_in_negative_domain(fine_idx_of_neighbor, f_idx, quad_idx, tree_idx, face_touch, wall_orientation, quad, fine_phi_p, wall_eval));
+            double offdiag_coeff;
             // WARNING distance_to_neighbor is actually *twice* what we would need here, hence the "0.5*" factors here under!
+            if(!across)
+              offdiag_coeff = -mu_this_side*surface/(0.5*distance_to_neighbor);
+            else
+            {
+              // std::cerr << "This is bad: your grid is messed up here but, hey, I don't want to crash either..." << std::endl;
+              P4EST_ASSERT(my_cell.fine_idx_of_face >= 0);
+              interface_data jump_info = env->interface_data_between_face_and_tranverse_wall(fine_phi_p, fine_phi_xxyyzz_p, fine_normal_p, fine_jump_mu_grad_v_p, fine_mass_flux_p, my_cell.fine_idx_of_face, fine_idx_of_neighbor, dir, wall_orientation, fine_jump_u_p);
+              const double mu_tilde   = (my_cell.is_in_negative_domain ? (1.0 - jump_info.theta)*env->mu_m + jump_info.theta*env->mu_p : (1.0 - jump_info.theta)*env->mu_p + jump_info.theta*env->mu_m);
+              const double mu_across  = (my_cell.is_in_negative_domain ? env->mu_p : env->mu_m);
+              offdiag_coeff = -env->mu_m*env->mu_p*surface/(mu_tilde*0.5*distance_to_neighbor);
+              rhs_p[f_idx] -= offdiag_coeff*(my_cell.is_in_negative_domain ? -1.0 : +1.0)*(jump_info.jump_field + (wall_orientation%2 == 1 ? +1.0 : -1.0)*(1.0 - jump_info.theta)*0.5*distance_to_neighbor*jump_info.jump_flux_component/mu_across);
+            }
+            matrix_has_nullspace[dir] = false;
             if(!only_diags_are_modified[dir] && !matrix_is_ready[dir]) {
-              ierr = MatSetValue(matrix[dir], f_idx_g, f_idx_g, mu_this_side*surface/(0.5*distance_to_neighbor), ADD_VALUES); CHKERRXX(ierr); } // needs only to be done if fully reset
-            rhs_p[f_idx] += mu_this_side*surface*(env->bc_v[dir].wallValue(wall_eval) /*+ interp_dxyz_hodge(wall_eval)*/)/(0.5*distance_to_neighbor);
+              ierr = MatSetValue(matrix[dir], f_idx_g, f_idx_g, -offdiag_coeff, ADD_VALUES); CHKERRXX(ierr); } // needs only to be done if fully reset
+            rhs_p[f_idx] -= offdiag_coeff*(env->bc_v[dir].wallValue(wall_eval) /*+ interp_dxyz_hodge(wall_eval)*/);
+//            if(across)
+//               throw std::runtime_error("my_p4est_two_phase_flows_t::jump_face_solver::setup_linear_solver: Dirichlet boundary condition to be imposed on a tranverse wall that lies across the interface, but the face has non-uniform neighbors : this is not implemented yet, sorry...");
             break;
+          }
           case NEUMANN:
+            if(my_cell.is_in_negative_domain != ((*env->interp_phi)(wall_eval) <= 0.0))
+               throw std::runtime_error("my_p4est_two_phase_flows_t::jump_face_solver::setup_linear_solver: Neumann boundary condition to be imposed on a tranverse wall that lies across the interface, but the face has non-uniform neighbors : this is not implemented yet, sorry...");
             rhs_p[f_idx] += mu_this_side*surface*(env->bc_v[dir].wallValue(wall_eval) /*+ (apply_hodge_second_derivative_if_neumann ? 0.0 : 0.0)*/); // apply_hodge_second_derivative_if_neumann: would need to be fixed later --> good luck!
             break;
           default:
@@ -1847,19 +1876,57 @@ void my_p4est_two_phase_flows_t::jump_face_solver::setup_linear_system(const uns
         default:
           // this is a regular face so
           double xyz_face_neighbor[P4EST_DIM]; env->faces_n->xyz_fr_f((*points)[m].n, dir, xyz_face_neighbor);
-          const bool neighbor_is_wall = fabs(xyz_face_neighbor[dir] - env->xyz_max[dir]) < 0.1*env->dxyz_min[dir] || fabs(xyz_face_neighbor[dir] - env->xyz_min[dir]) < 0.1*env->dxyz_min[dir];
-          if(!only_diags_are_modified[dir] && !matrix_is_ready[dir])
+          bool across = false; p4est_locidx_t fine_idx_of_neighbor = -1;
+          if(my_cell.has_neighbor_across)
+            across = my_cell.is_in_negative_domain != env->is_face_in_negative_domain((*points)[m].n, dir, fine_phi_p, fine_idx_of_neighbor, xyz_face_neighbor);
+          const bool neighbor_face_is_wall = fabs(xyz_face_neighbor[dir] - env->xyz_max[dir]) < 0.1*env->dxyz_min[dir] || fabs(xyz_face_neighbor[dir] - env->xyz_min[dir]) < 0.1*env->dxyz_min[dir];
+          double offdiag_coeff;
+          if(!across)
+            offdiag_coeff = -mu_this_side*surface/distance_to_neighbor;
+          else
           {
-            /* add coefficients in the matrix */
-            ierr = MatSetValue(matrix[dir], f_idx_g, f_idx_g,                                          mu_this_side*surface/distance_to_neighbor, ADD_VALUES); CHKERRXX(ierr);
+            // std::cerr << "This is bad: your grid is messed up here but, hey, I don't want to crash either..." << std::endl;
+            char neighbor_orientation = -1;
+#ifdef P4EST_DEBUG
+            unsigned char check = 0;
+            for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
+#else
+            for (unsigned char dim = 0; dim < P4EST_DIM && neighbor_orientation < 0; ++dim)
+#endif
+              if(fabs(xyz_face_neighbor[dim] - xyz[dim]) > 0.1*env->dxyz_min[dim])
+              {
+                neighbor_orientation = 2*dim + (xyz_face_neighbor[dim] - xyz[dim] > 0.0 ? 1 : 0);
+#ifdef P4EST_DEBUG
+                check++;
+#endif
+              }
+            P4EST_ASSERT(check == 1);
+            P4EST_ASSERT(fabs(distance_to_neighbor - env->dxyz_min[neighbor_orientation/2]) < 0.001*env->dxyz_min[neighbor_orientation/2]);
+            P4EST_ASSERT(fine_idx_of_neighbor >= 0 || my_cell.fine_idx_of_face >= 0);
+            interface_data jump_info = env->interface_data_between_faces(fine_phi_p, fine_phi_xxyyzz_p, fine_normal_p, fine_jump_mu_grad_v_p, fine_mass_flux_p, my_cell.fine_idx_of_face, fine_idx_of_neighbor, qm, qp, dir, neighbor_orientation, fine_jump_u_p);
+            // the contribution of the the local term in the discretization (to the negative laplacian) is, after calculations
+            // (i.e., finding the value of u_interface_this_side that matches jumps in flux componens),
+            //
+            // mu_this_side*(u[f_idx] - u_interface_this_side)*surface/(theta*distance_to_neighbor)
+            // =
+            // (mu_m*mu_p*surface/(mu_tilde*distance_to_neighbor))*(u[f_idx] - (u_neighbor_across + (my_cell.is_in_negative_domain ? -1.0 : +1.0)*(jump_field + (neighbor_orientation%2 == 1 ? +1.0 : -1.0)*(1.0 - theta)*dxyz_min[neighbor_orientation/2]*jump_flux_component/mu_across))
+            //
+            // therefore, we have
+            const double mu_tilde   = (my_cell.is_in_negative_domain ? (1.0 - jump_info.theta)*env->mu_m + jump_info.theta*env->mu_p : (1.0 - jump_info.theta)*env->mu_p + jump_info.theta*env->mu_m);
+            const double mu_across  = (my_cell.is_in_negative_domain ? env->mu_p : env->mu_m);
+            offdiag_coeff = -env->mu_m*env->mu_p*surface/(mu_tilde*distance_to_neighbor);
+            rhs_p[f_idx] -= offdiag_coeff*(my_cell.is_in_negative_domain ? -1.0 : +1.0)*(jump_info.jump_field + (neighbor_orientation%2 == 1 ? +1.0 : -1.0)*(1.0 - jump_info.theta)*distance_to_neighbor*jump_info.jump_flux_component/mu_across);
+          }
+          if(!only_diags_are_modified[dir] && !matrix_is_ready[dir]){
             // we do not add the off-diagonal element to the matrix if the neighbor is a Dirichlet wall face
             // but we modify the rhs correspondingly, right away instead (see if statement here below)
             // --> ensures full symmetry of the matrix, one can use CG solver, safely!
-            if(!neighbor_is_wall || env->bc_v[dir].wallType(xyz_face_neighbor) != DIRICHLET) {
-              ierr = MatSetValue(matrix[dir], f_idx_g, env->faces_n->global_index((*points)[m].n, dir), -mu_this_side*surface/distance_to_neighbor, ADD_VALUES); CHKERRXX(ierr); }
+            if(!neighbor_face_is_wall || env->bc_v[dir].wallType(xyz_face_neighbor) != DIRICHLET) {
+              ierr = MatSetValue(matrix[dir], f_idx_g, env->faces_n->global_index((*points)[m].n, dir),  offdiag_coeff, ADD_VALUES); CHKERRXX(ierr); }
+            ierr = MatSetValue(matrix[dir], f_idx_g, f_idx_g, -offdiag_coeff, ADD_VALUES); CHKERRXX(ierr);
           }
-          if(neighbor_is_wall && env->bc_v[dir].wallType(xyz_face_neighbor) == DIRICHLET)
-            rhs_p[f_idx] += (mu_this_side*surface/distance_to_neighbor)*(env->bc_v[dir].wallValue(xyz_face_neighbor) /* + interp_dxyz_hodge(xyz_face_neighbor) <- maybe this requires global interpolation /!\ */);
+          if(neighbor_face_is_wall && env->bc_v[dir].wallType(xyz_face_neighbor) == DIRICHLET)
+            rhs_p[f_idx] -= offdiag_coeff*(env->bc_v[dir].wallValue(xyz_face_neighbor) /* + interp_dxyz_hodge(xyz_face_neighbor) <- maybe this requires global interpolation /!\ */);
         }
       }
     }
@@ -1979,11 +2046,9 @@ double my_p4est_two_phase_flows_t::div_mu_grad_u_dir(bool &face_is_in_negative_d
   }
   else
   {
-    P4EST_ASSERT(my_cell.cell_type == uniform_no_wall || my_cell.cell_type == non_dirichlet_wall_face || my_cell.cell_type == with_wall_neighbor);
-    P4EST_ASSERT(my_cell.fine_idx_of_face >= 0);
+    P4EST_ASSERT(my_cell.cell_type == parallelepiped_no_wall || parallelepiped_with_wall);
     if(points->size() != P4EST_FACES)
       throw std::runtime_error("my_p4est_two_phase_flows_t::div_mu_grad_u_dir: not the expected number of face neighbors for face with an interface neighbor...");
-    P4EST_ASSERT(my_cell.fine_idx_of_face >= 0);
     p4est_quadrant_t qm, qp;
     faces_n->find_quads_touching_face(face_idx, dir, qm, qp);
     P4EST_ASSERT((qm.p.piggy3.local_num == -1 || qm.level == ((const splitting_criteria_t *) p4est_n->user_pointer)->max_lvl)
@@ -2042,6 +2107,7 @@ double my_p4est_two_phase_flows_t::div_mu_grad_u_dir(bool &face_is_in_negative_d
 
           if(across) // the tranverse wall is across the interface
           {
+            P4EST_ASSERT(my_cell.fine_idx_of_face >= 0);
             interface_data jump_info = interface_data_between_face_and_tranverse_wall(fine_phi_p, fine_phi_xxyyzz_p, fine_normal_p, fine_jump_mu_grad_v_p, fine_mass_flux_p, my_cell.fine_idx_of_face, fine_idx_of_neighbor, dir, ff, fine_jump_u_p);
             // /!\ WARNING /!\ : theta is relative to 0.5*dxyz_min[ff/2] in this case!
             switch (bc_v[dir].wallType(xyz_wall)) {
@@ -2219,8 +2285,7 @@ interface_data my_p4est_two_phase_flows_t::interface_data_between_faces(const do
                                                                         const p4est_quadrant_t &qm, const p4est_quadrant_t &qp,
                                                                         const unsigned char &dir, const unsigned char der, const double *fine_jump_u_p)
 {
-  P4EST_ASSERT(fine_idx_of_face >= 0);
-  P4EST_ASSERT(fine_idx_of_other_face >= 0);
+  P4EST_ASSERT(fine_idx_of_face >= 0 || fine_idx_of_other_face >= 0);
   interface_data to_return;
   to_return.fine_intermediary_idx = -1;
   if(der == 2*dir)
@@ -2235,11 +2300,12 @@ interface_data my_p4est_two_phase_flows_t::interface_data_between_faces(const do
   P4EST_ASSERT(to_return.fine_intermediary_idx != -1);
   P4EST_ASSERT(fine_mass_flux_p == NULL || (fine_mass_flux_p != NULL && fine_normal_p != NULL));
 
-  const double phi_face                     = fine_phi_p[fine_idx_of_face];
-  const double phi_intermediary             = fine_phi_p[to_return.fine_intermediary_idx];
-  const double phi_other_face               = fine_phi_p[fine_idx_of_other_face];
+  const double &phi_face                    = (fine_idx_of_face >= 0        ? fine_phi_p[fine_idx_of_face] : value_not_needed);
+  const double &phi_intermediary            = fine_phi_p[to_return.fine_intermediary_idx];
+  const double &phi_other_face              = (fine_idx_of_other_face >= 0  ? fine_phi_p[fine_idx_of_other_face] : value_not_needed);
   const double dsub                         = dxyz_min[der/2]*0.5;
-  const bool no_past_mid_point              = signs_of_phi_are_different(phi_face, phi_intermediary);
+  const bool no_past_mid_point              = (fine_idx_of_face >= 0 ? signs_of_phi_are_different(phi_face, phi_intermediary) : !signs_of_phi_are_different(phi_intermediary, phi_other_face));
+  P4EST_ASSERT((fine_idx_of_other_face >= 0 || no_past_mid_point) && (fine_idx_of_face >= 0 || !no_past_mid_point));
   const double &phi_this_side               = (no_past_mid_point ? phi_face                         : phi_intermediary);
   const double &phi_across                  = (no_past_mid_point ? phi_intermediary                 : phi_other_face);
   const p4est_locidx_t& fine_idx_this_side  = (no_past_mid_point ? fine_idx_of_face                 : to_return.fine_intermediary_idx);

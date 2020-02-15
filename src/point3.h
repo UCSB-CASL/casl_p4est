@@ -141,6 +141,15 @@ public:
     return (dir == 0 ? this->x : (dir == 1 ? this->y : this->z));
   }
 
+  inline const double& xyz(const unsigned char &dir) const
+  {
+#ifdef CASL_THROWS
+    if(dir != 0 && dir != 1 && dir != 2)
+      throw std::invalid_argument("[CASL_ERROR]: Point3::xyz(const unsigned char & dir) : dir must be either 0 or 1 or 2.");
+#endif
+    return (dir == 0 ? this->x : (dir == 1 ? this->y : this->z));
+  }
+
   /*!
      * \brief compute the curl with another Point3
      * \param pt the Point3 with which the curl is to be computed

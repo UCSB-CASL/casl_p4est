@@ -47,15 +47,16 @@ typedef std::unordered_map<p4est_locidx_t, uniform_face_ngbd> map_to_uniform_fac
 typedef std::map<p4est_locidx_t, uniform_face_ngbd> map_to_uniform_face_ngbd_t;
 #endif
 
+// Raphael: introducing these "types" for Voronoi cells to make my life easier in two-phase flows...
 enum voro_cell_type
 {
   dirichlet_wall_face,      // the face is on the wall and associated with Dirichlet BC     --> enforce value
-  non_dirichlet_wall_face,  // the face is on the wall but not associated with Dirichlet BC --> requires special discretization for BC
   nonuniform,               // the Voronoi cell was constructed from a non-uniform neighborhood, without any wall neighbor
-  uniform_no_wall,          // the Voronoi cell is a parallelepiped, the grid is localy uniform without any wall neighbor
-  with_wall_neighbor,       // the Voronoi cell has a wall neighbor
-  not_well_defined,         // the face is irrelevant for computing purposes (based on tag values --> when solving in one domain only)
+  parallelepiped_no_wall,   // the Voronoi cell is a parallelepiped, i.e., with a uniform neighborhood, without any wall neighbor
+  parallelepiped_with_wall, // the Voronoi cell is a parallelepiped, i.e., with a uniform neighborhood, with a wall neighbor
+  not_well_defined,         // the face is irrelevant for computing purposes (based on tag values --> when solving in one domain only (one-phase N-S))
 };
+
 
 class my_p4est_faces_t
 {
@@ -515,6 +516,7 @@ public:
         qp.p.piggy3.which_tree  = -1;
       }
     }
+    P4EST_ASSERT(qm.p.piggy3.local_num != -1 || qp.p.piggy3.local_num != -1);
   }
 
 #ifdef CASL_THROWS

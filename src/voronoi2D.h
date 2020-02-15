@@ -192,7 +192,7 @@ public:
    * the neighborhood given in nb_seeds
    * \return a flag that is true if one of the neighbor is a Wall
    */
-  bool construct_partition();
+  void construct_partition();
 
   /*!
      * \brief clip the voronoi partition to exclude the points in the positive domain

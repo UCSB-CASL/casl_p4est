@@ -1105,7 +1105,7 @@ voro_cell_type compute_voronoi_cell(Voronoi_DIM &voronoi_cell, const my_p4est_fa
     voronoi_cell.set_neighbors_and_partition(points, partition, dxyz[0]*dxyz[1]);
 #endif
     ierr = PetscLogEventEnd(log_my_p4est_faces_compute_voronoi_cell_t, 0, 0, 0, 0); CHKERRXX(ierr);
-    return uniform_no_wall;
+    return parallelepiped_no_wall;
   }
 
   // check if well-defined (if using those tags) : if far in the positive domain and if not solving there, we don't need anything here
@@ -1147,14 +1147,29 @@ voro_cell_type compute_voronoi_cell(Voronoi_DIM &voronoi_cell, const my_p4est_fa
 
   /* now gather the neighbor cells to get the potential voronoi neighbors */
 
-  /* check for uniform case, if so build voronoi partition by hand */
-  bool is_uniform_no_wall = (qp.level == qm.level);
-  for (unsigned char k = 0; is_uniform_no_wall && k < 2*(P4EST_DIM - 1); ++k)
-    is_uniform_no_wall = is_uniform_no_wall && ngbd_m_[k].size() == 1 && ngbd_p_[k].size() == 1 &&
-        ngbd_m_[k].begin()->level == qm.level && ngbd_p_[k].begin()->level == qp.level &&
-        faces->q2f(ngbd_m_[k].begin()->p.piggy3.local_num, 2*dir) != NO_VELOCITY && faces->q2f(ngbd_p_[k].begin()->p.piggy3.local_num, 2*dir + 1) != NO_VELOCITY;
-  is_uniform_no_wall = is_uniform_no_wall && faces->q2f(qm.p.piggy3.local_num, 2*dir) != NO_VELOCITY && faces->q2f(qp.p.piggy3.local_num, 2*dir + 1) != NO_VELOCITY;
-  if(is_uniform_no_wall)
+  /* check for uniform case and/or wall in the neighborhood, if so build voronoi partition by hand */
+  bool no_wall = (qp.p.piggy3.local_num != -1) && (qm.p.piggy3.local_num != -1);
+  // if the face is wall itself, check that the other face across the cell is not subrefined
+  bool has_uniform_ngbd =
+      (qp.p.piggy3.local_num == -1 && faces->q2f(qm.p.piggy3.local_num, 2*dir) != NO_VELOCITY)
+      || (qm.p.piggy3.local_num == -1 && faces->q2f(qp.p.piggy3.local_num, 2*dir + 1) != NO_VELOCITY)
+      || ((qp.level == qm.level) && faces->q2f(qm.p.piggy3.local_num, 2*dir) != NO_VELOCITY && faces->q2f(qp.p.piggy3.local_num, 2*dir + 1) != NO_VELOCITY);
+  for (unsigned char k = 0; k < 2*(P4EST_DIM - 1) && (has_uniform_ngbd || no_wall); ++k)
+  {
+    if(qp.p.piggy3.local_num != -1)
+    {
+      no_wall           = no_wall && ngbd_p_[k].size() > 0;
+      has_uniform_ngbd  = has_uniform_ngbd && ngbd_p_[k].size() == 1 && ngbd_p_[k].begin()->level == qp.level
+          && faces->q2f(ngbd_p_[k].begin()->p.piggy3.local_num, 2*dir) != NO_VELOCITY && faces->q2f(ngbd_p_[k].begin()->p.piggy3.local_num, 2*dir + 1) != NO_VELOCITY;
+    }
+    if(qm.p.piggy3.local_num != -1)
+    {
+      no_wall           = no_wall && ngbd_m_[k].size() > 0;
+      has_uniform_ngbd  = has_uniform_ngbd && ngbd_m_[k].size() == 1 && ngbd_m_[k].begin()->level == qm.level
+          && faces->q2f(ngbd_m_[k].begin()->p.piggy3.local_num, 2*dir) != NO_VELOCITY && faces->q2f(ngbd_m_[k].begin()->p.piggy3.local_num, 2*dir + 1) != NO_VELOCITY;
+    }
+  }
+  if(has_uniform_ngbd && no_wall)
   {
     P4EST_ASSERT(qm.level <= ((splitting_criteria_t*) p4est->user_pointer)->max_lvl); // consistency check
 #ifdef P4EST_DEBUG
@@ -1219,7 +1234,7 @@ voro_cell_type compute_voronoi_cell(Voronoi_DIM &voronoi_cell, const my_p4est_fa
     voronoi_cell.set_neighbors_and_partition(points, partition, dxyz[0]*dxyz[1]*SQR(cell_ratio));
 #endif
     ierr = PetscLogEventEnd(log_my_p4est_faces_compute_voronoi_cell_t, 0, 0, 0, 0); CHKERRXX(ierr);
-    return uniform_no_wall;
+    return parallelepiped_no_wall;
   }
   /* otherwise, either
    * 1) the face is a non-Dirichlet wall face,
@@ -1307,17 +1322,15 @@ voro_cell_type compute_voronoi_cell(Voronoi_DIM &voronoi_cell, const my_p4est_fa
 #endif
 
 #ifdef P4_TO_P8
-    const bool has_wall_neighbor = voronoi_cell.construct_partition(xyz_min, xyz_max, periodic);
+    voronoi_cell.construct_partition(xyz_min, xyz_max, periodic);
 #else
-    const bool has_wall_neighbor = voronoi_cell.construct_partition();
+    voronoi_cell.construct_partition();
     voronoi_cell.compute_volume();
 #endif
     ierr = PetscLogEventEnd(log_my_p4est_faces_compute_voronoi_cell_t, 0, 0, 0, 0); CHKERRXX(ierr);
-    if(is_wall_face)
-      return non_dirichlet_wall_face;
-    if(has_wall_neighbor)
-      return with_wall_neighbor;
-    // if none of the above, then it was nothing but a locally nonuniform grid...
-    return nonuniform;
+    if(has_uniform_ngbd)
+      return parallelepiped_with_wall; // it for sure is a parallelepiped since it had a uniform neighborhood, but the face must have some wall neighbor(s), that's all
+    else
+      return nonuniform;
   }
 }

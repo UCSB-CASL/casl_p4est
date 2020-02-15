@@ -71,6 +71,8 @@ typedef struct
   p4est_locidx_t fine_intermediary_idx;
 } interface_data;
 
+static const double value_not_needed = NAN;
+
 class my_p4est_two_phase_flows_t
 {
 private:
@@ -222,6 +224,29 @@ private:
      * that bc_v[dir].wallValue(...) is the prescribed value for mu*(normal derivative of u[dir]), everywhere,
      * as opposed as the prescribed value for (normal derivative of u[dir]) only in my_p4est_poisson_faces_t.
      */
+
+    // NOTE for two-phase flows :
+    // Most (in fact, ideally all) of your faces having a neighbor across the interface *SHOULD* be either of type parallelepiped_no_wall
+    // or of type parallelepiped_with_wall. If you lived in an ideal world, you would enforce that and make sure that it's never invalidated...
+    // HOWEVER, that would required costly inter-processor communications to ensure that the grid satisfies that requirement at all times
+    // So the face_jump_solver owned by the two-phase flow solver allows "nonuniform" types to have one neighbor across the interface!
+    // EXAMPLE of such a scenario:
+    //
+    // ___.2________3_____________4_________
+    // |   .    |        |                 |
+    // |    .   |        |                 |
+    // |     .  |        |                 |
+    // |___0_.__|___1____|                 |
+    // |     .  |        |                 |
+    // |     .  |        |                 |
+    // |    .   |        |                 |
+    // |   .    |        |                 |
+    // ---.6--------7-------------5---------
+    //
+    // Face 1 here above has neighbor face 0 across the interface, but is not locally uniform. because of
+    // neighbors 4 and 5.
+    // (we want to ensure proper behavior even in such cases because ensuring that the grid)
+
   private:
     bool run_for_testing;
     bool matrix_is_preallocated[P4EST_DIM];
@@ -646,10 +671,10 @@ private:
         return ((*interp_phi)(xyz_wall) <= 0.0);
       double xyz_w[P4EST_DIM]; faces_n->xyz_fr_f(face_idx, face_touch/2, xyz_w);
       xyz_w[der/2] = (der%2 == 1 ? xyz_max[der/2] : xyz_min[der/2]);
-      return ((*interp_phi)(xyz_wall) <= 0.0);
+      return ((*interp_phi)(xyz_w) <= 0.0);
     }
   }
-  inline bool is_face_in_negative_domain(const p4est_locidx_t& face_idx, const unsigned char& dir, const double* fine_phi_p, p4est_locidx_t& fine_face_idx)
+  inline bool is_face_in_negative_domain(const p4est_locidx_t& face_idx, const unsigned char& dir, const double* fine_phi_p, p4est_locidx_t& fine_face_idx, const double *xyz_face = NULL)
   {
     computational_to_fine_node_t::const_iterator got_it = face_to_fine_node[dir].find(face_idx);
     if(got_it != face_to_fine_node[dir].end()) // found in map
@@ -663,13 +688,6 @@ private:
       p4est_topidx_t tree_idx;
       faces_n->f2q(face_idx, dir, quad_idx, tree_idx);
       unsigned char loc_face_dir = (faces_n->q2f(quad_idx, 2*dir) == face_idx ? 2*dir : 2*dir + 1);
-      if(faces_n->q2f(quad_idx, loc_face_dir) != face_idx)
-      {
-        std::cout << " problem on proc " << p4est_n->mpirank << std::endl;
-        std::cout << "face_idx = " << face_idx << std::endl;
-        std::cout << "quad_idx = " << quad_idx << std::endl;
-        std::cout << "faces_n->q2f(quad_idx, loc_face_dir) = " << faces_n->q2f(quad_idx, loc_face_dir) << std::endl;
-      }
       P4EST_ASSERT(face_idx >= 0);
       P4EST_ASSERT(faces_n->q2f(quad_idx, loc_face_dir) == face_idx);
       const p4est_quadrant_t* coarse_quad;
@@ -684,9 +702,10 @@ private:
         return (fine_phi_p[fine_face_idx] <= 0.0);
       else
       {
-        double xyz_face [P4EST_DIM];
-        faces_n->xyz_fr_f(face_idx, dir, xyz_face);
-        return ((*interp_phi)(xyz_face) <= 0.0);
+        if(xyz_face != NULL)
+          return ((*interp_phi)(xyz_face) <= 0.0);
+        double xyz_f[P4EST_DIM]; faces_n->xyz_fr_f(face_idx, dir, xyz_f);
+        return ((*interp_phi)(xyz_f) <= 0.0);
       }
     }
   }
@@ -718,31 +737,50 @@ private:
     P4EST_ASSERT(!my_cell.is_set);
 
     my_cell.cell_type = compute_voronoi_cell(my_cell.voro, faces_n, face_idx, dir, bc_v, NULL);
+    P4EST_ASSERT(my_cell.cell_type != not_well_defined); // prohibited in two-phase flows...
+
     my_cell.has_neighbor_across = false;
     my_cell.is_in_negative_domain = is_face_in_negative_domain(face_idx, dir, fine_phi_p, my_cell.fine_idx_of_face);
-    if(my_cell.cell_type == uniform_no_wall || my_cell.cell_type == non_dirichlet_wall_face || my_cell.cell_type == with_wall_neighbor)
-    {
-#ifdef P4_TO_P8
-      const vector<ngbd3Dseed> *points;
-#else
-      vector<ngbd2Dseed> *points;
-#endif
-      my_cell.voro.get_neighbor_seeds(points);
-      for (size_t n = 0; n < points->size() && !my_cell.has_neighbor_across; ++n)
-        if((*points)[n].n >= 0)
-        {
-          if(my_cell.is_in_negative_domain)
-            my_cell.has_neighbor_across = !is_face_in_negative_domain((*points)[n].n, dir, fine_phi_p);
-          else
-            my_cell.has_neighbor_across =  is_face_in_negative_domain((*points)[n].n, dir, fine_phi_p);
-        }
-    }
+
 #ifndef P4_TO_P8
-    if(my_cell.cell_type == non_dirichlet_wall_face || my_cell.cell_type == with_wall_neighbor)
+    if(my_cell.cell_type != dirichlet_wall_face && my_cell.cell_type != parallelepiped_no_wall)
       clip_voronoi_cell_by_parallel_walls(my_cell.voro, dir);
 #endif
 
-    my_cell.is_set = !voronoi_on_the_fly; // we NEVER raise the flag if doing it on the fly (safety measure :-p)
+    if(my_cell.cell_type != dirichlet_wall_face && my_cell.cell_type != not_well_defined)
+    {
+      const vector<ngbdDIMseed> *points;
+      my_cell.voro.get_neighbor_seeds(points);
+      for (size_t n = 0; n < points->size() && !my_cell.has_neighbor_across; ++n)
+      {
+        if((*points)[n].n >= 0)
+          my_cell.has_neighbor_across = (my_cell.is_in_negative_domain != is_face_in_negative_domain((*points)[n].n, dir, fine_phi_p));
+        else // neighbor is a wall, but it could very well be across the interface too...
+        {
+          char wall_dir = -1 - (*points)[n].n;
+          P4EST_ASSERT(0 <= wall_dir && wall_dir < P4EST_FACES);
+          if(wall_dir/2 != dir) // if(wall_dir/2 == dir), it means it's the face itself (or you are using a grid that is not tolerated, so you're fucked) --> it cannot be across...
+          {
+            // it's a tranverse wall so
+            p4est_locidx_t quad_idx, dummy;
+            p4est_topidx_t tree_idx;
+            faces_n->f2q(face_idx, dir, quad_idx, tree_idx);
+            const unsigned char face_touch = (faces_n->q2f(quad_idx, 2*dir) == face_idx ? 2*dir : 2*dir + 1);
+            const p4est_quadrant_t *quad;
+            if(quad_idx < p4est_n->local_num_quadrants)
+            {
+              p4est_tree_t *tree = p4est_tree_array_index(p4est_n->trees, tree_idx);
+              quad = p4est_quadrant_array_index(&tree->quadrants, quad_idx - tree->quadrants_offset);
+            }
+            else
+              quad = p4est_quadrant_array_index(&ghost_n->ghosts, quad_idx - p4est_n->local_num_quadrants);
+            my_cell.has_neighbor_across = (my_cell.is_in_negative_domain != is_wall_neighbor_of_face_in_negative_domain(dummy, face_idx, quad_idx, tree_idx, face_touch, wall_dir, quad, fine_phi_p));
+          }
+        }
+      }
+    }
+
+    my_cell.is_set = !voronoi_on_the_fly; // we NEVER raise the flag if doing it on the fly (safety measure /!\)
 
     return my_cell;
   }

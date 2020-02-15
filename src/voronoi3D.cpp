@@ -234,7 +234,7 @@ void Voronoi3D::set_center_point( int idx_center_seed_, Point3 &center_seed_ )
   this->center_seed = center_seed_;
 }
 
-bool Voronoi3D::construct_partition(const double *xyz_min, const double *xyz_max, const bool *periodic)
+void Voronoi3D::construct_partition(const double *xyz_min, const double *xyz_max, const bool *periodic)
 {
   // sort the neighbor seeds by increasing distance first (behaves much better in voro++)
   sort(nb_seeds.begin(), nb_seeds.end());
@@ -280,8 +280,6 @@ bool Voronoi3D::construct_partition(const double *xyz_min, const double *xyz_max
   vector<int> neigh;
   vector<double> areas;
 
-  bool has_wall_neighbor = false;
-
   voro::c_loop_order cl(voronoi, po);
   if(cl.start() && voronoi.compute_cell(voro_cell,cl))
   {
@@ -298,7 +296,6 @@ bool Voronoi3D::construct_partition(const double *xyz_min, const double *xyz_max
 
       if(neigh[n]<0)
       {
-        has_wall_neighbor = true;
         switch(neigh[n])
         {
         case WALL_m00:
@@ -348,7 +345,7 @@ bool Voronoi3D::construct_partition(const double *xyz_min, const double *xyz_max
     std::cerr << "cl.start() = " << cl.start()  << std::endl;
     std::cerr << "voronoi.compute_cell(voro_cell,cl) = " << voronoi.compute_cell(voro_cell,cl) << std::endl;
   }
-  return has_wall_neighbor;
+  return;
 }
 
 void Voronoi3D::print_VTK_format( const vector<Voronoi3D>& voro, const char* file_name,

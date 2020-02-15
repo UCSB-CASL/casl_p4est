@@ -167,7 +167,7 @@ void Voronoi2D::set_center_point(double x, double y)
   center_seed.y = y;
 }
 
-bool Voronoi2D::construct_partition()
+void Voronoi2D::construct_partition()
 {
 #ifdef CASL_THROWS
   if(center_seed.x==DBL_MAX || center_seed.y==DBL_MAX) throw std::invalid_argument("[CASL_ERROR]: Voronoi2D: invalid center point to build the voronoi partition.");
@@ -261,18 +261,16 @@ bool Voronoi2D::construct_partition()
   }
 
   P4EST_ASSERT(partition.size() == nb_seeds.size());
-  bool has_a_wall_neighbor = false;
   center_seed = center_seed_saved;
   for (size_t m = 0; m < partition.size(); ++m) {
     nb_seeds[m].p     = center_seed + (nb_seeds[m].p)*scaling_length;
     nb_seeds[m].dist  *= scaling_length;
     partition[m]      = center_seed + (partition[m])*scaling_length;
-    has_a_wall_neighbor = has_a_wall_neighbor || nb_seeds[m].n < 0;
   }
 
   compute_volume();
 
-  return has_a_wall_neighbor;
+  return;
 }
 
 
