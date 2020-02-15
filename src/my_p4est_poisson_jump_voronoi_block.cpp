@@ -1326,17 +1326,17 @@ void my_p4est_poisson_jump_voronoi_block_t::setup_linear_system()
 #endif
           double d = (pc - pl).norm_L2();
 
-          for (int bi = 0; bi<block_size; bi++) {
-            for (int bj = 0; bj<block_size; bj++) {
+          for (int bbi = 0; bbi<block_size; bbi++) {
+            for (int bbj = 0; bbj<block_size; bbj++) {
 
 #ifdef P4_TO_P8
-              if(phi_l<0) mue_l[bi][bj] = (*mu_m[bi][bj])(pl.x, pl.y, pl.z);
-              else        mue_l[bi][bj] = (*mu_p[bi][bj])(pl.x, pl.y, pl.z);
+              if(phi_l<0) mue_l[bbi][bbj] = (*mu_m[bbi][bbj])(pl.x, pl.y, pl.z);
+              else        mue_l[bbi][bbj] = (*mu_p[bbi][bbj])(pl.x, pl.y, pl.z);
 #else
-              if(phi_l<0) mue_l[bi][bj] = (*mu_m[bi][bj])(pl.x, pl.y);
-              else        mue_l[bi][bj] = (*mu_p[bi][bj])(pl.x, pl.y);
+              if(phi_l<0) mue_l[bbi][bbj] = (*mu_m[bbi][bbj])(pl.x, pl.y);
+              else        mue_l[bbi][bbj] = (*mu_p[bbi][bbj])(pl.x, pl.y);
 #endif
-              mue_tmp[bi][bj] = 0.5*(mue_n[bi][bj] + mue_l[bi][bj]);
+              mue_tmp[bbi][bbj] = 0.5*(mue_n[bbi][bbj] + mue_l[bbi][bbj]);
             }
           }
 
@@ -2122,7 +2122,13 @@ next_point:
     FILE *f = fopen(path, "w");
     fprintf(f, "%% rank  |  nb_voro  |  nb_indep_voro  |  nb_nodes_voro\n");
     for(int i=0; i<p4est->mpisize; ++i)
-      fprintf(f, "%d %d %u %u\n", i, voro_global_offset[i+1]-voro_global_offset[i], indep_voro[i], nodes_voro[i]);
+      fprintf(f,
+        #if defined(PETSC_USE_64BIT_INDICES)
+              "%d %ld %u %u\n",
+        #else
+              "%d %d %u %u\n",
+        #endif
+              i, voro_global_offset[i+1]-voro_global_offset[i], indep_voro[i], nodes_voro[i]);
     fclose(f);
   }
 }

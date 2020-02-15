@@ -1559,9 +1559,13 @@ void my_p4est_poisson_jump_nodes_voronoi_t::write_stats(const char *path) const
     FILE *f = fopen(path, "w");
     fprintf(f, "%% rank  |  total number of Voronoi seeds locally owned  |  ... that are ...  |  local grid nodes  |  close to a local grid node  |  ghost grid nodes  |  close to a ghost grid node  |  validity check  \n");
     for(int i = 0; i < p4est->mpisize; ++i)
-      fprintf(f, "%8d %45d                    %22u %30u %20u %30u     %s\n",
-              i,
-              voro_global_offset[i+1]-voro_global_offset[i],
+      fprintf(f,
+        #if defined(PETSC_USE_64BIT_INDICES)
+              "%8d %45ld                    %22u %30u %20u %30u     %s\n",
+        #else
+              "%8d %45d                    %22u %30u %20u %30u     %s\n",
+        #endif
+              i, voro_global_offset[i+1]-voro_global_offset[i],
           voro_seeds_that_are_local_grid_nodes[i],
           independent_voro_seeds_that_are_close_to_local_grid_nodes[i],
           voro_seeds_that_are_ghost_grid_nodes[i],

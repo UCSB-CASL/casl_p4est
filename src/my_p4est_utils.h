@@ -2915,6 +2915,7 @@ struct boundary_conditions_t
 #ifdef CASL_THROWS
       throw std::runtime_error("boundary_conditions_t::get_value_pw: unknown boundary condition type, only DIRICHLET, NEUMANN AND ROBIN are currently implemented");
 #endif
+      return NAN;
       break;
     }
 
@@ -2933,6 +2934,7 @@ struct boundary_conditions_t
 #ifdef CASL_THROWS
       throw std::runtime_error("boundary_conditions_t::get_robin_pw_value: unknown boundary condition type, only DIRICHLET, NEUMANN AND ROBIN are currently implemented");
 #endif
+      return NAN;
       break;
     }
 
@@ -2951,6 +2953,7 @@ struct boundary_conditions_t
 #ifdef CASL_THROWS
       throw std::runtime_error("boundary_conditions_t::get_robin_pw_coeff: unknown boundary condition type, only DIRICHLET, NEUMANN AND ROBIN are currently implemented");
 #endif
+      return NAN;
       break;
     }
   }

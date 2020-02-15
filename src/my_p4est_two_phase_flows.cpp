@@ -2164,7 +2164,6 @@ double my_p4est_two_phase_flows_t::div_mu_grad_u_dir(bool &face_is_in_negative_d
         }
       }
     }
-//    to_return /= volume;
   }
   else
   {
@@ -2616,10 +2615,10 @@ for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
     std::set<__ino64_t>  nb[P4EST_DIM];
     unsigned int nb_neumann_walls = 0;
     char neumann_wall[P4EST_DIM];
-    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
-      neumann_wall[dir] = (bc_v != NULL && bc_v[dir].wallType(xyz) == NEUMANN ? (is_node_Wall(p4est_n, node, 2*dir+1) ? +1 : (is_node_Wall(p4est_n, node, 2*dir) ? -1 : 0)) : 0);
-      nb_neumann_walls += abs(neumann_wall[dir]);
-      nb[dir].clear(); //initialize this
+    for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+      neumann_wall[dim] = (bc_v != NULL && bc_v[dim].wallType(xyz) == NEUMANN ? (is_node_Wall(p4est_n, node, 2*dim+1) ? +1 : (is_node_Wall(p4est_n, node, 2*dim) ? -1 : 0)) : 0);
+      nb_neumann_walls += abs(neumann_wall[dim]);
+      nb[dim].clear(); //initialize this
     }
 
     double min_w = 1e-6;

@@ -1255,7 +1255,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
         // add jump correction matrix to main matrix
         // variant 1: use PETSc tools (quite slow)
         /*
-        ierr = MatAYPX(submat_main_, 1., BC, DIFFERENT_NONZERO_PATTERN); CHKERRXX(ierr); //*/
+        ierr = MatAYPX(submat_main_, 1., BC, DIFFERENT_NONZERO_PATTERN); CHKERRXX(ierr); */
 
         // variant 2: do it explicitly by hands taking into account that
         // number of nonzero rows in BC is much less than the total number of rows
@@ -1597,7 +1597,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
 //  }
 }
 
-void my_p4est_poisson_nodes_mls_t::assemble_matrix(std::vector< std::vector<mat_entry_t> > &entries, std::vector<int> &d_nnz, std::vector<int> &o_nnz, Mat *matrix)
+void my_p4est_poisson_nodes_mls_t::assemble_matrix(std::vector< std::vector<mat_entry_t> > &entries, std::vector<PetscInt> &d_nnz, std::vector<PetscInt> &o_nnz, Mat *matrix)
 {
   ierr = PetscLogEventBegin(log_my_p4est_poisson_nodes_mls_assemble_submatrix, 0, 0, 0, 0); CHKERRXX(ierr);
 
@@ -2496,7 +2496,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, bool
 
 void my_p4est_poisson_nodes_mls_t::discretize_dirichlet(bool setup_rhs, p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
                                                         double infc_phi_eff_000, bool is_wall[],
-                                                        std::vector<mat_entry_t> *row_main, int &d_nnz, int &o_nnz)
+                                                        std::vector<mat_entry_t> *row_main, PetscInt &d_nnz, PetscInt &o_nnz)
 {
   double  mu;
   double *mue_ptr, *mue_dd_ptr[P4EST_DIM];
@@ -3059,8 +3059,8 @@ void my_p4est_poisson_nodes_mls_t::discretize_dirichlet(bool setup_rhs, p4est_lo
 
 void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
                                                     double infc_phi_eff_000, bool is_wall[],
-                                                    std::vector<mat_entry_t> *row_main, int &d_nnz_main, int &o_nnz_main,
-                                                    std::vector<mat_entry_t> *row_robin_sc, int &d_nnz_robin_sc, int &o_nnz_robin_sc)
+                                                    std::vector<mat_entry_t> *row_main, PetscInt &d_nnz_main, PetscInt &o_nnz_main,
+                                                    std::vector<mat_entry_t> *row_robin_sc, PetscInt &d_nnz_robin_sc, PetscInt &o_nnz_robin_sc)
 {
   double  mu;
 //  double *mue_ptr;
@@ -3855,9 +3855,9 @@ void my_p4est_poisson_nodes_mls_t::discretize_robin(bool setup_rhs, p4est_locidx
 
 void my_p4est_poisson_nodes_mls_t::discretize_jump(bool setup_rhs, p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
                                                    bool is_wall[],
-                                                   std::vector<mat_entry_t> *row_main, int& d_nnz_main, int& o_nnz_main,
-                                                   std::vector<mat_entry_t> *row_jump, int& d_nnz_jump, int& o_nnz_jump,
-                                                   std::vector<mat_entry_t> *row_jump_ghost, int& d_nnz_jump_ghost, int& o_nnz_jump_ghost)
+                                                   std::vector<mat_entry_t> *row_main, PetscInt& d_nnz_main, PetscInt& o_nnz_main,
+                                                   std::vector<mat_entry_t> *row_jump, PetscInt& d_nnz_jump, PetscInt& o_nnz_jump,
+                                                   std::vector<mat_entry_t> *row_jump_ghost, PetscInt& d_nnz_jump_ghost, PetscInt& o_nnz_jump_ghost)
 {
   interpolators_prepare(n);
 
