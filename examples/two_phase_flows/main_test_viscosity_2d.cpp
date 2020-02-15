@@ -690,6 +690,8 @@ int main (int argc, char* argv[])
   std::vector<double> convergence_error_plus_max_over_time[P4EST_DIM];
   std::vector<double> convergence_error_minus_final_time[P4EST_DIM];
   std::vector<double> convergence_error_plus_final_time[P4EST_DIM];
+  std::vector<double> computational_time;
+  computational_time.resize(ngrids);
   for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
     convergence_error_minus_max_over_time[dir].resize(ngrids, 0.0);
     convergence_error_plus_max_over_time[dir].resize(ngrids, 0.0);
@@ -930,6 +932,8 @@ int main (int argc, char* argv[])
       ierr = VecGetArray(error_at_faces_plus[dir], &error_at_faces_plus_p[dir]);      CHKERRXX(ierr);
     }
 
+    parStopWatch timer(parStopWatch::root_timings, fp);
+    timer.start("Solving for grid " + to_string(lmin) + "/" + to_string(lmax) + " in " + to_string(P4EST_DIM) + " dimensions");
     while(tn + 0.01*dt < duration)
     {
       // set the jump conditions to what they are expected to be
@@ -1065,7 +1069,8 @@ int main (int argc, char* argv[])
       }
       iter++;
     }
-
+    timer.stop();
+    computational_time[k_grid] = timer.read_duration();
 
     ierr = PetscFPrintf(mpi.comm(), fp, "--------------------------------------------------------------------------------------------------------------\n");  CHKERRXX(ierr);
     ierr = PetscFPrintf(mpi.comm(), fp, "Final errors in infinity norm for the simulation with lmin/lmax = %d/%d \t (number of leaves = %d)\n",
@@ -1222,6 +1227,24 @@ int main (int argc, char* argv[])
   }
   ierr = PetscFPrintf(mpi.comm(), fp, "\n");  CHKERRXX(ierr);
 #endif
+
+  ierr = PetscFPrintf(mpi.comm(), fp, "--------------------------------------------------------------------------------------------------------------\n");  CHKERRXX(ierr);
+  ierr = PetscFPrintf(mpi.comm(), fp, "--------------------------------------------------------------------------------------------------------------\n");  CHKERRXX(ierr);
+  ierr = PetscFPrintf(mpi.comm(), fp, "                                          COMPUTATIONAL TIME                                                  \n");  CHKERRXX(ierr);
+  ierr = PetscFPrintf(mpi.comm(), fp, "--------------------------------------------------------------------------------------------------------------\n");  CHKERRXX(ierr);
+  ierr = PetscFPrintf(mpi.comm(), fp, "--------------------------------------------------------------------------------------------------------------\n");  CHKERRXX(ierr);
+  lmin = cmd.get<int>("lmin", lmin_);
+  lmax = cmd.get<int>("lmax", lmax_);
+  ierr = PetscFPrintf(mpi.comm(), fp, "Grid levels (lmin/lmax): ");  CHKERRXX(ierr);
+  for (int k_grid = 0; k_grid < ngrids; ++k_grid){
+    ierr = PetscFPrintf(mpi.comm(), fp, "      %d/%d  ", lmin+k_grid, lmax+k_grid);  CHKERRXX(ierr);
+  }
+  ierr = PetscFPrintf(mpi.comm(), fp, "\n");  CHKERRXX(ierr);
+  ierr = PetscFPrintf(mpi.comm(), fp, "Computational time (s):  ");  CHKERRXX(ierr);
+  for (int k_grid = 0; k_grid < ngrids; ++k_grid){
+    ierr = PetscFPrintf(mpi.comm(), fp, "%.3e  ", computational_time[k_grid]);  CHKERRXX(ierr);
+  }
+  ierr = PetscFPrintf(mpi.comm(), fp, "\n");  CHKERRXX(ierr);
 
   return 0;
 }
