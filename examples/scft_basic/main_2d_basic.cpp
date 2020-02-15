@@ -89,8 +89,8 @@ static bool pz = 1; ADD_TO_LIST(pl, pz, "Periodicity in the z-direction (0/1)");
 //-------------------------------------
 // refinement parameters
 //-------------------------------------
-static int lmin = 7; ADD_TO_LIST(pl, lmin, "Min level of the tree");
-static int lmax = 10; ADD_TO_LIST(pl, lmax, "Max level of the tree");
+static int lmin = 5; ADD_TO_LIST(pl, lmin, "Min level of the tree");
+static int lmax = 7; ADD_TO_LIST(pl, lmax, "Max level of the tree");
 static int lip  = 2; ADD_TO_LIST(pl, lip, "Refinement transition");
 
 //-------------------------------------
@@ -124,7 +124,7 @@ static int    bc_iters_min       = 5;       ADD_TO_LIST(pl, bc_iters_min, "Minim
 // problem setup
 //-------------------------------------
 static double box_size            = 1; ADD_TO_LIST(pl, box_size, "Scalling of computational box");
-static int    geometry            = 9; ADD_TO_LIST(pl, geometry, "Problem geometry: \n"
+static int    geometry            = 2; ADD_TO_LIST(pl, geometry, "Problem geometry: \n"
                                                           "    0 - rectangular periodic box \n"
                                                           "    1 - rectangular box with neutral walls\n"
                                                           "    2 - circle/sphere\n"
@@ -135,12 +135,12 @@ static int    geometry            = 9; ADD_TO_LIST(pl, geometry, "Problem geomet
                                                           "    7 - difference of two spheres \n"
                                                           "    8 - rectangular periodic box with particles \n"
                                                           "    9 - same as case 8, but different method used");
-static int    seed                = 0; ADD_TO_LIST(pl, seed, "Seed type: \n"
+static int    seed                = 1; ADD_TO_LIST(pl, seed, "Seed type: \n"
                                                       "    0 - random\n"
                                                       "    1 - horizontal stripes\n"
                                                       "    2 - vertical stripes");
 static double surface_energy_avg  = 0; ADD_TO_LIST(pl, surface_energy_avg, "Average strength of surface energy");
-static double surface_energy_diff = 0; ADD_TO_LIST(pl, surface_energy_diff, "Difference in surface energy strengths of A and B blocks");
+static double surface_energy_diff = 4; ADD_TO_LIST(pl, surface_energy_diff, "Difference in surface energy strengths of A and B blocks");
 
 //-------------------------------------
 // seed
@@ -443,7 +443,7 @@ void set_geometry()
   switch (geometry)
   {
     case 0: // periodic rectangular box
-      box_size = 4;
+      box_size = 2;
       xmin = ymin = zmin = -1;
       xmax = ymax = zmax =  1;
       nx = ny = nz = 1;

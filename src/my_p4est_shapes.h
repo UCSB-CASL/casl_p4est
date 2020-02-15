@@ -1067,6 +1067,63 @@ struct radial_shaped_domain_t
     phi_c.set_params(r0, xc, yc, inside, N, n, beta, theta);
   }
 };
+
+class capsule_phi_t : public CF_2
+{
+public:
+  double r0;      // radius
+  double xc, yc;  // center
+  double l;       // length
+  double inside;  // exterior (-1) or interior (-1)
+  double theta;   // rotational angle and auxiliary variables
+  cf_value_type_t what;
+
+  capsule_phi_t(cf_value_type_t what, double r0 = 1, double xc = 0, double yc = 0, double l = 0, double inside = 1, double theta = 0)
+  {
+    this->what = what;
+    set_params(r0, xc, yc, l, inside, theta);
+  }
+
+  void set_params(double r0 = 1, double xc = 0, double yc = 0, double l = 0, double inside = 1, double theta = 0)
+  {
+    this->r0     = r0;
+    this->xc     = xc;
+    this->yc     = yc;
+    this->inside = inside;
+    this->l      = l;
+    this->theta  = theta;
+  }
+
+  double operator()(double x, double y) const
+  {
+    double X = (x-xc)*cos(theta)-(y-yc)*sin(theta);
+    double Y = (x-xc)*sin(theta)+(y-yc)*cos(theta);
+
+    double X0 = MAX(-.5*l, MIN(.5*l, X));
+
+    switch (what) {
+      case VAL:
+
+        return inside*(sqrt(SQR(X-X0)+SQR(Y))-r0);
+
+      case DDX:
+
+        return 0;
+
+      case DDY:
+
+        return 0;
+
+      case CUR:
+      {
+
+        return 0;
+      }
+
+
+    }
+  }
+};
 #endif
 
 #endif // SHAPES_H

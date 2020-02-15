@@ -7695,10 +7695,19 @@ double my_p4est_level_set_t::advect_in_normal_direction_with_contact_angle(const
   solver.set_diag(1./dt);
   solver.set_rhs(rhs);
 
-  solver.set_wc(neumann_cf, zero_cf);
+  my_p4est_interpolation_nodes_t interp_phi(ngbd);
+
+  Vec phi_new;
+  ierr = VecDuplicate(phi, &phi_new); CHKERRXX(ierr);
+  VecCopyGhost(phi, phi_new);
+  VecAXPBYGhost(phi_new, -dt, 1., vn);
+  interp_phi.set_input(phi_new, linear);
+  solver.set_wc(dirichlet_cf, interp_phi);
+//  solver.set_wc(neumann_cf, zero_cf);
 
   solver.solve(phi, true);
 
+  ierr = VecDestroy(phi_new); CHKERRXX(ierr);
   ierr = VecDestroy(rhs); CHKERRXX(ierr);
   ierr = VecDestroy(flux); CHKERRXX(ierr);
 

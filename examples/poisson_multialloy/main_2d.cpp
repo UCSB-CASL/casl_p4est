@@ -1492,7 +1492,7 @@ int main (int argc, char* argv[])
     ierr = PetscPrintf(p4est->mpicomm, "Error in C2 on nodes : %g, order = %g\n", err_c2_n, log(err_c2_nm1/err_c2_n)/log(2)); CHKERRXX(ierr);
     ierr = PetscPrintf(p4est->mpicomm, "Error in C3 on nodes : %g, order = %g\n", err_c3_n, log(err_c3_nm1/err_c3_n)/log(2)); CHKERRXX(ierr);
 
-    h.push_back(dx);
+    h.push_back(dxyz_m);
     e_v.push_back(err_velo_n);
     e_tm.push_back(err_tl_n);
     e_tp.push_back(err_ts_n);

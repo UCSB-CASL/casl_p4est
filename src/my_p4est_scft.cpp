@@ -235,7 +235,7 @@ void my_p4est_scft_t::initialize_solvers()
 
   solver_a.set_mu(scalling*scalling);
   solver_a.set_diag(1./ds_a);
-  solver_a.set_wc(bc_wall_type, zero_cf);
+  solver_a.set_wc(neumann_cf, zero_cf);
   solver_a.set_use_taylor_correction(true);
   solver_a.set_kink_treatment(true);
   solver_a.set_use_sc_scheme(false);
@@ -250,7 +250,7 @@ void my_p4est_scft_t::initialize_solvers()
 
   solver_b.set_mu(scalling*scalling);
   solver_b.set_diag(1./ds_b);
-  solver_b.set_wc(bc_wall_type, zero_cf);
+  solver_b.set_wc(neumann_cf, zero_cf);
   solver_b.set_use_taylor_correction(true);
   solver_b.set_kink_treatment(true);
   solver_b.set_use_sc_scheme(false);
@@ -1280,26 +1280,26 @@ void my_p4est_scft_t::compute_energy_shape_derivative(int phi_idx, Vec velo)
   ierr = VecGetArray(mu_m,                  &mu_m_ptr               ); CHKERRXX(ierr);
   ierr = VecGetArray(mu_p,                  &mu_p_ptr               ); CHKERRXX(ierr);
   // calculate laplace of total density
-  Vec rho_total, rho_total_xx, rho_total_yy;
-  ierr = VecCreateGhostNodes(p4est, nodes, &rho_total); CHKERRXX(ierr);
-  ierr = VecCreateGhostNodes(p4est, nodes, &rho_total_xx); CHKERRXX(ierr);
-  ierr = VecCreateGhostNodes(p4est, nodes, &rho_total_yy); CHKERRXX(ierr);
+//  Vec rho_total, rho_total_xx, rho_total_yy;
+//  ierr = VecCreateGhostNodes(p4est, nodes, &rho_total); CHKERRXX(ierr);
+//  ierr = VecCreateGhostNodes(p4est, nodes, &rho_total_xx); CHKERRXX(ierr);
+//  ierr = VecCreateGhostNodes(p4est, nodes, &rho_total_yy); CHKERRXX(ierr);
 
-  double *rho_total_ptr;
-  ierr = VecGetArray(rho_total, &rho_total_ptr); CHKERRXX(ierr);
+//  double *rho_total_ptr;
+//  ierr = VecGetArray(rho_total, &rho_total_ptr); CHKERRXX(ierr);
 
-  foreach_node(n, nodes)
-  {
-    rho_total_ptr[n] = rho_a_ptr[n]+rho_b_ptr[n];
-  }
-  ierr = VecRestoreArray(rho_total, &rho_total_ptr); CHKERRXX(ierr);
+//  foreach_node(n, nodes)
+//  {
+//    rho_total_ptr[n] = rho_a_ptr[n]+rho_b_ptr[n];
+//  }
+//  ierr = VecRestoreArray(rho_total, &rho_total_ptr); CHKERRXX(ierr);
 
-  ngbd->second_derivatives_central(rho_total, rho_total_xx, rho_total_yy);
+//  ngbd->second_derivatives_central(rho_total, rho_total_xx, rho_total_yy);
 
-  double *rho_total_xx_ptr;
-  double *rho_total_yy_ptr;
-  ierr = VecGetArray(rho_total_xx, &rho_total_xx_ptr); CHKERRXX(ierr);
-  ierr = VecGetArray(rho_total_yy, &rho_total_yy_ptr); CHKERRXX(ierr);
+//  double *rho_total_xx_ptr;
+//  double *rho_total_yy_ptr;
+//  ierr = VecGetArray(rho_total_xx, &rho_total_xx_ptr); CHKERRXX(ierr);
+//  ierr = VecGetArray(rho_total_yy, &rho_total_yy_ptr); CHKERRXX(ierr);
 
   double xyz[P4EST_DIM];
   foreach_node(n, nodes)
@@ -1331,12 +1331,12 @@ void my_p4est_scft_t::compute_energy_shape_derivative(int phi_idx, Vec velo)
 //    energy_shape_deriv_ptr[n] = 1.0/volume;
   }
 
-  ierr = VecRestoreArray(rho_total_xx, &rho_total_xx_ptr); CHKERRXX(ierr);
-  ierr = VecRestoreArray(rho_total_yy, &rho_total_yy_ptr); CHKERRXX(ierr);
+//  ierr = VecRestoreArray(rho_total_xx, &rho_total_xx_ptr); CHKERRXX(ierr);
+//  ierr = VecRestoreArray(rho_total_yy, &rho_total_yy_ptr); CHKERRXX(ierr);
 
-  ierr = VecDestroy(rho_total); CHKERRXX(ierr);
-  ierr = VecDestroy(rho_total_xx); CHKERRXX(ierr);
-  ierr = VecDestroy(rho_total_yy); CHKERRXX(ierr);
+//  ierr = VecDestroy(rho_total); CHKERRXX(ierr);
+//  ierr = VecDestroy(rho_total_xx); CHKERRXX(ierr);
+//  ierr = VecDestroy(rho_total_yy); CHKERRXX(ierr);
 
   ierr = VecRestoreArray(energy_shape_deriv_tmp,&energy_shape_deriv_ptr ); CHKERRXX(ierr);
   ierr = VecRestoreArray(qf[ns-1],              &qf_ptr                 ); CHKERRXX(ierr);
