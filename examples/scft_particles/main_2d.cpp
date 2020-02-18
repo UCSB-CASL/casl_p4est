@@ -78,8 +78,8 @@ param_t<double> f        (pl, .5,  "f"       , "Fraction of polymer A");
 // scft parameters
 //-------------------------------------
 param_t<int>    seed                (pl, 2,     "seed", "Seed field for scft: 0 - zero, 1 - random, 2 - vertical stripes, 3 - horizontal stripes, 4 - diagonal stripes, 5 - dots");
-param_t<double> scft_tol            (pl, 1.e-4, "scft_tol"           , "Tolerance for SCFT");
-param_t<int>    max_scft_iterations (pl, 300,   "max_scft_iterations", "Maximum SCFT iterations");
+param_t<double> scft_tol            (pl, 0.001, "scft_tol"           , "Tolerance for SCFT");
+param_t<int>    max_scft_iterations (pl, 150,   "max_scft_iterations", "Maximum SCFT iterations");
 param_t<int>    bc_adjust_min       (pl, 1,     "bc_adjust_min"      , "Minimun SCFT steps between adjusting BC");
 param_t<bool>   smooth_pressure     (pl, 1,     "smooth_pressure"    , "Smooth pressure after first BC adjustment 0/1");
 param_t<double> scft_bc_tol         (pl, 4.e-2, "scft_bc_tol"        , "Tolerance for adjusting BC");
@@ -89,14 +89,14 @@ param_t<double> scft_bc_tol         (pl, 4.e-2, "scft_bc_tol"        , "Toleranc
 //-------------------------------------
 param_t<bool>   use_scft   (pl, 1,       "use_scft", "Turn on/off SCFT (0/1)");
 param_t<bool>   minimize   (pl, 1,       "minimize", "Turn on/off energy minimization (0/1)");
-param_t<int>    geometry   (pl, 6,       "geometry", "Initial placement of particles: 0 - one particle, 1 - ...");
+param_t<int>    geometry   (pl, 2,       "geometry", "Initial placement of particles: 0 - one particle, 1 - ...");
 param_t<int>    velocity   (pl, 3,       "velocity", "Predifined velocity in case of minimize=0: 0 - along x-axis, 1 - along y-axis, 2 - diagonally, 3 - circular");
-param_t<double> CFL        (pl, 1,     "CFL", "CFL number");
+param_t<double> CFL        (pl, 0.5,     "CFL", "CFL number");
 param_t<double> time_limit (pl, DBL_MAX, "time_limit", "Time limit");
-param_t<int>    step_limit (pl, 200,     "step_limit", "Step limit");
+param_t<int>    step_limit (pl, 10000,     "step_limit", "Step limit");
 
-param_t<double> pairwise_potential_mag   (pl, 0.3, "pairwise_potential_mag", "Magnitude of pairwise potential");
-param_t<double> pairwise_potential_width (pl, 0.01, "pairwise_potential_width", "Width of pairwise potential");
+param_t<double> pairwise_potential_mag   (pl, 0.5, "pairwise_potential_mag", "Magnitude of pairwise potential");
+param_t<double> pairwise_potential_width (pl, 0.02, "pairwise_potential_width", "Width of pairwise potential");
 
 //-------------------------------------
 // output parameters
@@ -758,7 +758,8 @@ int main(int argc, char** argv)
 
   double rho_old = 1;
 
-  while (t < time_limit() && step < step_limit())
+//  while (t < time_limit() && step < step_limit())
+  while (step < step_limit())
   {
     // create particle_level_set
     particles_level_set_cf_t particles_level_set_cf(np, radius, DIM(xc, yc, zc));
@@ -1105,8 +1106,13 @@ int main(int argc, char** argv)
     get_dxyz_min(p4est, dxyz, dxyz_min, diag_min);
 
     // calculate timestep delta_t, such that it's small enough to capture 'everything'
-    double delta_t = diag_min*CFL()/v_max;
-
+   // double delta_t = diag_min*CFL()/v_max;
+    vector<double> delta_t(np);
+    double v_absolute;
+    for (int i = 0; i < np; ++i){
+      v_absolute = sqrt( SUMD(SQR(v[0][i]), SQR(v[1][i]), SQR(v[2][i])) );
+      delta_t[i] = diag_min*CFL()/v_absolute;
+    }
 
 
     // how to move particles if we chose a periodic domain
@@ -1127,37 +1133,38 @@ int main(int argc, char** argv)
           yc[j] = yc[j] - (ymax()-ymin());
         }
 
-        XCODE( xc[j] = xc[j] + v[0][j]*delta_t );
-        YCODE( yc[j] = yc[j] + v[1][j]*delta_t );
-        ZCODE( zc[j] = zc[j] + v[2][j]*delta_t );
+       // XCODE( xc[j] = xc[j] + v[0][j]*delta_t );
+       // YCODE( yc[j] = yc[j] + v[1][j]*delta_t );
+       // ZCODE( zc[j] = zc[j] + v[2][j]*delta_t );
       }
 
     }
 
-    else{
+    //else{
 
       // move particles
       for (int j = 0; j < np; ++j)
       {
-        XCODE( xc[j] = xc[j] + v[0][j]*delta_t );
-        YCODE( yc[j] = yc[j] + v[1][j]*delta_t );
-        ZCODE( zc[j] = zc[j] + v[2][j]*delta_t );
+        XCODE( xc[j] = xc[j] + v[0][j]*delta_t[j] );
+        YCODE( yc[j] = yc[j] + v[1][j]*delta_t[j] )
+        ZCODE( zc[j] = zc[j] + v[2][j]*delta_t[j] );
       }
-    }
+    //}
 
     // calculate the expected and effective changes in energy (compare step i with step i+1)
     // compute expected change in energy (for validation)
-    double dE_dt_expected = 0;
+   // double dE_dt_expected = 0;
+    double expected_change_in_energy = 0;
     for (int i = 0; i < np; i++)
     {
-      dE_dt_expected += SUMD(v[0][i]*g[0][i],
-                             v[1][i]*g[1][i],
-                             v[2][i]*g[2][i]);
+      expected_change_in_energy += SUMD((v[0][i]*g[0][i])*delta_t[i],
+                                        (v[1][i]*g[1][i])*delta_t[i],
+                                        (v[2][i]*g[2][i])*delta_t[i]);
     }
-    double expected_change_in_energy  = dE_dt_expected*delta_t;
+    //double expected_change_in_energy  = dE_dt_expected*delta_t;
     double effective_change_in_energy = energy - energy_previous;
 
-    ierr = PetscPrintf(mpi.comm(), "Iteration no. %4d: time = %3.2e, dt = %3.2e, vmax = %3.2e, E = %6.5e, dE = %+3.2e / %+3.2e, dE_dt_expected= %6.5e \n", step, t, delta_t, v_max, energy, expected_change_in_energy, effective_change_in_energy, dE_dt_expected); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "Iteration no. %4d: time = %3.2e, dt = %3.2e, vmax = %3.2e, E = %6.5e, dE = %+3.2e / %+3.2e\n", step, t, delta_t, v_max, energy, expected_change_in_energy, effective_change_in_energy); CHKERRXX(ierr);
 
     // ---------------------------------------------------------
     // save info into files
@@ -1171,7 +1178,7 @@ int main(int argc, char** argv)
     if (save_energy())
     {
       ierr = PetscFOpen(mpi.comm(), file_energy_name, "a", &file_energy); CHKERRXX(ierr);
-      PetscFPrintf(mpi.comm(), file_energy, "%d %12.11e %3.2e %3.2e %3.2e %f\n", step, energy, dE_dt_expected, expected_change_in_energy, effective_change_in_energy, mu_minus_integral);
+      PetscFPrintf(mpi.comm(), file_energy, "%d %12.11e %3.2e %3.2e %f\n", step, energy, expected_change_in_energy, effective_change_in_energy, mu_minus_integral);
       ierr = PetscFClose(mpi.comm(), file_energy); CHKERRXX(ierr);
     }
 
@@ -1248,7 +1255,7 @@ int main(int argc, char** argv)
       p4est_connectivity_destroy(connectivity);
     }
 
-    t += delta_t;
+  //  t += delta_t;
     step++;
 
     // store energy to compare with next step
