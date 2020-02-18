@@ -340,7 +340,9 @@ int main (int argc, char* argv[])
                  1 - x*x + y*y\n\
                  2 - sin(x)*cos(y)");
 #endif
-  cmd.parse(argc, argv);
+
+  if (cmd.parse(argc, argv))
+                 return 0;
 
   cmd.print();
 

@@ -123,15 +123,19 @@ refine_levelset_cf_and_uniform_band (p4est_t *p4est, p4est_topidx_t which_tree, 
     CF_DIM&  phi = *(data->phi);
 
     double f;
+    bool vmmm_is_neg = phi(DIM(x, y, z)) <= 0.0;
+    bool is_crossed = false;;
 #ifdef P4_TO_P8
-    for (unsigned short ck = 0; ck<2; ++ck)
+    for (unsigned short ck = 0; ck<=2; ++ck)
 #endif
-      for (unsigned short cj = 0; cj<2; ++cj)
-        for (unsigned short ci = 0; ci <2; ++ci){
-          f = phi(DIM(x+ci*dx, y+cj*dy, z+ck*dz));
-          if(fabs(f) < data->uniform_band*smallest_dxyz_max)
+      for (unsigned short cj = 0; cj<=2; ++cj)
+        for (unsigned short ci = 0; ci <=2; ++ci){
+          f = phi(DIM(x+ci*0.5*dx, y+cj*0.5*dy, z+ck*0.5*dz));
+          is_crossed = is_crossed || (vmmm_is_neg != (f <= 0.0));
+          if(fabs(f) < data->uniform_band*smallest_dxyz_max || is_crossed)
             return P4EST_TRUE;
         }
+
   }
   return refine_levelset_cf(p4est, which_tree, quad);
 }
