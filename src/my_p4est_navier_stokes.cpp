@@ -2261,16 +2261,16 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1_grid_external(Vec phi_np1,
 
   // Elyce trying something:
   // Reset the semi-lagrangian vectors holding backtrace points
-  foreach_dimension(d){
-    foreach_dimension(dd){
-      xyz_n[d][dd].clear(); xyz_n[d][dd].shrink_to_fit();
-      std::vector<double>().swap(xyz_n[d][dd]);
-      if(sl_order==2){
-          xyz_nm1[d][dd].clear();xyz_nm1[d][dd].shrink_to_fit();
-          std::vector<double>().swap(xyz_nm1[d][dd]);
-        }
-    }
-  }
+//  foreach_dimension(d){
+//    foreach_dimension(dd){
+//      xyz_n[d][dd].clear(); xyz_n[d][dd].shrink_to_fit();
+//      std::vector<double>().swap(xyz_n[d][dd]);
+//      if(sl_order==2){
+//          xyz_nm1[d][dd].clear();xyz_nm1[d][dd].shrink_to_fit();
+//          std::vector<double>().swap(xyz_nm1[d][dd]);
+//        }
+//    }
+//  }
 
 
 
