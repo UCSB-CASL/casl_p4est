@@ -253,8 +253,6 @@ private:
     Mat matrix[P4EST_DIM];
     // if we do have a null space, it will be the constant nullspace
     // (unless some other border is added) -> no need to build it ourselves
-//    MatNullSpace matrix_nullspace[P4EST_DIM];
-//    Vec nullspace[P4EST_DIM];
     KSP ksp[P4EST_DIM];
     Vec rhs[P4EST_DIM];
     int matrix_has_nullspace[P4EST_DIM];
@@ -279,11 +277,9 @@ private:
     {
       PetscErrorCode ierr;
       for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
-        if(matrix[dim] != NULL)           { ierr = MatDestroy(matrix[dim]);                     CHKERRXX(ierr); matrix[dim]           = NULL; }
-//        if(nullspace[dim]  !=  NULL)      { ierr = MatNullSpaceDestroy(matrix_nullspace[dim]);  CHKERRXX(ierr); matrix_nullspace[dim] = NULL; }
-//        if(matrix_nullspace[dim] != NULL) { ierr = VecDestroy(nullspace[dim]);                  CHKERRXX(ierr); nullspace[dim]        = NULL; }
-        if(ksp[dim] != NULL)              { ierr = KSPDestroy(ksp[dim]);                        CHKERRXX(ierr); ksp[dim]              = NULL; }
-        if(rhs[dim] != NULL)              { ierr = VecDestroy(rhs[dim]);                        CHKERRXX(ierr); rhs[dim]              = NULL; }
+        if(matrix[dim] != NULL) { ierr = MatDestroy(matrix[dim]);                     CHKERRXX(ierr); matrix[dim]           = NULL; }
+        if(ksp[dim] != NULL)    { ierr = KSPDestroy(ksp[dim]);                        CHKERRXX(ierr); ksp[dim]              = NULL; }
+        if(rhs[dim] != NULL)    { ierr = VecDestroy(rhs[dim]);                        CHKERRXX(ierr); rhs[dim]              = NULL; }
       }
     }
 
@@ -294,12 +290,10 @@ private:
   public:
     jump_face_solver(my_p4est_two_phase_flows_t *parent_solver = NULL) : run_for_testing(false), env(parent_solver)
     {
-      /* initialize the KSP solvers and other parameter s*/
+      /* initialize the KSP solvers and other parameters */
       for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
         matrix_is_preallocated[dim]   = false;
         matrix[dim]                   = NULL;
-//        matrix_nullspace[dim]         = NULL;
-//        nullspace[dim]                = NULL;
         ksp[dim]                      = NULL;
         rhs[dim]                      = NULL;
         matrix_has_nullspace[dim] = matrix_is_ready[dim] = only_diags_are_modified[dim]  = false;
@@ -340,11 +334,26 @@ private:
 
     inline void set_for_testing() { run_for_testing = true; }
 
-    void solve(Vec *solution, const PetscBool &use_nonzero_initial_guess = PETSC_FALSE, const KSPType &ksp_type = KSPCG /*KSPBCGS*/, const PCType &pc_type = PCSOR);
+    void solve(Vec solution[P4EST_DIM], const PetscBool &use_nonzero_initial_guess = PETSC_FALSE, const KSPType &ksp_type = KSPCG, const PCType &pc_type = PCHYPRE);
 
+    void reset()
+    {
+      destroy_and_nullify_owned_members();
+      PetscErrorCode ierr;
+      for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+        matrix_is_preallocated[dim]   = false;
+        matrix_has_nullspace[dim] = matrix_is_ready[dim] = only_diags_are_modified[dim]  = false;
+        current_diag_m[dim] = current_diag_p[dim] = 0.0;
+        desired_diag_m[dim] = desired_diag_p[dim] = 0.0;
+        ksp_is_set_from_options[dim] = pc_is_set_from_options[dim] = false;
+        if(ksp[dim] == NULL)
+        {
+          ierr = KSPCreate(env->p4est_n->mpicomm, &ksp[dim]); CHKERRXX(ierr);
+          ierr = KSPSetTolerances(ksp[dim], 1e-12, PETSC_DEFAULT, PETSC_DEFAULT, PETSC_DEFAULT); CHKERRXX(ierr);
+        }
+      }
+    }
   } viscosity_solver;
-
-
 
   //  inline bool get_close_coarse_node(const p4est_indep_t* fine_node, p4est_locidx_t& coarse_node_idx, bool subrefined [P4EST_DIM]) const
   //  {
@@ -1044,7 +1053,7 @@ public:
     double max_L2_norm_u_overall = MAX(max_L2_norm_u[0], max_L2_norm_u[1]);
     dt_n = MIN(1/min_value_for_u_max, 1/max_L2_norm_u_overall) * cfl * MIN(DIM(dxyz_min[0], dxyz_min[1], dxyz_min[2]));
     dt_n = MIN(dt_n, sqrt((rho_m+rho_p)*pow(MIN(DIM(dxyz_min[0], dxyz_min[1], dxyz_min[2])), 3)/(4.0*M_PI*surface_tension)));
-    dt_n = MIN(dt_n, 1.0/(MAX(mu_m/rho_m, mu_p/rho_p)*2.0*(SUMD(1.0/SQR(dxyz_min[0]), 1.0/SQR(dxyz_min[1]), 1.0/SQR(dxyz_min[2])))));
+//    dt_n = MIN(dt_n, 1.0/(MAX(mu_m/rho_m, mu_p/rho_p)*2.0*(SUMD(1.0/SQR(dxyz_min[0]), 1.0/SQR(dxyz_min[1]), 1.0/SQR(dxyz_min[2])))));
 
     dt_updated = true;
   }
@@ -1186,7 +1195,7 @@ public:
     solve_projection(cell_poisson_jump_solver, activate_xgfm);
     delete cell_poisson_jump_solver;
   }
-  void solve_projection(my_p4est_xgfm_cells_t* &cell_poisson_jump_solver, const bool activate_xgfm, const KSPType ksp = KSPCG, const PCType pc = PCHYPRE);
+  void solve_projection(my_p4est_xgfm_cells_t* &cell_poisson_jump_solver, const bool activate_xgfm, const KSPType ksp = KSPCG, const PCType pc = PCSOR /*PCHYPRE*/);
 
   void extrapolate_velocities_across_interface_in_finest_computational_cells_Aslam_PDE(const extrapolation_technique& extrapolation_method = PSEUDO_TIME, const unsigned int& n_iteration = 10);
   void compute_velocity_at_nodes();

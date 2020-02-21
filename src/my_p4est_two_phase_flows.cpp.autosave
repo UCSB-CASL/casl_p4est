@@ -332,44 +332,44 @@ my_p4est_two_phase_flows_t::~my_p4est_two_phase_flows_t()
 {
   PetscErrorCode ierr;
   // node-sampled fields on the interface-capturing grid
-  if(fine_phi != NULL)                      { ierr = delete_and_nullify_vector(fine_phi);                         CHKERRXX(ierr); }
-  if(fine_curvature != NULL)                { ierr = delete_and_nullify_vector(fine_curvature);                   CHKERRXX(ierr); }
-  if(fine_jump_hodge != NULL)               { ierr = delete_and_nullify_vector(fine_jump_hodge);                  CHKERRXX(ierr); }
-  if(fine_jump_normal_flux_hodge != NULL)   { ierr = delete_and_nullify_vector(fine_jump_normal_flux_hodge);      CHKERRXX(ierr); }
-  if(fine_mass_flux != NULL)                { ierr = delete_and_nullify_vector(fine_mass_flux);                   CHKERRXX(ierr); }
-  if(fine_variable_surface_tension != NULL) { ierr = delete_and_nullify_vector(fine_variable_surface_tension);    CHKERRXX(ierr); }
-  if(fine_normal != NULL)                   { ierr = delete_and_nullify_vector(fine_normal);                      CHKERRXX(ierr); }
-  if(fine_jump_u_test != NULL)              { ierr = delete_and_nullify_vector(fine_jump_u_test);                 CHKERRXX(ierr); }
-  if(fine_phi_xxyyzz  !=  NULL)             { ierr = delete_and_nullify_vector(fine_phi_xxyyzz);                  CHKERRXX(ierr); }
-  if(fine_jump_mu_grad_v != NULL)           { ierr = delete_and_nullify_vector(fine_jump_mu_grad_v);              CHKERRXX(ierr); }
-  // node-sampled fields on the computational grids n and nm1
-  if(vorticities != NULL)                   { ierr = delete_and_nullify_vector(vorticities);                      CHKERRXX(ierr); }
-  if(vnm1_nodes_m != NULL)                  { ierr = delete_and_nullify_vector(vnm1_nodes_m);                     CHKERRXX(ierr); }
-  if(vnm1_nodes_p != NULL)                  { ierr = delete_and_nullify_vector(vnm1_nodes_p);                     CHKERRXX(ierr); }
-  if(vn_nodes_m != NULL)                    { ierr = delete_and_nullify_vector(vn_nodes_m);                       CHKERRXX(ierr); }
-  if(vn_nodes_p != NULL)                    { ierr = delete_and_nullify_vector(vn_nodes_p);                       CHKERRXX(ierr); }
-  if(vnp1_nodes_m != NULL)                  { ierr = delete_and_nullify_vector(vnp1_nodes_m);                     CHKERRXX(ierr); }
-  if(vnp1_nodes_p != NULL)                  { ierr = delete_and_nullify_vector(vnp1_nodes_p);                     CHKERRXX(ierr); }
-  if(interface_velocity_np1 != NULL)        { ierr = delete_and_nullify_vector(interface_velocity_np1);           CHKERRXX(ierr); }
-  if(interface_velocity_np1_xxyyzz != NULL) { ierr = delete_and_nullify_vector(interface_velocity_np1_xxyyzz);    CHKERRXX(ierr); }
-  if(interface_velocity_n != NULL)          { ierr = delete_and_nullify_vector(interface_velocity_n);             CHKERRXX(ierr); }
-  if(interface_velocity_n_xxyyzz != NULL)   { ierr = delete_and_nullify_vector(interface_velocity_n_xxyyzz);      CHKERRXX(ierr); }
-  if(vnm1_nodes_m_xxyyzz != NULL)           { ierr = delete_and_nullify_vector(vnm1_nodes_m_xxyyzz);              CHKERRXX(ierr); }
-  if(vnm1_nodes_p_xxyyzz != NULL)           { ierr = delete_and_nullify_vector(vnm1_nodes_p_xxyyzz);              CHKERRXX(ierr); }
-  if(vn_nodes_m_xxyyzz != NULL)             { ierr = delete_and_nullify_vector(vn_nodes_m_xxyyzz);                CHKERRXX(ierr); }
-  if(vn_nodes_p_xxyyzz != NULL)             { ierr = delete_and_nullify_vector(vn_nodes_p_xxyyzz);                CHKERRXX(ierr); }
-  // cell-sampled fields, computational grid n
-  if(hodge != NULL)                         { ierr = delete_and_nullify_vector(hodge);                            CHKERRXX(ierr); }
-  // face-sampled fields, computational grid n
-  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
-    if(dxyz_hodge[dir] != NULL)             { ierr = delete_and_nullify_vector(dxyz_hodge[dir]);                  CHKERRXX(ierr); }
-    if(vstar[dir] != NULL)                  { ierr = delete_and_nullify_vector(vstar[dir]);                       CHKERRXX(ierr); }
-    if(vnp1_m[dir] != NULL)                 { ierr = delete_and_nullify_vector(vnp1_m[dir]);                      CHKERRXX(ierr); }
-    if(vnp1_p[dir] != NULL)                 { ierr = delete_and_nullify_vector(vnp1_p[dir]);                      CHKERRXX(ierr); }
-    // for testing viscosity
-    if(test_vnm1_faces[dir] != NULL)        { ierr = delete_and_nullify_vector(test_vnm1_faces[dir]);             CHKERRXX(ierr); }
-    if(test_vn_faces[dir] != NULL)          { ierr = delete_and_nullify_vector(test_vn_faces[dir]);               CHKERRXX(ierr); }
-    if(test_vnp1_faces[dir] != NULL)        { ierr = delete_and_nullify_vector(test_vnp1_faces[dir]);             CHKERRXX(ierr); }
+  if(fine_phi != NULL)                      { ierr = delete_and_nullify_vector(fine_phi);                       CHKERRXX(ierr); }
+  if(fine_curvature != NULL)                { ierr = delete_and_nullify_vector(fine_curvature);                 CHKERRXX(ierr); }
+  if(fine_jump_hodge != NULL)               { ierr = delete_and_nullify_vector(fine_jump_hodge);                CHKERRXX(ierr); }
+  if(fine_jump_normal_flux_hodge != NULL)   { ierr = delete_and_nullify_vector(fine_jump_normal_flux_hodge);    CHKERRXX(ierr); }
+  if(fine_mass_flux != NULL)                { ierr = delete_and_nullify_vector(fine_mass_flux);                 CHKERRXX(ierr); }
+  if(fine_variable_surface_tension != NULL) { ierr = delete_and_nullify_vector(fine_variable_surface_tension);  CHKERRXX(ierr); }
+  if(fine_normal != NULL)                   { ierr = delete_and_nullify_vector(fine_normal);                    CHKERRXX(ierr); }
+  if(fine_jump_u_test != NULL)              { ierr = delete_and_nullify_vector(fine_jump_u_test);               CHKERRXX(ierr); }
+  if(fine_phi_xxyyzz  !=  NULL)             { ierr = delete_and_nullify_vector(fine_phi_xxyyzz);                CHKERRXX(ierr); }
+  if(fine_jump_mu_grad_v != NULL)           { ierr = delete_and_nullify_vector(fine_jump_mu_grad_v);            CHKERRXX(ierr); }
+  // node-sampled fields on the computational grids n and nm1                                                   
+  if(vorticities != NULL)                   { ierr = delete_and_nullify_vector(vorticities);                    CHKERRXX(ierr); }
+  if(vnm1_nodes_m != NULL)                  { ierr = delete_and_nullify_vector(vnm1_nodes_m);                   CHKERRXX(ierr); }
+  if(vnm1_nodes_p != NULL)                  { ierr = delete_and_nullify_vector(vnm1_nodes_p);                   CHKERRXX(ierr); }
+  if(vn_nodes_m != NULL)                    { ierr = delete_and_nullify_vector(vn_nodes_m);                     CHKERRXX(ierr); }
+  if(vn_nodes_p != NULL)                    { ierr = delete_and_nullify_vector(vn_nodes_p);                     CHKERRXX(ierr); }
+  if(vnp1_nodes_m != NULL)                  { ierr = delete_and_nullify_vector(vnp1_nodes_m);                   CHKERRXX(ierr); }
+  if(vnp1_nodes_p != NULL)                  { ierr = delete_and_nullify_vector(vnp1_nodes_p);                   CHKERRXX(ierr); }
+  if(interface_velocity_np1 != NULL)        { ierr = delete_and_nullify_vector(interface_velocity_np1);         CHKERRXX(ierr); }
+  if(interface_velocity_np1_xxyyzz != NULL) { ierr = delete_and_nullify_vector(interface_velocity_np1_xxyyzz);  CHKERRXX(ierr); }
+  if(interface_velocity_n != NULL)          { ierr = delete_and_nullify_vector(interface_velocity_n);           CHKERRXX(ierr); }
+  if(interface_velocity_n_xxyyzz != NULL)   { ierr = delete_and_nullify_vector(interface_velocity_n_xxyyzz);    CHKERRXX(ierr); }
+  if(vnm1_nodes_m_xxyyzz != NULL)           { ierr = delete_and_nullify_vector(vnm1_nodes_m_xxyyzz);            CHKERRXX(ierr); }
+  if(vnm1_nodes_p_xxyyzz != NULL)           { ierr = delete_and_nullify_vector(vnm1_nodes_p_xxyyzz);            CHKERRXX(ierr); }
+  if(vn_nodes_m_xxyyzz != NULL)             { ierr = delete_and_nullify_vector(vn_nodes_m_xxyyzz);              CHKERRXX(ierr); }
+  if(vn_nodes_p_xxyyzz != NULL)             { ierr = delete_and_nullify_vector(vn_nodes_p_xxyyzz);              CHKERRXX(ierr); }
+  // cell-sampled fields, computational grid n                                                                  
+  if(hodge != NULL)                         { ierr = delete_and_nullify_vector(hodge);                          CHKERRXX(ierr); }
+  // face-sampled fields, computational grid n                                                                  
+  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {                                                         
+    if(dxyz_hodge[dir] != NULL)             { ierr = delete_and_nullify_vector(dxyz_hodge[dir]);                CHKERRXX(ierr); }
+    if(vstar[dir] != NULL)                  { ierr = delete_and_nullify_vector(vstar[dir]);                     CHKERRXX(ierr); }
+    if(vnp1_m[dir] != NULL)                 { ierr = delete_and_nullify_vector(vnp1_m[dir]);                    CHKERRXX(ierr); }
+    if(vnp1_p[dir] != NULL)                 { ierr = delete_and_nullify_vector(vnp1_p[dir]);                    CHKERRXX(ierr); }
+    // for testing viscosity                                                                                    
+    if(test_vnm1_faces[dir] != NULL)        { ierr = delete_and_nullify_vector(test_vnm1_faces[dir]);           CHKERRXX(ierr); }
+    if(test_vn_faces[dir] != NULL)          { ierr = delete_and_nullify_vector(test_vn_faces[dir]);             CHKERRXX(ierr); }
+    if(test_vnp1_faces[dir] != NULL)        { ierr = delete_and_nullify_vector(test_vnp1_faces[dir]);           CHKERRXX(ierr); }
   }
 
   if(interp_phi != NULL) delete interp_phi;

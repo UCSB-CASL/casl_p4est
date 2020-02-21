@@ -266,15 +266,15 @@ int main (int argc, char* argv[])
 #endif
 
   uniform_band_m = uniform_band_p = .15*r0;
-  const double dxmin      = MAX(DIM((xmax - xmin)/(double)n_tree_xyz[0], (ymax - ymin)/(double)n_tree_xyz[1], (zmax - zmin)/(double)n_tree_xyz[2])) / (1<<lmax);
+  const double dxmin      = MAX(DIM((xmax - xmin)/(double)n_tree_xyz[0], (ymax - ymin)/(double)n_tree_xyz[1], (zmax - zmin)/(double)n_tree_xyz[2])) / ((double) (1<<lmax));
   uniform_band_m         /= dxmin;
   uniform_band_p         /= dxmin;
   uniform_band_m          = cmd.get<double>("uniform_band", uniform_band_m);
   uniform_band_p          = cmd.get<double>("uniform_band", uniform_band_p);
   sl_order                = cmd.get<int>("sl_order", 1);
-  cfl                     = cmd.get<double>("cfl", 1.0);
+  cfl                     = cmd.get<double>("cfl", 0.5);
 
-  const string export_dir               = "/home/regan/workspace/projects/two_phase_flow/static_bubble_" + to_string(P4EST_DIM) + "d/mem_leak/lmin_" + to_string(lmin) + "_lmax_" + to_string(lmax);
+  const string export_dir               = "/home/regan/workspace/projects/two_phase_flow/static_bubble_" + to_string(P4EST_DIM) + "d/lmin_" + to_string(lmin) + "_lmax_" + to_string(lmax);
   const bool save_vtk                   = true;
   double vtk_dt                         = -1.0;
   if(save_vtk)
