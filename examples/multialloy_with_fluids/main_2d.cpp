@@ -82,11 +82,16 @@ DEFINE_PARAMETER(pl,int,example_,3,"example number: \n"
 DEFINE_PARAMETER(pl,bool,save_stefan,false,"Save stefan ?");
 DEFINE_PARAMETER(pl,bool,save_navier_stokes,false,"Save navier stokes?");
 DEFINE_PARAMETER(pl,bool,save_coupled_fields,true,"Save the coupled problem?");
-DEFINE_PARAMETER(pl,int,save_every_iter,50,"Saves vtk every n number of iterations (default is 1)");
+DEFINE_PARAMETER(pl,int,save_every_iter,1,"Saves vtk every n number of iterations (default is 1)");
+DEFINE_PARAMETER(pl,int,save_state_every_iter,1,"Saves simulation state every n number of iterations (default is 500)");
+
 DEFINE_PARAMETER(pl,bool,print_checkpoints,false,"Print checkpoints throughout script for debugging? ");
 DEFINE_PARAMETER(pl,bool,mem_checkpoints,false,"checks various memory checkpoints for mem usage");
 DEFINE_PARAMETER(pl,double,mem_safety_limit,60.e9,"Memory upper limit before closing the program -- in bytes");
 
+// Load options
+DEFINE_PARAMETER(pl,bool,loading_from_previous_state,false,"");
+//DEFINE_PARAMETER(pl,char,"/home/elyce/workspace/projects/multialloy_with_fluids_","");
 // ---------------------------------------
 // Solution options:
 // ---------------------------------------
@@ -139,7 +144,7 @@ DEFINE_PARAMETER(pl,int,advection_sl_order,2,"Integeer for advection solution or
 DEFINE_PARAMETER(pl,double,cfl,0.5,"CFL number (default:0.5)");
 DEFINE_PARAMETER(pl,bool,force_interfacial_velocity_to_zero,false,"Force the interfacial velocity to zero? ");
 
-bool stop_flag = false;
+int stop_flag = -1;
 bool pressure_check_flag = false;
 // ---------------------------------------
 // Geometry options:
@@ -203,7 +208,7 @@ void set_geometry(){
 
       double r_cyl_physical = 0.035/2;//0.016/2.;//0.01; // 1 cm
 
-      double r_physical = r_cyl_physical + 0.035/5.;//0.0105;//.011; // 1.1 cm
+      double r_physical = r_cyl_physical + 0.004;//0.002;//0.035/5.;//0.0105;//.011; // 1.1 cm
 
 
       r0 = r_physical;//r_physical*scaling;
@@ -273,6 +278,7 @@ bool keep_going = true;
 double tn;
 double dt;
 double dt_nm1;
+int tstep;
 DEFINE_PARAMETER(pl,double,t_ramp,0.5,"Time at which NS boundary conditions are ramped up to the freestream value \n");
 DEFINE_PARAMETER(pl,bool,ramp_bcs,true,"Boolean option to ramp the BC's for the ice over cylinder case \n");
 DEFINE_PARAMETER(pl,double,t_cyl_ramp,0.01,"Amount of time used to ramp the cylinder boundary condition to the cooled substrate condition \n");
@@ -1774,11 +1780,14 @@ void check_T_values(vec_and_ptr_t phi, vec_and_ptr_t T, p4est_nodes* nodes, p4es
           double xyz[P4EST_DIM];
           node_xyz_fr_n(n,p4est,nodes,xyz);
           printf("\n Getting unreasonable T value of %0.2f = %0.4e at (%0.4f, %0.4f) \n",T.ptr[n],T.ptr[n],xyz[0],xyz[1]);
-          stop_flag = true;
+          if(stop_flag<0)stop_flag = tstep; // Only grab it the first time it's triggered
         }
+
+
       min_mag_T = min(min_mag_T,fabs(T.ptr[n]));
       }
   }
+  MPI_Allreduce(MPI_IN_PLACE,&stop_flag,1,MPI_INT,MPI_MAX,p4est->mpicomm);
 
   // Use MPI_Allreduce to get the values on a global scale, not just on one process:
   double global_avg_T = 0.0;
@@ -2522,37 +2531,28 @@ void setup_rhs(vec_and_ptr_t phi,vec_and_ptr_t T_l, vec_and_ptr_t T_s, vec_and_p
 
 
   // Check the backtrace values and potential errors there:
-  vec_and_ptr_t backtrace_check; vec_and_ptr_t backtrace_err;
-  backtrace_check.create(p4est,nodes);
-  backtrace_err.create(p4est,nodes);
 
-  sample_cf_on_nodes(p4est,nodes,check_advection_term_n,backtrace_check.vec);
 
-  backtrace_err.get_array();
-  backtrace_check.get_array();
-  foreach_local_node(n,nodes){
-    if(phi.ptr[n]<0.){
-      backtrace_err.ptr[n] = -1.0*backtrace_check.ptr[n] - rhs_Tl.ptr[n];
-//      printf("Backtrace check is %0.3e, rhs_Tl is %0.3e, error is %0.3e \n",-1.0*backtrace_check.ptr[n], rhs_Tl.ptr[n], backtrace_err.ptr[n]);
-      }
+  if(stop_flag>0){
+    MPI_Barrier(p4est->mpicomm);
+    PetscPrintf(p4est->mpicomm,"BEGINNING RHS CHECK \n");
+    double xyz_node[P4EST_DIM];
+    foreach_local_node(n,nodes){
+      if(phi.ptr[n]<0.){
+          node_xyz_fr_n(n,p4est,nodes,xyz_node);
+          double rhs_val_T = T_l_backtrace.ptr[n] + ((SQR(dt))/(dt_nm1*(2.*dt + dt_nm1)))*(T_l_backtrace.ptr[n] - T_l_backtrace_nm1.ptr[n]);
+
+          if(fabs(T_l_backtrace.ptr[n] - T_l_backtrace_nm1.ptr[n])>1.e-3 ){
+            printf("For node %d on rank %d, xy = (%0.4e, %0.4e), RHS_T = %0.4f, T_d_nm1 = %0.4f, T_d_n = %0.4f, %s \n",n,p4est->mpirank,xyz_node[0],xyz_node[1],rhs_val_T,T_l_backtrace_nm1.ptr[n],T_l_backtrace.ptr[n],rhs_val_T>276.?"HERE!":"");
+          }
+
+//          backtrace_err.ptr[n] = -1.0*backtrace_check.ptr[n] - rhs_Tl.ptr[n];
+          //      printf("Backtrace check is %0.3e, rhs_Tl is %0.3e, error is %0.3e \n",-1.0*backtrace_check.ptr[n], rhs_Tl.ptr[n], backtrace_err.ptr[n]);
+        }
+
+    }
 
   }
-  backtrace_err.restore_array();
-  backtrace_check.restore_array();
-
-  PetscPrintf(p4est->mpicomm,"\n ------------------------- \n");
-
-  PetscPrintf(p4est->mpicomm,"CHECKING BACKTRACE ERRORS : -------------------------");
-  check_T_values(phi,backtrace_err,nodes,p4est,example_,phi,false);
-  PetscPrintf(p4est->mpicomm,"\n ------------------------- \n");
-  PetscPrintf(p4est->mpicomm,"CHECKING RHS Values : -------------------------");
-  check_T_values(phi,rhs_Tl,nodes,p4est,example_,phi,false);
-  PetscPrintf(p4est->mpicomm,"\n ------------------------- \n");
-
-  backtrace_err.destroy();
-  backtrace_check.destroy();
-
-
 
 
   phi.restore_array();
@@ -2695,27 +2695,23 @@ void do_backtrace(vec_and_ptr_t T_l,vec_and_ptr_t T_l_nm1,vec_and_ptr_t T_l_back
 
 
 
-// // Check values
-//  T_l_backtrace.get_array(); v.get_array();
-//  T_l_backtrace_nm1.get_array();
-//  phi.get_array();
-//  foreach_local_node(n,nodes){
-//    double xyz[P4EST_DIM];
-//    node_xyz_fr_n(n,p4est,nodes,xyz);
-//    printf("Point: (%0.3f, %0.3f), T_l_d = %0.3f, T_l_d_nm1 = %0.3f, at pt (%0.3f, %0.3f), phi = %0.3e \n",xyz[0],xyz[1],T_l_backtrace.ptr[n],T_l_backtrace_nm1.ptr[n],xyz_d[0][n],xyz_d[1][n],phi.ptr[n]);
-//    if ((T_l_backtrace.ptr[n] < EPS || T_l_backtrace_nm1.ptr[n] < EPS) && phi.ptr[n]<0. )  printf("^^^ HERE\n\n");
-//  }
-//  T_l_backtrace.restore_array(); v.restore_array();
-//  T_l_backtrace_nm1.restore_array();
-//  phi.restore_array();
-//  if(advection_sl_order==2){
-//    T_l_backtrace_nm1.get_array(); v_nm1.get_array();
-//    foreach_local_node(n,nodes){
-//      printf("T_l_d_nm1 = %0.3f at pt (%0.3f, %0.3f) \n",T_l_backtrace_nm1.ptr[n],xyz_d[0][n],xyz_d_nm1[1][n]);
+ // Check values
+  T_l_backtrace.get_array(); v.get_array();
+  T_l_backtrace_nm1.get_array();
+  phi.get_array();
+  foreach_local_node(n,nodes){
+    double xyz[P4EST_DIM];
+    node_xyz_fr_n(n,p4est,nodes,xyz);
+    if(phi.ptr[n]<0. && fabs(T_l_backtrace.ptr[n] - T_l_backtrace_nm1.ptr[n])>1.e-3  ){
+        printf("Point: (%0.6f, %0.6f), T_l_d = %0.6f, T_l_d_nm1 = %0.6f, at x_d_n= (%0.6f, %0.6f),x_d_nm1= (%0.6f, %0.6f), phi = %0.3e \n",
+               xyz[0],xyz[1],T_l_backtrace.ptr[n],T_l_backtrace_nm1.ptr[n],xyz_d[0][n],xyz_d[1][n],xyz_d_nm1[0][n],xyz_d_nm1[1][n],phi.ptr[n]);
+      }
+    if ((T_l_backtrace.ptr[n] < EPS || T_l_backtrace_nm1.ptr[n] < EPS) && phi.ptr[n]<0. )  printf("^^^ HERE\n\n");
+  }
+  T_l_backtrace.restore_array(); v.restore_array();
+  T_l_backtrace_nm1.restore_array();
+  phi.restore_array();
 
-//    }
-//    T_l_backtrace_nm1.restore_array(); v_nm1.restore_array();
-//  }
 
 
 
@@ -3250,7 +3246,7 @@ void save_everything(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
   }
 
   // Scale pressure:
-//  VecScaleGhost(press.vec,1./(SQR(scaling)));
+  VecScaleGhost(press.vec,1./(SQR(scaling)));
 
   // Get arrays:
   phi.get_array();
@@ -3327,7 +3323,7 @@ void save_everything(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
   }
 
   // Scale pressure back:
-//  VecScaleGhost(press.vec,SQR(scaling));
+  VecScaleGhost(press.vec,SQR(scaling));
 }
 
 void save_stefan_fields(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,vec_and_ptr_t phi, vec_and_ptr_t phi_2, vec_and_ptr_t Tl,vec_and_ptr_t Ts,vec_and_ptr_dim_t v_int, char* filename ){
@@ -3472,13 +3468,13 @@ void save_navier_stokes_fields(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost
 // FUNCTIONS FOr SAVING OR LOADING SIMULATION STATE:
 // --------------------------------------------------------------------------------------------------------------
 
-void fill_or_load_double_parameters(save_or_load flag, PetscReal *data){
+void fill_or_load_double_parameters(save_or_load flag,PetscInt num,splitting_criteria_t* sp, PetscReal *data){
   size_t idx=0;
   switch(flag){
     case SAVE:{
         data[idx++] = tn;
         data[idx++] = dt;
-        if(advection_sl_order==2)data[idx++] = dt_nm1;
+        data[idx++] = dt_nm1;
         data[idx++] = k_l;
         data[idx++] = k_s;
         data[idx++] = alpha_l;
@@ -3490,6 +3486,8 @@ void fill_or_load_double_parameters(save_or_load flag, PetscReal *data){
         data[idx++] = cfl;
         data[idx++] = uniform_band;
         data[idx++] = scaling;
+        data[idx++] = sp->lip;
+        data[idx++] = NS_norm;
         // Note: all physical parameters are saved in their *scaled* forms. To recover them, need to do the reverse scaling algebra.
         break;
       }
@@ -3497,7 +3495,7 @@ void fill_or_load_double_parameters(save_or_load flag, PetscReal *data){
         tn = data[idx++];
         dt = data[idx++];
         // Note: since these parameters depend on advection sl order, need to load integers first before doubles
-        if(advection_sl_order==2) dt_nm1 = data[idx++];
+        dt_nm1 = data[idx++];
         k_l = data[idx++];
         k_s = data[idx++];
         alpha_l = data[idx++];
@@ -3509,45 +3507,50 @@ void fill_or_load_double_parameters(save_or_load flag, PetscReal *data){
         cfl = data[idx++];
         uniform_band= data[idx++];
         scaling= data[idx++];
+        sp->lip = data[idx++];
+        NS_norm = data[idx++];
       }
 
     }
-  if(advection_sl_order==2) P4EST_ASSERT(idx == 14);
-  else P4EST_ASSERT(idx == 13);
+  P4EST_ASSERT(idx == num);
 };
 
-void fill_or_load_integer_parameters(save_or_load flag, PetscInt *data){
+void fill_or_load_integer_parameters(save_or_load flag, PetscInt num, splitting_criteria_t* sp,PetscInt *data){
   size_t idx=0;
   switch(flag){
     case SAVE:{
-        data[idx++] = lmin;
-        data[idx++] = lmax;
         data[idx++] = advection_sl_order;
         data[idx++] = save_every_iter;
+        data[idx++] = tstep;
+        data[idx++] = sp->min_lvl;
+        data[idx++] = sp->max_lvl;
         break;
       }
     case LOAD:{
-        lmin = data[idx++];
-        lmax = data[idx++];
         advection_sl_order = data[idx++];
         save_every_iter = data[idx++];
+        tstep = data[idx++];
+        sp->min_lvl=data[idx++];
+        sp->max_lvl=data[idx++];
       }
 
     }
-  P4EST_ASSERT(idx == 4);
+  P4EST_ASSERT(idx == num);
 };
-void save_or_load_parameters(const char* filename, splitting_criteria_t* splitting_crit, save_or_load flag, double &tn, const mpi_environment_t* mpi){
+void save_or_load_parameters(const char* filename, splitting_criteria_t* sp,save_or_load flag, const mpi_environment_t* mpi=NULL){
   PetscErrorCode ierr;
 
   // Double parameters we need to save:
-  // - tn, dt, dt_nm1 (if 2nd order), k_l, k_s, alpha_l, alpha_s, rho_l, rho_s, mu_l, L, cfl, uniform_band, scaling
-  PetscReal double_parameters[14];
+  // - tn, dt, dt_nm1 (if 2nd order), k_l, k_s, alpha_l, alpha_s, rho_l, rho_s, mu_l, L, cfl, uniform_band, scaling, data->lip
+  PetscInt num_doubles = 16;
+  PetscReal double_parameters[num_doubles];
 
 
 
   // Integer parameters we need to save:
-  // - current lmin, current lmax, advection_sl_order, save_every_iter,
-  PetscInt integer_parameters[4];
+  // - current lmin, current lmax, advection_sl_order, save_every_iter, tstep, data->min_lvl, data->max_lvl
+  PetscInt num_integers = 5;
+  PetscInt integer_parameters[num_integers];
 
   int fd;
   char diskfilename[PATH_MAX];
@@ -3558,17 +3561,23 @@ void save_or_load_parameters(const char* filename, splitting_criteria_t* splitti
 
             // Save the integer parameters to a file
             sprintf(diskfilename,"%s_integers",filename);
-            fill_or_load_integer_parameters(flag,integer_parameters);
+            fill_or_load_integer_parameters(flag,num_integers,sp,integer_parameters);
+            printf("Fills the integer parameters \n");
             ierr = PetscBinaryOpen(diskfilename,FILE_MODE_WRITE,&fd); CHKERRXX(ierr);
-            ierr = PetscBinaryWrite(fd, integer_parameters, 4, PETSC_INT, PETSC_TRUE); CHKERRXX(ierr);
+            ierr = PetscBinaryWrite(fd, integer_parameters, num_integers, PETSC_INT, PETSC_TRUE); CHKERRXX(ierr);
             ierr = PetscBinaryClose(fd); CHKERRXX(ierr);
+            printf("Writes the integer parameters \n");
 
             // Save the double parameters to a file:
+
             sprintf(diskfilename, "%s_doubles", filename);
-            fill_or_load_double_parameters(flag, double_parameters);
+            fill_or_load_double_parameters(flag,num_doubles,sp, double_parameters);
+            printf("Fills the double parameters \n");
+
             ierr = PetscBinaryOpen(diskfilename, FILE_MODE_WRITE, &fd); CHKERRXX(ierr);
-            ierr = PetscBinaryWrite(fd, double_parameters, 14, PETSC_DOUBLE, PETSC_TRUE); CHKERRXX(ierr);
+            ierr = PetscBinaryWrite(fd, double_parameters, num_doubles, PETSC_DOUBLE, PETSC_TRUE); CHKERRXX(ierr);
             ierr = PetscBinaryClose(fd); CHKERRXX(ierr);
+            printf("Writes the double parameters \n");
 
 
           }
@@ -3580,12 +3589,16 @@ void save_or_load_parameters(const char* filename, splitting_criteria_t* splitti
         if(!file_exists(diskfilename))
           throw std::invalid_argument("The file storing the solver's integer parameters could not be found");
         if(mpi->rank()==0){
+            printf("Beginning attempt to read and load integers \n");
             ierr = PetscBinaryOpen(diskfilename, FILE_MODE_READ, &fd); CHKERRXX(ierr);
-            ierr = PetscBinaryRead(fd, integer_parameters, 4, PETSC_INT); CHKERRXX(ierr);
+            ierr = PetscBinaryRead(fd, integer_parameters, num_integers, PETSC_INT); CHKERRXX(ierr);
             ierr = PetscBinaryClose(fd); CHKERRXX(ierr);
+            printf("Reads integers \n");
           }
-        int mpiret = MPI_Bcast(integer_parameters, 4, MPI_INT, 0, mpi->comm()); SC_CHECK_MPI(mpiret);
-        fill_or_load_integer_parameters(flag, integer_parameters);
+        int mpiret = MPI_Bcast(integer_parameters, num_integers, MPI_INT, 0, mpi->comm()); SC_CHECK_MPI(mpiret);
+        PetscPrintf(mpi->comm(),"About to load the integer parameters \n");
+        fill_or_load_integer_parameters(flag,num_integers,sp, integer_parameters);
+        PetscPrintf(mpi->comm(),"Loads the integer parameters \n");
 
         // Now, load the double parameters:
         sprintf(diskfilename, "%s_doubles", filename);
@@ -3593,12 +3606,18 @@ void save_or_load_parameters(const char* filename, splitting_criteria_t* splitti
           throw std::invalid_argument("The file storing the solver's double parameters could not be found");
         if(mpi->rank() == 0)
         {
+          printf("Beginning attempt to read and load double parameters \n");
           ierr = PetscBinaryOpen(diskfilename, FILE_MODE_READ, &fd); CHKERRXX(ierr);
-          ierr = PetscBinaryRead(fd, double_parameters, 14, PETSC_DOUBLE); CHKERRXX(ierr);
+          ierr = PetscBinaryRead(fd, double_parameters, num_doubles, PETSC_DOUBLE); CHKERRXX(ierr);
           ierr = PetscBinaryClose(fd); CHKERRXX(ierr);
+          printf("Reads double parameters \n");
+
         }
-        mpiret = MPI_Bcast(double_parameters, 14, MPI_DOUBLE, 0, mpi->comm()); SC_CHECK_MPI(mpiret);
-        fill_or_load_double_parameters(flag, double_parameters);
+        mpiret = MPI_Bcast(double_parameters, num_doubles, MPI_DOUBLE, 0, mpi->comm()); SC_CHECK_MPI(mpiret);
+        PetscPrintf(mpi->comm(),"About to fill/load doubles \n");
+        fill_or_load_double_parameters(flag,num_doubles,sp, double_parameters);
+        PetscPrintf(mpi->comm(),"loads doubles \n");
+
 
         break;
       }
@@ -3608,22 +3627,153 @@ void save_or_load_parameters(const char* filename, splitting_criteria_t* splitti
 
     }
 
+}
 
+void save_state(mpi_environment_t &mpi,const char* path_to_directory,unsigned int n_saved, splitting_criteria_cf_and_uniform_band_t* sp, p4est_t* p4est, p4est_nodes_t* nodes, vec_and_ptr_t phi,vec_and_ptr_t T_l_n,vec_and_ptr_t T_l_nm1, vec_and_ptr_t T_s_n, vec_and_ptr_dim_t v_NS, vec_and_ptr_dim_t v_NS_nm1,vec_and_ptr_t vorticity,vec_and_ptr_t press_nodes){
+  if(!is_folder(path_to_directory)){
+      if(!create_directory(path_to_directory, p4est->mpirank, p4est->mpicomm))
+      {
+        char error_msg[1024];
+        sprintf(error_msg, "save_state: the path %s is invalid and the directory could not be created", path_to_directory);
+        throw std::invalid_argument(error_msg);
+      }
+
+    }
+
+  unsigned int backup_idx = 0;
+
+  if(mpi.rank() ==0){
+      unsigned int n_backup_subfolders = 0;
+
+      // Get the current number of backups already present:
+      // (Delete extra ones that exist for whatever reason)
+      std::vector<std::string> subfolders; subfolders.resize(0);
+      get_subdirectories_in(path_to_directory,subfolders);
+
+      for(size_t idx =0; idx<subfolders.size(); ++idx){
+          if(!subfolders[idx].compare(0,7,"backup_")){
+              unsigned int backup_idx;
+              sscanf(subfolders[idx].c_str(), "backup_%d", &backup_idx);
+
+              if(backup_idx >= n_saved)
+              {
+                char full_path[PATH_MAX];
+                sprintf(full_path, "%s/%s", path_to_directory, subfolders[idx].c_str());
+                delete_directory(full_path, p4est->mpirank, p4est->mpicomm, true);
+              }
+              else
+                n_backup_subfolders++;
+            }
+        }
+
+      PetscPrintf(mpi.comm()," Checks for subdirectories \n");
+      // check that they are successively indexed if less than the max number
+      if(n_backup_subfolders < n_saved)
+      {
+        backup_idx = 0;
+        for (unsigned int idx = 0; idx < n_backup_subfolders; ++idx) {
+          char expected_dir[PATH_MAX];
+          sprintf(expected_dir, "%s/backup_%d", path_to_directory, (int) idx);
+
+          if(!is_folder(expected_dir))
+            break; // well, it's a mess in there, but I can't really do any better...
+          backup_idx++;
+        }
+      }
+
+      // Slide the names of the backup folders in time:
+      if ((n_saved > 1) && (n_backup_subfolders == n_saved))
+      {
+        char full_path_zeroth_index[PATH_MAX];
+        sprintf(full_path_zeroth_index, "%s/backup_0", path_to_directory);
+        // delete the 0th
+        delete_directory(full_path_zeroth_index, p4est->mpirank, p4est->mpicomm, true);
+        // shift the others
+        for (size_t idx = 1; idx < n_saved; ++idx) {
+          char old_name[PATH_MAX], new_name[PATH_MAX];
+          sprintf(old_name, "%s/backup_%d", path_to_directory, (int) idx);
+          sprintf(new_name, "%s/backup_%d", path_to_directory, (int) (idx-1));
+          rename(old_name, new_name);
+        }
+        backup_idx = n_saved-1;
+      }
+
+
+    } // end of operations only on rank 0
+
+    int mpiret = MPI_Bcast(&backup_idx, 1, MPI_INT, 0, p4est->mpicomm); SC_CHECK_MPI(mpiret);// acts as a MPI_Barrier, too
+
+
+    char path_to_folder[PATH_MAX];
+    sprintf(path_to_folder, "%s/backup_%d", path_to_directory, (int) backup_idx);
+    create_directory(path_to_folder, p4est->mpirank, p4est->mpicomm);
+
+    char filename[PATH_MAX];
+
+    // save the solver parameters
+    sprintf(filename, "%s/solver_parameters", path_to_folder);
+    save_or_load_parameters(filename,sp, SAVE,&mpi);
+    PetscPrintf(p4est->mpicomm," Saves parameters \n");
+
+    // Save the p4est and corresponding data:
+
+
+    my_p4est_save_forest_and_data(path_to_folder,p4est,nodes,
+                                  "p4est",8,
+                                  "phi",1,&phi.vec,
+                                  "T_l_n",1, &T_l_n.vec,
+                                  "T_l_nm1",1, &T_l_nm1.vec,
+                                  "T_s_n",1,&T_s_n.vec,
+                                  "v_NS_n",P4EST_DIM,v_NS.vec,
+                                  "v_NS_nm1",P4EST_DIM,v_NS_nm1.vec,
+                                  "vorticity",1,&vorticity.vec,
+                                  "pressure",1,&press_nodes.vec);
+
+
+    PetscErrorCode ierr = PetscPrintf(p4est->mpicomm,"Saved solver state in ... %s \n",path_to_folder);
 
 }
 
-void save_state(const char* path_to_directory,double tn, unsigned int n_saved){
-
-
-}
-
-void load_state(const mpi_environment_t& mpi, const char* path_to_folder, double &tn){
+void load_state(const mpi_environment_t& mpi, const char* path_to_folder,splitting_criteria_cf_and_uniform_band_t* sp, p4est_t* p4est, p4est_nodes_t* nodes,p4est_ghost_t* ghost, p4est_connectivity* conn,Vec *phi,Vec *T_l_n, Vec *T_l_nm1, Vec *T_s_n, Vec v_NS[P4EST_DIM],Vec v_NS_nm1[P4EST_DIM], Vec *vorticity, Vec *press_nodes)/*vec_and_ptr_t phi, vec_and_ptr_t T_l_n, vec_and_ptr_t T_l_nm1, vec_and_ptr_t T_s_n, vec_and_ptr_dim_t v_NS,vec_and_ptr_dim_t v_NS_nm1)*/{
   PetscErrorCode ierr;
+
   char filename[PATH_MAX];
   if(!is_folder(path_to_folder)) throw std::invalid_argument("Load state: path to directory is invalid \n");
 
+
+  int phi_size;
+  VecGetSize(*phi,&phi_size);
+  PetscPrintf(mpi.comm(),"BEFORE LOAD : phi size is %d \n",phi_size);
   // First load the general solver parameters -- integers and doubles
   sprintf(filename, "%s/solver_parameters", path_to_folder);
+  save_or_load_parameters(filename,sp,LOAD,&mpi);
+
+  // Load p4est_n and corresponding objections
+  PetscPrintf(mpi.comm(),"About to try and load forest and data \n");
+  my_p4est_load_forest_and_data(mpi.comm(),path_to_folder,p4est,conn,P4EST_TRUE,ghost,nodes,
+                                "p4est",8,
+                                "phi",NODE_DATA,1,phi,
+                                "T_l_n",NODE_DATA,1,T_l_n,
+                                "T_l_nm1",NODE_DATA,1,T_l_nm1,
+                                "T_s_n",NODE_DATA,1,T_s_n,
+                                "v_NS_n",NODE_DATA,P4EST_DIM,v_NS,
+                                "v_NS_nm1",NODE_DATA,P4EST_DIM,v_NS_nm1,
+                                "vorticity",NODE_DATA,1,vorticity,
+                                "pressure",NODE_DATA,1,press_nodes);
+//  splitting_criteria_unt* data = new splitting_criteria_t;
+
+  // Update the pointers appropriately:
+//  int phi_size;
+  VecGetSize(*phi,&phi_size);
+  PetscPrintf(mpi.comm(),"AFTER LOAD: phi size is %d \n",phi_size);
+
+
+  // Update the user pointer:
+  splitting_criteria_cf_and_uniform_band_t* sp_new = new splitting_criteria_cf_and_uniform_band_t(*sp);
+  p4est->user_pointer = (void*) sp_new;
+
+  PetscPrintf(mpi.comm(),"Loads forest and data \n");
+
 }
 
 
@@ -3720,7 +3870,6 @@ int main(int argc, char** argv) {
         interface_bc_velocity_v();
 
       }
-    double NS_norm; // for checking the maximum velocity norm of the navier-stokes solution
     PCType pc_face = PCSOR;
     KSPType face_solver_type = KSPBCGS;
     PCType pc_cell = PCSOR;
@@ -4063,11 +4212,51 @@ int main(int argc, char** argv) {
     // -----------------------------------------------
     // Begin stepping through time
     // -----------------------------------------------
-    int tstep = 0;
+
+
+    int load_tstep=-1;
+    if(loading_from_previous_state){
+
+        int phi_size;
+        VecGetSize(phi.vec,&phi_size);
+        PetscPrintf(mpi.comm(),"Phi size is %d \n",phi_size);
+        PetscPrintf(mpi.comm(),"Beginning load state attempt! \n");
+        const char* load_path = getenv("LOAD_STATE_PATH");
+        if(!load_path){
+            throw std::invalid_argument("You need to set the  directory for the desired load state");
+          }
+
+        PetscPrintf(mpi.comm(),"Calling load state function now ... \n");
+        PetscPrintf(mpi.comm(),"Load dir is:  %s \n",load_path);
+
+
+        load_state(mpi,load_path,&sp,p4est,nodes,ghost,conn,&phi.vec,&T_l_n.vec,&T_l_nm1.vec,&T_s_n.vec,v_n.vec,v_nm1.vec,&vorticity.vec,&press_nodes.vec);
+        PetscPrintf(mpi.comm(),"State was loaded successfully from %s \n",load_path);
+        MPI_Barrier(mpi.comm());
+
+
+        // Update the neigborhood and hierarchy:
+        if(hierarchy!=NULL) delete hierarchy;
+        hierarchy = new my_p4est_hierarchy_t(p4est,ghost,&brick);
+        if(ngbd!=NULL) delete ngbd;
+        ngbd = new my_p4est_node_neighbors_t(hierarchy,nodes);
+        ngbd->init_neighbors();
+
+//        VecGetSize(phi.vec,&phi_size);
+//        PetscPrintf(mpi.comm(),"OUTSIDE FUNCTION: Phi size is %d \n",phi_size);
+        load_tstep =tstep;
+
+      }
+
+    if(!loading_from_previous_state)tstep = 0;
     double tstart = tn;
+
+
+
+
     for (tn;tn<tfinal; tn+=dt, tstep++){
 //        if (!keep_going) break;
-//        if(tstep>=10) keep_going = false; // TIMESTEP BREAK
+//        if(tstep>=3) keep_going = false; // TIMESTEP BREAK
         PetscLogDouble mem_safety_check;
 
         // Initialize variables for checking the current memory usage
@@ -4103,7 +4292,6 @@ int main(int argc, char** argv) {
         // --------------------------------------------------------------------------------------------------------------
         // Get smallest grid size:
         dxyz_min(p4est,dxyz_smallest);
-
         dxyz_close_to_interface = 1.2*max(dxyz_smallest[0],dxyz_smallest[1]);
         min_volume_ = MULTD(dxyz_smallest[0], dxyz_smallest[1], dxyz_smallest[2]);
         extension_band_use_    = (8.)*pow(min_volume_, 1./ double(P4EST_DIM)); //8
@@ -4143,6 +4331,9 @@ int main(int argc, char** argv) {
         // Define LSF for the solid domain (as just the negative of the liquid one):
         if(solve_stefan){
             phi_solid.create(p4est,nodes);
+//            int phi_s_size;
+//            VecGetSize(phi_solid.vec,&phi_s_size);
+//            PetscPrintf(mpi.comm(),"Phi size is %d \n",phi_s_size);
             VecCopyGhost(phi.vec,phi_solid.vec);
             VecScaleGhost(phi_solid.vec,-1.0);
 
@@ -4196,8 +4387,21 @@ int main(int argc, char** argv) {
         // --------------------------------------------------------------------------------------------------------------
         // SAVING DATA: Save data every specified amout of timesteps: -- Do this after values are extended across interface to make visualization nicer
         // --------------------------------------------------------------------------------------------------------------
+        if(tstep>0 && ((tstep%save_state_every_iter)==0) && tstep!=load_tstep){
+            //save_state()
+            char output[1000];
 
-        if((tstep>0 && (tstep%save_every_iter)==0)){
+            const char* out_dir_coupled = getenv("OUT_DIR_VTK_coupled");
+            if(!out_dir_coupled){
+                throw std::invalid_argument("You need to set the output directory for coupled VTK: OUT_DIR_VTK_coupled");
+              }
+            sprintf(output,"%s/output_lmin_%d_lmax_%d_advection_order_%d_stefan_%d_NS_%d_save_states",out_dir_coupled,lmin+grid_res_iter,lmax+grid_res_iter,advection_sl_order,solve_stefan,solve_navier_stokes,out_idx);
+            save_state(mpi,output,10,&sp,p4est,nodes,phi,T_l_n,T_l_nm1,T_s_n,v_n,v_nm1,vorticity,press_nodes);
+            PetscPrintf(mpi.comm(),"Simulation state was saved ... \n");
+
+          }
+
+        if((tstep>0 && (tstep%save_every_iter)==0) && tstep!=load_tstep){
             PetscPrintf(mpi.comm(),"Saving to vtk ... \n");
           char output[1000];
           if(save_coupled_fields || save_stefan || save_navier_stokes){out_idx++;}
@@ -4373,8 +4577,8 @@ int main(int argc, char** argv) {
             PetscMemoryGetCurrentUsage(&mem3);
           }
 
-
-        if(stop_flag) MPI_Abort(mpi.comm(),1);
+        MPI_Barrier(mpi.comm());
+        if(stop_flag>0 && (tstep == stop_flag + 5)) MPI_Abort(mpi.comm(),1);
         // --------------------------------------------------------------------------------------------------------------
         // Compute the jump in flux across the interface to use to advance the LSF (if solving Stefan:
         // --------------------------------------------------------------------------------------------------------------
@@ -4429,6 +4633,7 @@ int main(int argc, char** argv) {
             // Take into consideration the Navier - Stokes timestep:
             // Take into account the NS timestep: -- probably better to do this with the max NS norm and CFL in the main file, not internally in NS
             if(solve_stefan){
+                if(tstep==load_tstep){dt_NS=dt_nm1;}
                 PetscPrintf(mpi.comm(),"\n"
                                        "NS contribution to timestep: \n"
                                        " - Navier Stokes: %0.3e \n"
@@ -4507,6 +4712,7 @@ int main(int argc, char** argv) {
 //        vec_and_ptr_dim_t grad_p_refine;
 
         Vec fields_[num_fields];
+//        VecView(vorticity.vec,PETSC_VIEWER_STDOUT_WORLD);
         if(solve_navier_stokes && (num_fields!=0)){
             // Only use values of vorticity in the positive subdomain for refinement:
             vorticity_refine.create(p4est,nodes);
@@ -4528,7 +4734,7 @@ int main(int argc, char** argv) {
             phi.get_array();
             v_n.get_array();
 
-            double xyz_b[P4EST_DIM];
+//            double xyz_b[P4EST_DIM];
             // NOTE: TO-DO : SEEMS LIKE YOU NEED TO UPDATE GHOST VALUES OTHERWISE YOU GET ISSUES WITH THE REFINEMENT
             foreach_local_node(n,nodes){
               if(phi.ptr[n] < 0.){
@@ -5118,6 +5324,14 @@ int main(int argc, char** argv) {
           check_T_values(phi_solid,T_s_n,nodes_np1,p4est_np1,example_,phi_cylinder,true);
           PetscPrintf(mpi.comm(),"\n \n");
 
+//          // In case where unusual temperature is triggered, call setuprhs again to investigate what the RHS was:
+//          if(tstep==stop_flag){
+//              PetscPrintf(mpi.comm(),"RECHECKING THE RHS FOR TSTEP %d \n",tstep);
+//              setup_rhs(phi,T_l_n,T_s_n,rhs_Tl,rhs_Ts,T_l_backtrace,T_l_backtrace_nm1,p4est_np1,nodes_np1,ngbd_np1);
+//              PetscPrintf(mpi.comm(),"DONE RECHECKING THE RHS \n");
+
+//            }
+
 
           // Destroy auxiliary vectors:
           phi_dd.destroy();
@@ -5192,7 +5406,7 @@ int main(int argc, char** argv) {
             faces_np1 = new my_p4est_faces_t(p4est_np1,ghost_np1,&brick,ngbd_c);
 
             // First, initialize the Navier-Stokes solver with the grid:
-            if(tstep ==0){
+            if(tstep ==0 || tstep==load_tstep){
               ns = new my_p4est_navier_stokes_t(ngbd,ngbd_np1,faces_np1);
 
               // Set the LSF:
@@ -5218,6 +5432,9 @@ int main(int argc, char** argv) {
             // Set the timestep: // change to include both timesteps (dtnm1,dtn)
             if(print_checkpoints) PetscPrintf(mpi.comm()," Setting timestep for NS \n");
             if(advection_sl_order ==2){
+                    PetscPrintf(mpi.comm(), "dtnm1 = %0.3e \n",dt_nm1);
+                    PetscPrintf(mpi.comm(),"dt = %0.3e \n",dt );
+
                 ns->set_dt(dt_nm1,dt);
               }
             else{
@@ -5225,7 +5442,7 @@ int main(int argc, char** argv) {
               }
 
             // Update the NS grid:
-            if(tstep>0){
+            if(tstep>0 && tstep!=load_tstep){
                 if(print_checkpoints) PetscPrintf(mpi.comm(),"Calling update grid from tn to tnp1... \n");
                 ns->update_from_tn_to_tnp1_grid_external(phi.vec,p4est_np1,nodes_np1,ghost_np1,ngbd_np1,faces_np1,ngbd_c,hierarchy_np1);
               }
