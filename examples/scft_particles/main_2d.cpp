@@ -56,15 +56,15 @@ param_t<int> nx (pl, 1, "nx", "Number of trees in the x-direction");
 param_t<int> ny (pl, 1, "ny", "Number of trees in the y-direction");
 param_t<int> nz (pl, 1, "nz", "Number of trees in the z-direction");
 
-param_t<bool> px (pl, 1, "px", "Periodicity in the x-direction (0/1)");
-param_t<bool> py (pl, 1, "py", "Periodicity in the y-direction (0/1)");
-param_t<bool> pz (pl, 1, "pz", "Periodicity in the z-direction (0/1)");
+param_t<bool> px (pl, 0, "px", "Periodicity in the x-direction (0/1)");
+param_t<bool> py (pl, 0, "py", "Periodicity in the y-direction (0/1)");
+param_t<bool> pz (pl, 0, "pz", "Periodicity in the z-direction (0/1)");
 
 //-------------------------------------
 // refinement parameters
 //-------------------------------------
-param_t<int> lmin  (pl, 1,   "lmin", "Min level of the tree");
-param_t<int> lmax  (pl, 8,  "lmax", "Max level of the tree");
+param_t<int> lmin  (pl, 6,   "lmin", "Min level of the tree");
+param_t<int> lmax  (pl, 7,  "lmax", "Max level of the tree");
 param_t<int> lip   (pl, 1.1, "lip" , "Refinement transition");
 param_t<int> band  (pl, 2,   "band" , "Uniform grid band");
 
@@ -76,12 +76,12 @@ param_t<double> gamma_a  (pl, 0, "gamma_a" , "Surface tension of A block");
 param_t<double> gamma_b  (pl, 1, "gamma_b" , "Surface tension of B block");
 param_t<int>    ns       (pl, 40,  "ns"      , "Discretization of polymer chain");
 param_t<double> box_size (pl, 1,   "box_size", "Box size in units of Rg");
-param_t<double> f        (pl, .3,  "f"       , "Fraction of polymer A");
+param_t<double> f        (pl, .5,  "f"       , "Fraction of polymer A");
 
 //-------------------------------------
 // scft parameters
 //-------------------------------------
-param_t<int>    seed                (pl, 5,     "seed", "Seed field for scft: 0 - zero, 1 - random, 2 - vertical stripes, 3 - horizontal stripes, 4 - diagonal stripes, 5 - dots");
+param_t<int>    seed                (pl, 2,     "seed", "Seed field for scft: 0 - zero, 1 - random, 2 - vertical stripes, 3 - horizontal stripes, 4 - diagonal stripes, 5 - dots");
 param_t<double> scft_tol            (pl, 1.e-4, "scft_tol"           , "Tolerance for SCFT");
 param_t<int>    max_scft_iterations (pl, 300,   "max_scft_iterations", "Maximum SCFT iterations");
 param_t<int>    bc_adjust_min       (pl, 1,     "bc_adjust_min"      , "Minimun SCFT steps between adjusting BC");
@@ -92,10 +92,10 @@ param_t<double> scft_bc_tol         (pl, 4.e-2, "scft_bc_tol"        , "Toleranc
 // particle dynamics parameters
 //-------------------------------------
 param_t<bool>   use_scft   (pl, 0,       "use_scft", "Turn on/off SCFT (0/1)");
-param_t<bool>   minimize   (pl, 1,       "minimize", "Turn on/off energy minimization (0/1)");
-param_t<int>    geometry   (pl, 1,       "geometry", "Initial placement of particles: 0 - one particle, 1 - ...");
-param_t<int>    velocity   (pl, 3,       "velocity", "Predifined velocity in case of minimize=0: 0 - along x-axis, 1 - along y-axis, 2 - diagonally, 3 - circular");
-param_t<int>    rotation   (pl, 1,       "rotation", "Predifined rotation in case of minimize=0: 0 - along x-axis, 1 - along y-axis, 2 - diagonally, 3 - circular");
+param_t<bool>   minimize   (pl, 0,       "minimize", "Turn on/off energy minimization (0/1)");
+param_t<int>    geometry   (pl, 0,       "geometry", "Initial placement of particles: 0 - one particle, 1 - ...");
+param_t<int>    velocity   (pl, 0,       "velocity", "Predifined velocity in case of minimize=0: 0 - along x-axis, 1 - along y-axis, 2 - diagonally, 3 - circular");
+param_t<int>    rotation   (pl, 0,       "rotation", "Predifined rotation in case of minimize=0: 0 - along x-axis, 1 - along y-axis, 2 - diagonally, 3 - circular");
 param_t<double> CFL        (pl, 0.5,     "CFL", "CFL number");
 param_t<double> time_limit (pl, DBL_MAX, "time_limit", "Time limit");
 param_t<int>    step_limit (pl, 200,     "step_limit", "Step limit");
@@ -147,6 +147,22 @@ struct particle_t
     double Y = (x-xyz[0])*sin(rot)+(y-xyz[1])*cos(rot);
 
     return (*phi)(DIM(X,Y,Z));
+  }
+
+  double gamma_A_value(DIM(double x, double y, double z))
+  {
+    double X = (x-xyz[0])*cos(rot)-(y-xyz[1])*sin(rot);
+    double Y = (x-xyz[0])*sin(rot)+(y-xyz[1])*cos(rot);
+
+    return (*gA)(DIM(X,Y,Z));
+  }
+
+  double gamma_B_value(DIM(double x, double y, double z))
+  {
+    double X = (x-xyz[0])*cos(rot)-(y-xyz[1])*sin(rot);
+    double Y = (x-xyz[0])*sin(rot)+(y-xyz[1])*cos(rot);
+
+    return (*gB)(DIM(X,Y,Z));
   }
 
 };
@@ -395,24 +411,20 @@ public:
   }
 };
 
-class gamma_Aa_cf_t : public CF_DIM
+class radial_gamma_cf_t : public CF_DIM
 {
+  double gamma_max;
+  double gamma_min;
+  double k;
 public:
+  radial_gamma_cf_t(double gamma_min, double gamma_max, double k)
+    : gamma_min(gamma_min), gamma_max(gamma_max), k(k) {}
   double operator()(DIM(double x, double y, double z)) const
   {
-    return gamma_a();
+    double t = atan2(y,x);
+    return gamma_min + (gamma_max-gamma_min)*0.5*(1.+cos(k*t));
   }
-} gamma_Aa;
-
-
-class gamma_Ba_cf_t : public CF_DIM
-{
-public:
-  double operator()(DIM(double x, double y, double z)) const
-  {
-    return gamma_b();
-  }
-} gamma_Ba;
+};
 
 void initalize_particles(std::vector<particle_t> &particles)
 {
@@ -424,13 +436,16 @@ void initalize_particles(std::vector<particle_t> &particles)
     {
 
 //            static radial_phi_t sphere(VAL, 0.6, DIM(0,0,0), -1);
-      static flower_phi_t sphere(0.6, DIM(0,0,0), 0.1, -1);
+      static flower_phi_t sphere(0.6, DIM(0,0,0), 0.0, -1);
+
+      static radial_gamma_cf_t gA(gamma_a(), 0, 0);
+      static radial_gamma_cf_t gB(0, gamma_b(), 0);
 
       p.xyz[0] = -1.50;
       p.xyz[1] = -0.45;
       p.phi = &sphere;
-      p.gA  = &gamma_Aa;
-      p.gB  = &gamma_Ba;
+      p.gA  = &gA;
+      p.gB  = &gB;
 
       particles.push_back(p);
     }
@@ -439,19 +454,22 @@ void initalize_particles(std::vector<particle_t> &particles)
     case 1:
     {
 
-      static flower_phi_t sphere(0.5, DIM(0,0,0), 0.1, -1);
+      static flower_phi_t  sphere(0.5, DIM(0,0,0), 0.0, -1);
+      static flower_phi_t  star(0.5, DIM(0,0,0), 0.1, -1);
+      static capsule_phi_t rod(VAL, 0.25, 0,0, 1, -1);
 
-//      static capsule_phi_t sphere(VAL, 0.2, 0,0, 2, -1);
+      static radial_gamma_cf_t gA(gamma_a(), 0, 1);
+      static radial_gamma_cf_t gB(0, gamma_b(), 1);
 
       p.xyz[0] = -1.50; p.xyz[1] = -0.45;
-      p.phi = &sphere;
-      p.gA  = &gamma_Aa;
-      p.gB  = &gamma_Ba;
+
+      p.gA  = &gA;
+      p.gB  = &gB;
 
 
-      p.xyz[0] = -1.30; p.xyz[1] = -1.50; particles.push_back(p);
-      p.xyz[0] = +1.50; p.xyz[1] = -0.20; particles.push_back(p);
-      p.xyz[0] = -0.90; p.xyz[1] = +0.75; particles.push_back(p);
+      p.phi = &sphere; p.xyz[0] = -1.30; p.xyz[1] = -1.50; particles.push_back(p);
+      p.phi = &star;   p.xyz[0] = +1.50; p.xyz[1] = -0.20; particles.push_back(p);
+      p.phi = &rod;    p.xyz[0] = -0.90; p.xyz[1] = +0.75; particles.push_back(p);
 //      p.xyz[0] = +2.20; p.xyz[1] = -2.90; particles.push_back(p);
     }
       break;
@@ -757,6 +775,32 @@ public:
   }
 } wz_cf;
 
+class gamma_Aa_all_cf_t : public CF_DIM
+{
+  std::vector<particle_t> *particles;
+  CF_DIM *number;
+public:
+  gamma_Aa_all_cf_t(std::vector<particle_t> &particles, CF_DIM &number)
+    : particles(&particles), number(&number) {}
+  double operator()(DIM(double x, double y, double z)) const
+  {
+    return particles->at(int((*number)(DIM(x, y, z)))).gamma_A_value(DIM(x, y, z));
+  }
+};
+
+class gamma_Ba_all_cf_t : public CF_DIM
+{
+  std::vector<particle_t> *particles;
+  CF_DIM *number;
+public:
+  gamma_Ba_all_cf_t(std::vector<particle_t> &particles, CF_DIM &number)
+    : particles(&particles), number(&number) {}
+  double operator()(DIM(double x, double y, double z)) const
+  {
+    return particles->at(int((*number)(DIM(x, y, z)))).gamma_B_value(DIM(x, y, z));
+  }
+};
+
 
 int main(int argc, char** argv)
 {
@@ -914,32 +958,52 @@ int main(int argc, char** argv)
     Vec     gamma_eff;
     double *gamma_eff_ptr;
 
-    Vec     gamma_d    [P4EST_DIM];
-    double *gamma_d_ptr[P4EST_DIM];
+    Vec     gamma_dif;
+    double *gamma_dif_ptr;
+
+    Vec     gamma_avg;
+    double *gamma_avg_ptr;
+
+    Vec     gamma_eff_grad    [P4EST_DIM];
+    double *gamma_eff_grad_ptr[P4EST_DIM];
+
+    Vec     gamma_dif_grad    [P4EST_DIM];
+    double *gamma_dif_grad_ptr[P4EST_DIM];
+
+    Vec     gamma_avg_grad    [P4EST_DIM];
+    double *gamma_avg_grad_ptr[P4EST_DIM];
 
     Vec     velo;
     double *velo_ptr;
 
-    Vec     G;
-    double *G_ptr;
+    Vec     Gx;
+    double *Gx_ptr;
 
-    Vec     integrand;
-    double *integrand_ptr;
+    Vec     Gy;
+    double *Gy_ptr;
+
+    Vec     Gxy;
+    double *Gxy_ptr;
 
     ierr = VecCreateGhostNodes(p4est, nodes, &mu_minus); CHKERRXX(ierr);
-    ierr = VecDuplicate(mu_minus, &mu_plus); CHKERRXX(ierr);
+    ierr = VecDuplicate(mu_minus, &mu_plus);             CHKERRXX(ierr);
     ierr = VecDuplicate(mu_minus, &particles_level_set); CHKERRXX(ierr);
-    ierr = VecDuplicate(mu_minus, &particles_number); CHKERRXX(ierr);
-    ierr = VecDuplicate(mu_minus, &kappa); CHKERRXX(ierr);
-    ierr = VecDuplicate(mu_minus, &gamma_eff); CHKERRXX(ierr);
-    ierr = VecDuplicate(mu_minus, &velo); CHKERRXX(ierr);
-    ierr = VecDuplicate(mu_minus, &G); CHKERRXX(ierr);
-    ierr = VecDuplicate(mu_minus, &integrand); CHKERRXX(ierr);
+    ierr = VecDuplicate(mu_minus, &particles_number);    CHKERRXX(ierr);
+    ierr = VecDuplicate(mu_minus, &kappa);               CHKERRXX(ierr);
+    ierr = VecDuplicate(mu_minus, &gamma_eff);           CHKERRXX(ierr);
+    ierr = VecDuplicate(mu_minus, &gamma_avg);           CHKERRXX(ierr);
+    ierr = VecDuplicate(mu_minus, &gamma_dif);           CHKERRXX(ierr);
+    ierr = VecDuplicate(mu_minus, &velo);                CHKERRXX(ierr);
+    ierr = VecDuplicate(mu_minus, &Gx);                  CHKERRXX(ierr);
+    ierr = VecDuplicate(mu_minus, &Gy);                  CHKERRXX(ierr);
+    ierr = VecDuplicate(mu_minus, &Gxy);                 CHKERRXX(ierr);
 
     foreach_dimension(dim)
     {
       ierr = VecCreateGhostNodes(p4est, nodes, &normal[dim]); CHKERRXX(ierr);
-      ierr = VecDuplicate(normal[dim], &gamma_d[dim]); CHKERRXX(ierr);
+      ierr = VecDuplicate(normal[dim], &gamma_eff_grad[dim]); CHKERRXX(ierr);
+      ierr = VecDuplicate(normal[dim], &gamma_dif_grad[dim]); CHKERRXX(ierr);
+      ierr = VecDuplicate(normal[dim], &gamma_avg_grad[dim]); CHKERRXX(ierr);
     }
 
     // ---------------------------------------------------------
@@ -995,8 +1059,10 @@ int main(int argc, char** argv)
     {
       my_p4est_scft_t scft(ngbd, ns());
 
+      gamma_Aa_all_cf_t gamma_Aa_all(particles, particles_number_cf);
+      gamma_Ba_all_cf_t gamma_Ba_all(particles, particles_number_cf);
       // set geometry
-      scft.add_boundary(particles_level_set, MLS_INTERSECTION, gamma_Aa, gamma_Ba);
+      scft.add_boundary(particles_level_set, MLS_INTERSECTION, gamma_Aa_all, gamma_Ba_all);
 
       scft.set_scalling(scaling);
       scft.set_polymer(f(), XN());
@@ -1062,7 +1128,10 @@ int main(int argc, char** argv)
 
     // calculate 'gamma_eff' by hand and not using 'sample_cf_on_nodes' (because mu_m is a vetor and not continuous function)
     ierr = VecGetArray(gamma_eff, &gamma_eff_ptr); CHKERRXX(ierr);
+    ierr = VecGetArray(gamma_dif, &gamma_dif_ptr); CHKERRXX(ierr);
+    ierr = VecGetArray(gamma_avg, &gamma_avg_ptr); CHKERRXX(ierr);
     ierr = VecGetArray(mu_minus, &mu_minus_ptr); CHKERRXX(ierr);
+    ierr = VecGetArray(particles_number, &particles_number_ptr); CHKERRXX(ierr);
 
     penalization_cf_t penalization(particles);
 
@@ -1070,11 +1139,21 @@ int main(int argc, char** argv)
     {
       double xyz[P4EST_DIM];
       node_xyz_fr_n(n, p4est, nodes, xyz);
-      gamma_eff_ptr[n] = (0.5*(gamma_a()+gamma_b())*rho + (gamma_a()-gamma_b())*(mu_minus_ptr[n])/XN()) + penalization.value(xyz);
+
+      int i = int(particles_number_ptr[n]);
+      double ga = particles[i].gamma_A_value(xyz[0], xyz[1]);
+      double gb = particles[i].gamma_B_value(xyz[0], xyz[1]);
+
+      gamma_eff_ptr[n] = (0.5*(ga+gb)*rho + (ga-gb)*(mu_minus_ptr[n])/XN()) + penalization.value(xyz);
+      gamma_avg_ptr[n] = (0.5*(ga+gb)*rho);
+      gamma_dif_ptr[n] = ((ga-gb));
     }
 
     ierr = VecRestoreArray(gamma_eff, &gamma_eff_ptr); CHKERRXX(ierr);
+    ierr = VecRestoreArray(gamma_dif, &gamma_dif_ptr); CHKERRXX(ierr);
+    ierr = VecRestoreArray(gamma_avg, &gamma_avg_ptr); CHKERRXX(ierr);
     ierr = VecRestoreArray(mu_minus, &mu_minus_ptr); CHKERRXX(ierr);
+    ierr = VecRestoreArray(particles_number, &particles_number_ptr); CHKERRXX(ierr);
 
     if (!use_scft())
     {
@@ -1088,56 +1167,41 @@ int main(int argc, char** argv)
 
     // compute normals, curvature and gradient of gamma_eff (needed for dE/dt formula)
     compute_normals_and_mean_curvature(*ngbd, particles_level_set, normal, kappa);
-    ngbd->first_derivatives_central(gamma_eff, gamma_d);
+    ngbd->first_derivatives_central(gamma_eff, gamma_eff_grad);
+    ngbd->first_derivatives_central(gamma_dif, gamma_dif_grad);
+    ngbd->first_derivatives_central(gamma_avg, gamma_avg_grad);
 
     // calculate G
-    ierr = VecGetArray(G,         &G_ptr);         CHKERRXX(ierr);
-    ierr = VecGetArray(velo,      &velo_ptr);      CHKERRXX(ierr);
-    ierr = VecGetArray(kappa,     &kappa_ptr);     CHKERRXX(ierr);
-    ierr = VecGetArray(gamma_eff, &gamma_eff_ptr); CHKERRXX(ierr);
+    ierr = VecGetArray(Gx,               &Gx_ptr);               CHKERRXX(ierr);
+    ierr = VecGetArray(Gy,               &Gy_ptr);               CHKERRXX(ierr);
+    ierr = VecGetArray(Gxy,              &Gxy_ptr);              CHKERRXX(ierr);
+    ierr = VecGetArray(velo,             &velo_ptr);             CHKERRXX(ierr);
+    ierr = VecGetArray(kappa,            &kappa_ptr);            CHKERRXX(ierr);
+    ierr = VecGetArray(gamma_eff,        &gamma_eff_ptr);        CHKERRXX(ierr);
+    ierr = VecGetArray(mu_minus,         &mu_minus_ptr);         CHKERRXX(ierr);
+    ierr = VecGetArray(particles_number, &particles_number_ptr); CHKERRXX(ierr);
 
     foreach_dimension(dim)
     {
-      ierr = VecGetArray(normal [dim], &normal_ptr [dim]); CHKERRXX(ierr);
-      ierr = VecGetArray(gamma_d[dim], &gamma_d_ptr[dim]); CHKERRXX(ierr);
+      ierr = VecGetArray(normal[dim],         &normal_ptr[dim]);         CHKERRXX(ierr);
+      ierr = VecGetArray(gamma_eff_grad[dim], &gamma_eff_grad_ptr[dim]); CHKERRXX(ierr);
+      ierr = VecGetArray(gamma_dif_grad[dim], &gamma_dif_grad_ptr[dim]); CHKERRXX(ierr);
+      ierr = VecGetArray(gamma_avg_grad[dim], &gamma_avg_grad_ptr[dim]); CHKERRXX(ierr);
     }
 
     double factor = 1./pow(scaling, P4EST_DIM-1.);
 
     foreach_node(n, nodes)
     {
-      G_ptr[n] = SUMD(normal_ptr[0][n]*gamma_d_ptr[0][n],
-                      normal_ptr[1][n]*gamma_d_ptr[1][n],
-                      normal_ptr[2][n]*gamma_d_ptr[2][n])*factor
+      double g = SUMD(normal_ptr[0][n]*gamma_eff_grad_ptr[0][n],
+                      normal_ptr[1][n]*gamma_eff_grad_ptr[1][n],
+                      normal_ptr[2][n]*gamma_eff_grad_ptr[2][n])*factor
           + gamma_eff_ptr[n]*kappa_ptr[n]*factor
           + velo_ptr[n];
-    }
 
-    ierr = VecRestoreArray(G,         &G_ptr);         CHKERRXX(ierr);
-    ierr = VecRestoreArray(velo,      &velo_ptr);      CHKERRXX(ierr);
-    ierr = VecRestoreArray(kappa,     &kappa_ptr);     CHKERRXX(ierr);
-    ierr = VecRestoreArray(gamma_eff, &gamma_eff_ptr); CHKERRXX(ierr);
+      Gx_ptr[n] = g*normal_ptr[0][n] - (gamma_avg_grad_ptr[0][n] + (mu_minus_ptr[n])/XN()*gamma_dif_grad_ptr[0][n]);
+      Gy_ptr[n] = g*normal_ptr[1][n] - (gamma_avg_grad_ptr[1][n] + (mu_minus_ptr[n])/XN()*gamma_dif_grad_ptr[1][n]);
 
-    foreach_dimension(dim)
-    {
-      ierr = VecRestoreArray(normal [dim], &normal_ptr [dim]); CHKERRXX(ierr);
-      ierr = VecRestoreArray(gamma_d[dim], &gamma_d_ptr[dim]); CHKERRXX(ierr);
-    }
-
-    Vec n_rot_r;
-    double *n_rot_r_ptr;
-
-    ierr = VecDuplicate(mu_minus, &n_rot_r); CHKERRXX(ierr);
-
-    foreach_dimension(dim)
-    {
-      ierr = VecGetArray(normal[dim], &normal_ptr[dim]); CHKERRXX(ierr);
-    }
-    ierr = VecGetArray(particles_number, &particles_number_ptr); CHKERRXX(ierr);
-    ierr = VecGetArray(n_rot_r, &n_rot_r_ptr); CHKERRXX(ierr);
-
-    foreach_node(n, nodes)
-    {
       double xyz[P4EST_DIM];
       node_xyz_fr_n(n, p4est, nodes, xyz);
 
@@ -1145,72 +1209,74 @@ int main(int argc, char** argv)
       double delx = xyz[0]-particles[i].xyz[0];
       double dely = xyz[1]-particles[i].xyz[1];
 
-      n_rot_r_ptr[n] = -(normal_ptr[1][n]*delx - normal_ptr[0][n]*dely);
+      Gxy_ptr[n] = Gx_ptr[n]*dely - Gy_ptr[n]*delx;
     }
+
+    ierr = VecRestoreArray(Gx,               &Gx_ptr);               CHKERRXX(ierr);
+    ierr = VecRestoreArray(Gy,               &Gy_ptr);               CHKERRXX(ierr);
+    ierr = VecRestoreArray(Gxy,              &Gxy_ptr);              CHKERRXX(ierr);
+    ierr = VecRestoreArray(velo,             &velo_ptr);             CHKERRXX(ierr);
+    ierr = VecRestoreArray(kappa,            &kappa_ptr);            CHKERRXX(ierr);
+    ierr = VecRestoreArray(gamma_eff,        &gamma_eff_ptr);        CHKERRXX(ierr);
+    ierr = VecRestoreArray(mu_minus,         &mu_minus_ptr);         CHKERRXX(ierr);
+    ierr = VecRestoreArray(particles_number, &particles_number_ptr); CHKERRXX(ierr);
 
     foreach_dimension(dim)
     {
-      ierr = VecRestoreArray(normal[dim], &normal_ptr[dim]); CHKERRXX(ierr);
+      ierr = VecRestoreArray(normal[dim],         &normal_ptr[dim]);         CHKERRXX(ierr);
+      ierr = VecRestoreArray(gamma_eff_grad[dim], &gamma_eff_grad_ptr[dim]); CHKERRXX(ierr);
+      ierr = VecRestoreArray(gamma_dif_grad[dim], &gamma_dif_grad_ptr[dim]); CHKERRXX(ierr);
+      ierr = VecRestoreArray(gamma_avg_grad[dim], &gamma_avg_grad_ptr[dim]); CHKERRXX(ierr);
     }
-    ierr = VecRestoreArray(particles_number, &particles_number_ptr); CHKERRXX(ierr);
-    ierr = VecRestoreArray(n_rot_r, &n_rot_r_ptr); CHKERRXX(ierr);
 
     // calculate
     vector< vector<double> > g(P4EST_DIM, vector<double> (np,0));
 
     vector<double> gw(np, 0);
 
-    foreach_dimension(dim)
-    {
-      VecPointwiseMultGhost(integrand, G, normal[dim]);
-      integrate_over_interface(np, g[dim], p4est, nodes, particles_level_set, particles_number, integrand);
-    }
-
-    VecPointwiseMultGhost(integrand, G, n_rot_r);
-    integrate_over_interface(np, gw, p4est, nodes, particles_level_set, particles_number, integrand);
-
-    ierr = VecDestroy(integrand); CHKERRXX(ierr);
-    ierr = VecDestroy(n_rot_r); CHKERRXX(ierr);
+    integrate_over_interface(np, g[0], p4est, nodes, particles_level_set, particles_number, Gx);
+    integrate_over_interface(np, g[1], p4est, nodes, particles_level_set, particles_number, Gy);
+    integrate_over_interface(np, gw,   p4est, nodes, particles_level_set, particles_number, Gxy);
 
     // additional terms due to particle-particle interactions
 
-    // calculate q_x and q_y (additional velocity terms; take into account what happens when particles come close to each other)
-    vector< vector<double> > q(P4EST_DIM, vector<double> (np,0));
+//    // calculate q_x and q_y (additional velocity terms; take into account what happens when particles come close to each other)
+//    vector< vector<double> > q(P4EST_DIM, vector<double> (np,0));
 
-    double energy_term = 0;
+//    double energy_term = 0;
 
-    for (int i = 0; i < np; i++)
-    {
-      for (int j = 0; j < np; j++)
-      {
-        if (i != j)
-        {
-          XCODE( double dx = particles[i].xyz[0]-particles[j].xyz[0] );
-          YCODE( double dy = particles[i].xyz[1]-particles[j].xyz[1] );
-          ZCODE( double dz = particles[i].xyz[2]-particles[j].xyz[2] );
+//    for (int i = 0; i < np; i++)
+//    {
+//      for (int j = 0; j < np; j++)
+//      {
+//        if (i != j)
+//        {
+//          XCODE( double dx = particles[i].xyz[0]-particles[j].xyz[0] );
+//          YCODE( double dy = particles[i].xyz[1]-particles[j].xyz[1] );
+//          ZCODE( double dz = particles[i].xyz[2]-particles[j].xyz[2] );
 
-          double dist =  sqrt(SUMD(SQR(dx), SQR(dy), SQR(dz)))-0;
+//          double dist =  sqrt(SUMD(SQR(dx), SQR(dy), SQR(dz)))-0;
 
-          double force = pairwise_force(dist);
+//          double force = pairwise_force(dist);
 
-          if (force != force) throw;
+//          if (force != force) throw;
 
-          XCODE( q[0][i] += (dx/dist)*force ); // u = a*exp(-r^2/(2*c^2)) => use derivative of u for multiplication
-          YCODE( q[1][i] += (dy/dist)*force );
-          ZCODE( q[2][i] += (dy/dist)*force );
+//          XCODE( q[0][i] += (dx/dist)*force ); // u = a*exp(-r^2/(2*c^2)) => use derivative of u for multiplication
+//          YCODE( q[1][i] += (dy/dist)*force );
+//          ZCODE( q[2][i] += (dy/dist)*force );
 
-          energy_term = energy_term + pairwise_potential(dist);
-        }
-      }
-    }
+//          energy_term = energy_term + pairwise_potential(dist);
+//        }
+//      }
+//    }
 
-    // add correction term to the energy (when particles come too close to each other, 'push' them away)
-    energy += energy_term;
+//    // add correction term to the energy (when particles come too close to each other, 'push' them away)
+//    energy += energy_term;
 
-    for (int i = 0; i < np; ++i)
-    {
-      foreach_dimension(dim) g[dim][i] += q[dim][i];
-    }
+//    for (int i = 0; i < np; ++i)
+//    {
+//      foreach_dimension(dim) g[dim][i] += q[dim][i];
+//    }
 
     // ---------------------------------------------------------
     // select velocity and move particles
@@ -1269,9 +1335,9 @@ int main(int argc, char** argv)
     double wr_max = 0;
     for (int i = 0; i < np; ++i)
     {
-      v[0][i] = 0.65*v[0][i]+0.35*v_old[0][i];
-      v[1][i] = 0.65*v[1][i]+0.35*v_old[1][i];
-      w[i] = 0.65*w[i] + 0.35*w_old[i];
+      v[0][i] = v[0][i];
+      v[1][i] = v[1][i];
+      w[i] = w[i];
       v_max  = MAX(v_max, ABSD(v[0][i], v[1][i], v[2][i]));
       wr_max = MAX(wr_max, fabs(w[i])*arm_max[i]);
     }
@@ -1395,40 +1461,48 @@ int main(int argc, char** argv)
       ierr = VecGetArray(particles_level_set, &particles_level_set_ptr); CHKERRXX(ierr);
       ierr = VecGetArray(particles_number, &particles_number_ptr); CHKERRXX(ierr);
       ierr = VecGetArray(gamma_eff, &gamma_eff_ptr); CHKERRXX(ierr);
+      ierr = VecGetArray(gamma_dif, &gamma_dif_ptr); CHKERRXX(ierr);
+      ierr = VecGetArray(gamma_avg, &gamma_avg_ptr); CHKERRXX(ierr);
       ierr = VecGetArray(mu_minus, &mu_minus_ptr); CHKERRXX(ierr);
-      ierr = VecGetArray(G, &G_ptr); CHKERRXX(ierr);
 
       my_p4est_vtk_write_all(p4est, nodes, ghost,
                              P4EST_TRUE, P4EST_TRUE,
-                             5, 0, oss.str().c_str(),
+                             6, 0, oss.str().c_str(),
                              VTK_POINT_DATA, "phi", particles_level_set_ptr,
                              VTK_POINT_DATA, "particles_number", particles_number_ptr,
                              VTK_POINT_DATA, "gamma_effective", gamma_eff_ptr,
-                             VTK_POINT_DATA, "mu_minus", mu_minus_ptr,
-                             VTK_POINT_DATA, "G", G_ptr);
+                             VTK_POINT_DATA, "gamma_diff", gamma_dif_ptr,
+                             VTK_POINT_DATA, "gamma_avg", gamma_avg_ptr,
+                             VTK_POINT_DATA, "mu_minus", mu_minus_ptr);
 
       ierr = VecRestoreArray(particles_level_set, &particles_level_set_ptr); CHKERRXX(ierr);
       ierr = VecRestoreArray(particles_number, &particles_number_ptr); CHKERRXX(ierr);
       ierr = VecRestoreArray(gamma_eff, &gamma_eff_ptr); CHKERRXX(ierr);
+      ierr = VecRestoreArray(gamma_dif, &gamma_dif_ptr); CHKERRXX(ierr);
+      ierr = VecRestoreArray(gamma_avg, &gamma_avg_ptr); CHKERRXX(ierr);
       ierr = VecRestoreArray(mu_minus, &mu_minus_ptr); CHKERRXX(ierr);
-      ierr = VecRestoreArray(G, &G_ptr); CHKERRXX(ierr);
     }
 
     // ---------------------------------------------------------
     // clean-up memory
     // ---------------------------------------------------------
-    ierr = VecDestroy(particles_number);     CHKERRXX(ierr);
+    ierr = VecDestroy(particles_number);    CHKERRXX(ierr);
     ierr = VecDestroy(kappa);               CHKERRXX(ierr);
     ierr = VecDestroy(gamma_eff);           CHKERRXX(ierr);
+    ierr = VecDestroy(gamma_dif);           CHKERRXX(ierr);
+    ierr = VecDestroy(gamma_avg);           CHKERRXX(ierr);
     ierr = VecDestroy(velo);                CHKERRXX(ierr);
-    ierr = VecDestroy(G);                   CHKERRXX(ierr);
-    ierr = VecDestroy(integrand);           CHKERRXX(ierr);
+    ierr = VecDestroy(Gx);                  CHKERRXX(ierr);
+    ierr = VecDestroy(Gy);                  CHKERRXX(ierr);
+    ierr = VecDestroy(Gxy);                 CHKERRXX(ierr);
     ierr = VecDestroy(particles_level_set); CHKERRXX(ierr);
 
     foreach_dimension(dim)
     {
-      ierr = VecDestroy(gamma_d[dim]); CHKERRXX(ierr);
-      ierr = VecDestroy(normal [dim]); CHKERRXX(ierr);
+      ierr = VecDestroy(gamma_eff_grad[dim]); CHKERRXX(ierr);
+      ierr = VecDestroy(gamma_dif_grad[dim]); CHKERRXX(ierr);
+      ierr = VecDestroy(gamma_avg_grad[dim]); CHKERRXX(ierr);
+      ierr = VecDestroy(normal[dim]); CHKERRXX(ierr);
     }
 
     if (use_scft())
