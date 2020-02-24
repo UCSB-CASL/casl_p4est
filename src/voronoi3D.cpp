@@ -1,6 +1,5 @@
 #include "voronoi3D.h"
 #include <vector>
-
 #include <algorithm>
 
 void Voronoi3D::set_cell(vector<ngbd3Dseed> &neighbors, double volume )
@@ -13,16 +12,29 @@ void Voronoi3D::push( int n, Point3 &pt, const bool* periodicity, const double* 
 {
   if(n == idx_center_seed)
     return;
-  for(unsigned int m=0; m<nb_seeds.size(); m++)
+  for(size_t m = 0; m < nb_seeds.size(); m++)
     if(nb_seeds[m].n == n)
       return;
   /* note: technically wrong if one wants to add TWO WALL_parallel_to_face points, but that can happen only
    * if the grid is VERY coarse in theory, so I do not check for it... [Raphael] */
+  add_point(n, pt, periodicity, xyz_min, xyz_max);
+}
 
+void Voronoi3D::assemble_from_set_of_faces(const std::set<indexed_and_located_face>& set_of_neighbor_faces, const bool* periodicity, const double* xyz_min, const double* xyz_max)
+{
+  nb_seeds.clear();
+  for (std::set<indexed_and_located_face>::const_iterator got_it= set_of_neighbor_faces.begin(); got_it != set_of_neighbor_faces.end(); ++got_it) {
+    P4EST_ASSERT((*got_it).face_idx >= 0);
+    add_point((*got_it).face_idx, (*got_it).xyz_face[0], (*got_it).xyz_face[1], (*got_it).xyz_face[2], periodicity, xyz_min, xyz_max); // no need to check for duplicates by definition of std::set
+  }
+}
+
+void Voronoi3D::add_point(int n, Point3 &pt, const bool* periodicity, const double* xyz_min, const double* xyz_max)
+{
   ngbd3Dseed ngbd_seed;
   ngbd_seed.n = n;
   ngbd_seed.p = pt;
-  ngbd_seed.dist = (pt-center_seed).norm_L2();
+  ngbd_seed.dist = (pt - center_seed).norm_L2();
   nb_seeds.push_back(ngbd_seed);
 
   if(periodicity[0] || periodicity[1] || periodicity[2]) // some periodicity ?
@@ -31,7 +43,7 @@ void Voronoi3D::push( int n, Point3 &pt, const bool* periodicity, const double* 
     if(periodicity[0]) // x periodic
     {
       // we use 0.49 instead of 0.5 to ensure everything goes fine even for a 1/1 grid
-      int x_coeff = (fabs(pt.x-center_seed.x) > 0.49*(xyz_max[0] - xyz_min[0]))? ((pt.x<center_seed.x)?+1:-1): 0;
+      int x_coeff = (fabs(pt.x - center_seed.x) > 0.49*(xyz_max[0] - xyz_min[0]) ? (pt.x < center_seed.x ? +1 : -1) : 0);
       if(x_coeff != 0) // add the x-wrapped if needed
       {
         ngbd3Dseed x_wrapped_neighbor;
@@ -45,7 +57,7 @@ void Voronoi3D::push( int n, Point3 &pt, const bool* periodicity, const double* 
       }
       if(periodicity[1]) // x periodic AND y periodic
       {
-        int y_coeff = (fabs(pt.y-center_seed.y) > 0.49*(xyz_max[1] - xyz_min[1]))? ((pt.y<center_seed.y)?+1:-1): 0;
+        int y_coeff = (fabs(pt.y - center_seed.y) > 0.49*(xyz_max[1] - xyz_min[1]) ? (pt.y < center_seed.y ? +1 : -1) : 0);
         // first add the y-wrapped if needed
         if(y_coeff != 0)
         {
@@ -72,7 +84,7 @@ void Voronoi3D::push( int n, Point3 &pt, const bool* periodicity, const double* 
         }
         if(periodicity[2]) // x periodic AND y periodic AND z periodic
         {
-          int z_coeff = (fabs(pt.z-center_seed.z) > 0.49*(xyz_max[2] - xyz_min[2]))? ((pt.z<center_seed.z)?+1:-1): 0;
+          int z_coeff = (fabs(pt.z - center_seed.z) > 0.49*(xyz_max[2] - xyz_min[2]) ? (pt.z < center_seed.z ? +1 : -1): 0);
           // first add the z-wrapped if needed
           if(z_coeff != 0)
           {
@@ -125,7 +137,7 @@ void Voronoi3D::push( int n, Point3 &pt, const bool* periodicity, const double* 
       }
       else if (periodicity[2]) // x periodic, NOT periodic in y, but z-periodic
       {
-        int z_coeff = (fabs(pt.z-center_seed.z) > 0.49*(xyz_max[2] - xyz_min[2]))? ((pt.z<center_seed.z)?+1:-1): 0;
+        int z_coeff = (fabs(pt.z - center_seed.z) > 0.49*(xyz_max[2] - xyz_min[2]) ? (pt.z < center_seed.z ? +1 : -1): 0);
         // first add the z-wrapped if needed
         if(z_coeff != 0)
         {
@@ -156,7 +168,7 @@ void Voronoi3D::push( int n, Point3 &pt, const bool* periodicity, const double* 
     {
       if(periodicity[1]) // but y-periodic
       {
-        int y_coeff = (fabs(pt.y-center_seed.y) > 0.49*(xyz_max[1] - xyz_min[1]))? ((pt.y<center_seed.y)?+1:-1): 0;
+        int y_coeff = (fabs(pt.y - center_seed.y) > 0.49*(xyz_max[1] - xyz_min[1]) ? (pt.y < center_seed.y ? +1 : -1) : 0);
         if(y_coeff != 0)
         {
           ngbd3Dseed y_wrapped_neighbor;
@@ -170,7 +182,7 @@ void Voronoi3D::push( int n, Point3 &pt, const bool* periodicity, const double* 
         }
         if(periodicity[2]) // not periodic in x but periodic in y AND z
         {
-          int z_coeff = (fabs(pt.z-center_seed.z) > 0.49*(xyz_max[2] - xyz_min[2]))? ((pt.z<center_seed.z)?+1:-1): 0;
+          int z_coeff = (fabs(pt.z - center_seed.z) > 0.49*(xyz_max[2] - xyz_min[2]) ? (pt.z < center_seed.z ? +1 : -1) : 0);
           // first add the z-wrapped if needed
           if(z_coeff != 0)
           {
@@ -200,7 +212,7 @@ void Voronoi3D::push( int n, Point3 &pt, const bool* periodicity, const double* 
       else // only z-periodic
       {
         // add the z-wrapped if needed
-        int z_coeff = (fabs(pt.z-center_seed.z) > 0.49*(xyz_max[2] - xyz_min[2]))? ((pt.z<center_seed.z)?+1:-1): 0;
+        int z_coeff = (fabs(pt.z - center_seed.z) > 0.49*(xyz_max[2] - xyz_min[2]) ? (pt.z < center_seed.z ? +1 : -1) : 0);
         if(z_coeff != 0)
         {
           ngbd3Dseed z_wrapped_neighbor;
@@ -234,17 +246,17 @@ void Voronoi3D::construct_partition(const double *xyz_min, const double *xyz_max
   P4EST_ASSERT(min_dist > EPS*sqrt(SQR(xyz_max[0] - xyz_min[0]) + SQR(xyz_max[1] - xyz_min[1]) + SQR(xyz_max[2] - xyz_min[2])));
   const double max_dist = nb_seeds.back().dist;
   // get the seed coordinates (clamp them in case of non-periodic walls)
-  double x_center = (((fabs(center_seed.x-xyz_min[0])<(xyz_max[0] - xyz_min[0])*EPS) && (!periodic[0]) )? (xyz_min[0]+(xyz_max[0] - xyz_min[0])*EPS) : (((fabs(center_seed.x-xyz_max[0])<(xyz_max[0] - xyz_min[0])*EPS) && (!periodic[0]) )? (xyz_max[0]-(xyz_max[0] - xyz_min[0])*EPS) : center_seed.x));
-  double y_center = (((fabs(center_seed.y-xyz_min[1])<(xyz_max[1] - xyz_min[1])*EPS) && (!periodic[1]) )? (xyz_min[1]+(xyz_max[1] - xyz_min[1])*EPS) : (((fabs(center_seed.y-xyz_max[1])<(xyz_max[1] - xyz_min[1])*EPS) && (!periodic[1]) )? (xyz_max[1]-(xyz_max[1] - xyz_min[1])*EPS) : center_seed.y));
-  double z_center = (((fabs(center_seed.z-xyz_min[2])<(xyz_max[2] - xyz_min[2])*EPS) && (!periodic[2]) )? (xyz_min[2]+(xyz_max[2] - xyz_min[2])*EPS) : (((fabs(center_seed.z-xyz_max[2])<(xyz_max[2] - xyz_min[2])*EPS) && (!periodic[2]) )? (xyz_max[2]-(xyz_max[2] - xyz_min[2])*EPS) : center_seed.z));
+  double x_center = (fabs(center_seed.x - xyz_min[0]) < (xyz_max[0] - xyz_min[0])*EPS && !periodic[0] ? xyz_min[0] + (xyz_max[0] - xyz_min[0])*EPS : (fabs(center_seed.x - xyz_max[0]) < (xyz_max[0] - xyz_min[0])*EPS && !periodic[0] ? xyz_max[0] - (xyz_max[0] - xyz_min[0])*EPS : center_seed.x));
+  double y_center = (fabs(center_seed.y - xyz_min[1]) < (xyz_max[1] - xyz_min[1])*EPS && !periodic[1] ? xyz_min[1] + (xyz_max[1] - xyz_min[1])*EPS : (fabs(center_seed.y - xyz_max[1]) < (xyz_max[1] - xyz_min[1])*EPS && !periodic[1] ? xyz_max[1] - (xyz_max[1] - xyz_min[1])*EPS : center_seed.y));
+  double z_center = (fabs(center_seed.z - xyz_min[2]) < (xyz_max[2] - xyz_min[2])*EPS && !periodic[2] ? xyz_min[2] + (xyz_max[2] - xyz_min[2])*EPS : (fabs(center_seed.z - xyz_max[2]) < (xyz_max[2] - xyz_min[2])*EPS && !periodic[2] ? xyz_max[2] - (xyz_max[2] - xyz_min[2])*EPS : center_seed.z));
 
   // the 4.0*max_dist/min_dist are kinda arbitrary...
-  const double xyz_min_tmp[3] = {periodic[0]?-4.0*max_dist/min_dist:(xyz_min[0] - x_center)/min_dist,
-                                 periodic[1]?-4.0*max_dist/min_dist:(xyz_min[1] - y_center)/min_dist,
-                                 periodic[2]?-4.0*max_dist/min_dist:(xyz_min[2] - z_center)/min_dist};
-  const double xyz_max_tmp[3] = {periodic[0]?+4.0*max_dist/min_dist:(xyz_max[0] - x_center)/min_dist,
-                                 periodic[1]?+4.0*max_dist/min_dist:(xyz_max[1] - y_center)/min_dist,
-                                 periodic[2]?+4.0*max_dist/min_dist:(xyz_max[2] - z_center)/min_dist};
+  const double xyz_min_tmp[3] = {periodic[0] ? -4.0*max_dist/min_dist : (xyz_min[0] - x_center)/min_dist,
+                                 periodic[1] ? -4.0*max_dist/min_dist : (xyz_min[1] - y_center)/min_dist,
+                                 periodic[2] ? -4.0*max_dist/min_dist : (xyz_min[2] - z_center)/min_dist};
+  const double xyz_max_tmp[3] = {periodic[0] ? +4.0*max_dist/min_dist : (xyz_max[0] - x_center)/min_dist,
+                                 periodic[1] ? +4.0*max_dist/min_dist : (xyz_max[1] - y_center)/min_dist,
+                                 periodic[2] ? +4.0*max_dist/min_dist : (xyz_max[2] - z_center)/min_dist};
 
   /* create a container for the particles */
   voro::container voronoi(xyz_min_tmp[0], xyz_max_tmp[0], xyz_min_tmp[1], xyz_max_tmp[1], xyz_min_tmp[2], xyz_max_tmp[2],
@@ -259,9 +271,9 @@ void Voronoi3D::construct_partition(const double *xyz_min, const double *xyz_max
   /* add the points potentially involved in the voronoi partition */
   for(unsigned int m=0; m<nb_seeds.size(); ++m)
   {
-    double x_tmp = (((fabs(nb_seeds[m].p.x-xyz_min[0])<(xyz_max[0] - xyz_min[0])*EPS) && (!periodic[0]) )? (xyz_min[0]+(xyz_max[0] - xyz_min[0])*EPS) : (((fabs(nb_seeds[m].p.x-xyz_max[0])<(xyz_max[0] - xyz_min[0])*EPS) && (!periodic[0]) )? (xyz_max[0]-(xyz_max[0] - xyz_min[0])*EPS) : nb_seeds[m].p.x));
-    double y_tmp = (((fabs(nb_seeds[m].p.y-xyz_min[1])<(xyz_max[1] - xyz_min[1])*EPS) && (!periodic[1]) )? (xyz_min[1]+(xyz_max[1] - xyz_min[1])*EPS) : (((fabs(nb_seeds[m].p.y-xyz_max[1])<(xyz_max[1] - xyz_min[1])*EPS) && (!periodic[1]) )? (xyz_max[1]-(xyz_max[1] - xyz_min[1])*EPS) : nb_seeds[m].p.y));
-    double z_tmp = (((fabs(nb_seeds[m].p.z-xyz_min[2])<(xyz_max[2] - xyz_min[2])*EPS) && (!periodic[2]) )? (xyz_min[2]+(xyz_max[2] - xyz_min[2])*EPS) : (((fabs(nb_seeds[m].p.z-xyz_max[2])<(xyz_max[2] - xyz_min[2])*EPS) && (!periodic[2]) )? (xyz_max[2]-(xyz_max[2] - xyz_min[2])*EPS) : nb_seeds[m].p.z));
+    double x_tmp = (fabs(nb_seeds[m].p.x - xyz_min[0]) < (xyz_max[0] - xyz_min[0])*EPS && !periodic[0] ? xyz_min[0] + (xyz_max[0] - xyz_min[0])*EPS : (fabs(nb_seeds[m].p.x - xyz_max[0]) < (xyz_max[0] - xyz_min[0])*EPS && !periodic[0] ? xyz_max[0] - (xyz_max[0] - xyz_min[0])*EPS : nb_seeds[m].p.x));
+    double y_tmp = (fabs(nb_seeds[m].p.y - xyz_min[1]) < (xyz_max[1] - xyz_min[1])*EPS && !periodic[1] ? xyz_min[1] + (xyz_max[1] - xyz_min[1])*EPS : (fabs(nb_seeds[m].p.y - xyz_max[1]) < (xyz_max[1] - xyz_min[1])*EPS && !periodic[1] ? xyz_max[1] - (xyz_max[1] - xyz_min[1])*EPS : nb_seeds[m].p.y));
+    double z_tmp = (fabs(nb_seeds[m].p.z - xyz_min[2]) < (xyz_max[2] - xyz_min[2])*EPS && !periodic[2] ? xyz_min[2] + (xyz_max[2] - xyz_min[2])*EPS : (fabs(nb_seeds[m].p.z - xyz_max[2]) < (xyz_max[2] - xyz_min[2])*EPS && !periodic[2] ? xyz_max[2] - (xyz_max[2] - xyz_min[2])*EPS : nb_seeds[m].p.z));
 //    voronoi.put(po, nb_seeds[m].n, x_tmp, y_tmp, z_tmp);
     voronoi.put(po, nb_seeds[m].n, (x_tmp - x_center)/min_dist, (y_tmp - y_center)/min_dist, (z_tmp - z_center)/min_dist);
   }
@@ -335,6 +347,7 @@ void Voronoi3D::construct_partition(const double *xyz_min, const double *xyz_max
     std::cerr << "cl.start() = " << cl.start()  << std::endl;
     std::cerr << "voronoi.compute_cell(voro_cell,cl) = " << voronoi.compute_cell(voro_cell,cl) << std::endl;
   }
+  return;
 }
 
 void Voronoi3D::print_VTK_format( const vector<Voronoi3D>& voro, const char* file_name,
@@ -353,17 +366,17 @@ void Voronoi3D::print_VTK_format( const vector<Voronoi3D>& voro, const char* fil
                                                    1, 1, 1, periodic[0], periodic[1], periodic[2], 8);
       voro_global[n].po = new voro::particle_order;
 
-      double x_c = ((fabs(voro[n].center_seed.x-xyz_min[0])<(xyz_max[0] - xyz_min[0])*EPS) ? (xyz_min[0]+(xyz_max[0] - xyz_min[0])*EPS) : ((fabs(voro[n].center_seed.x-xyz_max[0])<(xyz_max[0] - xyz_min[0])*EPS) ? (xyz_max[0]-(xyz_max[0] - xyz_min[0])*EPS) : voro[n].center_seed.x));
-      double y_c = ((fabs(voro[n].center_seed.y-xyz_min[1])<(xyz_max[1] - xyz_min[1])*EPS) ? (xyz_min[1]+(xyz_max[1] - xyz_min[1])*EPS) : ((fabs(voro[n].center_seed.y-xyz_max[1])<(xyz_max[1] - xyz_min[1])*EPS) ? (xyz_max[1]-(xyz_max[1] - xyz_min[1])*EPS) : voro[n].center_seed.y));
-      double z_c = ((fabs(voro[n].center_seed.z-xyz_min[2])<(xyz_max[2] - xyz_min[2])*EPS) ? (xyz_min[2]+(xyz_max[2] - xyz_min[2])*EPS) : ((fabs(voro[n].center_seed.z-xyz_max[2])<(xyz_max[2] - xyz_min[2])*EPS) ? (xyz_max[2]-(xyz_max[2] - xyz_min[2])*EPS) : voro[n].center_seed.z));
+      double x_c = (fabs(voro[n].center_seed.x - xyz_min[0]) < (xyz_max[0] - xyz_min[0])*EPS ? xyz_min[0] + (xyz_max[0] - xyz_min[0])*EPS : (fabs(voro[n].center_seed.x - xyz_max[0]) < (xyz_max[0] - xyz_min[0])*EPS ? xyz_max[0] - (xyz_max[0] - xyz_min[0])*EPS : voro[n].center_seed.x));
+      double y_c = (fabs(voro[n].center_seed.y - xyz_min[1]) < (xyz_max[1] - xyz_min[1])*EPS ? xyz_min[1] + (xyz_max[1] - xyz_min[1])*EPS : (fabs(voro[n].center_seed.y - xyz_max[1]) < (xyz_max[1] - xyz_min[1])*EPS ? xyz_max[1] - (xyz_max[1] - xyz_min[1])*EPS : voro[n].center_seed.y));
+      double z_c = (fabs(voro[n].center_seed.z - xyz_min[2]) < (xyz_max[2] - xyz_min[2])*EPS ? xyz_min[2] + (xyz_max[2] - xyz_min[2])*EPS : (fabs(voro[n].center_seed.z - xyz_max[2]) < (xyz_max[2] - xyz_min[2])*EPS ? xyz_max[2] - (xyz_max[2] - xyz_min[2])*EPS : voro[n].center_seed.z));
       voro_global[n].voronoi->put(*voro_global[n].po, voro[n].idx_center_seed, x_c, y_c, z_c);
 
       for(unsigned int m=0; m<voro[n].nb_seeds.size(); ++m)
         if(voro[n].nb_seeds[m].n>=0)
         {
-          double x_m = ((fabs(voro[n].nb_seeds[m].p.x-xyz_min[0])<(xyz_max[0] - xyz_min[0])*EPS) ? (xyz_min[0]+(xyz_max[0] - xyz_min[0])*EPS) : ((fabs(voro[n].nb_seeds[m].p.x-xyz_max[0])<(xyz_max[0] - xyz_min[0])*EPS) ? (xyz_max[0]-(xyz_max[0] - xyz_min[0])*EPS) : voro[n].nb_seeds[m].p.x));
-          double y_m = ((fabs(voro[n].nb_seeds[m].p.y-xyz_min[1])<(xyz_max[1] - xyz_min[1])*EPS) ? (xyz_min[1]+(xyz_max[1] - xyz_min[1])*EPS) : ((fabs(voro[n].nb_seeds[m].p.y-xyz_max[1])<(xyz_max[1] - xyz_min[1])*EPS) ? (xyz_max[1]-(xyz_max[1] - xyz_min[1])*EPS) : voro[n].nb_seeds[m].p.y));
-          double z_m = ((fabs(voro[n].nb_seeds[m].p.z-xyz_min[2])<(xyz_max[2] - xyz_min[2])*EPS) ? (xyz_min[2]+(xyz_max[2] - xyz_min[2])*EPS) : ((fabs(voro[n].nb_seeds[m].p.z-xyz_max[2])<(xyz_max[2] - xyz_min[2])*EPS) ? (xyz_max[2]-(xyz_max[2] - xyz_min[2])*EPS) : voro[n].nb_seeds[m].p.z));
+          double x_m = (fabs(voro[n].nb_seeds[m].p.x - xyz_min[0]) < (xyz_max[0] - xyz_min[0])*EPS ? xyz_min[0] + (xyz_max[0] - xyz_min[0])*EPS : (fabs(voro[n].nb_seeds[m].p.x - xyz_max[0]) < (xyz_max[0] - xyz_min[0])*EPS ? xyz_max[0] - (xyz_max[0] - xyz_min[0])*EPS : voro[n].nb_seeds[m].p.x));
+          double y_m = (fabs(voro[n].nb_seeds[m].p.y - xyz_min[1]) < (xyz_max[1] - xyz_min[1])*EPS ? xyz_min[1] + (xyz_max[1] - xyz_min[1])*EPS : (fabs(voro[n].nb_seeds[m].p.y - xyz_max[1]) < (xyz_max[1] - xyz_min[1])*EPS ? xyz_max[1] - (xyz_max[1] - xyz_min[1])*EPS : voro[n].nb_seeds[m].p.y));
+          double z_m = (fabs(voro[n].nb_seeds[m].p.z - xyz_min[2]) < (xyz_max[2] - xyz_min[2])*EPS ? xyz_min[2] + (xyz_max[2] - xyz_min[2])*EPS : (fabs(voro[n].nb_seeds[m].p.z - xyz_max[2]) < (xyz_max[2] - xyz_min[2])*EPS ? xyz_max[2] - (xyz_max[2] - xyz_min[2])*EPS : voro[n].nb_seeds[m].p.z));
           voro_global[n].voronoi->put(*voro_global[n].po, voro[n].nb_seeds[m].n, x_m, y_m, z_m);
         }
     }

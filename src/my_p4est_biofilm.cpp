@@ -405,57 +405,60 @@ void my_p4est_biofilm_t::solve_concentration()
   }
 
   // initialize a Poisson solver
-  my_p4est_poisson_nodes_mls_sc_t poisson_solver(ngbd_);
+  my_p4est_poisson_nodes_mls_t poisson_solver(ngbd_);
 
   poisson_solver.set_jump_scheme(0);
   poisson_solver.set_use_sc_scheme(use_sc_scheme_);
   poisson_solver.set_integration_order(integration_order_);
 
-  poisson_solver.set_mu2(mu_m, mu_p);
+  poisson_solver.set_mu(mu_m, mu_p);
 
-  poisson_solver.set_bc_wall_value(*bc_wall_value_);
-  poisson_solver.set_bc_wall_type(*bc_wall_type_);
+  poisson_solver.set_wc(*bc_wall_type_, *bc_wall_value_);
 
-  std::vector<Vec>      phi_jump;
-  std::vector<Vec>      phi_neum;
-  std::vector<action_t> action(1, INTERSECTION);
-  std::vector<int>      color(1, 0);
-#ifdef P4_TO_P8
-  std::vector< CF_3* > zero_cf_array(1, &zero_cf);
-#else
-  std::vector< CF_2* > zero_cf_array(1, &zero_cf);
-#endif
-  std::vector< BoundaryConditionType > bc_neum(1, NEUMANN);
-  poisson_solver.set_jump_conditions(zero_cf, zero_cf_array);
-  poisson_solver.set_bc_interface_type(bc_neum);
-  poisson_solver.set_bc_interface_coeff(zero_cf_array);
-  poisson_solver.set_bc_interface_value(zero_cf_array);
+  //  std::vector<Vec>      phi_jump;
+  //  std::vector<Vec>      phi_neum;
+  //  std::vector<action_t> action(1, INTERSECTION);
+  //  std::vector<int>      color(1, 0);
+  //#ifdef P4_TO_P8
+  //  std::vector< CF_3* > zero_cf_array(1, &zero_cf);
+  //#else
+  //  std::vector< CF_2* > zero_cf_array(1, &zero_cf);
+  //#endif
+//  std::vector< BoundaryConditionType > bc_neum(1, NEUMANN);
+//  poisson_solver.set_jump_conditions(zero_cf, zero_cf_array);
+//  poisson_solver.set_bc_interface_type(bc_neum);
+//  poisson_solver.set_bc_interface_coeff(zero_cf_array);
+//  poisson_solver.set_bc_interface_value(zero_cf_array);
 
   if (Da_ == 0 && Df_ == 0)
   {
-    phi_neum.push_back(phi_biof_);
-    poisson_solver.set_geometry(1, &action, &color, &phi_neum);
+//    phi_neum.push_back(phi_biof_);
+//    poisson_solver.set_geometry(1, &action, &color, &phi_neum);
+    poisson_solver.add_boundary(MLS_INTERSECTION, phi_biof_, NULL, NEUMANN, zero_cf, zero_cf);
   } else if (Da_ == 0) {
-    phi_neum.push_back(phi_agar_);
-    phi_jump.push_back(phi_free_);
-    poisson_solver.set_geometry(1, &action, &color, &phi_neum);
-    poisson_solver.set_immersed_interface(1, &action, &color, &phi_jump);
+//    phi_neum.push_back(phi_agar_);
+//    phi_jump.push_back(phi_free_);
+//    poisson_solver.set_geometry(1, &action, &color, &phi_neum);
+//    poisson_solver.set_immersed_interface(1, &action, &color, &phi_jump);
+    poisson_solver.add_boundary(MLS_INTERSECTION, phi_agar_, NULL, NEUMANN, zero_cf, zero_cf);
+    poisson_solver.add_interface(MLS_INTERSECTION, phi_free_, NULL, zero_cf, zero_cf);
   } else if (Df_ == 0) {
-    phi_neum.push_back(phi_free_);
-    phi_jump.push_back(phi_agar_);
-    poisson_solver.set_geometry(1, &action, &color, &phi_neum);
-    poisson_solver.set_immersed_interface(1, &action, &color, &phi_jump);
+//    phi_neum.push_back(phi_free_);
+//    phi_jump.push_back(phi_agar_);
+//    poisson_solver.set_geometry(1, &action, &color, &phi_neum);
+//    poisson_solver.set_immersed_interface(1, &action, &color, &phi_jump);
+    poisson_solver.add_boundary(MLS_INTERSECTION, phi_free_, NULL, NEUMANN, zero_cf, zero_cf);
+    poisson_solver.add_interface(MLS_INTERSECTION, phi_agar_, NULL, zero_cf, zero_cf);
   } else {
-    phi_jump.push_back(phi_biof_);
-    poisson_solver.set_immersed_interface(1, &action, &color, &phi_jump);
+//    phi_jump.push_back(phi_biof_);
+//    poisson_solver.set_immersed_interface(1, &action, &color, &phi_jump);
+    poisson_solver.add_interface(MLS_INTERSECTION, phi_biof_, NULL, zero_cf, zero_cf);
   }
 
-  poisson_solver.set_diag_add(diag_m, diag_p);
+  poisson_solver.set_diag(diag_m, diag_p);
   poisson_solver.set_use_taylor_correction(use_taylor_correction_);
-  poisson_solver.set_keep_scalling(1);
   poisson_solver.set_kink_treatment(1);
-  poisson_solver.set_try_remove_hanging_cells(0);
-  poisson_solver.set_enfornce_diag_scalling(1);
+  poisson_solver.set_enfornce_diag_scaling(1);
 
   Vec rhs_m; double *rhs_m_ptr; ierr = VecDuplicate(phi_free_, &rhs_m); CHKERRXX(ierr);
   Vec rhs_p; double *rhs_p_ptr; ierr = VecDuplicate(phi_free_, &rhs_p); CHKERRXX(ierr);
@@ -491,7 +494,7 @@ void my_p4est_biofilm_t::solve_concentration()
             rhs_p_ptr[n] = rhs_tmp_p_ptr[n];
           }
 
-          poisson_solver.set_diag_add(diag_m, diag_p);
+          poisson_solver.set_diag(diag_m, diag_p);
           break;
         }
       case 1:
@@ -511,7 +514,7 @@ void my_p4est_biofilm_t::solve_concentration()
           ierr = VecRestoreArray(diag_m, &diag_m_ptr); CHKERRXX(ierr);
           ierr = VecRestoreArray(diag_p, &diag_p_ptr); CHKERRXX(ierr);
 
-          poisson_solver.set_diag_add(diag_m, diag_p);
+          poisson_solver.set_diag(diag_m, diag_p);
 
           break;
         }
@@ -535,7 +538,7 @@ void my_p4est_biofilm_t::solve_concentration()
     poisson_solver.solve(Cm_tmp, true);
 
     copy_ghosted_vec(Cm_tmp, Cp_tmp);
-    ls.extend_Over_Interface_TVD_full(phi_biof_, phi_biof_, Cm_tmp, extend_iterations_, 2);
+    ls.extend_Over_Interface_TVD_Full(phi_biof_, Cm_tmp, extend_iterations_, 2);
 
     // compute error
     double *phi_biof_ptr;
@@ -575,7 +578,7 @@ void my_p4est_biofilm_t::solve_concentration()
   }
 
   invert_phi(nodes_, phi_biof_);
-  ls.extend_Over_Interface_TVD_full(phi_biof_, phi_biof_, Cp_tmp, extend_iterations_, 2);
+  ls.extend_Over_Interface_TVD_Full(phi_biof_, Cp_tmp, extend_iterations_, 2);
   invert_phi(nodes_, phi_biof_);
 
   Vec tmp;
@@ -671,59 +674,54 @@ void my_p4est_biofilm_t::solve_pressure()
   ierr = VecRestoreArray(bc_pressure_vec, &bc_pressure_vec_ptr); CHKERRXX(ierr);
   ierr = VecRestoreArray(kappa_, &kappa_ptr); CHKERRXX(ierr);
 
-  // assemble geometry
-  std::vector<Vec>      phi_array(2);
-  std::vector<action_t> action(2, INTERSECTION);
-  std::vector<int>      color(2);
+//  // assemble geometry
+//  std::vector<Vec>      phi_array(2);
+//  std::vector<action_t> action(2, INTERSECTION);
+//  std::vector<int>      color(2);
 
-  phi_array[0] = phi_agar_; color[0] = 0;
-  phi_array[1] = phi_free_; color[1] = 1;
+//  phi_array[0] = phi_agar_; color[0] = 0;
+//  phi_array[1] = phi_free_; color[1] = 1;
 
   // assemble bc
   my_p4est_interpolation_nodes_t bc_pressure(ngbd_);
   bc_pressure.set_input(bc_pressure_vec, linear);
 
-  std::vector<BoundaryConditionType> bc_interface_type(2);
-#ifdef P4_TO_P8
-  std::vector< CF_3 *> bc_interface_value(2);
-  std::vector< CF_3 *> bc_interface_coeff(2);
-#else
-  std::vector< CF_2 *> bc_interface_value(2);
-  std::vector< CF_2 *> bc_interface_coeff(2);
-#endif
+//  std::vector<BoundaryConditionType> bc_interface_type(2);
+//#ifdef P4_TO_P8
+//  std::vector< CF_3 *> bc_interface_value(2);
+//  std::vector< CF_3 *> bc_interface_coeff(2);
+//#else
+//  std::vector< CF_2 *> bc_interface_value(2);
+//  std::vector< CF_2 *> bc_interface_coeff(2);
+//#endif
 
-  bc_interface_type[0] = NEUMANN;   bc_interface_value[0] = &zero_cf;     bc_interface_coeff[0] = &zero_cf;
-  bc_interface_type[1] = DIRICHLET; bc_interface_value[1] = &bc_pressure; bc_interface_coeff[1] = &zero_cf;
+//  bc_interface_type[0] = NEUMANN;   bc_interface_value[0] = &zero_cf;     bc_interface_coeff[0] = &zero_cf;
+//  bc_interface_type[1] = DIRICHLET; bc_interface_value[1] = &bc_pressure; bc_interface_coeff[1] = &zero_cf;
 
   // initialize poisson solver
-  my_p4est_poisson_nodes_mls_sc_t solver(ngbd_);
+  my_p4est_poisson_nodes_mls_t solver(ngbd_);
 
   solver.set_use_sc_scheme(use_sc_scheme_);
   solver.set_integration_order(integration_order_);
 
-  solver.set_geometry(2, &action, &color, &phi_array);
+  solver.add_boundary(MLS_INTERSECTION, phi_agar_, NULL, NEUMANN, zero_cf, zero_cf);
+  solver.add_boundary(MLS_INTERSECTION, phi_free_, NULL, DIRICHLET, bc_pressure, zero_cf);
 
   solver.set_mu(lambda_);
   solver.set_rhs(rhs);
 
-  solver.set_bc_wall_value(zero_cf);
-  solver.set_bc_wall_type(*bc_wall_type_);
+  solver.set_wc(*bc_wall_type_, zero_cf);
 
-  solver.set_bc_interface_type(bc_interface_type);
-  solver.set_bc_interface_coeff(bc_interface_coeff);
-  solver.set_bc_interface_value(bc_interface_value);
-
-  solver.set_diag_add((double) 0);
+  solver.set_diag(0.0);
 
   solver.set_use_taylor_correction(1);
-  solver.set_keep_scalling(1);
   solver.set_kink_treatment(1);
-  solver.set_try_remove_hanging_cells(0);
+  solver.set_enfornce_diag_scaling(1);
 
   solver.solve(P_);
 
   my_p4est_level_set_t ls(ngbd_);
-  ls.extend_Over_Interface_TVD_full(phi_biof_, phi_biof_, P_, extend_iterations_, 2);
+  ls.extend_Over_Interface_TVD_Full(phi_biof_, P_, extend_iterations_, 2);
 
 //  double *P_ptr;
 
@@ -1100,8 +1098,8 @@ void my_p4est_biofilm_t::update_grid()
   sl.set_phi_interpolation (quadratic_non_oscillatory_continuous_v2);
   sl.set_velo_interpolation(quadratic_non_oscillatory_continuous_v2);
 
-  std::vector<Vec>      phi_array(2, NULL);
-  std::vector<action_t> action(2, INTERSECTION);
+  std::vector<Vec>       phi_array(2, NULL);
+  std::vector<mls_opn_t> action(2, MLS_INTERSECTION);
 
   phi_array[0] = phi_free_;
   phi_array[1] = phi_agar_;
@@ -1249,7 +1247,7 @@ void my_p4est_biofilm_t::update_grid()
     {
       if (fabs(phi_ptr[n]) < band)
       {
-        get_all_neighbors(n, p4est_, nodes_, ngbd_, nei_n, nei_e);
+        ngbd_->get_all_neighbors(n, nei_n, nei_e);
 
         unsigned short num_neg = 0;
         unsigned short num_pos = 0;
@@ -1287,7 +1285,7 @@ void my_p4est_biofilm_t::update_grid()
     {
       if (phi_ptr[n] < 0 && phi_ptr[n] > -band)
       {
-        get_all_neighbors(n, p4est_, nodes_, ngbd_, nei_n, nei_e);
+        ngbd_->get_all_neighbors(n, nei_n, nei_e);
 
         bool merge = (phi_ptr[nei_n[nn_m00]] > 0 && phi_ptr[nei_n[nn_p00]] > 0 && phi_ptr[nei_n[nn_0m0]] > 0 && phi_ptr[nei_n[nn_0p0]] > 0)
             || ((phi_ptr[nei_n[nn_m00]] > 0 && phi_ptr[nei_n[nn_p00]] > 0) &&

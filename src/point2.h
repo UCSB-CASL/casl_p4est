@@ -137,6 +137,24 @@ public:
      */
   Point2 normalize() const;
 
+  inline double& xyz(const unsigned char &dir)
+  {
+#ifdef CASL_THROWS
+    if(dir != 0 && dir != 1)
+      throw std::invalid_argument("[CASL_ERROR]: Point2::xyz(const unsigned char & dir) : dir must be either 0 or 1.");
+#endif
+    return (dir == 0 ? this->x : this->y);
+  }
+
+  inline const double& xyz(const unsigned char &dir) const
+  {
+#ifdef CASL_THROWS
+    if(dir != 0 && dir != 1)
+      throw std::invalid_argument("[CASL_ERROR]: Point2::xyz(const unsigned char & dir) : dir must be either 0 or 1.");
+#endif
+    return (dir == 0 ? this->x : this->y);
+  }
+
   /*!
      * \brief compute the L2 norm of a vector
      * \param P1 the beginning of the vector

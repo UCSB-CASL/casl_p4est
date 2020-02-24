@@ -23,22 +23,6 @@
 #include <sstream>
 
 /*!
- * \brief The async_computation_t class represents a type of node-calculation that
- * can be done in an asynchronous fashion. This is a virtual class, the three
- * functions 'foreach_local_node', 'ghost_update_begin', 'ghost_update_end' need to
- * be defined for any class inheriting from this one.
- * --> checkout the function my_p4est_node_neighbors_t::run_async_computation
- * for usage of interest.
- */
-class async_computation_t {
-public:
-  virtual void foreach_local_node(p4est_locidx_t n) const = 0;
-  virtual void ghost_update_begin() const = 0;
-  virtual void ghost_update_end() const = 0;
-  ~async_computation_t () {}
-};
-
-/*!
  * \brief The my_p4est_node_neighbors_t class provides the user with node neighborhood information,
  * but also with routines calculating first and second derivatives of node-sampled fields as well as
  * a distinction between layer and inner local nodes to overlap communications with the bulk local
@@ -46,12 +30,12 @@ public:
  * [Note:] several commented functions herebelow are duplicates of the original functions but allowing
  * for the user to not only construct/store the node neighborhood information, but also to construct/
  * store some associated basic operators for calculating (interpolated) neighbor scalar value, first or
- * second derivatives.. The motivating idea was to construct establish those operators once and for all
- * in order to shortcut the geometry-related calculations for every subsequent calls to the relevant
- * routines and make calculations more efficient. However, this slightly complicated the interface and
- * the efficiency gain was marginal for calculations involving single-scalar fields. The corresponding
- * functions have been commented out in this class and in my_p4est_quad_neighbors_nodes_of_node to keep
- * the bulk of that work.
+ * second derivatives.. The motivating idea was to establish those operators once and for all in order to
+ * shortcut the geometry-related calculations for every subsequent calls to the relevant routines and 
+ * make calculations more efficient. However, this slightly complicated the interface and the efficiency 
+ * gain was marginal for calculations involving single-scalar fields. The corresponding functions have 
+ * been commented out in this class and in my_p4est_quad_neighbors_nodes_of_node to keep the bulk of 
+ * that work.
  * [End of note]
  * [Second note:] this class assumes that all building bricks in the macromesh description have the same
  * size (i.e. no contraction/stretching, every building brick is identical).
@@ -473,19 +457,6 @@ public:
   }
 
   /*!
-   * \brief run_async_computation runs an asynchronous computation across processors by overlapping computation and communication
-   * \param async the abstract computation that needs to be run for each local node
-   */
-  inline void run_async_computation(const async_computation_t& async) const {
-    for (size_t i=0; i<layer_nodes.size(); i++)
-      async.foreach_local_node(layer_nodes[i]);
-    async.ghost_update_begin();
-    for (size_t i=0; i<local_nodes.size(); i++)
-      async.foreach_local_node(local_nodes[i]);
-    async.ghost_update_end();
-  }
-
-  /*!
    * \brief find_neighbor_cell_of_node finds the neighboring quadrant of a node in the given (i,j, k) direction. The direction
    * must be "diagonal" for the function to work! (e.g. (-1,1,1) ... no cartesian direction!).
    * \param [in] n              local index of the node whose neighboring cell is looked for
@@ -499,11 +470,7 @@ public:
    * \param [out] nb_tree_idx   the index of the tree in which the quadrant was found (valid and sensible if the quadrant was
    *                            actually found, of course)
    */
-#ifdef P4_TO_P8
-  void find_neighbor_cell_of_node( p4est_locidx_t n, char i, char j, char k, p4est_locidx_t& quad_idx, p4est_topidx_t& nb_tree_idx ) const;
-#else
-  void find_neighbor_cell_of_node( p4est_locidx_t n, char i, char j, p4est_locidx_t& quad_idx, p4est_topidx_t& nb_tree_idx ) const;
-#endif
+   void find_neighbor_cell_of_node( p4est_locidx_t n, DIM(char i, char j, char k), p4est_locidx_t& quad_idx, p4est_topidx_t& nb_tree_idx ) const;
 
 
   /*!

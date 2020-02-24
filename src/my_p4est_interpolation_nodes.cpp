@@ -35,19 +35,11 @@ void my_p4est_interpolation_nodes_t::set_input(Vec *F, interpolation_method meth
 }
 
 
-#ifdef P4_TO_P8
-void my_p4est_interpolation_nodes_t::set_input(Vec *F, Vec *Fxxyyzz_block_, Vec *Fxx_, Vec *Fyy_, Vec *Fzz_,  interpolation_method method, const unsigned int &n_vecs_, const unsigned int &block_size_f)
-#else
-void my_p4est_interpolation_nodes_t::set_input(Vec *F, Vec *Fxxyyzz_block_, Vec *Fxx_, Vec *Fyy_,             interpolation_method method, const unsigned int &n_vecs_, const unsigned int &block_size_f)
-#endif
+void my_p4est_interpolation_nodes_t::set_input(Vec *F, Vec *Fxxyyzz_block_, DIM(Vec *Fxx_, Vec *Fyy_, Vec *Fzz_),  interpolation_method method, const unsigned int &n_vecs_, const unsigned int &block_size_f)
 {
   // give the second derivatives either by P4EST-DIM block-structured vectors or component by component, but not both ways!
   // either Fxxyyzz_block_ == NULL or ((Fxx_ == NULL) && (Fyy_ == NULL) && (Fzz_ == NULL))
-#ifdef P4_TO_P8
-  P4EST_ASSERT((Fxxyyzz_block_ == NULL) || ((Fxx_ == NULL) && (Fyy_ == NULL) && (Fzz_ == NULL)));
-#else
-  P4EST_ASSERT((Fxxyyzz_block_ == NULL) || ((Fxx_ == NULL) && (Fyy_ == NULL)));
-#endif
+  P4EST_ASSERT(Fxxyyzz_block_ == NULL || (ANDD(Fxx_ == NULL, Fyy_ == NULL, Fzz_ == NULL)));
   set_input(F, n_vecs_, block_size_f);
   if(Fxxyyzz_block_==NULL)
   {
@@ -75,26 +67,14 @@ void my_p4est_interpolation_nodes_t::set_input(Vec *F, Vec *Fxxyyzz_block_, Vec 
 }
 
 
-#ifdef P4_TO_P8
-void my_p4est_interpolation_nodes_t::operator ()(double x, double y, double z, double* results) const
-#else
-void my_p4est_interpolation_nodes_t::operator ()(double x, double y, double* results) const
-#endif
+void my_p4est_interpolation_nodes_t::operator ()(DIM(double x, double y, double z), double* results) const
 {
   PetscErrorCode ierr;
 
-#ifdef P4_TO_P8
-  double xyz [] = { x, y, z };
-#else
-  double xyz [] = { x, y };
-#endif
+  double xyz[P4EST_DIM] = {DIM(x, y, z)};
   
   /* first clip the coordinates */
-#ifdef P4_TO_P8
-  double xyz_clip [] = { x, y, z };
-#else
-  double xyz_clip [] = { x, y };
-#endif
+  double xyz_clip[P4EST_DIM] = {DIM(x, y, z)};
   clip_in_domain(xyz_clip, xyz_min, xyz_max, periodic);
   
 
@@ -168,7 +148,7 @@ void my_p4est_interpolation_nodes_t::operator ()(double x, double y, double* res
     // compute derivatives
     if (method == quadratic || method == quadratic_non_oscillatory || method == quadratic_non_oscillatory_continuous_v1 || method == quadratic_non_oscillatory_continuous_v2) {
       if (use_precomputed_derivatives_by_components || use_precomputed_block_derivatives) {
-        for (short j = 0; j<P4EST_CHILDREN; j++) {
+        for (short j = 0; j < P4EST_CHILDREN; j++) {
           p4est_locidx_t node_idx = nodes->local_nodes[quad_idx*P4EST_CHILDREN + j];
           for (unsigned int k = 0; k < n_functions; ++k)
             for (unsigned int comp = 0; comp < bs_f; ++comp)
@@ -178,7 +158,7 @@ void my_p4est_interpolation_nodes_t::operator ()(double x, double y, double* res
       } else {
         quad_neighbor_nodes_of_node_t qnnn;
         double tmp[nelem_per_node*P4EST_DIM];
-        for (short j = 0; j<P4EST_CHILDREN; j++) {
+        for (short j = 0; j < P4EST_CHILDREN; j++) {
           p4est_locidx_t node_idx = nodes->local_nodes[quad_idx*P4EST_CHILDREN + j];
           ngbd_n->get_neighbors(node_idx, qnnn);
           if(bs_f==1)
@@ -370,7 +350,7 @@ void my_p4est_interpolation_nodes_t::interpolate(const p4est_quadrant_t &quad, c
     }
 
     if (use_precomputed_derivatives_by_components || use_precomputed_block_derivatives) {
-      for (short j = 0; j<P4EST_CHILDREN; j++) {
+      for (short j = 0; j < P4EST_CHILDREN; j++) {
         p4est_locidx_t node_idx = nodes->local_nodes[quad_idx*P4EST_CHILDREN + j];
         if(bs_f==1)
           for (unsigned int k = 0; k < n_functions; ++k)
@@ -407,7 +387,7 @@ void my_p4est_interpolation_nodes_t::interpolate(const p4est_quadrant_t &quad, c
     else {
       double tmp[nelem_per_node*P4EST_DIM];
       quad_neighbor_nodes_of_node_t qnnn;
-      for (short j = 0; j<P4EST_CHILDREN; j++){
+      for (short j = 0; j < P4EST_CHILDREN; j++){
         p4est_locidx_t node_idx = nodes->local_nodes[quad_idx*P4EST_CHILDREN + j];
         ngbd_n->get_neighbors(node_idx, qnnn);
         if(bs_f == 1 || (comp < bs_f && bs_f > 1))

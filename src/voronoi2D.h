@@ -8,6 +8,16 @@
 #include <src/casl_math.h>
 #include <src/point2.h>
 
+#ifdef Voronoi_DIM
+#undef Voronoi_DIM
+#endif
+#ifdef ngbdDIMseed
+#undef ngbdDIMseed
+#endif
+
+#define Voronoi_DIM Voronoi2D
+#define ngbdDIMseed ngbd2Dseed
+
 using std::vector;
 
 struct ngbd2Dseed
@@ -38,7 +48,7 @@ struct ngbd2Dseed
   }
   inline bool operator<(const ngbd2Dseed& v) const
   {
-    return (((this->theta <= 2.0*PI) && (this->theta >=0.0) && (v.theta <= 2.0*PI) && (v.theta >=0.0) && (fabs(this->theta - v.theta) > 2.0*PI*EPS))? (this->theta < v.theta):(this->dist < v.dist));
+    return ((this->theta <= 2.0*PI && this->theta >= 0.0 && v.theta <= 2.0*PI && v.theta >=0.0 && fabs(this->theta - v.theta) > 2.0*PI*EPS)? this->theta < v.theta : this->dist < v.dist);
   }
 };
 
@@ -49,6 +59,7 @@ struct ngbd2Dseed
  */
 class Voronoi2D
 {
+  friend class my_p4est_faces_t;
 private:
   Point2 center_seed;
   vector<ngbd2Dseed> nb_seeds;
@@ -56,6 +67,17 @@ private:
   vector<double> phi_values;
   double phi_c;
   double volume;
+
+  /*!
+     * \brief add a point to the list of collocation points, WITHOUT making sure there is no repetition
+     * \param n the index of the point to add
+     * \param x the first coordinate of the point to add
+     * \param y the second coordinate of the point to add
+     * \param periodicity the periodicity flag for the computational domain
+     * \param xyz_min the coordinates of the lower left corner of the computational domain
+     * \param xyz_min the coordinates of the upper right corner of the computational domain
+     */
+  void add_point( int n, double x, double y, const bool* periodicity, const double* xyz_min, const double* xyz_max);
 
 public:
   /*!
@@ -127,20 +149,30 @@ public:
      * \param y the second coordinate of the point
      */
   void set_center_point( double x, double y );
+  inline void set_center_point(const double* xyz) {set_center_point(xyz[0], xyz[1]);}
 
   /*!
      * \brief get the point at the center of the partition
      * \return center_seed the coordinates of the point
      */
   inline const Point2& get_center_point() const { return center_seed; }
+  /*!
+     * \brief get the coordinates of the center of the partition
+     */
+  inline void get_center_point(double *xyz) const { xyz[0] = center_seed.x; xyz[1] = center_seed.y; }
 
   /*!
      * \brief add a point to the list of collocation points, making sure there is no repetition
      * \param n the index of the point to add
      * \param x the first coordinate of the point to add
      * \param y the second coordinate of the point to add
+     * \param periodicity the periodicity flag for the computational domain
+     * \param xyz_min the coordinates of the lower left corner of the computational domain
+     * \param xyz_min the coordinates of the upper right corner of the computational domain
      */
   void push( int n, double x, double y, const bool* periodicity, const double* xyz_min, const double* xyz_max);
+
+  void assemble_from_set_of_faces(const std::set<indexed_and_located_face>& set_of_neighbor_faces, const bool* periodicity, const double* xyz_min, const double* xyz_max);
 
   /*!
      * \brief modify the coordinates of the points to take in account the periodicity
@@ -156,8 +188,10 @@ public:
   void enforce_periodicity( bool p_x, bool p_y, double xmin, double xmax, double ymin, double ymax );
 
   /*!
-     * \brief construct the voronoi partition around point center_seed using the neighborhood given in nb_seeds
-     */
+   * \brief construct_partition constructs the voronoi partition around point center_seed using
+   * the neighborhood given in nb_seeds
+   * \return a flag that is true if one of the neighbor is a Wall
+   */
   void construct_partition();
 
   /*!

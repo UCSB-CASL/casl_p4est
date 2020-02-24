@@ -174,13 +174,8 @@ void my_p4est_level_set_faces_t::extend_Over_Interface( Vec phi, Vec q, Boundary
   {
     if(!face_is_well_defined_p[f_idx])
     {
-      double xyz[] = {
-        faces->x_fr_f(f_idx, dir),
-        faces->y_fr_f(f_idx, dir)
-  #ifdef P4_TO_P8
-        , faces->z_fr_f(f_idx, dir)
-  #endif
-      };
+      double xyz[P4EST_DIM];
+      faces->xyz_fr_f(f_idx, dir, xyz);
 
       double phi_f = interp_phi(xyz);
 #ifdef P4_TO_P8

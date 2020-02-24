@@ -27,13 +27,14 @@ using std::vector;
 class my_p4est_poisson_nodes_mls_t
 {
   const int phi_idx_wall_shift_ = 10;
+ protected:
   struct mat_entry_t
   {
-    double val;
     PetscInt n;
+    double val;
     mat_entry_t(PetscInt n=0, double val=0) : n(n), val(val) {}
   };
-
+protected:
   PetscErrorCode ierr;
 
   // p4est objects
@@ -41,9 +42,11 @@ class my_p4est_poisson_nodes_mls_t
   p4est_nodes_t    *nodes_;
   p4est_ghost_t    *ghost_;
   my_p4est_brick_t *brick_;
+public:
   const my_p4est_node_neighbors_t *ngbd_;
 
   // grid variables
+public:
   double lip_;
   double d_min_;
   double diag_min_;
@@ -137,6 +140,7 @@ class my_p4est_poisson_nodes_mls_t
   };
 
   geometry_t bdry_;
+public:
   geometry_t infc_;
 
   // forces
@@ -229,8 +233,10 @@ class my_p4est_poisson_nodes_mls_t
   bool finite_volumes_initialized_;
   bool finite_volumes_owned_;
   std::vector<int> bdry_node_to_fv_;
+public:
   std::vector<int> infc_node_to_fv_;
   std::vector<my_p4est_finite_volume_t> *bdry_fvs_;
+public:
   std::vector<my_p4est_finite_volume_t> *infc_fvs_;
 
   // discretization type
@@ -244,7 +250,7 @@ class my_p4est_poisson_nodes_mls_t
     FINITE_VOLUME,
     IMMERSED_INTERFACE,
   };
-
+public :
   std::vector<discretization_scheme_t> node_scheme_;
 
   // interpolators
@@ -266,18 +272,18 @@ class my_p4est_poisson_nodes_mls_t
 
   void discretize_dirichlet(bool setup_rhs, p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
                             double infc_phi_eff_000, bool is_wall[],
-                            std::vector<mat_entry_t> *row_main, int &d_nnz, int &o_nnz);
+                            std::vector<mat_entry_t> *row_main, PetscInt &d_nnz, PetscInt &o_nnz);
 
   void discretize_robin    (bool setup_rhs, p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
                             double infc_phi_eff_000, bool is_wall[],
-                            std::vector<mat_entry_t> *row_main, int &d_nnz_main, int &o_nnz_main,
-                            std::vector<mat_entry_t> *row_robin_sc, int &d_nnz_robin_sc, int &o_nnz_robin_sc);
+                            std::vector<mat_entry_t> *row_main, PetscInt &d_nnz_main, PetscInt &o_nnz_main,
+                            std::vector<mat_entry_t> *row_robin_sc, PetscInt &d_nnz_robin_sc, PetscInt &o_nnz_robin_sc);
 
   void discretize_jump     (bool setup_rhs,  p4est_locidx_t n, const quad_neighbor_nodes_of_node_t &qnnn,
                             bool is_wall[],
-                            std::vector<mat_entry_t> *row_main, int &d_nnz_main, int &o_nnz_main,
-                            std::vector<mat_entry_t> *row_jump, int &d_nnz_jump, int &o_nnz_jump,
-                            std::vector<mat_entry_t> *row_jump_aux, int &d_nnz_jump_aux, int &o_nnz_jump_aux);
+                            std::vector<mat_entry_t> *row_main, PetscInt &d_nnz_main, PetscInt &o_nnz_main,
+                            std::vector<mat_entry_t> *row_jump, PetscInt &d_nnz_jump, PetscInt &o_nnz_jump,
+                            std::vector<mat_entry_t> *row_jump_aux, PetscInt &d_nnz_jump_aux, PetscInt &o_nnz_jump_aux);
 
   void find_interface_points(p4est_locidx_t n, const my_p4est_node_neighbors_t *ngbd,
                              std::vector<mls_opn_t> opn,
@@ -294,7 +300,7 @@ class my_p4est_poisson_nodes_mls_t
   double compute_weights_through_face(double A P8C(double B), bool *neighbor_exists_face, double *weights_face, double theta, bool *map_face);
   void find_projection(const quad_neighbor_nodes_of_node_t& qnnn, const double *phi_p, double dxyz_pr[], double &dist_pr, double normal[] = NULL);
   void invert_linear_system(Vec solution, bool use_nonzero_guess, bool update_ghost, KSPType ksp_type, PCType pc_type);
-  void assemble_matrix(std::vector< std::vector<mat_entry_t> > &entries, std::vector<int> &d_nnz, std::vector<int> &o_nnz, Mat *matrix);
+  void assemble_matrix(std::vector< std::vector<mat_entry_t> > &entries, std::vector<PetscInt> &d_nnz, std::vector<PetscInt> &o_nnz, Mat *matrix);
 
   // disallow copy ctr and copy assignment
   my_p4est_poisson_nodes_mls_t(const my_p4est_poisson_nodes_mls_t& other);
@@ -316,7 +322,7 @@ public:
   inline int  pw_bc_idx_value_pt (int phi_idx, p4est_locidx_t n, int k) { return bc_[phi_idx].idx_value_pt(n, k); }
   inline int  pw_bc_idx_robin_pt (int phi_idx, p4est_locidx_t n, int k) { return bc_[phi_idx].idx_robin_pt(n, k); }
 
-  inline int  pw_bc_get_boundary_pt(int phi_idx, int pt_idx, interface_point_cartesian_t* &pt) { pt = &bc_[phi_idx].dirichlet_pts[pt_idx]; }
+  inline void  pw_bc_get_boundary_pt(int phi_idx, int pt_idx, interface_point_cartesian_t* &pt) { pt = &bc_[phi_idx].dirichlet_pts[pt_idx]; }
 
   inline int  pw_jc_num_integr_pts(int phi_idx) { return jc_[phi_idx].num_integr_pts(); }
   inline int  pw_jc_num_taylor_pts(int phi_idx) { return jc_[phi_idx].num_taylor_pts(); }
@@ -346,9 +352,14 @@ public:
 
     switch (bc_type)
     {
-      case NEUMANN:   there_is_neumann_   = true; break;
-      case ROBIN:     there_is_robin_     = true; break;
-      case DIRICHLET: there_is_dirichlet_ = true; break;
+    case NEUMANN:   there_is_neumann_   = true; break;
+    case ROBIN:     there_is_robin_     = true; break;
+    case DIRICHLET: there_is_dirichlet_ = true; break;
+    default:
+#ifdef CASL_THROWS
+      throw std::runtime_error("my_p4est_poisson_nodes_mls_t::add_boundary: unknonw boundary condition type, only NEUMANN, ROBIN and DIRICHLET are implemented so far.");
+#endif
+      break;
     }
   }
 
@@ -373,14 +384,15 @@ public:
 
   inline void add_interface(mls_opn_t opn, Vec phi, Vec* phi_dd, CF_DIM &jc_value, CF_DIM &jc_flux)
   {
-    add_interface(opn, phi, DIM(phi_dd[0], phi_dd[1], phi_dd[2]), jc_value, jc_flux);
+    if (phi_dd != NULL) add_interface(opn, phi, DIM(phi_dd[0], phi_dd[1], phi_dd[2]), jc_value, jc_flux);
+    else                add_interface(opn, phi, DIM(NULL,      NULL,      NULL),      jc_value, jc_flux);
   }
 
   inline void set_boundary_phi_eff (Vec phi_eff) { bdry_.phi_eff = phi_eff; bdry_.calculate_phi_eff(); }
   inline void set_interface_phi_eff(Vec phi_eff) { infc_.phi_eff = phi_eff; infc_.calculate_phi_eff(); }
 
   // set wall conditions
-//  inline void set_wc(const WallBCDIM &wc_type, const CF_DIM &wc_value, const CF_DIM &wc_coeff)
+  //  inline void set_wc(const WallBCDIM &wc_type, const CF_DIM &wc_value, const CF_DIM &wc_coeff)
   inline void set_wc(const WallBCDIM &wc_type, const CF_DIM &wc_value, bool new_submat_main = true)
   {
     this->wc_type_  = &wc_type;

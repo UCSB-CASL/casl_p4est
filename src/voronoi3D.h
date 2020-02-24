@@ -1,15 +1,25 @@
 #ifndef CASL_VORONOI3D_H
 #define CASL_VORONOI3D_H
-
 #include <float.h>
 #include <fstream>
 #include <vector>
 
-#include <src/my_p4est_utils.h>
+// We are in 3D (you, idiot!), so include p8est headers immediately
+#include <src/my_p8est_utils.h>
+//#include <src/my_p8est_faces.h>
 #include <src/casl_math.h>
 #include <src/point3.h>
 
 #include <voro++.hh>
+
+#ifdef Voronoi_DIM
+#undef Voronoi_DIM
+#endif
+#ifdef ngbdDIMseed
+#undef ngbdDIMseed
+#endif
+#define Voronoi_DIM Voronoi3D
+#define ngbdDIMseed ngbd3Dseed
 
 using std::vector;
 
@@ -69,6 +79,21 @@ private:
   vector<ngbd3Dseed> nb_seeds;
   double volume;
 
+  /*!
+   * \brief add a neighbor seed, WITHOUT making sure there is no repetition
+   * \param n the index of the point to add
+   * \param pt coordinates of the candidate neighbor seed to add
+   * \param periodicity the periodicity flag for the computational domain
+   * \param xyz_min the coordinates of the lower left corner of the computational domain
+   * \param xyz_min the coordinates of the upper right corner of the computational domain
+   */
+  void add_point( int n, Point3 &pt, const bool* periodicity, const double* xyz_min, const double* xyz_max);
+  inline void add_point( int n, double x, double y, double z, const bool* periodicity, const double* xyz_min, const double* xyz_max)
+  {
+    Point3 pt(x, y, z);
+    add_point(n, pt, periodicity, xyz_min, xyz_max);
+  }
+
 public:
   /*!
      * \brief default constructor for the Voronoi3D class
@@ -100,6 +125,7 @@ public:
   void set_center_point( int idx_center_seed_, Point3 &center_seed_);
   // overloading
   void set_center_point( int idx_center_seed_, double x, double y, double z) { Point3 tmp(x, y, z); set_center_point(idx_center_seed_, tmp); }
+  void set_center_point( int idx_center_seed_, const double* xyz) { set_center_point(idx_center_seed_, xyz[0], xyz[1], xyz[2]); }
 
   /*!
      * \brief get the center seed of the partition
@@ -107,18 +133,30 @@ public:
      */
   inline const Point3& get_center_point() const { return center_seed; }
 
+  inline void get_center_point(double *xyz) const { xyz[0] = center_seed.x; xyz[1] = center_seed.y; xyz[2] = center_seed.z; }
+
   /*!
-   * \brief add a potential neighbor seed candidate, making sure there is no repetition
+   * \brief add a potential neighbor seed candidate, after making sure there is no repetition
    * \param n the index of the point to add
    * \param pt coordinates of the candidate neighbor seed to add
+   * \param periodicity the periodicity flag for the computational domain
+   * \param xyz_min the coordinates of the lower left corner of the computational domain
+   * \param xyz_min the coordinates of the upper right corner of the computational domain
    */
   void push( int n, Point3 &pt, const bool* periodicity, const double* xyz_min, const double* xyz_max);
   // overloading
   void push( int n, double x, double y, double z, const bool* periodicity, const double* xyz_min, const double* xyz_max) { Point3 tmp(x, y, z); push(n, tmp, periodicity, xyz_min, xyz_max); }
 
+
+  void assemble_from_set_of_faces(const std::set<indexed_and_located_face>& set_of_neighbor_faces, const bool* periodicity, const double* xyz_min, const double* xyz_max);
+
   /*!
-     * \brief construct the voronoi parition around point pc using the neighborhood given in nb_seeds
-     */
+   * \brief construct_partition constructs the voronoi cell around point pc using the neighborhood given in nb_seeds
+   * \param [in] xyz_min:   minimal bounds of the domain
+   * \param [in] xyz_max:   maximal bounds of the domain
+   * \param [in] periodic:  periodicity flags for each cartesian direction
+   * \return a flag that is true iff the constructed cell has a wall neighbor.
+   */
   void construct_partition(const double *xyz_min, const double *xyz_max, const bool *periodic);
 
   inline double get_volume() const { return this->volume; }

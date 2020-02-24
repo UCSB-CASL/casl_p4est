@@ -1,0 +1,229 @@
+#!/usr/bin/env bash
+
+# creates the user-specific .pri file
+# (In the following, EOF works as a delimiter for the text that needs to be copied as it to the .pri file)
+function create_user_file() {
+cat > $1.pri << my_delimiter
+# --------------------------------------------------------------
+#    Paths to external libraries to be linked to casl_p4est
+# --------------------------------------------------------------
+
+# PETSc
+PETSC_DIR_DEBUG         = ${PETSC_DIR_DEBUG}
+PETSC_DIR_RELEASE       = ${PETSC_DIR_RELEASE}
+
+PETSC_INCLUDES_RELEASE  = \$\$PETSC_DIR_RELEASE/include
+PETSC_INCLUDES_DEBUG    = \$\$PETSC_DIR_DEBUG/include
+PETSC_LIBS_RELEASE      = -Wl,-rpath,\$\$PETSC_DIR_RELEASE/lib -L\$\$PETSC_DIR_RELEASE/lib -lpetsc
+PETSC_LIBS_DEBUG        = -Wl,-rpath,\$\$PETSC_DIR_DEBUG/lib -L\$\$PETSC_DIR_DEBUG/lib -lpetsc
+
+# p4est
+P4EST_DIR_DEBUG         = ${P4EST_DIR_DEBUG}
+P4EST_DIR_RELEASE       = ${P4EST_DIR_RELEASE}
+
+P4EST_INCLUDES_RELEASE  = \$\$P4EST_DIR_RELEASE/include
+P4EST_INCLUDES_DEBUG    = \$\$P4EST_DIR_DEBUG/include
+P4EST_LIBS_RELEASE      = -Wl,-rpath,\$\$P4EST_DIR_RELEASE/lib -L\$\$P4EST_DIR_RELEASE/lib -lp4est -lsc
+P4EST_LIBS_DEBUG        = -Wl,-rpath,\$\$P4EST_DIR_DEBUG/lib -L\$\$P4EST_DIR_DEBUG/lib -lp4est -lsc
+
+# voro++
+VORO_DIR                = ${VORO_DIR}
+
+VORO_INCLUDES_RELEASE   = \$\$VORO_DIR/include/voro++
+VORO_INCLUDES_DEBUG     = \$\$VORO_DIR/include/voro++
+VORO_LIBS_RELEASE       = -Wl,-rpath,\$\$VORO_DIR/lib -L\$\$VORO_DIR/lib -lvoro++
+VORO_LIBS_DEBUG         = -Wl,-rpath,\$\$VORO_DIR/lib -L\$\$VORO_DIR/lib -lvoro++
+my_delimiter
+
+if [[ ! -z "${MATLAB_DIR}" ]]; then
+cat >> $1.pri << my_delimiter
+
+# matlab (for computing condition numbers, it's ok not provided)
+MATLAB_DIR              = ${MATLAB_DIR}
+
+MATLAB_INCLUDES         = \$\$MATLAB_DIR/extern/include
+MATLAB_LIBS             = -Wl,-rpath,\$\$MATLAB_DIR/bin/glnxa64 -L\$\$MATLAB_DIR/bin/glnxa64 -leng -lmx
+my_delimiter
+fi
+
+if [[ ! -z "${BOOST_INCLUDES}" ]]; then
+cat >> $1.pri << my_delimiter
+
+# Boost (may be ok if not provided, depending on the list of source files)
+BOOST_INCLUDES          = ${BOOST_INCLUDES}
+my_delimiter
+fi
+
+if [[ ! -z "${MPI_DIR}" ]]; then
+cat >> $1.pri << my_delimiter
+
+# mpi (required if several mpi distributions exist on the system, need to specify which one!)
+MPI_DIR                 = ${MPI_DIR}
+MPI_INCLUDES            = \$\$MPI_DIR/include
+MPI_LIBS                = -Wl,-rpath,\$\$MPI_DIR/lib -L\$\$MPI_DIR/lib -lmpi -lmpicxx
+
+QMAKE_CC                = ${CC}
+QMAKE_CXX               = ${CXX}
+QMAKE_LINK              = ${CXX}
+
+my_delimiter
+else
+cat >> $1.pri << my_delimiter
+
+QMAKE_CC                = $(which mpicc)
+QMAKE_CXX               = $(which mpicxx)
+QMAKE_LINK              = $(which mpicxx)
+
+my_delimiter
+fi
+}
+
+help="-- Use this script to generate an environment-specific .pri file --
+
+usage:
+    ./$(basename "$0") environment_name
+
+where:
+    environment_name is the basename of the .pri file whose creation is desired.
+
+The user needs to have defined the following environment variables
+    PETSC_DIR_DEBUG
+    PETSC_DIR_RELEASE
+    P4EST_DIR_DEBUG
+    P4EST_DIR_RELEASE
+    VORO_DIR
+If several mpi distributions exist on the system, the user should specify
+which one is desired for the build by defining the environment variable
+    MPI_DIR
+    CC
+    CXX
+If desired, the user may also specify the following environment variables which may
+be required for some specific files from the library
+    MATLAB_DIR
+    BOOST_INCLUDES
+
+If not defined yet, define them in your .bashrc (and source it) or by executing
+export PETSC_DIR_DEBUG=(the path to the root of your 'debug' installation of petsc)
+export PETSC_DIR_RELEASE=(the path to the root of your 'release' installation of petsc)
+export P4EST_DIR_DEBUG=(the path to the root of your 'debug' installation of p4est)
+export P4EST_DIR_RELEASE=(the path to the root of your 'release' installation of petsc)
+export VORO_DIR=(the path to the root of your installation of voro++)
+If needed,
+export MPI_DIR=(the path to the root of your desired distribution of mpi)
+export CC=(the desired mpi c compiler)
+export CXX=(the desired mpi c++ compiler)
+If desired,
+export MATLAB_DIR=(the path to the root of your installation of matlab)
+export BOOST_INCLUDES=(the path to your installation of boost)
+"
+
+
+if [ "$#" -ne 1 ] || [ "$1" == "-h" ] || [ "$1" == "-help" ]; then
+  echo "$help"
+  exit 1;
+else
+  name=$1
+
+  if [[ -z "${PETSC_DIR_DEBUG}" ]]; then
+    echo "The environment variable PETSC_DIR_DEBUG is undefined. You need to define it first (add it to your .bashrc or use \"export\")."
+    exit 1
+  elif [[ ! -d "${PETSC_DIR_DEBUG}" ]]; then
+    echo "The environment variable PETSC_DIR_DEBUG=${PETSC_DIR_DEBUG} is not a valid directory: fix that."
+    exit 1
+  elif [ ! -d "${PETSC_DIR_DEBUG}/include" ] || [ ! -d "${PETSC_DIR_DEBUG}/lib" ]; then
+    echo "${PETSC_DIR_DEBUG}/include and/or ${PETSC_DIR_DEBUG}/lib is/are not valid directories: fix PETSC_DIR_DEBUG."
+    exit 1
+  fi
+
+  if [[ -z "${PETSC_DIR_RELEASE}" ]]; then
+    echo "The environment variable PETSC_DIR_RELEASE is undefined. You need to define it first (add it to your .bashrc or use \"export\")."
+    exit 1
+  elif [[ ! -d "${PETSC_DIR_RELEASE}" ]]; then
+    echo "The environment variable PETSC_DIR_RELEASE=${PETSC_DIR_RELEASE} is not a valid directory: fix that."
+    exit 1
+  elif [ ! -d "${PETSC_DIR_RELEASE}/include" ] || [ ! -d "${PETSC_DIR_RELEASE}/lib" ]; then
+    echo "${PETSC_DIR_RELEASE}/include and/or ${PETSC_DIR_RELEASE}/lib is/are not valid directories: fix PETSC_DIR_RELEASE."
+    exit 1
+  fi
+
+  if [[ -z "${P4EST_DIR_DEBUG}" ]]; then
+    echo "The environment variable P4EST_DIR_DEBUG is undefined. You need to define it first (add it to your .bashrc or use \"export\")."
+    exit 1
+  elif [[ ! -d "${P4EST_DIR_DEBUG}" ]]; then
+    echo "The environment variable P4EST_DIR_DEBUG=${P4EST_DIR_DEBUG} is not a valid directory: fix that."
+    exit 1
+  elif [ ! -d "${P4EST_DIR_DEBUG}/include" ] || [ ! -d "${P4EST_DIR_DEBUG}/lib" ]; then
+    echo "${P4EST_DIR_DEBUG}/include and/or ${P4EST_DIR_DEBUG}/lib is/are not valid directories: fix P4EST_DIR_DEBUG."
+    exit 1
+  fi
+
+  if [[ -z "${P4EST_DIR_RELEASE}" ]]; then
+    echo "The environment variable P4EST_DIR_RELEASE is undefined. You need to define it first (add it to your .bashrc or use \"export\")."
+    exit 1
+  elif [[ ! -d "${P4EST_DIR_RELEASE}" ]]; then
+    echo "The environment variable P4EST_DIR_RELEASE=${P4EST_DIR_RELEASE} is not a valid directory: fix that."
+    exit 1
+  elif [ ! -d "${P4EST_DIR_RELEASE}/include" ] || [ ! -d "${P4EST_DIR_RELEASE}/lib" ]; then
+    echo "${P4EST_DIR_RELEASE}/include and/or ${P4EST_DIR_RELEASE}/lib is/are not valid directories: fix P4EST_DIR_RELEASE."
+    exit 1
+  fi
+
+  if [[ -z "${VORO_DIR}" ]]; then
+    echo "The environment variable VORO_DIR is undefined. You need to define it first (add it to your .bashrc or use \"export\")."
+    exit 1
+  elif [[ ! -d "${VORO_DIR}" ]]; then
+    echo "The environment variable VORO_DIR=${VORO_DIR} is not a valid directory: fix that."
+    exit 1
+  elif [ ! -d "${VORO_DIR}/include/voro++" ] || [ ! -d "${VORO_DIR}/lib" ]; then
+    echo "${VORO_DIR}/include and/or ${VORO_DIR}/lib is/are not valid directories: fix VORO_DIR."
+    exit 1
+  fi
+
+  # check the optional MATLAB_DIR if defined
+  if [[ ! -z "${MATLAB_DIR}" ]]; then
+    if [[ ! -d "${MATLAB_DIR}" ]]; then
+      echo "The environment variable MATLAB_DIR=${MATLAB_DIR} is not a valid directory: fix that."
+      exit 1
+    elif [ ! -d "${MATLAB_DIR}/extern/include" ] || [ ! -d "${MATLAB_DIR}/bin/glnxa64" ]; then
+      echo "${MATLAB_DIR}/extern/include and/or ${MATLAB_DIR}/bin/glnxa64 is/are not valid directories: fix MATLAB_DIR."
+      exit 1
+    fi
+  fi
+
+  # check the optional BOOST_INCLUDES if defined
+  if [[ ! -z "${BOOST_INCLUDES}" ]]; then
+    if [[ ! -d "${BOOST_INCLUDES}" ]]; then
+      echo "The environment variable BOOST_INCLUDES=${BOOST_INCLUDES} is not a valid directory: fix that."
+      exit 1
+    fi
+  fi
+
+  # check if MPI is fully defined if MPI_DIR is given
+  if [[ ! -z "${MPI_DIR}" ]]; then
+    if [[ ! -d "${MPI_DIR}" ]]; then
+      echo "The environment variable MPI_DIR=${MPI_DIR} is not a valid directory: fix that."
+      exit 1
+    elif [ ! -d "${MPI_DIR}/include" ] || [ ! -d "${MPI_DIR}/lib" ]; then
+      echo "${MPI_DIR}/include and/or ${MPI_DIR}/lib is/are not valid directories: fix MPI_DIR."
+      exit 1
+    fi
+    if [[ -z "${CC}" ]]; then
+      echo "You need to define your desired mpi c compiler with environment variable CC is defining MPI_DIR: fix that."
+      exit 1
+    fi
+    if [[ -z "${CXX}" ]]; then
+      echo "You need to define your desired mpi c++ compiler with environment variable CXX is defining MPI_DIR: fix that."
+      exit 1
+    fi
+  fi
+
+  # create a new example only if one does not exist with the same name
+  if [[ ! -e $name.pri ]]; then
+    create_user_file $name
+  else
+    echo "ERROR: Environment-specific file '$name.pri' already exists. Please check it out or delete it or choose another name."
+    exit 1
+  fi
+  echo "The environement-specific file $name.pri has been created."
+  echo "Please double-check it, especially if you need a specific mpi distribution, matlab code or boost..."
+fi

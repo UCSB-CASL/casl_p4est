@@ -282,11 +282,7 @@ bool invert_cholesky(matrix_t &A, matrix_t &Ai)
   return true;
 }
 
-#ifdef P4_TO_P8
-void solve_lsqr_system(matrix_t &A, vector<double> p[], unsigned int n_vectors, double* solutions, int nb_x, int nb_y, int nb_z, char order, unsigned short nconstraints, std::vector<double>* interp_coeffs)
-#else
-void solve_lsqr_system(matrix_t &A, vector<double> p[], unsigned int n_vectors, double* solutions, int nb_x, int nb_y, char order, unsigned short nconstraints, std::vector<double>* interp_coeffs)
-#endif
+void solve_lsqr_system(matrix_t &A, vector<double> p[], unsigned int n_vectors, double* solutions, DIM(int nb_x, int nb_y, int nb_z), char order, unsigned short nconstraints, std::vector<double>* interp_coeffs)
 {
 #ifdef CASL_THROWS
   if(n_vectors == 0) throw std::invalid_argument("[CASL_ERROR]: solve_lsqr_system(...): the number of rhs's must be strictly positive!");
@@ -417,12 +413,7 @@ void solve_lsqr_system(matrix_t &A, vector<double> p[], unsigned int n_vectors, 
   return;
 }
 
-
-#ifdef P4_TO_P8
-double solve_lsqr_system_and_get_coefficients(matrix_t &A, vector<double> &p, int nb_x, int nb_y, int nb_z, vector<double> &interp_coeffs, char order)
-#else
-double solve_lsqr_system_and_get_coefficients(matrix_t &A, vector<double> &p, int nb_x, int nb_y, vector<double> &interp_coeffs, char order)
-#endif
+double solve_lsqr_system_and_get_coefficients(matrix_t &A, vector<double> &p, DIM(int nb_x, int nb_y, int nb_z), vector<double> &interp_coeffs, char order)
 {
 #ifdef P4_TO_P8
   if(order<1 || p.size()<4 || nb_x<2 || nb_y<2 || nb_z<2)
@@ -522,26 +513,4 @@ double solve_lsqr_system_and_get_coefficients(matrix_t &A, vector<double> &p, in
     A.matvec(my_interp_coeffs, interp_coeffs);
 
   return coeffs[0];
-}
-
-bool solve_lsqr_system(matrix_t &A, matrix_t &B)
-{
-  matrix_t AtA;
-  A.mtm_product(AtA);
-  bool result = invert_cholesky(AtA, AtA);
-  B = A;
-  B.tr();
-}
-
-bool solve_lsqr_system(matrix_t &A, vector<double> &W, vector<double> &p, vector<double> &y)
-{
-  matrix_t AtWA;
-  vector<double> Wp = p;
-  vector<double> AtWp;
-
-  for (int i=0; i<Wp.size(); ++i) Wp[i] *= W[i];
-
-  A.tranpose_matvec(Wp, AtWp);
-  A.mtm_product(AtWA, W);
-  return solve_cholesky(AtWA, AtWp, y);
 }

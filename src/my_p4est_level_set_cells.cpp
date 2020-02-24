@@ -82,30 +82,30 @@ double my_p4est_level_set_cells_t::integrate_over_interface(Vec phi, Vec f) cons
       double x = quad_x_fr_q(quad_idx, tree_idx, p4est, ghost);
       double y = quad_y_fr_q(quad_idx, tree_idx, p4est, ghost);
 
-      cube.x0 = x - dx/2;
-      cube.x1 = x + dx/2;
-      cube.y0 = y - dy/2;
-      cube.y1 = y + dy/2;
+      cube.xyz_mmm[0] = x - dx/2;
+      cube.xyz_ppp[0] = x + dx/2;
+      cube.xyz_mmm[1] = y - dy/2;
+      cube.xyz_ppp[1] = y + dy/2;
 
 #ifdef P4_TO_P8
       double dz = (zmax-zmin) * dmin;
       double z = quad_z_fr_q(quad_idx, tree_idx, p4est, ghost);
-      cube.z0 = z - dz/2;
-      cube.z1 = z + dz/2;
+      cube.xyz_mmm[2] = z - dz/2;
+      cube.xyz_ppp[2] = z + dz/2;
 
-      phi_vals.val000 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 0 ] ];
-      phi_vals.val100 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 1 ] ];
-      phi_vals.val010 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 2 ] ];
-      phi_vals.val110 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 3 ] ];
-      phi_vals.val001 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 4 ] ];
-      phi_vals.val101 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 5 ] ];
-      phi_vals.val011 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 6 ] ];
-      phi_vals.val111 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 7 ] ];
+      phi_vals.val[0] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 0 ] ];
+      phi_vals.val[4] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 1 ] ];
+      phi_vals.val[2] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 2 ] ];
+      phi_vals.val[6] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 3 ] ];
+      phi_vals.val[1] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 4 ] ];
+      phi_vals.val[5] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 5 ] ];
+      phi_vals.val[3] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 6 ] ];
+      phi_vals.val[7] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 7 ] ];
 #else
-      phi_vals.val00 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 0 ] ];
-      phi_vals.val10 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 1 ] ];
-      phi_vals.val01 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 2 ] ];
-      phi_vals.val11 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 3 ] ];
+      phi_vals.val[0] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 0 ] ];
+      phi_vals.val[2] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 1 ] ];
+      phi_vals.val[1] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 2 ] ];
+      phi_vals.val[3] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 3 ] ];
 #endif
 
 #ifdef P4_TO_P8
@@ -234,48 +234,48 @@ void my_p4est_level_set_cells_t::integrate_over_interface(Vec phi, Vec f, double
       double x = quad_x_fr_q(quad_idx, tree_idx, p4est, ghost);
       double y = quad_y_fr_q(quad_idx, tree_idx, p4est, ghost);
 
-      cube.x0 = x - dx/2;
-      cube.x1 = x + dx/2;
-      cube.y0 = y - dy/2;
-      cube.y1 = y + dy/2;
+      cube.xyz_mmm[0] = x - dx/2;
+      cube.xyz_ppp[0] = x + dx/2;
+      cube.xyz_mmm[1] = y - dy/2;
+      cube.xyz_ppp[1] = y + dy/2;
 
 #ifdef P4_TO_P8
       double dz = (zmax-zmin) * dmin;
       double z = quad_z_fr_q(quad_idx, tree_idx, p4est, ghost);
-      cube.z0 = z - dz/2;
-      cube.z1 = z + dz/2;
+      cube.xyz_mmm[2] = z - dz/2;
+      cube.xyz_ppp[2] = z + dz/2;
 
-      phi_vals.val000 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 0 ] ];
-      phi_vals.val100 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 1 ] ];
-      phi_vals.val010 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 2 ] ];
-      phi_vals.val110 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 3 ] ];
-      phi_vals.val001 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 4 ] ];
-      phi_vals.val101 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 5 ] ];
-      phi_vals.val011 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 6 ] ];
-      phi_vals.val111 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 7 ] ];
+      phi_vals.val[0] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 0 ] ];
+      phi_vals.val[4] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 1 ] ];
+      phi_vals.val[2] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 2 ] ];
+      phi_vals.val[6] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 3 ] ];
+      phi_vals.val[1] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 4 ] ];
+      phi_vals.val[5] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 5 ] ];
+      phi_vals.val[3] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 6 ] ];
+      phi_vals.val[7] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 7 ] ];
 #else
-      phi_vals.val00 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 0 ] ];
-      phi_vals.val10 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 1 ] ];
-      phi_vals.val01 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 2 ] ];
-      phi_vals.val11 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 3 ] ];
+      phi_vals.val[0] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 0 ] ];
+      phi_vals.val[2] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 1 ] ];
+      phi_vals.val[1] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 2 ] ];
+      phi_vals.val[3] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 3 ] ];
 #endif
 
       for(int dir=0; dir<P4EST_DIM; ++dir)
       {
 #ifdef P4_TO_P8
-        f_vals.val000 = nxyz_p[dir][ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 0 ] ];
-        f_vals.val100 = nxyz_p[dir][ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 1 ] ];
-        f_vals.val010 = nxyz_p[dir][ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 2 ] ];
-        f_vals.val110 = nxyz_p[dir][ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 3 ] ];
-        f_vals.val001 = nxyz_p[dir][ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 4 ] ];
-        f_vals.val101 = nxyz_p[dir][ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 5 ] ];
-        f_vals.val011 = nxyz_p[dir][ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 6 ] ];
-        f_vals.val111 = nxyz_p[dir][ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 7 ] ];
+        f_vals.val[0] = nxyz_p[dir][ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 0 ] ];
+        f_vals.val[4] = nxyz_p[dir][ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 1 ] ];
+        f_vals.val[2] = nxyz_p[dir][ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 2 ] ];
+        f_vals.val[6] = nxyz_p[dir][ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 3 ] ];
+        f_vals.val[1] = nxyz_p[dir][ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 4 ] ];
+        f_vals.val[5] = nxyz_p[dir][ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 5 ] ];
+        f_vals.val[3] = nxyz_p[dir][ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 6 ] ];
+        f_vals.val[7] = nxyz_p[dir][ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 7 ] ];
 #else
-        f_vals.val00 = nxyz_p[dir][ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 0 ] ];
-        f_vals.val10 = nxyz_p[dir][ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 1 ] ];
-        f_vals.val01 = nxyz_p[dir][ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 2 ] ];
-        f_vals.val11 = nxyz_p[dir][ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 3 ] ];
+        f_vals.val[0] = nxyz_p[dir][ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 0 ] ];
+        f_vals.val[2] = nxyz_p[dir][ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 1 ] ];
+        f_vals.val[1] = nxyz_p[dir][ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 2 ] ];
+        f_vals.val[3] = nxyz_p[dir][ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 3 ] ];
 #endif
 
         integral[dir] += f_p[quad_idx]*cube.integrate_Over_Interface(f_vals, phi_vals);
@@ -343,30 +343,30 @@ double my_p4est_level_set_cells_t::integrate(Vec phi, Vec f) const
       double x = quad_x_fr_q(quad_idx, tree_idx, p4est, ghost);
       double y = quad_y_fr_q(quad_idx, tree_idx, p4est, ghost);
 
-      cube.x0 = x - dx/2;
-      cube.x1 = x + dx/2;
-      cube.y0 = y - dy/2;
-      cube.y1 = y + dy/2;
+      cube.xyz_mmm[0] = x - dx/2;
+      cube.xyz_ppp[0] = x + dx/2;
+      cube.xyz_mmm[1] = y - dy/2;
+      cube.xyz_mmm[1] = y + dy/2;
 
 #ifdef P4_TO_P8
       double dz = (zmax-zmin) * dmin;
       double z = quad_z_fr_q(quad_idx, tree_idx, p4est, ghost);
-      cube.z0 = z - dz/2;
-      cube.z1 = z + dz/2;
+      cube.xyz_mmm[2] = z - dz/2;
+      cube.xyz_mmm[2] = z + dz/2;
 
-      phi_vals.val000 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 0 ] ];
-      phi_vals.val100 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 1 ] ];
-      phi_vals.val010 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 2 ] ];
-      phi_vals.val110 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 3 ] ];
-      phi_vals.val001 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 4 ] ];
-      phi_vals.val101 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 5 ] ];
-      phi_vals.val011 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 6 ] ];
-      phi_vals.val111 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 7 ] ];
+      phi_vals.val[0] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 0 ] ];
+      phi_vals.val[4] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 1 ] ];
+      phi_vals.val[2] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 2 ] ];
+      phi_vals.val[6] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 3 ] ];
+      phi_vals.val[1] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 4 ] ];
+      phi_vals.val[5] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 5 ] ];
+      phi_vals.val[3] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 6 ] ];
+      phi_vals.val[7] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 7 ] ];
 #else
-      phi_vals.val00 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 0 ] ];
-      phi_vals.val10 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 1 ] ];
-      phi_vals.val01 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 2 ] ];
-      phi_vals.val11 = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 3 ] ];
+      phi_vals.val[0] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 0 ] ];
+      phi_vals.val[2] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 1 ] ];
+      phi_vals.val[1] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 2 ] ];
+      phi_vals.val[3] = phi_p[ nodes->local_nodes[ quad_idx*P4EST_CHILDREN + 3 ] ];
 #endif
 
 #ifdef P4_TO_P8

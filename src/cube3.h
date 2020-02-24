@@ -63,9 +63,7 @@ private:
   }
 
 public:
-  double x0,x1; // nodes
-  double y0,y1;
-  double z0,z1;
+  double xyz_mmm[3], xyz_ppp[3]; // nodes
 
   /*!
        * \brief default constructor for Cube2, initialize the coordinates to zero
@@ -113,5 +111,6 @@ public:
       if (val)  {middlecut = true;  num_tet = 5;}
       else      {middlecut = false; num_tet = 6;}
     }
+    double max_Over_Interface(const OctValue &f, const OctValue &ls_values) const;
 };
 #endif // MY_P4EST_CUBE3_H

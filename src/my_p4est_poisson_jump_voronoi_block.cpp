@@ -997,7 +997,7 @@ void my_p4est_poisson_jump_voronoi_block_t::compute_voronoi_cell(unsigned int n,
 
     p4est_locidx_t quad_idx;
 
-    std::vector<p4est_quadrant_t> tmp;
+    set_of_neighboring_quadrants tmp;
 #ifdef P4_TO_P8
     for(char i=-1; i<=1; i+=2)
     {
@@ -1015,8 +1015,8 @@ void my_p4est_poisson_jump_voronoi_block_t::compute_voronoi_cell(unsigned int n,
             ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, i, j, 0);
             ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, i, 0, k);
             ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, 0, j, k);
-            for(unsigned int m=0; m<tmp.size(); ++m)
-              ngbd_quads.push_back(tmp[m].p.piggy3.local_num);
+            for (set_of_neighboring_quadrants::const_iterator it = tmp.begin(); it != tmp.end(); ++it)
+              ngbd_quads.push_back(it->p.piggy3.local_num);
             tmp.clear();
           }
         }
@@ -1033,8 +1033,8 @@ void my_p4est_poisson_jump_voronoi_block_t::compute_voronoi_cell(unsigned int n,
           ngbd_quads.push_back(quad_idx);
           ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, i, 0);
           ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, 0, j);
-          for(unsigned int m=0; m<tmp.size(); ++m)
-            ngbd_quads.push_back(tmp[m].p.piggy3.local_num);
+          for (set_of_neighboring_quadrants::const_iterator it = tmp.begin(); it != tmp.end(); ++it)
+            ngbd_quads.push_back(it->p.piggy3.local_num);
           tmp.clear();
         }
       }
@@ -1046,7 +1046,7 @@ void my_p4est_poisson_jump_voronoi_block_t::compute_voronoi_cell(unsigned int n,
   {
     ngbd_quads.push_back(quad_idx);
 
-    std::vector<p4est_quadrant_t> tmp;
+    set_of_neighboring_quadrants tmp;
 #ifdef P4_TO_P8
     ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, -1,  0,  0);
     ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx,  1,  0,  0);
@@ -1061,8 +1061,8 @@ void my_p4est_poisson_jump_voronoi_block_t::compute_voronoi_cell(unsigned int n,
     ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx,  0, -1);
 #endif
 
-    for(unsigned int m=0; m<tmp.size(); ++m)
-      ngbd_quads.push_back(tmp[m].p.piggy3.local_num);
+    for (set_of_neighboring_quadrants::const_iterator it = tmp.begin(); it != tmp.end(); ++it)
+      ngbd_quads.push_back(it->p.piggy3.local_num);
 
     p4est_locidx_t n_idx;
     p4est_locidx_t q_idx;
@@ -1096,24 +1096,25 @@ void my_p4est_poisson_jump_voronoi_block_t::compute_voronoi_cell(unsigned int n,
     ngbd_n->find_neighbor_cell_of_node(n_idx,  1,  1, q_idx, t_idx); if(q_idx>=0) ngbd_quads.push_back(q_idx);
 #endif
 
-    std::vector<p4est_quadrant_t> tmp2;
-    for(unsigned int k=0; k<tmp.size(); ++k)
+    set_of_neighboring_quadrants tmp2;
+    for (set_of_neighboring_quadrants::const_iterator it = tmp.begin(); it != tmp.end(); ++it)
     {
 #ifdef P4_TO_P8
-      ngbd_c->find_neighbor_cells_of_cell(tmp2, tmp[k].p.piggy3.local_num, tmp[k].p.piggy3.which_tree, -1,  0,  0);
-      ngbd_c->find_neighbor_cells_of_cell(tmp2, tmp[k].p.piggy3.local_num, tmp[k].p.piggy3.which_tree,  1,  0,  0);
-      ngbd_c->find_neighbor_cells_of_cell(tmp2, tmp[k].p.piggy3.local_num, tmp[k].p.piggy3.which_tree,  0, -1,  0);
-      ngbd_c->find_neighbor_cells_of_cell(tmp2, tmp[k].p.piggy3.local_num, tmp[k].p.piggy3.which_tree,  0,  1,  0);
-      ngbd_c->find_neighbor_cells_of_cell(tmp2, tmp[k].p.piggy3.local_num, tmp[k].p.piggy3.which_tree,  0,  0, -1);
-      ngbd_c->find_neighbor_cells_of_cell(tmp2, tmp[k].p.piggy3.local_num, tmp[k].p.piggy3.which_tree,  0,  0,  1);
+      ngbd_c->find_neighbor_cells_of_cell(tmp2, it->p.piggy3.local_num, it->p.piggy3.which_tree, -1,  0,  0);
+      ngbd_c->find_neighbor_cells_of_cell(tmp2, it->p.piggy3.local_num, it->p.piggy3.which_tree,  1,  0,  0);
+      ngbd_c->find_neighbor_cells_of_cell(tmp2, it->p.piggy3.local_num, it->p.piggy3.which_tree,  0, -1,  0);
+      ngbd_c->find_neighbor_cells_of_cell(tmp2, it->p.piggy3.local_num, it->p.piggy3.which_tree,  0,  1,  0);
+      ngbd_c->find_neighbor_cells_of_cell(tmp2, it->p.piggy3.local_num, it->p.piggy3.which_tree,  0,  0, -1);
+      ngbd_c->find_neighbor_cells_of_cell(tmp2, it->p.piggy3.local_num, it->p.piggy3.which_tree,  0,  0,  1);
 #else
-      ngbd_c->find_neighbor_cells_of_cell(tmp2, tmp[k].p.piggy3.local_num, tmp[k].p.piggy3.which_tree, -1,  0);
-      ngbd_c->find_neighbor_cells_of_cell(tmp2, tmp[k].p.piggy3.local_num, tmp[k].p.piggy3.which_tree,  1,  0);
-      ngbd_c->find_neighbor_cells_of_cell(tmp2, tmp[k].p.piggy3.local_num, tmp[k].p.piggy3.which_tree,  0, -1);
-      ngbd_c->find_neighbor_cells_of_cell(tmp2, tmp[k].p.piggy3.local_num, tmp[k].p.piggy3.which_tree,  0,  1);
+      ngbd_c->find_neighbor_cells_of_cell(tmp2, it->p.piggy3.local_num, it->p.piggy3.which_tree, -1,  0);
+      ngbd_c->find_neighbor_cells_of_cell(tmp2, it->p.piggy3.local_num, it->p.piggy3.which_tree,  1,  0);
+      ngbd_c->find_neighbor_cells_of_cell(tmp2, it->p.piggy3.local_num, it->p.piggy3.which_tree,  0, -1);
+      ngbd_c->find_neighbor_cells_of_cell(tmp2, it->p.piggy3.local_num, it->p.piggy3.which_tree,  0,  1);
 #endif
-      for(unsigned int l=0; l<tmp2.size(); ++l)
-        ngbd_quads.push_back(tmp2[l].p.piggy3.local_num);
+
+      for (set_of_neighboring_quadrants::const_iterator itt = tmp2.begin(); itt != tmp2.end(); ++itt)
+        ngbd_quads.push_back(itt->p.piggy3.local_num);
       tmp2.clear();
     }
   }
@@ -1325,17 +1326,17 @@ void my_p4est_poisson_jump_voronoi_block_t::setup_linear_system()
 #endif
           double d = (pc - pl).norm_L2();
 
-          for (int bi = 0; bi<block_size; bi++) {
-            for (int bj = 0; bj<block_size; bj++) {
+          for (int bbi = 0; bbi<block_size; bbi++) {
+            for (int bbj = 0; bbj<block_size; bbj++) {
 
 #ifdef P4_TO_P8
-              if(phi_l<0) mue_l[bi][bj] = (*mu_m[bi][bj])(pl.x, pl.y, pl.z);
-              else        mue_l[bi][bj] = (*mu_p[bi][bj])(pl.x, pl.y, pl.z);
+              if(phi_l<0) mue_l[bbi][bbj] = (*mu_m[bbi][bbj])(pl.x, pl.y, pl.z);
+              else        mue_l[bbi][bbj] = (*mu_p[bbi][bbj])(pl.x, pl.y, pl.z);
 #else
-              if(phi_l<0) mue_l[bi][bj] = (*mu_m[bi][bj])(pl.x, pl.y);
-              else        mue_l[bi][bj] = (*mu_p[bi][bj])(pl.x, pl.y);
+              if(phi_l<0) mue_l[bbi][bbj] = (*mu_m[bbi][bbj])(pl.x, pl.y);
+              else        mue_l[bbi][bbj] = (*mu_p[bbi][bbj])(pl.x, pl.y);
 #endif
-              mue_tmp[bi][bj] = 0.5*(mue_n[bi][bj] + mue_l[bi][bj]);
+              mue_tmp[bbi][bbj] = 0.5*(mue_n[bbi][bbj] + mue_l[bbi][bbj]);
             }
           }
 
@@ -1660,7 +1661,7 @@ void my_p4est_poisson_jump_voronoi_block_t::interpolate_solution_from_voronoi_to
   std::vector<p4est_locidx_t> ngbd_quads;
 
 #ifdef P4_TO_P8
-  std::vector<p4est_quadrant_t> tmp;
+  set_of_neighboring_quadrants tmp;
   for(char i=-1; i<=1; i+=2)
   {
     for(char j=-1; j<=1; j+=2)
@@ -1678,15 +1679,15 @@ void my_p4est_poisson_jump_voronoi_block_t::interpolate_solution_from_voronoi_to
           ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, i, 0, k);
           ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, 0, j, k);
           ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, i, j, k);
-          for(unsigned int m=0; m<tmp.size(); ++m)
-            ngbd_quads.push_back(tmp[m].p.piggy3.local_num);
+          for(set_of_neighboring_quadrants::const_iterator it = tmp.begin(); it != tmp.end(); ++it)
+            ngbd_quads.push_back(it->p.piggy3.local_num);
           tmp.clear();
         }
       }
     }
   }
 #else
-  std::vector<p4est_quadrant_t> tmp;
+  set_of_neighboring_quadrants tmp;
   for(char i=-1; i<=1; i+=2)
   {
     for(char j=-1; j<=1; j+=2)
@@ -1698,8 +1699,8 @@ void my_p4est_poisson_jump_voronoi_block_t::interpolate_solution_from_voronoi_to
         ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, i, 0);
         ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, 0, j);
         ngbd_c->find_neighbor_cells_of_cell(tmp, quad_idx, tree_idx, i, j);
-        for(unsigned int m=0; m<tmp.size(); ++m)
-          ngbd_quads.push_back(tmp[m].p.piggy3.local_num);
+        for(set_of_neighboring_quadrants::const_iterator it = tmp.begin(); it != tmp.end(); ++it)
+          ngbd_quads.push_back(it->p.piggy3.local_num);
         tmp.clear();
       }
     }
@@ -2121,7 +2122,13 @@ next_point:
     FILE *f = fopen(path, "w");
     fprintf(f, "%% rank  |  nb_voro  |  nb_indep_voro  |  nb_nodes_voro\n");
     for(int i=0; i<p4est->mpisize; ++i)
-      fprintf(f, "%d %d %u %u\n", i, voro_global_offset[i+1]-voro_global_offset[i], indep_voro[i], nodes_voro[i]);
+      fprintf(f,
+        #if defined(PETSC_USE_64BIT_INDICES)
+              "%d %ld %u %u\n",
+        #else
+              "%d %d %u %u\n",
+        #endif
+              i, voro_global_offset[i+1]-voro_global_offset[i], indep_voro[i], nodes_voro[i]);
     fclose(f);
   }
 }

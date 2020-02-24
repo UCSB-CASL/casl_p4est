@@ -103,7 +103,7 @@ my_p4est_poisson_nodes_multialloy_t::my_p4est_poisson_nodes_multialloy_t(my_p4es
   }
 
   cube_refinement_ = 1;
-  integration_order_ = 1;
+  integration_order_ = 2;
 
   second_derivatives_owned_  = false;
   use_superconvergent_robin_ = false;
@@ -542,7 +542,7 @@ void my_p4est_poisson_nodes_multialloy_t::initialize_solvers()
 
   if (contr_phi_.vec != NULL)
   {
-    solver_temp_->add_boundary (MLS_INTERSECTION, contr_phi_.vec, contr_phi_dd_.vec, contr_bc_type_temp_, zero_cf, zero_cf);
+    solver_temp_->add_boundary (MLS_INTERSECTION, contr_phi_.vec, contr_phi_dd_.vec, contr_bc_type_temp_, *contr_bc_value_temp_, zero_cf);
   }
 
   solver_temp_->preassemble_linear_system();
@@ -1739,6 +1739,12 @@ void my_p4est_poisson_nodes_multialloy_t::adjust_c0_gamma(bool simple)
       // undercoolings
       eps_v = eps_v_[seed_map_.ptr[n]]->value(normal);
       eps_c = eps_c_[seed_map_.ptr[n]]->value(normal);
+
+      //if (xyz[1] > 0.12)
+      //{
+      //  eps_v += 1;
+      //  eps_v -= 1;
+      //}
 
       // error
       error = tl_val

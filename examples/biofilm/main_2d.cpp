@@ -127,8 +127,8 @@ int  integration_order     = 1; // order of geometric recpnstruction for computi
 // output parameters
 bool   save_data  = 1; // save scalar characteristics (time elapsed, biofilm volume, surface area, etc)
 bool   save_vtk   = 1; // save spatial data
-int    save_type  = 2; // 0 - every dn iterations, 1 - every dl of growth, 2 - every dt of time
-int    save_every_dn = 10;
+int    save_type  = 0; // 0 - every dn iterations, 1 - every dl of growth, 2 - every dt of time
+int    save_every_dn = 1;
 double save_every_dl = 0.01;
 double save_every_dt = 0.5;
 
@@ -913,18 +913,6 @@ class fc_cf_t : public CF_1 {
 public:
   double operator()(double c) const { return A/(Kc+c) - A*c/pow(Kc+c, 2.); }
 } fc_cf;
-
-#ifdef P4_TO_P8
-class zero_cf_t : public CF_3 {
-public:
-  double operator()(double, double, double) const { return 0; }
-} zero_cf;
-#else
-class zero_cf_t : public CF_2{
-public:
-  double operator()(double, double) const { return 0; }
-} zero_cf;
-#endif
 
 int main (int argc, char* argv[])
 {

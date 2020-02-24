@@ -20,6 +20,13 @@ private:
   p4est_nodes_t* &nodes;
   my_p4est_brick_t *brick;
 
+  p4est_t* p4est_nm1;
+  p4est_ghost_t* ghost_nm1;
+  p4est_nodes_t* nodes_nm1;
+  Vec phi_nm1;
+  Vec pressure_m_nm1, pressure_p_nm1;
+  Vec potential_m_nm1, potential_p_nm1;
+
   // local variables
   splitting_criteria_t* sp;
   p4est_connectivity_t *conn;
@@ -37,10 +44,23 @@ private:
   cf_t *pressure_bc_val, *potential_bc_val;
   const CF_1 *Q, *I;
 
+  Vec kappa, nx[P4EST_DIM], n1[P4EST_DIM];
+  Vec un, un_nm1;
+  double dt_nm1;
+
   double advect_interface(Vec& phi,
                           Vec& pressure_m,  Vec& pressure_p,
                           Vec& potential_m, Vec& potential_p,
                           double cfl, double dtmax);
+
+  double advect_interface_godunov(Vec& phi,
+                                  Vec& pressure_m,  Vec& pressure_p,
+                                  Vec& potential_m, Vec& potential_p,
+                                  double cfl, double dtmax);
+
+  void compute_normal_and_curvature_diagonal(my_p4est_node_neighbors_t& neighbors, Vec &phi);
+
+  void compute_normal_velocity_diagonal(my_p4est_node_neighbors_t& neighbors, Vec& phi, Vec &pressure, Vec& potential);
 
   void solve_fields(double t, Vec phi,
                     Vec pressure_m,  Vec pressure_p,

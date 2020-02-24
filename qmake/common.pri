@@ -45,6 +45,7 @@ CONFIG(debug, debug|release): {
         $$P4EST_LIBS_DEBUG \
         $$PETSC_LIBS_DEBUG \
         $$VORO_LIBS_DEBUG  \
+        $$BOOST_LIBS \
         $$LAPACKE_LIBS
 
     DEFINES += DEBUG CASL_THROWS P4EST_DEBUG

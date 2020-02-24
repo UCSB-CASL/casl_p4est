@@ -101,40 +101,43 @@ lookup_in_ghost_nodes:
   P4EST_ASSERT((p4est_quadrant_compare_piggy(node_l, n) > 0) || (p4est_quadrant_compare_piggy(node_u, n) < 0));
   idx_l   = nodes->num_owned_indeps;
   idx_u   = nodes->indep_nodes.elem_count-1;
-  node_l  = (const p4est_indep_t*) sc_array_index(&nodes->indep_nodes, idx_l);
-  node_u  = (const p4est_indep_t*) sc_array_index(&nodes->indep_nodes, idx_u);
-  while((p4est_quadrant_compare_piggy(node_l, n) <= 0) && (p4est_quadrant_compare_piggy(node_u, n) >= 0))
+  if(idx_l <= idx_u) // do this only if there are ghost nodes!
   {
-    if(!p4est_quadrant_compare_piggy(node_l, n))
+    node_l  = (const p4est_indep_t*) sc_array_index(&nodes->indep_nodes, idx_l);
+    node_u  = (const p4est_indep_t*) sc_array_index(&nodes->indep_nodes, idx_u);
+    while((p4est_quadrant_compare_piggy(node_l, n) <= 0) && (p4est_quadrant_compare_piggy(node_u, n) >= 0))
     {
-      idx = idx_l;
-      return true;
-    }
-    if(!p4est_quadrant_compare_piggy(node_u, n))
-    {
-      idx = idx_u;
-      return true;
-    }
-    if(idx_u-idx_l == 1)
-      break;
-    idx_m   = (idx_l + idx_u)/2;
-    node_m  = (const p4est_indep_t*) sc_array_index(&nodes->indep_nodes, idx_m);
-    P4EST_ASSERT((p4est_quadrant_compare_piggy(node_l, node_m) <= 0) && (p4est_quadrant_compare_piggy(node_u, node_m) >= 0));
-    if(p4est_quadrant_compare_piggy(node_m, n) <0)
-    {
-      idx_l   = idx_m;
-      node_l  = node_m;
-    }
-    else if (p4est_quadrant_compare_piggy(node_m, n) >0)
-    {
-      idx_u   = idx_m;
-      node_u  = node_m;
-    }
-    else
-    {
-      P4EST_ASSERT(!p4est_quadrant_compare_piggy(node_m, n));
-      idx = idx_m;
-      return true;
+      if(!p4est_quadrant_compare_piggy(node_l, n))
+      {
+        idx = idx_l;
+        return true;
+      }
+      if(!p4est_quadrant_compare_piggy(node_u, n))
+      {
+        idx = idx_u;
+        return true;
+      }
+      if(idx_u - idx_l == 1)
+        break;
+      idx_m   = (idx_l + idx_u)/2;
+      node_m  = (const p4est_indep_t*) sc_array_index(&nodes->indep_nodes, idx_m);
+      P4EST_ASSERT((p4est_quadrant_compare_piggy(node_l, node_m) <= 0) && (p4est_quadrant_compare_piggy(node_u, node_m) >= 0));
+      if(p4est_quadrant_compare_piggy(node_m, n) <0)
+      {
+        idx_l   = idx_m;
+        node_l  = node_m;
+      }
+      else if (p4est_quadrant_compare_piggy(node_m, n) >0)
+      {
+        idx_u   = idx_m;
+        node_u  = node_m;
+      }
+      else
+      {
+        P4EST_ASSERT(!p4est_quadrant_compare_piggy(node_m, n));
+        idx = idx_m;
+        return true;
+      }
     }
   }
   return false;
@@ -418,6 +421,7 @@ void quadratic_non_oscillatory_continuous_v1_interpolation(const p4est_t *p4est,
 #else
     results[k] -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1]);
 #endif
+  }
 
 
   }
@@ -491,7 +495,6 @@ void quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_t *p4est,
   };
 #endif
 
-
   // Second alternative scheme: first, weight-average in perpendicular plane, then minmod
   double fdd[P4EST_DIM];
   unsigned int i, jm, jp;
@@ -561,54 +564,40 @@ void quadratic_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const
   P4EST_ASSERT(n_results > 0);
   PetscErrorCode ierr;
 
-  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + 0];
-  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + P4EST_CHILDREN-1];
+  p4est_topidx_t v_mm = p4est->connectivity->tree_to_vertex[0*P4EST_CHILDREN + 0];
+  p4est_topidx_t v_pp = p4est->connectivity->tree_to_vertex[(p4est->trees->elem_count-1)*P4EST_CHILDREN + P4EST_CHILDREN-1];
+  p4est_topidx_t v_m  = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + 0];
+  p4est_topidx_t v_p  = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + P4EST_CHILDREN-1];
 
-  double tree_xmin = p4est->connectivity->vertices[3*v_m + 0];
-  double tree_xmax = p4est->connectivity->vertices[3*v_p + 0];
-  double tree_ymin = p4est->connectivity->vertices[3*v_m + 1];
-  double tree_ymax = p4est->connectivity->vertices[3*v_p + 1];
-#ifdef P4_TO_P8
-  double tree_zmin = p4est->connectivity->vertices[3*v_m + 2];
-  double tree_zmax = p4est->connectivity->vertices[3*v_p + 2];
-#endif
+  const double* domain_xyz_min  = (p4est->connectivity->vertices+3*v_mm);
+  const double* domain_xyz_max  = (p4est->connectivity->vertices+3*v_pp);
+  const double* tree_xyz_min    = (p4est->connectivity->vertices+3*v_m);
+  const double* tree_xyz_max    = (p4est->connectivity->vertices+3*v_p);
 
-  double x = (xyz_global[0] - tree_xmin)/(tree_xmax-tree_xmin);
-  double y = (xyz_global[1] - tree_ymin)/(tree_ymax-tree_ymin);
-#ifdef P4_TO_P8
-  double z = (xyz_global[2] - tree_zmin)/(tree_zmax-tree_zmin);
-#endif
+  const double qh   = (double)P4EST_QUADRANT_LEN(quad.level) / (double)(P4EST_ROOT_LEN);
+  double qxyz_min[P4EST_DIM] = {DIM(quad_x_fr_i(&quad), quad_y_fr_j(&quad), quad_z_fr_k(&quad))};
 
-  double qh   = (double)P4EST_QUADRANT_LEN(quad.level) / (double)(P4EST_ROOT_LEN);
-  double qxmin = quad_x_fr_i(&quad);
-  double qymin = quad_y_fr_j(&quad);
-#ifdef P4_TO_P8
-  double qzmin = quad_z_fr_k(&quad);
-#endif
-
-#ifdef CASL_THROWS
-  if(x<qxmin-qh/10 || x>qxmin+qh+qh/10 || y<qymin-qh/10 || y>qymin+qh+qh/10)
-  {
-    std::cout << x << ", " << qxmin << ", " << qxmin+qh << std::endl;
-    std::cout << y << ", " << qymin << ", " << qymin+qh << std::endl;
-    std::cout << y-qymin << std::endl;
-    throw std::invalid_argument("quadratic_interpolation: the point is not inside the quadrant.");
+  double xyz[P4EST_DIM];
+  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
+    xyz[dir] = xyz_global[dir];
+    if(is_periodic(p4est, dir))
+      while (fabs(xyz[dir] - (tree_xyz_min[dir] + (tree_xyz_max[dir]-tree_xyz_min[dir])*qxyz_min[dir])) >= (0.5+((double)P4EST_QUADRANT_LEN(P4EST_MAXLEVEL))/((double) P4EST_ROOT_LEN))*(domain_xyz_max[dir] - domain_xyz_min[dir]))
+        xyz[dir] = xyz[dir] + ((xyz[dir] > (tree_xyz_min[dir] + (tree_xyz_max[dir]-tree_xyz_min[dir])*qxyz_min[dir]))? -1.0: +1.0)*(domain_xyz_max[dir]-domain_xyz_min[dir]);
+    xyz[dir] = (xyz[dir] - tree_xyz_min[dir])/(tree_xyz_max[dir] - tree_xyz_min[dir]);
   }
-#endif
 
-  x = (x-qxmin) / qh;
-  y = (y-qymin) / qh;
-#ifdef P4_TO_P8
-  z = (z-qzmin) / qh;
-#endif
+  P4EST_ASSERT(ANDD(xyz[0]>=qxyz_min[0]-qh/10 && xyz[0]<=qxyz_min[0]+qh+qh/10, xyz[1]>=qxyz_min[1]-qh/10 && xyz[1]<=qxyz_min[1]+qh+qh/10, xyz[2]>=qxyz_min[2]-qh/10 && xyz[2]<=qxyz_min[2]+qh+qh/10));
 
-  double d_m00 = x;
-  double d_p00 = 1-x;
-  double d_0m0 = y;
-  double d_0p0 = 1-y;
+  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+    xyz[dir] = (xyz[dir]-qxyz_min[dir])/qh;
+
+  double d_m00 = xyz[0];
+  double d_p00 = 1-xyz[0];
+  double d_0m0 = xyz[1];
+  double d_0p0 = 1-xyz[1];
 #ifdef P4_TO_P8
-  double d_00m = z;
-  double d_00p = 1-z;
+  double d_00m = xyz[2];
+  double d_00p = 1-xyz[2];
 #endif
 
 #ifdef P4_TO_P8
@@ -635,11 +624,7 @@ void quadratic_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const
 
 
   double fdd[P4EST_DIM];
-  const double sx = (tree_xmax-tree_xmin)*qh;
-  const double sy = (tree_ymax-tree_ymin)*qh;
-#ifdef P4_TO_P8
-  const double sz = (tree_zmax-tree_zmin)*qh;
-#endif
+  const double sxyz[P4EST_DIM] = {DIM((tree_xyz_max[0] - tree_xyz_min[0])*qh, (tree_xyz_max[1] - tree_xyz_min[1])*qh, (tree_xyz_max[2] - tree_xyz_min[2])*qh)};
   for (unsigned int k = 0; k < n_results; ++k)
   {
     results[k] = 0.0;
@@ -649,11 +634,7 @@ void quadratic_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const
         fdd[i] = ((j == 0)? 0.0 : fdd[i]) +Fdd[k*P4EST_CHILDREN*P4EST_DIM+j*P4EST_DIM + i] * w_xyz[j];
       results[k] += F[k*P4EST_CHILDREN+j]*w_xyz[j];
     }
-#ifdef P4_TO_P8
-    results[k] -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1] + sz*sz*d_00p*d_00m*fdd[2]);
-#else
-    results[k] -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1]);
-#endif
+    results[k] -= 0.5*SUMD(sxyz[0]*sxyz[0]*d_p00*d_m00*fdd[0], sxyz[1]*sxyz[1]*d_0p0*d_0m0*fdd[1], sxyz[2]*sxyz[2]*d_00p*d_00m*fdd[2]);
   }
 
   ierr = PetscLogFlops(45); CHKERRXX(ierr); // number of flops in this event
@@ -933,7 +914,7 @@ PetscErrorCode VecCreateGhostCellsBlock(const p4est_t *p4est, const p4est_ghost_
   return ierr;
 }
 
-PetscErrorCode VecCreateCellsBlockNoGhost(const p4est_t *p4est, const PetscInt &block_size, Vec* v)
+PetscErrorCode VecCreateNoGhostCellsBlock(const p4est_t *p4est, const PetscInt &block_size, Vec* v)
 {
   PetscErrorCode ierr = 0;
   p4est_locidx_t num_local = p4est->local_num_quadrants;
@@ -947,6 +928,16 @@ PetscErrorCode VecCreateCellsBlockNoGhost(const p4est_t *p4est, const PetscInt &
   }
   ierr = VecSetFromOptions(*v); CHKERRQ(ierr);
 
+  return ierr;
+}
+
+PetscErrorCode VecScatterAllToSomeCreate(MPI_Comm comm, Vec origin_loc, Vec destination, const PetscInt &ndest_glo_idx, const PetscInt *dest_glo_idx, VecScatter *ctx)
+{
+  PetscErrorCode ierr;
+  IS is_from, is_to;
+  ierr    = ISCreateGeneral(comm, ndest_glo_idx, dest_glo_idx, PETSC_USE_POINTER, &is_to);    CHKERRQ(ierr);
+  ierr    = ISCreateStride(comm, ndest_glo_idx, 0, 1, &is_from);                              CHKERRQ(ierr);
+  ierr    = VecScatterCreate(origin_loc, is_from, destination, is_to, ctx);                   CHKERRQ(ierr);
   return ierr;
 }
 
@@ -1148,8 +1139,6 @@ int delete_directory(const char* root_path, int mpi_rank, MPI_Comm comm, bool no
   return return_;
 }
 
-
-
 void dxyz_min(const p4est_t *p4est, double *dxyz)
 {
   splitting_criteria_t *data = (splitting_criteria_t*)p4est->user_pointer;
@@ -1158,10 +1147,8 @@ void dxyz_min(const p4est_t *p4est, double *dxyz)
   p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
   double *v = p4est->connectivity->vertices;
 
-  for(int dir=0; dir<P4EST_DIM; ++dir)
-  {
+  for(unsigned char dir=0; dir<P4EST_DIM; ++dir)
     dxyz[dir] = (v[3*v_p + dir] - v[3*v_m + dir]) / (1<<data->max_lvl);
-  }
 }
 
 void get_dxyz_min(const p4est_t *p4est, double *dxyz, double &dxyz_min)
@@ -1173,15 +1160,9 @@ void get_dxyz_min(const p4est_t *p4est, double *dxyz, double &dxyz_min)
   double *v = p4est->connectivity->vertices;
 
   for(int dir=0; dir<P4EST_DIM; ++dir)
-  {
     dxyz[dir] = (v[3*v_p + dir] - v[3*v_m + dir]) / (1<<data->max_lvl);
-  }
 
-#ifdef P4_TO_P8
-  dxyz_min = MIN(dxyz[0], dxyz[1], dxyz[2]);
-#else
-  dxyz_min = MIN(dxyz[0], dxyz[1]);
-#endif
+  dxyz_min = MIN(DIM(dxyz[0], dxyz[1], dxyz[2]));
 }
 
 void get_dxyz_min(const p4est_t *p4est, double *dxyz, double &dxyz_min, double &diag_min)
@@ -1193,17 +1174,10 @@ void get_dxyz_min(const p4est_t *p4est, double *dxyz, double &dxyz_min, double &
   double *v = p4est->connectivity->vertices;
 
   for(int dir=0; dir<P4EST_DIM; ++dir)
-  {
     dxyz[dir] = (v[3*v_p + dir] - v[3*v_m + dir]) / (1<<data->max_lvl);
-  }
 
-#ifdef P4_TO_P8
-  dxyz_min = MIN(dxyz[0], dxyz[1], dxyz[2]);
-  diag_min = sqrt( SQR(dxyz[0]) + SQR(dxyz[1]) + SQR(dxyz[2]) );
-#else
-  dxyz_min = MIN(dxyz[0], dxyz[1]);
-  diag_min = sqrt( SQR(dxyz[0]) + SQR(dxyz[1]) );
-#endif
+  dxyz_min = MIN(DIM(dxyz[0], dxyz[1], dxyz[2]));
+  diag_min = sqrt(SUMD(SQR(dxyz[0]), SQR(dxyz[1]), SQR(dxyz[2])));
 }
 
 void dxyz_quad(const p4est_t *p4est, const p4est_quadrant_t *quad, double *dxyz)
@@ -1258,34 +1232,34 @@ double integrate_over_negative_domain_in_one_quadrant(const p4est_t *p4est, cons
 
   // TODO: This is terrible! QuadValue, Cube2, Point2, etc should be templated classes!
 #ifdef P4_TO_P8
-  phi_values.val000 = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
-  phi_values.val100 = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
-  phi_values.val010 = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
-  phi_values.val110 = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
-  phi_values.val001 = P[ q2n[ quad_idx*P4EST_CHILDREN + 4 ] ];
-  phi_values.val101 = P[ q2n[ quad_idx*P4EST_CHILDREN + 5 ] ];
-  phi_values.val011 = P[ q2n[ quad_idx*P4EST_CHILDREN + 6 ] ];
-  phi_values.val111 = P[ q2n[ quad_idx*P4EST_CHILDREN + 7 ] ];
+  phi_values.val[0] = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
+  phi_values.val[4] = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
+  phi_values.val[2] = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
+  phi_values.val[6] = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
+  phi_values.val[1] = P[ q2n[ quad_idx*P4EST_CHILDREN + 4 ] ];
+  phi_values.val[5] = P[ q2n[ quad_idx*P4EST_CHILDREN + 5 ] ];
+  phi_values.val[3] = P[ q2n[ quad_idx*P4EST_CHILDREN + 6 ] ];
+  phi_values.val[7] = P[ q2n[ quad_idx*P4EST_CHILDREN + 7 ] ];
 
-  f_values.val000   = F[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
-  f_values.val100   = F[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
-  f_values.val010   = F[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
-  f_values.val110   = F[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
-  f_values.val001   = F[ q2n[ quad_idx*P4EST_CHILDREN + 4 ] ];
-  f_values.val101   = F[ q2n[ quad_idx*P4EST_CHILDREN + 5 ] ];
-  f_values.val011   = F[ q2n[ quad_idx*P4EST_CHILDREN + 6 ] ];
-  f_values.val111   = F[ q2n[ quad_idx*P4EST_CHILDREN + 7 ] ];
+  f_values.val[0]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
+  f_values.val[4]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
+  f_values.val[2]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
+  f_values.val[6]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
+  f_values.val[1]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 4 ] ];
+  f_values.val[5]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 5 ] ];
+  f_values.val[3]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 6 ] ];
+  f_values.val[7]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 7 ] ];
 
 #else
-  phi_values.val00 = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
-  phi_values.val10 = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
-  phi_values.val01 = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
-  phi_values.val11 = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
+  phi_values.val[0] = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
+  phi_values.val[2] = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
+  phi_values.val[1] = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
+  phi_values.val[3] = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
 
-  f_values.val00   = F[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
-  f_values.val10   = F[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
-  f_values.val01   = F[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
-  f_values.val11   = F[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
+  f_values.val[0]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
+  f_values.val[2]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
+  f_values.val[1]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
+  f_values.val[3]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
 #endif
 
   ierr = VecRestoreArray(phi, &P); CHKERRXX(ierr);
@@ -1356,19 +1330,19 @@ double area_in_negative_domain_in_one_quadrant(const p4est_t *p4est, const p4est
   const p4est_locidx_t *q2n = nodes->local_nodes;
 
 #ifdef P4_TO_P8
-  phi_values.val000 = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
-  phi_values.val100 = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
-  phi_values.val010 = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
-  phi_values.val110 = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
-  phi_values.val001 = P[ q2n[ quad_idx*P4EST_CHILDREN + 4 ] ];
-  phi_values.val101 = P[ q2n[ quad_idx*P4EST_CHILDREN + 5 ] ];
-  phi_values.val011 = P[ q2n[ quad_idx*P4EST_CHILDREN + 6 ] ];
-  phi_values.val111 = P[ q2n[ quad_idx*P4EST_CHILDREN + 7 ] ];
+  phi_values.val[0] = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
+  phi_values.val[4] = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
+  phi_values.val[2] = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
+  phi_values.val[6] = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
+  phi_values.val[1] = P[ q2n[ quad_idx*P4EST_CHILDREN + 4 ] ];
+  phi_values.val[5] = P[ q2n[ quad_idx*P4EST_CHILDREN + 5 ] ];
+  phi_values.val[3] = P[ q2n[ quad_idx*P4EST_CHILDREN + 6 ] ];
+  phi_values.val[7] = P[ q2n[ quad_idx*P4EST_CHILDREN + 7 ] ];
 #else
-  phi_values.val00 = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
-  phi_values.val10 = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
-  phi_values.val01 = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
-  phi_values.val11 = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
+  phi_values.val[0] = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
+  phi_values.val[2] = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
+  phi_values.val[1] = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
+  phi_values.val[3] = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
 #endif
 
   ierr = VecRestoreArray(phi, &P); CHKERRXX(ierr);
@@ -1435,34 +1409,34 @@ double integrate_over_interface_in_one_quadrant(const p4est_t *p4est, const p4es
 
   const p4est_locidx_t *q2n = nodes->local_nodes;
 #ifdef P4_TO_P8
-  phi_values.val000 = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
-  phi_values.val100 = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
-  phi_values.val010 = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
-  phi_values.val110 = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
-  phi_values.val001 = P[ q2n[ quad_idx*P4EST_CHILDREN + 4 ] ];
-  phi_values.val101 = P[ q2n[ quad_idx*P4EST_CHILDREN + 5 ] ];
-  phi_values.val011 = P[ q2n[ quad_idx*P4EST_CHILDREN + 6 ] ];
-  phi_values.val111 = P[ q2n[ quad_idx*P4EST_CHILDREN + 7 ] ];
+  phi_values.val[0] = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
+  phi_values.val[4] = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
+  phi_values.val[2] = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
+  phi_values.val[6] = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
+  phi_values.val[1] = P[ q2n[ quad_idx*P4EST_CHILDREN + 4 ] ];
+  phi_values.val[5] = P[ q2n[ quad_idx*P4EST_CHILDREN + 5 ] ];
+  phi_values.val[3] = P[ q2n[ quad_idx*P4EST_CHILDREN + 6 ] ];
+  phi_values.val[7] = P[ q2n[ quad_idx*P4EST_CHILDREN + 7 ] ];
 
-  f_values.val000   = F[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
-  f_values.val100   = F[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
-  f_values.val010   = F[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
-  f_values.val110   = F[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
-  f_values.val001   = F[ q2n[ quad_idx*P4EST_CHILDREN + 4 ] ];
-  f_values.val101   = F[ q2n[ quad_idx*P4EST_CHILDREN + 5 ] ];
-  f_values.val011   = F[ q2n[ quad_idx*P4EST_CHILDREN + 6 ] ];
-  f_values.val111   = F[ q2n[ quad_idx*P4EST_CHILDREN + 7 ] ];
+  f_values.val[0]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
+  f_values.val[4]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
+  f_values.val[2]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
+  f_values.val[6]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
+  f_values.val[1]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 4 ] ];
+  f_values.val[5]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 5 ] ];
+  f_values.val[3]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 6 ] ];
+  f_values.val[7]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 7 ] ];
 
 #else
-  phi_values.val00 = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
-  phi_values.val10 = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
-  phi_values.val01 = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
-  phi_values.val11 = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
+  phi_values.val[0] = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
+  phi_values.val[2] = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
+  phi_values.val[1] = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
+  phi_values.val[3] = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
 
-  f_values.val00   = F[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
-  f_values.val10   = F[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
-  f_values.val01   = F[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
-  f_values.val11   = F[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
+  f_values.val[0]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
+  f_values.val[2]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
+  f_values.val[1]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
+  f_values.val[3]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
 #endif
   ierr = VecRestoreArray(phi, &P); CHKERRXX(ierr);
   ierr = VecRestoreArray(f  , &F); CHKERRXX(ierr);
@@ -1492,6 +1466,63 @@ double integrate_over_interface_in_one_quadrant(const p4est_t *p4est, const p4es
   return cube.integrate_Over_Interface(f_values,phi_values);
 }
 
+double max_over_interface_in_one_quadrant(const p4est_nodes_t *nodes, p4est_locidx_t quad_idx, Vec phi, Vec f)
+{
+#ifdef P4_TO_P8
+  OctValue phi_values;
+  OctValue f_values;
+#else
+  QuadValue phi_values;
+  QuadValue f_values;
+#endif
+  double *P, *F;
+  PetscErrorCode ierr;
+  ierr = VecGetArray(phi, &P); CHKERRXX(ierr);
+  ierr = VecGetArray(f  , &F); CHKERRXX(ierr);
+
+  const p4est_locidx_t *q2n = nodes->local_nodes;
+#ifdef P4_TO_P8
+  phi_values.val[0] = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
+  phi_values.val[4] = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
+  phi_values.val[2] = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
+  phi_values.val[6] = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
+  phi_values.val[1] = P[ q2n[ quad_idx*P4EST_CHILDREN + 4 ] ];
+  phi_values.val[5] = P[ q2n[ quad_idx*P4EST_CHILDREN + 5 ] ];
+  phi_values.val[3] = P[ q2n[ quad_idx*P4EST_CHILDREN + 6 ] ];
+  phi_values.val[7] = P[ q2n[ quad_idx*P4EST_CHILDREN + 7 ] ];
+
+  f_values.val[0]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
+  f_values.val[4]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
+  f_values.val[2]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
+  f_values.val[6]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
+  f_values.val[1]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 4 ] ];
+  f_values.val[5]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 5 ] ];
+  f_values.val[3]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 6 ] ];
+  f_values.val[7]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 7 ] ];
+
+#else
+  phi_values.val[0] = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
+  phi_values.val[2] = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
+  phi_values.val[1] = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
+  phi_values.val[3] = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
+
+  f_values.val[0]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
+  f_values.val[2]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
+  f_values.val[1]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
+  f_values.val[3]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
+#endif
+  ierr = VecRestoreArray(phi, &P); CHKERRXX(ierr);
+  ierr = VecRestoreArray(f  , &F); CHKERRXX(ierr);
+
+#ifdef P4_TO_P8
+  Cube3 cube(0, 1, 0, 1, 0, 1);
+#else
+  Cube2 cube(0, 1, 0, 1);
+#endif
+
+  return cube.max_Over_Interface(f_values,phi_values);
+}
+
 double integrate_over_interface(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec f)
 {
   double sum = 0;
@@ -1514,6 +1545,22 @@ double integrate_over_interface(const p4est_t *p4est, const p4est_nodes_t *nodes
   return sum_global;
 }
 
+double max_over_interface(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec f)
+{
+  double max_over_interface = -DBL_MAX;
+  for(p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx)
+  {
+    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
+    for(size_t quad_idx = 0; quad_idx < tree->quadrants.elem_count; ++quad_idx)
+      max_over_interface = MAX(max_over_interface, max_over_interface_in_one_quadrant(nodes, quad_idx + tree->quadrants_offset, phi, f));
+  }
+
+  /* compute global sum */
+  double max_over_interface_global;
+  PetscErrorCode ierr;
+  ierr = MPI_Allreduce(&max_over_interface, &max_over_interface_global, 1, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); CHKERRXX(ierr);
+  return max_over_interface_global;
+}
 
 double compute_mean_curvature(const quad_neighbor_nodes_of_node_t &qnnn, double *phi, double* phi_x[])
 {
@@ -1730,19 +1777,19 @@ double interface_length_in_one_quadrant(const p4est_t *p4est, const p4est_nodes_
 
   const p4est_locidx_t *q2n = nodes->local_nodes;
 #ifdef P4_TO_P8
-  phi_values.val000 = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
-  phi_values.val100 = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
-  phi_values.val010 = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
-  phi_values.val110 = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
-  phi_values.val001 = P[ q2n[ quad_idx*P4EST_CHILDREN + 4 ] ];
-  phi_values.val101 = P[ q2n[ quad_idx*P4EST_CHILDREN + 5 ] ];
-  phi_values.val011 = P[ q2n[ quad_idx*P4EST_CHILDREN + 6 ] ];
-  phi_values.val111 = P[ q2n[ quad_idx*P4EST_CHILDREN + 7 ] ];
+  phi_values.val[0] = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
+  phi_values.val[4] = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
+  phi_values.val[2] = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
+  phi_values.val[6] = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
+  phi_values.val[1] = P[ q2n[ quad_idx*P4EST_CHILDREN + 4 ] ];
+  phi_values.val[5] = P[ q2n[ quad_idx*P4EST_CHILDREN + 5 ] ];
+  phi_values.val[3] = P[ q2n[ quad_idx*P4EST_CHILDREN + 6 ] ];
+  phi_values.val[7] = P[ q2n[ quad_idx*P4EST_CHILDREN + 7 ] ];
 #else
-  phi_values.val00 = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
-  phi_values.val10 = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
-  phi_values.val01 = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
-  phi_values.val11 = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
+  phi_values.val[0] = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
+  phi_values.val[2] = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
+  phi_values.val[1] = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
+  phi_values.val[3] = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
 #endif
   ierr = VecRestoreArray(phi, &P); CHKERRXX(ierr);
 
@@ -2047,12 +2094,20 @@ bool is_quad_Wall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadra
 #endif
 }
 
-int quad_find_ghost_owner(const p4est_ghost_t *ghost, p4est_locidx_t ghost_idx)
+int quad_find_ghost_owner(const p4est_ghost_t *ghost, const p4est_locidx_t &ghost_idx, int r_down, int r_up)
 {
-  P4EST_ASSERT(ghost_idx<(p4est_locidx_t) ghost->ghosts.elem_count);
-  int r=0;
-  while(ghost->proc_offsets[r+1]<=ghost_idx) r++;
-  return r;
+  P4EST_ASSERT(ghost_idx < (p4est_locidx_t) ghost->ghosts.elem_count);
+  P4EST_ASSERT(0 <= r_down && r_down < r_up && r_up <= ghost->mpisize);
+  P4EST_ASSERT(ghost->proc_offsets[r_down] <= ghost_idx && ghost_idx < ghost->proc_offsets[r_up]);
+  while(r_up - r_down > 1)
+  {
+    int r = (r_down + r_up)/2;
+    if(ghost->proc_offsets[r] <= ghost_idx)
+      r_down = r;
+    else
+      r_up = r;
+  }
+  return r_down;
 }
 
 #ifdef P4_TO_P8
@@ -2900,7 +2955,7 @@ void compute_phi_eff(Vec phi_eff, p4est_nodes_t *nodes, std::vector<Vec> &phi, s
 
   std::vector<double *> phi_ptr(phi.size(), NULL);
 
-  for (int i = 0; i < phi.size(); i++) { ierr = VecGetArray(phi.at(i), &phi_ptr[i]); CHKERRXX(ierr); }
+  for (size_t i = 0; i < phi.size(); i++) { ierr = VecGetArray(phi.at(i), &phi_ptr[i]); CHKERRXX(ierr); }
 
   foreach_node(n, nodes)
   {
@@ -2921,7 +2976,7 @@ void compute_phi_eff(Vec phi_eff, p4est_nodes_t *nodes, std::vector<Vec> &phi, s
 //        if (refine_always->at(i))
 //          phi_eff_ptr[n] = MIN(phi_eff_ptr[n], fabs(phi_ptr[i][n]));
 
-  for (int i = 0; i < phi.size(); i++) { ierr = VecRestoreArray(phi.at(i), &phi_ptr[i]); CHKERRXX(ierr); }
+  for (size_t i = 0; i < phi.size(); i++) { ierr = VecRestoreArray(phi.at(i), &phi_ptr[i]); CHKERRXX(ierr); }
 }
 
 void compute_phi_eff(Vec phi_eff, p4est_nodes_t *nodes, int num_phi, ...)
@@ -2933,8 +2988,8 @@ void compute_phi_eff(Vec phi_eff, p4est_nodes_t *nodes, int num_phi, ...)
   std::vector<Vec> phi;
   std::vector<mls_opn_t> opn;
   for (int i=0; i<num_phi; ++i) {
-    Vec       P = va_arg(ap, Vec);       phi.push_back(P);
-    mls_opn_t O = va_arg(ap, mls_opn_t); opn.push_back(O);
+    Vec       P = va_arg(ap, Vec);              phi.push_back(P);
+    mls_opn_t O = (mls_opn_t) va_arg(ap, int);  opn.push_back(O);
   }
 
   va_end(ap);
@@ -2952,7 +3007,7 @@ void find_closest_interface_location(int &phi_idx, double &dist, double d, std::
   dist    = d;
   phi_idx =-1;
 
-  for (int i = 0; i < opn.size(); ++i)
+  for (size_t i = 0; i < opn.size(); ++i)
   {
     if (phi_a[i] > 0. && phi_b[i] > 0.)
     {
@@ -2972,35 +3027,40 @@ void find_closest_interface_location(int &phi_idx, double &dist, double d, std::
 
       switch (opn[i])
       {
-        case MLS_INTERSECTION:
-          if (phi_a[i] < 0.)
+      case MLS_INTERSECTION:
+        if (phi_a[i] < 0.)
+        {
+          if (dist_new < dist)
           {
-            if (dist_new < dist)
-            {
-              dist    = dist_new;
-              phi_idx = i;
-            }
-          } else {
-            dist    =  0;
+            dist    = dist_new;
+            phi_idx = i;
+          }
+        } else {
+          dist    =  0;
+          phi_idx = -1;
+        }
+        break;
+      case MLS_ADDITION:
+        if (phi_a[i] < 0.)
+        {
+          if (dist_new > dist)
+          {
+            dist    = dist_new;
+            phi_idx = i;
+          }
+        } else {
+          if (dist_new < dist)
+          {
+            dist    =  d;
             phi_idx = -1;
           }
-          break;
-        case MLS_ADDITION:
-          if (phi_a[i] < 0.)
-          {
-            if (dist_new > dist)
-            {
-              dist    = dist_new;
-              phi_idx = i;
-            }
-          } else {
-            if (dist_new < dist)
-            {
-              dist    =  d;
-              phi_idx = -1;
-            }
-          }
-          break;
+        }
+        break;
+      default:
+#ifdef CASL_THROWS
+        throw  std::runtime_error("find_closest_interface_location:: unknown MLS operation: only MLS_INTERSECTION and MLS_ADDITION implemented, currently.");
+#endif
+        break;
       }
     }
   }
@@ -3097,7 +3157,7 @@ void construct_finite_volume(my_p4est_finite_volume_t& fv, p4est_locidx_t n, p4e
 
   // compute cut-cell volume
   fv.volume = 0;
-  for (int i=0; i<qp_w.size(); ++i)
+  for (size_t i=0; i<qp_w.size(); ++i)
     fv.volume += qp_w[i];
 
   fv.volume /= pow(scale, P4EST_DIM);
@@ -3118,7 +3178,7 @@ void construct_finite_volume(my_p4est_finite_volume_t& fv, p4est_locidx_t n, p4e
       YCODE( data.centroid[1] = 0 );
       ZCODE( data.centroid[2] = 0 );
 
-      for (int i=0; i<qp_w.size(); ++i)
+      for (size_t i=0; i<qp_w.size(); ++i)
       {
         _CODE( data.area        += qp_w[i]         );
         XCODE( data.centroid[0] += qp_w[i]*qp_x[i] );
@@ -3146,11 +3206,11 @@ void construct_finite_volume(my_p4est_finite_volume_t& fv, p4est_locidx_t n, p4e
     cube.quadrature_in_dir(dir_idx, qp_w, DIM(qp_x, qp_y, qp_z));
     if (qp_w.size() > 0)
     {
-      for (int i=0; i<qp_w.size(); ++i) fv.face_area[dir_idx] += qp_w[i];
+      for (size_t i=0; i<qp_w.size(); ++i) fv.face_area[dir_idx] += qp_w[i];
 
       if (compute_centroids)
       {
-        for (int i=0; i<qp_w.size(); ++i)
+        for (size_t i=0; i<qp_w.size(); ++i)
         {
           XCODE( fv.face_centroid_x[dir_idx] += qp_w[i]*qp_x[i] );
           YCODE( fv.face_centroid_y[dir_idx] += qp_w[i]*qp_y[i] );
@@ -3255,7 +3315,7 @@ void variable_step_BDF_implicit(const int order, std::vector<double> &dt, std::v
   coeffs.assign(order+1, 0);
   std::vector<double> r(order-1, 1.);
 
-  if (dt.size() < order) throw;
+  if (dt.size() < (size_t) order) throw;
 
   switch (order)
   {

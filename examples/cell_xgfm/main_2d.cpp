@@ -77,11 +77,11 @@ struct box
 
 using namespace std;
 
-int lmin_ = 4;
-int lmax_ = 4;
+int lmin_ = 3;
+int lmax_ = 6;
 
-int ngrids_ = 3;
-int ntree_ = 1;
+int ngrids_ = 2;
+int ntree_ = 2;
 
 BoundaryConditionType bc_wtype_ = DIRICHLET;
 //BoundaryConditionType bc_wtype_ = NEUMANN;
@@ -90,19 +90,14 @@ bool use_second_order_theta_ = false;
 //bool use_second_order_theta_ = true;
 
 bool get_integral = false;
-bool print_summary = true;
+bool print_summary = false;
 
-int test_number_ = 3;
+int test_number_ = 2;
 /* run the program with the flag -help to know more about the various tests */
 
 bool track_residuals_and_corrections = false;
 
-class LEVEL_SET :
-    #ifdef P4_TO_P8
-    public CF_3
-    #else
-    public CF_2
-    #endif
+class LEVEL_SET : public CF_DIM
 {
   box domain;
   int test_nb;
@@ -175,14 +170,14 @@ class LEVEL_SET :
     else
     {
       double cosroot[3];
-      for (short kk = 0; kk < 3; ++kk)
+      for (unsigned char kk = 0; kk < 3; ++kk)
         cosroot[kk] = 2.0*sqrt(5.0/12.0)*cos((1.0/3.0)*acos(-(x_tmp - xc_tmp)*sqrt(12.0/5.0)) - 2.0*M_PI*((double) kk)/3.0);
       double cosroot_tmp;
       double root;
       double y_lim[2] = {yc_tmp, yc_tmp};
       int pp = 1;
-      for (short kk = 0; kk < 3; ++kk) {
-        for (short jj = kk+1; jj < 3; ++jj) {
+      for (unsigned char kk = 0; kk < 3; ++kk) {
+        for (unsigned char jj = kk+1; jj < 3; ++jj) {
           if(cosroot[jj] < cosroot[kk])
           {
             cosroot_tmp = cosroot[kk];
@@ -233,7 +228,7 @@ public:
     if(test_nb == 7)
     {
       srand(time(0));
-      for (short dim = 0; dim < P4EST_DIM; ++dim)
+      for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
         center_bubbles[dim].resize(n_bubbles);
       radius_bubbles.resize(n_bubbles);
       theta_bubbles.resize(n_bubbles);
@@ -266,7 +261,7 @@ public:
     }
     else
     {
-      for (short dim = 0; dim < P4EST_DIM; ++dim)
+      for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
         center_bubbles[dim].resize(0);
       radius_bubbles.resize(0);
       theta_bubbles.resize(0);
@@ -274,11 +269,7 @@ public:
     }
 #endif
   }
-  double operator()(double x, double y
-                  #ifdef P4_TO_P8
-                    , double z
-                  #endif
-                    ) const
+  double operator()(DIM(double x, double y, double z)) const
   {
     switch(test_nb)
     {
@@ -308,11 +299,11 @@ public:
     case 3:
     {
       double phi = DBL_MAX;
-      for (short ii = 0; ii < 2; ++ii)
-        for (short jj = 0; jj < 2; ++jj)
+      for (unsigned char ii = 0; ii < 2; ++ii)
+        for (unsigned char jj = 0; jj < 2; ++jj)
         {
           double fake_x = sqrt(SQR(x - (xc + ((double) ii)*x_length)) + SQR(y - (yc + ((double) jj)*y_length)));
-          for (short kk = 0; kk < 2; ++kk)
+          for (unsigned char kk = 0; kk < 2; ++kk)
             phi = MIN(phi, bone_shaped_ls(0, zc + ((double) kk)*z_length, fake_x, z));
         }
       return phi;
@@ -360,15 +351,15 @@ public:
     case 8:
     {
       double phi = DBL_MAX;
-      for (short ii = -1; ii < 2; ++ii)
+      for (char ii = -1; ii < 2; ++ii)
         phi = MIN(phi, bone_shaped_ls(xc + ((double) ii)*(domain.xmax - domain.xmin), yc, x, y));
       return phi;
     }
     case 9:
     {
       double phi = DBL_MAX;
-      for (short ii = -1; ii < 2; ++ii)
-        for (short jj = -1; jj < 2; ++jj)
+      for (char ii = -1; ii < 2; ++ii)
+        for (char jj = -1; jj < 2; ++jj)
           phi = MIN(phi, bone_shaped_ls(xc + ((double) ii)*(domain.xmax - domain.xmin), yc + ((double) jj)*(domain.ymax - domain.ymin), x, y));
       return phi;
     }
@@ -379,11 +370,7 @@ public:
   }
 };
 
-double u_exact_m(int test_nb, double x, double y
-                 #ifdef P4_TO_P8
-                 , double z
-                 #endif
-                 )
+double u_exact_m(int test_nb, DIM(double x, double y, double z))
 {
   switch(test_nb)
   {
@@ -427,11 +414,7 @@ double u_exact_m(int test_nb, double x, double y
   }
 }
 
-double d_u_exact_m_dx(int test_nb, double x, double y
-                      #ifdef P4_TO_P8
-                      , double z
-                      #endif
-                      )
+double d_u_exact_m_dx(int test_nb, DIM(double x, double y, double z))
 {
   switch(test_nb)
   {
@@ -475,11 +458,7 @@ double d_u_exact_m_dx(int test_nb, double x, double y
   }
 }
 
-double dd_u_exact_m_dxdx(int test_nb, double x, double y
-                         #ifdef P4_TO_P8
-                         , double z
-                         #endif
-                         )
+double dd_u_exact_m_dxdx(int test_nb, DIM(double x, double y, double z))
 {
   switch(test_nb)
   {
@@ -524,11 +503,7 @@ double dd_u_exact_m_dxdx(int test_nb, double x, double y
   }
 }
 
-double d_u_exact_m_dy(int test_nb, double x, double y
-                      #ifdef P4_TO_P8
-                      , double z
-                      #endif
-                      )
+double d_u_exact_m_dy(int test_nb, DIM(double x, double y, double z))
 {
   switch(test_nb)
   {
@@ -574,11 +549,7 @@ double d_u_exact_m_dy(int test_nb, double x, double y
   }
 }
 
-double dd_u_exact_m_dydy(int test_nb, double x, double y
-                         #ifdef P4_TO_P8
-                         , double z
-                         #endif
-                         )
+double dd_u_exact_m_dydy(int test_nb, DIM(double x, double y, double z))
 {
   switch(test_nb)
   {
@@ -677,24 +648,12 @@ double dd_u_exact_m_dzdz(int test_nb, double x, double y, double z)
 }
 #endif
 
-double laplacian_u_exact_m(int test_nb, double x, double y
-                           #ifdef P4_TO_P8
-                           , double z
-                           #endif
-                           )
+double laplacian_u_exact_m(int test_nb, DIM(double x, double y, double z))
 {
-#ifdef P4_TO_P8
-  return (dd_u_exact_m_dxdx(test_nb, x, y, z) + dd_u_exact_m_dydy(test_nb, x, y, z) + dd_u_exact_m_dzdz(test_nb, x, y, z));
-#else
-  return (dd_u_exact_m_dxdx(test_nb, x, y) + dd_u_exact_m_dydy(test_nb, x, y));
-#endif
+  return (SUMD(dd_u_exact_m_dxdx(test_nb, DIM(x, y, z)), dd_u_exact_m_dydy(test_nb, DIM(x, y, z)), dd_u_exact_m_dzdz(test_nb, x, y, z)));
 }
 
-double u_exact_p(int test_nb, double x, double y
-                 #ifdef P4_TO_P8
-                 , double z
-                 #endif
-                 )
+double u_exact_p(int test_nb, DIM(double x, double y, double z))
 {
   switch(test_nb)
   {
@@ -739,11 +698,7 @@ double u_exact_p(int test_nb, double x, double y
   }
 }
 
-double d_u_exact_p_dx(int test_nb, double x, double y
-                      #ifdef P4_TO_P8
-                      , double z
-                      #endif
-                      )
+double d_u_exact_p_dx(int test_nb, DIM(double x, double y, double z))
 {
   switch(test_nb)
   {
@@ -791,11 +746,7 @@ double d_u_exact_p_dx(int test_nb, double x, double y
   }
 }
 
-double dd_u_exact_p_dxdx(int test_nb, double x, double y
-                         #ifdef P4_TO_P8
-                         , double z
-                         #endif
-                         )
+double dd_u_exact_p_dxdx(int test_nb, DIM(double x, double y, double z))
 {
   switch(test_nb)
   {
@@ -848,11 +799,7 @@ double dd_u_exact_p_dxdx(int test_nb, double x, double y
   }
 }
 
-double d_u_exact_p_dy(int test_nb, double x, double y
-                      #ifdef P4_TO_P8
-                      , double z
-                      #endif
-                      )
+double d_u_exact_p_dy(int test_nb, DIM(double x, double y, double z))
 {
   switch(test_nb)
   {
@@ -899,11 +846,7 @@ double d_u_exact_p_dy(int test_nb, double x, double y
   }
 }
 
-double dd_u_exact_p_dydy(int test_nb, double x, double y
-                         #ifdef P4_TO_P8
-                         , double z
-                         #endif
-                         )
+double dd_u_exact_p_dydy(int test_nb, DIM(double x, double y, double z))
 {
   switch(test_nb)
   {
@@ -1008,45 +951,23 @@ double dd_u_exact_p_dzdz(int test_nb, double x, double y, double z)
 }
 #endif
 
-double laplacian_u_exact_p(int test_nb, double x, double y
-                           #ifdef P4_TO_P8
-                           , double z
-                           #endif
-                           )
+double laplacian_u_exact_p(int test_nb, DIM(double x, double y, double z))
 {
-#ifdef P4_TO_P8
-  return (dd_u_exact_p_dxdx(test_nb, x, y, z) + dd_u_exact_p_dydy(test_nb, x, y, z) + dd_u_exact_p_dzdz(test_nb, x, y, z));
-#else
-  return (dd_u_exact_p_dxdx(test_nb, x, y) + dd_u_exact_p_dydy(test_nb, x, y));
-#endif
+  return (SUMD(dd_u_exact_p_dxdx(test_nb, DIM(x, y, z)), dd_u_exact_p_dydy(test_nb, DIM(x, y, z)), dd_u_exact_p_dzdz(test_nb, x, y, z)));
 }
 
-class BCWALLTYPE :
-    #ifdef P4_TO_P8
-    public WallBC3D
-    #else
-    public WallBC2D
-    #endif
+class BCWALLTYPE : public WallBCDIM
 {
   BoundaryConditionType bc_walltype;
 public:
   BCWALLTYPE(BoundaryConditionType bc_walltype_): bc_walltype(bc_walltype_) {}
-  BoundaryConditionType operator()(double, double
-                                 #ifdef P4_TO_P8
-                                   , double
-                                 #endif
-                                   ) const
+  BoundaryConditionType operator()(DIM(double, double, double)) const
   {
     return bc_walltype;
   }
 };
 
-class BCWALLVAL :
-    #ifdef P4_TO_P8
-    public CF_3
-    #else
-    public CF_2
-    #endif
+class BCWALLVAL : public CF_DIM
 {
   box domain;
   LEVEL_SET ls;
@@ -1054,55 +975,32 @@ class BCWALLVAL :
   int test_nb;
 public:
   BCWALLVAL(box domain_, LEVEL_SET ls_, BoundaryConditionType bc_wall_type_, int test_nb_) : domain(domain_), ls(ls_), bc_wall_type(bc_wall_type_), test_nb(test_nb_){}
-  double operator()(double x, double y
-                  #ifdef P4_TO_P8
-                    , double z
-                  #endif
-                    ) const
+  double operator()(DIM(double x, double y, double z)) const
   {
-#ifdef P4_TO_P8
-    if(bc_wall_type==DIRICHLET)
-      return (ls(x,y,z) > 0)? u_exact_p(test_nb, x,y,z):u_exact_m(test_nb, x, y, z);
-#else
-    if(bc_wall_type==DIRICHLET)
-      return (ls(x,y) > 0)? u_exact_p(test_nb, x,y):u_exact_m(test_nb, x, y);
-#endif
+    if(bc_wall_type == DIRICHLET)
+      return (ls(DIM(x, y, z)) > 0)? u_exact_p(test_nb, DIM(x, y, z)) : u_exact_m(test_nb, DIM(x, y, z));
     else
     {
       double dx = 0; dx = ((fabs(x-domain.xmin)<(domain.xmax - domain.xmin)*EPS) ? -1 :((fabs(x-domain.xmax)<(domain.xmax - domain.xmin)*EPS) ? 1 : 0));
       double dy = 0; dy = ((fabs(y-domain.ymin)<(domain.ymax - domain.ymin)*EPS) ? -1 :((fabs(y-domain.ymax)<(domain.ymax - domain.ymin)*EPS) ? 1 : 0));
 #ifdef P4_TO_P8
       double dz = 0; dz = ((fabs(z-domain.zmin)<(domain.zmax - domain.zmin)*EPS) ? -1 :((fabs(z-domain.zmax)<(domain.zmax - domain.zmin)*EPS) ? 1 : 0));
-      return (ls(x, y, z) > 0)? (dx*d_u_exact_p_dx(test_nb, x, y, z) + dy*d_u_exact_p_dy(test_nb, x, y, z) + dz*d_u_exact_p_dz(test_nb, x, y, z)):(dx*d_u_exact_m_dx(test_nb, x, y, z) + dy*d_u_exact_m_dy(test_nb, x, y, z) + dz*d_u_exact_m_dz(test_nb, x, y, z));
-#else
-      return (ls(x, y) > 0)? (dx*d_u_exact_p_dx(test_nb, x, y) + dy*d_u_exact_p_dy(test_nb, x, y)):(dx*d_u_exact_m_dx(test_nb, x, y) + dy*d_u_exact_m_dy(test_nb, x, y));
 #endif
+      return (ls(DIM(x, y, z)) > 0.0 ? SUMD(dx*d_u_exact_p_dx(test_nb, DIM(x, y, z)), dy*d_u_exact_p_dy(test_nb, DIM(x, y, z)), dz*d_u_exact_p_dz(test_nb, x, y, z)) :
+                                       SUMD(dx*d_u_exact_m_dx(test_nb, DIM(x, y, z)), dy*d_u_exact_m_dy(test_nb, DIM(x, y, z)), dz*d_u_exact_m_dz(test_nb, x, y, z)));
     }
   }
 };
 
 
-class JUMP_U:
-    #ifdef P4_TO_P8
-    public CF_3
-    #else
-    public CF_2
-    #endif
+class JUMP_U : public CF_DIM
 {
   int test_nb;
 public:
   JUMP_U(int test_nb_): test_nb(test_nb_){}
-  double operator()(double x, double y
-                  #ifdef P4_TO_P8
-                    , double z
-                  #endif
-                    ) const
+  double operator()(DIM(double x, double y, double z)) const
   {
-#ifdef P4_TO_P8
-    return u_exact_p(test_nb, x, y, z) - u_exact_m(test_nb, x, y, z);
-#else
-    return u_exact_p(test_nb, x, y) - u_exact_m(test_nb, x, y);
-#endif
+    return u_exact_p(test_nb, DIM(x, y, z)) - u_exact_m(test_nb, DIM(x, y, z));
   }
 };
 
@@ -1140,11 +1038,7 @@ refine_levelset_cf_finest_in_negative (p4est_t *p4est, p4est_topidx_t which_tree
     double dz = (tree_zmax-tree_zmin) * dmin;
 #endif
 
-#ifdef P4_TO_P8
-    double d = sqrt(dx*dx + dy*dy + dz*dz);
-#else
-    double d = sqrt(dx*dx + dy*dy);
-#endif
+    double d = sqrt(SUMD(dx*dx, dy*dy, dz*dz));
 
     double x = (tree_xmax-tree_xmin)*(double)quad->x/(double)P4EST_ROOT_LEN + tree_xmin;
     double y = (tree_ymax-tree_ymin)*(double)quad->y/(double)P4EST_ROOT_LEN + tree_ymin;
@@ -1152,38 +1046,23 @@ refine_levelset_cf_finest_in_negative (p4est_t *p4est, p4est_topidx_t which_tree
     double z = (tree_zmax-tree_zmin)*(double)quad->z/(double)P4EST_ROOT_LEN + tree_zmin;
 #endif
 
-#ifdef P4_TO_P8
-    CF_3&  phi = *(data->phi);
-#else
-    CF_2&  phi = *(data->phi);
-#endif
+    CF_DIM&  phi = *(data->phi);
     double lip = data->lip;
 
     double f[P4EST_CHILDREN];
 #ifdef P4_TO_P8
-    for (unsigned short ck = 0; ck<2; ++ck)
+    for (unsigned char ck = 0; ck < 2; ++ck)
 #endif
-      for (unsigned short cj = 0; cj<2; ++cj)
-        for (unsigned short ci = 0; ci <2; ++ci){
-#ifdef P4_TO_P8
-          f[4*ck+2*cj+ci] = phi(x+ci*dx, y+cj*dy, z+ck*dz);
-          if (f[4*ck+2*cj+ci] <= 0.5*lip*d)
+      for (unsigned char cj = 0; cj < 2; ++cj)
+        for (unsigned char ci = 0; ci < 2; ++ci){
+          f[SUMD(ci, 2*cj, 4*ck)] = phi(DIM(x + ci*dx, y + cj*dy, z + ck*dz));
+          if (f[SUMD(ci, 2*cj, 4*ck)] <= 0.5*lip*d)
             return P4EST_TRUE;
-#else
-          f[2*cj+ci] = phi(x+ci*dx, y+cj*dy);
-          if (f[2*cj+ci] <= 0.5*lip*d)
-            return P4EST_TRUE;
-#endif
         }
 
-#ifdef P4_TO_P8
-    if (f[0]*f[1]<0 || f[0]*f[2]<0 || f[1]*f[3]<0 || f[2]*f[3]<0 ||
-        f[3]*f[4]<0 || f[4]*f[5]<0 || f[5]*f[6]<0 || f[6]*f[7]<0)
+    if (f[0]*f[1] < 0 || f[0]*f[2] < 0 || f[1]*f[3] < 0 || f[2]*f[3] < 0
+        ONLY3D(|| f[3]*f[4] < 0 || f[4]*f[5] < 0 || f[5]*f[6] < 0 || f[6]*f[7] < 0))
       return P4EST_TRUE;
-#else
-    if (f[0]*f[1]<0 || f[0]*f[2]<0 || f[1]*f[3]<0 || f[2]*f[3]<0)
-      return P4EST_TRUE;
-#endif
 
     return P4EST_FALSE;
   }
@@ -1194,7 +1073,7 @@ void save_VTK(const string out_dir, int test_number,
               p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes,
               p4est_t *p4est_fine, p4est_ghost_t *ghost_fine, p4est_nodes_t *nodes_fine,
               my_p4est_brick_t *brick,
-              Vec phi, Vec normals[], Vec jump_u, Vec jump_normal_flux, Vec extended_field_fine_nodes_xgfm, Vec jump_mu_grad_u[2][P4EST_DIM], Vec correction_jump_mu_grad[P4EST_DIM],
+              Vec phi, Vec normals, Vec jump_u, Vec jump_normal_flux, Vec extended_field_fine_nodes_xgfm, Vec jump_mu_grad_u[2], Vec correction_jump_mu_grad,
               Vec sol_cells[2], Vec err_cells[2], Vec extension_xgfm
 #ifndef P4_TO_P8
 , Vec exact_msol_at_nodes, Vec exact_psol_at_nodes, Vec phi_coarse
@@ -1230,7 +1109,7 @@ void save_VTK(const string out_dir, int test_number,
 
   double *phi_p, *sol_cells_p[2], *err_cells_p[2], *extension_xgfm_p;
   ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
-  for (short flag = 0; flag < 2; ++flag) {
+  for (unsigned char flag = 0; flag < 2; ++flag) {
     ierr = VecGetArray(sol_cells[flag], &sol_cells_p[flag]); CHKERRXX(ierr);
     ierr = VecGetArray(err_cells[flag], &err_cells_p[flag]); CHKERRXX(ierr);
   }
@@ -1266,25 +1145,21 @@ void save_VTK(const string out_dir, int test_number,
   ierr = VecGetArray(phi_coarse, &phi_coarse_p); CHKERRXX(ierr);
 #endif
 
-  my_p4est_vtk_write_all(p4est, nodes, ghost,
-                         P4EST_TRUE, P4EST_TRUE,
-                       #ifdef P4_TO_P8
-                         0
-                       #else
-                         3
-                       #endif
-                         , 6, oss_coarse.str().c_str(),
-                       #ifndef P4_TO_P8
-                         VTK_POINT_DATA, "exact_sol_m", exact_msol_at_nodes_p,
-                         VTK_POINT_DATA, "exact_sol_p", exact_psol_at_nodes_p,
-                         VTK_POINT_DATA, "phi", phi_coarse_p,
-                       #endif
-                         VTK_CELL_DATA, "sol_gfm", sol_cells_p[0],
-      VTK_CELL_DATA, "sol_xgfm", sol_cells_p[1],
-      VTK_CELL_DATA, "err_gfm", err_cells_p[0],
-      VTK_CELL_DATA, "err_xgfm", err_cells_p[1],
-      VTK_CELL_DATA , "leaf_level", l_p,
-      VTK_CELL_DATA, "extension_xgfm", extension_xgfm_p);
+  my_p4est_vtk_write_all_general(p4est, nodes, ghost,
+                                 P4EST_TRUE, P4EST_TRUE,
+                                 9 - 3*P4EST_DIM /*3 in 2D, 0 in 3D*/, 0, 0,
+                                 6, 0, 0, oss_coarse.str().c_str(),
+                               #ifndef P4_TO_P8
+                                 VTK_NODE_SCALAR, "exact_sol_m", exact_msol_at_nodes_p,
+                                 VTK_NODE_SCALAR, "exact_sol_p", exact_psol_at_nodes_p,
+                                 VTK_NODE_SCALAR, "phi", phi_coarse_p,
+                               #endif
+                                 VTK_CELL_SCALAR, "sol_gfm", sol_cells_p[0],
+      VTK_CELL_SCALAR, "sol_xgfm", sol_cells_p[1],
+      VTK_CELL_SCALAR, "err_gfm", err_cells_p[0],
+      VTK_CELL_SCALAR, "err_xgfm", err_cells_p[1],
+      VTK_CELL_SCALAR , "leaf_level", l_p,
+      VTK_CELL_SCALAR, "extension_xgfm", extension_xgfm_p);
 
 #ifndef P4_TO_P8
   ierr = VecRestoreArray(exact_msol_at_nodes, &exact_msol_at_nodes_p); CHKERRXX(ierr);
@@ -1298,52 +1173,32 @@ void save_VTK(const string out_dir, int test_number,
   oss_fine << oss.str() << "/interface_capturing_" << data_fine->min_lvl;
 
   double *jump_u_p, *jump_normal_flux_p, *extended_field_fine_nodes_xgfm_p;
-  double *normals_p[P4EST_DIM], *jump_mu_grad_u_p[2][P4EST_DIM], *correction_jump_mu_grad_p[P4EST_DIM];
+  double *normals_p, *jump_mu_grad_u_p[2], *correction_jump_mu_grad_p;
   ierr = VecGetArray(jump_u, &jump_u_p); CHKERRXX(ierr);
   ierr = VecGetArray(jump_normal_flux, &jump_normal_flux_p); CHKERRXX(ierr);
 
   ierr = VecGetArray(extended_field_fine_nodes_xgfm, &extended_field_fine_nodes_xgfm_p); CHKERRXX(ierr);
-  for (short dim = 0; dim < P4EST_DIM; ++dim) {
-    ierr = VecGetArray(normals[dim], &normals_p[dim]); CHKERRXX(ierr);
-    for (short flag = 0; flag < 2; ++flag) {
-      ierr = VecGetArray(jump_mu_grad_u[flag][dim], &jump_mu_grad_u_p[flag][dim]); CHKERRXX(ierr);
-    }
-    ierr = VecGetArray(correction_jump_mu_grad[dim], &correction_jump_mu_grad_p[dim]); CHKERRXX(ierr);
+  ierr = VecGetArray(normals, &normals_p); CHKERRXX(ierr);
+  for (unsigned char flag = 0; flag < 2; ++flag) {
+    ierr = VecGetArray(jump_mu_grad_u[flag], &jump_mu_grad_u_p[flag]); CHKERRXX(ierr);
   }
+  ierr = VecGetArray(correction_jump_mu_grad, &correction_jump_mu_grad_p); CHKERRXX(ierr);
 
-  my_p4est_vtk_write_all(p4est_fine, nodes_fine, ghost_fine,
-                         P4EST_TRUE, P4EST_TRUE,
-                         4+4*P4EST_DIM, 0, oss_fine.str().c_str(),
-                         VTK_POINT_DATA, "phi", phi_p,
-                         VTK_POINT_DATA, "jump", jump_u_p,
-                         VTK_POINT_DATA, "jump_flux", jump_normal_flux_p,
-                         VTK_POINT_DATA, "nx", normals_p[0],
-      VTK_POINT_DATA, "ny", normals_p[1],
-    #ifdef P4_TO_P8
-      VTK_POINT_DATA, "nz", normals_p[2],
-    #endif
-      VTK_POINT_DATA, "gfm_jump_mu_dxu", jump_mu_grad_u_p[0][0],
-      VTK_POINT_DATA, "gfm_jump_mu_dyu", jump_mu_grad_u_p[0][1],
-    #ifdef P4_TO_P8
-      VTK_POINT_DATA, "gfm_jump_mu_dzu", jump_mu_grad_u_p[0][2],
-    #endif
-      VTK_POINT_DATA, "xgfm_jump_mu_dxu", jump_mu_grad_u_p[1][0],
-      VTK_POINT_DATA, "xgfm_jump_mu_dyu", jump_mu_grad_u_p[1][1],
-    #ifdef P4_TO_P8
-      VTK_POINT_DATA, "xgfm_jump_mu_dzu", jump_mu_grad_u_p[1][2],
-    #endif
-      VTK_POINT_DATA, "corr_jump_mu_dxu", correction_jump_mu_grad_p[0],
-      VTK_POINT_DATA, "corr_jump_mu_dyu", correction_jump_mu_grad_p[1],
-    #ifdef P4_TO_P8
-      VTK_POINT_DATA, "corr_jump_mu_dzu", correction_jump_mu_grad_p[2],
-    #endif
-      VTK_POINT_DATA, "extension_xgfm", extended_field_fine_nodes_xgfm_p);
+  my_p4est_vtk_write_all_general(p4est_fine, nodes_fine, ghost_fine,
+                                 P4EST_TRUE, P4EST_TRUE,
+                                 4, 0, 4, 0, 0, 0, oss_fine.str().c_str(),
+                                 VTK_NODE_SCALAR, "phi", phi_p,
+                                 VTK_NODE_SCALAR, "jump", jump_u_p,
+                                 VTK_NODE_SCALAR, "jump_flux", jump_normal_flux_p,
+                                 VTK_NODE_VECTOR_BLOCK, "normal", normals_p,
+                                 VTK_NODE_VECTOR_BLOCK, "gfm_jump_mu_du", jump_mu_grad_u_p[0],
+      VTK_NODE_VECTOR_BLOCK, "xgfm_jump_mu_du", jump_mu_grad_u_p[1],
+      VTK_NODE_VECTOR_BLOCK, "corr_jump_mu_du", correction_jump_mu_grad_p,
+      VTK_NODE_SCALAR, "extension_xgfm", extended_field_fine_nodes_xgfm_p);
 
 
-  for (short dim = 0; dim < P4EST_DIM ; ++dim) {
-    ierr = VecRestoreArray(normals[dim], &normals_p[dim]); CHKERRXX(ierr);
-    ierr = VecRestoreArray(correction_jump_mu_grad[dim], &correction_jump_mu_grad_p[dim]); CHKERRXX(ierr);
-  }
+  ierr = VecRestoreArray(normals, &normals_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(correction_jump_mu_grad, &correction_jump_mu_grad_p); CHKERRXX(ierr);
 
   ierr = VecRestoreArray(extended_field_fine_nodes_xgfm, &extended_field_fine_nodes_xgfm_p); CHKERRXX(ierr);
   ierr = VecRestoreArray(jump_normal_flux, &jump_normal_flux_p); CHKERRXX(ierr);
@@ -1353,12 +1208,10 @@ void save_VTK(const string out_dir, int test_number,
   ierr = VecDestroy(leaf_level); CHKERRXX(ierr);
 
   ierr = VecRestoreArray(phi, &phi_p); CHKERRXX(ierr);
-  for (short flag = 0; flag < 2; ++flag) {
+  for (unsigned char flag = 0; flag < 2; ++flag) {
     ierr = VecRestoreArray(sol_cells[flag], &sol_cells_p[flag]); CHKERRXX(ierr);
     ierr = VecRestoreArray(err_cells[flag], &err_cells_p[flag]); CHKERRXX(ierr);
-    for (short dim = 0; dim < P4EST_DIM; ++dim) {
-      ierr = VecRestoreArray(jump_mu_grad_u[flag][dim], &jump_mu_grad_u_p[flag][dim]); CHKERRXX(ierr);
-    }
+    ierr = VecRestoreArray(jump_mu_grad_u[flag], &jump_mu_grad_u_p[flag]); CHKERRXX(ierr);
   }
 
   ierr = VecRestoreArray(extension_xgfm, &extension_xgfm_p); CHKERRXX(ierr);
@@ -1369,11 +1222,7 @@ void save_VTK(const string out_dir, int test_number,
 
 
 void get_normals_and_flattened_jumps(p4est_t* p4est_fine, p4est_nodes_t* nodes_fine, my_p4est_node_neighbors_t& ngbd_n_fine, Vec phi, bool use_second_order_theta, int test_number, double mu_p, double mu_m, //input
-                                     Vec& jump_u, Vec& jump_normal_flux, Vec normals[P4EST_DIM], Vec phi_xx, Vec phi_yy // output
-                                     #ifdef P4_TO_P8
-                                     , Vec phi_zz // output
-                                     #endif
-                                     )
+                                     Vec& jump_u, Vec& jump_normal_flux, Vec normals, Vec phi_xxyyzz ) // output
 {
   PetscErrorCode ierr;
   my_p4est_level_set_t ls(&ngbd_n_fine);
@@ -1381,39 +1230,29 @@ void get_normals_and_flattened_jumps(p4est_t* p4est_fine, p4est_nodes_t* nodes_f
   sample_cf_on_nodes(p4est_fine, nodes_fine, jump_u_cf, jump_u);
 
   if(use_second_order_theta)
-#ifdef P4_TO_P8
-    ngbd_n_fine.second_derivatives_central(phi, phi_xx, phi_yy, phi_zz);
-#else
-    ngbd_n_fine.second_derivatives_central(phi, phi_xx, phi_yy);
-#endif
+    ngbd_n_fine.second_derivatives_central(phi, phi_xxyyzz);
 
   my_p4est_interpolation_nodes_t interp_phi(&ngbd_n_fine);
   interp_phi.set_input(phi, linear);
   compute_normals(ngbd_n_fine, phi, normals);
 
-  double *jump_normal_flux_p, *normals_p[P4EST_DIM];
+  double *jump_normal_flux_p;
+  const double *normals_p;
   ierr = VecGetArray(jump_normal_flux, &jump_normal_flux_p); CHKERRXX(ierr);
-  for (short dim = 0; dim < P4EST_DIM; ++dim) {
-    ierr = VecGetArray(normals[dim], &normals_p[dim]); CHKERRXX(ierr);}
+  ierr = VecGetArrayRead(normals, &normals_p); CHKERRXX(ierr);
 
   double node_xyz[P4EST_DIM];
   for (p4est_locidx_t nn = 0; nn < nodes_fine->num_owned_indeps; ++nn) {
     node_xyz_fr_n(nn, p4est_fine, nodes_fine, node_xyz);
-#ifdef P4_TO_P8
     jump_normal_flux_p[nn] =
-        normals_p[0][nn]*(mu_p*d_u_exact_p_dx(test_number, node_xyz[0], node_xyz[1], node_xyz[2]) - mu_m*d_u_exact_m_dx(test_number, node_xyz[0], node_xyz[1], node_xyz[2]))
-        + normals_p[1][nn]*(mu_p*d_u_exact_p_dy(test_number, node_xyz[0], node_xyz[1], node_xyz[2]) - mu_m*d_u_exact_m_dy(test_number, node_xyz[0], node_xyz[1], node_xyz[2]))
-        + normals_p[2][nn]*(mu_p*d_u_exact_p_dz(test_number, node_xyz[0], node_xyz[1], node_xyz[2]) - mu_m*d_u_exact_m_dz(test_number, node_xyz[0], node_xyz[1], node_xyz[2]));
-#else
-    jump_normal_flux_p[nn] =
-        normals_p[0][nn]*(mu_p*d_u_exact_p_dx(test_number, node_xyz[0], node_xyz[1]) - mu_m*d_u_exact_m_dx(test_number, node_xyz[0], node_xyz[1]))
-        + normals_p[1][nn]*(mu_p*d_u_exact_p_dy(test_number, node_xyz[0], node_xyz[1]) - mu_m*d_u_exact_m_dy(test_number, node_xyz[0], node_xyz[1]));
-#endif
+        SUMD(normals_p[P4EST_DIM*nn + 0]*(mu_p*d_u_exact_p_dx(test_number,  DIM(node_xyz[0], node_xyz[1], node_xyz[2])) - mu_m*d_u_exact_m_dx(test_number,  DIM(node_xyz[0], node_xyz[1], node_xyz[2]))),
+        normals_p[P4EST_DIM*nn + 1]*(mu_p*d_u_exact_p_dy(test_number,       DIM(node_xyz[0], node_xyz[1], node_xyz[2])) - mu_m*d_u_exact_m_dy(test_number,  DIM(node_xyz[0], node_xyz[1], node_xyz[2]))),
+        normals_p[P4EST_DIM*nn + 2]*(mu_p*d_u_exact_p_dz(test_number,           node_xyz[0], node_xyz[1], node_xyz[2])  - mu_m*d_u_exact_m_dz(test_number,      node_xyz[0], node_xyz[1], node_xyz[2])));
   }
   ierr = VecGhostUpdateBegin(jump_normal_flux, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   ierr = VecGhostUpdateEnd(jump_normal_flux, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  for (short dim = 0; dim < P4EST_DIM; ++dim) {
-    ierr = VecRestoreArray(normals[dim], &normals_p[dim]); CHKERRXX(ierr);}
+
+  ierr = VecRestoreArrayRead(normals, &normals_p); CHKERRXX(ierr);
 
   ierr = VecRestoreArray(jump_normal_flux, &jump_normal_flux_p); CHKERRXX(ierr);
 
@@ -1436,20 +1275,15 @@ void get_sharp_rhs(const p4est_t* p4est, p4est_ghost_t* ghost, my_p4est_node_nei
   double *rhs_p;
   ierr = VecGetArray(rhs, &rhs_p); CHKERRXX(ierr);
 
+  double xyz_quad[P4EST_DIM];
   for(p4est_topidx_t tree_idx=p4est->first_local_tree; tree_idx<=p4est->last_local_tree; ++tree_idx)
   {
     p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
     for(size_t quad_idx=0; quad_idx<tree->quadrants.elem_count; ++quad_idx)
     {
       p4est_locidx_t q_idx = quad_idx + tree->quadrants_offset;
-      double x = quad_x_fr_q(q_idx, tree_idx, p4est, ghost);
-      double y = quad_y_fr_q(q_idx, tree_idx, p4est, ghost);
-#ifdef P4_TO_P8
-      double z = quad_z_fr_q(q_idx, tree_idx, p4est, ghost);
-      rhs_p[q_idx] = (interp_phi(x, y, z) > 0)? (-mu_p*laplacian_u_exact_p(test_number, x, y, z)):  (-mu_m*laplacian_u_exact_m(test_number, x, y, z));
-#else
-      rhs_p[q_idx] = (interp_phi(x, y) > 0)?    (-mu_p*laplacian_u_exact_p(test_number, x, y)):     (-mu_m*laplacian_u_exact_m(test_number, x, y));
-#endif
+      quad_xyz_fr_q(q_idx, tree_idx, p4est, ghost, xyz_quad);
+      rhs_p[q_idx] = (interp_phi(xyz_quad) > 0)? (-mu_p*laplacian_u_exact_p(test_number, DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2]))):  (-mu_m*laplacian_u_exact_m(test_number, DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2])));
     }
   }
   ierr = VecRestoreArray(rhs, &rhs_p); CHKERRXX(ierr);
@@ -1464,58 +1298,43 @@ void measure_errors(p4est_t* p4est, p4est_ghost_t* ghost, my_p4est_node_neighbor
   interp_phi.set_input(phi, linear);
   const double *sol_read_p, *flux_components_read_p[P4EST_DIM];
   ierr = VecGetArrayRead(sol, &sol_read_p); CHKERRXX(ierr);
-  for (short dim = 0; dim < P4EST_DIM; ++dim) {
+  for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
     ierr = VecGetArrayRead(flux_components[dim], &flux_components_read_p[dim]); CHKERRXX(ierr);}
 
   double *err_p;
   ierr = VecGetArray(err_cells, &err_p); CHKERRXX(ierr);
 
   err_n = 0.0;
+  double xyz_quad[P4EST_DIM];
   for(p4est_topidx_t tree_idx=p4est->first_local_tree; tree_idx<=p4est->last_local_tree; ++tree_idx)
   {
     p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
     for(size_t quad_idx=0; quad_idx<tree->quadrants.elem_count; ++quad_idx)
     {
       p4est_locidx_t q_idx = quad_idx + tree->quadrants_offset;
-      double quad_x = quad_x_fr_q(q_idx, tree_idx, p4est, ghost);
-      double quad_y = quad_y_fr_q(q_idx, tree_idx, p4est, ghost);
-#ifdef P4_TO_P8
-      double quad_z = quad_z_fr_q(q_idx, tree_idx, p4est, ghost);
-      err_p[q_idx] = (interp_phi(quad_x, quad_y, quad_z) > 0)?  fabs(sol_read_p[q_idx] - u_exact_p(test_number, quad_x, quad_y, quad_z)) : fabs(sol_read_p[q_idx] - u_exact_m(test_number, quad_x, quad_y, quad_z));
-#else
-      err_p[q_idx] = (interp_phi(quad_x, quad_y) > 0)?          fabs(sol_read_p[q_idx] - u_exact_p(test_number, quad_x, quad_y)) :         fabs(sol_read_p[q_idx] - u_exact_m(test_number, quad_x, quad_y));
-#endif
+      quad_xyz_fr_q(q_idx, tree_idx, p4est, ghost, xyz_quad);
+      err_p[q_idx] = (interp_phi(xyz_quad) > 0)?  fabs(sol_read_p[q_idx] - u_exact_p(test_number, DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2]))) : fabs(sol_read_p[q_idx] - u_exact_m(test_number, DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2])));
       err_n = MAX(err_n, err_p[q_idx]);
     }
   }
 
   double xyz_face[P4EST_DIM];
-  for (short dim = 0; dim < P4EST_DIM; ++dim) {
+  for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
     err_flux_components[dim] = 0.0;
     err_derivatives_components[dim] = 0.0;
     for (p4est_locidx_t face_idx = 0; face_idx < faces->num_local[dim]; ++face_idx) {
       faces->xyz_fr_f(face_idx, dim, xyz_face);
       switch (dim) {
-      case 0:
-#ifdef P4_TO_P8
-        err_flux_components[dim]        = MAX(err_flux_components[dim], fabs(flux_components_read_p[dim][face_idx] - ((interp_phi(xyz_face) > 0.0)? (mu_p*d_u_exact_p_dx(test_number, xyz_face[0], xyz_face[1], xyz_face[2])): (mu_m*d_u_exact_m_dx(test_number, xyz_face[0], xyz_face[1], xyz_face[2])))));
-        err_derivatives_components[dim] = MAX(err_derivatives_components[dim], fabs(flux_components_read_p[dim][face_idx]/(((interp_phi(xyz_face) > 0.0)? mu_p : mu_m)) - ((interp_phi(xyz_face) > 0.0)? (d_u_exact_p_dx(test_number, xyz_face[0], xyz_face[1], xyz_face[2])): (d_u_exact_m_dx(test_number, xyz_face[0], xyz_face[1], xyz_face[2])))));
-#else
-        err_flux_components[dim]        = MAX(err_flux_components[dim], fabs(flux_components_read_p[dim][face_idx] - ((interp_phi(xyz_face) > 0.0)? (mu_p*d_u_exact_p_dx(test_number, xyz_face[0], xyz_face[1])): (mu_m*d_u_exact_m_dx(test_number, xyz_face[0], xyz_face[1])))));
-        err_derivatives_components[dim] = MAX(err_derivatives_components[dim], fabs(flux_components_read_p[dim][face_idx]/(((interp_phi(xyz_face) > 0.0)? mu_p : mu_m)) - ((interp_phi(xyz_face) > 0.0)? (d_u_exact_p_dx(test_number, xyz_face[0], xyz_face[1])): (d_u_exact_m_dx(test_number, xyz_face[0], xyz_face[1])))));
-#endif
+      case dir::x:
+        err_flux_components[dim]        = MAX(err_flux_components[dim], fabs(flux_components_read_p[dim][face_idx] - ((interp_phi(xyz_face) > 0.0)? (mu_p*d_u_exact_p_dx(test_number, DIM(xyz_face[0], xyz_face[1], xyz_face[2]))): (mu_m*d_u_exact_m_dx(test_number, DIM(xyz_face[0], xyz_face[1], xyz_face[2]))))));
+        err_derivatives_components[dim] = MAX(err_derivatives_components[dim], fabs(flux_components_read_p[dim][face_idx]/(((interp_phi(xyz_face) > 0.0)? mu_p : mu_m)) - ((interp_phi(xyz_face) > 0.0)? (d_u_exact_p_dx(test_number, DIM(xyz_face[0], xyz_face[1], xyz_face[2]))): (d_u_exact_m_dx(test_number, DIM(xyz_face[0], xyz_face[1], xyz_face[2]))))));
         break;
-      case 1:
-#ifdef P4_TO_P8
-        err_flux_components[dim]        = MAX(err_flux_components[dim], fabs(flux_components_read_p[dim][face_idx] - ((interp_phi(xyz_face) > 0.0)? (mu_p*d_u_exact_p_dy(test_number, xyz_face[0], xyz_face[1], xyz_face[2])): (mu_m*d_u_exact_m_dy(test_number, xyz_face[0], xyz_face[1], xyz_face[2])))));
-        err_derivatives_components[dim] = MAX(err_derivatives_components[dim], fabs(flux_components_read_p[dim][face_idx]/(((interp_phi(xyz_face) > 0.0)? mu_p : mu_m)) - ((interp_phi(xyz_face) > 0.0)? (d_u_exact_p_dy(test_number, xyz_face[0], xyz_face[1], xyz_face[2])): (d_u_exact_m_dy(test_number, xyz_face[0], xyz_face[1], xyz_face[2])))));
-#else
-        err_flux_components[dim]        = MAX(err_flux_components[dim], fabs(flux_components_read_p[dim][face_idx] - ((interp_phi(xyz_face) > 0.0)? (mu_p*d_u_exact_p_dy(test_number, xyz_face[0], xyz_face[1])): (mu_m*d_u_exact_m_dy(test_number, xyz_face[0], xyz_face[1])))));
-        err_derivatives_components[dim] = MAX(err_derivatives_components[dim], fabs(flux_components_read_p[dim][face_idx]/(((interp_phi(xyz_face) > 0.0)? mu_p : mu_m)) - ((interp_phi(xyz_face) > 0.0)? (d_u_exact_p_dy(test_number, xyz_face[0], xyz_face[1])): (d_u_exact_m_dy(test_number, xyz_face[0], xyz_face[1])))));
-#endif
+      case dir::y:
+        err_flux_components[dim]        = MAX(err_flux_components[dim], fabs(flux_components_read_p[dim][face_idx] - ((interp_phi(xyz_face) > 0.0)? (mu_p*d_u_exact_p_dy(test_number, DIM(xyz_face[0], xyz_face[1], xyz_face[2]))): (mu_m*d_u_exact_m_dy(test_number, DIM(xyz_face[0], xyz_face[1], xyz_face[2]))))));
+        err_derivatives_components[dim] = MAX(err_derivatives_components[dim], fabs(flux_components_read_p[dim][face_idx]/(((interp_phi(xyz_face) > 0.0)? mu_p : mu_m)) - ((interp_phi(xyz_face) > 0.0)? (d_u_exact_p_dy(test_number, DIM(xyz_face[0], xyz_face[1], xyz_face[2]))): (d_u_exact_m_dy(test_number, DIM(xyz_face[0], xyz_face[1], xyz_face[2]))))));
         break;
 #ifdef P4_TO_P8
-      case 2:
+      case dir::z:
         err_flux_components[dim]        = MAX(err_flux_components[dim], fabs(flux_components_read_p[dim][face_idx] - ((interp_phi(xyz_face) > 0.0)? (mu_p*d_u_exact_p_dz(test_number, xyz_face[0], xyz_face[1], xyz_face[2])): (mu_m*d_u_exact_m_dz(test_number, xyz_face[0], xyz_face[1], xyz_face[2])))));
         err_derivatives_components[dim] = MAX(err_derivatives_components[dim], fabs(flux_components_read_p[dim][face_idx]/(((interp_phi(xyz_face) > 0.0)? mu_p : mu_m)) - ((interp_phi(xyz_face) > 0.0)? (d_u_exact_p_dz(test_number, xyz_face[0], xyz_face[1], xyz_face[2])): (d_u_exact_m_dz(test_number, xyz_face[0], xyz_face[1], xyz_face[2])))));
         break;
@@ -1525,7 +1344,7 @@ void measure_errors(p4est_t* p4est, p4est_ghost_t* ghost, my_p4est_node_neighbor
   }
 
   ierr = VecRestoreArrayRead(sol, &sol_read_p); CHKERRXX(ierr);
-  for (short dim = 0; dim < P4EST_DIM; ++dim) {
+  for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
     ierr = VecRestoreArrayRead(flux_components[dim], &flux_components_read_p[dim]); CHKERRXX(ierr);}
   ierr = VecRestoreArray(err_cells, &err_p); CHKERRXX(ierr);
 
@@ -1565,7 +1384,7 @@ int main (int argc, char* argv[])
 Example 4 from Liu, Fedkiw, Kang 2000 \n\
 1: \n\
 * domain = [-2.0, 2.0] X [-2.0, 2.0] X [-2.0, 2.0] \n\
-* interface = parameterized by (theta in [0.0, 2*pi[, phi in [0.0, pi[) \n\
+* interface = parameterized by (theta in [0.0, pi[, phi in [0.0, 2*pi[) \n\
 r(theta, phi) = 1.25 + 0.2*(1.0 - 0.2*(1.0 - 0.2*cos(6.0*phi))*(1.0 - cos(6.0*theta)), spherical coordinates \n\
 negative inside, positive outside \n\
 * mu_m = 2000.0; \n\
@@ -1577,7 +1396,7 @@ Example by Raphael Egan for mildly convoluted 3D interface with large ratio of c
 2: \n\
 * domain = [-2.0, 2.0] X [-2.0, 2.0] X [-2.0, 2.0] \n\
 * interface = parameterized by \n\
-r(theta, phi) = 0.75 + 0.2*(1.0 - 0.2*cos(6.0*phi))*(1.0-cos(6.0*theta)) \n\
+r(theta, phi) = 0.75 + 0.2*(1.0 - 0.6*cos(6.0*phi))*(1.0-cos(6.0*theta)) \n\
 negative inside, positive outside \n\
 * mu_m = 1.0; \n\
 * mu_p = 1250.0; \n\
@@ -1593,7 +1412,7 @@ The full periodicity is enforced.\n\
 * mu_m = 1.0; \n\
 * mu_p = 80.0; \n\
 * u_m  = atan(sin((2.0*M_PI/3.0)*(2.0*x-y)))*log(1.5+cos((2.0*M_PI/3.0)*(2.0*y-z))); \n\
-* u_p  = tanh(cos((2.0*M_PI/3.0)*(2.0*x+y)))*acos(0.5*sin((2.0*M_PI/3.0)*(2.0*x-x))); \n\
+* u_p  = tanh(cos((2.0*M_PI/3.0)*(2.0*x+y)))*acos(0.5*sin((2.0*M_PI/3.0)*(2.0*z-x))); \n\
 * fully periodic \n\
 Example by Raphael Egan for full periodicity.");
     #else
@@ -1797,15 +1616,9 @@ Example by Raphael Egan for full periodicity.");
   default:
     throw std::invalid_argument("invalid test number.");
   }
-#ifdef P4_TO_P8
-  int n_xyz [] = {ntree_, ntree_, ntree_};
-  double xyz_min [] = {domain.xmin, domain.ymin, domain.zmin};
-  double xyz_max [] = {domain.xmax, domain.ymax, domain.zmax};
-#else
-  int n_xyz [] = {ntree_, ntree_};
-  double xyz_min [] = {domain.xmin, domain.ymin};
-  double xyz_max [] = {domain.xmax, domain.ymax};
-#endif
+  int n_xyz [P4EST_DIM]       = {DIM(ntree_, ntree_, ntree_)};
+  double xyz_min [P4EST_DIM]  = {DIM(domain.xmin, domain.ymin, domain.zmin)};
+  double xyz_max [P4EST_DIM]  = {DIM(domain.xmax, domain.ymax, domain.zmax)};
 
   int periodic[3];
   switch (test_number) {
@@ -1852,13 +1665,7 @@ Example by Raphael Egan for full periodicity.");
   double err[ngrids][2], err_flux_components[ngrids][2][P4EST_DIM], err_derivatives_components[ngrids][2][P4EST_DIM];
 
   double avg_exa = 0.0;
-  if(bc_wtype==NEUMANN ||
-   #ifdef P4_TO_P8
-     test_number == 3
-   #else
-     test_number == 9
-   #endif
-     )
+  if(bc_wtype==NEUMANN || test_number == (P4EST_DIM == 3 ? 3 : 9))
   {
     switch(test_number)
     {
@@ -1887,11 +1694,7 @@ This test case is meant to check the AMR feature, hence the interface is suppose
     default: throw std::invalid_argument("invalid test number.");
     }
 
-#ifdef P4_TO_P8
-    avg_exa /= (domain.xmax-domain.xmin)*(domain.ymax-domain.ymin)*(domain.zmax-domain.zmin);
-#else
-    avg_exa /= (domain.xmax-domain.xmin)*(domain.ymax-domain.ymin);
-#endif
+    avg_exa /= MULTD((domain.xmax-domain.xmin), (domain.ymax-domain.ymin), (domain.zmax-domain.zmin));
   }
 
   LEVEL_SET levelset(domain, test_number);
@@ -2089,38 +1892,19 @@ This test case is meant to check the AMR feature, hence the interface is suppose
     /* Get the normals, the second derivatives of the levelset (if required) and the relevant flattened jumps
      */
     Vec jump_u, jump_normal_flux;
-    Vec normals[P4EST_DIM];
-    Vec phi_xx = NULL;
-    Vec phi_yy = NULL;
-#ifdef P4_TO_P8
-    Vec phi_zz = NULL;
-#endif
+    Vec normals     = NULL;
+    Vec phi_xxyyzz  = NULL;
     ierr = VecCreateGhostNodes(p4est_fine, nodes_fine, &jump_u); CHKERRXX(ierr);
     ierr = VecCreateGhostNodes(p4est_fine, nodes_fine, &jump_normal_flux); CHKERRXX(ierr);
-    for (short dim = 0; dim < P4EST_DIM; ++dim) {
-      ierr = VecCreateGhostNodes(p4est_fine, nodes_fine, &normals[dim]); CHKERRXX(ierr);
-    }
+    ierr = VecCreateGhostNodesBlock(p4est_fine, nodes_fine, P4EST_DIM, &normals); CHKERRXX(ierr);
     if(use_second_order_theta){
-      ierr = VecCreateGhostNodes(p4est_fine, nodes_fine, &phi_xx); CHKERRXX(ierr);
-      ierr = VecCreateGhostNodes(p4est_fine, nodes_fine, &phi_yy); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-      ierr = VecCreateGhostNodes(p4est_fine, nodes_fine, &phi_zz); CHKERRXX(ierr);
-#endif
-    }
+      ierr = VecCreateGhostNodesBlock(p4est_fine, nodes_fine, P4EST_DIM, &phi_xxyyzz); CHKERRXX(ierr); }
 
     get_normals_and_flattened_jumps(p4est_fine, nodes_fine, ngbd_n_fine, phi, use_second_order_theta, test_number, mu_p, mu_m, //input
-                          jump_u, jump_normal_flux, normals, phi_xx, phi_yy // output
-                      #ifdef P4_TO_P8
-                          , phi_zz // output
-                      #endif
-                          );
+                          jump_u, jump_normal_flux, normals, phi_xxyyzz); // output
 
     /* TEST THE JUMP SOLVER */
-#ifdef P4_TO_P8
-    BoundaryConditions3D bc;
-#else
-    BoundaryConditions2D bc;
-#endif
+    BoundaryConditionsDIM bc;
     BCWALLTYPE bc_wall_type(bc_wtype);
     bc.setWallTypes(bc_wall_type);
     BCWALLVAL bc_wall_val(domain, levelset, bc_wtype, test_number);
@@ -2132,15 +1916,11 @@ This test case is meant to check the AMR feature, hence the interface is suppose
 
     Vec sol[2], err_cells[2], extended_field_xgfm, extended_field_fine_nodes_xgfm;
     Vec exact_msol_at_nodes, exact_psol_at_nodes; // to enable illustration of exact solution with wrap-by-scalar in paraview
-    Vec jump_mu_grad_u[2][P4EST_DIM];
-    for (short flag = 0; flag < 2; ++flag) {
+    Vec jump_mu_grad_u[2];
+    for (unsigned char flag = 0; flag < 2; ++flag) {
       my_p4est_xgfm_cells_t solver(&ngbd_c, &ngbd_n, &ngbd_n_fine, flag);
       if(use_second_order_theta)
-  #ifdef P4_TO_P8
-        solver.set_phi(phi, phi_xx, phi_yy, phi_zz);
-  #else
-        solver.set_phi(phi, phi_xx, phi_yy);
-  #endif
+        solver.set_phi(phi, phi_xxyyzz);
       else
         solver.set_phi(phi);
       solver.set_normals(normals);
@@ -2156,13 +1936,13 @@ This test case is meant to check the AMR feature, hence the interface is suppose
 
       watch.start("Total time:");
       solver.solve();
-      watch.stop(); watch.print_duration();
+      watch.stop(); watch.read_duration();
 
       if(flag)
         solver.get_extended_interface_values(extended_field_xgfm, extended_field_fine_nodes_xgfm);
 
       Vec flux[P4EST_DIM];
-      for (short dim = 0; dim < P4EST_DIM; ++dim) {
+      for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
         ierr = VecCreateGhostFaces(p4est, &faces, &flux[dim], dim); CHKERRXX(ierr);}
       solver.get_flux_components(flux, &faces);
 
@@ -2195,13 +1975,8 @@ This test case is meant to check the AMR feature, hence the interface is suppose
         for (size_t node_idx = 0; node_idx < nodes->indep_nodes.elem_count; ++node_idx) {
           double xyz_node[P4EST_DIM];
           node_xyz_fr_n(node_idx, p4est, nodes, xyz_node);
-#ifdef P4_TO_P8
-          exact_msol_at_nodes_p[node_idx] = u_exact_m(test_number, xyz_node[0], xyz_node[1], xyz_node[2]);
-          exact_psol_at_nodes_p[node_idx] = u_exact_p(test_number, xyz_node[0], xyz_node[1], xyz_node[2]);
-#else
-          exact_msol_at_nodes_p[node_idx] = u_exact_m(test_number, xyz_node[0], xyz_node[1]);
-          exact_psol_at_nodes_p[node_idx] = u_exact_p(test_number, xyz_node[0], xyz_node[1]);
-#endif
+          exact_msol_at_nodes_p[node_idx] = u_exact_m(test_number, DIM(xyz_node[0], xyz_node[1], xyz_node[2]));
+          exact_psol_at_nodes_p[node_idx] = u_exact_p(test_number, DIM(xyz_node[0], xyz_node[1], xyz_node[2]));
         }
         ierr = VecRestoreArray(exact_psol_at_nodes, &exact_psol_at_nodes_p); CHKERRXX(ierr);
         ierr = VecRestoreArray(exact_msol_at_nodes, &exact_msol_at_nodes_p); CHKERRXX(ierr);
@@ -2255,23 +2030,21 @@ This test case is meant to check the AMR feature, hence the interface is suppose
       ierr = VecCreateGhostCells(p4est, ghost, &err_cells[flag]); CHKERRXX(ierr);
       measure_errors(p4est, ghost, ngbd_n_fine, &faces, phi, test_number, mu_p, mu_m, sol[flag], flux,
                      err_cells[flag], err[iter][flag], err_flux_components[iter][flag], err_derivatives_components[iter][flag]);
-      for (short dim = 0; dim < P4EST_DIM; ++dim) {
+      for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
         ierr = VecDestroy(flux[dim]); CHKERRXX(ierr);}
       ierr = VecDestroy(rhs); CHKERRXX(ierr);
     }
 
-    Vec correction_jump_mu_grad[P4EST_DIM], loc_ghost_jump_mu_grad_u_gfm, loc_ghost_jump_mu_grad_u_xgfm, loc_ghost_correction;
-    for (short dim = 0; dim < P4EST_DIM; ++dim) {
-      ierr = VecDuplicate(jump_mu_grad_u[0][dim], &correction_jump_mu_grad[dim]); CHKERRXX(ierr);
-      ierr = VecGhostGetLocalForm(jump_mu_grad_u[0][dim], &loc_ghost_jump_mu_grad_u_gfm); CHKERRXX(ierr);
-      ierr = VecGhostGetLocalForm(jump_mu_grad_u[1][dim], &loc_ghost_jump_mu_grad_u_xgfm); CHKERRXX(ierr);
-      ierr = VecGhostGetLocalForm(correction_jump_mu_grad[dim], &loc_ghost_correction); CHKERRXX(ierr);
-      ierr = VecCopy(loc_ghost_jump_mu_grad_u_xgfm, loc_ghost_correction); CHKERRXX(ierr);
-      ierr = VecAXPY(loc_ghost_correction, -1.0, loc_ghost_jump_mu_grad_u_gfm); CHKERRXX(ierr);
-      ierr = VecGhostRestoreLocalForm(correction_jump_mu_grad[dim], &loc_ghost_correction); CHKERRXX(ierr);
-      ierr = VecGhostRestoreLocalForm(jump_mu_grad_u[1][dim], &loc_ghost_jump_mu_grad_u_xgfm); CHKERRXX(ierr);
-      ierr = VecGhostRestoreLocalForm(jump_mu_grad_u[0][dim], &loc_ghost_jump_mu_grad_u_gfm); CHKERRXX(ierr);
-    }
+    Vec correction_jump_mu_grad, loc_ghost_jump_mu_grad_u_gfm, loc_ghost_jump_mu_grad_u_xgfm, loc_ghost_correction;
+    ierr = VecDuplicate(jump_mu_grad_u[0], &correction_jump_mu_grad); CHKERRXX(ierr);
+    ierr = VecGhostGetLocalForm(jump_mu_grad_u[0], &loc_ghost_jump_mu_grad_u_gfm); CHKERRXX(ierr);
+    ierr = VecGhostGetLocalForm(jump_mu_grad_u[1], &loc_ghost_jump_mu_grad_u_xgfm); CHKERRXX(ierr);
+    ierr = VecGhostGetLocalForm(correction_jump_mu_grad, &loc_ghost_correction); CHKERRXX(ierr);
+    ierr = VecCopy(loc_ghost_jump_mu_grad_u_xgfm, loc_ghost_correction); CHKERRXX(ierr);
+    ierr = VecAXPY(loc_ghost_correction, -1.0, loc_ghost_jump_mu_grad_u_gfm); CHKERRXX(ierr);
+    ierr = VecGhostRestoreLocalForm(correction_jump_mu_grad, &loc_ghost_correction); CHKERRXX(ierr);
+    ierr = VecGhostRestoreLocalForm(jump_mu_grad_u[1], &loc_ghost_jump_mu_grad_u_xgfm); CHKERRXX(ierr);
+    ierr = VecGhostRestoreLocalForm(jump_mu_grad_u[0], &loc_ghost_jump_mu_grad_u_gfm); CHKERRXX(ierr);
 
     if(iter > 0){
       ierr = PetscPrintf(p4est->mpicomm, "Error on cells  for  gfm: %.5e, order = %g\n", err[iter][0], log(err[iter-1][0]/err[iter][0])/log(2)); CHKERRXX(ierr);
@@ -2328,31 +2101,20 @@ This test case is meant to check the AMR feature, hence the interface is suppose
 
     ierr = VecDestroy(phi_coarse); CHKERRXX(ierr);
     ierr = VecDestroy(phi); CHKERRXX(ierr);
-    if(use_second_order_theta)
-    {
-      ierr = VecDestroy(phi_xx); CHKERRXX(ierr);
-      ierr = VecDestroy(phi_yy); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-      ierr = VecDestroy(phi_zz); CHKERRXX(ierr);
-#endif
-    }
+    if(use_second_order_theta){
+      ierr = VecDestroy(phi_xxyyzz); CHKERRXX(ierr); }
     ierr = VecDestroy(jump_u); CHKERRXX(ierr);
     ierr = VecDestroy(jump_normal_flux); CHKERRXX(ierr);
-    for (short dim = 0; dim < P4EST_DIM; ++dim)
-    {
-      ierr = VecDestroy(normals[dim]); CHKERRXX(ierr);
-      for (short flag = 0; flag < 2; ++flag) {
-        ierr = VecDestroy(jump_mu_grad_u[flag][dim]); CHKERRXX(ierr);
-      }
-      ierr = VecDestroy(correction_jump_mu_grad[dim]); CHKERRXX(ierr);
-    }
+    ierr = VecDestroy(normals); CHKERRXX(ierr);
+    for (unsigned char flag = 0; flag < 2; ++flag) {
+      ierr = VecDestroy(jump_mu_grad_u[flag]); CHKERRXX(ierr); }
+    ierr = VecDestroy(correction_jump_mu_grad); CHKERRXX(ierr);
     ierr = VecDestroy(rhs_original); CHKERRXX(ierr);
-    for (short flag = 0; flag < 2; ++flag)
+    for (unsigned char flag = 0; flag < 2; ++flag)
     {
       ierr = VecDestroy(sol[flag]); CHKERRXX(ierr);
       ierr = VecDestroy(err_cells[flag]); CHKERRXX(ierr);
-      for (short dim = 0; dim < P4EST_DIM; ++dim) {
-        ierr = VecDestroy(jump_mu_grad_u[flag][dim]); CHKERRXX(ierr);}
+      ierr = VecDestroy(jump_mu_grad_u[flag]); CHKERRXX(ierr);
     }
 
     if(save_vtk || get_integral)
@@ -2374,11 +2136,7 @@ This test case is meant to check the AMR feature, hence the interface is suppose
   {
     if(print_summary)
     {
-#ifdef P4_TO_P8
-      string summary_folder = work_folder + "/summaries/3D";
-#else
-      string summary_folder = work_folder + "/summaries/2D";
-#endif
+      string summary_folder = work_folder + "/summaries/" + to_string(P4EST_DIM) + "D";
       ostringstream command;
       command << "mkdir -p " << summary_folder.c_str();
       system(command.str().c_str()); // create the summary folder
@@ -2534,7 +2292,7 @@ This test case is meant to check the AMR feature, hence the interface is suppose
 
   my_p4est_brick_destroy(connectivity, &brick);
 
-  watch_global.stop(); watch_global.print_duration();
+  watch_global.stop(); watch_global.read_duration();
 
   return 0;
 }

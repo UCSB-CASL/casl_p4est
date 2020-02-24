@@ -11,20 +11,10 @@
 
 
 my_p4est_interpolation_faces_t::my_p4est_interpolation_faces_t(const my_p4est_node_neighbors_t* ngbd_n, const my_p4est_faces_t *faces)
-  : my_p4est_interpolation_t(ngbd_n), faces(faces), ngbd_c(faces->ngbd_c), face_is_well_defined(NULL), bc(NULL)
-{
-  p4est_topidx_t vtx_0_max    = p4est->connectivity->tree_to_vertex[0*P4EST_CHILDREN + P4EST_CHILDREN - 1];
-  p4est_topidx_t vtx_0_min    = p4est->connectivity->tree_to_vertex[0*P4EST_CHILDREN + 0];
-  for (short dim = 0; dim < P4EST_DIM; ++dim)
-    tree_dimension[dim]       = p4est->connectivity->vertices[3*vtx_0_max+dim] - p4est->connectivity->vertices[3*vtx_0_min + dim];
-}
+  : my_p4est_interpolation_t(ngbd_n), faces(faces), ngbd_c(faces->ngbd_c), face_is_well_defined(NULL), bc(NULL) { }
 
 
-#ifdef P4_TO_P8
-void my_p4est_interpolation_faces_t::set_input(Vec *F, int dir, unsigned int n_vecs_, int order, Vec face_is_well_defined, BoundaryConditions3D *bc)
-#else
-void my_p4est_interpolation_faces_t::set_input(Vec *F, int dir, unsigned int n_vecs_, int order, Vec face_is_well_defined, BoundaryConditions2D *bc)
-#endif
+void my_p4est_interpolation_faces_t::set_input(Vec *F, unsigned char dir, unsigned int n_vecs_, int order, Vec face_is_well_defined, BoundaryConditionsDIM *bc)
 {
   set_input(F, n_vecs_, 1);
   this->face_is_well_defined = face_is_well_defined;
@@ -34,36 +24,19 @@ void my_p4est_interpolation_faces_t::set_input(Vec *F, int dir, unsigned int n_v
 }
 
 
-#ifdef P4_TO_P8
-void my_p4est_interpolation_faces_t::operator ()(double x, double y, double z, double *results) const
-#else
-void my_p4est_interpolation_faces_t::operator ()(double x, double y, double *results) const
-#endif
+void my_p4est_interpolation_faces_t::operator ()(DIM(double x, double y, double z), double *results) const
 {
-#ifdef P4_TO_P8
-  double xyz [] = { x, y, z };
-#else
-  double xyz [] = { x, y };
-#endif
+  double xyz[P4EST_DIM] = {DIM(x, y, z)};
 
   /* first clip the coordinates */
-#ifdef P4_TO_P8
-  double xyz_clip [] = { x, y, z };
-#else
-  double xyz_clip [] = { x, y };
-#endif
-
+  double xyz_clip[P4EST_DIM] = {DIM(x, y, z)};
   // clip to bounding box
-  for (short i=0; i<P4EST_DIM; i++){
-    if (xyz_clip[i] > xyz_max[i]) xyz_clip[i] = is_periodic(p4est,i) ?  xyz_clip[i]-(xyz_max[i]-xyz_min[i]) : xyz_max[i];
-    if (xyz_clip[i] < xyz_min[i]) xyz_clip[i] = is_periodic(p4est,i) ?  xyz_clip[i]+(xyz_max[i]-xyz_min[i]) : xyz_min[i];
-  }
+  clip_in_domain(xyz_clip, xyz_min, xyz_max, periodic);
 
   p4est_quadrant_t best_match;
   std::vector<p4est_quadrant_t> remote_matches;
   int rank_found = ngbd_n->hierarchy->find_smallest_quadrant_containing_point(xyz_clip, best_match, remote_matches);
 
-//  if(rank_found!=-1)
   if(rank_found == p4est->mpirank)
   {
     interpolate(best_match, xyz, results, 1); // last argument is dummy
@@ -82,61 +55,53 @@ void my_p4est_interpolation_faces_t::interpolate(const p4est_quadrant_t &quad, c
   P4EST_ASSERT(n_functions > 0);
   P4EST_ASSERT(bs_f == 1); // not implemented for bs_f > 1 yet
 
-  if(bc!=NULL && bc->wallType(xyz)==DIRICHLET &&
-     (((fabs(xyz[0]-xyz_min[0])<EPS*tree_dimension[0] || fabs(xyz[0]-xyz_max[0])<EPS*tree_dimension[0]) && (!is_periodic(p4est, dir::x)))
-      || ((fabs(xyz[1]-xyz_min[1])<EPS*tree_dimension[1] || fabs(xyz[1]-xyz_max[1])<EPS*tree_dimension[1]) && (!is_periodic(p4est, dir::y)))
-    #ifdef P4_TO_P8
-      || ((fabs(xyz[2]-xyz_min[2])<EPS*tree_dimension[2] || fabs(xyz[2]-xyz_max[2])<EPS*tree_dimension[2]) && (!is_periodic(p4est, dir::z)))
-    #endif
-      ))
+  /* [Raphael Egan (01/22/2020): results seem more accurate (2nd order vs 1st order) when doing nothing special for Neumann wall boundary condition (from tests in main file for testing poisson_faces)...] */
+  bool is_on_wall = false;
+  for (unsigned char dim = 0; dim < P4EST_DIM && !is_on_wall; ++dim)
+    is_on_wall = is_on_wall || ((fabs(xyz[dim] - xyz_min[dim]) < EPS*faces->tree_dimensions[dim] || fabs(xyz[dim] - xyz_max[dim]) < EPS*faces->tree_dimensions[dim]) && !periodic[dim]);
+  if(is_on_wall && bc != NULL && bc->wallType(xyz) == DIRICHLET)
   {
     for (unsigned int k = 0; k < n_functions; ++k)
       results[k] = bc->wallValue(xyz);
     return;
   }
 
-
-#ifdef P4_TO_P8
-  double qh = MIN(tree_dimension[0], tree_dimension[1], tree_dimension[2]);
-#else
-  double qh = MIN(tree_dimension[0], tree_dimension[1]);
-#endif
+  double qh = MIN(DIM(faces->tree_dimensions[0], faces->tree_dimensions[1], faces->tree_dimensions[2]));
   double scaling = .5 * qh*(double)P4EST_QUADRANT_LEN(quad.level)/(double)P4EST_ROOT_LEN;
 
   p4est_topidx_t tree_idx = quad.p.piggy3.which_tree;
-  p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
+  p4est_tree_t *tree = p4est_tree_array_index(p4est->trees, tree_idx);
   p4est_locidx_t quad_idx = quad.p.piggy3.local_num + tree->quadrants_offset;
 
   /* gather the neighborhood */
-  std::vector<p4est_quadrant_t> ngbd_tmp;
-  std::vector<p4est_locidx_t> ngbd;
-  p4est_locidx_t f_tmp;
+  set_of_neighboring_quadrants close_ngbd_tmp; close_ngbd_tmp.insert(quad);
+  std::set<indexed_and_located_face> face_ngbd;
+  indexed_and_located_face f_tmp;
 
-  for(int i=-1; i<2; ++i)
-    for(int j=-1; j<2; ++j)
+  for(char i = -1; i < 2; ++i)
+    for(char j = -1; j < 2; ++j)
 #ifdef P4_TO_P8
-      for(int k=-1; k<2; ++k)
-//        if((i==0 && j==0) || (i==0 && k==0) || (j==0 && k==0))
-          ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, quad_idx, tree_idx, i, j, k);
-#else
-//      if(i==0 || j==0)
-        ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, quad_idx, tree_idx, i, j);
+      for(char k = -1; k < 2; ++k)
 #endif
+      {
+        if(ANDD(i == 0, j == 0, k == 0))
+          continue;
+        ngbd_c->find_neighbor_cells_of_cell(close_ngbd_tmp, quad_idx, tree_idx, DIM(i, j, k));
+      }
 
-  int nb_ngbd = ngbd_tmp.size();
-  for(int m=0; m<nb_ngbd; ++m)
-  {
-    for(int i=-1; i<2; ++i)
-      for(int j=-1; j<2; ++j)
+
+  set_of_neighboring_quadrants ngbd_tmp(close_ngbd_tmp);
+  for (set_of_neighboring_quadrants::const_iterator it = close_ngbd_tmp.begin(); it != close_ngbd_tmp.end(); ++it)
+    for(char i = -1; i < 2; ++i)
+      for(char j = -1; j < 2; ++j)
 #ifdef P4_TO_P8
-        for(int k=-1; k<2; ++k)
-//          if((i==0 && j==0) || (i==0 && k==0) || (j==0 && k==0))
-            ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, ngbd_tmp[m].p.piggy3.local_num, ngbd_tmp[m].p.piggy3.which_tree, i, j, k);
-#else
-//        if(i==0 || j==0)
-          ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, ngbd_tmp[m].p.piggy3.local_num, ngbd_tmp[m].p.piggy3.which_tree, i, j);
+        for(char k = -1; k < 2; ++k)
 #endif
-  }
+        {
+          if(ANDD(i == 0, j == 0, k == 0))
+            continue;
+          ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp,  it->p.piggy3.local_num, it->p.piggy3.which_tree, DIM(i, j, k));
+        }
 
   const double *Fi_p[n_functions];
   for (unsigned int k = 0; k < n_functions; ++k) {
@@ -147,24 +112,33 @@ void my_p4est_interpolation_faces_t::interpolate(const p4est_quadrant_t &quad, c
   if(face_is_well_defined!=NULL)
     ierr = VecGetArrayRead(face_is_well_defined, &face_is_well_defined_p); CHKERRXX(ierr);
 
-  for(unsigned int m=0; m<ngbd_tmp.size(); ++m)
-  {
-    for(int d=0; d<2; ++d)
-    {
-      f_tmp = faces->q2f(ngbd_tmp[m].p.piggy3.local_num, 2*dir+d);
+  matrix_t A;
+  A.resize(1, 1 + P4EST_DIM + (order >= 2 ? P4EST_DIM*(P4EST_DIM + 1)/2 : 0)); // constant term + P4EST_DIM linear terms + (if second order) P4EST_DIM squared terms + 0.5*P4EST_DIM*(P4EST_DIM + 1) squared and crossed terms
 
-      if(f_tmp!=NO_VELOCITY && std::find(ngbd.begin(), ngbd.end(),f_tmp)==ngbd.end())
+  std::vector<double> p[n_functions];
+  for (unsigned int k = 0; k < n_functions; ++k)
+    p[k].resize(0);
+  std::vector<double> nb[P4EST_DIM];
+  double min_w = 1e-6;
+  double inv_max_w = 1e-6;
+  int row_idx = 0;
+
+  for (set_of_neighboring_quadrants::const_iterator it = ngbd_tmp.begin(); it != ngbd_tmp.end(); ++it)
+  {
+    for(char touch = 0; touch < 2; ++touch)
+    {
+      f_tmp.face_idx = faces->q2f(it->p.piggy3.local_num, 2*dir + touch);
+
+      if(f_tmp.face_idx != NO_VELOCITY && face_ngbd.find(f_tmp) == face_ngbd.end())
       {
-#ifdef P4_TO_P8
-        if((face_is_well_defined==NULL || face_is_well_defined_p[f_tmp]) &&
-           fabs(xyz[0]-faces->x_fr_f(f_tmp,dir))<EPS*tree_dimension[0] && fabs(xyz[1]-faces->y_fr_f(f_tmp,dir))<EPS*tree_dimension[1] && fabs(xyz[2]-faces->z_fr_f(f_tmp,dir))<EPS*tree_dimension[2])
-#else
-        if((face_is_well_defined==NULL || face_is_well_defined_p[f_tmp]) &&
-           fabs(xyz[0]-faces->x_fr_f(f_tmp,dir))<EPS*tree_dimension[0] && fabs(xyz[1]-faces->y_fr_f(f_tmp,dir))<EPS*tree_dimension[1])
-#endif
+        faces->xyz_fr_f(f_tmp.face_idx, dir, f_tmp.xyz_face);
+        bool point_is_on_face = true;
+        for (int dim = 0; dim < P4EST_DIM && point_is_on_face; ++dim)
+          point_is_on_face = point_is_on_face && fabs(xyz[dim] - f_tmp.xyz_face[dim]) < EPS*faces->tree_dimensions[dim];
+        if((face_is_well_defined == NULL || face_is_well_defined_p[f_tmp.face_idx]) && point_is_on_face)
         {
           for (unsigned int k = 0; k < n_functions; ++k) {
-            results[k] = Fi_p[k][f_tmp];
+            results[k] = Fi_p[k][f_tmp.face_idx];
             ierr = VecRestoreArrayRead(Fi[k], &Fi_p[k]); CHKERRXX(ierr);
           }
           if(face_is_well_defined!=NULL)
@@ -172,82 +146,54 @@ void my_p4est_interpolation_faces_t::interpolate(const p4est_quadrant_t &quad, c
           return;
         }
 
-        ngbd.push_back(f_tmp);
-      }
-    }
-  }
+        face_ngbd.insert(f_tmp);
 
-  std::vector<p4est_locidx_t> interp_points;
-  matrix_t A;
-  A.resize(1,(1+P4EST_DIM+((order>=2)?(P4EST_DIM+(P4EST_DIM*(P4EST_DIM-1))/2):0))); // constant term + P4EST_DIM linear terms + (if second order) P4EST_DIM squared terms + 0.5*P4EST_DIM*(P4EST_DIM-1) crossed terms
+        if(face_is_well_defined == NULL || face_is_well_defined_p[f_tmp.face_idx])
+        {
+          double xyz_t[P4EST_DIM] = {DIM(f_tmp.xyz_face[0], f_tmp.xyz_face[1], f_tmp.xyz_face[2])};
 
-  std::vector<double> p[n_functions];
-  for (unsigned int k = 0; k < n_functions; ++k)
-    p[k].resize(0);
-  std::vector<double> nb[P4EST_DIM];
+          for(unsigned char i = 0; i < P4EST_DIM; ++i)
+          {
+            double rel_dist = (xyz[i] - xyz_t[i]);
+            if(periodic[i])
+              for (char cc = -1; cc < 2; cc+=2)
+                if(fabs((xyz[i] - xyz_t[i] + cc*(xyz_max[i] - xyz_min[i]))) < fabs(rel_dist))
+                  rel_dist = (xyz[i] - xyz_t[i] + cc*(xyz_max[i] - xyz_min[i]));
+            xyz_t[i] = rel_dist / scaling;
+          }
 
-  double min_w = 1e-6;
-  double inv_max_w = 1e-6;
+          double w = MAX(min_w,1./MAX(inv_max_w,sqrt(SUMD(SQR(xyz_t[0]), SQR(xyz_t[1]), SQR(xyz_t[2])))));
 
-  for(unsigned int m=0; m<ngbd.size(); m++)
-  {
-    p4est_locidx_t fm_idx = ngbd[m];
-    if((face_is_well_defined==NULL || face_is_well_defined_p[fm_idx]) && std::find(interp_points.begin(), interp_points.end(),fm_idx)==interp_points.end() )
-    {
-      double xyz_t[P4EST_DIM];
-      faces->xyz_fr_f(fm_idx, dir, xyz_t);
-
-      for(int i=0; i<P4EST_DIM; ++i)
-      {
-        double rel_dist = (xyz[i] - xyz_t[i]);
-        if(is_periodic(p4est, i))
-          for (short cc = -1; cc < 2; cc+=2)
-            if(fabs((xyz[i] - xyz_t[i] + ((double) cc)*(xyz_max[i] - xyz_min[i]))) < fabs(rel_dist))
-              rel_dist = (xyz[i] - xyz_t[i] + ((double) cc)*(xyz_max[i] - xyz_min[i]));
-        xyz_t[i] = rel_dist / scaling;
-      }
-//        xyz_t[i] = (xyz[i] - xyz_t[i]) / scaling;
-
+          A.set_value(row_idx, 0,                 1.0               * w);
+          A.set_value(row_idx, 1,                 xyz_t[0]          * w);
+          A.set_value(row_idx, 2,                 xyz_t[1]          * w);
 #ifdef P4_TO_P8
-      double w = MAX(min_w,1./MAX(inv_max_w,sqrt(SQR(xyz_t[0]) + SQR(xyz_t[1]) + SQR(xyz_t[2]))));
-#else
-      double w = MAX(min_w,1./MAX(inv_max_w,sqrt(SQR(xyz_t[0]) + SQR(xyz_t[1]))));
+          A.set_value(row_idx, 3,                 xyz_t[2]          * w);
 #endif
-
+          if(order >= 2)
+          {
+            A.set_value(row_idx,   1 + P4EST_DIM, xyz_t[0]*xyz_t[0] * w);
+            A.set_value(row_idx,   2 + P4EST_DIM, xyz_t[0]*xyz_t[1] * w);
 #ifdef P4_TO_P8
-      A.set_value(interp_points.size(), 0, 1                 * w);
-      A.set_value(interp_points.size(), 1, xyz_t[0]          * w);
-      A.set_value(interp_points.size(), 2, xyz_t[1]          * w);
-      A.set_value(interp_points.size(), 3, xyz_t[2]          * w);
-      if(order>=2)
-      {
-        A.set_value(interp_points.size(), 4, xyz_t[0]*xyz_t[0] * w);
-        A.set_value(interp_points.size(), 5, xyz_t[0]*xyz_t[1] * w);
-        A.set_value(interp_points.size(), 6, xyz_t[0]*xyz_t[2] * w);
-        A.set_value(interp_points.size(), 7, xyz_t[1]*xyz_t[1] * w);
-        A.set_value(interp_points.size(), 8, xyz_t[1]*xyz_t[2] * w);
-        A.set_value(interp_points.size(), 9, xyz_t[2]*xyz_t[2] * w);
-      }
-#else
-      A.set_value(interp_points.size(), 0, 1                 * w);
-      A.set_value(interp_points.size(), 1, xyz_t[0]          * w);
-      A.set_value(interp_points.size(), 2, xyz_t[1]          * w);
-      if(order>=2)
-      {
-        A.set_value(interp_points.size(), 3, xyz_t[0]*xyz_t[0] * w);
-        A.set_value(interp_points.size(), 4, xyz_t[0]*xyz_t[1] * w);
-        A.set_value(interp_points.size(), 5, xyz_t[1]*xyz_t[1] * w);
-      }
+            A.set_value(row_idx,   3 + P4EST_DIM, xyz_t[0]*xyz_t[2] * w);
 #endif
+            A.set_value(row_idx, 1 + 2*P4EST_DIM, xyz_t[1]*xyz_t[1] * w);
+#ifdef P4_TO_P8
+            A.set_value(row_idx, 2 + 2*P4EST_DIM, xyz_t[1]*xyz_t[2] * w);
+            A.set_value(row_idx,     3*P4EST_DIM, xyz_t[2]*xyz_t[2] * w);
+#endif
+          }
 
-      for (unsigned int k = 0; k < n_functions; ++k)
-        p[k].push_back(Fi_p[k][fm_idx] * w);
+          for (unsigned int k = 0; k < n_functions; ++k)
+            p[k].push_back((Fi_p[k][f_tmp.face_idx] /* + neumann_term*/)* w);
 
-      for(int d=0; d<P4EST_DIM; ++d)
-        if(std::find(nb[d].begin(), nb[d].end(), xyz_t[d]) == nb[d].end())
-          nb[d].push_back(xyz_t[d]);
+          for(unsigned char d = 0; d < P4EST_DIM; ++d)
+            if(std::find(nb[d].begin(), nb[d].end(), xyz_t[d]) == nb[d].end())
+              nb[d].push_back(xyz_t[d]);
 
-      interp_points.push_back(fm_idx);
+          row_idx++;
+        }
+      }
     }
   }
 
@@ -259,15 +205,11 @@ void my_p4est_interpolation_faces_t::interpolate(const p4est_quadrant_t &quad, c
   if(face_is_well_defined!=NULL)
     ierr = VecRestoreArrayRead(face_is_well_defined, &face_is_well_defined_p); CHKERRXX(ierr);
 
-  if(interp_points.size()==0)
+  if(row_idx == 0)
     return;
 
   A.scale_by_maxabs(p, n_functions);
 
-#ifdef P4_TO_P8
-  solve_lsqr_system(A, p, n_functions, results, nb[0].size(), nb[1].size(), nb[2].size());
-#else
-  solve_lsqr_system(A, p, n_functions, results, nb[0].size(), nb[1].size());
-#endif
+  solve_lsqr_system(A, p, n_functions, results, DIM(nb[0].size(), nb[1].size(), nb[2].size()));
   return;
 }

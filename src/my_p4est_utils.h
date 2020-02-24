@@ -7,15 +7,19 @@
 #include <p8est_nodes.h>
 #include <p8est_ghost.h>
 #include <p8est_bits.h>
+#include <src/my_p8est_macros.h>
 #include <src/my_p8est_nodes.h>
 #include <src/my_p8est_refine_coarsen.h>
+#define SQR_P4EST_DIM 9
 #else
 #include <p4est.h>
 #include <p4est_nodes.h>
 #include <p4est_ghost.h>
 #include <p4est_bits.h>
+#include <src/my_p4est_macros.h>
 #include <src/my_p4est_nodes.h>
 #include <src/my_p4est_refine_coarsen.h>
+#define SQR_P4EST_DIM 4
 #endif
 #include <src/petsc_logging.h>
 #include "petsc_compatibility.h"
@@ -44,86 +48,9 @@
 #endif
 
 
-
-
 // forward declaration
 class my_p4est_node_neighbors_t;
 class quad_neighbor_nodes_of_node_t;
-
-#define COMMA ,
-#define P4(a) a
-
-#ifdef P4_TO_P8
-#define OCOMP(a) a
-#define XCOMP(a) a
-#define YCOMP(a) a
-#define ZCOMP(a) a
-
-#define _CODE(a) a
-#define XCODE(a) a
-#define YCODE(a) a
-#define ZCODE(a) a
-
-#define CODE2D(a)
-#define CODE3D(a) a
-
-#define EXECD(a,b,c) a; b; c;
-
-#define CODE2D(a)
-#define CODE3D(a) a
-
-#define P8(a) a
-#define P8C(a) COMMA a
-#define P8EST(a) a
-#define ONLY3D(a) a
-#define DIM(a,b,c) a COMMA b COMMA c
-
-#define  SUMD(a,b,c) ( (a) +  (b) +  (c) )
-#define MULTD(a,b,c) ( (a) *  (b) *  (c) )
-#define  ANDD(a,b,c) ( (a) && (b) && (c) )
-#define   ORD(a,b,c) ( (a) || (b) || (c) )
-
-#define CODEDIM(a,b) b
-
-#define XFOR(a) for (a)
-#define YFOR(a) for (a)
-#define ZFOR(a) for (a)
-#else
-#define OCOMP(a) a
-#define XCOMP(a) a
-#define YCOMP(a) a
-#define ZCOMP(a)
-
-#define _CODE(a) a
-#define XCODE(a) a
-#define YCODE(a) a
-#define ZCODE(a)
-
-#define CODE2D(a) a
-#define CODE3D(a)
-
-#define EXECD(a,b,c) a; b;
-
-#define CODE2D(a) a
-#define CODE3D(a)
-
-#define CODEDIM(a,b) a
-
-#define P8(a)
-#define P8C(a)
-#define P8EST(a)
-#define ONLY3D(a)
-#define DIM(a,b,c) a COMMA b
-
-#define  SUMD(a,b,c) ( (a) +  (b) )
-#define MULTD(a,b,c) ( (a) *  (b) )
-#define  ANDD(a,b,c) ( (a) && (b) )
-#define   ORD(a,b,c) ( (a) || (b) )
-
-#define XFOR(a) for (a)
-#define YFOR(a) for (a)
-#define ZFOR(a)
-#endif
 
 enum cf_value_type_t { VAL, DDX, DDY, DDZ, LAP, CUR };
 
@@ -276,7 +203,13 @@ const unsigned short f2c_p[P4EST_FACES][num_neighbors_face_] = { { nn_mm0, nn_m0
                                                                  { nn_mp0, nn_0p0, nn_pp0 }};
 const unsigned short i_idx[] = { 0, 1 };
 const unsigned short j_idx[] = { 1, 0 };
+const unsigned char face_order_to_counterclock_cycle_order[P4EST_FACES] = {2, 0, 3, 1};
+const unsigned char counterclock_cycle_order_to_face_order[P4EST_FACES] = {1, 3, 0, 2};
 #endif
+
+const static std::string null_str    = "NULL";
+const static std::string stdout_str  = "stdout";
+const static std::string stderr_str  = "stderr";
 
 
 //#ifdef P4_TO_P8
@@ -311,6 +244,16 @@ const unsigned short j_idx[] = { 1, 0 };
 //#endif
 const unsigned short q2c_num_pts = P4EST_CHILDREN;
 const unsigned short t2c_num_pts = P4EST_DIM+1;
+
+struct indexed_and_located_face // for assembly of Voronoi cells, lsqr face-interpolation...
+{
+  double xyz_face[P4EST_DIM];
+  p4est_locidx_t face_idx;
+  bool operator <(const indexed_and_located_face& other_one) const
+  {
+    return (face_idx < other_one.face_idx);
+  }
+};
 
 #ifdef P4_TO_P8
 const unsigned short q2c[P4EST_CHILDREN][q2c_num_pts] = { { nn_000, nn_m00, nn_0m0, nn_mm0, nn_00m, nn_m0m, nn_0mm, nn_mmm },
@@ -380,12 +323,6 @@ public:
   double operator()(double *xyz) const {return this->operator()(xyz[0], xyz[1], xyz[2]); }
   virtual ~CF_3() {}
 };
-
-#ifdef P4_TO_P8
-#define CF_DIM CF_3
-#else
-#define CF_DIM CF_2
-#endif
 
 enum {
   WALL_m00 = -1,
@@ -856,16 +793,74 @@ inline PetscErrorCode VecCreateGhostCells(const p4est_t *p4est, const p4est_ghos
 }
 
 /*!
- * \brief VecCreateCellsBlockNoGhost Creates a non-ghosted block PETSc parallel vector on the cells
+ * \brief VecCreateNoGhostCellsBlock Creates a non-ghosted block PETSc parallel vector on the cells
  * \param p4est       [in]  the forest
  * \param block_size  [in]  block size of the vector
  * \param v           [out] PETSc vector type
  * \return a PetscErrorCode to be checked against using CHKERRXX()
  */
-PetscErrorCode VecCreateCellsBlockNoGhost(const p4est_t *p4est, const PetscInt &block_size, Vec* v);
-inline PetscErrorCode VecCreateCellsNoGhost(const p4est_t *p4est, Vec* v)
+PetscErrorCode VecCreateNoGhostCellsBlock(const p4est_t *p4est, const PetscInt &block_size, Vec* v);
+inline PetscErrorCode VecCreateNoGhostCells(const p4est_t *p4est, Vec* v)
 {
-  return VecCreateCellsBlockNoGhost(p4est, 1, v);
+  return VecCreateNoGhostCellsBlock(p4est, 1, v);
+}
+
+PetscErrorCode VecScatterAllToSomeCreate(MPI_Comm comm, Vec origin_loc, Vec destination, const PetscInt &ndest_glo_idx, const PetscInt *dest_glo_idx, VecScatter *ctx);
+inline PetscErrorCode VecScatterAllToSomeCreate(MPI_Comm comm, Vec origin_loc, Vec destination, const std::vector<PetscInt>& dest_glo_idx, VecScatter *ctx)
+{
+  return VecScatterAllToSomeCreate(comm, origin_loc, destination, dest_glo_idx.size(), dest_glo_idx.data(), ctx);
+}
+inline PetscErrorCode VecScatterAllToSomeBegin(VecScatter ctx, Vec origin_loc, Vec destination)
+{
+  return VecScatterBegin(ctx, origin_loc, destination, INSERT_VALUES, SCATTER_FORWARD);
+}
+inline PetscErrorCode VecScatterAllToSomeEnd(VecScatter ctx, Vec origin_loc, Vec destination)
+{
+  return VecScatterEnd(ctx, origin_loc, destination, INSERT_VALUES, SCATTER_FORWARD);
+}
+
+/*!
+ * \brief VecScatterAllToSome scatters all local values of an origin parallel Petsc vector to some/all values of another
+ * \param comm          [in]    mpi communication group in which the vectors live
+ * \param origin        [in]    origin vector from which all values need to be scattered
+ * \param destination   [inout] destination vector in which some/all values need to be filled
+ * \param ndest_glo_idx [in]    number of elements in dest_glo_idx array (next argument)
+ * \param dest_glo_idx  [in]    array of ndest_glo_idx global indices corresponding to the destination indices mapped with
+ *                              the local values of the origin vector
+ *                              (NULL is fine if ndest_glo_idx is 0)
+ * \param sync_ghost    [in]    activates ghost updates in the destination vector after scattering if true (default is false)
+ * [DEBUG check] this routine checks that the global size of the origin is <= the global size of destination in DEBUG
+ * [DEBUG check] this routine checks that ndest_glo_idx is <= the local size of origin in DEBUG
+ * \return a Petsc error code to be checked against for success/failure
+ */
+inline PetscErrorCode VecScatterAllToSome(MPI_Comm comm, Vec origin, Vec destination, const PetscInt &ndest_glo_idx, const PetscInt *dest_glo_idx, const bool &sync_ghost = false)
+{
+  PetscErrorCode ierr;
+#ifdef DEBUG
+  PetscInt full_size_origin, full_size_destination, local_size_origin;
+  ierr = VecGetSize(origin, &full_size_origin);                                                       CHKERRQ(ierr);
+  ierr = VecGetSize(destination, &full_size_destination);                                             CHKERRQ(ierr);
+  P4EST_ASSERT(full_size_origin <= full_size_destination);
+  ierr = VecGetLocalSize(origin, &local_size_origin);                                                 CHKERRQ(ierr);
+  P4EST_ASSERT(ndest_glo_idx <= local_size_origin);
+#endif
+  VecScatter ctx;
+  Vec origin_loc;
+  ierr = VecGhostGetLocalForm(origin, &origin_loc);                                                   CHKERRQ(ierr);
+  ierr = VecScatterAllToSomeCreate(comm, origin_loc, destination, ndest_glo_idx, dest_glo_idx, &ctx); CHKERRQ(ierr);
+  ierr = VecScatterAllToSomeBegin(ctx, origin_loc, destination);                                      CHKERRQ(ierr);
+  ierr = VecScatterAllToSomeEnd(ctx, origin_loc, destination);                                        CHKERRQ(ierr);
+  ierr = VecGhostRestoreLocalForm(origin, &origin_loc);                                               CHKERRQ(ierr);
+  if(sync_ghost){
+    ierr = VecGhostUpdateBegin(destination, INSERT_VALUES, SCATTER_FORWARD);                          CHKERRQ(ierr); }
+  ierr = VecScatterDestroy(ctx);                                                                      CHKERRQ(ierr);
+  if(sync_ghost){
+    ierr = VecGhostUpdateEnd(destination, INSERT_VALUES, SCATTER_FORWARD);                            CHKERRQ(ierr); }
+  return ierr;
+}
+inline PetscErrorCode VecScatterAllToSome(MPI_Comm comm, Vec origin, Vec destination, const std::vector<PetscInt>& dest_glo_idx, const bool &sync_ghost = false)
+{
+  return VecScatterAllToSome(comm, origin, destination, dest_glo_idx.size(), dest_glo_idx.data(), sync_ghost);
 }
 
 /*!
@@ -906,6 +901,7 @@ PetscErrorCode VecGhostChangeLayoutEnd(VecScatter ctx, Vec from, Vec to);
  * [throws std::runtime_error if the path cannot be accessed]
  */
 bool is_folder(const char* path);
+inline bool is_folder(const std::string &path_str) { return is_folder(path_str.c_str()); }
 
 /*!
  * \brief file_exists returns true if the path points to an existing file
@@ -914,6 +910,7 @@ bool is_folder(const char* path);
  * \return true if there exists a file corresponding to the given path
  */
 bool file_exists(const char* path);
+inline bool file_exists(const std::string &path_str) { return file_exists(path_str.c_str()); }
 
 /*!
  * \brief create_directory creates a folder indicated by the given path, permission rights: 755
@@ -925,6 +922,10 @@ bool file_exists(const char* path);
  * [the root process creates the folder, the operation is collective by MPI_Bcast on the result]
  */
 int create_directory(const char* path, int mpi_rank, MPI_Comm comm=MPI_COMM_WORLD);
+inline int create_directory(const std::string &path_str, int mpi_rank, MPI_Comm comm=MPI_COMM_WORLD)
+{
+  return create_directory(path_str.c_str(), mpi_rank, comm);
+}
 
 /*!
  * \brief delete_directory_recursive explores a directory then
@@ -941,8 +942,16 @@ int create_directory(const char* path, int mpi_rank, MPI_Comm comm=MPI_COMM_WORL
  * [throws std::invalid_argument if the root_path is NOT a directory]
  */
 int delete_directory(const char* root_path, int mpi_rank, MPI_Comm comm=MPI_COMM_WORLD, bool non_collective=false);
+inline int delete_directory(const std::string &root_path_str, int mpi_rank, MPI_Comm comm=MPI_COMM_WORLD, bool non_collective=false)
+{
+  return delete_directory(root_path_str.c_str(), mpi_rank, comm, non_collective);
+}
 
 int get_subdirectories_in(const char* root_path, std::vector<std::string>& subdirectories);
+inline int get_subdirectories_in(const std::string root_path_str, std::vector<std::string>& subdirectories)
+{
+  return get_subdirectories_in(root_path_str.c_str(), subdirectories);
+}
 
 inline double int2double_coordinate_transform(p4est_qcoord_t a){
   return static_cast<double>(a)/static_cast<double>(P4EST_ROOT_LEN);
@@ -1456,6 +1465,10 @@ double area_in_negative_domain(const p4est_t *p4est, const p4est_nodes_t *nodes,
  * \brief integrate_over_interface_in_one_quadrant
  */
 double integrate_over_interface_in_one_quadrant(const p4est_t *p4est, const p4est_nodes_t *nodes, const p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi, Vec f);
+/*!
+ * \brief max_over_interface_in_one_quadrant
+ */
+double max_over_interface_in_one_quadrant(const p4est_nodes_t *nodes, p4est_locidx_t quad_idx, Vec phi, Vec f);
 
 /*!
  * \brief integrate_over_interface integrate a scalar f over the 0-contour of the level-set function phi.
@@ -1467,6 +1480,16 @@ double integrate_over_interface_in_one_quadrant(const p4est_t *p4est, const p4es
  * \return the integral of f over the contour defined by phi, i.e. \int_{phi=0} f
  */
 double integrate_over_interface(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec f);
+
+/*!
+ * \brief max_over_interface calculate the maximum value of a scalar f over the 0-contour of the level-set function phi.
+ * \param p4est the p4est
+ * \param nodes the nodes structure associated to p4est
+ * \param phi the level-set function
+ * \param f the scalar to integrate
+ * \return the integral of f over the contour defined by phi, i.e. \max_{phi=0} f
+ */
+double max_over_interface(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec f);
 
 /*!
  * \brief compute_mean_curvature computes the mean curvature using compact stencil k = -div(n)
@@ -1696,25 +1719,29 @@ bool is_quad_Wall  (const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quad
  * \param dir   [in] the direction to check, 0 (x), 1 (y) or 2 (z, only in 3D)
  * \return true if the forest is periodic in direction dir, false otherwise
  */
-inline bool is_periodic(const p4est_t *p4est, int dir)
+inline bool is_periodic(const p4est_connectivity_t *const conn, const unsigned char & dir)
 {
   /* check whether there is not a boundary on the left side of first tree */
   P4EST_ASSERT (0 <= dir && dir < P4EST_DIM);
 
-  const int face = 2 * dir;
+  const unsigned char face = 2 * dir;
   const p4est_topidx_t tfindex = 0 * P4EST_FACES + face;
 
-  return !(p4est->connectivity->tree_to_tree[tfindex] == 0 &&
-           p4est->connectivity->tree_to_face[tfindex] == face);
+  return !(conn->tree_to_tree[tfindex] == 0 &&
+           conn->tree_to_face[tfindex] == face);
+}
+inline bool is_periodic(const p4est_t *p4est, const unsigned char &dir)
+{
+  return is_periodic(p4est->connectivity, dir);
 }
 
 inline void clip_in_domain(double xyz[P4EST_DIM], const double xyz_min[P4EST_DIM], const double xyz_max[P4EST_DIM], const bool periodic[P4EST_DIM])
 {
-  for(unsigned char dir=0; dir<P4EST_DIM; ++dir)
-    if((xyz[dir]<xyz_min[dir]) || (xyz[dir]>xyz_max[dir]))
+  for(unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+    if(xyz[dir] < xyz_min[dir] || xyz[dir] > xyz_max[dir])
     {
       if(periodic[dir])
-        xyz[dir] = xyz[dir] - floor((xyz[dir]-xyz_min[dir])/(xyz_max[dir]-xyz_min[dir]))*(xyz_max[dir]-xyz_min[dir]);
+        xyz[dir] = xyz[dir] - floor((xyz[dir] - xyz_min[dir])/(xyz_max[dir] - xyz_min[dir]))*(xyz_max[dir] - xyz_min[dir]);
       else
         xyz[dir] = MAX(xyz_min[dir], MIN(xyz_max[dir], xyz[dir]));
     }
@@ -1734,12 +1761,18 @@ inline void clip_in_domain(double xyz[P4EST_DIM], const p4est_t* p4est)
 }
 
 /*!
- * \brief find the owner rank of a ghost quadrant
- * \param ghost the ghost structure
- * \param ghost_idx the index of the ghost quadrant (between 0 and the number of ghost quadrants)
+ * \brief quad_find_ghost_owner finds the owner rank of a ghost quadrant by binary search
+ * \param ghost     [in] the ghost structure
+ * \param ghost_idx [in] the index of the ghost quadrant (between 0 and the number of ghost quadrants)
+ * \param r_down    [in] lower bound for the owner rank
+ * \param r_up      [in] upper bound for the owner rank
  * \return the rank who owns the ghost quadrant
  */
-int quad_find_ghost_owner(const p4est_ghost_t *ghost, p4est_locidx_t ghost_idx);
+int quad_find_ghost_owner(const p4est_ghost_t *ghost, const p4est_locidx_t &ghost_idx, int r_down, int r_up);
+inline int quad_find_ghost_owner(const p4est_ghost_t *ghost, p4est_locidx_t ghost_idx)
+{
+  return quad_find_ghost_owner(ghost, ghost_idx, 0, ghost->mpisize);
+}
 
 /*!
  * \brief sample_cf_on_nodes samples a cf function on the nodes. both local and ghost poinst are considered
@@ -2408,12 +2441,17 @@ public:
   {
     double phi_eff = -10;
     double phi_cur = -10;
-    for (int i=0; i<phi_cf.size(); ++i)
+    for (size_t i=0; i<phi_cf.size(); ++i)
     {
       phi_cur = (*phi_cf[i])( DIM(x,y,z) );
       switch (action[i]) {
-        case MLS_INTERSECTION: if (phi_cur > phi_eff) phi_eff = phi_cur; break;
-        case MLS_ADDITION:     if (phi_cur < phi_eff) phi_eff = phi_cur; break;
+      case MLS_INTERSECTION: if (phi_cur > phi_eff) phi_eff = phi_cur; break;
+      case MLS_ADDITION:     if (phi_cur < phi_eff) phi_eff = phi_cur; break;
+      default:
+#ifdef CASL_THROWS
+        throw std::runtime_error("mls_eff_cf_t::operator(): unknown action. Only MLS_INTERSECTION and MLS_ADDITION are currently implemented.");
+#endif
+        break;
       }
     }
 
@@ -2456,8 +2494,13 @@ public:
     {
       phi_cur = (*phi_cf[i])( DIM(x,y,z) );
       switch (action[i]) {
-        case MLS_INTERSECTION: phi_eff = 0.5*(phi_eff+phi_cur+sqrt(SQR(phi_eff-phi_cur)+epsilon)); break;
-        case MLS_ADDITION:     phi_eff = 0.5*(phi_eff+phi_cur-sqrt(SQR(phi_eff-phi_cur)+epsilon)+(epsilon)/sqrt(SQR(phi_eff-phi_cur)+epsilon)); break;
+      case MLS_INTERSECTION: phi_eff = 0.5*(phi_eff+phi_cur+sqrt(SQR(phi_eff-phi_cur)+epsilon)); break;
+      case MLS_ADDITION:     phi_eff = 0.5*(phi_eff+phi_cur-sqrt(SQR(phi_eff-phi_cur)+epsilon)+(epsilon)/sqrt(SQR(phi_eff-phi_cur)+epsilon)); break;
+      default:
+#ifdef CASL_THROWS
+        throw std::runtime_error("mls_smooth_cf_t::operator(): unknown action. Only MLS_INTERSECTION and MLS_ADDITION are currently implemented.");
+#endif
+        break;
       }
     }
     return phi_eff;
@@ -2577,7 +2620,9 @@ struct interface_point_t
 
   inline double x() { return xyz[0]; }
   inline double y() { return xyz[1]; }
+#ifdef P4_TO_P8
   inline double z() { return xyz[2]; }
+#endif
   inline void get_xyz(double xyz[])
   {
     XCODE( xyz[0] = this->xyz[0] );
@@ -2653,9 +2698,9 @@ void compute_wall_normal(const int &dir, double normal[]);
 
 struct points_around_node_map_t
 {
-  int count;
   std::vector<int> size;   // N*sizeof(int)
   std::vector<int> offset; // N*sizeof(int)
+  int count;
 
   points_around_node_map_t(int num_nodes=0)
     : size(num_nodes,0), offset(num_nodes+1, 0), count(0) {}
@@ -2669,7 +2714,7 @@ struct points_around_node_map_t
   inline void compute_offsets()
   {
     offset[0] = 0;
-    for (int i=1; i<size.size(); ++i)
+    for (size_t i=1; i<size.size(); ++i)
       offset[i] = offset[i-1] + size[i-1];
   }
 };
@@ -2770,7 +2815,7 @@ struct boundary_conditions_t
 #ifdef CASL_THROWS
     else
     {
-      if (node_map[n] > dirichlet_local_map.size()-1) throw;
+      if (node_map[n] > (int) dirichlet_local_map.size()-1) throw;
     }
 
     if (type == ROBIN || type == NEUMANN) throw;
@@ -2871,7 +2916,7 @@ struct boundary_conditions_t
     }
   }
 
-  inline int idx_robin_pt(p4est_locidx_t n, int k)
+  inline int idx_robin_pt(p4est_locidx_t n, int)
   {
     if (node_map[n] == -1) throw;
 
@@ -2896,7 +2941,7 @@ struct boundary_conditions_t
     dirichlet_weights  .clear();
     dirichlet_pts      .clear();
 
-    pointwise      = NULL;
+    pointwise      = false;
     value_pw       = NULL;
     value_pw_robin = NULL;
     coeff_pw_robin = NULL;
@@ -2908,9 +2953,15 @@ struct boundary_conditions_t
 
     switch (type)
     {
-      case DIRICHLET: return (*value_pw)[dirichlet_local_map[node_map[n]][i]];
-      case NEUMANN:   return (*value_pw)[node_map[n]];
-      case ROBIN:     return (*value_pw)[node_map[n]];
+    case DIRICHLET: return (*value_pw)[dirichlet_local_map[node_map[n]][i]];
+    case NEUMANN:   return (*value_pw)[node_map[n]];
+    case ROBIN:     return (*value_pw)[node_map[n]];
+    default:
+#ifdef CASL_THROWS
+      throw std::runtime_error("boundary_conditions_t::get_value_pw: unknown boundary condition type, only DIRICHLET, NEUMANN AND ROBIN are currently implemented");
+#endif
+      return NAN;
+      break;
     }
 
   }
@@ -2921,9 +2972,15 @@ struct boundary_conditions_t
 
     switch (type)
     {
-      case DIRICHLET: throw;
-      case NEUMANN:   throw;
-      case ROBIN:     return (*value_pw_robin)[node_map[n]];
+    case DIRICHLET: throw;
+    case NEUMANN:   throw;
+    case ROBIN:     return (*value_pw_robin)[node_map[n]];
+    default:
+#ifdef CASL_THROWS
+      throw std::runtime_error("boundary_conditions_t::get_robin_pw_value: unknown boundary condition type, only DIRICHLET, NEUMANN AND ROBIN are currently implemented");
+#endif
+      return NAN;
+      break;
     }
 
   }
@@ -2934,9 +2991,15 @@ struct boundary_conditions_t
 
     switch (type)
     {
-      case DIRICHLET: throw;
-      case NEUMANN:   throw;
-      case ROBIN:     return (*coeff_pw_robin)[node_map[n]];
+    case DIRICHLET: throw;
+    case NEUMANN:   throw;
+    case ROBIN:     return (*coeff_pw_robin)[node_map[n]];
+    default:
+#ifdef CASL_THROWS
+      throw std::runtime_error("boundary_conditions_t::get_robin_pw_coeff: unknown boundary condition type, only DIRICHLET, NEUMANN AND ROBIN are currently implemented");
+#endif
+      return NAN;
+      break;
     }
   }
 
