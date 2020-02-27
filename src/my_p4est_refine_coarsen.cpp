@@ -667,20 +667,23 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
   #endif
 
       const double dxyz_min_overall = (double)P4EST_QUADRANT_LEN((int8_t) max_lvl)/(double)P4EST_ROOT_LEN; // Gives min dimension overall --> used for uniform band implementation
-      const double dmin = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN; // Gives min dimension of the quad--> used to get quad_diag
-      const double dx = (tree_xmax-tree_xmin) * dmin;
-      const double dy = (tree_ymax-tree_ymin) * dmin;
+      const double dlvl = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN; // dlvl -- the size of the current quad (as a fraction of root length)
+      const double dx = (tree_xmax-tree_xmin) * dlvl;
+      const double dy = (tree_ymax-tree_ymin) * dlvl;
+
+
 
 
   #ifdef P4_TO_P8
-      double dz = (tree_zmax-tree_zmin) * dmin;
+      double dz = (tree_zmax-tree_zmin) * dlvl;
 
   #endif
 
   #ifdef P4_TO_P8
       double d = sqrt(dx*dx + dy*dy + dz*dz);
   #else
-      const double d = sqrt(dx*dx + dy*dy); // This gives the quad diagonal
+//      const double d = sqrt(dx*dx + dy*dy); // This gives the quad diagonal
+      const double d = MAX(dx,dy); // d gives the largest size of the quad
   #endif
       double max_tree_dim = MAX((tree_xmax - tree_xmin),(tree_ymax - tree_ymin));
 
@@ -736,8 +739,8 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
                 // Note: I check this to save computation time -- no sense looping over all the fields if there is nothing to gain from it
 
                 double field_val;
-                double criteria_coarsen = NULL;
-                double criteria_refine = NULL;
+                double criteria_coarsen = -1.;
+                double criteria_refine = -1.; // Initialize these values to a negative number(which they cannot be), so if they aren't assigned, we can check if they are still less than zero.
 
                 for(unsigned short n = 0; n<num_fields;n++){
 //                    if(refine){ // If refine is ever true, we can stop checking and mark the quad for refinement
@@ -761,7 +764,7 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
 
                     // Switch over the cases for different comparision options to check the refinement and coarsening criteria:
                     if(coarsen){
-                        P4EST_ASSERT(criteria_coarsen!=NULL); // Make sure criteria has been defined before continuing
+                        P4EST_ASSERT(criteria_coarsen>=0.); // Make sure criteria has been defined before continuing
                         switch(diag_opn[2*n]){
                           case DIVIDE_BY:{
                               switch(compare_opn[2*n]){
@@ -770,6 +773,7 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
                                   break;
                                 case LESS_THAN:
                                   coarsen = coarsen && ((fabs(field_val)) < criteria_coarsen/d);
+//                                  if(coarsen && n==0){printf("Coarsened at level %d based on vorticity = %0.4f on rank %d \n \n",quad->level,field_val,p4est->mpirank);}
                                   break;
                                 default:
                                   throw std::invalid_argument("blah");
@@ -808,11 +812,14 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
                           } // End of switch case on diagonal comparison option
                       } // End of if (coarsen)
                     if(refine_possible){
-                        P4EST_ASSERT(criteria_refine!=NULL); // Make sure criteria has been defined before continuing
+                        P4EST_ASSERT(criteria_refine>=0.); // Make sure criteria has been defined before continuing
+//                        if(n==0) PetscPrintf(p4est->mpicomm,"Refinement greater than %0.4f at lvl %d  \n",criteria_refine/d,quad->level);
                         switch(diag_opn[2*n + 1]){
                           case DIVIDE_BY:{
                               switch(compare_opn[2*n + 1]){
                                 case GREATER_THAN:{
+//                                    if((fabs(field_val) > criteria_refine/d) && n==0){
+//                                        printf("Refined at level %d based on vorticity = %0.4f on rank %d \n \n",quad->level,field_val,p4est->mpirank);}
                                   refine = refine || (fabs(field_val) > criteria_refine/d);
                                   break;
                                   }
