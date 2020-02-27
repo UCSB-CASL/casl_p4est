@@ -411,7 +411,7 @@ coarsen_marked_quadrants(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadra
   return P4EST_FALSE;
 }
 
-void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *quad, p4est_topidx_t which_tree, const double* f) {
+void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *quad, p4est_topidx_t which_tree, const double* f, bool finest_in_negative_flag) {
   if (quad->level < min_lvl) {
     quad->p.user_int = REFINE_QUADRANT;
 
@@ -816,7 +816,44 @@ void splitting_criteria_tag_t::init_fn(p4est_t* p4est, p4est_topidx_t which_tree
   quad->p.user_int = NEW_QUADRANT;
 }
 
-bool splitting_criteria_tag_t::refine_and_coarsen(p4est_t* p4est, const p4est_nodes_t* nodes, const double *phi) {
+bool splitting_criteria_tag_t::refine_and_coarsen(p4est_t* p4est, const p4est_nodes_t* nodes, const double *phi, bool finest_in_negative_flag) {
+
+  double f[P4EST_CHILDREN];
+  for (p4est_topidx_t it = p4est->first_local_tree; it <= p4est->last_local_tree; ++it) {
+    p4est_tree_t* tree = p4est_tree_array_index(p4est->trees, it);
+    for (size_t q = 0; q <tree->quadrants.elem_count; ++q) {
+      p4est_quadrant_t *quad = p4est_quadrant_array_index(&tree->quadrants, q);
+      p4est_locidx_t qu_idx  = q + tree->quadrants_offset;
+
+      for (short i = 0; i<P4EST_CHILDREN; i++)
+        f[i] = phi[nodes->local_nodes[qu_idx*P4EST_CHILDREN + i]];
+      if(refine_only_inside)  tag_quadrant_inside(p4est, quad, it, f);
+      else                    tag_quadrant(p4est, quad, it, f, finest_in_negative_flag);
+    }
+  }
+
+  my_p4est_coarsen(p4est, P4EST_FALSE, splitting_criteria_tag_t::coarsen_fn, splitting_criteria_tag_t::init_fn);
+  my_p4est_refine (p4est, P4EST_FALSE, splitting_criteria_tag_t::refine_fn,  splitting_criteria_tag_t::init_fn);
+
+  int is_grid_changed = false;
+  for (p4est_topidx_t it = p4est->first_local_tree; it <= p4est->last_local_tree; ++it) {
+    p4est_tree_t* tree = p4est_tree_array_index(p4est->trees, it);
+    for (size_t q = 0; q <tree->quadrants.elem_count; ++q) {
+      p4est_quadrant_t *quad = p4est_quadrant_array_index(&tree->quadrants, q);
+      if (quad->p.user_int == NEW_QUADRANT) {
+        is_grid_changed = true;
+        goto function_end;
+      }
+    }
+  }
+
+function_end:
+  MPI_Allreduce(MPI_IN_PLACE, &is_grid_changed, 1, MPI_INT, MPI_LOR, p4est->mpicomm);
+
+  return is_grid_changed;
+}
+
+bool splitting_criteria_tag_t::refine(p4est_t* p4est, const p4est_nodes_t* nodes, const double *phi, bool finest_in_negative_flag) {
 
   double f[P4EST_CHILDREN];
   for (p4est_topidx_t it = p4est->first_local_tree; it <= p4est->last_local_tree; ++it) {
@@ -832,7 +869,6 @@ bool splitting_criteria_tag_t::refine_and_coarsen(p4est_t* p4est, const p4est_no
     }
   }
 
-  my_p4est_coarsen(p4est, P4EST_FALSE, splitting_criteria_tag_t::coarsen_fn, splitting_criteria_tag_t::init_fn);
   my_p4est_refine (p4est, P4EST_FALSE, splitting_criteria_tag_t::refine_fn,  splitting_criteria_tag_t::init_fn);
 
   int is_grid_changed = false;
@@ -852,6 +888,7 @@ function_end:
 
   return is_grid_changed;
 }
+
 // ELYCE TRYING SOMETHING -------:
 
 bool splitting_criteria_tag_t::refine_and_coarsen(p4est_t* p4est, p4est_nodes_t* nodes, Vec phi, const int num_fields, bool use_block, bool enforce_uniform_band,double refine_band,double coarsen_band,Vec *fields,Vec fields_block, std::vector<double> criteria, std::vector<compare_option_t> compare_opn, std::vector<compare_diagonal_option_t> diag_opn){
@@ -869,12 +906,12 @@ bool splitting_criteria_tag_t::refine_and_coarsen(p4est_t* p4est, p4est_nodes_t*
       ierr = VecGetArrayRead(fields_block,&fields_block_p); CHKERRXX(ierr);
 
       // Make sure other option is set to NULL, since at this point we assume we are using block -- if other option isn't NULL, will get an error when we call the next refine and coarsen function, because the object type of fields won't be a vector of doubles anymore
-      for(int i =0; i<num_fields; i++){
+      for(int i =0; i < num_fields; i++){
           fields[i] == NULL;
         }
   }// end of "if use block /else" statement -- if portion
   else{
-      for (unsigned int i = 0; i<num_fields; i++){
+      for (unsigned int i = 0; i < num_fields; i++){
           ierr = VecGetArrayRead(fields[i],&fields_p[i]);
         }
       //P4EST_ASSERT(fields_block == NULL); // if we are using list of fields, then block fields should be set to NULL, otherwise will get an error when we call the next refine and coarsen function bc of a datatype mismatch
@@ -966,41 +1003,6 @@ bool splitting_criteria_tag_t::refine_and_coarsen(p4est_t* p4est, p4est_nodes_t*
 }
 
 // END: ELYCE TRYING SOMETHING--------------
-bool splitting_criteria_tag_t::refine(p4est_t* p4est, const p4est_nodes_t* nodes, const double *phi) {
-
-  double f[P4EST_CHILDREN];
-  for (p4est_topidx_t it = p4est->first_local_tree; it <= p4est->last_local_tree; ++it) {
-    p4est_tree_t* tree = (p4est_tree_t*)sc_array_index(p4est->trees, it);
-    for (size_t q = 0; q <tree->quadrants.elem_count; ++q) {
-      p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, q);
-      p4est_locidx_t qu_idx  = q + tree->quadrants_offset;
-
-      for (short i = 0; i<P4EST_CHILDREN; i++)
-        f[i] = phi[nodes->local_nodes[qu_idx*P4EST_CHILDREN + i]];
-      if(refine_only_inside)  tag_quadrant_inside(p4est, quad, it, f);
-      else                    tag_quadrant(p4est, quad, it, f, finest_in_negative_flag);
-    }
-  }
-
-  my_p4est_refine (p4est, P4EST_FALSE, splitting_criteria_tag_t::refine_fn,  splitting_criteria_tag_t::init_fn);
-
-  int is_grid_changed = false;
-  for (p4est_topidx_t it = p4est->first_local_tree; it <= p4est->last_local_tree; ++it) {
-    p4est_tree_t* tree = (p4est_tree_t*)sc_array_index(p4est->trees, it);
-    for (size_t q = 0; q <tree->quadrants.elem_count; ++q) {
-      p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, q);
-      if (quad->p.user_int == NEW_QUADRANT) {
-        is_grid_changed = true;
-        goto function_end;
-      }
-    }
-  }
-
-function_end:
-  MPI_Allreduce(MPI_IN_PLACE, &is_grid_changed, 1, MPI_INT, MPI_LOR, p4est->mpicomm);
-
-  return is_grid_changed;
-}
 
 p4est_bool_t
 refine_grad_cf(p4est_t *p4est, p4est_topidx_t which_tree, p4est_quadrant_t *quad)

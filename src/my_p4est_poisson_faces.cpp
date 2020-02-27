@@ -411,7 +411,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(const unsigned char &dir)
 
 #ifdef CASL_THROWS
     p4est_tree_t *tree = p4est_tree_array_index(p4est->trees, tree_idx);
-    p4est_quadrant_t *quad = p4est_quadrant_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
+    p4est_quadrant_t *quad = p4est_quadrant_array_index(&tree->quadrants, quad_idx - tree->quadrants_offset);
 #endif
 
     // E: Get the coordinates of the center of the given face
@@ -488,10 +488,9 @@ void my_p4est_poisson_faces_t::setup_linear_system(const unsigned char &dir)
 #endif
     }
 
+    const vector<ngbdDIMseed> *points;
 #ifdef P4_TO_P8
-    const vector<ngbd3Dseed> *points;
 #else
-    vector<ngbd2Dseed> *points;
     vector<Point2> *partition;
 
     // E: Store Voronoi partition and points:
@@ -508,7 +507,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(const unsigned char &dir)
       {
         if(!only_diag_is_modified[dir] && !matrix_is_ready[dir]) {
           ierr = MatSetValue(A[dir], f_idx_g, f_idx_g, 1, ADD_VALUES); CHKERRXX(ierr); } // needs to be done only if fully reset
-        rhs_p[f_idx] = bc[dir].interfaceValue(xyz); // E: Add Interface bc value to RHS
+        rhs_p[f_idx] = bc[dir].interfaceValue(xyz);        // E: Add Interface bc value to RHS
         interp_dxyz_hodge.add_point(bc_index.size(), xyz); // E: Add xyz location of face to list of points to interpolate grad(hodge) at
         bc_index.push_back(f_idx);                         // E: Add face index to list of bc index
         bc_coeffs.push_back(1);                            // E: Add 1 to lsit of bc coefficients
@@ -525,35 +524,8 @@ void my_p4est_poisson_faces_t::setup_linear_system(const unsigned char &dir)
         continue;
       }
 
-      // E: Now get the values of the LSF in the area surrounding the quadrant --> Used to detect the presence of the interface in the area around the current face
-      // Also save the distances used
-      /*
-       ie.)
-                                         -------------- | ----------------
-                                          |             |               |
-                                          |             |               |
-                                          |      phi(xyz(f_idx) + dy)   |
-                                          |             ^        ^      |
-                                          |             |        |      |
-                                          |             dy       d_[3]  |
-                                          |             |        |      |
-                                          |----------dir: fopo----------|
-                                          |             |        |      |
-                                          |   <-d_[0]-> |        |      |
-           phi(xyz(f_idx) -dx)<--dx-- dir: fm00  .....f_idx..... v    dir: fp00 --dx--> phi(xyz(f_idx) + dx)
-                                          |      ^      |   <-d_[1]->   |
-                                          |      |      |               |
-                                          |-----------dir: f0m0---------|
-                                          |      |      |               |
-                                          |     d_[2]   dy              |
-                                          |      |      |               |
-                                          |      v      v               |
-                                          |     phi(xyz(f_idx) - dy)    |
-                                          |             |               |
-                                          |             |               |
-                                           ------------ | ----------------
-
-      */
+      // Now sample the values of the LSF in the area surrounding the face --> Used to detect the presence of the interface in the area around the current face
+      // phi[ff] == value of the LSF at the face neighbor in (oriented) direction ff, assuming uniform local neighborhood
       double phi[P4EST_FACES];
       // E: Check for presence of interface via a sign change in LSF and by checking the Voronoi points
       bool is_interface = false;
@@ -729,7 +701,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(const unsigned char &dir)
                 set_of_neighboring_quadrants ngbd; ngbd.clear();
                 ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, ff);
 #ifdef CASL_THROWS
-                P4EST_ASSERT(ngbd.size() != 1 || ngbd.begin()->level != quad->level);
+                P4EST_ASSERT(ngbd.size() == 1 && ngbd.begin()->level == quad->level);
                 // throw std::invalid_argument("[CASL_ERROR]: my_p4est_poisson_faces_t->setup_linear_system: the grid is not uniform close to the interface.");
 #endif
                 p4est_gloidx_t f_tmp_g;
@@ -796,10 +768,10 @@ void my_p4est_poisson_faces_t::setup_linear_system(const unsigned char &dir)
           for (unsigned char zd = 0; zd < 2; ++zd)
           {
             double xyz_eval[3] = {(xd == 0 ? c3.xyz_mmm[0] : c3.xyz_ppp[0]), (yd == 0 ? c3.xyz_mmm[1] : c3.xyz_ppp[1]), (zd == 0 ? c3.xyz_mmm[2] : c3.xyz_ppp[2])};
-            iv.val[4*xd+2*yd+zd] = bc[dir].interfaceValue(xyz_eval) + hodge_correction;
-            op.val[4*xd+2*yd+zd] = interp_phi(xyz_eval);
-            is_pos = is_pos || op.val[4*xd+2*yd+zd] > 0.0;
-            is_neg = is_neg || op.val[4*xd+2*yd+zd] <= 0.0;
+            iv.val[4*xd + 2*yd + zd] = bc[dir].interfaceValue(xyz_eval) + hodge_correction;
+            op.val[4*xd + 2*yd + zd] = interp_phi(xyz_eval);
+            is_pos = is_pos || op.val[4*xd + 2*yd + zd] > 0.0;
+            is_neg = is_neg || op.val[4*xd + 2*yd + zd] <= 0.0;
           }
       const double volume = c3.volume_In_Negative_Domain(op);
 
@@ -906,9 +878,6 @@ void my_p4est_poisson_faces_t::setup_linear_system(const unsigned char &dir)
 
     /* ----------------------------------------------------------------------------------------------------------------------------------------------------------------
      * BULK CASE: Finite Volume Discretization using Voronoi Cells
-     * ------------------------
-     * Bulk case, away from the interface
-     * Use finite volumes on the voronoi cells
      ----------------------------------------------------------------------------------------------------------------------------------------------------------------*/
 
     /* integrally in positive domain */
@@ -947,42 +916,32 @@ void my_p4est_poisson_faces_t::setup_linear_system(const unsigned char &dir)
 #endif
       double distance_to_neighbor = ((*points)[m].p - pc).norm_L2(); // E: Distance between the center point of the Voronoi cell and the mth Voronoi point (distance to each neighbor value)
 
-      switch((*points)[m].n) // E: *points[m].n returns the index of the point, which corresponds to what kind of face the point lies on
+      switch((*points)[m].n) // E: *points[m].n returns the index of the mth neighbor face, except if it is negative (wall/interface cut)
       {
       case WALL_parallel_to_face:
       {
         matrix_has_nullspace[dir] = false;
         // no need to divide d by 2 in this special case, by construction in Voronoi2/3D
-        if(!only_diag_is_modified[dir] && !is_matrix_ready[dir])
+        if(!only_diag_is_modified[dir] && !matrix_is_ready[dir])
         {
-          ierr = MatSetValue(A[dir], f_idx_g, f_idx_g, mu*s/d, ADD_VALUES); CHKERRXX(ierr); // needs only to be done if fully reset
+          ierr = MatSetValue(A[dir], f_idx_g, f_idx_g, mu*surface/distance_to_neighbor, ADD_VALUES); CHKERRXX(ierr); // needs only to be done if fully reset
         }
         try {
+          if(bc_hodge != NULL && (bc_hodge->wallType(DIM((*points)[m].p.x, (*points)[m].p.y, (*points)[m].p.z)) == NEUMANN))
+          {
 #ifdef P4_TO_P8
-          if(bc_hodge!=NULL && (bc_hodge->wallType((*points)[m].p.x, (*points)[m].p.y, (*points)[m].p.z)==NEUMANN))
-          {
-            bool positive = ((dir==dir::x)? ((*points)[m].p.x > xyz[0]):((dir==dir::y)? ((*points)[m].p.y > xyz[1]): ((*points)[m].p.z > xyz[2])));
-            rhs_p[f_idx] += mu*s*(bc[dir].wallValue((*points)[m].p.x, (*points)[m].p.y, (*points)[m].p.z) + (positive?+1.0:-1.0)*bc_hodge->wallValue((*points)[m].p.x, (*points)[m].p.y, (*points)[m].p.z)) / d;
-          }
-          else
-          {
-            // this is the least desirable scenario and main reason for the try-catch:
-            // the user wants to use a stretched grid, but does not provide bc's that can easily be evaluated from everywhere so the solver's usage requires locality: if dxyz_hodge can't be interpolated where it's desired this is very likely to throw an exception
-            rhs_p[f_idx] += mu*s*(bc[dir].wallValue((*points)[m].p.x, (*points)[m].p.y, (*points)[m].p.z) + interp_dxyz_hodge((*points)[m].p.x, (*points)[m].p.y, (*points)[m].p.z)) / d;
-          }
+            bool positive = (dir == dir::x ? (*points)[m].p.x > xyz[0] : (dir == dir::y ? (*points)[m].p.y > xyz[1] : (*points)[m].p.z > xyz[2]));
 #else
-          if(bc_hodge!=NULL && (bc_hodge->wallType((*points)[m].p.x, (*points)[m].p.y)==NEUMANN))
-          {
-            bool positive = ((dir==dir::x)? ((*points)[m].p.x > xyz[0]): ((*points)[m].p.y > xyz[1]));
-            rhs_p[f_idx] += mu*s*(bc[dir].wallValue((*points)[m].p.x, (*points)[m].p.y) + (positive?+1.0:-1.0)*bc_hodge->wallValue((*points)[m].p.x, (*points)[m].p.y)) / d;
+            bool positive = (dir == dir::x ? (*points)[m].p.x > xyz[0] : (*points)[m].p.y > xyz[1]);
+#endif
+            rhs_p[f_idx] += mu*surface*(bc[dir].wallValue(DIM((*points)[m].p.x, (*points)[m].p.y, (*points)[m].p.z)) + (positive ? +1.0 : -1.0)*bc_hodge->wallValue(DIM((*points)[m].p.x, (*points)[m].p.y, (*points)[m].p.z))) / distance_to_neighbor;
           }
           else
           {
             // this is the least desirable scenario and main reason for the try-catch:
             // the user wants to use a stretched grid, but does not provide bc's that can easily be evaluated from everywhere so the solver's usage requires locality: if dxyz_hodge can't be interpolated where it's desired this is very likely to throw an exception
-            rhs_p[f_idx] += mu*s*(bc[dir].wallValue((*points)[m].p.x, (*points)[m].p.y) + interp_dxyz_hodge((*points)[m].p.x, (*points)[m].p.y)) / d;
+            rhs_p[f_idx] += mu*surface*(bc[dir].wallValue(DIM((*points)[m].p.x, (*points)[m].p.y, (*points)[m].p.z)) + interp_dxyz_hodge(DIM((*points)[m].p.x, (*points)[m].p.y, (*points)[m].p.z))) / distance_to_neighbor;
           }
-#endif
         } catch (std::exception e) {
           throw std::runtime_error("my_p4est_poisson_faces_t: the boundary condition value needs to be readable from everywhere in the domain when using such stretched grids and non-periodic wall conditions, sorry...");
         }

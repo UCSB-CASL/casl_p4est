@@ -158,7 +158,7 @@ double Cube3::integral(const OctValue &f, const OctValue &ls_values) const
     if(Phi2>0 && Phi3<=0) swap(Phi2,Phi3,F2,F3,P2,P3);
 
     // frustum of simplex (P0,P1,P2) cut by {Phi<=0}
-    if(Phi0<=0 && Phi1>=0 && Phi2>=0 && Phi3>=0) // type -+++
+    if(Phi0 <= 0.0 && Phi1 > 0.0 && Phi2 > 0.0 && Phi3 > 0.0) // type -+++
     {
       Point3 P01 = interpol_p(P0,Phi0,P1,Phi1);
       Point3 P02 = interpol_p(P0,Phi0,P2,Phi2);
@@ -170,7 +170,7 @@ double Cube3::integral(const OctValue &f, const OctValue &ls_values) const
 
       sum += Point3::volume(P0,P01,P02,P03)*(F0+F01+F02+F03)/4.;
     }
-    else if(Phi0<=0 && Phi1<=0 && Phi2>=0 && Phi3>=0) // type --++
+    else if(Phi0 <= 0.0 && Phi1 <= 0.0 && Phi2 > 0.0 && Phi3 > 0.0) // type --++
     {
       Point3 P02 = interpol_p(P0,Phi0,P2,Phi2);
       Point3 P03 = interpol_p(P0,Phi0,P3,Phi3);
@@ -189,7 +189,7 @@ double Cube3::integral(const OctValue &f, const OctValue &ls_values) const
     else // type ---+
     {
 #ifdef CASL_THROWS
-      if(Phi0>0 || Phi1>0 || Phi2>0 || Phi3<0)
+      if(Phi0 > 0.0 || Phi1 > 0.0 || Phi2 > 0.0 || Phi3 <= 0.0)
         throw std::runtime_error("[CASL_ERROR]: Cube3->integral: wrong configuration.");
 #endif
 
@@ -228,8 +228,8 @@ double Cube3::integrate_Over_Interface(const OctValue &f, const OctValue &ls_val
   // Stampede and thus make things CRASH.
   //
   // I am going to introduce some *CLEAR* sign convention in here to fix my issue, I do not care if someone
-  // Here below:
   // changes it later on, but PLEASE, juste triple-check the consistency of your sign conventions!!!!!
+  // Here below:
   // phi <= 0 --> negative domain
   // phi > 0 --> positive domain
   // WHATEVER CHANGE BROUGHT BY WHOMEVER CANNOT ALLOW ONE SINGLE VALUE TO BE CONSIDERED BOTH IN NEGATIVE AND
@@ -248,11 +248,11 @@ double Cube3::integrate_Over_Interface(const OctValue &f, const OctValue &ls_val
 
 
 
-  double sum=0;
-  double cube_diag = (P111-P000).norm_L2();
+  double sum = 0.0;
+  double cube_diag = (P111 - P000).norm_L2();
 
   // iteration on each simplex in the middle cut triangulation
-  for(int n=0;n<num_tet;n++)
+  for(int n = 0; n < num_tet; n++)
   {
     // Tetrahedron (P0,P1,P2,P3)
     Point3   P0,  P1,  P2,   P3;

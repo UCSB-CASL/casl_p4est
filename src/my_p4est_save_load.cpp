@@ -408,7 +408,7 @@ void my_p4est_load_forest_and_data(const MPI_Comm mpi_comm, const char* absolute
   if(!file_exists(absolute_path_to_file))
     throw std::invalid_argument("my_p4est_load_forest_and_data: the p4est file can't be found on disk...");
   // load the forest WITH data to recover correct dof's ordering...
-  forest = p4est_load_ext(absolute_path_to_file, mpi_comm, ((P4EST_CHILDREN+((create_faces_hierarchy_and_cell_neighbors)? P4EST_FACES : 0))*(sizeof(p4est_gloidx_t))), P4EST_TRUE, P4EST_TRUE, P4EST_TRUE, NULL, &conn);
+  forest = p4est_load_ext(absolute_path_to_file, mpi_comm, (P4EST_CHILDREN + (create_faces_hierarchy_and_cell_neighbors? P4EST_FACES : 0))*sizeof(p4est_gloidx_t), P4EST_TRUE, P4EST_TRUE, P4EST_TRUE, NULL, &conn);
 
   // create the ghosts
   if(ghost != NULL)
@@ -444,9 +444,13 @@ void my_p4est_load_forest_and_data(const MPI_Comm mpi_comm, const char* absolute
     ngbd_c = new my_p4est_cell_neighbors_t(hierarchy);
     if(faces != NULL)
       delete faces;
+    // the construction of faces requires forest->user_pointer to point to a valid splitting_criteria_t object,
+    // with a correctly defined max_lvl.
+    int8_t max_lvl = find_max_level(forest);
+    splitting_criteria_t tmp_sp(0, max_lvl); // only max_lvl is relevant for the creation of faces
+    forest->user_pointer = &tmp_sp; // forest->user_pointer was set to NULL at load stage (see above) --> no risk of leak here
     faces = new my_p4est_faces_t(forest, ghost, brick, ngbd_c);
   }
-
 
   // load the Petsc vectors and redistribute them accordingly
   PetscErrorCode ierr;

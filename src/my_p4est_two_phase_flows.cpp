@@ -2241,7 +2241,7 @@ double my_p4est_two_phase_flows_t::div_mu_grad_u_dir(bool &face_is_in_negative_d
   }
   else
   {
-    P4EST_ASSERT(my_cell.cell_type == parallelepiped_no_wall || parallelepiped_with_wall);
+    P4EST_ASSERT(my_cell.cell_type == parallelepiped_no_wall || my_cell.cell_type == parallelepiped_with_wall);
     if(points->size() != P4EST_FACES)
       throw std::runtime_error("my_p4est_two_phase_flows_t::div_mu_grad_u_dir: not the expected number of face neighbors for face with an interface neighbor...");
     P4EST_ASSERT((qm.p.piggy3.local_num == -1 || qm.level == ((const splitting_criteria_t *) p4est_n->user_pointer)->max_lvl)
@@ -2686,7 +2686,7 @@ for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
 
     matrix_t        A_lsqr;
     vector<double>  rhs_lsqr;
-    std::set<__ino64_t>  nb[P4EST_DIM];
+    std::set<int64_t> nb[P4EST_DIM];
     unsigned int nb_neumann_walls = 0;
     char neumann_wall[P4EST_DIM];
     for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
@@ -2723,7 +2723,7 @@ for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
 
       double xyz_t[P4EST_DIM];
       int64_t logical_qcoord_diff[P4EST_DIM];
-      faces_n->rel_xyz_face_fr_node(neighbor_face, dir, xyz_t, xyz, node, brick, logical_qcoord_diff);
+      faces_n->rel_qxyz_face_fr_node(neighbor_face, dir, xyz_t, xyz, node, brick, logical_qcoord_diff);
 
       for(unsigned char i=0; i<P4EST_DIM; ++i)
       {

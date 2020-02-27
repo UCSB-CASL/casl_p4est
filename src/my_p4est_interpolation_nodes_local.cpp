@@ -18,24 +18,18 @@ void my_p4est_interpolation_nodes_local_t::initialize(p4est_locidx_t n)
       xyz_quad_min[i_quad*P4EST_DIM + dim] = 0.0;
       xyz_quad_max[i_quad*P4EST_DIM + dim] = 0.0;
     }
-
   }
 
   // find neighboring quadrants
+  node_neighbors->find_neighbor_cell_of_node(n, DIM(-1, -1, -1), quad_idx[dir::v_mmm], tree_idx[dir::v_mmm]);
+  node_neighbors->find_neighbor_cell_of_node(n, DIM(-1,  1, -1), quad_idx[dir::v_mpm], tree_idx[dir::v_mpm]);
+  node_neighbors->find_neighbor_cell_of_node(n, DIM( 1, -1, -1), quad_idx[dir::v_pmm], tree_idx[dir::v_pmm]);
+  node_neighbors->find_neighbor_cell_of_node(n, DIM( 1,  1, -1), quad_idx[dir::v_ppm], tree_idx[dir::v_ppm]);
 #ifdef P4_TO_P8
-  node_neighbors->find_neighbor_cell_of_node(n, -1, -1, -1, quad_idx[dir::v_mmm], tree_idx[dir::v_mmm]);
-  node_neighbors->find_neighbor_cell_of_node(n, -1,  1, -1, quad_idx[dir::v_mpm], tree_idx[dir::v_mpm]);
-  node_neighbors->find_neighbor_cell_of_node(n,  1, -1, -1, quad_idx[dir::v_pmm], tree_idx[dir::v_pmm]);
-  node_neighbors->find_neighbor_cell_of_node(n,  1,  1, -1, quad_idx[dir::v_ppm], tree_idx[dir::v_ppm]);
-  node_neighbors->find_neighbor_cell_of_node(n, -1, -1,  1, quad_idx[dir::v_mmp], tree_idx[dir::v_mmp]);
-  node_neighbors->find_neighbor_cell_of_node(n, -1,  1,  1, quad_idx[dir::v_mpp], tree_idx[dir::v_mpp]);
-  node_neighbors->find_neighbor_cell_of_node(n,  1, -1,  1, quad_idx[dir::v_pmp], tree_idx[dir::v_pmp]);
-  node_neighbors->find_neighbor_cell_of_node(n,  1,  1,  1, quad_idx[dir::v_ppp], tree_idx[dir::v_ppp]);
-#else
-  node_neighbors->find_neighbor_cell_of_node(n, -1, -1, quad_idx[dir::v_mmm], tree_idx[dir::v_mmm]);
-  node_neighbors->find_neighbor_cell_of_node(n, -1,  1, quad_idx[dir::v_mpm], tree_idx[dir::v_mpm]);
-  node_neighbors->find_neighbor_cell_of_node(n,  1, -1, quad_idx[dir::v_pmm], tree_idx[dir::v_pmm]);
-  node_neighbors->find_neighbor_cell_of_node(n,  1,  1, quad_idx[dir::v_ppm], tree_idx[dir::v_ppm]);
+  node_neighbors->find_neighbor_cell_of_node(n,     -1, -1,  1,  quad_idx[dir::v_mmp], tree_idx[dir::v_mmp]);
+  node_neighbors->find_neighbor_cell_of_node(n,     -1,  1,  1,  quad_idx[dir::v_mpp], tree_idx[dir::v_mpp]);
+  node_neighbors->find_neighbor_cell_of_node(n,      1, -1,  1,  quad_idx[dir::v_pmp], tree_idx[dir::v_pmp]);
+  node_neighbors->find_neighbor_cell_of_node(n,      1,  1,  1,  quad_idx[dir::v_ppp], tree_idx[dir::v_ppp]);
 #endif
 
   // get info about quadrants (coordinates and level)
@@ -43,7 +37,7 @@ void my_p4est_interpolation_nodes_local_t::initialize(p4est_locidx_t n)
   {
     if (quad_idx[i_quad] != NOT_A_VALID_QUADRANT)
     {
-      p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx[i_quad]);
+      p4est_tree_t *tree = p4est_tree_array_index(p4est->trees, tree_idx[i_quad]);
 
       p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[tree_idx[i_quad]*P4EST_CHILDREN + 0];
       p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[tree_idx[i_quad]*P4EST_CHILDREN + P4EST_CHILDREN-1];
@@ -62,11 +56,11 @@ void my_p4est_interpolation_nodes_local_t::initialize(p4est_locidx_t n)
       if(quad_idx[i_quad] < p4est->local_num_quadrants)
       {
 //        tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx[i_quad]);
-        quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, quad_idx[i_quad]-tree->quadrants_offset);
+        quad = p4est_quadrant_array_index(&tree->quadrants, quad_idx[i_quad] - tree->quadrants_offset);
       }
       else /* in the ghost layer */
       {
-        quad = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts, quad_idx[i_quad]-p4est->local_num_quadrants);
+        quad = p4est_quadrant_array_index(&ghost->ghosts, quad_idx[i_quad] - p4est->local_num_quadrants);
         /* TODO: make sure that a ghost quadrant and a tree are consistent */
       }
 
@@ -76,20 +70,16 @@ void my_p4est_interpolation_nodes_local_t::initialize(p4est_locidx_t n)
 
       level_of_quad[i_quad] = quad->level;
       double dmin = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
-      double dx = (tree_xmax-tree_xmin)*dmin; xyz_quad_min[i_quad*P4EST_DIM + 0] = (tree_xmax-tree_xmin)*(double)quad->x/(double)P4EST_ROOT_LEN + tree_xmin;  xyz_quad_max[i_quad*P4EST_DIM + 0] = xyz_quad_min[i_quad*P4EST_DIM + 0] + dx;
-      double dy = (tree_ymax-tree_ymin)*dmin; xyz_quad_min[i_quad*P4EST_DIM + 1] = (tree_ymax-tree_ymin)*(double)quad->y/(double)P4EST_ROOT_LEN + tree_ymin;  xyz_quad_max[i_quad*P4EST_DIM + 1] = xyz_quad_min[i_quad*P4EST_DIM + 1] + dy;
+      double dx = (tree_xmax - tree_xmin)*dmin; xyz_quad_min[i_quad*P4EST_DIM + 0] = (tree_xmax - tree_xmin)*(double)quad->x/(double)P4EST_ROOT_LEN + tree_xmin;  xyz_quad_max[i_quad*P4EST_DIM + 0] = xyz_quad_min[i_quad*P4EST_DIM + 0] + dx;
+      double dy = (tree_ymax - tree_ymin)*dmin; xyz_quad_min[i_quad*P4EST_DIM + 1] = (tree_ymax - tree_ymin)*(double)quad->y/(double)P4EST_ROOT_LEN + tree_ymin;  xyz_quad_max[i_quad*P4EST_DIM + 1] = xyz_quad_min[i_quad*P4EST_DIM + 1] + dy;
 #ifdef P4_TO_P8
-      double dz = (tree_zmax-tree_zmin)*dmin; xyz_quad_min[i_quad*P4EST_DIM + 2] = (tree_zmax-tree_zmin)*(double)quad->z/(double)P4EST_ROOT_LEN + tree_zmin;  xyz_quad_max[i_quad*P4EST_DIM + 2] = xyz_quad_min[i_quad*P4EST_DIM + 2] + dz;
+      double dz = (tree_zmax - tree_zmin)*dmin; xyz_quad_min[i_quad*P4EST_DIM + 2] = (tree_zmax - tree_zmin)*(double)quad->z/(double)P4EST_ROOT_LEN + tree_zmin;  xyz_quad_max[i_quad*P4EST_DIM + 2] = xyz_quad_min[i_quad*P4EST_DIM + 2] + dz;
 #endif
     }
   }
 }
 
-#ifdef P4_TO_P8
-double my_p4est_interpolation_nodes_local_t::interpolate(double x, double y, double z) const
-#else
-double my_p4est_interpolation_nodes_local_t::interpolate(double x, double y) const
-#endif
+double my_p4est_interpolation_nodes_local_t::interpolate(DIM(double x, double y, double z)) const
 {
   PetscErrorCode ierr;
 
@@ -106,17 +96,13 @@ double my_p4est_interpolation_nodes_local_t::interpolate(double x, double y) con
   double fzz[P4EST_CHILDREN];
 #endif
 
-#ifdef P4_TO_P8
-  double xyz [] = { x, y, z };
-#else
-  double xyz [] = { x, y };
-#endif
+  double xyz [P4EST_DIM] = {DIM(x, y, z)};
 
   // clip to bounding box
   for (short i=0; i<P4EST_DIM; i++)
   {
-    if (xyz[i] > xyz_max[i]) xyz[i] = is_periodic(p4est,i) ? xyz[i]-(xyz_max[i]-xyz_min[i]) : xyz_max[i];
-    if (xyz[i] < xyz_min[i]) xyz[i] = is_periodic(p4est,i) ? xyz[i]+(xyz_max[i]-xyz_min[i]) : xyz_min[i];
+    if (xyz[i] > xyz_max[i]) xyz[i] = is_periodic(p4est,i) ? xyz[i] - (xyz_max[i] - xyz_min[i]) : xyz_max[i];
+    if (xyz[i] < xyz_min[i]) xyz[i] = is_periodic(p4est,i) ? xyz[i] + (xyz_max[i] - xyz_min[i]) : xyz_min[i];
   }
 
   // find to which quadrant the point belongs to
@@ -131,8 +117,8 @@ double my_p4est_interpolation_nodes_local_t::interpolate(double x, double y) con
 
       for (short i=0; i<P4EST_DIM; i++)
       {
-        if (xyz[i] < xyz_quad_min[i_quad*P4EST_DIM + i]-0.1*eps) { is_point_in_quadrant = false; break; }
-        if (xyz[i] > xyz_quad_max[i_quad*P4EST_DIM + i]+0.1*eps) { is_point_in_quadrant = false; break; }
+        if (xyz[i] < xyz_quad_min[i_quad*P4EST_DIM + i] - 0.1*eps) { is_point_in_quadrant = false; break; }
+        if (xyz[i] > xyz_quad_max[i_quad*P4EST_DIM + i] + 0.1*eps) { is_point_in_quadrant = false; break; }
       }
 
       if (is_point_in_quadrant && level_of_quad[i_quad] > current_level)
@@ -144,27 +130,19 @@ double my_p4est_interpolation_nodes_local_t::interpolate(double x, double y) con
   
   if (which_quadrant == -1)
   {
-    std::cout << xyz[0] << ", " << xyz[1]
-                       #ifdef P4_TO_P8
-                        << ", " << xyz[2]
-                       #endif
-              << std::endl;
+    std::cout << xyz[0] << ", " << xyz[1] ONLY3D(<< ", " << xyz[2]) << std::endl;
 
     for (short i_quad = 0; i_quad < P4EST_CHILDREN; ++i_quad)
     {
 
       p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx[i_quad]);
-      std::cout << tree_idx[i_quad] << " : " << quad_idx[i_quad]- tree->quadrants_offset << " : " << level_of_quad[i_quad] << " : " << tree->quadrants.elem_count << " : "
+      std::cout << tree_idx[i_quad] << " : " << quad_idx[i_quad] - tree->quadrants_offset << " : " << level_of_quad[i_quad] << " : " << tree->quadrants.elem_count << " : "
                 << xyz_quad_min[i_quad*P4EST_DIM + 0] << ", " << xyz_quad_min[i_quad*P4EST_DIM + 1]
-             #ifdef P4_TO_P8
-                << ", " << xyz_quad_min[i_quad*P4EST_DIM + 2]
-             #endif
-                << " : "
-                << xyz_quad_max[i_quad*P4EST_DIM + 0] << ", " << xyz_quad_max[i_quad*P4EST_DIM + 1]
-             #ifdef P4_TO_P8
-                << ", " << xyz_quad_max[i_quad*P4EST_DIM + 2]
-             #endif
-                << std::endl;
+                   ONLY3D(<< ", " << xyz_quad_min[i_quad*P4EST_DIM + 2])
+          << " : "
+          << xyz_quad_max[i_quad*P4EST_DIM + 0] << ", " << xyz_quad_max[i_quad*P4EST_DIM + 1]
+             ONLY3D(<< ", " << xyz_quad_max[i_quad*P4EST_DIM + 2])
+          << std::endl;
     }
     throw std::invalid_argument("[ERROR]: Point does not belong to any neighbouring quadrant.");
   }
@@ -259,33 +237,17 @@ double my_p4est_interpolation_nodes_local_t::interpolate(double x, double y) con
   if (method == linear) {
     value = this->linear_interpolation(&xyz_quad_min[which_quadrant*P4EST_DIM], &xyz_quad_max[which_quadrant*P4EST_DIM], f, xyz);
   } else if (method == quadratic) {
-#ifdef P4_TO_P8
-    value = this->quadratic_interpolation(&xyz_quad_min[which_quadrant*P4EST_DIM], &xyz_quad_max[which_quadrant*P4EST_DIM], f, fxx, fyy, fzz, xyz);
-#else
-    value = this->quadratic_interpolation(&xyz_quad_min[which_quadrant*P4EST_DIM], &xyz_quad_max[which_quadrant*P4EST_DIM], f, fxx, fyy, xyz);
-#endif
+    value = this->quadratic_interpolation(&xyz_quad_min[which_quadrant*P4EST_DIM], &xyz_quad_max[which_quadrant*P4EST_DIM], f, DIM(fxx, fyy, fzz), xyz);
   } else if (method == quadratic_non_oscillatory_continuous_v1) {
-#ifdef P4_TO_P8
-    value = this->quadratic_non_oscillatory_continuous_v1_interpolation(&xyz_quad_min[which_quadrant*P4EST_DIM], &xyz_quad_max[which_quadrant*P4EST_DIM], f, fxx, fyy, fzz, xyz);
-#else
-    value = this->quadratic_non_oscillatory_continuous_v1_interpolation(&xyz_quad_min[which_quadrant*P4EST_DIM], &xyz_quad_max[which_quadrant*P4EST_DIM], f, fxx, fyy, xyz);
-#endif
+    value = this->quadratic_non_oscillatory_continuous_v1_interpolation(&xyz_quad_min[which_quadrant*P4EST_DIM], &xyz_quad_max[which_quadrant*P4EST_DIM], f, DIM(fxx, fyy, fzz), xyz);
   } else if (method == quadratic_non_oscillatory_continuous_v2) {
-#ifdef P4_TO_P8
-    value = this->quadratic_non_oscillatory_continuous_v2_interpolation(&xyz_quad_min[which_quadrant*P4EST_DIM], &xyz_quad_max[which_quadrant*P4EST_DIM], f, fxx, fyy, fzz, xyz);
-#else
-    value = this->quadratic_non_oscillatory_continuous_v2_interpolation(&xyz_quad_min[which_quadrant*P4EST_DIM], &xyz_quad_max[which_quadrant*P4EST_DIM], f, fxx, fyy, xyz);
-#endif
+    value = this->quadratic_non_oscillatory_continuous_v2_interpolation(&xyz_quad_min[which_quadrant*P4EST_DIM], &xyz_quad_max[which_quadrant*P4EST_DIM], f, DIM(fxx, fyy, fzz), xyz);
   }
 
   return value;
 }
 
-#ifdef P4_TO_P8
-double my_p4est_interpolation_nodes_local_t::quadratic_interpolation(const double *xyz_quad_min, const double *xyz_quad_max, const double *F, const double *Fxx, const double *Fyy, const double *Fzz, const double *xyz_global) const
-#else
-double my_p4est_interpolation_nodes_local_t::quadratic_interpolation(const double *xyz_quad_min, const double *xyz_quad_max, const double *F, const double *Fxx, const double *Fyy, const double *xyz_global) const
-#endif
+double my_p4est_interpolation_nodes_local_t::quadratic_interpolation(const double *xyz_quad_min, const double *xyz_quad_max, const double *F, DIM(const double *Fxx, const double *Fyy, const double *Fzz), const double *xyz_global) const
 {
   double dx = (xyz_quad_max[0] - xyz_quad_min[0]);
   double dy = (xyz_quad_max[1] - xyz_quad_min[1]);
@@ -325,11 +287,7 @@ double my_p4est_interpolation_nodes_local_t::quadratic_interpolation(const doubl
 #endif
 
 
-#ifdef P4_TO_P8
-  double fdd[P4EST_DIM] = { 0, 0, 0 };
-#else
-  double fdd[P4EST_DIM] = { 0, 0 };
-#endif
+  double fdd[P4EST_DIM] = {DIM(0, 0, 0)};
 
   for (short j=0; j<P4EST_CHILDREN; j++)
   {
@@ -344,11 +302,7 @@ double my_p4est_interpolation_nodes_local_t::quadratic_interpolation(const doubl
   for (short j = 0; j<P4EST_CHILDREN; j++)
     value += F[j]*w_xyz[j];
 
-#ifdef P4_TO_P8
-  value -= 0.5*(dx*dx*d_p00*d_m00*fdd[0] + dy*dy*d_0p0*d_0m0*fdd[1] + dz*dz*d_00p*d_00m*fdd[2]);
-#else
-  value -= 0.5*(dx*dx*d_p00*d_m00*fdd[0] + dy*dy*d_0p0*d_0m0*fdd[1]);
-#endif
+  value -= 0.5*(SUMD(dx*dx*d_p00*d_m00*fdd[0], dy*dy*d_0p0*d_0m0*fdd[1], dz*dz*d_00p*d_00m*fdd[2]));
 
   if (value != value)
     throw std::domain_error("[CASL_ERROR]: interpolation result is nan");
@@ -405,11 +359,7 @@ double my_p4est_interpolation_nodes_local_t::linear_interpolation(const double *
   return value;
 }
 
-#ifdef P4_TO_P8
-double my_p4est_interpolation_nodes_local_t::quadratic_non_oscillatory_continuous_v1_interpolation(const double *xyz_quad_min, const double *xyz_quad_max, const double *F, const double *Fxx, const double *Fyy, const double *Fzz, const double *xyz_global) const
-#else
-double my_p4est_interpolation_nodes_local_t::quadratic_non_oscillatory_continuous_v1_interpolation(const double *xyz_quad_min, const double *xyz_quad_max, const double *F, const double *Fxx, const double *Fyy, const double *xyz_global) const
-#endif
+double my_p4est_interpolation_nodes_local_t::quadratic_non_oscillatory_continuous_v1_interpolation(const double *xyz_quad_min, const double *xyz_quad_max, const double *F, DIM(const double *Fxx, const double *Fyy, const double *Fzz), const double *xyz_global) const
 {
   double dx = (xyz_quad_max[0] - xyz_quad_min[0]);
   double dy = (xyz_quad_max[1] - xyz_quad_min[1]);
@@ -449,9 +399,7 @@ double my_p4est_interpolation_nodes_local_t::quadratic_non_oscillatory_continuou
 #endif
 
 // First alternative scheme: first, minmod on every edge, then weight-average
-  double fdd[P4EST_DIM];
-  for (short i = 0; i<P4EST_DIM; i++)
-    fdd[i] = 0;
+  double fdd[P4EST_DIM] = {DIM(0, 0, 0)};
 
   int i, jm, jp;
 
@@ -483,11 +431,7 @@ double my_p4est_interpolation_nodes_local_t::quadratic_non_oscillatory_continuou
   for (short j = 0; j<P4EST_CHILDREN; j++)
     value += F[j]*w_xyz[j];
 
-#ifdef P4_TO_P8
-  value -= 0.5*(dx*dx*d_p00*d_m00*fdd[0] + dy*dy*d_0p0*d_0m0*fdd[1] + dz*dz*d_00p*d_00m*fdd[2]);
-#else
-  value -= 0.5*(dx*dx*d_p00*d_m00*fdd[0] + dy*dy*d_0p0*d_0m0*fdd[1]);
-#endif
+  value -= 0.5*(SUMD(dx*dx*d_p00*d_m00*fdd[0], dy*dy*d_0p0*d_0m0*fdd[1], dz*dz*d_00p*d_00m*fdd[2]));
 
   if (value != value)
     throw std::domain_error("[CASL_ERROR]: interpolation result is nan");
@@ -495,11 +439,7 @@ double my_p4est_interpolation_nodes_local_t::quadratic_non_oscillatory_continuou
   return value;
 }
 
-#ifdef P4_TO_P8
-double my_p4est_interpolation_nodes_local_t::quadratic_non_oscillatory_continuous_v2_interpolation(const double *xyz_quad_min, const double *xyz_quad_max, const double *F, const double *Fxx, const double *Fyy, const double *Fzz, const double *xyz_global) const
-#else
-double my_p4est_interpolation_nodes_local_t::quadratic_non_oscillatory_continuous_v2_interpolation(const double *xyz_quad_min, const double *xyz_quad_max, const double *F, const double *Fxx, const double *Fyy, const double *xyz_global) const
-#endif
+double my_p4est_interpolation_nodes_local_t::quadratic_non_oscillatory_continuous_v2_interpolation(const double *xyz_quad_min, const double *xyz_quad_max, const double *F, DIM(const double *Fxx, const double *Fyy, const double *Fzz), const double *xyz_global) const
 {
   double dx = (xyz_quad_max[0] - xyz_quad_min[0]);
   double dy = (xyz_quad_max[1] - xyz_quad_min[1]);
@@ -540,9 +480,7 @@ double my_p4est_interpolation_nodes_local_t::quadratic_non_oscillatory_continuou
 
 
 // Second alternative scheme: first, weight-average in perpendicular plane, then minmod
-  double fdd[P4EST_DIM];
-  for (short i = 0; i<P4EST_DIM; i++)
-    fdd[i] = 0;
+  double fdd[P4EST_DIM] = {DIM(0, 0, 0)};
 
   int i, jm, jp;
   double fdd_m, fdd_p;
@@ -584,16 +522,10 @@ double my_p4est_interpolation_nodes_local_t::quadratic_non_oscillatory_continuou
   for (short j = 0; j<P4EST_CHILDREN; j++)
     value += F[j]*w_xyz[j];
 
-#ifdef P4_TO_P8
-  value -= 0.5*(dx*dx*d_p00*d_m00*fdd[0] + dy*dy*d_0p0*d_0m0*fdd[1] + dz*dz*d_00p*d_00m*fdd[2]);
-#else
-  value -= 0.5*(dx*dx*d_p00*d_m00*fdd[0] + dy*dy*d_0p0*d_0m0*fdd[1]);
-#endif
+  value -= 0.5*(SUMD(dx*dx*d_p00*d_m00*fdd[0], dy*dy*d_0p0*d_0m0*fdd[1], dz*dz*d_00p*d_00m*fdd[2]));
 
   if (value != value)
-  {
     throw std::domain_error("[CASL_ERROR]: interpolation result is nan here");
-  }
 
   return value;
 }

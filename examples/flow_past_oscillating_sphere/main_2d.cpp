@@ -42,6 +42,47 @@
 
 using namespace std;
 
+// --> extra info to be printed when -help is invoked
+#ifdef P4_TO_P8
+const std::string extra_info = "\
+    This program provides a general setup for simulating the flow past an oscillating sphere \n\
+    in a closed box. The domain is [-1, 1]x[-1, 1]x[-1, 1]. The radius of the sphere is 0.1, the \n\
+    sphere center follows the kinematics \n\
+                  x(t) = -X0*cos(2.0*PI*f0*t), y(t) = 0.0, z(t) = 0.0 \n\
+    The boundary conditions are:\n\
+    - Dirichlet (0,0,0) for the velocity components on all walls (no slip); \n\
+    - no-slip condition, i.e. vx(t)=2.0*PI*X0*f0*sin(2.0*PI*f0*t), vy(t) = 0.0, vz(t) = 0.0 on the sphere surface; \n\
+    - homogeneous Neumann for the pressure on all walls; \n\
+    - homogeneous Neumann for the pressure on the sphere interface. \n\
+    The flow starts from rest. This setup determines two non-dimensional numbers:\n\
+    1) Strouhal=(2*r*f0)/(2.0*PI*X0*f0)=r/(PI*X0);\n\
+    2) Reynolds=rho*(2.0*PI*X0*f0)*2.0*r)/mu=(rho*4.0*f0*r^2)/(St*mu);\n\
+    By the definition of the above parameters and nondimensional numbers, we set \n\
+                                  X0=r/(PI*St) \n\
+    rho is set to 1.0, f0 is set to 1.0, and \n\
+                              mu=(4*rho*f0*r^2)/(St*Re). \n\
+    Developer: Raphael Egan (raphaelegan@ucsb.edu) based on a general main file from Arthur Guittet (with corrections)";
+#else
+const std::string extra_info = "\
+    This program provides a general setup for simulating the flow past an oscillating cylinder \n\
+    in a closed box. The domain is [-1, 1]x[-1, 1]. The radius of the cylinder is 0.05, the \n\
+    cylinder center follows the kinematics \n\
+                      x(t) = -X0*cos(2.0*PI*f0*t), y(t) = 0.0 \n\
+    The boundary conditions are:\n\
+    - Dirichlet (0,0) for the velocity components on all walls (no slip); \n\
+    - no-slip condition, i.e. vx(t)=2.0*PI*X0*f0*sin(2.0*PI*f0*t), vy(t) = 0.0 on the cylinder surface; \n\
+    - homogeneous Neumann for the pressure on all walls; \n\
+    - homogeneous Neumann for the pressure on the cylinder interface. \n\
+    The flow starts from rest.  This setup determines two non-dimensional numbers:\n\
+    1) Strouhal=(2*r*f0)/(2.0*PI*X0*f0)=r/(PI*X0);\n\
+    2) Reynolds=rho*(2.0*PI*X0*f0)*2.0*r)/mu=(rho*4.0*f0*r^2)/(St*mu);\n\
+    By the definition of the above parameters and nondimensional numbers, we set \n\
+                                  X0=r/(PI*St) \n\
+    rho is set to 1.0, f0 is set to 1.0, and \n\
+                              mu=(4*rho*f0*r^2)/(St*Re). \n\
+    Developer: Raphael Egan (raphaelegan@ucsb.edu) based on a general main file from Arthur Guittet (with corrections)";
+#endif
+
 const double xmin = -1.0;
 const double xmax = +1.0;
 const double ymin = -1.0;
@@ -67,153 +108,159 @@ double X0; // to be set based on the desired Strouhal number
 
 // current simulation time and (fixed) time step
 // they are required for the evaluation of the levelset function and interface conditions
-// we want to enforce field conditions at time tn+dt
+// we want to enforce field conditions at time tn + dt
 double tn, dt;
 
-#ifdef P4_TO_P8
-class LEVEL_SET: public CF_3
+class LEVEL_SET: public CF_DIM
 {
 public:
   LEVEL_SET() { lip = 1.2; }
-  double operator()(double x, double y, double z) const
+  double operator()(DIM(double x, double y, double z)) const
   {
-    return r0 - sqrt(SQR(x+X0*cos(2*PI*f0*(tn+dt))) + SQR(y) + SQR(z));
+    return r0 - sqrt(SUMD(SQR(x + X0*cos(2*PI*f0*(tn + dt))), SQR(y), SQR(z)));
   }
 } level_set;
 
-struct BCWALLTYPE_P : WallBC3D
+struct BCWALLTYPE_P : WallBCDIM
 {
-  BoundaryConditionType operator()(double, double, double) const
+  BoundaryConditionType operator()(DIM(double, double, double)) const
   {
     return NEUMANN;
   }
 } bc_wall_type_p;
 
-struct BCWALLVALUE_P : CF_3
+struct BCWALLVALUE_P : CF_DIM
 {
-  double operator()(double, double, double) const
+  double operator()(DIM(double, double, double)) const
   {
-    return 0;
+    return 0.0;
   }
 } bc_wall_value_p;
 
-struct BCINTERFACEVALUE_P : CF_3
+struct BCINTERFACEVALUE_P : CF_DIM
 {
-  double operator()(double, double, double) const
+  double operator()(DIM(double, double, double)) const
   {
-    return 0;
+    return 0.0;
   }
 } bc_interface_value_p;
 
-struct BCWALLTYPE_U : WallBC3D
+struct BCWALLTYPE_U : WallBCDIM
 {
-  BoundaryConditionType operator()(double, double, double) const
+  BoundaryConditionType operator()(DIM(double, double, double)) const
   {
     return DIRICHLET;
   }
 } bc_wall_type_u;
 
-struct BCWALLTYPE_V : WallBC3D
+struct BCWALLTYPE_V : WallBCDIM
 {
-  BoundaryConditionType operator()(double, double, double) const
+  BoundaryConditionType operator()(DIM(double, double, double)) const
   {
     return DIRICHLET;
   }
 } bc_wall_type_v;
 
+#ifdef P4_TO_P8
 struct BCWALLTYPE_W : WallBC3D
 {
-  BoundaryConditionType operator()(double, double, double) const
+  BoundaryConditionType operator()(DIM(double, double, double)) const
   {
     return DIRICHLET;
   }
 } bc_wall_type_w;
+#endif
 
-struct BCWALLVALUE_U : CF_3
+struct BCWALLVALUE_U : CF_DIM
 {
-  double operator()(double, double, double) const
+  double operator()(DIM(double, double, double)) const
   {
-    return 0;
+    return 0.0;
   }
 } bc_wall_value_u;
 
-struct BCWALLVALUE_V : CF_3
+struct BCWALLVALUE_V : CF_DIM
 {
-  double operator()(double, double, double) const
+  double operator()(DIM(double, double, double)) const
   {
-    return 0;
+    return 0.0;
   }
 } bc_wall_value_v;
 
+#ifdef P4_TO_P8
 struct BCWALLVALUE_W : CF_3
 {
-  double operator()(double, double, double) const
+  double operator()(DIM(double, double, double)) const
   {
-    return 0;
+    return 0.0;
   }
 } bc_wall_value_w;
+#endif
 
-struct BCINTERFACE_VALUE_U : CF_3
+struct BCINTERFACE_VALUE_U : CF_DIM
 {
-  double operator()(double, double, double) const
+  double operator()(DIM(double, double, double)) const
   {
-    return 2.0*PI*f0*X0*sin(2*PI*f0*(tn+dt)); // no longer u0 as in the original main
+    return 2.0*PI*f0*X0*sin(2*PI*f0*(tn + dt)); // no longer u0 as in the original main
   }
 } bc_interface_value_u;
 
-struct BCINTERFACE_VALUE_V : CF_3
+struct BCINTERFACE_VALUE_V : CF_DIM
 {
-  double operator()(double, double, double) const
+  double operator()(DIM(double, double, double)) const
   {
-    return 0;
+    return 0.0;
   }
 } bc_interface_value_v;
 
+#ifdef P4_TO_P8
 struct BCINTERFACE_VALUE_W : CF_3
 {
   double operator()(double, double, double) const
   {
-    return 0;
+    return 0.0;
   }
 } bc_interface_value_w;
+#endif
 
-struct initial_velocity_unm1_t : CF_3
+struct initial_velocity_unm1_t : CF_DIM
 {
-  double operator()(double, double, double) const
+  double operator()(DIM(double, double, double)) const
   {
-    return 0.0; // 2.0*PI*f0*X0*sin(2*PI*f0*(tn-dt));
+    return 0.0;
   }
 } initial_velocity_unm1;
 
-struct initial_velocity_u_n_t : CF_3
+struct initial_velocity_u_n_t : CF_DIM
 {
-  double operator()(double, double, double) const
+  double operator()(DIM(double, double, double)) const
   {
-    return 0.0; // 2.0*PI*f0*X0*sin(2*PI*f0*tn);
+    return 0.0;
   }
 } initial_velocity_un;
 
-struct initial_velocity_vnm1_t : CF_3
+struct initial_velocity_vnm1_t : CF_DIM
 {
-  double operator()(double, double, double) const
+  double operator()(DIM(double, double, double)) const
   {
-    return 0;
+    return 0.0;
   }
 } initial_velocity_vnm1;
 
-struct initial_velocity_v_n_t : CF_3
+struct initial_velocity_v_n_t : CF_DIM
 {
-  double operator()(double, double, double) const
+  double operator()(DIM(double, double, double)) const
   {
-    return 0;
+    return 0.0;
   }
 } initial_velocity_vn;
 
+#ifdef P4_TO_P8
 struct initial_velocity_wnm1_t : CF_3
 {
   double operator()(double, double, double) const
   {
-    return 0;
+    return 0.0;
   }
 } initial_velocity_wnm1;
 
@@ -221,124 +268,9 @@ struct initial_velocity_w_n_t : CF_3
 {
   double operator()(double, double, double) const
   {
-    return 0;
+    return 0.0;
   }
 } initial_velocity_wn;
-#else
-
-class LEVEL_SET: public CF_2
-{
-public:
-  LEVEL_SET() { lip = 1.2; }
-  double operator()(double x, double y) const
-  {
-    return r0 - sqrt(SQR(x+X0*cos(2*PI*f0*(tn+dt))) + SQR(y));
-  }
-} level_set;
-
-struct BCWALLTYPE_P : WallBC2D
-{
-  BoundaryConditionType operator()(double, double) const
-  {
-    return NEUMANN;
-  }
-} bc_wall_type_p;
-
-struct BCWALLVALUE_P : CF_2
-{
-  double operator()(double, double) const
-  {
-    return 0.0;
-  }
-} bc_wall_value_p;
-
-struct BCINTERFACEVALUE_P : CF_2
-{
-  double operator()(double, double) const
-  {
-    return 0.0;
-  }
-} bc_interface_value_p;
-
-struct BCWALLTYPE_U : WallBC2D
-{
-  BoundaryConditionType operator()(double, double) const
-  {
-    return DIRICHLET;
-  }
-} bc_wall_type_u;
-
-struct BCWALLTYPE_V : WallBC2D
-{
-  BoundaryConditionType operator()(double, double) const
-  {
-    return DIRICHLET;
-  }
-} bc_wall_type_v;
-
-struct BCWALLVALUE_U : CF_2
-{
-  double operator()(double, double) const
-  {
-    return 0;
-  }
-} bc_wall_value_u;
-
-struct BCWALLVALUE_V : CF_2
-{
-  double operator()(double, double) const
-  {
-    return 0;
-  }
-} bc_wall_value_v;
-
-struct BCINTERFACE_VALUE_U : CF_2
-{
-  double operator()(double, double) const
-  {
-    return 2.0*PI*X0*f0*sin(2*PI*f0*(tn+dt)); // no longer u0 as in the original main
-  }
-} bc_interface_value_u;
-
-struct BCINTERFACE_VALUE_V : CF_2
-{
-  double operator()(double, double) const
-  {
-    return 0;
-  }
-} bc_interface_value_v;
-
-struct initial_velocity_unm1_t : CF_2
-{
-  double operator()(double, double) const
-  {
-    return 0.0; //2.0*PI*X0*f0*sin(2*PI*f0*(tn-dt));
-  }
-} initial_velocity_unm1;
-
-struct initial_velocity_u_n_t : CF_2
-{
-  double operator()(double, double) const
-  {
-    return 0.0; //2.0*PI*X0*f0*sin(2*PI*f0*tn);
-  }
-} initial_velocity_un;
-
-struct initial_velocity_vnm1_t : CF_2
-{
-  double operator()(double, double) const
-  {
-    return 0;
-  }
-} initial_velocity_vnm1;
-
-struct initial_velocity_vn_t : CF_2
-{
-  double operator()(double, double) const
-  {
-    return 0;
-  }
-} initial_velocity_vn;
 #endif
 
 void initialize_force_output(char* file_forces, const char *out_dir, const int& lmin, const int& lmax, const double& threshold_split_cell, const int& nsteps, const int& sl_order, const mpi_environment_t& mpi, const double& tstart)
@@ -476,13 +408,8 @@ int main (int argc, char* argv[])
   cmdParser cmd;
   cmd.add_option("restart", "if defined, this restarts the simulation from a saved state on disk (the value must be a valid path to a directory in which the solver state was saved)");
   // computational grid parameters
-#ifndef P4_TO_P8
-  cmd.add_option("lmin", "min level of the trees, default is 6");
-  cmd.add_option("lmax", "max level of the trees, default is 11");
-#else
-  cmd.add_option("lmin", "min level of the trees, default is 5");
-  cmd.add_option("lmax", "max level of the trees, default is 10");
-#endif
+  cmd.add_option("lmin", "min level of the trees, default is " + to_string(8 - P4EST_DIM));
+  cmd.add_option("lmax", "max level of the trees, default is " + to_string(13 - P4EST_DIM));
   cmd.add_option("thresh", "the threshold used for the refinement criteria, default is 0.1");
   cmd.add_option("uniform_band", "size of the uniform band around the interface, in number of dx (a minimum of 2 is strictly enforced), default is 4.0!");
   cmd.add_option("nx", "number of trees in the x-direction. The default value is 1 (length of domain is 2)");
@@ -494,9 +421,9 @@ int main (int argc, char* argv[])
   cmd.add_option("duration", "the duration of the simulation (tfinal-tstart), in units of oscillating periods! If not restarted, tstart = 0.0, default duration is 3 cycles.");
   cmd.add_option("St", "the Strouhal number = r/(pi*X0). This option sets X0=r/(PI*St). The minimum value allowed is 0.04, default is 4/PI");
 #ifdef P4_TO_P8
-  cmd.add_option("Re", "the Reynolds number=(rho*(2.0*PI*X0*f0)*2.0*r)/mu=(rho*4.0*f0*r^2)/(St*mu) where rho=1.0, f0=1, r=0.1 (default is 300). This option sets mu.");
+  cmd.add_option("Re", "the Reynolds number=(rho*(2.0*PI*X0*f0)*2.0*r)/mu=(rho*4.0*f0*r^2)/(St*mu) where rho = 1.0, f0 = 1, r = 0.1 (default is 300). This option sets mu.");
 #else
-  cmd.add_option("Re", "the Reynolds number=(rho*(2.0*PI*X0*f0)*2.0*r)/mu=(rho*4.0*f0*r^2)/(St*mu) where rho=1.0, f0=1, r=0.05 (default is 300). This option sets mu.");
+  cmd.add_option("Re", "the Reynolds number=(rho*(2.0*PI*X0*f0)*2.0*r)/mu=(rho*4.0*f0*r^2)/(St*mu) where rho = 1.0, f0 = 1, r = 0.05 (default is 300). This option sets mu.");
 #endif
   // method-related parameters
   cmd.add_option("sl_order", "the order for the semi lagrangian, either 1 (stable) or 2 (accurate), default is 2");
@@ -515,47 +442,8 @@ int main (int argc, char* argv[])
   cmd.add_option("save_nstates", "determines how many solver states must be memorized in backup_ folders (default is 1).");
   cmd.add_option("timing", "if defined, prints timing information (typically for scaling analysis).");
 
-  // --> extra info to be printed when -help is invoked
-#ifdef P4_TO_P8
-  const std::string extra_info = "\
-      This program provides a general setup for simulating the flow past an oscillating sphere \n\
-      in a closed box. The domain is [-1, 1]x[-1, 1]x[-1, 1]. The radius of the sphere is 0.1, the \n\
-      sphere center follows the kinematics \n\
-                    x(t) = -X0*cos(2.0*PI*f0*t), y(t) = 0.0, z(t) = 0.0 \n\
-      The boundary conditions are:\n\
-      - Dirichlet (0,0,0) for the velocity components on all walls (no slip); \n\
-      - no-slip condition, i.e. vx(t)=2.0*PI*X0*f0*sin(2.0*PI*f0*t), vy(t) = 0.0, vz(t) = 0.0 on the sphere surface; \n\
-      - homogeneous Neumann for the pressure on all walls; \n\
-      - homogeneous Neumann for the pressure on the sphere interface. \n\
-      The flow starts from rest. This setup determines two non-dimensional numbers:\n\
-      1) Strouhal=(2*r*f0)/(2.0*PI*X0*f0)=r/(PI*X0);\n\
-      2) Reynolds=rho*(2.0*PI*X0*f0)*2.0*r)/mu=(rho*4.0*f0*r^2)/(St*mu);\n\
-      By the definition of the above parameters and nondimensional numbers, we set \n\
-                                    X0=r/(PI*St) \n\
-      rho is set to 1.0, f0 is set to 1.0, and \n\
-                                mu=(4*rho*f0*r^2)/(St*Re). \n\
-      Developer: Raphael Egan (raphaelegan@ucsb.edu) based on a general main file from Arthur Guittet (with corrections)";
-#else
-  const std::string extra_info = "\
-      This program provides a general setup for simulating the flow past an oscillating cylinder \n\
-      in a closed box. The domain is [-1, 1]x[-1, 1]. The radius of the cylinder is 0.05, the \n\
-      cylinder center follows the kinematics \n\
-                        x(t) = -X0*cos(2.0*PI*f0*t), y(t) = 0.0 \n\
-      The boundary conditions are:\n\
-      - Dirichlet (0,0) for the velocity components on all walls (no slip); \n\
-      - no-slip condition, i.e. vx(t)=2.0*PI*X0*f0*sin(2.0*PI*f0*t), vy(t) = 0.0 on the cylinder surface; \n\
-      - homogeneous Neumann for the pressure on all walls; \n\
-      - homogeneous Neumann for the pressure on the cylinder interface. \n\
-      The flow starts from rest.  This setup determines two non-dimensional numbers:\n\
-      1) Strouhal=(2*r*f0)/(2.0*PI*X0*f0)=r/(PI*X0);\n\
-      2) Reynolds=rho*(2.0*PI*X0*f0)*2.0*r)/mu=(rho*4.0*f0*r^2)/(St*mu);\n\
-      By the definition of the above parameters and nondimensional numbers, we set \n\
-                                    X0=r/(PI*St) \n\
-      rho is set to 1.0, f0 is set to 1.0, and \n\
-                                mu=(4*rho*f0*r^2)/(St*Re). \n\
-      Developer: Raphael Egan (raphaelegan@ucsb.edu) based on a general main file from Arthur Guittet (with corrections)";
-#endif
-  cmd.parse(argc, argv, extra_info);
+  if(cmd.parse(argc, argv, extra_info))
+    return 0;
 
   int lmin, lmax;
   my_p4est_navier_stokes_t* ns                    = NULL;
@@ -585,18 +473,10 @@ int main (int argc, char* argv[])
   if(save_vtk)
   {
     if(!cmd.contains("vtk_dt"))
-#ifdef P4_TO_P8
-      throw std::runtime_error("main_oscillating_sphere_3d.cpp: the argument vtk_dt MUST be provided by the user if vtk exportation is desired.");
-#else
-      throw std::runtime_error("main_oscillating_sphere_2d.cpp: the argument vtk_dt MUST be provided by the user if vtk exportation is desired.");
-#endif
+      throw std::runtime_error("main_oscillating_sphere_" + to_string(P4EST_DIM) +"d.cpp: the argument vtk_dt MUST be provided by the user if vtk exportation is desired.");
     vtk_dt = cmd.get<double>("vtk_dt", -1.0);
     if(vtk_dt <= 0.0)
-#ifdef P4_TO_P8
-      throw std::invalid_argument("main_oscillating_sphere_3d.cpp: the value of vtk_dt must be strictly positive.");
-#else
-      throw std::invalid_argument("main_oscillating_sphere_2d.cpp: the value of vtk_dt must be strictly positive.");
-#endif
+      throw std::invalid_argument("main_oscillating_sphere_" + to_string(P4EST_DIM) + "d.cpp: the value of vtk_dt must be strictly positive.");
   }
   const bool save_forces                = cmd.contains("save_forces"); double forces[P4EST_DIM];
   const bool save_state                 = cmd.contains("save_state_dt"); double dt_save_data = -1.0;
@@ -605,11 +485,7 @@ int main (int argc, char* argv[])
   {
     dt_save_data                        = cmd.get<double>("save_state_dt", -1.0)*(1.0/f0);
     if(dt_save_data < 0.0)
-#ifdef P4_TO_P8
-      throw std::invalid_argument("main_oscillating_sphere_3d.cpp: the value of save_state_dt must be strictly positive.");
-#else
-      throw std::invalid_argument("main_oscillating_sphere_2d.cpp: the value of save_state_dt must be strictly positive.");
-#endif
+      throw std::invalid_argument("main_oscillating_sphere_" + to_string(P4EST_DIM) + "d.cpp: the value of save_state_dt must be strictly positive.");
   }
 
   const string des_pc_cell              = cmd.get<string>("pc_cell", "sor");
@@ -649,23 +525,12 @@ int main (int argc, char* argv[])
 
   PetscErrorCode ierr;
   double Re, St, mu;
-#ifdef P4_TO_P8
-  const double xyz_min [] = {xmin, ymin, zmin};
-  const double xyz_max [] = {xmax, ymax, zmax};
-  const int periodic[] = {0, 0, 0};
-#else
-  const double xyz_min [] = {xmin, ymin};
-  const double xyz_max [] = {xmax, ymax};
-  const int periodic[] = {0, 0};
-#endif
+  const double xyz_min[P4EST_DIM] = {DIM(xmin, ymin, zmin)};
+  const double xyz_max[P4EST_DIM] = {DIM(xmax, ymax, zmax)};
+  const int periodic  [P4EST_DIM] = {DIM(0, 0, 0)};
 
-#ifdef P4_TO_P8
-  BoundaryConditions3D bc_v[P4EST_DIM];
-  BoundaryConditions3D bc_p;
-#else
-  BoundaryConditions2D bc_v[P4EST_DIM];
-  BoundaryConditions2D bc_p;
-#endif
+  BoundaryConditionsDIM bc_v[P4EST_DIM];
+  BoundaryConditionsDIM bc_p;
 
   bc_v[0].setWallTypes(bc_wall_type_u); bc_v[0].setWallValues(bc_wall_value_u);
   bc_v[1].setWallTypes(bc_wall_type_v); bc_v[1].setWallValues(bc_wall_value_v);
@@ -718,9 +583,8 @@ int main (int argc, char* argv[])
     double height           = ns->get_height_of_domain();
 #ifdef P4_TO_P8
     double width            = ns->get_width_of_domain();
-    P4EST_ASSERT((fabs(length-2.0) < 2.0*10.0*EPS) && (fabs(height-2.0) < 2.0*10.0*EPS) && (fabs(width-2.0) < 2.0*10.0*EPS) && (fabs(ns->get_rho() - 1.0) < 10.0*EPS));
 #endif
-    P4EST_ASSERT((fabs(length-2.0) < 2.0*10.0*EPS) && (fabs(height-2.0) < 2.0*10.0*EPS) && (fabs(ns->get_rho() - 1.0) < 10.0*EPS));
+    P4EST_ASSERT((fabs(length - 2.0) < 2.0*10.0*EPS) && (fabs(height - 2.0) < 2.0*10.0*EPS) && ONLY3D((fabs(width - 2.0) < 2.0*10.0*EPS) &&) (fabs(ns->get_rho() - 1.0) < 10.0*EPS));
 #endif
     St                      = cmd.get<double>("St", 4.0/PI);
     X0                      = r0/(PI*St);
@@ -845,13 +709,8 @@ int main (int argc, char* argv[])
     ierr = VecCreateGhostNodes(p4est_n, nodes_n, &phi); CHKERRXX(ierr);
     sample_cf_on_nodes(p4est_n, nodes_n, level_set, phi);
 
-#ifdef P4_TO_P8
-    CF_3 *vnm1[P4EST_DIM] = { &initial_velocity_unm1, &initial_velocity_vnm1, &initial_velocity_wnm1 };
-    CF_3 *vn  [P4EST_DIM] = { &initial_velocity_un  , &initial_velocity_vn  , &initial_velocity_wn   };
-#else
-    CF_2 *vnm1[P4EST_DIM] = { &initial_velocity_unm1, &initial_velocity_vnm1 };
-    CF_2 *vn  [P4EST_DIM] = { &initial_velocity_un  , &initial_velocity_vn   };
-#endif
+    CF_DIM *vnm1[P4EST_DIM] = {DIM(&initial_velocity_unm1, &initial_velocity_vnm1, &initial_velocity_wnm1)};
+    CF_DIM *vn  [P4EST_DIM] = {DIM(&initial_velocity_un  , &initial_velocity_vn  , &initial_velocity_wn  )};
 
     ns = new my_p4est_navier_stokes_t(ngbd_nm1, ngbd_n, faces_n);
     ns->set_phi(phi);
@@ -878,21 +737,13 @@ int main (int argc, char* argv[])
     if(create_directory(out_dir, mpi.rank(), mpi.comm()))
     {
       char error_msg[1024];
-#ifdef P4_TO_P8
-      sprintf(error_msg, "main_oscillating_sphere_3d: could not create exportation directory %s", out_dir);
-#else
-      sprintf(error_msg, "main_oscillating_sphere_2d: could not create exportation directory %s", out_dir);
-#endif
+      sprintf(error_msg, "main_oscillating_sphere_%dd: could not create exportation directory %s", P4EST_DIM, out_dir);
       throw std::runtime_error(error_msg);
     }
     if(save_vtk && create_directory(vtk_path, mpi.rank(), mpi.comm()))
     {
       char error_msg[1024];
-#ifdef P4_TO_P8
-      sprintf(error_msg, "main_oscillating_sphere_3d: could not create exportation directory for vtk files %s", vtk_path);
-#else
-      sprintf(error_msg, "main_oscillating_sphere_2d: could not create exportation directory for vtk files %s", vtk_path);
-#endif
+      sprintf(error_msg, "main_oscillating_sphere_%dd: could not create exportation directory for vtk files %s", P4EST_DIM, vtk_path);
       throw std::runtime_error(error_msg);
     }
   }
@@ -985,11 +836,7 @@ int main (int argc, char* argv[])
           p4est_locidx_t quad_idx = tree->quadrants_offset+q;
           double xyz[P4EST_DIM];
           quad_xyz_fr_q(quad_idx, tree_idx, p4est, ns->get_ghost(), xyz);
-#ifdef P4_TO_P8
-          if((*interp_phi)(xyz[0],xyz[1],xyz[2])<0)
-#else
-          if((*interp_phi)(xyz[0],xyz[1])<0)
-#endif
+          if((*interp_phi)(xyz) < 0.0)
             corr_hodge = max(corr_hodge, fabs(ho[quad_idx]-hn[quad_idx]));
         }
       }

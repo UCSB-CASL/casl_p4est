@@ -69,12 +69,12 @@ void my_p4est_interpolation_faces_t::interpolate(const p4est_quadrant_t &quad, c
   double qh = MIN(DIM(faces->tree_dimensions[0], faces->tree_dimensions[1], faces->tree_dimensions[2]));
   double scaling = .5 * qh*(double)P4EST_QUADRANT_LEN(quad.level)/(double)P4EST_ROOT_LEN;
 
-  p4est_topidx_t tree_idx = quad.p.piggy3.which_tree;
-  p4est_tree_t *tree = p4est_tree_array_index(p4est->trees, tree_idx);
-  p4est_locidx_t quad_idx = quad.p.piggy3.local_num + tree->quadrants_offset;
+  p4est_tree_t *tree = p4est_tree_array_index(p4est->trees, quad.p.piggy3.which_tree);
+  p4est_quadrant_t quad_with_correct_local_num = quad;
+  quad_with_correct_local_num.p.piggy3.local_num = quad.p.piggy3.local_num + tree->quadrants_offset;
 
   /* gather the neighborhood */
-  set_of_neighboring_quadrants close_ngbd_tmp; close_ngbd_tmp.insert(quad);
+  set_of_neighboring_quadrants close_ngbd_tmp; close_ngbd_tmp.insert(quad_with_correct_local_num);
   std::set<indexed_and_located_face> face_ngbd;
   indexed_and_located_face f_tmp;
 
@@ -86,9 +86,8 @@ void my_p4est_interpolation_faces_t::interpolate(const p4est_quadrant_t &quad, c
       {
         if(ANDD(i == 0, j == 0, k == 0))
           continue;
-        ngbd_c->find_neighbor_cells_of_cell(close_ngbd_tmp, quad_idx, tree_idx, DIM(i, j, k));
+        ngbd_c->find_neighbor_cells_of_cell(close_ngbd_tmp, quad_with_correct_local_num.p.piggy3.local_num, quad.p.piggy3.which_tree, DIM(i, j, k));
       }
-
 
   set_of_neighboring_quadrants ngbd_tmp(close_ngbd_tmp);
   for (set_of_neighboring_quadrants::const_iterator it = close_ngbd_tmp.begin(); it != close_ngbd_tmp.end(); ++it)

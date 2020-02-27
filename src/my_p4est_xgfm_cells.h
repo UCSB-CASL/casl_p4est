@@ -22,6 +22,8 @@
 #include <algorithm>
 #include <map>
 
+const static double xgfm_threshold_cond_number_lsqr = 1.0e4;
+
 /*!
  * \brief The interface_neighbor struct contains all relevant data regarding
  * interface-neighbor, i.e. intersection between the interface and the segment
@@ -131,7 +133,6 @@ class my_p4est_xgfm_cells_t
     }
     double get_value() const { return value;}
   };
-
 
   // defined on/from the computational grid
   const my_p4est_cell_neighbors_t *cell_ngbd;
@@ -399,21 +400,21 @@ class my_p4est_xgfm_cells_t
   inline bool is_quad_in_quad(const double xyz_candidate_container_quad[], const double dxyz_candidate_container_quad[], const int8_t& level_candidate_container_quad, const double xyz_other_quad[], const int8_t& level_other_quad) const
   {
       return ((xyz_other_quad[0] > xyz_candidate_container_quad[0] - .5*dxyz_candidate_container_quad[0])
-        && (xyz_other_quad[0] < xyz_candidate_container_quad[0] + .5*dxyz_candidate_container_quad[0])
-        && (xyz_other_quad[1] > xyz_candidate_container_quad[1] - .5*dxyz_candidate_container_quad[1])
-        && (xyz_other_quad[1] < xyz_candidate_container_quad[1] + .5*dxyz_candidate_container_quad[1])
-    #ifdef P4_TO_P8
-        && (xyz_other_quad[2] > xyz_candidate_container_quad[2] - .5*dxyz_candidate_container_quad[2])
-        && (xyz_other_quad[2] < xyz_candidate_container_quad[2] + .5*dxyz_candidate_container_quad[2])
-    #endif
-        && (level_other_quad >= level_candidate_container_quad));
+      && (xyz_other_quad[0] < xyz_candidate_container_quad[0] + .5*dxyz_candidate_container_quad[0])
+      && (xyz_other_quad[1] > xyz_candidate_container_quad[1] - .5*dxyz_candidate_container_quad[1])
+      && (xyz_other_quad[1] < xyz_candidate_container_quad[1] + .5*dxyz_candidate_container_quad[1])
+#ifdef P4_TO_P8
+      && (xyz_other_quad[2] > xyz_candidate_container_quad[2] - .5*dxyz_candidate_container_quad[2])
+      && (xyz_other_quad[2] < xyz_candidate_container_quad[2] + .5*dxyz_candidate_container_quad[2])
+#endif
+      && (level_other_quad >= level_candidate_container_quad));
   }
 
-  inline double get_lsqr_interpolation_at(const double xyz[], const set_of_neighboring_quadrants& ngbd_of_coarse_cells, const double *coarse_cell_data_read_p, std::vector<interpolation_factor>& interpolator)
+  inline double get_lsqr_interpolation_at(const p4est_indep_t* ni, const double xyz[], const set_of_neighboring_quadrants& ngbd_of_coarse_cells, const double *coarse_cell_data_read_p, std::vector<interpolation_factor>& interpolator)
   {
     matrix_t A;
     std::vector<double> lsqr_rhs;
-    std::vector<double> data_points[P4EST_DIM];
+    std::set<int64_t> rel_qcoord[P4EST_DIM];
     double scaling = DBL_MAX;
 
     P4EST_ASSERT(ngbd_of_coarse_cells.size() > 0);
@@ -423,75 +424,52 @@ class my_p4est_xgfm_cells_t
 
     lsqr_rhs.resize(0);
     for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
-      data_points[dim].resize(0);
-#ifdef P4_TO_P8
-    A.resize(1,10);
-    scaling *= .5*MIN(tree_dimensions[0], tree_dimensions[1], tree_dimensions[2]);
-#else
-    A.resize(1,6);
-    scaling *= .5*MIN(tree_dimensions[0], tree_dimensions[1]);
-#endif
+      rel_qcoord[dim].clear();
+    A.resize(1, 1 + P4EST_DIM + P4EST_DIM*(P4EST_DIM + 1)/2);
+    scaling *= .5*MIN(DIM(tree_dimensions[0], tree_dimensions[1], tree_dimensions[2]));
 
     for (set_of_neighboring_quadrants::const_iterator it = ngbd_of_coarse_cells.begin(); it != ngbd_of_coarse_cells.end(); ++it)
     {
       p4est_locidx_t qm_idx = it->p.piggy3.local_num;
       interpolation_factor interp_term; interp_term.quad_idx = qm_idx;
-      if(std::find(interpolator.begin(), interpolator.end(), interp_term)==interpolator.end())
+      if(std::find(interpolator.begin(), interpolator.end(), interp_term) == interpolator.end())
       {
         double xyz_t[P4EST_DIM];
-
-        xyz_t[0] = quad_x_fr_q(it->p.piggy3.local_num, it->p.piggy3.which_tree, p4est, ghost);
-        xyz_t[1] = quad_y_fr_q(it->p.piggy3.local_num, it->p.piggy3.which_tree, p4est, ghost);
-#ifdef P4_TO_P8
-        xyz_t[2] = quad_z_fr_q(it->p.piggy3.local_num, it->p.piggy3.which_tree, p4est, ghost);
-#endif
-
+        int64_t logical_qcoord_diff[P4EST_DIM];
+        rel_qxyz_quad_fr_node(p4est, *it, xyz, ni, tree_dimensions, brick, xyz_t, logical_qcoord_diff);
         for(unsigned char dim = 0; dim < P4EST_DIM; ++dim)
-          xyz_t[dim] = (xyz_t[dim] - xyz[dim]) / scaling;
+        {
+          xyz_t[dim] /= scaling;
+          rel_qcoord[dim].insert(logical_qcoord_diff[dim]);
+        }
 
+        double w = MAX(1.0e-6, 1./MAX(1.0e-6, sqrt(SUMD(SQR(xyz_t[0]), SQR(xyz_t[1]), SQR(xyz_t[2])))));
+        A.set_value(interpolator.size(),                0, 1                 * w);
+        A.set_value(interpolator.size(),                1, xyz_t[0]          * w);
+        A.set_value(interpolator.size(),                2, xyz_t[1]          * w);
 #ifdef P4_TO_P8
-        double w = MAX(1.0e-6,1./MAX(1.0e-6,sqrt(SQR(xyz_t[0]) + SQR(xyz_t[1]) + SQR(xyz_t[2]))));
-#else
-        double w = MAX(1.0e-6,1./MAX(1.0e-6,sqrt(SQR(xyz_t[0]) + SQR(xyz_t[1]))));
+        A.set_value(interpolator.size(),                3, xyz_t[2]          * w);
 #endif
+        A.set_value(interpolator.size(),    1 + P4EST_DIM, xyz_t[0]*xyz_t[0] * w);
+        A.set_value(interpolator.size(),    2 + P4EST_DIM, xyz_t[0]*xyz_t[1] * w);
 #ifdef P4_TO_P8
-        A.set_value(interpolator.size(), 0, 1                 * w);
-        A.set_value(interpolator.size(), 1, xyz_t[0]          * w);
-        A.set_value(interpolator.size(), 2, xyz_t[1]          * w);
-        A.set_value(interpolator.size(), 3, xyz_t[2]          * w);
-        A.set_value(interpolator.size(), 4, xyz_t[0]*xyz_t[0] * w);
-        A.set_value(interpolator.size(), 5, xyz_t[0]*xyz_t[1] * w);
-        A.set_value(interpolator.size(), 6, xyz_t[0]*xyz_t[2] * w);
-        A.set_value(interpolator.size(), 7, xyz_t[1]*xyz_t[1] * w);
-        A.set_value(interpolator.size(), 8, xyz_t[1]*xyz_t[2] * w);
-        A.set_value(interpolator.size(), 9, xyz_t[2]*xyz_t[2] * w);
-#else
-        A.set_value(interpolator.size(), 0, 1                 * w);
-        A.set_value(interpolator.size(), 1, xyz_t[0]          * w);
-        A.set_value(interpolator.size(), 2, xyz_t[1]          * w);
-        A.set_value(interpolator.size(), 3, xyz_t[0]*xyz_t[0] * w);
-        A.set_value(interpolator.size(), 4, xyz_t[0]*xyz_t[1] * w);
-        A.set_value(interpolator.size(), 5, xyz_t[1]*xyz_t[1] * w);
+        A.set_value(interpolator.size(),    3 + P4EST_DIM, xyz_t[0]*xyz_t[2] * w);
+#endif
+        A.set_value(interpolator.size(),  1 + 2*P4EST_DIM, xyz_t[1]*xyz_t[1] * w);
+#ifdef P4_TO_P8
+        A.set_value(interpolator.size(),  2 + 2*P4EST_DIM, xyz_t[1]*xyz_t[2] * w);
+        A.set_value(interpolator.size(),  3 + 2*P4EST_DIM, xyz_t[2]*xyz_t[2] * w);
 #endif
         interp_term.weight = w;
         interpolator.push_back(interp_term);
         lsqr_rhs.push_back(coarse_cell_data_read_p[qm_idx]*w);
-        for(unsigned char dim = 0; dim < P4EST_DIM; ++dim)
-        {
-          size_t kk;
-          for (kk = 0; kk < data_points[dim].size(); ++kk)
-            if(fabs(data_points[dim][kk] - xyz_t[dim]) < EPS)
-              break;
-          if(kk == data_points[dim].size())
-            data_points[dim].push_back(xyz_t[dim]);
-        }
       }
     }
     double abs_max = A.scale_by_maxabs(lsqr_rhs);
 
-    P4EST_ASSERT(interpolator.size()>0);
+    P4EST_ASSERT(interpolator.size() > 0);
     std::vector<double> interp_weights;
-    double value_to_return = solve_lsqr_system_and_get_coefficients(A, lsqr_rhs, DIM(data_points[0].size(), data_points[1].size(), data_points[2].size()), interp_weights);
+    double value_to_return = solve_lsqr_system_and_get_coefficients(A, lsqr_rhs, DIM(rel_qcoord[0].size(), rel_qcoord[1].size(), rel_qcoord[2].size()), interp_weights, xgfm_threshold_cond_number_lsqr);
     interpolator.resize(interp_weights.size());
     for (size_t ii = 0; ii < interpolator.size(); ++ii)
       interpolator[ii].weight *= interp_weights[ii]/abs_max;

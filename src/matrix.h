@@ -47,18 +47,18 @@ public:
   //--------------------------------------------------------------------------
   // b = Ax
   //--------------------------------------------------------------------------
-  void matvec( const vector<double>& x, vector<double>& b );
+  void matvec( const vector<double>& x, vector<double>& b ) const;
 
-  void tranpose_matvec( const vector<double>& x, vector<double>& b ) {tranpose_matvec(&x, &b, 1);}
-  void tranpose_matvec( const vector<double> x[], vector<double> b[], unsigned int n_vectors);
+  void tranpose_matvec( const vector<double>& x, vector<double>& b ) const {tranpose_matvec(&x, &b, 1);}
+  void tranpose_matvec( const vector<double> x[], vector<double> b[], unsigned int n_vectors) const;
 
   void matrix_product(  matrix_t& b, matrix_t& c );
 
   double scale_by_maxabs(vector<double>& x) {return scale_by_maxabs(&x, 1); }
   double scale_by_maxabs(vector<double> x[], unsigned int n_vectors);
 
-  void mtm_product(matrix_t& m );
-  void mtm_product(matrix_t& m, vector<double>& w);
+  void mtm_product(matrix_t& m ) const;
+  void mtm_product(matrix_t& m, vector<double>& w) const;
 
 
   /*!
@@ -69,7 +69,7 @@ public:
 
   void print();
   void sub( int im, int jm, int iM, int jM, matrix_t& M );
-  void truncate_matrix( int m, int n, matrix_t& M);
+  void truncate_matrix( int m, int n, const matrix_t& M);
   void create_as_transpose(  matrix_t& M );
 
   void operator+=(matrix_t& M );

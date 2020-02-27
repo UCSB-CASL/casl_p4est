@@ -805,9 +805,15 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_cell(int seed_idx, V
   else
     owner_quad.p.piggy3.local_num = owner_quad.p.piggy3.local_num + p4est->local_num_quadrants;
 
-  double qh[P4EST_DIM], quyz[P4EST_DIM];
+  double qh[P4EST_DIM], qxyz[P4EST_DIM];
   dxyz_quad(p4est, &owner_quad, qh);
-  quad_xyz_fr_q(owner_quad.p.piggy3.local_num, owner_quad.p.piggy3.which_tree, p4est, ghost, quyz);
+  quad_xyz_fr_q(owner_quad.p.piggy3.local_num, owner_quad.p.piggy3.which_tree, p4est, ghost, qxyz);
+  for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
+    if(is_periodic(p4est, dim))
+    {
+      double pp = (qxyz[dim] - xyz[dim])/(xyz_max[dim] - xyz_min[dim]);
+      xyz[dim] += (floor(pp) + (pp > floor(pp) + 0.5 ? 1.0 : 0.0))*(xyz_max[dim] - xyz_min[dim]);
+    }
 
   voro.set_center_point(ONLY3D(seed_idx COMMA) center_seed);
 
@@ -815,13 +821,13 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_cell(int seed_idx, V
 
   bool exactly_on_grid_node = true;
   for(unsigned char dim = 0; dim < P4EST_DIM && exactly_on_grid_node; ++dim)
-    exactly_on_grid_node = fabs(xyz[dim] - (quyz[dim] - 0.5*qh[dim])) < (xyz_max[dim] - xyz_min[dim])*EPS || fabs(xyz[dim] - (quyz[dim] + 0.5*qh[dim])) < (xyz_max[dim] - xyz_min[dim])*EPS;
+    exactly_on_grid_node = fabs(xyz[dim] - (qxyz[dim] - 0.5*qh[dim])) < (xyz_max[dim] - xyz_min[dim])*EPS || fabs(xyz[dim] - (qxyz[dim] + 0.5*qh[dim])) < (xyz_max[dim] - xyz_min[dim])*EPS;
   if(exactly_on_grid_node)
   {
     // find that grid node
     unsigned char node_dir = 0;
     for(unsigned char dim = 0; dim < P4EST_DIM; ++dim)
-      node_dir += (fabs(xyz[dim] - (quyz[dim] - 0.5*qh[dim])) < (xyz_max[dim] - xyz_min[dim])*EPS ? 0 : 1)*(1 << dim);
+      node_dir += (fabs(xyz[dim] - (qxyz[dim] - 0.5*qh[dim])) < (xyz_max[dim] - xyz_min[dim])*EPS ? 0 : 1)*(1 << dim);
     p4est_locidx_t node = nodes->local_nodes[P4EST_CHILDREN*owner_quad.p.piggy3.local_num + node_dir];
 
     // find all the neighbor quadrants: direct neighbors + the face neighbors of
@@ -833,7 +839,7 @@ void my_p4est_poisson_jump_nodes_voronoi_t::compute_voronoi_cell(int seed_idx, V
         for(char k = -1; k <= 1; k += 2)
 #endif
         {
-          ngbd_n->find_neighbor_cell_of_node(node,  DIM(i,  j, k), direct_nb_quad_idx, owner_quad.p.piggy3.which_tree);
+          ngbd_n->find_neighbor_cell_of_node(node,  DIM(i, j, k), direct_nb_quad_idx, owner_quad.p.piggy3.which_tree);
           if(direct_nb_quad_idx >= 0) // invalid quadrant if not >= 0
           {
             p4est_quadrant_t tmp_quad;

@@ -48,6 +48,65 @@
 
 using namespace std;
 
+#ifdef P4_TO_P8
+const static string test_description = "choose a test.\n\
+                 0 - u_m=exp((z-zmin)/(zmax-zmin)), u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin)), mu_m=mu_p=1.0\n\
+                 1 - u_m=exp((z-zmin)/(zmax-zmin)), u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin)), mu_m=SQR((y-ymin)/(ymax-ymin))*log((x-xmin)/(xmax-xmin)+2)+4, mu_p=exp(-(z-zmin)/(zmax-zmin)) article example 4.6 \n\
+                 2 - u_m=u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin))*exp((z-zmin)/(zmax-zmin)), mu_m=mu_p=1.45, BC dirichlet\n\
+                 3 - u_m=u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin))*exp((z-zmin)/(zmax-zmin)), mu_m=mu_p=exp((x-xmin)/(xmax-xmin))*ln((y-ymin)/(ymax-ymin)+(z-zmin)/(zmax-zmin)+2), BC dirichlet\n\
+                 4 - u_m=((y-0.5*(ymin+ymax))/(ymax-ymin))*((z-0.5*(zmin+zmax))/(zmax-zmin))*sin(x/(xmax-xmin)), u_p=((x-0.5*(xmin+xmax))/(xmax-xmin))*SQR((y-0.5*(ymin+ymax))/(ymax-ymin))+pow((z-0.5*(zmin+zmax))/(zmax-zmin), 3.0), mu_m=SQR((y-0.5*(ymin+ymax))/(ymax-ymin))+5, mu_p=exp((x-0.5*(xmin+xmax))/(xmax-xmin)+(z-0.5*(zmin+zmax))/(xmax-xmin))    BC dirichlet article example 4.7 \n\
+                 5 - u_m=u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin))*exp((z-zmin)/(zmax-zmin)), mu_m=SQR((y-0.5*(ymin+ymax))/(ymax-ymin))+5, mu_p=exp((x-0.5*(xmin+xmax))/(xmax-xmin)+(z-0.5*(zmin+zmax))/(zmax-zmin)) BC dirichlet \n\
+                 6 - u_m=exp(-SQR(sin(2.0*PI*wave_number*(x-xmin)/(xmax-xmin))))*(SQR((y-ymin)/(ymax-ymin))*atan(3.0*(z-0.5*(zmin+zmax))/(zmax-zmin))), \n\
+                   - u_p= 1.0-pow((x-0.5*(xmin+xmax))/(xmax-xmin), 3.0)-SQR((y-0.5*(ymin+ymax))/(ymax-ymin)) + ((z-0.5*(zmin+zmax))/(zmax-zmin)) \n\
+                   - mu_m= 2.0+0.3*cos(2.0*PI*(x-xmin)/(xmax-xmin)), \n\
+                   - mu_p=mu_value \n\
+                   - BC periodic in x, dirichlet in y, z \n\
+                 7 - u_m=exp(-SQR(sin(2.0*PI*wave_number*(y-ymin)/(ymax-ymin))))*(SQR((x-xmin)/(xmax-xmin))*atan(3.0*(z-0.5*(zmin+zmax))/(zmax-zmin))), \n\
+                   - u_p= 1.0-pow((x-0.5*(xmin+xmax))/(xmax-xmin), 3.0)-SQR((y-0.5*(ymin+ymax))/(ymax-ymin)) + ((z-0.5*(zmin+zmax))/(zmax-zmin)) \n\
+                   - mu_m= 2.0+0.3*cos(2.0*PI*(y-ymin)/(ymax-ymin)) \n\
+                   - mu_p=mu_value \n\
+                   - BC periodic in y, dirichlet in x, z \n\
+                 8 - u_m=exp(-SQR(sin(2.0*PI*wave_number*(z-zmin)/(zmax-zmin))))*(SQR((y-ymin)/(ymax-ymin))*atan(3.0*(x-0.5*(xmin+xmax))/(xmax-xmin))), \n\
+                   - u_p= 1.0-pow((x-0.5*(xmin+xmax))/(xmax-xmin), 3.0)-SQR((y-0.5*(ymin+ymax))/(ymax-ymin)) + ((z-0.5*(zmin+zmax))/(zmax-zmin)) \n\
+                   - mu_m= 2.0+0.3*cos(2.0*PI*(z-zmin)/(zmax-zmin)) \n\
+                   - mu_p=mu_value \n\
+                   - BC periodic in z, dirichlet in x, y \n\
+                 9 - u_m= cos(2.0*PI*wave_number*(x-xmin)/(xmax-xmin) + 2.0*PI*3.0*wave_number*(y-ymin)/(ymax-ymin))*sin(2.0*PI*wave_number*(y-ymin)/(ymax-ymin))*exp((z-0.5*(zmin+zmax))/(zmax-zmin)), \n\
+                   - u_p= 1.0-pow((x-0.5*(xmin+xmax))/(xmax-xmin), 3.0)-SQR((y-0.5*(ymin+ymax))/(ymax-ymin)) + ((z-0.5*(zmin+zmax))/(zmax-zmin)) \n\
+                   - mu_m=mu_value \n\
+                   - mu_p=mu_value*mu_ratio \n\
+                   - BC periodic in x-y, dirichlet in z \n\
+                 10- u_m= cos(2.0*PI*wave_number*(x-xmin)/(xmax-xmin) + 2.0*PI*3.0*wave_number*(z-zmin)/(zmax-zmin))*sin(2.0*PI*wave_number*(z-zmin)/(zmax-zmin))*exp((y-0.5*(ymin+ymax))/(ymax-ymin)), \n\
+                   - u_p= 1.0-pow((x-0.5*(xmin+xmax))/(xmax-xmin), 3.0)-SQR((y-0.5*(ymin+ymax))/(ymax-ymin)) + ((z-0.5*(zmin+zmax))/(zmax-zmin)) \n\
+                   - mu_m=mu_value \n\
+                   - mu_p=mu_value*mu_ratio \n\
+                   - BC periodic in x-z, dirichlet in y \n\
+                 11- u_m= cos(2.0*PI*wave_number*(y-ymin)/(ymax-ymin) + 2.0*PI*3.0*wave_number*(z-zmin)/(zmax-zmin))*sin(2.0*PI*wave_number*(z-zmin)/(zmax-zmin))*exp((x-0.5*(xmin+xmax))/(xmax-xmin)), \n\
+                   - u_p= 1.0-pow((x-0.5*(xmin+xmax))/(xmax-xmin), 3.0)-SQR((y-0.5*(ymin+ymax))/(ymax-ymin)) + ((z-0.5*(zmin+zmax))/(zmax-zmin)) \n\
+                   - mu_m=mu_value \n\
+                   - mu_p=mu_value*mu_ratio \n\
+                   - BC periodic in x-z, dirichlet in y \n\
+                 12- u_m=up= cos(2.0*PI*wave_number*(k1*(x/(xmax-xmin)) + k2*(y/(ymax-ymin)) +k3*(z/(zmax-zmin))))*cos(2.0*PI*wave_number*(k1*(z/(zmax-zmin)) + k2*(x/(xmax-xmin)) +k3*(y/(ymax-ymin))))*cos(2.0*PI*wave_number*(k1*(y/(ymax-ymin)) + k2*(z/(zmax-zmin)) - k3*(x/(xmax-xmin)))) \n\
+                   - mu_m=mu_value \n\
+                   - mu_p=mu_value*mu_ratio \n\
+                   - fully periodic";
+#else
+const static string test_description = "choose a test.\n\
+                  0 - u_m=1+log(r/r0), r = sqrt(SQR(x-0.5*(xmax+xmin)) + SQR(y-0.5*(ymax+ymin)))), r0 = MIN(xmax-xmin,ymax-ymin/4), u_p=1, mu_m=mu_p=1\n\
+                  1 - u_m=u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin)), mu_m=mu_p=constant, BC dirichlet\n\
+                  2 - u_m=u_p=sin(x/(xmax-xmin))*sin(y/(ymax-ymin)), mu_m=mu_p=constant, BC neumann\n\
+                  3 - u_m=exp((x-0.5*(xmin+xmax))/(xmax-xmin)), u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin)), mu_m=SQR((y-ymin)/(ymax-ymin))*ln((x-0.5*(xmax+xmin))/(xmax-xmin)+2)+4, mu_p=exp(-(y-0.5*(ymin+ymax))/(ymax-ymin))   article example 4.4\n\
+                  4 - u_m=up=sin(2.0*PI*wave_number*(x-xmin)/(xmax-xmin))*log((y-ymin)/(ymax-ymin) + 1.2), mu_m=mu_p=constant, BC periodic in x, dirichlet in y\n\
+                  5 - u_m=exp(-SQR(sin(2.0*PI*wave_number*(x-xmin)/(xmax-xmin))))*(SQR((y-ymin)/(ymax-ymin))+atan(3.0*(y-0.5*(ymin+ymax))/(ymax-ymin))),\n\
+                    - u_p= 1.0-pow((x-0.5*(xmin+xmax))/(xmax-xmin), 3.0)-SQR((y-0.5*(ymin+ymax))/(ymax-ymin))\n\
+                    - mu_m= 2.0+0.3*cos(2.0*PI*(x-xmin)/(xmax-xmin))\n\
+                    - mu_p=constant\n\
+                    - BC periodic in x, dirichlet in y\n\
+                  6 - u_m=up=SQR(sin(2.0*PI*wave_number*(x-xmin)/(xmax-xmin)))*SQR(cos(2.0*PI*2.0*wave_number*(y-ymin)/(ymax-ymin)))\n\
+                    - mu_m=mu_p/mu_ratio=constant\n\
+                    - fully periodic";
+#endif
+
 int lmin = 2;
 int lmax = 5;
 int nb_splits = 4;
@@ -1225,66 +1284,10 @@ int main (int argc, char* argv[])
   cmd.add_option("save_voro", "1 to save voronoi partition, 0 otherwise");
   cmd.add_option("save_stats", "1 to save statistics about the voronoi partition, 0 otherwise");
   cmd.add_option("check_partition", "1 to check if the voronoi partition is symmetric, 0 otherwise");
-#ifdef P4_TO_P8
-  cmd.add_option("test", "choose a test.\n\
-                 0 - u_m=exp((z-zmin)/(zmax-zmin)), u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin)), mu_m=mu_p=1.0\n\
-                 1 - u_m=exp((z-zmin)/(zmax-zmin)), u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin)), mu_m=SQR((y-ymin)/(ymax-ymin))*log((x-xmin)/(xmax-xmin)+2)+4, mu_p=exp(-(z-zmin)/(zmax-zmin)) article example 4.6 \n\
-                 2 - u_m=u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin))*exp((z-zmin)/(zmax-zmin)), mu_m=mu_p=1.45, BC dirichlet\n\
-                 3 - u_m=u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin))*exp((z-zmin)/(zmax-zmin)), mu_m=mu_p=exp((x-xmin)/(xmax-xmin))*ln((y-ymin)/(ymax-ymin)+(z-zmin)/(zmax-zmin)+2), BC dirichlet\n\
-                 4 - u_m=((y-0.5*(ymin+ymax))/(ymax-ymin))*((z-0.5*(zmin+zmax))/(zmax-zmin))*sin(x/(xmax-xmin)), u_p=((x-0.5*(xmin+xmax))/(xmax-xmin))*SQR((y-0.5*(ymin+ymax))/(ymax-ymin))+pow((z-0.5*(zmin+zmax))/(zmax-zmin), 3.0), mu_m=SQR((y-0.5*(ymin+ymax))/(ymax-ymin))+5, mu_p=exp((x-0.5*(xmin+xmax))/(xmax-xmin)+(z-0.5*(zmin+zmax))/(xmax-xmin))    BC dirichlet article example 4.7 \n\
-                 5 - u_m=u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin))*exp((z-zmin)/(zmax-zmin)), mu_m=SQR((y-0.5*(ymin+ymax))/(ymax-ymin))+5, mu_p=exp((x-0.5*(xmin+xmax))/(xmax-xmin)+(z-0.5*(zmin+zmax))/(zmax-zmin)) BC dirichlet \n\
-                 6 - u_m=exp(-SQR(sin(2.0*PI*wave_number*(x-xmin)/(xmax-xmin))))*(SQR((y-ymin)/(ymax-ymin))*atan(3.0*(z-0.5*(zmin+zmax))/(zmax-zmin))), \n\
-                   - u_p= 1.0-pow((x-0.5*(xmin+xmax))/(xmax-xmin), 3.0)-SQR((y-0.5*(ymin+ymax))/(ymax-ymin)) + ((z-0.5*(zmin+zmax))/(zmax-zmin)) \n\
-                   - mu_m= 2.0+0.3*cos(2.0*PI*(x-xmin)/(xmax-xmin)), \n\
-                   - mu_p=mu_value \n\
-                   - BC periodic in x, dirichlet in y, z \n\
-                 7 - u_m=exp(-SQR(sin(2.0*PI*wave_number*(y-ymin)/(ymax-ymin))))*(SQR((x-xmin)/(xmax-xmin))*atan(3.0*(z-0.5*(zmin+zmax))/(zmax-zmin))), \n\
-                   - u_p= 1.0-pow((x-0.5*(xmin+xmax))/(xmax-xmin), 3.0)-SQR((y-0.5*(ymin+ymax))/(ymax-ymin)) + ((z-0.5*(zmin+zmax))/(zmax-zmin)) \n\
-                   - mu_m= 2.0+0.3*cos(2.0*PI*(y-ymin)/(ymax-ymin)) \n\
-                   - mu_p=mu_value \n\
-                   - BC periodic in y, dirichlet in x, z \n\
-                 8 - u_m=exp(-SQR(sin(2.0*PI*wave_number*(z-zmin)/(zmax-zmin))))*(SQR((y-ymin)/(ymax-ymin))*atan(3.0*(x-0.5*(xmin+xmax))/(xmax-xmin))), \n\
-                   - u_p= 1.0-pow((x-0.5*(xmin+xmax))/(xmax-xmin), 3.0)-SQR((y-0.5*(ymin+ymax))/(ymax-ymin)) + ((z-0.5*(zmin+zmax))/(zmax-zmin)) \n\
-                   - mu_m= 2.0+0.3*cos(2.0*PI*(z-zmin)/(zmax-zmin)) \n\
-                   - mu_p=mu_value \n\
-                   - BC periodic in z, dirichlet in x, y \n\
-                 9 - u_m= cos(2.0*PI*wave_number*(x-xmin)/(xmax-xmin) + 2.0*PI*3.0*wave_number*(y-ymin)/(ymax-ymin))*sin(2.0*PI*wave_number*(y-ymin)/(ymax-ymin))*exp((z-0.5*(zmin+zmax))/(zmax-zmin)), \n\
-                   - u_p= 1.0-pow((x-0.5*(xmin+xmax))/(xmax-xmin), 3.0)-SQR((y-0.5*(ymin+ymax))/(ymax-ymin)) + ((z-0.5*(zmin+zmax))/(zmax-zmin)) \n\
-                   - mu_m=mu_value \n\
-                   - mu_p=mu_value*mu_ratio \n\
-                   - BC periodic in x-y, dirichlet in z \n\
-                 10- u_m= cos(2.0*PI*wave_number*(x-xmin)/(xmax-xmin) + 2.0*PI*3.0*wave_number*(z-zmin)/(zmax-zmin))*sin(2.0*PI*wave_number*(z-zmin)/(zmax-zmin))*exp((y-0.5*(ymin+ymax))/(ymax-ymin)), \n\
-                   - u_p= 1.0-pow((x-0.5*(xmin+xmax))/(xmax-xmin), 3.0)-SQR((y-0.5*(ymin+ymax))/(ymax-ymin)) + ((z-0.5*(zmin+zmax))/(zmax-zmin)) \n\
-                   - mu_m=mu_value \n\
-                   - mu_p=mu_value*mu_ratio \n\
-                   - BC periodic in x-z, dirichlet in y \n\
-                 11- u_m= cos(2.0*PI*wave_number*(y-ymin)/(ymax-ymin) + 2.0*PI*3.0*wave_number*(z-zmin)/(zmax-zmin))*sin(2.0*PI*wave_number*(z-zmin)/(zmax-zmin))*exp((x-0.5*(xmin+xmax))/(xmax-xmin)), \n\
-                   - u_p= 1.0-pow((x-0.5*(xmin+xmax))/(xmax-xmin), 3.0)-SQR((y-0.5*(ymin+ymax))/(ymax-ymin)) + ((z-0.5*(zmin+zmax))/(zmax-zmin)) \n\
-                   - mu_m=mu_value \n\
-                   - mu_p=mu_value*mu_ratio \n\
-                   - BC periodic in x-z, dirichlet in y \n\
-                 12- u_m=up= cos(2.0*PI*wave_number*(k1*(x/(xmax-xmin)) + k2*(y/(ymax-ymin)) +k3*(z/(zmax-zmin))))*cos(2.0*PI*wave_number*(k1*(z/(zmax-zmin)) + k2*(x/(xmax-xmin)) +k3*(y/(ymax-ymin))))*cos(2.0*PI*wave_number*(k1*(y/(ymax-ymin)) + k2*(z/(zmax-zmin)) - k3*(x/(xmax-xmin)))) \n\
-                   - mu_m=mu_value \n\
-                   - mu_p=mu_value*mu_ratio \n\
-                   - fully periodic");
-#else
-  cmd.add_option("test", "choose a test.\n\
-                  0 - u_m=1+log(r/r0), r = sqrt(SQR(x-0.5*(xmax+xmin)) + SQR(y-0.5*(ymax+ymin)))), r0 = MIN(xmax-xmin,ymax-ymin/4), u_p=1, mu_m=mu_p=1\n\
-                  1 - u_m=u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin)), mu_m=mu_p=constant, BC dirichlet\n\
-                  2 - u_m=u_p=sin(x/(xmax-xmin))*sin(y/(ymax-ymin)), mu_m=mu_p=constant, BC neumann\n\
-                  3 - u_m=exp((x-0.5*(xmin+xmax))/(xmax-xmin)), u_p=cos(x/(xmax-xmin))*sin(y/(ymax-ymin)), mu_m=SQR((y-ymin)/(ymax-ymin))*ln((x-0.5*(xmax+xmin))/(xmax-xmin)+2)+4, mu_p=exp(-(y-0.5*(ymin+ymax))/(ymax-ymin))   article example 4.4\n\
-                  4 - u_m=up=sin(2.0*PI*wave_number*(x-xmin)/(xmax-xmin))*log((y-ymin)/(ymax-ymin) + 1.2), mu_m=mu_p=constant, BC periodic in x, dirichlet in y\n\
-                  5 - u_m=exp(-SQR(sin(2.0*PI*wave_number*(x-xmin)/(xmax-xmin))))*(SQR((y-ymin)/(ymax-ymin))+atan(3.0*(y-0.5*(ymin+ymax))/(ymax-ymin))),\n\
-                    - u_p= 1.0-pow((x-0.5*(xmin+xmax))/(xmax-xmin), 3.0)-SQR((y-0.5*(ymin+ymax))/(ymax-ymin))\n\
-                    - mu_m= 2.0+0.3*cos(2.0*PI*(x-xmin)/(xmax-xmin))\n\
-                    - mu_p=constant\n\
-                    - BC periodic in x, dirichlet in y\n\
-                  6 - u_m=up=SQR(sin(2.0*PI*wave_number*(x-xmin)/(xmax-xmin)))*SQR(cos(2.0*PI*2.0*wave_number*(y-ymin)/(ymax-ymin)))\n\
-                    - mu_m=mu_p/mu_ratio=constant\n\
-                    - fully periodic");
-#endif
-  cmd.parse(argc, argv);
+  cmd.add_option("test", test_description);
 
+  if(cmd.parse(argc, argv))
+    return 0;
   cmd.print();
 
   lmin = cmd.get("lmin", lmin);

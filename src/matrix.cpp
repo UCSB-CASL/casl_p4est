@@ -52,22 +52,22 @@ bool matrix_t::is_symmetric() const
 }
 
 
-void matrix_t::matvec( const vector<double>& x, vector<double>& b )
+void matrix_t::matvec(const vector<double>& x, vector<double>& b) const
 {
 #ifdef CASL_THROWS
   if(n != (int) x.size()) throw std::invalid_argument("[CASL_ERROR]: matrix_t->matvec: the matrix and X must have compatible sizes");
 #endif
   b.resize(m);
 //  cblas_dgemv(CblasRowMajor, CblasNoTrans, m, n, 1.0, values.data(), n, x.data(), 1, 0.0, b.data(), 1);
-  for( int i=0; i<m; i++ )
+  for(int i = 0; i < m; i++)
   {
-    b[i]=0;
-    for( int j=0; j<n; j++ )
-      b[i] += values[i*n+j]*x[j];
+    b[i] = 0.0;
+    for(int j = 0; j < n; j++)
+      b[i] += values[i*n + j]*x[j];
   }
 }
 
-void matrix_t::tranpose_matvec( const vector<double> x[], vector<double> b[], unsigned int n_vectors)
+void matrix_t::tranpose_matvec(const vector<double> x[], vector<double> b[], unsigned int n_vectors) const
 {
 #ifdef CASL_THROWS
   if(n_vectors == 0) throw std::invalid_argument("[CASL_ERROR]: matrix_t->transpose_matvec: the number of rhs's must be strictly positive!");
@@ -104,7 +104,7 @@ void matrix_t::matrix_product(  matrix_t& b, matrix_t& c )
     }
 }
 
-void matrix_t::mtm_product(matrix_t& M )
+void matrix_t::mtm_product(matrix_t& M ) const
 {
   M.resize(num_cols(),num_cols());
 //  cblas_dgemm(CblasRowMajor, CblasTrans, CblasNoTrans, this->n, this->n, this->m, 1.0, this->values.data(), this->n, this->values.data(), this->n, 0.0, M.values.data(), this->n);
@@ -120,7 +120,7 @@ void matrix_t::mtm_product(matrix_t& M )
     }
 }
 
-void matrix_t::mtm_product(matrix_t& M, vector<double>& W)
+void matrix_t::mtm_product(matrix_t& M, vector<double>& W) const
 {
   M.resize(num_cols(),num_cols());
   for( int i=0; i<n; i++ )
@@ -150,12 +150,12 @@ double matrix_t::scale_by_maxabs(vector<double> x[], unsigned int n_vectors)
 //    cblas_dscal(x[k].size(), (1.0/abs_max), x[k].data(), 1);
 
   double abs_max = EPS;
-  for( unsigned int i=0; i< (unsigned int) m; i++ )
-    for( int j=0; j<n; j++ )
+  for( unsigned int i = 0; i< (unsigned int) m; i++ )
+    for( int j = 0; j < n; j++ )
       abs_max = MAX(abs_max, fabs(values[i*n + j]));
 
-  for( unsigned int i=0; i<(unsigned int) m; i++ ){
-    for( unsigned int k=0; k<MAX(n_vectors, (unsigned int) n); k++ )
+  for( unsigned int i = 0; i < (unsigned int) m; i++ ){
+    for( unsigned int k = 0; k < MAX(n_vectors, (unsigned int) n); k++ )
     {
       if(k < n_vectors)
         x[k][i] /= abs_max;
@@ -197,7 +197,7 @@ void matrix_t::sub( int im, int jm, int iM, int jM, matrix_t& M )
       M.values[(i-im)*n+(j-jm)] = get_value(i,j);
 }
 
-void matrix_t::truncate_matrix( int M, int N,  matrix_t& Mat )
+void matrix_t::truncate_matrix( int M, int N, const matrix_t& Mat)
 {
 #ifdef CASL_THROWS
   if(M>Mat.m || N>Mat.n) throw std::invalid_argument("[CASL_ERRO]: matrix_t->truncate_matrix: invalid truncation size");

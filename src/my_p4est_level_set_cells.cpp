@@ -337,8 +337,8 @@ double my_p4est_level_set_cells_t::integrate(Vec phi, Vec f) const
       p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, q);
 
       double dmin = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
-      double dx = (xmax-xmin) * dmin;
-      double dy = (ymax-ymin) * dmin;
+      double dx = (xmax - xmin) * dmin;
+      double dy = (ymax - ymin) * dmin;
 
       double x = quad_x_fr_q(quad_idx, tree_idx, p4est, ghost);
       double y = quad_y_fr_q(quad_idx, tree_idx, p4est, ghost);

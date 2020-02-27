@@ -143,366 +143,192 @@ lookup_in_ghost_nodes:
   return false;
 }
 
+void rel_qxyz_quad_fr_node(const p4est_t* p4est, const p4est_quadrant_t& quad, const double* xyz_node, const p4est_indep_t* node, const double *tree_dimensions, const my_p4est_brick_t* brick,
+                           double *xyz_rel, int64_t* logical_qcoord_diff)
+{
+  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[quad.p.piggy3.which_tree*P4EST_CHILDREN + 0];
+  double tree_xyz_min[P4EST_DIM];
+  for(unsigned char i = 0; i < P4EST_DIM; ++i)
+    tree_xyz_min[i]       = p4est->connectivity->vertices[3*v_m + i];
+
+  for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
+#ifdef P4_TO_P8
+    p4est_qcoord_t quad_qxyz = (dim == dir::x ? quad.x  : (dim == dir::y ? quad.y   : quad.z));
+    p4est_qcoord_t node_qxyz = (dim == dir::x ? node->x : (dim == dir::y ? node->y  : node->z));
+#else
+    p4est_qcoord_t quad_qxyz = (dim == dir::x ? quad.x  : quad.y);
+    p4est_qcoord_t node_qxyz = (dim == dir::x ? node->x : node->y);
+#endif
+    xyz_rel[dim] = tree_dimensions[dim]*(double)quad_qxyz/(double)P4EST_ROOT_LEN + tree_xyz_min[dim] - xyz_node[dim];
+    double xyz_diff_tree = tree_xyz_min[dim] - p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*node->p.which_tree + 0] + dim];
+    p4est_topidx_t tree_xyz_diff = (p4est_topidx_t) round(xyz_diff_tree/tree_dimensions[dim]); // assumes trees of constant size across the domain and cartesian block-structured
+    logical_qcoord_diff[dim] = tree_xyz_diff*P4EST_ROOT_LEN + quad_qxyz - (node_qxyz != P4EST_ROOT_LEN - 1 ? node_qxyz : P4EST_ROOT_LEN); // node might be clamped
+    if(is_periodic(p4est, dim))
+      for (char i = -1; i < 2; i += 2)
+      {
+        if(fabs(xyz_rel[dim] + i*((double) brick->nxyztrees[dim])*tree_dimensions[dim]) < fabs(xyz_rel[dim]))
+          xyz_rel[dim] += i*((double) brick->nxyztrees[dim])*tree_dimensions[dim];
+        if(abs(logical_qcoord_diff[dim] + i*brick->nxyztrees[dim]*P4EST_ROOT_LEN) < abs(logical_qcoord_diff[dim]))
+          logical_qcoord_diff[dim] += i*brick->nxyztrees[dim]*P4EST_ROOT_LEN;
+      }
+  }
+}
+
+void get_local_interpolation_weights(const p4est_t* p4est, const p4est_topidx_t& tree_id, const p4est_quadrant_t& quad, const double *xyz_global,
+                                     double* linear_weight, double* second_derivative_weight)
+{
+  p4est_topidx_t v_m  = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + 0];
+  p4est_topidx_t v_p  = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + P4EST_CHILDREN - 1];
+
+  const double* tree_xyz_min    = (p4est->connectivity->vertices + 3*v_m);
+  const double* tree_xyz_max    = (p4est->connectivity->vertices + 3*v_p);
+
+  const double qh   = (double)P4EST_QUADRANT_LEN(quad.level) / (double)(P4EST_ROOT_LEN);
+  double qxyz_min[P4EST_DIM]; quad_xyz_fr_ijk(&quad, qxyz_min);
+
+  double xyz[P4EST_DIM] = {DIM(xyz_global[0], xyz_global[1], xyz_global[2])};
+  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+    xyz[dir] = (xyz[dir] - tree_xyz_min[dir])/(tree_xyz_max[dir] - tree_xyz_min[dir]);
+
+  P4EST_ASSERT(ANDD(!is_periodic(p4est, dir::x) || (xyz[0] >= qxyz_min[0] - qh/10 && xyz[0] <= qxyz_min[0] + qh + qh/10),
+      !is_periodic(p4est, dir::y) || (xyz[1] >= qxyz_min[1] - qh/10 && xyz[1] <= qxyz_min[1] + qh + qh/10),
+      !is_periodic(p4est, dir::z) || (xyz[2] >= qxyz_min[2] - qh/10 && xyz[2] <= qxyz_min[2] + qh + qh/10)));
+
+  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+    xyz[dir] = (xyz[dir] - qxyz_min[dir])/qh;
+
+  double d_m00 = xyz[0];
+  double d_p00 = 1.0 - xyz[0];
+  double d_0m0 = xyz[1];
+  double d_0p0 = 1.0 - xyz[1];
+#ifdef P4_TO_P8
+  double d_00m = xyz[2];
+  double d_00p = 1.0 - xyz[2];
+#endif
+
+#ifdef P4_TO_P8
+  linear_weight[dir::v_mmm] = d_p00*d_0p0*d_00p;
+  linear_weight[dir::v_pmm] = d_m00*d_0p0*d_00p;
+  linear_weight[dir::v_mpm] = d_p00*d_0m0*d_00p;
+  linear_weight[dir::v_ppm] = d_m00*d_0m0*d_00p;
+  linear_weight[dir::v_mmp] = d_p00*d_0p0*d_00m;
+  linear_weight[dir::v_pmp] = d_m00*d_0p0*d_00m;
+  linear_weight[dir::v_mpp] = d_p00*d_0m0*d_00m;
+  linear_weight[dir::v_ppp] = d_m00*d_0m0*d_00m;
+#else
+  linear_weight[dir::v_mmm] = d_p00*d_0p0;
+  linear_weight[dir::v_pmm] = d_m00*d_0p0;
+  linear_weight[dir::v_mpm] = d_p00*d_0m0;
+  linear_weight[dir::v_ppm] = d_m00*d_0m0;
+#endif
+  if(second_derivative_weight != NULL)
+  {
+    second_derivative_weight[0] = SQR((tree_xyz_max[0] - tree_xyz_min[0])*qh)*d_m00*d_p00;
+    second_derivative_weight[1] = SQR((tree_xyz_max[1] - tree_xyz_min[1])*qh)*d_0m0*d_0p0;
+#ifdef P4_TO_P8
+    second_derivative_weight[2] = SQR((tree_xyz_max[2] - tree_xyz_min[2])*qh)*d_00m*d_00p;
+#endif
+  }
+  return;
+}
+
 void linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *xyz_global, double* results, unsigned int n_results)
 {
   P4EST_ASSERT(n_results > 0);
-  PetscErrorCode ierr;
-  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + 0];
-  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + P4EST_CHILDREN-1];
-
-  double tree_xmin = p4est->connectivity->vertices[3*v_m + 0];
-  double tree_xmax = p4est->connectivity->vertices[3*v_p + 0];
-  double tree_ymin = p4est->connectivity->vertices[3*v_m + 1];
-  double tree_ymax = p4est->connectivity->vertices[3*v_p + 1];
-#ifdef P4_TO_P8
-  double tree_zmin = p4est->connectivity->vertices[3*v_m + 2];
-  double tree_zmax = p4est->connectivity->vertices[3*v_p + 2];
-#endif
-
-  /* shift xyz to [0,1] */
-  double x = (xyz_global[0] - tree_xmin)/(tree_xmax-tree_xmin);
-  double y = (xyz_global[1] - tree_ymin)/(tree_ymax-tree_ymin);
-#ifdef P4_TO_P8
-  double z = (xyz_global[2] - tree_zmin)/(tree_zmax-tree_zmin);
-#endif
-
-  double qh   = (double)P4EST_QUADRANT_LEN(quad.level) / (double)(P4EST_ROOT_LEN);
-  double xmin = (double)quad.x / (double)(P4EST_ROOT_LEN);
-  double ymin = (double)quad.y / (double)(P4EST_ROOT_LEN);
-#ifdef P4_TO_P8
-  double zmin = (double)quad.z / (double)(P4EST_ROOT_LEN);
-#endif
-
-  double d_m00 = x - xmin;
-  double d_p00 = qh - d_m00;
-  double d_0m0 = y - ymin;
-  double d_0p0 = qh - d_0m0;
-#ifdef P4_TO_P8
-  double d_00m = z - zmin;
-  double d_00p = qh - d_00m;
-#endif
-
-#ifdef P4_TO_P8
-  double w_xyz[] =
-  {
-    d_p00*d_0p0*d_00p,
-    d_m00*d_0p0*d_00p,
-    d_p00*d_0m0*d_00p,
-    d_m00*d_0m0*d_00p,
-    d_p00*d_0p0*d_00m,
-    d_m00*d_0p0*d_00m,
-    d_p00*d_0m0*d_00m,
-    d_m00*d_0m0*d_00m
-  };
-#else
-  double w_xyz[] =
-  {
-    d_p00*d_0p0,
-    d_m00*d_0p0,
-    d_p00*d_0m0,
-    d_m00*d_0m0
-  };
-#endif
+  double linear_weight[P4EST_CHILDREN];
+  get_local_interpolation_weights(p4est, tree_id, quad, xyz_global, linear_weight);
 
   for (unsigned int k = 0; k < n_results; ++k)
   {
     results[k] = 0.0;
     for (short j = 0; j<P4EST_CHILDREN; j++)
-      results[k] += + F[P4EST_CHILDREN*k+j]*w_xyz[j];
-#ifdef P4_TO_P8
-    results[k] /= qh*qh*qh;
-#else
-    results[k] /= qh*qh;
-#endif
+      results[k] += + F[P4EST_CHILDREN*k+j]*linear_weight[j];
   }
 
-  ierr = PetscLogFlops(39); CHKERRXX(ierr); // number of flops in this event
+  PetscErrorCode ierr = PetscLogFlops(39); CHKERRXX(ierr); // number of flops in this event
   return;
 }
 
 void quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results)
 {
   P4EST_ASSERT(n_results > 0);
-  PetscErrorCode ierr;
-  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + 0];
-  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + P4EST_CHILDREN-1];
-
-  double tree_xmin = p4est->connectivity->vertices[3*v_m + 0];
-  double tree_xmax = p4est->connectivity->vertices[3*v_p + 0];
-  double tree_ymin = p4est->connectivity->vertices[3*v_m + 1];
-  double tree_ymax = p4est->connectivity->vertices[3*v_p + 1];
-#ifdef P4_TO_P8
-  double tree_zmin = p4est->connectivity->vertices[3*v_m + 2];
-  double tree_zmax = p4est->connectivity->vertices[3*v_p + 2];
-#endif
-
-  double x = (xyz_global[0] - tree_xmin)/(tree_xmax-tree_xmin);
-  double y = (xyz_global[1] - tree_ymin)/(tree_ymax-tree_ymin);
-#ifdef P4_TO_P8
-  double z = (xyz_global[2] - tree_zmin)/(tree_zmax-tree_zmin);
-#endif
-
-  double qh   = (double)P4EST_QUADRANT_LEN(quad.level) / (double)(P4EST_ROOT_LEN);
-  double xmin = quad_x_fr_i(&quad);
-  double ymin = quad_y_fr_j(&quad);
-#ifdef P4_TO_P8
-  double zmin = quad_z_fr_k(&quad);
-#endif
-
-  x = (x-xmin) / qh;
-  y = (y-ymin) / qh;
-#ifdef P4_TO_P8
-  z = (z-zmin) / qh;
-#endif
-
-  double d_m00 = x;
-  double d_p00 = 1-x;
-  double d_0m0 = y;
-  double d_0p0 = 1-y;
-#ifdef P4_TO_P8
-  double d_00m = z;
-  double d_00p = 1-z;
-#endif
-
-#ifdef P4_TO_P8
-  double w_xyz[] =
-  {
-    d_p00*d_0p0*d_00p,
-    d_m00*d_0p0*d_00p,
-    d_p00*d_0m0*d_00p,
-    d_m00*d_0m0*d_00p,
-    d_p00*d_0p0*d_00m,
-    d_m00*d_0p0*d_00m,
-    d_p00*d_0m0*d_00m,
-    d_m00*d_0m0*d_00m
-  };
-#else
-  double w_xyz[] =
-  {
-    d_p00*d_0p0,
-    d_m00*d_0p0,
-    d_p00*d_0m0,
-    d_m00*d_0m0
-  };
-#endif
+  double linear_weight[P4EST_CHILDREN], second_derivative_weight[P4EST_DIM];
+  get_local_interpolation_weights(p4est, tree_id, quad, xyz_global, linear_weight, second_derivative_weight);
 
   double fdd[P4EST_DIM];
-  double sx = (tree_xmax-tree_xmin)*qh;
-  double sy = (tree_ymax-tree_ymin)*qh;
-#ifdef P4_TO_P8
-  double sz = (tree_zmax-tree_zmin)*qh;
-#endif
   for (unsigned int k = 0; k < n_results; ++k) {
     results[k] = 0.0;
     for (short j = 0; j < P4EST_CHILDREN; ++j) {
       for (short i = 0; i<P4EST_DIM; i++)
-        fdd[i] = ((j == 0)? Fdd[k*P4EST_CHILDREN*P4EST_DIM+j*P4EST_DIM+i] : MINMOD(fdd[i], Fdd[k*P4EST_CHILDREN*P4EST_DIM+j*P4EST_DIM + i]));
-      results[k] += F[k*P4EST_CHILDREN+j]*w_xyz[j];
+        fdd[i] = (j == 0? Fdd[k*P4EST_CHILDREN*P4EST_DIM+j*P4EST_DIM+i] : MINMOD(fdd[i], Fdd[k*P4EST_CHILDREN*P4EST_DIM+j*P4EST_DIM + i]));
+      results[k] += F[k*P4EST_CHILDREN+j]*linear_weight[j];
     }
-#ifdef P4_TO_P8
-    results[k] -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1] + sz*sz*d_00p*d_00m*fdd[2]);
-#else
-    results[k] -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1]);
-#endif
+    results[k] -= 0.5*SUMD(second_derivative_weight[0]*fdd[0], second_derivative_weight[1]*fdd[1], second_derivative_weight[2]*fdd[2]);
   }
 
-  ierr = PetscLogFlops(45); CHKERRXX(ierr); // number of flops in this event
+  PetscErrorCode ierr = PetscLogFlops(45); CHKERRXX(ierr); // number of flops in this event
   return;
 }
 
 void quadratic_non_oscillatory_continuous_v1_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results)
 {
-  PetscErrorCode ierr;
-  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + 0];
-  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + P4EST_CHILDREN-1];
-
-  double tree_xmin = p4est->connectivity->vertices[3*v_m + 0];
-  double tree_xmax = p4est->connectivity->vertices[3*v_p + 0];
-  double tree_ymin = p4est->connectivity->vertices[3*v_m + 1];
-  double tree_ymax = p4est->connectivity->vertices[3*v_p + 1];
-#ifdef P4_TO_P8
-  double tree_zmin = p4est->connectivity->vertices[3*v_m + 2];
-  double tree_zmax = p4est->connectivity->vertices[3*v_p + 2];
-#endif
-
-  double x = (xyz_global[0] - tree_xmin)/(tree_xmax-tree_xmin);
-  double y = (xyz_global[1] - tree_ymin)/(tree_ymax-tree_ymin);
-#ifdef P4_TO_P8
-  double z = (xyz_global[2] - tree_zmin)/(tree_zmax-tree_zmin);
-#endif
-
-  double qh   = (double)P4EST_QUADRANT_LEN(quad.level) / (double)(P4EST_ROOT_LEN);
-  double xmin = quad_x_fr_i(&quad);
-  double ymin = quad_y_fr_j(&quad);
-#ifdef P4_TO_P8
-  double zmin = quad_z_fr_k(&quad);
-#endif
-
-  x = (x-xmin) / qh;
-  y = (y-ymin) / qh;
-#ifdef P4_TO_P8
-  z = (z-zmin) / qh;
-#endif
-
-  double d_m00 = x;
-  double d_p00 = 1-x;
-  double d_0m0 = y;
-  double d_0p0 = 1-y;
-#ifdef P4_TO_P8
-  double d_00m = z;
-  double d_00p = 1-z;
-#endif
-
-#ifdef P4_TO_P8
-  double w_xyz[] =
-  {
-    d_p00*d_0p0*d_00p,
-    d_m00*d_0p0*d_00p,
-    d_p00*d_0m0*d_00p,
-    d_m00*d_0m0*d_00p,
-    d_p00*d_0p0*d_00m,
-    d_m00*d_0p0*d_00m,
-    d_p00*d_0m0*d_00m,
-    d_m00*d_0m0*d_00m
-  };
-#else
-  double w_xyz[] =
-  {
-    d_p00*d_0p0,
-    d_m00*d_0p0,
-    d_p00*d_0m0,
-    d_m00*d_0m0
-  };
-#endif
+  P4EST_ASSERT(n_results > 0);
+  double linear_weight[P4EST_CHILDREN], second_derivative_weight[P4EST_DIM];
+  get_local_interpolation_weights(p4est, tree_id, quad, xyz_global, linear_weight, second_derivative_weight);
 
   // First alternative scheme: first, minmod on every edge, then weight-average
   double fdd[P4EST_DIM];
   unsigned int i, jm, jp;
-  const double sx = (tree_xmax-tree_xmin)*qh;
-  const double sy = (tree_ymax-tree_ymin)*qh;
-#ifdef P4_TO_P8
-  const double sz = (tree_zmax-tree_zmin)*qh;
-#endif
   for (unsigned int k = 0; k < n_results; ++k) {
     // set your fdd
     for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
       fdd[dir] = 0.0;
 
     i = 0;
-    jm = 0; jp = 1; fdd[i] += MINMOD(Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i], Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
-    jm = 2; jp = 3; fdd[i] += MINMOD(Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i], Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
+    jm = 0; jp = 1; fdd[i] += MINMOD(Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i], Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i])*(linear_weight[jm] + linear_weight[jp]);
+    jm = 2; jp = 3; fdd[i] += MINMOD(Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i], Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i])*(linear_weight[jm] + linear_weight[jp]);
 #ifdef P4_TO_P8
-    jm = 4; jp = 5; fdd[i] += MINMOD(Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i], Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
-    jm = 6; jp = 7; fdd[i] += MINMOD(Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i], Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
+    jm = 4; jp = 5; fdd[i] += MINMOD(Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i], Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i])*(linear_weight[jm] + linear_weight[jp]);
+    jm = 6; jp = 7; fdd[i] += MINMOD(Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i], Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i])*(linear_weight[jm] + linear_weight[jp]);
 #endif
 
     i = 1;
-    jm = 0; jp = 2; fdd[i] += MINMOD(Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i], Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
-    jm = 1; jp = 3; fdd[i] += MINMOD(Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i], Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
+    jm = 0; jp = 2; fdd[i] += MINMOD(Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i], Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i])*(linear_weight[jm] + linear_weight[jp]);
+    jm = 1; jp = 3; fdd[i] += MINMOD(Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i], Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i])*(linear_weight[jm] + linear_weight[jp]);
 #ifdef P4_TO_P8
-    jm = 4; jp = 6; fdd[i] += MINMOD(Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i], Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
-    jm = 5; jp = 7; fdd[i] += MINMOD(Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i], Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
+    jm = 4; jp = 6; fdd[i] += MINMOD(Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i], Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i])*(linear_weight[jm] + linear_weight[jp]);
+    jm = 5; jp = 7; fdd[i] += MINMOD(Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i], Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i])*(linear_weight[jm] + linear_weight[jp]);
 #endif
 
 #ifdef P4_TO_P8
     i = 2;
-    jm = 0; jp = 4; fdd[i] += MINMOD(Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i], Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
-    jm = 1; jp = 5; fdd[i] += MINMOD(Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i], Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
-    jm = 2; jp = 6; fdd[i] += MINMOD(Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i], Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
-    jm = 3; jp = 7; fdd[i] += MINMOD(Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i], Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i])*(w_xyz[jm]+w_xyz[jp]);
+    jm = 0; jp = 4; fdd[i] += MINMOD(Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i], Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i])*(linear_weight[jm] + linear_weight[jp]);
+    jm = 1; jp = 5; fdd[i] += MINMOD(Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i], Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i])*(linear_weight[jm] + linear_weight[jp]);
+    jm = 2; jp = 6; fdd[i] += MINMOD(Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i], Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i])*(linear_weight[jm] + linear_weight[jp]);
+    jm = 3; jp = 7; fdd[i] += MINMOD(Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i], Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i])*(linear_weight[jm] + linear_weight[jp]);
 #endif
 
     results[k] = 0.0;
     for (unsigned char j = 0; j < P4EST_CHILDREN; ++j)
-      results[k] += F[k*P4EST_CHILDREN+j]*w_xyz[j];
+      results[k] += F[k*P4EST_CHILDREN+j]*linear_weight[j];
 
-#ifdef P4_TO_P8
-    results[k] -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1] + sz*sz*d_00p*d_00m*fdd[2]);
-#else
-    results[k] -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1]);
-#endif
+    results[k] -= 0.5*SUMD(second_derivative_weight[0]*fdd[0], second_derivative_weight[1]*fdd[1], second_derivative_weight[2]*fdd[2]);
   }
 
 
-  }
-
-  ierr = PetscLogFlops(45); CHKERRXX(ierr); // number of flops in this event
+  PetscErrorCode ierr = PetscLogFlops(45); CHKERRXX(ierr); // number of flops in this event
   return;
 }
 
 void quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results)
 {
-  PetscErrorCode ierr;
-  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + 0];
-  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + P4EST_CHILDREN-1];
-
-  double tree_xmin = p4est->connectivity->vertices[3*v_m + 0];
-  double tree_xmax = p4est->connectivity->vertices[3*v_p + 0];
-  double tree_ymin = p4est->connectivity->vertices[3*v_m + 1];
-  double tree_ymax = p4est->connectivity->vertices[3*v_p + 1];
-#ifdef P4_TO_P8
-  double tree_zmin = p4est->connectivity->vertices[3*v_m + 2];
-  double tree_zmax = p4est->connectivity->vertices[3*v_p + 2];
-#endif
-
-  double x = (xyz_global[0] - tree_xmin)/(tree_xmax-tree_xmin);
-  double y = (xyz_global[1] - tree_ymin)/(tree_ymax-tree_ymin);
-#ifdef P4_TO_P8
-  double z = (xyz_global[2] - tree_zmin)/(tree_zmax-tree_zmin);
-#endif
-
-  double qh   = (double)P4EST_QUADRANT_LEN(quad.level) / (double)(P4EST_ROOT_LEN);
-  double xmin = quad_x_fr_i(&quad);
-  double ymin = quad_y_fr_j(&quad);
-#ifdef P4_TO_P8
-  double zmin = quad_z_fr_k(&quad);
-#endif
-
-  x = (x-xmin) / qh;
-  y = (y-ymin) / qh;
-#ifdef P4_TO_P8
-  z = (z-zmin) / qh;
-#endif
-
-  double d_m00 = x;
-  double d_p00 = 1-x;
-  double d_0m0 = y;
-  double d_0p0 = 1-y;
-#ifdef P4_TO_P8
-  double d_00m = z;
-  double d_00p = 1-z;
-#endif
-
-#ifdef P4_TO_P8
-  double w_xyz[] =
-  {
-    d_p00*d_0p0*d_00p,
-    d_m00*d_0p0*d_00p,
-    d_p00*d_0m0*d_00p,
-    d_m00*d_0m0*d_00p,
-    d_p00*d_0p0*d_00m,
-    d_m00*d_0p0*d_00m,
-    d_p00*d_0m0*d_00m,
-    d_m00*d_0m0*d_00m
-  };
-#else
-  double w_xyz[] =
-  {
-    d_p00*d_0p0,
-    d_m00*d_0p0,
-    d_p00*d_0m0,
-    d_m00*d_0m0
-  };
-#endif
+  P4EST_ASSERT(n_results > 0);
+  double linear_weight[P4EST_CHILDREN], second_derivative_weight[P4EST_DIM];
+  get_local_interpolation_weights(p4est, tree_id, quad, xyz_global, linear_weight, second_derivative_weight);
 
   // Second alternative scheme: first, weight-average in perpendicular plane, then minmod
   double fdd[P4EST_DIM];
   unsigned int i, jm, jp;
-  const double sx = (tree_xmax-tree_xmin)*qh;
-  const double sy = (tree_ymax-tree_ymin)*qh;
-#ifdef P4_TO_P8
-  const double sz = (tree_zmax-tree_zmin)*qh;
-#endif
   double fdd_m, fdd_p;
   for (unsigned int k = 0; k < n_results; ++k) {
     // set your fdd
@@ -512,22 +338,22 @@ void quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_t *p4est,
     i = 0;
     fdd_m = 0;
     fdd_p = 0;
-    jm = 0; jp = 1; fdd_m += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
-    jm = 2; jp = 3; fdd_m += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
+    jm = 0; jp = 1; fdd_m += Fdd[k*P4EST_CHILDREN*P4EST_DIM + jm*P4EST_DIM + i]*(linear_weight[jm] + linear_weight[jp]); fdd_p += Fdd[k*P4EST_CHILDREN*P4EST_DIM + jp*P4EST_DIM + i]*(linear_weight[jm] + linear_weight[jp]);
+    jm = 2; jp = 3; fdd_m += Fdd[k*P4EST_CHILDREN*P4EST_DIM + jm*P4EST_DIM + i]*(linear_weight[jm] + linear_weight[jp]); fdd_p += Fdd[k*P4EST_CHILDREN*P4EST_DIM + jp*P4EST_DIM + i]*(linear_weight[jm] + linear_weight[jp]);
 #ifdef P4_TO_P8
-    jm = 4; jp = 5; fdd_m += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
-    jm = 6; jp = 7; fdd_m += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
+    jm = 4; jp = 5; fdd_m += Fdd[k*P4EST_CHILDREN*P4EST_DIM + jm*P4EST_DIM + i]*(linear_weight[jm] + linear_weight[jp]); fdd_p += Fdd[k*P4EST_CHILDREN*P4EST_DIM + jp*P4EST_DIM + i]*(linear_weight[jm] + linear_weight[jp]);
+    jm = 6; jp = 7; fdd_m += Fdd[k*P4EST_CHILDREN*P4EST_DIM + jm*P4EST_DIM + i]*(linear_weight[jm] + linear_weight[jp]); fdd_p += Fdd[k*P4EST_CHILDREN*P4EST_DIM + jp*P4EST_DIM + i]*(linear_weight[jm] + linear_weight[jp]);
 #endif
     fdd[i] = MINMOD(fdd_m, fdd_p);
 
     i = 1;
     fdd_m = 0;
     fdd_p = 0;
-    jm = 0; jp = 2; fdd_m += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
-    jm = 1; jp = 3; fdd_m += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
+    jm = 0; jp = 2; fdd_m += Fdd[k*P4EST_CHILDREN*P4EST_DIM + jm*P4EST_DIM + i]*(linear_weight[jm] + linear_weight[jp]); fdd_p += Fdd[k*P4EST_CHILDREN*P4EST_DIM + jp*P4EST_DIM + i]*(linear_weight[jm] + linear_weight[jp]);
+    jm = 1; jp = 3; fdd_m += Fdd[k*P4EST_CHILDREN*P4EST_DIM + jm*P4EST_DIM + i]*(linear_weight[jm] + linear_weight[jp]); fdd_p += Fdd[k*P4EST_CHILDREN*P4EST_DIM + jp*P4EST_DIM + i]*(linear_weight[jm] + linear_weight[jp]);
 #ifdef P4_TO_P8
-    jm = 4; jp = 6; fdd_m += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
-    jm = 5; jp = 7; fdd_m += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
+    jm = 4; jp = 6; fdd_m += Fdd[k*P4EST_CHILDREN*P4EST_DIM + jm*P4EST_DIM + i]*(linear_weight[jm] + linear_weight[jp]); fdd_p += Fdd[k*P4EST_CHILDREN*P4EST_DIM + jp*P4EST_DIM + i]*(linear_weight[jm] + linear_weight[jp]);
+    jm = 5; jp = 7; fdd_m += Fdd[k*P4EST_CHILDREN*P4EST_DIM + jm*P4EST_DIM + i]*(linear_weight[jm] + linear_weight[jp]); fdd_p += Fdd[k*P4EST_CHILDREN*P4EST_DIM + jp*P4EST_DIM + i]*(linear_weight[jm] + linear_weight[jp]);
 #endif
     fdd[i] = MINMOD(fdd_m, fdd_p);
 
@@ -535,109 +361,43 @@ void quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_t *p4est,
     i = 2;
     fdd_m = 0;
     fdd_p = 0;
-    jm = 0; jp = 4; fdd_m += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
-    jm = 1; jp = 5; fdd_m += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
-    jm = 2; jp = 6; fdd_m += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
-    jm = 3; jp = 7; fdd_m += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
+    jm = 0; jp = 4; fdd_m += Fdd[k*P4EST_CHILDREN*P4EST_DIM + jm*P4EST_DIM + i]*(linear_weight[jm] + linear_weight[jp]); fdd_p += Fdd[k*P4EST_CHILDREN*P4EST_DIM + jp*P4EST_DIM + i]*(linear_weight[jm] + linear_weight[jp]);
+    jm = 1; jp = 5; fdd_m += Fdd[k*P4EST_CHILDREN*P4EST_DIM + jm*P4EST_DIM + i]*(linear_weight[jm] + linear_weight[jp]); fdd_p += Fdd[k*P4EST_CHILDREN*P4EST_DIM + jp*P4EST_DIM + i]*(linear_weight[jm] + linear_weight[jp]);
+    jm = 2; jp = 6; fdd_m += Fdd[k*P4EST_CHILDREN*P4EST_DIM + jm*P4EST_DIM + i]*(linear_weight[jm] + linear_weight[jp]); fdd_p += Fdd[k*P4EST_CHILDREN*P4EST_DIM + jp*P4EST_DIM + i]*(linear_weight[jm] + linear_weight[jp]);
+    jm = 3; jp = 7; fdd_m += Fdd[k*P4EST_CHILDREN*P4EST_DIM + jm*P4EST_DIM + i]*(linear_weight[jm] + linear_weight[jp]); fdd_p += Fdd[k*P4EST_CHILDREN*P4EST_DIM + jp*P4EST_DIM + i]*(linear_weight[jm] + linear_weight[jp]);
     fdd[i] = MINMOD(fdd_m, fdd_p);
 #endif
 
     results[k] = 0.0;
     for (unsigned char j = 0; j < P4EST_CHILDREN; ++j)
-      results[k] += F[k*P4EST_CHILDREN+j]*w_xyz[j];
+      results[k] += F[k*P4EST_CHILDREN+j]*linear_weight[j];
 
-#ifdef P4_TO_P8
-    results[k] -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1] + sz*sz*d_00p*d_00m*fdd[2]);
-#else
-    results[k] -= 0.5*(sx*sx*d_p00*d_m00*fdd[0] + sy*sy*d_0p0*d_0m0*fdd[1]);
-#endif
-
-
+    results[k] -= 0.5*SUMD(second_derivative_weight[0]*fdd[0], second_derivative_weight[1]*fdd[1], second_derivative_weight[2]*fdd[2]);
   }
-  ierr = PetscLogFlops(45); CHKERRXX(ierr); // number of flops in this event
+  PetscErrorCode ierr = PetscLogFlops(45); CHKERRXX(ierr); // number of flops in this event
   return;
 }
-
 
 void quadratic_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results)
 {
   P4EST_ASSERT(n_results > 0);
-  PetscErrorCode ierr;
-
-  p4est_topidx_t v_mm = p4est->connectivity->tree_to_vertex[0*P4EST_CHILDREN + 0];
-  p4est_topidx_t v_pp = p4est->connectivity->tree_to_vertex[(p4est->trees->elem_count-1)*P4EST_CHILDREN + P4EST_CHILDREN-1];
-  p4est_topidx_t v_m  = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + 0];
-  p4est_topidx_t v_p  = p4est->connectivity->tree_to_vertex[tree_id*P4EST_CHILDREN + P4EST_CHILDREN-1];
-
-  const double* domain_xyz_min  = (p4est->connectivity->vertices+3*v_mm);
-  const double* domain_xyz_max  = (p4est->connectivity->vertices+3*v_pp);
-  const double* tree_xyz_min    = (p4est->connectivity->vertices+3*v_m);
-  const double* tree_xyz_max    = (p4est->connectivity->vertices+3*v_p);
-
-  const double qh   = (double)P4EST_QUADRANT_LEN(quad.level) / (double)(P4EST_ROOT_LEN);
-  double qxyz_min[P4EST_DIM] = {DIM(quad_x_fr_i(&quad), quad_y_fr_j(&quad), quad_z_fr_k(&quad))};
-
-  double xyz[P4EST_DIM];
-  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
-    xyz[dir] = xyz_global[dir];
-    if(is_periodic(p4est, dir))
-      while (fabs(xyz[dir] - (tree_xyz_min[dir] + (tree_xyz_max[dir]-tree_xyz_min[dir])*qxyz_min[dir])) >= (0.5+((double)P4EST_QUADRANT_LEN(P4EST_MAXLEVEL))/((double) P4EST_ROOT_LEN))*(domain_xyz_max[dir] - domain_xyz_min[dir]))
-        xyz[dir] = xyz[dir] + ((xyz[dir] > (tree_xyz_min[dir] + (tree_xyz_max[dir]-tree_xyz_min[dir])*qxyz_min[dir]))? -1.0: +1.0)*(domain_xyz_max[dir]-domain_xyz_min[dir]);
-    xyz[dir] = (xyz[dir] - tree_xyz_min[dir])/(tree_xyz_max[dir] - tree_xyz_min[dir]);
-  }
-
-  P4EST_ASSERT(ANDD(xyz[0]>=qxyz_min[0]-qh/10 && xyz[0]<=qxyz_min[0]+qh+qh/10, xyz[1]>=qxyz_min[1]-qh/10 && xyz[1]<=qxyz_min[1]+qh+qh/10, xyz[2]>=qxyz_min[2]-qh/10 && xyz[2]<=qxyz_min[2]+qh+qh/10));
-
-  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-    xyz[dir] = (xyz[dir]-qxyz_min[dir])/qh;
-
-  double d_m00 = xyz[0];
-  double d_p00 = 1-xyz[0];
-  double d_0m0 = xyz[1];
-  double d_0p0 = 1-xyz[1];
-#ifdef P4_TO_P8
-  double d_00m = xyz[2];
-  double d_00p = 1-xyz[2];
-#endif
-
-#ifdef P4_TO_P8
-  double w_xyz[] =
-  {
-    d_p00*d_0p0*d_00p,
-    d_m00*d_0p0*d_00p,
-    d_p00*d_0m0*d_00p,
-    d_m00*d_0m0*d_00p,
-    d_p00*d_0p0*d_00m,
-    d_m00*d_0p0*d_00m,
-    d_p00*d_0m0*d_00m,
-    d_m00*d_0m0*d_00m
-  };
-#else
-  double w_xyz[] =
-  {
-    d_p00*d_0p0,
-    d_m00*d_0p0,
-    d_p00*d_0m0,
-    d_m00*d_0m0
-  };
-#endif
-
+  double linear_weight[P4EST_CHILDREN], second_derivative_weight[P4EST_DIM];
+  get_local_interpolation_weights(p4est, tree_id, quad, xyz_global, linear_weight, second_derivative_weight);
 
   double fdd[P4EST_DIM];
-  const double sxyz[P4EST_DIM] = {DIM((tree_xyz_max[0] - tree_xyz_min[0])*qh, (tree_xyz_max[1] - tree_xyz_min[1])*qh, (tree_xyz_max[2] - tree_xyz_min[2])*qh)};
   for (unsigned int k = 0; k < n_results; ++k)
   {
     results[k] = 0.0;
     for (short j=0; j<P4EST_CHILDREN; j++)
     {
       for (short i = 0; i<P4EST_DIM; i++)
-        fdd[i] = ((j == 0)? 0.0 : fdd[i]) +Fdd[k*P4EST_CHILDREN*P4EST_DIM+j*P4EST_DIM + i] * w_xyz[j];
-      results[k] += F[k*P4EST_CHILDREN+j]*w_xyz[j];
+        fdd[i] = ((j == 0)? 0.0 : fdd[i]) +Fdd[k*P4EST_CHILDREN*P4EST_DIM+j*P4EST_DIM + i] * linear_weight[j];
+      results[k] += F[k*P4EST_CHILDREN+j]*linear_weight[j];
     }
-    results[k] -= 0.5*SUMD(sxyz[0]*sxyz[0]*d_p00*d_m00*fdd[0], sxyz[1]*sxyz[1]*d_0p0*d_0m0*fdd[1], sxyz[2]*sxyz[2]*d_00p*d_00m*fdd[2]);
+    results[k] -= 0.5*SUMD(second_derivative_weight[0]*fdd[0], second_derivative_weight[1]*fdd[1], second_derivative_weight[2]*fdd[2]);
   }
 
-  ierr = PetscLogFlops(45); CHKERRXX(ierr); // number of flops in this event
+  PetscErrorCode ierr = PetscLogFlops(45); CHKERRXX(ierr); // number of flops in this event
 }
 
 void write_comm_stats(const p4est_t *p4est, const p4est_ghost_t *ghost, const p4est_nodes_t *nodes, const char *partition_name, const char *topology_name, const char *neighbors_name)
@@ -707,6 +467,18 @@ void write_comm_stats(const p4est_t *p4est, const p4est_ghost_t *ghost, const p4
   if (neighbors_name){
     ierr = PetscFClose(p4est->mpicomm, file); CHKERRXX(ierr);
   }
+}
+
+
+int8_t find_max_level(const p4est_t* p4est)
+{
+  int8_t max_lvl = 0;
+  for (p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx) {
+    const p4est_tree_t* tree = p4est_tree_array_index(p4est->trees, tree_idx);
+    max_lvl = MAX(max_lvl, tree->maxlevel);
+  }
+  int mpiret = MPI_Allreduce(MPI_IN_PLACE, &max_lvl, 1, MPI_INT8_T, MPI_MAX, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+  return max_lvl;
 }
 
 p4est_bool_t nodes_are_equal(int mpi_size, p4est_nodes_t* nodes_1, p4est_nodes_t* nodes_2)

@@ -345,7 +345,7 @@ public:
     // Allows an external user to copy the object without interfering with NS solver's internal handling and objects
     PetscErrorCode ierr;
     for(short dim = 0; dim<P4EST_DIM;dim++){
-        ierr = VecCopyGhost(vn_nodes[dim],v_n_external[dim]);
+        ierr = VecCopyGhost(vn_nodes[dim],v_n_external[dim]); CHKERRXX(ierr);
       }
   }
 
@@ -355,7 +355,7 @@ public:
     // Allows an external user to copy the object without interfering with NS solver's internal handling and objects
     PetscErrorCode ierr;
     for(short dim = 0; dim<P4EST_DIM;dim++){
-        ierr = VecCopyGhost(vnp1_nodes[dim],v_np1_external[dim]);
+        ierr = VecCopyGhost(vnp1_nodes[dim],v_np1_external[dim]); CHKERRXX(ierr);
       }
   }
 
@@ -367,7 +367,7 @@ public:
 
   void copy_hodge(Vec hodge_external){
     PetscErrorCode ierr;
-    ierr = VecCopyGhost(hodge,hodge_external);
+    ierr = VecCopyGhost(hodge,hodge_external); CHKERRXX(ierr);
   }
 
   inline Vec get_smoke() { return smoke; }
@@ -376,7 +376,7 @@ public:
 
   void copy_vorticity(Vec vort){
     PetscErrorCode ierr;
-    ierr = VecCopyGhost(vorticity,vort);
+    ierr = VecCopyGhost(vorticity,vort); CHKERRXX(ierr);
   }
   inline bool get_refine_with_smoke() { return refine_with_smoke; }
   inline double get_smoke_threshold() { return smoke_thresh; }
@@ -385,7 +385,7 @@ public:
 
   void copy_pressure(Vec press){
     PetscErrorCode ierr;
-    ierr = VecCopyGhost(pressure,press);
+    ierr = VecCopyGhost(pressure,press); CHKERRXX(ierr);
   }
 
   inline my_p4est_interpolation_nodes_t* get_interp_phi() { return interp_phi; }

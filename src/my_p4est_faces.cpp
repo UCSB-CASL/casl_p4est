@@ -638,7 +638,7 @@ void my_p4est_faces_t::xyz_fr_f(p4est_locidx_t f_idx, const unsigned char &dir, 
 #endif
 }
 
-void my_p4est_faces_t::rel_xyz_face_fr_node(const p4est_locidx_t& f_idx, const unsigned char& dir, double* xyz_rel, const double* xyz_node, const p4est_indep_t* node, const my_p4est_brick_t* brick,  __int64_t* logical_qcoord_diff) const
+void my_p4est_faces_t::rel_qxyz_face_fr_node(const p4est_locidx_t& f_idx, const unsigned char& dir, double* xyz_rel, const double* xyz_node, const p4est_indep_t* node, const my_p4est_brick_t* brick,  int64_t* logical_qcoord_diff) const
 {
   p4est_locidx_t quad_idx;
   p4est_topidx_t tree_idx;
@@ -877,10 +877,10 @@ void check_if_faces_are_well_defined(my_p4est_node_neighbors_t *ngbd_n, my_p4est
   ierr = VecGhostUpdateEnd  (face_is_well_defined, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 }
 
-double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4est_faces_t *faces,
-                               my_p4est_cell_neighbors_t *ngbd_c, my_p4est_node_neighbors_t *ngbd_n,
-                               p4est_locidx_t node_idx, Vec f, const unsigned char &dir,
-                               Vec face_is_well_defined, int order, BoundaryConditionsDIM *bc, face_interpolator* interpolator_from_faces)
+double interpolate_velocity_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4est_faces_t *faces,
+                                      my_p4est_cell_neighbors_t *ngbd_c, my_p4est_node_neighbors_t *ngbd_n,
+                                      p4est_locidx_t node_idx, Vec velocity_component, const unsigned char &dir,
+                                      Vec face_is_well_defined, int order, BoundaryConditionsDIM *bc, face_interpolator* interpolator_from_faces)
 {
   PetscErrorCode ierr;
 
@@ -889,9 +889,9 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
 
   p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, node_idx);
 
-  if(bc!=NULL && is_node_Wall(p4est, node) && bc[dir].wallType(xyz)==DIRICHLET)
+  if(bc != NULL && is_node_Wall(p4est, node) && bc[dir].wallType(xyz) == DIRICHLET)
   {
-    if(interpolator_from_faces!=NULL)
+    if(interpolator_from_faces != NULL)
     {
       interpolator_from_faces->resize(1);
       interpolator_from_faces->at(0).face_idx = -1;
@@ -962,28 +962,29 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
 #ifdef CASL_THROWS
   if(!is_local)
   {
-    ierr = PetscPrintf(p4est->mpicomm, "Warning !! interpolate_f_at_node_n: the node is not local."); CHKERRXX(ierr);
+    ierr = PetscPrintf(p4est->mpicomm, "Warning !! interpolate_velocity_at_node_n: the node has no local neighbor quadrant."); CHKERRXX(ierr);
   }
 #endif
 
   std::set<indexed_and_located_face> face_ngbd;
   add_faces_to_set_and_clear_set_of_quad(faces, NO_VELOCITY, dir, face_ngbd, ngbd_tmp); // NO_VELOCITY for 2nd argument, because no "center_seed", we are not constructing a Voronoi cell --> bypass the check
 
-  double *f_p;
-  ierr = VecGetArray(f, &f_p); CHKERRXX(ierr);
+  double *velocity_component_p;
+  ierr = VecGetArray(velocity_component, &velocity_component_p); CHKERRXX(ierr);
 
   vector<p4est_locidx_t> interp_points;
   if(interpolator_from_faces != NULL)
     interpolator_from_faces->resize(0);
   matrix_t A;
   /* [Raphael Egan (01/22/2020): results seem more accurate (2nd order vs 1st order) when disregarding the Neumann wall boundary condition (from tests in main file for testing poisson_faces)...] */
-  /* --> TO DO : test if SHS still behaves OK when not doing anyting for Neumann wall BC! */
-//  bool neumann_wall_x = (bc != NULL && (is_node_xmWall(p4est, node) || is_node_xpWall(p4est, node)) && bc[dir].wallType(xyz) == NEUMANN);
-//  bool neumann_wall_y = (bc != NULL && (is_node_ymWall(p4est, node) || is_node_ypWall(p4est, node)) && bc[dir].wallType(xyz) == NEUMANN);
-//#ifdef P4_TO_P8
-//  bool neumann_wall_z = (bc != NULL && (is_node_zmWall(p4est, node) || is_node_zpWall(p4est, node)) && bc[dir].wallType(xyz) == NEUMANN);
-//#endif
-  A.resize(1, (order >= 2 ? 1 + P4EST_DIM + P4EST_DIM*(P4EST_DIM + 1)/2 : 1 + P4EST_DIM)/* - SUMD((neumann_wall_x ? 1 : 0), (neumann_wall_y ? 1 : 0), (neumann_wall_z ? 1 : 0))*/);
+  /* [Raphael Egan (02/28/2020) - long_overdue_merge: yes, indeed, but it is !not! robust when the grid is no longer locally uniform, leading to a local increase in the condition number of the lsqr
+   * system, creating spurious results --> outflow wall of flow_past_sphere simulation for instance. results are better behaved in such conditions when constraining the parameters of the lsqr interpolant */
+  bool neumann_wall_x = (bc != NULL && (is_node_xmWall(p4est, node) || is_node_xpWall(p4est, node)) && bc[dir].wallType(xyz) == NEUMANN);
+  bool neumann_wall_y = (bc != NULL && (is_node_ymWall(p4est, node) || is_node_ypWall(p4est, node)) && bc[dir].wallType(xyz) == NEUMANN);
+#ifdef P4_TO_P8
+  bool neumann_wall_z = (bc != NULL && (is_node_zmWall(p4est, node) || is_node_zpWall(p4est, node)) && bc[dir].wallType(xyz) == NEUMANN);
+#endif
+  A.resize(1, (order >= 2 ? 1 + P4EST_DIM + P4EST_DIM*(P4EST_DIM + 1)/2 : 1 + P4EST_DIM) - SUMD((neumann_wall_x ? 1 : 0), (neumann_wall_y ? 1 : 0), (neumann_wall_z ? 1 : 0)));
   vector<double> p;
   vector<double> nb[P4EST_DIM];
 
@@ -1000,7 +1001,7 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
     const indexed_and_located_face &neighbor_face = *it;
     if((face_is_well_defined == NULL || face_is_well_defined_p[neighbor_face.face_idx]) && std::find(interp_points.begin(), interp_points.end(), neighbor_face.face_idx) == interp_points.end())
     {
-      if(interpolator_from_faces!=NULL)
+      if(interpolator_from_faces != NULL)
       {
         face_interpolator_element new_element; new_element.face_idx = neighbor_face.face_idx;
         interpolator_from_faces->push_back(new_element);
@@ -1018,33 +1019,33 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
 
       double w = MAX(min_w, 1./MAX(inv_max_w, sqrt(SUMD(SQR(xyz_t[0]), SQR(xyz_t[1]), SQR(xyz_t[2])))));
 
-      A.set_value(interp_points.size(), 0,                                                                                                          1.0               * w);
-//      if(!neumann_wall_x)
-      A.set_value(interp_points.size(), 1,                                                                                                          xyz_t[0]          * w);
-//      if(!neumann_wall_y)
-      A.set_value(interp_points.size(), 2 /*- (neumann_wall_x ? 1 : 0)*/,                                                                           xyz_t[1]          * w);
+      A.set_value(interp_points.size(),   0,                                                                                                    1.0               * w);
+      if(!neumann_wall_x)
+        A.set_value(interp_points.size(), 1,                                                                                                    xyz_t[0]          * w);
+      if(!neumann_wall_y)
+        A.set_value(interp_points.size(), 2 - (neumann_wall_x ? 1 : 0),                                                                         xyz_t[1]          * w);
 #ifdef P4_TO_P8
-//      if(!neumann_wall_z)
-      A.set_value(interp_points.size(), 3 /*- (neumann_wall_x ? 1 : 0) - (neumann_wall_y ? 1 : 0)*/,                                                xyz_t[2]          * w);
+      if(!neumann_wall_z)
+        A.set_value(interp_points.size(), 3 - (neumann_wall_x ? 1 : 0) - (neumann_wall_y ? 1 : 0),                                              xyz_t[2]          * w);
 #endif
       if(order >= 2)
       {
-        A.set_value(interp_points.size(),   1 + P4EST_DIM /*- SUMD((neumann_wall_x ? 1 : 0), (neumann_wall_y ? 1 : 0), (neumann_wall_z ? 1 : 0))*/, xyz_t[0]*xyz_t[0] * w);
-        A.set_value(interp_points.size(),   2 + P4EST_DIM /*- SUMD((neumann_wall_x ? 1 : 0), (neumann_wall_y ? 1 : 0), (neumann_wall_z ? 1 : 0))*/, xyz_t[0]*xyz_t[1] * w);
+        A.set_value(interp_points.size(),   1 + P4EST_DIM - SUMD((neumann_wall_x ? 1 : 0), (neumann_wall_y ? 1 : 0), (neumann_wall_z ? 1 : 0)), xyz_t[0]*xyz_t[0] * w);
+        A.set_value(interp_points.size(),   2 + P4EST_DIM - SUMD((neumann_wall_x ? 1 : 0), (neumann_wall_y ? 1 : 0), (neumann_wall_z ? 1 : 0)), xyz_t[0]*xyz_t[1] * w);
 #ifdef P4_TO_P8
-        A.set_value(interp_points.size(),   3 + P4EST_DIM /*- SUMD((neumann_wall_x ? 1 : 0), (neumann_wall_y ? 1 : 0), (neumann_wall_z ? 1 : 0))*/, xyz_t[0]*xyz_t[2] * w);
+        A.set_value(interp_points.size(),   3 + P4EST_DIM - SUMD((neumann_wall_x ? 1 : 0), (neumann_wall_y ? 1 : 0), (neumann_wall_z ? 1 : 0)), xyz_t[0]*xyz_t[2] * w);
 #endif
-        A.set_value(interp_points.size(), 1 + 2*P4EST_DIM /*- SUMD((neumann_wall_x ? 1 : 0), (neumann_wall_y ? 1 : 0), (neumann_wall_z ? 1 : 0))*/, xyz_t[1]*xyz_t[1] * w);
+        A.set_value(interp_points.size(), 1 + 2*P4EST_DIM - SUMD((neumann_wall_x ? 1 : 0), (neumann_wall_y ? 1 : 0), (neumann_wall_z ? 1 : 0)), xyz_t[1]*xyz_t[1] * w);
 #ifdef P4_TO_P8
-        A.set_value(interp_points.size(), 2 + 2*P4EST_DIM /*- SUMD((neumann_wall_x ? 1 : 0), (neumann_wall_y ? 1 : 0), (neumann_wall_z ? 1 : 0))*/, xyz_t[1]*xyz_t[2] * w);
-        A.set_value(interp_points.size(),     3*P4EST_DIM /*- SUMD((neumann_wall_x ? 1 : 0), (neumann_wall_y ? 1 : 0), (neumann_wall_z ? 1 : 0))*/, xyz_t[2]*xyz_t[2] * w);
+        A.set_value(interp_points.size(), 2 + 2*P4EST_DIM - SUMD((neumann_wall_x ? 1 : 0), (neumann_wall_y ? 1 : 0), (neumann_wall_z ? 1 : 0)), xyz_t[1]*xyz_t[2] * w);
+        A.set_value(interp_points.size(),     3*P4EST_DIM - SUMD((neumann_wall_x ? 1 : 0), (neumann_wall_y ? 1 : 0), (neumann_wall_z ? 1 : 0)), xyz_t[2]*xyz_t[2] * w);
 #endif
       }
 
-//      const double neumann_term = SUMD((neumann_wall_x ? bc->wallValue(xyz)*xyz_t[0]*scaling : 0.0),
-//                                       (neumann_wall_y ? bc->wallValue(xyz)*xyz_t[1]*scaling : 0.0),
-//                                       (neumann_wall_z ? bc->wallValue(xyz)*xyz_t[2]*scaling : 0.0));
-      p.push_back((f_p[neighbor_face.face_idx] /*+ neumann_term*/) * w);
+      const double neumann_term = SUMD((neumann_wall_x ? bc->wallValue(xyz)*xyz_t[0]*scaling : 0.0),
+                                       (neumann_wall_y ? bc->wallValue(xyz)*xyz_t[1]*scaling : 0.0),
+                                       (neumann_wall_z ? bc->wallValue(xyz)*xyz_t[2]*scaling : 0.0));
+      p.push_back((velocity_component_p[neighbor_face.face_idx] + neumann_term) * w);
       if(interpolator_from_faces != NULL)
         interpolator_from_faces->back().weight = w;
       // [Raphael:] note the sign used when defining xyz_t above, it is counter-intuitive, imo
@@ -1057,7 +1058,7 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
     }
   }
 
-  ierr = VecRestoreArray(f, &f_p); CHKERRXX(ierr);
+  ierr = VecRestoreArray(velocity_component, &velocity_component_p); CHKERRXX(ierr);
   if(face_is_well_defined != NULL)
     ierr = VecRestoreArrayRead(face_is_well_defined, &face_is_well_defined_p); CHKERRXX(ierr);
 
@@ -1073,7 +1074,7 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
   if(interpolator_from_faces != NULL)
     interp_weights = new std::vector<double>(0);
 
-  double value_to_return = solve_lsqr_system(A, p, DIM(nb[0].size(), nb[1].size(), nb[2].size()), order);
+  double value_to_return = solve_lsqr_system(A, p, DIM(nb[0].size(), nb[1].size(), nb[2].size()), order, SUMD((neumann_wall_x ? 1 : 0), (neumann_wall_y ? 1 : 0), (neumann_wall_z ? 1 : 0)), interp_weights);
 
   if(interpolator_from_faces != NULL)
   {
@@ -1089,11 +1090,11 @@ double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes
   if(interpolator_from_faces != NULL)
   {
     double my_new_value = 0.0;
-    const double *f_read_p;
-    ierr = VecGetArrayRead(f, &f_read_p); CHKERRXX(ierr);
+    const double *velocity_component_read_p;
+    ierr = VecGetArrayRead(velocity_component, &velocity_component_read_p); CHKERRXX(ierr);
     for (size_t k = 0; k < interpolator_from_faces->size(); ++k)
-      my_new_value += f_read_p[interpolator_from_faces->at(k).face_idx]*interpolator_from_faces->at(k).weight;
-    ierr = VecRestoreArrayRead(f, &f_read_p); CHKERRXX(ierr);
+      my_new_value += velocity_component_read_p[interpolator_from_faces->at(k).face_idx]*interpolator_from_faces->at(k).weight;
+    ierr = VecRestoreArrayRead(velocity_component, &velocity_component_read_p); CHKERRXX(ierr);
     P4EST_ASSERT(fabs(my_new_value - value_to_return) < MAX(EPS, 1e-6*MAX(fabs(my_new_value), fabs(value_to_return))));
   }
 #endif
@@ -1130,7 +1131,7 @@ voro_cell_type compute_voronoi_cell(Voronoi_DIM &voronoi_cell, const my_p4est_fa
     P4EST_ASSERT(qm.level == qp.level && qm.level == ((splitting_criteria_t*) (faces->get_p4est())->user_pointer)->max_lvl);
 #endif
     vector<ngbdDIMseed> points(P4EST_FACES);
-#ifdef P4_TO_P8
+#ifndef P4_TO_P8
     vector<Point2> partition(P4EST_FACES);
 #endif
     for (unsigned char face_dir = 0; face_dir < P4EST_FACES; ++face_dir) {

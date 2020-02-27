@@ -999,8 +999,8 @@ int main (int argc, char* argv[])
           ierr = VecGhostUpdateEnd(error_at_faces_plus[dir],    INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
           for (size_t k = 0; k < ngbd_comp->get_layer_size(); ++k) {
             p4est_locidx_t node_idx = ngbd_comp->get_layer_node(k);
-            error_at_node_minus_p[dir][node_idx] = interpolate_f_at_node_n(p4est_comp, ghost_comp, nodes_comp, faces_comp, ngbd_c, ngbd_comp, node_idx, error_at_faces_minus[dir], dir);
-            error_at_node_plus_p[dir][node_idx] = interpolate_f_at_node_n(p4est_comp, ghost_comp, nodes_comp, faces_comp, ngbd_c, ngbd_comp, node_idx, error_at_faces_plus[dir], dir);
+            error_at_node_minus_p[dir][node_idx] = interpolate_velocity_at_node_n(p4est_comp, ghost_comp, nodes_comp, faces_comp, ngbd_c, ngbd_comp, node_idx, error_at_faces_minus[dir], dir);
+            error_at_node_plus_p[dir][node_idx] = interpolate_velocity_at_node_n(p4est_comp, ghost_comp, nodes_comp, faces_comp, ngbd_c, ngbd_comp, node_idx, error_at_faces_plus[dir], dir);
             double xyz_node[P4EST_DIM]; node_xyz_fr_n(node_idx, p4est_comp, nodes_comp, xyz_node);
             if(dir == 0)
             {
@@ -1024,8 +1024,8 @@ int main (int argc, char* argv[])
           ierr = VecGhostUpdateBegin(error_at_node_plus[dir],   INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
           for (size_t k = 0; k < ngbd_comp->get_local_size(); ++k) {
             p4est_locidx_t node_idx = ngbd_comp->get_local_node(k);
-            error_at_node_minus_p[dir][node_idx] = interpolate_f_at_node_n(p4est_comp, ghost_comp, nodes_comp, faces_comp, ngbd_c, ngbd_comp, node_idx, error_at_faces_minus[dir], dir);
-            error_at_node_plus_p[dir][node_idx] = interpolate_f_at_node_n(p4est_comp, ghost_comp, nodes_comp, faces_comp, ngbd_c, ngbd_comp, node_idx, error_at_faces_plus[dir], dir);
+            error_at_node_minus_p[dir][node_idx] = interpolate_velocity_at_node_n(p4est_comp, ghost_comp, nodes_comp, faces_comp, ngbd_c, ngbd_comp, node_idx, error_at_faces_minus[dir], dir);
+            error_at_node_plus_p[dir][node_idx] = interpolate_velocity_at_node_n(p4est_comp, ghost_comp, nodes_comp, faces_comp, ngbd_c, ngbd_comp, node_idx, error_at_faces_plus[dir], dir);
             double xyz_node[P4EST_DIM]; node_xyz_fr_n(node_idx, p4est_comp, nodes_comp, xyz_node);
             if(dir == 0)
             {

@@ -36,9 +36,9 @@ using namespace std;
 const static std::string main_description = "\
  In this example, we test and illustrate the calculation of first and second derivatives of node-\n\
  sampled fields. We calculate the gradient and second derivatives (along all cartesian directions)\n\
- of nfields scalar fields, on nsplits grids that are finer and finer. The maximum pointwise errors\n\
+ of nfields scalar fields, on ngrids grids that are finer and finer. The maximum pointwise errors\n\
  are evaluated for all nodes and the orders of convergence are estimated and successively shown (if\n\
- nsplits > 1). \n\
+ ngrids > 1). \n\
  The code's performance is assessed with built-in timers to compare various methods for evaluating \n\
  the derivatives. The available methods are:\n\
  - method 0: calculating the first and second derivatives of the nfields scalar fields sequentially,\n\
@@ -56,12 +56,7 @@ const static std::string main_description = "\
  all the fields\n\
  Developer: Raphael Egan (raphaelegan@ucsb.edu), October 2019.\n";
 
-
-#ifdef P4_TO_P8
-class test_function : public CF_3 {
-#else
-class test_function : public CF_2 {
-#endif
+class test_function : public CF_DIM {
 public:
 #ifdef P4_TO_P8
   virtual double dx   (double x, double y, double z) const=0;
@@ -89,36 +84,22 @@ public:
   virtual ~test_function() {}
 };
 
-#ifdef P4_TO_P8
-struct circle : CF_3 {
-  circle(double x0_, double y0_, double z0_, double r_): x0(x0_), y0(y0_), z0(z0_), r(r_) {}
-#else
-struct circle : CF_2 {
-  circle(double x0_, double y0_, double r_): x0(x0_), y0(y0_), r(r_) {}
-#endif
-#ifdef P4_TO_P8
-  double operator()(double x, double y, double z) const {
-#else
-  double operator()(double x, double y) const {
-#endif
-    return r - sqrt(SQR(x-x0) + SQR(y-y0)
-                #ifdef P4_TO_P8
-                    + SQR(z-z0)
-                #endif
-                    );
+struct circle : CF_DIM {
+  circle(DIM(double x0_, double y0_, double z0_), double r_) :
+    x0(x0_), y0(y0_), ONLY3D(z0(z0_) COMMA) r(r_) {}
+  double operator()(DIM(double x, double y, double z)) const
+  {
+    return r - sqrt(SUMD(SQR(x - x0), SQR(y - y0), SQR(z - z0)));
   }
 
 private:
-  double x0, y0;
-#ifdef P4_TO_P8
-  double z0;
-#endif
+  double x0, y0 ONLY3D(COMMA z0);
   double r;
 };
 
 static double random_generator(const double &min=0.0, const double &max=1.0)
 {
-  return (min+(max-min)*((double) rand())/((double) RAND_MAX));
+  return (min + (max - min)*((double) rand())/((double) RAND_MAX));
 }
 
 void sample_test_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const test_function *cf_array[], Vec f)
@@ -130,17 +111,9 @@ void sample_test_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const t
   ierr = VecGetArray(f, &f_p); CHKERRXX(ierr);
 
   for (size_t i = 0; i<nodes->indep_nodes.elem_count; ++i) {
-    double xyz[P4EST_DIM];
-    node_xyz_fr_n(i, p4est, nodes, xyz);
-
-    for (PetscInt j = 0; j<bs; j++) {
-      const test_function &cf = *cf_array[j];
-#ifdef P4_TO_P8
-      f_p[i*bs + j] = cf(xyz[0], xyz[1], xyz[2]);
-#else
-      f_p[i*bs + j] = cf(xyz[0], xyz[1]);
-#endif
-    }
+    double xyz[P4EST_DIM]; node_xyz_fr_n(i, p4est, nodes, xyz);
+    for (PetscInt j = 0; j < bs; j++)
+      f_p[i*bs + j] = (*cf_array[j])(xyz);
   }
   ierr = VecRestoreArray(f, &f_p); CHKERRXX(ierr);
   return;
@@ -160,11 +133,7 @@ void create_initial_grid_ghost_and_nodes(const mpi_environment_t &mpi, p4est_con
   forest = my_p4est_new(mpi.comm(), conn, 0, NULL, NULL);
   // sphere of random center in [r, 2-r]^P4EST_DIM or random radius in [r/2, r]
   const double r = 0.3;
-#ifdef P4_TO_P8
-  circle circ(random_generator(r, 2.0-r), random_generator(r, 2.0-r), random_generator(r, 2.0-r), random_generator(r/2, r));
-#else
-  circle circ(random_generator(r, 2.0-r), random_generator(r, 2.0-r), random_generator(r/2, r));
-#endif
+  circle circ(DIM(random_generator(r, 2.0 - r), random_generator(r, 2.0 - r), random_generator(r, 2.0 - r)), random_generator(r/2.0, r));
   splitting_criteria_cf_t cf_data(lmin, lmax, &circ, 1);
 
   // attach the splitting criterion
@@ -208,15 +177,9 @@ void refine_my_grid(p4est_t* &forest, p4est_ghost_t* &ghosts, p4est_nodes_t* &no
 
 PetscErrorCode destroy_vectors_if_needed(const unsigned int &nfields,
                                          Vec &field_block, Vec &grad_field_block, Vec &second_derivatives_field_block,
-                                         Vec field_[], Vec dx_[], Vec dy_[],
-                                         #ifdef P4_TO_P8
-                                         Vec dz_[],
-                                         #endif
-                                         Vec ddxx_[], Vec ddyy_[]
-                                         #ifdef P4_TO_P8
-                                         , Vec ddzz_[]
-                                         #endif
-                                         )
+                                         Vec field_[],
+                                         DIM(Vec dx_[], Vec dy_[], Vec dz_[]),
+                                         DIM(Vec ddxx_[], Vec ddyy_[], Vec ddzz_[]))
 {
   PetscErrorCode ierr;
   for (unsigned int k = 0; k < nfields; ++k) {
@@ -250,27 +213,15 @@ PetscErrorCode destroy_vectors_if_needed(const unsigned int &nfields,
 
 PetscErrorCode create_vectors_and_sample_functions_on_nodes(const unsigned int &method, const p4est_t *p4est, p4est_nodes_t *nodes, const test_function *cf_field[], const unsigned int &nfields,
                                                             Vec &field_block, Vec &grad_field_block, Vec &second_derivatives_field_block,
-                                                            Vec field_[], Vec dx_[], Vec dy_[],
-                                                            #ifdef P4_TO_P8
-                                                            Vec dz_[],
-                                                            #endif
-                                                            Vec ddxx_[], Vec ddyy_[]
-                                                            #ifdef P4_TO_P8
-                                                            , Vec ddzz_[]
-                                                            #endif
-                                                            )
+                                                            Vec field_[],
+                                                            DIM(Vec dx_[], Vec dy_[], Vec dz_[]),
+                                                            DIM(Vec ddxx_[], Vec ddyy_[], Vec ddzz_[]) )
 {
   PetscErrorCode ierr;
   destroy_vectors_if_needed(nfields, field_block, grad_field_block, second_derivatives_field_block,
-                            field_, dx_, dy_,
-                          #ifdef P4_TO_P8
-                            dz_,
-                          #endif
-                            ddxx_, ddyy_
-                          #ifdef P4_TO_P8
-                            , ddzz_
-                          #endif
-                            );
+                            field_,
+                            DIM(dx_, dy_, dz_),
+                            DIM(ddxx_, ddyy_, ddzz_));
   if(method==2)
   {
     ierr = VecCreateGhostNodesBlock(p4est, nodes, nfields,           &field_block);                    CHKERRQ(ierr);
@@ -310,14 +261,8 @@ PetscErrorCode create_vectors_and_sample_functions_on_nodes(const unsigned int &
 
 void evaluate_max_error_on_nodes(const unsigned int &method,const p4est_t *p4est, p4est_nodes_t *nodes, const test_function *cf_field[], const unsigned int &nfields,
                                  Vec &grad_field_block, Vec &second_derivatives_field_block,
-                                 Vec dx_[], Vec dy_[],
-                                 #ifdef P4_TO_P8
-                                 Vec dz_[],
-                                 #endif
-                                 Vec ddxx_[], Vec ddyy_[],
-                                 #ifdef P4_TO_P8
-                                 Vec ddzz_[],
-                                 #endif
+                                 DIM(Vec dx_[], Vec dy_[], Vec dz_[]),
+                                 DIM(Vec ddxx_[], Vec ddyy_[], Vec ddzz_[]),
                                  double err_gradient[][P4EST_DIM], double err_second_derivatives[][P4EST_DIM])
 {
   PetscErrorCode ierr;
@@ -405,68 +350,35 @@ void evaluate_max_error_on_nodes(const unsigned int &method,const p4est_t *p4est
     }
 }
 
-#ifdef P4_TO_P8
 class uex : public test_function {
 private:
-  double a, b, c;
+  double DIM(a, b, c);
 public:
-  uex(double a_, double b_, double c_) : a(a_), b(b_), c(c_) {}
-#else
-class uex : public test_function {
-private:
-  double a, b;
-public:
-  uex(double a_, double b_) : a(a_), b(b_) {}
-#endif
-#ifdef P4_TO_P8
-  double operator()(double x, double y, double z) const {
-    return 1.0/(cos(a*x*x + b*y*y + c*z*z)+1.5);
-#else
-  double operator()(double x, double y) const {
-    return 1.0/(cos(a*x*x + b*y*y)+1.5);
-#endif
+  uex(DIM(double a_, double b_, double c_)) : a(a_), b(b_) ONLY3D(COMMA c(c_)) {}
+  double operator()(DIM(double x, double y, double z)) const {
+    return 1.0/(cos(SUMD(a*x*x, b*y*y, c*z*z)) + 1.5);
   }
 
-#ifdef P4_TO_P8
-  double dx(double x, double y, double z) const {
-    return 2.0*a*x*sin(a*x*x + b*y*y + c*z*z)/(SQR(cos(a*x*x + b*y*y + c*z*z)+1.5));
-#else
-  double dx(double x, double y) const {
-    return 2.0*a*x*sin(a*x*x + b*y*y)/(SQR(cos(a*x*x + b*y*y)+1.5));
-#endif
+  double dx(DIM(double x, double y, double z)) const {
+    return 2.0*a*x*sin(SUMD(a*x*x, b*y*y, c*z*z))/(SQR(cos(SUMD(a*x*x, b*y*y, c*z*z)) + 1.5));
   }
 
-#ifdef P4_TO_P8
-  double dy(double x, double y, double z) const {
-    return 2.0*b*y*sin(a*x*x + b*y*y + c*z*z)/(SQR(cos(a*x*x + b*y*y + c*z*z)+1.5));
-#else
-  double dy(double x, double y) const {
-    return 2.0*b*y*sin(a*x*x + b*y*y)/(SQR(cos(a*x*x + b*y*y)+1.5));
-#endif
+  double dy(DIM(double x, double y, double z)) const {
+    return 2.0*b*y*sin(SUMD(a*x*x, b*y*y, c*z*z))/(SQR(cos(SUMD(a*x*x, b*y*y, c*z*z)) + 1.5));
   }
 
 #ifdef P4_TO_P8
   double dz(double x, double y, double z) const {
-    return 2.0*c*z*sin(a*x*x + b*y*y + c*z*z)/(SQR(cos(a*x*x + b*y*y + c*z*z)+1.5));
+    return 2.0*c*z*sin(a*x*x + b*y*y + c*z*z)/(SQR(cos(a*x*x + b*y*y + c*z*z) + 1.5));
   }
 #endif
 
-#ifdef P4_TO_P8
-  double ddxx(double x, double y, double z) const {
-    return (4.0*a*a*x*x*cos(a*x*x + b*y*y + c*z*z)/SQR(1.5 + cos(a*x*x + b*y*y + c*z*z)) + 8.0*a*a*x*x*SQR(sin(a*x*x + b*y*y + c*z*z))/pow((1.5 + cos(a*x*x + b*y*y + c*z*z)), 3.0) + 2.0*a*sin(a*x*x + b*y*y + c*z*z)/SQR(1.5+cos(a*x*x + b*y*y + c*z*z)));
-#else
-  double ddxx(double x, double y) const {
-    return (4.0*a*a*x*x*cos(a*x*x + b*y*y)/SQR(1.5 + cos(a*x*x + b*y*y)) + 8.0*a*a*x*x*SQR(sin(a*x*x + b*y*y))/pow((1.5 + cos(a*x*x + b*y*y)), 3.0) + 2.0*a*sin(a*x*x + b*y*y)/SQR(1.5+cos(a*x*x + b*y*y)));
-#endif
+  double ddxx(DIM(double x, double y, double z)) const {
+    return (4.0*a*a*x*x*cos(SUMD(a*x*x, b*y*y, c*z*z))/SQR(1.5 + cos(SUMD(a*x*x, b*y*y, c*z*z))) + 8.0*a*a*x*x*SQR(sin(SUMD(a*x*x, b*y*y, c*z*z)))/pow((1.5 + cos(SUMD(a*x*x, b*y*y, c*z*z))), 3.0) + 2.0*a*sin(SUMD(a*x*x, b*y*y, c*z*z))/SQR(1.5 + cos(SUMD(a*x*x, b*y*y, c*z*z))));
   }
 
-#ifdef P4_TO_P8
-  double ddyy(double x, double y, double z) const {
-    return (4.0*b*b*y*y*cos(a*x*x + b*y*y + c*z*z)/SQR(1.5 + cos(a*x*x + b*y*y + c*z*z)) + 8.0*b*b*y*y*SQR(sin(a*x*x + b*y*y + c*z*z))/pow((1.5 + cos(a*x*x + b*y*y + c*z*z)), 3.0) + 2.0*b*sin(a*x*x + b*y*y + c*z*z)/SQR(1.5+cos(a*x*x + b*y*y + c*z*z)));
-#else
-  double ddyy(double x, double y) const {
-    return (4.0*b*b*y*y*cos(a*x*x + b*y*y)/SQR(1.5 + cos(a*x*x + b*y*y)) + 8.0*b*b*y*y*SQR(sin(a*x*x + b*y*y))/pow((1.5 + cos(a*x*x + b*y*y)), 3.0) + 2.0*b*sin(a*x*x + b*y*y)/SQR(1.5+cos(a*x*x + b*y*y)));
-#endif
+  double ddyy(DIM(double x, double y, double z)) const {
+    return (4.0*b*b*y*y*cos(SUMD(a*x*x, b*y*y, c*z*z))/SQR(1.5 + cos(SUMD(a*x*x, b*y*y, c*z*z))) + 8.0*b*b*y*y*SQR(sin(SUMD(a*x*x, b*y*y, c*z*z)))/pow((1.5 + cos(SUMD(a*x*x, b*y*y, c*z*z))), 3.0) + 2.0*b*sin(SUMD(a*x*x, b*y*y, c*z*z))/SQR(1.5 + cos(SUMD(a*x*x, b*y*y, c*z*z))));
   }
 
 #ifdef P4_TO_P8
@@ -476,72 +388,39 @@ public:
 #endif
 };
 
-#ifdef P4_TO_P8
 class vex : public test_function {
 private:
-  double a, b, c;
+  double DIM(a, b, c);
 public:
-  vex(double a_, double b_, double c_) : a(a_), b(b_), c(c_) {}
-#else
-class vex : public test_function {
-private:
-  double a, b;
-public:
-  vex(double a_, double b_) : a(a_), b(b_) {}
-#endif
+  vex(DIM(double a_, double b_, double c_)) : a(a_), b(b_) ONLY3D(COMMA c(c_)) {}
 
-#ifdef P4_TO_P8
-  double operator()(double x, double y, double z) const {
-    return cos(a*x+y)*sin(b*y-x)*atan(c*z);
-#else
-  double operator()(double x, double y) const {
-    return cos(a*x+y)*sin(b*y-x);
-#endif
+  double operator()(DIM(double x, double y, double z)) const {
+    return cos(a*x + y)*sin(b*y - x)ONLY3D(*atan(c*z));
   }
 
-#ifdef P4_TO_P8
-  double dx(double x, double y, double z) const {
-    return (-a*sin(a*x+y)*sin(b*y-x) - cos(a*x+y)*cos(b*y-x))*atan(c*z);
-#else
-  double dx(double x, double y) const {
-    return (-a*sin(a*x+y)*sin(b*y-x) - cos(a*x+y)*cos(b*y-x));
-#endif
+  double dx(DIM(double x, double y, double z)) const {
+    return (-a*sin(a*x + y)*sin(b*y - x) - cos(a*x + y)*cos(b*y - x))ONLY3D(*atan(c*z));
   }
 
-#ifdef P4_TO_P8
-  double ddxx(double x, double y, double z) const {
-    return (-a*a*cos(a*x+y)*sin(b*y-x) + 2.0*a*sin(a*x+y)*cos(b*y-x) - cos(a*x+y)*sin(b*y-x))*atan(c*z);
-#else
-  double ddxx(double x, double y) const {
-    return (-a*a*cos(a*x+y)*sin(b*y-x) + 2.0*a*sin(a*x+y)*cos(b*y-x) - cos(a*x+y)*sin(b*y-x));
-#endif
+  double ddxx(DIM(double x, double y, double z)) const {
+    return (-a*a*cos(a*x + y)*sin(b*y - x) + 2.0*a*sin(a*x + y)*cos(b*y - x) - cos(a*x + y)*sin(b*y - x))ONLY3D(*atan(c*z));
   }
 
-#ifdef P4_TO_P8
-  double dy(double x, double y, double z) const {
-    return (-sin(a*x+y)*sin(b*y-x) + b*cos(a*x+y)*cos(b*y-x))*atan(c*z);
-#else
-  double dy(double x, double y) const {
-    return (-sin(a*x+y)*sin(b*y-x) + b*cos(a*x+y)*cos(b*y-x));
-#endif
+  double dy(DIM(double x, double y, double z)) const {
+    return (-sin(a*x + y)*sin(b*y - x) + b*cos(a*x + y)*cos(b*y - x))ONLY3D(*atan(c*z));
   }
 
-#ifdef P4_TO_P8
-  double ddyy(double x, double y, double z) const {
-    return (-cos(a*x+y)*sin(b*y-x) - 2.0*b*sin(a*x+y)*cos(b*y-x) - b*b*cos(a*x+y)*sin(b*y-x))*atan(c*z);
-#else
-  double ddyy(double x, double y) const {
-    return (-cos(a*x+y)*sin(b*y-x) - 2.0*b*sin(a*x+y)*cos(b*y-x) - b*b*cos(a*x+y)*sin(b*y-x));
-#endif
+  double ddyy(DIM(double x, double y, double z)) const {
+    return (-cos(a*x + y)*sin(b*y - x) - 2.0*b*sin(a*x + y)*cos(b*y - x) - b*b*cos(a*x + y)*sin(b*y - x))ONLY3D(*atan(c*z));
   }
 
 #ifdef P4_TO_P8
   double dz(double x, double y, double z) const {
-    return  c*cos(a*x+y)*sin(b*y-x)/(1+SQR(c*z));
+    return  c*cos(a*x + y)*sin(b*y - x)/(1+SQR(c*z));
   }
 
   double ddzz(double x, double y, double z) const {
-    return  -2.0*c*c*c*z*cos(a*x+y)*sin(b*y-x)/(SQR(1+SQR(c*z)));
+    return  -2.0*c*c*c*z*cos(a*x + y)*sin(b*y - x)/(SQR(1+SQR(c*z)));
   }
 #endif
 };
@@ -553,30 +432,30 @@ private:
 public:
   wex(double a_, double b_, double c_) : a(a_), b(b_), c(c_) {}
   double operator()(double x, double y, double z) const {
-    return log(a*x*x+1)*atan(y)*sin(c*z+b*y);
+    return log(1.0 + a*x*x)*atan(y)*sin(c*z + b*y);
   }
 
   double dx(double x, double y, double z) const {
-    return atan(y)*sin(c*z+b*y)*2.0*a*x/(1.0+a*x*x);
+    return atan(y)*sin(c*z + b*y)*2.0*a*x/(1.0+a*x*x);
   }
 
   double ddxx(double x, double y, double z) const {
-    return atan(y)*sin(c*z+b*y)*(2.0*a*(1-a*x*x))/SQR(1.0+a*x*x);
+    return atan(y)*sin(c*z + b*y)*(2.0*a*(1-a*x*x))/SQR(1.0+a*x*x);
   }
 
   double dy(double x, double y, double z) const {
-    return log(a*x*x+1)*(sin(c*z+b*y)/(1 + y*y) + atan(y)*b*cos(c*z+b*y));
+    return log(1.0 + a*x*x)*(sin(c*z + b*y)/(1 + y*y) + atan(y)*b*cos(c*z + b*y));
   }
   double ddyy(double x, double y, double z) const {
-    return log(a*x*x+1)*(-2.0*y*sin(c*z+b*y)/(SQR(1 + y*y)) + 2.0*b*cos(c*z+b*y)/(1 + y*y) - atan(y)*b*b*sin(c*z+b*y));
+    return log(1.0 + a*x*x)*(-2.0*y*sin(c*z + b*y)/(SQR(1 + y*y)) + 2.0*b*cos(c*z + b*y)/(1 + y*y) - atan(y)*b*b*sin(c*z + b*y));
   }
 
   double dz(double x, double y, double z) const {
-    return log(a*x*x+1)*atan(y)*c*cos(c*z+b*y);
+    return log(1.0 + a*x*x)*atan(y)*c*cos(c*z + b*y);
   }
 
   double ddzz(double x, double y, double z) const {
-    return -log(a*x*x+1)*atan(y)*c*c*sin(c*z+b*y);
+    return -log(1.0 + a*x*x)*atan(y)*c*c*sin(c*z + b*y);
   }
 };
 #endif
@@ -595,7 +474,7 @@ int main (int argc, char* argv[]){
   cmd.add_option("ntrees",      "number of trees per dimensions (default is 2)");
   cmd.add_option("lmin",        "min level of the trees for the first grid to consider (default is 4)");
   cmd.add_option("lmax",        "max level of the trees for the first grid to consider (default is 6)");
-  cmd.add_option("nsplits",     "number of grid splittings for accuracy check\n\
+  cmd.add_option("ngrids",      "number of (finer and finer) grids considered - for accuracy check\n\
            (default is 3, accuracy is checked only if >1)");
   cmd.add_option("method",      "default is 0, available values are\n\
             0::calculating the derivatives, one field after another;\n\
@@ -615,17 +494,17 @@ int main (int argc, char* argv[]){
   const unsigned int method = cmd.get<unsigned int>("method", 0);
   unsigned int seed         = cmd.get<unsigned int>("seed", 279);
   bool timing_off           = cmd.contains("timing_off");
-  unsigned int lmin         = cmd.get<unsigned int>("lmin", 4);
+  unsigned int lmin         = cmd.get<unsigned int>("lmin", 3);
   unsigned int lmax         = cmd.get<unsigned int>("lmax", 6);
-  unsigned int nsplits      = cmd.get<unsigned int>("nsplits", 3);
+  unsigned int ngrids       = cmd.get<unsigned int>("ngrids", 5);
   int ntrees                = cmd.get<unsigned int>("ntrees", 2);
-  unsigned int nfields      = cmd.get<unsigned int>("fields", P4EST_DIM);
+  unsigned int nfields      = cmd.get<unsigned int>("fields", 2+P4EST_DIM);
 
   // check for valid inputs
   if(method > 2)
     throw std::invalid_argument("main: unknown desired method");
-  if(nsplits == 0 || ntrees <= 0 || nfields == 0)
-    throw std::invalid_argument("main: requires a strictly positive number for 'nsplits', 'ntrees' and 'fields'");
+  if(ngrids == 0 || ntrees <= 0 || nfields == 0)
+    throw std::invalid_argument("main: requires a strictly positive number for 'ngrids', 'ntrees' and 'fields'");
   if(lmax < lmin)
     throw std::invalid_argument("main: requires lmax >= lmin");
   /* [A note about throwing exceptions in a parallel framework]
@@ -669,18 +548,13 @@ int main (int argc, char* argv[]){
   // create the test function(s), with random parameters
   const test_function *cf_field[nfields];
   for (unsigned int k = 0; k < nfields; ++k) {
+    if(k%P4EST_DIM == dir::x)
+      cf_field[k] = new uex(DIM(random_generator(0.0, 1.0), random_generator(0.0, 1.0), random_generator(0.0, 1.0)));
+    else if (k%P4EST_DIM == dir::y)
+      cf_field[k] = new vex(DIM(random_generator(0.0, 2.0), random_generator(0.0, 0.7), random_generator(0.0, 0.5)));
 #ifdef P4_TO_P8
-    if(k%P4EST_DIM==0)
-      cf_field[k] = new uex(random_generator(0.0, 1.0), random_generator(0.0, 1.0), random_generator(0.0, 1.0));
-    else if (k%P4EST_DIM==1)
-      cf_field[k] = new vex(random_generator(0.0, 2.0), random_generator(0.0, 0.7), random_generator(0.0, 0.5));
-    else
+    else if (k%P4EST_DIM == dir::z)
       cf_field[k] = new wex(random_generator(0.0, 1.0), random_generator(-1.0, 1.0), random_generator(-1.0, 1.0));
-#else
-    if(k%P4EST_DIM==0)
-      cf_field[k] = new uex(random_generator(0.0, 1.0), random_generator(0.0, 1.0));
-    else
-      cf_field[k] = new vex(random_generator(0.0, 2.0), random_generator(0.0, 0.7));
 #endif
   }
 
@@ -739,7 +613,7 @@ int main (int argc, char* argv[]){
   double err_gradient_step[nfields][P4EST_DIM];
   double err_second_derivatives_step_m1[nfields][P4EST_DIM];
   double err_second_derivatives_step[nfields][P4EST_DIM];
-  for (unsigned int ss = 0; ss < nsplits; ++ss) {
+  for (unsigned int ss = 0; ss < ngrids; ++ss) {
     if(ss > 0)
       refine_my_grid(p4est, ghost, nodes);
 
@@ -755,15 +629,9 @@ int main (int argc, char* argv[]){
      */
     my_p4est_node_neighbors_t ngbd_n(&hierarchy, nodes);
 
-#ifdef P4_TO_P8
     ierr = create_vectors_and_sample_functions_on_nodes(method, p4est, nodes, cf_field, nfields,
                                                         field_block, grad_field_block, second_derivatives_field_block,
-                                                        field_, dx_, dy_, dz_, ddxx_, ddyy_, ddzz_); CHKERRXX(ierr);
-#else
-    ierr = create_vectors_and_sample_functions_on_nodes(method, p4est, nodes, cf_field, nfields,
-                                                        field_block, grad_field_block, second_derivatives_field_block,
-                                                        field_, dx_, dy_,      ddxx_, ddyy_); CHKERRXX(ierr);
-#endif
+                                                        field_, DIM(dx_, dy_, dz_), DIM(ddxx_, ddyy_, ddzz_)); CHKERRXX(ierr);
     if(!timing_off)
       timer.start();
 
@@ -784,13 +652,8 @@ int main (int argc, char* argv[]){
        * (possibly much more than 50%), especially on large 3D grids.
        */
       for (unsigned int k = 0; k < nfields; ++k) {
-#ifdef P4_TO_P8
-        ngbd_n.first_derivatives_central(field_[k], dx_[k], dy_[k], dz_[k]);
-        ngbd_n.second_derivatives_central(field_[k], ddxx_[k], ddyy_[k], ddzz_[k]);
-#else
-        ngbd_n.first_derivatives_central(field_[k], dx_[k], dy_[k]);
-        ngbd_n.second_derivatives_central(field_[k], ddxx_[k], ddyy_[k]);
-#endif
+        ngbd_n.first_derivatives_central(field_[k], DIM(dx_[k], dy_[k], dz_[k]));
+        ngbd_n.second_derivatives_central(field_[k], DIM(ddxx_[k], ddyy_[k], ddzz_[k]));
       }
       break;
     }
@@ -802,13 +665,8 @@ int main (int argc, char* argv[]){
        * When nfields is large, one can save execution time by avoiding the redundant
        * grid-related calculations, especially on large 3D grids.
        */
-#ifdef P4_TO_P8
-      ngbd_n.first_derivatives_central(field_, dx_, dy_, dz_, nfields);
-      ngbd_n.second_derivatives_central(field_, ddxx_, ddyy_, ddzz_, nfields);
-#else
-      ngbd_n.first_derivatives_central(field_, dx_, dy_, nfields);
-      ngbd_n.second_derivatives_central(field_, ddxx_, ddyy_, nfields);
-#endif
+      ngbd_n.first_derivatives_central(field_, DIM(dx_, dy_, dz_), nfields);
+      ngbd_n.second_derivatives_central(field_, DIM(ddxx_, ddyy_, ddzz_), nfields);
       break;
     }
     case 2:
@@ -841,21 +699,11 @@ int main (int argc, char* argv[]){
           err_second_derivatives_step_m1[k][der]  = err_second_derivatives_step[k][der];
         }
 
-#ifdef P4_TO_P8
     evaluate_max_error_on_nodes(method, p4est, nodes, cf_field, nfields,
                                 grad_field_block, second_derivatives_field_block,
-                                dx_, dy_, dz_, ddxx_, ddyy_, ddzz_,
-                                err_gradient_step, err_second_derivatives_step);
+                                DIM(dx_, dy_, dz_), DIM(ddxx_, ddyy_, ddzz_), err_gradient_step, err_second_derivatives_step);
     ierr = destroy_vectors_if_needed(nfields, field_block, grad_field_block, second_derivatives_field_block,
-                                     field_, dx_, dy_, dz_, ddxx_, ddyy_, ddzz_); CHKERRXX(ierr);
-#else
-    evaluate_max_error_on_nodes(method, p4est, nodes, cf_field, nfields,
-                                grad_field_block, second_derivatives_field_block,
-                                dx_, dy_,      ddxx_, ddyy_,
-                                err_gradient_step, err_second_derivatives_step);
-    ierr = destroy_vectors_if_needed(nfields, field_block, grad_field_block, second_derivatives_field_block,
-                                     field_, dx_, dy_,      ddxx_, ddyy_); CHKERRXX(ierr);
-#endif
+                                     field_, DIM(dx_, dy_, dz_), DIM(ddxx_, ddyy_, ddzz_)); CHKERRXX(ierr);
 
     if (mpi.rank() == 0 && ss>0)
     {
@@ -866,11 +714,7 @@ int main (int argc, char* argv[]){
       std::cout << " --- orders of convergence when comparing results from " << lmin+ss-1 << "/" << lmax+ss-1 << " and " << lmin+ss << "/" << lmax+ss << " grids ---" << std::endl;
 
       std::cout << "\t - for the calculation of gradients: " << std::endl;
-#ifdef P4_TO_P8
-      std::cout << "\t\t\talong x\t\talong y\t\talong z" << std::endl;
-#else
-      std::cout << "\t\t\talong x\t\talong y" << std::endl;
-#endif
+      std::cout << "\t\t\talong x\t\talong y" ONLY3D(<< "\t\talong z") << std::endl;
       for (unsigned int comp = 0; comp < nfields; ++comp) {
         std::cout << "\tfield #" << comp << ": \t";
         std::cout << std::fixed;
@@ -880,11 +724,7 @@ int main (int argc, char* argv[]){
       }
       std::cout << std::endl;
       std::cout << "\t - for the calculation of second derivatives: " << std::endl;
-#ifdef P4_TO_P8
-      std::cout << "\t\t\talong x\t\talong y\t\talong z" << std::endl;
-#else
-      std::cout << "\t\t\talong x\t\talong y" << std::endl;
-#endif
+      std::cout << "\t\t\talong x\t\talong y" ONLY3D(<< "\t\talong z") << std::endl;
       for (unsigned int comp = 0; comp < nfields; ++comp) {
         std::cout << "\tfield #" << comp << ": \t";
         std::cout << std::fixed;
@@ -895,7 +735,7 @@ int main (int argc, char* argv[]){
       std::cout << std::endl;
     }
 
-    if(ss==nsplits-1 && cmd.contains("vtk"))
+    if(ss == ngrids - 1 && cmd.contains("vtk"))
     {
       const string vtk_folder = cmd.get<string>("vtk_folder", "./");
       string grid_filename = vtk_folder+"p4est_grid";

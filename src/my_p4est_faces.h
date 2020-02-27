@@ -292,6 +292,8 @@ public:
   /* num_ghost[dim] contains the number of ghost faces of orientation dim  */
   p4est_locidx_t num_ghost[P4EST_DIM];
 
+  /* IMPORTANT NOTE: this constructor assumes that p4est->user_pointer already points to a (splitting_criteria_t) type of object with valid max_lvl, when being called.
+   * --> important for restart!*/
   my_p4est_faces_t(p4est_t *p4est, p4est_ghost_t *ghost, my_p4est_brick_t *myb, my_p4est_cell_neighbors_t *ngbd_c, bool initialize_neighborhoods_of_fine_faces = false);
 
   /*!
@@ -332,7 +334,7 @@ public:
   void xyz_fr_f(p4est_locidx_t f_idx, const unsigned char &dir, double* xyz) const;
 
   /*!
-   * \brief rel_xyz_face_fr_node calculates the relative cartesian coordinates between a face and a given grid node (very useful for lsqr interpolation).
+   * \brief rel_qxyz_face_fr_node calculates the relative cartesian coordinates between a face and a given grid node (very useful for lsqr interpolation).
    * The method also returns the cartesian differences in terms of logical coordinate units (in order to efficiently and unambiguously count the number
    * of independent points along Cartesian directions).
    * \param f_idx               [in]  local index of the face of interest
@@ -341,10 +343,10 @@ public:
    * \param xyz_node            [in]  pointer to an array of P4EST_DIM doubles: cartesian cooordinates of the grid node
    * \param node                [in]  pointer to the grid node of interest
    * \param brick               [in]  pointer to the brick (macromesh) structure
-   * \param logical_qcoord_diff [out] pointer to an array of P4EST_DIM __int64_t: difference of Cartesian coordinates between the face and the point in logical units
-   * NOTE: logical_qcoord_diff must point to __int64_t type to make sure that logical differences and calculations across trees are correct.
+   * \param logical_qcoord_diff [out] pointer to an array of P4EST_DIM int64_t: difference of Cartesian coordinates between the face and the point in logical units
+   * NOTE: logical_qcoord_diff must point to int64_t type to make sure that logical differences and calculations across trees are correct.
    */
-  void rel_xyz_face_fr_node(const p4est_locidx_t& f_idx, const unsigned char& dir, double* xyz_rel, const double* xyz_node, const p4est_indep_t* node, const my_p4est_brick_t* brick,  __int64_t* logical_qcoord_diff) const;
+  void rel_qxyz_face_fr_node(const p4est_locidx_t& f_idx, const unsigned char& dir, double* xyz_rel, const double* xyz_node, const p4est_indep_t* node, const my_p4est_brick_t* brick, int64_t* logical_qcoord_diff) const;
 
   inline void point_fr_f(p4est_locidx_t f_idx, const unsigned char &dir, PointDIM &point) const
   {
@@ -592,10 +594,10 @@ void check_if_faces_are_well_defined(my_p4est_node_neighbors_t *ngbd_n, my_p4est
                                      Vec phi, BoundaryConditionType interface_type, Vec is_well_defined);
 
 // NOTE: reusing the interpolator_from_faces is ok afterwards for Neumann-BC nodes ONLY if the Neumann bc is HOMOGENEOUS!
-double interpolate_f_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4est_faces_t *faces,
-                               my_p4est_cell_neighbors_t *ngbd_c, my_p4est_node_neighbors_t *ngbd_n,
-                               p4est_locidx_t node_idx, Vec f, const unsigned char &dir,
-                               Vec face_is_well_defined=NULL, int order=2, BoundaryConditionsDIM *bc=NULL, face_interpolator* interpolator_from_faces = NULL);
+double interpolate_velocity_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4est_faces_t *faces,
+                                      my_p4est_cell_neighbors_t *ngbd_c, my_p4est_node_neighbors_t *ngbd_n,
+                                      p4est_locidx_t node_idx, Vec velocity_component, const unsigned char &dir,
+                                      Vec face_is_well_defined=NULL, int order=2, BoundaryConditionsDIM *bc=NULL, face_interpolator* interpolator_from_faces = NULL);
 
 inline void add_faces_to_set_and_clear_set_of_quad(const my_p4est_faces_t* faces, const p4est_locidx_t& center_face_idx, const unsigned char& dir, std::set<indexed_and_located_face>& set_of_faces, set_of_neighboring_quadrants& quad_ngbd)
 {

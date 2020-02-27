@@ -64,13 +64,14 @@
 #undef MIN
 #undef MAX
 
-double xmin = -1;
-double xmax =  1;
-double ymin = -1;
-double ymax =  1;
+
+const double xmin = -1.0;
+const double xmax =  1.0;
+const double ymin = -1.0;
+const double ymax =  1.0;
 #ifdef P4_TO_P8
-double zmin = -1;
-double zmax =  1;
+const double zmin = -1.0;
+const double zmax =  1.0;
 #endif
 
 using namespace std;
@@ -86,7 +87,7 @@ int nz = 1;
 #endif
 
 double mu = 20.;
-double add_diagonal = 0;
+double add_diagonal = 0.0;
 
 /*
  * 0 - circle
@@ -104,7 +105,20 @@ int test_number = 2;
 BoundaryConditionType bc_wtype = NEUMANN; // DIRICHLET;
 BoundaryConditionType bc_itype = DIRICHLET; // NEUMANN;
 
-double r0 = (double) MIN(DIM(xmax-xmin, ymax-ymin, zmax-zmin)) / 4;
+double r0 = MIN(DIM(xmax - xmin, ymax - ymin, zmax - zmin)) / 4.0;
+
+
+#ifdef P4_TO_P8
+static const string test_description = "choose a test.\n\
+    0 - x + y + z\n\
+    1 - x*x + y*y + z*z\n\
+    2 - sin(x)*cos(y)*exp(z)";
+#else
+static const string test_description = "choose a test.\n\
+    0 - x + y\n\
+    1 - x*x + y*y\n\
+    2 - sin(x)*cos(y)";
+#endif
 
 class LEVEL_SET: public CF_DIM
 {
@@ -114,7 +128,7 @@ public:
     switch(interface_type)
     {
     case 0:
-      return r0 - sqrt(SUMD(SQR(x - (xmax+xmin)/2), SQR(y - (ymax+ymin)/2), SQR(z - (zmax+zmin)/2)));
+      return r0 - sqrt(SUMD(SQR(x - 0.5*(xmax + xmin)), SQR(y - 0.5*(ymax + ymin)), SQR(z - 0.5*(zmax + zmin))));
     default:
       throw std::invalid_argument("Choose a valid level set.");
     }
@@ -158,20 +172,16 @@ public:
       switch(interface_type)
       {
       case 0:
-        if(ANDD(fabs(x - (xmax + xmin)/2.0) < EPS, fabs(y - (ymax + ymin)/2.0) < EPS, fabs(z - (zmax + zmin)/2.0) < EPS))
+        if(ANDD(fabs(x - 0.5*(xmax + xmin)) < EPS*(xmax - xmin), fabs(y - 0.5*(ymax + ymin)) < EPS*(ymax - ymin), fabs(z - 0.5*(zmax + zmin)) < EPS*(zmax - zmin)))
         {
-          dx = 0;
-          dy = 0;
-#ifdef P4_TO_P8
-          dz = 0;
-#endif
+          dx = dy ONLY3D( = dz) = 0.0;
         }
         else
         {
-          dx = -(x - (xmax + xmin)/2.0)/sqrt(SUMD(SQR(x - (xmax + xmin)/2.0), SQR(y - (ymax + ymin)/2.0), SQR(z - (zmax + zmin)/2.0)));
-          dy = -(y - (ymax + ymin)/2.0)/sqrt(SUMD(SQR(x - (xmax + xmin)/2.0), SQR(y - (ymax + ymin)/2.0), SQR(z - (zmax + zmin)/2.0)));
+          dx = -(x - 0.5*(xmax + xmin))/sqrt(SUMD(SQR(x - 0.5*(xmax + xmin)), SQR(y - 0.5*(ymax + ymin)), SQR(z - 0.5*(zmax + zmin))));
+          dy = -(y - 0.5*(ymax + ymin))/sqrt(SUMD(SQR(x - 0.5*(xmax + xmin)), SQR(y - 0.5*(ymax + ymin)), SQR(z - 0.5*(zmax + zmin))));
 #ifdef P4_TO_P8
-          dz = -(z - (zmax + zmin)/2.0)/sqrt(SUMD(SQR(x - (xmax + xmin)/2.0), SQR(y - (ymax + ymin)/2.0), SQR(z - (zmax + zmin)/2.0)));
+          dz = -(z - 0.5*(zmax + zmin))/sqrt(SUMD(SQR(x - 0.5*(xmax + xmin)), SQR(y - 0.5*(ymax + ymin)), SQR(z - 0.5*(zmax + zmin))));
 #endif
         }
         break;
@@ -184,7 +194,7 @@ public:
       case 0:
         return SUMD(dx, dy, dz);
       case 1:
-        return SUMD(2*x*dx, 2*y*dy, 2*z*dz);
+        return SUMD(2.0*x*dx, 2.0*y*dy, 2.0*z*dz);
       case 2:
         return MULTD(cos(x), cos(y), exp(z))*dx - MULTD(sin(x), sin(y), exp(z))*dy ONLY3D(+ sin(x)*cos(y)*exp(z)*dz);
       default:
@@ -212,10 +222,10 @@ public:
       return u_exact(DIM(x, y, z));
     else
     {
-      double dx = 0; dx = fabs(x - xmin) < EPS ? -1.0 : (fabs(x - xmax) < EPS  ? 1.0 : 0.0);
-      double dy = 0; dy = fabs(y - ymin) < EPS ? -1.0 : (fabs(y - ymax) < EPS  ? 1.0 : 0.0);
+      double dx = 0; dx = fabs(x - xmin) < (xmax - xmin)*EPS ? -1.0 : (fabs(x - xmax) < (xmax - xmin)*EPS  ? 1.0 : 0.0);
+      double dy = 0; dy = fabs(y - ymin) < (ymax - ymin)*EPS ? -1.0 : (fabs(y - ymax) < (ymax - ymin)*EPS  ? 1.0 : 0.0);
 #ifdef P4_TO_P8
-      double dz = 0; dz = fabs(z - zmin) < EPS ? -1.0 : (fabs(z - zmax) < EPS  ? 1.0 : 0.0);
+      double dz = 0; dz = fabs(z - zmin) < (zmax - zmin)*EPS ? -1.0 : (fabs(z - zmax) < (zmax - zmin)*EPS  ? 1.0 : 0.0);
 #endif
       switch(test_number)
       {
@@ -245,17 +255,10 @@ void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4e
   command << "mkdir -p " << out_dir << "/vtu";
   int sys_return = system(command.str().c_str()); (void) sys_return;
   std::ostringstream oss;
-  oss << out_dir
-      << "/vtu/faces_"
-      << p4est->mpisize << "_"
-      << brick->nxyztrees[0] << "x"
-      << brick->nxyztrees[1] <<
-       #ifdef P4_TO_P8
-         "x" << brick->nxyztrees[2] <<
-       #endif
-         "." << compt;
+  oss << out_dir << "/vtu/faces_" << p4est->mpisize << "_"
+      << brick->nxyztrees[0] << "x" << brick->nxyztrees[1] << ONLY3D("x" << brick->nxyztrees[2] <<) "." << compt;
 
-  double *phi_p, *solution_cells_p, *error_cells_p;
+  double *phi_p, *error_cells_p;
   ierr = VecGetArray(phi, &phi_p); CHKERRXX(ierr);
   ierr = VecGetArray(error_cells, &error_cells_p); CHKERRXX(ierr);
 
@@ -275,17 +278,17 @@ void save_VTK(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4e
 
   for(p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx)
   {
-    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
+    p4est_tree_t *tree = p4est_tree_array_index(p4est->trees, tree_idx);
     for( size_t q=0; q<tree->quadrants.elem_count; ++q)
     {
-      const p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, q);
+      const p4est_quadrant_t *quad = p4est_quadrant_array_index(&tree->quadrants, q);
       l_p[tree->quadrants_offset+q] = quad->level;
     }
   }
 
-  for(size_t q=0; q<ghost->ghosts.elem_count; ++q)
+  for(size_t q = 0; q < ghost->ghosts.elem_count; ++q)
   {
-    const p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts, q);
+    const p4est_quadrant_t *quad = p4est_quadrant_array_index(&ghost->ghosts, q);
     l_p[p4est->local_num_quadrants+q] = quad->level;
   }
 
@@ -329,20 +332,10 @@ int main (int argc, char* argv[])
   cmd.add_option("bc_itype", "type of boundary condition to use on the interface");
   cmd.add_option("save_voro", "save the voronoi partition in vtk format");
   cmd.add_option("save_vtk", "save the p4est in vtk format");
-#ifdef P4_TO_P8
-  cmd.add_option("test", "choose a test.\n\
-                 0 - x+y+z\n\
-                 1 - x*x + y*y + z*z\n\
-                 2 - sin(x)*cos(y)*exp(z)");
-#else
-  cmd.add_option("test", "choose a test.\n\
-                 0 - x+y\n\
-                 1 - x*x + y*y\n\
-                 2 - sin(x)*cos(y)");
-#endif
+  cmd.add_option("test", test_description);
 
   if (cmd.parse(argc, argv))
-                 return 0;
+    return 0;
 
   cmd.print();
 
@@ -419,7 +412,7 @@ int main (int argc, char* argv[])
 
     Vec phi;
     ierr = VecCreateGhostNodes(p4est, nodes, &phi); CHKERRXX(ierr);
-    if(bc_itype==NOINTERFACE)
+    if(bc_itype == NOINTERFACE)
       sample_cf_on_nodes(p4est, nodes, no_interface_cf, phi);
     else
       sample_cf_on_nodes(p4est, nodes, level_set, phi);
@@ -468,7 +461,7 @@ int main (int argc, char* argv[])
           rhs_p[f_idx] = mu*0 + add_diagonal*u_exact(DIM(xyz[0], xyz[1], xyz[2]));
           break;
         case 1:
-          rhs_p[f_idx] = -6*mu + add_diagonal*u_exact(DIM(xyz[0], xyz[1], xyz[2]));
+          rhs_p[f_idx] = -2.0*((double) P4EST_DIM)*mu + add_diagonal*u_exact(DIM(xyz[0], xyz[1], xyz[2]));
           break;
         case 2:
           rhs_p[f_idx] = mu*SUMD(1.0, 1.0, -1.0)*MULTD(sin(xyz[0]), cos(xyz[1]), exp(xyz[2])) + add_diagonal*u_exact(DIM(xyz[0], xyz[1], xyz[2]));
@@ -511,7 +504,7 @@ int main (int argc, char* argv[])
     const int *matrix_has_nullspace = solver.get_matrix_has_nullspace();
     for(unsigned char dir = 0; dir < P4EST_DIM; ++dir)
       if(matrix_has_nullspace[dir]){
-        ierr = PetscPrintf(p4est->mpicomm, "Warning !! all neumann not tested for solver on faces ... missing integrations on faces."); }
+        ierr = PetscPrintf(p4est->mpicomm, "Warning !! all neumann not tested for solver on faces ... missing integrations on faces.\n"); }
 
     if(save_voro)
     {
@@ -616,7 +609,7 @@ int main (int argc, char* argv[])
 
 
     /* extrapolate the solution and check accuracy */
-    if(bc_itype!=NOINTERFACE)
+    if(bc_itype != NOINTERFACE)
     {
       my_p4est_level_set_faces_t ls_f(&ngbd_n, &faces);
       for(unsigned char dir = 0; dir < P4EST_DIM; ++dir)

@@ -1797,16 +1797,6 @@ public:
     return;
   }
 #endif
-    for (unsigned int k = 0; k < n_arrays; ++k) {
-      const unsigned int l_offset = P4EST_DIM*k;
-      serialized_fxxyyzz[l_offset+0] = fxx[k];
-      serialized_fxxyyzz[l_offset+1] = fyy[k];
-#ifdef P4_TO_P8
-      serialized_fxxyyzz[l_offset+2] = fzz[k];
-#endif
-    }
-    return;
-  }
 
   /* second derivatives */
   inline double dxx_central(const double *f) const

@@ -66,7 +66,6 @@ void my_p4est_interpolation_nodes_t::set_input(Vec *F, Vec *Fxxyyzz_block_, DIM(
   this->method = method;
 }
 
-
 void my_p4est_interpolation_nodes_t::operator ()(DIM(double x, double y, double z), double* results) const
 {
   PetscErrorCode ierr;
@@ -117,16 +116,16 @@ void my_p4est_interpolation_nodes_t::operator ()(DIM(double x, double y, double 
   if (method == quadratic || method == quadratic_non_oscillatory || method == quadratic_non_oscillatory_continuous_v1 || method == quadratic_non_oscillatory_continuous_v2)
     fdd = P4EST_ALLOC(double, nelem_per_node*P4EST_CHILDREN*P4EST_DIM);
   // description of the above data structure:
-  // if (comp==ALL_COMPONENTS && bs_f > 1)
-  //   fdd[k*bs_f*P4EST_CHILDREN*P4EST_DIM+cc*P4EST_CHILDREN*P4EST_DIM+j*P4EST_DIM+dir] = value of second derivative along direction dir of the ccth component of the kth block vector at node j
+  // if (comp == ALL_COMPONENTS && bs_f > 1)
+  //   fdd[k*bs_f*P4EST_CHILDREN*P4EST_DIM + cc*P4EST_CHILDREN*P4EST_DIM + j*P4EST_DIM + dir] = value of second derivative along direction dir of the ccth component of the kth block vector at node j
   // else
-  //   fdd[k*P4EST_CHILDREN*P4EST_DIM+j*P4EST_DIM+dir] = value of second derivative along direction dir of the (component of interest of the) kth (block) vector at node j
+  //   fdd[k*P4EST_CHILDREN*P4EST_DIM + j*P4EST_DIM + dir] = value of second derivative along direction dir of the (component of interest of the) kth (block) vector at node j
 
   p4est_quadrant_t best_match;
   vector<p4est_quadrant_t> remote_matches;
   int rank_found = ngbd_n->hierarchy->find_smallest_quadrant_containing_point(xyz_clip, best_match, remote_matches);
   
-  if (rank_found == p4est->mpirank || (rank_found!=-1 && (method==linear || use_precomputed_derivatives_by_components || use_precomputed_block_derivatives) )) { // local quadrant
+  if (rank_found == p4est->mpirank || (rank_found!=-1 && (method == linear || use_precomputed_derivatives_by_components || use_precomputed_block_derivatives) )) { // local quadrant
     p4est_locidx_t quad_idx;
     if(rank_found==p4est->mpirank)
     {
@@ -138,35 +137,35 @@ void my_p4est_interpolation_nodes_t::operator ()(DIM(double x, double y, double 
       quad_idx = best_match.p.piggy3.local_num + p4est->local_num_quadrants;
     }
 
-    for (short i = 0; i<P4EST_CHILDREN; i++) {
+    for (unsigned char i = 0; i < P4EST_CHILDREN; i++) {
       p4est_locidx_t node_idx = nodes->local_nodes[quad_idx*P4EST_CHILDREN + i];
       for (unsigned int k = 0; k < n_functions; ++k)
         for (unsigned int comp = 0; comp < bs_f; ++comp)
-          f[k*bs_f*P4EST_CHILDREN+comp*P4EST_CHILDREN+i] = Fi_p[k][bs_f*node_idx+comp];
+          f[k*bs_f*P4EST_CHILDREN+comp*P4EST_CHILDREN+i] = Fi_p[k][bs_f*node_idx + comp];
     }
 
     // compute derivatives
     if (method == quadratic || method == quadratic_non_oscillatory || method == quadratic_non_oscillatory_continuous_v1 || method == quadratic_non_oscillatory_continuous_v2) {
       if (use_precomputed_derivatives_by_components || use_precomputed_block_derivatives) {
-        for (short j = 0; j < P4EST_CHILDREN; j++) {
+        for (unsigned char j = 0; j < P4EST_CHILDREN; j++) {
           p4est_locidx_t node_idx = nodes->local_nodes[quad_idx*P4EST_CHILDREN + j];
           for (unsigned int k = 0; k < n_functions; ++k)
             for (unsigned int comp = 0; comp < bs_f; ++comp)
               for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-                fdd[k*bs_f*P4EST_CHILDREN*P4EST_DIM+comp*P4EST_CHILDREN*P4EST_DIM+j*P4EST_DIM+dir] = use_precomputed_derivatives_by_components ? Fxxyyzz_p[dir][k][bs_f*node_idx+comp] : Fxxyyzz_block_p[k][node_idx*bs_f*P4EST_DIM+comp*P4EST_DIM+dir];
+                fdd[k*bs_f*P4EST_CHILDREN*P4EST_DIM + comp*P4EST_CHILDREN*P4EST_DIM + j*P4EST_DIM + dir] = (use_precomputed_derivatives_by_components ? Fxxyyzz_p[dir][k][bs_f*node_idx + comp] : Fxxyyzz_block_p[k][node_idx*bs_f*P4EST_DIM + comp*P4EST_DIM + dir]);
         }
       } else {
         quad_neighbor_nodes_of_node_t qnnn;
         double tmp[nelem_per_node*P4EST_DIM];
-        for (short j = 0; j < P4EST_CHILDREN; j++) {
+        for (unsigned char j = 0; j < P4EST_CHILDREN; j++) {
           p4est_locidx_t node_idx = nodes->local_nodes[quad_idx*P4EST_CHILDREN + j];
           ngbd_n->get_neighbors(node_idx, qnnn);
-          if(bs_f==1)
+          if(bs_f == 1)
           {
             qnnn.laplace(Fi_p, tmp, n_functions);
             for (unsigned int k = 0; k < n_functions; ++k)
               for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-                fdd[k*P4EST_CHILDREN*P4EST_DIM+j*P4EST_DIM+dir] = tmp[k*P4EST_DIM+dir];
+                fdd[k*P4EST_CHILDREN*P4EST_DIM + j*P4EST_DIM + dir] = tmp[k*P4EST_DIM+dir];
           }
           else
           {
@@ -174,7 +173,7 @@ void my_p4est_interpolation_nodes_t::operator ()(DIM(double x, double y, double 
             for (unsigned int k = 0; k < n_functions; ++k)
               for (unsigned cc = 0; cc < bs_f; ++cc)
                 for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-                  fdd[k*bs_f*P4EST_CHILDREN*P4EST_DIM+cc*P4EST_CHILDREN*P4EST_DIM+j*P4EST_DIM+dir] = tmp[k*bs_f*P4EST_DIM+cc*P4EST_DIM+dir];
+                  fdd[k*bs_f*P4EST_CHILDREN*P4EST_DIM + cc*P4EST_CHILDREN*P4EST_DIM + j*P4EST_DIM + dir] = tmp[k*bs_f*P4EST_DIM + cc*P4EST_DIM + dir];
           }
         }
       }
@@ -199,16 +198,25 @@ void my_p4est_interpolation_nodes_t::operator ()(DIM(double x, double y, double 
       P4EST_FREE(Fxxyyzz_block_p);
 
 
-    double xyz_q[P4EST_DIM];
-    quad_xyz_fr_q(quad_idx, best_match.p.piggy3.which_tree, p4est, ghost, xyz_q);
-
-    double xyz_p[P4EST_DIM];
-    for(int dir=0; dir<P4EST_DIM; ++dir)
-    {
-      xyz_p[dir] = xyz[dir];
-      if     (is_periodic(p4est,dir) && xyz[dir]-xyz_q[dir]>(xyz_max[dir]-xyz_min[dir])/2) xyz_p[dir] -= xyz_max[dir]-xyz_min[dir];
-      else if(is_periodic(p4est,dir) && xyz_q[dir]-xyz[dir]>(xyz_max[dir]-xyz_min[dir])/2) xyz_p[dir] += xyz_max[dir]-xyz_min[dir];
-    }
+    /* Fetch the interpolation point to feed the basic interpolation routines */
+    double xyz_p[P4EST_DIM] = {DIM(xyz[0], xyz[1], xyz[2])};
+    /* NOTE: the following is NOT a standard "clip_in_domain": we bring the point back in, !only if periodicity allows it!
+     * If the domain is not periodic but one queries values out of the domain anyways, we use the standard interpolant built
+     * on the closest smallest quadrant in the domain and use it as a way to "somehow extrapolate" the results out of the domain...
+     * Moreover, in case of periodicity, we actually fetch the mirror point that is the closest to the provided owning quadrant.
+     * Let the coordinate of the point be x, the corresponding coordinate of the quadrant front lower left corner be xq, we want to
+     * find the integer k such that fabs(x + k*L_x - xq) is minimal where L_x is the domain dimension along the Cartesian direction
+     * of interest. That integer is either pp = floor((xq - x)/L_x) or (pp + 1). The choice between pp or (pp + 1) is based on the
+     * fact that the minimal value of fabs(x + k*L_x - xq)/L_x must be smaller than 0.5 */
+    double xyz_q[P4EST_DIM]; // needed only in case of periodicity
+    if(ORD(periodic[0], periodic[1], periodic[2]))
+      quad_xyz_fr_q(quad_idx, best_match.p.piggy3.which_tree, p4est, ghost, xyz_q);
+    for(unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+      if(periodic[dir])
+      {
+        double pp = (xyz_q[dir] - xyz[dir])/(xyz_max[dir] - xyz_min[dir]);
+        xyz_p[dir] += (floor(pp) + (pp > floor(pp) + 0.5 ? 1.0 : 0.0))*(xyz_max[dir] - xyz_min[dir]);
+      }
 
     if (method == linear)
       linear_interpolation(p4est, best_match.p.piggy3.which_tree, best_match, f, xyz_p, results, n_functions*bs_f);
@@ -245,12 +253,7 @@ void my_p4est_interpolation_nodes_t::operator ()(DIM(double x, double y, double 
       P4EST_FREE(Fxxyyzz_block_p);
 
     std::ostringstream oss;
-    oss << "\n[ERROR]: Point (" << x << "," << y <<
-       #ifdef P4_TO_P8
-           "," << z <<
-       #endif
-           ") is not locally owned by processor "
-        << p4est->mpirank << ". ";
+    oss << "\n[ERROR]: Point (" << x << "," << y << ONLY3D("," << z <<) ") is not locally owned by processor " << p4est->mpirank << ". ";
     if (rank_found != -1) {
       oss << "Only processor " << rank_found
           << " can perform the interpolation locally. ";
@@ -271,62 +274,67 @@ void my_p4est_interpolation_nodes_t::operator ()(DIM(double x, double y, double 
   }
 }
 
-
 void my_p4est_interpolation_nodes_t::interpolate(const p4est_quadrant_t &quad, const double *xyz, double* results, const unsigned int &comp) const
 {
   PetscErrorCode ierr;
 
-  p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, quad.p.piggy3.which_tree);
+  p4est_tree_t *tree = p4est_tree_array_index(p4est->trees, quad.p.piggy3.which_tree);
   p4est_locidx_t quad_idx = quad.p.piggy3.local_num + tree->quadrants_offset;
 
   unsigned int n_functions = n_vecs();
   P4EST_ASSERT(n_functions > 0);
   P4EST_ASSERT(bs_f > 0);
-  P4EST_ASSERT(comp==ALL_COMPONENTS || comp < bs_f);
+  P4EST_ASSERT(comp == ALL_COMPONENTS || comp < bs_f);
 
   const double *Fi_p[n_functions];
   for (unsigned int k = 0; k < n_functions; ++k) {
     ierr = VecGetArrayRead(Fi[k], &Fi_p[k]); CHKERRXX(ierr); }
-  const unsigned int nelem_per_node = (comp==ALL_COMPONENTS && bs_f > 1) ? bs_f*n_functions: n_functions;
+  const unsigned int nelem_per_node = (comp == ALL_COMPONENTS && bs_f > 1 ? bs_f*n_functions: n_functions);
   double f[nelem_per_node*P4EST_CHILDREN]; // f[k*bs_f*P4EST_CHILDREN+cc*P4EST_CHILDREN+j] = value of the ccth component of the kth block vector at node j
 
-  for (short i = 0; i<P4EST_CHILDREN; i++) {
+  for (unsigned char i = 0; i < P4EST_CHILDREN; i++) {
     p4est_locidx_t node_idx = nodes->local_nodes[quad_idx*P4EST_CHILDREN + i];
-    if (bs_f==1)
+    if (bs_f == 1)
       for (unsigned int k = 0; k < n_functions; ++k)
-        f[k*P4EST_CHILDREN+i] = Fi_p[k][node_idx];
-    else if (comp==ALL_COMPONENTS)
+        f[k*P4EST_CHILDREN + i] = Fi_p[k][node_idx];
+    else if (comp == ALL_COMPONENTS)
       for (unsigned int k = 0; k < n_functions; ++k)
         for (unsigned int cc = 0; cc < bs_f; ++cc)
-          f[k*bs_f*P4EST_CHILDREN+cc*P4EST_CHILDREN+i] = Fi_p[k][bs_f*node_idx+cc];
+          f[k*bs_f*P4EST_CHILDREN + cc*P4EST_CHILDREN + i] = Fi_p[k][bs_f*node_idx + cc];
     else
       for (unsigned int k = 0; k < n_functions; ++k)
-        f[k*P4EST_CHILDREN+i] = Fi_p[k][bs_f*node_idx+comp];
+        f[k*P4EST_CHILDREN + i] = Fi_p[k][bs_f*node_idx + comp];
   }
 
-  /* enforce periodicity if necessary */
-  double xyz_q[P4EST_DIM];
-  quad_xyz_fr_q(quad_idx, quad.p.piggy3.which_tree, p4est, ghost, xyz_q);
-
-  double xyz_p[P4EST_DIM];
-  // NOTE: the following is NOT a standard "clip_in_domain": we bring the point back in, *only if periodicity allows it*!
-  // If the domain is not periodic but one queries values out of the domain anyways, we use the standard interpolant built
-  // on the closest smallest quadrant in the domain and use it as a way to "extrapolate" the results out of the domain
-  for(unsigned char dir=0; dir<P4EST_DIM; ++dir){
-    xyz_p[dir] = xyz[dir];
-    if(periodic[dir] && ((xyz_p[dir]<xyz_min[dir]) || (xyz_p[dir]>xyz_max[dir])))
-      xyz_p[dir] = xyz_p[dir] - floor((xyz_p[dir]-xyz_min[dir])/(xyz_max[dir]-xyz_min[dir]))*(xyz_max[dir]-xyz_min[dir]);
-  }
+  /* Fetch the interpolation point to feed the basic interpolation routines */
+  double xyz_p[P4EST_DIM] = {DIM(xyz[0], xyz[1], xyz[2])};
+  /* NOTE: the following is NOT a standard "clip_in_domain": we bring the point back in, !only if periodicity allows it!
+   * If the domain is not periodic but one queries values out of the domain anyways, we use the standard interpolant built
+   * on the closest smallest quadrant in the domain and use it as a way to "somehow extrapolate" the results out of the domain...
+   * Moreover, in case of periodicity, we actually fetch the mirror point that is the closest to the provided owning quadrant.
+   * Let the coordinate of the point be x, the corresponding coordinate of the quadrant front lower left corner be xq, we want to
+   * find the integer k such that fabs(x + k*L_x - xq) is minimal where L_x is the domain dimension along the Cartesian direction
+   * of interest. That integer is either pp = floor((xq - x)/L_x) or (pp + 1). The choice between pp or (pp + 1) is based on the
+   * fact that the minimal value of fabs(x + k*L_x - xq)/L_x must be smaller than 0.5 */
+  double xyz_q[P4EST_DIM]; // needed only in case of periodicity
+  if(ORD(periodic[0], periodic[1], periodic[2]))
+    quad_xyz_fr_q(quad_idx, quad.p.piggy3.which_tree, p4est, ghost, xyz_q);
+  for(unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+    if(periodic[dir])
+    {
+      double pp = (xyz_q[dir] - xyz[dir])/(xyz_max[dir] - xyz_min[dir]);
+      xyz_p[dir] += (floor(pp) + (pp > floor(pp) + 0.5 ? 1.0 : 0.0))*(xyz_max[dir] - xyz_min[dir]);
+    }
 
   /* compute derivatives */
   if (method == quadratic || method == quadratic_non_oscillatory || method == quadratic_non_oscillatory_continuous_v1 || method == quadratic_non_oscillatory_continuous_v2)
   {
     double fdd[nelem_per_node*P4EST_CHILDREN*P4EST_DIM];
     // description of the above data structure:
-    // if (comp==ALL_COMPONENTS && bs_f > 1)
-    //   fdd[k*bs_f*P4EST_CHILDREN*P4EST_DIM+cc*P4EST_CHILDREN*P4EST_DIM+j*P4EST_DIM+dir] = value of second derivative along direction dir of the ccth component of the kth block vector at node j
+    // if (comp == ALL_COMPONENTS && bs_f > 1)
+    //   fdd[k*bs_f*P4EST_CHILDREN*P4EST_DIM + cc*P4EST_CHILDREN*P4EST_DIM + j*P4EST_DIM + dir] = value of second derivative along direction dir of the ccth component of the kth block vector at node j
     // else
-    //   fdd[k*P4EST_CHILDREN*P4EST_DIM+j*P4EST_DIM+dir] = value of second derivative along direction dir of the (component of interest of the) kth (block) vector at node j
+    //   fdd[k*P4EST_CHILDREN*P4EST_DIM + j*P4EST_DIM + dir] = value of second derivative along direction dir of the (component of interest of the) kth (block) vector at node j
 
     bool use_precomputed_block_derivatives = (Fxxyyzz_block.size() == n_functions);
     bool use_precomputed_derivatives_by_components = !use_precomputed_block_derivatives;
@@ -350,21 +358,21 @@ void my_p4est_interpolation_nodes_t::interpolate(const p4est_quadrant_t &quad, c
     }
 
     if (use_precomputed_derivatives_by_components || use_precomputed_block_derivatives) {
-      for (short j = 0; j < P4EST_CHILDREN; j++) {
+      for (unsigned char j = 0; j < P4EST_CHILDREN; j++) {
         p4est_locidx_t node_idx = nodes->local_nodes[quad_idx*P4EST_CHILDREN + j];
-        if(bs_f==1)
+        if(bs_f == 1)
           for (unsigned int k = 0; k < n_functions; ++k)
             for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-              fdd[k*P4EST_CHILDREN*P4EST_DIM+j*P4EST_DIM+dir] = use_precomputed_derivatives_by_components ? Fxxyyzz_p[dir][k][node_idx] : Fxxyyzz_block_p[k][node_idx*P4EST_DIM+dir];
-        else if (comp==ALL_COMPONENTS)
+              fdd[k*P4EST_CHILDREN*P4EST_DIM + j*P4EST_DIM + dir] = (use_precomputed_derivatives_by_components ? Fxxyyzz_p[dir][k][node_idx] : Fxxyyzz_block_p[k][node_idx*P4EST_DIM + dir]);
+        else if (comp == ALL_COMPONENTS)
           for (unsigned int k = 0; k < n_functions; ++k)
             for (unsigned int cc = 0; cc < bs_f; ++cc)
               for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-                fdd[k*bs_f*P4EST_CHILDREN*P4EST_DIM+cc*P4EST_CHILDREN*P4EST_DIM+j*P4EST_DIM+dir] = use_precomputed_derivatives_by_components ? Fxxyyzz_p[dir][k][bs_f*node_idx+cc] : Fxxyyzz_block_p[k][node_idx*bs_f*P4EST_DIM+cc*P4EST_DIM+dir];
+                fdd[k*bs_f*P4EST_CHILDREN*P4EST_DIM + cc*P4EST_CHILDREN*P4EST_DIM + j*P4EST_DIM + dir] = (use_precomputed_derivatives_by_components ? Fxxyyzz_p[dir][k][bs_f*node_idx + cc] : Fxxyyzz_block_p[k][node_idx*bs_f*P4EST_DIM + cc*P4EST_DIM + dir]);
         else
           for (unsigned int k = 0; k < n_functions; ++k)
             for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-              fdd[k*P4EST_CHILDREN*P4EST_DIM+j*P4EST_DIM+dir] = use_precomputed_derivatives_by_components ? Fxxyyzz_p[dir][k][bs_f*node_idx+comp] : Fxxyyzz_block_p[k][node_idx*bs_f*P4EST_DIM+comp*P4EST_DIM+dir];
+              fdd[k*P4EST_CHILDREN*P4EST_DIM + j*P4EST_DIM + dir] = (use_precomputed_derivatives_by_components ? Fxxyyzz_p[dir][k][bs_f*node_idx + comp] : Fxxyyzz_block_p[k][node_idx*bs_f*P4EST_DIM + comp*P4EST_DIM + dir]);
       }
       // restore arrays and release memory
       for (unsigned int k = 0; k < n_functions; ++k) {
@@ -387,15 +395,15 @@ void my_p4est_interpolation_nodes_t::interpolate(const p4est_quadrant_t &quad, c
     else {
       double tmp[nelem_per_node*P4EST_DIM];
       quad_neighbor_nodes_of_node_t qnnn;
-      for (short j = 0; j < P4EST_CHILDREN; j++){
+      for (unsigned char j = 0; j < P4EST_CHILDREN; j++){
         p4est_locidx_t node_idx = nodes->local_nodes[quad_idx*P4EST_CHILDREN + j];
         ngbd_n->get_neighbors(node_idx, qnnn);
         if(bs_f == 1 || (comp < bs_f && bs_f > 1))
         {
-          (bs_f==1)? qnnn.laplace(Fi_p, tmp, n_functions) : qnnn.laplace_component(Fi_p, tmp, n_functions, bs_f, comp);
+          (bs_f == 1 ? qnnn.laplace(Fi_p, tmp, n_functions) : qnnn.laplace_component(Fi_p, tmp, n_functions, bs_f, comp));
           for (unsigned int k = 0; k < n_functions; ++k)
             for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-              fdd[k*P4EST_CHILDREN*P4EST_DIM+j*P4EST_DIM+dir] = tmp[k*P4EST_DIM+dir];
+              fdd[k*P4EST_CHILDREN*P4EST_DIM + j*P4EST_DIM + dir] = tmp[k*P4EST_DIM+dir];
         }
         else
         {
@@ -403,7 +411,7 @@ void my_p4est_interpolation_nodes_t::interpolate(const p4est_quadrant_t &quad, c
           for (unsigned int k = 0; k < n_functions; ++k)
             for (unsigned cc = 0; cc < bs_f; ++cc)
               for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-                fdd[k*bs_f*P4EST_CHILDREN*P4EST_DIM+cc*P4EST_CHILDREN*P4EST_DIM+j*P4EST_DIM+dir] = tmp[k*bs_f*P4EST_DIM+cc*P4EST_DIM+dir];
+                fdd[k*bs_f*P4EST_CHILDREN*P4EST_DIM + cc*P4EST_CHILDREN*P4EST_DIM + j*P4EST_DIM + dir] = tmp[k*bs_f*P4EST_DIM + cc*P4EST_DIM + dir];
         }
       }
     }
@@ -411,19 +419,19 @@ void my_p4est_interpolation_nodes_t::interpolate(const p4est_quadrant_t &quad, c
       ierr = VecRestoreArrayRead(Fi[k], &Fi_p[k]); CHKERRXX(ierr);
     }
 
-    if(method==quadratic) {
+    if(method == quadratic) {
       quadratic_interpolation(p4est, quad.p.piggy3.which_tree, quad, f, fdd, xyz_p, results, nelem_per_node);
       return;
     }
-    else if (method==quadratic_non_oscillatory) {
+    else if (method == quadratic_non_oscillatory) {
       quadratic_non_oscillatory_interpolation(p4est, quad.p.piggy3.which_tree, quad, f, fdd, xyz_p, results, nelem_per_node);
       return;
     }
-    else if (method==quadratic_non_oscillatory_continuous_v1){
+    else if (method == quadratic_non_oscillatory_continuous_v1){
       quadratic_non_oscillatory_continuous_v1_interpolation(p4est, quad.p.piggy3.which_tree, quad, f, fdd, xyz_p, results, nelem_per_node);
       return;
     }
-    else if (method==quadratic_non_oscillatory_continuous_v2){
+    else if (method == quadratic_non_oscillatory_continuous_v2){
       quadratic_non_oscillatory_continuous_v2_interpolation(p4est, quad.p.piggy3.which_tree, quad, f, fdd, xyz_p, results, nelem_per_node);
       return;
     }

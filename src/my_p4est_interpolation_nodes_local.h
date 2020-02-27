@@ -13,11 +13,7 @@
 //#include <src/grid_interpolation2.h>
 #endif
 
-#ifdef P4_TO_P8
-class my_p4est_interpolation_nodes_local_t : public CF_3
-#else
-class my_p4est_interpolation_nodes_local_t : public CF_2
-#endif
+class my_p4est_interpolation_nodes_local_t : public CF_DIM
 {
 //private:
 public:
@@ -99,19 +95,11 @@ public:
     Fi = Fi_in; method = method_in; is_input_in_vec = true;
   }
 
-#ifdef P4_TO_P8
-  void set_input(Vec Fi_in, Vec Fxx_in, Vec Fyy_in, Vec Fzz_in, interpolation_method method_in)
+  void set_input(Vec Fi_in, DIM(Vec Fxx_in, Vec Fyy_in, Vec Fzz_in), interpolation_method method_in)
   {
-    Fi = Fi_in; Fxx = Fxx_in; Fyy = Fyy_in; Fzz = Fzz_in;
+    Fi = Fi_in; Fxx = Fxx_in; Fyy = Fyy_in; ONLY3D(Fzz = Fzz_in;)
     method = method_in; is_input_in_vec = true;
   }
-#else
-  void set_input(Vec Fi_in, Vec Fxx_in, Vec Fyy_in, interpolation_method method_in)
-  {
-    Fi = Fi_in; Fxx = Fxx_in; Fyy = Fyy_in;
-    method = method_in; is_input_in_vec = true;
-  }
-#endif
 
   // set input as pointers
   void set_input(double* Fi_p_in, interpolation_method method_in)
@@ -120,56 +108,25 @@ public:
     method = method_in; is_input_in_vec = false;
   }
 
-#ifdef P4_TO_P8
-  void set_input(double* Fi_p_in, double* Fxx_p_in, double* Fyy_p_in, double* Fzz_p_in, interpolation_method method_in)
+  void set_input(double* Fi_p_in, DIM(double* Fxx_p_in, double* Fyy_p_in, double* Fzz_p_in), interpolation_method method_in)
   {
-    Fi_p = Fi_p_in; Fxx_p = Fxx_p_in; Fyy_p = Fyy_p_in; Fzz_p = Fzz_p_in;
+    Fi_p = Fi_p_in; Fxx_p = Fxx_p_in; Fyy_p = Fyy_p_in; ONLY3D(Fzz_p = Fzz_p_in;)
     method = method_in; is_input_in_vec = false;
   }
-#else
-  void set_input(double* Fi_p_in, double* Fxx_p_in, double* Fyy_p_in, interpolation_method method_in)
-  {
-    Fi_p = Fi_p_in; Fxx_p = Fxx_p_in; Fyy_p = Fyy_p_in;
-    method = method_in; is_input_in_vec = false;
-  }
-#endif
 
-#ifdef P4_TO_P8
-  double quadratic_interpolation(const double *xyz_quad_min, const double *xyz_quad_max, const double *F, const double *Fxx, const double *Fyy, const double *Fzz, const double *xyz_global) const;
-#else
-  double quadratic_interpolation(const double *xyz_quad_min, const double *xyz_quad_max, const double *F, const double *Fxx, const double *Fyy, const double *xyz_global) const;
-#endif
-
-#ifdef P4_TO_P8
-  double quadratic_non_oscillatory_continuous_v1_interpolation(const double *xyz_quad_min, const double *xyz_quad_max, const double *F, const double *Fxx, const double *Fyy, const double *Fzz, const double *xyz_global) const;
-#else
-  double quadratic_non_oscillatory_continuous_v1_interpolation(const double *xyz_quad_min, const double *xyz_quad_max, const double *F, const double *Fxx, const double *Fyy, const double *xyz_global) const;
-#endif
-
-#ifdef P4_TO_P8
-  double quadratic_non_oscillatory_continuous_v2_interpolation(const double *xyz_quad_min, const double *xyz_quad_max, const double *F, const double *Fxx, const double *Fyy, const double *Fzz, const double *xyz_global) const;
-#else
-  double quadratic_non_oscillatory_continuous_v2_interpolation(const double *xyz_quad_min, const double *xyz_quad_max, const double *F, const double *Fxx, const double *Fyy, const double *xyz_global) const;
-#endif
+  double quadratic_interpolation(const double *xyz_quad_min, const double *xyz_quad_max, const double *F, DIM(const double *Fxx, const double *Fyy, const double *Fzz), const double *xyz_global) const;
+  double quadratic_non_oscillatory_continuous_v1_interpolation(const double *xyz_quad_min, const double *xyz_quad_max, const double *F, DIM(const double *Fxx, const double *Fyy, const double *Fzz), const double *xyz_global) const;
+  double quadratic_non_oscillatory_continuous_v2_interpolation(const double *xyz_quad_min, const double *xyz_quad_max, const double *F, DIM(const double *Fxx, const double *Fyy, const double *Fzz), const double *xyz_global) const;
 
   double linear_interpolation(const double *xyz_quad_min, const double *xyz_quad_max, const double *F, const double *xyz_global) const;
 
   // interpolation method
-#ifdef P4_TO_P8
-  double interpolate(double x, double y, double z) const;
-//  inline double operator () (double x, double y, double z);
-  double operator () (double x, double y, double z) const
+  double interpolate(DIM(double x, double y, double z)) const;
+//  inline double operator () (DIM(double x, double y, double z));
+  double operator () (DIM(double x, double y, double z)) const
   {
-    return interpolate(x,y,z);
+    return interpolate(DIM(x, y, z));
   }
-#else
-  double interpolate(double x, double y) const;
-//  inline double operator () (double x, double y);
-  inline double operator () (double x, double y) const
-  {
-    return interpolate(x,y);
-  }
-#endif
 
   inline void set_eps(double eps_in) {
     eps = eps_in;

@@ -52,8 +52,8 @@ void my_p4est_navier_stokes_t::splitting_criteria_vorticity_t::tag_quadrant(p4es
                                                                             const double* tree_dimensions,
                                                                             const double *phi_p, const double *vorticity_p, const double *smoke_p)
 {
-  p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
-  p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
+  p4est_tree_t *tree = p4est_tree_array_index(p4est->trees, tree_idx);
+  p4est_quadrant_t *quad = p4est_quadrant_array_index(&tree->quadrants, quad_idx - tree->quadrants_offset);
 
   if (quad->level < min_lvl)
     quad->p.user_int = REFINE_QUADRANT;
@@ -82,7 +82,7 @@ void my_p4est_navier_stokes_t::splitting_criteria_vorticity_t::tag_quadrant(p4es
         cor_vort    = cor_vort && fabs(vorticity_p[node_idx])*2.0*quad_dxyz_max/max_L2_norm_u<threshold;
         cor_band    = cor_band && fabs(phi_p[node_idx])>uniform_band*smallest_dxyz_max;
         cor_intf    = cor_intf && fabs(phi_p[node_idx])>=lip*2.0*quad_diag;
-        if(smoke_p!=NULL)
+        if(smoke_p != NULL)
           cor_smok  = cor_smok && smoke_p[node_idx]<smoke_thresh;
         all_pos = all_pos && phi_p[node_idx]>MAX(2.0, uniform_band)*smallest_dxyz_max;
         // [RAPHAEL:] modified to enforce two layers of finest level in positive domain as well (better extrapolation etc.), also required for Neumann BC in the face-solvers
@@ -138,7 +138,7 @@ void my_p4est_navier_stokes_t::splitting_criteria_vorticity_t::tag_quadrant(p4es
               ref_vort        = ref_vort || fabs(vorticity_p[node_idx])*quad_dxyz_max/max_L2_norm_u>threshold;
               ref_band        = ref_band || fabs(phi_p[node_idx])<uniform_band*smallest_dxyz_max;
               ref_intf        = ref_intf || fabs(phi_p[node_idx])<=lip*quad_diag;
-              if(smoke_p!=NULL)
+              if(smoke_p != NULL)
                 ref_smok      = ref_smok || smoke_p[node_idx]>=smoke_thresh;
               is_neg = is_neg || phi_p[node_idx]< MAX(2.0, uniform_band)*smallest_dxyz_max; // [RAPHAEL:] same comment as before
 
@@ -177,7 +177,7 @@ bool my_p4est_navier_stokes_t::splitting_criteria_vorticity_t::refine_and_coarse
   double* v2c = p4est->connectivity->vertices;
   /* tag the quadrants that need to be refined or coarsened */
   for (p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx) {
-    p4est_tree_t* tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
+    p4est_tree_t* tree = p4est_tree_array_index(p4est->trees, tree_idx);
     for (short dir = 0; dir < P4EST_DIM; ++dir)
       tree_dimensions[dir] = v2c[3*t2v[P4EST_CHILDREN*tree_idx + P4EST_CHILDREN -1] + dir] - v2c[3*t2v[P4EST_CHILDREN*tree_idx + 0] + dir];
     for (size_t q = 0; q <tree->quadrants.elem_count; ++q) {
@@ -191,9 +191,9 @@ bool my_p4est_navier_stokes_t::splitting_criteria_vorticity_t::refine_and_coarse
 
   int is_grid_changed = false;
   for (p4est_topidx_t it = p4est->first_local_tree; it <= p4est->last_local_tree; ++it) {
-    p4est_tree_t* tree = (p4est_tree_t*)sc_array_index(p4est->trees, it);
+    p4est_tree_t* tree = p4est_tree_array_index(p4est->trees, it);
     for (size_t q = 0; q <tree->quadrants.elem_count; ++q) {
-      p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, q);
+      p4est_quadrant_t *quad = p4est_quadrant_array_index(&tree->quadrants, q);
       if (quad->p.user_int == NEW_QUADRANT) {
         is_grid_changed = true;
         goto function_end;
@@ -235,7 +235,7 @@ my_p4est_navier_stokes_t::my_p4est_navier_stokes_t(my_p4est_node_neighbors_t *ng
     hierarchy_nm1(ngbd_nm1->hierarchy), ngbd_nm1(ngbd_nm1),
     p4est_n(ngbd_n->p4est), ghost_n(ngbd_n->ghost), nodes_n(ngbd_n->nodes),
     hierarchy_n(ngbd_n->hierarchy), ngbd_n(ngbd_n),
-    ngbd_c(faces->ngbd_c), faces_n(faces), semi_lagrangian_backtrace_is_done(false), interpolators_from_face_to_nodes_are_set(false),
+    ngbd_c(faces->get_ngbd_c()), faces_n(faces), semi_lagrangian_backtrace_is_done(false), interpolators_from_face_to_nodes_are_set(false),
     wall_bc_value_hodge(this), interface_bc_value_hodge(this)
 {
   PetscErrorCode ierr;
@@ -398,31 +398,31 @@ my_p4est_navier_stokes_t::my_p4est_navier_stokes_t(const mpi_environment_t& mpi,
 my_p4est_navier_stokes_t::~my_p4est_navier_stokes_t()
 {
   PetscErrorCode ierr;
-  if(phi!=NULL)       { ierr = VecDestroy(phi);       CHKERRXX(ierr); }
-  if(hodge!=NULL)     { ierr = VecDestroy(hodge);     CHKERRXX(ierr); }
-  if(pressure!=NULL)  { ierr = VecDestroy(pressure);  CHKERRXX(ierr); }
-  if(vorticity!=NULL) { ierr = VecDestroy(vorticity); CHKERRXX(ierr); }
-  if(smoke!=NULL)     { ierr = VecDestroy(smoke);     CHKERRXX(ierr); }
+  if(phi != NULL)       { ierr = VecDestroy(phi);       CHKERRXX(ierr); }
+  if(hodge != NULL)     { ierr = VecDestroy(hodge);     CHKERRXX(ierr); }
+  if(pressure != NULL)  { ierr = VecDestroy(pressure);  CHKERRXX(ierr); }
+  if(vorticity != NULL) { ierr = VecDestroy(vorticity); CHKERRXX(ierr); }
+  if(smoke != NULL)     { ierr = VecDestroy(smoke);     CHKERRXX(ierr); }
 
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
-    if(dxyz_hodge[dir]!=NULL) { ierr = VecDestroy(dxyz_hodge[dir]);                         CHKERRXX(ierr); }
-    if(vstar[dir]!=NULL)      { ierr = VecDestroy(vstar[dir]);                              CHKERRXX(ierr); }
-    if(vnp1[dir]!=NULL)       { ierr = VecDestroy(vnp1[dir]);                               CHKERRXX(ierr); }
-    if(vnm1_nodes[dir]!=NULL) { ierr = VecDestroy(vnm1_nodes[dir]);                         CHKERRXX(ierr); }
-    if(vn_nodes[dir]!=NULL)   { ierr = VecDestroy(vn_nodes[dir]);                           CHKERRXX(ierr); }
-    if(vnp1_nodes[dir]!=NULL) { ierr = VecDestroy(vnp1_nodes[dir]);                         CHKERRXX(ierr); }
-    if(face_is_well_defined[dir]!=NULL)
-                              { ierr = VecDestroy(face_is_well_defined[dir]);               CHKERRXX(ierr); }
-    for (short dd = 0; dd < P4EST_DIM; ++dd) {
-      if(second_derivatives_vn_nodes[dd][dir]!=NULL)
-                              { ierr = VecDestroy(second_derivatives_vn_nodes[dd][dir]);    CHKERRXX(ierr); }
-      if(second_derivatives_vnm1_nodes[dd][dir]!=NULL)
-                              { ierr = VecDestroy(second_derivatives_vnm1_nodes[dd][dir]);  CHKERRXX(ierr); }
+    if(dxyz_hodge[dir] != NULL) { ierr = VecDestroy(dxyz_hodge[dir]);                         CHKERRXX(ierr); }
+    if(vstar[dir] != NULL)      { ierr = VecDestroy(vstar[dir]);                              CHKERRXX(ierr); }
+    if(vnp1[dir] != NULL)       { ierr = VecDestroy(vnp1[dir]);                               CHKERRXX(ierr); }
+    if(vnm1_nodes[dir] != NULL) { ierr = VecDestroy(vnm1_nodes[dir]);                         CHKERRXX(ierr); }
+    if(vn_nodes[dir] != NULL)   { ierr = VecDestroy(vn_nodes[dir]);                           CHKERRXX(ierr); }
+    if(vnp1_nodes[dir] != NULL) { ierr = VecDestroy(vnp1_nodes[dir]);                         CHKERRXX(ierr); }
+    if(face_is_well_defined[dir] != NULL)
+                                { ierr = VecDestroy(face_is_well_defined[dir]);               CHKERRXX(ierr); }
+    for (unsigned char dd = 0; dd < P4EST_DIM; ++dd) {
+      if(second_derivatives_vn_nodes[dd][dir] != NULL)
+                                { ierr = VecDestroy(second_derivatives_vn_nodes[dd][dir]);    CHKERRXX(ierr); }
+      if(second_derivatives_vnm1_nodes[dd][dir] != NULL)
+                                { ierr = VecDestroy(second_derivatives_vnm1_nodes[dd][dir]);  CHKERRXX(ierr); }
     }
   }
 
-  if(interp_phi!=NULL) delete interp_phi;
+  if(interp_phi != NULL) delete interp_phi;
 
   if(ngbd_nm1!=ngbd_n)
     delete ngbd_nm1;
@@ -459,7 +459,7 @@ void my_p4est_navier_stokes_t::set_parameters(double mu, double rho, int sl_orde
 
 void my_p4est_navier_stokes_t::set_smoke(Vec smoke, CF_DIM *bc_smoke, bool refine_with_smoke, double smoke_thresh)
 {
-  if(this->smoke!=NULL){
+  if(this->smoke != NULL && this->smoke != smoke){
     PetscErrorCode ierr= VecDestroy(this->smoke); CHKERRXX(ierr); }
   this->smoke = smoke;
   this->bc_smoke = bc_smoke;
@@ -471,10 +471,11 @@ void my_p4est_navier_stokes_t::set_smoke(Vec smoke, CF_DIM *bc_smoke, bool refin
 void my_p4est_navier_stokes_t::set_phi(Vec phi)
 {
   PetscErrorCode ierr;
-  if(this->phi!=NULL) { ierr = VecDestroy(this->phi); CHKERRXX(ierr); }
+  if(this->phi != NULL && this->phi != phi) {
+    ierr = VecDestroy(this->phi); CHKERRXX(ierr); }
   this->phi = phi;
 
-  if(bc_v!=NULL)
+  if(bc_v != NULL)
   {
     for(int dir=0; dir<P4EST_DIM; ++dir)
       check_if_faces_are_well_defined(ngbd_n, faces_n, dir, phi, bc_v[dir].interfaceType(), face_is_well_defined[dir]);
@@ -501,7 +502,7 @@ void my_p4est_navier_stokes_t::set_bc(BoundaryConditionsDIM *bc_v, BoundaryCondi
   bc_hodge.setInterfaceType(bc_pressure->interfaceType());
   bc_hodge.setInterfaceValue(interface_bc_value_hodge);
 
-  if(phi!=NULL)
+  if(phi != NULL)
     for(unsigned char dir = 0; dir < P4EST_DIM; ++dir)
       check_if_faces_are_well_defined(ngbd_n, faces_n, dir, phi, bc_v[dir].interfaceType(), face_is_well_defined[dir]);
 }
@@ -513,34 +514,31 @@ void my_p4est_navier_stokes_t::set_velocities(Vec *vnm1_nodes, Vec *vn_nodes)
 
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
-    if(this->vn_nodes[dir]!=NULL){
+    if(this->vn_nodes[dir] != NULL && this->vn_nodes[dir] != vn_nodes[dir]){
       ierr = VecDestroy(this->vn_nodes[dir]); CHKERRXX(ierr); }
     this->vn_nodes[dir]   = vn_nodes[dir];
 
-    if(this->vnm1_nodes[dir]!=NULL){
+    if(this->vnm1_nodes[dir] != NULL && this->vnm1_nodes[dir] != vnm1_nodes[dir]){
       ierr = VecDestroy(this->vnm1_nodes[dir]); CHKERRXX(ierr); }
     this->vnm1_nodes[dir] = vnm1_nodes[dir];
 
 
-    if(this->vnp1_nodes[dir]!=NULL){
+    if(this->vnp1_nodes[dir] != NULL){
       ierr = VecDestroy(this->vnp1_nodes[dir]); CHKERRXX(ierr); }
     ierr = VecDuplicate(vn_nodes[dir], &vnp1_nodes [dir]); CHKERRXX(ierr);
-    if(this->vstar[dir]!=NULL){
+    if(this->vstar[dir] != NULL){
       ierr = VecDestroy(this->vstar[dir]); CHKERRXX(ierr); }
     ierr = VecDuplicate(face_is_well_defined[dir], &vstar[dir]); CHKERRXX(ierr);
-    if(this->vnp1[dir]!=NULL){
+    if(this->vnp1[dir] != NULL){
       ierr = VecDestroy(this->vnp1[dir]); CHKERRXX(ierr); }
     ierr = VecDuplicate(face_is_well_defined[dir], &vnp1[dir]); CHKERRXX(ierr);
 
-    for (short dd = 0; dd < P4EST_DIM; ++dd) {
-      if(second_derivatives_vn_nodes[dd][dir]!= NULL)
-      {
-        ierr = VecDestroy(second_derivatives_vn_nodes[dd][dir]); CHKERRXX(ierr);
-      }
-      if(second_derivatives_vnm1_nodes[dd][dir]!= NULL)
-      {
-        ierr = VecDestroy(second_derivatives_vnm1_nodes[dd][dir]); CHKERRXX(ierr);
-      }
+    for (unsigned char dd = 0; dd < P4EST_DIM; ++dd) {
+      if(second_derivatives_vn_nodes[dd][dir]!= NULL){
+        ierr = VecDestroy(second_derivatives_vn_nodes[dd][dir]); CHKERRXX(ierr); }
+      if(second_derivatives_vnm1_nodes[dd][dir]!= NULL) {
+        ierr = VecDestroy(second_derivatives_vnm1_nodes[dd][dir]); CHKERRXX(ierr); }
+
       ierr = VecCreateGhostNodes(p4est_n, nodes_n, &second_derivatives_vn_nodes[dd][dir]); CHKERRXX(ierr);
       ierr = VecCreateGhostNodes(p4est_nm1, nodes_nm1, &second_derivatives_vnm1_nodes[dd][dir]); CHKERRXX(ierr);
     }
@@ -548,7 +546,7 @@ void my_p4est_navier_stokes_t::set_velocities(Vec *vnm1_nodes, Vec *vn_nodes)
   ngbd_n->second_derivatives_central(vn_nodes, DIM(second_derivatives_vn_nodes[0], second_derivatives_vn_nodes[1], second_derivatives_vn_nodes[2]), P4EST_DIM);
   ngbd_nm1->second_derivatives_central(vnm1_nodes, DIM(second_derivatives_vnm1_nodes[0], second_derivatives_vnm1_nodes[1], second_derivatives_vnm1_nodes[2]), P4EST_DIM);
 
-  if(this->vorticity!=NULL){
+  if(this->vorticity != NULL){
     ierr = VecDestroy(this->vorticity); CHKERRXX(ierr); }
   ierr = VecDuplicate(phi, &vorticity); CHKERRXX(ierr);
 }
@@ -560,7 +558,7 @@ void my_p4est_navier_stokes_t::set_velocities(CF_DIM **vnm1, CF_DIM **vn)
   double *v_p;
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
-    if(this->vnm1_nodes[dir]!=NULL){
+    if(this->vnm1_nodes[dir] != NULL){
       ierr = VecDestroy(this->vnm1_nodes[dir]); CHKERRXX(ierr); }
     ierr = VecCreateGhostNodes(p4est_nm1, nodes_nm1, &vnm1_nodes[dir]); CHKERRXX(ierr);
     ierr = VecGetArray(vnm1_nodes[dir], &v_p); CHKERRXX(ierr);
@@ -572,7 +570,7 @@ void my_p4est_navier_stokes_t::set_velocities(CF_DIM **vnm1, CF_DIM **vn)
     }
     ierr = VecRestoreArray(vnm1_nodes[dir], &v_p); CHKERRXX(ierr);
 
-    if(this->vn_nodes[dir]!=NULL){
+    if(this->vn_nodes[dir] != NULL){
       ierr = VecDestroy(this->vn_nodes[dir]); CHKERRXX(ierr); }
     ierr = VecCreateGhostNodes(p4est_n, nodes_n, &vn_nodes[dir]); CHKERRXX(ierr);
     ierr = VecGetArray(vn_nodes[dir], &v_p); CHKERRXX(ierr);
@@ -584,13 +582,13 @@ void my_p4est_navier_stokes_t::set_velocities(CF_DIM **vnm1, CF_DIM **vn)
     }
     ierr = VecRestoreArray(vn_nodes[dir], &v_p); CHKERRXX(ierr);
 
-    if(this->vnp1_nodes[dir]!=NULL){
+    if(this->vnp1_nodes[dir] != NULL){
       ierr = VecDestroy(this->vnp1_nodes[dir]); CHKERRXX(ierr); }
     ierr = VecDuplicate(vn_nodes[dir], &vnp1_nodes [dir]); CHKERRXX(ierr);
-    if(this->vstar[dir]!=NULL){
+    if(this->vstar[dir] != NULL){
       ierr = VecDestroy(this->vstar[dir]); CHKERRXX(ierr); }
     ierr = VecDuplicate(face_is_well_defined[dir], &vstar[dir]); CHKERRXX(ierr);
-    if(this->vnp1[dir]!=NULL){
+    if(this->vnp1[dir] != NULL){
       ierr = VecDestroy(this->vnp1[dir]); CHKERRXX(ierr); }
     ierr = VecDuplicate(face_is_well_defined[dir], &vnp1[dir]); CHKERRXX(ierr);
 
@@ -610,7 +608,7 @@ void my_p4est_navier_stokes_t::set_velocities(CF_DIM **vnm1, CF_DIM **vn)
   ngbd_n->second_derivatives_central(vn_nodes, DIM(second_derivatives_vn_nodes[0], second_derivatives_vn_nodes[1], second_derivatives_vn_nodes[2]), P4EST_DIM);
   ngbd_nm1->second_derivatives_central(vnm1_nodes, DIM(second_derivatives_vnm1_nodes[0], second_derivatives_vnm1_nodes[1], second_derivatives_vnm1_nodes[2]), P4EST_DIM);
 
-  if(this->vorticity!=NULL){
+  if(this->vorticity != NULL){
     ierr = VecDestroy(this->vorticity); CHKERRXX(ierr); }
   ierr = VecDuplicate(phi, &vorticity); CHKERRXX(ierr);
 }
@@ -619,7 +617,7 @@ void my_p4est_navier_stokes_t::set_vstar(Vec *vstar)
 {
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
-    if(this->vstar[dir]!=NULL){
+    if(this->vstar[dir] != NULL && this->vstar[dir] != vstar[dir]){
       PetscErrorCode ierr = VecDestroy(this->vstar[dir]); CHKERRXX(ierr); }
     this->vstar[dir] = vstar[dir];
   }
@@ -627,7 +625,7 @@ void my_p4est_navier_stokes_t::set_vstar(Vec *vstar)
 
 void my_p4est_navier_stokes_t::set_hodge(Vec hodge)
 {
-  if(this->hodge!=NULL){
+  if(this->hodge != NULL && this->hodge != hodge){
     PetscErrorCode ierr = VecDestroy(this->hodge); CHKERRXX(ierr); }
   this->hodge = hodge;
 }
@@ -752,11 +750,11 @@ double my_p4est_navier_stokes_t::compute_dxyz_hodge(p4est_locidx_t quad_idx, p4e
   p4est_quadrant_t *quad;
   if(quad_idx<p4est_n->local_num_quadrants)
   {
-    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est_n->trees, tree_idx);
-    quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
+    p4est_tree_t *tree = p4est_tree_array_index(p4est_n->trees, tree_idx);
+    quad = p4est_quadrant_array_index(&tree->quadrants, quad_idx - tree->quadrants_offset);
   }
   else
-    quad = (p4est_quadrant_t*)sc_array_index(&ghost_n->ghosts, quad_idx-p4est_n->local_num_quadrants);
+    quad = p4est_quadrant_array_index(&ghost_n->ghosts, quad_idx-p4est_n->local_num_quadrants);
 
   const double *hodge_p;
   ierr = VecGetArrayRead(hodge, &hodge_p); CHKERRXX(ierr);
@@ -931,8 +929,8 @@ double my_p4est_navier_stokes_t::compute_dxyz_hodge(p4est_locidx_t quad_idx, p4e
 double my_p4est_navier_stokes_t::compute_divergence(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx)
 {
   PetscErrorCode ierr;
-  p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est_n->trees, tree_idx);
-  p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
+  p4est_tree_t *tree = p4est_tree_array_index(p4est_n->trees, tree_idx);
+  p4est_quadrant_t *quad = p4est_quadrant_array_index(&tree->quadrants, quad_idx - tree->quadrants_offset);
 
   double dmin = (double)P4EST_QUADRANT_LEN(quad->level) / (double)P4EST_ROOT_LEN;
   double val = 0;
@@ -1092,7 +1090,7 @@ void my_p4est_navier_stokes_t::solve_viscosity(my_p4est_poisson_faces_t* &face_p
         else
           rhs_p[f_idx] = -rho * ( (-alpha/dt_n + beta/dt_nm1)*vn_faces[f_idx] - beta/dt_nm1*vnm1_faces[f_idx]);
 
-        if(external_forces[dir]!=NULL)
+        if(external_forces[dir] != NULL)
         {
           double xyz[P4EST_DIM];
           faces_n->xyz_fr_f(f_idx, dir, xyz);
@@ -1169,19 +1167,15 @@ void my_p4est_navier_stokes_t::solve_projection(my_p4est_poisson_cells_t* &cell_
   /* compute the right-hand-side */
   for(p4est_topidx_t tree_idx=p4est_n->first_local_tree; tree_idx<=p4est_n->last_local_tree; ++tree_idx)
   {
-    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est_n->trees, tree_idx);
-    for(size_t q_idx=0; q_idx<tree->quadrants.elem_count; ++q_idx)
+    p4est_tree_t *tree = p4est_tree_array_index(p4est_n->trees, tree_idx);
+    for(size_t q_idx = 0; q_idx < tree->quadrants.elem_count; ++q_idx)
     {
-      p4est_locidx_t quad_idx = q_idx+tree->quadrants_offset;
+      p4est_locidx_t quad_idx = q_idx + tree->quadrants_offset;
 
       rhs_p[quad_idx] = -compute_divergence(quad_idx, tree_idx);
     }
   }
   ierr = VecRestoreArray(rhs, &rhs_p); CHKERRXX(ierr);
-
-  PetscScalar vec_norm;
-  ierr = VecNorm(rhs, NORM_2, &vec_norm); CHKERRXX(ierr);
-  std::cout << " vec_norm = " << vec_norm << std::endl;
 
   /* solve the linear system */
   if(cell_solver == NULL)
@@ -1198,7 +1192,7 @@ void my_p4est_navier_stokes_t::solve_projection(my_p4est_poisson_cells_t* &cell_
   ierr = VecDestroy(rhs); CHKERRXX(ierr);
 
   /* if needed, shift the hodge variable to a zero average */
-  if(1 && cell_solver->get_matrix_has_nullspace())
+  if(cell_solver->get_matrix_has_nullspace())
   {
     my_p4est_level_set_cells_t lsc(ngbd_c, ngbd_n);
     double average = lsc.integrate(phi, hodge) / area_in_negative_domain(p4est_n, nodes_n, phi);
@@ -1303,7 +1297,7 @@ void my_p4est_navier_stokes_t::enforce_mass_flow(const bool* force_in_direction,
     ierr = VecGetArray(vnp1[dir], &vel_p); CHKERRXX(ierr);
     for (p4est_locidx_t k = 0; k < (faces_n->num_local[dir] + faces_n->num_ghost[dir]); ++k)
       vel_p[k] -= forcing_mean_hodge_gradient[dir];
-    if(mass_flow!=NULL)
+    if(mass_flow != NULL)
     {
       mass_flow[dir] = desired_mean_velocity[dir]*(xyz_max[(dir+1)%P4EST_DIM] - xyz_min[(dir+1)%P4EST_DIM]);
 #ifdef P4_TO_P8
@@ -1328,14 +1322,14 @@ void my_p4est_navier_stokes_t::compute_velocity_at_nodes(const bool store_interp
     if(store_interpolators && !interpolators_from_face_to_nodes_are_set)
       interpolator_from_face_to_nodes[dir].resize(nodes_n->num_owned_indeps);
 
-    for(size_t i=0; i<ngbd_n->get_layer_size(); ++i)
+    for(size_t i = 0; i < ngbd_n->get_layer_size(); ++i)
     {
       p4est_locidx_t n = ngbd_n->get_layer_node(i);
       double xyz[P4EST_DIM];
       node_xyz_fr_n(n, p4est_n, nodes_n, xyz);
       if(!interpolators_from_face_to_nodes_are_set)
-        v_p[n] = interpolate_f_at_node_n(p4est_n, ghost_n, nodes_n, faces_n, ngbd_c, ngbd_n, n,
-                                         vnp1[dir], dir, face_is_well_defined[dir], 2, bc_v, (store_interpolators? &interpolator_from_face_to_nodes[dir][n]: NULL));
+        v_p[n] = interpolate_velocity_at_node_n(p4est_n, ghost_n, nodes_n, faces_n, ngbd_c, ngbd_n, n,
+                                                vnp1[dir], dir, face_is_well_defined[dir], 2, bc_v, (store_interpolators? &interpolator_from_face_to_nodes[dir][n]: NULL));
       else
       {
         const face_interpolator& my_interpolator = interpolator_from_face_to_nodes[dir][n];
@@ -1348,17 +1342,17 @@ void my_p4est_navier_stokes_t::compute_velocity_at_nodes(const bool store_interp
         P4EST_ASSERT(my_interpolator.size()>0);
         if((my_interpolator.size() == 1))
         {
-          P4EST_ASSERT(my_interpolator[0].face_idx <0 && bc_v!=NULL && is_node_Wall(p4est_n, node) && bc_v[dir].wallType(xyz)==DIRICHLET);
+          P4EST_ASSERT(my_interpolator[0].face_idx <0 && bc_v != NULL && is_node_Wall(p4est_n, node) && bc_v[dir].wallType(xyz)==DIRICHLET);
           v_p[n] = bc_v[dir].wallValue(xyz);
         }
         else
         {
           if(is_node_Wall(p4est_n, node))
           {
-            P4EST_ASSERT(bc_v!=NULL);
+            P4EST_ASSERT(bc_v != NULL);
             if(bc_v[dir].wallType(xyz) == DIRICHLET) // should have been dealt with above...
               throw std::runtime_error("my_p4est_navier_stokes_t::compute_velocity_at_nodes: unexpected behavior when reusing interpolator_from_face_to_nodes on a Dirichlet wall node");
-            if((bc_v[dir].wallType(xyz) == NEUMANN) && (fabs(bc_v[dir].wallValue(xyz)) > EPS))
+            if(bc_v[dir].wallType(xyz) == NEUMANN && fabs(bc_v[dir].wallValue(xyz)) > EPS)
               throw std::runtime_error("my_p4est_navier_stokes_t::compute_velocity_at_nodes: when reusing interpolator_from_face_to_nodes on a Neumann wall node, the Neumann boundary value MUST be 0.0");
           }
           v_p[n] = 0.0;
@@ -1370,14 +1364,14 @@ void my_p4est_navier_stokes_t::compute_velocity_at_nodes(const bool store_interp
 
     ierr = VecGhostUpdateBegin(vnp1_nodes[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-    for(size_t i=0; i<ngbd_n->get_local_size(); ++i)
+    for(size_t i = 0; i < ngbd_n->get_local_size(); ++i)
     {
       p4est_locidx_t n = ngbd_n->get_local_node(i);
       double xyz[P4EST_DIM];
       node_xyz_fr_n(n, p4est_n, nodes_n, xyz);
       if(!interpolators_from_face_to_nodes_are_set)
-        v_p[n] = interpolate_f_at_node_n(p4est_n, ghost_n, nodes_n, faces_n, ngbd_c, ngbd_n, n,
-                                         vnp1[dir], dir, face_is_well_defined[dir], 2, bc_v, (store_interpolators? &interpolator_from_face_to_nodes[dir][n]: NULL));
+        v_p[n] = interpolate_velocity_at_node_n(p4est_n, ghost_n, nodes_n, faces_n, ngbd_c, ngbd_n, n,
+                                                vnp1[dir], dir, face_is_well_defined[dir], 2, bc_v, (store_interpolators? &interpolator_from_face_to_nodes[dir][n]: NULL));
       else
       {
         const face_interpolator& my_interpolator = interpolator_from_face_to_nodes[dir][n];
@@ -1390,14 +1384,14 @@ void my_p4est_navier_stokes_t::compute_velocity_at_nodes(const bool store_interp
         P4EST_ASSERT(my_interpolator.size()>0);
         if((my_interpolator.size() == 1))
         {
-          P4EST_ASSERT(my_interpolator[0].face_idx <0 && bc_v!=NULL && is_node_Wall(p4est_n, node) && bc_v[dir].wallType(xyz)==DIRICHLET);
+          P4EST_ASSERT(my_interpolator[0].face_idx <0 && bc_v != NULL && is_node_Wall(p4est_n, node) && bc_v[dir].wallType(xyz) == DIRICHLET);
           v_p[n] = bc_v[dir].wallValue(xyz);
         }
         else
         {
           if(is_node_Wall(p4est_n, node))
           {
-            P4EST_ASSERT(bc_v!=NULL);
+            P4EST_ASSERT(bc_v != NULL);
             if(bc_v[dir].wallType(xyz) == DIRICHLET) // should have been dealt with above...
               throw std::runtime_error("my_p4est_navier_stokes_t::compute_velocity_at_nodes: unexpected behavior when reusing interpolator_from_face_to_nodes on a Dirichlet wall node");
             if((bc_v[dir].wallType(xyz) == NEUMANN) && (fabs(bc_v[dir].wallValue(xyz)) > EPS))
@@ -1465,7 +1459,7 @@ void my_p4est_navier_stokes_t::set_grids(my_p4est_node_neighbors_t *ngbd_nm1_, m
   ngbd_n = ngbd_n_;
 
   // Cell and face info:
-  ngbd_c = faces->ngbd_c;
+  ngbd_c = faces->get_ngbd_c();
   faces_n = faces;
 }
 
@@ -1665,7 +1659,7 @@ bool my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_DIM *level_set, b
       if(iter > 0)
         my_p4est_partition(p4est_np1, P4EST_FALSE, NULL);
       // ghost_np1, hierarchy_np1 and ngbd_n_np1 are required for the grid update if and only if smoke is defined and refinement with smoke is activated
-      if ((iter>0) && (smoke!=NULL) && refine_with_smoke)
+      if ((iter>0) && (smoke != NULL) && refine_with_smoke)
         ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
       // get nodes_np1
       // reset nodes_np1 if needed
@@ -1676,7 +1670,7 @@ bool my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_DIM *level_set, b
       if ((phi_np1 != NULL) && (phi_np1!= phi)){
         ierr = VecDestroy(phi_np1); CHKERRXX(ierr); phi_np1 = NULL; }
       // get phi_np1
-      if(iter > 0 || level_set!=NULL)
+      if(iter > 0 || level_set != NULL)
       {
         ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &phi_np1); CHKERRXX(ierr);
         if(level_set!= NULL){
@@ -1717,7 +1711,7 @@ bool my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_DIM *level_set, b
         ierr = VecDestroy(smoke_np1); CHKERRXX(ierr); smoke_np1 = NULL; }
       // get smoke_np1 (if required)
       Vec vtmp[P4EST_DIM];
-      if(smoke!=NULL && refine_with_smoke)
+      if(smoke != NULL && refine_with_smoke)
       {
         ierr = VecCreateGhostNodes(p4est_np1, nodes_np1, &smoke_np1); CHKERRXX(ierr);
         for(int dir=0; dir<P4EST_DIM; ++dir)
@@ -1739,9 +1733,9 @@ bool my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_DIM *level_set, b
         interp_inputs.resize(0); interp_outputs.resize(0);
         interp_nodes.clear();
       }
-      if(smoke!=NULL && refine_with_smoke)
+      if(smoke != NULL && refine_with_smoke)
       {
-        P4EST_ASSERT((ghost_np1!=NULL) || (iter == 0));
+        P4EST_ASSERT((ghost_np1 != NULL) || (iter == 0));
         hierarchy_np1 = ((iter>0)? (new my_p4est_hierarchy_t(p4est_np1, ghost_np1, brick)): hierarchy_n);
         ngbd_n_np1    = ((iter>0)? (new my_p4est_node_neighbors_t(hierarchy_np1, nodes_np1)): ngbd_n);
         advect_smoke(ngbd_n_np1, vtmp, smoke_np1);
@@ -1852,8 +1846,8 @@ bool my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_DIM *level_set, b
   {
     P4EST_ASSERT(ghosts_are_equal(ghost_n, ghost_np1));
     P4EST_ASSERT(nodes_are_equal(p4est_n->mpisize, nodes_n, nodes_np1));
-    P4EST_ASSERT(phi!=NULL);
-    P4EST_ASSERT(((phi_np1 == NULL) && keep_grid_as_such) || (!keep_grid_as_such && (((phi_np1==phi) && (level_set==NULL)) || ((phi_np1!=phi) && (phi_np1!=NULL) && (level_set!=NULL)))));
+    P4EST_ASSERT(phi != NULL);
+    P4EST_ASSERT(((phi_np1 == NULL) && keep_grid_as_such) || (!keep_grid_as_such && (((phi_np1==phi) && (level_set==NULL)) || ((phi_np1!=phi) && (phi_np1 != NULL) && (level_set != NULL)))));
     if (phi_np1 == NULL) // in this case, the grid is forcibly kept as such
     {
       if(level_set != NULL) // if keep_grid_as_such is true but a valid CF_ levelset is given...
@@ -1946,10 +1940,10 @@ bool my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_DIM *level_set, b
   //  extrapolate_bc_v(ngbd_np1, vn_nodes, phi_np1);
 
   // 4) scalar field smoke (if needed)
-  if(smoke!=NULL)
+  if(smoke != NULL)
   {
     // if smoke_np1 already exists but is no longer useful, destroy it...
-    if((smoke_np1!=NULL) && !smoke_np1_is_still_valid){
+    if((smoke_np1 != NULL) && !smoke_np1_is_still_valid){
       ierr = VecDestroy(smoke_np1); CHKERRXX(ierr); smoke_np1 = NULL; }
     if(smoke_np1 == NULL) // calculate it if not already done or if needs to be redone...
     {
@@ -2051,7 +2045,7 @@ bool my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_DIM *level_set, b
       ierr = VecGhostUpdateEnd  (dxyz_hodge[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     }
   }
-  else if(level_set!=NULL)
+  else if(level_set != NULL)
   {
     // the grid is unchanged but the levelset might have changed, hence possibly affecting the face_is_well_defined vectors --> the solvers cannot be reused safely
     for (short dir = 0; dir < P4EST_DIM; ++dir)
@@ -2089,11 +2083,7 @@ bool my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_DIM *level_set, b
 }
 
 // ELYCE TRYING SOMETHING:
-#ifdef P4_TO_P8
 void my_p4est_navier_stokes_t::update_from_tn_to_tnp1_grid_external(Vec phi_np1, p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, p4est_ghost_t* ghost_np1, my_p4est_node_neighbors_t* ngbd_np1, my_p4est_faces_t* faces_np1, my_p4est_cell_neighbors_t* ngbd_c_np1, my_p4est_hierarchy_t* hierarchy_np1)
-#else
-void my_p4est_navier_stokes_t::update_from_tn_to_tnp1_grid_external(Vec phi_np1, p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, p4est_ghost_t* ghost_np1, my_p4est_node_neighbors_t* ngbd_np1, my_p4est_faces_t* faces_np1, my_p4est_cell_neighbors_t* ngbd_c_np1, my_p4est_hierarchy_t* hierarchy_np1)
-#endif
 {
   PetscErrorCode ierr;
 
@@ -2159,12 +2149,7 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1_grid_external(Vec phi_np1,
   }
   interp_nodes.clear();
 
-
-#ifdef P4_TO_P8
-  ngbd_np1->second_derivatives_central(vn_nodes, second_derivatives_vn_nodes[0], second_derivatives_vn_nodes[1], second_derivatives_vn_nodes[2], P4EST_DIM);
-#else
-  ngbd_np1->second_derivatives_central(vn_nodes, second_derivatives_vn_nodes[0], second_derivatives_vn_nodes[1], P4EST_DIM);
-#endif
+  ngbd_np1->second_derivatives_central(vn_nodes, DIM(second_derivatives_vn_nodes[0], second_derivatives_vn_nodes[1], second_derivatives_vn_nodes[2]), P4EST_DIM);
 
   // [Raphael]: the following was already commented in the original version. If uncommented, I think it should be called here...
   /* set velocity inside solid to bc_v */
@@ -2229,7 +2214,7 @@ void my_p4est_navier_stokes_t::update_from_tn_to_tnp1_grid_external(Vec phi_np1,
 
     ierr = VecDestroy(face_is_well_defined[dir]); CHKERRXX(ierr);
     ierr = VecCreateGhostFaces(p4est_np1, faces_np1, &face_is_well_defined[dir], dir); CHKERRXX(ierr);
-    check_if_faces_are_well_defined(p4est_np1, ngbd_np1, faces_np1, dir, phi_np1, bc_v[dir].interfaceType(), face_is_well_defined[dir]);
+    check_if_faces_are_well_defined(ngbd_np1, faces_np1, dir, phi_np1, bc_v[dir].interfaceType(), face_is_well_defined[dir]);
 
     ierr = VecDestroy(vstar[dir]); CHKERRXX(ierr);
     ierr = VecCreateGhostFaces(p4est_np1, faces_np1, &vstar[dir], dir); CHKERRXX(ierr);
@@ -2287,10 +2272,10 @@ void my_p4est_navier_stokes_t::compute_pressure()
 
   for(p4est_topidx_t tree_idx=p4est_n->first_local_tree; tree_idx<=p4est_n->last_local_tree; ++tree_idx)
   {
-    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est_n->trees, tree_idx);
-    for(size_t q_idx=0; q_idx<tree->quadrants.elem_count; ++q_idx)
+    p4est_tree_t *tree = p4est_tree_array_index(p4est_n->trees, tree_idx);
+    for(size_t q_idx = 0; q_idx < tree->quadrants.elem_count; ++q_idx)
     {
-      p4est_locidx_t quad_idx = q_idx+tree->quadrants_offset;
+      p4est_locidx_t quad_idx = q_idx + tree->quadrants_offset;
       pressure_p[quad_idx] = alpha*rho/dt_n*hodge_p[quad_idx] - mu*compute_divergence(quad_idx, tree_idx);
     }
   }
@@ -2513,99 +2498,95 @@ void my_p4est_navier_stokes_t::save_vtk(const char* name, bool with_Q_and_lambda
 
   for(p4est_topidx_t tree_idx = p4est_n->first_local_tree; tree_idx <= p4est_n->last_local_tree; ++tree_idx)
   {
-    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est_n->trees, tree_idx);
-    for(size_t q=0; q<tree->quadrants.elem_count; ++q)
+    p4est_tree_t *tree = p4est_tree_array_index(p4est_n->trees, tree_idx);
+    for(size_t q = 0; q < tree->quadrants.elem_count; ++q)
     {
-      const p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, q);
-      l_p[tree->quadrants_offset+q] = quad->level;
+      const p4est_quadrant_t *quad = p4est_quadrant_array_index(&tree->quadrants, q);
+      l_p[tree->quadrants_offset + q] = quad->level;
     }
   }
 
-  for(size_t q=0; q<ghost_n->ghosts.elem_count; ++q)
+  for(size_t q = 0; q < ghost_n->ghosts.elem_count; ++q)
   {
-    const p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&ghost_n->ghosts, q);
-    l_p[p4est_n->local_num_quadrants+q] = quad->level;
+    const p4est_quadrant_t *quad = p4est_quadrant_array_index(&ghost_n->ghosts, q);
+    l_p[p4est_n->local_num_quadrants + q] = quad->level;
   }
 
   const double *smoke_p;
-  if(smoke!=NULL)
+  if(smoke != NULL)
   {
     ierr = VecGetArrayRead(smoke, &smoke_p); CHKERRXX(ierr);
 
     if(with_Q_and_lambda_2_value)
-      my_p4est_vtk_write_all(p4est_n, nodes_n, ghost_n,
-                             P4EST_TRUE, P4EST_TRUE,
-                             6+P4EST_DIM, /* number of VTK_POINT_DATA */
-                             1, /* number of VTK_CELL_DATA  */
-                             name,
-                             VTK_POINT_DATA, "phi", phi_p,
-                             VTK_POINT_DATA, "pressure", pressure_nodes_p,
-                             VTK_POINT_DATA, "smoke", smoke_p,
-                             VTK_POINT_DATA, "vorticity", vort_p,
-                             VTK_POINT_DATA, "Q-value", Q_value_nodes_p,
-                             VTK_POINT_DATA, "lambda_2", lambda_2_nodes_p,
-                             VTK_POINT_DATA, "vx", vn_p[0],
-          VTK_POINT_DATA, "vy", vn_p[1],
-      #ifdef P4_TO_P8
-          VTK_POINT_DATA, "vz", vn_p[2],
-      #endif
-          VTK_CELL_DATA, "leaf_level", l_p
-          );
+      my_p4est_vtk_write_all_general(p4est_n, nodes_n, ghost_n,
+                                     P4EST_TRUE, P4EST_TRUE,
+                                     6, /* number of VTK_NODE_SCALAR */
+                                     1, /* number of VTK_NODE_VECTOR_BY_COMPONENTS */
+                                     0, /* number of VTK_NODE_VECTOR_BY_BLOCK */
+                                     1, /* number of VTK_CELL_SCALAR */
+                                     0, /* number of VTK_CELL_VECTOR_BY_COMPONENTS */
+                                     0, /* number of VTK_CELL_VECTOR_BY_BLOCK */
+                                     name,
+                                     VTK_NODE_SCALAR, "phi", phi_p,
+                                     VTK_NODE_SCALAR, "pressure", pressure_nodes_p,
+                                     VTK_NODE_SCALAR, "smoke", smoke_p,
+                                     VTK_NODE_SCALAR, "vorticity", vort_p,
+                                     VTK_NODE_SCALAR, "Q-value", Q_value_nodes_p,
+                                     VTK_NODE_SCALAR, "lambda_2", lambda_2_nodes_p,
+                                     VTK_NODE_VECTOR_BY_COMPONENTS, "velocity", DIM(vn_p[0], vn_p[1], vn_p[2]),
+          VTK_CELL_SCALAR, "leaf_level", l_p );
     else
-      my_p4est_vtk_write_all(p4est_n, nodes_n, ghost_n,
-                             P4EST_TRUE, P4EST_TRUE,
-                             4+P4EST_DIM, /* number of VTK_POINT_DATA */
-                             1, /* number of VTK_CELL_DATA  */
-                             name,
-                             VTK_POINT_DATA, "phi", phi_p,
-                             VTK_POINT_DATA, "pressure", pressure_nodes_p,
-                             VTK_POINT_DATA, "smoke", smoke_p,
-                             VTK_POINT_DATA, "vorticity", vort_p,
-                             VTK_POINT_DATA, "vx", vn_p[0],
-          VTK_POINT_DATA, "vy", vn_p[1],
-    #ifdef P4_TO_P8
-          VTK_POINT_DATA, "vz", vn_p[2],
-    #endif
-          VTK_CELL_DATA, "leaf_level", l_p
-          );
+      my_p4est_vtk_write_all_general(p4est_n, nodes_n, ghost_n,
+                                     P4EST_TRUE, P4EST_TRUE,
+                                     4, /* number of VTK_NODE_SCALAR */
+                                     1, /* number of VTK_NODE_VECTOR_BY_COMPONENTS */
+                                     0, /* number of VTK_NODE_VECTOR_BY_BLOCK */
+                                     1, /* number of VTK_CELL_SCALAR */
+                                     0, /* number of VTK_CELL_VECTOR_BY_COMPONENTS */
+                                     0, /* number of VTK_CELL_VECTOR_BY_BLOCK */
+                                     name,
+                                     VTK_NODE_SCALAR, "phi", phi_p,
+                                     VTK_NODE_SCALAR, "pressure", pressure_nodes_p,
+                                     VTK_NODE_SCALAR, "smoke", smoke_p,
+                                     VTK_NODE_SCALAR, "vorticity", vort_p,
+                                     VTK_NODE_VECTOR_BY_COMPONENTS, "velocity", DIM(vn_p[0], vn_p[1], vn_p[2]),
+          VTK_CELL_DATA, "leaf_level", l_p);
     ierr = VecRestoreArrayRead(smoke, &smoke_p); CHKERRXX(ierr);
   }
   else
   {
     if(with_Q_and_lambda_2_value)
-      my_p4est_vtk_write_all(p4est_n, nodes_n, ghost_n,
-                             P4EST_TRUE, P4EST_TRUE,
-                             5+P4EST_DIM, /* number of VTK_POINT_DATA */
-                             1, /* number of VTK_CELL_DATA  */
-                             name,
-                             VTK_POINT_DATA, "phi", phi_p,
-                             VTK_POINT_DATA, "pressure", pressure_nodes_p,
-                             VTK_POINT_DATA, "vorticity", vort_p,
-                             VTK_POINT_DATA, "Q-value", Q_value_nodes_p,
-                             VTK_POINT_DATA, "lambda_2", lambda_2_nodes_p,
-                             VTK_POINT_DATA, "vx", vn_p[0],
-          VTK_POINT_DATA, "vy", vn_p[1],
-    #ifdef P4_TO_P8
-          VTK_POINT_DATA, "vz", vn_p[2],
-    #endif
-          VTK_CELL_DATA, "leaf_level", l_p
-          );
+      my_p4est_vtk_write_all_general(p4est_n, nodes_n, ghost_n,
+                                     P4EST_TRUE, P4EST_TRUE,
+                                     4, /* number of VTK_NODE_SCALAR */
+                                     1, /* number of VTK_NODE_VECTOR_BY_COMPONENTS */
+                                     0, /* number of VTK_NODE_VECTOR_BY_BLOCK */
+                                     1, /* number of VTK_CELL_SCALAR */
+                                     0, /* number of VTK_CELL_VECTOR_BY_COMPONENTS */
+                                     0, /* number of VTK_CELL_VECTOR_BY_BLOCK */
+                                     name,
+                                     VTK_NODE_SCALAR, "phi", phi_p,
+                                     VTK_NODE_SCALAR, "pressure", pressure_nodes_p,
+                                     VTK_NODE_SCALAR, "vorticity", vort_p,
+                                     VTK_NODE_SCALAR, "Q-value", Q_value_nodes_p,
+                                     VTK_NODE_SCALAR, "lambda_2", lambda_2_nodes_p,
+                                     VTK_NODE_VECTOR_BY_COMPONENTS, "velocity", DIM(vn_p[0], vn_p[1], vn_p[2]),
+          VTK_CELL_DATA, "leaf_level", l_p);
     else
-      my_p4est_vtk_write_all(p4est_n, nodes_n, ghost_n,
-                             P4EST_TRUE, P4EST_TRUE,
-                             3+P4EST_DIM, /* number of VTK_POINT_DATA */
-                             1, /* number of VTK_CELL_DATA  */
-                             name,
-                             VTK_POINT_DATA, "phi", phi_p,
-                             VTK_POINT_DATA, "pressure", pressure_nodes_p,
-                             VTK_POINT_DATA, "vorticity", vort_p,
-                             VTK_POINT_DATA, "vx", vn_p[0],
-          VTK_POINT_DATA, "vy", vn_p[1],
-    #ifdef P4_TO_P8
-          VTK_POINT_DATA, "vz", vn_p[2],
-    #endif
-          VTK_CELL_DATA, "leaf_level", l_p
-          );
+      my_p4est_vtk_write_all_general(p4est_n, nodes_n, ghost_n,
+                                     P4EST_TRUE, P4EST_TRUE,
+                                     3, /* number of VTK_NODE_SCALAR */
+                                     1, /* number of VTK_NODE_VECTOR_BY_COMPONENTS */
+                                     0, /* number of VTK_NODE_VECTOR_BY_BLOCK */
+                                     1, /* number of VTK_CELL_SCALAR */
+                                     0, /* number of VTK_CELL_VECTOR_BY_COMPONENTS */
+                                     0, /* number of VTK_CELL_VECTOR_BY_BLOCK */
+                                     name,
+                                     VTK_NODE_SCALAR, "phi", phi_p,
+                                     VTK_NODE_SCALAR, "pressure", pressure_nodes_p,
+                                     VTK_NODE_SCALAR, "vorticity", vort_p,
+                                     VTK_NODE_VECTOR_BY_COMPONENTS, "velocity", DIM(vn_p[0], vn_p[1], vn_p[2]),
+          VTK_CELL_DATA, "leaf_level", l_p);
   }
 
   ierr = VecRestoreArray(leaf_level, &l_p); CHKERRXX(ierr);
@@ -2731,7 +2712,7 @@ void my_p4est_navier_stokes_t::get_noslip_wall_forces(double wall_force[], const
       if(quad_idx<p4est_n->local_num_quadrants)
       {
         p4est_tree_t *tree = p4est_tree_array_index(p4est_n->trees, tree_idx);
-        quad = p4est_quadrant_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
+        quad = p4est_quadrant_array_index(&tree->quadrants, quad_idx - tree->quadrants_offset);
       }
       else
         quad = p4est_quadrant_array_index(&ghost_n->ghosts, quad_idx-p4est_n->local_num_quadrants);
@@ -3176,6 +3157,7 @@ void my_p4est_navier_stokes_t::load_state(const mpi_environment_t& mpi, const ch
 
   // load p4est_n and the corresponding objects
   if(refine_with_smoke && file_exists(filename))
+  {
     my_p4est_load_forest_and_data(mpi.comm(), path_to_folder,
                                   p4est_n, conn,
                                   P4EST_TRUE, ghost_n, nodes_n,
@@ -3186,6 +3168,7 @@ void my_p4est_navier_stokes_t::load_state(const mpi_environment_t& mpi, const ch
                                   "dxyz_hodge", FACE_DATA, P4EST_DIM, dxyz_hodge,
                                   "vn_nodes", NODE_DATA, P4EST_DIM, vn_nodes,
                                   "smoke", NODE_DATA, 1, &smoke);
+  }
   else
   {
     if(refine_with_smoke) // the original solver was refined with smoke, but the smoke was not exported for some reason...
@@ -3200,6 +3183,7 @@ void my_p4est_navier_stokes_t::load_state(const mpi_environment_t& mpi, const ch
                                   "dxyz_hodge", FACE_DATA, P4EST_DIM, dxyz_hodge,
                                   "vn_nodes", NODE_DATA, P4EST_DIM, vn_nodes);
   }
+  P4EST_ASSERT(find_max_level(p4est_n) == data->max_lvl);
 
   if(ngbd_n != NULL)
     delete ngbd_n;
@@ -3334,7 +3318,7 @@ size_t my_p4est_navier_stokes_t::memory_estimate() const
   }
 
   // petsc node vectors at time n: phi, vn_nodes[P4EST_DIM], vnp1_nodes[P4EST_DIM], vorticity, smoke
-  memory_used += (1+2*P4EST_DIM+1+((smoke!=NULL)? 1:0))*(nodes_n->indep_nodes.elem_count)*sizeof (PetscScalar);
+  memory_used += (1+2*P4EST_DIM+1+((smoke != NULL)? 1:0))*(nodes_n->indep_nodes.elem_count)*sizeof (PetscScalar);
   // petsc node vectors at time nm1: vnm1_nodes[P4EST_DIM],
   memory_used += P4EST_DIM*(nodes_nm1->indep_nodes.elem_count)*sizeof (PetscScalar);
   // petsc cell vectors at time n: hodge, pressure
@@ -3385,8 +3369,8 @@ void my_p4est_navier_stokes_t::get_slice_averaged_vnp1_profile(const unsigned sh
     faces_n->f2q(face_idx, vel_component, quad_idx, tree_idx);
     const p4est_quadrant_t* quad_ptr;
     P4EST_ASSERT(quad_idx < p4est_n->local_num_quadrants);
-    p4est_tree_t* tree = (p4est_tree_t*) sc_array_index(p4est_n->trees, tree_idx);
-    quad_ptr = (const p4est_quadrant_t*) sc_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
+    p4est_tree_t* tree = p4est_tree_array_index(p4est_n->trees, tree_idx);
+    quad_ptr = p4est_quadrant_array_index(&tree->quadrants, quad_idx - tree->quadrants_offset);
     if(faces_n->q2f(quad_idx, 2*vel_component)==face_idx)
     {
       quad = *quad_ptr; quad.p.piggy3.local_num = quad_idx;
@@ -3496,10 +3480,7 @@ void my_p4est_navier_stokes_t::get_slice_averaged_vnp1_profile(const unsigned sh
     }
 }
 
-void my_p4est_navier_stokes_t::get_line_averaged_vnp1_profiles(const unsigned short& vel_component, const unsigned short& axis,
-                                                               #ifdef P4_TO_P8
-                                                               const unsigned short& averaging_direction,
-                                                               #endif
+void my_p4est_navier_stokes_t::get_line_averaged_vnp1_profiles(const unsigned short& vel_component, const unsigned short& axis ONLY3D(COMMA const unsigned short& averaging_direction),
                                                                const std::vector<unsigned int>& bin_index, std::vector< std::vector<double> >& avg_velocity_profile, const double u_scaling)
 {
   P4EST_ASSERT((vel_component<P4EST_DIM) && (axis<P4EST_DIM) && (vel_component!=axis) && is_periodic(p4est_n, vel_component));
@@ -3537,7 +3518,7 @@ void my_p4est_navier_stokes_t::get_line_averaged_vnp1_profiles(const unsigned sh
   ierr = VecGetArrayRead(vnp1[vel_component], &velocity_component_p); CHKERRXX(ierr);
   p4est_locidx_t quad_idx;
   p4est_topidx_t tree_idx, nb_tree_idx;
-  vector<p4est_quadrant_t> ngbd;
+  set_of_neighboring_quadrants ngbd;
   p4est_quadrant_t quad, nb_quad;
 
   p4est_locidx_t bounds_along_axis[2];
@@ -3554,17 +3535,17 @@ void my_p4est_navier_stokes_t::get_line_averaged_vnp1_profiles(const unsigned sh
     faces_n->f2q(face_idx, vel_component, quad_idx, tree_idx);
     const p4est_quadrant_t* quad_ptr;
     P4EST_ASSERT(quad_idx < p4est_n->local_num_quadrants);
-    p4est_tree_t* tree = (p4est_tree_t*) sc_array_index(p4est_n->trees, tree_idx);
-    quad_ptr = (const p4est_quadrant_t*) sc_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
+    p4est_tree_t* tree = p4est_tree_array_index(p4est_n->trees, tree_idx);
+    quad_ptr = p4est_quadrant_array_index(&tree->quadrants, quad_idx - tree->quadrants_offset);
     if(faces_n->q2f(quad_idx, 2*vel_component)==face_idx)
     {
       quad = *quad_ptr; quad.p.piggy3.local_num = quad_idx;
       ngbd.clear();
       ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, 2*vel_component);
       /* note that the potential neighbor has to be the same size or bigger and there MUST be a neighbor*/
-      P4EST_ASSERT(ngbd.size()==1);
-      nb_quad = ngbd[0];
-      nb_tree_idx = ngbd[0].p.piggy3.which_tree;
+      P4EST_ASSERT(ngbd.size() == 1);
+      nb_quad = *ngbd.begin();
+      nb_tree_idx = ngbd.begin()->p.piggy3.which_tree;
     }
     else
     {
@@ -3573,9 +3554,9 @@ void my_p4est_navier_stokes_t::get_line_averaged_vnp1_profiles(const unsigned sh
       ngbd.clear();
       ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_idx, tree_idx, 2*vel_component+1);
       /* note that the potential neighbor has to be the same size or bigger and there MUST be a neighbor*/
-      P4EST_ASSERT(ngbd.size()==1);
-      nb_quad = ngbd[0];
-      nb_tree_idx = ngbd[0].p.piggy3.which_tree;
+      P4EST_ASSERT(ngbd.size() == 1);
+      nb_quad = *ngbd.begin();
+      nb_tree_idx = ngbd.begin()->p.piggy3.which_tree;
     }
     p4est_topidx_t cartesian_ordered_tree_idx=-1;
     p4est_topidx_t cartesian_ordered_nb_tree_idx=-1;
@@ -3806,19 +3787,19 @@ void my_p4est_navier_stokes_t::coupled_problem_partial_destructor()
 
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
-    if(dxyz_hodge[dir]!=NULL) { ierr = VecDestroy(dxyz_hodge[dir]);                         CHKERRXX(ierr); }
-    if(vstar[dir]!=NULL)      { ierr = VecDestroy(vstar[dir]);                              CHKERRXX(ierr); }
-    if(face_is_well_defined[dir]!=NULL)
-                              { ierr = VecDestroy(face_is_well_defined[dir]);               CHKERRXX(ierr); }
-    for (short dd = 0; dd < P4EST_DIM; ++dd) {
-      if(second_derivatives_vn_nodes[dd][dir]!=NULL)
-                              { ierr = VecDestroy(second_derivatives_vn_nodes[dd][dir]);    CHKERRXX(ierr); }
-      if(second_derivatives_vnm1_nodes[dd][dir]!=NULL)
-                              { ierr = VecDestroy(second_derivatives_vnm1_nodes[dd][dir]);  CHKERRXX(ierr); }
+    if(dxyz_hodge[dir] != NULL) { ierr = VecDestroy(dxyz_hodge[dir]);                         CHKERRXX(ierr); }
+    if(vstar[dir] != NULL)      { ierr = VecDestroy(vstar[dir]);                              CHKERRXX(ierr); }
+    if(face_is_well_defined[dir] != NULL)
+                                { ierr = VecDestroy(face_is_well_defined[dir]);               CHKERRXX(ierr); }
+    for (unsigned char dd = 0; dd < P4EST_DIM; ++dd) {
+      if(second_derivatives_vn_nodes[dd][dir] != NULL)
+                                { ierr = VecDestroy(second_derivatives_vn_nodes[dd][dir]);    CHKERRXX(ierr); }
+      if(second_derivatives_vnm1_nodes[dd][dir] != NULL)
+                                { ierr = VecDestroy(second_derivatives_vnm1_nodes[dd][dir]);  CHKERRXX(ierr); }
     }
   }
 
-  if(interp_phi!=NULL) delete interp_phi;
+  if(interp_phi != NULL) delete interp_phi;
 
   delete faces_n;
   delete ngbd_c;

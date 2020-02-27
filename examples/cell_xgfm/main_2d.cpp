@@ -5,12 +5,6 @@
  * Date Created: 10-05-2018
  */
 
-/*
- * Test the cell based p4est_xgfm solver.
- * - solve a poisson equation with jump conditions across an irregular interface
- * run the program with the -help flag to see the available options
- */
-
 // System
 #include <stdexcept>
 #include <iostream>
@@ -62,16 +56,176 @@
 
 #include <ctime>
 
+const static std::string main_description = "\
+ In this example, we test the xGFM technique to solve scalar Poisson equations with discontinuities \n\
+ across an irregular interface. \n\
+ The user can choose from several test cases (described in the list of possible 'test'), set various \n\
+ Boundary conditions, min/max levels of refinement, number of grid splitting(s) for accuracy analysis,\n\
+ the number of trees long every Cartesian direction, in the macromesh. Results and illustrative data \n\
+ can be saved in vtk format as well and the order of accuracy for the localization of interface points\n\
+ based on the levelset values can be chosen between 1 and 2. \n\
+ Developer: Raphael Egan (raphaelegan@ucsb.edu), Summer 2018.\n";
+
+#ifdef P4_TO_P8
+const static std::string description_of_tests = "choose a test.\n\
+0: \n\
+* domain = [0.0, 1.0] X [0.0, 1.0] X [0.0, 1.0] \n\
+* interface = sphere of radius 1/4, centered in (0.5, 0.5, 0.5), negative inside, positive outside \n\
+* mu_m = 2.0; \n\
+* mu_p = 1.0; \n\
+* u_m  = exp(-x*x-y*y-z*z); \n\
+* u_p  = 0.0; \n\
+* no periodicity \n\
+Example 4 from Liu, Fedkiw, Kang 2000 \n\
+1: \n\
+* domain = [-2.0, 2.0] X [-2.0, 2.0] X [-2.0, 2.0] \n\
+* interface = parameterized by (theta in [0.0, pi[, phi in [0.0, 2*pi[) \n\
+r(theta, phi) = 1.25 + 0.2*(1.0 - 0.2*(1.0 - 0.2*cos(6.0*phi))*(1.0 - cos(6.0*theta)), spherical coordinates \n\
+negative inside, positive outside \n\
+* mu_m = 2000.0; \n\
+* mu_p = 1.0; \n\
+* u_m  = 3.0 + exp(.5*(x-z))*(x*sin(y) - cos(x+y)*atan(z))/500.0; \n\
+* u_p  = exp(-x*sin(y)-y*cos(z)-z*cos(2.0*x)); \n\
+* no periodicity \n\
+Example by Raphael Egan for mildly convoluted 3D interface with large ratio of coefficients \n\
+2: \n\
+* domain = [-2.0, 2.0] X [-2.0, 2.0] X [-2.0, 2.0] \n\
+* interface = parameterized by \n\
+r(theta, phi) = 0.75 + 0.2*(1.0 - 0.6*cos(6.0*phi))*(1.0-cos(6.0*theta)) \n\
+negative inside, positive outside \n\
+* mu_m = 1.0; \n\
+* mu_p = 1250.0; \n\
+* u_m  = exp(.5*(x-z))*(x*sin(y) - cos(x+y)*atan(z)); \n\
+* u_p  = -1.0 + atan(0.1*x*x*x*y + 2.0*z*cos(y)- y*sin(x+z))/500.0; \n\
+* no periodicity \n\
+Example by Raphael Egan for very convoluted 3D interface (AMR required) with large ratio of coefficients \n\
+3: \n\
+* domain = [-1.5, 1.5] X [-1.5, 1.5] X [-1.5, 1.5] \n\
+* interface = revolution of the bone-shaped planar level-set around the z-axis, \n\
+centered at (xmin + 0.15*.5*sqrt(2.0)*x_length, ymin + 0.15*.5*sqrt(2.0)*y_length, zmin + 0.20*z_length). \n\
+The full periodicity is enforced.\n\
+* mu_m = 1.0; \n\
+* mu_p = 80.0; \n\
+* u_m  = atan(sin((2.0*M_PI/3.0)*(2.0*x-y)))*log(1.5+cos((2.0*M_PI/3.0)*(2.0*y-z))); \n\
+* u_p  = tanh(cos((2.0*M_PI/3.0)*(2.0*x+y)))*acos(0.5*sin((2.0*M_PI/3.0)*(2.0*z-x))); \n\
+* fully periodic \n\
+Example by Raphael Egan for full periodicity.";
+#else
+const static std::string description_of_tests = "choose a test.\n\
+0:\n\
+* domain = [0, 1] X [0, 1] \n\
+* interface = circle of radius 1/4, centered in (0.5, 0.5), negative inside, positive outside \n\
+* mu_m = 2.0; \n\
+* mu_p = 1.0; \n\
+* u_m = exp(-x*x-y*y); \n\
+* u_p = 0;\n\
+* no periodicity \n\
+Example 3 from Liu, Fedkiw, Kang 2000 \n\
+1: \n\
+* domain = [-1, 1] X [-1, 1] \n\
+* interface = circle of radius 1/2, centered in (0, 0), negative inside, positive outside \n\
+* mu_m = 1.0; \n\
+* mu_p = 1.0; \n\
+* u_m = 1.0; \n\
+* u_p = 1.0 + log(2.0*sqrt(x*x + y*y)); \n\
+* no periodicity \n\
+Example 5 from Liu, Fedkiw, Kang 2000 \n\
+2: \n\
+* domain = [-1, 1] X [-1, 1] \n\
+* interface = circle of radius 1/2, centered in (0, 0), negative inside, positive outside \n\
+* mu_m = 1.0; \n\
+* mu_p = 1.0; \n\
+* u_m  = exp(x)*cos(y); \n\
+* u_p  = 0.0; \n\
+* no periodicity \n\
+Example 6 from Liu, Fedkiw, Kang 2000 \n\
+3: \n\
+* domain = [-1, 1] X [-1, 1] \n\
+* interface = circle of radius 1/2, centered in (0, 0), negative inside, positive outside \n\
+* mu_m = 1.0; \n\
+* mu_p = 1.0; \n\
+* u_m  = x*x - y*y; \n\
+* u_p  = 0.0; \n\
+* no periodicity \n\
+Example 7 from Liu, Fedkiw, Kang 2000 \n\
+4: \n\
+* domain = [-1, 1] X [-1, 1] \n\
+* interface = curve parameterized by (t in [0, 2.0*PI[) \n\
+@ x(t) = 0.02.0*sqrt(5) + (0.5 + 0.2*sin(5*t))*cos(t) \n\
+@ y(t) = 0.02.0*sqrt(5) + (0.5 + 0.2*sin(5*t))*sin(t) \n\
+negative inside, positive outside \n\
+* mu_m = 1.0; \n\
+* mu_p = 10.0; \n\
+* u_m  = x*x + y*y; \n\
+* u_p  = 0.1*(x*x + y*y)^2 - 0.01*log(2.0*sqrt(eps+x*x + y*y));\n\
+* no periodicity \n\
+Example 8 from Liu, Fedkiw, Kang 2000 \n\
+5: \n\
+* domain = [-1.5, 1.5] X [0.0, 3.0] \n\
+* interface = curve parameterized by (t in [0, 2.0*PI[) \n\
+@ x(t) = 0.6*cos(t) - 0.3*cos(3*t) \n\
+@ y(t) = 1.5 + 0.7*sin(t) - 0.07*sin(3*t) + 0.2.0*sin(7*t) \n\
+negative inside, positive outside \n\
+* mu_m = 1.0; \n\
+* mu_p = 10.0; \n\
+* u_m  = exp(x)*(x*x*sin(y) + y*y); \n\
+* u_p  = -x*x - y*y; \n\
+* no periodicity \n\
+Example 9 from Liu, Fedkiw, Kang 2000 \n\
+6: \n\
+* domain = [-1.0, 1.0] X [-1.0, 1.0] \n\
+-interface = curve parameterized by (t in [0, 2.0*PI[) \n\
+@ x(t) = (0.5 + 0.1*sin(5*t)).*cos(t) \n\
+@ y(t) = (0.5 + 0.1*sin(5*t)).*cos(t) \n\
+negative inside, positive outside \n\
+* mu_m = 10000.0; \n\
+* mu_p = 1.0; \n\
+* u_m  = exp(x)*(x*x*sin(y) + y*y)/10000.0; \n\
+* u_p  = 0.5 + (cos(x)*(y^4 + sin(y*y - x*x))); \n\
+* no periodicity \n\
+Example by Raphael Egan for large ratio of diffusion coefficient.\n\
+7: \n\
+* domain = [-1.0, 1.0] X [-1.0, 1.0] \n\
+-interface = 15 small spherical bubbles in the domain, radius between 0.005 and 0.02 \n\
+negative inside the bubbles, positive outside \n\
+* mu_m = 1000.0; \n\
+* mu_p = 1.0; \n\
+* u_m  = (cos(200.0*M_PI*(x+3.0*y)) - sin(100.0*M_PI*(y - 2.0*x)))/10000.0; \n\
+* u_p  = cos(x+y)*exp(-SQR(x*cos(y))); \n\
+* no periodicity \n\
+Example by Raphael Egan for adaptivity (can't be tested with Neumann boundary conditions). \n\
+8: \n\
+* domain = [-1.5, 1.5] X [-1.5, 1.5] \n\
+* interface = curve parameterized by (t in [0, 2.0*PI[) \n\
+@ x(t) = xmin + 0.15*(xmax-xmin) + 0.6*cos(t) - 0.3*cos(3*t) \n\
+@ y(t) = 0.7*sin(t) - 0.07*sin(3*t) + 0.2*sin(7*t) \n\
+negative inside, positive outside (periodicity along x enforced) \n\
+* mu_m = 1.0; \n\
+* mu_p = 10.0; \n\
+* u_m  = cos((2.0*M_PI/3.0)*(x-tanh(y))) + exp(-SQR(sin((2.0*M_PI/3.0)*(2.0*x-0.251*y)))); \n\
+* u_p  = tanh(cos((2.0*M_PI/3.0)*2.0*x) - 0.24*y); \n\
+* periodicity along x, no periodicity along y \n\
+Example by Raphael Egan for periodicity in x.\n\
+9: \n\
+* domain = [-1.5, 1.5] X [-1.5, 1.5] \n\
+* interface = curve parameterized by (t in [0, 2.0*PI[) \n\
+@ x(t) = xmin + 0.15*(xmax-xmin) + 0.6*cos(t) - 0.3*cos(3*t) \n\
+@ y(t) = ymin + 0.2*(ymax-ymin)  + 0.7*sin(t) - 0.07*sin(3*t) + 0.2*sin(7*t) \n\
+negative inside, positive outside (periodicity along x and y enforced) \n\
+* mu_m = 1.0; \n\
+* mu_p = 100.0; \n\
+* u_m  = atan(sin((2.0*M_PI/3.0)*(2.0*x-y))); \n\
+* u_p  = log(1.5+cos((2.0*M_PI/3.0)*(-x+3.0*y))); \n\
+* fully periodic \n\
+Example by Raphael Egan for full periodicity.";
+#endif
+
 #undef MIN
 #undef MAX
 
 struct box
 {
-  double xmin, xmax, ymin, ymax
-#ifdef P4_TO_P8
-  , zmin, zmax
-#endif
-  ;
+  double xmin, xmax, ymin, ymax ONLY3D(COMMA zmin COMMA zmax);
 };
 
 
@@ -494,7 +648,7 @@ double dd_u_exact_m_dxdx(int test_nb, DIM(double x, double y, double z))
   case 7:
     return (-SQR(2.0*M_PI/0.04)*cos(2.0*M_PI*(x+3.0*y)/0.04) + SQR(2.0*M_PI*2.0/0.04)*sin(2.0*M_PI*(y - 2.0*x)/0.04))/1000.0;
   case 8:
-    return -SQR(2.0*M_PI/3.0)*cos((2.0*M_PI/3.0)*(x-tanh(y))) - 2.0*SQR(2.0*2.0*M_PI/3.0)*cos(2.0*(2.0*M_PI/3.0)*(2.0*x-0.251*y))*exp(-SQR(sin((2.0*M_PI/3.0)*(2.0*x-0.251*y)))) + SQR(2.0*(2.0*M_PI/3.0)*sin(2.0*(2.0*M_PI/3.0)*(2.0*x-0.251*y)))*exp(-SQR(sin((2.0*M_PI/3.0)*(2.0*x-0.251*y))));
+    return -SQR(2.0*M_PI/3.0)*cos((2.0*M_PI/3.0)*(x - tanh(y))) - 2.0*SQR(2.0*2.0*M_PI/3.0)*cos(2.0*(2.0*M_PI/3.0)*(2.0*x-0.251*y))*exp(-SQR(sin((2.0*M_PI/3.0)*(2.0*x-0.251*y)))) + SQR(2.0*(2.0*M_PI/3.0)*sin(2.0*(2.0*M_PI/3.0)*(2.0*x-0.251*y)))*exp(-SQR(sin((2.0*M_PI/3.0)*(2.0*x-0.251*y))));
   case 9:
     return (-SQR(2.0*2.0*M_PI/3.0)*sin((2.0*M_PI/3.0)*(2.0*x-y))*(1.0+SQR(sin((2.0*M_PI/3.0)*(2.0*x-y)))) - SQR(2.0*2.0*M_PI/3.0)*2.0*sin((2.0*M_PI/3.0)*(2.0*x-y))*SQR(cos((2.0*M_PI/3.0)*(2.0*x-y))))/SQR(1.0+SQR(sin((2.0*M_PI/3.0)*(2.0*x-y))));
 #endif
@@ -1366,168 +1520,14 @@ int main (int argc, char* argv[])
   cmd.add_option("lmin", "min level of the tree");
   cmd.add_option("lmax", "max level of the tree");
   cmd.add_option("ngrids", "number of computational grids (increasing refinement levels)");
-  cmd.add_option("bc_wtype", "type of boundary condition to use on the wall (0: Dirichlet wall, 1: Neumann Wall)");
+  cmd.add_option("bc_wtype", "type of boundary condition to use on the wall ('Dirichlet' or 'Neumann')");
   cmd.add_option("save_vtk", "save the p4est in vtk format");
   cmd.add_option("work_dir", "exportation directory (required if save_vtk or summary files): work_dir/output for vtk files work_dir/summaries for summary files");
   cmd.add_option("second_order_ls", "active second order interface localization");
   cmd.add_option("ntree", "number of trees in the macromesh along the smallest dimension of the computational domain");
-#ifdef P4_TO_P8
-  cmd.add_option("test", "choose a test.\n\
-0: \n\
-* domain = [0.0, 1.0] X [0.0, 1.0] X [0.0, 1.0] \n\
-* interface = sphere of radius 1/4, centered in (0.5, 0.5, 0.5), negative inside, positive outside \n\
-* mu_m = 2.0; \n\
-* mu_p = 1.0; \n\
-* u_m  = exp(-x*x-y*y-z*z); \n\
-* u_p  = 0.0; \n\
-* no periodicity \n\
-Example 4 from Liu, Fedkiw, Kang 2000 \n\
-1: \n\
-* domain = [-2.0, 2.0] X [-2.0, 2.0] X [-2.0, 2.0] \n\
-* interface = parameterized by (theta in [0.0, pi[, phi in [0.0, 2*pi[) \n\
-r(theta, phi) = 1.25 + 0.2*(1.0 - 0.2*(1.0 - 0.2*cos(6.0*phi))*(1.0 - cos(6.0*theta)), spherical coordinates \n\
-negative inside, positive outside \n\
-* mu_m = 2000.0; \n\
-* mu_p = 1.0; \n\
-* u_m  = 3.0 + exp(.5*(x-z))*(x*sin(y) - cos(x+y)*atan(z))/500.0; \n\
-* u_p  = exp(-x*sin(y)-y*cos(z)-z*cos(2.0*x)); \n\
-* no periodicity \n\
-Example by Raphael Egan for mildly convoluted 3D interface with large ratio of coefficients \n\
-2: \n\
-* domain = [-2.0, 2.0] X [-2.0, 2.0] X [-2.0, 2.0] \n\
-* interface = parameterized by \n\
-r(theta, phi) = 0.75 + 0.2*(1.0 - 0.6*cos(6.0*phi))*(1.0-cos(6.0*theta)) \n\
-negative inside, positive outside \n\
-* mu_m = 1.0; \n\
-* mu_p = 1250.0; \n\
-* u_m  = exp(.5*(x-z))*(x*sin(y) - cos(x+y)*atan(z)); \n\
-* u_p  = -1.0 + atan(0.1*x*x*x*y + 2.0*z*cos(y)- y*sin(x+z))/500.0; \n\
-* no periodicity \n\
-Example by Raphael Egan for very convoluted 3D interface (AMR required) with large ratio of coefficients \n\
-3: \n\
-* domain = [-1.5, 1.5] X [-1.5, 1.5] X [-1.5, 1.5] \n\
-* interface = revolution of the bone-shaped planar level-set around the z-axis, \n\
-centered at (xmin + 0.15*.5*sqrt(2.0)*x_length, ymin + 0.15*.5*sqrt(2.0)*y_length, zmin + 0.20*z_length). \n\
-The full periodicity is enforced.\n\
-* mu_m = 1.0; \n\
-* mu_p = 80.0; \n\
-* u_m  = atan(sin((2.0*M_PI/3.0)*(2.0*x-y)))*log(1.5+cos((2.0*M_PI/3.0)*(2.0*y-z))); \n\
-* u_p  = tanh(cos((2.0*M_PI/3.0)*(2.0*x+y)))*acos(0.5*sin((2.0*M_PI/3.0)*(2.0*z-x))); \n\
-* fully periodic \n\
-Example by Raphael Egan for full periodicity.");
-    #else
-  cmd.add_option("test", "choose a test.\n\
-0:\n\
-* domain = [0, 1] X [0, 1] \n\
-* interface = circle of radius 1/4, centered in (0.5, 0.5), negative inside, positive outside \n\
-* mu_m = 2.0; \n\
-* mu_p = 1.0; \n\
-* u_m = exp(-x*x-y*y); \n\
-* u_p = 0;\n\
-* no periodicity \n\
-Example 3 from Liu, Fedkiw, Kang 2000 \n\
-1: \n\
-* domain = [-1, 1] X [-1, 1] \n\
-* interface = circle of radius 1/2, centered in (0, 0), negative inside, positive outside \n\
-* mu_m = 1.0; \n\
-* mu_p = 1.0; \n\
-* u_m = 1.0; \n\
-* u_p = 1.0 + log(2.0*sqrt(x*x + y*y)); \n\
-* no periodicity \n\
-Example 5 from Liu, Fedkiw, Kang 2000 \n\
-2: \n\
-* domain = [-1, 1] X [-1, 1] \n\
-* interface = circle of radius 1/2, centered in (0, 0), negative inside, positive outside \n\
-* mu_m = 1.0; \n\
-* mu_p = 1.0; \n\
-* u_m  = exp(x)*cos(y); \n\
-* u_p  = 0.0; \n\
-* no periodicity \n\
-Example 6 from Liu, Fedkiw, Kang 2000 \n\
-3: \n\
-* domain = [-1, 1] X [-1, 1] \n\
-* interface = circle of radius 1/2, centered in (0, 0), negative inside, positive outside \n\
-* mu_m = 1.0; \n\
-* mu_p = 1.0; \n\
-* u_m  = x*x - y*y; \n\
-* u_p  = 0.0; \n\
-* no periodicity \n\
-Example 7 from Liu, Fedkiw, Kang 2000 \n\
-4: \n\
-* domain = [-1, 1] X [-1, 1] \n\
-* interface = curve parameterized by (t in [0, 2.0*PI[) \n\
-@ x(t) = 0.02.0*sqrt(5) + (0.5 + 0.2*sin(5*t))*cos(t) \n\
-@ y(t) = 0.02.0*sqrt(5) + (0.5 + 0.2*sin(5*t))*sin(t) \n\
-negative inside, positive outside \n\
-* mu_m = 1.0; \n\
-* mu_p = 10.0; \n\
-* u_m  = x*x + y*y; \n\
-* u_p  = 0.1*(x*x + y*y)^2 - 0.01*log(2.0*sqrt(eps+x*x + y*y));\n\
-* no periodicity \n\
-Example 8 from Liu, Fedkiw, Kang 2000 \n\
-5: \n\
-* domain = [-1.5, 1.5] X [0.0, 3.0] \n\
-* interface = curve parameterized by (t in [0, 2.0*PI[) \n\
-@ x(t) = 0.6*cos(t) - 0.3*cos(3*t) \n\
-@ y(t) = 1.5 + 0.7*sin(t) - 0.07*sin(3*t) + 0.2.0*sin(7*t) \n\
-negative inside, positive outside \n\
-* mu_m = 1.0; \n\
-* mu_p = 10.0; \n\
-* u_m  = exp(x)*(x*x*sin(y) + y*y); \n\
-* u_p  = -x*x - y*y; \n\
-* no periodicity \n\
-Example 9 from Liu, Fedkiw, Kang 2000 \n\
-6: \n\
-* domain = [-1.0, 1.0] X [-1.0, 1.0] \n\
--interface = curve parameterized by (t in [0, 2.0*PI[) \n\
-@ x(t) = (0.5 + 0.1*sin(5*t)).*cos(t) \n\
-@ y(t) = (0.5 + 0.1*sin(5*t)).*cos(t) \n\
-negative inside, positive outside \n\
-* mu_m = 10000.0; \n\
-* mu_p = 1.0; \n\
-* u_m  = exp(x)*(x*x*sin(y) + y*y)/10000.0; \n\
-* u_p  = 0.5 + (cos(x)*(y^4 + sin(y*y - x*x))); \n\
-* no periodicity \n\
-Example by Raphael Egan for large ratio of diffusion coefficient.\n\
-7: \n\
-* domain = [-1.0, 1.0] X [-1.0, 1.0] \n\
--interface = 15 small spherical bubbles in the domain, radius between 0.005 and 0.02 \n\
-negative inside the bubbles, positive outside \n\
-* mu_m = 1000.0; \n\
-* mu_p = 1.0; \n\
-* u_m  = (cos(200.0*M_PI*(x+3.0*y)) - sin(100.0*M_PI*(y - 2.0*x)))/10000.0; \n\
-* u_p  = cos(x+y)*exp(-SQR(x*cos(y))); \n\
-* no periodicity \n\
-Example by Raphael Egan for adaptivity (can't be tested with Neumann boundary conditions). \n\
-8: \n\
-* domain = [-1.5, 1.5] X [-1.5, 1.5] \n\
-* interface = curve parameterized by (t in [0, 2.0*PI[) \n\
-@ x(t) = xmin + 0.15*(xmax-xmin) + 0.6*cos(t) - 0.3*cos(3*t) \n\
-@ y(t) = 0.7*sin(t) - 0.07*sin(3*t) + 0.2*sin(7*t) \n\
-negative inside, positive outside (periodicity along x enforced) \n\
-* mu_m = 1.0; \n\
-* mu_p = 10.0; \n\
-* u_m  = cos((2.0*M_PI/3.0)*(x-tanh(y))) + exp(-SQR(sin((2.0*M_PI/3.0)*(2.0*x-0.251*y)))); \n\
-* u_p  = tanh(cos((2.0*M_PI/3.0)*2.0*x) - 0.24*y); \n\
-* periodicity along x, no periodicity along y \n\
-Example by Raphael Egan for periodicity in x.\n\
-9: \n\
-* domain = [-1.5, 1.5] X [-1.5, 1.5] \n\
-* interface = curve parameterized by (t in [0, 2.0*PI[) \n\
-@ x(t) = xmin + 0.15*(xmax-xmin) + 0.6*cos(t) - 0.3*cos(3*t) \n\
-@ y(t) = ymin + 0.2*(ymax-ymin)  + 0.7*sin(t) - 0.07*sin(3*t) + 0.2*sin(7*t) \n\
-negative inside, positive outside (periodicity along x and y enforced) \n\
-* mu_m = 1.0; \n\
-* mu_p = 100.0; \n\
-* u_m  = atan(sin((2.0*M_PI/3.0)*(2.0*x-y))); \n\
-* u_p  = log(1.5+cos((2.0*M_PI/3.0)*(-x+3.0*y))); \n\
-* fully periodic \n\
-Example by Raphael Egan for full periodicity.");
-    #endif
-      cmd.parse(argc, argv);
-  cmd.print();
-
-
+  cmd.add_option("test", description_of_tests);
+  if(cmd.parse(argc, argv, main_description))
+    return 0;
 
   int lmin = cmd.get<int>("lmin", lmin_);
   int lmax = cmd.get<int>("lmax", lmax_);
@@ -1665,7 +1665,7 @@ Example by Raphael Egan for full periodicity.");
   double err[ngrids][2], err_flux_components[ngrids][2][P4EST_DIM], err_derivatives_components[ngrids][2][P4EST_DIM];
 
   double avg_exa = 0.0;
-  if(bc_wtype==NEUMANN || test_number == (P4EST_DIM == 3 ? 3 : 9))
+  if(bc_wtype == NEUMANN || test_number == (P4EST_DIM == 3 ? 3 : 9))
   {
     switch(test_number)
     {
@@ -1694,7 +1694,7 @@ This test case is meant to check the AMR feature, hence the interface is suppose
     default: throw std::invalid_argument("invalid test number.");
     }
 
-    avg_exa /= MULTD((domain.xmax-domain.xmin), (domain.ymax-domain.ymin), (domain.zmax-domain.zmin));
+    avg_exa /= MULTD((domain.xmax - domain.xmin), (domain.ymax - domain.ymin), (domain.zmax - domain.zmin));
   }
 
   LEVEL_SET levelset(domain, test_number);
@@ -1911,7 +1911,7 @@ This test case is meant to check the AMR feature, hence the interface is suppose
     bc.setWallValues(bc_wall_val);
 
     Vec rhs_original;
-    ierr = VecCreateCellsNoGhost(p4est, &rhs_original); CHKERRXX(ierr);
+    ierr = VecCreateNoGhostCells(p4est, &rhs_original); CHKERRXX(ierr);
     get_sharp_rhs(p4est, ghost, ngbd_n_fine, phi, test_number, mu_p, mu_m, rhs_original);
 
     Vec sol[2], err_cells[2], extended_field_xgfm, extended_field_fine_nodes_xgfm;
@@ -1929,7 +1929,7 @@ This test case is meant to check the AMR feature, hence the interface is suppose
       solver.set_diagonals(0.0, 0.0);
       solver.set_bc(bc);
       Vec rhs;
-      ierr = VecCreateCellsNoGhost(p4est, &rhs); CHKERRXX(ierr);
+      ierr = VecCreateNoGhostCells(p4est, &rhs); CHKERRXX(ierr);
       ierr = VecCopy(rhs_original, rhs);
       solver.set_rhs(rhs);
 
@@ -2000,27 +2000,21 @@ This test case is meant to check the AMR feature, hence the interface is suppose
       /* if all NEUMANN boundary conditions, shift solution */
       if(solver.get_matrix_has_nullspace())
       {
-        my_p4est_level_set_cells_t lsc(&ngbd_c, &ngbd_n);
-        double avg_sol = lsc.integrate(phi_coarse, sol[flag]);
-        Vec phi_loc;
-        ierr = VecGhostGetLocalForm(phi_coarse, &phi_loc); CHKERRXX(ierr);
-        ierr = VecScale(phi_loc, -1.0); CHKERRXX(ierr);
-        ierr = VecGhostRestoreLocalForm(phi_coarse, &phi_loc); CHKERRXX(ierr);
-        MPI_Barrier(p4est->mpicomm);
-        avg_sol += lsc.integrate(phi_coarse, sol[flag]);
-        ierr = VecGhostGetLocalForm(phi_coarse, &phi_loc); CHKERRXX(ierr);
-        ierr = VecScale(phi_loc, -1.0); CHKERRXX(ierr);
-        ierr = VecGhostRestoreLocalForm(phi_coarse, &phi_loc); CHKERRXX(ierr);
-        avg_sol /=((domain.xmax-domain.xmin)*(domain.ymax-domain.ymin));
-
         double *sol_p;
         ierr = VecGetArray(sol[flag], &sol_p); CHKERRXX(ierr);
 
-        for(p4est_locidx_t quad_idx=0; quad_idx<p4est->local_num_quadrants; ++quad_idx)
+        double avg_sol = 0.0; // as calculated by PetSc
+        for (p4est_locidx_t quad_idx = 0; quad_idx < p4est->local_num_quadrants; ++quad_idx)
+          avg_sol += sol_p[quad_idx];
+        int mpiret = MPI_Allreduce(MPI_IN_PLACE, &avg_sol, 1, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+
+        avg_sol /= ((double) p4est->global_num_quadrants);
+
+        for(p4est_locidx_t quad_idx=0; quad_idx < p4est->local_num_quadrants; ++quad_idx)
           sol_p[quad_idx] = sol_p[quad_idx] - avg_sol + avg_exa;
 
-        for(size_t quad_idx=0; quad_idx<ghost->ghosts.elem_count; ++quad_idx)
-          sol_p[quad_idx+p4est->local_num_quadrants] = sol_p[quad_idx+p4est->local_num_quadrants] - avg_sol + avg_exa;
+        for(size_t quad_idx = 0; quad_idx < ghost->ghosts.elem_count; ++quad_idx)
+          sol_p[quad_idx + p4est->local_num_quadrants] = sol_p[quad_idx + p4est->local_num_quadrants] - avg_sol + avg_exa;
 
         ierr = VecRestoreArray(sol[flag], &sol_p); CHKERRXX(ierr);
       }

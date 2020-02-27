@@ -33,8 +33,6 @@
 #include <src/petsc_compatibility.h>
 #include <src/Parser.h>
 
-using namespace std;
-
 const static std::string main_description = "\
  In this example, we test and illustrate the interpolation of node-sampled fields form one grid to another.\n\
  We define nfields scalar fields on the nodes of the origin grid and this discretized set of data is then \n\
@@ -66,19 +64,12 @@ const static std::string main_description = "\
  ------------------------  END OF IMPORTANT NOTE REGARDING ORDERS OF CONVERGENCE   ---------------------------------\n\n\
  Developer: Raphael Egan (raphaelegan@ucsb.edu), October 2019.\n";
 
-#ifdef P4_TO_P8
-struct circle : CF_3 {
-  circle(double x0_, double y0_, double z0_, double r_): x0(x0_), y0(y0_), z0(z0_), r(r_) {}
-#else
-struct circle : CF_2 {
-  circle(double x0_, double y0_, double r_): x0(x0_), y0(y0_), r(r_) {}
-#endif
+using namespace std;
 
-#ifdef P4_TO_P8
-  void update(double x0_, double y0_, double z0_, double r_)
-#else
-  void update(double x0_, double y0_, double r_)
-#endif
+struct circle : CF_DIM {
+  circle(DIM(double x0_, double y0_, double z0_), double r_): x0(x0_), y0(y0_), ONLY3D(z0(z0_) COMMA) r(r_) {}
+
+  void update(DIM(double x0_, double y0_, double z0_), double r_)
   {
     x0 = x0_;
     y0 = y0_;
@@ -88,64 +79,37 @@ struct circle : CF_2 {
     r  = r_;
   }
 
-#ifdef P4_TO_P8
-  double operator()(double x, double y, double z) const {
-#else
-  double operator()(double x, double y) const {
-#endif
-    return r - sqrt(SQR(x-x0) + SQR(y-y0)
-                #ifdef P4_TO_P8
-                    + SQR(z-z0)
-                #endif
-                    );
+  double operator()(DIM(double x, double y, double z)) const {
+    return r - sqrt(SUMD(SQR(x - x0), SQR(y - y0), SQR(z - z0)));
   }
 
 private:
-  double x0, y0;
-#ifdef P4_TO_P8
-  double z0;
-#endif
+  double DIM(x0, y0, z0);
   double r;
 };
 
-static double random_generator(const double &min=0.0, const double &max=1.0)
+static double random_generator(const double &min = 0.0, const double &max = 1.0)
 {
-  return (min+(max-min)*((double) rand())/((double) RAND_MAX));
+  return (min + (max - min)*((double) rand())/((double) RAND_MAX));
 }
 
-#ifdef P4_TO_P8
-class my_test_function : public CF_3 {
-#else
-class my_test_function : public CF_2 {
-#endif
+class my_test_function : public CF_DIM {
 private:
-  double aa, bb;
-#ifdef P4_TO_P8
-  double cc;
-#endif
+  double DIM(aa, bb, cc);
 
 public:
-#ifdef P4_TO_P8
-  my_test_function(const double &aa_,const double &bb_, const double &cc_) : aa(aa_), bb(bb_), cc(cc_) {}
-  double operator ()(double x, double y, double z) const
-#else
-  my_test_function(const double &aa_,const double &bb_) : aa(aa_), bb(bb_) {}
-  double operator ()(double x, double y) const
-#endif
+  my_test_function(DIM(const double &aa_,const double &bb_, const double &cc_)) : aa(aa_), bb(bb_) ONLY3D(COMMA cc(cc_)) {}
+  double operator ()(DIM(double x, double y, double z)) const
   {
     // totally arbitrary defined, I let my brain wander around the most random association of functions that
     // I could find: feel free to change it if you want to!
 #ifdef P4_TO_P8
-    return tanh(log(1 + fabs(aa) + SQR(x-bb*y)) + 1.0/(1.0+exp(-SQR(bb*y))) - cos(cc*(z-aa*x) + SQR(x-bb*y)))*(atan(aa*x-cc*z)/(1 + SQR(sin(aa*x-bb*y))));
+    return tanh(log(1 + fabs(aa) + SQR(x - bb*y)) + 1.0/(1.0 + exp(-SQR(bb*y))) - cos(cc*(z - aa*x) + SQR(x - bb*y)))*(atan(aa*x - cc*z)/(1 + SQR(sin(aa*x - bb*y))));
 #else
-    return tanh(log(1 + fabs(aa) + SQR(x-bb*y)) + 1.0/(1.0+exp(-SQR(bb*y))))*(1.0/(1 + SQR(sin(aa*x-bb*y))));
+    return tanh(log(1 + fabs(aa) + SQR(x - bb*y)) + 1.0/(1.0 + exp(-SQR(bb*y))))*(1.0/(1 + SQR(sin(aa*x - bb*y))));
 #endif
   }
-#ifdef P4_TO_P8
-  double operator ()(double *xyz) const { return this->operator ()(xyz[0], xyz[1], xyz[2]); }
-#else
-  double operator ()(double *xyz) const { return this->operator ()(xyz[0], xyz[1]); }
-#endif
+  double operator ()(double *xyz) const { return this->operator ()(DIM(xyz[0], xyz[1], xyz[2])); }
 };
 
 void create_grid_ghost_and_nodes(const mpi_environment_t &mpi, p4est_connectivity_t* conn, const unsigned int &lmin, const unsigned int &lmax,
@@ -204,10 +168,7 @@ void refine_my_grid(p4est_t* &forest, p4est_ghost_t* &ghosts, p4est_nodes_t* &no
 
 PetscErrorCode destroy_vectors_if_needed(const unsigned int &nfields,
                                          Vec &field_block, Vec &second_derivatives_field_block,
-                                         Vec field_[], Vec ddxx_[], Vec ddyy_[],
-                                         #ifdef P4_TO_P8
-                                         Vec ddzz_[],
-                                         #endif
+                                         Vec field_[], DIM(Vec ddxx_[], Vec ddyy_[], Vec ddzz_[]),
                                          Vec *results_ = NULL, Vec *results_block = NULL)
 {
   PetscErrorCode ierr;
@@ -238,21 +199,12 @@ PetscErrorCode create_vectors_and_sample_functions_on_nodes(const unsigned int &
                                                             p4est_t *p4est, p4est_nodes_t *nodes, const my_p4est_node_neighbors_t *ngbd,
                                                             const my_test_function *cf_field[], const unsigned int &nfields,
                                                             Vec &field_block, Vec &second_derivatives_field_block,
-                                                            Vec field_[], Vec ddxx_[], Vec ddyy_[]
-                                                            #ifdef P4_TO_P8
-                                                            , Vec ddzz_[]
-                                                            #endif
-                                                            )
+                                                            Vec field_[], DIM(Vec ddxx_[], Vec ddyy_[], Vec ddzz_[]))
 {
   PetscErrorCode ierr;
-  destroy_vectors_if_needed(nfields, field_block, second_derivatives_field_block,
-                            field_, ddxx_, ddyy_
-                          #ifdef P4_TO_P8
-                            , ddzz_
-                          #endif
-                            );
+  destroy_vectors_if_needed(nfields, field_block, second_derivatives_field_block, field_, DIM(ddxx_, ddyy_, ddzz_));
 
-  if(method==2)
+  if(method == 2)
   {
     ierr = VecCreateGhostNodesBlock(p4est, nodes, nfields,           &field_block);                    CHKERRQ(ierr);
     if(precompute_derivatives){
@@ -263,11 +215,7 @@ PetscErrorCode create_vectors_and_sample_functions_on_nodes(const unsigned int &
       double xyz[P4EST_DIM];
       node_xyz_fr_n(i, p4est, nodes, xyz);
       for (unsigned int j = 0; j<nfields; j++)
-#ifdef P4_TO_P8
         field_block_p[i*nfields + j] = (*cf_field[j])(xyz);
-#else
-        field_block_p[i*nfields + j] = (*cf_field[j])(xyz[0], xyz[1]);
-#endif
     }
     ierr = VecRestoreArray(field_block, &field_block_p); CHKERRXX(ierr);
     if(precompute_derivatives)
@@ -288,13 +236,7 @@ PetscErrorCode create_vectors_and_sample_functions_on_nodes(const unsigned int &
     for (unsigned int k = 0; k < nfields; ++k)
       sample_cf_on_nodes(p4est, nodes, *cf_field[k], field_[k]);
     if(precompute_derivatives)
-    {
-#ifdef P4_TO_P8
-      ngbd->second_derivatives_central(field_, ddxx_, ddyy_, ddzz_, nfields);
-#else
-      ngbd->second_derivatives_central(field_, ddxx_, ddyy_, nfields);
-#endif
-    }
+      ngbd->second_derivatives_central(field_, DIM(ddxx_, ddyy_, ddzz_), nfields);
   }
   return ierr;
 }
@@ -440,11 +382,7 @@ int main (int argc, char* argv[]){
   // define a first circle for the original grid
   const double rmax_from = 0.3;
   const double radius_from = random_generator(0.5*rmax_from, rmax_from);
-#ifdef P4_TO_P8
-  circle circ(random_generator(rmax_from, 2.0-rmax_from), random_generator(rmax_from, 2.0-rmax_from), random_generator(rmax_from, 2.0-rmax_from), radius_from);
-#else
-  circle circ(random_generator(rmax_from, 2.0-rmax_from), random_generator(rmax_from, 2.0-rmax_from), radius_from);
-#endif
+  circle circ(DIM(random_generator(rmax_from, 2.0 - rmax_from), random_generator(rmax_from, 2.0 - rmax_from), random_generator(rmax_from, 2.0 - rmax_from)), radius_from);
 
   // Now create the (first) origin forest
   create_grid_ghost_and_nodes(mpi, connectivity, lmin_from, lmax_from, circ, p4est_from, ghost_from, nodes_from);
@@ -452,32 +390,18 @@ int main (int argc, char* argv[]){
   // move the circle for the destination grid
   const double rmax_to = 0.3;
   const double radius_to = random_generator(0.5*rmax_to, rmax_to);
-#ifdef P4_TO_P8
-  circ.update(random_generator(rmax_to, 2.0-rmax_to), random_generator(rmax_to, 2.0-rmax_to), random_generator(rmax_to, 2.0-rmax_to), radius_to);
-#else
-  circ.update(random_generator(rmax_to, 2.0-rmax_to), random_generator(rmax_to, 2.0-rmax_to), radius_to);
-#endif
+  circ.update(DIM(random_generator(rmax_to, 2.0 - rmax_to), random_generator(rmax_to, 2.0 - rmax_to), random_generator(rmax_to, 2.0 - rmax_to)), radius_to);
   // Now create the destination forest
   create_grid_ghost_and_nodes(mpi, connectivity, lmin_to, lmax_to, circ, p4est_to, ghost_to, nodes_to);
 
   const my_test_function *cf_field[nfields];
   for (unsigned int k = 0; k < nfields; ++k)
-#ifdef P4_TO_P8
-    cf_field[k] = new my_test_function(random_generator(0.1, 0.9), random_generator(0.1, 0.9), random_generator(0.1, 0.9));
-#else
-    cf_field[k] = new my_test_function(random_generator(0.1, 0.9), random_generator(0.1, 0.9));
-#endif
+    cf_field[k] = new my_test_function(DIM(random_generator(0.1, 0.9), random_generator(0.1, 0.9), random_generator(0.1, 0.9)));
 
   Vec field_[nfields];
-  Vec field_xx[nfields], field_yy[nfields];
-#ifdef P4_TO_P8
-  Vec field_zz[nfields];
-#endif
+  Vec DIM(field_xx[nfields], field_yy[nfields], field_zz[nfields]);
   for (unsigned int k = 0; k < nfields; ++k) {
-    field_[k] = NULL; field_xx[k] = NULL; field_yy[k] = NULL;
-#ifdef P4_TO_P8
-    field_zz[k] = NULL;
-#endif
+    field_[k] = NULL; field_xx[k] = NULL; field_yy[k] = NULL; ONLY3D(field_zz[k] = NULL;)
   }
   Vec field_block = NULL, field_block_xxyyzz = NULL;
 
@@ -508,11 +432,7 @@ int main (int argc, char* argv[]){
     ierr = create_vectors_and_sample_functions_on_nodes(method, precompute_derivatives,
                                                         p4est_from, nodes_from, &ngbd_from, cf_field, nfields,
                                                         field_block, field_block_xxyyzz,
-                                                        field_, field_xx, field_yy
-                                                    #ifdef P4_TO_P8
-                                                        , field_zz
-                                                    #endif
-                                                        ); CHKERRXX(ierr);
+                                                        field_, DIM(field_xx, field_yy, field_zz)); CHKERRXX(ierr);
 
     // now let's create the node interpolator tool
     my_p4est_interpolation_nodes_t node_interpolator(&ngbd_from);
@@ -533,13 +453,7 @@ int main (int argc, char* argv[]){
     case 0:
       for (unsigned int k = 0; k < nfields; ++k) {
         if(precompute_derivatives)
-        {
-#ifdef P4_TO_P8
-        node_interpolator.set_input(field_[k], field_xx[k], field_yy[k], field_zz[k], chosen_interpolation);
-#else
-        node_interpolator.set_input(field_[k], field_xx[k], field_yy[k], chosen_interpolation);
-#endif
-        }
+          node_interpolator.set_input(field_[k], DIM(field_xx[k], field_yy[k], field_zz[k]), chosen_interpolation);
         else
           node_interpolator.set_input(field_[k], chosen_interpolation);
         // add the points of the destination grid to the input buffer
@@ -555,13 +469,7 @@ int main (int argc, char* argv[]){
       break;
     case 1:
       if(precompute_derivatives)
-      {
-#ifdef P4_TO_P8
-        node_interpolator.set_input(field_, field_xx, field_yy, field_zz, chosen_interpolation, nfields);
-#else
-        node_interpolator.set_input(field_, field_xx, field_yy, chosen_interpolation, nfields);
-#endif
-      }
+        node_interpolator.set_input(field_, DIM(field_xx, field_yy, field_zz), chosen_interpolation, nfields);
       else
         node_interpolator.set_input(field_, chosen_interpolation, nfields);
 
@@ -602,10 +510,7 @@ int main (int argc, char* argv[]){
     evaluate_max_error_on_destination_grid(method, p4est_to, nodes_to, cf_field, nfields,
                                            results_, results_block, max_err_ss);
     ierr = destroy_vectors_if_needed(nfields, field_block, field_block_xxyyzz,
-                                     field_, field_xx, field_yy,
-                                 #ifdef P4_TO_P8
-                                     field_zz,
-                                 #endif
+                                     field_, DIM(field_xx, field_yy, field_zz),
                                      results_, &results_block); CHKERRXX(ierr);
 
 

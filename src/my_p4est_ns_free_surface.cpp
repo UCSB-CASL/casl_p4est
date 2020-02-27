@@ -741,8 +741,8 @@ void my_p4est_ns_free_surface_t::compute_velocity_at_nodes()
       p4est_locidx_t n = ngbd_n->get_layer_node(i);
       double xyz[P4EST_DIM];
       node_xyz_fr_n(n, p4est_n, nodes_n, xyz);
-      v_p[n] = interpolate_f_at_node_n(p4est_n, ghost_n, nodes_n, faces_n, ngbd_c, ngbd_n, n,
-                                       vnp1[dir], dir, NULL, 2, bc_v_global);
+      v_p[n] = interpolate_velocity_at_node_n(p4est_n, ghost_n, nodes_n, faces_n, ngbd_c, ngbd_n, n,
+                                              vnp1[dir], dir, NULL, 2, bc_v_global);
     }
 
     ierr = VecGhostUpdateBegin(vnp1_nodes[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
@@ -752,8 +752,8 @@ void my_p4est_ns_free_surface_t::compute_velocity_at_nodes()
       p4est_locidx_t n = ngbd_n->get_local_node(i);
       double xyz[P4EST_DIM];
       node_xyz_fr_n(n, p4est_n, nodes_n, xyz);
-      v_p[n] = interpolate_f_at_node_n(p4est_n, ghost_n, nodes_n, faces_n, ngbd_c, ngbd_n, n,
-                                       vnp1[dir], dir, NULL, 2, bc_v_global);
+      v_p[n] = interpolate_velocity_at_node_n(p4est_n, ghost_n, nodes_n, faces_n, ngbd_c, ngbd_n, n,
+                                              vnp1[dir], dir, NULL, 2, bc_v_global);
     }
 
     ierr = VecGhostUpdateEnd(vnp1_nodes[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);

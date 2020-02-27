@@ -653,6 +653,39 @@ public:
 bool index_of_node(const p4est_quadrant_t *n, p4est_nodes_t* nodes, p4est_locidx_t& idx);
 
 /*!
+ * \brief rel_qxyz_quad_fr_node calculates the relative cartesian coordinates between a quad center and a given grid node (very useful for lsqr
+ * interpolation). The method also returns the cartesian difference in terms of logical coordinates units (in order to efficiently and
+ * unambiguously count the number of independent points along Cartesian directions.
+ * \param p4est               [in]  pointer to the forest owning the quadrant quad
+ * \param quad                [in]  pointer to the quadrant (whose p.piggy3 data must be valid)
+ * \param xyz_node            [in]  pointer to an array of P4EST_DIM doubles: cartesian cooordinates of the grid node
+ * \param node                [in]  pointer to the grid node of interest
+ * \param tree_dimensions     [in]  pointer to an array of P4EST_DIM doubles: dimensions of the trees in physical domain units (assumes trees of the same size everywhere)
+ * \param brick               [in]  pointer to the brick (macromesh) structure
+ * \param xyz_rel             [out] pointer to an array of P4EST_DIM doubles: difference of Cartesian coordinates between the quadrant and the point in physical units
+ * \param logical_qcoord_diff [out] pointer to an array of P4EST_DIM int64_t: difference of Cartesian coordinates between the quadrant and the point in logical units
+ * NOTE: logical_qcoord_diff must point to int64_t type to make sure that logical differences and calculations across trees are correct.
+ */
+void rel_qxyz_quad_fr_node(const p4est_t* p4est, const p4est_quadrant_t& quad, const double* xyz_node, const p4est_indep_t* node, const double *tree_dimensions, const my_p4est_brick_t* brick,
+                           double *xyz_rel, int64_t* logical_qcoord_diff);
+
+/*!
+ * \brief get_local_interpolation_weights calculates the local geometry information and interpolation weights required for linear and, if desired,
+ * quadratic interpolation procedures
+ * \param [in]  p4est the forest
+ * \param [in]  tree_id the index of the tree that owns the quadrant
+ * \param [in]  quad the quadrant tagged as owner of the point of interest
+ * \param [in]  xyz_global global coordinates of the point where interpolation is desired (in domain units)
+ * \param [out] linear_weight : array of P4EST_CHILDREN double which, on output, lists the linear interpolation weights
+ *             (--> linear_weight[dir::v_mmm] is the linear interpolation weight associated with local node v_mmm, etc.)
+ * \param [out] second_derivative_weight : either NULL (if not desired) or array of P4EST_DIM double which, on output, contains
+ *             the weights by which the second derivatives need to be multiplied to correct the linear interpolation and make it
+ *             more accurate)
+ */
+void get_local_interpolation_weights(const p4est_t* p4est, const p4est_topidx_t& tree_id, const p4est_quadrant_t& quad, const double *xyz_global,
+                                     double* linear_weight, double* second_derivative_weight = NULL);
+
+/*!
  * \brief linear_interpolation performs linear interpolation for a point
  * \param [in]    p4est the forest
  * \param [in]    tree_id the current tree that owns the quadrant
@@ -957,6 +990,8 @@ inline double int2double_coordinate_transform(p4est_qcoord_t a){
   return static_cast<double>(a)/static_cast<double>(P4EST_ROOT_LEN);
 }
 
+int8_t find_max_level(const p4est_t* p4est);
+
 void dxyz_min(const p4est_t *p4est, double *dxyz);
 
 void get_dxyz_min(const p4est_t *p4est, double *dxyz, double &dxyz_min);
@@ -1080,7 +1115,7 @@ inline double p4est_diag_max(const p4est_t* p4est) {
 }
 
 /*!
- * \brief get the z-coordinate of the bottom left corner of a quadrant in the local tree coordinate system
+ * \brief get the x-coordinate of the bottom left corner of a quadrant in the local tree coordinate system
  */
 inline double quad_x_fr_i(const p4est_quadrant_t *qi){
   return static_cast<double>(qi->x)/static_cast<double>(P4EST_ROOT_LEN);
@@ -1095,12 +1130,24 @@ inline double quad_y_fr_j(const p4est_quadrant_t *qi){
 
 #ifdef P4_TO_P8
 /*!
- * \brief get the x-coordinate of the bottom left corner of a quadrant in the local tree coordinate system
+ * \brief get the z-coordinate of the bottom left corner of a quadrant in the local tree coordinate system
  */
 inline double quad_z_fr_k(const p4est_quadrant_t *qi){
   return static_cast<double>(qi->z)/static_cast<double>(P4EST_ROOT_LEN);
 }
 #endif
+
+/*!
+ * \brief get the xyz-coordinate of the bottom left corner of a quadrant in the local tree coordinate system
+ */
+inline void quad_xyz_fr_ijk(const p4est_quadrant_t *qi, double xyz[P4EST_DIM]){
+  xyz[0] = static_cast<double>(qi->x)/static_cast<double>(P4EST_ROOT_LEN);
+  xyz[1] = static_cast<double>(qi->y)/static_cast<double>(P4EST_ROOT_LEN);
+#ifdef P4_TO_P8
+  xyz[2] = static_cast<double>(qi->z)/static_cast<double>(P4EST_ROOT_LEN);
+#endif
+  return;
+}
 
 inline p4est_tree_t* get_tree(p4est_topidx_t tr, p4est_t* p4est)
 {
@@ -1113,7 +1160,7 @@ inline p4est_tree_t* get_tree(p4est_topidx_t tr, p4est_t* p4est)
   }
 #endif
 
-  return (p4est_tree_t*)sc_array_index(p4est->trees, tr);
+  return p4est_tree_array_index(p4est->trees, tr);
 }
 
 inline p4est_quadrant_t* get_quad(p4est_locidx_t q, p4est_tree_t* tree)
@@ -1127,7 +1174,7 @@ inline p4est_quadrant_t* get_quad(p4est_locidx_t q, p4est_tree_t* tree)
   }
 #endif
 
-  return (p4est_quadrant_t*)sc_array_index(&tree->quadrants, q);
+  return p4est_quadrant_array_index(&tree->quadrants, q);
 }
 
 inline p4est_quadrant_t* get_quad(p4est_locidx_t q, p4est_ghost_t* ghost)
@@ -1141,7 +1188,7 @@ inline p4est_quadrant_t* get_quad(p4est_locidx_t q, p4est_ghost_t* ghost)
   }
 #endif
 
-  return (p4est_quadrant_t*)sc_array_index(&ghost->ghosts, q);
+  return p4est_quadrant_array_index(&ghost->ghosts, q);
 }
 
 inline p4est_indep_t* get_node(p4est_locidx_t n, p4est_nodes_t* nodes)
@@ -1154,7 +1201,7 @@ inline p4est_indep_t* get_node(p4est_locidx_t n, p4est_nodes_t* nodes)
   }
 #endif
 
-  return (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, n);
+  return (p4est_indep_t*) sc_array_index(&nodes->indep_nodes, n);
 }
 
 /*!
@@ -1166,11 +1213,11 @@ inline double quad_x_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, cons
   p4est_quadrant_t *quad;
   if(quad_idx<p4est->local_num_quadrants)
   {
-    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
-    quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
+    p4est_tree_t *tree = p4est_tree_array_index(p4est->trees, tree_idx);
+    quad = p4est_quadrant_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
   }
   else
-    quad = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts, quad_idx-p4est->local_num_quadrants);
+    quad = p4est_quadrant_array_index(&ghost->ghosts, quad_idx-p4est->local_num_quadrants);
 
   p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
   p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + P4EST_CHILDREN-1];
@@ -1223,11 +1270,11 @@ inline double quad_y_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, cons
   p4est_quadrant_t *quad;
   if(quad_idx<p4est->local_num_quadrants)
   {
-    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
-    quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
+    p4est_tree_t *tree = p4est_tree_array_index(p4est->trees, tree_idx);
+    quad = p4est_quadrant_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
   }
   else
-    quad = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts, quad_idx-p4est->local_num_quadrants);
+    quad = p4est_quadrant_array_index(&ghost->ghosts, quad_idx-p4est->local_num_quadrants);
 
   p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
   p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + P4EST_CHILDREN-1];
@@ -1281,11 +1328,11 @@ inline double quad_z_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, cons
   p4est_quadrant_t *quad;
   if(quad_idx<p4est->local_num_quadrants)
   {
-    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
-    quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
+    p4est_tree_t *tree = p4est_tree_array_index(p4est->trees, tree_idx);
+    quad = p4est_quadrant_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
   }
   else
-    quad = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts, quad_idx-p4est->local_num_quadrants);
+    quad = p4est_quadrant_array_index(&ghost->ghosts, quad_idx-p4est->local_num_quadrants);
 
   p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
   p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + P4EST_CHILDREN-1];

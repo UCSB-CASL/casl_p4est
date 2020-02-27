@@ -30,7 +30,7 @@ class cmdParser{
       throw std::runtime_error("[ERROR]: Option '" + key + "' was not found in option database.");
     else if (options.find(key) != options.end() && buffer.find(key) == buffer.end())
     {
-      if(default_value==NULL)
+      if(default_value == NULL)
         throw std::runtime_error("[ERROR]: Option '" + key + "' was found in option database but was not entered.");
       else
         return *default_value;
@@ -39,7 +39,7 @@ class cmdParser{
     {
       if (!buffer[key].compare("no-arg"))
       {
-        if(default_value==NULL)
+        if(default_value == NULL)
           throw std::runtime_error("[CASL_ERROR]: option '" + key + "' does not include any value");
         else
           return *default_value;
