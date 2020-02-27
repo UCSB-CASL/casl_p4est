@@ -945,15 +945,21 @@ public:
   double xc, yc;  // center
   double inside;  // exterior (-1) or interior (-1)
   int N;          // number of perturbations
-  double *n;         // mode
-  double *beta;   // degree of the deformation of the circle
-  double *theta;  // rotational angle and auxiliary variables
+  std::vector<double> n;      // mode
+  std::vector<double> beta;   // degree of the deformation of the circle
+  std::vector<double> theta;  // rotational angle and auxiliary variables
   cf_value_type_t what;
 
   radial_phi_t(cf_value_type_t what, double r0 = 1, double xc = 0, double yc = 0, double inside = 1, int N = 0, double *n = NULL, double *beta = NULL, double *theta = NULL)
   {
     this->what = what;
     set_params(r0, xc, yc, inside, N, n, beta, theta);
+  }
+
+  radial_phi_t(cf_value_type_t what, double r0, double xc, double yc, double inside, double n, double beta, double theta)
+  {
+    this->what = what;
+    set_params(r0, xc, yc, inside, n, beta, theta);
   }
 
   void set_params(double r0 = 1, double xc = 0, double yc = 0, double inside = 1, int N = 0, double *n = NULL, double *beta = NULL, double *theta = NULL)
@@ -963,10 +969,32 @@ public:
     this->yc     = yc;
     this->inside = inside;
     this->N      = N;
-    this->n      = n;
-    this->beta   = beta;
-    this->theta  = theta;
+
+    this->n.resize(N);
+    this->beta.resize(N);
+    this->theta.resize(N);
+
+    for (int i = 0; i < N; ++i)
+    {
+      this->n[i]      = n[i];
+      this->beta[i]   = beta[i];
+      this->theta[i]  = theta[i];
+    }
   }
+
+  void set_params(double r0, double xc, double yc, double inside, double n, double beta, double theta)
+  {
+    this->r0     = r0;
+    this->xc     = xc;
+    this->yc     = yc;
+    this->inside = inside;
+    this->N      = 1;
+
+    this->n.assign(1, n);
+    this->beta.assign(1, beta);
+    this->theta.assign(1, theta);
+  }
+
 
   double operator()(double x, double y) const
   {
@@ -1013,16 +1041,16 @@ public:
         double t_x = - Y/r/r;
         double t_y =   X/r/r;
 
-        double t_xx = 2.*X*Y/pow(r,4.0);
+        double t_xx =    2.*X*Y/pow(r,4.0);
         double t_xy = (Y*Y-X*X)/pow(r,4.0);
-        double t_yy =-2.*X*Y/pow(r,4.0);
+        double t_yy =   -2.*X*Y/pow(r,4.0);
 
         double r_x = X/r;
         double r_y = Y/r;
 
-        double r_xx = (r-X*X)/r/r;
-        double r_xy = ( -X*Y)/r/r;
-        double r_yy = (r-Y*Y)/r/r;
+        double r_xx = (r*r-X*X)/r/r/r;
+        double r_xy = (   -X*Y)/r/r/r;
+        double r_yy = (r*r-Y*Y)/r/r/r;
 
         double e_x = perturb_1*t_x;
         double e_y = perturb_1*t_y;
@@ -1059,12 +1087,26 @@ struct radial_shaped_domain_t
     this->set_params(r0, xc, yc, inside, N, n, beta, theta);
   }
 
+  radial_shaped_domain_t(double r0, double xc, double yc, double inside, double n, double beta, double theta)
+    : phi(VAL), phi_x(DDX), phi_y(DDY), phi_c(CUR)
+  {
+    this->set_params(r0, xc, yc, inside, n, beta, theta);
+  }
+
   void set_params(double r0 = 1, double xc = 0, double yc = 0, double inside = 1, int N = 0, double *n = NULL, double *beta = NULL, double *theta = NULL)
   {
     phi  .set_params(r0, xc, yc, inside, N, n, beta, theta);
     phi_x.set_params(r0, xc, yc, inside, N, n, beta, theta);
     phi_y.set_params(r0, xc, yc, inside, N, n, beta, theta);
     phi_c.set_params(r0, xc, yc, inside, N, n, beta, theta);
+  }
+
+  void set_params(double r0, double xc, double yc, double inside, double n, double beta, double theta)
+  {
+    phi  .set_params(r0, xc, yc, inside, n, beta, theta);
+    phi_x.set_params(r0, xc, yc, inside, n, beta, theta);
+    phi_y.set_params(r0, xc, yc, inside, n, beta, theta);
+    phi_c.set_params(r0, xc, yc, inside, n, beta, theta);
   }
 };
 

@@ -64,7 +64,7 @@ param_t<bool> pz (pl, 0, "pz", "Periodicity in the z-direction (0/1)");
 // refinement parameters
 //-------------------------------------
 param_t<int> lmin  (pl, 6,   "lmin", "Min level of the tree");
-param_t<int> lmax  (pl, 7,  "lmax", "Max level of the tree");
+param_t<int> lmax  (pl, 10,  "lmax", "Max level of the tree");
 param_t<int> lip   (pl, 1.1, "lip" , "Refinement transition");
 param_t<int> band  (pl, 2,   "band" , "Uniform grid band");
 
@@ -81,7 +81,7 @@ param_t<double> f        (pl, .5,  "f"       , "Fraction of polymer A");
 //-------------------------------------
 // scft parameters
 //-------------------------------------
-param_t<int>    seed                (pl, 2,     "seed", "Seed field for scft: 0 - zero, 1 - random, 2 - vertical stripes, 3 - horizontal stripes, 4 - diagonal stripes, 5 - dots");
+param_t<int>    seed                (pl, 5,     "seed", "Seed field for scft: 0 - zero, 1 - random, 2 - vertical stripes, 3 - horizontal stripes, 4 - diagonal stripes, 5 - dots");
 param_t<double> scft_tol            (pl, 1.e-4, "scft_tol"           , "Tolerance for SCFT");
 param_t<int>    max_scft_iterations (pl, 300,   "max_scft_iterations", "Maximum SCFT iterations");
 param_t<int>    bc_adjust_min       (pl, 1,     "bc_adjust_min"      , "Minimun SCFT steps between adjusting BC");
@@ -92,17 +92,222 @@ param_t<double> scft_bc_tol         (pl, 4.e-2, "scft_bc_tol"        , "Toleranc
 // particle dynamics parameters
 //-------------------------------------
 param_t<bool>   use_scft   (pl, 0,       "use_scft", "Turn on/off SCFT (0/1)");
-param_t<bool>   minimize   (pl, 0,       "minimize", "Turn on/off energy minimization (0/1)");
-param_t<int>    geometry   (pl, 0,       "geometry", "Initial placement of particles: 0 - one particle, 1 - ...");
-param_t<int>    velocity   (pl, 0,       "velocity", "Predifined velocity in case of minimize=0: 0 - along x-axis, 1 - along y-axis, 2 - diagonally, 3 - circular");
-param_t<int>    rotation   (pl, 0,       "rotation", "Predifined rotation in case of minimize=0: 0 - along x-axis, 1 - along y-axis, 2 - diagonally, 3 - circular");
-param_t<double> CFL        (pl, 0.5,     "CFL", "CFL number");
+param_t<bool>   minimize   (pl, 1,       "minimize", "Turn on/off energy minimization (0/1)");
+param_t<int>    geometry   (pl, 1,       "geometry", "Initial placement of particles: 0 - one particle, 1 - ...");
+param_t<int>    velocity   (pl, -1,       "velocity", "Predifined velocity in case of minimize=0: 0 - along x-axis, 1 - along y-axis, 2 - diagonally, 3 - circular");
+param_t<int>    rotation   (pl, 1,       "rotation", "Predifined rotation in case of minimize=0: 0 - along x-axis, 1 - along y-axis, 2 - diagonally, 3 - circular");
+param_t<double> CFL        (pl, 0.5*2,     "CFL", "CFL number");
 param_t<double> time_limit (pl, DBL_MAX, "time_limit", "Time limit");
 param_t<int>    step_limit (pl, 200,     "step_limit", "Step limit");
 
 param_t<int>    pairwise_potential_type  (pl, 0, "pairwise_potential_type", "Type of pairwise potential: 0 - quadratic, 1 - 1/(e^x-1)");
 param_t<double> pairwise_potential_mag   (pl, 1.0,   "pairwise_potential_mag", "Magnitude of pairwise potential");
-param_t<double> pairwise_potential_width (pl, 10, "pairwise_potential_width", "Width of pairwise potential");
+param_t<double> pairwise_potential_width (pl, 20, "pairwise_potential_width", "Width of pairwise potential");
+
+
+param_t<bool>   rerefine_at_start       (pl, 1,      "rerefine_at_start", "Reinitialze level-set function at the start 0/1)");
+param_t<int>    contact_angle_extension (pl, 0,      "contact_angle_extension", "Method for extending level-set function into wall: 0 - constant angle (pl, 1 -  (pl, 2 - special");
+param_t<int>    volume_corrections      (pl, 2,      "volume_corrections", "Number of volume correction after each move");
+
+param_t<int> num_polymer_geometry (pl, 0, "num_polymer_geometry", "Initial polymer shape: 0 - drop (pl, 1 - film (pl, 2 - combination");
+param_t<int> num_wall_geometry    (pl, 3, "num_wall_geometry", "Wall geometry: 0 - no wall (pl, 1 - wall (pl, 2 - well");
+param_t<int> num_wall_pattern     (pl, 0, "num_wall_pattern", "Wall chemical pattern: 0 - no pattern");
+
+// surface energies
+param_t<int> wall_energy_type (pl, 1, "wall_energy_type", "Method for setting wall surface energy: 0 - explicitly (i.e. convert XN to angles) (pl, 1 - through contact angles (i.e. convert angles to XN)");
+
+param_t<double> XN_air_avg (pl, 1.1, "XN_air_avg", "Polymer-air surface energy strength: average");
+param_t<double> XN_air_del (pl, 1, "XN_air_del", "Polymer-air surface energy strength: difference");
+
+param_t<double> angle_A_min (pl, 90, "angle_A_min", "Minimum contact angle for A-block");
+param_t<double> angle_A_max (pl, 90, "angle_A_max", "Maximum contact angle for A-block");
+param_t<double> angle_B_min (pl, 90, "angle_B_min", "Minimum contact angle for B-block");
+param_t<double> angle_B_max (pl, 90, "angle_B_max", "Maximum contact angle for B-block");
+
+param_t<double> XN_wall_A_min (pl, 5, "XN_wall_A_min", "Minimum Polymer-wall interaction strength for A-block");
+param_t<double> XN_wall_A_max (pl, 5, "XN_wall_A_max", "Maximum Polymer-wall interaction strength for A-block");
+param_t<double> XN_wall_B_min (pl, 8, "XN_wall_B_min", "Minimum Polymer-wall interaction strength for B-block");
+param_t<double> XN_wall_B_max (pl, 8, "XN_wall_B_max", "Maximum Polymer-wall interaction strength for B-block");
+
+// geometry parameters
+param_t<double> drop_r      (pl, 0.611,  "drop_r", "");
+param_t<double> drop_x      (pl, .0079,  "drop_x", "");
+param_t<double> drop_y      (pl, -.013,  "drop_y", "");
+param_t<double> drop_z      (pl, .0,     "drop_z", "");
+param_t<double> drop_r0     (pl, 0.4,    "drop_r0", "");
+param_t<double> drop_k      (pl, 5,      "drop_k", "");
+param_t<double> drop_deform (pl, 0.0,    "drop_deform", "");
+
+param_t<double> film_eps (pl, -0.0, "film_eps", ""); // curvature
+param_t<double> film_nx  (pl, 0,    "film_nx", "");
+param_t<double> film_ny  (pl, 1,    "film_ny", "");
+param_t<double> film_nz  (pl, 0,    "film_nz", "");
+param_t<double> film_x   (pl, .0,   "film_x", "");
+param_t<double> film_y   (pl, .0,   "film_y", "");
+param_t<double> film_z   (pl, .0,   "film_z", "");
+param_t<double> film_perturb   (pl, .1,   "film_perturb", "");
+
+param_t<double> wall_eps (pl, -0.0, "wall_eps", ""); // curvature
+param_t<double> wall_nx  (pl, -0,   "wall_nx", "");
+param_t<double> wall_ny  (pl, -1,   "wall_ny", "");
+param_t<double> wall_nz  (pl, -0,   "wall_nz", "");
+param_t<double> wall_x   (pl, .0,   "wall_x", "");
+param_t<double> wall_y   (pl, -.2,  "wall_y", "");
+param_t<double> wall_r   (pl, 2.5,   "wall_z", "");
+param_t<double> wall_z   (pl, .0,   "wall_z", "");
+
+param_t<double> well_x (pl, 0.00,   "well_x", "Well geometry: center");
+param_t<double> well_z (pl, 0.0053, "well_z", "Well geometry: position");
+param_t<double> well_h (pl, .50,    "well_h", "Well geometry: depth");
+param_t<double> well_w (pl, 0.77,   "well_w", "Well geometry: width");
+param_t<double> well_r (pl, 0.10,   "well_r", "Well geometry: corner smoothing");
+
+void set_wall_surface_energies()
+{
+  switch (wall_energy_type()) {
+    case 0:
+
+      angle_A_min.val = 180.*acos( SIGN(XN_wall_A_max.val) * sqrt(XN_wall_A_max.val / (XN_air_avg.val+XN_air_del.val)) )/PI;
+      angle_A_max.val = 180.*acos( SIGN(XN_wall_A_min.val) * sqrt(XN_wall_A_min.val / (XN_air_avg.val+XN_air_del.val)) )/PI;
+      angle_B_min.val = 180.*acos( SIGN(XN_wall_B_max.val) * sqrt(XN_wall_B_max.val / (XN_air_avg.val-XN_air_del.val)) )/PI;
+      angle_B_max.val = 180.*acos( SIGN(XN_wall_B_min.val) * sqrt(XN_wall_B_min.val / (XN_air_avg.val-XN_air_del.val)) )/PI;
+
+      break;
+    case 1:
+
+      XN_wall_A_max.val = (XN_air_avg.val+XN_air_del.val)*SIGN(cos(angle_A_min.val*PI/180.))*SQR(cos(angle_A_min.val*PI/180.));
+      XN_wall_A_min.val = (XN_air_avg.val+XN_air_del.val)*SIGN(cos(angle_A_max.val*PI/180.))*SQR(cos(angle_A_max.val*PI/180.));
+      XN_wall_B_max.val = (XN_air_avg.val-XN_air_del.val)*SIGN(cos(angle_B_min.val*PI/180.))*SQR(cos(angle_B_min.val*PI/180.));
+      XN_wall_B_min.val = (XN_air_avg.val-XN_air_del.val)*SIGN(cos(angle_B_max.val*PI/180.))*SQR(cos(angle_B_max.val*PI/180.));
+
+      break;
+    default:
+      throw std::invalid_argument("Invalid method for setting wall surface energies");
+  }
+}
+
+class gamma_Aa_cf_t : public CF_DIM
+{
+public:
+  double operator()(DIM(double x, double y, double z)) const
+  {
+    return SIGN(XN_air_avg()+XN_air_del())*sqrt(fabs(XN_air_avg()+XN_air_del()));
+  }
+} gamma_Aa_cf;
+
+class gamma_Ba_cf_t : public CF_DIM
+{
+public:
+  double operator()(DIM(double x, double y, double z)) const
+  {
+    return SIGN(XN_air_avg()-XN_air_del())*sqrt(fabs(XN_air_avg()-XN_air_del()));
+  }
+} gamma_Ba_cf;
+
+class gamma_Aw_cf_t : public CF_DIM
+{
+public:
+  double operator()(DIM(double x, double y, double z)) const
+  {
+    switch (num_wall_pattern())
+    {
+      case 0: return SIGN(XN_wall_A_min())*sqrt(fabs(XN_wall_A_min()));
+      default: throw std::invalid_argument("Error: Invalid wall pattern number\n");
+    }
+  }
+} gamma_Aw_cf;
+
+class gamma_Bw_cf_t : public CF_DIM
+{
+public:
+  double operator()(DIM(double x, double y, double z)) const
+  {
+    switch (num_wall_pattern())
+    {
+      case 0: return SIGN(XN_wall_B_min())*sqrt(fabs(XN_wall_B_min()));
+      default: throw std::invalid_argument("Error: Invalid wall pattern number\n");
+    }
+  }
+} gamma_Bw_cf;
+
+class gamma_aw_cf_t : public CF_DIM
+{
+public:
+  double operator()(DIM(double x, double y, double z)) const
+  {
+    return 0;
+  }
+} gamma_aw_cf;
+
+
+/* geometry of interfaces */
+class phi_wall_cf_t : public CF_DIM
+{
+public:
+  double operator()(DIM(double x, double y, double z)) const
+  {
+    switch (num_wall_geometry())
+    {
+      case 0: return -1;
+      case 1:
+        {
+          double norm = ABSD(wall_nx(), wall_ny(), wall_nz());
+          return - SUMD( (x-wall_x())*((x-wall_x())*wall_eps() - 2.*wall_nx() / norm),
+                         (y-wall_y())*((y-wall_y())*wall_eps() - 2.*wall_ny() / norm),
+                         (z-wall_z())*((z-wall_z())*wall_eps() - 2.*wall_nz() / norm) )
+              / (  ABSD((x-wall_x())*wall_eps() - wall_nx() / norm,
+                        (y-wall_y())*wall_eps() - wall_ny() / norm,
+                        (z-wall_z())*wall_eps() - wall_nz() / norm)  + 1. );
+        }
+      case 2:
+        {
+          double phi_top   = well_z() - y;
+          double phi_bot   = well_z()-well_h() - y;
+          double phi_walls = MAX(x-well_x()-.5*well_w(), -(x-well_x())-.5*well_w());
+
+          return smooth_max(phi_bot, smooth_min(phi_top, phi_walls, well_r()), well_r());
+        }
+      case 3:
+      {
+        return ABSD(x-wall_x(), y-wall_y(), z-wall_z()) - wall_r();
+      }
+      default:
+        throw;
+    }
+  }
+} phi_wall_cf;
+
+class phi_infc_cf_t : public CF_DIM
+{
+public:
+  double operator()(DIM(double x, double y, double z)) const
+  {
+    switch (num_polymer_geometry())
+    {
+      case 0: return -1;
+      case 1: return sqrt( SQR(x-drop_x()) + SQR(y-drop_y()) P8(+ SQR(z-drop_z())) )
+            - drop_r()
+            *(1.+drop_deform()*cos(drop_k()*atan2(x-drop_x(),y-drop_y()))
+      #ifdef P4_TO_P8
+              *(1.-cos(2.*acos((z-drop_z())/sqrt( SQR(x-drop_x()) + SQR(y-drop_y()) + SQR(z-drop_z()) + 1.e-12))))
+      #endif
+              );
+      case 2:
+      {
+        double norm = ABSD(film_nx(), film_ny(), film_nz());
+        return - SUMD( (x-film_x())*((x-film_x())*film_eps() - 2.*film_nx() / norm),
+                       (y-film_y())*((y-film_y())*film_eps() - 2.*film_ny() / norm),
+                       (z-film_z())*((z-film_z())*film_eps() - 2.*film_nz() / norm) )
+            / (  ABSD((x-film_x())*film_eps() - film_nx() / norm,
+                      (y-film_y())*film_eps() - film_ny() / norm,
+                      (z-film_z())*film_eps() - film_nz() / norm)  + 1. )
+             + film_perturb()*cos(PI*x*(lmax()-2));
+      }
+      default: throw std::invalid_argument("Error: Invalid geometry number\n");
+    }
+  }
+} phi_infc_cf;
+
 
 //-------------------------------------
 // output parameters
@@ -116,9 +321,19 @@ struct particle_t
   double xyz [P4EST_DIM];
   double axis[P4EST_DIM];
   double rot;
-  CF_DIM *phi;
-  CF_DIM *gA;
-  CF_DIM *gB;
+
+  CF_DIM *phi_cf;
+  CF_DIM *phix_cf;
+  CF_DIM *phiy_cf;
+  CF_DIM *kappa_cf;
+
+  CF_DIM *gA_cf;
+  CF_DIM *gAx_cf;
+  CF_DIM *gAy_cf;
+
+  CF_DIM *gB_cf;
+  CF_DIM *gBx_cf;
+  CF_DIM *gBy_cf;
 
   particle_t()
   {
@@ -128,54 +343,74 @@ struct particle_t
       axis[dim] = 0;
     }
 
-    rot = 0;
-    phi = NULL;
-    gA  = NULL;
-    gB  = NULL;
+    rot      = 0;
+    phi_cf   = NULL;
+    phix_cf  = NULL;
+    phiy_cf  = NULL;
+    kappa_cf = NULL;
+    gA_cf    = NULL;
+    gAx_cf   = NULL;
+    gAy_cf   = NULL;
+    gB_cf    = NULL;
+    gBx_cf   = NULL;
+    gBy_cf   = NULL;
   }
 
-//  ~particle_t()
-//  {
-//    if (phi != NULL) { delete phi; phi = NULL; }
-//    if (gA  != NULL) { delete gA;  gA  = NULL; }
-//    if (gB  != NULL) { delete gB;  gB  = NULL; }
-//  }
-
-  double phi_value(DIM(double x, double y, double z))
+  inline double sample_func(CF_DIM *cf, DIM(double x, double y, double z))
   {
     double X = (x-xyz[0])*cos(rot)-(y-xyz[1])*sin(rot);
     double Y = (x-xyz[0])*sin(rot)+(y-xyz[1])*cos(rot);
-
-    return (*phi)(DIM(X,Y,Z));
+    return (*cf)(DIM(X,Y,Z));
   }
 
-  double gamma_A_value(DIM(double x, double y, double z))
+  inline double sample_func_x(CF_DIM *cfx, CF_DIM *cfy, DIM(double x, double y, double z))
   {
     double X = (x-xyz[0])*cos(rot)-(y-xyz[1])*sin(rot);
     double Y = (x-xyz[0])*sin(rot)+(y-xyz[1])*cos(rot);
-
-    return (*gA)(DIM(X,Y,Z));
+    return (*cfx)(DIM(X,Y,Z))*cos(rot) + (*cfy)(DIM(X,Y,Z))*sin(rot);
   }
 
-  double gamma_B_value(DIM(double x, double y, double z))
+  inline double sample_func_y(CF_DIM *cfx, CF_DIM *cfy, DIM(double x, double y, double z))
   {
     double X = (x-xyz[0])*cos(rot)-(y-xyz[1])*sin(rot);
     double Y = (x-xyz[0])*sin(rot)+(y-xyz[1])*cos(rot);
-
-    return (*gB)(DIM(X,Y,Z));
+    return -(*cfx)(DIM(X,Y,Z))*sin(rot) + (*cfy)(DIM(X,Y,Z))*cos(rot);
   }
+
+  inline double phi  (DIM(double x, double y, double z)) { return sample_func(phi_cf,   DIM(x,y,z)); }
+  inline double kappa(DIM(double x, double y, double z)) { return sample_func(kappa_cf, DIM(x,y,z)); }
+  inline double gA   (DIM(double x, double y, double z)) { return sample_func(gA_cf,    DIM(x,y,z)); }
+  inline double gB   (DIM(double x, double y, double z)) { return sample_func(gB_cf,    DIM(x,y,z)); }
+
+  inline double gAx  (DIM(double x, double y, double z)) { return sample_func_x(gAx_cf,  gAy_cf,  DIM(x,y,z)); }
+  inline double gAy  (DIM(double x, double y, double z)) { return sample_func_y(gAx_cf,  gAy_cf,  DIM(x,y,z)); }
+  inline double gBx  (DIM(double x, double y, double z)) { return sample_func_x(gBx_cf,  gBy_cf,  DIM(x,y,z)); }
+  inline double gBy  (DIM(double x, double y, double z)) { return sample_func_y(gBx_cf,  gBy_cf,  DIM(x,y,z)); }
+  inline double phix (DIM(double x, double y, double z)) { return sample_func_x(phix_cf, phiy_cf, DIM(x,y,z)); }
+  inline double phiy (DIM(double x, double y, double z)) { return sample_func_y(phix_cf, phiy_cf, DIM(x,y,z)); }
 
 };
 
+class phi_true_cf_t : public CF_DIM
+{
+  particle_t *ptr;
+public:
+  phi_true_cf_t(particle_t *ptr) : ptr(ptr) {}
+  double operator()(DIM(double x, double y, double z)) const
+  {
+    return ptr->phi(DIM(x,y,z));
+  }
+};
+
 // this class constructs the 'analytical field' (level-set function for every (x,y) coordinate)
-class particles_level_set_cf_t : public CF_DIM
+class phi_part_cf_t : public CF_DIM
 {
 private:
   std::vector<particle_t> *particles;
 
 public:
 
-  particles_level_set_cf_t(std::vector<particle_t> &particles)
+  phi_part_cf_t(std::vector<particle_t> &particles)
     : particles(&particles) {}
 
   double operator()(DIM(double x, double y, double z)) const
@@ -199,9 +434,9 @@ public:
           for (int i = i_min; i <= i_max; ++i)
           {
             phi_particles[n] = MAX(phi_particles[n],
-                                   particles->at(n).phi_value(DIM(x+double(i)*(xmax()-xmin()),
-                                                                  y+double(j)*(ymax()-ymin()),
-                                                                  z+double(k)*(zmax()-zmin()))));
+                                   particles->at(n).phi(DIM(x+double(i)*(xmax()-xmin()),
+                                                            y+double(j)*(ymax()-ymin()),
+                                                            z+double(k)*(zmax()-zmin()))));
           }
     }
 
@@ -251,9 +486,9 @@ public:
           for (int i = i_min; i <= i_max; ++i)
           {
             phi_particles[n] = MAX(phi_particles[n],
-                                   particles->at(n).phi_value(DIM(x+double(i)*(xmax()-xmin()),
-                                                                  y+double(j)*(ymax()-ymin()),
-                                                                  z+double(k)*(zmax()-zmin()))));
+                                   particles->at(n).phi(DIM(x+double(i)*(xmax()-xmin()),
+                                                            y+double(j)*(ymax()-ymin()),
+                                                            z+double(k)*(zmax()-zmin()))));
           }
     }
 
@@ -337,9 +572,9 @@ public:
           for (int i = i_min; i <= i_max; ++i)
           {
             phi_particles[n] = MAX(phi_particles[n],
-                                   particles->at(n).phi_value(DIM(x+double(i)*(xmax()-xmin()),
-                                                                  y+double(j)*(ymax()-ymin()),
-                                                                  z+double(k)*(zmax()-zmin()))));
+                                   particles->at(n).phi(DIM(x+double(i)*(xmax()-xmin()),
+                                                            y+double(j)*(ymax()-ymin()),
+                                                            z+double(k)*(zmax()-zmin()))));
           }
     }
 
@@ -416,14 +651,37 @@ class radial_gamma_cf_t : public CF_DIM
   double gamma_max;
   double gamma_min;
   double k;
+  double theta;
+  cf_value_type_t what;
 public:
-  radial_gamma_cf_t(double gamma_min, double gamma_max, double k)
-    : gamma_min(gamma_min), gamma_max(gamma_max), k(k) {}
+  radial_gamma_cf_t(cf_value_type_t what, double gamma_min, double gamma_max, double k, double theta = 0)
+    : what(what), gamma_min(gamma_min), gamma_max(gamma_max), k(k), theta(theta) {}
+
   double operator()(DIM(double x, double y, double z)) const
   {
     double t = atan2(y,x);
-    return gamma_min + (gamma_max-gamma_min)*0.5*(1.+cos(k*t));
+    double r = sqrt(x*x + y*y);
+
+    switch (what)
+    {
+      case VAL: return gamma_min + (gamma_max-gamma_min)*0.5*(1.+cos(k*(t-theta)));
+      case DDX: return -(gamma_max-gamma_min)*0.5*k*sin(k*(t-theta))*(-y/r/r);
+      case DDY: return -(gamma_max-gamma_min)*0.5*k*sin(k*(t-theta))*( x/r/r);
+      default: throw;
+    }
   }
+};
+
+struct radial_gamma_t
+{
+  radial_gamma_cf_t val;
+  radial_gamma_cf_t ddx;
+  radial_gamma_cf_t ddy;
+
+  radial_gamma_t(double gamma_min, double gamma_max, double k, double theta = 0)
+    : val(VAL, gamma_min, gamma_max, k, theta),
+      ddx(DDX, gamma_min, gamma_max, k, theta),
+      ddy(DDY, gamma_min, gamma_max, k, theta) {}
 };
 
 void initalize_particles(std::vector<particle_t> &particles)
@@ -434,289 +692,53 @@ void initalize_particles(std::vector<particle_t> &particles)
   {
     case 0:
     {
+      static radial_shaped_domain_t domain(0.6, DIM(0,0,0), -1, 3, 0.3, 0.0);
 
-//            static radial_phi_t sphere(VAL, 0.6, DIM(0,0,0), -1);
-      static flower_phi_t sphere(0.6, DIM(0,0,0), 0.0, -1);
+      static radial_gamma_t gA(0, gamma_a(), 1);
+      static radial_gamma_t gB(0, gamma_b(), 1);
 
-      static radial_gamma_cf_t gA(gamma_a(), 0, 0);
-      static radial_gamma_cf_t gB(0, gamma_b(), 0);
+      p.phi_cf   = &domain.phi;
+      p.phix_cf  = &domain.phi_x;
+      p.phiy_cf  = &domain.phi_y;
+      p.kappa_cf = &domain.phi_c;
 
-      p.xyz[0] = -1.50;
-      p.xyz[1] = -0.45;
-      p.phi = &sphere;
-      p.gA  = &gA;
-      p.gB  = &gB;
+      p.gA_cf  = &gA.val;
+      p.gAx_cf = &gA.ddx;
+      p.gAy_cf = &gA.ddy;
 
-      particles.push_back(p);
+      p.gB_cf  = &gB.val;
+      p.gBx_cf = &gB.ddx;
+      p.gBy_cf = &gB.ddy;
+
+      p.xyz[0] = -1.50; p.xyz[1] = -0.45; particles.push_back(p);
     }
       break;
 
     case 1:
     {
+      static radial_shaped_domain_t domain(0.6, DIM(0,0,0), -1, 2, 0.1, 0.0);
 
-      static flower_phi_t  sphere(0.5, DIM(0,0,0), 0.0, -1);
-      static flower_phi_t  star(0.5, DIM(0,0,0), 0.1, -1);
-      static capsule_phi_t rod(VAL, 0.25, 0,0, 1, -1);
+      static radial_gamma_t gA(0, gamma_a(), 1);
+      static radial_gamma_t gB(-gamma_b(), gamma_b(), 1);
 
-      static radial_gamma_cf_t gA(gamma_a(), 0, 1);
-      static radial_gamma_cf_t gB(0, gamma_b(), 1);
+      p.phi_cf   = &domain.phi;
+      p.phix_cf  = &domain.phi_x;
+      p.phiy_cf  = &domain.phi_y;
+      p.kappa_cf = &domain.phi_c;
 
-      p.xyz[0] = -1.50; p.xyz[1] = -0.45;
+      p.gA_cf  = &gA.val;
+      p.gAx_cf = &gA.ddx;
+      p.gAy_cf = &gA.ddy;
 
-      p.gA  = &gA;
-      p.gB  = &gB;
+      p.gB_cf  = &gB.val;
+      p.gBx_cf = &gB.ddx;
+      p.gBy_cf = &gB.ddy;
 
-
-      p.phi = &sphere; p.xyz[0] = -1.30; p.xyz[1] = -1.50; particles.push_back(p);
-      p.phi = &star;   p.xyz[0] = +1.50; p.xyz[1] = -0.20; particles.push_back(p);
-      p.phi = &rod;    p.xyz[0] = -0.90; p.xyz[1] = +0.75; particles.push_back(p);
-//      p.xyz[0] = +2.20; p.xyz[1] = -2.90; particles.push_back(p);
+      p.xyz[0] = -1.30; p.xyz[1] = -1.50; particles.push_back(p);
+      p.xyz[0] = +1.50; p.xyz[1] = -0.20; particles.push_back(p);
+      p.xyz[0] = -0.90; p.xyz[1] = +0.75; particles.push_back(p);
     }
       break;
-
-//    case 2:
-
-//      radius.push_back(+0.60); xc.push_back(-2.50); yc.push_back(-1.45); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.60); xc.push_back(+2.50); yc.push_back(-4.30); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.60); xc.push_back(-1.50); yc.push_back(+1.35); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.60); xc.push_back(-3.75); yc.push_back(-2.75); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.60); xc.push_back(+2.50); yc.push_back(+2.35); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.60); xc.push_back(-4.10); yc.push_back(+1.50); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.60); xc.push_back(+4.75); yc.push_back(-0.75); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.60); xc.push_back(+0.50); yc.push_back(+0.35); CODE3D( zc.push_back(+0.00) );
-
-//      radius.push_back(+0.60); xc.push_back(-3.50); yc.push_back(+4.45); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.60); xc.push_back(+1.50); yc.push_back(+4.10); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.60); xc.push_back(+4.50); yc.push_back(+5.35); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.60); xc.push_back(+2.75); yc.push_back(-2.75); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.60); xc.push_back(+0.00); yc.push_back(-4.15); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.60); xc.push_back(-4.80); yc.push_back(-4.00); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.60); xc.push_back(-0.75); yc.push_back(-2.75); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.60); xc.push_back(-1.50); yc.push_back(-4.85); CODE3D( zc.push_back(+0.00) );
-
-//      radius.push_back(+0.60); xc.push_back(+4.80); yc.push_back(-3.60); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.60); xc.push_back(+5.00); yc.push_back(-5.30); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.60); xc.push_back(+4.90); yc.push_back(+3.35); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.60); xc.push_back(+1.75); yc.push_back(-0.75); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.60); xc.push_back(-0.50); yc.push_back(+5.35); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.60); xc.push_back(-5.10); yc.push_back(-0.20); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.60); xc.push_back(-5.00); yc.push_back(+5.00); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.60); xc.push_back(-0.20); yc.push_back(+3.35); CODE3D( zc.push_back(+0.00) );
-
-//      radius.push_back(+0.60); xc.push_back(+5.30); yc.push_back(+0.90); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.60); xc.push_back(-2.50); yc.push_back(+3.00); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.60); xc.push_back(+2.50); yc.push_back(+5.20); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.60); xc.push_back(-5.00); yc.push_back(-1.80); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.60); xc.push_back(-3.50); yc.push_back(-5.30); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.60); xc.push_back(+1.20); yc.push_back(-5.40); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.60); xc.push_back(-5.30); yc.push_back(+2.70); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.60); xc.push_back(-0.20); yc.push_back(-1.00); CODE3D( zc.push_back(+0.00) );
-
-//      np = radius.size();
-
-//    break;
-
-//  case 3:
-
-//      radius.push_back(+0.40); xc.push_back(-2.50); yc.push_back(-1.45); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.40); xc.push_back(+2.50); yc.push_back(-4.30); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.40); xc.push_back(-1.50); yc.push_back(+1.35); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.40); xc.push_back(-3.75); yc.push_back(-2.75); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.40); xc.push_back(+2.50); yc.push_back(+2.35); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.40); xc.push_back(-4.10); yc.push_back(+1.50); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.40); xc.push_back(+4.75); yc.push_back(-0.75); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.40); xc.push_back(+0.50); yc.push_back(+0.35); CODE3D( zc.push_back(+0.00) );
-
-//      radius.push_back(+0.40); xc.push_back(-3.50); yc.push_back(+4.45); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.40); xc.push_back(+1.50); yc.push_back(+4.10); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.40); xc.push_back(+4.50); yc.push_back(+5.35); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.40); xc.push_back(+2.75); yc.push_back(-2.75); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.40); xc.push_back(+0.00); yc.push_back(-4.15); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.40); xc.push_back(-4.80); yc.push_back(-4.00); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.40); xc.push_back(-0.75); yc.push_back(-2.75); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.40); xc.push_back(-1.50); yc.push_back(-4.85); CODE3D( zc.push_back(+0.00) );
-
-//      radius.push_back(+0.40); xc.push_back(+4.80); yc.push_back(-3.60); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.40); xc.push_back(+5.00); yc.push_back(-5.30); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.40); xc.push_back(+4.90); yc.push_back(+3.35); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.40); xc.push_back(+1.75); yc.push_back(-0.75); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.40); xc.push_back(-0.50); yc.push_back(+5.35); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.40); xc.push_back(-5.10); yc.push_back(-0.20); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.40); xc.push_back(-5.00); yc.push_back(+5.00); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.40); xc.push_back(-0.20); yc.push_back(+3.35); CODE3D( zc.push_back(+0.00) );
-
-//      radius.push_back(+0.40); xc.push_back(+5.30); yc.push_back(+0.90); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.40); xc.push_back(-2.50); yc.push_back(+3.00); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.40); xc.push_back(+2.50); yc.push_back(+5.20); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.40); xc.push_back(-5.00); yc.push_back(-1.80); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.40); xc.push_back(-3.50); yc.push_back(-5.30); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.40); xc.push_back(+1.20); yc.push_back(-5.40); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.40); xc.push_back(-5.30); yc.push_back(+2.70); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.40); xc.push_back(-0.20); yc.push_back(-1.00); CODE3D( zc.push_back(+0.00) );
-
-//      np = radius.size();
-
-//    break;
-
-//  case 4:
-
-//      radius.push_back(+0.20); xc.push_back(-2.50); yc.push_back(-1.45); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.20); xc.push_back(+2.50); yc.push_back(-4.30); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.20); xc.push_back(-1.50); yc.push_back(+1.35); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.20); xc.push_back(-3.75); yc.push_back(-2.75); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.20); xc.push_back(+2.50); yc.push_back(+2.35); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.20); xc.push_back(-4.10); yc.push_back(+1.50); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.20); xc.push_back(+4.75); yc.push_back(-0.75); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.20); xc.push_back(+0.50); yc.push_back(+0.35); CODE3D( zc.push_back(+0.00) );
-
-//      radius.push_back(+0.20); xc.push_back(-3.50); yc.push_back(+4.45); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.20); xc.push_back(+1.50); yc.push_back(+4.10); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.20); xc.push_back(+4.50); yc.push_back(+5.35); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.20); xc.push_back(+2.75); yc.push_back(-2.75); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.20); xc.push_back(+0.00); yc.push_back(-4.15); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.20); xc.push_back(-4.80); yc.push_back(-4.00); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.20); xc.push_back(-0.75); yc.push_back(-2.75); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.20); xc.push_back(-1.50); yc.push_back(-4.85); CODE3D( zc.push_back(+0.00) );
-
-//      radius.push_back(+0.20); xc.push_back(+4.80); yc.push_back(-3.60); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.20); xc.push_back(+5.00); yc.push_back(-5.30); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.20); xc.push_back(+4.90); yc.push_back(+3.35); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.20); xc.push_back(+1.75); yc.push_back(-0.75); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.20); xc.push_back(-0.50); yc.push_back(+5.35); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.20); xc.push_back(-5.10); yc.push_back(-0.20); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.20); xc.push_back(-5.00); yc.push_back(+5.00); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.20); xc.push_back(-0.20); yc.push_back(+3.35); CODE3D( zc.push_back(+0.00) );
-
-//      radius.push_back(+0.20); xc.push_back(+5.30); yc.push_back(+0.90); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.20); xc.push_back(-2.50); yc.push_back(+3.00); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.20); xc.push_back(+2.50); yc.push_back(+5.20); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.20); xc.push_back(-5.00); yc.push_back(-1.80); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.20); xc.push_back(-3.50); yc.push_back(-5.30); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.20); xc.push_back(+1.20); yc.push_back(-5.40); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.20); xc.push_back(-5.30); yc.push_back(+2.70); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.20); xc.push_back(-0.20); yc.push_back(-1.00); CODE3D( zc.push_back(+0.00) );
-
-//      np = radius.size();
-
-//    break;
-
-//  case 5:
-
-//      radius.push_back(+0.60); xc.push_back(-2.50); yc.push_back(-1.45); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.60); xc.push_back(+2.50); yc.push_back(-4.30); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.60); xc.push_back(-1.50); yc.push_back(+1.35); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.60); xc.push_back(-3.75); yc.push_back(+2.75); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.60); xc.push_back(+2.50); yc.push_back(+2.35); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.60); xc.push_back(-5.10); yc.push_back(-0.50); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.60); xc.push_back(+4.75); yc.push_back(-0.75); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.60); xc.push_back(+0.50); yc.push_back(+0.35); CODE3D( zc.push_back(+0.00) );
-
-//      radius.push_back(+0.60); xc.push_back(-3.50); yc.push_back(+4.45); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.60); xc.push_back(+1.50); yc.push_back(+4.30); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.60); xc.push_back(+4.50); yc.push_back(+5.35); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.60); xc.push_back(+2.75); yc.push_back(-2.75); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.60); xc.push_back(+0.00); yc.push_back(-4.15); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.60); xc.push_back(-4.80); yc.push_back(-4.00); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.60); xc.push_back(-0.75); yc.push_back(-2.75); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.60); xc.push_back(-1.50); yc.push_back(-4.85); CODE3D( zc.push_back(+0.00) );
-
-//      np = radius.size();
-
-//    break;
-
-//  case 6:
-
-//      radius.push_back(+0.40); xc.push_back(-2.50); yc.push_back(-1.45); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.40); xc.push_back(+2.50); yc.push_back(-4.30); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.40); xc.push_back(-1.50); yc.push_back(+1.35); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.40); xc.push_back(-3.75); yc.push_back(+2.75); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.40); xc.push_back(+2.50); yc.push_back(+2.35); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.40); xc.push_back(-5.10); yc.push_back(-0.50); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.40); xc.push_back(+4.75); yc.push_back(-0.75); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.40); xc.push_back(+0.50); yc.push_back(+0.35); CODE3D( zc.push_back(+0.00) );
-
-//      radius.push_back(+0.40); xc.push_back(-3.50); yc.push_back(+4.45); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.40); xc.push_back(+1.50); yc.push_back(+4.30); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.40); xc.push_back(+4.50); yc.push_back(+5.35); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.40); xc.push_back(+2.75); yc.push_back(-2.75); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.40); xc.push_back(+0.00); yc.push_back(-4.15); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.40); xc.push_back(-4.80); yc.push_back(-4.00); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.40); xc.push_back(-0.75); yc.push_back(-2.75); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.40); xc.push_back(-1.50); yc.push_back(-4.85); CODE3D( zc.push_back(+0.00) );
-
-//      np = radius.size();
-
-//    break;
-
-
-//  case 7:
-
-//      radius.push_back(+0.20); xc.push_back(-2.50); yc.push_back(-1.45); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.20); xc.push_back(+2.50); yc.push_back(-4.30); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.20); xc.push_back(-1.50); yc.push_back(+1.35); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.20); xc.push_back(-3.75); yc.push_back(+2.75); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.20); xc.push_back(+2.50); yc.push_back(+2.35); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.20); xc.push_back(-5.10); yc.push_back(-0.50); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.20); xc.push_back(+4.75); yc.push_back(-0.75); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.20); xc.push_back(+0.50); yc.push_back(+0.35); CODE3D( zc.push_back(+0.00) );
-
-//      radius.push_back(+0.20); xc.push_back(-3.50); yc.push_back(+4.45); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.20); xc.push_back(+1.50); yc.push_back(+4.30); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.20); xc.push_back(+4.50); yc.push_back(+5.35); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.20); xc.push_back(+2.75); yc.push_back(-2.75); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.20); xc.push_back(+0.00); yc.push_back(-4.15); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.20); xc.push_back(-4.80); yc.push_back(-4.00); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.20); xc.push_back(-0.75); yc.push_back(-2.75); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.20); xc.push_back(-1.50); yc.push_back(-4.85); CODE3D( zc.push_back(+0.00) );
-
-//      np = radius.size();
-
-//    break;
-
-//  case 8:
-
-//      radius.push_back(+0.60); xc.push_back(-2.50); yc.push_back(-1.45); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.60); xc.push_back(+2.50); yc.push_back(-4.30); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.60); xc.push_back(-1.50); yc.push_back(+1.35); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.60); xc.push_back(-3.75); yc.push_back(+4.75); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.60); xc.push_back(+2.50); yc.push_back(+2.35); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.60); xc.push_back(-5.10); yc.push_back(-4.50); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.60); xc.push_back(+4.75); yc.push_back(-0.75); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.60); xc.push_back(+0.50); yc.push_back(+0.35); CODE3D( zc.push_back(+0.00) );
-
-//      np = radius.size();
-
-//    break;
-
-//  case 9:
-
-//      radius.push_back(+0.40); xc.push_back(-2.50); yc.push_back(-1.45); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.40); xc.push_back(+2.50); yc.push_back(-4.30); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.40); xc.push_back(-1.50); yc.push_back(+1.35); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.40); xc.push_back(-3.75); yc.push_back(+4.75); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.40); xc.push_back(+2.50); yc.push_back(+2.35); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.40); xc.push_back(-5.10); yc.push_back(-4.50); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.40); xc.push_back(+4.75); yc.push_back(-0.75); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.40); xc.push_back(+0.50); yc.push_back(+0.35); CODE3D( zc.push_back(+0.00) );
-
-//      np = radius.size();
-
-//    break;
-
-//  case 10:
-
-//      radius.push_back(+0.20); xc.push_back(-2.50); yc.push_back(-1.45); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.20); xc.push_back(+2.50); yc.push_back(-4.30); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.20); xc.push_back(-1.50); yc.push_back(+1.35); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.20); xc.push_back(-3.75); yc.push_back(+4.75); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.20); xc.push_back(+2.50); yc.push_back(+2.35); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.20); xc.push_back(-5.10); yc.push_back(-4.50); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.20); xc.push_back(+4.75); yc.push_back(-0.75); CODE3D( zc.push_back(+0.00) );
-//      radius.push_back(+0.20); xc.push_back(+0.50); yc.push_back(+0.35); CODE3D( zc.push_back(+0.00) );
-
-//      np = radius.size();
-
-//    break;
 
     default: throw;
   }
@@ -784,7 +806,7 @@ public:
     : particles(&particles), number(&number) {}
   double operator()(DIM(double x, double y, double z)) const
   {
-    return particles->at(int((*number)(DIM(x, y, z)))).gamma_A_value(DIM(x, y, z));
+    return particles->at(int((*number)(DIM(x, y, z)))).gA(DIM(x, y, z));
   }
 };
 
@@ -797,7 +819,24 @@ public:
     : particles(&particles), number(&number) {}
   double operator()(DIM(double x, double y, double z)) const
   {
-    return particles->at(int((*number)(DIM(x, y, z)))).gamma_B_value(DIM(x, y, z));
+    return particles->at(int((*number)(DIM(x, y, z)))).gB(DIM(x, y, z));
+  }
+};
+
+class phi_eff_cf_t : public CF_DIM
+{
+  CF_DIM *phi_particles;
+  CF_DIM *phi_wall;
+  CF_DIM *phi_free;
+public:
+  phi_eff_cf_t(CF_DIM *phi_particles, CF_DIM *phi_wall, CF_DIM *phi_free)
+    : phi_particles(phi_particles), phi_wall(phi_wall), phi_free(phi_free) {}
+
+  double operator()(DIM(double x, double y, double z)) const
+  {
+    return MAX((*phi_particles)(DIM(x,y,z)),
+               (*phi_wall)(DIM(x,y,z)),
+               (*phi_free)(DIM(x,y,z)));
   }
 };
 
@@ -907,10 +946,12 @@ int main(int argc, char** argv)
   while (t < time_limit() && step < step_limit())
   {
     // create particle_level_set
-    particles_level_set_cf_t particles_level_set_cf(particles);
+    phi_part_cf_t phi_part_cf(particles);
 
     // create get_particle_num (creates a field, that shows number of closest particle)
     particles_number_cf_t particles_number_cf(particles);
+
+    phi_eff_cf_t phi_eff_cf (&phi_part_cf, &phi_wall_cf, &phi_infc_cf);
 
     // ---------------------------------------------------------
     // create computational grid
@@ -919,7 +960,7 @@ int main(int argc, char** argv)
     p4est_connectivity_t *connectivity = my_p4est_brick_new(nb_trees, xyz_min, xyz_max, &brick, periodic);
     p4est_t *p4est = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
 
-    splitting_criteria_cf_t data(lmin(), lmax(), &particles_level_set_cf, lip(), band());
+    splitting_criteria_cf_t data(lmin(), lmax(), &phi_eff_cf, lip(), band());
     data.set_refine_only_inside(true);
     p4est->user_pointer = (void*)(&data);
 
@@ -934,23 +975,41 @@ int main(int argc, char** argv)
     my_p4est_node_neighbors_t *ngbd = new my_p4est_node_neighbors_t(hierarchy,nodes);
     ngbd->init_neighbors();
 
+    // find the diagonal length of the smallest quadrant (needed to calculate the timestep delta_t)
+    double dxyz[P4EST_DIM]; // dimensions of the smallest quadrants
+    double dxyz_min;        // minimum side length of the smallest quadrants
+    double diag_min;        // diagonal length of the smallest quadrants
+    get_dxyz_min(p4est, dxyz, dxyz_min, diag_min);
+
     // ---------------------------------------------------------
     // allocate fields
     // ---------------------------------------------------------
     Vec     mu_minus;
     double *mu_minus_ptr;
 
+    Vec     mu_minus_grad[P4EST_DIM];
+    double *mu_minus_grad_ptr[P4EST_DIM];
+
     Vec     mu_plus;
     double *mu_plus_ptr;
 
-    Vec     particles_level_set;
-    double *particles_level_set_ptr;
+    Vec     phi_part;
+    double *phi_part_ptr;
+
+    Vec     phi_wall;
+    double *phi_wall_ptr;
+
+    Vec     phi_free;
+    double *phi_free_ptr;
 
     Vec     particles_number;
     double *particles_number_ptr;
 
     Vec     normal    [P4EST_DIM];
     double *normal_ptr[P4EST_DIM];
+
+    Vec     normal_wall    [P4EST_DIM];
+    double *normal_wall_ptr[P4EST_DIM];
 
     Vec     kappa;
     double *kappa_ptr;
@@ -987,7 +1046,9 @@ int main(int argc, char** argv)
 
     ierr = VecCreateGhostNodes(p4est, nodes, &mu_minus); CHKERRXX(ierr);
     ierr = VecDuplicate(mu_minus, &mu_plus);             CHKERRXX(ierr);
-    ierr = VecDuplicate(mu_minus, &particles_level_set); CHKERRXX(ierr);
+    ierr = VecDuplicate(mu_minus, &phi_part);            CHKERRXX(ierr);
+    ierr = VecDuplicate(mu_minus, &phi_wall);            CHKERRXX(ierr);
+    ierr = VecDuplicate(mu_minus, &phi_free);            CHKERRXX(ierr);
     ierr = VecDuplicate(mu_minus, &particles_number);    CHKERRXX(ierr);
     ierr = VecDuplicate(mu_minus, &kappa);               CHKERRXX(ierr);
     ierr = VecDuplicate(mu_minus, &gamma_eff);           CHKERRXX(ierr);
@@ -1000,10 +1061,12 @@ int main(int argc, char** argv)
 
     foreach_dimension(dim)
     {
-      ierr = VecCreateGhostNodes(p4est, nodes, &normal[dim]); CHKERRXX(ierr);
-      ierr = VecDuplicate(normal[dim], &gamma_eff_grad[dim]); CHKERRXX(ierr);
-      ierr = VecDuplicate(normal[dim], &gamma_dif_grad[dim]); CHKERRXX(ierr);
-      ierr = VecDuplicate(normal[dim], &gamma_avg_grad[dim]); CHKERRXX(ierr);
+      ierr = VecCreateGhostNodes(p4est, nodes, &mu_minus_grad[dim]); CHKERRXX(ierr);
+      ierr = VecDuplicate(mu_minus_grad[dim], &normal[dim]);         CHKERRXX(ierr);
+      ierr = VecDuplicate(mu_minus_grad[dim], &normal_wall[dim]);    CHKERRXX(ierr);
+      ierr = VecDuplicate(mu_minus_grad[dim], &gamma_eff_grad[dim]); CHKERRXX(ierr);
+      ierr = VecDuplicate(mu_minus_grad[dim], &gamma_dif_grad[dim]); CHKERRXX(ierr);
+      ierr = VecDuplicate(mu_minus_grad[dim], &gamma_avg_grad[dim]); CHKERRXX(ierr);
     }
 
     // ---------------------------------------------------------
@@ -1046,11 +1109,13 @@ int main(int argc, char** argv)
     // ---------------------------------------------------------
     // sample particles geometry
     // ---------------------------------------------------------
-    sample_cf_on_nodes(p4est, nodes, particles_level_set_cf, particles_level_set);
+    sample_cf_on_nodes(p4est, nodes, phi_part_cf, phi_part);
     sample_cf_on_nodes(p4est, nodes, particles_number_cf,    particles_number);
+    sample_cf_on_nodes(p4est, nodes, phi_wall_cf, phi_wall);
+    sample_cf_on_nodes(p4est, nodes, phi_infc_cf, phi_free);
 
 //    my_p4est_level_set_t ls(ngbd);
-//    ls.reinitialize_2nd_order(particles_level_set, 50);
+//    ls.reinitialize_2nd_order(phi_part, 50);
 
     double rho = 1;
 
@@ -1062,7 +1127,7 @@ int main(int argc, char** argv)
       gamma_Aa_all_cf_t gamma_Aa_all(particles, particles_number_cf);
       gamma_Ba_all_cf_t gamma_Ba_all(particles, particles_number_cf);
       // set geometry
-      scft.add_boundary(particles_level_set, MLS_INTERSECTION, gamma_Aa_all, gamma_Ba_all);
+      scft.add_boundary(phi_part, MLS_INTERSECTION, gamma_Aa_all, gamma_Ba_all);
 
       scft.set_scalling(scaling);
       scft.set_polymer(f(), XN());
@@ -1141,10 +1206,10 @@ int main(int argc, char** argv)
       node_xyz_fr_n(n, p4est, nodes, xyz);
 
       int i = int(particles_number_ptr[n]);
-      double ga = particles[i].gamma_A_value(xyz[0], xyz[1]);
-      double gb = particles[i].gamma_B_value(xyz[0], xyz[1]);
+      double ga = particles[i].gA(xyz[0], xyz[1]);
+      double gb = particles[i].gB(xyz[0], xyz[1]);
 
-      gamma_eff_ptr[n] = (0.5*(ga+gb)*rho + (ga-gb)*(mu_minus_ptr[n])/XN()) + penalization.value(xyz);
+      gamma_eff_ptr[n] = (0.5*(ga+gb)*rho + (ga-gb)*(mu_minus_ptr[n])/XN());// + penalization.value(xyz);
       gamma_avg_ptr[n] = (0.5*(ga+gb)*rho);
       gamma_dif_ptr[n] = ((ga-gb));
     }
@@ -1157,7 +1222,7 @@ int main(int argc, char** argv)
 
     if (!use_scft())
     {
-      energy = integrate_over_interface(p4est, nodes, particles_level_set, gamma_eff);
+      energy = integrate_over_interface(p4est, nodes, phi_part, gamma_eff);
       energy /= pow(scaling, P4EST_DIM-1.);
     }
 
@@ -1166,46 +1231,65 @@ int main(int argc, char** argv)
     // ---------------------------------------------------------
 
     // compute normals, curvature and gradient of gamma_eff (needed for dE/dt formula)
-    compute_normals_and_mean_curvature(*ngbd, particles_level_set, normal, kappa);
+    compute_normals(*ngbd, phi_wall, normal_wall);
+    compute_normals_and_mean_curvature(*ngbd, phi_part, normal, kappa);
     ngbd->first_derivatives_central(gamma_eff, gamma_eff_grad);
     ngbd->first_derivatives_central(gamma_dif, gamma_dif_grad);
     ngbd->first_derivatives_central(gamma_avg, gamma_avg_grad);
+
+    ngbd->first_derivatives_central(mu_minus, mu_minus_grad);
 
     // calculate G
     ierr = VecGetArray(Gx,               &Gx_ptr);               CHKERRXX(ierr);
     ierr = VecGetArray(Gy,               &Gy_ptr);               CHKERRXX(ierr);
     ierr = VecGetArray(Gxy,              &Gxy_ptr);              CHKERRXX(ierr);
     ierr = VecGetArray(velo,             &velo_ptr);             CHKERRXX(ierr);
-    ierr = VecGetArray(kappa,            &kappa_ptr);            CHKERRXX(ierr);
-    ierr = VecGetArray(gamma_eff,        &gamma_eff_ptr);        CHKERRXX(ierr);
     ierr = VecGetArray(mu_minus,         &mu_minus_ptr);         CHKERRXX(ierr);
     ierr = VecGetArray(particles_number, &particles_number_ptr); CHKERRXX(ierr);
 
     foreach_dimension(dim)
     {
-      ierr = VecGetArray(normal[dim],         &normal_ptr[dim]);         CHKERRXX(ierr);
-      ierr = VecGetArray(gamma_eff_grad[dim], &gamma_eff_grad_ptr[dim]); CHKERRXX(ierr);
-      ierr = VecGetArray(gamma_dif_grad[dim], &gamma_dif_grad_ptr[dim]); CHKERRXX(ierr);
-      ierr = VecGetArray(gamma_avg_grad[dim], &gamma_avg_grad_ptr[dim]); CHKERRXX(ierr);
+      ierr = VecGetArray(mu_minus_grad[dim],  &mu_minus_grad_ptr[dim]);  CHKERRXX(ierr);
     }
 
     double factor = 1./pow(scaling, P4EST_DIM-1.);
 
     foreach_node(n, nodes)
     {
-      double g = SUMD(normal_ptr[0][n]*gamma_eff_grad_ptr[0][n],
-                      normal_ptr[1][n]*gamma_eff_grad_ptr[1][n],
-                      normal_ptr[2][n]*gamma_eff_grad_ptr[2][n])*factor
-          + gamma_eff_ptr[n]*kappa_ptr[n]*factor
-          + velo_ptr[n];
-
-      Gx_ptr[n] = g*normal_ptr[0][n] - (gamma_avg_grad_ptr[0][n] + (mu_minus_ptr[n])/XN()*gamma_dif_grad_ptr[0][n]);
-      Gy_ptr[n] = g*normal_ptr[1][n] - (gamma_avg_grad_ptr[1][n] + (mu_minus_ptr[n])/XN()*gamma_dif_grad_ptr[1][n]);
-
       double xyz[P4EST_DIM];
       node_xyz_fr_n(n, p4est, nodes, xyz);
 
-      int       i = int(particles_number_ptr[n]);
+      int i = int(particles_number_ptr[n]);
+
+      double phix = particles[i].phix (DIM(xyz[0], xyz[1], xyz[2]));
+      double phiy = particles[i].phiy (DIM(xyz[0], xyz[1], xyz[2]));
+      double phic = particles[i].kappa(DIM(xyz[0], xyz[1], xyz[2]));
+
+      double norm = ABSD(phix, phiy, phiz);
+      EXECD(phix /= norm, phiy /= norm, phiz /= norm);
+
+      double ga  = particles[i].gA (DIM(xyz[0], xyz[1], xyz[2]));
+      double gax = particles[i].gAx(DIM(xyz[0], xyz[1], xyz[2]));
+      double gay = particles[i].gAy(DIM(xyz[0], xyz[1], xyz[2]));
+
+      double gb  = particles[i].gB (DIM(xyz[0], xyz[1], xyz[2]));
+      double gbx = particles[i].gBx(DIM(xyz[0], xyz[1], xyz[2]));
+      double gby = particles[i].gBy(DIM(xyz[0], xyz[1], xyz[2]));
+
+      double g_eff  = (.5*(ga+gb)*rho + mu_minus_ptr[n]/XN()*(ga-gb));
+      double gx_eff = (.5*(gax+gbx)*rho + mu_minus_ptr[n]/XN()*(gax-gbx) + mu_minus_grad_ptr[0][n]/XN()*(ga-gb));
+      double gy_eff = (.5*(gay+gby)*rho + mu_minus_ptr[n]/XN()*(gay-gby) + mu_minus_grad_ptr[1][n]/XN()*(ga-gb));
+
+      double g = SUMD(phix*gx_eff,
+                      phiy*gy_eff,
+                      phiz*gz_eff)*factor
+          + g_eff*phic*factor
+          + velo_ptr[n];
+
+      Gx_ptr[n] = g*phix - (.5*(gax+gbx)*rho + mu_minus_ptr[n]/XN()*(gax-gbx))*factor;
+      Gy_ptr[n] = g*phiy - (.5*(gay+gby)*rho + mu_minus_ptr[n]/XN()*(gay-gby))*factor;
+
+
       double delx = xyz[0]-particles[i].xyz[0];
       double dely = xyz[1]-particles[i].xyz[1];
 
@@ -1216,17 +1300,12 @@ int main(int argc, char** argv)
     ierr = VecRestoreArray(Gy,               &Gy_ptr);               CHKERRXX(ierr);
     ierr = VecRestoreArray(Gxy,              &Gxy_ptr);              CHKERRXX(ierr);
     ierr = VecRestoreArray(velo,             &velo_ptr);             CHKERRXX(ierr);
-    ierr = VecRestoreArray(kappa,            &kappa_ptr);            CHKERRXX(ierr);
-    ierr = VecRestoreArray(gamma_eff,        &gamma_eff_ptr);        CHKERRXX(ierr);
     ierr = VecRestoreArray(mu_minus,         &mu_minus_ptr);         CHKERRXX(ierr);
     ierr = VecRestoreArray(particles_number, &particles_number_ptr); CHKERRXX(ierr);
 
     foreach_dimension(dim)
     {
-      ierr = VecRestoreArray(normal[dim],         &normal_ptr[dim]);         CHKERRXX(ierr);
-      ierr = VecRestoreArray(gamma_eff_grad[dim], &gamma_eff_grad_ptr[dim]); CHKERRXX(ierr);
-      ierr = VecRestoreArray(gamma_dif_grad[dim], &gamma_dif_grad_ptr[dim]); CHKERRXX(ierr);
-      ierr = VecRestoreArray(gamma_avg_grad[dim], &gamma_avg_grad_ptr[dim]); CHKERRXX(ierr);
+      ierr = VecRestoreArray(mu_minus_grad[dim],  &mu_minus_grad_ptr[dim]);  CHKERRXX(ierr);
     }
 
     // calculate
@@ -1234,49 +1313,176 @@ int main(int argc, char** argv)
 
     vector<double> gw(np, 0);
 
-    integrate_over_interface(np, g[0], p4est, nodes, particles_level_set, particles_number, Gx);
-    integrate_over_interface(np, g[1], p4est, nodes, particles_level_set, particles_number, Gy);
-    integrate_over_interface(np, gw,   p4est, nodes, particles_level_set, particles_number, Gxy);
+    ierr = VecGetArray(particles_number, &particles_number_ptr); CHKERRXX(ierr);
+    ierr = VecGetArray(phi_part, &phi_part_ptr); CHKERRXX(ierr);
 
-    // additional terms due to particle-particle interactions
+    my_p4est_interpolation_nodes_local_t interp_local(ngbd);
+    double proximity_crit = 50.*diag_min;
+    energy = 0;
+    foreach_local_node(n, nodes)
+    {
+      if (fabs(phi_part_ptr[n]) < proximity_crit)
+      {
+        int i = int(particles_number_ptr[n]);
 
-//    // calculate q_x and q_y (additional velocity terms; take into account what happens when particles come close to each other)
-//    vector< vector<double> > q(P4EST_DIM, vector<double> (np,0));
+        // get area and centroid of the interface
+        double area_part = 0;
+        double area_wall = 0;
+        double area_free = 0;
+        double xyz_part[P4EST_DIM];
+        double xyz_wall[P4EST_DIM];
+        double xyz_free[P4EST_DIM];
 
-//    double energy_term = 0;
+        phi_true_cf_t PHI(&particles[i]);
+        vector<CF_DIM *> phi_cf(3);
+        phi_cf[0] = &PHI;
+        phi_cf[1] = &phi_wall_cf;
+        phi_cf[2] = &phi_infc_cf;
 
-//    for (int i = 0; i < np; i++)
-//    {
-//      for (int j = 0; j < np; j++)
-//      {
-//        if (i != j)
-//        {
-//          XCODE( double dx = particles[i].xyz[0]-particles[j].xyz[0] );
-//          YCODE( double dy = particles[i].xyz[1]-particles[j].xyz[1] );
-//          ZCODE( double dz = particles[i].xyz[2]-particles[j].xyz[2] );
+        vector<mls_opn_t> opn(3, MLS_INT);
+        my_p4est_finite_volume_t fv;
+        construct_finite_volume(fv, n, p4est, nodes, phi_cf, opn, 1, 1);
 
-//          double dist =  sqrt(SUMD(SQR(dx), SQR(dy), SQR(dz)))-0;
+        for (int j = 0; j < fv.interfaces.size(); ++j)
+        {
+          double xyz[P4EST_DIM];
+          node_xyz_fr_n(n, p4est, nodes, xyz);
 
-//          double force = pairwise_force(dist);
+          switch (fv.interfaces[j].id)
+          {
+            case 0:
+              xyz_part[0]  = xyz[0] + fv.interfaces[j].centroid[0];
+              xyz_part[1]  = xyz[1] + fv.interfaces[j].centroid[1];
+              area_part    = fv.interfaces[j].area;
+              break;
+            case 1:
+              xyz_wall[0]  = xyz[0] + fv.interfaces[j].centroid[0];
+              xyz_wall[1]  = xyz[1] + fv.interfaces[j].centroid[1];
+              area_wall    = fv.interfaces[j].area;
+              break;
+            case 2:
+              xyz_free[0]  = xyz[0] + fv.interfaces[j].centroid[0];
+              xyz_free[1]  = xyz[1] + fv.interfaces[j].centroid[1];
+              area_free    = fv.interfaces[j].area;
+              break;
+            default: throw;
+          }
+        }
 
-//          if (force != force) throw;
+        if (area_part != 0)
+        {
+          double phix = particles[i].phix (DIM(xyz_part[0], xyz_part[1], xyz_part[2]));
+          double phiy = particles[i].phiy (DIM(xyz_part[0], xyz_part[1], xyz_part[2]));
 
-//          XCODE( q[0][i] += (dx/dist)*force ); // u = a*exp(-r^2/(2*c^2)) => use derivative of u for multiplication
-//          YCODE( q[1][i] += (dy/dist)*force );
-//          ZCODE( q[2][i] += (dy/dist)*force );
+          double norm = ABSD(phix, phiy, phiz);
+          EXECD(phix /= norm, phiy /= norm, phiz /= norm);
 
-//          energy_term = energy_term + pairwise_potential(dist);
-//        }
-//      }
-//    }
+          double dist = particles[i].phi (DIM(xyz_part[0], xyz_part[1], xyz_part[2]));
 
-//    // add correction term to the energy (when particles come too close to each other, 'push' them away)
-//    energy += energy_term;
+          xyz_part[0] -= dist*phix/norm;
+          xyz_part[1] -= dist*phiy/norm;
 
-//    for (int i = 0; i < np; ++i)
-//    {
-//      foreach_dimension(dim) g[dim][i] += q[dim][i];
-//    }
+          phix = particles[i].phix (DIM(xyz_part[0], xyz_part[1], xyz_part[2]));
+          phiy = particles[i].phiy (DIM(xyz_part[0], xyz_part[1], xyz_part[2]));
+
+          norm = ABSD(phix, phiy, phiz);
+          EXECD(phix /= norm, phiy /= norm, phiz /= norm);
+
+          interp_local.initialize(n);
+
+          interp_local.set_input(velo,             linear); double velo_val = interp_local.value(xyz_part);
+          interp_local.set_input(mu_minus,         linear); double mu_m     = interp_local.value(xyz_part);
+          interp_local.set_input(mu_minus_grad[0], linear); double mux_m    = interp_local.value(xyz_part);
+          interp_local.set_input(mu_minus_grad[1], linear); double muy_m    = interp_local.value(xyz_part);
+
+          double phic = particles[i].kappa(DIM(xyz_part[0], xyz_part[1], xyz_part[2]));
+
+          double ga  = particles[i].gA (DIM(xyz_part[0], xyz_part[1], xyz_part[2]));
+          double gax = particles[i].gAx(DIM(xyz_part[0], xyz_part[1], xyz_part[2]));
+          double gay = particles[i].gAy(DIM(xyz_part[0], xyz_part[1], xyz_part[2]));
+
+          double gb  = particles[i].gB (DIM(xyz_part[0], xyz_part[1], xyz_part[2]));
+          double gbx = particles[i].gBx(DIM(xyz_part[0], xyz_part[1], xyz_part[2]));
+          double gby = particles[i].gBy(DIM(xyz_part[0], xyz_part[1], xyz_part[2]));
+
+
+          double g_eff  = (.5*(ga+gb)*rho + mu_m/XN()*(ga-gb));
+          double gx_eff = (.5*(gax+gbx)*rho + mu_m/XN()*(gax-gbx) + mux_m/XN()*(ga-gb));
+          double gy_eff = (.5*(gay+gby)*rho + mu_m/XN()*(gay-gby) + muy_m/XN()*(ga-gb));
+
+          double G = SUMD(phix*gx_eff,
+                          phiy*gy_eff,
+                          phiz*gz_eff)*factor
+                     + g_eff*phic*factor
+                     + velo_val;
+
+          // repulsion between particles, walls and free surface
+          for (int j = 0; j < np; ++j)
+          {
+            if (j != i)
+            {
+              double dist_other = particles[j].phi(DIM(xyz_part[0], xyz_part[1], xyz_part[2]));
+              if (fabs(dist_other) < pairwise_potential_width())
+              {
+                double phix_other = particles[j].phix(DIM(xyz_part[0], xyz_part[1], xyz_part[2]));
+                double phiy_other = particles[j].phiy(DIM(xyz_part[0], xyz_part[1], xyz_part[2]));
+                dist_other = fabs(dist_other)-pairwise_potential_width();
+                G += phic*pairwise_potential(dist_other) + pairwise_force(dist_other)*SUMD(phix_other*phix, phiy_other*phiy, FIX);
+
+                double add_x = -pairwise_force(dist_other)*phix_other;
+                double add_y = -pairwise_force(dist_other)*phiy_other;
+
+                double delx = xyz_part[0]-particles[j].xyz[0];
+                double dely = xyz_part[1]-particles[j].xyz[1];
+
+                g[0][j] += add_x*area_part;
+                g[1][j] += add_y*area_part;
+                gw[j]   += (add_x*dely - add_y*delx)*area_part;
+                energy  += pairwise_potential(dist_other)*area_part;
+
+              }
+            }
+          }
+
+          // wall repulsion
+          double dist_other = phi_wall_cf(DIM(xyz_part[0], xyz_part[1], xyz_part[2]));
+          if (fabs(dist_other) < pairwise_potential_width())
+          {
+            interp_local.set_input(normal_wall[0], linear); double phix_other = interp_local.value(xyz_part);
+            interp_local.set_input(normal_wall[1], linear); double phiy_other = interp_local.value(xyz_part);
+            dist_other = fabs(dist_other)-pairwise_potential_width();
+            G += phic*pairwise_potential(dist_other) + pairwise_force(dist_other)*SUMD(phix_other*phix, phiy_other*phiy, FIX);
+          }
+
+          double Gx = G*phix - (.5*(gax+gbx)*rho + mu_m/XN()*(gax-gbx))*factor;
+          double Gy = G*phiy - (.5*(gay+gby)*rho + mu_m/XN()*(gay-gby))*factor;
+
+          double delx = xyz_part[0]-particles[i].xyz[0];
+          double dely = xyz_part[1]-particles[i].xyz[1];
+
+          double Gxy = Gx*dely - Gy*delx;
+
+          g[0][i] += Gx*area_part;
+          g[1][i] += Gy*area_part;
+          gw[i]   += Gxy*area_part;
+          energy  += g_eff*area_part;
+
+        }
+      }
+    }
+    ierr = VecRestoreArray(particles_number, &particles_number_ptr); CHKERRXX(ierr);
+    ierr = VecRestoreArray(phi_part, &phi_part_ptr); CHKERRXX(ierr);
+
+    ierr = MPI_Allreduce(MPI_IN_PLACE, g[0].data(), np, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); CHKERRXX(ierr);
+    ierr = MPI_Allreduce(MPI_IN_PLACE, g[1].data(), np, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); CHKERRXX(ierr);
+    ierr = MPI_Allreduce(MPI_IN_PLACE, gw.data(),   np, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); CHKERRXX(ierr);
+    ierr = MPI_Allreduce(MPI_IN_PLACE, &energy,   1, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); CHKERRXX(ierr);
+
+
+
+//        integrate_over_interface(np, g[0], p4est, nodes, phi_part, particles_number, Gx);
+//        integrate_over_interface(np, g[1], p4est, nodes, phi_part, particles_number, Gy);
+//        integrate_over_interface(np, gw,   p4est, nodes, phi_part, particles_number, Gxy);
 
     // ---------------------------------------------------------
     // select velocity and move particles
@@ -1288,7 +1494,8 @@ int main(int argc, char** argv)
     {
       for(int i = 0; i < np; i++)
       {
-        foreach_dimension(dim) v[dim][i] = -g[dim][i];
+        v[0][i] = -g[0][i];
+        v[1][i] = -g[1][i];
         w[i] = -gw[i];
       }
     }
@@ -1309,11 +1516,11 @@ int main(int argc, char** argv)
     double phi_thresh = 0;
 
     ierr = VecGetArray(particles_number, &particles_number_ptr); CHKERRXX(ierr);
-    ierr = VecGetArray(particles_level_set, &particles_level_set_ptr); CHKERRXX(ierr);
+    ierr = VecGetArray(phi_part, &phi_part_ptr); CHKERRXX(ierr);
 
     foreach_node(n, nodes)
     {
-      if (particles_level_set_ptr[n] > phi_thresh)
+      if (phi_part_ptr[n] > phi_thresh)
       {
         double xyz[P4EST_DIM];
         node_xyz_fr_n(n, p4est, nodes, xyz);
@@ -1327,7 +1534,7 @@ int main(int argc, char** argv)
     }
 
     ierr = VecRestoreArray(particles_number, &particles_number_ptr); CHKERRXX(ierr);
-    ierr = VecRestoreArray(particles_level_set, &particles_level_set_ptr); CHKERRXX(ierr);
+    ierr = VecRestoreArray(phi_part, &phi_part_ptr); CHKERRXX(ierr);
 
     ierr = MPI_Allreduce(MPI_IN_PLACE, arm_max.data(), np, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); CHKERRXX(ierr);
 
@@ -1335,18 +1542,12 @@ int main(int argc, char** argv)
     double wr_max = 0;
     for (int i = 0; i < np; ++i)
     {
-      v[0][i] = v[0][i];
-      v[1][i] = v[1][i];
-      w[i] = w[i];
+//      v[0][i] = v[0][i];
+//      v[1][i] = v[1][i];
+//      w[i] = w[i];
       v_max  = MAX(v_max, ABSD(v[0][i], v[1][i], v[2][i]));
       wr_max = MAX(wr_max, fabs(w[i])*arm_max[i]);
     }
-
-    // find the diagonal length of the smallest quadrant (needed to calculate the timestep delta_t)
-    double dxyz[P4EST_DIM]; // dimensions of the smallest quadrants
-    double dxyz_min;        // minimum side length of the smallest quadrants
-    double diag_min;        // diagonal length of the smallest quadrants
-    get_dxyz_min(p4est, dxyz, dxyz_min, diag_min);
 
     // calculate timestep delta_t, such that it's small enough to capture 'everything'
     double delta_t  = diag_min*CFL()/MAX(v_max, 0.001);
@@ -1388,6 +1589,7 @@ int main(int argc, char** argv)
         dt[j] = dt_max;
         dtw[j] = dtw_max;
       }
+
       XCODE( particles[j].xyz[0] += v[0][j]*dt[j] );
       YCODE( particles[j].xyz[1] += v[1][j]*dt[j] );
       ZCODE( particles[j].xyz[2] += v[2][j]*dt[j] );
@@ -1426,19 +1628,20 @@ int main(int argc, char** argv)
       dE_dt_expected += SUMD(v[0][i]*g[0][i],
                              v[1][i]*g[1][i],
                              v[2][i]*g[2][i])*dt[i];
+
       dE_dt_expected += w[i]*gw[i]*dtw[i];
     }
     double expected_change_in_energy  = dE_dt_expected;
     double effective_change_in_energy = energy - energy_previous;
 
-    ierr = PetscPrintf(mpi.comm(), "Iteration no. %4d: time = %3.2e, dt = %3.2e, vmax = %3.2e, E = %6.5e, dE = %+3.2e / %+3.2e, dE_dt_expected= %6.5e \n", step, t, delta_t, v_max, energy, expected_change_in_energy, effective_change_in_energy, dE_dt_expected); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "Iteration no. %4d: time = %3.2e, dt = %3.2e, vmax = %3.2e, E = %6.5e, dE = %+3.2e / %+3.2e \n", step, t, delta_t, v_max, energy, expected_change_in_energy, effective_change_in_energy); CHKERRXX(ierr);
 
     // ---------------------------------------------------------
     // save info into files
     // ---------------------------------------------------------
 
     double mu_minus_integral;
-    mu_minus_integral = integrate_over_interface(p4est, nodes, particles_level_set, mu_minus);
+    mu_minus_integral = integrate_over_interface(p4est, nodes, phi_part, mu_minus);
 
 
     // write the energy in every iteration into the separate file
@@ -1458,7 +1661,7 @@ int main(int argc, char** argv)
           << p4est->mpisize
           << "_" << int(round(step/save_freq()));
 
-      ierr = VecGetArray(particles_level_set, &particles_level_set_ptr); CHKERRXX(ierr);
+      ierr = VecGetArray(phi_part, &phi_part_ptr); CHKERRXX(ierr);
       ierr = VecGetArray(particles_number, &particles_number_ptr); CHKERRXX(ierr);
       ierr = VecGetArray(gamma_eff, &gamma_eff_ptr); CHKERRXX(ierr);
       ierr = VecGetArray(gamma_dif, &gamma_dif_ptr); CHKERRXX(ierr);
@@ -1468,14 +1671,14 @@ int main(int argc, char** argv)
       my_p4est_vtk_write_all(p4est, nodes, ghost,
                              P4EST_TRUE, P4EST_TRUE,
                              6, 0, oss.str().c_str(),
-                             VTK_POINT_DATA, "phi", particles_level_set_ptr,
+                             VTK_POINT_DATA, "phi", phi_part_ptr,
                              VTK_POINT_DATA, "particles_number", particles_number_ptr,
                              VTK_POINT_DATA, "gamma_effective", gamma_eff_ptr,
                              VTK_POINT_DATA, "gamma_diff", gamma_dif_ptr,
                              VTK_POINT_DATA, "gamma_avg", gamma_avg_ptr,
                              VTK_POINT_DATA, "mu_minus", mu_minus_ptr);
 
-      ierr = VecRestoreArray(particles_level_set, &particles_level_set_ptr); CHKERRXX(ierr);
+      ierr = VecRestoreArray(phi_part, &phi_part_ptr); CHKERRXX(ierr);
       ierr = VecRestoreArray(particles_number, &particles_number_ptr); CHKERRXX(ierr);
       ierr = VecRestoreArray(gamma_eff, &gamma_eff_ptr); CHKERRXX(ierr);
       ierr = VecRestoreArray(gamma_dif, &gamma_dif_ptr); CHKERRXX(ierr);
@@ -1495,7 +1698,7 @@ int main(int argc, char** argv)
     ierr = VecDestroy(Gx);                  CHKERRXX(ierr);
     ierr = VecDestroy(Gy);                  CHKERRXX(ierr);
     ierr = VecDestroy(Gxy);                 CHKERRXX(ierr);
-    ierr = VecDestroy(particles_level_set); CHKERRXX(ierr);
+    ierr = VecDestroy(phi_part); CHKERRXX(ierr);
 
     foreach_dimension(dim)
     {
