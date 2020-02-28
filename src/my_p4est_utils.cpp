@@ -2730,9 +2730,9 @@ PetscErrorCode VecSetGhost(Vec vec, PetscScalar scalar)
 {
   PetscErrorCode ierr;
   Vec ptr;
-  ierr = VecGhostGetLocalForm(vec, &ptr);     CHKERRXX(ierr);
-  ierr = VecSet(ptr, scalar);                 CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(vec, &ptr); CHKERRXX(ierr);
+  ierr = VecGhostGetLocalForm(vec, &ptr);     if (ierr != 0) return ierr;
+  ierr = VecSet(ptr, scalar);                 if (ierr != 0) return ierr;
+  ierr = VecGhostRestoreLocalForm(vec, &ptr); if (ierr != 0) return ierr;
   return ierr;
 }
 
@@ -2740,9 +2740,9 @@ PetscErrorCode VecShiftGhost(Vec vec, PetscScalar scalar)
 {
   PetscErrorCode ierr;
   Vec ptr;
-  ierr = VecGhostGetLocalForm(vec, &ptr);     CHKERRXX(ierr);
-  ierr = VecShift(ptr, scalar);               CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(vec, &ptr); CHKERRXX(ierr);
+  ierr = VecGhostGetLocalForm(vec, &ptr);     if (ierr != 0) return ierr;
+  ierr = VecShift(ptr, scalar);               if (ierr != 0) return ierr;
+  ierr = VecGhostRestoreLocalForm(vec, &ptr); if (ierr != 0) return ierr;
   return ierr;
 }
 
@@ -2750,9 +2750,9 @@ PetscErrorCode VecScaleGhost(Vec vec, PetscScalar scalar)
 {
   PetscErrorCode ierr;
   Vec ptr;
-  ierr = VecGhostGetLocalForm(vec, &ptr);     CHKERRXX(ierr);
-  ierr = VecScale(ptr, scalar);               CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(vec, &ptr); CHKERRXX(ierr);
+  ierr = VecGhostGetLocalForm(vec, &ptr);     if (ierr != 0) return ierr;
+  ierr = VecScale(ptr, scalar);               if (ierr != 0) return ierr;
+  ierr = VecGhostRestoreLocalForm(vec, &ptr); if (ierr != 0) return ierr;
   return ierr;
 }
 
@@ -2760,13 +2760,13 @@ PetscErrorCode VecPointwiseMultGhost(Vec output, Vec input1, Vec input2)
 {
   PetscErrorCode ierr;
   Vec out, in1, in2;
-  ierr = VecGhostGetLocalForm(input1, &in1);     CHKERRXX(ierr);
-  ierr = VecGhostGetLocalForm(input2, &in2);     CHKERRXX(ierr);
-  ierr = VecGhostGetLocalForm(output, &out);     CHKERRXX(ierr);
-  ierr = VecPointwiseMult(out, in1, in2);        CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(input1, &in1); CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(input2, &in2); CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(output, &out); CHKERRXX(ierr);
+  ierr = VecGhostGetLocalForm(input1, &in1);     if (ierr != 0) return ierr;
+  ierr = VecGhostGetLocalForm(input2, &in2);     if (ierr != 0) return ierr;
+  ierr = VecGhostGetLocalForm(output, &out);     if (ierr != 0) return ierr;
+  ierr = VecPointwiseMult(out, in1, in2);        if (ierr != 0) return ierr;
+  ierr = VecGhostRestoreLocalForm(input1, &in1); if (ierr != 0) return ierr;
+  ierr = VecGhostRestoreLocalForm(input2, &in2); if (ierr != 0) return ierr;
+  ierr = VecGhostRestoreLocalForm(output, &out); if (ierr != 0) return ierr;
   return ierr;
 }
 
@@ -2774,11 +2774,11 @@ PetscErrorCode VecAXPBYGhost(Vec y, PetscScalar alpha, PetscScalar beta, Vec x)
 {
   PetscErrorCode ierr;
   Vec X, Y;
-  ierr = VecGhostGetLocalForm(x, &X);     CHKERRXX(ierr);
-  ierr = VecGhostGetLocalForm(y, &Y);     CHKERRXX(ierr);
-  ierr = VecAXPBY(Y, alpha, beta, X);     CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(x, &X); CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(y, &Y); CHKERRXX(ierr);
+  ierr = VecGhostGetLocalForm(x, &X);     if (ierr != 0) return ierr;
+  ierr = VecGhostGetLocalForm(y, &Y);     if (ierr != 0) return ierr;
+  ierr = VecAXPBY(Y, alpha, beta, X);     if (ierr != 0) return ierr;
+  ierr = VecGhostRestoreLocalForm(x, &X); if (ierr != 0) return ierr;
+  ierr = VecGhostRestoreLocalForm(y, &Y); if (ierr != 0) return ierr;
   return ierr;
 }
 
@@ -2786,13 +2786,13 @@ PetscErrorCode VecPointwiseMinGhost(Vec output, Vec input1, Vec input2)
 {
   PetscErrorCode ierr;
   Vec out, in1, in2;
-  ierr = VecGhostGetLocalForm(input1, &in1);     CHKERRXX(ierr);
-  ierr = VecGhostGetLocalForm(input2, &in2);     CHKERRXX(ierr);
-  ierr = VecGhostGetLocalForm(output, &out);     CHKERRXX(ierr);
-  ierr = VecPointwiseMin(out, in1, in2);        CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(input1, &in1); CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(input2, &in2); CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(output, &out); CHKERRXX(ierr);
+  ierr = VecGhostGetLocalForm(input1, &in1);     if (ierr != 0) return ierr;
+  ierr = VecGhostGetLocalForm(input2, &in2);     if (ierr != 0) return ierr;
+  ierr = VecGhostGetLocalForm(output, &out);     if (ierr != 0) return ierr;
+  ierr = VecPointwiseMin(out, in1, in2);         if (ierr != 0) return ierr;
+  ierr = VecGhostRestoreLocalForm(input1, &in1); if (ierr != 0) return ierr;
+  ierr = VecGhostRestoreLocalForm(input2, &in2); if (ierr != 0) return ierr;
+  ierr = VecGhostRestoreLocalForm(output, &out); if (ierr != 0) return ierr;
   return ierr;
 }
 
@@ -2800,13 +2800,13 @@ PetscErrorCode VecPointwiseMaxGhost(Vec output, Vec input1, Vec input2)
 {
   PetscErrorCode ierr;
   Vec out, in1, in2;
-  ierr = VecGhostGetLocalForm(input1, &in1);     CHKERRXX(ierr);
-  ierr = VecGhostGetLocalForm(input2, &in2);     CHKERRXX(ierr);
-  ierr = VecGhostGetLocalForm(output, &out);     CHKERRXX(ierr);
-  ierr = VecPointwiseMax(out, in1, in2);        CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(input1, &in1); CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(input2, &in2); CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(output, &out); CHKERRXX(ierr);
+  ierr = VecGhostGetLocalForm(input1, &in1);     if (ierr != 0) return ierr;
+  ierr = VecGhostGetLocalForm(input2, &in2);     if (ierr != 0) return ierr;
+  ierr = VecGhostGetLocalForm(output, &out);     if (ierr != 0) return ierr;
+  ierr = VecPointwiseMax(out, in1, in2);         if (ierr != 0) return ierr;
+  ierr = VecGhostRestoreLocalForm(input1, &in1); if (ierr != 0) return ierr;
+  ierr = VecGhostRestoreLocalForm(input2, &in2); if (ierr != 0) return ierr;
+  ierr = VecGhostRestoreLocalForm(output, &out); if (ierr != 0) return ierr;
   return ierr;
 }
 
@@ -2814,9 +2814,9 @@ PetscErrorCode VecReciprocalGhost(Vec input)
 {
   PetscErrorCode ierr;
   Vec in;
-  ierr = VecGhostGetLocalForm(input, &in);     CHKERRXX(ierr);
-  ierr = VecReciprocal(in);                    CHKERRXX(ierr);
-  ierr = VecGhostRestoreLocalForm(input, &in); CHKERRXX(ierr);
+  ierr = VecGhostGetLocalForm(input, &in);     if (ierr != 0) return ierr;
+  ierr = VecReciprocal(in);                    if (ierr != 0) return ierr;
+  ierr = VecGhostRestoreLocalForm(input, &in); if (ierr != 0) return ierr;
   return ierr;
 }
 
