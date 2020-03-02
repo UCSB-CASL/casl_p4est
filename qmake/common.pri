@@ -24,29 +24,27 @@ CONFIG(profile): {
 }
 
 INCLUDEPATH += \
-    $$BOOST_INCLUDES \
+    $$BOOST_INCLUDES  \
     $$MATLAB_INCLUDES \
-    $$MPI_INCLUDES
+    $$MPI_INCLUDES    \
+    $$LAPACKE_INCLUDE
 
 LIBS += \
     $$MATLAB_LIBS \
-    $$MPI_LIBS
+    $$MPI_LIBS    \
+    $$LAPACKE_LIBS
 
 # Settings related to release/debug
 CONFIG(debug, debug|release): {
     INCLUDEPATH += \
         $$P4EST_INCLUDES_DEBUG \
         $$PETSC_INCLUDES_DEBUG \
-        $$VORO_INCLUDES_DEBUG  \
-        $$BOOST_INCLUDE        \
-        $$LAPACKE_INCLUDE
+        $$VORO_INCLUDES_DEBUG
 
     LIBS += \
         $$P4EST_LIBS_DEBUG \
         $$PETSC_LIBS_DEBUG \
-        $$VORO_LIBS_DEBUG  \
-        $$BOOST_LIBS \
-        $$LAPACKE_LIBS
+        $$VORO_LIBS_DEBUG
 
     DEFINES += DEBUG CASL_THROWS P4EST_DEBUG
 }
@@ -55,15 +53,12 @@ CONFIG(release, debug|release): {
     INCLUDEPATH += \
         $$P4EST_INCLUDES_RELEASE \
         $$PETSC_INCLUDES_RELEASE \
-        $$VORO_INCLUDES_RELEASE  \
-        $$BOOST_INCLUDE        \
-        $$LAPACKE_INCLUDE
+        $$VORO_INCLUDES_RELEASE
 
     LIBS += \
         $$P4EST_LIBS_RELEASE \
         $$PETSC_LIBS_RELEASE \
-        $$VORO_LIBS_RELEASE  \
-        $$LAPACKE_LIBS
+        $$VORO_LIBS_RELEASE
 }
 
 exists($$MATLAB_INCLUDES/engine.h) {

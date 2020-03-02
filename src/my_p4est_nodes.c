@@ -145,6 +145,7 @@ p4est_node_canonicalize (p4est_t * p4est, p4est_topidx_t treeid,
     /* Transform the node into the other tree's coordinates */
     ntreeid2 = p4est_find_face_transform (conn, treeid, face, ftransform);
     P4EST_ASSERT (ntreeid2 == ntreeid);
+    (void) ntreeid2; // Raphael: to avoid compiler warning
     p4est_quadrant_transform_face (n, &o, ftransform);
     if (ntreeid < lowest) {
       /* we have found a new owning tree */

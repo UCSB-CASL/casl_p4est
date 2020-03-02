@@ -35,10 +35,10 @@ VORO_LIBS_RELEASE       = -Wl,-rpath,\$\$VORO_DIR/lib -L\$\$VORO_DIR/lib -lvoro+
 VORO_LIBS_DEBUG         = -Wl,-rpath,\$\$VORO_DIR/lib -L\$\$VORO_DIR/lib -lvoro++
 my_delimiter
 
-if [[ ! -z "${MATLAB_DIR}" ]]; then
+if [[ ! -z "${MATLAB_DIR}" ]] && [[ -z "${LAPACKE_DIR}" ]]; then
 cat >> $1.pri << my_delimiter
 
-# matlab (for computing condition numbers, it's ok not provided)
+# matlab (for computing condition numbers, it's ok if not provided)
 MATLAB_DIR              = ${MATLAB_DIR}
 
 MATLAB_INCLUDES         = \$\$MATLAB_DIR/extern/include
@@ -49,9 +49,28 @@ fi
 if [[ ! -z "${BOOST_INCLUDES}" ]]; then
 cat >> $1.pri << my_delimiter
 
-# Boost (may be ok if not provided, depending on the list of source files)
+# boost (needed for epitaxy only, ok if not provided otherwise)
 BOOST_INCLUDES          = ${BOOST_INCLUDES}
 my_delimiter
+fi
+
+if [[ ! -z "${LAPACKE_DIR}" ]]; then
+if [[ "${LAPACKE_DIR}" == "/usr" ]]; then
+cat >> $1.pri << my_delimiter
+
+# lapacke (needed for shs main file only, ok if not provided otherwise)
+LAPACKE_LIBS            = -llapacke
+my_delimiter
+else
+cat >> $1.pri << my_delimiter
+
+# lapacke (needed for shs main file only, ok if not provided otherwise)
+LAPACKE_DIR             = ${LAPACKE_DIR}
+
+LAPACKE_INCLUDES        = \$\$LAPACKE_DIR/include
+LAPACKE_LIBS_RELEASE   	= -Wl,-rpath,\$\$LAPACKE_DIR/lib -L\$\$LAPACKE_DIR/lib -llapacke
+my_delimiter
+fi
 fi
 
 if [[ ! -z "${MPI_DIR}" ]]; then
@@ -101,6 +120,7 @@ If desired, the user may also specify the following environment variables which 
 be required for some specific files from the library
     MATLAB_DIR
     BOOST_INCLUDES
+    LAPACKE_DIR
 
 If not defined yet, define them in your .bashrc (and source it) or by executing
 export PETSC_DIR_DEBUG=(the path to the root of your 'debug' installation of petsc)
@@ -115,6 +135,18 @@ export CXX=(the desired mpi c++ compiler)
 If desired,
 export MATLAB_DIR=(the path to the root of your installation of matlab)
 export BOOST_INCLUDES=(the path to your installation of boost)
+export LAPACKE_DIR=(the path to your lapacke installation)
+
+BOOST_INCLUDES must be defined if using my_p4est_epitaxy.
+LAPACKE_DIR must be defined if compiling the shs channel flow example.
+
+[Raphael (03/02/2020): there seems to exist a conflicts of datatype definitions
+between lapacke and MATLAB which prevents compilation of the shs main file when
+both LAPACKE and MATLAB_DIR are defined. I forced this script to include only
+LAPACKE if both of them are provided since I could not find a fix for that issue.
+Suggested fix --> use external matlab or PetSc instead of LAPACKE for analytical
+solution in main of shs channels. (LAPACKE is not the easiest to link against with
+intel compilers and mkl libraries on Stampede for instance)]
 "
 
 
@@ -194,6 +226,14 @@ else
   if [[ ! -z "${BOOST_INCLUDES}" ]]; then
     if [[ ! -d "${BOOST_INCLUDES}" ]]; then
       echo "The environment variable BOOST_INCLUDES=${BOOST_INCLUDES} is not a valid directory: fix that."
+      exit 1
+    fi
+  fi
+
+  # check the optional LAPACKE_DIR if defined
+  if [[ ! -z "${LAPACKE_DIR}" ]]; then
+    if [[ ! -d "${LAPACKE_DIR}" ]]; then
+      echo "The environment variable LAPACKE_DIR=${LAPACKE_DIR} is not a valid directory: fix that."
       exit 1
     fi
   fi

@@ -390,7 +390,7 @@ int my_p4est_poisson_nodes_multialloy_t::solve(Vec tl, Vec ts, Vec c[], Vec c0d[
     solve_c(conc_start, conc_num);  ++num_pdes_solved;
 
 //    if (iteration < max_iterations_)
-    bool check = iteration%pin_every_n_iterations_ == 0;
+//    bool check = iteration%pin_every_n_iterations_ == 0; // unused in the function...
 
     {
       // solve for lagrangian multipliers
@@ -548,8 +548,8 @@ void my_p4est_poisson_nodes_multialloy_t::initialize_solvers()
   solver_temp_->preassemble_linear_system();
 
   // copy finite volumes
-  std::vector<my_p4est_finite_volume_t> *fvs;
-  std::vector<int> *fvs_map;
+  std::vector<my_p4est_finite_volume_t> *fvs = NULL;
+  std::vector<int> *fvs_map = NULL;
 
   // rest of c[]
   int i_start = update_c0_robin_ == 0 ? 1 : 0;
@@ -567,6 +567,7 @@ void my_p4est_poisson_nodes_multialloy_t::initialize_solvers()
     solver_conc_[i]->set_wc(*wall_bc_type_conc_[i], *wall_bc_value_conc_[i]);
     if (i != i_start)
     {
+      P4EST_ASSERT(fvs != NULL && fvs_map != NULL);
       solver_conc_[i]->set_finite_volumes(fvs, fvs_map, NULL, NULL);
     }
 
@@ -580,6 +581,7 @@ void my_p4est_poisson_nodes_multialloy_t::initialize_solvers()
     if (i == i_start)
     {
       solver_conc_[i]->get_boundary_finite_volumes(fvs, fvs_map);
+      P4EST_ASSERT(fvs != NULL && fvs_map != NULL);
     }
   }
 
@@ -1516,15 +1518,15 @@ void my_p4est_poisson_nodes_multialloy_t::compute_pw_bc_psi_values(int start, in
   bool interp_initialized;
 
   int    idx;
-  double vn_pr;
-  double vn_cd;
-  double kappa_pr;
-  double kappa_cd;
-  double eps_c_pr;
-  double eps_c_cd;
+//  double vn_pr;
+//  double vn_cd;
+//  double kappa_pr;
+//  double kappa_cd;
+//  double eps_c_pr;
+//  double eps_c_cd;
   double xyz_pr[P4EST_DIM];
   double xyz_cd[P4EST_DIM];
-  double normal[P4EST_DIM];
+//  double normal[P4EST_DIM];
 
   vector<double> c_all(num_comps_);
 

@@ -240,9 +240,6 @@ void my_p4est_biofilm_t::compute_geometric_properties()
 }
 
 
-
-
-
 int my_p4est_biofilm_t::one_step()
 {
   ierr = PetscLogEventBegin(log_my_p4est_biofilm_one_step, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -252,6 +249,7 @@ int my_p4est_biofilm_t::one_step()
   compute_velocity_from_pressure();
 
   ierr = PetscLogEventEnd(log_my_p4est_biofilm_one_step, 0, 0, 0, 0); CHKERRXX(ierr);
+  return 0; // Raphael needs to return an integer if defined like that
 }
 
 

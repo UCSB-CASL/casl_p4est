@@ -25,17 +25,12 @@
 #include <sys/stat.h>
 #include <src/Parser.h>
 #include <src/parameter_list.h>
-//#include <boost/algorithm/string.hpp>
 
 using namespace std;
 
 // initialize all static variables
 const string Atom::ATOM = "ATOM  ";
-#ifdef P4_TO_P8
-const unsigned int my_p4est_biomolecules_t::nangle_per_mol = 3;
-#else
-const unsigned int my_p4est_biomolecules_t::nangle_per_mol = 1;
-#endif
+const unsigned int my_p4est_biomolecules_t::nangle_per_mol = (P4EST_DIM == 3 ? 3 : 1);
 
 FILE* my_p4est_biomolecules_t::log_file     = NULL;
 FILE* my_p4est_biomolecules_t::timing_file  = NULL;
@@ -59,7 +54,6 @@ my_p4est_biomolecules_t::molecule::molecule(const my_p4est_biomolecules_t *owner
 void my_p4est_biomolecules_t::molecule::read(const string &pqr, const int &overlap)
 {
 #ifdef CASL_THROWS
-  int                 my_local_error;
   string              err_msg;
 #endif
   int mpiret;
@@ -246,14 +240,17 @@ void my_p4est_biomolecules_t::molecule::scale_rotate_and_translate(const double*
 {
   P4EST_ASSERT(angstrom_to_domain_==NULL || (*angstrom_to_domain_ > 0.0));
 
-  const bool scaling_required = (scaling.is_set && angstrom_to_domain_!=NULL && (fabs(scaling.angstrom_to_domain-*angstrom_to_domain_) > EPS*MAX(scaling.angstrom_to_domain, *angstrom_to_domain_))) || (!scaling.is_set && angstrom_to_domain_!=NULL);
-  const double scaling_factor = scaling_required? ((scaling.is_set && angstrom_to_domain_!=NULL)? (*angstrom_to_domain_)/scaling.angstrom_to_domain : *angstrom_to_domain_) : 1.0;
+  const bool scaling_required = (scaling.is_set && angstrom_to_domain_ != NULL && (fabs(scaling.angstrom_to_domain-*angstrom_to_domain_) > EPS*MAX(scaling.angstrom_to_domain, *angstrom_to_domain_))) || (!scaling.is_set && angstrom_to_domain_ != NULL);
+  const double scaling_factor = scaling_required? ((scaling.is_set && angstrom_to_domain_ != NULL)? (*angstrom_to_domain_)/scaling.angstrom_to_domain : *angstrom_to_domain_) : 1.0;
 
   double xyz_tmp[P4EST_DIM];
   double rotated_xyz_tmp[P4EST_DIM];
-  double rotation_matrix[P4EST_DIM][P4EST_DIM];
+  double **rotation_matrix = NULL;
   if(angles != NULL)
   {
+    rotation_matrix = new double* [P4EST_DIM];
+    for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
+      rotation_matrix[dim] = new double [P4EST_DIM];
     angles[0] = fmod(angles[0], 2*PI); if(angles[0] < 0) angles[0] += 2*PI;
 #ifdef P4_TO_P8
     angles[2] = fmod(angles[2], 2*PI); if(angles[2] < 0) angles[2] += 2*PI;
@@ -268,15 +265,15 @@ void my_p4est_biomolecules_t::molecule::scale_rotate_and_translate(const double*
     rotation_axis[1] = sin(angles[1])*sin(angles[2]);
     rotation_axis[2] = cos(angles[1]);
     // Rodrigues' rotation formula
-    rotation_matrix[0][0] = (1-cos(angles[0]))*rotation_axis[0]*rotation_axis[0] + cos(angles[0]);
-    rotation_matrix[0][1] = (1-cos(angles[0]))*rotation_axis[0]*rotation_axis[1] - sin(angles[0])*rotation_axis[2];
-    rotation_matrix[0][2] = (1-cos(angles[0]))*rotation_axis[0]*rotation_axis[2] + sin(angles[0])*rotation_axis[1];
-    rotation_matrix[1][0] = (1-cos(angles[0]))*rotation_axis[0]*rotation_axis[1] + sin(angles[0])*rotation_axis[2];
-    rotation_matrix[1][1] = (1-cos(angles[0]))*rotation_axis[1]*rotation_axis[1] + cos(angles[0]);
-    rotation_matrix[1][2] = (1-cos(angles[0]))*rotation_axis[1]*rotation_axis[2] - sin(angles[0])*rotation_axis[0];
-    rotation_matrix[2][0] = (1-cos(angles[0]))*rotation_axis[0]*rotation_axis[2] - sin(angles[0])*rotation_axis[1];
-    rotation_matrix[2][1] = (1-cos(angles[0]))*rotation_axis[1]*rotation_axis[2] + sin(angles[0])*rotation_axis[0];
-    rotation_matrix[2][2] = (1-cos(angles[0]))*rotation_axis[2]*rotation_axis[2] + cos(angles[0]);
+    rotation_matrix[0][0] = (1.0 - cos(angles[0]))*rotation_axis[0]*rotation_axis[0] + cos(angles[0]);
+    rotation_matrix[0][1] = (1.0 - cos(angles[0]))*rotation_axis[0]*rotation_axis[1] - sin(angles[0])*rotation_axis[2];
+    rotation_matrix[0][2] = (1.0 - cos(angles[0]))*rotation_axis[0]*rotation_axis[2] + sin(angles[0])*rotation_axis[1];
+    rotation_matrix[1][0] = (1.0 - cos(angles[0]))*rotation_axis[0]*rotation_axis[1] + sin(angles[0])*rotation_axis[2];
+    rotation_matrix[1][1] = (1.0 - cos(angles[0]))*rotation_axis[1]*rotation_axis[1] + cos(angles[0]);
+    rotation_matrix[1][2] = (1.0 - cos(angles[0]))*rotation_axis[1]*rotation_axis[2] - sin(angles[0])*rotation_axis[0];
+    rotation_matrix[2][0] = (1.0 - cos(angles[0]))*rotation_axis[0]*rotation_axis[2] - sin(angles[0])*rotation_axis[1];
+    rotation_matrix[2][1] = (1.0 - cos(angles[0]))*rotation_axis[1]*rotation_axis[2] + sin(angles[0])*rotation_axis[0];
+    rotation_matrix[2][2] = (1.0 - cos(angles[0]))*rotation_axis[2]*rotation_axis[2] + cos(angles[0]);
 #else
     rotation_matrix[0][0] = cos(angles[0]);
     rotation_matrix[0][1] = -sin(angles[0]);
@@ -287,7 +284,7 @@ void my_p4est_biomolecules_t::molecule::scale_rotate_and_translate(const double*
 
 
   const bool create_list_of_charged_atoms = (index_of_charged_atom.size() == 0);
-  if(xyz_c!=NULL || scaling_required || create_list_of_charged_atoms || (angles!=NULL))
+  if(xyz_c != NULL || scaling_required || create_list_of_charged_atoms || (angles != NULL))
   {
     double new_centroid[P4EST_DIM];
     for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
@@ -302,7 +299,7 @@ void my_p4est_biomolecules_t::molecule::scale_rotate_and_translate(const double*
         index_of_charged_atom[charged_atoms_found++] = k;
       for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
         xyz_tmp[dir] = scaling_factor*(atoms[k].xyz_c[dir] - molecule_centroid[dir]);
-      if(angles != NULL)
+      if(rotation_matrix != NULL)
         for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
           rotated_xyz_tmp[dir] = SUMD(rotation_matrix[dir][0]*xyz_tmp[0], rotation_matrix[dir][1]*xyz_tmp[1], rotation_matrix[dir][2]*xyz_tmp[2]);
       else
@@ -329,6 +326,12 @@ void my_p4est_biomolecules_t::molecule::scale_rotate_and_translate(const double*
     scaling.is_set = true;
   if(scaling_required)
     scaling.angstrom_to_domain = *angstrom_to_domain_;
+  if(rotation_matrix != NULL)
+  {
+    for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
+      delete [] rotation_matrix[dim];
+    delete [] rotation_matrix;
+  }
   P4EST_ASSERT(!scaling.is_set || is_bounding_box_in_domain());
 }
 
@@ -454,7 +457,7 @@ void my_p4est_biomolecules_t::SAS_creator::determine_locally_known_values(p4est_
   // the domain and the Morton codes are compared, two points are equivalent if Morton
   // codes are identical after being clamped
   const int clamped = 1;
-  P4EST_ASSERT((biomol->phi == NULL && biomol->nodes == NULL) || (biomol->phi != NULL && biomol->nodes!=NULL));
+  P4EST_ASSERT((biomol->phi == NULL && biomol->nodes == NULL) || (biomol->phi != NULL && biomol->nodes != NULL));
   // ok let's work
   // initialization might be needed first
   if(biomol->phi == NULL && biomol->nodes == NULL)
@@ -1201,7 +1204,8 @@ void my_p4est_biomolecules_t::SAS_creator_list_reduction::update_phi_sas_and_qua
 void my_p4est_biomolecules_t::SAS_creator_list_reduction::replace_fn(p4est_t *forest, p4est_topidx_t which_tree, int num_outgoing, p4est_quadrant_t *outgoing[], int num_incoming, p4est_quadrant_t *incoming[])
 {
   (void) num_incoming;
-  P4EST_ASSERT(num_outgoing<=1);
+  P4EST_ASSERT(num_outgoing <= 1);
+  (void) num_outgoing; // to avoid compiler warning in release;
   /* this is refinement */
   my_p4est_biomolecules_t* biomol = (my_p4est_biomolecules_t*) forest->user_pointer;
   SAS_creator_list_reduction* this_creator = dynamic_cast<SAS_creator_list_reduction*>(biomol->sas_creator);
@@ -1302,8 +1306,8 @@ void my_p4est_biomolecules_t::add_single_molecule(const string& file_path, const
     if (!all_molecules_are_scaled_consistently()) // should never happen, this is a logic error...
     {
       P4EST_ASSERT(false); // in debug, we abort, otherwise, we'll fix it first!
-      PetscFPrintf(p4est->mpicomm, (error_file!=NULL?error_file : stderr), "my_p4est_biomolecules_t::add_single_molecule(...): the current vector of molecules has inconsistent scaling factors, this shouldn't happen...");
-      PetscFPrintf(p4est->mpicomm, (error_file!=NULL?error_file : stderr), "my_p4est_biomolecules_t::add_single_molecule(...): ... rescaling the molecules (fixing a logic error)...");
+      PetscFPrintf(p4est->mpicomm, (error_file != NULL?error_file : stderr), "my_p4est_biomolecules_t::add_single_molecule(...): the current vector of molecules has inconsistent scaling factors, this shouldn't happen...");
+      PetscFPrintf(p4est->mpicomm, (error_file != NULL?error_file : stderr), "my_p4est_biomolecules_t::add_single_molecule(...): ... rescaling the molecules (fixing a logic error)...");
       rescale_all_molecules();
     }
   }
@@ -1316,8 +1320,8 @@ void my_p4est_biomolecules_t::add_single_molecule(const string& file_path, const
     else if (!all_molecules_are_scaled_consistently())// should never happen, this is a logic error...
     {
       P4EST_ASSERT(false); // in debug, we abort, otherwise, we'll fix it first!
-      PetscFPrintf(p4est->mpicomm, (error_file!=NULL?error_file : stderr), "my_p4est_biomolecules_t::add_single_molecule(...): the current vector of molecules has inconsistent scaling factors, this shouldn't happen...");
-      PetscFPrintf(p4est->mpicomm, (error_file!=NULL?error_file : stderr), "my_p4est_biomolecules_t::add_single_molecule(...): ... rescaling the molecules (fixing a logic error)...");
+      PetscFPrintf(p4est->mpicomm, (error_file != NULL?error_file : stderr), "my_p4est_biomolecules_t::add_single_molecule(...): the current vector of molecules has inconsistent scaling factors, this shouldn't happen...");
+      PetscFPrintf(p4est->mpicomm, (error_file != NULL?error_file : stderr), "my_p4est_biomolecules_t::add_single_molecule(...): ... rescaling the molecules (fixing a logic error)...");
       rescale_all_molecules(*angstrom_to_domain_);
     }
   }
@@ -1434,19 +1438,19 @@ my_p4est_biomolecules_t::my_p4est_biomolecules_t(my_p4est_brick_t *brick_, p4est
 }
 Vec my_p4est_biomolecules_t::return_phi_vector()
 {
-  P4EST_ASSERT(phi!=NULL);
+  P4EST_ASSERT(phi != NULL);
   Vec phi_to_return = phi; phi = NULL;
   return phi_to_return;
 }
 p4est_nodes_t* my_p4est_biomolecules_t::return_nodes()
 {
-  P4EST_ASSERT(nodes!=NULL);
+  P4EST_ASSERT(nodes != NULL);
   p4est_nodes_t* nodes_to_return = nodes; nodes = NULL;
   return nodes_to_return;
 }
 p4est_ghost_t* my_p4est_biomolecules_t::return_ghost()
 {
-  P4EST_ASSERT(ghost!=NULL);
+  P4EST_ASSERT(ghost != NULL);
   p4est_ghost_t* ghost_to_return = ghost; ghost = NULL;
   return ghost_to_return;
 }
@@ -2003,8 +2007,8 @@ double my_p4est_biomolecules_t::better_distance(const double *xyz, const int& re
 
 void my_p4est_biomolecules_t::partition_uniformly(const bool export_cavities, const bool build_ghost)
 {
-  P4EST_ASSERT(p4est!=NULL);
-  P4EST_ASSERT(phi==NULL || nodes!=NULL); // this function requires valid nodes if the levelset function is defined
+  P4EST_ASSERT(p4est != NULL);
+  P4EST_ASSERT(phi==NULL || nodes != NULL); // this function requires valid nodes if the levelset function is defined
 #ifdef DEBUG
   if(phi != NULL)
   {
@@ -2075,8 +2079,8 @@ int my_p4est_biomolecules_t::partition_weight_for_enforcing_min_level(p4est_t *f
 
 void my_p4est_biomolecules_t::enforce_min_level(bool export_cavities)
 {
-  P4EST_ASSERT(p4est!=NULL);
-  P4EST_ASSERT(phi!=NULL && nodes !=NULL); // this function requires valid nodes and a valid node-sampled levelset function
+  P4EST_ASSERT(p4est != NULL);
+  P4EST_ASSERT(phi != NULL && nodes  != NULL); // this function requires valid nodes and a valid node-sampled levelset function
 #ifdef DEBUG
   if(phi != NULL)
   {
@@ -2270,7 +2274,8 @@ void my_p4est_biomolecules_t::replace_fn_min_level(p4est_t *forest, p4est_topidx
   (void) forest;
   (void) num_incoming;
   (void) which_tree;
-  P4EST_ASSERT(num_outgoing <=1); // this is coarsening, it should NEVER happend
+  P4EST_ASSERT(num_outgoing <= 1); // this is coarsening, it should NEVER happend
+  (void) num_outgoing;
   /* this is refinement */
   for (unsigned char i = 0; i < P4EST_CHILDREN; ++i)
     incoming[i]->p.user_long = outgoing[0]->p.user_long;
@@ -2338,8 +2343,8 @@ bool my_p4est_biomolecules_t::is_point_in_outer_domain_and_updated(p4est_locidx_
 void my_p4est_biomolecules_t::remove_internal_cavities(const bool export_cavities)
 {
   PetscErrorCode ierr;
-  P4EST_ASSERT(phi!=NULL);
-  P4EST_ASSERT(nodes!=NULL);
+  P4EST_ASSERT(phi != NULL);
+  P4EST_ASSERT(nodes != NULL);
 #ifdef DEBUG
   PetscInt size;
   p4est_gloidx_t nb_total_nodes = 0;
@@ -2427,15 +2432,15 @@ p4est_t* my_p4est_biomolecules_t::construct_SES(const sas_generation_method& met
 #ifdef DEBUG
   check_validity_of_vector_of_mol();
 #endif
-  if(nodes!=NULL){
+  if(nodes != NULL){
     p4est_nodes_destroy(nodes); nodes = NULL; }
-  if(ghost!=NULL){
+  if(ghost != NULL){
     p4est_ghost_destroy(ghost); ghost = NULL; }
-  if(phi!=NULL){
+  if(phi != NULL){
     ierr = VecDestroy(phi); CHKERRXX(ierr);
     phi = NULL; phi_read_only_p = NULL;
   }
-  if(inner_domain!=NULL){
+  if(inner_domain != NULL){
     ierr = VecDestroy(inner_domain); CHKERRXX(ierr); inner_domain = NULL;}
   update_max_level();
   if(global_max_level > parameters.lmin()) // the p4est is already refined, the method assumes a pristine, coarse p4est when invoked
@@ -2520,8 +2525,8 @@ p4est_t* my_p4est_biomolecules_t::construct_SES(const sas_generation_method& met
   delete sas_creator; sas_creator = NULL;
 
   if(vtk_folder[vtk_folder.size()-1] == '/')
-    vtk_folder = vtk_folder.substr(0, vtk_folder.size()-1);
-  bool export_intermediary_results = false; // !boost::iequals(vtk_folder, no_vtk);
+    vtk_folder = vtk_folder.substr(0, vtk_folder.size() - 1);
+  bool export_intermediary_results = !case_sensitive_string_compare(vtk_folder, no_vtk);
 
   if(export_intermediary_results)
   {
@@ -2791,7 +2796,7 @@ void my_p4est_biomolecules_t::expand_ghost()
   ierr = VecScatterDestroy(ctx_phi);                                                                                          CHKERRXX(ierr);
   ierr = VecDestroy(old_phi);                                                                                                 CHKERRXX(ierr);
   ierr = VecGhostUpdateEnd(phi, INSERT_VALUES, SCATTER_FORWARD);                                                              CHKERRXX(ierr);
-  if(old_inner_domain!=NULL)
+  if(old_inner_domain != NULL)
   {
     ierr = VecScatterAllToSomeEnd(ctx_inner_domain, old_inner_domain_loc, inner_domain);                                      CHKERRXX(ierr);
     ierr = VecGhostUpdateBegin(inner_domain, INSERT_VALUES, SCATTER_FORWARD);                                                 CHKERRXX(ierr);
@@ -3199,7 +3204,7 @@ double my_p4est_biomolecules_solver_t::get_inverse_debye_length_in_meters_invers
 
 void my_p4est_biomolecules_solver_t::return_psi_star(Vec &psi_star_out)
 {
-  P4EST_ASSERT(psi_star !=NULL);
+  P4EST_ASSERT(psi_star != NULL);
   psi_star_out    = psi_star; psi_star = NULL;
   psi_star_is_set = false;
 }
@@ -3473,6 +3478,7 @@ void my_p4est_biomolecules_solver_t::get_solvation_free_energy(const bool &nonli
 #ifdef CASL_THROWS
   ierr = PetscFPrintf(biomolecules->p4est->mpicomm, biomolecules->error_file, "my_p4est_biomolecules_solver_t::get_solvation_free_energy(): the solvation free energy is not properly defined in 2D, forget it! \n    Returning... \n"); CHKERRXX(ierr);
 #endif
+  (void) nonlinear_flag;
   return;
 #else
   P4EST_ASSERT(all_parameters_are_set());

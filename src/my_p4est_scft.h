@@ -122,7 +122,7 @@ class my_p4est_scft_t
   class bc_wall_type_t : public WallBCDIM
   {
   public:
-    BoundaryConditionType operator()( DIM(double x, double y, double z) ) const
+    BoundaryConditionType operator()( DIM(double, double, double) ) const
     {
       return NEUMANN;
     }

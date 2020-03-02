@@ -108,8 +108,9 @@ void my_p4est_interpolation_faces_t::interpolate(const p4est_quadrant_t &quad, c
   }
 
   const PetscScalar *face_is_well_defined_p;
-  if(face_is_well_defined!=NULL)
+  if(face_is_well_defined != NULL){
     ierr = VecGetArrayRead(face_is_well_defined, &face_is_well_defined_p); CHKERRXX(ierr);
+  }
 
   matrix_t A;
   A.resize(1, 1 + P4EST_DIM + (order >= 2 ? P4EST_DIM*(P4EST_DIM + 1)/2 : 0)); // constant term + P4EST_DIM linear terms + (if second order) P4EST_DIM squared terms + 0.5*P4EST_DIM*(P4EST_DIM + 1) squared and crossed terms
@@ -140,8 +141,9 @@ void my_p4est_interpolation_faces_t::interpolate(const p4est_quadrant_t &quad, c
             results[k] = Fi_p[k][f_tmp.face_idx];
             ierr = VecRestoreArrayRead(Fi[k], &Fi_p[k]); CHKERRXX(ierr);
           }
-          if(face_is_well_defined!=NULL)
+          if(face_is_well_defined != NULL){
             ierr = VecRestoreArrayRead(face_is_well_defined, &face_is_well_defined_p); CHKERRXX(ierr);
+          }
           return;
         }
 
@@ -201,8 +203,9 @@ void my_p4est_interpolation_faces_t::interpolate(const p4est_quadrant_t &quad, c
     ierr = VecRestoreArrayRead(Fi[k], &Fi_p[k]); CHKERRXX(ierr);
     results[k] = 0.0;
   }
-  if(face_is_well_defined!=NULL)
+  if(face_is_well_defined != NULL){
     ierr = VecRestoreArrayRead(face_is_well_defined, &face_is_well_defined_p); CHKERRXX(ierr);
+  }
 
   if(row_idx == 0)
     return;

@@ -12,6 +12,7 @@
 #include <src/my_p8est_tools.h>
 #include <src/my_p8est_refine_coarsen.h>
 #include <src/my_p8est_node_neighbors.h>
+#include <src/mls_integration/simplex3_mls_l.h>
 #else
 #include <p4est.h>
 #include <src/my_p4est_utils.h>
@@ -19,6 +20,7 @@
 #include <src/my_p4est_tools.h>
 #include <src/my_p4est_refine_coarsen.h>
 #include <src/my_p4est_node_neighbors.h>
+#include <src/mls_integration/simplex2_mls_l.h>
 #endif
 
 class my_p4est_semi_lagrangian_t
@@ -63,6 +65,9 @@ class my_p4est_semi_lagrangian_t
 
 public:
   my_p4est_semi_lagrangian_t(p4est_t **p4est_np1, p4est_nodes_t **nodes_np1,  p4est_ghost_t **ghost_np1,  my_p4est_node_neighbors_t *ngbd_n, my_p4est_node_neighbors_t *ngbd_nm1=NULL);
+
+  inline void set_velo_interpolation(interpolation_method method) { velo_interpolation = method; }
+  inline void set_phi_interpolation (interpolation_method method) { phi_interpolation  = method; }
 
   double compute_dt(DIM(const CF_DIM& vx, const CF_DIM& vy, const CF_DIM& vz));
   double compute_dt(DIM(Vec vx, Vec vy, Vec vz));
@@ -111,7 +116,7 @@ public:
    * \param expand_ghost_layer [in]   a boolean specifying whether you want the new grid to have an expanded ghost layer
    * \note you need to update ngbd_n and hierarchy yourself !
    */
-  void update_p4est(Vec *v, double dt, Vec &phi, Vec *phi_xx, Vec phi_add_refine, const int num_fields, bool use_block, bool enforce_uniform_band,double refine_band, double coarsen_band,Vec *fields, Vec fields_block, std::vector<double> criteria, std::vector<compare_option_t> compare_opn, std::vector<compare_diagonal_option_t> diag_opn, bool expand_ghost_layer);
+  void update_p4est(Vec *v, double dt, Vec &phi, Vec *phi_xx, Vec phi_add_refine, const unsigned int num_fields, bool use_block, bool enforce_uniform_band,double refine_band, double coarsen_band,Vec *fields, Vec fields_block, std::vector<double> criteria, std::vector<compare_option_t> compare_opn, std::vector<compare_diagonal_option_t> diag_opn, bool expand_ghost_layer);
   /*!
    * \brief update a p4est from tn to tnp1, using a semi-Lagrangian scheme with BDF along the characteristic.
    *   The forest at time n is copied, and is then refined, coarsened and balance iteratively until convergence.

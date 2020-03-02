@@ -482,7 +482,7 @@ private:
 #endif
     const bool is_corner  = (sum_v == P4EST_DIM);
     p4est_locidx_t face_idx, node_idx;
-    char local_face_dir;
+    char local_face_dir = -1;
     if(is_center)
     {
       computational_to_fine_node_t::const_iterator got_it = cell_to_fine_node.find(quad_idx);
@@ -501,7 +501,7 @@ private:
 #else
       local_face_dir = (abs(vx) == 1 ? 1 + vx : 5 + vy)/2;
 #endif
-      P4EST_ASSERT((local_face_dir >=0) && (local_face_dir < P4EST_FACES));
+      P4EST_ASSERT(local_face_dir >= 0 && local_face_dir < P4EST_FACES);
       face_idx = faces_n->q2f(quad_idx, local_face_dir);
       computational_to_fine_node_t::const_iterator got_it = face_to_fine_node[local_face_dir/2].find(face_idx);
       if(got_it != face_to_fine_node[local_face_dir/2].end())
@@ -513,11 +513,12 @@ private:
         return false;
     }
 #ifdef P4_TO_P8
-//    // TO BE IMPLEMENTED
-//    if(is_edge)
-//    {
+    // TO BE IMPLEMENTED
+    if(is_edge)
+    {
+      std::cerr << "you have more work to do here!" << std::endl;
 //      throw std::invalid_argument("you have a bit more work in 3D, here...");
-//    }
+    }
 #endif
     if (is_corner)
     {
@@ -564,7 +565,10 @@ private:
     if(to_return && is_center)
       cell_to_fine_node[quad_idx] = fine_vertex_idx;
     if(to_return && is_face)
+    {
+      P4EST_ASSERT(local_face_dir >= 0 && local_face_dir < P4EST_FACES);
       face_to_fine_node[local_face_dir/2][face_idx] = fine_vertex_idx;
+    }
 #ifdef P4_TO_P8
     // TO BE IMPLEMENTED
 //    if(to_return && is_edge)
@@ -1022,7 +1026,7 @@ public:
   void interpolate_linearly_from_fine_nodes_to_coarse_nodes(const Vec& vv_fine, Vec& vv_coarse);
 private:
 
-  void trajectory_from_all_faces_two_phases(p4est_t *p4est_n, my_p4est_faces_t *faces_n, my_p4est_node_neighbors_t *ngbd_nm1, my_p4est_node_neighbors_t *ngbd_n,
+  void trajectory_from_all_faces_two_phases(my_p4est_faces_t *faces_n, my_p4est_node_neighbors_t *ngbd_nm1, my_p4est_node_neighbors_t *ngbd_n,
                                             const double *fine_phi_p,
                                             Vec vnm1_nodes_m, Vec vnm1_nodes_m_xxyyzz,
                                             Vec vnm1_nodes_p, Vec vnm1_nodes_p_xxyyzz,

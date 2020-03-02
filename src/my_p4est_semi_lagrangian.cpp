@@ -424,7 +424,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *
   for(unsigned char dir=0; dir < P4EST_DIM; ++dir)
   {
     vxx[dir] = new Vec[P4EST_DIM];
-    if(dir==0)
+    if(dir == 0)
       for(unsigned char dd=0; dd < P4EST_DIM; ++dd) {
         ierr = VecCreateGhostNodes(ngbd_n->p4est, ngbd_n->nodes, &vxx[dir][dd]); CHKERRXX(ierr);
       }
@@ -540,7 +540,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *
 
 // ELYCE TRYING SOMETHING:---------------------------
 
-void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *phi_xx, Vec phi_add_refine, const int num_fields, bool use_block, bool enforce_uniform_band,double refine_band, double coarsen_band, Vec *fields, Vec fields_block, std::vector<double> criteria, std::vector<compare_option_t> compare_opn, std::vector<compare_diagonal_option_t> diag_opn,bool expand_ghost_layer)
+void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *phi_xx, Vec phi_add_refine, const unsigned int num_fields, bool use_block, bool enforce_uniform_band,double refine_band, double coarsen_band, Vec *fields, Vec fields_block, std::vector<double> criteria, std::vector<compare_option_t> compare_opn, std::vector<compare_diagonal_option_t> diag_opn,bool expand_ghost_layer)
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_semi_lagrangian_update_p4est_1st_order, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -550,7 +550,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *
   for(int dir=0; dir<P4EST_DIM; ++dir)
   {
     vxx[dir] = new Vec[P4EST_DIM];
-    if(dir==0)
+    if(dir == 0)
     {
       for(int dd=0; dd<P4EST_DIM; ++dd)
       {
@@ -564,11 +564,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *
         ierr = VecDuplicate(vxx[0][dd], &vxx[dir][dd]); CHKERRXX(ierr);
       }
     }
-#ifdef P4_TO_P8
-    ngbd_n->second_derivatives_central(v[dir], vxx[dir][0], vxx[dir][1], vxx[dir][2]);
-#else
-    ngbd_n->second_derivatives_central(v[dir], vxx[dir][0], vxx[dir][1]);
-#endif
+    ngbd_n->second_derivatives_central(v[dir], DIM(vxx[dir][0], vxx[dir][1], vxx[dir][2]));
   }
 
   // compute phi_xx and phi_yy
@@ -581,11 +577,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *
         ierr = VecCreateGhostNodes(ngbd_phi->p4est, ngbd_phi->nodes, &phi_xx[dir]); CHKERRXX(ierr);
     }
 
-#ifdef P4_TO_P8
-    ngbd_phi->second_derivatives_central(phi, phi_xx[0], phi_xx[1], phi_xx[2]);
-#else
-    ngbd_phi->second_derivatives_central(phi, phi_xx[0], phi_xx[1]);
-#endif
+    ngbd_phi->second_derivatives_central(phi, DIM(phi_xx[0], phi_xx[1], phi_xx[2]));
     local_derivatives = true;
   }
 
@@ -676,7 +668,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *
           interp_fields.set_input(fields, phi_interpolation,num_fields);
 
           double xyz[P4EST_DIM];
-          for(p4est_locidx_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+          for(size_t n = 0; n < nodes->indep_nodes.elem_count; ++n)
             {
               node_xyz_fr_n(n, p4est, nodes, xyz);
               interp_fields.add_point(n, xyz);
@@ -800,7 +792,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *vnm1, Vec *vn, double dt_nm1,
   {
     vxx_nm1[dir] = new Vec[P4EST_DIM];
     vxx_n  [dir] = new Vec[P4EST_DIM];
-    if(dir==0) {
+    if(dir == 0) {
       for(unsigned char dd=0; dd < P4EST_DIM; ++dd) {
         ierr = VecCreateGhostNodes(ngbd_nm1->p4est, ngbd_nm1->nodes, &vxx_nm1[dir][dd]); CHKERRXX(ierr);
         ierr = VecCreateGhostNodes(ngbd_n  ->p4est, ngbd_n  ->nodes, &vxx_n  [dir][dd]); CHKERRXX(ierr);
@@ -916,7 +908,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(std::vector<Vec> *v, double dt, st
   for(unsigned char dir=0; dir < P4EST_DIM; ++dir)
   {
     vxx[dir] = new Vec[P4EST_DIM];
-    if(dir==0)
+    if(dir == 0)
       for(unsigned char dd=0; dd < P4EST_DIM; ++dd){
         ierr = VecCreateGhostNodes(ngbd_n->p4est, ngbd_n->nodes, &vxx[dir][dd]); CHKERRXX(ierr);
       }
@@ -1005,7 +997,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(std::vector<Vec> *v, double dt, st
 
     double* phi_np1_p;
     Vec tmp;
-    if(i==0)
+    if(i == 0)
       tmp = phi_np1;
     else {
       ierr = VecDuplicate(phi_np1, &tmp); CHKERRXX(ierr);
@@ -1046,7 +1038,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, std::vector<Vec
   for(unsigned char dir=0; dir < P4EST_DIM; ++dir)
   {
     vxx[dir] = new Vec[P4EST_DIM];
-    if(dir==0) {
+    if(dir == 0) {
       for(unsigned char dd=0; dd < P4EST_DIM; ++dd) {
         ierr = VecCreateGhostNodes(ngbd_n->p4est, ngbd_n->nodes, &vxx[dir][dd]); CHKERRXX(ierr);
       }
@@ -1175,7 +1167,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, std::vector<Vec
   Vec *vxx[P4EST_DIM];
   for(unsigned char dir=0; dir < P4EST_DIM; ++dir) {
     vxx[dir] = new Vec[P4EST_DIM];
-    if(dir==0) {
+    if(dir == 0) {
       for(unsigned char dd=0; dd < P4EST_DIM; ++dd) {
         ierr = VecCreateGhostNodes(ngbd_n->p4est, ngbd_n->nodes, &vxx[dir][dd]); CHKERRXX(ierr);
       }
@@ -1342,7 +1334,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *vnm1, Vec *vn, double dt_nm1,
   {
     vxx_nm1[dir] = new Vec[P4EST_DIM];
     vxx_n  [dir] = new Vec[P4EST_DIM];
-    if(dir==0)
+    if(dir == 0)
       for(unsigned char dd=0; dd < P4EST_DIM; ++dd)
       {
         ierr = VecCreateGhostNodes(ngbd_nm1->p4est, ngbd_nm1->nodes, &vxx_nm1[dir][dd]); CHKERRXX(ierr);

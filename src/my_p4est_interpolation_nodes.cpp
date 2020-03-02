@@ -112,7 +112,7 @@ void my_p4est_interpolation_nodes_t::operator ()(DIM(double x, double y, double 
   const unsigned int nelem_per_node = bs_f*n_functions;
   double f[nelem_per_node*P4EST_CHILDREN]; // f[k*bs_f*P4EST_CHILDREN+cc*P4EST_CHILDREN+j] = value of the ccth component of the kth block vector at node j
 
-  double *fdd;
+  double *fdd = NULL;
   if (method == quadratic || method == quadratic_non_oscillatory || method == quadratic_non_oscillatory_continuous_v1 || method == quadratic_non_oscillatory_continuous_v2)
     fdd = P4EST_ALLOC(double, nelem_per_node*P4EST_CHILDREN*P4EST_DIM);
   // description of the above data structure:
@@ -232,7 +232,7 @@ void my_p4est_interpolation_nodes_t::operator ()(DIM(double x, double y, double 
       quadratic_non_oscillatory_continuous_v2_interpolation(p4est, best_match.p.piggy3.which_tree, best_match, f, fdd, xyz_p, results, n_functions*bs_f);
     }
 
-    if (method == quadratic || method == quadratic_non_oscillatory|| method == quadratic_non_oscillatory_continuous_v1 || method == quadratic_non_oscillatory_continuous_v2)
+    if (fdd != NULL)
       P4EST_FREE(fdd);
   } else {
     for (unsigned int k = 0; k < n_functions; ++k) {

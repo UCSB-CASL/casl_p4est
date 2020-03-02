@@ -1076,7 +1076,7 @@ void my_p4est_two_phase_flows_t::solve_viscosity_explicit()
 
   std::vector<double> backtraced_xyz_n[P4EST_DIM];
   std::vector<double> backtraced_xyz_nm1[P4EST_DIM];
-  trajectory_from_all_faces_two_phases(p4est_n, faces_n, ngbd_nm1, ngbd_n, fine_phi_p,
+  trajectory_from_all_faces_two_phases(faces_n, ngbd_nm1, ngbd_n, fine_phi_p,
                                        vnm1_nodes_m, vnm1_nodes_m_xxyyzz,
                                        vnm1_nodes_p, vnm1_nodes_p_xxyyzz,
                                        vn_nodes_m, vn_nodes_m_xxyyzz,
@@ -1278,7 +1278,7 @@ void my_p4est_two_phase_flows_t::do_semi_lagrangian_backtracing_from_faces_if_ne
   ierr = VecGetArrayRead(fine_phi, &fine_phi_p); CHKERRXX(ierr);
   std::vector<double> backtraced_xyz_n[P4EST_DIM];
   std::vector<double> backtraced_xyz_nm1[P4EST_DIM];
-  trajectory_from_all_faces_two_phases(p4est_n, faces_n, ngbd_nm1, ngbd_n, fine_phi_p,
+  trajectory_from_all_faces_two_phases(faces_n, ngbd_nm1, ngbd_n, fine_phi_p,
                                        vnm1_nodes_m, vnm1_nodes_m_xxyyzz,
                                        vnm1_nodes_p, vnm1_nodes_p_xxyyzz,
                                        vn_nodes_m, vn_nodes_m_xxyyzz,
@@ -3366,14 +3366,14 @@ if(export_fine_grid)
 }
 }
 
-void my_p4est_two_phase_flows_t::trajectory_from_all_faces_two_phases(p4est_t *p4est_n, my_p4est_faces_t *faces_n, my_p4est_node_neighbors_t *ngbd_nm1, my_p4est_node_neighbors_t *ngbd_n, const double *fine_phi_p,
-                                                                    Vec vnm1_nodes_m, Vec vnm1_nodes_m_xxyyzz,
-                                                                    Vec vnm1_nodes_p, Vec vnm1_nodes_p_xxyyzz,
-                                                                    Vec vn_nodes_m, Vec vn_nodes_m_xxyyzz,
-                                                                    Vec vn_nodes_p, Vec vn_nodes_p_xxyyzz,
-                                                                    double dt_nm1, double dt_n,
-                                                                    std::vector<double> xyz_n[P4EST_DIM],
-                                                                    std::vector<double> xyz_nm1[P4EST_DIM])
+void my_p4est_two_phase_flows_t::trajectory_from_all_faces_two_phases(my_p4est_faces_t *faces_n, my_p4est_node_neighbors_t *ngbd_nm1, my_p4est_node_neighbors_t *ngbd_n, const double *fine_phi_p,
+                                                                      Vec vnm1_nodes_m, Vec vnm1_nodes_m_xxyyzz,
+                                                                      Vec vnm1_nodes_p, Vec vnm1_nodes_p_xxyyzz,
+                                                                      Vec vn_nodes_m, Vec vn_nodes_m_xxyyzz,
+                                                                      Vec vn_nodes_p, Vec vn_nodes_p_xxyyzz,
+                                                                      double dt_nm1, double dt_n,
+                                                                      std::vector<double> xyz_n[P4EST_DIM],
+                                                                      std::vector<double> xyz_nm1[P4EST_DIM])
 {
 PetscErrorCode ierr;
 ierr = PetscLogEventBegin(log_my_p4est_two_phase_trajectory_of_all_faces, 0, 0, 0, 0); CHKERRXX(ierr);

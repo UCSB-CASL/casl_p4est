@@ -132,13 +132,13 @@ my_p4est_scft_t::~my_p4est_scft_t()
   if (q_tmp != NULL) { ierr = VecDestroy(q_tmp); CHKERRXX(ierr); }
   if (integrating_vec != NULL) { ierr = VecDestroy(integrating_vec); CHKERRXX(ierr); }
 
-  for (int i = 0; i < qf.size(); i++) { ierr = VecDestroy(qf.at(i));   CHKERRXX(ierr); }
-  for (int i = 0; i < qb.size(); i++) { ierr = VecDestroy(qb.at(i));   CHKERRXX(ierr); }
+  for (size_t i = 0; i < qf.size(); i++) { ierr = VecDestroy(qf.at(i));   CHKERRXX(ierr); }
+  for (size_t i = 0; i < qb.size(); i++) { ierr = VecDestroy(qb.at(i));   CHKERRXX(ierr); }
 
   if (exp_w_a != NULL) { ierr = VecDestroy(exp_w_a); CHKERRXX(ierr); }
   if (exp_w_b != NULL) { ierr = VecDestroy(exp_w_b); CHKERRXX(ierr); }
 
-  for (int surf_idx = 0; surf_idx < normal.size(); surf_idx++)
+  for (size_t surf_idx = 0; surf_idx < normal.size(); surf_idx++)
   {
     for (int dim = 0; dim < P4EST_DIM; dim++)
     {
@@ -150,8 +150,8 @@ my_p4est_scft_t::~my_p4est_scft_t()
   }
 
   // density optimization
-  for (int i = 0; i < zf.size(); i++) { ierr = VecDestroy(zf[i]); CHKERRXX(ierr); }
-  for (int i = 0; i < zb.size(); i++) { ierr = VecDestroy(zb[i]); CHKERRXX(ierr); }
+  for (size_t i = 0; i < zf.size(); i++) { ierr = VecDestroy(zf[i]); CHKERRXX(ierr); }
+  for (size_t i = 0; i < zb.size(); i++) { ierr = VecDestroy(zb[i]); CHKERRXX(ierr); }
 
   if (nu_m != NULL) { ierr = VecDestroy(nu_m); CHKERRXX(ierr); }
   if (nu_p != NULL) { ierr = VecDestroy(nu_p); CHKERRXX(ierr); }
@@ -899,7 +899,7 @@ void my_p4est_scft_t::assemble_integrating_vec()
   }
 
   /* loop through ghosts */
-  for (p4est_locidx_t ghost_idx = 0; ghost_idx < ghost->ghosts.elem_count; ++ghost_idx)
+  for (size_t ghost_idx = 0; ghost_idx < ghost->ghosts.elem_count; ++ghost_idx)
   {
     // get a ghost quadrant
     p4est_quadrant_t* quad = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts, ghost_idx);
@@ -1229,7 +1229,7 @@ void my_p4est_scft_t::sync_and_extend()
   }
 }
 
-void my_p4est_scft_t::compute_energy_shape_derivative(int phi_idx, Vec velo)
+void my_p4est_scft_t::compute_energy_shape_derivative(int /*phi_idx*/, Vec velo)
 {
   my_p4est_level_set_t ls(ngbd);
 
@@ -1241,9 +1241,9 @@ void my_p4est_scft_t::compute_energy_shape_derivative(int phi_idx, Vec velo)
 
   // compute velocity
   double *energy_shape_deriv_ptr;
-  double *qf_ptr, *rho_a_ptr, *bc_coeffs_a_ptr, *mu_m_ptr;
-  double *qb_ptr, *rho_b_ptr, *bc_coeffs_b_ptr, *mu_p_ptr;
-  double *kappa_ptr;
+  double *qf_ptr, *rho_a_ptr, *mu_m_ptr; // , *bc_coeffs_a_ptr;
+  double *qb_ptr, *rho_b_ptr, *mu_p_ptr; // , *bc_coeffs_b_ptr;
+//  double *kappa_ptr;
 
   ierr = VecGetArray(energy_shape_deriv_tmp,&energy_shape_deriv_ptr ); CHKERRXX(ierr);
   ierr = VecGetArray(qf[ns-1],              &qf_ptr                 ); CHKERRXX(ierr);
@@ -1282,8 +1282,8 @@ void my_p4est_scft_t::compute_energy_shape_derivative(int phi_idx, Vec velo)
   {
     node_xyz_fr_n(n, p4est, nodes, xyz);
 
-    double gamma_a_val = gamma_a[phi_idx]->value(xyz)*scalling;
-    double gamma_b_val = gamma_b[phi_idx]->value(xyz)*scalling;
+//    double gamma_a_val = gamma_a[phi_idx]->value(xyz)*scalling;
+//    double gamma_b_val = gamma_b[phi_idx]->value(xyz)*scalling;
 
     energy_shape_deriv_ptr[n] = 0.0*energy_shape_deriv_volumetric
         + (mu_m_ptr[n]*mu_m_ptr[n]/XN - mu_p_ptr[n])/volume
@@ -1460,7 +1460,7 @@ void my_p4est_scft_t::compute_energy_shape_derivative(int phi_idx, Vec velo)
 void my_p4est_scft_t::compute_normal_and_curvature()
 {
   // delete old values
-  for (int surf_idx = 0; surf_idx < normal.size(); surf_idx++)
+  for (size_t surf_idx = 0; surf_idx < normal.size(); surf_idx++)
   {
     for (int dim = 0; dim < P4EST_DIM; dim++)
     {
@@ -1478,7 +1478,7 @@ void my_p4est_scft_t::compute_normal_and_curvature()
   my_p4est_level_set_t ls(ngbd);
   ls.set_interpolation_on_interface(quadratic_non_oscillatory_continuous_v2);
 
-  for (int surf_idx = 0; surf_idx < normal.size(); surf_idx++)
+  for (size_t surf_idx = 0; surf_idx < normal.size(); surf_idx++)
   {
     // allocate
     normal[surf_idx] = new Vec[P4EST_DIM];

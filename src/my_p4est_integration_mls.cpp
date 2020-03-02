@@ -279,6 +279,7 @@ double my_p4est_integration_mls_t::perform(int_type_t int_type, int n0, int n1, 
           default: throw std::invalid_argument("Invalid type of integration\n");
         }
 #else
+        (void) n2; // to avoid compiler warning
         switch (int_type)
         {
           case DOM: cubes[quad_idx].quadrature_over_domain      (         W,X,Y);  break;
@@ -354,14 +355,14 @@ double my_p4est_integration_mls_t::perform(int_type_t int_type, int n0, int n1, 
 #ifdef P4_TO_P8
         if (xyz_cell != NULL)
         {
-          // sphere's radius
-          double R = 0.77;
+//          // sphere's radius
+//          double R = 0.77;
 
-          // relative cap's base radius
-          double a = 0.7;
+//          // relative cap's base radius
+//          double a = 0.7;
 
-          // relative margin
-          double b = 2;
+//          // relative margin
+//          double b = 2;
 
           if ( fabs(.5*(x0+x1) - xyz_cell[0]) > 1.e-10 ||
                fabs(.5*(y0+y1) - xyz_cell[1]) > 1.e-10 ||

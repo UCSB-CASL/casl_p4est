@@ -639,8 +639,8 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
                 // Note: I check this to save computation time -- no sense looping over all the fields if there is nothing to gain from it
 
                 double field_val;
-                double criteria_coarsen = NULL;
-                double criteria_refine = NULL;
+                double criteria_coarsen = DBL_MAX;
+                double criteria_refine = DBL_MAX;
 
                 for(unsigned short n = 0; n<num_fields;n++){
 //                    if(refine){ // If refine is ever true, we can stop checking and mark the quad for refinement
@@ -664,7 +664,7 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
 
                     // Switch over the cases for different comparision options to check the refinement and coarsening criteria:
                     if(coarsen){
-                        P4EST_ASSERT(criteria_coarsen!=NULL); // Make sure criteria has been defined before continuing
+                        P4EST_ASSERT(criteria_coarsen < DBL_MAX); // Make sure criteria has been defined before continuing
                         switch(diag_opn[2*n]){
                           case DIVIDE_BY:{
                               switch(compare_opn[2*n]){
@@ -711,7 +711,7 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
                           } // End of switch case on diagonal comparison option
                       } // End of if (coarsen)
                     if(refine_possible){
-                        P4EST_ASSERT(criteria_refine!=NULL); // Make sure criteria has been defined before continuing
+                        P4EST_ASSERT(criteria_refine < DBL_MAX); // Make sure criteria has been defined before continuing
                         switch(diag_opn[2*n + 1]){
                           case DIVIDE_BY:{
                               switch(compare_opn[2*n + 1]){
@@ -773,7 +773,7 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
       if(refine_possible && (!all_pos && !all_neg)){ // if nodes of the quad have different signs after checking each node --> interface crosses quad
           refine = true;
         }
-end_of_function:
+//end_of_function:
       // Now --> Apply the results of the check:
       if(refine){
           quad->p.user_int = REFINE_QUADRANT;
@@ -891,7 +891,7 @@ function_end:
 
 // ELYCE TRYING SOMETHING -------:
 
-bool splitting_criteria_tag_t::refine_and_coarsen(p4est_t* p4est, p4est_nodes_t* nodes, Vec phi, const int num_fields, bool use_block, bool enforce_uniform_band,double refine_band,double coarsen_band,Vec *fields,Vec fields_block, std::vector<double> criteria, std::vector<compare_option_t> compare_opn, std::vector<compare_diagonal_option_t> diag_opn){
+bool splitting_criteria_tag_t::refine_and_coarsen(p4est_t* p4est, p4est_nodes_t* nodes, Vec phi, const unsigned int num_fields, bool use_block, bool enforce_uniform_band,double refine_band,double coarsen_band,Vec *fields,Vec fields_block, std::vector<double> criteria, std::vector<compare_option_t> compare_opn, std::vector<compare_diagonal_option_t> diag_opn){
   PetscErrorCode ierr;
   bool is_grid_changed;
 
@@ -906,8 +906,8 @@ bool splitting_criteria_tag_t::refine_and_coarsen(p4est_t* p4est, p4est_nodes_t*
       ierr = VecGetArrayRead(fields_block,&fields_block_p); CHKERRXX(ierr);
 
       // Make sure other option is set to NULL, since at this point we assume we are using block -- if other option isn't NULL, will get an error when we call the next refine and coarsen function, because the object type of fields won't be a vector of doubles anymore
-      for(int i =0; i < num_fields; i++){
-          fields[i] == NULL;
+      for(unsigned int i =0; i < num_fields; i++){
+          fields[i] = NULL;
         }
   }// end of "if use block /else" statement -- if portion
   else{
@@ -935,7 +935,7 @@ bool splitting_criteria_tag_t::refine_and_coarsen(p4est_t* p4est, p4est_nodes_t*
   return is_grid_changed;
 }
 
-bool splitting_criteria_tag_t::refine_and_coarsen(p4est_t* p4est, p4est_nodes_t* nodes, const double *phi_p, const int num_fields, bool use_block,bool enforce_uniform_band,double refine_band,double coarsen_band, const double** fields,const double* fields_block, std::vector<double> criteria, std::vector<compare_option_t> compare_opn, std::vector<compare_diagonal_option_t> diag_opn){
+bool splitting_criteria_tag_t::refine_and_coarsen(p4est_t* p4est, p4est_nodes_t* nodes, const double *phi_p, const unsigned int num_fields, bool use_block,bool enforce_uniform_band,double refine_band,double coarsen_band, const double** fields,const double* fields_block, std::vector<double> criteria, std::vector<compare_option_t> compare_opn, std::vector<compare_diagonal_option_t> diag_opn){
   // WARNING: This function has not yet been validated in 3d
 
   // Option lists are provided in the following format:

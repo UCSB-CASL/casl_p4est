@@ -420,11 +420,7 @@ int main (int argc, char* argv[])
   // physical parameters for the simulations
   cmd.add_option("duration", "the duration of the simulation (tfinal-tstart), in units of oscillating periods! If not restarted, tstart = 0.0, default duration is 3 cycles.");
   cmd.add_option("St", "the Strouhal number = r/(pi*X0). This option sets X0=r/(PI*St). The minimum value allowed is 0.04, default is 4/PI");
-#ifdef P4_TO_P8
-  cmd.add_option("Re", "the Reynolds number=(rho*(2.0*PI*X0*f0)*2.0*r)/mu=(rho*4.0*f0*r^2)/(St*mu) where rho = 1.0, f0 = 1, r = 0.1 (default is 300). This option sets mu.");
-#else
-  cmd.add_option("Re", "the Reynolds number=(rho*(2.0*PI*X0*f0)*2.0*r)/mu=(rho*4.0*f0*r^2)/(St*mu) where rho = 1.0, f0 = 1, r = 0.05 (default is 300). This option sets mu.");
-#endif
+  cmd.add_option("Re", "the Reynolds number = (rho*(2.0*PI*X0*f0)*2.0*r)/mu=(rho*4.0*f0*r^2)/(St*mu) where rho = 1.0, f0 = 1, r = " + to_string(P4EST_DIM == 2 ? 0.05 : 0.1) + " (default is 300). This option sets mu.");
   // method-related parameters
   cmd.add_option("sl_order", "the order for the semi lagrangian, either 1 (stable) or 2 (accurate), default is 2");
   cmd.add_option("nsteps", "number of time steps per oscillation period, default is 200.");

@@ -1099,13 +1099,13 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix_neumann_wall_1st_or
 #else
         Cube2 cube;
 #endif
-        cube.x0 = x_C-0.5*dx_min;
-        cube.x1 = x_C+0.5*dx_min;
-        cube.y0 = y_C-0.5*dy_min;
-        cube.y1 = y_C+0.5*dy_min;
+        cube.xyz_mmm[0] = x_C-0.5*dx_min;
+        cube.xyz_ppp[0] = x_C+0.5*dx_min;
+        cube.xyz_mmm[1] = y_C-0.5*dy_min;
+        cube.xyz_ppp[1] = y_C+0.5*dy_min;
 #ifdef P4_TO_P8
-        cube.z0 = z_C-0.5*dz_min;
-        cube.z1 = z_C+0.5*dz_min;
+        cube.xyz_mmm[2] = z_C-0.5*dz_min;
+        cube.xyz_ppp[2] = z_C+0.5*dz_min;
 #endif
 #ifdef P4_TO_P8
         OctValue  phi_cube(P_mmm, P_mmp, P_mpm, P_mpp,
@@ -1138,28 +1138,28 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix_neumann_wall_1st_or
           Cube2 c2;
           QuadValue qv;
 
-          c2.x0    = cube.y0 ; c2.x1    = cube.y1 ; c2.y0    = cube.z0 ; c2.y1    = cube.z1 ;
-          qv.val00 = P_mmm;    qv.val01 = P_mmp;    qv.val10 = P_mpm;    qv.val11 = P_mpp;
+          c2.xyz_mmm[0]    = cube.xyz_mmm[1] ; c2.xyz_ppp[0]    = cube.xyz_ppp[1] ; c2.xyz_mmm[1]    = cube.xyz_mmm[2] ; c2.xyz_ppp[1]    = cube.xyz_ppp[2] ;
+          qv.val[0] = P_mmm;    qv.val[1] = P_mmp;    qv.val[2] = P_mpm;    qv.val[3] = P_mpp;
           double s_m00 = c2.area_In_Negative_Domain(qv);
 
-          c2.x0    = cube.y0 ; c2.x1    = cube.y1 ; c2.y0    = cube.z0 ; c2.y1    = cube.z1 ;
-          qv.val00 = P_pmm;    qv.val01 = P_pmp;    qv.val10 = P_ppm;    qv.val11 = P_ppp;
+          c2.xyz_mmm[0]    = cube.xyz_mmm[1] ; c2.xyz_ppp[0]    = cube.xyz_ppp[1] ; c2.xyz_mmm[1]    = cube.xyz_mmm[2] ; c2.xyz_ppp[1]    = cube.xyz_ppp[2] ;
+          qv.val[0] = P_pmm;    qv.val[1] = P_pmp;    qv.val[2] = P_ppm;    qv.val[3] = P_ppp;
           double s_p00 = c2.area_In_Negative_Domain(qv);
 
-          c2.x0    = cube.x0 ; c2.x1    = cube.x1 ; c2.y0    = cube.z0 ; c2.y1    = cube.z1 ;
-          qv.val00 = P_mmm;    qv.val01 = P_mmp;    qv.val10 = P_pmm;    qv.val11 = P_pmp;
+          c2.xyz_mmm[0]    = cube.xyz_mmm[0] ; c2.xyz_ppp[0]    = cube.xyz_ppp[0] ; c2.xyz_mmm[1]    = cube.xyz_mmm[2] ; c2.xyz_ppp[1]    = cube.xyz_ppp[2] ;
+          qv.val[0] = P_mmm;    qv.val[1] = P_mmp;    qv.val[2] = P_pmm;    qv.val[3] = P_pmp;
           double s_0m0 = c2.area_In_Negative_Domain(qv);
 
-          c2.x0    = cube.x0 ; c2.x1    = cube.x1 ; c2.y0    = cube.z0 ; c2.y1    = cube.z1 ;
-          qv.val00 = P_mpm;    qv.val01 = P_mpp;    qv.val10 = P_ppm;    qv.val11 = P_ppp;
+          c2.xyz_mmm[0]    = cube.xyz_mmm[0] ; c2.xyz_ppp[0]    = cube.xyz_ppp[0] ; c2.xyz_mmm[1]    = cube.xyz_mmm[2] ; c2.xyz_ppp[1]    = cube.xyz_ppp[2] ;
+          qv.val[0] = P_mpm;    qv.val[1] = P_mpp;    qv.val[2] = P_ppm;    qv.val[3] = P_ppp;
           double s_0p0 = c2.area_In_Negative_Domain(qv);
 
-          c2.x0    = cube.x0 ; c2.x1    = cube.x1 ; c2.y0    = cube.y0 ; c2.y1    = cube.y1 ;
-          qv.val00 = P_mmm;    qv.val01 = P_mpm;    qv.val10 = P_pmm;    qv.val11 = P_ppm;
+          c2.xyz_mmm[0]    = cube.xyz_mmm[0] ; c2.xyz_ppp[0]    = cube.xyz_ppp[0] ; c2.xyz_mmm[1]    = cube.xyz_mmm[1] ; c2.xyz_ppp[1]    = cube.xyz_ppp[1] ;
+          qv.val[0] = P_mmm;    qv.val[1] = P_mpm;    qv.val[2] = P_pmm;    qv.val[3] = P_ppm;
           double s_00m = c2.area_In_Negative_Domain(qv);
 
-          c2.x0    = cube.x0 ; c2.x1    = cube.x1 ; c2.y0    = cube.y0 ; c2.y1    = cube.y1 ;
-          qv.val00 = P_mmp;    qv.val01 = P_mpp;    qv.val10 = P_pmp;    qv.val11 = P_ppp;
+          c2.xyz_mmm[0]    = cube.xyz_mmm[0] ; c2.xyz_ppp[0]    = cube.xyz_ppp[0] ; c2.xyz_mmm[1]    = cube.xyz_mmm[1] ; c2.xyz_ppp[1]    = cube.xyz_ppp[1] ;
+          qv.val[0] = P_mmp;    qv.val[1] = P_mpp;    qv.val[2] = P_pmp;    qv.val[3] = P_ppp;
           double s_00p = c2.area_In_Negative_Domain(qv);
 
           double w_m00 = -mu_ * s_m00/dx_min;
@@ -1720,13 +1720,13 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec_neumann_wall_1st_or
 #else
         Cube2 cube;
 #endif
-        cube.x0 = x_C-0.5*dx_min;
-        cube.x1 = x_C+0.5*dx_min;
-        cube.y0 = y_C-0.5*dy_min;
-        cube.y1 = y_C+0.5*dy_min;
+        cube.xyz_mmm[0] = x_C-0.5*dx_min;
+        cube.xyz_ppp[0] = x_C+0.5*dx_min;
+        cube.xyz_mmm[1] = y_C-0.5*dy_min;
+        cube.xyz_ppp[1] = y_C+0.5*dy_min;
 #ifdef P4_TO_P8
-        cube.z0 = z_C-0.5*dz_min;
-        cube.z1 = z_C+0.5*dz_min;
+        cube.xyz_mmm[2] = z_C-0.5*dz_min;
+        cube.xyz_ppp[2] = z_C+0.5*dz_min;
 #endif
 #ifdef P4_TO_P8
         OctValue  phi_cube(P_mmm, P_mmp, P_mpm, P_mpp,
@@ -1745,28 +1745,28 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec_neumann_wall_1st_or
           Cube2 c2;
           QuadValue qv;
 
-          c2.x0    = cube.y0 ; c2.x1    = cube.y1 ; c2.y0    = cube.z0 ; c2.y1    = cube.z1 ;
-          qv.val00 = P_mmm;    qv.val01 = P_mmp;    qv.val10 = P_mpm;    qv.val11 = P_mpp;
+          c2.xyz_mmm[0]    = cube.xyz_mmm[1] ; c2.xyz_ppp[0]    = cube.xyz_ppp[1] ; c2.xyz_mmm[1]    = cube.xyz_mmm[2] ; c2.xyz_ppp[1]    = cube.xyz_ppp[2] ;
+          qv.val[0] = P_mmm;    qv.val[1] = P_mmp;    qv.val[2] = P_mpm;    qv.val[3] = P_mpp;
           double s_m00 = c2.area_In_Negative_Domain(qv);
 
-          c2.x0    = cube.y0 ; c2.x1    = cube.y1 ; c2.y0    = cube.z0 ; c2.y1    = cube.z1 ;
-          qv.val00 = P_pmm;    qv.val01 = P_pmp;    qv.val10 = P_ppm;    qv.val11 = P_ppp;
+          c2.xyz_mmm[0]    = cube.xyz_mmm[1] ; c2.xyz_ppp[0]    = cube.xyz_ppp[1] ; c2.xyz_mmm[1]    = cube.xyz_mmm[2] ; c2.xyz_ppp[1]    = cube.xyz_ppp[2] ;
+          qv.val[0] = P_pmm;    qv.val[1] = P_pmp;    qv.val[2] = P_ppm;    qv.val[3] = P_ppp;
           double s_p00 = c2.area_In_Negative_Domain(qv);
 
-          c2.x0    = cube.x0 ; c2.x1    = cube.x1 ; c2.y0    = cube.z0 ; c2.y1    = cube.z1 ;
-          qv.val00 = P_mmm;    qv.val01 = P_mmp;    qv.val10 = P_pmm;    qv.val11 = P_pmp;
+          c2.xyz_mmm[0]    = cube.xyz_mmm[0] ; c2.xyz_ppp[0]    = cube.xyz_ppp[0] ; c2.xyz_mmm[1]    = cube.xyz_mmm[2] ; c2.xyz_ppp[1]    = cube.xyz_ppp[2] ;
+          qv.val[0] = P_mmm;    qv.val[1] = P_mmp;    qv.val[2] = P_pmm;    qv.val[3] = P_pmp;
           double s_0m0 = c2.area_In_Negative_Domain(qv);
 
-          c2.x0    = cube.x0 ; c2.x1    = cube.x1 ; c2.y0    = cube.z0 ; c2.y1    = cube.z1 ;
-          qv.val00 = P_mpm;    qv.val01 = P_mpp;    qv.val10 = P_ppm;    qv.val11 = P_ppp;
+          c2.xyz_mmm[0]    = cube.xyz_mmm[0] ; c2.xyz_ppp[0]    = cube.xyz_ppp[0] ; c2.xyz_mmm[1]    = cube.xyz_mmm[2] ; c2.xyz_ppp[1]    = cube.xyz_ppp[2] ;
+          qv.val[0] = P_mpm;    qv.val[1] = P_mpp;    qv.val[2] = P_ppm;    qv.val[3] = P_ppp;
           double s_0p0 = c2.area_In_Negative_Domain(qv);
 
-          c2.x0    = cube.x0 ; c2.x1    = cube.x1 ; c2.y0    = cube.y0 ; c2.y1    = cube.y1 ;
-          qv.val00 = P_mmm;    qv.val01 = P_mpm;    qv.val10 = P_pmm;    qv.val11 = P_ppm;
+          c2.xyz_mmm[0]    = cube.xyz_mmm[0] ; c2.xyz_ppp[0]    = cube.xyz_ppp[0] ; c2.xyz_mmm[1]    = cube.xyz_mmm[1] ; c2.xyz_ppp[1]    = cube.xyz_ppp[1] ;
+          qv.val[0] = P_mmm;    qv.val[1] = P_mpm;    qv.val[2] = P_pmm;    qv.val[3] = P_ppm;
           double s_00m = c2.area_In_Negative_Domain(qv);
 
-          c2.x0    = cube.x0 ; c2.x1    = cube.x1 ; c2.y0    = cube.y0 ; c2.y1    = cube.y1 ;
-          qv.val00 = P_mmp;    qv.val01 = P_mpp;    qv.val10 = P_pmp;    qv.val11 = P_ppp;
+          c2.xyz_mmm[0]    = cube.xyz_mmm[0] ; c2.xyz_ppp[0]    = cube.xyz_ppp[0] ; c2.xyz_mmm[1]    = cube.xyz_mmm[1] ; c2.xyz_ppp[1]    = cube.xyz_ppp[1] ;
+          qv.val[0] = P_mmp;    qv.val[1] = P_mpp;    qv.val[2] = P_pmp;    qv.val[3] = P_ppp;
           double s_00p = c2.area_In_Negative_Domain(qv);
 
           double w_m00 = -mu_ * s_m00/dx_min;
@@ -1798,14 +1798,14 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec_neumann_wall_1st_or
             }
           }
 
-          OctValue bc_value( bc_->interfaceValue(cube.x0, cube.y0, cube.z0),
-                             bc_->interfaceValue(cube.x0, cube.y0, cube.z1),
-                             bc_->interfaceValue(cube.x0, cube.y1, cube.z0),
-                             bc_->interfaceValue(cube.x0, cube.y1, cube.z1),
-                             bc_->interfaceValue(cube.x1, cube.y0, cube.z0),
-                             bc_->interfaceValue(cube.x1, cube.y0, cube.z1),
-                             bc_->interfaceValue(cube.x1, cube.y1, cube.z0),
-                             bc_->interfaceValue(cube.x1, cube.y1, cube.z1));
+          OctValue bc_value( bc_->interfaceValue(cube.xyz_mmm[0], cube.xyz_mmm[1], cube.xyz_mmm[2]),
+                             bc_->interfaceValue(cube.xyz_mmm[0], cube.xyz_mmm[1], cube.xyz_ppp[2]),
+                             bc_->interfaceValue(cube.xyz_mmm[0], cube.xyz_ppp[1], cube.xyz_mmm[2]),
+                             bc_->interfaceValue(cube.xyz_mmm[0], cube.xyz_ppp[1], cube.xyz_ppp[2]),
+                             bc_->interfaceValue(cube.xyz_ppp[0], cube.xyz_mmm[1], cube.xyz_mmm[2]),
+                             bc_->interfaceValue(cube.xyz_ppp[0], cube.xyz_mmm[1], cube.xyz_ppp[2]),
+                             bc_->interfaceValue(cube.xyz_ppp[0], cube.xyz_ppp[1], cube.xyz_mmm[2]),
+                             bc_->interfaceValue(cube.xyz_ppp[0], cube.xyz_ppp[1], cube.xyz_ppp[2]));
 
           double integral_bc = cube.integrate_Over_Interface(bc_value, phi_cube);
 
@@ -1848,10 +1848,10 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec_neumann_wall_1st_or
             }
           }
 
-          QuadValue bc_value( bc_->interfaceValue(cube.x0, cube.y0),
-                              bc_->interfaceValue(cube.x0, cube.y1),
-                              bc_->interfaceValue(cube.x1, cube.y0),
-                              bc_->interfaceValue(cube.x1, cube.y1));
+          QuadValue bc_value( bc_->interfaceValue(cube.xyz_mmm[0], cube.xyz_mmm[1]),
+                              bc_->interfaceValue(cube.xyz_mmm[0], cube.xyz_ppp[1]),
+                              bc_->interfaceValue(cube.xyz_ppp[0], cube.xyz_mmm[1]),
+                              bc_->interfaceValue(cube.xyz_ppp[0], cube.xyz_ppp[1]));
 
           double integral_bc = cube.integrate_Over_Interface(bc_value, phi_cube);
           rhs_p[n] += mu_*integral_bc;
@@ -2033,29 +2033,29 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix()
 #else
         Cube2 cube;
 #endif
-        cube.x0 = is_node_xmWall(p4est, ni) ? x_C : x_C-0.5*dx_min;
-        cube.x1 = is_node_xpWall(p4est, ni) ? x_C : x_C+0.5*dx_min;
-        cube.y0 = is_node_ymWall(p4est, ni) ? y_C : y_C-0.5*dy_min;
-        cube.y1 = is_node_ypWall(p4est, ni) ? y_C : y_C+0.5*dy_min;
+        cube.xyz_mmm[0] = is_node_xmWall(p4est, ni) ? x_C : x_C-0.5*dx_min;
+        cube.xyz_ppp[0] = is_node_xpWall(p4est, ni) ? x_C : x_C+0.5*dx_min;
+        cube.xyz_mmm[1] = is_node_ymWall(p4est, ni) ? y_C : y_C-0.5*dy_min;
+        cube.xyz_ppp[1] = is_node_ypWall(p4est, ni) ? y_C : y_C+0.5*dy_min;
 #ifdef P4_TO_P8
-        cube.z0 = is_node_zmWall(p4est, ni) ? z_C : z_C-0.5*dz_min;
-        cube.z1 = is_node_zpWall(p4est, ni) ? z_C : z_C+0.5*dz_min;
+        cube.xyz_mmm[2] = is_node_zmWall(p4est, ni) ? z_C : z_C-0.5*dz_min;
+        cube.xyz_ppp[2] = is_node_zpWall(p4est, ni) ? z_C : z_C+0.5*dz_min;
 #endif
 
 #ifdef P4_TO_P8
-      double P_mmm = phi_interp(cube.x0, cube.y0, cube.z0);
-      double P_mmp = phi_interp(cube.x0, cube.y0, cube.z1);
-      double P_mpm = phi_interp(cube.x0, cube.y1, cube.z0);
-      double P_mpp = phi_interp(cube.x0, cube.y1, cube.z1);
-      double P_pmm = phi_interp(cube.x1, cube.y0, cube.z0);
-      double P_pmp = phi_interp(cube.x1, cube.y0, cube.z1);
-      double P_ppm = phi_interp(cube.x1, cube.y1, cube.z0);
-      double P_ppp = phi_interp(cube.x1, cube.y1, cube.z1);
+      double P_mmm = phi_interp(cube.xyz_mmm[0], cube.xyz_mmm[1], cube.xyz_mmm[2]);
+      double P_mmp = phi_interp(cube.xyz_mmm[0], cube.xyz_mmm[1], cube.xyz_ppp[2]);
+      double P_mpm = phi_interp(cube.xyz_mmm[0], cube.xyz_ppp[1], cube.xyz_mmm[2]);
+      double P_mpp = phi_interp(cube.xyz_mmm[0], cube.xyz_ppp[1], cube.xyz_ppp[2]);
+      double P_pmm = phi_interp(cube.xyz_ppp[0], cube.xyz_mmm[1], cube.xyz_mmm[2]);
+      double P_pmp = phi_interp(cube.xyz_ppp[0], cube.xyz_mmm[1], cube.xyz_ppp[2]);
+      double P_ppm = phi_interp(cube.xyz_ppp[0], cube.xyz_ppp[1], cube.xyz_mmm[2]);
+      double P_ppp = phi_interp(cube.xyz_ppp[0], cube.xyz_ppp[1], cube.xyz_ppp[2]);
 #else
-      double P_mmm = phi_interp(cube.x0, cube.y0);
-      double P_mpm = phi_interp(cube.x0, cube.y1);
-      double P_pmm = phi_interp(cube.x1, cube.y0);
-      double P_ppm = phi_interp(cube.x1, cube.y1);
+      double P_mmm = phi_interp(cube.xyz_mmm[0], cube.xyz_mmm[1]);
+      double P_mpm = phi_interp(cube.xyz_mmm[0], cube.xyz_ppp[1]);
+      double P_pmm = phi_interp(cube.xyz_ppp[0], cube.xyz_mmm[1]);
+      double P_ppm = phi_interp(cube.xyz_ppp[0], cube.xyz_ppp[1]);
 #endif
 
 #ifdef P4_TO_P8
@@ -2108,7 +2108,10 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix()
         if( is_interface_m00) {
           double phixx_m00 = qnnn.f_m00_linear(phi_xx_p);
           double theta_m00 = interface_Location_With_Second_Order_Derivative(0., d_m00, phi_000, phi_m00, phixx_C, phixx_m00);
-          if (theta_m00<eps) theta_m00 = eps; if (theta_m00>d_m00) theta_m00 = d_m00;
+          if (theta_m00<eps)
+            theta_m00 = eps;
+          if (theta_m00>d_m00)
+            theta_m00 = d_m00;
           d_m00_m0 = d_m00_p0 = 0;
 #ifdef P4_TO_P8
           d_m00_0m = d_m00_0p = 0;
@@ -2118,7 +2121,10 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix()
         if( is_interface_p00){
           double phixx_p00 = qnnn.f_p00_linear(phi_xx_p);
           double theta_p00 = interface_Location_With_Second_Order_Derivative(0., d_p00, phi_000, phi_p00, phixx_C, phixx_p00);
-          if (theta_p00<eps) theta_p00 = eps; if (theta_p00>d_p00) theta_p00 = d_p00;
+          if (theta_p00<eps)
+            theta_p00 = eps;
+          if (theta_p00>d_p00)
+            theta_p00 = d_p00;
           d_p00_m0 = d_p00_p0 = 0;
 #ifdef P4_TO_P8
           d_p00_0m = d_p00_0p = 0;
@@ -2128,7 +2134,10 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix()
         if( is_interface_0m0){
           double phiyy_0m0 = qnnn.f_0m0_linear(phi_yy_p);
           double theta_0m0 = interface_Location_With_Second_Order_Derivative(0., d_0m0, phi_000, phi_0m0, phiyy_C, phiyy_0m0);
-          if (theta_0m0<eps) theta_0m0 = eps; if (theta_0m0>d_0m0) theta_0m0 = d_0m0;
+          if (theta_0m0<eps)
+            theta_0m0 = eps;
+          if (theta_0m0>d_0m0)
+            theta_0m0 = d_0m0;
           d_0m0_m0 = d_0m0_p0 = 0;
 #ifdef P4_TO_P8
           d_0m0_0m = d_0m0_0p = 0;
@@ -2138,7 +2147,10 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix()
         if( is_interface_0p0){
           double phiyy_0p0 = qnnn.f_0p0_linear(phi_yy_p);
           double theta_0p0 = interface_Location_With_Second_Order_Derivative(0., d_0p0, phi_000, phi_0p0, phiyy_C, phiyy_0p0);
-          if (theta_0p0<eps) theta_0p0 = eps; if (theta_0p0>d_0p0) theta_0p0 = d_0p0;
+          if (theta_0p0<eps)
+            theta_0p0 = eps;
+          if (theta_0p0>d_0p0)
+            theta_0p0 = d_0p0;
           d_0p0_m0 = d_0p0_p0 = 0;
 #ifdef P4_TO_P8
           d_0p0_0m = d_0p0_0p = 0;
@@ -2149,14 +2161,20 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix()
         if( is_interface_00m){
           double phizz_00m = qnnn.f_00m_linear(phi_zz_p);
           double theta_00m = interface_Location_With_Second_Order_Derivative(0., d_00m, phi_000, phi_00m, phizz_C, phizz_00m);
-          if (theta_00m<eps) theta_00m = eps; if (theta_00m>d_00m) theta_00m = d_00m;
+          if (theta_00m<eps)
+            theta_00m = eps;
+          if (theta_00m>d_00m)
+            theta_00m = d_00m;
           d_00m_m0 = d_00m_p0 = d_00m_0m = d_00m_0p = 0;
           d_00m = theta_00m;
         }
         if( is_interface_00p){
           double phizz_00p = qnnn.f_00p_linear(phi_zz_p);
           double theta_00p = interface_Location_With_Second_Order_Derivative(0., d_00p, phi_000, phi_00p, phizz_C, phizz_00p);
-          if (theta_00p<eps) theta_00p = eps; if (theta_00p>d_00p) theta_00p = d_00p;
+          if (theta_00p<eps)
+            theta_00p = eps;
+          if (theta_00p>d_00p)
+            theta_00p = d_00p;
           d_00p_m0 = d_00p_p0 = d_00p_0m = d_00p_0p = 0;
           d_00p = theta_00p;
         }
@@ -2438,28 +2456,28 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix()
           Cube2 c2;
           QuadValue qv;
 
-          c2.x0    = cube.y0 ; c2.x1    = cube.y1 ; c2.y0    = cube.z0 ; c2.y1    = cube.z1 ;
-          qv.val00 = P_mmm;    qv.val01 = P_mmp;    qv.val10 = P_mpm;    qv.val11 = P_mpp;
+          c2.xyz_mmm[0]    = cube.xyz_mmm[1] ; c2.xyz_ppp[0]    = cube.xyz_ppp[1] ; c2.xyz_mmm[1]    = cube.xyz_mmm[2] ; c2.xyz_ppp[1]    = cube.xyz_ppp[2] ;
+          qv.val[0] = P_mmm;    qv.val[1] = P_mmp;    qv.val[2] = P_mpm;    qv.val[3] = P_mpp;
           double s_m00 = c2.area_In_Negative_Domain(qv);
 
-          c2.x0    = cube.y0 ; c2.x1    = cube.y1 ; c2.y0    = cube.z0 ; c2.y1    = cube.z1 ;
-          qv.val00 = P_pmm;    qv.val01 = P_pmp;    qv.val10 = P_ppm;    qv.val11 = P_ppp;
+          c2.xyz_mmm[0]    = cube.xyz_mmm[1] ; c2.xyz_ppp[0]    = cube.xyz_ppp[1] ; c2.xyz_mmm[1]    = cube.xyz_mmm[2] ; c2.xyz_ppp[1]    = cube.xyz_ppp[2] ;
+          qv.val[0] = P_pmm;    qv.val[1] = P_pmp;    qv.val[2] = P_ppm;    qv.val[3] = P_ppp;
           double s_p00 = c2.area_In_Negative_Domain(qv);
 
-          c2.x0    = cube.x0 ; c2.x1    = cube.x1 ; c2.y0    = cube.z0 ; c2.y1    = cube.z1 ;
-          qv.val00 = P_mmm;    qv.val01 = P_mmp;    qv.val10 = P_pmm;    qv.val11 = P_pmp;
+          c2.xyz_mmm[0]    = cube.xyz_mmm[0] ; c2.xyz_ppp[0]    = cube.xyz_ppp[0] ; c2.xyz_mmm[1]    = cube.xyz_mmm[2] ; c2.xyz_ppp[1]    = cube.xyz_ppp[2] ;
+          qv.val[0] = P_mmm;    qv.val[1] = P_mmp;    qv.val[2] = P_pmm;    qv.val[3] = P_pmp;
           double s_0m0 = c2.area_In_Negative_Domain(qv);
 
-          c2.x0    = cube.x0 ; c2.x1    = cube.x1 ; c2.y0    = cube.z0 ; c2.y1    = cube.z1 ;
-          qv.val00 = P_mpm;    qv.val01 = P_mpp;    qv.val10 = P_ppm;    qv.val11 = P_ppp;
+          c2.xyz_mmm[0]    = cube.xyz_mmm[0] ; c2.xyz_ppp[0]    = cube.xyz_ppp[0] ; c2.xyz_mmm[1]    = cube.xyz_mmm[2] ; c2.xyz_ppp[1]    = cube.xyz_ppp[2] ;
+          qv.val[0] = P_mpm;    qv.val[1] = P_mpp;    qv.val[2] = P_ppm;    qv.val[3] = P_ppp;
           double s_0p0 = c2.area_In_Negative_Domain(qv);
 
-          c2.x0    = cube.x0 ; c2.x1    = cube.x1 ; c2.y0    = cube.y0 ; c2.y1    = cube.y1 ;
-          qv.val00 = P_mmm;    qv.val01 = P_mpm;    qv.val10 = P_pmm;    qv.val11 = P_ppm;
+          c2.xyz_mmm[0]    = cube.xyz_mmm[0] ; c2.xyz_ppp[0]    = cube.xyz_ppp[0] ; c2.xyz_mmm[1]    = cube.xyz_mmm[1] ; c2.xyz_ppp[1]    = cube.xyz_ppp[1] ;
+          qv.val[0] = P_mmm;    qv.val[1] = P_mpm;    qv.val[2] = P_pmm;    qv.val[3] = P_ppm;
           double s_00m = c2.area_In_Negative_Domain(qv);
 
-          c2.x0    = cube.x0 ; c2.x1    = cube.x1 ; c2.y0    = cube.y0 ; c2.y1    = cube.y1 ;
-          qv.val00 = P_mmp;    qv.val01 = P_mpp;    qv.val10 = P_pmp;    qv.val11 = P_ppp;
+          c2.xyz_mmm[0]    = cube.xyz_mmm[0] ; c2.xyz_ppp[0]    = cube.xyz_ppp[0] ; c2.xyz_mmm[1]    = cube.xyz_mmm[1] ; c2.xyz_ppp[1]    = cube.xyz_ppp[1] ;
+          qv.val[0] = P_mmp;    qv.val[1] = P_mpp;    qv.val[2] = P_pmp;    qv.val[3] = P_ppp;
           double s_00p = c2.area_In_Negative_Domain(qv);
 
           double w_m00=0, w_p00=0, w_0m0=0, w_0p0=0, w_00m=0, w_00p=0;
@@ -2508,8 +2526,8 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_matrix()
           fxx = phi_xx_p[n];
           fyy = phi_yy_p[n];
 
-          double dx = cube.x1 - cube.x0;
-          double dy = cube.y1 - cube.y0;
+          double dx = cube.xyz_ppp[0] - cube.xyz_mmm[0];
+          double dy = cube.xyz_ppp[1] - cube.xyz_mmm[1];
 
           double s_m00 = dy * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_mmm, P_mpm, fyy, fyy, dy);
           double s_p00 = dy * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_pmm, P_ppm, fyy, fyy, dy);
@@ -2700,29 +2718,29 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec()
 #else
         Cube2 cube;
 #endif
-        cube.x0 = is_node_xmWall(p4est, ni) ? x_C : x_C-0.5*dx_min;
-        cube.x1 = is_node_xpWall(p4est, ni) ? x_C : x_C+0.5*dx_min;
-        cube.y0 = is_node_ymWall(p4est, ni) ? y_C : y_C-0.5*dy_min;
-        cube.y1 = is_node_ypWall(p4est, ni) ? y_C : y_C+0.5*dy_min;
+        cube.xyz_mmm[0] = is_node_xmWall(p4est, ni) ? x_C : x_C-0.5*dx_min;
+        cube.xyz_ppp[0] = is_node_xpWall(p4est, ni) ? x_C : x_C+0.5*dx_min;
+        cube.xyz_mmm[1] = is_node_ymWall(p4est, ni) ? y_C : y_C-0.5*dy_min;
+        cube.xyz_ppp[1] = is_node_ypWall(p4est, ni) ? y_C : y_C+0.5*dy_min;
 #ifdef P4_TO_P8
-        cube.z0 = is_node_zmWall(p4est, ni) ? z_C : z_C-0.5*dz_min;
-        cube.z1 = is_node_zpWall(p4est, ni) ? z_C : z_C+0.5*dz_min;
+        cube.xyz_mmm[2] = is_node_zmWall(p4est, ni) ? z_C : z_C-0.5*dz_min;
+        cube.xyz_ppp[2] = is_node_zpWall(p4est, ni) ? z_C : z_C+0.5*dz_min;
 #endif
 
 #ifdef P4_TO_P8
-      double P_mmm = phi_interp(cube.x0, cube.y0, cube.z0);
-      double P_mmp = phi_interp(cube.x0, cube.y0, cube.z1);
-      double P_mpm = phi_interp(cube.x0, cube.y1, cube.z0);
-      double P_mpp = phi_interp(cube.x0, cube.y1, cube.z1);
-      double P_pmm = phi_interp(cube.x1, cube.y0, cube.z0);
-      double P_pmp = phi_interp(cube.x1, cube.y0, cube.z1);
-      double P_ppm = phi_interp(cube.x1, cube.y1, cube.z0);
-      double P_ppp = phi_interp(cube.x1, cube.y1, cube.z1);
+      double P_mmm = phi_interp(cube.xyz_mmm[0], cube.xyz_mmm[1], cube.xyz_mmm[2]);
+      double P_mmp = phi_interp(cube.xyz_mmm[0], cube.xyz_mmm[1], cube.xyz_ppp[2]);
+      double P_mpm = phi_interp(cube.xyz_mmm[0], cube.xyz_ppp[1], cube.xyz_mmm[2]);
+      double P_mpp = phi_interp(cube.xyz_mmm[0], cube.xyz_ppp[1], cube.xyz_ppp[2]);
+      double P_pmm = phi_interp(cube.xyz_ppp[0], cube.xyz_mmm[1], cube.xyz_mmm[2]);
+      double P_pmp = phi_interp(cube.xyz_ppp[0], cube.xyz_mmm[1], cube.xyz_ppp[2]);
+      double P_ppm = phi_interp(cube.xyz_ppp[0], cube.xyz_ppp[1], cube.xyz_mmm[2]);
+      double P_ppp = phi_interp(cube.xyz_ppp[0], cube.xyz_ppp[1], cube.xyz_ppp[2]);
 #else
-      double P_mmm = phi_interp(cube.x0, cube.y0);
-      double P_mpm = phi_interp(cube.x0, cube.y1);
-      double P_pmm = phi_interp(cube.x1, cube.y0);
-      double P_ppm = phi_interp(cube.x1, cube.y1);
+      double P_mmm = phi_interp(cube.xyz_mmm[0], cube.xyz_mmm[1]);
+      double P_mpm = phi_interp(cube.xyz_mmm[0], cube.xyz_ppp[1]);
+      double P_pmm = phi_interp(cube.xyz_ppp[0], cube.xyz_mmm[1]);
+      double P_ppm = phi_interp(cube.xyz_ppp[0], cube.xyz_ppp[1]);
 #endif
 
 #ifdef P4_TO_P8
@@ -2784,7 +2802,10 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec()
         if( is_interface_m00) {
           double phixx_m00 = qnnn.f_m00_linear(phi_xx_p);
           double theta_m00 = interface_Location_With_Second_Order_Derivative(0., d_m00, phi_000, phi_m00, phixx_C, phixx_m00);
-          if (theta_m00<eps) theta_m00 = eps; if (theta_m00>d_m00) theta_m00 = d_m00;
+          if (theta_m00<eps)
+            theta_m00 = eps;
+          if (theta_m00>d_m00)
+            theta_m00 = d_m00;
           d_m00_m0 = d_m00_p0 = 0;
 #ifdef P4_TO_P8
           d_m00_0m = d_m00_0p = 0;
@@ -2799,7 +2820,10 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec()
         if( is_interface_p00){
           double phixx_p00 = qnnn.f_p00_linear(phi_xx_p);
           double theta_p00 = interface_Location_With_Second_Order_Derivative(0., d_p00, phi_000, phi_p00, phixx_C, phixx_p00);
-          if (theta_p00<eps) theta_p00 = eps; if (theta_p00>d_p00) theta_p00 = d_p00;
+          if (theta_p00<eps)
+            theta_p00 = eps;
+          if (theta_p00>d_p00)
+            theta_p00 = d_p00;
           d_p00_m0 = d_p00_p0 = 0;
 #ifdef P4_TO_P8
           d_p00_0m = d_p00_0p = 0;
@@ -2814,7 +2838,10 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec()
         if( is_interface_0m0){
           double phiyy_0m0 = qnnn.f_0m0_linear(phi_yy_p);
           double theta_0m0 = interface_Location_With_Second_Order_Derivative(0., d_0m0, phi_000, phi_0m0, phiyy_C, phiyy_0m0);
-          if (theta_0m0<eps) theta_0m0 = eps; if (theta_0m0>d_0m0) theta_0m0 = d_0m0;
+          if (theta_0m0<eps)
+            theta_0m0 = eps;
+          if (theta_0m0>d_0m0)
+            theta_0m0 = d_0m0;
           d_0m0_m0 = d_0m0_p0 = 0;
 #ifdef P4_TO_P8
           d_0m0_0m = d_0m0_0p = 0;
@@ -2829,7 +2856,10 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec()
         if( is_interface_0p0){
           double phiyy_0p0 = qnnn.f_0p0_linear(phi_yy_p);
           double theta_0p0 = interface_Location_With_Second_Order_Derivative(0., d_0p0, phi_000, phi_0p0, phiyy_C, phiyy_0p0);
-          if (theta_0p0<eps) theta_0p0 = eps; if (theta_0p0>d_0p0) theta_0p0 = d_0p0;
+          if (theta_0p0<eps)
+            theta_0p0 = eps;
+          if (theta_0p0>d_0p0)
+            theta_0p0 = d_0p0;
           d_0p0_m0 = d_0p0_p0 = 0;
 #ifdef P4_TO_P8
           d_0p0_0m = d_0p0_0p = 0;
@@ -2845,7 +2875,10 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec()
         if( is_interface_00m){
           double phizz_00m = qnnn.f_00m_linear(phi_zz_p);
           double theta_00m = interface_Location_With_Second_Order_Derivative(0., d_00m, phi_000, phi_00m, phizz_C, phizz_00m);
-          if (theta_00m<eps) theta_00m = eps; if (theta_00m>d_00m) theta_00m = d_00m;
+          if (theta_00m<eps)
+            theta_00m = eps;
+          if (theta_00m>d_00m)
+            theta_00m = d_00m;
           d_00m_m0 = d_00m_p0 = d_00m_0m = d_00m_0p = 0;
           d_00m = theta_00m;
           val_interface_00m = bc_->interfaceValue(x_C, y_C , z_C - theta_00m);
@@ -2853,7 +2886,10 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec()
         if( is_interface_00p){
           double phizz_00p = qnnn.f_00p_linear(phi_zz_p);
           double theta_00p = interface_Location_With_Second_Order_Derivative(0., d_00p, phi_000, phi_00p, phizz_C, phizz_00p);
-          if (theta_00p<eps) theta_00p = eps; if (theta_00p>d_00p) theta_00p = d_00p;
+          if (theta_00p<eps)
+            theta_00p = eps;
+          if (theta_00p>d_00p)
+            theta_00p = d_00p;
           d_00p_m0 = d_00p_p0 = d_00p_0m = d_00p_0p = 0;
           d_00p = theta_00p;
           val_interface_00p = bc_->interfaceValue(x_C, y_C , z_C + theta_00p);
@@ -3033,28 +3069,28 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec()
           Cube2 c2;
           QuadValue qv;
 
-          c2.x0    = cube.y0 ; c2.x1    = cube.y1 ; c2.y0    = cube.z0 ; c2.y1    = cube.z1 ;
-          qv.val00 = P_mmm;    qv.val01 = P_mmp;    qv.val10 = P_mpm;    qv.val11 = P_mpp;
+          c2.xyz_mmm[0]    = cube.xyz_mmm[1] ; c2.xyz_ppp[0]    = cube.xyz_ppp[1] ; c2.xyz_mmm[1]    = cube.xyz_mmm[2] ; c2.xyz_ppp[1]    = cube.xyz_ppp[2] ;
+          qv.val[0] = P_mmm;    qv.val[1] = P_mmp;    qv.val[2] = P_mpm;    qv.val[3] = P_mpp;
           double s_m00 = c2.area_In_Negative_Domain(qv);
 
-          c2.x0    = cube.y0 ; c2.x1    = cube.y1 ; c2.y0    = cube.z0 ; c2.y1    = cube.z1 ;
-          qv.val00 = P_pmm;    qv.val01 = P_pmp;    qv.val10 = P_ppm;    qv.val11 = P_ppp;
+          c2.xyz_mmm[0]    = cube.xyz_mmm[1] ; c2.xyz_ppp[0]    = cube.xyz_ppp[1] ; c2.xyz_mmm[1]    = cube.xyz_mmm[2] ; c2.xyz_ppp[1]    = cube.xyz_ppp[2] ;
+          qv.val[0] = P_pmm;    qv.val[1] = P_pmp;    qv.val[2] = P_ppm;    qv.val[3] = P_ppp;
           double s_p00 = c2.area_In_Negative_Domain(qv);
 
-          c2.x0    = cube.x0 ; c2.x1    = cube.x1 ; c2.y0    = cube.z0 ; c2.y1    = cube.z1 ;
-          qv.val00 = P_mmm;    qv.val01 = P_mmp;    qv.val10 = P_pmm;    qv.val11 = P_pmp;
+          c2.xyz_mmm[0]    = cube.xyz_mmm[0] ; c2.xyz_ppp[0]    = cube.xyz_ppp[0] ; c2.xyz_mmm[1]    = cube.xyz_mmm[2] ; c2.xyz_ppp[1]    = cube.xyz_ppp[2] ;
+          qv.val[0] = P_mmm;    qv.val[1] = P_mmp;    qv.val[2] = P_pmm;    qv.val[3] = P_pmp;
           double s_0m0 = c2.area_In_Negative_Domain(qv);
 
-          c2.x0    = cube.x0 ; c2.x1    = cube.x1 ; c2.y0    = cube.z0 ; c2.y1    = cube.z1 ;
-          qv.val00 = P_mpm;    qv.val01 = P_mpp;    qv.val10 = P_ppm;    qv.val11 = P_ppp;
+          c2.xyz_mmm[0]    = cube.xyz_mmm[0] ; c2.xyz_ppp[0]    = cube.xyz_ppp[0] ; c2.xyz_mmm[1]    = cube.xyz_mmm[2] ; c2.xyz_ppp[1]    = cube.xyz_ppp[2] ;
+          qv.val[0] = P_mpm;    qv.val[1] = P_mpp;    qv.val[2] = P_ppm;    qv.val[3] = P_ppp;
           double s_0p0 = c2.area_In_Negative_Domain(qv);
 
-          c2.x0    = cube.x0 ; c2.x1    = cube.x1 ; c2.y0    = cube.y0 ; c2.y1    = cube.y1 ;
-          qv.val00 = P_mmm;    qv.val01 = P_mpm;    qv.val10 = P_pmm;    qv.val11 = P_ppm;
+          c2.xyz_mmm[0]    = cube.xyz_mmm[0] ; c2.xyz_ppp[0]    = cube.xyz_ppp[0] ; c2.xyz_mmm[1]    = cube.xyz_mmm[1] ; c2.xyz_ppp[1]    = cube.xyz_ppp[1] ;
+          qv.val[0] = P_mmm;    qv.val[1] = P_mpm;    qv.val[2] = P_pmm;    qv.val[3] = P_ppm;
           double s_00m = c2.area_In_Negative_Domain(qv);
 
-          c2.x0    = cube.x0 ; c2.x1    = cube.x1 ; c2.y0    = cube.y0 ; c2.y1    = cube.y1 ;
-          qv.val00 = P_mmp;    qv.val01 = P_mpp;    qv.val10 = P_pmp;    qv.val11 = P_ppp;
+          c2.xyz_mmm[0]    = cube.xyz_mmm[0] ; c2.xyz_ppp[0]    = cube.xyz_ppp[0] ; c2.xyz_mmm[1]    = cube.xyz_mmm[1] ; c2.xyz_ppp[1]    = cube.xyz_ppp[1] ;
+          qv.val[0] = P_mmp;    qv.val[1] = P_mpp;    qv.val[2] = P_pmp;    qv.val[3] = P_ppp;
           double s_00p = c2.area_In_Negative_Domain(qv);
 
           double w_m00=0, w_p00=0, w_0m0=0, w_0p0=0, w_00m=0, w_00p=0;
@@ -3088,14 +3124,14 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec()
             }
           }
 
-          OctValue bc_value( bc_->interfaceValue(cube.x0, cube.y0, cube.z0),
-                             bc_->interfaceValue(cube.x0, cube.y0, cube.z1),
-                             bc_->interfaceValue(cube.x0, cube.y1, cube.z0),
-                             bc_->interfaceValue(cube.x0, cube.y1, cube.z1),
-                             bc_->interfaceValue(cube.x1, cube.y0, cube.z0),
-                             bc_->interfaceValue(cube.x1, cube.y0, cube.z1),
-                             bc_->interfaceValue(cube.x1, cube.y1, cube.z0),
-                             bc_->interfaceValue(cube.x1, cube.y1, cube.z1));
+          OctValue bc_value( bc_->interfaceValue(cube.xyz_mmm[0], cube.xyz_mmm[1], cube.xyz_mmm[2]),
+                             bc_->interfaceValue(cube.xyz_mmm[0], cube.xyz_mmm[1], cube.xyz_ppp[2]),
+                             bc_->interfaceValue(cube.xyz_mmm[0], cube.xyz_ppp[1], cube.xyz_mmm[2]),
+                             bc_->interfaceValue(cube.xyz_mmm[0], cube.xyz_ppp[1], cube.xyz_ppp[2]),
+                             bc_->interfaceValue(cube.xyz_ppp[0], cube.xyz_mmm[1], cube.xyz_mmm[2]),
+                             bc_->interfaceValue(cube.xyz_ppp[0], cube.xyz_mmm[1], cube.xyz_ppp[2]),
+                             bc_->interfaceValue(cube.xyz_ppp[0], cube.xyz_ppp[1], cube.xyz_mmm[2]),
+                             bc_->interfaceValue(cube.xyz_ppp[0], cube.xyz_ppp[1], cube.xyz_ppp[2]));
 
           double integral_bc = cube.integrate_Over_Interface(bc_value, phi_cube);
 
@@ -3114,8 +3150,8 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec()
           fxx = phi_xx_p[n];
           fyy = phi_yy_p[n];
 
-          double dx = cube.x1 - cube.x0;
-          double dy = cube.y1 - cube.y0;
+          double dx = cube.xyz_ppp[0] - cube.xyz_mmm[0];
+          double dy = cube.xyz_ppp[1] - cube.xyz_mmm[1];
 
           double s_m00 = dy * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_mmm, P_mpm, fyy, fyy, dy);
           double s_p00 = dy * fraction_Interval_Covered_By_Irregular_Domain_using_2nd_Order_Derivatives(P_pmm, P_ppm, fyy, fyy, dy);
@@ -3154,10 +3190,10 @@ void my_p4est_poisson_nodes_t::setup_negative_laplace_rhsvec()
             }
           }
 
-          QuadValue bc_value( bc_->interfaceValue(cube.x0, cube.y0),
-                              bc_->interfaceValue(cube.x0, cube.y1),
-                              bc_->interfaceValue(cube.x1, cube.y0),
-                              bc_->interfaceValue(cube.x1, cube.y1));
+          QuadValue bc_value( bc_->interfaceValue(cube.xyz_mmm[0], cube.xyz_mmm[1]),
+                              bc_->interfaceValue(cube.xyz_mmm[0], cube.xyz_ppp[1]),
+                              bc_->interfaceValue(cube.xyz_ppp[0], cube.xyz_mmm[1]),
+                              bc_->interfaceValue(cube.xyz_ppp[0], cube.xyz_ppp[1]));
 
           double integral_bc = cube.integrate_Over_Interface(bc_value, phi_cube);
 
@@ -3371,29 +3407,29 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
 #else
         Cube2 cube;
 #endif
-        cube.x0 = is_node_xmWall(p4est, ni) ? x_C : x_C-0.5*dx_min;
-        cube.x1 = is_node_xpWall(p4est, ni) ? x_C : x_C+0.5*dx_min;
-        cube.y0 = is_node_ymWall(p4est, ni) ? y_C : y_C-0.5*dy_min;
-        cube.y1 = is_node_ypWall(p4est, ni) ? y_C : y_C+0.5*dy_min;
+        cube.xyz_mmm[0] = is_node_xmWall(p4est, ni) ? x_C : x_C-0.5*dx_min;
+        cube.xyz_ppp[0] = is_node_xpWall(p4est, ni) ? x_C : x_C+0.5*dx_min;
+        cube.xyz_mmm[1] = is_node_ymWall(p4est, ni) ? y_C : y_C-0.5*dy_min;
+        cube.xyz_ppp[1] = is_node_ypWall(p4est, ni) ? y_C : y_C+0.5*dy_min;
 #ifdef P4_TO_P8
-        cube.z0 = is_node_zmWall(p4est, ni) ? z_C : z_C-0.5*dz_min;
-        cube.z1 = is_node_zpWall(p4est, ni) ? z_C : z_C+0.5*dz_min;
+        cube.xyz_mmm[2] = is_node_zmWall(p4est, ni) ? z_C : z_C-0.5*dz_min;
+        cube.xyz_ppp[2] = is_node_zpWall(p4est, ni) ? z_C : z_C+0.5*dz_min;
 #endif
 
 #ifdef P4_TO_P8
-      double P_mmm = phi_interp(cube.x0, cube.y0, cube.z0);
-      double P_mmp = phi_interp(cube.x0, cube.y0, cube.z1);
-      double P_mpm = phi_interp(cube.x0, cube.y1, cube.z0);
-      double P_mpp = phi_interp(cube.x0, cube.y1, cube.z1);
-      double P_pmm = phi_interp(cube.x1, cube.y0, cube.z0);
-      double P_pmp = phi_interp(cube.x1, cube.y0, cube.z1);
-      double P_ppm = phi_interp(cube.x1, cube.y1, cube.z0);
-      double P_ppp = phi_interp(cube.x1, cube.y1, cube.z1);
+      double P_mmm = phi_interp(cube.xyz_mmm[0], cube.xyz_mmm[1], cube.xyz_mmm[2]);
+      double P_mmp = phi_interp(cube.xyz_mmm[0], cube.xyz_mmm[1], cube.xyz_ppp[2]);
+      double P_mpm = phi_interp(cube.xyz_mmm[0], cube.xyz_ppp[1], cube.xyz_mmm[2]);
+      double P_mpp = phi_interp(cube.xyz_mmm[0], cube.xyz_ppp[1], cube.xyz_ppp[2]);
+      double P_pmm = phi_interp(cube.xyz_ppp[0], cube.xyz_mmm[1], cube.xyz_mmm[2]);
+      double P_pmp = phi_interp(cube.xyz_ppp[0], cube.xyz_mmm[1], cube.xyz_ppp[2]);
+      double P_ppm = phi_interp(cube.xyz_ppp[0], cube.xyz_ppp[1], cube.xyz_mmm[2]);
+      double P_ppp = phi_interp(cube.xyz_ppp[0], cube.xyz_ppp[1], cube.xyz_ppp[2]);
 #else
-      double P_mmm = phi_interp(cube.x0, cube.y0);
-      double P_mpm = phi_interp(cube.x0, cube.y1);
-      double P_pmm = phi_interp(cube.x1, cube.y0);
-      double P_ppm = phi_interp(cube.x1, cube.y1);
+      double P_mmm = phi_interp(cube.xyz_mmm[0], cube.xyz_mmm[1]);
+      double P_mpm = phi_interp(cube.xyz_mmm[0], cube.xyz_ppp[1]);
+      double P_pmm = phi_interp(cube.xyz_ppp[0], cube.xyz_mmm[1]);
+      double P_ppm = phi_interp(cube.xyz_ppp[0], cube.xyz_ppp[1]);
 #endif
 
 
@@ -3447,7 +3483,10 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
         if( is_interface_m00) {
           double phixx_m00 = qnnn.f_m00_linear(phi_xx_p);
           double theta_m00 = interface_Location_With_Second_Order_Derivative(0., d_m00, phi_000, phi_m00, phixx_C, phixx_m00);
-          if (theta_m00<eps) theta_m00 = eps; if (theta_m00>d_m00) theta_m00 = d_m00;
+          if (theta_m00<eps)
+            theta_m00 = eps;
+          if (theta_m00>d_m00)
+            theta_m00 = d_m00;
           d_m00_m0 = d_m00_p0 = 0;
 #ifdef P4_TO_P8
           d_m00_0m = d_m00_0p = 0;
@@ -3462,7 +3501,10 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
         if( is_interface_p00){
           double phixx_p00 = qnnn.f_p00_linear(phi_xx_p);
           double theta_p00 = interface_Location_With_Second_Order_Derivative(0., d_p00, phi_000, phi_p00, phixx_C, phixx_p00);
-          if (theta_p00<eps) theta_p00 = eps; if (theta_p00>d_p00) theta_p00 = d_p00;
+          if (theta_p00<eps)
+            theta_p00 = eps;
+          if (theta_p00>d_p00)
+            theta_p00 = d_p00;
           d_p00_m0 = d_p00_p0 = 0;
 #ifdef P4_TO_P8
           d_p00_0m = d_p00_0p = 0;
@@ -3477,7 +3519,10 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
         if( is_interface_0m0){
           double phiyy_0m0 = qnnn.f_0m0_linear(phi_yy_p);
           double theta_0m0 = interface_Location_With_Second_Order_Derivative(0., d_0m0, phi_000, phi_0m0, phiyy_C, phiyy_0m0);
-          if (theta_0m0<eps) theta_0m0 = eps; if (theta_0m0>d_0m0) theta_0m0 = d_0m0;
+          if (theta_0m0<eps)
+            theta_0m0 = eps;
+          if (theta_0m0>d_0m0)
+            theta_0m0 = d_0m0;
           d_0m0_m0 = d_0m0_p0 = 0;
 #ifdef P4_TO_P8
           d_0m0_0m = d_0m0_0p = 0;
@@ -3492,7 +3537,10 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
         if( is_interface_0p0){
           double phiyy_0p0 = qnnn.f_0p0_linear(phi_yy_p);
           double theta_0p0 = interface_Location_With_Second_Order_Derivative(0., d_0p0, phi_000, phi_0p0, phiyy_C, phiyy_0p0);
-          if (theta_0p0<eps) theta_0p0 = eps; if (theta_0p0>d_0p0) theta_0p0 = d_0p0;
+          if (theta_0p0<eps)
+            theta_0p0 = eps;
+          if (theta_0p0>d_0p0)
+            theta_0p0 = d_0p0;
           d_0p0_m0 = d_0p0_p0 = 0;
 #ifdef P4_TO_P8
           d_0p0_0m = d_0p0_0p = 0;
@@ -3508,7 +3556,10 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
         if( is_interface_00m){
           double phizz_00m = qnnn.f_00m_linear(phi_zz_p);
           double theta_00m = interface_Location_With_Second_Order_Derivative(0., d_00m, phi_000, phi_00m, phizz_C, phizz_00m);
-          if (theta_00m<eps) theta_00m = eps; if (theta_00m>d_00m) theta_00m = d_00m;
+          if (theta_00m<eps)
+            theta_00m = eps;
+          if (theta_00m>d_00m)
+            theta_00m = d_00m;
           d_00m_m0 = d_00m_p0 = d_00m_0m = d_00m_0p = 0;
 
           double mzz_000 = mue_zz_p[n];
@@ -3520,7 +3571,10 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
         if( is_interface_00p){
           double phizz_00p = qnnn.f_00p_linear(phi_zz_p);
           double theta_00p = interface_Location_With_Second_Order_Derivative(0., d_00p, phi_000, phi_00p, phizz_C, phizz_00p);
-          if (theta_00p<eps) theta_00p = eps; if (theta_00p>d_00p) theta_00p = d_00p;
+          if (theta_00p<eps)
+            theta_00p = eps;
+          if (theta_00p>d_00p)
+            theta_00p = d_00p;
           d_00p_m0 = d_00p_p0 = d_00p_0m = d_00p_0p = 0;
 
           double mzz_000 = mue_zz_p[n];
@@ -3803,13 +3857,13 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
 #else
         Cube2 cube;
 #endif
-        cube.x0 = x_C-0.5*dx_min;
-        cube.x1 = x_C+0.5*dx_min;
-        cube.y0 = y_C-0.5*dy_min;
-        cube.y1 = y_C+0.5*dy_min;
+        cube.xyz_mmm[0] = x_C-0.5*dx_min;
+        cube.xyz_ppp[0] = x_C+0.5*dx_min;
+        cube.xyz_mmm[1] = y_C-0.5*dy_min;
+        cube.xyz_ppp[1] = y_C+0.5*dy_min;
 #ifdef P4_TO_P8
-        cube.z0 = z_C-0.5*dz_min;
-        cube.z1 = z_C+0.5*dz_min;
+        cube.xyz_mmm[2] = z_C-0.5*dz_min;
+        cube.xyz_ppp[2] = z_C+0.5*dz_min;
 #endif
 #ifdef P4_TO_P8
         OctValue  phi_cube(P_mmm, P_mmp, P_mpm, P_mpp,
@@ -3842,28 +3896,28 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_matrix()
           Cube2 c2;
           QuadValue qv;
 
-          c2.x0    = cube.y0 ; c2.x1    = cube.y1 ; c2.y0    = cube.z0 ; c2.y1    = cube.z1 ;
-          qv.val00 = P_mmm;    qv.val01 = P_mmp;    qv.val10 = P_mpm;    qv.val11 = P_mpp;
+          c2.xyz_mmm[0]    = cube.xyz_mmm[1] ; c2.xyz_ppp[0]    = cube.xyz_ppp[1] ; c2.xyz_mmm[1]    = cube.xyz_mmm[2] ; c2.xyz_ppp[1]    = cube.xyz_ppp[2] ;
+          qv.val[0] = P_mmm;    qv.val[1] = P_mmp;    qv.val[2] = P_mpm;    qv.val[3] = P_mpp;
           double s_m00 = c2.area_In_Negative_Domain(qv);
 
-          c2.x0    = cube.y0 ; c2.x1    = cube.y1 ; c2.y0    = cube.z0 ; c2.y1    = cube.z1 ;
-          qv.val00 = P_pmm;    qv.val01 = P_pmp;    qv.val10 = P_ppm;    qv.val11 = P_ppp;
+          c2.xyz_mmm[0]    = cube.xyz_mmm[1] ; c2.xyz_ppp[0]    = cube.xyz_ppp[1] ; c2.xyz_mmm[1]    = cube.xyz_mmm[2] ; c2.xyz_ppp[1]    = cube.xyz_ppp[2] ;
+          qv.val[0] = P_pmm;    qv.val[1] = P_pmp;    qv.val[2] = P_ppm;    qv.val[3] = P_ppp;
           double s_p00 = c2.area_In_Negative_Domain(qv);
 
-          c2.x0    = cube.x0 ; c2.x1    = cube.x1 ; c2.y0    = cube.z0 ; c2.y1    = cube.z1 ;
-          qv.val00 = P_mmm;    qv.val01 = P_mmp;    qv.val10 = P_pmm;    qv.val11 = P_pmp;
+          c2.xyz_mmm[0]    = cube.xyz_mmm[0] ; c2.xyz_ppp[0]    = cube.xyz_ppp[0] ; c2.xyz_mmm[1]    = cube.xyz_mmm[2] ; c2.xyz_ppp[1]    = cube.xyz_ppp[2] ;
+          qv.val[0] = P_mmm;    qv.val[1] = P_mmp;    qv.val[2] = P_pmm;    qv.val[3] = P_pmp;
           double s_0m0 = c2.area_In_Negative_Domain(qv);
 
-          c2.x0    = cube.x0 ; c2.x1    = cube.x1 ; c2.y0    = cube.z0 ; c2.y1    = cube.z1 ;
-          qv.val00 = P_mpm;    qv.val01 = P_mpp;    qv.val10 = P_ppm;    qv.val11 = P_ppp;
+          c2.xyz_mmm[0]    = cube.xyz_mmm[0] ; c2.xyz_ppp[0]    = cube.xyz_ppp[0] ; c2.xyz_mmm[1]    = cube.xyz_mmm[2] ; c2.xyz_ppp[1]    = cube.xyz_ppp[2] ;
+          qv.val[0] = P_mpm;    qv.val[1] = P_mpp;    qv.val[2] = P_ppm;    qv.val[3] = P_ppp;
           double s_0p0 = c2.area_In_Negative_Domain(qv);
 
-          c2.x0    = cube.x0 ; c2.x1    = cube.x1 ; c2.y0    = cube.y0 ; c2.y1    = cube.y1 ;
-          qv.val00 = P_mmm;    qv.val01 = P_mpm;    qv.val10 = P_pmm;    qv.val11 = P_ppm;
+          c2.xyz_mmm[0]    = cube.xyz_mmm[0] ; c2.xyz_ppp[0]    = cube.xyz_ppp[0] ; c2.xyz_mmm[1]    = cube.xyz_mmm[1] ; c2.xyz_ppp[1]    = cube.xyz_ppp[1] ;
+          qv.val[0] = P_mmm;    qv.val[1] = P_mpm;    qv.val[2] = P_pmm;    qv.val[3] = P_ppm;
           double s_00m = c2.area_In_Negative_Domain(qv);
 
-          c2.x0    = cube.x0 ; c2.x1    = cube.x1 ; c2.y0    = cube.y0 ; c2.y1    = cube.y1 ;
-          qv.val00 = P_mmp;    qv.val01 = P_mpp;    qv.val10 = P_pmp;    qv.val11 = P_ppp;
+          c2.xyz_mmm[0]    = cube.xyz_mmm[0] ; c2.xyz_ppp[0]    = cube.xyz_ppp[0] ; c2.xyz_mmm[1]    = cube.xyz_mmm[1] ; c2.xyz_ppp[1]    = cube.xyz_ppp[1] ;
+          qv.val[0] = P_mmp;    qv.val[1] = P_mpp;    qv.val[2] = P_pmp;    qv.val[3] = P_ppp;
           double s_00p = c2.area_In_Negative_Domain(qv);
 
           double w_m00 = -mue_m00 * s_m00/dx_min;
@@ -4107,29 +4161,29 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
 #else
         Cube2 cube;
 #endif
-        cube.x0 = is_node_xmWall(p4est, ni) ? x_C : x_C-0.5*dx_min;
-        cube.x1 = is_node_xpWall(p4est, ni) ? x_C : x_C+0.5*dx_min;
-        cube.y0 = is_node_ymWall(p4est, ni) ? y_C : y_C-0.5*dy_min;
-        cube.y1 = is_node_ypWall(p4est, ni) ? y_C : y_C+0.5*dy_min;
+        cube.xyz_mmm[0] = is_node_xmWall(p4est, ni) ? x_C : x_C-0.5*dx_min;
+        cube.xyz_ppp[0] = is_node_xpWall(p4est, ni) ? x_C : x_C+0.5*dx_min;
+        cube.xyz_mmm[1] = is_node_ymWall(p4est, ni) ? y_C : y_C-0.5*dy_min;
+        cube.xyz_ppp[1] = is_node_ypWall(p4est, ni) ? y_C : y_C+0.5*dy_min;
 #ifdef P4_TO_P8
-        cube.z0 = is_node_zmWall(p4est, ni) ? z_C : z_C-0.5*dz_min;
-        cube.z1 = is_node_zpWall(p4est, ni) ? z_C : z_C+0.5*dz_min;
+        cube.xyz_mmm[2] = is_node_zmWall(p4est, ni) ? z_C : z_C-0.5*dz_min;
+        cube.xyz_ppp[2] = is_node_zpWall(p4est, ni) ? z_C : z_C+0.5*dz_min;
 #endif
 
 #ifdef P4_TO_P8
-      double P_mmm = phi_interp(cube.x0, cube.y0, cube.z0);
-      double P_mmp = phi_interp(cube.x0, cube.y0, cube.z1);
-      double P_mpm = phi_interp(cube.x0, cube.y1, cube.z0);
-      double P_mpp = phi_interp(cube.x0, cube.y1, cube.z1);
-      double P_pmm = phi_interp(cube.x1, cube.y0, cube.z0);
-      double P_pmp = phi_interp(cube.x1, cube.y0, cube.z1);
-      double P_ppm = phi_interp(cube.x1, cube.y1, cube.z0);
-      double P_ppp = phi_interp(cube.x1, cube.y1, cube.z1);
+      double P_mmm = phi_interp(cube.xyz_mmm[0], cube.xyz_mmm[1], cube.xyz_mmm[2]);
+      double P_mmp = phi_interp(cube.xyz_mmm[0], cube.xyz_mmm[1], cube.xyz_ppp[2]);
+      double P_mpm = phi_interp(cube.xyz_mmm[0], cube.xyz_ppp[1], cube.xyz_mmm[2]);
+      double P_mpp = phi_interp(cube.xyz_mmm[0], cube.xyz_ppp[1], cube.xyz_ppp[2]);
+      double P_pmm = phi_interp(cube.xyz_ppp[0], cube.xyz_mmm[1], cube.xyz_mmm[2]);
+      double P_pmp = phi_interp(cube.xyz_ppp[0], cube.xyz_mmm[1], cube.xyz_ppp[2]);
+      double P_ppm = phi_interp(cube.xyz_ppp[0], cube.xyz_ppp[1], cube.xyz_mmm[2]);
+      double P_ppp = phi_interp(cube.xyz_ppp[0], cube.xyz_ppp[1], cube.xyz_ppp[2]);
 #else
-      double P_mmm = phi_interp(cube.x0, cube.y0);
-      double P_mpm = phi_interp(cube.x0, cube.y1);
-      double P_pmm = phi_interp(cube.x1, cube.y0);
-      double P_ppm = phi_interp(cube.x1, cube.y1);
+      double P_mmm = phi_interp(cube.xyz_mmm[0], cube.xyz_mmm[1]);
+      double P_mpm = phi_interp(cube.xyz_mmm[0], cube.xyz_ppp[1]);
+      double P_pmm = phi_interp(cube.xyz_ppp[0], cube.xyz_mmm[1]);
+      double P_ppm = phi_interp(cube.xyz_ppp[0], cube.xyz_ppp[1]);
 #endif
 
 
@@ -4192,7 +4246,10 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
         if( is_interface_m00) {
           double phixx_m00 = qnnn.f_m00_linear(phi_xx_p);
           double theta_m00 = interface_Location_With_Second_Order_Derivative(0., d_m00, phi_000, phi_m00, phixx_C, phixx_m00);
-          if (theta_m00<eps) theta_m00 = eps; if (theta_m00>d_m00) theta_m00 = d_m00;
+          if (theta_m00<eps)
+            theta_m00 = eps;
+          if (theta_m00>d_m00)
+            theta_m00 = d_m00;
           d_m00_m0 = d_m00_p0 = 0;
 #ifdef P4_TO_P8
           d_m00_0m = d_m00_0p = 0;
@@ -4213,7 +4270,10 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
         if( is_interface_p00){
           double phixx_p00 = qnnn.f_p00_linear(phi_xx_p);
           double theta_p00 = interface_Location_With_Second_Order_Derivative(0., d_p00, phi_000, phi_p00, phixx_C, phixx_p00);
-          if (theta_p00<eps) theta_p00 = eps; if (theta_p00>d_p00) theta_p00 = d_p00;
+          if (theta_p00<eps)
+            theta_p00 = eps;
+          if (theta_p00>d_p00)
+            theta_p00 = d_p00;
           d_p00_m0 = d_p00_p0 = 0;
 #ifdef P4_TO_P8
           d_p00_0m = d_p00_0p = 0;
@@ -4234,7 +4294,10 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
         if( is_interface_0m0){
           double phiyy_0m0 = qnnn.f_0m0_linear(phi_yy_p);
           double theta_0m0 = interface_Location_With_Second_Order_Derivative(0., d_0m0, phi_000, phi_0m0, phiyy_C, phiyy_0m0);
-          if (theta_0m0<eps) theta_0m0 = eps; if (theta_0m0>d_0m0) theta_0m0 = d_0m0;
+          if (theta_0m0<eps)
+            theta_0m0 = eps;
+          if (theta_0m0>d_0m0)
+            theta_0m0 = d_0m0;
           d_0m0_m0 = d_0m0_p0 = 0;
 #ifdef P4_TO_P8
           d_0m0_0m = d_0m0_0p = 0;
@@ -4255,7 +4318,10 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
         if( is_interface_0p0){
           double phiyy_0p0 = qnnn.f_0p0_linear(phi_yy_p);
           double theta_0p0 = interface_Location_With_Second_Order_Derivative(0., d_0p0, phi_000, phi_0p0, phiyy_C, phiyy_0p0);
-          if (theta_0p0<eps) theta_0p0 = eps; if (theta_0p0>d_0p0) theta_0p0 = d_0p0;
+          if (theta_0p0<eps)
+            theta_0p0 = eps;
+          if (theta_0p0>d_0p0)
+            theta_0p0 = d_0p0;
           d_0p0_m0 = d_0p0_p0 = 0;
 #ifdef P4_TO_P8
 
@@ -4277,7 +4343,10 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
         if( is_interface_00m){
           double phizz_00m = qnnn.f_00m_linear(phi_zz_p);
           double theta_00m = interface_Location_With_Second_Order_Derivative(0., d_00m, phi_000, phi_00m, phizz_C, phizz_00m);
-          if (theta_00m<eps) theta_00m = eps; if (theta_00m>d_00m) theta_00m = d_00m;
+          if (theta_00m<eps)
+            theta_00m = eps;
+          if (theta_00m>d_00m)
+            theta_00m = d_00m;
           d_00m_m0 = d_00m_p0 = d_00m_0m = d_00m_0p = 0;
 
           double mzz_000 = mue_zz_p[n];
@@ -4291,7 +4360,10 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
         if( is_interface_00p){
           double phizz_00p = qnnn.f_00p_linear(phi_zz_p);
           double theta_00p = interface_Location_With_Second_Order_Derivative(0., d_00p, phi_000, phi_00p, phizz_C, phizz_00p);
-          if (theta_00p<eps) theta_00p = eps; if (theta_00p>d_00p) theta_00p = d_00p;
+          if (theta_00p<eps)
+            theta_00p = eps;
+          if (theta_00p>d_00p)
+            theta_00p = d_00p;
           d_00p_m0 = d_00p_p0 = d_00p_0m = d_00p_0p = 0;
 
           double mzz_000 = mue_zz_p[n];
@@ -4429,13 +4501,13 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
 #else
         Cube2 cube;
 #endif
-        cube.x0 = x_C-0.5*dx_min;
-        cube.x1 = x_C+0.5*dx_min;
-        cube.y0 = y_C-0.5*dy_min;
-        cube.y1 = y_C+0.5*dy_min;
+        cube.xyz_mmm[0] = x_C-0.5*dx_min;
+        cube.xyz_ppp[0] = x_C+0.5*dx_min;
+        cube.xyz_mmm[1] = y_C-0.5*dy_min;
+        cube.xyz_ppp[1] = y_C+0.5*dy_min;
 #ifdef P4_TO_P8
-        cube.z0 = z_C-0.5*dz_min;
-        cube.z1 = z_C+0.5*dz_min;
+        cube.xyz_mmm[2] = z_C-0.5*dz_min;
+        cube.xyz_ppp[2] = z_C+0.5*dz_min;
 #endif
 #ifdef P4_TO_P8
         OctValue  phi_cube(P_mmm, P_mmp, P_mpm, P_mpp,
@@ -4454,28 +4526,28 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
           Cube2 c2;
           QuadValue qv;
 
-          c2.x0    = cube.y0 ; c2.x1    = cube.y1 ; c2.y0    = cube.z0 ; c2.y1    = cube.z1 ;
-          qv.val00 = P_mmm;    qv.val01 = P_mmp;    qv.val10 = P_mpm;    qv.val11 = P_mpp;
+          c2.xyz_mmm[0]    = cube.xyz_mmm[1] ; c2.xyz_ppp[0]    = cube.xyz_ppp[1] ; c2.xyz_mmm[1]    = cube.xyz_mmm[2] ; c2.xyz_ppp[1]    = cube.xyz_ppp[2] ;
+          qv.val[0] = P_mmm;    qv.val[1] = P_mmp;    qv.val[2] = P_mpm;    qv.val[3] = P_mpp;
           double s_m00 = c2.area_In_Negative_Domain(qv);
 
-          c2.x0    = cube.y0 ; c2.x1    = cube.y1 ; c2.y0    = cube.z0 ; c2.y1    = cube.z1 ;
-          qv.val00 = P_pmm;    qv.val01 = P_pmp;    qv.val10 = P_ppm;    qv.val11 = P_ppp;
+          c2.xyz_mmm[0]    = cube.xyz_mmm[1] ; c2.xyz_ppp[0]    = cube.xyz_ppp[1] ; c2.xyz_mmm[1]    = cube.xyz_mmm[2] ; c2.xyz_ppp[1]    = cube.xyz_ppp[2] ;
+          qv.val[0] = P_pmm;    qv.val[1] = P_pmp;    qv.val[2] = P_ppm;    qv.val[3] = P_ppp;
           double s_p00 = c2.area_In_Negative_Domain(qv);
 
-          c2.x0    = cube.x0 ; c2.x1    = cube.x1 ; c2.y0    = cube.z0 ; c2.y1    = cube.z1 ;
-          qv.val00 = P_mmm;    qv.val01 = P_mmp;    qv.val10 = P_pmm;    qv.val11 = P_pmp;
+          c2.xyz_mmm[0]    = cube.xyz_mmm[0] ; c2.xyz_ppp[0]    = cube.xyz_ppp[0] ; c2.xyz_mmm[1]    = cube.xyz_mmm[2] ; c2.xyz_ppp[1]    = cube.xyz_ppp[2] ;
+          qv.val[0] = P_mmm;    qv.val[1] = P_mmp;    qv.val[2] = P_pmm;    qv.val[3] = P_pmp;
           double s_0m0 = c2.area_In_Negative_Domain(qv);
 
-          c2.x0    = cube.x0 ; c2.x1    = cube.x1 ; c2.y0    = cube.z0 ; c2.y1    = cube.z1 ;
-          qv.val00 = P_mpm;    qv.val01 = P_mpp;    qv.val10 = P_ppm;    qv.val11 = P_ppp;
+          c2.xyz_mmm[0]    = cube.xyz_mmm[0] ; c2.xyz_ppp[0]    = cube.xyz_ppp[0] ; c2.xyz_mmm[1]    = cube.xyz_mmm[2] ; c2.xyz_ppp[1]    = cube.xyz_ppp[2] ;
+          qv.val[0] = P_mpm;    qv.val[1] = P_mpp;    qv.val[2] = P_ppm;    qv.val[3] = P_ppp;
           double s_0p0 = c2.area_In_Negative_Domain(qv);
 
-          c2.x0    = cube.x0 ; c2.x1    = cube.x1 ; c2.y0    = cube.y0 ; c2.y1    = cube.y1 ;
-          qv.val00 = P_mmm;    qv.val01 = P_mpm;    qv.val10 = P_pmm;    qv.val11 = P_ppm;
+          c2.xyz_mmm[0]    = cube.xyz_mmm[0] ; c2.xyz_ppp[0]    = cube.xyz_ppp[0] ; c2.xyz_mmm[1]    = cube.xyz_mmm[1] ; c2.xyz_ppp[1]    = cube.xyz_ppp[1] ;
+          qv.val[0] = P_mmm;    qv.val[1] = P_mpm;    qv.val[2] = P_pmm;    qv.val[3] = P_ppm;
           double s_00m = c2.area_In_Negative_Domain(qv);
 
-          c2.x0    = cube.x0 ; c2.x1    = cube.x1 ; c2.y0    = cube.y0 ; c2.y1    = cube.y1 ;
-          qv.val00 = P_mmp;    qv.val01 = P_mpp;    qv.val10 = P_pmp;    qv.val11 = P_ppp;
+          c2.xyz_mmm[0]    = cube.xyz_mmm[0] ; c2.xyz_ppp[0]    = cube.xyz_ppp[0] ; c2.xyz_mmm[1]    = cube.xyz_mmm[1] ; c2.xyz_ppp[1]    = cube.xyz_ppp[1] ;
+          qv.val[0] = P_mmp;    qv.val[1] = P_mpp;    qv.val[2] = P_pmp;    qv.val[3] = P_ppp;
           double s_00p = c2.area_In_Negative_Domain(qv);
 
           double w_m00 = -0.5*(mue_000 + mue_m00)*s_m00/dx_min;
@@ -4505,14 +4577,14 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
             }
           }
 
-          OctValue bc_value( bc_->interfaceValue(cube.x0, cube.y0, cube.z0),
-                             bc_->interfaceValue(cube.x0, cube.y0, cube.z1),
-                             bc_->interfaceValue(cube.x0, cube.y1, cube.z0),
-                             bc_->interfaceValue(cube.x0, cube.y1, cube.z1),
-                             bc_->interfaceValue(cube.x1, cube.y0, cube.z0),
-                             bc_->interfaceValue(cube.x1, cube.y0, cube.z1),
-                             bc_->interfaceValue(cube.x1, cube.y1, cube.z0),
-                             bc_->interfaceValue(cube.x1, cube.y1, cube.z1));
+          OctValue bc_value( bc_->interfaceValue(cube.xyz_mmm[0], cube.xyz_mmm[1], cube.xyz_mmm[2]),
+                             bc_->interfaceValue(cube.xyz_mmm[0], cube.xyz_mmm[1], cube.xyz_ppp[2]),
+                             bc_->interfaceValue(cube.xyz_mmm[0], cube.xyz_ppp[1], cube.xyz_mmm[2]),
+                             bc_->interfaceValue(cube.xyz_mmm[0], cube.xyz_ppp[1], cube.xyz_ppp[2]),
+                             bc_->interfaceValue(cube.xyz_ppp[0], cube.xyz_mmm[1], cube.xyz_mmm[2]),
+                             bc_->interfaceValue(cube.xyz_ppp[0], cube.xyz_mmm[1], cube.xyz_ppp[2]),
+                             bc_->interfaceValue(cube.xyz_ppp[0], cube.xyz_ppp[1], cube.xyz_mmm[2]),
+                             bc_->interfaceValue(cube.xyz_ppp[0], cube.xyz_ppp[1], cube.xyz_ppp[2]));
 
           double integral_bc = cube.integrate_Over_Interface(bc_value, phi_cube);
 
@@ -4554,10 +4626,10 @@ void my_p4est_poisson_nodes_t::setup_negative_variable_coeff_laplace_rhsvec()
             }
           }
 
-          QuadValue bc_value( bc_->interfaceValue(cube.x0, cube.y0),
-                              bc_->interfaceValue(cube.x0, cube.y1),
-                              bc_->interfaceValue(cube.x1, cube.y0),
-                              bc_->interfaceValue(cube.x1, cube.y1));
+          QuadValue bc_value( bc_->interfaceValue(cube.xyz_mmm[0], cube.xyz_mmm[1]),
+                              bc_->interfaceValue(cube.xyz_mmm[0], cube.xyz_ppp[1]),
+                              bc_->interfaceValue(cube.xyz_ppp[0], cube.xyz_mmm[1]),
+                              bc_->interfaceValue(cube.xyz_ppp[0], cube.xyz_ppp[1]));
 
           double integral_bc = cube.integrate_Over_Interface(bc_value, phi_cube);
           rhs_p[n] += mue_000*integral_bc;

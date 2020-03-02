@@ -62,6 +62,7 @@ void iota(ForwardIterator first, ForwardIterator last, T value)
 //
 //---------------------------------------------------------------------
 
+static const string no_vtk = "null";
 
 /*!
  * \brief The Atom struct contains
@@ -550,7 +551,7 @@ private:
 
   const int                 rank_encoding;
   const int64_t             max_quad_loc_idx;
-  const string              no_vtk = "null";
+
   int8_t                    global_max_level;         // max level of refinement of the forest in the entire domain
   vector<molecule>          bio_molecules;            // the vector of molecules
   vector<int>               atom_index_offset;        // atom index offset when atoms are serialized
@@ -558,6 +559,12 @@ private:
   int                       index_of_biggest_mol;     // self-explanatory
   double                    box_size_of_biggest_mol;  // self-explanatory
   double                    angstrom_to_domain;       // angstrom-to-domain conversion factor
+
+  static inline bool compareChar(const char & c1, const char & c2) { return (c1 == c2); }
+  static inline bool case_sensitive_string_compare(const string & str1, const string &str2)
+  {
+    return (str1.size() == str2.size() && equal(str1.begin(), str1.end(), str2.begin(), &compareChar));
+  }
 
   /*!
    * \brief calculate_center_of_domain: self_explanatory
@@ -753,7 +760,7 @@ public:
   static void         set_quad_weight(p4est_quadrant_t* &quad, const p4est_nodes_t* & nodes, const double* const& phi_fct, const double& lower_bound);
   static int          weight_for_coarsening(p4est_t *forest, p4est_topidx_t which_tree, p4est_quadrant_t * quadrant);
   void                remove_internal_cavities(const bool export_cavities = false);
-  p4est_t*            construct_SES(const sas_generation_method& method_to_use = list_reduction, const bool SAS_timing_flag = false, const bool SAS_subtiming_flag = false, string vtk_folder = "null");
+  p4est_t*            construct_SES(const sas_generation_method& method_to_use = list_reduction, const bool SAS_timing_flag = false, const bool SAS_subtiming_flag = false, string vtk_folder = no_vtk);
   void                expand_ghost();
   Vec                 return_phi_vector();
   p4est_nodes_t*      return_nodes();
@@ -822,6 +829,7 @@ class my_p4est_biomolecules_solver_t{
         // in the 2d case, let's consider q a linear (partial) charge density,
         // q is considered to be in electron per nanometer (TOTALLY arbitrary)...
         // psi_star_value += (a->q*0.1*meter_to_angstrom*SQR(electron)*((double) ion_charge)*log(sqrt(SQR(x - a->x) + SQR(y - a->y))))/(2.0*PI*eps_0*mol_rel_permittivity*kB*temperature); // constant = 0
+        (void) x; (void) y; // to avoid compiler warning
 #endif
       }
     }

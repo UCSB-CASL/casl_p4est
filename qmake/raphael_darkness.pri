@@ -28,12 +28,11 @@ VORO_INCLUDES_DEBUG     = $$VORO_DIR/include/voro++
 VORO_LIBS_RELEASE       = -Wl,-rpath,$$VORO_DIR/lib -L$$VORO_DIR/lib -lvoro++
 VORO_LIBS_DEBUG         = -Wl,-rpath,$$VORO_DIR/lib -L$$VORO_DIR/lib -lvoro++
 
-# lapacke
-LAPACKE_INCLUDE         = /usr/include/lapacke.h
-LAPACKE_LIBS            = -Wl,-rpath,/usr/lib -L/usr/lib -llapacke
-
+# boost (needed for epitaxy only, ok if not provided otherwise)
 BOOST_INCLUDES          = /home/regan/libraries/boost/include
-BOOST_LIBS              = -Wl,-rpath,/home/regan/libraries/boost/lib -L/home/regan/libraries/boost/lib -lboost_system
+
+# lapacke (needed for shs main file only, ok if not provided otherwise)
+LAPACKE_LIBS            = -llapacke
 
 QMAKE_CC                = /usr/local/bin/mpicc
 QMAKE_CXX               = /usr/local/bin/mpicxx

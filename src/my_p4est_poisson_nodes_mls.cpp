@@ -1882,23 +1882,23 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
 
   if (a > .5 || b > .5) std::cout << "Warning: face's centroid falls outside the face!\n";
 
-  double mask_specific = -1;
+//  double mask_specific = -1;
 
   int num_good_neighbors = 0;
 
   for (int i = 0; i < 9; ++i)
     if (neighbor_exists_face[i]) num_good_neighbors++;
 
-  bool same_line = (num_good_neighbors == 3 &&
-                    ( (neighbor_exists_face[nnf_m0] && neighbor_exists_face[nnf_p0]) ||
-                      (neighbor_exists_face[nnf_0m] && neighbor_exists_face[nnf_0p]) ||
-                      (neighbor_exists_face[nnf_mm] && neighbor_exists_face[nnf_pp]) ||
-                      (neighbor_exists_face[nnf_mp] && neighbor_exists_face[nnf_pm]) ) );
+//  bool same_line = (num_good_neighbors == 3 &&
+//                    ( (neighbor_exists_face[nnf_m0] && neighbor_exists_face[nnf_p0]) ||
+//                      (neighbor_exists_face[nnf_0m] && neighbor_exists_face[nnf_0p]) ||
+//                      (neighbor_exists_face[nnf_mm] && neighbor_exists_face[nnf_pp]) ||
+//                      (neighbor_exists_face[nnf_mp] && neighbor_exists_face[nnf_pm]) ) );
 
   if (a < theta && b < theta)
   {
     map_face[nnf_00] = true;  weights_face[nnf_00] = 1;
-    mask_specific = -2;
+//    mask_specific = -2;
   }
 
 
@@ -1911,7 +1911,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.-b);
     map_face[nnf_0m] = true; weights_face[nnf_0m] = b-a;
     map_face[nnf_mm] = true; weights_face[nnf_mm] = a;
-    mask_specific = -1;
+//    mask_specific = -1;
 //    semi_fallback = true;
   }
   else if (A <= 0 && B <= 0 && B >= A &&
@@ -1921,7 +1921,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.-a);
     map_face[nnf_m0] = true; weights_face[nnf_m0] = a-b;
     map_face[nnf_mm] = true; weights_face[nnf_mm] = b;
-    mask_specific = -1;
+//    mask_specific = -1;
 //    semi_fallback = true;
   }
   else if (A >= 0 && B <= 0 && B <= -A &&
@@ -1931,7 +1931,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.-b);
     map_face[nnf_0m] = true; weights_face[nnf_0m] = b-a;
     map_face[nnf_pm] = true; weights_face[nnf_pm] = a;
-    mask_specific = -1;
+//    mask_specific = -1;
 //    semi_fallback = true;
   }
   else if (A >= 0 && B <= 0 && B >= -A &&
@@ -1941,7 +1941,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.-a);
     map_face[nnf_p0] = true; weights_face[nnf_p0] = a-b;
     map_face[nnf_pm] = true; weights_face[nnf_pm] = b;
-    mask_specific = -1;
+//    mask_specific = -1;
 //    semi_fallback = true;
   }
   else if (A <= 0 && B >= 0 && B <= -A &&
@@ -1951,7 +1951,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.-a);
     map_face[nnf_m0] = true; weights_face[nnf_m0] = a-b;
     map_face[nnf_mp] = true; weights_face[nnf_mp] = b;
-    mask_specific = -1;
+//    mask_specific = -1;
 //    semi_fallback = true;
   }
   else if (A <= 0 && B >= 0 && B >= -A &&
@@ -1961,7 +1961,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.-b);
     map_face[nnf_0p] = true; weights_face[nnf_0p] = b-a;
     map_face[nnf_mp] = true; weights_face[nnf_mp] = a;
-    mask_specific = -1;
+//    mask_specific = -1;
 //    semi_fallback = true;
   }
   else if (A >= 0 && B >= 0 && B <= A &&
@@ -1971,7 +1971,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.-a);
     map_face[nnf_p0] = true; weights_face[nnf_p0] = a-b;
     map_face[nnf_pp] = true; weights_face[nnf_pp] = b;
-    mask_specific = -1;
+//    mask_specific = -1;
 //    semi_fallback = true;
   }
   else if (A >= 0 && B >= 0 && B >= A &&
@@ -1981,7 +1981,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.-b);
     map_face[nnf_0p] = true; weights_face[nnf_0p] = b-a;
     map_face[nnf_pp] = true; weights_face[nnf_pp] = a;
-    mask_specific = -1;
+//    mask_specific = -1;
 //    semi_fallback = true;
   }
 
@@ -2076,7 +2076,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = 1.-a-b;
     map_face[nnf_m0] = true; weights_face[nnf_m0] = a;
     map_face[nnf_0m] = true; weights_face[nnf_0m] = b;
-    mask_specific = -11;
+//    mask_specific = -11;
   }
   else if (A >= 0 && B <= 0 &&
            neighbor_exists_face[nnf_p0] &&
@@ -2085,7 +2085,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = 1.-a-b;
     map_face[nnf_p0] = true; weights_face[nnf_p0] = a;
     map_face[nnf_0m] = true; weights_face[nnf_0m] = b;
-    mask_specific = -12;
+//    mask_specific = -12;
   }
   else if (A <= 0 && B >= 0 &&
            neighbor_exists_face[nnf_m0] &&
@@ -2094,7 +2094,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = 1.-a-b;
     map_face[nnf_m0] = true; weights_face[nnf_m0] = a;
     map_face[nnf_0p] = true; weights_face[nnf_0p] = b;
-    mask_specific = -13;
+//    mask_specific = -13;
   }
   else if (A >= 0 && B >= 0 &&
            neighbor_exists_face[nnf_p0] &&
@@ -2103,7 +2103,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = 1.-a-b;
     map_face[nnf_p0] = true; weights_face[nnf_p0] = a;
     map_face[nnf_0p] = true; weights_face[nnf_0p] = b;
-    mask_specific = -14;
+//    mask_specific = -14;
   }
 
 
@@ -2247,7 +2247,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.+B);
     map_face[nnf_0m] = true; weights_face[nnf_0m] = -B+A;
     map_face[nnf_mm] = true; weights_face[nnf_mm] = -A;
-    mask_specific = -15;
+//    mask_specific = -15;
     semi_fallback = true;
   }
   else if (neighbor_exists_face[nnf_m0] &&
@@ -2256,7 +2256,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.+A);
     map_face[nnf_m0] = true; weights_face[nnf_m0] = -A+B;
     map_face[nnf_mm] = true; weights_face[nnf_mm] = -B;
-    mask_specific = -16;
+//    mask_specific = -16;
     semi_fallback = true;
   }
   else if (neighbor_exists_face[nnf_0m] &&
@@ -2265,7 +2265,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.+B);
     map_face[nnf_0m] = true; weights_face[nnf_0m] = -B-A;
     map_face[nnf_pm] = true; weights_face[nnf_pm] = A;
-    mask_specific = -17;
+//    mask_specific = -17;
     semi_fallback = true;
   }
   else if (neighbor_exists_face[nnf_p0] &&
@@ -2274,7 +2274,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.-A);
     map_face[nnf_p0] = true; weights_face[nnf_p0] = A+B;
     map_face[nnf_pm] = true; weights_face[nnf_pm] = -B;
-    mask_specific = -18;
+//    mask_specific = -18;
     semi_fallback = true;
   }
   else if (neighbor_exists_face[nnf_m0] &&
@@ -2283,7 +2283,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.+A);
     map_face[nnf_m0] = true; weights_face[nnf_m0] = -A-B;
     map_face[nnf_mp] = true; weights_face[nnf_mp] = B;
-    mask_specific = -19;
+//    mask_specific = -19;
     semi_fallback = true;
   }
   else if (neighbor_exists_face[nnf_0p] &&
@@ -2292,7 +2292,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.-B);
     map_face[nnf_0p] = true; weights_face[nnf_0p] = B+A;
     map_face[nnf_mp] = true; weights_face[nnf_mp] = -A;
-    mask_specific = -20;
+//    mask_specific = -20;
     semi_fallback = true;
   }
   else if (neighbor_exists_face[nnf_p0] &&
@@ -2301,7 +2301,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.-A);
     map_face[nnf_p0] = true; weights_face[nnf_p0] = A-B;
     map_face[nnf_pp] = true; weights_face[nnf_pp] = B;
-    mask_specific = -21;
+//    mask_specific = -21;
     semi_fallback = true;
   }
   else if (neighbor_exists_face[nnf_0p] &&
@@ -2310,7 +2310,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = (1.-B);
     map_face[nnf_0p] = true; weights_face[nnf_0p] = B-A;
     map_face[nnf_pp] = true; weights_face[nnf_pp] = A;
-    mask_specific = -22;
+//    mask_specific = -22;
     semi_fallback = true;
   }
 
@@ -2320,7 +2320,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = 1.+A+B;
     map_face[nnf_m0] = true; weights_face[nnf_m0] = -A;
     map_face[nnf_0m] = true; weights_face[nnf_0m] = -B;
-    mask_specific = -23;
+//    mask_specific = -23;
     semi_fallback = true;
   }
   else if (neighbor_exists_face[nnf_p0] &&
@@ -2329,7 +2329,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = 1.-A+B;
     map_face[nnf_p0] = true; weights_face[nnf_p0] = A;
     map_face[nnf_0m] = true; weights_face[nnf_0m] = -B;
-    mask_specific = -24;
+//    mask_specific = -24;
     semi_fallback = true;
   }
   else if (neighbor_exists_face[nnf_m0] &&
@@ -2338,7 +2338,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = 1.+A-B;
     map_face[nnf_m0] = true; weights_face[nnf_m0] = -A;
     map_face[nnf_0p] = true; weights_face[nnf_0p] = B;
-    mask_specific = -25;
+//    mask_specific = -25;
     semi_fallback = true;
   }
   else if (neighbor_exists_face[nnf_p0] &&
@@ -2347,7 +2347,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
     map_face[nnf_00] = true; weights_face[nnf_00] = 1.-A-B;
     map_face[nnf_p0] = true; weights_face[nnf_p0] = A;
     map_face[nnf_0p] = true; weights_face[nnf_0p] = B;
-    mask_specific = -26;
+//    mask_specific = -26;
     semi_fallback = true;
   }
 
@@ -2382,7 +2382,7 @@ double my_p4est_poisson_nodes_mls_t::compute_weights_through_face(double A, doub
 //    std::cout << "!!!!!! Fallback flux between cells!\n";
 
     int num_good_neighbors = 0;
-    mask_specific = 50;
+//    mask_specific = 50;
 
     for (int i = 0; i < 9; ++i)
       if (neighbor_exists_face[i]) num_good_neighbors++;

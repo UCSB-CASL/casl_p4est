@@ -476,11 +476,7 @@ int main (int argc, char* argv[])
   cmd.add_option("refine_with_smoke", "refine the grid with the smoke density and threshold smoke_thresh if present");
   // physical parameters for the simulations
   cmd.add_option("duration",    "the duration of the simulation (tfinal - tstart). If not restarted, tstart = 0.0, default duration is 200.");
-#ifdef P4_TO_P8
-  cmd.add_option("Re",          "the Reynolds number = (rho*u0*D)/mu where D = 2 is the sphere diameter (default is 350)");
-#else
-  cmd.add_option("Re",          "the Reynolds number = (rho*u0*D)/mu where D = 1 is the sphere diameter (default is 350)");
-#endif
+  cmd.add_option("Re",          "the Reynolds number = (rho*u0*D)/mu where D = " + to_string(P4EST_DIM == 2 ? 1 : 2) + " is the sphere diameter (default is 350)");
   cmd.add_option("adapted_dt",  "activates the calculation of dt based on the local cell sizes if present");
   cmd.add_option("smoke",       "no smoke if option not present, with smoke if option present");
   // method-related parameters

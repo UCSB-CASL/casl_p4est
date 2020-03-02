@@ -4,13 +4,20 @@
 #include <fstream>
 #include <vector>
 
-// We are in 3D (you, idiot!), so include p8est headers immediately
+// We are in 3D (you, idiot!), so include p8est headers immediately, no p4est...
 #include <src/my_p8est_utils.h>
-//#include <src/my_p8est_faces.h>
 #include <src/casl_math.h>
 #include <src/point3.h>
 
+#pragma GCC diagnostic push // save current compilation warnings
+#pragma GCC diagnostic ignored "-Wunused-parameter" // to filter out the warnings from voro++ (it's a mess, I'm not responsible for that)
+#pragma GCC diagnostic ignored "-Wunused-variable" // to filter out the warnings from voro++ (it's a mess, I'm not responsible for that)
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized" // to filter out the warnings from voro++ (it's a mess, I'm not responsible for that)
 #include <voro++.hh>
+#pragma GCC diagnostic pop // reactive the warnings from voro++
+//#pragma GCC diagnostic warning "-Wunused-parameter" // to reactivate the warnings from voro++
+//#pragma GCC diagnostic warning "-Wunused-variable" // to reactivate the the warnings from voro++
+//#pragma GCC diagnostic warning "-Wmaybe-uninitialized" // to reactivate the the warnings from voro++
 
 #ifdef Voronoi_DIM
 #undef Voronoi_DIM
@@ -37,8 +44,8 @@ struct VoroNgbd {
 struct ngbd3Dseed
 {
   /*!
-     * \brief the index of the neighbor seed
-     */
+   * \brief the index of the neighbor seed
+   * */
   int n;
 
   /*!

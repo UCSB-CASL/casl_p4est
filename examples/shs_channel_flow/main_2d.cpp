@@ -580,20 +580,13 @@ void initialize_velocity_profile_file(const char* filename, const int& ntree_y, 
         sprintf(error_msg, "initialize_velocity_profile_file: couldn't read the second header line of %s", filename);
         throw std::runtime_error(error_msg);
       }
-      double time, time_nm1;
-//      double dt = 0.0;
-      bool not_first_line = false;
+      double time;
       while ((len_read = getline(&read_line, &len, fp_avg_profile)) != -1) {
-        if(not_first_line)
-          time_nm1 = time;
         sscanf(read_line, "%lg %*[^\n]", &time);
-//        if(not_first_line)
-//          dt = time-time_nm1;
-        if(time <= tstart-(1.0e-12)*pow(10.0, floor(log10(tstart)))) // (1.0e-12)*pow(10.0, floor(log10(tstart))) == given precision when exporting
+        if(time <= tstart - (1.0e-12)*pow(10.0, floor(log10(tstart)))) // (1.0e-12)*pow(10.0, floor(log10(tstart))) == given precision when exporting
           size_to_keep += (long) len_read;
         else
           break;
-        not_first_line=true;
       }
       fclose(fp_avg_profile);
       if(read_line)
@@ -1326,7 +1319,7 @@ int main (int argc, char* argv[])
   }
   const bool save_profiles              = cmd.contains("save_mean_profiles");
   const unsigned int nexport_avg        = cmd.get<unsigned int>("nexport_avg", 100);
-  double                    t_slice_average;
+  double                    t_slice_average = 0.0; //initialized to whatever value to avoid compilation warning (the quantity is relevant only on the root proc anyways...)
   vector<double>            slice_averaged_profile;
   vector<double>            slice_averaged_profile_nm1;
   vector<double>            time_averaged_slice_averaged_profile;
@@ -1432,7 +1425,7 @@ int main (int argc, char* argv[])
 
     lmin                    = cmd.get<int>("lmin", ((splitting_criteria_t*) p4est_n->user_pointer)->min_lvl);
     lmax                    = cmd.get<int>("lmax", ((splitting_criteria_t*) p4est_n->user_pointer)->max_lvl);
-    double lip;
+    double lip = 0.0;
     if(!cmd.contains("lip"))
       lip                   = ((splitting_criteria_t*) p4est_n->user_pointer)->lip;
     threshold_split_cell    = cmd.get<double>("thresh", ns->get_split_threshold());
@@ -1831,7 +1824,7 @@ int main (int argc, char* argv[])
   {
     if(get_timing)
       substep_watch.start("");
-    if(iter>0)
+    if(iter > 0)
     {
       if(mass_flow < 0.0)
         std::runtime_error("main_shs_*d: something went wrong, the mass flow should be strictly positive and known to the solver at this stage...");
@@ -1879,7 +1872,7 @@ int main (int argc, char* argv[])
     double corr_hodge = 1.0;
     unsigned int iter_hodge = 0;
     double constant_mass_flow_correction = 10.0*Ub_tolerance*MAX(fabs(desired_bulk_velocity[0]), 1.0);
-    while((iter_hodge<niter_hodge_max && corr_hodge>hodge_tolerance) || (force_mass_flow[0] && (fabs(constant_mass_flow_correction) > Ub_tolerance*fabs(desired_bulk_velocity[0]))))
+    while((iter_hodge < niter_hodge_max && corr_hodge>hodge_tolerance) || (force_mass_flow[0] && fabs(constant_mass_flow_correction) > Ub_tolerance*fabs(desired_bulk_velocity[0])))
     {
       hodge_new = ns->get_hodge();
       ierr = VecCopy(hodge_new, hodge_old); CHKERRXX(ierr);
@@ -1990,7 +1983,7 @@ int main (int argc, char* argv[])
           }
         }
 
-        if((iter_export_profile!=0) && ((iter_export_profile%nexport_avg ==0) || (save_state && (((int) floor(tn/dt_save_data)) != save_data_idx))))
+        if(iter_export_profile != 0 && (iter_export_profile%nexport_avg == 0 || (save_state && ((int) floor(tn/dt_save_data) != save_data_idx))))
         {
           // we export velocity profile data every nexport_avg iterations *OR* if the solver state is about to be exported at the beginning of next iteration
           // this second condition avoids truncation errors in the relevant data files when restarting the simulation from a saved solver state
@@ -2013,7 +2006,7 @@ int main (int argc, char* argv[])
             throw std::invalid_argument("main_shs_" + to_string(P4EST_DIM) + "d: could not open file for slice-averaged velocity profile output.");
           for (int k = 0; k < ntree_y*(1<<lmax); ++k)
           {
-            fprintf(fp_velocity_profile, " %.12g", time_averaged_slice_averaged_profile.at(k)/(tn-t_slice_average));
+            fprintf(fp_velocity_profile, " %.12g", time_averaged_slice_averaged_profile.at(k)/(tn - t_slice_average));
             time_averaged_slice_averaged_profile.at(k) = 0.0;
           }
           fprintf(fp_velocity_profile, "\n");

@@ -947,6 +947,7 @@ int my_p4est_multialloy_t::one_step()
     }
 
     double test = rhs_tl.ptr[n]*density_l_*heat_capacity_l_/dt_[0];
+    (void) test; // Raphael: avoid compiler warning
 
     rhs_tl.ptr[n] = rhs_tl.ptr[n]*density_l_*heat_capacity_l_/dt_[0] + heat_gen;
     rhs_ts.ptr[n] = rhs_ts.ptr[n]*density_s_*heat_capacity_s_/dt_[0] + heat_gen;
@@ -1112,11 +1113,11 @@ void my_p4est_multialloy_t::save_VTK(int iter)
 
   VecScaleGhost(front_velo_norm_[0].vec, 1./scaling_);
 
-  my_p4est_vtk_write_all_vector_form(p4est_, nodes_, ghost_,
-                                     P4EST_TRUE, P4EST_TRUE,
-                                     name,
-                                     point_data, point_data_names,
-                                     cell_data, cell_data_names);
+  my_p4est_vtk_write_all_lists(p4est_, nodes_, ghost_,
+                               P4EST_TRUE, P4EST_TRUE,
+                               name,
+                               point_data, point_data_names,
+                               cell_data, cell_data_names);
 
   VecScaleGhost(front_velo_norm_[0].vec, scaling_);
 
@@ -1211,11 +1212,11 @@ void my_p4est_multialloy_t::save_VTK_solid(int iter)
 
   VecScaleGhost(history_front_velo_norm_.vec, 1./scaling_);
 
-  my_p4est_vtk_write_all_vector_form(history_p4est_, history_nodes_, history_ghost_,
-                                     P4EST_TRUE, P4EST_TRUE,
-                                     name,
-                                     point_data, point_data_names,
-                                     cell_data, cell_data_names);
+  my_p4est_vtk_write_all_lists(history_p4est_, history_nodes_, history_ghost_,
+                               P4EST_TRUE, P4EST_TRUE,
+                               name,
+                               point_data, point_data_names,
+                               cell_data, cell_data_names);
 
   VecScaleGhost(history_front_velo_norm_.vec, scaling_);
 
@@ -1322,7 +1323,7 @@ void my_p4est_multialloy_t::count_dendrites(int iter)
 
   mpiret = MPI_Allreduce(y_tip.data(), y_tip_g.data(), num_dendrites_, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
 
-  for (unsigned int i = 0; i < num_dendrites_; ++i)
+  for (int i = 0; i < num_dendrites_; ++i)
   {
     if (y_tip[i] != y_tip_g[i]) x_tip[i] = -10;
   }
@@ -1386,7 +1387,7 @@ void my_p4est_multialloy_t::count_dendrites(int iter)
     my_p4est_interpolation_nodes_t interp(ngbd_);
     my_p4est_interpolation_nodes_t h_interp(history_ngbd_);
 
-    for (unsigned int i = 0; i < nb_sample_points; ++i)
+    for (int i = 0; i < nb_sample_points; ++i)
     {
       foreach_dimension(dim) xyz[dim] = xyz0[dim] + ((double) i) * dxyz[dim];
       interp.add_point_local(i, xyz);
