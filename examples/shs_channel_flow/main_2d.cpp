@@ -23,8 +23,13 @@
 #include <cmath>
 
 // BLAS and LAPACKE
+#ifdef STAMPEDE
+#include <mkl_lapacke.h>
+#include <mkl_cblas.h>
+#else
 #include <lapacke.h>
 #include <cblas.h>
+#endif
 
 // p4est Library
 #ifdef P4_TO_P8
