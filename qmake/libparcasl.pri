@@ -167,14 +167,10 @@ HEADERS += \
 }
 
 CONFIG(3d, 2d|3d): {
-# Raphael (03/02/2020) :
-# Are epitaxy, scft and multialloy actually well-defined in 3D or not?
-# If not, we should just deleted them from the list here below...
 HEADERS += \
   $$PARCASL/src/my_p8est_biofilm.h \
   $$PARCASL/src/my_p8est_biomolecules.h \
   $$PARCASL/src/my_p8est_cell_neighbors.h \
-#  $$PARCASL/src/my_p8est_epitaxy.h \
   $$PARCASL/src/my_p8est_faces.h \
   $$PARCASL/src/my_p8est_general_poisson_nodes_mls_solver.h \
   $$PARCASL/src/my_p8est_hierarchy.h \
@@ -219,7 +215,6 @@ SOURCES += \
   $$PARCASL/src/my_p8est_biofilm.cpp \
   $$PARCASL/src/my_p8est_biomolecules.cpp \
   $$PARCASL/src/my_p8est_cell_neighbors.cpp \
-#  $$PARCASL/src/my_p8est_epitaxy.cpp \
   $$PARCASL/src/my_p8est_faces.cpp \
   $$PARCASL/src/my_p8est_general_poisson_nodes_mls_solver.cpp \
   $$PARCASL/src/my_p8est_hierarchy.cpp \

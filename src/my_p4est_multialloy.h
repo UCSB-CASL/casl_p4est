@@ -29,7 +29,6 @@ class my_p4est_multialloy_t
 {
 private:
   PetscErrorCode ierr;
-  int i,j,k;
 
   //--------------------------------------------------
   // Main grid
@@ -315,7 +314,7 @@ public:
 
   inline void set_temperature(Vec tl, Vec ts)
   {
-    for (i = 0; i < num_time_layers_; ++i)
+    for (int i = 0; i < num_time_layers_; ++i)
     {
       VecCopyGhost(tl, tl_[i].vec);
       VecCopyGhost(ts, ts_[i].vec);
@@ -336,9 +335,9 @@ public:
 
   inline void set_concentration(Vec cl[], Vec cs[])
   {
-    for (j = 0; j < num_comps_; ++j)
+    for (int j = 0; j < num_comps_; ++j)
     {
-      for (i = 0; i < num_time_layers_; ++i)
+      for (int i = 0; i < num_time_layers_; ++i)
       {
         VecCopyGhost(cl[j], cl_[i].vec[j]);
       }
@@ -353,7 +352,7 @@ public:
       interp.add_point(n, xyz);
     }
 
-    for (j = 0; j < num_comps_; ++j)
+    for (int j = 0; j < num_comps_; ++j)
     {
       interp.set_input(cs[j], linear);
       interp.interpolate(history_cs_.vec[j]);
@@ -362,7 +361,7 @@ public:
 
   inline void set_normal_velocity(Vec v)
   {
-    for (i = 0; i < num_time_layers_; ++i)
+    for (int i = 0; i < num_time_layers_; ++i)
     {
       VecCopyGhost(v, front_velo_norm_[i].vec);
       foreach_dimension(dim)
