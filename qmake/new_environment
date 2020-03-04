@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+PARCASL_QMAKE_DIR="$( cd "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
+PARCASL_DIR="$(dirname $PARCASL_QMAKE_DIR)"
+
 # creates the user-specific .pri file
 # (In the following, EOF works as a delimiter for the text that needs to be copied as it to the .pri file)
 function create_user_file() {
@@ -100,10 +103,11 @@ fi
 help="-- Use this script to generate an environment-specific .pri file --
 
 usage:
-    ./$(basename "$0") environment_name
+      ./$(basename "$0") environment_name
+    to be executed in the $PARCASL_QMAKE_DIR directory
 
 where:
-    environment_name is the basename of the .pri file whose creation is desired.
+    environment_name is the basename of the .pri file whose creation is desired
 
 The user needs to have defined the following environment variables
     PETSC_DIR_DEBUG
@@ -149,9 +153,17 @@ solution in main of shs channels. (LAPACKE is not the easiest to link against wi
 intel compilers and mkl libraries on Stampede for instance)]
 "
 
+directory_instruction="This script can only be executed from the $PARCASL_QMAKE_DIR directory.
+Change directory and execute again, i.e. do the following
+  cd $PARCASL_QMAKE_DIR
+  ./$(basename "$0") "$1"
+"
 
 if [ "$#" -ne 1 ] || [ "$1" == "-h" ] || [ "$1" == "-help" ]; then
   echo "$help"
+  exit 1;
+elif [[ "$PWD" != "$PARCASL_QMAKE_DIR" ]]; then
+  echo "$directory_instruction"
   exit 1;
 else
   name=$1

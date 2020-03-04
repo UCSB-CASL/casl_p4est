@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+PARCASL_EXAMPLES_DIR="$( cd "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
+PARCASL_DIR="$(dirname $PARCASL_EXAMPLES_DIR)"
+
 # creates a .pro file
 # (In the following, EOF works as a delimiter for the text that needs to be copied as is to the .pro file)
 function create_pro() {
@@ -10,7 +13,7 @@ cat > $1.pro << EOF
 #
 # The build environment (specific paths to external libraries,
 # compilers, etc.) needs to be fully determined in
-# $(dirname "$PWD")/qmake/${CASL_P4EST_USER}.pri
+# $PARCASL_DIR/qmake/${CASL_P4EST_USER}.pri
 #
 # Some additional configuration settings can be defined here below
 # with
@@ -177,11 +180,11 @@ cat > $1/main_3d.cpp << EOF
 EOF
 }
 
-help="-- Use this script to a new example and/or a new .pro file --
+help="-- Use this script to create a new example and/or a new .pro file --
 
 usage:
-    ./$(basename "$0") example_name [pro_file_destination]
-  to be executed in the $(dirname "$PWD")/example directory
+      ./$(basename "$0") example_name [pro_file_destination]
+    to be executed in the $PARCASL_EXAMPLES_DIR directory
 
 where:
     example_name is the name of the example whose creation/configuration is desired. If it does not
@@ -192,21 +195,33 @@ where:
 
     pro_file_destination is the name of the directory where a new .pro file will be placed. If the
     directory does not exist, it will be created. If not provided, a new .pro file will be created
-    in the example folder (i.e, examples/example_name/)
+    in the example folder (i.e, $PARCASL_EXAMPLES_DIR/example_name/)
 
 The user needs to have defined the following environment variable
     CASL_P4EST_USER:  environment specifier
 as it is required to create the corresponding qmake .pro file.
 
 If not defined yet, define it by executing
-export CASL_P4EST_USER=basename of the specific .pri file in $(dirname "$PWD")/qmake that defines
-                       the specific build environment of your machine (specific paths to external
-                       libaries, specific compilers, etc.). If it does not exist yet, create it
-                       by executing ./new_environment in $(dirname "$PWD")/qmake .
+export CASL_P4EST_USER=basename of the specific .pri file in $PARCASL_DIR/qmake
+                       that defines the specific build environment of your machine (specific paths
+                       to external libaries, specific compilers, etc.). If it does not exist yet,
+                       create it by executing the script
+                          ./new_environment
+                       in $PARCASL_DIR/qmake, with the appropriate environment variables (see help of
+                       that script for more details).
+"
+
+directory_instruction="This script can only be executed from the $PARCASL_EXAMPLES_DIR directory.
+Change directory and execute again, i.e. do the following
+  cd $PARCASL_EXAMPLES_DIR
+  ./$(basename "$0") "$1" "$2"
 "
 
 if { [ "$#" -ne 1 ] && [ "$#" -ne 2 ]; } || [ "$1" == "-h" ] || [ "$1" == "-help" ]; then
     echo "$help"
+    exit 1;
+elif [[ "$PWD" != "$PARCASL_EXAMPLES_DIR" ]]; then
+    echo "$directory_instruction"
     exit 1;
 else
   name=$1
@@ -232,29 +247,28 @@ else
     fi
     if [ -e ${name} ] && [ ! -f ${pro_dir}/${name}.pro ]; then
       # we will need to create the .pro file, so we will need CASL_P4EST_USER to be defined
-      CASL_P4EST_DIR="$(dirname "$PWD")"
-      if [ ! -d ${CASL_P4EST_DIR} ]; then
+      if [ ! -d ${PARCASL_DIR} ]; then
         echo "The parent directory is not valid: are you sure you are running the script in the example folder of the casl_p4est repository?"
         exit 1
       fi
       if [ -z ${CASL_P4EST_USER} ]; then
         echo "ERROR: The environment variable CASL_P4EST_USER is undefined."
-        echo "CASL_P4EST_USER needs to be defined and to refer to the basename of an environment-specific file in ${CASL_P4EST_DIR}/qmake."
+        echo "CASL_P4EST_USER needs to be defined and to refer to the basename of an environment-specific file in ${PARCASL_DIR}/qmake."
         exit 1
-      elif [ ! -d ${CASL_P4EST_DIR}/qmake ]; then
-        echo "ERROR: the qmake directory ${CASL_P4EST_DIR}/qmake cannot be found..."
-        echo "Are you sure CASL_P4EST_DIR=${CASL_P4EST_DIR} is correct?"
+      elif [ ! -d ${PARCASL_DIR}/qmake ]; then
+        echo "ERROR: the qmake directory ${PARCASL_DIR}/qmake cannot be found..."
+        echo "Are you sure PARCASL_DIR=${PARCASL_DIR} is correct?"
         exit 1
-      elif [ ! -f ${CASL_P4EST_DIR}/qmake/${CASL_P4EST_USER}.pri ]; then
-        echo "ERROR: the environment-specific file ${CASL_P4EST_DIR}/qmake/${CASL_P4EST_USER}.pri does not exist."
-        echo "Please create it by executing ./new_environment in ${CASL_P4EST_DIR}/qmake, first."
+      elif [ ! -f ${PARCASL_DIR}/qmake/${CASL_P4EST_USER}.pri ]; then
+        echo "ERROR: the environment-specific file ${PARCASL_DIR}/qmake/${CASL_P4EST_USER}.pri does not exist."
+        echo "Please create it by executing ./new_environment in ${PARCASL_DIR}/qmake, first."
         exit 1
       fi
 
       echo "Creating the .pro file."
       cd $pro_dir
-      create_pro $name $CASL_P4EST_DIR
-      cd ${CASL_P4EST_DIR}/examples/
+      create_pro $name $PARCASL_DIR
+      cd ${PARCASL_DIR}/examples/
 
       cd $name
       if [ ! -e $name.pri ]; then
