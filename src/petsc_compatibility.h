@@ -40,6 +40,10 @@
   (!PETSC_VERSION_LE(MAJOR,MINOR,SUBMINOR))
 #endif
 
+#if PETSC_VERSION_GT(3,12,0)
+#define PetscBinaryRead(a, b, c, d) PetscBinaryRead(a, b, c, NULL, d)
+#endif
+
 #if PETSC_VERSION_GT(3,4,3)
 #define MatNullSpaceRemove(a, b, c) MatNullSpaceRemove(a, b)
 #endif
