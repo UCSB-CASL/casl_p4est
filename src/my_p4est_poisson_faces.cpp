@@ -335,11 +335,7 @@ void my_p4est_poisson_faces_t::preallocate_matrix(const unsigned char &dir)
       Voronoi_DIM &voro_cell = (compute_partition_on_the_fly ? voro[dir][0] : voro[dir][f_idx]);
       compute_voronoi_cell(voro_cell, faces, f_idx, dir, bc, face_is_well_defined_p);
 
-#ifdef P4_TO_P8
-      const vector<ngbd3Dseed> *points;
-#else
-      vector<ngbd2Dseed> *points;
-#endif
+      const vector<ngbdDIMseed > *points;
       voro_cell.get_neighbor_seeds(points);
 
       for(size_t n = 0; n < points->size(); ++n)
@@ -489,8 +485,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(const unsigned char &dir)
     }
 
     const vector<ngbdDIMseed> *points;
-#ifdef P4_TO_P8
-#else
+#ifndef P4_TO_P8
     vector<Point2> *partition;
 
     // E: Store Voronoi partition and points:
@@ -915,6 +910,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(const unsigned char &dir)
       const double surface = ((*partition)[m] - (*partition)[k]).norm_L2();
 #endif
       double distance_to_neighbor = ((*points)[m].p - pc).norm_L2(); // E: Distance between the center point of the Voronoi cell and the mth Voronoi point (distance to each neighbor value)
+      P4EST_ASSERT(distance_to_neighbor <= 0.5*sqrt(SUMD(SQR(xyz_max[0] - xyz_min[0]), SQR(xyz_max[1] - xyz_min[1]), SQR(xyz_max[2] - xyz_min[2])))); // to check consistency, especially worth it in case sthg goes wrong when periodic
 
       switch((*points)[m].n) // E: *points[m].n returns the index of the mth neighbor face, except if it is negative (wall/interface cut)
       {

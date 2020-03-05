@@ -1136,16 +1136,19 @@ voro_cell_type compute_voronoi_cell(Voronoi_DIM &voronoi_cell, const my_p4est_fa
 #endif
     for (unsigned char face_dir = 0; face_dir < P4EST_FACES; ++face_dir) {
 #ifdef P4_TO_P8
-      points[face_dir].n  = face_neighbors->neighbor_face_idx[face_dir];
-      faces->point_fr_f(points[face_dir].n, dir, points[face_dir].p);
-      points[face_dir].s  = (face_dir/2 == dir::x ? dxyz[1]*dxyz[2] : (face_dir/2 == dir::y ? dxyz[0]*dxyz[2] : dxyz[0]*dxyz[1]));
+      unsigned char idx   = face_dir;
 #else
       unsigned char idx   = face_order_to_counterclock_cycle_order[face_dir];
-      points[idx].n       = face_neighbors->neighbor_face_idx[face_dir];
-      faces->point_fr_f(points[idx].n, dir, points[idx].p);
-      points[idx].theta   = (face_dir/2)*M_PI_2 + (1.0 - face_dir%2)*M_PI;
-      partition[idx].x    = points[idx].p.x + (0.5 - (face_dir%2))*dxyz[0];
-      partition[idx].y    = points[idx].p.y + (1.0 - 2.0*(face_dir/2))*(face_dir%2 - 0.5)*dxyz[1];
+#endif
+      points[idx].n  = face_neighbors->neighbor_face_idx[face_dir];
+      for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
+        points[idx].p.xyz(dim) = xyz_face[dim] + (dim == face_dir/2 ? (face_dir%2 ? +1.0 : -1.0)*dxyz[face_dir/2]: 0.0);
+#ifdef P4_TO_P8
+      points[idx].s     = (face_dir/2 == dir::x ? dxyz[1]*dxyz[2] : (face_dir/2 == dir::y ? dxyz[0]*dxyz[2] : dxyz[0]*dxyz[1]));
+#else
+      points[idx].theta = (face_dir/2)*M_PI_2 + (1.0 - face_dir%2)*M_PI;
+      partition[idx].x  = points[idx].p.x + (0.5 - (face_dir%2))*dxyz[0];
+      partition[idx].y  = points[idx].p.y + (1.0 - 2.0*(face_dir/2))*(face_dir%2 - 0.5)*dxyz[1];
 #endif
     }
 #ifdef P4_TO_P8
@@ -1227,29 +1230,38 @@ voro_cell_type compute_voronoi_cell(Voronoi_DIM &voronoi_cell, const my_p4est_fa
 #endif
     const double cell_ratio = (double) (1 << (((splitting_criteria_t *) p4est->user_pointer)->max_lvl - qm.level));
     // neighbor faces in the direction of the face orientation, first:
-#ifdef P4_TO_P8
-    vector<ngbd3Dseed> points(P4EST_FACES);
-    points[2*dir].n   = faces->q2f(qm.p.piggy3.local_num, 2*dir);
-    faces->point_fr_f(points[2*dir].n, dir, points[2*dir].p);
-    points[2*dir].s   = (dir == dir::x ? dxyz[1]*dxyz[2] : (dir == dir::y ? dxyz[0]*dxyz[2] : dxyz[0]*dxyz[1]))*SQR(cell_ratio);
-
-    points[2*dir + 1].n = faces->q2f(qp.p.piggy3.local_num, 2*dir + 1);
-    faces->point_fr_f(points[2*dir + 1].n, dir, points[2*dir + 1].p);
-    points[2*dir + 1].s = (dir == dir::x ? dxyz[1]*dxyz[2] : (dir == dir::y ? dxyz[0]*dxyz[2] : dxyz[0]*dxyz[1]))*SQR(cell_ratio);
-#else
-    vector<ngbd2Dseed> points(P4EST_FACES);
+    vector<ngbdDIMseed> points(P4EST_FACES);
+#ifndef P4_TO_P8
     vector<Point2> partition(P4EST_FACES);
+#endif
     unsigned char idx;
-    idx               = face_order_to_counterclock_cycle_order[2*dir];
-    points[idx].n     = faces->q2f(qm.p.piggy3.local_num, 2*dir);
-    faces->point_fr_f(points[idx].n, dir, points[idx].p);
+#ifdef P4_TO_P8
+    idx = 2*dir;
+#else
+    idx = face_order_to_counterclock_cycle_order[2*dir];
+#endif
+    points[idx].n = faces->q2f(qm.p.piggy3.local_num, 2*dir);
+    for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
+      points[idx].p.xyz(dim) = xyz_face[dim] + (dim == dir ? -dxyz[dir]*cell_ratio: 0.0); // safer than fetching the coordinates (if periodic)
+#ifdef P4_TO_P8
+    points[idx].s     = (dir == dir::x ? dxyz[1]*dxyz[2] : (dir == dir::y ? dxyz[0]*dxyz[2] : dxyz[0]*dxyz[1]))*SQR(cell_ratio);
+#else
     points[idx].theta = dir*M_PI_2 + M_PI;
     partition[idx].x  = points[idx].p.x +         0.5*dxyz[0]*cell_ratio;
     partition[idx].y  = points[idx].p.y + (dir - 0.5)*dxyz[1]*cell_ratio;
+#endif
 
-    idx               = face_order_to_counterclock_cycle_order[2*dir + 1];
-    points[idx].n     = faces->q2f(qp.p.piggy3.local_num, 2*dir + 1);
-    faces->point_fr_f(points[idx].n, dir, points[idx].p);
+#ifdef P4_TO_P8
+    idx = 2*dir + 1;
+#else
+    idx = face_order_to_counterclock_cycle_order[2*dir + 1];
+#endif
+    points[idx].n = faces->q2f(qp.p.piggy3.local_num, 2*dir + 1);
+    for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
+      points[idx].p.xyz(dim) = xyz_face[dim] + (dim == dir ? dxyz[dir]*cell_ratio: 0.0); // safer than fetching the coordinates (if periodic)
+#ifdef P4_TO_P8
+    points[idx].s     = (dir == dir::x ? dxyz[1]*dxyz[2] : (dir == dir::y ? dxyz[0]*dxyz[2] : dxyz[0]*dxyz[1]))*SQR(cell_ratio);
+#else
     points[idx].theta = dir*M_PI_2;
     partition[idx].x  = points[idx].p.x -         0.5*dxyz[0]*cell_ratio;
     partition[idx].y  = points[idx].p.y + (0.5 - dir)*dxyz[1]*cell_ratio;
@@ -1262,13 +1274,16 @@ voro_cell_type compute_voronoi_cell(Voronoi_DIM &voronoi_cell, const my_p4est_fa
       else
       {
 #ifdef P4_TO_P8
-        points[face_dir].n  = faces->q2f(ngbd_p_[ngbd_idx].begin()->p.piggy3.local_num, 2*dir); // we loop through ngbd_p_ in the same order as when it was built
-        faces->point_fr_f(points[face_dir].n, dir, points[face_dir].p);
-        points[face_dir].s  = (face_dir == dir::x ? dxyz[1]*dxyz[2] : (face_dir == dir::y ? dxyz[0]*dxyz[2] : dxyz[0]*dxyz[1]))*SQR(cell_ratio);
+        idx = face_dir;
 #else
         idx = face_order_to_counterclock_cycle_order[face_dir];
-        points[idx].n     = faces->q2f(ngbd_p_[ngbd_idx].begin()->p.piggy3.local_num, 2*dir); // we loop through ngbd_p_ in the same order as when it was built
-        faces->point_fr_f(points[idx].n, dir, points[idx].p);
+#endif
+        points[idx].n = faces->q2f(ngbd_p_[ngbd_idx].begin()->p.piggy3.local_num, 2*dir); // we loop through ngbd_p_ in the same order as when it was built
+        for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
+          points[idx].p.xyz(dim) = xyz_face[dim] + (dim == face_dir/2 ? (face_dir%2 ? +1.0 : -1.0)*dxyz[face_dir/2]*cell_ratio: 0.0); // safer than fetching the coordinates (if periodic)
+#ifdef P4_TO_P8
+        points[face_dir].s  = (face_dir == dir::x ? dxyz[1]*dxyz[2] : (face_dir == dir::y ? dxyz[0]*dxyz[2] : dxyz[0]*dxyz[1]))*SQR(cell_ratio);
+#else
         points[idx].theta = (face_dir/2)*M_PI_2 + (1.0 - face_dir%2)*M_PI;
         partition[idx].x  = points[idx].p.x + (0.5 - face_dir%2)*dxyz[0]*cell_ratio;
         partition[idx].y  = points[idx].p.y + (1.0 - 2.0*(face_dir/2))*(face_dir%2 - 0.5)*dxyz[1]*cell_ratio;

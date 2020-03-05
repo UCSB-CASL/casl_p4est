@@ -99,6 +99,7 @@ int interface_type = 0;
  * 0 - x+y
  * 1 - x*x + y*y
  * 2 - sin(x)*cos(y)
+ * 3 - sin(2.0*M_PI*x/(xmax - xmin))*cos(2.0*M_PI*y*(ymax - ymin)) to check periodic boundary conditions
  */
 int test_number = 2;
 
@@ -112,12 +113,14 @@ double r0 = MIN(DIM(xmax - xmin, ymax - ymin, zmax - zmin)) / 4.0;
 static const string test_description = "choose a test.\n\
     0 - x + y + z\n\
     1 - x*x + y*y + z*z\n\
-    2 - sin(x)*cos(y)*exp(z)";
+    2 - 2.0 + sin(x)*cos(y)*exp(z)\n\
+    3 - sin(2.0*M_PI*x/(xmax - xmin))*cos(2.0*M_PI*y/(ymax - ymin))*sin(2.0*M_PI*z/(zmax - zmin))";
 #else
 static const string test_description = "choose a test.\n\
     0 - x + y\n\
     1 - x*x + y*y\n\
-    2 - sin(x)*cos(y)";
+    2 - sin(x)*cos(y)\n\
+    3 - sin(2.0*M_PI*x/(xmax - xmin))*cos(2.0*M_PI*y/(ymax - ymin))";
 #endif
 
 class LEVEL_SET: public CF_DIM
@@ -154,6 +157,8 @@ double u_exact(DIM(double x, double y, double z))
     return SUMD(x*x, y*y, z*z);
   case 2:
     return MULTD(sin(x), cos(y), exp(z)) ONLY3D(+2.0);
+  case 3:
+    return MULTD(sin(2.0*M_PI*x/(xmax- xmin)), cos(2.0*M_PI*y/(ymax - ymin)), sin(2.0*M_PI*z/(zmax - zmin)));
   default:
     throw std::invalid_argument("Choose a valid test.");
   }
@@ -197,6 +202,10 @@ public:
         return SUMD(2.0*x*dx, 2.0*y*dy, 2.0*z*dz);
       case 2:
         return MULTD(cos(x), cos(y), exp(z))*dx - MULTD(sin(x), sin(y), exp(z))*dy ONLY3D(+ sin(x)*cos(y)*exp(z)*dz);
+      case 3:
+        return MULTD((2.0*M_PI/(xmax - xmin))*cos(2.0*M_PI*x/(xmax- xmin)), cos(2.0*M_PI*y/(ymax - ymin)), sin(2.0*M_PI*z/(zmax - zmin)))*dx
+            + MULTD(sin(2.0*M_PI*x/(xmax- xmin)), (-2.0*M_PI/(ymax - ymin))*sin(2.0*M_PI*y/(ymax - ymin)), sin(2.0*M_PI*z/(zmax - zmin)))*dy
+            ONLY3D(+ sin(2.0*M_PI*x/(xmax- xmin))*cos(2.0*M_PI*y/(ymax - ymin))*(2.0*M_PI/(zmax - zmin))*cos(2.0*M_PI*z/(zmax - zmin))*dz);
       default:
         throw std::invalid_argument("Choose a valid test.");
       }
@@ -235,6 +244,10 @@ public:
         return SUMD(2*x*dx, 2*y*dy, 2*z*dz);
       case 2:
         return MULTD(cos(x), cos(y), exp(z))*dx - MULTD(sin(x), sin(y), exp(z))*dy ONLY3D(+ sin(x)*cos(y)*exp(z)*dz);
+      case 3:
+        return MULTD((2.0*M_PI/(xmax - xmin))*cos(2.0*M_PI*x/(xmax- xmin)), cos(2.0*M_PI*y/(ymax - ymin)), sin(2.0*M_PI*z/(zmax - zmin)))*dx
+            + MULTD(sin(2.0*M_PI*x/(xmax- xmin)), (-2.0*M_PI/(ymax - ymin))*sin(2.0*M_PI*y/(ymax - ymin)), sin(2.0*M_PI*z/(zmax - zmin)))*dy
+            ONLY3D(+ sin(2.0*M_PI*x/(xmax- xmin))*cos(2.0*M_PI*y/(ymax - ymin))*(2.0*M_PI/(zmax - zmin))*cos(2.0*M_PI*z/(zmax - zmin))*dz);
       default:
         throw std::invalid_argument("Choose a valid test.");
       }
@@ -332,6 +345,11 @@ int main (int argc, char* argv[])
   cmd.add_option("bc_itype", "type of boundary condition to use on the interface");
   cmd.add_option("save_voro", "save the voronoi partition in vtk format");
   cmd.add_option("save_vtk", "save the p4est in vtk format");
+  cmd.add_option("px", "activates periodicity along x if present (only ok with test 3)");
+  cmd.add_option("py", "activates periodicity along y if present (only ok with test 3)");
+#ifdef P4_TO_P8
+  cmd.add_option("pz", "activates periodicity along z if present (only ok with test 3)");
+#endif
   cmd.add_option("test", test_description);
 
   if (cmd.parse(argc, argv))
@@ -369,7 +387,13 @@ int main (int argc, char* argv[])
   const int     n_xyz   [P4EST_DIM] = {DIM(nx, ny, nz)};
   const double  xyz_min [P4EST_DIM] = {DIM(xmin, ymin, zmin)};
   const double  xyz_max [P4EST_DIM] = {DIM(xmax, ymax, zmax)};
-  const int     periodic[P4EST_DIM] = {DIM(0,0,0)};
+  const int     periodic[P4EST_DIM] = {DIM(cmd.contains("px"), cmd.contains("py"), cmd.contains("pz"))};
+
+  if(ORD(periodic[0], periodic[1], periodic[2]) && test_number != 3)
+    throw std::invalid_argument("Periodicity can be activated only with test case 3!");
+
+  if(ANDD(periodic[0], periodic[1], periodic[2]) && bc_itype == NEUMANN)
+    add_diagonal = MAX(add_diagonal, 1.0); // to avoid nullspace...
 
   connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, &brick, periodic);
 
@@ -465,6 +489,9 @@ int main (int argc, char* argv[])
           break;
         case 2:
           rhs_p[f_idx] = mu*SUMD(1.0, 1.0, -1.0)*MULTD(sin(xyz[0]), cos(xyz[1]), exp(xyz[2])) + add_diagonal*u_exact(DIM(xyz[0], xyz[1], xyz[2]));
+          break;
+        case 3:
+          rhs_p[f_idx] = mu*SUMD(SQR(2.0*M_PI/(xmax - xmin)), SQR(2.0*M_PI/(ymax - ymin)), SQR(2.0*M_PI/(zmax - zmin)))*MULTD(sin(2.0*M_PI*xyz[0]/(xmax- xmin)), cos(2.0*M_PI*xyz[1]/(ymax - ymin)), sin(2.0*M_PI*xyz[2]/(zmax - zmin))) + add_diagonal*u_exact(DIM(xyz[0], xyz[1], xyz[2]));
           break;
         default:
           throw std::invalid_argument("set rhs : unknown test number.");

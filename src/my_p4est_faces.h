@@ -348,19 +348,6 @@ public:
    */
   void rel_qxyz_face_fr_node(const p4est_locidx_t& f_idx, const unsigned char& dir, double* xyz_rel, const double* xyz_node, const p4est_indep_t* node, const my_p4est_brick_t* brick, int64_t* logical_qcoord_diff) const;
 
-  inline void point_fr_f(p4est_locidx_t f_idx, const unsigned char &dir, PointDIM &point) const
-  {
-    double xyz_face[P4EST_DIM];
-    xyz_fr_f(f_idx, dir, xyz_face);
-    point.x = xyz_face[0];
-    point.y = xyz_face[1];
-#ifdef P4_TO_P8
-    point.z = xyz_face[2];
-#endif
-    return;
-  }
-
-
   /*!
    * \brief calculates the area of the face in negative domain
    * \param f_idx: local index of the face
