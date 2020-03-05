@@ -84,7 +84,8 @@ DEFINE_PARAMETER(pl, int, lmin, 5, "Min level of the tree");
 DEFINE_PARAMETER(pl, int, lmax, 10, "Max level of the tree");
 #endif
 
-DEFINE_PARAMETER(pl, double, lip, 2, "");
+DEFINE_PARAMETER(pl, double, lip, 1.0, "");
+DEFINE_PARAMETER(pl, double, band, 2.0, "");
 
 //-------------------------------------
 // solver parameters
@@ -124,13 +125,14 @@ DEFINE_PARAMETER(pl, double, dendrite_min_length,       0.05, "");
 
 // problem parameters
 DEFINE_PARAMETER(pl, bool,   concentration_neumann, 1, "");
-DEFINE_PARAMETER(pl, int,    max_total_iterations,  1000000000, "");
+DEFINE_PARAMETER(pl, int,    max_total_iterations,  5000, "");
 DEFINE_PARAMETER(pl, double, time_limit,            DBL_MAX, "");
 DEFINE_PARAMETER(pl, double, termination_length,    0.99, "");
 DEFINE_PARAMETER(pl, double, init_perturb,          1.e-3, "");
 DEFINE_PARAMETER(pl, bool,   enforce_planar_front,  0,"");
 
-DEFINE_PARAMETER(pl, double, box_size, 4.e-2, "equivalent width (in x) of the box in cm");
+DEFINE_PARAMETER(pl, double, box_size, 2.e-2, "equivalent width (in x) of the box in cm");
+//DEFINE_PARAMETER(pl, double, box_size, 1, "equivalent width (in x) of the box in cm");
 
 double scaling = 1./box_size;
 
@@ -142,7 +144,7 @@ int num_comps = 1; // Number of components used
 
 //DEFINE_PARAMETER(pl, double, volumetric_heat,  0, "Volumetric heat generation, J/cm^3");
 DEFINE_PARAMETER(pl, double, cooling_velocity, 0.01, "Cooling velocity, cm/s");
-DEFINE_PARAMETER(pl, double, temp_gradient,    200, "Temperature gradient, K/cm");
+DEFINE_PARAMETER(pl, double, temp_gradient,    15000, "Temperature gradient, K/cm");
 
 DEFINE_PARAMETER(pl, int,    smoothstep_order, 5, "Smoothness of cooling/heating ");
 DEFINE_PARAMETER(pl, double, starting_time, 0.e-3, "Time for cooling/heating to fully switch on, s");
@@ -195,7 +197,7 @@ DEFINE_PARAMETER(pl, int, alloy, 2, "0: Ni -  0.4at%Cu bi-alloy, "
                                     "6: a made-up tetra-alloy, "
                                     "7: a made-up penta-alloy");
 
-DEFINE_PARAMETER(pl, int, geometry, 6, "0 - directional solidification,"
+DEFINE_PARAMETER(pl, int, geometry, 0, "0 - directional solidification,"
                                        "1 - growth of a spherical seed in a spherical container,"
                                        "2 - growth of a spherical film in a spherical container,"
                                        "3 - radial directional solidification in,"
@@ -203,7 +205,7 @@ DEFINE_PARAMETER(pl, int, geometry, 6, "0 - directional solidification,"
                                        "5 - three spherical seeds,"
                                        "6 - planar front and three spherical seeds");
 
-DEFINE_PARAMETER(pl, int, seed_type, 1, "0 - aligned,"
+DEFINE_PARAMETER(pl, int, seed_type, 0, "0 - aligned,"
                                         "1 - misaligned");
 
 double* liquidus_slope_all[] = { &liquidus_slope_0,
@@ -227,7 +229,7 @@ void set_alloy_parameters()
 
       num_comps = 1;
 
-      solute_diff_0    = 1.e-5;  // cm2.s-1 - concentration diffusion coefficient
+      solute_diff_0    = 1.e-3;  // cm2.s-1 - concentration diffusion coefficient
       liquidus_slope_0 = -357;   // K / at frac. - liquidous slope
       initial_conc_0   = 0.4;    // at frac.
       part_coeff_0     = 0.86;   // partition coefficient
@@ -278,7 +280,7 @@ void set_alloy_parameters()
       num_comps = 2;
 
       solute_diff_0    = 1e-5;     // cm2.s-1 - concentration diffusion coefficient
-      solute_diff_1    = 5e-5;     // cm2.s-1 - concentration diffusion coefficient
+      solute_diff_1    = 1e-5;     // cm2.s-1 - concentration diffusion coefficient
       liquidus_slope_0 =-874;      // K / at frac. - liquidous slope
       liquidus_slope_1 =-1378;     // K / at frac. - liquidous slope
       initial_conc_0   = 0.107;    // at frac.
@@ -286,8 +288,8 @@ void set_alloy_parameters()
       part_coeff_0     = 0.848;    // partition coefficient
       part_coeff_1     = 0.848;    // partition coefficient
 
-      eps_c = 3e-5/melting_temp;
-      eps_v = 0*2.27e-2;
+      eps_c = 5e-5/melting_temp;
+      eps_v = 5e-2;
       eps_a = 0.05;
       symmetry = 4;
       break;
@@ -687,7 +689,7 @@ int num_seeds()
   }
 }
 
-double seed_direction = PI/6.;
+double seed_direction = 0*PI/6.;
 
 double theta0(int seed)
 {
@@ -1092,6 +1094,23 @@ int main (int argc, char* argv[])
   temp_gradient    /= scaling;
   cooling_velocity *= scaling;
 
+  if (mpi.rank() == 0)
+  {
+    ierr = PetscPrintf(mpi.comm(), "density_l: %g\n", density_l); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "density_s: %g\n", density_s); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "thermal_cond_l: %g\n", thermal_cond_l); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "thermal_cond_s: %g\n", thermal_cond_s); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "thermal_diff_l: %g\n", thermal_cond_l/density_l/heat_capacity_l); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "thermal_diff_s: %g\n", thermal_cond_s/density_s/heat_capacity_s); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "latent_heat: %g\n", latent_heat); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "solute_diff_0: %g\n", solute_diff_0); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "solute_diff_1: %g\n", solute_diff_1); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "solute_diff_2: %g\n", solute_diff_2); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "solute_diff_3: %g\n", solute_diff_3); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "temp_gradient: %g\n", temp_gradient); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "cooling_velocity: %g\n", cooling_velocity); CHKERRXX(ierr);
+  }
+
 
   parStopWatch w1;
   w1.start("total time");
@@ -1104,7 +1123,7 @@ int main (int argc, char* argv[])
   /* initialize the solver */
   my_p4est_multialloy_t mas(num_comps, num_time_layers);
 
-  mas.initialize(mpi.comm(), xyz_min, xyz_max, n_xyz, periodic, phi_eff_cf, lmin, lmax, lip);
+  mas.initialize(mpi.comm(), xyz_min, xyz_max, n_xyz, periodic, phi_eff_cf, lmin, lmax, lip, band);
 
   p4est_t                   *p4est = mas.get_p4est();
   p4est_nodes_t             *nodes = mas.get_nodes();

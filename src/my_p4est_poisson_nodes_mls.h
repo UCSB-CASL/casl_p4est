@@ -26,15 +26,14 @@ using std::vector;
 
 class my_p4est_poisson_nodes_mls_t
 {
+protected:
   const int phi_idx_wall_shift_ = 10;
- protected:
   struct mat_entry_t
   {
     double val;
     PetscInt n;
     mat_entry_t(PetscInt n=0, double val=0) : n(n), val(val) {}
   };
-protected:
   PetscErrorCode ierr;
 
   // p4est objects
@@ -42,11 +41,9 @@ protected:
   p4est_nodes_t    *nodes_;
   p4est_ghost_t    *ghost_;
   my_p4est_brick_t *brick_;
-public:
   const my_p4est_node_neighbors_t *ngbd_;
 
   // grid variables
-public:
   double lip_;
   double d_min_;
   double diag_min_;
@@ -147,7 +144,6 @@ public:
   };
 
   geometry_t bdry_;
-public:
   geometry_t infc_;
 
   // forces
@@ -219,9 +215,8 @@ public:
   int    integration_order_;
   int    cube_refinement_;
   int    jump_scheme_;
-  int    jump_sub_scheme_;
+  int    fv_scheme_;
 
-  bool   use_sc_scheme_;
   bool   use_taylor_correction_;
   bool   kink_special_treatment_;
   bool   neumann_wall_first_order_;
@@ -253,10 +248,8 @@ public:
   bool finite_volumes_initialized_;
   bool finite_volumes_owned_;
   std::vector<int> bdry_node_to_fv_;
-public:
   std::vector<int> infc_node_to_fv_;
   std::vector<my_p4est_finite_volume_t> *bdry_fvs_;
-public:
   std::vector<my_p4est_finite_volume_t> *infc_fvs_;
 
   // discretization type
@@ -270,7 +263,7 @@ public:
     FINITE_VOLUME,
     IMMERSED_INTERFACE,
   };
-public :
+
   std::vector<discretization_scheme_t> node_scheme_;
 
   // interpolators
@@ -550,9 +543,8 @@ public:
   inline void set_integration_order(int value) { integration_order_ = value; }
   inline void set_cube_refinement  (int value) { cube_refinement_   = value; }
   inline void set_jump_scheme      (int value) { jump_scheme_       = value; }
-  inline void set_jump_sub_scheme  (int value) { jump_sub_scheme_   = value; }
+  inline void set_fv_scheme        (int value) { fv_scheme_         = value; }
 
-  inline void set_use_sc_scheme           (bool value) { use_sc_scheme_            = value; }
   inline void set_use_taylor_correction   (bool value) { use_taylor_correction_    = value; }
   inline void set_kink_treatment          (bool value) { kink_special_treatment_   = value; }
   inline void set_first_order_neumann_wall(bool value) { neumann_wall_first_order_ = value; }
@@ -565,6 +557,8 @@ public:
   inline void set_interface_rel_thresh(double value) { interface_rel_thresh_ = value; }
 
   inline void set_interpolation_method(interpolation_method value) { interp_method_ = value; }
+
+  inline void set_use_sc_scheme           (bool value) { if (value) fv_scheme_ = 1; else fv_scheme_ = 0; } // deprecated
 
   // some override capabilities just in case
   inline void set_new_submat_main (bool value) { new_submat_main_  = value; }

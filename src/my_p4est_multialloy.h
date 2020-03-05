@@ -167,7 +167,7 @@ private:
   double phi_thresh_;
   double cfl_number_;
   double curvature_smoothing_;
-  double curvature_smoothing_steps_;
+  int    curvature_smoothing_steps_;
 
   bool use_superconvergent_robin_;
   bool use_points_on_interface_;
@@ -217,14 +217,14 @@ private:
         ( qnnn.interpolate_in_dir(dir, dist, v_c_d_p[0])*qnnn.interpolate_in_dir(dir, dist, v_normal_p[0])
         + qnnn.interpolate_in_dir(dir, dist, v_c_d_p[1])*qnnn.interpolate_in_dir(dir, dist, v_normal_p[1]))
         / MAX(qnnn.interpolate_in_dir(dir, dist, v_c_p, v_c_dd_p), 1e-7);
-  };
+  }
 
 
 public:
   my_p4est_multialloy_t(int num_comps, int num_time_layers);
   ~my_p4est_multialloy_t();
 
-  void initialize(MPI_Comm mpi_comm, double xyz_min[], double xyz_max[], int nxyz[], int periodicity[], CF_2 &level_set, int lmin, int lmax, double lip);
+  void initialize(MPI_Comm mpi_comm, double xyz_min[], double xyz_max[], int nxyz[], int periodicity[], CF_2 &level_set, int lmin, int lmax, double lip, double band);
 
   inline void set_scaling(double value) { scaling_ = value; }
   inline void set_composition_parameters(double solute_diff[], double part_coeff[])
