@@ -71,8 +71,15 @@ OBJECTS_DIR = .obj
 
 # enable C++11
 QMAKE_CXXFLAGS += -std=c++11
-QMAKE_CCFLAGS  += -std=c++11
-QMAKE_LFAGS    += -std=c++11
+#QMAKE_CFLAGS   += -std=c++11 # [Raphael] this is irrelevant for the C compiler...
+QMAKE_LFLAGS   += -std=c++11
+
+contains(DEFINES, STAMPEDE) { # i.e. if DEFINES += STAMPEDE was added to the user-specific .pri file
+QMAKE_CXXFLAGS  += $(TACC_VEC_FLAGS)
+QMAKE_CFLAGS    += $(TACC_VEC_FLAGS)
+QMAKE_LFLAGS    += $(TACC_VEC_FLAGS)
+# --> enables execution of the code on KNL as well as SKX nodes on Stampede2
+}
 
 # Miscellaneous
 DEFINES += "GIT_COMMIT_HASH_LONG=\\\"$$system(git rev-parse HEAD)\\\""
