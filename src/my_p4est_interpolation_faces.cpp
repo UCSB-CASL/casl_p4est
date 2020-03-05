@@ -1,5 +1,5 @@
 #ifdef P4_TO_P8
-#include "my_p4est_interpolation_faces.h"
+#include "my_p8est_interpolation_faces.h"
 #else
 #include "my_p4est_interpolation_faces.h"
 #endif
@@ -42,8 +42,7 @@ void my_p4est_interpolation_faces_t::operator ()(DIM(double x, double y, double 
     interpolate(best_match, xyz, results, 1); // last argument is dummy
     return;
   }
-
-  throw std::invalid_argument("[ERROR]: my_p4est_interpolation_faces_t->interpolate(): the point does not belong to the local forest.");
+  throw std::invalid_argument("[ERROR]: my_p4est_interpolation_faces_t::operator(): the point does not belong to the local forest.");
 }
 
 

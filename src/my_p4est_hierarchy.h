@@ -329,10 +329,7 @@ public:
       HierarchyCell root =
       {
         CELL_LEAF, NOT_A_P4EST_QUADRANT, /* child, quad */
-        0, 0,                            /* imin, jmin  */
-  #ifdef P4_TO_P8
-        0,                               /* kmin (3D only) */
-  #endif
+        DIM(0, 0, 0),                    /* imin, jmin, kmin  */
         0,                               /* level */
         REMOTE_OWNER                     /* owner's rank */
       };
