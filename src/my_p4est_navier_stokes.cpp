@@ -1034,7 +1034,7 @@ void my_p4est_navier_stokes_t::solve_viscosity(my_p4est_poisson_faces_t* &face_p
 
   // rhs is modified by the solver so it should be reset every-time (could be modified, if required)
   Vec rhs[P4EST_DIM];
-  for(short dir=0; dir<P4EST_DIM; ++dir)
+  for(unsigned char dir=0; dir < P4EST_DIM; ++dir)
   {
     /* find the velocity at the backtraced points */
     my_p4est_interpolation_nodes_t interp_nm1(ngbd_nm1);
@@ -1060,7 +1060,7 @@ void my_p4est_navier_stokes_t::solve_viscosity(my_p4est_poisson_faces_t* &face_p
     }
 
     std::vector<double> vnm1_faces(faces_n->num_local[dir]);
-    if(sl_order==2)
+    if(sl_order == 2)
     {
       vnm1_faces.resize(faces_n->num_local[dir]);
       interp_nm1.set_input(vnm1_nodes[dir], DIM(second_derivatives_vnm1_nodes[0][dir], second_derivatives_vnm1_nodes[1][dir], second_derivatives_vnm1_nodes[2][dir]), quadratic);
@@ -1127,23 +1127,15 @@ void my_p4est_navier_stokes_t::solve_viscosity(my_p4est_poisson_faces_t* &face_p
 
   face_poisson_solver->solve(vstar, use_initial_guess, ksp, pc);
 
-
-
-  for(int dir=0; dir<P4EST_DIM; ++dir)
-  {
+  for(unsigned char dir = 0; dir < P4EST_DIM; ++dir){
     ierr = VecDestroy(rhs[dir]); CHKERRXX(ierr);
   }
 
-
-  if(bc_pressure->interfaceType()!=NOINTERFACE)
+  if(bc_pressure->interfaceType() != NOINTERFACE)
   {
     my_p4est_level_set_faces_t lsf(ngbd_n, faces_n);
-    for(int dir=0; dir<P4EST_DIM; ++dir)
-    {
+    for(int dir = 0; dir < P4EST_DIM; ++dir)
       lsf.extend_Over_Interface(phi, vstar[dir], bc_v[dir], dir, face_is_well_defined[dir], dxyz_hodge[dir], 2, 2);
-    }
-
-
   }
 
   ierr = PetscLogEventEnd(log_my_p4est_navier_stokes_viscosity, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -1198,21 +1190,21 @@ void my_p4est_navier_stokes_t::solve_projection(my_p4est_poisson_cells_t* &cell_
     double average = lsc.integrate(phi, hodge) / area_in_negative_domain(p4est_n, nodes_n, phi);
     double *hodge_p;
     ierr = VecGetArray(hodge, &hodge_p); CHKERRXX(ierr);
-    for(p4est_locidx_t quad_idx=0; quad_idx<p4est_n->local_num_quadrants; ++quad_idx)
+    for(p4est_locidx_t quad_idx = 0; quad_idx < p4est_n->local_num_quadrants; ++quad_idx)
       hodge_p[quad_idx] -= average;
     ierr = VecRestoreArray(hodge, &hodge_p); CHKERRXX(ierr);
     ierr = VecGhostUpdateBegin(hodge, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
     ierr = VecGhostUpdateEnd  (hodge, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
   }
 
-  if(bc_pressure->interfaceType()!=NOINTERFACE)
+  if(bc_pressure->interfaceType() != NOINTERFACE)
   {
     my_p4est_level_set_cells_t lsc(ngbd_c, ngbd_n);
     lsc.extend_Over_Interface(phi, hodge, &bc_hodge, 2, 2);
   }
 
   /* project vstar */
-  for(int dir=0; dir<P4EST_DIM; ++dir)
+  for(unsigned char dir = 0; dir < P4EST_DIM; ++dir)
   {
     double *dxyz_hodge_p;
     ierr = VecGetArray(dxyz_hodge[dir], &dxyz_hodge_p); CHKERRXX(ierr);
@@ -1226,19 +1218,17 @@ void my_p4est_navier_stokes_t::solve_projection(my_p4est_poisson_cells_t* &cell_
     p4est_locidx_t quad_idx;
     p4est_topidx_t tree_idx;
 
-    for(p4est_locidx_t f_idx=0; f_idx<faces_n->num_local[dir]; ++f_idx)
+    for(p4est_locidx_t f_idx = 0; f_idx < faces_n->num_local[dir]; ++f_idx)
     {
       faces_n->f2q(f_idx, dir, quad_idx, tree_idx);
-      int tmp = faces_n->q2f(quad_idx, 2*dir)==f_idx ? 0 : 1;
-      dxyz_hodge_p[f_idx] = compute_dxyz_hodge(quad_idx, tree_idx, 2*dir+tmp);
+      int tmp = (faces_n->q2f(quad_idx, 2*dir) == f_idx ? 0 : 1);
+      dxyz_hodge_p[f_idx] = compute_dxyz_hodge(quad_idx, tree_idx, 2*dir + tmp);
     }
 
     ierr = VecGhostUpdateBegin(dxyz_hodge[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
-    for(p4est_locidx_t f_idx=0; f_idx<faces_n->num_local[dir]; ++f_idx)
-    {
+    for(p4est_locidx_t f_idx = 0; f_idx < faces_n->num_local[dir]; ++f_idx)
       vnp1_p[f_idx] = vstar_p[f_idx] - dxyz_hodge_p[f_idx];
-    }
 
     ierr = VecGhostUpdateEnd  (dxyz_hodge[dir], INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
@@ -1264,7 +1254,7 @@ void my_p4est_navier_stokes_t::enforce_mass_flow(const bool* force_in_direction,
   double current_mass_flow;
   PetscErrorCode ierr;
   double *vel_p;
-  for (short unsigned dir = 0; dir < P4EST_DIM; ++dir) {
+  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
     if(!force_in_direction[dir])
     {
       forcing_mean_hodge_gradient[dir] = 0.0;
@@ -2466,8 +2456,7 @@ void my_p4est_navier_stokes_t::save_vtk(const char* name, bool with_Q_and_lambda
   ierr = VecGetArrayRead(phi  , &phi_p  ); CHKERRXX(ierr);
   ierr = VecGetArrayRead(hodge, &hodge_p); CHKERRXX(ierr);
 
-  for(int dir=0; dir<P4EST_DIM; ++dir)
-  {
+  for(unsigned char dir = 0; dir < P4EST_DIM; ++dir){
     ierr = VecGetArrayRead(vnp1_nodes[dir], &vn_p[dir]); CHKERRXX(ierr);
   }
 
@@ -2558,7 +2547,7 @@ void my_p4est_navier_stokes_t::save_vtk(const char* name, bool with_Q_and_lambda
     if(with_Q_and_lambda_2_value)
       my_p4est_vtk_write_all_general(p4est_n, nodes_n, ghost_n,
                                      P4EST_TRUE, P4EST_TRUE,
-                                     4, /* number of VTK_NODE_SCALAR */
+                                     5, /* number of VTK_NODE_SCALAR */
                                      1, /* number of VTK_NODE_VECTOR_BY_COMPONENTS */
                                      0, /* number of VTK_NODE_VECTOR_BY_BLOCK */
                                      1, /* number of VTK_CELL_SCALAR */
@@ -2600,8 +2589,7 @@ void my_p4est_navier_stokes_t::save_vtk(const char* name, bool with_Q_and_lambda
   ierr = VecRestoreArrayRead(pressure_nodes, &pressure_nodes_p); CHKERRXX(ierr);
   ierr = VecDestroy(pressure_nodes); CHKERRXX(ierr);
 
-  for(int dir=0; dir<P4EST_DIM; ++dir)
-  {
+  for(unsigned char dir = 0; dir < P4EST_DIM; ++dir){
     ierr = VecRestoreArrayRead(vn_nodes[dir], &vn_p[dir]); CHKERRXX(ierr);
   }
 
