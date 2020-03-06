@@ -69,7 +69,7 @@ void Voronoi2D::push( int n, double x, double y, const bool* periodicity, const 
   for(unsigned int m=0; m<nb_seeds.size(); m++)
     if(nb_seeds[m].n == n)
       return;
-  /* note: technically wrong if one wants to add TWO WALL_parallel_to_face points, but that can happen only
+  /* note: technically wrong if one wants to add TWO WALL_PARALLEL_TO_FACE points, but that can happen only
    * if the grid is VERY coarse in theory, so I do not check for it... [Raphael] */
   add_point(n, x, y, periodicity, xyz_min, xyz_max);
 }

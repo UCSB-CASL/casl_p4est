@@ -332,7 +332,7 @@ enum {
   WALL_00m = -5,
   WALL_00p = -6,
   INTERFACE = -7,
-  WALL_parallel_to_face = -8 // to allow for Dirichlet wall boundary conditions on the face_solver even with rectangular grids
+  WALL_PARALLEL_TO_FACE = -8 // to allow for Dirichlet wall boundary conditions on the face_solver even with (very stretched) rectangular grids
 };
 
 inline int WALL_idx(unsigned char oriented_cart_dir)

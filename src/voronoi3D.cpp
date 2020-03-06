@@ -15,7 +15,7 @@ void Voronoi3D::push( int n, Point3 &pt, const bool* periodicity, const double* 
   for(size_t m = 0; m < nb_seeds.size(); m++)
     if(nb_seeds[m].n == n)
       return;
-  /* note: technically wrong if one wants to add TWO WALL_parallel_to_face points, but that can happen only
+  /* note: technically wrong if one wants to add WALL_PARALLEL_TO_FACE points, but that can happen only
    * if the grid is VERY coarse in theory, so I do not check for it... [Raphael] */
   add_point(n, pt, periodicity, xyz_min, xyz_max);
 }
@@ -269,7 +269,7 @@ void Voronoi3D::construct_partition(const double *xyz_min, const double *xyz_max
   voronoi.put(po, idx_center_seed, 0.0, 0.0, 0.0);
 
   /* add the points potentially involved in the voronoi partition */
-  for(unsigned int m=0; m<nb_seeds.size(); ++m)
+  for(size_t m = 0; m < nb_seeds.size(); ++m)
   {
     double x_tmp = (fabs(nb_seeds[m].p.x - xyz_min[0]) < (xyz_max[0] - xyz_min[0])*EPS && !periodic[0] ? xyz_min[0] + (xyz_max[0] - xyz_min[0])*EPS : (fabs(nb_seeds[m].p.x - xyz_max[0]) < (xyz_max[0] - xyz_min[0])*EPS && !periodic[0] ? xyz_max[0] - (xyz_max[0] - xyz_min[0])*EPS : nb_seeds[m].p.x));
     double y_tmp = (fabs(nb_seeds[m].p.y - xyz_min[1]) < (xyz_max[1] - xyz_min[1])*EPS && !periodic[1] ? xyz_min[1] + (xyz_max[1] - xyz_min[1])*EPS : (fabs(nb_seeds[m].p.y - xyz_max[1]) < (xyz_max[1] - xyz_min[1])*EPS && !periodic[1] ? xyz_max[1] - (xyz_max[1] - xyz_min[1])*EPS : nb_seeds[m].p.y));
@@ -290,33 +290,33 @@ void Voronoi3D::construct_partition(const double *xyz_min, const double *xyz_max
     volume = min_dist*min_dist*min_dist*voro_cell.volume();
     voro_cell.neighbors(neigh);
     voro_cell.face_areas(areas);
-    for(unsigned int n=0; n<neigh.size(); n++)
+    for(size_t n = 0; n < neigh.size(); n++)
     {
       ngbd3Dseed new_voro_nb;
       new_voro_nb.n = neigh[n];
       new_voro_nb.s = min_dist*min_dist*areas[n];
 
-      if(neigh[n]<0 && neigh[n]!=WALL_parallel_to_face)
+      if(neigh[n] < 0 && neigh[n] != WALL_PARALLEL_TO_FACE)
       {
         switch(neigh[n])
         {
         case WALL_m00:
-          new_voro_nb.p.x = xyz_min[0]-(center_seed.x-xyz_min[0]); new_voro_nb.p.y = center_seed.y; new_voro_nb.p.z = center_seed.z; new_voro_nb.dist = fabs(2.0*(center_seed.x - xyz_min[0]));
+          new_voro_nb.p.x = xyz_min[0] - (center_seed.x-xyz_min[0]); new_voro_nb.p.y = center_seed.y; new_voro_nb.p.z = center_seed.z; new_voro_nb.dist = fabs(2.0*(center_seed.x - xyz_min[0]));
           break;
         case WALL_p00:
-          new_voro_nb.p.x = xyz_max[0]+(xyz_max[0]-center_seed.x); new_voro_nb.p.y = center_seed.y; new_voro_nb.p.z = center_seed.z; new_voro_nb.dist = fabs(2.0*(xyz_max[0] - center_seed.x));
+          new_voro_nb.p.x = xyz_max[0] + (xyz_max[0] - center_seed.x); new_voro_nb.p.y = center_seed.y; new_voro_nb.p.z = center_seed.z; new_voro_nb.dist = fabs(2.0*(xyz_max[0] - center_seed.x));
           break;
         case WALL_0m0:
-          new_voro_nb.p.x = center_seed.x; new_voro_nb.p.y = xyz_min[1]-(center_seed.y-xyz_min[1]); new_voro_nb.p.z = center_seed.z; new_voro_nb.dist = fabs(2.0*(center_seed.y - xyz_min[1]));
+          new_voro_nb.p.x = center_seed.x; new_voro_nb.p.y = xyz_min[1] - (center_seed.y-xyz_min[1]); new_voro_nb.p.z = center_seed.z; new_voro_nb.dist = fabs(2.0*(center_seed.y - xyz_min[1]));
           break;
         case WALL_0p0:
-          new_voro_nb.p.x = center_seed.x; new_voro_nb.p.y = xyz_max[1]+(xyz_max[1]-center_seed.y); new_voro_nb.p.z = center_seed.z; new_voro_nb.dist = fabs(2.0*(xyz_max[1] - center_seed.y));
+          new_voro_nb.p.x = center_seed.x; new_voro_nb.p.y = xyz_max[1] + (xyz_max[1] - center_seed.y); new_voro_nb.p.z = center_seed.z; new_voro_nb.dist = fabs(2.0*(xyz_max[1] - center_seed.y));
           break;
         case WALL_00m:
-          new_voro_nb.p.x = center_seed.x; new_voro_nb.p.y = center_seed.y; new_voro_nb.p.z = xyz_min[2]-(center_seed.z-xyz_min[2]); new_voro_nb.dist = fabs(2.0*(center_seed.z - xyz_min[2]));
+          new_voro_nb.p.x = center_seed.x; new_voro_nb.p.y = center_seed.y; new_voro_nb.p.z = xyz_min[2] - (center_seed.z-xyz_min[2]); new_voro_nb.dist = fabs(2.0*(center_seed.z - xyz_min[2]));
           break;
         case WALL_00p:
-          new_voro_nb.p.x = center_seed.x; new_voro_nb.p.y = center_seed.y; new_voro_nb.p.z = xyz_max[2]+(xyz_max[2]-center_seed.z); new_voro_nb.dist = fabs(2.0*(xyz_max[2] - center_seed.z));
+          new_voro_nb.p.x = center_seed.x; new_voro_nb.p.y = center_seed.y; new_voro_nb.p.z = xyz_max[2] + (xyz_max[2] - center_seed.z); new_voro_nb.dist = fabs(2.0*(xyz_max[2] - center_seed.z));
           break;
         default:
           throw std::invalid_argument("[CASL_ERROR]: Voronoi3D->construct_partition: unknown boundary.");
@@ -324,9 +324,9 @@ void Voronoi3D::construct_partition(const double *xyz_min, const double *xyz_max
       }
       else
       {
-        for(unsigned int m=0; m<nb_seeds.size(); ++m)
+        for(size_t m = 0; m < nb_seeds.size(); ++m)
         {
-          if(nb_seeds[m].n==neigh[n])
+          if(nb_seeds[m].n == neigh[n])
           {
             new_voro_nb.p = nb_seeds[m].p;
             new_voro_nb.dist = nb_seeds[m].dist;
@@ -356,11 +356,11 @@ void Voronoi3D::print_VTK_format( const vector<Voronoi3D>& voro, const char* fil
   FILE* f;
   f = fopen(file_name, "w");
 #ifdef CASL_THROWS
-  if(f==NULL) throw std::invalid_argument("[CASL_ERROR]: Voronoi3D: cannot open file.");
+  if(f == NULL) throw std::invalid_argument("[CASL_ERROR]: Voronoi3D: cannot open file.");
 #endif
 
   vector<VoroNgbd> voro_global(voro.size());
-    for(unsigned int n=0; n<voro.size(); ++n)
+    for(size_t n = 0; n < voro.size(); ++n)
     {
       voro_global[n].voronoi = new voro::container(xyz_min[0], xyz_max[0], xyz_min[1], xyz_max[1], xyz_min[2], xyz_max[2],
                                                    1, 1, 1, periodic[0], periodic[1], periodic[2], 8);
@@ -371,8 +371,8 @@ void Voronoi3D::print_VTK_format( const vector<Voronoi3D>& voro, const char* fil
       double z_c = (fabs(voro[n].center_seed.z - xyz_min[2]) < (xyz_max[2] - xyz_min[2])*EPS ? xyz_min[2] + (xyz_max[2] - xyz_min[2])*EPS : (fabs(voro[n].center_seed.z - xyz_max[2]) < (xyz_max[2] - xyz_min[2])*EPS ? xyz_max[2] - (xyz_max[2] - xyz_min[2])*EPS : voro[n].center_seed.z));
       voro_global[n].voronoi->put(*voro_global[n].po, voro[n].idx_center_seed, x_c, y_c, z_c);
 
-      for(unsigned int m=0; m<voro[n].nb_seeds.size(); ++m)
-        if(voro[n].nb_seeds[m].n>=0)
+      for(size_t m = 0; m < voro[n].nb_seeds.size(); ++m)
+        if(voro[n].nb_seeds[m].n >= 0)
         {
           double x_m = (fabs(voro[n].nb_seeds[m].p.x - xyz_min[0]) < (xyz_max[0] - xyz_min[0])*EPS ? xyz_min[0] + (xyz_max[0] - xyz_min[0])*EPS : (fabs(voro[n].nb_seeds[m].p.x - xyz_max[0]) < (xyz_max[0] - xyz_min[0])*EPS ? xyz_max[0] - (xyz_max[0] - xyz_min[0])*EPS : voro[n].nb_seeds[m].p.x));
           double y_m = (fabs(voro[n].nb_seeds[m].p.y - xyz_min[1]) < (xyz_max[1] - xyz_min[1])*EPS ? xyz_min[1] + (xyz_max[1] - xyz_min[1])*EPS : (fabs(voro[n].nb_seeds[m].p.y - xyz_max[1]) < (xyz_max[1] - xyz_min[1])*EPS ? xyz_max[1] - (xyz_max[1] - xyz_min[1])*EPS : voro[n].nb_seeds[m].p.y));
@@ -387,21 +387,21 @@ void Voronoi3D::print_VTK_format( const vector<Voronoi3D>& voro, const char* fil
   double x, y, z;
   int pid; double r;
   int j, k;
-  unsigned int i;
+  size_t i;
 
   int nb_vertices = 0;
   int nb_polygons = 0;
   int nb_poly_vert = 0;
 
   // first count the number of vertices and polygons
-  for(unsigned int n=0; n<voro_global.size(); n++)
+  for(size_t n = 0; n < voro_global.size(); n++)
   {
-    if(voro_global[n].voronoi!=NULL && voro[n].nb_seeds.size()>0)
+    if(voro_global[n].voronoi != NULL && voro[n].nb_seeds.size() > 0)
     {
       voro::c_loop_order cl(*voro_global[n].voronoi,*voro_global[n].po);
-      if(cl.start() && cl.pid()==(int) voro[n].idx_center_seed && voro_global[n].voronoi->compute_cell(c,cl))
+      if(cl.start() && cl.pid() == (int) voro[n].idx_center_seed && voro_global[n].voronoi->compute_cell(c,cl))
       {
-        cl.pos(pid,x,y,z,r);
+        cl.pos(pid, x, y, z, r);
         c.neighbors(neigh);
         c.vertices(v);
         c.face_vertices(f_vert);
@@ -422,17 +422,17 @@ void Voronoi3D::print_VTK_format( const vector<Voronoi3D>& voro, const char* fil
   /* output the list of points */
   fprintf(f, "POINTS %d double\n", nb_vertices);
 
-  for(unsigned int n=0; n<voro_global.size(); n++)
+  for(size_t n = 0; n < voro_global.size(); n++)
   {
-    if(voro_global[n].voronoi!=NULL && voro[n].nb_seeds.size()>0)
+    if(voro_global[n].voronoi != NULL && voro[n].nb_seeds.size() > 0)
     {
       voro::c_loop_order cl(*voro_global[n].voronoi,*voro_global[n].po);
-      if(cl.start() && cl.pid()==(int) voro[n].idx_center_seed && voro_global[n].voronoi->compute_cell(c,cl))
+      if(cl.start() && cl.pid() == (int) voro[n].idx_center_seed && voro_global[n].voronoi->compute_cell(c,cl))
       {
-        cl.pos(pid,x,y,z,r);
-        c.vertices(x,y,z,v);
+        cl.pos(pid, x, y, z, r);
+        c.vertices(x, y, z, v);
 
-        for(i=0; i<v.size(); i+=3)
+        for(i = 0; i < v.size(); i+=3)
           fprintf(f, "%e %e %e\n", v[i], v[i+1], v[i+2]);
       }
     }
@@ -441,25 +441,25 @@ void Voronoi3D::print_VTK_format( const vector<Voronoi3D>& voro, const char* fil
   /* output the list of polygons */
   fprintf(f, "\nCELLS %d %d\n", nb_polygons, nb_poly_vert);
   int offset = 0;
-  for(unsigned int n=0; n<voro_global.size(); n++)
+  for(size_t n = 0; n < voro_global.size(); n++)
   {
-    if(voro_global[n].voronoi!=NULL && voro[n].nb_seeds.size()>0)
+    if(voro_global[n].voronoi != NULL && voro[n].nb_seeds.size() > 0)
     {
       voro::c_loop_order cl(*voro_global[n].voronoi,*voro_global[n].po);
-      if(cl.start() && cl.pid()==(int) voro[n].idx_center_seed && voro_global[n].voronoi->compute_cell(c,cl))
+      if(cl.start() && cl.pid() == (int) voro[n].idx_center_seed && voro_global[n].voronoi->compute_cell(c,cl))
       {
-        cl.pos(pid,x,y,z,r);
+        cl.pos(pid, x, y, z, r);
         c.neighbors(neigh);
         c.face_vertices(f_vert);
-        c.vertices(x,y,z,v);
+        c.vertices(x, y, z, v);
 
-        for(j=0, i=0; i<neigh.size(); i++)
+        for(j = 0, i = 0; i < neigh.size(); i++)
         {
           fprintf(f, "%d", f_vert[j]);
-          for(k=0; k<f_vert[j]; k++)
-            fprintf(f, " %d", f_vert[j+k+1]+offset);
+          for(k = 0; k < f_vert[j]; k++)
+            fprintf(f, " %d", f_vert[j +k + 1] + offset);
           fprintf(f, "\n");
-          j += f_vert[j]+1;
+          j += f_vert[j] + 1;
         }
         offset += v.size()/3;
       }
@@ -468,17 +468,17 @@ void Voronoi3D::print_VTK_format( const vector<Voronoi3D>& voro, const char* fil
 
   /* now specify the type of each polygon, here a VTK_POLYGON (=7) */
   fprintf(f, "\nCELL_TYPES %d\n", nb_polygons);
-  for(unsigned int n=0; n<voro_global.size(); n++)
+  for(size_t n = 0; n < voro_global.size(); n++)
   {
-    if(voro_global[n].voronoi!=NULL && voro[n].nb_seeds.size()>0)
+    if(voro_global[n].voronoi != NULL && voro[n].nb_seeds.size() > 0)
     {
       voro::c_loop_order cl(*voro_global[n].voronoi,*voro_global[n].po);
-      if(cl.start() && cl.pid()==(int) voro[n].idx_center_seed && voro_global[n].voronoi->compute_cell(c,cl))
+      if(cl.start() && cl.pid() == (int) voro[n].idx_center_seed && voro_global[n].voronoi->compute_cell(c,cl))
       {
-        cl.pos(pid,x,y,z,r);
+        cl.pos(pid, x, y, z, r);
         c.neighbors(neigh);
 
-        for(i=0; i<neigh.size(); i++)
+        for(i = 0; i < neigh.size(); i++)
           fprintf(f, "7\n");
       }
     }

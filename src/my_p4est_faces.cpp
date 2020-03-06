@@ -1235,6 +1235,8 @@ voro_cell_type compute_voronoi_cell(Voronoi_DIM &voronoi_cell, const my_p4est_fa
     vector<Point2> partition(P4EST_FACES);
 #endif
     unsigned char idx;
+
+    // in direction 2*dir
 #ifdef P4_TO_P8
     idx = 2*dir;
 #else
@@ -1251,6 +1253,7 @@ voro_cell_type compute_voronoi_cell(Voronoi_DIM &voronoi_cell, const my_p4est_fa
     partition[idx].y  = points[idx].p.y + (dir - 0.5)*dxyz[1]*cell_ratio;
 #endif
 
+    // in direction 2*dir + 1
 #ifdef P4_TO_P8
     idx = 2*dir + 1;
 #else
@@ -1391,6 +1394,69 @@ voro_cell_type compute_voronoi_cell(Voronoi_DIM &voronoi_cell, const my_p4est_fa
     voronoi_cell.construct_partition();
     voronoi_cell.compute_volume();
 #endif
+
+
+    /*
+     * in case of very stretched grids, problems might occur : a parallel wall may clip the cell --> needs to be added if not Neumann (Dirichlet) as it was not assumed not to happen here above
+     * // Example:
+     *
+     * wall-wall-wall-wall-wall-wall-wall-
+     * \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\
+     * |                |                |
+     * |                |                |
+     * |                |                |
+     * |________________|___(x)__________|
+     * |                |        |       |
+     * |                |________|_______|
+     * |                |        |       |
+     * |________________|________|_______|
+     *
+     * --> one can show that the cell assoiated with (x) here above needs to be clipped by the above wall if dy/dx < sqrt(3.0)/4.0
+     * [Raphael: attempt to use very stretched grids for SHS simulations]
+     * */
+#ifdef P4_TO_P8
+    const bool might_need_more_care = !periodic[dir] && (dir == dir::x ? MIN(dxyz[0]/dxyz[1], dxyz[0]/dxyz[2]) < sqrt(3.0)/4.0 : (dir == dir::y ? MIN(dxyz[1]/dxyz[0], dxyz[1]/dxyz[2]) < sqrt(3.0)/4.0 : MIN(dxyz[2]/dxyz[0], dxyz[2]/dxyz[1]) < sqrt(3.0)/4.0));
+#else
+    const bool might_need_more_care = !periodic[dir] && (dir == dir::x ? dxyz[0]/dxyz[1] < sqrt(3.0)/4.0 : dxyz[1]/dxyz[0] < sqrt(3.0)/4.0);
+#endif
+    if(might_need_more_care)
+    {
+      const vector<ngbdDIMseed> *neighbor_seeds;
+#ifdef P4_TO_P8
+      char parallel_wall_m = (dir == dir::x ? WALL_m00 : (dir == dir::y ? WALL_0m0 : WALL_00m));
+      char parallel_wall_p = (dir == dir::x ? WALL_p00 : (dir == dir::y ? WALL_0p0 : WALL_00p));
+#else
+      char parallel_wall_m = (dir == dir::x ? WALL_m00 : WALL_0m0);
+      char parallel_wall_p = (dir == dir::x ? WALL_p00 : WALL_0p0);
+#endif
+      voronoi_cell.get_neighbor_seeds(neighbor_seeds);
+      bool wall_added_manually = false;
+      for (size_t m = 0; m < neighbor_seeds->size(); ++m) {
+        if((*neighbor_seeds)[m].n == parallel_wall_m || (*neighbor_seeds)[m].n == parallel_wall_p)
+        {
+          try {
+            double xyz_projected_point[P4EST_DIM] = {DIM(xyz_face[0], xyz_face[1], xyz_face[2])};
+            xyz_projected_point[dir] = ((*neighbor_seeds)[m].n == parallel_wall_m ? xyz_min[dir] : xyz_max[dir]);
+            BoundaryConditionType bc_type_on_pojected_point = bc[dir].wallType(xyz_projected_point);
+            if(bc_type_on_pojected_point == DIRICHLET) // if it was NEUMANN
+              voronoi_cell.push(WALL_PARALLEL_TO_FACE, DIM(xyz_projected_point[0], xyz_projected_point[1], xyz_projected_point[2]), periodic, xyz_min, xyz_max);
+          } catch (std::exception e) {
+            throw std::runtime_error("my_p4est_faces_t::compute_voronoi_cell: the boundary condition type needs to be readable from everywhere in the domain when using such stretched grids and non-periodic wall conditions, sorry...");
+          }
+          wall_added_manually = true;
+        }
+      }
+      if(wall_added_manually)
+      {
+#ifdef P4_TO_P8
+        voronoi_cell.construct_partition(xyz_min, xyz_max, periodic);
+#else
+        voronoi_cell.construct_partition();
+        voronoi_cell.compute_volume();
+#endif
+      }
+    }
+
     ierr = PetscLogEventEnd(log_my_p4est_faces_compute_voronoi_cell_t, 0, 0, 0, 0); CHKERRXX(ierr);
     if(has_uniform_ngbd)
       return parallelepiped_with_wall; // it for sure is a parallelepiped since it had a uniform neighborhood, but the face must have some wall neighbor(s), that's all

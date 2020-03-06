@@ -914,7 +914,7 @@ void my_p4est_poisson_faces_t::setup_linear_system(const unsigned char &dir)
 
       switch((*points)[m].n) // E: *points[m].n returns the index of the mth neighbor face, except if it is negative (wall/interface cut)
       {
-      case WALL_parallel_to_face:
+      case WALL_PARALLEL_TO_FACE:
       {
         matrix_has_nullspace[dir] = false;
         // no need to divide d by 2 in this special case, by construction in Voronoi2/3D
@@ -930,13 +930,13 @@ void my_p4est_poisson_faces_t::setup_linear_system(const unsigned char &dir)
 #else
             bool positive = (dir == dir::x ? (*points)[m].p.x > xyz[0] : (*points)[m].p.y > xyz[1]);
 #endif
-            rhs_p[f_idx] += mu*surface*(bc[dir].wallValue(DIM((*points)[m].p.x, (*points)[m].p.y, (*points)[m].p.z)) + (positive ? +1.0 : -1.0)*bc_hodge->wallValue(DIM((*points)[m].p.x, (*points)[m].p.y, (*points)[m].p.z))) / distance_to_neighbor;
+            rhs_p[f_idx] += mu*surface*(bc[dir].wallValue(DIM((*points)[m].p.x, (*points)[m].p.y, (*points)[m].p.z)) + (positive ? +1.0 : -1.0)*bc_hodge->wallValue(DIM((*points)[m].p.x, (*points)[m].p.y, (*points)[m].p.z)))/distance_to_neighbor;
           }
           else
           {
             // this is the least desirable scenario and main reason for the try-catch:
             // the user wants to use a stretched grid, but does not provide bc's that can easily be evaluated from everywhere so the solver's usage requires locality: if dxyz_hodge can't be interpolated where it's desired this is very likely to throw an exception
-            rhs_p[f_idx] += mu*surface*(bc[dir].wallValue(DIM((*points)[m].p.x, (*points)[m].p.y, (*points)[m].p.z)) + interp_dxyz_hodge(DIM((*points)[m].p.x, (*points)[m].p.y, (*points)[m].p.z))) / distance_to_neighbor;
+            rhs_p[f_idx] += mu*surface*(bc[dir].wallValue(DIM((*points)[m].p.x, (*points)[m].p.y, (*points)[m].p.z)) + interp_dxyz_hodge(DIM((*points)[m].p.x, (*points)[m].p.y, (*points)[m].p.z)))/distance_to_neighbor;
           }
         } catch (std::exception e) {
           throw std::runtime_error("my_p4est_poisson_faces_t: the boundary condition value needs to be readable from everywhere in the domain when using such stretched grids and non-periodic wall conditions, sorry...");
