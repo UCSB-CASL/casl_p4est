@@ -85,7 +85,7 @@ DEFINE_PARAMETER(pl,bool,save_coupled_fields,true,"Save the coupled problem?");
 DEFINE_PARAMETER(pl,int,save_every_iter,1,"Saves vtk every n number of iterations (default is 1)");
 DEFINE_PARAMETER(pl,int,save_state_every_iter,100,"Saves simulation state every n number of iterations (default is 500)");
 
-DEFINE_PARAMETER(pl,bool,print_checkpoints,false,"Print checkpoints throughout script for debugging? ");
+DEFINE_PARAMETER(pl,bool,print_checkpoints,true,"Print checkpoints throughout script for debugging? ");
 DEFINE_PARAMETER(pl,bool,mem_checkpoints,false,"checks various memory checkpoints for mem usage");
 DEFINE_PARAMETER(pl,double,mem_safety_limit,60.e9,"Memory upper limit before closing the program -- in bytes");
 
@@ -176,6 +176,9 @@ double T_cyl;
 
 double T_max_allowable;
 double T_max_allowable_err = 1.0e-5;
+
+// Keeping track of maxes and mins:
+double T_l_max, T_l_min, T_s_max, T_s_min;
 
 // For surface tension: (used to apply some interfacial BC's in temperature)
 double sigma;
@@ -304,7 +307,7 @@ void simulation_time_info(){
       break;
     case ICE_AROUND_CYLINDER: // ice solidifying around isothermally cooled cylinder
       tfinal = 40.*60.; // 40 minutes
-      dt_max_allowed = 1.0;
+      dt_max_allowed = 0.1;
       tstart = 0.0;
       tn = tstart;
       dt = 1.e-5;
@@ -1674,7 +1677,7 @@ public:
 // --------------------------------------------------------------------------------------------------------------
 // Functions for checking the values of interest during the solution process
 // --------------------------------------------------------------------------------------------------------------
-void check_T_values(vec_and_ptr_t phi, vec_and_ptr_t T, p4est_nodes* nodes, p4est_t* p4est, int example, vec_and_ptr_t phi_cyl,bool check_for_reasonable_values, FILE* fich) {
+void check_T_values(vec_and_ptr_t phi, vec_and_ptr_t T, p4est_nodes* nodes, p4est_t* p4est, int example, vec_and_ptr_t phi_cyl,bool check_for_reasonable_values, bool update_Tl_values, bool update_Ts_values, FILE* fich) {
   T.get_array();
   phi.get_array();
   if (example_ == ICE_AROUND_CYLINDER) phi_cyl.get_array();
@@ -1715,7 +1718,7 @@ void check_T_values(vec_and_ptr_t phi, vec_and_ptr_t T, p4est_nodes* nodes, p4es
           double xyz[P4EST_DIM];
           node_xyz_fr_n(n,p4est,nodes,xyz);
           printf("\n Getting unreasonable T value of %0.2f = %0.4e at (%0.4e, %0.4e) \n",T.ptr[n],T.ptr[n],xyz[0],xyz[1]);
-          fprintf(fich,"\n Getting unreasonable T value of %0.2f = %0.4e at (%0.4e, %0.4e) \n",T.ptr[n],T.ptr[n],xyz[0],xyz[1]);
+//          fprintf(fich,"\n Getting unreasonable T value of %0.2f = %0.4e at (%0.4e, %0.4e) \n",T.ptr[n],T.ptr[n],xyz[0],xyz[1]);
 //          if(stop_flag<0){stop_flag = tstep; PetscPrintf(p4est->mpicomm,"STOP FLAG HAS BEEN TRIGGERED \n");} // Only grab it the first time it's triggered
         }
 
@@ -1753,6 +1756,8 @@ void check_T_values(vec_and_ptr_t phi, vec_and_ptr_t T, p4est_nodes* nodes, p4es
                              "Minimum value: %0.5f \n"
                              "Minimum value magnitude: %0.3e \n \n",global_avg_T,global_max_T,global_min_T,global_min_mag_T);
 
+  if(update_Tl_values) {T_l_max = global_max_T; T_l_min = global_min_T;}
+  if(update_Ts_values){T_s_max = global_max_T; T_s_min = global_min_T;}
   if(pressure_check_flag){
       PetscPrintf(p4est->mpicomm,"\n");
       PetscPrintf(p4est->mpicomm,"Physical Average value: %0.2e \n",global_avg_T/(SQR(scaling)));
@@ -2615,7 +2620,7 @@ void setup_rhs(vec_and_ptr_t phi,vec_and_ptr_t T_l, vec_and_ptr_t T_s, vec_and_p
 //    }
 }
 
-void do_backtrace(vec_and_ptr_t T_l,vec_and_ptr_t T_l_nm1,vec_and_ptr_t T_l_backtrace,vec_and_ptr_dim_t v, p4est_t* p4est, p4est_nodes_t* nodes,my_p4est_node_neighbors_t* ngbd, p4est_t *p4est_nm1, p4est_nodes_t *nodes_nm1, my_p4est_node_neighbors_t *ngbd_nm1,  vec_and_ptr_t T_l_backtrace_nm1, vec_and_ptr_dim_t v_nm1,interpolation_method interp_method, vec_and_ptr_t phi){
+void do_backtrace(vec_and_ptr_t T_l,vec_and_ptr_t T_l_nm1,vec_and_ptr_t T_l_backtrace,vec_and_ptr_dim_t v, p4est_t* p4est, p4est_nodes_t* nodes,my_p4est_node_neighbors_t* ngbd, p4est_t *p4est_nm1, p4est_nodes_t *nodes_nm1, my_p4est_node_neighbors_t *ngbd_nm1,  vec_and_ptr_t T_l_backtrace_nm1, vec_and_ptr_dim_t v_nm1,interpolation_method interp_method, vec_and_ptr_t phi, FILE* fich){
   if(print_checkpoints) PetscPrintf(p4est->mpicomm,"Beginning to do backtrace \n");
 
   // Get second derivatives of temp fields for interpolation purposes:
@@ -2699,45 +2704,95 @@ void do_backtrace(vec_and_ptr_t T_l,vec_and_ptr_t T_l_nm1,vec_and_ptr_t T_l_back
   if(print_checkpoints)PetscPrintf(p4est->mpicomm,"Beginning interpolations \n");
 
 
-  SL_backtrace_interp.set_input(T_l.vec,T_l_dd.vec[0],T_l_dd.vec[1],interp_method);
+  SL_backtrace_interp.set_input(T_l.vec,T_l_dd.vec[0],T_l_dd.vec[1],quadratic_non_oscillatory_continuous_v2);
   SL_backtrace_interp.interpolate(T_l_backtrace.vec);
   if(print_checkpoints) PetscPrintf(p4est->mpicomm,"Successfully interpolates T_l backtrace \n");
 
   if(advection_sl_order ==2){
-      SL_backtrace_interp_nm1.set_input(T_l_nm1.vec,T_l_dd_nm1.vec[0],T_l_dd_nm1.vec[1],  interp_method);
+      SL_backtrace_interp_nm1.set_input(T_l_nm1.vec,T_l_dd_nm1.vec[0],T_l_dd_nm1.vec[1], quadratic_non_oscillatory_continuous_v2);
       SL_backtrace_interp_nm1.interpolate(T_l_backtrace_nm1.vec);
     }
   if(print_checkpoints) PetscPrintf(p4est->mpicomm,"Successfully interpolates T_l_nm1 backtrace \n");
 
 
  // Check values
+  bool collapse_overall=false;
+  bool collapse = false;
+  double xyz[P4EST_DIM];
+  int node_to_check = -1;
+
   if(true/*stop_flag>0*/){
     T_l_backtrace.get_array(); v.get_array();
+    T_l.get_array();
 
-    if(advection_sl_order==2)T_l_backtrace_nm1.get_array();
+    if(advection_sl_order==2){T_l_backtrace_nm1.get_array();v_nm1.get_array(); T_l_nm1.get_array();}
     phi.get_array();
     foreach_local_node(n,nodes){
-      double rhs_val_T = T_l_backtrace.ptr[n] + ((SQR(dt))/(dt_nm1*(2.*dt + dt_nm1)))*(T_l_backtrace.ptr[n] - T_l_backtrace_nm1.ptr[n]);
-      bool statement1 = ((rhs_val_T - T_max_allowable)>T_max_allowable_err);
-      bool statement2 = ((T_l_backtrace.ptr[n] - T_max_allowable)>T_max_allowable_err);
-      bool statement3 = ((T_l_backtrace_nm1.ptr[n] - T_max_allowable)>T_max_allowable_err);
-//      printf("Statement 1 = %s, Statement 2 = %s, Statement 3 = %s \n");
-      bool collapse = statement1 || statement2 || statement3 ;
-      if(collapse && stop_flag<0) stop_flag ==tstep;
+      if(phi.ptr[n]<EPS){
+        double rhs_val_T = T_l_backtrace.ptr[n] + ((SQR(dt))/(dt_nm1*(2.*dt + dt_nm1)))*(T_l_backtrace.ptr[n] - T_l_backtrace_nm1.ptr[n]);
+        bool statement1 = ((rhs_val_T - T_max_allowable)>T_max_allowable_err);
+        bool statement2 = ((T_l_backtrace.ptr[n] - T_max_allowable)>T_max_allowable_err);
+        bool statement3 = ((T_l_backtrace_nm1.ptr[n] - T_max_allowable)>T_max_allowable_err);
+        //      printf("Statement 1 = %s, Statement 2 = %s, Statement 3 = %s \n");
+        collapse = statement1 || statement2 || statement3 ;
+        if(collapse && stop_flag<0) stop_flag =tstep;
+        if(collapse) collapse_overall = true;
 
 
-      if(collapse && phi.ptr[n]<0.){
-          double xyz[P4EST_DIM];
-          node_xyz_fr_n(n,p4est,nodes,xyz);
-            printf("Point: (%0.8e, %0.8e), RHS_val = %0.8f, T_l_d = %0.8f, T_l_d_nm1 = %0.8f, at x_d_n= (%0.8e, %0.8e),x_d_nm1= (%0.8e, %0.8e), phi = %0.3e \n",
-                   xyz[0],xyz[1],rhs_val_T,T_l_backtrace.ptr[n],advection_sl_order ==2? T_l_backtrace_nm1.ptr[n]: -1.,xyz_d[0][n],xyz_d[1][n],advection_sl_order ==2?xyz_d_nm1[0][n]:0.,advection_sl_order ==2?xyz_d_nm1[1][n]:0.,phi.ptr[n]);
+        if(collapse){
+            node_to_check = n;
+            node_xyz_fr_n(n,p4est,nodes,xyz);
+            //          printf("Collapse is true on rank %d\n",p4est->mpirank);
 
+            printf("Point: (%0.8e, %0.8e), RHS_val = %0.8f, T_l_d = %0.8f, T_l_d_nm1 = %0.8f, T_l_n = %0.8f, at x_d_n= (%0.8e, %0.8e),x_d_nm1= (%0.8e, %0.8e), phi = %0.3e \n"
+                   "v_n : <%0.8e, %0.8e>, %s \n",
+                   xyz[0],xyz[1],rhs_val_T,T_l_backtrace.ptr[n],
+                advection_sl_order ==2? T_l_backtrace_nm1.ptr[n]: -1., T_l.ptr[n],xyz_d[0][n],xyz_d[1][n],
+                advection_sl_order ==2?xyz_d_nm1[0][n]:0.,
+              advection_sl_order ==2?xyz_d_nm1[1][n]:0.,
+              phi.ptr[n], v.ptr[0][n],v.ptr[1][n], collapse? "HERE!!":"");
+
+
+
+            //            fprintf(fich,"Point: (%0.8e, %0.8e), RHS_val = %0.8f, T_l_d = %0.8f, T_l_d_nm1 = %0.8f, at x_d_n= (%0.8e, %0.8e),x_d_nm1= (%0.8e, %0.8e), phi = %0.3e \n"
+            //                   "v_n : <%0.8e, %0.8e> \n",
+            //                   xyz[0],xyz[1],rhs_val_T,T_l_backtrace.ptr[n],
+            //                advection_sl_order ==2? T_l_backtrace_nm1.ptr[n]: -1.,xyz_d[0][n],xyz_d[1][n],
+            //                advection_sl_order ==2?xyz_d_nm1[0][n]:0.,
+            //              advection_sl_order ==2?xyz_d_nm1[1][n]:0.,
+            //              phi.ptr[n], v.ptr[0][n],v.ptr[1][n]);
+
+          }
+      }
+    } // end of loop over local nodes
+//    printf("Outside of loop, collapse = %s \n",collapse?"Yes":"no");
+
+    // Get nm1 velocity to check as well if we did trigger a problem point:
+
+    if(collapse_overall){
+      foreach_local_node(n,nodes_nm1){
+        if(phi.ptr[n]<0.){
+
+//          printf("Going to check the nm1 nodes ..., comparing to xy = (%0.8e, %0.8e)\n",xyz[0],xyz[1]);
+
+
+          double xyz_check[P4EST_DIM];
+          node_xyz_fr_n(n,p4est_nm1,nodes_nm1,xyz_check);
+          if((fabs(xyz[0] - xyz_check[0])<EPS) && (fabs(xyz[1] - xyz_check[1])<EPS)){
+              printf("At nm1: point : (%0.8e, %0.8e), T_l_nm1: %0.8f,  v_nm1: <%0.8e, %0.8e> \n ",xyz_check[0],xyz_check[1],T_l_nm1.ptr[n],v_nm1.ptr[0][n],v_nm1.ptr[1][n]);
+
+//              fprintf(fich,"At nm1: point : (%0.8e, %0.8e), T_l_nm1: %0.8f, v_nm1: <%0.8e, %0.8e> \n ",xyz_check[0],xyz_check[1],v_nm1.ptr[0][n],v_nm1.ptr[1][n]);
+
+            }
         }
+
+      }
     }
 
 
+    T_l.restore_array();
     T_l_backtrace.restore_array(); v.restore_array();
-    if(advection_sl_order==2)T_l_backtrace_nm1.restore_array();
+    if(advection_sl_order==2){T_l_backtrace_nm1.restore_array(); v_nm1.restore_array(); T_l_nm1.restore_array();}
     phi.restore_array();
   }
 MPI_Allreduce(MPI_IN_PLACE,&stop_flag,1,MPI_INT,MPI_MAX,p4est->mpicomm);
@@ -3285,7 +3340,7 @@ void regularize_front(p4est_t* p4est_, p4est_nodes_t* nodes_, p4est_ghost_t* gho
 // --------------------------------------------------------------------------------------------------------------
 // FUNCTIONS FOR SAVING TO VTK:
 // --------------------------------------------------------------------------------------------------------------
-void save_everything(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,vec_and_ptr_t phi, vec_and_ptr_t phi_2, vec_and_ptr_t Tl,vec_and_ptr_t Ts,vec_and_ptr_dim_t v_int,vec_and_ptr_dim_t v_NS, vec_and_ptr_t press, vec_and_ptr_t vorticity, vec_and_ptr_cells_t press_cells,char* filename){
+void save_everything(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost, my_p4est_node_neighbors_t* ngbd,vec_and_ptr_t phi, vec_and_ptr_t phi_2, vec_and_ptr_t Tl,vec_and_ptr_t Ts,vec_and_ptr_dim_t v_int,vec_and_ptr_dim_t v_NS, vec_and_ptr_t press, vec_and_ptr_t vorticity, vec_and_ptr_cells_t press_cells,char* filename){
 // Things we want to save:
 /*
  * LSF
@@ -3321,9 +3376,31 @@ void save_everything(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
   press.get_array(); vorticity.get_array();
   press_cells.get_array();
 
-//  grad_p.get_array();
 
-//  if(solve_smoke) smoke.get_array();
+  // TEMPORARY:
+  vec_and_ptr_dim_t Tl_d;
+  vec_and_ptr_t gradT_norm;
+  Tl_d.create(p4est,nodes);
+  gradT_norm.create(p4est,nodes);
+  ngbd->first_derivatives_central(Tl.vec,Tl_d.vec);
+
+  Tl_d.get_array();gradT_norm.get_array();
+
+  for(size_t i = 0; i<ngbd->get_layer_size(); i++){
+      p4est_locidx_t n = ngbd->get_layer_node(i);
+
+      gradT_norm.ptr[n] = sqrt(SQR(Tl_d.ptr[0][n])+SQR(Tl_d.ptr[1][n]));
+  }
+  PetscErrorCode ierr;
+  ierr = VecGhostUpdateBegin(gradT_norm.vec,INSERT_VALUES,SCATTER_FORWARD);
+
+  for(size_t i = 0; i<ngbd->get_local_size(); i++){
+      p4est_locidx_t n = ngbd->get_local_node(i);
+
+      gradT_norm.ptr[n] = sqrt(SQR(Tl_d.ptr[0][n])+SQR(Tl_d.ptr[1][n]));
+  }
+  Tl_d.restore_array();
+  ierr = VecGhostUpdateEnd(gradT_norm.vec,INSERT_VALUES,SCATTER_FORWARD);
 
 
   // Save data:
@@ -3335,11 +3412,10 @@ void save_everything(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
 //      point_data = {phi.ptr, phi_2.ptr,Tl.ptr, Ts.ptr,v_int.ptr[0],v_int.ptr[1],v_NS.ptr[0],v_NS.ptr[1],vorticity.ptr,press.ptr,smoke.ptr};
 //    }
   if (example_ == ICE_AROUND_CYLINDER) {
-      point_names = {"phi","phi_cyl","T_l","T_s","v_interface_x","v_interface_y","u","v","vorticity","pressure"};
-      point_data = {phi.ptr, phi_2.ptr,Tl.ptr, Ts.ptr,v_int.ptr[0],v_int.ptr[1],v_NS.ptr[0],v_NS.ptr[1],vorticity.ptr,press.ptr};
+      point_names = {"phi","phi_cyl","T_l","T_s","v_interface_x","v_interface_y","u","v","vorticity","pressure","gradT"};
+      point_data = {phi.ptr, phi_2.ptr,Tl.ptr, Ts.ptr,v_int.ptr[0],v_int.ptr[1],v_NS.ptr[0],v_NS.ptr[1],vorticity.ptr,press.ptr,gradT_norm.ptr};
 //      vec_and_ptr_dim_t dTl, dTs, jump;
 //      dTl.create(p4est,nodes); dTs.create(dTl.vec); jump.create(dTl.vec);
-
 
 
 //      point_names = {"phi","phi_cyl","T_l","T_s","dTl_dx","dTl_dy","dTs_dx","dTs_dy","jump_x","jump_y","v_interface_x","v_interface_y","u","v","vorticity","pressure"};
@@ -3386,6 +3462,11 @@ void save_everything(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
 
   // Scale pressure back:
   VecScaleGhost(press.vec,SQR(scaling));
+
+  // Temporary:
+  gradT_norm.restore_array();
+  Tl_d.destroy();
+  gradT_norm.destroy();
 }
 
 void save_stefan_fields(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,vec_and_ptr_t phi, vec_and_ptr_t phi_2, vec_and_ptr_t Tl,vec_and_ptr_t Ts,vec_and_ptr_dim_t v_int, char* filename ){
@@ -3969,6 +4050,16 @@ int main(int argc, char** argv) {
     ierr = PetscFPrintf(mpi.comm(),fich_log,"SIMULATION LOG FILE \n");CHKERRXX(ierr);
     ierr = PetscFClose(mpi.comm(),fich_log); CHKERRXX(ierr);
 
+    FILE *fich_log2;
+    char name_logfile_data[1000];
+    const char* out_dir_log2 = getenv("OUT_DIR_LOG");
+    sprintf(name_logfile_data,"%s/lmin_%d_lmax_%d_method_%d_advection_order_%d_logfile_data.dat",
+            out_dir_log2,lmin+grid_res_iter,lmax+grid_res_iter,method_,advection_sl_order);
+    ierr = PetscFOpen(mpi.comm(),name_logfile_data,"w",&fich_log2); CHKERRXX(ierr);
+    ierr = PetscFPrintf(mpi.comm(),fich_log2,"Simulation Log File for Data: \n"
+                                            "tstep t dt dtnm1 T_l_min T_l_max T_s_min T_s_max v_int NS_norm \n");CHKERRXX(ierr);
+    ierr = PetscFClose(mpi.comm(),fich_log2); CHKERRXX(ierr);
+
     // -----------------------------------------------
     // Scale the problem appropriately:
     // -----------------------------------------------
@@ -4151,6 +4242,10 @@ int main(int argc, char** argv) {
     // Vectors to hold the normals of each domain:
     vec_and_ptr_dim_t liquid_normals;
     vec_and_ptr_dim_t solid_normals;
+    vec_and_ptr_dim_t cyl_normals;
+
+    //Vector for norm of grad T refinement:
+    vec_and_ptr_t gradT_refine;
 
 
     // -----------------------------------------------
@@ -4371,6 +4466,8 @@ int main(int argc, char** argv) {
 
 
 
+    // OVERLOAD SAVE FREQUENCY:
+//    save_every_iter=1;
 
     for (tn;tn<tfinal; tn+=dt, tstep++){
         // Open log file to write info for this timestep:
@@ -4454,6 +4551,17 @@ int main(int argc, char** argv) {
             ls.extend_Over_Interface_TVD_Full(phi.vec, T_l_n.vec, 50, 2, 1.e-15, extension_band_use_, extension_band_extend_, extension_band_check_, liquid_normals.vec, NULL, NULL, false, NULL, NULL);
             ls.extend_Over_Interface_TVD_Full(phi_solid.vec, T_s_n.vec, 50, 2, 1.e-15, extension_band_use_, extension_band_extend_, extension_band_check_, solid_normals.vec, NULL, NULL, false, NULL, NULL);
 
+            if(example_ == ICE_AROUND_CYLINDER){
+                cyl_normals.create(p4est,nodes);
+                phi_cylinder.create(p4est,nodes);
+                sample_cf_on_nodes(p4est,nodes,mini_level_set,phi_cylinder.vec);
+                compute_normals(*ngbd,phi_cylinder.vec,cyl_normals.vec);
+
+                ls.extend_Over_Interface_TVD_Full(phi_cylinder.vec, T_s_n.vec, 50, 2, 1.e-15, 0.5*extension_band_use_, 0.5*extension_band_extend_, 0.5*extension_band_check_, cyl_normals.vec, NULL, NULL, false, NULL, NULL);
+                cyl_normals.destroy();
+                phi_cylinder.destroy();
+
+              }
             // Delete data for normals since it is no longer needed:
             liquid_normals.destroy();
             solid_normals.destroy();
@@ -4463,9 +4571,9 @@ int main(int argc, char** argv) {
               // Check Temperature values:
               PetscPrintf(mpi.comm(),"\n Checking temperature values after field extension: \n [ ");
               PetscPrintf(mpi.comm(),"\nIn fluid domain: ");
-              check_T_values(phi,T_l_n,nodes,p4est,example_,phi_cylinder,true,fich_log);
+              check_T_values(phi,T_l_n,nodes,p4est,example_,phi_cylinder,true,false,false,fich_log);
               PetscPrintf(mpi.comm(),"\nIn solid domain: ");
-              check_T_values(phi_solid,T_s_n,nodes,p4est,example_,phi_cylinder,true,fich_log);
+              check_T_values(phi_solid,T_s_n,nodes,p4est,example_,phi_cylinder,true,false,false,fich_log);
               PetscPrintf(mpi.comm()," ] \n");
               }
 
@@ -4507,7 +4615,7 @@ int main(int argc, char** argv) {
               sample_cf_on_nodes(p4est,nodes,mini_level_set,phi_cylinder.vec);
 
               sprintf(output,"%s/output_new_grid_update_lmin_%d_lmax_%d_advection_order_%d_stefan_%d_NS_%d_outidx_%d",out_dir_coupled,lmin+grid_res_iter,lmax+grid_res_iter,advection_sl_order,solve_stefan,solve_navier_stokes,out_idx);
-              save_everything(p4est,nodes,ghost,phi,phi_cylinder,T_l_n,T_s_n,v_interface,v_n,press_nodes,vorticity,press,output);
+              save_everything(p4est,nodes,ghost,ngbd,phi,phi_cylinder,T_l_n,T_s_n,v_interface,v_n,press_nodes,vorticity,press,output);
 
               phi_cylinder.destroy();
 /*
@@ -4664,7 +4772,7 @@ int main(int argc, char** argv) {
           if(print_checkpoints) PetscPrintf(mpi.comm(),"Finishes saving to VTK \n");
 
           }
-        if(stop_flag>0 && (tstep == stop_flag + 1)) MPI_Abort(mpi.comm(),1);
+        if(stop_flag>0 && (tstep == stop_flag + 10)) MPI_Abort(mpi.comm(),1);
         // --------------------------------------------------------------------------------------------------------------
         // Compute the jump in flux across the interface to use to advance the LSF (if solving Stefan:
         // --------------------------------------------------------------------------------------------------------------
@@ -4680,10 +4788,10 @@ int main(int argc, char** argv) {
             v_interface.destroy();
             v_interface.create(p4est,nodes);
 
-            if(ramp_bcs){
-                if(tn<t_ramp) force_interfacial_velocity_to_zero=true;
-                else force_interfacial_velocity_to_zero=false;
-              }
+//            if(ramp_bcs){
+//                if(tn<t_ramp) force_interfacial_velocity_to_zero=true;
+//                else force_interfacial_velocity_to_zero=false;
+//              }
 
             compute_interfacial_velocity(T_l_d,T_s_d,jump,v_interface,phi,ngbd,dxyz_close_to_interface);
 
@@ -4782,7 +4890,7 @@ int main(int argc, char** argv) {
         std::vector<double> criteria;
 
         int num_fields = 1;//1;
-        if(refine_by_nondim_gradT)num_fields+=2;
+        if(refine_by_nondim_gradT)num_fields+=1;
 
         if(refine_by_ucomponent){
             if(ramp_bcs){
@@ -4804,7 +4912,9 @@ int main(int argc, char** argv) {
 
             if(refine_by_nondim_gradT){
                 T_l_d.create(p4est,nodes);
-                ngbd->first_derivatives_central(T_l_n.vec,T_l_d.vec);
+                // TRYING SOMETHING, CHANGE THIS BACK TO FIRST TO BE ACCURATE
+                ngbd->second_derivatives_central(T_l_n.vec,T_l_d.vec);
+                gradT_refine.create(p4est,nodes);
               }
 
 
@@ -4815,36 +4925,10 @@ int main(int argc, char** argv) {
                 u_component_refine.get_array();
                 v_n.get_array();
               }
-            if(refine_by_nondim_gradT) T_l_d.get_array();
+            if(refine_by_nondim_gradT) {T_l_d.get_array(); gradT_refine.get_array();}
 
             phi.get_array();
 
-
-            // NOTE: TO-DO : SEEMS LIKE YOU NEED TO UPDATE GHOST VALUES OTHERWISE YOU GET ISSUES WITH THE REFINEMENT
-//            foreach_local_node(n,nodes){
-//              if(phi.ptr[n] < 0.){
-//                  vorticity_refine.ptr[n] = vorticity.ptr[n];
-
-//                  if(refine_by_ucomponent)
-//                    {
-//                      bool condition_1 = (v_n.ptr[0][n]/u0 < 0.);
-//                      bool condition_2 = (fabs(v_n.ptr[0][n])<0.1*u0);
-
-//                      u_component_refine.ptr[n] = (condition_1 || condition_2) ? 1.: 0.; // We want to refine if we have either a backflow or a stagnation area
-//                    }
-
-//                }
-//              else{
-//                  vorticity_refine.ptr[n] = 0.0;
-//                  if(refine_by_ucomponent) u_component_refine.ptr[n] = 0.;
-
-//                  if(refine_by_nondim_gradT){ // Set to 0 in solid subdomain, don't want to refine by T_l_d in there
-//                      foreach_dimension(d){
-//                        T_l_d.ptr[d][n]=0.;
-//                      }
-//                    }
-//                }
-//            }
             for(size_t i = 0; i<ngbd->get_layer_size(); i++){
                 p4est_locidx_t n = ngbd->get_layer_node(i);
 
@@ -4858,6 +4942,10 @@ int main(int argc, char** argv) {
 
                         u_component_refine.ptr[n] = (condition_1 || condition_2) ? 1.: 0.; // We want to refine if we have either a backflow or a stagnation area
                       }
+                    if(refine_by_nondim_gradT){
+                        gradT_refine.ptr[n] = sqrt(SQR(T_l_d.ptr[0][n]) + SQR(T_l_d.ptr[1][n]));
+
+                      }
 
                   }
                 else{
@@ -4865,9 +4953,10 @@ int main(int argc, char** argv) {
                     if(refine_by_ucomponent) u_component_refine.ptr[n] = 0.;
 
                     if(refine_by_nondim_gradT){ // Set to 0 in solid subdomain, don't want to refine by T_l_d in there
-                        foreach_dimension(d){
-                          T_l_d.ptr[d][n]=0.;
-                        }
+                        gradT_refine.ptr[n] = 0.;
+//                        foreach_dimension(d){
+//                          T_l_d.ptr[d][n]=0.;
+//                        }
                       }
                   }
               }
@@ -4875,9 +4964,10 @@ int main(int argc, char** argv) {
             if(refine_by_ucomponent)ierr = VecGhostUpdateBegin(u_component_refine.vec,INSERT_VALUES,SCATTER_FORWARD);
             ierr = VecGhostUpdateBegin(vorticity_refine.vec,INSERT_VALUES,SCATTER_FORWARD);
             if(refine_by_nondim_gradT){
-              foreach_dimension(d){
-                ierr = VecGhostUpdateBegin(T_l_d.vec[d],INSERT_VALUES,SCATTER_FORWARD);
-              }
+                ierr = VecGhostUpdateBegin(gradT_refine.vec,INSERT_VALUES,SCATTER_FORWARD);
+//              foreach_dimension(d){
+//                ierr = VecGhostUpdateBegin(T_l_d.vec[d],INSERT_VALUES,SCATTER_FORWARD);
+//              }
             }
 
             for(size_t i = 0; i<ngbd->get_local_size(); i++){
@@ -4893,6 +4983,10 @@ int main(int argc, char** argv) {
 
                         u_component_refine.ptr[n] = (condition_1 || condition_2) ? 1.: 0.; // We want to refine if we have either a backflow or a stagnation area
                       }
+                    if(refine_by_nondim_gradT){
+                        gradT_refine.ptr[n] = sqrt(SQR(T_l_d.ptr[0][n]) + SQR(T_l_d.ptr[1][n]));
+
+                      }
 
                   }
                 else{
@@ -4900,9 +4994,10 @@ int main(int argc, char** argv) {
                     if(refine_by_ucomponent) u_component_refine.ptr[n] = 0.;
 
                     if(refine_by_nondim_gradT){ // Set to 0 in solid subdomain, don't want to refine by T_l_d in there
-                        foreach_dimension(d){
-                          T_l_d.ptr[d][n]=0.;
-                        }
+                        gradT_refine.ptr[n] = 0.;
+//                        foreach_dimension(d){
+//                          T_l_d.ptr[d][n]=0.;
+//                        }
                       }
                   }
               }
@@ -4910,16 +5005,17 @@ int main(int argc, char** argv) {
             if(refine_by_ucomponent)ierr = VecGhostUpdateEnd(u_component_refine.vec,INSERT_VALUES,SCATTER_FORWARD);
             ierr = VecGhostUpdateEnd(vorticity_refine.vec,INSERT_VALUES,SCATTER_FORWARD);
             if(refine_by_nondim_gradT){
-              foreach_dimension(d){
-                ierr = VecGhostUpdateEnd(T_l_d.vec[d],INSERT_VALUES,SCATTER_FORWARD);
-              }
+                ierr = VecGhostUpdateEnd(gradT_refine.vec,INSERT_VALUES,SCATTER_FORWARD);
+//              foreach_dimension(d){
+//                ierr = VecGhostUpdateEnd(T_l_d.vec[d],INSERT_VALUES,SCATTER_FORWARD);
+//              }
             }
 
             if(refine_by_ucomponent){
                 v_n.restore_array();
                 u_component_refine.restore_array();
               }
-            if(refine_by_nondim_gradT) T_l_d.restore_array();
+            if(refine_by_nondim_gradT) {T_l_d.restore_array();gradT_refine.restore_array();}
 
 
             vorticity.restore_array();
@@ -4931,8 +5027,9 @@ int main(int argc, char** argv) {
             fields_[fields_idx++] = vorticity_refine.vec;
             if(refine_by_ucomponent)fields_[fields_idx++] = u_component_refine.vec;
             if(refine_by_nondim_gradT){
-                fields_[fields_idx++] = T_l_d.vec[0];
-                fields_[fields_idx++] = T_l_d.vec[1];
+                fields_[fields_idx++] = gradT_refine.vec;
+//                fields_[fields_idx++] = T_l_d.vec[0];
+//                fields_[fields_idx++] = T_l_d.vec[1];
               }
 
             P4EST_ASSERT(fields_idx ==num_fields);
@@ -4960,25 +5057,36 @@ int main(int argc, char** argv) {
               criteria.push_back(0.5);
             }
             if(refine_by_nondim_gradT){
+                gradT_threshold = 1./100.;
                 // Coarsening instructions: (for dT/dx)
                 compare_opn.push_back(LESS_THAN);
-                diag_opn.push_back(ABSOLUTE);
-                criteria.push_back(0.5*gradT_threshold*(Twall-Tinterface)/r_cyl);
+//                diag_opn.push_back(ABSOLUTE);
+                diag_opn.push_back(DIVIDE_BY);
+                criteria.push_back((0.25)*gradT_threshold*(Twall-Tinterface));
+//                criteria.push_back(0.5*gradT_threshold*(Twall-Tinterface)/r_cyl);
+
 
                 // Refining instructions: (for dT/dx)
                 compare_opn.push_back(GREATER_THAN);
-                diag_opn.push_back(ABSOLUTE);
-                criteria.push_back(gradT_threshold*(Twall-Tinterface)/r_cyl);
+                diag_opn.push_back(DIVIDE_BY);
+                criteria.push_back(gradT_threshold*(Twall-Tinterface));
+//                diag_opn.push_back(ABSOLUTE);
+//                criteria.push_back(gradT_threshold*(Twall-Tinterface)/r_cyl);
+//                double value = gradT_threshold*(Twall-Tinterface)/r_cyl;
 
-                // Coarsening instructions: (for dT/dy)
-                compare_opn.push_back(LESS_THAN);
-                diag_opn.push_back(ABSOLUTE);
-                criteria.push_back(0.5*gradT_threshold*(Twall-Tinterface)/r_cyl);
+//                PetscPrintf(mpi.comm(),"Coarsen if T gradient less than %0.4f \n"
+//                                       "Refine if T gradient is greater than %0.4f \n",0.5*value,value);
 
-                // Refining instructions: (for dT/dy)
-                compare_opn.push_back(GREATER_THAN);
-                diag_opn.push_back(ABSOLUTE);
-                criteria.push_back(gradT_threshold*(Twall-Tinterface)/r_cyl);
+
+//                // Coarsening instructions: (for dT/dy)
+//                compare_opn.push_back(LESS_THAN);
+//                diag_opn.push_back(ABSOLUTE);
+//                criteria.push_back(0.5*gradT_threshold*(Twall-Tinterface)/r_cyl);
+
+//                // Refining instructions: (for dT/dy)
+//                compare_opn.push_back(GREATER_THAN);
+//                diag_opn.push_back(ABSOLUTE);
+//                criteria.push_back(gradT_threshold*(Twall-Tinterface)/r_cyl);
 
               }
           }
@@ -5114,7 +5222,7 @@ int main(int argc, char** argv) {
         if(solve_navier_stokes){
             vorticity_refine.destroy();
             if(refine_by_ucomponent)u_component_refine.destroy();
-            if(refine_by_nondim_gradT)T_l_d.destroy();
+            if(refine_by_nondim_gradT){T_l_d.destroy();gradT_refine.destroy();}
           }
 
         // Clear up the memory from the std vectors holding refinement info:
@@ -5228,7 +5336,7 @@ int main(int argc, char** argv) {
               if(advection_sl_order ==2){
                   T_l_backtrace_nm1.create(p4est_np1,nodes_np1);
                 }
-              do_backtrace(T_l_n,T_l_nm1,T_l_backtrace,v_n,p4est_np1,nodes_np1,ngbd_np1,p4est,nodes,ngbd, T_l_backtrace_nm1,v_nm1,interp_bw_grids,phi);
+              do_backtrace(T_l_n,T_l_nm1,T_l_backtrace,v_n,p4est_np1,nodes_np1,ngbd_np1,p4est,nodes,ngbd, T_l_backtrace_nm1,v_nm1,interp_bw_grids,phi,fich_log);
 
               if(true){
                   PetscPrintf(mpi.comm(),"\n Checking temperature values for backtrace: \n ["
@@ -5236,14 +5344,14 @@ int main(int argc, char** argv) {
                   PetscFPrintf(mpi.comm(),fich_log,"\n Checking temperature values for backtrace: \n ["
                                          "\n for n: ");
 
-                  check_T_values(phi,T_l_backtrace,nodes_np1,p4est_np1, example_,phi_cylinder,true,fich_log);
+                  check_T_values(phi,T_l_backtrace,nodes_np1,p4est_np1, example_,phi_cylinder,true,false,false,fich_log);
                 }
               if(advection_sl_order ==2 ){
                   PetscPrintf(mpi.comm(),"\n for nm1: ");
                   PetscFPrintf(mpi.comm(),fich_log,"\n for nm1: ");
 
 
-                  check_T_values(phi,T_l_backtrace_nm1,nodes_np1,p4est_np1,example_,phi_cylinder,true,fich_log);
+                  check_T_values(phi,T_l_backtrace_nm1,nodes_np1,p4est_np1,example_,phi_cylinder,true,false,false,fich_log);
                   PetscPrintf(mpi.comm()," ] \n");
                   PetscFPrintf(mpi.comm(),fich_log," ] \n");
 
@@ -5268,7 +5376,7 @@ int main(int argc, char** argv) {
 
           if(check_temperature_values){
               PetscPrintf(mpi.comm(),"\n Checking rhs values for T_l: \n [ ");
-              check_T_values(phi,rhs_Tl,nodes_np1,p4est_np1, example_,phi_cylinder,false,fich_log);
+              check_T_values(phi,rhs_Tl,nodes_np1,p4est_np1, example_,phi_cylinder,false,false,false,fich_log);
             }
 
           // ------------------------------------------------------------
@@ -5359,12 +5467,12 @@ int main(int argc, char** argv) {
           PetscPrintf(mpi.comm(),"--> Temperature values in the fluid domain: \n");
           PetscFPrintf(mpi.comm(),fich_log,"--> Temperature values in the fluid domain: \n");
 
-          check_T_values(phi,T_l_n,nodes_np1,p4est_np1,example_,phi_cylinder,true,fich_log);
+          check_T_values(phi,T_l_n,nodes_np1,p4est_np1,example_,phi_cylinder,true,true,false,fich_log);
           PetscPrintf(mpi.comm(),"\n"
                                  "-->Temperature values in the solid domain: \n");
           PetscFPrintf(mpi.comm(),fich_log,"\n"
                                  "-->Temperature values in the solid domain: \n");
-          check_T_values(phi_solid,T_s_n,nodes_np1,p4est_np1,example_,phi_cylinder,true,fich_log);
+          check_T_values(phi_solid,T_s_n,nodes_np1,p4est_np1,example_,phi_cylinder,true,false,true,fich_log);
           PetscPrintf(mpi.comm(),"\n \n");
           PetscFPrintf(mpi.comm(),fich_log,"\n \n");
 
@@ -5676,7 +5784,10 @@ int main(int argc, char** argv) {
             interp_phi->clear();
 
             // Get a more appropriate dt for next timestep to consider: -- Note: using externally computed one did not go so well, keep the NS computed one
-            ns->compute_adapted_dt(u0);
+            if(ramp_bcs && (tn<t_ramp)){
+                ns->compute_adapted_dt(u0);
+              }
+            ns->compute_adapted_dt(NS_norm);
             dt_NS = ns->get_dt();
             PetscPrintf(mpi.comm(),"NS COMPUTED DT : %0.4e \n",dt_NS);
             PetscFPrintf(mpi.comm(),fich_log,"NS COMPUTED DT : %0.4e \n",dt_NS);
@@ -5698,6 +5809,15 @@ int main(int argc, char** argv) {
         if(example_ == ICE_AROUND_CYLINDER && tstep%save_every_iter ==0 ){
             check_ice_cylinder_v_and_radius(phi,p4est_np1,nodes_np1,dxyz_close_to_interface,name_ice_radius_info,fich_ice_radius_info);
           }
+
+        ierr = PetscFOpen(mpi.comm(),name_logfile_data,"a",&fich_log2); CHKERRXX(ierr);
+        ierr = PetscFPrintf(mpi.comm(),fich_log2,"%d %0.8g %0.8g %0.8g %0.8g %0.8g %0.8g %0.8g "
+                                                 "%0.8g %0.8g %0.8g %0.8g %0.8g %0.8g %0.8g \n ",
+                                                  tstep, tn, dt, dt_nm1,T_l_min,T_l_max,
+                                                  T_s_min,T_s_max,
+                                                  v_interface_max_norm,NS_norm);CHKERRXX(ierr);
+
+        ierr = PetscFClose(mpi.comm(),fich_log2); CHKERRXX(ierr);
         // --------------------------------------------------------------------------------------------------------------
         // Delete the old grid:
         // --------------------------------------------------------------------------------------------------------------
