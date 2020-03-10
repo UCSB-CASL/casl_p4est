@@ -22,15 +22,6 @@
 #include <stdlib.h>
 #include <cmath>
 
-// BLAS and LAPACKE
-#ifdef STAMPEDE
-#include <mkl_lapacke.h>
-#include <mkl_cblas.h>
-#else
-#include <lapacke.h>
-#include <cblas.h>
-#endif
-
 // p4est Library
 #ifdef P4_TO_P8
 #include <src/my_p8est_navier_stokes.h>
@@ -39,6 +30,7 @@
 #include <src/my_p8est_level_set.h>
 #include <src/my_p8est_level_set_cells.h>
 #include <src/my_p8est_vtk.h>
+#include "my_p8est_shs_channel.h"
 #else
 #include <src/my_p4est_navier_stokes.h>
 #include <src/my_p4est_log_wrappers.h>
@@ -46,14 +38,13 @@
 #include <src/my_p4est_level_set.h>
 #include <src/my_p4est_vtk.h>
 #include <src/my_p4est_trajectory_of_point.h>
+#include "my_p4est_shs_channel.h"
 #endif
 
 #include <src/Parser.h>
 
 #undef MIN
 #undef MAX
-
-using namespace std;
 
 // --> extra info to be printed when -help is invoked
 #ifdef P4_TO_P8
@@ -76,7 +67,7 @@ const std::string extra_info = "\
     1) (re)set Re_tau: this resets only the viscosity of the fluid but keeps the body force per unit mass {1.0, 0.0, 0.0}\n\
     2) set Re_b: this leaves the viscosity unchanged (i.e. as read from the saved state) but adapts the body force per unit\n\
        mass dynamically in order to set the mean (bulk) velocity to the desired value that matches the desired bulk Reynolds\n\
-    Developer: Raphael Egan (raphaelegan@ucsb.edu)";
+    Developer: Raphael Egan (raphaelegan@ucsb.edu) and Fernando Temprano-Coleto for the analytical solutions";
 #else
 const std::string extra_info = "\
     This program provides a general setup for superhydrophobic channel flow simulations.\n\
@@ -97,113 +88,9 @@ const std::string extra_info = "\
     1) (re)set Re_tau: this resets only the viscosity of the fluid but keeps the body force per unit mass {1.0, 0.0}\n\
     2) set Re_b: this leaves the viscosity unchanged (i.e. as read from the saved state) but adapts the body force per unit\n\
         mass dynamically in order to set the mean (bulk) velocity to the desired value that matches the desired bulk Reynolds\n\
-    Developer: Raphael Egan (raphaelegan@ucsb.edu)";
+    Developer: Raphael Egan (raphaelegan@ucsb.edu) and Fernando Temprano-Coleto for the analytical solutions";
 #endif
 
-class detect_ridge
-{
-private:
-  const double length;
-#ifdef P4_TO_P8
-  const double width;
-  const bool streamwise;
-#endif
-  const double pitch;
-  const double gas_frac;
-  const double offset;
-  double my_fmod(const double num, const double denom) const { return (num - floor(num/denom)*denom);}
-public:
-#ifdef P4_TO_P8
-  detect_ridge(double len_, double width_, bool streamwise_, double pitch_, double gas_fraction_, const my_p4est_brick_t& brick_, int max_lvl)
-    : length(len_), width(width_), streamwise(streamwise_), pitch(pitch_), gas_frac(gas_fraction_),
-      offset(streamwise? (0.1*(brick_.xyz_max[2]-brick_.xyz_min[2])/((double) (brick_.nxyztrees[2]*(1<<max_lvl)))) : (0.5*(brick_.xyz_max[0]-brick_.xyz_min[0])/((double) (brick_.nxyztrees[0]*(1<<max_lvl))))){ }
-  double normalized_z(const double& z) const
-  {
-    return my_fmod((z + 0.5*width), pitch);
-  }
-  bool operator () (double x, double, double z) const {
-    if(streamwise)
-      return ((offset >= normalized_z(z)) || (normalized_z(z) >= pitch*gas_frac - offset));
-    else
-      return (my_fmod((x + 0.5*length - offset), pitch)/pitch >= gas_frac);
-  }
-  double distance_to_ridge(double x, double y, double z) const
-  {
-    if(streamwise)
-      return sqrt(SQR(MIN(1.0 - y, y + 1.0)) + ((this->operator()(x, y, z))? 0.0: SQR(MIN(normalized_z(z)-offset, pitch*gas_frac - offset - normalized_z(z)))));
-    else
-      return sqrt(SQR(MIN(1.0 - y, y + 1.0)) + ((this->operator()(x, y, z))? 0.0: SQR(MIN(my_fmod((x + 0.5*length - offset), pitch), gas_frac*pitch-my_fmod((x + 0.5*length - offset), pitch)))));
-  }
-#else
-  detect_ridge(double len_, double pitch_, double gas_fraction_, const my_p4est_brick_t& brick_, int max_lvl)
-    : length(len_), pitch(pitch_), gas_frac(gas_fraction_),
-      offset(0.5*(brick_.xyz_max[0]-brick_.xyz_min[0])/((double) (brick_.nxyztrees[0]*(1<<max_lvl)))){ }
-  bool operator () (double x, double) const {
-    return (my_fmod((x + 0.5*length - offset), pitch)/pitch >= gas_frac);
-  }
-  double distance_to_ridge(double x, double y) const
-  {
-    return sqrt(SQR(MIN(1.0-y, y+1.0)) + ((this->operator()(x, y))? 0.0: SQR(MIN(my_fmod((x + 0.5*length - offset), pitch), gas_frac*pitch-my_fmod((x + 0.5*length - offset), pitch)))));
-  }
-#endif
-};
-
-class LEVEL_SET : public CF_DIM {
-  int max_lvl;
-  const detect_ridge* ridge_detector;
-public:
-  LEVEL_SET(int max_lvl_, detect_ridge* ridge_detector_) : max_lvl(max_lvl_), ridge_detector(ridge_detector_) { lip = 1.2; }
-  double operator()(DIM(double x, double y, double z)) const
-  {
-    return -ridge_detector->distance_to_ridge(DIM(x, y, z)) - pow(2.0, -max_lvl);
-  }
-};
-
-struct BCWALLTYPE_P : WallBCDIM {
-  BoundaryConditionType operator()(DIM(double, double, double)) const
-  {
-    return NEUMANN;
-  }
-} bc_wall_type_p;
-
-struct BCWALLVALUE_P : CF_DIM {
-  double operator()(DIM(double, double, double)) const
-  {
-    return 0.0;
-  }
-} bc_wall_value_p;
-
-class BCWALLTYPE_U : public WallBCDIM {
-private:
-  const detect_ridge* ridge_detector;
-public:
-  BCWALLTYPE_U(detect_ridge* ridge_detector_): ridge_detector(ridge_detector_){ }
-  BoundaryConditionType operator()(DIM(double x, double y, double z)) const
-  {
-    return ((*ridge_detector)(DIM(x, y, z)) ? DIRICHLET: NEUMANN);
-  }
-};
-
-struct BCWALLVALUE_U : CF_DIM {
-  double operator()(DIM(double, double, double)) const
-  {
-    return 0.0; // always 0 value whether no slip or free slip
-  }
-} bc_wall_value_u;
-
-struct BCWALLTYPE_V : WallBCDIM {
-  BoundaryConditionType operator()(DIM(double, double, double)) const
-  {
-    return DIRICHLET; // always homogeneous dirichlet : no penetration through the channel wall
-  }
-} bc_wall_type_v;
-
-struct BCWALLVALUE_V : CF_DIM {
-  double operator()(DIM(double, double, double)) const
-  {
-    return 0.0; // always homogeneous dirichlet : no penetration through the channel wall
-  }
-} bc_wall_value_v;
 
 struct initial_velocity_unm1_t : CF_DIM {
   double operator()(DIM(double, double, double)) const
@@ -237,7 +124,7 @@ class external_force_u_t : public CF_DIM {
 private:
   double forcing_term;
 public:
-  external_force_u_t(const double& forcing_term_):forcing_term(forcing_term_) {}
+  external_force_u_t(const double& forcing_term_) : forcing_term(forcing_term_) {}
   external_force_u_t(): external_force_u_t(1.0) {}
   double operator()(DIM(double, double, double)) const
   {
@@ -258,26 +145,6 @@ struct external_force_v_t : CF_DIM {
 };
 
 #ifdef P4_TO_P8
-struct BCWALLTYPE_W : WallBC3D
-{
-private:
-  const detect_ridge* ridge_detector;
-public:
-  BCWALLTYPE_W(detect_ridge* ridge_detector_): ridge_detector(ridge_detector_){ }
-  BoundaryConditionType operator()(double x, double y, double z) const
-  {
-    return ((*ridge_detector)(x, y, z) ? DIRICHLET: NEUMANN);
-  }
-};
-
-struct BCWALLVALUE_W : CF_3
-{
-  double operator()(double, double, double) const
-  {
-    return 0.0;
-  }
-} bc_wall_value_w;
-
 struct initial_velocity_wnm1_t : CF_3
 {
   double operator()(double, double, double) const
@@ -402,7 +269,7 @@ void initialize_monitoring(char* file_monitoring, const char *out_dir, const int
       fprintf(fp_tex_monitor_script, "dvipdf -dAutoRotatePages=/None ./monitor_history.dvi\n");
       fclose(fp_tex_monitor_script);
 
-      ostringstream chmod_command;
+      std::ostringstream chmod_command;
       chmod_command << "chmod +x " << tex_Re_script;
       if(system(chmod_command.str().c_str()))
         throw std::runtime_error("initialize_monitoring: could not make the plot_tex_monitor.sh script executable");
@@ -534,7 +401,7 @@ void initialize_drag_force_output(char* file_drag, const char *out_dir, const in
       fprintf(fp_tex_drag_script, "dvipdf -dAutoRotatePages=/None ./drag_history.dvi\n");
       fclose(fp_tex_drag_script);
 
-      ostringstream chmod_command;
+      std::ostringstream chmod_command;
       chmod_command << "chmod +x " << tex_drag_script;
       int sys_return = system(chmod_command.str().c_str()); (void) sys_return;
     }
@@ -611,7 +478,7 @@ void initialize_velocity_profile_file(const char* filename, const int& ntree_y, 
 }
 
 void initialize_averaged_velocity_profiles(char* file_slice_avg_profile, const char *profile_dir, const int* ntree, const int& lmin, const int& lmax, const double& threshold_split_cell, const double& cfl, const int& sl_order, const mpi_environment_t& mpi, const double& tstart,
-                                           vector<unsigned int>& bin_index, vector<string>& file_line_avg_profile, const double* dimensions_to_delta, const double& pitch_to_delta, const double& gas_fraction, unsigned int& number_of_bins, const bool& spanwise)
+                                           vector<unsigned int>& bin_index, vector<std::string>& file_line_avg_profile, const double* dimensions_to_delta, const double& pitch_to_delta, const double& gas_fraction, unsigned int& number_of_bins, const bool& spanwise)
 {
   PetscErrorCode ierr;
   sprintf(file_slice_avg_profile, "%s/slice_averaged_velocity_profile_ntreey_%d_%d-%d_split_threshold_%.2f_cfl_%.2f_sl_%d.dat", profile_dir, ntree[1], lmin, lmax, threshold_split_cell, cfl, sl_order);
@@ -678,13 +545,13 @@ void initialize_averaged_velocity_profiles(char* file_slice_avg_profile, const c
 void check_pitch_and_gas_fraction(double length_to_delta, int ntree, int lmax, double pitch_to_delta, double gas_fraction)
 {
   if(fabs(length_to_delta/pitch_to_delta - ((int) length_to_delta/pitch_to_delta)) > 1e-6)
-    throw std::invalid_argument("main_shs_" + to_string(P4EST_DIM) + "d.cpp: the length of the domain in the direction transversal to the grooves MUST be a multiple of the pitch to satisfy periodicity.");
+    throw std::invalid_argument("main_shs_" + std::to_string(P4EST_DIM) + "d.cpp: the length of the domain in the direction transversal to the grooves MUST be a multiple of the pitch to satisfy periodicity.");
 
   double nb_finest_cell_in_groove =  pitch_to_delta*gas_fraction/(length_to_delta/((double) (ntree*(1<<lmax))));
   double nb_finest_cell_in_ridge  =  pitch_to_delta*(1.0-gas_fraction)/(length_to_delta/((double) (ntree*(1<<lmax))));
 
   if((fabs(nb_finest_cell_in_groove - ((int) nb_finest_cell_in_groove)) > 1e-6) || (fabs(nb_finest_cell_in_ridge - ((int) nb_finest_cell_in_ridge)) > 1e-6))
-    throw std::invalid_argument("main_shs_" + to_string(P4EST_DIM) + "d.cpp: the finest grid cells do not capture the groove and/or the ridge (subcell resolution for boundary condition would be required).");
+    throw std::invalid_argument("main_shs_" + std::to_string(P4EST_DIM) + "d.cpp: the finest grid cells do not capture the groove and/or the ridge (subcell resolution for boundary condition would be required).");
 }
 
 inline double Re_tau(const external_force_u_t& force_per_unit_mass_x, const double& rho, const double& mu)
@@ -725,382 +592,28 @@ void read_vector_from_file(std::string filename, std::vector<double>& to_return)
     memcpy(&to_return[0], &buffer[0], buffer.size());
 }
 
-//------------------------------ EXACT SOLUTIONS FOR SIMPLIFIED CASES ------------------------------//
-
-class unit_nondim_sol
-{
-  friend class v_x_exact;
-  friend class v_y_exact;
-#ifdef P4_TO_P8
-  friend class v_z_exact;
-#endif
-private:
-  struct k_n
-  {
-  private:
-    unit_nondim_sol* _prnt;
-  public:
-    k_n(unit_nondim_sol* input_ptr) : _prnt(input_ptr) {}
-    double operator()(int n) const
-    {
-      return 2*PI*n/(*_prnt->_pitch);
-    }
-  } k_;
-
-  struct beta_kn
-  {
-  private:
-    unit_nondim_sol* _prnt;
-  public:
-    beta_kn(unit_nondim_sol* input_ptr) : _prnt(input_ptr) {}
-    double operator()(int n) const
-    {
-  #ifdef P4_TO_P8
-        if(!(*_prnt->_spanwise)) return _prnt->vec_of_ks[n]*tanh(_prnt->vec_of_ks[n]);
-  #endif
-        return 2.0*(_prnt->vec_of_ks[n])*SQR(1.0-exp(-2.0*(_prnt->vec_of_ks[n]))) /
-              (1.0-(4.0*(_prnt->vec_of_ks[n])*exp(-2.0*(_prnt->vec_of_ks[n])))-exp(-4.0*(_prnt->vec_of_ks[n])));
-    }
-  } beta_;
-
-  my_p4est_navier_stokes_t* _ns;
-  const int N;
-  const double* _pitch;
-  const double* _GF;
-  std::vector<double> coeff;
-  std::vector<double> vec_of_ks;
-  std::vector<double> vec_of_prefactors;
-  std::vector<double> vec_of_tanhs;
-#ifdef P4_TO_P8
-  const bool* _spanwise;
-#endif
-
-  void compute_vecs()
-  {
-#ifdef P4_TO_P8
-    if(!(*_spanwise))
-    {
-      for(int n=0; n<N; ++n)
-      {
-        vec_of_ks[n] = k_(n);
-        vec_of_prefactors[n] = 1.0/(1.0+exp(-2.0*vec_of_ks[n]));
-      }
-    }
-    else
-    {
-#endif
-      for(int n=0; n<N; ++n)
-      {
-        vec_of_ks[n] = k_(n);
-        vec_of_tanhs[n] = tanh(vec_of_ks[n]);
-        if(n==0) vec_of_prefactors[0] = 0.0;
-        else     vec_of_prefactors[n] = (1.0+exp(-2.0*vec_of_ks[n]))/(-1.0+(4.0*vec_of_ks[n]*exp(-2.0*vec_of_ks[n]))+exp(-4.0*vec_of_ks[n]));
-      }
-#ifdef P4_TO_P8
-    }
-#endif
-  }
-
-  void compute_series_coeff()
-  {
-    double *A = new double[N*N];
-    double *vec_of_betam1 = new double[N];
-    double *vec_of_sines  = new double[3*(N-1)];
-
-    parStopWatch timer;
-    timer.start("");
-    PetscPrintf(_ns->get_p4est()->mpicomm, "Assembling the linear system of N=%i coefficients of the analytical solution...", N);
-
-    for(int i=0; i<N; ++i)           vec_of_betam1[i] = beta_(i)-1.0;
-    for(int i=0; i<3*(N-1); ++i)     vec_of_sines[i]  = sin((i-(N-2))*PI*(*_GF));
-
-    for(int m=0; m<N; ++m)
-    {
-      if(m==0) coeff[m] = *_GF;
-      else     coeff[m] = vec_of_sines[m+(N-2)]/(m*PI);
-
-      for(int n=0; n<N; ++n)
-      {
-        if(m==0 && n==0)    A[m+N*n] = 1-(*_GF);
-        else if(m==0)       A[m+N*n] = vec_of_betam1[n]*vec_of_sines[n+(N-2)]/(n*PI);
-        else if(n==0)       A[m+N*n] = -vec_of_sines[m+(N-2)]/(m*PI);
-        else if(m==n)       A[m+N*n] = 0.5*(1.0 + vec_of_betam1[m]*((*_GF)+(vec_of_sines[(2*m)+(N-2)]/(2*m*PI))));
-        else                A[m+N*n] = vec_of_betam1[n]*((vec_of_sines[m-n+(N-2)]/(m-n))+(vec_of_sines[m+n+(N-2)]/(m+n)))/(2*PI);
-      }
-    }
-
-    timer.stop();
-    PetscPrintf(_ns->get_p4est()->mpicomm, " done! Time of assembly = %f s\n", timer.read_duration());
-
-    delete [] vec_of_betam1;
-    delete [] vec_of_sines;
-
-    timer.start("");
-    PetscPrintf(_ns->get_p4est()->mpicomm, "Solving the linear system of N=%i coefficients of the analytical solution...", N);
-
-    int *ipiv = new int[N];
-    int info = LAPACKE_dgesv(LAPACK_COL_MAJOR, N, 1, &A[0], N, &ipiv[0], &coeff[0], N);
-#ifdef CASL_THROWS
-    if(info < 0) throw std::invalid_argument("unit_nondim_sol::void compute_series_coeff(): the LAPACK call to the LU decomposition got an invalid argument.");
-    if(info > 0) throw std::runtime_error("unit_nondim_sol::compute_series_coeff(): LAPACK reported that the linear system is singular.");
-#else
-    (void) info;
-#endif
-
-    timer.stop();
-    PetscPrintf(_ns->get_p4est()->mpicomm, " done! Time of solve = %f s\n", timer.read_duration());
-
-    delete [] ipiv;
-    delete [] A;
-  }
-
-  void check_input_coord(DIM(double x, double y, double z)) const
-  {
-    if(fabs(y)>0.5*_ns->get_height_of_domain()) throw std::invalid_argument("unit_nondim_sol(): The y-coordinate must be contained in [-1, 1].");
-#ifdef P4_TO_P8
-    if(!(*_spanwise))
-    {
-      if(fabs(z)>0.5*(*_pitch)) throw std::invalid_argument("unit_nondim_sol(): The z-coordinate must be contained in [-pitch/2, pitch/2].");
-    }
-    else
-    {
-#endif
-      if(fabs(x)>0.5*(*_pitch)) throw std::invalid_argument("unit_nondim_sol(): The x-coordinate must be contained in [-pitch/2, pitch/2].");
-#ifdef P4_TO_P8
-    }
-#endif
-  }
-
-public:
-#ifdef P4_TO_P8
-  unit_nondim_sol(const int N_input, my_p4est_navier_stokes_t* ns_ptr, const double* pitch_ptr, const double* GF_ptr, const bool* spanwise_ptr)
-    : k_(this), beta_(this), _ns(ns_ptr), N(N_input), _pitch(pitch_ptr), _GF(GF_ptr), _spanwise(spanwise_ptr)
-  {
-    if(*_spanwise)
-    {
-        vec_of_tanhs.resize(N);
-#else
-public:
-  unit_nondim_sol(const int N_input, my_p4est_navier_stokes_t* ns_ptr, const double* pitch_ptr, const double* GF_ptr)
-    : k_(this), beta_(this), _ns(ns_ptr), N(N_input), _pitch(pitch_ptr), _GF(GF_ptr)
-  {
-    vec_of_tanhs.resize(N);
-#endif
-    if(SQR(1.0/_ns->get_mu())>0.1) PetscPrintf(_ns->get_p4est()->mpicomm,"\n[WARNING]: The exact solution for transversal grooves is valid only in the limit "
-                                                                                      "of Re<<1, and your current Reynolds number is Re = SQR(Re_tau) = %f > 0.1. "
-                                                                                      "Expect discrepancies.\n\n", SQR(1.0/_ns->get_mu()));
-#ifdef P4_TO_P8
-    }
-    else if(SQR(1.0/_ns->get_mu())>1000.0) PetscPrintf(_ns->get_p4est()->mpicomm,"\n[WARNING]: The exact solution for longitudinal grooves is valid only for "
-                                                                                            "steady laminar flow, and your current Reynolds number is Re = SQR(Re_tau) = %f > 1000. "
-                                                                                            "Expect discrepancies.\n\n", SQR(1.0/_ns->get_mu()));
-#endif
-    coeff.resize(N);
-    vec_of_ks.resize(N);
-    vec_of_prefactors.resize(N);
-    compute_vecs();
-    /* [FERNANDO:] The linear system solve is performed IN SERIAL by the root processor and then copied to the other processors,
-                   although the computation time solving in all processors is similar. The assembly + solve time in my machine
-                   for N=2500 coefficients (should be enough except for crazy low gas fractions 0 < GF < 0.01) is of 2-3 sec.*/
-    if(_ns->get_p4est()->mpirank == 0) compute_series_coeff();
-    int mpiret = MPI_Bcast(coeff.data(), coeff.size(), MPI_DOUBLE, 0, MPI_COMM_WORLD); SC_CHECK_MPI(mpiret);
-  }
-
-#ifdef P4_TO_P8
-  double v_x(double x, double y, double z) const
-  {
-    check_input_coord(x,y,z);
-#else
-  double v_x(double x, double y) const
-  {
-    check_input_coord(x,y);
-    if(fabs(x)>0.5*(*_pitch)) throw std::invalid_argument("unit_nondim_sol(): The x-coordinate must be contained in [-pitch/2, pitch/2].");
-#endif
-    if(fabs(y)>0.5*_ns->get_height_of_domain()) throw std::invalid_argument("unit_nondim_sol(): The y-coordinate must be contained in [-1, 1].");
-    double v_x_val = 0.5*(1.0-SQR(y)) + coeff[0];
-#ifdef P4_TO_P8
-    if(!(*_spanwise))
-    {
-      // The following line avoids spurious negative values of the exact series solution for v_x close to the ridge-gap transition, due to generalized Gibbs phenomenon at a kink
-      if( fabs(fabs(y)-1)<EPS*1.0 && fabs(z)>=0.5*(*_GF)*(*_pitch) ) return 0.0; // Note h=1.0
-      for(int n=1; n<N; ++n)
-      {
-        v_x_val += coeff[n]*vec_of_prefactors[n]*(exp(-vec_of_ks[n]*(1.0-y))+exp(-vec_of_ks[n]*(1.0+y)))*cos(vec_of_ks[n]*z);
-      }
-    }
-    else
-    {
-#endif
-      // The following line avoids spurious negative values of the exact series solution for v_x close to the ridge-gap transition, due to generalized Gibbs phenomenon at a kink
-      if( fabs(fabs(y)-1)<EPS*1.0 && fabs(x)>=0.5*(*_GF)*(*_pitch) ) return 0.0; // Note h=1.0
-      for(int n=1; n<N; ++n)
-      {
-        v_x_val += coeff[n]*vec_of_prefactors[n]*
-                       ((vec_of_ks[n]-vec_of_tanhs[n])*(exp(-vec_of_ks[n]*(1.0-y))+exp(-vec_of_ks[n]*(1.0+y)))-(vec_of_ks[n]*vec_of_tanhs[n])*y*(exp(-vec_of_ks[n]*(1.0-y))-exp(-vec_of_ks[n]*(1.0+y))))*
-                       cos(vec_of_ks[n]*x);
-      }
-#ifdef P4_TO_P8
-    }
-#endif
-    return v_x_val;
-  }
-
-#ifdef P4_TO_P8
-  double v_y(double x, double y, double z) const
-  {
-    check_input_coord(x,y,z);
-#else
-  double v_y(double x, double y) const
-  {
-    check_input_coord(x,y);
-#endif
-    double v_y_val = 0.0;
-#ifdef P4_TO_P8
-    if(*_spanwise)
-    {
-#endif
-      for(int n=1; n<N; ++n)
-      {
-        v_y_val += coeff[n]*vec_of_prefactors[n]*vec_of_ks[n]*
-                       ((exp(-vec_of_ks[n]*(1.0-y))-exp(-vec_of_ks[n]*(1.0+y)))-vec_of_tanhs[n]*y*(exp(-vec_of_ks[n]*(1.0-y))+exp(-vec_of_ks[n]*(1.0+y))))*
-                       sin(vec_of_ks[n]*x);
-      }
-#ifdef P4_TO_P8
-    }
-#endif
-    return v_y_val;
-  }
-
-#ifdef P4_TO_P8
-  double v_z(double x, double y, double z) const
-  {
-    check_input_coord(x,y,z);
-    return 0.0;
-  }
-#endif
-
-};
-
-#ifdef P4_TO_P8
-class v_x_exact : public CF_3 {
-#else
-class v_x_exact : public CF_2 {
-#endif
-private:
-  unit_nondim_sol* _nsol;
-  const double Re_tau;
-  double my_fmod(const double num, const double denom) const { return (num - floor(num/denom)*denom);}
-public:
-  v_x_exact(unit_nondim_sol* nsol_ptr): _nsol(nsol_ptr), Re_tau(1/(nsol_ptr->_ns->get_mu())) {}
-#ifdef P4_TO_P8
-  double operator() (double x, double y, double z) const {
-#else
-  double operator() (double x, double y) const {
-#endif
-  // Modular transfomation { x_mod = fmod( x+0.5*(length+pitch*(1-GF)), pitch ) - 0.5*pitch } (maps [-length/2,length/2] to [-pitch/2,pitch/2] with all gap centers being mapped to zero)
-  double x_mod = my_fmod(x+0.5*(_nsol->_ns->get_length_of_domain()+(*_nsol->_pitch)*(1.0-(*_nsol->_GF))),(*_nsol->_pitch))-0.5*(*_nsol->_pitch);
-#ifdef P4_TO_P8
-  // Modular transfomation { z_mod = fmod( z+0.5*(width+pitch*(1-GF)), pitch ) - 0.5*pitch } (maps [-width/2,width/2] to [-pitch/2,pitch/2] with all gap centers being mapped to zero)
-  double z_mod = my_fmod(z+0.5*(_nsol->_ns->get_width_of_domain()+(*_nsol->_pitch)*(1.0-(*_nsol->_GF))),(*_nsol->_pitch))-0.5*(*_nsol->_pitch);
-  return Re_tau*(_nsol->v_x(x_mod, y, z_mod));
-#else
-  return Re_tau*(_nsol->v_x(x_mod, y));
-#endif
-  }
-};
-
-#ifdef P4_TO_P8
-class v_y_exact : public CF_3 {
-#else
-class v_y_exact : public CF_2 {
-#endif
-private:
-  unit_nondim_sol* _nsol;
-  const double Re_tau;
-  double my_fmod(const double num, const double denom) const { return (num - floor(num/denom)*denom);}
-public:
-  v_y_exact(unit_nondim_sol* nsol_ptr): _nsol(nsol_ptr), Re_tau(1/(nsol_ptr->_ns->get_mu())) {}
-#ifdef P4_TO_P8
-  double operator() (double x, double y, double z) const {
-#else
-  double operator() (double x, double y) const {
-#endif
-  // Modular transfomation { x_mod = fmod( x+0.5*(length+pitch*(1-GF)), pitch ) - 0.5*pitch } (maps [-length/2,length/2] to [-pitch/2,pitch/2] with all gap centers being mapped to zero)
-  double x_mod = my_fmod(x+0.5*(_nsol->_ns->get_length_of_domain()+(*_nsol->_pitch)*(1-(*_nsol->_GF))),(*_nsol->_pitch))-0.5*(*_nsol->_pitch);
-#ifdef P4_TO_P8
-  // Modular transfomation { z_mod = fmod( z+0.5*(width +pitch*(1-GF)), pitch ) - 0.5*pitch } (maps [-width/2,width/2] to [-pitch/2,pitch/2] with all gap centers being mapped to zero)
-  double z_mod = my_fmod(z+0.5*(_nsol->_ns->get_width_of_domain()+(*_nsol->_pitch)*(1-(*_nsol->_GF))),(*_nsol->_pitch))-0.5*(*_nsol->_pitch);
-  return Re_tau*(_nsol->v_y(x_mod, y, z_mod));
-#else
-  return Re_tau*(_nsol->v_y(x_mod, y));
-#endif
-  }
-};
-
-#ifdef P4_TO_P8
-class v_z_exact : public CF_3 {
-private:
-  unit_nondim_sol* _nsol;
-  const double Re_tau;
-  double my_fmod(const double num, const double denom) const { return (num - floor(num/denom)*denom);}
-public:
-  v_z_exact(unit_nondim_sol* nsol_ptr): _nsol(nsol_ptr), Re_tau(1/(nsol_ptr->_ns->get_mu())) {}
-  double operator() (double x, double y, double z) const
-  {
-    // Modular transfomation { x_mod = fmod( x+0.5*(length+pitch*(1-GF)), pitch ) - 0.5*pitch } (maps [-length/2,length/2] to [-pitch/2,pitch/2] with all gap centers being mapped to zero)
-    double x_mod = my_fmod(x+0.5*(_nsol->_ns->get_length_of_domain()+(*_nsol->_pitch)*(1-(*_nsol->_GF))),(*_nsol->_pitch))-0.5*(*_nsol->_pitch);
-    // Modular transfomation { z_mod = fmod( z+0.5*(width +pitch*(1-GF)), pitch ) - 0.5*pitch } (maps [-width/2,width/2] to [-pitch/2,pitch/2] with all gap centers being mapped to zero)
-    double z_mod = my_fmod(z+0.5*(_nsol->_ns->get_width_of_domain()+(*_nsol->_pitch)*(1-(*_nsol->_GF))),(*_nsol->_pitch))-0.5*(*_nsol->_pitch);
-    return Re_tau*(_nsol->v_z(x_mod, y, z_mod));
-  }
-};
-#endif
-
 //------------------------------ ACCURACY CHECK ------------------------------//
 
-#ifdef P4_TO_P8
-void check_accuracy_of_solution(my_p4est_navier_stokes_t* ns, const double& pitch, const double& GF, const bool spanwise, double my_errors[2*P4EST_DIM], char (*_path)[PATH_MAX]=NULL)
-#else
-void check_accuracy_of_solution(my_p4est_navier_stokes_t* ns, const double& pitch, const double& GF, double my_errors[2*P4EST_DIM], char (*_path)[PATH_MAX]=NULL)
-#endif
+void check_accuracy_of_solution(my_p4est_navier_stokes_t* ns, const my_p4est_shs_channel_t& channel, const external_force_u_t& forcing, double my_errors[2*P4EST_DIM], char (*_path)[PATH_MAX] = NULL)
 {
-  int N = 2500; // Number of terms in the trunctation of the series solution
-
-#ifdef P4_TO_P8
-  unit_nondim_sol n_sol(N, ns, &pitch, &GF, &spanwise);
-#else
-  unit_nondim_sol n_sol(N, ns, &pitch, &GF);
-#endif
-  v_x_exact v_x(&n_sol);
-  v_y_exact v_y(&n_sol);
-#ifdef P4_TO_P8
-  v_z_exact v_z(&n_sol);
-  const CF_3 *v_exact[P4EST_DIM] = { &v_x, &v_y, &v_z };
-#else
-  const CF_2 *v_exact[P4EST_DIM] = { &v_x, &v_y };
-#endif
-
-  for(unsigned short dir=0; dir<2*P4EST_DIM; ++dir) {my_errors[dir] = 0.0;}
+  for(unsigned char dir = 0; dir < 2*P4EST_DIM; ++dir)
+    my_errors[dir] = 0.0;
   PetscErrorCode ierr;
 
   // Compute the face errors
 
-  Vec* v_faces; v_faces = ns->get_vnp1();
+  const Vec* v_faces; v_faces = ns->get_vnp1();
   const double *v_faces_ptr;
 
-  for(unsigned short dir=0; dir<P4EST_DIM; ++dir)
+  for(unsigned char dir = 0; dir < P4EST_DIM; ++dir)
   {
     ierr = VecGetArrayRead(v_faces[dir], &v_faces_ptr); CHKERRXX(ierr);
 
-    for(p4est_locidx_t f=0; f<ns->get_faces()->num_local[dir]; ++f)
+    for(p4est_locidx_t f = 0; f < ns->get_faces()->num_local[dir]; ++f)
     {
-      double xyz[P4EST_DIM];
-      ns->get_faces()->xyz_fr_f(f, dir, xyz);
-#ifdef P4_TO_P8
-      my_errors[dir] = MAX(my_errors[dir], fabs( v_faces_ptr[f] - v_exact[dir]->operator()(xyz[0],xyz[1],xyz[2]) ));
-#else
-      my_errors[dir] = MAX(my_errors[dir], fabs( v_faces_ptr[f] - v_exact[dir]->operator()(xyz[0],xyz[1]) ));
-#endif
+      double xyz[P4EST_DIM]; ns->get_faces()->xyz_fr_f(f, dir, xyz);
+      const double v_exact_tmp = channel.v_exact(dir, Re_tau(forcing, ns->get_rho(), ns->get_mu()), xyz);
+      my_errors[dir] = MAX(my_errors[dir], fabs(v_faces_ptr[f] - v_exact_tmp));
     }
 
     ierr = VecRestoreArrayRead(v_faces[dir], &v_faces_ptr); CHKERRXX(ierr);
@@ -1108,46 +621,44 @@ void check_accuracy_of_solution(my_p4est_navier_stokes_t* ns, const double& pitc
 
   // Compute the node errors
 
-  Vec* v_nodes; v_nodes = ns->get_velocity_np1();
+  const Vec* v_nodes; v_nodes = ns->get_velocity_np1();
   Vec v_exact_nodes[P4EST_DIM];
   Vec error_nodes[P4EST_DIM];
-  const double *v_nodes_ptr;
-  double *v_exact_nodes_ptr, *error_nodes_ptr;
+  const double *v_nodes_p[P4EST_DIM];
+  double *v_exact_nodes_p[P4EST_DIM], *error_nodes_p[P4EST_DIM];
 
-  for(unsigned short dir=0; dir<P4EST_DIM; ++dir)
-  {
-    my_errors[P4EST_DIM+dir] = 0.0;
-    ierr = VecGetArrayRead(v_nodes[dir], &v_nodes_ptr); CHKERRXX(ierr);
+  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
+    ierr= VecGetArrayRead(v_nodes[dir], &v_nodes_p[dir]); CHKERRXX(ierr);
     if(_path != NULL)
     {
       ierr = VecCreateGhostNodes(ns->get_p4est(), ns->get_nodes(), &v_exact_nodes[dir]); CHKERRXX(ierr);
       ierr = VecCreateGhostNodes(ns->get_p4est(), ns->get_nodes(), &error_nodes[dir]); CHKERRXX(ierr);
-      ierr = VecGetArray(error_nodes[dir], &error_nodes_ptr); CHKERRXX(ierr);
-      ierr = VecGetArray(v_exact_nodes[dir], &v_exact_nodes_ptr); CHKERRXX(ierr);
+      ierr = VecGetArray(error_nodes[dir], &error_nodes_p[dir]); CHKERRXX(ierr);
+      ierr = VecGetArray(v_exact_nodes[dir], &v_exact_nodes_p[dir]); CHKERRXX(ierr);
     }
+  }
 
-    for(size_t n=0; n<ns->get_nodes()->indep_nodes.elem_count; ++n)
-    {
-      double xyz[P4EST_DIM];
-      node_xyz_fr_n(n, ns->get_p4est(), ns->get_nodes(), xyz);
-#ifdef P4_TO_P8
-      double v_exact_tmp = v_exact[dir]->operator()(xyz[0],xyz[1],xyz[2]);
-#else
-      double v_exact_tmp = v_exact[dir]->operator()(xyz[0],xyz[1]);
-#endif
-      my_errors[P4EST_DIM+dir] = MAX(my_errors[P4EST_DIM+dir], fabs( v_nodes_ptr[n]-v_exact_tmp ));
+  for(size_t n = 0; n < ns->get_nodes()->indep_nodes.elem_count; ++n)
+  {
+    double xyz[P4EST_DIM]; node_xyz_fr_n(n, ns->get_p4est(), ns->get_nodes(), xyz);
+    double v_exact_tmp[P4EST_DIM];
+    channel.v_exact(Re_tau(forcing, ns->get_rho(), ns->get_mu()), xyz, v_exact_tmp);
+    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
+      my_errors[P4EST_DIM + dir] = MAX(my_errors[P4EST_DIM + dir], fabs(v_nodes_p[dir][n] - v_exact_tmp[dir]));
       if(_path != NULL)
       {
-        error_nodes_ptr[n] = fabs( v_nodes_ptr[n]-v_exact_tmp );
-        v_exact_nodes_ptr[n] = v_exact_tmp;
+        error_nodes_p[dir][n]    = fabs(v_nodes_p[dir][n] - v_exact_tmp[dir]);
+        v_exact_nodes_p[dir][n]  = v_exact_tmp[dir];
       }
     }
+  }
 
-    ierr = VecRestoreArrayRead(v_nodes[dir], &v_nodes_ptr); CHKERRXX(ierr);
+  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
+    ierr= VecRestoreArrayRead(v_nodes[dir], &v_nodes_p[dir]); CHKERRXX(ierr);
     if(_path != NULL)
     {
-      ierr = VecRestoreArray(error_nodes[dir], &error_nodes_ptr); CHKERRXX(ierr);
-      ierr = VecRestoreArray(v_exact_nodes[dir], &v_exact_nodes_ptr); CHKERRXX(ierr);
+      ierr = VecRestoreArray(error_nodes[dir], &error_nodes_p[dir]); CHKERRXX(ierr);
+      ierr = VecRestoreArray(v_exact_nodes[dir], &v_exact_nodes_p[dir]); CHKERRXX(ierr);
     }
   }
 
@@ -1156,48 +667,37 @@ void check_accuracy_of_solution(my_p4est_navier_stokes_t* ns, const double& pitc
   // Plot the errors and exact solution if the path is provided as an input
   if(_path != NULL)
   {
-    if(create_directory(*_path,ns->get_p4est()->mpirank,ns->get_p4est()->mpicomm))
+    if(create_directory(*_path, ns->get_p4est()->mpirank, ns->get_p4est()->mpicomm))
     {
       char error_msg[1024];
-#ifdef P4_TO_P8
-      sprintf(error_msg, "main_shs_3d: could not create exportation directory %s", *_path);
-#else
-      sprintf(error_msg, "main_shs_2d: could not create exportation directory %s", *_path);
-#endif
+      sprintf(error_msg, "main_shs_%dd: could not create exportation directory %s", P4EST_DIM, *_path);
       throw std::runtime_error(error_msg);
     }
 
     char vtk_name[PATH_MAX];
     sprintf(vtk_name, "%s/accuracy_check", *_path);
-    const double *v_exact_vtk_ptr[P4EST_DIM], *error_vtk_ptr[P4EST_DIM];
+    const double *v_exact_vtk_p[P4EST_DIM], *error_vtk_p[P4EST_DIM];
 
-    for(int dir=0; dir<P4EST_DIM; ++dir)
+    for(unsigned char dir = 0; dir < P4EST_DIM; ++dir)
     {
-      ierr = VecGetArrayRead(error_nodes[dir], &error_vtk_ptr[dir]); CHKERRXX(ierr);
-      ierr = VecGetArrayRead(v_exact_nodes[dir], &v_exact_vtk_ptr[dir]); CHKERRXX(ierr);
+      ierr = VecGetArrayRead(error_nodes[dir], &error_vtk_p[dir]); CHKERRXX(ierr);
+      ierr = VecGetArrayRead(v_exact_nodes[dir], &v_exact_vtk_p[dir]); CHKERRXX(ierr);
     }
 
-    my_p4est_vtk_write_all(ns->get_p4est(), ns->get_nodes(), ns->get_ghost(),
-                           P4EST_TRUE, P4EST_TRUE,
-                           2*P4EST_DIM,
-                           0,
-                           vtk_name,
-                           VTK_POINT_DATA, "v_x_exact", v_exact_vtk_ptr[0],
-                           VTK_POINT_DATA, "v_y_exact", v_exact_vtk_ptr[1],
-#ifdef P4_TO_P8
-                           VTK_POINT_DATA, "v_z_exact", v_exact_vtk_ptr[2],
-#endif
-                           VTK_POINT_DATA, "err_v_x", error_vtk_ptr[0],
-                           VTK_POINT_DATA, "err_v_y", error_vtk_ptr[1]
-#ifdef P4_TO_P8
-                          ,VTK_POINT_DATA, "err_v_z", error_vtk_ptr[2]
-#endif
-                                                                           );
+    my_p4est_vtk_write_all_general(ns->get_p4est(), ns->get_nodes(), ns->get_ghost(),
+                                   P4EST_TRUE, P4EST_TRUE,
+                                   0, 2, 0,
+                                   0, 0, 0,
+                                   vtk_name,
+                                   VTK_NODE_VECTOR_BY_COMPONENTS, "velocity", DIM(v_exact_vtk_p[0], v_exact_vtk_p[1], v_exact_vtk_p[2]),
+        VTK_NODE_VECTOR_BY_COMPONENTS, "err_v", DIM(error_vtk_p[0], error_vtk_p[1], error_vtk_p[2]));
 
-    for(int dir=0; dir<P4EST_DIM; ++dir)
+    for(unsigned char dir = 0; dir < P4EST_DIM; ++dir)
     {
-      ierr = VecRestoreArrayRead(error_nodes[dir], &error_vtk_ptr[dir]); CHKERRXX(ierr);
-      ierr = VecRestoreArrayRead(v_exact_nodes[dir], &v_exact_vtk_ptr[dir]); CHKERRXX(ierr);
+      ierr = VecRestoreArrayRead(error_nodes[dir], &error_vtk_p[dir]); CHKERRXX(ierr);
+      ierr = VecRestoreArrayRead(v_exact_nodes[dir], &v_exact_vtk_p[dir]); CHKERRXX(ierr);
+      ierr = VecDestroy(error_nodes[dir]); CHKERRXX(ierr);
+      ierr= VecDestroy(v_exact_nodes[dir]); CHKERRXX(ierr);
     }
   }
 }
@@ -1267,7 +767,6 @@ int main (int argc, char* argv[])
   my_p4est_navier_stokes_t* ns                    = NULL;
   my_p4est_brick_t* brick                         = NULL;
   splitting_criteria_cf_and_uniform_band_t* data  = NULL;
-  LEVEL_SET* level_set                            = NULL;
 
   int sl_order;
   unsigned int wall_layer;
@@ -1289,17 +788,17 @@ int main (int argc, char* argv[])
   const double pitch_to_delta           = cmd.get<double>("pitch_to_delta", 1.0/4.0);
   const double gas_fraction             = cmd.get<double>("GF", 0.5);
 #if defined(POD_CLUSTER)
-  const string export_dir               = cmd.get<string>("export_folder", "/scratch/regan/superhydrophobic_channel");
+  const std::string export_dir          = cmd.get<std::string>("export_folder", "/scratch/regan/superhydrophobic_channel");
 #elif defined(STAMPEDE)
-  const string export_dir               = cmd.get<string>("export_folder", "/work/04965/tg842642/stampede2/superhydrophobic_channel");
+  const std::string export_dir          = cmd.get<std::string>("export_folder", "/work/04965/tg842642/stampede2/superhydrophobic_channel");
 #elif defined(LAPTOP)
-  const string export_dir               = cmd.get<string>("export_folder", "/home/raphael/workspace/projects/superhydrophobic_channel");
+  const std::string export_dir          = cmd.get<std::string>("export_folder", "/home/raphael/workspace/projects/superhydrophobic_channel");
 #elif defined(JUPITER)
-  const string export_dir               = cmd.get<string>("export_folder", "/home/temprano/Output/p4est_ns_shs");
+  const std::string export_dir          = cmd.get<std::string>("export_folder", "/home/temprano/Output/p4est_ns_shs");
 #elif defined(NEPTUNE)
-  const string export_dir               = cmd.get<string>("export_folder", "/home/hlevy/workspace/superhydrophobic_channel");
+  const std::string export_dir          = cmd.get<std::string>("export_folder", "/home/hlevy/workspace/superhydrophobic_channel");
 #else
-  const string export_dir               = cmd.get<string>("export_folder", "/home/regan/workspace/projects/superhydrophobic_channel");
+  const std::string export_dir          = cmd.get<std::string>("export_folder", "/home/regan/workspace/projects/superhydrophobic_channel");
 #endif
   const bool save_vtk                   = cmd.contains("save_vtk");
   const bool get_timing                 = cmd.contains("timing");
@@ -1307,10 +806,10 @@ int main (int argc, char* argv[])
   if(save_vtk)
   {
     if(!cmd.contains("vtk_dt") && !cmd.contains("accuracy_check"))
-      throw std::runtime_error("main_shs_" + to_string(P4EST_DIM) + "d.cpp: the argument vtk_dt MUST be provided by the user if vtk exportation is desired.");
+      throw std::runtime_error("main_shs_" + std::to_string(P4EST_DIM) + "d.cpp: the argument vtk_dt MUST be provided by the user if vtk exportation is desired.");
     vtk_dt = cmd.get<double>("vtk_dt", -1.0);
     if(vtk_dt <= 0.0 && !cmd.contains("accuracy_check"))
-      throw std::invalid_argument("main_shs_" + to_string(P4EST_DIM) + "d.cpp: the value of vtk_dt must be strictly positive.");
+      throw std::invalid_argument("main_shs_" + std::to_string(P4EST_DIM) + "d.cpp: the value of vtk_dt must be strictly positive.");
   }
   const bool save_drag                  = cmd.contains("save_drag"); double drag[P4EST_DIM];
   const bool do_accuracy_check          = cmd.contains("accuracy_check") && cmd.contains("restart") && cmd.contains("Re_tau"); double my_accuracy_check_errors[2*P4EST_DIM];
@@ -1320,7 +819,7 @@ int main (int argc, char* argv[])
   {
     dt_save_data                        = cmd.get<double>("save_state_dt", -1.0);
     if(dt_save_data < 0.0)
-      throw std::invalid_argument("main_shs_" + to_string(P4EST_DIM) + "d.cpp: the value of save_state_dt must be strictly positive.");
+      throw std::invalid_argument("main_shs_" + std::to_string(P4EST_DIM) + "d.cpp: the value of save_state_dt must be strictly positive.");
   }
   const bool save_profiles              = cmd.contains("save_mean_profiles");
   const unsigned int nexport_avg        = cmd.get<unsigned int>("nexport_avg", 100);
@@ -1337,9 +836,9 @@ int main (int argc, char* argv[])
   const bool spanwise                   = cmd.contains("spanwise");
 #endif
 
-  const string des_pc_cell              = cmd.get<string>("pc_cell", "sor");
-  const string des_solver_cell          = cmd.get<string>("cell_solver", "bicgstab");
-  const string des_pc_face              = cmd.get<string>("pc_face", "sor");
+  const std::string des_pc_cell         = cmd.get<std::string>("pc_cell", "sor");
+  const std::string des_solver_cell     = cmd.get<std::string>("cell_solver", "bicgstab");
+  const std::string des_pc_face         = cmd.get<std::string>("pc_face", "sor");
   KSPType cell_solver_type;
   PCType pc_cell, pc_face;
   if (des_pc_cell.compare("hypre")==0)
@@ -1372,11 +871,11 @@ int main (int argc, char* argv[])
   }
 
   if(cmd.contains("Re_b") && !cmd.contains("restart"))
-    throw std::invalid_argument("main_shs_" + to_string(P4EST_DIM) + "d.cpp: forcing a constant bulk velocity, i.e. a constant mass flow, cannot be done if starting the simulation from scratch (no adequate initial condition): advance the simulation with constant pressure gradient first, fixing Re_tau; then restart it with Re_b.");
+    throw std::invalid_argument("main_shs_" + std::to_string(P4EST_DIM) + "d.cpp: forcing a constant bulk velocity, i.e. a constant mass flow, cannot be done if starting the simulation from scratch (no adequate initial condition): advance the simulation with constant pressure gradient first, fixing Re_tau; then restart it with Re_b.");
   if(cmd.contains("Re_b") && cmd.contains("Re_tau"))
-    throw std::invalid_argument("main_shs_" + to_string(P4EST_DIM) + "d.cpp: forcing a constant bulk velocity AND a constant pressure gradient cannot be done: choose one!");
+    throw std::invalid_argument("main_shs_" + std::to_string(P4EST_DIM) + "d.cpp: forcing a constant bulk velocity AND a constant pressure gradient cannot be done: choose one!");
   if(cmd.contains("restart") && !cmd.contains("Re_b") && !cmd.contains("Re_tau"))
-    throw std::invalid_argument("main_shs_" + to_string(P4EST_DIM) + "d.cpp: you need to specify either the desired Re_tau or the desired Re_b when restarting...");
+    throw std::invalid_argument("main_shs_" + std::to_string(P4EST_DIM) + "d.cpp: you need to specify either the desired Re_tau or the desired Re_b when restarting...");
 
   PetscErrorCode ierr;
   const double rho = 1.0;
@@ -1386,21 +885,7 @@ int main (int argc, char* argv[])
   double xyz_max [P4EST_DIM];
   const int periodic[P4EST_DIM] = {DIM(1, 0, 1)};
 
-  BoundaryConditionsDIM bc_v[P4EST_DIM];
-  BoundaryConditionsDIM bc_p;
-  detect_ridge* ridge_detector = NULL;
-  BCWALLTYPE_U* bc_wall_type_u = NULL;
-#ifdef P4_TO_P8
-  BCWALLTYPE_W* bc_wall_type_w = NULL;
-#endif
-
-  bc_v[0].setWallValues(bc_wall_value_u); // wall-type is simulation/restart-dependent, needs to be constructed later on
-  bc_v[1].setWallValues(bc_wall_value_v); bc_v[1].setWallTypes(bc_wall_type_v);
-#ifdef P4_TO_P8
-  bc_v[2].setWallValues(bc_wall_value_w); // wall-type is simulation/restart-dependent, needs to be constructed later on
-#endif
-  bc_p.setWallTypes(bc_wall_type_p); bc_p.setWallValues(bc_wall_value_p);
-
+  my_p4est_shs_channel_t channel(mpi);
   external_force_u_t external_force_u;
   external_force_v_t external_force_v;
 #ifdef P4_TO_P8
@@ -1408,10 +893,9 @@ int main (int argc, char* argv[])
 #endif
   CF_DIM *external_forces[P4EST_DIM] = {DIM(&external_force_u, &external_force_v, &external_force_w)};
 
-
   if(cmd.contains("restart"))
   {
-    const string backup_directory = cmd.get<string>("restart", "");
+    const std::string backup_directory = cmd.get<std::string>("restart", "");
     if(!is_folder(backup_directory.c_str()))
     {
       char error_msg[1024];
@@ -1501,44 +985,24 @@ int main (int argc, char* argv[])
     sl_order                = cmd.get<int>("sl_order", ns->get_sl_order());
     cfl                     = cmd.get<double>("cfl", ns->get_cfl());
 
-    if(level_set != NULL)
-    {
-      delete level_set; level_set = NULL;
-    }
-    P4EST_ASSERT(level_set == NULL);
-    if(ridge_detector != NULL)
-      delete ridge_detector;
-    ridge_detector = new detect_ridge(length ONLY3D(COMMA width COMMA !spanwise), pitch_to_delta, gas_fraction, *brick, lmax);
-    level_set = new LEVEL_SET(lmax, ridge_detector);
-    if(data != NULL)
-    {
+    channel.configure(brick, DIM(pitch_to_delta, gas_fraction, spanwise), lmax);
+
+    if(data != NULL) {
       delete data; data = NULL;
     }
     P4EST_ASSERT(data == NULL);
-    data = new splitting_criteria_cf_and_uniform_band_t(lmin, lmax, level_set, uniform_band, lip);
+    data = new splitting_criteria_cf_and_uniform_band_t(lmin, lmax, &channel, uniform_band, lip);
     splitting_criteria_t* to_delete = (splitting_criteria_t*) p4est_n->user_pointer;
-    bool fix_restarted_grid = (lmax!=to_delete->max_lvl);
+    bool fix_restarted_grid = (lmax != to_delete->max_lvl);
     delete to_delete;
     p4est_n->user_pointer   = (void*) data;
     p4est_nm1->user_pointer = (void*) data; // p4est_n and p4est_nm1 always point to the same splitting_criteria_t no need to delete the nm1 one, it's just been done
     ns->set_parameters(mu, rho, sl_order, uniform_band, threshold_split_cell, cfl);
 
-    if(bc_wall_type_u != NULL)
-      delete  bc_wall_type_u;
-#ifdef P4_TO_P8
-    if(bc_wall_type_w != NULL)
-      delete bc_wall_type_w;
-#endif
-    bc_wall_type_u = new BCWALLTYPE_U(ridge_detector);
-    bc_v[0].setWallTypes(*bc_wall_type_u);
-#ifdef P4_TO_P8
-    bc_wall_type_w = new BCWALLTYPE_W(ridge_detector);
-    bc_v[2].setWallTypes(*bc_wall_type_w);
-#endif
-    ns->set_bc(bc_v, &bc_p);
+    ns->set_bc(channel.get_bc_on_velocity(), channel.get_bc_on_pressure());
     ns->set_external_forces(external_forces);
     if(fix_restarted_grid)
-      ns->refine_coarsen_grid_after_restart(level_set, false);
+      ns->refine_coarsen_grid_after_restart(&channel, false);
   }
   else
   {
@@ -1590,16 +1054,6 @@ int main (int argc, char* argv[])
 
     connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, brick, periodic);
 
-    if(level_set != NULL)
-    {
-      delete level_set; level_set = NULL;
-    }
-    P4EST_ASSERT(level_set == NULL);
-    if(ridge_detector != NULL)
-      delete ridge_detector;
-    ridge_detector = new detect_ridge(length ONLY3D(COMMA width COMMA !spanwise), pitch_to_delta, gas_fraction, *brick, lmax);
-    level_set = new LEVEL_SET(lmax, ridge_detector);
-
     if(data != NULL)
     {
       delete data; data = NULL;
@@ -1607,12 +1061,14 @@ int main (int argc, char* argv[])
     P4EST_ASSERT(data == NULL);
     // lip_const multiplies the cell-diagonal internally, but  we need only dy --> so scale it appropriately
     const double lip_const = cmd.get<double>("lip", 1.2)*(2.0/ntree_y)/sqrt(SUMD(SQR(2.0/ntree_y), SQR(length/ntree_x), SQR(width/ntree_z)));
-    data  = new splitting_criteria_cf_and_uniform_band_t(lmin, lmax, level_set, uniform_band, lip_const);
+    channel.configure(brick, DIM(pitch_to_delta, gas_fraction, spanwise), lmax);
+
+    data  = new splitting_criteria_cf_and_uniform_band_t(lmin, lmax, &channel, uniform_band, lip_const);
 
     p4est_t* p4est_nm1 = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
     p4est_nm1->user_pointer = (void*) data;
 
-    for(int l=0; l<lmax; ++l)
+    for(int l = 0; l < lmax; ++l)
     {
       my_p4est_refine(p4est_nm1, P4EST_FALSE, refine_levelset_cf_and_uniform_band, NULL);
       my_p4est_partition(p4est_nm1, P4EST_FALSE, NULL);
@@ -1643,7 +1099,7 @@ int main (int argc, char* argv[])
 
     Vec phi;
     ierr = VecCreateGhostNodes(p4est_n, nodes_n, &phi); CHKERRXX(ierr);
-    sample_cf_on_nodes(p4est_n, nodes_n, *level_set, phi);
+    sample_cf_on_nodes(p4est_n, nodes_n, channel, phi);
 
     CF_DIM *vnm1[P4EST_DIM] = {DIM(&initial_velocity_unm1, &initial_velocity_vnm1, &initial_velocity_wnm1)};
     CF_DIM *vn  [P4EST_DIM] = {DIM(&initial_velocity_un  , &initial_velocity_vn  , &initial_velocity_wn  )};
@@ -1659,26 +1115,13 @@ int main (int argc, char* argv[])
     dt = MIN(DIM(min_dxyz[0], min_dxyz[1], min_dxyz[2]))/Re_tau(external_force_u, ns->get_rho(), ns->get_mu()); // no problem using Re_tau() here, external_force_u returns 1.0 by default, by solver's initialization
     ns->set_dt(dt, dt);
 
-    if(bc_wall_type_u != NULL)
-      delete  bc_wall_type_u;
-#ifdef P4_TO_P8
-    if(bc_wall_type_w != NULL)
-      delete bc_wall_type_w;
-#endif
-    bc_wall_type_u = new BCWALLTYPE_U(ridge_detector);
-    bc_v[0].setWallTypes(*bc_wall_type_u);
-#ifdef P4_TO_P8
-    bc_wall_type_w = new BCWALLTYPE_W(ridge_detector);
-    bc_v[2].setWallTypes(*bc_wall_type_w);
-#endif
-
-    ns->set_bc(bc_v, &bc_p);
+    ns->set_bc(channel.get_bc_on_velocity(), channel.get_bc_on_pressure());
     ns->set_external_forces(external_forces);
   }
 
   char out_dir[PATH_MAX], profile_path[PATH_MAX], vtk_path[PATH_MAX], vtk_name[PATH_MAX];
   if(cmd.contains("restart")){
-    ierr = PetscPrintf(mpi.comm(), "Simulation restarted from state saved in %s\n", (cmd.get<string>("restart")).c_str()); CHKERRXX(ierr); }
+    ierr = PetscPrintf(mpi.comm(), "Simulation restarted from state saved in %s\n", (cmd.get<std::string>("restart")).c_str()); CHKERRXX(ierr); }
   if(cmd.contains("Re_tau") || !cmd.contains("restart"))
   {
 #ifdef P4_TO_P8
@@ -1732,9 +1175,9 @@ int main (int argc, char* argv[])
   if(save_drag)
     initialize_drag_force_output(file_drag, out_dir, lmin, lmax, threshold_split_cell, cfl, sl_order, mpi, tstart);
 #ifdef P4_TO_P8
-  const string drag_output_format = "%g %g %g %g\n";
+  const std::string drag_output_format = "%g %g %g %g\n";
 #else
-  const string drag_output_format = "%g %g %g\n";
+  const std::string drag_output_format = "%g %g %g\n";
 #endif
   // initialize sections and mass flows through sections
   double section = -0.5*length;
@@ -1749,7 +1192,7 @@ int main (int argc, char* argv[])
     throw std::runtime_error(error_msg);
   }
   char file_slice_avg_velocity_profile[PATH_MAX];
-  vector<string> file_line_avg_velocity_profile;
+  vector<std::string> file_line_avg_velocity_profile;
   vector<unsigned int> bin_index;
   unsigned int nbins;
   if(save_profiles)
@@ -1918,7 +1361,7 @@ int main (int argc, char* argv[])
         for(size_t q=0; q<tree->quadrants.elem_count; ++q)
         {
           p4est_locidx_t quad_idx = tree->quadrants_offset+q;
-          corr_hodge = max(corr_hodge, fabs(ho[quad_idx]-hn[quad_idx]));
+          corr_hodge = MAX(corr_hodge, fabs(ho[quad_idx]-hn[quad_idx]));
         }
       }
       int mpiret = MPI_Allreduce(MPI_IN_PLACE, &corr_hodge, 1, MPI_DOUBLE, MPI_MAX, mpi.comm()); SC_CHECK_MPI(mpiret);
@@ -1947,7 +1390,7 @@ int main (int argc, char* argv[])
     {
       FILE* fp_monitor = fopen(file_monitoring, "a");
       if(fp_monitor==NULL)
-        throw std::runtime_error("main_shs_" + to_string(P4EST_DIM) + "d: could not open monitoring file.");
+        throw std::runtime_error("main_shs_" + std::to_string(P4EST_DIM) + "d: could not open monitoring file.");
       if(external_force_u.get_value() > 0.0)
         fprintf(fp_monitor, "%g %g %g\n", tn, Re_tau(external_force_u, ns->get_rho(), ns->get_mu()),  Re_b(mass_flow ONLY3D(COMMA ns->get_width_of_domain()), ns->get_rho(), ns->get_mu()));
       else
@@ -1963,7 +1406,7 @@ int main (int argc, char* argv[])
       {
         FILE* fp_drag = fopen(file_drag, "a");
         if(fp_drag==NULL)
-          throw std::runtime_error("main_shs_" + to_string(P4EST_DIM) + "d: could not open file for drag output.");
+          throw std::runtime_error("main_shs_" + std::to_string(P4EST_DIM) + "d: could not open file for drag output.");
         fprintf(fp_drag, drag_output_format.c_str(), tn, DIM(drag[0], drag[1], drag[2]));
         fclose(fp_drag);
       }
@@ -1999,7 +1442,7 @@ int main (int argc, char* argv[])
             sprintf(path_to_binary_slice_velocity_profile_nm1, "%s/slice_velocity_profile_nm1.bin", profile_path);
             if(file_exists(path_to_binary_slice_velocity_profile_nm1))
               if(remove(path_to_binary_slice_velocity_profile_nm1) != 0)
-                throw std::runtime_error("main_shs_:: error when deleting file " + string(path_to_binary_slice_velocity_profile_nm1));
+                throw std::runtime_error("main_shs_:: error when deleting file " + std::string(path_to_binary_slice_velocity_profile_nm1));
             write_vector_to_binary_file(slice_averaged_profile_nm1, path_to_binary_slice_velocity_profile_nm1);
 //            std::ofstream binary_slice_velocity_profile_nm1(path_to_binary_slice_velocity_profile_nm1, std::ios::out | std::ofstream::binary);
 //            std::copy(slice_averaged_profile_nm1.begin(), slice_averaged_profile_nm1.end(), std::ostreambuf_iterator<char>(binary_slice_velocity_profile_nm1));
@@ -2008,7 +1451,7 @@ int main (int argc, char* argv[])
           }
           fp_velocity_profile = fopen(file_slice_avg_velocity_profile, "a");
           if(fp_velocity_profile == NULL)
-            throw std::invalid_argument("main_shs_" + to_string(P4EST_DIM) + "d: could not open file for slice-averaged velocity profile output.");
+            throw std::invalid_argument("main_shs_" + std::to_string(P4EST_DIM) + "d: could not open file for slice-averaged velocity profile output.");
           for (int k = 0; k < ntree_y*(1<<lmax); ++k)
           {
             fprintf(fp_velocity_profile, " %.12g", time_averaged_slice_averaged_profile.at(k)/(tn - t_slice_average));
@@ -2052,7 +1495,7 @@ int main (int argc, char* argv[])
               sprintf(path_to_binary_line_velocity_profile_nm1, "%s/line_velocity_profile_nm1_index_%d.bin", profile_path, bin_idx);
               if(file_exists(path_to_binary_line_velocity_profile_nm1))
                 if(remove(path_to_binary_line_velocity_profile_nm1) != 0)
-                  throw std::runtime_error("main_shs_:: error when deleting file " + string(path_to_binary_line_velocity_profile_nm1));
+                  throw std::runtime_error("main_shs_:: error when deleting file " + std::string(path_to_binary_line_velocity_profile_nm1));
               write_vector_to_binary_file(line_averaged_profiles_nm1[bin_idx], path_to_binary_line_velocity_profile_nm1);
 //              std::ofstream binary_line_velocity_profile_nm1(path_to_binary_line_velocity_profile_nm1, std::ios::out | std::ofstream::binary);
 //              std::copy(line_averaged_profiles_nm1[bin_idx].begin(), line_averaged_profiles_nm1[bin_idx].end(), std::ostreambuf_iterator<char>(binary_line_velocity_profile_nm1));
@@ -2061,7 +1504,7 @@ int main (int argc, char* argv[])
             }
             fp_velocity_profile = fopen(file_line_avg_velocity_profile[bin_idx].c_str(), "a");
             if(fp_velocity_profile==NULL)
-              throw std::invalid_argument("main_shs_" + to_string(P4EST_DIM) + "d: could not open file for line-averaged velocity profile output.");
+              throw std::invalid_argument("main_shs_" + std::to_string(P4EST_DIM) + "d: could not open file for line-averaged velocity profile output.");
             for (int k = 0; k < ntree_y*(1<<lmax); ++k)
             {
               fprintf(fp_velocity_profile, " %.12g", time_averaged_line_averaged_profiles[bin_idx].at(k)/(tn-t_line_average[bin_idx]));
@@ -2115,8 +1558,8 @@ int main (int argc, char* argv[])
 
     if(do_accuracy_check)
     {
-      if(save_vtk) check_accuracy_of_solution(ns, pitch_to_delta, gas_fraction ONLY3D(COMMA spanwise), my_accuracy_check_errors, &vtk_path);
-      else         check_accuracy_of_solution(ns, pitch_to_delta, gas_fraction ONLY3D(COMMA spanwise), my_accuracy_check_errors);
+      channel.solve_for_truncated_series(2500); // 2500 : number of terms in the trunctation of the series solution
+      check_accuracy_of_solution(ns, channel, external_force_u, my_accuracy_check_errors, (save_vtk ? &vtk_path : NULL));
       ierr = PetscPrintf(mpi.comm(), "The face-error on u is %.6E\n", my_accuracy_check_errors[0]); CHKERRXX(ierr);
       ierr = PetscPrintf(mpi.comm(), "The face-error on v is %.6E\n", my_accuracy_check_errors[1]); CHKERRXX(ierr);
 #ifdef P4_TO_P8
@@ -2145,7 +1588,7 @@ int main (int argc, char* argv[])
     ierr = PetscPrintf(mpi.comm(), "Mean computational time spent on \n"); CHKERRXX(ierr);
     ierr = PetscPrintf(mpi.comm(), " viscosity step: %.5e\n", mean_viscosity_step_time); CHKERRXX(ierr);
     ierr = PetscPrintf(mpi.comm(), " projection step: %.5e\n", mean_projection_step_time); CHKERRXX(ierr);
-    ierr = PetscPrintf(mpi.comm(), " computing velocities at nodes: %.5e\n", mean_compute_velocity_at_nodes_time); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), " computing velocities at nodes: %.5e\n*", mean_compute_velocity_at_nodes_time); CHKERRXX(ierr);
     ierr = PetscPrintf(mpi.comm(), " grid update: %.5e\n", mean_update_time); CHKERRXX(ierr);
     ierr = PetscPrintf(mpi.comm(), " full iteration (total): %.5e\n", mean_full_iteration_time); CHKERRXX(ierr);
   }
@@ -2158,15 +1601,6 @@ int main (int argc, char* argv[])
   delete ns;        // deletes the navier-stokes solver
   // the brick and the connectivity are deleted within the above destructor...
   delete data;      // deletes the splitting criterion object
-  delete level_set; // deletes the levelset object
-  if(ridge_detector != NULL)
-    delete ridge_detector;
-  if(bc_wall_type_u != NULL)
-    delete bc_wall_type_u;
-#ifdef P4_TO_P8
-  if(bc_wall_type_w)
-    delete bc_wall_type_w;
-#endif
 
   return 0;
 }

@@ -31,9 +31,6 @@ VORO_LIBS_DEBUG         = -Wl,-rpath,$$VORO_DIR/lib -L$$VORO_DIR/lib -lvoro++
 # boost (needed for epitaxy only, ok if not provided otherwise)
 BOOST_INCLUDES          = /home/regan/libraries/boost/include
 
-# lapacke (needed for shs main file only, ok if not provided otherwise)
-LAPACKE_LIBS            = -llapacke
-
 QMAKE_CC                = /usr/local/bin/mpicc
 QMAKE_CXX               = /usr/local/bin/mpicxx
 QMAKE_LINK              = /usr/local/bin/mpicxx
