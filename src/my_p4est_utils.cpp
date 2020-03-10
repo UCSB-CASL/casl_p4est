@@ -206,20 +206,15 @@ void get_local_interpolation_weights(const p4est_t* p4est, const p4est_topidx_t&
   double d_00p = 1.0 - xyz[2];
 #endif
 
+  linear_weight[dir::v_mmm] = MULTD(d_p00, d_0p0, d_00p);
+  linear_weight[dir::v_pmm] = MULTD(d_m00, d_0p0, d_00p);
+  linear_weight[dir::v_mpm] = MULTD(d_p00, d_0m0, d_00p);
+  linear_weight[dir::v_ppm] = MULTD(d_m00, d_0m0, d_00p);
 #ifdef P4_TO_P8
-  linear_weight[dir::v_mmm] = d_p00*d_0p0*d_00p;
-  linear_weight[dir::v_pmm] = d_m00*d_0p0*d_00p;
-  linear_weight[dir::v_mpm] = d_p00*d_0m0*d_00p;
-  linear_weight[dir::v_ppm] = d_m00*d_0m0*d_00p;
   linear_weight[dir::v_mmp] = d_p00*d_0p0*d_00m;
   linear_weight[dir::v_pmp] = d_m00*d_0p0*d_00m;
   linear_weight[dir::v_mpp] = d_p00*d_0m0*d_00m;
   linear_weight[dir::v_ppp] = d_m00*d_0m0*d_00m;
-#else
-  linear_weight[dir::v_mmm] = d_p00*d_0p0;
-  linear_weight[dir::v_pmm] = d_m00*d_0p0;
-  linear_weight[dir::v_mpm] = d_p00*d_0m0;
-  linear_weight[dir::v_ppm] = d_m00*d_0m0;
 #endif
   if(second_derivative_weight != NULL)
   {
