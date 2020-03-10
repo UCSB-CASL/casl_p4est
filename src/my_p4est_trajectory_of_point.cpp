@@ -222,18 +222,18 @@ void trajectory_from_np1_to_nm1( p4est_t *p4est_n, p4est_nodes_t *nodes_n,
   }
   if(use_second_derivatives_vnm1)
 #ifdef P4_TO_P8
-    interp_nm1.set_input(vnm1, second_derivatives_vnm1[0], second_derivatives_vnm1[1], second_derivatives_vnm1[2], quadratic, P4EST_DIM);
+    interp_nm1.set_input(vnm1, second_derivatives_vnm1[0], second_derivatives_vnm1[1], second_derivatives_vnm1[2], quadratic_non_oscillatory_continuous_v2, P4EST_DIM);
 #else
-    interp_nm1.set_input(vnm1, second_derivatives_vnm1[0], second_derivatives_vnm1[1], quadratic, P4EST_DIM);
+    interp_nm1.set_input(vnm1, second_derivatives_vnm1[0], second_derivatives_vnm1[1], quadratic_non_oscillatory_continuous_v2, P4EST_DIM);
 #endif
   else
     interp_nm1.set_input(vnm1, quadratic, P4EST_DIM);
   interp_nm1.interpolate(data_star_nm1);
   if(use_second_derivatives_vn)
 #ifdef P4_TO_P8
-    interp_n.set_input(vn, second_derivatives_vn[0], second_derivatives_vn[1], second_derivatives_vn[2], quadratic, P4EST_DIM);
+    interp_n.set_input(vn, second_derivatives_vn[0], second_derivatives_vn[1], second_derivatives_vn[2], quadratic_non_oscillatory_continuous_v2, P4EST_DIM);
 #else
-    interp_n.set_input(vn, second_derivatives_vn[0], second_derivatives_vn[1], quadratic, P4EST_DIM);
+    interp_n.set_input(vn, second_derivatives_vn[0], second_derivatives_vn[1], quadratic_non_oscillatory_continuous_v2, P4EST_DIM);
 #endif
   else
     interp_n.set_input(vn, quadratic, P4EST_DIM);
@@ -297,18 +297,18 @@ void trajectory_from_np1_to_nm1( p4est_t *p4est_n, p4est_nodes_t *nodes_n,
   /* compute the velocities at the intermediate point */
   if(use_second_derivatives_vnm1)
 #ifdef P4_TO_P8
-    interp_nm1.set_input(vnm1, second_derivatives_vnm1[0], second_derivatives_vnm1[1], second_derivatives_vnm1[2], quadratic, P4EST_DIM);
+    interp_nm1.set_input(vnm1, second_derivatives_vnm1[0], second_derivatives_vnm1[1], second_derivatives_vnm1[2], quadratic_non_oscillatory_continuous_v2, P4EST_DIM);
 #else
-    interp_nm1.set_input(vnm1, second_derivatives_vnm1[0], second_derivatives_vnm1[1], quadratic, P4EST_DIM);
+    interp_nm1.set_input(vnm1, second_derivatives_vnm1[0], second_derivatives_vnm1[1], quadratic_non_oscillatory_continuous_v2, P4EST_DIM);
 #endif
   else
     interp_nm1.set_input(vnm1, quadratic, P4EST_DIM);
   interp_nm1.interpolate(data_star_nm1);
   if(use_second_derivatives_vn)
 #ifdef P4_TO_P8
-    interp_n.set_input(vn, second_derivatives_vn[0], second_derivatives_vn[1], second_derivatives_vn[2], quadratic, P4EST_DIM);
+    interp_n.set_input(vn, second_derivatives_vn[0], second_derivatives_vn[1], second_derivatives_vn[2], quadratic_non_oscillatory_continuous_v2, P4EST_DIM);
 #else
-    interp_n.set_input(vn, second_derivatives_vn[0], second_derivatives_vn[1], quadratic, P4EST_DIM);
+    interp_n.set_input(vn, second_derivatives_vn[0], second_derivatives_vn[1], quadratic_non_oscillatory_continuous_v2, P4EST_DIM);
 #endif
   else
     interp_n.set_input(vn, quadratic, P4EST_DIM);

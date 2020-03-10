@@ -464,6 +464,27 @@ void quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_t *p4est,
   double d_p00 = 1-x;
   double d_0m0 = y;
   double d_0p0 = 1-y;
+
+//  // Elyce Checking Something:
+//  bool s1 = d_m00<0. || d_m00>1.;
+//  bool s2 = d_p00<0. || d_p00>1.;
+//  bool s3 = d_0m0<0. || d_0m0>1.;
+//  bool s4 = d_0p0<0. || d_0p0>1.;
+
+//  double xyz_d[P4EST_DIM] = {2.57032393, 1.76367387};
+//  double xyz_dnm1[P4EST_DIM]={2.57033530, 1.76367584};
+//  bool s5 = (fabs(xyz_global[0]-xyz_d[0])<1.e-7) && (fabs(xyz_global[1]-xyz_d[1])<1.e-7);
+//  bool s6 = (fabs(xyz_global[0]-xyz_dnm1[0])<1.e-7) && (fabs(xyz_global[1]-xyz_dnm1[1])<1.e-7);
+
+////  printf("Checking interp values ! \n");
+//  if(s1 || s2 || s3 || s4 || s5 || s6){
+//      printf("HERE!!!!!!!!!!!\n"
+//             "d_m00 = %0.9f \n"
+//             "d_p00 = %0.9f \n"
+//             "d_0m0 = %0.9f \n"
+//             "d_0p0 = %0.9f \n"
+//             "(x, y) = (%0.6f, %0.6f ) \n \n \n ",d_m00,d_p00,d_0m0,d_0p0,xyz_global[0],xyz_global[1]);
+//    }
 #ifdef P4_TO_P8
   double d_00m = z;
   double d_00p = 1-z;
@@ -839,7 +860,8 @@ PetscErrorCode VecCreateGhostNodesBlock(const p4est_t *p4est, const p4est_nodes_
   PetscErrorCode ierr = 0;
   p4est_locidx_t num_local = nodes->num_owned_indeps;
   P4EST_ASSERT(block_size > 0);
-
+  P4EST_ASSERT(nodes->indep_nodes.elem_count - num_local>=0);
+  P4EST_ASSERT(p4est->mpisize+1>0);
   std::vector<PetscInt> ghost_nodes(nodes->indep_nodes.elem_count - num_local, 0);
   std::vector<PetscInt> global_offset_sum(p4est->mpisize + 1, 0);
 
