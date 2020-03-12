@@ -471,13 +471,13 @@ void quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_t *p4est,
 //  bool s3 = d_0m0<0. || d_0m0>1.;
 //  bool s4 = d_0p0<0. || d_0p0>1.;
 
-//  double xyz_d[P4EST_DIM] = {2.57032393, 1.76367387};
-//  double xyz_dnm1[P4EST_DIM]={2.57033530, 1.76367584};
-//  bool s5 = (fabs(xyz_global[0]-xyz_d[0])<1.e-7) && (fabs(xyz_global[1]-xyz_d[1])<1.e-7);
-//  bool s6 = (fabs(xyz_global[0]-xyz_dnm1[0])<1.e-7) && (fabs(xyz_global[1]-xyz_dnm1[1])<1.e-7);
+  double xyz_d[P4EST_DIM] = {2.62501467, 1.77735811};
+  double xyz_dnm1[P4EST_DIM]={2.62502926, 1.77737251};
+  bool s5 = (fabs(xyz_global[0]-xyz_d[0])<1.e-7) && (fabs(xyz_global[1]-xyz_d[1])<1.e-7);
+  bool s6 = (fabs(xyz_global[0]-xyz_dnm1[0])<1.e-7) && (fabs(xyz_global[1]-xyz_dnm1[1])<1.e-7);
 
-////  printf("Checking interp values ! \n");
-//  if(s1 || s2 || s3 || s4 || s5 || s6){
+//  printf("Checking interp values ! \n");
+//  if(/*s1 || s2 || s3 || s4 ||*/ s5 /*|| s6*/){
 //      printf("HERE!!!!!!!!!!!\n"
 //             "d_m00 = %0.9f \n"
 //             "d_p00 = %0.9f \n"
@@ -548,6 +548,28 @@ void quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_t *p4est,
     jm = 5; jp = 7; fdd_m += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jm*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]); fdd_p += Fdd[k*P4EST_CHILDREN*P4EST_DIM+jp*P4EST_DIM + i]*(w_xyz[jm]+w_xyz[jp]);
 #endif
     fdd[i] = MINMOD(fdd_m, fdd_p);
+
+    if(/*s1 || s2 || s3 || s4 ||*/ s5 || s6){
+
+        printf("HERE!!!!!!!!!!!\n"
+               "Point: %s \n"
+               "Quad xmin: %0.9g, ymin: %0.9g, height : %0.9g \n"
+               "Tree xmin: %0.9g, ymin: %0.9g \n"
+               "Tree xmax: %0.9g, ymax: %0.9g \n"
+               "Processor: %d \n"
+               "d_m00 = %0.9f \n"
+               "d_p00 = %0.9f \n"
+               "d_0m0 = %0.9f \n"
+               "d_0p0 = %0.9f \n"
+               "(x, y) = (%0.6f, %0.6f ) \n "
+               "d2T_dx2 vals : %0.9g, %0.9g, %0.9g, %0.9g \n"
+               "d2T_dy2 vals : %0.9g, %0.9g, %0.9g, %0.9g  \n"
+               " T vals : %0.9g, %0.9g, %0.9g, %0.9g, \n",
+               s5? "n": "nm1",xmin,ymin,qh,tree_xmin,tree_ymin,tree_xmax,tree_ymax,p4est->mpirank,d_m00,d_p00,d_0m0,d_0p0,xyz_global[0],xyz_global[1],
+            Fdd[k*P4EST_CHILDREN*P4EST_DIM+0*P4EST_DIM + 0],Fdd[k*P4EST_CHILDREN*P4EST_DIM+1*P4EST_DIM + 0],Fdd[k*P4EST_CHILDREN*P4EST_DIM+2*P4EST_DIM + 0],Fdd[k*P4EST_CHILDREN*P4EST_DIM+3*P4EST_DIM + 0],
+            Fdd[k*P4EST_CHILDREN*P4EST_DIM+0*P4EST_DIM + 1],Fdd[k*P4EST_CHILDREN*P4EST_DIM+1*P4EST_DIM + 1],Fdd[k*P4EST_CHILDREN*P4EST_DIM+2*P4EST_DIM + 1],Fdd[k*P4EST_CHILDREN*P4EST_DIM+3*P4EST_DIM + 1],
+            F[k*P4EST_CHILDREN+0],F[k*P4EST_CHILDREN+1],F[k*P4EST_CHILDREN+2],F[k*P4EST_CHILDREN+3]);
+      }
 
 #ifdef P4_TO_P8
     i = 2;

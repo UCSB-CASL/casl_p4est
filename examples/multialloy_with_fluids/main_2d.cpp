@@ -2706,13 +2706,13 @@ void do_backtrace(vec_and_ptr_t T_l,vec_and_ptr_t T_l_nm1,vec_and_ptr_t T_l_back
 
   SL_backtrace_interp.set_input(T_l.vec,T_l_dd.vec[0],T_l_dd.vec[1],/*linear*/quadratic_non_oscillatory_continuous_v2);
   SL_backtrace_interp.interpolate(T_l_backtrace.vec);
-  if(print_checkpoints) PetscPrintf(p4est->mpicomm,"Successfully interpolates T_l backtrace \n");
-
+  if(true) PetscPrintf(p4est->mpicomm,"Successfully interpolates T_l backtrace \n");
+  MPI_Barrier(p4est->mpicomm);
   if(advection_sl_order ==2){
       SL_backtrace_interp_nm1.set_input(T_l_nm1.vec,T_l_dd_nm1.vec[0],T_l_dd_nm1.vec[1], /*linear*/quadratic_non_oscillatory_continuous_v2);
       SL_backtrace_interp_nm1.interpolate(T_l_backtrace_nm1.vec);
     }
-  if(print_checkpoints) PetscPrintf(p4est->mpicomm,"Successfully interpolates T_l_nm1 backtrace \n");
+  if(true) PetscPrintf(p4est->mpicomm,"Successfully interpolates T_l_nm1 backtrace \n");
 
 
  // Check values
@@ -4809,7 +4809,7 @@ int main(int argc, char** argv) {
           if(print_checkpoints) PetscPrintf(mpi.comm(),"Finishes saving to VTK \n");
 
           }
-        if(stop_flag>0 && (tstep == stop_flag + 10)) MPI_Abort(mpi.comm(),1);
+        if(stop_flag>0 && (tstep == stop_flag + 1)) MPI_Abort(mpi.comm(),1);
         // --------------------------------------------------------------------------------------------------------------
         // Compute the jump in flux across the interface to use to advance the LSF (if solving Stefan:
         // --------------------------------------------------------------------------------------------------------------
@@ -5094,7 +5094,7 @@ int main(int argc, char** argv) {
               criteria.push_back(0.5);
             }
             if(refine_by_nondim_gradT){
-                gradT_threshold = 2.e-3;
+                gradT_threshold = 5.e-3;
                 // Coarsening instructions: (for dT/dx)
                 compare_opn.push_back(LESS_THAN);
 //                diag_opn.push_back(ABSOLUTE);
