@@ -149,16 +149,23 @@ void rel_qxyz_quad_fr_node(const p4est_t* p4est, const p4est_quadrant_t& quad, c
   p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[quad.p.piggy3.which_tree*P4EST_CHILDREN + 0];
   double tree_xyz_min[P4EST_DIM];
   for(unsigned char i = 0; i < P4EST_DIM; ++i)
-    tree_xyz_min[i]       = p4est->connectivity->vertices[3*v_m + i];
+    tree_xyz_min[i] = p4est->connectivity->vertices[3*v_m + i];
 
   for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
-#ifdef P4_TO_P8
-    p4est_qcoord_t quad_qxyz = (dim == dir::x ? quad.x  : (dim == dir::y ? quad.y   : quad.z));
-    p4est_qcoord_t node_qxyz = (dim == dir::x ? node->x : (dim == dir::y ? node->y  : node->z));
-#else
-    p4est_qcoord_t quad_qxyz = (dim == dir::x ? quad.x  : quad.y);
-    p4est_qcoord_t node_qxyz = (dim == dir::x ? node->x : node->y);
-#endif
+    p4est_qcoord_t quad_qxyz = P4EST_QUADRANT_LEN(quad.level + 1) + (dim == dir::x ? quad.x  :
+                                                                                 #ifdef P4_TO_P8
+                                                                                     (dim == dir::y ? quad.y : quad.z)
+                                                                                 #else
+                                                                                     quad.y
+                                                                                 #endif
+                                                                                     );
+    p4est_qcoord_t node_qxyz = (dim == dir::x ? node->x :
+                                            #ifdef P4_TO_P8
+                                                (dim == dir::y ? node->y : node->z)
+                                            #else
+                                                node->y
+                                            #endif
+                                                );
     xyz_rel[dim] = tree_dimensions[dim]*(double)quad_qxyz/(double)P4EST_ROOT_LEN + tree_xyz_min[dim] - xyz_node[dim];
     double xyz_diff_tree = tree_xyz_min[dim] - p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*node->p.which_tree + 0] + dim];
     p4est_topidx_t tree_xyz_diff = (p4est_topidx_t) round(xyz_diff_tree/tree_dimensions[dim]); // assumes trees of constant size across the domain and cartesian block-structured
@@ -197,33 +204,23 @@ void get_local_interpolation_weights(const p4est_t* p4est, const p4est_topidx_t&
   for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
     xyz[dir] = (xyz[dir] - qxyz_min[dir])/qh;
 
-  double d_m00 = xyz[0];
-  double d_p00 = 1.0 - xyz[0];
-  double d_0m0 = xyz[1];
-  double d_0p0 = 1.0 - xyz[1];
-#ifdef P4_TO_P8
-  double d_00m = xyz[2];
-  double d_00p = 1.0 - xyz[2];
-#endif
-
-  linear_weight[dir::v_mmm] = MULTD(d_p00, d_0p0, d_00p);
-  linear_weight[dir::v_pmm] = MULTD(d_m00, d_0p0, d_00p);
-  linear_weight[dir::v_mpm] = MULTD(d_p00, d_0m0, d_00p);
-  linear_weight[dir::v_ppm] = MULTD(d_m00, d_0m0, d_00p);
-#ifdef P4_TO_P8
-  linear_weight[dir::v_mmp] = d_p00*d_0p0*d_00m;
-  linear_weight[dir::v_pmp] = d_m00*d_0p0*d_00m;
-  linear_weight[dir::v_mpp] = d_p00*d_0m0*d_00m;
-  linear_weight[dir::v_ppp] = d_m00*d_0m0*d_00m;
-#endif
-  if(second_derivative_weight != NULL)
+  double d_[P4EST_DIM][2];
+  for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
   {
-    second_derivative_weight[0] = SQR((tree_xyz_max[0] - tree_xyz_min[0])*qh)*d_m00*d_p00;
-    second_derivative_weight[1] = SQR((tree_xyz_max[1] - tree_xyz_min[1])*qh)*d_0m0*d_0p0;
-#ifdef P4_TO_P8
-    second_derivative_weight[2] = SQR((tree_xyz_max[2] - tree_xyz_min[2])*qh)*d_00m*d_00p;
-#endif
+    d_[dim][0] = 1.0 - xyz[dim];
+    d_[dim][1] = xyz[dim];
   }
+
+#ifdef P4_TO_P8
+  for (unsigned char inc_z = 0; inc_z < 2; ++inc_z)
+#endif
+    for (unsigned char inc_y = 0; inc_y < 2; ++inc_y)
+      for (unsigned char inc_x = 0; inc_x < 2; ++inc_x)
+        linear_weight[SUMD(inc_x, 2*inc_y, 4*inc_z)] = MULTD(d_[0][inc_x], d_[1][inc_y], d_[2][inc_z]);
+  if(second_derivative_weight != NULL)
+    for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
+      second_derivative_weight[dim] = SQR((tree_xyz_max[dim] - tree_xyz_min[dim])*qh)*d_[dim][0]*d_[dim][1];
+
   return;
 }
 
@@ -980,81 +977,58 @@ void xyz_max(const p4est_t *p4est, double *xyz_max_)
     xyz_max_[i] = v2c[3*t2v[P4EST_CHILDREN*last_tree  + last_vertex ] + i];
 }
 
+#ifdef P4_TO_P8
+void fill_quad_oct_values_from_node_sampled_vector(OctValue* quad_val, const p4est_locidx_t& quad_idx, const p4est_nodes_t* nodes, const double** node_sampled_values_p, const unsigned int n_fields = 1)
+#else
+void fill_quad_oct_values_from_node_sampled_vector(QuadValue* quad_val, const p4est_locidx_t& quad_idx, const p4est_nodes_t* nodes, const double** node_sampled_values_p, const unsigned int n_fields = 1)
+#endif
+{
+  const p4est_locidx_t *q2n = nodes->local_nodes + P4EST_CHILDREN*quad_idx;
+
+  for (unsigned char inc_x = 0; inc_x < 2; ++inc_x)
+    for (unsigned char inc_y = 0; inc_y < 2; ++inc_y)
+#ifdef P4_TO_P8
+      for (unsigned char inc_z = 0; inc_z < 2; ++inc_z)
+#endif
+      {
+        const unsigned char idx_in_quad_oct_value = SUMD((1 << (P4EST_DIM - 1))*inc_x, (1 << (P4EST_DIM - 2))*inc_y, inc_z);
+        const p4est_locidx_t node_sub_idx_in_quad = q2n[SUMD(inc_x, 2*inc_y, 4*inc_z)];
+        for (unsigned int ff = 0; ff < n_fields; ++ff)
+          quad_val[ff].val[idx_in_quad_oct_value] = node_sampled_values_p[ff][node_sub_idx_in_quad];
+      }
+}
+
 double integrate_over_negative_domain_in_one_quadrant(const p4est_t *p4est, const p4est_nodes_t *nodes, const p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi, Vec f)
 {
 #ifdef P4_TO_P8
-  OctValue phi_values;
-  OctValue f_values;
+  OctValue  phi_and_function_quad_oct_values[2];
 #else
-  QuadValue phi_values;
-  QuadValue f_values;
+  QuadValue phi_and_function_quad_oct_values[2];
 #endif
 
-  double *P, *F;
+  const double *node_sampled_phi_and_function_p[2];
   PetscErrorCode ierr;
-  ierr = VecGetArray(phi, &P); CHKERRXX(ierr);
-  ierr = VecGetArray(f  , &F); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(phi, &node_sampled_phi_and_function_p[0]); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(f  , &node_sampled_phi_and_function_p[1]); CHKERRXX(ierr);
 
-  const p4est_locidx_t *q2n = nodes->local_nodes;
+  fill_quad_oct_values_from_node_sampled_vector(phi_and_function_quad_oct_values, quad_idx, nodes, node_sampled_phi_and_function_p, 2);
 
-  // TODO: This is terrible! QuadValue, Cube2, Point2, etc should be templated classes!
-#ifdef P4_TO_P8
-  phi_values.val[0] = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
-  phi_values.val[4] = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
-  phi_values.val[2] = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
-  phi_values.val[6] = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
-  phi_values.val[1] = P[ q2n[ quad_idx*P4EST_CHILDREN + 4 ] ];
-  phi_values.val[5] = P[ q2n[ quad_idx*P4EST_CHILDREN + 5 ] ];
-  phi_values.val[3] = P[ q2n[ quad_idx*P4EST_CHILDREN + 6 ] ];
-  phi_values.val[7] = P[ q2n[ quad_idx*P4EST_CHILDREN + 7 ] ];
+  ierr = VecRestoreArrayRead(phi, &node_sampled_phi_and_function_p[0]); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(f  , &node_sampled_phi_and_function_p[1]); CHKERRXX(ierr);
 
-  f_values.val[0]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
-  f_values.val[4]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
-  f_values.val[2]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
-  f_values.val[6]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
-  f_values.val[1]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 4 ] ];
-  f_values.val[5]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 5 ] ];
-  f_values.val[3]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 6 ] ];
-  f_values.val[7]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 7 ] ];
-
-#else
-  phi_values.val[0] = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
-  phi_values.val[2] = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
-  phi_values.val[1] = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
-  phi_values.val[3] = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
-
-  f_values.val[0]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
-  f_values.val[2]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
-  f_values.val[1]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
-  f_values.val[3]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
-#endif
-
-  ierr = VecRestoreArray(phi, &P); CHKERRXX(ierr);
-  ierr = VecRestoreArray(f  , &F); CHKERRXX(ierr);
-
-  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[0 + 0];
-  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
-  double tree_xmin = p4est->connectivity->vertices[3*v_m + 0];
-  double tree_xmax = p4est->connectivity->vertices[3*v_p + 0];
-  double tree_ymin = p4est->connectivity->vertices[3*v_m + 1];
-  double tree_ymax = p4est->connectivity->vertices[3*v_p + 1];
-
+  const p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[0 + 0];
+  const p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
+  const double* tree_xyx_min = p4est->connectivity->vertices + 3*v_m;
+  const double* tree_xyz_max = p4est->connectivity->vertices + 3*v_p;
   double dmin = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
-  double dx = (tree_xmax-tree_xmin)*dmin;
-  double dy = (tree_ymax-tree_ymin)*dmin;
-#ifdef P4_TO_P8
-  double tree_zmin = p4est->connectivity->vertices[3*v_m + 2];
-  double tree_zmax = p4est->connectivity->vertices[3*v_p + 2];
-  double dz = (tree_zmax-tree_zmin)*dmin;
-#endif
 
 #ifdef P4_TO_P8
-  Cube3 cube(0, dx, 0, dy, 0, dz);
+  Cube3 cube(0, dmin*(tree_xyz_max[0] - tree_xyx_min[0]), 0, dmin*(tree_xyz_max[1] - tree_xyx_min[1]), 0, dmin*(tree_xyz_max[2] - tree_xyx_min[2]));
 #else
-  Cube2 cube(0, dx, 0, dy);
+  Cube2 cube(0, dmin*(tree_xyz_max[0] - tree_xyx_min[0]), 0, dmin*(tree_xyz_max[1] - tree_xyx_min[1]));
 #endif
 
-  return cube.integral(f_values,phi_values);
+  return cube.integral(phi_and_function_quad_oct_values[1], phi_and_function_quad_oct_values[0]);
 }
 
 
@@ -1090,51 +1064,23 @@ double area_in_negative_domain_in_one_quadrant(const p4est_t *p4est, const p4est
   QuadValue phi_values;
 #endif
 
-  double *P;
+  const double *P;
   PetscErrorCode ierr;
-  ierr = VecGetArray(phi, &P); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(phi, &P); CHKERRXX(ierr);
+  fill_quad_oct_values_from_node_sampled_vector(&phi_values, quad_idx, nodes, &P);
+  ierr = VecRestoreArrayRead(phi, &P); CHKERRXX(ierr);
 
-  const p4est_locidx_t *q2n = nodes->local_nodes;
-
-#ifdef P4_TO_P8
-  phi_values.val[0] = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
-  phi_values.val[4] = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
-  phi_values.val[2] = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
-  phi_values.val[6] = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
-  phi_values.val[1] = P[ q2n[ quad_idx*P4EST_CHILDREN + 4 ] ];
-  phi_values.val[5] = P[ q2n[ quad_idx*P4EST_CHILDREN + 5 ] ];
-  phi_values.val[3] = P[ q2n[ quad_idx*P4EST_CHILDREN + 6 ] ];
-  phi_values.val[7] = P[ q2n[ quad_idx*P4EST_CHILDREN + 7 ] ];
-#else
-  phi_values.val[0] = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
-  phi_values.val[2] = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
-  phi_values.val[1] = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
-  phi_values.val[3] = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
-#endif
-
-  ierr = VecRestoreArray(phi, &P); CHKERRXX(ierr);
-
-  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[0 + 0];
-  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
-  double tree_xmin = p4est->connectivity->vertices[3*v_m + 0];
-  double tree_xmax = p4est->connectivity->vertices[3*v_p + 0];
-  double tree_ymin = p4est->connectivity->vertices[3*v_m + 1];
-  double tree_ymax = p4est->connectivity->vertices[3*v_p + 1];
-
+  const p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[0 + 0];
+  const p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
+  const double* tree_xyx_min = p4est->connectivity->vertices + 3*v_m;
+  const double* tree_xyz_max = p4est->connectivity->vertices + 3*v_p;
   double dmin = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
-  double dx = (tree_xmax-tree_xmin)*dmin;
-  double dy = (tree_ymax-tree_ymin)*dmin;
-#ifdef P4_TO_P8
-  double tree_zmin = p4est->connectivity->vertices[3*v_m + 2];
-  double tree_zmax = p4est->connectivity->vertices[3*v_p + 2];
-  double dz = (tree_zmax-tree_zmin)*dmin;
-#endif
 
 #ifdef P4_TO_P8
-  Cube3 cube(0, dx, 0, dy, 0, dz);
+  Cube3 cube(0, dmin*(tree_xyz_max[0] - tree_xyx_min[0]), 0, dmin*(tree_xyz_max[1] - tree_xyx_min[1]), 0, dmin*(tree_xyz_max[2] - tree_xyx_min[2]));
   return cube.volume_In_Negative_Domain(phi_values);
 #else
-  Cube2 cube(0, dx, 0, dy);
+  Cube2 cube(0, dmin*(tree_xyz_max[0] - tree_xyx_min[0]), 0, dmin*(tree_xyz_max[1] - tree_xyx_min[1]));
   return cube.area_In_Negative_Domain(phi_values);
 #endif
 }
@@ -1163,123 +1109,53 @@ double area_in_negative_domain(const p4est_t *p4est, const p4est_nodes_t *nodes,
 double integrate_over_interface_in_one_quadrant(const p4est_t *p4est, const p4est_nodes_t *nodes, const p4est_quadrant_t *quad, p4est_locidx_t quad_idx, Vec phi, Vec f)
 {
 #ifdef P4_TO_P8
-  OctValue phi_values;
-  OctValue f_values;
+  OctValue  phi_and_function_quad_oct_values[2];
 #else
-  QuadValue phi_values;
-  QuadValue f_values;
+  QuadValue phi_and_function_quad_oct_values[2];
 #endif
-  double *P, *F;
+
+  const double *node_sampled_phi_and_function_p[2];
   PetscErrorCode ierr;
-  ierr = VecGetArray(phi, &P); CHKERRXX(ierr);
-  ierr = VecGetArray(f  , &F); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(phi, &node_sampled_phi_and_function_p[0]); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(f  , &node_sampled_phi_and_function_p[1]); CHKERRXX(ierr);
 
-  const p4est_locidx_t *q2n = nodes->local_nodes;
-#ifdef P4_TO_P8
-  phi_values.val[0] = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
-  phi_values.val[4] = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
-  phi_values.val[2] = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
-  phi_values.val[6] = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
-  phi_values.val[1] = P[ q2n[ quad_idx*P4EST_CHILDREN + 4 ] ];
-  phi_values.val[5] = P[ q2n[ quad_idx*P4EST_CHILDREN + 5 ] ];
-  phi_values.val[3] = P[ q2n[ quad_idx*P4EST_CHILDREN + 6 ] ];
-  phi_values.val[7] = P[ q2n[ quad_idx*P4EST_CHILDREN + 7 ] ];
+  fill_quad_oct_values_from_node_sampled_vector(phi_and_function_quad_oct_values, quad_idx, nodes, node_sampled_phi_and_function_p, 2);
 
-  f_values.val[0]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
-  f_values.val[4]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
-  f_values.val[2]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
-  f_values.val[6]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
-  f_values.val[1]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 4 ] ];
-  f_values.val[5]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 5 ] ];
-  f_values.val[3]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 6 ] ];
-  f_values.val[7]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 7 ] ];
+  ierr = VecRestoreArrayRead(phi, &node_sampled_phi_and_function_p[0]); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(f  , &node_sampled_phi_and_function_p[1]); CHKERRXX(ierr);
 
-#else
-  phi_values.val[0] = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
-  phi_values.val[2] = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
-  phi_values.val[1] = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
-  phi_values.val[3] = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
-
-  f_values.val[0]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
-  f_values.val[2]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
-  f_values.val[1]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
-  f_values.val[3]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
-#endif
-  ierr = VecRestoreArray(phi, &P); CHKERRXX(ierr);
-  ierr = VecRestoreArray(f  , &F); CHKERRXX(ierr);
-
-  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[0 + 0];
-  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
-  double tree_xmin = p4est->connectivity->vertices[3*v_m + 0];
-  double tree_xmax = p4est->connectivity->vertices[3*v_p + 0];
-  double tree_ymin = p4est->connectivity->vertices[3*v_m + 1];
-  double tree_ymax = p4est->connectivity->vertices[3*v_p + 1];
-
+  const p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[0 + 0];
+  const p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
+  const double* tree_xyx_min = p4est->connectivity->vertices + 3*v_m;
+  const double* tree_xyz_max = p4est->connectivity->vertices + 3*v_p;
   double dmin = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
-  double dx = (tree_xmax-tree_xmin)*dmin;
-  double dy = (tree_ymax-tree_ymin)*dmin;
-#ifdef P4_TO_P8
-  double tree_zmin = p4est->connectivity->vertices[3*v_m + 2];
-  double tree_zmax = p4est->connectivity->vertices[3*v_p + 2];
-  double dz = (tree_zmax-tree_zmin)*dmin;
-#endif
 
 #ifdef P4_TO_P8
-  Cube3 cube(0, dx, 0, dy, 0, dz);
+  Cube3 cube(0, dmin*(tree_xyz_max[0] - tree_xyx_min[0]), 0, dmin*(tree_xyz_max[1] - tree_xyx_min[1]), 0, dmin*(tree_xyz_max[2] - tree_xyx_min[2]));
 #else
-  Cube2 cube(0, dx, 0, dy);
+  Cube2 cube(0, dmin*(tree_xyz_max[0] - tree_xyx_min[0]), 0, dmin*(tree_xyz_max[1] - tree_xyx_min[1]));
 #endif
-
-  return cube.integrate_Over_Interface(f_values,phi_values);
+  return cube.integrate_Over_Interface(phi_and_function_quad_oct_values[1], phi_and_function_quad_oct_values[0]);
 }
 
 double max_over_interface_in_one_quadrant(const p4est_nodes_t *nodes, p4est_locidx_t quad_idx, Vec phi, Vec f)
 {
 #ifdef P4_TO_P8
-  OctValue phi_values;
-  OctValue f_values;
+  OctValue  phi_and_function_quad_oct_values[2];
 #else
-  QuadValue phi_values;
-  QuadValue f_values;
+  QuadValue phi_and_function_quad_oct_values[2];
 #endif
-  double *P, *F;
+
+  const double *node_sampled_phi_and_function_p[2];
   PetscErrorCode ierr;
-  ierr = VecGetArray(phi, &P); CHKERRXX(ierr);
-  ierr = VecGetArray(f  , &F); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(phi, &node_sampled_phi_and_function_p[0]); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(f  , &node_sampled_phi_and_function_p[1]); CHKERRXX(ierr);
 
-  const p4est_locidx_t *q2n = nodes->local_nodes;
-#ifdef P4_TO_P8
-  phi_values.val[0] = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
-  phi_values.val[4] = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
-  phi_values.val[2] = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
-  phi_values.val[6] = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
-  phi_values.val[1] = P[ q2n[ quad_idx*P4EST_CHILDREN + 4 ] ];
-  phi_values.val[5] = P[ q2n[ quad_idx*P4EST_CHILDREN + 5 ] ];
-  phi_values.val[3] = P[ q2n[ quad_idx*P4EST_CHILDREN + 6 ] ];
-  phi_values.val[7] = P[ q2n[ quad_idx*P4EST_CHILDREN + 7 ] ];
+  fill_quad_oct_values_from_node_sampled_vector(phi_and_function_quad_oct_values, quad_idx, nodes, node_sampled_phi_and_function_p, 2);
 
-  f_values.val[0]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
-  f_values.val[4]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
-  f_values.val[2]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
-  f_values.val[6]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
-  f_values.val[1]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 4 ] ];
-  f_values.val[5]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 5 ] ];
-  f_values.val[3]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 6 ] ];
-  f_values.val[7]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 7 ] ];
+  ierr = VecRestoreArrayRead(phi, &node_sampled_phi_and_function_p[0]); CHKERRXX(ierr);
+  ierr = VecRestoreArrayRead(f  , &node_sampled_phi_and_function_p[1]); CHKERRXX(ierr);
 
-#else
-  phi_values.val[0] = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
-  phi_values.val[2] = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
-  phi_values.val[1] = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
-  phi_values.val[3] = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
-
-  f_values.val[0]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
-  f_values.val[2]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
-  f_values.val[1]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
-  f_values.val[3]   = F[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
-#endif
-  ierr = VecRestoreArray(phi, &P); CHKERRXX(ierr);
-  ierr = VecRestoreArray(f  , &F); CHKERRXX(ierr);
 
 #ifdef P4_TO_P8
   Cube3 cube(0, 1, 0, 1, 0, 1);
@@ -1287,7 +1163,7 @@ double max_over_interface_in_one_quadrant(const p4est_nodes_t *nodes, p4est_loci
   Cube2 cube(0, 1, 0, 1);
 #endif
 
-  return cube.max_Over_Interface(f_values,phi_values);
+  return cube.max_Over_Interface(phi_and_function_quad_oct_values[1], phi_and_function_quad_oct_values[0]);
 }
 
 double integrate_over_interface(const p4est_t *p4est, const p4est_nodes_t *nodes, Vec phi, Vec f)
@@ -1299,6 +1175,7 @@ double integrate_over_interface(const p4est_t *p4est, const p4est_nodes_t *nodes
     for(size_t quad_idx = 0; quad_idx < tree->quadrants.elem_count; ++quad_idx)
     {
       const p4est_quadrant_t *quad = (const p4est_quadrant_t*)sc_array_index(&tree->quadrants, quad_idx);
+
       sum += integrate_over_interface_in_one_quadrant(p4est, nodes, quad,
                                                       quad_idx + tree->quadrants_offset,
                                                       phi, f);
@@ -1353,15 +1230,8 @@ double compute_mean_curvature(const quad_neighbor_nodes_of_node_t &qnnn, double 
   double dyz = qnnn.dz_central(phi_x[1]); // d/dz{d/dy}
 #endif
 
-#ifdef P4_TO_P8
-  double abs   = MAX(EPS, sqrt(SQR(dx)+SQR(dy)+SQR(dz)));
-  double kappa = ((dyy+dzz)*SQR(dx) + (dxx+dzz)*SQR(dy) + (dxx+dyy)*SQR(dz) - 2*
-                   (dx*dy*dxy + dx*dz*dxz + dy*dz*dyz)) / abs/abs/abs;
-#else
-  double abs   = MAX(EPS, sqrt(SQR(dx)+SQR(dy)));
-  double kappa = (dxx*SQR(dy) - 2*dy*dx*dxy + dyy*SQR(dx)) / abs/abs/abs;
-#endif
-  return kappa;
+  double abs   = MAX(EPS, sqrt(SUMD(SQR(dx), SQR(dy), SQR(dz))));
+  return ((dyy ONLY3D(+ dzz))*SQR(dx) + (dxx ONLY3D(+ dzz))*SQR(dy) ONLY3D( + (dxx + dyy)*SQR(dz)) - 2*(dx*dy*dxy ONLY3D(+ dx*dz*dxz + dy*dz*dyz))) / abs/abs/abs;
 }
 
 double compute_mean_curvature(const quad_neighbor_nodes_of_node_t &qnnn, double *normals[])
@@ -1371,13 +1241,7 @@ double compute_mean_curvature(const quad_neighbor_nodes_of_node_t &qnnn, double 
     throw std::invalid_argument("normals cannot be NULL when computing curvature.");
 #endif
 
-#ifdef P4_TO_P8
-  double kappa = qnnn.dx_central(normals[0]) + qnnn.dy_central(normals[1]) + qnnn.dz_central(normals[2]);
-#else
-  double kappa = qnnn.dx_central(normals[0]) + qnnn.dy_central(normals[1]);
-#endif
-
-  return kappa;
+  return SUMD(qnnn.dx_central(normals[0]), qnnn.dy_central(normals[1]), qnnn.dz_central(normals[2]));
 }
 
 void compute_mean_curvature(const my_p4est_node_neighbors_t &neighbors, Vec phi, Vec phi_x[], Vec kappa)
@@ -1469,10 +1333,8 @@ void compute_normals(const quad_neighbor_nodes_of_node_t &qnnn, double *phi, dou
   normals[1] = qnnn.dy_central(phi);
 #ifdef P4_TO_P8
   normals[2] = qnnn.dz_central(phi);
-  double abs = sqrt(SQR(normals[0]) + SQR(normals[1]) + SQR(normals[2]));
-#else
-  double abs = sqrt(SQR(normals[0]) + SQR(normals[1]));
 #endif
+  double abs = sqrt(SUMD(SQR(normals[0]), SQR(normals[1]), SQR(normals[2])));
   if (abs < EPS)
     foreach_dimension(dim) normals[dim] = 0;
   else
@@ -1491,11 +1353,7 @@ void compute_normals(const my_p4est_node_neighbors_t &neighbors, Vec phi, Vec no
   foreach_dimension(dim) VecGetArray(normals[dim], &normals_p[dim]);
 
   foreach_node(n, neighbors.get_nodes()) {
-#ifdef P4_TO_P8
-    double abs = sqrt(SQR(normals_p[0][n]) + SQR(normals_p[1][n]) + SQR(normals_p[2][n]));
-#else
-    double abs = sqrt(SQR(normals_p[0][n]) + SQR(normals_p[1][n]));
-#endif
+    double abs = sqrt(SUMD(SQR(normals_p[0][n]), SQR(normals_p[1][n]), SQR(normals_p[2][n])));
 
     if (abs < EPS) {
       foreach_dimension(dim) normals_p[dim][n] = 0;
@@ -1538,49 +1396,23 @@ double interface_length_in_one_quadrant(const p4est_t *p4est, const p4est_nodes_
 #else
   QuadValue phi_values;
 #endif
-  double *P;
+  const double *P;
   PetscErrorCode ierr;
-  ierr = VecGetArray(phi, &P); CHKERRXX(ierr);
+  ierr = VecGetArrayRead(phi, &P); CHKERRXX(ierr);
+  fill_quad_oct_values_from_node_sampled_vector(&phi_values, quad_idx, nodes, &P);
+  ierr = VecRestoreArrayRead(phi, &P); CHKERRXX(ierr);
 
-  const p4est_locidx_t *q2n = nodes->local_nodes;
-#ifdef P4_TO_P8
-  phi_values.val[0] = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
-  phi_values.val[4] = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
-  phi_values.val[2] = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
-  phi_values.val[6] = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
-  phi_values.val[1] = P[ q2n[ quad_idx*P4EST_CHILDREN + 4 ] ];
-  phi_values.val[5] = P[ q2n[ quad_idx*P4EST_CHILDREN + 5 ] ];
-  phi_values.val[3] = P[ q2n[ quad_idx*P4EST_CHILDREN + 6 ] ];
-  phi_values.val[7] = P[ q2n[ quad_idx*P4EST_CHILDREN + 7 ] ];
-#else
-  phi_values.val[0] = P[ q2n[ quad_idx*P4EST_CHILDREN + 0 ] ];
-  phi_values.val[2] = P[ q2n[ quad_idx*P4EST_CHILDREN + 1 ] ];
-  phi_values.val[1] = P[ q2n[ quad_idx*P4EST_CHILDREN + 2 ] ];
-  phi_values.val[3] = P[ q2n[ quad_idx*P4EST_CHILDREN + 3 ] ];
-#endif
-  ierr = VecRestoreArray(phi, &P); CHKERRXX(ierr);
-
-  p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[0 + 0];
-  p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
-  double tree_xmin = p4est->connectivity->vertices[3*v_m + 0];
-  double tree_xmax = p4est->connectivity->vertices[3*v_p + 0];
-  double tree_ymin = p4est->connectivity->vertices[3*v_m + 1];
-  double tree_ymax = p4est->connectivity->vertices[3*v_p + 1];
-
+  const p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[0 + 0];
+  const p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[0 + P4EST_CHILDREN-1];
+  const double* tree_xyx_min = p4est->connectivity->vertices + 3*v_m;
+  const double* tree_xyz_max = p4est->connectivity->vertices + 3*v_p;
   double dmin = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
-  double dx = (tree_xmax-tree_xmin)*dmin;
-  double dy = (tree_ymax-tree_ymin)*dmin;
-#ifdef P4_TO_P8
-  double tree_zmin = p4est->connectivity->vertices[3*v_m + 2];
-  double tree_zmax = p4est->connectivity->vertices[3*v_p + 2];
-  double dz = (tree_zmax-tree_zmin)*dmin;
-#endif
 
 #ifdef P4_TO_P8
-  Cube3 cube(0, dx, 0, dy, 0, dz);
+  Cube3 cube(0, dmin*(tree_xyz_max[0] - tree_xyx_min[0]), 0, dmin*(tree_xyz_max[1] - tree_xyx_min[1]), 0, dmin*(tree_xyz_max[2] - tree_xyx_min[2]));
   return cube.interface_Area_In_Cell(phi_values);
 #else
-  Cube2 cube(0, dx, 0, dy);
+  Cube2 cube(0, dmin*(tree_xyz_max[0] - tree_xyx_min[0]), 0, dmin*(tree_xyz_max[1] - tree_xyx_min[1]));
   return cube.interface_Length_In_Cell(phi_values);
 #endif
 }
@@ -1701,14 +1533,9 @@ bool is_node_zpWall(const p4est_t *p4est, const p4est_indep_t *ni)
 
 bool is_node_Wall(const p4est_t *p4est, const p4est_indep_t *ni)
 {
-#ifdef P4_TO_P8
-  return ( is_node_xmWall(p4est, ni) || is_node_xpWall(p4est, ni) ||
-           is_node_ymWall(p4est, ni) || is_node_ypWall(p4est, ni) ||
-           is_node_zmWall(p4est, ni) || is_node_zpWall(p4est, ni) );
-#else
-  return ( is_node_xmWall(p4est, ni) || is_node_xpWall(p4est, ni) ||
-           is_node_ymWall(p4est, ni) || is_node_ypWall(p4est, ni) );
-#endif
+  return ( is_node_xmWall(p4est, ni) || is_node_xpWall(p4est, ni)
+           || is_node_ymWall(p4est, ni) || is_node_ypWall(p4est, ni)
+           ONLY3D(|| is_node_zmWall(p4est, ni) || is_node_zpWall(p4est, ni)));
 }
 
 bool is_node_Wall(const p4est_t *p4est, const p4est_indep_t *ni, bool is_wall[])
@@ -1851,14 +1678,9 @@ bool is_quad_Wall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadra
 
 bool is_quad_Wall(const p4est_t *p4est, p4est_topidx_t tr_it, const p4est_quadrant_t *qi)
 {
-#ifdef P4_TO_P8
-  return ( is_quad_xmWall(p4est, tr_it, qi) || is_quad_xpWall(p4est, tr_it, qi) ||
-           is_quad_ymWall(p4est, tr_it, qi) || is_quad_ypWall(p4est, tr_it, qi) ||
-           is_quad_zmWall(p4est, tr_it, qi) || is_quad_zpWall(p4est, tr_it, qi) );
-#else
-  return ( is_quad_xmWall(p4est, tr_it, qi) || is_quad_xpWall(p4est, tr_it, qi) ||
-           is_quad_ymWall(p4est, tr_it, qi) || is_quad_ypWall(p4est, tr_it, qi) );
-#endif
+  return ( is_quad_xmWall(p4est, tr_it, qi) || is_quad_xpWall(p4est, tr_it, qi)
+           || is_quad_ymWall(p4est, tr_it, qi) || is_quad_ypWall(p4est, tr_it, qi)
+           ONLY3D(|| is_quad_zmWall(p4est, tr_it, qi) || is_quad_zpWall(p4est, tr_it, qi)));
 }
 
 int quad_find_ghost_owner(const p4est_ghost_t *ghost, const p4est_locidx_t &ghost_idx, int r_down, int r_up)
@@ -1877,11 +1699,7 @@ int quad_find_ghost_owner(const p4est_ghost_t *ghost, const p4est_locidx_t &ghos
   return r_down;
 }
 
-#ifdef P4_TO_P8
-void sample_cf_on_local_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_3& cf, Vec f)
-#else
-void sample_cf_on_local_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_2& cf, Vec f)
-#endif
+void sample_cf_on_local_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_DIM& cf, Vec f)
 {
   double *f_p;
   PetscErrorCode ierr;
@@ -1929,21 +1747,13 @@ void sample_cf_on_local_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const 
     double z = (tree_zmax-tree_zmin)*node_z_fr_n(node) + tree_zmin;
 #endif
 
-#ifdef P4_TO_P8
-    f_p[i] = cf(x,y,z);
-#else
-    f_p[i] = cf(x,y);
-#endif
+    f_p[i] = cf(DIM(x, y, z));
   }
 
   ierr = VecRestoreArray(f, &f_p); CHKERRXX(ierr);
 }
 
-#ifdef P4_TO_P8
-void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_3& cf, Vec f)
-#else
-void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_2& cf, Vec f)
-#endif
+void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_DIM& cf, Vec f)
 {
   double *f_p;
   PetscErrorCode ierr;
@@ -1994,21 +1804,13 @@ void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_2& 
     double z = (tree_zmax-tree_zmin)*node_z_fr_n(node) + tree_zmin;
 #endif
 
-#ifdef P4_TO_P8
-    f_p[i] = cf(x,y,z);
-#else
-    f_p[i] = cf(x,y);
-#endif
+    f_p[i] = cf(DIM(x, y, z));
   }
 
   ierr = VecRestoreArray(f, &f_p); CHKERRXX(ierr);
 }
 
-#ifdef P4_TO_P8
-void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_3* cf_array[], Vec f)
-#else
-void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_2* cf_array[], Vec f)
-#endif
+void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_DIM* cf_array[], Vec f)
 {
   double *f_p;
   PetscInt bs;
@@ -2041,13 +1843,8 @@ void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_2* 
     node_xyz_fr_n(i, p4est, nodes, xyz);
 
     for (PetscInt j = 0; j<bs; j++) {
-#ifdef P4_TO_P8
-      const CF_3& cf = *cf_array[j];
-      f_p[i*bs + j] = cf(xyz[0], xyz[1], xyz[2]);
-#else
-      const CF_2& cf = *cf_array[j];
-      f_p[i*bs + j] = cf(xyz[0], xyz[1]);
-#endif
+      const CF_DIM& cf = *cf_array[j];
+      f_p[i*bs + j] = cf(xyz);
     }
   }
 
@@ -2055,11 +1852,7 @@ void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_2* 
 }
 
 
-#ifdef P4_TO_P8
-void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_3& cf, std::vector<double>& f)
-#else
-void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_2& cf, std::vector<double>& f)
-#endif
+void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_DIM& cf, std::vector<double>& f)
 {
 #ifdef CASL_THROWS
   {
@@ -2100,19 +1893,11 @@ void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_2& 
     double z = (tree_zmax-tree_zmin)*node_z_fr_n(node) + tree_zmin;
 #endif
 
-#ifdef P4_TO_P8
-    f[i] = cf(x,y,z);
-#else
-    f[i] = cf(x,y);
-#endif
+    f[i] = cf(DIM(x, y, z));
   }
 }
 
-#ifdef P4_TO_P8
-void sample_cf_on_cells(const p4est_t *p4est, p4est_ghost_t *ghost, const CF_3& cf, Vec f)
-#else
-void sample_cf_on_cells(const p4est_t *p4est, p4est_ghost_t *ghost, const CF_2& cf, Vec f)
-#endif
+void sample_cf_on_cells(const p4est_t *p4est, p4est_ghost_t *ghost, const CF_DIM& cf, Vec f)
 {
   double *f_p;
   PetscErrorCode ierr;
@@ -2153,11 +1938,7 @@ void sample_cf_on_cells(const p4est_t *p4est, p4est_ghost_t *ghost, const CF_2& 
       double z = quad_z_fr_q(quad_idx, tree_id, p4est, ghost);
 #endif
 
-#ifdef P4_TO_P8
-      f_p[quad_idx] = cf(x,y,z);
-#else
-      f_p[quad_idx] = cf(x,y);
-#endif
+      f_p[quad_idx] = cf(DIM(x, y, z));
     }
   }
 
@@ -2174,21 +1955,13 @@ void sample_cf_on_cells(const p4est_t *p4est, p4est_ghost_t *ghost, const CF_2& 
     double z = quad_z_fr_q(quad_idx, tree_id, p4est, ghost);
 #endif
 
-#ifdef P4_TO_P8
-    f_p[quad_idx] = cf(x,y,z);
-#else
-    f_p[quad_idx] = cf(x,y);
-#endif
+    f_p[quad_idx] = cf(DIM(x, y, z));
   }
 
   ierr = VecRestoreArray(f, &f_p); CHKERRXX(ierr);
 }
 
-#ifdef P4_TO_P8
-void sample_cf_on_nodes(p4est_t *p4est, p4est_nodes_t *nodes, const CF_3& cf, std::vector<double>& f)
-#else
-void sample_cf_on_nodes(p4est_t *p4est, p4est_nodes_t *nodes, const CF_2& cf, std::vector<double>& f)
-#endif
+void sample_cf_on_nodes(p4est_t *p4est, p4est_nodes_t *nodes, const CF_DIM& cf, std::vector<double>& f)
 {
 #ifdef CASL_THROWS
   {
@@ -2228,11 +2001,7 @@ void sample_cf_on_nodes(p4est_t *p4est, p4est_nodes_t *nodes, const CF_2& cf, st
     double z = (tree_zmax-tree_zmin)*node_z_fr_n(node) + tree_zmin;
 #endif
 
-#ifdef P4_TO_P8
-    f[i] = cf(x,y,z);
-#else
-    f[i] = cf(x,y);
-#endif
+    f[i] = cf(DIM(x, y, z));
   }
 }
 
@@ -2289,16 +2058,76 @@ std::istream& operator>> (std::istream& is, BoundaryConditionType& type)
   return is;
 }
 
-
+std::string convert_to_string(const dxyz_hodge_component& type)
+{
+  switch(type){
+  case u_component:
+    return std::string("u");
+    break;
+  case v_component:
+    return std::string("v");
+    break;
 #ifdef P4_TO_P8
-double quadrant_interp_t::operator()(double x, double y, double z) const
-{
-  double xyz_node[P4EST_DIM] = { x, y, z};
-#else
-double quadrant_interp_t::operator()(double x, double y) const
-{
-  double xyz_node[P4EST_DIM] = { x, y };
+  case w_component:
+    return std::string("w");
+    break;
 #endif
+  case uvw_components:
+    return std::string("uvw");
+    break;
+  default:
+    return std::string("unknown type of dxyz_hodge_component");
+    break;
+  }
+}
+
+
+std::ostream& operator<< (std::ostream& os, dxyz_hodge_component type)
+{
+  switch(type){
+  case u_component:
+  case v_component:
+#ifdef P4_TO_P8
+  case w_component:
+#endif
+    os << convert_to_string(type) << " component";
+    break;
+  case uvw_components:
+    os << "all components";
+    break;
+  default:
+    os << convert_to_string(type);
+    break;
+  }
+  return os;
+}
+
+std::istream& operator>> (std::istream& is, dxyz_hodge_component& type)
+{
+  std::string str;
+  is >> str;
+
+  if (str == "U" || str == "u" || str == "X" || str == "x")
+    type = u_component;
+  else if (str == "V" || str == "v" || str == "Y" || str == "y")
+    type = v_component;
+#ifdef P4_TO_P8
+  else if (str == "W" || str == "w" || str == "Z" || str == "z")
+    type = w_component;
+#endif
+  else if (str == "UVW" || str == "uvw" || str == "all" || str == "XYZ" || str == "xyz")
+    type = uvw_components;
+  else
+    throw std::invalid_argument("[ERROR]: Unknown dxyz_hodge_component entered");
+
+  return is;
+}
+
+
+
+double quadrant_interp_t::operator()(DIM(double x, double y, double z)) const
+{
+  double xyz_node[P4EST_DIM] = {DIM(x, y, z)};
 
 #ifdef CASL_THROWS
   if (F_ == NULL) throw std::invalid_argument("[CASL_ERROR]: Values are not provided for interpolation.");
@@ -2487,11 +2316,7 @@ void compute_normals_and_mean_curvature(const my_p4est_node_neighbors_t &neighbo
 
   foreach_node(n, nodes)
   {
-#ifdef P4_TO_P8
-    double norm = sqrt(SQR(normal_p[0][n]) + SQR(normal_p[1][n]) + SQR(normal_p[2][n]));
-#else
-    double norm = sqrt(SQR(normal_p[0][n]) + SQR(normal_p[1][n]));
-#endif
+    double norm = sqrt(SUMD(SQR(normal_p[0][n]), SQR(normal_p[1][n]), SQR(normal_p[2][n])));
 
     normal_p[0][n] = norm < EPS ? 0 : normal_p[0][n]/norm;
     normal_p[1][n] = norm < EPS ? 0 : normal_p[1][n]/norm;

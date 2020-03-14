@@ -95,9 +95,7 @@ void my_p4est_interpolation_t::set_input(Vec *F, unsigned int n_vecs_, const uns
 void my_p4est_interpolation_t::add_point_general(const p4est_locidx_t &node_idx_on_output, const double *xyz, const bool &return_if_non_local)
 {
   // first clip the coordinates
-  double xyz_clip [P4EST_DIM];
-  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-    xyz_clip[dir] = xyz[dir];
+  double xyz_clip [P4EST_DIM] = {DIM(xyz[0], xyz[1], xyz[2])};
   clip_in_domain(xyz_clip, xyz_min, xyz_max, periodic);
   
   p4est_quadrant_t best_match;
@@ -141,7 +139,7 @@ void my_p4est_interpolation_t::interpolate(double * const *Fo_p, const unsigned 
 
   const unsigned int n_outputs = n_vecs();
   P4EST_ASSERT(bs_f > 0);
-  P4EST_ASSERT((comp==ALL_COMPONENTS) || (comp < bs_f));
+  P4EST_ASSERT(comp == ALL_COMPONENTS || comp < bs_f);
 
   ierr = PetscLogEventBegin(log_my_p4est_interpolation_all_reduce, 0, 0, 0, 0); CHKERRXX(ierr);
 
@@ -186,7 +184,7 @@ void my_p4est_interpolation_t::interpolate(double * const *Fo_p, const unsigned 
   const input_buffer_t* input = &input_buffer[p4est->mpirank];
   MPI_Status status;
 
-  const unsigned int nelements_per_point = ((comp==ALL_COMPONENTS) && (bs_f > 1))? bs_f*n_outputs : n_outputs ;
+  const unsigned int nelements_per_point = (comp == ALL_COMPONENTS && bs_f > 1 ? bs_f*n_outputs : n_outputs);
   double results[nelements_per_point]; // serialized_results, for every locally owned point
 
   while (!done) {
@@ -200,7 +198,7 @@ void my_p4est_interpolation_t::interpolate(double * const *Fo_p, const unsigned 
       p4est_locidx_t node_idx = input->node_idx[it];
       interpolate(quad, xyz, results, comp);
       //de-serialize
-      if((comp==ALL_COMPONENTS) && (bs_f > 1))
+      if(comp == ALL_COMPONENTS && bs_f > 1)
         for (unsigned int k = 0; k < n_outputs; ++k)
           for (unsigned int cc = 0; cc < bs_f; ++cc)
             Fo_p[k][bs_f*node_idx+cc] = results[bs_f*k+cc];
@@ -268,7 +266,7 @@ void my_p4est_interpolation_t::process_incoming_query(const MPI_Status& status, 
   double xyz_clip[P4EST_DIM];
 
   const unsigned int nfunctions = n_vecs();
-  const unsigned int nelements_per_point = ((comp==ALL_COMPONENTS) && (bs_f > 1))? bs_f*nfunctions : nfunctions ;
+  const unsigned int nelements_per_point = (comp == ALL_COMPONENTS && bs_f > 1 ? bs_f*nfunctions : nfunctions);
   double results[nelements_per_point]; // serialized_results, for every point of interest
 
   std::vector<data_to_communicate>& buff = send_buffer[status.MPI_SOURCE];
@@ -297,7 +295,7 @@ void my_p4est_interpolation_t::process_incoming_query(const MPI_Status& status, 
     {
       interpolate(best_match, &xyz[i], results, comp);
       buff.push_back(int(i/P4EST_DIM));
-      if((comp==ALL_COMPONENTS) && (bs_f > 1))
+      if(comp == ALL_COMPONENTS && bs_f > 1)
         for (unsigned int k = 0; k < nfunctions; ++k)
           for (unsigned int cc = 0; cc < bs_f; ++cc)
             buff.push_back(results[bs_f*k+cc]);
@@ -330,7 +328,7 @@ void my_p4est_interpolation_t::process_incoming_reply(const MPI_Status& status, 
   mpiret = MPI_Get_count(&status, MPI_BYTE, &byte_count); SC_CHECK_MPI(mpiret);
   P4EST_ASSERT(byte_count%sizeof (data_to_communicate) == 0);
   const unsigned int nfunctions = n_vecs();
-  const unsigned int nelements_per_point = ((comp==ALL_COMPONENTS) && (bs_f > 1))? bs_f*nfunctions : nfunctions ;
+  const unsigned int nelements_per_point = (comp == ALL_COMPONENTS && bs_f > 1 ? bs_f*nfunctions : nfunctions);
   std::vector<data_to_communicate> reply_buffer (byte_count/sizeof (data_to_communicate));
   P4EST_ASSERT(byte_count%(((nelements_per_point+1)*sizeof (data_to_communicate))) ==0);
 
@@ -341,7 +339,7 @@ void my_p4est_interpolation_t::process_incoming_reply(const MPI_Status& status, 
   for (size_t i = 0; i<reply_buffer.size()/(nelements_per_point+1); i++) {
     p4est_locidx_t node_idx = input.node_idx[reply_buffer[(nelements_per_point+1)*i].index_in_input_buffer];
     size_t offset_in_reply = (nelements_per_point+1)*i+1;
-    if((comp==ALL_COMPONENTS) && (bs_f > 1))
+    if(comp == ALL_COMPONENTS && bs_f > 1)
       for (unsigned int k = 0; k < nfunctions; ++k)
         for (unsigned int cc = 0; cc < bs_f; ++cc)
           Fo_p[k][bs_f*node_idx+cc] = reply_buffer[offset_in_reply+k*bs_f+cc].value;

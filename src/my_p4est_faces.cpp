@@ -744,7 +744,7 @@ double my_p4est_faces_t::face_area_in_negative_domain(p4est_locidx_t f_idx, cons
   {
     if(dim == dir)
       continue;
-    area *= tree_dimensions[dir]/((double) (1 << quad->level));
+    area *= tree_dimensions[dim]/((double) (1 << quad->level));
   }
   if(phi_p != NULL)
   {
@@ -877,17 +877,24 @@ void check_if_faces_are_well_defined(my_p4est_node_neighbors_t *ngbd_n, my_p4est
   ierr = VecGhostUpdateEnd  (face_is_well_defined, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 }
 
-double interpolate_velocity_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4est_faces_t *faces,
-                                      my_p4est_cell_neighbors_t *ngbd_c, my_p4est_node_neighbors_t *ngbd_n,
-                                      p4est_locidx_t node_idx, Vec velocity_component, const unsigned char &dir,
+double interpolate_velocity_at_node_n(my_p4est_faces_t *faces, my_p4est_node_neighbors_t *ngbd_n, p4est_locidx_t node_idx, Vec velocity_component, const unsigned char &dir,
                                       Vec face_is_well_defined, int order, BoundaryConditionsDIM *bc, face_interpolator* interpolator_from_faces)
 {
   PetscErrorCode ierr;
 
+  const p4est_t* p4est        = faces->get_p4est();
+  const p4est_nodes_t* nodes  = ngbd_n->get_nodes();
+
   double xyz[P4EST_DIM];
   node_xyz_fr_n(node_idx, p4est, nodes, xyz);
 
+  /*
   p4est_indep_t *node = (p4est_indep_t*)sc_array_index(&nodes->indep_nodes, node_idx);
+  * [RAPHAEL:] substituted this latter line of code by the following to enforce and ensure const attribute in 'nodes' argument...
+   */
+  SC_ASSERT((size_t) node_idx < nodes->indep_nodes.elem_count);
+  const p4est_indep_t* node = (p4est_indep_t*) (nodes->indep_nodes.array + ((size_t) node_idx)*nodes->indep_nodes.elem_size);
+
 
   if(bc != NULL && is_node_Wall(p4est, node) && bc[dir].wallType(xyz) == DIRICHLET)
   {
@@ -900,71 +907,17 @@ double interpolate_velocity_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4es
     return bc[dir].wallValue(xyz);
   }
 
-  const double *dxyz    = faces->get_smallest_dxyz();
   const double *xyz_max = faces->get_xyz_max();
   const double *xyz_min = faces->get_xyz_min();
-  const int8_t max_lvl  = ((splitting_criteria_t *) p4est->user_pointer)->max_lvl;
-  const double qh = MIN(DIM(dxyz[0], dxyz[1], dxyz[2]));
   double domain_size[P4EST_DIM];
   for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
     domain_size[dim] = xyz_max[dim] - xyz_min[dim];
 
 
-  /* gather the neighborhood */
-#ifdef CASL_THROWS
-  bool is_local = false;
-#endif
   set_of_neighboring_quadrants ngbd_tmp;
-  p4est_locidx_t quad_idx;
-  p4est_topidx_t tree_idx;
-  double scaling = DBL_MAX;
-  for(char i = -1; i < 2; i += 2)
-    for(char j = -1; j < 2; j += 2)
-#ifdef P4_TO_P8
-      for(char k = -1; k < 2; k += 2)
-#endif
-      {
-        ngbd_n->find_neighbor_cell_of_node(node_idx, DIM(i, j, k), quad_idx, tree_idx);
-        if(quad_idx != NOT_A_VALID_QUADRANT)
-        {
-          p4est_quadrant_t quad;
-          if(quad_idx < p4est->local_num_quadrants)
-          {
-            p4est_tree_t* tree = p4est_tree_array_index(p4est->trees, tree_idx);
-            quad = *p4est_quadrant_array_index(&tree->quadrants, quad_idx - tree->quadrants_offset);
-          }
-          else
-            quad = *p4est_quadrant_array_index(&ghost->ghosts, quad_idx - p4est->local_num_quadrants);
-
-          quad.p.piggy3.local_num = quad_idx;
-
-#ifdef CASL_THROWS
-          is_local = is_local || quad_idx < p4est->local_num_quadrants;
-#endif
-
-          ngbd_tmp.insert(quad);
-          scaling = MIN(scaling, .5*qh*(double) (1 << (max_lvl - quad.level)));
-
-          ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, quad_idx, tree_idx, DIM(i, 0, 0));
-          ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, quad_idx, tree_idx, DIM(0, j, 0));
-#ifdef P4_TO_P8
-          ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, quad_idx, tree_idx,     0, 0, k );
-#endif
-          ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, quad_idx, tree_idx, DIM(i, j, 0));
-#ifdef P4_TO_P8
-          ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, quad_idx, tree_idx,     i, 0, k );
-          ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, quad_idx, tree_idx,     0, j, k );
-          ngbd_c->find_neighbor_cells_of_cell(ngbd_tmp, quad_idx, tree_idx,     i, j, k );
-#endif
-        }
-      }
-
-#ifdef CASL_THROWS
-  if(!is_local)
-  {
-    ierr = PetscPrintf(p4est->mpicomm, "Warning !! interpolate_velocity_at_node_n: the node has no local neighbor quadrant."); CHKERRXX(ierr);
-  }
-#endif
+  const double* tree_dim = faces->get_tree_dimensions();
+  double scaling = ngbd_n->gather_neighbor_cells_of_node(ngbd_tmp, faces->get_ngbd_c(), node_idx, true);
+  scaling *= 0.5*MIN(DIM(tree_dim[0], tree_dim[1], tree_dim[2]));
 
   std::set<indexed_and_located_face> face_ngbd;
   add_faces_to_set_and_clear_set_of_quad(faces, NO_VELOCITY, dir, face_ngbd, ngbd_tmp); // NO_VELOCITY for 2nd argument, because no "center_seed", we are not constructing a Voronoi cell --> bypass the check

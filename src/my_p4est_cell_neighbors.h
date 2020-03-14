@@ -22,6 +22,8 @@
  * [Comments by Raphael Egan, February 2020]
  */
 
+class my_p4est_node_neighbors_t;
+
 struct comparator_of_neighbor_cell
 {
   inline bool operator()(const p4est_quadrant_t& lhs, const p4est_quadrant_t& rhs) const
@@ -41,6 +43,7 @@ private:
   p4est_t *p4est;
   p4est_ghost_t *ghost;
   my_p4est_brick_t *myb;
+  double tree_dimensions[P4EST_DIM];
 
   // recursive routine used to find the appropriate children of a cell sharing
   /*!
@@ -59,6 +62,8 @@ public:
   my_p4est_cell_neighbors_t(my_p4est_hierarchy_t *hierarchy_)
     : hierarchy(hierarchy_), p4est(hierarchy_->p4est), ghost(hierarchy_->ghost), myb(hierarchy_->myb)
   {
+    for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
+      tree_dimensions[dim] = (hierarchy_->myb->xyz_max[dim] - hierarchy_->myb->xyz_min[dim])/hierarchy_->myb->nxyztrees[dim];
   }
 
   /*!
@@ -70,7 +75,7 @@ public:
    * \param [in] dir_xyz:  array of P4EST_DIM Cartesian search directions (all components must be either -1, 0 or +1, no other value accepted)
    * NOTES AND REMARKS:
    * - ngbd is not cleared on input --> the set can only be larger on output
-   * - the p.piggy3 members of the elements of ngbd are filled and valid on outputs (and so is it on input as well if ngbd is not empty!!!)
+   * - the p.piggy3 members of the elements of ngbd are filled and valid on outputs (and so must it be on input as well if ngbd is not empty!!!)
    * GENERAL PROCEDURE:
    * Let Q be the quadrant whose neighbors are searched for. The method first creates a (hypothetical) quadrant Q' of the same size as Q
    * but located relatively to Q as if it was the requested neighbor. Based on the information from Q' the hierarchy is enquired:
@@ -153,6 +158,13 @@ public:
     find_neighbor_cells_of_cell(ngbd, q, tr, DIM(search[0], search[1], search[2]));
     return;
   }
+
+  const p4est_t* get_p4est() const { return p4est; }
+  const my_p4est_brick_t* get_brick() const { return myb; }
+  const double* get_tree_dimensions() const { return tree_dimensions; }
+
 };
+
+double interpolate_cell_field_at_node(const p4est_locidx_t& node_idx, const my_p4est_cell_neighbors_t* c_ngbd, const my_p4est_node_neighbors_t* n_ngbd, const Vec cell_field, const BoundaryConditionsDIM* bc = NULL, const Vec phi = NULL);
 
 #endif /* !MY_P4EST_CELL_NEIGHBORS_H */

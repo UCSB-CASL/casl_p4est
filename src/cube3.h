@@ -84,14 +84,14 @@ public:
      * \param level_set_values ...
      * \return the are of the interface in the cell
      */
-    double interface_Area_In_Cell( OctValue& level_set_values) const;
+    double interface_Area_In_Cell(const OctValue& level_set_values) const;
 
     /*!
      * \brief compute the volume of the Cube3 in the negative domain
      * \param level_set_values the values of the level-set function at the corners of the Cube3
      * \return the volume of the Cube3 in the negative domain
      */
-  double volume_In_Negative_Domain( OctValue& level_set_values) const;
+  double volume_In_Negative_Domain(const OctValue& level_set_values) const;
 
     /*!
      * \brief integrate a quantity over the negative domain in the Cube3

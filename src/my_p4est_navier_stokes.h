@@ -30,8 +30,10 @@ typedef enum
   LOAD
 } save_or_load;
 
+
 class my_p4est_navier_stokes_t
 {
+  friend class my_p4est_shs_channel_t;
 protected:
 
   class splitting_criteria_vorticity_t : public splitting_criteria_tag_t
@@ -144,7 +146,8 @@ protected:
   wall_bc_value_hodge_t wall_bc_value_hodge;
   interface_bc_value_hodge_t interface_bc_value_hodge;
 
-  CF_DIM *external_forces[P4EST_DIM];
+  CF_DIM *external_forces_per_unit_volume[P4EST_DIM];
+  CF_DIM *external_forces_per_unit_mass[P4EST_DIM];
 
   my_p4est_interpolation_nodes_t *interp_phi;
 
@@ -159,67 +162,83 @@ protected:
 
   inline void get_Q_and_lambda_2_values(const quad_neighbor_nodes_of_node_t& qnnn, const double *vnp1_p[P4EST_DIM], const double& x_scaling, const double& U_scaling, double& Qvalue, double& lambda_2_value) const
   {
-    double S[P4EST_DIM][P4EST_DIM];
-    double omega[P4EST_DIM][P4EST_DIM];
-    double S_squared_plus_omega_squared[P4EST_DIM][P4EST_DIM];
-    double lambda_coeffs[P4EST_DIM+1];
+    struct low_tri_idx {
+      unsigned char operator()(const unsigned char& i, const unsigned char& j) const
+      {
+        P4EST_ASSERT(j <= i && i < P4EST_DIM);
+        return (i*(i + 1)/2 + j);
+      }
 
-    S[0][0] = qnnn.dx_central(vnp1_p[0])*x_scaling/U_scaling;                                     omega[0][0] = 0.0;
-    S[0][1] = 0.5*(qnnn.dy_central(vnp1_p[0]) + qnnn.dx_central(vnp1_p[1]))*x_scaling/U_scaling;  omega[0][1] = 0.5*(qnnn.dy_central(vnp1_p[0]) - qnnn.dx_central(vnp1_p[1]))*x_scaling/U_scaling;
+      double get_S_squared_plus_omega_squared(unsigned char i, unsigned char j, const double* S, const double* omega) const
+      {
+        double rr = 0.0;
+        for (unsigned char k = 0; k < P4EST_DIM; ++k)
+          rr += S[operator()(MAX(i, k), MIN(i, k))]*S[operator()(MAX(k, j), MIN(k, j))]
+              + (k < i && j < k ? omega[operator()(i, k)]*omega[operator()(k, j)] : 0.0)
+            - (k < i && k < j ? omega[operator()(i, k)]*omega[operator()(j, k)] : 0.0)
+          - (i < k && j < k ? omega[operator()(k, i)]*omega[operator()(k, j)] : 0.0)
+          + (i < k && k < j ? omega[operator()(k, i)]*omega[operator()(j, k)] : 0.0);
+        return rr;
+      }
+    } tri_idx;
+
+    // we will calculate only the lower triangular parts of the matrices
+    double S[P4EST_DIM*(P4EST_DIM + 1)/2];                            // strain-rate tensor, symmetric
+    double omega[P4EST_DIM*(P4EST_DIM + 1)/2];                        // vorticity tensor, anti-symmetric
+    double S_squared_plus_omega_squared[P4EST_DIM*(P4EST_DIM + 1)/2]; // symmetric
+    double lambda_coeffs[P4EST_DIM + 1];
+
+    S[tri_idx(0, 0)] = qnnn.dx_central(vnp1_p[0])*x_scaling/U_scaling;                                    omega[tri_idx(0, 0)] = 0.0;
+    S[tri_idx(1, 0)] = 0.5*(qnnn.dy_central(vnp1_p[0]) + qnnn.dx_central(vnp1_p[1]))*x_scaling/U_scaling; omega[tri_idx(1, 0)] = 0.5*(qnnn.dy_central(vnp1_p[0]) - qnnn.dx_central(vnp1_p[1]))*x_scaling/U_scaling;
+    S[tri_idx(1, 1)] = qnnn.dy_central(vnp1_p[1])*x_scaling/U_scaling;                                    omega[tri_idx(1, 1)] = 0.0;
 #ifdef P4_TO_P8
-    S[0][2] = 0.5*(qnnn.dz_central(vnp1_p[0]) + qnnn.dx_central(vnp1_p[2]))*x_scaling/U_scaling;  omega[0][2] = 0.5*(qnnn.dz_central(vnp1_p[0]) - qnnn.dx_central(vnp1_p[2]))*x_scaling/U_scaling;
-#endif
-    S[1][0] = 0.5*(qnnn.dx_central(vnp1_p[1]) + qnnn.dy_central(vnp1_p[0]))*x_scaling/U_scaling;  omega[1][0] = 0.5*(qnnn.dx_central(vnp1_p[1]) - qnnn.dy_central(vnp1_p[0]))*x_scaling/U_scaling;
-    S[1][1] = qnnn.dy_central(vnp1_p[1])*x_scaling/U_scaling;                                     omega[1][1] = 0.0;
-#ifdef P4_TO_P8
-    S[1][2] = 0.5*(qnnn.dz_central(vnp1_p[1]) + qnnn.dy_central(vnp1_p[2]))*x_scaling/U_scaling;  omega[1][2] = 0.5*(qnnn.dz_central(vnp1_p[1]) - qnnn.dy_central(vnp1_p[2]))*x_scaling/U_scaling;
-    S[2][0] = 0.5*(qnnn.dx_central(vnp1_p[2]) + qnnn.dz_central(vnp1_p[0]))*x_scaling/U_scaling;  omega[2][0] = 0.5*(qnnn.dx_central(vnp1_p[2]) - qnnn.dz_central(vnp1_p[0]))*x_scaling/U_scaling;
-    S[2][1] = 0.5*(qnnn.dy_central(vnp1_p[2]) + qnnn.dz_central(vnp1_p[1]))*x_scaling/U_scaling;  omega[2][1] = 0.5*(qnnn.dy_central(vnp1_p[2]) - qnnn.dz_central(vnp1_p[1]))*x_scaling/U_scaling;
-    S[2][2] = qnnn.dz_central(vnp1_p[2])*x_scaling/U_scaling;                                     omega[2][2] = 0.0;
+    S[tri_idx(2, 0)] = 0.5*(qnnn.dz_central(vnp1_p[0]) + qnnn.dx_central(vnp1_p[2]))*x_scaling/U_scaling; omega[tri_idx(2, 0)] = 0.5*(qnnn.dz_central(vnp1_p[0]) - qnnn.dx_central(vnp1_p[2]))*x_scaling/U_scaling;
+    S[tri_idx(2, 1)] = 0.5*(qnnn.dz_central(vnp1_p[1]) + qnnn.dy_central(vnp1_p[2]))*x_scaling/U_scaling; omega[tri_idx(2, 1)] = 0.5*(qnnn.dz_central(vnp1_p[1]) - qnnn.dy_central(vnp1_p[2]))*x_scaling/U_scaling;
+    S[tri_idx(2, 2)] = qnnn.dz_central(vnp1_p[2])*x_scaling/U_scaling;                                    omega[tri_idx(2, 2)] = 0.0;
 #endif
 
-    Qvalue = 0;
-    for (unsigned short ii = 0; ii < P4EST_DIM; ++ii) {
-      for (unsigned short jj = 0; jj < P4EST_DIM; ++jj){
-        Qvalue += 0.5*(SQR(omega[ii][jj])-SQR(S[ii][jj]));
-        S_squared_plus_omega_squared[ii][jj] = 0.0;
-        for (unsigned short kk = 0; kk < P4EST_DIM; ++kk){
-          S_squared_plus_omega_squared[ii][jj] += S[ii][kk]*S[kk][jj] + omega[ii][kk]*omega[kk][jj];
-        }
+    Qvalue = 0; // Q = 0.5*(sum of all squared terms in omega - sum of all squared terms in S)
+    for (unsigned char ii = 0; ii < P4EST_DIM; ++ii) {
+      Qvalue -= 0.5*SQR(S[tri_idx(ii, ii)]); // only diagonal of S is nonzero
+      S_squared_plus_omega_squared[tri_idx(ii, ii)] = tri_idx.get_S_squared_plus_omega_squared(ii, ii, S, omega);
+      for (unsigned char jj = 0; jj < ii; ++jj){
+        Qvalue += SQR(omega[tri_idx(ii, jj)]) - SQR(S[tri_idx(ii, jj)]); // no 0.5 factor by symmetry
+        S_squared_plus_omega_squared[tri_idx(ii, jj)] = tri_idx.get_S_squared_plus_omega_squared(ii, jj, S, omega);
       }
     }
-    lambda_coeffs[0] = 1.0;
-#ifdef P4_TO_P8
-    lambda_coeffs[1] = -S_squared_plus_omega_squared[0][0]-S_squared_plus_omega_squared[1][1]-S_squared_plus_omega_squared[2][2];
-    lambda_coeffs[2] = S_squared_plus_omega_squared[0][0]*S_squared_plus_omega_squared[1][1] + S_squared_plus_omega_squared[0][0]*S_squared_plus_omega_squared[2][2] + S_squared_plus_omega_squared[1][1]*S_squared_plus_omega_squared[2][2] - S_squared_plus_omega_squared[0][1]*S_squared_plus_omega_squared[1][0] - S_squared_plus_omega_squared[0][2]*S_squared_plus_omega_squared[2][0] - S_squared_plus_omega_squared[1][2]*S_squared_plus_omega_squared[2][1];
-    lambda_coeffs[3] = SQR(S_squared_plus_omega_squared[0][2])*S_squared_plus_omega_squared[1][1] + SQR(S_squared_plus_omega_squared[1][2])*S_squared_plus_omega_squared[0][0] + SQR(S_squared_plus_omega_squared[0][1])*S_squared_plus_omega_squared[2][2] - 2.0*S_squared_plus_omega_squared[0][1]*S_squared_plus_omega_squared[1][2]*S_squared_plus_omega_squared[0][2] - S_squared_plus_omega_squared[0][0]*S_squared_plus_omega_squared[1][1]*S_squared_plus_omega_squared[2][2];
-#else
-    lambda_coeffs[1] = -S_squared_plus_omega_squared[0][0]-S_squared_plus_omega_squared[1][1];
-    lambda_coeffs[2] = S_squared_plus_omega_squared[0][0]*S_squared_plus_omega_squared[1][1]-S_squared_plus_omega_squared[0][1]*S_squared_plus_omega_squared[1][0];
-#endif
 
-#ifdef DEBUG
+    lambda_coeffs[0] = 1.0;
+    lambda_coeffs[1] = -SUMD(S_squared_plus_omega_squared[tri_idx(0, 0)], S_squared_plus_omega_squared[tri_idx(1, 1)], S_squared_plus_omega_squared[tri_idx(2, 2)]);
+    lambda_coeffs[2] = S_squared_plus_omega_squared[tri_idx(0, 0)]*S_squared_plus_omega_squared[tri_idx(1, 1)] ONLY3D(+ S_squared_plus_omega_squared[tri_idx(0, 0)]*S_squared_plus_omega_squared[tri_idx(2, 2)] + S_squared_plus_omega_squared[tri_idx(1, 1)]*S_squared_plus_omega_squared[tri_idx(2, 2)])
+        - SQR(S_squared_plus_omega_squared[tri_idx(1, 0)]) ONLY3D(- SQR(S_squared_plus_omega_squared[tri_idx(2, 0)]) - SQR(S_squared_plus_omega_squared[tri_idx(2, 1)]));
 #ifdef P4_TO_P8
-    double discriminant = 18.0*lambda_coeffs[0]*lambda_coeffs[1]*lambda_coeffs[2]*lambda_coeffs[3] - 4.0*pow(lambda_coeffs[1], 3)*lambda_coeffs[3] + SQR(lambda_coeffs[1])*SQR(lambda_coeffs[2]) - 4.0*lambda_coeffs[0]*pow(lambda_coeffs[2], 3) - 27.0*SQR(lambda_coeffs[0])*SQR(lambda_coeffs[3]);
-#else
-    double discriminant = SQR(lambda_coeffs[1])-4.0*lambda_coeffs[0]*lambda_coeffs[2];
-#endif
-    P4EST_ASSERT(discriminant >=0.0);
+    lambda_coeffs[3] = SQR(S_squared_plus_omega_squared[tri_idx(2, 0)])*S_squared_plus_omega_squared[tri_idx(1, 1)] + SQR(S_squared_plus_omega_squared[tri_idx(2, 1)])*S_squared_plus_omega_squared[tri_idx(0, 0)] + SQR(S_squared_plus_omega_squared[tri_idx(1, 0)])*S_squared_plus_omega_squared[tri_idx(2, 2)]
+        - 2.0*S_squared_plus_omega_squared[tri_idx(1, 0)]*S_squared_plus_omega_squared[tri_idx(2, 1)]*S_squared_plus_omega_squared[tri_idx(2, 0)] - S_squared_plus_omega_squared[tri_idx(0, 0)]*S_squared_plus_omega_squared[tri_idx(1, 1)]*S_squared_plus_omega_squared[tri_idx(2, 2)];
 #endif
 
 #ifndef P4_TO_P8
-    lambda_2_value = 0.5*(-lambda_coeffs[1] - sqrt(SQR(lambda_coeffs[1]) - 4.0*lambda_coeffs[0]*lambda_coeffs[2]))/lambda_coeffs[0];
+    const double discriminant = SQR(S_squared_plus_omega_squared[tri_idx(0, 0)] - S_squared_plus_omega_squared[tri_idx(1, 1)]) + 4.0*SQR(S_squared_plus_omega_squared[tri_idx(1, 0)]);
+    P4EST_ASSERT(discriminant >= 0.0);
+#endif
+
+#ifndef P4_TO_P8
+    lambda_2_value = 0.5*(-lambda_coeffs[1] - sqrt(discriminant))/lambda_coeffs[0];
 #else
-    double pp = (3.0*lambda_coeffs[0]*lambda_coeffs[2]-SQR(lambda_coeffs[1]))/(3.0*SQR(lambda_coeffs[0]));
+    double pp = (3.0*lambda_coeffs[0]*lambda_coeffs[2] - SQR(lambda_coeffs[1]))/(3.0*SQR(lambda_coeffs[0])); // must be strictly negative
+#ifdef CASL_THROWS
+    if(pp > 0.0)
+      throw std::runtime_error("my_p4est_navier_stokes_t::get_Q_and_lambda_2_values(): obtained a positive pp");
+#endif
+    pp = MIN(pp, -EPS);
     double qq = (2.0*pow(lambda_coeffs[1], 3) - 9.0*lambda_coeffs[0]*lambda_coeffs[1]*lambda_coeffs[2] + 27.0*SQR(lambda_coeffs[0])*lambda_coeffs[3])/(27.0*pow(lambda_coeffs[0], 3));
     std::vector<double> lambda_values(P4EST_DIM);
-    if(pp > 0.0)
-      throw std::runtime_error("negative pp");
-    for (unsigned short kk = 0; kk < P4EST_DIM; ++kk)
+    for (unsigned char kk = 0; kk < P4EST_DIM; ++kk)
     {
-      if(fabs(3.0*qq*sqrt(-3.0/pp)/(2.0*pp)) > 1.0)
-        throw std::runtime_error("argument of acos > 1 in absolute value");
-      lambda_values[kk] = (lambda_coeffs[1]/(3.0*lambda_coeffs[0])) + 2.0*sqrt(-pp/3.0)*cos(acos(3.0*qq*sqrt(-3.0/pp)/(2.0*pp))/3.0 - 2.0*M_PI*((double) kk)/3.0);
+#ifdef CASL_THROWS
+      if(fabs(3.0*qq*sqrt(-3.0/pp)/(2.0*pp)) > 1.0 + EPS)
+        throw std::runtime_error("my_p4est_navier_stokes_t::get_Q_and_lambda_2_values(): argument of acos > 1 in absolute value");
+#endif
+      lambda_values[kk] = (lambda_coeffs[1]/(3.0*lambda_coeffs[0])) + 2.0*sqrt(-pp/3.0)*cos(acos(MAX(-1.0, MIN(1.0, 3.0*qq*sqrt(-3.0/pp)/(2.0*pp))))/3.0 - 2.0*M_PI*((double) kk)/3.0);
     }
     std::sort(lambda_values.begin(), lambda_values.end());
     lambda_2_value = lambda_values[1];
@@ -304,7 +323,34 @@ public:
 
   void set_phi(Vec phi);
 
-  void set_external_forces(CF_DIM **external_forces);
+  // [Raphael:] original behavior was for forcing term defined as a force per unit volume
+  inline void set_external_forces(CF_DIM **external_forces) { set_external_forces_per_unit_volume(external_forces); }
+
+  /*!
+   * \brief set_external_forces_per_unit_volume sets the external forcing term as a force *PER UNIT VOLUME*, that is,
+   * if you consider the generic momentum
+   *                      rho*D(u)/Dt = -grad(P) + rho*f + mu\nabla^2 u,
+   * this function sets (rho*f) and not f only!
+   *
+   * WARNING: if this function is called *after* set_external_forces_per_unit_mass was called, the forcing term will be
+   * reset to the new input, defined as a force per unit volume (the force per unit mass that was previously defined
+   * will be discarded)
+   * \param external_forces_per_unit_volume_ array of P4EST_DIM pointers to external forcing functions (in physical dimensions M/(L^2 T^2))
+   */
+  void set_external_forces_per_unit_volume(CF_DIM **external_forces_per_unit_volume_);
+
+  /*!
+   * \brief set_external_forces_per_unit_mass sets the external forcing term as a force *PER UNIT MASS*, that is,
+   * if you consider the generic momentum
+   *                      rho*D(u)/Dt = -grad(P) + rho*f + mu\nabla^2 u,
+   * this function sets f and not (rho*f)!
+   *
+   * WARNING: if this function is called *after* set_external_forces_per_unit_volume was called, the forcing term will be
+   * reset to the new input, defined as a force per unit mass (the force per unit volume that was previously defined
+   * will be discarded)
+   * \param external_forces_per_unit_mass_ array of P4EST_DIM pointers to external forcing functions (in physical dimensions L/T^2)
+   */
+  void set_external_forces_per_unit_mass  (CF_DIM **external_forces_per_unit_mass_);
 
   void set_bc(BoundaryConditionsDIM *bc_v, BoundaryConditionsDIM *bc_p);
 
@@ -332,6 +378,7 @@ public:
   inline p4est_ghost_t *get_ghost() { return ghost_n; }
 
   inline p4est_nodes_t *get_nodes() { return nodes_n; }
+  inline p4est_nodes_t *get_nodes_nm1() { return nodes_nm1; }
 
   inline my_p4est_faces_t* get_faces() { return faces_n; }
 
@@ -344,7 +391,7 @@ public:
   void copy_velocity_n(Vec* v_n_external){
     // Allows an external user to copy the object without interfering with NS solver's internal handling and objects
     PetscErrorCode ierr;
-    for(short dim = 0; dim<P4EST_DIM;dim++){
+    for(unsigned char dim = 0; dim < P4EST_DIM;dim++){
         ierr = VecCopyGhost(vn_nodes[dim],v_n_external[dim]); CHKERRXX(ierr);
       }
   }
@@ -354,7 +401,7 @@ public:
   void copy_velocity_np1(Vec* v_np1_external){
     // Allows an external user to copy the object without interfering with NS solver's internal handling and objects
     PetscErrorCode ierr;
-    for(short dim = 0; dim<P4EST_DIM;dim++){
+    for(unsigned char dim = 0; dim < P4EST_DIM;dim++){
         ierr = VecCopyGhost(vnp1_nodes[dim],v_np1_external[dim]); CHKERRXX(ierr);
       }
   }
@@ -364,6 +411,13 @@ public:
   inline Vec* get_vnp1() { return vnp1; }
 
   inline Vec get_hodge() { return hodge; }
+
+  inline void copy_dxyz_hodge(Vec local_face_vectors[P4EST_DIM]) const
+  {
+    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
+      PetscErrorCode ierr = VecCopy(dxyz_hodge[dir], local_face_vectors[dir]); CHKERRXX(ierr);
+    }
+  }
 
   void copy_hodge(Vec hodge_external){
     PetscErrorCode ierr;
@@ -392,27 +446,32 @@ public:
 
   inline double get_max_L2_norm_u() { return max_L2_norm_u; }
 
-  inline double get_mu() const {return mu;}
-  inline double get_split_threshold() const {return threshold_split_cell;}
-  inline double get_rho() const {return rho;}
-  inline double get_uniform_band() const {return uniform_band;}
-  inline double get_cfl() const {return n_times_dt;}
-  inline int get_sl_order() const {return sl_order;}
-  inline double get_length_of_domain() const {return (xyz_max[0]-xyz_min[0]);}
-  inline double get_height_of_domain() const {return (xyz_max[1]-xyz_min[1]);}
+  inline double get_mu()                const { return mu; }
+  inline double get_split_threshold()   const { return threshold_split_cell; }
+  inline double get_rho()               const { return rho; }
+  inline double get_nu()                const { return mu/rho; }
+  inline double get_uniform_band()      const { return uniform_band; }
+  inline double get_cfl()               const { return n_times_dt; }
+  inline int get_sl_order()             const { return sl_order; }
+  inline int    get_lmax()              const { return ((splitting_criteria_t*) p4est_n->user_pointer)->max_lvl; }
+  inline int    get_lmin()              const { return ((splitting_criteria_t*) p4est_n->user_pointer)->min_lvl; }
+  inline MPI_Comm get_mpicomm()         const { return p4est_n->mpicomm; }
+  inline int      get_mpirank()         const { return p4est_n->mpirank; }
+  inline int      get_mpisize()         const { return p4est_n->mpisize; }
+  inline double get_length_of_domain()  const { return (xyz_max[0] - xyz_min[0]); }
+  inline double get_height_of_domain()  const { return (xyz_max[1] - xyz_min[1]); }
 #ifdef P4_TO_P8
-  inline double get_width_of_domain() const {return (xyz_max[2]-xyz_min[2]);}
+  inline double get_width_of_domain()   const { return (xyz_max[2] - xyz_min[2]); }
 #endif
-  inline my_p4est_brick_t* get_brick() const {return brick;}
+  inline my_p4est_brick_t* get_brick()  const  { return brick; }
 
   void solve_viscosity()
   {
     my_p4est_poisson_faces_t* face_solver = NULL;
     solve_viscosity(face_solver);
     delete face_solver;
-;
   }
-  void solve_viscosity(my_p4est_poisson_faces_t* &face_poisson_solver, const bool use_initial_guess = false, const KSPType ksp = KSPBCGS, const PCType pc = PCSOR);
+  void solve_viscosity(my_p4est_poisson_faces_t* &face_poisson_solver, const bool& use_initial_guess = false, const KSPType& ksp = KSPBCGS, const PCType& pc = PCSOR);
 
   void solve_projection()
   {
@@ -420,28 +479,28 @@ public:
     solve_projection(cell_solver);
     delete cell_solver;
   }
-  void solve_projection(my_p4est_poisson_cells_t* &cell_poisson_solver, const bool use_initial_guess = false, const KSPType ksp = KSPBCGS, const PCType pc = PCSOR);
+  double solve_projection(my_p4est_poisson_cells_t* &cell_poisson_solver, const bool& use_initial_guess = false, const KSPType& ksp = KSPBCGS, const PCType& pc = PCSOR,
+                          const bool& shift_to_zero_mean_if_floating = true, Vec former_dxyz_hodge[P4EST_DIM] = NULL, const dxyz_hodge_component& dxyz_hodge_chek = uvw_components);
 
   /*!
-   * \brief enforce_mass_flow enforces the mass flow in a desired direction to be equivalent to one of a given mean (bulk) velocity.
+   * \brief get_correction_in_hodge_derivative_for_enforcing_mass_flow
    * This function calculates the (constant-in-space) correction to the gradient of the Hodge variable to enforce a desired mass flow.
-   * The mass-flow forcing direction MUST be periodic (otherwise the approach is simply inconsistent).
-   * This function is ideally called after the projection step and its output should be used to dynamically adapt the driving body
-   * force that enforces the constant mass flow rate (possibly with an added convergence criterion within the inner loop).
-   * \param force_in_direction          [in]    array of P4EST_DIM flags, forcing is applied in the direction dir if force_in_direction[dir] is true
-   * \param desired_mean_velocity       [in]    array of P4EST_DIM doubles, specifying the desired bulk velocity in the forcing direction (the value
-   *                                            desired_mean_velocity[dd] is disregarded if force_in_direction[dd] is false)
-   * \param forcing_mean_hodge_gradient [out]   array of P4EST_DIM doubles, returning the correction to gradient component of the the
-   *                                            Hodge variable to enforce the desired mass flow --> can be used to correct the driving force term
-   *                                            afterwards
-   * \param mass_flow                   [inout] (optional) array of P4EST_DIM doubles, mass_flow[d] is the mass flow along cartesian direction d
-   *                                            before forcing on input, after forcing on input. Only the values for which force_in_direction[d] is
-   *                                            true are relevant on input. If NULL, the function calculates the relevant value(s) internally.
+   * The mass-flow forcing direction MUST be periodic (otherwise the approach is simply incoherent).
+   * This function is ideally called after the projection step and its output should be used to dynamically adapt the driving body force
+   * in order to enforce the desired mass flow rate in an inner loop, for every time step.
+   * \param force_direction               [in]    Cartesian direction in which the forcing is applied (the problem must be periodic along that direction)
+   * \param desired_mean_velocity         [in]    double value, specifying the desired bulk velocity in the forcing direction
+   * \param mass_flow                     [in]    (optional) pointer to a constant double, *mass_flow is the mass flow along the Cartesian direction force_direction
+   *                                              before forcing. If NULL, the function calculates the relevant value internally.
+   * \return the (constant-in-space) correction required in the partial derivative of the Hodge variable along the Cartesian direction 'force_direction' that would be
+   * required to have the desired mass flow --> can be used to correct the driving force term afterwards
    * Raphael EGAN
    */
-  void enforce_mass_flow(const bool* force_in_direction, const double* desired_mean_velocity, double* forcing_mean_hodge_gradient, double* mass_flow = NULL);
+  double get_correction_in_hodge_derivative_for_enforcing_mass_flow(const unsigned char& force_direction, const double& desired_mean_velocity, const double* mass_flow = NULL);
 
   void compute_velocity_at_nodes(const bool store_interpolators = false);
+
+  double interpolate_pressure_at_node(const p4est_locidx_t& node_idx) const;
 
   void set_dt(double dt_nm1, double dt_n);
 
@@ -474,11 +533,8 @@ public:
 
   bool update_from_tn_to_tnp1(const CF_DIM *level_set=NULL, bool keep_grid_as_such=false, bool do_reinitialization=true);
 
-#ifdef P4_TO_P8
-  void update_from_tn_to_tnp1_grid_external(Vec phi_np1,p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, p4est_ghost_t* ghost_np1, my_p4est_node_neighbors_t* ngbd_np1, my_p4est_faces_t* faces_np1, my_p4est_cell_neighbors_t* ngbd_c_np1, my_p4est_hierarchy_t* hierarchy_np1);
-#else
+
   void update_from_tn_to_tnp1_grid_external(Vec phi_np1, p4est_t* p4est_np1, p4est_nodes_t* nodes_np1, p4est_ghost_t* ghost_np1, my_p4est_node_neighbors_t* ngbd_np1, my_p4est_faces_t* faces_np1, my_p4est_cell_neighbors_t* ngbd_c_np1, my_p4est_hierarchy_t* hierarchy_np1);
-#endif
   void compute_pressure();
 
   void compute_forces(double *f);
@@ -572,7 +628,7 @@ public:
    *                                        the grid was uniform.
    * Raphael EGAN
    */
-  void get_slice_averaged_vnp1_profile(const unsigned short& vel_component, const unsigned short& axis, std::vector<double>& avg_velocity_profile, const double u_scaling = 1.0);
+  void get_slice_averaged_vnp1_profile(const unsigned char& vel_component, const unsigned char& axis, std::vector<double>& avg_velocity_profile, const double u_scaling = 1.0);
 
   /*!
    * \brief get_line_averaged_vnp1_profiles: calculates line-averaged profiles for a velocity component in the domain. The direction along which
@@ -610,7 +666,7 @@ public:
    * direction between the centers of the neighboring quadrants. (A weighing factor 0.5 applies for extremity-points if not equivalent to the considered
    * face)
    * Note 1:            calculations done at the faces (--> check if boundary conditions are correctly enforced even before interpolation).
-   * Note 2:            proc r has the correct result after completion for all profile indices p_idx such that (p_idx%mpi_size==r).
+   * Note 2:            proc r has the correct result after completion for all profile indices p_idx such that (p_idx%mpi_size == r).
    * Note 3:            assumes no interface in the domain, i.e. levelset < 0 everywhere.
    * local complexity:  every processor loops through their local faces only once.
    * communication:     for every profile index p_idx, a non-blocking MPI_Ireduce to proc r=p_dx%mpi_size is performed, so that only proc r holds the
@@ -623,13 +679,11 @@ public:
    *                                        These vectors are resized (if needed) to contain brick->nxyztrees[tranverse_direction]*(1<<data->max_lvl) elements as if
    *                                        the grid was uniform.
    */
-  void get_line_averaged_vnp1_profiles(const unsigned short& vel_component, const unsigned short& axis,
-                                     #ifdef P4_TO_P8
-                                       const unsigned short& averaging_direction,
-                                     #endif
+  void get_line_averaged_vnp1_profiles(DIM(const unsigned char& vel_component, const unsigned char& axis, const unsigned char& averaging_direction),
                                        const std::vector<unsigned int>& bin_idx, std::vector<std::vector<double> >& avg_velocity_profile, const double u_scaling = 1.0);
 
-  inline double alpha() const { return ((sl_order == 1)? (1.0): ((2.0*dt_n+dt_nm1)/(dt_n+dt_nm1)));}
+  inline double alpha() const { return (sl_order == 1 ? 1.0 : (2.0*dt_n + dt_nm1)/(dt_n + dt_nm1)); }
+  inline double beta()  const { return (sl_order == 1 ? 0.0 : -dt_n/(dt_n + dt_nm1)); }
 
   void coupled_problem_partial_destructor();
 

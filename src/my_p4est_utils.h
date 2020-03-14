@@ -350,6 +350,16 @@ typedef enum {
   IGNORE
 } BoundaryConditionType;
 
+typedef enum
+{
+  u_component = dir::x,
+  v_component = dir::y,
+#ifdef P4_TO_P8
+  w_component = dir::z,
+#endif
+  uvw_components
+} dxyz_hodge_component;
+
 class mixed_interface
 {
 public:
@@ -359,6 +369,10 @@ public:
 
 std::ostream& operator << (std::ostream& os, BoundaryConditionType  type);
 std::istream& operator >> (std::istream& is, BoundaryConditionType& type);
+
+std::string convert_to_string(const dxyz_hodge_component& type);
+std::ostream& operator << (std::ostream& os, dxyz_hodge_component type);
+std::istream& operator >> (std::istream& is, dxyz_hodge_component& type);
 
 class WallBC2D
 {
@@ -1097,21 +1111,13 @@ inline void p4est_dxyz_max(const p4est_t* p4est, double *dxyz)
 inline double p4est_diag_min(const p4est_t* p4est) {
   double dx[P4EST_DIM];
   p4est_dxyz_min(p4est, dx);
-#ifdef P4_TO_P8
-  return sqrt(SQR(dx[0]) + SQR(dx[1]) + SQR(dx[2]));
-#else
-  return sqrt(SQR(dx[0]) + SQR(dx[1]));
-#endif
+  return sqrt(SUMD(SQR(dx[0]), SQR(dx[1]), SQR(dx[2])));
 }
 
 inline double p4est_diag_max(const p4est_t* p4est) {
   double dx[P4EST_DIM];
   p4est_dxyz_max(p4est, dx);
-#ifdef P4_TO_P8
-  return sqrt(SQR(dx[0]) + SQR(dx[1]) + SQR(dx[2]));
-#else
-  return sqrt(SQR(dx[0]) + SQR(dx[1]));
-#endif
+  return sqrt(SUMD(SQR(dx[0]), SQR(dx[1]), SQR(dx[2])));
 }
 
 /*!
@@ -1829,19 +1835,11 @@ inline int quad_find_ghost_owner(const p4est_ghost_t *ghost, p4est_locidx_t ghos
  * \param f     [in, out] a PETSc Vec object to store the result. It is assumed that the vector is allocated. A check
  * is performed to ensure enough memory is available in the Vec object.
  */
-#ifdef P4_TO_P8
-void sample_cf_on_local_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_3& cf, Vec f);
-void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_3& cf, Vec f);
-void sample_cf_on_cells(const p4est_t *p4est, p4est_ghost_t *ghost, const CF_3& cf, Vec f);
-void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_3* cf_array[], Vec f);
-void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_3& cf, std::vector<double>& f);
-#else
-void sample_cf_on_local_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_2& cf, Vec f);
-void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_2& cf, Vec f);
-void sample_cf_on_cells(const p4est_t *p4est, p4est_ghost_t *ghost, const CF_2& cf, Vec f);
-void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_2* cf_array[], Vec f);
-void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_2& cf, std::vector<double>& f);
-#endif
+void sample_cf_on_local_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_DIM& cf, Vec f);
+void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_DIM& cf, Vec f);
+void sample_cf_on_cells(const p4est_t *p4est, p4est_ghost_t *ghost, const CF_DIM& cf, Vec f);
+void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_DIM* cf_array[], Vec f);
+void sample_cf_on_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const CF_DIM& cf, std::vector<double>& f);
 
 void write_comm_stats(const p4est_t *p4est, const p4est_ghost_t* ghost, const p4est_nodes_t *nodes,
                  const char* partition_name = NULL, const char* topology_name = NULL, const char* neighbors_name = NULL);
@@ -2045,11 +2043,7 @@ public:
  * \brief prodives a CF_2/CF_3 interface to interpolation on quadrants
  */
 
-#ifdef P4_TO_P8
-class quadrant_interp_t : public CF_3
-#else
-class quadrant_interp_t : public CF_2
-#endif
+class quadrant_interp_t : public CF_DIM
 {
   p4est_t *p4est_;
   p4est_topidx_t tree_idx_;
@@ -2072,11 +2066,7 @@ public:
     Fdd_ = Fdd;
   }
 
-#ifdef P4_TO_P8
-  double operator()(double x, double y, double z) const;
-#else
-  double operator()(double x, double y) const;
-#endif
+  double operator()(DIM(double x, double y, double z)) const;
 
 //#ifdef P4_TO_P8
 //  double operator()(double x, double y, double z) const

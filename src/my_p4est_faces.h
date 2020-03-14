@@ -524,6 +524,7 @@ public:
   inline const double* get_smallest_dxyz() const { return  smallest_dxyz; }
   inline const double* get_xyz_max() const { return  xyz_max; }
   inline const double* get_xyz_min() const { return  xyz_min; }
+  inline const double* get_tree_dimensions() const { return  tree_dimensions; }
   inline const bool* get_periodicity() const { return periodic; }
   inline bool periodicity(const unsigned char &dir) const { P4EST_ASSERT(ORD(dir == dir::x, dir == dir::y, dir == dir::z)); return periodic[dir]; }
 
@@ -581,10 +582,8 @@ void check_if_faces_are_well_defined(my_p4est_node_neighbors_t *ngbd_n, my_p4est
                                      Vec phi, BoundaryConditionType interface_type, Vec is_well_defined);
 
 // NOTE: reusing the interpolator_from_faces is ok afterwards for Neumann-BC nodes ONLY if the Neumann bc is HOMOGENEOUS!
-double interpolate_velocity_at_node_n(p4est_t *p4est, p4est_ghost_t *ghost, p4est_nodes_t *nodes, my_p4est_faces_t *faces,
-                                      my_p4est_cell_neighbors_t *ngbd_c, my_p4est_node_neighbors_t *ngbd_n,
-                                      p4est_locidx_t node_idx, Vec velocity_component, const unsigned char &dir,
-                                      Vec face_is_well_defined=NULL, int order=2, BoundaryConditionsDIM *bc=NULL, face_interpolator* interpolator_from_faces = NULL);
+double interpolate_velocity_at_node_n(my_p4est_faces_t *faces, my_p4est_node_neighbors_t *ngbd_n, p4est_locidx_t node_idx, Vec velocity_component, const unsigned char &dir,
+                                      Vec face_is_well_defined = NULL, int order = 2, BoundaryConditionsDIM *bc = NULL, face_interpolator* interpolator_from_faces = NULL);
 
 inline void add_faces_to_set_and_clear_set_of_quad(const my_p4est_faces_t* faces, const p4est_locidx_t& center_face_idx, const unsigned char& dir, std::set<indexed_and_located_face>& set_of_faces, set_of_neighboring_quadrants& quad_ngbd)
 {

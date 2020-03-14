@@ -127,6 +127,13 @@ struct HierarchyCell {
   int owner_rank;
 };
 
+struct local_and_tree_indices
+{
+  p4est_locidx_t local_idx; // cumulative over the local trees
+  p4est_topidx_t tree_idx;
+  local_and_tree_indices(const p4est_locidx_t& loc_idx = -1, const p4est_topidx_t& tr_idx = -1) : local_idx(loc_idx), tree_idx(tr_idx) {}
+};
+
 /*!
  * \brief The my_p4est_hierarchy_t class represents a local, single-process reconstruction of the
  * local domain partition in a "conventional" quad-/oc-tree fashion: every tree in the forest is
@@ -266,12 +273,12 @@ class my_p4est_hierarchy_t {
    * \brief local_inner_quadrant_index: standard vector of local quadrant indices that are not seen as ghost by
    * any other process
    */
-  std::vector< p4est_locidx_t > local_inner_quadrant_index;
+  std::vector< local_and_tree_indices > local_inner_quadrant;
   /*!
    * \brief local_layer_quadrant_index: standard vector of local quadrant indices that are seen as ghost by at
    * least one other process
    */
-  std::vector< p4est_locidx_t > local_layer_quadrant_index;
+  std::vector< local_and_tree_indices > local_layer_quadrant;
 
   /*!
    * \brief split splits a HierarchyCell, adds the corresponding P4EST_CHILDREN HierarchyCell's to the same
@@ -399,19 +406,31 @@ public:
    */
   void update(p4est_t *p4est_, p4est_ghost_t *ghost_);
 
-  inline size_t get_layer_size() const { return local_layer_quadrant_index.size(); }
-  inline size_t get_local_size() const { return local_inner_quadrant_index.size(); }
-  inline p4est_locidx_t get_layer_quadrant(const size_t& i) const {
+  inline size_t get_layer_size() const { return local_layer_quadrant.size(); }
+  inline size_t get_inner_size() const { return local_inner_quadrant.size(); }
+  inline p4est_locidx_t get_local_index_of_layer_quadrant(const size_t& i) const {
 #ifdef CASL_THROWS
-    return local_layer_quadrant_index.at(i);
+    return local_layer_quadrant.at(i).local_idx;
 #endif
-    return local_layer_quadrant_index[i];
+    return local_layer_quadrant[i].local_idx;
   }
-  inline p4est_locidx_t get_local_quadrant(const size_t& i) const {
+  inline p4est_topidx_t get_tree_index_of_layer_quadrant(const size_t& i) const {
 #ifdef CASL_THROWS
-    return local_inner_quadrant_index.at(i);
+    return local_layer_quadrant.at(i).tree_idx;
 #endif
-    return local_inner_quadrant_index[i];
+    return local_layer_quadrant[i].tree_idx;
+  }
+  inline p4est_locidx_t get_local_index_of_inner_quadrant(const size_t& i) const {
+#ifdef CASL_THROWS
+    return local_inner_quadrant.at(i).local_idx;
+#endif
+    return local_inner_quadrant[i].local_idx;
+  }
+  inline p4est_topidx_t get_tree_index_of_inner_quadrant(const size_t& i) const {
+#ifdef CASL_THROWS
+    return local_inner_quadrant.at(i).tree_idx;
+#endif
+    return local_inner_quadrant[i].tree_idx;
   }
 
   /*!
@@ -425,8 +444,8 @@ public:
     size_t memory = 0;
     for (size_t tree_idx = 0; tree_idx < trees.size(); ++tree_idx)
       memory += (trees[tree_idx].size())*sizeof (HierarchyCell);
-    memory += (local_inner_quadrant_index.size())*sizeof (p4est_locidx_t);
-    memory += (local_layer_quadrant_index.size())*sizeof (p4est_locidx_t);
+    memory += (local_inner_quadrant.size())*sizeof (local_and_tree_indices);
+    memory += (local_layer_quadrant.size())*sizeof (local_and_tree_indices);
 
     return memory;
   }

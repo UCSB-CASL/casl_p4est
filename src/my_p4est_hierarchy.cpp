@@ -102,8 +102,8 @@ void my_p4est_hierarchy_t::construct_tree() {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_hierarchy_t, 0, 0, 0, 0); CHKERRXX(ierr);
 
-  local_inner_quadrant_index.resize(0);
-  local_layer_quadrant_index.resize(0);
+  local_inner_quadrant.resize(0);
+  local_layer_quadrant.resize(0);
 
   size_t mirror_idx = 0;
   const p4est_quadrant_t* mirror = NULL;
@@ -121,12 +121,12 @@ void my_p4est_hierarchy_t::construct_tree() {
       // but do not use p4est_quadrant_is_equal_piggy(), since the p.piggy3 member is not filled for regular quadrants but only for ghosts and mirrors
       if(ghost != NULL && mirror != NULL && p4est_quadrant_is_equal(quad, mirror) && mirror->p.piggy3.which_tree == tree_idx)
       {
-        local_layer_quadrant_index.push_back(q + tree->quadrants_offset);
+        local_layer_quadrant.push_back(local_and_tree_indices(q + tree->quadrants_offset, tree_idx));
         if(mirror_idx < ghost->mirrors.elem_count)
           mirror = p4est_quadrant_array_index(&ghost->mirrors, mirror_idx++);
       }
       else
-        local_inner_quadrant_index.push_back(q+tree->quadrants_offset);
+        local_inner_quadrant.push_back(local_and_tree_indices(q + tree->quadrants_offset, tree_idx));
       int ind = update_tree(tree_idx, quad);
 
       /* the cell corresponding to the quadrant has been found, associate it to the quadrant */
@@ -138,7 +138,7 @@ void my_p4est_hierarchy_t::construct_tree() {
   }
 
   P4EST_ASSERT(ghost == NULL || mirror_idx == ghost->mirrors.elem_count);
-  P4EST_ASSERT(local_inner_quadrant_index.size()+local_layer_quadrant_index.size() == (size_t) p4est->local_num_quadrants);
+  P4EST_ASSERT(local_inner_quadrant.size() + local_layer_quadrant.size() == (size_t) p4est->local_num_quadrants);
 
   /* loop on the ghosts
    * We do this by looping over ghosts from each processor separately
@@ -410,18 +410,17 @@ void my_p4est_hierarchy_t::find_quadrant_containing_point(const int* tr_xyz_orig
 
   int tr_xyz[P4EST_DIM] = {DIM(tr_xyz_orig[0], tr_xyz_orig[1], tr_xyz_orig[2])};
 
-  if      (s.x < 0)                      { s.x += (double)P4EST_ROOT_LEN; tr_xyz[0] = tr_xyz_orig[0] - 1; if(periodic[0]) tr_xyz[0] = mod(tr_xyz[0], myb->nxyztrees[0]); }
-  else if (s.x > (double)P4EST_ROOT_LEN) { s.x -= (double)P4EST_ROOT_LEN; tr_xyz[0] = tr_xyz_orig[0] + 1; if(periodic[0]) tr_xyz[0] = mod(tr_xyz[0], myb->nxyztrees[0]); }
-  P4EST_ASSERT(0 <= tr_xyz[0] && tr_xyz[0] < myb->nxyztrees[0] && 0.0 <= s.x && s.x <= (double)P4EST_ROOT_LEN);
-  if      (s.y < 0)                      { s.y += (double)P4EST_ROOT_LEN; tr_xyz[1] = tr_xyz_orig[1] - 1; if(periodic[1]) tr_xyz[1] = mod(tr_xyz[1], myb->nxyztrees[1]); }
-  else if (s.y > (double)P4EST_ROOT_LEN) { s.y -= (double)P4EST_ROOT_LEN; tr_xyz[1] = tr_xyz_orig[1] + 1; if(periodic[1]) tr_xyz[1] = mod(tr_xyz[1], myb->nxyztrees[1]); }
-  P4EST_ASSERT(0 <= tr_xyz[1] && tr_xyz[1] < myb->nxyztrees[1] && 0.0 <= s.y && s.y <= (double)P4EST_ROOT_LEN);
-#ifdef P4_TO_P8
-  if      (s.z < 0)                      { s.z += (double)P4EST_ROOT_LEN; tr_xyz[2] = tr_xyz_orig[2] - 1; if(periodic[2]) tr_xyz[2] = mod(tr_xyz[2], myb->nxyztrees[2]); }
-  else if (s.z > (double)P4EST_ROOT_LEN) { s.z -= (double)P4EST_ROOT_LEN; tr_xyz[2] = tr_xyz_orig[2] + 1; if(periodic[2]) tr_xyz[2] = mod(tr_xyz[2], myb->nxyztrees[2]); }
-  P4EST_ASSERT(0 <= tr_xyz[2] && tr_xyz[2] < myb->nxyztrees[2] && 0.0 <= s.z && s.z <= (double)P4EST_ROOT_LEN);
-#endif
-
+  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
+    if (s.xyz(dir) < 0 || s.xyz(dir)  > (double) P4EST_ROOT_LEN){
+      const int ntree_to_slide = (int) ceil(s.xyz(dir)/((double) P4EST_ROOT_LEN)) - 1;
+      P4EST_ASSERT((s.xyz(dir) < 0 && ntree_to_slide < 0) || (s.xyz(dir) > (double) P4EST_ROOT_LEN && ntree_to_slide > 0));
+      s.xyz(dir) -= ((double) ntree_to_slide)*((double) P4EST_ROOT_LEN); // convert both terms to double BEFORE multiplying to avoid overflow in integer representation!
+      tr_xyz[dir] = tr_xyz_orig[dir] + ntree_to_slide;
+      if(periodic[dir])
+        tr_xyz[dir] = mod(tr_xyz[dir], myb->nxyztrees[dir]);
+    }
+    P4EST_ASSERT(0 <= tr_xyz[dir] && tr_xyz[dir] < myb->nxyztrees[dir] && 0.0 <= s.xyz(dir) && s.xyz(dir) <= (double) P4EST_ROOT_LEN);
+  }
 
   p4est_topidx_t tt = myb->nxyz_to_treeid[SUMD(tr_xyz[0], tr_xyz[1]*myb->nxyztrees[0], tr_xyz[2]*myb->nxyztrees[0]*myb->nxyztrees[1])];
   P4EST_ASSERT(0 <= tt && tt < p4est->connectivity->num_trees);

@@ -67,7 +67,7 @@ void cmdParser::print(FILE *f){
 }
 
 
-bool cmdParser::contains(const std::string& key)
+bool cmdParser::contains(const std::string& key) const
 {
   return (buffer.find(key) != buffer.end());
 }

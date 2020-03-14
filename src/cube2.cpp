@@ -26,13 +26,13 @@ void Cube2::kuhn_Triangulation(Simplex2& s1, Simplex2& s2 ) const
   s2.y0 = xyz_mmm[1] ; s2.y1 = xyz_ppp[1] ; s2.y2 = xyz_ppp[1];
 }
 
-double Cube2::interface_Length_In_Cell(QuadValue& level_set_values) const
+double Cube2::interface_Length_In_Cell(const QuadValue& level_set_values) const
 {
   QuadValue tmp(1.,1.,1.,1.);
-  return integrate_Over_Interface(tmp,level_set_values);
+  return integrate_Over_Interface(tmp, level_set_values);
 }
 
-double Cube2::area_In_Negative_Domain( QuadValue& level_set_values) const
+double Cube2::area_In_Negative_Domain(const QuadValue& level_set_values) const
 {
   QuadValue tmp(1.,1.,1.,1.);
   return integral(tmp,level_set_values);
@@ -59,12 +59,12 @@ double Cube2::integral( const QuadValue& f, const QuadValue& level_set_values ) 
 
 double Cube2::integrate_Over_Interface( const QuadValue& f, const QuadValue& level_set_values ) const
 {
-  double sum=0;
+  double sum = 0.0;
 
-  Point2 p00(xyz_mmm[0],xyz_mmm[1]); double f00 = f.val[0]; double phi00 = level_set_values.val[0];
-  Point2 p01(xyz_mmm[0],xyz_ppp[1]); double f01 = f.val[1]; double phi01 = level_set_values.val[1];
-  Point2 p10(xyz_ppp[0],xyz_mmm[1]); double f10 = f.val[2]; double phi10 = level_set_values.val[2];
-  Point2 p11(xyz_ppp[0],xyz_ppp[1]); double f11 = f.val[3]; double phi11 = level_set_values.val[3];
+  Point2 p00(xyz_mmm[0], xyz_mmm[1]); double f00 = f.val[0]; double phi00 = level_set_values.val[0];
+  Point2 p01(xyz_mmm[0], xyz_ppp[1]); double f01 = f.val[1]; double phi01 = level_set_values.val[1];
+  Point2 p10(xyz_ppp[0], xyz_mmm[1]); double f10 = f.val[2]; double phi10 = level_set_values.val[2];
+  Point2 p11(xyz_ppp[0], xyz_ppp[1]); double f11 = f.val[3]; double phi11 = level_set_values.val[3];
 
   // [RAPHAEL:] I am ****PISSED****, I have wasted an entire day trying to find yet another bug due to sign
   // errors in this very function!
@@ -81,29 +81,29 @@ double Cube2::integrate_Over_Interface( const QuadValue& f, const QuadValue& lev
   // IN POSITIVE DOMAIN!!!
 
   // simple cases
-  if(phi00<=0.0 && phi01<=0.0 && phi10<=0.0 && phi11<=0.0) return 0;
-  if(phi00>0 && phi01>0 && phi10>0 && phi11>0) return 0;
+  if(phi00 <= 0.0 && phi01 <= 0.0 && phi10 <= 0.0 && phi11 <= 0.0) return 0.0;
+  if(phi00  > 0.0 && phi01  > 0.0 && phi10  > 0.0 && phi11  > 0.0) return 0.0;
 
   // iteration on each simplex in the Kuhn triangulation
-  for(int n=0;n<2;n++)
+  for(int n = 0; n < 2;n++)
   {
-    Point2 p0=p00; double f0=f00; double phi0=phi00;
-    Point2 p2=p11; double f2=f11; double phi2=phi11;
+    Point2 p0 = p00; double f0 = f00; double phi0 = phi00;
+    Point2 p2 = p11; double f2 = f11; double phi2 = phi11;
     // triangle (P0,P1,P2) with values (F0,F1,F2), (Phi0,Phi1,Phi2)
-    Point2   p1 = (n==0) ?   p01 :   p10;
-    double   f1 = (n==0) ?   f01 :   f10;
-    double phi1 = (n==0) ? phi01 : phi10;
+    Point2   p1 = (n == 0 ?   p01 :   p10);
+    double   f1 = (n == 0 ?   f01 :   f10);
+    double phi1 = (n == 0 ? phi01 : phi10);
 
     if (0)
     {
-      Point2 p_00(0.5*(xyz_mmm[0]+xyz_ppp[0]),0.5*(xyz_mmm[1]+xyz_ppp[1]));
-      double f_00 = 0.25*(f00+f01+f10+f11);
-      double l_00 = 0.25*(phi00+phi01+phi10+phi11);
+      Point2 p_00(0.5*(xyz_mmm[0] + xyz_ppp[0]),0.5*(xyz_mmm[1] + xyz_ppp[1]));
+      double f_00 = 0.25*(f00 + f01 + f10 + f11);
+      double l_00 = 0.25*(phi00 + phi01 + phi10 + phi11);
 
-      Point2 p_mm(xyz_mmm[0],xyz_mmm[1]); double f_mm = f00; double l_mm = phi00;
-      Point2 p_pm(xyz_ppp[0],xyz_mmm[1]); double f_pm = f10; double l_pm = phi10;
-      Point2 p_mp(xyz_mmm[0],xyz_ppp[1]); double f_mp = f01; double l_mp = phi01;
-      Point2 p_pp(xyz_ppp[0],xyz_ppp[1]); double f_pp = f11; double l_pp = phi11;
+      Point2 p_mm(xyz_mmm[0], xyz_mmm[1]); double f_mm = f00; double l_mm = phi00;
+      Point2 p_pm(xyz_ppp[0], xyz_mmm[1]); double f_pm = f10; double l_pm = phi10;
+      Point2 p_mp(xyz_mmm[0], xyz_ppp[1]); double f_mp = f01; double l_mp = phi01;
+      Point2 p_pp(xyz_ppp[0], xyz_ppp[1]); double f_pp = f11; double l_pp = phi11;
       switch (n) {
       case 0:
         p0    = p_00; p1  = p_mm; p2  = p_pm;
@@ -125,35 +125,35 @@ double Cube2::integrate_Over_Interface( const QuadValue& f, const QuadValue& lev
     }
 
     // simple cases
-    if(phi0<=0.0 && phi1<=0.0 && phi2<=0.0) continue;
-    if(phi0>0.0 && phi1>0.0 && phi2>0.0) continue;
+    if(phi0 <=  0.0 && phi1 <=  0.0 && phi2 <=  0.0) continue;
+    if(phi0  >  0.0 && phi1  >  0.0 && phi2  >  0.0) continue;
 
     //
     int number_of_negatives = 0;
 
-    if(phi0<=0.0) number_of_negatives++;
-    if(phi1<=0.0) number_of_negatives++;
-    if(phi2<=0.0) number_of_negatives++;
+    if(phi0 <= 0.0) number_of_negatives++;
+    if(phi1 <= 0.0) number_of_negatives++;
+    if(phi2 <= 0.0) number_of_negatives++;
 
 #ifdef CASL_THROWS
-    if(number_of_negatives!=1 && number_of_negatives!=2) throw std::runtime_error("[CASL_ERROR]: Wrong configuration.");
+    if(number_of_negatives != 1 && number_of_negatives != 2) throw std::runtime_error("[CASL_ERROR]: Wrong configuration.");
 #endif
 
-    if(number_of_negatives==2)
+    if(number_of_negatives == 2)
     {
-      phi0*=-1;
-      phi1*=-1;
-      phi2*=-1;
+      phi0 *= -1.0;
+      phi1 *= -1.0;
+      phi2 *= -1.0;
     }
 
     // sorting for simplication into one case
-    if(phi0>0 && phi1<=0.0) swap(phi0,phi1,f0,f1,p0,p1);
-    if(phi0>0 && phi2<=0.0) swap(phi0,phi2,f0,f2,p0,p2);
-    if(phi1>0 && phi2<=0.0) swap(phi1,phi2,f1,f2,p1,p2);
+    if(phi0 > 0 && phi1 <= 0.0) swap(phi0, phi1, f0, f1, p0, p1);
+    if(phi0 > 0 && phi2 <= 0.0) swap(phi0, phi2, f0, f2, p0, p2);
+    if(phi1 > 0 && phi2 <= 0.0) swap(phi1, phi2, f1, f2, p1, p2);
 
     // type : (-++)
-    Point2 p_btw_01 = interpol_p(p0,phi0,p1,phi1); Point2 p_btw_02 = interpol_p(p0,phi0,p2,phi2);
-    double f_btw_01 = interpol_f(f0,phi0,f1,phi1); double f_btw_02 = interpol_f(f0,phi0,f2,phi2);
+    Point2 p_btw_01 = interpol_p(p0, phi0, p1, phi1); Point2 p_btw_02 = interpol_p(p0, phi0, p2, phi2);
+    double f_btw_01 = interpol_f(f0, phi0, f1, phi1); double f_btw_02 = interpol_f(f0, phi0, f2, phi2);
 
     double length_of_line_segment = (p_btw_02 - p_btw_01).norm_L2();
 

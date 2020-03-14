@@ -10,34 +10,19 @@
 #else
 #include <mpi.h>
 #endif
-#include <stdexcept>
-#include <iostream>
-#include <sys/stat.h>
-#include <vector>
-#include <algorithm>
 #include <iterator>
-#include <set>
-#include <time.h>
 #include <stdio.h>
-#include <stdlib.h>
-#include <cmath>
 
 // p4est Library
 #ifdef P4_TO_P8
+#include <src/my_p8est_utils.h>
 #include <src/my_p8est_navier_stokes.h>
-#include <src/my_p8est_log_wrappers.h>
-#include <src/my_p8est_refine_coarsen.h>
-#include <src/my_p8est_level_set.h>
-#include <src/my_p8est_level_set_cells.h>
 #include <src/my_p8est_vtk.h>
 #include "my_p8est_shs_channel.h"
 #else
+#include <src/my_p4est_utils.h>
 #include <src/my_p4est_navier_stokes.h>
-#include <src/my_p4est_log_wrappers.h>
-#include <src/my_p4est_refine_coarsen.h>
-#include <src/my_p4est_level_set.h>
 #include <src/my_p4est_vtk.h>
-#include <src/my_p4est_trajectory_of_point.h>
 #include "my_p4est_shs_channel.h"
 #endif
 
@@ -47,203 +32,686 @@
 #undef MAX
 
 // --> extra info to be printed when -help is invoked
-#ifdef P4_TO_P8
-const std::string extra_info = "\
-    This program provides a general setup for superhydrophobic channel flow simulations.\n\
-    It assumes no solid object and no passive scalar (i.e. smoke) in the channel. The height of the channel is set to \n\
-    2*delta by default, the other channel dimensions are provided by the user in units of delta. If the numbers of \n\
-    trees in the streamwise and spanwise directions (resp. input parameters nx and nz) are not provided by the user, \n\
-    they are set in order to ensure aspect ratio of computational cells as close as possible to 1, i.e. each tree in \n\
-    the forest is of size (as close as possible to) deltaXdeltaXdelta. \n\n\
-    The set up builds upon the following non-dimensionalization ('_hat' for dimensional variables): \n\n\
-    u = u_hat/u_tau, {x, y, z} = {x, y, z}_hat/delta, t = t_hat*u_tau/delta, p = p_hat/(rho*u_tau*u_tau), \n\n\
-    where u_tau is the wall-friction velocity defined as sqrt(-dp_dx*delta/rho). \n\
-    Therefore, the computational domain is [-0.5*length, 0.5*length]x[-1, 1]x[-0.5*width, 0.5*width]. \n\
-    When started from scratch, the user can set Re_tau ONLY and the Navier-Stokes solver is then invoked with\n\
-    nondimensional inputs: \n\
-    rho = 1.0, mu = 1.0/Re_tau, body force per unit mass {1.0, 0.0, 0.0} (driving the flow), \n\
-    and with periodic boundary conditions in the streamwise and spanwise directions. \n\
-    When restarted from a saved state, the user can either\n\
-    1) (re)set Re_tau: this resets only the viscosity of the fluid but keeps the body force per unit mass {1.0, 0.0, 0.0}\n\
-    2) set Re_b: this leaves the viscosity unchanged (i.e. as read from the saved state) but adapts the body force per unit\n\
-       mass dynamically in order to set the mean (bulk) velocity to the desired value that matches the desired bulk Reynolds\n\
-    Developer: Raphael Egan (raphaelegan@ucsb.edu) and Fernando Temprano-Coleto for the analytical solutions";
+const std::string extra_info =
+      std::string("This program provides a general setup for superhydrophobic channel flow simulations.\n\n")
+    + std::string("It assumes no solid object and no passive scalar (i.e. no smoke) in the channel. If no dimension is set by the user, the \n")
+    + std::string("channel is set to be 6 x 2 (x 3) by default. If the number of trees in the streamwise (spanwise) direction, i.e. nx (nz),\n")
+    + std::string("is not provided by the user, it is set so that the aspect ratio of the computational cells is as close as possible to 1.\n")
+    + std::string("This tool considers periodic boundary conditions in the streamwise (and spanwise) direction(s). \n\n")
+    + std::string("Considering the following parameters,\n")
+    + std::string("\t delta := half the height of the channel,\n")
+    + std::string("\t f_x   := bulk force per unit mass driving the flow in the (positive) x direction,\n")
+    + std::string("\t nu    := kinematic viscosity of the fluid (nu = mu/rho),\n")
+    + std::string("\t U_b   := mean flow velocity across the channel (U_b = Q/(rho*2*delta(*width)) where Q is the mass flow rate in the channel),\n")
+    + std::string("the user can require the simulation to\n")
+    + std::string("1) either use a constant bulk force driving the flow by setting the value of Re_tau where Re_tau is defined as \n")
+    + std::string("                                    Re_tau = delta*sqrt(delta*f_x)/nu \n")
+    + std::string("\t In that case, the Navier-Stokes solver is invoked with the following inputs: \n")
+    + std::string("\t\t rho = 1.0;\n")
+    + std::string("\t\t f_x = 1.0/delta (so that u_tau = sqrt(f_x*tau) = 1.0 --> in fact, this nondimensionalizes velocities by u_tau);\n")
+    + std::string("\t\t mu  = rho*u_tau*delta/Re_tau, to match the desired Re_tau;\n")
+    + std::string("2) or enforce a constant mass flow by setting the value of Re_b where Re_b is defined as \n")
+    + std::string("                                    Re_b = delta*U_b/nu \n")
+    + std::string("\t In that case, the Navier-Stokes solver is invoked with the following inputs: \n")
+    + std::string("\t\t rho = 1.0;\n")
+    + std::string("\t\t f_x is calculated (and adapted) at every time-step to enforce Q = rho*2*delta(*width)\n")
+    + std::string("\t\t\t (so that U_b = 1.0 --> in fact, this nondimensionalizes velocities by U_b);\n")
+    + std::string("\t\t\t (f_x initialized to the laminar-case value);\n")
+    + std::string("\t\t mu  = rho*U_b*delta/Re_b = delta/Re_b, to match the desired Re_b.\n")
+    + std::string("The user can set either Re_tau or Re_b but not both!\n\n")
+    + std::string("When restarting from a saved state, the user can change the simulation setup (i.e. desired Re_b or Re_tau) but the fluid\n")
+    + std::string("parameters, the dimensions of the domain and macromesh will be identical to the ones loaded from the saved state. Therefore,\n")
+    + std::string("\t\t rho = as loaded from the saved state;\n")
+    + std::string("\t\t mu  = as loaded from the saved state;\n")
+    + std::string("1) when restarting with a value of Re_tau, \n")
+    + std::string("\t\t f_x = SQR(mu*Re_tau/(rho*delta))/delta = constant                                     [to match the desired Re_tau];\n")
+    + std::string("2) when restarting with a value of Re_b\n")
+    + std::string("\t\t f_x is calculated (and adapted) at every time-step to enforce Q = 2.0*mu*Re_b(*width) [to match the desired Re_b].\n")
+    + std::string("\t\t [If desired, the initial value of f_x can be set with the input parameter 'initial_Re_tau'.]\n")
+    + std::string("Developers: Raphael Egan (raphaelegan@ucsb.edu) with Fernando Temprano-Coleto's help for the analytical solutions.\n");
+
+#if defined(POD_CLUSTER)
+const std::string default_export_dir  = "/scratch/regan/superhydrophobic_channel/" + std::to_string(P4EST_DIM) + "D_channel";
+#elif defined(STAMPEDE)
+const std::string default_export_dir  = "/work/04965/tg842642/stampede2/superhydrophobic_channel/" + std::to_string(P4EST_DIM) + "D_channel";
+#elif defined(LAPTOP)
+const std::string default_export_dir  = "/home/raphael/workspace/projects/superhydrophobic_channel/" + std::to_string(P4EST_DIM) + "D_channel";
+#elif defined(JUPITER)
+const std::string default_export_dir  = "/home/temprano/Output/p4est_ns_shs/" + std::to_string(P4EST_DIM) + "D_channel";
+#elif defined(NEPTUNE)
+const std::string default_export_dir  = "/home/hlevy/workspace/superhydrophobic_channel/" + std::to_string(P4EST_DIM) + "D_channel";
 #else
-const std::string extra_info = "\
-    This program provides a general setup for superhydrophobic channel flow simulations.\n\
-    It assumes no solid object and no passive scalar (i.e. smoke) in the channel. The height of the channel is set \n\
-    to 2*delta by default, the other channel dimension is provided by the user in units of delta. If the number of \n\
-    trees in the streamwise direction (input parameters nx) is not provided by the user, it is set in order to ensure \n\
-    aspect ratio of computational cells as close as possible to 1, i.e. each tree in the forest is of size (as close \n\
-    as possible to) deltaXdeltaXdelta. \n\n\
-    The set up builds upon the following non-dimensionalization ('_hat' for dimensional variables): \n\n\
-    u = u_hat/u_tau, {x, y} = {x, y}_hat/delta, t = t_hat*u_tau/delta, p = p_hat/(rho*u_tau*u_tau), \n\n\
-    where u_tau is the wall-friction velocity defined as sqrt(-dp_dx*delta/rho). \n\
-    Therefore, the computational domain is [-0.5*length, 0.5*length]x[-1, 1]. \n\
-    When started from scratch, the user can set Re_tau ONLY and the Navier-Stokes solver is then invoked with\n\
-    nondimensional inputs: \n\
-    rho = 1.0, mu = 1.0/Re_tau, body force per unit mass {1.0, 0.0} (driving the flow), \n\
-    and with periodic boundary conditions in the streamwise and directions. \n\
-    When restarted from a saved state, the user can either\n\
-    1) (re)set Re_tau: this resets only the viscosity of the fluid but keeps the body force per unit mass {1.0, 0.0}\n\
-    2) set Re_b: this leaves the viscosity unchanged (i.e. as read from the saved state) but adapts the body force per unit\n\
-        mass dynamically in order to set the mean (bulk) velocity to the desired value that matches the desired bulk Reynolds\n\
-    Developer: Raphael Egan (raphaelegan@ucsb.edu) and Fernando Temprano-Coleto for the analytical solutions";
+const std::string default_export_dir  = "/home/regan/workspace/projects/merging_tests/shs/" + std::to_string(P4EST_DIM) + "D_channel";
 #endif
 
+const int default_lmin                        = 4;
+const int default_lmax                        = 6;
+const double default_thresh                   = 0.1;
+const int default_wall_layer                  = 6;
+const double default_lip                      = 1.2;
+const int default_ntree_y                     = 2;
+const double default_length                   = 6.0;
+const double default_height                   = 2.0;
+#ifdef P4_TO_P8
+const double default_width                    = 3.0;
+#endif
+const double default_duration                 = 200.0;
+const double default_pitch_to_height          = 3.0/16.0;
+const double default_gas_fraction             = 0.5;
+const int default_sl_order                    = 2;
+const double default_cfl                      = 1.0;
+const double default_u_tol                    = 1.0e-6;
+const unsigned int default_n_hodge            = 10;
+const dxyz_hodge_component def_hodge_control  = uvw_components;
+const unsigned int default_grid_update        = 1;
+const std::string default_pc_cell             = "sor";
+const std::string default_cell_solver         = "bicgstab";
+const std::string default_pc_face             = "sor";
+const unsigned int default_save_nstates       = 1;
+const unsigned int default_nexport_avg        = 100;
+const int default_nterms                      = 2500;
+const int periodicity[P4EST_DIM]              = {DIM(1, 0, 1)};
+const std::string drag_output_format          = std::string("%g %g %g") ONLY3D(+ std::string(" %g")) + std::string("\n");
 
-struct initial_velocity_unm1_t : CF_DIM {
-  double operator()(DIM(double, double, double)) const
-  {
-    return 0.0;
-  }
-} initial_velocity_unm1;
-
-struct initial_velocity_un_t : CF_DIM {
-  double operator()(DIM(double, double, double)) const
-  {
-    return 0.0;
-  }
-} initial_velocity_un;
-
-struct initial_velocity_vnm1_t : CF_DIM {
-  double operator()(DIM(double, double, double)) const
-  {
-    return 0.0;
-  }
-} initial_velocity_vnm1;
-
-struct initial_velocity_vn_t : CF_DIM {
-  double operator()(DIM(double, double, double)) const
-  {
-    return 0.0;
-  }
-} initial_velocity_vn;
-
-class external_force_u_t : public CF_DIM {
+class external_force_per_unit_mass_t : public CF_DIM {
 private:
   double forcing_term;
 public:
-  external_force_u_t(const double& forcing_term_) : forcing_term(forcing_term_) {}
-  external_force_u_t(): external_force_u_t(1.0) {}
-  double operator()(DIM(double, double, double)) const
-  {
-    return forcing_term;
-  }
-  void update_term(const double& correction)
-  {
-    forcing_term += correction;
-  }
-  double get_value() const {return forcing_term;}
+  external_force_per_unit_mass_t(const double &forcing_term_) : forcing_term(forcing_term_) {}
+  external_force_per_unit_mass_t(): external_force_per_unit_mass_t(0.0) {}
+  double operator()(DIM(double, double, double)) const  { return forcing_term; }
+  void update_term(const double &correction)            { forcing_term += correction; }
+  double get_value() const                              { return forcing_term; }
+  void set_value(const double &new_forcing_term)        { forcing_term = new_forcing_term; }
 };
 
-struct external_force_v_t : CF_DIM {
-  double operator()(DIM(double, double, double)) const
+class mass_flow_controller_t
+{
+private:
+  unsigned char flow_dir;
+  double desired_bulk_velocity;
+  double latest_mass_flow;
+  double mean_hodge_derivative;
+  bool latest_mass_flow_is_set;
+  double section;
+
+public:
+  mass_flow_controller_t(const char &flow_direction, const double& section_) :
+    flow_dir(flow_direction), desired_bulk_velocity(-1.0), latest_mass_flow(-1.0), latest_mass_flow_is_set(false), section(section_) { P4EST_ASSERT(flow_dir < P4EST_DIM); }
+
+  void activate_forcing(const double &desired_U_b)
   {
-    return 0.0;
+    P4EST_ASSERT(desired_U_b > 0.0);
+    desired_bulk_velocity = desired_U_b;
   }
+
+  double update_external_acceleration_to_enforce_desired_bulk_velocity(my_p4est_navier_stokes_t* ns, external_force_per_unit_mass_t* external_acceleration[P4EST_DIM])
+  {
+    evaluate_current_mass_flow(ns);
+    mean_hodge_derivative = ns->get_correction_in_hodge_derivative_for_enforcing_mass_flow(flow_dir, desired_bulk_velocity, &latest_mass_flow);
+    external_acceleration[flow_dir]->update_term(-mean_hodge_derivative*ns->alpha()/ns->get_dt());
+    return mean_hodge_derivative;
+  }
+
+  void evaluate_current_mass_flow(my_p4est_navier_stokes_t* ns)
+  {
+    ns->global_mass_flow_through_slice(dir::x, section, latest_mass_flow);
+    latest_mass_flow_is_set = true;
+  }
+
+  bool latest_mass_flow_is_known() const  { return latest_mass_flow_is_set;                                 }
+  double read_latest_mass_flow() const    { P4EST_ASSERT(latest_mass_flow_is_set); return latest_mass_flow; }
+  double targeted_bulk_velocity() const   { return desired_bulk_velocity;                                   }
+
+  ~mass_flow_controller_t(){}
 };
 
-#ifdef P4_TO_P8
-struct initial_velocity_wnm1_t : CF_3
+struct simulation_setup
 {
-  double operator()(double, double, double) const
-  {
-    return 0.0;
-  }
-} initial_velocity_wnm1;
+  double tstart;
+  double dt;
+  double tn;
 
-struct initial_velocity_w_n_t : CF_3
-{
-  double operator()(double, double, double) const
-  {
-    return 0.0;
-  }
-} initial_velocity_wn;
+  // inner convergence parameteres
+  const double u_tol;
+  const unsigned int niter_hodge_max;
+  const dxyz_hodge_component control_hodge;
 
-struct external_force_w_t : CF_3
-{
-  double operator()(double, double, double) const
-  {
-    return 0.0;
-  }
-};
-#endif
+  // simulation control
+  int iter;
+  const unsigned int steps_grid_update;
+  const double duration;
+  const bool use_adapted_dt;
+  const int nterms_in_series;
+  const std::string des_pc_cell;
+  const std::string des_solver_cell;
+  const std::string des_pc_face;
+  KSPType cell_solver_type;
+  PCType pc_cell, pc_face;
+  const flow_setting flow_condition;
+  const double Reynolds; // either Re_tau or Re_b, depends on flow_condition here above!
 
-void initialize_monitoring(char* file_monitoring, const char *out_dir, const int& ntree_y, const int& lmin, const int& lmax, const double& threshold_split_cell, const double& cfl, const int& sl_order, const mpi_environment_t& mpi, const double& tstart)
-{
-  sprintf(file_monitoring, "%s/flow_monitoring_ny_%d_lmin_%d_lmax_%d_split_threshold_%.2f_cfl_%.2f_sl_%d.dat", out_dir, ntree_y, lmin, lmax, threshold_split_cell, cfl, sl_order);
+  // exportation
+  const std::string export_dir;
+  const bool save_vtk;
+  const bool get_timing;
+  double vtk_dt;
+  const bool save_drag;
+  const bool do_accuracy_check;
+  const bool save_state;
+  double dt_save_data;
+  const unsigned int n_states;
+  const bool save_profiles;
+  const unsigned int nexport_avg;
+  int export_vtk, save_data_idx;
+  std::string file_monitoring, vtk_path, file_drag;
+  bool accuracy_check_done;
 
-  PetscErrorCode ierr = PetscPrintf(mpi.comm(), "Monitoring flow in ... %s\n", file_monitoring); CHKERRXX(ierr);
-  if(mpi.rank() == 0)
+
+  simulation_setup(const mpi_environment_t&mpi, const cmdParser &cmd) :
+    u_tol(cmd.get<double>("u_tol", default_u_tol)),
+    niter_hodge_max(cmd.get<unsigned int>("niter_hodge", default_n_hodge)),
+    control_hodge(cmd.get<dxyz_hodge_component>("hodge_control", def_hodge_control)),
+    steps_grid_update(cmd.get<unsigned int>("grid_update", default_grid_update)),
+    duration(cmd.get<double>("duration", default_duration)),
+    use_adapted_dt(cmd.contains("adapted_dt")),
+    nterms_in_series(cmd.get<int>("nterms", default_nterms)),
+    des_pc_cell(cmd.get<std::string>("pc_cell", default_pc_cell)),
+    des_solver_cell(cmd.get<std::string>("cell_solver", default_cell_solver)),
+    des_pc_face(cmd.get<std::string>("pc_face", default_pc_face)),
+    flow_condition((cmd.contains("Re_tau") ? constant_pressure_gradient : (cmd.contains("Re_b") ? constant_mass_flow : undefined_flow_condition))),
+    Reynolds((cmd.contains("Re_tau") ? cmd.get<double>("Re_tau") : (cmd.contains("Re_b") ? cmd.get<double>("Re_b") : NAN))),
+    export_dir(cmd.get<std::string>("export_folder", default_export_dir)),
+    save_vtk(cmd.contains("save_vtk")),
+    get_timing(cmd.contains("timing")),
+    save_drag(cmd.contains("save_drag")),
+    do_accuracy_check(cmd.contains("accuracy_check") && cmd.contains("restart")),
+    save_state(cmd.contains("save_state_dt")),
+    n_states(cmd.get<unsigned int>("save_nstates", default_save_nstates)),
+    save_profiles(cmd.contains("save_mean_profiles")),
+    nexport_avg(cmd.get<unsigned int>("nexport_avg", default_nexport_avg))
   {
-    if(!file_exists(file_monitoring))
+    vtk_dt = -1.0;
+    if (save_vtk)
     {
-      FILE* fp_monitor = fopen(file_monitoring, "w");
-      if(fp_monitor==NULL)
+      if (!cmd.contains("vtk_dt") && !do_accuracy_check)
+        throw std::runtime_error("simulation_setup::simulation_setup(): the argument vtk_dt MUST be provided by the user if vtk exportation is desired.");
+      vtk_dt = cmd.get<double>("vtk_dt", -1.0);
+      if (vtk_dt <= 0.0 && !do_accuracy_check)
+        throw std::invalid_argument("simulation_setup::simulation_setup(): the value of vtk_dt must be strictly positive.");
+    }
+    dt_save_data = -1.0;
+    if (save_state)
+    {
+      dt_save_data = cmd.get<double>("save_state_dt", -1.0);
+      if (dt_save_data < 0.0)
+        throw std::invalid_argument("simulation_setup::simulation_setup(): the value of save_state_dt must be strictly positive.");
+    }
+
+    if (des_pc_cell.compare("hypre") == 0)
+      pc_cell = PCHYPRE;
+    else if (des_pc_cell.compare("jacobi'") == 0)
+      pc_cell = PCJACOBI;
+    else
+    {
+      if (des_pc_cell.compare("sor") != 0 && mpi.rank() == 0)
+        std::cerr << "The desired preconditioner for the cell-solver was either not allowed or not correctly understood. Successive over-relaxation is used instead" << std::endl;
+      pc_cell = PCSOR;
+    }
+    if (des_solver_cell.compare("cg") == 0)
+      cell_solver_type = KSPCG;
+    else
+    {
+      if (des_solver_cell.compare("bicgstab") != 0 && mpi.rank() == 0)
+        std::cerr << "The desired Krylov solver for the cell-solver was either not allowed or not correctly understood. BiCGStab is used instead" << std::endl;
+      cell_solver_type = KSPBCGS;
+    }
+    if (des_pc_face.compare("hypre") == 0)
+      pc_face = PCHYPRE;
+    else if (des_pc_face.compare("jacobi'") == 0)
+      pc_face = PCJACOBI;
+    else
+    {
+      if (des_pc_face.compare("sor") != 0 && mpi.rank() == 0)
+        std::cerr << "The desired preconditioner for the face-solver was either not allowed or not correctly understood. Successive over-relaxation is used instead" << std::endl;
+      pc_face = PCSOR;
+    }
+
+    if (cmd.contains("Re_b") && cmd.contains("Re_tau")) // safeguard...
+      throw std::invalid_argument("simulation_setup::simulation_setup(): forcing a constant bulk velocity AND a constant pressure gradient cannot be done: you have to choose only one!");
+    if (flow_condition == undefined_flow_condition)
+      throw std::invalid_argument("simulation_setup::simulation_setup(): you need to specify either the desired Re_tau or the desired Re_b...");
+
+
+    export_vtk = -1;
+    iter = 0;
+    accuracy_check_done = false;
+  }
+
+  int running_save_data_idx() const { return (int) floor(tn/dt_save_data); }
+  void update_save_data_idx()       { save_data_idx = running_save_data_idx(); }
+  bool time_to_save_state() const   { return (save_state && running_save_data_idx() != save_data_idx); }
+
+  int running_export_vtk() const  { return (int) floor(tn/vtk_dt); }
+  void update_export_vtk()        { export_vtk = running_export_vtk(); }
+  bool time_to_save_vtk() const   { return (save_vtk && running_export_vtk() != export_vtk); }
+
+
+  double max_tolerated_velocity(const mass_flow_controller_t* controller, external_force_per_unit_mass_t* external_acceleration[P4EST_DIM], const my_p4est_shs_channel_t& channel) const
+  {
+    return 5.0*(flow_condition == constant_mass_flow ? controller->targeted_bulk_velocity() : Reynolds*channel.canonical_u_tau(external_acceleration[0]->get_value()));
+  }
+
+};
+
+void initialize_velocity_profile_file(const std::string &filename, const my_p4est_navier_stokes_t* ns, const double &tstart)
+{
+  if (ns->get_mpirank() == 0)
+  {
+    if (!file_exists(filename))
+    {
+      FILE* fp_avg_profile = fopen(filename.c_str(), "w");
+      if (fp_avg_profile == NULL)
+        throw std::invalid_argument("initialize_velocity_profile_file: could not open file " + filename + ".");
+      fprintf(fp_avg_profile, "%% __ | coordinates along y axis \n");
+      fprintf(fp_avg_profile, "%% tn");
+      for (int k = 0; k < ns->get_brick()->nxyztrees[1]*(1 << ns->get_lmax()); ++k)
+        fprintf(fp_avg_profile, "  | %.12g", (-1.00 + (2.0/((double) (ns->get_brick()->nxyztrees[1]*(1 << ns->get_lmax()))))*(0.5 + k)));
+      fprintf(fp_avg_profile, "\n");
+      fprintf(fp_avg_profile, "%.12g", tstart);
+      fclose(fp_avg_profile);
+    }
+    else
+    {
+      FILE* fp_avg_profile = fopen(filename.c_str(), "r+");
+      char* read_line = NULL;
+      size_t len = 0;
+      ssize_t len_read;
+      long size_to_keep = 0;
+      if (((len_read = getline(&read_line, &len, fp_avg_profile)) != -1))
+        size_to_keep += (long) len_read;
+      else
+        throw std::runtime_error("initialize_velocity_profile_file: couldn't read the first header line of " + filename);
+      if (((len_read = getline(&read_line, &len, fp_avg_profile)) != -1))
+        size_to_keep += (long) len_read;
+      else
+        throw std::runtime_error("initialize_velocity_profile_file: couldn't read the second header line of " + filename);
+      double time;
+      while ((len_read = getline(&read_line, &len, fp_avg_profile)) != -1) {
+        sscanf(read_line, "%lg %*[^\n]", &time);
+        if (time <= tstart - (1.0e-12)*pow(10.0, floor(log10(tstart)))) // (1.0e-12)*pow(10.0, floor(log10(tstart))) == given precision when exporting
+          size_to_keep += (long) len_read;
+        else
+          break;
+      }
+      fclose(fp_avg_profile);
+      if (read_line)
+        free(read_line);
+      if (truncate(filename.c_str(), size_to_keep))
+        throw std::runtime_error("initialize_velocity_profile_file: couldn't truncate " + filename);
+
+      fp_avg_profile = fopen(filename.c_str(), "a");
+      fprintf(fp_avg_profile, "%.12g", tstart);
+      fclose(fp_avg_profile);
+    }
+  }
+}
+
+void write_vector_to_binary_file(const std::vector<double> &myVector, const std::string &filename)
+{
+    std::ofstream ofs(filename, std::ios::out | std::ofstream::binary);
+    std::ostream_iterator<char> osi{ ofs };
+    const char* beginByte = (char*)&myVector[0];
+    const char* endByte = (char*)&myVector.back() + sizeof(double);
+    std::copy(beginByte, endByte, osi);
+    ofs.flush();
+    ofs.close();
+}
+
+void read_vector_from_file(const std::string &filename, std::vector<double> &to_return)
+{
+    std::vector<char> buffer{};
+    std::ifstream ifs(filename, std::ios::in | std::ifstream::binary);
+    std::istreambuf_iterator<char> iter(ifs);
+    std::istreambuf_iterator<char> end{};
+    std::copy(iter, end, std::back_inserter(buffer));
+    ifs.close();
+    to_return.resize(buffer.size() / sizeof(double));
+    memcpy(&to_return[0], &buffer[0], buffer.size());
+}
+
+class velocity_profiler_t
+{
+  std::string               profile_path;
+  std::string               file_slice_avg_velocity_profile;
+  vector<std::string>       file_line_avg_velocity_profile;
+  double                    t_slice_average;
+  vector<double>            slice_averaged_profile;
+  vector<double>            slice_averaged_profile_nm1;
+  vector<double>            time_averaged_slice_averaged_profile;
+  vector<double>            t_line_average;
+  vector< vector<double> >  line_averaged_profiles;
+  vector< vector<double> >  line_averaged_profiles_nm1;
+  vector< vector<double> >  time_averaged_line_averaged_profiles;
+  vector<unsigned int>      bin_index;
+  int                       iter_export_profile;
+  unsigned int              nbins;
+  void set_number_of_bins(const unsigned int &nbins_)
+  {
+    nbins = nbins_;
+    t_line_average.resize(nbins);
+    line_averaged_profiles.resize(nbins);
+    line_averaged_profiles_nm1.resize(nbins);
+    time_averaged_line_averaged_profiles.resize(nbins);
+  }
+
+  void initialize_averaged_velocity_profiles(const my_p4est_navier_stokes_t* ns, const double &tstart, const my_p4est_shs_channel_t &channel)
+  {
+    PetscErrorCode ierr;
+    file_slice_avg_velocity_profile = profile_path + "/slice_averaged_velocity_profile.dat";
+    ierr = PetscPrintf(ns->get_mpicomm(), "Saving slice-averaged velocity profile in %s\n", file_slice_avg_velocity_profile.c_str()); CHKERRXX(ierr);
+    initialize_velocity_profile_file(file_slice_avg_velocity_profile, ns, tstart);
+  #ifdef P4_TO_P8
+    const double smallest_traverse_length_scale = (channel.spanwise_grooves() ? channel.length()/(ns->get_brick()->nxyztrees[0]*(1 << ns->get_lmax())) : channel.width()/(ns->get_brick()->nxyztrees[2]*(1 << ns->get_lmax())));
+  #else
+    const double smallest_traverse_length_scale = channel.length()/(ns->get_brick()->nxyztrees[0]*(1 << ns->get_lmax()));
+  #endif
+
+    const unsigned int nb_cells_in_groove = (unsigned int) (channel.get_pitch()*channel.GF()/smallest_traverse_length_scale);
+    const unsigned int nb_cells_in_ridge  = (unsigned int) (channel.get_pitch()*(1.0 - channel.GF())/smallest_traverse_length_scale);
+    const unsigned int nb_cells_to_map = nb_cells_in_groove + nb_cells_in_ridge;
+    P4EST_ASSERT(nb_cells_to_map == (unsigned int) (channel.get_pitch()/smallest_traverse_length_scale));
+    bin_index.resize(nb_cells_to_map);
+    const unsigned int nbins_in_groove = (nb_cells_in_groove+((nb_cells_in_groove%2==1)? 1:0))/2;
+  #ifdef P4_TO_P8
+    const unsigned int bin_offset = (channel.spanwise_grooves() ? 1 : 0);
+  #else
+    const unsigned int bin_offset = 1;
+  #endif
+    if (nb_cells_in_groove%2 == 0)
+    {
+      bin_index[bin_offset + nbins_in_groove - 1] = 0;
+      bin_index[bin_offset + nbins_in_groove]     = 0;
+    }
+    else
+      bin_index[bin_offset + nbins_in_groove - 1] = 0;
+    for (unsigned int bin_idx = 1; bin_idx < nbins_in_groove; ++bin_idx)
+    {
+      if (nb_cells_in_groove%2 == 0)
+      {
+        bin_index[bin_offset + nbins_in_groove - 1 - bin_idx] = bin_idx;
+        bin_index[bin_offset + nbins_in_groove + bin_idx]     = bin_idx;
+      }
+      else
+      {
+        bin_index[bin_offset + nbins_in_groove - 1 - bin_idx] = bin_idx;
+        bin_index[bin_offset + nbins_in_groove - 1 + bin_idx] = bin_idx;
+      }
+    }
+    const unsigned int nbins_in_ridge = (nb_cells_in_ridge + (nb_cells_in_ridge%2 == 1 ? 1:0))/2;
+    set_number_of_bins(nbins_in_groove + nbins_in_ridge);
+    if (nb_cells_in_ridge%2 == 0)
+    {
+      bin_index[(bin_offset + nb_cells_in_groove + nbins_in_ridge - 1)%nb_cells_to_map] = nbins - 1;
+      bin_index[(bin_offset + nb_cells_in_groove+nbins_in_ridge)%nb_cells_to_map]       = nbins - 1;
+    }
+    else
+      bin_index[(bin_offset + nb_cells_in_groove + nbins_in_ridge - 1)%nb_cells_to_map] = nbins - 1;
+    for (unsigned int bin_idx = 1; bin_idx < nbins_in_ridge; ++bin_idx)
+    {
+      if (nb_cells_in_ridge%2 == 0)
+      {
+        bin_index[(bin_offset + nb_cells_in_groove + nbins_in_ridge - 1 - bin_idx)%nb_cells_to_map] = nbins - 1 - bin_idx;
+        bin_index[(bin_offset + nb_cells_in_groove + nbins_in_ridge + bin_idx)%nb_cells_to_map]     = nbins - 1 - bin_idx;
+      }
+      else
+      {
+        bin_index[(bin_offset + nb_cells_in_groove + nbins_in_ridge - 1 - bin_idx)%nb_cells_to_map]  = nbins - 1 - bin_idx;
+        bin_index[(bin_offset + nb_cells_in_groove + nbins_in_ridge - 1 + bin_idx)%nb_cells_to_map]  = nbins - 1 - bin_idx;
+      }
+    }
+    file_line_avg_velocity_profile.resize(nbins);
+    for (unsigned int bin_idx = 0; bin_idx < nbins; ++bin_idx) {
+      file_line_avg_velocity_profile[bin_idx] = std::string(profile_path) + "/line_averaged_velocity_profile_index_" + std::to_string(bin_idx) + ".dat";
+      ierr = PetscPrintf(ns->get_mpicomm(), "Saving line-averaged velocity profile in %s\n", file_line_avg_velocity_profile[bin_idx].c_str()); CHKERRXX(ierr);
+      initialize_velocity_profile_file(file_line_avg_velocity_profile[bin_idx].c_str(), ns, tstart);
+    }
+    int mpiret = MPI_Barrier(ns->get_mpicomm()); SC_CHECK_MPI(mpiret);
+  }
+
+
+public:
+  velocity_profiler_t(const cmdParser cmd, const my_p4est_navier_stokes_t* ns, const simulation_setup &setup, const my_p4est_shs_channel_t &channel)
+  {
+    profile_path = setup.export_dir +  "/profiles";
+    if (create_directory(profile_path, ns->get_mpirank(), ns->get_mpicomm()))
+      throw std::runtime_error("velocity_profiler_t::velocity_profiler_t(...): could not create exportation directory for velocity profiles " + profile_path);
+    initialize_averaged_velocity_profiles(ns, setup.tstart, channel);
+    iter_export_profile = 0;
+
+
+    if (cmd.contains("restart"))
+    {
+      bool all_binary_files_nm1_are_there = true;
+      if (ns->get_mpirank() == 0)
+        all_binary_files_nm1_are_there = all_binary_files_nm1_are_there && file_exists(profile_path + "/slice_velocity_profile_nm1.bin");
+
+      for (unsigned int bin_idx = 0; bin_idx < nbins; ++bin_idx)
+        if ((unsigned int) ns->get_mpirank() == bin_idx%ns->get_mpisize())
+          all_binary_files_nm1_are_there = all_binary_files_nm1_are_there && file_exists(profile_path + "/line_velocity_profile_nm1_index_" + std::to_string(bin_idx) + ".bin");
+
+      int load_binary_files = (all_binary_files_nm1_are_there ? 1 : 0);
+      int mpiret = MPI_Allreduce(MPI_IN_PLACE, &load_binary_files, 1, MPI_INT, MPI_LAND, ns->get_mpicomm()); SC_CHECK_MPI(mpiret);
+
+      if (load_binary_files)
+      {
+        if (ns->get_mpirank() == 0)
+        {
+          read_vector_from_file(profile_path + "/slice_velocity_profile_nm1.bin", slice_averaged_profile_nm1);
+          time_averaged_slice_averaged_profile.resize(slice_averaged_profile_nm1.size());
+          t_slice_average = setup.tstart;
+        }
+
+        for (unsigned int bin_idx = 0; bin_idx < nbins; ++bin_idx)
+          if ((unsigned int) ns->get_mpirank() == bin_idx%ns->get_mpisize())
+          {
+            read_vector_from_file(profile_path + "/line_velocity_profile_nm1_index_" + std::to_string(bin_idx)+ ".bin", line_averaged_profiles_nm1[bin_idx]);
+            time_averaged_line_averaged_profiles[bin_idx].resize(line_averaged_profiles_nm1[bin_idx].size());
+            t_line_average[bin_idx] = setup.tstart;
+          }
+
+        iter_export_profile = 1; // restarting so +1
+      }
+    }
+  }
+
+  void gather_and_dump_profiles(const simulation_setup &setup, my_p4est_navier_stokes_t* ns, const double& u_scaling ONLY3D(COMMA const bool& spanwise))
+  {
+    ns->get_slice_averaged_vnp1_profile(dir::x, dir::y, slice_averaged_profile, u_scaling);
+    if (ns->get_mpirank() == 0)
+    {
+      if (iter_export_profile == 0)
+      {
+        t_slice_average = setup.tn;
+        slice_averaged_profile_nm1.resize(slice_averaged_profile.size(), 0.0);
+        time_averaged_slice_averaged_profile.resize(slice_averaged_profile.size(), 0.0);
+      }
+      else
+      {
+        for (unsigned int idx = 0; idx < slice_averaged_profile.size(); ++idx)
+        {
+          time_averaged_slice_averaged_profile[idx] += 0.5*setup.dt*(slice_averaged_profile_nm1[idx] + slice_averaged_profile[idx]);
+          slice_averaged_profile_nm1[idx] = slice_averaged_profile[idx];
+        }
+      }
+
+      if (iter_export_profile != 0 && (iter_export_profile%setup.nexport_avg == 0 || setup.time_to_save_state()))
+      {
+        // we export velocity profile data every nexport_avg iterations *OR* if the solver state is about to be exported at the beginning of next iteration
+        // this second condition avoids truncation errors in the relevant data files when restarting the simulation from a saved solver state
+        // In the latter case, we need to export nm1 profiles for it to be read in case of restart
+        if (setup.time_to_save_state())
+        {
+          const std::string path_to_binary_slice_velocity_profile_nm1 = profile_path + "/slice_velocity_profile_nm1.bin";
+          if (file_exists(path_to_binary_slice_velocity_profile_nm1))
+            if (remove(path_to_binary_slice_velocity_profile_nm1.c_str()) != 0)
+              throw std::runtime_error("main_shs_:: error when deleting file " + path_to_binary_slice_velocity_profile_nm1);
+          write_vector_to_binary_file(slice_averaged_profile_nm1, path_to_binary_slice_velocity_profile_nm1);
+          //            std::ofstream binary_slice_velocity_profile_nm1(path_to_binary_slice_velocity_profile_nm1, std::ios::out | std::ofstream::binary);
+          //            std::copy(slice_averaged_profile_nm1.begin(), slice_averaged_profile_nm1.end(), std::ostreambuf_iterator<char>(binary_slice_velocity_profile_nm1));
+          //            binary_slice_velocity_profile_nm1.flush();
+          //            binary_slice_velocity_profile_nm1.close();
+        }
+        FILE* fp_velocity_profile = fopen(file_slice_avg_velocity_profile.c_str(), "a");
+        if (fp_velocity_profile == NULL)
+          throw std::invalid_argument("main_shs_" + std::to_string(P4EST_DIM) + "d: could not open file for slice-averaged velocity profile output.");
+        for (int k = 0; k < ns->get_brick()->nxyztrees[1]*(1 << ns->get_lmax()); ++k)
+        {
+          fprintf(fp_velocity_profile, " %.12g", time_averaged_slice_averaged_profile.at(k)/(setup.tn - t_slice_average));
+          time_averaged_slice_averaged_profile.at(k) = 0.0;
+        }
+        fprintf(fp_velocity_profile, "\n");
+        // write the next start time
+        fprintf(fp_velocity_profile, "%.12g", setup.tn);
+        fclose(fp_velocity_profile);
+        // reset these
+        t_slice_average = setup.tn;
+      }
+    }
+    ns->get_line_averaged_vnp1_profiles(DIM(dir::x, dir::y, spanwise ? dir::z : dir::x), bin_index, line_averaged_profiles, u_scaling);
+    for (unsigned int bin_idx = 0; bin_idx < nbins; ++bin_idx) {
+      if ((unsigned int) ns->get_mpirank() == bin_idx%ns->get_mpisize())
+      {
+        if (iter_export_profile == 0)
+        {
+          t_line_average[bin_idx] = setup.tn;
+          line_averaged_profiles_nm1[bin_idx].resize(line_averaged_profiles[bin_idx].size(), 0.0);
+          time_averaged_line_averaged_profiles[bin_idx].resize(line_averaged_profiles[bin_idx].size(), 0.0);
+        }
+        else
+        {
+          for (size_t idx = 0; idx < line_averaged_profiles[bin_idx].size(); ++idx)
+          {
+            time_averaged_line_averaged_profiles[bin_idx][idx] += 0.5*setup.dt*(line_averaged_profiles_nm1[bin_idx][idx] + line_averaged_profiles[bin_idx][idx]);
+            line_averaged_profiles_nm1[bin_idx][idx] = line_averaged_profiles[bin_idx][idx];
+          }
+        }
+
+        if (iter_export_profile != 0 && (iter_export_profile%setup.nexport_avg == 0 || (setup.time_to_save_state())))
+        {
+          // we export velocity profile data every nexport_avg iterations *OR* if the solver state is about to be exported at the beginning of next iteration
+          // this second condition avoids truncation errors in the relevant data files when restarting the simulation from a saved solver state
+          // In the latter case, we need to export nm1 profiles for it to be read in case of restart
+          if (setup.time_to_save_state())
+          {
+            const std::string path_to_binary_line_velocity_profile_nm1 = profile_path + "/line_velocity_profile_nm1_index_" + std::to_string(bin_idx) + ".bin";
+            if (file_exists(path_to_binary_line_velocity_profile_nm1))
+              if (remove(path_to_binary_line_velocity_profile_nm1.c_str()) != 0)
+                throw std::runtime_error("main_shs_:: error when deleting file " + std::string(path_to_binary_line_velocity_profile_nm1));
+            write_vector_to_binary_file(line_averaged_profiles_nm1[bin_idx], path_to_binary_line_velocity_profile_nm1);
+            //              std::ofstream binary_line_velocity_profile_nm1(path_to_binary_line_velocity_profile_nm1, std::ios::out | std::ofstream::binary);
+            //              std::copy(line_averaged_profiles_nm1[bin_idx].begin(), line_averaged_profiles_nm1[bin_idx].end(), std::ostreambuf_iterator<char>(binary_line_velocity_profile_nm1));
+            //              binary_line_velocity_profile_nm1.flush();
+            //              binary_line_velocity_profile_nm1.close();
+          }
+          FILE* fp_velocity_profile = fopen(file_line_avg_velocity_profile[bin_idx].c_str(), "a");
+          if (fp_velocity_profile == NULL)
+            throw std::invalid_argument("main_shs_" + std::to_string(P4EST_DIM) + "d: could not open file for line-averaged velocity profile output.");
+          for (int k = 0; k < ns->get_brick()->nxyztrees[1]*(1 << ns->get_lmax()); ++k)
+          {
+            fprintf(fp_velocity_profile, " %.12g", time_averaged_line_averaged_profiles[bin_idx].at(k)/(setup.tn - t_line_average[bin_idx]));
+            time_averaged_line_averaged_profiles[bin_idx].at(k) = 0.0;
+          }
+          fprintf(fp_velocity_profile, "\n");
+          // write the next start time
+          fprintf(fp_velocity_profile, "%.12g", setup.tn);
+          fclose(fp_velocity_profile);
+          // reset these
+          t_line_average[bin_idx] = setup.tn;
+        }
+      }
+    }
+    // if we exported velocity profile data because of an exported solver state but not because of a reached value of iter_export_profile, we reset its value to 0!
+    if (iter_export_profile != 0 && setup.time_to_save_state() && iter_export_profile%setup.nexport_avg != 0)
+      iter_export_profile = 0;
+
+    iter_export_profile++;
+  }
+
+};
+
+void initialize_monitoring(simulation_setup &setup, const my_p4est_navier_stokes_t* ns)
+{
+  setup.file_monitoring = setup.export_dir + "/flow_monitoring.dat";
+
+  PetscErrorCode ierr = PetscPrintf(ns->get_mpicomm(), "Monitoring flow in ... %s\n", setup.file_monitoring.c_str()); CHKERRXX(ierr);
+  if (ns->get_mpirank() == 0)
+  {
+    if (!file_exists(setup.file_monitoring))
+    {
+      FILE* fp_monitor = fopen(setup.file_monitoring.c_str(), "w");
+      if (fp_monitor == NULL)
         throw std::runtime_error("initialize_monitoring: could not open file for flow monitoring.");
       fprintf(fp_monitor, "%% tn | Re_tau | Re_b \n");
       fclose(fp_monitor);
     }
     else
     {
-      FILE* fp_monitor = fopen(file_monitoring, "r+");
+      FILE* fp_monitor = fopen(setup.file_monitoring.c_str(), "r+");
       char* read_line = NULL;
       size_t len = 0;
       ssize_t len_read;
       long size_to_keep = 0;
-      if(((len_read = getline(&read_line, &len, fp_monitor)) != -1))
+      if (((len_read = getline(&read_line, &len, fp_monitor)) != -1))
         size_to_keep += (long) len_read;
       else
-        throw std::runtime_error("initialize_monitoring: couldn't read the first header line of mass_flow_...dat");
+        throw std::runtime_error("initialize_monitoring: couldn't read the first header line of flow_monitoring.dat");
       double time, time_nm1;
       double dt = 0.0;
       bool not_first_line = false;
-      char format_specifier[1024] = "%lg %*g %*g";
+      const std::string format_specifier = "%lg %*g %*g";
       while ((len_read = getline(&read_line, &len, fp_monitor)) != -1) {
-        if(not_first_line)
+        if (not_first_line)
           time_nm1 = time;
-        sscanf(read_line, format_specifier, &time);
-        if(not_first_line)
+        sscanf(read_line, format_specifier.c_str(), &time);
+        if (not_first_line)
           dt = time - time_nm1;
-        if(time <= tstart+0.1*dt) // +0.1*dt to avoid roundoff errors when exporting the data
+        if (time <= setup.tstart + 0.1*dt) // +0.1*dt to avoid roundoff errors when exporting the data
           size_to_keep += (long) len_read;
         else
           break;
         not_first_line=true;
       }
       fclose(fp_monitor);
-      if(read_line)
+      if (read_line)
         free(read_line);
-      if(truncate(file_monitoring, size_to_keep))
-        throw std::runtime_error("initialize_monitoring: couldn't truncate flow_monitoring_...dat");
+      if (truncate(setup.file_monitoring.c_str(), size_to_keep))
+        throw std::runtime_error("initialize_monitoring: couldn't truncate flow_monitoring.dat");
     }
 
-    char liveplot_Re[PATH_MAX];
-    sprintf(liveplot_Re, "%s/live_monitor.gnu", out_dir);
-    if(!file_exists(liveplot_Re))
+    const std::string liveplot_Re = setup.export_dir + "/live_monitor.gnu";
+    if (!file_exists(liveplot_Re))
     {
-      FILE *fp_liveplot_Re= fopen(liveplot_Re, "w");
-      if(fp_liveplot_Re==NULL)
+      FILE *fp_liveplot_Re= fopen(liveplot_Re.c_str(), "w");
+      if (fp_liveplot_Re == NULL)
         throw std::runtime_error("initialize_monitoring: could not open file for Re liveplot.");
       fprintf(fp_liveplot_Re, "set term wxt noraise\n");
       fprintf(fp_liveplot_Re, "set key bottom right Left font \"Arial,14\"\n");
       fprintf(fp_liveplot_Re, "set xlabel \"Time\" font \"Arial,14\"\n");
       fprintf(fp_liveplot_Re, "set ylabel \"Re\" font \"Arial,14\"\n");
       fprintf(fp_liveplot_Re, "plot");
-      fprintf(fp_liveplot_Re, "\t \"flow_monitoring_ny_%d_lmin_%d_lmax_%d_split_threshold_%.2f_cfl_%.2f_sl_%d.dat\" using 1:2 title 'Re_{tau}' with lines lw 3,\\\n", ntree_y, lmin, lmax, threshold_split_cell, cfl, sl_order);
-      fprintf(fp_liveplot_Re, "\t \"flow_monitoring_ny_%d_lmin_%d_lmax_%d_split_threshold_%.2f_cfl_%.2f_sl_%d.dat\" using 1:3 title 'Re_b' with lines lw 3\n", ntree_y, lmin, lmax, threshold_split_cell, cfl, sl_order);
+      fprintf(fp_liveplot_Re, "\t \"\%s\" using 1:2 title 'Re_{tau}' with lines lw 3,\\\n", setup.file_monitoring.c_str());
+      fprintf(fp_liveplot_Re, "\t \"\%s\" using 1:3 title 'Re_b' with lines lw 3\n", setup.file_monitoring.c_str());
       fprintf(fp_liveplot_Re, "pause 4\n");
       fprintf(fp_liveplot_Re, "reread");
       fclose(fp_liveplot_Re);
     }
 
-    char tex_plot_Re[PATH_MAX];
-    sprintf(tex_plot_Re, "%s/tex_monitor.gnu", out_dir);
-    if(!file_exists(tex_plot_Re))
+    const std::string tex_plot_Re = setup.export_dir + "/tex_monitor.gnu";
+    if (!file_exists(tex_plot_Re))
     {
-      FILE *fp_tex_plot_Re = fopen(tex_plot_Re, "w");
-      if(fp_tex_plot_Re==NULL)
+      FILE *fp_tex_plot_Re = fopen(tex_plot_Re.c_str(), "w");
+      if (fp_tex_plot_Re == NULL)
         throw std::runtime_error("initialize_monitoring: could not open file for Re monitoring figure.");
       fprintf(fp_tex_plot_Re, "set term epslatex color standalone\n");
       fprintf(fp_tex_plot_Re, "set output 'monitor_history.tex'\n");
@@ -251,17 +719,16 @@ void initialize_monitoring(char* file_monitoring, const char *out_dir, const int
       fprintf(fp_tex_plot_Re, "set xlabel \"$t$\"\n");
       fprintf(fp_tex_plot_Re, "set ylabel \"$\\\\mathrm{Re}$\" \n");
       fprintf(fp_tex_plot_Re, "plot");
-      fprintf(fp_tex_plot_Re, "\t \"flow_monitoring_ny_%d_lmin_%d_lmax_%d_split_threshold_%.2f_cfl_%.2f_sl_%d.dat\" using 1:2 title '$Re_{tau}$' with lines lw 3,\\\n", ntree_y, lmin, lmax, threshold_split_cell, cfl, sl_order);
-      fprintf(fp_tex_plot_Re, "\t \"flow_monitoring_ny_%d_lmin_%d_lmax_%d_split_threshold_%.2f_cfl_%.2f_sl_%d.dat\" using 1:3 title '$Re_{b}$' with lines lw 3", ntree_y, lmin, lmax, threshold_split_cell, cfl, sl_order);
+      fprintf(fp_tex_plot_Re, "\t \"flow_monitoring.dat\" using 1:2 title '$\\mathrm{Re}_{\\tau}$' with lines lw 3,\\\n");
+      fprintf(fp_tex_plot_Re, "\t \"flow_monitoring.dat\" using 1:3 title '$\\mathrm{Re}_{\\mathrm{b}}$' with lines lw 3");
       fclose(fp_tex_plot_Re);
     }
 
-    char tex_Re_script[PATH_MAX];
-    sprintf(tex_Re_script, "%s/plot_tex_monitor.sh", out_dir);
-    if(!file_exists(tex_Re_script))
+    const std::string tex_Re_script = setup.export_dir + "/plot_tex_monitor.sh";
+    if (!file_exists(tex_Re_script))
     {
-      FILE *fp_tex_monitor_script = fopen(tex_Re_script, "w");
-      if(fp_tex_monitor_script==NULL)
+      FILE *fp_tex_monitor_script = fopen(tex_Re_script.c_str(), "w");
+      if (fp_tex_monitor_script == NULL)
         throw std::runtime_error("initialize_monitoring: could not open file for bash script plotting monitoring tex figure.");
       fprintf(fp_tex_monitor_script, "#!/bin/sh\n");
       fprintf(fp_tex_monitor_script, "gnuplot ./tex_monitor.gnu\n");
@@ -271,89 +738,81 @@ void initialize_monitoring(char* file_monitoring, const char *out_dir, const int
 
       std::ostringstream chmod_command;
       chmod_command << "chmod +x " << tex_Re_script;
-      if(system(chmod_command.str().c_str()))
+      if (system(chmod_command.str().c_str()))
         throw std::runtime_error("initialize_monitoring: could not make the plot_tex_monitor.sh script executable");
     }
   }
 }
 
-void initialize_drag_force_output(char* file_drag, const char *out_dir, const int& lmin, const int& lmax, const double& threshold_split_cell, const double& cfl, const int& sl_order, const mpi_environment_t& mpi, const double& tstart)
+void initialize_drag_force_output(simulation_setup &setup, const my_p4est_navier_stokes_t* ns)
 {
-  sprintf(file_drag, "%s/drag_%d-%d_split_threshold_%.2f_cfl_%.2f_sl_%d.dat", out_dir, lmin, lmax, threshold_split_cell, cfl, sl_order);
-  PetscErrorCode ierr = PetscPrintf(mpi.comm(), "Saving drag in ... %s\n", file_drag); CHKERRXX(ierr);
+  setup.file_drag = setup.export_dir + "/drag_monitoring.dat";
 
-  if(mpi.rank() == 0)
+  PetscErrorCode ierr = PetscPrintf(ns->get_mpicomm(), "Saving drag in ... %s\n", setup.file_drag.c_str()); CHKERRXX(ierr);
+
+  if (ns->get_mpirank() == 0)
   {
-    if(!file_exists(file_drag))
+    if (!file_exists(setup.file_drag))
     {
-      FILE* fp_drag = fopen(file_drag, "w");
-      if(fp_drag==NULL)
+      FILE* fp_drag = fopen(setup.file_drag.c_str(), "w");
+      if (fp_drag == NULL)
         throw std::runtime_error("initialize_drag_force_output: could not open file for drag output.");
       fprintf(fp_drag, "%% __ | Normalized drag \n");
-#ifdef P4_TO_P8
-      fprintf(fp_drag, "%% tn | x-component | y-component | z-component\n");
-#else
-      fprintf(fp_drag, "%% tn | x-component | y-component\n");
-#endif
+      fprintf(fp_drag, "%s", (std::string("%% tn | x-component | y-component") ONLY3D(+ std::string(" | z-component")) + std::string("\n")).c_str());
       fclose(fp_drag);
     }
     else
     {
-      FILE* fp_drag = fopen(file_drag, "r+");
+      FILE* fp_drag = fopen(setup.file_drag.c_str(), "r+");
       char* read_line = NULL;
       size_t len = 0;
       ssize_t len_read;
       long size_to_keep = 0;
-      if(((len_read = getline(&read_line, &len, fp_drag)) != -1))
+      if ((len_read = getline(&read_line, &len, fp_drag)) != -1)
         size_to_keep += (long) len_read;
       else
-        throw std::runtime_error("initialize_drag_force_output: couldn't read the first header line of drag_...dat");
-      if(((len_read = getline(&read_line, &len, fp_drag)) != -1))
+        throw std::runtime_error("initialize_drag_force_output: couldn't read the first header line of drag_monitoring.dat");
+      if ((len_read = getline(&read_line, &len, fp_drag)) != -1)
         size_to_keep += (long) len_read;
       else
-        throw std::runtime_error("initialize_drag_force_output: couldn't read the second header line of drag_...dat");
+        throw std::runtime_error("initialize_drag_force_output: couldn't read the second header line of drag_monitoring.dat");
       double time, time_nm1;
       double dt = 0.0;
       bool not_first_line = false;
       while ((len_read = getline(&read_line, &len, fp_drag)) != -1) {
-        if(not_first_line)
+        if (not_first_line)
           time_nm1 = time;
-#ifdef P4_TO_P8
-        sscanf(read_line, "%lg %*g %*g %*g", &time);
-#else
-        sscanf(read_line, "%lg %*g %*g", &time);
-#endif
-        if(not_first_line)
-          dt = time-time_nm1;
-        if(time <= tstart+0.1*dt) // +0.1*dt to avoid roundoff errors when exporting the data
+        sscanf(read_line, (std::string("%lg %*g %*g") ONLY3D( + std::string(" %*g"))).c_str(), &time);
+        if (not_first_line)
+          dt = time - time_nm1;
+        if (time <= setup.tstart + 0.1*dt) // +0.1*dt to avoid roundoff errors when exporting the data
           size_to_keep += (long) len_read;
         else
           break;
         not_first_line=true;
       }
       fclose(fp_drag);
-      if(read_line)
+      if (read_line)
         free(read_line);
-      if(truncate(file_drag, size_to_keep))
-        throw std::runtime_error("initialize_drag_force_output: couldn't truncate drag_...dat");
+      if (truncate(setup.file_drag.c_str(), size_to_keep))
+        throw std::runtime_error("initialize_drag_force_output: couldn't truncate drag_monitoring.dat");
     }
 
-    char liveplot_drag[PATH_MAX];
-    sprintf(liveplot_drag, "%s/live_drag.gnu", out_dir);
-    if(!file_exists(liveplot_drag))
+    const std::string liveplot_drag = setup.export_dir + "/live_drag.gnu";
+    if (!file_exists(liveplot_drag))
     {
-      FILE* fp_liveplot_drag = fopen(liveplot_drag, "w");
-      if(fp_liveplot_drag==NULL)
+      FILE* fp_liveplot_drag = fopen(liveplot_drag.c_str(), "w");
+      if (fp_liveplot_drag == NULL)
         throw std::runtime_error("initialize_drag_force_output: could not open file for drage force liveplot.");
       fprintf(fp_liveplot_drag, "set term wxt noraise\n");
       fprintf(fp_liveplot_drag, "set key center right Left font \"Arial,14\"\n");
       fprintf(fp_liveplot_drag, "set xlabel \"Time\" font \"Arial,14\"\n");
       fprintf(fp_liveplot_drag, "set ylabel \"Nondimensional drag \" font \"Arial,14\"\n");
       fprintf(fp_liveplot_drag, "plot");
-      for (short dd = 0; dd < P4EST_DIM; ++dd)
+      for (unsigned char dd = 0; dd < P4EST_DIM; ++dd)
       {
-        fprintf(fp_liveplot_drag, "\t \"drag_%d-%d_split_threshold_%.2f_cfl_%.2f_sl_%d.dat\" using 1:%d title '%c-component' with lines lw 3", lmin, lmax, threshold_split_cell, cfl, sl_order, ((int)dd+2), ((dd==0)?'x':((dd==1)?'y':'z')));
-        if(dd < P4EST_DIM-1)
+        fprintf(fp_liveplot_drag, "\t \"drag_monitoring.dat\" using 1:%d title '%c-component' with lines lw 3",  (int) dd + 2, (dd == 0 ? 'x' : (dd == 1 ? 'y' : 'z')));
+        if (dd < P4EST_DIM - 1)
           fprintf(fp_liveplot_drag, ",\\");
         fprintf(fp_liveplot_drag, "\n");
       }
@@ -362,38 +821,32 @@ void initialize_drag_force_output(char* file_drag, const char *out_dir, const in
       fclose(fp_liveplot_drag);
     }
 
-    char tex_plot_drag[PATH_MAX];
-    sprintf(tex_plot_drag, "%s/tex_drag.gnu", out_dir);
-    if(!file_exists(tex_plot_drag))
+    const std::string tex_plot_drag = setup.export_dir + "/tex_drag.gnu";
+    if (!file_exists(tex_plot_drag))
     {
-      FILE *fp_tex_plot_drag = fopen(tex_plot_drag, "w");
-      if(fp_tex_plot_drag==NULL)
+      FILE *fp_tex_plot_drag = fopen(tex_plot_drag.c_str(), "w");
+      if (fp_tex_plot_drag == NULL)
         throw std::runtime_error("initialize_drag_foce_output: could not open file for drag force tex figure.");
       fprintf(fp_tex_plot_drag, "set term epslatex color standalone\n");
       fprintf(fp_tex_plot_drag, "set output 'drag_history.tex'\n");
       fprintf(fp_tex_plot_drag, "set key center right Left \n");
       fprintf(fp_tex_plot_drag, "set xlabel \"$t$\"\n");
-#ifdef P4_TO_P8
-      fprintf(fp_tex_plot_drag, "set ylabel \"Non-dimensional wall friction $\\\\mathbf{D} = \\\\frac{\\\\hat{\\\\mathbf{D}}}{\\\\rho u_{\\\\tau}^{2} \\\\delta^{2}}$ \" \n");
-#else
-      fprintf(fp_tex_plot_drag, "set ylabel \"Non-dimensional wall friction $\\\\mathbf{D} = \\\\frac{\\\\hat{\\\\mathbf{D}}}{\\\\rho u_{\\\\tau}^{2} \\\\delta}$ \" \n");
-#endif
+      fprintf(fp_tex_plot_drag, "%s", (std::string("set ylabel \"Non-dimensional wall friction $\\\\mathbf{D} = \\\\frac{-\\\\hat{\\\\mathbf{D}}}{2\\\\rho U_{\\\\mathrm{b}}^2 L") ONLY3D(+ std::string(" W")) + std::string("}$ \" \n")).c_str());
       fprintf(fp_tex_plot_drag, "plot");
-      for (short dd = 0; dd < P4EST_DIM; ++dd)
+      for (unsigned char dd = 0; dd < P4EST_DIM; ++dd)
       {
-        fprintf(fp_tex_plot_drag, "\t \"drag_%d-%d_split_threshold_%.2f_cfl_%.2f_sl_%d.dat\" using 1:%d title '$D_{%c}$' with lines lw 3", lmin, lmax, threshold_split_cell, cfl, sl_order, ((int) dd+2), ((dd==0)?'x':((dd==1)?'y':'z')));
-        if(dd < P4EST_DIM-1)
+        fprintf(fp_tex_plot_drag, "\t \"drag_monitoring.dat\" using 1:%d title '$D_{\\mathrm{%c}}$' with lines lw 3",  (int) dd + 2, (dd == 0 ? 'x' : (dd == 1 ? 'y' : 'z')));
+        if (dd < P4EST_DIM - 1)
           fprintf(fp_tex_plot_drag, ",\\\n");
       }
       fclose(fp_tex_plot_drag);
     }
 
-    char tex_drag_script[PATH_MAX];
-    sprintf(tex_drag_script, "%s/plot_tex_drag.sh", out_dir);
-    if(!file_exists(tex_drag_script))
+    const std::string tex_drag_script = setup.export_dir + "/plot_tex_drag.sh";
+    if (!file_exists(tex_drag_script))
     {
-      FILE *fp_tex_drag_script = fopen(tex_drag_script, "w");
-      if(fp_tex_drag_script==NULL)
+      FILE *fp_tex_drag_script = fopen(tex_drag_script.c_str(), "w");
+      if (fp_tex_drag_script == NULL)
         throw std::runtime_error("initialize_drag_force_output: could not open file for bash script plotting drag tex figure.");
       fprintf(fp_tex_drag_script, "#!/bin/sh\n");
       fprintf(fp_tex_drag_script, "gnuplot ./tex_drag.gnu\n");
@@ -408,211 +861,215 @@ void initialize_drag_force_output(char* file_drag, const char *out_dir, const in
   }
 }
 
-void initialize_velocity_profile_file(const char* filename, const int& ntree_y, const int &lmax, const double& tstart,  const mpi_environment_t& mpi)
+void load_solver_from_state(const mpi_environment_t &mpi, const cmdParser &cmd,
+                            my_p4est_navier_stokes_t* &ns, my_p4est_brick_t* &brick, my_p4est_shs_channel_t &channel,
+                            external_force_per_unit_mass_t* external_acceleration[P4EST_DIM], splitting_criteria_cf_and_uniform_band_t* &data,
+                            mass_flow_controller_t* &controller, simulation_setup &setup)
 {
-  if(mpi.rank() == 0)
-  {
-    if(!file_exists(filename))
-    {
-      FILE* fp_avg_profile = fopen(filename, "w");
-      if(fp_avg_profile==NULL)
-      {
-        char error_msg[1024];
-        sprintf(error_msg, "initialize_velocity_profile_file: could not open file %s.", filename);
-        throw std::invalid_argument(error_msg);
-      }
-      fprintf(fp_avg_profile, "%% __ | coordinates along y axis \n");
-      fprintf(fp_avg_profile, "%% tn");
-      for (int k = 0; k < ntree_y*(1<<lmax); ++k)
-        fprintf(fp_avg_profile, "  | %.12g", (-1.00+(2.0/((double) (ntree_y*(1<<lmax))))*(0.5+k)));
-      fprintf(fp_avg_profile, "\n");
-      fprintf(fp_avg_profile, "%.12g", tstart);
-      fclose(fp_avg_profile);
-    }
-    else
-    {
-      FILE* fp_avg_profile = fopen(filename, "r+");
-      char* read_line = NULL;
-      size_t len = 0;
-      ssize_t len_read;
-      long size_to_keep = 0;
-      if(((len_read = getline(&read_line, &len, fp_avg_profile)) != -1))
-        size_to_keep += (long) len_read;
-      else
-      {
-        char error_msg[1024];
-        sprintf(error_msg, "initialize_velocity_profile_file: couldn't read the first header line of %s", filename);
-        throw std::runtime_error(error_msg);
-      }
-      if(((len_read = getline(&read_line, &len, fp_avg_profile)) != -1))
-        size_to_keep += (long) len_read;
-      else
-      {
-        char error_msg[1024];
-        sprintf(error_msg, "initialize_velocity_profile_file: couldn't read the second header line of %s", filename);
-        throw std::runtime_error(error_msg);
-      }
-      double time;
-      while ((len_read = getline(&read_line, &len, fp_avg_profile)) != -1) {
-        sscanf(read_line, "%lg %*[^\n]", &time);
-        if(time <= tstart - (1.0e-12)*pow(10.0, floor(log10(tstart)))) // (1.0e-12)*pow(10.0, floor(log10(tstart))) == given precision when exporting
-          size_to_keep += (long) len_read;
-        else
-          break;
-      }
-      fclose(fp_avg_profile);
-      if(read_line)
-        free(read_line);
-      if(truncate(filename, size_to_keep))
-      {
-        char error_msg[1024];
-        sprintf(error_msg, "initialize_velocity_profile_file: couldn't truncate %s", filename);
-        throw std::runtime_error(error_msg);
-      }
+  const std::string backup_directory = cmd.get<std::string>("restart", "");
+  if (!is_folder(backup_directory.c_str()))
+    throw std::invalid_argument("load_from_state: the restart path " + backup_directory + " is not an accessible directory.");
+  if (ORD(cmd.contains("nx"), cmd.contains("ny"), cmd.contains("nz")) || ORD(cmd.contains("length"), cmd.contains("height"), cmd.contains("width")))
+    throw std::invalid_argument("load_from_state: the length, height and width as well as the numbers of trees along x, y and z cannot be reset when restarting a simulation.");
 
-      fp_avg_profile = fopen(filename, "a");
-      fprintf(fp_avg_profile, "%.12g", tstart);
-      fclose(fp_avg_profile);
-    }
+  if (ns != NULL)
+    delete  ns;
+
+  ns                      = new my_p4est_navier_stokes_t(mpi, backup_directory.c_str(), setup.tstart);
+  setup.dt                = ns->get_dt();
+  p4est_t *p4est_n        = ns->get_p4est();
+  p4est_t *p4est_nm1      = ns->get_p4est_nm1();
+  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+    if (is_periodic(p4est_n, dir) != periodicity[dir] || is_periodic(p4est_nm1, dir) != periodicity[dir])
+      throw std::invalid_argument("load_from_state: the periodicity from the loaded state does not match the requirements.");
+
+  if (brick != NULL && brick->nxyz_to_treeid != NULL)
+  {
+    P4EST_FREE(brick->nxyz_to_treeid); brick->nxyz_to_treeid = NULL;
+    delete brick; brick = NULL;
   }
-}
+  P4EST_ASSERT(brick == NULL);
+  brick                   = ns->get_brick();
+  channel.configure(brick, DIM(cmd.get<double>("pitch", default_pitch_to_height*ns->get_height_of_domain()),
+                               cmd.get<double>("GF", default_gas_fraction),
+                               cmd.contains("spanwise")), cmd.get<int>("lmax", ((splitting_criteria_t*) p4est_n->user_pointer)->max_lvl));
 
-void initialize_averaged_velocity_profiles(char* file_slice_avg_profile, const char *profile_dir, const int* ntree, const int& lmin, const int& lmax, const double& threshold_split_cell, const double& cfl, const int& sl_order, const mpi_environment_t& mpi, const double& tstart,
-                                           vector<unsigned int>& bin_index, vector<std::string>& file_line_avg_profile, const double* dimensions_to_delta, const double& pitch_to_delta, const double& gas_fraction, unsigned int& number_of_bins, const bool& spanwise)
-{
-  PetscErrorCode ierr;
-  sprintf(file_slice_avg_profile, "%s/slice_averaged_velocity_profile_ntreey_%d_%d-%d_split_threshold_%.2f_cfl_%.2f_sl_%d.dat", profile_dir, ntree[1], lmin, lmax, threshold_split_cell, cfl, sl_order);
-  ierr = PetscPrintf(mpi.comm(), "Saving slice-averaged velocity profile in %s\n", file_slice_avg_profile); CHKERRXX(ierr);
-  initialize_velocity_profile_file(file_slice_avg_profile, ntree[1], lmax, tstart, mpi);
-  unsigned int nb_cells_in_groove = (unsigned int)((pitch_to_delta*gas_fraction)/((spanwise)? (dimensions_to_delta[0]/(ntree[0]*(1<<lmax))) : (dimensions_to_delta[2]/(ntree[2]*(1<<lmax)))));
-  unsigned int nb_cells_in_ridge  = (unsigned int)((pitch_to_delta*(1.0-gas_fraction))/((spanwise)? (dimensions_to_delta[0]/(ntree[0]*(1<<lmax))) : (dimensions_to_delta[2]/(ntree[2]*(1<<lmax)))));
-  P4EST_ASSERT(nb_cells_in_groove+nb_cells_in_ridge==(unsigned int)(pitch_to_delta/((spanwise)? (dimensions_to_delta[0]/(ntree[0]*(1<<lmax))) : (dimensions_to_delta[2]/(ntree[2]*(1<<lmax))))));
-  bin_index.resize(nb_cells_in_groove+nb_cells_in_ridge);
-  unsigned int nbins_in_groove = (nb_cells_in_groove+((nb_cells_in_groove%2==1)? 1:0))/2;
-  if(nb_cells_in_groove%2 == 0)
+  if (controller != NULL)
+    delete controller;
+  controller = new mass_flow_controller_t(dir::x, brick->xyz_min[dir::x]);
+  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
   {
-    bin_index[(spanwise ? 1 : 0) + nbins_in_groove - 1] = 0;
-    bin_index[(spanwise ? 1 : 0) + nbins_in_groove]   = 0;
+    if(external_acceleration[dir] != NULL)
+      delete external_acceleration[dir];
+    external_acceleration[dir] = new external_force_per_unit_mass_t;
+  }
+  if (setup.flow_condition == constant_mass_flow)
+  {
+    const double desired_U_b    = ns->get_nu()*setup.Reynolds/channel.delta();
+    controller->activate_forcing(desired_U_b);
+    if(cmd.contains("initial_Re_tau"))
+      external_acceleration[dir::x]->set_value(channel.acceleration_for_canonical_u_tau(ns->get_nu()*cmd.get<double>("initial_Re_tau")/channel.delta()));
+    else
+      external_acceleration[dir::x]->set_value(channel.acceleration_for_constant_mass_flow(desired_U_b, setup.Reynolds, setup.nterms_in_series));
+    P4EST_ASSERT(fabs(channel.Re_b(ns->get_rho()*MULTD(controller->targeted_bulk_velocity(), channel.height(), channel.width()), ns->get_rho(), ns->get_nu()) - setup.Reynolds) < setup.Reynolds*10.0*EPS);
   }
   else
-    bin_index[(spanwise ? 1 : 0) + nbins_in_groove - 1] = 0;
-  for (unsigned int bin_idx = 1; bin_idx < nbins_in_groove; ++bin_idx)
   {
-    if(nb_cells_in_groove%2 == 0)
-    {
-      bin_index[(spanwise ? 1 : 0) + nbins_in_groove - 1 - bin_idx] = bin_idx;
-      bin_index[(spanwise ? 1 : 0) + nbins_in_groove+bin_idx]   = bin_idx;
-    }
-    else
-    {
-      bin_index[(spanwise ? 1 : 0) + nbins_in_groove - 1 - bin_idx] = bin_idx;
-      bin_index[(spanwise ? 1 : 0) + nbins_in_groove - 1 + bin_idx] = bin_idx;
-    }
+    const double desired_u_tau  = ns->get_nu()*setup.Reynolds/channel.delta();
+    external_acceleration[dir::x]->set_value(channel.acceleration_for_canonical_u_tau(desired_u_tau));
+    P4EST_ASSERT(fabs(channel.canonical_Re_tau(external_acceleration[0]->get_value(), ns->get_nu()) - setup.Reynolds) < setup.Reynolds*10.0*EPS);
   }
-  unsigned int nbins_in_ridge = (nb_cells_in_ridge+((nb_cells_in_ridge%2==1)? 1:0))/2;
-  if(nb_cells_in_ridge%2 == 0)
+
+  double lip = ((splitting_criteria_t*) p4est_n->user_pointer)->lip;
+  if (cmd.contains("lip")) // reset to match the desired value if given
+    lip                   = channel.calculate_lip_for_ns_solver(cmd.get<double>("lip"));
+
+  double uniform_band     = ns->get_uniform_band();
+  if (cmd.contains("wall_layer")) // reset the uniform band to desired value if given
+    uniform_band          = channel.calculate_uniform_band_for_ns_solver(cmd.get<unsigned int>("wall_layer"));
+
+  if (data != NULL) {
+    delete data; data = NULL;
+  }
+  P4EST_ASSERT(data == NULL);
+  data = new splitting_criteria_cf_and_uniform_band_t(cmd.get<int>("lmin", ((splitting_criteria_t*) p4est_n->user_pointer)->min_lvl), channel.lmax(), &channel, uniform_band, lip);
+  splitting_criteria_t* to_delete = (splitting_criteria_t*) p4est_n->user_pointer;
+  bool fix_restarted_grid = (channel.lmax() != to_delete->max_lvl);
+  delete to_delete;
+  p4est_n->user_pointer   = (void*) data;
+  p4est_nm1->user_pointer = (void*) data; // p4est_n and p4est_nm1 always point to the same splitting_criteria_t no need to delete the nm1 one, it's just been done
+  ns->set_parameters(ns->get_mu(), ns->get_rho(), cmd.get<int>("sl_order", ns->get_sl_order()), uniform_band, cmd.get<double>("thresh", ns->get_split_threshold()), cmd.get<double>("cfl", ns->get_cfl()));
+
+  ns->set_bc(channel.get_bc_on_velocity(), channel.get_bc_on_pressure());
+  CF_DIM* tmp[P4EST_DIM] = {DIM(external_acceleration[0], external_acceleration[1], external_acceleration[2])};
+  ns->set_external_forces_per_unit_mass(tmp);
+  if (fix_restarted_grid)
+    ns->refine_coarsen_grid_after_restart(&channel, false);
+  PetscErrorCode ierr = PetscPrintf(ns->get_mpicomm(), "Simulation restarted from state saved in %s\n", (cmd.get<std::string>("restart")).c_str()); CHKERRXX(ierr);
+}
+
+p4est_connectivity_t* build_brick_and_get_connectivity(my_p4est_brick_t* &brick, const cmdParser &cmd)
+{
+  const double length     = cmd.get<double>("length", default_length);
+  const double height     = cmd.get<double>("height", default_height);
+#ifdef P4_TO_P8
+  const double width      = cmd.get<double>("width",  default_width);
+#endif
+  double xyz_min[P4EST_DIM], xyz_max[P4EST_DIM];
+  int n_tree_xyz[P4EST_DIM];
+  n_tree_xyz[0]           = cmd.get<int>("nx", (int) (default_ntree_y*length/height));  xyz_min[0] = -0.5*length; xyz_max[0] = 0.5*length;
+  n_tree_xyz[1]           = cmd.get<int>("ny", (int) height);                           xyz_min[1] = -0.5*height; xyz_max[1] = 0.5*height;
+#ifdef P4_TO_P8
+  n_tree_xyz[2]           = cmd.get<int>("nz", (int) (default_ntree_y*width/height));   xyz_min[2] = -0.5*width;  xyz_max[2] = 0.5*width;
+#endif
+  if (brick != NULL && brick->nxyz_to_treeid != NULL)
   {
-    bin_index[((spanwise ? 1 : 0) + nb_cells_in_groove + nbins_in_ridge - 1)%bin_index.size()]  = nbins_in_groove + nbins_in_ridge - 1;
-    bin_index[((spanwise ? 1 : 0) + nb_cells_in_groove+nbins_in_ridge)%bin_index.size()]        = nbins_in_groove + nbins_in_ridge - 1;
+    P4EST_FREE(brick->nxyz_to_treeid); brick->nxyz_to_treeid = NULL;
+    delete brick; brick = NULL;
+  }
+  P4EST_ASSERT(brick == NULL);
+  brick = new my_p4est_brick_t;
+  return my_p4est_brick_new(n_tree_xyz, xyz_min, xyz_max, brick, periodicity);
+}
+
+void create_solver_from_scratch(const mpi_environment_t &mpi, const cmdParser &cmd,
+                                my_p4est_navier_stokes_t* &ns, my_p4est_brick_t* &brick, my_p4est_shs_channel_t &channel,
+                                external_force_per_unit_mass_t* external_acceleration[P4EST_DIM], splitting_criteria_cf_and_uniform_band_t* &data,
+                                mass_flow_controller_t* &controller, simulation_setup &setup)
+{
+  p4est_connectivity_t* connectivity = build_brick_and_get_connectivity(brick, cmd);
+  channel.configure(brick, DIM(cmd.get<double>("pitch", default_pitch_to_height*(brick->xyz_max[1] - brick->xyz_min[1])), cmd.get<double>("GF", default_gas_fraction), cmd.contains("spanwise")), cmd.get<int>("lmax", default_lmax));
+  // create grid at time nm1
+  p4est_t *p4est_nm1        = NULL;
+  p4est_ghost_t* ghost_nm1  = NULL;
+  p4est_nodes_t* nodes_nm1  = NULL;
+  channel.create_p4est_ghost_and_nodes(p4est_nm1, ghost_nm1, nodes_nm1, data, connectivity, mpi,
+                                       cmd.get<int>("lmin", default_lmin), cmd.get<unsigned int>("wall_layer", default_wall_layer), cmd.get<double>("lip", default_lip), true);
+  my_p4est_hierarchy_t *hierarchy_nm1 = new my_p4est_hierarchy_t(p4est_nm1, ghost_nm1, brick);
+  my_p4est_node_neighbors_t *ngbd_nm1 = new my_p4est_node_neighbors_t(hierarchy_nm1, nodes_nm1);
+  /* create the initial forest at time n (copy of the former one) */
+  p4est_t *p4est_n = my_p4est_copy(p4est_nm1, P4EST_FALSE);
+  p4est_n->user_pointer = p4est_nm1->user_pointer; // just to make sure
+
+  p4est_ghost_t *ghost_n = my_p4est_ghost_new(p4est_n, P4EST_CONNECT_FULL);
+  my_p4est_ghost_expand(p4est_n, ghost_n);
+
+  p4est_nodes_t *nodes_n = my_p4est_nodes_new(p4est_n, ghost_n);
+  my_p4est_hierarchy_t *hierarchy_n = new my_p4est_hierarchy_t(p4est_n, ghost_n, brick);
+  my_p4est_node_neighbors_t *ngbd_n = new my_p4est_node_neighbors_t(hierarchy_n, nodes_n);
+  my_p4est_cell_neighbors_t *ngbd_c = new my_p4est_cell_neighbors_t(hierarchy_n);
+  my_p4est_faces_t *faces_n         = new my_p4est_faces_t(p4est_n, ghost_n, brick, ngbd_c);
+
+  Vec phi;
+  PetscErrorCode ierr = VecCreateGhostNodes(p4est_n, nodes_n, &phi); CHKERRXX(ierr);
+  sample_cf_on_nodes(p4est_n, nodes_n, channel, phi);
+
+  // create the solver
+  ns = new my_p4est_navier_stokes_t(ngbd_nm1, ngbd_n, faces_n);
+  ns->set_phi(phi);
+
+  if (controller != NULL)
+    delete controller;
+  controller = new mass_flow_controller_t(dir::x, brick->xyz_min[dir::x]);
+  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+  {
+    if(external_acceleration[dir] != NULL)
+      delete external_acceleration[dir];
+    external_acceleration[dir] = new external_force_per_unit_mass_t;
+  }
+
+  const double mass_density = 1.0;
+  if (setup.flow_condition == constant_pressure_gradient)
+  {
+    const double desired_u_tau  = 1.0;
+    const double viscosity      = mass_density*desired_u_tau*channel.delta()/setup.Reynolds;
+    external_acceleration[dir::x]->set_value(channel.acceleration_for_canonical_u_tau(desired_u_tau));
+    ns->set_parameters(viscosity, mass_density, cmd.get<int>("sl_order", default_sl_order), data->uniform_band, cmd.get<double>("thresh", default_thresh), cmd.get<double>("cfl", default_cfl));
+    P4EST_ASSERT(fabs(channel.canonical_Re_tau(external_acceleration[0]->get_value(), ns->get_nu()) - setup.Reynolds) < setup.Reynolds*10.0*EPS);
   }
   else
-    bin_index[((spanwise ? 1 : 0) + nb_cells_in_groove + nbins_in_ridge - 1)%bin_index.size()] = nbins_in_groove + nbins_in_ridge - 1;
-  for (unsigned int bin_idx = 1; bin_idx < nbins_in_ridge; ++bin_idx)
   {
-    if(nb_cells_in_ridge%2 == 0)
-    {
-      bin_index[((spanwise ? 1 : 0) + nb_cells_in_groove + nbins_in_ridge - 1 - bin_idx)%bin_index.size()]  = nbins_in_groove + nbins_in_ridge-1 - bin_idx;
-      bin_index[((spanwise ? 1 : 0) + nb_cells_in_groove + nbins_in_ridge + bin_idx)%bin_index.size()]      = nbins_in_groove + nbins_in_ridge-1 - bin_idx;
-    }
-    else
-    {
-      bin_index[((spanwise ? 1 : 0) + nb_cells_in_groove + nbins_in_ridge - 1 - bin_idx)%bin_index.size()] = nbins_in_groove + nbins_in_ridge - 1 - bin_idx;
-      bin_index[((spanwise ? 1 : 0) + nb_cells_in_groove + nbins_in_ridge - 1 + bin_idx)%bin_index.size()] = nbins_in_groove + nbins_in_ridge - 1 - bin_idx;
-    }
+    const double desired_U_b    = 1.0;
+    controller->activate_forcing(desired_U_b);
+    external_acceleration[dir::x]->set_value(channel.acceleration_for_constant_mass_flow(desired_U_b, setup.Reynolds, setup.nterms_in_series));
+    const double viscosity      = mass_density*desired_U_b*channel.delta()/setup.Reynolds;
+    ns->set_parameters(viscosity, mass_density, cmd.get<int>("sl_order", default_sl_order), data->uniform_band, cmd.get<double>("thresh", default_thresh), cmd.get<double>("cfl", default_cfl));
+    P4EST_ASSERT(fabs(channel.Re_b(ns->get_rho()*MULTD(controller->targeted_bulk_velocity(), channel.height(), channel.width()), ns->get_rho(), ns->get_nu()) - setup.Reynolds) < setup.Reynolds*10.0*EPS);
   }
-  number_of_bins = nbins_in_groove + nbins_in_ridge;
-  file_line_avg_profile.resize(number_of_bins);
-  for (unsigned int bin_idx = 0; bin_idx < number_of_bins; ++bin_idx) {
-    char filename[PATH_MAX];
-    sprintf(filename, "%s/line_averaged_velocity_profile_ntreey_%d_%d-%d_split_threshold_%.2f_cfl_%.2f_sl_%d_index_%d.dat", profile_dir, ntree[1], lmin, lmax, threshold_split_cell, cfl, sl_order, bin_idx);
-    file_line_avg_profile[bin_idx] = filename;
-    ierr = PetscPrintf(mpi.comm(), "Saving line-averaged velocity profile in %s\n", file_line_avg_profile[bin_idx].c_str()); CHKERRXX(ierr);
-    initialize_velocity_profile_file(file_line_avg_profile[bin_idx].c_str(), ntree[1], lmax, tstart, mpi);
-  }
-  int mpiret = MPI_Barrier(mpi.comm()); SC_CHECK_MPI(mpiret);
+
+
+  setup.tstart = 0.0; // no restart so we assume we start from 0.0
+  channel.initialize_velocity_to_analytical_solution(ns, setup.nterms_in_series, setup.flow_condition, setup.Reynolds);
+  setup.dt = ns->get_dt();
+
+  ns->set_bc(channel.get_bc_on_velocity(), channel.get_bc_on_pressure());
+  CF_DIM* tmp[P4EST_DIM] = {DIM(external_acceleration[0], external_acceleration[1], external_acceleration[2])};
+  ns->set_external_forces_per_unit_mass(tmp);
 }
 
-void check_pitch_and_gas_fraction(double length_to_delta, int ntree, int lmax, double pitch_to_delta, double gas_fraction)
+void check_accuracy_of_solution(my_p4est_navier_stokes_t* ns, my_p4est_shs_channel_t &channel, simulation_setup& setup)
 {
-  if(fabs(length_to_delta/pitch_to_delta - ((int) length_to_delta/pitch_to_delta)) > 1e-6)
-    throw std::invalid_argument("main_shs_" + std::to_string(P4EST_DIM) + "d.cpp: the length of the domain in the direction transversal to the grooves MUST be a multiple of the pitch to satisfy periodicity.");
-
-  double nb_finest_cell_in_groove =  pitch_to_delta*gas_fraction/(length_to_delta/((double) (ntree*(1<<lmax))));
-  double nb_finest_cell_in_ridge  =  pitch_to_delta*(1.0-gas_fraction)/(length_to_delta/((double) (ntree*(1<<lmax))));
-
-  if((fabs(nb_finest_cell_in_groove - ((int) nb_finest_cell_in_groove)) > 1e-6) || (fabs(nb_finest_cell_in_ridge - ((int) nb_finest_cell_in_ridge)) > 1e-6))
-    throw std::invalid_argument("main_shs_" + std::to_string(P4EST_DIM) + "d.cpp: the finest grid cells do not capture the groove and/or the ridge (subcell resolution for boundary condition would be required).");
-}
-
-inline double Re_tau(const external_force_u_t& force_per_unit_mass_x, const double& rho, const double& mu)
-{
-  return rho*1.0*sqrt(force_per_unit_mass_x.get_value()*1.0)/mu; // delta = 1.0
-}
-
-inline double mean_u(const double& mass_flow, const double& rho ONLY3D(COMMA const double& width))
-{
-  return mass_flow/(rho*2.0 ONLY3D(*width)); // delta = 1.0 --> height = 2.0
-}
-
-inline double Re_b(const double& mass_flow ONLY3D(COMMA const double &width), const double& rho, const double& mu)
-{
-  return rho*mean_u(mass_flow, rho ONLY3D(COMMA width))*1.0/mu; // delta = 1.0
-}
-
-void write_vector_to_binary_file(const std::vector<double>& myVector, std::string filename)
-{
-    std::ofstream ofs(filename, std::ios::out | std::ofstream::binary);
-    std::ostream_iterator<char> osi{ ofs };
-    const char* beginByte = (char*)&myVector[0];
-    const char* endByte = (char*)&myVector.back() + sizeof(double);
-    std::copy(beginByte, endByte, osi);
-    ofs.flush();
-    ofs.close();
-}
-
-void read_vector_from_file(std::string filename, std::vector<double>& to_return)
-{
-    std::vector<char> buffer{};
-    std::ifstream ifs(filename, std::ios::in | std::ifstream::binary);
-    std::istreambuf_iterator<char> iter(ifs);
-    std::istreambuf_iterator<char> end{};
-    std::copy(iter, end, std::back_inserter(buffer));
-    ifs.close();
-    to_return.resize(buffer.size() / sizeof(double));
-    memcpy(&to_return[0], &buffer[0], buffer.size());
-}
-
-//------------------------------ ACCURACY CHECK ------------------------------//
-
-void check_accuracy_of_solution(my_p4est_navier_stokes_t* ns, const my_p4est_shs_channel_t& channel, const external_force_u_t& forcing, double my_errors[2*P4EST_DIM], char (*_path)[PATH_MAX] = NULL)
-{
-  for(unsigned char dir = 0; dir < 2*P4EST_DIM; ++dir)
+  double my_errors[2*P4EST_DIM];
+  for (unsigned char dir = 0; dir < 2*P4EST_DIM; ++dir)
     my_errors[dir] = 0.0;
   PetscErrorCode ierr;
 
-  // Compute the face errors
+  // calculate the analytical solution if not done, yet
+  channel.solve_for_truncated_series(setup.nterms_in_series);
+  channel.check_Reynolds(setup.flow_condition, setup.Reynolds);
 
+  // Compute the face errors
   const Vec* v_faces; v_faces = ns->get_vnp1();
   const double *v_faces_ptr;
 
-  for(unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
   {
     ierr = VecGetArrayRead(v_faces[dir], &v_faces_ptr); CHKERRXX(ierr);
 
-    for(p4est_locidx_t f = 0; f < ns->get_faces()->num_local[dir]; ++f)
+    for (p4est_locidx_t f = 0; f < ns->get_faces()->num_local[dir]; ++f)
     {
       double xyz[P4EST_DIM]; ns->get_faces()->xyz_fr_f(f, dir, xyz);
-      const double v_exact_tmp = channel.v_exact(dir, Re_tau(forcing, ns->get_rho(), ns->get_mu()), xyz);
+      const double v_exact_tmp = channel.v_exact(dir, setup.flow_condition, setup.Reynolds, ns, xyz);
       my_errors[dir] = MAX(my_errors[dir], fabs(v_faces_ptr[f] - v_exact_tmp));
     }
 
@@ -622,14 +1079,14 @@ void check_accuracy_of_solution(my_p4est_navier_stokes_t* ns, const my_p4est_shs
   // Compute the node errors
 
   const Vec* v_nodes; v_nodes = ns->get_velocity_np1();
-  Vec v_exact_nodes[P4EST_DIM];
-  Vec error_nodes[P4EST_DIM];
+  Vec v_exact_nodes[P4EST_DIM] = { DIM(NULL, NULL, NULL) };
+  Vec error_nodes[P4EST_DIM]  = { DIM(NULL, NULL, NULL) };
   const double *v_nodes_p[P4EST_DIM];
   double *v_exact_nodes_p[P4EST_DIM], *error_nodes_p[P4EST_DIM];
 
   for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
-    ierr= VecGetArrayRead(v_nodes[dir], &v_nodes_p[dir]); CHKERRXX(ierr);
-    if(_path != NULL)
+    ierr = VecGetArrayRead(v_nodes[dir], &v_nodes_p[dir]); CHKERRXX(ierr);
+    if (setup.save_vtk)
     {
       ierr = VecCreateGhostNodes(ns->get_p4est(), ns->get_nodes(), &v_exact_nodes[dir]); CHKERRXX(ierr);
       ierr = VecCreateGhostNodes(ns->get_p4est(), ns->get_nodes(), &error_nodes[dir]); CHKERRXX(ierr);
@@ -638,14 +1095,14 @@ void check_accuracy_of_solution(my_p4est_navier_stokes_t* ns, const my_p4est_shs
     }
   }
 
-  for(size_t n = 0; n < ns->get_nodes()->indep_nodes.elem_count; ++n)
+  for (size_t n = 0; n < ns->get_nodes()->indep_nodes.elem_count; ++n)
   {
     double xyz[P4EST_DIM]; node_xyz_fr_n(n, ns->get_p4est(), ns->get_nodes(), xyz);
     double v_exact_tmp[P4EST_DIM];
-    channel.v_exact(Re_tau(forcing, ns->get_rho(), ns->get_mu()), xyz, v_exact_tmp);
+    channel.v_exact(setup.flow_condition, setup.Reynolds, ns, xyz, v_exact_tmp);
     for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
       my_errors[P4EST_DIM + dir] = MAX(my_errors[P4EST_DIM + dir], fabs(v_nodes_p[dir][n] - v_exact_tmp[dir]));
-      if(_path != NULL)
+      if (setup.save_vtk)
       {
         error_nodes_p[dir][n]    = fabs(v_nodes_p[dir][n] - v_exact_tmp[dir]);
         v_exact_nodes_p[dir][n]  = v_exact_tmp[dir];
@@ -654,8 +1111,8 @@ void check_accuracy_of_solution(my_p4est_navier_stokes_t* ns, const my_p4est_shs
   }
 
   for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
-    ierr= VecRestoreArrayRead(v_nodes[dir], &v_nodes_p[dir]); CHKERRXX(ierr);
-    if(_path != NULL)
+    ierr = VecRestoreArrayRead(v_nodes[dir], &v_nodes_p[dir]); CHKERRXX(ierr);
+    if (setup.save_vtk)
     {
       ierr = VecRestoreArray(error_nodes[dir], &error_nodes_p[dir]); CHKERRXX(ierr);
       ierr = VecRestoreArray(v_exact_nodes[dir], &v_exact_nodes_p[dir]); CHKERRXX(ierr);
@@ -665,20 +1122,15 @@ void check_accuracy_of_solution(my_p4est_navier_stokes_t* ns, const my_p4est_shs
   int mpiret = MPI_Allreduce(MPI_IN_PLACE, my_errors, 2*P4EST_DIM, MPI_DOUBLE, MPI_MAX, ns->get_p4est()->mpicomm); SC_CHECK_MPI(mpiret);
 
   // Plot the errors and exact solution if the path is provided as an input
-  if(_path != NULL)
+  if (setup.save_vtk)
   {
-    if(create_directory(*_path, ns->get_p4est()->mpirank, ns->get_p4est()->mpicomm))
-    {
-      char error_msg[1024];
-      sprintf(error_msg, "main_shs_%dd: could not create exportation directory %s", P4EST_DIM, *_path);
-      throw std::runtime_error(error_msg);
-    }
+    if (create_directory(setup.vtk_path, ns->get_p4est()->mpirank, ns->get_p4est()->mpicomm))
+      throw std::runtime_error("check_accuracy_of_solution: could not create exportation directory " + setup.vtk_path);
 
-    char vtk_name[PATH_MAX];
-    sprintf(vtk_name, "%s/accuracy_check", *_path);
+    const std::string vtk_name = setup.vtk_path + "/accuracy_check";
     const double *v_exact_vtk_p[P4EST_DIM], *error_vtk_p[P4EST_DIM];
 
-    for(unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
     {
       ierr = VecGetArrayRead(error_nodes[dir], &error_vtk_p[dir]); CHKERRXX(ierr);
       ierr = VecGetArrayRead(v_exact_nodes[dir], &v_exact_vtk_p[dir]); CHKERRXX(ierr);
@@ -688,17 +1140,121 @@ void check_accuracy_of_solution(my_p4est_navier_stokes_t* ns, const my_p4est_shs
                                    P4EST_TRUE, P4EST_TRUE,
                                    0, 2, 0,
                                    0, 0, 0,
-                                   vtk_name,
+                                   vtk_name.c_str(),
                                    VTK_NODE_VECTOR_BY_COMPONENTS, "velocity", DIM(v_exact_vtk_p[0], v_exact_vtk_p[1], v_exact_vtk_p[2]),
         VTK_NODE_VECTOR_BY_COMPONENTS, "err_v", DIM(error_vtk_p[0], error_vtk_p[1], error_vtk_p[2]));
 
-    for(unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
     {
       ierr = VecRestoreArrayRead(error_nodes[dir], &error_vtk_p[dir]); CHKERRXX(ierr);
       ierr = VecRestoreArrayRead(v_exact_nodes[dir], &v_exact_vtk_p[dir]); CHKERRXX(ierr);
-      ierr = VecDestroy(error_nodes[dir]); CHKERRXX(ierr);
-      ierr= VecDestroy(v_exact_nodes[dir]); CHKERRXX(ierr);
     }
+  }
+  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+  {
+    if (error_nodes[dir] != NULL){
+      ierr = VecDestroy(error_nodes[dir]); CHKERRXX(ierr); }
+    if (v_exact_nodes[dir] != NULL){
+      ierr = VecDestroy(v_exact_nodes[dir]); CHKERRXX(ierr); }
+  }
+
+  ierr = PetscPrintf(ns->get_mpicomm(), "The face-error on u is %.6E\n", my_errors[0]); CHKERRXX(ierr);
+  ierr = PetscPrintf(ns->get_mpicomm(), "The face-error on v is %.6E\n", my_errors[1]); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+  ierr = PetscPrintf(ns->get_mpicomm(), "The face-error on w is %.6E\n", my_errors[2]); CHKERRXX(ierr);
+#endif
+  ierr = PetscPrintf(ns->get_mpicomm(), "The node-error on u is %.6E\n", my_errors[P4EST_DIM + 0]); CHKERRXX(ierr);
+  ierr = PetscPrintf(ns->get_mpicomm(), "The node-error on v is %.6E\n", my_errors[P4EST_DIM + 1]); CHKERRXX(ierr);
+#ifdef P4_TO_P8
+  ierr = PetscPrintf(ns->get_mpicomm(), "The node-error on w is %.6E\n", my_errors[P4EST_DIM + 2]); CHKERRXX(ierr);
+#endif
+  setup.accuracy_check_done = true;
+}
+
+void initialize_exportations_and_monitoring(const my_p4est_navier_stokes_t* ns, const cmdParser &cmd, const my_p4est_shs_channel_t &channel, simulation_setup &setup,  velocity_profiler_t* &profiler)
+{
+  PetscErrorCode ierr;
+  ierr = PetscPrintf(ns->get_mpicomm(), (std::string("Parameters : ") + (setup.flow_condition == constant_pressure_gradient ? std::string("Re_tau") : std::string("Re_b"))
+                                         + std::string(" = %g, domain is %dx2") ONLY3D(+ std::string("x%d")) + std::string(" (delta units), P/delta = %g, GF = %g\n")).c_str(),
+                     DIM(setup.Reynolds, (int) (channel.length()/channel.delta()), (int) (channel.width()/channel.delta())), channel.pitch_to_delta(), channel.GF()); CHKERRXX(ierr);
+
+  ierr = PetscPrintf(ns->get_mpicomm(), "cfl = %g, wall layer = %u, rho = %g, mu = %g (1/mu = %g)\n", ns->get_cfl(), channel.ncells_layering_walls_from_ns_solver(ns->get_uniform_band()), ns->get_rho(), ns->get_mu(), 1.0/ns->get_mu());
+
+  if (create_directory(setup.export_dir, ns->get_mpirank(), ns->get_mpicomm()))
+    throw std::runtime_error("initialize_exportations_and_monitoring: could not create exportation directory " + setup.export_dir);
+  // vtk exportation
+  setup.vtk_path = setup.export_dir + "/vtu";
+  if (setup.save_vtk && create_directory(setup.vtk_path, ns->get_mpirank(), ns->get_mpicomm()))
+    throw std::runtime_error("initialize_exportations_and_monitoring: could not create exportation directory for vtk files " + setup.vtk_path);
+
+  // drag exportation and simulation monitoring
+  if (setup.save_drag)
+    initialize_drag_force_output(setup, ns);
+  initialize_monitoring(setup, ns);
+
+  // exportation of slice-averaged and line-averaged velocity profile(s)
+  if (profiler != NULL)
+    delete  profiler;
+  profiler = NULL;
+
+  if (setup.save_profiles)
+    profiler = new velocity_profiler_t(cmd, ns, setup, channel);
+}
+
+bool monitor_simulation(const simulation_setup &setup, mass_flow_controller_t* controller, my_p4est_navier_stokes_t* ns, external_force_per_unit_mass_t* external_acceleration[P4EST_DIM], const my_p4est_shs_channel_t &channel)
+{
+  controller->evaluate_current_mass_flow(ns);
+  if (ns->get_mpirank() == 0)
+  {
+    FILE* fp_monitor = fopen(setup.file_monitoring.c_str(), "a");
+    if (fp_monitor == NULL)
+      throw std::runtime_error("monitor_simulation: could not open monitoring file.");
+    fprintf(fp_monitor, "%g %g %g\n", setup.tn,
+            (external_acceleration[0]->get_value() > 0.0 ?  channel.canonical_Re_tau(external_acceleration[0]->get_value(), ns->get_nu()) : -1.0),
+      channel.Re_b(controller->read_latest_mass_flow(), ns->get_rho(), ns->get_nu()));
+    fclose(fp_monitor);
+  }
+
+  PetscErrorCode ierr;
+  if (external_acceleration[0]->get_value() > 0.0){
+    ierr = PetscPrintf(ns->get_mpicomm(), "Iteration #%04d : tn = %.5e, percent done : %.1f%%, \t max_L2_norm_u = %.5e, \t number of leaves = %d, \t Re_tau = %.2f, \t Re_b = %.2f\n",
+                       setup.iter, setup.tn, 100*(setup.tn - setup.tstart)/setup.duration, ns->get_max_L2_norm_u(), ns->get_p4est()->global_num_quadrants,
+                       channel.canonical_Re_tau(external_acceleration[0]->get_value(), ns->get_nu()),
+                       channel.Re_b(controller->read_latest_mass_flow(), ns->get_rho(), ns->get_nu())); CHKERRXX(ierr); }
+  else{
+    ierr = PetscPrintf(ns->get_mpicomm(), "Iteration #%04d : driving bulk force is currently negative\n", setup.iter); CHKERRXX(ierr);
+    ierr = PetscPrintf(ns->get_mpicomm(), "Iteration #%04d : tn = %.5e, percent done : %.1f%%, \t max_L2_norm_u = %.5e, \t number of leaves = %d, \t f_x = %.2f, \t Re_b = %.2f\n",
+                       setup.iter, setup.tn, 100*(setup.tn - setup.tstart)/setup.duration, ns->get_max_L2_norm_u(), ns->get_p4est()->global_num_quadrants,
+                       external_acceleration[0]->get_value(),
+                       channel.Re_b(controller->read_latest_mass_flow(), ns->get_rho(), ns->get_nu())); CHKERRXX(ierr); }
+
+  if (ns->get_max_L2_norm_u() > setup.max_tolerated_velocity(controller, external_acceleration, channel))
+  {
+    if (setup.save_vtk)
+    {
+      const std::string vtk_name = setup.vtk_path + "/snapshot_" + std::to_string(setup.export_vtk + 1);
+      ns->save_vtk(vtk_name.c_str());
+    }
+    std::cerr << "The simulation blew up..." << std::endl;
+    return true;
+  }
+  return false;
+}
+
+void export_drag(const simulation_setup &setup, const my_p4est_navier_stokes_t* ns, const my_p4est_shs_channel_t& channel, const mass_flow_controller_t* controller)
+{
+  double drag[P4EST_DIM];
+  ns->get_noslip_wall_forces(drag);
+  if (ns->get_mpirank() == 0)
+  {
+    const double U_b = channel.mean_u(controller->read_latest_mass_flow(), ns->get_rho());
+    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+      drag[dir] /= (-2.0*SQR(U_b)*MULTD(ns->get_rho(), channel.length(), channel.width()));
+    FILE* fp_drag = fopen(setup.file_drag.c_str(), "a");
+    if (fp_drag == NULL)
+      throw std::runtime_error("export_drag: could not open file for drag output.");
+    fprintf(fp_drag, drag_output_format.c_str(), setup.tn, DIM(drag[0], drag[1], drag[2]));
+    fclose(fp_drag);
   }
 }
 
@@ -708,899 +1264,257 @@ int main (int argc, char* argv[])
   mpi.init(argc, argv);
 
   cmdParser cmd;
-  cmd.add_option("restart", "if defined, this restarts the simulation from a saved state on disk (the value must be a valid path to a directory in which the solver state was saved)");
+  cmd.add_option("restart",             "if present, this restarts the simulation from a saved state on disk \n\t(this must be a valid path to a directory in which the solver state was saved)");
   // computational grid parameters
-  cmd.add_option("lmin", "min level of the trees, default is 4");
-  cmd.add_option("lmax", "max level of the trees, default is 6");
-  cmd.add_option("thresh", "the threshold used for the refinement criteria, default is 0.1");
-  cmd.add_option("wall_layer", "number of finest cells desired to layer the channel walls, default is 6");
-  cmd.add_option("lip", "Lipschitz constant L for grid refinement. The levelset is defined as the negative distance to the closest no-slip region. The criterion compares the levelset value to L\\Delta y. Default value is the standard 1.2 or value read from solver state if restarted (fyi: that's very thin for turbulent cases).");
-  cmd.add_option("nx", "number of trees in the x-direction. The default value is length to ensure aspect ratio of cells = 1");
-  cmd.add_option("ny", "number of trees in the y-direction. The default value is 2 (i.e. height) to ensure aspect ratio of cells = 1");
+  cmd.add_option("lmin",                "min level of the trees, default is " + std::to_string(default_lmin) + " or value read from solver state if restarted.");
+  cmd.add_option("lmax",                "max level of the trees, default is " + std::to_string(default_lmax) + " or value read from solver state if restarted.");
+  cmd.add_option("thresh",              "the threshold used for the refinement criteria, default is " + std::to_string(default_thresh));
+  cmd.add_option("wall_layer",          "number of finest cells desired to layer the channel walls, default is " + std::to_string(default_wall_layer) + " or value deduced from solver state if restarted.");
+  cmd.add_option("lip",                 "Lipschitz constant L for grid refinement. The levelset is defined as the negative distance to the top/bottom wall in case of spanwise grooves or to the closest no-slip region with streamwise grooves. \n\tWarning: this application uses a modified criterion comparin the levelset value to L\\Delta y (as opposed to L*diag(C)). \n\tDefault value is " + std::to_string(default_lip) + (default_lip < 10.0 ? " (fyi: that's thin for turbulent cases)" : "") + " or value read from solver state if restarted.");
+  cmd.add_option("nx",                  "number of trees in the x-direction. \n\tThe default value is " + std::to_string(default_ntree_y) + "*length/height  to ensure aspect ratio of cells = 1 when using default dimensions");
+  cmd.add_option("ny",                  "number of trees in the y-direction. \n\tThe default value is " + std::to_string(default_ntree_y) + "                to ensure aspect ratio of cells = 1 when using default dimensions");
 #ifdef P4_TO_P8
-  cmd.add_option("nz", "number of trees in the z-direction. The default value is width to ensure aspect ratio of cells = 1");
+  cmd.add_option("nz",                  "number of trees in the z-direction. \n\tThe default value is " + std::to_string(default_ntree_y) + "*width/height   to ensure aspect ratio of cells = 1 when using default dimensions");
 #endif
   // physical parameters for the simulations
-  cmd.add_option("length", "length of the channel (dimension in streamwise, x-direction), in units of delta, default is 6.0");
+  cmd.add_option("length",              "length of the channel (dimension in streamwise,  x-direction), default is " + std::to_string(default_length));
+  cmd.add_option("height",              "height of the channel (dimension in wall-normal, y-direction, ':= 2*delta'), default is " + std::to_string(default_height));
 #ifdef P4_TO_P8
-  cmd.add_option("width", "width of the channel (dimension in spanwise, z-direction), in units of delta, default is 3.0");
-  cmd.add_option("spanwise", "if present, the grooves and ridges are understood as spanwise, that is perpendicular to the flow. If absent, the grooves are parallel to the flow.");
+  cmd.add_option("width",               "width of the channel   (dimension in spanwise,    z-direction), default is " + std::to_string(default_width));
+  cmd.add_option("spanwise",            "if present, the grooves and ridges are understood as spanwise, that is perpendicular to the flow. \n\tIf absent, the grooves are parallel to the flow.");
 #endif
-  cmd.add_option("duration", "the duration of the simulation (tfinal-tstart). If not restarted, tstart = 0.0, default duration is 200.0.");
-  cmd.add_option("Re_tau", "Reynolds number based on the wall-shear velocity and half the channel height, i.e. Re_tau = u_tau*delta/nu where u_tau = sqrt(-dp_dx*delta/rho), default is 180.0");
-  cmd.add_option("Re_b", "Reynolds number, based on the mean (bulk) velocity and half the channel height, i.e. Re_b   = U_b*delta/nu, no default value. Can be used exclusively in case of restart and without Re_tau");
-  cmd.add_option("pitch_to_delta", "P/delta ratio, default = 0.375");
-  cmd.add_option("GF", "gas fraction, default is 0.5");
-  cmd.add_option("adapted_dt", "activates the calculation of dt based on the local cell sizes if present");
+  cmd.add_option("duration",            "the duration of the simulation (tfinal - tstart). If not restarted, tstart = 0.0, default duration is " + std::to_string(default_duration));
+  cmd.add_option("Re_tau",              "Reynolds number based on the wall-shear velocity (in canonical, standard channel of same size) and half the channel height, i.e. \n\t Re_tau = u_tau*delta/nu where u_tau = sqrt(f_x*delta), no default value.");
+  cmd.add_option("Re_b",                "Reynolds number, based on the mean (bulk) velocity and half the channel height, i.e. \n\t Re_b = U_b*delta/nu, no default value.");
+  cmd.add_option("initial_Re_tau",      "relevant ONLY in case of restart with constant mass flow rate (i.e. restart with Re_b defined by the user). \n\t If present (and defined), this input parameter is used to set the initial value of the bulk driving force f_x. \n\t If not defined, the value is calculated from the analytical laminar cases (which may be way off, expect discontinuities in the monitored Re_tau in such a case).");
+  cmd.add_option("pitch",               "pitch, default = " + std::to_string(default_pitch_to_height) + "*height");
+  cmd.add_option("GF",                  "gas fraction, default is " + std::to_string(default_gas_fraction));
+  cmd.add_option("adapted_dt",          "activates the calculation of dt based on the local cell sizes if present");
   // method-related parameters
-  cmd.add_option("sl_order", "the order for the semi lagrangian, either 1 (stable) or 2 (accurate), default is 2");
-  cmd.add_option("cfl", "dt = cfl * dx/vmax, default is 1.00");
-  cmd.add_option("Ub_tol", "relative numerical tolerance on the bulk velocity to be set (if restart and Re_b set), default is 1e-3");
-  cmd.add_option("hodge_tol", "absolute numerical tolerance on the Hodge variable, at all time steps, default is 1e-3");
-  cmd.add_option("niter_hodge", "max number of iterations for convergence of the Hodge variable, at all time steps, default is 10");
-  cmd.add_option("grid_update", "number of time steps between grid updates, default is 1");
-  cmd.add_option("pc_cell", "preconditioner for cell-solver: jacobi, sor or hypre, default is sor.");
-  cmd.add_option("cell_solver", "Krylov solver used for cell-poisson problem, i.e. hodge variable: cg or bicgstab, default is bicgstab.");
-  cmd.add_option("pc_face", "preconditioner for face-solver: jacobi, sor or hypre, default is sor.");
+  cmd.add_option("sl_order",            "the order for the semi-lagrangian method, either 1 (stable) or 2 (accurate), default is " + std::to_string(default_sl_order) + " or value read from solver state if restarted.");
+  cmd.add_option("cfl",                 "dt = cfl * dx/vmax, default is " + std::to_string(default_cfl) + " or value read from solver state if restarted.");
+  cmd.add_option("u_tol",               "relative numerical tolerance on the bulk velocity, default is " + std::to_string(default_u_tol));
+  cmd.add_option("niter_hodge",         "max number of iterations for convergence of the projection step, at all time steps, default is " + std::to_string(default_n_hodge));
+  cmd.add_option("hodge_control",       "type of convergence check used for inner loops, i.e. which velocity component. Possible values are 'u', 'v' (, 'w') or 'uvw', default is " + convert_to_string(def_hodge_control));
+  cmd.add_option("grid_update",         "number of time steps between grid updates, default is " + std::to_string(default_grid_update));
+  cmd.add_option("pc_cell",             "preconditioner for cell-solver: jacobi, sor or hypre, default is " + default_pc_cell);
+  cmd.add_option("cell_solver",         "Krylov solver used for cell-poisson problem, i.e. hodge variable: cg or bicgstab, default is " + default_cell_solver);
+  cmd.add_option("pc_face",             "preconditioner for face-solver: jacobi, sor or hypre, default is " + default_pc_face);
+  cmd.add_option("nterms",              "number of terms used in the truncated series of the analytical solution (used for initialization and accuracy check is desired). Default is " + std::to_string(default_nterms));
   // output-control parameters
-  cmd.add_option("export_folder", "exportation_folder");
-  cmd.add_option("save_vtk", "activates exportation of results in vtk format");
-  cmd.add_option("vtk_dt", "export vtk files every vtk_dt time lapse (REQUIRED if save_vtk is activated)");
-#ifdef P4_TO_P8
-  cmd.add_option("save_drag", "activates exportation of the total drag (non-dimensionalized by rho*SQR(u_tau)*SQR(delta))");
-#else
-  cmd.add_option("save_drag", "activates exportation of the total drag (non-dimensionalized by rho*SQR(u_tau)*delta)");
-#endif
-  cmd.add_option("save_state_dt", "if defined, this activates the 'save-state' feature. The solver state is saved every save_state_dt time steps in backup_ subfolders.");
-  cmd.add_option("save_nstates", "determines how many solver states must be memorized in backup_ folders (default is 1).");
-  cmd.add_option("save_mean_profiles", "computes and saves averaged streamwise-velocity profiles (makes sense only if the flow is fully-developed)");
-  cmd.add_option("nexport_avg", "number of iterations between two exportation of averaged velocity profiles (default is 100)");
-  cmd.add_option("timing", "if defined, prints timing information (typically for scaling analysis).");
-  cmd.add_option("accuracy_check", "if defined, prints information about accuracy with comparison to analytical solution (ONLY if restart after steady-state reached and with Re_tau enforced). If save_vtk is activated as well, the errors are exported to the vtk path for visualization in space.");
+  cmd.add_option("export_folder",       "exportation folder (monitoring and drag files in there, velocity profiles, vtk and backup files in subfolder), will be created if inexistent;\n\t default is " + default_export_dir);
+  cmd.add_option("save_vtk",            "activates exportation of results in vtk format");
+  cmd.add_option("vtk_dt",              "export vtk files every vtk_dt time lapse (REQUIRED if save_vtk is activated)");
+  cmd.add_option("save_drag",           "activates exportation of the total drag, non-dimensionalized by 2.0*rho*U_b^2*length (*width) (--> estimate of (Re_tau/Re_b)^2 at steady state)");
+  cmd.add_option("save_state_dt",       "if present, this activates the 'save-state' feature. \n\tThe solver state is saved every save_state_dt time steps in backup_ subfolders.");
+  cmd.add_option("save_nstates",        "determines how many solver states must be memorized in backup_ folders, default is " + std::to_string(default_save_nstates));
+  cmd.add_option("save_mean_profiles",  "computes and saves averaged streamwise-velocity profiles (makes sense only if the flow is fully-developed)");
+  cmd.add_option("nexport_avg",         "number of iterations between two exportation of averaged velocity profiles, default is " + std::to_string(default_nexport_avg));
+  cmd.add_option("timing",              "if present, prints timing information (typically for scaling analysis).");
+  cmd.add_option("accuracy_check",      "if present, prints information about accuracy with comparison to analytical solution \n\t(ONLY activated if restarted, supposedly after steady-state reached). \n\tIf save_vtk is activated as well, the errors are exported to the vtk path for visualization in space.");
 
-  if(cmd.parse(argc, argv, extra_info))
+  if (cmd.parse(argc, argv, extra_info))
     return 0;
 
-  double tstart;
-  double dt;
-  int lmin, lmax;
-  my_p4est_navier_stokes_t* ns                    = NULL;
-  my_p4est_brick_t* brick                         = NULL;
-  splitting_criteria_cf_and_uniform_band_t* data  = NULL;
-
-  int sl_order;
-  unsigned int wall_layer;
-  double threshold_split_cell, uniform_band, cfl;
-  double length;
-  int ntree_x, ntree_y;
-#ifdef P4_TO_P8
-  double width;
-  int ntree_z;
-#endif
-  int n_xyz [P4EST_DIM];
-
-  const double Ub_tolerance             = cmd.get<double>("Ub_tol", 1e-3);
-  const double hodge_tolerance          = cmd.get<double>("hodge_tol", 1e-3);
-  const unsigned int niter_hodge_max    = cmd.get<unsigned int>("niter_hodge", 10);
-  const unsigned int steps_grid_update  = cmd.get<unsigned int>("grid_update", 1);
-
-  const double duration                 = cmd.get<double>("duration", 200.0);
-  const double pitch_to_delta           = cmd.get<double>("pitch_to_delta", 1.0/4.0);
-  const double gas_fraction             = cmd.get<double>("GF", 0.5);
-#if defined(POD_CLUSTER)
-  const std::string export_dir          = cmd.get<std::string>("export_folder", "/scratch/regan/superhydrophobic_channel");
-#elif defined(STAMPEDE)
-  const std::string export_dir          = cmd.get<std::string>("export_folder", "/work/04965/tg842642/stampede2/superhydrophobic_channel");
-#elif defined(LAPTOP)
-  const std::string export_dir          = cmd.get<std::string>("export_folder", "/home/raphael/workspace/projects/superhydrophobic_channel");
-#elif defined(JUPITER)
-  const std::string export_dir          = cmd.get<std::string>("export_folder", "/home/temprano/Output/p4est_ns_shs");
-#elif defined(NEPTUNE)
-  const std::string export_dir          = cmd.get<std::string>("export_folder", "/home/hlevy/workspace/superhydrophobic_channel");
-#else
-  const std::string export_dir          = cmd.get<std::string>("export_folder", "/home/regan/workspace/projects/superhydrophobic_channel");
-#endif
-  const bool save_vtk                   = cmd.contains("save_vtk");
-  const bool get_timing                 = cmd.contains("timing");
-  double vtk_dt                         = -1.0;
-  if(save_vtk)
-  {
-    if(!cmd.contains("vtk_dt") && !cmd.contains("accuracy_check"))
-      throw std::runtime_error("main_shs_" + std::to_string(P4EST_DIM) + "d.cpp: the argument vtk_dt MUST be provided by the user if vtk exportation is desired.");
-    vtk_dt = cmd.get<double>("vtk_dt", -1.0);
-    if(vtk_dt <= 0.0 && !cmd.contains("accuracy_check"))
-      throw std::invalid_argument("main_shs_" + std::to_string(P4EST_DIM) + "d.cpp: the value of vtk_dt must be strictly positive.");
-  }
-  const bool save_drag                  = cmd.contains("save_drag"); double drag[P4EST_DIM];
-  const bool do_accuracy_check          = cmd.contains("accuracy_check") && cmd.contains("restart") && cmd.contains("Re_tau"); double my_accuracy_check_errors[2*P4EST_DIM];
-  const bool save_state                 = cmd.contains("save_state_dt"); double dt_save_data = -1.0;
-  const unsigned int n_states           = cmd.get<unsigned int>("save_nstates", 1);
-  if(save_state)
-  {
-    dt_save_data                        = cmd.get<double>("save_state_dt", -1.0);
-    if(dt_save_data < 0.0)
-      throw std::invalid_argument("main_shs_" + std::to_string(P4EST_DIM) + "d.cpp: the value of save_state_dt must be strictly positive.");
-  }
-  const bool save_profiles              = cmd.contains("save_mean_profiles");
-  const unsigned int nexport_avg        = cmd.get<unsigned int>("nexport_avg", 100);
-  double                    t_slice_average = 0.0; //initialized to whatever value to avoid compilation warning (the quantity is relevant only on the root proc anyways...)
-  vector<double>            slice_averaged_profile;
-  vector<double>            slice_averaged_profile_nm1;
-  vector<double>            time_averaged_slice_averaged_profile;
-  vector<double>            t_line_average;
-  vector< vector<double> >  line_averaged_profiles;
-  vector< vector<double> >  line_averaged_profiles_nm1;
-  vector< vector<double> >  time_averaged_line_averaged_profiles;
-  const bool use_adapted_dt             = cmd.contains("adapted_dt");
-#ifdef P4_TO_P8
-  const bool spanwise                   = cmd.contains("spanwise");
-#endif
-
-  const std::string des_pc_cell         = cmd.get<std::string>("pc_cell", "sor");
-  const std::string des_solver_cell     = cmd.get<std::string>("cell_solver", "bicgstab");
-  const std::string des_pc_face         = cmd.get<std::string>("pc_face", "sor");
-  KSPType cell_solver_type;
-  PCType pc_cell, pc_face;
-  if (des_pc_cell.compare("hypre")==0)
-    pc_cell = PCHYPRE;
-  else if (des_pc_cell.compare("jacobi'")==0)
-    pc_cell = PCJACOBI;
-  else
-  {
-    if(des_pc_cell.compare("sor")!=0 && !mpi.rank())
-      std::cerr << "The desired preconditioner for the cell-solver was either not allowed or not correctly understood. Successive over-relaxation is used instead" << std::endl;
-    pc_cell = PCSOR;
-  }
-  if(des_solver_cell.compare("cg")==0)
-    cell_solver_type = KSPCG;
-  else
-  {
-    if(des_solver_cell.compare("bicgstab")!=0 && !mpi.rank())
-      std::cerr << "The desired Krylov solver for the cell-solver was either not allowed or not correctly understood. BiCGStab is used instead" << std::endl;
-    cell_solver_type = KSPBCGS;
-  }
-  if (des_pc_face.compare("hypre")==0)
-    pc_face = PCHYPRE;
-  else if (des_pc_face.compare("jacobi'")==0)
-    pc_face = PCJACOBI;
-  else
-  {
-    if(des_pc_face.compare("sor")!=0 && !mpi.rank())
-      std::cerr << "The desired preconditioner for the face-solver was either not allowed or not correctly understood. Successive over-relaxation is used instead" << std::endl;
-    pc_face = PCSOR;
-  }
-
-  if(cmd.contains("Re_b") && !cmd.contains("restart"))
-    throw std::invalid_argument("main_shs_" + std::to_string(P4EST_DIM) + "d.cpp: forcing a constant bulk velocity, i.e. a constant mass flow, cannot be done if starting the simulation from scratch (no adequate initial condition): advance the simulation with constant pressure gradient first, fixing Re_tau; then restart it with Re_b.");
-  if(cmd.contains("Re_b") && cmd.contains("Re_tau"))
-    throw std::invalid_argument("main_shs_" + std::to_string(P4EST_DIM) + "d.cpp: forcing a constant bulk velocity AND a constant pressure gradient cannot be done: choose one!");
-  if(cmd.contains("restart") && !cmd.contains("Re_b") && !cmd.contains("Re_tau"))
-    throw std::invalid_argument("main_shs_" + std::to_string(P4EST_DIM) + "d.cpp: you need to specify either the desired Re_tau or the desired Re_b when restarting...");
-
   PetscErrorCode ierr;
-  const double rho = 1.0;
-  double mu;
-  double bulk_velocity_to_set = 0.0; // irrelevant, except if enforcing mass flow after restart --> reset in that case
-  double xyz_min [P4EST_DIM];
-  double xyz_max [P4EST_DIM];
-  const int periodic[P4EST_DIM] = {DIM(1, 0, 1)};
+
+  simulation_setup setup(mpi, cmd);
+
+  my_p4est_navier_stokes_t* ns                          = NULL;
+  my_p4est_brick_t* brick                               = NULL;
+  splitting_criteria_cf_and_uniform_band_t* data        = NULL;
+  mass_flow_controller_t *flow_controller               = NULL;
+  external_force_per_unit_mass_t* external_acceleration[P4EST_DIM] = { DIM(NULL, NULL, NULL) };
 
   my_p4est_shs_channel_t channel(mpi);
-  external_force_u_t external_force_u;
-  external_force_v_t external_force_v;
-#ifdef P4_TO_P8
-  external_force_w_t external_force_w;
-#endif
-  CF_DIM *external_forces[P4EST_DIM] = {DIM(&external_force_u, &external_force_v, &external_force_w)};
 
-  if(cmd.contains("restart"))
-  {
-    const std::string backup_directory = cmd.get<std::string>("restart", "");
-    if(!is_folder(backup_directory.c_str()))
-    {
-      char error_msg[1024];
-      sprintf(error_msg, "main_shs_%dd: the restart path %s is not an accessible directory.", P4EST_DIM, backup_directory.c_str());
-      throw std::invalid_argument(error_msg);
-    }
-    if (ns != NULL)
-    {
-      delete ns; ns = NULL;
-    }
-    P4EST_ASSERT(ns == NULL);
-    ns                      = new my_p4est_navier_stokes_t(mpi, backup_directory.c_str(), tstart);
-    dt                      = ns->get_dt();
-    p4est_t *p4est_n        = ns->get_p4est();
-    p4est_t *p4est_nm1      = ns->get_p4est_nm1();
-
-    lmin                    = cmd.get<int>("lmin", ((splitting_criteria_t*) p4est_n->user_pointer)->min_lvl);
-    lmax                    = cmd.get<int>("lmax", ((splitting_criteria_t*) p4est_n->user_pointer)->max_lvl);
-    double lip = 0.0;
-    if(!cmd.contains("lip"))
-      lip                   = ((splitting_criteria_t*) p4est_n->user_pointer)->lip;
-    threshold_split_cell    = cmd.get<double>("thresh", ns->get_split_threshold());
-    length                  = ns->get_length_of_domain();
-#ifdef P4EST_ENABLE_DEBUG
-    double height           = ns->get_height_of_domain();
-#endif
-#ifdef P4_TO_P8
-    width                   = ns->get_width_of_domain();
-#endif
-    P4EST_ASSERT((fabs(height-2.0) < 2.0*10.0*EPS) && (fabs(ns->get_rho() - 1.0) < 1.0*10.0*EPS));
-    // if restarting with a specific Re_tau, adjust and reset the viscosity to match dp_dx = -1.0
-    // otherwise, just read the solver's viscosity
-    if(cmd.contains("Re_tau"))
-      mu                    = rho*1.0*sqrt(external_force_u.get_value()*1.0)/(cmd.get<double>("Re_tau")); // delta = 1.0
-    else
-    {
-      P4EST_ASSERT(cmd.contains("Re_b"));
-      mu                    = ns->get_mu();
-      // if restarting with a specific Re_b, set the desired bulk velocity to match it
-      bulk_velocity_to_set  = mu*(cmd.get<double>("Re_b"))/(rho*1.0); // delta = 1.0
-    }
-
-    if(brick != NULL && brick->nxyz_to_treeid != NULL)
-    {
-      P4EST_FREE(brick->nxyz_to_treeid); brick->nxyz_to_treeid = NULL;
-      delete brick; brick = NULL;
-    }
-    P4EST_ASSERT(brick == NULL);
-    brick                   = ns->get_brick();
-    ntree_x                 = brick->nxyztrees[0];
-    ntree_y                 = brick->nxyztrees[1];
-#ifdef P4_TO_P8
-    ntree_z                 = brick->nxyztrees[2];
-    n_xyz[2]                = ntree_z;
-    xyz_min[2]              = brick->xyz_min[2];
-    xyz_max[2]              = brick->xyz_max[2];
-#endif
-    n_xyz[1]                = ntree_y;
-    n_xyz[0]                = ntree_x;
-    xyz_min[1]              = brick->xyz_min[1];
-    xyz_min[0]              = brick->xyz_min[0];
-    xyz_max[1]              = brick->xyz_max[1];
-    xyz_max[0]              = brick->xyz_max[0];
-
-    if(cmd.contains("lip"))
-      lip                   = cmd.get<double>("lip")*(2.0/ntree_y)/sqrt(SUMD(SQR(2.0/ntree_y), SQR(length/ntree_x), SQR(width/ntree_z)));
-
-    if(cmd.contains("wall_layer"))
-    {
-      wall_layer            = cmd.get<unsigned int>("wall_layer");
-      uniform_band          = ((double) wall_layer)*(2.0/((double) ntree_y))/MAX(DIM(length/((double) ntree_x), 2.0/((double) ntree_y), width/((double) ntree_z)));
-    }
-    else
-    {
-      uniform_band          = ns->get_uniform_band();
-      wall_layer            = (unsigned int) (uniform_band*MAX(DIM(length/((double) ntree_x), 2.0/((double) ntree_y), width/((double) ntree_z))/(2.0/((double) ntree_y))));
-    }
-#ifdef P4_TO_P8
-    if(spanwise)
-      check_pitch_and_gas_fraction(length, ntree_x, lmax, pitch_to_delta, gas_fraction);
-    else
-      check_pitch_and_gas_fraction(width, ntree_z, lmax, pitch_to_delta, gas_fraction);
-#else
-    check_pitch_and_gas_fraction(length, ntree_x, lmax, pitch_to_delta, gas_fraction);
-#endif
-
-    sl_order                = cmd.get<int>("sl_order", ns->get_sl_order());
-    cfl                     = cmd.get<double>("cfl", ns->get_cfl());
-
-    channel.configure(brick, DIM(pitch_to_delta, gas_fraction, spanwise), lmax);
-
-    if(data != NULL) {
-      delete data; data = NULL;
-    }
-    P4EST_ASSERT(data == NULL);
-    data = new splitting_criteria_cf_and_uniform_band_t(lmin, lmax, &channel, uniform_band, lip);
-    splitting_criteria_t* to_delete = (splitting_criteria_t*) p4est_n->user_pointer;
-    bool fix_restarted_grid = (lmax != to_delete->max_lvl);
-    delete to_delete;
-    p4est_n->user_pointer   = (void*) data;
-    p4est_nm1->user_pointer = (void*) data; // p4est_n and p4est_nm1 always point to the same splitting_criteria_t no need to delete the nm1 one, it's just been done
-    ns->set_parameters(mu, rho, sl_order, uniform_band, threshold_split_cell, cfl);
-
-    ns->set_bc(channel.get_bc_on_velocity(), channel.get_bc_on_pressure());
-    ns->set_external_forces(external_forces);
-    if(fix_restarted_grid)
-      ns->refine_coarsen_grid_after_restart(&channel, false);
-  }
+  // create the solver, either loaded from saved state or built from scratch
+  if (cmd.contains("restart"))
+    load_solver_from_state(mpi, cmd, ns, brick, channel, external_acceleration, data, flow_controller, setup);
   else
-  {
-    lmin                    = cmd.get<int>("lmin", 4);
-    lmax                    = cmd.get<int>("lmax", 6);
-    threshold_split_cell    = cmd.get<double>("thresh", 0.1);
-    length                  = cmd.get<double>("length", 6.0);
-#ifdef P4_TO_P8
-    width                   = cmd.get<double>("width", 3.0);
-#endif
-    mu                      = rho*1.0*sqrt(external_force_u.get_value()*1.0)/(cmd.get<double>("Re_tau", 180.0)); // delta = 1.0
+    create_solver_from_scratch(mpi, cmd, ns, brick, channel, external_acceleration, data, flow_controller, setup);
 
-    ntree_x                 = cmd.get<int>("nx", (int) length);
-    ntree_y                 = cmd.get<int>("ny", 2);
-#ifdef P4_TO_P8
-    int ntree_z             = cmd.get<int>("nz", (int) width);
-    n_xyz[2]                = ntree_z;
-    xyz_min[2]              = -0.5*width;
-    xyz_max[2]              = 0.5*width;
-#endif
-    n_xyz[1]                = ntree_y;
-    n_xyz[0]                = ntree_x;
-    xyz_min[1]              = -1.0;
-    xyz_min[0]              = -0.5*length;
-    xyz_max[1]              = +1.0;
-    xyz_max[0]              = +0.5*length;
-    wall_layer              = cmd.get<unsigned int>("wall_layer", 6);
-#ifdef P4_TO_P8
-    uniform_band            = ((double) wall_layer)*(2.0/((double) ntree_y))/MAX(length/((double) ntree_x), 2.0/((double) ntree_y), width/((double) ntree_z));
-    if(spanwise)
-      check_pitch_and_gas_fraction(length, ntree_x, lmax, pitch_to_delta, gas_fraction);
-    else
-      check_pitch_and_gas_fraction(width, ntree_z, lmax, pitch_to_delta, gas_fraction);
-#else
-    uniform_band            = ((double) wall_layer)*(2.0/((double) ntree_y))/MAX(length/((double) ntree_x), 2.0/((double) ntree_y));
-    check_pitch_and_gas_fraction(length, ntree_x, lmax, pitch_to_delta, gas_fraction);
-#endif
-    sl_order                = cmd.get<int>("sl_order", 2);
-    cfl                     = cmd.get<double>("cfl", 1.0);
+  velocity_profiler_t *profiler = NULL;
+  initialize_exportations_and_monitoring(ns, cmd, channel, setup, profiler);
 
-    p4est_connectivity_t *connectivity;
-    if(brick != NULL && brick->nxyz_to_treeid != NULL)
-    {
-      P4EST_FREE(brick->nxyz_to_treeid);brick->nxyz_to_treeid = NULL;
-      delete brick; brick = NULL;
-    }
-    P4EST_ASSERT(brick == NULL);
-    brick = new my_p4est_brick_t;
-
-    connectivity = my_p4est_brick_new(n_xyz, xyz_min, xyz_max, brick, periodic);
-
-    if(data != NULL)
-    {
-      delete data; data = NULL;
-    }
-    P4EST_ASSERT(data == NULL);
-    // lip_const multiplies the cell-diagonal internally, but  we need only dy --> so scale it appropriately
-    const double lip_const = cmd.get<double>("lip", 1.2)*(2.0/ntree_y)/sqrt(SUMD(SQR(2.0/ntree_y), SQR(length/ntree_x), SQR(width/ntree_z)));
-    channel.configure(brick, DIM(pitch_to_delta, gas_fraction, spanwise), lmax);
-
-    data  = new splitting_criteria_cf_and_uniform_band_t(lmin, lmax, &channel, uniform_band, lip_const);
-
-    p4est_t* p4est_nm1 = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
-    p4est_nm1->user_pointer = (void*) data;
-
-    for(int l = 0; l < lmax; ++l)
-    {
-      my_p4est_refine(p4est_nm1, P4EST_FALSE, refine_levelset_cf_and_uniform_band, NULL);
-      my_p4est_partition(p4est_nm1, P4EST_FALSE, NULL);
-    }
-    /* create the initial forest at time nm1 */
-    p4est_balance(p4est_nm1, P4EST_CONNECT_FULL, NULL);
-    my_p4est_partition(p4est_nm1, P4EST_FALSE, NULL);
-
-    p4est_ghost_t *ghost_nm1 = my_p4est_ghost_new(p4est_nm1, P4EST_CONNECT_FULL);
-    my_p4est_ghost_expand(p4est_nm1, ghost_nm1);
-
-    p4est_nodes_t *nodes_nm1 = my_p4est_nodes_new(p4est_nm1, ghost_nm1);
-    my_p4est_hierarchy_t *hierarchy_nm1 = new my_p4est_hierarchy_t(p4est_nm1, ghost_nm1, brick);
-    my_p4est_node_neighbors_t *ngbd_nm1 = new my_p4est_node_neighbors_t(hierarchy_nm1, nodes_nm1);
-
-    /* create the initial forest at time n */
-    p4est_t *p4est_n = my_p4est_copy(p4est_nm1, P4EST_FALSE);
-    p4est_n->user_pointer = (void*) data;
-
-    p4est_ghost_t *ghost_n = my_p4est_ghost_new(p4est_n, P4EST_CONNECT_FULL);
-    my_p4est_ghost_expand(p4est_n, ghost_n);
-
-    p4est_nodes_t *nodes_n = my_p4est_nodes_new(p4est_n, ghost_n);
-    my_p4est_hierarchy_t *hierarchy_n = new my_p4est_hierarchy_t(p4est_n, ghost_n, brick);
-    my_p4est_node_neighbors_t *ngbd_n = new my_p4est_node_neighbors_t(hierarchy_n, nodes_n);
-    my_p4est_cell_neighbors_t *ngbd_c = new my_p4est_cell_neighbors_t(hierarchy_n);
-    my_p4est_faces_t *faces_n = new my_p4est_faces_t(p4est_n, ghost_n, brick, ngbd_c);
-
-    Vec phi;
-    ierr = VecCreateGhostNodes(p4est_n, nodes_n, &phi); CHKERRXX(ierr);
-    sample_cf_on_nodes(p4est_n, nodes_n, channel, phi);
-
-    CF_DIM *vnm1[P4EST_DIM] = {DIM(&initial_velocity_unm1, &initial_velocity_vnm1, &initial_velocity_wnm1)};
-    CF_DIM *vn  [P4EST_DIM] = {DIM(&initial_velocity_un  , &initial_velocity_vn  , &initial_velocity_wn  )};
-
-    ns = new my_p4est_navier_stokes_t(ngbd_nm1, ngbd_n, faces_n);
-    ns->set_phi(phi);
-    ns->set_parameters(mu, rho, sl_order, uniform_band, threshold_split_cell, cfl);
-    ns->set_velocities(vnm1, vn);
-
-    tstart = 0.0; // no restart so we assume we start from 0.0
-    // set the first time step: kinda arbitrary, don't really know what else I could do. I believe an inverse power of Re_tau should be used here instead...
-    double min_dxyz[P4EST_DIM]; dxyz_min(p4est_n, min_dxyz);
-    dt = MIN(DIM(min_dxyz[0], min_dxyz[1], min_dxyz[2]))/Re_tau(external_force_u, ns->get_rho(), ns->get_mu()); // no problem using Re_tau() here, external_force_u returns 1.0 by default, by solver's initialization
-    ns->set_dt(dt, dt);
-
-    ns->set_bc(channel.get_bc_on_velocity(), channel.get_bc_on_pressure());
-    ns->set_external_forces(external_forces);
-  }
-
-  char out_dir[PATH_MAX], profile_path[PATH_MAX], vtk_path[PATH_MAX], vtk_name[PATH_MAX];
-  if(cmd.contains("restart")){
-    ierr = PetscPrintf(mpi.comm(), "Simulation restarted from state saved in %s\n", (cmd.get<std::string>("restart")).c_str()); CHKERRXX(ierr); }
-  if(cmd.contains("Re_tau") || !cmd.contains("restart"))
-  {
-#ifdef P4_TO_P8
-    ierr = PetscPrintf(mpi.comm(), "Parameters : Re_tau = %g, domain is %dx2x%d (delta units), P/delta = %g, GF = %g\n", cmd.get<double>("Re_tau"), (int) length, (int) width, pitch_to_delta, gas_fraction); CHKERRXX(ierr);
-    sprintf(out_dir, "%s/%dX2X%d_channel/Re_tau_%.2f/%s/pitch_to_delta_%.3f/GF_%.2f/ny_%d_lmin_%d_lmax_%d", export_dir.c_str(), (int) length, (int) width, cmd.get<double>("Re_tau"), ((spanwise)? "spanwise": "streamwise"), pitch_to_delta, gas_fraction, n_xyz[1], lmin, lmax);
-#else
-    ierr = PetscPrintf(mpi.comm(), "Parameters : Re_tau = %g, domain is %dx2 (delta units), P/delta = %g, GF = %g\n", cmd.get<double>("Re_tau"), (int) length, pitch_to_delta, gas_fraction); CHKERRXX(ierr);
-    sprintf(out_dir, "%s/%dX2_channel/Re_tau_%.2f/pitch_to_delta_%.3f/GF_%.2f/ny_%d_lmin_%d_lmax_%d", export_dir.c_str(), (int) length, cmd.get<double>("Re_tau"), pitch_to_delta, gas_fraction, n_xyz[1], lmin, lmax);
-#endif
-  }
-  else
-  {
-#ifdef P4_TO_P8
-    ierr = PetscPrintf(mpi.comm(), "Parameters : Re_b = %g, domain is %dx2x%d (delta units), P/delta = %g, GF = %g\n", cmd.get<double>("Re_b"), (int) length, (int) width, pitch_to_delta, gas_fraction); CHKERRXX(ierr);
-    sprintf(out_dir, "%s/%dX2X%d_channel/Re_b_%.2f/%s/pitch_to_delta_%.3f/GF_%.2f/ny_%d_lmin_%d_lmax_%d", export_dir.c_str(), (int) length, (int) width, cmd.get<double>("Re_b"), ((spanwise)? "spanwise": "streamwise"), pitch_to_delta, gas_fraction, n_xyz[1], lmin, lmax);
-#else
-    ierr = PetscPrintf(mpi.comm(), "Parameters : Re_b = %g, domain is %dx2 (delta units), P/delta = %g, GF = %g\n", cmd.get<double>("Re_b"), (int) length, pitch_to_delta, gas_fraction); CHKERRXX(ierr);
-    sprintf(out_dir, "%s/%dX2_channel/Re_b_%.2f/pitch_to_delta_%.3f/GF_%.2f/ny_%d_lmin_%d_lmax_%d", export_dir.c_str(), (int) length, cmd.get<double>("Re_b"), pitch_to_delta, gas_fraction, n_xyz[1], lmin, lmax);
-#endif
-  }
-  ierr = PetscPrintf(mpi.comm(), "cfl = %g, wall layer = %u, rho = %g, mu = %g (1/mu = %g)\n", cfl, wall_layer, ns->get_rho(), ns->get_mu(), 1.0/ns->get_mu());
-
-  if(create_directory(out_dir, mpi.rank(), mpi.comm()))
-  {
-    char error_msg[1024];
-    sprintf(error_msg, "main_shs_%dd: could not create exportation directory %s", P4EST_DIM, out_dir);
-    throw std::runtime_error(error_msg);
-  }
-  sprintf(vtk_path, "%s/vtu", out_dir);
-  if(save_vtk && create_directory(vtk_path, mpi.rank(), mpi.comm()))
-  {
-    char error_msg[1024];
-    sprintf(error_msg, "main_shs_%dd: could not create exportation directory for vtk files %s", P4EST_DIM, vtk_path);
-    throw std::runtime_error(error_msg);
-  }
-
-  // for mass_flow_forcing
-  const bool force_mass_flow[P4EST_DIM]         = {DIM((cmd.contains("restart") && cmd.contains("Re_b")), false, false)};
-  const double desired_bulk_velocity[P4EST_DIM] = {DIM(bulk_velocity_to_set, 0.0, 0.0)}; // 2nd and 3rd components are irrelevant
-  double current_mass_flow[P4EST_DIM]           = {DIM(0.0, 0.0, 0.0)};
-  double mean_grad_hodge_correction[P4EST_DIM];
-
-  int iter = 0;
-  int iter_export_profile = 0;
-  int export_vtk = -1;
-  int save_data_idx = (int) floor(tstart/dt_save_data); // so that we don't save the very first one which was either already read from file, or the known initial condition...
-
-  FILE *fp_velocity_profile;
-  char file_drag[PATH_MAX], file_monitoring[PATH_MAX];
-
-  if(save_drag)
-    initialize_drag_force_output(file_drag, out_dir, lmin, lmax, threshold_split_cell, cfl, sl_order, mpi, tstart);
-#ifdef P4_TO_P8
-  const std::string drag_output_format = "%g %g %g %g\n";
-#else
-  const std::string drag_output_format = "%g %g %g\n";
-#endif
-  // initialize sections and mass flows through sections
-  double section = -0.5*length;
-  double mass_flow = -1.0;
-  initialize_monitoring(file_monitoring, out_dir, ns->get_brick()->nxyztrees[1], lmin, lmax, threshold_split_cell, cfl, sl_order, mpi, tstart);
-
-  sprintf(profile_path, "%s/profiles", out_dir);
-  if(save_profiles && create_directory(profile_path, mpi.rank(), mpi.comm()))
-  {
-    char error_msg[1024];
-    sprintf(error_msg, "main_shs_%dd: could not create exportation directory for velocity profiles %s", P4EST_DIM, profile_path);
-    throw std::runtime_error(error_msg);
-  }
-  char file_slice_avg_velocity_profile[PATH_MAX];
-  vector<std::string> file_line_avg_velocity_profile;
-  vector<unsigned int> bin_index;
-  unsigned int nbins;
-  if(save_profiles)
-  {
-    double domain_dimensions[P4EST_DIM] = {DIM(length, 2.0, width)};
-#ifdef P4_TO_P8
-    initialize_averaged_velocity_profiles(file_slice_avg_velocity_profile, profile_path, n_xyz, lmin, lmax, threshold_split_cell, cfl, sl_order, mpi, tstart,
-                                          bin_index, file_line_avg_velocity_profile, domain_dimensions, pitch_to_delta, gas_fraction, nbins, spanwise);
-#else
-    initialize_averaged_velocity_profiles(file_slice_avg_velocity_profile, profile_path, n_xyz, lmin, lmax, threshold_split_cell, cfl, sl_order, mpi, tstart,
-                                          bin_index, file_line_avg_velocity_profile, domain_dimensions, pitch_to_delta, gas_fraction, nbins, true);
-#endif
-    t_line_average.resize(nbins);
-    line_averaged_profiles.resize(nbins);
-    line_averaged_profiles_nm1.resize(nbins);
-    time_averaged_line_averaged_profiles.resize(nbins);
-    if(cmd.contains("restart"))
-    {
-      bool all_binary_files_nm1_are_there = true;
-      if(!mpi.rank())
-      {
-        char path_to_binary_slice_velocity_profile_nm1[PATH_MAX];
-        sprintf(path_to_binary_slice_velocity_profile_nm1, "%s/slice_velocity_profile_nm1.bin", profile_path);
-        all_binary_files_nm1_are_there = all_binary_files_nm1_are_there && file_exists(path_to_binary_slice_velocity_profile_nm1);
-      }
-
-      for (unsigned int bin_idx = 0; bin_idx < nbins; ++bin_idx) {
-        if(((unsigned int) mpi.rank()) == (bin_idx%mpi.size()))
-        {
-          char path_to_binary_line_velocity_profile_nm1[PATH_MAX];
-          sprintf(path_to_binary_line_velocity_profile_nm1, "%s/line_velocity_profile_nm1_index_%d.bin", profile_path, bin_idx);
-          all_binary_files_nm1_are_there = all_binary_files_nm1_are_there && file_exists(path_to_binary_line_velocity_profile_nm1);
-        }
-      }
-
-      int load_binary_files = (all_binary_files_nm1_are_there?1:0);
-      int mpiret = MPI_Allreduce(MPI_IN_PLACE, &load_binary_files, 1, MPI_INT, MPI_LAND, mpi.comm()); SC_CHECK_MPI(mpiret);
-
-      if(load_binary_files)
-      {
-        if(!mpi.rank())
-        {
-          char path_to_binary_slice_velocity_profile_nm1[PATH_MAX];
-          sprintf(path_to_binary_slice_velocity_profile_nm1, "%s/slice_velocity_profile_nm1.bin", profile_path);
-          read_vector_from_file(path_to_binary_slice_velocity_profile_nm1, slice_averaged_profile_nm1);
-          time_averaged_slice_averaged_profile.resize(slice_averaged_profile_nm1.size());
-          t_slice_average = tstart;
-        }
-
-        for (unsigned int bin_idx = 0; bin_idx < nbins; ++bin_idx) {
-          if(((unsigned int) mpi.rank()) == (bin_idx%mpi.size()))
-          {
-            char path_to_binary_line_velocity_profile_nm1[PATH_MAX];
-            sprintf(path_to_binary_line_velocity_profile_nm1, "%s/line_velocity_profile_nm1_index_%d.bin", profile_path, bin_idx);
-            read_vector_from_file(path_to_binary_line_velocity_profile_nm1, line_averaged_profiles_nm1[bin_idx]);
-            time_averaged_line_averaged_profiles[bin_idx].resize(line_averaged_profiles_nm1[bin_idx].size());
-            t_line_average[bin_idx] = tstart;
-          }
-        }
-
-        iter_export_profile = 1; // restarting so +1
-      }
-    }
-  }
 
   parStopWatch watch, substep_watch;
   double mean_full_iteration_time = 0.0, mean_viscosity_step_time = 0.0, mean_projection_step_time = 0.0, mean_compute_velocity_at_nodes_time = 0.0, mean_update_time = 0.0;
-  if(get_timing)
+  if (setup.get_timing)
     watch.start("Total runtime");
-  double tn = tstart;
+  setup.tn = setup.tstart;
+  setup.update_save_data_idx(); // so that we don't save the very first one which was either already read from file, or the known initial condition...
 
-  my_p4est_poisson_cells_t* cell_solver = NULL;
-  my_p4est_poisson_faces_t* face_solver = NULL;
+  my_p4est_poisson_cells_t* cell_solver         = NULL;
+  my_p4est_poisson_faces_t* face_solver         = NULL;
+  Vec dxyz_hodge_old[P4EST_DIM];
 
-  bool accuracy_check_done = false;
-  while(tn+0.01*dt<tstart+duration && !accuracy_check_done)
+  while (setup.tn + 0.01*setup.dt < setup.tstart + setup.duration && !setup.accuracy_check_done)
   {
-    if(get_timing)
+    if (setup.get_timing)
       substep_watch.start("");
-    if(iter > 0)
+    if (setup.iter > 0)
     {
-      if(mass_flow < 0.0)
-        std::runtime_error("main_shs_*d: something went wrong, the mass flow should be strictly positive and known to the solver at this stage...");
-      // let's use 10% of the current average velocity for the min value considered for u_max in evaluating dt
-      // (kinda arbitrary, but this parameter is not really relevant, we just want to avoid crazy big time step due to flow currently at rest or pretty much)
-      double min_value_considered_for_umax = 0.1*mass_flow/(ns->get_height_of_domain() ONLY3D(*ns->get_width_of_domain()));
-      if(use_adapted_dt)
-        ns->compute_adapted_dt(min_value_considered_for_umax);
+      if (flow_controller->read_latest_mass_flow() < 0.0)
+        std::runtime_error("main_shs_" + std::to_string(P4EST_DIM) + "d: something went wrong, the mass flow should be strictly positive and known to at this stage...");
+      if (setup.use_adapted_dt)
+        ns->compute_adapted_dt();
       else
-        ns->compute_dt(min_value_considered_for_umax);
-      dt = ns->get_dt();
+        ns->compute_dt();
+      setup.dt = ns->get_dt();
 
-      if(tn+dt>tstart+duration)
+      if (setup.tn + setup.dt > setup.tstart + setup.duration)
       {
-        dt = tstart+duration-tn;
-        ns->set_dt(dt);
+        setup.dt = setup.tstart + setup.duration - setup.tn;
+        ns->set_dt(setup.dt);
       }
 
-      if(save_vtk && dt > vtk_dt)
+      if (setup.save_vtk && setup.dt > setup.vtk_dt)
       {
-        dt = vtk_dt; // so that we don't miss snapshots...
-        ns->set_dt(dt);
+        setup.dt = setup.vtk_dt; // so that we don't miss snapshots...
+        ns->set_dt(setup.dt);
       }
 
-      bool solvers_can_be_reused = ns->update_from_tn_to_tnp1(NULL, (iter%steps_grid_update!=0), false);
-      if(cell_solver != NULL && !solvers_can_be_reused){
+      bool solvers_can_be_reused = ns->update_from_tn_to_tnp1(NULL, (setup.iter%setup.steps_grid_update != 0), false);
+      if (cell_solver != NULL && !solvers_can_be_reused){
         delete cell_solver; cell_solver = NULL; }
-      if(face_solver != NULL && !solvers_can_be_reused){
+      if (face_solver != NULL && !solvers_can_be_reused){
         delete face_solver; face_solver = NULL; }
     }
-    if(get_timing)
+    if (setup.get_timing)
     {
       substep_watch.stop();
       mean_update_time += substep_watch.read_duration();
     }
-    if(save_state && ((int) floor(tn/dt_save_data)) != save_data_idx)
+    if (setup.time_to_save_state())
     {
-      save_data_idx = ((int) floor(tn/dt_save_data));
-      ns->save_state(out_dir, tn, n_states);
+      setup.update_save_data_idx();
+      ns->save_state(setup.export_dir.c_str(), setup.tn, setup.n_states);
     }
 
-    Vec hodge_old;
-    Vec hodge_new;
-    ierr = VecCreateSeq(PETSC_COMM_SELF, ns->get_p4est()->local_num_quadrants, &hodge_old); CHKERRXX(ierr);
-    double corr_hodge = 1.0;
+    double convergence_check_on_dxyz_hodge = DBL_MAX;
+    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
+      ierr = VecCreateNoGhostFaces(ns->get_p4est(), ns->get_faces(), &dxyz_hodge_old[dir], dir); CHKERRXX(ierr); }
     unsigned int iter_hodge = 0;
-    double constant_mass_flow_correction = 10.0*Ub_tolerance*MAX(fabs(desired_bulk_velocity[0]), 1.0);
-    while((iter_hodge < niter_hodge_max && corr_hodge>hodge_tolerance) || (force_mass_flow[0] && fabs(constant_mass_flow_correction) > Ub_tolerance*fabs(desired_bulk_velocity[0])))
+    while (iter_hodge < setup.niter_hodge_max && (!flow_controller->latest_mass_flow_is_known() || convergence_check_on_dxyz_hodge > setup.u_tol*channel.mean_u(flow_controller->read_latest_mass_flow(), ns->get_rho())))
     {
-      hodge_new = ns->get_hodge();
-      ierr = VecCopy(hodge_new, hodge_old); CHKERRXX(ierr);
-
-      if(get_timing)
+      ns->copy_dxyz_hodge(dxyz_hodge_old);
+      if (setup.get_timing)
         substep_watch.start("");
-      ns->solve_viscosity(face_solver, (face_solver != NULL), KSPBCGS, pc_face);
-      if(get_timing)
+      ns->solve_viscosity(face_solver, (face_solver != NULL), KSPBCGS, setup.pc_face);
+      if (setup.get_timing)
       {
         substep_watch.stop();
         mean_viscosity_step_time += substep_watch.read_duration();
         substep_watch.start("");
       }
-      ns->solve_projection(cell_solver, (cell_solver != NULL), cell_solver_type, pc_cell);
-      if(force_mass_flow[0])
-      {
-        ns->global_mass_flow_through_slice(dir::x, section, mass_flow);
-        current_mass_flow[0] = mass_flow;
-        ns->enforce_mass_flow(force_mass_flow, desired_bulk_velocity, mean_grad_hodge_correction, current_mass_flow);
-        constant_mass_flow_correction = mean_grad_hodge_correction[0];
-        external_force_u.update_term(-constant_mass_flow_correction*ns->get_rho()*ns->alpha()/ns->get_dt());
-      }
-
-      if(get_timing)
+      convergence_check_on_dxyz_hodge = ns->solve_projection(cell_solver, (cell_solver != NULL), setup.cell_solver_type, setup.pc_cell, false, dxyz_hodge_old, setup.control_hodge);
+      if (setup.get_timing)
       {
         substep_watch.stop();
         mean_projection_step_time += substep_watch.read_duration();
       }
 
-      hodge_new = ns->get_hodge();
-      const double *ho; ierr = VecGetArrayRead(hodge_old, &ho); CHKERRXX(ierr);
-      const double *hn; ierr = VecGetArrayRead(hodge_new, &hn); CHKERRXX(ierr);
-      corr_hodge = 0;
-      p4est_t *p4est = ns->get_p4est();
-      for(p4est_topidx_t tree_idx=p4est->first_local_tree; tree_idx<=p4est->last_local_tree; ++tree_idx)
+      if (setup.flow_condition == constant_mass_flow)
       {
-        p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
-        for(size_t q=0; q<tree->quadrants.elem_count; ++q)
-        {
-          p4est_locidx_t quad_idx = tree->quadrants_offset+q;
-          corr_hodge = MAX(corr_hodge, fabs(ho[quad_idx]-hn[quad_idx]));
-        }
+        const double required_mean_correction_to_hodge_derivative = flow_controller->update_external_acceleration_to_enforce_desired_bulk_velocity(ns, external_acceleration);
+        if(setup.control_hodge == uvw_components || setup.control_hodge == u_component)
+          convergence_check_on_dxyz_hodge = MAX(convergence_check_on_dxyz_hodge, required_mean_correction_to_hodge_derivative); // Yes, Sir, don't cut corners: you may have "converged" when comparing to data from previous time-step only but if the required correction is too big, do it again...
       }
-      int mpiret = MPI_Allreduce(MPI_IN_PLACE, &corr_hodge, 1, MPI_DOUBLE, MPI_MAX, mpi.comm()); SC_CHECK_MPI(mpiret);
-      ierr = VecRestoreArrayRead(hodge_old, &ho); CHKERRXX(ierr);
-      ierr = VecRestoreArrayRead(hodge_new, &hn); CHKERRXX(ierr);
+      else if(setup.iter == 0)
+      {
+        /* we need the mass flow in the convergence criterion of this inner loop
+         * it will be known for iter > 0 but not for your very first pass --> so evaluate it here for your VERY FIRST pass only
+         * (not for subsequent ones, because 1) the actual value of the parameter is not too critical in the convergence criterion
+         * (it's needed to have a rough estimates of the desired numerical tolerance, that's all), 2) the actual exact value is not
+         * critial to ensure what the user wants in this case, i.e. a constant diving force for the flow
+         */
+        flow_controller->evaluate_current_mass_flow(ns);
+      }
 
-      ierr = PetscPrintf(mpi.comm(), "hodge iteration #%d, correction = %e\n", iter_hodge, corr_hodge); CHKERRXX(ierr);
+      if(setup.control_hodge == uvw_components){
+        ierr = PetscPrintf(ns->get_mpicomm(), "hodge iteration #%d, max correction in \\nabla Hodge = %e\n", iter_hodge, convergence_check_on_dxyz_hodge); CHKERRXX(ierr);
+      } else {
+        ierr = PetscPrintf(ns->get_mpicomm(), "hodge iteration #%d, max correction in d(Hodge)/d%s = %e\n", iter_hodge, (setup.control_hodge == u_component ? 'x' : (setup.control_hodge == v_component ? 'y' : 'z')), convergence_check_on_dxyz_hodge); CHKERRXX(ierr);
+      }
       iter_hodge++;
     }
-    ierr = VecDestroy(hodge_old); CHKERRXX(ierr);
-    if(get_timing)
+    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
+      ierr = VecDestroy(dxyz_hodge_old[dir]); CHKERRXX(ierr); }
+
+    if (setup.get_timing)
       substep_watch.start("");
-    ns->compute_velocity_at_nodes((steps_grid_update > 1));
-    if(get_timing)
+    ns->compute_velocity_at_nodes(setup.steps_grid_update > 1);
+    if (setup.get_timing)
     {
       substep_watch.stop();
       mean_compute_velocity_at_nodes_time += substep_watch.read_duration();
     }
     ns->compute_pressure();
 
-    tn += dt;
+    setup.tn += setup.dt;
 
     // monitoring Re_tau and Re_b
-    ns->global_mass_flow_through_slice(dir::x, section, mass_flow);
-    if(!mpi.rank())
-    {
-      FILE* fp_monitor = fopen(file_monitoring, "a");
-      if(fp_monitor==NULL)
-        throw std::runtime_error("main_shs_" + std::to_string(P4EST_DIM) + "d: could not open monitoring file.");
-      if(external_force_u.get_value() > 0.0)
-        fprintf(fp_monitor, "%g %g %g\n", tn, Re_tau(external_force_u, ns->get_rho(), ns->get_mu()),  Re_b(mass_flow ONLY3D(COMMA ns->get_width_of_domain()), ns->get_rho(), ns->get_mu()));
-      else
-        fprintf(fp_monitor, "%g %g %g\n", tn, -1.0,                                                   Re_b(mass_flow ONLY3D(COMMA ns->get_width_of_domain()), ns->get_rho(), ns->get_mu()));
-      fclose(fp_monitor);
-    }
+    if (monitor_simulation(setup, flow_controller, ns, external_acceleration, channel))
+      break;
+
+    // DEBUG check that we correctly enforce de mass flow if that's what we want
+    P4EST_ASSERT(setup.flow_condition != constant_mass_flow ||
+        iter_hodge == setup.niter_hodge_max ||
+        fabs(channel.Re_b(flow_controller->read_latest_mass_flow(), ns->get_rho(), ns->get_nu()) - flow_controller->targeted_bulk_velocity()*channel.delta()/ns->get_nu()) < setup.u_tol*flow_controller->targeted_bulk_velocity()*channel.delta()/ns->get_nu());
+
 
     // exporting drag if desired
-    if(save_drag)
-    {
-      ns->get_noslip_wall_forces(drag);
-      if(!mpi.rank())
-      {
-        FILE* fp_drag = fopen(file_drag, "a");
-        if(fp_drag==NULL)
-          throw std::runtime_error("main_shs_" + std::to_string(P4EST_DIM) + "d: could not open file for drag output.");
-        fprintf(fp_drag, drag_output_format.c_str(), tn, DIM(drag[0], drag[1], drag[2]));
-        fclose(fp_drag);
-      }
-    }
-    if (save_profiles)
-    {
-      ns->get_slice_averaged_vnp1_profile(dir::x, dir::y, slice_averaged_profile, mean_u(mass_flow, ns->get_rho() ONLY3D(COMMA ns->get_width_of_domain())));
-      if(!mpi.rank())
-      {
-        if(iter_export_profile == 0)
-        {
-          t_slice_average = tn;
-          slice_averaged_profile_nm1.resize(slice_averaged_profile.size(), 0.0);
-          time_averaged_slice_averaged_profile.resize(slice_averaged_profile.size(), 0.0);
-        }
-        else
-        {
-          for (unsigned int idx = 0; idx < slice_averaged_profile.size(); ++idx)
-          {
-            time_averaged_slice_averaged_profile[idx] += 0.5*dt*(slice_averaged_profile_nm1[idx]+slice_averaged_profile[idx]);
-            slice_averaged_profile_nm1[idx] = slice_averaged_profile[idx];
-          }
-        }
+    if (setup.save_drag)
+      export_drag(setup, ns, channel, flow_controller);
 
-        if(iter_export_profile != 0 && (iter_export_profile%nexport_avg == 0 || (save_state && ((int) floor(tn/dt_save_data) != save_data_idx))))
-        {
-          // we export velocity profile data every nexport_avg iterations *OR* if the solver state is about to be exported at the beginning of next iteration
-          // this second condition avoids truncation errors in the relevant data files when restarting the simulation from a saved solver state
-          // In the latter case, we need to export nm1 profiles for it to be read in case of restart
-          if(save_state && (((int) floor(tn/dt_save_data)) != save_data_idx))
-          {
-            char path_to_binary_slice_velocity_profile_nm1[PATH_MAX];
-            sprintf(path_to_binary_slice_velocity_profile_nm1, "%s/slice_velocity_profile_nm1.bin", profile_path);
-            if(file_exists(path_to_binary_slice_velocity_profile_nm1))
-              if(remove(path_to_binary_slice_velocity_profile_nm1) != 0)
-                throw std::runtime_error("main_shs_:: error when deleting file " + std::string(path_to_binary_slice_velocity_profile_nm1));
-            write_vector_to_binary_file(slice_averaged_profile_nm1, path_to_binary_slice_velocity_profile_nm1);
-//            std::ofstream binary_slice_velocity_profile_nm1(path_to_binary_slice_velocity_profile_nm1, std::ios::out | std::ofstream::binary);
-//            std::copy(slice_averaged_profile_nm1.begin(), slice_averaged_profile_nm1.end(), std::ostreambuf_iterator<char>(binary_slice_velocity_profile_nm1));
-//            binary_slice_velocity_profile_nm1.flush();
-//            binary_slice_velocity_profile_nm1.close();
-          }
-          fp_velocity_profile = fopen(file_slice_avg_velocity_profile, "a");
-          if(fp_velocity_profile == NULL)
-            throw std::invalid_argument("main_shs_" + std::to_string(P4EST_DIM) + "d: could not open file for slice-averaged velocity profile output.");
-          for (int k = 0; k < ntree_y*(1<<lmax); ++k)
-          {
-            fprintf(fp_velocity_profile, " %.12g", time_averaged_slice_averaged_profile.at(k)/(tn - t_slice_average));
-            time_averaged_slice_averaged_profile.at(k) = 0.0;
-          }
-          fprintf(fp_velocity_profile, "\n");
-          // write the next start time
-          fprintf(fp_velocity_profile, "%.12g", tn);
-          fclose(fp_velocity_profile);
-          // reset these
-          t_slice_average = tn;
-        }
-      }
-      ns->get_line_averaged_vnp1_profiles(dir::x, dir::y ONLY3D(COMMA (spanwise? dir::z : dir::x)), bin_index, line_averaged_profiles, mean_u(mass_flow, ns->get_rho() ONLY3D(COMMA ns->get_width_of_domain())));
-      for (unsigned int bin_idx = 0; bin_idx < nbins; ++bin_idx) {
-        if(((unsigned int) mpi.rank()) == (bin_idx%mpi.size()))
-        {
-          if(iter_export_profile == 0)
-          {
-            t_line_average[bin_idx] = tn;
-            line_averaged_profiles_nm1[bin_idx].resize(line_averaged_profiles[bin_idx].size(), 0.0);
-            time_averaged_line_averaged_profiles[bin_idx].resize(line_averaged_profiles[bin_idx].size(), 0.0);
-          }
-          else
-          {
-            for (unsigned int idx = 0; idx < line_averaged_profiles[bin_idx].size(); ++idx)
-            {
-              time_averaged_line_averaged_profiles[bin_idx][idx] += 0.5*dt*(line_averaged_profiles_nm1[bin_idx][idx]+line_averaged_profiles[bin_idx][idx]);
-              line_averaged_profiles_nm1[bin_idx][idx] = line_averaged_profiles[bin_idx][idx];
-            }
-          }
+    // exporting velocity profiles if desired
+    if (setup.save_profiles)
+      profiler->gather_and_dump_profiles(setup, ns, (setup.flow_condition == constant_pressure_gradient ? channel.canonical_u_tau(external_acceleration[0]->get_value()) : flow_controller->targeted_bulk_velocity()) ONLY3D(COMMA channel.spanwise_grooves()));
 
-          if((iter_export_profile!=0) && ((iter_export_profile%nexport_avg ==0) || (save_state && (((int) floor(tn/dt_save_data)) != save_data_idx))))
-          {
-            // we export velocity profile data every nexport_avg iterations *OR* if the solver state is about to be exported at the beginning of next iteration
-            // this second condition avoids truncation errors in the relevant data files when restarting the simulation from a saved solver state
-            // In the latter case, we need to export nm1 profiles for it to be read in case of restart
-            if(save_state && (((int) floor(tn/dt_save_data)) != save_data_idx))
-            {
-              char path_to_binary_line_velocity_profile_nm1[PATH_MAX];
-              sprintf(path_to_binary_line_velocity_profile_nm1, "%s/line_velocity_profile_nm1_index_%d.bin", profile_path, bin_idx);
-              if(file_exists(path_to_binary_line_velocity_profile_nm1))
-                if(remove(path_to_binary_line_velocity_profile_nm1) != 0)
-                  throw std::runtime_error("main_shs_:: error when deleting file " + std::string(path_to_binary_line_velocity_profile_nm1));
-              write_vector_to_binary_file(line_averaged_profiles_nm1[bin_idx], path_to_binary_line_velocity_profile_nm1);
-//              std::ofstream binary_line_velocity_profile_nm1(path_to_binary_line_velocity_profile_nm1, std::ios::out | std::ofstream::binary);
-//              std::copy(line_averaged_profiles_nm1[bin_idx].begin(), line_averaged_profiles_nm1[bin_idx].end(), std::ostreambuf_iterator<char>(binary_line_velocity_profile_nm1));
-//              binary_line_velocity_profile_nm1.flush();
-//              binary_line_velocity_profile_nm1.close();
-            }
-            fp_velocity_profile = fopen(file_line_avg_velocity_profile[bin_idx].c_str(), "a");
-            if(fp_velocity_profile==NULL)
-              throw std::invalid_argument("main_shs_" + std::to_string(P4EST_DIM) + "d: could not open file for line-averaged velocity profile output.");
-            for (int k = 0; k < ntree_y*(1<<lmax); ++k)
-            {
-              fprintf(fp_velocity_profile, " %.12g", time_averaged_line_averaged_profiles[bin_idx].at(k)/(tn-t_line_average[bin_idx]));
-              time_averaged_line_averaged_profiles[bin_idx].at(k) = 0.0;
-            }
-            fprintf(fp_velocity_profile, "\n");
-            // write the next start time
-            fprintf(fp_velocity_profile, "%.12g", tn);
-            fclose(fp_velocity_profile);
-            // reset these
-            t_line_average[bin_idx] = tn;
-          }
-        }
-      }
-      // if we exported velocity profile data because of an exported solver state but not because of a reached value of iter_export_profile, we reset its value to 0!
-      if((iter_export_profile!=0) && save_state && (((int) floor(tn/dt_save_data)) != save_data_idx) && (iter_export_profile%nexport_avg !=0))
-        iter_export_profile = 0;
+    if (setup.time_to_save_vtk() && !setup.do_accuracy_check)
+    {
+      setup.update_export_vtk();
+      const std::string vtk_name = setup.vtk_path + "/snapshot_" + std::to_string(setup.export_vtk);
+      ns->save_vtk(vtk_name.c_str(), true, channel.mean_u(flow_controller->read_latest_mass_flow(), ns->get_rho()), channel.height()*0.5);
     }
 
-    if(external_force_u.get_value() > 0.0){
-      ierr = PetscPrintf(mpi.comm(), "Iteration #%04d : tn = %.5e, percent done : %.1f%%, \t max_L2_norm_u = %.5e, \t number of leaves = %d, \t Re_tau = %.2f, \t Re_b = %.2f\n",
-                         iter, tn, 100*(tn - tstart)/duration, ns->get_max_L2_norm_u(), ns->get_p4est()->global_num_quadrants,
-                         Re_tau(external_force_u, ns->get_rho(), ns->get_mu()),
-                         Re_b(mass_flow ONLY3D(COMMA ns->get_width_of_domain()), ns->get_rho(), ns->get_mu())
-                         ); CHKERRXX(ierr);}
-    else{
-      ierr = PetscPrintf(mpi.comm(), "Iteration #%04d : driving bulk force is currently negative\n", iter); CHKERRXX(ierr);
-      ierr = PetscPrintf(mpi.comm(), "Iteration #%04d : tn = %.5e, percent done : %.1f%%, \t max_L2_norm_u = %.5e, \t number of leaves = %d, \t f_x = %.2f, \t Re_b = %.2f\n",
-                         iter, tn, 100*(tn - tstart)/duration, ns->get_max_L2_norm_u(), ns->get_p4est()->global_num_quadrants,
-                         external_force_u.get_value(),
-                         Re_b(mass_flow ONLY3D(COMMA ns->get_width_of_domain()), ns->get_rho(), ns->get_mu())
-                         ); CHKERRXX(ierr);}
+    if (setup.do_accuracy_check)
+      check_accuracy_of_solution(ns, channel, setup);
 
-    if(ns->get_max_L2_norm_u()>5.0*(force_mass_flow[0]? desired_bulk_velocity[0] : Re_tau(external_force_u, ns->get_rho(), ns->get_mu())*sqrt(external_force_u.get_value()*1.0))) // delta = 1.0
-    {
-      if(save_vtk)
-      {
-        sprintf(vtk_name, "%s/snapshot_%d", vtk_path, export_vtk+1);
-        ns->save_vtk(vtk_name);
-      }
-      std::cerr << "The simulation blew up..." << std::endl;
-      break;
-    }
-
-    if(save_vtk && ((int) floor(tn/vtk_dt)) != export_vtk && !do_accuracy_check)
-    {
-      export_vtk = ((int) floor(tn/vtk_dt));
-      sprintf(vtk_name, "%s/snapshot_%d", vtk_path, export_vtk);
-      ns->save_vtk(vtk_name, true, mean_u(mass_flow, ns->get_rho() ONLY3D(COMMA ns->get_width_of_domain())));
-    }
-
-    if(do_accuracy_check)
-    {
-      channel.solve_for_truncated_series(2500); // 2500 : number of terms in the trunctation of the series solution
-      check_accuracy_of_solution(ns, channel, external_force_u, my_accuracy_check_errors, (save_vtk ? &vtk_path : NULL));
-      ierr = PetscPrintf(mpi.comm(), "The face-error on u is %.6E\n", my_accuracy_check_errors[0]); CHKERRXX(ierr);
-      ierr = PetscPrintf(mpi.comm(), "The face-error on v is %.6E\n", my_accuracy_check_errors[1]); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-      ierr = PetscPrintf(mpi.comm(), "The face-error on w is %.6E\n", my_accuracy_check_errors[2]); CHKERRXX(ierr);
-#endif
-      ierr = PetscPrintf(mpi.comm(), "The node-error on u is %.6E\n", my_accuracy_check_errors[P4EST_DIM+0]); CHKERRXX(ierr);
-      ierr = PetscPrintf(mpi.comm(), "The node-error on v is %.6E\n", my_accuracy_check_errors[P4EST_DIM+1]); CHKERRXX(ierr);
-#ifdef P4_TO_P8
-      ierr = PetscPrintf(mpi.comm(), "The node-error on w is %.6E\n", my_accuracy_check_errors[P4EST_DIM+2]); CHKERRXX(ierr);
-#endif
-      accuracy_check_done = true;
-    }
-    iter++;
-    iter_export_profile++;
+    setup.iter++;
   }
 
-  if(get_timing)
+  if (setup.get_timing)
   {
     watch.stop();
-    mean_full_iteration_time             = watch.read_duration()/((double) iter);
-    mean_viscosity_step_time            /= ((double) iter);
-    mean_projection_step_time           /= ((double) iter);
-    mean_compute_velocity_at_nodes_time /= ((double) iter);
-    mean_update_time                    /= ((double) iter);
+    mean_full_iteration_time             = watch.read_duration()/((double) setup.iter);
+    mean_viscosity_step_time            /= ((double) setup.iter);
+    mean_projection_step_time           /= ((double) setup.iter);
+    mean_compute_velocity_at_nodes_time /= ((double) setup.iter);
+    mean_update_time                    /= ((double) setup.iter);
 
-    ierr = PetscPrintf(mpi.comm(), "Mean computational time spent on \n"); CHKERRXX(ierr);
-    ierr = PetscPrintf(mpi.comm(), " viscosity step: %.5e\n", mean_viscosity_step_time); CHKERRXX(ierr);
-    ierr = PetscPrintf(mpi.comm(), " projection step: %.5e\n", mean_projection_step_time); CHKERRXX(ierr);
-    ierr = PetscPrintf(mpi.comm(), " computing velocities at nodes: %.5e\n*", mean_compute_velocity_at_nodes_time); CHKERRXX(ierr);
-    ierr = PetscPrintf(mpi.comm(), " grid update: %.5e\n", mean_update_time); CHKERRXX(ierr);
-    ierr = PetscPrintf(mpi.comm(), " full iteration (total): %.5e\n", mean_full_iteration_time); CHKERRXX(ierr);
+    ierr = PetscPrintf(ns->get_mpicomm(), "Mean computational time spent on \n");                                           CHKERRXX(ierr);
+    ierr = PetscPrintf(ns->get_mpicomm(), " viscosity step: %.5e\n", mean_viscosity_step_time);                             CHKERRXX(ierr);
+    ierr = PetscPrintf(ns->get_mpicomm(), " projection step: %.5e\n", mean_projection_step_time);                           CHKERRXX(ierr);
+    ierr = PetscPrintf(ns->get_mpicomm(), " computing velocities at nodes: %.5e\n*", mean_compute_velocity_at_nodes_time);  CHKERRXX(ierr);
+    ierr = PetscPrintf(ns->get_mpicomm(), " grid update: %.5e\n", mean_update_time);                                        CHKERRXX(ierr);
+    ierr = PetscPrintf(ns->get_mpicomm(), " full iteration (total): %.5e\n", mean_full_iteration_time);                     CHKERRXX(ierr);
   }
 
-  if(cell_solver != NULL)
+  if (cell_solver != NULL)
     delete  cell_solver;
-  if(face_solver != NULL)
+  if (face_solver != NULL)
     delete face_solver;
 
   delete ns;        // deletes the navier-stokes solver
   // the brick and the connectivity are deleted within the above destructor...
   delete data;      // deletes the splitting criterion object
+  if (flow_controller != NULL)
+    delete flow_controller;
+  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+    if(external_acceleration[dir] != NULL)
+      delete external_acceleration[dir];
 
   return 0;
 }

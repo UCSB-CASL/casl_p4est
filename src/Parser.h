@@ -24,11 +24,13 @@ class cmdParser{
    * \note this function uses stringstream objects. As long as you overload the stream operators, you can use it with any object you define
    */
   template<typename T>
-  T get(const T *default_value, const std::string& key)
+  T get(const T *default_value, const std::string& key) const
   {
-    if (options.find(key) == options.end())
+    std::map <std::string, std::string>::const_iterator options_it = options.find(key);
+    std::map <std::string, std::string>::const_iterator buffer_it = buffer.find(key);
+    if (options_it == options.end())
       throw std::runtime_error("[ERROR]: Option '" + key + "' was not found in option database.");
-    else if (options.find(key) != options.end() && buffer.find(key) == buffer.end())
+    else if (options_it != options.end() && buffer_it == buffer.end())
     {
       if(default_value == NULL)
         throw std::runtime_error("[ERROR]: Option '" + key + "' was found in option database but was not entered.");
@@ -37,14 +39,14 @@ class cmdParser{
     }
     else
     {
-      if (!buffer[key].compare("no-arg"))
+      if (!buffer_it->second.compare("no-arg"))
       {
         if(default_value == NULL)
           throw std::runtime_error("[CASL_ERROR]: option '" + key + "' does not include any value");
         else
           return *default_value;
       }
-      std::istringstream iss(buffer[key]);
+      std::istringstream iss(buffer_it->second);
       T tmp; iss >> tmp;
       return tmp;
     }
@@ -74,13 +76,13 @@ public:
    * \param key: key to search for
    * \return returns true if the option exists in the database and entered by the user
    */
-  bool contains(const std::string& key);
+  bool contains(const std::string& key) const;
 
   /*!
    * see the description of the corresponding generalized private method called therein for "get"
    */
-  template<typename T> T get(const std::string& key)                          { return get<T>(NULL,           key); }
-  template<typename T> T get(const std::string& key, const T& default_value)  { return get<T>(&default_value, key); }
+  template<typename T> T get(const std::string& key)                          const { return get<T>(NULL,           key); }
+  template<typename T> T get(const std::string& key, const T& default_value)  const { return get<T>(&default_value, key); }
 
   /*!
    * \brief print: prints the options database into the stream 'f'

@@ -37,12 +37,7 @@ void  my_p4est_interpolation_cells_t::operator ()(DIM(double x, double y, double
 
   /* first clip the coordinates */
   double xyz_clip[P4EST_DIM] = {DIM(x, y, z)};
-
-  // clip to bounding box
-  for (unsigned char i = 0; i < P4EST_DIM; i++){
-    if (xyz_clip[i] > xyz_max[i]) xyz_clip[i] = xyz_max[i];
-    if (xyz_clip[i] < xyz_min[i]) xyz_clip[i] = xyz_min[i];
-  }
+  clip_in_domain(xyz_clip, xyz_min, xyz_max, periodic);
 
   p4est_quadrant_t best_match;
   std::vector<p4est_quadrant_t> remote_matches;
@@ -134,7 +129,7 @@ void my_p4est_interpolation_cells_t::interpolate(const p4est_quadrant_t &quad, c
   for(set_of_neighboring_quadrants::const_iterator it = ngbd.begin(); it != ngbd.end(); ++it)
   {
     p4est_locidx_t qm_idx = it->p.piggy3.local_num;
-    if(std::find(interp_points.begin(), interp_points.end(),qm_idx) == interp_points.end())
+    if(std::find(interp_points.begin(), interp_points.end(), qm_idx) == interp_points.end())
     {
       /* check if quadrant is well defined */
       double phi_q = 0.0;
@@ -161,7 +156,7 @@ void my_p4est_interpolation_cells_t::interpolate(const p4est_quadrant_t &quad, c
           xyz_t[i] = rel_dist / scaling;
         }
 
-        double w = MAX(min_w,1./MAX(inv_max_w,sqrt(SUMD(SQR(xyz_t[0]), SQR(xyz_t[1]), SQR(xyz_t[2])))));
+        double w = MAX(min_w, 1./MAX(inv_max_w, sqrt(SUMD(SQR(xyz_t[0]), SQR(xyz_t[1]), SQR(xyz_t[2])))));
 
         A.set_value(interp_points.size(), 0,                1                 * w);
         A.set_value(interp_points.size(), 1,                xyz_t[0]          * w);
@@ -183,7 +178,7 @@ void my_p4est_interpolation_cells_t::interpolate(const p4est_quadrant_t &quad, c
         for (unsigned int k = 0; k < n_functions; ++k)
           p[k].push_back(Fi_p[k][qm_idx] * w);
 
-        for(int d=0; d<P4EST_DIM; ++d)
+        for(unsigned char d = 0; d < P4EST_DIM; ++d)
           if(std::find(nb[d].begin(), nb[d].end(), xyz_t[d]) == nb[d].end()) // comparison of doubles... VERY bad :-/
             nb[d].push_back(xyz_t[d]);
 

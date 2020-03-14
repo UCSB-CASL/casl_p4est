@@ -224,7 +224,7 @@ public:
    * blocksize must be much smaller than that. (If not, you're probably wrong and you probably need to revise
    * your project)
    */
-  const static unsigned int ALL_COMPONENTS=UINT_MAX;
+  const static unsigned int ALL_COMPONENTS = UINT_MAX;
 
   /*!
    * \brief clear waits for pending communications to complete, then clears all the buffers, the list of
@@ -262,7 +262,7 @@ public:
    *                            all components are considered if set to ALL_COMPONENTS
    * \note Fo MUST (and is assumed to) contain n_vecs() elements, for consistency with the given inputs
    * \note about the insertion of the results in elements of Fo:
-   * if ((comp==ALL_COMPONENTS) && (bs_f > 1))
+   * if ((comp == ALL_COMPONENTS) && (bs_f > 1))
    *    --> all bs_f components of the kth input field for the node buffered with associated index "node_idx_on_output"
    *        (when using 'add_point()') are inserted in
    *        {Fo[k][bs_f*node_idx_on_output], Fo[k][bs_f*node_idx_on_output+1], ..., Fo[k][bs_f*node_idx_on_output+bs_f-1]}
@@ -271,7 +271,7 @@ public:
    *        (when using 'add_point()') is inserted in Fo[k][node_idx_on_output]
    */
   void interpolate(double * const *Fo, const unsigned int &comp=ALL_COMPONENTS);
-  inline void interpolate(double *Fo, const unsigned int &comp=ALL_COMPONENTS) { P4EST_ASSERT(n_vecs()==1); interpolate(&Fo, comp); }
+  inline void interpolate(double *Fo, const unsigned int &comp=ALL_COMPONENTS) { P4EST_ASSERT(n_vecs() == 1); interpolate(&Fo, comp); }
 
   /*!
    * \brief interpolate does the same task as the above method, except that it is specifically for Petsc parallel vector(s)
@@ -301,8 +301,8 @@ public:
     for (unsigned int k = 0; k < n_outputs; ++k) {
       ierr = VecRestoreArray(Fos[k], &Fo_p[k]); CHKERRXX(ierr); }
   }
-  inline void interpolate(Vec Fo){ P4EST_ASSERT(n_vecs()==1); interpolate(&Fo); }
-  inline void interpolate(vector<Vec>& Fo) { P4EST_ASSERT(n_vecs()==Fo.size()); interpolate(Fo.data()); }
+  inline void interpolate(Vec Fo){ P4EST_ASSERT(n_vecs() == 1); interpolate(&Fo); }
+  inline void interpolate(vector<Vec>& Fo) { P4EST_ASSERT(n_vecs() == Fo.size()); interpolate(Fo.data()); }
 
   /*!
    * \brief operator () standard direct operator to interpolate value at any point that is locally owned.
@@ -358,7 +358,7 @@ public:
    * This method is virtual and needs to be specified by any child class.
    * \param [in]    quad:     local p4est quadrant owning the point of interest
    * \param [in]    xyz:      Cartesian coordinates of the point of interest
-   * \param [inout] results:  array of results on output (size of array must be ((comp==ALL_COMPONENTS && bs_f > 1) ? bs_f*n_vecs() : vecs()) in general)
+   * \param [inout] results:  array of results on output (size of array must be ((comp == ALL_COMPONENTS && bs_f > 1) ? bs_f*n_vecs() : vecs()) in general)
    * \param [in]    comp:     component of the (possibly block-structured) Petsc parallel vector(s) to be interpolated
    *                          all components are considered if set to ALL_COMPONENTS
    * \note on output,
@@ -378,7 +378,7 @@ public:
    * \brief interpolate_local executes the interpolation only for the the nodes that were are locally owned
    * \param [inout] Fo_p: pointer to a double array (may be the local array of a Petsc vector, but not man-
    *                      datorily) in which results need to be inserted
-   * \note This method is restricted to n_vecs()==1 and bs_f == 1.
+   * \note This method is restricted to n_vecs() == 1 and bs_f == 1.
    */
   void interpolate_local(double *Fo_p);
 };

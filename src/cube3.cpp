@@ -21,13 +21,13 @@ Cube3::Cube3(double x0, double x1, double y0, double y1, double z0, double z1)
 //    num_tet = 5;
 }
 
-double Cube3::interface_Area_In_Cell( OctValue& level_set_values) const
+double Cube3::interface_Area_In_Cell(const OctValue& level_set_values) const
 {
   OctValue tmp(1.,1.,1.,1.,1.,1.,1.,1.);
   return integrate_Over_Interface(tmp, level_set_values);
 }
 
-double Cube3::volume_In_Negative_Domain( OctValue& level_set_values) const
+double Cube3::volume_In_Negative_Domain(const OctValue& level_set_values) const
 {
   OctValue tmp(1.,1.,1.,1.,1.,1.,1.,1.);
   return integral(tmp,level_set_values);

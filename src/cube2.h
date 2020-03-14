@@ -91,14 +91,14 @@ public:
    * \param level_set_values ...
    * \return length of the interface in the cell
    */
-  double interface_Length_In_Cell(QuadValue& level_set_values) const;
+  double interface_Length_In_Cell(const QuadValue& level_set_values) const;
 
   /*!
      * \brief compute the area of the Cube2 in the negative domain
      * \param level_set_values the values of the level-set function at the corners of the Cube2
      * \return the area of the Cube2 in the negative domain
      */
-  double area_In_Negative_Domain( QuadValue& level_set_values) const;
+  double area_In_Negative_Domain(const QuadValue& level_set_values) const;
 
   /*!
      * \brief integrate a quantity over the Cube2 using bilinear interpolation

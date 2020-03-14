@@ -363,7 +363,7 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
     {
       ierr = VecDestroy(null_space); CHKERRXX(ierr);
     }
-    ierr = VecDuplicate(rhs, &null_space); CHKERRXX(ierr);
+    ierr = VecCreateNoGhostCells(p4est, &null_space); CHKERRXX(ierr);
     ierr = VecGetArray(null_space, &null_space_p); CHKERRXX(ierr);
   }
 
@@ -922,9 +922,6 @@ void my_p4est_poisson_cells_t::setup_negative_laplace_matrix()
         ierr = MatNullSpaceDestroy(A_null_space); CHKERRXX(ierr);
       }
 
-      ierr = VecGhostUpdateBegin(null_space, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-      ierr = VecGhostUpdateEnd  (null_space, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
       double norm;
       ierr = VecNormalize(null_space, &norm); CHKERRXX(ierr);
       ierr = MatNullSpaceCreate(p4est->mpicomm, PETSC_FALSE, 1, &null_space, &A_null_space); CHKERRXX(ierr);
@@ -978,7 +975,7 @@ void my_p4est_poisson_cells_t::update_matrix_diag_only()
     {
       ierr = VecDestroy(null_space); CHKERRXX(ierr);
     }
-    ierr = VecDuplicate(rhs, &null_space); CHKERRXX(ierr);
+    ierr = VecCreateNoGhostCells(p4est, &null_space); CHKERRXX(ierr);
     ierr = VecGetArray(null_space, &null_space_p); CHKERRXX(ierr);
   }
 
@@ -1106,9 +1103,6 @@ void my_p4est_poisson_cells_t::update_matrix_diag_only()
       {
         ierr = MatNullSpaceDestroy(A_null_space); CHKERRXX(ierr);
       }
-
-      ierr = VecGhostUpdateBegin(null_space, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-      ierr = VecGhostUpdateEnd  (null_space, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
 
       double norm;
       ierr = VecNormalize(null_space, &norm); CHKERRXX(ierr);
