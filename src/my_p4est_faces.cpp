@@ -1045,6 +1045,8 @@ voro_cell_type compute_voronoi_cell(Voronoi_DIM &voronoi_cell, const my_p4est_fa
   const p4est_t* p4est = faces->get_p4est();
   const my_p4est_cell_neighbors_t* ngbd_c = faces->get_ngbd_c();
   const double * dxyz = faces->get_smallest_dxyz();
+  const double * tree_dim = faces->get_tree_dimensions();
+  const int8_t& max_lvl = ((splitting_criteria_t*) p4est->user_pointer)->max_lvl;
 
   voronoi_cell.clear();
   double xyz_face[P4EST_DIM]; faces->xyz_fr_f(f_idx, dir, xyz_face);
@@ -1109,7 +1111,9 @@ voro_cell_type compute_voronoi_cell(Voronoi_DIM &voronoi_cell, const my_p4est_fa
     return dirichlet_wall_face;
   }
 
-  /* Gather the neighbor cells to get the potential voronoi neighbors */
+  /* Gather the neighbor cells to get the potential voronoi neighbors:
+   * find all neighbors of the quads touching the face, in any tranverse direction
+   * */
   const unsigned int n_tranverse = (unsigned int) pow(3, P4EST_DIM - 1) - 1;
 #ifdef P4_TO_P8
   const unsigned char first_trans_dir   = (dir == dir::y || dir == dir :: z ? dir::x : dir::y); P4EST_ASSERT(first_trans_dir != dir);
@@ -1150,15 +1154,15 @@ voro_cell_type compute_voronoi_cell(Voronoi_DIM &voronoi_cell, const my_p4est_fa
     }
   P4EST_ASSERT(ngbd_idx == n_tranverse);
 
-  /* now gather the neighbor cells to get the potential voronoi neighbors */
-
   /* check for uniform case and/or wall in the neighborhood, if so build voronoi partition by hand */
+  const bool extra_layer_in_trans_dir_may_be_required = extra_layer_in_tranverse_directon_may_be_required(dir, tree_dim);
+  const bool need_to_look_over_sharing_quad           = check_past_sharing_quad_is_required(dir, tree_dim);
   bool no_wall = (qp.p.piggy3.local_num != -1 && qm.p.piggy3.local_num != -1);
   // if the face is wall itself, check that the other face across the cell is not subrefined
-  bool has_uniform_ngbd =
-      (qp.p.piggy3.local_num == -1 && faces->q2f(qm.p.piggy3.local_num, 2*dir) != NO_VELOCITY)
-      || (qm.p.piggy3.local_num == -1 && faces->q2f(qp.p.piggy3.local_num, 2*dir + 1) != NO_VELOCITY)
-      || (qp.level == qm.level && faces->q2f(qm.p.piggy3.local_num, 2*dir) != NO_VELOCITY && faces->q2f(qp.p.piggy3.local_num, 2*dir + 1) != NO_VELOCITY);
+  bool has_uniform_ngbd = !need_to_look_over_sharing_quad || ((qp.p.piggy3.local_num == -1 || qp.level == max_lvl) && (qm.p.piggy3.local_num == -1 || qm.level == max_lvl));
+  has_uniform_ngbd = has_uniform_ngbd && ((qp.p.piggy3.local_num == -1 && faces->q2f(qm.p.piggy3.local_num, 2*dir) != NO_VELOCITY)
+                                          || (qm.p.piggy3.local_num == -1 && faces->q2f(qp.p.piggy3.local_num, 2*dir + 1) != NO_VELOCITY)
+                                          || (qp.level == qm.level && faces->q2f(qm.p.piggy3.local_num, 2*dir) != NO_VELOCITY && faces->q2f(qp.p.piggy3.local_num, 2*dir + 1) != NO_VELOCITY));
   ngbd_idx = 0;
   for (char tt = -1; tt < 2 && (no_wall || has_uniform_ngbd); ++tt)
 #ifdef P4_TO_P8
@@ -1179,6 +1183,17 @@ voro_cell_type compute_voronoi_cell(Voronoi_DIM &voronoi_cell, const my_p4est_fa
         else
           has_uniform_ngbd  = has_uniform_ngbd && (local_wall || (ngbd_p_[ngbd_idx].size() == 1 && ngbd_p_[ngbd_idx].begin()->level <= qp.level));
 #endif
+        if(has_uniform_ngbd && extra_layer_in_trans_dir_may_be_required && qp.level < ((splitting_criteria_t*) p4est->user_pointer)->max_lvl) // check that quadrants layering those neighbors are not finer because that would invalidate local uniform cells in case of large aspect ratios
+        {
+#ifdef P4_TO_P8
+          if(tt != 0)
+#endif
+            has_uniform_ngbd = has_uniform_ngbd && (local_wall || (faces->q2f(ngbd_p_[ngbd_idx].begin()->p.piggy3.local_num, 2*first_trans_dir + (tt == 1)) != NO_VELOCITY));
+#ifdef P4_TO_P8
+          if(vv != 0)
+            has_uniform_ngbd = has_uniform_ngbd && (local_wall || (faces->q2f(ngbd_p_[ngbd_idx].begin()->p.piggy3.local_num, 2*second_trans_dir + (vv == 1)) != NO_VELOCITY));
+#endif
+        }
       }
       if(qm.p.piggy3.local_num != -1)
       {
@@ -1192,6 +1207,17 @@ voro_cell_type compute_voronoi_cell(Voronoi_DIM &voronoi_cell, const my_p4est_fa
         else
           has_uniform_ngbd  = has_uniform_ngbd && (local_wall || (ngbd_m_[ngbd_idx].size() == 1 && ngbd_m_[ngbd_idx].begin()->level <= qp.level));
 #endif
+        if(has_uniform_ngbd && extra_layer_in_trans_dir_may_be_required && qp.level < ((splitting_criteria_t*) p4est->user_pointer)->max_lvl) // check that quadrants layering those neighbors are not finer because that would invalidate local uniform cells in case of large aspect ratios
+        {
+#ifdef P4_TO_P8
+          if(tt != 0)
+#endif
+            has_uniform_ngbd = has_uniform_ngbd && (local_wall || (faces->q2f(ngbd_m_[ngbd_idx].begin()->p.piggy3.local_num, 2*first_trans_dir + (tt == 1)) != NO_VELOCITY));
+#ifdef P4_TO_P8
+          if(vv != 0)
+            has_uniform_ngbd = has_uniform_ngbd && (local_wall || (faces->q2f(ngbd_m_[ngbd_idx].begin()->p.piggy3.local_num, 2*second_trans_dir + (vv == 1)) != NO_VELOCITY));
+#endif
+        }
       }
       ngbd_idx++;
     }
@@ -1278,86 +1304,92 @@ voro_cell_type compute_voronoi_cell(Voronoi_DIM &voronoi_cell, const my_p4est_fa
    * 1) the face is a non-Dirichlet wall face,
    * 2) there is a wall nearby,
    * 3) there is a T-junction and the grid is not uniform
+   * 4) the grid is locally uniform but very stretched and more neighbors are actually required!
    * --> need to compute the voronoi cell */
   else
   {
-    /* gather neighbor cells:
-     * find neighbor quadrants of touching quadrants in (all possible) transverse orientations + one more layer of such in the positive and negative face-normals
-     */
     set_of_neighboring_quadrants ngbd; ngbd.clear();
+    set_of_neighboring_quadrants tmp_ngbd;
     std::set<indexed_and_located_face> set_of_neighbor_faces; set_of_neighbor_faces.clear();
     // we add faces to the set as we find them and clear the list of neighbor quadrants after every search to avoid vectors growing very large and slowing down the O(n) searches implemented in find_neighbor_cells_of_cell
     for (char face_touch = -1; face_touch < 2; face_touch += 2) {
       const p4est_quadrant_t& quad_touch = (face_touch == -1 ? qm : qp);
       if(quad_touch.p.piggy3.local_num != -1)
       {
-        p4est_topidx_t tree_touch_idx = (face_touch == -1 ? qm.p.piggy3.which_tree : qp.p.piggy3.which_tree);
-        p4est_quadrant_t& quad_touch  = (face_touch == -1 ? qm : qp);
+        const p4est_quadrant_t& quad_touch    = (face_touch == -1 ? qm : qp);
+        set_of_neighboring_quadrants* ngbd_touch_ = (face_touch == -1 ? ngbd_m_ : ngbd_p_);
         const unsigned char dir_touch = 2*dir + (face_touch == -1 ? 0 : 1);
         ngbd.insert(quad_touch);
 
         // in face normal direction if needed
-        if (faces->q2f(quad_touch.p.piggy3.local_num, dir_touch) == NO_VELOCITY)
-          ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_touch.p.piggy3.local_num, tree_touch_idx, dir_touch);
-
-        // in tranverse cartesian directions
-        unsigned char ngbd_idx = 0;
-        for (unsigned char neigbor_dir = 0; neigbor_dir < P4EST_FACES; ++neigbor_dir) {
-          if(neigbor_dir/2 == dir)
-            continue;
-
-//          // add an extra layer (needs to be done for very stretched grids, it would be good to have a criterion for that...)
-//          set_of_neighboring_quadrants extra_layer; extra_layer.clear();
-//          char search[P4EST_DIM]  = {DIM(0, 0, 0)};
-//          search[neigbor_dir/2]   = (neigbor_dir%2 == 1 ?  1 : -1);
-//          for (set_of_neighboring_quadrants::const_iterator it = (face_touch == -1 ? ngbd_m_[ngbd_idx] : ngbd_p_[ngbd_idx]).begin(); it != (face_touch == -1 ? ngbd_m_[ngbd_idx] : ngbd_p_[ngbd_idx]).end(); ++it)
-//            ngbd_c->find_neighbor_cells_of_cell(extra_layer, it->p.piggy3.local_num, it->p.piggy3.which_tree, DIM(search[0], search[1], search[2]));
-//          add_faces_to_set_and_clear_set_of_quad(faces, f_idx, dir, set_of_neighbor_faces, extra_layer);
-
-          // (we already searched and found the direct ones --> fetch them)
-          add_faces_to_set_and_clear_set_of_quad(faces, f_idx, dir, set_of_neighbor_faces, (face_touch == -1 ? ngbd_m_[ngbd_idx] : ngbd_p_[ngbd_idx]));
-          ngbd_idx++;
-        }
-        P4EST_ASSERT(ngbd_idx == 2*(P4EST_DIM - 1));
-        char search[P4EST_DIM];
-#ifdef P4_TO_P8
-        // in all transverse "diagonal directions"
-        search[dir] = 0;
-        for (char iii = -1; iii < 2; iii += 2) {
-          search[(dir + 1)%P4EST_DIM] = iii;
-          for (char jjj = -1; jjj < 2; jjj += 2) {
-            search[(dir + 2)%P4EST_DIM] = jjj;
-            ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_touch.p.piggy3.local_num, tree_touch_idx, search[0], search[1], search[2]);
-          }
-        }
-#endif
-        // extra layer
-        search[dir] = face_touch;
-        for (char iii = -1; iii < 2; ++iii)
+        if (faces->q2f(quad_touch.p.piggy3.local_num, dir_touch) == NO_VELOCITY || need_to_look_over_sharing_quad)
         {
-#ifdef P4_TO_P8
-          for (char jjj = -1; jjj < 2; ++jjj)
-          {
-            if(iii == 0 && jjj == 0)
-              continue;
-            search[(dir + 1)%P4EST_DIM] = iii;
-            search[(dir + 2)%P4EST_DIM] = jjj;
-            ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_touch.p.piggy3.local_num, tree_touch_idx, search[0], search[1], search[2]);
-          }
-#else
-          if(iii == 0)
-            continue;
-          search[(dir + 1)%P4EST_DIM] = iii;
-          ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_touch.p.piggy3.local_num, tree_touch_idx, search[0], search[1]);
-#endif
+          tmp_ngbd.clear();
+          tmp_ngbd.insert(quad_touch);
+          if(need_to_look_over_sharing_quad)
+            ngbd_c->find_neighbor_cells_of_cell(tmp_ngbd, quad_touch.p.piggy3.local_num, quad_touch.p.piggy3.which_tree, dir_touch);
+          for (set_of_neighboring_quadrants::const_iterator it = tmp_ngbd.begin(); it != tmp_ngbd.end(); ++it)
+            ngbd_c->find_neighbor_cells_of_cell(ngbd, it->p.piggy3.local_num, it->p.piggy3.which_tree, dir_touch);
         }
+
+        // fetch (all) the extra cells layering quad_touch in the face_touch direction
+        // if the aspect ratio is weird, we also layer in the tranverse directions
+        ngbd_idx = 0;
+        for (char tt = -1; tt < 2; ++tt)
+#ifdef P4_TO_P8
+          for (char vv = -1; vv < 2; ++vv)
+#endif
+          {
+            if(tt == 0 ONLY3D(&& vv == 0))
+              continue;
+            search[dir] = face_touch;
+            search[first_trans_dir]   = tt;
+#ifdef P4_TO_P8
+            search[second_trans_dir]  = vv;
+#endif
+            ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_touch.p.piggy3.local_num, quad_touch.p.piggy3.which_tree, DIM(search[0], search[1], search[2]));
+            if(extra_layer_in_trans_dir_may_be_required)
+            {
+              search[dir] = 0;
+#ifdef P4_TO_P8
+              if(tt != 0)
+#endif
+              {
+                search[first_trans_dir]   = tt;
+#ifdef P4_TO_P8
+                search[second_trans_dir]  = 0;
+#endif
+                for (set_of_neighboring_quadrants::const_iterator it = ngbd_touch_[ngbd_idx].begin(); it != ngbd_touch_[ngbd_idx].end(); ++it)
+                  ngbd_c->find_neighbor_cells_of_cell(ngbd, it->p.piggy3.local_num, it->p.piggy3.which_tree, DIM(search[0], search[1], search[2]));
+              }
+#ifdef P4_TO_P8
+              if(vv != 0)
+              {
+                search[first_trans_dir]   = 0;
+                search[second_trans_dir]  = vv;
+                for (set_of_neighboring_quadrants::const_iterator it = ngbd_touch_[ngbd_idx].begin(); it != ngbd_touch_[ngbd_idx].end(); ++it)
+                  ngbd_c->find_neighbor_cells_of_cell(ngbd, it->p.piggy3.local_num, it->p.piggy3.which_tree, DIM(search[0], search[1], search[2]));
+              }
+              if(tt!= 0 && vv != 0)
+              {
+                search[first_trans_dir]   = tt;
+                search[second_trans_dir]  = vv;
+                for (set_of_neighboring_quadrants::const_iterator it = ngbd_touch_[ngbd_idx].begin(); it != ngbd_touch_[ngbd_idx].end(); ++it)
+                  ngbd_c->find_neighbor_cells_of_cell(ngbd, it->p.piggy3.local_num, it->p.piggy3.which_tree, DIM(search[0], search[1], search[2]));
+              }
+#endif
+            }
+            add_faces_to_set_and_clear_set_of_quad(faces, f_idx, dir, set_of_neighbor_faces, ngbd_touch_[ngbd_idx]);
+            ngbd_idx++;
+          }
+        P4EST_ASSERT(ngbd_idx == n_tranverse);
         add_faces_to_set_and_clear_set_of_quad(faces, f_idx, dir, set_of_neighbor_faces, ngbd);
       }
     }
 
-    const bool *periodic  = faces->get_periodicity();
-    const double *xyz_min = faces->get_xyz_min();
-    const double *xyz_max = faces->get_xyz_max();
+    const bool* periodic  = faces->get_periodicity();
+    const double* xyz_min = faces->get_xyz_min();
+    const double* xyz_max = faces->get_xyz_max();
     voronoi_cell.assemble_from_set_of_faces(set_of_neighbor_faces, periodic, xyz_min, xyz_max);
 
     /* add the walls in 2d, note that they are dealt with by voro++ in 3D
