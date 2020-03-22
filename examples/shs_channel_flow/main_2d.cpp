@@ -993,6 +993,9 @@ void create_solver_from_scratch(const mpi_environment_t &mpi, const cmdParser &c
 
   p4est_ghost_t *ghost_n = my_p4est_ghost_new(p4est_n, P4EST_CONNECT_FULL);
   my_p4est_ghost_expand(p4est_n, ghost_n);
+  const double tree_dim[P4EST_DIM] = {DIM(channel.length()/brick->nxyztrees[0], channel.height()/brick->nxyztrees[1], channel.width()/brick->nxyztrees[2])};
+  if(third_degree_ghost_are_required(tree_dim))
+    my_p4est_ghost_expand(p4est_n, ghost_n);
 
   p4est_nodes_t *nodes_n = my_p4est_nodes_new(p4est_n, ghost_n);
   my_p4est_hierarchy_t *hierarchy_n = new my_p4est_hierarchy_t(p4est_n, ghost_n, brick);

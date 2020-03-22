@@ -1622,7 +1622,7 @@ bool my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_DIM *level_set, b
       /* For the very first iteration of the grid-update procedure, p4est_np1 is a
        * simple pure copy of p4est_n, so no node creation nor data interpolation is
        * required. Hence the "if(iter>0)..." statements and the ternary statements
-       * ((iter > 0) ? : ) */
+       * (iter > 0 ? : ) */
       // partition the grid if it has changed...
       if(iter > 0)
         my_p4est_partition(p4est_np1, P4EST_FALSE, NULL);
@@ -1704,8 +1704,8 @@ bool my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_DIM *level_set, b
       if(smoke != NULL && refine_with_smoke)
       {
         P4EST_ASSERT(ghost_np1 != NULL || iter == 0);
-        hierarchy_np1 = ((iter>0)? (new my_p4est_hierarchy_t(p4est_np1, ghost_np1, brick)): hierarchy_n);
-        ngbd_n_np1    = ((iter>0)? (new my_p4est_node_neighbors_t(hierarchy_np1, nodes_np1)): ngbd_n);
+        hierarchy_np1 = (iter > 0 ? new my_p4est_hierarchy_t(p4est_np1, ghost_np1, brick) : hierarchy_n);
+        ngbd_n_np1    = (iter > 0 ? new my_p4est_node_neighbors_t(hierarchy_np1, nodes_np1) : ngbd_n);
         advect_smoke(ngbd_n_np1, vtmp, smoke_np1);
         for(unsigned char dir = 0; dir < P4EST_DIM; ++dir)
           if(vtmp[dir] != NULL && vtmp[dir] != vnp1_nodes[dir]){
@@ -1764,6 +1764,8 @@ bool my_p4est_navier_stokes_t::update_from_tn_to_tnp1(const CF_DIM *level_set, b
   {
     ghost_np1 = my_p4est_ghost_new(p4est_np1, P4EST_CONNECT_FULL);
     my_p4est_ghost_expand(p4est_np1, ghost_np1);
+    if(third_degree_ghost_are_required(convert_to_xyz))
+      my_p4est_ghost_expand(p4est_np1, ghost_np1);
   }
   else
     ghost_np1 = ghost_n;
@@ -3191,6 +3193,8 @@ void my_p4est_navier_stokes_t::refine_coarsen_grid_after_restart(const CF_DIM *l
   p4est_t* p4est_nm1_saved        = p4est_copy(p4est_nm1, P4EST_FALSE);
   p4est_ghost_t* ghost_nm1_saved  = my_p4est_ghost_new(p4est_nm1_saved, P4EST_CONNECT_FULL);
   my_p4est_ghost_expand(p4est_nm1_saved, ghost_nm1_saved);
+  if(third_degree_ghost_are_required(convert_to_xyz))
+    my_p4est_ghost_expand(p4est_nm1_saved, ghost_nm1_saved);
   P4EST_ASSERT(ghosts_are_equal(ghost_nm1_saved, ghost_nm1));
   p4est_nodes_t* nodes_nm1_saved  = my_p4est_nodes_new(p4est_nm1_saved, ghost_nm1_saved);
   P4EST_ASSERT(nodes_are_equal(p4est_n->mpisize, nodes_nm1, nodes_nm1_saved));

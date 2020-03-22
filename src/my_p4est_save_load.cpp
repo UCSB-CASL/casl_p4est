@@ -415,7 +415,19 @@ void my_p4est_load_forest_and_data(const MPI_Comm mpi_comm, const char* absolute
     p4est_ghost_destroy(ghost);
   ghost = my_p4est_ghost_new(forest, P4EST_CONNECT_FULL);
   if(expand_ghost)
+  {
     my_p4est_ghost_expand(forest, ghost);
+    // if expanding ghost, the targeted usage is very likely to be for Navier-Stokes application
+    // --> check if the aspect ratio of the cells is unconventional which may enforce a requirement
+    // for further expansion of ghost layers
+    double tree_dimensions[P4EST_DIM];
+    p4est_topidx_t v_m  = conn->tree_to_vertex[0];                  // index of the front lower left corner of the first tree in the macro-mesh
+    p4est_topidx_t v_p  = conn->tree_to_vertex[P4EST_CHILDREN - 1]; // index of the back upper right corner of the first tree in the macro-mesh
+    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
+      tree_dimensions[dir] = conn->vertices[3*v_p + dir] - conn->vertices[3*v_m + dir];
+    if(third_degree_ghost_are_required(tree_dimensions))
+      my_p4est_ghost_expand(forest, ghost);
+  }
 
   // create the nodes
   if(nodes != NULL)
