@@ -803,6 +803,11 @@ public:
   }
 #endif
 
+  inline void set_neumann_value_p(CF_DIM& p_wall)
+  {
+    bc_wall_value_p_neumann = &p_wall;
+  }
+
 };
 
 #endif // MY_P4EST_SHS_CHANNEL_H
