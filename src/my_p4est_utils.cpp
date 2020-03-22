@@ -152,20 +152,8 @@ void rel_qxyz_quad_fr_node(const p4est_t* p4est, const p4est_quadrant_t& quad, c
     tree_xyz_min[i] = p4est->connectivity->vertices[3*v_m + i];
 
   for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
-    p4est_qcoord_t quad_qxyz = P4EST_QUADRANT_LEN(quad.level + 1) + (dim == dir::x ? quad.x  :
-                                                                                 #ifdef P4_TO_P8
-                                                                                     (dim == dir::y ? quad.y : quad.z)
-                                                                                 #else
-                                                                                     quad.y
-                                                                                 #endif
-                                                                                     );
-    p4est_qcoord_t node_qxyz = (dim == dir::x ? node->x :
-                                            #ifdef P4_TO_P8
-                                                (dim == dir::y ? node->y : node->z)
-                                            #else
-                                                node->y
-                                            #endif
-                                                );
+    p4est_qcoord_t quad_qxyz = P4EST_QUADRANT_LEN(quad.level + 1) + (dim == dir::x ? quad.x  : ONLY3D(OPEN_PARENTHESIS dim == dir::y ?) quad.y ONLY3D(: quad.z CLOSE_PARENTHESIS));
+    p4est_qcoord_t node_qxyz = (dim == dir::x ? node->x : ONLY3D(OPEN_PARENTHESIS dim == dir::y ?) node->y ONLY3D(: node->z CLOSE_PARENTHESIS));
     xyz_rel[dim] = tree_dimensions[dim]*(double)quad_qxyz/(double)P4EST_ROOT_LEN + tree_xyz_min[dim] - xyz_node[dim];
     double xyz_diff_tree = tree_xyz_min[dim] - p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*node->p.which_tree + 0] + dim];
     p4est_topidx_t tree_xyz_diff = (p4est_topidx_t) round(xyz_diff_tree/tree_dimensions[dim]); // assumes trees of constant size across the domain and cartesian block-structured
@@ -1741,10 +1729,10 @@ void sample_cf_on_local_nodes(const p4est_t *p4est, p4est_nodes_t *nodes, const 
     double tree_zmax = v2q[3*v_p + 2];
 #endif
 
-    double x = (tree_xmax-tree_xmin)*node_x_fr_n(node) + tree_xmin;
-    double y = (tree_ymax-tree_ymin)*node_y_fr_n(node) + tree_ymin;
+    double x = (tree_xmax - tree_xmin)*node_x_fr_n(node) + tree_xmin;
+    double y = (tree_ymax - tree_ymin)*node_y_fr_n(node) + tree_ymin;
 #ifdef P4_TO_P8
-    double z = (tree_zmax-tree_zmin)*node_z_fr_n(node) + tree_zmin;
+    double z = (tree_zmax - tree_zmin)*node_z_fr_n(node) + tree_zmin;
 #endif
 
     f_p[i] = cf(DIM(x, y, z));
@@ -1995,10 +1983,10 @@ void sample_cf_on_nodes(p4est_t *p4est, p4est_nodes_t *nodes, const CF_DIM& cf, 
     double tree_zmax = v2q[3*v_p + 2];
 #endif
 
-    double x = (tree_xmax-tree_xmin)*node_x_fr_n(node) + tree_xmin;
-    double y = (tree_ymax-tree_ymin)*node_y_fr_n(node) + tree_ymin;
+    double x = (tree_xmax - tree_xmin)*node_x_fr_n(node) + tree_xmin;
+    double y = (tree_ymax - tree_ymin)*node_y_fr_n(node) + tree_ymin;
 #ifdef P4_TO_P8
-    double z = (tree_zmax-tree_zmin)*node_z_fr_n(node) + tree_zmin;
+    double z = (tree_zmax - tree_zmin)*node_z_fr_n(node) + tree_zmin;
 #endif
 
     f[i] = cf(DIM(x, y, z));
