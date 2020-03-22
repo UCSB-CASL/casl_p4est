@@ -8,3 +8,4 @@ CONFIG(3d, 2d|3d): {
 }
 
 include($$PWD/../../qmake/libparcasl.pri)
+

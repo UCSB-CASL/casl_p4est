@@ -351,7 +351,7 @@ void my_p4est_poisson_faces_t::preallocate_matrix(const unsigned char &dir)
         clip_voro_cell_by_interface(voro_cell, f_idx, dir);
       } catch (std::exception e) {
         // [FIXME]: I found this issue but I have other urgent things to do for now... Raphael
-        std::cout<<"Face index is : "<<f_idx<< " in direction "<<dir << " , x = "<<faces->x_fr_f(f_idx,dir) <<", y = "<< faces->y_fr_f(f_idx,dir) << " on process "<<p4est->mpirank<<std::endl;
+        std::cout<<"Face index is : " << f_idx << " in direction " << dir << " , x = "<<faces->x_fr_f(f_idx,dir) <<", y = "<< faces->y_fr_f(f_idx,dir) << " on process "<<p4est->mpirank<<std::endl;
         throw std::runtime_error("Error when clipping voronoi cell in 2D... consider using an aspect ratio closer to 1");
       }
 #endif
@@ -1087,4 +1087,19 @@ void my_p4est_poisson_faces_t::print_partition_VTK(const char *file, const unsig
     Voronoi2D::print_VTK_format(voro[dir], file);
 #endif
   }
+}
+
+
+void my_p4est_poisson_faces_t::global_volume_of_voronoi_tesselation(double voro_global_volume[P4EST_DIM]) const
+{
+  if(compute_partition_on_the_fly)
+    throw std::invalid_argument("my_p4est_poisson_faces_t->global_volume_of_voronoi_tesselation: please don't use compute_partition_on_the_fly if you want to calculate the global volume of the voronoi tesselation.");
+
+  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
+    voro_global_volume[dir] = 0.0;
+    for (p4est_locidx_t f_idx = 0; f_idx < faces->num_local[dir]; ++f_idx)
+      voro_global_volume[dir] += voro[dir][f_idx].get_volume();
+  }
+  int mpiret = MPI_Allreduce(MPI_IN_PLACE, voro_global_volume, P4EST_DIM, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); SC_CHECK_MPI(mpiret);
+  return;
 }

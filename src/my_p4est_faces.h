@@ -342,11 +342,10 @@ public:
    * \param xyz_rel             [out] pointer to an array of P4EST_DIM doubles: difference of Cartesian coordinates between the face and the point in physical units
    * \param xyz_node            [in]  pointer to an array of P4EST_DIM doubles: cartesian cooordinates of the grid node
    * \param node                [in]  pointer to the grid node of interest
-   * \param brick               [in]  pointer to the brick (macromesh) structure
    * \param logical_qcoord_diff [out] pointer to an array of P4EST_DIM int64_t: difference of Cartesian coordinates between the face and the point in logical units
    * NOTE: logical_qcoord_diff must point to int64_t type to make sure that logical differences and calculations across trees are correct.
    */
-  void rel_qxyz_face_fr_node(const p4est_locidx_t& f_idx, const unsigned char& dir, double* xyz_rel, const double* xyz_node, const p4est_indep_t* node, const my_p4est_brick_t* brick, int64_t* logical_qcoord_diff) const;
+  void rel_qxyz_face_fr_node(const p4est_locidx_t& f_idx, const unsigned char& dir, double* xyz_rel, const double* xyz_node, const p4est_indep_t* node, int64_t* logical_qcoord_diff) const;
 
   /*!
    * \brief calculates the area of the face in negative domain
@@ -566,8 +565,6 @@ inline PetscErrorCode VecCreateNoGhostFaces (const p4est_t *p4est, const my_p4es
   return VecCreateNoGhostFacesBlock(p4est, faces, 1, v, dir);
 }
 
-
-
 /*!
  * \brief mark the faces that are well defined, i.e. that are solved for in an implicit poisson solve with irregular interface.
  *   For Dirichlet b.c. the condition is phi(face) <= 0. For Neumann, the control volume of the face must be at least partially in the negative domain.
@@ -626,6 +623,84 @@ inline bool no_wall_in_face_neighborhood(const uniform_face_ngbd *face_neighbors
   bool to_return = true;
   for (unsigned char dir = 0; dir < P4EST_FACES && to_return; ++dir)
     to_return = to_return && face_neighbors->neighbor_face_idx[dir] >= 0;
+  return to_return;
+}
+
+inline bool extra_layer_in_tranverse_directon_may_be_required(const unsigned dir, const double *tree_dim)
+{
+  // [Raphael :]
+  // In case of very stretched grid, the standard check for local uniformity may fail
+  // For instance, consider in 2D
+  // |---------------------------|-------------|-------------|---------------------------|---------------------------|
+  // |                           |             |             |                           |                           |
+  // |                           |-------------|-------------|---------------------------|---------------------------|
+  // |                           |             x             |                           x                           |
+  // |---------------------------|-------------|-------------|---------------------------|---------------------------|
+  // |                           |                           |                           |                           |
+  // |                           |                           |                           |                           |
+  // |                           |                           |                           |                           |
+  // |---------------------------|---------------------------|---------------------------|---------------------------|
+  // |                           |                           |                           |                           |
+  // |                           |                           O                           |                           |
+  // |                           |                           |                           |                           |
+  // |---------------------------|---------------------------|---------------------------|---------------------------|
+  // |                           |                           |                           |                           |
+  // |                           |                           |                           |                           |
+  // |                           |                           |                           |                           |
+  // |---------------------------|---------------------------|---------------------------|---------------------------|
+  //
+  // One can show that if dy/dx < sqrt(21.0/4.0), the faces marked 'x' actually come into play for the construction of
+  // the Voronoi cell associated with the face marked 'O' here above.
+  // A similar analysis can be done in 3D, it is very tedious and basically impossible to illustrate like the above in
+  // a simple comment but, except if I made a mistake, the result here below should be correct.
+  //
+  // -->notice that one may need to access THIRD-degree neighbor quadrants in such a case
+
+#ifdef P4_TO_P8
+  return (MIN(0.25*21.0*SQR(tree_dim[(dir + 1)%P4EST_DIM]/tree_dim[dir]) - 0.5*SQR(tree_dim[(dir + 2)%P4EST_DIM]/tree_dim[dir]), 0.25*21.0*SQR(tree_dim[(dir + 2)%P4EST_DIM]/tree_dim[dir]) - 0.5*SQR(tree_dim[(dir + 1)%P4EST_DIM]/tree_dim[dir])) < 1.0);
+#else
+  return (0.25*21.0*SQR(tree_dim[(dir + 1)%P4EST_DIM]/tree_dim[dir]) < 1.0);
+#endif
+}
+
+inline bool check_past_sharing_quad_is_required(const unsigned dir, const double *tree_dim)
+{
+  // [Raphael :]
+  // In case of very stretched grid, one may need to fetch neighbor faces past the parallel face across the quadrant sharing the faces,
+  // even if that faces is resolved
+  // For instance, consider in 2D
+  // |-------------|-------------|---------------------------|
+  // |             |             |                           |
+  // |-------------|-------------|                           |
+  // |             |             |                           |
+  // |-------------|------x------|---------------------------|
+  // |                           |                           |
+  // |                           |                           |
+  // |                           |                           |
+  // |-------------$-----------------------------------------|
+  // |                                                       |
+  // |                                                       |
+  // |                                                       |
+  // |                                                       |
+  // |                                                       |
+  // |                                                       |
+  // |                                                       |
+  // |---------------------------O---------------------------|
+  //
+  // One can show that, if dx/dy > 4*sqrt(3/5), the face marked 'O' actually comes into play for the construction of the Voronoi cell associated with the face marked 'x' here above.
+  // (and the other way around). (The standard construction procedure does not fetch it)
+  // A similar analysis can be done in 3D (although it's hard to figure out if it is general enough), but it is basically
+  // impossible to illustrate like the above in a simple comment but, except if I made a mistake, the result here below should be correct.
+
+  // check if alpha^2 (+ beta^2) < 48/5 where alpha (beta) is (are) the tranverse aspect ratio(s)
+  return (SQR(tree_dim[(dir + 1)%P4EST_DIM]/tree_dim[dir]) ONLY3D(+ SQR(tree_dim[(dir + 2)%P4EST_DIM]/tree_dim[dir])) > 48.0/5.0);
+}
+
+inline bool third_degree_ghost_are_required(const double *tree_dim)
+{
+  bool to_return = false;
+  for (unsigned char dir = 0; dir < P4EST_DIM && !to_return; ++dir)
+    to_return = to_return || extra_layer_in_tranverse_directon_may_be_required(dir, tree_dim) || check_past_sharing_quad_is_required(dir, tree_dim);
   return to_return;
 }
 

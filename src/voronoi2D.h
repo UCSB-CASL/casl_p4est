@@ -83,7 +83,7 @@ public:
   /*!
      * \brief default constructor for the Voronoi2D class
      */
-  Voronoi2D() { center_seed.x=DBL_MAX; center_seed.y=DBL_MAX; }
+  Voronoi2D() { center_seed.x=DBL_MAX; center_seed.y=DBL_MAX; volume = 0.0;}
 
 //  bool comparison (ngbd2Dseed nb_left, ngbd2Dseed nb_right) {return (nb_left.dist < nb_right.dist);}
 

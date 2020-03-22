@@ -42,12 +42,28 @@ class my_p4est_shs_channel_t : public CF_DIM
 
   zero_cf_t zero_value;
 
+  CF_DIM *bc_wall_value_p_neumann;
+  CF_DIM *bc_wall_value_u_neumann, *bc_wall_value_u_dirichlet;
+  CF_DIM *bc_wall_value_v_dirichlet;
+#ifdef P4_TO_P8
+  CF_DIM *bc_wall_value_w_neumann, *bc_wall_value_w_dirichlet;
+#endif
+
   struct BCWALLTYPE_P : WallBCDIM {
     BoundaryConditionType operator()(DIM(double, double, double)) const
     {
       return NEUMANN;
     }
   } bc_wall_type_p;
+
+  struct BCWALLVALUE_P : CF_DIM {
+    my_p4est_shs_channel_t * const owner;
+    BCWALLVALUE_P(my_p4est_shs_channel_t * env) : owner(env){}
+    double operator()(DIM(double x, double y, double z)) const
+    {
+      return (*owner->bc_wall_value_p_neumann)(DIM(x, y, z));
+    }
+  } bc_wall_value_p;
 
   struct BCWALLTYPE_U : WallBCDIM {
     const my_p4est_shs_channel_t *env;
@@ -56,14 +72,32 @@ class my_p4est_shs_channel_t : public CF_DIM
     {
       return (env->is_ridge(DIM(x, y, z)) ? DIRICHLET : NEUMANN);
     }
-  } bc_wall_type_u; // (note : always 0 value whether no slip or free slip)
+  } bc_wall_type_u;
+
+  struct BCWALLVALUE_U : CF_DIM {
+    my_p4est_shs_channel_t * const owner;
+    BCWALLVALUE_U(my_p4est_shs_channel_t * env) : owner(env){}
+    double operator()(DIM(double x, double y, double z)) const
+    {
+      return (owner->bc_wall_type_u(DIM(x, y, z)) == DIRICHLET ? (*owner->bc_wall_value_u_dirichlet)(DIM(x, y, z)) : (*owner->bc_wall_value_u_neumann)(DIM(x, y, z)));
+    }
+  } bc_wall_value_u;
 
   struct BCWALLTYPE_V : WallBCDIM {
     BoundaryConditionType operator()(DIM(double, double, double)) const
     {
       return DIRICHLET;
     }
-  } bc_wall_type_v; // (note : always homogeneous dirichlet : no penetration through the channel wall)
+  } bc_wall_type_v;
+
+  struct BCWALLVALUE_V : CF_DIM {
+    my_p4est_shs_channel_t * const owner;
+    BCWALLVALUE_V(my_p4est_shs_channel_t * env) : owner(env){}
+    double operator()(DIM(double x, double y, double z)) const
+    {
+      return (*owner->bc_wall_value_v_dirichlet)(DIM(x, y, z));
+    }
+  } bc_wall_value_v;
 
 #ifdef P4_TO_P8
   struct BCWALLTYPE_W : WallBC3D
@@ -74,9 +108,17 @@ class my_p4est_shs_channel_t : public CF_DIM
     {
       return (env->is_ridge(x, y, z) ? DIRICHLET : NEUMANN);
     }
-  } bc_wall_type_w; // (note : always 0 value whether no slip or free slip)
-#endif
+  } bc_wall_type_w;
 
+  struct BCWALLVALUE_W : CF_DIM {
+    my_p4est_shs_channel_t * const owner;
+    BCWALLVALUE_W(my_p4est_shs_channel_t * env) : owner(env){}
+    double operator()(DIM(double x, double y, double z)) const
+    {
+      return (owner->bc_wall_type_w(DIM(x, y, z)) == DIRICHLET ? (*owner->bc_wall_value_w_dirichlet)(DIM(x, y, z)) : (*owner->bc_wall_value_w_neumann)(DIM(x, y, z)));
+    }
+  } bc_wall_value_w;
+#endif
 
   // For the analytical solution
   int num_terms;
@@ -372,8 +414,8 @@ class my_p4est_shs_channel_t : public CF_DIM
     if(fabs(dimension_tranverse_to_grooves/pitch - (int) (dimension_tranverse_to_grooves/pitch)) > 1e-6)
       throw std::invalid_argument("my_p4est_shs_channel_t::check_resolution_pitch_and_gas_fraction(...): the dimension of the domain in the direction tranverse to the grooves MUST be a multiple of the pitch to satisfy periodicity.");
 
-    if(gas_frac < 0.0 || gas_frac >= 1.0)
-      throw std::invalid_argument("my_p4est_shs_channel_t::check_resolution_pitch_and_gas_fraction(...): the gas fraction must be nonnegative and smaller than 1.0.");
+    if(gas_frac < 0.0 || gas_frac > 1.0)
+      throw std::invalid_argument("my_p4est_shs_channel_t::check_resolution_pitch_and_gas_fraction(...): the gas fraction must be nonnegative and no greater than 1.0.");
 
     if(max_lvl < 0)
       throw std::invalid_argument("my_p4est_shs_channel_t::check_resolution_pitch_and_gas_fraction(...): the maximum level of refinement must be nonnegative.");
@@ -393,7 +435,12 @@ class my_p4est_shs_channel_t : public CF_DIM
   }
 
 public:
-  my_p4est_shs_channel_t(const mpi_environment_t& mpi_) : mpi(mpi_), bc_wall_type_u(this) ONLY3D(COMMA bc_wall_type_w(this))
+  my_p4est_shs_channel_t(const mpi_environment_t& mpi_) :
+    mpi(mpi_),
+    bc_wall_value_p(this),
+    bc_wall_type_u(this), bc_wall_value_u(this),
+    bc_wall_value_v(this)
+  ONLY3D(COMMA bc_wall_type_w(this) COMMA bc_wall_value_w(this))
   {
     max_lvl = -1;
     pitch = gas_frac = -1.0;
@@ -406,11 +453,21 @@ public:
 #ifdef P4EST_ENABLE_DEBUG
     is_configured = false;
 #endif
-    bc_p.setWallTypes(bc_wall_type_p);    bc_p.setWallValues(zero_value);
-    bc_v[0].setWallTypes(bc_wall_type_u); bc_v[0].setWallValues(zero_value);
-    bc_v[1].setWallTypes(bc_wall_type_v); bc_v[1].setWallValues(zero_value);
+
+    // (note : all boundary condition must always be 0 (whether it is no slip or free slip), EXCEPT FOR validation purposes
+    bc_wall_value_p_neumann = &zero_value;
+    bc_wall_value_u_dirichlet = &zero_value; bc_wall_value_u_neumann = &zero_value;
+    bc_wall_value_v_dirichlet = &zero_value;
 #ifdef P4_TO_P8
-    bc_v[2].setWallTypes(bc_wall_type_w); bc_v[2].setWallValues(zero_value);
+    bc_wall_value_w_dirichlet = &zero_value; bc_wall_value_w_neumann = &zero_value;
+#endif
+
+
+    bc_p.setWallTypes(bc_wall_type_p);    bc_p.setWallValues(bc_wall_value_p);
+    bc_v[0].setWallTypes(bc_wall_type_u); bc_v[0].setWallValues(bc_wall_value_u);
+    bc_v[1].setWallTypes(bc_wall_type_v); bc_v[1].setWallValues(bc_wall_value_v);
+#ifdef P4_TO_P8
+    bc_v[2].setWallTypes(bc_wall_type_w); bc_v[2].setWallValues(bc_wall_value_w);
 #endif
   }
 
@@ -618,7 +675,7 @@ public:
   }
 
   inline void create_p4est_ghost_and_nodes(p4est_t* &forest, p4est_ghost_t* &ghost, p4est_nodes_t* &nodes, splitting_criteria_cf_and_uniform_band_t* &sp, p4est_connectivity_t *conn, const mpi_environment_t& mpi,
-                                           const int& lmin, const unsigned int wall_layer, const double& lip_user, const bool & expand_ghost = false)
+                                           const int& lmin, const unsigned int wall_layer, const double& lip_user)
   {
     P4EST_ASSERT(is_configured);
     if (sp != NULL)
@@ -642,7 +699,9 @@ public:
     if(ghost != NULL)
       p4est_ghost_destroy(ghost);
     ghost = my_p4est_ghost_new(forest, P4EST_CONNECT_FULL);
-    if(expand_ghost)
+    my_p4est_ghost_expand(forest, ghost);
+    const double tree_dim[P4EST_DIM] = {DIM((brick->xyz_max[0] - brick->xyz_min[0])/brick->nxyztrees[0], (brick->xyz_max[1] - brick->xyz_min[1])/brick->nxyztrees[1], (brick->xyz_max[2] - brick->xyz_min[2])/brick->nxyztrees[2])};
+    if(third_degree_ghost_are_required(tree_dim))
       my_p4est_ghost_expand(forest, ghost);
     if(nodes != NULL)
       p4est_nodes_destroy(nodes);
@@ -717,6 +776,32 @@ public:
     P4EST_ASSERT(coeff_are_set);
     return coeff[0];
   }
+
+  // The user should NEVER use these for shs simulations
+  // the following functions are required for the validation tests only!
+  inline void set_dirichlet_value_u(CF_DIM& u_wall)
+  {
+    bc_wall_value_u_dirichlet = &u_wall;
+  }
+  inline void set_neumann_value_u(CF_DIM& n_dot_grad_u_wall)
+  {
+    bc_wall_value_u_neumann = &n_dot_grad_u_wall;
+  }
+  inline void set_dirichlet_value_v(CF_DIM& v_wall)
+  {
+    bc_wall_value_v_dirichlet = &v_wall;
+  }
+
+#ifdef P4_TO_P8
+  inline void set_dirichlet_value_w(CF_DIM& w_wall)
+  {
+    bc_wall_value_w_dirichlet = &w_wall;
+  }
+  inline void set_neumann_value_w(CF_DIM& n_dot_grad_w_wall)
+  {
+    bc_wall_value_w_neumann = &n_dot_grad_w_wall;
+  }
+#endif
 
 };
 

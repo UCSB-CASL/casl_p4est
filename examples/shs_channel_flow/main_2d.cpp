@@ -18,12 +18,12 @@
 #include <src/my_p8est_utils.h>
 #include <src/my_p8est_navier_stokes.h>
 #include <src/my_p8est_vtk.h>
-#include "my_p8est_shs_channel.h"
+#include <src/my_p8est_shs_channel.h>
 #else
 #include <src/my_p4est_utils.h>
 #include <src/my_p4est_navier_stokes.h>
 #include <src/my_p4est_vtk.h>
-#include "my_p4est_shs_channel.h"
+#include <src/my_p4est_shs_channel.h>
 #endif
 
 #include <src/Parser.h>
@@ -984,7 +984,7 @@ void create_solver_from_scratch(const mpi_environment_t &mpi, const cmdParser &c
   p4est_ghost_t* ghost_nm1  = NULL;
   p4est_nodes_t* nodes_nm1  = NULL;
   channel.create_p4est_ghost_and_nodes(p4est_nm1, ghost_nm1, nodes_nm1, data, connectivity, mpi,
-                                       cmd.get<int>("lmin", default_lmin), cmd.get<unsigned int>("wall_layer", default_wall_layer), cmd.get<double>("lip", default_lip), true);
+                                       cmd.get<int>("lmin", default_lmin), cmd.get<unsigned int>("wall_layer", default_wall_layer), cmd.get<double>("lip", default_lip));
   my_p4est_hierarchy_t *hierarchy_nm1 = new my_p4est_hierarchy_t(p4est_nm1, ghost_nm1, brick);
   my_p4est_node_neighbors_t *ngbd_nm1 = new my_p4est_node_neighbors_t(hierarchy_nm1, nodes_nm1);
   /* create the initial forest at time n (copy of the former one) */

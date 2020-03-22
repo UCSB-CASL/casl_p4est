@@ -8,6 +8,8 @@
 #endif
 
 #define COMMA ,
+#define OPEN_PARENTHESIS (
+#define CLOSE_PARENTHESIS )
 #define P4(a) a
 
 #define OCOMP(a) a

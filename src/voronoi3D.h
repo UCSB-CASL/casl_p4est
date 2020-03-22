@@ -105,7 +105,7 @@ public:
   /*!
      * \brief default constructor for the Voronoi3D class
      */
-  Voronoi3D() { center_seed.x=DBL_MAX; center_seed.y=DBL_MAX; center_seed.z=DBL_MAX; }
+  Voronoi3D() { center_seed.x=DBL_MAX; center_seed.y=DBL_MAX; center_seed.z=DBL_MAX; volume = 0.0; }
 
   /*!
      * \brief reset the Voronoi partition

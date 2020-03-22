@@ -111,6 +111,8 @@ public:
   void solve(Vec *solution, bool use_nonzero_initial_guess=false, KSPType ksp_type=KSPBCGS, PCType pc_type=PCSOR);
 
   void print_partition_VTK(const char *file, const unsigned char &dir);
+
+  void global_volume_of_voronoi_tesselation(double voro_global_volume[P4EST_DIM]) const;
 };
 
 #endif // MY_P4EST_POISSON_FACES_H

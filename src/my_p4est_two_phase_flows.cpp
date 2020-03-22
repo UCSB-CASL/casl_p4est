@@ -2723,7 +2723,7 @@ for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
 
       double xyz_t[P4EST_DIM];
       int64_t logical_qcoord_diff[P4EST_DIM];
-      faces_n->rel_qxyz_face_fr_node(neighbor_face, dir, xyz_t, xyz, node, brick, logical_qcoord_diff);
+      faces_n->rel_qxyz_face_fr_node(neighbor_face, dir, xyz_t, xyz, node, logical_qcoord_diff);
 
       for(unsigned char i=0; i<P4EST_DIM; ++i)
       {

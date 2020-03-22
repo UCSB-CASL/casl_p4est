@@ -638,7 +638,7 @@ void my_p4est_faces_t::xyz_fr_f(p4est_locidx_t f_idx, const unsigned char &dir, 
 #endif
 }
 
-void my_p4est_faces_t::rel_qxyz_face_fr_node(const p4est_locidx_t& f_idx, const unsigned char& dir, double* xyz_rel, const double* xyz_node, const p4est_indep_t* node, const my_p4est_brick_t* brick,  int64_t* logical_qcoord_diff) const
+void my_p4est_faces_t::rel_qxyz_face_fr_node(const p4est_locidx_t& f_idx, const unsigned char& dir, double* xyz_rel, const double* xyz_node, const p4est_indep_t* node, int64_t* logical_qcoord_diff) const
 {
   p4est_locidx_t quad_idx;
   p4est_topidx_t tree_idx;
@@ -670,12 +670,12 @@ void my_p4est_faces_t::rel_qxyz_face_fr_node(const p4est_locidx_t& f_idx, const 
   p4est_topidx_t tree_x_diff = (p4est_topidx_t) round(x_diff_tree/tree_dimensions[0]); // assumes trees of constant size across the domain and cartesian block-structured
   logical_qcoord_diff[0] = tree_x_diff*P4EST_ROOT_LEN + xc - (node->x != P4EST_ROOT_LEN - 1 ? node->x : P4EST_ROOT_LEN); // node might be clamped
   if(periodic[dir::x])
-    for (char i = -1; i < 2; i+=2)
+    for (char i = -1; i < 2; i += 2)
     {
       if(fabs(xyz_rel[0] + i*(xyz_max[0] - xyz_min[0])) < fabs(xyz_rel[0]))
         xyz_rel[0] += i*(xyz_max[0] - xyz_min[0]);
-      if(abs(logical_qcoord_diff[0] + i*brick->nxyztrees[0]*P4EST_ROOT_LEN) < abs(logical_qcoord_diff[0]))
-        logical_qcoord_diff[0] += i*brick->nxyztrees[0]*P4EST_ROOT_LEN;
+      if(abs(logical_qcoord_diff[0] + i*myb->nxyztrees[0]*P4EST_ROOT_LEN) < abs(logical_qcoord_diff[0]))
+        logical_qcoord_diff[0] += i*myb->nxyztrees[0]*P4EST_ROOT_LEN;
     }
 
   p4est_qcoord_t yc = quad->y;
@@ -686,12 +686,12 @@ void my_p4est_faces_t::rel_qxyz_face_fr_node(const p4est_locidx_t& f_idx, const 
   p4est_topidx_t tree_y_diff = (p4est_topidx_t) round(y_diff_tree/tree_dimensions[1]); // assumes trees of constant size across the domain and cartesian block-structured
   logical_qcoord_diff[1] = tree_y_diff*P4EST_ROOT_LEN + yc - (node->y != P4EST_ROOT_LEN - 1 ? node->y : P4EST_ROOT_LEN); // node might be clamped
   if(periodic[dir::y])
-    for (char i = -1; i < 2; i+=2)
+    for (char i = -1; i < 2; i += 2)
     {
       if(fabs(xyz_rel[1] + i*(xyz_max[1] - xyz_min[1])) < fabs(xyz_rel[1]))
         xyz_rel[1] += i*(xyz_max[1] - xyz_min[1]);
-      if(abs(logical_qcoord_diff[1] + i*brick->nxyztrees[1]*P4EST_ROOT_LEN) < abs(logical_qcoord_diff[1]))
-        logical_qcoord_diff[1] += i*brick->nxyztrees[1]*P4EST_ROOT_LEN;
+      if(abs(logical_qcoord_diff[1] + i*myb->nxyztrees[1]*P4EST_ROOT_LEN) < abs(logical_qcoord_diff[1]))
+        logical_qcoord_diff[1] += i*myb->nxyztrees[1]*P4EST_ROOT_LEN;
     }
 
 #ifdef P4_TO_P8
@@ -703,12 +703,12 @@ void my_p4est_faces_t::rel_qxyz_face_fr_node(const p4est_locidx_t& f_idx, const 
   p4est_topidx_t tree_z_diff = (p4est_topidx_t) round(z_diff_tree/tree_dimensions[2]); // assumes trees of constant size across the domain and cartesian block-structured
   logical_qcoord_diff[2] = tree_z_diff*P4EST_ROOT_LEN + zc - (node->z != P4EST_ROOT_LEN - 1 ? node->z : P4EST_ROOT_LEN); // node might be clamped
   if(periodic[dir::z])
-    for (char i = -1; i < 2; i+=2)
+    for (char i = -1; i < 2; i += 2)
     {
       if(fabs(xyz_rel[2] + i*(xyz_max[2] - xyz_min[2])) < fabs(xyz_rel[2]))
         xyz_rel[2] += i*(xyz_max[2] - xyz_min[2]);
-      if(abs(logical_qcoord_diff[2] + i*brick->nxyztrees[2]*P4EST_ROOT_LEN) < abs(logical_qcoord_diff[2]))
-        logical_qcoord_diff[2] += i*brick->nxyztrees[2]*P4EST_ROOT_LEN;
+      if(abs(logical_qcoord_diff[2] + i*myb->nxyztrees[2]*P4EST_ROOT_LEN) < abs(logical_qcoord_diff[2]))
+        logical_qcoord_diff[2] += i*myb->nxyztrees[2]*P4EST_ROOT_LEN;
     }
 #endif
 }
@@ -895,7 +895,6 @@ double interpolate_velocity_at_node_n(my_p4est_faces_t *faces, my_p4est_node_nei
   SC_ASSERT((size_t) node_idx < nodes->indep_nodes.elem_count);
   const p4est_indep_t* node = (p4est_indep_t*) (nodes->indep_nodes.array + ((size_t) node_idx)*nodes->indep_nodes.elem_size);
 
-
   if(bc != NULL && is_node_Wall(p4est, node) && bc[dir].wallType(xyz) == DIRICHLET)
   {
     if(interpolator_from_faces != NULL)
@@ -906,13 +905,6 @@ double interpolate_velocity_at_node_n(my_p4est_faces_t *faces, my_p4est_node_nei
     }
     return bc[dir].wallValue(xyz);
   }
-
-  const double *xyz_max = faces->get_xyz_max();
-  const double *xyz_min = faces->get_xyz_min();
-  double domain_size[P4EST_DIM];
-  for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
-    domain_size[dim] = xyz_max[dim] - xyz_min[dim];
-
 
   set_of_neighboring_quadrants ngbd_tmp;
   const double* tree_dim = faces->get_tree_dimensions();
@@ -925,89 +917,72 @@ double interpolate_velocity_at_node_n(my_p4est_faces_t *faces, my_p4est_node_nei
   double *velocity_component_p;
   ierr = VecGetArray(velocity_component, &velocity_component_p); CHKERRXX(ierr);
 
-  vector<p4est_locidx_t> interp_points;
+
   if(interpolator_from_faces != NULL)
     interpolator_from_faces->resize(0);
   matrix_t A;
-  /* [Raphael Egan (01/22/2020): results seem more accurate (2nd order vs 1st order) when disregarding the Neumann wall boundary condition (from tests in main file for testing poisson_faces)...] */
-  /* [Raphael Egan (02/28/2020) - long_overdue_merge: yes, indeed, but it is !not! robust when the grid is no longer locally uniform, leading to a local increase in the condition number of the lsqr
-   * system, creating spurious results --> outflow wall of flow_past_sphere simulation for instance. results are better behaved in such conditions when constraining the parameters of the lsqr interpolant */
-  bool neumann_wall_x = (bc != NULL && (is_node_xmWall(p4est, node) || is_node_xpWall(p4est, node)) && bc[dir].wallType(xyz) == NEUMANN);
-  bool neumann_wall_y = (bc != NULL && (is_node_ymWall(p4est, node) || is_node_ypWall(p4est, node)) && bc[dir].wallType(xyz) == NEUMANN);
-#ifdef P4_TO_P8
-  bool neumann_wall_z = (bc != NULL && (is_node_zmWall(p4est, node) || is_node_zpWall(p4est, node)) && bc[dir].wallType(xyz) == NEUMANN);
-#endif
-  A.resize(1, (order >= 2 ? 1 + P4EST_DIM + P4EST_DIM*(P4EST_DIM + 1)/2 : 1 + P4EST_DIM) - SUMD((neumann_wall_x ? 1 : 0), (neumann_wall_y ? 1 : 0), (neumann_wall_z ? 1 : 0)));
-  vector<double> p;
-  vector<double> nb[P4EST_DIM];
+  char neumann_wall[P4EST_DIM]          = {DIM(0, 0, 0)};
+  if(order >= 1 && bc != NULL && bc[dir].wallType(xyz) == NEUMANN)
+    for (unsigned char dd = 0; dd < P4EST_DIM; ++dd)
+      neumann_wall[dir] = (is_node_Wall(p4est, node, 2*dd) ? -1 : (is_node_Wall(p4est, node, 2*dd + 1) ? +1 : 0));
+  A.resize(face_ngbd.size(), 1 + (order >= 1 ? P4EST_DIM - SUMD(abs(neumann_wall[0]), abs(neumann_wall[1]), abs(neumann_wall[2])) : 0) + (order >= 2 ? P4EST_DIM*(P4EST_DIM + 1)/2 : 0));
+  vector<double> p(face_ngbd.size());
+  std::set<int64_t> nb[P4EST_DIM];
 
-  double min_w = 1e-6;
-  double inv_max_w = 1e-6;
+  const double min_w = 1e-6;
+  const double inv_max_w = 1e-6;
 
   const PetscScalar *face_is_well_defined_p;
   if(face_is_well_defined != NULL)
     ierr = VecGetArrayRead(face_is_well_defined, &face_is_well_defined_p); CHKERRXX(ierr);
 
+  unsigned int row_idx = 0;
   for(std::set<indexed_and_located_face>::const_iterator it = face_ngbd.begin(); it != face_ngbd.end() ; it++)
   {
     /* minus direction */
     const indexed_and_located_face &neighbor_face = *it;
-    if((face_is_well_defined == NULL || face_is_well_defined_p[neighbor_face.face_idx]) && std::find(interp_points.begin(), interp_points.end(), neighbor_face.face_idx) == interp_points.end())
+    if(face_is_well_defined == NULL || face_is_well_defined_p[neighbor_face.face_idx])
     {
       if(interpolator_from_faces != NULL)
       {
         face_interpolator_element new_element; new_element.face_idx = neighbor_face.face_idx;
         interpolator_from_faces->push_back(new_element);
       }
-      double xyz_t[P4EST_DIM] = {DIM(neighbor_face.xyz_face[0], neighbor_face.xyz_face[1], neighbor_face.xyz_face[2])};
+
+      double xyz_t[P4EST_DIM];
+      int64_t logical_qcoord_diff[P4EST_DIM];
+      faces->rel_qxyz_face_fr_node(neighbor_face.face_idx, dir, xyz_t, xyz, node, logical_qcoord_diff);
       for(unsigned char i = 0; i < P4EST_DIM; ++i)
-      {
-        double rel_dist = (xyz[i] - xyz_t[i]);
-        if(faces->periodicity(i))
-          for (char cc = -1; cc < 2; cc+=2)
-            if(fabs(xyz[i] - xyz_t[i] + cc*domain_size[i]) < fabs(rel_dist))
-              rel_dist = (xyz[i] - xyz_t[i] + cc*domain_size[i]);
-        xyz_t[i] = rel_dist / scaling;
-      }
+        xyz_t[i] /= scaling;
 
       double w = MAX(min_w, 1./MAX(inv_max_w, sqrt(SUMD(SQR(xyz_t[0]), SQR(xyz_t[1]), SQR(xyz_t[2])))));
 
-      A.set_value(interp_points.size(),   0,                                                                                                    1.0               * w);
-      if(!neumann_wall_x)
-        A.set_value(interp_points.size(), 1,                                                                                                    xyz_t[0]          * w);
-      if(!neumann_wall_y)
-        A.set_value(interp_points.size(), 2 - (neumann_wall_x ? 1 : 0),                                                                         xyz_t[1]          * w);
-#ifdef P4_TO_P8
-      if(!neumann_wall_z)
-        A.set_value(interp_points.size(), 3 - (neumann_wall_x ? 1 : 0) - (neumann_wall_y ? 1 : 0),                                              xyz_t[2]          * w);
-#endif
+      unsigned char col_idx = 0;
+      A.set_value(row_idx, col_idx++, w); // constant term --> what we are after in 99.99% of cases
+      if(order >= 1)
+      {
+        for (unsigned char comp = 0; comp < P4EST_DIM; ++comp)
+          if(neumann_wall[comp] == 0)
+            A.set_value(row_idx, col_idx++, xyz_t[comp]*w); // linear terms, first partial derivatives
+      }
       if(order >= 2)
       {
-        A.set_value(interp_points.size(),   1 + P4EST_DIM - SUMD((neumann_wall_x ? 1 : 0), (neumann_wall_y ? 1 : 0), (neumann_wall_z ? 1 : 0)), xyz_t[0]*xyz_t[0] * w);
-        A.set_value(interp_points.size(),   2 + P4EST_DIM - SUMD((neumann_wall_x ? 1 : 0), (neumann_wall_y ? 1 : 0), (neumann_wall_z ? 1 : 0)), xyz_t[0]*xyz_t[1] * w);
-#ifdef P4_TO_P8
-        A.set_value(interp_points.size(),   3 + P4EST_DIM - SUMD((neumann_wall_x ? 1 : 0), (neumann_wall_y ? 1 : 0), (neumann_wall_z ? 1 : 0)), xyz_t[0]*xyz_t[2] * w);
-#endif
-        A.set_value(interp_points.size(), 1 + 2*P4EST_DIM - SUMD((neumann_wall_x ? 1 : 0), (neumann_wall_y ? 1 : 0), (neumann_wall_z ? 1 : 0)), xyz_t[1]*xyz_t[1] * w);
-#ifdef P4_TO_P8
-        A.set_value(interp_points.size(), 2 + 2*P4EST_DIM - SUMD((neumann_wall_x ? 1 : 0), (neumann_wall_y ? 1 : 0), (neumann_wall_z ? 1 : 0)), xyz_t[1]*xyz_t[2] * w);
-        A.set_value(interp_points.size(),     3*P4EST_DIM - SUMD((neumann_wall_x ? 1 : 0), (neumann_wall_y ? 1 : 0), (neumann_wall_z ? 1 : 0)), xyz_t[2]*xyz_t[2] * w);
-#endif
+        for (unsigned char comp_1 = 0; comp_1 < P4EST_DIM; ++comp_1)
+          for (unsigned char comp_2 = comp_1; comp_2 < P4EST_DIM; ++comp_2)
+            A.set_value(row_idx, col_idx++, xyz_t[comp_1]*xyz_t[comp_2]*w); // quadratic terms, second (possibly crossed) partial derivatives
       }
+      P4EST_ASSERT(col_idx == 1 + (order >= 1 ? P4EST_DIM - SUMD(abs(neumann_wall[0]), abs(neumann_wall[1]), abs(neumann_wall[2])) : 0) + (order >= 2 ? P4EST_DIM*(P4EST_DIM + 1)/2 : 0));
 
-      const double neumann_term = SUMD((neumann_wall_x ? bc->wallValue(xyz)*xyz_t[0]*scaling : 0.0),
-                                       (neumann_wall_y ? bc->wallValue(xyz)*xyz_t[1]*scaling : 0.0),
-                                       (neumann_wall_z ? bc->wallValue(xyz)*xyz_t[2]*scaling : 0.0));
-      p.push_back((velocity_component_p[neighbor_face.face_idx] + neumann_term) * w);
+      const double neumann_term = (order >= 1 ? SUMD(neumann_wall[0]*bc[dir].wallValue(xyz)*xyz_t[0]*scaling, neumann_wall[1]*bc[dir].wallValue(xyz)*xyz_t[1]*scaling, neumann_wall[2]*bc[dir].wallValue(xyz)*xyz_t[2]*scaling) : 0.0);
+      p[row_idx] = (velocity_component_p[neighbor_face.face_idx] - neumann_term) * w;
+
       if(interpolator_from_faces != NULL)
         interpolator_from_faces->back().weight = w;
-      // [Raphael:] note the sign used when defining xyz_t above, it is counter-intuitive, imo
 
       for(unsigned char d = 0; d < P4EST_DIM; ++d)
-        if(std::find(nb[d].begin(), nb[d].end(), xyz_t[d]) == nb[d].end())
-          nb[d].push_back(xyz_t[d]);
+        nb[d].insert(logical_qcoord_diff[d]);
 
-      interp_points.push_back(neighbor_face.face_idx);
+      row_idx++;
     }
   }
 
@@ -1015,11 +990,18 @@ double interpolate_velocity_at_node_n(my_p4est_faces_t *faces, my_p4est_node_nei
   if(face_is_well_defined != NULL)
     ierr = VecRestoreArrayRead(face_is_well_defined, &face_is_well_defined_p); CHKERRXX(ierr);
 
-  if(interp_points.size() == 0)
+  if(row_idx == 0)
   {
     if(interpolator_from_faces != NULL)
       interpolator_from_faces->resize(0);
-    return 0;
+    return 0.0;
+  }
+
+  P4EST_ASSERT(row_idx <= (unsigned int) A.num_rows());
+  if(row_idx < (unsigned int) A.num_rows())
+  {
+    A.resize(row_idx, A.num_cols());
+    p.resize(row_idx);
   }
 
   double abs_max = A.scale_by_maxabs(p);
@@ -1027,7 +1009,7 @@ double interpolate_velocity_at_node_n(my_p4est_faces_t *faces, my_p4est_node_nei
   if(interpolator_from_faces != NULL)
     interp_weights = new std::vector<double>(0);
 
-  double value_to_return = solve_lsqr_system(A, p, DIM(nb[0].size(), nb[1].size(), nb[2].size()), order, SUMD((neumann_wall_x ? 1 : 0), (neumann_wall_y ? 1 : 0), (neumann_wall_z ? 1 : 0)), interp_weights);
+  double value_to_return = solve_lsqr_system(A, p, DIM(nb[0].size(), nb[1].size(), nb[2].size()), order, SUMD(abs(neumann_wall[0]), abs(neumann_wall[1]), abs(neumann_wall[2])), interp_weights);
 
   if(interpolator_from_faces != NULL)
   {
@@ -1060,13 +1042,9 @@ voro_cell_type compute_voronoi_cell(Voronoi_DIM &voronoi_cell, const my_p4est_fa
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_faces_compute_voronoi_cell_t, 0, 0, 0, 0); CHKERRXX(ierr);
 
-#ifdef CASL_THROWS
-  p4est_t* p4est = faces->get_p4est();
-#else
   const p4est_t* p4est = faces->get_p4est();
-#endif
-  const my_p4est_cell_neighbors_t *ngbd_c = faces->get_ngbd_c();
-  const double *dxyz    = faces->get_smallest_dxyz();
+  const my_p4est_cell_neighbors_t* ngbd_c = faces->get_ngbd_c();
+  const double * dxyz = faces->get_smallest_dxyz();
 
   voronoi_cell.clear();
   double xyz_face[P4EST_DIM]; faces->xyz_fr_f(f_idx, dir, xyz_face);
@@ -1081,7 +1059,7 @@ voro_cell_type compute_voronoi_cell(Voronoi_DIM &voronoi_cell, const my_p4est_fa
 #ifdef DEBUG
     p4est_quadrant_t qm, qp;
     faces->find_quads_touching_face(f_idx, dir, qm, qp);
-    P4EST_ASSERT(qm.level == qp.level && qm.level == ((splitting_criteria_t*) (faces->get_p4est())->user_pointer)->max_lvl);
+    P4EST_ASSERT(qm.level == qp.level && qm.level == ((splitting_criteria_t*) p4est->user_pointer)->max_lvl);
 #endif
     vector<ngbdDIMseed> points(P4EST_FACES);
 #ifndef P4_TO_P8
@@ -1131,49 +1109,93 @@ voro_cell_type compute_voronoi_cell(Voronoi_DIM &voronoi_cell, const my_p4est_fa
     return dirichlet_wall_face;
   }
 
-  /* find direct neighbors */
   /* Gather the neighbor cells to get the potential voronoi neighbors */
-  set_of_neighboring_quadrants ngbd_m_[2*(P4EST_DIM - 1)]; // neighbors of qm in transverse cartesian direction
-  set_of_neighboring_quadrants ngbd_p_[2*(P4EST_DIM - 1)]; // neighbors of qp in transverse cartesian direction
+  const unsigned int n_tranverse = (unsigned int) pow(3, P4EST_DIM - 1) - 1;
+#ifdef P4_TO_P8
+  const unsigned char first_trans_dir   = (dir == dir::y || dir == dir :: z ? dir::x : dir::y); P4EST_ASSERT(first_trans_dir != dir);
+  const unsigned char second_trans_dir  = (dir == dir::x || dir == dir :: y ? dir::z : dir::y); P4EST_ASSERT(second_trans_dir != dir);
+#else
+  const unsigned char first_trans_dir   = (dir == dir::y ? dir::x : dir::y); P4EST_ASSERT(first_trans_dir != dir);
+#endif
+  unsigned char face_dir_to_set_idx[P4EST_FACES] = {DIM(UCHAR_MAX, UCHAR_MAX, UCHAR_MAX), DIM(UCHAR_MAX, UCHAR_MAX, UCHAR_MAX)};
+  set_of_neighboring_quadrants ngbd_m_[n_tranverse]; // neighbors of qm in any transverse direction
+  set_of_neighboring_quadrants ngbd_p_[n_tranverse]; // neighbors of qp in any transverse direction
   P4EST_ASSERT(ORD(dir == dir::x, dir == dir::y, dir == dir::z));
   unsigned char ngbd_idx = 0;
-  for (unsigned char neigbor_dir = 0; neigbor_dir < P4EST_FACES; ++neigbor_dir) {
-    if(neigbor_dir/2 == dir)
-      continue;
-    char search[P4EST_DIM]  = {DIM(0, 0, 0)};
-    search[neigbor_dir/2]   = (neigbor_dir%2 == 1 ?  1 : -1);
-    if(qm.p.piggy3.local_num != -1)
-      ngbd_c->find_neighbor_cells_of_cell(ngbd_m_[ngbd_idx], qm.p.piggy3.local_num, qm.p.piggy3.which_tree, DIM(search[0], search[1], search[2]));
-    if(qp.p.piggy3.local_num != -1)
-      ngbd_c->find_neighbor_cells_of_cell(ngbd_p_[ngbd_idx], qp.p.piggy3.local_num, qp.p.piggy3.which_tree, DIM(search[0], search[1], search[2]));
-    ngbd_idx++;
-  }
-  P4EST_ASSERT(ngbd_idx == 2*(P4EST_DIM - 1));
+  char search[P4EST_DIM] = {DIM(0, 0, 0)};
+  for (char tt = -1; tt < 2; ++tt)
+#ifdef P4_TO_P8
+    for (char vv = -1; vv < 2; ++vv)
+#endif
+    {
+      if(tt == 0 ONLY3D(&& vv == 0))
+        continue;
+      search[first_trans_dir]   = tt;
+#ifdef P4_TO_P8
+      search[second_trans_dir]  = vv;
+#endif
+      if(qm.p.piggy3.local_num != -1)
+        ngbd_c->find_neighbor_cells_of_cell(ngbd_m_[ngbd_idx], qm.p.piggy3.local_num, qm.p.piggy3.which_tree, DIM(search[0], search[1], search[2]));
+      if(qp.p.piggy3.local_num != -1)
+        ngbd_c->find_neighbor_cells_of_cell(ngbd_p_[ngbd_idx], qp.p.piggy3.local_num, qp.p.piggy3.which_tree, DIM(search[0], search[1], search[2]));
+#ifdef P4_TO_P8
+      if(tt == 0)
+        face_dir_to_set_idx[2*second_trans_dir + (vv == 1)] = ngbd_idx;
+      else if(vv == 0)
+        face_dir_to_set_idx[2*first_trans_dir + (tt == 1)] = ngbd_idx;
+#else
+      face_dir_to_set_idx[2*first_trans_dir + (tt == 1)] = ngbd_idx;
+#endif
+      ngbd_idx++;
+    }
+  P4EST_ASSERT(ngbd_idx == n_tranverse);
 
   /* now gather the neighbor cells to get the potential voronoi neighbors */
 
   /* check for uniform case and/or wall in the neighborhood, if so build voronoi partition by hand */
-  bool no_wall = (qp.p.piggy3.local_num != -1) && (qm.p.piggy3.local_num != -1);
+  bool no_wall = (qp.p.piggy3.local_num != -1 && qm.p.piggy3.local_num != -1);
   // if the face is wall itself, check that the other face across the cell is not subrefined
   bool has_uniform_ngbd =
       (qp.p.piggy3.local_num == -1 && faces->q2f(qm.p.piggy3.local_num, 2*dir) != NO_VELOCITY)
       || (qm.p.piggy3.local_num == -1 && faces->q2f(qp.p.piggy3.local_num, 2*dir + 1) != NO_VELOCITY)
-      || ((qp.level == qm.level) && faces->q2f(qm.p.piggy3.local_num, 2*dir) != NO_VELOCITY && faces->q2f(qp.p.piggy3.local_num, 2*dir + 1) != NO_VELOCITY);
-  for (unsigned char k = 0; k < 2*(P4EST_DIM - 1) && (has_uniform_ngbd || no_wall); ++k)
-  {
-    if(qp.p.piggy3.local_num != -1)
+      || (qp.level == qm.level && faces->q2f(qm.p.piggy3.local_num, 2*dir) != NO_VELOCITY && faces->q2f(qp.p.piggy3.local_num, 2*dir + 1) != NO_VELOCITY);
+  ngbd_idx = 0;
+  for (char tt = -1; tt < 2 && (no_wall || has_uniform_ngbd); ++tt)
+#ifdef P4_TO_P8
+    for (char vv = -1; vv < 2 && (no_wall || has_uniform_ngbd); ++vv)
+#endif
     {
-      no_wall           = no_wall && ngbd_p_[k].size() > 0;
-      has_uniform_ngbd  = has_uniform_ngbd && ngbd_p_[k].size() == 1 && ngbd_p_[k].begin()->level == qp.level
-          && faces->q2f(ngbd_p_[k].begin()->p.piggy3.local_num, 2*dir) != NO_VELOCITY && faces->q2f(ngbd_p_[k].begin()->p.piggy3.local_num, 2*dir + 1) != NO_VELOCITY;
+      if(tt == 0 ONLY3D(&& vv == 0))
+        continue;
+      if(qp.p.piggy3.local_num != -1)
+      {
+        const bool local_wall = ngbd_p_[ngbd_idx].size() == 0;
+        no_wall             = no_wall && !local_wall;
+#ifdef P4_TO_P8
+        if(tt == 0 || vv == 0) // cartesian tranverse direction
+#endif
+          has_uniform_ngbd  = has_uniform_ngbd && (local_wall || (ngbd_p_[ngbd_idx].size() == 1 && ngbd_p_[ngbd_idx].begin()->level == qp.level && faces->q2f(ngbd_p_[ngbd_idx].begin()->p.piggy3.local_num, 2*dir) != NO_VELOCITY && faces->q2f(ngbd_p_[ngbd_idx].begin()->p.piggy3.local_num, 2*dir + 1) != NO_VELOCITY));
+#ifdef P4_TO_P8
+        else
+          has_uniform_ngbd  = has_uniform_ngbd && (local_wall || (ngbd_p_[ngbd_idx].size() == 1 && ngbd_p_[ngbd_idx].begin()->level <= qp.level));
+#endif
+      }
+      if(qm.p.piggy3.local_num != -1)
+      {
+        const bool local_wall = ngbd_m_[ngbd_idx].size() == 0;
+        no_wall             = no_wall && !local_wall;
+#ifdef P4_TO_P8
+        if(tt == 0 || vv == 0) // cartesian tranverse direction
+#endif
+          has_uniform_ngbd  = has_uniform_ngbd && (local_wall || (ngbd_m_[ngbd_idx].size() == 1 && ngbd_m_[ngbd_idx].begin()->level == qm.level && faces->q2f(ngbd_m_[ngbd_idx].begin()->p.piggy3.local_num, 2*dir) != NO_VELOCITY && faces->q2f(ngbd_m_[ngbd_idx].begin()->p.piggy3.local_num, 2*dir + 1) != NO_VELOCITY));
+#ifdef P4_TO_P8
+        else
+          has_uniform_ngbd  = has_uniform_ngbd && (local_wall || (ngbd_m_[ngbd_idx].size() == 1 && ngbd_m_[ngbd_idx].begin()->level <= qp.level));
+#endif
+      }
+      ngbd_idx++;
     }
-    if(qm.p.piggy3.local_num != -1)
-    {
-      no_wall           = no_wall && ngbd_m_[k].size() > 0;
-      has_uniform_ngbd  = has_uniform_ngbd && ngbd_m_[k].size() == 1 && ngbd_m_[k].begin()->level == qm.level
-          && faces->q2f(ngbd_m_[k].begin()->p.piggy3.local_num, 2*dir) != NO_VELOCITY && faces->q2f(ngbd_m_[k].begin()->p.piggy3.local_num, 2*dir + 1) != NO_VELOCITY;
-    }
-  }
+  P4EST_ASSERT((!no_wall && !has_uniform_ngbd) || ngbd_idx == n_tranverse);
   if(has_uniform_ngbd && no_wall)
   {
     P4EST_ASSERT(qm.level <= ((splitting_criteria_t*) p4est->user_pointer)->max_lvl); // consistency check
@@ -1223,31 +1245,27 @@ voro_cell_type compute_voronoi_cell(Voronoi_DIM &voronoi_cell, const my_p4est_fa
     partition[idx].y  = points[idx].p.y + (0.5 - dir)*dxyz[1]*cell_ratio;
 #endif
     // neighbor faces in the tranverse direction(s), then:
-    unsigned char ngbd_idx = 0;
-    for (unsigned char face_dir = 0; face_dir < P4EST_FACES; ++face_dir) {
-      if(face_dir/2 == dir)
+    for (unsigned char tran_dir = 0; tran_dir < P4EST_DIM; ++tran_dir) {
+      if(tran_dir == dir)
         continue;
-      else
-      {
+      for (int tran_face_dir = 2*tran_dir; tran_face_dir < 2*tran_dir + 2; ++tran_face_dir) { // negative and positive face direction in tranverse Cartesian direction
 #ifdef P4_TO_P8
-        idx = face_dir;
+        idx = tran_face_dir;
 #else
-        idx = face_order_to_counterclock_cycle_order[face_dir];
+        idx = face_order_to_counterclock_cycle_order[tran_face_dir];
 #endif
-        points[idx].n = faces->q2f(ngbd_p_[ngbd_idx].begin()->p.piggy3.local_num, 2*dir); // we loop through ngbd_p_ in the same order as when it was built
+        points[idx].n = faces->q2f(ngbd_p_[face_dir_to_set_idx[tran_face_dir]].begin()->p.piggy3.local_num, 2*dir); // we fetch the appropriate face through ngbd_p_
         for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
-          points[idx].p.xyz(dim) = xyz_face[dim] + (dim == face_dir/2 ? (face_dir%2 ? +1.0 : -1.0)*dxyz[face_dir/2]*cell_ratio: 0.0); // safer than fetching the coordinates (if periodic)
+          points[idx].p.xyz(dim) = xyz_face[dim] + (dim == tran_face_dir/2 ? (tran_face_dir%2 ? +1.0 : -1.0)*dxyz[tran_face_dir/2]*cell_ratio: 0.0); // safer than fetching the coordinates (if periodic)
 #ifdef P4_TO_P8
-        points[face_dir].s  = (face_dir == dir::x ? dxyz[1]*dxyz[2] : (face_dir == dir::y ? dxyz[0]*dxyz[2] : dxyz[0]*dxyz[1]))*SQR(cell_ratio);
+        points[idx].s     = (tran_dir == dir::x ? dxyz[1]*dxyz[2] : (tran_dir == dir::y ? dxyz[0]*dxyz[2] : dxyz[0]*dxyz[1]))*SQR(cell_ratio);
 #else
-        points[idx].theta = (face_dir/2)*M_PI_2 + (1.0 - face_dir%2)*M_PI;
-        partition[idx].x  = points[idx].p.x + (0.5 - face_dir%2)*dxyz[0]*cell_ratio;
-        partition[idx].y  = points[idx].p.y + (1.0 - 2.0*(face_dir/2))*(face_dir%2 - 0.5)*dxyz[1]*cell_ratio;
+        points[idx].theta = (tran_face_dir/2)*M_PI_2 + (1.0 - tran_face_dir%2)*M_PI;
+        partition[idx].x  = points[idx].p.x + (0.5 - tran_face_dir%2)*dxyz[0]*cell_ratio;
+        partition[idx].y  = points[idx].p.y + (1.0 - 2.0*(tran_face_dir/2))*(tran_face_dir%2 - 0.5)*dxyz[1]*cell_ratio;
 #endif
-        ngbd_idx++;
       }
     }
-    P4EST_ASSERT(ngbd_idx == 2*(P4EST_DIM - 1));
 #ifdef P4_TO_P8
     voronoi_cell.set_cell(points, dxyz[0]*dxyz[1]*dxyz[2]*pow(cell_ratio, 3.0));
 #else
@@ -1270,8 +1288,8 @@ voro_cell_type compute_voronoi_cell(Voronoi_DIM &voronoi_cell, const my_p4est_fa
     std::set<indexed_and_located_face> set_of_neighbor_faces; set_of_neighbor_faces.clear();
     // we add faces to the set as we find them and clear the list of neighbor quadrants after every search to avoid vectors growing very large and slowing down the O(n) searches implemented in find_neighbor_cells_of_cell
     for (char face_touch = -1; face_touch < 2; face_touch += 2) {
-      p4est_locidx_t quadrant_touch_idx = (face_touch == -1 ? qm.p.piggy3.local_num : qp.p.piggy3.local_num);
-      if(quadrant_touch_idx != -1)
+      const p4est_quadrant_t& quad_touch = (face_touch == -1 ? qm : qp);
+      if(quad_touch.p.piggy3.local_num != -1)
       {
         p4est_topidx_t tree_touch_idx = (face_touch == -1 ? qm.p.piggy3.which_tree : qp.p.piggy3.which_tree);
         p4est_quadrant_t& quad_touch  = (face_touch == -1 ? qm : qp);
@@ -1279,11 +1297,28 @@ voro_cell_type compute_voronoi_cell(Voronoi_DIM &voronoi_cell, const my_p4est_fa
         ngbd.insert(quad_touch);
 
         // in face normal direction if needed
-        if (faces->q2f(quadrant_touch_idx, dir_touch) == NO_VELOCITY)
-          ngbd_c->find_neighbor_cells_of_cell(ngbd, quadrant_touch_idx, tree_touch_idx, dir_touch);
-        // in all tranverse cartesian directions
-        for (unsigned char k = 0; k < 2*(P4EST_DIM - 1); ++k)
-          add_faces_to_set_and_clear_set_of_quad(faces, f_idx, dir, set_of_neighbor_faces, (face_touch == -1 ? ngbd_m_[k] : ngbd_p_[k]));
+        if (faces->q2f(quad_touch.p.piggy3.local_num, dir_touch) == NO_VELOCITY)
+          ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_touch.p.piggy3.local_num, tree_touch_idx, dir_touch);
+
+        // in tranverse cartesian directions
+        unsigned char ngbd_idx = 0;
+        for (unsigned char neigbor_dir = 0; neigbor_dir < P4EST_FACES; ++neigbor_dir) {
+          if(neigbor_dir/2 == dir)
+            continue;
+
+//          // add an extra layer (needs to be done for very stretched grids, it would be good to have a criterion for that...)
+//          set_of_neighboring_quadrants extra_layer; extra_layer.clear();
+//          char search[P4EST_DIM]  = {DIM(0, 0, 0)};
+//          search[neigbor_dir/2]   = (neigbor_dir%2 == 1 ?  1 : -1);
+//          for (set_of_neighboring_quadrants::const_iterator it = (face_touch == -1 ? ngbd_m_[ngbd_idx] : ngbd_p_[ngbd_idx]).begin(); it != (face_touch == -1 ? ngbd_m_[ngbd_idx] : ngbd_p_[ngbd_idx]).end(); ++it)
+//            ngbd_c->find_neighbor_cells_of_cell(extra_layer, it->p.piggy3.local_num, it->p.piggy3.which_tree, DIM(search[0], search[1], search[2]));
+//          add_faces_to_set_and_clear_set_of_quad(faces, f_idx, dir, set_of_neighbor_faces, extra_layer);
+
+          // (we already searched and found the direct ones --> fetch them)
+          add_faces_to_set_and_clear_set_of_quad(faces, f_idx, dir, set_of_neighbor_faces, (face_touch == -1 ? ngbd_m_[ngbd_idx] : ngbd_p_[ngbd_idx]));
+          ngbd_idx++;
+        }
+        P4EST_ASSERT(ngbd_idx == 2*(P4EST_DIM - 1));
         char search[P4EST_DIM];
 #ifdef P4_TO_P8
         // in all transverse "diagonal directions"
@@ -1292,7 +1327,7 @@ voro_cell_type compute_voronoi_cell(Voronoi_DIM &voronoi_cell, const my_p4est_fa
           search[(dir + 1)%P4EST_DIM] = iii;
           for (char jjj = -1; jjj < 2; jjj += 2) {
             search[(dir + 2)%P4EST_DIM] = jjj;
-            ngbd_c->find_neighbor_cells_of_cell(ngbd, quadrant_touch_idx, tree_touch_idx, search[0], search[1], search[2]);
+            ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_touch.p.piggy3.local_num, tree_touch_idx, search[0], search[1], search[2]);
           }
         }
 #endif
@@ -1307,13 +1342,13 @@ voro_cell_type compute_voronoi_cell(Voronoi_DIM &voronoi_cell, const my_p4est_fa
               continue;
             search[(dir + 1)%P4EST_DIM] = iii;
             search[(dir + 2)%P4EST_DIM] = jjj;
-            ngbd_c->find_neighbor_cells_of_cell(ngbd, quadrant_touch_idx, tree_touch_idx, search[0], search[1], search[2]);
+            ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_touch.p.piggy3.local_num, tree_touch_idx, search[0], search[1], search[2]);
           }
 #else
           if(iii == 0)
             continue;
           search[(dir + 1)%P4EST_DIM] = iii;
-          ngbd_c->find_neighbor_cells_of_cell(ngbd, quadrant_touch_idx, tree_touch_idx, search[0], search[1]);
+          ngbd_c->find_neighbor_cells_of_cell(ngbd, quad_touch.p.piggy3.local_num, tree_touch_idx, search[0], search[1]);
 #endif
         }
         add_faces_to_set_and_clear_set_of_quad(faces, f_idx, dir, set_of_neighbor_faces, ngbd);
