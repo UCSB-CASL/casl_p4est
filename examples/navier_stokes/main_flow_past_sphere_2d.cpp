@@ -27,6 +27,8 @@
 #include <src/my_p8est_level_set_cells.h>
 #include <src/my_p8est_vtk.h>
 #else
+#include <src/my_p4est_utils.h>
+
 #include <src/my_p4est_navier_stokes.h>
 #include <src/my_p4est_log_wrappers.h>
 #include <src/my_p4est_refine_coarsen.h>
@@ -674,7 +676,7 @@ int main (int argc, char* argv[])
 #elif defined(LAPTOP)
   const string export_dir               = cmd.get<string>("export_folder", "/home/raphael/workspace/projects/flow_past_sphere");
 #else
-  const string export_dir               = cmd.get<string>("export_folder", "/home/regan/workspace/projects/flow_past_sphere");
+  const string export_dir               = cmd.get<string>("export_folder", "/home/elyce/workspace/projects/navier_stokes/output");
 #endif
   const bool save_vtk                   = cmd.contains("save_vtk");
   const bool get_timing                 = cmd.contains("timing");
@@ -1078,19 +1080,6 @@ int main (int argc, char* argv[])
   int export_vtk = -1;
   int save_data_idx = (int) floor(tstart/dt_save_data); // so that we don't save the very first one which was either already read from file, or the known initial condition...
 
-  // [Elyce:] Create file to hold snapshot and time info -- so we know what snapshot corresponds to what time in the simulation
-  FILE *fich;
-  char file_snapshot_to_time[PATH_MAX];
-  sprintf(file_snapshot_to_time,"%s/snapshot_to_time_info.dat",out_dir);
-
-  if(save_simulation_times){
-      //[Elyce:] Setup file to save the timing info -- aka what time in the simulation corresponds to what number snapshot
-
-      ierr = PetscFOpen(mpi.comm(),file_snapshot_to_time,"w",&fich);CHKERRXX(ierr);
-      ierr = PetscFPrintf(mpi.comm(),fich,"Time Snapshot No. dt \n");CHKERRXX(ierr);
-      ierr = PetscFClose(mpi.comm(), fich); CHKERRXX(ierr);
-  }
-
   char file_forces[PATH_MAX];
   if(save_forces)
     initialize_force_output(file_forces, out_dir, lmin, lmax, threshold_split_cell, cfl, sl_order, mpi, tstart);
@@ -1236,7 +1225,7 @@ int main (int argc, char* argv[])
       }
     }
 
-    ierr = PetscPrintf(mpi.comm(), "Iteration #%04d : tn = %.5e, percent done : %.1f%%, \t max_L2_norm_u = %.5e, \t number of leaves = %d\n", iter, tn, 100*(tn-tstart)/duration, ns->get_max_L2_norm_u(), ns->get_p4est()->global_num_quadrants); CHKERRXX(ierr);
+    ierr = PetscPrintf(mpi.comm(), "\n\nIteration #%04d : tn = %.5e, dt = %0.5e percent done : %.1f%%, \t max_L2_norm_u = %.5e, \t number of leaves = %d\n", iter, tn, dt, 100*(tn-tstart)/duration, ns->get_max_L2_norm_u(), ns->get_p4est()->global_num_quadrants); CHKERRXX(ierr);
 
     if(ns->get_max_L2_norm_u()>200.0)
     {
@@ -1254,16 +1243,6 @@ int main (int argc, char* argv[])
       export_vtk = ((int) floor(tn/vtk_dt));
       sprintf(vtk_name, "%s/snapshot_%d", vtk_path, export_vtk);
       ns->save_vtk(vtk_name);
-
-      if(save_simulation_times){
-          PetscPrintf(mpi.comm(),"\n Gets to printing snapshot time info \n");
-          //[Elyce:] Save the timing info -- aka what time in the simulation corresponds to what number snapshot
-
-          ierr = PetscFOpen(mpi.comm(),file_snapshot_to_time,"a",&fich);CHKERRXX(ierr);
-          PetscFPrintf(mpi.comm(),fich,"%e %d %e \n",tn, export_vtk, dt);
-          ierr = PetscFClose(mpi.comm(), fich); CHKERRXX(ierr);
-
-      }
     }
 
 
