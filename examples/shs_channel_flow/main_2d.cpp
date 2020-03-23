@@ -1261,6 +1261,26 @@ void export_drag(const simulation_setup &setup, const my_p4est_navier_stokes_t* 
   }
 }
 
+#ifdef P4EST_DEBUG
+void check_voronoi_tesselation_and_print_warnings_if_wrong(const my_p4est_navier_stokes_t* ns, const my_p4est_poisson_faces_t* face_solver)
+{
+  double voro_global_volume[P4EST_DIM];
+  face_solver->global_volume_of_voronoi_tesselation(voro_global_volume);
+  // one should have EXACTLY the volume of the computational box for u and w components
+  // and strictly less than the computational domain for v (because of face-wall alignment of Dirichlet boundary conditions --> the Voronoi cell is not even calculated there)
+  const double expected_volume = MULTD(ns->get_length_of_domain(), ns->get_height_of_domain(), ns->get_width_of_domain());
+  if(ns->get_mpirank() == 0 && fabs(voro_global_volume[0] - expected_volume) > 10.0*EPS*expected_volume)
+    std::cerr << "The global volume of the Voronoi tesselation for faces of normal direction x is " << voro_global_volume[0] << " whereas it is expected to be " << expected_volume << " --> check the Voronoi tesselation!" << std::endl;
+  if(ns->get_mpirank() == 0 && voro_global_volume[1] >= expected_volume)
+    std::cerr << "The global volume of the Voronoi tesselation for faces of normal direction y is " << voro_global_volume[1] << " which is greater than the volume of the computational box (" << expected_volume << "): this is NOT NORMAL --> check the Voronoi tesselation!" << std::endl;
+#ifdef P4_TO_P8
+  if(ns->get_mpirank() == 0 && fabs(voro_global_volume[2] - expected_volume) > 10.0*EPS*expected_volume)
+    std::cerr << "The global volume of the Voronoi tesselation for faces of normal direction z is " << voro_global_volume[2] << " whereas it is expected to be " << expected_volume << " --> check the Voronoi tesselation!" << std::endl;
+#endif
+}
+#endif
+
+
 int main (int argc, char* argv[])
 {
   mpi_environment_t mpi;
@@ -1405,6 +1425,9 @@ int main (int argc, char* argv[])
       if (setup.get_timing)
         substep_watch.start("");
       ns->solve_viscosity(face_solver, (face_solver != NULL), KSPBCGS, setup.pc_face);
+#ifdef P4EST_DEBUG
+      check_voronoi_tesselation_and_print_warnings_if_wrong(ns, face_solver);
+#endif
       if (setup.get_timing)
       {
         substep_watch.stop();
@@ -1422,7 +1445,7 @@ int main (int argc, char* argv[])
       {
         const double required_mean_correction_to_hodge_derivative = flow_controller->update_external_acceleration_to_enforce_desired_bulk_velocity(ns, external_acceleration);
         if(setup.control_hodge == uvw_components || setup.control_hodge == u_component)
-          convergence_check_on_dxyz_hodge = MAX(convergence_check_on_dxyz_hodge, required_mean_correction_to_hodge_derivative); // Yes, Sir, don't cut corners: you may have "converged" when comparing to data from previous time-step only but if the required correction is too big, do it again...
+          convergence_check_on_dxyz_hodge = convergence_check_on_dxyz_hodge + fabs(required_mean_correction_to_hodge_derivative); // Yes, Sir, don't cut corners: you may have "converged" when comparing to data from previous time-step only but if the required correction is too big, you may have to do it again...
       }
       else if(setup.iter == 0)
       {

@@ -1329,7 +1329,10 @@ voro_cell_type compute_voronoi_cell(Voronoi_DIM &voronoi_cell, const my_p4est_fa
           if(need_to_look_over_sharing_quad)
             ngbd_c->find_neighbor_cells_of_cell(tmp_ngbd, quad_touch.p.piggy3.local_num, quad_touch.p.piggy3.which_tree, dir_touch);
           for (set_of_neighboring_quadrants::const_iterator it = tmp_ngbd.begin(); it != tmp_ngbd.end(); ++it)
+          {
+            ngbd.insert(*it);
             ngbd_c->find_neighbor_cells_of_cell(ngbd, it->p.piggy3.local_num, it->p.piggy3.which_tree, dir_touch);
+          }
         }
 
         // fetch (all) the extra cells layering quad_touch in the face_touch direction
@@ -1360,7 +1363,15 @@ voro_cell_type compute_voronoi_cell(Voronoi_DIM &voronoi_cell, const my_p4est_fa
                 search[second_trans_dir]  = 0;
 #endif
                 for (set_of_neighboring_quadrants::const_iterator it = ngbd_touch_[ngbd_idx].begin(); it != ngbd_touch_[ngbd_idx].end(); ++it)
-                  ngbd_c->find_neighbor_cells_of_cell(ngbd, it->p.piggy3.local_num, it->p.piggy3.which_tree, DIM(search[0], search[1], search[2]));
+                {
+                  tmp_ngbd.clear();
+                  ngbd_c->find_neighbor_cells_of_cell(tmp_ngbd, it->p.piggy3.local_num, it->p.piggy3.which_tree, DIM(search[0], search[1], search[2]));
+                  for (set_of_neighboring_quadrants::const_iterator itt = tmp_ngbd.begin(); itt != tmp_ngbd.end(); ++itt) {
+                    ngbd.insert(*itt);
+                    if(faces->q2f(itt->p.piggy3.local_num, 2*first_trans_dir + (tt == 1)) == NO_VELOCITY)
+                      ngbd_c->find_neighbor_cells_of_cell(ngbd, itt->p.piggy3.local_num, itt->p.piggy3.which_tree, DIM(search[0], search[1], search[2]));
+                  }
+                }
               }
 #ifdef P4_TO_P8
               if(vv != 0)
@@ -1368,14 +1379,30 @@ voro_cell_type compute_voronoi_cell(Voronoi_DIM &voronoi_cell, const my_p4est_fa
                 search[first_trans_dir]   = 0;
                 search[second_trans_dir]  = vv;
                 for (set_of_neighboring_quadrants::const_iterator it = ngbd_touch_[ngbd_idx].begin(); it != ngbd_touch_[ngbd_idx].end(); ++it)
-                  ngbd_c->find_neighbor_cells_of_cell(ngbd, it->p.piggy3.local_num, it->p.piggy3.which_tree, DIM(search[0], search[1], search[2]));
+                {
+                  tmp_ngbd.clear();
+                  ngbd_c->find_neighbor_cells_of_cell(tmp_ngbd, it->p.piggy3.local_num, it->p.piggy3.which_tree, DIM(search[0], search[1], search[2]));
+                  for (set_of_neighboring_quadrants::const_iterator itt = tmp_ngbd.begin(); itt != tmp_ngbd.end(); ++itt) {
+                    ngbd.insert(*itt);
+                    if(faces->q2f(itt->p.piggy3.local_num, 2*second_trans_dir + (vv == 1)) == NO_VELOCITY)
+                      ngbd_c->find_neighbor_cells_of_cell(ngbd, itt->p.piggy3.local_num, itt->p.piggy3.which_tree, DIM(search[0], search[1], search[2]));
+                  }
+                }
               }
               if(tt!= 0 && vv != 0)
               {
                 search[first_trans_dir]   = tt;
                 search[second_trans_dir]  = vv;
                 for (set_of_neighboring_quadrants::const_iterator it = ngbd_touch_[ngbd_idx].begin(); it != ngbd_touch_[ngbd_idx].end(); ++it)
-                  ngbd_c->find_neighbor_cells_of_cell(ngbd, it->p.piggy3.local_num, it->p.piggy3.which_tree, DIM(search[0], search[1], search[2]));
+                {
+                  tmp_ngbd.clear();
+                  ngbd_c->find_neighbor_cells_of_cell(tmp_ngbd, it->p.piggy3.local_num, it->p.piggy3.which_tree, DIM(search[0], search[1], search[2]));
+                  for (set_of_neighboring_quadrants::const_iterator itt = tmp_ngbd.begin(); itt != tmp_ngbd.end(); ++itt) {
+                    ngbd.insert(*itt);
+                    if(faces->q2f(itt->p.piggy3.local_num, 2*first_trans_dir + (tt == 1)) == NO_VELOCITY || faces->q2f(itt->p.piggy3.local_num, 2*second_trans_dir + (vv == 1)) == NO_VELOCITY)
+                      ngbd_c->find_neighbor_cells_of_cell(ngbd, itt->p.piggy3.local_num, itt->p.piggy3.which_tree, DIM(search[0], search[1], search[2]));
+                  }
+                }
               }
 #endif
             }
