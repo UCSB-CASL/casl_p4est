@@ -83,7 +83,7 @@ DEFINE_PARAMETER(pl,bool,save_stefan,false,"Save stefan ?");
 DEFINE_PARAMETER(pl,bool,save_navier_stokes,false,"Save navier stokes?");
 DEFINE_PARAMETER(pl,bool,save_coupled_fields,true,"Save the coupled problem?");
 DEFINE_PARAMETER(pl,int,save_every_iter,1,"Saves vtk every n number of iterations (default is 1)");
-DEFINE_PARAMETER(pl,int,save_state_every_iter,100,"Saves simulation state every n number of iterations (default is 500)");
+DEFINE_PARAMETER(pl,int,save_state_every_iter,10000,"Saves simulation state every n number of iterations (default is 500)");
 DEFINE_PARAMETER(pl,double,save_every_dt,0.1,"Saves vtk every dt amount of time (default is .1)");
 
 DEFINE_PARAMETER(pl,bool,print_checkpoints,false,"Print checkpoints throughout script for debugging? ");
@@ -92,7 +92,7 @@ DEFINE_PARAMETER(pl,double,mem_safety_limit,60.e9,"Memory upper limit before clo
 
 // Load options
 DEFINE_PARAMETER(pl,bool,loading_from_previous_state,false,"");
-//DEFINE_PARAMETER(pl,char,"/home/elyce/workspace/projects/multialloy_with_fluids_","");
+
 // ---------------------------------------
 // Solution options:
 // ---------------------------------------
@@ -115,10 +115,10 @@ void select_solvers(){
       break;
     case ICE_AROUND_CYLINDER:
       save_stefan = false;
-      solve_stefan = false;// temporary test //true;
+      solve_stefan = true;
       solve_navier_stokes = true;
-      save_navier_stokes = true;//false;
-      save_coupled_fields = false;//true;
+      save_navier_stokes = false;//false;
+      save_coupled_fields = true;//true;
       break;
     case NS_GIBOU_EXAMPLE:
       save_stefan = false; solve_stefan = false;
@@ -143,14 +143,12 @@ void select_solvers(){
 DEFINE_PARAMETER(pl,int,advection_sl_order,2,"Integer for advection solution order (can choose 1 or 2) for the fluid temperature field(default:1) -- note: this also sets the NS solution order");
 DEFINE_PARAMETER(pl,int,NS_advection_sl_order,2,"Integer for advection solution order (can choose 1 or 2) for the fluid velocity fields (default:1)");
 
-//DEFINE_PARAMETER(pl,bool,solve_smoke,0,"Boolean for whether to solve for smoke or not (a passive scalar), default: 0");
 DEFINE_PARAMETER(pl,double,cfl,0.5,"CFL number (default:0.5)");
-DEFINE_PARAMETER(pl,bool,force_interfacial_velocity_to_zero,true,"Force the interfacial velocity to zero? ");
+DEFINE_PARAMETER(pl,bool,force_interfacial_velocity_to_zero,false,"Force the interfacial velocity to zero? ");
 DEFINE_PARAMETER(pl,double,vorticity_threshold,0.1,"Threshold to refine vorticity by, default is 0.1 \n");
 DEFINE_PARAMETER(pl,double,gradT_threshold,0.99,"Threshold to refine the nondimensionalized temperature gradient by \n (default: 0.99)");
 
 int stop_flag = -1;
-bool pressure_check_flag = false;
 // ---------------------------------------
 // Geometry options:
 // ---------------------------------------
@@ -187,6 +185,10 @@ double sigma;
 double T0;
 double deltaT;
 double d_cyl;
+
+double theta_wall;
+double theta_interface;
+double theta_cyl;
 void set_geometry(){
   switch(example_){
     case FRANK_SPHERE: // Frank sphere
@@ -226,12 +228,16 @@ void set_geometry(){
 
       r_cyl = 0.5; // Radius of cylinder of cooled pipe
 
-      r0 = r_cyl*1.01;//Radius of initial ice layer height -- 1 percent of the raidus of the cylinder itself
+      r0 = r_cyl*1.2;//Radius of initial ice layer height -- 1 percent of the raidus of the cylinder itself
 
-      double d_cyl = 35.e-3; // [m]
+      d_cyl = 35.e-3; // [m]
 
-      Twall = 276.; Tinterface = 273.0;//293.0,
+      Twall = 276.;
+      Tinterface = 273.0;//293.0,
       T_cyl = 260.;//273.0 - 20.0;
+
+
+
       back_wall_temp_flux = 0.0;
 
 
@@ -239,6 +245,10 @@ void set_geometry(){
       T_inf = Twall;
       T0 = T_cyl;
       deltaT = T_inf - T0;
+
+      theta_wall = 1.0;
+      theta_cyl = 0.0;
+      theta_interface = (Tinterface - T0)/(deltaT);
 
       T_max_allowable=T_inf;
 
@@ -297,6 +307,153 @@ DEFINE_PARAMETER(pl,bool,refine_by_ucomponent,false,"Flag for whether or not to 
 DEFINE_PARAMETER(pl,bool,refine_by_nondim_gradT,false,"Flag for whether or not to refine by the nondimensionalized temperature gradient");
 
 // ---------------------------------------
+// Physical properties:
+// ---------------------------------------
+double alpha_s;
+double alpha_l;
+double k_s;
+double k_l;
+double L; // Latent heat of fusion
+double rho_l;
+double rho_s;
+double cp_s;
+double mu_l;
+
+void set_physical_properties(){
+  switch(example_){
+    case FRANK_SPHERE:
+      alpha_s = 1.0;
+      alpha_l = 1.0;
+      k_s = 1.0;
+      k_l = 1.0;
+      L = 1.0;
+      rho_l = 1.0;
+      rho_s = 1.0;
+      break;
+      break;
+
+    case ICE_AROUND_CYLINDER:
+      alpha_s = (1.1e-6); //ice - [m^2]/s
+      alpha_l = (1.5e-7); //water- [m^2]/s
+      k_s = 2.22; // W/[m*K]
+      k_l = 0.608; // W/[m*K]
+      L = 334.e3;  // J/kg
+      rho_l = 1000.0;// kg/m^3
+      sigma = (2.10e-10); // [m]
+      rho_s = 920.; //[kg/m^3]
+      mu_l = 1.7106e-3;//1.793e-3;  // Viscosity of water , [Pa s]
+
+
+      cp_s = k_s/(alpha_s*rho_s); // Specific heat of solid  []
+
+
+      break;
+
+    case COUPLED_PROBLEM_EXAMPLE:
+      alpha_s = 1.0;
+      alpha_l = 1.0;
+      k_s = 1.;
+      k_l = 1.;
+      L = 1.;
+      rho_l = 1.;
+      rho_s = 1.0;
+      mu_l = 1.0;
+      break;
+  case NS_GIBOU_EXAMPLE:
+      rho_l = 1.0;
+    }
+}
+
+//-----------------------------------------
+// Properties to set if you are solving NS
+// ----------------------------------------
+double pressure_prescribed_flux;
+double pressure_prescribed_value;
+double u0;
+double v0;
+
+double Re_u; // reynolds number in x direction
+double Re_v; // reynolds number in y direction
+
+
+double outflow_u;
+double outflow_v;
+double hodge_percentage_of_max_u;
+int hodge_max_it = 30;
+double uniform_band;
+double T_l_IC_band = 2.0;
+bool ramp_T_l_IC_space = false;
+double dt_NS;
+
+double hodge_global_error;
+
+double NS_norm = 0.0; // To keep track of the NS norm
+
+double u_inf; // physical value of freestream velocity
+void set_NS_info(){
+  pressure_prescribed_flux = 0.0; // For the Neumann condition on the two x walls and lower y wall
+  pressure_prescribed_value = 0.0; // For the Dirichlet condition on the back y wall
+
+
+//  uniform_band = 4.0;
+  dt_NS = 1.e-3; // initial dt for NS
+  switch(example_){
+    case FRANK_SPHERE:throw std::invalid_argument("NS isnt setup for this example");
+    case ICE_AROUND_CYLINDER:
+      Re_u = 201.;
+      Re_v = 0.;
+
+      u_inf = 9.820286e-3; // physical freestream velocity, m/s
+      uniform_band = 8.;
+      if(Re_overwrite>1.0){Re_u = Re_overwrite;}
+
+
+      u0 = 1; // computational freestream velocity
+      v0 = 0;
+      break;
+    case NS_GIBOU_EXAMPLE:
+      Re_u = 1.0;
+      Re_v = 1.0;
+
+      u0 = 1.0;
+      v0 = 1.0;
+      uniform_band = 2.;
+      break;
+
+    case COUPLED_PROBLEM_EXAMPLE:
+      Re_u = 1.0;
+      Re_v = 1.0;
+      u0 = 1.0;
+      v0 = 1.0;
+      uniform_band = 4.;
+      break;
+    }
+
+  outflow_u = 0.0;
+  outflow_v = 0.0;
+
+  hodge_percentage_of_max_u = 1.e-3;
+}
+
+double Re;
+double Pr;
+double Pe;
+double St;
+
+void set_nondimensional_groups(){
+    if (example_==ICE_AROUND_CYLINDER){
+        Re = rho_l*d_cyl*u_inf/mu_l;
+        Pr = mu_l/(alpha_l*rho_l);
+        Pe = Re*Pr;
+        St = cp_s*deltaT/L;
+
+
+
+    }
+
+}
+
+// ---------------------------------------
 // Time-stepping:
 // ---------------------------------------
 double tfinal;
@@ -319,7 +476,7 @@ void simulation_time_info(){
       tn = 1.0;
       break;
     case ICE_AROUND_CYLINDER: // ice solidifying around isothermally cooled cylinder
-      tfinal = 40.*60.; // 40 minutes
+      tfinal = (40.)*(u_inf/d_cyl)*60.; // 40 minutes
       dt_max_allowed = save_every_dt;
       tstart = 0.0;
       tn = tstart;
@@ -348,177 +505,7 @@ void simulation_time_info(){
 
     }
 }
-// ---------------------------------------
-// Physical properties:
-// ---------------------------------------
-double alpha_s;
-double alpha_l;
 
-void set_diffusivities(){
-  switch(example_){
-    case FRANK_SPHERE:
-      alpha_s = 1.0;
-      alpha_l = 1.0;
-      break;
-
-    case ICE_AROUND_CYLINDER:
-      alpha_s = (1.1e-6); //ice - [m^2]/s
-      alpha_l = (1.5e-7); //water- [m^2]/s
-      break;
-
-    case COUPLED_PROBLEM_EXAMPLE:
-      alpha_s = 1.0;
-      alpha_l = 1.0;
-      break;
-    }
-}
-
-
-double k_s;
-double k_l;
-double L; // Latent heat of fusion
-double rho_l;
-double rho_s;
-double cp_s;
-
-
-void set_conductivities(){
-  switch(example_){
-    case FRANK_SPHERE:
-      k_s = 1.0;
-      k_l = 1.0;
-      L = 1.0;
-      rho_l = 1.0;
-      rho_s = 1.0;
-      break;
-
-    case ICE_AROUND_CYLINDER:
-      k_s = 2.22; // W/[m*K]
-      k_l = 0.608; // W/[m*K]
-      L = 334.e3;  // J/kg
-      rho_l = 1000.0;// kg/m^3
-      sigma = (2.10e-10); // [m]
-      rho_s = 920.; //[kg/m^3]
-
-      cp_s = k_s/(alpha_s*rho_s); // Specific heat of solid  []
-
-
-      break;
-
-    case COUPLED_PROBLEM_EXAMPLE:
-      k_s = 1.;
-      k_l = 1.;
-      L = 1.;
-      rho_l = 1.;
-      rho_s = 1.0;
-      break;
-    }
-}
-
-//-----------------------------------------
-// Properties to set if you are solving NS
-// ----------------------------------------
-double pressure_prescribed_flux;
-double pressure_prescribed_value;
-double u0;
-double v0;
-
-double Re_u; // reynolds number in x direction
-double Re_v; // reynolds number in y direction
-
-
-double outflow_u;
-double outflow_v;
-double mu_l;
-double hodge_percentage_of_max_u;
-int hodge_max_it = 30;
-double uniform_band;
-double T_l_IC_band = 2.0;
-bool ramp_T_l_IC_space = false;
-double dt_NS;
-
-double hodge_global_error;
-
-double NS_norm = 0.0; // To keep track of the NS norm
-
-// WAY OF SETTING VELOCITIES FOR NS SOLVER NEEDS TO BE FIXED -- THIS IS JUST A TEMPORARY WAY
-void set_NS_vel_vals(){
-    if(example_ == ICE_AROUND_CYLINDER){
-//        u0 = 1.0;
-//        v0 = 0.0;
-        u0 = Re_u*mu_l/(rho_l*2.0*r_cyl);
-        v0 = Re_v*mu_l/(rho_l*2.0*r_cyl);
-//        mu_l = (2.*r0*rho_l*u0)/Re_u;
-
-      }
-}
-void set_NS_info(){
-  pressure_prescribed_flux = 0.0; // For the Neumann condition on the two x walls and lower y wall
-  pressure_prescribed_value = 0.0; // For the Dirichlet condition on the back y wall
-
-
-//  uniform_band = 4.0;
-  dt_NS = 1.e-3; // initial dt for NS
-  switch(example_){
-    case FRANK_SPHERE:throw std::invalid_argument("NS isnt setup for this example");
-    case ICE_AROUND_CYLINDER:
-      Re_u = 201.;//201.;//201.;//217.;
-      Re_v = 0.;
-      mu_l = 1.7106e-3;//1.793e-3;  // Viscosity of water , [Pa s]
-      uniform_band = 8.;
-      if(Re_overwrite>1.0){Re_u = Re_overwrite;}
-      set_NS_vel_vals();
-      break;
-    case NS_GIBOU_EXAMPLE:
-      Re_u = 1.0;
-      Re_v = 1.0;
-      mu_l = 1.0;
-      rho_l = 1.0;
-
-      u0 = 1.0;
-      v0 = 1.0;
-      uniform_band = 2.;
-      break;
-
-    case FLOW_PAST_CYLINDER:
-      Re_u = 300.0;
-      Re_v = 0.0;
-      mu_l = 8.9e-4;
-      rho_l = 1000.0;
-      break;
-
-    case COUPLED_PROBLEM_EXAMPLE:
-      Re_u = 1.0;
-      Re_v = 1.0;
-      mu_l = 1.0;
-      rho_l = 1.0;
-      u0 = 1.0;
-      v0 = 1.0;
-      uniform_band = 4.;
-      break;
-    }
-
-  outflow_u = 0.0;
-  outflow_v = 0.0;
-
-  hodge_percentage_of_max_u = 1.e-3;
-}
-
-double Re;
-double Pr;
-double Pe;
-double St;
-
-void set_nondimensional_groups(){
-    if (example_==ICE_AROUND_CYLINDER){
-        Re = rho_l*d_cyl*u0/mu_l;
-        Pr = mu_l/(alpha_l*rho_l);
-        Pe = Re*Pr;
-        St = cp_s*deltaT/L;
-
-    }
-
-}
 // ---------------------------------------
 // Other parameters:
 // ---------------------------------------
@@ -905,13 +892,12 @@ public:
          double r = sqrt(SQR(x) + SQR(y));
          double sval = r/sqrt(tn+dt);
          return frank_sphere_solution_t(sval);
-         //return Tinterface;
         }
       case ICE_AROUND_CYLINDER: // Ice solidifying around a cylinder, with surface tension -- MAY ADD COMPLEXITY TO THIS LATER ON
         if(ramp_bcs){
-            return ramp_BC(Twall,Tinterface*(1. - (sigma)*kappa_interp(x,y)));
+            return ramp_BC(theta_wall,theta_interface*(1. - (sigma/d_cyl)*kappa_interp(x,y)));
           }
-        else return Tinterface*(1. - (sigma)*kappa_interp(x,y));
+        else return theta_interface*(1. - (sigma/d_cyl)*kappa_interp(x,y));
 
       case COUPLED_PROBLEM_EXAMPLE:
         return T_ana_tnp1(x,y);
@@ -938,9 +924,9 @@ public:
     switch(example_){
       case ICE_AROUND_CYLINDER:
         if(ramp_bcs){
-            return ramp_BC(Twall,T_cyl);
+            return ramp_BC(theta_wall,theta_cyl);
           }
-        else return T_cyl;
+        else return theta_cyl;
       }
   }
 }bc_interface_val_inner;
@@ -1014,7 +1000,7 @@ public:
 
 double temp_three_wall_dirichlet_val(DIM(double x, double y, double z)){
   if (xlower_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z))){
-        return Twall;
+        return theta_wall;
       }
   else {
       return back_wall_temp_flux;
@@ -1025,7 +1011,7 @@ double temp_three_wall_neumann_val(DIM(double x, double y, double z)){
   if (xupper_wall(DIM(x,y,z)) || yupper_wall(DIM(x,y,z)) || ylower_wall(DIM(x,y,z))){
       return back_wall_temp_flux;}
   else {
-      return Twall;
+      return theta_wall;
     }
 }
 
@@ -1089,7 +1075,7 @@ public:
           }
         break;       }
       case ICE_AROUND_CYLINDER:{
-          return temp_three_wall_dirichlet_val(x,y);
+          return temp_three_wall_dirichlet_val(DIM(x,y,z));
         }
       case COUPLED_PROBLEM_EXAMPLE:{
           if(xlower_wall(x,y) || xupper_wall(x,y) || ylower_wall(x,y) || yupper_wall(x,y)){
@@ -1118,7 +1104,7 @@ public:
         return frank_sphere_solution_t(sval); // Initial distribution is the analytical solution of Frank Sphere problem at t = 0
       }
       case ICE_AROUND_CYLINDER:{
-          return Twall;
+          return theta_wall;
 
         }
       case COUPLED_PROBLEM_EXAMPLE:{
@@ -1144,8 +1130,8 @@ public:
         return frank_sphere_solution_t(sval); // Initial distribution is the analytical solution of Frank Sphere problem at t = 0
       }
       case ICE_AROUND_CYLINDER:{
-          if(ramp_bcs ) return Twall;
-          else return Tinterface;
+          if(ramp_bcs ) return theta_wall;
+          else return theta_interface;
         }
       case COUPLED_PROBLEM_EXAMPLE:{
           return T_ana_tn(x,y);
@@ -1753,13 +1739,13 @@ void check_T_values(vec_and_ptr_t phi, vec_and_ptr_t T, p4est_nodes* nodes, p4es
 
       max_T = max(max_T,T.ptr[n]);
       min_T = min(min_T,T.ptr[n]);
-      if(T.ptr[n]>(Twall + 1.e-2) && check_for_reasonable_values && example_ == ICE_AROUND_CYLINDER){
-          double xyz[P4EST_DIM];
-          node_xyz_fr_n(n,p4est,nodes,xyz);
-          printf("\n Getting unreasonable T value of %0.2f = %0.4e at (%0.4e, %0.4e) \n",T.ptr[n],T.ptr[n],xyz[0],xyz[1]);
-//          fprintf(fich,"\n Getting unreasonable T value of %0.2f = %0.4e at (%0.4e, %0.4e) \n",T.ptr[n],T.ptr[n],xyz[0],xyz[1]);
-//          if(stop_flag<0){stop_flag = tstep; PetscPrintf(p4est->mpicomm,"STOP FLAG HAS BEEN TRIGGERED \n");} // Only grab it the first time it's triggered
-        }
+//      if(T.ptr[n]>(Twall + 1.e-2) && check_for_reasonable_values && example_ == ICE_AROUND_CYLINDER){
+//          double xyz[P4EST_DIM];
+//          node_xyz_fr_n(n,p4est,nodes,xyz);
+//          printf("\n Getting unreasonable T value of %0.2f = %0.4e at (%0.4e, %0.4e) \n",T.ptr[n],T.ptr[n],xyz[0],xyz[1]);
+////          fprintf(fich,"\n Getting unreasonable T value of %0.2f = %0.4e at (%0.4e, %0.4e) \n",T.ptr[n],T.ptr[n],xyz[0],xyz[1]);
+////          if(stop_flag<0){stop_flag = tstep; PetscPrintf(p4est->mpicomm,"STOP FLAG HAS BEEN TRIGGERED \n");} // Only grab it the first time it's triggered
+//        }
 
 
       min_mag_T = min(min_mag_T,fabs(T.ptr[n]));
@@ -1785,25 +1771,19 @@ void check_T_values(vec_and_ptr_t phi, vec_and_ptr_t T, p4est_nodes* nodes, p4es
   MPI_Allreduce(&min_mag_T,&global_min_mag_T,1,MPI_DOUBLE,MPI_MIN,p4est->mpicomm);
 
   PetscPrintf(p4est->mpicomm,"\n"
-                             "Average value: %0.9f \n"
-                             "Maximum value: %0.9f \n"
-                             "Minimum value: %0.9f \n"
-                             "Minimum value magnitude: %0.9e \n \n",global_avg_T,global_max_T,global_min_T,global_min_mag_T);
+                             "Average value: %0.4f \n"
+                             "Maximum value: %0.4f \n"
+                             "Minimum value: %0.4f \n"
+                             "Minimum value magnitude: %0.4f \n \n",global_avg_T,global_max_T,global_min_T,global_min_mag_T);
   PetscFPrintf(p4est->mpicomm,fich,"\n"
-                             "Average value: %0.9f \n"
-                             "Maximum value: %0.9f \n"
-                             "Minimum value: %0.9f \n"
-                             "Minimum value magnitude: %0.9e \n \n",global_avg_T,global_max_T,global_min_T,global_min_mag_T);
+                             "Average value: %0.4f \n"
+                             "Maximum value: %0.4f \n"
+                             "Minimum value: %0.4f \n"
+                             "Minimum value magnitude: %0.4f \n \n",global_avg_T,global_max_T,global_min_T,global_min_mag_T);
 
   if(update_Tl_values) {T_l_max = global_max_T; T_l_min = global_min_T;}
   if(update_Ts_values){T_s_max = global_max_T; T_s_min = global_min_T;}
-  if(pressure_check_flag){
-      PetscPrintf(p4est->mpicomm,"\n");
-      PetscPrintf(p4est->mpicomm,"Physical Average value: %0.2e \n",global_avg_T/(SQR(scaling)));
-      PetscPrintf(p4est->mpicomm,"Physical Maximum value: %0.2e \n",global_max_T/(SQR(scaling)));
-      PetscPrintf(p4est->mpicomm,"Physical Minimum value: %0.2e \n",global_min_T/(SQR(scaling)));
-      PetscPrintf(p4est->mpicomm,"Physical Minimum value magnitude: %0.2e \n \n",global_min_mag_T/(SQR(scaling)));
-    }
+
 
 //  if(global_max_T>1.01*(Twall) && check_for_reasonable_values && example_ == ICE_AROUND_CYLINDER){
 //      PetscPrintf(p4est->mpicomm,"Aborting due to unreasonable T values \n");
@@ -2745,22 +2725,22 @@ void do_backtrace(vec_and_ptr_t T_l,vec_and_ptr_t T_l_nm1,vec_and_ptr_t T_l_back
 
   SL_backtrace_interp.set_input(T_l.vec,T_l_dd.vec[0],T_l_dd.vec[1],/*linear*/quadratic_non_oscillatory_continuous_v2);
   SL_backtrace_interp.interpolate(T_l_backtrace.vec);
-  if(true) PetscPrintf(p4est->mpicomm,"Successfully interpolates T_l backtrace \n");
-  MPI_Barrier(p4est->mpicomm);
+  if(print_checkpoints) PetscPrintf(p4est->mpicomm,"Successfully interpolates T_l backtrace \n");
+
   if(advection_sl_order ==2){
       SL_backtrace_interp_nm1.set_input(T_l_nm1.vec,T_l_dd_nm1.vec[0],T_l_dd_nm1.vec[1], /*linear*/quadratic_non_oscillatory_continuous_v2);
       SL_backtrace_interp_nm1.interpolate(T_l_backtrace_nm1.vec);
     }
-  if(true) PetscPrintf(p4est->mpicomm,"Successfully interpolates T_l_nm1 backtrace \n");
+  if(print_checkpoints) PetscPrintf(p4est->mpicomm,"Successfully interpolates T_l_nm1 backtrace \n");
 
-
+/*
  // Check values
   bool collapse_overall=false;
   bool collapse = false;
   double xyz[P4EST_DIM];
   int node_to_check = -1;
 
-  if(true/*stop_flag>0*/){
+  if(truestop_flag>0){
     T_l_backtrace.get_array(); v.get_array();
     T_l.get_array();
 
@@ -2837,6 +2817,7 @@ void do_backtrace(vec_and_ptr_t T_l,vec_and_ptr_t T_l_nm1,vec_and_ptr_t T_l_back
 MPI_Allreduce(MPI_IN_PLACE,&stop_flag,1,MPI_INT,MPI_MAX,p4est->mpicomm);
 if(stop_flag>0)PetscPrintf(p4est->mpicomm,"STOP FLAG HAS BEEN TRIGGERED \n");
 
+*/
 
 // end of check values
 
@@ -2979,9 +2960,14 @@ void compute_interfacial_velocity(vec_and_ptr_dim_t T_l_d, vec_and_ptr_dim_t T_s
         p4est_locidx_t n = ngbd->get_layer_node(i);
 
         if(fabs(phi.ptr[n])<dxyz_close_to_interface){
-          foreach_dimension(d){
-            jump.ptr[d][n] = (k_s*T_s_d.ptr[d][n] -k_l*T_l_d.ptr[d][n])/(L*rho_s);
-          }
+            foreach_dimension(d){
+                if(example_ == ICE_AROUND_CYLINDER){ // for this example, we solve nondimensionalized problem
+                    jump.ptr[d][n] = (St/Pe)*(rho_l/rho_s)*( (k_s/k_l)*T_s_d.ptr[d][n] - T_l_d.ptr[d][n]);
+                }
+                else{
+                    jump.ptr[d][n] = (k_s*T_s_d.ptr[d][n] -k_l*T_l_d.ptr[d][n])/(L*rho_s);
+                }
+            } // end of loop over dimensions
         }
        }
 
@@ -2994,9 +2980,15 @@ void compute_interfacial_velocity(vec_and_ptr_dim_t T_l_d, vec_and_ptr_dim_t T_s
       for(size_t i = 0; i<ngbd->get_local_size();i++){
           p4est_locidx_t n = ngbd->get_local_node(i);
           if(fabs(phi.ptr[n])<dxyz_close_to_interface){
-            foreach_dimension(d){
-              jump.ptr[d][n] = (k_s*T_s_d.ptr[d][n] -k_l*T_l_d.ptr[d][n])/(L*rho_s);
-            }
+
+              foreach_dimension(d){
+                  if(example_ == ICE_AROUND_CYLINDER){ // for this example, we solve nondimensionalized problem
+                      jump.ptr[d][n] = (St/Pe)*(rho_l/rho_s)*( (k_s/k_l)*T_s_d.ptr[d][n] - T_l_d.ptr[d][n]);
+                  }
+                  else {
+                      jump.ptr[d][n] = (k_s*T_s_d.ptr[d][n] -k_l*T_l_d.ptr[d][n])/(L*rho_s);
+                  }
+              } // end over loop on dimensions
           }
         }
 
@@ -3046,12 +3038,12 @@ void compute_timestep(vec_and_ptr_dim_t v_interface, vec_and_ptr_t phi, double d
                              "Computed interfacial velocity: \n"
                              " - Computational: %0.3e \n"
                              " - Physical: %0.3e [m/s] \n"
-                             " - Physical: %0.3e [cm/s] \n",global_max_vnorm,global_max_vnorm/scaling,global_max_vnorm/scaling*100.);
+                             " - Physical: %0.3e [mm/s] \n",global_max_vnorm,global_max_vnorm*u_inf,global_max_vnorm*u_inf*1000.);
   PetscFPrintf(p4est->mpicomm,fich,"\n"
                              "Computed interfacial velocity: \n"
                              " - Computational: %0.3e \n"
                              " - Physical: %0.3e [m/s] \n"
-                             " - Physical: %0.3e [cm/s] \n",global_max_vnorm,global_max_vnorm/scaling,global_max_vnorm/scaling*100.);
+                             " - Physical: %0.3e [mm/s] \n",global_max_vnorm,global_max_vnorm*u_inf,global_max_vnorm*u_inf*1000.);
 
 //  // Save the previous timestep:
 //  dt_nm1 = dt;
@@ -4099,8 +4091,6 @@ int main(int argc, char** argv) {
     const double xyz_max[] = {xmax,  ymax,  0};
     const int periodic[]   = { px,  py,  0};
 
-    // Get the simulation time info (it is example dependent):
-    simulation_time_info();
 
     // -----------------------------------------------
     // Set properties for the Poisson node problem:
@@ -4108,15 +4098,8 @@ int main(int argc, char** argv) {
     int cube_refinement = 1;
     interpolation_method interp_bw_grids = quadratic_non_oscillatory_continuous_v2;
 
-    // Get diffusivity, conductivity, and interface bc info: (it is example dependent)
-    set_conductivities();
-
-    if(solve_stefan){
-        set_diffusivities();
-        interface_bc();
-      }
-
-
+    // Set physical properties:
+    set_physical_properties();
     // -----------------------------------------------
     // Set properties for the Navier - Stokes problem (if applicable):
     // -----------------------------------------------
@@ -4127,7 +4110,18 @@ int main(int argc, char** argv) {
         interface_bc_velocity_u();
         interface_bc_velocity_v();
 
+        set_nondimensional_groups();
+        PetscPrintf(mpi.comm(),"Nondim groups are: \n"
+                               "Re = %f \n"
+                               "Pr = %f \n"
+                               "Pe = %f \n"
+                               "St = %f \n", Re, Pr, Pe, St);
+
       }
+
+    // Get the simulation time info (it is example dependent):
+    simulation_time_info();
+
     PCType pc_face = PCSOR;
     KSPType face_solver_type = KSPBCGS;
     PCType pc_cell = PCSOR;
@@ -4155,70 +4149,8 @@ int main(int argc, char** argv) {
     ierr = PetscFClose(mpi.comm(),fich_log2); CHKERRXX(ierr);
 
     // -----------------------------------------------
-    // Scale the problem appropriately:
+    // Scale the problem appropriately: -- NO MORE SCALING, WE ARE GOING NON DIM BABEY!
     // -----------------------------------------------
-    double rho_physical = rho_l;
-    rho_l/=(scaling*scaling*scaling);
-    rho_s/=(scaling*scaling*scaling);
-
-    if(solve_stefan){
-        k_s/=scaling;
-        k_l/=scaling;
-        sigma/=scaling;
-
-        alpha_l*=(scaling*scaling);
-        alpha_s*=(scaling*scaling);
-      }
-
-
-    if(solve_navier_stokes){
-        ierr = PetscFOpen(mpi.comm(),name_logfile,"a",&fich_log); CHKERRXX(ierr);
-        ierr = PetscFPrintf(mpi.comm(),fich_log,"SIMULATION LOG FILE \n");CHKERRXX(ierr);
-        PetscPrintf(mpi.comm(),"Physical u0 = %0.3e \n"
-                               "Physical v0 = %0.3e \n"
-                               "Physical mu_l = %0.3e \n"
-                               "Physical rho_l = %0.3e \n"
-                               "Physical r0    = %0.3e [m] = %0.3e [cm] \n"
-                               "Physical r_cyl = %0.3e [m] = %0.3e [cm] \n",u0,v0,mu_l,rho_physical,r0,r0*100.,r_cyl,r_cyl*100.);
-        PetscFPrintf(mpi.comm(),fich_log,"Physical u0 = %0.3e \n"
-                               "Physical v0 = %0.3e \n"
-                               "Physical mu_l = %0.3e \n"
-                               "Physical rho_l = %0.3e \n"
-                               "Physical r0    = %0.3e [m] = %0.3e [cm] \n"
-                               "Physical r_cyl = %0.3e [m] = %0.3e [cm] \n \n \n",u0,v0,mu_l,rho_physical,r0,r0*100.,r_cyl,r_cyl*100.);
-
-      r0*=scaling;
-      r_cyl*=scaling;
-
-      mu_l/=(scaling);         // No need to scale viscosity, it doesn't have a length scale in the units (that isn't embedded)
-      u0*=scaling;             // Scale the initial velocities
-      v0*=scaling;
-      pressure_prescribed_value/=(scaling*scaling); // Scale the pressure BC prescribed value and flux
-      pressure_prescribed_flux/=(scaling*scaling*scaling);
-      // Recheck reynolds:
-      PetscPrintf(mpi.comm(),"Reynolds comp is %0.4f \n", rho_l*u0*2.*r_cyl/mu_l);
-
-      PetscPrintf(mpi.comm(),"Reynolds number for this case is: %0.2f , %0.2f \n \n \n "
-                             "Computational r0 = %0.4f \n"
-                             "Computational mu = %0.3e \n"
-                             "Computational u0 = %0.3e \n"
-                             "Computational rho = %0.3e \n"
-                             "Computational r0   = %0.3e \n"
-                             "Computational r_cyl   = %0.3e \n",Re_u, Re_v, r0,mu_l,u0,rho_l,r0,r_cyl);
-      PetscFPrintf(mpi.comm(),fich_log,"Reynolds number for this case is: %0.2f , %0.2f \n"
-                             "Computational r0 = %0.4f \n"
-                             "Computational mu = %0.3e \n"
-                             "Computational u0 = %0.3e \n"
-                             "Computational rho = %0.3e \n"
-                             "Computational r0   = %0.3e \n"
-                             "Computational r_cyl   = %0.3e \n",Re_u, Re_v, r0,mu_l,u0,rho_l,r0,r_cyl);
-
-      PetscPrintf(mpi.comm(),"u initial is %0.3e, v initial is %0.3e \n",u0,v0);
-      PetscFPrintf(mpi.comm(),fich_log,"u initial is %0.3e, v initial is %0.3e \n",u0,v0);
-
-      ierr = PetscFClose(mpi.comm(),fich_log); CHKERRXX(ierr);
-
-          }
 
     // -----------------------------------------------
     // Create the grid:
@@ -4575,11 +4507,12 @@ int main(int argc, char** argv) {
         // --------------------------------------------------------------------------------------------------------------
 
         ierr = PetscPrintf(mpi.comm(),"\n -------------------------------------------\n"
-                                      "Iteration %d , Time: %0.3g [s], %0.3g [min], Timestep: %0.3e [s], Percent Done : %0.2f %"
-                                      " \n ------------------------------------------- \n",tstep,tn,tn/60.,dt,((tn-tstart)/tfinal)*100.0);
+                                      "Iteration %d , Time: %0.3g [nondim] = %0.1g [sec] = %0.1g [min], Timestep: %0.3e [nondim] = %0.1g [sec], Percent Done : %0.2f %"
+                                      " \n ------------------------------------------- \n",tstep,tn,tn*(d_cyl/u_inf),tn*(d_cyl/u_inf)/60.,dt, dt*(d_cyl/u_inf),((tn-tstart)/tfinal)*100.0);
+
         ierr = PetscFPrintf(mpi.comm(),fich_log,"\n -------------------------------------------\n"
-                                      "Iteration %d , Time: %0.3g [s], %0.3g [min], Timestep: %0.3e [s], Percent Done : %0.2f %"
-                                      " \n ------------------------------------------- \n",tstep,tn,tn/60.,dt,((tn-tstart)/tfinal)*100.0);CHKERRXX(ierr);
+                                      "Iteration %d , Time: %0.3g [nondim] = %0.1g [sec] = %0.1g [min], Timestep: %0.3e [nondim] = %0.1g [sec], Percent Done : %0.2f %"
+                                      " \n ------------------------------------------- \n",tstep,tn,tn*(d_cyl/u_inf),tn*(d_cyl/u_inf)/60.,dt, dt*(d_cyl/u_inf),((tn-tstart)/tfinal)*100.0);
 
         if(tstep%100 == 0) {PetscPrintf(mpi.comm(),"Current time info : \n"); w.read_duration_current();}
         if(solve_stefan){
@@ -4609,11 +4542,7 @@ int main(int argc, char** argv) {
         if(example_ == ICE_AROUND_CYLINDER && solve_coupled){
             double delta_r = r0 - r_cyl;
             PetscPrintf(mpi.comm(),"The uniform band is %0.2f\n",uniform_band);
-
-            // Now, set the initial band that the Initial condition will transition from T_gamma -> Twall across:
-            T_l_IC_band*=dxyz_close_to_interface;
-
-            if(delta_r<3.*dxyz_close_to_interface ){
+            if(delta_r<4.*dxyz_close_to_interface ){
                 PetscPrintf(mpi.comm()," Your initial delta_r is %0.3e, and it must be at least %0.3e \n",delta_r,4.*dxyz_close_to_interface);
                 SC_ABORT("Your initial delta_r is too small \n");
               }
@@ -4871,7 +4800,7 @@ int main(int argc, char** argv) {
           if(print_checkpoints) PetscPrintf(mpi.comm(),"Finishes saving to VTK \n");
 
           }
-        if(stop_flag>0 && (tstep == stop_flag + 1)) MPI_Abort(mpi.comm(),1);
+        if(stop_flag>0 && (tstep == stop_flag + 10)) MPI_Abort(mpi.comm(),1);
         // --------------------------------------------------------------------------------------------------------------
         // Compute the jump in flux across the interface to use to advance the LSF (if solving Stefan:
         // --------------------------------------------------------------------------------------------------------------
@@ -5158,7 +5087,7 @@ int main(int argc, char** argv) {
               criteria.push_back(0.5);
             }
             if(refine_by_nondim_gradT){
-                gradT_threshold = 5.e-3;
+                gradT_threshold = 2.e-3;
                 // Coarsening instructions: (for dT/dx)
                 compare_opn.push_back(LESS_THAN);
 //                diag_opn.push_back(ABSOLUTE);
@@ -5445,7 +5374,7 @@ int main(int argc, char** argv) {
                 }
               do_backtrace(T_l_n,T_l_nm1,T_l_backtrace,v_n,p4est_np1,nodes_np1,ngbd_np1,p4est,nodes,ngbd, T_l_backtrace_nm1,v_nm1,interp_bw_grids,phi,fich_log);
 
-              if(true){
+              if(false){
                   PetscPrintf(mpi.comm(),"\n Checking temperature values for backtrace: \n ["
                                          "\n for n: ");
                   PetscFPrintf(mpi.comm(),fich_log,"\n Checking temperature values for backtrace: \n ["
@@ -5453,7 +5382,7 @@ int main(int argc, char** argv) {
 
                   check_T_values(phi,T_l_backtrace,nodes_np1,p4est_np1, example_,phi_cylinder,true,false,false,fich_log);
                 }
-              if(advection_sl_order ==2 ){
+              if( false && advection_sl_order ==2 ){
                   PetscPrintf(mpi.comm(),"\n for nm1: ");
                   PetscFPrintf(mpi.comm(),fich_log,"\n for nm1: ");
 
@@ -5530,10 +5459,13 @@ int main(int argc, char** argv) {
               solver_Ts->set_diag(1./dt);
             }
 
-          solver_Tl->set_mu(alpha_l);
+          if(solve_navier_stokes) solver_Tl->set_mu(1./Pe);
+          else solver_Tl->set_mu(alpha_l);
+
           solver_Tl->set_rhs(rhs_Tl.vec);
 
-          solver_Ts->set_mu(alpha_s);
+          if(solve_navier_stokes) solver_Ts->set_mu(1./Pe);
+          else solver_Ts->set_mu(alpha_s);
           solver_Ts->set_rhs(rhs_Ts.vec);
 
           // Set some other solver properties:
@@ -5661,7 +5593,7 @@ int main(int argc, char** argv) {
 
               PetscPrintf(mpi.comm(),"CFL: %0.2f \n, rho : %0.2f, mu : %0.3e \n",cfl,rho_l,mu_l);
 
-              ns->set_parameters(mu_l,rho_l,NS_advection_sl_order,NULL,NULL,cfl);
+              ns->set_parameters((1./Re),1.0,NS_advection_sl_order,NULL,NULL,cfl);
               ns->set_velocities(v_nm1_NS.vec,v_n_NS.vec);
             }
 
@@ -5878,11 +5810,11 @@ int main(int argc, char** argv) {
             PetscPrintf(mpi.comm(),"Max NS velocity norm info: \n"
                                    " - Computational value: %0.3e \n"
                                    " - Physical value: %0.3e [m/s] \n"
-                                   " - Physical value: %0.3e [cm/s] \n \n",NS_norm,NS_norm/scaling,NS_norm/scaling*100.);
+                                   " - Physical value: %0.3e [mm/s] \n \n",NS_norm,NS_norm*u_inf,NS_norm*u_inf*1000.);
             PetscFPrintf(mpi.comm(),fich_log,"Max NS velocity norm info: \n"
                                    " - Computational value: %0.3e \n"
                                    " - Physical value: %0.3e [m/s] \n"
-                                   " - Physical value: %0.3e [cm/s] \n \n",NS_norm,NS_norm/scaling,NS_norm/scaling*100.);
+                                   " - Physical value: %0.3e [mm/s] \n \n",NS_norm,NS_norm*u_inf,NS_norm*u_inf*1000.);
 
             // Stop simulation if things are blowing up
             if(ns->get_max_L2_norm_u()>100.0){
