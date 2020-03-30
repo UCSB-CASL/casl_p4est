@@ -14,8 +14,8 @@
 
 const double xyz_m[P4EST_DIM]         = {DIM(-1.25, -1.25, -1.25)};
 const double xyz_M[P4EST_DIM]         = {DIM(+1.25, +1.25, +1.25)};
-const unsigned int default_lmin       = 7;
-const unsigned int default_lmax       = 7;
+const unsigned int default_lmin       = 5;
+const unsigned int default_lmax       = 5;
 const double default_r0               = 0.5;
 const double default_thresh           = 1000000000000000000.00;
 const double default_unif_m_to_r      = 0.15;
@@ -25,8 +25,8 @@ const int default_ny                  = 1;
 #ifdef P4_TO_P8
 const int default_nz                  = 1;
 #endif
-const double default_duration         = 50.0;
-const unsigned int default_sl_order   = 2;
+const double default_duration         = 250.0;
+const unsigned int default_sl_order   = 1;
 const double default_cfl              = 1.0;
 const double default_vtk_dt           = 0.25;
 const std::string default_export_dir_root = "/home/regan/workspace/projects/two_phase_flow/static_bubble_" + std::to_string(P4EST_DIM) + "d";
@@ -413,11 +413,6 @@ int main (int argc, char* argv[])
   int iter = 0, iter_vtk = -1;
   double tn = tstart;
 
-  CF_DIM *zero_jump_mu_grad_v[P4EST_DIM][P4EST_DIM];
-  for (int dd = 0; dd < P4EST_DIM; ++dd)
-    for (int kk = 0; kk < P4EST_DIM; ++kk)
-      zero_jump_mu_grad_v[dd][kk] = &zero_cf;
-
   double max_velocity = 0.0;
 
   parStopWatch w;
@@ -438,19 +433,11 @@ int main (int argc, char* argv[])
       }
     }
 
-
-//    if(!no_advection || iter == 0)
-//    {
-//      two_phase_flow_solver->set_jump_mu_grad_v(zero_jump_mu_grad_v);
-      two_phase_flow_solver->compute_viscosity_jumps();
-      two_phase_flow_solver->compute_jumps_hodge();
-//    }
+    two_phase_flow_solver->compute_viscosity_jumps();
+    two_phase_flow_solver->compute_jumps_hodge();
 
     if(!no_advection)
-    {
-//    two_phase_flow_solver->solve_viscosity_explicit();
       two_phase_flow_solver->solve_viscosity();
-    }
     else
       two_phase_flow_solver->solve_diffusion_viscosity();
 

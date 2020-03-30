@@ -588,8 +588,8 @@ void my_p4est_two_phase_flows_t::compute_normals_curvature_and_second_derivative
   compute_curvature();
   normalize_normals();
 
-//  my_p4est_level_set_t ls(fine_ngbd_n);
-//  ls.extend_from_interface_to_whole_domain_TVD_in_place(fine_phi, fine_curvature);
+  my_p4est_level_set_t ls(fine_ngbd_n);
+  ls.extend_from_interface_to_whole_domain_TVD_in_place(fine_phi, fine_curvature);
 }
 
 void my_p4est_two_phase_flows_t::compute_curvature()
