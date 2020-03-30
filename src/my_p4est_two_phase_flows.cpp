@@ -1313,6 +1313,8 @@ void my_p4est_two_phase_flows_t::do_semi_lagrangian_backtracing_from_faces_if_ne
       interp_nm1_p.set_input(vnm1_nodes_p, vnm1_nodes_p_xxyyzz, quadratic, P4EST_DIM);
       interp_nm1_m.interpolate(backtraced_vnm1_faces[dir].data(), dir);
       interp_nm1_p.interpolate(backtraced_vnm1_faces[dir].data(), dir);
+      interp_nm1_m.clear();
+      interp_nm1_p.clear();
     }
     backtraced_vn_faces[dir].resize(faces_n->num_local[dir]);
     interp_n_m.set_input(vn_nodes_m, vn_nodes_m_xxyyzz, quadratic, P4EST_DIM);
@@ -1379,7 +1381,6 @@ void my_p4est_two_phase_flows_t::jump_face_solver::solve(Vec solution[P4EST_DIM]
   {
     /* assemble the linear system if required, and initialize the Krylov solver and its preconditioner based on that*/
     setup_linear_system(dir);
-
     setup_linear_solver(dir, use_nonzero_initial_guess, ksp_type, pc_type);
 
     /* solve the system */
@@ -1479,7 +1480,7 @@ void my_p4est_two_phase_flows_t::jump_face_solver::preallocate_matrix(const unsi
   PetscInt num_owned_local  = (PetscInt) env->faces_n->num_local[dir];
   PetscInt num_owned_global = (PetscInt) env->faces_n->proc_offset[dir][env->p4est_n->mpisize];
 
-  if(matrix[dir]!=NULL){
+  if(matrix[dir] != NULL){
     ierr = MatDestroy(matrix[dir]); CHKERRXX(ierr); }
 
   /* set up the matrix */

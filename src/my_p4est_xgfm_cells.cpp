@@ -2585,9 +2585,9 @@ void my_p4est_xgfm_cells_t::get_flux_components_and_subtract_them_from_velocitie
   if(!solution_is_set)
     solve();
 
-  P4EST_ASSERT(solution_is_set && (solution != NULL));
+  P4EST_ASSERT(solution_is_set && solution != NULL);
   P4EST_ASSERT((vstar == NULL && vnp1_minus == NULL && vnp1_plus == NULL) || (vstar != NULL && vnp1_minus != NULL && vnp1_plus != NULL));
-  bool velocities_are_defined = ((vstar != NULL) && (vnp1_minus != NULL) && (vnp1_plus != NULL));
+  bool velocities_are_defined = (vstar != NULL && vnp1_minus != NULL && vnp1_plus != NULL);
 
   const double *vstar_read_p[P4EST_DIM], *phi_read_p, *solution_read_p, *jump_u_read_p, *jump_mu_grad_u_read_p, *phi_xxyyzz_read_p;
   double *vnp1_plus_p[P4EST_DIM], *vnp1_minus_p[P4EST_DIM], *flux_p[P4EST_DIM];
@@ -2627,10 +2627,10 @@ void my_p4est_xgfm_cells_t::get_flux_components_and_subtract_them_from_velocitie
     for (size_t q = 0; q < tree->quadrants.elem_count; ++q) {
       p4est_quadrant_t* quad  = p4est_quadrant_array_index(&tree->quadrants, q);
       p4est_locidx_t quad_idx = q + tree->quadrants_offset;
-      qxyz_quad[0] = quad->x + P4EST_QUADRANT_LEN(quad->level+1); cell_dxyz[0] = tree_dimensions[0]*((double) P4EST_QUADRANT_LEN(quad->level)/((double) P4EST_ROOT_LEN)); cell_volume  = cell_dxyz[0];
-      qxyz_quad[1] = quad->y + P4EST_QUADRANT_LEN(quad->level+1); cell_dxyz[1] = tree_dimensions[1]*((double) P4EST_QUADRANT_LEN(quad->level)/((double) P4EST_ROOT_LEN)); cell_volume *= cell_dxyz[1];
+      qxyz_quad[0] = quad->x + P4EST_QUADRANT_LEN(quad->level + 1); cell_dxyz[0] = tree_dimensions[0]*((double) P4EST_QUADRANT_LEN(quad->level)/((double) P4EST_ROOT_LEN)); cell_volume  = cell_dxyz[0];
+      qxyz_quad[1] = quad->y + P4EST_QUADRANT_LEN(quad->level + 1); cell_dxyz[1] = tree_dimensions[1]*((double) P4EST_QUADRANT_LEN(quad->level)/((double) P4EST_ROOT_LEN)); cell_volume *= cell_dxyz[1];
 #ifdef P4_TO_P8
-      qxyz_quad[2] = quad->z + P4EST_QUADRANT_LEN(quad->level+1); cell_dxyz[2] = tree_dimensions[2]*((double) P4EST_QUADRANT_LEN(quad->level)/((double) P4EST_ROOT_LEN)); cell_volume *= cell_dxyz[2];
+      qxyz_quad[2] = quad->z + P4EST_QUADRANT_LEN(quad->level + 1); cell_dxyz[2] = tree_dimensions[2]*((double) P4EST_QUADRANT_LEN(quad->level)/((double) P4EST_ROOT_LEN)); cell_volume *= cell_dxyz[2];
 #endif
       bool is_quad_a_fine_node = multilinear_interpolation_weights(nxyz_tree_quad, qxyz_quad, local_fine_indices_for_quad_interp, quad_interp_weights);
       double phi_q = phi_read_p[local_fine_indices_for_quad_interp[0]]*quad_interp_weights[0];
@@ -2639,11 +2639,11 @@ void my_p4est_xgfm_cells_t::get_flux_components_and_subtract_them_from_velocitie
 
       for (unsigned char dir = 0; dir < P4EST_FACES; ++dir) {
         p4est_locidx_t face_idx = faces->q2f(quad_idx, dir);
-        if ((face_idx >= faces->num_local[dir/2]) || ((face_idx != NO_VELOCITY) && (visited_faces[dir/2][face_idx])))
+        if (face_idx >= faces->num_local[dir/2] || (face_idx != NO_VELOCITY && visited_faces[dir/2][face_idx]))
           continue;
 
         for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
-          qxyz_face[dim] = qxyz_quad[dim] + (dim == dir/2 ? ((dir%2 == 1 ? 1 : -1)*P4EST_QUADRANT_LEN(quad->level+1)) : 0);
+          qxyz_face[dim] = qxyz_quad[dim] + (dim == dir/2 ? ((dir%2 == 1 ? 1 : -1)*P4EST_QUADRANT_LEN(quad->level + 1)) : 0);
         bool is_face_a_fine_node = multilinear_interpolation_weights(nxyz_tree_quad, qxyz_face, local_fine_indices_for_face_interp, face_interp_weights);
         double phi_face = phi_read_p[local_fine_indices_for_face_interp[0]]*face_interp_weights[0];
         for (unsigned char ccc = 1; ccc < (is_face_a_fine_node ? 0 : P4EST_CHILDREN); ++ccc)
@@ -2654,11 +2654,11 @@ void my_p4est_xgfm_cells_t::get_flux_components_and_subtract_them_from_velocitie
           for (unsigned char dim = 0; dim < P4EST_DIM; ++dim)
             face_xyz[dim] = xyz_min[dim] + tree_dimensions[dim]*((double) nxyz_tree_quad[dim]+ ((double) qxyz_face[dim])/((double) P4EST_ROOT_LEN));
 #ifdef CASL_THROWS
-          int is_wall_cell_crossed = ((phi_q > 0.0)  && (phi_face <= 0.0)) || ((phi_q <= 0.0) && (phi_face >  0.0));
+          int is_wall_cell_crossed = (phi_q > 0.0  && phi_face <= 0.0) || (phi_q <= 0.0 && phi_face >  0.0);
           if(is_wall_cell_crossed)
             throw std::invalid_argument("my_p4est_xgfm_cells_t::get_flux_components_and_subtract_them_from_velocities(): a wall-cell is crossed by the interface...");
 #endif
-          double mu_face   = (phi_face > 0.0 ? mu_p(quad_idx): mu_m(quad_idx));
+          double mu_face   = (phi_face > 0.0 ? mu_p(quad_idx) : mu_m(quad_idx));
           double val_wall  = bc->wallValue(face_xyz);
           switch(bc->wallType(face_xyz))
           {
@@ -2702,10 +2702,10 @@ void my_p4est_xgfm_cells_t::get_flux_components_and_subtract_them_from_velocitie
             P4EST_ASSERT(fabs(rel_top_idx - floor(rel_top_idx)) < EPS);
             nxyz_tree_tmp[dim] = ((p4est_topidx_t) floor(rel_top_idx));
           }
-          qxyz_tmp[0] = ngbd.begin()->x + P4EST_QUADRANT_LEN(ngbd.begin()->level+1);
-          qxyz_tmp[1] = ngbd.begin()->y + P4EST_QUADRANT_LEN(ngbd.begin()->level+1);
+          qxyz_tmp[0] = ngbd.begin()->x + P4EST_QUADRANT_LEN(ngbd.begin()->level + 1);
+          qxyz_tmp[1] = ngbd.begin()->y + P4EST_QUADRANT_LEN(ngbd.begin()->level + 1);
 #ifdef P4_TO_P8
-          qxyz_tmp[2] = ngbd.begin()->z + P4EST_QUADRANT_LEN(ngbd.begin()->level+1);
+          qxyz_tmp[2] = ngbd.begin()->z + P4EST_QUADRANT_LEN(ngbd.begin()->level + 1);
 #endif
           bool is_tmp_a_fine_node = multilinear_interpolation_weights(nxyz_tree_tmp, qxyz_tmp, local_fine_indices_for_tmp_interp, tmp_interp_weights);
           double phi_tmp = phi_read_p[local_fine_indices_for_tmp_interp[0]]*tmp_interp_weights[0];
@@ -2714,14 +2714,13 @@ void my_p4est_xgfm_cells_t::get_flux_components_and_subtract_them_from_velocitie
 
           /* If interface across the two cells.
            * We assume that the interface is tesselated with uniform finest grid level */
-          if(((phi_q > 0.0) && (phi_face <= 0.0)) || ((phi_q <= 0.0) && (phi_face > 0.0)) ||
-             ((phi_tmp > 0.0) && (phi_face <= 0.0)) || ((phi_tmp <= 0.0) && (phi_face > 0.0)))
+          if(((phi_q <= 0.0) != (phi_face <= 0.0)) || ((phi_tmp <= 0.0) != (phi_face <= 0.0)))
           {
-            P4EST_ASSERT((quad->level == level_tmp) && (quad->level == ((splitting_criteria_t*)(p4est->user_pointer))->max_lvl));
+            P4EST_ASSERT(quad->level == level_tmp && quad->level == ((splitting_criteria_t*)(p4est->user_pointer))->max_lvl);
             P4EST_ASSERT(!visited_faces[dir/2][face_idx]);
             P4EST_ASSERT(is_quad_a_fine_node && is_tmp_a_fine_node && is_face_a_fine_node);
 
-            if(!(phi_face > 0.0 ? (phi_q <= 0.0 && phi_tmp <= 0.0) : (phi_q > 0.0 && phi_tmp > 0.0))) // not under-resolved
+            if(!((phi_q <= 0.0) == (phi_tmp <= 0.0) && (phi_q <= 0.0) != (phi_face <= 0.0)))// not under-resolved
             {
               const interface_neighbor int_nb = get_interface_neighbor(quad_idx, dir, quad_tmp_idx, local_fine_indices_for_quad_interp[0], local_fine_indices_for_tmp_interp[0], phi_read_p, phi_xxyyzz_read_p);
               P4EST_ASSERT(int_nb.mid_point_fine_node_idx == local_fine_indices_for_face_interp[0]);
@@ -2753,7 +2752,6 @@ void my_p4est_xgfm_cells_t::get_flux_components_and_subtract_them_from_velocitie
                 num_visited_faces[dir/2]++;
               }
             }
-
             else
             {
               P4EST_ASSERT(phi_face > 0.0 ? (phi_q <= 0.0 && phi_tmp <= 0.0) : (phi_q > 0.0 && phi_tmp > 0.0));
@@ -2761,6 +2759,7 @@ void my_p4est_xgfm_cells_t::get_flux_components_and_subtract_them_from_velocitie
               visited_faces[dir/2][face_idx] = true;
               num_visited_faces[dir/2]++;
             }
+
             if(velocities_are_defined)
             {
               if(phi_face > 0.0)

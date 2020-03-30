@@ -277,9 +277,9 @@ private:
     {
       PetscErrorCode ierr;
       for (unsigned char dim = 0; dim < P4EST_DIM; ++dim) {
-        if(matrix[dim] != NULL) { ierr = MatDestroy(matrix[dim]);                     CHKERRXX(ierr); matrix[dim]           = NULL; }
-        if(ksp[dim] != NULL)    { ierr = KSPDestroy(ksp[dim]);                        CHKERRXX(ierr); ksp[dim]              = NULL; }
-        if(rhs[dim] != NULL)    { ierr = VecDestroy(rhs[dim]);                        CHKERRXX(ierr); rhs[dim]              = NULL; }
+        if(matrix[dim] != NULL) { ierr = MatDestroy(matrix[dim]); CHKERRXX(ierr); matrix[dim] = NULL; }
+        if(ksp[dim] != NULL)    { ierr = KSPDestroy(ksp[dim]);    CHKERRXX(ierr); ksp[dim]    = NULL; }
+        if(rhs[dim] != NULL)    { ierr = VecDestroy(rhs[dim]);    CHKERRXX(ierr); rhs[dim]    = NULL; }
       }
     }
 

@@ -815,14 +815,14 @@ int main (int argc, char* argv[])
         faces_comp->xyz_fr_f(face_idx, dir, xyz_face);
         switch (dir) {
         case dir::x:
-          vnm1_faces_dir_p[face_idx] = ((level_set(xyz_face) <= 0.0)? exact_solution.u_minus(xyz_face) : exact_solution.u_plus(xyz_face));
+          vnm1_faces_dir_p[face_idx] = (level_set(xyz_face) <= 0.0 ? exact_solution.u_minus(xyz_face) : exact_solution.u_plus(xyz_face));
           break;
         case dir::y:
-          vnm1_faces_dir_p[face_idx] = ((level_set(xyz_face) <= 0.0)? exact_solution.v_minus(xyz_face) : exact_solution.v_plus(xyz_face));
+          vnm1_faces_dir_p[face_idx] = (level_set(xyz_face) <= 0.0 ? exact_solution.v_minus(xyz_face) : exact_solution.v_plus(xyz_face));
           break;
   #ifdef P4_TO_P8
         case dir::z:
-          vnm1_faces_dir_p[face_idx] = ((level_set(xyz_face) <= 0.0)? exact_solution.w_minus(xyz_face) : exact_solution.w_plus(xyz_face));
+          vnm1_faces_dir_p[face_idx] = (level_set(xyz_face) <= 0.0 ? exact_solution.w_minus(xyz_face) : exact_solution.w_plus(xyz_face));
           break;
   #endif
         default:
@@ -842,14 +842,14 @@ int main (int argc, char* argv[])
         faces_comp->xyz_fr_f(face_idx, dir, xyz_face);
         switch (dir) {
         case dir::x:
-          vn_faces_dir_p[face_idx] = ((level_set(xyz_face) <= 0.0)? exact_solution.u_minus(xyz_face) : exact_solution.u_plus(xyz_face));
+          vn_faces_dir_p[face_idx] = (level_set(xyz_face) <= 0.0 ? exact_solution.u_minus(xyz_face) : exact_solution.u_plus(xyz_face));
           break;
         case dir::y:
-          vn_faces_dir_p[face_idx] = ((level_set(xyz_face) <= 0.0)? exact_solution.v_minus(xyz_face) : exact_solution.v_plus(xyz_face));
+          vn_faces_dir_p[face_idx] = (level_set(xyz_face) <= 0.0 ? exact_solution.v_minus(xyz_face) : exact_solution.v_plus(xyz_face));
           break;
   #ifdef P4_TO_P8
         case dir::z:
-          vn_faces_dir_p[face_idx] = ((level_set(xyz_face) <= 0.0)? exact_solution.w_minus(xyz_face) : exact_solution.w_plus(xyz_face));
+          vn_faces_dir_p[face_idx] = (level_set(xyz_face) <= 0.0 ? exact_solution.w_minus(xyz_face) : exact_solution.w_plus(xyz_face));
           break;
   #endif
         default:
@@ -923,7 +923,7 @@ int main (int argc, char* argv[])
 
     // error measurement stuff
     Vec error_at_faces_minus[P4EST_DIM] = {DIM(NULL, NULL, NULL)};
-    Vec error_at_faces_plus[P4EST_DIM] = {DIM(NULL, NULL, NULL)};
+    Vec error_at_faces_plus[P4EST_DIM]  = {DIM(NULL, NULL, NULL)};
     double *error_at_faces_minus_p[P4EST_DIM], *error_at_faces_plus_p[P4EST_DIM];
     for (unsigned char dir = 0; dir < P4EST_DIM; ++dir) {
       ierr = VecCreateGhostFaces(p4est_comp, faces_comp, &error_at_faces_minus[dir], dir); CHKERRXX(ierr);
@@ -999,24 +999,24 @@ int main (int argc, char* argv[])
           ierr = VecGhostUpdateEnd(error_at_faces_plus[dir],    INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
           for (size_t k = 0; k < ngbd_comp->get_layer_size(); ++k) {
             p4est_locidx_t node_idx = ngbd_comp->get_layer_node(k);
-            error_at_node_minus_p[dir][node_idx] = interpolate_velocity_at_node_n(p4est_comp, ghost_comp, nodes_comp, faces_comp, ngbd_c, ngbd_comp, node_idx, error_at_faces_minus[dir], dir);
-            error_at_node_plus_p[dir][node_idx] = interpolate_velocity_at_node_n(p4est_comp, ghost_comp, nodes_comp, faces_comp, ngbd_c, ngbd_comp, node_idx, error_at_faces_plus[dir], dir);
+            error_at_node_minus_p[dir][node_idx] = interpolate_velocity_at_node_n(faces_comp, ngbd_comp, node_idx, error_at_faces_minus[dir], dir);
+            error_at_node_plus_p[dir][node_idx] = interpolate_velocity_at_node_n(faces_comp, ngbd_comp, node_idx, error_at_faces_plus[dir], dir);
             double xyz_node[P4EST_DIM]; node_xyz_fr_n(node_idx, p4est_comp, nodes_comp, xyz_node);
             if(dir == 0)
             {
-              exact_solution_minus_p[P4EST_DIM*node_idx + dir] = exact_solution.u_minus(xyz_node);
-              exact_solution_plus_p[P4EST_DIM*node_idx + dir] = exact_solution.u_plus(xyz_node);
+              exact_solution_minus_p[P4EST_DIM*node_idx + dir]  = exact_solution.u_minus(xyz_node);
+              exact_solution_plus_p[P4EST_DIM*node_idx + dir]   = exact_solution.u_plus(xyz_node);
             }
             else if(dir == 1)
             {
-              exact_solution_minus_p[P4EST_DIM*node_idx + dir] = exact_solution.v_minus(xyz_node);
-              exact_solution_plus_p[P4EST_DIM*node_idx + dir] = exact_solution.v_plus(xyz_node);
+              exact_solution_minus_p[P4EST_DIM*node_idx + dir]  = exact_solution.v_minus(xyz_node);
+              exact_solution_plus_p[P4EST_DIM*node_idx + dir]   = exact_solution.v_plus(xyz_node);
             }
 #ifdef P4_TO_P8
             else
             {
-              exact_solution_minus_p[P4EST_DIM*node_idx + dir] = exact_solution.w_minus(xyz_node);
-              exact_solution_plus_p[P4EST_DIM*node_idx + dir] = exact_solution.w_plus(xyz_node);
+              exact_solution_minus_p[P4EST_DIM*node_idx + dir]  = exact_solution.w_minus(xyz_node);
+              exact_solution_plus_p[P4EST_DIM*node_idx + dir]   = exact_solution.w_plus(xyz_node);
             }
 #endif
           }
@@ -1024,8 +1024,8 @@ int main (int argc, char* argv[])
           ierr = VecGhostUpdateBegin(error_at_node_plus[dir],   INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
           for (size_t k = 0; k < ngbd_comp->get_local_size(); ++k) {
             p4est_locidx_t node_idx = ngbd_comp->get_local_node(k);
-            error_at_node_minus_p[dir][node_idx] = interpolate_velocity_at_node_n(p4est_comp, ghost_comp, nodes_comp, faces_comp, ngbd_c, ngbd_comp, node_idx, error_at_faces_minus[dir], dir);
-            error_at_node_plus_p[dir][node_idx] = interpolate_velocity_at_node_n(p4est_comp, ghost_comp, nodes_comp, faces_comp, ngbd_c, ngbd_comp, node_idx, error_at_faces_plus[dir], dir);
+            error_at_node_minus_p[dir][node_idx] = interpolate_velocity_at_node_n(faces_comp, ngbd_comp, node_idx, error_at_faces_minus[dir], dir);
+            error_at_node_plus_p[dir][node_idx] = interpolate_velocity_at_node_n(faces_comp, ngbd_comp, node_idx, error_at_faces_plus[dir], dir);
             double xyz_node[P4EST_DIM]; node_xyz_fr_n(node_idx, p4est_comp, nodes_comp, xyz_node);
             if(dir == 0)
             {
@@ -1052,7 +1052,6 @@ int main (int argc, char* argv[])
         ierr = VecGhostUpdateBegin(exact_solution_plus,   INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
         ierr = VecGhostUpdateEnd(exact_solution_minus,    INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
         ierr = VecGhostUpdateEnd(exact_solution_plus,     INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-
         my_p4est_vtk_write_all_general(p4est_comp, nodes_comp, ghost_comp,
                                        P4EST_TRUE, P4EST_TRUE,
                                        1, 2, 2, 0, 0, 0, (export_dir + "/illustration_" + to_string(iter_vtk)).c_str(),

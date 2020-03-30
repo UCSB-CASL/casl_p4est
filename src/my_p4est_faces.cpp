@@ -917,15 +917,18 @@ double interpolate_velocity_at_node_n(my_p4est_faces_t *faces, my_p4est_node_nei
   double *velocity_component_p;
   ierr = VecGetArray(velocity_component, &velocity_component_p); CHKERRXX(ierr);
 
-
   if(interpolator_from_faces != NULL)
     interpolator_from_faces->resize(0);
   matrix_t A;
-  char neumann_wall[P4EST_DIM]          = {DIM(0, 0, 0)};
+  char neumann_wall[P4EST_DIM] = {DIM(0, 0, 0)};
+  unsigned char nb_neumann_walls = 0;
   if(order >= 1 && bc != NULL && bc[dir].wallType(xyz) == NEUMANN)
     for (unsigned char dd = 0; dd < P4EST_DIM; ++dd)
-      neumann_wall[dir] = (is_node_Wall(p4est, node, 2*dd) ? -1 : (is_node_Wall(p4est, node, 2*dd + 1) ? +1 : 0));
-  A.resize(face_ngbd.size(), 1 + (order >= 1 ? P4EST_DIM - SUMD(abs(neumann_wall[0]), abs(neumann_wall[1]), abs(neumann_wall[2])) : 0) + (order >= 2 ? P4EST_DIM*(P4EST_DIM + 1)/2 : 0));
+    {
+      neumann_wall[dd] = (is_node_Wall(p4est, node, 2*dd) ? -1 : (is_node_Wall(p4est, node, 2*dd + 1) ? +1 : 0));
+      nb_neumann_walls += abs(neumann_wall[dd]);
+    }
+  A.resize(face_ngbd.size(), 1 + (order >= 1 ? P4EST_DIM - nb_neumann_walls : 0) + (order >= 2 ? P4EST_DIM*(P4EST_DIM + 1)/2 : 0));
   vector<double> p(face_ngbd.size());
   std::set<int64_t> nb[P4EST_DIM];
 
@@ -965,15 +968,16 @@ double interpolate_velocity_at_node_n(my_p4est_faces_t *faces, my_p4est_node_nei
           if(neumann_wall[comp] == 0)
             A.set_value(row_idx, col_idx++, xyz_t[comp]*w); // linear terms, first partial derivatives
       }
+      P4EST_ASSERT(col_idx == 1 + (order >= 1 ? P4EST_DIM - nb_neumann_walls : 0));
       if(order >= 2)
       {
         for (unsigned char comp_1 = 0; comp_1 < P4EST_DIM; ++comp_1)
           for (unsigned char comp_2 = comp_1; comp_2 < P4EST_DIM; ++comp_2)
             A.set_value(row_idx, col_idx++, xyz_t[comp_1]*xyz_t[comp_2]*w); // quadratic terms, second (possibly crossed) partial derivatives
       }
-      P4EST_ASSERT(col_idx == 1 + (order >= 1 ? P4EST_DIM - SUMD(abs(neumann_wall[0]), abs(neumann_wall[1]), abs(neumann_wall[2])) : 0) + (order >= 2 ? P4EST_DIM*(P4EST_DIM + 1)/2 : 0));
+      P4EST_ASSERT(col_idx == 1 + (order >= 1 ? P4EST_DIM - nb_neumann_walls : 0) + (order >= 2 ? P4EST_DIM*(P4EST_DIM + 1)/2 : 0));
 
-      const double neumann_term = (order >= 1 ? SUMD(neumann_wall[0]*bc[dir].wallValue(xyz)*xyz_t[0]*scaling, neumann_wall[1]*bc[dir].wallValue(xyz)*xyz_t[1]*scaling, neumann_wall[2]*bc[dir].wallValue(xyz)*xyz_t[2]*scaling) : 0.0);
+      const double neumann_term = (order >= 1 && nb_neumann_walls > 0 ? SUMD(neumann_wall[0]*bc[dir].wallValue(xyz)*xyz_t[0]*scaling, neumann_wall[1]*bc[dir].wallValue(xyz)*xyz_t[1]*scaling, neumann_wall[2]*bc[dir].wallValue(xyz)*xyz_t[2]*scaling) : 0.0);
       p[row_idx] = (velocity_component_p[neighbor_face.face_idx] - neumann_term) * w;
 
       if(interpolator_from_faces != NULL)

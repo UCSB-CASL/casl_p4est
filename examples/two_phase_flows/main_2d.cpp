@@ -1,16 +1,3 @@
-// System
-#include <mpi.h>
-#include <stdexcept>
-#include <iostream>
-#include <sys/stat.h>
-#include <vector>
-#include <algorithm>
-#include <iterator>
-#include <set>
-#include <time.h>
-#include <stdio.h>
-#include <stdlib.h>
-
 // p4est Library
 #ifdef P4_TO_P8
 #include <src/my_p8est_two_phase_flows.h>
@@ -20,34 +7,46 @@
 #include <src/my_p4est_vtk.h>
 #endif
 
-
 #include <src/Parser.h>
 
 #undef MIN
 #undef MAX
 
-using namespace std;
 
-const double xmin = -1.25;
-const double xmax = +1.25;
-const double ymin = -1.25;
-const double ymax = +1.25;
+const double xyz_m[P4EST_DIM]         = {DIM(-1.25, -1.25, -1.25)};
+const double xyz_M[P4EST_DIM]         = {DIM(+1.25, +1.25, +1.25)};
+const unsigned int default_lmin       = 5;
+const unsigned int default_lmax       = 5;
+const double default_r0               = 0.5;
+const double default_thresh           = 1000000000000000000.00;
+const double default_unif_m_to_r      = 0.15;
+const double default_unif_p_to_r      = 0.15;
+const int default_nx                  = 1;
+const int default_ny                  = 1;
 #ifdef P4_TO_P8
-const double zmin = -1.25;
-const double zmax = +1.25;
+const int default_nz                  = 1;
 #endif
+const double default_duration         = 250;
+const unsigned int default_sl_order   = 2;
+const double default_cfl              = 250;
+const double default_vtk_dt           = 1.0;
+const std::string default_export_dir_root = "/home/regan/workspace/projects/two_phase_flow/static_bubble_" + std::to_string(P4EST_DIM) + "d";
+const double default_rho_m            = 1.0;
+const double default_rho_p            = 1.0;
+const double default_mu_m             = 1.0/12000.0;
+const double default_mu_p             = 1.0/12000.0;
+const double default_surf_tension     = 1.0/12000.0;
 
-
-const double r0   = 0.5;
 
 class LEVEL_SET: public CF_DIM {
+  const double radius;
 public:
-  LEVEL_SET() { lip = 1.2; }
+  LEVEL_SET(const double rad_) : radius(rad_) { lip = 1.2; }
   double operator()(DIM(double x, double y, double z)) const
   {
-    return r0 - sqrt(SUMD(SQR(x - 0.5*(xmax + xmin)), SQR(y - 0.5*(ymax + ymin)), SQR(z - 0.5*(zmax + zmin))));
+    return radius - sqrt(SUMD(SQR(x - 0.5*(xyz_m[0] + xyz_M[0])), SQR(y - 0.5*(xyz_m[1] + xyz_M[1])), SQR(z - 0.5*(xyz_m[2] + xyz_M[2]))));
   }
-} level_set;
+};
 
 struct BCWALLTYPE_P : WallBCDIM {
   BoundaryConditionType operator()(DIM(double, double, double)) const
@@ -195,50 +194,71 @@ int main (int argc, char* argv[])
   mpi.init(argc, argv);
 
   cmdParser cmd;// computational grid parameters
-  cmd.add_option("lmin", "min level of the trees, default is 2");
-  cmd.add_option("lmax", "max level of the trees, default is 5");
-  cmd.add_option("thresh", "the threshold used for the refinement criteria, default is 0.1");
-  cmd.add_option("uniform_band", "size of the uniform band around the interface, in number of dx (a minimum of 2 is strictly enforced)");
-  cmd.add_option("nx", "number of trees in the x-direction. The default value is 1 (length of domain is 1)");
-  cmd.add_option("ny", "number of trees in the y-direction. The default value is 1 (height of domain is 1)");
+  cmd.add_option("lmin",  "min level of the trees, default is " + std::to_string(default_lmin));
+  cmd.add_option("lmax",  "max level of the trees, default is " + std::to_string(default_lmax));
+  cmd.add_option("r0",    "original radius of the bubble " + std::to_string(default_r0));
+  cmd.add_option("thresh", "the threshold used for the refinement criteria, default is " + std::to_string(default_thresh));
+  cmd.add_option("uniform_band_m", "size of the uniform band in negative domain around the interface, in number of dx (default ensures a layer of " + std::to_string(default_unif_m_to_r) + " of the initial bubble");
+  cmd.add_option("uniform_band_p", "size of the uniform band in positive domain around the interface, in number of dx (default ensures a layer of " + std::to_string(default_unif_p_to_r) + " of the initial bubble");
+  cmd.add_option("nx", "number of trees in the x-direction. The default value is " + std::to_string(default_nx) + " (length of domain is 2.5)");
+  cmd.add_option("ny", "number of trees in the y-direction. The default value is " + std::to_string(default_ny) + " (height of domain is 2.5)");
 #ifdef P4_TO_P8
-  cmd.add_option("nz", "number of trees in the z-direction. The default value is 1 (width of domain is 1)");
+  cmd.add_option("nz", "number of trees in the z-direction. The default value is " + std::to_string(default_nz) + " (width of domain is 2.5)");
 #endif
   // physical parameters for the simulations
-  cmd.add_option("duration", "the duration of the simulation (tfinal-tstart). If not restarted, tstart = 0.0, default duration is 20.");
+  cmd.add_option("duration", "the duration of the simulation. Default duration is " + std::to_string(default_duration));
+  cmd.add_option("rho_m", "mass density of fluid in negative domain. Default is " + std::to_string(default_rho_m));
+  cmd.add_option("rho_p", "mass density of fluid in positive domain. Default is " + std::to_string(default_rho_p));
+  cmd.add_option("mu_m", "shear viscosity of the fluid in the negative domain. Default is " + std::to_string(default_mu_m));
+  cmd.add_option("mu_p", "shear viscosity of the fluid in the positive domain. Default is " + std::to_string(default_mu_p));
+  cmd.add_option("surf_tension", "the surface tension between the two fluids. Default duration is " + std::to_string(default_surf_tension));
   // method-related parameters
-  cmd.add_option("sl_order", "the order for the semi lagrangian, either 1 (stable) or 2 (accurate), default is 2");
-  cmd.add_option("cfl", "dt = cfl * dx/vmax, default is 1.");
+  cmd.add_option("sl_order", "the order for the semi lagrangian, either 1 (stable) or 2 (accurate), default is" + std::to_string(default_sl_order));
+  cmd.add_option("cfl", "dt = cfl * dx/vmax, default is " + std::to_string(default_cfl));
   // output-control parameters
-  cmd.add_option("vtk_dt", "vtk_dt = time_step between two vtk exportation, default is 1.");
+  cmd.add_option("no_save_vtk", "deactivates exportation of vtk files if present");
+  cmd.add_option("vtk_dt", "vtk_dt = time_step between two vtk exportation, default is " + std::to_string(default_vtk_dt));
+  cmd.add_option("export_dir_root", "root of the exportation directory, results are stored in subdirectories. Default root is " + default_export_dir_root);
 
-  string extra_info = "";
+  std::string extra_info = "";
   if(cmd.parse(argc, argv, extra_info))
     return 0;
 
   double tstart;
   double dt;
-  int lmin, lmax;
   my_p4est_two_phase_flows_t* two_phase_flow_solver = NULL;
   my_p4est_brick_t* brick                           = NULL;
   splitting_criteria_cf_and_uniform_band_t* data    = NULL;
-  LEVEL_SET level_set;
-
-  int sl_order;
-  double threshold_split_cell, uniform_band_m, uniform_band_p, cfl;
-  int n_tree_xyz [P4EST_DIM];
+  const unsigned int sl_order         = cmd.get<unsigned int>("sl_order", default_sl_order);
+  const double threshold_split_cell   = cmd.get<double>("thresh", default_thresh);;
+  const double r0                     = cmd.get<double>("r0", default_r0);
+  const unsigned int lmin             = cmd.get<unsigned int>("lmin", default_lmin);
+  const unsigned int lmax             = cmd.get<unsigned int>("lmax", default_lmax);
+  const int n_tree_xyz [P4EST_DIM]    = {DIM(cmd.get<int>("nx", default_nx), cmd.get<int>("ny", default_ny), cmd.get<int>("nz", default_nz))};
+  const double tree_dimensions[P4EST_DIM] = {DIM((xyz_M[0] - xyz_m[0])/n_tree_xyz[0], (xyz_M[1] - xyz_m[1])/n_tree_xyz[1], (xyz_M[2] - xyz_m[2])/n_tree_xyz[2])};
+  const double max_tree_dimensions    = MAX(DIM(tree_dimensions[0], tree_dimensions[1], tree_dimensions[2]));
+  const double uniform_band_m         = cmd.get<double>("uniform_band_m", default_unif_m_to_r*r0*(1 << lmax)/max_tree_dimensions);
+  const double uniform_band_p         = cmd.get<double>("uniform_band_p", default_unif_p_to_r*r0*(1 << lmax)/max_tree_dimensions);
+  const double cfl                    = cmd.get<double>("cfl", default_cfl);
+  const double duration               = cmd.get<double>("duration", default_duration);
+  const std::string export_dir_root   = cmd.get<std::string>("export_dir_root", default_export_dir_root);
+  const bool save_vtk                 = !cmd.contains("no_save_vtk");
+  double vtk_dt                       = -1.0;
+  if(save_vtk)
+  {
+    vtk_dt = cmd.get<double>("vtk_dt", default_vtk_dt);
+    if(vtk_dt <= 0.0)
+      throw std::invalid_argument("main_" + std::to_string(P4EST_DIM) + "d.cpp for static bubble: the value of vtk_dt must be strictly positive.");
+  }
+  const double rho_m                  = cmd.get<double>("rho_m", default_rho_m);
+  const double rho_p                  = cmd.get<double>("rho_p", default_rho_p);
+  const double mu_m                   = cmd.get<double>("mu_m", default_mu_m);
+  const double mu_p                   = cmd.get<double>("mu_p", default_mu_p);
+  const double surface_tension        = cmd.get<double>("surf_tension", default_surf_tension);
+  LEVEL_SET level_set(r0);
+  const int periodic[P4EST_DIM]       = {DIM(0, 0, 0)};
 
   PetscErrorCode ierr;
-  const double rho_m  = 1.0;
-  const double rho_p  = 1.0;
-  const double mu_m   = 1.0/12000.0;
-  const double mu_p   = 1.0/12000.0;
-  const double surface_tension = 1.0/12000.0;
-  const double xyz_min [P4EST_DIM]  = { DIM(xmin, ymin, zmin) };
-  const double xyz_max [P4EST_DIM]  = { DIM(xmax, ymax, zmax) };
-  const double duration             = cmd.get<double>("duration", 250);
-  const int periodic[P4EST_DIM]     = { DIM(0, 0, 0) };
-
   BoundaryConditionsDIM bc_v[P4EST_DIM];
   BoundaryConditionsDIM bc_p;
 
@@ -256,34 +276,6 @@ int main (int argc, char* argv[])
 #endif
   CF_DIM *external_forces[P4EST_DIM] = { DIM(&external_force_u, &external_force_v, &external_force_w) };
 
-  lmin                    = cmd.get<int>("lmin", 5);
-  lmax                    = cmd.get<int>("lmax", 8);
-  threshold_split_cell    = cmd.get<double>("thresh", 1000000000000000000.00);
-  n_tree_xyz[0]           = cmd.get<int>("nx", 1);
-  n_tree_xyz[1]           = cmd.get<int>("ny", 1);
-#ifdef P4_TO_P8
-  n_tree_xyz[2]           = cmd.get<int>("nz", 1);
-#endif
-
-  uniform_band_m = uniform_band_p = .15*r0;
-  const double dxmin      = MAX(DIM((xmax - xmin)/(double)n_tree_xyz[0], (ymax - ymin)/(double)n_tree_xyz[1], (zmax - zmin)/(double)n_tree_xyz[2])) / (1<<lmax);
-  uniform_band_m         /= dxmin;
-  uniform_band_p         /= dxmin;
-  uniform_band_m          = cmd.get<double>("uniform_band", uniform_band_m);
-  uniform_band_p          = cmd.get<double>("uniform_band", uniform_band_p);
-  sl_order                = cmd.get<int>("sl_order", 1);
-  cfl                     = cmd.get<double>("cfl", 1.0);
-
-  const string export_dir               = "/home/regan/workspace/projects/two_phase_flow/static_bubble_" + to_string(P4EST_DIM) + "d/mem_leak/lmin_" + to_string(lmin) + "_lmax_" + to_string(lmax);
-  const bool save_vtk                   = true;
-  double vtk_dt                         = -1.0;
-  if(save_vtk)
-  {
-    vtk_dt = cmd.get<double>("vtk_dt", +1.0);
-    if(vtk_dt <= 0.0)
-      throw std::invalid_argument("main_two_phase_flow_" + to_string(P4EST_DIM) + "d.cpp: the value of vtk_dt must be strictly positive.");
-  }
-
 
   p4est_connectivity_t *connectivity;
   if(brick != NULL && brick->nxyz_to_treeid != NULL)
@@ -294,7 +286,7 @@ int main (int argc, char* argv[])
   P4EST_ASSERT(brick == NULL);
   brick = new my_p4est_brick_t;
 
-  connectivity = my_p4est_brick_new(n_tree_xyz, xyz_min, xyz_max, brick, periodic);
+  connectivity = my_p4est_brick_new(n_tree_xyz, xyz_m, xyz_M, brick, periodic);
   if(data != NULL){
     delete data; data = NULL; }
   P4EST_ASSERT(data == NULL);
@@ -303,7 +295,7 @@ int main (int argc, char* argv[])
   p4est_t* p4est_nm1 = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
   p4est_nm1->user_pointer = (void*) data;
 
-  for(int l=0; l<lmax; ++l)
+  for(unsigned int l = 0; l < lmax; ++l)
   {
     my_p4est_refine(p4est_nm1, P4EST_FALSE, refine_levelset_cf_and_uniform_band, NULL);
     my_p4est_partition(p4est_nm1, P4EST_FALSE, NULL);
@@ -314,12 +306,13 @@ int main (int argc, char* argv[])
 
   p4est_ghost_t *ghost_nm1 = my_p4est_ghost_new(p4est_nm1, P4EST_CONNECT_FULL);
   my_p4est_ghost_expand(p4est_nm1, ghost_nm1);
+  if(third_degree_ghost_are_required(tree_dimensions))
+    my_p4est_ghost_expand(p4est_nm1, ghost_nm1);
 
 
   p4est_nodes_t *nodes_nm1 = my_p4est_nodes_new(p4est_nm1, ghost_nm1);
   my_p4est_hierarchy_t *hierarchy_nm1 = new my_p4est_hierarchy_t(p4est_nm1, ghost_nm1, brick);
   my_p4est_node_neighbors_t *ngbd_nm1 = new my_p4est_node_neighbors_t(hierarchy_nm1, nodes_nm1); ngbd_nm1->init_neighbors();
-
 
   /* create the initial forest at time n */
   p4est_t *p4est_n = my_p4est_copy(p4est_nm1, P4EST_FALSE);
@@ -327,6 +320,8 @@ int main (int argc, char* argv[])
 
   p4est_ghost_t *ghost_n = my_p4est_ghost_new(p4est_n, P4EST_CONNECT_FULL);
   my_p4est_ghost_expand(p4est_n, ghost_n);
+  if(third_degree_ghost_are_required(tree_dimensions))
+    my_p4est_ghost_expand(p4est_n, ghost_n);
 
   p4est_nodes_t *nodes_n = my_p4est_nodes_new(p4est_n, ghost_n);
   my_p4est_hierarchy_t *hierarchy_n = new my_p4est_hierarchy_t(p4est_n, ghost_n, brick);
@@ -344,6 +339,8 @@ int main (int argc, char* argv[])
   p4est_refine(p4est_fine, P4EST_FALSE, refine_levelset_cf, NULL);
   p4est_ghost_t* ghost_fine = my_p4est_ghost_new(p4est_fine, P4EST_CONNECT_FULL);
   my_p4est_ghost_expand(p4est_fine, ghost_fine);
+  if(third_degree_ghost_are_required(tree_dimensions))
+    my_p4est_ghost_expand(p4est_fine, ghost_fine);
   my_p4est_hierarchy_t* hierarchy_fine = new my_p4est_hierarchy_t(p4est_fine, ghost_fine, brick);
   p4est_nodes_t* nodes_fine = my_p4est_nodes_new(p4est_fine, ghost_fine);
   my_p4est_node_neighbors_t* ngbd_n_fine = new my_p4est_node_neighbors_t(hierarchy_fine, nodes_fine); ngbd_n_fine->init_neighbors();
@@ -369,24 +366,16 @@ int main (int argc, char* argv[])
   two_phase_flow_solver->set_node_velocities(vnm1, vn, vnm1, vn);
 
   tstart = 0.0; // no restart so we assume we start from 0.0
-//  dt = 1.0/(MAX(mu_m/rho_m, mu_p/rho_p)*2.0*(SQR((double) (1<<lmax))*SUMD(1.0/SQR(xmax - xmin), 1.0/SQR(ymax - ymin), 1.0/SQR(zmax - zmin))));
-  dt = sqrt((rho_m + rho_p)*pow(MIN(DIM(xmax - xmin, ymax - ymin, zmax - zmin))/((double) (1 << lmax)), 3)/(4.0*M_PI*surface_tension));
+  dt = sqrt((rho_m + rho_p)*pow(MIN(DIM(tree_dimensions[0], tree_dimensions[1], tree_dimensions[2]))/((double) (1 << lmax)), 3.0)/(4.0*M_PI*surface_tension));
   if(save_vtk)
     dt = MIN(dt, vtk_dt);
   two_phase_flow_solver->set_dt(dt, dt);
   two_phase_flow_solver->set_bc(bc_v, &bc_p);
   two_phase_flow_solver->set_external_forces(external_forces);
 
-  if(save_vtk && create_directory(export_dir.c_str(), mpi.rank(), mpi.comm()))
-  {
-    char error_msg[1024];
-#ifdef P4_TO_P8
-    sprintf(error_msg, "main_two_phase_flow_3d: could not create exportation directory %s", export_dir.c_str());
-#else
-    sprintf(error_msg, "main_two_phase_flow_2d: could not create exportation directory %s", export_dir.c_str());
-#endif
-    throw std::runtime_error(error_msg);
-  }
+  const std::string vtk_export_dir = export_dir_root  + "/" + std::to_string(n_tree_xyz[0]) + "x" + std::to_string(n_tree_xyz[1]) ONLY3D(+ "x" + std::to_string(n_tree_xyz[2])) + "/lmin_" + std::to_string(lmin) + "_lmax_" + std::to_string(lmax);
+  if(save_vtk && create_directory(vtk_export_dir.c_str(), mpi.rank(), mpi.comm()))
+    throw std::runtime_error("main_" + std::to_string(P4EST_DIM) + "d, static bubble: could not create exportation directory " + vtk_export_dir);
 
   int iter = 0, iter_vtk = -1;
   double tn = tstart;
@@ -400,12 +389,12 @@ int main (int argc, char* argv[])
 
   while(tn + 0.01*dt < tstart + duration)
   {
-    if(iter > 0)
-    {
-      two_phase_flow_solver->compute_dt();
-      dt = two_phase_flow_solver->get_dt();
-      two_phase_flow_solver->update_from_tn_to_tnp1();
-    }
+//    if(iter > 0)
+//    {
+//      two_phase_flow_solver->compute_dt();
+//      dt = two_phase_flow_solver->get_dt();
+//      two_phase_flow_solver->update_from_tn_to_tnp1();
+//    }
 
     two_phase_flow_solver->set_jump_mu_grad_v(zero_jump_mu_grad_v);
 //    two_phase_flow_solver->compute_jump_mu_grad_v();
@@ -418,10 +407,10 @@ int main (int argc, char* argv[])
 //    two_phase_flow_solver->extrapolate_velocities_across_interface_in_finest_computational_cells_Aslam_PDE(EXPLICIT_ITERATIVE, 10);
     two_phase_flow_solver->compute_velocity_at_nodes();
 
-    if((int) floor((tn+dt)/vtk_dt) != iter_vtk)
+    if(save_vtk && (int) floor((tn + dt)/vtk_dt) != iter_vtk)
     {
-      iter_vtk = (int) floor((tn+dt)/vtk_dt);
-      two_phase_flow_solver->save_vtk((export_dir+"/illustration_"+std::to_string(iter_vtk)).c_str(), true, (export_dir+"/fine_illustration_"+std::to_string(iter_vtk)).c_str());
+      iter_vtk = (int) floor((tn + dt)/vtk_dt);
+      two_phase_flow_solver->save_vtk((vtk_export_dir + "/snapshot_" + std::to_string(iter_vtk)).c_str(), true, (vtk_export_dir + "/fine_snapshot_"+std::to_string(iter_vtk)).c_str());
     }
 
     tn += dt;
@@ -432,7 +421,6 @@ int main (int argc, char* argv[])
     iter++;
   }
   ierr = PetscPrintf(mpi.comm(), "Maximum value of parasitic current = %.5e\n", max_velocity);
-
 
 
   delete two_phase_flow_solver;

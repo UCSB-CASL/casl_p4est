@@ -81,7 +81,7 @@ const std::string default_export_dir  = "/home/temprano/Output/p4est_ns_shs/" + 
 #elif defined(NEPTUNE)
 const std::string default_export_dir  = "/home/hlevy/workspace/superhydrophobic_channel/" + std::to_string(P4EST_DIM) + "D_channel";
 #else
-const std::string default_export_dir  = "/home/regan/workspace/projects/merging_tests/shs/" + std::to_string(P4EST_DIM) + "D_channel";
+const std::string default_export_dir  = "/home/regan/workspace/projects/superhydrophobic_channel/local/" + std::to_string(P4EST_DIM) + "D_channel";
 #endif
 
 const int default_lmin                        = 4;
@@ -1300,10 +1300,10 @@ int main (int argc, char* argv[])
   cmd.add_option("nz",                  "number of trees in the z-direction. \n\tThe default value is " + std::to_string(default_ntree_y) + "*width/height   to ensure aspect ratio of cells = 1 when using default dimensions");
 #endif
   // physical parameters for the simulations
-  cmd.add_option("length",              "length of the channel (dimension in streamwise,  x-direction), default is " + std::to_string(default_length));
+  cmd.add_option("length",              "length of the channel (dimension in streamwise, x-direction), default is " + std::to_string(default_length));
   cmd.add_option("height",              "height of the channel (dimension in wall-normal, y-direction, ':= 2*delta'), default is " + std::to_string(default_height));
 #ifdef P4_TO_P8
-  cmd.add_option("width",               "width of the channel   (dimension in spanwise,    z-direction), default is " + std::to_string(default_width));
+  cmd.add_option("width",               "width of the channel (dimension in spanwise, z-direction), default is " + std::to_string(default_width));
   cmd.add_option("spanwise",            "if present, the grooves and ridges are understood as spanwise, that is perpendicular to the flow. \n\tIf absent, the grooves are parallel to the flow.");
 #endif
   cmd.add_option("duration",            "the duration of the simulation (tfinal - tstart). If not restarted, tstart = 0.0, default duration is " + std::to_string(default_duration));

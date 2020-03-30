@@ -5,56 +5,20 @@
  * Date Created: 10-05-2018
  */
 
-// System
-#include <stdexcept>
-#include <iostream>
-#include <sys/stat.h>
-#include <vector>
-#include <algorithm>
-#include <iterator>
-#include <set>
-#include <time.h>
-#include <stdio.h>
-
 // p4est Library
 #ifdef P4_TO_P8
-#include <p8est_bits.h>
-#include <p8est_extended.h>
-#include <src/my_p8est_utils.h>
 #include <src/my_p8est_vtk.h>
-#include <src/my_p8est_nodes.h>
-#include <src/my_p8est_tools.h>
-#include <src/my_p8est_refine_coarsen.h>
-#include <src/my_p8est_log_wrappers.h>
-#include <src/my_p8est_cell_neighbors.h>
-#include <src/my_p8est_node_neighbors.h>
 #include <src/my_p8est_level_set.h>
 #include <src/my_p8est_level_set_cells.h>
 #include <src/my_p8est_xgfm_cells.h>
-#include <src/my_p8est_interpolation_nodes.h>
 #else
-#include <p4est_bits.h>
-#include <p4est_extended.h>
-#include <src/my_p4est_utils.h>
 #include <src/my_p4est_vtk.h>
-#include <src/my_p4est_nodes.h>
-#include <src/my_p4est_tools.h>
-#include <src/my_p4est_refine_coarsen.h>
-#include <src/my_p4est_log_wrappers.h>
-#include <src/my_p4est_cell_neighbors.h>
-#include <src/my_p4est_node_neighbors.h>
 #include <src/my_p4est_level_set.h>
 #include <src/my_p4est_level_set_cells.h>
 #include <src/my_p4est_xgfm_cells.h>
-#include <src/my_p4est_interpolation_nodes.h>
 #endif
 
-#include <src/point3.h>
-
-#include <src/petsc_compatibility.h>
 #include <src/Parser.h>
-
-#include <ctime>
 
 const static std::string main_description = "\
  In this example, we test the xGFM technique to solve scalar Poisson equations with discontinuities \n\
@@ -232,21 +196,21 @@ struct box
 using namespace std;
 
 int lmin_ = 3;
-int lmax_ = 6;
+int lmax_ = 4;
 
-int ngrids_ = 2;
+int ngrids_ = 4;
 int ntree_ = 2;
 
 BoundaryConditionType bc_wtype_ = DIRICHLET;
 //BoundaryConditionType bc_wtype_ = NEUMANN;
 
-bool use_second_order_theta_ = false;
-//bool use_second_order_theta_ = true;
+//bool use_second_order_theta_ = false;
+bool use_second_order_theta_ = true;
 
 bool get_integral = false;
 bool print_summary = false;
 
-int test_number_ = 2;
+int test_number_ = 5;
 /* run the program with the flag -help to know more about the various tests */
 
 bool track_residuals_and_corrections = false;
@@ -1186,18 +1150,18 @@ refine_levelset_cf_finest_in_negative (p4est_t *p4est, p4est_topidx_t which_tree
 #endif
 
     double dmin = (double)P4EST_QUADRANT_LEN(quad->level)/(double)P4EST_ROOT_LEN;
-    double dx = (tree_xmax-tree_xmin) * dmin;
-    double dy = (tree_ymax-tree_ymin) * dmin;
+    double dx = (tree_xmax - tree_xmin) * dmin;
+    double dy = (tree_ymax - tree_ymin) * dmin;
 #ifdef P4_TO_P8
-    double dz = (tree_zmax-tree_zmin) * dmin;
+    double dz = (tree_zmax - tree_zmin) * dmin;
 #endif
 
     double d = sqrt(SUMD(dx*dx, dy*dy, dz*dz));
 
-    double x = (tree_xmax-tree_xmin)*(double)quad->x/(double)P4EST_ROOT_LEN + tree_xmin;
-    double y = (tree_ymax-tree_ymin)*(double)quad->y/(double)P4EST_ROOT_LEN + tree_ymin;
+    double x = (tree_xmax - tree_xmin)*(double)quad->x/(double)P4EST_ROOT_LEN + tree_xmin;
+    double y = (tree_ymax - tree_ymin)*(double)quad->y/(double)P4EST_ROOT_LEN + tree_ymin;
 #ifdef P4_TO_P8
-    double z = (tree_zmax-tree_zmin)*(double)quad->z/(double)P4EST_ROOT_LEN + tree_zmin;
+    double z = (tree_zmax - tree_zmin)*(double)quad->z/(double)P4EST_ROOT_LEN + tree_zmin;
 #endif
 
     CF_DIM&  phi = *(data->phi);
@@ -1240,19 +1204,8 @@ void save_VTK(const string out_dir, int test_number,
   splitting_criteria_t* data = (splitting_criteria_t*) p4est->user_pointer;
   splitting_criteria_t* data_fine = (splitting_criteria_t*) p4est_fine->user_pointer;
 
-#ifdef P4_TO_P8
-  oss << out_dir << "/P8EST";
-#else
-  oss << out_dir << "/P4EST";
-#endif
-
-  oss << "/test_case_" << test_number << "/" << p4est->mpisize << "_procs/" <<
-         brick->nxyztrees[0] << "x"
-      << brick->nxyztrees[1] <<
-       #ifdef P4_TO_P8
-         "x" << brick->nxyztrees[2] <<
-       #endif
-         "_macromesh/lvl_diff_" << data->max_lvl-data->min_lvl;
+  oss << out_dir << "/P" + std::to_string(1 << P4EST_DIM)+ "EST/test_case_" << test_number << "/" << p4est->mpisize << "_procs/" <<
+         brick->nxyztrees[0] << "x" << brick->nxyztrees[1] ONLY3D(<< "x" << brick->nxyztrees[2]) << "_macromesh/lvl_diff_" << data->max_lvl - data->min_lvl;
 
   ostringstream command;
   command << "mkdir -p " << oss.str().c_str();
@@ -1278,19 +1231,13 @@ void save_VTK(const string out_dir, int test_number,
 
   for(p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx)
   {
-    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
-    for( size_t q=0; q<tree->quadrants.elem_count; ++q)
-    {
-      const p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&tree->quadrants, q);
-      l_p[tree->quadrants_offset+q] = quad->level;
-    }
+    p4est_tree_t *tree = p4est_tree_array_index(p4est->trees, tree_idx);
+    for (size_t q = 0; q < tree->quadrants.elem_count; ++q)
+      l_p[tree->quadrants_offset + q] = p4est_quadrant_array_index(&tree->quadrants, q)->level;
   }
 
-  for(size_t q=0; q<ghost->ghosts.elem_count; ++q)
-  {
-    const p4est_quadrant_t *quad = (p4est_quadrant_t*)sc_array_index(&ghost->ghosts, q);
-    l_p[p4est->local_num_quadrants+q] = quad->level;
-  }
+  for(size_t q = 0; q < ghost->ghosts.elem_count; ++q)
+    l_p[p4est->local_num_quadrants + q] = p4est_quadrant_array_index(&ghost->ghosts, q)->level;
 
 #ifndef P4_TO_P8
   double *exact_msol_at_nodes_p, *exact_psol_at_nodes_p, *phi_coarse_p;
@@ -1430,18 +1377,17 @@ void get_sharp_rhs(const p4est_t* p4est, p4est_ghost_t* ghost, my_p4est_node_nei
   ierr = VecGetArray(rhs, &rhs_p); CHKERRXX(ierr);
 
   double xyz_quad[P4EST_DIM];
-  for(p4est_topidx_t tree_idx=p4est->first_local_tree; tree_idx<=p4est->last_local_tree; ++tree_idx)
+  for(p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx)
   {
-    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
-    for(size_t quad_idx=0; quad_idx<tree->quadrants.elem_count; ++quad_idx)
+    p4est_tree_t *tree = p4est_tree_array_index(p4est->trees, tree_idx);
+    for(size_t quad_idx = 0; quad_idx < tree->quadrants.elem_count; ++quad_idx)
     {
       p4est_locidx_t q_idx = quad_idx + tree->quadrants_offset;
       quad_xyz_fr_q(q_idx, tree_idx, p4est, ghost, xyz_quad);
-      rhs_p[q_idx] = (interp_phi(xyz_quad) > 0)? (-mu_p*laplacian_u_exact_p(test_number, DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2]))):  (-mu_m*laplacian_u_exact_m(test_number, DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2])));
+      rhs_p[q_idx] = (interp_phi(xyz_quad) > 0.0 ? -mu_p*laplacian_u_exact_p(test_number, DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2])) : -mu_m*laplacian_u_exact_m(test_number, DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2])));
     }
   }
   ierr = VecRestoreArray(rhs, &rhs_p); CHKERRXX(ierr);
-
 }
 
 void measure_errors(p4est_t* p4est, p4est_ghost_t* ghost, my_p4est_node_neighbors_t& ngbd_n_fine, my_p4est_faces_t* faces, Vec phi, int test_number, double mu_p, double mu_m, Vec sol, Vec flux_components[P4EST_DIM],
@@ -1460,14 +1406,14 @@ void measure_errors(p4est_t* p4est, p4est_ghost_t* ghost, my_p4est_node_neighbor
 
   err_n = 0.0;
   double xyz_quad[P4EST_DIM];
-  for(p4est_topidx_t tree_idx=p4est->first_local_tree; tree_idx<=p4est->last_local_tree; ++tree_idx)
+  for(p4est_topidx_t tree_idx = p4est->first_local_tree; tree_idx <= p4est->last_local_tree; ++tree_idx)
   {
-    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees, tree_idx);
-    for(size_t quad_idx=0; quad_idx<tree->quadrants.elem_count; ++quad_idx)
+    p4est_tree_t *tree = p4est_tree_array_index(p4est->trees, tree_idx);
+    for(size_t quad_idx = 0; quad_idx < tree->quadrants.elem_count; ++quad_idx)
     {
       p4est_locidx_t q_idx = quad_idx + tree->quadrants_offset;
       quad_xyz_fr_q(q_idx, tree_idx, p4est, ghost, xyz_quad);
-      err_p[q_idx] = (interp_phi(xyz_quad) > 0)?  fabs(sol_read_p[q_idx] - u_exact_p(test_number, DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2]))) : fabs(sol_read_p[q_idx] - u_exact_m(test_number, DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2])));
+      err_p[q_idx] = (interp_phi(xyz_quad) > 0.0 ? fabs(sol_read_p[q_idx] - u_exact_p(test_number, DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2]))) : fabs(sol_read_p[q_idx] - u_exact_m(test_number, DIM(xyz_quad[0], xyz_quad[1], xyz_quad[2]))));
       err_n = MAX(err_n, err_p[q_idx]);
     }
   }
@@ -1478,19 +1424,20 @@ void measure_errors(p4est_t* p4est, p4est_ghost_t* ghost, my_p4est_node_neighbor
     err_derivatives_components[dim] = 0.0;
     for (p4est_locidx_t face_idx = 0; face_idx < faces->num_local[dim]; ++face_idx) {
       faces->xyz_fr_f(face_idx, dim, xyz_face);
+      const double phi_face = interp_phi(xyz_face);
       switch (dim) {
       case dir::x:
-        err_flux_components[dim]        = MAX(err_flux_components[dim], fabs(flux_components_read_p[dim][face_idx] - ((interp_phi(xyz_face) > 0.0)? (mu_p*d_u_exact_p_dx(test_number, DIM(xyz_face[0], xyz_face[1], xyz_face[2]))): (mu_m*d_u_exact_m_dx(test_number, DIM(xyz_face[0], xyz_face[1], xyz_face[2]))))));
-        err_derivatives_components[dim] = MAX(err_derivatives_components[dim], fabs(flux_components_read_p[dim][face_idx]/(((interp_phi(xyz_face) > 0.0)? mu_p : mu_m)) - ((interp_phi(xyz_face) > 0.0)? (d_u_exact_p_dx(test_number, DIM(xyz_face[0], xyz_face[1], xyz_face[2]))): (d_u_exact_m_dx(test_number, DIM(xyz_face[0], xyz_face[1], xyz_face[2]))))));
+        err_flux_components[dim]        = MAX(err_flux_components[dim], fabs(flux_components_read_p[dim][face_idx] - (phi_face > 0.0 ? mu_p*d_u_exact_p_dx(test_number, DIM(xyz_face[0], xyz_face[1], xyz_face[2])) : mu_m*d_u_exact_m_dx(test_number, DIM(xyz_face[0], xyz_face[1], xyz_face[2])))));
+        err_derivatives_components[dim] = MAX(err_derivatives_components[dim], fabs(flux_components_read_p[dim][face_idx]/(phi_face > 0.0 ? mu_p : mu_m) - (phi_face > 0.0 ? d_u_exact_p_dx(test_number, DIM(xyz_face[0], xyz_face[1], xyz_face[2])) : d_u_exact_m_dx(test_number, DIM(xyz_face[0], xyz_face[1], xyz_face[2])))));
         break;
       case dir::y:
-        err_flux_components[dim]        = MAX(err_flux_components[dim], fabs(flux_components_read_p[dim][face_idx] - ((interp_phi(xyz_face) > 0.0)? (mu_p*d_u_exact_p_dy(test_number, DIM(xyz_face[0], xyz_face[1], xyz_face[2]))): (mu_m*d_u_exact_m_dy(test_number, DIM(xyz_face[0], xyz_face[1], xyz_face[2]))))));
-        err_derivatives_components[dim] = MAX(err_derivatives_components[dim], fabs(flux_components_read_p[dim][face_idx]/(((interp_phi(xyz_face) > 0.0)? mu_p : mu_m)) - ((interp_phi(xyz_face) > 0.0)? (d_u_exact_p_dy(test_number, DIM(xyz_face[0], xyz_face[1], xyz_face[2]))): (d_u_exact_m_dy(test_number, DIM(xyz_face[0], xyz_face[1], xyz_face[2]))))));
+        err_flux_components[dim]        = MAX(err_flux_components[dim], fabs(flux_components_read_p[dim][face_idx] - (phi_face > 0.0 ? mu_p*d_u_exact_p_dy(test_number, DIM(xyz_face[0], xyz_face[1], xyz_face[2])) : mu_m*d_u_exact_m_dy(test_number, DIM(xyz_face[0], xyz_face[1], xyz_face[2])))));
+        err_derivatives_components[dim] = MAX(err_derivatives_components[dim], fabs(flux_components_read_p[dim][face_idx]/(phi_face > 0.0 ? mu_p : mu_m) - (phi_face > 0.0 ? d_u_exact_p_dy(test_number, DIM(xyz_face[0], xyz_face[1], xyz_face[2])) : d_u_exact_m_dy(test_number, DIM(xyz_face[0], xyz_face[1], xyz_face[2])))));
         break;
 #ifdef P4_TO_P8
       case dir::z:
-        err_flux_components[dim]        = MAX(err_flux_components[dim], fabs(flux_components_read_p[dim][face_idx] - ((interp_phi(xyz_face) > 0.0)? (mu_p*d_u_exact_p_dz(test_number, xyz_face[0], xyz_face[1], xyz_face[2])): (mu_m*d_u_exact_m_dz(test_number, xyz_face[0], xyz_face[1], xyz_face[2])))));
-        err_derivatives_components[dim] = MAX(err_derivatives_components[dim], fabs(flux_components_read_p[dim][face_idx]/(((interp_phi(xyz_face) > 0.0)? mu_p : mu_m)) - ((interp_phi(xyz_face) > 0.0)? (d_u_exact_p_dz(test_number, xyz_face[0], xyz_face[1], xyz_face[2])): (d_u_exact_m_dz(test_number, xyz_face[0], xyz_face[1], xyz_face[2])))));
+        err_flux_components[dim]        = MAX(err_flux_components[dim], fabs(flux_components_read_p[dim][face_idx] - (phi_face > 0.0 ? (mu_p*d_u_exact_p_dz(test_number, xyz_face[0], xyz_face[1], xyz_face[2])): (mu_m*d_u_exact_m_dz(test_number, xyz_face[0], xyz_face[1], xyz_face[2])))));
+        err_derivatives_components[dim] = MAX(err_derivatives_components[dim], fabs(flux_components_read_p[dim][face_idx]/(phi_face > 0.0 ? mu_p : mu_m) - (phi_face > 0.0 ? d_u_exact_p_dz(test_number, xyz_face[0], xyz_face[1], xyz_face[2]) : d_u_exact_m_dz(test_number, xyz_face[0], xyz_face[1], xyz_face[2]))));
         break;
 #endif
       }
@@ -1755,7 +1702,7 @@ This test case is meant to check the AMR feature, hence the interface is suppose
     throw std::invalid_argument("set mus: unknown test number.");
   }
 
-  for(int iter=0; iter<ngrids; ++iter)
+  for(int iter = 0; iter < ngrids; ++iter)
   {
     ierr = PetscPrintf(mpi.comm(), "Level %d / %d\n", lmin+iter, lmax+iter); CHKERRXX(ierr);
     p4est = my_p4est_new(mpi.comm(), connectivity, 0, NULL, NULL);
