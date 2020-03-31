@@ -115,7 +115,7 @@ void select_solvers(){
       break;
     case ICE_AROUND_CYLINDER:
       save_stefan = false;
-      solve_stefan = true;
+      solve_stefan = true;//true;
       solve_navier_stokes = true;
       save_navier_stokes = false;//false;
       save_coupled_fields = true;//true;
@@ -224,11 +224,11 @@ void set_geometry(){
 
       double r_cyl_physical = 0.5;//0.035/2;//0.5;//0.035/2;//0.016/2.;//0.01; // 1 cm
 
-      double r_physical = r_cyl_physical*1.01;//r_cyl_physical + 0.002;//0.002;//0.035/5.;//0.0105;//.011; // 1.1 cm
+      double r_physical = r_cyl_physical*1.02;//r_cyl_physical + 0.002;//0.002;//0.035/5.;//0.0105;//.011; // 1.1 cm
 
       r_cyl = 0.5; // Radius of cylinder of cooled pipe
 
-      r0 = r_cyl*1.2;//Radius of initial ice layer height -- 1 percent of the raidus of the cylinder itself
+      r0 = r_cyl*1.17;//Radius of initial ice layer height -- 1 percent of the raidus of the cylinder itself
 
       d_cyl = 35.e-3; // [m]
 
@@ -304,7 +304,7 @@ DEFINE_PARAMETER(pl,double,lip,1.75,"Lipschitz coefficient");
 DEFINE_PARAMETER(pl,int,method_,1,"Solver in time for solid domain, and for fluid if no advection. 1 - Backward Euler, 2 - Crank Nicholson");
 DEFINE_PARAMETER(pl,int,num_splits,0,"Number of splits -- used for convergence tests");
 DEFINE_PARAMETER(pl,bool,refine_by_ucomponent,false,"Flag for whether or not to refine by a backflow condition for the fluid velocity");
-DEFINE_PARAMETER(pl,bool,refine_by_nondim_gradT,false,"Flag for whether or not to refine by the nondimensionalized temperature gradient");
+DEFINE_PARAMETER(pl,bool,refine_by_d2T,true,"Flag for whether or not to refine by the nondimensionalized temperature gradient");
 
 // ---------------------------------------
 // Physical properties:
@@ -404,7 +404,7 @@ void set_NS_info(){
       Re_v = 0.;
 
       u_inf = 9.820286e-3; // physical freestream velocity, m/s
-      uniform_band = 8.;
+      uniform_band = 8.; // usually set to 8
       if(Re_overwrite>1.0){Re_u = Re_overwrite;}
 
 
@@ -4498,6 +4498,7 @@ int main(int argc, char** argv) {
 //    save_every_iter=1;
 
     for (tn;tn<tfinal; tn+=dt, tstep++){
+//        if(tstep>50) MPI_Abort(mpi.comm(),0); //TIMESTEP BREAK
         // Open log file to write info for this timestep:
         ierr = PetscFOpen(mpi.comm(),name_logfile,"a",&fich_log); CHKERRXX(ierr);
 //        ierr = PetscFPrintf(mpi.comm(),fich_log,"SIMULATION LOG FILE \n");CHKERRXX(ierr);
@@ -4919,7 +4920,7 @@ int main(int argc, char** argv) {
         std::vector<double> criteria;
 
         int num_fields = 1;//1;
-        if(refine_by_nondim_gradT)num_fields+=1;
+        if(refine_by_d2T)num_fields+=2;
 
         if(refine_by_ucomponent){
             if(ramp_bcs){
@@ -4933,17 +4934,19 @@ int main(int argc, char** argv) {
 //        vec_and_ptr_dim_t grad_p_refine;
 
         Vec fields_[num_fields];
+
         if(solve_navier_stokes && (num_fields!=0)){
             // Only use values of vorticity in the positive subdomain for refinement:
             vorticity_refine.create(p4est,nodes);
 
             if(refine_by_ucomponent) u_component_refine.create(p4est,nodes);
 
-            if(refine_by_nondim_gradT){
+
+            if(refine_by_d2T){
                 T_l_d.create(p4est,nodes);
                 // TRYING SOMETHING, CHANGE THIS BACK TO FIRST TO BE ACCURATE
                 ngbd->second_derivatives_central(T_l_n.vec,T_l_d.vec);
-                gradT_refine.create(p4est,nodes);
+//                gradT_refine.create(p4est,nodes);
               }
 
 
@@ -4954,7 +4957,7 @@ int main(int argc, char** argv) {
                 u_component_refine.get_array();
                 v_n.get_array();
               }
-            if(refine_by_nondim_gradT) {T_l_d.get_array(); gradT_refine.get_array();}
+            if(refine_by_d2T) {T_l_d.get_array();/* gradT_refine.get_array();*/}
 
             phi.get_array();
 
@@ -4971,32 +4974,32 @@ int main(int argc, char** argv) {
 
                         u_component_refine.ptr[n] = (condition_1 || condition_2) ? 1.: 0.; // We want to refine if we have either a backflow or a stagnation area
                       }
-                    if(refine_by_nondim_gradT){
-                        gradT_refine.ptr[n] = max(fabs(T_l_d.ptr[0][n]), fabs(T_l_d.ptr[1][n]));
+//                    if(refine_by_nondim_gradT){
+//                        gradT_refine.ptr[n] = max(fabs(T_l_d.ptr[0][n]), fabs(T_l_d.ptr[1][n]));
 
-                      }
+//                      }
 
                   }
                 else{
                     vorticity_refine.ptr[n] = 0.0;
                     if(refine_by_ucomponent) u_component_refine.ptr[n] = 0.;
 
-                    if(refine_by_nondim_gradT){ // Set to 0 in solid subdomain, don't want to refine by T_l_d in there
-                        gradT_refine.ptr[n] = 0.;
-//                        foreach_dimension(d){
-//                          T_l_d.ptr[d][n]=0.;
-//                        }
+                    if(refine_by_d2T){ // Set to 0 in solid subdomain, don't want to refine by T_l_d in there
+//                        gradT_refine.ptr[n] = 0.;
+                        foreach_dimension(d){
+                          T_l_d.ptr[d][n]=0.;
+                        }
                       }
                   }
               }
 
             if(refine_by_ucomponent)ierr = VecGhostUpdateBegin(u_component_refine.vec,INSERT_VALUES,SCATTER_FORWARD);
             ierr = VecGhostUpdateBegin(vorticity_refine.vec,INSERT_VALUES,SCATTER_FORWARD);
-            if(refine_by_nondim_gradT){
-                ierr = VecGhostUpdateBegin(gradT_refine.vec,INSERT_VALUES,SCATTER_FORWARD);
-//              foreach_dimension(d){
-//                ierr = VecGhostUpdateBegin(T_l_d.vec[d],INSERT_VALUES,SCATTER_FORWARD);
-//              }
+            if(refine_by_d2T){
+//                ierr = VecGhostUpdateBegin(gradT_refine.vec,INSERT_VALUES,SCATTER_FORWARD);
+              foreach_dimension(d){
+                ierr = VecGhostUpdateBegin(T_l_d.vec[d],INSERT_VALUES,SCATTER_FORWARD);
+              }
             }
 
             for(size_t i = 0; i<ngbd->get_local_size(); i++){
@@ -5012,39 +5015,39 @@ int main(int argc, char** argv) {
 
                         u_component_refine.ptr[n] = (condition_1 || condition_2) ? 1.: 0.; // We want to refine if we have either a backflow or a stagnation area
                       }
-                    if(refine_by_nondim_gradT){
-                        gradT_refine.ptr[n] = max(fabs(T_l_d.ptr[0][n]), fabs(T_l_d.ptr[1][n]));
+//                    if(refine_by_nondim_gradT){
+//                        gradT_refine.ptr[n] = max(fabs(T_l_d.ptr[0][n]), fabs(T_l_d.ptr[1][n]));
 
-                      }
+//                      }
 
                   }
                 else{
                     vorticity_refine.ptr[n] = 0.0;
                     if(refine_by_ucomponent) u_component_refine.ptr[n] = 0.;
 
-                    if(refine_by_nondim_gradT){ // Set to 0 in solid subdomain, don't want to refine by T_l_d in there
-                        gradT_refine.ptr[n] = 0.;
-//                        foreach_dimension(d){
-//                          T_l_d.ptr[d][n]=0.;
-//                        }
+                    if(refine_by_d2T){ // Set to 0 in solid subdomain, don't want to refine by T_l_d in there
+//                        gradT_refine.ptr[n] = 0.;
+                        foreach_dimension(d){
+                          T_l_d.ptr[d][n]=0.;
+                        }
                       }
                   }
               }
 
             if(refine_by_ucomponent)ierr = VecGhostUpdateEnd(u_component_refine.vec,INSERT_VALUES,SCATTER_FORWARD);
             ierr = VecGhostUpdateEnd(vorticity_refine.vec,INSERT_VALUES,SCATTER_FORWARD);
-            if(refine_by_nondim_gradT){
-                ierr = VecGhostUpdateEnd(gradT_refine.vec,INSERT_VALUES,SCATTER_FORWARD);
-//              foreach_dimension(d){
-//                ierr = VecGhostUpdateEnd(T_l_d.vec[d],INSERT_VALUES,SCATTER_FORWARD);
-//              }
+            if(refine_by_d2T){
+//                ierr = VecGhostUpdateEnd(gradT_refine.vec,INSERT_VALUES,SCATTER_FORWARD);
+              foreach_dimension(d){
+                ierr = VecGhostUpdateEnd(T_l_d.vec[d],INSERT_VALUES,SCATTER_FORWARD);
+              }
             }
 
             if(refine_by_ucomponent){
                 v_n.restore_array();
                 u_component_refine.restore_array();
               }
-            if(refine_by_nondim_gradT) {T_l_d.restore_array();gradT_refine.restore_array();}
+            if(refine_by_d2T) {T_l_d.restore_array();/*gradT_refine.restore_array();*/}
 
 
             vorticity.restore_array();
@@ -5055,12 +5058,15 @@ int main(int argc, char** argv) {
             int fields_idx = 0;
             fields_[fields_idx++] = vorticity_refine.vec;
             if(refine_by_ucomponent)fields_[fields_idx++] = u_component_refine.vec;
-            if(refine_by_nondim_gradT){
-                fields_[fields_idx++] = gradT_refine.vec;
-//                fields_[fields_idx++] = T_l_d.vec[0];
-//                fields_[fields_idx++] = T_l_d.vec[1];
+            if(refine_by_d2T){
+//                fields_[fields_idx++] = gradT_refine.vec;
+                fields_[fields_idx++] = T_l_d.vec[0];
+                fields_[fields_idx++] = T_l_d.vec[1];
               }
 
+
+//            VecView(fields_[2],PETSC_VIEWER_STDOUT_WORLD);
+            //VecView(T_l_d.vec[0],PETSC_VIEWER_STDERR_WORLD);
             P4EST_ASSERT(fields_idx ==num_fields);
 //            VecView(vorticity_refine.vec,PETSC_VIEWER_STDOUT_WORLD);
 
@@ -5086,37 +5092,32 @@ int main(int argc, char** argv) {
               diag_opn.push_back(ABSOLUTE);
               criteria.push_back(0.5);
             }
-            if(refine_by_nondim_gradT){
-                gradT_threshold = 2.e-3;
-                // Coarsening instructions: (for dT/dx)
-                compare_opn.push_back(LESS_THAN);
-//                diag_opn.push_back(ABSOLUTE);
-                diag_opn.push_back(DIVIDE_BY);
-                criteria.push_back((0.5)*gradT_threshold*max(u0,NS_norm)*(Twall-Tinterface));
-//                criteria.push_back(0.5*gradT_threshold*(Twall-Tinterface)/r_cyl);
+            if(refine_by_d2T){
+                gradT_threshold=1.e-6;
+                double dTheta = (1.0 - 0.8125)/(min(dxyz_smallest[0],dxyz_smallest[1])); // max dTheta in liquid subdomain
 
+
+                // Coarsening instructions: (for dT/dx)
+                compare_opn.push_back(SIGN_CHANGE);
+                diag_opn.push_back(DIVIDE_BY);
+                criteria.push_back(dTheta*gradT_threshold*0.5);
+//                criteria.push_back(0.5*gradT_threshold*(Twall-Tinterface)/r_cyl);
 
                 // Refining instructions: (for dT/dx)
-                compare_opn.push_back(GREATER_THAN);
+                compare_opn.push_back(SIGN_CHANGE);
                 diag_opn.push_back(DIVIDE_BY);
-                criteria.push_back(gradT_threshold*max(u0,NS_norm)*(Twall-Tinterface));
-//                diag_opn.push_back(ABSOLUTE);
-//                criteria.push_back(gradT_threshold*(Twall-Tinterface)/r_cyl);
-//                double value = gradT_threshold*(Twall-Tinterface)/r_cyl;
-
-//                PetscPrintf(mpi.comm(),"Coarsen if T gradient less than %0.4f \n"
-//                                       "Refine if T gradient is greater than %0.4f \n",0.5*value,value);
+                criteria.push_back(dTheta*gradT_threshold);
 
 
-//                // Coarsening instructions: (for dT/dy)
-//                compare_opn.push_back(LESS_THAN);
-//                diag_opn.push_back(ABSOLUTE);
-//                criteria.push_back(0.5*gradT_threshold*(Twall-Tinterface)/r_cyl);
+                // Coarsening instructions: (for dT/dy)
+                compare_opn.push_back(SIGN_CHANGE);
+                diag_opn.push_back(DIVIDE_BY);
+                criteria.push_back(dTheta*gradT_threshold*0.5);
 
-//                // Refining instructions: (for dT/dy)
-//                compare_opn.push_back(GREATER_THAN);
-//                diag_opn.push_back(ABSOLUTE);
-//                criteria.push_back(gradT_threshold*(Twall-Tinterface)/r_cyl);
+                // Refining instructions: (for dT/dy)
+                compare_opn.push_back(SIGN_CHANGE);
+                diag_opn.push_back(DIVIDE_BY);
+                criteria.push_back(dTheta*gradT_threshold); // doesnt get used
 
               }
           }
@@ -5246,7 +5247,7 @@ int main(int argc, char** argv) {
         if(solve_navier_stokes){
             vorticity_refine.destroy();
             if(refine_by_ucomponent)u_component_refine.destroy();
-            if(refine_by_nondim_gradT){T_l_d.destroy();gradT_refine.destroy();}
+            if(refine_by_d2T){T_l_d.destroy();gradT_refine.destroy();}
           }
 
         // Clear up the memory from the std vectors holding refinement info:
@@ -5670,7 +5671,7 @@ int main(int argc, char** argv) {
             if (tstep<1) hodge_tolerance = u0*hodge_percentage_of_max_u;
             else hodge_tolerance = NS_norm*hodge_percentage_of_max_u;
 
-            hodge_tolerance=1.e-4;
+            hodge_tolerance=1.e-3;
             PetscPrintf(mpi.comm(),"\n"
                                    "--> Hodge tolerance is %0.2e \n"
                                    "-----------\n",hodge_tolerance);
@@ -5849,7 +5850,7 @@ int main(int argc, char** argv) {
             PetscPrintf(mpi.comm(),"lmin = %d, lmax = %d \n",lmin + grid_res_iter,lmax + grid_res_iter);
             check_coupled_problem_error(phi,v_n,press_nodes,T_l_n,p4est_np1,nodes_np1,ngbd,dxyz_close_to_interface,name_coupled_errors,fich_coupled_errors,tstep);
           }
-        if(example_ == ICE_AROUND_CYLINDER && tstep%save_every_iter ==0 ){
+        if(example_ == ICE_AROUND_CYLINDER && ( (int) floor(tn/save_every_dt) ) ==out_idx ){
             check_ice_cylinder_v_and_radius(phi,p4est_np1,nodes_np1,dxyz_close_to_interface,name_ice_radius_info,fich_ice_radius_info);
           }
 

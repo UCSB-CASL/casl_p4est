@@ -880,6 +880,27 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *
         }
     }
 
+
+    ierr = VecGetArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
+    double* fields_p[num_fields];
+    for(unsigned int n=0;n<num_fields;n++){
+        ierr = VecGetArray(fields_np1[n],&fields_p[n]);
+    }
+
+    std::vector<std::string> point_names = {/*"phi",*/ "field1","field2","field3"};
+    std::vector<double*> point_data = {/*phi_np1_p,*/fields_p[0],fields_p[1],fields_p[2]};
+    std::vector<std::string> cell_names={};
+    std::vector<double*> cell_data={};
+
+    // Write out to see whats going on:
+    char filename[1000];
+    sprintf(filename,"/home/elyce/workspace/projects/multialloy_with_fluids/grid_issues/snapshot_%d",counter);
+    my_p4est_vtk_write_all_vector_form(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,filename,point_data,point_names,cell_data,cell_names);
+    ierr = VecRestoreArray(phi_np1, &phi_np1_p); CHKERRXX(ierr);
+    for(unsigned int n=0;n<num_fields;n++){
+        ierr = VecRestoreArray(fields_np1[n],&fields_p[n]);
+    }
+
     if(counter > 10){PetscPrintf(p4est->mpicomm,"Grid did not converge ... \n"); break;}
 
     // Call the refine and coarsen according to phi_effective and the provided fields:
@@ -893,6 +914,8 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *
 
     if (is_grid_changing) {
       PetscPrintf(p4est->mpicomm, "Grid changed\n");
+//      p4est_balance(p4est,P4EST_CONNECT_FULL,NULL);
+
       my_p4est_partition(p4est, P4EST_TRUE, NULL);
 
       // reset nodes, ghost, and phi
