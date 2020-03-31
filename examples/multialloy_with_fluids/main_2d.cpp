@@ -88,7 +88,7 @@ DEFINE_PARAMETER(pl,double,save_every_dt,0.1,"Saves vtk every dt amount of time 
 
 DEFINE_PARAMETER(pl,bool,print_checkpoints,false,"Print checkpoints throughout script for debugging? ");
 DEFINE_PARAMETER(pl,bool,mem_checkpoints,false,"checks various memory checkpoints for mem usage");
-DEFINE_PARAMETER(pl,double,mem_safety_limit,60.e9,"Memory upper limit before closing the program -- in bytes");
+DEFINE_PARAMETER(pl,double,mem_safety_limit,60.e9,"Memory upper liFmit before closing the program -- in bytes");
 
 // Load options
 DEFINE_PARAMETER(pl,bool,loading_from_previous_state,false,"");
@@ -143,10 +143,13 @@ void select_solvers(){
 DEFINE_PARAMETER(pl,int,advection_sl_order,2,"Integer for advection solution order (can choose 1 or 2) for the fluid temperature field(default:1) -- note: this also sets the NS solution order");
 DEFINE_PARAMETER(pl,int,NS_advection_sl_order,2,"Integer for advection solution order (can choose 1 or 2) for the fluid velocity fields (default:1)");
 
+DEFINE_PARAMETER(pl,double,hodge_tolerance,1.e-3,"Tolerance on hodge for error convergence (default:1.e-3)");
+
+
 DEFINE_PARAMETER(pl,double,cfl,0.5,"CFL number (default:0.5)");
 DEFINE_PARAMETER(pl,bool,force_interfacial_velocity_to_zero,false,"Force the interfacial velocity to zero? ");
 DEFINE_PARAMETER(pl,double,vorticity_threshold,0.1,"Threshold to refine vorticity by, default is 0.1 \n");
-DEFINE_PARAMETER(pl,double,gradT_threshold,0.99,"Threshold to refine the nondimensionalized temperature gradient by \n (default: 0.99)");
+DEFINE_PARAMETER(pl,double,gradT_threshold,1.e-4,"Threshold to refine the nondimensionalized temperature gradient by \n (default: 0.99)");
 
 int stop_flag = -1;
 // ---------------------------------------
@@ -221,10 +224,6 @@ void set_geometry(){
       py = 1;
 
       scaling = 1.;//10.;
-
-      double r_cyl_physical = 0.5;//0.035/2;//0.5;//0.035/2;//0.016/2.;//0.01; // 1 cm
-
-      double r_physical = r_cyl_physical*1.02;//r_cyl_physical + 0.002;//0.002;//0.035/5.;//0.0105;//.011; // 1.1 cm
 
       r_cyl = 0.5; // Radius of cylinder of cooled pipe
 
@@ -1771,15 +1770,15 @@ void check_T_values(vec_and_ptr_t phi, vec_and_ptr_t T, p4est_nodes* nodes, p4es
   MPI_Allreduce(&min_mag_T,&global_min_mag_T,1,MPI_DOUBLE,MPI_MIN,p4est->mpicomm);
 
   PetscPrintf(p4est->mpicomm,"\n"
-                             "Average value: %0.4f \n"
-                             "Maximum value: %0.4f \n"
-                             "Minimum value: %0.4f \n"
-                             "Minimum value magnitude: %0.4f \n \n",global_avg_T,global_max_T,global_min_T,global_min_mag_T);
+                             "Average: %0.4f  "
+                             "Max: %0.4f  "
+                             "Min: %0.4f  "
+                             "Min magnitude: %0.4f \n",global_avg_T,global_max_T,global_min_T,global_min_mag_T);
   PetscFPrintf(p4est->mpicomm,fich,"\n"
-                             "Average value: %0.4f \n"
-                             "Maximum value: %0.4f \n"
-                             "Minimum value: %0.4f \n"
-                             "Minimum value magnitude: %0.4f \n \n",global_avg_T,global_max_T,global_min_T,global_min_mag_T);
+                             "Average value: %0.4f  "
+                             "Maximum value: %0.4f  "
+                             "Minimum value: %0.4f  "
+                             "Minimum value magnitude: %0.4f \n",global_avg_T,global_max_T,global_min_T,global_min_mag_T);
 
   if(update_Tl_values) {T_l_max = global_max_T; T_l_min = global_min_T;}
   if(update_Ts_values){T_s_max = global_max_T; T_s_min = global_min_T;}
@@ -2431,7 +2430,7 @@ void setup_rhs(vec_and_ptr_t phi,vec_and_ptr_t T_l, vec_and_ptr_t T_s, vec_and_p
   if(do_advection && advection_sl_order==2){
       advection_alpha_coeff = (2.*dt + dt_nm1)/(dt + dt_nm1);
       advection_beta_coeff = (-1.*dt)/(dt + dt_nm1);
-      PetscPrintf(p4est->mpicomm,"Alpha is %.3e, beta is %0.3e, dtnm1 = %0.3e, dt = %0.3e \n",advection_alpha_coeff,advection_beta_coeff, dt_nm1, dt);
+//      PetscPrintf(p4est->mpicomm,"Alpha is %.3e, beta is %0.3e, dtnm1 = %0.3e, dt = %0.3e \n",advection_alpha_coeff,advection_beta_coeff, dt_nm1, dt);
     }
 
   phi.get_array();
@@ -3036,14 +3035,14 @@ void compute_timestep(vec_and_ptr_dim_t v_interface, vec_and_ptr_t phi, double d
   SC_CHECK_MPI(mpi_ret);
   PetscPrintf(p4est->mpicomm,"\n"
                              "Computed interfacial velocity: \n"
-                             " - Computational: %0.3e \n"
-                             " - Physical: %0.3e [m/s] \n"
-                             " - Physical: %0.3e [mm/s] \n",global_max_vnorm,global_max_vnorm*u_inf,global_max_vnorm*u_inf*1000.);
+                             " - Computational: %0.3e  "
+                             " - Physical: %0.3e [m/s]  "
+                             " - Physical: %0.3e [mm/s]  \n ",global_max_vnorm,global_max_vnorm*u_inf,global_max_vnorm*u_inf*1000.);
   PetscFPrintf(p4est->mpicomm,fich,"\n"
                              "Computed interfacial velocity: \n"
-                             " - Computational: %0.3e \n"
-                             " - Physical: %0.3e [m/s] \n"
-                             " - Physical: %0.3e [mm/s] \n",global_max_vnorm,global_max_vnorm*u_inf,global_max_vnorm*u_inf*1000.);
+                             " - Computational: %0.3e  "
+                             " - Physical: %0.3e [m/s]  "
+                             " - Physical: %0.3e [mm/s]  \n ",global_max_vnorm,global_max_vnorm*u_inf,global_max_vnorm*u_inf*1000.);
 
 //  // Save the previous timestep:
 //  dt_nm1 = dt;
@@ -3054,16 +3053,16 @@ void compute_timestep(vec_and_ptr_dim_t v_interface, vec_and_ptr_t phi, double d
 
   PetscPrintf(p4est->mpicomm,"\n"
                              "Computed Stefan driven timestep: \n"
-                             " - dt computed: %0.3e \n"
-                             " - dt maximum allowed: %0.3e \n"
-                             " - dt used : %0.3e \n"
+                             " - dt computed: %0.3e  "
+                             " - dt maximum allowed: %0.3e  "
+                             " - dt used : %0.3e  "
                              " - dxyz_close_to_interface: %0.3e \n",dt_computed,dt_max_allowed,dt,dxyz_close_to_interface);
   PetscFPrintf(p4est->mpicomm,fich,"\n"
-                             "Computed Stefan driven timestep: \n"
-                             " - dt computed: %0.3e \n"
-                             " - dt maximum allowed: %0.3e \n"
-                             " - dt used : %0.3e \n"
-                             " - dxyz_close_to_interface: %0.3e \n",dt_computed,dt_max_allowed,dt,dxyz_close_to_interface);
+                             "Computed Stefan driven timestep:  "
+                             " - dt computed: %0.3e  "
+                             " - dt maximum allowed: %0.3e  "
+                             " - dt used : %0.3e  "
+                             " - dxyz_close_to_interface: %0.3e  ",dt_computed,dt_max_allowed,dt,dxyz_close_to_interface);
 
   v_interface_max_norm = global_max_vnorm;
 }
@@ -3413,46 +3412,28 @@ void save_everything(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
   // TEMPORARY:
   PetscErrorCode ierr;
   vec_and_ptr_dim_t Tl_dd;
-  Vec v_NS_dd[P4EST_DIM][P4EST_DIM];
+//  Vec v_NS_dd[P4EST_DIM][P4EST_DIM];
   //  vec_and_ptr_t gradT_norm;
   Tl_dd.create(p4est,nodes);
-  foreach_dimension(d){
-      foreach_dimension(dd){
-          ierr = VecCreateGhostNodes(p4est,nodes,&v_NS_dd[d][dd]); CHKERRXX(ierr);
+//  foreach_dimension(d){
+//      foreach_dimension(dd){
+//          ierr = VecCreateGhostNodes(p4est,nodes,&v_NS_dd[d][dd]); CHKERRXX(ierr);
 
-      }
+//      }
 
-  }
+//  }
 //  gradT_norm.create(p4est,nodes);
   ngbd->second_derivatives_central(Tl.vec,Tl_dd.vec);
-  ngbd->second_derivatives_central(v_NS.vec,v_NS_dd[0],v_NS_dd[1],P4EST_DIM);
+//  ngbd->second_derivatives_central(v_NS.vec,v_NS_dd[0],v_NS_dd[1],P4EST_DIM);
   Tl_dd.get_array();
-  double *v_NS_dd_p[P4EST_DIM][P4EST_DIM];
-  foreach_dimension(d){
-      foreach_dimension(dd){
-          ierr = VecGetArray(v_NS_dd[d][dd],&v_NS_dd_p[d][dd]); CHKERRXX(ierr);
+//  double *v_NS_dd_p[P4EST_DIM][P4EST_DIM];
+//  foreach_dimension(d){
+//      foreach_dimension(dd){
+//          ierr = VecGetArray(v_NS_dd[d][dd],&v_NS_dd_p[d][dd]); CHKERRXX(ierr);
 
-      }
+//      }
 
-  }
-
-//  Tl_d.get_array();gradT_norm.get_array();
-
-//  for(size_t i = 0; i<ngbd->get_layer_size(); i++){
-//      p4est_locidx_t n = ngbd->get_layer_node(i);
-
-//      gradT_norm.ptr[n] = sqrt(SQR(Tl_d.ptr[0][n])+SQR(Tl_d.ptr[1][n]));
 //  }
-//  PetscErrorCode ierr;
-//  ierr = VecGhostUpdateBegin(gradT_norm.vec,INSERT_VALUES,SCATTER_FORWARD);
-
-//  for(size_t i = 0; i<ngbd->get_local_size(); i++){
-//      p4est_locidx_t n = ngbd->get_local_node(i);
-
-//      gradT_norm.ptr[n] = sqrt(SQR(Tl_d.ptr[0][n])+SQR(Tl_d.ptr[1][n]));
-//  }
-//  Tl_d.restore_array();
-//  ierr = VecGhostUpdateEnd(gradT_norm.vec,INSERT_VALUES,SCATTER_FORWARD);
 
 
   // Save data:
@@ -3464,8 +3445,8 @@ void save_everything(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
 //      point_data = {phi.ptr, phi_2.ptr,Tl.ptr, Ts.ptr,v_int.ptr[0],v_int.ptr[1],v_NS.ptr[0],v_NS.ptr[1],vorticity.ptr,press.ptr,smoke.ptr};
 //    }
   if (example_ == ICE_AROUND_CYLINDER) {
-      point_names = {"phi","phi_cyl","T_l","T_s","v_interface_x","v_interface_y","u","v","vorticity","pressure","d2T_dx2","d2T_dy2","d2u_dx2","d2v_dx2","d2u_dy2","d2v_dy2"};
-      point_data = {phi.ptr, phi_2.ptr,Tl.ptr, Ts.ptr,v_int.ptr[0],v_int.ptr[1],v_NS.ptr[0],v_NS.ptr[1],vorticity.ptr,press.ptr,Tl_dd.ptr[0],Tl_dd.ptr[1],v_NS_dd_p[0][0],v_NS_dd_p[0][1],v_NS_dd_p[1][0],v_NS_dd_p[1][1]};
+      point_names = {"phi","phi_cyl","T_l","T_s","v_interface_x","v_interface_y","u","v","vorticity","pressure","d2T_dx2","d2T_dy2"/*,"d2u_dx2","d2v_dx2","d2u_dy2","d2v_dy2"*/};
+      point_data = {phi.ptr, phi_2.ptr,Tl.ptr, Ts.ptr,v_int.ptr[0],v_int.ptr[1],v_NS.ptr[0],v_NS.ptr[1],vorticity.ptr,press.ptr,Tl_dd.ptr[0],Tl_dd.ptr[1]/*,v_NS_dd_p[0][0],v_NS_dd_p[0][1],v_NS_dd_p[1][0],v_NS_dd_p[1][1]*/};
 //      vec_and_ptr_dim_t dTl, dTs, jump;
 //      dTl.create(p4est,nodes); dTs.create(dTl.vec); jump.create(dTl.vec);
 
@@ -3522,21 +3503,21 @@ void save_everything(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,
 
 
   Tl_dd.restore_array();
-  foreach_dimension(d){
-      foreach_dimension(dd){
-          ierr = VecRestoreArray(v_NS_dd[d][dd],&v_NS_dd_p[d][dd]); CHKERRXX(ierr);
+//  foreach_dimension(d){
+//      foreach_dimension(dd){
+//          ierr = VecRestoreArray(v_NS_dd[d][dd],&v_NS_dd_p[d][dd]); CHKERRXX(ierr);
 
-      }
+//      }
 
-  }
+//  }
   Tl_dd.destroy();
-  foreach_dimension(d){
-      foreach_dimension(dd){
-          ierr = VecDestroy(v_NS_dd[d][dd]); CHKERRXX(ierr);
+//  foreach_dimension(d){
+//      foreach_dimension(dd){
+//          ierr = VecDestroy(v_NS_dd[d][dd]); CHKERRXX(ierr);
 
-      }
+//      }
 
-  }
+//  }
 }
 
 void save_stefan_fields(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,vec_and_ptr_t phi, vec_and_ptr_t phi_2, vec_and_ptr_t Tl,vec_and_ptr_t Ts,vec_and_ptr_dim_t v_int, char* filename ){
@@ -4517,8 +4498,8 @@ int main(int argc, char** argv) {
 
         if(tstep%100 == 0) {PetscPrintf(mpi.comm(),"Current time info : \n"); w.read_duration_current();}
         if(solve_stefan){
-            ierr = PetscPrintf(mpi.comm(),"\n Previous interfacial velocity (max norm) is %0.3g \n",v_interface_max_norm);
-            ierr = PetscFPrintf(mpi.comm(),fich_log,"\n Previous interfacial velocity (max norm) is %0.3g \n",v_interface_max_norm);CHKERRXX(ierr);
+//            ierr = PetscPrintf(mpi.comm(),"\n Previous interfacial velocity (max norm) is %0.3g \n",v_interface_max_norm);
+//            ierr = PetscFPrintf(mpi.comm(),fich_log,"\n Previous interfacial velocity (max norm) is %0.3g \n",v_interface_max_norm);CHKERRXX(ierr);
 
             if(v_interface_max_norm>v_int_max_allowed){
                 PetscPrintf(mpi.comm(),"Interfacial velocity has exceeded its max allowable value \n"
@@ -4540,7 +4521,7 @@ int main(int argc, char** argv) {
         extension_band_extend_ = 10.*pow(min_volume_, 1./ double(P4EST_DIM)); //10
         extension_band_check_  = (6.)*pow(min_volume_, 1./ double(P4EST_DIM)); // 6
 
-        if(example_ == ICE_AROUND_CYLINDER && solve_coupled){
+        if((tstep ==0) && example_ == ICE_AROUND_CYLINDER && solve_coupled){
             double delta_r = r0 - r_cyl;
             PetscPrintf(mpi.comm(),"The uniform band is %0.2f\n",uniform_band);
             if(delta_r<4.*dxyz_close_to_interface ){
@@ -4627,8 +4608,8 @@ int main(int argc, char** argv) {
         if(tstep>0 && (( (int) floor(tn/save_every_dt) ) !=out_idx)  && tstep!=load_tstep){
             out_idx = ( (int) floor(tn/save_every_dt) );
             PetscPrintf(mpi.comm(),"SAVING TO VTK \n"
-                                   "floor = %d \n"
-                                   "out_idx = %d \n",( (int) floor(tn/save_every_dt) ),out_idx);
+/*                                   "floor = %d \n"
+                                   "out_idx = %d \n",( (int) floor(tn/save_every_dt) ),out_idx*/);
             PetscFPrintf(mpi.comm(),fich_log,"Saving to vtk ... \n");
           char output[1000];
 //          if(save_coupled_fields || save_stefan || save_navier_stokes){out_idx++;}
@@ -4855,15 +4836,15 @@ int main(int argc, char** argv) {
                 if(tstep==load_tstep){dt_NS=dt_nm1;}
                 PetscPrintf(mpi.comm(),"\n"
                                        "NS contribution to timestep: \n"
-                                       " - Navier Stokes: %0.3e \n"
-                                       " - Official timestep used: %0.3e \n ",dt_NS,min(dt,dt_NS));
+                                       " - Navier Stokes: %0.3e  "
+                                       " - Official timestep used: %0.3e   ",dt_NS,min(dt,dt_NS));
                 if(advection_sl_order==2) PetscPrintf(mpi.comm()," - dt_nm1 : %0.3e \n ",dt_nm1);
 
                 PetscFPrintf(mpi.comm(),fich_log,"\n"
                                        "NS contribution to timestep: \n"
-                                       " - Navier Stokes: %0.3e \n"
-                                       " - Official timestep used: %0.3e \n ",dt_NS,min(dt,dt_NS));
-                if(advection_sl_order==2) PetscPrintf(mpi.comm()," - dt_nm1 : %0.3e \n ",dt_nm1);
+                                       " - Navier Stokes: %0.3e  "
+                                       " - Official timestep used: %0.3e  ",dt_NS,min(dt,dt_NS));
+                if(advection_sl_order==2) PetscFPrintf(mpi.comm(),fich_log," - dt_nm1 : %0.3e \n ",dt_nm1);
                 dt = min(dt,dt_NS);
               }
             else{
@@ -5093,14 +5074,14 @@ int main(int argc, char** argv) {
               criteria.push_back(0.5);
             }
             if(refine_by_d2T){
-                gradT_threshold=1.e-6;
                 double dTheta = (1.0 - 0.8125)/(min(dxyz_smallest[0],dxyz_smallest[1])); // max dTheta in liquid subdomain
+                PetscPrintf(mpi.comm(),"Refine by gradT yields %0.3e at smallest cell size \n",dTheta*gradT_threshold/min(dxyz_smallest[0],dxyz_smallest[1]));
 
 
                 // Coarsening instructions: (for dT/dx)
                 compare_opn.push_back(SIGN_CHANGE);
                 diag_opn.push_back(DIVIDE_BY);
-                criteria.push_back(dTheta*gradT_threshold*0.5);
+                criteria.push_back(dTheta*gradT_threshold*0.1);
 //                criteria.push_back(0.5*gradT_threshold*(Twall-Tinterface)/r_cyl);
 
                 // Refining instructions: (for dT/dx)
@@ -5112,7 +5093,7 @@ int main(int argc, char** argv) {
                 // Coarsening instructions: (for dT/dy)
                 compare_opn.push_back(SIGN_CHANGE);
                 diag_opn.push_back(DIVIDE_BY);
-                criteria.push_back(dTheta*gradT_threshold*0.5);
+                criteria.push_back(dTheta*gradT_threshold*0.1);
 
                 // Refining instructions: (for dT/dy)
                 compare_opn.push_back(SIGN_CHANGE);
@@ -5338,13 +5319,11 @@ int main(int argc, char** argv) {
         // Get most updated derivatives of the LSF's (on current grid) -- Solver uses these:
         // ------------------------------------------------------------
         if(solve_stefan){
-          PetscPrintf(mpi.comm(),"\n"
-                                 "-----------------------------\n"
+          PetscPrintf(mpi.comm(),"\n \n"
                                  "[Temperature problem specific info:] \n"
                                  "----------------------------- \n \n");
 
-          PetscFPrintf(mpi.comm(),fich_log,"\n"
-                                 "-----------------------------\n"
+          PetscFPrintf(mpi.comm(),fich_log,"\n \n"
                                  "[Temperature problem specific info:] \n"
                                  "----------------------------- \n \n");
           if(print_checkpoints)PetscPrintf(mpi.comm(),"Beginning Poisson problem ... \n");
@@ -5562,12 +5541,9 @@ int main(int argc, char** argv) {
         // Navier-Stokes Problem: Setup and solve a NS problem in the liquid subdomain
         // --------------------------------------------------------------------------------------------------------------
         if (solve_navier_stokes){
-            PetscPrintf(mpi.comm(),"\n"
-                                   "-----------------------------\n"
-                                   "[Navier-Stokes problem specific info:] \n"
+            PetscPrintf(mpi.comm(),"[Navier-Stokes problem specific info:] \n"
                                    "----------------------------- \n \n");
-            PetscFPrintf(mpi.comm(),fich_log,"\n"
-                                   "-----------------------------\n"
+            PetscFPrintf(mpi.comm(),fich_log,"\n \n"
                                    "[Navier-Stokes problem specific info:] \n"
                                    "----------------------------- \n \n");
             if(print_checkpoints) PetscPrintf(mpi.comm(),"Beginning Navier-Stokes problem ... \n");
@@ -5601,10 +5577,10 @@ int main(int argc, char** argv) {
             // Set the timestep: // change to include both timesteps (dtnm1,dtn)
             if(print_checkpoints) PetscPrintf(mpi.comm()," Setting timestep for NS \n");
             if(advection_sl_order ==2){
-                    PetscPrintf(mpi.comm(), "dtnm1 = %0.3e \n"
-                                            "dt = %0.3e \n",dt_nm1,dt);
-                    PetscFPrintf(mpi.comm(),fich_log, "dtnm1 = %0.3e \n"
-                                            "dt = %0.3e \n",dt_nm1,dt);
+//                    PetscPrintf(mpi.comm(), "dtnm1 = %0.3e \n"
+//                                            "dt = %0.3e \n",dt_nm1,dt);
+//                    PetscFPrintf(mpi.comm(),fich_log, "dtnm1 = %0.3e \n"
+//                                            "dt = %0.3e \n",dt_nm1,dt);
 
                 ns->set_dt(dt_nm1,dt);
               }
@@ -5667,17 +5643,13 @@ int main(int argc, char** argv) {
             hodge_new.create(p4est_np1,ghost_np1);
 
             bool keep_iterating_hodge = true;
-            double hodge_tolerance;
+//            double hodge_tolerance;
             if (tstep<1) hodge_tolerance = u0*hodge_percentage_of_max_u;
             else hodge_tolerance = NS_norm*hodge_percentage_of_max_u;
 
-            hodge_tolerance=1.e-3;
-            PetscPrintf(mpi.comm(),"\n"
-                                   "--> Hodge tolerance is %0.2e \n"
-                                   "-----------\n",hodge_tolerance);
-            PetscFPrintf(mpi.comm(),fich_log,"\n"
-                                   "--> Hodge tolerance is %0.2e \n"
-                                   "-----------\n",hodge_tolerance);
+
+            PetscPrintf(mpi.comm(),"Hodge tolerance : %0.3e \n",hodge_tolerance);
+            PetscFPrintf(mpi.comm(),fich_log,"Hodge tolerance : %0.3e \n",hodge_tolerance);
 
             int hodge_iteration = 0;
 
@@ -5808,13 +5780,13 @@ int main(int argc, char** argv) {
 
             // Check the L2 norm of u to make sure nothing is blowing up
             NS_norm = ns->get_max_L2_norm_u();
-            PetscPrintf(mpi.comm(),"Max NS velocity norm info: \n"
-                                   " - Computational value: %0.3e \n"
-                                   " - Physical value: %0.3e [m/s] \n"
+            PetscPrintf(mpi.comm(),"Max NS velocity norm: \n"
+                                   " - Computational value: %0.3e  "
+                                   " - Physical value: %0.3e [m/s]  "
                                    " - Physical value: %0.3e [mm/s] \n \n",NS_norm,NS_norm*u_inf,NS_norm*u_inf*1000.);
             PetscFPrintf(mpi.comm(),fich_log,"Max NS velocity norm info: \n"
-                                   " - Computational value: %0.3e \n"
-                                   " - Physical value: %0.3e [m/s] \n"
+                                   " - Computational value: %0.3e  "
+                                   " - Physical value: %0.3e [m/s]  "
                                    " - Physical value: %0.3e [mm/s] \n \n",NS_norm,NS_norm*u_inf,NS_norm*u_inf*1000.);
 
             // Stop simulation if things are blowing up
@@ -5833,8 +5805,8 @@ int main(int argc, char** argv) {
 //            ns->compute_adapted_dt(NS_norm);
             ns->compute_dt();
             dt_NS = ns->get_dt();
-            PetscPrintf(mpi.comm(),"NS COMPUTED DT : %0.4e \n",dt_NS);
-            PetscFPrintf(mpi.comm(),fich_log,"NS COMPUTED DT : %0.4e \n",dt_NS);
+//            PetscPrintf(mpi.comm(),"NS COMPUTED DT : %0.4e \n",dt_NS);
+//            PetscFPrintf(mpi.comm(),fich_log,"NS COMPUTED DT : %0.4e \n",dt_NS);
 
             if(dt_NS>dt_max_allowed) dt_NS = dt_max_allowed;
 
@@ -5871,10 +5843,8 @@ int main(int argc, char** argv) {
             delete ns;
           }
         else{
-            PetscLogDouble before_grid_delete, after_grid_delete;
-            PetscMemoryGetCurrentUsage(&before_grid_delete);
-            PetscPrintf(mpi.comm(),"Destroying old grid variables ... \n");
-            PetscFPrintf(mpi.comm(),fich_log,"Destroying old grid variables ... \n");
+//            PetscPrintf(mpi.comm(),"Destroying old grid variables ... \n");
+//            PetscFPrintf(mpi.comm(),fich_log,"Destroying old grid variables ... \n");
 
             p4est_destroy(p4est); ns->nullify_p4est_nm1();
             p4est_ghost_destroy(ghost);
@@ -5892,20 +5862,22 @@ int main(int argc, char** argv) {
 
 
         // Get current memory usage and print out all memory usage checkpoints:
-
-        MPI_Barrier(mpi.comm());
         PetscLogDouble mem_safety_check;
-        PetscMemoryGetCurrentUsage(&mem_safety_check);
-        PetscPrintf(mpi.comm(),"\n"
-                               "Memory safety check:\n"
-                               " - Current memory usage is : %0.5e GB \n"
-                               " - Percent of safety limit: %0.2f % \n \n \n",mem_safety_check*mpi.size()*1.e-9,(mpi.size()*mem_safety_check)/(mem_safety_limit)*100.0);
-        PetscFPrintf(mpi.comm(),fich_log,"\n"
-                               "Memory safety check:\n"
-                               " - Current memory usage is : %0.5e GB \n"
-                               " - Percent of safety limit: %0.2f % \n \n \n",mem_safety_check*mpi.size()*1.e-9,(mpi.size()*mem_safety_check)/(mem_safety_limit)*100.0);
 
-        if(mem_safety_check>mem_safety_limit/mpi.size()){
+        if((tstep%save_state_every_iter)==0){ // Do a memory check every time we save a state
+          MPI_Barrier(mpi.comm());
+          PetscMemoryGetCurrentUsage(&mem_safety_check);
+          PetscPrintf(mpi.comm(),"\n"
+                                 "Memory safety check:\n"
+                                 " - Current memory usage is : %0.5e GB \n"
+                                 " - Percent of safety limit: %0.2f % \n \n \n",mem_safety_check*mpi.size()*1.e-9,(mpi.size()*mem_safety_check)/(mem_safety_limit)*100.0);
+          PetscFPrintf(mpi.comm(),fich_log,"\n"
+                                           "Memory safety check:\n"
+                                           " - Current memory usage is : %0.5e GB \n"
+                                           " - Percent of safety limit: %0.2f % \n \n \n",mem_safety_check*mpi.size()*1.e-9,(mpi.size()*mem_safety_check)/(mem_safety_limit)*100.0);
+        }
+
+        if((mem_safety_check>mem_safety_limit/mpi.size())){
             MPI_Barrier(mpi.comm());
             PetscPrintf(mpi.comm(),"We are encroaching upon the memory upper bound on this machine, calling MPI Abort...\n");
             PetscFPrintf(mpi.comm(),fich_log,"We are encroaching upon the memory upper bound on this machine, calling MPI Abort...\n");
