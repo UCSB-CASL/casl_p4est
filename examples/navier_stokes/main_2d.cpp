@@ -35,10 +35,10 @@
 #include <src/my_p4est_trajectory_of_point.h>
 #endif
 
-// casl library
-#include <lib/arrays/ArrayV.h>
-#include <lib/amr/QuadTree.h>
-#include <lib/tools/QuadraticInterpolationOnQuadTree.h>
+//// casl library
+//#include <lib/arrays/ArrayV.h>
+//#include <lib/amr/QuadTree.h>
+//#include <lib/tools/QuadraticInterpolationOnQuadTree.h>
 
 #include <src/Parser.h>
 
@@ -633,121 +633,121 @@ public:
   }
 } bc_smoke;
 
-class NACA_SAMPLED : public CF_2
-{
-private:
-  vector<double> sample;
-  unsigned int N;
-  double naca_length;
-  double naca_number;
-  double naca_angle;
-  double x_edge;
-public:
-  NACA_SAMPLED(double number, double length, double angle)
-  {
-    N = 10000;
-    sample.resize(N);
-    lip = 1.2;
-    naca_length = length;
-    naca_number = number;
-    naca_angle = angle;
-    x_edge = 8;
+//class NACA_SAMPLED : public CF_2
+//{
+//private:
+//  vector<double> sample;
+//  unsigned int N;
+//  double naca_length;
+//  double naca_number;
+//  double naca_angle;
+//  double x_edge;
+//public:
+//  NACA_SAMPLED(double number, double length, double angle)
+//  {
+//    N = 10000;
+//    sample.resize(N);
+//    lip = 1.2;
+//    naca_length = length;
+//    naca_number = number;
+//    naca_angle = angle;
+//    x_edge = 8;
 
-    double dx = naca_length/(double)(N-1);
+//    double dx = naca_length/(double)(N-1);
 
-    for(unsigned int i=0; i<N; ++i)
-    {
-      double x = i*dx;
-      double r = x/naca_length;
-      sample[i] = naca_number/100/.2 * naca_length * (.2969*sqrt(r) - .126*r -.3516*r*r + .2843*r*r*r - .1015*r*r*r*r);
-    }
-  }
+//    for(unsigned int i=0; i<N; ++i)
+//    {
+//      double x = i*dx;
+//      double r = x/naca_length;
+//      sample[i] = naca_number/100/.2 * naca_length * (.2969*sqrt(r) - .126*r -.3516*r*r + .2843*r*r*r - .1015*r*r*r*r);
+//    }
+//  }
 
-  double operator()(double x, double y) const
-  {
-    x -= x_edge;
+//  double operator()(double x, double y) const
+//  {
+//    x -= x_edge;
 
-    /* apply the rotation */
-    x -= naca_length/2;
-    double theta = PI*naca_angle/180;
-    double x_rot = x*cos(theta) - y*sin(theta);
-    double y_rot = x*sin(theta) + y*cos(theta);
-    x = x_rot + naca_length/2;
-    y = y_rot;
+//    /* apply the rotation */
+//    x -= naca_length/2;
+//    double theta = PI*naca_angle/180;
+//    double x_rot = x*cos(theta) - y*sin(theta);
+//    double y_rot = x*sin(theta) + y*cos(theta);
+//    x = x_rot + naca_length/2;
+//    y = y_rot;
 
-    double dx = naca_length/(double) (N-1);
-    double dist = DBL_MAX;
-    for(unsigned int i=0; i<N; ++i)
-    {
-      double xt = i*dx;
-      double yt = sample[i];
-      dist = MIN(dist, sqrt(SQR(x-xt)+SQR(y-yt)), sqrt(SQR(x-xt)+SQR(y+yt)));
-    }
+//    double dx = naca_length/(double) (N-1);
+//    double dist = DBL_MAX;
+//    for(unsigned int i=0; i<N; ++i)
+//    {
+//      double xt = i*dx;
+//      double yt = sample[i];
+//      dist = MIN(dist, sqrt(SQR(x-xt)+SQR(y-yt)), sqrt(SQR(x-xt)+SQR(y+yt)));
+//    }
 
-    if(x<0 || x>naca_length) return -dist;
+//    if(x<0 || x>naca_length) return -dist;
 
-    double r = x/naca_length;
-    double yt = naca_number/100/.2 * naca_length * (.2969*sqrt(r) - .126*r -.3516*r*r + .2843*r*r*r - .1015*r*r*r*r);
-    if(-yt<y && y<yt) return  dist;
-    else              return -dist;
-  }
-};
+//    double r = x/naca_length;
+//    double yt = naca_number/100/.2 * naca_length * (.2969*sqrt(r) - .126*r -.3516*r*r + .2843*r*r*r - .1015*r*r*r*r);
+//    if(-yt<y && y<yt) return  dist;
+//    else              return -dist;
+//  }
+//};
 
 
-class NACA_CASL : public CF_2
-{
-private:
-  // FIXME: We should also not combine these two libraries ...
-  CASL::QuadTree tr;
-  CASL::ArrayV<double> phi;
-  CASL::QuadraticInterpolationOnQuadTree interp;
-  double x_edge;
-  double naca_length;
-  double angle;
-public:
-  NACA_CASL(MPI_Comm comm, int number, double length, double angle)
-  {
-    (void) length;
-    char path_to_naca[1000];
-    // FIXME: I think we should upload the data to repo and use relative path
-#if defined(STAMPEDE)
-    sprintf(path_to_naca, "/work/02673/guittet/code/data/casl_naca/naca_%04d_lmax15_sampling500000_closed", number);
-#elif defined(COMET)
-    sprintf(path_to_naca, "/home/guittet/code/data/casl_naca/naca_%04d_lmax15_sampling500000_closed", number);
-#else
-    sprintf(path_to_naca, "/home/guittet/code/data/casl_naca/naca_%04d_lmax15_sampling500000_closed", number);
-#endif
+//class NACA_CASL : public CF_2
+//{
+//private:
+//  // FIXME: We should also not combine these two libraries ...
+//  CASL::QuadTree tr;
+//  CASL::ArrayV<double> phi;
+//  CASL::QuadraticInterpolationOnQuadTree interp;
+//  double x_edge;
+//  double naca_length;
+//  double angle;
+//public:
+//  NACA_CASL(MPI_Comm comm, int number, double length, double angle)
+//  {
+//    (void) length;
+//    char path_to_naca[1000];
+//    // FIXME: I think we should upload the data to repo and use relative path
+//#if defined(STAMPEDE)
+//    sprintf(path_to_naca, "/work/02673/guittet/code/data/casl_naca/naca_%04d_lmax15_sampling500000_closed", number);
+//#elif defined(COMET)
+//    sprintf(path_to_naca, "/home/guittet/code/data/casl_naca/naca_%04d_lmax15_sampling500000_closed", number);
+//#else
+//    sprintf(path_to_naca, "/home/guittet/code/data/casl_naca/naca_%04d_lmax15_sampling500000_closed", number);
+//#endif
 
-    PetscErrorCode ierr;
-    ierr = PetscPrintf(comm, "importing the naca model for file: %s\n", path_to_naca); CHKERRXX(ierr);
+//    PetscErrorCode ierr;
+//    ierr = PetscPrintf(comm, "importing the naca model for file: %s\n", path_to_naca); CHKERRXX(ierr);
 
-    lip = 1.2;
-    char name[1000];
-    sprintf(name, "%s_tree.dat", path_to_naca);
-    tr.load(name);
-    sprintf(name, "%s_phi.dat", path_to_naca);
-    phi.load(name);
+//    lip = 1.2;
+//    char name[1000];
+//    sprintf(name, "%s_tree.dat", path_to_naca);
+//    tr.load(name);
+//    sprintf(name, "%s_phi.dat", path_to_naca);
+//    phi.load(name);
 
-    interp.set(tr,phi);
-    this->angle = angle;
-    this->x_edge = 8;
-    this->naca_length = 4;
-  }
-  double operator()(double x, double y) const
-  {
-    double theta = PI*angle/180;
-    x -= x_edge;
-    x -= naca_length/2;
+//    interp.set(tr,phi);
+//    this->angle = angle;
+//    this->x_edge = 8;
+//    this->naca_length = 4;
+//  }
+//  double operator()(double x, double y) const
+//  {
+//    double theta = PI*angle/180;
+//    x -= x_edge;
+//    x -= naca_length/2;
 
-    double x_ = x*cos(theta) - y*sin(theta);
-    double y_ = x*sin(theta) + y*cos(theta);
-    x_ += naca_length/2;
-    x_ += x_edge;
-    return interp(x_,y_);
-  }
-};
+//    double x_ = x*cos(theta) - y*sin(theta);
+//    double y_ = x*sin(theta) + y*cos(theta);
+//    x_ += naca_length/2;
+//    x_ += x_edge;
+//    return interp(x_,y_);
+//  }
+//};
 
-CF_2 *naca;
+//CF_2 *naca;
 
 
 class LEVEL_SET: public CF_2
@@ -764,7 +764,7 @@ public:
     case 3: return r0 - sqrt(SQR(x-(xmax+xmin)/2) + SQR(y-(ymax+ymin)/2));
     case 4: return r0 - sqrt(SQR(x-(xmax+xmin)/4) + SQR(y-(ymax+ymin)/2));
     case 5: return r0 - sqrt(SQR(x-X0*(1-cos(2*PI*f0*(tn+dt)))+X0) + SQR(y));
-    case 6: return (*naca)(x,y);
+//    case 6: return (*naca)(x,y);
     case 7: return -1;
     case 8: return .5-(x+y);
     case 9: return r0 - sqrt(SQR(x-.5*cos(tn+dt)) + SQR(y-.5*sin(tn+dt)));
@@ -1383,13 +1383,13 @@ int main (int argc, char* argv[])
   }
 
 #ifndef P4_TO_P8
-  double naca_angle = cmd.get("naca_angle", 15.);
-  int naca_number = cmd.get("naca_number", 12);
-  if(test_number==6)
-  {
-//    naca = new NACA_SAMPLED(naca_number, naca_length, naca_angle);
-    naca = new NACA_CASL(mpi.comm(), naca_number, naca_length, naca_angle);
-  }
+//  double naca_angle = cmd.get("naca_angle", 15.);
+//  int naca_number = cmd.get("naca_number", 12);
+//  if(test_number==6)
+//  {
+////    naca = new NACA_SAMPLED(naca_number, naca_length, naca_angle);
+//    naca = new NACA_CASL(mpi.comm(), naca_number, naca_length, naca_angle);
+//  }
 #endif
 
   tf = cmd.get("tf", tf);
@@ -1615,7 +1615,7 @@ int main (int argc, char* argv[])
   {
     if     (test_number==4) sprintf(file_forces, "%s/2d/forces_karman_%d-%d_%dx%d_Re_%g_thresh_%g_ntimesdt_%g_sl_%d.dat", out_dir, lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt, sl_order);
     else if(test_number==5) sprintf(file_forces, "%s/2d/forces_oscillating_cylinder_%d-%d_%dx%d_Re_%g_thresh_%g_ntimesdt_%g_sl_%d.dat", out_dir, lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt, sl_order);
-    else if(test_number==6) sprintf(file_forces, "%s/2d/forces_naca_%04d_angle_%g_level_%d-%d_macro_%dx%d_Re_%g_thresh_%g_ntimesdt_%g_sl_%d.dat", out_dir, naca_number, naca_angle, lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt, sl_order);
+//    else if(test_number==6) sprintf(file_forces, "%s/2d/forces_naca_%04d_angle_%g_level_%d-%d_macro_%dx%d_Re_%g_thresh_%g_ntimesdt_%g_sl_%d.dat", out_dir, naca_number, naca_angle, lmin, lmax, nx, ny, Re, threshold_split_cell, n_times_dt, sl_order);
     
     ierr = PetscPrintf(mpi.comm(), "Saving forces in ... %s\n", file_forces); CHKERRXX(ierr);
     if(!mpi.rank())
@@ -1804,8 +1804,8 @@ int main (int argc, char* argv[])
     check_error_analytic_vortex(mpi, &ns);
 
 #ifndef P4_TO_P8
-  if(test_number==6)
-    delete naca;
+//  if(test_number==6)
+//    delete naca;
 #endif
 
   if(external_force_u==NULL) delete external_force_u;
