@@ -84,7 +84,7 @@ param_t<double> xmax (pl,  1, "xmax", "xmax");
 param_t<double> ymax (pl,  1, "ymax", "ymax");
 param_t<double> zmax (pl,  1, "zmax", "zmax");
 
-param_t<bool> px (pl, 1, "px", "periodicity in x-dimension 0/1");
+param_t<bool> px (pl, 0, "px", "periodicity in x-dimension 0/1");
 param_t<bool> py (pl, 0, "py", "periodicity in y-dimension 0/1");
 param_t<bool> pz (pl, 0, "pz", "periodicity in z-dimension 0/1");
 
@@ -101,18 +101,17 @@ param_t<int> lmin (pl, 6, "lmin", "min level of trees");
 param_t<int> lmax (pl, 8, "lmax", "max level of trees");
 #endif
 param_t<double> lip (pl, 1.1, "lip", "Lipschitz constant");
-param_t<int> band  (pl, 2,   "band" , "Uniform grid band");
-param_t<bool> refine_only_inside (pl, 1, "refine_only_inside", "Refine only inside");
+param_t<int>    band  (pl, 2,   "band" , "Uniform grid band");
+param_t<bool>   refine_only_inside (pl, 1, "refine_only_inside", "Refine only inside");
 
 
 // advection parameters
-param_t<double> cfl                     (pl, 0.125,    "cfl", "CFL number");
+param_t<double> cfl                     (pl, 0.4,    "cfl", "CFL number");
 param_t<bool>   use_neumann             (pl, 1,      "use_neumann", "Impose contact angle use Neumann BC 0/1");
 param_t<bool>   compute_exact           (pl, 0,      "compute_exact", "Compute exact final shape (only for pure-curvature) 0/1");
-param_t<bool>   rerefine_at_start       (pl, 1,      "rerefine_at_start", "Reinitialze level-set function at the start 0/1)");
 param_t<int>    contact_angle_extension (pl, 0,      "contact_angle_extension", "Method for extending level-set function into wall: 0 - constant angle (pl, 1 -  (pl, 2 - special");
 param_t<int>    volume_corrections      (pl, 2,      "volume_corrections", "Number of volume correction after each move");
-param_t<int>    max_iterations          (pl, 10000,   "max_iterations", "Maximum number of advection steps");
+param_t<int>    max_iterations          (pl, 1000,   "max_iterations", "Maximum number of advection steps");
 param_t<double> tolerance               (pl, 1.0e-8, "tolerance", "Stopping criteria");
 
 interpolation_method interpolation_between_grids = quadratic_non_oscillatory_continuous_v2;
@@ -121,21 +120,12 @@ interpolation_method interpolation_between_grids = quadratic_non_oscillatory_con
 param_t<bool>   use_scft            (pl, 0,     "use_scft", "Turn on/off SCFT 0/1");
 param_t<bool>   smooth_pressure     (pl, 1,     "smooth_pressure", "Smooth pressure after first BC adjustment 0/1");
 param_t<int>    max_scft_iterations (pl, 300,   "max_scft_iterations", "Maximum SCFT iterations");
-param_t<int>    bc_adjust_min       (pl, 5,     "bc_adjust_min", "Minimun SCFT steps between adjusting BC");
+param_t<int>    bc_adjust_min       (pl, 1,     "bc_adjust_min", "Minimun SCFT steps between adjusting BC");
 param_t<double> scft_tol            (pl, 1.e-4, "scft_tol", "Tolerance for SCFT");
-param_t<double> scft_bc_tol         (pl, 4.e-2, "scft_bc_tol", "Tolerance for adjusting BC");
-
-param_t<bool>   minimize   (pl, 1,       "minimize", "Turn on/off energy minimization (0/1)");
-param_t<int>    geometry   (pl, 1,       "geometry", "Initial placement of particles: 0 - one particle, 1 - ...");
-param_t<int>    velocity   (pl, -1,       "velocity", "Predifined velocity in case of minimize=0: 0 - along x-axis, 1 - along y-axis, 2 - diagonally, 3 - circular");
-param_t<int>    rotation   (pl, 1,       "rotation", "Predifined rotation in case of minimize=0: 0 - along x-axis, 1 - along y-axis, 2 - diagonally, 3 - circular");
-param_t<int>    pairwise_potential_type  (pl, 0, "pairwise_potential_type", "Type of pairwise potential: 0 - quadratic, 1 - 1/(e^x-1)");
-param_t<double> pairwise_potential_mag   (pl, 1.0,   "pairwise_potential_mag", "Magnitude of pairwise potential");
-param_t<double> pairwise_potential_width (pl, 20, "pairwise_potential_width", "Width of pairwise potential");
-
+param_t<double> scft_bc_tol         (pl, 1.e-3, "scft_bc_tol", "Tolerance for adjusting BC");
 
 // polymer
-param_t<double> box_size (pl, 3, "box_size", "Box size in units of Rg");
+param_t<double> box_size (pl, 1, "box_size", "Box size in units of Rg");
 param_t<double> f        (pl, .5, "f", "Fraction of polymer A");
 param_t<double> XN       (pl, 20, "XN", "Flory-Higgins interaction parameter");
 param_t<int>    ns       (pl, 40, "ns", "Discretization of polymer chain");
@@ -147,11 +137,22 @@ param_t<bool> save_data       (pl, 1, "save_data", "");
 param_t<int>  save_every_dn   (pl, 1, "save_every_dn", ""); // for vtk
 
 // problem setting
-param_t<int> num_polymer_geometry (pl, 0, "num_polymer_geometry", "Initial polymer shape: 0 - drop (pl, 1 - film (pl, 2 - combination");
-param_t<int> num_wall_geometry    (pl, 1, "num_wall_geometry", "Wall geometry: 0 - no wall (pl, 1 - wall (pl, 2 - well");
-param_t<int> num_wall_pattern     (pl, 0, "num_wall_pattern", "Wall chemical pattern: 0 - no pattern");
-param_t<int> num_seed             (pl, 3, "num_seed", "Seed: 0 - zero (pl, 1 - random (pl, 2 - horizontal stripes (pl, 3 - vertical stripes (pl, 4 - dots");
-param_t<int> num_example          (pl, 0, "num_example", "Number of predefined example");
+
+param_t<int>    geometry_ptcl (pl, 1, "geometry_ptcl", "Initial placement of particles: 0 - one particle, 1 - ...");
+param_t<int>    geometry_free (pl, 0, "geometry_free", "Initial polymer shape: 0 - drop (pl, 1 - film (pl, 2 - combination");
+param_t<int>    geometry_wall (pl, 0, "geometry_wall", "Wall geometry: 0 - no wall (pl, 1 - wall (pl, 2 - well");
+
+param_t<bool>   minimize (pl, 0, "minimize", "Turn on/off energy minimization (0/1)");
+param_t<int>    velocity (pl, 3, "velocity", "Predifined velocity in case of minimize=0: 0 - along x-axis, 1 - along y-axis, 2 - diagonally, 3 - circular");
+param_t<int>    rotation (pl, 0, "rotation", "Predifined rotation in case of minimize=0: 0 - along x-axis, 1 - along y-axis, 2 - diagonally, 3 - circular");
+
+param_t<int>    wall_pattern (pl, 0, "wall_pattern", "Wall chemical pattern: 0 - no pattern");
+param_t<int>    n_seed       (pl, 4, "n_seed", "Seed: 0 - zero (pl, 1 - random (pl, 2 - horizontal stripes (pl, 3 - vertical stripes (pl, 4 - dots");
+param_t<int>    n_example    (pl, 0, "n_example", "Number of predefined example");
+
+param_t<int>    pairwise_potential_type  (pl, 0, "pairwise_potential_type", "Type of pairwise potential: 0 - quadratic, 1 - 1/(e^x-1)");
+param_t<double> pairwise_potential_mag   (pl, 0.0,   "pairwise_potential_mag", "Magnitude of pairwise potential");
+param_t<double> pairwise_potential_width (pl, 5, "pairwise_potential_width", "Width of pairwise potential");
 
 // surface energies
 param_t<double> gamma_a  (pl, 0, "gamma_a" , "Surface tension of A block");
@@ -159,8 +160,8 @@ param_t<double> gamma_b  (pl, 1, "gamma_b" , "Surface tension of B block");
 
 param_t<int> wall_energy_type (pl, 1, "wall_energy_type", "Method for setting wall surface energy: 0 - explicitly (i.e. convert XN to angles) (pl, 1 - through contact angles (i.e. convert angles to XN)");
 
-param_t<double> XN_air_avg (pl, 1.1, "XN_air_avg", "Polymer-air surface energy strength: average");
-param_t<double> XN_air_del (pl, 1, "XN_air_del", "Polymer-air surface energy strength: difference");
+param_t<double> XN_air_avg (pl, 2.0, "XN_air_avg", "Polymer-air surface energy strength: average");
+param_t<double> XN_air_del (pl, 0.5, "XN_air_del", "Polymer-air surface energy strength: difference");
 
 param_t<double> angle_A_min (pl, 90, "angle_A_min", "Minimum contact angle for A-block");
 param_t<double> angle_A_max (pl, 90, "angle_A_max", "Maximum contact angle for A-block");
@@ -231,7 +232,7 @@ void set_wall_surface_energies()
 
 void set_parameters()
 {
-  switch (num_example())
+  switch (n_example())
   {
     case 0:
       break;
@@ -245,7 +246,7 @@ class gamma_Aa_cf_t : public CF_DIM
 public:
   double operator()(DIM(double x, double y, double z)) const
   {
-    return SIGN(XN_air_avg()+XN_air_del())*sqrt(fabs(XN_air_avg()+XN_air_del()));
+    return sqrt(XN_air_avg()+XN_air_del());
   }
 } gamma_Aa_cf;
 
@@ -254,7 +255,7 @@ class gamma_Ba_cf_t : public CF_DIM
 public:
   double operator()(DIM(double x, double y, double z)) const
   {
-    return SIGN(XN_air_avg()-XN_air_del())*sqrt(fabs(XN_air_avg()-XN_air_del()));
+    return sqrt(XN_air_avg()-XN_air_del());
   }
 } gamma_Ba_cf;
 
@@ -263,7 +264,7 @@ class gamma_Aw_cf_t : public CF_DIM
 public:
   double operator()(DIM(double x, double y, double z)) const
   {
-    switch (num_wall_pattern())
+    switch (wall_pattern())
     {
       case 0: return SIGN(XN_wall_A_min())*sqrt(fabs(XN_wall_A_min()));
       default: throw std::invalid_argument("Error: Invalid wall pattern number\n");
@@ -276,7 +277,7 @@ class gamma_Bw_cf_t : public CF_DIM
 public:
   double operator()(DIM(double x, double y, double z)) const
   {
-    switch (num_wall_pattern())
+    switch (wall_pattern())
     {
       case 0: return SIGN(XN_wall_B_min())*sqrt(fabs(XN_wall_B_min()));
       default: throw std::invalid_argument("Error: Invalid wall pattern number\n");
@@ -300,7 +301,7 @@ class phi_wall_cf_t : public CF_DIM
 public:
   double operator()(DIM(double x, double y, double z)) const
   {
-    switch (num_wall_geometry())
+    switch (geometry_wall())
     {
       case 0: return -1;
       case 1:
@@ -330,16 +331,17 @@ class phi_free_cf_t : public CF_DIM
 public:
   double operator()(DIM(double x, double y, double z)) const
   {
-    switch (num_polymer_geometry())
+    switch (geometry_free())
     {
-      case 0: return sqrt( SQR(x-drop_x()) + SQR(y-drop_y()) P8(+ SQR(z-drop_z())) )
+      case 0: return -10;
+      case 1: return sqrt( SQR(x-drop_x()) + SQR(y-drop_y()) P8(+ SQR(z-drop_z())) )
             - drop_r()
             *(1.+drop_deform()*cos(drop_k()*atan2(x-drop_x(),y-drop_y()))
       #ifdef P4_TO_P8
               *(1.-cos(2.*acos((z-drop_z())/sqrt( SQR(x-drop_x()) + SQR(y-drop_y()) + SQR(z-drop_z()) + 1.e-12))))
       #endif
               );
-      case 1:
+      case 2:
       {
         double norm = ABSD(film_nx(), film_ny(), film_nz());
         return - SUMD( (x-film_x())*((x-film_x())*film_eps() - 2.*film_nx() / norm),
@@ -365,7 +367,7 @@ class mu_cf_t : public CF_DIM
 public:
   double operator()(DIM(double x, double y, double z) ) const
   {
-    switch (num_seed())
+    switch (n_seed())
     {
       case 0: return 0;
       case 1: return 0.01*XN()*(double)(rand()%1000)/1000.;
@@ -740,15 +742,17 @@ void initalize_ptcl(std::vector<particle_t> &particles)
 {
   particles.clear();
   particle_t p;
-  switch (geometry())
+  switch (geometry_ptcl())
   {
     case 0: break;
     case 1:
     {
-      static radial_shaped_domain_t domain(0.2, DIM(0,0,0), -1, 3, 0.1, 0.0);
+//      static radial_shaped_domain_t domain(0.2, DIM(0,0,0), -1, 3, 0.1, 0.0);
+      static radial_shaped_domain_t domain(0.2, DIM(0,0,0), -1, 3, 0.0, 0.0);
+//      static capsule_domain_t domain(0.2, DIM(0,0,0), 0.0, -1);
 
-      static radial_gamma_t gA(0, gamma_a(), 1);
-      static radial_gamma_t gB(0, gamma_b(), 1);
+      static radial_gamma_t gA(gamma_a(), gamma_a(), 1);
+      static radial_gamma_t gB(gamma_b(), gamma_b(), 1);
 
       p.phi_cf   = &domain.phi;
       p.phix_cf  = &domain.phi_x;
@@ -763,21 +767,57 @@ void initalize_ptcl(std::vector<particle_t> &particles)
       p.gBx_cf = &gB.ddx;
       p.gBy_cf = &gB.ddy;
 
-      p.xyz[0] = -0.01; p.xyz[1] = -0.02; particles.push_back(p);
+      p.xyz[0] = -0.01; p.xyz[1] = -0.22; particles.push_back(p);
     }
       break;
 
     case 2:
     {
-      static radial_shaped_domain_t domain(0.6, DIM(0,0,0), -1, 2, 0.1, 0.0);
+      static radial_shaped_domain_t sphere(0.2, DIM(0,0,0), -1, 0, 0.0, 0.0);
+      static radial_shaped_domain_t star(0.2, DIM(0,0,0), -1, 3, 0.3, 0.0);
+      static capsule_domain_t capsule(0.1, DIM(0,0,0), 0.3, -1);
 
+      static radial_gamma_t sphere_gA(0, gamma_a(), 1);
+      static radial_gamma_t sphere_gB(-gamma_b(), gamma_b(), 1);
+
+      static radial_gamma_t capsule_gA(0, gamma_a(), 0);
+      static radial_gamma_t capsule_gB(-gamma_b(), gamma_b(), 0);
+
+      static radial_gamma_t star_gA(0, gamma_a(), 3);
+      static radial_gamma_t star_gB(-gamma_b(), gamma_b(), 3);
+
+      p.phi_cf   = &sphere.phi;   p.gA_cf  = &sphere_gA.val; p.gB_cf  = &sphere_gB.val;
+      p.phix_cf  = &sphere.phi_x; p.gAx_cf = &sphere_gA.ddx; p.gBx_cf = &sphere_gB.ddx;
+      p.phiy_cf  = &sphere.phi_y; p.gAy_cf = &sphere_gA.ddy; p.gBy_cf = &sphere_gB.ddy;
+      p.kappa_cf = &sphere.phi_c;
+      p.xyz[0] = -0.30; p.xyz[1] = -0.30; particles.push_back(p);
+
+      p.phi_cf   = &star.phi;   p.gA_cf  = &star_gA.val; p.gB_cf  = &star_gB.val;
+      p.phix_cf  = &star.phi_x; p.gAx_cf = &star_gA.ddx; p.gBx_cf = &star_gB.ddx;
+      p.phiy_cf  = &star.phi_y; p.gAy_cf = &star_gA.ddy; p.gBy_cf = &star_gB.ddy;
+      p.kappa_cf = &star.phi_c;
+      p.xyz[0] = +0.40; p.xyz[1] = -0.20; particles.push_back(p);
+
+      p.phi_cf   = &capsule.phi;   p.gA_cf  = &capsule_gA.val; p.gB_cf  = &capsule_gB.val;
+      p.phix_cf  = &capsule.phi_x; p.gAx_cf = &capsule_gA.ddx; p.gBx_cf = &capsule_gB.ddx;
+      p.phiy_cf  = &capsule.phi_y; p.gAy_cf = &capsule_gA.ddy; p.gBy_cf = &capsule_gB.ddy;
+      p.kappa_cf = &capsule.phi_c;
+      p.xyz[0] = -0.20; p.xyz[1] = +0.25; particles.push_back(p);
+    }
+      break;
+
+    case 3: // perturbed grid of spheres
+    {
+      static radial_shaped_domain_t sphere(0.05, DIM(0,0,0), -1, 0, 0.0, 0.0);
       static radial_gamma_t gA(0, gamma_a(), 1);
-      static radial_gamma_t gB(-gamma_b(), gamma_b(), 1);
+      static radial_gamma_t gB(0, gamma_b(), 1);
+      int n = 10;
+      int m = 10;
 
-      p.phi_cf   = &domain.phi;
-      p.phix_cf  = &domain.phi_x;
-      p.phiy_cf  = &domain.phi_y;
-      p.kappa_cf = &domain.phi_c;
+      p.phi_cf   = &sphere.phi;
+      p.phix_cf  = &sphere.phi_x;
+      p.phiy_cf  = &sphere.phi_y;
+      p.kappa_cf = &sphere.phi_c;
 
       p.gA_cf  = &gA.val;
       p.gAx_cf = &gA.ddx;
@@ -787,11 +827,15 @@ void initalize_ptcl(std::vector<particle_t> &particles)
       p.gBx_cf = &gB.ddx;
       p.gBy_cf = &gB.ddy;
 
-      p.xyz[0] = -1.30; p.xyz[1] = -1.50; particles.push_back(p);
-      p.xyz[0] = +1.50; p.xyz[1] = -0.20; particles.push_back(p);
-      p.xyz[0] = -0.90; p.xyz[1] = +0.75; particles.push_back(p);
+      for (int i = 0; i < n; ++i)
+        for (int j = 0; j < m; ++j)
+        {
+          p.xyz[0] = xmin() + double(i+1)*(xmax()-xmin())/double(n+1);
+          p.xyz[1] = ymin() + double(j+1)*(ymax()-ymin())/double(m+1);
+          particles.push_back(p);
+        }
     }
-      break;
+    break;
 
     default: throw;
   }
@@ -889,7 +933,7 @@ public:
   {
     return MIN( MAX((*phi_ptcl)(DIM(x,y,z)),
                     (*phi_wall)(DIM(x,y,z)),
-                    (*phi_free)(DIM(x,y,z))), (*phi_wall)(DIM(x,y,z)));
+                    (*phi_free)(DIM(x,y,z))), fabs((*phi_wall)(DIM(x,y,z))));
   }
 };
 
@@ -914,6 +958,7 @@ int main (int argc, char* argv[])
   set_wall_surface_energies();
 
   double scaling = 1./box_size();
+  pairwise_potential_width.val *= (xmax()-xmin())/pow(2.,lmax());
 
   // ------------------------------------------------------------------------------------------------------------------
   // prepare output directories
@@ -954,12 +999,9 @@ int main (int argc, char* argv[])
 
     ierr = PetscFOpen(mpi.comm(), file_conv_name, "w", &file_conv); CHKERRXX(ierr);
     ierr = PetscFPrintf(mpi.comm(), file_conv, "iteration "
-                                               "total_time "
-                                               "iteration_time "
                                                "energy "
-                                               "pressure_force "
-                                               "exchange_force "
-                                               "bc_adjusted\n"); CHKERRXX(ierr);
+                                               "energy_change_predicted "
+                                               "energy_change_effective\n"); CHKERRXX(ierr);
     ierr = PetscFClose(mpi.comm(), file_conv); CHKERRXX(ierr);
   }
 
@@ -1048,8 +1090,8 @@ int main (int argc, char* argv[])
   sample_cf_on_nodes(p4est, nodes, phi_ptcl_cf, phi_ptcl);
 
   my_p4est_level_set_t ls(ngbd);
-  ls.reinitialize_2nd_order(phi_free);
-  ls.reinitialize_2nd_order(phi_wall);
+  if (geometry_free() != 0) ls.reinitialize_2nd_order(phi_free);
+  if (geometry_wall()    != 0) ls.reinitialize_2nd_order(phi_wall);
 
   // ------------------------------------------------------------------------------------------------------------------
   // compute initial volume for volume-loss corrections
@@ -1104,9 +1146,12 @@ int main (int argc, char* argv[])
     }
   }
 
-  double energy     = 0;
   double energy_old = 0;
   double rho_old    = 1;
+
+  vector< vector<double> > v_old(P4EST_DIM, vector<double> (np,0));
+  vector<double> w_old(np, 0);
+
 
   // ------------------------------------------------------------------------------------------------------------------
   // main loop
@@ -1241,8 +1286,8 @@ int main (int argc, char* argv[])
       sample_cf_on_nodes(p4est, nodes, phi_wall_cf, phi_wall);
 
       my_p4est_level_set_t ls(ngbd);
-      ls.reinitialize_2nd_order(phi_free);
-      ls.reinitialize_2nd_order(phi_wall);
+      if (geometry_free() != 0) ls.reinitialize_2nd_order(phi_free);
+      if (geometry_wall()    != 0) ls.reinitialize_2nd_order(phi_wall);
     }
 
     // ------------------------------------------------------------------------------------------------------------------
@@ -1314,6 +1359,8 @@ int main (int argc, char* argv[])
     ierr = VecDuplicate(mu_m, &particles_number);     CHKERRXX(ierr);
     ierr = VecDuplicate(mu_m, &integrand);            CHKERRXX(ierr);
 
+    sample_cf_on_nodes(p4est, nodes, particles_number_cf, particles_number);
+
     // ------------------------------------------------------------------------------------------------------------------
     // prepare integration tool
     // ------------------------------------------------------------------------------------------------------------------
@@ -1333,7 +1380,7 @@ int main (int argc, char* argv[])
     // ------------------------------------------------------------------------------------------------------------------
     ierr = VecPointwiseMaxGhost(phi_effe, phi_free, phi_wall); CHKERRXX(ierr);
     ierr = VecPointwiseMaxGhost(phi_effe, phi_effe, phi_ptcl); CHKERRXX(ierr);
-    ls.reinitialize_2nd_order(phi_effe);
+//    ls.reinitialize_2nd_order(phi_effe);
 
     // ------------------------------------------------------------------------------------------------------------------
     // compute geometric information
@@ -1344,53 +1391,57 @@ int main (int argc, char* argv[])
     // ------------------------------------------------------------------------------------------------------------------
     // deform normal field
     // ------------------------------------------------------------------------------------------------------------------
-    double band_deform = 1.5*diag;
-    double band_smooth = 7.0*diag;
-
-    ierr = VecGetArray(phi_free, &phi_free_ptr); CHKERRXX(ierr);
-    foreach_dimension(dim)
+    if (geometry_free() != 0 && geometry_wall() != 0)
     {
-      ierr = VecGetArray(normal_free[dim], &normal_free_ptr[dim]); CHKERRXX(ierr);
-      ierr = VecGetArray(normal_wall[dim], &normal_wall_ptr[dim]); CHKERRXX(ierr);
-    }
+      double band_deform = 1.5*diag;
+      double band_smooth = 7.0*diag;
 
-    foreach_node(n, nodes)
-    {
-      double dot_product = SUMD(normal_free_ptr[0][n]*normal_wall_ptr[0][n],
-                                normal_free_ptr[1][n]*normal_wall_ptr[1][n],
-                                normal_free_ptr[2][n]*normal_wall_ptr[2][n]);
+      ierr = VecGetArray(phi_free, &phi_free_ptr); CHKERRXX(ierr);
+      foreach_dimension(dim)
+      {
+        ierr = VecGetArray(normal_free[dim], &normal_free_ptr[dim]); CHKERRXX(ierr);
+        ierr = VecGetArray(normal_wall[dim], &normal_wall_ptr[dim]); CHKERRXX(ierr);
+      }
 
-      EXECD(normal_wall_ptr[0][n] -= (1.-smoothstep(1, (fabs(phi_free_ptr[n]) - band_deform)/band_smooth))*dot_product*normal_free_ptr[0][n],
+      foreach_node(n, nodes)
+      {
+        double dot_product = SUMD(normal_free_ptr[0][n]*normal_wall_ptr[0][n],
+            normal_free_ptr[1][n]*normal_wall_ptr[1][n],
+            normal_free_ptr[2][n]*normal_wall_ptr[2][n]);
+
+        EXECD(normal_wall_ptr[0][n] -= (1.-smoothstep(1, (fabs(phi_free_ptr[n]) - band_deform)/band_smooth))*dot_product*normal_free_ptr[0][n],
             normal_wall_ptr[1][n] -= (1.-smoothstep(1, (fabs(phi_free_ptr[n]) - band_deform)/band_smooth))*dot_product*normal_free_ptr[1][n],
             normal_wall_ptr[2][n] -= (1.-smoothstep(1, (fabs(phi_free_ptr[n]) - band_deform)/band_smooth))*dot_product*normal_free_ptr[2][n]);
 
-      double norm = ABSD(normal_wall_ptr[0][n], normal_wall_ptr[1][n], normal_wall_ptr[2][n]);
+        double norm = ABSD(normal_wall_ptr[0][n], normal_wall_ptr[1][n], normal_wall_ptr[2][n]);
 
-      EXECD(normal_wall_ptr[0][n] /= norm,
+        EXECD(normal_wall_ptr[0][n] /= norm,
             normal_wall_ptr[1][n] /= norm,
             normal_wall_ptr[2][n] /= norm);
+      }
+
+      ierr = VecRestoreArray(phi_free, &phi_free_ptr); CHKERRXX(ierr);
+      foreach_dimension(dim)
+      {
+        ierr = VecRestoreArray(normal_free[dim], &normal_free_ptr[dim]); CHKERRXX(ierr);
+        ierr = VecRestoreArray(normal_wall[dim], &normal_wall_ptr[dim]); CHKERRXX(ierr);
+      }
+
+      // extension tangentially to the interface
+      //    VecShiftGhost(phi_wall,  1.5*diag);
+      //    ls.extend_Over_Interface_TVD_Full(phi_wall, kappa, 50, 0, 0, DBL_MAX, DBL_MAX, DBL_MAX, normal_wall);
+      //    VecShiftGhost(phi_wall, -1.5*diag);
+
+      ls.set_interpolation_on_interface(linear);
+      ls.extend_from_interface_to_whole_domain_TVD_in_place(phi_free, kappa, phi_free, 20, phi_wall);
+      ls.set_interpolation_on_interface(quadratic_non_oscillatory_continuous_v2);
     }
-
-    ierr = VecRestoreArray(phi_free, &phi_free_ptr); CHKERRXX(ierr);
-    foreach_dimension(dim)
-    {
-      ierr = VecRestoreArray(normal_free[dim], &normal_free_ptr[dim]); CHKERRXX(ierr);
-      ierr = VecRestoreArray(normal_wall[dim], &normal_wall_ptr[dim]); CHKERRXX(ierr);
-    }
-
-    // extension tangentially to the interface
-//    VecShiftGhost(phi_wall,  1.5*diag);
-//    ls.extend_Over_Interface_TVD_Full(phi_wall, kappa, 50, 0, 0, DBL_MAX, DBL_MAX, DBL_MAX, normal_wall);
-//    VecShiftGhost(phi_wall, -1.5*diag);
-
-    ls.set_interpolation_on_interface(linear);
-    ls.extend_from_interface_to_whole_domain_TVD_in_place(phi_free, kappa, phi_free, 20, phi_wall);
-    ls.set_interpolation_on_interface(quadratic_non_oscillatory_continuous_v2);
 
     // ------------------------------------------------------------------------------------------------------------------
     // get density field and non-curvature shape gradient
     // ------------------------------------------------------------------------------------------------------------------
     double rho_avg = 1;
+    double energy  = 0;
 
     if (use_scft())
     {
@@ -1404,16 +1455,17 @@ int main (int argc, char* argv[])
       scft.add_boundary(phi_wall, MLS_INTERSECTION, gamma_Aw_cf, gamma_Bw_cf);
       scft.add_boundary(phi_ptcl, MLS_INTERSECTION, gamma_Aa_all, gamma_Ba_all);
 
-      scft.set_scalling(scaling);
+      scft.set_scaling(scaling);
       scft.set_polymer(f(), XN());
-      scft.set_rho_avg(rho_old);
+      scft.set_rho_avg(1);
 
       // initialize potentials
       Vec mu_m_tmp = scft.get_mu_m();
       Vec mu_p_tmp = scft.get_mu_p();
 
       ierr = VecCopyGhost(mu_m, mu_m_tmp); CHKERRXX(ierr);
-      ierr = VecCopyGhost(mu_p, mu_p_tmp); CHKERRXX(ierr);
+//      ierr = VecCopyGhost(mu_p, mu_p_tmp); CHKERRXX(ierr);
+      ierr = VecSetGhost(mu_p, 0); CHKERRXX(ierr);
 
       // initialize diffusion solvers for propagators
       scft.initialize_solvers();
@@ -1423,25 +1475,38 @@ int main (int argc, char* argv[])
       int    scft_iteration = 0;
       int    bc_iters       = 0;
       double scft_error     = 2.*scft_tol()+1.;
+      int    pressure_resets = 0;
+      smooth_pressure.val = true;
       while (scft_iteration < max_scft_iterations() && scft_error > scft_tol() || scft_iteration < bc_adjust_min()+1)
       {
         // do an SCFT step
         scft.solve_for_propogators();
         scft.calculate_densities();
         scft.update_potentials();
+//        scft.save_VTK(scft_iteration);
 
         if (scft.get_exchange_force() < scft_bc_tol() && bc_iters >= bc_adjust_min())
         {
           scft.initialize_bc_smart();
-          if (smooth_pressure())
+//          if (smooth_pressure())
+//          {
+//            scft.smooth_singularity_in_pressure_field();
+//            smooth_pressure.val = false;
+//          }
+          if (pressure_resets < 1)
           {
             scft.smooth_singularity_in_pressure_field();
-            smooth_pressure.val = false;
+            pressure_resets++;
           }
           bc_iters = 0;
         }
 
-        ierr = PetscPrintf(mpi.comm(), "%d Energy: %e; Pressure: %e; Exchange: %e\n", scft_iteration, scft.get_energy(), scft.get_pressure_force(), scft.get_exchange_force()); CHKERRXX(ierr);
+        ierr = PetscPrintf(mpi.comm(), "%d Energy: %e; Pressure: %e; Exchange: %e%s\n",
+                           scft_iteration,
+                           scft.get_energy(),
+                           scft.get_pressure_force(),
+                           scft.get_exchange_force(),
+                           bc_iters == 0 ? " (bc)" : ""); CHKERRXX(ierr);
 
         scft_error = MAX(fabs(scft.get_pressure_force()), fabs(scft.get_exchange_force()));
         scft_iteration++;
@@ -1450,13 +1515,28 @@ int main (int argc, char* argv[])
 
       energy  = scft.get_energy();
       rho_avg = scft.get_rho_avg();
+      rho_old = rho_avg;
 
       scft.sync_and_extend();
-      scft.compute_energy_shape_derivative(0, shape_grad_free);
-      scft.compute_energy_shape_derivative(2, shape_grad_ptcl);
+      if (geometry_free() != 0)
+      {
+        scft.compute_energy_shape_derivative(0, shape_grad_free);
+        ls.extend_from_interface_to_whole_domain_TVD_in_place(phi_free, shape_grad_free, mu_m, 20, phi_wall);
+      }
+      else
+      {
+        ierr = VecSetGhost(shape_grad_free, 0); CHKERRXX(ierr);
+      }
 
-      ls.extend_from_interface_to_whole_domain_TVD_in_place(phi_free, shape_grad_free, phi_free, 20, phi_wall);
-      ls.extend_from_interface_to_whole_domain_TVD_in_place(phi_free, shape_grad_ptcl, phi_free, 20, phi_wall);
+      if (geometry_ptcl() != 0)
+      {
+        scft.compute_energy_shape_derivative(2, shape_grad_ptcl);
+        ls.extend_from_interface_to_whole_domain_TVD_in_place(phi_ptcl, shape_grad_ptcl, mu_m, 20, phi_wall);
+      }
+      else
+      {
+        ierr = VecSetGhost(shape_grad_ptcl, 0); CHKERRXX(ierr);
+      }
 
       ierr = VecScaleGhost(shape_grad_free, -1); CHKERRXX(ierr);
 
@@ -1471,139 +1551,565 @@ int main (int argc, char* argv[])
       ierr = VecSetGhost(shape_grad_ptcl, 0); CHKERRXX(ierr);
     }
 
+    double energy_change_predicted = 0;
     // ------------------------------------------------------------------------------------------------------------------
-    // compute curvature part of shape gradient and contact angle
+    // shape derivative with respect ot free surface position
     // ------------------------------------------------------------------------------------------------------------------
-    ierr = VecGetArray(mu_m, &mu_m_ptr); CHKERRXX(ierr);
-    ierr = VecGetArray(surf_tns, &surf_tns_ptr); CHKERRXX(ierr);
-    ierr = VecGetArray(cos_angle, &cos_angle_ptr); CHKERRXX(ierr);
-
-    double xyz[P4EST_DIM];
-    foreach_node(n, nodes)
+    double vmax = 0;
+    double dt_free = DBL_MAX;
+    if (geometry_free() != 0)
     {
-      node_xyz_fr_n(n, p4est, nodes, xyz);
-      double g_Aw = gamma_Aw_cf.value(xyz);
-      double g_Bw = gamma_Bw_cf.value(xyz);
-      double g_Aa = gamma_Aa_cf.value(xyz);
-      double g_Ba = gamma_Ba_cf.value(xyz);
-      double g_aw = gamma_aw_cf.value(xyz);
+      // ------------------------------------------------------------------------------------------------------------------
+      // compute curvature part of shape gradient and contact angle
+      // ------------------------------------------------------------------------------------------------------------------
+      ierr = VecGetArray(mu_m, &mu_m_ptr); CHKERRXX(ierr);
+      ierr = VecGetArray(surf_tns, &surf_tns_ptr); CHKERRXX(ierr);
+      ierr = VecGetArray(cos_angle, &cos_angle_ptr); CHKERRXX(ierr);
 
-      double ptcl_repulsion = 0;
-      for (int j = 0; j < np; ++j)
+      double xyz[P4EST_DIM];
+      foreach_node(n, nodes)
       {
+        node_xyz_fr_n(n, p4est, nodes, xyz);
+        double g_Aw = gamma_Aw_cf.value(xyz);
+        double g_Bw = gamma_Bw_cf.value(xyz);
+        double g_Aa = gamma_Aa_cf.value(xyz);
+        double g_Ba = gamma_Ba_cf.value(xyz);
+        double g_aw = gamma_aw_cf.value(xyz);
+
+        double ptcl_repulsion = 0;
+        for (int j = 0; j < np; ++j)
+        {
           double dist_other = particles[j].phi(DIM(xyz[0], xyz[1], xyz[2]));
-          ptcl_repulsion += pairwise_potential(dist_other);
+          ptcl_repulsion += pairwise_potential(-dist_other-pairwise_potential_width());
+        }
+
+        surf_tns_ptr [n] = (.5*(g_Aa+g_Ba)*rho_avg + (g_Aa-g_Ba)*mu_m_ptr[n]/XN())/pow(scaling, P4EST_DIM-1) + ptcl_repulsion/pow(scaling, P4EST_DIM-1);
+        cos_angle_ptr[n] = (.5*(g_Aw+g_Bw)*rho_avg + (g_Aw-g_Bw)*mu_m_ptr[n]/XN() - g_aw)
+                           / (.5*(g_Aa+g_Ba) + (g_Aa-g_Ba)*mu_m_ptr[n]/XN());
       }
 
-      surf_tns_ptr [n] = (.5*(g_Aa+g_Ba)*rho_avg + (g_Aa-g_Ba)*mu_m_ptr[n]/XN())/pow(scaling, P4EST_DIM-1) + ptcl_repulsion;
-      cos_angle_ptr[n] = (.5*(g_Aw+g_Bw)*rho_avg + (g_Aw-g_Bw)*mu_m_ptr[n]/XN() - g_aw)
-          / (.5*(g_Aa+g_Ba) + (g_Aa-g_Ba)*mu_m_ptr[n]/XN());
+      ierr = VecRestoreArray(mu_m, &mu_m_ptr); CHKERRXX(ierr);
+      ierr = VecRestoreArray(surf_tns, &surf_tns_ptr); CHKERRXX(ierr);
+      ierr = VecRestoreArray(cos_angle, &cos_angle_ptr); CHKERRXX(ierr);
+
+      if (!use_scft())
+      {
+        energy += integration.integrate_over_interface(0, surf_tns);
+
+
+        if (geometry_wall() != 0)
+        {
+          Vec     surf_tns_wall;
+          double *surf_tns_wall_ptr;
+
+          ierr = VecDuplicate(mu_m, &surf_tns_wall); CHKERRXX(ierr);
+
+          ierr = VecGetArray(mu_m, &mu_m_ptr); CHKERRXX(ierr);
+          ierr = VecGetArray(surf_tns_wall, &surf_tns_wall_ptr); CHKERRXX(ierr);
+
+          double xyz[P4EST_DIM];
+          foreach_node(n, nodes)
+          {
+            node_xyz_fr_n(n, p4est, nodes, xyz);
+            double g_Aw = gamma_Aw_cf.value(xyz);
+            double g_Bw = gamma_Bw_cf.value(xyz);
+            double g_aw = gamma_aw_cf.value(xyz);
+
+            surf_tns_wall_ptr[n] = (.5*(g_Aw+g_Bw)*rho_avg + (g_Aw-g_Bw)*mu_m_ptr[n]/XN() - g_aw)/pow(scaling, P4EST_DIM-1);
+          }
+
+          ierr = VecRestoreArray(mu_m, &mu_m_ptr); CHKERRXX(ierr);
+          ierr = VecRestoreArray(surf_tns_wall, &surf_tns_wall_ptr); CHKERRXX(ierr);
+
+          energy += integration.integrate_over_interface(1, surf_tns_wall);
+
+          ierr = VecDestroy(surf_tns_wall); CHKERRXX(ierr);
+        }
+      }
+
+      ls.extend_Over_Interface_TVD_Full(phi_wall, cos_angle, 20, 0, 0, DBL_MAX, DBL_MAX, DBL_MAX, normal_wall);
+      ls.extend_from_interface_to_whole_domain_TVD_in_place(phi_free, cos_angle, phi_free, 20, phi_wall);
+
+      ls.extend_from_interface_to_whole_domain_TVD(phi_free, surf_tns, tmp);
+      ierr = VecPointwiseMultGhost(shape_grad_free_full, kappa, tmp); CHKERRXX(ierr);
+
+      ngbd->first_derivatives_central(surf_tns, surf_tns_grad);
+      foreach_dimension(dim)
+      {
+        ierr = VecPointwiseMultGhost(surf_tns_grad[dim], surf_tns_grad[dim], normal_free[dim]); CHKERRXX(ierr);
+        ls.extend_from_interface_to_whole_domain_TVD(phi_free, surf_tns_grad[dim], tmp);
+        VecAXPBYGhost(shape_grad_free_full, 1, 1, tmp);
+      }
+
+      VecScaleGhost(shape_grad_free_full, -1);
+      VecAXPBYGhost(shape_grad_free_full, 1, 1, shape_grad_free);
+
+      ls.extend_from_interface_to_whole_domain_TVD_in_place(phi_free, shape_grad_free_full, phi_free, 20, phi_wall);
+
+      // ------------------------------------------------------------------------------------------------------------------
+      // select free surface velocity
+      // ------------------------------------------------------------------------------------------------------------------
+      VecCopyGhost(shape_grad_free,      velo_free);
+      VecCopyGhost(shape_grad_free_full, velo_free_full);
+
+      double vn_avg = integration.integrate_over_interface(0, velo_free_full)/integration.measure_of_interface(0);
+
+      VecShiftGhost(velo_free, -vn_avg);
+      VecShiftGhost(velo_free_full, -vn_avg);
+
+      ls.extend_from_interface_to_whole_domain_TVD_in_place(phi_free, velo_free, phi_free, 20, phi_wall);
+
+      // ------------------------------------------------------------------------------------------------------------------
+      // compute time step for free surface
+      // ------------------------------------------------------------------------------------------------------------------
+      ierr = VecGetArray(velo_free, &velo_free_ptr); CHKERRXX(ierr);
+      ierr = VecGetArray(velo_free_full, &velo_free_full_ptr); CHKERRXX(ierr);
+
+      quad_neighbor_nodes_of_node_t qnnn;
+      foreach_local_node(n, nodes)
+      {
+        ngbd->get_neighbors(n, qnnn);
+
+        double xyzn[P4EST_DIM];
+        node_xyz_fr_n(n, p4est, nodes, xyzn);
+
+        double s_p00 = fabs(qnnn.d_p00); double s_m00 = fabs(qnnn.d_m00);
+        double s_0p0 = fabs(qnnn.d_0p0); double s_0m0 = fabs(qnnn.d_0m0);
+#ifdef P4_TO_P8
+        double s_00p = fabs(qnnn.d_00p); double s_00m = fabs(qnnn.d_00m);
+#endif
+#ifdef P4_TO_P8
+        double s_min = MIN(MIN(s_p00, s_m00), MIN(s_0p0, s_0m0), MIN(s_00p, s_00m));
+#else
+        double s_min = MIN(MIN(s_p00, s_m00), MIN(s_0p0, s_0m0));
+#endif
+
+        dt_free = MIN(dt_free, cfl()*fabs(s_min/velo_free_ptr[n]));
+        dt_free = MIN(dt_free, cfl()*fabs(s_min/velo_free_full_ptr[n]));
+        vmax = MAX(vmax, fabs(velo_free_ptr[n]));
+        vmax = MAX(vmax, fabs(velo_free_full_ptr[n]));
+      }
+
+      ierr = VecRestoreArray(velo_free, &velo_free_ptr); CHKERRXX(ierr);
+      ierr = VecRestoreArray(velo_free_full, &velo_free_full_ptr); CHKERRXX(ierr);
+
+      MPI_Allreduce(MPI_IN_PLACE, &dt_free, 1, MPI_DOUBLE, MPI_MIN, p4est->mpicomm);
+      MPI_Allreduce(MPI_IN_PLACE, &vmax, 1, MPI_DOUBLE, MPI_MIN, p4est->mpicomm);
+
+      // ------------------------------------------------------------------------------------------------------------------
+      // compute expected change in energy due to free surface
+      // ------------------------------------------------------------------------------------------------------------------
+      ierr = VecPointwiseMultGhost(integrand, velo_free_full, shape_grad_free_full); CHKERRXX(ierr);
+      energy_change_predicted = -dt_free*integration.integrate_over_interface(0, integrand);
     }
-
-    ierr = VecRestoreArray(mu_m, &mu_m_ptr); CHKERRXX(ierr);
-    ierr = VecRestoreArray(surf_tns, &surf_tns_ptr); CHKERRXX(ierr);
-    ierr = VecRestoreArray(cos_angle, &cos_angle_ptr); CHKERRXX(ierr);
-
-    if (!use_scft())
+    else
     {
-      energy = integration.integrate_over_interface(0, surf_tns) +
-               integration.integrate_over_interface(1, surf_tns) +
-               integration.integrate_over_interface(2, surf_tns);
+      ierr = VecSetGhost(velo_free, 0); CHKERRXX(ierr);
+      ierr = VecSetGhost(velo_free_full, 0); CHKERRXX(ierr);
+      ierr = VecSetGhost(shape_grad_free, 0); CHKERRXX(ierr);
+      ierr = VecSetGhost(shape_grad_free_full, 0); CHKERRXX(ierr);
+      ierr = VecSetGhost(surf_tns, 0); CHKERRXX(ierr);
+      ierr = VecSetGhost(cos_angle, 0); CHKERRXX(ierr);
     }
-
-    ls.extend_Over_Interface_TVD_Full(phi_wall, cos_angle, 20, 0, 0, DBL_MAX, DBL_MAX, DBL_MAX, normal_wall);
-    ls.extend_from_interface_to_whole_domain_TVD_in_place(phi_free, cos_angle, phi_free, 20, phi_wall);
-
-    ls.extend_from_interface_to_whole_domain_TVD(phi_free, surf_tns, tmp);
-    ierr = VecPointwiseMultGhost(shape_grad_free_full, kappa, tmp); CHKERRXX(ierr);
-
-    ngbd->first_derivatives_central(surf_tns, surf_tns_grad);
-    foreach_dimension(dim)
-    {
-      ierr = VecPointwiseMultGhost(surf_tns_grad[dim], surf_tns_grad[dim], normal_free[dim]); CHKERRXX(ierr);
-      ls.extend_from_interface_to_whole_domain_TVD(phi_free, surf_tns_grad[dim], tmp);
-      VecAXPBYGhost(shape_grad_free_full, 1, 1, tmp);
-    }
-
-    VecScaleGhost(shape_grad_free_full, -1);
-    VecAXPBYGhost(shape_grad_free_full, 1, 1, shape_grad_free);
-
-    ls.extend_from_interface_to_whole_domain_TVD_in_place(phi_free, shape_grad_free_full, phi_free, 20, phi_wall);
 
     // ------------------------------------------------------------------------------------------------------------------
-    // select interface velocity
+    // compute derivatives with respect to particle positions
     // ------------------------------------------------------------------------------------------------------------------
-    VecCopyGhost(shape_grad_free,      velo_free);
-    VecCopyGhost(shape_grad_free_full, velo_free_full);
+    vector< vector<double> > g(P4EST_DIM, vector<double> (np,0));
+    vector< vector<double> > v(P4EST_DIM, vector<double> (np,0));
 
-    double vn_avg = integration.integrate_over_interface(0, velo_free_full)/integration.measure_of_interface(0);
+    vector<double> gw(np, 0);
+    vector<double> w(np, 0);
 
-    VecShiftGhost(velo_free, -vn_avg);
-    VecShiftGhost(velo_free_full, -vn_avg);
+    vector<double> dt_ptcl_v(np, 1);
+    vector<double> dt_ptcl_w(np, 1);
 
-    ls.extend_from_interface_to_whole_domain_TVD_in_place(phi_free, velo_free, phi_free, 20, phi_wall);
-
-    // ------------------------------------------------------------------------------------------------------------------
-    // compute time step dt for free surface
-    // ------------------------------------------------------------------------------------------------------------------
-    double dt_local = DBL_MAX;
-    double vmax = 0;
-    double dt;
-
-    ierr = VecGetArray(velo_free, &velo_free_ptr); CHKERRXX(ierr);
-    ierr = VecGetArray(velo_free_full, &velo_free_full_ptr); CHKERRXX(ierr);
-
-    quad_neighbor_nodes_of_node_t qnnn;
-    foreach_local_node(n, nodes)
+    if (geometry_ptcl() !=0)
     {
-      ngbd->get_neighbors(n, qnnn);
+      ngbd->first_derivatives_central(mu_m, mu_m_grad);
 
-      double xyzn[P4EST_DIM];
-      node_xyz_fr_n(n, p4est, nodes, xyzn);
+      sample_cf_on_nodes(p4est, nodes, particles_number_cf, particles_number);
 
-      double s_p00 = fabs(qnnn.d_p00); double s_m00 = fabs(qnnn.d_m00);
-      double s_0p0 = fabs(qnnn.d_0p0); double s_0m0 = fabs(qnnn.d_0m0);
-  #ifdef P4_TO_P8
-      double s_00p = fabs(qnnn.d_00p); double s_00m = fabs(qnnn.d_00m);
-  #endif
-  #ifdef P4_TO_P8
-      double s_min = MIN(MIN(s_p00, s_m00), MIN(s_0p0, s_0m0), MIN(s_00p, s_00m));
-  #else
-      double s_min = MIN(MIN(s_p00, s_m00), MIN(s_0p0, s_0m0));
-  #endif
+      ierr = VecGetArray(particles_number, &particles_number_ptr); CHKERRXX(ierr);
+      ierr = VecGetArray(phi_ptcl, &phi_ptcl_ptr); CHKERRXX(ierr);
+      ierr = VecGetArray(phi_effe, &phi_effe_ptr); CHKERRXX(ierr);
 
-      dt_local = MIN(dt_local, cfl()*fabs(s_min/velo_free_ptr[n]));
-      dt_local = MIN(dt_local, cfl()*fabs(s_min/velo_free_full_ptr[n]));
-      vmax = MAX(vmax, fabs(velo_free_ptr[n]));
-      vmax = MAX(vmax, fabs(velo_free_full_ptr[n]));
+      double factor  = 1./pow(scaling, P4EST_DIM-1.);
+
+      my_p4est_interpolation_nodes_local_t interp_local(ngbd);
+      double proximity_crit = 50.*diag;
+      double surf_energy = 0;
+      double repulsion_energy = 0;
+      foreach_local_node(n, nodes)
+      {
+        if (fabs(phi_effe_ptr[n]) < proximity_crit)
+        {
+          int i = int(particles_number_ptr[n]);
+
+          // get area and centroid of the interface
+          double area_ptcl = 0;
+          double area_wall = 0;
+          double area_free = 0;
+          double xyz_ptcl[P4EST_DIM];
+          double xyz_wall[P4EST_DIM];
+          double xyz_free[P4EST_DIM];
+
+          interp_local.initialize(n);
+          interp_local.set_input(phi_free, linear);
+
+          phi_true_cf_t PHI(&particles[i]);
+          vector<mls_opn_t> opn(3, MLS_INT);
+          vector<CF_DIM *> phi_cf(3);
+          phi_cf[0] = &PHI;
+          phi_cf[1] = &phi_wall_cf;
+          phi_cf[2] = &interp_local;
+
+          my_p4est_finite_volume_t fv;
+          construct_finite_volume(fv, n, p4est, nodes, phi_cf, opn, 1, 1);
+
+          for (int j = 0; j < fv.interfaces.size(); ++j)
+          {
+            double xyz[P4EST_DIM];
+            node_xyz_fr_n(n, p4est, nodes, xyz);
+
+            switch (fv.interfaces[j].id)
+            {
+              case 0:
+                xyz_ptcl[0]  = xyz[0] + fv.interfaces[j].centroid[0];
+                xyz_ptcl[1]  = xyz[1] + fv.interfaces[j].centroid[1];
+                area_ptcl    = fv.interfaces[j].area;
+                break;
+              case 1:
+                xyz_wall[0]  = xyz[0] + fv.interfaces[j].centroid[0];
+                xyz_wall[1]  = xyz[1] + fv.interfaces[j].centroid[1];
+                area_wall    = fv.interfaces[j].area;
+                break;
+              case 2:
+                xyz_free[0]  = xyz[0] + fv.interfaces[j].centroid[0];
+                xyz_free[1]  = xyz[1] + fv.interfaces[j].centroid[1];
+                area_free    = fv.interfaces[j].area;
+                break;
+              default: throw;
+            }
+          }
+
+          if (area_ptcl != 0)
+          {
+            double phix = particles[i].phix (DIM(xyz_ptcl[0], xyz_ptcl[1], xyz_ptcl[2]));
+            double phiy = particles[i].phiy (DIM(xyz_ptcl[0], xyz_ptcl[1], xyz_ptcl[2]));
+
+            double norm = ABSD(phix, phiy, phiz);
+            EXECD(phix /= norm, phiy /= norm, phiz /= norm);
+
+            double dist = particles[i].phi (DIM(xyz_ptcl[0], xyz_ptcl[1], xyz_ptcl[2]));
+
+            xyz_ptcl[0] -= dist*phix/norm;
+            xyz_ptcl[1] -= dist*phiy/norm;
+
+            phix = particles[i].phix (DIM(xyz_ptcl[0], xyz_ptcl[1], xyz_ptcl[2]));
+            phiy = particles[i].phiy (DIM(xyz_ptcl[0], xyz_ptcl[1], xyz_ptcl[2]));
+
+            norm = ABSD(phix, phiy, phiz);
+            EXECD(phix /= norm, phiy /= norm, phiz /= norm);
+
+            interp_local.set_input(shape_grad_ptcl, linear); double velo_val = interp_local.value(xyz_ptcl);
+            interp_local.set_input(mu_m,            linear); double mu_m     = interp_local.value(xyz_ptcl);
+            interp_local.set_input(mu_m_grad[0],    linear); double mux_m    = interp_local.value(xyz_ptcl);
+            interp_local.set_input(mu_m_grad[1],    linear); double muy_m    = interp_local.value(xyz_ptcl);
+
+            double phic = particles[i].kappa(DIM(xyz_ptcl[0], xyz_ptcl[1], xyz_ptcl[2]));
+
+            double ga  = particles[i].gA (DIM(xyz_ptcl[0], xyz_ptcl[1], xyz_ptcl[2]));
+            double gax = particles[i].gAx(DIM(xyz_ptcl[0], xyz_ptcl[1], xyz_ptcl[2]));
+            double gay = particles[i].gAy(DIM(xyz_ptcl[0], xyz_ptcl[1], xyz_ptcl[2]));
+
+            double gb  = particles[i].gB (DIM(xyz_ptcl[0], xyz_ptcl[1], xyz_ptcl[2]));
+            double gbx = particles[i].gBx(DIM(xyz_ptcl[0], xyz_ptcl[1], xyz_ptcl[2]));
+            double gby = particles[i].gBy(DIM(xyz_ptcl[0], xyz_ptcl[1], xyz_ptcl[2]));
+
+
+            double g_eff  = (.5*(ga+gb)*rho_avg + mu_m/XN()*(ga-gb));
+            double gx_eff = (.5*(gax+gbx)*rho_avg + mu_m/XN()*(gax-gbx) + mux_m/XN()*(ga-gb));
+            double gy_eff = (.5*(gay+gby)*rho_avg + mu_m/XN()*(gay-gby) + muy_m/XN()*(ga-gb));
+
+            double G = SUMD(phix*gx_eff,
+                            phiy*gy_eff,
+                            phiz*gz_eff)*factor
+                       + g_eff*phic*factor
+                       + velo_val;
+
+            // repulsion between particles
+            for (int j = 0; j < np; ++j)
+            {
+              if (j != i)
+              {
+                double dist_other = particles[j].phi(DIM(xyz_ptcl[0], xyz_ptcl[1], xyz_ptcl[2]));
+                if (-dist_other < pairwise_potential_width())
+                {
+                  double phix_other = particles[j].phix(DIM(xyz_ptcl[0], xyz_ptcl[1], xyz_ptcl[2]));
+                  double phiy_other = particles[j].phiy(DIM(xyz_ptcl[0], xyz_ptcl[1], xyz_ptcl[2]));
+                  dist_other = -dist_other-pairwise_potential_width();
+                  G += phic*pairwise_potential(dist_other)*factor + pairwise_force(dist_other)*SUMD(phix_other*phix, phiy_other*phiy, FIX)*factor;
+
+                  double add_x = -pairwise_force(dist_other)*phix_other*factor;
+                  double add_y = -pairwise_force(dist_other)*phiy_other*factor;
+
+                  double delx = xyz_ptcl[0]-particles[j].xyz[0];
+                  double dely = xyz_ptcl[1]-particles[j].xyz[1];
+
+                  g[0][j] += add_x*area_ptcl;
+                  g[1][j] += add_y*area_ptcl;
+                  gw[j]   += (add_x*dely - add_y*delx)*area_ptcl;
+                  repulsion_energy  += pairwise_potential(dist_other)*area_ptcl*factor;
+                }
+              }
+            }
+
+            // wall repulsion
+            double dist_other = phi_wall_cf(DIM(xyz_ptcl[0], xyz_ptcl[1], xyz_ptcl[2]));
+            if (-dist_other < pairwise_potential_width())
+            {
+              interp_local.set_input(normal_wall[0], linear); double phix_other = interp_local.value(xyz_ptcl);
+              interp_local.set_input(normal_wall[1], linear); double phiy_other = interp_local.value(xyz_ptcl);
+              dist_other = -dist_other-pairwise_potential_width();
+              G += phic*pairwise_potential(dist_other)*factor +
+                   pairwise_force(dist_other)*SUMD(phix_other*phix, phiy_other*phiy, FIX)*factor;
+            }
+
+            double Gx = G*phix - (.5*(gax+gbx)*rho_avg + mu_m/XN()*(gax-gbx))*factor;
+            double Gy = G*phiy - (.5*(gay+gby)*rho_avg + mu_m/XN()*(gay-gby))*factor;
+
+            double delx = xyz_ptcl[0]-particles[i].xyz[0];
+            double dely = xyz_ptcl[1]-particles[i].xyz[1];
+
+            double Gxy = Gx*dely - Gy*delx;
+
+            g[0][i] += Gx*area_ptcl;
+            g[1][i] += Gy*area_ptcl;
+            gw[i]   += Gxy*area_ptcl;
+            surf_energy  += g_eff*area_ptcl*factor;
+          }
+
+          if (area_wall != 0)
+          {
+            interp_local.set_input(normal_wall[0], linear); double phix = interp_local.value(xyz_wall);
+            interp_local.set_input(normal_wall[1], linear); double phiy = interp_local.value(xyz_wall);
+
+            double norm = ABSD(phix, phiy, phiz);
+            EXECD(phix /= norm, phiy /= norm, phiz /= norm);
+
+            interp_local.set_input(phi_wall, linear); double dist = interp_local.value(xyz_wall);
+
+            xyz_wall[0] -= dist*phix/norm;
+            xyz_wall[1] -= dist*phiy/norm;
+
+//            interp_local.set_input(mu_m, linear); double mu_m = interp_local.value(xyz_wall);
+
+//            double ga  = gamma_Aw_cf.value(xyz_wall);
+//            double gb  = gamma_Bw_cf.value(xyz_wall);
+
+//            double g_eff  = (.5*(ga+gb)*rho_avg + mu_m/XN()*(ga-gb));
+
+//            surf_energy  += g_eff*area_wall*factor;
+
+            // repulsion from walls
+            for (int j = 0; j < np; ++j)
+            {
+              double dist_other = particles[j].phi(DIM(xyz_wall[0], xyz_wall[1], xyz_wall[2]));
+              if (-dist_other < pairwise_potential_width())
+              {
+                double phix_other = particles[j].phix(DIM(xyz_wall[0], xyz_wall[1], xyz_wall[2]));
+                double phiy_other = particles[j].phiy(DIM(xyz_wall[0], xyz_wall[1], xyz_wall[2]));
+                dist_other = -dist_other-pairwise_potential_width();
+
+                double add_x = -pairwise_force(dist_other)*phix_other*factor;
+                double add_y = -pairwise_force(dist_other)*phiy_other*factor;
+
+                double delx = xyz_wall[0]-particles[j].xyz[0];
+                double dely = xyz_wall[1]-particles[j].xyz[1];
+
+                g[0][j] += add_x*area_wall;
+                g[1][j] += add_y*area_wall;
+                gw[j]   += (add_x*dely - add_y*delx)*area_wall;
+                repulsion_energy  += pairwise_potential(dist_other)*area_wall*factor;
+              }
+            }
+          }
+
+          if (area_free != 0)
+          {
+            interp_local.set_input(normal_free[0], linear); double phix = interp_local.value(xyz_free);
+            interp_local.set_input(normal_free[1], linear); double phiy = interp_local.value(xyz_free);
+
+            double norm = ABSD(phix, phiy, phiz);
+            EXECD(phix /= norm, phiy /= norm, phiz /= norm);
+
+            interp_local.set_input(phi_free, linear); double dist = interp_local.value(xyz_free);
+
+            xyz_free[0] -= dist*phix/norm;
+            xyz_free[1] -= dist*phiy/norm;
+
+//            interp_local.set_input(mu_m, linear); double mu_m = interp_local.value(xyz_free);
+
+//            double ga  = gamma_Aa_cf.value(xyz_free);
+//            double gb  = gamma_Ba_cf.value(xyz_free);
+
+//            double g_eff  = (.5*(ga+gb)*rho_avg + mu_m/XN()*(ga-gb));
+
+//            surf_energy  += g_eff*area_free*factor;
+
+            // repulsion from free interface
+            for (int j = 0; j < np; ++j)
+            {
+              double dist_other = particles[j].phi(DIM(xyz_free[0], xyz_free[1], xyz_free[2]));
+              if (-dist_other < pairwise_potential_width())
+              {
+                double phix_other = particles[j].phix(DIM(xyz_free[0], xyz_free[1], xyz_free[2]));
+                double phiy_other = particles[j].phiy(DIM(xyz_free[0], xyz_free[1], xyz_free[2]));
+                dist_other = -dist_other-pairwise_potential_width();
+
+                double add_x = -pairwise_force(dist_other)*phix_other*factor;
+                double add_y = -pairwise_force(dist_other)*phiy_other*factor;
+
+                double delx = xyz_free[0]-particles[j].xyz[0];
+                double dely = xyz_free[1]-particles[j].xyz[1];
+
+                g[0][j] += add_x*area_free;
+                g[1][j] += add_y*area_free;
+                gw[j]   += (add_x*dely - add_y*delx)*area_free;
+                repulsion_energy  += pairwise_potential(dist_other)*area_free*factor;
+              }
+            }
+          }
+        }
+      }
+      ierr = VecRestoreArray(particles_number, &particles_number_ptr); CHKERRXX(ierr);
+      ierr = VecRestoreArray(phi_ptcl, &phi_ptcl_ptr); CHKERRXX(ierr);
+      ierr = VecRestoreArray(phi_effe, &phi_effe_ptr); CHKERRXX(ierr);
+
+      ierr = MPI_Allreduce(MPI_IN_PLACE, g[0].data(), np, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); CHKERRXX(ierr);
+      ierr = MPI_Allreduce(MPI_IN_PLACE, g[1].data(), np, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); CHKERRXX(ierr);
+      ierr = MPI_Allreduce(MPI_IN_PLACE, gw.data(),   np, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); CHKERRXX(ierr);
+      ierr = MPI_Allreduce(MPI_IN_PLACE, &repulsion_energy, 1,  MPI_DOUBLE, MPI_SUM, p4est->mpicomm); CHKERRXX(ierr);
+      ierr = MPI_Allreduce(MPI_IN_PLACE, &surf_energy,      1,  MPI_DOUBLE, MPI_SUM, p4est->mpicomm); CHKERRXX(ierr);
+
+      energy += repulsion_energy;
+
+      if (!use_scft()) energy += surf_energy;
+
+      // ------------------------------------------------------------------------------------------------------------------
+      // select particles' velocity
+      // ------------------------------------------------------------------------------------------------------------------
+      if (minimize())
+      {
+        for(int i = 0; i < np; i++)
+        {
+          switch (1)
+          {
+            case 0:
+              v[0][i] = -g[0][i];
+              v[1][i] = -g[1][i];
+              w[i] = -gw[i];
+            case 1:
+              v[0][i] = .5*(v_old[0][i]-g[0][i]);
+              v[1][i] = .5*(v_old[1][i]-g[1][i]);
+              w[i]    = .5*(w_old[i]   -gw[i]);
+          }
+        }
+      }
+      else
+      {
+        for(int i = 0; i < np; i++)
+        {
+          v[0][i] = vx_cf(particles[i].xyz[0], particles[i].xyz[1]);
+          v[1][i] = vy_cf(particles[i].xyz[0], particles[i].xyz[1]);
+          w[i]    = wz_cf(particles[i].xyz[0], particles[i].xyz[1]);
+        }
+      }
+      v_old = v;
+      w_old = w;
+
+      // ------------------------------------------------------------------------------------------------------------------
+      // compute time step for particles
+      // ------------------------------------------------------------------------------------------------------------------
+      vector<double> arm_max(np,0);
+
+      double phi_thresh = 0;
+
+      ierr = VecGetArray(particles_number, &particles_number_ptr); CHKERRXX(ierr);
+      ierr = VecGetArray(phi_ptcl, &phi_ptcl_ptr); CHKERRXX(ierr);
+
+      foreach_node(n, nodes)
+      {
+        if (phi_ptcl_ptr[n] > phi_thresh)
+        {
+          double xyz[P4EST_DIM];
+          node_xyz_fr_n(n, p4est, nodes, xyz);
+
+          int       i = int(particles_number_ptr[n]);
+          double delx = xyz[0]-particles[i].xyz[0];
+          double dely = xyz[1]-particles[i].xyz[1];
+
+          arm_max[i] = MAX(arm_max[i], ABSD( dely,  delx, FIX THIS FOR 3D ));
+        }
+      }
+
+      ierr = VecRestoreArray(particles_number, &particles_number_ptr); CHKERRXX(ierr);
+      ierr = VecRestoreArray(phi_ptcl, &phi_ptcl_ptr); CHKERRXX(ierr);
+
+      ierr = MPI_Allreduce(MPI_IN_PLACE, arm_max.data(), np, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); CHKERRXX(ierr);
+
+      double v_max  = 0;
+      double wr_max = 0;
+      for (int i = 0; i < np; ++i)
+      {
+        v_max  = MAX(v_max, ABSD(v[0][i], v[1][i], v[2][i]));
+        wr_max = MAX(wr_max, fabs(w[i])*arm_max[i]);
+      }
+
+      double delta_tv = diag*cfl()/MAX(v_max, 0.001);
+      double delta_tw = diag*cfl()/MAX(wr_max,0.001);
+
+      for (int j = 0; j < np; ++j)
+      {
+        if (!minimize())
+        {
+          dt_ptcl_v[j] = delta_tv;
+          dt_ptcl_w[j] = delta_tw;
+        }
+        else
+        {
+          dt_ptcl_v[j] = diag*cfl()/ABSD(v[0][j], v[1][j], v[2][j]);
+          dt_ptcl_w[j] = diag*cfl()/fabs(w[j]*arm_max[j]);
+        }
+      }
+
+      // ------------------------------------------------------------------------------------------------------------------
+      // compute expected change in energy due to particles
+      // ------------------------------------------------------------------------------------------------------------------
+      for (int i = 0; i < np; i++)
+      {
+        energy_change_predicted += SUMD(v[0][i]*g[0][i],
+            v[1][i]*g[1][i],
+            v[2][i]*g[2][i])*dt_ptcl_v[i];
+
+        energy_change_predicted += w[i]*gw[i]*dt_ptcl_w[i];
+      }
     }
 
-    ierr = VecRestoreArray(velo_free, &velo_free_ptr); CHKERRXX(ierr);
-    ierr = VecRestoreArray(velo_free_full, &velo_free_full_ptr); CHKERRXX(ierr);
-
-    MPI_Allreduce(&dt_local, &dt, 1, MPI_DOUBLE, MPI_MIN, p4est->mpicomm);
-    MPI_Allreduce(MPI_IN_PLACE, &vmax, 1, MPI_DOUBLE, MPI_MIN, p4est->mpicomm);
-
-    double energy_change_predicted;
-
-    ierr = VecPointwiseMultGhost(integrand, velo_free_full, shape_grad_free_full); CHKERRXX(ierr);
-
-    energy_change_predicted = -dt*integration.integrate_over_interface(0, integrand);
-
-    if (save_data() && iteration%save_every_dn() == 0)
-    {
-      ierr = PetscFOpen(mpi.comm(), file_conv_name, "w", &file_conv); CHKERRXX(ierr);
-      ierr = PetscFPrintf(mpi.comm(), file_conv, "%d %e %e %e %e %e\n", (int) round(iteration/save_every_dn()), dt, energy, energy-energy_old, energy_change_predicted, vmax); CHKERRXX(ierr);
-      ierr = PetscFClose(mpi.comm(), file_conv); CHKERRXX(ierr);
-    }
-
-    ierr = PetscPrintf(mpi.comm(), "Avg velo: %e, Time step: %e\n", vn_avg, dt);
+    //    ierr = PetscPrintf(mpi.comm(), "Avg velo: %e, Time step: %e\n", vn_avg, dt);
     ierr = PetscPrintf(mpi.comm(), "Energy: %e, Change: %e, Predicted: %e\n", energy, energy-energy_old, energy_change_predicted);
-    energy_old = energy;
 
     // ------------------------------------------------------------------------------------------------------------------
     // save data
     // ------------------------------------------------------------------------------------------------------------------
+    if (save_data())
+    {
+      ierr = PetscFOpen  (mpi.comm(), file_conv_name, "a", &file_conv); CHKERRXX(ierr);
+      ierr = PetscFPrintf(mpi.comm(), file_conv, "%d %e %e %e\n", (int) round(iteration), energy, energy_change_predicted, energy-energy_old); CHKERRXX(ierr);
+      ierr = PetscFClose (mpi.comm(), file_conv); CHKERRXX(ierr);
+    }
+
     if (save_vtk() && iteration%save_every_dn() == 0)
     {
       // file name
@@ -1715,27 +2221,68 @@ int main (int argc, char* argv[])
       }
       ierr = VecRestoreArray(leaf_level, &leaf_level_ptr); CHKERRXX(ierr);
 
-      ierr = VecGetArray(leaf_level,     &leaf_level_ptr);     CHKERRXX(ierr);
-      ierr = VecGetArray(phi_effe,       &phi_effe_ptr);       CHKERRXX(ierr);
-      ierr = VecGetArray(phi_wall,       &phi_wall_ptr);       CHKERRXX(ierr);
-      ierr = VecGetArray(phi_free,       &phi_free_ptr);       CHKERRXX(ierr);
-      ierr = VecGetArray(phi_exact,      &phi_exact_ptr);      CHKERRXX(ierr);
-      ierr = VecGetArray(kappa,          &kappa_ptr);          CHKERRXX(ierr);
-      ierr = VecGetArray(surf_tns,       &surf_tns_ptr);       CHKERRXX(ierr);
-      ierr = VecGetArray(mu_m,           &mu_m_ptr);           CHKERRXX(ierr);
-      ierr = VecGetArray(mu_p,           &mu_p_ptr);           CHKERRXX(ierr);
-      ierr = VecGetArray(velo_free,      &velo_free_ptr);      CHKERRXX(ierr);
-      ierr = VecGetArray(velo_free_full, &velo_free_full_ptr); CHKERRXX(ierr);
-      ierr = VecGetArray(cos_angle,      &cos_angle_ptr);      CHKERRXX(ierr);
-      ierr = VecGetArray(normal_wall[0], &normal_wall_ptr[0]); CHKERRXX(ierr);
-      ierr = VecGetArray(normal_wall[1], &normal_wall_ptr[1]); CHKERRXX(ierr);
+      Vec     gamma_ptcl_avg;
+      double *gamma_ptcl_avg_ptr;
+
+      Vec     gamma_ptcl_dif;
+      double *gamma_ptcl_dif_ptr;
+
+      ierr = VecDuplicate(mu_m, &gamma_ptcl_avg); CHKERRXX(ierr);
+      ierr = VecDuplicate(mu_m, &gamma_ptcl_dif); CHKERRXX(ierr);
+
+      if (geometry_ptcl() != 0)
+      {
+        ierr = VecGetArray(gamma_ptcl_avg, &gamma_ptcl_avg_ptr); CHKERRXX(ierr);
+        ierr = VecGetArray(gamma_ptcl_dif, &gamma_ptcl_dif_ptr); CHKERRXX(ierr);
+        ierr = VecGetArray(particles_number, &particles_number_ptr); CHKERRXX(ierr);
+
+        foreach_node(n, nodes)
+        {
+          double xyz[P4EST_DIM];
+          node_xyz_fr_n(n, p4est, nodes, xyz);
+
+          int i = int(particles_number_ptr[n]);
+
+          double ga = particles[i].gA(xyz[0], xyz[1]);
+          double gb = particles[i].gB(xyz[0], xyz[1]);
+
+          gamma_ptcl_avg_ptr[n] = .5*(ga+gb);
+          gamma_ptcl_dif_ptr[n] = .5*(ga-gb);
+        }
+
+        ierr = VecRestoreArray(gamma_ptcl_avg, &gamma_ptcl_avg_ptr); CHKERRXX(ierr);
+        ierr = VecRestoreArray(gamma_ptcl_dif, &gamma_ptcl_dif_ptr); CHKERRXX(ierr);
+        ierr = VecRestoreArray(particles_number, &particles_number_ptr); CHKERRXX(ierr);
+      }
+
+      ierr = VecGetArray(leaf_level,       &leaf_level_ptr);       CHKERRXX(ierr);
+      ierr = VecGetArray(phi_effe,         &phi_effe_ptr);         CHKERRXX(ierr);
+      ierr = VecGetArray(phi_wall,         &phi_wall_ptr);         CHKERRXX(ierr);
+      ierr = VecGetArray(phi_free,         &phi_free_ptr);         CHKERRXX(ierr);
+      ierr = VecGetArray(phi_ptcl,         &phi_ptcl_ptr);         CHKERRXX(ierr);
+      ierr = VecGetArray(phi_exact,        &phi_exact_ptr);        CHKERRXX(ierr);
+      ierr = VecGetArray(kappa,            &kappa_ptr);            CHKERRXX(ierr);
+      ierr = VecGetArray(surf_tns,         &surf_tns_ptr);         CHKERRXX(ierr);
+      ierr = VecGetArray(mu_m,             &mu_m_ptr);             CHKERRXX(ierr);
+      ierr = VecGetArray(mu_p,             &mu_p_ptr);             CHKERRXX(ierr);
+      ierr = VecGetArray(velo_free,        &velo_free_ptr);        CHKERRXX(ierr);
+      ierr = VecGetArray(velo_free_full,   &velo_free_full_ptr);   CHKERRXX(ierr);
+      ierr = VecGetArray(cos_angle,        &cos_angle_ptr);        CHKERRXX(ierr);
+      ierr = VecGetArray(normal_wall[0],   &normal_wall_ptr[0]);   CHKERRXX(ierr);
+      ierr = VecGetArray(normal_wall[1],   &normal_wall_ptr[1]);   CHKERRXX(ierr);
+      ierr = VecGetArray(particles_number, &particles_number_ptr); CHKERRXX(ierr);
+      ierr = VecGetArray(gamma_ptcl_avg,   &gamma_ptcl_avg_ptr);   CHKERRXX(ierr);
+      ierr = VecGetArray(gamma_ptcl_dif,   &gamma_ptcl_dif_ptr);   CHKERRXX(ierr);
+      ierr = VecGetArray(shape_grad_free,  &shape_grad_free_ptr);  CHKERRXX(ierr);
+      ierr = VecGetArray(shape_grad_ptcl,  &shape_grad_ptcl_ptr);  CHKERRXX(ierr);
 
       my_p4est_vtk_write_all(p4est, nodes, ghost,
                              P4EST_TRUE, P4EST_TRUE,
-                             13, 1, oss.str().c_str(),
+                             19, 1, oss.str().c_str(),
                              VTK_POINT_DATA, "phi",       phi_effe_ptr,
                              VTK_POINT_DATA, "phi_wall",  phi_wall_ptr,
                              VTK_POINT_DATA, "phi_free",  phi_free_ptr,
+                             VTK_POINT_DATA, "phi_ptcl",  phi_ptcl_ptr,
                              VTK_POINT_DATA, "phi_exact", phi_exact_ptr,
                              VTK_POINT_DATA, "kappa", kappa_ptr,
                              VTK_POINT_DATA, "surf_tns", surf_tns_ptr,
@@ -1746,338 +2293,47 @@ int main (int argc, char* argv[])
                              VTK_POINT_DATA, "cos", cos_angle_ptr,
                              VTK_POINT_DATA, "nx", normal_wall_ptr[0],
                              VTK_POINT_DATA, "ny", normal_wall_ptr[1],
+                             VTK_POINT_DATA, "num", particles_number_ptr,
+                             VTK_POINT_DATA, "gamma_avg", gamma_ptcl_avg_ptr,
+                             VTK_POINT_DATA, "gamma_diff", gamma_ptcl_dif_ptr,
+                             VTK_POINT_DATA, "shape_grad_free", shape_grad_free_ptr,
+                             VTK_POINT_DATA, "shape_grad_ptcl", shape_grad_ptcl_ptr,
                              VTK_CELL_DATA , "leaf_level", leaf_level_ptr);
 
-      ierr = VecRestoreArray(leaf_level,     &leaf_level_ptr);     CHKERRXX(ierr);
-      ierr = VecRestoreArray(phi_effe,       &phi_effe_ptr);       CHKERRXX(ierr);
-      ierr = VecRestoreArray(phi_wall,       &phi_wall_ptr);       CHKERRXX(ierr);
-      ierr = VecRestoreArray(phi_free,       &phi_free_ptr);       CHKERRXX(ierr);
-      ierr = VecRestoreArray(phi_exact,      &phi_exact_ptr);      CHKERRXX(ierr);
-      ierr = VecRestoreArray(kappa,          &kappa_ptr);          CHKERRXX(ierr);
-      ierr = VecRestoreArray(surf_tns,       &surf_tns_ptr);       CHKERRXX(ierr);
-      ierr = VecRestoreArray(mu_m,           &mu_m_ptr);           CHKERRXX(ierr);
-      ierr = VecRestoreArray(mu_p,           &mu_p_ptr);           CHKERRXX(ierr);
-      ierr = VecRestoreArray(velo_free,      &velo_free_ptr);      CHKERRXX(ierr);
-      ierr = VecRestoreArray(velo_free_full, &velo_free_full_ptr); CHKERRXX(ierr);
-      ierr = VecRestoreArray(cos_angle,      &cos_angle_ptr);      CHKERRXX(ierr);
-      ierr = VecRestoreArray(normal_wall[0], &normal_wall_ptr[0]); CHKERRXX(ierr);
-      ierr = VecRestoreArray(normal_wall[1], &normal_wall_ptr[1]); CHKERRXX(ierr);
+      ierr = VecRestoreArray(leaf_level,       &leaf_level_ptr);       CHKERRXX(ierr);
+      ierr = VecRestoreArray(phi_effe,         &phi_effe_ptr);         CHKERRXX(ierr);
+      ierr = VecRestoreArray(phi_wall,         &phi_wall_ptr);         CHKERRXX(ierr);
+      ierr = VecRestoreArray(phi_free,         &phi_free_ptr);         CHKERRXX(ierr);
+      ierr = VecRestoreArray(phi_ptcl,         &phi_ptcl_ptr);         CHKERRXX(ierr);
+      ierr = VecRestoreArray(phi_exact,        &phi_exact_ptr);        CHKERRXX(ierr);
+      ierr = VecRestoreArray(kappa,            &kappa_ptr);            CHKERRXX(ierr);
+      ierr = VecRestoreArray(surf_tns,         &surf_tns_ptr);         CHKERRXX(ierr);
+      ierr = VecRestoreArray(mu_m,             &mu_m_ptr);             CHKERRXX(ierr);
+      ierr = VecRestoreArray(mu_p,             &mu_p_ptr);             CHKERRXX(ierr);
+      ierr = VecRestoreArray(velo_free,        &velo_free_ptr);        CHKERRXX(ierr);
+      ierr = VecRestoreArray(velo_free_full,   &velo_free_full_ptr);   CHKERRXX(ierr);
+      ierr = VecRestoreArray(cos_angle,        &cos_angle_ptr);        CHKERRXX(ierr);
+      ierr = VecRestoreArray(normal_wall[0],   &normal_wall_ptr[0]);   CHKERRXX(ierr);
+      ierr = VecRestoreArray(normal_wall[1],   &normal_wall_ptr[1]);   CHKERRXX(ierr);
+      ierr = VecRestoreArray(particles_number, &particles_number_ptr); CHKERRXX(ierr);
+      ierr = VecRestoreArray(gamma_ptcl_avg,   &gamma_ptcl_avg_ptr);   CHKERRXX(ierr);
+      ierr = VecRestoreArray(gamma_ptcl_dif,   &gamma_ptcl_dif_ptr);   CHKERRXX(ierr);
+      ierr = VecRestoreArray(shape_grad_free,  &shape_grad_free_ptr);  CHKERRXX(ierr);
+      ierr = VecRestoreArray(shape_grad_ptcl,  &shape_grad_ptcl_ptr);  CHKERRXX(ierr);
 
       ierr = VecDestroy(phi_exact);  CHKERRXX(ierr);
+      ierr = VecDestroy(gamma_ptcl_avg);  CHKERRXX(ierr);
+      ierr = VecDestroy(gamma_ptcl_dif);  CHKERRXX(ierr);
       ierr = VecDestroy(leaf_level); CHKERRXX(ierr);
 
 //      PetscPrintf(mpi.comm(), "VTK saved in %s\n", oss.str().c_str());
     }
 
     // ------------------------------------------------------------------------------------------------------------------
-    // advect interface and impose contact angle
-    // ------------------------------------------------------------------------------------------------------------------
-    ls.set_use_neumann_for_contact_angle(use_neumann());
-    ls.set_contact_angle_extension(contact_angle_extension());
-
-    double correction_total = 0;
-
-    int splits = 1;
-    for (int i = 0; i < splits; ++i)
-    {
-      ls.advect_in_normal_direction_with_contact_angle(velo_free, surf_tns, cos_angle, phi_wall, phi_free, dt/double(splits));
-
-      // cut off tails
-      double *phi_wall_ptr;
-      double *phi_free_ptr;
-
-      ierr = VecGetArray(phi_wall, &phi_wall_ptr); CHKERRXX(ierr);
-      ierr = VecGetArray(phi_free, &phi_free_ptr); CHKERRXX(ierr);
-
-      foreach_node(n, nodes)
-      {
-        double transition = smoothstep(1, (phi_wall_ptr[n]/diag - 10.)/20.);
-//        phi_free_ptr[n] = smooth_max(phi_free_ptr[n], phi_wall_ptr[n] - 12.*diag, 4.*diag);
-        phi_free_ptr[n] = (1.-transition)*phi_free_ptr[n] + transition*MAX(phi_free_ptr[n], phi_wall_ptr[n] - 10.*diag);
-      }
-
-      ierr = VecRestoreArray(phi_wall, &phi_wall_ptr); CHKERRXX(ierr);
-      ierr = VecRestoreArray(phi_free, &phi_free_ptr); CHKERRXX(ierr);
-
-      ls.reinitialize_2nd_order(phi_free);
-
-      // correct for volume loss
-      for (short i = 0; i < volume_corrections(); ++i)
-      {
-        double volume_cur = integration.measure_of_domain();
-        double intf_len   = integration.measure_of_interface(0);
-        double correction = (volume_cur-volume)/intf_len;
-
-        VecShiftGhost(phi_free, correction);
-        correction_total += correction;
-
-        double volume_cur2 = integration.measure_of_domain();
-
-//        PetscPrintf(mpi.comm(), "Volume loss: %e, after correction: %e\n", (volume_cur-volume)/volume, (volume_cur2-volume)/volume);
-      }
-    }
-
-    // ------------------------------------------------------------------------------------------------------------------
-    // move_particles
-    // ------------------------------------------------------------------------------------------------------------------
-    vector< vector<double> > g(P4EST_DIM, vector<double> (np,0));
-
-    vector<double> gw(np, 0);
-
-    ngbd->first_derivatives_central(mu_m, mu_m_grad);
-
-    sample_cf_on_nodes(p4est, nodes, particles_number_cf, particles_number);
-
-    ierr = VecGetArray(particles_number, &particles_number_ptr); CHKERRXX(ierr);
-    ierr = VecGetArray(phi_ptcl, &phi_ptcl_ptr); CHKERRXX(ierr);
-
-
-    double factor  = 1./pow(scaling, P4EST_DIM-1.);
-
-    my_p4est_interpolation_nodes_local_t interp_local(ngbd);
-    double proximity_crit = 50.*diag;
-    energy = 0;
-    foreach_local_node(n, nodes)
-    {
-      if (fabs(phi_ptcl_ptr[n]) < proximity_crit)
-      {
-        int i = int(particles_number_ptr[n]);
-
-        // get area and centroid of the interface
-        double area_ptcl = 0;
-        double area_wall = 0;
-        double area_free = 0;
-        double xyz_ptcl[P4EST_DIM];
-        double xyz_wall[P4EST_DIM];
-        double xyz_free[P4EST_DIM];
-
-        phi_true_cf_t PHI(&particles[i]);
-        vector<CF_DIM *> phi_cf(3);
-        phi_cf[0] = &PHI;
-        phi_cf[1] = &phi_wall_cf;
-        phi_cf[2] = &phi_free_cf;
-
-        vector<mls_opn_t> opn(3, MLS_INT);
-        my_p4est_finite_volume_t fv;
-        construct_finite_volume(fv, n, p4est, nodes, phi_cf, opn, 1, 1);
-
-        for (int j = 0; j < fv.interfaces.size(); ++j)
-        {
-          double xyz[P4EST_DIM];
-          node_xyz_fr_n(n, p4est, nodes, xyz);
-
-          switch (fv.interfaces[j].id)
-          {
-            case 0:
-              xyz_ptcl[0]  = xyz[0] + fv.interfaces[j].centroid[0];
-              xyz_ptcl[1]  = xyz[1] + fv.interfaces[j].centroid[1];
-              area_ptcl    = fv.interfaces[j].area;
-              break;
-            case 1:
-              xyz_wall[0]  = xyz[0] + fv.interfaces[j].centroid[0];
-              xyz_wall[1]  = xyz[1] + fv.interfaces[j].centroid[1];
-              area_wall    = fv.interfaces[j].area;
-              break;
-            case 2:
-              xyz_free[0]  = xyz[0] + fv.interfaces[j].centroid[0];
-              xyz_free[1]  = xyz[1] + fv.interfaces[j].centroid[1];
-              area_free    = fv.interfaces[j].area;
-              break;
-            default: throw;
-          }
-        }
-
-        if (area_ptcl != 0)
-        {
-          double phix = particles[i].phix (DIM(xyz_ptcl[0], xyz_ptcl[1], xyz_ptcl[2]));
-          double phiy = particles[i].phiy (DIM(xyz_ptcl[0], xyz_ptcl[1], xyz_ptcl[2]));
-
-          double norm = ABSD(phix, phiy, phiz);
-          EXECD(phix /= norm, phiy /= norm, phiz /= norm);
-
-          double dist = particles[i].phi (DIM(xyz_ptcl[0], xyz_ptcl[1], xyz_ptcl[2]));
-
-          xyz_ptcl[0] -= dist*phix/norm;
-          xyz_ptcl[1] -= dist*phiy/norm;
-
-          phix = particles[i].phix (DIM(xyz_ptcl[0], xyz_ptcl[1], xyz_ptcl[2]));
-          phiy = particles[i].phiy (DIM(xyz_ptcl[0], xyz_ptcl[1], xyz_ptcl[2]));
-
-          norm = ABSD(phix, phiy, phiz);
-          EXECD(phix /= norm, phiy /= norm, phiz /= norm);
-
-          interp_local.initialize(n);
-
-          interp_local.set_input(shape_grad_ptcl, linear); double velo_val = interp_local.value(xyz_ptcl);
-          interp_local.set_input(mu_m,   linear); double mu_m     = interp_local.value(xyz_ptcl);
-          interp_local.set_input(mu_m_grad[0], linear); double mux_m    = interp_local.value(xyz_ptcl);
-          interp_local.set_input(mu_m_grad[1], linear); double muy_m    = interp_local.value(xyz_ptcl);
-
-          double phic = particles[i].kappa(DIM(xyz_ptcl[0], xyz_ptcl[1], xyz_ptcl[2]));
-
-          double ga  = particles[i].gA (DIM(xyz_ptcl[0], xyz_ptcl[1], xyz_ptcl[2]));
-          double gax = particles[i].gAx(DIM(xyz_ptcl[0], xyz_ptcl[1], xyz_ptcl[2]));
-          double gay = particles[i].gAy(DIM(xyz_ptcl[0], xyz_ptcl[1], xyz_ptcl[2]));
-
-          double gb  = particles[i].gB (DIM(xyz_ptcl[0], xyz_ptcl[1], xyz_ptcl[2]));
-          double gbx = particles[i].gBx(DIM(xyz_ptcl[0], xyz_ptcl[1], xyz_ptcl[2]));
-          double gby = particles[i].gBy(DIM(xyz_ptcl[0], xyz_ptcl[1], xyz_ptcl[2]));
-
-
-          double g_eff  = (.5*(ga+gb)*rho_avg + mu_m/XN()*(ga-gb));
-          double gx_eff = (.5*(gax+gbx)*rho_avg + mu_m/XN()*(gax-gbx) + mux_m/XN()*(ga-gb));
-          double gy_eff = (.5*(gay+gby)*rho_avg + mu_m/XN()*(gay-gby) + muy_m/XN()*(ga-gb));
-
-          double G = SUMD(phix*gx_eff,
-                          phiy*gy_eff,
-                          phiz*gz_eff)*factor
-                     + g_eff*phic*factor
-                     + velo_val;
-
-          // repulsion between particles, walls and free surface
-          for (int j = 0; j < np; ++j)
-          {
-            if (j != i)
-            {
-              double dist_other = particles[j].phi(DIM(xyz_ptcl[0], xyz_ptcl[1], xyz_ptcl[2]));
-              if (fabs(dist_other) < pairwise_potential_width())
-              {
-                double phix_other = particles[j].phix(DIM(xyz_ptcl[0], xyz_ptcl[1], xyz_ptcl[2]));
-                double phiy_other = particles[j].phiy(DIM(xyz_ptcl[0], xyz_ptcl[1], xyz_ptcl[2]));
-                dist_other = fabs(dist_other)-pairwise_potential_width();
-                G += phic*pairwise_potential(dist_other) + pairwise_force(dist_other)*SUMD(phix_other*phix, phiy_other*phiy, FIX);
-
-                double add_x = -pairwise_force(dist_other)*phix_other;
-                double add_y = -pairwise_force(dist_other)*phiy_other;
-
-                double delx = xyz_ptcl[0]-particles[j].xyz[0];
-                double dely = xyz_ptcl[1]-particles[j].xyz[1];
-
-                g[0][j] += add_x*area_ptcl;
-                g[1][j] += add_y*area_ptcl;
-                gw[j]   += (add_x*dely - add_y*delx)*area_ptcl;
-                energy  += pairwise_potential(dist_other)*area_ptcl;
-              }
-            }
-          }
-
-          // wall repulsion
-          double dist_other = phi_wall_cf(DIM(xyz_ptcl[0], xyz_ptcl[1], xyz_ptcl[2]));
-          if (fabs(dist_other) < pairwise_potential_width())
-          {
-            interp_local.set_input(normal_wall[0], linear); double phix_other = interp_local.value(xyz_ptcl);
-            interp_local.set_input(normal_wall[1], linear); double phiy_other = interp_local.value(xyz_ptcl);
-            dist_other = fabs(dist_other)-pairwise_potential_width();
-            G += phic*pairwise_potential(dist_other) + pairwise_force(dist_other)*SUMD(phix_other*phix, phiy_other*phiy, FIX);
-          }
-
-          double Gx = G*phix - (.5*(gax+gbx)*rho_avg + mu_m/XN()*(gax-gbx))*factor;
-          double Gy = G*phiy - (.5*(gay+gby)*rho_avg + mu_m/XN()*(gay-gby))*factor;
-
-          double delx = xyz_ptcl[0]-particles[i].xyz[0];
-          double dely = xyz_ptcl[1]-particles[i].xyz[1];
-
-          double Gxy = Gx*dely - Gy*delx;
-
-          g[0][i] += Gx*area_ptcl;
-          g[1][i] += Gy*area_ptcl;
-          gw[i]   += Gxy*area_ptcl;
-          energy  += g_eff*area_ptcl;
-
-        }
-      }
-    }
-    ierr = VecRestoreArray(particles_number, &particles_number_ptr); CHKERRXX(ierr);
-    ierr = VecRestoreArray(phi_ptcl, &phi_ptcl_ptr); CHKERRXX(ierr);
-
-    ierr = MPI_Allreduce(MPI_IN_PLACE, g[0].data(), np, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); CHKERRXX(ierr);
-    ierr = MPI_Allreduce(MPI_IN_PLACE, g[1].data(), np, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); CHKERRXX(ierr);
-    ierr = MPI_Allreduce(MPI_IN_PLACE, gw.data(),   np, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); CHKERRXX(ierr);
-    ierr = MPI_Allreduce(MPI_IN_PLACE, &energy,     1,  MPI_DOUBLE, MPI_SUM, p4est->mpicomm); CHKERRXX(ierr);
-
-    // ------------------------------------------------------------------------------------------------------------------
-    // select velocity and move particles
-    // ------------------------------------------------------------------------------------------------------------------
-    vector< vector<double> > v(P4EST_DIM, vector<double> (np,0));
-    vector<double> w(np, 0);
-
-    if (minimize())
-    {
-      for(int i = 0; i < np; i++)
-      {
-        v[0][i] = -g[0][i];
-        v[1][i] = -g[1][i];
-        w[i] = -gw[i];
-      }
-    }
-    else
-    {
-      for(int i = 0; i < np; i++)
-      {
-        v[0][i] = vx_cf(particles[i].xyz[0], particles[i].xyz[1]);
-        v[1][i] = vy_cf(particles[i].xyz[0], particles[i].xyz[1]);
-        w[i]    = wz_cf(particles[i].xyz[0], particles[i].xyz[1]);
-      }
-    }
-
-    // find the maximum velocity (needed to calculate the timestep delta_t)
-
-    vector<double> arm_max(np,0);
-
-    double phi_thresh = 0;
-
-    ierr = VecGetArray(particles_number, &particles_number_ptr); CHKERRXX(ierr);
-    ierr = VecGetArray(phi_ptcl, &phi_ptcl_ptr); CHKERRXX(ierr);
-
-    foreach_node(n, nodes)
-    {
-      if (phi_ptcl_ptr[n] > phi_thresh)
-      {
-        double xyz[P4EST_DIM];
-        node_xyz_fr_n(n, p4est, nodes, xyz);
-
-        int       i = int(particles_number_ptr[n]);
-        double delx = xyz[0]-particles[i].xyz[0];
-        double dely = xyz[1]-particles[i].xyz[1];
-
-        arm_max[i] = MAX(arm_max[i], ABSD( dely,  delx, FIX THIS FOR 3D ));
-      }
-    }
-
-    ierr = VecRestoreArray(particles_number, &particles_number_ptr); CHKERRXX(ierr);
-    ierr = VecRestoreArray(phi_ptcl, &phi_ptcl_ptr); CHKERRXX(ierr);
-
-    ierr = MPI_Allreduce(MPI_IN_PLACE, arm_max.data(), np, MPI_DOUBLE, MPI_MAX, p4est->mpicomm); CHKERRXX(ierr);
-
-    double v_max  = 0;
-    double wr_max = 0;
-    for (int i = 0; i < np; ++i)
-    {
-      v_max  = MAX(v_max, ABSD(v[0][i], v[1][i], v[2][i]));
-      wr_max = MAX(wr_max, fabs(w[i])*arm_max[i]);
-    }
-
-    // calculate timestep delta_t, such that it's small enough to capture 'everything'
-    double delta_tv = diag*cfl()/MAX(v_max, 0.001);
-    double delta_tw = diag*cfl()/MAX(wr_max,0.001);
-
-    vector<double> dt_ptcl_v(np);
-    vector<double> dt_ptcl_w(np);
-
     // move particles
+    // ------------------------------------------------------------------------------------------------------------------
     for (int j = 0; j < np; ++j)
     {
-      if (!minimize())
-      {
-        dt_ptcl_v[j] = delta_tv;
-        dt_ptcl_w[j] = delta_tw;
-      }
-      else
-      {
-        dt_ptcl_v[j] = diag*cfl()/ABSD(v[0][j], v[1][j], v[2][j]);
-        dt_ptcl_w[j] = diag*cfl()/fabs(w[j]*arm_max[j]);
-      }
-
       XCODE( particles[j].xyz[0] += v[0][j]*dt_ptcl_v[j] );
       YCODE( particles[j].xyz[1] += v[1][j]*dt_ptcl_v[j] );
       ZCODE( particles[j].xyz[2] += v[2][j]*dt_ptcl_v[j] );
@@ -2103,21 +2359,56 @@ int main (int argc, char* argv[])
       }
     }
 
-    // calculate the expected and effective changes in energy (compare step i with step i+1)
-    // compute expected change in energy (for validation)
-    double dE_dt_expected = 0;
-    for (int i = 0; i < np; i++)
+    // ------------------------------------------------------------------------------------------------------------------
+    // advect interface and impose contact angle
+    // ------------------------------------------------------------------------------------------------------------------
+    if (geometry_free() != 0)
     {
-      dE_dt_expected += SUMD(v[0][i]*g[0][i],
-                             v[1][i]*g[1][i],
-                             v[2][i]*g[2][i])*dt_ptcl_v[i];
+      ls.set_use_neumann_for_contact_angle(use_neumann());
+      ls.set_contact_angle_extension(contact_angle_extension());
 
-      dE_dt_expected += w[i]*gw[i]*dt_ptcl_w[i];
+      double correction_total = 0;
+
+      int splits = 1;
+      for (int i = 0; i < splits; ++i)
+      {
+        ls.advect_in_normal_direction_with_contact_angle(velo_free, surf_tns, cos_angle, phi_wall, phi_free, dt_free/double(splits));
+
+        // cut off tails
+        double *phi_wall_ptr;
+        double *phi_free_ptr;
+
+        ierr = VecGetArray(phi_wall, &phi_wall_ptr); CHKERRXX(ierr);
+        ierr = VecGetArray(phi_free, &phi_free_ptr); CHKERRXX(ierr);
+
+        foreach_node(n, nodes)
+        {
+          double transition = smoothstep(1, (phi_wall_ptr[n]/diag - 10.)/20.);
+          //        phi_free_ptr[n] = smooth_max(phi_free_ptr[n], phi_wall_ptr[n] - 12.*diag, 4.*diag);
+          phi_free_ptr[n] = (1.-transition)*phi_free_ptr[n] + transition*MAX(phi_free_ptr[n], phi_wall_ptr[n] - 10.*diag);
+        }
+
+        ierr = VecRestoreArray(phi_wall, &phi_wall_ptr); CHKERRXX(ierr);
+        ierr = VecRestoreArray(phi_free, &phi_free_ptr); CHKERRXX(ierr);
+
+        ls.reinitialize_2nd_order(phi_free);
+
+        // correct for volume loss
+        for (short i = 0; i < volume_corrections(); ++i)
+        {
+          double volume_cur = integration.measure_of_domain();
+          double intf_len   = integration.measure_of_interface(0);
+          double correction = (volume_cur-volume)/intf_len;
+
+          VecShiftGhost(phi_free, correction);
+          correction_total += correction;
+
+          double volume_cur2 = integration.measure_of_domain();
+
+          //        PetscPrintf(mpi.comm(), "Volume loss: %e, after correction: %e\n", (volume_cur-volume)/volume, (volume_cur2-volume)/volume);
+        }
+      }
     }
-//    double expected_change_in_energy  = dE_dt_expected;
-//    double effective_change_in_energy = energy - energy_previous;
-
-    ierr = PetscPrintf(mpi.comm(), "Energy: %e, Change: %e, Predicted: %e\n", energy, energy-energy_old, energy_change_predicted);
 
     foreach_dimension(dim)
     {
@@ -2141,6 +2432,7 @@ int main (int argc, char* argv[])
     ierr = VecDestroy(integrand);            CHKERRXX(ierr);
 
     iteration++;
+    energy_old = energy;
   }
 
   ierr = VecDestroy(phi_free); CHKERRXX(ierr);

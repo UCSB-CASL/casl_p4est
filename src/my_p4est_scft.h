@@ -80,7 +80,7 @@ class my_p4est_scft_t
   double f;
   double XN;
   int    ns, fns;
-  double scalling;
+  double scaling;
 
   /* auxiliary variables */
   double ds_a, ds_b;
@@ -177,7 +177,7 @@ public:
   inline Vec get_rho_a() { return rho_a; }
   inline Vec get_rho_b() { return rho_b; }
 
-  inline void set_scalling(double value) { scalling = value; }
+  inline void set_scaling(double value) { scaling = value; }
 
   void save_VTK_q(int compt);
 

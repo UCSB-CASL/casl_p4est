@@ -19,7 +19,7 @@
 my_p4est_scft_t::my_p4est_scft_t(my_p4est_node_neighbors_t *ngbd, int ns)
   : brick(ngbd->myb), connectivity(ngbd->p4est->connectivity), p4est(ngbd->p4est), ghost(ngbd->ghost), nodes(ngbd->nodes), hierarchy(ngbd->hierarchy), ngbd(ngbd), ns(ns), solver_a(ngbd), solver_b(ngbd)
 {
-  scalling = 1;
+  scaling = 1;
 
   /* potentials */
   ierr = VecCreateGhostNodes(p4est, nodes, &mu_m); CHKERRXX(ierr);
@@ -68,7 +68,7 @@ my_p4est_scft_t::my_p4est_scft_t(my_p4est_node_neighbors_t *ngbd, int ns)
   set_polymer(0.5, 20.);
 
   /* solver parameters */
-  integration_order   = 1;
+  integration_order   = 2;
   cube_refinement     = 1;
   time_discretization = 1;
 
@@ -233,13 +233,15 @@ void my_p4est_scft_t::initialize_solvers()
     solver_a.add_boundary(action[i], phi[i], NULL, ROBIN, zero_cf, zero_cf);
   }
 
-  solver_a.set_mu(scalling*scalling);
+  solver_a.set_mu(scaling*scaling);
   solver_a.set_diag(1./ds_a);
   solver_a.set_wc(neumann_cf, zero_cf);
   solver_a.set_use_taylor_correction(true);
   solver_a.set_kink_treatment(true);
-  solver_a.set_use_sc_scheme(false);
+  solver_a.set_use_sc_scheme(true);
   solver_a.set_store_finite_volumes(true);
+  solver_a.set_cube_refinement(1);
+  solver_a.set_integration_order(2);
   solver_a.preassemble_linear_system();
 
   // chain propogator b
@@ -248,13 +250,15 @@ void my_p4est_scft_t::initialize_solvers()
     solver_b.add_boundary(action[i], phi[i], NULL, ROBIN, zero_cf, zero_cf);
   }
 
-  solver_b.set_mu(scalling*scalling);
+  solver_b.set_mu(scaling*scaling);
   solver_b.set_diag(1./ds_b);
   solver_b.set_wc(neumann_cf, zero_cf);
   solver_b.set_use_taylor_correction(true);
   solver_b.set_kink_treatment(true);
-  solver_b.set_use_sc_scheme(false);
+  solver_b.set_use_sc_scheme(true);
   solver_b.set_store_finite_volumes(true);
+  solver_b.set_cube_refinement(1);
+  solver_b.set_integration_order(2);
   solver_b.preassemble_linear_system();
 
   mask       = solver_a.get_mask();
@@ -301,8 +305,8 @@ void my_p4est_scft_t::initialize_bc_simple()
         // compute robin coefficients
         solver_a.pw_bc_xyz_robin_pt(i, j, xyz);
 
-        pw_bc_coeffs_a[i][j] = gamma_a[i]->value(xyz)*scalling;
-        pw_bc_coeffs_b[i][j] = gamma_b[i]->value(xyz)*scalling;
+        pw_bc_coeffs_a[i][j] = gamma_a[i]->value(xyz)*scaling;
+        pw_bc_coeffs_b[i][j] = gamma_b[i]->value(xyz)*scaling;
       }
     }
 
@@ -346,8 +350,8 @@ void my_p4est_scft_t::initialize_bc_smart(bool adaptive)
         // compute robin coefficients
         solver_a.pw_bc_xyz_robin_pt(i, j, xyz);
         double mu_m_val = mu_cf->value(xyz);
-        pw_bc_coeffs_a[i][j] = (gamma_a[i]->value(xyz)-gamma_b[i]->value(xyz))*(-mu_m_val/XN/rho_avg+0.5)*scalling;
-        pw_bc_coeffs_b[i][j] = (gamma_a[i]->value(xyz)-gamma_b[i]->value(xyz))*(-mu_m_val/XN/rho_avg-0.5)*scalling;
+        pw_bc_coeffs_a[i][j] = (gamma_a[i]->value(xyz)-gamma_b[i]->value(xyz))*(-mu_m_val/XN/rho_avg+0.5)*scaling;
+        pw_bc_coeffs_b[i][j] = (gamma_a[i]->value(xyz)-gamma_b[i]->value(xyz))*(-mu_m_val/XN/rho_avg-0.5)*scaling;
 
         // calculate addition to energy from surface tensions
         solver_a.pw_bc_xyz_value_pt(i, j, xyz);
@@ -359,9 +363,9 @@ void my_p4est_scft_t::initialize_bc_smart(bool adaptive)
 
     int mpiret = MPI_Allreduce(MPI_IN_PLACE, &energy_singular_part, 1, MPI_DOUBLE, MPI_SUM, p4est->mpicomm); SC_CHECK_MPI(mpiret);
 
-//    energy_singular_part *= scalling;
+//    energy_singular_part *= scaling;
 //    energy_singular_part /= volume;
-    energy_singular_part /= pow(scalling, P4EST_DIM - 1.);
+    energy_singular_part /= pow(scaling, P4EST_DIM - 1.);
 
     solver_a.set_new_submat_robin(true);
     solver_b.set_new_submat_robin(true);
@@ -488,6 +492,7 @@ void my_p4est_scft_t::diffusion_step(my_p4est_poisson_nodes_mls_t &solver, doubl
 
   // Solve linear system
   solver.solve(sol, true, false);
+//  solver.solve(sol, false, false);
 }
 
 void my_p4est_scft_t::calculate_densities()
@@ -564,7 +569,7 @@ void my_p4est_scft_t::calculate_densities()
 
   double mu_m_sqrd_int = integrate_over_domain_fast_squared(mu_m);
 
-  energy = 0*energy_singular_part + (mu_m_sqrd_int/XN - volume*log(Q))/pow(scalling, P4EST_DIM);
+  energy = 0*energy_singular_part + (mu_m_sqrd_int/XN - volume*log(Q))/pow(scaling, P4EST_DIM);
 
 }
 
@@ -647,7 +652,8 @@ void my_p4est_scft_t::update_potentials(bool update_mu_m, bool update_mu_p)
     ierr = VecAXPBYGhost(mu_p,  lambda, 1., force_p); CHKERRXX(ierr);
     mu_p_avg = integrate_over_domain_fast(mu_p)/volume;
     ierr = VecShiftGhost(mu_p, -mu_p_avg); CHKERRXX(ierr);
-    ierr = VecShiftGhost(mu_p, energy_singular_part/volume); CHKERRXX(ierr);
+    ierr = VecShiftGhost(mu_p, energy_singular_part/volume*pow(scaling, P4EST_DIM)); CHKERRXX(ierr);
+//    ierr = VecShiftGhost(mu_p, energy_singular_part/volume); CHKERRXX(ierr);
   }
 
 //  mu_m_avg = integrate_over_domain_fast(mu_m)/volume;
@@ -1306,8 +1312,8 @@ void my_p4est_scft_t::compute_energy_shape_derivative(int phi_idx, Vec velo)
   {
     node_xyz_fr_n(n, p4est, nodes, xyz);
 
-    double gamma_a_val = gamma_a[phi_idx]->value(xyz)*scalling;
-    double gamma_b_val = gamma_b[phi_idx]->value(xyz)*scalling;
+    double gamma_a_val = gamma_a[phi_idx]->value(xyz)*scaling;
+    double gamma_b_val = gamma_b[phi_idx]->value(xyz)*scaling;
 
     energy_shape_deriv_ptr[n] = 0.0*energy_shape_deriv_volumetric
         + (mu_m_ptr[n]*mu_m_ptr[n]/XN - mu_p_ptr[n]*rho_avg)
@@ -1315,7 +1321,7 @@ void my_p4est_scft_t::compute_energy_shape_derivative(int phi_idx, Vec velo)
 //        + 1.0*kappa_ptr[n]*(rho_a_ptr[n]*gamma_a_val + rho_b_ptr[n]*gamma_b_val)/volume
 //        - 1.0*2.0*(bc_coeffs_a_ptr[n]*rho_a_ptr[n]*gamma_a_val + bc_coeffs_b_ptr[n]*rho_b_ptr[n]*gamma_b_val)/volume;
 
-    energy_shape_deriv_ptr[n] /= pow(scalling, P4EST_DIM);
+    energy_shape_deriv_ptr[n] /= pow(scaling, P4EST_DIM);
 
 //    energy_shape_deriv_ptr[n] = - (mu_m_sqrd_int/XN-mu_p_int)/volume/volume
 //        + (mu_m_ptr[n]*mu_m_ptr[n]/XN - mu_p_ptr[n])/volume;
@@ -1392,7 +1398,7 @@ void my_p4est_scft_t::compute_energy_shape_derivative(int phi_idx, Vec velo)
 //    double gamma_air_val  = (*gamma_air)(x,y);
 
 ////    energy_shape_deriv_contact_term_ptr[n] = -1.0*(gamma_phi0 - gamma_air_val + gamma_phi1*cos_theta)/sqrt(1.0-cos_theta*cos_theta)*Q*volume;
-//    energy_shape_deriv_contact_term_ptr[n] = 1.0*scalling*(gamma_phi0 - gamma_air_val + gamma_phi1*cos_theta)/sqrt(1.0-cos_theta*cos_theta)/volume;
+//    energy_shape_deriv_contact_term_ptr[n] = 1.0*scaling*(gamma_phi0 - gamma_air_val + gamma_phi1*cos_theta)/sqrt(1.0-cos_theta*cos_theta)/volume;
 ////    energy_shape_deriv_contact_term_ptr[n] = (1.0+cos_theta)/sqrt(1.0-cos_theta*cos_theta);
 //  }
 
