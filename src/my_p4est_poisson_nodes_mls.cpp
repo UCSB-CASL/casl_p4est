@@ -1462,6 +1462,7 @@ void my_p4est_poisson_nodes_mls_t::setup_linear_system(bool setup_rhs)
                   values.push_back(value);
                 }
               }
+              ierr = MatSetOption(A_, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE);  CHKERRXX(ierr);
               ierr = MatSetValues(A_, 1, &n_gl, columns.size(), columns.data(), values.data(), ADD_VALUES); CHKERRXX(ierr);
             }
           }

@@ -172,7 +172,7 @@ int main(int argc, char *argv[]) {
   // which molecule(s)
   const string input_folder                 = cmd.get<string> ("input-dir", "/home/rochi/LabCode/casl_p4est/examples/biomol/mols");
   //const string input_folder                 = cmd.get<string> ("input-dir", "/home/regan/Desktop/casl_p4est_develop/examples/biomol/mols");
-  const string pqr_input                    = cmd.get<string>("pqr", "4ojb.");
+  const string pqr_input                    = cmd.get<string>("pqr", "6lu7.");
   //    const string pqr_input                    = cmd.get<string>("pqr", "3J6D."); // in 2D, for the illustrative planar molecule in the paper
   //    const string pqr_input                    = cmd.get<string>("pqr", "/3J3Q/pqr/3j3q-bundle."); // in 3D, for the graphical abstract of the paper
   const vector<string>* pqr = NULL;
