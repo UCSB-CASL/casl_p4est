@@ -409,6 +409,19 @@ public:
     new_submat_main_  = new_submat_main;
   }
 
+  inline void set_wc(BoundaryConditionType wc_type, const CF_DIM &wc_value, bool new_submat_main = true)
+  {
+    switch (wc_type) {
+      case DIRICHLET: this->wc_type_ = &dirichlet_cf; break;
+      case NEUMANN:   this->wc_type_ = &neumann_cf;   break;
+      default: throw;
+    }
+
+    this->wc_value_ = &wc_value;
+
+    new_submat_main_  = new_submat_main;
+  }
+
   // overwrite boundary conditions (optional)
   inline void set_bc(int phi_idx, BoundaryConditionType bc_type, CF_DIM &bc_value, CF_DIM &bc_coeff)
   {

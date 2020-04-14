@@ -42,10 +42,10 @@ my_p4est_node_neighbors_t *my_p4est_multialloy_t::v_ngbd;
 double *my_p4est_multialloy_t::v_c_p, **my_p4est_multialloy_t::v_c_d_p, **my_p4est_multialloy_t::v_c_dd_p, **my_p4est_multialloy_t::v_normal_p;
 double my_p4est_multialloy_t::v_factor;
 
-my_p4est_multialloy_t::my_p4est_multialloy_t(int num_comps, int num_time_layers)
+my_p4est_multialloy_t::my_p4est_multialloy_t(int num_comps, int time_order)
 {
   num_comps_       = num_comps;
-  num_time_layers_ = num_time_layers;
+  num_time_layers_ = time_order+1;
 
   ts_.resize(num_time_layers_);
   tl_.resize(num_time_layers_);
@@ -81,25 +81,24 @@ my_p4est_multialloy_t::my_p4est_multialloy_t(int num_comps, int num_time_layers)
 
 
   contr_bc_type_temp_ = NEUMANN;
-  contr_bc_type_conc_.resize(num_comps_, NEUMANN);
+  contr_bc_type_conc_ = NEUMANN;
 
   contr_bc_value_temp_ = NULL;
   contr_bc_value_conc_.assign(num_comps_, NULL);
 
-  wall_bc_type_temp_ = NULL;
-  wall_bc_type_conc_.assign(num_comps_, NULL);
+  wall_bc_type_temp_ = NEUMANN;
+  wall_bc_type_conc_ = NEUMANN;
 
   wall_bc_value_temp_ = NULL;
   wall_bc_value_conc_.assign(num_comps_, NULL);
 
   scaling_ = 1.;
 
-  pin_every_n_iterations_ = 50;
-  max_iterations_         = 50;
+  max_iterations_ = 50;
 
-  bc_tolerance_           = 1.e-5;
-  phi_thresh_             = 0.001;
-  cfl_number_             = 0.1;
+  bc_tolerance_   = 1.e-5;
+  phi_thresh_     = 0.001;
+  cfl_number_     = 0.1;
 
   time_   = 0;
   dt_max_ = DBL_MAX;
@@ -149,7 +148,7 @@ my_p4est_multialloy_t::~my_p4est_multialloy_t()
   //--------------------------------------------------
   // Physical fields
   //--------------------------------------------------
-  for (i = 0; i < num_time_layers_; ++i)
+  for (int i = 0; i < num_time_layers_; ++i)
   {
     tl_[i].destroy();
     ts_[i].destroy();
@@ -278,10 +277,8 @@ void my_p4est_multialloy_t::initialize(MPI_Comm mpi_comm, double xyz_min[], doub
   history_ngbd_->init_neighbors();
 
   /* determine the smallest cell size */
-  ::dxyz_min(p4est_, dxyz_);
-  dxyz_min_ = MIN(DIM(dxyz_[0], dxyz_[1], dxyz_[2]));
-  dxyz_max_ = MAX(DIM(dxyz_[0], dxyz_[1], dxyz_[2]));
-  diag_ = sqrt(SUMD(SQR(dxyz_[0]), SQR(dxyz_[1]), SQR(dxyz_[2])));
+  get_dxyz_min(p4est_, dxyz_, dxyz_min_, diag_);
+  dxyz_max_ = dxyz_min_;
 
   dxyz_close_interface_ = 1.2*dxyz_max_;
 
@@ -304,7 +301,7 @@ void my_p4est_multialloy_t::initialize(MPI_Comm mpi_comm, double xyz_min[], doub
   // Physical fields
   //--------------------------------------------------
   /* temperature */
-  for (i = 0; i < num_time_layers_; ++i)
+  for (int i = 0; i < num_time_layers_; ++i)
   {
     tl_[i].create(front_phi_.vec);
     ts_[i].create(front_phi_.vec);
@@ -327,7 +324,7 @@ void my_p4est_multialloy_t::initialize(MPI_Comm mpi_comm, double xyz_min[], doub
 
   VecSetGhost(psi_tl_.vec, 0.);
   VecSetGhost(psi_ts_.vec, 0.);
-  for (i = 0; i < num_comps_; ++i)
+  for (int i = 0; i < num_comps_; ++i)
   {
     VecSetGhost(psi_cl_.vec[i], 0.);
   }
@@ -559,7 +556,7 @@ void my_p4est_multialloy_t::compute_dt()
 
   front_velo_norm_max_ = velo_norm_max;
 
-  for (i = 1; i < num_time_layers_; ++i)
+  for (int i = 1; i < num_time_layers_; ++i)
   {
     dt_[i] = dt_[i-1];
   }
@@ -569,7 +566,6 @@ void my_p4est_multialloy_t::compute_dt()
   dt_[0] = MAX(dt_[0], dt_min_);
 
   double cfl_tmp = dt_[0]*MAX(fabs(velo_norm_max),EPS)/dxyz_min_;
-
 
   PetscPrintf(p4est_->mpicomm, "curvature max = %e, velo max = %e, dt = %e, eff cfl = %e\n", curvature_max, velo_norm_max/scaling_, dt_[0], cfl_tmp);
 
@@ -593,13 +589,16 @@ void my_p4est_multialloy_t::update_grid()
 
   sl.set_phi_interpolation(quadratic_non_oscillatory_continuous_v2);
   sl.set_velo_interpolation(quadratic_non_oscillatory_continuous_v2);
+  sl.set_velo_interpolation(linear);
 
-  if (num_time_layers_ == 2) sl.update_p4est(front_velo_[0].vec, dt_[0], front_phi_.vec, NULL, contr_phi_.vec);
-  else   sl.update_p4est(front_velo_[1].vec, front_velo_[0].vec, dt_[1], dt_[0], front_phi_.vec);
-
+  if (num_time_layers_ == 2) {
+    sl.update_p4est(front_velo_[0].vec, dt_[0], front_phi_.vec, NULL, contr_phi_.vec);
+  } else {
+    sl.update_p4est(front_velo_[0].vec, front_velo_[0].vec, dt_[1], dt_[0], front_phi_.vec, NULL, contr_phi_.vec);
+  }
 
   /* interpolate the quantities onto the new grid */
-  // also shit n+1 -> n
+  // also shifts n+1 -> n
 
   PetscPrintf(p4est_->mpicomm, "Transfering data between grids...\n");
   ierr = PetscLogEventBegin(log_my_p4est_multialloy_update_grid_transfer_data, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -622,7 +621,7 @@ void my_p4est_multialloy_t::update_grid()
   front_normal_.create(front_phi_dd_.vec);
 
   /* temperature */
-  for (j = num_time_layers_-1; j > 0; --j)
+  for (int j = num_time_layers_-1; j > 0; --j)
   {
     tl_[j].destroy();
     tl_[j].create(front_phi_.vec);
@@ -636,7 +635,7 @@ void my_p4est_multialloy_t::update_grid()
 
     cl_[j].destroy();
     cl_[j].create(front_phi_.vec);
-    for (i = 0; i < num_comps_; ++i)
+    for (int i = 0; i < num_comps_; ++i)
     {
       interp.set_input(cl_[j-1].vec[i], interpolation_between_grids_);
       interp.interpolate(cl_[j].vec[i]);
@@ -664,7 +663,7 @@ void my_p4est_multialloy_t::update_grid()
   VecCopyGhost(ts_[1].vec, ts_[0].vec);
   cl_[0].destroy();
   cl_[0].create(front_phi_.vec);
-  for (i = 0; i < num_comps_; ++i)
+  for (int i = 0; i < num_comps_; ++i)
   {
     VecCopyGhost(cl_[1].vec[i], cl_[0].vec[i]);
   }
@@ -717,7 +716,7 @@ void my_p4est_multialloy_t::update_grid()
   psi_ts_.set(psi_ts_tmp.vec);
 
   vec_and_ptr_array_t psi_cl_tmp(num_comps_, front_phi_.vec);
-  for (i = 0; i < num_comps_; ++i)
+  for (int i = 0; i < num_comps_; ++i)
   {
     interp.set_input(psi_cl_.vec[i], linear);
     interp.interpolate(psi_cl_tmp.vec[i]);
@@ -893,7 +892,7 @@ int my_p4est_multialloy_t::one_step()
   contr_bc_value_temp_->t = time_;
   wall_bc_value_temp_ ->t = time_;
 
-  for (i = 0; i < num_comps_; ++i)
+  for (int i = 0; i < num_comps_; ++i)
   {
     contr_bc_value_conc_[i]->t = time_;
     wall_bc_value_conc_ [i]->t = time_;
@@ -908,7 +907,7 @@ int my_p4est_multialloy_t::one_step()
   rhs_ts.get_array();
   rhs_cl.get_array();
 
-  for (i = 0; i < num_time_layers_; ++i)
+  for (int i = 0; i < num_time_layers_; ++i)
   {
     tl_[i].get_array();
     ts_[i].get_array();
@@ -933,23 +932,21 @@ int my_p4est_multialloy_t::one_step()
     rhs_tl.ptr[n] = 0;
     rhs_ts.ptr[n] = 0;
 
-    for (j = 0; j < num_comps_; ++j)
+    for (int j = 0; j < num_comps_; ++j)
     {
       rhs_cl.ptr[j][n] = 0;
     }
 
-    for (i = 1; i < num_time_layers_; ++i)
+    for (int i = 1; i < num_time_layers_; ++i)
     {
       rhs_tl.ptr[n] -= time_coeffs[i]*tl_[i].ptr[n];
       rhs_ts.ptr[n] -= time_coeffs[i]*ts_[i].ptr[n];
 
-      for (j = 0; j < num_comps_; ++j)
+      for (int j = 0; j < num_comps_; ++j)
       {
         rhs_cl.ptr[j][n] -= time_coeffs[i]*cl_[i].ptr[j][n];
       }
     }
-
-    double test = rhs_tl.ptr[n]*density_l_*heat_capacity_l_/dt_[0];
 
     rhs_tl.ptr[n] = rhs_tl.ptr[n]*density_l_*heat_capacity_l_/dt_[0] + heat_gen;
     rhs_ts.ptr[n] = rhs_ts.ptr[n]*density_s_*heat_capacity_s_/dt_[0] + heat_gen;
@@ -964,7 +961,7 @@ int my_p4est_multialloy_t::one_step()
   rhs_ts.restore_array();
   rhs_cl.restore_array();
 
-  for (i = 0; i < num_time_layers_; ++i)
+  for (int i = 0; i < num_time_layers_; ++i)
   {
     tl_[i].restore_array();
     ts_[i].restore_array();
@@ -994,17 +991,16 @@ int my_p4est_multialloy_t::one_step()
   {
     solver_all_in_one.set_container(contr_phi_.vec, contr_phi_dd_.vec);
     solver_all_in_one.set_container_conditions_thermal(contr_bc_type_temp_, *contr_bc_value_temp_);
-    solver_all_in_one.set_container_conditions_composition(contr_bc_type_conc_.data(), contr_bc_value_conc_.data());
+    solver_all_in_one.set_container_conditions_composition(contr_bc_type_conc_, contr_bc_value_conc_.data());
   }
 
   vector<CF_DIM *> zeros_cf(num_comps_, &zero_cf);
 
   solver_all_in_one.set_front_conditions(zero_cf, zero_cf, zeros_cf.data());
 
-  solver_all_in_one.set_wall_conditions_thermal(*wall_bc_type_temp_, *wall_bc_value_temp_);
-  solver_all_in_one.set_wall_conditions_composition(wall_bc_type_conc_.data(), wall_bc_value_conc_.data());
+  solver_all_in_one.set_wall_conditions_thermal(wall_bc_type_temp_, *wall_bc_value_temp_);
+  solver_all_in_one.set_wall_conditions_composition(wall_bc_type_conc_, wall_bc_value_conc_.data());
 
-  solver_all_in_one.set_pin_every_n_iterations(pin_every_n_iterations_);
   solver_all_in_one.set_tolerance(bc_tolerance_, max_iterations_);
   solver_all_in_one.set_use_points_on_interface(use_points_on_interface_);
   solver_all_in_one.set_update_c0_robin(update_c0_robin_);
@@ -1408,7 +1404,7 @@ void my_p4est_multialloy_t::count_dendrites(int iter)
     h_interp.set_input(history_tf_.vec, linear); h_interp.interpolate_local(line_tf.data());
     h_interp.set_input(history_front_curvature_.vec, linear); h_interp.interpolate_local(line_kappa.data());
     h_interp.set_input(history_front_velo_norm_.vec, linear); h_interp.interpolate_local(line_vf.data());
-    for (i = 0; i < num_comps_; ++i)
+    for (int i = 0; i < num_comps_; ++i)
     {
       h_interp.set_input(history_cs_.vec[i], linear); h_interp.interpolate_local(line_cs[i].data());
     }
@@ -1423,7 +1419,7 @@ void my_p4est_multialloy_t::count_dendrites(int iter)
     mpiret = MPI_Allreduce(MPI_IN_PLACE, line_vf .data(), nb_sample_points, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
     mpiret = MPI_Allreduce(MPI_IN_PLACE, line_kappa.data(), nb_sample_points, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
 
-    for (i = 0; i < num_comps_; ++i)
+    for (int i = 0; i < num_comps_; ++i)
     {
       mpiret = MPI_Allreduce(MPI_IN_PLACE, line_cl[i].data(), nb_sample_points, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
       mpiret = MPI_Allreduce(MPI_IN_PLACE, line_cs[i].data(), nb_sample_points, MPI_DOUBLE, MPI_MAX, p4est_->mpicomm); SC_CHECK_MPI(mpiret);
@@ -1778,7 +1774,7 @@ void my_p4est_multialloy_t::compute_solid()
   vec_and_ptr_t tl_new(history_front_phi_.vec);
   vec_and_ptr_t tl_old(history_front_phi_.vec);
 
-  for (i = 0; i < num_comps_; ++i)
+  for (int i = 0; i < num_comps_; ++i)
   {
     interp.set_input(cl_[1].vec[i], linear); interp.interpolate(cl_old.vec[i]);
     interp.set_input(cl_[0].vec[i], linear); interp.interpolate(cl_new.vec[i]);

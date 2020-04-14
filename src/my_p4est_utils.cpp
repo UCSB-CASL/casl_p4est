@@ -2820,6 +2820,14 @@ PetscErrorCode VecReciprocalGhost(Vec input)
   return ierr;
 }
 
+PetscErrorCode VecGhostUpdate(Vec input, InsertMode insert_mode, ScatterMode scatter_mode)
+{
+  PetscErrorCode ierr;
+  ierr = VecGhostUpdateBegin(input, insert_mode, scatter_mode); if (ierr != 0) return ierr;
+  ierr = VecGhostUpdateEnd  (input, insert_mode, scatter_mode); if (ierr != 0) return ierr;
+  return ierr;
+}
+
 void invert_phi(p4est_nodes_t *nodes, Vec phi)
 {
   PetscErrorCode ierr;

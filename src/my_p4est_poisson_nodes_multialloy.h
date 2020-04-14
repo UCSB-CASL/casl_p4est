@@ -115,15 +115,15 @@ private:
   vector<CF_DIM *> eps_v_;
 
   // boundary conditions at container
-  BoundaryConditionType         contr_bc_type_temp_;
-  vector<BoundaryConditionType> contr_bc_type_conc_;
+  BoundaryConditionType contr_bc_type_temp_;
+  BoundaryConditionType contr_bc_type_conc_;
 
   CF_DIM           *contr_bc_value_temp_;
   vector<CF_DIM *>  contr_bc_value_conc_;
 
   // boundary condtions at walls
-  WallBCDIM           *wall_bc_type_temp_;
-  vector<WallBCDIM *>  wall_bc_type_conc_;
+  BoundaryConditionType wall_bc_type_temp_;
+  BoundaryConditionType wall_bc_type_conc_;
 
   CF_DIM           *wall_bc_value_temp_;
   vector<CF_DIM *>  wall_bc_value_conc_;
@@ -197,26 +197,26 @@ public:
     contr_bc_value_temp_ = &bc_value;
   }
 
-  inline void set_container_conditions_composition(BoundaryConditionType bc_type[], CF_DIM *bc_value[])
+  inline void set_container_conditions_composition(BoundaryConditionType bc_type, CF_DIM *bc_value[])
   {
+    contr_bc_type_conc_ = bc_type;
     for (int i = 0; i < num_comps_; ++i)
     {
-      contr_bc_type_conc_ [i] = bc_type [i];
       contr_bc_value_conc_[i] = bc_value[i];
     }
   }
 
-  inline void set_wall_conditions_thermal(WallBCDIM &bc_type, CF_DIM &bc_value)
+  inline void set_wall_conditions_thermal(BoundaryConditionType bc_type, CF_DIM &bc_value)
   {
-    wall_bc_type_temp_  = &bc_type;
+    wall_bc_type_temp_  =  bc_type;
     wall_bc_value_temp_ = &bc_value;
   }
 
-  inline void set_wall_conditions_composition(WallBCDIM *bc_type[], CF_DIM *bc_value[])
+  inline void set_wall_conditions_composition(BoundaryConditionType bc_type, CF_DIM *bc_value[])
   {
+    wall_bc_type_conc_ = bc_type;
     for (int i = 0; i < num_comps_; ++i)
     {
-      wall_bc_type_conc_ [i] = bc_type [i];
       wall_bc_value_conc_[i] = bc_value[i];
     }
   }
@@ -333,7 +333,6 @@ private:
   //--------------------------------------------------
   double bc_tolerance_;
   int    max_iterations_;
-  int    pin_every_n_iterations_;
   int    update_c0_robin_;
 
   bool   second_derivatives_owned_;
@@ -373,7 +372,6 @@ private:
 
 public:
   inline void set_iteration_scheme          (int          value) { iteration_scheme_          = value; }
-  inline void set_pin_every_n_iterations    (int          value) { pin_every_n_iterations_    = value; }
   inline void set_cube_refinement           (int          value) { cube_refinement_           = value; }
   inline void set_integration_order         (int          value) { integration_order_         = value; }
   inline void set_update_c0_robin           (int          value) { update_c0_robin_           = value; }

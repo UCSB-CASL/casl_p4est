@@ -29,7 +29,6 @@ class my_p4est_multialloy_t
 {
 private:
   PetscErrorCode ierr;
-  int i,j,k;
 
   //--------------------------------------------------
   // Main grid
@@ -139,15 +138,15 @@ private:
   CF_DIM *vol_heat_gen_;
 
   // boundary conditions at container
-  BoundaryConditionType         contr_bc_type_temp_;
-  vector<BoundaryConditionType> contr_bc_type_conc_;
+  BoundaryConditionType contr_bc_type_temp_;
+  BoundaryConditionType contr_bc_type_conc_;
 
   CF_DIM           *contr_bc_value_temp_;
   vector<CF_DIM *>  contr_bc_value_conc_;
 
   // boundary condtions at walls
-  WallBCDIM           *wall_bc_type_temp_;
-  vector<WallBCDIM *>  wall_bc_type_conc_;
+  BoundaryConditionType wall_bc_type_temp_;
+  BoundaryConditionType wall_bc_type_conc_;
 
   CF_DIM           *wall_bc_value_temp_;
   vector<CF_DIM *>  wall_bc_value_conc_;
@@ -158,7 +157,6 @@ private:
   //--------------------------------------------------
   // solver parameters
   //--------------------------------------------------
-  int pin_every_n_iterations_;
   int max_iterations_;
   int update_c0_robin_;
   int front_smoothing_;
@@ -221,7 +219,7 @@ private:
 
 
 public:
-  my_p4est_multialloy_t(int num_comps, int num_time_layers);
+  my_p4est_multialloy_t(int num_comps, int time_order);
   ~my_p4est_multialloy_t();
 
   void initialize(MPI_Comm mpi_comm, double xyz_min[], double xyz_max[], int nxyz[], int periodicity[], CF_2 &level_set, int lmin, int lmax, double lip, double band);
@@ -286,26 +284,26 @@ public:
     contr_bc_value_temp_ = &bc_value;
   }
 
-  inline void set_container_conditions_composition(BoundaryConditionType bc_type[], CF_DIM *bc_value[])
+  inline void set_container_conditions_composition(BoundaryConditionType bc_type, CF_DIM *bc_value[])
   {
+    contr_bc_type_conc_ = bc_type;
     for (int i = 0; i < num_comps_; ++i)
     {
-      contr_bc_type_conc_ [i] = bc_type [i];
       contr_bc_value_conc_[i] = bc_value[i];
     }
   }
 
-  inline void set_wall_conditions_thermal(WallBCDIM &bc_type, CF_DIM &bc_value)
+  inline void set_wall_conditions_thermal(BoundaryConditionType bc_type, CF_DIM &bc_value)
   {
-    wall_bc_type_temp_  = &bc_type;
+    wall_bc_type_temp_  =  bc_type;
     wall_bc_value_temp_ = &bc_value;
   }
 
-  inline void set_wall_conditions_composition(WallBCDIM *bc_type[], CF_DIM *bc_value[])
+  inline void set_wall_conditions_composition(BoundaryConditionType bc_type, CF_DIM *bc_value[])
   {
+    wall_bc_type_conc_ = bc_type;
     for (int i = 0; i < num_comps_; ++i)
     {
-      wall_bc_type_conc_ [i] = bc_type [i];
       wall_bc_value_conc_[i] = bc_value[i];
     }
   }
@@ -315,54 +313,68 @@ public:
 
   inline void set_temperature(Vec tl, Vec ts)
   {
-    for (i = 0; i < num_time_layers_; ++i)
+    for (int i = 0; i < num_time_layers_; ++i)
     {
       VecCopyGhost(tl, tl_[i].vec);
       VecCopyGhost(ts, ts_[i].vec);
     }
 
     my_p4est_interpolation_nodes_t interp(ngbd_);
-
-    double xyz[P4EST_DIM];
-    foreach_node(n, history_nodes_)
-    {
-      node_xyz_fr_n(n, history_p4est_, history_nodes_, xyz);
-      interp.add_point(n, xyz);
-    }
-
+    interp.add_all_nodes(history_p4est_, history_nodes_);
     interp.set_input(ts_[0].vec, linear);
     interp.interpolate(history_tf_.vec);
   }
 
+  inline void set_temperature(CF_DIM &tl, CF_DIM &ts, CF_DIM &tf)
+  {
+    for (int i = 0; i < num_time_layers_; ++i)
+    {
+      tl.t = -double(i)*dt_[0];
+      ts.t = -double(i)*dt_[0];
+      sample_cf_on_nodes(p4est_, nodes_, tl, tl_[i].vec);
+      sample_cf_on_nodes(p4est_, nodes_, ts, ts_[i].vec);
+    }
+
+    sample_cf_on_nodes(p4est_, nodes_, tf, history_tf_.vec);
+  }
+
   inline void set_concentration(Vec cl[], Vec cs[])
   {
-    for (j = 0; j < num_comps_; ++j)
+    for (int j = 0; j < num_comps_; ++j)
     {
-      for (i = 0; i < num_time_layers_; ++i)
+      for (int i = 0; i < num_time_layers_; ++i)
       {
         VecCopyGhost(cl[j], cl_[i].vec[j]);
       }
     }
 
     my_p4est_interpolation_nodes_t interp(ngbd_);
+    interp.add_all_nodes(history_p4est_, history_nodes_);
 
-    double xyz[P4EST_DIM];
-    foreach_node(n, history_nodes_)
-    {
-      node_xyz_fr_n(n, history_p4est_, history_nodes_, xyz);
-      interp.add_point(n, xyz);
-    }
-
-    for (j = 0; j < num_comps_; ++j)
+    for (int j = 0; j < num_comps_; ++j)
     {
       interp.set_input(cs[j], linear);
       interp.interpolate(history_cs_.vec[j]);
     }
   }
 
+  inline void set_concentration(CF_DIM *cl[], CF_DIM *cs[])
+  {
+    for (int j = 0; j < num_comps_; ++j)
+    {
+      for (int i = 0; i < num_time_layers_; ++i)
+      {
+        cl[j]->t = -double(i)*dt_[0];
+        sample_cf_on_nodes(p4est_, nodes_, *cl[j], cl_[i].vec[j]);
+      }
+
+      sample_cf_on_nodes(p4est_, nodes_, *cs[j], history_cs_.vec[j]);
+    }
+  }
+
   inline void set_normal_velocity(Vec v)
   {
-    for (i = 0; i < num_time_layers_; ++i)
+    for (int i = 0; i < num_time_layers_; ++i)
     {
       VecCopyGhost(v, front_velo_norm_[i].vec);
       foreach_dimension(dim)
@@ -374,12 +386,37 @@ public:
     // copy to history_front_velo
   }
 
+  inline void set_velocity(CF_DIM &vn, DIM(CF_DIM &vx, CF_DIM &vy, CF_DIM &vz), CF_DIM &vf)
+  {
+    for (int i = 0; i < num_time_layers_; ++i)
+    {
+      vn.t = -double(i)*dt_[0];
+      EXECD( vx.t = -double(i)*dt_[0],
+             vy.t = -double(i)*dt_[0],
+             vz.t = -double(i)*dt_[0] );
+
+      sample_cf_on_nodes(p4est_, nodes_, vn, front_velo_norm_[i].vec);
+      EXECD( sample_cf_on_nodes(p4est_, nodes_, vx, front_velo_[i].vec[0]),
+             sample_cf_on_nodes(p4est_, nodes_, vy, front_velo_[i].vec[1]),
+             sample_cf_on_nodes(p4est_, nodes_, vz, front_velo_[i].vec[2]) );
+
+      if (i == 0) {
+        compute_dt();
+        for (int j = 1; j < num_time_layers_; ++j) {
+          dt_[j] = dt_[0];
+        }
+      }
+    }
+
+    sample_cf_on_nodes(p4est_, nodes_, vf, history_front_velo_norm_.vec);
+  }
+
   inline p4est_t*       get_p4est() { return p4est_; }
   inline p4est_nodes_t* get_nodes() { return nodes_; }
   inline p4est_ghost_t* get_ghost() { return ghost_; }
   inline my_p4est_node_neighbors_t* get_ngbd()  { return ngbd_; }
 
-  inline Vec  get_contr_phi()    { return front_phi_.vec; }
+  inline Vec  get_contr_phi()    { return contr_phi_.vec; }
   inline Vec  get_front_phi()    { return front_phi_.vec; }
   inline Vec* get_front_phi_dd() { return front_phi_dd_.vec; }
   inline Vec  get_normal_velocity() { return front_velo_norm_[0].vec; }
@@ -389,9 +426,14 @@ public:
 
 //  inline double get_max_interface_velocity() { return vgamma_max_; }
 
-  inline void set_dt(double dt)
+  inline void set_dt_all(double dt)
   {
     dt_.assign(num_time_layers_, dt);
+  }
+
+  inline void set_dt(double dt)
+  {
+    dt_[0] = dt;
   }
 
   inline void set_dt_limits(double dt_min, double dt_max)
@@ -405,7 +447,6 @@ public:
   inline void set_enforce_planar_front     (bool value)   { enforce_planar_front_      = value; }
 
   inline void set_update_c0_robin          (int value)    { update_c0_robin_           = value; }
-  inline void set_pin_every_n_iterations   (int value)    { pin_every_n_iterations_    = value; }
   inline void set_max_iterations           (int value)    { max_iterations_            = value; }
   inline void set_front_smoothing          (int value)    { front_smoothing_           = value; }
   inline void set_curvature_smoothing      (double value,

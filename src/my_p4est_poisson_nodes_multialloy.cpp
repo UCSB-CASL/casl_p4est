@@ -53,7 +53,6 @@ my_p4est_poisson_nodes_multialloy_t::my_p4est_poisson_nodes_multialloy_t(my_p4es
 //  tn_jump_      .set_ptr(this);
 //  bc_error_cf_  .set_ptr(this);
 
-  pin_every_n_iterations_ = INT_MAX;
   bc_tolerance_           = 1.e-12;
   max_iterations_         = 10;
 
@@ -89,9 +88,7 @@ my_p4est_poisson_nodes_multialloy_t::my_p4est_poisson_nodes_multialloy_t(my_p4es
   conc_diff_          .resize(num_comps_, 1);
   part_coeff_         .resize(num_comps_, .5);
   front_conc_flux_    .resize(num_comps_, NULL);
-  wall_bc_type_conc_  .resize(num_comps_, NULL);
   wall_bc_value_conc_ .resize(num_comps_, NULL);
-  contr_bc_type_conc_ .resize(num_comps_, NEUMANN);
   contr_bc_value_conc_.resize(num_comps_, NULL);
 
   tl_dd_.resize((P4EST_DIM-1)*3);
@@ -384,17 +381,13 @@ int my_p4est_poisson_nodes_multialloy_t::solve(Vec tl, Vec ts, Vec c[], Vec c0d[
     ++iteration;
 
     // solve for physical quantities
-
     solve_c0(); ++num_pdes_solved;
     compute_c0n();
     compute_pw_bc_values(conc_start, conc_num);
     solve_t();  ++num_pdes_solved;
     solve_c(conc_start, conc_num);  ++num_pdes_solved;
 
-//    if (iteration < max_iterations_)
-    bool check = iteration%pin_every_n_iterations_ == 0;
-
-      // solve for lagrangian multipliers
+    // solve for lagrangian multipliers
     if ((iteration-1)%1 == 0)
     {
       switch (iteration_scheme_)
@@ -495,7 +488,6 @@ int my_p4est_poisson_nodes_multialloy_t::solve(Vec tl, Vec ts, Vec c[], Vec c0d[
                                       false, psi_ts_d_.vec, NULL);
   }
 
-
   // clean everything
   if (psi_tl == NULL) psi_tl_.destroy();
   if (psi_ts == NULL) psi_ts_.destroy();
@@ -567,7 +559,7 @@ void my_p4est_poisson_nodes_multialloy_t::initialize_solvers()
   solver_conc_leading_->add_boundary(MLS_INTERSECTION, front_phi_.vec, front_phi_dd_.vec, DIRICHLET, zero_cf, zero_cf);
   solver_conc_leading_->set_diag(conc_diag_[0]);
   solver_conc_leading_->set_mu(conc_diff_[0]);
-  solver_conc_leading_->set_wc(*wall_bc_type_conc_[0], *wall_bc_value_conc_[0]);
+  solver_conc_leading_->set_wc(wall_bc_type_conc_, *wall_bc_value_conc_[0]);
   solver_conc_leading_->set_rhs(rhs_c_[0].vec);
   solver_conc_leading_->set_store_finite_volumes(1);
   solver_conc_leading_->set_cube_refinement(cube_refinement_);
@@ -576,7 +568,7 @@ void my_p4est_poisson_nodes_multialloy_t::initialize_solvers()
 
   if (contr_phi_.vec != NULL)
   {
-    solver_conc_leading_->add_boundary(MLS_INTERSECTION, contr_phi_.vec, contr_phi_dd_.vec, contr_bc_type_conc_[0], zero_cf, zero_cf);
+    solver_conc_leading_->add_boundary(MLS_INTERSECTION, contr_phi_.vec, contr_phi_dd_.vec, contr_bc_type_conc_, zero_cf, zero_cf);
   }
 
   solver_conc_leading_->preassemble_linear_system();
@@ -590,7 +582,7 @@ void my_p4est_poisson_nodes_multialloy_t::initialize_solvers()
   solver_temp_->set_cube_refinement(cube_refinement_);
   solver_temp_->set_store_finite_volumes(1);
 //  solver_temp_->set_finite_volumes(NULL, NULL, fvs, fvs_map);
-  solver_temp_->set_wc(*wall_bc_type_temp_, *wall_bc_value_temp_);
+  solver_temp_->set_wc(wall_bc_type_temp_, *wall_bc_value_temp_);
   solver_temp_->set_rhs(rhs_tl_.vec, rhs_ts_.vec);
 
   if (contr_phi_.vec != NULL)
@@ -617,7 +609,7 @@ void my_p4est_poisson_nodes_multialloy_t::initialize_solvers()
     solver_conc_[i]->set_kink_treatment(1);
     solver_conc_[i]->set_store_finite_volumes(1);
     solver_conc_[i]->set_cube_refinement(cube_refinement_);
-    solver_conc_[i]->set_wc(*wall_bc_type_conc_[i], *wall_bc_value_conc_[i]);
+    solver_conc_[i]->set_wc(wall_bc_type_conc_, *wall_bc_value_conc_[i]);
     if (i != i_start)
     {
       solver_conc_[i]->set_finite_volumes(fvs, fvs_map, NULL, NULL);
@@ -625,7 +617,7 @@ void my_p4est_poisson_nodes_multialloy_t::initialize_solvers()
 
     if (contr_phi_.vec != NULL)
     {
-      solver_conc_[i]->add_boundary(MLS_INTERSECTION, contr_phi_.vec, contr_phi_dd_.vec, contr_bc_type_conc_[i], zero_cf, zero_cf);
+      solver_conc_[i]->add_boundary(MLS_INTERSECTION, contr_phi_.vec, contr_phi_dd_.vec, contr_bc_type_conc_, zero_cf, zero_cf);
     }
 
     solver_conc_[i]->preassemble_linear_system();
@@ -713,7 +705,7 @@ void my_p4est_poisson_nodes_multialloy_t::solve_t()
     sol       .restore_array();
   }
 
-  solver_temp_->set_wc(*wall_bc_type_temp_, *wall_bc_value_temp_, false);
+  solver_temp_->set_wc(wall_bc_type_temp_, *wall_bc_value_temp_, false);
   solver_temp_->set_rhs(rhs_tl_.vec, rhs_ts_.vec);
   solver_temp_->set_jc(0, pw_t_sol_jump_taylor_, pw_t_flx_jump_taylor_, pw_t_flx_jump_integr_);
 
@@ -775,7 +767,7 @@ void my_p4est_poisson_nodes_multialloy_t::solve_psi_t()
   ierr = PetscPrintf(p4est_->mpicomm, "Solving for temperature multiplier... \n"); CHKERRXX(ierr);
   }
 
-  solver_temp_->set_wc(*wall_bc_type_temp_, zero_cf, false);
+  solver_temp_->set_wc(wall_bc_type_temp_, zero_cf, false);
   solver_temp_->set_rhs(rhs_zero_.vec);
   solver_temp_->set_jc(0, pw_psi_t_sol_jump_taylor_, pw_psi_t_flx_jump_taylor_, pw_psi_t_flx_jump_integr_);
 
@@ -862,13 +854,13 @@ void my_p4est_poisson_nodes_multialloy_t::solve_c0()
     ierr = PetscPrintf(p4est_->mpicomm, "Solving for leading concentration... \n"); CHKERRXX(ierr);
   }
 
-  solver_conc_leading_->set_wc(*wall_bc_type_conc_[0], *wall_bc_value_conc_[0], false);
+  solver_conc_leading_->set_wc(wall_bc_type_conc_, *wall_bc_value_conc_[0], false);
   solver_conc_leading_->set_bc(0, DIRICHLET, pw_c0_values_);
   solver_conc_leading_->set_rhs(rhs_c_[0].vec);
 
   if (contr_phi_.vec != NULL)
   {
-    solver_conc_leading_->set_bc(1, contr_bc_type_conc_[0], *contr_bc_value_conc_[0], zero_cf);
+    solver_conc_leading_->set_bc(1, contr_bc_type_conc_, *contr_bc_value_conc_[0], zero_cf);
   }
 
   solver_conc_leading_->solve(c_[0].vec, poisson_use_nonzero_guess_);
@@ -989,13 +981,13 @@ void my_p4est_poisson_nodes_multialloy_t::solve_psi_c0(int scheme)
   front_normal_   .restore_array();
   front_curvature_.restore_array();
 
-  solver_conc_leading_->set_wc(*wall_bc_type_conc_[0], zero_cf, false);
+  solver_conc_leading_->set_wc(wall_bc_type_conc_, zero_cf, false);
   solver_conc_leading_->set_rhs(rhs_zero_.vec);
   solver_conc_leading_->set_bc(0, DIRICHLET, pw_psi_c0_values_);
 
   if (contr_phi_.vec != NULL)
   {
-    solver_conc_leading_->set_bc(1, contr_bc_type_conc_[0], zero_cf, zero_cf);
+    solver_conc_leading_->set_bc(1, contr_bc_type_conc_, zero_cf, zero_cf);
   }
 
   solver_conc_leading_->solve(psi_c_[0].vec, poisson_use_nonzero_guess_);
@@ -1054,13 +1046,13 @@ void my_p4est_poisson_nodes_multialloy_t::solve_c(int start, int num)
 
   for (int i = start; i < start+num; ++i)
   {
-    solver_conc_[i]->set_wc(*wall_bc_type_conc_[i], *wall_bc_value_conc_[i], false);
+    solver_conc_[i]->set_wc(wall_bc_type_conc_, *wall_bc_value_conc_[i], false);
     solver_conc_[i]->set_bc(0, ROBIN, pw_c_values_[i], pw_c_values_robin_[i], pw_c_coeffs_robin_[i]);
     solver_conc_[i]->set_rhs(rhs_c_[i].vec);
 
     if (contr_phi_.vec != NULL)
     {
-      solver_conc_[i]->set_bc(1, contr_bc_type_conc_[i], *contr_bc_value_conc_[i], zero_cf);
+      solver_conc_[i]->set_bc(1, contr_bc_type_conc_, *contr_bc_value_conc_[i], zero_cf);
     }
 
     solver_conc_[i]->solve(c_[i].vec, poisson_use_nonzero_guess_);
@@ -1095,14 +1087,14 @@ void my_p4est_poisson_nodes_multialloy_t::solve_psi_c(int start, int num)
   ls.set_interpolation_on_interface(quadratic_non_oscillatory_continuous_v2);
   for (int i = start; i < start+num; ++i)
   {
-    solver_conc_[i]->set_wc(*wall_bc_type_conc_[i], zero_cf, false);
+    solver_conc_[i]->set_wc(wall_bc_type_conc_, zero_cf, false);
     solver_conc_[i]->set_bc(0, ROBIN, pw_psi_c_values_[i], pw_psi_c_values_robin_[i], pw_c_coeffs_robin_[i]);
     solver_conc_[i]->set_new_submat_robin(false);
     solver_conc_[i]->set_rhs(rhs_zero_.vec);
 
     if (contr_phi_.vec != NULL)
     {
-      solver_conc_[i]->set_bc(1, contr_bc_type_conc_[i], zero_cf, zero_cf);
+      solver_conc_[i]->set_bc(1, contr_bc_type_conc_, zero_cf, zero_cf);
     }
 
     solver_conc_[i]->solve(psi_c_[i].vec, poisson_use_nonzero_guess_);

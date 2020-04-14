@@ -129,6 +129,14 @@ class quad_neighbor_nodes_of_node_t;
 #define ZFOR(a)
 #endif
 
+#define ABS3(a,b,c) ( sqrt((a)*(a) +  (b)*(b) +  (c)*(c)) )
+#define ABS2(a,b)   ( sqrt((a)*(a) +  (b)*(b)) )
+#define ABS1(a)     ( fabs(a) )
+
+#define  SQRSUM3(a,b,c) ( (a)*(a) +  (b)*(b) +  (c)*(c) )
+#define  SQRSUM2(a,b)   ( (a)*(a) +  (b)*(b) )
+#define  SQRSUM1(a)     ( (a)*(a) )
+
 enum cf_value_type_t { VAL, DDX, DDY, DDZ, LAP, CUR };
 
 enum mls_opn_t { MLS_INTERSECTION = 0, MLS_ADDITION = 1, MLS_COLORATION = 2, MLS_INT = MLS_INTERSECTION, MLS_ADD = MLS_ADDITION };
@@ -2190,6 +2198,7 @@ PetscErrorCode VecPointwiseMinGhost(Vec output, Vec input1, Vec input2);
 PetscErrorCode VecPointwiseMaxGhost(Vec output, Vec input1, Vec input2);
 PetscErrorCode VecAXPBYGhost(Vec y, PetscScalar alpha, PetscScalar beta, Vec x);
 PetscErrorCode VecReciprocalGhost(Vec input);
+PetscErrorCode VecGhostUpdate(Vec input, InsertMode insert_mode, ScatterMode scatter_mode);
 
 struct vec_and_ptr_t
 {
