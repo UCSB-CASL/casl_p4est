@@ -336,7 +336,7 @@ void trajectory_from_np1_bunch_of_points(const my_p4est_node_neighbors_t* ngbd_n
   P4EST_ASSERT(idx == ndata); idx = 0;
   std::vector<double> vnp1[P4EST_DIM];
   double *data[P4EST_DIM];
-  for(unsigned char dir=0; dir < P4EST_DIM; ++dir)
+  for(unsigned char dir = 0; dir < P4EST_DIM; ++dir)
   {
     vnp1[dir].resize(ndata);
     data[dir] = vnp1[dir].data();
@@ -356,7 +356,8 @@ void trajectory_from_np1_bunch_of_points(const my_p4est_node_neighbors_t* ngbd_n
       /* find the intermediate point */
       double xyz_star[P4EST_DIM];
       for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-        xyz_star[dir] = xyz_np1[k][dir][lidx] - 0.5*dt_n*vnp1[dir][lidx];
+        xyz_star[dir] = xyz_np1[k][dir][lidx] - 0.5*dt_n*vnp1[dir][idx];
+
       clip_in_domain(xyz_star, xyz_min, xyz_max, periodic);
 
       interp_nm1.add_point(idx, xyz_star);
@@ -397,6 +398,7 @@ void trajectory_from_np1_bunch_of_points(const my_p4est_node_neighbors_t* ngbd_n
     for (unsigned int lidx = 0; lidx < ndata_in_list[k]; ++lidx) {
       for (unsigned char comp = 0; comp < P4EST_DIM; ++comp)
         xyz_tmp[comp] = xyz_np1[k][comp][lidx] - dt_n*((1.0 + .5*dt_n/dt_nm1)*vn_star[comp][idx] - .5*dt_n/dt_nm1*vnm1_star[comp][idx]);
+
       clip_in_domain(xyz_tmp, xyz_min, xyz_max, periodic);
       for (unsigned char comp = 0; comp < P4EST_DIM; ++comp)
         (*xyz_n[k][comp])[lidx] = xyz_tmp[comp];
@@ -414,7 +416,8 @@ void trajectory_from_np1_bunch_of_points(const my_p4est_node_neighbors_t* ngbd_n
         /* find the intermediate point */
         double xyz_star[P4EST_DIM];
         for (unsigned char comp = 0; comp < P4EST_DIM; ++comp)
-          xyz_star[comp] = xyz_np1[k][comp][lidx] - 0.5*(dt_n+dt_nm1)*vnp1[comp][idx];
+          xyz_star[comp] = xyz_np1[k][comp][lidx] - 0.5*(dt_n + dt_nm1)*vnp1[comp][idx];
+
         clip_in_domain(xyz_star, xyz_min, xyz_max, periodic);
 
         interp_n  .add_point(idx, xyz_star);
