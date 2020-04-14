@@ -863,7 +863,7 @@ void splitting_criteria_tag_t::tag_quadrant(p4est_t *p4est, p4est_quadrant_t *qu
               for(unsigned int n=0;n<num_fields;n++){
                   bool sign_change = !field_all_pos[n] && !field_all_neg[n];
 
-                  coarsen = coarsen && (!sign_change || below_threshold[n]);
+                  coarsen = coarsen && (!sign_change && below_threshold[n]);
               }
 
           }
