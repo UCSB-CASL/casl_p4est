@@ -2034,7 +2034,7 @@ void save_stefan_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *
     node_xyz_fr_n(n,p4est,nodes,xyz);
 
     r = sqrt(SQR(xyz[0]) + SQR(xyz[1]));
-    sval = r/sqrt(tn+dt);
+    sval = r/sqrt(tn/*+dt*/);
 
     phi_ana.ptr[n] = s0*sqrt(tn+dt) - r;
 
