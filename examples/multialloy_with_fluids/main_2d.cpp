@@ -82,6 +82,10 @@ DEFINE_PARAMETER(pl,int,example_,3,"example number: \n"
 DEFINE_PARAMETER(pl,bool,save_stefan,false,"Save stefan ?");
 DEFINE_PARAMETER(pl,bool,save_navier_stokes,false,"Save navier stokes?");
 DEFINE_PARAMETER(pl,bool,save_coupled_fields,true,"Save the coupled problem?");
+
+DEFINE_PARAMETER(pl,bool,save_using_dt,true,"We save vtk files using a given dt increment if this is set to true \n");
+DEFINE_PARAMETER(pl,bool,save_using_iter,false,"We save every prescribed number of iterations if this is set to true \n");
+
 DEFINE_PARAMETER(pl,int,save_every_iter,1,"Saves vtk every n number of iterations (default is 1)");
 DEFINE_PARAMETER(pl,int,save_state_every_iter,10000,"Saves simulation state every n number of iterations (default is 500)");
 DEFINE_PARAMETER(pl,double,save_every_dt,0.1,"Saves vtk every dt amount of time (default is .1)");
@@ -137,6 +141,9 @@ void select_solvers(){
       save_coupled_fields = true;
       break;
 
+    }
+  if(save_using_dt && save_using_iter){
+      throw std::invalid_argument("You have selected to save using dt and using iteration, you need to select only one \n");
     }
 }
 
@@ -343,6 +350,7 @@ void set_physical_properties(){
       break;
   case NS_GIBOU_EXAMPLE:
       rho_l = 1.0;
+      mu_l = 1.0;
     }
 }
 
@@ -398,7 +406,9 @@ void set_NS_info(){
 
       u0 = 1.0;
       v0 = 1.0;
-      uniform_band = 2.;
+
+      u_inf=1.0;
+      uniform_band = 4.;
       break;
 
     case COUPLED_PROBLEM_EXAMPLE:
@@ -422,12 +432,15 @@ double Pe;
 double St;
 
 void set_nondimensional_groups(){
-    if ((example_==ICE_AROUND_CYLINDER) || (example_==FLOW_PAST_CYLINDER) ){
+    if ((example_==ICE_AROUND_CYLINDER) || (example_==FLOW_PAST_CYLINDER)){
         Re = rho_l*d_cyl*u_inf/mu_l;
         Pr = mu_l/(alpha_l*rho_l);
         Pe = Re*Pr;
         St = cp_s*deltaT/L;
     }
+    if(example_ == NS_GIBOU_EXAMPLE){
+        Re = Re_u;
+      }
 }
 
 // ---------------------------------------
@@ -1982,17 +1995,20 @@ void check_vel_values(vec_and_ptr_t phi, vec_and_ptr_dim_t vel, p4est_nodes* nod
 // --------------------------------------------------------------------------------------------------------------
 // Function for checking the error in the Frank sphere solution:
 // --------------------------------------------------------------------------------------------------------------
-void check_frank_sphere_error(vec_and_ptr_t T_l, vec_and_ptr_t T_s, vec_and_ptr_t phi, vec_and_ptr_dim_t v_interface, p4est_t *p4est, p4est_nodes_t *nodes, double dxyz_close_to_interface,char *name, FILE *fich,int tstep){
+void save_stefan_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,vec_and_ptr_t T_l, vec_and_ptr_t T_s, vec_and_ptr_t phi, vec_and_ptr_dim_t v_interface,  double dxyz_close_to_interface,bool are_we_saving_vtk,char* filename_vtk,char *name, FILE *fich){
   PetscErrorCode ierr;
+
+  vec_and_ptr_t T_ana,phi_ana, v_interface_ana;
+  T_ana.create(p4est,nodes); phi_ana.create(p4est,nodes);v_interface_ana.create(p4est,nodes);
+
+  vec_and_ptr_t T_l_err,T_s_err,phi_err,v_interface_err;
+  T_l_err.create(p4est,nodes); T_s_err.create(p4est,nodes); phi_err.create(p4est,nodes); v_interface_err.create(p4est,nodes);
 
   T_l.get_array(); T_s.get_array();
   phi.get_array(); v_interface.get_array();
 
-  double T_l_error = 0.0;
-  double T_s_error = 0.0;
-  double phi_error = 0.0;
-  double v_int_error = 0.0;
-
+  T_ana.get_array(); v_interface_ana.get_array();phi_ana.get_array();
+  T_l_err.get_array();T_s_err.get_array();v_interface_err.get_array();phi_err.get_array();
 
   double Linf_Tl = 0.0;
   double Linf_Ts = 0.0;
@@ -2005,43 +2021,44 @@ void check_frank_sphere_error(vec_and_ptr_t T_l, vec_and_ptr_t T_s, vec_and_ptr_
 
   // NOTE: We have just solved for time (n+1), so we compare computed solution to the analytical solution at time = (tn + dt)
   // Calculate interfacial velocity error with previously computed max_v_norm: (No need to Allreduce, it has been done already)
-  double v_exact = s0/(2.0*sqrt(tn+dt));
-  v_int_error = 0.0;
+//  double v_exact = s0/(2.0*sqrt(tn/*+dt*/));
 
   //PetscPrintf(mpi.comm(),"Exact solution of velocity is: %0.2f",v_exact);
   // Now loop through nodes to compare errors between LSF and Temperature profiles:
   double xyz[P4EST_DIM];
-  foreach_local_node(n,nodes){
+  foreach_node(n,nodes){
     node_xyz_fr_n(n,p4est,nodes,xyz);
 
     r = sqrt(SQR(xyz[0]) + SQR(xyz[1]));
-    sval = r/sqrt(tn+dt);
+    sval = r/sqrt(tn/*+dt*/);
 
-    double phi_exact = s0*sqrt(tn+dt) - r;
-    double T_exact = frank_sphere_solution_t(sval);
+    phi_ana.ptr[n] = s0*sqrt(tn/*+dt*/) - r;
 
+    T_ana.ptr[n] = frank_sphere_solution_t(sval);
+
+    v_interface_ana.ptr[n] = s0/(2.0*sqrt(tn/*+dt*/));
 
     // Error on phi and v_int:
     if(fabs(phi.ptr[n]) < dxyz_close_to_interface){
       // Errors on phi:
-      phi_error = fabs(phi.ptr[n] - phi_exact);
-      Linf_phi = max(Linf_phi,phi_error); // CHECK THIS -- NOT ENTIRELY SURE THIS IS CORRECT
+      phi_err.ptr[n] = fabs(phi.ptr[n] - phi_ana.ptr[n]);
+
+      Linf_phi = max(Linf_phi,phi_err.ptr[n]); // CHECK THIS -- NOT ENTIRELY SURE THIS IS CORRECT
 
       // Errors on v_int:
       vel = sqrt(SQR(v_interface.ptr[0][n])+ SQR(v_interface.ptr[1][n]));
-      v_int_error = fabs(vel - v_exact);
-      Linf_v_int = max(Linf_v_int,v_int_error);
+      v_interface_err.ptr[n] = fabs(vel - v_interface_ana.ptr[n]);
+      Linf_v_int = max(Linf_v_int,v_interface_err.ptr[n]);
       }
 
     // Check error in the negative subdomain (T_liquid) (Domain = Omega_minus)
-    if(phi.ptr[n]<EPS){
-        T_l_error  = fabs(T_l.ptr[n] - T_exact);
-        Linf_Tl = max(Linf_Tl,T_l_error);
+    if(phi.ptr[n]<0.){
+        T_l_err.ptr[n]  = fabs(T_l.ptr[n] - T_ana.ptr[n]);
+        Linf_Tl = max(Linf_Tl,T_l_err.ptr[n]);
       }
-    if (phi.ptr[n]>EPS){
-        T_s_error  = fabs(T_s.ptr[n] - T_exact);
-        Linf_Ts = max(Linf_Ts,T_s_error);
-
+    if (phi.ptr[n]>0.){
+        T_s_err.ptr[n]  = fabs(T_s.ptr[n] - T_ana.ptr[n]);
+        Linf_Ts = max(Linf_Ts,T_s_err.ptr[n]);
       }
   }
 
@@ -2068,10 +2085,34 @@ void check_frank_sphere_error(vec_and_ptr_t T_l, vec_and_ptr_t T_s, vec_and_ptr_
   PetscFPrintf(p4est->mpicomm,fich,"%e %e %d %e %e %e %e %d %e \n",tn + dt,dt,tstep,global_Linf_errors[0],global_Linf_errors[1],global_Linf_errors[2],global_Linf_errors[3],num_nodes,dxyz_close_to_interface);
   ierr = PetscFClose(p4est->mpicomm,fich); CHKERRXX(ierr);
 
+
+  // If we are saving this timestep, output the results to vtk:
+  if(are_we_saving_vtk){
+      std::vector<std::string> point_names;
+      std::vector<double*> point_data;
+
+      point_names = {"phi","T_l","T_s","v_interface_x","v_interface_y","phi_ana","T_ana","v_interface_vec_ana","phi_err","T_l_err","T_s_err","v_interface_vec_err"};
+      point_data = {phi.ptr,T_l.ptr,T_s.ptr,v_interface.ptr[0],v_interface.ptr[1],phi_ana.ptr,T_ana.ptr,v_interface_ana.ptr,phi_err.ptr,T_l_err.ptr,T_s_err.ptr,v_interface_err.ptr};
+
+
+      std::vector<std::string> cell_names = {};
+      std::vector<double*> cell_data = {};
+
+      my_p4est_vtk_write_all_vector_form(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,filename_vtk,point_data,point_names,cell_data,cell_names);
+
+    }
+
+
   T_l.restore_array();
   T_s.restore_array();
   phi.restore_array();
   v_interface.restore_array();
+
+  T_ana.restore_array();v_interface_ana.restore_array();phi_ana.restore_array();
+  T_l_err.restore_array();T_s_err.restore_array();v_interface_err.restore_array();phi_err.restore_array();
+
+  T_ana.destroy();v_interface_ana.destroy();phi_ana.destroy();
+  T_l_err.destroy();T_s_err.destroy();v_interface_err.destroy();phi_err.destroy();
 }
 
 void check_NS_validation_error(vec_and_ptr_t phi,vec_and_ptr_dim_t v_n, vec_and_ptr_t p, p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost, my_p4est_node_neighbors_t *ngbd, double dxyz_close_to_interface, char *name, FILE *fich, int tstep){
@@ -2112,30 +2153,6 @@ void check_NS_validation_error(vec_and_ptr_t phi,vec_and_ptr_dim_t v_n, vec_and_
       }
   }
 
-//  // Loop over each quadrant in each tree, check the error in hodge
-//  double xyz_c[P4EST_DIM];
-//  double x_c; double y_c;
-//  my_p4est_interpolation_nodes_t interp_phi(ngbd);
-//  interp_phi.set_input(phi.vec,linear);
-//  foreach_tree(tr,p4est){
-//    p4est_tree_t *tree = (p4est_tree_t*)sc_array_index(p4est->trees,tr);
-
-//    foreach_local_quad(q,tree){
-//      // Get the global index of the quadrant:
-//      p4est_locidx_t quad_idx = tree->quadrants_offset + q;
-
-//      // Get xyz location of the quad center so we can interpolate phi there and check which domain we are in:
-//      quad_xyz_fr_q(quad_idx,tr,p4est,ghost,xyz_c);
-//      x_c = xyz_c[0]; y_c = xyz_c[1];
-
-//      // Get the error in the negative subdomain:
-//      if(interp_phi(x_c,y_c) < 0){
-//          P_error = fabs(p.ptr[quad_idx] - p_analytical(x_c,y_c));
-//        }
-
-//    }
-//  }
-
 
   // NEED TO GRAB PRESSURE ERROR AT QUADS, NEED TO CHANGE PRESSURE TO VEC_AND_PTR_CELLS
   // Restore arrays
@@ -2153,9 +2170,9 @@ void check_NS_validation_error(vec_and_ptr_t phi,vec_and_ptr_dim_t v_n, vec_and_
 
   // Print errors to application output:
   int num_nodes = nodes->indep_nodes.elem_count;
-  PetscPrintf(p4est->mpicomm,"\n -------------------------------------\n "
+  PetscPrintf(p4est->mpicomm,"\n -------------------------------------\n"
                              "Errors on NS Validation "
-                             "\n -------------------------------------\n "
+                             "\n -------------------------------------\n"
                              "Linf on u: %0.3e \n"
                              "Linf on v: %0.3e \n"
                              "Linf on P: %0.3e \n"
@@ -3585,12 +3602,6 @@ void save_navier_stokes_fields(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost
    * */
     // First, need to scale the fields appropriately:
     // Scale velocities:
-    foreach_dimension(d){
-      VecScaleGhost(v_NS.vec[d],1./scaling);
-    }
-
-    // Scale pressure:
-    VecScaleGhost(press.vec,scaling);
 
     // Get arrays:
     phi.get_array();
@@ -3622,15 +3633,120 @@ void save_navier_stokes_fields(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost
 
     press.restore_array(); vorticity.restore_array();
 
-
-    foreach_dimension(d){
-      VecScaleGhost(v_NS.vec[d],scaling);
-    }
-
-    // Scale pressure back:
-    VecScaleGhost(press.vec,1./scaling);
 } // end of save_navier_stokes_fields
 
+void save_navier_stokes_test_case(p4est_t *p4est, p4est_nodes_t *nodes, p4est_ghost_t *ghost,vec_and_ptr_t phi, vec_and_ptr_dim_t v_NS, vec_and_ptr_t press, vec_and_ptr_t vorticity, double dxyz_close_to_interface,bool are_we_saving_vtk,char* filename_vtk, char* filename_err_output, FILE* fich){
+  // Save NS analytical to compare:
+  vec_and_ptr_dim_t vn_analytical;
+  vec_and_ptr_t pn_analytical;
+
+  vn_analytical.create(p4est,nodes);
+  pn_analytical.create(p4est,nodes);
+
+  sample_cf_on_nodes(p4est,nodes,u_ana_tn,vn_analytical.vec[0]);
+  sample_cf_on_nodes(p4est,nodes,v_ana_tn,vn_analytical.vec[1]);
+  sample_cf_on_nodes(p4est,nodes,p_ana_tn,pn_analytical.vec);
+
+  // Get errors:
+  vec_and_ptr_dim_t vn_error;
+  vec_and_ptr_t press_error;
+
+  vn_error.create(p4est,nodes);
+  press_error.create(p4est,nodes);
+
+  double L_inf_u = 0., L_inf_v = 0.,L_inf_P = 0.;
+
+  vn_analytical.get_array(); vn_error.get_array(); v_NS.get_array();
+  pn_analytical.get_array(); press_error.get_array(); press.get_array();
+
+  phi.get_array();
+  foreach_node(n,nodes){
+    if(phi.ptr[n]<0.){
+      press_error.ptr[n] = fabs(press.ptr[n] - pn_analytical.ptr[n]);
+      vn_error.ptr[0][n] = fabs(v_NS.ptr[0][n] - vn_analytical.ptr[0][n]);
+      vn_error.ptr[1][n] = fabs(v_NS.ptr[1][n] - vn_analytical.ptr[1][n]);
+
+      L_inf_u = max(L_inf_u,vn_error.ptr[0][n]);
+      L_inf_v = max(L_inf_v,vn_error.ptr[1][n]);
+      L_inf_P = max(L_inf_P,press_error.ptr[n]);
+    }
+
+  }
+
+  // Get the global errors:
+  double local_Linf_errors[3] = {L_inf_u,L_inf_v,L_inf_P};
+  double global_Linf_errors[3] = {0.0,0.0,0.0};
+
+  int mpi_err;
+
+  mpi_err = MPI_Allreduce(local_Linf_errors,global_Linf_errors,3,MPI_DOUBLE,MPI_MAX,p4est->mpicomm);SC_CHECK_MPI(mpi_err);
+
+  // Print errors to application output:
+  int num_nodes = nodes->indep_nodes.elem_count;
+  PetscPrintf(p4est->mpicomm,"\n -------------------------------------\n"
+                             "Errors on NS Validation "
+                             "\n -------------------------------------\n"
+                             "Linf on u: %0.3e \n"
+                             "Linf on v: %0.3e \n"
+                             "Linf on P: %0.3e \n"
+                             "Number grid points used: %d \n"
+                             "dxyz close to interface : %0.3e \n",
+                              global_Linf_errors[0],global_Linf_errors[1],global_Linf_errors[2],
+                              num_nodes,dxyz_close_to_interface);
+
+
+
+  // Print errors to file:
+  PetscErrorCode ierr;
+  ierr = PetscFOpen(p4est->mpicomm,filename_err_output,"a",&fich);CHKERRXX(ierr);
+  ierr = PetscFPrintf(p4est->mpicomm,fich,"%g %g %d %g %g %g %g %d %g \n",tn,dt,tstep,global_Linf_errors[0],global_Linf_errors[1],global_Linf_errors[2],hodge_global_error,num_nodes,dxyz_close_to_interface);CHKERRXX(ierr);
+  ierr = PetscFClose(p4est->mpicomm,fich); CHKERRXX(ierr);
+
+
+
+
+//  VecGhostUpdateBegin(press_error.vec,INSERT_VALUES,SCATTER_FORWARD);
+//  VecGhostUpdateBegin(vn_error.vec[0],INSERT_VALUES,SCATTER_FORWARD);
+//  VecGhostUpdateBegin(vn_error.vec[1],INSERT_VALUES,SCATTER_FORWARD);
+
+//  VecGhostUpdateEnd(press_error.vec,INSERT_VALUES,SCATTER_FORWARD);
+//  VecGhostUpdateEnd(vn_error.vec[0],INSERT_VALUES,SCATTER_FORWARD);
+//  VecGhostUpdateEnd(vn_error.vec[1],INSERT_VALUES,SCATTER_FORWARD);
+
+  if(are_we_saving_vtk){
+    vorticity.get_array();
+
+    // Save data:
+    std::vector<std::string> point_names;
+    std::vector<double*> point_data;
+
+    point_names = {"phi","u","v","vorticity","pressure","u_ana","v_ana","P_ana","u_err","v_err","P_err"};
+    point_data = {phi.ptr,v_NS.ptr[0],v_NS.ptr[1],vorticity.ptr,press.ptr,vn_analytical.ptr[0],vn_analytical.ptr[1],
+                  pn_analytical.ptr,vn_error.ptr[0],vn_error.ptr[1],press_error.ptr};
+
+
+    std::vector<std::string> cell_names = {};
+    std::vector<double*> cell_data = {};
+
+    my_p4est_vtk_write_all_vector_form(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,filename_vtk,point_data,point_names,cell_data,cell_names);
+
+    point_names.clear(); point_data.clear();
+    cell_names.clear(); cell_data.clear();
+
+    vorticity.restore_array();
+  }
+
+
+  v_NS.restore_array();press.restore_array();
+  vn_analytical.restore_array(); pn_analytical.restore_array();
+  vn_error.restore_array(); press_error.restore_array(); phi.restore_array();
+
+  vn_analytical.destroy();
+  pn_analytical.destroy();
+
+  vn_error.destroy();
+  press_error.destroy();
+}
 // --------------------------------------------------------------------------------------------------------------
 // FUNCTIONS FOr SAVING OR LOADING SIMULATION STATE:
 // --------------------------------------------------------------------------------------------------------------
@@ -3729,22 +3845,18 @@ void save_or_load_parameters(const char* filename, splitting_criteria_t* sp,save
             // Save the integer parameters to a file
             sprintf(diskfilename,"%s_integers",filename);
             fill_or_load_integer_parameters(flag,num_integers,sp,integer_parameters);
-            printf("Fills the integer parameters \n");
             ierr = PetscBinaryOpen(diskfilename,FILE_MODE_WRITE,&fd); CHKERRXX(ierr);
             ierr = PetscBinaryWrite(fd, integer_parameters, num_integers, PETSC_INT, PETSC_TRUE); CHKERRXX(ierr);
             ierr = PetscBinaryClose(fd); CHKERRXX(ierr);
-            printf("Writes the integer parameters \n");
 
             // Save the double parameters to a file:
 
             sprintf(diskfilename, "%s_doubles", filename);
             fill_or_load_double_parameters(flag,num_doubles,sp, double_parameters);
-            printf("Fills the double parameters \n");
 
             ierr = PetscBinaryOpen(diskfilename, FILE_MODE_WRITE, &fd); CHKERRXX(ierr);
             ierr = PetscBinaryWrite(fd, double_parameters, num_doubles, PETSC_DOUBLE, PETSC_TRUE); CHKERRXX(ierr);
             ierr = PetscBinaryClose(fd); CHKERRXX(ierr);
-            printf("Writes the double parameters \n");
 
 
           }
@@ -3756,16 +3868,12 @@ void save_or_load_parameters(const char* filename, splitting_criteria_t* sp,save
         if(!file_exists(diskfilename))
           throw std::invalid_argument("The file storing the solver's integer parameters could not be found");
         if(mpi->rank()==0){
-            printf("Beginning attempt to read and load integers \n");
             ierr = PetscBinaryOpen(diskfilename, FILE_MODE_READ, &fd); CHKERRXX(ierr);
             ierr = PetscBinaryRead(fd, integer_parameters, num_integers, PETSC_INT); CHKERRXX(ierr);
             ierr = PetscBinaryClose(fd); CHKERRXX(ierr);
-            printf("Reads integers \n");
           }
         int mpiret = MPI_Bcast(integer_parameters, num_integers, MPI_INT, 0, mpi->comm()); SC_CHECK_MPI(mpiret);
-        PetscPrintf(mpi->comm(),"About to load the integer parameters \n");
         fill_or_load_integer_parameters(flag,num_integers,sp, integer_parameters);
-        PetscPrintf(mpi->comm(),"Loads the integer parameters \n");
 
         // Now, load the double parameters:
         sprintf(diskfilename, "%s_doubles", filename);
@@ -3773,19 +3881,13 @@ void save_or_load_parameters(const char* filename, splitting_criteria_t* sp,save
           throw std::invalid_argument("The file storing the solver's double parameters could not be found");
         if(mpi->rank() == 0)
         {
-          printf("Beginning attempt to read and load double parameters \n");
           ierr = PetscBinaryOpen(diskfilename, FILE_MODE_READ, &fd); CHKERRXX(ierr);
           ierr = PetscBinaryRead(fd, double_parameters, num_doubles, PETSC_DOUBLE); CHKERRXX(ierr);
           ierr = PetscBinaryClose(fd); CHKERRXX(ierr);
-          printf("Reads double parameters \n");
 
         }
         mpiret = MPI_Bcast(double_parameters, num_doubles, MPI_DOUBLE, 0, mpi->comm()); SC_CHECK_MPI(mpiret);
-        PetscPrintf(mpi->comm(),"About to fill/load doubles \n");
         fill_or_load_double_parameters(flag,num_doubles,sp, double_parameters);
-        PetscPrintf(mpi->comm(),"loads doubles \n");
-
-
         break;
       }
     default:
@@ -3836,7 +3938,6 @@ void save_state(mpi_environment_t &mpi,const char* path_to_directory,unsigned in
             }
         }
 
-      PetscPrintf(mpi.comm()," Checks for subdirectories \n");
       // check that they are successively indexed if less than the max number
       if(n_backup_subfolders < n_saved)
       {
@@ -3883,7 +3984,6 @@ void save_state(mpi_environment_t &mpi,const char* path_to_directory,unsigned in
     // save the solver parameters
     sprintf(filename, "%s/solver_parameters", path_to_folder);
     save_or_load_parameters(filename,sp, SAVE,&mpi);
-    PetscPrintf(p4est->mpicomm," Saves parameters \n");
 
     // Save the p4est and corresponding data:
     if(solve_coupled){
@@ -4451,11 +4551,11 @@ int main(int argc, char** argv) {
 
         ierr = PetscPrintf(mpi.comm(),"\n -------------------------------------------\n"
                                       "Iteration %d , Time: %0.1f [nondim] = %0.1f [sec] = %0.1f [min], Timestep: %0.3e [nondim] = %0.1g [sec], Percent Done : %0.2f %"
-                                      " \n ------------------------------------------- \n",tstep,tn,tn*(d_cyl/u_inf),tn*(d_cyl/u_inf)/60.,dt, dt*(d_cyl/u_inf),((tn-tstart)/tfinal)*100.0);
+                                      " \n ------------------------------------------- \n",tstep,tn,tn*(d_cyl/u_inf),tn*(d_cyl/u_inf)/60.,dt, dt*(d_cyl/u_inf),((tn-tstart)/(tfinal-tstart))*100.0);
 
         ierr = PetscFPrintf(mpi.comm(),fich_log,"\n -------------------------------------------\n"
                                       "Iteration %d , Time: %0.1f [nondim] = %0.1f [sec] = %0.1f [min], Timestep: %0.3e [nondim] = %0.1g [sec], Percent Done : %0.2f %"
-                                      " \n ------------------------------------------- \n",tstep,tn,tn*(d_cyl/u_inf),tn*(d_cyl/u_inf)/60.,dt, dt*(d_cyl/u_inf),((tn-tstart)/tfinal)*100.0);
+                                      " \n ------------------------------------------- \n",tstep,tn,tn*(d_cyl/u_inf),tn*(d_cyl/u_inf)/60.,dt, dt*(d_cyl/u_inf),((tn-tstart)/(tfinal-tstart))*100.0);
 
         if(tstep%100 == 0) {PetscPrintf(mpi.comm(),"Current time info : \n"); w.read_duration_current();}
         if(solve_stefan){
@@ -4552,6 +4652,8 @@ int main(int argc, char** argv) {
         // --------------------------------------------------------------------------------------------------------------
         // SAVING DATA: Save data every specified amout of timesteps: -- Do this after values are extended across interface to make visualization nicer
         // --------------------------------------------------------------------------------------------------------------
+
+        // Saving the simulation state: every specified number of iterations:
         if(tstep>0 && ((tstep%save_state_every_iter)==0) && tstep!=load_tstep){
             //save_state()
             char output[1000];
@@ -4560,14 +4662,27 @@ int main(int argc, char** argv) {
             if(!out_dir_coupled){
                 throw std::invalid_argument("You need to set the output directory for save states: OUT_DIR_SAVE_STATE");
               }
-            sprintf(output,"%s/output_lmin_%d_lmax_%d_advection_order_%d_stefan_%d_NS_%d_save_states",out_dir_coupled,lmin+grid_res_iter,lmax+grid_res_iter,advection_sl_order,solve_stefan,solve_navier_stokes);
+            sprintf(output,"%s/save_states_output_lmin_%d_lmax_%d_advection_order_%d_stefan_%d_NS_%d",out_dir_coupled,lmin+grid_res_iter,lmax+grid_res_iter,advection_sl_order,solve_stefan,solve_navier_stokes);
             save_state(mpi,output,20,&sp,p4est,nodes,phi,T_l_n,T_l_nm1,T_s_n,v_n,v_nm1,vorticity,press_nodes);
-            PetscPrintf(mpi.comm(),"Simulation state was saved ... \n");
-            PetscFPrintf(mpi.comm(),fich_log,"Simulation state was saved ... \n");
+            PetscPrintf(mpi.comm(),"Simulation state was saved . \n");
+            PetscFPrintf(mpi.comm(),fich_log,"Simulation state was saved . \n");
 
           }
-        if(tstep>0 && (( (int) floor(tn/save_every_dt) ) !=out_idx)  && tstep!=load_tstep){
-            out_idx = ( (int) floor(tn/save_every_dt) );
+
+
+        // Saving to VTK: either every specified number of iterations, or every specified dt:
+        bool are_we_saving = false;
+        if(save_using_dt){
+            are_we_saving= (tstep>0) && (( (int) floor(tn/save_every_dt) ) !=out_idx) && (tstep!=load_tstep);
+          }
+        else if (save_using_iter){
+            are_we_saving = (tstep>0) && (( (int) floor(tstep/save_every_iter) ) !=out_idx) && (tstep!=load_tstep);
+          }
+
+        // Save to VTK if we are saving this timestep:
+        if(are_we_saving){
+            if(save_using_dt){out_idx = ((int) floor(tn/save_every_dt));}
+            else if(save_using_iter){out_idx = ((int) floor(tstep/save_every_iter));}
             PetscPrintf(mpi.comm(),"SAVING TO VTK \n"
 /*                                   "floor = %d \n"
                                    "out_idx = %d \n",( (int) floor(tn/save_every_dt) ),out_idx*/);
@@ -4667,87 +4782,48 @@ int main(int argc, char** argv) {
             */}
           if(save_stefan){
               const char* out_dir_stefan = getenv("OUT_DIR_VTK_stefan");
-              sprintf(output,"%s/snapshot_lmin_%d_lmax_%d_outiter_%d",out_dir_stefan,lmin+grid_res_iter,lmax+grid_res_iter,out_idx);
 
-              save_stefan_fields(p4est,nodes,ghost,phi,phi_cylinder,T_l_n,T_s_n,v_interface,output);
+              if(example_!=FRANK_SPHERE){
+                sprintf(output,"%s/snapshot_lmin_%d_lmax_%d_outidx_%d",out_dir_stefan,lmin+grid_res_iter,lmax+grid_res_iter,out_idx);
+
+                save_stefan_fields(p4est,nodes,ghost,phi,phi_cylinder,T_l_n,T_s_n,v_interface,output);
+              }
             }
           if(save_navier_stokes){
               const char* out_dir_ns = getenv("OUT_DIR_VTK_NS");
-              sprintf(output,"%s/snapshot_lmin_%d_lmax_%d_outiter_%d",out_dir_ns,lmin+grid_res_iter,lmax+grid_res_iter,out_idx);
-              save_navier_stokes_fields(p4est,nodes,ghost,phi,v_n,press_nodes,vorticity,output);
-
-              if(example_ == NS_GIBOU_EXAMPLE){
-                  // Save NS analytical to compare:
-                  vec_and_ptr_dim_t vn_analytical;
-                  vec_and_ptr_t pn_analytical;
-
-                  vn_analytical.create(p4est,nodes);
-                  pn_analytical.create(p4est,nodes);
-
-                  sample_cf_on_nodes(p4est,nodes,u_ana_tn,vn_analytical.vec[0]);
-                  sample_cf_on_nodes(p4est,nodes,v_ana_tn,vn_analytical.vec[1]);
-                  sample_cf_on_nodes(p4est,nodes,p_ana_tn,pn_analytical.vec);
-
-                  // Get errors:
-                  vec_and_ptr_dim_t vn_error;
-                  vec_and_ptr_t press_error;
-
-                  vn_error.create(p4est,nodes);
-                  press_error.create(p4est,nodes);
-
-                  vn_analytical.get_array(); vn_error.get_array(); v_n.get_array();
-                  pn_analytical.get_array(); press_error.get_array(); press_nodes.get_array();
-
-
-                  foreach_local_node(n,nodes){
-                    press_error.ptr[n] = fabs(press_nodes.ptr[n] - pn_analytical.ptr[n]);
-                    vn_error.ptr[0][n] = fabs(v_n.ptr[0][n] - vn_analytical.ptr[0][n]);
-                    vn_error.ptr[1][n] = fabs(v_n.ptr[1][n] - vn_analytical.ptr[1][n]);
-
-                  }
-                  VecGhostUpdateBegin(press_error.vec,INSERT_VALUES,SCATTER_FORWARD);
-                  VecGhostUpdateBegin(vn_error.vec[0],INSERT_VALUES,SCATTER_FORWARD);
-                  VecGhostUpdateBegin(vn_error.vec[1],INSERT_VALUES,SCATTER_FORWARD);
-
-                  VecGhostUpdateEnd(press_error.vec,INSERT_VALUES,SCATTER_FORWARD);
-                  VecGhostUpdateEnd(vn_error.vec[0],INSERT_VALUES,SCATTER_FORWARD);
-                  VecGhostUpdateEnd(vn_error.vec[1],INSERT_VALUES,SCATTER_FORWARD);
-
-
-                  vn_analytical.restore_array(); vn_error.restore_array(); v_n.restore_array();
-                  pn_analytical.restore_array();press_error.restore_array(); press_nodes.restore_array();
-
-                  sprintf(output,"%s/snapshot_NS_ana_and_errors_lmin_%d_lmax_%d_outiter_%d",out_dir_ns,lmin+grid_res_iter,lmax+grid_res_iter,out_idx);
-                  vn_analytical.get_array(); pn_analytical.get_array();
-                  vn_error.get_array(); press_error.get_array(); phi.get_array();
-                  my_p4est_vtk_write_all(p4est,nodes,ghost,P4EST_TRUE,P4EST_TRUE,7,0,output,
-                                         VTK_POINT_DATA,"u_ana",vn_analytical.ptr[0],
-                                         VTK_POINT_DATA,"v_ana",vn_analytical.ptr[1],
-                                         VTK_POINT_DATA,"P_ana",pn_analytical.ptr,
-                                         VTK_POINT_DATA,"u_err",vn_error.ptr[0],
-                                         VTK_POINT_DATA,"v_err",vn_error.ptr[1],
-                                         VTK_POINT_DATA,"P_err",press_error.ptr,
-                                         VTK_POINT_DATA,"phi",phi.ptr);
-                  vn_analytical.restore_array(); pn_analytical.restore_array();
-                  vn_error.restore_array(); press_error.restore_array(); phi.restore_array();
-
-                  vn_analytical.destroy();
-                  pn_analytical.destroy();
-
-                  vn_error.destroy();
-                  press_error.destroy();
-                }
-
+              if(example_ != NS_GIBOU_EXAMPLE){
+                sprintf(output,"%s/snapshot_lmin_%d_lmax_%d_outidx_%d",out_dir_ns,lmin+grid_res_iter,lmax+grid_res_iter,out_idx);
+                save_navier_stokes_fields(p4est,nodes,ghost,phi,v_n,press_nodes,vorticity,output);
+              }
             }
           if(print_checkpoints) PetscPrintf(mpi.comm(),"Finishes saving to VTK \n");
 
+        } // end of if "are we saving"
+
+        // Check errors on NS validation case if relevant, save errors to vtk if we are saving this timestep
+        if(example_ == NS_GIBOU_EXAMPLE){
+            const char* out_dir_ns = getenv("OUT_DIR_VTK_NS");
+
+            char output[1000];
+
+            sprintf(output,"%s/snapshot_NS_Gibou_test_lmin_%d_lmax_%d_outidx_%d",out_dir_ns,lmin+grid_res_iter,lmax+grid_res_iter,out_idx);
+            save_navier_stokes_test_case(p4est,nodes,ghost,phi,v_n,press_nodes,vorticity,dxyz_close_to_interface,are_we_saving,output,name_NS_errors,fich_NS_errors);
           }
-        if(stop_flag>0 && (tstep == stop_flag + 10)) MPI_Abort(mpi.comm(),1);
+
+        // Check error on the Frank sphere, if relevant:
+        if(example_ == FRANK_SPHERE && tstep>0){ // v_interface not initialized until done with one timestep
+            const char* out_dir_stefan = getenv("OUT_DIR_VTK_stefan");
+
+            char output[1000];
+
+            sprintf(output,"%s/snapshot_Frank_Sphere_test_lmin_%d_lmax_%d_outidx_%d",out_dir_stefan,lmin+grid_res_iter,lmax+grid_res_iter,out_idx);
+
+            save_stefan_test_case(p4est,nodes,ghost,T_l_n, T_s_n, phi, v_interface, dxyz_close_to_interface,are_we_saving,output,name_stefan_errors,fich_stefan_errors);
+          }
         // --------------------------------------------------------------------------------------------------------------
         // Compute the jump in flux across the interface to use to advance the LSF (if solving Stefan:
         // --------------------------------------------------------------------------------------------------------------
         if(solve_stefan){
-
             // Get the first derivatives to compute the jump
             T_l_d.create(p4est,nodes); T_s_d.create(T_l_d.vec);
             ngbd->first_derivatives_central(T_l_n.vec,T_l_d.vec);
@@ -4765,7 +4841,6 @@ int main(int argc, char** argv) {
             T_s_d.destroy();
             jump.destroy();
           }
-
 
         if(print_checkpoints) PetscPrintf(mpi.comm(),"Finishes computing the jump \n");
 
@@ -4942,7 +5017,6 @@ int main(int argc, char** argv) {
                 fields_[fields_idx++] = T_l_d.vec[1];
               }
 
-            PetscPrintf(mpi.comm(),"Num fields is %d \n",fields_idx);
             P4EST_ASSERT(fields_idx ==num_fields);
 
             // Coarsening instructions: (for vorticity)
@@ -4957,7 +5031,7 @@ int main(int argc, char** argv) {
 
             if(refine_by_d2T){
                 double dTheta = (1.0 - 0.8125)/(min(dxyz_smallest[0],dxyz_smallest[1])); // max dTheta in liquid subdomain
-                PetscPrintf(mpi.comm(),"Refine by gradT yields %0.3e at smallest cell size \n",dTheta*gradT_threshold/min(dxyz_smallest[0],dxyz_smallest[1]));
+//                PetscPrintf(mpi.comm(),"Refine by gradT yields %0.3e at smallest cell size \n",dTheta*gradT_threshold/min(dxyz_smallest[0],dxyz_smallest[1]));
 
                 // Coarsening instructions: (for dT/dx)
                 compare_opn.push_back(SIGN_CHANGE);
@@ -5081,11 +5155,6 @@ int main(int argc, char** argv) {
                     if(last_grid_balance){
                         last_grid_balance = false;
                       }
-
-                    char fileNAME[1000];
-                    sprintf(fileNAME,"/home/elyce/workspace/projects/multialloy_with_fluids/output_NS/grid_step_%d",no_grid_changes);
-                    my_p4est_vtk_write_all(p4est_np1,nodes_np1,ghost_np1,P4EST_TRUE,P4EST_TRUE,0,0,fileNAME);
-
                   } // End of if grid is changing
 
                 // Do last balancing of the grid, and final interp of phi:
@@ -5395,10 +5464,10 @@ int main(int argc, char** argv) {
           // ------------------------------------------------------------
           // Some example specific operations for the Poisson problem:
           // ------------------------------------------------------------
-          // Check error on the Frank sphere, if relevant:
-          if(example_ == FRANK_SPHERE){
-              check_frank_sphere_error(T_l_n, T_s_n, phi, v_interface, p4est_np1, nodes_np1, dxyz_close_to_interface,name_stefan_errors,fich_stefan_errors,tstep);
-            }
+//          // Check error on the Frank sphere, if relevant:
+//          if(example_ == FRANK_SPHERE){
+//              check_frank_sphere_error(T_l_n, T_s_n, phi, v_interface, p4est_np1, nodes_np1, dxyz_close_to_interface,name_stefan_errors,fich_stefan_errors,tstep);
+//            }
           if(print_checkpoints) PetscPrintf(mpi.comm(),"Poisson step complete \n\n");
       } // end of "if solve stefan"
 
@@ -5667,19 +5736,25 @@ int main(int argc, char** argv) {
 
             if(dt_NS>dt_max_allowed) dt_NS = dt_max_allowed;
 
-            if(example_ == NS_GIBOU_EXAMPLE){
-                // Check errors if we are doing an analytical example for NS
-                PetscPrintf(mpi.comm(),"lmin = %d, lmax = %d \n",lmin + grid_res_iter,lmax + grid_res_iter);
-                check_NS_validation_error(phi,v_n,press_nodes,p4est_np1,nodes_np1,ghost_np1,ngbd,dxyz_close_to_interface,name_NS_errors,fich_NS_errors,tstep);
-              }
+//            if(example_ == NS_GIBOU_EXAMPLE){
+//                // Check errors if we are doing an analytical example for NS
+//                PetscPrintf(mpi.comm(),"lmin = %d, lmax = %d \n",lmin + grid_res_iter,lmax + grid_res_iter);
+//                check_NS_validation_error(phi,v_n,press_nodes,p4est_np1,nodes_np1,ghost_np1,ngbd,dxyz_close_to_interface,name_NS_errors,fich_NS_errors,tstep);
+//              }
 
           } // End of "if solve navier stokes"
 
+        // --------------------------------------------------------------------------------------------------------------
+        // Check Ice Growth (if relevant)
+        // --------------------------------------------------------------------------------------------------------------
         if(example_ == COUPLED_PROBLEM_EXAMPLE){
             PetscPrintf(mpi.comm(),"lmin = %d, lmax = %d \n",lmin + grid_res_iter,lmax + grid_res_iter);
             check_coupled_problem_error(phi,v_n,press_nodes,T_l_n,p4est_np1,nodes_np1,ngbd,dxyz_close_to_interface,name_coupled_errors,fich_coupled_errors,tstep);
           }
-        if(example_ == ICE_AROUND_CYLINDER && solve_stefan && ( (int) floor(tn/save_every_dt) ) ==out_idx ){
+        bool check_ice_around_cylinder=false;
+        if(save_using_dt) check_ice_around_cylinder = ( (int) floor(tn/save_every_dt) ) ==out_idx;
+        else if(save_using_iter) check_ice_around_cylinder = ( (int) floor(tstep/save_every_iter) ) ==out_idx;
+        if(example_ == ICE_AROUND_CYLINDER && solve_stefan && check_ice_around_cylinder ){
             check_ice_cylinder_v_and_radius(phi,p4est_np1,nodes_np1,dxyz_close_to_interface,name_ice_radius_info,fich_ice_radius_info);
           }
 
@@ -5700,7 +5775,7 @@ int main(int argc, char** argv) {
             delete ns;
           }
         else{
-            p4est_destroy(p4est); ns->nullify_p4est_nm1();
+            p4est_destroy(p4est); /*ns->nullify_p4est_nm1();*/
             p4est_ghost_destroy(ghost);
             p4est_nodes_destroy(nodes);
             delete ngbd;
