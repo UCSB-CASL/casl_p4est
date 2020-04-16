@@ -9,6 +9,7 @@
 #include <src/my_p8est_utils.h>
 #include <src/my_p8est_cell_neighbors.h>
 #include <src/my_p8est_node_neighbors.h>
+#include <src/my_p8est_interpolation_nodes.h>
 #include <src/voronoi3D.h>
 #else
 #include <p4est.h>
@@ -18,6 +19,7 @@
 #include <src/my_p4est_utils.h>
 #include <src/my_p4est_cell_neighbors.h>
 #include <src/my_p4est_node_neighbors.h>
+#include <src/my_p4est_interpolation_nodes.h>
 #include <src/voronoi2D.h>
 #endif
 
@@ -564,18 +566,58 @@ inline PetscErrorCode VecCreateNoGhostFaces (const p4est_t *p4est, const my_p4es
   return VecCreateNoGhostFacesBlock(p4est, faces, 1, v, dir);
 }
 
+inline bool local_face_is_well_defined(const p4est_locidx_t &f_idx, const my_p4est_faces_t *faces, const my_p4est_interpolation_nodes_t &interp_phi,
+                                       const unsigned char &dir, const BoundaryConditionsDIM &bc_dir)
+{
+  double xyz_face[P4EST_DIM];
+  faces->xyz_fr_f(f_idx, dir, xyz_face);
+  const double *dxyz = faces->get_smallest_dxyz();
+  const double phi_f = interp_phi(xyz_face);
+  bool well_defined = phi_f <= 0.0; // any face in negative domain is well-defined independently of
+  if(!well_defined && (bc_dir.interfaceType() == NEUMANN || bc_dir.interfaceType() == MIXED))
+  {
+    // the face may be well defined if the control volume associated with the current cell
+    // is partly in negative domain. In such a case, the cell is assumed to be (and should
+    // be)the smallest possible and we check the levelset values at the corners
+    bool at_least_one_corner_in_negative_domain = false;
+    bool at_least_one_corner_is_neumann         = false;
+    for (char xxx = -1; xxx < 2 && !well_defined; xxx += 2)
+      for (char yyy = -1; yyy < 2 && !well_defined; yyy += 2)
+#ifdef P4_TO_P8
+        for (char zzz = -1; zzz < 2 && !well_defined; zzz += 2)
+#endif
+        {
+          double xyz_eval[P4EST_DIM] = {DIM(xyz_face[0] + xxx*0.5*dxyz[0], xyz_face[1] + yyy*0.5*dxyz[1], xyz_face[2] + zzz*0.5*dxyz[2])};
+          at_least_one_corner_in_negative_domain = at_least_one_corner_in_negative_domain || interp_phi(xyz_eval) <= 0.0;
+          at_least_one_corner_is_neumann = at_least_one_corner_is_neumann || (bc_dir.interfaceType(xyz_eval) == NEUMANN);
+          well_defined = at_least_one_corner_in_negative_domain && at_least_one_corner_is_neumann;
+        }
+  }
+  return well_defined;
+}
 /*!
  * \brief mark the faces that are well defined, i.e. that are solved for in an implicit poisson solve with irregular interface.
- *   For Dirichlet b.c. the condition is phi(face) <= 0. For Neumann, the control volume of the face must be at least partially in the negative domain.
- * \param ngbd_n the node neighbors structure
- * \param faces the faces structure
- * \param dir the cartesian direction treated, dir::x, dir::y or dir::z
- * \param phi the level-set function
- * \param interface_type the type of boundary condition on the interface
- * \param is_well_defined a Vector the size of the number of faces in direction dir, to be filled
+ * Any face where phi(face) <= 0 is marked well-defined. For Neumann boundary conditions, the control volume of the face must
+ * be at least partially in the negative domain. (In case of MIXED boundary conditions, it can be marked well-defined if the at
+ * least one corner value of the levelset is negative and at least one cornet boundary condition type is NEUMANN, not necessarily
+ * the same cornet).
+ * \param [in] faces                  : the faces structure
+ * \param [in] dir                    : the cartesian direction treated, dir::x, dir::y or dir::z
+ * \param [in] interp_phi             : a node-interpolator for the node-sampled level-set function
+ * \param [out] face_is_well_defined  : a face-sampling PetSc Vector for face of orientation dir, to be filled. The values are
+ *                                      either 1.0 (if the face is well-defined) or 0.0 (if not).
  */
-void check_if_faces_are_well_defined(my_p4est_node_neighbors_t *ngbd_n, my_p4est_faces_t *faces, const unsigned char &dir,
-                                     Vec phi, BoundaryConditionType interface_type, Vec is_well_defined);
+void check_if_faces_are_well_defined(const my_p4est_faces_t *faces, const unsigned char &dir, const my_p4est_interpolation_nodes_t &interp_phi,
+                                     const BoundaryConditionsDIM& bc, Vec face_is_well_defined);
+inline void check_if_faces_are_well_defined(my_p4est_node_neighbors_t *ngbd_n, my_p4est_faces_t *faces, const unsigned char &dir,
+                                            Vec phi, BoundaryConditionType interface_type, Vec face_is_well_defined)
+{
+  my_p4est_interpolation_nodes_t interp_phi(ngbd_n);
+  interp_phi.set_input(phi, linear);
+  BoundaryConditionsDIM bc_tmp; bc_tmp.setInterfaceType(interface_type);
+  check_if_faces_are_well_defined(faces, dir, interp_phi, bc_tmp, face_is_well_defined);
+  return;
+}
 
 // NOTE: reusing the interpolator_from_faces is ok afterwards for Neumann-BC nodes ONLY if the Neumann bc is HOMOGENEOUS!
 double interpolate_velocity_at_node_n(my_p4est_faces_t *faces, my_p4est_node_neighbors_t *ngbd_n, p4est_locidx_t node_idx, Vec velocity_component, const unsigned char &dir,

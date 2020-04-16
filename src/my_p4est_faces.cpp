@@ -819,12 +819,12 @@ PetscErrorCode VecCreateNoGhostFacesBlock(const p4est_t *p4est, const my_p4est_f
   return ierr;
 }
 
-void check_if_faces_are_well_defined(my_p4est_node_neighbors_t *ngbd_n, my_p4est_faces_t *faces, const unsigned char &dir,
-                                     Vec phi, BoundaryConditionType interface_type, Vec face_is_well_defined)
+void check_if_faces_are_well_defined(const my_p4est_faces_t *faces, const unsigned char &dir, const my_p4est_interpolation_nodes_t &interp_phi,
+                                     const BoundaryConditionsDIM& bc, Vec face_is_well_defined)
 {
   PetscErrorCode ierr;
 
-  if(interface_type == NOINTERFACE)
+  if(bc.interfaceType() == NOINTERFACE)
   {
     Vec face_is_well_defined_loc;
     ierr = VecGhostGetLocalForm(face_is_well_defined, &face_is_well_defined_loc); CHKERRXX(ierr);
@@ -836,43 +836,21 @@ void check_if_faces_are_well_defined(my_p4est_node_neighbors_t *ngbd_n, my_p4est
   PetscScalar *face_is_well_defined_p;
   ierr = VecGetArray(face_is_well_defined, &face_is_well_defined_p); CHKERRXX(ierr);
 
-  my_p4est_interpolation_nodes_t interp(ngbd_n);
-  interp.set_input(phi, linear);
-
-  const double *dxyz = faces->get_smallest_dxyz();
-  double xyz_face[P4EST_DIM];
-
-  if(interface_type == DIRICHLET)
+  for(size_t k = 0; k < faces->get_layer_size(dir); ++k)
   {
-    for(p4est_locidx_t f_idx = 0; f_idx < faces->num_local[dir]; ++f_idx)
-    {
-      faces->xyz_fr_f(f_idx, dir, xyz_face);
-      face_is_well_defined_p[f_idx] = interp(xyz_face) <= 0.0;
-    }
+    p4est_locidx_t f_idx = faces->get_layer_face(dir, k);
+    face_is_well_defined_p[f_idx] = local_face_is_well_defined(f_idx, faces, interp_phi, dir, bc); // implicit conversion from bool to PetscScalar
   }
-  else /* NEUMANN */
+  ierr = VecGhostUpdateBegin(face_is_well_defined, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  for(size_t k = 0; k < faces->get_local_size(dir); ++k)
   {
-    for(p4est_locidx_t f_idx = 0; f_idx < faces->num_local[dir]; ++f_idx)
-    {
-      faces->xyz_fr_f(f_idx, dir, xyz_face);
-      bool well_defined = false;
-      for (char xxx = -1; xxx < 2 && !well_defined; xxx+=2)
-        for (char yyy = -1; yyy < 2 && !well_defined; yyy+=2)
-#ifdef P4_TO_P8
-          for (char zzz = -1; zzz < 2 && !well_defined; zzz+=2)
-#endif
-          {
-            double xyz_eval[P4EST_DIM] = {DIM(xyz_face[0] + xxx*0.5*dxyz[0], xyz_face[1] + yyy*0.5*dxyz[1], xyz_face[2] + zzz*0.5*dxyz[2])};
-            well_defined = well_defined || interp(xyz_eval) <= 0.0;
-          }
-      face_is_well_defined_p[f_idx] = well_defined; // implicit conversion from bool to PetscScalar
-    }
+    p4est_locidx_t f_idx = faces->get_local_face(dir, k);
+    face_is_well_defined_p[f_idx] = local_face_is_well_defined(f_idx, faces, interp_phi, dir, bc);
   }
+  ierr = VecGhostUpdateEnd  (face_is_well_defined, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr); // implicit conversion from bool to PetscScalar
 
   ierr = VecRestoreArray(face_is_well_defined, &face_is_well_defined_p); CHKERRXX(ierr);
-
-  ierr = VecGhostUpdateBegin(face_is_well_defined, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
-  ierr = VecGhostUpdateEnd  (face_is_well_defined, INSERT_VALUES, SCATTER_FORWARD); CHKERRXX(ierr);
+  return;
 }
 
 double interpolate_velocity_at_node_n(my_p4est_faces_t *faces, my_p4est_node_neighbors_t *ngbd_n, p4est_locidx_t node_idx, Vec velocity_component, const unsigned char &dir,

@@ -101,7 +101,7 @@ protected:
   double n_times_dt;
   bool   dt_updated;
 
-  Vec phi;
+  Vec phi, grad_phi;
   Vec hodge;
   Vec dxyz_hodge[P4EST_DIM];
 
@@ -115,8 +115,8 @@ protected:
   // semi-lagrangian backtraced points for faces (needed in viscosity step's setup, needs to be done only once)
   // no need to destroy these, not dynamically allocated...
   bool semi_lagrangian_backtrace_is_done;
-  std::vector<double> xyz_n[P4EST_DIM][P4EST_DIM];
-  std::vector<double> xyz_nm1[P4EST_DIM][P4EST_DIM]; // used only if sl_order == 2
+  std::vector<double> backtraced_v_n[P4EST_DIM];
+  std::vector<double> backtraced_v_nm1[P4EST_DIM]; // used only if sl_order == 2
 
   // face interpolator to nodes: store them in memory to accelerate execution if static grid
   bool interpolators_from_face_to_nodes_are_set;
@@ -149,9 +149,9 @@ protected:
   CF_DIM *external_forces_per_unit_volume[P4EST_DIM];
   CF_DIM *external_forces_per_unit_mass[P4EST_DIM];
 
-  my_p4est_interpolation_nodes_t *interp_phi;
+  my_p4est_interpolation_nodes_t *interp_phi, *interp_grad_phi;
 
-  double compute_dxyz_hodge( p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, int dir);
+  double compute_dxyz_hodge(const p4est_locidx_t& quad_idx, const p4est_topidx_t& tree_idx, const unsigned char& dir);
 
   double compute_divergence(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx);
 
@@ -312,6 +312,22 @@ protected:
    * Raphael EGAN
    */
   void load_state(const mpi_environment_t& mpi, const char* path_to_folder, double& tn);
+
+  /*!
+   * \brief compute_velocity_at_local_node : function for interpolating face-sampled velocity components at a local grid node. Made private
+   * and such to avoid code duplication between loops over layer and inner nodes when interpolating velocities at all grid nodes
+   * \param dir                 [in] : Cartesian component of the velocity component to interpolate
+   * \param node_idx            [in] : local node index of to interpolate the dir^th velocity component at
+   * \param vnp1_dir_read_p     [in] : pointer to (read-only) values of dir^th component of face-sampled velocity, at time (n + 1)
+   * \param store_interpolators [in] : flag activating the storage of local face-interpolators (much faster to re-use when playing with static
+   * grids) --> only valid with homogeneous Neumann boundary conditions if Neumann BC on the walls
+   * \return value of the wegihted-lsqr-interpolated velocity component at the desired node
+   */
+  double compute_velocity_at_local_node(const p4est_locidx_t& node_idx, const unsigned char& dir, const double* vnp1_dir_read_p, const bool& store_interpolators);
+
+  void calculate_viscous_stress_at_local_nodes(const p4est_locidx_t& node_idx, const double* phi_read_p, const double *grad_phi_read_p,
+                                               const double* vnodes_read_p[P4EST_DIM], double* viscous_stress_p[P4EST_DIM]) const;
+
 public:
   my_p4est_navier_stokes_t(my_p4est_node_neighbors_t *ngbd_nm1, my_p4est_node_neighbors_t *ngbd_n, my_p4est_faces_t *faces_n);
   my_p4est_navier_stokes_t(const mpi_environment_t& mpi, const char* path_to_saved_state, double &simulation_time);
@@ -443,6 +459,7 @@ public:
   }
 
   inline my_p4est_interpolation_nodes_t* get_interp_phi() { return interp_phi; }
+  inline my_p4est_interpolation_nodes_t* get_interp_grad_phi() { return interp_grad_phi; }
 
   inline double get_max_L2_norm_u() { return max_L2_norm_u; }
 
@@ -529,7 +546,8 @@ public:
 
   void advect_smoke(my_p4est_node_neighbors_t* ngbd_n_np1, Vec* vnp1, Vec smoke_np1);
 
-  void extrapolate_bc_v(my_p4est_node_neighbors_t *ngbd, Vec *v, Vec phi);
+// [Raphael:] remnant method that wasn't used anywhere
+//  void extrapolate_bc_v(my_p4est_node_neighbors_t *ngbd, Vec *v, Vec phi);
 
   bool update_from_tn_to_tnp1(const CF_DIM *level_set=NULL, bool keep_grid_as_such=false, bool do_reinitialization=true);
 
