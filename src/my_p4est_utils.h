@@ -286,6 +286,15 @@ const unsigned short t2c[P4EST_CHILDREN][t2c_num_pts] = { { nn_000, nn_m00, nn_0
                                                           { nn_000, nn_p00, nn_0p0 } };
 #endif
 
+static double get_largest_dbl_smaller_than_dbl_max()
+{
+  double p = 1.0;
+  while (DBL_MAX - p == DBL_MAX)
+    p *= 2.0;
+  return DBL_MAX - p;
+};
+
+static const double largest_dbl_smaller_than_dbl_max = get_largest_dbl_smaller_than_dbl_max();
 
 enum interpolation_method{
   linear,
@@ -452,6 +461,11 @@ public:
     p_RobinCoef = &in;
   }
 
+  inline bool InterfaceValueIsDefined() const
+  {
+    return (p_InterfaceValue != NULL);
+  }
+
   inline const CF_2& getInterfaceValue(){
     return *p_InterfaceValue;
   }
@@ -506,7 +520,7 @@ public:
 #endif
     return p_InterfaceValue->operator ()(x,y);
   }
-  inline double  interfaceValue(double xyz_[]) const
+  inline double  interfaceValue(const double xyz_[]) const
   {
     return interfaceValue(xyz_[0], xyz_[1]);
   }
@@ -584,6 +598,11 @@ public:
     return *p_WallValue;
   }
 
+  inline bool InterfaceValueIsDefined() const
+  {
+    return (p_InterfaceValue != NULL);
+  }
+
   inline const CF_3& getInterfaceValue(){
     return *p_InterfaceValue;
   }
@@ -635,7 +654,7 @@ public:
     return p_InterfaceValue->operator ()(x,y,z);
   }
 
-  inline double  interfaceValue(double xyz_[]) const
+  inline double  interfaceValue(const double xyz_[]) const
   {
     return interfaceValue(xyz_[0], xyz_[1], xyz_[2]);
   }
@@ -653,6 +672,21 @@ public:
     return robinCoef(xyz_[0], xyz_[1], xyz_[2]);
   }
 };
+
+struct bc_sample
+{
+  BoundaryConditionType type;
+  double value;
+};
+
+bool quadrant_value_is_well_defined(double &phi_q, const BoundaryConditionsDIM &bc_cell_field, const p4est_t* p4est, const p4est_ghost_t* ghost, const p4est_nodes_t* nodes,
+                                    const p4est_locidx_t &quad_idx, const p4est_topidx_t &tree_idx, const double *node_sampled_phi_p);
+inline bool quadrant_value_is_well_defined(const BoundaryConditionsDIM &bc_cell_field, const p4est_t* p4est, const p4est_ghost_t* ghost, const p4est_nodes_t* nodes,
+                                           const p4est_locidx_t &quad_idx, const p4est_topidx_t &tree_idx, const double *node_sampled_phi_p)
+{
+  double phi_q;
+  return quadrant_value_is_well_defined(phi_q, bc_cell_field, p4est, ghost, nodes, quad_idx, tree_idx, node_sampled_phi_p);
+}
 
 /*!
  * \brief index_of_node finds the (local) index of a node as defined within p4est, i.e. as a pest_quadrant_t structure whose level is P4EST_MAXLEVEL!

@@ -89,7 +89,7 @@ struct HierarchyCell {
    * \brief quad is the local quadrant index of the HierarchyCell IF IT IS A CELL_LEAF and if it is known by the
    * local domain partition (ghost quadrants included).
    * In such a case,
-   * - if 0 <= quad < num_quadrant, the corresponding p4est_quadrant_t is owned by this processor / rank
+   * - if 0 <= quad < num_quadrant, the corresponding p4est_quadrant_t is owned by this process
    *   and it can be accessed with the 'quadrant' pointer obtained by
    *      p4est_tree_t *tree          = p4est_tree_array_index(p4est->trees, tree_index)
    *      p4est_quadrant_t *quadrant  = p4est_quadrant_array_index(tree->quadrants, quad-tree->quadrants_offset)
@@ -309,14 +309,18 @@ class my_p4est_hierarchy_t {
    * \param [in]    tr_xyz_orig     arrays of cartesian indices of the tree suspected to own the point of interest
    * \param [inout] s               the point of interest with coordinates scaled relatively to the tree, i.e. in [0, P4EST_ROOT_LEN]
    *                                (can also be slightly negative or slightly past P4EST_ROOT_LEN, the appropriate tree will be found then)
-   * \param [out] rank              on return, rank of the processor owning the local quadrant, if it is found; unchanged if not found.
+   * \param [inout] current_rank    the rank of the process owning the current best candidate quadrant found so far
    * \param [out] best_match        on return, copy of the local quadrant if found, unchanged otherwise. (The p.piggy3 member is filled)
    * \param [out] remote_matches    on return, if a quadrant was not found locally, this vector is filled with theoretical candidate quadrants
    *                                of finest theoretical level of refinement, with their p.piggy1 members filled (i.e. owner rank and tree
    *                                index).
+   * \param [in] prioritize_local   flag prioritizing the choice of a local quadrant when several candidates of the same size are valid but
+   *                                some of them are ghost quadrants.
+   *                                NOTE: when set to true, this function's outcome may change for a given p4est as the number of
+   *                                      processes used at runtime is changed!
    */
-  void find_quadrant_containing_point(const int* tr_xyz_orig, PointDIM& s, int& rank, p4est_quadrant_t &best_match, std::vector<p4est_quadrant_t> &remote_matches) const;
-  bool periodic[P4EST_DIM];
+  void find_quadrant_containing_point(const int* tr_xyz_orig, PointDIM& s, int& current_rank, p4est_quadrant_t &best_match, std::vector<p4est_quadrant_t> &remote_matches, const bool &prioritize_local) const;
+  const bool periodic[P4EST_DIM];
 
 public:
   /*!
@@ -327,10 +331,8 @@ public:
    * \param [in] myb_   macromesh description (cartesian array of elementary root cells)
    */
   my_p4est_hierarchy_t( p4est_t *p4est_, p4est_ghost_t *ghost_, my_p4est_brick_t *myb_)
-    : p4est(p4est_), ghost(ghost_), myb(myb_), trees(p4est->connectivity->num_trees)
+    : p4est(p4est_), ghost(ghost_), myb(myb_), trees(p4est->connectivity->num_trees), periodic{DIM(is_periodic(p4est_, dir::x), is_periodic(p4est_, dir::y), is_periodic(p4est_, dir::z))}
   {
-    for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-      periodic[dir] = is_periodic(p4est, dir);
     for( size_t tr=0; tr<trees.size(); tr++)
     {
       HierarchyCell root =
@@ -364,7 +366,8 @@ public:
    * \param [out] best_match        p4est_quadrant_t containing the point of interest on output. This argument must exist
    *                                beforehand, its member variables are wiped out at initiation stage of the function.
    *                                If found, the appropriate p4est_quadrant in p4est or ghost, is copied into best_match
-   *                                and the p.piggy3 structure of best_match is also filled so that
+   *                                and, except if the last flag argument is set to true, the p.piggy3 structure of best_match
+   *                                is also filled so that
    *                                best_match.p.piggy3.which_tree is the index of the tree owning best_match
    *                                best_match.p.piggy3.local_num  is either
    *                                  ~ the index of best match in tree->quadrants,
@@ -377,17 +380,37 @@ public:
    * \param [out] remote_matches    If a p4est_quadrant was not found locally, this vector is filled with candidate quadrants
    *                                of finest theoretical level of refinement, with their p.piggy1 members filled (i.e. owner
    *                                rank and tree index). This is relevant if the value returned by the function is -1.
+   * \param [in] prioritize_local   (optional) flag prioritizing the choice of a local quadrant when several candidates of the
+   *                                same size are valid but some of them are ghost quadrants. This can happen when the given
+   *                                point lies on a face shared between a local quadrant and a ghost quadrant of the same size
+   *                                for instance. This feature was added in order to
+   *                                    1)  enable on-the-fly calculations in interpolation of node-sampled fields up to the
+   *                                        border of the computational domain (so long as the ghost cells are not smaller).
+   *                                    2)  ensure that 'enough' neighborhood cells can be found when building local least-square
+   *                                        interpolants for on-the-fly interpolation of cell- and face-sampled fields
+   *                                NOTE: when set to true, this function's outcome may change for a given p4est as the number of
+   *                                      processes used at runtime is changed!
+   *                                default value is false
+   * \param [in] set_cumulative_local_index_in_piggy3_of_best_match : (optional) flag setting the piggy3.local_num member of
+   *                                best_match (if found) to be its local cumulative index cumulative (over the trees, then
+   *                                the ghost quadrants, thereafter). This means that, if set to true, the p.piggy3 structure of
+   *                                best_match (when found) is filled so that
+   *                                best_match.p.piggy3.which_tree is the index of the tree owning best_match
+   *                                best_match.p.piggy3.local_num is either the cumulative local index of the quadrant in the local
+   *                                process (cumulative over local trees then ghost quadrants thereafter).
+   *                                Default value is false (i.e. not doing it).
    * [NOTE 1]: this function assumes that all building bricks in the macromesh description have the same size (i.e. no
    *           contraction/stretching, every building brick is identical).
    * [THROWS]: in DEBUG, this function throws an std::runtime_error exception if the procedure runs into an internal
    *           inconsistency (if it found a remote, space-filling HierarchyCell that is not marked NOT_A_P4EST_QUADRANT)
    * \return the returned values is either
-   *  - the rank of the processor owning the quadrant in which the point of interest can be found, if the quadrant was found
-   *    locally. (Therefore either mpirank is locally owned, or the rank of one of the neighbor process owning a ghost quadrant)
+   *  - the rank of the process owning the quadrant in which the point of interest can be found, if the quadrant was found
+   *    locally. (Therefore either mpirank if locally owned, or the rank of one of the neighbor process owning a ghost quadrant)
    *  - a value of -1 if no local quadrant could be found (the user is advised to check the content of remote_matches in such a
    *    case)
    */
-  int find_smallest_quadrant_containing_point(const double *xyz, p4est_quadrant_t &best_match, std::vector<p4est_quadrant_t> &remote_matches) const;
+  int find_smallest_quadrant_containing_point(const double *xyz, p4est_quadrant_t &best_match, std::vector<p4est_quadrant_t> &remote_matches,
+                                              const bool &prioritize_local = false, const bool &set_cumulative_local_index_in_piggy3_of_best_match = false) const;
 
   /*!
    * \brief quad_idx_of_quad finds the index in the hierarchy tree of a quadrant

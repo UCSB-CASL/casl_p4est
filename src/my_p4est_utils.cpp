@@ -47,6 +47,37 @@ std::vector<InterpolatingFunctionLogEntry> InterpolatingFunctionLogger::entries;
 WallBC2D::~WallBC2D() {};
 WallBC3D::~WallBC3D() {};
 
+bool quadrant_value_is_well_defined(double &phi_q, const BoundaryConditionsDIM &bc_cell_field, const p4est_t* p4est, const p4est_ghost_t* ghost, const p4est_nodes_t* nodes,
+                                    const p4est_locidx_t &quad_idx, const p4est_topidx_t &tree_idx, const double *node_sampled_phi_p)
+{
+  bool value_is_well_defined = bc_cell_field.interfaceType() == NOINTERFACE; // always well-defined if no interface (or, equivalently, if no node-sampled levelset is given)
+  if(!value_is_well_defined)
+  {
+    /* check if quadrant is well defined */
+    phi_q = 0.0;
+    bool one_corner_in_neg_domain = false;
+    for(unsigned char i = 0; i < P4EST_CHILDREN; ++i)
+    {
+      const double &tmp = node_sampled_phi_p[nodes->local_nodes[P4EST_CHILDREN*quad_idx + i]];
+      one_corner_in_neg_domain = one_corner_in_neg_domain || tmp < 0.0;
+      phi_q += tmp;
+    }
+    phi_q /= (double) P4EST_CHILDREN;
+    // well defined if phi_q < 0.0 no matter which boundary condition is used
+    // or if a corner value is in negative domain and the interface is (constant Neumann)
+    value_is_well_defined = phi_q < 0.0 || (one_corner_in_neg_domain && bc_cell_field.interfaceType() == NEUMANN);
+    if(!value_is_well_defined && one_corner_in_neg_domain && bc_cell_field.interfaceType() == MIXED)
+    {
+      // if mixed interface, phi_q non-negative, but one corner is in negative domain,
+      // the value is well-defined if the local cell is marked "Neumann"
+      double qxyz[P4EST_DIM];
+      quad_xyz_fr_q(quad_idx, tree_idx, p4est, ghost, qxyz);
+      value_is_well_defined = bc_cell_field.interfaceType(qxyz) == NEUMANN;
+    }
+  }
+  return value_is_well_defined;
+}
+
 bool index_of_node(const p4est_quadrant_t *n, const p4est_nodes_t* nodes, p4est_locidx_t& idx)
 {
 #ifdef P4EST_DEBUG

@@ -234,25 +234,11 @@ double interpolate_cell_field_at_node(const p4est_locidx_t& node_idx, const my_p
     ierr = VecGetArrayRead(phi, &phi_p); CHKERRXX(ierr); }
 
   for(set_of_neighboring_quadrants::const_iterator it = cell_ngbd.begin(); it != cell_ngbd.end(); ++it)
-  {
-    const p4est_locidx_t qm_idx = it->p.piggy3.local_num;
-    /* check if quadrant is well defined */
-    bool neumann_is_neg = false;
-    double phi_q = -1.0;
-    if(phi_p != NULL)
+    if(bc == NULL || quadrant_value_is_well_defined(*bc, p4est, n_ngbd->get_ghost(), n_ngbd->get_nodes(), it->p.piggy3.local_num,it->p.piggy3.which_tree, phi_p))
     {
-      phi_q = 0.0;
-      for(unsigned char i = 0; i < P4EST_CHILDREN; ++i)
-      {
-        double tmp = phi_p[nodes->local_nodes[P4EST_CHILDREN*qm_idx + i]];
-        neumann_is_neg = neumann_is_neg || tmp < 0.0;
-        phi_q += tmp;
-      }
-      phi_q /= (double) P4EST_CHILDREN;
-    }
+      /* the value is well-defined we can use it */
+      const p4est_locidx_t &qm_idx = it->p.piggy3.local_num;
 
-    if(bc == NULL || bc->interfaceType() == NOINTERFACE || (bc->interfaceType(xyz_node) == DIRICHLET && phi_q < 0.0) || (bc->interfaceType(xyz_node) == NEUMANN && neumann_is_neg))
-    {
       double xyz_t[P4EST_DIM];
       int64_t logical_qcoord_diff[P4EST_DIM];
       rel_qxyz_quad_fr_node(p4est, *it, xyz_node, node, tree_dimensions, brick, xyz_t, logical_qcoord_diff);
@@ -283,7 +269,6 @@ double interpolate_cell_field_at_node(const p4est_locidx_t& node_idx, const my_p
       for(unsigned char d = 0; d < P4EST_DIM; ++d)
         nb[d].insert(logical_qcoord_diff[d]);
     }
-  }
 
   if(phi != NULL){
     ierr = VecRestoreArrayRead(phi, &phi_p); CHKERRXX(ierr); }
