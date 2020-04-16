@@ -137,7 +137,7 @@ class quad_neighbor_nodes_of_node_t;
 #define  SQRSUM2(a,b)   ( (a)*(a) +  (b)*(b) )
 #define  SQRSUM1(a)     ( (a)*(a) )
 
-enum cf_value_type_t { VAL, DDX, DDY, DDZ, LAP, CUR };
+enum cf_value_type_t { VAL, DDX, DDY, DDZ, LAP, CUR, DDT };
 
 enum mls_opn_t { MLS_INTERSECTION = 0, MLS_ADDITION = 1, MLS_COLORATION = 2, MLS_INT = MLS_INTERSECTION, MLS_ADD = MLS_ADDITION };
 
