@@ -1209,9 +1209,9 @@ voro_cell_type compute_voronoi_cell(Voronoi_DIM &voronoi_cell, const my_p4est_fa
           has_uniform_ngbd  = has_uniform_ngbd && (local_wall || (ngbd_m_[ngbd_idx].size() == 1 && ngbd_m_[ngbd_idx].begin()->level == qm.level && faces->q2f(ngbd_m_[ngbd_idx].begin()->p.piggy3.local_num, 2*dir) != NO_VELOCITY && faces->q2f(ngbd_m_[ngbd_idx].begin()->p.piggy3.local_num, 2*dir + 1) != NO_VELOCITY));
 #ifdef P4_TO_P8
         else
-          has_uniform_ngbd  = has_uniform_ngbd && (local_wall || (ngbd_m_[ngbd_idx].size() == 1 && ngbd_m_[ngbd_idx].begin()->level <= qp.level));
+          has_uniform_ngbd  = has_uniform_ngbd && (local_wall || (ngbd_m_[ngbd_idx].size() == 1 && ngbd_m_[ngbd_idx].begin()->level <= qm.level));
 #endif
-        if(has_uniform_ngbd && extra_layer_in_trans_dir_may_be_required && qp.level < ((splitting_criteria_t*) p4est->user_pointer)->max_lvl) // check that quadrants layering those neighbors are not finer because that would invalidate local uniform cells in case of large aspect ratios
+        if(has_uniform_ngbd && extra_layer_in_trans_dir_may_be_required && qm.level < ((splitting_criteria_t*) p4est->user_pointer)->max_lvl) // check that quadrants layering those neighbors are not finer because that would invalidate local uniform cells in case of large aspect ratios
         {
 #ifdef P4_TO_P8
           if(tt != 0)
@@ -1230,8 +1230,14 @@ voro_cell_type compute_voronoi_cell(Voronoi_DIM &voronoi_cell, const my_p4est_fa
   {
     P4EST_ASSERT(qm.level <= ((splitting_criteria_t*) p4est->user_pointer)->max_lvl); // consistency check
 #ifdef P4EST_DEBUG
-    for (unsigned char k = 0; k < 2*(P4EST_DIM - 1); ++k)
-      P4EST_ASSERT(faces->q2f(ngbd_m_[k].begin()->p.piggy3.local_num, 2*dir + 1) == faces->q2f(ngbd_p_[k].begin()->p.piggy3.local_num, 2*dir)); // consistency check
+    for (char tt = -1; tt < 2; ++tt)
+    {
+      // consistency check only in perpendicular tranverse directions (not in diagonals, since they may be bigger cells, there)
+      P4EST_ASSERT(faces->q2f(ngbd_m_[face_dir_to_set_idx[2*first_trans_dir + (tt == 1)]].begin()->p.piggy3.local_num, 2*dir + 1) == faces->q2f(ngbd_p_[face_dir_to_set_idx[2*first_trans_dir + (tt == 1)]].begin()->p.piggy3.local_num, 2*dir));
+#ifdef P4_TO_P8
+      P4EST_ASSERT(faces->q2f(ngbd_m_[face_dir_to_set_idx[2*second_trans_dir + (tt == 1)]].begin()->p.piggy3.local_num, 2*dir + 1) == faces->q2f(ngbd_p_[face_dir_to_set_idx[2*second_trans_dir + (tt == 1)]].begin()->p.piggy3.local_num, 2*dir));
+#endif
+    }
 #endif
     const double cell_ratio = (double) (1 << (((splitting_criteria_t *) p4est->user_pointer)->max_lvl - qm.level));
     // neighbor faces in the direction of the face orientation, first:
