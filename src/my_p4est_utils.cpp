@@ -47,19 +47,20 @@ std::vector<InterpolatingFunctionLogEntry> InterpolatingFunctionLogger::entries;
 WallBC2D::~WallBC2D() {};
 WallBC3D::~WallBC3D() {};
 
-bool index_of_node(const p4est_quadrant_t *n, p4est_nodes_t* nodes, p4est_locidx_t& idx)
+bool index_of_node(const p4est_quadrant_t *n, const p4est_nodes_t* nodes, p4est_locidx_t& idx)
 {
 #ifdef P4EST_DEBUG
   int clamped = 1;
 #endif
   P4EST_ASSERT(p4est_quadrant_is_node(n, clamped));
-  unsigned int idx_l, idx_u, idx_m;
+  size_t idx_l, idx_u, idx_m;
   const p4est_indep_t *node_l, *node_u, *node_m;
   // check if the candidate can be in the locally owned nodes first, or in the ghost ones
-  idx_l   = 0;
-  idx_u   = nodes->num_owned_indeps-1;
-  node_l  = (const p4est_indep_t*) sc_array_index(&nodes->indep_nodes, idx_l);
-  node_u  = (const p4est_indep_t*) sc_array_index(&nodes->indep_nodes, idx_u);
+  idx_l   = 0;                              SC_ASSERT(idx_l < nodes->indep_nodes.elem_count);
+  idx_u   = nodes->num_owned_indeps - 1;    SC_ASSERT(idx_u < nodes->indep_nodes.elem_count);
+
+  node_l  = (const p4est_indep_t*) (nodes->indep_nodes.array + idx_l*nodes->indep_nodes.elem_size);
+  node_u  = (const p4est_indep_t*) (nodes->indep_nodes.array + idx_u*nodes->indep_nodes.elem_size);
   if((p4est_quadrant_compare_piggy(node_l, n) > 0) || (p4est_quadrant_compare_piggy(node_u, n) < 0))
     goto lookup_in_ghost_nodes;
   while((p4est_quadrant_compare_piggy(node_l, n) <= 0) && (p4est_quadrant_compare_piggy(node_u, n) >= 0))
@@ -74,17 +75,17 @@ bool index_of_node(const p4est_quadrant_t *n, p4est_nodes_t* nodes, p4est_locidx
       idx = idx_u;
       return true;
     }
-    if(idx_u-idx_l == 1)
+    if(idx_u - idx_l == 1)
       break;
-    idx_m   = (idx_l + idx_u)/2;
-    node_m  = (const p4est_indep_t*) sc_array_index(&nodes->indep_nodes, idx_m);
-    P4EST_ASSERT((p4est_quadrant_compare_piggy(node_l, node_m) <= 0) && (p4est_quadrant_compare_piggy(node_u, node_m) >= 0));
-    if(p4est_quadrant_compare_piggy(node_m, n) <0)
+    idx_m   = (idx_l + idx_u)/2;  SC_ASSERT(idx_m < nodes->indep_nodes.elem_count);
+    node_m  = (const p4est_indep_t*) (nodes->indep_nodes.array + idx_m*nodes->indep_nodes.elem_size);
+    P4EST_ASSERT(p4est_quadrant_compare_piggy(node_l, node_m) <= 0 && p4est_quadrant_compare_piggy(node_u, node_m) >= 0);
+    if(p4est_quadrant_compare_piggy(node_m, n) < 0)
     {
       idx_l   = idx_m;
       node_l  = node_m;
     }
-    else if (p4est_quadrant_compare_piggy(node_m, n) >0)
+    else if (p4est_quadrant_compare_piggy(node_m, n) > 0)
     {
       idx_u   = idx_m;
       node_u  = node_m;
@@ -99,12 +100,13 @@ bool index_of_node(const p4est_quadrant_t *n, p4est_nodes_t* nodes, p4est_locidx
   return false;
 lookup_in_ghost_nodes:
   P4EST_ASSERT((p4est_quadrant_compare_piggy(node_l, n) > 0) || (p4est_quadrant_compare_piggy(node_u, n) < 0));
-  idx_l   = nodes->num_owned_indeps;
-  idx_u   = nodes->indep_nodes.elem_count-1;
+
+  idx_l   = nodes->num_owned_indeps;            SC_ASSERT(idx_l < nodes->indep_nodes.elem_count);
+  idx_u   = nodes->indep_nodes.elem_count - 1;  SC_ASSERT(idx_u < nodes->indep_nodes.elem_count);
   if(idx_l <= idx_u) // do this only if there are ghost nodes!
   {
-    node_l  = (const p4est_indep_t*) sc_array_index(&nodes->indep_nodes, idx_l);
-    node_u  = (const p4est_indep_t*) sc_array_index(&nodes->indep_nodes, idx_u);
+    node_l  = (const p4est_indep_t*) (nodes->indep_nodes.array + idx_l*nodes->indep_nodes.elem_size);
+    node_u  = (const p4est_indep_t*) (nodes->indep_nodes.array + idx_u*nodes->indep_nodes.elem_size);
     while((p4est_quadrant_compare_piggy(node_l, n) <= 0) && (p4est_quadrant_compare_piggy(node_u, n) >= 0))
     {
       if(!p4est_quadrant_compare_piggy(node_l, n))
@@ -119,8 +121,8 @@ lookup_in_ghost_nodes:
       }
       if(idx_u - idx_l == 1)
         break;
-      idx_m   = (idx_l + idx_u)/2;
-      node_m  = (const p4est_indep_t*) sc_array_index(&nodes->indep_nodes, idx_m);
+      idx_m   = (idx_l + idx_u)/2; SC_ASSERT(idx_m < nodes->indep_nodes.elem_count);
+      node_m  = (const p4est_indep_t*) (nodes->indep_nodes.array + idx_m*nodes->indep_nodes.elem_size);
       P4EST_ASSERT((p4est_quadrant_compare_piggy(node_l, node_m) <= 0) && (p4est_quadrant_compare_piggy(node_u, node_m) >= 0));
       if(p4est_quadrant_compare_piggy(node_m, n) <0)
       {
@@ -212,7 +214,7 @@ void get_local_interpolation_weights(const p4est_t* p4est, const p4est_topidx_t&
   return;
 }
 
-void linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *xyz_global, double* results, unsigned int n_results)
+void linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *xyz_global, double* results, const size_t &n_results )
 {
   P4EST_ASSERT(n_results > 0);
   double linear_weight[P4EST_CHILDREN];
@@ -229,7 +231,7 @@ void linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4
   return;
 }
 
-void quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results)
+void quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, const size_t &n_results )
 {
   P4EST_ASSERT(n_results > 0);
   double linear_weight[P4EST_CHILDREN], second_derivative_weight[P4EST_DIM];
@@ -250,7 +252,7 @@ void quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topidx_
   return;
 }
 
-void quadratic_non_oscillatory_continuous_v1_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results)
+void quadratic_non_oscillatory_continuous_v1_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, const size_t &n_results )
 {
   P4EST_ASSERT(n_results > 0);
   double linear_weight[P4EST_CHILDREN], second_derivative_weight[P4EST_DIM];
@@ -300,7 +302,7 @@ void quadratic_non_oscillatory_continuous_v1_interpolation(const p4est_t *p4est,
   return;
 }
 
-void quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results)
+void quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, const size_t &n_results )
 {
   P4EST_ASSERT(n_results > 0);
   double linear_weight[P4EST_CHILDREN], second_derivative_weight[P4EST_DIM];
@@ -358,7 +360,7 @@ void quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_t *p4est,
   return;
 }
 
-void quadratic_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results)
+void quadratic_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, const size_t &n_results )
 {
   P4EST_ASSERT(n_results > 0);
   double linear_weight[P4EST_CHILDREN], second_derivative_weight[P4EST_DIM];

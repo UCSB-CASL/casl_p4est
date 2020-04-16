@@ -514,8 +514,8 @@ public:
    * \param [in]  n_vecs  number of vectors to handle in the f and fdd arrays
    * \param [in]  bs_f    block size of the vectors in f (default is 1)
    */
-  void second_derivatives_central(const Vec f[], Vec fdd[], const unsigned int& n_vecs, const unsigned int &bs_f=1) const;
-  inline void second_derivatives_central(const Vec f, Vec fdd, const unsigned int &bs_f=1) const
+  void second_derivatives_central(const Vec f[], Vec fdd[], const unsigned int& n_vecs, const unsigned int &bs_f = 1) const;
+  inline void second_derivatives_central(const Vec f, Vec fdd, const unsigned int &bs_f = 1) const
   {
     second_derivatives_central(&f, &fdd, 1, bs_f);
   }
@@ -538,20 +538,11 @@ public:
    * \param [in]  n_vecs  number of vectors to handle in the above arrays
    * \param [in]  bs      block size of the vectors in f, fxx, fyy and fzz (default is 1)
    */
-  void second_derivatives_central(const Vec f[], DIM(Vec fxx[], Vec fyy[], Vec fzz[]), const unsigned int& n_vecs, const unsigned int &bs=1) const;
-  inline void second_derivatives_central(const Vec f, DIM(Vec fxx, Vec fyy, Vec fzz), const unsigned int &bs=1) const { second_derivatives_central(&f, DIM(&fxx, &fyy, &fzz), 1, bs); }
-
-  /*!
-   * \brief second_derivatives_central_above_threshold computes dxx, dyy, and dzz
-   * central at all points where f is greater than threshold. Similar to the function
-   * but disregards points where f < threshold.
-   *
-   * \param [in]  f   PETSc vector to compute the derivaties on
-   * \param [in]  thr double threshold value mentioned above
-   * \param [out] fxx PETSc vector to store the results in. A check is done to ensure they have the same size as f
-   * \param [out] fyy PETSc vector to store the results in. A check is done to ensure they have the same size as f
-   * \param [out] fzz PETSc vector to store the results in. A check is done to ensure they have the same size as f (only in 3D)
-   */
+  void second_derivatives_central(const Vec f[], DIM(Vec fxx[], Vec fyy[], Vec fzz[]), const unsigned int& n_vecs, const unsigned int &bs = 1) const;
+  inline void second_derivatives_central(const Vec f, DIM(Vec fxx, Vec fyy, Vec fzz), const unsigned int &bs = 1) const
+  {
+    second_derivatives_central(&f, DIM(&fxx, &fyy, &fzz), 1, bs);
+  }
   void second_derivatives_central_above_threshold(const Vec f, double thr, DIM(Vec fxx, Vec fyy, Vec fzz)) const;
 
   /*!
@@ -562,12 +553,15 @@ public:
    * \param [in]  n_vecs  number of vectors to handle
    * \param [in]  bs      block size of the vectors in f, fxx, fyy and fzz (default is 1)
    */
-  inline void second_derivatives_central(const Vec f[], Vec *fxxyyzz[P4EST_DIM], const unsigned int &n_vecs, const unsigned int &bs = 1) {
-    second_derivatives_central(f, DIM(fxxyyzz[0], fxxyyzz[1], fxxyyzz[2]), n_vecs, bs);
-  }
-  inline void second_derivatives_central(const Vec f, Vec fxx[P4EST_DIM], const unsigned int &bs = 1)
+  inline void second_derivatives_central(const Vec f[], Vec *fxxyyzz[P4EST_DIM], const unsigned int &n_vecs, const unsigned int &bs = 1)
   {
-    second_derivatives_central(&f, DIM(&fxx[0], &fxx[1], &fxx[2]), 1, bs);
+    second_derivatives_central(f, DIM(fxxyyzz[0], fxxyyzz[1], fxxyyzz[2]), n_vecs, bs);
+    return;
+  }
+  inline void second_derivatives_central(const Vec f, Vec fxxyyzz[P4EST_DIM], const unsigned int &bs = 1)
+  {
+    second_derivatives_central(&f, DIM(&fxxyyzz[0], &fxxyyzz[1], &fxxyyzz[2]), 1, bs);
+    return;
   }
 
   /*!
@@ -580,10 +574,10 @@ public:
    * \param [in]  n_vecs  number of vectors to handle in the f and fd arrays
    * \param [in]  bs_f    block size of the vectors in f (default is 1)
    */
-  void first_derivatives_central(const Vec f[], Vec fd[], const unsigned int& n_vecs, const unsigned int &bs_f=1) const;
-  inline void first_derivatives_central(const Vec f, Vec fdd, const unsigned int &bs_f=1) const
+  void first_derivatives_central(const Vec f[], Vec fd[], const unsigned int& n_vecs, const unsigned int &bs_f = 1) const;
+  inline void first_derivatives_central(const Vec f, Vec fd, const unsigned int &bs_f = 1) const
   {
-    first_derivatives_central(&f, &fdd, 1, bs_f);
+    first_derivatives_central(&f, &fd, 1, bs_f);
   }
 
   /*!
@@ -604,14 +598,14 @@ public:
    * \param [in]  n_vecs  number of vectors to handle in the above arrays
    * \param [in]  bs      block size of the vectors in f, fx, fy and fz (default is 1)
    */
-  void first_derivatives_central(const Vec f[], DIM(Vec fx[], Vec fy[], Vec fz[]), const unsigned int& n_vecs, const unsigned int &bs=1) const;
-  inline void first_derivatives_central(const Vec f, DIM(Vec fx, Vec fy, Vec fz), const unsigned int &bs=1) const { first_derivatives_central(&f, DIM(&fx, &fy, &fz), 1, bs); }
+  void first_derivatives_central(const Vec f[], DIM(Vec fx[], Vec fy[], Vec fz[]), const unsigned int& n_vecs, const unsigned int &bs = 1) const;
+  inline void first_derivatives_central(const Vec f, DIM(Vec fx, Vec fy, Vec fz), const unsigned int &bs = 1) const { first_derivatives_central(&f, DIM(&fx, &fy, &fz), 1, bs); }
 
-  inline void first_derivatives_central(const Vec f[], Vec *fxyz[P4EST_DIM], const unsigned int &n_vecs, const unsigned int &bs=1) const
+  inline void first_derivatives_central(const Vec f[], Vec *fxyz[P4EST_DIM], const unsigned int &n_vecs, const unsigned int &bs = 1) const
   {
     first_derivatives_central(f, DIM(fxyz[0], fxyz[1], fxyz[2]), n_vecs, bs);
   }
-  inline void first_derivatives_central(const Vec f, Vec fxyz[P4EST_DIM], const unsigned int &bs=1) const
+  inline void first_derivatives_central(const Vec f, Vec fxyz[P4EST_DIM], const unsigned int &bs = 1) const
   {
     first_derivatives_central(f, DIM(fxyz[0], fxyz[1], fxyz[2]), bs);
   }

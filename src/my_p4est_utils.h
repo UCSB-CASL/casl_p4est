@@ -338,7 +338,7 @@ enum {
 inline int WALL_idx(unsigned char oriented_cart_dir)
 {
   P4EST_ASSERT(oriented_cart_dir < P4EST_FACES);
-  return (-1-((int) oriented_cart_dir));
+  return (-1 - ((int) oriented_cart_dir));
 }
 
 typedef enum {
@@ -659,12 +659,12 @@ public:
  *        The method uses a binary search through the provided nodes: its complexity is O(log(N_nodes)).
  *        The given node MUST MANDATORILY be canonicalized before being passed to this function to ensure consistency with the provided nodes: use
  *        p4est_node_canonicalize beforehand!
- * \param [in]    n node whose local index is queried!
- * \param [in]    nodes the nodes data structure
- * \param [inout] idx the local index of the node on output if found, undefined if not found (i.e. if the returned value is false)
+ * \param [in]    n     pointer to the node whose local index is queried;
+ * \param [in]    nodes pointer to the nodes data structure
+ * \param [inout] idx   reference of the local index of the node: index of the node on output if found, unchanged if not found (i.e. if the returned value is false)
  * \return true if the queried node exists and was found in the nodes (i.e. if the idx is valid), false otherwise.
  */
-bool index_of_node(const p4est_quadrant_t *n, p4est_nodes_t* nodes, p4est_locidx_t& idx);
+bool index_of_node(const p4est_quadrant_t *n, const p4est_nodes_t* nodes, p4est_locidx_t& idx);
 
 /*!
  * \brief rel_qxyz_quad_fr_node calculates the relative cartesian coordinates between a quad center and a given grid node (very useful for lsqr
@@ -710,7 +710,7 @@ void get_local_interpolation_weights(const p4est_t* p4est, const p4est_topidx_t&
  * \param [inout] simple C-style array of size n_results containing the results of the quadratic_interpolation of the n_results different functions at the node of interest (located at xyz_global)
  * \param [in]    n_results number of functions to be interpolated
  */
-void linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *xyz_global, double *results, const unsigned int n_results);
+void linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *xyz_global, double *results, const size_t &n_results );
 inline double linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *xyz_global)
 {
   double result;
@@ -732,7 +732,7 @@ inline double linear_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id,
  * \param [inout] simple C-style array of size n_results containing the results of the quadratic_interpolation of the n_results different functions at the node of interest (located at xyz_global)
  * \param [in]    n_results number of functions to be interpolated
  */
-void quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results);
+void quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, const size_t &n_results );
 inline double quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global)
 {
   double result;
@@ -740,7 +740,7 @@ inline double quadratic_non_oscillatory_interpolation(const p4est_t *p4est, p4es
   return result;
 }
 
-void quadratic_non_oscillatory_continuous_v1_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results);
+void quadratic_non_oscillatory_continuous_v1_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, const size_t &n_results );
 inline double quadratic_non_oscillatory_continuous_v1_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global)
 {
   double result;
@@ -748,7 +748,7 @@ inline double quadratic_non_oscillatory_continuous_v1_interpolation(const p4est_
   return result;
 }
 
-void quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results);
+void quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, const size_t &n_results );
 inline double quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_t *p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global)
 {
   double result;
@@ -771,7 +771,7 @@ inline double quadratic_non_oscillatory_continuous_v2_interpolation(const p4est_
  * \param [inout] simple C-style array of size n_results containing the results of the quadratic_interpolation of the n_results different functions at the node of interest (located at xyz_global)
  * \param [in]    n_results number of functions to be interpolated
  */
-void quadratic_interpolation(const p4est_t* p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, unsigned int n_results);
+void quadratic_interpolation(const p4est_t* p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global, double *results, const size_t &n_results );
 inline double quadratic_interpolation(const p4est_t* p4est, p4est_topidx_t tree_id, const p4est_quadrant_t &quad, const double *F, const double *Fdd, const double *xyz_global)
 {
   double result;
@@ -1214,16 +1214,19 @@ inline p4est_indep_t* get_node(p4est_locidx_t n, p4est_nodes_t* nodes)
  * \brief get the x-coordinate of the center of a quadrant
  * \param quad_idx the index of the quadrant in the local forest, NOT in the tree tree_idx !!
  */
-inline double quad_x_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, const p4est_t *p4est, p4est_ghost_t *ghost)
+inline double quad_x_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, const p4est_t *p4est, const p4est_ghost_t *ghost)
 {
-  p4est_quadrant_t *quad;
+  const p4est_quadrant_t *quad;
   if(quad_idx<p4est->local_num_quadrants)
   {
     p4est_tree_t *tree = p4est_tree_array_index(p4est->trees, tree_idx);
     quad = p4est_quadrant_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
   }
   else
-    quad = p4est_quadrant_array_index(&ghost->ghosts, quad_idx-p4est->local_num_quadrants);
+  {
+    P4EST_ASSERT ((size_t)(quad_idx - p4est->local_num_quadrants) < ghost->ghosts.elem_count);
+    quad = (p4est_quadrant_t *) (ghost->ghosts.array + sizeof (p4est_quadrant_t) * (size_t)(quad_idx - p4est->local_num_quadrants));
+  }
 
   p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
   p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + P4EST_CHILDREN-1];
@@ -1271,7 +1274,7 @@ inline double quad_dx(const p4est_t *p4est, const p4est_quadrant_t *quad)
  * \brief get the y-coordinate of the center of a quadrant
  * \param quad_idx the index of the quadrant in the local forest, NOT in the tree tree_idx !!
  */
-inline double quad_y_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, const p4est_t *p4est, p4est_ghost_t *ghost)
+inline double quad_y_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, const p4est_t *p4est, const p4est_ghost_t *ghost)
 {
   p4est_quadrant_t *quad;
   if(quad_idx<p4est->local_num_quadrants)
@@ -1280,7 +1283,10 @@ inline double quad_y_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, cons
     quad = p4est_quadrant_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
   }
   else
-    quad = p4est_quadrant_array_index(&ghost->ghosts, quad_idx-p4est->local_num_quadrants);
+  {
+    P4EST_ASSERT ((size_t)(quad_idx - p4est->local_num_quadrants) < ghost->ghosts.elem_count);
+    quad = (p4est_quadrant_t *) (ghost->ghosts.array + sizeof (p4est_quadrant_t) * (size_t)(quad_idx - p4est->local_num_quadrants));
+  }
 
   p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
   p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + P4EST_CHILDREN-1];
@@ -1329,7 +1335,7 @@ inline double quad_dy(const p4est_t *p4est, const p4est_quadrant_t *quad)
  * \brief get the z-coordinate of the center of a quadrant
  * \param quad_idx the index of the quadrant in the local forest, NOT in the tree tree_idx !!
  */
-inline double quad_z_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, const p4est_t *p4est, p4est_ghost_t *ghost)
+inline double quad_z_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, const p4est_t *p4est, const p4est_ghost_t *ghost)
 {
   p4est_quadrant_t *quad;
   if(quad_idx<p4est->local_num_quadrants)
@@ -1338,7 +1344,10 @@ inline double quad_z_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, cons
     quad = p4est_quadrant_array_index(&tree->quadrants, quad_idx-tree->quadrants_offset);
   }
   else
-    quad = p4est_quadrant_array_index(&ghost->ghosts, quad_idx-p4est->local_num_quadrants);
+  {
+    P4EST_ASSERT ((size_t)(quad_idx - p4est->local_num_quadrants) < ghost->ghosts.elem_count);
+    quad = (p4est_quadrant_t *) (ghost->ghosts.array + sizeof (p4est_quadrant_t) * (size_t)(quad_idx - p4est->local_num_quadrants));
+  }
 
   p4est_topidx_t v_m = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + 0];
   p4est_topidx_t v_p = p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*tree_idx + P4EST_CHILDREN-1];
@@ -1388,7 +1397,7 @@ inline double quad_dz(const p4est_t *p4est, const p4est_quadrant_t *quad)
  * \brief get the xyz-coordinates of the center of a quadrant
  * \param quad_idx the index of the quadrant in the local forest, NOT in the tree tree_idx !!
  */
-inline void quad_xyz_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, const p4est_t *p4est, p4est_ghost_t *ghost, double *xyz)
+inline void quad_xyz_fr_q(p4est_locidx_t quad_idx, p4est_topidx_t tree_idx, const p4est_t *p4est, const p4est_ghost_t *ghost, double *xyz)
 {
   xyz[0] = quad_x_fr_q(quad_idx, tree_idx, p4est, ghost);
   xyz[1] = quad_y_fr_q(quad_idx, tree_idx, p4est, ghost);

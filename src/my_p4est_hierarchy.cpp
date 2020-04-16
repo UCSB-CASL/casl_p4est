@@ -69,10 +69,10 @@ int my_p4est_hierarchy_t::update_tree( int tree_idx, const p4est_quadrant_t *qua
 
     /* now the intermediate cell is split, select the correct child */
     p4est_qcoord_t size = P4EST_QUADRANT_LEN(trees[tree_idx][ind].level) / 2;
-    bool i = ( quad->x >= trees[tree_idx][ind].imin + size );
-    bool j = ( quad->y >= trees[tree_idx][ind].jmin + size );
+    const unsigned char i = ( quad->x >= trees[tree_idx][ind].imin + size);
+    const unsigned char j = ( quad->y >= trees[tree_idx][ind].jmin + size);
 #ifdef P4_TO_P8
-    bool k = ( quad->z >= trees[tree_idx][ind].kmin + size );
+    const unsigned char k = ( quad->z >= trees[tree_idx][ind].kmin + size);
 #endif
     ind = trees[tree_idx][ind].child + SUMD(i, 2*j, 4*k);
   }
@@ -85,10 +85,10 @@ p4est_locidx_t my_p4est_hierarchy_t::quad_idx_of_quad(const p4est_quadrant_t* qu
   while( trees[tree_idx][ind].level != quad->level )
   {
     p4est_qcoord_t size = P4EST_QUADRANT_LEN(trees[tree_idx][ind].level) / 2;
-    bool i = (quad->x >= trees[tree_idx][ind].imin + size);
-    bool j = (quad->y >= trees[tree_idx][ind].jmin + size);
+    const unsigned char i = (quad->x >= trees[tree_idx][ind].imin + size);
+    const unsigned char j = (quad->y >= trees[tree_idx][ind].jmin + size);
 #ifdef P4_TO_P8
-    bool k = (quad->z >= trees[tree_idx][ind].kmin + size);
+    const unsigned char k = (quad->z >= trees[tree_idx][ind].kmin + size);
 #endif
     ind = trees[tree_idx][ind].child + SUMD(i, 2*j, 4*k);
   }
@@ -213,7 +213,7 @@ void my_p4est_hierarchy_t::write_vtk(const char* filename) const
 
   fprintf(vtk, "POINTS %ld double \n", P4EST_CHILDREN*num_quads);
 
-  for (size_t i = 0; i<trees.size(); ++i){
+  for (size_t i = 0; i < trees.size(); ++i){
     p4est_topidx_t v_m = connectivity->tree_to_vertex[P4EST_CHILDREN*i + 0];
     p4est_topidx_t v_p = connectivity->tree_to_vertex[P4EST_CHILDREN*i + P4EST_CHILDREN-1];
 
@@ -226,7 +226,7 @@ void my_p4est_hierarchy_t::write_vtk(const char* filename) const
     double tree_zmax = connectivity->vertices[3*v_p + 2];
 #endif
 
-    for (size_t j = 0; j<trees[i].size(); j++){
+    for (size_t j = 0; j < trees[i].size(); j++){
       const HierarchyCell& cell = trees[i][j];
       if (cell.child == CELL_LEAF){
         double h = (double) P4EST_QUADRANT_LEN(cell.level) / (double)P4EST_ROOT_LEN;
@@ -252,18 +252,18 @@ void my_p4est_hierarchy_t::write_vtk(const char* filename) const
   for (size_t i = 0; i < num_quads; ++i)
   {
     fprintf(vtk, "%d ", P4EST_CHILDREN);
-    for (short j = 0; j < P4EST_CHILDREN; ++j)
+    for (unsigned char j = 0; j < P4EST_CHILDREN; ++j)
       fprintf(vtk, "%ld ", P4EST_CHILDREN*i+j);
     fprintf(vtk,"\n");
   }
 
   fprintf(vtk, "CELL_TYPES %ld\n", num_quads);
-  for (size_t i = 0; i<num_quads; ++i)
+  for (size_t i = 0; i < num_quads; ++i)
     fprintf(vtk, "%d\n",P4EST_VTK_CELL_TYPE);
   fclose(vtk);
 }
 
-int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(const double *xyz, p4est_quadrant_t &best_match, std::vector<p4est_quadrant_t> &remote_matches) const
+int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(const double *xyz, p4est_quadrant_t &best_match, std::vector<p4est_quadrant_t> &remote_matches, const bool &prioritize_local) const
 {
 #ifdef CASL_LOG_TINY_EVENTS
   PetscErrorCode ierr;
@@ -393,8 +393,8 @@ int my_p4est_hierarchy_t::find_smallest_quadrant_containing_point(const double *
 #endif
       {
         // perturb the point (note that i, j and/or k are 0 is no perturbation is required)
-        PointDIM s(DIM((i == 0 ? ii : (ii + ((double) i)*threshold)), (j == 0 ? jj : (jj + ((double) j)*threshold)), (k == 0 ? kk : (kk + ((double) k)*threshold))));
-        find_quadrant_containing_point(tr_xyz_orig, s, rank, best_match, remote_matches);
+        PointDIM s(DIM(i == 0 ? ii : ii + i*threshold, j == 0 ? jj : jj + j*threshold, k == 0 ? kk : kk + k*threshold));
+        find_quadrant_containing_point(tr_xyz_orig, s, rank, best_match, remote_matches, prioritize_local);
       }
 
 #ifdef CASL_LOG_TINY_EVENTS

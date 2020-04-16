@@ -435,7 +435,7 @@ public:
 
   /*!
    * \brief write_vtk exports the local hierarchy in a vtk format
-   * \param [in] filename name of the desired vtk file, every processor exports such a file appending its rank to the desired name
+   * \param [in] filename name of the desired vtk file, every process exports such a file appending its rank to the desired name
    */
   void write_vtk(const char* filename) const;
 

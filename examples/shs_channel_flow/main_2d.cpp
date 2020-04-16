@@ -700,8 +700,8 @@ void initialize_monitoring(simulation_setup &setup, const my_p4est_navier_stokes
       fprintf(fp_liveplot_Re, "set xlabel \"Time\" font \"Arial,14\"\n");
       fprintf(fp_liveplot_Re, "set ylabel \"Re\" font \"Arial,14\"\n");
       fprintf(fp_liveplot_Re, "plot");
-      fprintf(fp_liveplot_Re, "\t \"\%s\" using 1:2 title 'Re_{tau}' with lines lw 3,\\\n", setup.file_monitoring.c_str());
-      fprintf(fp_liveplot_Re, "\t \"\%s\" using 1:3 title 'Re_b' with lines lw 3\n", setup.file_monitoring.c_str());
+      fprintf(fp_liveplot_Re, "\t \"flow_monitoring.dat\" using 1:2 title 'Re_{tau}' with lines lw 3,\\\n");
+      fprintf(fp_liveplot_Re, "\t \"flow_monitoring.dat\" using 1:3 title 'Re_b' with lines lw 3\n");
       fprintf(fp_liveplot_Re, "pause 4\n");
       fprintf(fp_liveplot_Re, "reread");
       fclose(fp_liveplot_Re);
@@ -811,7 +811,7 @@ void initialize_drag_force_output(simulation_setup &setup, const my_p4est_navier
       fprintf(fp_liveplot_drag, "plot");
       for (unsigned char dd = 0; dd < P4EST_DIM; ++dd)
       {
-        fprintf(fp_liveplot_drag, "\t \"drag_monitoring.dat\" using 1:%d title '%c-component' with lines lw 3",  (int) dd + 2, (dd == 0 ? 'x' : (dd == 1 ? 'y' : 'z')));
+        fprintf(fp_liveplot_drag, "\t \"drag_monitoring.dat\" using 1:%d title '%c-component' with lines lw 3",  (int) dd + 2, (dd == dir::x ? 'x' : ONLY3D(OPEN_PARENTHESIS dd == dir::y ?) 'y' ONLY3D(: 'z' CLOSE_PARENTHESIS)));
         if (dd < P4EST_DIM - 1)
           fprintf(fp_liveplot_drag, ",\\");
         fprintf(fp_liveplot_drag, "\n");
@@ -835,7 +835,7 @@ void initialize_drag_force_output(simulation_setup &setup, const my_p4est_navier
       fprintf(fp_tex_plot_drag, "plot");
       for (unsigned char dd = 0; dd < P4EST_DIM; ++dd)
       {
-        fprintf(fp_tex_plot_drag, "\t \"drag_monitoring.dat\" using 1:%d title '$D_{\\mathrm{%c}}$' with lines lw 3",  (int) dd + 2, (dd == 0 ? 'x' : (dd == 1 ? 'y' : 'z')));
+        fprintf(fp_tex_plot_drag, "\t \"drag_monitoring.dat\" using 1:%d title '$D_{\\mathrm{%c}}$' with lines lw 3",  (int) dd + 2, (dd == dir::x ? 'x' : ONLY3D(OPEN_PARENTHESIS dd == dir::y ?) 'y' ONLY3D(: 'z' CLOSE_PARENTHESIS)));
         if (dd < P4EST_DIM - 1)
           fprintf(fp_tex_plot_drag, ",\\\n");
       }
@@ -1343,10 +1343,10 @@ int main (int argc, char* argv[])
 
   simulation_setup setup(mpi, cmd);
 
-  my_p4est_navier_stokes_t* ns                          = NULL;
-  my_p4est_brick_t* brick                               = NULL;
-  splitting_criteria_cf_and_uniform_band_t* data        = NULL;
-  mass_flow_controller_t *flow_controller               = NULL;
+  my_p4est_navier_stokes_t* ns                    = NULL;
+  my_p4est_brick_t* brick                         = NULL;
+  splitting_criteria_cf_and_uniform_band_t* data  = NULL;
+  mass_flow_controller_t *flow_controller         = NULL;
   external_force_per_unit_mass_t* external_acceleration[P4EST_DIM] = { DIM(NULL, NULL, NULL) };
 
   my_p4est_shs_channel_t channel(mpi);
@@ -1360,7 +1360,6 @@ int main (int argc, char* argv[])
   velocity_profiler_t *profiler = NULL;
   initialize_exportations_and_monitoring(ns, cmd, channel, setup, profiler);
 
-
   parStopWatch watch, substep_watch;
   double mean_full_iteration_time = 0.0, mean_viscosity_step_time = 0.0, mean_projection_step_time = 0.0, mean_compute_velocity_at_nodes_time = 0.0, mean_update_time = 0.0;
   if (setup.get_timing)
@@ -1368,8 +1367,8 @@ int main (int argc, char* argv[])
   setup.tn = setup.tstart;
   setup.update_save_data_idx(); // so that we don't save the very first one which was either already read from file, or the known initial condition...
 
-  my_p4est_poisson_cells_t* cell_solver         = NULL;
-  my_p4est_poisson_faces_t* face_solver         = NULL;
+  my_p4est_poisson_cells_t* cell_solver = NULL;
+  my_p4est_poisson_faces_t* face_solver = NULL;
   Vec dxyz_hodge_old[P4EST_DIM];
 
   while (setup.tn + 0.01*setup.dt < setup.tstart + setup.duration && !setup.accuracy_check_done)
@@ -1488,7 +1487,6 @@ int main (int argc, char* argv[])
     P4EST_ASSERT(setup.flow_condition != constant_mass_flow ||
         iter_hodge == setup.niter_hodge_max ||
         fabs(channel.Re_b(flow_controller->read_latest_mass_flow(), ns->get_rho(), ns->get_nu()) - flow_controller->targeted_bulk_velocity()*channel.delta()/ns->get_nu()) < setup.u_tol*flow_controller->targeted_bulk_velocity()*channel.delta()/ns->get_nu());
-
 
     // exporting drag if desired
     if (setup.save_drag)

@@ -43,9 +43,6 @@ class my_p4est_semi_lagrangian_t
   my_p4est_node_neighbors_t *ngbd_n;
   my_p4est_node_neighbors_t *ngbd_nm1;
   my_p4est_node_neighbors_t *ngbd_phi;
-  bool periodic[P4EST_DIM];
-
-  double xyz_min[P4EST_DIM], xyz_max[P4EST_DIM];
 
   void advect_from_n_to_np1(double dt, const CF_DIM **v,
                             Vec phi_n, Vec *phi_xx_n,
@@ -62,6 +59,21 @@ class my_p4est_semi_lagrangian_t
 
   interpolation_method velo_interpolation;
   interpolation_method phi_interpolation;
+
+  inline const double*  get_xyz_min()     const { return ngbd_n->get_brick()->xyz_min;                }
+  inline const double*  get_xyz_max()     const { return ngbd_n->get_brick()->xyz_max;                }
+  inline const int*     get_ntrees()      const { return ngbd_n->get_brick()->nxyztrees;              }
+  inline const bool*    get_periodicity() const { return ngbd_n->get_hierarchy()->get_periodicity();  }
+
+  inline double get_min_dx() const
+  {
+    splitting_criteria_t* data = (splitting_criteria_t*)p4est->user_pointer;
+    const double *xyz_min = get_xyz_min();
+    const double *xyz_max = get_xyz_max();
+    const int* ntrees     = get_ntrees();
+    return ((double)P4EST_QUADRANT_LEN(data->max_lvl)/(double)P4EST_ROOT_LEN)*MIN(DIM((xyz_max[0] - xyz_min[0])/ntrees[0], (xyz_max[1] - xyz_min[1])/ntrees[1], (xyz_max[2] - xyz_min[2])/ntrees[2]));
+  }
+
 
 public:
   my_p4est_semi_lagrangian_t(p4est_t **p4est_np1, p4est_nodes_t **nodes_np1,  p4est_ghost_t **ghost_np1,  my_p4est_node_neighbors_t *ngbd_n, my_p4est_node_neighbors_t *ngbd_nm1=NULL);

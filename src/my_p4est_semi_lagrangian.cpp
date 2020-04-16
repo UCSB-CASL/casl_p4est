@@ -52,18 +52,6 @@ my_p4est_semi_lagrangian_t::my_p4est_semi_lagrangian_t(p4est_t **p4est_np1, p4es
     ngbd_n(ngbd_n),
     ngbd_nm1(ngbd_nm1)
 {
-  // compute domain sizes
-  double *v2c = this->p4est->connectivity->vertices;
-  p4est_topidx_t *t2v = this->p4est->connectivity->tree_to_vertex;
-  p4est_topidx_t first_tree = 0, last_tree = this->p4est->trees->elem_count-1;
-  p4est_topidx_t first_vertex = 0, last_vertex = P4EST_CHILDREN - 1;
-
-  for (unsigned char i=0; i < P4EST_DIM; i++)
-  {
-    xyz_min[i]  = v2c[3*t2v[P4EST_CHILDREN*first_tree + first_vertex] + i];
-    xyz_max[i]  = v2c[3*t2v[P4EST_CHILDREN*last_tree  + last_vertex ] + i];
-    periodic[i] = is_periodic(p4est, i);
-  }
   velo_interpolation = quadratic;
   phi_interpolation  = quadratic_non_oscillatory;
 
@@ -73,60 +61,37 @@ my_p4est_semi_lagrangian_t::my_p4est_semi_lagrangian_t(p4est_t **p4est_np1, p4es
 double my_p4est_semi_lagrangian_t::compute_dt(DIM(const CF_DIM &vx, const CF_DIM &vy, const CF_DIM &vz))
 {
   double dt = DBL_MAX;
-
-  // get the min dx
-  splitting_criteria_t* data = (splitting_criteria_t*)p4est->user_pointer;
-  double dx = (double)P4EST_QUADRANT_LEN(data->max_lvl) / (double)P4EST_ROOT_LEN;
-
-  double tree_xyz_max[P4EST_DIM];
-  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-    tree_xyz_max[dir] = p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*0 + P4EST_CHILDREN - 1] + dir];
-
-  dx *= MIN(DIM(tree_xyz_max[0]-xyz_min[0], tree_xyz_max[1]-xyz_min[1], tree_xyz_max[2]-xyz_min[2]));
+  const double min_dx = get_min_dx();
 
   double xyz[P4EST_DIM];
-  for (p4est_locidx_t n = 0; n<nodes->num_owned_indeps; n++)
+  for (p4est_locidx_t n = 0; n < nodes->num_owned_indeps; n++)
   {
     node_xyz_fr_n(n, p4est, nodes, xyz);
     double vn = sqrt(SUMD(SQR(vx(xyz)), SQR(vy(xyz)), SQR(vz(xyz))));
-    dt = MIN(dt, dx/vn);
+    dt = MIN(dt, min_dx/vn);
   }
 
   // reduce among processors
-  double dt_min;
-  MPI_Allreduce(&dt, &dt_min, 1, MPI_DOUBLE, MPI_MIN, p4est->mpicomm);
+  MPI_Allreduce(MPI_IN_PLACE, &dt, 1, MPI_DOUBLE, MPI_MIN, p4est->mpicomm);
 
-  return dt_min;
+  return dt;
 }
 
 double my_p4est_semi_lagrangian_t::compute_dt(DIM(Vec vx, Vec vy, Vec vz))
 {
   PetscErrorCode ierr;
   double dt = DBL_MAX;
-  const double *vx_p, *vy_p;
+  const double min_dx = get_min_dx();
 
+  const double DIM(*vx_p, *vy_p, *vz_p);
   ierr = VecGetArrayRead(vx, &vx_p); CHKERRXX(ierr);
   ierr = VecGetArrayRead(vy, &vy_p); CHKERRXX(ierr);
 #ifdef P4_TO_P8
-  const double *vz_p;
   ierr = VecGetArrayRead(vz, &vz_p); CHKERRXX(ierr);
 #endif
 
-  // get the min dx
-  splitting_criteria_t* data = (splitting_criteria_t*)p4est->user_pointer;
-  double dx = (double)P4EST_QUADRANT_LEN(data->max_lvl) / (double)P4EST_ROOT_LEN;
-
-
-  double tree_xyz_max[P4EST_DIM];
-  for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
-    tree_xyz_max[dir] = p4est->connectivity->vertices[3*p4est->connectivity->tree_to_vertex[P4EST_CHILDREN*0 + P4EST_CHILDREN - 1] + dir];
-
-  dx *= MIN(DIM(tree_xyz_max[0]-xyz_min[0], tree_xyz_max[1]-xyz_min[1], tree_xyz_max[2]-xyz_min[2]));
-
-  for (p4est_locidx_t i = 0; i<nodes->num_owned_indeps; i++){
-    double vn = sqrt(SUMD(SQR(vx_p[i]), SQR(vy_p[i]), SQR(vz_p[i])));
-    dt = MIN(dt, dx/vn);
-  }
+  for (p4est_locidx_t i = 0; i<nodes->num_owned_indeps; i++)
+    dt = MIN(dt, min_dx/sqrt(SUMD(SQR(vx_p[i]), SQR(vy_p[i]), SQR(vz_p[i]))));
 
   ierr = VecRestoreArrayRead(vx, &vx_p); CHKERRXX(ierr);
   ierr = VecRestoreArrayRead(vy, &vy_p); CHKERRXX(ierr);
@@ -135,10 +100,9 @@ double my_p4est_semi_lagrangian_t::compute_dt(DIM(Vec vx, Vec vy, Vec vz))
 #endif
 
   // reduce among processors
-  double dt_min;
-  MPI_Allreduce(&dt, &dt_min, 1, MPI_DOUBLE, MPI_MIN, p4est->mpicomm);
+  MPI_Allreduce(MPI_IN_PLACE, &dt, 1, MPI_DOUBLE, MPI_MIN, p4est->mpicomm);
 
-  return dt_min;
+  return dt;
 }
 
 void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt, const CF_DIM **v,
@@ -150,7 +114,11 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt, const CF_DIM **
 
   my_p4est_interpolation_nodes_t interp(ngbd_n);
 
-  for (size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+  const double *xyz_min   = get_xyz_min();
+  const double *xyz_max   = get_xyz_max();
+  const bool *periodicity = get_periodicity();
+
+  for (size_t n = 0; n < nodes->indep_nodes.elem_count; ++n)
   {
     double xyz[P4EST_DIM];
     node_xyz_fr_n(n, p4est, nodes, xyz);
@@ -159,12 +127,12 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt, const CF_DIM **
     double xyz_star[P4EST_DIM];
     for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
       xyz_star[dir] = xyz[dir] - 0.5*dt*(*v[dir])(xyz);
-    clip_in_domain(xyz_star, xyz_min, xyz_max, periodic);
+    clip_in_domain(xyz_star, xyz_min, xyz_max, periodicity);
 
     double xyz_d[P4EST_DIM];
     for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
       xyz_d[dir] = xyz[dir] - dt*(*v[dir])(xyz_star);
-    clip_in_domain(xyz_d, xyz_min, xyz_max, periodic);
+    clip_in_domain(xyz_d, xyz_min, xyz_max, periodicity);
 
     /* Buffer the point for interpolation */
     interp.add_point(n, xyz_d);
@@ -196,7 +164,7 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt, Vec *v, Vec **v
 
   /* find vnp1 */
   std::vector<double> v_tmp[P4EST_DIM];
-  for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+  for(size_t n = 0; n < nodes->indep_nodes.elem_count; ++n)
   {
     double xyz[P4EST_DIM];
     node_xyz_fr_n(n, p4est, nodes, xyz);
@@ -212,15 +180,19 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt, Vec *v, Vec **v
   interp.interpolate(interp_output);
   interp.clear();
 
+  const double *xyz_min   = get_xyz_min();
+  const double *xyz_max   = get_xyz_max();
+  const bool *periodicity = get_periodicity();
+
   /* now find v_star */
-  for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+  for(size_t n = 0; n < nodes->indep_nodes.elem_count; ++n)
   {
     /* Find initial xy points */
     double xyz_star[P4EST_DIM];
     node_xyz_fr_n(n, p4est, nodes, xyz_star);
     for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
       xyz_star[dir] -= 0.5*dt*v_tmp[dir][n];
-    clip_in_domain(xyz_star, xyz_min, xyz_max, periodic);
+    clip_in_domain(xyz_star, xyz_min, xyz_max, periodicity);
 
     interp.add_point(n, xyz_star);
   }
@@ -232,12 +204,12 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt, Vec *v, Vec **v
   interp.clear();
 
   /* finally, find the backtracing value */
-  for(size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+  for(size_t n = 0; n < nodes->indep_nodes.elem_count; ++n)
   {
     double xyz_d[P4EST_DIM]; node_xyz_fr_n(n, p4est, nodes, xyz_d);
     for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
       xyz_d[dir] -= dt*v_tmp[dir][n];
-    clip_in_domain(xyz_d, xyz_min, xyz_max, periodic);
+    clip_in_domain(xyz_d, xyz_min, xyz_max, periodicity);
 
     interp_phi.add_point(n, xyz_d);
   }
@@ -277,7 +249,7 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt_nm1, double dt_n
   std::vector<double> v_tmp_n  [P4EST_DIM];
 
   /* find the velocity field at time np1 */
-  for (size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+  for (size_t n = 0; n < nodes->indep_nodes.elem_count; ++n)
   {
     double xyz[P4EST_DIM];
     node_xyz_fr_n(n, p4est, nodes, xyz);
@@ -293,13 +265,17 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt_nm1, double dt_n
   interp_n.interpolate(interp_output);
   interp_n.clear();
 
+  const double *xyz_min   = get_xyz_min();
+  const double *xyz_max   = get_xyz_max();
+  const bool *periodicity = get_periodicity();
+
   /* now find x_star */
-  for (size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+  for (size_t n = 0; n < nodes->indep_nodes.elem_count; ++n)
   {
     double xyz_star[P4EST_DIM]; node_xyz_fr_n(n, p4est, nodes, xyz_star);
     for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
       xyz_star[dir] -= .5*dt_n*v_tmp_n[dir][n];
-    clip_in_domain(xyz_star, xyz_min, xyz_max, periodic);
+    clip_in_domain(xyz_star, xyz_min, xyz_max, periodicity);
 
     interp_n  .add_point(n, xyz_star);
     interp_nm1.add_point(n, xyz_star);
@@ -322,7 +298,7 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt_nm1, double dt_n
   /* finally, find the backtracing value */
   /* find the departure node via backtracing */
   double v_star[P4EST_DIM];
-  for (size_t n=0; n<nodes->indep_nodes.elem_count; ++n)
+  for (size_t n = 0; n < nodes->indep_nodes.elem_count; ++n)
   {
     for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
       v_star[dir] = (1.0+.5*dt_n/dt_nm1)*v_tmp_n[dir][n] - 0.5*dt_n/dt_nm1*v_tmp_nm1[dir][n];
@@ -330,7 +306,7 @@ void my_p4est_semi_lagrangian_t::advect_from_n_to_np1(double dt_nm1, double dt_n
     double xyz_d[P4EST_DIM]; node_xyz_fr_n(n, p4est, nodes, xyz_d);
     for (unsigned char dir = 0; dir < P4EST_DIM; ++dir)
       xyz_d[dir] -= dt_n*v_star[dir];
-    clip_in_domain(xyz_d, xyz_min, xyz_max, periodic);
+    clip_in_domain(xyz_d, xyz_min, xyz_max, periodicity);
 
     interp_phi.add_point(n, xyz_d);
   }
@@ -665,7 +641,7 @@ void my_p4est_semi_lagrangian_t::update_p4est(Vec *v, double dt, Vec &phi, Vec *
         }
       else{
           my_p4est_interpolation_nodes_t interp_fields(ngbd_phi);
-          interp_fields.set_input(fields, phi_interpolation,num_fields);
+          interp_fields.set_input(fields, phi_interpolation, num_fields);
 
           double xyz[P4EST_DIM];
           for(size_t n = 0; n < nodes->indep_nodes.elem_count; ++n)

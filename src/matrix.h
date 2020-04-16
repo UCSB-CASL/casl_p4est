@@ -16,7 +16,7 @@ protected:
 
 public:
 
-  matrix_t( int m=1, int n=1 )
+  matrix_t(int m = 1, int n = 1)
   {
     this->m=m; this->n=n;
     values.resize(m*n);
@@ -24,13 +24,13 @@ public:
 
   void resize(int m, int n);
 
-  void operator=( const matrix_t& M );
+  void operator=(const matrix_t& M);
 
   inline int num_rows() const { return m; }
 
   inline int num_cols() const { return n; }
 
-  inline double get_value(int i,int j) const
+  inline double get_value(int i, int j) const
   {
 #ifdef CASL_THROWS
     if(i<0 || i>m || j<0 || j>n)
@@ -47,17 +47,17 @@ public:
   //--------------------------------------------------------------------------
   // b = Ax
   //--------------------------------------------------------------------------
-  void matvec( const vector<double>& x, vector<double>& b ) const;
+  void matvec(const vector<double>& x, vector<double>& b) const;
 
-  void tranpose_matvec( const vector<double>& x, vector<double>& b ) const {tranpose_matvec(&x, &b, 1);}
-  void tranpose_matvec( const vector<double> x[], vector<double> b[], unsigned int n_vectors) const;
+  void tranpose_matvec(const vector<double>& x, vector<double>& b) const {tranpose_matvec(&x, &b, 1);}
+  void tranpose_matvec(const vector<double> x[], vector<double> b[], const size_t &n_vectors) const;
 
-  void matrix_product(  matrix_t& b, matrix_t& c );
+  void matrix_product(matrix_t& b, matrix_t& c);
 
   double scale_by_maxabs(vector<double>& x) {return scale_by_maxabs(&x, 1); }
-  double scale_by_maxabs(vector<double> x[], unsigned int n_vectors);
+  double scale_by_maxabs(vector<double> x[], const size_t &n_vectors);
 
-  void mtm_product(matrix_t& m ) const;
+  void mtm_product(matrix_t& m) const;
   void mtm_product(matrix_t& m, vector<double>& w) const;
 
 
@@ -68,15 +68,15 @@ public:
   matrix_t tr();
 
   void print();
-  void sub( int im, int jm, int iM, int jM, matrix_t& M );
-  void truncate_matrix( int m, int n, const matrix_t& M);
-  void create_as_transpose(  matrix_t& M );
+  void sub(int im, int jm, int iM, int jM, matrix_t& M);
+  void truncate_matrix(int m, int n, const matrix_t& M);
+  void create_as_transpose(matrix_t& M);
 
-  void operator+=(matrix_t& M );
-  void operator-=(matrix_t& M );
-  void operator*=(double s );
-  void operator/=(double s );
-  void operator =(double s );
+  void operator+=(matrix_t& M);
+  void operator-=(matrix_t& M);
+  void operator*=(double s);
+  void operator/=(double s);
+  void operator =(double s);
 //  const double* read_data() const {return values.data();}
 //  double* get_data() {return values.data();}
 };

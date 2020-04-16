@@ -202,8 +202,8 @@ my_p4est_two_phase_flows_t::my_p4est_two_phase_flows_t(my_p4est_node_neighbors_t
   sl_order = 2;
 
   double p = 1.0;
-  while (DBL_MAX-p == DBL_MAX) p*=2.0;
-  threshold_dbl_max = DBL_MAX -p;
+  while (DBL_MAX - p == DBL_MAX) p *= 2.0;
+  threshold_dbl_max = DBL_MAX - p;
 
   double *v2c = p4est_n->connectivity->vertices;
   p4est_topidx_t *t2v = p4est_n->connectivity->tree_to_vertex;

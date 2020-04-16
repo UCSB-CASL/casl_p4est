@@ -1926,7 +1926,10 @@ void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f[], Vec fd
     for (size_t i = 0; i < layer_nodes.size(); i++){
       p4est_locidx_t node_idx = layer_nodes[i];
       const quad_neighbor_nodes_of_node_t& qnnn = neighbors[node_idx];
-      (bs_f==1)? qnnn.laplace_insert_in_block_vectors(f_p, fdd_p, n_vecs) : qnnn.laplace_all_components_insert_in_block_vectors(f_p, fdd_p, n_vecs, bs_f);
+      if(bs_f == 1)
+        qnnn.laplace_insert_in_block_vectors(f_p, fdd_p, n_vecs);
+      else
+        qnnn.laplace_all_components_insert_in_block_vectors(f_p, fdd_p, n_vecs, bs_f);
     }
 
     // start updating the ghost values
@@ -1938,7 +1941,10 @@ void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f[], Vec fd
     for (size_t i = 0; i < local_nodes.size(); i++){
       p4est_locidx_t node_idx = local_nodes[i];
       const quad_neighbor_nodes_of_node_t& qnnn = neighbors[node_idx];
-      (bs_f==1)? qnnn.laplace_insert_in_block_vectors(f_p, fdd_p, n_vecs) : qnnn.laplace_all_components_insert_in_block_vectors(f_p, fdd_p, n_vecs, bs_f);
+      if(bs_f == 1)
+        qnnn.laplace_insert_in_block_vectors(f_p, fdd_p, n_vecs);
+      else
+        qnnn.laplace_all_components_insert_in_block_vectors(f_p, fdd_p, n_vecs, bs_f);
     }
   } else {
     quad_neighbor_nodes_of_node_t qnnn;
@@ -1947,7 +1953,10 @@ void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f[], Vec fd
     for (size_t i = 0; i < layer_nodes.size(); i++){
       p4est_locidx_t node_idx = layer_nodes[i];
       get_neighbors(node_idx, qnnn);
-      (bs_f==1)? qnnn.laplace_insert_in_block_vectors(f_p, fdd_p, n_vecs) : qnnn.laplace_all_components_insert_in_block_vectors(f_p, fdd_p, n_vecs, bs_f);
+      if(bs_f == 1)
+        qnnn.laplace_insert_in_block_vectors(f_p, fdd_p, n_vecs);
+      else
+        qnnn.laplace_all_components_insert_in_block_vectors(f_p, fdd_p, n_vecs, bs_f);
     }
 
     // start updating the ghost values
@@ -1959,7 +1968,10 @@ void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f[], Vec fd
     for (size_t i = 0; i < local_nodes.size(); i++){
       p4est_locidx_t node_idx = local_nodes[i];
       get_neighbors(node_idx, qnnn);
-      (bs_f==1)? qnnn.laplace_insert_in_block_vectors(f_p, fdd_p, n_vecs) : qnnn.laplace_all_components_insert_in_block_vectors(f_p, fdd_p, n_vecs, bs_f);
+      if(bs_f == 1)
+        qnnn.laplace_insert_in_block_vectors(f_p, fdd_p, n_vecs);
+      else
+        qnnn.laplace_all_components_insert_in_block_vectors(f_p, fdd_p, n_vecs, bs_f);
     }
   }
 
@@ -1975,7 +1987,7 @@ void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f[], Vec fd
   ierr = PetscLogEventEnd(log_my_p4est_node_neighbors_t_2nd_derivatives_central_block, f, fdd, 0, 0); CHKERRXX(ierr);
 }
 
-void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f[], DIM(Vec fxx[], Vec fyy[], Vec fzz[]), const unsigned int& n_vecs, const unsigned int& bs) const
+void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f[], DIM(Vec fxx[], Vec fyy[], Vec fzz[]), const unsigned int& n_vecs, const unsigned int &bs) const
 {
   PetscErrorCode ierr;
   ierr = PetscLogEventBegin(log_my_p4est_node_neighbors_t_2nd_derivatives_central, 0, 0, 0, 0); CHKERRXX(ierr);
@@ -1983,12 +1995,8 @@ void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f[], DIM(Ve
 
 #ifdef CASL_THROWS
   {
-    Vec f_l, fxx_l, fyy_l;
-    PetscInt f_size, fxx_size, fyy_size, bs_f, bs_xx, bs_yy;
-#ifdef P4_TO_P8
-    Vec fzz_l;
-    PetscInt fzz_size, bs_zz;
-#endif
+    Vec f_l, DIM(fxx_l, fyy_l, fzz_l);
+    PetscInt f_size, DIM(fxx_size, fyy_size, fzz_size), bs_f, DIM(bs_xx, bs_yy, bs_zz);
 
     for (unsigned int k = 0; k < n_vecs; ++k) {
       // Get local form
@@ -2081,16 +2089,12 @@ void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f[], DIM(Ve
   }
 #endif
   P4EST_ASSERT(bs > 0);
-
 #ifdef DXX_USE_BLOCKS
   second_derivatives_central_using_block(f, DIM(fxx, fyy, fzz), n_vecs, bs);
 #else // !DXX_USE_BLOCKS
   // get access to the internal data
   const double *f_p[n_vecs];
-  double *fxx_p[n_vecs], *fyy_p[n_vecs];
-#ifdef P4_TO_P8
-  double *fzz_p[n_vecs];
-#endif
+  double DIM(*fxx_p[n_vecs], *fyy_p[n_vecs], *fzz_p[n_vecs]);
   for (unsigned int k = 0; k < n_vecs; ++k) {
     ierr = VecGetArrayRead(f[k],  &f_p[k]  ); CHKERRXX(ierr);
     ierr = VecGetArray(fxx[k],    &fxx_p[k]); CHKERRXX(ierr);
@@ -2104,9 +2108,12 @@ void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f[], DIM(Ve
     // compute the derivatives on the boundary nodes -- fxx
     for (size_t i = 0; i < layer_nodes.size(); i++)
     {
-      p4est_locidx_t node_idx = layer_nodes[i];
+      const p4est_locidx_t &node_idx = layer_nodes[i];
       const quad_neighbor_nodes_of_node_t& qnnn = neighbors[node_idx];
-      (bs == 1) ? qnnn.dxx_central_insert_in_vectors(f_p, fxx_p, n_vecs) : qnnn.dxx_central_all_components_insert_in_vectors(f_p, fxx_p, n_vecs, bs);
+      if(bs == 1)
+        qnnn.dxx_central_insert_in_vectors(f_p, fxx_p, n_vecs);
+      else
+        qnnn.dxx_central_all_components_insert_in_vectors(f_p, fxx_p, n_vecs, bs);
     }
     // start updating the ghost values
     for (unsigned int k = 0; k < n_vecs; ++k)
@@ -2115,9 +2122,12 @@ void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f[], DIM(Ve
     // compute the derivatives on the boundary nodes -- fyy
     for (size_t i = 0; i < layer_nodes.size(); i++)
     {
-      p4est_locidx_t node_idx = layer_nodes[i];
+      const p4est_locidx_t &node_idx = layer_nodes[i];
       const quad_neighbor_nodes_of_node_t& qnnn = neighbors[node_idx];
-      (bs == 1) ? qnnn.dyy_central_insert_in_vectors(f_p, fyy_p, n_vecs) : qnnn.dyy_central_all_components_insert_in_vectors(f_p, fyy_p, n_vecs, bs);
+      if(bs == 1)
+        qnnn.dyy_central_insert_in_vectors(f_p, fyy_p, n_vecs);
+      else
+        qnnn.dyy_central_all_components_insert_in_vectors(f_p, fyy_p, n_vecs, bs);
     }
     // start updating the ghost values
     for (unsigned int k = 0; k < n_vecs; ++k)
@@ -2127,9 +2137,12 @@ void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f[], DIM(Ve
     // compute the derivatives on the boundary nodes -- fzz
     for (size_t i = 0; i < layer_nodes.size(); i++)
     {
-      p4est_locidx_t node_idx = layer_nodes[i];
+      const p4est_locidx_t &node_idx = layer_nodes[i];
       const quad_neighbor_nodes_of_node_t& qnnn = neighbors[node_idx];
-      (bs == 1) ? qnnn.dzz_central_insert_in_vectors(f_p, fzz_p, n_vecs) : qnnn.dzz_central_all_components_insert_in_vectors(f_p, fzz_p, n_vecs, bs);
+      if(bs == 1)
+        qnnn.dzz_central_insert_in_vectors(f_p, fzz_p, n_vecs);
+      else
+        qnnn.dzz_central_all_components_insert_in_vectors(f_p, fzz_p, n_vecs, bs);
     }
     // start updating the ghost values
     for (unsigned int k = 0; k < n_vecs; ++k)
@@ -2138,9 +2151,12 @@ void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f[], DIM(Ve
 
     // compute the derivaties for all internal nodes
     for (size_t i = 0; i < local_nodes.size(); i++){
-      p4est_locidx_t node_idx = local_nodes[i];
+      const p4est_locidx_t &node_idx = local_nodes[i];
       const quad_neighbor_nodes_of_node_t& qnnn = neighbors[node_idx];
-      (bs == 1)? qnnn.laplace_insert_in_vectors(f_p, DIM(fxx_p, fyy_p, fzz_p),  n_vecs) : qnnn.laplace_all_components_insert_in_vectors(f_p, DIM(fxx_p, fyy_p, fzz_p),  n_vecs, bs);
+      if(bs == 1)
+        qnnn.laplace_insert_in_vectors(f_p, DIM(fxx_p, fyy_p, fzz_p),  n_vecs);
+      else
+        qnnn.laplace_all_components_insert_in_vectors(f_p, DIM(fxx_p, fyy_p, fzz_p),  n_vecs, bs);
     }
   } else {
 
@@ -2148,9 +2164,12 @@ void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f[], DIM(Ve
 
     // compute the derivatives on the boundary nodes -- fxx
     for (size_t i = 0; i < layer_nodes.size(); i++){
-      p4est_locidx_t node_idx = layer_nodes[i];
+      const p4est_locidx_t &node_idx = layer_nodes[i];
       get_neighbors(node_idx, qnnn);
-      (bs == 1)? qnnn.laplace_insert_in_vectors(f_p, DIM(fxx_p, fyy_p, fzz_p),  n_vecs) : qnnn.laplace_all_components_insert_in_vectors(f_p, DIM(fxx_p, fyy_p, fzz_p),  n_vecs, bs);
+      if(bs == 1)
+        qnnn.laplace_insert_in_vectors(f_p, DIM(fxx_p, fyy_p, fzz_p),  n_vecs);
+      else
+        qnnn.laplace_all_components_insert_in_vectors(f_p, DIM(fxx_p, fyy_p, fzz_p),  n_vecs, bs);
     }
     // start updating the ghost values
     for (unsigned int k = 0; k < n_vecs; ++k) {
@@ -2163,9 +2182,12 @@ void my_p4est_node_neighbors_t::second_derivatives_central(const Vec f[], DIM(Ve
 
     // compute the derivaties for all internal nodes
     for (size_t i = 0; i < local_nodes.size(); i++){
-      p4est_locidx_t node_idx = local_nodes[i];
+      const p4est_locidx_t &node_idx = local_nodes[i];
       get_neighbors(node_idx, qnnn);
-      (bs == 1)? qnnn.laplace_insert_in_vectors(f_p, DIM(fxx_p, fyy_p, fzz_p),  n_vecs) : qnnn.laplace_all_components_insert_in_vectors(f_p, DIM(fxx_p, fyy_p, fzz_p),  n_vecs, bs);
+      if(bs == 1)
+        qnnn.laplace_insert_in_vectors(f_p, DIM(fxx_p, fyy_p, fzz_p),  n_vecs);
+      else
+        qnnn.laplace_all_components_insert_in_vectors(f_p, DIM(fxx_p, fyy_p, fzz_p),  n_vecs, bs);
     }
   }
 
@@ -2514,7 +2536,10 @@ void my_p4est_node_neighbors_t::first_derivatives_central(const Vec f[], Vec fd[
     for (size_t i = 0; i < layer_nodes.size(); i++){
       p4est_locidx_t node_idx = layer_nodes[i];
       const quad_neighbor_nodes_of_node_t& qnnn = neighbors[node_idx];
-      (bs_f==1)? qnnn.gradient_insert_in_block_vectors(f_p, fd_p, n_vecs) : qnnn.gradient_all_components_insert_in_block_vectors(f_p, fd_p, n_vecs, bs_f);
+      if(bs_f == 1)
+        qnnn.gradient_insert_in_block_vectors(f_p, fd_p, n_vecs);
+      else
+        qnnn.gradient_all_components_insert_in_block_vectors(f_p, fd_p, n_vecs, bs_f);
     }
 
     // start updating the ghost values
@@ -2526,7 +2551,10 @@ void my_p4est_node_neighbors_t::first_derivatives_central(const Vec f[], Vec fd[
     for (size_t i = 0; i < local_nodes.size(); i++){
       p4est_locidx_t node_idx = local_nodes[i];
       const quad_neighbor_nodes_of_node_t& qnnn = neighbors[node_idx];
-      (bs_f==1)? qnnn.gradient_insert_in_block_vectors(f_p, fd_p, n_vecs) : qnnn.gradient_all_components_insert_in_block_vectors(f_p, fd_p, n_vecs, bs_f);
+      if(bs_f == 1)
+        qnnn.gradient_insert_in_block_vectors(f_p, fd_p, n_vecs);
+      else
+        qnnn.gradient_all_components_insert_in_block_vectors(f_p, fd_p, n_vecs, bs_f);
     }
   } else {
     quad_neighbor_nodes_of_node_t qnnn;
@@ -2535,7 +2563,10 @@ void my_p4est_node_neighbors_t::first_derivatives_central(const Vec f[], Vec fd[
     for (size_t i = 0; i < layer_nodes.size(); i++){
       p4est_locidx_t node_idx = layer_nodes[i];
       get_neighbors(node_idx, qnnn);
-      (bs_f==1)? qnnn.gradient_insert_in_block_vectors(f_p, fd_p, n_vecs) : qnnn.gradient_all_components_insert_in_block_vectors(f_p, fd_p, n_vecs, bs_f);
+      if(bs_f == 1)
+        qnnn.gradient_insert_in_block_vectors(f_p, fd_p, n_vecs);
+      else
+        qnnn.gradient_all_components_insert_in_block_vectors(f_p, fd_p, n_vecs, bs_f);
     }
 
     // start updating the ghost values
@@ -2547,7 +2578,10 @@ void my_p4est_node_neighbors_t::first_derivatives_central(const Vec f[], Vec fd[
     for (size_t i = 0; i < local_nodes.size(); i++){
       p4est_locidx_t node_idx = local_nodes[i];
       get_neighbors(node_idx, qnnn);
-      (bs_f==1)? qnnn.gradient_insert_in_block_vectors(f_p, fd_p, n_vecs) : qnnn.gradient_all_components_insert_in_block_vectors(f_p, fd_p, n_vecs, bs_f);
+      if(bs_f == 1)
+        qnnn.gradient_insert_in_block_vectors(f_p, fd_p, n_vecs);
+      else
+        qnnn.gradient_all_components_insert_in_block_vectors(f_p, fd_p, n_vecs, bs_f);
     }
   }
 
